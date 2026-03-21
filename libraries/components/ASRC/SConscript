@@ -1,0 +1,16 @@
+from building import *
+import rtconfig
+Import('RTT_ROOT')
+
+# get current directory
+cwd = GetCurrentDir()
+src = []
+path = []
+
+if GetDepend(['KIT_PROCE84_EVK_M33']):
+    path += [cwd + '/COMPONENT_CM33/inc']
+
+if GetDepend(['KIT_PROCE84_EVK_M55']):
+    path += [cwd + '/COMPONENT_CM33/inc']
+group = DefineGroup('Libraries', src, depend=[''], CPPPATH=path)
+Return('group')

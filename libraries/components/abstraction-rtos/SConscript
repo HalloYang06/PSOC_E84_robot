@@ -1,0 +1,27 @@
+import rtconfig
+from building import *
+import os
+
+cwd  = GetCurrentDir()
+path = [cwd]
+src  = Glob('*.c')
+
+
+src += ["source/COMPONENT_FREERTOS/cyabs_freertos_common.c",
+        "source/COMPONENT_FREERTOS/cyabs_freertos_helpers.c",
+        "source/COMPONENT_FREERTOS/cyabs_rtos_dsram.c",
+        "source/COMPONENT_FREERTOS/cyabs_rtos_freertos.c",
+        "source/cy_worker_thread.c"]
+
+path += [
+        cwd + "/include",
+        cwd + "/abstraction-rtos",
+        cwd + "/include/COMPONENT_FREERTOS"]
+
+CPPDEFINES = [
+        "CY_RTOS_AWARE",
+        "COMPONENT_RTOS_AWARE"
+]
+group = DefineGroup('Libraries', src, depend = [''], CPPPATH = path, CPPDEFINES = CPPDEFINES)
+
+Return('group')

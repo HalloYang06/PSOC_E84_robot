@@ -1,0 +1,12 @@
+from building import *
+import rtconfig
+Import('RTT_ROOT')
+
+# get current directory
+cwd = GetCurrentDir()
+src = []
+path = []
+path += [cwd + '/Core/Include']
+path += [cwd + '/Core/Include/m-profile']
+group = DefineGroup('Libraries', src, depend=[''], CPPPATH=path)
+Return('group')

@@ -1,0 +1,15 @@
+from building import *
+
+cwd = GetCurrentDir()
+src = Glob('*.c')
+CPPPATH = [
+    cwd,
+    Dir('#/applications/common'),
+    Dir('#/vendor_btstack/btstack/wiced_include'),
+    Dir('#/vendor_btstack/btstack_integration/COMPONENT_HCI-UART/include'),
+    Dir('#/vendor_btstack/btstack_integration/COMPONENT_HCI-UART/common'),
+    Dir('#/vendor_btstack/abstraction_rtos/include'),
+]
+
+group = DefineGroup('AppM33', src, depend=[''], CPPPATH=CPPPATH)
+Return('group')
