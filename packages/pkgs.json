@@ -1,0 +1,12 @@
+[
+ {
+  "name": "NETUTILS",
+  "path": "/packages/iot/netutils",
+  "ver": "latest"
+ },
+ {
+  "name": "FREERTOS_WRAPPER",
+  "path": "/packages/system/FreeRTOS_Wrapper",
+  "ver": "latest"
+ }
+]

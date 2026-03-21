@@ -1,0 +1,120 @@
+# Python
+*.pyc
+
+# Build outputs
+*.map
+*.elf
+*.hex
+*.axf
+*.bin
+*.out
+*.uimg
+*.a
+*.lib
+*.so
+*.dll
+
+# Object files
+*.o
+*.obj
+*.d
+*.i
+*.dep
+
+# Debug files
+*.pdb
+*.idb
+*.ilk
+
+# Backup files
+*.old
+*.bak
+*~
+
+# Build directories
+build/
+Debug/
+Release/
+Output/
+Listings/
+Objects/
+
+# RT-Thread Studio
+.config
+cconfig.h
+rtconfig.h.bak
+rtconfig_preinc.h
+.sconsign.dblite
+*.dblite
+
+# Eclipse (RT-Thread Studio based on Eclipse)
+.metadata/
+.settings/
+.project.bak
+*.launch
+*.pydevproject
+.cproject
+.autotools
+.classpath
+.factorypath
+.buildpath
+.target
+.tern-project
+.texlipse
+.springBeans
+.recommenders/
+RemoteSystemsTempFiles/
+
+# Infineon/Cypress
+DebugConfig/
+RTE/
+settings/
+*.uvguix*
+*.uvopt
+*.uvoptx
+*.uvproj
+*.uvprojx
+JLinkLog.txt
+JLinkSettings.ini
+
+# Documentation
+documentation/html/
+doxygen_warnings.txt
+
+# Tags
+GPATH
+GRTAGS
+GTAGS
+tags
+.tags
+.tags_sorted_by_file
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+
+# SCons
+.sconsign.dblite
+.sconf_temp/
+.config 3
+.config 4
+.config 5
+
+# Specific exclusions
+Midea-X1
+
+# Keep specific files (use ! to negate ignore)
+!edgeprotecttools.exe
+
+# Git
+*.orig
+*.rej
