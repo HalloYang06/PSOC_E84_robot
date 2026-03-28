@@ -26,8 +26,7 @@ dist/
 *.tmp
 .DS_Store
 
-# 文档（除了README）
-*.md
+
 !README.md
 !CLAUDE.md
 

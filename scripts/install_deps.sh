@@ -64,13 +64,23 @@ sudo apt install -y \
     python3-flask-cors \
     python3-numpy
 
-# websockets需要从pip安装（apt没有）
-# 如果需要websockets，在项目venv中安装：
-# source venv/bin/activate && pip install websockets numpy
+# 创建并配置venv
+echo ""
+echo "配置Python虚拟环境..."
+if [ ! -d "venv" ]; then
+    python3 -m venv venv
+    echo "✅ 创建venv"
+fi
+
+source venv/bin/activate
+pip install --upgrade pip
+pip install catkin_pkg empy lark pyyaml flask flask-cors websockets numpy opencv-python
+echo "✅ venv依赖安装完成"
+deactivate
 
 echo ""
 echo "注意: 项目使用venv管理Python依赖"
-echo "venv中需要安装: catkin_pkg empy lark pyyaml flask flask-cors websockets numpy"
+echo "已安装: catkin_pkg empy lark pyyaml flask flask-cors websockets numpy opencv-python"
 echo ""
 
 echo ""

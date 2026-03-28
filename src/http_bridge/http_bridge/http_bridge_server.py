@@ -11,6 +11,7 @@ from flask import Flask, request, jsonify
 from threading import Thread, Lock
 import json
 import time
+import subprocess
 
 # 全局状态
 class SystemState:
@@ -221,6 +222,48 @@ def get_stats():
         "average_score": 0
     })
 
+def send_to_openclaw(message):
+    """发送消息到OpenClaw并获取响应"""
+    try:
+        # 使用 openclaw agent 命令发送消息
+        # 对于复杂任务（摄像头、图片分析等），需要更长的超时时间
+        result = subprocess.run(
+            ['openclaw', 'agent', '--agent', 'main', '--message', message, '--json'],
+            capture_output=True,
+            text=True,
+            timeout=300  # 5分钟超时，适合复杂任务
+        )
+
+        if result.returncode == 0:
+            # 解析JSON响应
+            try:
+                response_data = json.loads(result.stdout)
+                # 提取AI的回复文本 - 正确的路径是 result.payloads[0].text
+                payloads = response_data.get('result', {}).get('payloads', [])
+                if payloads and len(payloads) > 0:
+                    reply = payloads[0].get('text', '')
+                    if reply:
+                        ros_node.get_logger().info(f'OpenClaw response: {reply[:100]}...')
+                        return reply
+
+                # 如果没有找到文本，记录完整响应用于调试
+                ros_node.get_logger().warn(f'No text in OpenClaw response: {response_data}')
+                return None
+
+            except json.JSONDecodeError as e:
+                ros_node.get_logger().error(f'Failed to parse OpenClaw response: {e}')
+                return None
+        else:
+            ros_node.get_logger().error(f'OpenClaw command failed: {result.stderr}')
+            return None
+
+    except subprocess.TimeoutExpired:
+        ros_node.get_logger().error('OpenClaw command timeout (5 minutes)')
+        return None
+    except Exception as e:
+        ros_node.get_logger().error(f'Failed to call OpenClaw: {e}')
+        return None
+
 @app.route('/message', methods=['POST'])
 def handle_message():
     """处理OpenClaw自然语言消息"""
@@ -243,12 +286,22 @@ def handle_message():
         "message": message
     })
 
-    # 返回响应（这里可以集成实际的AI处理）
-    return jsonify({
-        "success": True,
-        "message": f"收到消息: {message}",
-        "error": None
-    })
+    # 调用OpenClaw AI处理
+    ai_response = send_to_openclaw(message)
+
+    if ai_response:
+        return jsonify({
+            "success": True,
+            "message": ai_response,
+            "error": None
+        })
+    else:
+        # 如果OpenClaw调用失败，返回默认响应
+        return jsonify({
+            "success": True,
+            "message": f"收到消息: {message}（OpenClaw暂时不可用）",
+            "error": None
+        })
 
 def run_flask_app():
     """在单独线程中运行Flask应用"""

@@ -182,7 +182,7 @@ public:
         }
 
         try {
-            // 编码图像为base64
+            // 直接编码图像为base64（不翻转）
             std::string base64_image = encodeImageToBase64(image);
 
             // 构建JSON消息
