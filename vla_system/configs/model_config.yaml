@@ -1,0 +1,19 @@
+{
+  "version": "mvp-rule-based",
+  "task_parser": {
+    "backend": "rules",
+    "replacement_target": "lightweight text classifier"
+  },
+  "grounding_ranker": {
+    "backend": "rules",
+    "replacement_target": "candidate ranking model"
+  },
+  "phase_predictor": {
+    "backend": "rules",
+    "replacement_target": "phase classification model"
+  },
+  "confirmation_judge": {
+    "backend": "rules",
+    "replacement_target": "binary confirmation model"
+  }
+}

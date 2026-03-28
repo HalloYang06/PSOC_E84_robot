@@ -1,0 +1,59 @@
+{
+  "title": "ResolveTaskInput",
+  "type": "object",
+  "required": ["text", "objects", "regions", "relations", "robot_state", "execution_history"],
+  "properties": {
+    "text": {"type": "string"},
+    "objects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["object_id", "class_name"],
+        "properties": {
+          "object_id": {"type": "string"},
+          "class_name": {"type": "string"},
+          "bbox": {"type": "array", "items": {"type": "number"}},
+          "position": {"type": "array", "items": {"type": "number"}}
+        }
+      }
+    },
+    "regions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["region_id", "region_type"],
+        "properties": {
+          "region_id": {"type": "string"},
+          "region_type": {"type": "string"},
+          "position": {"type": "array", "items": {"type": "number"}}
+        }
+      }
+    },
+    "relations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["subject", "predicate", "object"],
+        "properties": {
+          "subject": {"type": "string"},
+          "predicate": {"type": "string"},
+          "object": {"type": "string"}
+        }
+      }
+    },
+    "robot_state": {
+      "type": "object",
+      "properties": {
+        "joint_state": {"type": "array", "items": {"type": "number"}},
+        "ee_pose": {"type": "array", "items": {"type": "number"}},
+        "gripper_open": {"type": "boolean"},
+        "has_object": {"type": "boolean"},
+        "current_phase": {"type": "string"}
+      }
+    },
+    "execution_history": {
+      "type": "array",
+      "items": {"type": "string"}
+    }
+  }
+}

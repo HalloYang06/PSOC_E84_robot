@@ -1,0 +1,80 @@
+{
+  "task_types": [
+    "pick_and_place",
+    "retrieve_object",
+    "handover"
+  ],
+  "phases": [
+    "search",
+    "approach",
+    "align",
+    "grasp",
+    "lift",
+    "handover",
+    "place",
+    "return",
+    "stop"
+  ],
+  "grasp_types": [
+    "side_grasp",
+    "top_grasp",
+    "pinch_grasp"
+  ],
+  "speed_profiles": [
+    "slow",
+    "normal"
+  ],
+  "task_keywords": {
+    "pick_and_place": ["放到", "放在", "放上", "放去"],
+    "retrieve_object": ["拿下来", "取下来", "拿过来", "拿来", "取来", "拿下"],
+    "handover": ["递给我", "递给", "给我", "交给我"]
+  },
+  "object_aliases": {
+    "water": ["水", "矿泉水", "饮料"],
+    "bottle": ["瓶子", "水瓶", "bottle"],
+    "cup": ["杯子", "水杯", "cup"],
+    "medicine_box": ["药盒", "药", "medicine box"],
+    "box": ["盒子", "box"],
+    "thing": ["东西", "物品", "那个", "这个"]
+  },
+  "region_aliases": {
+    "bed": ["床", "床上", "bed", "bed_surface"],
+    "shelf": ["高架", "高架上", "架子", "货架", "shelf"],
+    "table": ["桌", "桌上", "桌子", "table"],
+    "user": ["我", "给我", "手里", "user"]
+  },
+  "spatial_aliases": {
+    "left": ["左边", "左侧", "左边那个"],
+    "right": ["右边", "右侧", "右边那个"],
+    "high": ["高架", "高处", "上面"],
+    "low": ["下面", "低处"]
+  },
+  "object_compatibility": {
+    "water": ["bottle", "cup"],
+    "bottle": ["bottle"],
+    "cup": ["cup"],
+    "medicine_box": ["medicine_box", "box"],
+    "box": ["box", "medicine_box"],
+    "thing": ["water", "bottle", "cup", "medicine_box", "box"]
+  },
+  "grasp_type_by_class": {
+    "water": "side_grasp",
+    "bottle": "side_grasp",
+    "cup": "side_grasp",
+    "medicine_box": "top_grasp",
+    "box": "top_grasp",
+    "default": "pinch_grasp"
+  },
+  "display_names": {
+    "water": "水",
+    "bottle": "水瓶",
+    "cup": "水杯",
+    "medicine_box": "药盒",
+    "box": "盒子",
+    "thing": "物体",
+    "bed": "床",
+    "shelf": "高架",
+    "table": "桌面",
+    "user": "用户"
+  }
+}

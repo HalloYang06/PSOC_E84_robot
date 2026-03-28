@@ -1,0 +1,8 @@
+{
+  "text": "把高架上的东西拿下来",
+  "candidate_objects": [
+    {"object_id": "medicine_box_01", "score": 0.58},
+    {"object_id": "cup_01", "score": 0.53}
+  ],
+  "need_confirmation": true
+}

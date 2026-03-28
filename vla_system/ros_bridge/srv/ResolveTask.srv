@@ -1,0 +1,6 @@
+string text
+string scene_json
+string robot_state_json
+string[] execution_history
+---
+string resolved_task_json

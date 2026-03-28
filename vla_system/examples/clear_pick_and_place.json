@@ -1,0 +1,39 @@
+{
+  "text": "把水放到床上",
+  "objects": [
+    {
+      "object_id": "bottle_01",
+      "class_name": "bottle",
+      "position": [0.42, 0.13, 0.75]
+    },
+    {
+      "object_id": "cup_01",
+      "class_name": "cup",
+      "position": [0.65, -0.08, 0.74]
+    }
+  ],
+  "regions": [
+    {
+      "region_id": "bed_surface_01",
+      "region_type": "bed_surface",
+      "position": [0.90, 0.10, 0.60]
+    },
+    {
+      "region_id": "table_01",
+      "region_type": "table",
+      "position": [0.40, 0.10, 0.72]
+    }
+  ],
+  "relations": [
+    {"subject": "bottle_01", "predicate": "on", "object": "table_01"},
+    {"subject": "cup_01", "predicate": "on", "object": "table_01"}
+  ],
+  "robot_state": {
+    "joint_state": [0.1, -0.4, 0.8, 0.2, 1.1, 0.0],
+    "ee_pose": [0.4, 0.1, 0.8, 0.0, 0.0, 0.0, 1.0],
+    "gripper_open": true,
+    "has_object": false,
+    "current_phase": "search"
+  },
+  "execution_history": []
+}
