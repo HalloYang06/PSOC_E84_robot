@@ -1,0 +1,10 @@
+build/
+*.o
+*.a
+*.so
+*.bag
+*.pco
+*.log
+*pyc
+sourcecode.md
+*.so
