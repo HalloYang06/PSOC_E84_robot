@@ -1,6 +1,6 @@
 # NanoPi ROS 2 Workspace
 
-NanoPi上的ROS 2工作空间，用于实时CAN通信、摄像头流传输和HTTP API桥接。
+NanoPi上的ROS 2 Jazzy工作空间，用于医疗康复机械臂控制。实现摄像头流传输、与手机APP的HTTP API桥接和OpenClaw协议支持。
 
 ## 项目结构
 
@@ -30,12 +30,15 @@ nanopi_ros/
 ├── install/                    # 安装目录
 ├── log/                        # 日志目录
 ├── scripts/                    # 工具脚本
-│   ├── install_deps.sh
-│   └── quick_fix_python.sh
-├── docs/                       # 文档
+│   ├── install_deps.sh         # 依赖安装
+│   ├── test_http_bridge.sh     # HTTP测试
+│   ├── monitor_requests.sh     # 请求监控
+│   └── diagnose_app_connection.sh  # APP连接诊断
 ├── venv/                       # Python虚拟环境
 ├── build_ros2.sh               # ROS 2构建脚本
+├── start_http_bridge.sh        # HTTP Bridge启动脚本
 ├── CLAUDE.md                   # AI助手指南
+├── LEARNING_GUIDE.md           # 完整学习指南
 └── README.md                   # 本文件
 ```
 
@@ -47,9 +50,6 @@ nanopi_ros/
 # 安装系统依赖
 cd scripts
 ./install_deps.sh
-
-# 设置Python虚拟环境
-./quick_fix_python.sh
 ```
 
 ### 2. 构建ROS 2工作空间
@@ -92,15 +92,15 @@ ros2 launch system.launch.py
 ros2 launch camera_client camera.launch.py server_ip:=10.100.191.235 fps:=15
 ```
 
-#### 方式2：直接运行可执行文件
+#### 方式2：使用启动脚本（推荐）
 
 ```bash
-# 摄像头客户端
-ros2 run camera_client camera_websocket_client
-
-# HTTP Bridge（使用虚拟环境）
-cd src/http_bridge
+# HTTP Bridge
 ./start_http_bridge.sh
+
+# 摄像头客户端
+source install/setup.bash
+install/camera_client/lib/camera_client/camera_websocket_client
 ```
 
 ## 组件说明
@@ -137,10 +137,22 @@ HTTP API服务器，实现Android APP与ROS 2系统的通信桥接。
 **API端点:**
 - `GET /health` - 健康检查
 - `GET /status` - 获取系统状态
+- `POST /message` - OpenClaw自然语言消息（主要功能）
 - `POST /mode` - 切换控制模式
 - `POST /control` - 发送控制指令
 - `POST /memory/execute` - 执行记忆动作
 - `POST /api/command` - OpenClaw工具调用
+
+### Android APP配置
+
+```kotlin
+val httpManager = PsocHttpManager()
+httpManager.setBaseUrl("http://10.100.191.82:8081")  // NanoPi IP
+```
+
+或在APP设置中输入：
+- 服务器地址: `10.100.191.82`
+- 端口: `8081`
 
 ## ROS 2开发
 
@@ -186,16 +198,17 @@ ffplay /dev/video45
 ### HTTP Bridge测试
 
 ```bash
-# 启动服务器
-cd src/http_bridge
-./start_http_bridge.sh
+# 快速测试所有端点
+./scripts/test_http_bridge.sh
 
-# 在另一个终端运行测试
-./run_tests.sh
+# 监控实时请求
+./scripts/monitor_requests.sh
 
-# 或使用curl
+# 手动测试
 curl http://localhost:8081/health
-curl http://localhost:8081/status
+curl -X POST http://localhost:8081/message \
+  -H "Content-Type: application/json" \
+  -d '{"message":"测试消息"}'
 ```
 
 ## 故障排除
@@ -232,17 +245,18 @@ sudo usermod -a -G video $USER
 sudo lsof -i :8081
 ```
 
-## 性能优化
-
-- 摄像头: 降低分辨率和帧率可减少CPU占用
-- HTTP Bridge: Python版本适合开发，C++版本适合生产
-- 网络: 使用有线连接获得更稳定的性能
-
 ## 相关文档
 
-- [HTTP Bridge详细文档](docs/HTTP_BRIDGE_README.md)
-- [快速入门指南](docs/QUICKSTART.md)
-- [项目架构](CLAUDE.md)
+- [CLAUDE.md](CLAUDE.md) - 开发指南和项目架构
+- [GitHub仓库](https://github.com/ChillAmnesiac/Medical-Rehabilitation-Manipulator/tree/NanoPi_ROSNode)
+
+## 技术栈
+
+- ROS 2 Jazzy
+- Python 3.12 + Flask + Flask-CORS
+- C++ 17 + OpenCV 4.6 + Boost
+- colcon构建系统
+- OpenClaw协议
 
 ## 许可证
 
