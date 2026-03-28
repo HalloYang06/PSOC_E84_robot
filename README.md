@@ -1,6 +1,13 @@
 # NanoPi ROS 2 Workspace
 
-NanoPi上的ROS 2 Jazzy工作空间，用于医疗康复机械臂控制。实现摄像头流传输、与手机APP的HTTP API桥接和OpenClaw协议支持。
+NanoPi上的ROS 2 Jazzy工作空间，用于医疗康复机械臂控制。实现摄像头流传输、与手机APP的HTTP API桥接和OpenClaw AI智能对话。
+
+## 核心特性
+
+- **智能对话**: 通过OpenClaw AI实现自然语言控制，支持快速命令（1-3秒）和复杂任务（AI推理）
+- **摄像头流传输**: 实时传输摄像头画面到远程服务器
+- **HTTP API桥接**: RESTful API与Android APP无缝集成
+- **ROS 2集成**: 完整的ROS 2 Jazzy节点，支持话题、服务和参数
 
 ## 项目结构
 
@@ -125,23 +132,44 @@ install/camera_client/lib/camera_client/camera_websocket_client
 
 ### HTTP Bridge
 
-HTTP API服务器，实现Android APP与ROS 2系统的通信桥接。
+HTTP API服务器，实现Android APP与ROS 2系统的通信桥接，集成OpenClaw AI智能对话。
 
 **特性:**
 - RESTful API
 - 与ROS 2完全集成
-- 支持OpenClaw协议
+- OpenClaw AI智能对话（支持自然语言控制）
+- 快速命令执行（1-3秒响应）：拍照、查找摄像头、系统状态
+- AI复杂任务处理（30-120秒）：图像分析、多步骤操作
 - 实时传感器数据
 - 控制命令下发
 
 **API端点:**
 - `GET /health` - 健康检查
 - `GET /status` - 获取系统状态
-- `POST /message` - OpenClaw自然语言消息（主要功能）
+- `POST /message` - **OpenClaw自然语言消息（主要功能）**
+  - 快速命令：拍照、查找摄像头、系统状态（1-3秒）
+  - AI任务：图像分析、复杂操作（30-120秒）
 - `POST /mode` - 切换控制模式
 - `POST /control` - 发送控制指令
 - `POST /memory/execute` - 执行记忆动作
 - `POST /api/command` - OpenClaw工具调用
+
+**使用示例:**
+```bash
+# 快速命令（1-3秒响应）
+curl -X POST http://localhost:8081/message \
+  -H "Content-Type: application/json" \
+  -d '{"message":"拍照"}'
+
+curl -X POST http://localhost:8081/message \
+  -H "Content-Type: application/json" \
+  -d '{"message":"查找摄像头"}'
+
+# AI复杂任务（30-120秒响应）
+curl -X POST http://localhost:8081/message \
+  -H "Content-Type: application/json" \
+  -d '{"message":"分析这张图片中有什么"}'
+```
 
 ### Android APP配置
 
@@ -153,6 +181,45 @@ httpManager.setBaseUrl("http://10.100.191.82:8081")  // NanoPi IP
 或在APP设置中输入：
 - 服务器地址: `10.100.191.82`
 - 端口: `8081`
+
+## OpenClaw智能对话
+
+HTTP Bridge集成了OpenClaw AI，支持自然语言控制机械臂系统。
+
+### 双路径架构
+
+**快速路径（1-3秒）**：
+- 拍照：`"拍照"`, `"拍一张"`, `"take photo"`
+- 查找摄像头：`"查找摄像头"`, `"有哪些摄像头"`
+- 系统状态：`"系统状态"`, `"status"`
+
+**AI路径（30-120秒）**：
+- 图像分析：`"分析这张图片"`
+- 复杂操作：`"帮我检查机械臂状态并拍照"`
+- 多步骤任务：`"先拍照然后分析环境"`
+
+### 使用方式
+
+**通过Android APP**：
+```kotlin
+// 发送自然语言消息
+httpManager.sendMessage("拍照")
+httpManager.sendMessage("帮我分析当前环境")
+```
+
+**通过curl测试**：
+```bash
+# 快速命令
+curl -X POST http://10.100.191.82:8081/message \
+  -H "Content-Type: application/json" \
+  -d '{"message":"拍照"}'
+
+# AI任务
+curl -X POST http://10.100.191.82:8081/message \
+  -H "Content-Type: application/json" \
+  -d '{"message":"分析图片中的物体"}'
+```
+
 
 ## ROS 2开发
 
@@ -204,11 +271,18 @@ ffplay /dev/video45
 # 监控实时请求
 ./scripts/monitor_requests.sh
 
-# 手动测试
+# 手动测试健康检查
 curl http://localhost:8081/health
+
+# 测试智能对话（快速命令）
 curl -X POST http://localhost:8081/message \
   -H "Content-Type: application/json" \
-  -d '{"message":"测试消息"}'
+  -d '{"message":"拍照"}'
+
+# 测试智能对话（AI任务）
+curl -X POST http://localhost:8081/message \
+  -H "Content-Type: application/json" \
+  -d '{"message":"帮我分析一下当前环境"}'
 ```
 
 ## 故障排除
@@ -247,16 +321,19 @@ sudo lsof -i :8081
 
 ## 相关文档
 
+- [LEARNING_GUIDE.md](LEARNING_GUIDE.md) - 完整学习指南（问题解决、架构讲解、技术原理）
 - [CLAUDE.md](CLAUDE.md) - 开发指南和项目架构
+- [docs/HTTP_BRIDGE_README.md](docs/HTTP_BRIDGE_README.md) - HTTP API详细文档
 - [GitHub仓库](https://github.com/ChillAmnesiac/Medical-Rehabilitation-Manipulator/tree/NanoPi_ROSNode)
 
 ## 技术栈
 
-- ROS 2 Jazzy
-- Python 3.12 + Flask + Flask-CORS
-- C++ 17 + OpenCV 4.6 + Boost
-- colcon构建系统
-- OpenClaw协议
+- **ROS 2**: Jazzy (最新LTS版本)
+- **Python**: 3.12 + Flask + Flask-CORS
+- **C++**: 17 + OpenCV 4.6 + Boost
+- **构建系统**: colcon (ROS 2标准)
+- **AI集成**: OpenClaw智能对话系统
+- **通信协议**: HTTP REST API + WebSocket
 
 ## 许可证
 
