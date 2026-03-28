@@ -1,0 +1,11 @@
+string task_type
+string object_id
+string[] candidate_objects
+string target_region_id
+string phase
+string grasp_type
+string speed
+bool retry
+float32 confidence
+bool need_confirmation
+string question

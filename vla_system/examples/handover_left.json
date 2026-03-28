@@ -1,0 +1,25 @@
+{
+  "text": "把左边那个递给我",
+  "objects": [
+    {
+      "object_id": "cup_01",
+      "class_name": "cup",
+      "position": [0.20, 0.01, 0.74]
+    },
+    {
+      "object_id": "cup_02",
+      "class_name": "cup",
+      "position": [0.48, 0.01, 0.74]
+    }
+  ],
+  "regions": [],
+  "relations": [
+    {"subject": "cup_01", "predicate": "left_of", "object": "cup_02"}
+  ],
+  "robot_state": {
+    "gripper_open": true,
+    "has_object": false,
+    "current_phase": "approach"
+  },
+  "execution_history": []
+}

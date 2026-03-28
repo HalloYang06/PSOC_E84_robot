@@ -1,0 +1,13 @@
+{
+  "text": "把左边那个递给我",
+  "objects": [
+    {"object_id": "cup_01", "class_name": "cup", "position": [0.2, 0.0, 0.7]},
+    {"object_id": "cup_02", "class_name": "cup", "position": [0.4, 0.0, 0.7]}
+  ],
+  "regions": [],
+  "relations": [
+    {"subject": "cup_01", "predicate": "left_of", "object": "cup_02"}
+  ],
+  "label_object_id": "cup_01",
+  "label_task_type": "handover"
+}

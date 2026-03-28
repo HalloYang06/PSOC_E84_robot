@@ -1,0 +1,45 @@
+{
+  "title": "ResolvedTask",
+  "type": "object",
+  "required": [
+    "task_type",
+    "object_id",
+    "candidate_objects",
+    "target_region_id",
+    "phase",
+    "grasp_type",
+    "speed",
+    "retry",
+    "confidence",
+    "need_confirmation",
+    "question"
+  ],
+  "properties": {
+    "task_type": {
+      "type": "string",
+      "enum": ["pick_and_place", "retrieve_object", "handover"]
+    },
+    "object_id": {"type": "string"},
+    "candidate_objects": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "target_region_id": {"type": "string"},
+    "phase": {
+      "type": "string",
+      "enum": ["search", "approach", "align", "grasp", "lift", "handover", "place", "return", "stop"]
+    },
+    "grasp_type": {
+      "type": "string",
+      "enum": ["", "side_grasp", "top_grasp", "pinch_grasp"]
+    },
+    "speed": {
+      "type": "string",
+      "enum": ["slow", "normal"]
+    },
+    "retry": {"type": "boolean"},
+    "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+    "need_confirmation": {"type": "boolean"},
+    "question": {"type": "string"}
+  }
+}
