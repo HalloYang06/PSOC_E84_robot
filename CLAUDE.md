@@ -4,37 +4,261 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a ROS 2 Jazzy workspace for real-time CAN communication and WebSocket bridging on embedded Linux (NanoPi/Raspberry Pi). The system enables bidirectional communication between:
-- CAN hardware (Infineon controller via SocketCAN)
-- ROS 2 nodes (C++ for performance-critical paths)
-- Remote servers via WebSocket (100Hz target rate)
-- VLA (Vision-Language-Action) control systems
-- Camera streaming (USB/CSI cameras via OpenCV)
+ROS 2 Jazzy workspace for embedded robotics on NanoPi/Raspberry Pi. Implements camera streaming and HTTP API bridge for Android APP integration.
+
+**Current Components:**
+- Camera WebSocket client (C++ ROS 2 node) - streams camera frames to remote server
+- HTTP Bridge server (Python ROS 2 node) - REST API for Android APP using OpenClaw protocol
+
+**Planned Components:**
+- CAN interface node for SocketCAN communication (100Hz)
+- WebSocket bridge for VLA (Vision-Language-Action) control systems
 
 ## Architecture
 
-The system consists of three main components:
+```
+Android APP ↔ HTTP Bridge (Python) ↔ ROS 2 Topics
+Camera → Camera Client (C++) → WebSocket → Remote Server
+(Future: CAN Hardware ↔ CAN Node ↔ ROS Topics)
+```
 
-1. **CAN Node (C++)**: Interfaces with SocketCAN to read/write CAN frames at 100Hz, publishes to ROS topics
-2. **WebSocket Bridge (C++)**: Bidirectional bridge using Boost.Beast, forwards CAN data to remote servers and receives commands
-3. **Python Scripts**: Monitoring, visualization, and auxiliary control
-
-Data flow: `CAN Hardware ↔ CAN Node ↔ ROS Topics ↔ WebSocket Bridge ↔ Remote Server/VLA`
-
-## Expected Directory Structure
+## Directory Structure
 
 ```
-~/ros2_ws/
+nanopi_ros/                     # ROS 2 workspace root
 ├── src/
-│   ├── can_interface/          # CAN communication package (C++)
-│   ├── websocket_bridge/       # WebSocket bridge package (C++)
-│   └── control_scripts/        # Python auxiliary scripts
-└── install/
+│   ├── camera_client/          # Camera streaming package (C++)
+│   │   ├── camera_websocket_client.cpp
+│   │   ├── launch/camera.launch.py
+│   │   └── package.xml
+│   └── http_bridge/            # HTTP API bridge package (Python)
+│       ├── http_bridge/        # Python package
+│       │   ├── __init__.py
+│       │   └── http_bridge_server.py
+│       ├── launch/http_bridge.launch.py
+│       ├── setup.py
+│       └── package.xml
+├── launch/
+│   └── system.launch.py        # Launch all nodes
+├── build/, install/, log/      # ROS 2 build outputs (auto-generated)
+├── scripts/                    # Utility scripts
+├── docs/                       # Documentation
+└── build_ros2.sh               # Main build script
 ```
 
-## Hardware Setup
+## Build and Development
+
+### ROS 2 Build System
+
+**IMPORTANT**: This is a ROS 2 workspace. Use `colcon build`, NOT `catkin_make` (ROS 1) or standalone `cmake`.
+
+### Build Commands
+
+```bash
+# Build entire workspace
+./build_ros2.sh
+
+# Build specific package
+./build_ros2.sh --packages camera_client
+
+# Debug build
+./build_ros2.sh --debug
+
+# Clean and rebuild
+./build_ros2.sh --clean
+
+# Or use colcon directly
+colcon build --symlink-install
+colcon build --packages-select camera_client
+```
+
+### Setup Environment
+
+```bash
+# Load ROS 2 environment (if not already loaded)
+source /opt/ros/jazzy/setup.bash
+
+# Load workspace overlay
+source install/setup.bash
+```
+
+### Launch Nodes
+
+```bash
+# Launch individual nodes
+ros2 launch camera_client camera.launch.py
+ros2 launch http_bridge http_bridge.launch.py
+
+# Launch all nodes
+ros2 launch launch/system.launch.py
+
+# Launch with parameters
+ros2 launch camera_client camera.launch.py server_ip:=192.168.1.100 fps:=15
+```
+
+### Run Nodes Directly
+
+```bash
+# Camera client
+ros2 run camera_client camera_websocket_client
+
+# HTTP bridge
+ros2 run http_bridge http_bridge_server
+```
+
+## Dependencies
+
+### System Packages
+```bash
+# ROS 2 Jazzy base
+sudo apt install ros-jazzy-desktop
+
+# ROS 2 development tools
+sudo apt install python3-colcon-common-extensions
+sudo apt install ros-jazzy-ament-cmake ros-jazzy-ament-cmake-python
+
+# ROS 2 packages
+sudo apt install ros-jazzy-rclcpp ros-jazzy-rclpy
+sudo apt install ros-jazzy-std-msgs ros-jazzy-sensor-msgs
+sudo apt install ros-jazzy-cv-bridge ros-jazzy-image-transport
+
+# Camera and vision
+sudo apt install libopencv-dev v4l-utils
+
+# C++ libraries
+sudo apt install libboost-all-dev
+
+# Python packages (system-wide via apt)
+sudo apt install python3-catkin-pkg python3-empy python3-lark
+sudo apt install python3-yaml python3-flask python3-flask-cors
+```
+
+### Virtual Environment Setup (for websockets)
+```bash
+# Create and activate venv
+python3 -m venv venv
+source venv/bin/activate
+
+# Install Python packages in venv
+pip install catkin_pkg empy lark pyyaml flask flask-cors websockets
+```
+
+### Quick Install
+```bash
+cd scripts
+./install_deps.sh
+```
+
+**Note**: Due to PEP 668, system Python is externally managed. The install script uses `apt` for most packages. For packages not available via apt (like websockets), use the project's venv.
+
+## ROS 2 Development
+
+### Check Node Status
+```bash
+# List running nodes
+ros2 node list
+
+# Node information
+ros2 node info /camera_websocket_client
+ros2 node info /http_bridge_server
+```
+
+### Monitor Topics
+```bash
+# List topics
+ros2 topic list
+
+# Check topic frequency
+ros2 topic hz /camera/image_raw
+
+# View topic data
+ros2 topic echo /camera/image_raw
+```
+
+### Parameters
+```bash
+# List parameters
+ros2 param list
+
+# Get parameter value
+ros2 param get /camera_websocket_client server_ip
+
+# Set parameter value
+ros2 param set /camera_websocket_client fps 15
+```
+
+### Debugging
+```bash
+# View logs
+ros2 run rqt_console rqt_console
+
+# Check node graph
+ros2 run rqt_graph rqt_graph
+```
+
+## Camera Client
+
+### Features
+- ROS 2 node for camera streaming
+- Supports USB/CSI cameras via OpenCV
+- JPEG compression for efficient transmission
+- WebSocket client for remote streaming
+- Configurable frame rate and camera selection
+
+### Configuration
+```bash
+# Launch parameters
+ros2 launch camera_client camera.launch.py \
+    server_ip:=10.100.191.235 \
+    server_port:=8080 \
+    camera_id:=-1 \
+    fps:=10
+```
+
+### Check Available Cameras
+```bash
+v4l2-ctl --list-devices
+ls /dev/video*
+```
+
+## HTTP Bridge
+
+### Features
+- REST API server for Android APP
+- Implements OpenClaw protocol
+- ROS 2 topic integration
+- Real-time sensor data streaming
+- Control command interface
+
+### API Endpoints
+- `GET /health` - Health check
+- `GET /status` - System status and sensor data
+- `POST /mode` - Switch control mode (active/passive/memory)
+- `POST /control` - Send control commands
+- `POST /memory/execute` - Execute memory action
+- `POST /memory/stop` - Stop memory action
+- `POST /api/command` - OpenClaw tool calls
+
+### Testing
+```bash
+# Test all endpoints
+ros2 run http_bridge test_http_bridge.py
+
+# Or use curl
+curl http://localhost:8081/health
+curl http://localhost:8081/status
+```
+
+### Android APP Configuration
+```kotlin
+val httpManager = PsocHttpManager()
+httpManager.setBaseUrl("http://192.168.1.100:8081")  // Replace with NanoPi IP
+```
+
+## Hardware Setup (Future)
 
 ### CAN Interface Configuration
+When CAN node is implemented:
 
 ```bash
 # Load kernel modules
@@ -49,141 +273,91 @@ ip link show can0
 candump can0
 ```
 
-## Dependencies
+## Troubleshooting
 
-### System Packages
+### Build Issues
+
+**ROS 2 not found:**
 ```bash
-# ROS 2 Jazzy
-sudo apt install ros-jazzy-rclcpp ros-jazzy-std-msgs ros-jazzy-message-filters
-
-# CAN utilities
-sudo apt install can-utils
-
-# C++ libraries
-sudo apt install libboost-all-dev
-
-# Camera and vision
-sudo apt install libopencv-dev nlohmann-json3-dev v4l-utils
-
-# Python
-pip3 install websockets rclpy
+source /opt/ros/jazzy/setup.bash
 ```
 
-### Quick Install
+**colcon not found:**
 ```bash
-chmod +x install_deps.sh
-./install_deps.sh
+sudo apt install python3-colcon-common-extensions
 ```
 
-## Build and Run
-
-### Camera WebSocket Client (Standalone)
+**Package dependencies missing:**
 ```bash
-# Build
-mkdir build && cd build
-cmake ..
-make
+rosdep install --from-paths src --ignore-src -r -y
+```
 
-# Run with default settings (server: 10.100.191.235:8080, camera: 0, fps: 10)
-./camera_websocket_client
+### Runtime Issues
 
-# Run with custom parameters
-./camera_websocket_client [server_ip] [port] [camera_id] [fps]
-./camera_websocket_client 10.100.191.235 8080 0 15
+**Camera cannot open:**
+```bash
+# Check camera permissions
+sudo usermod -a -G video $USER
+# Re-login for changes to take effect
 
-# Check available cameras
+# List available cameras
 v4l2-ctl --list-devices
 ```
 
-### Build Workspace
+**HTTP server port occupied:**
 ```bash
-cd ~/ros2_ws
-colcon build --symlink-install
+sudo lsof -i :8081
+```
+
+**Node not found after build:**
+```bash
+# Make sure to source the workspace
 source install/setup.bash
 ```
 
-### Launch Nodes
+## Package Development
+
+### Adding a New ROS 2 Package
+
 ```bash
-# Launch CAN interface
-ros2 launch can_interface can.launch.py
+# Create C++ package
+cd src
+ros2 pkg create --build-type ament_cmake my_package \
+    --dependencies rclcpp std_msgs
 
-# Launch WebSocket bridge
-ros2 launch websocket_bridge bridge.launch.py
+# Create Python package
+ros2 pkg create --build-type ament_python my_package \
+    --dependencies rclpy std_msgs
+
+# Build and test
+cd ..
+colcon build --packages-select my_package
+source install/setup.bash
 ```
 
-### Monitoring
-```bash
-# Check topic frequency
-ros2 topic hz /can_rx
+### Package Structure
 
-# View CAN data
-ros2 topic echo /can_rx
+**C++ Package (ament_cmake):**
+- `CMakeLists.txt` - Build configuration
+- `package.xml` - Package metadata and dependencies
+- `include/` - Header files
+- `src/` - Source files
+- `launch/` - Launch files
 
-# Raw CAN monitoring
-candump can0
-```
+**Python Package (ament_python):**
+- `setup.py` - Python package setup
+- `package.xml` - Package metadata
+- `<package_name>/` - Python module directory
+- `launch/` - Launch files
+- `resource/` - Package marker
 
-## Message Format
+## Documentation
 
-### Custom CAN Message (can_msgs/msg/CanFrame.msg)
-```
-std_msgs/Header header
-uint32 can_id
-uint8[] data
-bool is_extended
-bool is_error
-```
-
-### WebSocket Protocol
-
-**ROS → Server (sensor data)**:
-```json
-{
-  "type": "ros_data",
-  "dataType": "motors|sensors|image|audio",
-  "payload": [...]
-}
-```
-
-**VLA → ROS (commands)**:
-```json
-{
-  "type": "vla_command",
-  "command": {
-    "action": "move_forward",
-    "params": {"distance": 1.0, "speed": 0.5}
-  }
-}
-```
-
-## Performance Considerations
-
-- **QoS Settings**: CAN data uses RELIABLE + KEEP_LAST(10), WebSocket uses BEST_EFFORT + KEEP_LAST(1)
-- **Threading**: CAN I/O runs on dedicated thread with SCHED_FIFO priority, WebSocket uses Boost.Asio thread pool, ROS uses MultiThreadedExecutor (2-4 threads)
-- **Zero-copy**: Enable `intra_process_comms` for shared_ptr message passing
-- **CPU Affinity**: Pin real-time threads to specific cores to avoid context switching
-
-## Testing
-
-### CAN Loopback Test
-```bash
-cansend can0 123#DEADBEEF
-```
-
-### WebSocket Test
-```python
-import asyncio
-import websockets
-
-async def test():
-    async with websockets.connect('ws://localhost:9002') as ws:
-        await ws.send('{"id": 0x123, "data": [1,2,3,4]}')
-        response = await ws.recv()
-        print(response)
-
-asyncio.run(test())
-```
+- [README.md](README.md) - Project overview and quick start
+- [docs/HTTP_BRIDGE_README.md](docs/HTTP_BRIDGE_README.md) - HTTP API detailed documentation
+- [docs/QUICKSTART.md](docs/QUICKSTART.md) - Quick start guide
+- [docs/架构.md](docs/架构.md) - Architecture documentation (Chinese)
 
 ## Language Notes
 
-Architecture documentation is in Chinese (架构.md). Code comments and commit messages should follow the existing language conventions in the codebase.
+Architecture documentation and some code comments are in Chinese. Code and commit messages follow existing language conventions in the codebase.

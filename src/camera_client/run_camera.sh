@@ -12,13 +12,11 @@ echo "==================================="
 echo ""
 
 # 检查程序是否已编译
-if [ ! -f "build/camera_websocket_client" ]; then
+if [ ! -f "../build/bin/camera_websocket_client" ]; then
     echo "Program not found. Building..."
-    mkdir -p build
-    cd build
-    cmake ..
-    make
     cd ..
+    ./build.sh camera
+    cd camera_client
     echo ""
 fi
 
@@ -37,4 +35,4 @@ echo "Press Ctrl+C to stop"
 echo "==================================="
 echo ""
 
-./build/camera_websocket_client $SERVER_IP $SERVER_PORT -1 $FPS
+../build/bin/camera_websocket_client $SERVER_IP $SERVER_PORT -1 $FPS

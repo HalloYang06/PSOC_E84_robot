@@ -1,316 +1,249 @@
-# PSoC Edge E84 康复机械臂系统
+# NanoPi ROS 2 Workspace
 
-> 基于英飞凌PSoC Edge E84的医疗康复机械臂控制系统 - 完整开发计划
+NanoPi上的ROS 2工作空间，用于实时CAN通信、摄像头流传输和HTTP API桥接。
 
-## 项目概述
+## 项目结构
 
-开发一套基于PSoC Edge E84的医疗康复机械臂控制系统，实现患者上肢康复训练的智能辅助。
-
-### 硬件组成
-
-- **主控板**: 英飞凌PSoC Edge E84 (Edgi-Talk开发板)
-  - **Cortex-M33核心** (主控制核) - [查看代码](https://github.com/ChillAmnesiac/Medical-Rehabilitation-Manipulator/tree/M33)
-  - **Cortex-M55核心** (AI推理核) - [查看代码](https://github.com/ChillAmnesiac/Medical-Rehabilitation-Manipulator/tree/M55)
-
-- **执行机构**:
-  - 伺服电机1: 肩关节纵向抬升
-  - 伺服电机2: 肘关节纵向抬升
-  - 推杆电机: 肩关节横向张开
-
-- **传感器节点** (STM32C8T6):
-  - MSG肌电传感器 (EMG) - 2通道
-  - 心率传感器 (MAX30102)
-  - 六轴IMU传感器 (MPU6050)
-  - 作为独立CAN节点，采集并发送传感器数据
-
-- **通讯**: CAN总线连接所有电机和传感器节点 (500kbps)
-
-## 系统架构
-
-\`\`\`
-┌─────────────────────────────────────────────────────────────────┐
-│                      Android App (手机端)                        │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │
-│  │ 患者管理     │  │ 实时控制     │  │ 康复评估     │          │
-│  │ 训练记录     │  │ 数据可视化   │  │ PDF导出      │          │
-│  └──────────────┘  └──────────────┘  └──────────────┘          │
-└────────┬──────────────────────┬──────────────────────────────────┘
-         │                      │
-         │ ①蓝牙BLE (实时控制)  │ ②HTTP (OpenClaw)
-         │   - 快速响应         │   - 自然语言控制
-         │   - 传感器数据流     │   - 复杂指令
-         │                      │
-         ↓                      ↓
-┌────────────────────┐   ┌─────────────────────────────────────┐
-│   PSoC Edge E84    │   │         OpenClaw Gateway            │
-│                    │   │  (PC端运行)                         │
-│  ┌──────────────┐  │   │                                     │
-│  │ M33核心      │  │   │  ③HTTP桥接 (PSoC ↔ OpenClaw)       │
-│  │ - CAN驱动    │◄─┼───┤  - 转发App的自然语言指令           │
-│  │ - 蓝牙BLE    │  │   │  - 返回执行结果                     │
-│  │ - 实时控制   │  │   │  - AI康复建议推送                   │
-│  │ - 传感器管理 │  │   └─────────────────────────────────────┘
-│  └──────┬───────┘  │
-│         │          │
-│  ┌──────▼───────┐  │
-│  │ M55核心      │  │
-│  │ - WiFi连接   │◄─┼─── HTTP通信
-│  │ - AI推理引擎 │  │
-│  │ - EMG预测    │  │
-│  │ - 康复评估   │  │
-│  └──────────────┘  │
-└────────┬────────────┘
-         │ CAN总线 (500kbps)
-         │
-    ┌────┴────┬────────┬────────┬────────────┐
-    │         │        │        │            │
-┌───▼────┐ ┌─▼──────┐ ┌▼──────┐ ┌▼──────┐ ┌─▼────────────────┐
-│ 肩关节 │ │ 肘关节 │ │ 推杆  │ │ 电机  │ │ STM32C8T6        │
-│ 伺服   │ │ 伺服   │ │ 电机  │ │ 反馈  │ │ 传感器节点       │
-│ 0x100  │ │ 0x101  │ │ 0x102 │ │0x200-2│ │ 0x300-0x310      │
-└────────┘ └────────┘ └───────┘ └───────┘ └──────────────────┘
-\`\`\`
-
-## 核心功能
-
-### M33核心 (主控制核)
-
-**职责**: 实时控制、蓝牙通信、CAN总线管理
-
-- **蓝牙通信** (Nordic UART Service)
-  - 设备名称: OpenClaw-NUS
-  - 实时控制指令接收
-  - 传感器数据流发送 (100Hz)
-  - MTU: 247字节
-
-- **CAN总线控制**
-  - 电机控制 (肩关节、肘关节、推杆)
-  - 传感器数据采集
-  - 波特率: 500kbps
-
-- **控制模式**
-  - 被动模式: 电机无阻力
-  - 主动模式: 电机主动驱动
-  - 记忆模式: 回放训练动作
-  - AI辅助模式: 智能辅助
-
-- **安全系统**
-  - 关节角度限位
-  - 速度/扭矩限制
-  - 紧急停止功能
-
-[查看M33核心详细文档 →](https://github.com/ChillAmnesiac/Medical-Rehabilitation-Manipulator/tree/M33)
-
-### M55核心 (AI推理核)
-
-**职责**: WiFi连接、AI推理、康复评估
-
-- **WiFi连接**
-  - 连接局域网
-  - HTTP服务器
-  - OpenClaw通信
-
-- **AI推理引擎**
-  - EMG信号分析
-  - 运动意图预测
-  - 康复评估
-  - 异常检测
-
-- **OpenClaw集成**
-  - 自然语言指令解析
-  - 训练计划生成
-  - 康复报告生成
-
-[查看M55核心详细文档 →](https://github.com/ChillAmnesiac/Medical-Rehabilitation-Manipulator/tree/M55)
-
-## 通讯协议
-
-### 蓝牙协议 (App ↔ M33)
-
-#### 控制命令
-\`\`\`
-stop                    # 紧急停止
-stream:on              # 启用数据流
-stream:off             # 关闭数据流
-mode:passive           # 被动模式
-mode:active            # 主动模式
-mode:memory            # 记忆模式
-mode:ai                # AI辅助模式
-move:0:90.0            # 移动关节 (关节ID:角度)
-\`\`\`
-
-#### 数据流格式
-\`\`\`json
-{
-  "s": 1,              // streaming状态
-  "m": 1,              // 控制模式
-  "sh": 45.0,          // 肩关节角度
-  "el": 30.0,          // 肘关节角度
-  "la": 10.0,          // 横向位置
-  "hr": 75,            // 心率
-  "sp": 98,            // 血氧
-  "e1": 0.12,          // EMG通道1
-  "e2": 0.15,          // EMG通道2
-  "sf": 0              // 安全状态
-}
-\`\`\`
-
-### HTTP API (OpenClaw ↔ M55)
-
-#### 获取传感器数据
-\`\`\`
-GET /api/sensors
-\`\`\`
-
-#### 执行控制命令
-\`\`\`
-POST /api/command
-Body: {
-  "command": "move_joint",
-  "joint_id": 0,
-  "target_angle": 90.0
-}
-\`\`\`
-
-#### AI推理请求
-\`\`\`
-POST /api/inference
-Body: {
-  "type": "emg_prediction",
-  "data": [0.12, 0.15, 0.18, ...]
-}
-\`\`\`
-
-## 使用场景
-
-### 场景1: 简单实时控制 (蓝牙直连)
-\`\`\`
-用户点击"抬起肩关节" 
-  → App通过蓝牙发送指令 
-  → M33执行 
-  → 实时反馈
-\`\`\`
-
-### 场景2: 自然语言控制 (OpenClaw桥接)
-\`\`\`
-用户说"帮我做一组康复训练"
-  → App发送到OpenClaw (HTTP)
-  → OpenClaw理解意图，生成训练计划
-  → OpenClaw通过WiFi调用M55的HTTP API
-  → M55通知M33执行训练
-  → 传感器数据通过蓝牙实时返回App
-  → 训练结束，OpenClaw生成康复评估
-  → 评估结果返回App
-\`\`\`
-
-### 场景3: AI辅助训练 (三者协同)
-\`\`\`
-1. 用户在App启动"AI助力模式"
-2. App通过蓝牙设置M33为AI模式
-3. 患者开始运动，M33采集EMG信号
-4. M33将数据发送到M55进行AI推理
-5. M55预测运动意图，返回结果给M33
-6. M33根据预测调整电机阻尼
-7. 传感器数据通过蓝牙流式传输到App显示
-8. 训练结束，App请求OpenClaw生成康复评估
-9. OpenClaw调用M55获取历史数据
-10. OpenClaw生成评估报告返回App
-\`\`\`
+```
+nanopi_ros/
+├── src/                        # ROS 2包源码
+│   ├── camera_client/          # 摄像头WebSocket客户端
+│   │   ├── camera_websocket_client.cpp
+│   │   ├── CMakeLists.txt
+│   │   ├── package.xml
+│   │   ├── launch/
+│   │   │   └── camera.launch.py
+│   │   └── run_camera.sh
+│   └── http_bridge/            # HTTP Bridge服务器
+│       ├── http_bridge_server.py
+│       ├── test_http_bridge.py
+│       ├── CMakeLists.txt
+│       ├── package.xml
+│       ├── setup.py
+│       ├── launch/
+│       │   └── http_bridge.launch.py
+│       ├── start_http_bridge.sh
+│       └── run_tests.sh
+├── launch/                     # 工作空间级launch文件
+│   └── system.launch.py        # 启动所有节点
+├── build/                      # colcon构建输出
+├── install/                    # 安装目录
+├── log/                        # 日志目录
+├── scripts/                    # 工具脚本
+│   ├── install_deps.sh
+│   └── quick_fix_python.sh
+├── docs/                       # 文档
+├── venv/                       # Python虚拟环境
+├── build_ros2.sh               # ROS 2构建脚本
+├── CLAUDE.md                   # AI助手指南
+└── README.md                   # 本文件
+```
 
 ## 快速开始
 
-### 1. 克隆代码
+### 1. 安装依赖
 
-\`\`\`bash
-# M33核心 (主控制核)
-git clone -b M33 git@github.com:ChillAmnesiac/Medical-Rehabilitation-Manipulator.git yiliao_m33
+```bash
+# 安装系统依赖
+cd scripts
+./install_deps.sh
 
-# M55核心 (AI推理核)
-git clone -b M55 git@github.com:ChillAmnesiac/Medical-Rehabilitation-Manipulator.git wifi
-\`\`\`
+# 设置Python虚拟环境
+./quick_fix_python.sh
+```
 
-### 2. 开发环境
+### 2. 构建ROS 2工作空间
 
-- **IDE**: RT-Thread Studio
-- **RTOS**: RT-Thread 5.x
-- **工具链**: ARM GCC
-- **调试器**: J-Link / DAPLink
+```bash
+# 构建所有包
+./build_ros2.sh
 
-### 3. 烧录顺序
+# 仅构建特定包
+./build_ros2.sh --packages camera_client
 
-⚠️ **必须按照以下顺序烧录**：
+# 调试模式构建
+./build_ros2.sh --debug
 
-\`\`\`
-1. Secure M33 (安全核心)
-2. M33 (非安全核心)
-3. M55 (应用核心)
-\`\`\`
+# 清理并重新构建
+./build_ros2.sh --clean
+```
 
-### 4. 测试蓝牙连接
+### 3. 加载环境
 
-使用nRF Connect或其他蓝牙调试工具：
-1. 扫描并连接 "OpenClaw-NUS"
-2. 找到NUS服务
-3. 启用TX特征值的通知
-4. 向RX特征值写入: \`stream:on\`
-5. 观察接收到的JSON数据
+```bash
+source install/setup.bash
+```
 
-### 5. 配置WiFi (M55)
+### 4. 运行节点
 
-编辑 \`wifi/applications/main.c\`：
-\`\`\`c
-#define WIFI_SSID "your_wifi_ssid"
-#define WIFI_PASSWORD "your_wifi_password"
-\`\`\`
+#### 方式1：使用ROS 2 launch（推荐）
 
-## 项目文档
+```bash
+# 启动摄像头客户端
+ros2 launch camera_client camera.launch.py
 
-- [完整开发计划文档](./开发计划文档.md) - 详细的系统设计和实现方案
-- [M33核心文档](https://github.com/ChillAmnesiac/Medical-Rehabilitation-Manipulator/tree/M33) - 蓝牙通信、CAN控制
-- [M55核心文档](https://github.com/ChillAmnesiac/Medical-Rehabilitation-Manipulator/tree/M55) - WiFi连接、AI推理
+# 启动HTTP Bridge
+ros2 launch http_bridge http_bridge.launch.py
 
-## 技术栈
+# 启动所有节点
+ros2 launch system.launch.py
 
-- **硬件平台**: Infineon PSoC Edge E84
-- **操作系统**: RT-Thread RTOS
-- **蓝牙协议栈**: Infineon AIROC Bluetooth Stack
-- **通信协议**: 
-  - 蓝牙BLE (Nordic UART Service)
-  - HTTP/REST API
-  - CAN总线
-- **AI框架**: TensorFlow Lite (计划)
+# 带参数启动
+ros2 launch camera_client camera.launch.py server_ip:=10.100.191.235 fps:=15
+```
 
-## 开发进度
+#### 方式2：直接运行可执行文件
 
-- [x] M33核心基础框架
-- [x] 蓝牙GATT服务实现
-- [x] CAN总线驱动
-- [x] 传感器管理模块
-- [x] 控制管理器
-- [x] 安全系统
-- [x] M55核心基础框架
-- [x] WiFi连接模块
-- [x] HTTP服务器
-- [x] OpenClaw集成框架
-- [ ] AI推理引擎实现
-- [ ] 真实传感器数据接入
-- [ ] 电机控制优化
-- [ ] Android App开发
-- [ ] 系统集成测试
+```bash
+# 摄像头客户端
+ros2 run camera_client camera_websocket_client
 
-## 贡献指南
+# HTTP Bridge（使用虚拟环境）
+cd src/http_bridge
+./start_http_bridge.sh
+```
 
-欢迎提交Issue和Pull Request！
+## 组件说明
+
+### Camera Client
+
+摄像头WebSocket客户端，将摄像头画面实时传输到服务器。
+
+**特性:**
+- ROS 2节点集成
+- 支持USB/CSI摄像头
+- JPEG压缩
+- 可配置帧率
+- WebSocket传输
+- 自动重连
+
+**Launch参数:**
+- `server_ip` - 服务器IP（默认：10.100.191.235）
+- `server_port` - 服务器端口（默认：8080）
+- `camera_id` - 摄像头ID（默认：-1自动检测）
+- `fps` - 帧率（默认：10）
+
+### HTTP Bridge
+
+HTTP API服务器，实现Android APP与ROS 2系统的通信桥接。
+
+**特性:**
+- RESTful API
+- 与ROS 2完全集成
+- 支持OpenClaw协议
+- 实时传感器数据
+- 控制命令下发
+
+**API端点:**
+- `GET /health` - 健康检查
+- `GET /status` - 获取系统状态
+- `POST /mode` - 切换控制模式
+- `POST /control` - 发送控制指令
+- `POST /memory/execute` - 执行记忆动作
+- `POST /api/command` - OpenClaw工具调用
+
+## ROS 2开发
+
+### 查看节点
+
+```bash
+ros2 node list
+ros2 node info /camera_websocket_client
+```
+
+### 查看话题
+
+```bash
+ros2 topic list
+ros2 topic echo /camera/image_raw
+```
+
+### 查看服务
+
+```bash
+ros2 service list
+```
+
+### 查看参数
+
+```bash
+ros2 param list
+ros2 param get /camera_websocket_client server_ip
+```
+
+## 测试
+
+### 摄像头客户端测试
+
+```bash
+# 列出可用摄像头
+v4l2-ctl --list-devices
+
+# 测试摄像头
+ffplay /dev/video45
+```
+
+### HTTP Bridge测试
+
+```bash
+# 启动服务器
+cd src/http_bridge
+./start_http_bridge.sh
+
+# 在另一个终端运行测试
+./run_tests.sh
+
+# 或使用curl
+curl http://localhost:8081/health
+curl http://localhost:8081/status
+```
+
+## 故障排除
+
+### 构建失败
+
+**问题:** 找不到ROS 2
+```bash
+source /opt/ros/jazzy/setup.bash
+```
+
+**问题:** 找不到colcon
+```bash
+sudo apt install python3-colcon-common-extensions
+```
+
+**问题:** 找不到ament_cmake
+```bash
+sudo apt install ros-jazzy-ament-cmake ros-jazzy-ament-cmake-python
+```
+
+### 运行时错误
+
+**问题:** 摄像头无法打开
+```bash
+# 检查摄像头权限
+sudo usermod -a -G video $USER
+# 重新登录生效
+```
+
+**问题:** HTTP服务器端口被占用
+```bash
+# 查看端口占用
+sudo lsof -i :8081
+```
+
+## 性能优化
+
+- 摄像头: 降低分辨率和帧率可减少CPU占用
+- HTTP Bridge: Python版本适合开发，C++版本适合生产
+- 网络: 使用有线连接获得更稳定的性能
+
+## 相关文档
+
+- [HTTP Bridge详细文档](docs/HTTP_BRIDGE_README.md)
+- [快速入门指南](docs/QUICKSTART.md)
+- [项目架构](CLAUDE.md)
 
 ## 许可证
 
-本项目仅供学习和研究使用。
-
-## 联系方式
-
-- GitHub: [@ChillAmnesiac](https://github.com/ChillAmnesiac)
-- Email: 3245056131@qq.com
-
-## 致谢
-
-感谢RT-Thread社区和Infineon提供的技术支持。
+MIT
