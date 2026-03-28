@@ -222,8 +222,79 @@ def get_stats():
         "average_score": 0
     })
 
+def execute_quick_command(message):
+    """快速路径：直接执行简单命令，无需AI推理（1-3秒响应）"""
+    message_lower = message.lower()
+
+    # 拍照命令 - 支持各种说法
+    if any(keyword in message for keyword in ['拍照', '拍一张', '拍个照', '照片', '拍张照', 'take photo', 'take a photo', 'capture', 'photo']):
+        ros_node.get_logger().info('Quick path: Taking photo')
+        try:
+            result = subprocess.run(
+                ['/home/pi/.openclaw/agents/main/skills/camera/take_photo.sh',
+                 '/dev/video45',
+                 f'/home/pi/photo_{time.strftime("%Y%m%d_%H%M%S")}.jpg'],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            if result.returncode == 0:
+                return f"📸 照片已拍摄！\n\n{result.stdout.strip()}"
+            else:
+                return f"❌ 拍照失败：{result.stderr.strip()}"
+        except Exception as e:
+            ros_node.get_logger().error(f'Quick photo failed: {e}')
+            return None
+
+    # 查找摄像头
+    if any(keyword in message for keyword in ['查找摄像头', '有哪些摄像头', 'find camera', 'list camera']):
+        ros_node.get_logger().info('Quick path: Finding cameras')
+        try:
+            result = subprocess.run(
+                ['/home/pi/.openclaw/agents/main/skills/camera/find_camera.sh'],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if result.returncode == 0:
+                return f"📹 可用摄像头：\n\n{result.stdout.strip()}"
+            else:
+                return f"❌ 查找失败：{result.stderr.strip()}"
+        except Exception as e:
+            ros_node.get_logger().error(f'Quick find camera failed: {e}')
+            return None
+
+    # 系统状态
+    if any(keyword in message for keyword in ['系统状态', '状态', 'system status', 'status']):
+        ros_node.get_logger().info('Quick path: System status')
+        try:
+            result = subprocess.run(
+                ['/home/pi/.openclaw/agents/main/skills/camera/system_status.sh'],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if result.returncode == 0:
+                return f"💻 系统状态：\n\n{result.stdout.strip()}"
+            else:
+                return f"❌ 获取状态失败：{result.stderr.strip()}"
+        except Exception as e:
+            ros_node.get_logger().error(f'Quick status failed: {e}')
+            return None
+
+    # 没有匹配的快速命令
+    return None
+
 def send_to_openclaw(message):
     """发送消息到OpenClaw并获取响应"""
+    # 🚀 快速路径：先尝试直接执行简单命令（1-3秒）
+    quick_response = execute_quick_command(message)
+    if quick_response:
+        ros_node.get_logger().info(f'Quick path executed in <3s')
+        return quick_response
+
+    # 🤖 AI路径：复杂任务才调用OpenClaw AI（30-120秒）
+    ros_node.get_logger().info('Using AI path (slow, 30-120s)')
     try:
         # 使用 openclaw agent 命令发送消息
         # 对于复杂任务（摄像头、图片分析等），需要更长的超时时间
