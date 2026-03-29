@@ -18,10 +18,9 @@ typedef bool (*can_command_handler_t)(const can_proto_command_t *command,
                                       uint8_t *resp_len,
                                       void *user_ctx);
 
-int32_t can_transport_init(CAN_HandleTypeDef *hcan, uint8_t node_id);
+int32_t can_transport_init(CAN_HandleTypeDef *hcan);
 void can_transport_register_command_handler(can_command_handler_t handler, void *user_ctx);
-int32_t can_tx_submit(const can_message_t *message, can_tx_prio_t prio, bool expect_ack, uint8_t txn_id, uint8_t cmd_id);
-int32_t can_transport_send_fragmented(uint8_t dst, uint8_t msg_type, const uint8_t *payload, uint8_t len);
+int32_t can_tx_submit(const can_message_t *message, can_tx_prio_t prio);
 void can_transport_process(uint32_t now_ms);
 void can_transport_poll_rx(void);
 int32_t can_rx_dispatch(const can_message_t *message);

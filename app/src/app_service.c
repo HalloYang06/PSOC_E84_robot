@@ -3,11 +3,11 @@
 #include <string.h>
 
 #include "adc.h"
+#include "bsp_MAX30100.h"
 #include "can.h"
 #include "event_queue.h"
 #include "filter_chain.h"
 #include "sensor_factory.h"
-#include "bsp_MAX30100.h"
 
 #include "can_proto.h"
 #include "can_transport.h"
@@ -24,7 +24,6 @@ typedef struct
     uint32_t last_hr_poll_ms;
     uint32_t last_tx_ms;
     uint32_t last_hb_ms;
-    uint8_t tx_seq;
     sensor_iface_t *emg_sensor;
     sensor_iface_t *hr_sensor;
     filter_chain_t emg_filter_chain;
@@ -154,36 +153,30 @@ static void app_send_telemetry(void)
     {
         return;
     }
-
     if (!data_fusion_get_snapshot(&s_app.fusion, &snapshot))
     {
         return;
     }
 
-    if (can_proto_encode_telemetry(&snapshot,
-                                   s_app.cfg.node_id,
-                                   s_app.cfg.host_id,
-                                   s_app.tx_seq++,
-                                   &message) == 0)
+    if (can_proto_encode_sensor(&snapshot, &message) == 0)
     {
-        if (can_tx_submit(&message, CAN_TX_PRIO_NORMAL, false, 0U, 0U) != 0)
+        if (can_tx_submit(&message, CAN_TX_PRIO_NORMAL) != 0)
         {
             s_app.error_count++;
         }
     }
 }
 
-static void app_send_heartbeat(void)
+static void app_send_health(void)
 {
     can_message_t message;
-    if (can_proto_encode_heartbeat(s_app.state,
-                                   s_app.cfg.node_id,
-                                   s_app.cfg.host_id,
-                                   s_app.tx_seq++,
-                                   s_app.error_count,
-                                   &message) == 0)
+
+    if (can_proto_encode_health(s_app.state,
+                                s_app.error_count,
+                                can_transport_queue_fill(),
+                                &message) == 0)
     {
-        (void)can_tx_submit(&message, CAN_TX_PRIO_HIGH, false, 0U, 0U);
+        (void)can_tx_submit(&message, CAN_TX_PRIO_HIGH);
     }
 }
 
@@ -215,12 +208,12 @@ static void app_handle_event(const event_t *event)
         if ((s_app.ms_now - s_app.last_hb_ms) >= 1000U)
         {
             s_app.last_hb_ms = s_app.ms_now;
-            app_send_heartbeat();
+            app_send_health();
         }
         if ((s_app.ms_now - s_app.last_hr_poll_ms) >= period_hr_poll_ms)
         {
             s_app.last_hr_poll_ms = s_app.ms_now;
-            /* INT 丢失时仍可通过轮询兜底，避免心率链路“静默失效”。 */
+            /* INT 丢失时仍通过轮询兜底，避免心率链路静默失效。 */
             event_t poll_event = {EVENT_HR_POLL, s_app.ms_now, 0U};
             (void)event_queue_push(&s_app.queue, &poll_event);
         }
@@ -313,7 +306,7 @@ int32_t app_service_init(void)
         return -1;
     }
 
-    if (can_transport_init(&hcan, s_app.cfg.node_id) != 0)
+    if (can_transport_init(&hcan) != 0)
     {
         s_app.state = NODE_STATE_FAULT;
         return -1;
