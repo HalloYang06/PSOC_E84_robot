@@ -57,6 +57,8 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define mus_elec_Pin GPIO_PIN_0
+#define mus_elec_GPIO_Port GPIOA
 
 /* USER CODE BEGIN Private defines */
 
