@@ -64,20 +64,25 @@ bool event_queue_push(event_queue_t *queue, const event_t *event)
 
 bool event_queue_push_from_isr(event_queue_t *queue, const event_t *event)
 {
+    uint32_t primask;
+    bool ok = false;
+
     if ((queue == 0) || (event == 0))
     {
         return false;
     }
 
-    if (queue->count >= EVENT_QUEUE_CAPACITY)
+    primask = event_queue_enter_critical();
+    if (queue->count < EVENT_QUEUE_CAPACITY)
     {
-        return false;
+        queue->buffer[queue->tail] = *event;
+        queue->tail = (uint16_t)((queue->tail + 1U) % EVENT_QUEUE_CAPACITY);
+        queue->count++;
+        ok = true;
     }
+    event_queue_exit_critical(primask);
 
-    queue->buffer[queue->tail] = *event;
-    queue->tail = (uint16_t)((queue->tail + 1U) % EVENT_QUEUE_CAPACITY);
-    queue->count++;
-    return true;
+    return ok;
 }
 
 bool event_queue_pop(event_queue_t *queue, event_t *event)

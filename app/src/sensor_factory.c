@@ -166,17 +166,24 @@ static int32_t hr_stop(sensor_iface_t *self)
 static int32_t hr_read(sensor_iface_t *self, uint16_t *sample)
 {
     hr_sensor_ctx_t *ctx = (hr_sensor_ctx_t *)self->ctx;
+    int32_t rc;
 
     if ((self == 0) || (ctx == 0) || (sample == 0) || (ctx->started == 0U))
     {
         return -1;
     }
 
-    if (bsp_max30100_read_sample(&ctx->last_ir, &ctx->last_red) != 0)
+    rc = bsp_max30100_read_sample(&ctx->last_ir, &ctx->last_red);
+    if (rc < 0)
     {
         ctx->status.error_count++;
         ctx->status.healthy = 0U;
         return -1;
+    }
+    if (rc > 0)
+    {
+        /* FIFO 当前无新样本，返回 1 交给上层忽略，不记为错误。 */
+        return 1;
     }
 
     ctx->status.sample_count++;

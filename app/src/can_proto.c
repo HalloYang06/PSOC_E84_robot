@@ -12,17 +12,17 @@ enum
     CAN_ID_SEQ_SHIFT = 0
 };
 
-static uint16_t clamp_u16(float x)
+static uint8_t clamp_u8(float x)
 {
     if (x < 0.0f)
     {
         return 0U;
     }
-    if (x > 65535.0f)
+    if (x > 255.0f)
     {
-        return 65535U;
+        return 255U;
     }
-    return (uint16_t)x;
+    return (uint8_t)x;
 }
 
 static int16_t clamp_i16(float x)
@@ -79,7 +79,7 @@ int32_t can_proto_encode_telemetry(const fusion_snapshot_t *snapshot,
 {
     can_proto_id_fields_t idf;
     int16_t emg_filtered_q;
-    uint16_t hr_filtered_q;
+    uint8_t hr_filtered_q;
     uint8_t flags = 0U;
 
     if ((snapshot == 0) || (message == 0))
@@ -95,7 +95,8 @@ int32_t can_proto_encode_telemetry(const fusion_snapshot_t *snapshot,
     idf.seq = seq;
 
     emg_filtered_q = clamp_i16(snapshot->emg_filtered);
-    hr_filtered_q = clamp_u16(snapshot->hr_filtered * 10.0f);
+    /* 心率滤波值按 BPM 整数打包到 1 字节，避免接收端出现截断歧义。 */
+    hr_filtered_q = clamp_u8(snapshot->hr_filtered);
     if (snapshot->emg_valid != 0U)
     {
         flags |= 0x01U;
@@ -113,7 +114,7 @@ int32_t can_proto_encode_telemetry(const fusion_snapshot_t *snapshot,
     message->data[3] = (uint8_t)((emg_filtered_q >> 8) & 0xFF);
     message->data[4] = (uint8_t)(snapshot->hr_raw & 0xFFU);
     message->data[5] = (uint8_t)((snapshot->hr_raw >> 8) & 0xFFU);
-    message->data[6] = (uint8_t)(hr_filtered_q & 0xFFU);
+    message->data[6] = hr_filtered_q;
     message->data[7] = flags;
     return 0;
 }
