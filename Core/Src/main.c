@@ -29,6 +29,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "app_service.h"
 
 /* USER CODE END Includes */
 
@@ -101,6 +102,11 @@ int main(void)
   MX_USART1_UART_Init();
   MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
+  /* 应用服务负责事件调度与业务流水线初始化。 */
+  if (app_service_init() != 0)
+  {
+    Error_Handler();
+  }
 
   /* USER CODE END 2 */
 
@@ -111,6 +117,7 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    app_service_run_once();
   }
   /* USER CODE END 3 */
 }
