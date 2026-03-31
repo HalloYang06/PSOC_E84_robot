@@ -9,7 +9,13 @@
 #include "cycfg_pins.h"
 #include "cy_scb_uart.h"
 #include "cy_gpio.h"
+#ifdef NC
+#undef NC
+#endif
 #include "mtb_hal_gpio.h"
+#ifndef NC
+#define NC CYHAL_NC_PIN_VALUE
+#endif
 
 #define BT_SHIM_LOG(...) ((void)0)
 

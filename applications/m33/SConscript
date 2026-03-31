@@ -1,7 +1,18 @@
 from building import *
+import os
 
 cwd = GetCurrentDir()
-src = Glob('*.c')
+src = Glob('*.c') + Glob('*.cpp')
+excluded = {
+    'voice_manager.c',
+    'voice_trigger.c',
+    'wake_word_tflite.cpp',
+    'wake_word_microfrontend.c',
+    'wake_word_fft.cpp',
+    'wake_word_fft_util.cpp',
+    'wake_word_kiss_fft_int16.cpp',
+}
+src = [item for item in src if os.path.basename(str(item)) not in excluded]
 CPPPATH = [
     cwd,
     Dir('#/applications/common'),

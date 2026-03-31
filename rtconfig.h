@@ -81,6 +81,14 @@
 
 /* DFS: device virtual file system */
 
+#define RT_USING_DFS
+#define DFS_USING_POSIX
+#define DFS_USING_WORKDIR
+#define DFS_FD_MAX 16
+#define RT_USING_DFS_V1
+#define DFS_FILESYSTEMS_MAX 4
+#define DFS_FILESYSTEM_TYPES_MAX 4
+#define RT_USING_DFS_DEVFS
 /* end of DFS: device virtual file system */
 
 /* Device Drivers */
@@ -90,9 +98,20 @@
 #define RT_USING_SERIAL
 #define RT_USING_SERIAL_V1
 #define RT_SERIAL_RB_BUFSZ 128
+<<<<<<< HEAD
 #define RT_USING_CAN
 #define RT_CAN_USING_HDR
+=======
+#define RT_USING_I2C
+#define RT_USING_I2C_BITOPS
+>>>>>>> 0acf7422a849a49a3e47e83958671a15a3cf5710
 #define RT_USING_PIN
+#define RT_USING_RTC
+#define RT_USING_AUDIO
+#define RT_AUDIO_REPLAY_MP_BLOCK_SIZE 4096
+#define RT_AUDIO_REPLAY_MP_BLOCK_COUNT 2
+#define RT_AUDIO_RECORD_PIPE_SIZE 2048
+#define RT_USING_KTIME
 
 /* Using USB */
 
@@ -114,6 +133,13 @@
 
 /* POSIX (Portable Operating System Interface) layer */
 
+#define RT_USING_POSIX_FS
+#define RT_USING_POSIX_DEVIO
+#define RT_USING_POSIX_STDIO
+#define RT_USING_POSIX_DELAY
+#define RT_USING_POSIX_CLOCK
+#define RT_USING_PTHREADS
+#define PTHREAD_NUM_MAX 8
 
 /* Interprocess Communication (IPC) */
 
@@ -122,6 +148,10 @@
 
 /* end of Interprocess Communication (IPC) */
 /* end of POSIX (Portable Operating System Interface) layer */
+#define RT_USING_CPLUSPLUS
+#define RT_USING_CPLUSPLUS11
+#define RT_USING_CPP_WRAPPER
+#define RT_USING_CPP_EXCEPTIONS
 /* end of C/C++ and POSIX layer */
 
 /* Network */
@@ -322,16 +352,27 @@
 /* Onboard Peripheral Drivers */
 
 #define BSP_USING_USB_TO_UART
+#define BSP_USING_AUDIO
+#define BSP_USING_AUDIO_PLAY
+#define BSP_USING_AUDIO_RECORD
+#define ENABLE_STEREO_INPUT_FEED
 /* end of Onboard Peripheral Drivers */
 
 /* On-chip Peripheral Drivers */
 
 #define BSP_USING_GPIO
+#define BSP_USING_I2C
+#define BSP_USING_HW_I2C0
 #define BSP_USING_UART
 #define BSP_USING_UART2
 #define BSP_USING_UART5
+<<<<<<< HEAD
 #define BSP_USING_CAN
 #define BSP_USING_CANFD0
+=======
+#define BSP_USING_HYPERAM
+#define BSP_USING_HYPERAM_SIZE 0x1000000
+>>>>>>> 0acf7422a849a49a3e47e83958671a15a3cf5710
 /* end of On-chip Peripheral Drivers */
 /* end of Hardware Drivers Config */
 

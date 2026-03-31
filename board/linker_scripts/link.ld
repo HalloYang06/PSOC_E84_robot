@@ -137,17 +137,25 @@ SECTIONS
         /* Keep finalizers */
         KEEP(*(.fini))
         /* Static constructors */
+        __ctors_start__ = .;
+        KEEP(*(.init_array))
+        KEEP(*(SORT(.init_array.*)))
         *crtbegin.*(.ctors)
         *crtbegin?.*(.ctors)
         *(EXCLUDE_FILE(*crtend?.* *crtend.*) .ctors)
         *(SORT(.ctors.*))
         *(.ctors)
+        __ctors_end__ = .;
         /* Static destructors and atexit() */
+        __dtors_start__ = .;
+        KEEP(*(.fini_array))
+        KEEP(*(SORT(.fini_array.*)))
         *crtbegin.*(.dtors)
         *crtbegin?.*(.dtors)
         *(EXCLUDE_FILE(*crtend?.* *crtend.*) .dtors)
         *(SORT(.dtors.*))
         *(.dtors)
+        __dtors_end__ = .;
 
         . = ALIGN(4);
 
@@ -353,6 +361,13 @@ SECTIONS
         __HeapLimit > __HeapBase,
         "Error: RAM region overflowed with stack. Ensure that the stack size is within the available RAM."
     )
+
+    .ipc_stream_shared(NOLOAD) : ALIGN(32)
+    {
+        KEEP(*(.ipc_stream_shared))
+
+        . = ALIGN(32);
+    } > m33_m55_shared
 
     /* A section for shared RAM memory where only the Cortex-M33 Non Secure can allocate data but all cores can access */
     .cy_sharedmem(NOLOAD) : ALIGN(4)
