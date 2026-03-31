@@ -3,6 +3,7 @@
 #include "baidu_asr.h"
 #include "baidu_tts.h"
 #include "m33_m55_comm.h"
+#include "model_manager.h"
 #include "websocket_client.h"
 
 #include <rtdevice.h>
@@ -449,6 +450,8 @@ static void voice_service_process_audio_buffer(void)
 {
     rt_uint32_t len;
     voice_model_result_t model_result;
+    float model_score = 0.0f;
+    int detected = 0;
     rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
     len = g_service.audio_received;
     rt_mutex_release(&g_service.lock);
@@ -464,6 +467,25 @@ static void voice_service_process_audio_buffer(void)
                    (unsigned long)model_result.active_frames,
                    (unsigned long)model_result.total_frames);
         return;
+    }
+
+    if (model_manager_is_ready(MODEL_SLOT_WAKE_WORD))
+    {
+        rt_err_t infer_err = model_manager_run_pcm16(
+            MODEL_SLOT_WAKE_WORD,
+            (const int16_t *)g_service.audio_buffer,
+            len / sizeof(int16_t),
+            &model_score,
+            &detected);
+
+        if (infer_err == RT_EOK)
+        {
+            rt_kprintf("[voice_service] tflm score=%.3f detected=%d\n", model_score, detected);
+        }
+        else if (infer_err != -RT_EEMPTY)
+        {
+            rt_kprintf("[voice_service] tflm run skipped err=%d\n", infer_err);
+        }
     }
 
     if (websocket_client_is_connected())
@@ -635,6 +657,8 @@ static void voice_service_thread_entry(void *parameter)
 rt_err_t voice_service_init(const char *baidu_api_key, const char *baidu_secret_key)
 {
     rt_err_t ret;
+    model_slot_info_t runner_info;
+    model_slot_config_t slot_cfg;
 
     if (g_service.initialized)
     {
@@ -688,6 +712,25 @@ rt_err_t voice_service_init(const char *baidu_api_key, const char *baidu_secret_
 
     websocket_client_set_callback(on_websocket_message);
     websocket_client_connect();
+
+    ret = model_manager_init();
+    if (ret == RT_EOK)
+    {
+        rt_memset(&slot_cfg, 0, sizeof(slot_cfg));
+        slot_cfg.arena_bytes = 64U * 1024U;
+        slot_cfg.input_kind = MODEL_INPUT_PCM_S16;
+        slot_cfg.sample_rate = 16000U;
+        slot_cfg.channels = 1U;
+        slot_cfg.threshold_permille = 750U;
+        model_manager_configure_slot(MODEL_SLOT_WAKE_WORD, &slot_cfg);
+
+        if (model_manager_get_info(MODEL_SLOT_WAKE_WORD, &runner_info) == RT_EOK)
+        {
+            rt_kprintf("[voice_service] tflm slot0 ready=%d arena=%lu\n",
+                       runner_info.ready ? 1 : 0,
+                       (unsigned long)runner_info.arena_bytes);
+        }
+    }
 
     g_service.initialized = RT_TRUE;
     rt_kprintf("[voice_service] initialized (ASR=%d TTS=%d)\n", g_service.asr_ready, g_service.tts_ready);
