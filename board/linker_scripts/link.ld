@@ -421,6 +421,13 @@ SECTIONS
         KEEP(*(.cy_gpu_buf))
     } > gfx_mem
 
+    .ipc_stream_shared(NOLOAD) : ALIGN(32)
+    {
+        KEEP(*(.ipc_stream_shared))
+
+        . = ALIGN(32);
+    } > m33_m55_shared
+
     .reserved_socmem(NOLOAD) :
     {
         . = ORIGIN(m33_m55_shared) + LENGTH(m33_m55_shared); /* reserved SOC memory */

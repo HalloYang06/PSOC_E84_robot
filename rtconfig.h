@@ -105,14 +105,21 @@
 #define RT_USING_SERIAL
 #define RT_USING_SERIAL_V1
 #define RT_SERIAL_RB_BUFSZ 2048
+#define RT_USING_I2C
+#define RT_USING_I2C_BITOPS
 #define RT_USING_PIN
 #define RT_USING_MTD_NOR
+#define RT_USING_RTC
 #define RT_USING_SDIO
 #define RT_SDIO_STACK_SIZE 2048
 #define RT_SDIO_THREAD_PRIORITY 0
 #define RT_MMCSD_STACK_SIZE 2048
 #define RT_MMCSD_THREAD_PREORITY 22
 #define RT_MMCSD_MAX_PARTITION 16
+#define RT_USING_AUDIO
+#define RT_AUDIO_REPLAY_MP_BLOCK_SIZE 4096
+#define RT_AUDIO_REPLAY_MP_BLOCK_COUNT 2
+#define RT_AUDIO_RECORD_PIPE_SIZE 2048
 #define RT_USING_WIFI
 #define RT_WLAN_DEVICE_STA_NAME "wlan0"
 #define RT_WLAN_DEVICE_AP_NAME "wlan1"
@@ -138,6 +145,7 @@
 #define RT_WLAN_WORKQUEUE_THREAD_NAME "wlan"
 #define RT_WLAN_WORKQUEUE_THREAD_SIZE 2048
 #define RT_WLAN_WORKQUEUE_THREAD_PRIO 11
+#define RT_USING_KTIME
 
 /* Using USB */
 
@@ -160,9 +168,15 @@
 /* POSIX (Portable Operating System Interface) layer */
 
 #define RT_USING_POSIX_FS
+#define RT_USING_POSIX_DEVIO
+#define RT_USING_POSIX_STDIO
 #define RT_USING_POSIX_POLL
 #define RT_USING_POSIX_SELECT
 #define RT_USING_POSIX_SOCKET
+#define RT_USING_POSIX_DELAY
+#define RT_USING_POSIX_CLOCK
+#define RT_USING_PTHREADS
+#define PTHREAD_NUM_MAX 8
 
 /* Interprocess Communication (IPC) */
 
@@ -171,6 +185,10 @@
 
 /* end of Interprocess Communication (IPC) */
 /* end of POSIX (Portable Operating System Interface) layer */
+#define RT_USING_CPLUSPLUS
+#define RT_USING_CPLUSPLUS11
+#define RT_USING_CPP_WRAPPER
+#define RT_USING_CPP_EXCEPTIONS
 /* end of C/C++ and POSIX layer */
 
 /* Network */
@@ -447,6 +465,8 @@
 /* On-chip Peripheral Drivers */
 
 #define BSP_USING_GPIO
+#define BSP_USING_I2C
+#define BSP_USING_HW_I2C0
 #define BSP_USING_UART
 #define BSP_USING_UART2
 #define BSP_USING_SDIO
