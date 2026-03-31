@@ -84,6 +84,7 @@ rt_err_t bt_hci_transport_init(void)
 
     g_bt_hci_runtime.state = BT_HCI_STATE_READY;
     g_bt_hci_runtime.last_error = RT_EOK;
+    rt_kprintf("[bt.hci] transport ready\n");
     LOG_I("Bluetooth HCI transport layer ready for stack startup");
     return RT_EOK;
 }
@@ -109,12 +110,15 @@ rt_err_t bt_hci_transport_start(void)
     {
         g_bt_hci_runtime.state = BT_HCI_STATE_RUNNING;
         g_bt_hci_runtime.last_error = RT_EOK;
+        rt_kprintf("[bt.hci] already started\n");
         return RT_EOK;
     }
 
+    rt_kprintf("[bt.hci] starting bring-up\n");
     LOG_I("Starting BTSTACK bring-up");
     cybt_platform_config_init(&g_bt_platform_cfg);
     result = wiced_bt_stack_init(app_bt_management_callback, &wiced_bt_cfg_settings);
+    rt_kprintf("[bt.hci] wiced_bt_stack_init result=0x%08lx\n", (unsigned long)result);
     LOG_I("wiced_bt_stack_init result=0x%08lx", (unsigned long)result);
 
     if ((result != WICED_SUCCESS) && (result != WICED_PENDING) && (result != WICED_ALREADY_INITIALIZED))
@@ -127,6 +131,7 @@ rt_err_t bt_hci_transport_start(void)
     g_bt_stack_started = RT_TRUE;
     g_bt_hci_runtime.state = BT_HCI_STATE_RUNNING;
     g_bt_hci_runtime.last_error = RT_EOK;
+    rt_kprintf("[bt.hci] transport started\n");
     LOG_I("Bluetooth HCI transport started");
     return RT_EOK;
 }

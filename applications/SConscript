@@ -4,8 +4,8 @@ import os
 
 cwd  = GetCurrentDir()
 path = [cwd]
-src  = Glob('*.c')
-
+src = Glob('*.c') + Glob('*.cpp')
+src = ['main.c', 'voice_trigger.c', 'wake_word_tflite.cpp']
 group = DefineGroup('Applications', src, depend = [''], CPPPATH = path)
 
 list = os.listdir(cwd)

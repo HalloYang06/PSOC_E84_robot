@@ -3,6 +3,7 @@
 #include <board.h>
 
 #include "common/m33_m55_comm.h"
+#include "m33/audio_capture.h"
 #include "m33/bt_board_bridge.h"
 #include "m33/app_ble_service.h"
 #include "m33/bt_app_gatt_handler.h"
@@ -17,63 +18,281 @@
 
 #define LED_PIN_B GET_PIN(16, 5)
 #define FRAME_PERIOD_MS 100
+#define PCM_CAPTURE_MAX_BYTES (16000U * 2U * 2U)
+#define PCM_LISTEN_NOTIFY_MS 500U
+
+typedef enum
+{
+    PCM_MODE_IDLE = 0,
+    PCM_MODE_MANUAL,
+    PCM_MODE_LISTEN
+} m33_pcm_mode_t;
 
 typedef struct
 {
     rt_uint32_t loop_count;
     safety_monitor_t safety;
+    rt_bool_t pcm_capture_active;
+    m33_pcm_mode_t pcm_mode;
+    rt_uint8_t *pcm_buffer;
+    rt_uint32_t pcm_capacity;
+    rt_uint32_t pcm_length;
+    rt_tick_t pcm_last_notify_tick;
 } m33_runtime_t;
 
-static void m33_publish_sensor_snapshot(const sensor_data_t *sensor)
-{
-    m33_m55_message_t msg;
+static m33_runtime_t g_runtime;
 
-    rt_memset(&msg, 0, sizeof(msg));
-    msg.type = MSG_TYPE_SENSOR_SNAPSHOT;
-    msg.payload.sensor_snapshot.emg_ch1 = sensor->emg_ch1;
-    msg.payload.sensor_snapshot.emg_ch2 = sensor->emg_ch2;
-    msg.payload.sensor_snapshot.heart_rate = sensor->heart_rate;
-    msg.payload.sensor_snapshot.spo2 = sensor->spo2;
-    msg.payload.sensor_snapshot.imu_data[0] = sensor->accel_x;
-    msg.payload.sensor_snapshot.imu_data[1] = sensor->accel_y;
-    msg.payload.sensor_snapshot.imu_data[2] = sensor->accel_z;
-    msg.payload.sensor_snapshot.imu_data[3] = sensor->gyro_x;
-    msg.payload.sensor_snapshot.imu_data[4] = sensor->gyro_y;
-    msg.payload.sensor_snapshot.imu_data[5] = sensor->gyro_z;
-    msg.payload.sensor_snapshot.shoulder_angle = sensor->shoulder_angle;
-    msg.payload.sensor_snapshot.elbow_angle = sensor->elbow_angle;
-    msg.payload.sensor_snapshot.lateral_position = sensor->lateral_position;
-    msg.payload.sensor_snapshot.timestamp = sensor->timestamp;
-    m33_m55_comm_publish(&msg);
+static void m33_pcm_capture_callback(const uint8_t *data, uint32_t len)
+{
+    uint32_t writable;
+
+    if (!g_runtime.pcm_capture_active || (g_runtime.pcm_buffer == RT_NULL) || (data == RT_NULL) || (len == 0))
+    {
+        return;
+    }
+
+    if (g_runtime.pcm_length >= g_runtime.pcm_capacity)
+    {
+        if (g_runtime.pcm_mode == PCM_MODE_LISTEN)
+        {
+            if (len >= g_runtime.pcm_capacity)
+            {
+                rt_memcpy(g_runtime.pcm_buffer, data + (len - g_runtime.pcm_capacity), g_runtime.pcm_capacity);
+                g_runtime.pcm_length = g_runtime.pcm_capacity;
+                return;
+            }
+
+            rt_memmove(g_runtime.pcm_buffer,
+                       g_runtime.pcm_buffer + len,
+                       g_runtime.pcm_capacity - len);
+            g_runtime.pcm_length = g_runtime.pcm_capacity - len;
+        }
+        else
+        {
+            return;
+        }
+    }
+
+    writable = g_runtime.pcm_capacity - g_runtime.pcm_length;
+    if (len > writable)
+    {
+        len = writable;
+    }
+
+    rt_memcpy(g_runtime.pcm_buffer + g_runtime.pcm_length, data, len);
+    g_runtime.pcm_length += len;
+
 }
 
-static void m33_init_framework(void)
+static void m33_publish_audio_capture(void)
 {
-    rt_err_t bt_err;
-    m33_m55_comm_init();
-    bt_board_bridge_init();
-    app_ble_service_init();
-    app_ble_service_start();
-    sensor_manager_init();
-    input_buffer_init();
-    control_manager_init();
-    can_driver_init();
-    safety_system_init();
-    http_server_init();
-    http_server_start();
-    openclaw_integration_init();
-    bt_err = bt_hci_transport_init();
-    if (bt_err == RT_EOK)
+    m33_m55_message_t msg;
+    rt_uint32_t seq;
+    rt_err_t ret;
+
+    if ((g_runtime.pcm_buffer == RT_NULL) || (g_runtime.pcm_length == 0))
     {
-        bt_err = bt_hci_transport_start();
+        rt_kprintf("[m33] pcm publish skipped len=0\n");
+        return;
     }
 
-    if (bt_err != RT_EOK)
+    if (g_runtime.pcm_length > M33_M55_PCM_SHARED_CAPACITY)
     {
-        rt_kprintf("[m33] bluetooth middleware not integrated yet, transport state=%d err=%d\n",
-                   bt_hci_transport_get_runtime()->state,
-                   bt_err);
+        rt_kprintf("[m33] pcm publish too large len=%lu cap=%lu\n",
+                   (unsigned long)g_runtime.pcm_length,
+                   (unsigned long)M33_M55_PCM_SHARED_CAPACITY);
+        return;
     }
+
+    seq = g_m33_m55_pcm_shared.seq + 1U;
+    g_m33_m55_pcm_shared.seq = seq;
+    g_m33_m55_pcm_shared.total_len = g_runtime.pcm_length;
+    g_m33_m55_pcm_shared.sample_rate = 16000U;
+    g_m33_m55_pcm_shared.channels = 1U;
+    g_m33_m55_pcm_shared.bits_per_sample = 16U;
+    g_m33_m55_pcm_shared.timestamp = rt_tick_get_millisecond();
+    g_m33_m55_pcm_shared.reserved = 0U;
+    g_m33_m55_pcm_shared.crc32 = 0U;
+    rt_memcpy((void *)g_m33_m55_pcm_shared.data, g_runtime.pcm_buffer, g_runtime.pcm_length);
+    rt_hw_cpu_dcache_ops(RT_HW_CACHE_FLUSH, (void *)g_m33_m55_pcm_shared.data, g_runtime.pcm_length);
+
+    rt_memset(&msg, 0, sizeof(msg));
+    msg.type = MSG_TYPE_SENSOR_STREAM;
+    msg.payload.sensor_stream.source = MODEL_INPUT_SRC_AUDIO_PCM;
+    msg.payload.sensor_stream.format = MODEL_INPUT_FMT_PCM_S16;
+    msg.payload.sensor_stream.channels = 1U;
+    msg.payload.sensor_stream.sample_rate = 16000U;
+    msg.payload.sensor_stream.frame_samples = g_runtime.pcm_length / 2U;
+    msg.payload.sensor_stream.total_len = g_runtime.pcm_length;
+    msg.payload.sensor_stream.chunk_index = seq;
+    msg.payload.sensor_stream.chunk_len = g_runtime.pcm_length;
+    msg.payload.sensor_stream.timestamp = g_m33_m55_pcm_shared.timestamp;
+
+    ret = m33_m55_comm_publish(&msg);
+    if (ret != RT_EOK)
+    {
+        rt_kprintf("[m33] pcm notify publish failed ret=%d seq=%lu len=%lu\n",
+                   ret,
+                   (unsigned long)seq,
+                   (unsigned long)g_runtime.pcm_length);
+        return;
+    }
+
+    rt_kprintf("[m33] pcm shared notify seq=%lu len=%lu\n",
+               (unsigned long)seq,
+               (unsigned long)g_runtime.pcm_length);
+}
+
+static void m33_start_pcm_capture(void)
+{
+    rt_err_t ret;
+
+    if (g_runtime.pcm_capture_active)
+    {
+        rt_kprintf("[m33] pcm capture already active\n");
+        return;
+    }
+
+    if (g_runtime.pcm_buffer == RT_NULL)
+    {
+        g_runtime.pcm_capacity = PCM_CAPTURE_MAX_BYTES;
+        g_runtime.pcm_buffer = (rt_uint8_t *)rt_malloc(g_runtime.pcm_capacity);
+        if (g_runtime.pcm_buffer == RT_NULL)
+        {
+            rt_kprintf("[m33] pcm buffer alloc failed size=%lu\n", (unsigned long)g_runtime.pcm_capacity);
+            return;
+        }
+    }
+
+    if (audio_capture_init() != RT_EOK)
+    {
+        rt_kprintf("[m33] pcm capture init failed\n");
+        return;
+    }
+
+    g_runtime.pcm_length = 0;
+    g_runtime.pcm_capture_active = RT_TRUE;
+    ret = audio_capture_start(m33_pcm_capture_callback);
+    if ((ret != RT_EOK) && (ret != -RT_EBUSY))
+    {
+        g_runtime.pcm_capture_active = RT_FALSE;
+        rt_kprintf("[m33] pcm capture start failed ret=%d\n", ret);
+        return;
+    }
+
+    rt_kprintf("[m33] pcm capture started ret=%d running=%d\n",
+               ret,
+               audio_capture_is_running() ? 1 : 0);
+}
+
+static void m33_start_pcm_listen(void)
+{
+    rt_err_t ret;
+
+    if ((g_runtime.pcm_mode == PCM_MODE_LISTEN) && g_runtime.pcm_capture_active)
+    {
+        rt_kprintf("[m33] pcm listen already active\n");
+        return;
+    }
+
+    if (g_runtime.pcm_buffer == RT_NULL)
+    {
+        g_runtime.pcm_capacity = PCM_CAPTURE_MAX_BYTES;
+        g_runtime.pcm_buffer = (rt_uint8_t *)rt_malloc(g_runtime.pcm_capacity);
+        if (g_runtime.pcm_buffer == RT_NULL)
+        {
+            rt_kprintf("[m33] pcm buffer alloc failed size=%lu\n", (unsigned long)g_runtime.pcm_capacity);
+            return;
+        }
+    }
+
+    g_runtime.pcm_mode = PCM_MODE_LISTEN;
+    g_runtime.pcm_length = 0;
+    g_runtime.pcm_last_notify_tick = 0;
+    if (!audio_capture_is_running())
+    {
+        if (audio_capture_init() != RT_EOK)
+        {
+            rt_kprintf("[m33] pcm listen init failed\n");
+            g_runtime.pcm_mode = PCM_MODE_IDLE;
+            return;
+        }
+
+        g_runtime.pcm_capture_active = RT_TRUE;
+        ret = audio_capture_start(m33_pcm_capture_callback);
+        if ((ret != RT_EOK) && (ret != -RT_EBUSY))
+        {
+            g_runtime.pcm_capture_active = RT_FALSE;
+            g_runtime.pcm_mode = PCM_MODE_IDLE;
+            rt_kprintf("[m33] pcm listen start failed ret=%d\n", ret);
+            return;
+        }
+
+        rt_kprintf("[m33] pcm listen started ret=%d running=%d\n",
+                   ret,
+                   audio_capture_is_running() ? 1 : 0);
+    }
+    else
+    {
+        g_runtime.pcm_capture_active = RT_TRUE;
+        rt_kprintf("[m33] pcm listen armed\n");
+    }
+}
+
+static void m33_stop_pcm_capture(void)
+{
+    rt_uint32_t captured_len;
+
+    if (!g_runtime.pcm_capture_active && (g_runtime.pcm_length == 0))
+    {
+        rt_kprintf("[m33] pcm capture not active\n");
+        return;
+    }
+
+    captured_len = g_runtime.pcm_length;
+    g_runtime.pcm_mode = PCM_MODE_IDLE;
+    g_runtime.pcm_capture_active = RT_FALSE;
+    if (captured_len == 0)
+    {
+        rt_kprintf("[m33] pcm publish skipped frozen_len=0\n");
+        return;
+    }
+
+    m33_publish_audio_capture();
+    g_runtime.pcm_length = 0;
+}
+
+static void m33_stop_pcm_listen(void)
+{
+    g_runtime.pcm_mode = PCM_MODE_IDLE;
+    g_runtime.pcm_capture_active = RT_FALSE;
+    g_runtime.pcm_length = 0;
+    rt_kprintf("[m33] pcm listen disarmed\n");
+}
+
+static void m33_maybe_publish_listen_window(void)
+{
+    rt_tick_t now;
+
+    if ((g_runtime.pcm_mode != PCM_MODE_LISTEN) || !g_runtime.pcm_capture_active)
+    {
+        return;
+    }
+
+    if (g_runtime.pcm_length < g_runtime.pcm_capacity)
+    {
+        return;
+    }
+
+    now = rt_tick_get();
+    if ((g_runtime.pcm_last_notify_tick != 0U) &&
+        ((now - g_runtime.pcm_last_notify_tick) < rt_tick_from_millisecond(PCM_LISTEN_NOTIFY_MS)))
+    {
+        return;
+    }
+
+    g_runtime.pcm_last_notify_tick = now;
+    m33_publish_audio_capture();
 }
 
 static void m33_handle_ble_command(void)
@@ -102,10 +321,44 @@ static void m33_handle_ble_command(void)
     case APP_BLE_CMD_START_STREAM:
     case APP_BLE_CMD_STOP_STREAM:
     case APP_BLE_CMD_HEARTBEAT:
-        break;
-
     default:
         break;
+    }
+}
+
+static void m33_handle_ipc_command(void)
+{
+    m33_m55_message_t msg;
+
+    while (m33_m55_comm_consume(&msg) == RT_EOK)
+    {
+        if (msg.type != MSG_TYPE_VOICE_CONTROL)
+        {
+            continue;
+        }
+
+        switch ((voice_control_cmd_t)msg.payload.voice_control.cmd)
+        {
+        case VOICE_CTRL_START_CAPTURE:
+            rt_kprintf("[m33] ipc start capture\n");
+            g_runtime.pcm_mode = PCM_MODE_MANUAL;
+            m33_start_pcm_capture();
+            break;
+        case VOICE_CTRL_STOP_CAPTURE:
+            rt_kprintf("[m33] ipc stop capture\n");
+            m33_stop_pcm_capture();
+            break;
+        case VOICE_CTRL_START_LISTEN:
+            rt_kprintf("[m33] ipc start listen\n");
+            m33_start_pcm_listen();
+            break;
+        case VOICE_CTRL_STOP_LISTEN:
+            rt_kprintf("[m33] ipc stop listen\n");
+            m33_stop_pcm_listen();
+            break;
+        default:
+            break;
+        }
     }
 }
 
@@ -117,7 +370,7 @@ static void m33_publish_ble_telemetry(const sensor_data_t *sensor,
     const char *payload;
     uint16_t payload_len;
     uint16_t offset;
-    const uint16_t chunk_size = 20;  // MTU 23 - 3 bytes overhead
+    const uint16_t chunk_size = 20;
 
     (void)app_ble_service_update_telemetry(sensor, control, safety);
     runtime = app_ble_service_get_runtime();
@@ -134,7 +387,6 @@ static void m33_publish_ble_telemetry(const sensor_data_t *sensor,
 
     payload_len = (uint16_t)rt_strlen(payload);
 
-    // Send in chunks if needed
     for (offset = 0; offset < payload_len; offset += chunk_size)
     {
         uint16_t send_len = (payload_len - offset) > chunk_size ? chunk_size : (payload_len - offset);
@@ -144,7 +396,7 @@ static void m33_publish_ble_telemetry(const sensor_data_t *sensor,
             rt_kprintf("[ble] Send failed at offset %u\n", offset);
             break;
         }
-        // Small delay between chunks to avoid buffer overflow
+
         if (offset + chunk_size < payload_len)
         {
             rt_thread_mdelay(5);
@@ -152,13 +404,51 @@ static void m33_publish_ble_telemetry(const sensor_data_t *sensor,
     }
 }
 
+static void m33_init_framework(void)
+{
+    rt_err_t bt_err;
+
+    m33_m55_comm_init();
+    bt_board_bridge_init();
+    app_ble_service_init();
+    app_ble_service_start();
+    sensor_manager_init();
+    input_buffer_init();
+    control_manager_init();
+    can_driver_init();
+    safety_system_init();
+    http_server_init();
+    http_server_start();
+    openclaw_integration_init();
+    bt_err = bt_hci_transport_init();
+    rt_kprintf("[m33] bt_hci_transport_init ret=%d state=%d\n",
+               bt_err,
+               bt_hci_transport_get_runtime()->state);
+    if (bt_err == RT_EOK)
+    {
+        bt_err = bt_hci_transport_start();
+        rt_kprintf("[m33] bt_hci_transport_start ret=%d state=%d\n",
+                   bt_err,
+                   bt_hci_transport_get_runtime()->state);
+    }
+
+    if (bt_err != RT_EOK)
+    {
+        rt_kprintf("[m33] bluetooth middleware not integrated yet, transport state=%d err=%d\n",
+                   bt_hci_transport_get_runtime()->state,
+                   bt_err);
+    }
+}
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 int main(void)
 {
-    m33_runtime_t runtime;
     sensor_data_t sensor;
     control_status_t control;
 
-    rt_memset(&runtime, 0, sizeof(runtime));
+    rt_memset(&g_runtime, 0, sizeof(g_runtime));
 
     rt_kprintf("Hello RT-Thread\r\n");
     rt_kprintf("This core is cortex-m33\n");
@@ -175,14 +465,15 @@ int main(void)
         sensor_fill_demo_data(&sensor, rt_tick_get());
         sensor_update_latest(&sensor);
         control_apply_sensor_feedback(&sensor);
-        safety_monitor_update(&runtime.safety, &sensor);
+        safety_monitor_update(&g_runtime.safety, &sensor);
         control_get_status(&control);
-        m33_publish_sensor_snapshot(&sensor);
         m33_handle_ble_command();
-        m33_publish_ble_telemetry(&sensor, &control, &runtime.safety);
+        m33_handle_ipc_command();
+        m33_maybe_publish_listen_window();
+        m33_publish_ble_telemetry(&sensor, &control, &g_runtime.safety);
 
-        runtime.loop_count++;
-        if ((runtime.loop_count % 10U) == 0U)
+        g_runtime.loop_count++;
+        if ((g_runtime.loop_count % 10U) == 0U)
         {
             rt_pin_write(LED_PIN_B, PIN_HIGH);
         }
@@ -190,11 +481,11 @@ int main(void)
         {
             rt_pin_write(LED_PIN_B, PIN_LOW);
         }
-
         rt_thread_mdelay(FRAME_PERIOD_MS);
     }
 
     return 0;
 }
-
-
+#ifdef __cplusplus
+}
+#endif
