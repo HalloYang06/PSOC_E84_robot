@@ -90,6 +90,8 @@
 #define RT_USING_SERIAL
 #define RT_USING_SERIAL_V1
 #define RT_SERIAL_RB_BUFSZ 128
+#define RT_USING_CAN
+#define RT_CAN_USING_HDR
 #define RT_USING_PIN
 
 /* Using USB */
@@ -328,6 +330,8 @@
 #define BSP_USING_UART
 #define BSP_USING_UART2
 #define BSP_USING_UART5
+#define BSP_USING_CAN
+#define BSP_USING_CANFD0
 /* end of On-chip Peripheral Drivers */
 /* end of Hardware Drivers Config */
 

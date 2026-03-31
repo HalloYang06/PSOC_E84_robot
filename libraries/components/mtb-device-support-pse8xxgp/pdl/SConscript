@@ -65,6 +65,9 @@ if GetDepend(['RT_USING_PWM']):
 if GetDepend(['RT_USING_SPI']):
     src += ['drivers/source/cy_scb_spi.c']
 
+if GetDepend(['BSP_USING_CAN']):
+    src += ['drivers/source/cy_canfd.c']
+    
 if GetDepend('BSP_USING_LCD'):
     src += Split('''
             drivers/source/cy_mipidsi.c

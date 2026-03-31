@@ -328,8 +328,17 @@ def PrepareBuilding(env, root_directory, has_libcpu=False, remove_components = [
 
     configfn = GetOption('useconfig')
     if configfn:
-        from menuconfig import mk_rtconfig
-        mk_rtconfig(configfn)
+        try:
+            from menuconfig import mk_rtconfig
+            mk_rtconfig(configfn)
+        except ImportError:
+            # Compatibility fallback for newer pip menuconfig package that no longer
+            # exports mk_rtconfig().
+            from kconfiglib import Kconfig, standard_kconfig
+
+            kconf = Kconfig(standard_kconfig)
+            kconf.load_config(configfn)
+            kconf.write_autoconf('rtconfig.h')
         exit(0)
 
 

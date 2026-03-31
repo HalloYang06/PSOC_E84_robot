@@ -118,3 +118,4 @@ Midea-X1
 # Git
 *.orig
 *.rej
+/makefile.targets
