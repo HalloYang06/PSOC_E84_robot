@@ -98,13 +98,11 @@
 #define RT_USING_SERIAL
 #define RT_USING_SERIAL_V1
 #define RT_SERIAL_RB_BUFSZ 128
-<<<<<<< HEAD
 #define RT_USING_CAN
 #define RT_CAN_USING_HDR
-=======
+#define RT_CAN_USING_CANFD
 #define RT_USING_I2C
 #define RT_USING_I2C_BITOPS
->>>>>>> 0acf7422a849a49a3e47e83958671a15a3cf5710
 #define RT_USING_PIN
 #define RT_USING_RTC
 #define RT_USING_AUDIO
@@ -366,13 +364,10 @@
 #define BSP_USING_UART
 #define BSP_USING_UART2
 #define BSP_USING_UART5
-<<<<<<< HEAD
-#define BSP_USING_CAN
-#define BSP_USING_CANFD0
-=======
 #define BSP_USING_HYPERAM
 #define BSP_USING_HYPERAM_SIZE 0x1000000
->>>>>>> 0acf7422a849a49a3e47e83958671a15a3cf5710
+#define BSP_USING_CAN
+#define BSP_USING_CANFD0
 /* end of On-chip Peripheral Drivers */
 /* end of Hardware Drivers Config */
 

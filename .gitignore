@@ -138,7 +138,4 @@ tools/merge-hex/generic/*.dll
 # Git
 *.orig
 *.rej
-<<<<<<< HEAD
 /makefile.targets
-=======
->>>>>>> 0acf7422a849a49a3e47e83958671a15a3cf5710
