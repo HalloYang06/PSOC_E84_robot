@@ -4,6 +4,7 @@
 #include "baidu_tts.h"
 #include "m33_m55_comm.h"
 #include "model_manager.h"
+#include "wake_word_detector.h"
 #include "websocket_client.h"
 
 #include <rtdevice.h>
@@ -14,6 +15,11 @@
 #define VOICE_PCM_BUFFER_SIZE        (320000U)
 #define VOICE_JSON_BUFFER_SIZE       (768U)
 #define VOICE_SERVER_AUDIO_CHUNK     (4096U)
+#define WAKE_STREAK_REQUIRED         (2U)
+#define WAKE_TRIGGER_SCORE           (850L)
+#define WAKE_HOLD_SCORE              (700L)
+#define WAKE_COOLDOWN_MS             (5000U)
+#define WAKE_LOG_SCORE_MIN           (700L)
 
 typedef struct
 {
@@ -23,10 +29,18 @@ typedef struct
     rt_bool_t tts_ready;
     rt_uint32_t reconnect_tick;
     rt_thread_t thread;
+    rt_thread_t detect_thread;
     struct rt_mutex lock;
+    struct rt_semaphore detect_sem;
     rt_uint8_t *audio_buffer;
+    rt_uint8_t *detect_buffer;
     rt_uint32_t audio_expected;
     rt_uint32_t audio_received;
+    rt_uint32_t latest_pcm_len;
+    rt_uint32_t latest_pcm_seq;
+    rt_bool_t latest_pcm_pending;
+    rt_uint32_t wake_hit_streak;
+    rt_tick_t wake_last_trigger_tick;
 } voice_service_t;
 
 typedef struct
@@ -40,6 +54,7 @@ typedef struct
 } voice_model_result_t;
 
 static voice_service_t g_service;
+static rt_bool_t g_wake_word_ready = RT_FALSE;
 
 static voice_model_result_t voice_service_model_entry(const uint8_t *audio_data, uint32_t len)
 {
@@ -107,16 +122,6 @@ static voice_model_result_t voice_service_model_entry(const uint8_t *audio_data,
                     (result.avg_abs > 180U) &&
                     (result.active_frames >= 8U) &&
                     (result.zcr_permille > 5U);
-
-    rt_kprintf("[voice_service] model entry pcm=%lu samples=%lu peak=%lu avg=%lu active=%lu/%lu zcr=%lu speech=%d\n",
-               (unsigned long)len,
-               (unsigned long)sample_count,
-               (unsigned long)result.peak,
-               (unsigned long)result.avg_abs,
-               (unsigned long)result.active_frames,
-               (unsigned long)result.total_frames,
-               (unsigned long)result.zcr_permille,
-               result.speech ? 1 : 0);
 
     return result;
 }
@@ -451,25 +456,33 @@ static void voice_service_process_audio_buffer(void)
     rt_uint32_t len;
     voice_model_result_t model_result;
     float model_score = 0.0f;
+    long score_permille = 0;
     int detected = 0;
+    rt_bool_t wake_triggered = RT_FALSE;
+    rt_tick_t now_tick;
+    rt_tick_t cooldown_ticks;
+
     rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
     len = g_service.audio_received;
     rt_mutex_release(&g_service.lock);
-
-    rt_kprintf("[voice_service] utterance ready: %lu bytes\n", (unsigned long)len);
     model_result = voice_service_model_entry(g_service.audio_buffer, len);
 
     if (!model_result.speech)
     {
-        rt_kprintf("[voice_service] utterance dropped: non-speech peak=%lu avg=%lu active=%lu/%lu\n",
-                   (unsigned long)model_result.peak,
-                   (unsigned long)model_result.avg_abs,
-                   (unsigned long)model_result.active_frames,
-                   (unsigned long)model_result.total_frames);
+        g_service.wake_hit_streak = 0;
         return;
     }
 
-    if (model_manager_is_ready(MODEL_SLOT_WAKE_WORD))
+    if (g_wake_word_ready)
+    {
+        rt_bool_t wake_detected = WakeWordDetector_Detect(
+            (const int16_t *)g_service.audio_buffer,
+            len / sizeof(int16_t),
+            &model_score);
+        detected = wake_detected ? 1 : 0;
+        score_permille = (long)(model_score * 1000.0f);
+    }
+    else if (model_manager_is_ready(MODEL_SLOT_WAKE_WORD))
     {
         rt_err_t infer_err = model_manager_run_pcm16(
             MODEL_SLOT_WAKE_WORD,
@@ -480,12 +493,56 @@ static void voice_service_process_audio_buffer(void)
 
         if (infer_err == RT_EOK)
         {
-            rt_kprintf("[voice_service] tflm score=%.3f detected=%d\n", model_score, detected);
+            score_permille = (long)(model_score * 1000.0f);
         }
-        else if (infer_err != -RT_EEMPTY)
+    }
+
+    if (score_permille >= WAKE_TRIGGER_SCORE)
+    {
+        if (g_service.wake_hit_streak < 255U)
         {
-            rt_kprintf("[voice_service] tflm run skipped err=%d\n", infer_err);
+            g_service.wake_hit_streak++;
         }
+    }
+    else if (score_permille < WAKE_HOLD_SCORE)
+    {
+        g_service.wake_hit_streak = 0;
+    }
+    else
+    {
+        /* Keep the current streak in the gray zone to reduce chatter. */
+    }
+
+    now_tick = rt_tick_get();
+    cooldown_ticks = rt_tick_from_millisecond(WAKE_COOLDOWN_MS);
+    if ((g_service.wake_hit_streak >= WAKE_STREAK_REQUIRED) &&
+        ((g_service.wake_last_trigger_tick == 0) ||
+         ((now_tick - g_service.wake_last_trigger_tick) >= cooldown_ticks)))
+    {
+        wake_triggered = RT_TRUE;
+        g_service.wake_last_trigger_tick = now_tick;
+        g_service.wake_hit_streak = 0;
+    }
+
+    if (wake_triggered)
+    {
+        rt_kprintf("[voice_service] wake triggered score=%ld peak=%lu avg=%lu active=%lu/%lu\n",
+                   score_permille,
+                   (unsigned long)model_result.peak,
+                   (unsigned long)model_result.avg_abs,
+                   (unsigned long)model_result.active_frames,
+                   (unsigned long)model_result.total_frames);
+    }
+    else if (score_permille >= WAKE_LOG_SCORE_MIN)
+    {
+        rt_kprintf("[voice_service] wake pending score=%ld streak=%lu\n",
+                   score_permille,
+                   (unsigned long)g_service.wake_hit_streak);
+    }
+
+    if (!wake_triggered)
+    {
+        return;
     }
 
     if (websocket_client_is_connected())
@@ -503,7 +560,6 @@ static void voice_service_process_audio_buffer(void)
         rt_snprintf(notice, sizeof(notice),
                     "{\"type\":\"voice_capture\",\"bytes\":%lu,\"sample_rate\":16000,\"channels\":1,\"bits\":16}",
                     (unsigned long)len);
-        rt_kprintf("[voice_service] ASR backend unavailable, only notifying server\n");
         if (websocket_client_is_connected())
         {
             websocket_client_send_text(notice);
@@ -548,17 +604,13 @@ static void voice_service_accept_shared_pcm(const sensor_stream_msg_t *stream)
     rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
     g_service.audio_expected = len;
     g_service.audio_received = len;
+    g_service.latest_pcm_len = len;
+    g_service.latest_pcm_seq = stream->chunk_index;
+    g_service.latest_pcm_pending = RT_TRUE;
     rt_memcpy(g_service.audio_buffer, (const void *)g_m33_m55_pcm_shared.data, len);
     rt_mutex_release(&g_service.lock);
 
-    rt_kprintf("[voice_service] shared pcm seq=%lu len=%lu sr=%lu ch=%u\n",
-               (unsigned long)stream->chunk_index,
-               (unsigned long)len,
-               (unsigned long)stream->sample_rate,
-               (unsigned int)stream->channels);
-
-    voice_service_process_audio_buffer();
-    voice_service_reset_audio();
+    rt_sem_release(&g_service.detect_sem);
 }
 
 static void voice_service_accept_audio_chunk(const audio_data_msg_t *chunk)
@@ -654,6 +706,49 @@ static void voice_service_thread_entry(void *parameter)
     }
 }
 
+static void voice_service_detect_thread_entry(void *parameter)
+{
+    rt_uint32_t local_len;
+    rt_uint32_t local_seq;
+
+    RT_UNUSED(parameter);
+
+    while (g_service.running)
+    {
+        if (rt_sem_take(&g_service.detect_sem, RT_TICK_PER_SECOND) != RT_EOK)
+        {
+            continue;
+        }
+
+        while (rt_sem_take(&g_service.detect_sem, 0) == RT_EOK)
+        {
+            /* Drain stale wakeups and keep only the newest PCM window. */
+        }
+
+        rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
+        if (!g_service.latest_pcm_pending || (g_service.latest_pcm_len == 0) || (g_service.detect_buffer == RT_NULL))
+        {
+            rt_mutex_release(&g_service.lock);
+            continue;
+        }
+
+        local_len = g_service.latest_pcm_len;
+        local_seq = g_service.latest_pcm_seq;
+        rt_memcpy(g_service.detect_buffer, g_service.audio_buffer, local_len);
+        g_service.latest_pcm_pending = RT_FALSE;
+        rt_mutex_release(&g_service.lock);
+
+        rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
+        g_service.audio_expected = local_len;
+        g_service.audio_received = local_len;
+        rt_memcpy(g_service.audio_buffer, g_service.detect_buffer, local_len);
+        rt_mutex_release(&g_service.lock);
+
+        voice_service_process_audio_buffer();
+        voice_service_reset_audio();
+    }
+}
+
 rt_err_t voice_service_init(const char *baidu_api_key, const char *baidu_secret_key)
 {
     rt_err_t ret;
@@ -667,10 +762,19 @@ rt_err_t voice_service_init(const char *baidu_api_key, const char *baidu_secret_
 
     rt_memset(&g_service, 0, sizeof(g_service));
     rt_mutex_init(&g_service.lock, "voice", RT_IPC_FLAG_PRIO);
+    rt_sem_init(&g_service.detect_sem, "vdet", 0, RT_IPC_FLAG_PRIO);
     g_service.audio_buffer = (rt_uint8_t *)rt_malloc(VOICE_PCM_BUFFER_SIZE);
     if (g_service.audio_buffer == RT_NULL)
     {
         rt_kprintf("[voice_service] alloc audio buffer failed: %u\n", VOICE_PCM_BUFFER_SIZE);
+        return -RT_ENOMEM;
+    }
+    g_service.detect_buffer = (rt_uint8_t *)rt_malloc(VOICE_PCM_BUFFER_SIZE);
+    if (g_service.detect_buffer == RT_NULL)
+    {
+        rt_kprintf("[voice_service] alloc detect buffer failed: %u\n", VOICE_PCM_BUFFER_SIZE);
+        rt_free(g_service.audio_buffer);
+        g_service.audio_buffer = RT_NULL;
         return -RT_ENOMEM;
     }
 
@@ -678,6 +782,8 @@ rt_err_t voice_service_init(const char *baidu_api_key, const char *baidu_secret_
     if (ret != RT_EOK)
     {
         rt_kprintf("[voice_service] IPC init failed: %d\n", ret);
+        rt_free(g_service.detect_buffer);
+        g_service.detect_buffer = RT_NULL;
         rt_free(g_service.audio_buffer);
         g_service.audio_buffer = RT_NULL;
         return ret;
@@ -686,6 +792,8 @@ rt_err_t voice_service_init(const char *baidu_api_key, const char *baidu_secret_
     ret = baidu_asr_init(baidu_api_key, baidu_secret_key);
     if (ret != RT_EOK)
     {
+        rt_free(g_service.detect_buffer);
+        g_service.detect_buffer = RT_NULL;
         rt_free(g_service.audio_buffer);
         g_service.audio_buffer = RT_NULL;
         return ret;
@@ -693,6 +801,8 @@ rt_err_t voice_service_init(const char *baidu_api_key, const char *baidu_secret_
     ret = baidu_tts_init(baidu_api_key, baidu_secret_key);
     if (ret != RT_EOK)
     {
+        rt_free(g_service.detect_buffer);
+        g_service.detect_buffer = RT_NULL;
         rt_free(g_service.audio_buffer);
         g_service.audio_buffer = RT_NULL;
         return ret;
@@ -705,6 +815,8 @@ rt_err_t voice_service_init(const char *baidu_api_key, const char *baidu_secret_
     if (ret != RT_EOK)
     {
         rt_kprintf("[voice_service] websocket init failed: %d\n", ret);
+        rt_free(g_service.detect_buffer);
+        g_service.detect_buffer = RT_NULL;
         rt_free(g_service.audio_buffer);
         g_service.audio_buffer = RT_NULL;
         return ret;
@@ -732,6 +844,11 @@ rt_err_t voice_service_init(const char *baidu_api_key, const char *baidu_secret_
         }
     }
 
+    g_wake_word_ready = WakeWordDetector_Init() ? RT_TRUE : RT_FALSE;
+    g_service.wake_hit_streak = 0;
+    g_service.wake_last_trigger_tick = 0;
+    rt_kprintf("[voice_service] wake detector ready=%d\n", g_wake_word_ready ? 1 : 0);
+
     g_service.initialized = RT_TRUE;
     rt_kprintf("[voice_service] initialized (ASR=%d TTS=%d)\n", g_service.asr_ready, g_service.tts_ready);
     return RT_EOK;
@@ -750,14 +867,21 @@ rt_err_t voice_service_start(void)
     }
 
     g_service.running = RT_TRUE;
-    g_service.thread = rt_thread_create("voice_svc", voice_service_thread_entry, RT_NULL, 8192, 8, 5);
+    g_service.thread = rt_thread_create("voice_svc", voice_service_thread_entry, RT_NULL, 32768, 8, 5);
     if (!g_service.thread)
+    {
+        g_service.running = RT_FALSE;
+        return -RT_ENOMEM;
+    }
+    g_service.detect_thread = rt_thread_create("voice_det", voice_service_detect_thread_entry, RT_NULL, 32768, 20, 10);
+    if (!g_service.detect_thread)
     {
         g_service.running = RT_FALSE;
         return -RT_ENOMEM;
     }
 
     rt_thread_startup(g_service.thread);
+    rt_thread_startup(g_service.detect_thread);
     rt_kprintf("[voice_service] started\n");
     return RT_EOK;
 }

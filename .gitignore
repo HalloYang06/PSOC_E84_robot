@@ -4,10 +4,14 @@
 *.elf
 *.hex
 *.axf
+*.exe
 *.pdb
 *.idb
 *.ilk
 *.old
+build
+Debug
+documentation/html
 *~
 *.o
 *.obj
@@ -17,58 +21,22 @@
 *.lib
 *.i
 *.d
-*.uimg
 .DS_Stor*
 .config 3
 .config 4
 .config 5
+Midea-X1
+*.uimg
 GPATH
 GRTAGS
 GTAGS
+.vscode
 JLinkLog.txt
 JLinkSettings.ini
-
-build/
-Debug/
-Release/
-Output/
-Listings/
-Objects/
-documentation/html/
 DebugConfig/
 RTE/
-
-.metadata/
-.vscode/
-.idea/
-__pycache__/
-*.tmp
-*.temp
-*.log
-*.orig
-*.rej
-
-# local tool binaries
-tools/device-configurator/*.exe
-tools/edgeprotecttools/bin/*.exe
-tools/merge-hex/*.exe
-tools/merge-hex/*.dll
-tools/merge-hex/platforms/*.dll
-tools/merge-hex/styles/*.dll
-tools/merge-hex/iconengines/*.dll
-tools/merge-hex/imageformats/*.dll
-tools/merge-hex/networkinformation/*.dll
-tools/merge-hex/tls/*.dll
-tools/merge-hex/generic/*.dll
-
-# keep complete RT-Thread Studio project files
-!.project
-!.cproject
-!.settings/
-!.settings/**
-!makefile.targets
-!rtconfig_preinc.h
-!rtconfig.h
-!SConstruct
-!SConscript
-!cconfig.h
+settings/
+*.uvguix*
+cconfig.h
+!edgeprotecttools.exe
+/makefile.targets

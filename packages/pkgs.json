@@ -8,5 +8,10 @@
   "name": "FREERTOS_WRAPPER",
   "path": "/packages/system/FreeRTOS_Wrapper",
   "ver": "latest"
+ },
+ {
+  "name": "TENSORFLOWLITEMICRO",
+  "path": "/packages/ai/TensorflowLiteMicro",
+  "ver": "latest"
  }
 ]
