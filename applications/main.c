@@ -19,7 +19,7 @@
 #define LED_PIN_B GET_PIN(16, 5)
 #define FRAME_PERIOD_MS 100
 #define PCM_CAPTURE_MAX_BYTES (16000U * 2U * 2U)
-#define PCM_LISTEN_NOTIFY_MS 500U
+#define PCM_LISTEN_NOTIFY_MS 2000U
 
 typedef enum
 {
