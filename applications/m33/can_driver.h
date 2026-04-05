@@ -4,6 +4,7 @@
 #include <rtthread.h>
 #include "control_manager.h"
 #include "sensor_manager.h"
+#include "control/control_layer.h"
 
 #define CAN_ID_MOTOR_SHOULDER 0x100
 #define CAN_ID_MOTOR_ELBOW    0x101

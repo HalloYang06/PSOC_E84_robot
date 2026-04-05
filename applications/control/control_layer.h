@@ -47,6 +47,24 @@ typedef struct
     rt_tick_t timestamp;
 } control_motor_feedback_t;
 
+typedef struct
+{
+    rt_uint8_t motor_id;
+    rt_uint16_t index;
+    rt_uint8_t raw_u8;
+    float value_f32;
+    rt_bool_t valid;
+    rt_tick_t timestamp;
+} control_motor_param_report_t;
+
+typedef struct
+{
+    rt_uint8_t motor_id;
+    rt_uint64_t unique_id;
+    rt_bool_t valid;
+    rt_tick_t timestamp;
+} control_motor_probe_report_t;
+
 typedef enum
 {
     CONTROL_ROS_CMD_NONE = 0,
@@ -85,6 +103,13 @@ rt_err_t control_motor_private_control(rt_uint8_t joint_id,
                                        float target_torque_nm);
 rt_err_t control_motor_set_active_report(rt_uint8_t joint_id, rt_bool_t enable);
 rt_err_t control_get_motor_feedback(rt_uint8_t joint_id, control_motor_feedback_t *out);
+rt_err_t control_motor_probe_id(rt_uint8_t motor_id);
+rt_err_t control_get_last_motor_probe(control_motor_probe_report_t *out);
+rt_err_t control_motor_read_parameter(rt_uint8_t joint_id, rt_uint16_t index);
+rt_err_t control_motor_write_parameter(rt_uint8_t joint_id, rt_uint16_t index, float value, rt_bool_t mode_value_is_u8);
+rt_err_t control_get_last_motor_param(control_motor_param_report_t *out);
+rt_err_t control_motor_speed_control(rt_uint8_t joint_id, float speed_rad_s, float limit_cur);
+rt_err_t control_motor_position_control(rt_uint8_t joint_id, float pos_rad, float limit_spd, rt_bool_t csp_mode);
 rt_err_t control_get_last_ros_command(control_ros_command_t *out);
 
 /* Backward-compatible API */

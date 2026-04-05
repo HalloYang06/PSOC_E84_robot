@@ -12,6 +12,11 @@
 
 #include "drv_can.h"
 #include "CAN_config.h"
+#include "cy_gpio.h"
+#include "cy_sysclk.h"
+#include "cycfg_peripheral_clocks.h"
+#include "cycfg_system.h"
+#include "gpio_pse84_bga_220.h"
 
 #ifdef BSP_USING_CAN
 
@@ -38,6 +43,8 @@ static struct ifx_can_config can_config[] =
 #endif
 
 static struct ifx_can can_obj[sizeof(can_config) / sizeof(can_config[0])] = {0};
+static rt_bool_t g_canfd0_hw_prepared = RT_FALSE;
+static rt_bool_t g_canfd0_mmio_prepared = RT_FALSE;
 
 static const rt_uint8_t can_dlc_to_len_table[16] =
 {
@@ -87,6 +94,89 @@ static rt_uint8_t can_len_to_dlc(rt_uint8_t len, rt_bool_t fd_frame)
 static rt_uint8_t can_dlc_to_len(rt_uint8_t dlc)
 {
     return can_dlc_to_len_table[(dlc < 16U) ? dlc : 15U];
+}
+
+static void ifx_canfd0_prepare_hw(void)
+{
+#ifdef BSP_USING_CANFD0
+    cy_stc_gpio_pin_config_t rx_pin_cfg;
+    cy_stc_gpio_pin_config_t tx_pin_cfg;
+
+    if (g_canfd0_hw_prepared)
+    {
+        return;
+    }
+
+    if (!g_canfd0_mmio_prepared)
+    {
+        rt_kprintf("[drv_can] mmio step1 init hsiom\n");
+        Cy_SysClk_PeriGroupSlaveInit(
+            CY_MMIO_HSIOM_PERI_NR,
+            CY_MMIO_HSIOM_GROUP_NR,
+            CY_MMIO_HSIOM_SLAVE_NR,
+            CY_MMIO_HSIOM_CLK_HF_NR);
+
+        rt_kprintf("[drv_can] mmio step2 init gpio\n");
+        Cy_SysClk_PeriGroupSlaveInit(
+            CY_MMIO_GPIO_PERI_NR,
+            CY_MMIO_GPIO_GROUP_NR,
+            CY_MMIO_GPIO_SLAVE_NR,
+            CY_MMIO_GPIO_CLK_HF_NR);
+
+        rt_kprintf("[drv_can] mmio step3 init canfd0\n");
+        Cy_SysClk_PeriGroupSlaveInit(
+            CY_MMIO_CANFD0_PERI_NR,
+            CY_MMIO_CANFD0_GROUP_NR,
+            CY_MMIO_CANFD0_SLAVE_NR,
+            CY_MMIO_CANFD0_CLK_HF_NR);
+
+        g_canfd0_mmio_prepared = RT_TRUE;
+        rt_kprintf("[drv_can] mmio step4 done\n");
+    }
+
+    rt_kprintf("[drv_can] hw prep step1 assign pclk\n");
+    Cy_SysClk_PeriPclkAssignDivider(PCLK_CANFD0_CLOCK_CAN_EN0, CY_SYSCLK_DIV_8_BIT, 4U);
+    Cy_SysClk_PeriPclkAssignDivider(PCLK_CANFD0_CLOCK_CAN_EN1, CY_SYSCLK_DIV_8_BIT, 4U);
+
+    rt_kprintf("[drv_can] hw prep step2 config p16.0 rx\n");
+    rx_pin_cfg.outVal = 1U;
+    rx_pin_cfg.driveMode = CY_GPIO_DM_HIGHZ;
+    rx_pin_cfg.hsiom = P16_0_CANFD0_TTCAN_RX0;
+    rx_pin_cfg.intEdge = CY_GPIO_INTR_DISABLE;
+    rx_pin_cfg.intMask = 0UL;
+    rx_pin_cfg.vtrip = CY_GPIO_VTRIP_CMOS;
+    rx_pin_cfg.slewRate = CY_GPIO_SLEW_FAST;
+    rx_pin_cfg.driveSel = CY_GPIO_DRIVE_1_2;
+    rx_pin_cfg.vregEn = 0UL;
+    rx_pin_cfg.ibufMode = 0UL;
+    rx_pin_cfg.vtripSel = 0UL;
+    rx_pin_cfg.vrefSel = 0UL;
+    rx_pin_cfg.vohSel = 0UL;
+    rx_pin_cfg.pullUpRes = CY_GPIO_PULLUP_RES_DISABLE;
+    rx_pin_cfg.nonSec = 1UL;
+    Cy_GPIO_Pin_Init(P16_0_PORT, P16_0_PIN, &rx_pin_cfg);
+
+    rt_kprintf("[drv_can] hw prep step3 config p16.1 tx\n");
+    tx_pin_cfg.outVal = 1U;
+    tx_pin_cfg.driveMode = CY_GPIO_DM_STRONG_IN_OFF;
+    tx_pin_cfg.hsiom = P16_1_CANFD0_TTCAN_TX0;
+    tx_pin_cfg.intEdge = CY_GPIO_INTR_DISABLE;
+    tx_pin_cfg.intMask = 0UL;
+    tx_pin_cfg.vtrip = CY_GPIO_VTRIP_CMOS;
+    tx_pin_cfg.slewRate = CY_GPIO_SLEW_FAST;
+    tx_pin_cfg.driveSel = CY_GPIO_DRIVE_1_2;
+    tx_pin_cfg.vregEn = 0UL;
+    tx_pin_cfg.ibufMode = 0UL;
+    tx_pin_cfg.vtripSel = 0UL;
+    tx_pin_cfg.vrefSel = 0UL;
+    tx_pin_cfg.vohSel = 0UL;
+    tx_pin_cfg.pullUpRes = CY_GPIO_PULLUP_RES_DISABLE;
+    tx_pin_cfg.nonSec = 1UL;
+    Cy_GPIO_Pin_Init(P16_1_PORT, P16_1_PIN, &tx_pin_cfg);
+
+    g_canfd0_hw_prepared = RT_TRUE;
+    rt_kprintf("[drv_can] hw prep step4 done\n");
+#endif
 }
 
 static void can_apply_mode(struct ifx_can *can, rt_uint32_t mode)
@@ -193,14 +283,26 @@ static rt_err_t ifx_can_configure(struct rt_can_device *device, struct can_confi
     can = (struct ifx_can *)device->parent.user_data;
     RT_ASSERT(can != RT_NULL);
 
+    ifx_canfd0_prepare_hw();
+    rt_kprintf("[drv_can] configure step1 base=0x%08lx ch=%lu mram=0x%08lx\n",
+               (unsigned long)can->config->can_x,
+               (unsigned long)can->config->channel,
+               (unsigned long)can->config->canfd_config->messageRAMaddress);
+    rt_kprintf("[drv_can] configure step1.1 ctl=0x%08lx status=0x%08lx\n",
+               (unsigned long)CANFD_CTL(can->config->can_x),
+               (unsigned long)CANFD_STATUS(can->config->can_x));
+    rt_kprintf("[drv_can] configure step2 enable\n");
     Cy_CANFD_Enable(can->config->can_x, (1UL << can->config->channel));
+    rt_kprintf("[drv_can] configure step3 init\n");
     result = Cy_CANFD_Init(can->config->can_x, can->config->channel, can->config->canfd_config, &can->context);
+    rt_kprintf("[drv_can] configure step4 init ret=%d\n", result);
     if (result != CY_CANFD_SUCCESS)
     {
         return -RT_ERROR;
     }
 
     can_apply_mode(can, cfg->mode);
+    rt_kprintf("[drv_can] configure step5 mode=%lu\n", (unsigned long)cfg->mode);
     can->irq_mask = 0U;
     can->tx_pending_mask = 0U;
 
@@ -221,6 +323,7 @@ static rt_err_t ifx_can_control(struct rt_can_device *device, int cmd, void *arg
     {
     case RT_DEVICE_CTRL_SET_INT:
         flag = (rt_ubase_t)arg;
+        rt_kprintf("[drv_can] set_int step1 flag=0x%08lx\n", (unsigned long)flag);
 
         if ((flag & RT_DEVICE_FLAG_INT_RX) != 0U)
         {
@@ -235,13 +338,22 @@ static rt_err_t ifx_can_control(struct rt_can_device *device, int cmd, void *arg
 
         if ((flag & RT_DEVICE_CAN_INT_ERR) != 0U)
         {
-            can->irq_mask |= (CY_CANFD_WARNING_STATUS | CY_CANFD_ERROR_PASSIVE | CY_CANFD_BUS_OFF_STATUS);
+            rt_kprintf("[drv_can] set_int skip err mask during bring-up\n");
         }
 
+        rt_kprintf("[drv_can] set_int step2 mask=0x%08lx\n", (unsigned long)can->irq_mask);
+        Cy_CANFD_ClearInterrupt(can->config->can_x,
+                                can->config->channel,
+                                0xFFFFFFFFUL);
+        NVIC_ClearPendingIRQ(can->config->intrSrc);
         Cy_CANFD_SetInterruptMask(can->config->can_x, can->config->channel, can->irq_mask);
+        rt_kprintf("[drv_can] set_int step3 line enable\n");
         Cy_CANFD_EnableInterruptLine(can->config->can_x, can->config->channel, CY_CANFD_INTERRUPT_LINE_0_EN);
+        rt_kprintf("[drv_can] set_int step4 sysint init irqn=%ld\n", (long)can->config->intrSrc);
         Cy_SysInt_Init(can->config->irq_cfg, can->config->userIsr);
+        rt_kprintf("[drv_can] set_int step5 nvic enable\n");
         NVIC_EnableIRQ(can->config->intrSrc);
+        rt_kprintf("[drv_can] set_int step6 done\n");
         return RT_EOK;
 
     case RT_DEVICE_CTRL_CLR_INT:

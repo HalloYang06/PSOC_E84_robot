@@ -408,18 +408,31 @@ static void m33_init_framework(void)
 {
     rt_err_t bt_err;
 
+    rt_kprintf("[m33] init step1 m33_m55_comm\n");
     m33_m55_comm_init();
+    rt_kprintf("[m33] init step2 bt_board_bridge\n");
     bt_board_bridge_init();
+    rt_kprintf("[m33] init step3 app_ble_service_init\n");
     app_ble_service_init();
+    rt_kprintf("[m33] init step4 app_ble_service_start\n");
     app_ble_service_start();
+    rt_kprintf("[m33] init step5 sensor_manager_init\n");
     sensor_manager_init();
+    rt_kprintf("[m33] init step6 input_buffer_init\n");
     input_buffer_init();
+    rt_kprintf("[m33] init step7 control_manager_init\n");
     control_manager_init();
+    rt_kprintf("[m33] init step8 can_driver_init\n");
     can_driver_init();
+    rt_kprintf("[m33] init step9 safety_system_init\n");
     safety_system_init();
+    rt_kprintf("[m33] init step10 http_server_init\n");
     http_server_init();
+    rt_kprintf("[m33] init step11 http_server_start\n");
     http_server_start();
+    rt_kprintf("[m33] init step12 openclaw_integration_init\n");
     openclaw_integration_init();
+    rt_kprintf("[m33] init step13 bt_hci_transport_init\n");
     bt_err = bt_hci_transport_init();
     rt_kprintf("[m33] bt_hci_transport_init ret=%d state=%d\n",
                bt_err,
