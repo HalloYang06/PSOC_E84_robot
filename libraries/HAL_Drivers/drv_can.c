@@ -24,6 +24,18 @@
 #define IFX_CAN_FORCE_CLASSIC 1
 #endif
 
+#ifndef IFX_CAN_TX_WAIT_MS
+#define IFX_CAN_TX_WAIT_MS 20U
+#endif
+
+#ifndef IFX_CAN_RX_DRAIN_LIMIT
+#define IFX_CAN_RX_DRAIN_LIMIT 16U
+#endif
+
+#ifndef IFX_CAN_ENABLE_NVIC
+#define IFX_CAN_ENABLE_NVIC 0
+#endif
+
 enum
 {
 #ifdef BSP_USING_CANFD0
@@ -45,6 +57,8 @@ static struct ifx_can_config can_config[] =
 static struct ifx_can can_obj[sizeof(can_config) / sizeof(can_config[0])] = {0};
 static rt_bool_t g_canfd0_hw_prepared = RT_FALSE;
 static rt_bool_t g_canfd0_mmio_prepared = RT_FALSE;
+static rt_bool_t g_can_direct_ready = RT_FALSE;
+static rt_uint8_t g_can_direct_tx_index = 0U;
 
 static const rt_uint8_t can_dlc_to_len_table[16] =
 {
@@ -137,6 +151,10 @@ static void ifx_canfd0_prepare_hw(void)
     rt_kprintf("[drv_can] hw prep step1 assign pclk\n");
     Cy_SysClk_PeriPclkAssignDivider(PCLK_CANFD0_CLOCK_CAN_EN0, CY_SYSCLK_DIV_8_BIT, 4U);
     Cy_SysClk_PeriPclkAssignDivider(PCLK_CANFD0_CLOCK_CAN_EN1, CY_SYSCLK_DIV_8_BIT, 4U);
+    Cy_SysClk_PeriPclkSetDivider(PCLK_CANFD0_CLOCK_CAN_EN0, CY_SYSCLK_DIV_8_BIT, 4U, 4U);
+    Cy_SysClk_PeriPclkSetDivider(PCLK_CANFD0_CLOCK_CAN_EN1, CY_SYSCLK_DIV_8_BIT, 4U, 4U);
+    Cy_SysClk_PeriPclkEnableDivider(PCLK_CANFD0_CLOCK_CAN_EN0, CY_SYSCLK_DIV_8_BIT, 4U);
+    Cy_SysClk_PeriPclkEnableDivider(PCLK_CANFD0_CLOCK_CAN_EN1, CY_SYSCLK_DIV_8_BIT, 4U);
 
     rt_kprintf("[drv_can] hw prep step2 config p16.0 rx\n");
     rx_pin_cfg.outVal = 1U;
@@ -230,6 +248,58 @@ static void can_report_tx_done(struct ifx_can *can)
     }
 }
 
+static void can_wait_tx_done_or_fail(struct ifx_can *can, rt_uint8_t idx)
+{
+    rt_uint32_t mask = (1UL << idx);
+    rt_uint32_t waited_ms;
+
+    for (waited_ms = 0U; waited_ms <= IFX_CAN_TX_WAIT_MS; waited_ms++)
+    {
+        can_report_tx_done(can);
+        if ((can->tx_pending_mask & mask) == 0U)
+        {
+            return;
+        }
+
+        if (waited_ms < IFX_CAN_TX_WAIT_MS)
+        {
+            rt_thread_mdelay(1);
+        }
+    }
+
+    can->tx_pending_mask &= ~mask;
+    rt_kprintf("[drv_can] tx timeout box=%u\n", (unsigned int)idx);
+    rt_hw_can_isr(&can->device, RT_CAN_EVENT_TX_FAIL | ((rt_uint32_t)idx << 8));
+}
+
+static void can_report_rx_fifo(struct ifx_can *can, rt_uint32_t fifo)
+{
+    rt_uint32_t count;
+
+    for (count = 0U; count < IFX_CAN_RX_DRAIN_LIMIT; count++)
+    {
+        rt_uint32_t fill;
+
+        if (fifo == CY_CANFD_RX_FIFO0)
+        {
+            fill = _FLD2VAL(CANFD_CH_M_TTCAN_RXF0S_F0FL,
+                            CANFD_RXF0S(can->config->can_x, can->config->channel));
+        }
+        else
+        {
+            fill = _FLD2VAL(CANFD_CH_M_TTCAN_RXF1S_F1FL,
+                            CANFD_RXF1S(can->config->can_x, can->config->channel));
+        }
+
+        if (fill == 0U)
+        {
+            break;
+        }
+
+        rt_hw_can_isr(&can->device, RT_CAN_EVENT_RX_IND | (fifo << 8));
+    }
+}
+
 static void can_irq_handler(struct ifx_can *can)
 {
     rt_uint32_t status;
@@ -244,12 +314,12 @@ static void can_irq_handler(struct ifx_can *can)
 
     if ((status & CY_CANFD_RX_FIFO_0_NEW_MESSAGE) != 0U)
     {
-        rt_hw_can_isr(&can->device, RT_CAN_EVENT_RX_IND | (CY_CANFD_RX_FIFO0 << 8));
+        can_report_rx_fifo(can, CY_CANFD_RX_FIFO0);
     }
 
     if ((status & CY_CANFD_RX_FIFO_1_NEW_MESSAGE) != 0U)
     {
-        rt_hw_can_isr(&can->device, RT_CAN_EVENT_RX_IND | (CY_CANFD_RX_FIFO1 << 8));
+        can_report_rx_fifo(can, CY_CANFD_RX_FIFO1);
     }
 
     if ((status & (CY_CANFD_RX_FIFO_0_MSG_LOST | CY_CANFD_RX_FIFO_1_MSG_LOST)) != 0U)
@@ -346,6 +416,7 @@ static rt_err_t ifx_can_control(struct rt_can_device *device, int cmd, void *arg
                                 can->config->channel,
                                 0xFFFFFFFFUL);
         NVIC_ClearPendingIRQ(can->config->intrSrc);
+#if IFX_CAN_ENABLE_NVIC
         Cy_CANFD_SetInterruptMask(can->config->can_x, can->config->channel, can->irq_mask);
         rt_kprintf("[drv_can] set_int step3 line enable\n");
         Cy_CANFD_EnableInterruptLine(can->config->can_x, can->config->channel, CY_CANFD_INTERRUPT_LINE_0_EN);
@@ -354,6 +425,12 @@ static rt_err_t ifx_can_control(struct rt_can_device *device, int cmd, void *arg
         rt_kprintf("[drv_can] set_int step5 nvic enable\n");
         NVIC_EnableIRQ(can->config->intrSrc);
         rt_kprintf("[drv_can] set_int step6 done\n");
+#else
+        Cy_CANFD_SetInterruptMask(can->config->can_x, can->config->channel, 0U);
+        Cy_CANFD_EnableInterruptLine(can->config->can_x, can->config->channel, 0U);
+        NVIC_DisableIRQ(can->config->intrSrc);
+        rt_kprintf("[drv_can] set_int polling mode nvic disabled\n");
+#endif
         return RT_EOK;
 
     case RT_DEVICE_CTRL_CLR_INT:
@@ -383,6 +460,12 @@ static rt_err_t ifx_can_control(struct rt_can_device *device, int cmd, void *arg
         return RT_EOK;
 
     case RT_CAN_CMD_SET_FILTER:
+        return RT_EOK;
+
+    case IFX_CAN_CMD_POLL_RX:
+        can_report_rx_fifo(can, CY_CANFD_RX_FIFO0);
+        can_report_rx_fifo(can, CY_CANFD_RX_FIFO1);
+        can_report_tx_done(can);
         return RT_EOK;
 
     default:
@@ -457,6 +540,7 @@ static rt_ssize_t ifx_can_sendmsg(struct rt_can_device *device, const void *buf,
     if (boxno < 32U)
     {
         can->tx_pending_mask |= (1UL << boxno);
+        can_wait_tx_done_or_fail(can, (rt_uint8_t)boxno);
     }
 
     return RT_EOK;
@@ -517,9 +601,208 @@ static rt_ssize_t ifx_can_recvmsg(struct rt_can_device *device, void *buf, rt_ui
         rt_memcpy(msg->data, can->rx_data, len);
     }
 
-    Cy_CANFD_AckRxFifo(can->config->can_x, can->config->channel, boxno);
-
     return RT_EOK;
+}
+
+rt_err_t ifx_can_direct_init(void)
+{
+#ifdef BSP_USING_CANFD0
+    cy_en_canfd_status_t result;
+    struct ifx_can *can = &can_obj[CANFD0_INDEX];
+
+    can->config = &can_config[CANFD0_INDEX];
+
+    ifx_canfd0_prepare_hw();
+    Cy_CANFD_Enable(can->config->can_x, (1UL << can->config->channel));
+    result = Cy_CANFD_Init(can->config->can_x,
+                           can->config->channel,
+                           can->config->canfd_config,
+                           &can->context);
+    if (result != CY_CANFD_SUCCESS)
+    {
+        rt_kprintf("[drv_can] direct init failed ret=%d\n", result);
+        g_can_direct_ready = RT_FALSE;
+        return -RT_ERROR;
+    }
+
+    (void)Cy_CANFD_ClearInterrupt(can->config->can_x, can->config->channel, 0xFFFFFFFFUL);
+    Cy_CANFD_SetInterruptMask(can->config->can_x, can->config->channel, 0U);
+    Cy_CANFD_EnableInterruptLine(can->config->can_x, can->config->channel, 0U);
+    NVIC_ClearPendingIRQ(can->config->intrSrc);
+    NVIC_DisableIRQ(can->config->intrSrc);
+
+    can_apply_mode(can, RT_CAN_MODE_NORMAL);
+    can->irq_mask = 0U;
+    can->tx_pending_mask = 0U;
+    g_can_direct_tx_index = 0U;
+    g_can_direct_ready = RT_TRUE;
+
+    rt_kprintf("[drv_can] direct ready pclk=%lu nbtp=0x%08lx rxf0s=0x%08lx\n",
+               (unsigned long)Cy_SysClk_PeriPclkGetFrequency(PCLK_CANFD0_CLOCK_CAN_EN0,
+                                                              CY_SYSCLK_DIV_8_BIT,
+                                                              4U),
+               (unsigned long)CANFD_NBTP(can->config->can_x, can->config->channel),
+               (unsigned long)CANFD_RXF0S(can->config->can_x, can->config->channel));
+    return RT_EOK;
+#else
+    return -RT_ERROR;
+#endif
+}
+
+rt_err_t ifx_can_direct_send(const struct rt_can_msg *msg)
+{
+#ifdef BSP_USING_CANFD0
+    cy_en_canfd_status_t result;
+    struct ifx_can *can = &can_obj[CANFD0_INDEX];
+    rt_uint8_t dlc;
+    rt_uint8_t len;
+    rt_uint8_t tx_index;
+    rt_uint32_t waited_ms;
+    rt_bool_t is_fd;
+
+    if ((msg == RT_NULL) || (!g_can_direct_ready))
+    {
+        return -RT_ERROR;
+    }
+
+#if defined(RT_CAN_USING_CANFD)
+    is_fd = IFX_CAN_FORCE_CLASSIC ? RT_FALSE : ((msg->fd_frame != 0U) ? RT_TRUE : RT_FALSE);
+#else
+    is_fd = RT_FALSE;
+#endif
+
+    dlc = can_len_to_dlc((rt_uint8_t)msg->len, is_fd);
+    len = can_dlc_to_len(dlc);
+
+    can->tx_t0.id = msg->id;
+    can->tx_t0.rtr = (msg->rtr != 0U) ? CY_CANFD_RTR_REMOTE_FRAME : CY_CANFD_RTR_DATA_FRAME;
+    can->tx_t0.xtd = (msg->ide != 0U) ? CY_CANFD_XTD_EXTENDED_ID : CY_CANFD_XTD_STANDARD_ID;
+    can->tx_t0.esi = CY_CANFD_ESI_ERROR_ACTIVE;
+
+    can->tx_t1.dlc = dlc;
+#if IFX_CAN_FORCE_CLASSIC
+    can->tx_t1.brs = false;
+    can->tx_t1.fdf = CY_CANFD_FDF_STANDARD_FRAME;
+#elif defined(RT_CAN_USING_CANFD)
+    can->tx_t1.brs = (msg->brs != 0U) ? true : false;
+    can->tx_t1.fdf = is_fd ? CY_CANFD_FDF_CAN_FD_FRAME : CY_CANFD_FDF_STANDARD_FRAME;
+#else
+    can->tx_t1.brs = false;
+    can->tx_t1.fdf = CY_CANFD_FDF_STANDARD_FRAME;
+#endif
+    can->tx_t1.efc = false;
+    can->tx_t1.mm = 0U;
+
+    rt_memset(can->tx_data, 0, sizeof(can->tx_data));
+    if ((msg->rtr == RT_CAN_DTR) && (len > 0U))
+    {
+        rt_memcpy(can->tx_data, msg->data, len);
+    }
+
+    can->tx_buffer.t0_f = &can->tx_t0;
+    can->tx_buffer.t1_f = &can->tx_t1;
+    can->tx_buffer.data_area_f = can->tx_data;
+
+    tx_index = g_can_direct_tx_index++ % BSP_CANFD0_TX_BUFFER_COUNT;
+    result = Cy_CANFD_UpdateAndTransmitMsgBuffer(can->config->can_x,
+                                                 can->config->channel,
+                                                 &can->tx_buffer,
+                                                 tx_index,
+                                                 &can->context);
+    if (result != CY_CANFD_SUCCESS)
+    {
+        rt_kprintf("[drv_can] direct send failed box=%u ret=%d\n",
+                   (unsigned int)tx_index,
+                   result);
+        return -RT_ERROR;
+    }
+
+    for (waited_ms = 0U; waited_ms <= IFX_CAN_TX_WAIT_MS; waited_ms++)
+    {
+        if (Cy_CANFD_GetTxBufferStatus(can->config->can_x,
+                                       can->config->channel,
+                                       tx_index) != CY_CANFD_TX_BUFFER_PENDING)
+        {
+            return RT_EOK;
+        }
+
+        if (waited_ms < IFX_CAN_TX_WAIT_MS)
+        {
+            rt_thread_mdelay(1);
+        }
+    }
+
+    rt_kprintf("[drv_can] direct tx pending box=%u\n", (unsigned int)tx_index);
+    return -RT_ETIMEOUT;
+#else
+    return -RT_ERROR;
+#endif
+}
+
+rt_ssize_t ifx_can_direct_recv(struct rt_can_msg *msg)
+{
+#ifdef BSP_USING_CANFD0
+    cy_en_canfd_status_t result;
+    struct ifx_can *can = &can_obj[CANFD0_INDEX];
+    rt_uint32_t f0s;
+    rt_uint32_t fill;
+    rt_uint8_t dlc;
+    rt_uint8_t len;
+
+    if ((msg == RT_NULL) || (!g_can_direct_ready))
+    {
+        return -RT_ERROR;
+    }
+
+    f0s = CANFD_RXF0S(can->config->can_x, can->config->channel);
+    fill = _FLD2VAL(CANFD_CH_M_TTCAN_RXF0S_F0FL, f0s);
+    if (fill == 0U)
+    {
+        return 0;
+    }
+
+    can->rx_buffer.r0_f = &can->rx_r0;
+    can->rx_buffer.r1_f = &can->rx_r1;
+    can->rx_buffer.data_area_f = can->rx_data;
+    rt_memset(can->rx_data, 0, sizeof(can->rx_data));
+    rt_memset(msg, 0, sizeof(*msg));
+
+    result = Cy_CANFD_ExtractMsgFromRXBuffer(can->config->can_x,
+                                             can->config->channel,
+                                             true,
+                                             CY_CANFD_RX_FIFO0,
+                                             &can->rx_buffer,
+                                             &can->context);
+    if (result != CY_CANFD_SUCCESS)
+    {
+        rt_kprintf("[drv_can] direct recv failed ret=%d f0s=0x%08lx\n",
+                   result,
+                   (unsigned long)f0s);
+        return -RT_ERROR;
+    }
+
+    msg->id = can->rx_r0.id;
+    msg->ide = (can->rx_r0.xtd == CY_CANFD_XTD_EXTENDED_ID) ? 1U : 0U;
+    msg->rtr = (can->rx_r0.rtr == CY_CANFD_RTR_REMOTE_FRAME) ? 1U : 0U;
+    msg->hdr_index = (rt_int8_t)can->rx_r1.fidx;
+    msg->rxfifo = CY_CANFD_RX_FIFO0;
+
+    dlc = (rt_uint8_t)can->rx_r1.dlc;
+    len = can_dlc_to_len(dlc);
+    msg->len = len;
+#if defined(RT_CAN_USING_CANFD)
+    msg->fd_frame = 0U;
+    msg->brs = 0U;
+#endif
+    if (len > 0U)
+    {
+        rt_memcpy(msg->data, can->rx_data, len);
+    }
+
+    return (rt_ssize_t)sizeof(*msg);
+#else
+    return -RT_ERROR;
+#endif
 }
 
 static const struct rt_can_ops ifx_can_ops =
@@ -545,6 +828,11 @@ int rt_hw_can_init(void)
     config.baud_rate_fd = CAN1MBaud;
 #endif
     config.baud_rate = CAN1MBaud;
+    config.ticks = rt_tick_from_millisecond(50);
+    if (config.ticks == 0U)
+    {
+        config.ticks = 1U;
+    }
 #ifdef RT_CAN_USING_HDR
     config.maxhdr = 14;
 #endif

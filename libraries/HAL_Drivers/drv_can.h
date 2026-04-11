@@ -18,6 +18,8 @@
 
 #define canfd_isr_callback(name) name##_isr_callback
 
+#define IFX_CAN_CMD_POLL_RX 0x1001
+
 struct ifx_can_config
 {
     const char *name;
@@ -53,5 +55,8 @@ struct ifx_can
 };
 
 int rt_hw_can_init(void);
+rt_err_t ifx_can_direct_init(void);
+rt_err_t ifx_can_direct_send(const struct rt_can_msg *msg);
+rt_ssize_t ifx_can_direct_recv(struct rt_can_msg *msg);
 
 #endif /* __DRV_CAN_H__ */

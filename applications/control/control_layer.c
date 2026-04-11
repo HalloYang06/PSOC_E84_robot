@@ -4,11 +4,16 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "drv_can.h"
 #include "control_layer.h"
 #include "control_layer_cfg.h"
 
 #ifndef RT_PI
 #define RT_PI 3.14159265358979323846f
+#endif
+
+#ifndef CONTROL_CAN_USE_DIRECT_PDL
+#define CONTROL_CAN_USE_DIRECT_PDL 1
 #endif
 
 #if (CONTROL_MOTOR_JOINT_COUNT < 1U) || (CONTROL_MOTOR_JOINT_COUNT > 5U)
@@ -24,6 +29,9 @@
 #define MOTOR_PRIVATE_TYPE_PARAM_READ      0x11U
 #define MOTOR_PRIVATE_TYPE_PARAM_WRITE     0x12U
 #define MOTOR_PRIVATE_TYPE_ACTIVE_REPORT   0x18U
+#define MOTOR_PRIVATE_GET_ID_REPLY         0xFEU
+#define MOTOR_PRIVATE_BROADCAST_ID         0x7FU
+#define CONTROL_CAN_RX_DRAIN_LIMIT         16U
 
 #define MOTOR_PARAM_INDEX_RUN_MODE         0x7005U
 #define MOTOR_PARAM_INDEX_SPD_REF          0x700AU
@@ -32,6 +40,9 @@
 #define MOTOR_PARAM_INDEX_LIMIT_CUR        0x7018U
 #define MOTOR_PARAM_INDEX_MECH_POS         0x7019U
 #define MOTOR_PARAM_INDEX_MECH_VEL         0x701BU
+#define MOTOR_PARAM_INDEX_SPEED_ACC        0x7022U
+#define MOTOR_PARAM_INDEX_PP_VEL_MAX       0x7024U
+#define MOTOR_PARAM_INDEX_PP_ACC_SET       0x7025U
 
 static rt_device_t s_can_dev = RT_NULL;
 static rt_thread_t s_can_rx_thread = RT_NULL;
@@ -50,6 +61,21 @@ static control_ros_command_t s_last_ros_cmd;
 static control_motor_probe_report_t s_last_motor_probe;
 static control_motor_param_report_t s_last_motor_param;
 static control_motor_feedback_t s_motor_feedback[CONTROL_MOTOR_JOINT_COUNT];
+static rt_bool_t s_motor_probe_pending = RT_FALSE;
+static rt_uint8_t s_motor_probe_expected_id = 0U;
+
+typedef struct
+{
+    rt_uint8_t joint_id;
+    float speed_rad_s;
+    float limit_cur;
+    rt_uint32_t duration_ms;
+    rt_uint32_t period_ms;
+    volatile rt_bool_t stop_requested;
+} control_speed_hold_ctx_t;
+
+static rt_thread_t s_speed_hold_thread = RT_NULL;
+static control_speed_hold_ctx_t s_speed_hold_ctx;
 
 static const rt_uint8_t s_joint_motor_map[5] =
 {
@@ -145,6 +171,18 @@ static rt_uint32_t ctrl_float_to_uint(float x, float x_min, float x_max, int bit
     return (rt_uint32_t)(normalized + 0.5f);
 }
 
+static rt_int32_t ctrl_float_to_scaled_i32(float value, float scale)
+{
+    float scaled = value * scale;
+
+    if (scaled >= 0.0f)
+    {
+        return (rt_int32_t)(scaled + 0.5f);
+    }
+
+    return (rt_int32_t)(scaled - 0.5f);
+}
+
 static rt_uint32_t ctrl_motor_private_ext_id(rt_uint8_t comm_type, rt_uint16_t data2, rt_uint8_t data1)
 {
     return (((rt_uint32_t)comm_type & 0x1FU) << 24) |
@@ -174,8 +212,13 @@ static rt_err_t ctrl_can_send(rt_uint32_t id, rt_uint8_t ide, const rt_uint8_t *
 #endif
     rt_memcpy(msg.data, data, len);
 
+#if CONTROL_CAN_USE_DIRECT_PDL
+    written = ifx_can_direct_send(&msg);
+    return (written == RT_EOK) ? RT_EOK : -RT_ERROR;
+#else
     written = rt_device_write(s_can_dev, 0, &msg, sizeof(msg));
     return (written == sizeof(msg)) ? RT_EOK : -RT_ERROR;
+#endif
 }
 
 static void ctrl_update_emg_report(const struct rt_can_msg *msg)
@@ -332,17 +375,17 @@ static void ctrl_update_motor_param_private(const struct rt_can_msg *msg)
     }
     else
     {
-        rt_kprintf("[control] motor%u param 0x%04X value=%.4f\n",
+        rt_kprintf("[control] motor%u param 0x%04X value_x10000=%d\n",
                    (unsigned int)motor_id,
                    (unsigned int)index,
-                   (double)param.value_f32);
+                   (int)ctrl_float_to_scaled_i32(param.value_f32, 10000.0f));
     }
 }
 
 static void ctrl_update_motor_probe_private(const struct rt_can_msg *msg)
 {
     rt_uint8_t comm_type;
-    rt_uint8_t host_id;
+    rt_uint8_t reply_id;
     rt_uint16_t data2;
     control_motor_probe_report_t probe;
     rt_uint8_t i;
@@ -358,8 +401,8 @@ static void ctrl_update_motor_probe_private(const struct rt_can_msg *msg)
         return;
     }
 
-    host_id = (rt_uint8_t)(msg->id & 0xFFU);
-    if (host_id != (rt_uint8_t)CONTROL_MOTOR_MASTER_ID)
+    reply_id = (rt_uint8_t)(msg->id & 0xFFU);
+    if (reply_id != MOTOR_PRIVATE_GET_ID_REPLY)
     {
         return;
     }
@@ -377,7 +420,21 @@ static void ctrl_update_motor_probe_private(const struct rt_can_msg *msg)
     }
 
     rt_mutex_take(&s_data_lock, RT_WAITING_FOREVER);
+    if (!s_motor_probe_pending)
+    {
+        rt_mutex_release(&s_data_lock);
+        return;
+    }
+
+    if ((s_motor_probe_expected_id != MOTOR_PRIVATE_BROADCAST_ID) &&
+        (probe.motor_id != s_motor_probe_expected_id))
+    {
+        rt_mutex_release(&s_data_lock);
+        return;
+    }
+
     s_last_motor_probe = probe;
+    s_motor_probe_pending = RT_FALSE;
     rt_mutex_release(&s_data_lock);
 
     rt_kprintf("[control] probe reply motor=0x%02X uid=0x%08lx%08lx\n",
@@ -496,6 +553,29 @@ static void ctrl_handle_can_message(const struct rt_can_msg *msg)
     }
 }
 
+static void ctrl_poll_can_messages(void)
+{
+    struct rt_can_msg msg;
+    rt_uint8_t drained = 0U;
+
+#if CONTROL_CAN_USE_DIRECT_PDL
+    while ((drained < CONTROL_CAN_RX_DRAIN_LIMIT) &&
+           (ifx_can_direct_recv(&msg) == (rt_ssize_t)sizeof(msg)))
+    {
+        ctrl_handle_can_message(&msg);
+        drained++;
+    }
+#else
+    while ((drained < CONTROL_CAN_RX_DRAIN_LIMIT) &&
+           (rt_device_read(s_can_dev, 0, &msg, sizeof(msg)) == sizeof(msg)))
+    {
+        ctrl_handle_can_message(&msg);
+        drained++;
+    }
+#endif
+}
+
+#if !CONTROL_CAN_USE_DIRECT_PDL
 static rt_err_t ctrl_can_rx_indicate(rt_device_t dev, rt_size_t size)
 {
     RT_UNUSED(dev);
@@ -504,24 +584,23 @@ static rt_err_t ctrl_can_rx_indicate(rt_device_t dev, rt_size_t size)
     rt_sem_release(&s_can_rx_sem);
     return RT_EOK;
 }
+#endif
 
 static void ctrl_can_rx_entry(void *parameter)
 {
-    struct rt_can_msg msg;
-
     RT_UNUSED(parameter);
 
     while (1)
     {
-        if (rt_sem_take(&s_can_rx_sem, RT_WAITING_FOREVER) != RT_EOK)
-        {
-            continue;
-        }
+#if CONTROL_CAN_USE_DIRECT_PDL
+        ctrl_poll_can_messages();
+        rt_thread_mdelay(10);
+#else
+        rt_device_control(s_can_dev, IFX_CAN_CMD_POLL_RX, RT_NULL);
+        (void)rt_sem_take(&s_can_rx_sem, rt_tick_from_millisecond(10));
 
-        while (rt_device_read(s_can_dev, 0, &msg, sizeof(msg)) == sizeof(msg))
-        {
-            ctrl_handle_can_message(&msg);
-        }
+        ctrl_poll_can_messages();
+#endif
     }
 }
 
@@ -594,7 +673,9 @@ static void ctrl_ros_cmd_entry(void *parameter)
 int control_layer_init(const char *can_name)
 {
     rt_err_t result;
+#if !CONTROL_CAN_USE_DIRECT_PDL
     rt_uint16_t open_flags;
+#endif
     const char *dev_name = can_name;
 
     if (s_is_inited)
@@ -612,8 +693,12 @@ int control_layer_init(const char *can_name)
     s_can_dev = rt_device_find(dev_name);
     if (s_can_dev == RT_NULL)
     {
+#if CONTROL_CAN_USE_DIRECT_PDL
+        rt_kprintf("[control] can device %s not found, continue direct pdl\n", dev_name);
+#else
         rt_kprintf("[control] can device %s not found\n", dev_name);
         return -RT_ERROR;
+#endif
     }
 
     rt_kprintf("[control] init step2 device found\n");
@@ -650,7 +735,22 @@ int control_layer_init(const char *can_name)
 
     rt_kprintf("[control] init step5 mq ok\n");
 
-    open_flags = (rt_uint16_t)(RT_DEVICE_FLAG_RDWR | RT_DEVICE_FLAG_INT_RX);
+#if CONTROL_CAN_USE_DIRECT_PDL
+    rt_kprintf("[control] init step6 direct pdl can init\n");
+    result = ifx_can_direct_init();
+    if (result != RT_EOK)
+    {
+        rt_mq_detach(&s_ros_cmd_mq);
+        rt_mutex_detach(&s_data_lock);
+        rt_sem_detach(&s_can_rx_sem);
+        s_can_dev = RT_NULL;
+        return result;
+    }
+
+    rt_kprintf("[control] init step7 direct open ret=%d\n", result);
+    rt_kprintf("[control] init step8 direct rx poll mode\n");
+#else
+    open_flags = (rt_uint16_t)(RT_DEVICE_FLAG_RDWR | RT_DEVICE_FLAG_INT_RX | RT_DEVICE_FLAG_INT_TX);
     rt_kprintf("[control] init step6 open can flags=0x%04X\n", open_flags);
     result = rt_device_open(s_can_dev, open_flags);
     if ((result != RT_EOK) && (result != -RT_EBUSY))
@@ -665,6 +765,7 @@ int control_layer_init(const char *can_name)
     rt_kprintf("[control] init step7 open ret=%d\n", result);
     rt_device_set_rx_indicate(s_can_dev, ctrl_can_rx_indicate);
     rt_kprintf("[control] init step8 rx indicate ok\n");
+#endif
 
     s_can_rx_thread = rt_thread_create("ctrl_can",
                                        ctrl_can_rx_entry,
@@ -937,16 +1038,31 @@ rt_err_t control_motor_probe_id(rt_uint8_t motor_id)
 {
     rt_uint8_t payload[8] = {0};
     rt_uint32_t ext_id;
+    rt_err_t ret;
 
     if (!s_is_inited)
     {
         return -RT_ERROR;
     }
 
+    rt_mutex_take(&s_data_lock, RT_WAITING_FOREVER);
+    s_last_motor_probe.valid = RT_FALSE;
+    s_motor_probe_expected_id = motor_id;
+    s_motor_probe_pending = RT_TRUE;
+    rt_mutex_release(&s_data_lock);
+
     ext_id = ctrl_motor_private_ext_id(MOTOR_PRIVATE_TYPE_GET_ID,
                                        (rt_uint16_t)CONTROL_MOTOR_MASTER_ID,
                                        motor_id);
-    return ctrl_can_send(ext_id, RT_CAN_EXTID, payload, sizeof(payload));
+    ret = ctrl_can_send(ext_id, RT_CAN_EXTID, payload, sizeof(payload));
+    if (ret != RT_EOK)
+    {
+        rt_mutex_take(&s_data_lock, RT_WAITING_FOREVER);
+        s_motor_probe_pending = RT_FALSE;
+        rt_mutex_release(&s_data_lock);
+    }
+
+    return ret;
 }
 
 rt_err_t control_get_last_motor_probe(control_motor_probe_report_t *out)
@@ -1044,13 +1160,31 @@ rt_err_t control_motor_speed_control(rt_uint8_t joint_id, float speed_rad_s, flo
         return ret;
     }
 
-    (void)control_motor_enable(joint_id);
+    rt_thread_mdelay(2);
+    ret = control_motor_enable(joint_id);
+    if (ret != RT_EOK)
+    {
+        return ret;
+    }
+
+    rt_thread_mdelay(2);
     ret = control_motor_write_parameter(joint_id, MOTOR_PARAM_INDEX_LIMIT_CUR, limit_cur, RT_FALSE);
     if (ret != RT_EOK)
     {
         return ret;
     }
 
+    rt_thread_mdelay(1);
+    ret = control_motor_write_parameter(joint_id,
+                                        MOTOR_PARAM_INDEX_SPEED_ACC,
+                                        CONTROL_MOTOR_DEFAULT_SPEED_ACC_RAD_S2,
+                                        RT_FALSE);
+    if (ret != RT_EOK)
+    {
+        return ret;
+    }
+
+    rt_thread_mdelay(1);
     return control_motor_write_parameter(joint_id, MOTOR_PARAM_INDEX_SPD_REF, speed_rad_s, RT_FALSE);
 }
 
@@ -1065,14 +1199,87 @@ rt_err_t control_motor_position_control(rt_uint8_t joint_id, float pos_rad, floa
         return ret;
     }
 
-    (void)control_motor_enable(joint_id);
-    ret = control_motor_write_parameter(joint_id, MOTOR_PARAM_INDEX_LIMIT_SPD, limit_spd, RT_FALSE);
+    rt_thread_mdelay(2);
+    ret = control_motor_enable(joint_id);
     if (ret != RT_EOK)
     {
         return ret;
     }
 
+    rt_thread_mdelay(2);
+    if (csp_mode)
+    {
+        ret = control_motor_write_parameter(joint_id, MOTOR_PARAM_INDEX_LIMIT_SPD, limit_spd, RT_FALSE);
+        if (ret != RT_EOK)
+        {
+            return ret;
+        }
+    }
+    else
+    {
+        ret = control_motor_write_parameter(joint_id, MOTOR_PARAM_INDEX_PP_VEL_MAX, limit_spd, RT_FALSE);
+        if (ret != RT_EOK)
+        {
+            return ret;
+        }
+
+        rt_thread_mdelay(1);
+        ret = control_motor_write_parameter(joint_id,
+                                            MOTOR_PARAM_INDEX_PP_ACC_SET,
+                                            CONTROL_MOTOR_DEFAULT_POS_ACC_RAD_S2,
+                                            RT_FALSE);
+        if (ret != RT_EOK)
+        {
+            return ret;
+        }
+    }
+
+    rt_thread_mdelay(1);
     return control_motor_write_parameter(joint_id, MOTOR_PARAM_INDEX_LOC_REF, pos_rad, RT_FALSE);
+}
+
+static void ctrl_speed_hold_entry(void *parameter)
+{
+    control_speed_hold_ctx_t *ctx = (control_speed_hold_ctx_t *)parameter;
+    rt_uint32_t elapsed_ms = 0U;
+    rt_err_t ret;
+
+    ret = control_motor_speed_control(ctx->joint_id, ctx->speed_rad_s, ctx->limit_cur);
+    if (ret != RT_EOK)
+    {
+        rt_kprintf("[control] speed_hold init failed ret=%d\n", ret);
+        goto done;
+    }
+
+    while (!ctx->stop_requested && (elapsed_ms < ctx->duration_ms))
+    {
+        rt_thread_mdelay(ctx->period_ms);
+        elapsed_ms += ctx->period_ms;
+
+        if (ctx->stop_requested)
+        {
+            break;
+        }
+
+        ret = control_motor_write_parameter(ctx->joint_id,
+                                            MOTOR_PARAM_INDEX_SPD_REF,
+                                            ctx->speed_rad_s,
+                                            RT_FALSE);
+        if (ret != RT_EOK)
+        {
+            rt_kprintf("[control] speed_hold refresh failed ret=%d elapsed=%u\n",
+                       ret,
+                       (unsigned int)elapsed_ms);
+            break;
+        }
+    }
+
+done:
+    (void)control_motor_stop(ctx->joint_id, RT_FALSE);
+    rt_kprintf("[control] speed_hold done joint=%u elapsed=%u\n",
+               (unsigned int)ctx->joint_id,
+               (unsigned int)elapsed_ms);
+    s_speed_hold_thread = RT_NULL;
 }
 
 rt_err_t control_get_last_ros_command(control_ros_command_t *out)
@@ -1267,7 +1474,7 @@ MSH_CMD_EXPORT(cmd_motor_mode, set motor run mode by private protocol);
 
 static int cmd_motor_probe(int argc, char **argv)
 {
-    long motor_id = 0x7F;
+    long motor_id = CONTROL_MOTOR_JOINT1_ID;
 
     if (argc >= 2)
     {
@@ -1279,7 +1486,7 @@ static int cmd_motor_probe(int argc, char **argv)
                motor_id & 0xFF);
     return 0;
 }
-MSH_CMD_EXPORT(cmd_motor_probe, probe raw motor id by private get-id frame default 0x7F);
+MSH_CMD_EXPORT(cmd_motor_probe, probe raw motor id by private get-id frame default joint1);
 
 static int cmd_motor_read(int argc, char **argv)
 {
@@ -1335,6 +1542,95 @@ static int cmd_motor_speed(int argc, char **argv)
 }
 MSH_CMD_EXPORT(cmd_motor_speed, speed mode control by private protocol);
 
+static int cmd_motor_speed_hold(int argc, char **argv)
+{
+    rt_uint32_t duration_ms = 1000U;
+    rt_uint32_t period_ms = 20U;
+
+    if (argc < 4)
+    {
+        rt_kprintf("usage: motor_speed_hold <joint> <speed_rad_s> <limit_cur> [duration_ms] [period_ms]\n");
+        return -1;
+    }
+
+    if (s_speed_hold_thread != RT_NULL)
+    {
+        rt_kprintf("motor_speed_hold already running, use motor_hold_stop first\n");
+        return -1;
+    }
+
+    if (argc >= 5)
+    {
+        duration_ms = (rt_uint32_t)strtoul(argv[4], RT_NULL, 0);
+    }
+    if (argc >= 6)
+    {
+        period_ms = (rt_uint32_t)strtoul(argv[5], RT_NULL, 0);
+    }
+
+    if (duration_ms == 0U)
+    {
+        duration_ms = 1000U;
+    }
+    if (duration_ms > 10000U)
+    {
+        duration_ms = 10000U;
+    }
+    if (period_ms < 5U)
+    {
+        period_ms = 5U;
+    }
+    if (period_ms > 200U)
+    {
+        period_ms = 200U;
+    }
+
+    s_speed_hold_ctx.joint_id = (rt_uint8_t)atoi(argv[1]);
+    s_speed_hold_ctx.speed_rad_s = (float)atof(argv[2]);
+    s_speed_hold_ctx.limit_cur = (float)atof(argv[3]);
+    s_speed_hold_ctx.duration_ms = duration_ms;
+    s_speed_hold_ctx.period_ms = period_ms;
+    s_speed_hold_ctx.stop_requested = RT_FALSE;
+
+    s_speed_hold_thread = rt_thread_create("m_spd_hold",
+                                           ctrl_speed_hold_entry,
+                                           &s_speed_hold_ctx,
+                                           2048,
+                                           CONTROL_ROS_THREAD_PRIORITY,
+                                           CONTROL_ROS_THREAD_TICK);
+    if (s_speed_hold_thread == RT_NULL)
+    {
+        rt_kprintf("motor_speed_hold create failed\n");
+        return -1;
+    }
+
+    rt_thread_startup(s_speed_hold_thread);
+    rt_kprintf("motor_speed_hold start joint=%u speed_x1000=%d cur_x1000=%d duration=%u period=%u\n",
+               (unsigned int)s_speed_hold_ctx.joint_id,
+               (int)ctrl_float_to_scaled_i32(s_speed_hold_ctx.speed_rad_s, 1000.0f),
+               (int)ctrl_float_to_scaled_i32(s_speed_hold_ctx.limit_cur, 1000.0f),
+               (unsigned int)s_speed_hold_ctx.duration_ms,
+               (unsigned int)s_speed_hold_ctx.period_ms);
+    return 0;
+}
+MSH_CMD_EXPORT(cmd_motor_speed_hold, periodically refresh speed command and auto stop);
+
+static int cmd_motor_hold_stop(int argc, char **argv)
+{
+    rt_uint8_t clear = 1U;
+
+    if (argc >= 2)
+    {
+        clear = (rt_uint8_t)atoi(argv[1]);
+    }
+
+    s_speed_hold_ctx.stop_requested = RT_TRUE;
+    rt_kprintf("motor_hold_stop ret=%d\n",
+               control_motor_stop(s_speed_hold_ctx.joint_id, clear ? RT_TRUE : RT_FALSE));
+    return 0;
+}
+MSH_CMD_EXPORT(cmd_motor_hold_stop, stop active speed hold command);
+
 static int cmd_motor_pos(int argc, char **argv)
 {
     rt_bool_t csp_mode = RT_TRUE;
@@ -1363,6 +1659,10 @@ static int cmd_motor_fb(int argc, char **argv)
 {
     control_motor_feedback_t fb;
     rt_uint8_t joint;
+    rt_int32_t pos_mrad;
+    rt_int32_t vel_mrad_s;
+    rt_int32_t tor_mnm;
+    rt_int32_t temp_dc;
 
     if (argc < 2)
     {
@@ -1377,16 +1677,21 @@ static int cmd_motor_fb(int argc, char **argv)
         return -1;
     }
 
-    rt_kprintf("MOTOR[%d]: id=%u mode=%u fault=0x%02X pos=%.3f rad vel=%.3f rad/s tor=%.3f Nm temp=%.1f C tick=%u\n",
+    pos_mrad = ctrl_float_to_scaled_i32(fb.pos_rad, 1000.0f);
+    vel_mrad_s = ctrl_float_to_scaled_i32(fb.vel_rad_s, 1000.0f);
+    tor_mnm = ctrl_float_to_scaled_i32(fb.torque_nm, 1000.0f);
+    temp_dc = ctrl_float_to_scaled_i32(fb.temp_c, 10.0f);
+
+    rt_kprintf("MOTOR[%d]: id=%u mode=%u fault=0x%02X pos_mrad=%d vel_mrad_s=%d tor_mNm=%d temp_dC=%d tick=%u\n",
                joint,
                fb.motor_id,
                fb.mode_state,
                fb.fault_summary,
-               fb.pos_rad,
-               fb.vel_rad_s,
-               fb.torque_nm,
-               fb.temp_c,
-               fb.timestamp);
+               (int)pos_mrad,
+               (int)vel_mrad_s,
+               (int)tor_mnm,
+               (int)temp_dc,
+               (unsigned int)fb.timestamp);
     return 0;
 }
 MSH_CMD_EXPORT(cmd_motor_fb, show motor latest feedback);
@@ -1404,12 +1709,23 @@ static int cmd_motor_param(int argc, char **argv)
         return -1;
     }
 
-    rt_kprintf("MOTOR_PARAM: id=%u index=0x%04X raw=%u value=%.4f tick=%u\n",
-               (unsigned int)param.motor_id,
-               (unsigned int)param.index,
-               (unsigned int)param.raw_u8,
-               (double)param.value_f32,
-               param.timestamp);
+    if (param.index == MOTOR_PARAM_INDEX_RUN_MODE)
+    {
+        rt_kprintf("MOTOR_PARAM: id=%u index=0x%04X mode=%u tick=%u\n",
+                   (unsigned int)param.motor_id,
+                   (unsigned int)param.index,
+                   (unsigned int)param.raw_u8,
+                   (unsigned int)param.timestamp);
+    }
+    else
+    {
+        rt_kprintf("MOTOR_PARAM: id=%u index=0x%04X raw=%u value_x10000=%d tick=%u\n",
+                   (unsigned int)param.motor_id,
+                   (unsigned int)param.index,
+                   (unsigned int)param.raw_u8,
+                   (int)ctrl_float_to_scaled_i32(param.value_f32, 10000.0f),
+                   (unsigned int)param.timestamp);
+    }
     return 0;
 }
 MSH_CMD_EXPORT(cmd_motor_param, show latest motor parameter response);
@@ -1420,6 +1736,8 @@ static int cmd_motor_probe_last(int argc, char **argv)
 
     RT_UNUSED(argc);
     RT_UNUSED(argv);
+
+    ctrl_poll_can_messages();
 
     if (control_get_last_motor_probe(&probe) != RT_EOK || !probe.valid)
     {

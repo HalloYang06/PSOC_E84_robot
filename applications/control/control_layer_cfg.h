@@ -113,6 +113,14 @@
 #define CONTROL_MOTOR_DEFAULT_KD           (1.0f)
 #endif
 
+#ifndef CONTROL_MOTOR_DEFAULT_SPEED_ACC_RAD_S2
+#define CONTROL_MOTOR_DEFAULT_SPEED_ACC_RAD_S2 (10.0f)
+#endif
+
+#ifndef CONTROL_MOTOR_DEFAULT_POS_ACC_RAD_S2
+#define CONTROL_MOTOR_DEFAULT_POS_ACC_RAD_S2   (10.0f)
+#endif
+
 /* ROS command CAN protocol:
  * Byte0: cmd(1-enable 2-stop 3-set_target 4-set_mode 5-set_zero 6-active_report)
  * Byte1: joint_id

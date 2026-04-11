@@ -10,6 +10,30 @@
 
 static cy_stc_canfd_context_t s_can_min_ctx;
 static rt_bool_t s_can_min_ready = RT_FALSE;
+static rt_uint8_t s_can_min_tx_index = 0U;
+
+static void can_min_dump_status(const char *tag)
+{
+#ifdef BSP_USING_CANFD0
+    rt_uint32_t chan = BSP_CANFD0_CHANNEL;
+
+    rt_kprintf("[can_min] %s cccr=0x%08lx nbtp=0x%08lx dbtp=0x%08lx ir=0x%08lx psr=0x%08lx\n",
+               tag,
+               (unsigned long)CANFD_CCCR(BSP_CANFD0_HW, chan),
+               (unsigned long)CANFD_NBTP(BSP_CANFD0_HW, chan),
+               (unsigned long)CANFD_DBTP(BSP_CANFD0_HW, chan),
+               (unsigned long)CANFD_IR(BSP_CANFD0_HW, chan),
+               (unsigned long)CANFD_PSR(BSP_CANFD0_HW, chan));
+    rt_kprintf("[can_min] %s txbrp=0x%08lx txbto=0x%08lx txbcf=0x%08lx rxf0s=0x%08lx\n",
+               tag,
+               (unsigned long)CANFD_TXBRP(BSP_CANFD0_HW, chan),
+               (unsigned long)CANFD_TXBTO(BSP_CANFD0_HW, chan),
+               (unsigned long)CANFD_TXBCF(BSP_CANFD0_HW, chan),
+               (unsigned long)CANFD_RXF0S(BSP_CANFD0_HW, chan));
+#else
+    (void)tag;
+#endif
+}
 
 static void can_min_prepare_hw(void)
 {
@@ -35,6 +59,10 @@ static void can_min_prepare_hw(void)
 
     Cy_SysClk_PeriPclkAssignDivider(PCLK_CANFD0_CLOCK_CAN_EN0, CY_SYSCLK_DIV_8_BIT, 4U);
     Cy_SysClk_PeriPclkAssignDivider(PCLK_CANFD0_CLOCK_CAN_EN1, CY_SYSCLK_DIV_8_BIT, 4U);
+    Cy_SysClk_PeriPclkSetDivider(PCLK_CANFD0_CLOCK_CAN_EN0, CY_SYSCLK_DIV_8_BIT, 4U, 4U);
+    Cy_SysClk_PeriPclkSetDivider(PCLK_CANFD0_CLOCK_CAN_EN1, CY_SYSCLK_DIV_8_BIT, 4U, 4U);
+    Cy_SysClk_PeriPclkEnableDivider(PCLK_CANFD0_CLOCK_CAN_EN0, CY_SYSCLK_DIV_8_BIT, 4U);
+    Cy_SysClk_PeriPclkEnableDivider(PCLK_CANFD0_CLOCK_CAN_EN1, CY_SYSCLK_DIV_8_BIT, 4U);
 
     rx_pin_cfg.outVal = 1U;
     rx_pin_cfg.driveMode = CY_GPIO_DM_HIGHZ;
@@ -177,8 +205,15 @@ static void cmd_can_init_min(void)
                         &ifx_canfd0_default_config,
                         &s_can_min_ctx);
     rt_kprintf("[can_min] init ret=%d\n", ret);
+    rt_kprintf("[can_min] pclk0=%lu pclk1=%lu div=%lu en=%d\n",
+               (unsigned long)Cy_SysClk_PeriPclkGetFrequency(PCLK_CANFD0_CLOCK_CAN_EN0, CY_SYSCLK_DIV_8_BIT, 4U),
+               (unsigned long)Cy_SysClk_PeriPclkGetFrequency(PCLK_CANFD0_CLOCK_CAN_EN1, CY_SYSCLK_DIV_8_BIT, 4U),
+               (unsigned long)Cy_SysClk_PeriPclkGetDivider(PCLK_CANFD0_CLOCK_CAN_EN0, CY_SYSCLK_DIV_8_BIT, 4U),
+               (int)Cy_SysClk_PeriPclkGetDividerEnabled(PCLK_CANFD0_CLOCK_CAN_EN0, CY_SYSCLK_DIV_8_BIT, 4U));
 
     s_can_min_ready = (ret == CY_CANFD_SUCCESS) ? RT_TRUE : RT_FALSE;
+    s_can_min_tx_index = 0U;
+    can_min_dump_status("after_init");
 #else
     rt_kprintf("[can_min] BSP_USING_CANFD0 is not enabled\n");
 #endif
@@ -194,6 +229,7 @@ static void cmd_can_send_probe(int argc, char **argv)
     rt_uint32_t tx_data[16];
     cy_en_canfd_status_t ret;
     rt_uint8_t motor_id = 0x7FU;
+    rt_uint8_t tx_index;
     rt_uint32_t ext_id;
 
     if ((argc > 1) && (argv[1] != RT_NULL))
@@ -229,20 +265,30 @@ static void cmd_can_send_probe(int argc, char **argv)
     tx_buffer.t1_f = &tx_r1;
     tx_buffer.data_area_f = tx_data;
 
+    tx_index = s_can_min_tx_index++ % BSP_CANFD0_TX_BUFFER_COUNT;
+    can_min_dump_status("before_send");
     ret = Cy_CANFD_UpdateAndTransmitMsgBuffer(BSP_CANFD0_HW,
                                               BSP_CANFD0_CHANNEL,
                                               &tx_buffer,
-                                              0U,
+                                              tx_index,
                                               &s_can_min_ctx);
-    rt_kprintf("[can_min] send probe motor=0x%02X ext=0x%08lx ret=%d\n",
+    rt_kprintf("[can_min] send probe motor=0x%02X ext=0x%08lx buf=%u ret=%d\n",
                (unsigned int)motor_id,
                (unsigned long)ext_id,
+               (unsigned int)tx_index,
                ret);
+    can_min_dump_status("after_send");
 #else
     rt_kprintf("[can_min] BSP_USING_CANFD0 is not enabled\n");
 #endif
 }
 MSH_CMD_EXPORT(cmd_can_send_probe, send private get-id frame by raw canfd);
+
+static void cmd_can_status(void)
+{
+    can_min_dump_status("manual");
+}
+MSH_CMD_EXPORT(cmd_can_status, dump raw canfd tx rx status);
 
 static void cmd_can_poll_once(void)
 {
