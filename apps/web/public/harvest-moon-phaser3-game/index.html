@@ -245,6 +245,42 @@
         gap: 10px;
       }
 
+      .drawer-actions {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 14px;
+      }
+
+      .drawer-actions button {
+        border: 0;
+        min-height: 40px;
+        padding: 0 12px;
+        border-radius: 14px;
+        background: rgba(255, 132, 188, 0.92);
+        color: #31091b;
+        font: inherit;
+        font-size: 12px;
+        font-weight: 800;
+        cursor: pointer;
+      }
+
+      .drawer-stats {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 14px;
+      }
+
+      .drawer-stats div {
+        padding: 10px 12px;
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.05);
+        color: rgba(255, 244, 222, 0.92);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
       .drawer li {
         padding: 10px 12px;
         border-radius: 16px;
@@ -360,7 +396,8 @@
         const debug = document.getElementById("debug");
         const search = new URLSearchParams(window.location.search);
 
-        const MULTIPLAYER_STATE = {
+        const STORAGE_KEY = "farm-game-state-v1";
+        const DEFAULT_STATE = {
           collaborators: [
             { id: "p1", name: "阿城", role: "嵌入式", scene: "map-farm", path: [{ x: 760, y: 1700 }, { x: 1210, y: 1240 }, { x: 1930, y: 1820 }, { x: 2090, y: 2400 }] },
             { id: "p2", name: "北斗", role: "算法", scene: "map-farm", path: [{ x: 1520, y: 1660 }, { x: 1810, y: 1760 }, { x: 2200, y: 1690 }, { x: 1560, y: 1660 }] },
@@ -379,7 +416,33 @@
             { id: "a1", model: "Codex", species: "鸡", scene: "map-farm", x: 2215, y: 1785, type: "codex" },
             { id: "a2", model: "Claude", species: "牛", scene: "map-farm", x: 1605, y: 1755, type: "claude" },
           ],
+          requirements: [
+            { id: "r1", title: "医疗臂规划", status: "待拆解" },
+            { id: "r2", title: "底盘驱动改造", status: "开发中" },
+          ],
+          approvals: [
+            { id: "ap1", title: "高压调试审批", status: "待审批" },
+          ],
+          deliveries: [
+            { id: "d1", title: "Runner-01 回传日志", status: "已交付" },
+          ],
         };
+
+        function cloneState(value) {
+          return JSON.parse(JSON.stringify(value));
+        }
+
+        function loadState() {
+          try {
+            const raw = window.localStorage.getItem(STORAGE_KEY);
+            if (!raw) return cloneState(DEFAULT_STATE);
+            return Object.assign(cloneState(DEFAULT_STATE), JSON.parse(raw));
+          } catch (error) {
+            return cloneState(DEFAULT_STATE);
+          }
+        }
+
+        const MULTIPLAYER_STATE = loadState();
 
         const SCENES = {
           "map-farm": [
@@ -537,6 +600,7 @@
         let focusedId = null;
         let currentSceneKey = null;
         let travelApplied = false;
+        let dirtyEntities = true;
 
         const TRAVEL = {
           scene: search.get("scene"),
@@ -601,6 +665,17 @@
           return extractParts(found);
         }
 
+        function saveState() {
+          try {
+            window.localStorage.setItem(STORAGE_KEY, JSON.stringify(MULTIPLAYER_STATE));
+          } catch (error) {}
+        }
+
+        function markDirty() {
+          dirtyEntities = true;
+          saveState();
+        }
+
         function buildWorldEntities() {
           const entities = [];
 
@@ -629,7 +704,7 @@
                 return task.path[step];
               },
               render: function () {
-                return '<div class="entity-badge">任务 · ' + task.label + "</div>";
+                return '<div class="entity-badge">任务 · ' + task.label + " · " + task.status + "</div>";
               },
             });
           });
@@ -665,7 +740,9 @@
           return entities;
         }
 
-        const WORLD_ENTITIES = buildWorldEntities();
+        function getWorldEntities() {
+          return buildWorldEntities();
+        }
 
         function isFiniteNumber(value) {
           return Number.isFinite(value);
@@ -688,21 +765,77 @@
           travelApplied = true;
         }
 
+        function getStats() {
+          const codexCount = MULTIPLAYER_STATE.agents.filter(function (item) { return item.type === "codex"; }).length;
+          const claudeCount = MULTIPLAYER_STATE.agents.filter(function (item) { return item.type === "claude"; }).length;
+          return {
+            tasks: MULTIPLAYER_STATE.tasks.length,
+            computers: MULTIPLAYER_STATE.computers.length,
+            codex: codexCount,
+            claude: claudeCount,
+            approvals: MULTIPLAYER_STATE.approvals.length,
+            deliveries: MULTIPLAYER_STATE.deliveries.length,
+            collaborators: MULTIPLAYER_STATE.collaborators.length,
+            requirements: MULTIPLAYER_STATE.requirements.length,
+          };
+        }
+
+        function getZoneActions(zoneId) {
+          if (zoneId === "requirements") return [
+            { id: "add-requirement", label: "收 1 条需求" },
+            { id: "spawn-task", label: "拆成任务" },
+          ];
+          if (zoneId === "tasks") return [
+            { id: "spawn-task", label: "新增任务" },
+            { id: "advance-task", label: "推进任务" },
+          ];
+          if (zoneId === "computers" || zoneId === "computer-room") return [
+            { id: "add-computer", label: "加 1 台电脑" },
+            { id: "advance-task", label: "派电脑执行" },
+          ];
+          if (zoneId === "ai" || zoneId === "chat-room") return [
+            { id: "add-codex", label: "接入 Codex 鸡" },
+            { id: "add-claude", label: "接入 Claude 牛" },
+          ];
+          if (zoneId === "delivery" || zoneId === "delivery-room") return [
+            { id: "deliver-task", label: "完成 1 个交付" },
+            { id: "add-computer", label: "再搭 1 间房" },
+          ];
+          if (zoneId === "approvals") return [
+            { id: "add-approval", label: "发起审批" },
+            { id: "resolve-approval", label: "通过审批" },
+          ];
+          if (zoneId === "chat" || zoneId === "project") return [
+            { id: "add-collaborator", label: "加入协作者" },
+            { id: "spawn-task", label: "派 1 个任务" },
+          ];
+          return [
+            { id: "spawn-task", label: "新增任务" },
+            { id: "add-collaborator", label: "加入协作者" },
+          ];
+        }
+
         function renderDrawer(zone) {
+          const stats = getStats();
           if (!zone) {
             drawer.innerHTML = [
               '<div class="eyebrow">等待交互区</div>',
               '<h2>靠近房屋、门口或告示牌</h2>',
               '<p>我现在按原游戏对象层和相机位置来放框。你靠近粉色框后按 Enter，我就打开对应的产品功能说明。外场还挂了多人协作原型：人会在地图里巡场，任务会流动，电脑会生成小屋，AI 会生成鸡和牛。</p>',
+              '<div class="drawer-stats"><div>任务：' + stats.tasks + '</div><div>电脑房：' + stats.computers + '</div><div>Codex 鸡：' + stats.codex + '</div><div>Claude 牛：' + stats.claude + '</div></div>',
             ].join("");
             return;
           }
+
+          const actions = getZoneActions(zone.id);
 
           drawer.innerHTML = [
             '<div class="eyebrow">地图功能区</div>',
             "<h2>" + zone.title + "</h2>",
             "<p>" + zone.desc + "</p>",
+            '<div class="drawer-stats"><div>任务：' + stats.tasks + '</div><div>需求：' + stats.requirements + '</div><div>电脑房：' + stats.computers + '</div><div>协作者：' + stats.collaborators + '</div><div>Codex 鸡：' + stats.codex + '</div><div>Claude 牛：' + stats.claude + '</div><div>审批：' + stats.approvals + '</div><div>交付：' + stats.deliveries + '</div></div>',
             "<ul>" + zone.bullets.map(function (item) { return "<li>" + item + "</li>"; }).join("") + "</ul>",
+            '<div class="drawer-actions">' + actions.map(function (action) { return '<button type="button" data-action="' + action.id + '">' + action.label + "</button>"; }).join("") + "</div>",
           ].join("");
         }
 
@@ -767,8 +900,14 @@
         }
 
         function ensureEntityNodes() {
-          if (entityNodes.size) return;
-          WORLD_ENTITIES.forEach(function (entity) {
+          const entities = getWorldEntities();
+          const ids = entities.map(function (item) { return item.id; });
+          if (dirtyEntities || entityNodes.size !== entities.length) {
+            entityNodes.clear();
+            entitiesRoot.innerHTML = "";
+          }
+          if (entityNodes.size) return entities;
+          entities.forEach(function (entity) {
             const node = document.createElement("div");
             node.className = "entity " + entity.kind;
             node.dataset.id = entity.id;
@@ -776,16 +915,18 @@
             entitiesRoot.appendChild(node);
             entityNodes.set(entity.id, node);
           });
+          dirtyEntities = false;
+          return entities;
         }
 
         function updateEntities(sceneKey, camera, tick) {
-          ensureEntityNodes();
+          const entities = ensureEntityNodes();
           const scaleX = window.innerWidth / camera.width;
           const scaleY = window.innerHeight / camera.height;
           const viewX = camera.worldView.x;
           const viewY = camera.worldView.y;
 
-          WORLD_ENTITIES.forEach(function (entity) {
+          entities.forEach(function (entity) {
             const node = entityNodes.get(entity.id);
             if (!node) return;
             if (entity.scene !== sceneKey) {
@@ -803,6 +944,155 @@
               node.style.top = top + "px";
             }
           });
+        }
+
+        function createTask(label, status) {
+          const id = "t" + Date.now();
+          MULTIPLAYER_STATE.tasks.push({
+            id: id,
+            label: label,
+            status: status || "待执行",
+            scene: "map-farm",
+            path: [{ x: 1220, y: 1240 }, { x: 1940, y: 1830 }, { x: 1605, y: 1660 }, { x: 2088, y: 2450 }],
+          });
+          markDirty();
+        }
+
+        function addComputer() {
+          const index = MULTIPLAYER_STATE.computers.length;
+          MULTIPLAYER_STATE.computers.push({
+            id: "pc" + (index + 1),
+            label: "Runner-0" + (index + 1),
+            scene: "map-farm",
+            x: 1480 + (index * 150),
+            y: 1490 + ((index % 2) * 120),
+          });
+          markDirty();
+        }
+
+        function addAgent(type) {
+          const index = MULTIPLAYER_STATE.agents.length;
+          MULTIPLAYER_STATE.agents.push({
+            id: "a" + (index + 1),
+            model: type === "codex" ? "Codex" : "Claude",
+            species: type === "codex" ? "鸡" : "牛",
+            scene: "map-farm",
+            x: type === "codex" ? 2215 + (index * 32) : 1605 + (index * 42),
+            y: type === "codex" ? 1785 + ((index % 2) * 26) : 1755 + ((index % 2) * 36),
+            type: type,
+          });
+          markDirty();
+        }
+
+        function addCollaborator() {
+          const index = MULTIPLAYER_STATE.collaborators.length + 1;
+          MULTIPLAYER_STATE.collaborators.push({
+            id: "p" + index,
+            name: "协作者" + index,
+            role: index % 2 === 0 ? "测试" : "固件",
+            scene: "map-farm",
+            path: [{ x: 760, y: 1700 }, { x: 1220, y: 1240 }, { x: 1940, y: 1830 }, { x: 2088, y: 2450 }],
+          });
+          markDirty();
+        }
+
+        function addRequirement() {
+          const index = MULTIPLAYER_STATE.requirements.length + 1;
+          MULTIPLAYER_STATE.requirements.push({
+            id: "r" + index,
+            title: "新需求 " + index,
+            status: "待拆解",
+          });
+          markDirty();
+        }
+
+        function addApproval() {
+          const index = MULTIPLAYER_STATE.approvals.length + 1;
+          MULTIPLAYER_STATE.approvals.push({
+            id: "ap" + index,
+            title: "审批单 " + index,
+            status: "待审批",
+          });
+          markDirty();
+        }
+
+        function resolveApproval() {
+          if (MULTIPLAYER_STATE.approvals.length) {
+            MULTIPLAYER_STATE.approvals.shift();
+            MULTIPLAYER_STATE.deliveries.unshift({ id: "d" + Date.now(), title: "审批通过回执", status: "已通过" });
+            markDirty();
+          }
+        }
+
+        function advanceTask() {
+          if (MULTIPLAYER_STATE.tasks.length) {
+            const task = MULTIPLAYER_STATE.tasks[0];
+            const next = { "待执行": "开发中", "开发中": "联调中", "联调中": "待交付", "待交付": "已交付" };
+            task.status = next[task.status] || "开发中";
+            markDirty();
+          }
+        }
+
+        function deliverTask() {
+          if (MULTIPLAYER_STATE.tasks.length) {
+            const task = MULTIPLAYER_STATE.tasks.shift();
+            MULTIPLAYER_STATE.deliveries.unshift({ id: "d" + Date.now(), title: task.label, status: "已交付" });
+            markDirty();
+          }
+        }
+
+        function handleAction(actionId) {
+          if (actionId === "add-requirement") {
+            addRequirement();
+            renderDrawer((SCENES[currentSceneKey] || []).find(function (item) { return item.id === activeId; }) || null);
+            return;
+          }
+          if (actionId === "spawn-task") {
+            const req = MULTIPLAYER_STATE.requirements.shift();
+            createTask(req ? req.title : ("基地任务 " + (MULTIPLAYER_STATE.tasks.length + 1)), "待执行");
+            markDirty();
+            renderDrawer((SCENES[currentSceneKey] || []).find(function (item) { return item.id === activeId; }) || null);
+            return;
+          }
+          if (actionId === "advance-task") {
+            advanceTask();
+            renderDrawer((SCENES[currentSceneKey] || []).find(function (item) { return item.id === activeId; }) || null);
+            return;
+          }
+          if (actionId === "add-computer") {
+            addComputer();
+            renderDrawer((SCENES[currentSceneKey] || []).find(function (item) { return item.id === activeId; }) || null);
+            return;
+          }
+          if (actionId === "add-codex") {
+            addAgent("codex");
+            renderDrawer((SCENES[currentSceneKey] || []).find(function (item) { return item.id === activeId; }) || null);
+            return;
+          }
+          if (actionId === "add-claude") {
+            addAgent("claude");
+            renderDrawer((SCENES[currentSceneKey] || []).find(function (item) { return item.id === activeId; }) || null);
+            return;
+          }
+          if (actionId === "deliver-task") {
+            deliverTask();
+            renderDrawer((SCENES[currentSceneKey] || []).find(function (item) { return item.id === activeId; }) || null);
+            return;
+          }
+          if (actionId === "add-approval") {
+            addApproval();
+            renderDrawer((SCENES[currentSceneKey] || []).find(function (item) { return item.id === activeId; }) || null);
+            return;
+          }
+          if (actionId === "resolve-approval") {
+            resolveApproval();
+            renderDrawer((SCENES[currentSceneKey] || []).find(function (item) { return item.id === activeId; }) || null);
+            return;
+          }
+          if (actionId === "add-collaborator") {
+            addCollaborator();
+            renderDrawer((SCENES[currentSceneKey] || []).find(function (item) { return item.id === activeId; }) || null);
+          }
         }
 
         function updateOverlay() {
@@ -881,6 +1171,12 @@
           if (event.key === "Enter" && focusedId) {
             setActive(focusedId);
           }
+        });
+
+        drawer.addEventListener("click", function (event) {
+          const target = event.target.closest("button[data-action]");
+          if (!target) return;
+          handleAction(target.dataset.action);
         });
 
         window.setInterval(updateOverlay, 120);
