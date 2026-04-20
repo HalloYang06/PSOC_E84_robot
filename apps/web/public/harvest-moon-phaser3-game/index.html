@@ -281,6 +281,36 @@
         line-height: 1.45;
       }
 
+      .drawer-section {
+        margin-top: 14px;
+      }
+
+      .drawer-section h3 {
+        margin: 0 0 8px;
+        font-size: 12px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: rgba(255, 244, 222, 0.68);
+      }
+
+      .drawer-pills {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .drawer-pills span {
+        display: inline-flex;
+        min-height: 28px;
+        align-items: center;
+        padding: 0 10px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.06);
+        color: rgba(255, 244, 222, 0.92);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
       .drawer li {
         padding: 10px 12px;
         border-radius: 16px;
@@ -815,6 +845,91 @@
           ];
         }
 
+        function renderPills(items, format, emptyText) {
+          if (!items.length) {
+            return '<div class="drawer-pills"><span>' + emptyText + "</span></div>";
+          }
+          return '<div class="drawer-pills">' + items.map(function (item) {
+            return "<span>" + format(item) + "</span>";
+          }).join("") + "</div>";
+        }
+
+        function renderStateSections(zoneId) {
+          const sections = [];
+
+          if (zoneId === "requirements" || zoneId === "project" || zoneId === "project-room") {
+            sections.push(
+              '<div class="drawer-section"><h3>需求池</h3>' +
+              renderPills(MULTIPLAYER_STATE.requirements, function (item) {
+                return item.title + " · " + item.status;
+              }, "暂无需求") +
+              "</div>"
+            );
+          }
+
+          if (zoneId === "tasks" || zoneId === "delivery" || zoneId === "delivery-room") {
+            sections.push(
+              '<div class="drawer-section"><h3>任务流</h3>' +
+              renderPills(MULTIPLAYER_STATE.tasks, function (item) {
+                return item.label + " · " + item.status;
+              }, "暂无任务") +
+              "</div>"
+            );
+          }
+
+          if (zoneId === "computers" || zoneId === "computer-room") {
+            sections.push(
+              '<div class="drawer-section"><h3>电脑房</h3>' +
+              renderPills(MULTIPLAYER_STATE.computers, function (item) {
+                return item.label;
+              }, "暂无电脑") +
+              "</div>"
+            );
+          }
+
+          if (zoneId === "ai" || zoneId === "chat" || zoneId === "chat-room") {
+            sections.push(
+              '<div class="drawer-section"><h3>AI 动物</h3>' +
+              renderPills(MULTIPLAYER_STATE.agents, function (item) {
+                return item.species + " · " + item.model;
+              }, "暂无 AI") +
+              "</div>"
+            );
+          }
+
+          if (zoneId === "approvals") {
+            sections.push(
+              '<div class="drawer-section"><h3>审批流</h3>' +
+              renderPills(MULTIPLAYER_STATE.approvals, function (item) {
+                return item.title + " · " + item.status;
+              }, "暂无审批") +
+              "</div>"
+            );
+          }
+
+          if (zoneId === "delivery" || zoneId === "delivery-room" || zoneId === "approvals") {
+            sections.push(
+              '<div class="drawer-section"><h3>最近交付</h3>' +
+              renderPills(MULTIPLAYER_STATE.deliveries, function (item) {
+                return item.title + " · " + item.status;
+              }, "暂无交付") +
+              "</div>"
+            );
+          }
+
+          if (zoneId === "chat" || zoneId === "project" || zoneId === "project-room") {
+            sections.push(
+              '<div class="drawer-section"><h3>协作者</h3>' +
+              renderPills(MULTIPLAYER_STATE.collaborators, function (item) {
+                return item.name + " · " + item.role;
+              }, "暂无协作者") +
+              "</div>"
+            );
+          }
+
+          return sections.join("");
+        }
+
         function renderDrawer(zone) {
           const stats = getStats();
           if (!zone) {
@@ -835,6 +950,7 @@
             "<p>" + zone.desc + "</p>",
             '<div class="drawer-stats"><div>任务：' + stats.tasks + '</div><div>需求：' + stats.requirements + '</div><div>电脑房：' + stats.computers + '</div><div>协作者：' + stats.collaborators + '</div><div>Codex 鸡：' + stats.codex + '</div><div>Claude 牛：' + stats.claude + '</div><div>审批：' + stats.approvals + '</div><div>交付：' + stats.deliveries + '</div></div>',
             "<ul>" + zone.bullets.map(function (item) { return "<li>" + item + "</li>"; }).join("") + "</ul>",
+            renderStateSections(zone.id),
             '<div class="drawer-actions">' + actions.map(function (action) { return '<button type="button" data-action="' + action.id + '">' + action.label + "</button>"; }).join("") + "</div>",
           ].join("");
         }
