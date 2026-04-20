@@ -1,0 +1,689 @@
+<!DOCTYPE HTML>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>Harvest Moon Phaser 3 Game</title>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #000;
+      }
+
+      body {
+        position: relative;
+        font-family: Arial, sans-serif;
+      }
+
+      canvas {
+        display: block;
+        width: 100vw !important;
+        height: 100vh !important;
+        max-width: none !important;
+        max-height: none !important;
+        object-fit: fill;
+      }
+
+      .overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 20;
+        pointer-events: none;
+      }
+
+      .topbar {
+        position: absolute;
+        top: calc(env(safe-area-inset-top, 0px) + 10px);
+        left: 10px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+      }
+
+      .chip-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .chip,
+      .hint,
+      .legend,
+      .drawer,
+      .zone,
+      .debug {
+        pointer-events: auto;
+      }
+
+      .chip,
+      .hint {
+        display: inline-flex;
+        min-height: 34px;
+        align-items: center;
+        padding: 0 12px;
+        border-radius: 999px;
+        background: rgba(8, 10, 14, 0.76);
+        color: #fff4de;
+        font-size: 12px;
+        font-weight: 700;
+        backdrop-filter: blur(8px);
+      }
+
+      .zones {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+
+      .zone {
+        position: absolute;
+        display: none;
+        border-radius: 18px;
+        background: rgba(255, 77, 151, 0.14);
+        box-shadow:
+          inset 0 0 0 2px rgba(255, 102, 173, 0.9),
+          0 0 0 1px rgba(37, 6, 22, 0.18);
+      }
+
+      .zone.visible {
+        display: block;
+      }
+
+      .zone::after {
+        content: attr(data-label);
+        position: absolute;
+        left: 8px;
+        top: 8px;
+        display: inline-flex;
+        min-height: 22px;
+        align-items: center;
+        padding: 0 8px;
+        border-radius: 999px;
+        background: rgba(35, 10, 23, 0.82);
+        color: #fff4de;
+        font-size: 11px;
+        font-weight: 800;
+        white-space: nowrap;
+      }
+
+      .zone.focused {
+        background: rgba(255, 77, 151, 0.22);
+        box-shadow:
+          inset 0 0 0 3px rgba(255, 192, 221, 1),
+          0 0 28px rgba(255, 77, 151, 0.28);
+      }
+
+      .zone.active {
+        background: rgba(255, 77, 151, 0.28);
+        box-shadow:
+          inset 0 0 0 3px rgba(255, 214, 232, 1),
+          0 0 34px rgba(255, 77, 151, 0.35);
+      }
+
+      .drawer {
+        position: absolute;
+        top: calc(env(safe-area-inset-top, 0px) + 12px);
+        right: 12px;
+        width: min(390px, calc(100vw - 24px));
+        max-height: calc(100vh - 132px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+        overflow: auto;
+        padding: 16px;
+        border-radius: 24px;
+        background: rgba(8, 10, 14, 0.9);
+        color: #fff4de;
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.34);
+        backdrop-filter: blur(10px);
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        min-height: 24px;
+        align-items: center;
+        padding: 0 10px;
+        border-radius: 999px;
+        background: rgba(255, 132, 188, 0.92);
+        color: #31091b;
+        font-size: 11px;
+        font-weight: 800;
+      }
+
+      .drawer h2 {
+        margin: 10px 0 0;
+        font-size: 28px;
+        line-height: 1.06;
+      }
+
+      .drawer p {
+        margin: 10px 0 0;
+        color: rgba(255, 244, 222, 0.8);
+        font-size: 13px;
+        line-height: 1.55;
+      }
+
+      .drawer ul {
+        margin: 14px 0 0;
+        padding: 0;
+        list-style: none;
+        display: grid;
+        gap: 10px;
+      }
+
+      .drawer li {
+        padding: 10px 12px;
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.05);
+        color: rgba(255, 244, 222, 0.92);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .legend {
+        position: absolute;
+        right: 12px;
+        bottom: calc(env(safe-area-inset-bottom, 0px) + 14px);
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 8px;
+        width: min(560px, calc(100vw - 24px));
+      }
+
+      .legend button {
+        border: 0;
+        min-height: 34px;
+        padding: 0 12px;
+        border-radius: 999px;
+        background: rgba(8, 10, 14, 0.76);
+        color: #fff4de;
+        font: inherit;
+        font-size: 12px;
+        font-weight: 800;
+        cursor: pointer;
+      }
+
+      .legend button.active {
+        background: #ff84bc;
+        color: #31091b;
+      }
+
+      .hint {
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        bottom: calc(env(safe-area-inset-bottom, 0px) + 14px);
+        max-width: calc(100vw - 24px);
+        text-align: center;
+      }
+
+      .debug {
+        position: absolute;
+        left: 10px;
+        top: calc(env(safe-area-inset-top, 0px) + 136px);
+        max-width: min(480px, calc(100vw - 24px));
+        padding: 10px 12px;
+        border-radius: 16px;
+        background: rgba(8, 10, 14, 0.76);
+        color: #fff4de;
+        font-size: 12px;
+        line-height: 1.45;
+        white-space: pre-wrap;
+        backdrop-filter: blur(8px);
+      }
+
+      @media (max-width: 760px) {
+        .topbar {
+          flex-direction: column;
+        }
+
+        .drawer {
+          top: auto;
+          right: 10px;
+          left: 10px;
+          bottom: 92px;
+          width: auto;
+          max-height: 44vh;
+        }
+
+        .legend {
+          left: 10px;
+          right: 10px;
+          width: auto;
+          justify-content: flex-start;
+          bottom: 52px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="overlay">
+      <div class="topbar">
+        <div class="chip">产品交互层</div>
+        <div class="chip-stack">
+          <div class="chip" id="scene-chip">等待游戏场景</div>
+          <div class="chip" id="focus-chip">靠近粉色框后按 Enter</div>
+        </div>
+      </div>
+      <div class="zones" id="zones"></div>
+      <div class="drawer" id="drawer"></div>
+      <div class="legend" id="legend"></div>
+      <div class="debug" id="debug">等待调试信息</div>
+      <div class="hint">方向键移动。靠近粉色框后按 Enter 打开对应功能说明。Shift 仍然是原游戏任务板。</div>
+    </div>
+
+    <script src="/harvest-moon-phaser3-game/main.02acc2be.js"></script>
+    <script>
+      (function () {
+        const zonesRoot = document.getElementById("zones");
+        const drawer = document.getElementById("drawer");
+        const legend = document.getElementById("legend");
+        const sceneChip = document.getElementById("scene-chip");
+        const focusChip = document.getElementById("focus-chip");
+        const debug = document.getElementById("debug");
+        const search = new URLSearchParams(window.location.search);
+
+        const SCENES = {
+          "map-farm": [
+            {
+              id: "project",
+              label: "项目总览",
+              rect: { x: 595, y: 1498, w: 172, h: 128 },
+              title: "项目总览",
+              desc: "农舍门口是原游戏进入房屋的交互点，这里最适合承接项目主控面板、成员入口和总览状态。",
+              bullets: ["项目概况", "成员与邀请", "项目设置"],
+            },
+            {
+              id: "requirements",
+              label: "需求信箱",
+              rect: { x: 1164, y: 1172, w: 154, h: 112 },
+              title: "需求信箱",
+              desc: "上方告示牌是原作里的提示点，把它映射成需求收件和业务输入最自然，也方便多端协作。",
+              bullets: ["需求收件", "业务输入", "协作邀请"],
+            },
+            {
+              id: "tasks",
+              label: "任务田块",
+              rect: { x: 1888, y: 1716, w: 284, h: 188 },
+              title: "任务田块",
+              desc: "农田前的告示牌正对任务区，用来打开任务清单、阶段状态和验收入口最顺手。",
+              bullets: ["任务列表", "阻塞与验收", "任务入口"],
+            },
+            {
+              id: "ai",
+              label: "AI 工位站",
+              rect: { x: 1066, y: 1826, w: 112, h: 110 },
+              title: "AI 工位站",
+              desc: "鸡神像是原作的特殊互动点，改成 AI 工位站最自然，而且位置辨识度很高。",
+              bullets: ["接入 AI", "组成工位", "责任分配"],
+            },
+            {
+              id: "computers",
+              label: "电脑车间",
+              rect: { x: 1548, y: 1580, w: 166, h: 124 },
+              title: "电脑车间",
+              desc: "牛棚入口是独立建筑门区，最适合挂电脑节点、在线状态和执行调度。",
+              bullets: ["登记电脑", "查看节点", "Runner 命令"],
+            },
+            {
+              id: "chat",
+              label: "聊天小院",
+              rect: { x: 2190, y: 1578, w: 176, h: 136 },
+              title: "聊天小院",
+              desc: "鸡舍门口更像生活区和协作区，不像生产设施，所以适合做聊天和交接。",
+              bullets: ["项目聊天", "交接记录", "最近回执"],
+            },
+            {
+              id: "delivery",
+              label: "交付工坊",
+              rect: { x: 2014, y: 2216, w: 194, h: 152 },
+              title: "交付工坊",
+              desc: "工具棚入口天然像工作台，这里最适合承接 Git、实验、回滚和交付链。",
+              bullets: ["Git 交付", "实验验证", "回滚同步"],
+            },
+            {
+              id: "approvals",
+              label: "审批门岗",
+              rect: { x: 0, y: 2066, w: 86, h: 330 },
+              title: "审批门岗",
+              desc: "左侧离场出口最像关卡门岗，高风险动作先过这里，语义是对的。",
+              bullets: ["人工审批", "风险确认", "安全门禁"],
+            },
+          ],
+          "map-home": [
+            {
+              id: "project-room",
+              label: "主控内室",
+              rect: { x: 730, y: 360, w: 600, h: 320 },
+              title: "主控内室",
+              desc: "进入农舍后，屋内中央更像真正的项目主控室，适合放项目摘要、最近决策和今日计划。",
+              bullets: ["项目摘要", "最近决策", "今日计划"],
+            },
+            {
+              id: "project-exit",
+              label: "返回农场",
+              rect: { x: 483.49, y: 866.96, w: 311.79, h: 154.71 },
+              title: "返回农场",
+              desc: "门口保留为返回外场的交互说明，避免进屋以后没有明确的离场语义。",
+              bullets: ["离开房屋", "切回外场", "继续巡视"],
+            },
+          ],
+          "map-toolshed": [
+            {
+              id: "delivery-room",
+              label: "交付工坊",
+              rect: { x: 340, y: 520, w: 600, h: 320 },
+              title: "交付工坊",
+              desc: "工具棚内部直接映射交付工坊，中央工作区适合承接构建、实验和回滚。",
+              bullets: ["构建验证", "实验台", "交付记录"],
+            },
+            {
+              id: "lab-gate",
+              label: "实验洞口",
+              rect: { x: 470.52, y: 133.37, w: 261.11, h: 145.99 },
+              title: "实验洞口",
+              desc: "通往洞窟的门像高级实验通道，适合后续接更深层的实验和多人联机场景。",
+              bullets: ["高级实验", "深层调试", "后续多人扩展"],
+            },
+            {
+              id: "tools-exit",
+              label: "返回农场",
+              rect: { x: 471.99, y: 943.62, w: 334.11, h: 152.1 },
+              title: "返回农场",
+              desc: "工具棚门口保留退场交互，和原游戏语义一致。",
+              bullets: ["离开工坊", "回到农场", "继续巡检"],
+            },
+          ],
+          "map-coop": [
+            {
+              id: "chat-room",
+              label: "聊天内院",
+              rect: { x: 340, y: 420, w: 580, h: 300 },
+              title: "聊天内院",
+              desc: "鸡舍内部空间不大，中央区域适合做轻量沟通、交接和协作日志入口。",
+              bullets: ["协作聊天", "交接日志", "消息回执"],
+            },
+            {
+              id: "coop-exit",
+              label: "返回农场",
+              rect: { x: 499.91, y: 943.64, w: 279.75, h: 142.66 },
+              title: "返回农场",
+              desc: "门口保留为返回外场的交互点，继续沿用原作进出逻辑。",
+              bullets: ["离开鸡舍", "切回农场", "继续巡视"],
+            },
+          ],
+          "map-cowshed": [
+            {
+              id: "computer-room",
+              label: "机房中控",
+              rect: { x: 620, y: 480, w: 560, h: 980 },
+              title: "机房中控",
+              desc: "牛棚内部右侧长条区域更像一排设备位，我把这里当成电脑与节点中控区，适合开机房功能。",
+              bullets: ["电脑节点", "在线状态", "运行监控"],
+            },
+            {
+              id: "computer-exit",
+              label: "返回农场",
+              rect: { x: 482.21, y: 1694.24, w: 317.06, h: 150.72 },
+              title: "返回农场",
+              desc: "牛棚门口保留为返回外场的交互点，保证室内外切换也有明确引导。",
+              bullets: ["离开机房", "回到农场", "继续巡检"],
+            },
+          ],
+        };
+
+        const zoneNodes = new Map();
+        let cachedGame = null;
+        let activeId = null;
+        let focusedId = null;
+        let currentSceneKey = null;
+        let travelApplied = false;
+
+        const TRAVEL = {
+          scene: search.get("scene"),
+          x: Number(search.get("x")),
+          y: Number(search.get("y")),
+          focus: search.get("focus"),
+        };
+
+        function extractParts(game) {
+          try {
+            const scene = game.scene && game.scene.keys && game.scene.keys.Game;
+            const camera = scene && scene.cameras && scene.cameras.main;
+            const player = scene && scene._PLAYER;
+            const map = scene && scene._MAP;
+            if (!scene || !camera || !player || !map) return null;
+            return { scene: scene, camera: camera, player: player, map: map };
+          } catch (error) {
+            return null;
+          }
+        }
+
+        function findGameInWindow() {
+          if (window.Phaser && Array.isArray(window.Phaser.GAMES) && window.Phaser.GAMES.length) {
+            return window.Phaser.GAMES[0];
+          }
+
+          const keys = Object.keys(window);
+          for (let i = 0; i < keys.length; i += 1) {
+            const candidate = window[keys[i]];
+            if (candidate && extractParts(candidate)) {
+              return candidate;
+            }
+          }
+
+          if (window.parcelRequire && window.parcelRequire.cache) {
+            const cache = window.parcelRequire.cache;
+            const ids = Object.keys(cache);
+            for (let i = 0; i < ids.length; i += 1) {
+              const entry = cache[ids[i]];
+              const exported = entry && entry.exports;
+              if (exported && extractParts(exported)) {
+                return exported;
+              }
+              if (exported && exported.default && extractParts(exported.default)) {
+                return exported.default;
+              }
+            }
+          }
+
+          return null;
+        }
+
+        function getGameParts() {
+          if (cachedGame) {
+            const parts = extractParts(cachedGame);
+            if (parts) return parts;
+          }
+
+          const found = findGameInWindow();
+          if (!found) return null;
+          cachedGame = found;
+          return extractParts(found);
+        }
+
+        function isFiniteNumber(value) {
+          return Number.isFinite(value);
+        }
+
+        function applyTravel(parts) {
+          if (travelApplied) return;
+          if (!parts) return;
+          if (TRAVEL.scene && TRAVEL.scene !== parts.map.key) return;
+          if (!isFiniteNumber(TRAVEL.x) || !isFiniteNumber(TRAVEL.y)) {
+            travelApplied = true;
+            return;
+          }
+
+          parts.player.setPosition(TRAVEL.x, TRAVEL.y);
+          if (parts.player.body && typeof parts.player.body.reset === "function") {
+            parts.player.body.reset(TRAVEL.x, TRAVEL.y);
+          }
+          parts.camera.centerOn(TRAVEL.x, TRAVEL.y);
+          travelApplied = true;
+        }
+
+        function renderDrawer(zone) {
+          if (!zone) {
+            drawer.innerHTML = [
+              '<div class="eyebrow">等待交互区</div>',
+              '<h2>靠近房屋、门口或告示牌</h2>',
+              '<p>我现在按原游戏对象层和相机位置来放框。你靠近粉色框后按 Enter，我就打开对应的产品功能说明。</p>',
+            ].join("");
+            return;
+          }
+
+          drawer.innerHTML = [
+            '<div class="eyebrow">地图功能区</div>',
+            "<h2>" + zone.title + "</h2>",
+            "<p>" + zone.desc + "</p>",
+            "<ul>" + zone.bullets.map(function (item) { return "<li>" + item + "</li>"; }).join("") + "</ul>",
+          ].join("");
+        }
+
+        function setActive(id) {
+          activeId = id;
+          zoneNodes.forEach(function (node, key) {
+            node.classList.toggle("active", key === id);
+          });
+          legend.querySelectorAll("button").forEach(function (button) {
+            button.classList.toggle("active", button.dataset.id === id);
+          });
+          const zone = (SCENES[currentSceneKey] || []).find(function (item) {
+            return item.id === id;
+          }) || null;
+          renderDrawer(zone);
+        }
+
+        function setFocused(id) {
+          focusedId = id;
+          zoneNodes.forEach(function (node, key) {
+            node.classList.toggle("focused", !!id && key === id);
+          });
+        }
+
+        function distanceToRect(px, py, rect) {
+          const dx = Math.max(rect.x - px, 0, px - (rect.x + rect.w));
+          const dy = Math.max(rect.y - py, 0, py - (rect.y + rect.h));
+          return Math.sqrt((dx * dx) + (dy * dy));
+        }
+
+        function ensureSceneUi(sceneKey) {
+          if (sceneKey === currentSceneKey) return;
+          currentSceneKey = sceneKey;
+          sceneChip.textContent = sceneKey ? ("当前场景：" + sceneKey) : "等待游戏场景";
+          zoneNodes.clear();
+          zonesRoot.innerHTML = "";
+          legend.innerHTML = "";
+
+          const zones = SCENES[sceneKey] || [];
+          zones.forEach(function (zone) {
+            const node = document.createElement("div");
+            node.className = "zone";
+            node.dataset.id = zone.id;
+            node.dataset.label = zone.label;
+            zonesRoot.appendChild(node);
+            zoneNodes.set(zone.id, node);
+
+            const button = document.createElement("button");
+            button.type = "button";
+            button.dataset.id = zone.id;
+            button.textContent = zone.label;
+            button.addEventListener("click", function () {
+              setActive(zone.id);
+            });
+            legend.appendChild(button);
+          });
+
+          activeId = null;
+          focusedId = null;
+          renderDrawer(null);
+        }
+
+        function updateOverlay() {
+          const parts = getGameParts();
+          if (!parts) {
+            sceneChip.textContent = "等待游戏场景";
+            focusChip.textContent = "靠近粉色框后按 Enter";
+            debug.textContent = "等待 Phaser 场景加载";
+            return;
+          }
+
+          applyTravel(parts);
+
+          const sceneKey = parts.map.key;
+          ensureSceneUi(sceneKey);
+
+          const zones = SCENES[sceneKey] || [];
+          const camera = parts.camera;
+          const scaleX = window.innerWidth / camera.width;
+          const scaleY = window.innerHeight / camera.height;
+          const viewX = camera.worldView.x;
+          const viewY = camera.worldView.y;
+          const viewW = camera.width;
+          const viewH = camera.height;
+          const playerX = parts.player.x;
+          const playerY = parts.player.y;
+          let nearest = null;
+
+          zones.forEach(function (zone) {
+            const node = zoneNodes.get(zone.id);
+            if (!node) return;
+
+            const left = (zone.rect.x - viewX) * scaleX;
+            const top = (zone.rect.y - viewY) * scaleY;
+            const width = zone.rect.w * scaleX;
+            const height = zone.rect.h * scaleY;
+            const visible = !(left + width < -24 || top + height < -24 || left > window.innerWidth + 24 || top > window.innerHeight + 24);
+
+            node.classList.toggle("visible", visible);
+            if (visible) {
+              node.style.left = left + "px";
+              node.style.top = top + "px";
+              node.style.width = width + "px";
+              node.style.height = height + "px";
+            }
+
+            const dist = distanceToRect(playerX, playerY, zone.rect);
+            if (!nearest || dist < nearest.dist) {
+              nearest = { id: zone.id, dist: dist };
+            }
+          });
+
+          if (nearest && nearest.dist <= 170) {
+            const zone = zones.find(function (item) {
+              return item.id === nearest.id;
+            });
+            setFocused(nearest.id);
+            focusChip.textContent = "Enter 打开：" + (zone ? zone.label : nearest.id);
+          } else {
+            setFocused(null);
+            focusChip.textContent = "靠近粉色框后按 Enter";
+          }
+
+          debug.textContent = [
+            "scene: " + sceneKey,
+            "player: " + playerX.toFixed(1) + ", " + playerY.toFixed(1),
+            "camera: " + viewX.toFixed(1) + ", " + viewY.toFixed(1) + " / " + viewW + "x" + viewH,
+            "focus: " + (focusedId || "none"),
+            "active: " + (activeId || "none"),
+            "travel: " + (isFiniteNumber(TRAVEL.x) && isFiniteNumber(TRAVEL.y) ? (TRAVEL.x + ", " + TRAVEL.y) : "off"),
+          ].join("\n");
+        }
+
+        window.addEventListener("keydown", function (event) {
+          if (event.key === "Enter" && focusedId) {
+            setActive(focusedId);
+          }
+        });
+
+        window.setInterval(updateOverlay, 120);
+        renderDrawer(null);
+      })();
+    </script>
+  </body>
+</html>
