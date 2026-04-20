@@ -426,7 +426,7 @@
         const debug = document.getElementById("debug");
         const search = new URLSearchParams(window.location.search);
 
-        const STORAGE_KEY = "farm-game-state-v1";
+        const STORAGE_KEY = "farm-game-state-v2";
         const DEFAULT_STATE = {
           collaborators: [
             { id: "p1", name: "阿城", role: "嵌入式", scene: "map-farm", path: [{ x: 760, y: 1700 }, { x: 1210, y: 1240 }, { x: 1930, y: 1820 }, { x: 2090, y: 2400 }] },
@@ -473,6 +473,75 @@
         }
 
         const MULTIPLAYER_STATE = loadState();
+
+        const TASK_STAGE_LABELS = {
+          empty: "空田",
+          seed: "播种",
+          sprout: "发芽",
+          grow: "成长",
+          ready: "可收获",
+        };
+
+        const TASK_STATUS_FLOW = {
+          "待执行": "开发中",
+          "开发中": "联调中",
+          "联调中": "待交付",
+          "待交付": "已交付",
+        };
+
+        function normalizeState() {
+          MULTIPLAYER_STATE.collaborators = Array.isArray(MULTIPLAYER_STATE.collaborators) ? MULTIPLAYER_STATE.collaborators : [];
+          MULTIPLAYER_STATE.tasks = Array.isArray(MULTIPLAYER_STATE.tasks) ? MULTIPLAYER_STATE.tasks : [];
+          MULTIPLAYER_STATE.computers = Array.isArray(MULTIPLAYER_STATE.computers) ? MULTIPLAYER_STATE.computers : [];
+          MULTIPLAYER_STATE.agents = Array.isArray(MULTIPLAYER_STATE.agents) ? MULTIPLAYER_STATE.agents : [];
+          MULTIPLAYER_STATE.requirements = Array.isArray(MULTIPLAYER_STATE.requirements) ? MULTIPLAYER_STATE.requirements : [];
+          MULTIPLAYER_STATE.approvals = Array.isArray(MULTIPLAYER_STATE.approvals) ? MULTIPLAYER_STATE.approvals : [];
+          MULTIPLAYER_STATE.deliveries = Array.isArray(MULTIPLAYER_STATE.deliveries) ? MULTIPLAYER_STATE.deliveries : [];
+          MULTIPLAYER_STATE.taskPlots = Array.isArray(MULTIPLAYER_STATE.taskPlots) ? MULTIPLAYER_STATE.taskPlots : [
+            { id: "plot1", title: "机械臂底盘", stage: "seed", progress: 1, x: 1935, y: 1790, scene: "map-farm" },
+            { id: "plot2", title: "驱动板通讯", stage: "sprout", progress: 2, x: 2025, y: 1790, scene: "map-farm" },
+            { id: "plot3", title: "传感器标定", stage: "grow", progress: 3, x: 2115, y: 1790, scene: "map-farm" },
+            { id: "plot4", title: "空田块", stage: "empty", progress: 0, x: 1935, y: 1875, scene: "map-farm" },
+          ];
+          MULTIPLAYER_STATE.story = MULTIPLAYER_STATE.story || { current: "接入第一只 AI 动物并照料它", completed: [] };
+
+          MULTIPLAYER_STATE.collaborators.forEach(function (item, index) {
+            item.name = item.name || ("协作者" + (index + 1));
+            item.role = item.role || "研发";
+          });
+
+          MULTIPLAYER_STATE.tasks.forEach(function (item, index) {
+            item.label = item.label || ("任务 " + (index + 1));
+            item.status = item.status || "待执行";
+            item.scene = item.scene || "map-farm";
+          });
+
+          MULTIPLAYER_STATE.agents.forEach(function (item, index) {
+            item.model = item.model || (item.type === "claude" ? "Claude" : "Codex");
+            item.species = item.species || (item.type === "claude" ? "牛" : "鸡");
+            item.type = item.type || (item.model === "Claude" ? "claude" : "codex");
+            item.scene = item.scene || "map-farm";
+            item.fedToday = Boolean(item.fedToday);
+            item.talkedToday = Boolean(item.talkedToday);
+            item.mood = item.mood || (item.fedToday && item.talkedToday ? "状态稳定" : "待照料");
+            if (!Number.isFinite(item.x)) {
+              item.x = item.type === "claude" ? 1605 + (index * 42) : 2215 + (index * 32);
+            }
+            if (!Number.isFinite(item.y)) {
+              item.y = item.type === "claude" ? 1755 + ((index % 2) * 36) : 1785 + ((index % 2) * 26);
+            }
+          });
+
+          MULTIPLAYER_STATE.taskPlots.forEach(function (plot, index) {
+            plot.id = plot.id || ("plot" + (index + 1));
+            plot.title = plot.title || "空田块";
+            plot.stage = plot.stage || "empty";
+            plot.progress = Number.isFinite(plot.progress) ? plot.progress : 0;
+            plot.scene = plot.scene || "map-farm";
+          });
+        }
+
+        normalizeState();
 
         const SCENES = {
           "map-farm": [
@@ -545,7 +614,7 @@
             {
               id: "project-room",
               label: "主控内室",
-              rect: { x: 730, y: 360, w: 600, h: 320 },
+              rect: { x: 760, y: 380, w: 420, h: 240 },
               title: "主控内室",
               desc: "进入农舍后，屋内中央更像真正的项目主控室，适合放项目摘要、最近决策和今日计划。",
               bullets: ["项目摘要", "最近决策", "今日计划"],
@@ -563,7 +632,7 @@
             {
               id: "delivery-room",
               label: "交付工坊",
-              rect: { x: 340, y: 520, w: 600, h: 320 },
+              rect: { x: 250, y: 120, w: 900, h: 620 },
               title: "交付工坊",
               desc: "工具棚内部直接映射交付工坊，中央工作区适合承接构建、实验和回滚。",
               bullets: ["构建验证", "实验台", "交付记录"],
@@ -589,7 +658,7 @@
             {
               id: "chat-room",
               label: "聊天内院",
-              rect: { x: 340, y: 420, w: 580, h: 300 },
+              rect: { x: 350, y: 405, w: 500, h: 250 },
               title: "聊天内院",
               desc: "鸡舍内部空间不大，中央区域适合做轻量沟通、交接和协作日志入口。",
               bullets: ["协作聊天", "交接日志", "消息回执"],
@@ -607,7 +676,7 @@
             {
               id: "computer-room",
               label: "机房中控",
-              rect: { x: 620, y: 480, w: 560, h: 980 },
+              rect: { x: 280, y: 150, w: 820, h: 620 },
               title: "机房中控",
               desc: "牛棚内部右侧长条区域更像一排设备位，我把这里当成电脑与节点中控区，适合开机房功能。",
               bullets: ["电脑节点", "在线状态", "运行监控"],
@@ -623,6 +692,82 @@
           ],
         };
 
+        SCENES["map-home"].push(
+          {
+            id: "story-desk",
+            label: "主线桌",
+            rect: { x: 860, y: 330, w: 230, h: 110 },
+            title: "主线桌",
+            desc: "农舍里放主线推进、今日目标和项目节奏，方便一进屋就知道接下来先干什么。",
+            bullets: ["今日目标", "主线步骤", "阻塞提醒"],
+          },
+          {
+            id: "member-wall",
+            label: "成员墙",
+            rect: { x: 1190, y: 330, w: 165, h: 210 },
+            title: "成员墙",
+            desc: "这里放协作者、AI 分工和接手关系，比在外场看总入口更适合细看团队状态。",
+            bullets: ["成员分工", "接手关系", "在线状态"],
+          }
+        );
+
+        SCENES["map-cowshed"].push(
+          {
+            id: "runner-console",
+            label: "Runner 台",
+            rect: { x: 790, y: 120, w: 330, h: 170 },
+            title: "Runner 控制台",
+            desc: "机房内部负责真正的电脑和 Runner 操作，适合放执行、日志和在线状态。",
+            bullets: ["Runner 在线", "执行日志", "节点负载"],
+          },
+          {
+            id: "device-rack",
+            label: "设备架",
+            rect: { x: 250, y: 150, w: 220, h: 260 },
+            title: "设备架",
+            desc: "这里负责设备卡、串口回传和编译节点能力，贴近嵌入式开发的真实机房语义。",
+            bullets: ["设备卡", "串口日志", "编译能力"],
+          }
+        );
+
+        SCENES["map-coop"].push(
+          {
+            id: "handoff-table",
+            label: "交接桌",
+            rect: { x: 540, y: 460, w: 210, h: 150 },
+            title: "交接桌",
+            desc: "鸡舍内适合放 AI 与人之间的交接、摘要和上下文健康度，不占外场主视线。",
+            bullets: ["交接包", "摘要", "上下文健康度"],
+          },
+          {
+            id: "meeting-board",
+            label: "会议板",
+            rect: { x: 845, y: 430, w: 150, h: 180 },
+            title: "会议板",
+            desc: "这里负责留言、讨论结论和需求回执，让聊天不只是一个总入口。",
+            bullets: ["讨论结论", "需求回执", "待回复"],
+          }
+        );
+
+        SCENES["map-toolshed"].push(
+          {
+            id: "build-bench",
+            label: "构建台",
+            rect: { x: 760, y: 130, w: 360, h: 180 },
+            title: "构建台",
+            desc: "工具棚里把构建、测试、实验验证放到工作台上，比外场的总交付入口更细。",
+            bullets: ["构建", "测试", "实验验证"],
+          },
+          {
+            id: "release-crate",
+            label: "交付箱",
+            rect: { x: 300, y: 380, w: 820, h: 380 },
+            title: "交付箱",
+            desc: "交付箱负责分支、回执和发布前确认，让交付动作在屋内完成闭环。",
+            bullets: ["分支状态", "交付回执", "发布前确认"],
+          }
+        );
+
         const zoneNodes = new Map();
         const entityNodes = new Map();
         let cachedGame = null;
@@ -631,6 +776,11 @@
         let currentSceneKey = null;
         let travelApplied = false;
         let dirtyEntities = true;
+        let travelDebug = "idle";
+
+        const AUTO_START = search.get("autostart") === "1";
+        let autoStartTries = 0;
+        let autoStartDone = false;
 
         const TRAVEL = {
           scene: search.get("scene"),
@@ -641,14 +791,28 @@
 
         function extractParts(game) {
           try {
-            const scene = game.scene && game.scene.keys && game.scene.keys.Game;
-            const camera = scene && scene.cameras && scene.cameras.main;
-            const player = scene && scene._PLAYER;
-            const map = scene && scene._MAP;
-            if (!scene || !camera || !player || !map) return null;
-            return { scene: scene, camera: camera, player: player, map: map };
+            const sceneKeys = game && game.scene && game.scene.keys ? Object.keys(game.scene.keys) : [];
+            for (let i = 0; i < sceneKeys.length; i += 1) {
+              const scene = game.scene.keys[sceneKeys[i]];
+              const camera = scene && scene.cameras && scene.cameras.main;
+              const player = scene && scene._PLAYER;
+              const map = scene && scene._MAP;
+              if (scene && camera && player && map) {
+                return { scene: scene, camera: camera, player: player, map: map };
+              }
+            }
+            return null;
           } catch (error) {
             return null;
+          }
+        }
+
+        function triggerAutoStart() {
+          const enterEvent = new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true });
+          window.dispatchEvent(enterEvent);
+          document.dispatchEvent(enterEvent);
+          if (document.body) {
+            document.body.dispatchEvent(enterEvent);
           }
         }
 
@@ -695,6 +859,31 @@
           return extractParts(found);
         }
 
+        function describeGameSearch() {
+          const lines = [];
+
+          if (cachedGame && cachedGame.scene && cachedGame.scene.keys) {
+            lines.push("cached scenes: " + Object.keys(cachedGame.scene.keys).join(", "));
+          }
+
+          const found = findGameInWindow();
+          if (!found) {
+            lines.push("found: none");
+            return lines.join("\n");
+          }
+
+          if (found.scene && found.scene.keys) {
+            const sceneNames = Object.keys(found.scene.keys);
+            lines.push("found scenes: " + sceneNames.join(", "));
+            sceneNames.forEach(function (name) {
+              const scene = found.scene.keys[name];
+              lines.push(name + " player=" + !!(scene && scene._PLAYER) + " map=" + !!(scene && scene._MAP));
+            });
+          }
+
+          return lines.join("\n");
+        }
+
         function saveState() {
           try {
             window.localStorage.setItem(STORAGE_KEY, JSON.stringify(MULTIPLAYER_STATE));
@@ -739,6 +928,20 @@
             });
           });
 
+          MULTIPLAYER_STATE.taskPlots.forEach(function (plot) {
+            entities.push({
+              id: plot.id,
+              kind: "task",
+              scene: plot.scene,
+              getPosition: function () {
+                return { x: plot.x, y: plot.y };
+              },
+              render: function () {
+                return '<div class="entity-badge">田块 · ' + plot.title + " · " + (TASK_STAGE_LABELS[plot.stage] || plot.stage) + "</div>";
+              },
+            });
+          });
+
           MULTIPLAYER_STATE.computers.forEach(function (computer) {
             entities.push({
               id: computer.id,
@@ -778,10 +981,94 @@
           return Number.isFinite(value);
         }
 
+        function isSceneConfigCandidate(value) {
+          return !!(
+            value &&
+            typeof value === "object" &&
+            typeof value.loadedScene === "string" &&
+            value.map &&
+            value.map.sceneFarm &&
+            value.map.sceneFarm.key === "map-farm"
+          );
+        }
+
+        function findSceneConfigObject(root, seen, depth) {
+          if (!root || typeof root !== "object") return null;
+          if (seen.has(root) || depth > 3) return null;
+          seen.add(root);
+
+          if (isSceneConfigCandidate(root)) {
+            return root;
+          }
+
+          const keys = Object.keys(root);
+          for (let i = 0; i < keys.length; i += 1) {
+            const next = root[keys[i]];
+            const found = findSceneConfigObject(next, seen, depth + 1);
+            if (found) return found;
+          }
+
+          return null;
+        }
+
+        function getRuntimeSceneConfig() {
+          const seen = new WeakSet();
+
+          const fromWindow = findSceneConfigObject(window, seen, 0);
+          if (fromWindow) return fromWindow;
+
+          if (window.parcelRequire && window.parcelRequire.cache) {
+            const ids = Object.keys(window.parcelRequire.cache);
+            for (let i = 0; i < ids.length; i += 1) {
+              const entry = window.parcelRequire.cache[ids[i]];
+              const exported = entry && entry.exports;
+              const found = findSceneConfigObject(exported, seen, 0);
+              if (found) return found;
+            }
+          }
+
+          return null;
+        }
+
         function applyTravel(parts) {
           if (travelApplied) return;
           if (!parts) return;
-          if (TRAVEL.scene && TRAVEL.scene !== parts.map.key) return;
+
+          const sceneLookup = {
+            "map-farm": "sceneFarm",
+            "map-home": "sceneHome",
+            "map-coop": "sceneCoop",
+            "map-toolshed": "sceneToolShed",
+            "map-cowshed": "sceneCowShed",
+            "map-crossroads": "sceneCrossRoads",
+          };
+
+          if (TRAVEL.scene && TRAVEL.scene !== parts.map.key) {
+            const nextScene = sceneLookup[TRAVEL.scene];
+            if (nextScene && parts.scene && parts.scene._OBJECTS && typeof parts.scene._OBJECTS.newScene === "function") {
+              travelDebug = "via object loader -> " + nextScene;
+              parts.scene._OBJECTS.newScene(nextScene);
+              return;
+            }
+
+            if (nextScene) {
+              const runtimeConfig = getRuntimeSceneConfig();
+              if (runtimeConfig) {
+                travelDebug = "via runtime config " + runtimeConfig.loadedScene + " -> " + nextScene;
+                runtimeConfig.previousData = runtimeConfig.previousData || {};
+                runtimeConfig.previousData.scene = runtimeConfig.loadedScene;
+                runtimeConfig.loadedScene = nextScene;
+                if (parts.scene && parts.scene.scene && typeof parts.scene.scene.restart === "function") {
+                  travelDebug += " restart";
+                  parts.scene.scene.restart();
+                }
+                return;
+              }
+              travelDebug = "no runtime config for " + nextScene;
+            }
+            return;
+          }
+
           if (!isFiniteNumber(TRAVEL.x) || !isFiniteNumber(TRAVEL.y)) {
             travelApplied = true;
             return;
@@ -800,9 +1087,11 @@
           const claudeCount = MULTIPLAYER_STATE.agents.filter(function (item) { return item.type === "claude"; }).length;
           return {
             tasks: MULTIPLAYER_STATE.tasks.length,
+            plots: MULTIPLAYER_STATE.taskPlots.length,
             computers: MULTIPLAYER_STATE.computers.length,
             codex: codexCount,
             claude: claudeCount,
+            caredAgents: MULTIPLAYER_STATE.agents.filter(function (item) { return item.fedToday && item.talkedToday; }).length,
             approvals: MULTIPLAYER_STATE.approvals.length,
             deliveries: MULTIPLAYER_STATE.deliveries.length,
             collaborators: MULTIPLAYER_STATE.collaborators.length,
@@ -1211,15 +1500,312 @@
           }
         }
 
+        function getPrimaryAgent() {
+          return MULTIPLAYER_STATE.agents[0] || null;
+        }
+
+        function updateStory(step) {
+          if (!MULTIPLAYER_STATE.story) {
+            MULTIPLAYER_STATE.story = { current: step, completed: [] };
+            return;
+          }
+          if (MULTIPLAYER_STATE.story.current && MULTIPLAYER_STATE.story.completed.indexOf(MULTIPLAYER_STATE.story.current) === -1) {
+            MULTIPLAYER_STATE.story.completed.unshift(MULTIPLAYER_STATE.story.current);
+          }
+          MULTIPLAYER_STATE.story.current = step;
+        }
+
+        function plantTaskPlot() {
+          const emptyPlot = MULTIPLAYER_STATE.taskPlots.find(function (plot) { return plot.stage === "empty"; });
+          const req = MULTIPLAYER_STATE.requirements.shift();
+          if (emptyPlot) {
+            emptyPlot.title = req ? req.title : ("研发任务 " + (MULTIPLAYER_STATE.tasks.length + 1));
+            emptyPlot.stage = "seed";
+            emptyPlot.progress = 1;
+          } else {
+            createTask(req ? req.title : ("研发任务 " + (MULTIPLAYER_STATE.tasks.length + 1)), "待执行");
+          }
+          updateStory("推进第一个任务田块直到可交付");
+          markDirty();
+        }
+
+        function advanceTaskPlot() {
+          const flow = { seed: "sprout", sprout: "grow", grow: "ready", ready: "ready" };
+          const plot = MULTIPLAYER_STATE.taskPlots.find(function (item) { return item.stage !== "empty" && item.stage !== "ready"; });
+          if (!plot) return;
+          plot.stage = flow[plot.stage] || "ready";
+          plot.progress = Math.min((plot.progress || 0) + 1, 4);
+          markDirty();
+        }
+
+        function harvestTaskPlot() {
+          const plot = MULTIPLAYER_STATE.taskPlots.find(function (item) { return item.stage === "ready"; });
+          if (!plot) return;
+          MULTIPLAYER_STATE.deliveries.unshift({ id: "d" + Date.now(), title: plot.title, status: "田块已收获" });
+          createTask(plot.title, "待交付");
+          plot.title = "空田块";
+          plot.stage = "empty";
+          plot.progress = 0;
+          updateStory("把收获的任务送去交付工坊");
+          markDirty();
+        }
+
+        function feedAgent() {
+          const agent = MULTIPLAYER_STATE.agents.find(function (item) { return !item.fedToday; }) || getPrimaryAgent();
+          if (!agent) return;
+          agent.fedToday = true;
+          agent.mood = agent.talkedToday ? "状态稳定" : "吃饱待沟通";
+          updateStory("和 AI 动物完成一次沟通");
+          markDirty();
+        }
+
+        function talkAgent() {
+          const agent = MULTIPLAYER_STATE.agents.find(function (item) { return !item.talkedToday; }) || getPrimaryAgent();
+          if (!agent) return;
+          agent.talkedToday = true;
+          agent.mood = agent.fedToday ? "状态稳定" : "已沟通待投喂";
+          updateStory("把需求播种到任务田块");
+          markDirty();
+        }
+
+        function getZoneActions(zoneId) {
+          if (zoneId === "requirements") return [
+            { id: "add-requirement", label: "收 1 条需求" },
+            { id: "spawn-task", label: "拆成任务" },
+          ];
+          if (zoneId === "tasks") return [
+            { id: "plant-task", label: "播种任务" },
+            { id: "advance-plot", label: "推进田块" },
+            { id: "harvest-plot", label: "收获成品" },
+          ];
+          if (zoneId === "ai" || zoneId === "chat-room") return [
+            { id: "feed-agent", label: "投喂 AI 动物" },
+            { id: "talk-agent", label: "和 AI 沟通" },
+            { id: "add-codex", label: "接入 Codex 鸡" },
+            { id: "add-claude", label: "接入 Claude 牛" },
+          ];
+          if (zoneId === "story-desk") return [
+            { id: "spawn-task", label: "派发主线任务" },
+            { id: "advance-plot", label: "推进今日主线" },
+          ];
+          if (zoneId === "member-wall") return [
+            { id: "add-collaborator", label: "加入协作者" },
+            { id: "talk-agent", label: "协调 AI 分工" },
+          ];
+          if (zoneId === "runner-console" || zoneId === "computers" || zoneId === "computer-room") return [
+            { id: "add-computer", label: "加 1 台电脑" },
+            { id: "advance-task", label: "派电脑执行" },
+          ];
+          if (zoneId === "device-rack") return [
+            { id: "add-computer", label: "补 1 个节点" },
+            { id: "add-approval", label: "登记硬件审批" },
+          ];
+          if (zoneId === "handoff-table") return [
+            { id: "add-collaborator", label: "安排接手" },
+            { id: "resolve-approval", label: "确认交接" },
+          ];
+          if (zoneId === "meeting-board" || zoneId === "chat") return [
+            { id: "add-requirement", label: "记录讨论" },
+            { id: "spawn-task", label: "派生任务" },
+          ];
+          if (zoneId === "build-bench") return [
+            { id: "advance-task", label: "构建并验证" },
+            { id: "add-approval", label: "申请实验确认" },
+          ];
+          if (zoneId === "release-crate" || zoneId === "delivery" || zoneId === "delivery-room") return [
+            { id: "deliver-task", label: "完成交付" },
+            { id: "resolve-approval", label: "发出回执" },
+          ];
+          if (zoneId === "approvals") return [
+            { id: "add-approval", label: "发起审批" },
+            { id: "resolve-approval", label: "通过审批" },
+          ];
+          if (zoneId === "project" || zoneId === "project-room") return [
+            { id: "spawn-task", label: "派 1 个任务" },
+            { id: "add-collaborator", label: "加入协作者" },
+          ];
+          return [
+            { id: "spawn-task", label: "新增任务" },
+            { id: "add-collaborator", label: "加入协作者" },
+          ];
+        }
+
+        function renderStateSections(zoneId) {
+          const sections = [];
+          if (zoneId === "project" || zoneId === "project-room" || zoneId === "story-desk") {
+            sections.push('<div class="drawer-section"><h3>当前主线</h3><div class="drawer-pills"><span>' + (MULTIPLAYER_STATE.story && MULTIPLAYER_STATE.story.current ? MULTIPLAYER_STATE.story.current : "先接入 AI 和电脑") + "</span></div></div>");
+          }
+          if (zoneId === "member-wall" || zoneId === "project" || zoneId === "project-room") {
+            sections.push('<div class="drawer-section"><h3>成员与协作</h3>' + renderPills(MULTIPLAYER_STATE.collaborators, function (item) { return item.name + " · " + item.role; }, "暂无协作者") + "</div>");
+          }
+          if (zoneId === "requirements" || zoneId === "meeting-board") {
+            sections.push('<div class="drawer-section"><h3>需求池</h3>' + renderPills(MULTIPLAYER_STATE.requirements, function (item) { return item.title + " · " + item.status; }, "暂无需求") + "</div>");
+          }
+          if (zoneId === "tasks") {
+            sections.push('<div class="drawer-section"><h3>任务田块</h3>' + renderPills(MULTIPLAYER_STATE.taskPlots, function (item) { return item.title + " · " + (TASK_STAGE_LABELS[item.stage] || item.stage); }, "暂无田块") + "</div>");
+          }
+          if (zoneId === "runner-console" || zoneId === "computers" || zoneId === "computer-room" || zoneId === "device-rack") {
+            sections.push('<div class="drawer-section"><h3>电脑与节点</h3>' + renderPills(MULTIPLAYER_STATE.computers, function (item) { return item.label; }, "暂无电脑") + "</div>");
+          }
+          if (zoneId === "ai" || zoneId === "chat-room" || zoneId === "handoff-table") {
+            sections.push('<div class="drawer-section"><h3>AI 动物</h3>' + renderPills(MULTIPLAYER_STATE.agents, function (item) { return item.species + " · " + item.model + " · " + item.mood; }, "暂无 AI") + "</div>");
+          }
+          if (zoneId === "build-bench" || zoneId === "release-crate" || zoneId === "delivery" || zoneId === "delivery-room") {
+            sections.push('<div class="drawer-section"><h3>交付回执</h3>' + renderPills(MULTIPLAYER_STATE.deliveries, function (item) { return item.title + " · " + item.status; }, "暂无交付") + "</div>");
+          }
+          if (zoneId === "approvals" || zoneId === "device-rack" || zoneId === "build-bench") {
+            sections.push('<div class="drawer-section"><h3>审批队列</h3>' + renderPills(MULTIPLAYER_STATE.approvals, function (item) { return item.title + " · " + item.status; }, "暂无审批") + "</div>");
+          }
+          return sections.join("");
+        }
+
+        function handleAction(actionId) {
+          if (actionId === "plant-task") {
+            plantTaskPlot();
+          } else if (actionId === "advance-plot") {
+            advanceTaskPlot();
+          } else if (actionId === "harvest-plot") {
+            harvestTaskPlot();
+          } else if (actionId === "feed-agent") {
+            feedAgent();
+          } else if (actionId === "talk-agent") {
+            talkAgent();
+          } else if (actionId === "add-requirement") {
+            addRequirement();
+          } else if (actionId === "spawn-task") {
+            const req = MULTIPLAYER_STATE.requirements.shift();
+            createTask(req ? req.title : ("研发任务 " + (MULTIPLAYER_STATE.tasks.length + 1)), "待执行");
+            updateStory("把任务播种到田块里");
+            markDirty();
+          } else if (actionId === "advance-task") {
+            advanceTask();
+          } else if (actionId === "add-computer") {
+            addComputer();
+            updateStory("接入 AI、电脑和 Runner 形成闭环");
+          } else if (actionId === "add-codex") {
+            addAgent("codex");
+          } else if (actionId === "add-claude") {
+            addAgent("claude");
+          } else if (actionId === "deliver-task") {
+            deliverTask();
+          } else if (actionId === "add-approval") {
+            addApproval();
+          } else if (actionId === "resolve-approval") {
+            resolveApproval();
+          } else if (actionId === "add-collaborator") {
+            addCollaborator();
+          }
+          renderDrawer((SCENES[currentSceneKey] || []).find(function (item) { return item.id === activeId; }) || null);
+        }
+
+        function getZoneActions(zoneId) {
+          if (zoneId === "requirements") return [
+            { id: "add-requirement", label: "收 1 条需求" },
+            { id: "spawn-task", label: "拆成任务" },
+          ];
+          if (zoneId === "tasks") return [
+            { id: "plant-task", label: "播种任务" },
+            { id: "advance-plot", label: "推进田块" },
+            { id: "harvest-plot", label: "收获交付" },
+          ];
+          if (zoneId === "ai" || zoneId === "chat-room") return [
+            { id: "feed-agent", label: "投喂 AI 动物" },
+            { id: "talk-agent", label: "和 AI 沟通" },
+            { id: "add-codex", label: "接入 Codex 鸡" },
+            { id: "add-claude", label: "接入 Claude 牛" },
+          ];
+          if (zoneId === "story-desk") return [
+            { id: "spawn-task", label: "派发主线任务" },
+            { id: "advance-plot", label: "推进今日主线" },
+          ];
+          if (zoneId === "member-wall") return [
+            { id: "add-collaborator", label: "加入协作者" },
+            { id: "talk-agent", label: "协调 AI 分工" },
+          ];
+          if (zoneId === "runner-console" || zoneId === "computers" || zoneId === "computer-room") return [
+            { id: "add-computer", label: "加 1 台电脑" },
+            { id: "advance-task", label: "派 Runner 执行" },
+          ];
+          if (zoneId === "device-rack") return [
+            { id: "add-computer", label: "补 1 个节点" },
+            { id: "add-approval", label: "登记硬件审批" },
+          ];
+          if (zoneId === "handoff-table") return [
+            { id: "add-collaborator", label: "安排接手" },
+            { id: "resolve-approval", label: "确认交接" },
+          ];
+          if (zoneId === "meeting-board" || zoneId === "chat") return [
+            { id: "add-requirement", label: "记录讨论" },
+            { id: "spawn-task", label: "派生任务" },
+          ];
+          if (zoneId === "build-bench") return [
+            { id: "advance-task", label: "构建并验证" },
+            { id: "add-approval", label: "申请实验确认" },
+          ];
+          if (zoneId === "release-crate" || zoneId === "delivery" || zoneId === "delivery-room") return [
+            { id: "deliver-task", label: "完成交付" },
+            { id: "resolve-approval", label: "发出回执" },
+          ];
+          if (zoneId === "approvals") return [
+            { id: "add-approval", label: "发起审批" },
+            { id: "resolve-approval", label: "通过审批" },
+          ];
+          if (zoneId === "project" || zoneId === "project-room") return [
+            { id: "spawn-task", label: "派 1 个任务" },
+            { id: "add-collaborator", label: "加入协作者" },
+          ];
+          return [
+            { id: "spawn-task", label: "新增任务" },
+            { id: "add-collaborator", label: "加入协作者" },
+          ];
+        }
+
+        function renderStateSections(zoneId) {
+          const sections = [];
+
+          if (zoneId === "project" || zoneId === "project-room" || zoneId === "story-desk") {
+            sections.push('<div class="drawer-section"><h3>当前主线</h3><div class="drawer-pills"><span>' + (MULTIPLAYER_STATE.story && MULTIPLAYER_STATE.story.current ? MULTIPLAYER_STATE.story.current : "先接入 AI、电脑和 Runner") + "</span></div></div>");
+          }
+          if (zoneId === "member-wall" || zoneId === "project" || zoneId === "project-room") {
+            sections.push('<div class="drawer-section"><h3>成员与协作</h3>' + renderPills(MULTIPLAYER_STATE.collaborators, function (item) { return item.name + " · " + item.role; }, "暂无协作者") + "</div>");
+          }
+          if (zoneId === "requirements" || zoneId === "meeting-board") {
+            sections.push('<div class="drawer-section"><h3>需求池</h3>' + renderPills(MULTIPLAYER_STATE.requirements, function (item) { return item.title + " · " + item.status; }, "暂无需求") + "</div>");
+          }
+          if (zoneId === "tasks") {
+            sections.push('<div class="drawer-section"><h3>任务田块</h3>' + renderPills(MULTIPLAYER_STATE.taskPlots, function (item) { return item.title + " · " + (TASK_STAGE_LABELS[item.stage] || item.stage); }, "暂无田块") + "</div>");
+          }
+          if (zoneId === "runner-console" || zoneId === "computers" || zoneId === "computer-room" || zoneId === "device-rack") {
+            sections.push('<div class="drawer-section"><h3>电脑与节点</h3>' + renderPills(MULTIPLAYER_STATE.computers, function (item) { return item.label; }, "暂无电脑") + "</div>");
+          }
+          if (zoneId === "ai" || zoneId === "chat-room" || zoneId === "handoff-table") {
+            sections.push('<div class="drawer-section"><h3>AI 动物</h3>' + renderPills(MULTIPLAYER_STATE.agents, function (item) { return item.species + " · " + item.model + " · " + item.mood; }, "暂无 AI") + "</div>");
+          }
+          if (zoneId === "build-bench" || zoneId === "release-crate" || zoneId === "delivery" || zoneId === "delivery-room") {
+            sections.push('<div class="drawer-section"><h3>交付回执</h3>' + renderPills(MULTIPLAYER_STATE.deliveries, function (item) { return item.title + " · " + item.status; }, "暂无交付") + "</div>");
+          }
+          if (zoneId === "approvals" || zoneId === "device-rack" || zoneId === "build-bench") {
+            sections.push('<div class="drawer-section"><h3>审批队列</h3>' + renderPills(MULTIPLAYER_STATE.approvals, function (item) { return item.title + " · " + item.status; }, "暂无审批") + "</div>");
+          }
+
+          return sections.join("");
+        }
+
         function updateOverlay() {
+          if (AUTO_START && !autoStartDone && autoStartTries < 80) {
+            autoStartTries += 1;
+            triggerAutoStart();
+          }
+
           const parts = getGameParts();
           if (!parts) {
             sceneChip.textContent = "等待游戏场景";
             focusChip.textContent = "靠近粉色框后按 Enter";
-            debug.textContent = "等待 Phaser 场景加载";
+            debug.textContent = "等待 Phaser 场景加载\n" + describeGameSearch();
             return;
           }
 
+          autoStartDone = true;
           applyTravel(parts);
 
           const sceneKey = parts.map.key;
@@ -1280,6 +1866,8 @@
             "focus: " + (focusedId || "none"),
             "active: " + (activeId || "none"),
             "travel: " + (isFiniteNumber(TRAVEL.x) && isFiniteNumber(TRAVEL.y) ? (TRAVEL.x + ", " + TRAVEL.y) : "off"),
+            "sceneTarget: " + (TRAVEL.scene || "off"),
+            "travelDebug: " + travelDebug,
           ].join("\n");
         }
 

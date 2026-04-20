@@ -1,14 +1,14 @@
 $ErrorActionPreference = "Stop"
 
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
-
 $baseUrl = "http://127.0.0.1:3070/harvest-moon-phaser3-game/index.html"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $artifactsDir = Join-Path $repoRoot "artifacts"
 if (-not (Test-Path -LiteralPath $artifactsDir)) {
   New-Item -ItemType Directory -Path $artifactsDir | Out-Null
 }
+
+$viewport = "1440,900"
+$waitMs = 9000
 
 $presets = @(
   @{ name = "farm-home-outer"; scene = "map-farm"; x = 680; y = 1730; note = "home outer" },
@@ -25,38 +25,20 @@ $presets = @(
   @{ name = "toolshed-room"; scene = "map-toolshed"; x = 640; y = 640; note = "toolshed room" }
 )
 
-function Capture-Screen {
-  param([string]$Path)
-
-  if (Test-Path -LiteralPath $Path) {
-    Remove-Item -LiteralPath $Path -Force
-  }
-
-  $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-  $bmp = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
-  $graphics = [System.Drawing.Graphics]::FromImage($bmp)
-  $graphics.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
-  $tempPath = Join-Path $env:TEMP ([System.IO.Path]::GetFileName($Path))
-  if (Test-Path -LiteralPath $tempPath) {
-    Remove-Item -LiteralPath $tempPath -Force
-  }
-  $bmp.Save($tempPath, [System.Drawing.Imaging.ImageFormat]::Png)
-  $graphics.Dispose()
-  $bmp.Dispose()
-  Copy-Item -LiteralPath $tempPath -Destination $Path -Force
-  Remove-Item -LiteralPath $tempPath -Force
-}
-
 foreach ($preset in $presets) {
-  $url = "{0}?scene={1}&x={2}&y={3}" -f $baseUrl, $preset.scene, $preset.x, $preset.y
-  Start-Process $url
-  Start-Sleep -Seconds 4
-
-  $ws = New-Object -ComObject WScript.Shell
-  $null = $ws.AppActivate("Harvest Moon")
-  Start-Sleep -Milliseconds 500
-
+  $url = "{0}?autostart=1&scene={1}&x={2}&y={3}" -f $baseUrl, $preset.scene, $preset.x, $preset.y
   $path = Join-Path $artifactsDir ($preset.name + ".png")
-  Capture-Screen -Path $path
+
+  if (Test-Path -LiteralPath $path) {
+    Remove-Item -LiteralPath $path -Force
+  }
+
+  $command = 'npx playwright screenshot --browser chromium --viewport-size ' + $viewport + ' --wait-for-timeout ' + $waitMs + ' --timeout 30000 "' + $url + '" "' + $path + '"'
+  cmd /c $command
+
+  if (-not (Test-Path -LiteralPath $path)) {
+    throw "截图失败: $($preset.name)"
+  }
+
   Write-Output "$($preset.name)`t$($preset.note)`t$path"
 }
