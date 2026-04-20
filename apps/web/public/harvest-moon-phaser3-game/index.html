@@ -81,6 +81,12 @@
         pointer-events: none;
       }
 
+      .entities {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+
       .zone {
         position: absolute;
         display: none;
@@ -110,6 +116,71 @@
         font-size: 11px;
         font-weight: 800;
         white-space: nowrap;
+      }
+
+      .entity {
+        position: absolute;
+        display: none;
+        pointer-events: none;
+      }
+
+      .entity.visible {
+        display: block;
+      }
+
+      .entity-badge {
+        display: inline-flex;
+        min-height: 28px;
+        align-items: center;
+        gap: 6px;
+        padding: 0 10px;
+        border-radius: 999px;
+        background: rgba(22, 17, 10, 0.88);
+        color: #fff4de;
+        font-size: 12px;
+        font-weight: 800;
+        box-shadow: 0 12px 22px rgba(0, 0, 0, 0.2);
+      }
+
+      .entity.player .entity-badge {
+        background: rgba(28, 40, 18, 0.9);
+      }
+
+      .entity.task .entity-badge {
+        background: rgba(76, 25, 18, 0.9);
+      }
+
+      .entity.computer .entity-badge {
+        background: rgba(18, 30, 50, 0.92);
+      }
+
+      .entity.ai-codex .entity-badge {
+        background: rgba(107, 56, 10, 0.92);
+      }
+
+      .entity.ai-claude .entity-badge {
+        background: rgba(74, 42, 18, 0.92);
+      }
+
+      .entity-home {
+        width: 34px;
+        height: 24px;
+        margin: 6px auto 0;
+        border-radius: 8px 8px 4px 4px;
+        background: rgba(194, 137, 80, 0.9);
+        box-shadow:
+          inset 0 -4px 0 rgba(101, 49, 20, 0.45),
+          0 8px 18px rgba(0, 0, 0, 0.16);
+      }
+
+      .entity-home::before {
+        content: "";
+        display: block;
+        width: 24px;
+        height: 10px;
+        margin: -6px auto 0;
+        border-radius: 6px 6px 0 0;
+        background: rgba(112, 37, 19, 0.95);
       }
 
       .zone.focused {
@@ -270,6 +341,7 @@
         </div>
       </div>
       <div class="zones" id="zones"></div>
+      <div class="entities" id="entities"></div>
       <div class="drawer" id="drawer"></div>
       <div class="legend" id="legend"></div>
       <div class="debug" id="debug">等待调试信息</div>
@@ -280,12 +352,34 @@
     <script>
       (function () {
         const zonesRoot = document.getElementById("zones");
+        const entitiesRoot = document.getElementById("entities");
         const drawer = document.getElementById("drawer");
         const legend = document.getElementById("legend");
         const sceneChip = document.getElementById("scene-chip");
         const focusChip = document.getElementById("focus-chip");
         const debug = document.getElementById("debug");
         const search = new URLSearchParams(window.location.search);
+
+        const MULTIPLAYER_STATE = {
+          collaborators: [
+            { id: "p1", name: "阿城", role: "嵌入式", scene: "map-farm", path: [{ x: 760, y: 1700 }, { x: 1210, y: 1240 }, { x: 1930, y: 1820 }, { x: 2090, y: 2400 }] },
+            { id: "p2", name: "北斗", role: "算法", scene: "map-farm", path: [{ x: 1520, y: 1660 }, { x: 1810, y: 1760 }, { x: 2200, y: 1690 }, { x: 1560, y: 1660 }] },
+            { id: "p3", name: "小周", role: "硬件", scene: "map-farm", path: [{ x: 1060, y: 1850 }, { x: 940, y: 2050 }, { x: 2080, y: 2300 }, { x: 1060, y: 1850 }] },
+          ],
+          tasks: [
+            { id: "t1", label: "联调机械臂", scene: "map-farm", path: [{ x: 1890, y: 1770 }, { x: 2060, y: 1840 }, { x: 1605, y: 1660 }] },
+            { id: "t2", label: "板卡烧录", scene: "map-farm", path: [{ x: 2010, y: 2280 }, { x: 1570, y: 1640 }, { x: 1220, y: 1240 }] },
+            { id: "t3", label: "需求拆解", scene: "map-farm", path: [{ x: 1200, y: 1240 }, { x: 700, y: 1560 }, { x: 2190, y: 1650 }] },
+          ],
+          computers: [
+            { id: "pc1", label: "Runner-01", scene: "map-farm", x: 1480, y: 1490 },
+            { id: "pc2", label: "Runner-02", scene: "map-farm", x: 1685, y: 1490 },
+          ],
+          agents: [
+            { id: "a1", model: "Codex", species: "鸡", scene: "map-farm", x: 2215, y: 1785, type: "codex" },
+            { id: "a2", model: "Claude", species: "牛", scene: "map-farm", x: 1605, y: 1755, type: "claude" },
+          ],
+        };
 
         const SCENES = {
           "map-farm": [
@@ -437,6 +531,7 @@
         };
 
         const zoneNodes = new Map();
+        const entityNodes = new Map();
         let cachedGame = null;
         let activeId = null;
         let focusedId = null;
@@ -506,6 +601,72 @@
           return extractParts(found);
         }
 
+        function buildWorldEntities() {
+          const entities = [];
+
+          MULTIPLAYER_STATE.collaborators.forEach(function (player) {
+            entities.push({
+              id: player.id,
+              kind: "player",
+              scene: player.scene,
+              getPosition: function (tick) {
+                const step = Math.floor(tick / 20) % player.path.length;
+                return player.path[step];
+              },
+              render: function () {
+                return '<div class="entity-badge">👤 ' + player.name + " · " + player.role + "</div>";
+              },
+            });
+          });
+
+          MULTIPLAYER_STATE.tasks.forEach(function (task) {
+            entities.push({
+              id: task.id,
+              kind: "task",
+              scene: task.scene,
+              getPosition: function (tick) {
+                const step = Math.floor(tick / 28) % task.path.length;
+                return task.path[step];
+              },
+              render: function () {
+                return '<div class="entity-badge">任务 · ' + task.label + "</div>";
+              },
+            });
+          });
+
+          MULTIPLAYER_STATE.computers.forEach(function (computer) {
+            entities.push({
+              id: computer.id,
+              kind: "computer",
+              scene: computer.scene,
+              getPosition: function () {
+                return { x: computer.x, y: computer.y };
+              },
+              render: function () {
+                return '<div class="entity-badge">电脑 · ' + computer.label + '</div><div class="entity-home"></div>';
+              },
+            });
+          });
+
+          MULTIPLAYER_STATE.agents.forEach(function (agent) {
+            entities.push({
+              id: agent.id,
+              kind: "ai-" + agent.type,
+              scene: agent.scene,
+              getPosition: function () {
+                return { x: agent.x, y: agent.y };
+              },
+              render: function () {
+                return '<div class="entity-badge">' + agent.species + ' · ' + agent.model + "</div>";
+              },
+            });
+          });
+
+          return entities;
+        }
+
+        const WORLD_ENTITIES = buildWorldEntities();
+
         function isFiniteNumber(value) {
           return Number.isFinite(value);
         }
@@ -532,7 +693,7 @@
             drawer.innerHTML = [
               '<div class="eyebrow">等待交互区</div>',
               '<h2>靠近房屋、门口或告示牌</h2>',
-              '<p>我现在按原游戏对象层和相机位置来放框。你靠近粉色框后按 Enter，我就打开对应的产品功能说明。</p>',
+              '<p>我现在按原游戏对象层和相机位置来放框。你靠近粉色框后按 Enter，我就打开对应的产品功能说明。外场还挂了多人协作原型：人会在地图里巡场，任务会流动，电脑会生成小屋，AI 会生成鸡和牛。</p>',
             ].join("");
             return;
           }
@@ -578,6 +739,7 @@
           sceneChip.textContent = sceneKey ? ("当前场景：" + sceneKey) : "等待游戏场景";
           zoneNodes.clear();
           zonesRoot.innerHTML = "";
+          entitiesRoot.innerHTML = "";
           legend.innerHTML = "";
 
           const zones = SCENES[sceneKey] || [];
@@ -604,6 +766,45 @@
           renderDrawer(null);
         }
 
+        function ensureEntityNodes() {
+          if (entityNodes.size) return;
+          WORLD_ENTITIES.forEach(function (entity) {
+            const node = document.createElement("div");
+            node.className = "entity " + entity.kind;
+            node.dataset.id = entity.id;
+            node.innerHTML = entity.render();
+            entitiesRoot.appendChild(node);
+            entityNodes.set(entity.id, node);
+          });
+        }
+
+        function updateEntities(sceneKey, camera, tick) {
+          ensureEntityNodes();
+          const scaleX = window.innerWidth / camera.width;
+          const scaleY = window.innerHeight / camera.height;
+          const viewX = camera.worldView.x;
+          const viewY = camera.worldView.y;
+
+          WORLD_ENTITIES.forEach(function (entity) {
+            const node = entityNodes.get(entity.id);
+            if (!node) return;
+            if (entity.scene !== sceneKey) {
+              node.classList.remove("visible");
+              return;
+            }
+
+            const pos = entity.getPosition(tick);
+            const left = (pos.x - viewX) * scaleX;
+            const top = (pos.y - viewY) * scaleY;
+            const visible = !(left < -120 || top < -80 || left > window.innerWidth + 120 || top > window.innerHeight + 80);
+            node.classList.toggle("visible", visible);
+            if (visible) {
+              node.style.left = left + "px";
+              node.style.top = top + "px";
+            }
+          });
+        }
+
         function updateOverlay() {
           const parts = getGameParts();
           if (!parts) {
@@ -617,6 +818,7 @@
 
           const sceneKey = parts.map.key;
           ensureSceneUi(sceneKey);
+          updateEntities(sceneKey, parts.camera, performance.now() / 1000);
 
           const zones = SCENES[sceneKey] || [];
           const camera = parts.camera;
