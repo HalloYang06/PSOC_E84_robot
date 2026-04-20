@@ -1,4 +1,4 @@
-<!DOCTYPE HTML>
+﻿<!DOCTYPE HTML>
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
@@ -64,13 +64,13 @@
       .chip,
       .hint {
         display: inline-flex;
-        min-height: 34px;
+        min-height: 32px;
         align-items: center;
-        padding: 0 12px;
+        padding: 0 11px;
         border-radius: 999px;
         background: rgba(8, 10, 14, 0.76);
         color: #fff4de;
-        font-size: 12px;
+        font-size: 11px;
         font-weight: 700;
         backdrop-filter: blur(8px);
       }
@@ -95,10 +95,20 @@
         box-shadow:
           inset 0 0 0 2px rgba(255, 102, 173, 0.9),
           0 0 0 1px rgba(37, 6, 22, 0.18);
+        overflow: hidden;
       }
 
       .zone.visible {
         display: block;
+      }
+
+      .zone::before {
+        content: "";
+        position: absolute;
+        inset: 10px;
+        border-radius: 14px;
+        border: 1px dashed rgba(255, 210, 231, 0.24);
+        opacity: 0.7;
       }
 
       .zone::after {
@@ -118,48 +128,1007 @@
         white-space: nowrap;
       }
 
+      .zone-badge {
+        position: absolute;
+        right: 10px;
+        top: 10px;
+        width: 34px;
+        height: 34px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(35, 10, 23, 0.84);
+        color: #fff4de;
+        font-size: 14px;
+        font-weight: 900;
+        box-shadow:
+          inset 0 0 0 1px rgba(255, 187, 220, 0.18),
+          0 10px 24px rgba(0, 0, 0, 0.18);
+      }
+
+      .zone-corners {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+
+      .zone-corners span {
+        position: absolute;
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: rgba(255, 230, 239, 0.88);
+        box-shadow: 0 0 12px rgba(255, 132, 188, 0.3);
+      }
+
+      .zone-corners span:nth-child(1) { left: 10px; bottom: 10px; }
+      .zone-corners span:nth-child(2) { right: 10px; bottom: 10px; }
+
+      .zone-props {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        opacity: 0.95;
+      }
+
+      .zone-props span {
+        position: absolute;
+        display: block;
+      }
+
+      .zone.zone-command {
+        background:
+          linear-gradient(180deg, rgba(255, 132, 188, 0.16), rgba(255, 132, 188, 0.08)),
+          rgba(255, 77, 151, 0.1);
+      }
+
+      .zone.zone-homebase {
+        background:
+          linear-gradient(180deg, rgba(255, 169, 128, 0.16), rgba(255, 169, 128, 0.08)),
+          rgba(214, 108, 61, 0.08);
+        box-shadow:
+          inset 0 0 0 2px rgba(255, 186, 148, 0.92),
+          0 0 0 1px rgba(67, 28, 10, 0.2);
+      }
+
+      .zone.zone-crew {
+        background:
+          linear-gradient(180deg, rgba(255, 205, 120, 0.14), rgba(255, 205, 120, 0.07)),
+          rgba(255, 161, 77, 0.08);
+        box-shadow:
+          inset 0 0 0 2px rgba(255, 205, 120, 0.88),
+          0 0 0 1px rgba(45, 20, 0, 0.18);
+      }
+
+      .zone.zone-ops {
+        background:
+          linear-gradient(180deg, rgba(126, 184, 255, 0.16), rgba(126, 184, 255, 0.08)),
+          rgba(82, 137, 255, 0.08);
+        box-shadow:
+          inset 0 0 0 2px rgba(126, 184, 255, 0.9),
+          0 0 0 1px rgba(8, 28, 55, 0.22);
+      }
+
+      .zone.zone-gate {
+        background:
+          linear-gradient(180deg, rgba(255, 132, 188, 0.16), rgba(255, 132, 188, 0.08)),
+          rgba(255, 77, 151, 0.1);
+        box-shadow:
+          inset 0 0 0 2px rgba(255, 132, 188, 0.92),
+          0 0 0 1px rgba(37, 6, 22, 0.2);
+      }
+
+      .zone.zone-workshop {
+        background:
+          linear-gradient(180deg, rgba(255, 164, 122, 0.16), rgba(255, 164, 122, 0.08)),
+          rgba(255, 132, 92, 0.08);
+        box-shadow:
+          inset 0 0 0 2px rgba(255, 164, 122, 0.9),
+          0 0 0 1px rgba(62, 23, 7, 0.2);
+      }
+
+      .zone.zone-mail {
+        background:
+          linear-gradient(180deg, rgba(255, 214, 120, 0.16), rgba(255, 214, 120, 0.08)),
+          rgba(255, 184, 77, 0.08);
+        box-shadow:
+          inset 0 0 0 2px rgba(255, 214, 120, 0.9),
+          0 0 0 1px rgba(62, 34, 6, 0.18);
+      }
+
+      .zone.zone-field {
+        background:
+          linear-gradient(180deg, rgba(122, 214, 140, 0.16), rgba(122, 214, 140, 0.08)),
+          rgba(76, 174, 95, 0.08);
+        box-shadow:
+          inset 0 0 0 2px rgba(122, 214, 140, 0.9),
+          0 0 0 1px rgba(8, 54, 22, 0.18);
+      }
+
+      .zone.zone-aihub {
+        background:
+          linear-gradient(180deg, rgba(255, 196, 128, 0.16), rgba(255, 196, 128, 0.08)),
+          rgba(224, 152, 78, 0.08);
+        box-shadow:
+          inset 0 0 0 2px rgba(255, 196, 128, 0.92),
+          0 0 0 1px rgba(70, 34, 8, 0.2);
+      }
+
+      .zone.zone-machine {
+        background:
+          linear-gradient(180deg, rgba(147, 170, 255, 0.16), rgba(147, 170, 255, 0.08)),
+          rgba(96, 120, 224, 0.08);
+        box-shadow:
+          inset 0 0 0 2px rgba(147, 170, 255, 0.92),
+          0 0 0 1px rgba(19, 31, 70, 0.22);
+      }
+
+      .zone.zone-courtyard {
+        background:
+          linear-gradient(180deg, rgba(255, 214, 142, 0.16), rgba(255, 214, 142, 0.08)),
+          rgba(214, 147, 77, 0.08);
+        box-shadow:
+          inset 0 0 0 2px rgba(255, 220, 158, 0.9),
+          0 0 0 1px rgba(63, 34, 6, 0.18);
+      }
+
+      .zone.zone-deliveryyard {
+        background:
+          linear-gradient(180deg, rgba(255, 177, 133, 0.18), rgba(255, 177, 133, 0.08)),
+          rgba(234, 126, 74, 0.08);
+        box-shadow:
+          inset 0 0 0 2px rgba(255, 182, 144, 0.92),
+          0 0 0 1px rgba(76, 33, 12, 0.22);
+      }
+
+      .zone.zone-command .zone-props span:nth-child(1) {
+        left: 18px;
+        right: 54px;
+        top: 42px;
+        height: 16px;
+        border-radius: 999px;
+        background: rgba(255, 210, 231, 0.16);
+      }
+
+      .zone.zone-command .zone-props span:nth-child(2) {
+        left: 18px;
+        width: 34px;
+        bottom: 18px;
+        height: 10px;
+        border-radius: 999px;
+        background: rgba(255, 230, 239, 0.68);
+      }
+
+      .zone.zone-command .zone-props span:nth-child(3) {
+        right: 18px;
+        width: 34px;
+        bottom: 18px;
+        height: 10px;
+        border-radius: 999px;
+        background: rgba(255, 230, 239, 0.68);
+      }
+
+      .zone.zone-homebase .zone-props span:nth-child(1) {
+        left: 18px;
+        right: 18px;
+        top: 34px;
+        height: 20px;
+        clip-path: polygon(50% 0, 100% 100%, 0 100%);
+        background: rgba(126, 42, 21, 0.78);
+      }
+
+      .zone.zone-homebase .zone-props span:nth-child(2) {
+        left: 22px;
+        right: 22px;
+        bottom: 18px;
+        height: 28px;
+        border-radius: 10px 10px 14px 14px;
+        background: rgba(255, 225, 198, 0.28);
+        box-shadow: inset 0 -6px 0 rgba(132, 64, 28, 0.22);
+      }
+
+      .zone.zone-homebase .zone-props span:nth-child(3) {
+        left: 50%;
+        bottom: 18px;
+        width: 24px;
+        height: 40px;
+        transform: translateX(-50%);
+        border-radius: 8px 8px 12px 12px;
+        background: rgba(120, 56, 25, 0.88);
+        box-shadow: inset 0 0 0 1px rgba(255, 222, 195, 0.16);
+      }
+
+      .zone.zone-crew .zone-props span:nth-child(1) {
+        left: 16px;
+        top: 42px;
+        width: 38px;
+        height: 38px;
+        border-radius: 14px;
+        background: rgba(255, 223, 163, 0.26);
+      }
+
+      .zone.zone-crew .zone-props span:nth-child(2) {
+        left: 62px;
+        top: 48px;
+        right: 18px;
+        height: 10px;
+        border-radius: 999px;
+        background: rgba(255, 229, 180, 0.22);
+      }
+
+      .zone.zone-crew .zone-props span:nth-child(3) {
+        left: 62px;
+        top: 66px;
+        width: 42%;
+        height: 10px;
+        border-radius: 999px;
+        background: rgba(255, 229, 180, 0.16);
+      }
+
+      .zone.zone-ops .zone-props span:nth-child(1) {
+        left: 18px;
+        right: 18px;
+        bottom: 22px;
+        height: 18px;
+        border-radius: 10px;
+        background: rgba(126, 184, 255, 0.14);
+      }
+
+      .zone.zone-ops .zone-props span:nth-child(2) {
+        left: 22px;
+        bottom: 26px;
+        width: 26%;
+        height: 10px;
+        border-radius: 999px;
+        background: rgba(196, 224, 255, 0.62);
+      }
+
+      .zone.zone-ops .zone-props span:nth-child(3) {
+        right: 22px;
+        bottom: 26px;
+        width: 18%;
+        height: 10px;
+        border-radius: 999px;
+        background: rgba(126, 184, 255, 0.48);
+      }
+
+      .zone.zone-gate .zone-props span:nth-child(1) {
+        left: 50%;
+        top: 18px;
+        width: 18px;
+        height: calc(100% - 36px);
+        transform: translateX(-50%);
+        border-radius: 12px;
+        background: rgba(255, 230, 239, 0.24);
+      }
+
+      .zone.zone-gate .zone-props span:nth-child(2) {
+        left: 16px;
+        right: 16px;
+        bottom: 18px;
+        height: 12px;
+        border-radius: 999px;
+        background: rgba(255, 230, 239, 0.7);
+      }
+
+      .zone.zone-gate .zone-props span:nth-child(3) {
+        left: 50%;
+        bottom: 34px;
+        width: 34px;
+        height: 34px;
+        transform: translateX(-50%);
+        border-radius: 999px;
+        background: rgba(35, 10, 23, 0.88);
+        box-shadow: inset 0 0 0 1px rgba(255, 187, 220, 0.2);
+      }
+
+      .zone[data-id="approvals"] .zone-props span:nth-child(1) {
+        left: 50%;
+        top: 16px;
+        width: 20px;
+        height: calc(100% - 34px);
+        transform: translateX(-50%);
+        border-radius: 12px;
+        background: rgba(255, 230, 239, 0.3);
+      }
+
+      .zone[data-id="approvals"] .zone-props span:nth-child(2) {
+        left: 12px;
+        right: 12px;
+        bottom: 18px;
+        height: 14px;
+        border-radius: 999px;
+        background: rgba(255, 230, 239, 0.76);
+      }
+
+      .zone[data-id="approvals"] .zone-props span:nth-child(3) {
+        left: 50%;
+        bottom: 52px;
+        width: 30px;
+        height: 30px;
+        transform: translateX(-50%);
+        border-radius: 999px;
+        background: rgba(56, 16, 31, 0.92);
+        box-shadow:
+          inset 0 0 0 1px rgba(255, 187, 220, 0.24),
+          0 0 0 6px rgba(255, 132, 188, 0.08);
+      }
+
+      .zone.zone-workshop .zone-props span:nth-child(1) {
+        left: 16px;
+        right: 16px;
+        bottom: 18px;
+        height: 18px;
+        border-radius: 10px;
+        background: rgba(255, 210, 184, 0.22);
+      }
+
+      .zone.zone-workshop .zone-props span:nth-child(2) {
+        left: 24px;
+        bottom: 42px;
+        width: 28%;
+        height: 10px;
+        border-radius: 999px;
+        background: rgba(255, 222, 204, 0.74);
+      }
+
+      .zone.zone-workshop .zone-props span:nth-child(3) {
+        right: 24px;
+        bottom: 42px;
+        width: 22%;
+        height: 10px;
+        border-radius: 999px;
+        background: rgba(255, 164, 122, 0.48);
+      }
+
+      .zone[data-id="delivery"] .zone-props span:nth-child(1) {
+        left: 18px;
+        right: 18px;
+        bottom: 18px;
+        height: 18px;
+        border-radius: 10px;
+        background: rgba(255, 210, 184, 0.26);
+      }
+
+      .zone[data-id="delivery"] .zone-props span:nth-child(2) {
+        left: 24px;
+        top: 44px;
+        right: 54px;
+        height: 12px;
+        border-radius: 999px;
+        background: rgba(255, 222, 204, 0.72);
+      }
+
+      .zone[data-id="delivery"] .zone-props span:nth-child(3) {
+        right: 20px;
+        top: 36px;
+        width: 22px;
+        height: 40px;
+        border-radius: 8px;
+        background: rgba(95, 41, 20, 0.84);
+        box-shadow:
+          inset 0 0 0 1px rgba(255, 208, 182, 0.18),
+          0 0 0 5px rgba(255, 177, 133, 0.08);
+      }
+
+      .zone.zone-mail .zone-props span:nth-child(1) {
+        left: 18px;
+        right: 18px;
+        bottom: 20px;
+        height: 26px;
+        border-radius: 8px;
+        background: rgba(255, 231, 176, 0.24);
+      }
+
+      .zone.zone-mail .zone-props span:nth-child(2) {
+        left: 18px;
+        right: 18px;
+        bottom: 20px;
+        height: 26px;
+        clip-path: polygon(0 0, 50% 62%, 100% 0, 100% 28%, 50% 88%, 0 28%);
+        background: rgba(255, 245, 214, 0.48);
+      }
+
+      .zone.zone-mail .zone-props span:nth-child(3) {
+        right: 22px;
+        top: 46px;
+        width: 24px;
+        height: 24px;
+        border-radius: 999px;
+        background: rgba(255, 214, 120, 0.8);
+      }
+
+      .zone[data-id="requirements"] .zone-props span:nth-child(1) {
+        left: 24px;
+        right: 24px;
+        bottom: 16px;
+        height: 30px;
+        border-radius: 10px;
+        background: rgba(255, 231, 176, 0.22);
+      }
+
+      .zone[data-id="requirements"] .zone-props span:nth-child(2) {
+        left: 26px;
+        right: 26px;
+        bottom: 18px;
+        height: 26px;
+        clip-path: polygon(0 0, 50% 58%, 100% 0, 100% 30%, 50% 88%, 0 30%);
+        background: rgba(255, 245, 214, 0.54);
+      }
+
+      .zone[data-id="requirements"] .zone-props span:nth-child(3) {
+        right: 20px;
+        top: 40px;
+        width: 26px;
+        height: 26px;
+        border-radius: 8px;
+        background: rgba(255, 214, 120, 0.84);
+        box-shadow: inset 0 0 0 1px rgba(97, 56, 5, 0.18);
+      }
+
+      .zone.zone-field .zone-props span:nth-child(1) {
+        left: 18px;
+        right: 18px;
+        bottom: 20px;
+        height: 18px;
+        border-radius: 999px;
+        background: rgba(189, 235, 194, 0.26);
+      }
+
+      .zone.zone-field .zone-props span:nth-child(2) {
+        left: 20px;
+        bottom: 42px;
+        width: 28%;
+        height: 12px;
+        border-radius: 999px;
+        background: rgba(189, 235, 194, 0.66);
+      }
+
+      .zone.zone-field .zone-props span:nth-child(3) {
+        right: 20px;
+        bottom: 42px;
+        width: 28%;
+        height: 12px;
+        border-radius: 999px;
+        background: rgba(122, 214, 140, 0.56);
+      }
+
+      .zone[data-id="tasks"] .zone-props span:nth-child(1) {
+        left: 16px;
+        right: 16px;
+        bottom: 22px;
+        height: 16px;
+        border-radius: 999px;
+        background:
+          repeating-linear-gradient(
+            90deg,
+            rgba(189, 235, 194, 0.26) 0 18px,
+            rgba(120, 192, 132, 0.12) 18px 30px
+          );
+      }
+
+      .zone[data-id="tasks"] .zone-props span:nth-child(2) {
+        left: 20px;
+        right: 20px;
+        top: 46px;
+        height: 12px;
+        border-radius: 999px;
+        background:
+          repeating-linear-gradient(
+            90deg,
+            rgba(189, 235, 194, 0.66) 0 14px,
+            rgba(122, 214, 140, 0.2) 14px 24px
+          );
+      }
+
+      .zone[data-id="tasks"] .zone-props span:nth-child(3) {
+        left: 20px;
+        right: 20px;
+        top: 68px;
+        height: 12px;
+        width: auto;
+        border-radius: 999px;
+        background:
+          repeating-linear-gradient(
+            90deg,
+            rgba(122, 214, 140, 0.56) 0 14px,
+            rgba(82, 172, 95, 0.16) 14px 24px
+          );
+      }
+
+      .zone.zone-aihub .zone-props span:nth-child(1) {
+        left: 50%;
+        bottom: 18px;
+        width: 26px;
+        height: 50px;
+        transform: translateX(-50%);
+        border-radius: 14px 14px 8px 8px;
+        background: rgba(255, 231, 186, 0.28);
+      }
+
+      .zone.zone-aihub .zone-props span:nth-child(2) {
+        left: 50%;
+        bottom: 56px;
+        width: 46px;
+        height: 16px;
+        transform: translateX(-50%);
+        border-radius: 999px;
+        background: rgba(255, 214, 120, 0.72);
+      }
+
+      .zone.zone-aihub .zone-props span:nth-child(3) {
+        left: 50%;
+        top: 42px;
+        width: 18px;
+        height: 18px;
+        transform: translateX(-50%);
+        border-radius: 999px;
+        background: rgba(255, 243, 217, 0.92);
+      }
+
+      .zone[data-id="ai"] .zone-props span:nth-child(1) {
+        left: 50%;
+        bottom: 16px;
+        width: 28px;
+        height: 52px;
+        transform: translateX(-50%);
+        border-radius: 14px 14px 8px 8px;
+        background: rgba(255, 231, 186, 0.34);
+      }
+
+      .zone[data-id="ai"] .zone-props span:nth-child(2) {
+        left: 50%;
+        bottom: 56px;
+        width: 54px;
+        height: 18px;
+        transform: translateX(-50%);
+        border-radius: 999px;
+        background: rgba(255, 214, 120, 0.76);
+        box-shadow: 0 0 0 6px rgba(255, 214, 120, 0.08);
+      }
+
+      .zone[data-id="ai"] .zone-props span:nth-child(3) {
+        left: 50%;
+        top: 38px;
+        width: 20px;
+        height: 20px;
+        transform: translateX(-50%);
+        border-radius: 999px;
+        background: rgba(255, 243, 217, 0.96);
+        box-shadow:
+          0 0 0 8px rgba(255, 226, 151, 0.08),
+          0 0 16px rgba(255, 226, 151, 0.18);
+      }
+
+      .zone.zone-machine .zone-props span:nth-child(1) {
+        left: 18px;
+        right: 18px;
+        bottom: 18px;
+        height: 20px;
+        border-radius: 12px;
+        background: rgba(208, 216, 255, 0.22);
+      }
+
+      .zone.zone-machine .zone-props span:nth-child(2) {
+        left: 22px;
+        bottom: 44px;
+        width: 22%;
+        height: 12px;
+        border-radius: 6px;
+        background: rgba(208, 216, 255, 0.72);
+      }
+
+      .zone.zone-machine .zone-props span:nth-child(3) {
+        right: 22px;
+        bottom: 44px;
+        width: 22%;
+        height: 12px;
+        border-radius: 6px;
+        background: rgba(147, 170, 255, 0.58);
+      }
+
+      .zone[data-id="computers"] .zone-props span:nth-child(1) {
+        left: 16px;
+        right: 16px;
+        bottom: 16px;
+        height: 22px;
+        border-radius: 12px;
+        background: rgba(208, 216, 255, 0.22);
+      }
+
+      .zone[data-id="computers"] .zone-props span:nth-child(2) {
+        left: 18px;
+        top: 42px;
+        width: 28px;
+        height: calc(100% - 70px);
+        border-radius: 10px;
+        background: rgba(208, 216, 255, 0.32);
+      }
+
+      .zone[data-id="computers"] .zone-props span:nth-child(3) {
+        left: 56px;
+        right: 18px;
+        top: 50px;
+        height: 14px;
+        width: auto;
+        border-radius: 6px;
+        background:
+          linear-gradient(90deg, rgba(208, 216, 255, 0.74), rgba(147, 170, 255, 0.52));
+      }
+
+      .zone.zone-courtyard .zone-props span:nth-child(1) {
+        left: 20px;
+        bottom: 18px;
+        width: 40%;
+        height: 18px;
+        border-radius: 999px;
+        background: rgba(255, 230, 190, 0.46);
+      }
+
+      .zone.zone-courtyard .zone-props span:nth-child(2) {
+        right: 20px;
+        top: 44px;
+        width: 44px;
+        height: 32px;
+        border-radius: 18px 18px 18px 10px;
+        background: rgba(255, 240, 214, 0.52);
+      }
+
+      .zone.zone-courtyard .zone-props span:nth-child(3) {
+        right: 52px;
+        top: 60px;
+        width: 18px;
+        height: 14px;
+        clip-path: polygon(0 0, 100% 0, 40% 100%);
+        background: rgba(255, 240, 214, 0.52);
+      }
+
+      .zone.zone-deliveryyard .zone-props span:nth-child(1) {
+        left: 18px;
+        bottom: 18px;
+        width: 46px;
+        height: 32px;
+        border-radius: 10px;
+        background: rgba(255, 225, 201, 0.3);
+        box-shadow:
+          inset 0 0 0 2px rgba(255, 196, 164, 0.34),
+          inset 0 -8px 0 rgba(161, 78, 35, 0.18);
+      }
+
+      .zone.zone-deliveryyard .zone-props span:nth-child(2) {
+        left: 74px;
+        right: 18px;
+        bottom: 22px;
+        height: 14px;
+        border-radius: 999px;
+        background: rgba(255, 210, 184, 0.54);
+      }
+
+      .zone.zone-deliveryyard .zone-props span:nth-child(3) {
+        right: 20px;
+        top: 44px;
+        width: 28px;
+        height: 28px;
+        border-radius: 8px;
+        background: rgba(95, 41, 20, 0.82);
+        box-shadow:
+          inset 0 0 0 1px rgba(255, 208, 182, 0.2),
+          0 0 0 4px rgba(255, 177, 133, 0.12);
+      }
+
+      .zone[data-id="build-bench"] .zone-props span:nth-child(1) {
+        left: 18px;
+        right: 18px;
+        top: 26px;
+        height: 18px;
+        border-radius: 999px;
+        background: rgba(255, 222, 204, 0.48);
+      }
+
+      .zone[data-id="build-bench"] .zone-props span:nth-child(2) {
+        left: 22px;
+        right: 22px;
+        bottom: 18px;
+        height: 24px;
+        border-radius: 12px;
+        background: rgba(255, 210, 184, 0.24);
+        box-shadow: inset 0 -8px 0 rgba(161, 78, 35, 0.18);
+      }
+
+      .zone[data-id="build-bench"] .zone-props span:nth-child(3) {
+        right: 20px;
+        top: 58px;
+        width: 28px;
+        height: 28px;
+        border-radius: 8px;
+        background: rgba(95, 41, 20, 0.82);
+      }
+
+      .zone[data-id="release-crate"] .zone-props span:nth-child(1) {
+        left: 24px;
+        bottom: 26px;
+        width: 54px;
+        height: 36px;
+        border-radius: 10px;
+        background: rgba(255, 225, 201, 0.32);
+        box-shadow:
+          inset 0 0 0 2px rgba(255, 196, 164, 0.34),
+          inset 0 -10px 0 rgba(161, 78, 35, 0.16);
+      }
+
+      .zone[data-id="release-crate"] .zone-props span:nth-child(2) {
+        left: 90px;
+        right: 26px;
+        top: 62px;
+        height: 14px;
+        border-radius: 999px;
+        background: rgba(255, 210, 184, 0.5);
+      }
+
+      .zone[data-id="release-crate"] .zone-props span:nth-child(3) {
+        left: 90px;
+        right: 26px;
+        top: 86px;
+        height: 14px;
+        width: auto;
+        border-radius: 999px;
+        background: rgba(255, 177, 133, 0.32);
+      }
+
       .entity {
+        --entity-shift-x: -50%;
+        --entity-shift-y: calc(-100% - 18px);
         position: absolute;
         display: none;
         pointer-events: none;
+        transform: translate(var(--entity-shift-x), var(--entity-shift-y));
+        z-index: 8;
       }
 
       .entity.visible {
         display: block;
       }
 
+      .entity::after {
+        content: "";
+        position: absolute;
+        left: calc(50% - 1px);
+        top: calc(100% - 2px);
+        width: 2px;
+        height: 18px;
+        border-radius: 999px;
+        background: linear-gradient(180deg, rgba(255, 239, 214, 0.7), rgba(255, 239, 214, 0.06));
+        box-shadow: 0 0 0 1px rgba(33, 19, 11, 0.14);
+      }
+
+      .entity.anchor-right {
+        --entity-shift-x: 18px;
+        --entity-shift-y: -56%;
+      }
+
+      .entity.anchor-right::after {
+        left: -18px;
+        top: calc(50% - 1px);
+        width: 18px;
+        height: 2px;
+        background: linear-gradient(90deg, rgba(255, 239, 214, 0.06), rgba(255, 239, 214, 0.76));
+      }
+
+      .entity.anchor-left {
+        --entity-shift-x: calc(-100% - 18px);
+        --entity-shift-y: -56%;
+      }
+
+      .entity.anchor-left::after {
+        left: 100%;
+        top: calc(50% - 1px);
+        width: 18px;
+        height: 2px;
+        background: linear-gradient(90deg, rgba(255, 239, 214, 0.76), rgba(255, 239, 214, 0.06));
+      }
+
+      .entity.anchor-bottom {
+        --entity-shift-x: -50%;
+        --entity-shift-y: 18px;
+      }
+
+      .entity.anchor-bottom::after {
+        left: calc(50% - 1px);
+        top: -18px;
+        width: 2px;
+        height: 18px;
+        background: linear-gradient(180deg, rgba(255, 239, 214, 0.06), rgba(255, 239, 214, 0.76));
+      }
+
       .entity-badge {
         display: inline-flex;
-        min-height: 28px;
-        align-items: center;
-        gap: 6px;
-        padding: 0 10px;
-        border-radius: 999px;
+        min-height: 34px;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 7px 10px 8px;
+        border-radius: 16px;
         background: rgba(22, 17, 10, 0.88);
         color: #fff4de;
-        font-size: 12px;
+        font-size: 11px;
         font-weight: 800;
         box-shadow: 0 12px 22px rgba(0, 0, 0, 0.2);
+        max-width: 210px;
+      }
+
+      .entity-badge.badge-ready {
+        box-shadow:
+          inset 0 0 0 1px rgba(133, 227, 138, 0.22),
+          0 12px 22px rgba(0, 0, 0, 0.2),
+          0 0 0 6px rgba(133, 227, 138, 0.08);
+      }
+
+      .entity-badge.badge-ready .entity-dot {
+        background: #85e38a;
+        box-shadow: 0 0 0 4px rgba(133, 227, 138, 0.16);
+      }
+
+      .entity-badge.badge-busy {
+        box-shadow:
+          inset 0 0 0 1px rgba(132, 182, 255, 0.22),
+          0 12px 22px rgba(0, 0, 0, 0.2),
+          0 0 0 6px rgba(132, 182, 255, 0.08);
+      }
+
+      .entity-badge.badge-busy .entity-dot {
+        background: #84b6ff;
+        box-shadow: 0 0 0 4px rgba(132, 182, 255, 0.16);
+      }
+
+      .entity-badge.badge-warn {
+        box-shadow:
+          inset 0 0 0 1px rgba(255, 146, 196, 0.22),
+          0 12px 22px rgba(0, 0, 0, 0.2),
+          0 0 0 6px rgba(255, 146, 196, 0.08);
+      }
+
+      .entity-badge.badge-warn .entity-dot {
+        background: #ff92c4;
+        box-shadow: 0 0 0 4px rgba(255, 146, 196, 0.16);
+      }
+
+      .entity-badge.badge-stable {
+        box-shadow:
+          inset 0 0 0 1px rgba(255, 200, 117, 0.22),
+          0 12px 22px rgba(0, 0, 0, 0.2),
+          0 0 0 6px rgba(255, 200, 117, 0.08);
+      }
+
+      .entity-badge.badge-stable .entity-dot {
+        background: #ffc875;
+        box-shadow: 0 0 0 4px rgba(255, 200, 117, 0.16);
+      }
+
+      .entity-dot {
+        width: 10px;
+        height: 10px;
+        margin-top: 4px;
+        border-radius: 999px;
+        background: rgba(255, 244, 222, 0.88);
+        box-shadow: 0 0 0 4px rgba(255, 244, 222, 0.12);
+        flex: 0 0 auto;
+      }
+
+      .entity-copy {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 0;
+      }
+
+      .entity-title {
+        color: #fff7ea;
+        line-height: 1.2;
+        white-space: normal;
+      }
+
+      .entity-sub {
+        color: rgba(255, 244, 222, 0.72);
+        font-size: 10px;
+        line-height: 1.2;
+        white-space: normal;
+      }
+
+      .entity.plot-card .entity-badge,
+      .entity.ai-card .entity-badge {
+        max-width: 164px;
+      }
+
+      .entity.player-card .entity-badge,
+      .entity.computer-card .entity-badge {
+        max-width: 178px;
+      }
+
+      .entity.plot-card .entity-badge {
+        background: rgba(101, 39, 28, 0.9);
+      }
+
+      .entity.computer-card .entity-badge {
+        background: rgba(18, 30, 50, 0.94);
+      }
+
+      .entity.ai-card .entity-badge {
+        backdrop-filter: blur(4px);
+      }
+
+      .entity.beacon {
+        z-index: 10;
+      }
+
+      .entity.beacon::after {
+        opacity: 0.82;
+      }
+
+      .entity.beacon-card .entity-badge {
+        min-height: 30px;
+        padding: 6px 10px 7px;
+        border-radius: 14px;
+        max-width: 172px;
+        background: rgba(28, 21, 13, 0.94);
+        box-shadow:
+          inset 0 0 0 1px rgba(255, 239, 214, 0.1),
+          0 12px 22px rgba(0, 0, 0, 0.26);
+      }
+
+      .entity.beacon-card .entity-title {
+        font-size: 10px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .entity.beacon-card .entity-sub {
+        font-size: 10px;
+        color: rgba(255, 244, 222, 0.8);
       }
 
       .entity.player .entity-badge {
         background: rgba(28, 40, 18, 0.9);
       }
 
+      .entity.player .entity-dot {
+        background: #9ddf76;
+        box-shadow: 0 0 0 4px rgba(157, 223, 118, 0.14);
+      }
+
       .entity.task .entity-badge {
         background: rgba(76, 25, 18, 0.9);
+      }
+
+      .entity.task .entity-dot {
+        background: #ff9d77;
+        box-shadow: 0 0 0 4px rgba(255, 157, 119, 0.12);
       }
 
       .entity.computer .entity-badge {
         background: rgba(18, 30, 50, 0.92);
       }
 
+      .entity.computer .entity-dot {
+        background: #8ec1ff;
+        box-shadow: 0 0 0 4px rgba(142, 193, 255, 0.14);
+      }
+
       .entity.ai-codex .entity-badge {
         background: rgba(107, 56, 10, 0.92);
       }
 
+      .entity.ai-codex .entity-dot {
+        background: #ffcf7d;
+        box-shadow: 0 0 0 4px rgba(255, 207, 125, 0.14);
+      }
+
       .entity.ai-claude .entity-badge {
         background: rgba(74, 42, 18, 0.92);
+      }
+
+      .entity.ai-claude .entity-dot {
+        background: #f7e1b5;
+        box-shadow: 0 0 0 4px rgba(247, 225, 181, 0.14);
       }
 
       .entity-home {
@@ -204,12 +1173,93 @@
         width: min(390px, calc(100vw - 24px));
         max-height: calc(100vh - 132px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
         overflow: auto;
-        padding: 16px;
+        padding: 18px;
         border-radius: 24px;
-        background: rgba(8, 10, 14, 0.9);
+        border: 1px solid rgba(255, 170, 209, 0.16);
+        background:
+          radial-gradient(circle at top, rgba(255, 132, 188, 0.1), transparent 28%),
+          linear-gradient(180deg, rgba(13, 11, 18, 0.94), rgba(8, 10, 14, 0.92));
         color: #fff4de;
-        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.34);
+        box-shadow: 0 22px 60px rgba(0, 0, 0, 0.42);
         backdrop-filter: blur(10px);
+      }
+
+      .drawer.is-idle {
+        display: none;
+      }
+
+      .drawer.theme-command {
+        border-color: rgba(255, 170, 209, 0.22);
+        background:
+          radial-gradient(circle at top, rgba(255, 132, 188, 0.14), transparent 28%),
+          linear-gradient(180deg, rgba(18, 11, 18, 0.95), rgba(10, 10, 14, 0.93));
+      }
+
+      .drawer.theme-command .drawer-hero,
+      .drawer.theme-command .eyebrow {
+        background:
+          linear-gradient(180deg, rgba(255, 132, 188, 0.22), rgba(255, 132, 188, 0.08)),
+          rgba(255, 255, 255, 0.03);
+      }
+
+      .drawer.theme-crew {
+        border-color: rgba(255, 215, 141, 0.18);
+        background:
+          radial-gradient(circle at top, rgba(255, 215, 141, 0.1), transparent 32%),
+          linear-gradient(180deg, rgba(20, 14, 10, 0.96), rgba(11, 10, 8, 0.94));
+      }
+
+      .drawer.theme-crew .drawer-hero,
+      .drawer.theme-crew .eyebrow {
+        background:
+          linear-gradient(180deg, rgba(255, 215, 141, 0.2), rgba(255, 215, 141, 0.08)),
+          rgba(255, 255, 255, 0.03);
+        color: #3c2411;
+      }
+
+      .drawer.theme-ops {
+        border-color: rgba(126, 184, 255, 0.2);
+        background:
+          radial-gradient(circle at top, rgba(126, 184, 255, 0.12), transparent 30%),
+          linear-gradient(180deg, rgba(10, 14, 20, 0.96), rgba(8, 10, 14, 0.94));
+      }
+
+      .drawer.theme-ops .drawer-hero,
+      .drawer.theme-ops .eyebrow {
+        background:
+          linear-gradient(180deg, rgba(126, 184, 255, 0.2), rgba(126, 184, 255, 0.08)),
+          rgba(255, 255, 255, 0.03);
+        color: #13263e;
+      }
+
+      .drawer.theme-ops .drawer-actions button {
+        background: rgba(126, 184, 255, 0.92);
+        color: #10233b;
+      }
+
+      .drawer.theme-workshop {
+        border-color: rgba(255, 182, 144, 0.22);
+        background:
+          radial-gradient(circle at top, rgba(255, 177, 133, 0.14), transparent 30%),
+          linear-gradient(180deg, rgba(24, 14, 10, 0.96), rgba(12, 10, 8, 0.94));
+      }
+
+      .drawer.theme-workshop .drawer-hero,
+      .drawer.theme-workshop .eyebrow {
+        background:
+          linear-gradient(180deg, rgba(255, 177, 133, 0.22), rgba(255, 177, 133, 0.08)),
+          rgba(255, 255, 255, 0.03);
+        color: #482312;
+      }
+
+      .drawer.theme-workshop .drawer-actions button {
+        background: rgba(255, 177, 133, 0.94);
+        color: #482312;
+      }
+
+      .drawer.theme-crew .drawer-actions button {
+        background: rgba(255, 205, 120, 0.94);
+        color: #3c2411;
       }
 
       .eyebrow {
@@ -235,6 +1285,31 @@
         color: rgba(255, 244, 222, 0.8);
         font-size: 13px;
         line-height: 1.55;
+      }
+
+      .drawer-hero {
+        margin-top: 14px;
+        padding: 14px;
+        border-radius: 18px;
+        background:
+          linear-gradient(180deg, rgba(255, 132, 188, 0.16), rgba(255, 132, 188, 0.05)),
+          rgba(255, 255, 255, 0.03);
+        box-shadow: inset 0 0 0 1px rgba(255, 170, 209, 0.12);
+      }
+
+      .drawer-hero strong {
+        display: block;
+        color: #fff7ea;
+        font-size: 13px;
+        letter-spacing: 0.02em;
+      }
+
+      .drawer-hero span {
+        display: block;
+        margin-top: 6px;
+        color: rgba(255, 244, 222, 0.76);
+        font-size: 12px;
+        line-height: 1.5;
       }
 
       .drawer ul {
@@ -265,6 +1340,56 @@
         cursor: pointer;
       }
 
+      .workflow-strip {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 14px;
+      }
+
+      .workflow-step {
+        min-height: 76px;
+        padding: 10px 10px 12px;
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.04);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+      }
+
+      .workflow-step strong {
+        display: block;
+        font-size: 12px;
+        color: #fff7ea;
+      }
+
+      .workflow-step span {
+        display: block;
+        margin-top: 6px;
+        font-size: 11px;
+        line-height: 1.45;
+        color: rgba(255, 244, 222, 0.74);
+      }
+
+      .workflow-step.active {
+        background:
+          linear-gradient(180deg, rgba(255, 132, 188, 0.18), rgba(255, 132, 188, 0.08)),
+          rgba(255, 255, 255, 0.04);
+        box-shadow: inset 0 0 0 1px rgba(255, 170, 209, 0.18);
+      }
+
+      .drawer.theme-ops .workflow-step.active {
+        background:
+          linear-gradient(180deg, rgba(126, 184, 255, 0.2), rgba(126, 184, 255, 0.08)),
+          rgba(255, 255, 255, 0.04);
+        box-shadow: inset 0 0 0 1px rgba(126, 184, 255, 0.18);
+      }
+
+      .drawer.theme-workshop .workflow-step.active {
+        background:
+          linear-gradient(180deg, rgba(255, 177, 133, 0.22), rgba(255, 177, 133, 0.08)),
+          rgba(255, 255, 255, 0.04);
+        box-shadow: inset 0 0 0 1px rgba(255, 182, 144, 0.18);
+      }
+
       .drawer-stats {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -275,7 +1400,8 @@
       .drawer-stats div {
         padding: 10px 12px;
         border-radius: 16px;
-        background: rgba(255, 255, 255, 0.05);
+        background: rgba(255, 255, 255, 0.045);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
         color: rgba(255, 244, 222, 0.92);
         font-size: 12px;
         line-height: 1.45;
@@ -283,6 +1409,10 @@
 
       .drawer-section {
         margin-top: 14px;
+        padding: 12px;
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.035);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.035);
       }
 
       .drawer-section h3 {
@@ -291,6 +1421,27 @@
         letter-spacing: 0.04em;
         text-transform: uppercase;
         color: rgba(255, 244, 222, 0.68);
+      }
+
+      .wall-grid {
+        display: grid;
+        gap: 10px;
+        margin-top: 14px;
+      }
+
+      .wall-card {
+        padding: 12px;
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.04);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.035);
+      }
+
+      .wall-card strong {
+        display: block;
+        margin-bottom: 8px;
+        color: #fff7ea;
+        font-size: 12px;
+        letter-spacing: 0.03em;
       }
 
       .drawer-pills {
@@ -314,10 +1465,20 @@
       .drawer li {
         padding: 10px 12px;
         border-radius: 16px;
-        background: rgba(255, 255, 255, 0.05);
+        background: rgba(255, 255, 255, 0.045);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
         color: rgba(255, 244, 222, 0.92);
         font-size: 13px;
         line-height: 1.45;
+      }
+
+      .drawer-actions-title {
+        margin-top: 16px;
+        color: rgba(255, 244, 222, 0.7);
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
       }
 
       .legend {
@@ -342,10 +1503,101 @@
         font-size: 12px;
         font-weight: 800;
         cursor: pointer;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+      }
+
+      .legend button[data-kind="zone-homebase"],
+      .legend button[data-kind="zone-command"] {
+        background: rgba(63, 16, 35, 0.86);
+        color: #ffe7f1;
+      }
+
+      .legend button[data-kind="zone-mail"] {
+        background: rgba(71, 48, 8, 0.86);
+        color: #fff1cf;
+      }
+
+      .legend button[data-kind="zone-field"] {
+        background: rgba(20, 54, 26, 0.86);
+        color: #ecffe8;
+      }
+
+      .legend button[data-kind="zone-aihub"] {
+        background: rgba(72, 42, 10, 0.86);
+        color: #fff0d7;
+      }
+
+      .legend button[data-kind="zone-machine"],
+      .legend button[data-kind="zone-ops"] {
+        background: rgba(12, 32, 62, 0.88);
+        color: #e8f2ff;
+      }
+
+      .legend button[data-kind="zone-crew"],
+      .legend button[data-kind="zone-courtyard"] {
+        background: rgba(68, 47, 12, 0.86);
+        color: #fff3d8;
+      }
+
+      .legend button[data-kind="zone-workshop"],
+      .legend button[data-kind="zone-deliveryyard"] {
+        background: rgba(73, 30, 12, 0.88);
+        color: #ffeddc;
+      }
+
+      .legend button[data-kind="zone-gate"] {
+        background: rgba(60, 13, 27, 0.9);
+        color: #ffe2ee;
       }
 
       .legend button.active {
+        transform: translateY(-1px);
+        box-shadow:
+          inset 0 0 0 1px rgba(255, 255, 255, 0.14),
+          0 10px 18px rgba(0, 0, 0, 0.18);
+      }
+
+      .legend button.active[data-kind="zone-homebase"],
+      .legend button.active[data-kind="zone-command"] {
         background: #ff84bc;
+        color: #31091b;
+      }
+
+      .legend button.active[data-kind="zone-mail"] {
+        background: #ffd86a;
+        color: #462b00;
+      }
+
+      .legend button.active[data-kind="zone-field"] {
+        background: #85e38a;
+        color: #10391b;
+      }
+
+      .legend button.active[data-kind="zone-aihub"] {
+        background: #ffc875;
+        color: #4d2b00;
+      }
+
+      .legend button.active[data-kind="zone-machine"],
+      .legend button.active[data-kind="zone-ops"] {
+        background: #84b6ff;
+        color: #10233b;
+      }
+
+      .legend button.active[data-kind="zone-crew"],
+      .legend button.active[data-kind="zone-courtyard"] {
+        background: #f4c76e;
+        color: #4b2d00;
+      }
+
+      .legend button.active[data-kind="zone-workshop"],
+      .legend button.active[data-kind="zone-deliveryyard"] {
+        background: #f7ae82;
+        color: #4b240f;
+      }
+
+      .legend button.active[data-kind="zone-gate"] {
+        background: #ff92c4;
         color: #31091b;
       }
 
@@ -371,6 +1623,10 @@
         line-height: 1.45;
         white-space: pre-wrap;
         backdrop-filter: blur(8px);
+      }
+
+      .debug.is-hidden {
+        display: none;
       }
 
       @media (max-width: 760px) {
@@ -456,6 +1712,31 @@
           deliveries: [
             { id: "d1", title: "Runner-01 回传日志", status: "已交付" },
           ],
+          handoffs: [
+            { id: "h1", from: "阿城", to: "Codex 鸡", topic: "机械臂固件补丁", status: "待补上下文" },
+            { id: "h2", from: "Claude 牛", to: "北斗", topic: "轨迹规划联调", status: "待人工确认" },
+          ],
+          chatNotes: [
+            { id: "c1", title: "底盘驱动改造", status: "已对齐责任人", owner: "阿城" },
+            { id: "c2", title: "机械臂规划", status: "待细化验收", owner: "北斗" },
+          ],
+          commandPlans: [
+            { id: "cp1", title: "晨间基地巡场", status: "待执行", next: "需求信箱 -> 任务田块 -> AI 工位站" },
+            { id: "cp2", title: "下午联调路线", status: "准备中", next: "电脑车间 -> 审批门岗 -> 交付工坊" },
+          ],
+          decisionLog: [
+            { id: "dg1", title: "底盘驱动先走局域网 Runner 验证", status: "今日决议", owner: "主控内室" },
+            { id: "dg2", title: "高风险上电动作必须经过人工门岗", status: "安全边界", owner: "审批门岗" },
+          ],
+          meetingTickets: [
+            { id: "mt1", title: "医疗臂规划", status: "待会前确认", owner: "北斗" },
+            { id: "mt2", title: "底盘驱动改造", status: "待播种任务", owner: "阿城" },
+          ],
+          fileLocks: [
+            { id: "l1", scope: "drivers/arm/*", owner: "阿城", status: "编辑中" },
+            { id: "l2", scope: "planner/trajectory/*", owner: "Claude 牛", status: "待接手" },
+            { id: "l3", scope: "boards/serial/*", owner: "小周", status: "待确认" },
+          ],
         };
 
         function cloneState(value) {
@@ -497,6 +1778,12 @@
           MULTIPLAYER_STATE.requirements = Array.isArray(MULTIPLAYER_STATE.requirements) ? MULTIPLAYER_STATE.requirements : [];
           MULTIPLAYER_STATE.approvals = Array.isArray(MULTIPLAYER_STATE.approvals) ? MULTIPLAYER_STATE.approvals : [];
           MULTIPLAYER_STATE.deliveries = Array.isArray(MULTIPLAYER_STATE.deliveries) ? MULTIPLAYER_STATE.deliveries : [];
+          MULTIPLAYER_STATE.handoffs = Array.isArray(MULTIPLAYER_STATE.handoffs) ? MULTIPLAYER_STATE.handoffs : [];
+          MULTIPLAYER_STATE.chatNotes = Array.isArray(MULTIPLAYER_STATE.chatNotes) ? MULTIPLAYER_STATE.chatNotes : [];
+          MULTIPLAYER_STATE.commandPlans = Array.isArray(MULTIPLAYER_STATE.commandPlans) ? MULTIPLAYER_STATE.commandPlans : [];
+          MULTIPLAYER_STATE.decisionLog = Array.isArray(MULTIPLAYER_STATE.decisionLog) ? MULTIPLAYER_STATE.decisionLog : [];
+          MULTIPLAYER_STATE.meetingTickets = Array.isArray(MULTIPLAYER_STATE.meetingTickets) ? MULTIPLAYER_STATE.meetingTickets : [];
+          MULTIPLAYER_STATE.fileLocks = Array.isArray(MULTIPLAYER_STATE.fileLocks) ? MULTIPLAYER_STATE.fileLocks : [];
           MULTIPLAYER_STATE.taskPlots = Array.isArray(MULTIPLAYER_STATE.taskPlots) ? MULTIPLAYER_STATE.taskPlots : [
             { id: "plot1", title: "机械臂底盘", stage: "seed", progress: 1, x: 1935, y: 1790, scene: "map-farm" },
             { id: "plot2", title: "驱动板通讯", stage: "sprout", progress: 2, x: 2025, y: 1790, scene: "map-farm" },
@@ -508,6 +1795,7 @@
           MULTIPLAYER_STATE.collaborators.forEach(function (item, index) {
             item.name = item.name || ("协作者" + (index + 1));
             item.role = item.role || "研发";
+            item.ownership = item.ownership || (index === 0 ? "机械臂固件 / 驱动" : (index === 1 ? "算法联调 / 规划" : "板卡上电 / 串口"));
           });
 
           MULTIPLAYER_STATE.tasks.forEach(function (item, index) {
@@ -523,6 +1811,7 @@
             item.scene = item.scene || "map-farm";
             item.fedToday = Boolean(item.fedToday);
             item.talkedToday = Boolean(item.talkedToday);
+            item.ownership = item.ownership || (item.type === "claude" ? "规划拆解 / 联调评审" : "固件编码 / 补丁实现");
             item.mood = item.mood || (item.fedToday && item.talkedToday ? "状态稳定" : "待照料");
             if (!Number.isFinite(item.x)) {
               item.x = item.type === "claude" ? 1605 + (index * 42) : 2215 + (index * 32);
@@ -632,7 +1921,7 @@
             {
               id: "delivery-room",
               label: "交付工坊",
-              rect: { x: 250, y: 120, w: 900, h: 620 },
+              rect: { x: 270, y: 138, w: 860, h: 540 },
               title: "交付工坊",
               desc: "工具棚内部直接映射交付工坊，中央工作区适合承接构建、实验和回滚。",
               bullets: ["构建验证", "实验台", "交付记录"],
@@ -753,7 +2042,7 @@
           {
             id: "build-bench",
             label: "构建台",
-            rect: { x: 760, y: 130, w: 360, h: 180 },
+            rect: { x: 790, y: 136, w: 300, h: 162 },
             title: "构建台",
             desc: "工具棚里把构建、测试、实验验证放到工作台上，比外场的总交付入口更细。",
             bullets: ["构建", "测试", "实验验证"],
@@ -761,7 +2050,7 @@
           {
             id: "release-crate",
             label: "交付箱",
-            rect: { x: 300, y: 380, w: 820, h: 380 },
+            rect: { x: 320, y: 410, w: 790, h: 240 },
             title: "交付箱",
             desc: "交付箱负责分支、回执和发布前确认，让交付动作在屋内完成闭环。",
             bullets: ["分支状态", "交付回执", "发布前确认"],
@@ -779,6 +2068,7 @@
         let travelDebug = "idle";
 
         const AUTO_START = search.get("autostart") === "1";
+        const DEBUG_MODE = search.get("debug") === "1";
         let autoStartTries = 0;
         let autoStartDone = false;
 
@@ -789,6 +2079,46 @@
           focus: search.get("focus"),
         };
 
+        debug.classList.toggle("is-hidden", !DEBUG_MODE);
+
+        const SCENE_BOUNDS = {
+          "map-farm": { width: 2560, height: 2560 },
+          "map-home": { width: 1728, height: 1344 },
+          "map-coop": { width: 1408, height: 1152 },
+          "map-toolshed": { width: 1408, height: 1152 },
+          "map-cowshed": { width: 1408, height: 1920 },
+          "map-crossroads": { width: 1280, height: 1120 },
+        };
+
+        function clampValue(value, min, max) {
+          return Math.max(min, Math.min(max, value));
+        }
+
+        function buildPreviewParts() {
+          if (!TRAVEL.scene || !SCENES[TRAVEL.scene] || !SCENE_BOUNDS[TRAVEL.scene]) return null;
+
+          const bounds = SCENE_BOUNDS[TRAVEL.scene];
+          const viewportWidth = 1280;
+          const viewportHeight = 960;
+          const playerX = isFiniteNumber(TRAVEL.x) ? TRAVEL.x : bounds.width / 2;
+          const playerY = isFiniteNumber(TRAVEL.y) ? TRAVEL.y : bounds.height / 2;
+          const viewX = clampValue(playerX - viewportWidth / 2, 0, Math.max(bounds.width - viewportWidth, 0));
+          const viewY = clampValue(playerY - viewportHeight / 2, 0, Math.max(bounds.height - viewportHeight, 0));
+
+          return {
+            scene: null,
+            map: { key: TRAVEL.scene },
+            player: { x: playerX, y: playerY },
+            camera: {
+              width: viewportWidth,
+              height: viewportHeight,
+              centerOn: function () {},
+              worldView: { x: viewX, y: viewY },
+            },
+            isPreview: true,
+          };
+        }
+
         function extractParts(game) {
           try {
             const sceneKeys = game && game.scene && game.scene.keys ? Object.keys(game.scene.keys) : [];
@@ -797,7 +2127,10 @@
               const camera = scene && scene.cameras && scene.cameras.main;
               const player = scene && scene._PLAYER;
               const map = scene && scene._MAP;
-              if (scene && camera && player && map) {
+              const hasPlayerApi = !!(player && typeof player.setPosition === "function" && Number.isFinite(player.x) && Number.isFinite(player.y));
+              const hasCameraApi = !!(camera && camera.worldView && Number.isFinite(camera.worldView.x) && Number.isFinite(camera.worldView.y));
+              const hasMapApi = !!(map && typeof map.key === "string");
+              if (scene && hasCameraApi && hasPlayerApi && hasMapApi) {
                 return { scene: scene, camera: camera, player: player, map: map };
               }
             }
@@ -895,20 +2228,223 @@
           saveState();
         }
 
+        function renderEntityBadge(title, subtitle, tone) {
+          const toneClass = tone ? (" badge-" + tone) : "";
+          return '<div class="entity-badge' + toneClass + '"><span class="entity-dot"></span><span class="entity-copy"><span class="entity-title">' + title + '</span><span class="entity-sub">' + subtitle + '</span></span></div>';
+        }
+
+        function getCollaboratorSubtitle(player) {
+          const ownership = player.ownership ? ("负责 " + player.ownership) : "";
+          if (player.role === "测试") {
+            if (MULTIPLAYER_STATE.approvals.length) return "盯审批与交付" + (ownership ? " · " + ownership : "");
+            if (MULTIPLAYER_STATE.deliveries.length) return "核对回执" + (ownership ? " · " + ownership : "");
+            return "巡检田块与交付" + (ownership ? " · " + ownership : "");
+          }
+          if (MULTIPLAYER_STATE.tasks.some(function (task) { return task.status === "联调中"; })) return "推进联调" + (ownership ? " · " + ownership : "");
+          if (MULTIPLAYER_STATE.tasks.some(function (task) { return task.status === "开发中"; })) return "写固件与驱动" + (ownership ? " · " + ownership : "");
+          return "推进固件与联调" + (ownership ? " · " + ownership : "");
+        }
+
+        function getCollaboratorTone(player) {
+          if (player.role === "测试" && MULTIPLAYER_STATE.approvals.length) return "warn";
+          if (MULTIPLAYER_STATE.tasks.some(function (task) { return task.status === "开发中" || task.status === "联调中"; })) return "busy";
+          return "";
+        }
+
+        function getTaskSubtitle(task) {
+          const routeMap = {
+            "待执行": "刚从需求池拆出",
+            "开发中": "正在送往电脑车间",
+            "联调中": "正在和 AI 联调",
+            "待交付": "准备进入交付工坊",
+            "已交付": "已完成本轮交付",
+          };
+          return (routeMap[task.status] || "正在基地里流转") + " · " + task.status;
+        }
+
+        function getTaskTone(task) {
+          if (task.status === "待交付") return "ready";
+          if (task.status === "开发中" || task.status === "联调中") return "busy";
+          return "";
+        }
+
+        function getPlotSubtitle(plot) {
+          const stage = TASK_STAGE_LABELS[plot.stage] || plot.stage;
+          if (plot.stage === "ready") return "已成熟，等待收获";
+          if (plot.stage === "empty") return "还没播进任务";
+          return "成长阶段 · " + stage;
+        }
+
+        function getPlotTone(plot) {
+          if (plot.stage === "ready") return "ready";
+          if (plot.stage === "grow" || plot.stage === "sprout") return "busy";
+          return "";
+        }
+
+        function getComputerSubtitle(computer) {
+          const busyTask = MULTIPLAYER_STATE.tasks.find(function (task) {
+            return task.status === "开发中" || task.status === "联调中" || task.status === "待交付";
+          });
+          if (!busyTask) return "当前空闲";
+          return "执行中 · " + busyTask.label;
+        }
+
+        function getComputerTone(computer) {
+          const busyTask = MULTIPLAYER_STATE.tasks.find(function (task) {
+            return task.status === "开发中" || task.status === "联调中" || task.status === "待交付";
+          });
+          if (!busyTask) return "";
+          if (busyTask.status === "待交付") return "ready";
+          return "busy";
+        }
+
+        function getAgentSubtitle(agent) {
+          const care = [];
+          if (agent.fedToday) care.push("已投喂");
+          if (agent.talkedToday) care.push("已沟通");
+          if (!care.length) care.push("待照料");
+          return care.join(" / ") + " · " + (agent.ownership || agent.mood);
+        }
+
+        function getAgentTone(agent) {
+          if (agent.fedToday && agent.talkedToday) return "stable";
+          if (!agent.fedToday || !agent.talkedToday) return "warn";
+          return "";
+        }
+
+        function getHandoffTone(item) {
+          if (!item) return "";
+          if (item.status === "待人工确认") return "warn";
+          if (item.status === "已接手" || item.status === "上下文完整") return "stable";
+          return "busy";
+        }
+
+        function getChatNoteTone(item) {
+          if (!item) return "";
+          if (item.status === "待细化验收") return "warn";
+          if (item.status === "已对齐责任人") return "stable";
+          return "busy";
+        }
+
+        function getFileLockTone(item) {
+          if (!item) return "";
+          if (item.status === "编辑中") return "busy";
+          if (item.status === "待确认") return "warn";
+          if (item.status === "待接手") return "ready";
+          return "stable";
+        }
+
+        function getSiteBeaconEntities() {
+          const pendingApprovals = MULTIPLAYER_STATE.approvals.filter(function (item) {
+            return item.status !== "已通过";
+          }).length;
+          const readyDeliveries = MULTIPLAYER_STATE.tasks.filter(function (task) {
+            return task.status === "待交付";
+          }).length;
+          const activeComputers = MULTIPLAYER_STATE.tasks.filter(function (task) {
+            return task.status === "开发中" || task.status === "联调中";
+          }).length;
+          const pendingRequirements = MULTIPLAYER_STATE.requirements.filter(function (item) {
+            return item.status === "待拆解" || item.status === "开发中";
+          }).length;
+          const growingPlots = MULTIPLAYER_STATE.taskPlots.filter(function (plot) {
+            return plot.stage === "seed" || plot.stage === "sprout" || plot.stage === "grow";
+          }).length;
+          const attentionAgents = MULTIPLAYER_STATE.agents.filter(function (agent) {
+            return !agent.fedToday || !agent.talkedToday;
+          }).length;
+
+          return [
+            {
+              id: "site-requirements",
+              kind: "beacon",
+              layout: "anchor-bottom beacon-card",
+              scene: "map-farm",
+              getPosition: function () {
+                return { x: 1226, y: 1300 };
+              },
+              render: function () {
+                return renderEntityBadge("信箱状态", pendingRequirements ? ("待处理 " + pendingRequirements + " 条") : "需求池平稳", pendingRequirements ? "warn" : "stable");
+              },
+            },
+            {
+              id: "site-ai",
+              kind: "beacon",
+              layout: "anchor-left beacon-card",
+              scene: "map-farm",
+              getPosition: function () {
+                return { x: 994, y: 1768 };
+              },
+              render: function () {
+                return renderEntityBadge("AI 状态", attentionAgents ? ("待照料 " + attentionAgents + " 只") : "全部在线", attentionAgents ? "warn" : "stable");
+              },
+            },
+            {
+              id: "site-approvals",
+              kind: "beacon",
+              layout: "anchor-right beacon-card",
+              scene: "map-farm",
+              getPosition: function () {
+                return { x: 188, y: 2235 };
+              },
+              render: function () {
+                return renderEntityBadge("门岗状态", pendingApprovals ? ("待审批 " + pendingApprovals + " 项") : "门岗畅通", pendingApprovals ? "warn" : "stable");
+              },
+            },
+            {
+              id: "site-computers",
+              kind: "beacon",
+              layout: "anchor-left beacon-card",
+              scene: "map-farm",
+              getPosition: function () {
+                return { x: 1482, y: 1588 };
+              },
+              render: function () {
+                return renderEntityBadge("车间状态", activeComputers ? ("开发中 " + activeComputers + " 条线") : "当前空闲", activeComputers ? "busy" : "stable");
+              },
+            },
+            {
+              id: "site-delivery",
+              kind: "beacon",
+              layout: "anchor-left beacon-card",
+              scene: "map-farm",
+              getPosition: function () {
+                return { x: 1998, y: 2290 };
+              },
+              render: function () {
+                return renderEntityBadge("工坊状态", readyDeliveries ? ("待交付 " + readyDeliveries + " 项") : "交付通畅", readyDeliveries ? "ready" : "stable");
+              },
+            },
+            {
+              id: "site-tasks",
+              kind: "beacon",
+              layout: "anchor-left beacon-card",
+              scene: "map-farm",
+              getPosition: function () {
+                return { x: 1876, y: 1756 };
+              },
+              render: function () {
+                return renderEntityBadge("田块状态", growingPlots ? ("成长中 " + growingPlots + " 块") : "等待播种", growingPlots ? "busy" : "stable");
+              },
+            },
+          ];
+        }
+
         function buildWorldEntities() {
-          const entities = [];
+          const entities = getSiteBeaconEntities();
 
           MULTIPLAYER_STATE.collaborators.forEach(function (player) {
             entities.push({
               id: player.id,
               kind: "player",
+              layout: (player.role === "测试" ? "anchor-left" : "anchor-right") + " player-card",
               scene: player.scene,
               getPosition: function (tick) {
                 const step = Math.floor(tick / 20) % player.path.length;
                 return player.path[step];
               },
               render: function () {
-                return '<div class="entity-badge">👤 ' + player.name + " · " + player.role + "</div>";
+                return renderEntityBadge(player.name + " · " + player.role, getCollaboratorSubtitle(player), getCollaboratorTone(player));
               },
             });
           });
@@ -917,27 +2453,35 @@
             entities.push({
               id: task.id,
               kind: "task",
+              layout: "anchor-top task-card",
               scene: task.scene,
               getPosition: function (tick) {
                 const step = Math.floor(tick / 28) % task.path.length;
                 return task.path[step];
               },
               render: function () {
-                return '<div class="entity-badge">任务 · ' + task.label + " · " + task.status + "</div>";
+                return renderEntityBadge("任务 · " + task.label, getTaskSubtitle(task), getTaskTone(task));
               },
             });
           });
 
-          MULTIPLAYER_STATE.taskPlots.forEach(function (plot) {
+          MULTIPLAYER_STATE.taskPlots.forEach(function (plot, index) {
+            const plotLayouts = [
+              "anchor-bottom plot-card",
+              "anchor-left plot-card",
+              "anchor-right plot-card",
+              "anchor-top plot-card",
+            ];
             entities.push({
               id: plot.id,
               kind: "task",
+              layout: plotLayouts[index % plotLayouts.length],
               scene: plot.scene,
               getPosition: function () {
                 return { x: plot.x, y: plot.y };
               },
               render: function () {
-                return '<div class="entity-badge">田块 · ' + plot.title + " · " + (TASK_STAGE_LABELS[plot.stage] || plot.stage) + "</div>";
+                return renderEntityBadge("田块 · " + plot.title, getPlotSubtitle(plot), getPlotTone(plot));
               },
             });
           });
@@ -946,12 +2490,13 @@
             entities.push({
               id: computer.id,
               kind: "computer",
+              layout: "anchor-top computer-card",
               scene: computer.scene,
               getPosition: function () {
                 return { x: computer.x, y: computer.y };
               },
               render: function () {
-                return '<div class="entity-badge">电脑 · ' + computer.label + '</div><div class="entity-home"></div>';
+                return renderEntityBadge("电脑 · " + computer.label, getComputerSubtitle(computer), getComputerTone(computer)) + '<div class="entity-home"></div>';
               },
             });
           });
@@ -960,12 +2505,13 @@
             entities.push({
               id: agent.id,
               kind: "ai-" + agent.type,
+              layout: (agent.type === "codex" ? "anchor-bottom" : "anchor-left") + " ai-card",
               scene: agent.scene,
               getPosition: function () {
                 return { x: agent.x, y: agent.y };
               },
               render: function () {
-                return '<div class="entity-badge">' + agent.species + ' · ' + agent.model + "</div>";
+                return renderEntityBadge(agent.species + " · " + agent.model, getAgentSubtitle(agent), getAgentTone(agent));
               },
             });
           });
@@ -1074,11 +2620,18 @@
             return;
           }
 
+          if (!parts.player || typeof parts.player.setPosition !== "function") {
+            travelDebug = "player api unavailable";
+            return;
+          }
+
           parts.player.setPosition(TRAVEL.x, TRAVEL.y);
           if (parts.player.body && typeof parts.player.body.reset === "function") {
             parts.player.body.reset(TRAVEL.x, TRAVEL.y);
           }
-          parts.camera.centerOn(TRAVEL.x, TRAVEL.y);
+          if (parts.camera && typeof parts.camera.centerOn === "function") {
+            parts.camera.centerOn(TRAVEL.x, TRAVEL.y);
+          }
           travelApplied = true;
         }
 
@@ -1141,6 +2694,55 @@
           return '<div class="drawer-pills">' + items.map(function (item) {
             return "<span>" + format(item) + "</span>";
           }).join("") + "</div>";
+        }
+
+        function renderMemberWallSummary() {
+          return '<div class="wall-grid">' +
+            '<div class="wall-card"><strong>成员分工</strong>' +
+              renderPills(MULTIPLAYER_STATE.collaborators, function (item) { return item.name + " · " + (item.ownership || "待分工"); }, "暂无分工") +
+            '</div>' +
+            '<div class="wall-card"><strong>接手关系</strong>' +
+              renderPills(MULTIPLAYER_STATE.handoffs, function (item) { return item.from + " -> " + item.to + " · " + item.status; }, "暂无接手") +
+            '</div>' +
+            '<div class="wall-card"><strong>文件软锁</strong>' +
+              renderPills(MULTIPLAYER_STATE.fileLocks, function (item) { return item.scope + " · " + item.owner + " · " + item.status; }, "暂无软锁") +
+            '</div>' +
+          '</div>';
+        }
+
+        function renderProjectSummary() {
+          const pendingRequirement = MULTIPLAYER_STATE.requirements.find(function (item) {
+            return item.status === "待拆解" || item.status === "开发中";
+          });
+          const activeTask = MULTIPLAYER_STATE.tasks.find(function (item) {
+            return item.status === "开发中" || item.status === "联调中" || item.status === "待交付";
+          });
+          const activeLock = MULTIPLAYER_STATE.fileLocks.find(function (item) {
+            return item.status === "编辑中" || item.status === "待确认";
+          });
+          const pendingApproval = MULTIPLAYER_STATE.approvals.find(function (item) {
+            return item.status !== "已通过";
+          });
+
+          return '<div class="wall-grid">' +
+            '<div class="wall-card"><strong>当前主线</strong>' +
+              renderPills([{ text: (MULTIPLAYER_STATE.story && MULTIPLAYER_STATE.story.current) ? MULTIPLAYER_STATE.story.current : "先接入 AI、电脑和 Runner" }], function (item) { return item.text; }, "暂无主线") +
+            '</div>' +
+            '<div class="wall-card"><strong>当前卡点</strong>' +
+              renderPills([
+                { text: pendingRequirement ? ("需求待拆解 · " + pendingRequirement.title) : "需求链通畅" },
+                { text: pendingApproval ? ("审批待处理 · " + pendingApproval.title) : "审批链通畅" },
+                { text: activeLock ? ("软锁占用 · " + activeLock.scope) : "文件边界清晰" }
+              ], function (item) { return item.text; }, "暂无卡点") +
+            '</div>' +
+            '<div class="wall-card"><strong>推进摘要</strong>' +
+              renderPills([
+                { text: activeTask ? ("当前推进 · " + activeTask.label + " · " + activeTask.status) : "暂无推进中的任务" },
+                { text: "协作者 " + MULTIPLAYER_STATE.collaborators.length + " 人" },
+                { text: "AI " + MULTIPLAYER_STATE.agents.length + " 只 / 电脑 " + MULTIPLAYER_STATE.computers.length + " 台" }
+              ], function (item) { return item.text; }, "暂无摘要") +
+            '</div>' +
+          '</div>';
         }
 
         function renderStateSections(zoneId) {
@@ -1219,27 +2821,128 @@
           return sections.join("");
         }
 
+        function renderWorkflowStrip(zoneId) {
+          const frontWorkflowZones = ["requirements", "tasks", "ai", "computers", "computer-room", "runner-console", "device-rack"];
+          const backWorkflowZones = ["approvals", "build-bench", "release-crate", "delivery", "delivery-room"];
+          let steps = [];
+          let activeStep = null;
+          let title = "";
+
+          if (frontWorkflowZones.indexOf(zoneId) !== -1) {
+            title = "开发前线";
+            const activeMap = {
+              "requirements": "requirements",
+              "tasks": "tasks",
+              "ai": "ai",
+              "computers": "compute",
+              "computer-room": "compute",
+              "runner-console": "compute",
+              "device-rack": "compute",
+            };
+            activeStep = activeMap[zoneId];
+            steps = [
+              { id: "requirements", title: "需求信箱", desc: "沉淀结构化需求单并收入口述目标" },
+              { id: "tasks", title: "任务田块", desc: "把需求播成任务并推进成长阶段" },
+              { id: "ai", title: "AI 工位站", desc: "接入 AI 动物并明确分工和上下文" },
+              { id: "compute", title: "电脑车间", desc: "安排 Runner 和电脑节点执行任务" },
+            ];
+          } else if (backWorkflowZones.indexOf(zoneId) !== -1) {
+            title = "研发主线";
+            const activeMap = {
+              "approvals": "approvals",
+              "build-bench": "build",
+              "release-crate": "release",
+              "delivery": "release",
+              "delivery-room": "build",
+            };
+            activeStep = activeMap[zoneId];
+            steps = [
+              { id: "approvals", title: "审批门岗", desc: "人工确认高风险动作和实验门槛" },
+              { id: "build", title: "构建台", desc: "跑构建、测试和实验验证" },
+              { id: "release", title: "交付箱", desc: "发回执、收交付、准备发布" },
+            ];
+          } else {
+            return "";
+          }
+
+          return '<div class="drawer-section"><h3>' + title + '</h3><div class="workflow-strip">' +
+            steps.map(function (step) {
+              return '<div class="workflow-step' + (step.id === activeStep ? ' active' : '') + '"><strong>' + step.title + '</strong><span>' + step.desc + '</span></div>';
+            }).join("") +
+            "</div></div>";
+        }
+
+        function getZoneVisualMeta(zoneId) {
+          const map = {
+            "project": { kind: "zone-homebase", marker: "屋" },
+            "project-room": { kind: "zone-command", marker: "总" },
+            "story-desk": { kind: "zone-command", marker: "线" },
+            "requirements": { kind: "zone-mail", marker: "邮" },
+            "tasks": { kind: "zone-field", marker: "田" },
+            "ai": { kind: "zone-aihub", marker: "智" },
+            "chat": { kind: "zone-courtyard", marker: "院" },
+            "computers": { kind: "zone-machine", marker: "机" },
+            "member-wall": { kind: "zone-crew", marker: "组" },
+            "chat-room": { kind: "zone-crew", marker: "聊" },
+            "handoff-table": { kind: "zone-crew", marker: "接" },
+            "meeting-board": { kind: "zone-crew", marker: "议" },
+            "runner-console": { kind: "zone-ops", marker: "控" },
+            "computer-room": { kind: "zone-ops", marker: "机" },
+            "computers": { kind: "zone-ops", marker: "机" },
+            "device-rack": { kind: "zone-ops", marker: "设" },
+            "build-bench": { kind: "zone-workshop", marker: "构" },
+            "delivery": { kind: "zone-deliveryyard", marker: "坊" },
+            "delivery-room": { kind: "zone-deliveryyard", marker: "坊" },
+            "release-crate": { kind: "zone-deliveryyard", marker: "交" },
+            "approvals": { kind: "zone-gate", marker: "审" },
+          };
+          return map[zoneId] || { kind: "zone-command", marker: "点" };
+        }
+
         function renderDrawer(zone) {
-          const stats = getStats();
           if (!zone) {
-            drawer.innerHTML = [
-              '<div class="eyebrow">等待交互区</div>',
-              '<h2>靠近房屋、门口或告示牌</h2>',
-              '<p>我现在按原游戏对象层和相机位置来放框。你靠近粉色框后按 Enter，我就打开对应的产品功能说明。外场还挂了多人协作原型：人会在地图里巡场，任务会流动，电脑会生成小屋，AI 会生成鸡和牛。</p>',
-              '<div class="drawer-stats"><div>任务：' + stats.tasks + '</div><div>电脑房：' + stats.computers + '</div><div>Codex 鸡：' + stats.codex + '</div><div>Claude 牛：' + stats.claude + '</div></div>',
-            ].join("");
+            drawer.className = "drawer is-idle";
+            drawer.innerHTML = "";
             return;
           }
 
+          const stats = getStats();
           const actions = getZoneActions(zone.id);
+          const primaryGoal = zone.bullets && zone.bullets.length ? zone.bullets[0] : "推进当前房间目标";
+          const roomMood = zone.bullets && zone.bullets.length > 1 ? zone.bullets[1] : "查看这个房间里的状态和下一步动作";
+          const projectSummaryHtml = (zone.id === "project" || zone.id === "project-room") ? renderProjectSummary() : "";
+          const memberWallSummaryHtml = zone.id === "member-wall" ? renderMemberWallSummary() : "";
+          const statsHtml = projectSummaryHtml ? "" : ('<div class="drawer-stats"><div>任务：' + stats.tasks + '</div><div>需求：' + stats.requirements + '</div><div>电脑房：' + stats.computers + '</div><div>协作者：' + stats.collaborators + '</div><div>Codex 鸡：' + stats.codex + '</div><div>Claude 牛：' + stats.claude + '</div><div>审批：' + stats.approvals + '</div><div>交付：' + stats.deliveries + '</div></div>');
+          const themeMap = {
+            "story-desk": "theme-command",
+            "project": "theme-command",
+            "project-room": "theme-command",
+            "chat": "theme-crew",
+            "member-wall": "theme-crew",
+            "chat-room": "theme-crew",
+            "handoff-table": "theme-crew",
+            "runner-console": "theme-ops",
+            "computer-room": "theme-ops",
+            "computers": "theme-ops",
+            "device-rack": "theme-ops",
+            "delivery": "theme-workshop",
+            "delivery-room": "theme-workshop",
+            "build-bench": "theme-workshop",
+            "release-crate": "theme-workshop",
+          };
+          drawer.className = "drawer " + (themeMap[zone.id] || "theme-command");
 
           drawer.innerHTML = [
             '<div class="eyebrow">地图功能区</div>',
             "<h2>" + zone.title + "</h2>",
             "<p>" + zone.desc + "</p>",
-            '<div class="drawer-stats"><div>任务：' + stats.tasks + '</div><div>需求：' + stats.requirements + '</div><div>电脑房：' + stats.computers + '</div><div>协作者：' + stats.collaborators + '</div><div>Codex 鸡：' + stats.codex + '</div><div>Claude 牛：' + stats.claude + '</div><div>审批：' + stats.approvals + '</div><div>交付：' + stats.deliveries + '</div></div>',
-            "<ul>" + zone.bullets.map(function (item) { return "<li>" + item + "</li>"; }).join("") + "</ul>",
+            '<div class="drawer-hero"><strong>进入这间房先做：' + primaryGoal + '</strong><span>' + roomMood + '</span></div>',
+            projectSummaryHtml,
+            memberWallSummaryHtml,
+            statsHtml,
+            renderWorkflowStrip(zone.id),
             renderStateSections(zone.id),
+            '<div class="drawer-actions-title">马上操作</div>',
             '<div class="drawer-actions">' + actions.map(function (action) { return '<button type="button" data-action="' + action.id + '">' + action.label + "</button>"; }).join("") + "</div>",
           ].join("");
         }
@@ -1256,6 +2959,22 @@
             return item.id === id;
           }) || null;
           renderDrawer(zone);
+        }
+
+        function toggleActive(id) {
+          if (!id) return;
+          if (activeId === id) {
+            activeId = null;
+            zoneNodes.forEach(function (node) {
+              node.classList.remove("active");
+            });
+            legend.querySelectorAll("button").forEach(function (button) {
+              button.classList.remove("active");
+            });
+            renderDrawer(null);
+            return;
+          }
+          setActive(id);
         }
 
         function setFocused(id) {
@@ -1282,19 +3001,28 @@
 
           const zones = SCENES[sceneKey] || [];
           zones.forEach(function (zone) {
+            const visualMeta = getZoneVisualMeta(zone.id);
             const node = document.createElement("div");
-            node.className = "zone";
+            node.className = "zone " + visualMeta.kind;
             node.dataset.id = zone.id;
             node.dataset.label = zone.label;
+            node.innerHTML =
+              '<div class="zone-badge">' + visualMeta.marker + '</div>' +
+              '<div class="zone-props"><span></span><span></span><span></span></div>' +
+              '<div class="zone-corners"><span></span><span></span></div>';
+            node.addEventListener("click", function () {
+              toggleActive(zone.id);
+            });
             zonesRoot.appendChild(node);
             zoneNodes.set(zone.id, node);
 
             const button = document.createElement("button");
             button.type = "button";
             button.dataset.id = zone.id;
+            button.dataset.kind = visualMeta.kind;
             button.textContent = zone.label;
             button.addEventListener("click", function () {
-              setActive(zone.id);
+              toggleActive(zone.id);
             });
             legend.appendChild(button);
           });
@@ -1314,7 +3042,7 @@
           if (entityNodes.size) return entities;
           entities.forEach(function (entity) {
             const node = document.createElement("div");
-            node.className = "entity " + entity.kind;
+            node.className = "entity " + entity.kind + (entity.layout ? (" " + entity.layout) : "");
             node.dataset.id = entity.id;
             node.innerHTML = entity.render();
             entitiesRoot.appendChild(node);
@@ -1330,6 +3058,8 @@
           const scaleY = window.innerHeight / camera.height;
           const viewX = camera.worldView.x;
           const viewY = camera.worldView.y;
+          const drawerWidth = drawer ? drawer.offsetWidth : 0;
+          const drawerLeft = drawerWidth ? (window.innerWidth - drawerWidth) : window.innerWidth;
 
           entities.forEach(function (entity) {
             const node = entityNodes.get(entity.id);
@@ -1342,7 +3072,9 @@
             const pos = entity.getPosition(tick);
             const left = (pos.x - viewX) * scaleX;
             const top = (pos.y - viewY) * scaleY;
-            const visible = !(left < -120 || top < -80 || left > window.innerWidth + 120 || top > window.innerHeight + 80);
+            let visible = !(left < -120 || top < -80 || left > window.innerWidth + 120 || top > window.innerHeight + 80);
+            if (visible && left < 210 && top < 150) visible = false;
+            if (visible && left > drawerLeft - 36) visible = false;
             node.classList.toggle("visible", visible);
             if (visible) {
               node.style.left = left + "px";
@@ -1408,6 +3140,131 @@
             title: "新需求 " + index,
             status: "待拆解",
           });
+          markDirty();
+        }
+
+        function addChatNote() {
+          const index = MULTIPLAYER_STATE.chatNotes.length + 1;
+          const owner = MULTIPLAYER_STATE.collaborators[index % Math.max(MULTIPLAYER_STATE.collaborators.length, 1)] || { name: "协作者" + index };
+          MULTIPLAYER_STATE.chatNotes.unshift({
+            id: "c" + (Date.now()),
+            title: "讨论纪要 " + index,
+            status: "已对齐责任人",
+            owner: owner.name,
+          });
+          MULTIPLAYER_STATE.story.current = "去任务田块把讨论结论播种成任务";
+          markDirty();
+        }
+
+        function syncProjectRoom() {
+          const pendingRequirement = MULTIPLAYER_STATE.requirements.find(function (item) {
+            return item.status === "待拆解" || item.status === "开发中" || item.status === "已对齐";
+          });
+          const pendingApproval = MULTIPLAYER_STATE.approvals.find(function (item) {
+            return item.status !== "已通过";
+          });
+          const activeLock = MULTIPLAYER_STATE.fileLocks.find(function (item) {
+            return item.status === "编辑中" || item.status === "待确认";
+          });
+          const focus = pendingRequirement
+            ? ("先处理需求链 · " + pendingRequirement.title)
+            : pendingApproval
+              ? ("先过人工门岗 · " + pendingApproval.title)
+              : activeLock
+                ? ("确认文件边界 · " + activeLock.scope)
+                : "基地状态稳定，推进今日联调";
+
+          MULTIPLAYER_STATE.decisionLog.unshift({
+            id: "dg" + Date.now(),
+            title: focus,
+            status: "已写入主控室",
+            owner: "主控内室",
+          });
+
+          if (pendingRequirement && pendingRequirement.status === "待拆解") {
+            pendingRequirement.status = "已进入排期";
+          }
+
+          updateStory("回到主线桌，按今日路线继续推进");
+          markDirty();
+        }
+
+        function addCommandPlan() {
+          const pendingRequirement = MULTIPLAYER_STATE.requirements.find(function (item) {
+            return item.status !== "已交付";
+          });
+          const activeTask = MULTIPLAYER_STATE.tasks.find(function (item) {
+            return item.status !== "已交付";
+          });
+          const nextRoute = activeTask
+            ? "任务田块 -> 电脑车间 -> 审批门岗"
+            : pendingRequirement
+              ? "需求信箱 -> 会议板 -> 任务田块"
+              : "AI 工位站 -> 电脑车间 -> 交付工坊";
+          const title = activeTask
+            ? ("推进 " + activeTask.label)
+            : pendingRequirement
+              ? ("拆解 " + pendingRequirement.title)
+              : "巡检基地闭环";
+
+          MULTIPLAYER_STATE.commandPlans.unshift({
+            id: "cp" + Date.now(),
+            title: title,
+            status: "已排入今日路线",
+            next: nextRoute,
+          });
+
+          if (pendingRequirement && pendingRequirement.status === "已进入排期") {
+            pendingRequirement.status = "待播种";
+          }
+
+          updateStory("按主线桌路线依次巡场推进");
+          markDirty();
+        }
+
+        function routeMeetingOutcome() {
+          const latestNote = MULTIPLAYER_STATE.chatNotes[0];
+          const pendingRequirement = MULTIPLAYER_STATE.requirements.find(function (item) {
+            return item.status === "待拆解" || item.status === "已进入排期" || item.status === "待播种";
+          });
+          const owner = latestNote ? latestNote.owner : ((MULTIPLAYER_STATE.collaborators[0] && MULTIPLAYER_STATE.collaborators[0].name) || "会议板");
+          const title = pendingRequirement ? pendingRequirement.title : (latestNote ? latestNote.title : "新讨论结论");
+
+          MULTIPLAYER_STATE.meetingTickets.unshift({
+            id: "mt" + Date.now(),
+            title: title,
+            status: "已路由到任务田块",
+            owner: owner,
+          });
+
+          if (latestNote) {
+            latestNote.status = "已转任务";
+          }
+          if (pendingRequirement) {
+            pendingRequirement.status = "待播种";
+          }
+
+          updateStory("去任务田块把会议结论播种成任务");
+          markDirty();
+        }
+
+        function cycleFileLock() {
+          const item = MULTIPLAYER_STATE.fileLocks[0];
+          if (!item) return;
+          if (item.status === "编辑中") item.status = "待确认";
+          else if (item.status === "待确认") item.status = "待接手";
+          else item.status = "编辑中";
+          MULTIPLAYER_STATE.story.current = "检查成员墙，确认文件范围和责任边界";
+          markDirty();
+        }
+
+        function advanceHandoff() {
+          const item = MULTIPLAYER_STATE.handoffs[0];
+          if (!item) return;
+          if (item.status === "待补上下文") item.status = "待人工确认";
+          else if (item.status === "待人工确认") item.status = "已接手";
+          else item.status = "上下文完整";
+          MULTIPLAYER_STATE.story.current = "检查成员墙，确认接手后的责任边界";
           markDirty();
         }
 
@@ -1585,11 +3442,13 @@
             { id: "add-claude", label: "接入 Claude 牛" },
           ];
           if (zoneId === "story-desk") return [
+            { id: "draft-plan", label: "写今日路线" },
             { id: "spawn-task", label: "派发主线任务" },
             { id: "advance-plot", label: "推进今日主线" },
           ];
           if (zoneId === "member-wall") return [
             { id: "add-collaborator", label: "加入协作者" },
+            { id: "cycle-file-lock", label: "切换软锁状态" },
             { id: "talk-agent", label: "协调 AI 分工" },
           ];
           if (zoneId === "runner-console" || zoneId === "computers" || zoneId === "computer-room") return [
@@ -1602,11 +3461,11 @@
           ];
           if (zoneId === "handoff-table") return [
             { id: "add-collaborator", label: "安排接手" },
-            { id: "resolve-approval", label: "确认交接" },
+            { id: "advance-handoff", label: "确认交接" },
           ];
           if (zoneId === "meeting-board" || zoneId === "chat") return [
-            { id: "add-requirement", label: "记录讨论" },
-            { id: "spawn-task", label: "派生任务" },
+            { id: "add-chat-note", label: "记录讨论" },
+            { id: "route-meeting", label: "路由会后结论" },
           ];
           if (zoneId === "build-bench") return [
             { id: "advance-task", label: "构建并验证" },
@@ -1621,6 +3480,7 @@
             { id: "resolve-approval", label: "通过审批" },
           ];
           if (zoneId === "project" || zoneId === "project-room") return [
+            { id: "sync-project-room", label: "更新主控决议" },
             { id: "spawn-task", label: "派 1 个任务" },
             { id: "add-collaborator", label: "加入协作者" },
           ];
@@ -1636,10 +3496,24 @@
             sections.push('<div class="drawer-section"><h3>当前主线</h3><div class="drawer-pills"><span>' + (MULTIPLAYER_STATE.story && MULTIPLAYER_STATE.story.current ? MULTIPLAYER_STATE.story.current : "先接入 AI 和电脑") + "</span></div></div>");
           }
           if (zoneId === "member-wall" || zoneId === "project" || zoneId === "project-room") {
-            sections.push('<div class="drawer-section"><h3>成员与协作</h3>' + renderPills(MULTIPLAYER_STATE.collaborators, function (item) { return item.name + " · " + item.role; }, "暂无协作者") + "</div>");
+            sections.push('<div class="drawer-section"><h3>成员与协作</h3>' + renderPills(MULTIPLAYER_STATE.collaborators, function (item) { return item.name + " · " + item.role + " · " + (item.ownership || "待分工"); }, "暂无协作者") + "</div>");
+          }
+          if (zoneId === "member-wall") {
+            sections.push('<div class="drawer-section"><h3>成员分工</h3>' + renderPills(MULTIPLAYER_STATE.collaborators, function (item) { return item.name + " · " + (item.ownership || "待分工"); }, "暂无分工") + "</div>");
+            sections.push('<div class="drawer-section"><h3>接手关系</h3>' + renderPills(MULTIPLAYER_STATE.handoffs, function (item) { return item.from + " -> " + item.to + " · " + item.status; }, "暂无接手") + "</div>");
+            sections.push('<div class="drawer-section"><h3>在线状态</h3>' + renderPills(MULTIPLAYER_STATE.collaborators, function (item) { return item.name + " · 在线 · " + item.role; }, "暂无在线成员") + "</div>");
+          }
+          if (zoneId === "member-wall" || zoneId === "project" || zoneId === "project-room") {
+            sections.push('<div class="drawer-section"><h3>文件软锁</h3>' + renderPills(MULTIPLAYER_STATE.fileLocks, function (item) { return item.scope + " · " + item.owner + " · " + item.status; }, "暂无软锁") + "</div>");
+          }
+          if (zoneId === "member-wall" || zoneId === "chat" || zoneId === "chat-room" || zoneId === "handoff-table") {
+            sections.push('<div class="drawer-section"><h3>交接接力</h3>' + renderPills(MULTIPLAYER_STATE.handoffs, function (item) { return item.from + " -> " + item.to + " · " + item.topic + " · " + item.status; }, "暂无交接") + "</div>");
           }
           if (zoneId === "requirements" || zoneId === "meeting-board") {
             sections.push('<div class="drawer-section"><h3>需求池</h3>' + renderPills(MULTIPLAYER_STATE.requirements, function (item) { return item.title + " · " + item.status; }, "暂无需求") + "</div>");
+          }
+          if (zoneId === "chat" || zoneId === "chat-room" || zoneId === "meeting-board") {
+            sections.push('<div class="drawer-section"><h3>讨论纪要</h3>' + renderPills(MULTIPLAYER_STATE.chatNotes, function (item) { return item.title + " · " + item.status + " · " + item.owner; }, "暂无讨论") + "</div>");
           }
           if (zoneId === "tasks") {
             sections.push('<div class="drawer-section"><h3>任务田块</h3>' + renderPills(MULTIPLAYER_STATE.taskPlots, function (item) { return item.title + " · " + (TASK_STAGE_LABELS[item.stage] || item.stage); }, "暂无田块") + "</div>");
@@ -1648,7 +3522,7 @@
             sections.push('<div class="drawer-section"><h3>电脑与节点</h3>' + renderPills(MULTIPLAYER_STATE.computers, function (item) { return item.label; }, "暂无电脑") + "</div>");
           }
           if (zoneId === "ai" || zoneId === "chat-room" || zoneId === "handoff-table") {
-            sections.push('<div class="drawer-section"><h3>AI 动物</h3>' + renderPills(MULTIPLAYER_STATE.agents, function (item) { return item.species + " · " + item.model + " · " + item.mood; }, "暂无 AI") + "</div>");
+            sections.push('<div class="drawer-section"><h3>AI 动物</h3>' + renderPills(MULTIPLAYER_STATE.agents, function (item) { return item.species + " · " + item.model + " · " + (item.ownership || item.mood); }, "暂无 AI") + "</div>");
           }
           if (zoneId === "build-bench" || zoneId === "release-crate" || zoneId === "delivery" || zoneId === "delivery-room") {
             sections.push('<div class="drawer-section"><h3>交付回执</h3>' + renderPills(MULTIPLAYER_STATE.deliveries, function (item) { return item.title + " · " + item.status; }, "暂无交付") + "</div>");
@@ -1686,6 +3560,18 @@
             addAgent("codex");
           } else if (actionId === "add-claude") {
             addAgent("claude");
+          } else if (actionId === "add-chat-note") {
+            addChatNote();
+          } else if (actionId === "sync-project-room") {
+            syncProjectRoom();
+          } else if (actionId === "draft-plan") {
+            addCommandPlan();
+          } else if (actionId === "route-meeting") {
+            routeMeetingOutcome();
+          } else if (actionId === "cycle-file-lock") {
+            cycleFileLock();
+          } else if (actionId === "advance-handoff") {
+            advanceHandoff();
           } else if (actionId === "deliver-task") {
             deliverTask();
           } else if (actionId === "add-approval") {
@@ -1720,6 +3606,7 @@
           ];
           if (zoneId === "member-wall") return [
             { id: "add-collaborator", label: "加入协作者" },
+            { id: "cycle-file-lock", label: "切换软锁状态" },
             { id: "talk-agent", label: "协调 AI 分工" },
           ];
           if (zoneId === "runner-console" || zoneId === "computers" || zoneId === "computer-room") return [
@@ -1732,10 +3619,10 @@
           ];
           if (zoneId === "handoff-table") return [
             { id: "add-collaborator", label: "安排接手" },
-            { id: "resolve-approval", label: "确认交接" },
+            { id: "advance-handoff", label: "确认交接" },
           ];
           if (zoneId === "meeting-board" || zoneId === "chat") return [
-            { id: "add-requirement", label: "记录讨论" },
+            { id: "add-chat-note", label: "记录讨论" },
             { id: "spawn-task", label: "派生任务" },
           ];
           if (zoneId === "build-bench") return [
@@ -1766,11 +3653,34 @@
           if (zoneId === "project" || zoneId === "project-room" || zoneId === "story-desk") {
             sections.push('<div class="drawer-section"><h3>当前主线</h3><div class="drawer-pills"><span>' + (MULTIPLAYER_STATE.story && MULTIPLAYER_STATE.story.current ? MULTIPLAYER_STATE.story.current : "先接入 AI、电脑和 Runner") + "</span></div></div>");
           }
+          if (zoneId === "project" || zoneId === "project-room") {
+            sections.push('<div class="drawer-section"><h3>主控决议</h3>' + renderPills(MULTIPLAYER_STATE.decisionLog, function (item) { return item.title + " · " + item.status; }, "暂无决议") + "</div>");
+          }
+          if (zoneId === "project" || zoneId === "project-room" || zoneId === "story-desk") {
+            sections.push('<div class="drawer-section"><h3>今日路线</h3>' + renderPills(MULTIPLAYER_STATE.commandPlans, function (item) { return item.title + " · " + item.status + " · " + item.next; }, "暂无路线") + "</div>");
+          }
           if (zoneId === "member-wall" || zoneId === "project" || zoneId === "project-room") {
-            sections.push('<div class="drawer-section"><h3>成员与协作</h3>' + renderPills(MULTIPLAYER_STATE.collaborators, function (item) { return item.name + " · " + item.role; }, "暂无协作者") + "</div>");
+            sections.push('<div class="drawer-section"><h3>成员与协作</h3>' + renderPills(MULTIPLAYER_STATE.collaborators, function (item) { return item.name + " · " + item.role + " · " + (item.ownership || "待分工"); }, "暂无协作者") + "</div>");
+          }
+          if (zoneId === "member-wall") {
+            sections.push('<div class="drawer-section"><h3>成员分工</h3>' + renderPills(MULTIPLAYER_STATE.collaborators, function (item) { return item.name + " · " + (item.ownership || "待分工"); }, "暂无分工") + "</div>");
+            sections.push('<div class="drawer-section"><h3>接手关系</h3>' + renderPills(MULTIPLAYER_STATE.handoffs, function (item) { return item.from + " -> " + item.to + " · " + item.status; }, "暂无接手") + "</div>");
+            sections.push('<div class="drawer-section"><h3>在线状态</h3>' + renderPills(MULTIPLAYER_STATE.collaborators, function (item) { return item.name + " · 在线 · " + item.role; }, "暂无在线成员") + "</div>");
+          }
+          if (zoneId === "member-wall" || zoneId === "project" || zoneId === "project-room") {
+            sections.push('<div class="drawer-section"><h3>文件软锁</h3>' + renderPills(MULTIPLAYER_STATE.fileLocks, function (item) { return item.scope + " · " + item.owner + " · " + item.status; }, "暂无软锁") + "</div>");
+          }
+          if (zoneId === "member-wall" || zoneId === "chat" || zoneId === "chat-room" || zoneId === "handoff-table") {
+            sections.push('<div class="drawer-section"><h3>交接接力</h3>' + renderPills(MULTIPLAYER_STATE.handoffs, function (item) { return item.from + " -> " + item.to + " · " + item.topic + " · " + item.status; }, "暂无交接") + "</div>");
           }
           if (zoneId === "requirements" || zoneId === "meeting-board") {
             sections.push('<div class="drawer-section"><h3>需求池</h3>' + renderPills(MULTIPLAYER_STATE.requirements, function (item) { return item.title + " · " + item.status; }, "暂无需求") + "</div>");
+          }
+          if (zoneId === "meeting-board" || zoneId === "chat") {
+            sections.push('<div class="drawer-section"><h3>会后清单</h3>' + renderPills(MULTIPLAYER_STATE.meetingTickets, function (item) { return item.title + " · " + item.status + " · " + item.owner; }, "暂无清单") + "</div>");
+          }
+          if (zoneId === "chat" || zoneId === "chat-room" || zoneId === "meeting-board") {
+            sections.push('<div class="drawer-section"><h3>讨论纪要</h3>' + renderPills(MULTIPLAYER_STATE.chatNotes, function (item) { return item.title + " · " + item.status + " · " + item.owner; }, "暂无讨论") + "</div>");
           }
           if (zoneId === "tasks") {
             sections.push('<div class="drawer-section"><h3>任务田块</h3>' + renderPills(MULTIPLAYER_STATE.taskPlots, function (item) { return item.title + " · " + (TASK_STAGE_LABELS[item.stage] || item.stage); }, "暂无田块") + "</div>");
@@ -1779,7 +3689,7 @@
             sections.push('<div class="drawer-section"><h3>电脑与节点</h3>' + renderPills(MULTIPLAYER_STATE.computers, function (item) { return item.label; }, "暂无电脑") + "</div>");
           }
           if (zoneId === "ai" || zoneId === "chat-room" || zoneId === "handoff-table") {
-            sections.push('<div class="drawer-section"><h3>AI 动物</h3>' + renderPills(MULTIPLAYER_STATE.agents, function (item) { return item.species + " · " + item.model + " · " + item.mood; }, "暂无 AI") + "</div>");
+            sections.push('<div class="drawer-section"><h3>AI 动物</h3>' + renderPills(MULTIPLAYER_STATE.agents, function (item) { return item.species + " · " + item.model + " · " + (item.ownership || item.mood); }, "暂无 AI") + "</div>");
           }
           if (zoneId === "build-bench" || zoneId === "release-crate" || zoneId === "delivery" || zoneId === "delivery-room") {
             sections.push('<div class="drawer-section"><h3>交付回执</h3>' + renderPills(MULTIPLAYER_STATE.deliveries, function (item) { return item.title + " · " + item.status; }, "暂无交付") + "</div>");
@@ -1797,19 +3707,32 @@
             triggerAutoStart();
           }
 
-          const parts = getGameParts();
+          let parts = getGameParts();
           if (!parts) {
-            sceneChip.textContent = "等待游戏场景";
-            focusChip.textContent = "靠近粉色框后按 Enter";
-            debug.textContent = "等待 Phaser 场景加载\n" + describeGameSearch();
-            return;
+            const previewParts = buildPreviewParts();
+            if (!previewParts) {
+              sceneChip.textContent = "等待游戏场景";
+              focusChip.textContent = "靠近粉色框后按 Enter";
+              debug.textContent = "等待 Phaser 场景加载\n" + describeGameSearch();
+              return;
+            }
+            parts = previewParts;
+            travelDebug = "preview fallback -> " + parts.map.key;
           }
 
-          autoStartDone = true;
-          applyTravel(parts);
+          if (!parts.isPreview) {
+            autoStartDone = true;
+            applyTravel(parts);
+          }
 
           const sceneKey = parts.map.key;
           ensureSceneUi(sceneKey);
+          const presetZone = TRAVEL.focus ? (SCENES[sceneKey] || []).find(function (item) {
+            return item.id === TRAVEL.focus;
+          }) : null;
+          if (presetZone && !activeId) {
+            setFocused(presetZone.id);
+          }
           updateEntities(sceneKey, parts.camera, performance.now() / 1000);
 
           const zones = SCENES[sceneKey] || [];
@@ -1848,7 +3771,10 @@
             }
           });
 
-          if (nearest && nearest.dist <= 170) {
+          if (presetZone && !activeId) {
+            setFocused(presetZone.id);
+            focusChip.textContent = "Enter 打开：" + presetZone.label;
+          } else if (nearest && nearest.dist <= 170) {
             const zone = zones.find(function (item) {
               return item.id === nearest.id;
             });
@@ -1857,12 +3783,20 @@
           } else {
             setFocused(null);
             focusChip.textContent = "靠近粉色框后按 Enter";
+            if (!activeId) {
+              renderDrawer(null);
+            }
           }
+
+          const playerTextX = isFiniteNumber(playerX) ? playerX.toFixed(1) : "n/a";
+          const playerTextY = isFiniteNumber(playerY) ? playerY.toFixed(1) : "n/a";
+          const cameraTextX = isFiniteNumber(viewX) ? viewX.toFixed(1) : "n/a";
+          const cameraTextY = isFiniteNumber(viewY) ? viewY.toFixed(1) : "n/a";
 
           debug.textContent = [
             "scene: " + sceneKey,
-            "player: " + playerX.toFixed(1) + ", " + playerY.toFixed(1),
-            "camera: " + viewX.toFixed(1) + ", " + viewY.toFixed(1) + " / " + viewW + "x" + viewH,
+            "player: " + playerTextX + ", " + playerTextY,
+            "camera: " + cameraTextX + ", " + cameraTextY + " / " + viewW + "x" + viewH,
             "focus: " + (focusedId || "none"),
             "active: " + (activeId || "none"),
             "travel: " + (isFiniteNumber(TRAVEL.x) && isFiniteNumber(TRAVEL.y) ? (TRAVEL.x + ", " + TRAVEL.y) : "off"),
@@ -1873,7 +3807,7 @@
 
         window.addEventListener("keydown", function (event) {
           if (event.key === "Enter" && focusedId) {
-            setActive(focusedId);
+            toggleActive(focusedId);
           }
         });
 
