@@ -1596,6 +1596,29 @@
   color: #b9fff3;
 }
 
+.npcHandoffBar {
+  padding: 10px 14px;
+  border: 1px solid rgba(88, 240, 255, 0.32);
+  background: linear-gradient(135deg, rgba(2, 28, 39, 0.82), rgba(2, 13, 20, 0.66));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+  margin-bottom: 8px;
+}
+
+.npcHandoffBar > span {
+  font-size: 12px;
+  color: rgba(220, 252, 255, 0.78);
+}
+
+.npcHandoffBar > small {
+  font-size: 11px;
+  color: rgba(147, 251, 255, 0.65);
+  display: block;
+  line-height: 1.4;
+}
+
 .cockpitHeader {
   display: flex;
   align-items: center;

@@ -1606,7 +1606,53 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
 
     if (moduleTab === "npc-create" && action.id === "npc-dialogue") {
       return (
-        <form action={submitCollaborationMessage} className={styles.drawerForm} data-unity-real-form="npc-dialogue">
+        <>
+          <div className={styles.npcHandoffBar}>
+            <span>切换线程时，把这个 NPC 的知识、Skill、任务进展打包给新 AI：</span>
+            <button
+              type="button"
+              className={styles.cockpitPrimary}
+              onClick={async () => {
+                const targetId = focusedNpcSeat?.id;
+                if (!targetId) {
+                  setCopyState({ kind: "err", message: "请先选中一个 NPC" });
+                  setTimeout(() => setCopyState({ kind: "idle" }), 3000);
+                  return;
+                }
+                setCopyState({ kind: "loading" });
+                try {
+                  const res = await fetch(`${apiBaseUrl}/api/claude-bridge/projects/${encodeURIComponent(project.id)}/npcs/${encodeURIComponent(targetId)}/context`, { credentials: "include" });
+                  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                  const json = await res.json();
+                  const prompt = String(json?.data?.prompt ?? "").trim();
+                  if (!prompt) throw new Error("empty");
+                  await navigator.clipboard.writeText(prompt);
+                  setCopyState({ kind: "ok", message: `已复制 ${focusedNpcSeat?.name || "NPC"} 的接手 prompt，粘贴到新线程即可。` });
+                  setTimeout(() => setCopyState({ kind: "idle" }), 5000);
+                } catch (e) {
+                  setCopyState({ kind: "err", message: `复制失败：${e instanceof Error ? e.message : "未知错误"}` });
+                  setTimeout(() => setCopyState({ kind: "idle" }), 4000);
+                }
+              }}
+              disabled={copyState.kind === "loading"}
+            >
+              {copyState.kind === "loading" ? "生成中..." : `复制 ${focusedNpcSeat?.name || "NPC"} 的接手 prompt`}
+            </button>
+            {focusedNpcSeat?.skillLoadout?.length ? (
+              <small>
+                已装备 Skill：{focusedNpcSeat.skillLoadout.slice(0, 4).join("、")}{focusedNpcSeat.skillLoadout.length > 4 ? `…等 ${focusedNpcSeat.skillLoadout.length} 个` : ""}
+              </small>
+            ) : null}
+            {focusedNpcSeat?.knowledgeSummary ? (
+              <small>知识库：{focusedNpcSeat.knowledgeSummary.slice(0, 60)}{focusedNpcSeat.knowledgeSummary.length > 60 ? "…" : ""}</small>
+            ) : null}
+          </div>
+          {copyState.message ? (
+            <div className={`${styles.cockpitToast} ${copyState.kind === "err" ? styles.cockpitToastErr : styles.cockpitToastOk}`}>
+              {copyState.message}
+            </div>
+          ) : null}
+          <form action={submitCollaborationMessage} className={styles.drawerForm} data-unity-real-form="npc-dialogue">
           <input type="hidden" name="project_id" value={project.id} />
           <input type="hidden" name="return_to" value={returnPath("npc-create", "npc-dialogue")} />
           <input type="hidden" name="message_type" value="agent_command" />
@@ -1632,6 +1678,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
           </label>
           <SubmitButton label="发送给目标 NPC/线程" disabled={!collaborationTargets.length} />
         </form>
+        </>
       );
     }
 

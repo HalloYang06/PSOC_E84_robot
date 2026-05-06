@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from app.common.errors import AppError
 from app.common.response import ok
 from app.db.models.project import Project
+from app.db.models.project_collaboration import ProjectThreadWorkstation
 from app.db.models.requirement import Requirement
 from app.db.models.task import Task
 from app.db.models.task_event import TaskEvent
@@ -180,6 +181,190 @@ def get_task_prompt(
     return ok({
         "task": _task_brief(task),
         "prompt": _build_prompt(project, task, None),
+    })
+
+
+def _npc_metadata(npc: ProjectThreadWorkstation) -> dict[str, Any]:
+    raw = getattr(npc, "extra_data", None) or {}
+    if not isinstance(raw, dict):
+        return {}
+    return raw
+
+
+def _npc_brief(npc: ProjectThreadWorkstation) -> dict[str, Any]:
+    meta = _npc_metadata(npc)
+    knowledge = meta.get("npc_knowledge") if isinstance(meta.get("npc_knowledge"), dict) else {}
+    return {
+        "id": npc.id,
+        "name": npc.name,
+        "config_id": npc.config_id,
+        "responsibility": (npc.description or meta.get("responsibility") or "").strip(),
+        "current_thread": {
+            "provider_id": npc.ai_provider_id or meta.get("ai_provider_id"),
+            "provider_label": meta.get("ai_provider") or meta.get("provider_label"),
+            "model": meta.get("model") or "",
+            "computer_node_id": npc.computer_node_id or meta.get("computer_node_id"),
+        },
+        "permission_level": meta.get("permission_level") or "L2",
+        "automation_enabled": bool(meta.get("automation_enabled")),
+        "skill_loadout": list(meta.get("skill_loadout") or []),
+        "knowledge": {
+            "summary": (knowledge.get("summary") or meta.get("knowledge_summary") or "").strip(),
+            "handoff_path": (knowledge.get("handoff_path") or meta.get("knowledge_handoff_path") or "").strip(),
+        },
+        "status": npc.status,
+    }
+
+
+def _build_npc_prompt(
+    project: Project,
+    npc: ProjectThreadWorkstation,
+    recent_tasks: list[Task],
+    recent_handoff_events: list[TaskEvent],
+) -> str:
+    """Pack a complete handoff prompt for a new AI taking over an NPC's role.
+
+    Goal (per user 2026-05-06): "switching the AI behind an NPC should not
+    require re-teaching the new AI". So this prompt includes the NPC's
+    long-lived role, knowledge summary, skill loadout, and recent handoffs.
+    """
+    meta = _npc_metadata(npc)
+    knowledge = meta.get("npc_knowledge") if isinstance(meta.get("npc_knowledge"), dict) else {}
+    skills = list(meta.get("skill_loadout") or [])
+
+    lines: list[str] = []
+    lines.append(f"# 你接手的岗位：{npc.name}")
+    responsibility = (npc.description or meta.get("responsibility") or "").strip()
+    if responsibility:
+        lines.append("")
+        lines.append("## 这个岗位负责什么")
+        lines.append(responsibility)
+    lines.append("")
+    lines.append("## 项目上下文")
+    lines.append(f"- 项目：{project.name}")
+    if project.description:
+        lines.append(f"- 简介：{project.description.strip()}")
+    repo = getattr(project, "github_url", None) or getattr(project, "local_git_url", None)
+    if repo:
+        lines.append(f"- 仓库：{repo}")
+    lines.append(f"- 主分支：{project.default_branch or 'main'}")
+    if project.develop_branch:
+        lines.append(f"- 开发分支：{project.develop_branch}")
+    lines.append("")
+    knowledge_summary = (knowledge.get("summary") or meta.get("knowledge_summary") or "").strip()
+    if knowledge_summary:
+        lines.append("## 这个岗位的长期知识（前任沉淀，请视为权威）")
+        lines.append(knowledge_summary)
+        handoff_path = (knowledge.get("handoff_path") or meta.get("knowledge_handoff_path") or "").strip()
+        if handoff_path:
+            lines.append("")
+            lines.append(f"_完整知识文档路径：`{handoff_path}`（如需深入请打开阅读）_")
+        lines.append("")
+    if skills:
+        lines.append("## 已装备的 Skill（你可以并应该使用这些能力）")
+        for s in skills:
+            lines.append(f"- {s}")
+        lines.append("")
+    if recent_tasks:
+        lines.append("## 最近任务（按时间倒序）")
+        for t in recent_tasks[:3]:
+            summary = (getattr(t, "summary", None) or getattr(t, "description", None) or "").strip()
+            lines.append(f"- **{t.title}** [{t.status} / {t.priority}]")
+            if summary:
+                lines.append(f"  {summary[:280]}")
+        lines.append("")
+    if recent_handoff_events:
+        lines.append("## 前任 AI 的交接记录")
+        for ev in recent_handoff_events[:3]:
+            msg = (ev.message or "").strip()
+            if msg:
+                lines.append(f"- {msg[:400]}")
+        lines.append("")
+    permission_level = meta.get("permission_level") or "L2"
+    automation = "已开启自动化" if meta.get("automation_enabled") else "默认手动审批"
+    lines.append("## 工作约束")
+    lines.append(f"- 权限等级：{permission_level}")
+    lines.append(f"- 自动化：{automation}")
+    lines.append("- 高风险动作（硬件烧录、git push、删除）必须先走人工审批，不要自行执行")
+    lines.append("")
+    lines.append("---")
+    lines.append("请先用一两句话告诉我你理解这个岗位的核心职责是什么、当前最重要的事是什么，再开始工作。")
+    lines.append("完成后用 `POST /api/claude-bridge/projects/{project_id}/handoff` 把工作摘要回传，便于下一任 AI 接手。")
+    return "\n".join(lines).strip() + "\n"
+
+
+@router.get("/projects/{project_id}/npcs/{npc_id}/context")
+def get_npc_context(
+    project_id: str,
+    npc_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Pack a complete onboarding prompt for an AI taking over this NPC's seat.
+
+    This is the core of "reduce AI handover cost": include the NPC's role,
+    long-term knowledge, skill loadout, recent tasks, and handoff history so
+    that any new AI can pick up the work without being re-taught.
+    """
+    require_project_read_access(db, request, project_id, action="claude_bridge.npc_context.read")
+    project = db.get(Project, project_id)
+    if project is None:
+        raise AppError("PROJECT_NOT_FOUND", "project not found", status_code=404)
+    npc = db.get(ProjectThreadWorkstation, npc_id)
+    if npc is None or str(npc.project_id) != project_id:
+        raise AppError("NPC_NOT_FOUND", "npc not found in project", status_code=404)
+
+    recent_tasks = list(
+        db.scalars(
+            select(Task)
+            .where(Task.project_id == project_id, Task.assignee_agent_id == npc.agent_id)
+            .order_by(Task.updated_at.desc())
+            .limit(5)
+        )
+    ) if npc.agent_id else []
+
+    if not recent_tasks:
+        recent_tasks = list(
+            db.scalars(
+                select(Task)
+                .where(Task.project_id == project_id)
+                .order_by(Task.updated_at.desc())
+                .limit(3)
+            )
+        )
+
+    task_ids = [t.id for t in recent_tasks]
+    handoff_events: list[TaskEvent] = []
+    if task_ids:
+        handoff_events = list(
+            db.scalars(
+                select(TaskEvent)
+                .where(
+                    TaskEvent.task_id.in_(task_ids),
+                    TaskEvent.event_type.in_(["claude_handoff", "claude_handoff_note", "handoff", "context_handoff"]),
+                )
+                .order_by(TaskEvent.created_at.desc())
+                .limit(5)
+            )
+        )
+
+    return ok({
+        "project": _project_brief(project),
+        "npc": _npc_brief(npc),
+        "recent_tasks": [_task_brief(t) for t in recent_tasks],
+        "recent_handoffs": [
+            {
+                "task_id": ev.task_id,
+                "event_type": ev.event_type,
+                "message": (ev.message or "").strip(),
+                "created_at": ev.created_at.isoformat() if ev.created_at else None,
+            }
+            for ev in handoff_events
+        ],
+        "hints": {
+            "tip": "把 prompt 字段粘到新 Claude Code/Codex/Qwen 线程中，新 AI 即可零指导接手这个岗位。",
+        },
+        "prompt": _build_npc_prompt(project, npc, recent_tasks, handoff_events),
     })
 
 
