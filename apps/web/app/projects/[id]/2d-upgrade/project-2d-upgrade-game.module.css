@@ -1619,6 +1619,72 @@
   line-height: 1.4;
 }
 
+.gradeChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px;
+  font-size: 12px;
+  font-weight: 1000;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  border: 1px solid rgba(122, 255, 244, 0.5);
+  background: rgba(2, 28, 39, 0.7);
+  color: #93fbff;
+  font-family: inherit;
+  clip-path: polygon(8px 0, calc(100% - 8px) 0, 100% 50%, calc(100% - 8px) 100%, 8px 100%, 0 50%);
+  transition: all 0.18s ease;
+}
+.gradeChip:hover { filter: brightness(1.18); }
+.gradeChipA { background: rgba(99, 255, 213, 0.22); color: #b9fff3; border-color: rgba(167, 255, 237, 0.78); box-shadow: 0 0 16px rgba(94, 240, 255, 0.3); }
+.gradeChipB { background: rgba(94, 240, 255, 0.18); color: #93fbff; }
+.gradeChipC { background: rgba(255, 232, 109, 0.22); color: #ffec8a; border-color: rgba(255, 232, 109, 0.7); }
+.gradeChipD { background: rgba(255, 123, 123, 0.22); color: #ffd2d2; border-color: rgba(255, 123, 123, 0.7); }
+
+.scorecardPanel {
+  margin-top: 8px;
+  padding: 12px;
+  border: 1px solid rgba(88, 240, 255, 0.32);
+  background: linear-gradient(135deg, rgba(2, 28, 39, 0.78), rgba(2, 13, 20, 0.66));
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+}
+.scorecardHeader { display: flex; gap: 12px; align-items: baseline; margin-bottom: 10px; }
+.scorecardHeader strong { color: #f4ffff; font-size: 14px; }
+.scorecardHeader small { color: rgba(220, 252, 255, 0.78); font-size: 11px; }
+.scorecardGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+}
+.scorecardItem {
+  display: grid;
+  grid-template-columns: 32px 1fr;
+  gap: 4px 10px;
+  padding: 8px 10px;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-left: 3px solid currentColor;
+  color: #94a3b8;
+}
+.scorecardItem strong { font-size: 12px; color: #f1f5f9; font-weight: 600; }
+.scorecardItem small { grid-column: 1 / -1; font-size: 11px; color: rgba(203, 213, 225, 0.78); margin-top: 2px; }
+.scoreGradeBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 22px;
+  font-size: 12px;
+  font-weight: 1000;
+  border: 1px solid currentColor;
+  grid-row: span 1;
+}
+.scoreGradeA { color: #4dffb3; }
+.scoreGradeB { color: #93fbff; }
+.scoreGradeC { color: #ffec8a; }
+.scoreGradeD { color: #ffa3a3; }
+
 .cockpitHeader {
   display: flex;
   align-items: center;

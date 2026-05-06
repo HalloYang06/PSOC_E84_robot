@@ -815,6 +815,42 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
     }
   }
 
+  const [scorecard, setScorecard] = useState<{
+    grade: string;
+    score: number;
+    summary: string;
+    indicators: Array<{ key: string; label: string; grade?: string; detail: string }>;
+  } | null>(null);
+  const [scorecardOpen, setScorecardOpen] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${apiBaseUrl}/api/qualification/projects/${encodeURIComponent(project.id)}/scorecard`, { credentials: "include" });
+        if (!res.ok) return;
+        const json = await res.json();
+        const data = json?.data;
+        if (!data || cancelled) return;
+        const inds = Object.entries(data.indicators || {}).map(([k, v]: [string, any]) => ({
+          key: k,
+          label: v.label || k,
+          grade: v.grade,
+          detail: v.detail || "",
+        }));
+        setScorecard({
+          grade: data.overall?.grade || "—",
+          score: data.overall?.score ?? 0,
+          summary: data.overall?.summary || "",
+          indicators: inds,
+        });
+      } catch {}
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiBaseUrl, project.id]);
+
   const unitySrc = useMemo(() => {
     const query = new URLSearchParams({
       projectId: project.id,
@@ -2718,6 +2754,16 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                 {sceneVisible ? "隐藏场景" : "显示场景"}
               </button>
               <Link href="/projects" className={styles.cockpitGhost}>项目列表</Link>
+              {scorecard ? (
+                <button
+                  type="button"
+                  className={`${styles.gradeChip} ${styles[`gradeChip${scorecard.grade}`] ?? ""}`}
+                  onClick={() => setScorecardOpen((v) => !v)}
+                  title={`${scorecard.summary}（点击展开 6 项指标）`}
+                >
+                  合格性 {scorecard.grade} ({scorecard.score})
+                </button>
+              ) : null}
               <button
                 type="button"
                 className={styles.cockpitGhost}
@@ -2752,6 +2798,23 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
               <p>本月 token ￥{stats.tokenSpend} · 协作消息 {stats.messageCount}</p>
             </article>
           </div>
+          {scorecard && scorecardOpen ? (
+            <div className={styles.scorecardPanel}>
+              <div className={styles.scorecardHeader}>
+                <strong>合格性 {scorecard.grade} ({scorecard.score})</strong>
+                <small>{scorecard.summary} · 近 7 天</small>
+              </div>
+              <div className={styles.scorecardGrid}>
+                {scorecard.indicators.map((ind) => (
+                  <div key={ind.key} className={`${styles.scorecardItem} ${styles[`scoreGrade${ind.grade ?? ""}`] ?? ""}`}>
+                    <span className={styles.scoreGradeBadge}>{ind.grade ?? "—"}</span>
+                    <strong>{ind.label}</strong>
+                    <small>{ind.detail}</small>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </header>
       ) : (
         <button
