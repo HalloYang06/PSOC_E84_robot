@@ -10,6 +10,9 @@ import {
   createDevelopmentWorkshopStation,
   createNpcWorkstationSeat,
   createProjectSkill,
+  fetchNpcHandoffContext,
+  fetchProjectClaudeContext,
+  fetchProjectScorecard,
   importGithubProjectSkill,
   issueComputerNodePairingToken,
   previewCollaborationMessage,
@@ -782,13 +785,9 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
     if (copyState.kind === "loading") return;
     setCopyState({ kind: "loading" });
     try {
-      const res = await fetch(`${apiBaseUrl}/api/claude-bridge/projects/${encodeURIComponent(project.id)}/context`, {
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-      const prompt = String(json?.data?.prompt ?? "").trim();
-      if (!prompt) throw new Error("empty prompt");
+      const data = await fetchProjectClaudeContext(project.id);
+      const prompt = String(data?.prompt ?? "").trim();
+      if (!prompt) throw new Error("提示词为空");
       await navigator.clipboard.writeText(prompt);
       setCopyState({ kind: "ok", message: "提示词已复制到剪贴板，粘贴到 Claude Code 即可继续。" });
       setTimeout(() => setCopyState({ kind: "idle" }), 4000);
@@ -827,10 +826,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`${apiBaseUrl}/api/qualification/projects/${encodeURIComponent(project.id)}/scorecard`, { credentials: "include" });
-        if (!res.ok) return;
-        const json = await res.json();
-        const data = json?.data;
+        const data = await fetchProjectScorecard(project.id);
         if (!data || cancelled) return;
         const inds = Object.entries(data.indicators || {}).map(([k, v]: [string, any]) => ({
           key: k,
@@ -849,7 +845,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
     return () => {
       cancelled = true;
     };
-  }, [apiBaseUrl, project.id]);
+  }, [project.id]);
 
   const unitySrc = useMemo(() => {
     const query = new URLSearchParams({
@@ -1657,11 +1653,9 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                 }
                 setCopyState({ kind: "loading" });
                 try {
-                  const res = await fetch(`${apiBaseUrl}/api/claude-bridge/projects/${encodeURIComponent(project.id)}/npcs/${encodeURIComponent(targetId)}/context`, { credentials: "include" });
-                  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                  const json = await res.json();
-                  const prompt = String(json?.data?.prompt ?? "").trim();
-                  if (!prompt) throw new Error("empty");
+                  const data = await fetchNpcHandoffContext(project.id, targetId);
+                  const prompt = String(data?.prompt ?? "").trim();
+                  if (!prompt) throw new Error("接手 prompt 为空");
                   await navigator.clipboard.writeText(prompt);
                   setCopyState({ kind: "ok", message: `已复制 ${focusedNpcSeat?.name || "NPC"} 的接手 prompt，粘贴到新线程即可。` });
                   setTimeout(() => setCopyState({ kind: "idle" }), 5000);

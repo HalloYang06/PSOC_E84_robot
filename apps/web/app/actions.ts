@@ -1,0 +1,6310 @@
+﻿"use server";
+
+import { createHash } from "node:crypto";
+import { closeSync, mkdirSync, openSync } from "node:fs";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { execFileSync, spawn } from "node:child_process";
+
+import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+import { isRedirectError } from "next/dist/client/components/redirect";
+
+import {
+  buildCodexSeatConsumerScriptName,
+  cleanupCodexSeatAutonomyArtifacts,
+  ensureCodexSeatHeartbeatAutomation,
+  isCodexSessionWorkstationId,
+  readCodexSeatAutonomyStatus,
+} from "../lib/codex-seat-bridge";
+import {
+  cleanupClaudeSeatSessionRegistration,
+  ensureClaudeSeatSessionRegistration,
+  launchClaudeSeatSession,
+  readClaudeSeatAutonomyStatus,
+} from "../lib/claude-seat-bridge";
+import { getApiBaseUrl } from "../lib/config";
+import { appendProjectCodexCommand, syncProjectCodexDispatchInboxFromRecords } from "../lib/local-agent-bridge";
+import { buildNpcKnowledgeProfile } from "../lib/npc-knowledge";
+import { summarizeNpcProvisioning } from "../lib/npc-provisioning";
+import {
+  collabDebugPolicySummary,
+  collabEfficiencyPolicySummary,
+  collabProjectProfileLabel,
+  collabProtocolApprovalLabel,
+  collabProtocolWorkKindLabel,
+  collabRunawayPolicySummary,
+  collabTokenPolicySummary,
+  type PlatformProjectProfile,
+  resolvePlatformCollabProtocol,
+} from "../lib/platform-collab-protocol";
+import {
+  buildPlatformRepoReferencePaths,
+  platformRepoContextSummary,
+  resolvePlatformRepoContext,
+} from "../lib/platform-repo-context";
+import {
+  derivePlatformProviderIdFromThreadId,
+  normalizePlatformProviderId,
+  platformProviderEndpoint,
+  platformProviderIdFromSeat,
+  platformProviderLabel,
+  seatTypeForProvider,
+  supportsLocalCodexAutonomyBridge,
+} from "../lib/platform-provider";
+import {
+  RESERVED_PLATFORM_SKILL_IDS,
+  mergePlatformSkillLoadout,
+  splitPlatformSkillLoadout,
+} from "../lib/platform-skills";
+import {
+  normalizeDevelopmentWorkshopStation,
+  normalizeDevelopmentWorkshopStations,
+} from "../lib/development-workshop";
+import { buildProjectModeEntryPath } from "./projects/mode-entry-paths";
+
+const ACCESS_TOKEN_COOKIE = "farm_access_token";
+const USER_COOKIE = "farm_user";
+
+function rethrowRedirectError(error: unknown) {
+  if (isRedirectError(error)) {
+    throw error;
+  }
+}
+
+function getAuthHeaders() {
+  const cookieStore = cookies();
+  const accessToken = cookieStore.get(ACCESS_TOKEN_COOKIE)?.value;
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (accessToken) {
+    headers.Authorization = `Bearer ${accessToken}`;
+  }
+  return headers;
+}
+
+async function postJson(path: string, body: Record<string, unknown>) {
+  const res = await fetch(`${getApiBaseUrl()}${path}`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    let errorCode = `HTTP_${res.status}`;
+    let errorMessage = `HTTP ${res.status}`;
+    try {
+      const payload = await res.json();
+      errorCode = payload?.error?.code ?? errorCode;
+      errorMessage = payload?.error?.message ?? errorMessage;
+    } catch {}
+    const error = new Error(errorMessage) as Error & { status?: number; code?: string };
+    error.status = res.status;
+    error.code = errorCode;
+    throw error;
+  }
+  return res.json();
+}
+
+async function getJson(path: string) {
+  const res = await fetch(`${getApiBaseUrl()}${path}`, {
+    method: "GET",
+    headers: getAuthHeaders(),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    let errorCode = `HTTP_${res.status}`;
+    let errorMessage = `HTTP ${res.status}`;
+    try {
+      const payload = await res.json();
+      errorCode = payload?.error?.code ?? errorCode;
+      errorMessage = payload?.error?.message ?? errorMessage;
+    } catch {}
+    const error = new Error(errorMessage) as Error & { status?: number; code?: string };
+    error.status = res.status;
+    error.code = errorCode;
+    throw error;
+  }
+  return res.json();
+}
+
+function isProjectCollaborator(currentUser: any, project: any, members: any[]) {
+  if (!currentUser) return false;
+  if (project?.is_owner) return true;
+  const currentId = String(currentUser.id ?? "").trim();
+  const currentEmail = String(currentUser.email ?? "").trim().toLowerCase();
+  const role = String(project?.role ?? "").trim().toLowerCase();
+  if (role && role !== "guest") return true;
+  return members.some((member) => {
+    const memberId = String(
+      member.user_id ?? member.userId ?? member.id ?? member.user?.id ?? member.member_id ?? "",
+    ).trim();
+    const memberEmail = String(member.email ?? member.user?.email ?? "").trim().toLowerCase();
+    return (currentId && memberId === currentId) || (currentEmail && memberEmail === currentEmail);
+  });
+}
+
+async function ensureProjectCollaborationAccess(projectId: string) {
+  const meResult = await getJson("/api/auth/me");
+  const currentUser = meResult?.data?.user ?? meResult?.user ?? null;
+  if (!currentUser?.id && !currentUser?.email) {
+    const error = new Error("需要先登录") as Error & { code?: string };
+    error.code = "AUTH_REQUIRED";
+    throw error;
+  }
+
+  const projectResult = await getJson(`/api/projects/${projectId}`);
+  const project = projectResult?.data ?? projectResult ?? {};
+  const membersResult = await getJson(`/api/auth/projects/${projectId}/members`);
+  const members = Array.isArray(membersResult?.data)
+    ? membersResult.data
+    : Array.isArray(membersResult)
+      ? membersResult
+      : [];
+
+  if (!isProjectCollaborator(currentUser, project, members)) {
+    const error = new Error("请先通过项目邀请加入协作，再操作这台电脑或线程。") as Error & {
+      code?: string;
+    };
+    error.code = "PROJECT_MEMBERSHIP_REQUIRED";
+    throw error;
+  }
+
+  return { currentUser, project, members };
+}
+
+async function resolveProjectHumanActorId(projectId: string) {
+  const { currentUser } = await ensureProjectCollaborationAccess(projectId);
+  return text(currentUser?.id ?? currentUser?.email, "human-chief");
+}
+
+async function patchJson(path: string, body: Record<string, unknown>) {
+  const res = await fetch(`${getApiBaseUrl()}${path}`, {
+    method: "PATCH",
+    headers: getAuthHeaders(),
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    let errorCode = `HTTP_${res.status}`;
+    let errorMessage = `HTTP ${res.status}`;
+    try {
+      const payload = await res.json();
+      errorCode = payload?.error?.code ?? errorCode;
+      errorMessage = payload?.error?.message ?? errorMessage;
+    } catch {}
+    const error = new Error(errorMessage) as Error & { status?: number; code?: string };
+    error.status = res.status;
+    error.code = errorCode;
+    throw error;
+  }
+  return res.json();
+}
+
+async function deleteJson(path: string) {
+  const res = await fetch(`${getApiBaseUrl()}${path}`, {
+    method: "DELETE",
+    headers: getAuthHeaders(),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    let errorCode = `HTTP_${res.status}`;
+    let errorMessage = `HTTP ${res.status}`;
+    try {
+      const payload = await res.json();
+      errorCode = payload?.error?.code ?? errorCode;
+      errorMessage = payload?.error?.message ?? errorMessage;
+    } catch {}
+    const error = new Error(errorMessage) as Error & { status?: number; code?: string };
+    error.status = res.status;
+    error.code = errorCode;
+    throw error;
+  }
+  return res.json();
+}
+
+function text(value: unknown, fallback = "") {
+  const next = String(value ?? "").trim();
+  return next || fallback;
+}
+
+function booleanFromUnknown(value: unknown, fallback = false) {
+  if (typeof value === "boolean") return value;
+  const normalized = text(value, "").toLowerCase();
+  if (!normalized) return fallback;
+  return !["false", "0", "off", "no"].includes(normalized);
+}
+
+function readBooleanFormField(formData: FormData, name: string, fallback = false) {
+  const values = formData.getAll(name);
+  if (!values.length) return fallback;
+  for (const entry of values) {
+    const normalized = text(entry, "").toLowerCase();
+    if (!normalized) continue;
+    return !["false", "0", "off", "no"].includes(normalized);
+  }
+  return fallback;
+}
+
+function asArray<T>(value: unknown): T[] {
+  return Array.isArray(value) ? (value as T[]) : [];
+}
+
+function normalizeProjectReturnPath(projectId: string, value: unknown, fallbackTab = "skills") {
+  const raw = text(value, "");
+  if (raw.startsWith(`/projects/${projectId}`)) return raw;
+  return `/projects/${projectId}?panel=team&tab=${fallbackTab}`;
+}
+
+function normalizeWorkspaceReturnPath(value: unknown, fallback = "/projects") {
+  const raw = text(value, "");
+  if (raw.startsWith("/projects") || raw.startsWith("/members")) return raw;
+  return fallback;
+}
+
+function readSeatAutomationEnabled(
+  metadata: Record<string, unknown> | null | undefined,
+  fallback = true,
+) {
+  if (!metadata || typeof metadata !== "object") return fallback;
+  return booleanFromUnknown(metadata.automation_enabled, fallback);
+}
+
+const DEFAULT_AUTOMATION_HEARTBEAT_SECONDS = 60;
+const MIN_AUTOMATION_HEARTBEAT_SECONDS = 15;
+const MAX_AUTOMATION_HEARTBEAT_SECONDS = 3600;
+
+function normalizeAutomationHeartbeatSeconds(value: unknown, fallback = DEFAULT_AUTOMATION_HEARTBEAT_SECONDS) {
+  const parsed = Number(value);
+  const candidate = Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : fallback;
+  return Math.min(MAX_AUTOMATION_HEARTBEAT_SECONDS, Math.max(MIN_AUTOMATION_HEARTBEAT_SECONDS, candidate));
+}
+
+function readSeatAutomationHeartbeatSeconds(
+  metadata: Record<string, unknown> | null | undefined,
+  fallback = DEFAULT_AUTOMATION_HEARTBEAT_SECONDS,
+) {
+  if (!metadata || typeof metadata !== "object") return normalizeAutomationHeartbeatSeconds(fallback);
+  return normalizeAutomationHeartbeatSeconds(metadata.automation_heartbeat_seconds, fallback);
+}
+
+function withQueryValue(path: string, key: string, value: string) {
+  const [pathPart, hashPart = ""] = path.split("#", 2);
+  const [pathname, queryPart = ""] = pathPart.split("?", 2);
+  const params = new URLSearchParams(queryPart);
+  params.set(key, value);
+  const query = params.toString();
+  return `${pathname}${query ? `?${query}` : ""}${hashPart ? `#${hashPart}` : ""}`;
+}
+
+function withoutQueryKeys(path: string, keys: string[]) {
+  const [pathPart, hashPart = ""] = path.split("#", 2);
+  const [pathname, queryPart = ""] = pathPart.split("?", 2);
+  const params = new URLSearchParams(queryPart);
+  keys.forEach((key) => params.delete(key));
+  const query = params.toString();
+  return `${pathname}${query ? `?${query}` : ""}${hashPart ? `#${hashPart}` : ""}`;
+}
+
+function encodePreviewState(value: unknown) {
+  return Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
+}
+
+type CollaborationMessagePayload = {
+  project_id: string | null;
+  task_id: string | null;
+  approval_id: string | null;
+  handoff_id: string | null;
+  requirement_id: string | null;
+  agent_id: string | null;
+  message_type: string;
+  title: string | null;
+  body: string;
+  sender_type: string;
+  sender_id: string | null;
+  recipient_type: string | null;
+  recipient_id: string | null;
+  status: string;
+};
+
+const AI_REQUIRED_REQUIREMENT_LEDGER_PATH = "docs/ai-requirements/ai-required-requirements-ledger.md";
+const AI_REQUIRED_REQUIREMENT_LEDGER_SENTINEL = "AI_REQUIRED_REQUIREMENT_LEDGER_V1";
+const AI_REQUIRED_REQUIREMENT_LEDGER_END = "AI_REQUIRED_REQUIREMENT_LEDGER_END";
+
+function normalizeMessageFormValue(value: FormDataEntryValue | null | undefined) {
+  const next = String(value ?? "").trim();
+  return next || null;
+}
+
+function readCollaborationMessagePayload(formData: FormData): CollaborationMessagePayload {
+  return {
+    project_id: normalizeMessageFormValue(formData.get("project_id")),
+    task_id: normalizeMessageFormValue(formData.get("task_id")),
+    approval_id: normalizeMessageFormValue(formData.get("approval_id")),
+    handoff_id: normalizeMessageFormValue(formData.get("handoff_id")),
+    requirement_id: normalizeMessageFormValue(formData.get("requirement_id")),
+    agent_id: normalizeMessageFormValue(formData.get("agent_id")),
+    message_type: normalizeMessageFormValue(formData.get("message_type")) ?? "comment_message",
+    title: normalizeMessageFormValue(formData.get("title")),
+    body: String(formData.get("body") ?? "").trim(),
+    sender_type: normalizeMessageFormValue(formData.get("sender_type")) ?? "human",
+    sender_id: normalizeMessageFormValue(formData.get("sender_id")),
+    recipient_type: normalizeMessageFormValue(formData.get("recipient_type")),
+    recipient_id: normalizeMessageFormValue(formData.get("recipient_id")),
+    status: normalizeMessageFormValue(formData.get("status")) ?? "open",
+  };
+}
+
+function buildCollaborationMessagePreviewSignature(payload: CollaborationMessagePayload, senderId: string | null) {
+  const normalized = {
+    project_id: payload.project_id,
+    task_id: payload.task_id,
+    approval_id: payload.approval_id,
+    handoff_id: payload.handoff_id,
+    requirement_id: payload.requirement_id,
+    agent_id: payload.agent_id,
+    message_type: payload.message_type,
+    title: payload.title,
+    body: payload.body,
+    sender_type: "human",
+    sender_id: senderId,
+    recipient_type: payload.recipient_type,
+    recipient_id: payload.recipient_id,
+    status: payload.status,
+  };
+  return createHash("sha256").update(JSON.stringify(normalized)).digest("hex").slice(0, 24);
+}
+
+function collaborationMessageShouldCarryRequiredLedger(payload: { message_type?: unknown }) {
+  const messageType = text(payload.message_type, "");
+  return messageType === "agent_command" || messageType === "requirement_dispatch";
+}
+
+function buildAiRequiredRequirementLedgerBlock(
+  payload: {
+    project_id?: unknown;
+    requirement_id?: unknown;
+    title?: unknown;
+    sender_type?: unknown;
+    sender_id?: unknown;
+    recipient_type?: unknown;
+    recipient_id?: unknown;
+  },
+  options: {
+    requesterLabel?: string | null;
+    assigneeLabel?: string | null;
+    automationMode?: string | null;
+    heartbeatInterval?: string | null;
+    reviewPolicy?: string | null;
+    executionMode?: string | null;
+    estimatedTokens?: number | null;
+    gitRepositoryLine?: string | null;
+    gitIdentityLine?: string | null;
+    gitCredentialLine?: string | null;
+    gitLocalPathPolicyLine?: string | null;
+    gitReviewBoundaryLine?: string | null;
+  } = {},
+) {
+  const requester =
+    text(options.requesterLabel, "") ||
+    [text(payload.sender_type, "human"), text(payload.sender_id, "")].filter(Boolean).join(":") ||
+    "human";
+  const assignee =
+    text(options.assigneeLabel, "") ||
+    [text(payload.recipient_type, "target"), text(payload.recipient_id, "")].filter(Boolean).join(":") ||
+    "target";
+  const automationMode = text(options.automationMode, "off");
+  const heartbeatInterval = text(options.heartbeatInterval, automationMode === "heartbeat" ? "未设置" : "不开启");
+  const reviewPolicy = text(options.reviewPolicy, "高风险、硬件、删除/发布/回滚、跨账号/跨项目、持续自动化、需求不清时必须人审");
+  const executionMode = text(options.executionMode, "先最小回执，再做当前一轮；不确定就停下等人确认");
+  const estimatedTokens = typeof options.estimatedTokens === "number" ? String(options.estimatedTokens) : "未估算";
+  const gitRepositoryLine = text(options.gitRepositoryLine, "GitHub 仓库未绑定；跨电脑协作只能先做只读规划并请求人补仓库地址");
+  const gitIdentityLine = text(options.gitIdentityLine, "未绑定 GitHub 账号；需要写仓库前先请求人补账号/凭据来源");
+  const gitCredentialLine = text(options.gitCredentialLine, "不允许在消息正文粘贴明文 token；使用 Runner 环境变量、SSH Agent、GitHub App 或 OAuth");
+  const gitLocalPathPolicyLine = text(options.gitLocalPathPolicyLine, "每台电脑自行决定本地 clone 路径；AI 不要把自己电脑的绝对路径硬发给其他电脑");
+  const gitReviewBoundaryLine = text(options.gitReviewBoundaryLine, "clone/status/diff/read-only 可按权限执行；push/pull/reset/revert/delete/release/跨账号访问必须先人审");
+  return [
+    AI_REQUIRED_REQUIREMENT_LEDGER_SENTINEL,
+    "固定 Skill: AI 必读需求表",
+    `必读路径: ${AI_REQUIRED_REQUIREMENT_LEDGER_PATH}`,
+    `项目: ${text(payload.project_id, "未绑定项目")}`,
+    `需求 ID: ${text(payload.requirement_id, "") || text(payload.title, "临时协作指令")}`,
+    `提需求者: ${requester}`,
+    `被提需求者: ${assignee}`,
+    `代码协作: ${gitRepositoryLine}`,
+    `GitHub 身份: ${gitIdentityLine}`,
+    `GitHub 凭据: ${gitCredentialLine}`,
+    `本地路径规则: ${gitLocalPathPolicyLine}`,
+    `Git 人审边界: ${gitReviewBoundaryLine}`,
+    `自动化许可: ${automationMode}`,
+    `心跳间隔: ${heartbeatInterval}`,
+    `人审规则: ${reviewPolicy}`,
+    `执行边界: ${executionMode}`,
+    `预计 token: ${estimatedTokens}`,
+    "开工前动作:",
+    `1. 先阅读 ${AI_REQUIRED_REQUIREMENT_LEDGER_PATH}，确认自己是不是被提需求者。`,
+    "2. 先回最小回执：我接到什么、边界是什么、是否需要人审、下一步只做哪一轮。",
+    "3. 涉及跨电脑代码协作时，优先使用上面的 GitHub 仓库；本地路径由当前电脑自己决定，不要照抄其他电脑路径。",
+    "4. 未开启自动化时，只执行本条指令；开启自动化也不能越过人审边界。",
+    "5. 完成后写最终回复；若要交给下游 AI，必须新增下一条需求，不要私下连续喊话。",
+    AI_REQUIRED_REQUIREMENT_LEDGER_END,
+  ].join("\n");
+}
+
+function withAiRequiredRequirementLedger<T extends { body?: string; message_type?: unknown }>(
+  payload: T,
+  options: Parameters<typeof buildAiRequiredRequirementLedgerBlock>[1] = {},
+): T {
+  if (!collaborationMessageShouldCarryRequiredLedger(payload)) return payload;
+  const body = text(payload.body, "");
+  if (body.includes(AI_REQUIRED_REQUIREMENT_LEDGER_SENTINEL)) return payload;
+  return {
+    ...payload,
+    body: `${buildAiRequiredRequirementLedgerBlock(payload as Record<string, unknown>, options)}\n\n${body}`,
+  };
+}
+
+function workstationLookupKeys(item: Record<string, unknown>) {
+  const metadata =
+    item.metadata && typeof item.metadata === "object" ? (item.metadata as Record<string, unknown>) : {};
+  const extraData =
+    item.extra_data && typeof item.extra_data === "object" ? (item.extra_data as Record<string, unknown>) : {};
+  return [
+    item.id,
+    item.workstation_id,
+    item.config_id,
+    item.row_id,
+    item.source_workstation_id,
+    metadata.source_workstation_id,
+    extraData.source_workstation_id,
+  ]
+    .map((candidate) => text(candidate, ""))
+    .filter(Boolean);
+}
+
+function resolveCodexWorkstationContext(
+  workstations: Record<string, unknown>[],
+  workstationId: string,
+  project?: Record<string, unknown> | null,
+) {
+  const matched =
+    workstations.find((item) => workstationLookupKeys(item).some((candidate) => candidate === workstationId)) ?? null;
+  const metadata =
+    matched?.metadata && typeof matched.metadata === "object" ? (matched.metadata as Record<string, unknown>) : {};
+  const baseCollabProtocol = resolvePlatformCollabProtocol(metadata.collab_protocol, {
+    providerId:
+      text(matched?.ai_provider_id ?? matched?.provider_id ?? metadata.provider_id, "") ||
+      (isCodexSessionWorkstationId(workstationId) ? "codex" : ""),
+    roleText: text(matched?.responsibility ?? metadata.responsibility, ""),
+    threadText: text(matched?.name ?? matched?.workstation_name, ""),
+  });
+  const collabProtocol =
+    project && typeof project === "object"
+      ? enrichNpcCollabProtocolWithRepoContext(project, baseCollabProtocol, {
+          gitBoundary: asArray(matched?.git_boundary ?? metadata.git_boundary).map((item) => text(item)).filter(Boolean),
+          handoffPath:
+            text(
+              metadata.npc_knowledge && typeof metadata.npc_knowledge === "object"
+                ? (metadata.npc_knowledge as Record<string, unknown>).handoff_path
+                : "",
+              "",
+            ) || null,
+        })
+      : baseCollabProtocol;
+  const referencePaths = buildPlatformRepoReferencePaths({
+    referencePaths: collabProtocol.reference_paths,
+    repositoryUrl: collabProtocol.repo_context?.repository_url ?? null,
+    branch: collabProtocol.repo_context?.branch ?? null,
+    gitBoundary: asArray(matched?.git_boundary ?? metadata.git_boundary).map((item) => text(item)).filter(Boolean),
+    handoffPath: text(metadata.npc_knowledge && typeof metadata.npc_knowledge === "object" ? (metadata.npc_knowledge as Record<string, unknown>).handoff_path : "", "") || null,
+    workspaceRoots: [workspaceRoot(), text(matched?.local_git_url ?? metadata.local_git_url, "")].filter(Boolean),
+  });
+  return {
+    workstationName: text(matched?.name ?? matched?.workstation_name, workstationId) || "Codex 主工位",
+    provider:
+      text(matched?.ai_provider ?? matched?.ai_provider_label ?? metadata.ai_provider, "") ||
+      (isCodexSessionWorkstationId(workstationId) ? "codex" : ""),
+    computerNodeId:
+      text(matched?.computer_node_id ?? matched?.computerNodeId ?? metadata.computer_node_id, "") || null,
+    computerNodeLabel:
+      text(
+        matched?.computer_node ??
+          matched?.computerNode ??
+          matched?.computer_node_label ??
+          matched?.computerNodeLabel ??
+          metadata.computer_node,
+        "",
+      ) || null,
+    skillLoadout: mergePlatformSkillLoadout(
+      matched?.skill_loadout,
+      matched?.skillLoadout,
+      metadata.additional_skill_ids,
+      metadata.skill_loadout,
+    ),
+    repoSummary: collabProtocol.repo_context ? platformRepoContextSummary(collabProtocol.repo_context) : null,
+    referencePaths,
+  };
+}
+
+async function syncPlatformCodexDispatchInbox(projectId: string) {
+  const [messagesResult, workstationsResult, projectResult] = await Promise.all([
+    getJson(
+      `/api/collaboration/messages?project_id=${encodeURIComponent(projectId)}&message_type=requirement_dispatch`,
+    ),
+    getJson(`/api/collaboration/projects/${encodeURIComponent(projectId)}/thread-workstations`),
+    getJson(`/api/projects/${encodeURIComponent(projectId)}`),
+  ]);
+
+  return syncProjectCodexDispatchInboxFromRecords({
+    projectId,
+    dispatchMessages: asArray<Record<string, unknown>>(messagesResult?.data ?? messagesResult),
+    workstations: asArray<Record<string, unknown>>(workstationsResult?.data ?? workstationsResult),
+    project:
+      projectResult && typeof projectResult === "object"
+        ? ((projectResult.data ?? projectResult) as Record<string, unknown>)
+        : null,
+    issuer: "平台自治推进",
+  });
+}
+
+async function postAgentSeatJson(projectId: string, workstationId: string, body: Record<string, unknown>) {
+  const res = await fetch(
+    `${getApiBaseUrl()}/api/collaboration/projects/${projectId}/thread-workstations/${workstationId}/messages`,
+    {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(body),
+      cache: "no-store",
+    },
+  );
+  if (!res.ok) {
+    let errorCode = `HTTP_${res.status}`;
+    let errorMessage = `HTTP ${res.status}`;
+    try {
+      const payload = await res.json();
+      errorCode = payload?.error?.code ?? errorCode;
+      errorMessage = payload?.error?.message ?? errorMessage;
+    } catch {}
+    const error = new Error(errorMessage) as Error & { status?: number; code?: string };
+    error.status = res.status;
+    error.code = errorCode;
+    throw error;
+  }
+  return res.json();
+}
+
+function parseOptionalJson(text: string): unknown {
+  if (!text.trim()) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function parseStringList(value: FormDataEntryValue | null): string[] | null {
+  const items = String(value ?? "")
+    .split(/[\n,]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return items.length ? items : null;
+}
+
+function parseStringListAll(formData: FormData, field: string): string[] | null {
+  const direct = formData
+    .getAll(field)
+    .map((item) => String(item ?? "").trim())
+    .filter(Boolean);
+  if (direct.length) return direct;
+  return parseStringList(formData.get(field));
+}
+
+function normalizeStringList(value: unknown) {
+  return (Array.isArray(value) ? value : typeof value === "string" ? value.split(/[\n,]/) : [])
+    .map((item) => text(item))
+    .filter(Boolean);
+}
+
+function readProjectCollaborationConfig(project: Record<string, unknown> | null | undefined) {
+  return project?.collaboration_config && typeof project.collaboration_config === "object"
+    ? ({ ...(project.collaboration_config as Record<string, unknown>) } as Record<string, unknown>)
+    : {};
+}
+
+function normalizeGithubCredentialSource(value: unknown) {
+  const normalized = text(value, "runner_env");
+  return ["github_app", "oauth", "runner_env", "ssh_agent", "manual_review"].includes(normalized)
+    ? normalized
+    : "runner_env";
+}
+
+function githubCredentialSourceLabel(value: unknown) {
+  const source = normalizeGithubCredentialSource(value);
+  return (
+    {
+      github_app: "GitHub App",
+      oauth: "OAuth 授权",
+      runner_env: "Runner 环境变量",
+      ssh_agent: "SSH Agent",
+      manual_review: "人工审批后手动执行",
+    } as Record<string, string>
+  )[source];
+}
+
+function looksLikeRawGithubCredential(value: unknown) {
+  const raw = text(value, "");
+  if (!raw) return false;
+  if (/^(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{20,}$/i.test(raw)) return true;
+  if (/^github_pat_[A-Za-z0-9_]{40,}$/i.test(raw)) return true;
+  if (/-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(raw)) return true;
+  return false;
+}
+
+function safeGithubCredentialRef(value: unknown) {
+  const raw = text(value, "");
+  if (!raw) return "";
+  return looksLikeRawGithubCredential(raw) ? "疑似明文密钥（已隐藏，请改用环境变量名）" : raw;
+}
+
+function readProjectGithubAccountBinding(project: Record<string, unknown> | null | undefined) {
+  const collaborationConfig = readProjectCollaborationConfig(project);
+  const raw =
+    collaborationConfig.github_account_binding && typeof collaborationConfig.github_account_binding === "object"
+      ? (collaborationConfig.github_account_binding as Record<string, unknown>)
+      : {};
+  const accountLogin = text(raw.account_login ?? raw.login, "");
+  const credentialSource = normalizeGithubCredentialSource(raw.credential_source);
+  const credentialRef = safeGithubCredentialRef(raw.credential_ref);
+  const defaultCloneProtocol = ["https", "ssh"].includes(text(raw.default_clone_protocol, "https"))
+    ? text(raw.default_clone_protocol, "https")
+    : "https";
+  if (!accountLogin && !credentialRef && !text(raw.profile_url, "")) return null;
+  return {
+    accountLogin,
+    accountType: text(raw.account_type, "user"),
+    profileUrl: text(raw.profile_url, accountLogin ? `https://github.com/${accountLogin}` : ""),
+    credentialSource,
+    credentialSourceLabel: githubCredentialSourceLabel(credentialSource),
+    credentialRef,
+    defaultCloneProtocol,
+    permissionScopes: normalizeStringList(raw.permission_scopes),
+    secretStorage: text(raw.secret_storage, "not_stored_in_project_config"),
+  };
+}
+
+function buildProjectGitCollaborationContext(project: Record<string, unknown> | null | undefined) {
+  const repositoryUrl = text(project?.github_url ?? project?.githubUrl, "");
+  const branch = text(project?.develop_branch ?? project?.developBranch ?? project?.default_branch ?? project?.defaultBranch, "");
+  const localMirror = text(project?.local_git_url ?? project?.localGitUrl, "");
+  const binding = readProjectGithubAccountBinding(project);
+  const repoLabel = repositoryUrl
+    ? `优先使用 GitHub 仓库 ${repositoryUrl}${branch ? ` / 分支 ${branch}` : ""}`
+    : branch
+      ? `仓库地址未绑定，仅记录目标分支 ${branch}；需要跨电脑执行前先补 GitHub 仓库地址`
+      : "GitHub 仓库未绑定；跨电脑协作只能先做只读规划并请求人补仓库地址";
+  const localPathPolicy = localMirror
+    ? `本机镜像可参考 ${localMirror}；其他电脑必须自行决定本地 clone 路径，不要复用这台电脑的绝对路径`
+    : "每台电脑自行决定本地 clone 路径；AI 不要把自己电脑的绝对路径硬发给其他电脑";
+  const identity = binding?.accountLogin
+    ? `${binding.accountLogin} / ${binding.accountType} / 默认 ${binding.defaultCloneProtocol.toUpperCase()}`
+    : "未绑定 GitHub 账号；需要写仓库前先请求人补账号/凭据来源";
+  const credential = binding
+    ? `${binding.credentialSourceLabel}${binding.credentialRef ? ` / ${binding.credentialRef}` : ""} / ${binding.secretStorage}`
+    : "不允许在消息正文粘贴明文 token；使用 Runner 环境变量、SSH Agent、GitHub App 或 OAuth";
+  return {
+    repositoryLine: repoLabel,
+    identityLine: identity,
+    credentialLine: credential,
+    localPathPolicyLine: localPathPolicy,
+    reviewBoundaryLine: "clone/status/diff/read-only 可按权限执行；push/pull/reset/revert/delete/release/跨账号访问必须先人审",
+  };
+}
+
+function appendGitCollaborationContextToNotes(
+  project: Record<string, unknown> | null | undefined,
+  notes: string,
+  fallback: string,
+) {
+  const gitContext = buildProjectGitCollaborationContext(project);
+  return [
+    notes || fallback,
+    "",
+    "GitHub 协作上下文:",
+    `- 代码协作: ${gitContext.repositoryLine}`,
+    `- GitHub 身份: ${gitContext.identityLine}`,
+    `- GitHub 凭据: ${gitContext.credentialLine}`,
+    `- 本地路径规则: ${gitContext.localPathPolicyLine}`,
+    `- Git 人审边界: ${gitContext.reviewBoundaryLine}`,
+  ].join("\n");
+}
+
+function buildProjectGitPreflightCommandBody(
+  project: Record<string, unknown> | null | undefined,
+  options: {
+    action: "sync" | "rollback";
+    provider?: string;
+    targetRef?: string;
+    notes?: string;
+    requestedBy?: string;
+  },
+) {
+  const gitContext = buildProjectGitCollaborationContext(project);
+  const binding = readProjectGithubAccountBinding(project);
+  const provider = text(options.provider, "github");
+  const githubUrl = text(project?.github_url ?? project?.githubUrl, "");
+  const localGitUrl = text(project?.local_git_url ?? project?.localGitUrl, "");
+  const repositoryUrl = provider === "local" ? localGitUrl || githubUrl : githubUrl || localGitUrl;
+  const branch = text(project?.develop_branch ?? project?.developBranch ?? project?.default_branch ?? project?.defaultBranch, "");
+  return {
+    kind: "git.preflight",
+    version: "git-preflight.v1",
+    action: options.action,
+    provider,
+    dry_run: true,
+    repository_url: repositoryUrl,
+    branch,
+    target_ref: text(options.targetRef, ""),
+    credential_source: binding?.credentialSource ?? "manual_review",
+    credential_ref: binding?.credentialRef ?? "",
+    credential_identity: binding?.accountLogin ?? "",
+    local_path_policy: gitContext.localPathPolicyLine,
+    human_review_boundary: gitContext.reviewBoundaryLine,
+    requested_at: new Date().toISOString(),
+    requested_by: text(options.requestedBy, "human-chief"),
+    notes: text(options.notes, ""),
+    expected_reply: {
+      message_type: "runner_result",
+      data_key: "git_preflight",
+      must_not_execute: ["clone", "pull", "push", "reset", "revert", "delete", "release"],
+    },
+  };
+}
+
+async function dispatchProjectGitPreflightToRunners(
+  projectId: string,
+  project: Record<string, unknown> | null | undefined,
+  options: {
+    action: "sync" | "rollback";
+    provider?: string;
+    targetRef?: string;
+    notes?: string;
+    requestedBy?: string;
+  },
+) {
+  const result = await getJson(`/api/collaboration/projects/${projectId}/computer-nodes`);
+  const nodes = asArray<Record<string, unknown>>(result?.data ?? result);
+  const runnableNodes = nodes.filter((node) => {
+    const nodeId = text(node.id ?? node.node_id ?? node.config_id ?? node.label, "");
+    const runnerId = text(node.runner_id ?? node.runnerId, "");
+    return Boolean(nodeId && runnerId);
+  });
+  const body = buildProjectGitPreflightCommandBody(project, options);
+  let queued = 0;
+  let failed = 0;
+  for (const node of runnableNodes) {
+    const nodeId = text(node.id ?? node.node_id ?? node.config_id ?? node.label, "");
+    try {
+      await postJson(`/api/collaboration/projects/${projectId}/runner-commands`, {
+        computer_node_id: nodeId,
+        title: options.action === "rollback" ? `Git 回退只读预检 / ${text(options.targetRef, "未填写目标")}` : "Git 同步只读预检",
+        body: JSON.stringify(body, null, 2),
+      });
+      queued += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+  return {
+    queued,
+    failed,
+    availableNodeCount: nodes.length,
+    runnableNodeCount: runnableNodes.length,
+  };
+}
+
+function readProjectThreadWorkstations(project: Record<string, unknown> | null | undefined) {
+  const collaborationConfig = readProjectCollaborationConfig(project);
+  return asArray<Record<string, unknown>>(
+    collaborationConfig.thread_workstations ??
+      collaborationConfig.threadWorkstations ??
+      collaborationConfig.workstations,
+  );
+}
+
+function readDevelopmentWorkshopStations(project: Record<string, unknown> | null | undefined) {
+  const collaborationConfig = readProjectCollaborationConfig(project);
+  return normalizeDevelopmentWorkshopStations(collaborationConfig.development_workshop_stations);
+}
+
+function readProjectCollaborationActors(project: Record<string, unknown> | null | undefined) {
+  const collaborationConfig = readProjectCollaborationConfig(project);
+  return [
+    ...readProjectThreadWorkstations(project),
+    ...asArray<Record<string, unknown>>(collaborationConfig.codexSeats),
+    ...asArray<Record<string, unknown>>(collaborationConfig.codex_seats),
+    ...asArray<Record<string, unknown>>(collaborationConfig.npcSeats),
+    ...asArray<Record<string, unknown>>(collaborationConfig.npc_seats),
+  ];
+}
+
+function estimateMessageTokens(payload: CollaborationMessagePayload) {
+  const raw = `${payload.title ?? ""}\n${payload.body ?? ""}`;
+  const ascii = (raw.match(/[\x00-\x7F]/g) ?? []).length;
+  const nonAscii = Math.max(0, raw.length - ascii);
+  return Math.max(64, Math.ceil(ascii / 4 + nonAscii * 1.2));
+}
+
+function classifyCollaborationIntent(payload: CollaborationMessagePayload) {
+  const raw = `${payload.title ?? ""}\n${payload.body ?? ""}`.toLowerCase();
+  const hardwareRisk =
+    /(机器人|机械臂|电机|舵机|上电|烧录|固件|串口|jtag|gpio|i2c|spi|usb|传感器|开发板|nanopi|stm32|arduino|robot|motor|servo|firmware|flash|serial)/i.test(raw);
+  const destructiveRisk =
+    /(删除|清空|回滚|重置|覆盖|发布|推送|生产|密钥|账号|跨项目|跨账号|rm -rf|reset --hard|force push|deploy|secret|token)/i.test(raw);
+  const readOnlyHint = /(只读|阅读|调研|查资料|总结|审查|review|research|read-only|readonly)/i.test(raw);
+  const simulationHint = /(仿真|模拟|沙盘|波形|日志回放|simulation|simulator|mock|dry run)/i.test(raw);
+  const softwareHint = /(软件|前端|后端|ui|api|测试|构建|纯软件|web|react|next|python|typescript)/i.test(raw);
+  return { hardwareRisk, destructiveRisk, readOnlyHint, simulationHint, softwareHint };
+}
+
+function resolveActorProtocolForPreview(
+  project: Record<string, unknown> | null | undefined,
+  payload: CollaborationMessagePayload,
+) {
+  const actors = readProjectCollaborationActors(project);
+  const targetKeys = [
+    payload.recipient_id,
+    payload.agent_id,
+    payload.handoff_id,
+    payload.task_id,
+  ]
+    .map((item) => text(item, ""))
+    .filter(Boolean);
+  const matched =
+    actors.find((actor) => {
+      const keys = workstationLookupKeys(actor);
+      return targetKeys.some((target) => keys.includes(target));
+    }) ?? null;
+  const metadata =
+    matched?.metadata && typeof matched.metadata === "object" ? (matched.metadata as Record<string, unknown>) : {};
+  const providerId =
+    normalizePlatformProviderId(
+      matched?.ai_provider_id ??
+        matched?.ai_provider ??
+        matched?.provider_id ??
+        metadata.provider_id ??
+        metadata.provider,
+    ) ||
+    derivePlatformProviderIdFromThreadId(
+      matched?.source_workstation_id ??
+        metadata.source_workstation_id ??
+        matched?.id ??
+        matched?.workstation_id ??
+        payload.recipient_id,
+    ) ||
+    "codex";
+  const actorLabel = text(
+    matched?.name ??
+      matched?.workstation_name ??
+      matched?.label ??
+      metadata.display_name ??
+      payload.recipient_id ??
+      payload.agent_id,
+    "未选择 AI",
+  );
+  const roleText = text(matched?.responsibility ?? metadata.responsibility ?? payload.title, "");
+  const protocol = resolvePlatformCollabProtocol(metadata.collab_protocol, {
+    providerId,
+    roleText,
+    threadText: actorLabel,
+  });
+  return { actor: matched, actorLabel, providerId, protocol };
+}
+
+function buildCollaborationGovernancePreview(
+  project: Record<string, unknown> | null | undefined,
+  payload: CollaborationMessagePayload,
+) {
+  const { actorLabel, providerId, protocol } = resolveActorProtocolForPreview(project, payload);
+  const intent = classifyCollaborationIntent(payload);
+  const estimatedTokens = estimateMessageTokens(payload);
+  const tokenPolicy = protocol.token_policy;
+  const inferredProfile: PlatformProjectProfile = intent.hardwareRisk
+    ? protocol.project_profile === "robotics"
+      ? "robotics"
+      : "embedded"
+    : protocol.project_profile;
+  const tokenOverMessageLimit = estimatedTokens > tokenPolicy.per_message_limit;
+  const tokenOverRoundLimit = estimatedTokens > tokenPolicy.per_round_limit;
+  const requiresHumanReview =
+    protocol.approval_policy === "human_review_required" ||
+    intent.hardwareRisk ||
+    intent.destructiveRisk ||
+    tokenOverMessageLimit ||
+    protocol.debug_policy.hardware_write_requires_review;
+  const shouldSimulateFirst =
+    protocol.debug_policy.simulation_first || intent.hardwareRisk || intent.simulationHint;
+  const readonlyFirst = protocol.efficiency_policy.prefer_readonly_probe || intent.readOnlyHint || intent.hardwareRisk;
+  const riskLevel = tokenOverRoundLimit || (intent.hardwareRisk && intent.destructiveRisk)
+    ? "high"
+    : requiresHumanReview
+      ? "medium"
+      : "low";
+  const modeLabel = requiresHumanReview
+    ? shouldSimulateFirst
+      ? "先仿真/只读，等人工确认"
+      : "先最小回执，等人工审核"
+    : "可单次执行；开自动化才续推";
+  const warnings = [
+    tokenOverMessageLimit
+      ? `预计 ${estimatedTokens} token，超过该 NPC 单条预算 ${tokenPolicy.per_message_limit}，建议先摘要或拆分。`
+      : "",
+    tokenOverRoundLimit
+      ? `预计 ${estimatedTokens} token，已经超过单轮预算 ${tokenPolicy.per_round_limit}，不建议自动执行。`
+      : "",
+    intent.hardwareRisk
+      ? "检测到机器人/嵌入式/真实设备语义：必须先仿真或只读探针，真实硬件写入要人工确认。"
+      : "",
+    intent.destructiveRisk
+      ? "检测到删除、回滚、发布、密钥、跨账号/跨项目等高风险语义：必须人工审核。"
+      : "",
+  ].filter(Boolean);
+  const notes = [
+    `${collabProjectProfileLabel(inferredProfile)} / ${collabProtocolWorkKindLabel(protocol.work_kind)} / ${collabProtocolApprovalLabel(protocol.approval_policy)}`,
+    `目标 ${actorLabel} / ${platformProviderLabel(providerId)}`,
+    `预计 token ${estimatedTokens}`,
+    readonlyFirst ? "建议先只读探针" : "可直接进入软件验证",
+    shouldSimulateFirst ? "仿真优先" : "无需强制仿真",
+  ];
+  return {
+    risk_level: riskLevel,
+    requires_human_review: requiresHumanReview,
+    should_simulate_first: shouldSimulateFirst,
+    readonly_first: readonlyFirst,
+    execution_mode_label: modeLabel,
+    actor_label: actorLabel,
+    provider_id: providerId,
+    provider_label: platformProviderLabel(providerId),
+    project_profile: inferredProfile,
+    project_profile_label: collabProjectProfileLabel(inferredProfile),
+    approval_policy: protocol.approval_policy,
+    approval_label: collabProtocolApprovalLabel(protocol.approval_policy),
+    work_kind: protocol.work_kind,
+    work_kind_label: collabProtocolWorkKindLabel(protocol.work_kind),
+    estimated_tokens: estimatedTokens,
+    token_policy: tokenPolicy,
+    token_summary: collabTokenPolicySummary(protocol),
+    runaway_summary: collabRunawayPolicySummary(protocol),
+    efficiency_summary: collabEfficiencyPolicySummary(protocol),
+    debug_summary: collabDebugPolicySummary(protocol),
+    max_auto_rounds: protocol.runaway_policy.max_auto_rounds,
+    parallelism_limit: protocol.efficiency_policy.parallelism_limit,
+    warnings,
+    notes,
+  };
+}
+
+function resolveAiRequiredLedgerOptions(
+  project: Record<string, unknown> | null | undefined,
+  payload: CollaborationMessagePayload,
+  currentUserId: string | null,
+  governancePreview?: ReturnType<typeof buildCollaborationGovernancePreview> | null,
+): Parameters<typeof withAiRequiredRequirementLedger>[1] {
+  if (!project) {
+    return {
+      requesterLabel: currentUserId || "human",
+      assigneeLabel: payload.recipient_id,
+      automationMode: "off",
+      executionMode: governancePreview?.execution_mode_label,
+      estimatedTokens: governancePreview?.estimated_tokens ?? estimateMessageTokens(payload),
+    };
+  }
+  const { actor, actorLabel, protocol } = resolveActorProtocolForPreview(project, payload);
+  const metadata = actor?.metadata && typeof actor.metadata === "object" ? (actor.metadata as Record<string, unknown>) : {};
+  const automationEnabled = readSeatAutomationEnabled(metadata, false);
+  const heartbeatSeconds = readSeatAutomationHeartbeatSeconds(metadata);
+  const gitContext = buildProjectGitCollaborationContext(project);
+  return {
+    requesterLabel: currentUserId || "human",
+    assigneeLabel: actorLabel,
+    automationMode: automationEnabled ? "heartbeat" : "off",
+    heartbeatInterval: automationEnabled ? `${heartbeatSeconds}s` : "不开启",
+    reviewPolicy: collabProtocolApprovalLabel(protocol.approval_policy),
+    executionMode: governancePreview?.execution_mode_label ?? collabProtocolWorkKindLabel(protocol.work_kind),
+    estimatedTokens: governancePreview?.estimated_tokens ?? estimateMessageTokens(payload),
+    gitRepositoryLine: gitContext.repositoryLine,
+    gitIdentityLine: gitContext.identityLine,
+    gitCredentialLine: gitContext.credentialLine,
+    gitLocalPathPolicyLine: gitContext.localPathPolicyLine,
+    gitReviewBoundaryLine: gitContext.reviewBoundaryLine,
+  };
+}
+
+function buildHumanReviewRequestPayload(
+  payload: CollaborationMessagePayload,
+  governancePreview: ReturnType<typeof buildCollaborationGovernancePreview>,
+  senderId: string | null,
+) {
+  const title = text(payload.title, "未命名协作指令");
+  const target = text(payload.recipient_id, "未选择目标");
+  const targetType = text(payload.recipient_type, "未指定");
+  const warnings = asArray<string>(governancePreview.warnings)
+    .map((item) => text(item))
+    .filter(Boolean);
+  const reviewMeta = {
+    schema: "ai_collab_human_review_v1",
+    original_title: title,
+    original_target: target,
+    target_type: targetType,
+    target_ai: text(governancePreview.actor_label, target),
+    provider: text(governancePreview.provider_label, ""),
+    risk_level: text(governancePreview.risk_level, ""),
+    estimated_tokens: Number(governancePreview.estimated_tokens ?? 0),
+    execution_boundary: text(governancePreview.execution_mode_label, ""),
+    readonly_first: Boolean(governancePreview.readonly_first),
+    simulation_first: Boolean(governancePreview.should_simulate_first),
+    original_instruction: text(payload.body, ""),
+  };
+  const reviewBody = [
+    "这条 AI 协作指令没有直接派给目标线程，因为治理预演判断它需要人工审核。",
+    "AI_REVIEW_META_JSON:",
+    JSON.stringify(reviewMeta),
+    "AI_REVIEW_META_JSON_END",
+    "",
+    `原始标题: ${title}`,
+    `原始目标: ${target}`,
+    `目标类型: ${targetType}`,
+    `目标 AI: ${text(governancePreview.actor_label, target)}`,
+    `Provider: ${text(governancePreview.provider_label, "")}`,
+    `项目视角: ${text(governancePreview.project_profile_label, "")}`,
+    `风险等级: ${text(governancePreview.risk_level, "")}`,
+    `预计 token: ${String(governancePreview.estimated_tokens ?? 0)}`,
+    `执行边界: ${text(governancePreview.execution_mode_label, "")}`,
+    `只读探针: ${governancePreview.readonly_first ? "是" : "否"}`,
+    `仿真优先: ${governancePreview.should_simulate_first ? "是" : "否"}`,
+    "",
+    "治理提醒:",
+    ...(warnings.length ? warnings.map((item, index) => `${index + 1}. ${item}`) : ["1. 需要人工确认后再继续。"]),
+    "",
+    "原始指令:",
+    payload.body,
+    "",
+    "人工审核动作建议:",
+    "1. 如果只是只读/调研，确认范围后重新发送一条更小的只读指令。",
+    "2. 如果涉及真实硬件、烧录、串口、删除、发布或跨项目数据，先补仿真/回滚/权限边界。",
+    "3. 审核通过前，不要让目标 NPC 自动续推。",
+  ].join("\n");
+
+  return {
+    project_id: payload.project_id,
+    task_id: payload.task_id,
+    approval_id: payload.approval_id,
+    handoff_id: payload.handoff_id,
+    requirement_id: payload.requirement_id,
+    agent_id: payload.agent_id,
+    message_type: "human_review_request",
+    title: `人工审核：${title}`,
+    body: reviewBody,
+    sender_type: "human",
+    sender_id: senderId,
+    recipient_type: "project",
+    recipient_id: payload.project_id,
+    status: "pending_human_review",
+  };
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function readReviewLine(body: unknown, label: string) {
+  const source = String(body ?? "");
+  const match = source.match(new RegExp(`^${escapeRegExp(label)}:\\s*(.*)$`, "m"));
+  return text(match?.[1], "");
+}
+
+function readReviewMeta(body: unknown): Record<string, unknown> {
+  const source = String(body ?? "");
+  const match = source.match(/AI_REVIEW_META_JSON:\s*([\s\S]*?)\s*AI_REVIEW_META_JSON_END/);
+  if (!match?.[1]) return {};
+  try {
+    const parsed = JSON.parse(match[1]);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function readReviewInstruction(body: unknown) {
+  const source = String(body ?? "");
+  const marker = "原始指令:";
+  const start = source.indexOf(marker);
+  if (start < 0) return "";
+  const tail = source.slice(start + marker.length).trim();
+  const endWithBlank = tail.indexOf("\n\n人工审核动作建议:");
+  const endWithoutBlank = tail.indexOf("\n人工审核动作建议:");
+  const end = endWithBlank >= 0 ? endWithBlank : endWithoutBlank;
+  return text(end >= 0 ? tail.slice(0, end) : tail, "");
+}
+
+function humanReviewDecisionConfig(decision: string) {
+  const normalized = text(decision, "readonly_probe");
+  if (normalized === "simulation") {
+    return {
+      status: "approved_simulation",
+      titlePrefix: "仿真验证：",
+      notice: "已通过人工审核，并改为先仿真验证。",
+      bodyPrefix: [
+        "人工审核结论：先仿真验证，不允许直接触碰真实硬件或生产数据。",
+        "执行边界：只能做模拟、沙盘、日志回放、方案推演；如果发现必须动真实设备，先回最小回执并再次请求人审。",
+      ],
+    };
+  }
+  if (normalized === "formal_execute") {
+    return {
+      status: "approved_formal",
+      titlePrefix: "人工通过：",
+      notice: "已通过人工审核，并派发正式执行指令。",
+      bodyPrefix: [
+        "人工审核结论：允许正式执行本次指令。",
+        "执行边界：先回最小回执；删除、烧录、发布、真实设备写入、跨账号/跨项目读取前仍要再次停下来确认。",
+      ],
+    };
+  }
+  return {
+    status: "approved_readonly",
+    titlePrefix: "只读探针：",
+    notice: "已通过人工审核，并改为只读探针。",
+    bodyPrefix: [
+      "人工审核结论：只允许只读探针。",
+      "执行边界：只能阅读、梳理、列计划、返回最小回执；禁止修改文件、运行危险命令、访问真实硬件或发布结果。",
+    ],
+  };
+}
+
+function buildApprovedHumanReviewCommand(
+  reviewMessage: Record<string, unknown>,
+  decision: string,
+  reviewerNote: string,
+  senderId: string | null,
+  project?: Record<string, unknown> | null,
+) {
+  const config = humanReviewDecisionConfig(decision);
+  const reviewMeta = readReviewMeta(reviewMessage.body);
+  const originalTitle =
+    text(reviewMeta.original_title, "") || readReviewLine(reviewMessage.body, "原始标题") || text(reviewMessage.title, "未命名协作指令");
+  const originalTarget = text(reviewMeta.original_target, "") || readReviewLine(reviewMessage.body, "原始目标");
+  const originalTargetType = text(reviewMeta.target_type, "") || readReviewLine(reviewMessage.body, "目标类型") || "workstation";
+  const originalInstruction =
+    text(reviewMeta.original_instruction, "") || readReviewInstruction(reviewMessage.body) || text(reviewMessage.body, "");
+  const body = [
+    ...config.bodyPrefix,
+    reviewerNote ? `审核备注：${reviewerNote}` : "",
+    "",
+    "原始指令:",
+    originalInstruction,
+    "",
+    "回执要求:",
+    "1. 先回一条最小回执，说明你理解的边界和下一步。",
+    "2. 如果边界不清楚，直接停下并回到协作消息池请求人确认。",
+    "3. 完成后必须给最终回复，说明产出、验证方式、剩余风险和下一步需求。",
+  ].filter(Boolean).join("\n");
+
+  const commandPayload = {
+    project_id: text(reviewMessage.project_id, "") || null,
+    task_id: text(reviewMessage.task_id, "") || null,
+    approval_id: text(reviewMessage.approval_id, "") || null,
+    handoff_id: text(reviewMessage.handoff_id, "") || null,
+    requirement_id: text(reviewMessage.requirement_id, "") || null,
+    agent_id: text(reviewMessage.agent_id, "") || null,
+    message_type: "agent_command",
+    title: `${config.titlePrefix}${originalTitle.replace(/^人工审核：/, "")}`,
+    body,
+    sender_type: "human",
+    sender_id: senderId,
+    recipient_type: originalTargetType,
+    recipient_id: originalTarget,
+    status: "queued",
+  };
+  const gitContext = buildProjectGitCollaborationContext(project);
+  return withAiRequiredRequirementLedger(commandPayload, {
+    requesterLabel: senderId || "human",
+    assigneeLabel: text(reviewMeta.target_ai, "") || originalTarget,
+    automationMode: "off",
+    heartbeatInterval: "不开启",
+    reviewPolicy: text(reviewMeta.risk_level, "") ? `人工已审核；原风险等级 ${text(reviewMeta.risk_level, "")}` : "人工已审核",
+    executionMode: config.bodyPrefix.join(" / "),
+    estimatedTokens: Number(reviewMeta.estimated_tokens ?? 0) || null,
+    gitRepositoryLine: gitContext.repositoryLine,
+    gitIdentityLine: gitContext.identityLine,
+    gitCredentialLine: gitContext.credentialLine,
+    gitLocalPathPolicyLine: gitContext.localPathPolicyLine,
+    gitReviewBoundaryLine: gitContext.reviewBoundaryLine,
+  });
+}
+
+function buildDevelopmentWorkshopStationFromFormData(formData: FormData, fallbackId?: string | null) {
+  return normalizeDevelopmentWorkshopStation(
+    {
+      id: text(formData.get("station_id"), "") || fallbackId || undefined,
+      label: text(formData.get("label"), ""),
+      icon: text(formData.get("icon"), "工"),
+      station: text(formData.get("station"), ""),
+      mapScene: text(formData.get("map_scene"), ""),
+      mapLocation: text(formData.get("map_location"), ""),
+      detail: text(formData.get("detail"), ""),
+      modes: parseStringList(formData.get("modes")) ?? [],
+      backendAnchor: text(formData.get("backend_anchor"), ""),
+      runnerCapabilities: parseStringList(formData.get("runner_capabilities")) ?? [],
+      aiResponsibilities: parseStringList(formData.get("ai_responsibilities")) ?? [],
+      npcRoleTemplates: parseStringList(formData.get("npc_role_templates")) ?? [],
+      assignmentKeywords: parseStringList(formData.get("assignment_keywords")) ?? [],
+      nextActions: parseStringList(formData.get("next_actions")) ?? [],
+      approvalPolicy: text(formData.get("approval_policy"), ""),
+      riskLevel: text(formData.get("risk_level"), "中"),
+      assignedNpcIds: parseStringListAll(formData, "assigned_npc_ids") ?? [],
+      knowledgeBase: {
+        summary: text(formData.get("knowledge_summary"), ""),
+        handoffPath: text(formData.get("knowledge_handoff_path"), ""),
+        tags: parseStringList(formData.get("knowledge_tags")) ?? [],
+      },
+    },
+    null,
+  );
+}
+
+function mergeSeatMetadata(seed: unknown, patch: Record<string, unknown>) {
+  const base = seed && typeof seed === "object" ? (seed as Record<string, unknown>) : {};
+  return {
+    ...base,
+    ...patch,
+  };
+}
+
+function cloneRecord(value: unknown) {
+  return value && typeof value === "object" ? ({ ...(value as Record<string, unknown>) } satisfies Record<string, unknown>) : {};
+}
+
+function parseOptionalPositiveInteger(value: FormDataEntryValue | null | undefined) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : null;
+}
+
+function mergeExecutionMetadata(
+  seed: unknown,
+  options: {
+    executorCommand?: string | null;
+    executorCwd?: string | null;
+    executorTimeoutSeconds?: number | null;
+    clearExecutorTemplate?: boolean;
+  },
+) {
+  const base = cloneRecord(seed);
+  const adapter = cloneRecord(base.adapter);
+  if (options.clearExecutorTemplate) {
+    delete adapter.executor_command;
+    delete adapter.executor_cwd;
+    delete adapter.executor_timeout_seconds;
+    delete base.executor_command;
+    delete base.executor_cwd;
+    delete base.executor_timeout_seconds;
+  } else {
+    if (options.executorCommand) adapter.executor_command = options.executorCommand;
+    else delete adapter.executor_command;
+    if (options.executorCwd) adapter.executor_cwd = options.executorCwd;
+    else delete adapter.executor_cwd;
+    if (options.executorTimeoutSeconds !== undefined) {
+      if (options.executorTimeoutSeconds === null) delete base.executor_timeout_seconds;
+      else base.executor_timeout_seconds = options.executorTimeoutSeconds;
+      delete adapter.executor_timeout_seconds;
+    }
+  }
+  if (Object.keys(adapter).length) base.adapter = adapter;
+  else delete base.adapter;
+  return Object.keys(base).length ? base : null;
+}
+
+function workspaceRoot() {
+  return path.resolve(process.cwd(), "..", "..");
+}
+
+function uniqueStrings(values: Array<string | null | undefined>) {
+  return Array.from(new Set(values.map((item) => text(item, "")).filter(Boolean)));
+}
+
+type ExternalSkillPackPayload = {
+  source_repo?: string;
+  skill_count?: number;
+  categories?: Record<string, number>;
+  curated_seed_skill_ids?: string[];
+  skill_library?: Record<string, unknown>[];
+};
+
+type GithubSkillImportTarget = {
+  owner: string;
+  repo: string;
+  ref: string;
+  path: string;
+  mode: "file" | "tree";
+  sourceUrl: string;
+};
+
+type GithubSkillSourceFile = {
+  owner: string;
+  repo: string;
+  ref: string;
+  path: string;
+  sourceUrl: string;
+  rawUrl: string;
+  content: string;
+  importMode?: "standard" | "agent_markdown";
+};
+
+const GITHUB_SKILL_IMPORT_MAX_FILES = 40;
+const GITHUB_SKILL_IMPORT_MAX_SKILLS = 120;
+const GITHUB_SKILL_IMPORT_MAX_TEXT_BYTES = 600_000;
+const GITHUB_SKILL_STORED_INSTRUCTION_LIMIT = 18_000;
+
+function skillCategoryLabel(skill: Record<string, unknown>) {
+  const metadata = cloneRecord(skill.metadata);
+  if (text(metadata.category, "")) return text(metadata.category, "");
+  if (text(skill.source, "") === "agency-agents") return "external";
+  if (text(skill.source, "") === "github") return "github";
+  return "custom";
+}
+
+function skillSortRank(skill: Record<string, unknown>) {
+  const source = text(skill.source, "custom");
+  if (source === "custom") return 0;
+  if (source === "agency-agents") return 1;
+  return 2;
+}
+
+function sortProjectSkillLibrary(skills: Record<string, unknown>[]) {
+  return skills.slice().sort((left, right) => {
+    const sourceRank = skillSortRank(left) - skillSortRank(right);
+    if (sourceRank !== 0) return sourceRank;
+    const categoryRank = skillCategoryLabel(left).localeCompare(skillCategoryLabel(right), "zh-CN");
+    if (categoryRank !== 0) return categoryRank;
+    return text(left.label ?? left.id, "").localeCompare(text(right.label ?? right.id, ""), "zh-CN");
+  });
+}
+
+async function readAgencyAgentsSkillPack(): Promise<ExternalSkillPackPayload> {
+  const candidates = [
+    path.join(process.cwd(), "lib", "skill-packs", "agency-agents-skill-pack.json"),
+    path.join(workspaceRoot(), "apps", "web", "lib", "skill-packs", "agency-agents-skill-pack.json"),
+  ];
+  for (const candidate of candidates) {
+    try {
+      await fs.access(candidate);
+      const raw = await fs.readFile(candidate, "utf8");
+      const parsed = JSON.parse(raw) as ExternalSkillPackPayload;
+      if (Array.isArray(parsed.skill_library)) return parsed;
+    } catch {}
+  }
+  throw new Error("还没找到 Agency Agents skill 包，请先生成或同步 skill-packs/agency-agents-skill-pack.json");
+}
+
+function slugifyProjectSkillId(value: unknown, fallback = "skill") {
+  const normalized = text(value, fallback)
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9-_]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  return normalized || fallback;
+}
+
+function trimToLength(value: unknown, maxLength: number) {
+  const raw = text(value, "");
+  if (raw.length <= maxLength) return raw;
+  return `${raw.slice(0, maxLength).trimEnd()}\n\n[内容已截断，完整内容请查看 GitHub 源文件]`;
+}
+
+function parseGithubUrl(rawUrl: string, pathOverride = "", branchOverride = ""): GithubSkillImportTarget {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    throw new Error("请填写有效的 GitHub 地址，例如 https://github.com/owner/repo/tree/main/skills");
+  }
+  const host = parsed.hostname.toLowerCase();
+  const parts = parsed.pathname.split("/").map((item) => decodeURIComponent(item)).filter(Boolean);
+  const cleanPathOverride = pathOverride.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+  const cleanBranchOverride = branchOverride.replace(/^\/+|\/+$/g, "");
+
+  if (host === "raw.githubusercontent.com") {
+    const [owner, repo, rawRef, ...pathParts] = parts;
+    if (!owner || !repo || !rawRef) {
+      throw new Error("Raw GitHub 地址不完整，至少需要 owner/repo/branch/path");
+    }
+    const filePath = cleanPathOverride || pathParts.join("/");
+    if (!filePath) throw new Error("Raw GitHub 地址缺少文件路径");
+    return {
+      owner,
+      repo,
+      ref: cleanBranchOverride || rawRef || "main",
+      path: filePath,
+      mode: "file",
+      sourceUrl: rawUrl,
+    };
+  }
+
+  if (host !== "github.com" && host !== "www.github.com") {
+    throw new Error("当前只允许从 github.com 或 raw.githubusercontent.com 导入 Skill，避免误抓内网或不可信地址。");
+  }
+
+  const [owner, repo, modeSegment, rawRef, ...pathParts] = parts;
+  if (!owner || !repo) {
+    throw new Error("GitHub 地址缺少 owner/repo，例如 https://github.com/owner/repo");
+  }
+  const repoName = repo.replace(/\.git$/i, "");
+  const isBlob = modeSegment === "blob";
+  const isTree = modeSegment === "tree";
+  const inferredPath = cleanPathOverride || (isBlob || isTree ? pathParts.join("/") : "");
+  const inferredRef = cleanBranchOverride || (isBlob || isTree ? rawRef : "") || "";
+  const mode: "file" | "tree" = isBlob || /\.[a-z0-9]+$/i.test(inferredPath) ? "file" : "tree";
+  return {
+    owner,
+    repo: repoName,
+    ref: inferredRef,
+    path: inferredPath,
+    mode,
+    sourceUrl: rawUrl,
+  };
+}
+
+function githubApiUrl(target: GithubSkillImportTarget, apiPath: string) {
+  return `https://api.github.com/repos/${encodeURIComponent(target.owner)}/${encodeURIComponent(target.repo)}${apiPath}`;
+}
+
+async function fetchGithubJson(url: string) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 20_000);
+  try {
+    const response = await fetch(url, {
+      headers: {
+        Accept: "application/vnd.github+json",
+        "User-Agent": "ai-collab-platform-skill-import",
+      },
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`GitHub API 返回 HTTP ${response.status}`);
+    }
+    return (await response.json()) as Record<string, unknown>;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function fetchGithubText(url: string) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 20_000);
+  try {
+    const response = await fetch(url, {
+      headers: {
+        Accept: "text/plain, application/json;q=0.9, text/markdown;q=0.9, */*;q=0.5",
+        "User-Agent": "ai-collab-platform-skill-import",
+      },
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`GitHub 文件读取失败：HTTP ${response.status}`);
+    }
+    const contentLength = Number(response.headers.get("content-length") ?? 0);
+    if (contentLength > GITHUB_SKILL_IMPORT_MAX_TEXT_BYTES) {
+      throw new Error("这个 GitHub 文件太大，请指定具体 Skill 文件或目录。");
+    }
+    const content = await response.text();
+    if (content.length > GITHUB_SKILL_IMPORT_MAX_TEXT_BYTES) {
+      throw new Error("这个 GitHub 文件太大，请指定更小的 Skill 文件。");
+    }
+    return content;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function resolveGithubImportRef(target: GithubSkillImportTarget) {
+  if (target.ref) return target.ref;
+  try {
+    const repoPayload = await fetchGithubJson(githubApiUrl(target, ""));
+    return text(repoPayload.default_branch, "main");
+  } catch {
+    return "main";
+  }
+}
+
+function githubRawUrl(owner: string, repo: string, ref: string, filePath: string) {
+  return `https://raw.githubusercontent.com/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${encodeURIComponent(ref)}/${filePath
+    .split("/")
+    .map((part) => encodeURIComponent(part))
+    .join("/")}`;
+}
+
+function looksLikeGithubSkillFile(filePath: string, exactFileMode = false) {
+  const normalized = filePath.replace(/\\/g, "/");
+  const baseName = path.posix.basename(normalized).toLowerCase();
+  if (exactFileMode) return /\.(md|mdx|json)$/i.test(baseName);
+  if (/^(skill|skills|skill-pack|skill_pack)\.(md|mdx|json)$/i.test(baseName)) return true;
+  if (/^skill[-_.].+\.(md|mdx|json)$/i.test(baseName)) return true;
+  if (/(^|\/)(skills|skill|\.codex\/skills)\/.+\.(md|mdx|json)$/i.test(normalized)) return true;
+  if (/\.skill\.(md|mdx|json)$/i.test(baseName)) return true;
+  return false;
+}
+
+function looksLikeGithubAgentMarkdownFile(filePath: string) {
+  const normalized = filePath.replace(/\\/g, "/").replace(/^\/+/, "");
+  const lower = normalized.toLowerCase();
+  const baseName = path.posix.basename(lower);
+  if (!/\.(md|mdx)$/i.test(baseName)) return false;
+  if (/^(readme|contributing|security|license|code_of_conduct|pull_request_template)\.mdx?$/i.test(baseName)) return false;
+  if (lower.startsWith(".github/") || lower.startsWith("scripts/") || lower.startsWith("examples/")) return false;
+  if (lower.split("/").some((part) => part.startsWith("."))) return false;
+  return normalized.split("/").length >= 2;
+}
+
+async function readGithubSkillSourceFiles(target: GithubSkillImportTarget): Promise<GithubSkillSourceFile[]> {
+  const resolvedRef = await resolveGithubImportRef(target);
+  const activeTarget = { ...target, ref: resolvedRef };
+  if (activeTarget.mode === "file") {
+    const rawUrl =
+      activeTarget.sourceUrl.includes("raw.githubusercontent.com")
+        ? activeTarget.sourceUrl
+        : githubRawUrl(activeTarget.owner, activeTarget.repo, activeTarget.ref, activeTarget.path);
+    return [
+      {
+        owner: activeTarget.owner,
+        repo: activeTarget.repo,
+        ref: activeTarget.ref,
+        path: activeTarget.path,
+        sourceUrl: activeTarget.sourceUrl,
+        rawUrl,
+        content: await fetchGithubText(rawUrl),
+        importMode: "standard",
+      },
+    ];
+  }
+
+  const treeUrl = githubApiUrl(activeTarget, `/git/trees/${encodeURIComponent(activeTarget.ref)}?recursive=1`);
+  const treePayload = await fetchGithubJson(treeUrl);
+  const tree = Array.isArray(treePayload.tree) ? (treePayload.tree as Record<string, unknown>[]) : [];
+  const basePath = activeTarget.path.replace(/^\/+|\/+$/g, "");
+  const prefix = basePath ? `${basePath}/` : "";
+  let importMode: GithubSkillSourceFile["importMode"] = "standard";
+  let candidatePaths = tree
+    .filter((entry) => text(entry.type, "") === "blob")
+    .map((entry) => text(entry.path, ""))
+    .filter(Boolean)
+    .filter((filePath) => (prefix ? filePath === basePath || filePath.startsWith(prefix) : true))
+    .filter((filePath) => looksLikeGithubSkillFile(filePath))
+    .slice(0, GITHUB_SKILL_IMPORT_MAX_FILES);
+
+  if (!candidatePaths.length) {
+    candidatePaths = tree
+      .filter((entry) => text(entry.type, "") === "blob")
+      .map((entry) => text(entry.path, ""))
+      .filter(Boolean)
+      .filter((filePath) => (prefix ? filePath === basePath || filePath.startsWith(prefix) : true))
+      .filter((filePath) => looksLikeGithubAgentMarkdownFile(filePath))
+      .slice(0, GITHUB_SKILL_IMPORT_MAX_FILES);
+    importMode = "agent_markdown";
+  }
+
+  if (!candidatePaths.length) {
+    throw new Error(
+      "这个 GitHub 目录里没有找到明显的 Skill 文件，也没有可转换的 Markdown agent profile。请指定 SKILL.md、skill.json、skills.json、skills/ 目录，或一个按目录分类存放角色 Markdown 的仓库。",
+    );
+  }
+
+  const files: GithubSkillSourceFile[] = [];
+  for (const filePath of candidatePaths) {
+    const rawUrl = githubRawUrl(activeTarget.owner, activeTarget.repo, activeTarget.ref, filePath);
+    files.push({
+      owner: activeTarget.owner,
+      repo: activeTarget.repo,
+      ref: activeTarget.ref,
+      path: filePath,
+      sourceUrl: activeTarget.sourceUrl,
+      rawUrl,
+      content: await fetchGithubText(rawUrl),
+      importMode,
+    });
+  }
+  return files;
+}
+
+function stripMarkdownFrontmatter(markdown: string) {
+  if (!markdown.startsWith("---")) return markdown;
+  const closeIndex = markdown.indexOf("\n---", 3);
+  if (closeIndex < 0) return markdown;
+  const afterClose = markdown.indexOf("\n", closeIndex + 4);
+  return markdown.slice(afterClose >= 0 ? afterClose + 1 : closeIndex + 4);
+}
+
+function parseSimpleFrontmatter(markdown: string) {
+  if (!markdown.startsWith("---")) return {};
+  const closeIndex = markdown.indexOf("\n---", 3);
+  if (closeIndex < 0) return {};
+  const block = markdown.slice(3, closeIndex).trim();
+  const result: Record<string, unknown> = {};
+  for (const line of block.split(/\r?\n/)) {
+    const match = /^([A-Za-z0-9_.-]+):\s*(.*)$/.exec(line.trim());
+    if (!match) continue;
+    const key = match[1];
+    let value: unknown = match[2].trim();
+    if (typeof value === "string" && value.startsWith("[") && value.endsWith("]")) {
+      value = value
+        .slice(1, -1)
+        .split(",")
+        .map((item) => item.trim().replace(/^["']|["']$/g, ""))
+        .filter(Boolean);
+    } else if (typeof value === "string") {
+      value = value.replace(/^["']|["']$/g, "");
+    }
+    result[key] = value;
+  }
+  return result;
+}
+
+function extractMarkdownHeading(markdown: string) {
+  const body = stripMarkdownFrontmatter(markdown);
+  const heading = /^#\s+(.+)$/m.exec(body);
+  return text(heading?.[1], "");
+}
+
+function extractMarkdownSummary(markdown: string) {
+  const body = stripMarkdownFrontmatter(markdown)
+    .replace(/```[\s\S]*?```/g, "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#") && !line.startsWith("---") && !line.startsWith("|"));
+  return trimToLength(body.slice(0, 3).join(" "), 360);
+}
+
+function buildGithubProjectSkillId(sourceFile: GithubSkillSourceFile, rawId: unknown, index = 0) {
+  const repoSlug = slugifyProjectSkillId(`${sourceFile.owner}-${sourceFile.repo}`, "github");
+  const rawSlug = slugifyProjectSkillId(rawId, path.posix.basename(sourceFile.path).replace(/\.[^.]+$/, "") || `skill-${index + 1}`);
+  const hash = createHash("sha1")
+    .update(`${sourceFile.owner}/${sourceFile.repo}/${sourceFile.path}#${rawSlug}#${index}`)
+    .digest("hex")
+    .slice(0, 8);
+  return `github-${repoSlug}-${rawSlug}`.slice(0, 86).replace(/-+$/g, "") + `-${hash}`;
+}
+
+function normalizeGithubRecommendedFor(...values: unknown[]) {
+  return uniqueStrings(
+    values
+      .flatMap((value) => normalizeStringList(value))
+      .map((item) => item.toLowerCase()),
+  );
+}
+
+function normalizeGithubSkillRecord(
+  skill: Record<string, unknown>,
+  sourceFile: GithubSkillSourceFile,
+  index: number,
+  options: { category?: string; recommendedFor?: string[] },
+): Record<string, unknown> {
+  const metadata = cloneRecord(skill.metadata);
+  const rawLabel = text(skill.label ?? metadata.label ?? metadata.name ?? skill.name ?? skill.title, "");
+  const label = rawLabel || text(skill.id, "") || path.posix.basename(sourceFile.path).replace(/\.[^.]+$/, "");
+  const description = text(skill.note ?? metadata.description ?? skill.description ?? metadata.summary, "");
+  const category = text(options.category, "") || text(metadata.category ?? skill.category, "github");
+  const recommendedFor = normalizeGithubRecommendedFor(
+    options.recommendedFor,
+    skill.recommended_for,
+    metadata.recommended_for,
+    metadata.tags,
+    skill.tags,
+    category,
+    sourceFile.repo,
+  );
+  return {
+    id: buildGithubProjectSkillId(sourceFile, skill.id ?? metadata.id ?? label, index),
+    label,
+    note: description ? `从 GitHub 导入：${description}` : "从 GitHub 导入的外部 Skill，请在详情中补充项目化说明。",
+    source: "github",
+    scope: "role",
+    recommended_for: recommendedFor,
+    metadata: {
+      ...metadata,
+      category,
+      original_source: text(skill.source, ""),
+      source_url: sourceFile.sourceUrl,
+      raw_url: sourceFile.rawUrl,
+      external_repo: `${sourceFile.owner}/${sourceFile.repo}`,
+      external_ref: sourceFile.ref,
+      external_path: sourceFile.path,
+      imported_from: "github",
+      imported_format: "json",
+      description: description || text(metadata.description, ""),
+    },
+  };
+}
+
+function parseGithubMarkdownSkill(
+  sourceFile: GithubSkillSourceFile,
+  index: number,
+  options: { category?: string; recommendedFor?: string[] },
+): Record<string, unknown> {
+  const frontmatter = parseSimpleFrontmatter(sourceFile.content);
+  const heading = extractMarkdownHeading(sourceFile.content);
+  const fallbackLabel = path.posix.basename(sourceFile.path).replace(/\.[^.]+$/, "");
+  const label = text(frontmatter.label ?? frontmatter.display_name ?? frontmatter.name ?? heading, fallbackLabel);
+  const description = text(frontmatter.description ?? frontmatter.summary, "") || extractMarkdownSummary(sourceFile.content);
+  const category = text(options.category, "") || text(frontmatter.category, "github");
+  const recommendedFor = normalizeGithubRecommendedFor(
+    options.recommendedFor,
+    frontmatter.recommended_for,
+    frontmatter.tags,
+    frontmatter.keywords,
+    category,
+    sourceFile.repo,
+  );
+  const rawId = frontmatter.id ?? frontmatter.name ?? label;
+  return {
+    id: buildGithubProjectSkillId(sourceFile, rawId, index),
+    label,
+    note:
+      sourceFile.importMode === "agent_markdown"
+        ? description
+          ? `从 GitHub Agent Markdown 转换：${description}`
+          : "从 GitHub 普通 Agent Markdown 转换的 Skill 草稿。"
+        : description
+          ? `从 GitHub 导入：${description}`
+          : "从 GitHub 导入的 Markdown Skill。",
+    source: "github",
+    scope: "role",
+    recommended_for: recommendedFor,
+    metadata: {
+      ...frontmatter,
+      category,
+      description: description || `GitHub Markdown Skill：${label}`,
+      source_url: sourceFile.sourceUrl,
+      raw_url: sourceFile.rawUrl,
+      external_repo: `${sourceFile.owner}/${sourceFile.repo}`,
+      external_ref: sourceFile.ref,
+      external_path: sourceFile.path,
+      imported_from: "github",
+      imported_format: sourceFile.importMode === "agent_markdown" ? "agent_markdown" : "markdown",
+      instructions: trimToLength(sourceFile.content, GITHUB_SKILL_STORED_INSTRUCTION_LIMIT),
+    },
+  };
+}
+
+function parseGithubSkillFile(
+  sourceFile: GithubSkillSourceFile,
+  options: { category?: string; recommendedFor?: string[] },
+): Record<string, unknown>[] {
+  const extension = path.posix.extname(sourceFile.path).toLowerCase();
+  if (extension === ".json") {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(sourceFile.content);
+    } catch {
+      throw new Error(`GitHub JSON Skill 解析失败：${sourceFile.path}`);
+    }
+    const payload = parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
+    const rawItems = Array.isArray(payload.skill_library)
+      ? payload.skill_library
+      : Array.isArray(payload.skills)
+        ? payload.skills
+        : Array.isArray(parsed)
+          ? parsed
+          : [payload];
+    return rawItems
+      .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
+      .map((item, index) => normalizeGithubSkillRecord(item, sourceFile, index, options));
+  }
+  return [parseGithubMarkdownSkill(sourceFile, 0, options)];
+}
+
+function normalizeImportedProjectSkill(skill: Record<string, unknown>) {
+  const metadata = cloneRecord(skill.metadata);
+  return {
+    id: text(skill.id, ""),
+    label: text(skill.label ?? metadata.name, ""),
+    note: text(skill.note ?? metadata.description, "外部导入 Skill"),
+    source: text(skill.source, "agency-agents"),
+    scope: text(skill.scope, "role") === "baseline" ? "baseline" : "role",
+    recommended_for: normalizeStringList(skill.recommended_for),
+    metadata,
+  };
+}
+
+function readWorkspaceGitDefaults() {
+  try {
+    const repoRoot = execFileSync("git", ["rev-parse", "--show-toplevel"], {
+      cwd: workspaceRoot(),
+      encoding: "utf8",
+    }).trim();
+    const remoteUrl = execFileSync("git", ["remote", "get-url", "origin"], {
+      cwd: workspaceRoot(),
+      encoding: "utf8",
+    }).trim();
+    const currentBranch = execFileSync("git", ["branch", "--show-current"], {
+      cwd: workspaceRoot(),
+      encoding: "utf8",
+    }).trim();
+    return {
+      githubUrl: remoteUrl || null,
+      localGitUrl: repoRoot || null,
+      branch: currentBranch || null,
+    };
+  } catch {
+    return {
+      githubUrl: null,
+      localGitUrl: null,
+      branch: null,
+    };
+  }
+}
+
+function enrichNpcCollabProtocolWithRepoContext(
+  project: Record<string, unknown>,
+  collabProtocol: Record<string, unknown>,
+  options: {
+    gitBoundary?: string[];
+    handoffPath?: string | null;
+  } = {},
+) {
+  const workspaceGit = readWorkspaceGitDefaults();
+  const rawRepoContext =
+    collabProtocol.repo_context && typeof collabProtocol.repo_context === "object"
+      ? (collabProtocol.repo_context as Record<string, unknown>)
+      : {};
+  const repoContext = resolvePlatformRepoContext({
+    repository_url:
+      text(project.github_url ?? project.githubUrl, "") ||
+      text(rawRepoContext.repository_url ?? rawRepoContext.repositoryUrl, "") ||
+      text(workspaceGit.githubUrl, "") ||
+      null,
+    branch:
+      text(project.develop_branch ?? project.developBranch, "") ||
+      text(project.default_branch ?? project.defaultBranch, "") ||
+      text(rawRepoContext.branch, "") ||
+      text(workspaceGit.branch, "") ||
+      null,
+    relative_root: text(rawRepoContext.relative_root ?? rawRepoContext.relativeRoot, ".") || ".",
+  });
+  const referencePaths = buildPlatformRepoReferencePaths({
+    referencePaths: collabProtocol.reference_paths,
+    gitBoundary: options.gitBoundary,
+    handoffPath: options.handoffPath,
+    repositoryUrl: repoContext?.repository_url ?? null,
+    branch: repoContext?.branch ?? null,
+    workspaceRoots: uniqueStrings([
+      workspaceRoot(),
+      text(project.local_git_url ?? project.localGitUrl, "") || null,
+      text(workspaceGit.localGitUrl, "") || null,
+    ]),
+  });
+  return resolvePlatformCollabProtocol({
+    ...collabProtocol,
+    repo_context: repoContext,
+    reference_paths: referencePaths,
+  });
+}
+
+async function ensureNpcKnowledgeDoc(options: {
+  handoffPath: string;
+  seatName: string;
+  responsibility: string;
+  projectId: string;
+  additionalSkillIds: string[];
+  providerLabel?: string | null;
+  sourceWorkstationId?: string | null;
+  computerNodeId?: string | null;
+  model?: string | null;
+  collabProtocol?: Record<string, unknown> | null;
+}) {
+  const relativePath = options.handoffPath.replace(/\\/g, "/").replace(/^\/+/, "");
+  if (!relativePath.startsWith("docs/ai-handoffs/")) return;
+  const root = workspaceRoot();
+  const filePath = path.resolve(root, relativePath);
+  const normalizedRoot = root.replace(/\\/g, "/").toLowerCase();
+  const normalizedFile = filePath.replace(/\\/g, "/").toLowerCase();
+  if (!normalizedFile.startsWith(normalizedRoot)) return;
+  try {
+    await fs.access(filePath);
+    return;
+  } catch {}
+
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  const role = options.responsibility || "待分配职责";
+  const skillLine = options.additionalSkillIds.length ? options.additionalSkillIds.join(", ") : "No add-on skills yet";
+  const collabProtocol = resolvePlatformCollabProtocol(options.collabProtocol, {
+    roleText: role,
+    threadText: options.seatName,
+    repoContext: options.collabProtocol?.repo_context,
+  });
+  const approvalPolicy = text(collabProtocol.approval_policy, "auto_continue");
+  const workKind = text(collabProtocol.work_kind, "implementation");
+  const capabilityLine = normalizeStringList(collabProtocol.required_capabilities).join(", ") || "general-software";
+  const referenceLine = normalizeStringList(collabProtocol.reference_paths).join(", ") || "none";
+  const repoContext = resolvePlatformRepoContext(collabProtocol.repo_context);
+  const repoLine = platformRepoContextSummary(repoContext);
+  const contents = `# NPC Knowledge Base: ${options.seatName}
+
+Project id: ${options.projectId}
+NPC role: ${role}
+
+## Identity contract
+
+- This NPC keeps a persistent knowledge base even if the execution thread changes.
+- Changing computer, model, or source thread only changes the current execution shell.
+- New operators should continue from this file and append fresh handoff evidence instead of resetting context.
+
+## Current execution shell
+
+- Provider: ${options.providerLabel || "unbound"}
+- Source thread: ${options.sourceWorkstationId || "unbound"}
+- Computer node: ${options.computerNodeId || "unbound"}
+- Model: ${options.model || "gpt-5.4"}
+
+## Collaboration protocol
+
+- Work kind: ${workKind}
+- Approval policy: ${approvalPolicy}
+- Project profile: ${collabProtocol.project_profile} / ${collabProjectProfileLabel(collabProtocol.project_profile)}
+- Token policy: ${collabTokenPolicySummary(collabProtocol)}
+- Runaway guard: ${collabRunawayPolicySummary(collabProtocol)}
+- Efficiency policy: ${collabEfficiencyPolicySummary(collabProtocol)}
+- Debug and simulation: ${collabDebugPolicySummary(collabProtocol)}
+- Repo route: ${repoLine}
+- Required capabilities: ${capabilityLine}
+- References: ${referenceLine}
+
+## Safety boundaries
+
+- Stop and ask for human review when the task crosses an approval boundary.
+- For robot, embedded, serial, GPIO, firmware, or real-device work, simulate or do a read-only probe first.
+- Do not keep spending tokens after the auto-round budget is reached; write a final reply or request review.
+
+## Add-on skills
+
+- ${skillLine}
+
+## Continuation notes
+
+- Keep predecessor decisions, validated screenshots, and requirement closeout notes here.
+- Re-run build, pytest, and fresh screenshots before claiming a stable change.
+`;
+  await fs.writeFile(filePath, contents, "utf8");
+}
+
+async function ensureDevelopmentWorkshopStationKnowledgeDoc(options: {
+  stationId: string;
+  label: string;
+  detail: string;
+  knowledgeBase: {
+    summary: string;
+    handoffPath: string;
+    tags: string[];
+  };
+  runnerCapabilities: string[];
+  aiResponsibilities: string[];
+  nextActions: string[];
+  approvalPolicy: string;
+}) {
+  const relativePath = options.knowledgeBase.handoffPath.replace(/\\/g, "/").replace(/^\/+/, "");
+  if (!relativePath.startsWith("docs/ai-handoffs/")) return;
+  const root = workspaceRoot();
+  const filePath = path.resolve(root, relativePath);
+  const normalizedRoot = root.replace(/\\/g, "/").toLowerCase();
+  const normalizedFile = filePath.replace(/\\/g, "/").toLowerCase();
+  if (!normalizedFile.startsWith(normalizedRoot)) return;
+  try {
+    await fs.access(filePath);
+    return;
+  } catch {}
+
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  const contents = `# Station Knowledge Base: ${options.label}
+
+Station id: ${options.stationId}
+
+## Shared purpose
+
+${options.knowledgeBase.summary}
+
+## Scope
+
+${options.detail}
+
+## Runner capabilities
+
+${options.runnerCapabilities.length ? options.runnerCapabilities.map((item) => `- ${item}`).join("\n") : "- Pending capabilities"}
+
+## AI responsibilities
+
+${options.aiResponsibilities.length ? options.aiResponsibilities.map((item) => `- ${item}`).join("\n") : "- Pending responsibilities"}
+
+## Default next actions
+
+${options.nextActions.length ? options.nextActions.map((item) => `- ${item}`).join("\n") : "- Pending actions"}
+
+## Approval boundary
+
+- ${options.approvalPolicy}
+
+## Knowledge tags
+
+${options.knowledgeBase.tags.length ? options.knowledgeBase.tags.map((item) => `- ${item}`).join("\n") : "- development-workshop-station"}
+
+## Continuation notes
+
+- This is the shared station knowledge base. It belongs to the workstation itself, not to any single NPC.
+- NPC knowledge bases should reference this file and then append their personal execution continuity separately.
+`;
+  await fs.writeFile(filePath, contents, "utf8");
+}
+
+async function ensureCodexSeatConsumerScript(options: {
+  seatName: string;
+  sourceWorkstationId?: string | null;
+}) {
+  const sourceWorkstationId = String(options.sourceWorkstationId ?? "").trim();
+  if (!isCodexSessionWorkstationId(sourceWorkstationId)) return null;
+
+  const root = workspaceRoot();
+  const scriptName = buildCodexSeatConsumerScriptName(options.seatName);
+  const stateName = `.${scriptName.replace(/\.py$/i, "")}-state.json`;
+  const scriptPath = path.join(root, "scripts", scriptName);
+  const contents = `#!/usr/bin/env python
+from __future__ import annotations
+
+import subprocess
+import sys
+from pathlib import Path
+
+
+DEFAULT_WORKSTATION_ID = "${sourceWorkstationId}"
+DEFAULT_WORKSTATION_NAME = "${String(options.seatName || "Codex Seat").replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"
+
+
+def main() -> int:
+  script_path = Path(__file__).with_name("npc1-thread-consumer.py")
+  state_path = Path(__file__).with_name("${stateName}")
+  command = [
+    sys.executable,
+    str(script_path),
+    "--workstation-id",
+    DEFAULT_WORKSTATION_ID,
+    "--workstation-name",
+    DEFAULT_WORKSTATION_NAME,
+    "--state-path",
+    str(state_path),
+    *sys.argv[1:],
+  ]
+  completed = subprocess.run(command, check=False)
+  return completed.returncode
+
+
+if __name__ == "__main__":
+  raise SystemExit(main())
+`;
+  await fs.writeFile(scriptPath, contents, "utf8");
+  return path.relative(root, scriptPath).replace(/\\/g, "/");
+}
+
+async function ensureCodexSeatAutonomyBridge(options: {
+  projectId: string;
+  seatName: string;
+  responsibility?: string | null;
+  sourceWorkstationId?: string | null;
+  handoffPath: string;
+  computerNodeId?: string | null;
+  model?: string | null;
+  additionalSkillIds: string[];
+  collabProtocol?: Record<string, unknown> | null;
+  heartbeatIntervalSeconds?: number | null;
+}) {
+  await ensureNpcKnowledgeDoc({
+    handoffPath: options.handoffPath,
+    seatName: options.seatName,
+    responsibility: text(options.responsibility, ""),
+    projectId: options.projectId,
+    additionalSkillIds: options.additionalSkillIds,
+    providerLabel: "Codex",
+    sourceWorkstationId: options.sourceWorkstationId,
+    computerNodeId: options.computerNodeId,
+    model: options.model,
+    collabProtocol: options.collabProtocol,
+  });
+  const consumerScript = await ensureCodexSeatConsumerScript({
+    seatName: options.seatName,
+    sourceWorkstationId: options.sourceWorkstationId,
+  });
+  const heartbeat = await ensureCodexSeatHeartbeatAutomation({
+    seatName: options.seatName,
+    sourceWorkstationId: options.sourceWorkstationId,
+    responsibility: options.responsibility,
+    heartbeatIntervalSeconds: options.heartbeatIntervalSeconds,
+  });
+  return { consumerScript, heartbeat };
+}
+
+function readSourceThreadCatalog(formData: FormData) {
+  const parsed = parseOptionalJson(String(formData.get("source_thread_catalog") ?? ""));
+  return asArray<Record<string, unknown>>(parsed);
+}
+
+function findSourceThreadCandidate(candidates: Record<string, unknown>[], sourceWorkstationId: string) {
+  const normalized = text(sourceWorkstationId, "").toLowerCase();
+  if (!normalized) return null;
+  return (
+    candidates.find((item) =>
+      workstationLookupKeys(item).some((candidate) => candidate.toLowerCase() === normalized),
+    ) ?? null
+  );
+}
+
+function resolveNpcSourceThreadContext(project: any, formData: FormData) {
+  const sourceWorkstationId = String(formData.get("source_workstation_id") ?? "").trim() || null;
+  const collaborationConfig =
+    project?.collaboration_config && typeof project.collaboration_config === "object"
+      ? (project.collaboration_config as Record<string, unknown>)
+      : {};
+  const projectThreads = asArray<Record<string, unknown>>(
+    collaborationConfig.thread_workstations ?? collaborationConfig.threadWorkstations ?? collaborationConfig.workstations,
+  );
+  const catalogThreads = readSourceThreadCatalog(formData);
+  const matched =
+    (sourceWorkstationId ? findSourceThreadCandidate(catalogThreads, sourceWorkstationId) : null) ??
+    (sourceWorkstationId ? findSourceThreadCandidate(projectThreads, sourceWorkstationId) : null);
+  const metadata =
+    matched?.metadata && typeof matched.metadata === "object" ? (matched.metadata as Record<string, unknown>) : {};
+  const providerId =
+    normalizePlatformProviderId(
+      formData.get("ai_provider_id") ??
+        matched?.ai_provider_id ??
+        matched?.ai_provider ??
+        matched?.provider ??
+        metadata.provider_id ??
+        metadata.provider ??
+        metadata.provider_label,
+    ) || derivePlatformProviderIdFromThreadId(sourceWorkstationId);
+  const providerLabel =
+    text(
+      formData.get("ai_provider") ??
+        matched?.ai_provider ??
+        matched?.ai_provider_label ??
+        matched?.provider_label ??
+        metadata.provider_label,
+      "",
+    ) || (providerId ? platformProviderLabel(providerId) : "");
+  const computerNodeId =
+    text(
+      matched?.computer_node_id ??
+        matched?.computerNodeId ??
+        metadata.computer_node_id ??
+        metadata.computerNodeId,
+      "",
+    ) || null;
+  const computerNodeLabel =
+    text(
+      matched?.computer_node ??
+        matched?.computerNode ??
+        matched?.computer_node_label ??
+        matched?.computerNodeLabel ??
+        metadata.computer_node ??
+        metadata.computer_node_label,
+      "",
+    ) || null;
+  const model = text(matched?.model ?? metadata.model, "") || null;
+  return {
+    sourceWorkstationId,
+    providerId,
+    providerLabel,
+    computerNodeId,
+    computerNodeLabel,
+    model,
+    threadName: text(matched?.name ?? matched?.workstation_name, "") || null,
+  };
+}
+
+function resolveNpcCollabProtocol(formData: FormData, options: {
+  providerId?: string | null;
+  responsibility?: string | null;
+  threadText?: string | null;
+  existing?: Record<string, unknown> | null;
+}) {
+  const parsed = options.existing && typeof options.existing === "object" ? options.existing : {};
+  const parsedTokenPolicy =
+    parsed.token_policy && typeof parsed.token_policy === "object" ? (parsed.token_policy as Record<string, unknown>) : {};
+  const parsedRunawayPolicy =
+    parsed.runaway_policy && typeof parsed.runaway_policy === "object"
+      ? (parsed.runaway_policy as Record<string, unknown>)
+      : {};
+  const parsedEfficiencyPolicy =
+    parsed.efficiency_policy && typeof parsed.efficiency_policy === "object"
+      ? (parsed.efficiency_policy as Record<string, unknown>)
+      : {};
+  const parsedDebugPolicy =
+    parsed.debug_policy && typeof parsed.debug_policy === "object" ? (parsed.debug_policy as Record<string, unknown>) : {};
+  const formText = (field: string) => text(formData.get(field), "");
+  const formNumber = (field: string, fallback: unknown) => parseOptionalPositiveInteger(formData.get(field)) ?? fallback;
+  const formBoolean = (field: string, fallback: unknown) =>
+    formText(field) === "" ? fallback : !["0", "false", "off", "no"].includes(formText(field).toLowerCase());
+  return resolvePlatformCollabProtocol(
+    {
+      ...(parsed ?? {}),
+      provider_id: text(formData.get("ai_provider_id"), "") || options.providerId || parsed.provider_id,
+      work_kind: text(formData.get("work_kind"), "") || parsed.work_kind,
+      approval_policy: text(formData.get("approval_policy"), "") || parsed.approval_policy,
+      project_profile: formText("project_profile") || parsed.project_profile,
+      required_capabilities:
+        parseStringList(formData.get("required_capabilities")) ??
+        (Array.isArray(parsed.required_capabilities) ? parsed.required_capabilities : []),
+      reference_paths:
+        parseStringList(formData.get("reference_paths")) ??
+        (Array.isArray(parsed.reference_paths) ? parsed.reference_paths : []),
+      require_minimal_ack:
+        text(formData.get("require_minimal_ack"), "") === ""
+          ? parsed.require_minimal_ack
+          : text(formData.get("require_minimal_ack"), "true") !== "false",
+      require_final_reply:
+        text(formData.get("require_final_reply"), "") === ""
+          ? parsed.require_final_reply
+          : text(formData.get("require_final_reply"), "true") !== "false",
+      token_policy: {
+        ...parsedTokenPolicy,
+        mode: formText("token_policy_mode") || parsedTokenPolicy.mode,
+        per_message_limit: formNumber("token_per_message_limit", parsedTokenPolicy.per_message_limit),
+        per_round_limit: formNumber("token_per_round_limit", parsedTokenPolicy.per_round_limit),
+        daily_budget: formNumber("token_daily_budget", parsedTokenPolicy.daily_budget),
+      },
+      runaway_policy: {
+        ...parsedRunawayPolicy,
+        max_auto_rounds: formNumber("max_auto_rounds", parsedRunawayPolicy.max_auto_rounds),
+        human_review_after_rounds: formNumber(
+          "human_review_after_rounds",
+          parsedRunawayPolicy.human_review_after_rounds,
+        ),
+      },
+      efficiency_policy: {
+        ...parsedEfficiencyPolicy,
+        parallelism_limit: formNumber("parallelism_limit", parsedEfficiencyPolicy.parallelism_limit),
+        prefer_readonly_probe: formBoolean("prefer_readonly_probe", parsedEfficiencyPolicy.prefer_readonly_probe),
+        batch_similar_tasks: formBoolean("batch_similar_tasks", parsedEfficiencyPolicy.batch_similar_tasks),
+        require_plan_before_execute: formBoolean(
+          "require_plan_before_execute",
+          parsedEfficiencyPolicy.require_plan_before_execute,
+        ),
+      },
+      debug_policy: {
+        ...parsedDebugPolicy,
+        debug_enabled: formBoolean("debug_enabled", parsedDebugPolicy.debug_enabled),
+        simulation_first: formBoolean("simulation_first", parsedDebugPolicy.simulation_first),
+        hardware_write_requires_review: formBoolean(
+          "hardware_write_requires_review",
+          parsedDebugPolicy.hardware_write_requires_review,
+        ),
+      },
+    },
+    {
+      providerId: options.providerId ?? undefined,
+      roleText: options.responsibility ?? undefined,
+      threadText: options.threadText ?? undefined,
+    },
+  );
+}
+
+function providerSortOrder(providerId: string) {
+  if (providerId === "codex") return 10;
+  if (providerId === "claude") return 20;
+  if (providerId === "qwen") return 30;
+  if (providerId === "glm") return 40;
+  if (providerId === "openclaw") return 50;
+  return 90;
+}
+
+async function ensureProjectAiProvider(
+  projectId: string,
+  project: any,
+  options: { providerId: string; providerLabel?: string | null; model?: string | null },
+) {
+  const providerId = normalizePlatformProviderId(options.providerId);
+  if (!providerId) return;
+  const collaborationConfig =
+    project?.collaboration_config && typeof project.collaboration_config === "object"
+      ? { ...(project.collaboration_config as Record<string, unknown>) }
+      : {};
+  const providers = Array.isArray(collaborationConfig.ai_providers)
+    ? [...(collaborationConfig.ai_providers as Record<string, unknown>[])]
+    : [];
+  const hasProvider = providers.some((item) => {
+    const id = normalizePlatformProviderId(item.id ?? item.label ?? item.name);
+    return id === providerId;
+  });
+  if (hasProvider) return;
+
+  providers.push({
+    id: providerId,
+    label: text(options.providerLabel, "") || platformProviderLabel(providerId),
+    kind: "thread",
+    enabled: true,
+    endpoint: platformProviderEndpoint(providerId),
+    model: text(options.model, "") || null,
+    sort_order: providerSortOrder(providerId),
+    metadata: {
+      role: `${providerId}_operator`,
+    },
+  });
+
+  await patchJson(`/api/projects/${projectId}`, {
+    collaboration_config: {
+      ...collaborationConfig,
+      ai_providers: providers,
+    },
+  });
+}
+
+async function ensureNpcSeatContinuity(options: {
+  projectId: string;
+  seatName: string;
+  responsibility?: string | null;
+  sourceWorkstationId?: string | null;
+  handoffPath: string;
+  computerNodeId?: string | null;
+  model?: string | null;
+  additionalSkillIds: string[];
+  providerId?: string | null;
+  providerLabel?: string | null;
+  collabProtocol?: Record<string, unknown> | null;
+  heartbeatIntervalSeconds?: number | null;
+}) {
+  if (supportsLocalCodexAutonomyBridge(options.providerId)) {
+    const result = await ensureCodexSeatAutonomyBridge({
+      projectId: options.projectId,
+      seatName: options.seatName,
+      responsibility: options.responsibility,
+      sourceWorkstationId: options.sourceWorkstationId,
+      handoffPath: options.handoffPath,
+      computerNodeId: options.computerNodeId,
+      model: options.model,
+      additionalSkillIds: options.additionalSkillIds,
+      heartbeatIntervalSeconds: options.heartbeatIntervalSeconds,
+    });
+    return {
+      ...result,
+      providerRegistration: null as string | null,
+      providerActivation: null as string | null,
+    };
+  }
+
+  if (normalizePlatformProviderId(options.providerId) === "claude") {
+    const beforeStatus = await readClaudeSeatAutonomyStatus({
+      seatId: options.sourceWorkstationId || options.seatName,
+      seatName: options.seatName,
+      sourceWorkstationId: options.sourceWorkstationId,
+    });
+    await ensureNpcKnowledgeDoc({
+      handoffPath: options.handoffPath,
+      seatName: options.seatName,
+      responsibility: text(options.responsibility, ""),
+      projectId: options.projectId,
+      additionalSkillIds: options.additionalSkillIds,
+      providerLabel: text(options.providerLabel, "") || "Claude",
+      sourceWorkstationId: options.sourceWorkstationId,
+      computerNodeId: options.computerNodeId,
+      model: options.model,
+      collabProtocol: options.collabProtocol,
+    });
+    const registration = await ensureClaudeSeatSessionRegistration({
+      seatName: options.seatName,
+      sourceWorkstationId: options.sourceWorkstationId,
+      model: options.model,
+    });
+    const shouldLaunchSession =
+      !beforeStatus.sessionSeen ||
+      text(beforeStatus.sessionStatus, "") === "idle" ||
+      text(beforeStatus.sessionStatus, "") === "stale";
+    const activation = shouldLaunchSession
+      ? await launchClaudeSeatSession({
+          seatName: options.seatName,
+          sourceWorkstationId: options.sourceWorkstationId,
+          model: options.model,
+        })
+      : null;
+    return {
+      consumerScript: null,
+      heartbeat: null,
+      providerRegistration: registration ? `Claude session ${registration.sessionId}` : null,
+      providerActivation: activation?.launchSummary ?? null,
+    };
+  }
+
+  await ensureNpcKnowledgeDoc({
+    handoffPath: options.handoffPath,
+    seatName: options.seatName,
+    responsibility: text(options.responsibility, ""),
+    projectId: options.projectId,
+    additionalSkillIds: options.additionalSkillIds,
+    providerLabel: text(options.providerLabel, "") || platformProviderLabel(options.providerId),
+    sourceWorkstationId: options.sourceWorkstationId,
+    computerNodeId: options.computerNodeId,
+    model: options.model,
+    collabProtocol: options.collabProtocol,
+  });
+  return {
+    consumerScript: null,
+    heartbeat: null,
+    providerRegistration: null as string | null,
+    providerActivation: null as string | null,
+  };
+}
+
+async function disableNpcSeatContinuity(options: {
+  seatName: string;
+  previousSeatName?: string | null;
+  providerId?: string | null;
+  sourceWorkstationId?: string | null;
+  previousSourceWorkstationId?: string | null;
+}) {
+  const providerId = normalizePlatformProviderId(options.providerId) || "codex";
+  const seatNames = Array.from(
+    new Set([text(options.seatName, ""), text(options.previousSeatName, "")].filter(Boolean)),
+  );
+  const sourceWorkstationIds = Array.from(
+    new Set(
+      [text(options.sourceWorkstationId, ""), text(options.previousSourceWorkstationId, "")]
+        .filter(Boolean),
+    ),
+  );
+  const cleanupNotes: string[] = [];
+
+  if (providerId === "codex") {
+    let cleaned = false;
+    for (const seatName of seatNames) {
+      const cleanup = await cleanupCodexSeatAutonomyArtifacts({ seatName });
+      cleaned = cleaned || Boolean(cleanup.removedScript || cleanup.removedState || cleanup.removedAutomation);
+    }
+    if (cleaned) cleanupNotes.push("已关闭持续自治桥");
+    return cleanupNotes;
+  }
+
+  if (providerId === "claude") {
+    let cleaned = false;
+    for (const seatName of seatNames) {
+      for (const sourceWorkstationId of sourceWorkstationIds.length ? sourceWorkstationIds : [null]) {
+        const cleanup = await cleanupClaudeSeatSessionRegistration({
+          seatName,
+          sourceWorkstationId,
+        });
+        cleaned = cleaned || cleanup.removed;
+      }
+    }
+    if (cleaned) cleanupNotes.push("已关闭 Claude 持续自治");
+    return cleanupNotes;
+  }
+
+  return cleanupNotes;
+}
+
+function launchDetachedWorkstationOneShot(options: {
+  projectId: string;
+  workstationId: string;
+  providerId?: string | null;
+  seatName?: string | null;
+}) {
+  const providerId = normalizePlatformProviderId(options.providerId);
+
+  // 如果是Claude席位，尝试启动可见的消息桥接器窗口
+  if (providerId === "claude" && options.seatName) {
+    try {
+      const sessionId = options.workstationId.replace(/^claude-session-/, "");
+      if (sessionId && sessionId !== options.workstationId) {
+        const bridgeResult = launchClaudeSeatMessageBridge({
+          seatName: options.seatName,
+          sessionId,
+        });
+        if (bridgeResult.launched) {
+          return {
+            launched: true,
+            launcher: "claude-seat-message-bridge.ps1",
+            stdoutPath: bridgeResult.stdoutPath || "",
+            stderrPath: bridgeResult.stderrPath || "",
+            bridgeWindow: true,
+          };
+        }
+      }
+    } catch (error) {
+      console.error("启动Claude消息桥接器失败，回退到后台模式:", error);
+    }
+  }
+
+  // 原有的后台Python adapter逻辑
+  const scriptPath = path.join(workspaceRoot(), "scripts", "platform-workstation-adapter.py");
+  const safeWorkstationId =
+    text(options.workstationId, "workstation").replace(/[^a-zA-Z0-9._-]+/g, "-").slice(0, 96) || "workstation";
+  const logStamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const logDir = path.join(workspaceRoot(), "artifacts", "workstation-inbox", "oneshot", "logs");
+  mkdirSync(logDir, { recursive: true });
+  const stdoutPath = path.join(logDir, `${safeWorkstationId}-${logStamp}.out.log`);
+  const stderrPath = path.join(logDir, `${safeWorkstationId}-${logStamp}.err.log`);
+  const accessToken = cookies().get(ACCESS_TOKEN_COOKIE)?.value ?? "";
+  const pythonCandidates =
+    process.platform === "win32"
+      ? [
+          ["python"],
+          ["py", "-3"],
+        ]
+      : [["python3"], ["python"]];
+  const baseArgs = [
+    scriptPath,
+    "--api-base",
+    getApiBaseUrl(),
+    "--project-id",
+    options.projectId,
+    "--workstation-id",
+    options.workstationId,
+    "--auto-ack",
+    "--execute-provider-cli",
+    "--limit",
+    "1",
+    "--output-dir",
+    path.join("artifacts", "workstation-inbox", "oneshot"),
+  ];
+  if (text(options.providerId, "")) {
+    baseArgs.push("--provider", text(options.providerId, ""));
+  }
+
+  let lastError: unknown = null;
+  for (const commandParts of pythonCandidates) {
+    let stdoutFd: number | null = null;
+    let stderrFd: number | null = null;
+    try {
+      stdoutFd = openSync(stdoutPath, "a");
+      stderrFd = openSync(stderrPath, "a");
+      const child = spawn(commandParts[0], [...commandParts.slice(1), ...baseArgs], {
+        cwd: workspaceRoot(),
+        detached: true,
+        stdio: ["ignore", stdoutFd, stderrFd],
+        windowsHide: true,
+        env: {
+          ...process.env,
+          PYTHONIOENCODING: "utf-8",
+          PLATFORM_AUTH_TOKEN: accessToken,
+        },
+      });
+      child.unref();
+      if (stdoutFd !== null) closeSync(stdoutFd);
+      if (stderrFd !== null) closeSync(stderrFd);
+      return {
+        launched: true,
+        launcher: [...commandParts, "platform-workstation-adapter.py"].join(" "),
+        stdoutPath,
+        stderrPath,
+      };
+    } catch (error) {
+      lastError = error;
+      if (stdoutFd !== null) {
+        try {
+          closeSync(stdoutFd);
+        } catch {}
+      }
+      if (stderrFd !== null) {
+        try {
+          closeSync(stderrFd);
+        } catch {}
+      }
+    }
+  }
+
+  return {
+    launched: false,
+    launcher: null,
+    stdoutPath,
+    stderrPath,
+    error:
+      lastError instanceof Error
+        ? lastError.message
+        : "无法拉起本机的一次性工位执行器",
+  };
+}
+
+function launchDetachedNpcRelay(options: {
+  projectId: string;
+  relayId?: string | null;
+  firstWorkstationId: string;
+  firstProviderId?: string | null;
+  secondWorkstationId: string;
+  secondProviderId?: string | null;
+  title: string;
+  objective: string;
+}) {
+  const scriptPath = path.join(workspaceRoot(), "scripts", "platform-composite-relay-orchestrator.py");
+  const safeTitle =
+    text(options.title, "relay").replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "relay";
+  const logStamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const logDir = path.join(workspaceRoot(), "artifacts", "workstation-inbox", "relay", "logs");
+  mkdirSync(logDir, { recursive: true });
+  const stdoutPath = path.join(logDir, `${safeTitle}-${logStamp}.out.log`);
+  const stderrPath = path.join(logDir, `${safeTitle}-${logStamp}.err.log`);
+  const accessToken = cookies().get(ACCESS_TOKEN_COOKIE)?.value ?? "";
+  const pythonCandidates =
+    process.platform === "win32"
+      ? [
+          ["python"],
+          ["py", "-3"],
+        ]
+      : [["python3"], ["python"]];
+  const baseArgs = [
+    scriptPath,
+    "--api-base",
+    getApiBaseUrl(),
+    "--project-id",
+    options.projectId,
+    "--relay-id",
+    options.relayId || "",
+    "--first-workstation-id",
+    options.firstWorkstationId,
+    "--first-provider",
+    normalizePlatformProviderId(options.firstProviderId) || "codex",
+    "--second-workstation-id",
+    options.secondWorkstationId,
+    "--second-provider",
+    normalizePlatformProviderId(options.secondProviderId) || "claude",
+    "--title",
+    options.title,
+    "--objective",
+    options.objective,
+  ];
+
+  let lastError: unknown = null;
+  for (const commandParts of pythonCandidates) {
+    let stdoutFd: number | null = null;
+    let stderrFd: number | null = null;
+    try {
+      stdoutFd = openSync(stdoutPath, "a");
+      stderrFd = openSync(stderrPath, "a");
+      const child = spawn(commandParts[0], [...commandParts.slice(1), ...baseArgs], {
+        cwd: workspaceRoot(),
+        detached: true,
+        stdio: ["ignore", stdoutFd, stderrFd],
+        windowsHide: true,
+        env: {
+          ...process.env,
+          PYTHONIOENCODING: "utf-8",
+          PLATFORM_AUTH_TOKEN: accessToken,
+        },
+      });
+      child.unref();
+      if (stdoutFd !== null) closeSync(stdoutFd);
+      if (stderrFd !== null) closeSync(stderrFd);
+      return {
+        launched: true,
+        launcher: [...commandParts, "platform-composite-relay-orchestrator.py"].join(" "),
+        stdoutPath,
+        stderrPath,
+      };
+    } catch (error) {
+      lastError = error;
+      if (stdoutFd !== null) {
+        try {
+          closeSync(stdoutFd);
+        } catch {}
+      }
+      if (stderrFd !== null) {
+        try {
+          closeSync(stderrFd);
+        } catch {}
+      }
+    }
+  }
+
+  return {
+    launched: false,
+    launcher: null,
+    stdoutPath,
+    stderrPath,
+    error:
+      lastError instanceof Error
+        ? lastError.message
+        : "无法拉起平台多 NPC 接力编排器",
+  };
+}
+
+function buildNpcRelayStatusBody(options: {
+  relayId: string;
+  title: string;
+  objective: string;
+  firstWorkstationId: string;
+  firstProviderId: string;
+  secondWorkstationId: string;
+  secondProviderId: string;
+  stdoutPath?: string | null;
+  stderrPath?: string | null;
+  launchError?: string | null;
+}) {
+  const firstLabel = platformProviderLabel(options.firstProviderId);
+  const secondLabel = platformProviderLabel(options.secondProviderId);
+  return [
+    `relay_id: ${options.relayId}`,
+    `目标: ${options.objective}`,
+    `第一棒: ${firstLabel} / ${options.firstWorkstationId}`,
+    `第二棒: ${secondLabel} / ${options.secondWorkstationId}`,
+    "人工审核点: 第二棒最终回复完成后，用户需要确认是否可作为正式交付；涉及硬件、费用、删除、发布等高风险动作必须另走审批。",
+    "失败重试: 如果状态变为 failed，回到“多 NPC 接力”动作台，保留同一目标重新选择可用线程后再提交。",
+    options.stdoutPath ? `stdout: ${options.stdoutPath}` : "",
+    options.stderrPath ? `stderr: ${options.stderrPath}` : "",
+    options.launchError ? `启动错误: ${options.launchError}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+async function postNpcRelayStatus(options: {
+  projectId: string;
+  relayId: string;
+  title: string;
+  objective: string;
+  firstWorkstationId: string;
+  firstProviderId: string;
+  secondWorkstationId: string;
+  secondProviderId: string;
+  status: "pending" | "running" | "failed" | "completed";
+  stdoutPath?: string | null;
+  stderrPath?: string | null;
+  launchError?: string | null;
+}) {
+  return postJson("/api/collaboration/messages", {
+    project_id: options.projectId,
+    agent_id: "platform-relay",
+    message_type: "relay_status",
+    title: `${options.title} / 接力状态`,
+    body: buildNpcRelayStatusBody(options),
+    sender_type: "human",
+    sender_id: "platform-relay",
+    recipient_type: "project",
+    recipient_id: options.projectId,
+    status: options.status,
+  });
+}
+
+function resolveProjectWorkstationProviderId(
+  project: Record<string, unknown> | null | undefined,
+  workstationId: string | null | undefined,
+  fallbackProviderId: string,
+) {
+  const normalizedWorkstationId = text(workstationId, "");
+  if (!normalizedWorkstationId) return normalizePlatformProviderId(fallbackProviderId) || fallbackProviderId;
+  const workstations = readProjectThreadWorkstations(project);
+  const workstation =
+    workstations.find((item) =>
+      workstationLookupKeys(item).some((candidate) => candidate === normalizedWorkstationId),
+    ) ?? null;
+  if (!workstation) {
+    return normalizePlatformProviderId(fallbackProviderId) || fallbackProviderId;
+  }
+  const metadata =
+    workstation.metadata && typeof workstation.metadata === "object"
+      ? (workstation.metadata as Record<string, unknown>)
+      : {};
+  return (
+    normalizePlatformProviderId(
+      workstation.ai_provider_id ??
+        workstation.ai_provider ??
+        metadata.provider_id ??
+        metadata.provider ??
+        metadata.provider_label,
+    ) ||
+    derivePlatformProviderIdFromThreadId(
+      workstation.source_workstation_id ??
+        metadata.source_workstation_id ??
+        workstation.id ??
+        workstation.workstation_id ??
+        normalizedWorkstationId,
+    ) ||
+    normalizePlatformProviderId(fallbackProviderId) ||
+    fallbackProviderId
+  );
+}
+
+async function resolveNpcSeatDispatchMode(options: {
+  project: Record<string, unknown>;
+  formData: FormData;
+  payload: CollaborationMessagePayload;
+}) {
+  const npcSeatId = normalizeMessageFormValue(options.formData.get("npc_seat_id"));
+  if (
+    !npcSeatId ||
+    !options.payload.project_id ||
+    options.payload.message_type !== "agent_command" ||
+    options.payload.recipient_type !== "workstation" ||
+    !options.payload.recipient_id
+  ) {
+    return null;
+  }
+
+  const workstations = readProjectThreadWorkstations(options.project);
+  const seat =
+    workstations.find((item) =>
+      workstationLookupKeys(item).some((candidate) => candidate === npcSeatId),
+    ) ?? null;
+  if (!seat) return null;
+
+  const metadata =
+    seat.metadata && typeof seat.metadata === "object" ? (seat.metadata as Record<string, unknown>) : {};
+  const providerId =
+    normalizePlatformProviderId(
+      seat.ai_provider_id ?? seat.ai_provider ?? metadata.provider_id ?? metadata.provider_label,
+    ) || "codex";
+  const automationEnabled = readSeatAutomationEnabled(metadata, false);
+  if (automationEnabled) {
+    return {
+      mode: "automation" as const,
+      launched: false,
+      providerId,
+      seatName: text(seat.name ?? seat.workstation_name, npcSeatId),
+    };
+  }
+
+  const seatName = text(seat.name ?? seat.workstation_name, npcSeatId);
+  const launchResult = launchDetachedWorkstationOneShot({
+    projectId: options.payload.project_id,
+    workstationId: options.payload.recipient_id,
+    providerId,
+    seatName,
+  });
+  return {
+    mode: "one-shot" as const,
+    ...launchResult,
+    providerId,
+    seatName,
+  };
+}
+
+async function readNpcProvisioningSummary(options: {
+  seatId: string;
+  seatName: string;
+  providerId: string;
+  providerLabel?: string | null;
+  sourceWorkstationId?: string | null;
+}) {
+  const providerId = normalizePlatformProviderId(options.providerId);
+  const sourceWorkstationId = text(options.sourceWorkstationId, "") || null;
+  if (providerId === "codex") {
+    const status = await readCodexSeatAutonomyStatus({
+      seatId: options.seatId,
+      seatName: options.seatName,
+      sourceWorkstationId,
+    });
+    return summarizeNpcProvisioning({
+      providerId,
+      providerLabel: options.providerLabel,
+      sourceThreadId: sourceWorkstationId,
+      hasActiveRequirement: false,
+      autonomyReady: status.autonomyReady,
+      supportsLocalAutonomyBridge: true,
+      consumerScriptExists: status.consumerScriptExists,
+      consumerStateExists: status.consumerStateExists,
+      consumerStateStale: status.consumerStateStale,
+      heartbeatMissing: status.heartbeatMissing,
+      heartbeatStatus: status.automationStatus,
+    });
+  }
+  if (providerId === "claude") {
+    const status = await readClaudeSeatAutonomyStatus({
+      seatId: options.seatId,
+      seatName: options.seatName,
+      sourceWorkstationId,
+    });
+    return summarizeNpcProvisioning({
+      providerId,
+      providerLabel: options.providerLabel,
+      sourceThreadId: sourceWorkstationId,
+      hasActiveRequirement: false,
+      autonomyReady: status.autonomyReady,
+      supportsLocalAutonomyBridge: false,
+      sessionSeen: status.sessionSeen,
+      sessionRegistered: status.sessionRegistered,
+      sessionStatus: status.sessionStatus,
+      sessionLaunchBlocked: status.sessionLaunchBlocked,
+      sessionLaunchBlockReason: status.lastLaunchErrorSummary,
+    });
+  }
+  return summarizeNpcProvisioning({
+    providerId,
+    providerLabel: options.providerLabel,
+    sourceThreadId: sourceWorkstationId,
+    hasActiveRequirement: false,
+    supportsLocalAutonomyBridge: false,
+  });
+}
+
+function revalidateProjectSurfaces(projectId: string) {
+  revalidatePath(`/projects/${projectId}`);
+  revalidatePath("/projects");
+  revalidatePath("/projects/mode-choice");
+  revalidatePath("/projects/mode-choice/2d-edu");
+  revalidatePath("/projects/mode-choice/3d-dev");
+  revalidatePath("/projects/mode-choice/3d-edu");
+  revalidatePath("/login");
+}
+
+export async function 创建项目工作区(formData: FormData) {
+  const result = await postJson("/api/projects", {
+    name: String(formData.get("name") ?? "").trim(),
+    description: String(formData.get("description") ?? "").trim() || null,
+    project_type: String(formData.get("project_type") ?? "").trim() || "software",
+    github_url: String(formData.get("github_url") ?? "").trim() || null,
+    local_git_url: String(formData.get("local_git_url") ?? "").trim() || null,
+    default_branch: String(formData.get("default_branch") ?? "").trim() || "main",
+    develop_branch: String(formData.get("develop_branch") ?? "").trim() || "develop",
+  });
+  const project = result.data ?? result;
+  revalidatePath("/projects");
+  revalidatePath("/");
+  redirect(buildProjectModeEntryPath(String(project.id ?? "").trim() || undefined, "2d-dev"));
+}
+
+export async function 创建项目任务(formData: FormData) {
+  const projectId = String(formData.get("project_id") ?? "").trim();
+  if (!projectId) return;
+  const rawDueAt = String(formData.get("due_at") ?? "").trim();
+  const dueAtDate = rawDueAt ? new Date(rawDueAt) : null;
+  const dueAt = dueAtDate && !Number.isNaN(dueAtDate.getTime()) ? dueAtDate.toISOString() : null;
+  const rawReturnTo = String(formData.get("return_to") ?? "").trim();
+
+  await postJson("/api/tasks", {
+    project_id: projectId,
+    title: String(formData.get("title") ?? "").trim() || "未命名任务",
+    description: String(formData.get("description") ?? "").trim() || null,
+    module: String(formData.get("module") ?? "").trim() || null,
+    priority: String(formData.get("priority") ?? "P2").trim() || "P2",
+    status: String(formData.get("status") ?? "draft").trim() || "draft",
+    branch: String(formData.get("branch") ?? "").trim() || null,
+    related_issue: String(formData.get("related_issue") ?? "").trim() || null,
+    assignee_agent_id: String(formData.get("assignee_agent_id") ?? "").trim() || null,
+    due_at: dueAt,
+    reviewers: parseStringList(formData.get("reviewers")) ?? [],
+    acceptance_criteria: parseStringList(formData.get("acceptance_criteria")) ?? [],
+  });
+
+  revalidateProjectSurfaces(projectId);
+  revalidatePath("/tasks");
+  if (rawReturnTo) {
+    redirect(normalizeProjectReturnPath(projectId, rawReturnTo, "schedule"));
+  }
+}
+
+export async function 创建项目需求(formData: FormData) {
+  const projectId = String(formData.get("project_id") ?? "").trim();
+  if (!projectId) return;
+
+  await postJson("/api/requirements", {
+    project_id: projectId,
+    task_id: String(formData.get("task_id") ?? "").trim() || null,
+    title: String(formData.get("title") ?? "").trim() || "未命名需求",
+    requirement_type: String(formData.get("requirement_type") ?? "thread_request").trim() || "thread_request",
+    module: String(formData.get("module") ?? "").trim() || null,
+    priority: String(formData.get("priority") ?? "high").trim() || "high",
+    status: String(formData.get("status") ?? "waiting_response").trim() || "waiting_response",
+    from_agent: String(formData.get("from_agent") ?? "").trim() || null,
+    to_agent: String(formData.get("to_agent") ?? "").trim() || null,
+    context_summary: String(formData.get("context_summary") ?? "").trim() || null,
+    expected_output: String(formData.get("expected_output") ?? "").trim() || null,
+    related_files: parseStringList(formData.get("related_files")) ?? [],
+    max_response_tokens: Number(formData.get("max_response_tokens") ?? 3000) || 3000,
+    opening_message: String(formData.get("opening_message") ?? "").trim() || null,
+  });
+
+  revalidateProjectSurfaces(projectId);
+  revalidatePath("/requirements");
+}
+
+export async function submitApprovalAction(
+  approvalId: string,
+  action: "approve" | "reject" | "request-changes",
+  formData: FormData,
+) {
+  const result = await postJson(`/api/approvals/${approvalId}/${action}`, {
+    notes: String(formData.get("notes") ?? "").trim() || action,
+  });
+  const approval = result.data ?? result;
+  revalidatePath("/approvals");
+  revalidatePath("/lab");
+  if (approval?.task_id) {
+    revalidatePath(`/tasks/${approval.task_id}`);
+    revalidatePath(`/tasks/${approval.task_id}/context`);
+  }
+}
+
+export async function submitApprovalRequest(formData: FormData) {
+  const result = await postJson("/api/approvals", {
+    project_id: String(formData.get("project_id") ?? "") || null,
+    task_id: String(formData.get("task_id") ?? ""),
+    level: String(formData.get("level") ?? "H3"),
+    action: String(formData.get("action") ?? "firmware flash"),
+    status: String(formData.get("status") ?? "pending"),
+    notes: String(formData.get("notes") ?? "") || null,
+  });
+  const approval = result.data ?? result;
+  revalidatePath("/lab");
+  revalidatePath("/approvals");
+  if (approval?.task_id) {
+    revalidatePath(`/tasks/${approval.task_id}`);
+    revalidatePath(`/tasks/${approval.task_id}/context`);
+  }
+}
+
+export async function 提交审批动作(
+  approvalId: string,
+  action: "approve" | "reject" | "request-changes",
+  formData: FormData,
+) {
+  const result = await postJson(`/api/approvals/${approvalId}/${action}`, {
+    notes: String(formData.get("notes") ?? "").trim() || (action === "approve" ? "??" : action === "reject" ? "??" : "????"),
+  });
+  const approval = result.data ?? result;
+  revalidatePath("/approvals");
+  revalidatePath("/lab");
+  if (approval?.task_id) {
+    revalidatePath(`/tasks/${approval.task_id}`);
+    revalidatePath(`/tasks/${approval.task_id}/context`);
+  }
+}
+
+export async function 创建审批记录(formData: FormData) {
+  const result = await postJson("/api/approvals", {
+    project_id: String(formData.get("project_id") ?? "") || null,
+    task_id: String(formData.get("task_id") ?? ""),
+    level: String(formData.get("level") ?? "H3"),
+    action: String(formData.get("action") ?? "????"),
+    status: String(formData.get("status") ?? "pending"),
+    approver_user_id: String(formData.get("approver_user_id") ?? "") || null,
+    notes: String(formData.get("notes") ?? "") || null,
+  });
+  const approval = result.data ?? result;
+  revalidatePath("/lab");
+  revalidatePath("/approvals");
+  if (approval?.task_id) {
+    revalidatePath(`/tasks/${approval.task_id}`);
+    revalidatePath(`/tasks/${approval.task_id}/context`);
+  }
+}
+
+export async function 提交需求动作(
+  requirementId: string,
+  action: "accept" | "escalate" | "close" | "promote-to-knowledge",
+) {
+  await postJson(`/api/requirements/${requirementId}/${action}`, {
+    actor_type: "human",
+    actor_id: "human-chief",
+    target_type: "knowledge",
+    note:
+      action === "accept"
+        ? "由前端需求库直接采纳"
+        : action === "escalate"
+          ? "由前端需求库升级处理"
+          : action === "promote-to-knowledge"
+            ? "由前端需求库沉淀到知识库"
+            : "由前端需求库关闭",
+  });
+  revalidatePath("/requirements");
+  revalidatePath("/knowledge");
+  revalidatePath("/handoffs");
+  revalidatePath("/context-health");
+}
+
+export async function 登记需求最小回执(
+  requirementId: string,
+  ackKind: "claimed" | "done",
+  formData: FormData,
+) {
+  const projectId = String(formData.get("project_id") ?? "").trim();
+  const requirementTitle = String(formData.get("requirement_title") ?? "").trim() || "未命名需求";
+  const target = String(formData.get("target") ?? "").trim();
+  const senderSeatId = String(formData.get("sender_seat_id") ?? "").trim();
+  const route = String(formData.get("route") ?? "").trim();
+
+  if (!projectId || !requirementId) return;
+
+  const senderType = route.includes("人工") || target.startsWith("human:") ? "human" : "agent";
+  const title = ackKind === "claimed" ? `${requirementTitle} 已接单` : `${requirementTitle} 已完成`;
+  const body =
+    ackKind === "claimed"
+      ? String(formData.get("claimed_body") ?? "").trim() || "已接单，开始处理，稍后补最小报告。"
+      : String(formData.get("done_body") ?? "").trim() || "已完成，已回最小报告，可继续看下一条。";
+
+  const senderId =
+    senderType === "agent"
+      ? senderSeatId || target || String(formData.get("sender_id") ?? "codex-mainline").trim()
+      : target || String(formData.get("sender_id") ?? "human-chief").trim();
+
+  if (ackKind === "claimed") {
+    const targetType =
+      senderType === "human"
+        ? "human"
+        : target.startsWith("ai:")
+          ? "agent"
+          : "workstation";
+    await postJson(`/api/requirements/${encodeURIComponent(requirementId)}/dispatch`, {
+      target_type: targetType,
+      target_id: senderId,
+      note: body,
+      status: "in_progress",
+      title,
+      body,
+    });
+  } else {
+    await postJson(`/api/requirements/${encodeURIComponent(requirementId)}/final-reply`, {
+      sender_type: senderType,
+      sender_id: senderId,
+      recipient_type: "project",
+      recipient_id: projectId,
+      message: body,
+      status: "done",
+      title,
+    });
+  }
+
+  revalidateProjectSurfaces(projectId);
+  redirect(
+    `/projects/${projectId}?panel=team&tab=exchange&team_notice=${encodeURIComponent(
+      ackKind === "claimed" ? "已登记最小接单回执" : "已登记完成回执",
+    )}`,
+  );
+}
+
+export async function 运行平台自治推进(projectId: string, formData: FormData) {
+  if (!projectId) return;
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "git");
+  try {
+    const result = await postJson(`/api/requirements/projects/${encodeURIComponent(projectId)}/autonomy-sweep`, {});
+    const payload = result?.data ?? result ?? {};
+    const dispatched = Number(payload.dispatched ?? 0) || 0;
+    const finalized = Number(payload.finalized ?? 0) || 0;
+    const syncedCodexCommands = await syncPlatformCodexDispatchInbox(projectId);
+    revalidateProjectSurfaces(projectId);
+    redirect(
+      withQueryValue(
+        returnTo,
+        "team_notice",
+        `自治推进完成：派单 ${dispatched} 条，补最终回复 ${finalized} 条，同步 Codex 指令 ${syncedCodexCommands} 条`,
+      ),
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "自治推进失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
+export async function 沉淀需求到知识库(requirementId: string) {
+  await postJson(`/api/requirements/${requirementId}/promote-to-knowledge`, {
+    actor_type: "human",
+    actor_id: "human-chief",
+    target_type: "knowledge",
+    note: "由需求页直接沉淀为知识库样板",
+  });
+  revalidatePath("/requirements");
+  revalidatePath("/knowledge");
+  revalidatePath("/handoffs");
+  revalidatePath("/context-health");
+}
+
+export async function 切换智能体状态(agentId: string, enabled: boolean) {
+  await postJson(`/api/agents/${agentId}/${enabled ? "enable" : "disable"}`, {
+    actor_type: "human",
+    actor_id: "human-chief",
+    note: enabled ? "由前端工位启用" : "由前端工位停用",
+  });
+  revalidatePath(`/agents/${agentId}`);
+  revalidatePath("/agents");
+}
+
+export async function 接受交接(taskId: string, handoffId: string, agentId: string | null | undefined) {
+  await postJson(`/api/tasks/${taskId}/handoffs/${handoffId}/accept`, {
+    actor_type: "agent",
+    actor_id: agentId ?? "agent_boss",
+    note: "由前端交接站确认接手",
+  });
+  revalidatePath("/handoffs");
+  revalidatePath(`/tasks/${taskId}`);
+  revalidatePath(`/tasks/${taskId}/context`);
+  revalidatePath("/requirements");
+  revalidatePath("/knowledge");
+  revalidatePath("/context-health");
+}
+
+export async function 更新项目配置(projectId: string, formData: FormData) {
+  const requirementPolicyText = String(formData.get("requirement_policy") ?? "").trim();
+  const collaborationConfigText = String(formData.get("collaboration_config") ?? "").trim();
+  const computerNodesText = String(formData.get("computer_nodes") ?? "").trim();
+  const aiProvidersText = String(formData.get("ai_providers") ?? "").trim();
+  const threadWorkstationsText = String(formData.get("thread_workstations") ?? "").trim();
+  let requirementPolicy: unknown = {};
+  let collaborationConfig: unknown = {};
+  if (requirementPolicyText) {
+    try {
+      requirementPolicy = JSON.parse(requirementPolicyText);
+    } catch {
+      requirementPolicy = {};
+    }
+  }
+  if (collaborationConfigText) {
+    try {
+      collaborationConfig = JSON.parse(collaborationConfigText);
+    } catch {
+      collaborationConfig = {};
+    }
+  }
+  const configBase = collaborationConfig && typeof collaborationConfig === "object" ? (collaborationConfig as Record<string, unknown>) : {};
+  if (computerNodesText || aiProvidersText || threadWorkstationsText) {
+    const mergeArray = (text: string, key: "computer_nodes" | "ai_providers" | "thread_workstations") => {
+      if (!text) return Array.isArray(configBase[key]) ? configBase[key] : [];
+      try {
+        const parsed = JSON.parse(text);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    };
+    collaborationConfig = {
+      ...configBase,
+      computer_nodes: mergeArray(computerNodesText, "computer_nodes"),
+      ai_providers: mergeArray(aiProvidersText, "ai_providers"),
+      thread_workstations: mergeArray(threadWorkstationsText, "thread_workstations"),
+    };
+  }
+  await patchJson(`/api/projects/${projectId}`, {
+    name: String(formData.get("name") ?? ""),
+    description: String(formData.get("description") ?? ""),
+    project_type: String(formData.get("project_type") ?? ""),
+    github_url: String(formData.get("github_url") ?? ""),
+    local_git_url: String(formData.get("local_git_url") ?? ""),
+    default_branch: String(formData.get("default_branch") ?? "main"),
+    develop_branch: String(formData.get("develop_branch") ?? "develop"),
+    requirement_policy: requirementPolicy,
+    collaboration_config: collaborationConfig,
+  });
+  revalidateProjectSurfaces(projectId);
+}
+
+export async function 创建开发工坊工位(projectId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "development-workshop");
+  try {
+    const { project } = await ensureProjectCollaborationAccess(projectId);
+    const collaborationConfig = readProjectCollaborationConfig(project);
+    const currentStations = readDevelopmentWorkshopStations(project);
+    const nextStation = buildDevelopmentWorkshopStationFromFormData(formData);
+    const nextStations = [...currentStations, nextStation];
+    collaborationConfig.development_workshop_stations = nextStations;
+    await ensureDevelopmentWorkshopStationKnowledgeDoc({
+      stationId: nextStation.id,
+      label: nextStation.label,
+      detail: nextStation.detail,
+      knowledgeBase: nextStation.knowledgeBase,
+      runnerCapabilities: nextStation.runnerCapabilities,
+      aiResponsibilities: nextStation.aiResponsibilities,
+      nextActions: nextStation.nextActions,
+      approvalPolicy: nextStation.approvalPolicy,
+    });
+
+    await patchJson(`/api/projects/${projectId}`, {
+      collaboration_config: collaborationConfig,
+    });
+    revalidateProjectSurfaces(projectId);
+    redirect(withQueryValue(returnTo, "team_notice", `已添加工位：${nextStation.label}`));
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "添加开发工坊工位失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
+export async function 更新开发工坊工位(projectId: string, stationId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "development-workshop");
+  try {
+    const { project } = await ensureProjectCollaborationAccess(projectId);
+    const collaborationConfig = readProjectCollaborationConfig(project);
+    const currentStations = readDevelopmentWorkshopStations(project);
+    const nextStation = buildDevelopmentWorkshopStationFromFormData(formData, stationId);
+    const targetIndex = currentStations.findIndex((item) => item.id === stationId);
+    if (targetIndex < 0) {
+      throw new Error("没有找到这个工位");
+    }
+    const nextStations = [...currentStations];
+    nextStations[targetIndex] = nextStation;
+    collaborationConfig.development_workshop_stations = nextStations;
+    await ensureDevelopmentWorkshopStationKnowledgeDoc({
+      stationId: nextStation.id,
+      label: nextStation.label,
+      detail: nextStation.detail,
+      knowledgeBase: nextStation.knowledgeBase,
+      runnerCapabilities: nextStation.runnerCapabilities,
+      aiResponsibilities: nextStation.aiResponsibilities,
+      nextActions: nextStation.nextActions,
+      approvalPolicy: nextStation.approvalPolicy,
+    });
+
+    await patchJson(`/api/projects/${projectId}`, {
+      collaboration_config: collaborationConfig,
+    });
+    revalidateProjectSurfaces(projectId);
+    let nextPath = withQueryValue(returnTo, "team_notice", `已更新工位：${nextStation.label}`);
+    nextPath = withQueryValue(nextPath, "station", nextStation.id);
+    redirect(nextPath);
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "更新开发工坊工位失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
+export async function 删除开发工坊工位(projectId: string, stationId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "development-workshop");
+  try {
+    const { project } = await ensureProjectCollaborationAccess(projectId);
+    const collaborationConfig = readProjectCollaborationConfig(project);
+    const currentStations = readDevelopmentWorkshopStations(project);
+    const removed = currentStations.find((item) => item.id === stationId) ?? null;
+    if (!removed) {
+      throw new Error("没有找到这个工位");
+    }
+    if (currentStations.length <= 1) {
+      throw new Error("开发工坊至少要保留 1 个工位");
+    }
+    collaborationConfig.development_workshop_stations = currentStations.filter((item) => item.id !== stationId);
+
+    await patchJson(`/api/projects/${projectId}`, {
+      collaboration_config: collaborationConfig,
+    });
+    revalidateProjectSurfaces(projectId);
+    redirect(withQueryValue(returnTo, "team_notice", `已删除工位：${removed.label}`));
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "删除开发工坊工位失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
+export async function 更新任务DDL(projectId: string, taskId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "schedule");
+  const rawDueAt = String(formData.get("due_at") ?? "").trim();
+  const note = String(formData.get("note") ?? "").trim();
+
+  try {
+    const actorId = await resolveProjectHumanActorId(projectId);
+    const dueAtDate = rawDueAt ? new Date(rawDueAt) : null;
+    if (dueAtDate && Number.isNaN(dueAtDate.getTime())) {
+      throw new Error("DDL 时间格式无效");
+    }
+    const dueAt = dueAtDate ? dueAtDate.toISOString() : null;
+    await patchJson(`/api/tasks/${encodeURIComponent(taskId)}`, {
+      due_at: dueAt,
+    });
+    if (note) {
+      await postJson(`/api/tasks/${encodeURIComponent(taskId)}/messages`, {
+        project_id: projectId,
+        message_type: "task_message",
+        sender_type: "human",
+        sender_id: actorId,
+        body: `日程日历备注：${note}`,
+        data: {
+          kind: "schedule_deadline_note",
+          due_at: dueAt,
+        },
+      });
+    }
+    revalidateProjectSurfaces(projectId);
+    revalidatePath(`/tasks/${taskId}`);
+    redirect(withQueryValue(returnTo, "team_notice", dueAt ? "任务 DDL 已更新" : "任务 DDL 已清空"));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "更新任务 DDL 失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
+export async function 保存项目日程安排(projectId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "schedule");
+  const scheduleDate = String(formData.get("schedule_date") ?? "").trim() || new Date().toISOString().slice(0, 10);
+  const dailyPlan = String(formData.get("daily_plan") ?? "").trim();
+  const ddlNote = String(formData.get("ddl_note") ?? "").trim();
+
+  try {
+    const { currentUser, project } = await ensureProjectCollaborationAccess(projectId);
+    const actorId = text(currentUser?.id ?? currentUser?.email, "human-chief");
+    const collaborationConfig =
+      project?.collaboration_config && typeof project.collaboration_config === "object"
+        ? { ...(project.collaboration_config as Record<string, unknown>) }
+        : {};
+    const dailySchedule =
+      collaborationConfig.daily_schedule && typeof collaborationConfig.daily_schedule === "object"
+        ? { ...(collaborationConfig.daily_schedule as Record<string, unknown>) }
+        : {};
+
+    await patchJson(`/api/projects/${projectId}`, {
+      collaboration_config: {
+        ...collaborationConfig,
+        daily_schedule: {
+          ...dailySchedule,
+          [scheduleDate]: {
+            date: scheduleDate,
+            daily_plan: dailyPlan,
+            ddl_note: ddlNote,
+            updated_at: new Date().toISOString(),
+            updated_by: actorId,
+          },
+        },
+      },
+    });
+    revalidateProjectSurfaces(projectId);
+    redirect(withQueryValue(returnTo, "team_notice", "每日安排已保存"));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "保存每日安排失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
+export async function 保存串口电视配置(projectId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "serial-tv");
+  const baudRate = Number(formData.get("baud_rate") ?? 115200) || 115200;
+  const protocol = String(formData.get("protocol") ?? "aicollab-csv-v1").trim() || "aicollab-csv-v1";
+  const frameFormat =
+    String(formData.get("frame_format") ?? "@xy,<x>,<y>\\n 或 @sample,<t>,<ch1>,<ch2>...\\n").trim() ||
+    "@xy,<x>,<y>\\n";
+  const channelNames =
+    parseStringList(formData.get("channel_names")) ?? ["x", "y"];
+  const notes = String(formData.get("notes") ?? "").trim();
+
+  try {
+    const { currentUser, project } = await ensureProjectCollaborationAccess(projectId);
+    const actorId = text(currentUser?.id ?? currentUser?.email, "human-chief");
+    const collaborationConfig =
+      project?.collaboration_config && typeof project.collaboration_config === "object"
+        ? { ...(project.collaboration_config as Record<string, unknown>) }
+        : {};
+
+    await patchJson(`/api/projects/${projectId}`, {
+      collaboration_config: {
+        ...collaborationConfig,
+        serial_debug_assistant: {
+          ...((collaborationConfig.serial_debug_assistant &&
+          typeof collaborationConfig.serial_debug_assistant === "object"
+            ? collaborationConfig.serial_debug_assistant
+            : {}) as Record<string, unknown>),
+          protocol,
+          baud_rate: baudRate,
+          frame_format: frameFormat,
+          channel_names: channelNames,
+          notes,
+          updated_at: new Date().toISOString(),
+          updated_by: actorId,
+        },
+      },
+    });
+    revalidateProjectSurfaces(projectId);
+    redirect(withQueryValue(returnTo, "team_notice", "串口电视协议已保存"));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "保存串口电视协议失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
+export async function 请求串口USB扫描(projectId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "serial-tv");
+  const targetNodeId = String(formData.get("computer_node_id") ?? "all").trim() || "all";
+  try {
+    await ensureProjectCollaborationAccess(projectId);
+    const result = await getJson(`/api/collaboration/projects/${projectId}/computer-nodes`);
+    const nodes = asArray<Record<string, unknown>>(result?.data ?? result);
+    const targetNodes =
+      targetNodeId === "all"
+        ? nodes
+        : nodes.filter((node) => text(node.id ?? node.node_id ?? node.name ?? node.label, "") === targetNodeId);
+    if (!targetNodes.length) {
+      throw new Error("没有可扫描的电脑，请先在电脑接入管理里添加电脑。");
+    }
+
+    const requestedAt = new Date().toISOString();
+
+    for (const node of targetNodes) {
+      const nodeId = text(node.id ?? node.node_id ?? node.name ?? node.label, "");
+      if (!nodeId) continue;
+      await postJson(`/api/collaboration/projects/${projectId}/runner-commands`, {
+        computer_node_id: nodeId,
+        title: "串口电视 / 扫描 USB 与串口设备",
+        body: JSON.stringify(
+          {
+            kind: "serial.usb.scan",
+            version: "serial-tv.v1",
+            requested_at: requestedAt,
+            scan: ["serial_ports", "usb_devices"],
+            expected_reply: {
+              message_type: "runner_result",
+              data_key: "serial_devices",
+              item_shape: {
+                port: "COM3 or /dev/ttyUSB0",
+                label: "USB Serial / CH340 / CP210x / STM32 VCP",
+                vendor_id: "optional",
+                product_id: "optional",
+                serial_number: "optional",
+              },
+            },
+          },
+          null,
+          2,
+        ),
+      });
+    }
+
+    revalidateProjectSurfaces(projectId);
+    revalidatePath("/runners");
+    redirect(withQueryValue(returnTo, "team_notice", `已向 ${targetNodes.length} 台电脑下发 USB/串口扫描`));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "下发串口扫描失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
+export async function 下发串口调试指令(projectId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "serial-tv");
+  const nodeId = String(formData.get("computer_node_id") ?? "").trim();
+  const port = String(formData.get("port") ?? "").trim();
+  const baudRate = Number(formData.get("baud_rate") ?? 115200) || 115200;
+  const payloadText = String(formData.get("payload") ?? "").trim();
+  const payloadFormat = String(formData.get("payload_format") ?? "text-lf").trim() || "text-lf";
+  try {
+    if (!nodeId) throw new Error("请先选择目标电脑");
+    if (!port) throw new Error("请先填写串口号，例如 COM3 或 /dev/ttyUSB0");
+    if (!payloadText) throw new Error("请先填写要发送的数据");
+    await ensureProjectCollaborationAccess(projectId);
+    await postJson(`/api/collaboration/projects/${projectId}/runner-commands`, {
+      computer_node_id: nodeId,
+      title: `串口电视 / 写入 ${port}`,
+      body: JSON.stringify(
+        {
+          kind: "serial.write",
+          version: "serial-tv.v1",
+          port,
+          baud_rate: baudRate,
+          payload_format: payloadFormat,
+          payload: payloadText,
+          expected_reply: {
+            message_type: "runner_result",
+            data_key: "serial_write_result",
+          },
+        },
+        null,
+        2,
+      ),
+    });
+    revalidateProjectSurfaces(projectId);
+    revalidatePath("/runners");
+    redirect(withQueryValue(returnTo, "team_notice", "串口写入命令已下发"));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "下发串口写入失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
+export async function 更新项目版本库配置(projectId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "git");
+  try {
+    await ensureProjectCollaborationAccess(projectId);
+    await patchJson(`/api/projects/${projectId}`, {
+      github_url: String(formData.get("github_url") ?? "").trim() || null,
+      local_git_url: String(formData.get("local_git_url") ?? "").trim() || null,
+      default_branch: String(formData.get("default_branch") ?? "main").trim() || "main",
+      develop_branch: String(formData.get("develop_branch") ?? "develop").trim() || "develop",
+    });
+    revalidateProjectSurfaces(projectId);
+    redirect(withQueryValue(returnTo, "team_notice", "Git 配置已更新"));
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "更新 Git 配置失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
+export async function 保存项目Github账号绑定(projectId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "git");
+  try {
+    const { project } = await ensureProjectCollaborationAccess(projectId);
+    const collaborationConfig = readProjectCollaborationConfig(project);
+    const action = text(formData.get("binding_action"), "save").toLowerCase();
+    if (action === "clear") {
+      delete collaborationConfig.github_account_binding;
+      await patchJson(`/api/projects/${projectId}`, {
+        collaboration_config: collaborationConfig,
+      });
+      revalidateProjectSurfaces(projectId);
+      redirect(withQueryValue(returnTo, "team_notice", "GitHub 账号绑定已清除"));
+    }
+
+    const accountLogin = text(formData.get("account_login"), "");
+    const accountType = text(formData.get("account_type"), "user");
+    const profileUrl = text(formData.get("profile_url"), "");
+    const credentialSource = text(formData.get("credential_source"), "runner_env");
+    const credentialRef = text(formData.get("credential_ref"), "");
+    const defaultCloneProtocol = text(formData.get("default_clone_protocol"), "https");
+    const permissionScopes = parseStringList(formData.get("permission_scopes")) ?? [];
+    const notes = text(formData.get("notes"), "");
+
+    if (!accountLogin) {
+      throw new Error("请先填写 GitHub 账号或组织名。");
+    }
+    if (looksLikeRawGithubCredential(credentialRef)) {
+      throw new Error("凭据标识不能填写明文 GitHub token。请改填环境变量名，例如 GITHUB_TOKEN，或选择 SSH Agent / GitHub App / OAuth。");
+    }
+    if (profileUrl) {
+      let parsed: URL;
+      try {
+        parsed = new URL(profileUrl);
+      } catch {
+        throw new Error("GitHub 主页地址格式不正确。");
+      }
+      if (!["github.com", "www.github.com"].includes(parsed.hostname.toLowerCase())) {
+        throw new Error("GitHub 主页必须是 github.com 地址。");
+      }
+    }
+
+    collaborationConfig.github_account_binding = {
+      account_login: accountLogin,
+      account_type: ["user", "org", "bot"].includes(accountType) ? accountType : "user",
+      profile_url: profileUrl || `https://github.com/${accountLogin}`,
+      credential_source: ["github_app", "oauth", "runner_env", "ssh_agent", "manual_review"].includes(credentialSource)
+        ? credentialSource
+        : "runner_env",
+      credential_ref: credentialRef,
+      default_clone_protocol: ["https", "ssh"].includes(defaultCloneProtocol) ? defaultCloneProtocol : "https",
+      permission_scopes: permissionScopes,
+      notes,
+      secret_storage: "not_stored_in_project_config",
+      updated_at: new Date().toISOString(),
+    };
+
+    await patchJson(`/api/projects/${projectId}`, {
+      collaboration_config: collaborationConfig,
+    });
+    revalidateProjectSurfaces(projectId);
+    redirect(withQueryValue(returnTo, "team_notice", `GitHub 账号已绑定：${accountLogin}`));
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "保存 GitHub 账号绑定失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
+export async function 登记项目Git同步(projectId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "git");
+  try {
+    const { currentUser, project } = await ensureProjectCollaborationAccess(projectId);
+    const provider = String(formData.get("provider") ?? "").trim() || "github";
+    const notes = String(formData.get("notes") ?? "").trim();
+
+    await postJson(`/api/git/projects/${projectId}/sync-github`, {
+      actor_type: "human",
+      actor_id: String(currentUser?.id ?? "").trim() || null,
+      provider,
+      notes: appendGitCollaborationContextToNotes(project, notes, "从项目页 Git 面板登记同步请求"),
+    });
+    const preflight = await dispatchProjectGitPreflightToRunners(projectId, project, {
+      action: "sync",
+      provider,
+      notes,
+      requestedBy: text(currentUser?.id ?? currentUser?.email, "human-chief"),
+    });
+    revalidateProjectSurfaces(projectId);
+    const preflightNotice = preflight.queued
+      ? `；已向 ${preflight.queued} 台已接入电脑下发只读预检`
+      : preflight.runnableNodeCount
+        ? "；只读预检未能下发，请检查 Runner 收件箱"
+        : "；暂无已绑定 Runner 的电脑，只登记项目活动";
+    redirect(withQueryValue(returnTo, "team_notice", `Git 同步请求已登记：${provider}${preflightNotice}`));
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "登记 Git 同步失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
+export async function 预演项目Git同步(projectId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "git");
+  try {
+    await ensureProjectCollaborationAccess(projectId);
+    const provider = String(formData.get("provider") ?? "").trim() || "github";
+    const notes = String(formData.get("notes") ?? "").trim();
+
+    const previewResult = await postJson(`/api/git/projects/${projectId}/sync-preview`, {
+      provider,
+      notes: notes || null,
+    });
+    const previewPayload =
+      previewResult && typeof previewResult === "object" && previewResult.data
+        ? previewResult.data
+        : previewResult;
+    const withPreview = withQueryValue(returnTo, "git_sync_preview", encodePreviewState(previewPayload));
+    redirect(withQueryValue(withPreview, "team_notice", `已生成 Git 同步预演：${provider}`));
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "Git 同步预演失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
+export async function 登记项目Git回退(projectId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "git");
+  try {
+    const { currentUser, project } = await ensureProjectCollaborationAccess(projectId);
+    const targetRef = String(formData.get("target_ref") ?? "").trim();
+    const notes = String(formData.get("notes") ?? "").trim();
+    if (!targetRef) {
+      throw new Error("请先填写要回退到的 Git 目标，例如 develop 或 HEAD~1");
+    }
+
+    await postJson(`/api/git/projects/${projectId}/rollback`, {
+      actor_type: "human",
+      actor_id: String(currentUser?.id ?? "").trim() || null,
+      target_ref: targetRef,
+      notes: appendGitCollaborationContextToNotes(project, notes, "从项目页 Git 面板登记回退请求"),
+    });
+    const preflight = await dispatchProjectGitPreflightToRunners(projectId, project, {
+      action: "rollback",
+      provider: "github",
+      targetRef,
+      notes,
+      requestedBy: text(currentUser?.id ?? currentUser?.email, "human-chief"),
+    });
+    revalidateProjectSurfaces(projectId);
+    const preflightNotice = preflight.queued
+      ? `；已向 ${preflight.queued} 台已接入电脑下发只读预检`
+      : preflight.runnableNodeCount
+        ? "；只读预检未能下发，请检查 Runner 收件箱"
+        : "；暂无已绑定 Runner 的电脑，只登记项目活动";
+    redirect(withQueryValue(returnTo, "team_notice", `Git 回退请求已登记：${targetRef}${preflightNotice}`));
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "登记 Git 回退失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
+export async function 预演项目Git回退(projectId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "git");
+  try {
+    await ensureProjectCollaborationAccess(projectId);
+    const targetRef = String(formData.get("target_ref") ?? "").trim();
+    const notes = String(formData.get("notes") ?? "").trim();
+    if (!targetRef) {
+      throw new Error("请先填写要回退到的 Git 目标，例如 develop 或 HEAD~1");
+    }
+
+    const previewResult = await postJson(`/api/git/projects/${projectId}/rollback-preview`, {
+      target_ref: targetRef,
+      notes: notes || null,
+    });
+    const previewPayload =
+      previewResult && typeof previewResult === "object" && previewResult.data
+        ? previewResult.data
+        : previewResult;
+    const withPreview = withQueryValue(returnTo, "git_preview", encodePreviewState(previewPayload));
+    redirect(withQueryValue(withPreview, "team_notice", `已生成 Git 回退预演：${targetRef}`));
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "Git 回退预演失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
+export async function 创建项目Skill(projectId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "skills");
+  try {
+    const { project } = await ensureProjectCollaborationAccess(projectId);
+    const collaborationConfig =
+      project?.collaboration_config && typeof project.collaboration_config === "object"
+        ? { ...(project.collaboration_config as Record<string, unknown>) }
+        : {};
+    const skillLibrary = Array.isArray(collaborationConfig.skill_library)
+      ? [...(collaborationConfig.skill_library as Record<string, unknown>[])]
+      : [];
+    const rawId = String(formData.get("skill_id") ?? "").trim().toLowerCase();
+    const skillId = rawId.replace(/[^a-z0-9-_]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+    const recommendedFor = parseStringList(formData.get("recommended_for")) ?? [];
+    if (!skillId) {
+      throw new Error("请先填写 skill 标识");
+    }
+    if (RESERVED_PLATFORM_SKILL_IDS.includes(skillId)) {
+      throw new Error("这是平台默认 skill，不需要重复新增。");
+    }
+    if (skillLibrary.some((item) => String(item.id ?? "").trim().toLowerCase() === skillId)) {
+      throw new Error("这个 skill 标识已经存在");
+    }
+
+    const nextSkill = {
+      id: skillId,
+      label: String(formData.get("label") ?? "").trim() || skillId,
+      note: String(formData.get("note") ?? "").trim() || "项目自定义 skill",
+      source: "custom",
+      scope: "role",
+      recommended_for: recommendedFor,
+    };
+
+    await patchJson(`/api/projects/${projectId}`, {
+      collaboration_config: {
+        ...collaborationConfig,
+        skill_library: sortProjectSkillLibrary([...skillLibrary, nextSkill]),
+      },
+    });
+    revalidateProjectSurfaces(projectId);
+    redirect(withQueryValue(returnTo, "team_notice", `已新增 Skill：${nextSkill.label}`));
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "新增项目 Skill 失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
+export async function 删除项目Skill(projectId: string, skillId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "skills");
+  try {
+    const { project } = await ensureProjectCollaborationAccess(projectId);
+    const collaborationConfig =
+      project?.collaboration_config && typeof project.collaboration_config === "object"
+        ? { ...(project.collaboration_config as Record<string, unknown>) }
+        : {};
+    const skillLibrary = Array.isArray(collaborationConfig.skill_library)
+      ? [...(collaborationConfig.skill_library as Record<string, unknown>[])]
+      : [];
+    const normalizedId = String(skillId ?? "").trim().toLowerCase();
+    const nextSkills = skillLibrary.filter(
+      (item) => String(item.id ?? "").trim().toLowerCase() !== normalizedId,
+    );
+
+    await patchJson(`/api/projects/${projectId}`, {
+      collaboration_config: {
+        ...collaborationConfig,
+        skill_library: sortProjectSkillLibrary(nextSkills),
+      },
+    });
+    revalidateProjectSurfaces(projectId);
+    redirect(withQueryValue(returnTo, "team_notice", "项目 Skill 已删除"));
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "删除项目 Skill 失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
+export async function 导入AgencyAgents项目Skill包(projectId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "skills");
+  try {
+    const { project } = await ensureProjectCollaborationAccess(projectId);
+    const collaborationConfig = readProjectCollaborationConfig(project);
+    const currentSkillLibrary = Array.isArray(collaborationConfig.skill_library)
+      ? [...(collaborationConfig.skill_library as Record<string, unknown>[])]
+      : [];
+    const currentSkillMap = new Map(
+      currentSkillLibrary.map((item, index) => [text(item.id, "").toLowerCase(), { item, index }] as const).filter(([id]) => Boolean(id)),
+    );
+    const pack = await readAgencyAgentsSkillPack();
+    const requestedIds = uniqueStrings(formData.getAll("skill_id").map((item) => text(item)));
+    const importAll = text(formData.get("import_mode"), "") === "all" || !requestedIds.length;
+    const requestedIdSet = new Set(requestedIds.map((item) => item.toLowerCase()));
+    const importedSkills = (pack.skill_library ?? [])
+      .map((item) => normalizeImportedProjectSkill(item))
+      .filter((item) => (importAll ? true : requestedIdSet.has(text(item.id, "").toLowerCase())))
+      .filter((item) => item.id && !RESERVED_PLATFORM_SKILL_IDS.includes(item.id));
+    if (!importedSkills.length) {
+      throw new Error(importAll ? "Agency Agents skill 包里没有可导入的 skill" : "当前没有命中可导入的所选 Skill");
+    }
+
+    let addedCount = 0;
+    let updatedCount = 0;
+    const nextSkills = [...currentSkillLibrary];
+    importedSkills.forEach((skill) => {
+      const key = text(skill.id, "").toLowerCase();
+      const existing = currentSkillMap.get(key);
+      if (!existing) {
+        addedCount += 1;
+        nextSkills.push(skill);
+        currentSkillMap.set(key, { item: skill, index: nextSkills.length - 1 });
+        return;
+      }
+      const previousJson = JSON.stringify(existing.item);
+      const nextJson = JSON.stringify(skill);
+      if (previousJson !== nextJson) {
+        updatedCount += 1;
+        nextSkills[existing.index] = skill;
+        currentSkillMap.set(key, { item: skill, index: existing.index });
+      }
+    });
+
+    await patchJson(`/api/projects/${projectId}`, {
+      collaboration_config: {
+        ...collaborationConfig,
+        skill_library: sortProjectSkillLibrary(nextSkills),
+      },
+    });
+    revalidateProjectSurfaces(projectId);
+    const totalCount = importedSkills.length;
+    const categoryCount = new Set(importedSkills.map((item) => skillCategoryLabel(item))).size;
+    const summary =
+      addedCount || updatedCount
+        ? importAll
+          ? `已同步 Agency Agents Skill：新增 ${addedCount} 条，更新 ${updatedCount} 条，覆盖 ${categoryCount} 类`
+          : `已同步所选 Agency Agents Skill：选中 ${requestedIds.length} 条，新增 ${addedCount} 条，更新 ${updatedCount} 条，覆盖 ${categoryCount} 类`
+        : importAll
+          ? `Agency Agents Skill 已是最新，共 ${totalCount} 条 / ${categoryCount} 类`
+          : `所选 Agency Agents Skill 已是最新：选中 ${requestedIds.length} 条 / ${categoryCount} 类`;
+    redirect(withQueryValue(returnTo, "team_notice", summary));
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "导入 Agency Agents Skill 包失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
+export async function 导入Github项目Skill(projectId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "skills");
+  try {
+    const { project } = await ensureProjectCollaborationAccess(projectId);
+    const collaborationConfig = readProjectCollaborationConfig(project);
+    const currentSkillLibrary = Array.isArray(collaborationConfig.skill_library)
+      ? [...(collaborationConfig.skill_library as Record<string, unknown>[])]
+      : [];
+    const githubUrl = text(formData.get("github_url"), "");
+    const githubPath = text(formData.get("github_path"), "");
+    const githubBranch = text(formData.get("github_branch"), "");
+    const category = text(formData.get("category"), "github");
+    const recommendedFor = parseStringList(formData.get("recommended_for")) ?? [];
+    if (!githubUrl) {
+      throw new Error("请先粘贴 GitHub repo、目录、blob 或 raw 文件地址。");
+    }
+
+    const target = parseGithubUrl(githubUrl, githubPath, githubBranch);
+    const sourceFiles = await readGithubSkillSourceFiles(target);
+    const importedSkills = sourceFiles
+      .flatMap((sourceFile) => parseGithubSkillFile(sourceFile, { category, recommendedFor }))
+      .filter((item) => text(item.id, "") && text(item.label, ""))
+      .filter((item) => !RESERVED_PLATFORM_SKILL_IDS.includes(text(item.id, "").toLowerCase()))
+      .slice(0, GITHUB_SKILL_IMPORT_MAX_SKILLS);
+    if (!importedSkills.length) {
+      throw new Error("GitHub 内容里没有解析出可导入的 Skill，请确认文件是 Markdown 或 JSON Skill。");
+    }
+
+    let addedCount = 0;
+    let updatedCount = 0;
+    const nextSkills = [...currentSkillLibrary];
+    const currentSkillMap = new Map(
+      currentSkillLibrary
+        .map((item, index) => [text(item.id, "").toLowerCase(), { item, index }] as const)
+        .filter(([id]) => Boolean(id)),
+    );
+
+    importedSkills.forEach((skill) => {
+      const key = text(skill.id, "").toLowerCase();
+      const existing = currentSkillMap.get(key);
+      if (!existing) {
+        addedCount += 1;
+        nextSkills.push(skill);
+        currentSkillMap.set(key, { item: skill, index: nextSkills.length - 1 });
+        return;
+      }
+      const previousJson = JSON.stringify(existing.item);
+      const nextJson = JSON.stringify(skill);
+      if (previousJson !== nextJson) {
+        updatedCount += 1;
+        nextSkills[existing.index] = skill;
+        currentSkillMap.set(key, { item: skill, index: existing.index });
+      }
+    });
+
+    await patchJson(`/api/projects/${projectId}`, {
+      collaboration_config: {
+        ...collaborationConfig,
+        skill_library: sortProjectSkillLibrary(nextSkills),
+      },
+    });
+    revalidateProjectSurfaces(projectId);
+    const repoLabel = `${target.owner}/${target.repo}`;
+    const summary =
+      addedCount || updatedCount
+        ? `已从 GitHub 导入 Skill：${repoLabel} / 文件 ${sourceFiles.length} 个 / 新增 ${addedCount} 条 / 更新 ${updatedCount} 条`
+        : `GitHub Skill 已是最新：${repoLabel} / ${importedSkills.length} 条`;
+    redirect(withQueryValue(returnTo, "team_notice", summary));
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "导入 GitHub Skill 失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
+export async function 应用机器人协作模板(projectId: string) {
+  await patchJson(`/api/projects/${projectId}`, {
+    collaboration_config: {
+      computer_nodes: [
+        {
+          id: "pc-1",
+          label: "电脑1",
+          status: "online",
+          runner_id: "runner-codex",
+          host: "192.168.1.21",
+          os: "Windows 11",
+        },
+        {
+          id: "pc-2",
+          label: "电脑2",
+          status: "online",
+          runner_id: "runner-claude",
+          host: "192.168.1.22",
+          os: "macOS",
+        },
+      ],
+      ai_providers: [
+        {
+          id: "codex",
+          label: "Codex",
+          kind: "thread",
+          enabled: true,
+          endpoint: "openai",
+          model: "gpt-5.1-codex",
+        },
+        {
+          id: "claude",
+          label: "Claude",
+          kind: "thread",
+          enabled: true,
+          endpoint: "anthropic",
+          model: "claude-opus-4.1",
+        },
+      ],
+      thread_workstations: [
+        {
+          name: "前端工位",
+          agent_id: "ai-fe-lead",
+          computer_node: "电脑1",
+          computer_node_id: "pc-1",
+          ai_provider: "Codex",
+          ai_provider_id: "codex",
+          status: "active",
+          description: "电脑1 上的 Codex 线程，负责前端与产品体验。",
+          notes: "适合 UI、页面、交互和前端联调。",
+        },
+        {
+          name: "机器人工位",
+          agent_id: "ai-robot-lead",
+          computer_node: "电脑2",
+          computer_node_id: "pc-2",
+          ai_provider: "Claude",
+          ai_provider_id: "claude",
+          status: "active",
+          description: "电脑2 上的 Claude 线程，负责机器人控制与分析。",
+          notes: "适合硬件约束、系统分析和机器人协作任务。",
+        },
+      ],
+    },
+  });
+  revalidateProjectSurfaces(projectId);
+}
+
+export async function 创建协作电脑节点(projectId: string, formData: FormData) {
+  const rawReturnTo = String(formData.get("return_to") ?? "").trim();
+  const returnTo = normalizeProjectReturnPath(projectId, rawReturnTo, "computers");
+  const nodeId = String(formData.get("id") ?? "").trim() || null;
+  const nodeLabel = String(formData.get("label") ?? "").trim() || "未命名电脑";
+  try {
+    await postJson(`/api/collaboration/projects/${projectId}/computer-nodes`, {
+      id: nodeId,
+      label: nodeLabel,
+      status: String(formData.get("status") ?? "offline").trim() || "offline",
+      runner_id: String(formData.get("runner_id") ?? "").trim() || null,
+      host: String(formData.get("host") ?? "").trim() || null,
+      os: String(formData.get("os") ?? "").trim() || null,
+      connection_kind: String(formData.get("connection_kind") ?? "").trim() || null,
+      workspace_root: String(formData.get("workspace_root") ?? "").trim() || null,
+      git_root: String(formData.get("git_root") ?? "").trim() || null,
+      read_paths: parseStringList(formData.get("read_paths")),
+      write_paths: parseStringList(formData.get("write_paths")),
+      sort_order: Number(formData.get("sort_order") ?? 0) || 0,
+      metadata: parseOptionalJson(String(formData.get("metadata") ?? "")),
+    });
+    revalidateProjectSurfaces(projectId);
+    if (rawReturnTo) {
+      let nextPath = withQueryValue(returnTo, "team_notice", `已登记电脑：${nodeLabel}${nodeId ? `（${nodeId}）` : ""}`);
+      if (nodeId) {
+        nextPath = withQueryValue(nextPath, "computer", nodeId);
+      }
+      redirect(nextPath);
+    }
+  } catch (error) {
+    rethrowRedirectError(error);
+    revalidateProjectSurfaces(projectId);
+    if (rawReturnTo) {
+      const message = error instanceof Error ? error.message : "登记电脑失败";
+      redirect(withQueryValue(returnTo, "team_error", message));
+    }
+    throw error;
+  }
+}
+
+export async function 删除协作电脑节点(projectId: string, nodeId: string) {
+  await deleteJson(`/api/collaboration/projects/${projectId}/computer-nodes/${encodeURIComponent(nodeId)}`);
+  revalidateProjectSurfaces(projectId);
+}
+
+export async function 生成电脑配对令牌(projectId: string, nodeId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "computers");
+  const result = await postJson(
+    `/api/collaboration/projects/${projectId}/computer-nodes/${encodeURIComponent(nodeId)}/pairing-token`,
+    {},
+  );
+  const token = String(result?.data?.token ?? "").trim();
+  revalidateProjectSurfaces(projectId);
+  let nextPath = withQueryValue(returnTo, "pairing_node", nodeId);
+  nextPath = withQueryValue(nextPath, "pairing_token", token);
+  nextPath = withQueryValue(nextPath, "team_notice", `已生成 ${nodeId} 的配对令牌，请在目标电脑执行接入命令`);
+  redirect(nextPath);
+}
+
+export async function 吊销电脑配对令牌(projectId: string, nodeId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "computers");
+  await deleteJson(`/api/collaboration/projects/${projectId}/computer-nodes/${encodeURIComponent(nodeId)}/pairing-token`);
+  revalidateProjectSurfaces(projectId);
+  redirect(withQueryValue(returnTo, "team_notice", `已吊销 ${nodeId} 的配对令牌`));
+}
+
+export async function 生成工位接入令牌(projectId: string, workstationId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "machine-room");
+  const sanitizedReturnTo = withoutQueryKeys(returnTo, ["adapter_workstation", "adapter_token"]);
+  const result = await postJson(
+    `/api/collaboration/projects/${projectId}/thread-workstations/${encodeURIComponent(workstationId)}/adapter-token`,
+    {},
+  );
+  const token = String(result?.data?.token ?? "").trim();
+  revalidateProjectSurfaces(projectId);
+  let nextPath = withQueryValue(sanitizedReturnTo, "adapter_workstation", workstationId);
+  nextPath = withQueryValue(nextPath, "adapter_token", token);
+  nextPath = withQueryValue(nextPath, "team_notice", `已生成 ${workstationId} 的工位接入令牌`);
+  redirect(nextPath);
+}
+
+export async function 吊销工位接入令牌(projectId: string, workstationId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "machine-room");
+  const sanitizedReturnTo = withoutQueryKeys(returnTo, ["adapter_workstation", "adapter_token"]);
+  await deleteJson(
+    `/api/collaboration/projects/${projectId}/thread-workstations/${encodeURIComponent(workstationId)}/adapter-token`,
+  );
+  revalidateProjectSurfaces(projectId);
+  redirect(withQueryValue(sanitizedReturnTo, "team_notice", `已吊销 ${workstationId} 的工位接入令牌`));
+}
+
+export async function 创建协作AI提供方(projectId: string, formData: FormData) {
+  await postJson(`/api/collaboration/projects/${projectId}/ai-providers`, {
+    id: String(formData.get("id") ?? "").trim() || null,
+    label: String(formData.get("label") ?? "").trim() || "未命名 AI",
+    kind: String(formData.get("kind") ?? "").trim() || null,
+    enabled: String(formData.get("enabled") ?? "true").trim() !== "false",
+    endpoint: String(formData.get("endpoint") ?? "").trim() || null,
+    model: String(formData.get("model") ?? "").trim() || null,
+    sort_order: Number(formData.get("sort_order") ?? 0) || 0,
+    metadata: parseOptionalJson(String(formData.get("metadata") ?? "")),
+  });
+  revalidateProjectSurfaces(projectId);
+}
+
+export async function 删除协作AI提供方(projectId: string, providerId: string) {
+  await deleteJson(`/api/collaboration/projects/${projectId}/ai-providers/${encodeURIComponent(providerId)}`);
+  revalidateProjectSurfaces(projectId);
+}
+
+export async function 更新协作AI提供方执行配置(projectId: string, providerId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "machine-room");
+  try {
+    const { project } = await ensureProjectCollaborationAccess(projectId);
+    const normalizedProviderId =
+      normalizePlatformProviderId(providerId) ||
+      normalizePlatformProviderId(formData.get("provider_id")) ||
+      "codex";
+    const submittedLabel = text(formData.get("provider_label"), "");
+    const submittedModel = text(formData.get("model"), "");
+    await ensureProjectAiProvider(projectId, project, {
+      providerId: normalizedProviderId,
+      providerLabel: submittedLabel || platformProviderLabel(normalizedProviderId),
+      model: submittedModel || null,
+    });
+    const providerResult = await getJson(
+      `/api/collaboration/projects/${projectId}/ai-providers/${encodeURIComponent(normalizedProviderId)}`,
+    );
+    const provider =
+      providerResult?.data && typeof providerResult.data === "object"
+        ? (providerResult.data as Record<string, unknown>)
+        : providerResult && typeof providerResult === "object"
+          ? (providerResult as Record<string, unknown>)
+          : {};
+    const clearExecutorTemplate = text(formData.get("clear_executor_template"), "") === "true";
+    const providerLabel =
+      submittedLabel ||
+      text(provider.label ?? provider.name, "") ||
+      platformProviderLabel(normalizedProviderId);
+    const nextMetadata = mergeExecutionMetadata(provider.metadata, {
+      executorCommand: clearExecutorTemplate ? null : text(formData.get("executor_command"), "") || null,
+      executorCwd: clearExecutorTemplate ? null : text(formData.get("executor_cwd"), "") || null,
+      executorTimeoutSeconds: clearExecutorTemplate
+        ? null
+        : parseOptionalPositiveInteger(formData.get("executor_timeout_seconds")),
+      clearExecutorTemplate,
+    });
+    await patchJson(
+      `/api/collaboration/projects/${projectId}/ai-providers/${encodeURIComponent(normalizedProviderId)}`,
+      {
+        label: providerLabel,
+        model: submittedModel || text(provider.model, "") || null,
+        metadata: nextMetadata,
+      },
+    );
+    revalidateProjectSurfaces(projectId);
+    redirect(
+      withQueryValue(
+        returnTo,
+        "team_notice",
+        clearExecutorTemplate ? `已清空 ${providerLabel} 的默认执行模板` : `已保存 ${providerLabel} 的默认执行模板`,
+      ),
+    );
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "保存 AI 提供方执行模板失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
+export async function 创建协作线程工位(projectId: string, formData: FormData) {
+  const rawReturnTo = String(formData.get("return_to") ?? "").trim();
+  const workstationName = String(formData.get("name") ?? "").trim() || "未命名工位";
+  const responsibility = String(formData.get("responsibility") ?? "").trim() || null;
+  const computerNodeId = String(formData.get("computer_node_id") ?? "").trim() || null;
+  const sourceMetadata = parseOptionalJson(String(formData.get("metadata") ?? ""));
+  const metadata =
+    sourceMetadata && typeof sourceMetadata === "object"
+      ? ({ ...(sourceMetadata as Record<string, unknown>) } satisfies Record<string, unknown>)
+      : null;
+  const seatType = text(metadata?.seat_type, "").toLowerCase();
+  const model = String(formData.get("model") ?? "").trim() || null;
+  const aiProviderId = normalizePlatformProviderId(formData.get("ai_provider_id"));
+  const aiProviderLabel = text(formData.get("ai_provider"), "") || (aiProviderId ? platformProviderLabel(aiProviderId) : "");
+  const storedNpcKnowledge =
+    metadata?.npc_knowledge && typeof metadata.npc_knowledge === "object"
+      ? (metadata.npc_knowledge as Record<string, unknown>)
+      : {};
+  const npcKnowledge =
+    seatType === "codex"
+      ? buildNpcKnowledgeProfile({
+          name: workstationName,
+          responsibility,
+          seatId: text(metadata?.id ?? metadata?.source_workstation_id, "") || null,
+          knowledgeSlug: text(storedNpcKnowledge.slug ?? metadata?.npc_identity_key, "").replace(/^npc:/, "") || null,
+          knowledgeSummary: text(storedNpcKnowledge.summary, "") || null,
+          knowledgeHandoffPath: text(storedNpcKnowledge.handoff_path, "") || null,
+          knowledgeTags: asArray<string>(storedNpcKnowledge.tags),
+        })
+      : null;
+  const normalizedMetadata =
+    seatType === "codex"
+      ? mergeSeatMetadata(metadata, {
+          seat_type: "codex",
+          npc_identity_key: npcKnowledge?.key ?? null,
+          npc_knowledge: npcKnowledge ?? null,
+        })
+      : metadata;
+  if (aiProviderId) {
+    const { project } = await ensureProjectCollaborationAccess(projectId);
+    await ensureProjectAiProvider(projectId, project, {
+      providerId: aiProviderId,
+      providerLabel: aiProviderLabel,
+      model,
+    });
+  }
+  const created = await postJson(`/api/collaboration/projects/${projectId}/thread-workstations`, {
+    id: String(formData.get("id") ?? "").trim() || null,
+    name: workstationName,
+    agent_id: String(formData.get("agent_id") ?? "").trim() || null,
+    computer_node: String(formData.get("computer_node") ?? "").trim() || null,
+    computer_node_id: computerNodeId,
+    ai_provider: aiProviderLabel || null,
+    ai_provider_id: aiProviderId || null,
+    status: String(formData.get("status") ?? "idle").trim() || "idle",
+    responsibility,
+    model,
+    permission_level: String(formData.get("permission_level") ?? "").trim() || null,
+    read_paths: parseStringList(formData.get("read_paths")),
+    write_paths: parseStringList(formData.get("write_paths")),
+    description: String(formData.get("description") ?? "").trim() || null,
+    notes: String(formData.get("notes") ?? "").trim() || null,
+    sort_order: Number(formData.get("sort_order") ?? 0) || 0,
+    metadata: normalizedMetadata,
+  });
+  if (npcKnowledge) {
+    await ensureNpcKnowledgeDoc({
+      handoffPath: npcKnowledge.handoff_path,
+      seatName: workstationName,
+      responsibility: responsibility || "",
+      projectId,
+      additionalSkillIds: asArray<string>(normalizedMetadata?.additional_skill_ids),
+      sourceWorkstationId: text(normalizedMetadata?.source_workstation_id, "") || null,
+      computerNodeId,
+      model,
+    });
+  }
+  revalidateProjectSurfaces(projectId);
+  if (rawReturnTo) {
+    redirect(normalizeProjectReturnPath(projectId, rawReturnTo, "machine-room"));
+  }
+}
+
+export async function 删除协作线程工位(projectId: string, workstationId: string) {
+  await deleteJson(
+    `/api/collaboration/projects/${projectId}/thread-workstations/${encodeURIComponent(workstationId)}`,
+  );
+  revalidateProjectSurfaces(projectId);
+}
+
+export async function 更新协作线程工位执行配置(projectId: string, workstationId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "machine-room");
+  try {
+    await ensureProjectCollaborationAccess(projectId);
+    const workstationResult = await getJson(
+      `/api/collaboration/projects/${projectId}/thread-workstations/${encodeURIComponent(workstationId)}`,
+    );
+    const workstation =
+      workstationResult?.data && typeof workstationResult.data === "object"
+        ? (workstationResult.data as Record<string, unknown>)
+        : workstationResult && typeof workstationResult === "object"
+          ? (workstationResult as Record<string, unknown>)
+          : {};
+    const workstationLabel =
+      text(workstation.name ?? workstation.workstation_name, "") || workstationId;
+    const clearExecutorOverride = text(formData.get("clear_executor_override"), "") === "true";
+    const submittedModel = text(formData.get("model"), "");
+    const nextMetadata = mergeExecutionMetadata(workstation.metadata, {
+      executorCommand: clearExecutorOverride ? null : text(formData.get("executor_command"), "") || null,
+      executorCwd: clearExecutorOverride ? null : text(formData.get("executor_cwd"), "") || null,
+      executorTimeoutSeconds: clearExecutorOverride
+        ? null
+        : parseOptionalPositiveInteger(formData.get("executor_timeout_seconds")),
+      clearExecutorTemplate: clearExecutorOverride,
+    });
+    await patchJson(
+      `/api/collaboration/projects/${projectId}/thread-workstations/${encodeURIComponent(workstationId)}`,
+      {
+        model: submittedModel || text(workstation.model, "") || null,
+        metadata: nextMetadata,
+      },
+    );
+    revalidateProjectSurfaces(projectId);
+    redirect(
+      withQueryValue(
+        returnTo,
+        "team_notice",
+        clearExecutorOverride ? `已清空 ${workstationLabel} 的工位执行覆盖` : `已保存 ${workstationLabel} 的工位执行配置`,
+      ),
+    );
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "保存工位执行配置失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
+function revalidateRunnerSurfaces(runnerId: string, projectId: string) {
+  revalidatePath(`/runners/${runnerId}`);
+  revalidatePath("/runners");
+  revalidateProjectSurfaces(projectId);
+}
+
+export async function 绑定Runner到项目电脑节点(formData: FormData) {
+  const runnerId = String(formData.get("runner_id") ?? "").trim();
+  const projectId = String(formData.get("project_id") ?? "").trim();
+  const computerNodeId = String(formData.get("computer_node_id") ?? "").trim();
+  if (!runnerId || !projectId || !computerNodeId) {
+    return;
+  }
+  await postJson(`/api/runners/${encodeURIComponent(runnerId)}/bindings`, {
+    project_id: projectId,
+    computer_node_id: computerNodeId,
+  });
+  revalidateRunnerSurfaces(runnerId, projectId);
+}
+
+export async function 解绑Runner从项目电脑节点(formData: FormData) {
+  const runnerId = String(formData.get("runner_id") ?? "").trim();
+  const projectId = String(formData.get("project_id") ?? "").trim();
+  const computerNodeId = String(formData.get("computer_node_id") ?? "").trim();
+  if (!runnerId || !projectId || !computerNodeId) {
+    return;
+  }
+  await deleteJson(
+    `/api/runners/${encodeURIComponent(runnerId)}/bindings/${encodeURIComponent(projectId)}/${encodeURIComponent(
+      computerNodeId,
+    )}`,
+  );
+  revalidateRunnerSurfaces(runnerId, projectId);
+}
+
+export async function 绑定Runner到电脑节点(projectId: string, formData: FormData) {
+  const runnerId = String(formData.get("runner_id") ?? "").trim();
+  const computerNodeId = String(formData.get("computer_node_id") ?? "").trim();
+  if (!runnerId || !computerNodeId) {
+    return;
+  }
+  await postJson(`/api/runners/${encodeURIComponent(runnerId)}/bindings`, {
+    project_id: projectId,
+    computer_node_id: computerNodeId,
+  });
+  revalidateProjectSurfaces(projectId);
+}
+
+export async function 解绑Runner从电脑节点(projectId: string, formData: FormData) {
+  const runnerId = String(formData.get("runner_id") ?? "").trim();
+  const computerNodeId = String(formData.get("computer_node_id") ?? "").trim();
+  if (!runnerId || !computerNodeId) {
+    return;
+  }
+  await deleteJson(
+    `/api/runners/${encodeURIComponent(runnerId)}/bindings/${encodeURIComponent(projectId)}/${encodeURIComponent(
+      computerNodeId,
+    )}`,
+  );
+  revalidateProjectSurfaces(projectId);
+}
+
+export async function 更新工位配置(agentId: string, formData: FormData) {
+  const modules = String(formData.get("modules") ?? "")
+    .split(/[,\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  await patchJson(`/api/agents/${agentId}`, {
+    name: String(formData.get("name") ?? ""),
+    role: String(formData.get("role") ?? ""),
+    responsibility: String(formData.get("responsibility") ?? ""),
+    permission_level: String(formData.get("permission_level") ?? "L2"),
+    notes: String(formData.get("notes") ?? ""),
+    modules,
+  });
+  revalidatePath(`/agents/${agentId}`);
+  revalidatePath("/agents");
+  revalidatePath("/base");
+}
+
+export async function 注册用户(formData: FormData) {
+  const email = String(formData.get("email") ?? "").trim();
+  const password = String(formData.get("password") ?? "");
+  const returnTo = String(formData.get("return_to") ?? "").trim();
+  let result: any;
+  try {
+    await postJson("/api/auth/register", {
+      email,
+      name: String(formData.get("name") ?? ""),
+      password,
+      global_role: "member",
+    });
+    result = await postJson("/api/auth/session", {
+      email,
+      password,
+    });
+  } catch (error) {
+    const code = (error as { code?: string }).code ?? "REGISTER_FAILED";
+    const nextLogin = returnTo
+      ? `/login?mode=signup&error=${encodeURIComponent(code)}&returnTo=${encodeURIComponent(returnTo)}`
+      : `/login?mode=signup&error=${encodeURIComponent(code)}`;
+    redirect(nextLogin);
+  }
+  const session = result.data ?? result;
+  const user = session.user ?? {};
+  const cookieStore = cookies();
+  cookieStore.set(ACCESS_TOKEN_COOKIE, session.access_token, {
+    httpOnly: true,
+    sameSite: "lax",
+    path: "/",
+  });
+  cookieStore.set(USER_COOKIE, JSON.stringify({ id: user.id, name: user.name, email: user.email }), {
+    httpOnly: false,
+    sameSite: "lax",
+    path: "/",
+  });
+  revalidatePath("/login");
+  revalidatePath("/members");
+  revalidatePath("/projects");
+  redirect(returnTo || "/projects");
+}
+
+export async function 登录用户(formData: FormData) {
+  let result: any;
+  const returnTo = String(formData.get("return_to") ?? "").trim();
+  try {
+    result = await postJson("/api/auth/session", {
+      email: String(formData.get("email") ?? ""),
+      password: String(formData.get("password") ?? ""),
+    });
+  } catch (error) {
+    const code = (error as { code?: string }).code ?? "LOGIN_FAILED";
+    const nextLogin = returnTo
+      ? `/login?error=${encodeURIComponent(code)}&returnTo=${encodeURIComponent(returnTo)}`
+      : `/login?error=${encodeURIComponent(code)}`;
+    redirect(nextLogin);
+  }
+  const session = result.data ?? result;
+  const user = session.user ?? {};
+  const cookieStore = cookies();
+  cookieStore.set(ACCESS_TOKEN_COOKIE, session.access_token, {
+    httpOnly: true,
+    sameSite: "lax",
+    path: "/",
+  });
+  cookieStore.set(USER_COOKIE, JSON.stringify({ id: user.id, name: user.name, email: user.email }), {
+    httpOnly: false,
+    sameSite: "lax",
+    path: "/",
+  });
+  revalidatePath("/login");
+    revalidatePath("/members");
+    revalidatePath("/base");
+    redirect(returnTo || "/projects");
+  }
+
+export async function 退出登录(formData?: FormData) {
+  const returnTo = String(formData?.get("return_to") ?? "").trim();
+  const cookieStore = cookies();
+  cookieStore.delete(ACCESS_TOKEN_COOKIE);
+  cookieStore.delete(USER_COOKIE);
+  revalidatePath("/");
+  revalidatePath("/login");
+  revalidatePath("/projects");
+  redirect(returnTo || "/login");
+}
+
+export async function 发出邀请(formData: FormData) {
+  const email = text(formData.get("email"), "").toLowerCase();
+  const projectId = text(formData.get("project_id"), "");
+  const role = text(formData.get("role"), "collaborator");
+  const note = text(formData.get("note"), "");
+  const fallbackReturnTo = projectId
+    ? `/projects?tab=invite&project_id=${encodeURIComponent(projectId)}`
+    : "/projects?tab=invite";
+  const returnTo = normalizeWorkspaceReturnPath(formData.get("return_to"), fallbackReturnTo);
+
+  try {
+    if (!projectId) {
+      throw new Error("请先选择一个项目，再发送邀请。");
+    }
+    if (!email) {
+      throw new Error("请先填写合作者邮箱。");
+    }
+    await postJson("/api/auth/invitations", {
+      email,
+      project_id: projectId,
+      role,
+      invited_by_user_id: text(formData.get("invited_by_user_id"), "") || null,
+      note,
+    });
+    revalidatePath("/projects");
+    revalidatePath("/members");
+    redirect(withQueryValue(returnTo, "team_notice", `已发送邀请给 ${email}，对方登录后会在“接受邀请”里看到。`));
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "发送邀请失败，请稍后重试。";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
+export async function 接受邀请(invitationId: string, formData: FormData) {
+  await postJson(`/api/auth/invitations/${invitationId}/accept`, {
+    name: String(formData.get("name") ?? "").trim() || null,
+    password: String(formData.get("password") ?? "").trim() || null,
+    accepted_by_user_id: String(formData.get("accepted_by_user_id") ?? "").trim() || null,
+  });
+  revalidatePath("/projects");
+  revalidatePath("/members");
+  revalidatePath("/login");
+}
+
+export async function 接受工作台邀请(invitationId: string) {
+  await postJson(`/api/auth/invitations/${invitationId}/accept`, {});
+  revalidatePath("/projects");
+  revalidatePath("/members");
+}
+
+export async function 摘要上下文(taskId: string, formData: FormData) {
+  await postJson(`/api/tasks/${taskId}/summarize-context`, {
+    project_id: String(formData.get("project_id") ?? "") || null,
+    agent_id: String(formData.get("agent_id") ?? "") || null,
+    usage_ratio: Number(formData.get("usage_ratio") ?? 0),
+    health: String(formData.get("health") ?? "yellow"),
+    conversation_turns: Number(formData.get("conversation_turns") ?? 0),
+    files_loaded_count: Number(formData.get("files_loaded_count") ?? 0),
+    failed_retry_count: Number(formData.get("failed_retry_count") ?? 0),
+    summary: String(formData.get("summary") ?? "已从前端发起一次上下文摘要。"),
+    recommended_action: String(formData.get("recommended_action") ?? "建议继续交接或压缩上下文。"),
+  });
+  revalidatePath("/context-health");
+  revalidatePath(`/tasks/${taskId}`);
+  revalidatePath(`/tasks/${taskId}/context`);
+  revalidatePath("/handoffs");
+}
+
+export async function 预演协作消息(formData: FormData) {
+  const payload = readCollaborationMessagePayload(formData);
+  const projectId = payload.project_id;
+  const returnTo = projectId
+    ? normalizeProjectReturnPath(projectId, formData.get("return_to"), "exchange")
+    : null;
+  const previewKey = String(formData.get("preview_key") ?? "").trim() || "collaboration-message";
+  try {
+    if (!projectId) {
+      throw new Error("协作消息必须带项目上下文，才能生成预演。");
+    }
+    if (!returnTo) {
+      throw new Error("没有找到协作预演的返回路径。");
+    }
+    const access = await ensureProjectCollaborationAccess(projectId);
+    const previewResult = await postJson("/api/collaboration/messages/preview", payload);
+    const previewPayload =
+      previewResult && typeof previewResult === "object" && previewResult.data ? previewResult.data : previewResult;
+    const governancePreview = buildCollaborationGovernancePreview(
+      access.project as Record<string, unknown>,
+      payload,
+    );
+    const mergedPreviewPayload =
+      previewPayload && typeof previewPayload === "object"
+        ? {
+            ...(previewPayload as Record<string, unknown>),
+            governance_preview: governancePreview,
+            warnings: [
+              ...asArray((previewPayload as Record<string, unknown>).warnings).map((item) => text(item)).filter(Boolean),
+              ...governancePreview.warnings,
+            ],
+            preview_notes: [
+              ...asArray((previewPayload as Record<string, unknown>).preview_notes)
+                .map((item) => text(item))
+                .filter(Boolean),
+              ...governancePreview.notes,
+            ],
+          }
+        : {
+            governance_preview: governancePreview,
+            warnings: governancePreview.warnings,
+            preview_notes: governancePreview.notes,
+          };
+    const withPreview = withQueryValue(
+      returnTo,
+      "collab_preview",
+      encodePreviewState({ ...mergedPreviewPayload, preview_key: previewKey }),
+    );
+    const noticeTarget = payload.title ?? payload.recipient_id ?? "当前协作指令";
+    redirect(withQueryValue(withPreview, "team_notice", `已生成协作预演：${noticeTarget}`));
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "协作消息预演失败";
+    if (returnTo) {
+      redirect(withQueryValue(returnTo, "team_error", message));
+    }
+    throw error;
+  }
+}
+
+export async function 提交协作消息(formData: FormData) {
+  const payload = readCollaborationMessagePayload(formData);
+  const projectId = payload.project_id;
+  const taskId = payload.task_id;
+  const requirementId = payload.requirement_id;
+  const agentId = payload.agent_id;
+  const returnTo = projectId
+    ? normalizeProjectReturnPath(projectId, formData.get("return_to"), "exchange")
+    : null;
+  try {
+    let currentUserId: string | null = null;
+    let project: Record<string, unknown> | null = null;
+    let governancePreview: ReturnType<typeof buildCollaborationGovernancePreview> | null = null;
+    if (projectId) {
+      const access = await ensureProjectCollaborationAccess(projectId);
+      const { currentUser } = access;
+      currentUserId = normalizeMessageFormValue(currentUser?.id) ?? normalizeMessageFormValue(currentUser?.email);
+      project = access.project as Record<string, unknown>;
+    }
+    const enforcePreview = String(formData.get("enforce_preview") ?? "").trim() === "1";
+    const requiredPreviewSignature = String(formData.get("required_preview_signature") ?? "").trim();
+    const requiredPreviewReady = String(formData.get("required_preview_ready") ?? "").trim() === "1";
+    if (enforcePreview) {
+      if (!requiredPreviewSignature || !requiredPreviewReady) {
+        throw new Error("请先预演当前协作指令，再正式发送到平台消息池。");
+      }
+      const actualSignature = buildCollaborationMessagePreviewSignature(payload, currentUserId);
+      if (actualSignature !== requiredPreviewSignature) {
+        throw new Error("协作指令已经改动，请先重新预演，再正式发送。");
+      }
+    }
+
+    if (project && payload.message_type === "agent_command") {
+      governancePreview = buildCollaborationGovernancePreview(project, payload);
+      const humanReviewConfirmed = String(formData.get("human_review_confirmed") ?? "").trim() === "1";
+      if (governancePreview.requires_human_review && !humanReviewConfirmed) {
+        await postJson(
+          "/api/collaboration/messages",
+          buildHumanReviewRequestPayload(payload, governancePreview, currentUserId),
+        );
+        revalidatePath("/base");
+        revalidatePath("/collaborators");
+        revalidatePath("/requirements");
+        revalidatePath("/handoffs");
+        revalidatePath("/context-health");
+        if (projectId) revalidatePath(`/projects/${projectId}`);
+        if (taskId) revalidatePath(`/tasks/${taskId}`);
+        if (agentId) revalidatePath(`/agents/${agentId}`);
+        if (returnTo) {
+          redirect(
+            withQueryValue(
+              returnTo,
+              "team_notice",
+              "这条协作指令已转入人工审核，没有派给目标线程。审核通过后再拆成只读/仿真/正式执行。",
+            ),
+          );
+        }
+        return;
+      }
+    }
+
+    const outgoingPayload = withAiRequiredRequirementLedger(
+      payload,
+      resolveAiRequiredLedgerOptions(project, payload, currentUserId, governancePreview),
+    );
+    const messageResult = await postJson("/api/collaboration/messages", outgoingPayload);
+    const messageId =
+      messageResult && typeof messageResult === "object" && (messageResult as Record<string, unknown>).data
+        ? text((messageResult as Record<string, unknown>).data?.id)
+        : text((messageResult as Record<string, unknown>)?.id) || `msg-${Date.now()}`;
+
+    const npcDispatchMode =
+      project && projectId
+        ? await resolveNpcSeatDispatchMode({
+            project,
+            formData,
+            payload: outgoingPayload,
+          })
+        : null;
+
+    // 如果是Claude席位，同时写入消息文件到inbox供桥接器读取
+    if (npcDispatchMode?.providerId === "claude" && projectId) {
+      try {
+        const { writeClaudeSeatMessage } = await import("../lib/claude-seat-bridge");
+        const workstations = readProjectThreadWorkstations(project);
+        const recipientId = text(payload.recipient_id, "");
+        const seat = workstations.find((item) =>
+          workstationLookupKeys(item).some((candidate) => candidate === recipientId),
+        );
+        const seatName = text(seat?.name ?? seat?.workstation_name, "");
+        if (seatName) {
+          await writeClaudeSeatMessage({
+            seatName,
+            messageId,
+            title: text(payload.title, "协作指令"),
+            body: text(payload.body, ""),
+            metadata: {
+              project_id: projectId,
+              recipient_id: recipientId,
+              message_type: payload.message_type,
+            },
+          });
+        }
+      } catch (error) {
+        console.error("写入Claude消息文件失败:", error);
+      }
+    }
+
+    revalidatePath("/base");
+    revalidatePath("/collaborators");
+    revalidatePath("/requirements");
+    if (requirementId) revalidatePath("/knowledge");
+    revalidatePath("/handoffs");
+    revalidatePath("/context-health");
+    if (projectId) revalidatePath(`/projects/${projectId}`);
+    if (taskId) revalidatePath(`/tasks/${taskId}`);
+    if (agentId) revalidatePath(`/agents/${agentId}`);
+    if (returnTo) {
+      let notice = `已登记协作消息：${payload.title ?? payload.message_type}`;
+      if (npcDispatchMode?.mode === "one-shot") {
+        notice += npcDispatchMode.launched
+          ? ` / ${platformProviderLabel(npcDispatchMode.providerId)} 自动化已关闭，这次改为单次执行`
+          : ` / ${platformProviderLabel(npcDispatchMode.providerId)} 自动化已关闭，但本机单次执行器未能拉起：${npcDispatchMode.error ?? "请手动执行 adapter"}`;
+      }
+      redirect(withQueryValue(returnTo, "team_notice", notice));
+    }
+  } catch (error) {
+    rethrowRedirectError(error);
+    if (returnTo) {
+      const message = error instanceof Error ? error.message : "发送协作消息失败";
+      redirect(withQueryValue(returnTo, "team_error", message));
+    }
+    throw error;
+  }
+}
+
+export async function 处理协作人工审核(formData: FormData) {
+  const projectId = normalizeMessageFormValue(formData.get("project_id"));
+  const reviewMessageId = normalizeMessageFormValue(formData.get("review_message_id"));
+  const decision = text(formData.get("decision"), "readonly_probe");
+  const reviewerNote = text(formData.get("reviewer_note"), "");
+  const returnTo = projectId
+    ? normalizeProjectReturnPath(projectId, formData.get("return_to"), "exchange")
+    : null;
+  try {
+    if (!projectId || !reviewMessageId) {
+      throw new Error("处理人工审核需要项目和审核消息 ID。");
+    }
+    const { currentUser, project } = await ensureProjectCollaborationAccess(projectId);
+    const currentUserId = normalizeMessageFormValue(currentUser?.id) ?? normalizeMessageFormValue(currentUser?.email);
+    const messagesResult = await getJson(
+      `/api/collaboration/messages?project_id=${encodeURIComponent(projectId)}&message_type=human_review_request&limit=200`,
+    );
+    const messages = asArray<Record<string, unknown>>(messagesResult?.data ?? messagesResult);
+    const reviewMessage = messages.find((item) => text(item.id, "") === reviewMessageId);
+    if (!reviewMessage) {
+      throw new Error("没有找到这条人工审核请求，可能已经被处理或没有权限。");
+    }
+    const currentStatus = text(reviewMessage.status, "").toLowerCase();
+    if (!["pending_human_review", "pending", "open"].includes(currentStatus)) {
+      throw new Error(`这条人工审核请求已经是 ${currentStatus || "未知状态"}，不能重复处理。`);
+    }
+
+    if (decision === "reject") {
+      await patchJson(`/api/collaboration/messages/${encodeURIComponent(reviewMessageId)}`, {
+        status: "rejected",
+      });
+      await postJson("/api/collaboration/messages", {
+        project_id: projectId,
+        message_type: "human_review_decision",
+        title: `已驳回：${text(reviewMessage.title, "人工审核请求")}`,
+        body: [
+          "人工审核结论：驳回，不派给目标线程。",
+          reviewerNote ? `审核备注：${reviewerNote}` : "",
+          "如果还要继续，请把需求拆小或补清只读/仿真/硬件边界后重新发起。",
+        ].filter(Boolean).join("\n"),
+        sender_type: "human",
+        sender_id: currentUserId,
+        recipient_type: "project",
+        recipient_id: projectId,
+        status: "closed",
+      });
+      revalidateProjectSurfaces(projectId);
+      redirect(withQueryValue(returnTo ?? `/projects/${projectId}?panel=team&tab=exchange`, "team_notice", "已驳回这条人工审核请求，没有消耗目标线程 token。"));
+    }
+
+    const commandPayload = buildApprovedHumanReviewCommand(reviewMessage, decision, reviewerNote, currentUserId, project);
+    if (!commandPayload.recipient_id || !commandPayload.recipient_type) {
+      throw new Error("这条人工审核请求缺少原始目标，不能安全派发。");
+    }
+    await postJson("/api/collaboration/messages", commandPayload);
+    const config = humanReviewDecisionConfig(decision);
+    await patchJson(`/api/collaboration/messages/${encodeURIComponent(reviewMessageId)}`, {
+      status: config.status,
+    });
+    await postJson("/api/collaboration/messages", {
+      project_id: projectId,
+      message_type: "human_review_decision",
+      title: `${config.notice}${text(reviewMessage.title, "") ? `：${text(reviewMessage.title, "")}` : ""}`,
+      body: [
+        config.notice,
+        `审核请求: ${reviewMessageId}`,
+        reviewerNote ? `审核备注：${reviewerNote}` : "",
+        "平台已按人工选择生成新的 agent_command，目标线程只会看到收窄后的执行边界。",
+      ].filter(Boolean).join("\n"),
+      sender_type: "human",
+      sender_id: currentUserId,
+      recipient_type: "project",
+      recipient_id: projectId,
+      status: "closed",
+    });
+    revalidateProjectSurfaces(projectId);
+    redirect(withQueryValue(returnTo ?? `/projects/${projectId}?panel=team&tab=exchange`, "team_notice", config.notice));
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "处理人工审核失败";
+    if (returnTo) {
+      redirect(withQueryValue(returnTo, "team_error", message));
+    }
+    throw error;
+  }
+}
+
+export async function 处理旧队列指令(formData: FormData) {
+  const projectId = normalizeMessageFormValue(formData.get("project_id"));
+  const messageId = normalizeMessageFormValue(formData.get("message_id"));
+  const decision = text(formData.get("decision"), "keep");
+  const reviewerNote = text(formData.get("reviewer_note"), "");
+  const targetRecipientType = text(formData.get("target_recipient_type"), "workstation") || "workstation";
+  const targetRecipientId = normalizeMessageFormValue(formData.get("target_recipient_id"));
+  const returnTo = projectId
+    ? normalizeProjectReturnPath(projectId, formData.get("return_to"), "exchange")
+    : null;
+  try {
+    if (!projectId || !messageId) {
+      throw new Error("处理旧队列需要项目和消息 ID。");
+    }
+    const { currentUser, project } = await ensureProjectCollaborationAccess(projectId);
+    const currentUserId = normalizeMessageFormValue(currentUser?.id) ?? normalizeMessageFormValue(currentUser?.email);
+    const messagesResult = await getJson(
+      `/api/collaboration/messages?project_id=${encodeURIComponent(projectId)}&limit=200`,
+    );
+    const messages = asArray<Record<string, unknown>>(messagesResult?.data ?? messagesResult);
+    const sourceMessage = messages.find((item) => text(item.id, "") === messageId);
+    if (!sourceMessage) {
+      throw new Error("没有找到这条旧队列指令，可能已被处理或当前账号没有权限。");
+    }
+    const messageType = text(sourceMessage.message_type, "").toLowerCase();
+    const currentStatus = text(sourceMessage.status, "").toLowerCase();
+    if (!["queued", "pending", "open", "routed"].includes(currentStatus)) {
+      throw new Error(`这条队列已经是 ${currentStatus || "未知状态"}，不能重复按旧队列处理。`);
+    }
+
+    const sourceTitle = text(sourceMessage.title, "旧队列指令");
+    const sourceTargetType = text(sourceMessage.recipient_type, "") || "workstation";
+    const sourceTargetId = text(sourceMessage.recipient_id, "");
+    const decisionLines = [
+      `队列消息: ${messageId}`,
+      `原状态: ${currentStatus || "unknown"}`,
+      `原类型: ${messageType || "unknown"}`,
+      `原目标: ${sourceTargetType}:${sourceTargetId || "未指定"}`,
+      reviewerNote ? `处理备注: ${reviewerNote}` : "",
+    ].filter(Boolean);
+
+    if (decision === "expire") {
+      await patchJson(`/api/collaboration/messages/${encodeURIComponent(messageId)}`, {
+        status: "expired",
+      });
+      await postJson("/api/collaboration/messages", {
+        project_id: projectId,
+        message_type: "queue_review_decision",
+        title: `已标记过期：${sourceTitle}`.slice(0, 300),
+        body: ["人工处理旧队列：标记过期，不重派，不删除。", ...decisionLines].join("\n"),
+        sender_type: "human",
+        sender_id: currentUserId,
+        recipient_type: "project",
+        recipient_id: projectId,
+        status: "closed",
+      });
+      revalidateProjectSurfaces(projectId);
+      redirect(withQueryValue(returnTo ?? `/projects/${projectId}?panel=team&tab=exchange`, "team_notice", "已把这条旧队列标记为过期，没有删除，也没有重派。"));
+    }
+
+    if (decision === "requeue") {
+      if (!targetRecipientId) {
+        throw new Error("重派旧队列必须选择新的目标线程或 NPC。");
+      }
+      if (!["agent_command", "requirement_dispatch"].includes(messageType)) {
+        throw new Error("当前只允许重派 AI 指令或需求派单；线程扫描类旧队列请先标记过期后重新扫描。");
+      }
+      const requeuePayload = withAiRequiredRequirementLedger(
+        {
+          project_id: projectId,
+          task_id: text(sourceMessage.task_id, "") || null,
+          approval_id: text(sourceMessage.approval_id, "") || null,
+          handoff_id: text(sourceMessage.handoff_id, "") || null,
+          requirement_id: text(sourceMessage.requirement_id, "") || null,
+          agent_id: text(sourceMessage.agent_id, "") || null,
+          message_type: messageType,
+          title: `重派：${sourceTitle}`.slice(0, 300),
+          body: [
+            "这是人工确认后的旧队列重派，不是平台自动重复派发。",
+            `旧队列消息: ${messageId}`,
+            `原目标: ${sourceTargetType}:${sourceTargetId || "未指定"}`,
+            reviewerNote ? `重派备注: ${reviewerNote}` : "",
+            "",
+            "原始指令:",
+            text(sourceMessage.body, ""),
+          ].filter(Boolean).join("\n"),
+          sender_type: "human",
+          sender_id: currentUserId,
+          recipient_type: targetRecipientType,
+          recipient_id: targetRecipientId,
+          status: "queued",
+        },
+        resolveAiRequiredLedgerOptions(
+          project as Record<string, unknown>,
+          {
+            project_id: projectId,
+            task_id: text(sourceMessage.task_id, "") || null,
+            approval_id: text(sourceMessage.approval_id, "") || null,
+            handoff_id: text(sourceMessage.handoff_id, "") || null,
+            requirement_id: text(sourceMessage.requirement_id, "") || null,
+            agent_id: text(sourceMessage.agent_id, "") || null,
+            message_type: messageType,
+            title: `重派：${sourceTitle}`.slice(0, 300),
+            body: text(sourceMessage.body, ""),
+            sender_type: "human",
+            sender_id: currentUserId,
+            recipient_type: targetRecipientType,
+            recipient_id: targetRecipientId,
+            status: "queued",
+          },
+          currentUserId,
+          null,
+        ),
+      );
+      await postJson("/api/collaboration/messages", requeuePayload);
+      await patchJson(`/api/collaboration/messages/${encodeURIComponent(messageId)}`, {
+        status: "superseded",
+      });
+      await postJson("/api/collaboration/messages", {
+        project_id: projectId,
+        message_type: "queue_review_decision",
+        title: `已重派旧队列：${sourceTitle}`.slice(0, 300),
+        body: [
+          "人工处理旧队列：已生成一条新的 queued 指令，旧指令标记为 superseded。",
+          ...decisionLines,
+          `新目标: ${targetRecipientType}:${targetRecipientId}`,
+        ].join("\n"),
+        sender_type: "human",
+        sender_id: currentUserId,
+        recipient_type: "project",
+        recipient_id: projectId,
+        status: "closed",
+      });
+      revalidateProjectSurfaces(projectId);
+      redirect(withQueryValue(returnTo ?? `/projects/${projectId}?panel=team&tab=exchange`, "team_notice", "已人工重派旧队列，并把旧指令标记为已替代。"));
+    }
+
+    await postJson("/api/collaboration/messages", {
+      project_id: projectId,
+      message_type: "queue_review_decision",
+      title: `继续保留旧队列：${sourceTitle}`.slice(0, 300),
+      body: ["人工处理旧队列：继续保留等待，不改状态，不重派。", ...decisionLines].join("\n"),
+      sender_type: "human",
+      sender_id: currentUserId,
+      recipient_type: "project",
+      recipient_id: projectId,
+      status: "closed",
+    });
+    revalidateProjectSurfaces(projectId);
+    redirect(withQueryValue(returnTo ?? `/projects/${projectId}?panel=team&tab=exchange`, "team_notice", "已记录：这条旧队列继续保留等待。"));
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "处理旧队列失败";
+    if (returnTo) {
+      redirect(withQueryValue(returnTo, "team_error", message));
+    }
+    throw error;
+  }
+}
+
+export async function 启动Npc接力协作(formData: FormData) {
+  const projectId = normalizeMessageFormValue(formData.get("project_id"));
+  const returnTo = projectId
+    ? normalizeProjectReturnPath(projectId, formData.get("return_to"), "exchange")
+    : null;
+  try {
+    if (!projectId) {
+      throw new Error("平台接力协作必须带项目上下文。");
+    }
+    const access = await ensureProjectCollaborationAccess(projectId);
+    const project = access.project as Record<string, unknown>;
+    const firstWorkstationId = normalizeMessageFormValue(formData.get("first_recipient_id"));
+    const secondWorkstationId = normalizeMessageFormValue(formData.get("second_recipient_id"));
+    const firstProviderId = resolveProjectWorkstationProviderId(
+      project,
+      firstWorkstationId,
+      normalizePlatformProviderId(formData.get("first_provider_id")) || "codex",
+    );
+    const secondProviderId = resolveProjectWorkstationProviderId(
+      project,
+      secondWorkstationId,
+      normalizePlatformProviderId(formData.get("second_provider_id")) || "claude",
+    );
+    const title = normalizeMessageFormValue(formData.get("title")) ?? "平台多 NPC 接力协作";
+    const objective = String(formData.get("objective") ?? "").trim();
+    if (!firstWorkstationId || !secondWorkstationId) {
+      throw new Error("请先选择第一棒和第二棒 NPC / 线程。");
+    }
+    if (!objective) {
+      throw new Error("请写清楚这次接力协作要完成的目标。");
+    }
+    const relayId = `relay-${Date.now().toString(36)}`;
+    await postNpcRelayStatus({
+      projectId,
+      relayId,
+      title,
+      objective,
+      firstWorkstationId,
+      firstProviderId,
+      secondWorkstationId,
+      secondProviderId,
+      status: "pending",
+    });
+    const launchResult = launchDetachedNpcRelay({
+      projectId,
+      relayId,
+      firstWorkstationId,
+      firstProviderId,
+      secondWorkstationId,
+      secondProviderId,
+      title,
+      objective,
+    });
+    await postNpcRelayStatus({
+      projectId,
+      relayId,
+      title,
+      objective,
+      firstWorkstationId,
+      firstProviderId,
+      secondWorkstationId,
+      secondProviderId,
+      status: launchResult.launched ? "running" : "failed",
+      stdoutPath: launchResult.stdoutPath,
+      stderrPath: launchResult.stderrPath,
+      launchError: launchResult.error ?? null,
+    });
+    revalidatePath("/base");
+    revalidatePath("/collaborators");
+    revalidatePath(`/projects/${projectId}`);
+    if (returnTo) {
+      const firstLabel = platformProviderLabel(firstProviderId);
+      const secondLabel = platformProviderLabel(secondProviderId);
+      const notice = launchResult.launched
+        ? `已启动平台多 NPC 接力：${firstLabel} -> ${secondLabel}，回执会陆续进入结果区。`
+        : `多 NPC 接力未能拉起：${launchResult.error ?? "请检查本机 Python 和脚本路径"}`;
+      redirect(withQueryValue(returnTo, launchResult.launched ? "team_notice" : "team_error", notice));
+    }
+  } catch (error) {
+    rethrowRedirectError(error);
+    if (returnTo) {
+      const message = error instanceof Error ? error.message : "启动平台多 NPC 接力失败";
+      redirect(withQueryValue(returnTo, "team_error", message));
+    }
+    throw error;
+  }
+}
+
+export async function 下发Runner命令(projectId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "git");
+  const targetMode = String(formData.get("target_mode") ?? "computer_node_id").trim() || "computer_node_id";
+  const payload: Record<string, unknown> = {
+    title: String(formData.get("title") ?? "").trim() || null,
+    body: String(formData.get("body") ?? "").trim(),
+    task_id: String(formData.get("task_id") ?? "").trim() || null,
+  };
+  const targetValue = String(formData.get(targetMode) ?? "").trim();
+  if (!payload.body || !targetValue) {
+    return;
+  }
+  payload[targetMode] = targetValue;
+  try {
+    await postJson(`/api/collaboration/projects/${projectId}/runner-commands`, payload);
+    revalidateProjectSurfaces(projectId);
+    revalidatePath("/runners");
+    redirect(withQueryValue(returnTo, "team_notice", "Runner 命令已下发"));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "下发 Runner 命令失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
+export async function 创建审批单(formData: FormData) {
+  await postJson("/api/approvals", {
+    project_id: String(formData.get("project_id") ?? "") || null,
+    task_id: String(formData.get("task_id") ?? "") || null,
+    level: String(formData.get("level") ?? "H3"),
+    action: String(formData.get("action") ?? "高风险动作"),
+    status: String(formData.get("status") ?? "pending"),
+    notes: String(formData.get("notes") ?? ""),
+  });
+  revalidatePath("/approvals");
+  revalidatePath("/lab");
+}
+
+export async function 安装农场维护员(projectId: string, _formData?: FormData) {
+  if (!projectId) return;
+  try {
+    const { project } = await ensureProjectCollaborationAccess(projectId);
+    const collaborationConfig =
+      project?.collaboration_config && typeof project.collaboration_config === "object"
+        ? { ...(project.collaboration_config as Record<string, unknown>) }
+        : {};
+
+    const providers = Array.isArray(collaborationConfig.ai_providers)
+      ? [...(collaborationConfig.ai_providers as Record<string, unknown>[])]
+      : [];
+    const workstations = Array.isArray(collaborationConfig.thread_workstations)
+      ? [...(collaborationConfig.thread_workstations as Record<string, unknown>[])]
+      : [];
+    const nodes = Array.isArray(collaborationConfig.computer_nodes)
+      ? [...(collaborationConfig.computer_nodes as Record<string, unknown>[])]
+      : [];
+
+    const maintainerProviderId = "farm-maintainer";
+    const maintainerSeatId = "farm-maintainer-seat";
+    const existingProvider = providers.find((item) => {
+      const id = String(item.id ?? item.label ?? item.name ?? "").trim().toLowerCase();
+      return id === maintainerProviderId || id === "farm maintainer";
+    });
+    const existingSeat = workstations.find((item) => {
+      const id = String(item.id ?? item.name ?? item.agent_id ?? "").trim().toLowerCase();
+      const role = String(item.agent_id ?? item.role ?? item.responsibility ?? "").trim().toLowerCase();
+      return id === maintainerSeatId || id === "farm maintainer" || role.includes("farm-maintainer") || role.includes("maintainer");
+    });
+    const onlineNode =
+      nodes.find((item) => ["online", "ready", "active"].includes(String(item.status ?? "").trim().toLowerCase())) ??
+      nodes[0] ??
+      null;
+
+    if (!existingProvider) {
+      providers.push({
+        id: maintainerProviderId,
+        label: "Farm Maintainer",
+        kind: "thread",
+        enabled: true,
+        endpoint: "openai",
+        model: "gpt-5.4-mini",
+        sort_order: 999,
+        metadata: {
+          role: "farm_maintainer",
+          manages: ["hq", "handoffs", "approvals", "runner-relays"],
+        },
+      });
+    }
+
+    if (!existingSeat) {
+      workstations.push({
+        id: maintainerSeatId,
+        name: "Farm Maintainer",
+        agent_id: "farm-maintainer",
+        computer_node: onlineNode ? String(onlineNode.label ?? onlineNode.name ?? onlineNode.id ?? "") : null,
+        computer_node_id: onlineNode ? String(onlineNode.id ?? "") : null,
+        ai_provider: "Farm Maintainer",
+        ai_provider_id: maintainerProviderId,
+        status: onlineNode ? "active" : "idle",
+        responsibility: "Watch boss orders, stale handoffs, approval gates, and runner relays inside the farm.",
+        model: "gpt-5.4-mini",
+        permission_level: "L2",
+        read_paths: [
+          "docs/ai-handoffs",
+          "apps/web/app/projects/[id]",
+          "apps/web/lib/game",
+        ],
+        write_paths: ["docs/ai-handoffs"],
+        description: "Default on-map maintainer seat for the AI collaboration farm.",
+        notes: "Use this seat to keep the collaboration loop healthy before the base expands.",
+        sort_order: 999,
+        metadata: {
+          role: "farm_maintainer",
+          autopilot: true,
+        },
+      });
+    }
+
+    await patchJson(`/api/projects/${projectId}`, {
+      collaboration_config: {
+        ...collaborationConfig,
+        ai_providers: providers,
+        thread_workstations: workstations,
+      },
+    });
+
+    await postJson("/api/collaboration/messages", {
+      project_id: projectId,
+      agent_id: "farm-maintainer",
+      message_type: "status_update",
+      title: "Farm maintainer connected",
+      body: onlineNode
+        ? `Farm Maintainer is now linked to ${String(onlineNode.label ?? onlineNode.name ?? onlineNode.id ?? "the base node")} and watching handoffs, approvals, and runner relays.`
+        : "Farm Maintainer is now installed and waiting for a node before taking active watch duty.",
+      sender_type: "system",
+      sender_id: "farm-maintainer",
+      recipient_type: "project",
+      recipient_id: projectId,
+      status: "open",
+    });
+
+    revalidateProjectSurfaces(projectId);
+    revalidatePath("/collaborators");
+    revalidatePath("/handoffs");
+    revalidatePath("/approvals");
+    redirect(`/projects/${projectId}?panel=team&team_notice=${encodeURIComponent("Codex 驻场席位已写入平台")}`);
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "安装失败，请检查是否已登录、是否拥有项目权限，以及 8000 后端是否已启动。";
+    redirect(`/projects/${projectId}?panel=team&team_error=${encodeURIComponent(message)}`);
+  }
+}
+
+export async function 持久化经营状态(projectId: string, economyState: string) {
+  if (!projectId || !economyState.trim()) return;
+
+  const payload = JSON.parse(economyState);
+  const projectResult = await getJson(`/api/projects/${projectId}`);
+  const project = projectResult?.data ?? projectResult ?? {};
+  const collaborationConfig =
+    project?.collaboration_config && typeof project.collaboration_config === "object"
+      ? { ...(project.collaboration_config as Record<string, unknown>) }
+      : {};
+
+  await patchJson(`/api/projects/${projectId}`, {
+    collaboration_config: {
+      ...collaborationConfig,
+      economy_state: payload,
+    },
+  });
+
+  revalidateProjectSurfaces(projectId);
+}
+
+export async function 发送Codex桥接指令(projectId: string, formData: FormData) {
+  const title = String(formData.get("title") ?? "").trim() || "基地新指令";
+  const body = String(formData.get("body") ?? "").trim();
+  const issuer = String(formData.get("issuer") ?? "").trim() || "基地指挥官";
+  const workstationId = String(formData.get("workstation_id") ?? "").trim() || "codex-mainline";
+  if (!projectId || !body) return;
+  try {
+    const { project } = await ensureProjectCollaborationAccess(projectId);
+    const collaborationConfig =
+      project?.collaboration_config && typeof project.collaboration_config === "object"
+        ? (project.collaboration_config as Record<string, unknown>)
+        : {};
+    const workstations = Array.isArray(collaborationConfig.thread_workstations)
+      ? (collaborationConfig.thread_workstations as Record<string, unknown>[])
+      : [];
+    const workstationContext = resolveCodexWorkstationContext(
+      workstations,
+      workstationId,
+      project && typeof project === "object" ? (project as Record<string, unknown>) : null,
+    );
+    const workstationName = workstationContext.workstationName;
+
+    await appendProjectCodexCommand({
+      projectId,
+      title,
+      body,
+      issuer,
+      workstationId,
+      workstationName,
+      provider: workstationContext.provider || undefined,
+      computerNodeId: workstationContext.computerNodeId || undefined,
+      computerNodeLabel: workstationContext.computerNodeLabel || undefined,
+      skillLoadout: workstationContext.skillLoadout,
+      repoSummary: workstationContext.repoSummary || undefined,
+      referencePaths: workstationContext.referencePaths,
+    });
+
+    await postJson("/api/collaboration/messages", {
+      project_id: projectId,
+      agent_id: "codex",
+      message_type: "agent_command",
+      title,
+      body,
+      sender_type: "human",
+      sender_id: issuer,
+      recipient_type: "workstation",
+      recipient_id: workstationId,
+      status: "queued",
+    });
+
+    revalidateProjectSurfaces(projectId);
+    revalidatePath(`/projects/${projectId}`);
+    redirect(
+      `/projects/${projectId}?panel=team&team_notice=${encodeURIComponent(`指令已发送到 ${workstationName}`)}`,
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "指令写入失败";
+    redirect(`/projects/${projectId}?panel=team&team_error=${encodeURIComponent(message)}`);
+  }
+}
+
+export async function 请求扫描电脑线程(projectId: string, formData: FormData) {
+  const nodeId = String(formData.get("computer_node_id") ?? "").trim();
+  if (!projectId || !nodeId) return;
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "machine-room");
+
+  try {
+    const actorId = await resolveProjectHumanActorId(projectId);
+    const nodeResult = await getJson(
+      `/api/collaboration/projects/${projectId}/computer-nodes/${encodeURIComponent(nodeId)}`,
+    );
+    const node = nodeResult?.data ?? nodeResult ?? {};
+    const nodeLabel = String(node.label ?? node.name ?? node.id ?? nodeId).trim() || nodeId;
+    const runnerId = String(node.runner_id ?? "").trim();
+    const metadata =
+      node?.metadata && typeof node.metadata === "object" ? { ...(node.metadata as Record<string, unknown>) } : {};
+    const requestedAt = new Date().toISOString();
+
+    if (!runnerId) {
+      await patchJson(`/api/collaboration/projects/${projectId}/computer-nodes/${encodeURIComponent(nodeId)}`, {
+        metadata: {
+          ...metadata,
+          thread_scan: {
+            status: "awaiting_runner",
+            requested_at: requestedAt,
+            requested_by: "human",
+            hint: "先在对应电脑运行 runner 接入命令，再回来扫描线程。",
+          },
+        },
+      });
+      revalidateProjectSurfaces(projectId);
+      redirect(
+        withQueryValue(
+          returnTo,
+          "team_notice",
+          `这台电脑还没接入 runner。先在 ${nodeLabel} 的仓库里运行接入命令，再回来扫描线程。`,
+        ),
+      );
+    }
+
+    await patchJson(`/api/collaboration/projects/${projectId}/computer-nodes/${encodeURIComponent(nodeId)}`, {
+      metadata: {
+        ...metadata,
+        thread_scan: {
+          status: "requested",
+          requested_at: requestedAt,
+          requested_by: "human",
+        },
+      },
+    });
+
+    await postJson("/api/collaboration/messages", {
+      project_id: projectId,
+      agent_id: "codex",
+      message_type: "thread_scan_request",
+      title: `扫描 ${nodeLabel} 上的 Codex 线程`,
+      body: "请回传这台电脑当前可用的 Codex 线程列表，包含线程 id、线程名、工作目录和状态。",
+      sender_type: "human",
+      sender_id: actorId,
+      recipient_type: "computer_node",
+      recipient_id: nodeId,
+      status: "queued",
+    });
+
+    if (runnerId) {
+      const workspaceResult = await getJson(`/api/runners/${encodeURIComponent(runnerId)}/workspace`);
+      const workspace = workspaceResult?.data ?? workspaceResult ?? {};
+      const discoveredThreads = Array.isArray(workspace?.workstations)
+        ? workspace.workstations
+            .filter(
+              (item: Record<string, unknown>) =>
+                String(item.computer_node_id ?? "").trim() === nodeId &&
+                String(item.source ?? "").trim() === "runner_thread_scan",
+            )
+            .map((item: Record<string, unknown>) => ({
+              workstation_id: String(item.workstation_id ?? "").trim(),
+              workstation_name: String(item.workstation_name ?? item.name ?? "").trim() || "未命名线程",
+              workstation_status: String(item.workstation_status ?? item.status ?? "").trim() || "idle",
+              agent_id: String(item.agent_id ?? "").trim() || null,
+              ai_provider_id: String(item.ai_provider_id ?? "").trim() || null,
+              ai_provider_label: String(item.ai_provider_label ?? "").trim() || null,
+            }))
+        : [];
+      const effectiveThreads = discoveredThreads;
+
+      await patchJson(`/api/collaboration/projects/${projectId}/computer-nodes/${encodeURIComponent(nodeId)}`, {
+        metadata: {
+          ...metadata,
+          thread_scan: {
+            status: "completed",
+            requested_at: requestedAt,
+            completed_at: new Date().toISOString(),
+            requested_by: "human",
+            runner_id: runnerId,
+            thread_count: effectiveThreads.length,
+            threads: effectiveThreads,
+          },
+        },
+      });
+
+      revalidateProjectSurfaces(projectId);
+      redirect(
+        withQueryValue(
+          returnTo,
+          "team_notice",
+          `已扫描 ${nodeLabel}，发现 ${effectiveThreads.length} 个线程`,
+        ),
+      );
+    }
+
+    revalidateProjectSurfaces(projectId);
+    redirect(withQueryValue(returnTo, "team_notice", `已向 ${nodeLabel} 发出线程扫描请求`));
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "线程扫描请求失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
+async function ensureCodexProvider(projectId: string, project: any) {
+  await ensureProjectAiProvider(projectId, project, {
+    providerId: "codex",
+    providerLabel: "Codex",
+    model: "gpt-5.4",
+  });
+}
+
+export async function 创建Npc驻场席位(projectId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "npc-create");
+  try {
+    const { project } = await ensureProjectCollaborationAccess(projectId);
+    const workstationName = String(formData.get("name") ?? "").trim() || "NPC 新席位";
+    const responsibility = String(formData.get("responsibility") ?? "").trim() || "待分配职位";
+    const automationEnabled = readBooleanFormField(formData, "automation_enabled", false);
+    const automationHeartbeatSeconds = normalizeAutomationHeartbeatSeconds(
+      formData.get("automation_heartbeat_seconds"),
+    );
+    const threadContext = resolveNpcSourceThreadContext(project, formData);
+    const providerId = threadContext.providerId || "codex";
+    const providerLabel = threadContext.providerLabel || platformProviderLabel(providerId);
+    await ensureProjectAiProvider(projectId, project, {
+      providerId,
+      providerLabel,
+      model: text(formData.get("model"), "") || threadContext.model || "gpt-5.4",
+    });
+
+    const computerNodeId = String(formData.get("computer_node_id") ?? "").trim() || threadContext.computerNodeId || null;
+    const sourceWorkstationId = threadContext.sourceWorkstationId;
+    const additionalSkillIds = parseStringListAll(formData, "skill_loadout") ?? [];
+    const skillLoadout = mergePlatformSkillLoadout(additionalSkillIds);
+    const gitBoundary = parseStringList(formData.get("git_boundary")) ?? [];
+    const scene = String(formData.get("scene") ?? "").trim() || "map-farm";
+    const avatarKey = String(formData.get("avatar_key") ?? "").trim() || "jack-standing";
+    const mapX = Number(formData.get("map_x") ?? 0) || 0;
+    const mapY = Number(formData.get("map_y") ?? 0) || 0;
+    const developmentStationId = String(formData.get("development_station_id") ?? "").trim() || null;
+    const developmentStationLabel = String(formData.get("development_station_label") ?? "").trim() || null;
+    const model = String(formData.get("model") ?? "").trim() || threadContext.model || "gpt-5.4";
+    const npcKnowledge = buildNpcKnowledgeProfile({
+      name: workstationName,
+      responsibility,
+      knowledgeSlug: String(formData.get("knowledge_slug") ?? "").trim() || null,
+      knowledgeSummary: String(formData.get("knowledge_summary") ?? "").trim() || null,
+      knowledgeHandoffPath: String(formData.get("knowledge_handoff_path") ?? "").trim() || null,
+      knowledgeTags: parseStringList(formData.get("knowledge_tags")) ?? [],
+    });
+    const collabProtocol = enrichNpcCollabProtocolWithRepoContext(
+      project,
+      resolveNpcCollabProtocol(formData, {
+        providerId,
+        responsibility,
+        threadText: threadContext.threadName,
+      }),
+      {
+        gitBoundary,
+        handoffPath: npcKnowledge.handoff_path,
+      },
+    );
+    const onlineNode =
+      (Array.isArray(project?.collaboration_config?.computer_nodes)
+        ? project.collaboration_config.computer_nodes
+        : []
+      ).find((item: any) => String(item.id ?? "").trim() === computerNodeId) ?? null;
+
+    const created = await postJson(`/api/collaboration/projects/${projectId}/thread-workstations`, {
+      name: workstationName,
+      agent_id: `${providerId}-${Date.now()}`,
+      computer_node:
+        onlineNode
+          ? String(onlineNode.label ?? onlineNode.name ?? onlineNode.id ?? "")
+          : threadContext.computerNodeLabel,
+      computer_node_id: computerNodeId,
+      ai_provider: providerLabel,
+      ai_provider_id: providerId,
+      status: String(formData.get("status") ?? "idle").trim() || "idle",
+      responsibility,
+      model,
+      permission_level: String(formData.get("permission_level") ?? "").trim() || "L2",
+      description: String(formData.get("description") ?? "").trim() || null,
+      notes: String(formData.get("notes") ?? "").trim() || null,
+      metadata: {
+        seat_type: seatTypeForProvider(providerId),
+        provider_id: providerId,
+        provider_label: providerLabel,
+        source_workstation_id: sourceWorkstationId,
+        additional_skill_ids: additionalSkillIds,
+        skill_loadout: skillLoadout,
+        collab_protocol: collabProtocol,
+        npc_identity_key: npcKnowledge.key,
+        npc_knowledge: npcKnowledge,
+        git_boundary: gitBoundary,
+        scene,
+        avatar_key: avatarKey,
+        map_x: mapX,
+        map_y: mapY,
+        development_station_id: developmentStationId,
+        development_station_label: developmentStationLabel,
+        automation_enabled: automationEnabled,
+        automation_heartbeat_seconds: automationHeartbeatSeconds,
+      },
+    });
+    const continuity =
+      automationEnabled
+        ? await ensureNpcSeatContinuity({
+            projectId,
+            seatName: workstationName,
+            responsibility,
+            sourceWorkstationId,
+            handoffPath: npcKnowledge.handoff_path,
+            computerNodeId,
+            model,
+            additionalSkillIds,
+            providerId,
+            providerLabel,
+            collabProtocol,
+            heartbeatIntervalSeconds: automationHeartbeatSeconds,
+          })
+        : {
+            consumerScript: null,
+            heartbeat: null,
+            providerRegistration: null,
+            providerActivation: null,
+          };
+    const { consumerScript, heartbeat, providerRegistration, providerActivation } = continuity;
+    const createdSeatId = String(
+      (created as Record<string, any>)?.data?.id ??
+      (created as Record<string, any>)?.id ??
+      workstationName,
+    ).trim();
+    const provisioning = await readNpcProvisioningSummary({
+      seatId: createdSeatId,
+      seatName: workstationName,
+      providerId,
+      providerLabel,
+      sourceWorkstationId,
+    });
+    const repoSummary = platformRepoContextSummary(collabProtocol.repo_context);
+
+    revalidateProjectSurfaces(projectId);
+    const search = new URLSearchParams({
+      team_notice:
+        consumerScript || heartbeat || providerRegistration || providerActivation
+          ? `已新增 ${providerLabel} NPC：${workstationName}${consumerScript ? `，已生成线程 consumer：${consumerScript}` : ""}${heartbeat ? `，自治心跳已接通：${heartbeat.id}` : ""}${providerRegistration ? `，已登记 ${providerRegistration}` : ""}${providerActivation ? `，${providerActivation}` : ""} / 开箱状态：${provisioning.label}${provisioning.missing.length ? `（${provisioning.missing.join("、")}）` : ""} / 仓库协作：${repoSummary}`
+          : `已新增 ${providerLabel} NPC：${workstationName}${sourceWorkstationId ? "，已绑定来源线程并落固定知识库" : ""}${automationEnabled ? "" : " / 当前为单次执行模式，只有发指令时才会跑这一次"} / 开箱状态：${provisioning.label}${provisioning.missing.length ? `（${provisioning.missing.join("、")}）` : ""} / 仓库协作：${repoSummary}`,
+    });
+    if (createdSeatId) search.set("seat", createdSeatId);
+    let nextPath = withQueryValue(returnTo, "team_notice", search.get("team_notice") || "已新增 NPC 席位");
+    if (createdSeatId) {
+      nextPath = withQueryValue(nextPath, "seat", createdSeatId);
+    }
+    redirect(nextPath);
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "新增 NPC 席位失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
+export async function 更新Npc驻场席位(projectId: string, workstationId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "npc-create");
+  try {
+    const { project } = await ensureProjectCollaborationAccess(projectId);
+    const collaborationConfig =
+      project?.collaboration_config && typeof project.collaboration_config === "object"
+        ? (project.collaboration_config as Record<string, unknown>)
+        : {};
+    const threadContext = resolveNpcSourceThreadContext(project, formData);
+    const providerId = threadContext.providerId || "codex";
+    const providerLabel = threadContext.providerLabel || platformProviderLabel(providerId);
+    await ensureProjectAiProvider(projectId, project, {
+      providerId,
+      providerLabel,
+      model: text(formData.get("model"), "") || threadContext.model || "gpt-5.4",
+    });
+    const nodeId = String(formData.get("computer_node_id") ?? "").trim() || threadContext.computerNodeId || null;
+    const sourceWorkstationId = threadContext.sourceWorkstationId;
+    const additionalSkillIds = parseStringListAll(formData, "skill_loadout") ?? [];
+    const skillLoadout = mergePlatformSkillLoadout(additionalSkillIds);
+    const gitBoundary = parseStringList(formData.get("git_boundary")) ?? [];
+    const scene = String(formData.get("scene") ?? "").trim() || "map-farm";
+    const avatarKey = String(formData.get("avatar_key") ?? "").trim() || "jack-standing";
+    const mapX = Number(formData.get("map_x") ?? 0) || 0;
+    const mapY = Number(formData.get("map_y") ?? 0) || 0;
+    const seatName = String(formData.get("name") ?? "").trim() || "NPC 席位";
+    const responsibility = String(formData.get("responsibility") ?? "").trim() || null;
+    const model = String(formData.get("model") ?? "").trim() || "gpt-5.4";
+    const existingSeatResult = await getJson(`/api/collaboration/projects/${projectId}/thread-workstations`);
+    const existingSeats = asArray<any>(existingSeatResult?.data ?? existingSeatResult);
+    const existingSeat =
+      existingSeats.find((item) =>
+        workstationLookupKeys(item as Record<string, unknown>).some((candidate) => candidate === workstationId),
+      ) ?? null;
+    const existingMetadata =
+      existingSeat?.metadata && typeof existingSeat.metadata === "object"
+        ? (existingSeat.metadata as Record<string, unknown>)
+        : {};
+    const automationEnabled = readBooleanFormField(
+      formData,
+      "automation_enabled",
+      readSeatAutomationEnabled(existingMetadata, false),
+    );
+    const automationHeartbeatSeconds = normalizeAutomationHeartbeatSeconds(
+      formData.get("automation_heartbeat_seconds"),
+      readSeatAutomationHeartbeatSeconds(existingMetadata),
+    );
+    const npcKnowledge = buildNpcKnowledgeProfile({
+      seatId: workstationId,
+      name: seatName,
+      responsibility,
+      knowledgeSlug: String(formData.get("knowledge_slug") ?? "").trim() || null,
+      knowledgeSummary: String(formData.get("knowledge_summary") ?? "").trim() || null,
+      knowledgeHandoffPath: String(formData.get("knowledge_handoff_path") ?? "").trim() || null,
+      knowledgeTags: parseStringList(formData.get("knowledge_tags")) ?? [],
+    });
+    const collabProtocol = enrichNpcCollabProtocolWithRepoContext(
+      project,
+      resolveNpcCollabProtocol(formData, {
+        providerId,
+        responsibility,
+        threadText: threadContext.threadName,
+        existing:
+          existingMetadata.collab_protocol && typeof existingMetadata.collab_protocol === "object"
+            ? (existingMetadata.collab_protocol as Record<string, unknown>)
+            : null,
+      }),
+      {
+        gitBoundary,
+        handoffPath: npcKnowledge.handoff_path,
+      },
+    );
+    const onlineNode =
+      (Array.isArray(collaborationConfig.computer_nodes) ? collaborationConfig.computer_nodes : []).find(
+        (item: any) => String(item.id ?? "").trim() === nodeId,
+      ) ?? null;
+
+    await patchJson(
+      `/api/collaboration/projects/${projectId}/thread-workstations/${encodeURIComponent(workstationId)}`,
+      {
+        name: seatName,
+        computer_node:
+          onlineNode
+            ? String(onlineNode.label ?? onlineNode.name ?? onlineNode.id ?? "")
+            : threadContext.computerNodeLabel,
+        computer_node_id: nodeId,
+        ai_provider: providerLabel,
+        ai_provider_id: providerId,
+        status: String(formData.get("status") ?? "idle").trim() || "idle",
+        responsibility,
+        model,
+        permission_level: String(formData.get("permission_level") ?? "").trim() || "L2",
+        description: String(formData.get("description") ?? "").trim() || null,
+        notes: String(formData.get("notes") ?? "").trim() || null,
+        metadata: {
+          seat_type: seatTypeForProvider(providerId),
+          provider_id: providerId,
+          provider_label: providerLabel,
+          source_workstation_id: sourceWorkstationId,
+          additional_skill_ids: additionalSkillIds,
+          skill_loadout: skillLoadout,
+          collab_protocol: collabProtocol,
+          npc_identity_key: npcKnowledge.key,
+          npc_knowledge: npcKnowledge,
+          git_boundary: gitBoundary,
+          scene,
+          avatar_key: avatarKey,
+          map_x: mapX,
+          map_y: mapY,
+          automation_enabled: automationEnabled,
+          automation_heartbeat_seconds: automationHeartbeatSeconds,
+        },
+      },
+    );
+    const continuity =
+      automationEnabled
+        ? await ensureNpcSeatContinuity({
+            projectId,
+            seatName,
+            responsibility,
+            sourceWorkstationId,
+            handoffPath: npcKnowledge.handoff_path,
+            computerNodeId: nodeId,
+            model,
+            additionalSkillIds,
+            providerId,
+            providerLabel,
+            collabProtocol,
+            heartbeatIntervalSeconds: automationHeartbeatSeconds,
+          })
+        : {
+            consumerScript: null,
+            heartbeat: null,
+            providerRegistration: null,
+            providerActivation: null,
+          };
+    const cleanupNotes = automationEnabled
+      ? []
+      : await disableNpcSeatContinuity({
+          seatName,
+          previousSeatName: text(existingSeat?.name ?? existingSeat?.workstation_name, "") || null,
+          providerId,
+          sourceWorkstationId,
+          previousSourceWorkstationId: text(
+            existingSeat?.source_workstation_id ?? existingMetadata.source_workstation_id,
+            "",
+          ) || null,
+        });
+    const { consumerScript, heartbeat, providerRegistration, providerActivation } = continuity;
+    const provisioning = await readNpcProvisioningSummary({
+      seatId: workstationId,
+      seatName,
+      providerId,
+      providerLabel,
+      sourceWorkstationId,
+    });
+    const repoSummary = platformRepoContextSummary(collabProtocol.repo_context);
+
+    revalidateProjectSurfaces(projectId);
+    let nextPath = withQueryValue(
+      returnTo,
+      "team_notice",
+      consumerScript || heartbeat || providerRegistration || providerActivation
+        ? `${providerLabel} NPC 已更新${consumerScript ? `，线程 consumer 已生成：${consumerScript}` : ""}${heartbeat ? `，自治心跳已接通：${heartbeat.id}` : ""}${providerRegistration ? `，已登记 ${providerRegistration}` : ""}${providerActivation ? `，${providerActivation}` : ""} / 开箱状态：${provisioning.label}${provisioning.missing.length ? `（${provisioning.missing.join("、")}）` : ""} / 仓库协作：${repoSummary}`
+        : `${providerLabel} NPC 已更新${automationEnabled ? "" : ` / 当前为单次执行模式${cleanupNotes.length ? `（${cleanupNotes.join("、")}）` : ""}` } / 开箱状态：${provisioning.label}${provisioning.missing.length ? `（${provisioning.missing.join("、")}）` : ""} / 仓库协作：${repoSummary}`,
+    );
+    nextPath = withQueryValue(nextPath, "seat", workstationId);
+    redirect(nextPath);
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "更新 NPC 席位失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
+export async function 校准Codex席位自治桥(projectId: string, workstationId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "npc-create");
+  try {
+    await ensureProjectCollaborationAccess(projectId);
+    const workstationsResult = await getJson(`/api/collaboration/projects/${projectId}/thread-workstations`);
+    const workstations = asArray<any>(workstationsResult?.data ?? workstationsResult);
+    const seat =
+      workstations.find((item) =>
+        workstationLookupKeys(item as Record<string, unknown>).some((candidate) => candidate === workstationId),
+      ) ?? null;
+    if (!seat) {
+      throw new Error("没有找到这个 Codex 席位");
+    }
+
+    const metadata = seat?.metadata && typeof seat.metadata === "object" ? (seat.metadata as Record<string, unknown>) : {};
+    const seatName = text(seat?.name ?? seat?.workstation_name, workstationId) || "Codex 席位";
+    const sourceWorkstationId = text(seat?.source_workstation_id ?? metadata.source_workstation_id, "") || null;
+    if (!isCodexSessionWorkstationId(sourceWorkstationId)) {
+      throw new Error("这个 NPC 还没有绑定本机 Codex 线程，暂时不能自动接通自治桥。");
+    }
+    const responsibility = text(seat?.responsibility ?? metadata.responsibility, "") || null;
+    const model = text(seat?.model ?? metadata.model, "gpt-5.4") || "gpt-5.4";
+    const computerNodeId = text(seat?.computer_node_id ?? seat?.computerNodeId ?? metadata.computer_node_id, "") || null;
+    const skillLoadout = mergePlatformSkillLoadout(
+      seat?.skill_loadout,
+      seat?.skillLoadout,
+      metadata.additional_skill_ids,
+      metadata.skill_loadout,
+    );
+    const storedKnowledge =
+      metadata.npc_knowledge && typeof metadata.npc_knowledge === "object"
+        ? (metadata.npc_knowledge as Record<string, unknown>)
+        : {};
+    const npcKnowledge = buildNpcKnowledgeProfile({
+      seatId: workstationId,
+      name: seatName,
+      responsibility,
+      knowledgeSlug: text(storedKnowledge.slug ?? metadata.npc_identity_key, "").replace(/^npc:/, "") || null,
+      knowledgeSummary: text(storedKnowledge.summary, "") || null,
+      knowledgeHandoffPath: text(storedKnowledge.handoff_path, "") || null,
+      knowledgeTags: asArray<string>(storedKnowledge.tags).map((item) => text(item)).filter(Boolean),
+    });
+    const collabProtocol = resolvePlatformCollabProtocol(metadata.collab_protocol, {
+      providerId: "codex",
+      roleText: responsibility ?? undefined,
+      threadText: seatName,
+    });
+    const { consumerScript, heartbeat } = await ensureCodexSeatAutonomyBridge({
+      projectId,
+      seatName,
+      responsibility,
+      sourceWorkstationId,
+      handoffPath: npcKnowledge.handoff_path,
+      computerNodeId,
+      model,
+      additionalSkillIds: skillLoadout,
+      collabProtocol,
+      heartbeatIntervalSeconds: readSeatAutomationHeartbeatSeconds(metadata),
+    });
+
+    revalidateProjectSurfaces(projectId);
+    let nextPath = withQueryValue(
+      returnTo,
+      "team_notice",
+      `已校准 ${seatName} 自治桥${consumerScript ? `，consumer：${consumerScript}` : ""}${heartbeat ? `，心跳：${heartbeat.id}` : ""}`,
+    );
+    nextPath = withQueryValue(nextPath, "seat", workstationId);
+    redirect(nextPath);
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "校准 Codex 席位自治桥失败";
+    let nextPath = withQueryValue(returnTo, "team_error", message);
+    nextPath = withQueryValue(nextPath, "seat", workstationId);
+    redirect(nextPath);
+  }
+}
+
+export async function 校准Claude席位会话(projectId: string, workstationId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "npc-create");
+  try {
+    await ensureProjectCollaborationAccess(projectId);
+    const workstationsResult = await getJson(`/api/collaboration/projects/${projectId}/thread-workstations`);
+    const workstations = asArray<any>(workstationsResult?.data ?? workstationsResult);
+    const seat =
+      workstations.find((item) =>
+        workstationLookupKeys(item as Record<string, unknown>).some((candidate) => candidate === workstationId),
+      ) ?? null;
+    if (!seat) {
+      throw new Error("没有找到这个 Claude 席位");
+    }
+
+    const metadata = seat?.metadata && typeof seat.metadata === "object" ? (seat.metadata as Record<string, unknown>) : {};
+    const providerId =
+      normalizePlatformProviderId(
+        seat?.ai_provider_id ??
+          seat?.ai_provider ??
+          metadata.provider_id ??
+          metadata.provider_label ??
+          platformProviderIdFromSeat(seat),
+      ) || "claude";
+    if (providerId !== "claude") {
+      throw new Error("这个 NPC 当前不是 Claude 席位。");
+    }
+
+    const seatName = text(seat?.name ?? seat?.workstation_name, workstationId) || "Claude 席位";
+    const sourceWorkstationId = text(seat?.source_workstation_id ?? metadata.source_workstation_id, "") || null;
+    if (!text(sourceWorkstationId, "").toLowerCase().startsWith("claude-session-")) {
+      throw new Error("这个 NPC 还没有绑定 Claude 会话，暂时不能自动唤醒。");
+    }
+    const model = text(seat?.model ?? metadata.model, "sonnet") || "sonnet";
+    const registration = await ensureClaudeSeatSessionRegistration({
+      seatName,
+      sourceWorkstationId,
+      model,
+    });
+    const activation = await launchClaudeSeatSession({
+      seatName,
+      sourceWorkstationId,
+      model,
+    });
+    const providerLabel =
+      text(seat?.ai_provider ?? metadata.provider_label ?? metadata.provider_id, "") || platformProviderLabel(providerId);
+    const provisioning = await readNpcProvisioningSummary({
+      seatId: workstationId,
+      seatName,
+      providerId,
+      providerLabel,
+      sourceWorkstationId,
+    });
+
+    revalidateProjectSurfaces(projectId);
+    let notice = `已校准 ${seatName} 的 Claude 接入`;
+    if (registration) {
+      notice += `，已登记 Claude session ${registration.sessionId}`;
+    }
+    if (activation?.launchSummary) {
+      notice += `，${activation.launchSummary}`;
+    }
+    notice += ` / 开箱状态：${provisioning.label}${provisioning.missing.length ? `（${provisioning.missing.join("、")}）` : ""}`;
+    let nextPath = withQueryValue(returnTo, "team_notice", notice);
+    nextPath = withQueryValue(nextPath, "seat", workstationId);
+    redirect(nextPath);
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "校准 Claude 席位会话失败";
+    let nextPath = withQueryValue(returnTo, "team_error", message);
+    nextPath = withQueryValue(nextPath, "seat", workstationId);
+    redirect(nextPath);
+  }
+}
+
+export async function 补齐项目Npc固定知识库(projectId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "npc-create");
+  try {
+    const { project } = await ensureProjectCollaborationAccess(projectId);
+    const collaborationConfig =
+      project?.collaboration_config && typeof project.collaboration_config === "object"
+        ? (project.collaboration_config as Record<string, unknown>)
+        : {};
+    const skillLibrary = asArray<any>(collaborationConfig.skill_library ?? collaborationConfig.skillLibrary);
+    const workstations = asArray<any>(
+      collaborationConfig.thread_workstations ??
+      collaborationConfig.threadWorkstations ??
+      collaborationConfig.workstations,
+    );
+    const npcSeats = workstations.filter((seat) =>
+      ["codex", "npc"].includes(text(seat?.metadata?.seat_type ?? seat?.seat_type, "").toLowerCase()),
+    );
+
+    let updatedCount = 0;
+    let docCount = 0;
+
+    for (const seat of npcSeats) {
+      const seatId = text(seat?.id ?? seat?.config_id ?? seat?.row_id, "");
+      if (!seatId) continue;
+
+      const metadata =
+        seat?.metadata && typeof seat.metadata === "object"
+          ? (seat.metadata as Record<string, unknown>)
+          : {};
+      const automationEnabled = readSeatAutomationEnabled(metadata, false);
+      const automationHeartbeatSeconds = readSeatAutomationHeartbeatSeconds(metadata);
+      const existingLoadout = asArray<string>(metadata.skill_loadout).map((item) => text(item)).filter(Boolean);
+      const additionalSkillIds = (
+        asArray<string>(metadata.additional_skill_ids).length
+          ? asArray<string>(metadata.additional_skill_ids)
+          : splitPlatformSkillLoadout(existingLoadout, skillLibrary).roleSkillIds
+      )
+        .map((item) => text(item))
+        .filter(Boolean);
+      const skillLoadout = existingLoadout.length
+        ? Array.from(new Set(existingLoadout))
+        : mergePlatformSkillLoadout(additionalSkillIds);
+      const sourceWorkstationId = text(
+        metadata.source_workstation_id ?? seat?.source_workstation_id,
+        "",
+      ) || null;
+      const providerId = platformProviderIdFromSeat(seat) || "codex";
+      const providerLabel = text(
+        seat?.ai_provider ?? metadata.provider_label ?? metadata.provider_id,
+        "",
+      ) || platformProviderLabel(providerId);
+      const collabProtocol = resolveNpcCollabProtocol(new FormData(), {
+        providerId,
+        responsibility: text(seat?.responsibility ?? metadata.responsibility, "") || null,
+        threadText: text(seat?.name ?? seat?.workstation_name, "") || null,
+        existing:
+          metadata.collab_protocol && typeof metadata.collab_protocol === "object"
+            ? (metadata.collab_protocol as Record<string, unknown>)
+            : null,
+      });
+      const computerNodeId = text(
+        seat?.computer_node_id ?? metadata.computer_node_id,
+        "",
+      ) || null;
+      const model = text(seat?.model ?? metadata.model, "gpt-5.4");
+      const responsibility = text(seat?.responsibility ?? metadata.responsibility, "") || null;
+      const storedKnowledge =
+        metadata.npc_knowledge && typeof metadata.npc_knowledge === "object"
+          ? (metadata.npc_knowledge as Record<string, unknown>)
+          : {};
+      const npcKnowledge = buildNpcKnowledgeProfile({
+        seatId,
+        name: text(seat?.name, "NPC 席位"),
+        responsibility,
+        knowledgeSlug: text(storedKnowledge.slug ?? metadata.npc_identity_key, "").replace(/^npc:/, "") || null,
+        knowledgeSummary: text(storedKnowledge.summary, "") || null,
+        knowledgeHandoffPath: text(storedKnowledge.handoff_path, "") || null,
+        knowledgeTags: asArray<string>(storedKnowledge.tags),
+      });
+
+      await patchJson(
+        `/api/collaboration/projects/${projectId}/thread-workstations/${encodeURIComponent(seatId)}`,
+        {
+          name: text(seat?.name, "NPC 席位"),
+          computer_node: seat?.computer_node ?? null,
+          computer_node_id: computerNodeId,
+          ai_provider: providerLabel,
+          ai_provider_id: providerId,
+          status: text(seat?.status, "idle"),
+          responsibility,
+          model,
+          permission_level: text(seat?.permission_level, "L2"),
+          description: text(seat?.description, "") || null,
+          notes: text(seat?.notes, "") || null,
+          metadata: mergeSeatMetadata(metadata, {
+            seat_type: seatTypeForProvider(providerId),
+            provider_id: providerId,
+            provider_label: providerLabel,
+            source_workstation_id: sourceWorkstationId,
+            additional_skill_ids: additionalSkillIds,
+            skill_loadout: skillLoadout,
+            collab_protocol: collabProtocol,
+            npc_identity_key: npcKnowledge.key,
+            npc_knowledge: npcKnowledge,
+            automation_enabled: automationEnabled,
+            automation_heartbeat_seconds: automationHeartbeatSeconds,
+          }),
+        },
+      );
+      updatedCount += 1;
+
+      if (automationEnabled) {
+        await ensureNpcSeatContinuity({
+          projectId,
+          seatName: text(seat?.name, "NPC 席位"),
+          responsibility: responsibility || "",
+          sourceWorkstationId,
+          handoffPath: npcKnowledge.handoff_path,
+          computerNodeId,
+          model,
+          additionalSkillIds,
+          providerId,
+          providerLabel,
+          collabProtocol,
+          heartbeatIntervalSeconds: automationHeartbeatSeconds,
+        });
+      }
+      docCount += 1;
+    }
+
+    revalidateProjectSurfaces(projectId);
+    redirect(
+      withQueryValue(
+        returnTo,
+        "team_notice",
+        npcSeats.length
+          ? `已校准 ${updatedCount} 个 NPC 的固定知识库，并补齐 ${docCount} 份知识文档`
+          : "当前项目还没有可补齐的 NPC 席位",
+      ),
+    );
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "补齐 NPC 固定知识库失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
+export async function 删除Codex驻场席位(projectId: string, workstationId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "npc-create");
+  try {
+    await ensureProjectCollaborationAccess(projectId);
+    const workstationsResult = await getJson(`/api/collaboration/projects/${projectId}/thread-workstations`);
+    const workstations = asArray<any>(workstationsResult?.data ?? workstationsResult);
+    const seat =
+      workstations.find((item) =>
+        workstationLookupKeys(item as Record<string, unknown>).some((candidate) => candidate === workstationId),
+      ) ?? null;
+    const metadata = seat?.metadata && typeof seat.metadata === "object" ? (seat.metadata as Record<string, unknown>) : {};
+    const seatName = text(seat?.name ?? seat?.workstation_name, workstationId) || workstationId;
+    const providerId =
+      normalizePlatformProviderId(
+        seat?.ai_provider_id ??
+          seat?.ai_provider ??
+          metadata.provider_id ??
+          metadata.provider_label ??
+          metadata.provider ??
+          platformProviderIdFromSeat(seat),
+      ) || "codex";
+    const sourceWorkstationId = text(seat?.source_workstation_id ?? metadata.source_workstation_id, "") || null;
+
+    await deleteJson(`/api/collaboration/projects/${projectId}/thread-workstations/${encodeURIComponent(workstationId)}`);
+    const cleanupNotes: string[] = [];
+    if (providerId === "codex") {
+      const cleanup = await cleanupCodexSeatAutonomyArtifacts({ seatName });
+      if (cleanup.removedScript || cleanup.removedState || cleanup.removedAutomation) {
+        cleanupNotes.push("已清理本地自治桥");
+      }
+    } else if (providerId === "claude") {
+      const cleanup = await cleanupClaudeSeatSessionRegistration({ seatName, sourceWorkstationId });
+      if (cleanup.removed) {
+        cleanupNotes.push("已清理 Claude 会话登记");
+      }
+    }
+    revalidateProjectSurfaces(projectId);
+    redirect(
+      withQueryValue(
+        returnTo,
+        "team_notice",
+        cleanupNotes.length ? `NPC 席位已删除，${cleanupNotes.join("，")}` : "NPC 席位已删除",
+      ),
+    );
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "删除 NPC 席位失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
+export const updateProjectConfig = 更新项目配置;
+export const createDevelopmentWorkshopStation = 创建开发工坊工位;
+export const updateDevelopmentWorkshopStation = 更新开发工坊工位;
+export const deleteDevelopmentWorkshopStation = 删除开发工坊工位;
+export const createProjectWorkspace = 创建项目工作区;
+export const applyRobotTemplate = 应用机器人协作模板;
+export const createCollaborationNode = 创建协作电脑节点;
+export const deleteCollaborationNode = 删除协作电脑节点;
+export const issueComputerNodePairingToken = 生成电脑配对令牌;
+export const revokeComputerNodePairingToken = 吊销电脑配对令牌;
+export const issueCollaborationWorkstationAdapterToken = 生成工位接入令牌;
+export const revokeCollaborationWorkstationAdapterToken = 吊销工位接入令牌;
+export const createCollaborationProvider = 创建协作AI提供方;
+export const updateCollaborationProviderExecution = 更新协作AI提供方执行配置;
+export const deleteCollaborationProvider = 删除协作AI提供方;
+export const createCollaborationWorkstation = 创建协作线程工位;
+export const updateCollaborationWorkstationExecution = 更新协作线程工位执行配置;
+export const deleteCollaborationWorkstation = 删除协作线程工位;
+export const createProjectTask = 创建项目任务;
+export const createProjectRequirement = 创建项目需求;
+export const recordRequirementAck = 登记需求最小回执;
+export const runPlatformAutonomySweep = 运行平台自治推进;
+export const bindRunnerToNode = 绑定Runner到电脑节点;
+export const unbindRunnerFromNode = 解绑Runner从电脑节点;
+export const previewCollaborationMessage = 预演协作消息;
+export const submitCollaborationMessage = 提交协作消息;
+export const handleCollaborationHumanReview = 处理协作人工审核;
+export const handleStaleQueueDecision = 处理旧队列指令;
+export const startNpcRelayCollaboration = 启动Npc接力协作;
+export const submitRequirementAction = 提交需求动作;
+export const promoteRequirementToKnowledge = 沉淀需求到知识库;
+export const acceptWorkspaceInvitation = 接受工作台邀请;
+export const sendWorkspaceInvitation = 发出邀请;
+export const signOutWorkspace = 退出登录;
+export const sendRunnerCommand = 下发Runner命令;
+export const persistEconomyState = 持久化经营状态;
+export const bootstrapFarmMaintainer = 安装农场维护员;
+export const dispatchCodexBridgeCommand = 发送Codex桥接指令;
+export const requestComputerThreadScan = 请求扫描电脑线程;
+export const createNpcWorkstationSeat = 创建Npc驻场席位;
+export const updateNpcWorkstationSeat = 更新Npc驻场席位;
+export const createCodexWorkstationSeat = 创建Npc驻场席位;
+export const updateCodexWorkstationSeat = 更新Npc驻场席位;
+export const calibrateClaudeSeatSession = 校准Claude席位会话;
+export const backfillProjectNpcKnowledge = 补齐项目Npc固定知识库;
+export const deleteNpcWorkstationSeat = 删除Codex驻场席位;
+export const deleteCodexWorkstationSeat = 删除Codex驻场席位;
+export const updateProjectGitSettings = 更新项目版本库配置;
+export const bindProjectGithubAccount = 保存项目Github账号绑定;
+export const previewProjectGitSync = 预演项目Git同步;
+export const requestProjectGitSync = 登记项目Git同步;
+export const previewProjectGitRollback = 预演项目Git回退;
+export const requestProjectGitRollback = 登记项目Git回退;
+export const createProjectSkill = 创建项目Skill;
+export const deleteProjectSkill = 删除项目Skill;
+export const importAgencyAgentsSkillPack = 导入AgencyAgents项目Skill包;
+export const importGithubProjectSkill = 导入Github项目Skill;
+
+export async function fetchProjectScorecard(projectId: string) {
+  try {
+    const result = await getJson(`/api/qualification/projects/${encodeURIComponent(projectId)}/scorecard`);
+    return result?.data ?? null;
+  } catch (error) {
+    return null;
+  }
+}
+
+export async function fetchProjectClaudeContext(projectId: string) {
+  try {
+    const result = await getJson(`/api/claude-bridge/projects/${encodeURIComponent(projectId)}/context`);
+    return result?.data ?? null;
+  } catch (error) {
+    return null;
+  }
+}
+
+export async function fetchNpcHandoffContext(projectId: string, npcId: string) {
+  try {
+    const result = await getJson(`/api/claude-bridge/projects/${encodeURIComponent(projectId)}/npcs/${encodeURIComponent(npcId)}/context`);
+    return result?.data ?? null;
+  } catch (error) {
+    return null;
+  }
+}
+
+
+
+
