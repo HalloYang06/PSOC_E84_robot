@@ -1,0 +1,35 @@
+node_modules/
+.next/
+.next-dev/
+.next-prod/
+dist/
+build/
+coverage/
+.pytest_cache/
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+.env.local
+.env.*.local
+tmp/
+logs/
+artifacts/
+
+# runtime / tooling state
+.claude/
+.codex-runtime/
+
+# scratch / reference dumps
+.tmp-*/
+
+# app runtime files
+*.log
+apps/api/ai_collab.db
+apps/api/alembic/versions/__pycache__/
+apps/web/*.log
+
+# IDE
+.vscode/
+.idea/

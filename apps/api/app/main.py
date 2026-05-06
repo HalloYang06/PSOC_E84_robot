@@ -1,0 +1,151 @@
+from __future__ import annotations
+
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+from app.common.errors import AppError
+from app.common.request_id import new_request_id, set_request_id
+from app.common.response import err, ok
+import app.db.models  # noqa: F401
+from app.db.base import Base
+from app.db.session import SessionLocal, engine
+from app.settings import get_settings
+from app.supertokens_runtime import setup_supertokens
+from app.seed import (
+    ensure_sample_task_events,
+    ensure_schema_extensions,
+    normalize_sample_ids,
+    normalize_sample_collaboration_config,
+    normalize_sample_requirement_policy,
+    normalize_sample_workflow_state,
+    seed_if_empty,
+)
+from app.modules.agents.router import router as agents_router
+from app.modules.approvals.router import router as approvals_router
+from app.modules.auth.router import router as auth_router
+from app.modules.audit.router import router as audit_router
+from app.modules.collaboration.router import router as collaboration_router
+from app.modules.context.router import router as context_router
+from app.modules.development.router import router as development_router
+from app.modules.git.router import router as git_router
+from app.modules.handoffs.router import router as handoffs_router
+from app.modules.lab.router import router as lab_router
+from app.modules.knowledge.router import router as knowledge_router
+from app.modules.messages.router import router as messages_router
+from app.modules.projects.router import router as projects_router
+from app.modules.requirements.router import router as requirements_router
+from app.modules.runners.router import router as runners_router
+from app.modules.tasks.router import router as tasks_router
+from app.modules.usage.router import router as usage_router
+from app.modules.claude_bridge.router import router as claude_bridge_router
+
+
+app = FastAPI(title="AI Collab Platform API", version="0.1.0")
+settings = get_settings()
+
+if settings.cors_allowed_origins_list and not settings.supertokens_enabled:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_allowed_origins_list,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+setup_supertokens(app, settings)
+
+
+def _startup_settings():
+    return get_settings()
+
+
+def _ensure_runtime_configuration() -> None:
+    settings = _startup_settings()
+    if settings.is_production:
+        if not settings.secret_key.strip():
+            raise RuntimeError("SECRET_KEY must be configured in production")
+        if settings.allow_bootstrap_auth:
+            raise RuntimeError("ALLOW_BOOTSTRAP_AUTH must stay disabled in production")
+        if settings.database_auto_create:
+            raise RuntimeError("DATABASE_AUTO_CREATE must stay disabled in production")
+        if settings.database_auto_seed:
+            raise RuntimeError("DATABASE_AUTO_SEED must stay disabled in production")
+
+
+@app.on_event("startup")
+def on_startup() -> None:
+    settings = _startup_settings()
+    _ensure_runtime_configuration()
+
+    if settings.database_auto_create:
+        Base.metadata.create_all(bind=engine)
+
+    # Keep local SQLite deployments self-healing when models add columns/indexes.
+    # This must also run for existing databases, not only on fresh create.
+    ensure_schema_extensions()
+
+    if settings.database_auto_seed and settings.app_env.strip().lower() == "test":
+        with SessionLocal() as db:
+            normalize_sample_ids(db)
+            seed_if_empty(db)
+            normalize_sample_ids(db)
+            normalize_sample_workflow_state(db)
+            normalize_sample_requirement_policy(db)
+            normalize_sample_collaboration_config(db)
+            ensure_sample_task_events(db)
+
+
+@app.middleware("http")
+async def request_id_middleware(request: Request, call_next):
+    rid = request.headers.get("x-request-id") or new_request_id()
+    set_request_id(rid)
+    response = await call_next(request)
+    response.headers["x-request-id"] = rid
+    return response
+
+
+@app.exception_handler(AppError)
+async def app_error_handler(_: Request, exc: AppError):
+    return JSONResponse(status_code=exc.status_code, content=err(exc.code, exc.message, details=exc.details))
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(_: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=422,
+        content=err("VALIDATION_ERROR", "请求参数校验失败", details={"errors": exc.errors()}),
+    )
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(_: Request, exc: StarletteHTTPException):
+    code = "UNAUTHORIZED" if exc.status_code == 401 else "PERMISSION_DENIED" if exc.status_code == 403 else "HTTP_ERROR"
+    return JSONResponse(status_code=exc.status_code, content=err(code, str(exc.detail)))
+
+
+@app.get("/api/health")
+def health() -> dict[str, object]:
+    return ok({"status": "ok", "version": "0.1.0"})
+
+
+app.include_router(projects_router)
+app.include_router(auth_router)
+app.include_router(requirements_router)
+app.include_router(agents_router)
+app.include_router(runners_router)
+app.include_router(tasks_router)
+app.include_router(context_router)
+app.include_router(development_router)
+app.include_router(handoffs_router)
+app.include_router(lab_router)
+app.include_router(knowledge_router)
+app.include_router(messages_router)
+app.include_router(approvals_router)
+app.include_router(audit_router)
+app.include_router(collaboration_router)
+app.include_router(git_router)
+app.include_router(usage_router)
+app.include_router(claude_bridge_router)
