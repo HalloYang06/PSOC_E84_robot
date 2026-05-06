@@ -773,6 +773,8 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
   const [webBaseUrl, setWebBaseUrl] = useState("http://127.0.0.1:3000");
   const [sceneVisible, setSceneVisible] = useState(false);
   const [copyState, setCopyState] = useState<{ kind: "idle" | "loading" | "ok" | "err"; message?: string }>({ kind: "idle" });
+  const [cockpitOpen, setCockpitOpen] = useState(true);
+  const [taskBoardOpen, setTaskBoardOpen] = useState(true);
   const setPanelNotice = (_value: string) => {};
   const panelNotice = "";
 
@@ -2639,62 +2641,81 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         </section>
       ) : null}
 
-      <header className={styles.cockpit} aria-label="开发者驾驶舱">
-        <div className={styles.cockpitHeader}>
-          <div className={styles.cockpitProject}>
-            <span className={styles.cockpitEyebrow}>嵌入式机器人开发台</span>
-            <strong>{project.name}</strong>
-            <small>{currentUser.name}{currentUser.email ? ` · ${currentUser.email}` : ""}</small>
+      {cockpitOpen ? (
+        <header className={styles.cockpit} aria-label="开发者驾驶舱">
+          <div className={styles.cockpitHeader}>
+            <div className={styles.cockpitProject}>
+              <span className={styles.cockpitEyebrow}>嵌入式机器人开发台</span>
+              <strong>{project.name}</strong>
+              <small>{currentUser.name}{currentUser.email ? ` · ${currentUser.email}` : ""}</small>
+            </div>
+            <div className={styles.cockpitToolbar}>
+              <button
+                type="button"
+                className={styles.cockpitPrimary}
+                onClick={copyClaudePrompt}
+                disabled={copyState.kind === "loading"}
+                title="把当前项目上下文复制为 Claude Code 提示词"
+              >
+                {copyState.kind === "loading" ? "生成中..." : "复制 Claude Code 提示词"}
+              </button>
+              <button type="button" className={styles.cockpitGhost} onClick={copyRepoUrl} title="复制仓库地址">
+                仓库地址
+              </button>
+              <button
+                type="button"
+                className={styles.cockpitGhost}
+                onClick={() => setSceneVisible((value) => !value)}
+                title="显示/隐藏 Unity 场景背景"
+              >
+                {sceneVisible ? "隐藏场景" : "显示场景"}
+              </button>
+              <Link href="/projects" className={styles.cockpitGhost}>项目列表</Link>
+              <button
+                type="button"
+                className={styles.cockpitGhost}
+                onClick={() => setCockpitOpen(false)}
+                title="完全隐藏驾驶舱（不挡视野）"
+              >
+                ✕ 隐藏
+              </button>
+            </div>
           </div>
-          <div className={styles.cockpitToolbar}>
-            <button
-              type="button"
-              className={styles.cockpitPrimary}
-              onClick={copyClaudePrompt}
-              disabled={copyState.kind === "loading"}
-              title="把当前项目上下文复制为 Claude Code 提示词"
-            >
-              {copyState.kind === "loading" ? "生成中..." : "📋 复制 Claude Code 提示词"}
-            </button>
-            <button type="button" className={styles.cockpitGhost} onClick={copyRepoUrl} title="复制仓库地址">
-              ⎘ 仓库地址
-            </button>
-            <button
-              type="button"
-              className={styles.cockpitGhost}
-              onClick={() => setSceneVisible((value) => !value)}
-              title="显示/隐藏 Unity 场景背景"
-            >
-              {sceneVisible ? "隐藏场景" : "显示场景"}
-            </button>
-            <Link href="/projects" className={styles.cockpitGhost}>项目列表</Link>
+          {copyState.message ? (
+            <div className={`${styles.cockpitToast} ${copyState.kind === "err" ? styles.cockpitToastErr : styles.cockpitToastOk}`}>
+              {copyState.message}
+            </div>
+          ) : null}
+          {teamError ? <div className={`${styles.cockpitToast} ${styles.cockpitToastErr}`}>操作失败：{teamError}</div> : null}
+          {!teamError && teamNotice ? <div className={`${styles.cockpitToast} ${styles.cockpitToastOk}`}>{teamNotice}</div> : null}
+          <div className={styles.cockpitMetrics}>
+            <article className={styles.cockpitMetricCard}>
+              <span>当前任务</span>
+              <strong>{latestTask ? itemTitle(latestTask) : "暂无活跃任务"}</strong>
+              <p>{latestTask ? statusLabel(latestTask.status) : "可在下方派单或新建"} · 进行中 {stats.activeTaskCount} · 阻塞 {stats.blockedTaskCount}</p>
+            </article>
+            <article className={`${styles.cockpitMetricCard} ${humanReviewCount > 0 ? styles.cockpitMetricAlert : ""}`}>
+              <span>待人工审核</span>
+              <strong>{humanReviewCount} 条</strong>
+              <p>{humanReviewCount > 0 ? "需要你点击审批，AI 不会自动放行" : "暂无阻塞，AI 工作流通畅"}</p>
+            </article>
+            <article className={styles.cockpitMetricCard}>
+              <span>AI 线程</span>
+              <strong>{npcSeats.length} 个 · 在线电脑 {stats.onlineComputerCount}/{stats.computerCount}</strong>
+              <p>本月 token ￥{stats.tokenSpend} · 协作消息 {stats.messageCount}</p>
+            </article>
           </div>
-        </div>
-        {copyState.message ? (
-          <div className={`${styles.cockpitToast} ${copyState.kind === "err" ? styles.cockpitToastErr : styles.cockpitToastOk}`}>
-            {copyState.message}
-          </div>
-        ) : null}
-        {teamError ? <div className={`${styles.cockpitToast} ${styles.cockpitToastErr}`}>操作失败：{teamError}</div> : null}
-        {!teamError && teamNotice ? <div className={`${styles.cockpitToast} ${styles.cockpitToastOk}`}>{teamNotice}</div> : null}
-        <div className={styles.cockpitMetrics}>
-          <article className={styles.cockpitMetricCard}>
-            <span>当前任务</span>
-            <strong>{latestTask ? itemTitle(latestTask) : "暂无活跃任务"}</strong>
-            <p>{latestTask ? statusLabel(latestTask.status) : "可在下方派单或新建"} · 进行中 {stats.activeTaskCount} · 阻塞 {stats.blockedTaskCount}</p>
-          </article>
-          <article className={`${styles.cockpitMetricCard} ${stats.blockedTaskCount > 0 ? styles.cockpitMetricAlert : ""}`}>
-            <span>待人工审核</span>
-            <strong>{humanReviewCount} 条</strong>
-            <p>{humanReviewCount > 0 ? "需要你点击审批，AI 不会自动放行" : "暂无阻塞，AI 工作流通畅"}</p>
-          </article>
-          <article className={styles.cockpitMetricCard}>
-            <span>AI 线程</span>
-            <strong>{npcSeats.length} 个 · 在线电脑 {stats.onlineComputerCount}/{stats.computerCount}</strong>
-            <p>本月 token ￥{stats.tokenSpend} · 协作消息 {stats.messageCount}</p>
-          </article>
-        </div>
-      </header>
+        </header>
+      ) : (
+        <button
+          type="button"
+          className={styles.cockpitReopen}
+          onClick={() => setCockpitOpen(true)}
+          title="显示驾驶舱"
+        >
+          ▼ 显示驾驶舱
+        </button>
+      )}
 
       <aside
         className={`${styles.moduleDock} ${dockHidden ? styles.moduleDockCollapsed : ""} ${activePanel ? styles.moduleDockWithPanel : ""} ${activeAction ? styles.moduleDockBehindDrawer : ""}`}
@@ -2720,7 +2741,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         </div>
       </aside>
 
-      {!activePanel ? (
+      {!activePanel && taskBoardOpen ? (
         <section className={styles.taskBoard} aria-label="任务流水线">
           <header className={styles.taskBoardHeader}>
             <div>
@@ -2729,6 +2750,14 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             </div>
             <div className={styles.taskBoardHints}>
               <small>点任务卡 → 复制 Claude prompt / 派给某个 AI 线程 / 进入消息池</small>
+              <button
+                type="button"
+                className={styles.taskBoardToggle}
+                onClick={() => setTaskBoardOpen(false)}
+                title="完全隐藏任务看板（不挡视野）"
+              >
+                ✕ 隐藏
+              </button>
             </div>
           </header>
           <div className={styles.taskBoardLanes}>
@@ -2757,6 +2786,17 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             })}
           </div>
         </section>
+      ) : null}
+
+      {!activePanel && !taskBoardOpen ? (
+        <button
+          type="button"
+          className={styles.taskBoardReopen}
+          onClick={() => setTaskBoardOpen(true)}
+          title="显示任务流水线"
+        >
+          显示任务流水线
+        </button>
       ) : null}
 
       {activeModule ? (

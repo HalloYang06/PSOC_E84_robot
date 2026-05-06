@@ -1517,15 +1517,83 @@
   left: 16px;
   right: 360px;
   z-index: 30;
-  background: linear-gradient(180deg, rgba(15, 23, 42, 0.94), rgba(15, 23, 42, 0.82));
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  border-radius: 16px;
-  padding: 14px 18px;
+  border: 1px solid rgba(88, 240, 255, 0.42);
+  background:
+    linear-gradient(135deg, rgba(2, 28, 39, 0.92), rgba(2, 13, 20, 0.82)),
+    repeating-linear-gradient(90deg, rgba(94, 240, 255, 0.06) 0 1px, transparent 1px 26px);
+  box-shadow:
+    0 22px 58px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(136, 255, 236, 0.08) inset,
+    0 0 28px rgba(34, 218, 255, 0.14);
   backdrop-filter: blur(14px);
+  clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 16px 100%, 0 calc(100% - 16px));
+  padding: 14px 18px;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  transition: all 0.2s ease;
+}
+
+.cockpitCollapsed {
+  padding: 10px 18px;
+  gap: 0;
+}
+
+.cockpitReopen,
+.taskBoardReopen {
+  position: absolute;
+  z-index: 25;
+  height: 32px;
+  padding: 0 14px;
+  font-size: 11px;
+  font-weight: 1000;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  border: 1px solid rgba(122, 255, 244, 0.5);
+  background: rgba(2, 28, 39, 0.78);
+  color: #93fbff;
+  font-family: inherit;
+  clip-path: polygon(8px 0, calc(100% - 8px) 0, 100% 50%, calc(100% - 8px) 100%, 8px 100%, 0 50%);
+  transition: all 0.18s ease;
+  backdrop-filter: blur(8px);
+}
+
+.cockpitReopen:hover,
+.taskBoardReopen:hover {
+  background: rgba(23, 215, 255, 0.18);
+  color: #b9fff3;
+  box-shadow: 0 0 18px rgba(94, 240, 255, 0.32);
+}
+
+.cockpitReopen {
+  top: 16px;
+  left: 16px;
+}
+
+.taskBoardReopen {
+  bottom: 110px;
+  left: 16px;
+}
+
+.taskBoardToggle {
+  height: 26px;
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid rgba(122, 255, 244, 0.5);
+  background: rgba(2, 28, 39, 0.7);
+  color: #93fbff;
+  font-family: inherit;
+  clip-path: polygon(6px 0, calc(100% - 6px) 0, 100% 50%, calc(100% - 6px) 100%, 6px 100%, 0 50%);
+  transition: all 0.18s ease;
+  margin-top: 4px;
+  align-self: flex-end;
+}
+
+.taskBoardToggle:hover {
+  background: rgba(23, 215, 255, 0.18);
+  color: #b9fff3;
 }
 
 .cockpitHeader {
@@ -1545,20 +1613,27 @@
 
 .cockpitEyebrow {
   font-size: 11px;
-  letter-spacing: 0.15em;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: rgba(148, 163, 184, 0.85);
+  color: #93fbff;
+  width: fit-content;
+  padding: 3px 9px;
+  border: 1px solid rgba(122, 255, 244, 0.5);
+  background: rgba(23, 215, 255, 0.16);
+  font-weight: 1000;
+  margin-bottom: 4px;
 }
 
 .cockpitProject strong {
   font-size: 18px;
-  color: #f8fafc;
+  color: #f4ffff;
   font-weight: 600;
+  text-shadow: 0 0 12px rgba(94, 240, 255, 0.3);
 }
 
 .cockpitProject small {
   font-size: 12px;
-  color: rgba(148, 163, 184, 0.85);
+  color: rgba(220, 252, 255, 0.72);
 }
 
 .cockpitToolbar {
@@ -1573,63 +1648,67 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 36px;
+  height: 34px;
   padding: 0 14px;
-  border-radius: 10px;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
   cursor: pointer;
-  border: 1px solid transparent;
+  border: 1px solid rgba(122, 255, 244, 0.5);
   transition: all 0.18s ease;
   text-decoration: none;
   white-space: nowrap;
+  font-family: inherit;
+  clip-path: polygon(8px 0, calc(100% - 8px) 0, 100% 50%, calc(100% - 8px) 100%, 8px 100%, 0 50%);
 }
 
 .cockpitPrimary {
-  background: linear-gradient(135deg, #22c55e, #16a34a);
-  color: #ffffff;
-  border-color: rgba(34, 197, 94, 0.6);
-  box-shadow: 0 4px 16px rgba(34, 197, 94, 0.28);
+  background: linear-gradient(135deg, rgba(99, 255, 213, 0.32), rgba(23, 106, 159, 0.32));
+  color: #b9fff3;
+  border-color: rgba(167, 255, 237, 0.78);
+  box-shadow: 0 0 18px rgba(94, 240, 255, 0.28);
+  text-shadow: 0 0 6px rgba(94, 240, 255, 0.4);
 }
 
 .cockpitPrimary:hover:not(:disabled) {
-  filter: brightness(1.08);
-  transform: translateY(-1px);
+  filter: brightness(1.18);
+  box-shadow: 0 0 24px rgba(94, 240, 255, 0.5);
 }
 
 .cockpitPrimary:disabled {
-  opacity: 0.6;
+  opacity: 0.55;
   cursor: not-allowed;
 }
 
 .cockpitGhost {
-  background: rgba(30, 41, 59, 0.7);
-  color: #cbd5e1;
-  border-color: rgba(148, 163, 184, 0.25);
+  background: rgba(2, 28, 39, 0.7);
+  color: #93fbff;
+  border-color: rgba(88, 240, 255, 0.42);
 }
 
 .cockpitGhost:hover {
-  background: rgba(51, 65, 85, 0.9);
-  color: #f1f5f9;
-  border-color: rgba(148, 163, 184, 0.5);
+  background: rgba(23, 215, 255, 0.18);
+  color: #b9fff3;
+  border-color: rgba(167, 255, 237, 0.78);
 }
 
 .cockpitToast {
   padding: 8px 12px;
-  border-radius: 8px;
   font-size: 12px;
   border-left: 3px solid;
-  background: rgba(15, 23, 42, 0.6);
+  background: rgba(2, 13, 20, 0.65);
+  color: #cdfffa;
 }
 
 .cockpitToastOk {
-  border-color: #22c55e;
-  color: #86efac;
+  border-color: #4dffb3;
+  color: #b9fff3;
+  text-shadow: 0 0 6px rgba(77, 255, 179, 0.3);
 }
 
 .cockpitToastErr {
-  border-color: #ef4444;
-  color: #fca5a5;
+  border-color: #ff7b7b;
+  color: #ffd2d2;
 }
 
 .cockpitMetrics {
@@ -1639,45 +1718,57 @@
 }
 
 .cockpitMetricCard {
-  background: rgba(30, 41, 59, 0.6);
-  border: 1px solid rgba(148, 163, 184, 0.15);
-  border-radius: 10px;
+  border: 1px solid rgba(88, 240, 255, 0.32);
+  background:
+    linear-gradient(135deg, rgba(2, 28, 39, 0.78), rgba(2, 13, 20, 0.66)),
+    repeating-linear-gradient(90deg, rgba(94, 240, 255, 0.04) 0 1px, transparent 1px 22px);
   padding: 10px 12px;
   display: flex;
   flex-direction: column;
   gap: 4px;
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+  box-shadow: 0 0 18px rgba(34, 218, 255, 0.08) inset;
 }
 
 .cockpitMetricCard span {
   font-size: 11px;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: rgba(148, 163, 184, 0.75);
+  color: #93fbff;
+  font-weight: 1000;
+  width: fit-content;
+  padding: 3px 8px;
+  border: 1px solid rgba(122, 255, 244, 0.44);
+  background: rgba(23, 215, 255, 0.14);
 }
 
 .cockpitMetricCard strong {
   font-size: 14px;
-  color: #f8fafc;
+  color: #f4ffff;
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  text-shadow: 0 0 8px rgba(94, 240, 255, 0.25);
 }
 
 .cockpitMetricCard p {
   font-size: 11px;
-  color: rgba(203, 213, 225, 0.85);
+  color: rgba(220, 252, 255, 0.78);
   margin: 0;
   line-height: 1.4;
 }
 
 .cockpitMetricAlert {
-  border-color: rgba(239, 68, 68, 0.45);
-  background: rgba(127, 29, 29, 0.25);
+  border-color: rgba(255, 232, 109, 0.78);
+  background:
+    linear-gradient(135deg, rgba(60, 50, 13, 0.82), rgba(13, 93, 91, 0.65)),
+    repeating-linear-gradient(90deg, rgba(255, 229, 112, 0.06) 0 1px, transparent 1px 22px);
 }
 
 .cockpitMetricAlert strong {
-  color: #fca5a5;
+  color: #ffec8a;
+  text-shadow: 0 0 8px rgba(255, 229, 112, 0.4);
 }
 
 .taskBoard {
