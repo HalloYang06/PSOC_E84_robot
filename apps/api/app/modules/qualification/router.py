@@ -135,16 +135,16 @@ def get_project_scorecard(
             .where(
                 Approval.project_id == project_id,
                 Approval.status.in_(["approved", "rejected"]),
-                Approval.updated_at >= seven_days_ago,
+                Approval.approved_at >= seven_days_ago,
             )
         )
     )
     review_minutes: list[float] = []
     for ap in closed_approvals:
-        if ap.created_at is None or ap.updated_at is None:
+        if ap.created_at is None or ap.approved_at is None:
             continue
         c = ap.created_at if ap.created_at.tzinfo else ap.created_at.replace(tzinfo=timezone.utc)
-        u = ap.updated_at if ap.updated_at.tzinfo else ap.updated_at.replace(tzinfo=timezone.utc)
+        u = ap.approved_at if ap.approved_at.tzinfo else ap.approved_at.replace(tzinfo=timezone.utc)
         delta_min = max(0.0, (u - c).total_seconds() / 60.0)
         review_minutes.append(delta_min)
     median_review_min: float | None = None
@@ -171,7 +171,7 @@ def get_project_scorecard(
             select(func.count(Approval.id)).where(
                 Approval.project_id == project_id,
                 Approval.level.in_(["H3", "H4"]),
-                Approval.updated_at >= seven_days_ago,
+                Approval.created_at >= seven_days_ago,
             )
         )
         or 0
