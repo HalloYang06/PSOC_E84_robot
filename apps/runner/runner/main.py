@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import time
+from datetime import datetime, timezone
 from typing import Any
 
 from .client import PlatformClient
@@ -13,10 +15,41 @@ from .workspace import WorkspaceManager
 
 
 def _detect_capabilities(cfg: RunnerConfig) -> list[str]:
-    capabilities = ["git", "git.preflight", "python", "node", "runner.inbox"]
+    capabilities = ["git", "git.preflight", "python", "node", "runner.inbox", "runner.prompt.relay"]
     if cfg.allow_hardware_access:
         capabilities.extend(["hardware", "serial.usb.scan", "serial.write", "serial.waveform.aicsv"])
     return capabilities
+
+
+def _write_prompt_inbox_file(cfg: RunnerConfig, message: dict[str, Any], log: LogCollector) -> str | None:
+    """Persist a plain-text relay message into the runner inbox so the local CLI can pick it up."""
+    inbox_dir = cfg.workdir / "inbox"
+    try:
+        inbox_dir.mkdir(parents=True, exist_ok=True)
+    except Exception as exc:
+        log.write("error", f"Failed to create runner inbox dir {inbox_dir}: {exc}")
+        return None
+    message_id = str(message.get("id") or "").strip()
+    if not message_id:
+        return None
+    file_path = inbox_dir / f"{message_id}.json"
+    record = {
+        "id": message_id,
+        "title": message.get("title"),
+        "body": message.get("body"),
+        "project_id": message.get("project_id"),
+        "task_id": message.get("task_id"),
+        "dispatch_id": message.get("dispatch_id"),
+        "sender_type": message.get("sender_type"),
+        "sender_id": message.get("sender_id"),
+        "received_at": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        file_path.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception as exc:
+        log.write("error", f"Failed to write runner inbox file {file_path}: {exc}")
+        return None
+    return str(file_path)
 
 
 def _handle_task(task: dict[str, Any], ws_mgr: WorkspaceManager, client: PlatformClient, cfg: RunnerConfig) -> None:
@@ -95,7 +128,44 @@ def _handle_runner_relay_message(
         log.write("info", f"Handled runner relay {message_id} kind={kind} status={result.get('result_status')}")
         return True
 
-    return False
+    # Fallback: plain text prompt. Drop it into runner workdir/inbox/ so the local
+    # provider CLI (Claude Code / Codex / platform-workstation-adapter) can pick
+    # it up, and ack the platform so the user sees "已下发". Acceptance fix for
+    # "我在平台发指令根本过不来 CLI" — without this the message stays "pending"
+    # forever and the dispatch UI shows it as queued.
+    status = str(message.get("status") or "").strip().lower()
+    inbox_path = _write_prompt_inbox_file(cfg, message, log)
+    title = str(message.get("title") or "").strip()
+    note_target = inbox_path or str(cfg.workdir / "inbox")
+    if status == "pending":
+        try:
+            client.ack_runner_message(
+                cfg.runner_id,
+                message_id,
+                note=f"{cfg.runner_name} accepted the prompt and wrote it to {note_target}.",
+            )
+        except Exception as exc:
+            log.write("error", f"Failed to ack runner relay {message_id}: {exc}")
+    completion_note = (
+        f"Runner persisted the prompt to {note_target}. "
+        f"Local CLI / adapter polling that folder will execute it next."
+    )
+    if title:
+        completion_note = f"[{title}] {completion_note}"
+    try:
+        client.complete_runner_message(
+            cfg.runner_id,
+            message_id,
+            result_status="completed",
+            note=completion_note,
+        )
+    except Exception as exc:
+        log.write("error", f"Failed to complete runner relay {message_id}: {exc}")
+    log.write(
+        "info",
+        f"Handled runner relay {message_id} kind=prompt.inbox path={inbox_path or '<failed>'}",
+    )
+    return True
 
 
 def _poll_runner_relay_inbox(client: PlatformClient, cfg: RunnerConfig, log: LogCollector) -> None:

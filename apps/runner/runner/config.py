@@ -55,4 +55,5 @@ def ensure_dirs(cfg: RunnerConfig) -> None:
     (cfg.workdir / "tasks").mkdir(parents=True, exist_ok=True)
     (cfg.workdir / "logs").mkdir(parents=True, exist_ok=True)
     (cfg.workdir / "artifacts").mkdir(parents=True, exist_ok=True)
+    (cfg.workdir / "inbox").mkdir(parents=True, exist_ok=True)
 
