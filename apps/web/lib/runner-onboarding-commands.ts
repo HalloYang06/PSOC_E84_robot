@@ -146,6 +146,7 @@ export function buildComputerOneClickConnectCommand(
   node: AnyRecord,
   pairingToken: string,
   runnerId: string,
+  options: { watch?: boolean; executeProviderCli?: boolean } = {},
 ) {
   const nodeId = text(node.id ?? node.node_id ?? node.name ?? node.label, "computer");
   const runnerName = `${text(node.label ?? node.name, nodeId)} Runner`;
@@ -160,6 +161,12 @@ export function buildComputerOneClickConnectCommand(
   ];
   if (workspaceRoot) {
     args.push(["-WorkspaceRoot", workspaceRoot]);
+  }
+  if (options.watch) {
+    args.push(["-Watch", true]);
+  }
+  if (options.executeProviderCli) {
+    args.push(["-WatchExecuteProviderCli", true]);
   }
   return buildPowerShellRunnerScriptCommand(serverUrl, "connect-ai-collab-runner.ps1", args);
 }

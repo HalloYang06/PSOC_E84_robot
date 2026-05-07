@@ -5452,10 +5452,11 @@ type TokenResultCardProps = {
   subtitle?: string;
   token: string;
   command: string;
+  watchCommand?: string;
   testId?: string;
 };
 
-function TokenResultCard({ title, subtitle, token, command, testId }: TokenResultCardProps) {
+function TokenResultCard({ title, subtitle, token, command, watchCommand, testId }: TokenResultCardProps) {
   const [copyState, setCopyState] = useState<{ kind: "idle" | "ok" | "err"; message?: string }>({
     kind: "idle",
   });
@@ -5552,6 +5553,44 @@ function TokenResultCard({ title, subtitle, token, command, testId }: TokenResul
           </small>
         ) : null}
       </div>
+      {watchCommand ? (
+        <details style={{ marginTop: 4 }} data-token-watch-card={testId || "true"}>
+          <summary style={{ cursor: "pointer", fontWeight: 600 }}>
+            ▷ 想让平台下发的指令真的进 CLI？复制下面这条「持续协作」命令运行（替代上面那条）
+          </summary>
+          <p style={{ margin: "6px 0", fontWeight: 400, opacity: 0.9 }}>
+            上面"一键接入"只跑一次就退出。要让平台派单 / 指令实时进入本机 Claude / Codex CLI，
+            必须用下面这条带 <code>-Watch -WatchExecuteProviderCli</code> 的命令，并保持窗口运行。
+          </p>
+          <textarea
+            readOnly
+            rows={4}
+            value={watchCommand}
+            aria-label="持续协作命令"
+            data-token-watch-command={testId || "true"}
+            style={{
+              width: "100%",
+              fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace",
+              fontSize: 11,
+              background: "rgba(0,0,0,0.32)",
+              color: "#f6edd8",
+              border: "1px solid rgba(246,237,216,0.12)",
+              borderRadius: 10,
+              padding: "8px 10px",
+              resize: "vertical",
+            }}
+          />
+          <button
+            type="button"
+            className={styles.ghostButton}
+            onClick={() => copyText(watchCommand, "持续协作命令已复制，请在目标电脑运行并保持窗口")}
+            data-token-copy-watch={testId || "true"}
+            style={{ marginTop: 6 }}
+          >
+            复制持续协作命令
+          </button>
+        </details>
+      ) : null}
     </article>
   );
 }
@@ -11049,12 +11088,21 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             pairingToken,
             pairingRunnerId,
           );
+          const pairingWatchCommand = buildComputerOneClickConnectCommand(
+            pairingServerUrl,
+            projectId,
+            pairingNode,
+            pairingToken,
+            pairingRunnerId,
+            { watch: true, executeProviderCli: true },
+          );
           return (
             <TokenResultCard
               title="电脑配对令牌已生成"
               subtitle={pairingNodeId ? `电脑 ${pairingNodeId}` : undefined}
               token={pairingToken}
               command={pairingCommand}
+              watchCommand={pairingWatchCommand}
               testId="computer-pairing"
             />
           );

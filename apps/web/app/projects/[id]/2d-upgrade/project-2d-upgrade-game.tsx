@@ -799,6 +799,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
   const [webBaseUrl, setWebBaseUrl] = useState("http://127.0.0.1:3000");
   const [sceneVisible, setSceneVisible] = useState(false);
   const [copyState, setCopyState] = useState<{ kind: "idle" | "loading" | "ok" | "err"; message?: string }>({ kind: "idle" });
+  const [handoffPreview, setHandoffPreview] = useState<{ npcName: string; prompt: string; at: string } | null>(null);
   const [handoffTaskId, setHandoffTaskId] = useState<string>("");
   const [cockpitOpen, setCockpitOpen] = useState(true);
   const [taskBoardOpen, setTaskBoardOpen] = useState(true);
@@ -1691,27 +1692,34 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                 }
                 setCopyState({ kind: "loading" });
                 try {
-                  const data = await fetchNpcHandoffContext(project.id, targetId);
-                  const prompt = String(data?.prompt ?? "").trim();
-                  if (!prompt) throw new Error("接手 prompt 为空");
-                  await navigator.clipboard.writeText(prompt);
+                  // 先落库 Handoff，再拉 context —— 这样新拉的 prompt 里
+                  // recent_handoffs 会包含这次刚写的记录，确保每次结果是最新的。
                   let recordedId: string | null = null;
                   try {
                     const recorded = await recordNpcHandoff(project.id, targetId, { task_id: handoffTaskId });
                     recordedId = String(recorded?.handoff?.id || "") || null;
                   } catch (err) {
                     setCopyState({
-                      kind: "ok",
-                      message: `已复制 ${focusedNpcSeat?.name || "NPC"} 的接手 prompt（落库失败：${err instanceof Error ? err.message : "未知错误"}），仍可粘贴到新线程使用。`,
+                      kind: "err",
+                      message: `Handoff 落库失败：${err instanceof Error ? err.message : "未知错误"}`,
                     });
-                    setTimeout(() => setCopyState({ kind: "idle" }), 6000);
+                    setTimeout(() => setCopyState({ kind: "idle" }), 5000);
                     return;
                   }
+                  const data = await fetchNpcHandoffContext(project.id, targetId);
+                  const prompt = String(data?.prompt ?? "").trim();
+                  if (!prompt) throw new Error("接手 prompt 为空");
+                  await navigator.clipboard.writeText(prompt);
+                  setHandoffPreview({
+                    npcName: focusedNpcSeat?.name || "NPC",
+                    prompt,
+                    at: new Date().toLocaleTimeString(),
+                  });
                   setCopyState({
                     kind: "ok",
                     message: recordedId
-                      ? `已复制并登记接手记录（Handoff ${recordedId.slice(0, 8)}…），粘贴到新线程即可。`
-                      : `已复制 ${focusedNpcSeat?.name || "NPC"} 的接手 prompt，粘贴到新线程即可。`,
+                      ? `已复制并登记接手记录（Handoff ${recordedId.slice(0, 8)}…），下面预览即剪贴板内容。`
+                      : `已复制 ${focusedNpcSeat?.name || "NPC"} 的接手 prompt，下面预览即剪贴板内容。`,
                   });
                   setTimeout(() => setCopyState({ kind: "idle" }), 5000);
                 } catch (e) {
@@ -1736,6 +1744,39 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             <div className={`${styles.cockpitToast} ${copyState.kind === "err" ? styles.cockpitToastErr : styles.cockpitToastOk}`}>
               {copyState.message}
             </div>
+          ) : null}
+          {handoffPreview ? (
+            <details
+              style={{
+                margin: "6px 0",
+                padding: "8px 10px",
+                border: "1px solid rgba(94, 240, 255, 0.32)",
+                borderRadius: 10,
+                background: "rgba(2, 13, 20, 0.66)",
+              }}
+              data-handoff-preview-npc={handoffPreview.npcName}
+            >
+              <summary style={{ cursor: "pointer", fontWeight: 600 }}>
+                展开查看 {handoffPreview.npcName} 的 prompt 预览（{handoffPreview.at} 拉取，已在剪贴板）
+              </summary>
+              <textarea
+                readOnly
+                value={handoffPreview.prompt}
+                rows={12}
+                style={{
+                  width: "100%",
+                  marginTop: 6,
+                  fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace",
+                  fontSize: 11,
+                  background: "rgba(0,0,0,0.35)",
+                  color: "#f6edd8",
+                  border: "1px solid rgba(246,237,216,0.12)",
+                  borderRadius: 8,
+                  padding: "8px 10px",
+                  resize: "vertical",
+                }}
+              />
+            </details>
           ) : null}
           <form action={submitCollaborationMessage} className={styles.drawerForm} data-unity-real-form="npc-dialogue">
           <input type="hidden" name="project_id" value={project.id} />
