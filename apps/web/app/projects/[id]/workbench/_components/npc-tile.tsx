@@ -23,6 +23,8 @@ type NpcTileProps = {
   projectId: string;
   apiBaseUrl: string;
   seat: WorkbenchSeat;
+  teammates: WorkbenchSeat[];
+  onOpenTeammate: (id: string) => void;
   onClose: () => void;
 };
 
@@ -80,7 +82,7 @@ function formatTime(iso?: string | null): string {
   return d.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
-export function NpcTile({ projectId, apiBaseUrl, seat, onClose }: NpcTileProps) {
+export function NpcTile({ projectId, apiBaseUrl, seat, teammates, onOpenTeammate, onClose }: NpcTileProps) {
   const [messages, setMessages] = useState<CollabMessage[] | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [hideNoisy, setHideNoisy] = useState(true);
@@ -91,6 +93,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, onClose }: NpcTileProps) 
   const [sending, setSending] = useState(false);
   const [sendNote, setSendNote] = useState<string | null>(null);
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
+  const [senderSeatId, setSenderSeatId] = useState<string>("");
   const streamRef = useRef<HTMLDivElement | null>(null);
   const autoScrollRef = useRef(true);
 
@@ -158,6 +161,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, onClose }: NpcTileProps) 
     if (!body) return;
     setSending(true);
     setSendNote(null);
+    const peerSeat = senderSeatId ? teammates.find((t) => t.id === senderSeatId) : null;
     try {
       const res = await fetch(`${apiBaseUrl}/api/collaboration/messages`, {
         method: "POST",
@@ -166,7 +170,10 @@ export function NpcTile({ projectId, apiBaseUrl, seat, onClose }: NpcTileProps) 
         body: JSON.stringify({
           project_id: projectId,
           message_type: "comment_message",
-          body,
+          title: peerSeat ? `[同工位] ${peerSeat.name} → ${seat.name}` : null,
+          body: peerSeat ? `（代发自 ${peerSeat.name}）\n\n${body}` : body,
+          sender_type: peerSeat ? "agent" : "human",
+          sender_id: peerSeat ? peerSeat.id : null,
           recipient_type: "thread_workstation",
           recipient_id: seat.id,
           status: "open",
@@ -178,7 +185,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, onClose }: NpcTileProps) 
         throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
       }
       setDraft("");
-      setSendNote("已派发 ✓");
+      setSendNote(peerSeat ? `已以 ${peerSeat.name} 名义派发 ✓` : "已派发 ✓");
       autoScrollRef.current = true;
       await load(limit);
     } catch (e) {
@@ -248,6 +255,45 @@ export function NpcTile({ projectId, apiBaseUrl, seat, onClose }: NpcTileProps) 
               </p>
             </div>
           ) : null}
+          <div className={styles.profileRow}>
+            <small className={styles.sectionLabel}>
+              同工位伙伴 ({teammates.length})
+              <span className={styles.peerHint}>
+                {seat.computerNodeId ? "· 同电脑可直接互发，免审" : "· 未绑定电脑"}
+              </span>
+            </small>
+            {teammates.length === 0 ? (
+              <p className={styles.profileTextDim}>同工位暂无其他 NPC。</p>
+            ) : (
+              <div className={styles.peerRow}>
+                {teammates.map((peer) => (
+                  <div key={peer.id} className={styles.peerChipGroup}>
+                    <button
+                      type="button"
+                      className={styles.peerChip}
+                      onClick={() => onOpenTeammate(peer.id)}
+                      title={`打开 ${peer.name} 的瓷砖`}
+                    >
+                      <span className={styles.peerName}>{peer.name}</span>
+                      <span className={styles.peerMeta}>{peer.providerLabel || peer.providerId || "—"}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.peerSendBtn}
+                      onClick={() => {
+                        setSenderSeatId(peer.id);
+                        const ta = document.querySelector<HTMLTextAreaElement>(`textarea[data-tile-id="${seat.id}"]`);
+                        ta?.focus();
+                      }}
+                      title={`以 ${peer.name} 的名义给 ${seat.name} 发指令`}
+                    >
+                      代他派
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </section>
       ) : null}
 
@@ -349,7 +395,26 @@ export function NpcTile({ projectId, apiBaseUrl, seat, onClose }: NpcTileProps) 
           if (!sending) sendCommand();
         }}
       >
+        {teammates.length > 0 ? (
+          <div className={styles.composerSenderRow}>
+            <small className={styles.sectionLabel}>身份</small>
+            <select
+              className={styles.composerSender}
+              value={senderSeatId}
+              onChange={(e) => setSenderSeatId(e.target.value)}
+              title="选择以谁的身份发送：默认是你（用户），也可以代任意同工位 NPC 发"
+            >
+              <option value="">以"我"（用户）派单</option>
+              {teammates.map((p) => (
+                <option key={p.id} value={p.id}>
+                  代 {p.name} 同工位互发
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
         <textarea
+          data-tile-id={seat.id}
           className={styles.composerInput}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
