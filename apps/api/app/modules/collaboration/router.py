@@ -612,6 +612,65 @@ def api_update_project_config(project_id: str, payload: CollaborationConfigUpdat
     return ok(ProjectConfigRead.model_validate(update_project_collaboration_config(db, project_id, payload)).model_dump(mode="json"))
 
 
+class WorkstationProfilePatch(BaseModel):
+    local_repo_path: str | None = None
+    review_policy: str | None = None
+    skill_inheritance: list[str] | None = None
+    knowledge_path: str | None = None
+
+
+@router.patch("/projects/{project_id}/workstation-profiles/{node_id}")
+def api_patch_workstation_profile(
+    project_id: str,
+    node_id: str,
+    payload: WorkstationProfilePatch,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    _require_real_human_principal(db, request)
+    resolve_project_write_principal(db, request, project_id, require_privileged=True, action="project.workstation_profile.update")
+    config = get_project_collaboration_config(db, project_id)
+    inner = config.get("collaboration_config", {}) if isinstance(config.get("collaboration_config"), dict) else {}
+    profiles = dict(inner.get("workstation_profiles") or {})
+    current = dict(profiles.get(node_id) or {})
+    data = payload.model_dump(exclude_unset=True)
+    for k, v in data.items():
+        if v is None or v == "":
+            current.pop(k, None)
+        else:
+            current[k] = v
+    profiles[node_id] = current
+    update_payload = CollaborationConfigUpdate(workstation_profiles=profiles)
+    updated = update_project_collaboration_config(db, project_id, update_payload)
+    return ok({"node_id": node_id, "profile": current, "config": ProjectConfigRead.model_validate(updated).model_dump(mode="json")})
+
+
+class ProjectReviewPolicyPatch(BaseModel):
+    default: str | None = None
+
+
+@router.patch("/projects/{project_id}/review-policy")
+def api_patch_project_review_policy(
+    project_id: str,
+    payload: ProjectReviewPolicyPatch,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    _require_real_human_principal(db, request)
+    resolve_project_write_principal(db, request, project_id, require_privileged=True, action="project.review_policy.update")
+    config = get_project_collaboration_config(db, project_id)
+    inner = config.get("collaboration_config", {}) if isinstance(config.get("collaboration_config"), dict) else {}
+    rp = dict(inner.get("review_policy") or {})
+    data = payload.model_dump(exclude_unset=True)
+    if "default" in data:
+        if data["default"]:
+            rp["default"] = data["default"]
+        else:
+            rp.pop("default", None)
+    updated = update_project_collaboration_config(db, project_id, CollaborationConfigUpdate(review_policy=rp))
+    return ok({"review_policy": rp, "config": ProjectConfigRead.model_validate(updated).model_dump(mode="json")})
+
+
 @router.get("/projects/{project_id}/ai-providers")
 def api_list_project_ai_providers(project_id: str, request: Request, db: Session = Depends(get_db)):
     require_project_read_access(db, request, project_id, action="project.collaboration_provider.read")

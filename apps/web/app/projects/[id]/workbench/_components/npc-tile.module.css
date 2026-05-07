@@ -201,6 +201,75 @@
 }
 .composerSender:focus { outline: none; border-color: rgba(167, 255, 237, 0.7); }
 
+.identityRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.identityForm {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.identityInput {
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: rgba(2, 22, 33, 0.7);
+  border: 1px solid rgba(88, 240, 255, 0.28);
+  color: #eaffff;
+  font-size: 11.5px;
+  font-family: inherit;
+}
+.identityInput:focus { outline: none; border-color: rgba(167, 255, 237, 0.7); }
+
+.identityActions {
+  display: flex;
+  gap: 6px;
+}
+
+.identityMeta {
+  font-size: 10.5px;
+  color: rgba(190, 220, 240, 0.7);
+}
+
+.identityNote {
+  font-size: 10.5px;
+  color: rgba(167, 255, 237, 0.85);
+  margin-top: 2px;
+}
+
+.reviewBadge {
+  margin-left: 4px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  background: rgba(88, 240, 255, 0.12);
+  border: 1px solid rgba(88, 240, 255, 0.28);
+  color: #b9fff3;
+}
+.reviewBadge[data-policy="force"] {
+  background: rgba(255, 232, 109, 0.16);
+  border-color: rgba(255, 232, 109, 0.4);
+  color: #ffe8b3;
+}
+.reviewBadge[data-policy="skip"] {
+  background: rgba(167, 255, 237, 0.14);
+  border-color: rgba(167, 255, 237, 0.4);
+  color: #a7ffed;
+}
+
+.code {
+  padding: 1px 5px;
+  background: rgba(2, 13, 20, 0.6);
+  border-radius: 4px;
+  font-family: "JetBrains Mono", Consolas, monospace;
+  font-size: 11px;
+  color: #b9fff3;
+}
+
 .chipRow {
   display: flex;
   flex-wrap: wrap;

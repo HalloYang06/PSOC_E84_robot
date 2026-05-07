@@ -37,6 +37,7 @@ import { buildComputerOneClickConnectCommand, suggestedComputerRunnerId } from "
 import styles from "./project-2d-upgrade-game.module.css";
 import { ClaudeCommandPalette } from "../_components/claude-command-palette";
 import { BroadcastModal } from "../_components/broadcast-modal";
+import { WorkstationProfileEditor } from "../_components/workstation-profile-editor";
 
 type GameProject = {
   id: string;
@@ -565,11 +566,13 @@ function automationLabel(item?: FeedItem) {
 
 function WorkstationGroupsSection({
   projectId,
+  apiBaseUrl,
   npcSeats,
   computers,
   onBroadcast,
 }: {
   projectId: string;
+  apiBaseUrl: string;
   npcSeats: FeedItem[];
   computers: FeedItem[];
   onBroadcast: (scope: string, label: string) => void;
@@ -650,6 +653,13 @@ function WorkstationGroupsSection({
                 >
                   到 NPC 工作台 →
                 </Link>
+                {group.key !== "__unbound__" ? (
+                  <WorkstationProfileEditor
+                    apiBaseUrl={apiBaseUrl}
+                    projectId={projectId}
+                    nodeId={group.key}
+                  />
+                ) : null}
               </div>
             </details>
           );
@@ -3158,6 +3168,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
           </div>
           <WorkstationGroupsSection
             projectId={project.id}
+            apiBaseUrl={apiBaseUrl}
             npcSeats={npcSeats}
             computers={computers}
             onBroadcast={(scope, label) => setBroadcastTarget({ scope, label })}

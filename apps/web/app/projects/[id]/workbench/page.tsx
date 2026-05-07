@@ -69,6 +69,13 @@ export default async function WorkbenchPage({ params }: { params: { id: string }
     const automationEnabled = Boolean(seat.automation_enabled ?? seat.automationEnabled ?? false);
     const model = text(seat.model, "");
     const permissionLevel = text(seat.permission_level ?? seat.permissionLevel, "");
+    const meta = (seat.metadata && typeof seat.metadata === "object") ? (seat.metadata as AnyRecord) : {};
+    const gitUserName = text(meta.git_user_name ?? meta.gitUserName, name);
+    const gitUserEmail = text(
+      meta.git_user_email ?? meta.gitUserEmail,
+      `bot+${id}@noreply.invalid`,
+    );
+    const reviewPolicy = text(meta.review_policy ?? meta.reviewPolicy, "inherit");
     return {
       id,
       name,
@@ -82,6 +89,9 @@ export default async function WorkbenchPage({ params }: { params: { id: string }
       automationEnabled,
       model,
       permissionLevel,
+      gitUserName,
+      gitUserEmail,
+      reviewPolicy,
     };
   });
 

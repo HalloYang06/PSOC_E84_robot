@@ -17,6 +17,9 @@ export type WorkbenchSeat = {
   automationEnabled: boolean;
   model: string;
   permissionLevel: string;
+  gitUserName: string;
+  gitUserEmail: string;
+  reviewPolicy: string;
 };
 
 type NpcTileProps = {
@@ -94,8 +97,48 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, onOpenTeammate
   const [sendNote, setSendNote] = useState<string | null>(null);
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
   const [senderSeatId, setSenderSeatId] = useState<string>("");
+  const [editingIdentity, setEditingIdentity] = useState(false);
+  const [gitName, setGitName] = useState(seat.gitUserName);
+  const [gitEmail, setGitEmail] = useState(seat.gitUserEmail);
+  const [reviewPolicy, setReviewPolicy] = useState(seat.reviewPolicy || "inherit");
+  const [savingIdentity, setSavingIdentity] = useState(false);
+  const [identityNote, setIdentityNote] = useState<string | null>(null);
   const streamRef = useRef<HTMLDivElement | null>(null);
   const autoScrollRef = useRef(true);
+
+  async function saveIdentity() {
+    setSavingIdentity(true);
+    setIdentityNote(null);
+    try {
+      const res = await fetch(
+        `${apiBaseUrl}/api/collaboration/projects/${encodeURIComponent(projectId)}/thread-workstations/${encodeURIComponent(seat.id)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            metadata: {
+              git_user_name: gitName.trim() || seat.name,
+              git_user_email: gitEmail.trim() || `bot+${seat.id}@noreply.invalid`,
+              review_policy: reviewPolicy,
+            },
+          }),
+        },
+      );
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = json?.error?.message ?? json?.message ?? `HTTP ${res.status}`;
+        throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
+      }
+      setIdentityNote("已保存 ✓（刷新页面可见同步）");
+      setEditingIdentity(false);
+    } catch (e) {
+      setIdentityNote(`保存失败：${e instanceof Error ? e.message : "未知错误"}`);
+    } finally {
+      setSavingIdentity(false);
+      setTimeout(() => setIdentityNote(null), 4000);
+    }
+  }
 
   const load = useCallback(
     async (size: number) => {
@@ -255,6 +298,72 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, onOpenTeammate
               </p>
             </div>
           ) : null}
+          <div className={styles.profileRow}>
+            <small className={styles.sectionLabel}>
+              GitHub 身份
+              <span className={styles.peerHint}>· commit author（SSH 推送本机配）</span>
+            </small>
+            {editingIdentity ? (
+              <div className={styles.identityForm}>
+                <input
+                  className={styles.identityInput}
+                  value={gitName}
+                  onChange={(e) => setGitName(e.target.value)}
+                  placeholder="git user.name"
+                />
+                <input
+                  className={styles.identityInput}
+                  value={gitEmail}
+                  onChange={(e) => setGitEmail(e.target.value)}
+                  placeholder="git user.email"
+                />
+                <select
+                  className={styles.identityInput}
+                  value={reviewPolicy}
+                  onChange={(e) => setReviewPolicy(e.target.value)}
+                  title="人工审核策略：inherit 跟工位/项目，force 强审，skip 免审"
+                >
+                  <option value="inherit">审核：继承（项目/工位）</option>
+                  <option value="force">审核：强审（必经）</option>
+                  <option value="skip">审核：免审（直接落地）</option>
+                </select>
+                <div className={styles.identityActions}>
+                  <button type="button" className={styles.iconBtn} onClick={saveIdentity} disabled={savingIdentity}>
+                    {savingIdentity ? "保存中…" : "保存"}
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.iconBtn}
+                    onClick={() => {
+                      setEditingIdentity(false);
+                      setGitName(seat.gitUserName);
+                      setGitEmail(seat.gitUserEmail);
+                      setReviewPolicy(seat.reviewPolicy || "inherit");
+                    }}
+                  >
+                    取消
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className={styles.identityRow}>
+                <p className={styles.profileText}>
+                  <code className={styles.code}>{seat.gitUserName}</code>{" "}
+                  <code className={styles.code}>&lt;{seat.gitUserEmail}&gt;</code>
+                </p>
+                <small className={styles.identityMeta}>
+                  审核：
+                  <span className={styles.reviewBadge} data-policy={seat.reviewPolicy}>
+                    {seat.reviewPolicy === "force" ? "强审" : seat.reviewPolicy === "skip" ? "免审" : "继承"}
+                  </span>
+                </small>
+                <button type="button" className={styles.iconBtn} onClick={() => setEditingIdentity(true)}>
+                  改
+                </button>
+              </div>
+            )}
+            {identityNote ? <small className={styles.identityNote}>{identityNote}</small> : null}
+          </div>
           <div className={styles.profileRow}>
             <small className={styles.sectionLabel}>
               同工位伙伴 ({teammates.length})
