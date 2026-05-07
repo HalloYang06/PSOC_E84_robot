@@ -40,6 +40,9 @@ class RequirementCreate(BaseModel):
     related_files: list[str] = Field(default_factory=list)
     max_response_tokens: int = 3000
     opening_message: str | None = None
+    target_seat_id: str | None = Field(default=None, max_length=64)
+    trigger_kind: str = Field(default="manual", pattern="^(manual|on_requirement_done)$")
+    dependency_requirement_id: str | None = Field(default=None, max_length=64)
 
 
 class RequirementUpdate(BaseModel):
@@ -56,6 +59,9 @@ class RequirementUpdate(BaseModel):
     expected_output: str | None = None
     related_files: list[str] | None = None
     max_response_tokens: int | None = None
+    target_seat_id: str | None = None
+    trigger_kind: str | None = Field(default=None, pattern="^(manual|on_requirement_done)$")
+    dependency_requirement_id: str | None = None
 
 
 class RequirementReplyCreate(BaseModel):
@@ -126,6 +132,9 @@ class RequirementRead(BaseModel):
     last_response_at: datetime | None
     created_at: datetime | None
     updated_at: datetime | None
+    target_seat_id: str | None = None
+    trigger_kind: str = "manual"
+    dependency_requirement_id: str | None = None
     messages: list[RequirementMessageRead] = Field(default_factory=list)
 
     class Config:

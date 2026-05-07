@@ -9,6 +9,7 @@ import {
   getHandoffsData,
 } from "../../../../lib/server-data";
 import { isNpcSeatRecord } from "../../../../lib/platform-provider";
+import { 通过自主合作待审消息, 打回自主合作待审消息 } from "../../../actions";
 import styles from "./cockpit.module.css";
 
 export const dynamic = "force-dynamic";
@@ -46,12 +47,13 @@ export default async function ProjectCockpitPage({ params }: { params: { id: str
     redirect(`/login?next=/projects/${params.id}/cockpit`);
   }
 
-  const [projectState, computerNodesState, scorecardState, handoffsAll, messagesState] = await Promise.all([
+  const [projectState, computerNodesState, scorecardState, handoffsAll, messagesState, pendingReviewState] = await Promise.all([
     getProjectState(params.id),
     getProjectComputerNodesState(params.id),
     getProjectScorecardState(params.id),
     getHandoffsData(),
     getCollaborationMessagesState({ projectId: params.id }),
+    getCollaborationMessagesState({ projectId: params.id, status: "pending_review" }),
   ]);
 
   const project = projectState.data as AnyRecord | null;
@@ -99,6 +101,7 @@ export default async function ProjectCockpitPage({ params }: { params: { id: str
   });
 
   const recentMessages = asArray<AnyRecord>(messagesState.data).slice(0, 8);
+  const pendingReviewMessages = asArray<AnyRecord>(pendingReviewState.data);
 
   const githubUrl = text(project.github_url ?? project.githubUrl, "");
   const localGitUrl = text(project.local_git_url ?? project.localGitUrl, "");
@@ -241,6 +244,42 @@ export default async function ProjectCockpitPage({ params }: { params: { id: str
                 <span className={styles.muted}>{text(h.created_at ?? h.createdAt, "").slice(0, 19).replace("T", " ")}</span>
               </li>
             ))}
+          </ul>
+        )}
+      </section>
+
+      <section className={styles.section}>
+        <div className={styles.sectionHead}>
+          <h2>待审：NPC 自主合作消息</h2>
+          <span className={styles.muted}>
+            {pendingReviewMessages.length} 条
+            {pendingReviewMessages.length > 0 ? "（跨工位默认走人审；可在项目设置改成免审）" : ""}
+          </span>
+        </div>
+        {pendingReviewMessages.length === 0 ? (
+          <p className={styles.muted}>当前没有待审消息。同工位 NPC 间默认免审；跨工位的自主合作会落到这里等你通过/打回。</p>
+        ) : (
+          <ul className={styles.messageList}>
+            {pendingReviewMessages.map((m) => {
+              const id = text(m.id, "");
+              return (
+                <li key={id || Math.random().toString()} className={styles.messageItem}>
+                  <span className={styles.msgType}>pending_review</span>
+                  <span className={styles.msgSender}>
+                    {text(m.sender_type, "?")}/{text(m.sender_id, "").slice(0, 8)} → {text(m.recipient_type, "?")}/{text(m.recipient_id, "").slice(0, 12)}
+                  </span>
+                  <span className={styles.msgBody}>{text(m.title, "") || text(m.body, "").slice(0, 100)}</span>
+                  <span style={{ display: "flex", gap: 6 }}>
+                    <form action={async () => { "use server"; await 通过自主合作待审消息(id, params.id); }}>
+                      <button type="submit" className={styles.primaryBtn} style={{ padding: "2px 8px", fontSize: 12 }}>通过</button>
+                    </form>
+                    <form action={async () => { "use server"; await 打回自主合作待审消息(id, params.id); }}>
+                      <button type="submit" className={styles.ghostBtn} style={{ padding: "2px 8px", fontSize: 12 }}>打回</button>
+                    </form>
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>

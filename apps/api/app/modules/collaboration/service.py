@@ -1388,6 +1388,7 @@ def list_messages(
     recipient_type: str | None = None,
     recipient_id: str | None = None,
     sender_id: str | None = None,
+    status: str | None = None,
     limit: int = 100,
 ):
     stmt = select(CollaborationMessage).order_by(CollaborationMessage.created_at.desc())
@@ -1409,6 +1410,8 @@ def list_messages(
         stmt = stmt.where(CollaborationMessage.recipient_type == recipient_type)
     if recipient_id:
         stmt = stmt.where(CollaborationMessage.recipient_id == recipient_id)
+    if status:
+        stmt = stmt.where(CollaborationMessage.status == status)
     if sender_id:
         stmt = stmt.where(CollaborationMessage.sender_id == sender_id)
     return list(db.scalars(stmt.limit(max(1, min(limit, 500)))))

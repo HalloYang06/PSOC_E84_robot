@@ -72,6 +72,21 @@ def ensure_schema_extensions() -> None:
             )
         if "follow_up_from_requirement_id" not in requirement_columns:
             connection.execute(text("ALTER TABLE requirements ADD COLUMN follow_up_from_requirement_id VARCHAR(64)"))
+        if "target_seat_id" not in requirement_columns:
+            connection.execute(text("ALTER TABLE requirements ADD COLUMN target_seat_id VARCHAR(64)"))
+            connection.execute(
+                text("CREATE INDEX IF NOT EXISTS ix_requirements_target_seat_id ON requirements (target_seat_id)")
+            )
+        if "trigger_kind" not in requirement_columns:
+            connection.execute(text("ALTER TABLE requirements ADD COLUMN trigger_kind VARCHAR(32) NOT NULL DEFAULT 'manual'"))
+            connection.execute(
+                text("CREATE INDEX IF NOT EXISTS ix_requirements_trigger_kind ON requirements (trigger_kind)")
+            )
+        if "dependency_requirement_id" not in requirement_columns:
+            connection.execute(text("ALTER TABLE requirements ADD COLUMN dependency_requirement_id VARCHAR(64)"))
+            connection.execute(
+                text("CREATE INDEX IF NOT EXISTS ix_requirements_dependency_requirement_id ON requirements (dependency_requirement_id)")
+            )
         connection.execute(
             text(
                 "CREATE UNIQUE INDEX IF NOT EXISTS uq_requirements_follow_up_from_requirement_id "

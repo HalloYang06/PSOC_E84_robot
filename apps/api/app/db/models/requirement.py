@@ -40,6 +40,10 @@ class Requirement(Base):
     to_agent: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     follow_up_from_requirement_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
+    target_seat_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    trigger_kind: Mapped[str] = mapped_column(String(32), nullable=False, default="manual", index=True)
+    dependency_requirement_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+
     context_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     expected_output: Mapped[str | None] = mapped_column(Text, nullable=True)
     related_files: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)

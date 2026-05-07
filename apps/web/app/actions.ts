@@ -3213,6 +3213,18 @@ export async function 沉淀需求到知识库(requirementId: string) {
   revalidatePath("/context-health");
 }
 
+export async function 通过自主合作待审消息(messageId: string, projectId: string) {
+  await postJson(`/api/collaboration/messages/${encodeURIComponent(messageId)}/review/approve`, {});
+  revalidatePath(`/projects/${projectId}/cockpit`);
+  revalidatePath(`/projects/${projectId}/workbench`);
+}
+
+export async function 打回自主合作待审消息(messageId: string, projectId: string) {
+  await postJson(`/api/collaboration/messages/${encodeURIComponent(messageId)}/review/reject`, {});
+  revalidatePath(`/projects/${projectId}/cockpit`);
+  revalidatePath(`/projects/${projectId}/workbench`);
+}
+
 export async function 切换智能体状态(agentId: string, enabled: boolean) {
   await postJson(`/api/agents/${agentId}/${enabled ? "enable" : "disable"}`, {
     actor_type: "human",

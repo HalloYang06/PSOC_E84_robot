@@ -1191,6 +1191,7 @@ def api_list_messages(
     recipient_type: str | None = None,
     recipient_id: str | None = None,
     sender_id: str | None = None,
+    status: str | None = None,
     request: Request = None,
     limit: int = 100,
     db: Session = Depends(get_db),
@@ -1218,6 +1219,7 @@ def api_list_messages(
         recipient_type=recipient_type,
         recipient_id=recipient_id,
         sender_id=sender_id,
+        status=status,
         limit=limit,
     )
     return ok([CollaborationMessageRead.model_validate(item).model_dump(mode="json") for item in items])
@@ -1375,6 +1377,74 @@ def api_update_message(
     resolve_project_write_principal(db, request, project_id, action="collaboration.message.update")
     item = update_collaboration_message(db, message_id, payload, actor_type="human", actor_id=principal.user_id)
     return ok(CollaborationMessageRead.model_validate(item).model_dump(mode="json"))
+
+
+@router.post("/messages/{message_id}/review/approve")
+def api_review_approve_message(
+    message_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """通过待审消息：消息 status pending_review → queued；联动 requirement.status blocked → queued。"""
+    principal = _require_real_human_principal(db, request)
+    existing = get_collaboration_message_or_404(db, message_id)
+    project_id = _collaboration_message_scope_project_id(
+        db,
+        project_id=existing.project_id,
+        task_id=existing.task_id,
+        approval_id=existing.approval_id,
+        handoff_id=existing.handoff_id,
+        requirement_id=existing.requirement_id,
+        agent_id=existing.agent_id,
+    )
+    resolve_project_write_principal(db, request, project_id, require_privileged=False, action="collaboration.message.review.approve")
+    if (existing.status or "") != "pending_review":
+        raise AppError("MESSAGE_NOT_PENDING_REVIEW", f"消息当前状态={existing.status}，不在 pending_review", status_code=409)
+    existing.status = "queued"
+    db.add(existing)
+    if existing.requirement_id:
+        from app.db.models.requirement import Requirement
+        req = db.get(Requirement, existing.requirement_id)
+        if req is not None and (req.status or "") in {"blocked", "pending_review"}:
+            req.status = "queued"
+            db.add(req)
+    db.commit()
+    db.refresh(existing)
+    return ok(CollaborationMessageRead.model_validate(existing).model_dump(mode="json"))
+
+
+@router.post("/messages/{message_id}/review/reject")
+def api_review_reject_message(
+    message_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """打回待审消息：消息 status pending_review → cancelled；联动 requirement.status blocked → cancelled。"""
+    principal = _require_real_human_principal(db, request)
+    existing = get_collaboration_message_or_404(db, message_id)
+    project_id = _collaboration_message_scope_project_id(
+        db,
+        project_id=existing.project_id,
+        task_id=existing.task_id,
+        approval_id=existing.approval_id,
+        handoff_id=existing.handoff_id,
+        requirement_id=existing.requirement_id,
+        agent_id=existing.agent_id,
+    )
+    resolve_project_write_principal(db, request, project_id, require_privileged=False, action="collaboration.message.review.reject")
+    if (existing.status or "") != "pending_review":
+        raise AppError("MESSAGE_NOT_PENDING_REVIEW", f"消息当前状态={existing.status}，不在 pending_review", status_code=409)
+    existing.status = "cancelled"
+    db.add(existing)
+    if existing.requirement_id:
+        from app.db.models.requirement import Requirement
+        req = db.get(Requirement, existing.requirement_id)
+        if req is not None and (req.status or "") in {"blocked", "pending_review"}:
+            req.status = "cancelled"
+            db.add(req)
+    db.commit()
+    db.refresh(existing)
+    return ok(CollaborationMessageRead.model_validate(existing).model_dump(mode="json"))
 
 
 @router.post("/projects/{project_id}/runner-commands")

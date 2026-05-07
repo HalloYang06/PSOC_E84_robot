@@ -125,7 +125,6 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, currentUserId,
   const [sending, setSending] = useState(false);
   const [sendNote, setSendNote] = useState<string | null>(null);
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
-  const [senderSeatId, setSenderSeatId] = useState<string>("");
   const [editingIdentity, setEditingIdentity] = useState(false);
   const [gitName, setGitName] = useState(seat.gitUserName);
   const [gitEmail, setGitEmail] = useState(seat.gitUserEmail);
@@ -371,6 +370,35 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, currentUserId,
     return list.filter((m) => !classifyMessage(m).noisy);
   }, [messages, hideNoisy]);
 
+  const pendingReviews = useMemo(() => {
+    return (messages || []).filter((m) => (m.status || "") === "pending_review");
+  }, [messages]);
+
+  const [reviewBusyId, setReviewBusyId] = useState<string | null>(null);
+  const [reviewNote, setReviewNote] = useState<string | null>(null);
+  async function reviewMessage(id: string, action: "approve" | "reject") {
+    setReviewBusyId(id);
+    setReviewNote(null);
+    try {
+      const res = await fetch(apiClientUrl(`/api/collaboration/messages/${encodeURIComponent(id)}/review/${action}`), {
+        method: "POST",
+        credentials: "include",
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = json?.error?.message ?? json?.message ?? `HTTP ${res.status}`;
+        throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
+      }
+      setReviewNote(action === "approve" ? "✓ 已通过" : "✓ 已打回");
+      await load(limit);
+    } catch (e) {
+      setReviewNote(`失败：${e instanceof Error ? e.message : "未知错误"}`);
+    } finally {
+      setReviewBusyId(null);
+      setTimeout(() => setReviewNote(null), 4000);
+    }
+  }
+
   useEffect(() => {
     if (!streamRef.current || !autoScrollRef.current) return;
     streamRef.current.scrollTop = streamRef.current.scrollHeight;
@@ -397,7 +425,6 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, currentUserId,
     if (!body) return;
     setSending(true);
     setSendNote(null);
-    const peerSeat = senderSeatId ? teammates.find((t) => t.id === senderSeatId) : null;
     try {
       const res = await fetch(apiClientUrl("/api/collaboration/messages"), {
         method: "POST",
@@ -406,10 +433,10 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, currentUserId,
         body: JSON.stringify({
           project_id: projectId,
           message_type: "comment_message",
-          title: peerSeat ? `[同工位] ${peerSeat.name} → ${seat.name}` : null,
-          body: peerSeat ? `（代发自 ${peerSeat.name}）\n\n${body}` : body,
-          sender_type: peerSeat ? "agent" : "human",
-          sender_id: peerSeat ? peerSeat.id : null,
+          title: null,
+          body,
+          sender_type: "human",
+          sender_id: null,
           recipient_type: "thread_workstation",
           recipient_id: seat.id,
           status: "open",
@@ -421,7 +448,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, currentUserId,
         throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
       }
       setDraft("");
-      setSendNote(peerSeat ? `已以 ${peerSeat.name} 名义派发 ✓` : "已派发 ✓");
+      setSendNote("已派发 ✓");
       autoScrollRef.current = true;
       await load(limit);
     } catch (e) {
@@ -620,34 +647,59 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, currentUserId,
             ) : (
               <div className={styles.peerRow}>
                 {teammates.map((peer) => (
-                  <div key={peer.id} className={styles.peerChipGroup}>
-                    <button
-                      type="button"
-                      className={styles.peerChip}
-                      onClick={() => onOpenTeammate(peer.id)}
-                      title={`打开 ${peer.name} 的瓷砖`}
-                    >
-                      <span className={styles.peerName}>{peer.name}</span>
-                      <span className={styles.peerMeta}>{peer.providerLabel || peer.providerId || "—"}</span>
-                    </button>
-                    <button
-                      type="button"
-                      className={styles.peerSendBtn}
-                      onClick={() => {
-                        setSenderSeatId(peer.id);
-                        const ta = document.querySelector<HTMLTextAreaElement>(`textarea[data-tile-id="${seat.id}"]`);
-                        ta?.focus();
-                      }}
-                      title={`以 ${peer.name} 的名义给 ${seat.name} 发指令`}
-                    >
-                      代他派
-                    </button>
-                  </div>
+                  <button
+                    key={peer.id}
+                    type="button"
+                    className={styles.peerChip}
+                    onClick={() => onOpenTeammate(peer.id)}
+                    title={`打开 ${peer.name} 的瓷砖（NPC 之间的协作走需求触发链，不再支持人扮 NPC 代发）`}
+                  >
+                    <span className={styles.peerName}>{peer.name}</span>
+                    <span className={styles.peerMeta}>{peer.providerLabel || peer.providerId || "—"}</span>
+                  </button>
                 ))}
               </div>
             )}
           </div>
         </section>
+      ) : null}
+
+      {pendingReviews.length > 0 ? (
+        <div className={styles.reviewBox}>
+          <div className={styles.reviewHead}>
+            <strong>📌 待审：自主合作消息（{pendingReviews.length}）</strong>
+            <small className={styles.muted}>跨工位默认走人审；通过后才会派给本 NPC，打回则取消。</small>
+          </div>
+          <ul className={styles.reviewList}>
+            {pendingReviews.slice(0, 5).map((m) => (
+              <li key={m.id} className={styles.reviewItem}>
+                <div className={styles.reviewMeta}>
+                  <span className={styles.reviewSender}>来自 {(m.sender_type || "?")}/{String(m.sender_id || "").slice(0, 10)}</span>
+                  <span className={styles.reviewTitle}>{m.title || (m.body || "").slice(0, 60)}</span>
+                </div>
+                <div className={styles.reviewActions}>
+                  <button
+                    type="button"
+                    className={styles.reviewApproveBtn}
+                    disabled={reviewBusyId === m.id}
+                    onClick={() => reviewMessage(m.id, "approve")}
+                  >
+                    通过
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.reviewRejectBtn}
+                    disabled={reviewBusyId === m.id}
+                    onClick={() => reviewMessage(m.id, "reject")}
+                  >
+                    打回
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+          {reviewNote ? <small className={styles.reviewNote}>{reviewNote}</small> : null}
+        </div>
       ) : null}
 
       <div className={styles.streamToolbar}>
@@ -663,8 +715,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, currentUserId,
             <span className={`${styles.legendDot} ${styles.roleBadge_external}`}>跨工位</span>
             <span className={`${styles.legendDot} ${styles.roleBadge_watcher}`}>CLI</span>
           </small>
-        </div>
-        <div className={styles.streamToolbarRight}>
+        </div>        <div className={styles.streamToolbarRight}>
           <label className={styles.noiseToggle} title="过滤 watcher 启动 / mcp 加载 / heartbeat 等噪声日志">
             <input type="checkbox" checked={hideNoisy} onChange={(e) => setHideNoisy(e.target.checked)} />
             过滤噪声
@@ -775,24 +826,6 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, currentUserId,
           if (!sending) sendCommand();
         }}
       >
-        {teammates.length > 0 ? (
-          <div className={styles.composerSenderRow}>
-            <small className={styles.sectionLabel}>身份</small>
-            <select
-              className={styles.composerSender}
-              value={senderSeatId}
-              onChange={(e) => setSenderSeatId(e.target.value)}
-              title="选择以谁的身份发送：默认是你（用户），也可以代任意同工位 NPC 发"
-            >
-              <option value="">以"我"（用户）派单</option>
-              {teammates.map((p) => (
-                <option key={p.id} value={p.id}>
-                  代 {p.name} 同工位互发
-                </option>
-              ))}
-            </select>
-          </div>
-        ) : null}
         <textarea
           data-tile-id={seat.id}
           className={styles.composerInput}

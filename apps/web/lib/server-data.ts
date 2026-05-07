@@ -1001,6 +1001,7 @@ export async function getCollaborationMessagesState(options?: {
   requirementId?: string;
   agentId?: string;
   messageType?: string;
+  status?: string;
 }): Promise<ApiLoadState<any[]>> {
   try {
     const query = new URLSearchParams();
@@ -1011,6 +1012,7 @@ export async function getCollaborationMessagesState(options?: {
     if (options?.requirementId) query.set("requirement_id", options.requirementId);
     if (options?.agentId) query.set("agent_id", options.agentId);
     if (options?.messageType) query.set("message_type", options.messageType);
+    if (options?.status) query.set("status", options.status);
     const suffix = query.toString() ? `?${query.toString()}` : "";
     const data = asArray<any>(await fetchJson<any>(`/api/collaboration/messages${suffix}`));
     return okState(Array.isArray(data) ? data.map((item, index) => normalizeCollaborationMessage(item, index)) : []);
