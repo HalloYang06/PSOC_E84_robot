@@ -10,9 +10,11 @@ type WorkbenchClientProps = {
   projectName: string;
   apiBaseUrl: string;
   seats: WorkbenchSeat[];
+  currentUserId: string;
+  currentUserName: string;
 };
 
-export function WorkbenchClient({ projectId, projectName, apiBaseUrl, seats }: WorkbenchClientProps) {
+export function WorkbenchClient({ projectId, projectName, apiBaseUrl, seats, currentUserId, currentUserName }: WorkbenchClientProps) {
   const [openIds, setOpenIds] = useState<string[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState("");
@@ -195,6 +197,8 @@ export function WorkbenchClient({ projectId, projectName, apiBaseUrl, seats }: W
                   apiBaseUrl={apiBaseUrl}
                   seat={seat}
                   teammates={teammatesBySeat.get(seat.id) ?? []}
+                  currentUserId={currentUserId}
+                  currentUserName={currentUserName}
                   onOpenTeammate={toggleOpen}
                   onClose={() => closeOpen(seat.id)}
                 />

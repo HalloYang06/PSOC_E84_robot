@@ -27,6 +27,8 @@ type NpcTileProps = {
   apiBaseUrl: string;
   seat: WorkbenchSeat;
   teammates: WorkbenchSeat[];
+  currentUserId: string;
+  currentUserName: string;
   onOpenTeammate: (id: string) => void;
   onClose: () => void;
 };
@@ -111,7 +113,7 @@ function formatTime(iso?: string | null): string {
   return d.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
-export function NpcTile({ projectId, apiBaseUrl, seat, teammates, onOpenTeammate, onClose }: NpcTileProps) {
+export function NpcTile({ projectId, apiBaseUrl, seat, teammates, currentUserId, currentUserName, onOpenTeammate, onClose }: NpcTileProps) {
   const [messages, setMessages] = useState<CollabMessage[] | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [hideNoisy, setHideNoisy] = useState(true);
@@ -131,6 +133,140 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, onOpenTeammate
   const [identityNote, setIdentityNote] = useState<string | null>(null);
   const streamRef = useRef<HTMLDivElement | null>(null);
   const autoScrollRef = useRef(true);
+
+  type Occupancy = {
+    user_id: string;
+    user_name?: string | null;
+    acquired_at?: string | null;
+    heartbeat_at?: string | null;
+    preempted?: boolean;
+    preempted_user?: string | null;
+  };
+  const [occupancy, setOccupancy] = useState<Occupancy | null>(null);
+  const [occupancyError, setOccupancyError] = useState<string | null>(null);
+  const [occupancyBusy, setOccupancyBusy] = useState(false);
+  const occupancyHeldByMe = !!occupancy && occupancy.user_id === currentUserId;
+  const occupancyHeldByOther = !!occupancy && !occupancyHeldByMe;
+
+  const occupyUrl = `${apiBaseUrl}/api/collaboration/projects/${encodeURIComponent(projectId)}/thread-workstations/${encodeURIComponent(seat.id)}`;
+
+  const refreshOccupancy = useCallback(async () => {
+    try {
+      const res = await fetch(`${occupyUrl}/occupancy`, { credentials: "include" });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok) {
+        const occ = (json?.data?.occupancy ?? null) as Occupancy | null;
+        setOccupancy(occ);
+        setOccupancyError(null);
+      }
+    } catch (e) {
+      setOccupancyError(e instanceof Error ? e.message : "查询占用失败");
+    }
+  }, [occupyUrl]);
+
+  const claimOccupancy = useCallback(
+    async (force: boolean) => {
+      setOccupancyBusy(true);
+      setOccupancyError(null);
+      try {
+        const res = await fetch(`${occupyUrl}/occupy`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ force, user_name: currentUserName }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const msg = json?.error?.message ?? json?.message ?? `HTTP ${res.status}`;
+          throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
+        }
+        const data = json?.data ?? {};
+        if (data.ok === false) {
+          setOccupancy((data.occupied_by ?? null) as Occupancy | null);
+          setOccupancyError(`已被 ${data.occupied_by?.user_name || "他人"} 占用，可点"申请抢占"`);
+        } else {
+          setOccupancy((data.occupancy ?? null) as Occupancy | null);
+          setOccupancyError(null);
+        }
+      } catch (e) {
+        setOccupancyError(e instanceof Error ? e.message : "占用失败");
+      } finally {
+        setOccupancyBusy(false);
+      }
+    },
+    [occupyUrl, currentUserName],
+  );
+
+  const releaseOccupancy = useCallback(
+    async (silent: boolean = false) => {
+      if (!silent) setOccupancyBusy(true);
+      try {
+        const res = await fetch(`${occupyUrl}/release`, {
+          method: "POST",
+          credentials: "include",
+        });
+        const json = await res.json().catch(() => ({}));
+        if (res.ok && json?.data?.ok !== false) {
+          setOccupancy(null);
+          setOccupancyError(null);
+        }
+      } catch {
+        // best-effort
+      } finally {
+        if (!silent) setOccupancyBusy(false);
+      }
+    },
+    [occupyUrl],
+  );
+
+  // open-tile auto-occupy + close auto-release + 30s heartbeat
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      await refreshOccupancy();
+      if (cancelled) return;
+      // soft-claim: only if no one holds it
+      try {
+        const res = await fetch(`${occupyUrl}/occupy`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ force: false, user_name: currentUserName }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!cancelled && res.ok) {
+          const data = json?.data ?? {};
+          if (data.ok === false) {
+            setOccupancy((data.occupied_by ?? null) as Occupancy | null);
+          } else {
+            setOccupancy((data.occupancy ?? null) as Occupancy | null);
+          }
+        }
+      } catch {}
+    })();
+    const heartbeat = setInterval(() => {
+      // re-claim only if I'm already the holder (refreshes heartbeat_at)
+      setOccupancy((curr) => {
+        if (curr && curr.user_id === currentUserId) {
+          fetch(`${occupyUrl}/occupy`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ force: false, user_name: currentUserName }),
+          }).catch(() => {});
+        }
+        return curr;
+      });
+      refreshOccupancy();
+    }, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(heartbeat);
+      // best-effort release on close (only if I held it)
+      releaseOccupancy(true);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seat.id]);
 
   async function saveIdentity() {
     setSavingIdentity(true);
@@ -325,6 +461,57 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, onOpenTeammate
         </div>
       </header>
 
+      <div
+        className={`${styles.occupancyBar} ${
+          occupancyHeldByMe
+            ? styles.occupancyMine
+            : occupancyHeldByOther
+              ? styles.occupancyOther
+              : styles.occupancyIdle
+        }`}
+      >
+        <span className={styles.occupancyDot} aria-hidden />
+        <span className={styles.occupancyText}>
+          {occupancyHeldByMe
+            ? `🟢 你正在占用此 NPC`
+            : occupancyHeldByOther
+              ? `🟡 ${occupancy?.user_name || occupancy?.user_id} 正在占用`
+              : `⚪ 空闲，可占用`}
+        </span>
+        {occupancyHeldByMe ? (
+          <button
+            type="button"
+            className={styles.iconBtn}
+            onClick={() => releaseOccupancy(false)}
+            disabled={occupancyBusy}
+            title="释放占用，让其他人可以接手"
+          >
+            释放
+          </button>
+        ) : occupancyHeldByOther ? (
+          <button
+            type="button"
+            className={styles.iconBtn}
+            onClick={() => claimOccupancy(true)}
+            disabled={occupancyBusy}
+            title="强制抢占（对方会被踢下来）"
+          >
+            申请抢占
+          </button>
+        ) : (
+          <button
+            type="button"
+            className={styles.iconBtn}
+            onClick={() => claimOccupancy(false)}
+            disabled={occupancyBusy}
+            title="占用此 NPC，避免他人同时操作"
+          >
+            占用
+          </button>
+        )}
+        {occupancyError ? <small className={styles.occupancyHint}>{occupancyError}</small> : null}
+      </div>
+
       {!headerCollapsed ? (
         <section className={styles.profile}>
           <div className={styles.profileRow}>
@@ -476,7 +663,6 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, onOpenTeammate
             <span className={`${styles.legendDot} ${styles.roleBadge_watcher}`}>CLI</span>
           </small>
         </div>
-        </div>
         <div className={styles.streamToolbarRight}>
           <label className={styles.noiseToggle} title="过滤 watcher 启动 / mcp 加载 / heartbeat 等噪声日志">
             <input type="checkbox" checked={hideNoisy} onChange={(e) => setHideNoisy(e.target.checked)} />
@@ -622,7 +808,9 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, onOpenTeammate
         />
         <div className={styles.composerFoot}>
           <small className={styles.composerHint}>
-            {sendNote || (seat.permissionLevel ? `权限：${seat.permissionLevel}` : "发送后会写入协作消息池，目标线程 watcher 会拉到")}
+            {occupancyHeldByOther
+              ? `⚠ ${occupancy?.user_name || "他人"} 正在占用，先抢占再发送`
+              : sendNote || (seat.permissionLevel ? `权限：${seat.permissionLevel}` : "发送后会写入协作消息池，目标线程 watcher 会拉到")}
           </small>
           <div className={styles.composerActions}>
             <Link href={`/projects/${projectId}`} className={styles.linkBtn} title="返回项目驾驶舱">
@@ -631,7 +819,8 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, onOpenTeammate
             <button
               type="submit"
               className={styles.sendBtn}
-              disabled={sending || !draft.trim()}
+              disabled={sending || !draft.trim() || occupancyHeldByOther}
+              title={occupancyHeldByOther ? "他人占用中，请先抢占" : "派发消息"}
             >
               {sending ? "派发中…" : "发送"}
             </button>
