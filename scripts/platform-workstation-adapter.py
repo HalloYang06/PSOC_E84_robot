@@ -7,10 +7,16 @@ import os
 import shlex
 import subprocess
 import sys
+import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from urllib import request, error
 from urllib.parse import quote
+
+
+def _now_hms() -> str:
+    return datetime.now().strftime("%H:%M:%S")
 
 
 DEFAULT_API_BASE = "http://127.0.0.1:8010"
@@ -236,6 +242,7 @@ def run_executor(
     model: str | None,
     cwd: str | None,
     timeout_seconds: int,
+    live_output: bool = False,
 ) -> dict[str, Any]:
     command_text = command_path.read_text(encoding="utf-8")
     prompt_text = _extract_executor_prompt(command_text)
@@ -264,6 +271,14 @@ def run_executor(
         message_id=message_id,
         model=model,
     )
+    if live_output:
+        return _run_executor_streaming(
+            rendered,
+            cwd=resolved_cwd,
+            timeout_seconds=timeout_seconds,
+            provider=provider,
+            cwd_warning=cwd_warning,
+        )
     try:
         completed = subprocess.run(
             rendered,
@@ -341,6 +356,109 @@ def run_executor(
     }
 
 
+def _run_executor_streaming(
+    rendered: str,
+    *,
+    cwd: str | None,
+    timeout_seconds: int,
+    provider: str,
+    cwd_warning: str,
+) -> dict[str, Any]:
+    """Stream executor stdout/stderr to the current terminal while still capturing
+    the full text for the final completion note. Lets the user watching this
+    terminal actually see Claude/Codex work in real time."""
+    import threading
+    import time as _time
+
+    captured_stdout: list[str] = []
+    captured_stderr: list[str] = []
+
+    def _pump(stream, sink: list[str], prefix: str) -> None:
+        try:
+            for line in iter(stream.readline, ""):
+                if line == "":
+                    break
+                sink.append(line)
+                sys.stdout.write(f"{prefix}{line}")
+                sys.stdout.flush()
+        finally:
+            try:
+                stream.close()
+            except Exception:
+                pass
+
+    proc = subprocess.Popen(
+        rendered,
+        shell=True,
+        cwd=cwd,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        bufsize=1,
+    )
+    t_out = threading.Thread(target=_pump, args=(proc.stdout, captured_stdout, ""), daemon=True)
+    t_err = threading.Thread(target=_pump, args=(proc.stderr, captured_stderr, "[stderr] "), daemon=True)
+    t_out.start()
+    t_err.start()
+    started = _time.time()
+    try:
+        while proc.poll() is None:
+            if _time.time() - started > timeout_seconds:
+                proc.kill()
+                t_out.join(timeout=2)
+                t_err.join(timeout=2)
+                stderr = "".join(captured_stderr).strip() or f"executor timed out after {timeout_seconds}s"
+                stdout = "".join(captured_stdout).strip()
+                return {
+                    "ok": False,
+                    "returncode": None,
+                    "stdout": stdout,
+                    "stderr": stderr,
+                    "note": "\n".join(
+                        part
+                        for part in [cwd_warning, f"{provider} executor timed out after {timeout_seconds}s."]
+                        if part
+                    ),
+                }
+            _time.sleep(0.1)
+    except KeyboardInterrupt:
+        proc.kill()
+        raise
+    t_out.join(timeout=2)
+    t_err.join(timeout=2)
+    stdout = "".join(captured_stdout).strip()
+    stderr = "".join(captured_stderr).strip()
+    rc = proc.returncode
+    if rc == 0:
+        return {
+            "ok": True,
+            "returncode": rc,
+            "stdout": stdout,
+            "stderr": stderr,
+            "note": "\n".join(
+                part for part in [cwd_warning, stdout or f"{provider} executor completed without stdout."] if part
+            ),
+        }
+    return {
+        "ok": False,
+        "returncode": rc,
+        "stdout": stdout,
+        "stderr": stderr,
+        "note": "\n".join(
+            part
+            for part in [
+                cwd_warning,
+                f"{provider} executor failed with exit code {rc}.",
+                stdout,
+                stderr,
+            ]
+            if part
+        ),
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Poll and reply to AI collaboration platform workstation commands.")
     parser.add_argument("--api-base", default=DEFAULT_API_BASE)
@@ -385,6 +503,19 @@ def main() -> int:
         help="Optional model override for provider CLI execution. Codex falls back to gpt-5.4 on older CLIs.",
     )
     parser.add_argument("--executor-timeout-seconds", type=int, default=None)
+    parser.add_argument(
+        "--watch",
+        action="store_true",
+        help="Long-running mode: keep polling the workstation inbox and process new commands as they arrive. "
+        "Prints 'platform message received / Claude working / reply written' banners + streams CLI stdout to this terminal "
+        "so the human watching this thread can see the collaboration happen.",
+    )
+    parser.add_argument(
+        "--poll-seconds",
+        type=float,
+        default=3.0,
+        help="Seconds to sleep between inbox polls when --watch is enabled (default 3).",
+    )
     args = parser.parse_args()
 
     base = args.api_base.rstrip("/")
@@ -426,91 +557,143 @@ def main() -> int:
     if args.status:
         inbox_url += f"&status={args.status}"
 
-    payload = _json_request("GET", inbox_url, headers=headers)
-    commands = payload.get("data") or []
     output_root = Path(args.output_dir) / _safe_path_component(args.project_id, "project") / _safe_path_component(args.workstation_id, "workstation")
-    written: list[str] = []
-    receipts: list[dict[str, Any]] = []
-    executions: list[dict[str, Any]] = []
     executor_template = _executor_template(
         resolved_provider,
         resolved_executor_command,
         args.execute_provider_cli,
     )
 
-    for command in commands:
-        command_path = write_command_file(
-            command,
-            output_dir=output_root,
-            project_id=args.project_id,
-            workstation_id=args.workstation_id,
-            provider=resolved_provider,
-        )
-        written.append(str(command_path))
-        message_id = str(command.get("id") or "").strip()
-        status = str(command.get("status") or "").strip().lower()
-        if args.auto_ack and message_id and status in {"queued", "pending"}:
-            ack_url = _message_action_url(base, args.project_id, args.workstation_id, message_id, "ack")
-            ack_note = str(args.ack_note or "").strip() or _default_ack_note(
-                provider=resolved_provider,
-                message_id=message_id,
-                command_path=command_path,
-                execute_provider_cli=bool(executor_template),
-                executor_cwd=resolved_executor_cwd,
-            )
-            receipts.append(_json_request("POST", ack_url, headers=headers, payload={"note": ack_note}).get("data") or {})
-        executor_result: dict[str, Any] | None = None
-        if executor_template and message_id:
-            executor_result = run_executor(
-                template=executor_template,
-                command_path=command_path,
+    def process_one_round() -> dict[str, Any]:
+        payload = _json_request("GET", inbox_url, headers=headers)
+        commands = payload.get("data") or []
+        written: list[str] = []
+        receipts: list[dict[str, Any]] = []
+        executions: list[dict[str, Any]] = []
+
+        if args.watch and commands:
+            print(f"\n[{_now_hms()}] 收到 {len(commands)} 条平台指令", flush=True)
+
+        for command in commands:
+            command_path = write_command_file(
+                command,
+                output_dir=output_root,
                 project_id=args.project_id,
                 workstation_id=args.workstation_id,
                 provider=resolved_provider,
-                message_id=message_id,
-                model=resolved_executor_model,
-                cwd=resolved_executor_cwd,
-                timeout_seconds=resolved_timeout,
             )
-            executions.append(
-                {
-                    "message_id": message_id,
-                    "ok": executor_result.get("ok"),
-                    "returncode": executor_result.get("returncode"),
-                    "stdout_preview": str(executor_result.get("stdout") or "")[:500],
-                    "stderr_preview": str(executor_result.get("stderr") or "")[:500],
-                }
-            )
-        final_note = args.complete_note
-        result_failed = args.failed
-        if executor_result is not None:
-            final_note = str(executor_result.get("note") or "").strip()
-            result_failed = not bool(executor_result.get("ok"))
-        if final_note and message_id:
-            complete_url = _message_action_url(base, args.project_id, args.workstation_id, message_id, "complete")
-            receipts.append(
-                _json_request(
-                    "POST",
-                    complete_url,
-                    headers=headers,
-                    payload={
-                        "result_status": "failed" if result_failed else "completed",
-                        "note": final_note,
-                    },
-                ).get("data")
-                or {}
-            )
+            written.append(str(command_path))
+            message_id = str(command.get("id") or "").strip()
+            status = str(command.get("status") or "").strip().lower()
+            title = str(command.get("title") or "").strip() or "(无标题)"
+            body = str(command.get("body") or "").strip()
 
-    result = {
-        "project_id": args.project_id,
-        "workstation_id": args.workstation_id,
-        "provider": resolved_provider,
-        "adapter_config": adapter_config,
-        "commands": len(commands),
-        "written": written,
-        "receipts": receipts,
-        "executions": executions,
-    }
+            if args.watch:
+                print("\n========================================", flush=True)
+                print(f"[收到平台指令] {title}", flush=True)
+                print(f"消息ID: {message_id}", flush=True)
+                print(f"线程: {args.workstation_id}  来源: {command.get('sender_type')}/{command.get('sender_id')}", flush=True)
+                print("----------------------------------------", flush=True)
+                preview = body if len(body) <= 800 else body[:800] + " ...(truncated)"
+                print(preview, flush=True)
+                print("========================================", flush=True)
+
+            if args.auto_ack and message_id and status in {"queued", "pending"}:
+                ack_url = _message_action_url(base, args.project_id, args.workstation_id, message_id, "ack")
+                ack_note = str(args.ack_note or "").strip() or _default_ack_note(
+                    provider=resolved_provider,
+                    message_id=message_id,
+                    command_path=command_path,
+                    execute_provider_cli=bool(executor_template),
+                    executor_cwd=resolved_executor_cwd,
+                )
+                receipts.append(_json_request("POST", ack_url, headers=headers, payload={"note": ack_note}).get("data") or {})
+                if args.watch:
+                    print(f"[已 ack] {ack_note}", flush=True)
+
+            executor_result: dict[str, Any] | None = None
+            if executor_template and message_id:
+                if args.watch:
+                    print(f"\n[正在调用 {resolved_provider} CLI ...]\n", flush=True)
+                executor_result = run_executor(
+                    template=executor_template,
+                    command_path=command_path,
+                    project_id=args.project_id,
+                    workstation_id=args.workstation_id,
+                    provider=resolved_provider,
+                    message_id=message_id,
+                    model=resolved_executor_model,
+                    cwd=resolved_executor_cwd,
+                    timeout_seconds=resolved_timeout,
+                    live_output=args.watch,
+                )
+                executions.append(
+                    {
+                        "message_id": message_id,
+                        "ok": executor_result.get("ok"),
+                        "returncode": executor_result.get("returncode"),
+                        "stdout_preview": str(executor_result.get("stdout") or "")[:500],
+                        "stderr_preview": str(executor_result.get("stderr") or "")[:500],
+                    }
+                )
+
+            final_note = args.complete_note
+            result_failed = args.failed
+            if executor_result is not None:
+                final_note = str(executor_result.get("note") or "").strip()
+                result_failed = not bool(executor_result.get("ok"))
+            if final_note and message_id:
+                complete_url = _message_action_url(base, args.project_id, args.workstation_id, message_id, "complete")
+                receipts.append(
+                    _json_request(
+                        "POST",
+                        complete_url,
+                        headers=headers,
+                        payload={
+                            "result_status": "failed" if result_failed else "completed",
+                            "note": final_note,
+                        },
+                    ).get("data")
+                    or {}
+                )
+                if args.watch:
+                    final_status = "failed" if result_failed else "completed"
+                    print(f"\n[已回写平台] status={final_status} note 长度={len(final_note)}", flush=True)
+                    print("等待下一条平台指令...\n", flush=True)
+
+        return {
+            "project_id": args.project_id,
+            "workstation_id": args.workstation_id,
+            "provider": resolved_provider,
+            "adapter_config": adapter_config,
+            "commands": len(commands),
+            "written": written,
+            "receipts": receipts,
+            "executions": executions,
+        }
+
+    if args.watch:
+        print("========================================", flush=True)
+        print(f"线程 watcher 已启动", flush=True)
+        print(f"项目: {args.project_id}", flush=True)
+        print(f"线程: {args.workstation_id}", flush=True)
+        print(f"提供商: {resolved_provider}", flush=True)
+        print(f"轮询: 每 {args.poll_seconds}s 一次  执行目录: {resolved_executor_cwd or '(adapter 启动目录)'}", flush=True)
+        print(f"API: {base}", flush=True)
+        print("========================================", flush=True)
+        print("等待平台指令... (Ctrl+C 退出)\n", flush=True)
+        try:
+            while True:
+                try:
+                    process_one_round()
+                except Exception as exc:
+                    print(f"[轮询错误] {exc}", flush=True)
+                time.sleep(args.poll_seconds)
+        except KeyboardInterrupt:
+            print("\n[watcher 已退出]", flush=True)
+            return 0
+
+    result = process_one_round()
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 
