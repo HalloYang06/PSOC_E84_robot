@@ -94,12 +94,57 @@ python scripts/cli-bridge-walk-2026-05-07.py
 | 不再黑盒落 inbox | ✅ | `inbox/msg-c3-walk-001.json` 已被 `_archive_inbox_file` 移到 `inbox/processed/`，下一轮 poll 不会重复处理 |
 | `provider=disabled` 时行为不变 | ✅ | `apps/runner/tests/test_relay_cli_bridge_wiring.py::test_provider_disabled_keeps_legacy_inbox_only_behaviour` 已绿，旧 `test_relay_prompt_inbox.py` 三条用例不回退 |
 
-## 不做的事 / 已知边界
+## 补充走查：真实 HTTP 端到端（2026-05-07 下午）
 
-- 没有起完整 FastAPI server，所以这次走查不覆盖 `PlatformClient` 真实 HTTP 路径上的 ack/complete。但
-  `_handle_runner_relay_message` 调用 `client.complete_runner_message(..., result_status, note)` 的入参组装在
-  这里已被覆盖，HTTP 调用本身在 `apps/runner/tests/test_runner_client.py` 已有单测。两端组合一次还是建议
-  在下一次部署 staging 时跑一遍。
+上面的 FakeClient 走查只验证了 runner 进程内部的链路。后来用户问"CLI 是否真的在同步平台指令"，
+所以又跑了一遍**真实 HTTP** 路径，覆盖 PlatformClient → API → SQLite → API → 平台 UI 的整条线。
+
+**走查脚本**：`scripts/cli-bridge-http-walk-2026-05-07.py`
+
+**前置**：本机 API server 已经在 `http://127.0.0.1:8000`（`python -m uvicorn app.main:app --host 0.0.0.0 --port 8000`），DB=`apps/api/ai_collab.db`。
+
+**步骤**：
+
+1. PlatformClient.register 真发 HTTP，runner 入库 status=online
+2. 直接 INSERT 一条 `runner_command`（recipient_type=runner, project_id=proj_ai_collab, status=pending）模拟"平台 UI 派单"
+3. PlatformClient.fetch_runner_inbox 真发 GET `/api/runners/{id}/inbox` —— **取回 1 条**（=2 中插的那条）
+4. _handle_runner_relay_message → cli_bridge → 真实 claude.cmd 执行 34.4s
+5. PlatformClient.complete_runner_message 真发 POST `.../messages/{id}/complete` —— 写回 note
+
+**实测 DB 三条消息**（`SELECT FROM collaboration_messages WHERE sender_id LIKE 'runner-c3-http%' OR id LIKE 'msg-c3-http%'`）：
+
+| id | type | sender → recipient | status | body |
+|---|---|---|---|---|
+| msg-c3-http-862902e3 | runner_command | human/c3-walk-tester → runner/runner-c3-http-16c9cd | **completed** | "请只回复一行：最终回复：pong-c3-http" |
+| `<uuid>` | runner_ack | runner → human/c3-walk-tester | delivered | "C3 HTTP Walk 16c9cd accepted the prompt and wrote it to ..." |
+| `<uuid>` | runner_result | runner → human/c3-walk-tester | completed | **"[C3 HTTP 端到端 ping] 最终回复：pong-c3-http"** |
+
+第三条 `runner_result.body` 就是 claude 的真实输出，平台 UI 拉到的就是这个 — 即"AI 回复"。
+
+`artifacts/c3-http-walk/summary.json`（关键断言）：
+
+```json
+{
+  "elapsed_seconds": 34.37,
+  "handled": true,
+  "inbox_before_ids": ["msg-c3-http-862902e3"],
+  "inbox_after_ids": [],
+  "db_initial_status": "pending",
+  "db_final_status": "completed"
+}
+```
+
+**结论补强**：CLI 真的在同步平台指令——
+
+- 平台派单 → DB（runner_command/pending）
+- runner 真发 HTTP GET 拉到 → claude.cmd 真起进程 34.4s
+- runner 真发 HTTP POST complete → DB 同步状态 + 落 runner_ack + runner_result 两条新消息
+- 后续 fetch inbox 不再返回（默认只返 pending/acked）
+
+走查中遇到的小坑：第一次 INSERT 没填 `project_id`，导致 API 返回 500（pydantic schema 要求非空）。这是脚本测试代码的问题，正常的 `create_runner_command` endpoint 已经强制 project_id 非空。
+
+## 已知边界
+
 - 没有覆盖 codex 走查。代码路径同 claude（只在 executor 里 fork 不同分支），等用户哪天把
   `RUNNER_CLI_PROVIDER=codex` 跑一次再补一份 `cli-bridge-walk-codex-*.md` 即可，不在本轮范围。
 - `subprocess` 没有用 streaming，stdout 是一次性回写。流式输出留给后续 realtime 总线。
@@ -107,16 +152,20 @@ python scripts/cli-bridge-walk-2026-05-07.py
 ## 结论
 
 通道 A（runner relay）端到端打通。`RUNNER_CLI_PROVIDER=claude` 一开，runner 在收到普通文本 prompt 后会
-真的调起本机 claude.cmd 把 stdout 回写到平台。本轮 C1+C2+C3 三步对应的合格性硬指标全部满足。
+真的调起本机 claude.cmd 把 stdout 回写到平台。本轮 C1+C2+C3+HTTP 走查对应的合格性硬指标全部满足：
 
-下一步建议：用户在自己的 dev 环境把 `RUNNER_CLI_PROVIDER` 加到 `.env`，跑一次 staging 走查覆盖
-HTTP 真实链路（最快做法是 `pytest apps/runner/tests/` 全绿后，跑 `connect-ai-collab-runner.ps1` 起一个
-本机 runner 连本地 API，再从 UI 派单）。
+- ✅ 平台派单的真实 HTTP 路径（fetch_runner_inbox / complete_runner_message）走通
+- ✅ runner 真起本机 claude 进程（34.4s 真实耗时）
+- ✅ AI 回复以 `runner_result` 消息进 DB，平台 UI 能直接拉到
+- ✅ inbox 文件归档，runner 可见过程，旧 `provider=disabled` 路径不回退
+
+下一步建议：在 UI 上手动派一条单（不是 SQL 直插）来覆盖完整人类用户路径；以及
+`RUNNER_CLI_PROVIDER=codex` 跑一次补一份 `cli-bridge-walk-codex-*.md`。
 
 ## 相关文件
 
 - 实现：`apps/runner/runner/cli_bridge.py`、`apps/runner/runner/main.py:_handle_runner_relay_message`
 - 单测：`apps/runner/tests/test_cli_bridge.py`（4 cases）、`apps/runner/tests/test_relay_cli_bridge_wiring.py`（2 cases）
-- 走查脚本：`scripts/cli-bridge-walk-2026-05-07.py`
-- 走查证据：`artifacts/c3-walk/run.log`、`artifacts/c3-walk/summary.json`、`artifacts/c3-walk/runner-workdir/logs/c3-walk.log`、`artifacts/c3-walk/runner-workdir/inbox/processed/msg-c3-walk-001.json`（artifacts/ 在 .gitignore 中，不入库；本次走查的 stdout/inbox 原文以引用片段形式贴在本文档里）
+- 走查脚本：`scripts/cli-bridge-walk-2026-05-07.py`（FakeClient 进程内）、`scripts/cli-bridge-http-walk-2026-05-07.py`（真实 HTTP）
+- 走查证据：`artifacts/c3-walk/`、`artifacts/c3-http-walk/`（artifacts/ 在 .gitignore 中，不入库；本次走查的 stdout/inbox 原文以引用片段形式贴在本文档里）
 - 计划文档：`C:\Users\18312\.claude\plans\handoff-schema-gentle-pillow.md`
