@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import case, select
 from sqlalchemy.orm import Session
@@ -11,9 +11,10 @@ from app.common.errors import AppError
 from app.db.models.approval import Approval
 from app.db.models.project import Project
 from app.db.models.project_collaboration import ProjectAIProvider, ProjectComputerNode, ProjectThreadWorkstation
+from app.db.models.runner import Runner
 from app.db.models.task import Task
 from app.db.models.task_event import TaskEvent
-from app.modules.projects.service import sync_project_collaboration_inventory
+from app.modules.projects.service import RUNNER_WATCH_FRESH_SECONDS, sync_project_collaboration_inventory
 from app.modules.tasks import repo as task_repo
 from app.modules.tasks.schemas import TaskTransitionCreate
 from app.modules.tasks.service import record_task_log, record_task_result, transition_task_status
@@ -573,6 +574,62 @@ def register_runner_with_binding(db: Session, payload: RunnerRegister, *, projec
 
 def heartbeat(db: Session, runner_id: str):
     return repo.heartbeat(db, get_runner_or_404(db, runner_id))
+
+
+def mark_stale_runners_offline(db: Session, *, stale_after_seconds: int | None = None) -> dict[str, object]:
+    """Flip Runner.status to "offline" for any runner whose heartbeat is past
+    ``stale_after_seconds`` (default: ``RUNNER_WATCH_FRESH_SECONDS``).
+
+    Without this sweep, Runner.status stays "online" forever — the value is only
+    written by ``register`` and ``heartbeat``. The dashboard's online/offline
+    counts (apps/api/app/modules/runners/router.py:144-145 and
+    apps/api/app/modules/lab/service.py:28) read raw ``Runner.status`` and would
+    keep counting dead runners as online even when their last heartbeat was
+    hours old. Acceptance fix for "我刚接入 runner 时是在线的, 后面一堆操作不知道
+    是不是掉了".
+    """
+    threshold_seconds = stale_after_seconds if stale_after_seconds is not None else RUNNER_WATCH_FRESH_SECONDS
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(seconds=max(0, int(threshold_seconds)))
+
+    flipped: list[dict[str, object]] = []
+    stmt = select(Runner).where(Runner.status.in_(["online", "ready", "active"]))
+    for runner in db.scalars(stmt).all():
+        last_hb = runner.last_heartbeat_at
+        if last_hb is None:
+            # Never heartbeated since registration. Treat as offline once we run
+            # the sweep at least RUNNER_WATCH_FRESH_SECONDS after creation.
+            created_at = runner.created_at
+            if created_at is None:
+                continue
+            created_aware = created_at if created_at.tzinfo else created_at.replace(tzinfo=timezone.utc)
+            if created_aware > cutoff:
+                continue
+        else:
+            last_aware = last_hb if last_hb.tzinfo else last_hb.replace(tzinfo=timezone.utc)
+            if last_aware > cutoff:
+                continue
+        before_status = runner.status
+        runner.status = "offline"
+        db.add(runner)
+        flipped.append(
+            {
+                "runner_id": runner.id,
+                "before": before_status,
+                "after": "offline",
+                "last_heartbeat_at": last_hb.isoformat() if last_hb else None,
+            }
+        )
+
+    if flipped:
+        db.commit()
+
+    return {
+        "checked_at": now.isoformat(),
+        "stale_after_seconds": int(threshold_seconds),
+        "flipped_count": len(flipped),
+        "flipped": flipped,
+    }
 
 
 def fetch_next_task(db: Session, runner_id: str):

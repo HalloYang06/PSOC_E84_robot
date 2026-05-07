@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+import logging
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -38,11 +41,19 @@ from app.modules.messages.router import router as messages_router
 from app.modules.projects.router import router as projects_router
 from app.modules.requirements.router import router as requirements_router
 from app.modules.runners.router import router as runners_router
+from app.modules.runners.service import mark_stale_runners_offline
 from app.modules.tasks.router import router as tasks_router
 from app.modules.usage.router import router as usage_router
 from app.modules.claude_bridge.router import router as claude_bridge_router
 from app.modules.qualification.router import router as qualification_router
 from app.modules.realtime.router import router as realtime_router
+
+_log = logging.getLogger(__name__)
+
+# Run the sweeper this often. Heartbeat staleness threshold is
+# RUNNER_WATCH_FRESH_SECONDS (180s) — we re-check every 60s so a freshly-stopped
+# runner shows offline within ~3.5 min worst case.
+RUNNER_OFFLINE_SWEEP_INTERVAL_SECONDS = 60
 
 
 app = FastAPI(title="AI Collab Platform API", version="0.1.0")
@@ -98,6 +109,53 @@ def on_startup() -> None:
             normalize_sample_requirement_policy(db)
             normalize_sample_collaboration_config(db)
             ensure_sample_task_events(db)
+
+
+async def _runner_offline_sweep_loop() -> None:
+    """Background task: every minute, mark runners with stale heartbeats offline.
+
+    Skipped during pytest (app_env="test") so unit tests stay deterministic.
+    Errors are caught and logged but never crash the loop — a single failed
+    sweep should not take the API down.
+    """
+    interval = RUNNER_OFFLINE_SWEEP_INTERVAL_SECONDS
+    while True:
+        try:
+            await asyncio.sleep(interval)
+            await asyncio.to_thread(_run_runner_offline_sweep_once)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            _log.exception("runner offline sweep iteration failed")
+
+
+def _run_runner_offline_sweep_once() -> dict[str, object]:
+    with SessionLocal() as db:
+        result = mark_stale_runners_offline(db)
+    flipped = int(result.get("flipped_count") or 0)
+    if flipped:
+        _log.info("runner offline sweep: flipped %s runners offline", flipped)
+    return result
+
+
+@app.on_event("startup")
+async def _start_runner_offline_sweeper() -> None:
+    settings = _startup_settings()
+    if settings.app_env.strip().lower() == "test":
+        return
+    app.state.runner_offline_sweep_task = asyncio.create_task(_runner_offline_sweep_loop())
+
+
+@app.on_event("shutdown")
+async def _stop_runner_offline_sweeper() -> None:
+    task = getattr(app.state, "runner_offline_sweep_task", None)
+    if task is None:
+        return
+    task.cancel()
+    try:
+        await task
+    except (asyncio.CancelledError, Exception):
+        pass
 
 
 @app.middleware("http")
