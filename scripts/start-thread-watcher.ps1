@@ -92,4 +92,8 @@ if ($Provider) {
 
 # 不要把 stdout PIPE 走，让 adapter 的横幅 + claude 流式输出直接进当前终端
 & python $pyArgs
-exit $LASTEXITCODE
+# StrictMode 下，如果 python 直接抛 native 错误（如可执行不存在）$LASTEXITCODE 可能未初始化。
+# 先 try 读取，失败时退 1 表示启动失败。
+$exitCode = 0
+try { $exitCode = [int]$LASTEXITCODE } catch { $exitCode = 1 }
+exit $exitCode
