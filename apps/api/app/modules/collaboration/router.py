@@ -1268,6 +1268,82 @@ def _broadcast_target_summary(seat: dict) -> dict:
     }
 
 
+def _normalize_review_policy(value: object) -> str:
+    raw = str(value or "").strip().lower()
+    if raw in {"force", "always", "on"}:
+        return "force"
+    if raw in {"skip", "never", "off"}:
+        return "skip"
+    if raw in {"inherit", "default", ""}:
+        return "inherit"
+    if raw in {"cross_workstation_only", "cross"}:
+        return "cross_workstation_only"
+    return "inherit"
+
+
+def _seat_review_policy(seat: dict) -> str:
+    metadata = seat.get("metadata") if isinstance(seat.get("metadata"), dict) else {}
+    return _normalize_review_policy(
+        seat.get("review_policy")
+        or seat.get("reviewPolicy")
+        or metadata.get("review_policy")
+        or metadata.get("reviewPolicy")
+    )
+
+
+def _workstation_review_policy(config: dict, node_id: str) -> str:
+    profiles = config.get("workstation_profiles") if isinstance(config.get("workstation_profiles"), dict) else {}
+    profile = profiles.get(node_id) if isinstance(profiles, dict) else None
+    if not isinstance(profile, dict):
+        return "inherit"
+    return _normalize_review_policy(profile.get("review_policy") or profile.get("reviewPolicy"))
+
+
+def _project_default_review_policy(config: dict) -> str:
+    rp = config.get("review_policy") if isinstance(config.get("review_policy"), dict) else None
+    if isinstance(rp, dict):
+        return _normalize_review_policy(rp.get("default") or rp.get("project_default"))
+    return _normalize_review_policy(config.get("review_policy_default"))
+
+
+def resolve_seat_review(
+    config: dict,
+    seat: dict,
+    *,
+    is_cross_workstation: bool = False,
+) -> dict:
+    """合并三层 review policy，返回是否要走人审 + 来源。"""
+    seat_id = str(seat.get("id") or seat.get("config_id") or seat.get("row_id") or "")
+    node_id = str(seat.get("computer_node_id") or seat.get("computerNodeId") or "")
+    seat_pol = _seat_review_policy(seat)
+    if seat_pol in {"force", "skip"}:
+        return {
+            "requires_review": seat_pol == "force",
+            "source": "npc",
+            "seat_id": seat_id,
+            "policy": seat_pol,
+        }
+    ws_pol = _workstation_review_policy(config, node_id) if node_id else "inherit"
+    if ws_pol in {"force", "skip"}:
+        return {
+            "requires_review": ws_pol == "force",
+            "source": "workstation",
+            "seat_id": seat_id,
+            "policy": ws_pol,
+        }
+    project_pol = _project_default_review_policy(config) or "cross_workstation_only"
+    if project_pol == "force":
+        return {"requires_review": True, "source": "project", "seat_id": seat_id, "policy": project_pol}
+    if project_pol == "skip":
+        return {"requires_review": False, "source": "project", "seat_id": seat_id, "policy": project_pol}
+    return {
+        "requires_review": bool(is_cross_workstation),
+        "source": "project_default_cross_only",
+        "seat_id": seat_id,
+        "policy": project_pol,
+    }
+
+
 def _estimate_broadcast_tokens(body: str, target_count: int) -> int:
     body_chars = len(body or "")
     per_target = max(160, body_chars + 80)
@@ -1297,7 +1373,21 @@ def api_broadcast_preview(
     if len(targets) > 20:
         warnings.append(f"将一次性派发给 {len(targets)} 个 NPC，建议先在小范围验证。")
     estimated = _estimate_broadcast_tokens(body, len(targets))
-    requires_human_review = len(targets) >= 5 or len(body) >= 1500
+    config_inner = config.get("collaboration_config", {}) if isinstance(config.get("collaboration_config"), dict) else config
+    scope_str = (payload.scope or "all").strip()
+    is_cross_workstation_scope = scope_str == "all" and len({
+        str(seat.get("computer_node_id") or seat.get("computerNodeId") or "") for seat in targets
+    }) > 1
+    review_decisions = [
+        resolve_seat_review(config_inner, seat, is_cross_workstation=is_cross_workstation_scope)
+        for seat in targets
+    ]
+    review_force_count = sum(1 for d in review_decisions if d["requires_review"])
+    requires_human_review = (
+        review_force_count > 0
+        or len(targets) >= 5
+        or len(body) >= 1500
+    )
     return ok(
         {
             "scope": payload.scope,
@@ -1306,6 +1396,8 @@ def api_broadcast_preview(
             "targets": [_broadcast_target_summary(seat) for seat in targets],
             "estimated_tokens": estimated,
             "requires_human_review": requires_human_review,
+            "review_decisions": review_decisions,
+            "review_force_count": review_force_count,
             "blockers": blockers,
             "warnings": warnings,
             "ready": not blockers,

@@ -228,6 +228,14 @@ def update_project_collaboration_config(db: Session, project_id: str, payload: C
     for section in ("thread_workstations", "ai_providers", "computer_nodes"):
         if section in data:
             after[section] = [dict(item) for item in data[section] or []]
+    if "review_policy" in data:
+        after["review_policy"] = dict(data["review_policy"] or {})
+    if "workstation_profiles" in data:
+        profiles = data["workstation_profiles"] or {}
+        after["workstation_profiles"] = {
+            str(k): dict(v) if isinstance(v, dict) else {}
+            for k, v in profiles.items()
+        }
     return _save_project_collaboration_config(
         db,
         project,

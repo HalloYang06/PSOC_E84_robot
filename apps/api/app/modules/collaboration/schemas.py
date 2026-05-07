@@ -437,6 +437,8 @@ class CollaborationConfigUpdate(BaseModel):
     thread_workstations: list[CollaborationWorkstationCreate] | None = None
     ai_providers: list[CollaborationProviderCreate] | None = None
     computer_nodes: list[CollaborationComputerNodeCreate] | None = None
+    review_policy: dict | None = None
+    workstation_profiles: dict | None = None
 
 
 class ComputerNodePairingTokenRead(BaseModel):

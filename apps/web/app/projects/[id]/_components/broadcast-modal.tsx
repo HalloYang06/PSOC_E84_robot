@@ -11,6 +11,13 @@ type BroadcastTarget = {
   responsibility: string;
 };
 
+type ReviewDecision = {
+  requires_review: boolean;
+  source: string;
+  seat_id: string;
+  policy: string;
+};
+
 type BroadcastPreview = {
   scope: string;
   scope_label: string;
@@ -18,6 +25,8 @@ type BroadcastPreview = {
   targets: BroadcastTarget[];
   estimated_tokens: number;
   requires_human_review: boolean;
+  review_decisions?: ReviewDecision[];
+  review_force_count?: number;
   blockers: string[];
   warnings: string[];
   ready: boolean;
@@ -141,6 +150,14 @@ export function BroadcastModal({ apiBaseUrl, projectId, scope, scopeLabel, onClo
                   <strong>预演 · {preview.scope_label}</strong>
                   <span>影响 {preview.target_count} 个 NPC · 预估 ~{preview.estimated_tokens} tokens</span>
                 </div>
+                {preview.requires_human_review ? (
+                  <p className={styles.reviewBox}>
+                    🛡 需要人工审核
+                    {typeof preview.review_force_count === "number" && preview.review_force_count > 0
+                      ? ` · 其中 ${preview.review_force_count} 个 NPC 触发强审策略`
+                      : " · 因量级（≥5 NPC 或 ≥1500 字）触发"}
+                  </p>
+                ) : null}
                 {preview.blockers.length > 0 ? (
                   <ul className={styles.blockerList}>
                     {preview.blockers.map((b, i) => (
@@ -158,15 +175,23 @@ export function BroadcastModal({ apiBaseUrl, projectId, scope, scopeLabel, onClo
                 <details className={styles.targetList}>
                   <summary>展开 NPC 列表（{preview.targets.length}）</summary>
                   <ul>
-                    {preview.targets.map((t) => (
-                      <li key={t.id}>
-                        <strong>{t.name}</strong>
-                        <small>
-                          {t.provider_label || "未绑定 provider"}
-                          {t.responsibility ? ` · ${t.responsibility}` : ""}
-                        </small>
-                      </li>
-                    ))}
+                    {preview.targets.map((t) => {
+                      const decision = preview.review_decisions?.find((d) => d.seat_id === t.id);
+                      return (
+                        <li key={t.id}>
+                          <strong>{t.name}</strong>
+                          <small>
+                            {t.provider_label || "未绑定 provider"}
+                            {t.responsibility ? ` · ${t.responsibility}` : ""}
+                            {decision ? (
+                              <span className={decision.requires_review ? styles.reviewTagForce : styles.reviewTagSkip}>
+                                {decision.requires_review ? "🛡 强审" : "⚡ 免审"}（{decision.source}）
+                              </span>
+                            ) : null}
+                          </small>
+                        </li>
+                      );
+                    })}
                   </ul>
                 </details>
               </div>

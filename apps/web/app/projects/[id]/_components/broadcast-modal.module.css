@@ -126,6 +126,36 @@
 .blockerList li { color: #ffb8b8; }
 .warningList li { color: #ffe8b3; }
 
+.reviewBox {
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(255, 232, 109, 0.12);
+  border: 1px solid rgba(255, 232, 109, 0.32);
+  color: #ffe8b3;
+  font-size: 11.5px;
+}
+
+.reviewTagForce {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  background: rgba(255, 232, 109, 0.18);
+  color: #ffe8b3;
+  border: 1px solid rgba(255, 232, 109, 0.4);
+}
+
+.reviewTagSkip {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  background: rgba(167, 255, 237, 0.14);
+  color: #a7ffed;
+  border: 1px solid rgba(167, 255, 237, 0.4);
+}
+
 .targetList summary {
   cursor: pointer;
   font-size: 11.5px;
