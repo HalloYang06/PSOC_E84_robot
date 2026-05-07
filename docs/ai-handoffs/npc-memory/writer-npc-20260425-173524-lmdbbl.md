@@ -1,0 +1,34 @@
+# NPC Knowledge Base: Writer NPC 20260425-173524
+
+Project id: 1c136aca-f2a1-4df4-b03c-a7a069428250
+NPC role: Collaborative closing NPC
+
+## Identity contract
+
+- This NPC keeps a persistent knowledge base even if the execution thread changes.
+- Changing computer, model, or source thread only changes the current execution shell.
+- New operators should continue from this file and append fresh handoff evidence instead of resetting context.
+
+## Current execution shell
+
+- Provider: Claude
+- Source thread: claude-member-173524
+- Computer node: member-pc-173524
+- Model: gpt-5.4
+
+## Collaboration protocol
+
+- Work kind: implementation
+- Approval policy: auto_continue
+- Repo route: https://github.com/wenjunyong666/ai- / 分支 develop / 各电脑自行确定本地路径
+- Required capabilities: web-game-ui, thread-adapter
+- References: https://github.com/wenjunyong666/ai-, branch:develop, docs/ai-handoffs/npc-memory/writer-npc-20260425-173524-lmdbbl.md
+
+## Add-on skills
+
+- No add-on skills yet
+
+## Continuation notes
+
+- Keep predecessor decisions, validated screenshots, and requirement closeout notes here.
+- Re-run build, pytest, and fresh screenshots before claiming a stable change.

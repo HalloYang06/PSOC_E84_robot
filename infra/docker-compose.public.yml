@@ -1,0 +1,132 @@
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_public_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_public_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ..
+      dockerfile: infra/api.prod.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      APP_ENV: production
+      API_HOST: 0.0.0.0
+      API_PORT: 8010
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY}
+      TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY}
+      RUNNER_REGISTRATION_TOKEN: ${RUNNER_REGISTRATION_TOKEN}
+      ALLOW_BOOTSTRAP_AUTH: "false"
+      DATABASE_AUTO_CREATE: "false"
+      DATABASE_AUTO_SEED: "false"
+      AUTH_PROVIDER: ${AUTH_PROVIDER}
+      SUPERTOKENS_CONNECTION_URI: ${SUPERTOKENS_CONNECTION_URI}
+      SUPERTOKENS_API_KEY: ${SUPERTOKENS_API_KEY}
+      SUPERTOKENS_APP_NAME: ${SUPERTOKENS_APP_NAME}
+      SUPERTOKENS_API_DOMAIN: https://${PUBLIC_APP_DOMAIN}
+      SUPERTOKENS_WEBSITE_DOMAIN: https://${PUBLIC_APP_DOMAIN}
+      SUPERTOKENS_API_BASE_PATH: /api/st-auth
+      SUPERTOKENS_WEBSITE_BASE_PATH: /auth
+      SUPERTOKENS_EMAIL_VERIFICATION_MODE: ${SUPERTOKENS_EMAIL_VERIFICATION_MODE}
+      CORS_ALLOWED_ORIGINS: https://${PUBLIC_APP_DOMAIN}
+      SUPERTOKENS_COOKIE_SECURE: "true"
+      SUPERTOKENS_SMTP_HOST: ${SUPERTOKENS_SMTP_HOST}
+      SUPERTOKENS_SMTP_PORT: ${SUPERTOKENS_SMTP_PORT}
+      SUPERTOKENS_SMTP_USERNAME: ${SUPERTOKENS_SMTP_USERNAME}
+      SUPERTOKENS_SMTP_PASSWORD: ${SUPERTOKENS_SMTP_PASSWORD}
+      SUPERTOKENS_SMTP_FROM_NAME: ${SUPERTOKENS_SMTP_FROM_NAME}
+      SUPERTOKENS_SMTP_FROM_EMAIL: ${SUPERTOKENS_SMTP_FROM_EMAIL}
+      SUPERTOKENS_SMTP_SECURE: ${SUPERTOKENS_SMTP_SECURE}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "from urllib.request import urlopen; import sys; sys.exit(0 if urlopen('http://127.0.0.1:8010/api/health').status == 200 else 1)",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build:
+      context: ..
+      dockerfile: infra/web.prod.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      INTERNAL_API_BASE_URL: http://api:8010
+      NEXT_PUBLIC_API_BASE_URL: https://${PUBLIC_APP_DOMAIN}
+      NEXT_PUBLIC_AUTH_PROVIDER: ${AUTH_PROVIDER}
+      NEXT_PUBLIC_SUPERTOKENS_APP_NAME: ${SUPERTOKENS_APP_NAME}
+      NEXT_PUBLIC_SUPERTOKENS_API_DOMAIN: https://${PUBLIC_APP_DOMAIN}
+      NEXT_PUBLIC_SUPERTOKENS_API_BASE_PATH: /api/st-auth
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/login').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    environment:
+      PUBLIC_APP_DOMAIN: ${PUBLIC_APP_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_public_data:/data
+      - caddy_public_config:/config
+
+volumes:
+  postgres_public_data:
+  redis_public_data:
+  caddy_public_data:
+  caddy_public_config:

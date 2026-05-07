@@ -1,0 +1,214 @@
+version: 0.1
+owner: AI-4
+updated_at: 2026-04-20
+purpose: >
+  Embedded workflow config examples for approvals, lab records, task risk tagging,
+  and handoff payloads. This file is a contract draft, not production runtime config.
+
+task_risk_defaults:
+  risk_levels:
+    - H0
+    - H1
+    - H2
+    - H3
+    - H4
+  hardware_action_types:
+    - none
+    - firmware_flash
+    - parameter_write
+    - actuator_motion
+    - power_operation
+    - calibration
+    - rollback
+  rules:
+    - when:
+        hardware_touch: true
+        risk_level_in: [H3, H4]
+      require_human_approval: true
+    - when:
+        hardware_action_type_in: [firmware_flash, parameter_write, actuator_motion, power_operation, calibration, rollback]
+      require_lab_record: true
+    - when:
+        simulation_required: true
+      gate: simulation_must_pass_before_real_hardware
+
+approval_templates:
+  - key: embedded.firmware_flash.v1
+    title: Firmware Flash Approval
+    level: H3
+    action: flash_firmware
+    required_confirmations: 2
+    required_fields:
+      - task_id
+      - impact_devices
+      - target_version
+      - previous_version
+      - execution_owner
+      - rollback_plan
+      - risk_summary
+    preflight_checklist:
+      - key: board_identity_confirmed
+        title: Target board identity confirmed
+      - key: power_supply_stable
+        title: Power supply and cable state confirmed
+      - key: rollback_package_ready
+        title: Previous stable firmware package ready
+      - key: serial_log_capture_ready
+        title: Serial log capture prepared
+      - key: emergency_stop_ready
+        title: Emergency stop or shutdown path ready
+  - key: embedded.parameter_write.v1
+    title: Control Parameter Write Approval
+    level: H3
+    action: write_control_parameters
+    required_confirmations: 2
+    required_fields:
+      - task_id
+      - impact_devices
+      - parameter_changes
+      - execution_owner
+      - rollback_plan
+      - risk_summary
+    preflight_checklist:
+      - key: previous_values_recorded
+        title: Previous parameter values recorded
+      - key: safe_range_verified
+        title: Safe range verified by human engineer
+      - key: test_environment_ready
+        title: Test environment isolated and ready
+  - key: embedded.actuator_motion.v1
+    title: Actuator Motion Approval
+    level: H4
+    action: execute_motion_test
+    required_confirmations: 2
+    required_fields:
+      - task_id
+      - impact_devices
+      - execution_owner
+      - observer_user_id
+      - rollback_plan
+      - risk_summary
+      - movement_scope
+    preflight_checklist:
+      - key: workspace_clear
+        title: Physical workspace is clear
+      - key: limiters_enabled
+        title: Limiters and safety guards enabled
+      - key: emergency_stop_tested
+        title: Emergency stop verified
+      - key: low_speed_mode_enabled
+        title: Low speed or safe test mode enabled
+
+lab_record_template:
+  required_fields:
+    - task_id
+    - device_id
+    - experiment_type
+    - experiment_stage
+    - operator_user_id
+    - firmware_version
+    - result_summary
+    - next_decision
+  experiment_types:
+    - simulation
+    - bench_test
+    - real_hardware
+  experiment_stages:
+    - preflight
+    - executing
+    - observing
+    - reviewing
+  next_decisions:
+    - retry
+    - rollback
+    - approve_next_step
+    - blocked_need_investigation
+  evidence_recommendations:
+    - serial_log
+    - oscilloscope_capture
+    - photo
+    - video
+    - measurement_sheet
+  example_payload:
+    task_id: TASK-EMB-042
+    device_id: arm-controller-01
+    experiment_type: real_hardware
+    experiment_stage: reviewing
+    operator_user_id: user-001
+    observer_user_id: user-002
+    firmware_version: v1.2.4-rc1
+    previous_version: v1.2.3
+    result_summary: Motor initialized successfully, but current spike exceeded threshold once.
+    next_decision: blocked_need_investigation
+    evidence_files:
+      - artifacts/lab/TASK-EMB-042/serial.log
+      - artifacts/lab/TASK-EMB-042/photo-front.jpg
+
+handoff_payload_template:
+  required_fields:
+    - summary
+    - reason
+    - current_status
+    - open_questions
+    - next_steps
+    - risk_summary
+    - hardware_context
+    - required_checks
+    - unsafe_to_continue
+  handoff_kinds:
+    - ai_to_ai
+    - ai_to_human
+    - human_to_ai
+  example_payload:
+    handoff_kind: ai_to_human
+    summary: Build and simulation passed; real hardware flash not yet executed.
+    reason: Waiting for human hardware confirmation.
+    current_status: waiting_human_approval
+    risk_summary: Flashing wrong board or version may leave controller unable to boot.
+    hardware_context:
+      target_devices:
+        - mcu-main-board
+      target_version: v1.2.4-rc1
+      previous_version: v1.2.3
+      experiment_state: pending_real_hardware
+    required_checks:
+      - Confirm target board serial number.
+      - Confirm rollback package is available.
+      - Confirm serial logger is attached before flash.
+    open_questions:
+      - Is the bench power supply already switched to safe current limit mode?
+    next_steps:
+      - Human approves flash action.
+      - Human executes flash on bench device.
+      - Upload serial boot log and board photo.
+    unsafe_to_continue: true
+
+runner_capability_examples:
+  embedded_build_runner:
+    capabilities:
+      - git
+      - python
+      - embedded-build
+      - serial-log
+    hardware_access: false
+  ros_build_runner:
+    capabilities:
+      - git
+      - python
+      - ros
+      - docker
+    hardware_access: false
+
+ui_state_mapping:
+  pending_human_approval:
+    map_badge: pending approval
+    building_state: gate_closed
+  pending_real_hardware:
+    map_badge: awaiting human execution
+    building_state: lab_locked
+  experiment_failed:
+    map_badge: failed experiment
+    building_state: warning_red
+  experiment_record_uploaded:
+    map_badge: evidence uploaded
+    building_state: archive_ready

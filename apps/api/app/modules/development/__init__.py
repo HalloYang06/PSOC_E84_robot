@@ -1,0 +1,2 @@
+"""Development workshop framework module."""
+

@@ -1,0 +1,477 @@
+# 项目 10f6a858-f3e4-467c-87f5-726caa3cc2be / Codex 收件箱
+
+## 2026-04-23T02:34:25.825Z
+- 目标：Codex / NPC1
+- 工位 ID：codex-session-019db445-02a1-7160-9073-ffb97faed590
+- Provider：Codex
+- 电脑：Local Dev PC
+- 电脑 ID：local-dev-pc
+- Skills：github-repo-bootstrap, ai-collab-productizer, continuous-orchestrator, handoff-path-output, verify-before-claim
+- 仓库协作：https://github.com/wenjunyong666/ai- / 分支 develop / 各电脑自行确定本地路径
+- 参考资料：https://github.com/wenjunyong666/ai- / branch:develop / docs/ai-handoffs/npc-memory/npc1-seat.md
+- 发起人：平台页面补齐
+- 标题：自动化需求箱 / Claude provider adapter 接入
+- 状态：queued
+- 路由：platform_autonomy
+- Requirement：735e4939-0f1d-430e-a3f1-604d9d94766b
+- Message：5c2b0547-30b0-4f31-af0e-0df41e3bd117
+- 平台状态：queued
+- 内容：至少让 Claude 进入和 Codex 同一套 seat adapter 状态链；创建/更新 Claude NPC 时自动登记会话；项目页能诚实显示 Claude session 是否已登记、是否过旧，以及下一步该怎么恢复。
+Requirement: 735e4939-0f1d-430e-a3f1-604d9d94766b
+Platform status: queued## 2026-04-23T02:34:25.817Z
+- 目标：Codex / NPC1
+- 工位 ID：codex-session-019db445-02a1-7160-9073-ffb97faed590
+- Provider：Codex
+- 电脑：Local Dev PC
+- 电脑 ID：local-dev-pc
+- Skills：github-repo-bootstrap, ai-collab-productizer, continuous-orchestrator, handoff-path-output, verify-before-claim
+- 仓库协作：https://github.com/wenjunyong666/ai- / 分支 develop / 各电脑自行确定本地路径
+- 参考资料：https://github.com/wenjunyong666/ai- / branch:develop / docs/ai-handoffs/npc-memory/npc1-seat.md
+- 发起人：平台页面补齐
+- 标题：自动化需求箱 / 农场强截图链脱离 screen-fallback
+- 状态：queued
+- 路由：platform_autonomy
+- Requirement：417d1b12-46fd-48a9-bf77-68d121c7052e
+- Message：d33730b5-a0c4-419a-89e5-7184fa062c8e
+- 平台状态：queued
+- 内容：让 farm proof 尽量脱离 `screen-fallback`，至少要把当前强截图失败路径、可复现条件和可靠 fallback 明确收成可维护的验收链；在不替换农场底座的前提下继续保住项目页第一屏主视图。
+Requirement: 417d1b12-46fd-48a9-bf77-68d121c7052e
+Platform status: queued## 2026-04-23T02:34:25.808Z
+- 目标：Codex / NPC2
+- 工位 ID：codex-session-019db445-9180-75b3-96d4-12e110553ad9
+- Provider：Codex
+- 电脑：Local Dev PC
+- 电脑 ID：local-dev-pc
+- Skills：github-repo-bootstrap, ai-collab-productizer, continuous-orchestrator, handoff-path-output, verify-before-claim
+- 仓库协作：https://github.com/wenjunyong666/ai- / 分支 develop / 各电脑自行确定本地路径
+- 参考资料：https://github.com/wenjunyong666/ai- / branch:develop / docs/ai-handoffs/npc-memory/npc2-seat.md
+- 发起人：平台页面补齐
+- 标题：自动化需求箱 / NPC2 恢复 heartbeat 与自治桥
+- 状态：queued
+- 路由：platform_autonomy
+- Requirement：6bdcd39d-2394-491f-99bb-c938eaf9a612
+- Message：2b5f382f-c3c7-4ea5-986c-ad44c253f786
+- 平台状态：queued
+- 内容：补齐或恢复 NPC2 heartbeat，使自治桥重新稳定轮转；若 heartbeat 配置存在错绑或缺失，要直接修正到当前 live thread；完成后至少补一次 fresh 最小回执/进展证明，并更新 live bridge proof。
+Requirement: 6bdcd39d-2394-491f-99bb-c938eaf9a612
+Platform status: queued## 2026-04-23T02:34:25.798Z
+- 目标：Codex / NPC1
+- 工位 ID：codex-session-019db445-02a1-7160-9073-ffb97faed590
+- Provider：Codex
+- 电脑：Local Dev PC
+- 电脑 ID：local-dev-pc
+- Skills：github-repo-bootstrap, ai-collab-productizer, continuous-orchestrator, handoff-path-output, verify-before-claim
+- 仓库协作：https://github.com/wenjunyong666/ai- / 分支 develop / 各电脑自行确定本地路径
+- 参考资料：https://github.com/wenjunyong666/ai- / branch:develop / docs/ai-handoffs/npc-memory/npc1-seat.md
+- 发起人：平台页面补齐
+- 标题：自动化需求箱 / 收口主协作组席位 placeholder 视角
+- 状态：queued
+- 路由：platform_autonomy
+- Requirement：451a185e-3bbb-4bf1-a9d2-7c8fd42903b0
+- Message：36692ed6-d3ca-4bf1-a7dd-243ca32587f1
+- 平台状态：in_progress
+- 内容：NPC1 received requirement 451a185e-3bbb-4bf1-a9d2-7c8fd42903b0 and started workstation-side triage for this dispatch. Work is constrained to scripts/ and docs/ai-handoffs/ while the farm main view stays untouched.
+Requirement: 451a185e-3bbb-4bf1-a9d2-7c8fd42903b0
+Platform status: in_progress## 2026-04-23T02:34:25.793Z
+- 目标：Codex / NPC2
+- 工位 ID：codex-session-019db445-9180-75b3-96d4-12e110553ad9
+- Provider：Codex
+- 电脑：Local Dev PC
+- 电脑 ID：local-dev-pc
+- Skills：github-repo-bootstrap, ai-collab-productizer, continuous-orchestrator, handoff-path-output, verify-before-claim
+- 仓库协作：https://github.com/wenjunyong666/ai- / 分支 develop / 各电脑自行确定本地路径
+- 参考资料：https://github.com/wenjunyong666/ai- / branch:develop / docs/ai-handoffs/npc-memory/npc2-seat.md
+- 发起人：平台页面补齐
+- 标题：自动化需求箱 / NPC2 恢复 heartbeat 与自治桥
+- 状态：queued
+- 路由：platform_autonomy
+- Requirement：edd264a7-3e34-46e7-bf16-1a251e25b427
+- Message：70addabf-8127-40bc-a123-928d52406047
+- 平台状态：in_progress
+- 内容：NPC2 received requirement edd264a7-3e34-46e7-bf16-1a251e25b427 and started workstation-side triage for this dispatch. Work is constrained to scripts/ and docs/ai-handoffs/ while the farm main view stays untouched.
+Requirement: edd264a7-3e34-46e7-bf16-1a251e25b427
+Platform status: in_progress## 2026-04-23T02:34:25.786Z
+- 目标：Codex / NPC1
+- 工位 ID：codex-session-019db445-02a1-7160-9073-ffb97faed590
+- Provider：Codex
+- 电脑：Local Dev PC
+- 电脑 ID：local-dev-pc
+- Skills：github-repo-bootstrap, ai-collab-productizer, continuous-orchestrator, handoff-path-output, verify-before-claim
+- 仓库协作：https://github.com/wenjunyong666/ai- / 分支 develop / 各电脑自行确定本地路径
+- 参考资料：https://github.com/wenjunyong666/ai- / branch:develop / docs/ai-handoffs/npc-memory/npc1-seat.md
+- 发起人：平台页面补齐
+- 标题：自动化需求箱 / 收口主协作组席位 placeholder 视角
+- 状态：queued
+- 路由：platform_autonomy
+- Requirement：c2f1ba1b-ee54-4885-904f-5c035a492775
+- Message：0b8ba917-a927-4d59-8a51-8d601c4e2929
+- 平台状态：queued
+- 内容：seat 列表与 recovery proof 不再展示 placeholder 式席位标题；RECOVERY_DOM_NEXT_STEP_SEAT 应直接落到干净的 NPC2 席位表达；首页 `NPC2 缺 heartbeat / NPC3 本地状态未更新` 的主协作组 blocker 不能被带歪。
+Requirement: c2f1ba1b-ee54-4885-904f-5c035a492775
+Platform status: queued## 2026-04-23T02:34:25.780Z
+- 目标：Codex / NPC1
+- 工位 ID：codex-session-019db445-02a1-7160-9073-ffb97faed590
+- Provider：Codex
+- 电脑：Local Dev PC
+- 电脑 ID：local-dev-pc
+- Skills：github-repo-bootstrap, ai-collab-productizer, continuous-orchestrator, handoff-path-output, verify-before-claim
+- 仓库协作：https://github.com/wenjunyong666/ai- / 分支 develop / 各电脑自行确定本地路径
+- 参考资料：https://github.com/wenjunyong666/ai- / branch:develop / docs/ai-handoffs/npc-memory/npc1-seat.md
+- 发起人：平台页面补齐
+- 标题：自动化需求箱 / 农场强截图链脱离 screen-fallback
+- 状态：queued
+- 路由：platform_autonomy
+- Requirement：a8f19bba-4aea-4448-8c3c-24b2f5994ada
+- Message：7829d505-91a2-49e8-99ea-fcd2246a7d1c
+- 平台状态：queued
+- 内容：让 farm proof 尽量脱离 `screen-fallback`，至少要把当前强截图失败路径、可复现条件和可靠 fallback 明确收成可维护的验收链；在不替换农场底座的前提下继续保住项目页第一屏主视图。
+Requirement: a8f19bba-4aea-4448-8c3c-24b2f5994ada
+Platform status: queued## 2026-04-23T02:34:25.773Z
+- 目标：Codex / NPC1
+- 工位 ID：codex-session-019db445-02a1-7160-9073-ffb97faed590
+- Provider：Codex
+- 电脑：Local Dev PC
+- 电脑 ID：local-dev-pc
+- Skills：github-repo-bootstrap, ai-collab-productizer, continuous-orchestrator, handoff-path-output, verify-before-claim
+- 仓库协作：https://github.com/wenjunyong666/ai- / 分支 develop / 各电脑自行确定本地路径
+- 参考资料：https://github.com/wenjunyong666/ai- / branch:develop / docs/ai-handoffs/npc-memory/npc1-seat.md
+- 发起人：平台页面补齐
+- 标题：自动化需求箱 / Claude provider adapter 接入
+- 状态：queued
+- 路由：platform_autonomy
+- Requirement：a611d5d1-4beb-473c-a381-41db9c79b841
+- Message：9980a527-33fd-47ef-90f5-e8cab697d342
+- 平台状态：queued
+- 内容：至少让 Claude 进入和 Codex 同一套 seat adapter 状态链；创建/更新 Claude NPC 时自动登记会话；项目页能诚实显示 Claude session 是否已登记、是否过旧，以及下一步该怎么恢复。
+Requirement: a611d5d1-4beb-473c-a381-41db9c79b841
+Platform status: queued## 2026-04-23T02:04:55.242Z
+- 目标：Codex / NPC1
+- 工位 ID：codex-session-019db445-02a1-7160-9073-ffb97faed590
+- Provider：Codex
+- 电脑：Local Dev PC
+- 电脑 ID：local-dev-pc
+- Skills：github-repo-bootstrap, ai-collab-productizer, continuous-orchestrator, handoff-path-output, verify-before-claim
+- 仓库协作：https://github.com/wenjunyong666/ai- / 分支 develop / 各电脑自行确定本地路径
+- 参考资料：https://github.com/wenjunyong666/ai- / branch:develop / docs/ai-handoffs/npc-memory/npc1-seat.md
+- 发起人：平台页面补齐
+- 标题：自动化需求箱 / 农场强截图链脱离 screen-fallback
+- 状态：queued
+- 路由：platform_autonomy
+- Requirement：29e11ebd-fee5-4f7e-be40-bca24459c3b8
+- Message：db52baf8-9a14-4108-959a-5f8dd7282845
+- 平台状态：queued
+- 内容：让 farm proof 尽量脱离 `screen-fallback`，至少要把当前强截图失败路径、可复现条件和可靠 fallback 明确收成可维护的验收链；在不替换农场底座的前提下继续保住项目页第一屏主视图。
+Requirement: 29e11ebd-fee5-4f7e-be40-bca24459c3b8
+Platform status: queued## 2026-04-23T02:04:55.236Z
+- 目标：Codex / NPC3
+- 工位 ID：codex-session-019db461-8c20-7df2-840f-1bb7c5bce410
+- Provider：Codex
+- 电脑：Local Dev PC
+- 电脑 ID：local-dev-pc
+- Skills：github-repo-bootstrap, ai-collab-productizer, continuous-orchestrator, handoff-path-output, verify-before-claim
+- 仓库协作：https://github.com/wenjunyong666/ai- / 分支 develop / 各电脑自行确定本地路径
+- 参考资料：https://github.com/wenjunyong666/ai- / branch:develop / docs/ai-handoffs/npc-memory/npc3-seat.md
+- 发起人：平台页面补齐
+- 标题：自动化需求箱 / NPC3 刷新本地 state 与 consumer
+- 状态：done
+- 路由：platform_autonomy
+- Requirement：93035d90-e4af-4a6f-b6ed-be33437081c2
+- Message：de55af23-36bc-4d38-860c-3079ba50b87c
+- 平台状态：completed
+- 内容：唤醒 NPC3 当前线程或重跑 consumer，让本地 state 与 live requirement 重新对齐；补最新进展或最终回复；验证地图 NPC 交互链和相关 proof 不再停在旧 state。
+Requirement: 93035d90-e4af-4a6f-b6ed-be33437081c2
+Platform status: completed## 2026-04-23T02:04:55.231Z
+- 目标：Codex / NPC2
+- 工位 ID：codex-session-019db445-9180-75b3-96d4-12e110553ad9
+- Provider：Codex
+- 电脑：Local Dev PC
+- 电脑 ID：local-dev-pc
+- Skills：github-repo-bootstrap, ai-collab-productizer, continuous-orchestrator, handoff-path-output, verify-before-claim
+- 仓库协作：https://github.com/wenjunyong666/ai- / 分支 develop / 各电脑自行确定本地路径
+- 参考资料：https://github.com/wenjunyong666/ai- / branch:develop / docs/ai-handoffs/npc-memory/npc2-seat.md
+- 发起人：平台页面补齐
+- 标题：自动化需求箱 / NPC2 恢复 heartbeat 与自治桥
+- 状态：queued
+- 路由：platform_autonomy
+- Requirement：0098619d-6ac6-4723-be34-179d53443fd3
+- Message：157748d1-17bd-4bde-91f9-1933f47ccf10
+- 平台状态：queued
+- 内容：补齐或恢复 NPC2 heartbeat，使自治桥重新稳定轮转；若 heartbeat 配置存在错绑或缺失，要直接修正到当前 live thread；完成后至少补一次 fresh 最小回执/进展证明，并更新 live bridge proof。
+Requirement: 0098619d-6ac6-4723-be34-179d53443fd3
+Platform status: queued## 2026-04-23T02:04:55.224Z
+- 目标：Codex / NPC1
+- 工位 ID：codex-session-019db445-02a1-7160-9073-ffb97faed590
+- Provider：Codex
+- 电脑：Local Dev PC
+- 电脑 ID：local-dev-pc
+- Skills：github-repo-bootstrap, ai-collab-productizer, continuous-orchestrator, handoff-path-output, verify-before-claim
+- 仓库协作：https://github.com/wenjunyong666/ai- / 分支 develop / 各电脑自行确定本地路径
+- 参考资料：https://github.com/wenjunyong666/ai- / branch:develop / docs/ai-handoffs/npc-memory/npc1-seat.md
+- 发起人：平台页面补齐
+- 标题：自动化需求箱 / 收口主协作组席位 placeholder 视角
+- 状态：queued
+- 路由：platform_autonomy
+- Requirement：1dcc6aca-b038-47a7-9a35-bf412c2a5b00
+- Message：9c391560-c86e-4363-b8b9-aa0668b11f8b
+- 平台状态：in_progress
+- 内容：NPC1 received requirement 1dcc6aca-b038-47a7-9a35-bf412c2a5b00 and started workstation-side triage for this dispatch. Work is constrained to scripts/ and docs/ai-handoffs/ while the farm main view stays untouched.
+Requirement: 1dcc6aca-b038-47a7-9a35-bf412c2a5b00
+Platform status: in_progress## 2026-04-22T14:18:13.117Z
+- 目标：Codex / Codex 线程 e27c47
+- 工位 ID：codex-session-019db06a-aef9-7fc1-82cd-0f146fe27c47
+- Provider：codex
+- Skills：github-repo-bootstrap, ai-collab-productizer, continuous-orchestrator, handoff-path-output, verify-before-claim
+- 仓库协作：https://github.com/wenjunyong666/ai- / 分支 develop / 各电脑自行确定本地路径
+- 参考资料：https://github.com/wenjunyong666/ai- / branch:develop
+- 发起人：平台自治推进
+- 标题：Requirement 23d4025a
+- 状态：queued
+- 路由：platform_autonomy
+- Requirement：23d4025a-d848-4b2f-9fa9-bccd5eb9ff86
+- Message：fd280615-bec8-4723-a0c5-a91f1fadb975
+- 平台状态：queued
+- 内容：1. ??????,????????;2. ????,??????????????????;3. ???????????
+Requirement: 23d4025a-d848-4b2f-9fa9-bccd5eb9ff86
+Platform status: queued## 2026-04-22T14:18:13.086Z
+- 目标：Codex / 设置平台NPC2
+- 工位 ID：codex-session-019db445-9180-75b3-96d4-12e110553ad9
+- Provider：Codex
+- 电脑：Local Dev PC
+- 电脑 ID：local-dev-pc
+- Skills：github-repo-bootstrap, ai-collab-productizer, continuous-orchestrator, handoff-path-output, verify-before-claim
+- 仓库协作：https://github.com/wenjunyong666/ai- / 分支 develop / 各电脑自行确定本地路径
+- 参考资料：https://github.com/wenjunyong666/ai- / branch:develop
+- 发起人：平台自治推进
+- 标题：Requirement 9718780b
+- 状态：queued
+- 路由：platform_autonomy
+- Requirement：9718780b-4ffd-4c86-8aba-fadddd1ab465
+- Message：0de68d73-910c-4f83-a037-b432106b4aee
+- 平台状态：queued
+- 内容：Codex 已向 设置平台NPC2 派发 Requirement 9718780b，请在线程中查看详情。## 2026-04-22T14:18:13.074Z
+- 目标：Codex / 设置平台npc1
+- 工位 ID：codex-session-019db445-02a1-7160-9073-ffb97faed590
+- Provider：Codex
+- 电脑：Local Dev PC
+- 电脑 ID：local-dev-pc
+- Skills：github-repo-bootstrap, ai-collab-productizer, continuous-orchestrator, handoff-path-output, verify-before-claim
+- 仓库协作：https://github.com/wenjunyong666/ai- / 分支 develop / 各电脑自行确定本地路径
+- 参考资料：https://github.com/wenjunyong666/ai- / branch:develop
+- 发起人：平台自治推进
+- 标题：Requirement eca81ecf
+- 状态：queued
+- 路由：platform_autonomy
+- Requirement：eca81ecf-6d31-47c5-8186-7be341820d6b
+- Message：1c1499d5-9e89-4911-aacc-d7fa2071ef9b
+- 平台状态：queued
+- 内容：Codex 已向 设置平台npc1 派发 Requirement eca81ecf，请在线程中查看详情。## 2026-04-22T14:18:13.069Z
+- 目标：Codex / 设定为npc3
+- 工位 ID：codex-session-019db461-8c20-7df2-840f-1bb7c5bce410
+- Provider：Codex
+- 电脑：Local Dev PC
+- 电脑 ID：local-dev-pc
+- Skills：github-repo-bootstrap, ai-collab-productizer, continuous-orchestrator, handoff-path-output, verify-before-claim
+- 仓库协作：https://github.com/wenjunyong666/ai- / 分支 develop / 各电脑自行确定本地路径
+- 参考资料：https://github.com/wenjunyong666/ai- / branch:develop / docs/ai-handoffs/npc-memory/npc3-seat.md
+- 发起人：平台自治推进
+- 标题：NPC3 / ???? NPC ???? Enter ??
+- 状态：queued
+- 路由：platform_autonomy
+- Requirement：af93decb-8b9a-452f-a533-7193e6cb2da9
+- Message：8927465d-2752-4658-8a99-28794daaf4d9
+- 平台状态：queued
+- 内容：Codex 已向 设定为npc3 派发 Requirement af93decb，请在线程中查看详情。## 2026-04-22T14:18:13.062Z
+- 目标：Codex / NPC1
+- 工位 ID：codex-session-019db445-02a1-7160-9073-ffb97faed590
+- Provider：Codex
+- 电脑：Local Dev PC
+- 电脑 ID：local-dev-pc
+- Skills：github-repo-bootstrap, ai-collab-productizer, continuous-orchestrator, handoff-path-output, verify-before-claim
+- 仓库协作：https://github.com/wenjunyong666/ai- / 分支 develop / 各电脑自行确定本地路径
+- 参考资料：https://github.com/wenjunyong666/ai- / branch:develop / docs/ai-handoffs/npc-memory/npc1-seat.md
+- 发起人：平台页面补齐
+- 标题：2D Dev Mode / 协作界面收口
+- 状态：queued
+- 路由：platform_autonomy
+- Requirement：6db910e8-07ae-4bab-bc2c-2aae17a1b6f1
+- Message：4695cbec-6028-4c2c-9161-3d7ec2e59d8a
+- 平台状态：queued
+- 内容：Requirement: 6db910e8-07ae-4bab-bc2c-2aae17a1b6f1
+Platform status: queued## 2026-04-22T14:18:13.056Z
+- 目标：Codex / NPC2
+- 工位 ID：codex-session-019db445-9180-75b3-96d4-12e110553ad9
+- Provider：Codex
+- 电脑：Local Dev PC
+- 电脑 ID：local-dev-pc
+- Skills：github-repo-bootstrap, ai-collab-productizer, continuous-orchestrator, handoff-path-output, verify-before-claim
+- 仓库协作：https://github.com/wenjunyong666/ai- / 分支 develop / 各电脑自行确定本地路径
+- 参考资料：https://github.com/wenjunyong666/ai- / branch:develop / docs/ai-handoffs/npc-memory/npc2-seat.md
+- 发起人：平台页面补齐
+- 标题：2D Dev Mode / 协作界面收口
+- 状态：queued
+- 路由：platform_autonomy
+- Requirement：0f8130e9-64a3-45e8-9845-47538c3e948f
+- Message：7f664f28-f5bf-4629-8815-2f49c693985b
+- 平台状态：queued
+- 内容：Requirement: 0f8130e9-64a3-45e8-9845-47538c3e948f
+Platform status: queued## 2026-04-22T14:18:13.049Z
+- 目标：Codex / NPC3
+- 工位 ID：codex-session-019db461-8c20-7df2-840f-1bb7c5bce410
+- Provider：Codex
+- 电脑：Local Dev PC
+- 电脑 ID：local-dev-pc
+- Skills：github-repo-bootstrap, ai-collab-productizer, continuous-orchestrator, handoff-path-output, verify-before-claim
+- 仓库协作：https://github.com/wenjunyong666/ai- / 分支 develop / 各电脑自行确定本地路径
+- 参考资料：https://github.com/wenjunyong666/ai- / branch:develop / docs/ai-handoffs/npc-memory/npc3-seat.md
+- 发起人：平台页面补齐
+- 标题：Map NPC / 地图 NPC 交互
+- 状态：done
+- 路由：platform_autonomy
+- Requirement：0aae3eb2-7097-4e68-bc96-a38d5b90528b
+- Message：390c6cf9-ac1f-4861-91ee-f1943ffa4090
+- 平台状态：completed
+- 内容：Requirement: 0aae3eb2-7097-4e68-bc96-a38d5b90528b
+Platform status: completed## 2026-04-22T14:18:13.041Z
+- 目标：Codex / NPC4
+- 工位 ID：codex-session-019db52e-dca5-7412-ba6c-621d0fc78537
+- Provider：Codex
+- 电脑：Local Dev PC
+- 电脑 ID：local-dev-pc
+- Skills：github-repo-bootstrap, ai-collab-productizer, continuous-orchestrator, handoff-path-output, verify-before-claim
+- 仓库协作：https://github.com/wenjunyong666/ai- / 分支 develop / 各电脑自行确定本地路径
+- 参考资料：https://github.com/wenjunyong666/ai- / branch:develop
+- 发起人：平台页面补齐
+- 标题：Mode Entry / ????????????
+- 状态：queued
+- 路由：platform_autonomy
+- Requirement：8cf1343a-828f-4325-ad23-ba2e8a060678
+- Message：9e3debeb-3ed1-478a-89d7-2d2bda158f48
+- 平台状态：queued
+- 内容：Requirement: 8cf1343a-828f-4325-ad23-ba2e8a060678
+Platform status: queued## 2026-04-22T08:28:06Z
+- 目标：Codex / 设置平台npc1
+- 工位 ID：codex-session-019db445-02a1-7160-9073-ffb97faed590
+- Provider：Codex
+- 电脑：Local Dev PC
+- 电脑 ID：local-dev-pc
+- Skills：github-repo-bootstrap, ai-collab-productizer, continuous-orchestrator, handoff-path-output, verify-before-claim
+- 仓库协作：https://github.com/wenjunyong666/ai- / 分支 develop / 各电脑自行确定本地路径
+- 参考资料：https://github.com/wenjunyong666/ai- / branch:develop
+- 发起人：平台自治推进
+- 标题：Coop Loop / NPC1 thread consumer prototype
+- 状态：queued
+- 路由：platform_autonomy
+- Requirement：c6f37ff6-420a-4c68-afda-63a627b7a923
+- Message：3907f10d-a7b9-41fb-a1d9-cc1ad853c7b4
+- 平台状态：queued
+- 内容：?????????????????????? NPC1???? docs/ai-handoffs/npc-coop-loop-2026-04-22.md???? scripts/ ? docs/ai-handoffs/npc1-*.md??????????????????????? consumer ???????? Codex ???????????????
+Requirement: c6f37ff6-420a-4c68-afda-63a627b7a923
+Platform status: queued## 2026-04-22T08:28:06Z
+- 目标：Codex / 设置平台NPC2
+- 工位 ID：codex-session-019db445-9180-75b3-96d4-12e110553ad9
+- Provider：Codex
+- 电脑：Local Dev PC
+- 电脑 ID：local-dev-pc
+- Skills：github-repo-bootstrap, ai-collab-productizer, continuous-orchestrator, handoff-path-output, verify-before-claim
+- 仓库协作：https://github.com/wenjunyong666/ai- / 分支 develop / 各电脑自行确定本地路径
+- 参考资料：https://github.com/wenjunyong666/ai- / branch:develop
+- 发起人：平台自治推进
+- 标题：Coop Loop / NPC2 cooperation proof surface
+- 状态：queued
+- 路由：platform_autonomy
+- Requirement：758e9867-7e2b-407e-bba6-5b6148f36352
+- Message：9c5f6d78-15d0-4849-975f-3aeb2cce11a0
+- 平台状态：queued
+- 内容：?????????????????????? NPC2???? docs/ai-handoffs/npc-coop-loop-2026-04-22.md???? project-playable-shell.tsx?server-data.ts ? docs/ai-handoffs/npc2-*.md???????????????????????????????????? Main Coordinator?NPC1?NPC2 ????????
+Requirement: 758e9867-7e2b-407e-bba6-5b6148f36352
+Platform status: queued## 2026-04-22T08:08:41Z
+- 目标：Codex / Codex 线程 e27c47
+- 工位 ID：codex-session-019db06a-aef9-7fc1-82cd-0f146fe27c47
+- Provider：codex
+- Skills：github-repo-bootstrap, ai-collab-productizer, continuous-orchestrator, handoff-path-output, verify-before-claim
+- 仓库协作：https://github.com/wenjunyong666/ai- / 分支 develop / 各电脑自行确定本地路径
+- 参考资料：https://github.com/wenjunyong666/ai- / branch:develop
+- 发起人：平台自治推进
+- 标题：Real Thread Ping 160735 / 1
+- 状态：queued
+- 路由：platform_autonomy
+- Requirement：40d4700d-8088-4b6a-95ba-67105dffb61a
+- Message：ae1d02a6-2db3-4069-a7c3-04444460092e
+- 平台状态：queued
+- 内容：codex 已向 Codex 线程 e27c47 派发 Requirement 40d4700d，请在线程中查看详情。## 2026-04-22T08:08:41Z
+- 目标：Codex / Codex 线程 a4e3ac
+- 工位 ID：codex-session-019db06a-89a6-7200-a403-993871a4e3ac
+- Provider：codex
+- Skills：github-repo-bootstrap, ai-collab-productizer, continuous-orchestrator, handoff-path-output, verify-before-claim
+- 仓库协作：https://github.com/wenjunyong666/ai- / 分支 develop / 各电脑自行确定本地路径
+- 参考资料：https://github.com/wenjunyong666/ai- / branch:develop
+- 发起人：平台自治推进
+- 标题：Real Thread Ping 160735 / 2
+- 状态：queued
+- 路由：platform_autonomy
+- Requirement：48d245b8-5acd-4253-a137-5581a52e6a28
+- Message：f093bf88-9804-4a38-8452-7d784ae44472
+- 平台状态：queued
+- 内容：codex 已向 Codex 线程 a4e3ac 派发 Requirement 48d245b8，请在线程中查看详情。## 2026-04-22T08:08:41Z
+- 目标：Codex / Codex 线程 843d81
+- 工位 ID：codex-session-019db06a-6343-7733-a593-8cdc6c843d81
+- Provider：codex
+- Skills：github-repo-bootstrap, ai-collab-productizer, continuous-orchestrator, handoff-path-output, verify-before-claim
+- 仓库协作：https://github.com/wenjunyong666/ai- / 分支 develop / 各电脑自行确定本地路径
+- 参考资料：https://github.com/wenjunyong666/ai- / branch:develop
+- 发起人：平台自治推进
+- 标题：Real Thread Ping 160735 / 3
+- 状态：queued
+- 路由：platform_autonomy
+- Requirement：27711221-6b34-4f46-8774-af85018289c1
+- Message：fe0284ba-db8b-4eb3-8be1-10b131296b0e
+- 平台状态：queued
+- 内容：codex 已向 Codex 线程 843d81 派发 Requirement 27711221，请在线程中查看详情。## 2026-04-22T07:55:02.2509178Z
+- 目标：Codex / Codex 线程 e27c47
+- 工位 ID：codex-session-019db06a-aef9-7fc1-82cd-0f146fe27c47
+- Provider：codex
+- Skills：github-repo-bootstrap, ai-collab-productizer, continuous-orchestrator, handoff-path-output, verify-before-claim
+- 仓库协作：https://github.com/wenjunyong666/ai- / 分支 develop / 各电脑自行确定本地路径
+- 参考资料：https://github.com/wenjunyong666/ai- / branch:develop
+- 发起人：平台自治推进
+- 标题：Real Thread / Homepage priority follow-up
+- 状态：queued
+- 路由：platform_autonomy
+- Requirement：e318a693-2a74-4385-a8cf-b410f94b4edd
+- Message：194a7fc4-b8a7-4327-90bb-52a527db48c8
+- 平台状态：queued
+- 内容：Send a minimal ack first, then return a final reply describing whether the newest active requirement is visible on the first screen.
+Requirement: e318a693-2a74-4385-a8cf-b410f94b4edd
+Platform status: queued## 2026-04-22T07:55:02.2509178Z
+- 目标：Codex / Codex 线程 a4e3ac
+- 工位 ID：codex-session-019db06a-89a6-7200-a403-993871a4e3ac
+- Provider：codex
+- Skills：github-repo-bootstrap, ai-collab-productizer, continuous-orchestrator, handoff-path-output, verify-before-claim
+- 仓库协作：https://github.com/wenjunyong666/ai- / 分支 develop / 各电脑自行确定本地路径
+- 参考资料：https://github.com/wenjunyong666/ai- / branch:develop
+- 发起人：平台自治推进
+- 标题：Real Thread / Protected data visibility check
+- 状态：queued
+- 路由：platform_autonomy
+- Requirement：4ea98962-c884-441f-b804-f88657f3389b
+- Message：329606f6-18d1-4b3b-9b43-a2660be6ff2a
+- 平台状态：queued
+- 内容：Send a minimal ack, then a final reply with whether protected collaboration data is visible and any blocker that remains.
+Requirement: 4ea98962-c884-441f-b804-f88657f3389b
+Platform status: queued## 2026-04-22T07:55:02.2419287Z
+- 目标：Codex / Codex 线程 843d81
+- 工位 ID：codex-session-019db06a-6343-7733-a593-8cdc6c843d81
+- Provider：codex
+- Skills：github-repo-bootstrap, ai-collab-productizer, continuous-orchestrator, handoff-path-output, verify-before-claim
+- 仓库协作：https://github.com/wenjunyong666/ai- / 分支 develop / 各电脑自行确定本地路径
+- 参考资料：https://github.com/wenjunyong666/ai- / branch:develop
+- 发起人：平台自治推进
+- 标题：Real Thread / Dispatch and ack path audit
+- 状态：queued
+- 路由：platform_autonomy
+- Requirement：6ee19d6d-000c-4064-890f-7bfc277459ea
+- Message：3cb30f74-c666-46ed-9ec1-b6f7ac5934f2
+- 平台状态：queued
+- 内容：Send a minimal ack first, then a final reply describing the latest dispatch state you observe for this seat.
+Requirement: 6ee19d6d-000c-4064-890f-7bfc277459ea
+Platform status: queued

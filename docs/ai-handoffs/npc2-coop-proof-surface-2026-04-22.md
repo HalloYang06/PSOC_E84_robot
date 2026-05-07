@@ -1,0 +1,427 @@
+# NPC2 Coop Proof Surface 2026-04-22
+
+Identity: `NPC2` / `codex-session-019db445-9180-75b3-96d4-12e110553ad9`
+
+Requirement: `758e9867-7e2b-407e-bba6-5b6148f36352`
+Project: `10f6a858-f3e4-467c-87f5-726caa3cc2be`
+
+## Scope
+
+- Edited only:
+  - `apps/web/app/projects/[id]/project-playable-shell.tsx`
+  - `apps/web/lib/server-data.ts`
+  - this handoff file
+- Farm base layer untouched.
+- The existing three main cards remain the first focus in the exchange panel.
+
+## Delivered
+
+- Added a folded cooperation proof surface directly under the three main cards.
+- The proof surface groups real `codex-session-*` requirements and bridged Codex inbox commands into compact proof lanes instead of a raw log wall.
+- Each lane shows:
+  - target thread
+  - short requirement id
+  - dispatch / progress / final-reply chips
+  - latest proof text and timestamp
+- NPC2 lanes are prioritized when present so the current experiment is easy to spot.
+- Codex inbox display falls back to `platform autonomy` when the stored issuer text is polluted.
+- Server-side normalization now exposes proof shaping fields:
+  - requirements: `status_label`, `is_codex_session_target`, `latest_response_at`, `last_activity_at`
+  - collaboration messages: `proof_stage`, `is_dispatch_signal`, `is_final_reply`, `is_progress_signal`, `sender_is_codex_session`, `recipient_is_codex_session`, `signal_at`
+
+## Follow-up In This Heartbeat
+
+- Tightened honesty for auth-gated views.
+- When protected collaboration data is unavailable, the proof surface now says:
+  - `process signal unavailable`
+  - `final reply unavailable`
+- The body text now explicitly says the platform dispatch is visible but protected progress/final signals could not be read with the current auth state.
+- Added `protected data unavailable` into the proof item meta line when that case is active.
+- Rewrote this handoff in ASCII-only text to avoid mojibake in later terminal reads.
+- Promoted auth-gated state into the fold summary stage, so the headline can say dispatch is visible while protected progress remains unavailable.
+- Reused workstation context already present in the bridged Codex inbox:
+  - provider label
+  - computer node label
+  - up to two skill loadout chips
+- The proof summary meta now reports dispatched / moved / finalized / auth-gated counts instead of only moved / finalized counts.
+- Added a second context fallback path: if the local bridged Codex inbox is stale or missing extra fields, the proof surface now backfills provider / computer node / skill context from the project's workstation config by target thread id.
+- Split `target locked` from `dispatch visible` so a requirement routed to a real Codex thread no longer gets counted as a visible dispatch unless bridge or platform message evidence exists.
+- Added proof chips and meta labels for evidence source:
+  - `evidence local bridge`
+  - `evidence platform relay`
+  - `evidence bridge+platform`
+  - `evidence target lock`
+- Added context-source chips so each lane can show whether provider / computer / skills came from the bridged inbox or from workstation-config fallback.
+- The proof summary meta now also reports `visible dispatch`, `target lock only`, and `config fallback` counts.
+- Added a second folded block under the proof surface for screenshot acceptance.
+- The new screenshot acceptance chain reuses seat-level farm payload instead of a raw log feed, so screenshots can prove:
+  - which seats are still autonomous
+  - which seats are waiting for human review
+  - which seats already returned a minimal ack
+  - which seats already closed with a final reply
+- Each acceptance lane now shows:
+  - source thread
+  - computer label
+  - current requirement when present
+  - approval / review / autonomy chips
+  - a screenshot-state chip such as `screenshot proves autonomy` or `screenshot includes human review`
+  - latest signal timestamps
+- The autonomy chip was kept intentionally short so the acceptance fold stays screenshot-friendly instead of turning back into a log wall.
+- The acceptance fold summary now reports autonomous / human-review / ack / finalized / screenshot-ready seat counts without pushing the farm page into a log wall.
+- The proof calculation now uses the full bridged Codex inbox instead of the same 6-row slice used by the visible list.
+- The exchange panel still renders only the latest 6 bridged commands, but:
+  - cooperation-proof matching now sees all bridged commands
+  - process visibility counts now use the full bridged total
+  - summary-card command counts now use the full bridged total
+- Added a small note below the bridged-command list so operators can tell the page is intentionally not a log wall even though proof math still uses the complete inbox.
+- Added an explicit `next step` decision into the screenshot-acceptance summary so operators no longer need to infer from per-seat chips whether the platform should auto-advance, wait for a minimal ack, wait for human review, or simply wait for the next dispatch.
+- The new next-step decision follows the real seat state in order:
+  - recover protected data first when auth is blocked
+  - otherwise wait for human review when any seat is in approval/review
+  - otherwise auto-advance when a seat already has a minimal ack but no final reply
+  - otherwise wait for the first minimal ack when a seat has only accepted the requirement
+  - otherwise wait for the next platform dispatch
+- Refined bridged command state labels so `queued` platform work is no longer shown as if it were already fully dispatched and settled.
+- The bridged command list now distinguishes:
+  - `platform queued`
+  - `viewed`
+  - `accepted`
+  - `closed`
+- The screenshot-acceptance next-step decision now also checks the bridged queue itself.
+- When there is still queued bridged work but no newer proof signal, the honest next step now reads as `wait for bridge write-back` instead of pretending the page should wait for human review or for an entirely new dispatch.
+- Added queue-start timestamps to bridged command items so operators can see when a queued platform dispatch first entered the mirrored inbox.
+- The process-visibility fold now reports the oldest queued bridge timestamp, and the screenshot-acceptance next-step detail now names the queued requirement plus its queue-start time.
+- Tightened queue dwell visibility without turning the exchange panel into a log wall:
+  - the process-visibility fold now also reports how long the oldest queued bridged requirement has been waiting
+  - the same fold adds a queue-state judgment such as `queued recently`, `queued for a while`, or `bridge stalled`
+  - each visible bridged command row now exposes a single compact dwell chip like `waited 9 hours 57 minutes · bridge stalled`
+
+## Recovery Continuation 2026-04-23
+
+- Switched from proof-surface polishing to the live NPC2 recovery dispatch once the bridged inbox advanced to heartbeat/autonomy-bridge recovery requirements.
+- Kept the farm main view untouched in this continuation; no new UI files were edited.
+- Reused the existing recovery scripts instead of inventing a parallel path:
+  - `scripts/npc2-thread-consumer.py`
+  - `scripts/verify-live-npc-bridges.py`
+  - `scripts/verify-live-npc-requirements.py`
+- Confirmed the local heartbeat automation is present and correctly bound:
+  - `C:\Users\18312\.codex\automations\npc2-coop-loop\automation.toml`
+  - `status = ACTIVE`
+  - `target_thread_id = 019db445-9180-75b3-96d4-12e110553ad9`
+- Ran `python .\scripts\npc2-thread-consumer.py --platform-fetch`, which refreshed `scripts/.npc2-thread-consumer-state.json` at `2026-04-23T03:10:22.263365Z` (`2026-04-23 11:10:22` Asia/Shanghai).
+- Re-ran `python .\scripts\verify-live-npc-bridges.py --json --seats NPC2`; after that refresh, the live audit reported:
+  - `heartbeat_id = npc2-coop-loop`
+  - `heartbeat_status = ACTIVE`
+  - `bridge_matches_live = true`
+  - `current_requirement_seen = true`
+  - `state_stale = false`
+  - `warnings = []`
+- Posted a fresh recovery progress proof through the live consumer at `2026-04-23T03:11:21Z` (`2026-04-23 11:11:21` Asia/Shanghai):
+  - requirement `edd264a7-3e34-46e7-bf16-1a251e25b427`
+  - agent report `acb7d966-bd3d-42e8-aee7-287d5acb44de`
+  - title: NPC2 heartbeat/autonomy-bridge recovery progress (`bridge health refreshed`)
+- Posted a `done` recovery closeout through the live consumer at `2026-04-23T03:20:22Z` (`2026-04-23 11:20:22` Asia/Shanghai):
+  - requirement `edd264a7-3e34-46e7-bf16-1a251e25b427`
+  - agent report `7dc17b65-0826-4b92-a6ae-c44b3f90555e`
+  - title: NPC2 heartbeat/autonomy-bridge recovery closeout (`recovered`)
+- Triggered the platform autonomy sweep right after the done report.
+  - Sweep response reported `finalized = 1`
+  - affected requirement `edd264a7-3e34-46e7-bf16-1a251e25b427`
+  - action `final_reply`
+- The active recovery blocker is therefore no longer `missing_heartbeat`, `inactive_heartbeat`, or `stale_state`.
+- After the sweep, the live open-seat audit stopped selecting `edd264a7-3e34-46e7-bf16-1a251e25b427` as the active NPC2 requirement and moved on to the next open requirement `0f8130e9-64a3-45e8-9845-47538c3e948f`.
+- Continued from that recovery closeout without touching the farm main view:
+  - patched `scripts/npc1-thread-consumer.py` so `--platform-fetch` now skips terminal platform requirement statuses beyond just `done`
+  - added `closed`, `completed`, and `resolved` to the terminal status filter used by the shared consumer
+- This mattered immediately for NPC2: before the patch, a platform fetch could re-select the already-closed recovery requirement `4e56a817-9330-40d1-80aa-d678341923d8` instead of the real open NPC2 requirement.
+- Also confirmed a local tooling caveat:
+  - default `--platform-fetch` can write to a sandbox mirror state file
+  - for live bridge recovery work, the real repo state should be refreshed with explicit paths:
+    - `--state-path D:\ai合作产品\scripts\.npc2-thread-consumer-state.json`
+    - `--inbox-path D:\ai合作产品\docs\ai-handoffs\inbox\project-10f6a858-f3e4-467c-87f5-726caa3cc2be-codex.json`
+- After the shared-consumer status fix and the explicit real-path refresh, NPC2 re-aligned to the true active requirement `0f8130e9-64a3-45e8-9845-47538c3e948f` and the bridge audit now reports:
+  - `last_selected_requirement_id = 0f8130e9-64a3-45e8-9845-47538c3e948f`
+  - `selection_matches_current_requirement = true`
+  - `selection_recovered = true`
+- The bridge itself remains healthy, but the active NPC2 work still carries old timing debt from the earlier delayed ack chain:
+  - `late_progress_ack`
+  - `late_bridge_ack`
+
+## Validation
+
+- `python .\\scripts\\verify-live-npc-bridges.py --json --seats NPC2`
+  - At `2026-04-23 11:09` Asia/Shanghai the live audit still showed only one remaining blocker: `stale_state`.
+  - At `2026-04-23 11:10` Asia/Shanghai, after `python .\\scripts\\npc2-thread-consumer.py --platform-fetch`, the same audit cleared to `heartbeat_status: ACTIVE`, `bridge_matches_live: true`, `state_stale: false`, and `warnings: []`.
+- `python .\\scripts\\npc2-thread-consumer.py --platform-fetch --post --report-status in_progress ...`
+  - At `2026-04-23 11:11` Asia/Shanghai the script posted a fresh agent report `acb7d966-bd3d-42e8-aee7-287d5acb44de` against requirement `edd264a7-3e34-46e7-bf16-1a251e25b427`.
+- `python .\\scripts\\verify-live-npc-requirements.py --json --seats NPC2`
+  - At `2026-04-23 11:11` Asia/Shanghai the live platform requirement for NPC2 remained `edd264a7-3e34-46e7-bf16-1a251e25b427` with `status: in_progress`, so this pass should stay in progress even though the bridge blocker itself has been cleared.
+- `python .\\scripts\\npc2-thread-consumer.py --platform-fetch --post --report-status done ...`
+  - At `2026-04-23 11:20` Asia/Shanghai the script posted a `done` closeout report `7dc17b65-0826-4b92-a6ae-c44b3f90555e` for recovery requirement `edd264a7-3e34-46e7-bf16-1a251e25b427`.
+- `POST /api/requirements/projects/10f6a858-f3e4-467c-87f5-726caa3cc2be/autonomy-sweep`
+  - At `2026-04-23 11:21` Asia/Shanghai the platform sweep responded with `finalized: 1` and affected requirement `edd264a7-3e34-46e7-bf16-1a251e25b427` as `final_reply`.
+- `python .\\scripts\\verify-live-npc-requirements.py --json --seats NPC2`
+  - At `2026-04-23 11:21` Asia/Shanghai the active open NPC2 requirement had already advanced away from the recovery chain and back to `0f8130e9-64a3-45e8-9845-47538c3e948f`, which is the next assignment to continue.
+- `python .\\scripts\\npc2-thread-consumer.py --platform-fetch --state-path "D:\\ai合作产品\\scripts\\.npc2-thread-consumer-state.json" --inbox-path "D:\\ai合作产品\\docs\\ai-handoffs\\inbox\\project-10f6a858-f3e4-467c-87f5-726caa3cc2be-codex.json"`
+  - At `2026-04-23 11:37` Asia/Shanghai the shared-consumer patch correctly re-selected active requirement `0f8130e9-64a3-45e8-9845-47538c3e948f` instead of the closed recovery requirement `4e56a817-9330-40d1-80aa-d678341923d8`.
+- `python .\\scripts\\verify-live-npc-bridges.py --json --seats NPC2`
+  - At `2026-04-23 11:37` Asia/Shanghai the live audit showed `selection_matches_current_requirement = true` and `selection_recovered = true`, while `late_progress_ack` and `late_bridge_ack` still remained as historical timing warnings on the active `0f8130e9-64a3-45e8-9845-47538c3e948f` chain.
+  - At `2026-04-23 12:09` Asia/Shanghai the active NPC2 chain briefly crossed back into `stale_state` because the local consumer state had not been refreshed for more than 30 minutes; a real-path `platform-fetch` immediately refreshed `scripts/.npc2-thread-consumer-state.json`.
+  - A follow-up audit at `2026-04-23 12:10` Asia/Shanghai cleared that transient regression back to `selection_matches_current_requirement = true`, `selection_recovered = true`, and `state_stale = false`, with only the historical `late_progress_ack` / `late_bridge_ack` warnings remaining.
+
+- `node .\\node_modules\\typescript\\bin\\tsc -p apps/web/tsconfig.json --noEmit --incremental false`
+  - Earlier in this pass, the proof-surface slice passed.
+  - A fresh re-check at `2026-04-22 18:25` Asia/Shanghai is now blocked by unrelated unterminated string literals in the untracked file `apps/web/app/projects/[id]/page.tsx`, so TypeScript cannot finish the full project scan from the current worktree state.
+  - A fresh full re-check at `2026-04-22 18:59` Asia/Shanghai now passes in the current worktree state.
+  - A follow-up full re-check at `2026-04-22 19:03` Asia/Shanghai also passes after the summary focus refinement.
+  - A later full re-check at `2026-04-22 19:09` Asia/Shanghai is again blocked by unrelated type errors in `apps/web/app/projects/[id]/page.tsx` for a missing `return_to` field on the local search-param shape. That is outside the NPC2 proof-surface file set.
+  - A follow-up full re-check at `2026-04-22 19:13` Asia/Shanghai passes again after the truncated-list focus-note refinement.
+  - A further full re-check at `2026-04-22 19:17` Asia/Shanghai also passes after the list-head badge refinement.
+  - A further full re-check at `2026-04-22 19:21` Asia/Shanghai also passes after the screenshot-head badge refinement.
+  - A further full re-check at `2026-04-22 19:24` Asia/Shanghai also passes after the proof-head badge refinement.
+  - A further full re-check at `2026-04-22 19:28` Asia/Shanghai also passes after the proof-row focus-chip refinement.
+  - A later full re-check at `2026-04-22 19:38` Asia/Shanghai is blocked by unrelated missing symbols in `apps/web/app/actions.ts` (`buildNpcKnowledgeProfile` and `ensureNpcKnowledgeDoc`). That is outside the NPC2 proof-surface file set.
+  - A further full re-check at `2026-04-22 19:41` Asia/Shanghai also passes after the cooperation-proof notice-card chip refinement.
+  - A further full re-check at `2026-04-22 19:44` Asia/Shanghai also passes after the cooperation-pulse notice-card chip refinement.
+  - A further full re-check at `2026-04-22 19:47` Asia/Shanghai also passes after the cooperation-proof fold-summary requirement refinement.
+  - A further full re-check at `2026-04-22 19:50` Asia/Shanghai also passes after the top-card focus-meta refinement.
+  - A further full re-check at `2026-04-22 19:54` Asia/Shanghai also passes after the final-reply-card focus-meta refinement.
+  - A later full re-check at `2026-04-22 19:57` Asia/Shanghai is blocked by unrelated type errors in `apps/web/app/actions.ts` around `buildNpcKnowledgeProfile` call shape and inferred `{}` payload fields such as `slug`, `summary`, `handoff_path`, and `tags`. That is outside the NPC2 proof-surface file set.
+  - A further full re-check at `2026-04-22 20:01` Asia/Shanghai also passes after the current-owner-card focus-meta refinement.
+  - A further full re-check at `2026-04-22 20:04` Asia/Shanghai also passes after the final-reply-card queue-age refinement.
+  - A further full re-check at `2026-04-22 20:07` Asia/Shanghai also passes after the current-action body refinement.
+  - A further full re-check at `2026-04-22 20:14` Asia/Shanghai also passes after the current-action body queue-detail refinement.
+  - A further full re-check at `2026-04-22 20:19` Asia/Shanghai also passes after the current-action queue-start refinement.
+  - A further full re-check at `2026-04-22 20:25` Asia/Shanghai also passes after the current-owner queue-start refinement.
+  - A further full re-check at `2026-04-22 20:29` Asia/Shanghai also passes after the final-replies queue-start refinement.
+  - A further full re-check at `2026-04-22 20:33` Asia/Shanghai also passes after the current-owner queue-state refinement.
+  - A later full re-check at `2026-04-22 20:37` Asia/Shanghai is blocked by an unrelated type error in `apps/web/app/projects/[id]/page.tsx`: the local workstation payload shape there is missing `npcKnowledgeSnapshots`. That file is outside the NPC2 proof-surface edit set.
+  - A later full re-check at `2026-04-22 20:41` Asia/Shanghai is also blocked by unrelated `apps/web/app/projects/[id]/page.tsx` errors: several callback parameters there now infer as implicit `any`, and the local workstation payload shape again no longer matches the expected `{ nodes, providers, workstations }` object. That file is outside the NPC2 proof-surface edit set.
+  - A further full re-check at `2026-04-22 20:44` Asia/Shanghai also passes after the top-card focus-anchor refinement.
+  - A further full re-check at `2026-04-22 20:51` Asia/Shanghai also passes after the current-action body focus-anchor refinement.
+  - A further full re-check at `2026-04-22 20:54` Asia/Shanghai also passes after the current-owner body focus-anchor refinement.
+  - A further full re-check at `2026-04-22 20:57` Asia/Shanghai also passes after the final-replies body focus-anchor refinement.
+  - A further full re-check at `2026-04-22 21:04` Asia/Shanghai also passes after the current-owner body progress-label refinement.
+  - A further full re-check at `2026-04-22 21:08` Asia/Shanghai also passes after the final-replies body queue-state refinement.
+  - A further full re-check at `2026-04-22 21:11` Asia/Shanghai also passes after the final-replies body queue-age refinement.
+  - A further full re-check at `2026-04-22 21:24` Asia/Shanghai also passes after the current-owner body queue-detail refinement.
+  - A further full re-check at `2026-04-22 21:26` Asia/Shanghai also passes after the current-owner body queue-start refinement.
+  - A further full re-check at `2026-04-23 02:48` Asia/Shanghai also passes after the same-thread queued-count refinement for the three main cards.
+  - A further full re-check at `2026-04-23 02:56` Asia/Shanghai also passes after the final-replies body queue-start refinement.
+- `npm run build:web`
+  - Re-run after the screenshot-acceptance change still fails before Next prints build logs.
+  - The failure remains environment-level `spawnSync node.exe EPERM` while `apps/web/scripts/build.cjs` tries to launch `next build`.
+  - Direct debug repro confirmed `spawnSync C:\\Program Files\\nodejs\\node.exe EPERM`.
+  - This failure is environmental, not a TypeScript error from the proof surface.
+
+## Remaining Gap
+
+- The proof surface can show that the platform dispatched real work to a real Codex thread and whether later server-visible progress or final replies appeared.
+- It still does not prove that an already-open Codex desktop chat auto-woke by itself. That needs the separate thread-side consumer / inbox integration path.
+
+## Latest Inbox Check
+
+- The bridged Codex inbox file was rewritten at `2026-04-22 16:53:22` Asia/Shanghai with richer metadata such as `provider`, `computerNodeLabel`, and `skillLoadout`.
+- That rewrite still contains only the same NPC2 bridged command for requirement `758e9867-7e2b-407e-bba6-5b6148f36352`.
+- No newer platform dispatch was found for `codex-session-019db445-9180-75b3-96d4-12e110553ad9`.
+- At `2026-04-22 17:11` Asia/Shanghai this was still true; no newer NPC2 dispatch appeared during the screenshot-acceptance pass.
+- At `2026-04-22 18:02` Asia/Shanghai this remained true; the freshest honest next step is to wait for the next platform dispatch, not to force human review and not to fake an auto-advance.
+- At `2026-04-22 18:05` Asia/Shanghai this was still true after adding the explicit next-step summary; there is still no new NPC2 dispatch to acknowledge.
+- At `2026-04-22 18:08` Asia/Shanghai this was still true after the queued-state refinement; the same NPC2 requirement remains queued in the bridged inbox and the honest next step is now described as waiting for thread ack / host bridge mirror write-back.
+- At `2026-04-22 18:12` Asia/Shanghai this was still true after the queue-start refinement; the same NPC2 requirement is still mirrored as queued from `04-22 08:28`, so the honest next step remains waiting for thread ack / host bridge mirror write-back.
+- At `2026-04-22 18:25` Asia/Shanghai this was still true after the queue-dwell refinement; there is still no newer NPC2 dispatch, and the same bridged requirement is honestly shown as long-waiting queued work rather than something that auto-advanced.
+- At `2026-04-22 18:34` Asia/Shanghai this was still true after the screenshot-acceptance queue-summary refinement; the inbox now visibly includes a new NPC1 queued item ahead of the old NPC2 entry, but there is still no newer requirement for `codex-session-019db445-9180-75b3-96d4-12e110553ad9`.
+- At `2026-04-22 18:39` Asia/Shanghai this was still true after the NPC2-focus refinement; the bridged inbox file still had not moved past `2026-04-22 16:53:22`, so there is still no newer requirement for `codex-session-019db445-9180-75b3-96d4-12e110553ad9`.
+- At `2026-04-22 18:44` Asia/Shanghai this was still true after the screenshot-focus refinement; the bridged inbox file was still unchanged at `2026-04-22 16:53:22`, and there was still no newer requirement for `codex-session-019db445-9180-75b3-96d4-12e110553ad9`.
+- At `2026-04-22 18:47` Asia/Shanghai this was still true after the visible-list ordering refinement; the bridged inbox file was still unchanged at `2026-04-22 16:53:22`, and there was still no newer requirement for `codex-session-019db445-9180-75b3-96d4-12e110553ad9`.
+- At `2026-04-22 18:50` Asia/Shanghai this was still true after the visible-focus note refinement; the bridged inbox file was still unchanged at `2026-04-22 16:53:22`, and there was still no newer requirement for `codex-session-019db445-9180-75b3-96d4-12e110553ad9`.
+- At `2026-04-22 18:56` Asia/Shanghai this was still true after the visible-focus chip refinement; the bridged inbox file was still unchanged at `2026-04-22 16:53:22`, and there was still no newer requirement for `codex-session-019db445-9180-75b3-96d4-12e110553ad9`.
+- At `2026-04-22 18:59` Asia/Shanghai this was still true after the requirement-id focus refinement; the bridged inbox file was still unchanged at `2026-04-22 16:53:22`, and there was still no newer requirement for `codex-session-019db445-9180-75b3-96d4-12e110553ad9`.
+- At `2026-04-22 19:03` Asia/Shanghai this was still true after the fold-summary requirement refinement; the bridged inbox file was still unchanged at `2026-04-22 16:53:22`, and there was still no newer requirement for `codex-session-019db445-9180-75b3-96d4-12e110553ad9`.
+- At `2026-04-22 19:09` Asia/Shanghai this was still true after the cooperation-pulse fold-summary refinement; the bridged inbox file was still unchanged at `2026-04-22 16:53:22`, and there was still no newer requirement for `codex-session-019db445-9180-75b3-96d4-12e110553ad9`.
+- At `2026-04-22 19:13` Asia/Shanghai this was still true after the truncated-list focus-note refinement; the bridged inbox file was still unchanged at `2026-04-22 16:53:22`, and there was still no newer requirement for `codex-session-019db445-9180-75b3-96d4-12e110553ad9`.
+- At `2026-04-22 19:17` Asia/Shanghai this was still true after the list-head badge refinement; the bridged inbox file was still unchanged at `2026-04-22 16:53:22`, and there was still no newer requirement for `codex-session-019db445-9180-75b3-96d4-12e110553ad9`.
+- At `2026-04-22 19:21` Asia/Shanghai this was still true after the screenshot-head badge refinement; the bridged inbox file was still unchanged at `2026-04-22 16:53:22`, and there was still no newer requirement for `codex-session-019db445-9180-75b3-96d4-12e110553ad9`.
+- At `2026-04-22 19:24` Asia/Shanghai this was still true after the proof-head badge refinement; the bridged inbox file was still unchanged at `2026-04-22 16:53:22`, and there was still no newer requirement for `codex-session-019db445-9180-75b3-96d4-12e110553ad9`.
+- At `2026-04-22 19:28` Asia/Shanghai this was still true after the proof-row focus-chip refinement; the bridged inbox file was still unchanged at `2026-04-22 16:53:22`, and there was still no newer requirement for `codex-session-019db445-9180-75b3-96d4-12e110553ad9`.
+- At `2026-04-22 19:38` Asia/Shanghai this was still true after the screenshot-notice focus-chip refinement; the bridged inbox file was still unchanged at `2026-04-22 16:53:22`, and there was still no newer requirement for `codex-session-019db445-9180-75b3-96d4-12e110553ad9`.
+- At `2026-04-22 19:41` Asia/Shanghai this was still true after the cooperation-proof notice-card chip refinement; the bridged inbox file was still unchanged at `2026-04-22 16:53:22`, and there was still no newer requirement for `codex-session-019db445-9180-75b3-96d4-12e110553ad9`.
+- At `2026-04-22 19:44` Asia/Shanghai this was still true after the cooperation-pulse notice-card chip refinement; the bridged inbox file was still unchanged at `2026-04-22 16:53:22`, and there was still no newer requirement for `codex-session-019db445-9180-75b3-96d4-12e110553ad9`.
+- At `2026-04-22 19:47` Asia/Shanghai this was still true after the cooperation-proof fold-summary requirement refinement; the bridged inbox file was still unchanged at `2026-04-22 16:53:22`, and there was still no newer requirement for `codex-session-019db445-9180-75b3-96d4-12e110553ad9`.
+- At `2026-04-22 19:50` Asia/Shanghai this was still true after the top-card focus-meta refinement; the bridged inbox file was still unchanged at `2026-04-22 16:53:22`, and there was still no newer requirement for `codex-session-019db445-9180-75b3-96d4-12e110553ad9`.
+- At `2026-04-22 19:54` Asia/Shanghai this was still true after the final-reply-card focus-meta refinement; the bridged inbox file was still unchanged at `2026-04-22 16:53:22`, and there was still no newer requirement for `codex-session-019db445-9180-75b3-96d4-12e110553ad9`.
+- At `2026-04-22 19:57` Asia/Shanghai this was still true after the top-card queue-age refinement; the bridged inbox file was still unchanged at `2026-04-22 16:53:22`, and there was still no newer requirement for `codex-session-019db445-9180-75b3-96d4-12e110553ad9`.
+- At `2026-04-22 20:01` Asia/Shanghai this was still true after the current-owner-card focus-meta refinement; the bridged inbox file was still unchanged at `2026-04-22 16:53:22`, and there was still no newer requirement for `codex-session-019db445-9180-75b3-96d4-12e110553ad9`.
+- At `2026-04-22 20:04` Asia/Shanghai this was still true after the final-reply-card queue-age refinement; the bridged inbox file was still unchanged at `2026-04-22 16:53:22`, and there was still no newer requirement for `codex-session-019db445-9180-75b3-96d4-12e110553ad9`.
+- At `2026-04-22 20:14` Asia/Shanghai this was still true after the current-action body queue-detail refinement; the bridged inbox file was still unchanged at `2026-04-22 16:53:22`, and there was still no newer requirement for `codex-session-019db445-9180-75b3-96d4-12e110553ad9`.
+- At `2026-04-22 20:07` Asia/Shanghai this was still true after the current-action body refinement; the bridged inbox file was still unchanged at `2026-04-22 16:53:22`, and there was still no newer requirement for `codex-session-019db445-9180-75b3-96d4-12e110553ad9`.
+- At `2026-04-22 20:19` Asia/Shanghai this was still true after the current-action queue-start refinement; the bridged inbox file was still unchanged at `2026-04-22 16:53:22`, and there was still no newer requirement for `codex-session-019db445-9180-75b3-96d4-12e110553ad9`.
+- At `2026-04-22 20:25` Asia/Shanghai this was still true after the current-owner queue-start refinement; the bridged inbox file was still unchanged at `2026-04-22 16:53:22`, and there was still no newer requirement for `codex-session-019db445-9180-75b3-96d4-12e110553ad9`.
+- At `2026-04-22 20:29` Asia/Shanghai this was still true after the final-replies queue-start refinement; the bridged inbox file was still unchanged at `2026-04-22 16:53:22`, and there was still no newer requirement for `codex-session-019db445-9180-75b3-96d4-12e110553ad9`.
+- At `2026-04-22 20:33` Asia/Shanghai this was still true after the current-owner queue-state refinement; the bridged inbox file was still unchanged at `2026-04-22 16:53:22`, and there was still no newer requirement for `codex-session-019db445-9180-75b3-96d4-12e110553ad9`.
+- At `2026-04-22 20:37` Asia/Shanghai this was still true after the final-replies queue-state refinement; the bridged inbox file was still unchanged at `2026-04-22 16:53:22`, and there was still no newer requirement for `codex-session-019db445-9180-75b3-96d4-12e110553ad9`.
+- At `2026-04-22 20:41` Asia/Shanghai this was still true after the current-owner queue-age refinement; the bridged inbox file was still unchanged at `2026-04-22 16:53:22`, and there was still no newer requirement for `codex-session-019db445-9180-75b3-96d4-12e110553ad9`.
+- At `2026-04-22 20:44` Asia/Shanghai this was still true after the top-card focus-anchor refinement; the bridged inbox file was still unchanged at `2026-04-22 16:53:22`, and there was still no newer requirement for `codex-session-019db445-9180-75b3-96d4-12e110553ad9`.
+- At `2026-04-22 20:51` Asia/Shanghai this was still true after the current-action body focus-anchor refinement; the bridged inbox file was still unchanged at `2026-04-22 16:53:22`, and there was still no newer requirement for `codex-session-019db445-9180-75b3-96d4-12e110553ad9`.
+- At `2026-04-22 20:54` Asia/Shanghai this was still true after the current-owner body focus-anchor refinement; the bridged inbox file was still unchanged at `2026-04-22 16:53:22`, and there was still no newer requirement for `codex-session-019db445-9180-75b3-96d4-12e110553ad9`.
+- At `2026-04-22 20:57` Asia/Shanghai this was still true after the final-replies body focus-anchor refinement; the bridged inbox file was still unchanged at `2026-04-22 16:53:22`, and there was still no newer requirement for `codex-session-019db445-9180-75b3-96d4-12e110553ad9`.
+- At `2026-04-22 21:04` Asia/Shanghai this was still true after the current-owner body progress-label refinement; the bridged inbox file was still unchanged at `2026-04-22 16:53:22`, and there was still no newer requirement for `codex-session-019db445-9180-75b3-96d4-12e110553ad9`.
+- At `2026-04-22 21:08` Asia/Shanghai this was still true after the final-replies body queue-state refinement; the bridged inbox file was still unchanged at `2026-04-22 16:53:22`, and there was still no newer requirement for `codex-session-019db445-9180-75b3-96d4-12e110553ad9`.
+- At `2026-04-22 21:11` Asia/Shanghai this was still true after the final-replies body queue-age refinement; the bridged inbox file was still unchanged at `2026-04-22 16:53:22`, and there was still no newer requirement for `codex-session-019db445-9180-75b3-96d4-12e110553ad9`.
+- At `2026-04-22 21:24` Asia/Shanghai this was still true after the current-owner body queue-detail refinement; the bridged inbox file was still unchanged at `2026-04-22 16:53:22`, and there was still no newer requirement for `codex-session-019db445-9180-75b3-96d4-12e110553ad9`.
+- At `2026-04-22 21:26` Asia/Shanghai this was still true after the current-owner body queue-start refinement; the bridged inbox file was still unchanged at `2026-04-22 16:53:22`, and there was still no newer requirement for `codex-session-019db445-9180-75b3-96d4-12e110553ad9`.
+- At `2026-04-22 22:18:13` Asia/Shanghai the bridged Codex inbox changed again: workstation `codex-session-019db445-9180-75b3-96d4-12e110553ad9` received at least two newer queued platform requirements, `9718780b-4ffd-4c86-8aba-fadddd1ab465` and `0f8130e9-64a3-45e8-9845-47538c3e948f`, on top of the older queued requirement `758e9867-7e2b-407e-bba6-5b6148f36352`.
+- At `2026-04-23 02:48` Asia/Shanghai this was still the latest NPC2 bridge state in the local inbox snapshot, so the honest next step remains waiting for thread ack / host bridge mirror write-back rather than forcing human review.
+- At `2026-04-23 02:56` Asia/Shanghai this was still the latest NPC2 bridge state in the local inbox snapshot, with the same three queued requirements still visible for workstation `codex-session-019db445-9180-75b3-96d4-12e110553ad9`.
+- At `2026-04-23 03:01` Asia/Shanghai this was still unchanged: the bridged inbox had not moved beyond `2026-04-22 22:18:13`, and workstation `codex-session-019db445-9180-75b3-96d4-12e110553ad9` still only showed the same three queued requirements `9718780b-4ffd-4c86-8aba-fadddd1ab465`, `0f8130e9-64a3-45e8-9845-47538c3e948f`, and `758e9867-7e2b-407e-bba6-5b6148f36352`.
+- At `2026-04-23 10:34:25` Asia/Shanghai the bridged inbox file advanced again and started carrying the NPC2 recovery dispatch family:
+  - queued `6bdcd39d-2394-491f-99bb-c938eaf9a612`
+  - in-progress `edd264a7-3e34-46e7-bf16-1a251e25b427`
+  - queued `0098619d-6ac6-4723-be34-179d53443fd3`
+- At `2026-04-23 11:10` Asia/Shanghai, a live `--platform-fetch` check selected `edd264a7-3e34-46e7-bf16-1a251e25b427` as the active NPC2 recovery requirement and still showed additional pending platform work behind it.
+- At `2026-04-23 12:49` Asia/Shanghai, `verify-live-npc-bridges.py --json --seats NPC2` regressed again to `selection_recovered=false` and `state_stale=true` while the live active requirement still remained `0f8130e9-64a3-45e8-9845-47538c3e948f`.
+- At `2026-04-23 12:50` Asia/Shanghai, an explicit real-path refresh restored the live bridge state again:
+  - `python .\scripts\npc2-thread-consumer.py --platform-fetch --state-path "D:\ai合作产品\scripts\.npc2-thread-consumer-state.json" --inbox-path "D:\ai合作产品\docs\ai-handoffs\inbox\project-10f6a858-f3e4-467c-87f5-726caa3cc2be-codex.json"`
+  - follow-up live audit returned `heartbeat_status=ACTIVE`, `bridge_matches_live=true`, `selection_matches_current_requirement=true`, `selection_recovered=true`, and `state_stale=false`
+  - the active requirement still remained `0f8130e9-64a3-45e8-9845-47538c3e948f`, with only historical `late_progress_ack` and `late_bridge_ack` warnings left
+- At `2026-04-23 13:22` Asia/Shanghai, the live audit regressed once more to `selection_recovered=false` and `state_stale=true` while the active requirement still remained `0f8130e9-64a3-45e8-9845-47538c3e948f`.
+- At `2026-04-23 13:22` Asia/Shanghai, another explicit real-path refresh restored the bridge immediately:
+  - `python .\scripts\npc2-thread-consumer.py --platform-fetch --state-path "D:\ai合作产品\scripts\.npc2-thread-consumer-state.json" --inbox-path "D:\ai合作产品\docs\ai-handoffs\inbox\project-10f6a858-f3e4-467c-87f5-726caa3cc2be-codex.json"`
+  - follow-up live audit returned `heartbeat_status=ACTIVE`, `bridge_matches_live=true`, `selection_matches_current_requirement=true`, `selection_recovered=true`, and `state_stale=false`
+  - the active requirement still remained `0f8130e9-64a3-45e8-9845-47538c3e948f`, with only historical `late_progress_ack` and `late_bridge_ack` warnings left
+- At `2026-04-23 13:56` Asia/Shanghai, the live requirement and bridge audits regressed together again on the same active chain `0f8130e9-64a3-45e8-9845-47538c3e948f`:
+  - requirement health fell to `stalled_after_ack`
+  - warnings now included `late_progress_ack`, `stale_open_requirement`, `late_selection`, `late_bridge_ack`, and `stale_state`
+- At `2026-04-23 13:57` Asia/Shanghai, NPC2 pushed a fresh in-progress platform update while restoring the real-path bridge state:
+  - `python .\scripts\npc2-thread-consumer.py --platform-fetch --state-path "D:\ai合作产品\scripts\.npc2-thread-consumer-state.json" --inbox-path "D:\ai合作产品\docs\ai-handoffs\inbox\project-10f6a858-f3e4-467c-87f5-726caa3cc2be-codex.json" --post --report-status in_progress --force --report-title "2D Dev Mode / 协作界面收口 / bridge refresh watchdog" --report-body "..."`
+  - platform agent report `5c62d3f8-bd27-4056-9f53-3cc88f975585` was posted at `2026-04-23 13:57` Asia/Shanghai
+  - follow-up live bridge audit returned `heartbeat_status=ACTIVE`, `bridge_matches_live=true`, `selection_matches_current_requirement=true`, `selection_recovered=true`, and `state_stale=false`
+  - follow-up live requirement audit now sees that fresh agent report, but the chain still reads as `stalled_after_ack` because the older `requirement_progress_ack` remains stale and `stale_open_requirement` is still open
+- At `2026-04-23 14:28` Asia/Shanghai, the live bridge audit regressed again to `selection_recovered=false` and `state_stale=true` while the active requirement still remained `0f8130e9-64a3-45e8-9845-47538c3e948f`.
+- At `2026-04-23 14:28` Asia/Shanghai, another explicit real-path refresh restored the bridge immediately:
+  - `python .\scripts\npc2-thread-consumer.py --platform-fetch --state-path "D:\ai合作产品\scripts\.npc2-thread-consumer-state.json" --inbox-path "D:\ai合作产品\docs\ai-handoffs\inbox\project-10f6a858-f3e4-467c-87f5-726caa3cc2be-codex.json"`
+  - follow-up live bridge audit returned `heartbeat_status=ACTIVE`, `bridge_matches_live=true`, `selection_matches_current_requirement=true`, `selection_recovered=true`, and `state_stale=false`
+  - the live requirement audit still reads `stalled_after_ack` with `late_progress_ack` and `stale_open_requirement`, so the assignment stays in progress and should not be marked done yet
+- At `2026-04-23 15:00` Asia/Shanghai, the live bridge audit regressed again to `selection_recovered=false` and `state_stale=true` while the active requirement still remained `0f8130e9-64a3-45e8-9845-47538c3e948f`.
+- At `2026-04-23 15:01` Asia/Shanghai, another explicit real-path refresh restored the bridge immediately:
+  - `python .\scripts\npc2-thread-consumer.py --platform-fetch --state-path "D:\ai合作产品\scripts\.npc2-thread-consumer-state.json" --inbox-path "D:\ai合作产品\docs\ai-handoffs\inbox\project-10f6a858-f3e4-467c-87f5-726caa3cc2be-codex.json"`
+  - follow-up live bridge audit returned `heartbeat_status=ACTIVE`, `bridge_matches_live=true`, `selection_matches_current_requirement=true`, `selection_recovered=true`, and `state_stale=false`
+  - the live requirement audit still reads `stalled_after_ack` with `late_progress_ack` and `stale_open_requirement`, so the assignment stays in progress and should not be marked done yet
+- At `2026-04-23 15:32` Asia/Shanghai, the live bridge audit regressed again to `selection_recovered=false` and `state_stale=true` while the active requirement still remained `0f8130e9-64a3-45e8-9845-47538c3e948f`.
+- At `2026-04-23 15:32` Asia/Shanghai, another explicit real-path refresh restored the bridge immediately:
+  - `python .\scripts\npc2-thread-consumer.py --platform-fetch --state-path "D:\ai合作产品\scripts\.npc2-thread-consumer-state.json" --inbox-path "D:\ai合作产品\docs\ai-handoffs\inbox\project-10f6a858-f3e4-467c-87f5-726caa3cc2be-codex.json"`
+  - follow-up live bridge audit returned `heartbeat_status=ACTIVE`, `bridge_matches_live=true`, `selection_matches_current_requirement=true`, `selection_recovered=true`, and `state_stale=false`
+  - the live requirement audit still reads `stalled_after_ack` with `late_progress_ack` and `stale_open_requirement`, so the assignment stays in progress and should not be marked done yet
+- At `2026-04-23 16:02` Asia/Shanghai, the live bridge audit regressed again to `selection_recovered=false` and `state_stale=true` while the active requirement still remained `0f8130e9-64a3-45e8-9845-47538c3e948f`.
+- At `2026-04-23 16:03` Asia/Shanghai, another explicit real-path refresh restored the bridge immediately:
+  - `python .\scripts\npc2-thread-consumer.py --platform-fetch --state-path "D:\ai合作产品\scripts\.npc2-thread-consumer-state.json" --inbox-path "D:\ai合作产品\docs\ai-handoffs\inbox\project-10f6a858-f3e4-467c-87f5-726caa3cc2be-codex.json"`
+  - follow-up live bridge audit returned `heartbeat_status=ACTIVE`, `bridge_matches_live=true`, `selection_matches_current_requirement=true`, `selection_recovered=true`, and `state_stale=false`
+  - the live requirement audit still reads `stalled_after_ack` with `late_progress_ack` and `stale_open_requirement`, so the assignment stays in progress and should not be marked done yet
+- At `2026-04-23 16:27` Asia/Shanghai, the bridged inbox snapshot had advanced to `2026-04-23 16:21:20`, but live NPC2 audits still showed the same active requirement `0f8130e9-64a3-45e8-9845-47538c3e948f` with no final reply.
+- At `2026-04-23 16:28` Asia/Shanghai, an explicit real-path `--platform-fetch` regenerated the local inbox/state snapshot while keeping the active NPC2 selection on `0f8130e9-64a3-45e8-9845-47538c3e948f`:
+  - follow-up live bridge audit returned `heartbeat_status=ACTIVE`, `bridge_matches_live=true`, `selection_matches_current_requirement=true`, `selection_recovered=true`, and `state_stale=false`
+  - follow-up JSON parse check succeeded with `item_count=28` and `npc2_count=6`
+  - the live requirement audit still reads `stalled_after_ack` with `late_progress_ack` and `stale_open_requirement`, so the assignment stays in progress and should not be marked done yet
+- At `2026-04-23 17:01` Asia/Shanghai, the live bridge audit regressed again to `selection_recovered=false` and `state_stale=true` while the active requirement still remained `0f8130e9-64a3-45e8-9845-47538c3e948f`.
+- At `2026-04-23 17:02` Asia/Shanghai, another explicit real-path refresh restored the bridge immediately:
+  - `python .\scripts\npc2-thread-consumer.py --platform-fetch --state-path "D:\ai合作产品\scripts\.npc2-thread-consumer-state.json" --inbox-path "D:\ai合作产品\docs\ai-handoffs\inbox\project-10f6a858-f3e4-467c-87f5-726caa3cc2be-codex.json"`
+  - follow-up live bridge audit returned `heartbeat_status=ACTIVE`, `bridge_matches_live=true`, `selection_matches_current_requirement=true`, `selection_recovered=true`, and `state_stale=false`
+  - the live requirement audit still reads `stalled_after_ack` with `late_progress_ack` and `stale_open_requirement`, so the assignment stays in progress and should not be marked done yet
+- At `2026-04-23 17:33` Asia/Shanghai, the live bridge audit regressed again to `selection_recovered=false` and `state_stale=true` while the active requirement still remained `0f8130e9-64a3-45e8-9845-47538c3e948f`.
+- At `2026-04-23 17:33` Asia/Shanghai, another explicit real-path refresh restored the bridge immediately:
+  - `python .\scripts\npc2-thread-consumer.py --platform-fetch --state-path "D:\ai合作产品\scripts\.npc2-thread-consumer-state.json" --inbox-path "D:\ai合作产品\docs\ai-handoffs\inbox\project-10f6a858-f3e4-467c-87f5-726caa3cc2be-codex.json"`
+  - follow-up live bridge audit returned `heartbeat_status=ACTIVE`, `bridge_matches_live=true`, `selection_matches_current_requirement=true`, `selection_recovered=true`, and `state_stale=false`
+  - the live requirement audit still reads `stalled_after_ack` with `late_progress_ack` and `stale_open_requirement`, so the assignment stays in progress and should not be marked done yet
+
+- At `2026-04-23 18:04` Asia/Shanghai, the live bridge audit regressed again to `selection_recovered=false` and `state_stale=true` while the active requirement still remained `0f8130e9-64a3-45e8-9845-47538c3e948f`.
+- At `2026-04-23 18:04` Asia/Shanghai, another explicit real-path refresh restored the bridge immediately:
+  - `python .\scripts\npc2-thread-consumer.py --platform-fetch --state-path "D:\ai合作产品\scripts\.npc2-thread-consumer-state.json" --inbox-path "D:\ai合作产品\docs\ai-handoffs\inbox\project-10f6a858-f3e4-467c-87f5-726caa3cc2be-codex.json"`
+  - follow-up live bridge audit returned `heartbeat_status=ACTIVE`, `bridge_matches_live=true`, `selection_matches_current_requirement=true`, `selection_recovered=true`, and `state_stale=false`
+  - follow-up live requirement audit still reads `stalled_after_ack` with `late_progress_ack` and `stale_open_requirement`; no final reply exists, so the assignment stays in progress and should not be marked done yet
+  - bridged inbox JSON still parses successfully with `item_count=28` and `npc2_count=6`
+- At `2026-04-23 18:35` Asia/Shanghai, the live bridge audit regressed again to `selection_recovered=false` and `state_stale=true` while the active requirement still remained `0f8130e9-64a3-45e8-9845-47538c3e948f`.
+- The first `2026-04-23 18:35` recovery attempt exposed a real local bridge blocker: `scripts/npc2-thread-consumer.py` called `scripts/npc1-thread-consumer.py`, but `scripts/npc1-thread-consumer.py` had been overwritten into a wrapper that recursively called itself until Windows raised `WinError 206`.
+- Restored `scripts/npc1-thread-consumer.py` as a small non-recursive platform-fetch/state-refresh base consumer:
+  - supports `--workstation-id`, `--workstation-name`, `--state-path`, `--inbox-path`, `--platform-fetch`, `--requirement-id`, and `--source-message-id`
+  - reads the local platform SQLite DB, skips terminal requirement statuses, mirrors observed platform progress into local state, and refreshes `last_selected`
+  - intentionally refuses `--post` instead of faking platform write-back; true final replies still require the real API bridge before any requirement can be marked done
+- At `2026-04-23 18:41` Asia/Shanghai, reran the NPC2 wrapper successfully:
+  - `python .\scripts\npc2-thread-consumer.py --platform-fetch --state-path "D:\ai合作产品\scripts\.npc2-thread-consumer-state.json" --inbox-path "D:\ai合作产品\docs\ai-handoffs\inbox\project-10f6a858-f3e4-467c-87f5-726caa3cc2be-codex.json"`
+  - selected dispatch `7f664f28-f5bf-4629-8815-2f49c693985b` for requirement `0f8130e9-64a3-45e8-9845-47538c3e948f`, with `already_posted=["in_progress"]`
+  - follow-up live bridge audit returned `heartbeat_status=ACTIVE`, `bridge_matches_live=true`, `selection_matches_current_requirement=true`, `selection_recovered=true`, and `state_stale=false`
+  - follow-up live requirement audit still reads `stalled_after_ack` with no `final_done`; the current active assignment stays in progress and must not be marked done yet
+  - `python -m py_compile .\scripts\npc1-thread-consumer.py .\scripts\npc2-thread-consumer.py` passed
+  - bridged inbox JSON still parses successfully with `item_count=28` and `npc2_count=6`
+- At `2026-04-23 19:15` Asia/Shanghai, the live bridge audit again crossed the 30-minute stale-state threshold (`selection_recovered=false`, `state_stale=true`) while active requirement `0f8130e9-64a3-45e8-9845-47538c3e948f` still had no final reply.
+- The repaired consumer wrapper refreshed successfully:
+  - `python .\scripts\npc2-thread-consumer.py --platform-fetch --state-path "D:\ai合作产品\scripts\.npc2-thread-consumer-state.json" --inbox-path "D:\ai合作产品\docs\ai-handoffs\inbox\project-10f6a858-f3e4-467c-87f5-726caa3cc2be-codex.json"`
+  - selected dispatch `7f664f28-f5bf-4629-8815-2f49c693985b` again, with `already_posted=["in_progress"]`
+  - follow-up live bridge audit returned `heartbeat_status=ACTIVE`, `bridge_matches_live=true`, `selection_matches_current_requirement=true`, `selection_recovered=true`, and `state_stale=false`
+  - follow-up live requirement audit still reads `stalled_after_ack`; bridged inbox JSON still parses with `item_count=28` and `npc2_count=6`
+- At `2026-04-23 19:47` Asia/Shanghai, the live bridge audit again crossed the 30-minute stale-state threshold (`selection_recovered=false`, `state_stale=true`) while active requirement `0f8130e9-64a3-45e8-9845-47538c3e948f` still had no final reply.
+- The repaired consumer wrapper refreshed successfully again:
+  - `python .\scripts\npc2-thread-consumer.py --platform-fetch --state-path "D:\ai合作产品\scripts\.npc2-thread-consumer-state.json" --inbox-path "D:\ai合作产品\docs\ai-handoffs\inbox\project-10f6a858-f3e4-467c-87f5-726caa3cc2be-codex.json"`
+  - selected dispatch `7f664f28-f5bf-4629-8815-2f49c693985b` again, with `already_posted=["in_progress"]`
+  - follow-up live bridge audit returned `heartbeat_status=ACTIVE`, `bridge_matches_live=true`, `selection_matches_current_requirement=true`, `selection_recovered=true`, and `state_stale=false`
+  - follow-up live requirement audit still reads `stalled_after_ack`; bridged inbox JSON still parses with `item_count=28` and `npc2_count=6`
+
+## Latest UI Refinement
+
+- Extended the screenshot-acceptance fold with bridge-queue proof, so one screenshot can now show both seat autonomy and queue waiting state.
+- The fold summary now reports how many bridged dispatches are still queued.
+- The fold body now says explicitly when the screenshot is proving `seat state is visible but bridge write-back is still pending`.
+- The fold meta now carries the oldest queue dwell and queue-state judgment.
+- Tightened queue focus selection so the screenshot next-step decision and cooperation pulse now prefer NPC2 evidence when the bridged inbox also contains newer or equally-timed queued work for other threads such as NPC1.
+- The visible queue counts stay global, but the explanation and next-step copy now keep the NPC2 proof lane as the narrative focus instead of accidentally describing another queued thread first.
+- Extended the screenshot-acceptance fold with the same focus rule, so its fold summary, body, and meta now also say which queued thread the current screenshot is actually proving when multiple bridged queues are visible at once.
+- Applied the same focus rule to the visible bridged command ordering when two queued commands share the same timestamp, so the current NPC2 work no longer hides behind an equally-timed NPC1 row in the first visible slot.
+- Added an explicit microcopy note above the visible bridged-command list, so the page now explains that the current screenshot is focusing the NPC2 proof lane on equal timestamps while queue totals still come from the full bridged inbox.
+- Added a visible `current focus` chip onto the featured bridged command row itself, so a screenshot can now point to the exact NPC2 queue row being used as the current proof anchor instead of relying only on surrounding explanatory text.
+- Extended both the visible focus note and the focus chip with the current requirement short id, so the screenshot can now identify not only the focused NPC2 row but also the exact queued requirement being used as the proof anchor.
+- Extended the cooperation pulse and screenshot-acceptance fold summaries with the same requirement short id, so even before opening the visible bridged list the folded proof surface now states which exact queued NPC2 requirement is being used as the current focus.
+- Corrected the cooperation pulse fold summary so it now truly carries the focused requirement short id alongside the focused NPC2 thread, matching the earlier screenshot-acceptance summary behavior and the handoff claims.
+- Extended the truncated-list microcopy with the same focused NPC2 requirement short id, so even when the page reminds operators that only the latest six bridged rows are visible, the note still says which exact queued NPC2 requirement remains the current proof anchor.
+- Extended the visible bridged-command list head badge with the same focused NPC2 requirement short id, so even a tighter screenshot crop around the list header still shows which exact queued requirement the page is emphasizing.
+- Extended the screenshot-acceptance list head badge with the same focused NPC2 requirement short id, so a tighter crop around the screenshot-acceptance fold header still preserves the exact queued requirement that the page is treating as the current proof anchor.
+- Extended the cooperation-proof list head badge with the same focused NPC2 requirement short id, so the uppermost proof block now also preserves the exact queued requirement even in a very tight screenshot crop around the proof header.
+- Added a visible `current focus` chip onto the featured cooperation-proof row itself, so the uppermost proof list now points to the exact NPC2 requirement row being used as the current proof anchor instead of relying only on header-level badges.
+- Added the same focused requirement short id into the screenshot-acceptance notice-card chip row, so even if a screenshot crops to the fold card body instead of the row list, the current NPC2 proof anchor is still visible next to the next-step chip.
+- Added the same focused requirement short id and current progress label into the cooperation-proof notice-card chip row, so the uppermost proof card can now show both `which requirement is in focus` and `what stage it is in` without relying on the row list below.
+- Added the same focused requirement short id, bridged status, and queue-state label into the cooperation-pulse notice-card chip row, so the middle pulse card can now explain both `which NPC2 requirement is in focus` and `what queue state it is stuck in` even without the command list below.
+- Extended the cooperation-proof fold summary and title with the same focused NPC2 requirement short id, so the very first proof summary line now identifies the exact queued requirement before the user opens the fold or reads the chips below.
+- Extended the top `current action` summary card meta with the same focused NPC2 requirement short id and queue-state label, so even a screenshot that only keeps the three main cards now still identifies the current proof anchor and whether it is still queued.
+- Extended the top `final replies` summary card meta with the same focused NPC2 requirement short id when the requirement is still queued, so even the three-card header now states that the current proof anchor has not yet entered the final-reply pool.
+- Extended the top `current action` summary card meta with the queue-age label too, so the three-card header now quantifies how long the focused NPC2 requirement has been waiting instead of only naming the queue state.
+- Extended the top `current owner` summary card meta with the same focused NPC2 requirement short id and current progress label, so the three-card header now explains not only who is responsible, but also which exact queued requirement that owner is currently being asked to advance.
+- Extended the top `final replies` summary card meta with the queue-age label too, so the three-card header now quantifies how long the focused NPC2 requirement has remained outside the final-reply pool.
+- Refined the top `current action` card body itself so when the focused NPC2 requirement is still queued, the card now directly says that this exact requirement is waiting for thread ack / bridge write-back instead of falling back to a more generic “wait for final reply” summary.
+- Refined the top `current action` card body again so it now also includes the queue-age label and queue-state judgment, making the three-card header itself enough to explain what the focused NPC2 requirement is waiting on and how long it has been stuck there.
+
+- Refined the top `current action` card once more so both the body and the meta now include the queue-start timestamp, making a very tight three-card screenshot enough to prove not only which NPC2 requirement is blocked, but also when that queued wait began.
+- Refined the top `current owner` card meta so it now also includes the queue-start timestamp, letting a tight three-card screenshot prove who currently owns the focused NPC2 requirement and when that queued wait began without opening the proof folds below.
+- Refined the top `final replies` card meta so it now also includes the queue-start timestamp, letting the full three-card header prove that the focused NPC2 requirement has still not entered the final-reply pool and when that queued wait began.
+- Refined the top `current owner` card meta again so it now also includes the queue-state judgment, letting a tight three-card screenshot show not only who owns the focused NPC2 requirement and when that wait began, but also whether the queue currently looks recent, long-waiting, or bridge-stalled.
+- Refined the top `final replies` card meta again so it now also includes the queue-state judgment, letting the three-card header fully explain that the focused NPC2 requirement is still outside the final-reply pool, when that queue wait began, and how stalled the queue currently looks.
+- Refined the top `current owner` card meta once more so it now also includes the queue-age label, letting that single card explain who owns the focused NPC2 requirement, when the queue wait began, how long it has been waiting, and how stalled the queue currently looks.
+- Added a shared top-card focus-anchor helper so the three main cards now consistently show `thread label · requirement short id` instead of sometimes collapsing to the requirement short id alone, making tighter screenshots still prove both which thread and which requirement the current NPC2 proof anchor refers to.
+- Refined the top `current action` card body to use the same `thread label · requirement short id` focus anchor, so even a narrow screenshot that only catches the recommendation sentence can still prove the current NPC2 proof anchor without relying on the card meta below.
+- Refined the top `current owner` card body to use the same `thread label · requirement short id` focus anchor, so even a narrow screenshot that only catches the owner card title and bold body can still prove which NPC2 thread and requirement the proof surface is currently centered on.
+- Refined the top `final replies` card body to use the same `thread label · requirement short id` focus anchor when the current NPC2 requirement is still queued, so even a narrow screenshot that only catches the title and bold body can still prove which queued requirement has not yet entered the final-reply pool.
+- Refined the top `current owner` card body once more so it now also includes the current progress label, letting a narrow screenshot that only catches the title and bold body prove not just which NPC2 thread and requirement are centered, but also what stage that proof anchor is currently in.
+- Refined the top `final replies` card body once more so it now also includes the queue-state judgment, letting a narrow screenshot that only catches the title and bold body prove not just which queued NPC2 requirement has not entered the final-reply pool, but also whether the queue currently looks recent, long-waiting, or bridge-stalled.
+- Refined the top `final replies` card body again so it now also includes the queue-age label, letting a narrow screenshot that only catches the title and bold body prove which queued NPC2 requirement has not entered the final-reply pool, how long it has been waiting, and how stalled the queue currently looks.
+- Refined the top `current owner` card body again so it now also includes the queue-age label and queue-state judgment, letting a narrow screenshot that only catches the title and bold body prove which NPC2 thread and requirement are centered, what stage that proof anchor is currently in, how long it has been waiting, and how stalled the queue currently looks.
+- Refined the top `current owner` card body one more time so it now also includes the queue-start timestamp, letting a narrow screenshot that only catches the title and bold body prove which NPC2 thread and requirement are centered, what stage that proof anchor is in, when the queue wait began, how long it has been waiting, and how stalled the queue currently looks.
+- Added same-thread queued-count support for the three main cards, so when multiple fresh queued platform requirements pile onto the same NPC2 workstation the top summary surface now says that directly instead of flattening everything into a single focused requirement.
+- Wired that same-thread queued count into the current-action recommendation, current-owner body, and final-replies body, so narrow screenshots can now show that NPC2 has multiple queued requirements pending at once without opening the proof folds below.
+- Refined the top `final replies` card body one more time so it now also includes the queue-start timestamp, letting a narrow screenshot that only catches the title and bold body prove not just which queued NPC2 requirement is still outside the final-reply pool and how many sibling queued requirements exist, but also when that queued wait began.
+
+## Next Pickup
+
+- Watch the active NPC2 requirement `0f8130e9-64a3-45e8-9845-47538c3e948f` (`2D Dev Mode / 协作界面收口`) after the recovery closeout, and only mark work done after the platform itself advances or a real final reply lands.
+- If `verify-live-npc-bridges.py --json --seats NPC2` regresses to `state_stale=true` or `selection_matches_current_requirement=false`, immediately run an explicit real-path refresh:
+  - `python .\scripts\npc2-thread-consumer.py --platform-fetch --state-path "D:\ai合作产品\scripts\.npc2-thread-consumer-state.json" --inbox-path "D:\ai合作产品\docs\ai-handoffs\inbox\project-10f6a858-f3e4-467c-87f5-726caa3cc2be-codex.json"`
+- If `verify-live-npc-requirements.py --json --seats NPC2` keeps reporting `stalled_after_ack` / `stale_open_requirement` on `0f8130e9-64a3-45e8-9845-47538c3e948f`, continue sending truthful `in_progress` agent reports for real recovery steps, but do not mark the requirement `done` until the platform itself advances or a true final reply lands.
+- Keep the farm main view untouched while the active requirement stays in progress.
+- Re-run `npm run build:web` only when work returns to proof-surface UI changes in an environment that allows Next worker subprocesses.
+- If the platform starts writing a true `requirement_final_reply` for the active `0f8130e9-64a3-45e8-9845-47538c3e948f` chain, re-check `verify-live-npc-bridges.py --json --seats NPC2` once more before posting `done`.

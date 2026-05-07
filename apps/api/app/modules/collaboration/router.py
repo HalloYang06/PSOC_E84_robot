@@ -1,0 +1,1206 @@
+from __future__ import annotations
+
+import hashlib
+import hmac
+import json
+
+from sqlalchemy import or_, select
+from fastapi import APIRouter, Depends, Request
+from sqlalchemy.orm import Session
+
+from app.common.access import resolve_human_principal, resolve_project_write_principal
+from app.common.errors import AppError
+from app.common.response import ok
+from app.db.models.collaboration_message import CollaborationMessage
+from app.db.session import get_db
+from app.db.models.approval import Approval
+from app.db.models.project_collaboration import ProjectThreadWorkstation
+from app.db.models.task import Task
+from app.db.models.user import User
+from app.settings import get_settings
+from app.modules.projects.schemas import (
+    CollaborationComputerNodeRead,
+    CollaborationProviderRead,
+    CollaborationWorkstationRead,
+    ProjectConfigRead,
+)
+from app.modules.handoffs.service import get_handoff_or_404
+from app.modules.messages.service import create_entity_message
+from app.modules.requirements.service import get_requirement_or_404
+from app.modules.read_access import (
+    readable_project_ids,
+    require_project_read_access,
+    resolve_approval_project_id,
+    resolve_handoff_project_id,
+    resolve_requirement_project_id,
+    resolve_task_project_id,
+)
+
+from .schemas import (
+    CollaborationMessageCreate,
+    CollaborationMessagePreviewRead,
+    CollaborationMessageRead,
+    CollaborationMessageUpdate,
+    ComputerNodePairingTokenRead,
+    RunnerRelayAckCreate,
+    RunnerRelayCommandCreate,
+    RunnerRelayCompleteCreate,
+    WorkstationInboxAckCreate,
+    WorkstationAdapterConfigRead,
+    WorkstationAdapterTokenRead,
+    WorkstationInboxCompleteCreate,
+    RunnerRelayMessageRead,
+    CollaborationComputerNodeCreate,
+    CollaborationComputerNodeUpdate,
+    CollaborationConfigUpdate,
+    CollaborationProviderCreate,
+    CollaborationProviderUpdate,
+    CollaborationWorkstationCreate,
+    CollaborationWorkstationUpdate,
+    CollaborationSummaryRead,
+    ProjectInviteAcceptRequest,
+    ProjectInviteCreate,
+    ProjectInviteRead,
+    ProjectInviteUpdate,
+    ProjectMemberCreate,
+    ProjectMemberRead,
+    ProjectMemberUpdate,
+    UserCreate,
+    UserRead,
+    UserUpdate,
+)
+from .service import (
+    accept_invite,
+    ack_runner_command,
+    add_project_member,
+    complete_runner_command,
+    create_project_invite,
+    create_user,
+    create_runner_command,
+    ack_workstation_command,
+    complete_workstation_command,
+    get_collaboration_summary,
+    get_collaboration_message_or_404,
+    get_project_ai_provider,
+    get_project_collaboration_config,
+    get_project_computer_node_pairing_status,
+    get_project_computer_node,
+    get_project_workstation_adapter_token_status,
+    get_project_workstation_adapter_config,
+    get_project_thread_workstation,
+    get_invite_or_404,
+    get_user_or_404,
+    list_messages,
+    list_project_ai_providers,
+    list_project_computer_nodes,
+    list_project_invites,
+    list_project_members,
+    list_project_thread_workstations,
+    list_users,
+    list_runner_inbox_messages,
+    list_workstation_inbox_messages,
+    mark_project_workstation_adapter_token_used,
+    create_message as create_collaboration_message,
+    create_project_ai_provider,
+    create_project_computer_node,
+    create_project_thread_workstation,
+    delete_project_ai_provider,
+    delete_project_computer_node,
+    delete_project_thread_workstation,
+    remove_project_member,
+    revoke_project_computer_node_pairing_token,
+    revoke_project_workstation_adapter_token,
+    revoke_invite,
+    rotate_project_computer_node_pairing_token,
+    rotate_project_workstation_adapter_token,
+    serialize_project_invite_for_read,
+    update_project_ai_provider,
+    update_collaboration_message,
+    update_project_collaboration_config,
+    update_project_computer_node,
+    update_project_thread_workstation,
+    update_project_invite,
+    update_project_member,
+    update_user,
+)
+
+
+router = APIRouter(prefix="/api/collaboration", tags=["collaboration"])
+
+
+def _require_real_human_principal(db: Session, request: Request):
+    return resolve_human_principal(db, request, allow_bootstrap=False)
+
+
+def _invite_project_id(db: Session, invite_id: str) -> str:
+    invite = get_invite_or_404(db, invite_id)
+    if invite.project_id:
+        return invite.project_id
+    raise AppError("PROJECT_NOT_FOUND", "invite has no project context", status_code=404)
+
+
+def _computer_node_owner_user_id(node: dict[str, object] | None) -> str:
+    if not isinstance(node, dict):
+        return ""
+    metadata = node.get("metadata") if isinstance(node.get("metadata"), dict) else {}
+    return str(metadata.get("owner_user_id") or metadata.get("created_by_user_id") or "").strip()
+
+
+def _resolve_computer_node_manager_principal(
+    db: Session,
+    request: Request,
+    *,
+    project_id: str,
+    node_id: str,
+    action: str,
+):
+    principal = _require_real_human_principal(db, request)
+    try:
+        resolve_project_write_principal(
+            db,
+            request,
+            project_id,
+            require_privileged=True,
+            action=action,
+        )
+        return principal
+    except AppError as error:
+        if error.code != "HUMAN_APPROVAL_REQUIRED":
+            raise
+
+    resolve_project_write_principal(db, request, project_id, action=action)
+    node = get_project_computer_node(db, project_id, node_id)
+    owner_user_id = _computer_node_owner_user_id(node)
+    if owner_user_id and principal.user_id and owner_user_id == principal.user_id:
+        return principal
+    raise AppError(
+        "HUMAN_APPROVAL_REQUIRED",
+        f"{action} 需要这台电脑的接入人或项目负责人",
+        status_code=403,
+        details={"project_id": project_id, "computer_node_id": node_id, "owner_user_id": owner_user_id or None},
+    )
+
+
+def _workstation_computer_node_id(workstation: dict[str, object] | None) -> str:
+    if not isinstance(workstation, dict):
+        return ""
+    metadata = workstation.get("metadata") if isinstance(workstation.get("metadata"), dict) else {}
+    return str(
+        workstation.get("computer_node_id")
+        or workstation.get("computer_node")
+        or metadata.get("computer_node_id")
+        or metadata.get("computer_node")
+        or ""
+    ).strip()
+
+
+def _resolve_workstation_manager_principal(
+    db: Session,
+    request: Request,
+    *,
+    project_id: str,
+    computer_node_id: str | None,
+    action: str,
+):
+    principal = _require_real_human_principal(db, request)
+    try:
+        resolve_project_write_principal(
+            db,
+            request,
+            project_id,
+            require_privileged=True,
+            action=action,
+        )
+        return principal
+    except AppError as error:
+        if error.code != "HUMAN_APPROVAL_REQUIRED":
+            raise
+
+    resolve_project_write_principal(db, request, project_id, action=action)
+    node_id = str(computer_node_id or "").strip()
+    if node_id:
+        node = get_project_computer_node(db, project_id, node_id)
+        owner_user_id = _computer_node_owner_user_id(node)
+        if owner_user_id and principal.user_id and owner_user_id == principal.user_id:
+            return principal
+    raise AppError(
+        "HUMAN_APPROVAL_REQUIRED",
+        f"{action} 需要这台电脑的接入人或项目负责人",
+        status_code=403,
+        details={"project_id": project_id, "computer_node_id": node_id or None},
+    )
+
+
+def _collaboration_message_project_id(db: Session, payload: CollaborationMessageCreate) -> str:
+    if payload.project_id:
+        return payload.project_id
+    if payload.task_id:
+        task = db.get(Task, payload.task_id)
+        if task is not None and task.project_id:
+            return task.project_id
+    if payload.approval_id:
+        approval = db.get(Approval, payload.approval_id)
+        if approval is not None and approval.project_id:
+            return approval.project_id
+    if payload.requirement_id:
+        requirement = get_requirement_or_404(db, payload.requirement_id)
+        if requirement.project_id:
+            return requirement.project_id
+        if requirement.task_id:
+            task = db.get(Task, requirement.task_id)
+            if task is not None and task.project_id:
+                return task.project_id
+    if payload.handoff_id:
+        handoff = get_handoff_or_404(db, payload.handoff_id)
+        if handoff.project_id:
+            return handoff.project_id
+        if handoff.task_id:
+            task = db.get(Task, handoff.task_id)
+            if task is not None and task.project_id:
+                return task.project_id
+    raise AppError("PROJECT_NOT_FOUND", "collaboration message requires a project context", status_code=404)
+
+
+def _build_collaboration_message_preview_signature(
+    payload: CollaborationMessageCreate,
+    *,
+    project_id: str,
+    sender_id: str | None,
+) -> str:
+    normalized = {
+        "project_id": project_id,
+        "task_id": payload.task_id,
+        "approval_id": payload.approval_id,
+        "handoff_id": payload.handoff_id,
+        "requirement_id": payload.requirement_id,
+        "agent_id": payload.agent_id,
+        "message_type": str(payload.message_type or "comment_message").strip() or "comment_message",
+        "title": (str(payload.title or "").strip() or None),
+        "body": str(payload.body or "").strip(),
+        "sender_type": "human",
+        "sender_id": (str(sender_id or "").strip() or None),
+        "recipient_type": (str(payload.recipient_type or "").strip() or None),
+        "recipient_id": (str(payload.recipient_id or "").strip() or None),
+        "status": str(payload.status or "open").strip() or "open",
+    }
+    return hashlib.sha256(json.dumps(normalized, ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()[:24]
+
+
+def _resolve_collaboration_message_recipient_label(
+    db: Session,
+    *,
+    project_id: str,
+    recipient_type: str | None,
+    recipient_id: str | None,
+) -> tuple[str | None, bool]:
+    cleaned_type = str(recipient_type or "").strip().lower()
+    cleaned_id = str(recipient_id or "").strip()
+    if not cleaned_type or not cleaned_id:
+        return None, False
+    if cleaned_type == "workstation":
+        workstation = get_project_thread_workstation(db, project_id, cleaned_id)
+        if isinstance(workstation, dict):
+            label = str(
+                workstation.get("name")
+                or workstation.get("agent_id")
+                or workstation.get("id")
+                or workstation.get("workstation_id")
+                or cleaned_id
+            ).strip() or cleaned_id
+        else:
+            label = str(workstation.name or workstation.agent_id or workstation.id or cleaned_id).strip() or cleaned_id
+        return label, True
+    if cleaned_type == "computer_node":
+        node = get_project_computer_node(db, project_id, cleaned_id)
+        if isinstance(node, dict):
+            label = str(node.get("label") or node.get("id") or node.get("node_id") or cleaned_id).strip() or cleaned_id
+        else:
+            label = str(node.label or node.id or cleaned_id).strip() or cleaned_id
+        return label, True
+    return cleaned_id, True
+
+
+def _collaboration_message_scope_project_id(
+    db: Session,
+    *,
+    project_id: str | None = None,
+    task_id: str | None = None,
+    approval_id: str | None = None,
+    handoff_id: str | None = None,
+    requirement_id: str | None = None,
+    agent_id: str | None = None,
+) -> str:
+    if project_id:
+        return project_id
+    if task_id:
+        return resolve_task_project_id(db, task_id)
+    if approval_id:
+        return resolve_approval_project_id(db, approval_id)
+    if handoff_id:
+        return resolve_handoff_project_id(db, handoff_id)
+    if requirement_id:
+        return resolve_requirement_project_id(db, requirement_id)
+    cleaned_agent_id = str(agent_id or "").strip()
+    if cleaned_agent_id:
+        candidate_ids = {
+            str(item or "").strip()
+            for item in db.scalars(
+                select(ProjectThreadWorkstation.project_id).where(
+                    or_(
+                        ProjectThreadWorkstation.config_id == cleaned_agent_id,
+                        ProjectThreadWorkstation.name == cleaned_agent_id,
+                        ProjectThreadWorkstation.agent_id == cleaned_agent_id,
+                    )
+                )
+            )
+            if str(item or "").strip()
+        }
+        candidate_ids.update(
+            {
+                str(item or "").strip()
+                for item in db.scalars(
+                    select(CollaborationMessage.project_id).where(CollaborationMessage.agent_id == cleaned_agent_id)
+                )
+                if str(item or "").strip()
+            }
+        )
+        if len(candidate_ids) == 1:
+            return next(iter(candidate_ids))
+        if len(candidate_ids) > 1:
+            raise AppError(
+                "VALIDATION_ERROR",
+                "collaboration message read requires project_id when agent_id spans multiple projects",
+                status_code=422,
+            )
+    raise AppError("VALIDATION_ERROR", "collaboration message read requires a project context", status_code=422)
+
+
+def _workstation_identity_values(workstation_id: str, workstation: dict[str, object]) -> set[str]:
+    metadata = workstation.get("metadata") if isinstance(workstation.get("metadata"), dict) else {}
+    extra_data = workstation.get("extra_data") if isinstance(workstation.get("extra_data"), dict) else {}
+    values = {
+        str(workstation_id or ""),
+        str(workstation.get("id") or ""),
+        str(workstation.get("config_id") or ""),
+        str(workstation.get("name") or ""),
+        str(workstation.get("agent_id") or ""),
+        str(workstation.get("source_workstation_id") or ""),
+        str(metadata.get("source_workstation_id") or ""),
+        str(metadata.get("source_thread_id") or ""),
+        str(metadata.get("bound_thread_id") or ""),
+        str(extra_data.get("source_workstation_id") or ""),
+        str(extra_data.get("source_thread_id") or ""),
+        str(extra_data.get("bound_thread_id") or ""),
+    }
+    return {value.strip() for value in values if value and value.strip()}
+
+
+def _workstation_adapter_hash(workstation: dict[str, object]) -> str:
+    metadata = workstation.get("metadata") if isinstance(workstation.get("metadata"), dict) else {}
+    extra_data = workstation.get("extra_data") if isinstance(workstation.get("extra_data"), dict) else {}
+    return str(
+        metadata.get("adapter_token_hash")
+        or metadata.get("workstation_token_hash")
+        or extra_data.get("adapter_token_hash")
+        or extra_data.get("workstation_token_hash")
+        or ""
+    ).strip()
+
+
+def _require_workstation_inbox_access(
+    db: Session,
+    request: Request,
+    project_id: str,
+    workstation_id: str,
+    *,
+    write: bool,
+    action: str,
+) -> dict[str, object]:
+    workstation = get_project_thread_workstation(db, project_id, workstation_id)
+    header_workstation_id = str(request.headers.get("x-workstation-id") or "").strip()
+    if not header_workstation_id:
+        if write:
+            resolve_project_write_principal(db, request, project_id, action=action)
+        else:
+            require_project_read_access(db, request, project_id, action=action)
+        return workstation
+
+    candidates = _workstation_identity_values(workstation_id, workstation)
+    if header_workstation_id not in candidates:
+        raise AppError(
+            "PERMISSION_DENIED",
+            f"{action} workstation id does not match",
+            status_code=403,
+            details={"project_id": project_id, "workstation_id": workstation_id, "header_workstation_id": header_workstation_id},
+        )
+
+    expected_hash = _workstation_adapter_hash(workstation)
+    provided_token = str(request.headers.get("x-workstation-token") or "").strip()
+    if expected_hash:
+        provided_hash = hashlib.sha256(provided_token.encode("utf-8")).hexdigest() if provided_token else ""
+        if not provided_hash or not hmac.compare_digest(provided_hash, expected_hash):
+            raise AppError("PERMISSION_DENIED", "workstation token is invalid", status_code=403)
+        mark_project_workstation_adapter_token_used(db, project_id, workstation_id)
+    elif get_settings().app_env.lower() == "production":
+        raise AppError("UNAUTHORIZED", "production workstation adapters require a workstation token", status_code=401)
+    return workstation
+
+
+@router.get("/users")
+def api_list_users(request: Request, db: Session = Depends(get_db)):
+    _require_real_human_principal(db, request)
+    return ok([UserRead.model_validate(item).model_dump(mode="json") for item in list_users(db)])
+
+
+@router.post("/users")
+def api_create_user(payload: UserCreate, request: Request, db: Session = Depends(get_db)):
+    _require_real_human_principal(db, request)
+    return ok(UserRead.model_validate(create_user(db, payload)).model_dump(mode="json"))
+
+
+@router.get("/users/{user_id}")
+def api_get_user(user_id: str, request: Request, db: Session = Depends(get_db)):
+    _require_real_human_principal(db, request)
+    return ok(UserRead.model_validate(get_user_or_404(db, user_id)).model_dump(mode="json"))
+
+
+@router.patch("/users/{user_id}")
+def api_update_user(user_id: str, payload: UserUpdate, request: Request, db: Session = Depends(get_db)):
+    _require_real_human_principal(db, request)
+    return ok(UserRead.model_validate(update_user(db, user_id, payload)).model_dump(mode="json"))
+
+
+@router.get("/invites")
+def api_list_invites(project_id: str | None = None, status: str | None = None, request: Request = None, db: Session = Depends(get_db)):
+    if project_id:
+        require_project_read_access(db, request, project_id, action="collaboration.invite.read")
+        scoped_project_ids = {project_id}
+    else:
+        scoped_project_ids = set(readable_project_ids(db, request))
+    items = list_project_invites(db, project_id=project_id, status=status)
+    if not project_id:
+        items = [item for item in items if str(item.project_id or "") in scoped_project_ids]
+    return ok([ProjectInviteRead.model_validate(serialize_project_invite_for_read(item)).model_dump(mode="json") for item in items])
+
+
+@router.post("/projects/{project_id}/invites")
+def api_create_invite(project_id: str, payload: ProjectInviteCreate, request: Request, db: Session = Depends(get_db)):
+    principal = _require_real_human_principal(db, request)
+    resolve_project_write_principal(db, request, project_id, require_privileged=True, action="collaboration.invite.create")
+    return ok(
+        ProjectInviteRead.model_validate(
+            serialize_project_invite_for_read(
+                create_project_invite(db, project_id, payload.model_copy(update={"invited_by_user_id": principal.user_id}))
+            )
+        ).model_dump(mode="json")
+    )
+
+
+@router.get("/invites/{invite_id}")
+def api_get_invite(invite_id: str, request: Request, db: Session = Depends(get_db)):
+    require_project_read_access(db, request, _invite_project_id(db, invite_id), action="collaboration.invite.read")
+    return ok(ProjectInviteRead.model_validate(serialize_project_invite_for_read(get_invite_or_404(db, invite_id))).model_dump(mode="json"))
+
+
+@router.patch("/invites/{invite_id}")
+def api_update_invite(invite_id: str, payload: ProjectInviteUpdate, request: Request, db: Session = Depends(get_db)):
+    principal = _require_real_human_principal(db, request)
+    invite = get_invite_or_404(db, invite_id)
+    resolve_project_write_principal(db, request, invite.project_id, require_privileged=True, action="collaboration.invite.update")
+    return ok(
+        ProjectInviteRead.model_validate(
+            serialize_project_invite_for_read(
+                update_project_invite(db, invite_id, payload.model_copy(update={"accepted_by_user_id": principal.user_id}))
+            )
+        ).model_dump(mode="json")
+    )
+
+
+@router.post("/invites/{invite_id}/accept")
+def api_accept_invite(invite_id: str, payload: ProjectInviteAcceptRequest, request: Request, db: Session = Depends(get_db)):
+    principal = _require_real_human_principal(db, request)
+    invite = get_invite_or_404(db, invite_id)
+    current_user = get_user_or_404(db, principal.user_id) if principal.user_id else None
+    if invite.email and current_user is not None and current_user.email != invite.email:
+        raise AppError("INVITE_EMAIL_MISMATCH", "current identity does not match invite email", status_code=403)
+    result = accept_invite(db, invite_id, payload.model_copy(update={"user_id": principal.user_id}))
+    return ok(
+        {
+            "invite": ProjectInviteRead.model_validate(serialize_project_invite_for_read(result["invite"])).model_dump(mode="json"),
+            "member": ProjectMemberRead.model_validate(result["member"]).model_dump(mode="json"),
+            "user": UserRead.model_validate(result["user"]).model_dump(mode="json"),
+        }
+    )
+
+
+@router.post("/invites/{invite_id}/revoke")
+def api_revoke_invite(
+    invite_id: str,
+    request: Request,
+    note: str | None = None,
+    db: Session = Depends(get_db),
+):
+    principal = _require_real_human_principal(db, request)
+    invite = get_invite_or_404(db, invite_id)
+    resolve_project_write_principal(db, request, invite.project_id, require_privileged=True, action="collaboration.invite.revoke")
+    return ok(
+        ProjectInviteRead.model_validate(
+            serialize_project_invite_for_read(
+                revoke_invite(db, invite_id, actor_type="human", actor_id=principal.user_id, note=note)
+            )
+        ).model_dump(mode="json")
+    )
+
+
+@router.get("/projects/{project_id}/members")
+def api_list_project_members(project_id: str, include_removed: bool = False, request: Request = None, db: Session = Depends(get_db)):
+    require_project_read_access(db, request, project_id, action="collaboration.member.read")
+    items = list_project_members(db, project_id, include_removed=include_removed)
+    return ok([ProjectMemberRead.model_validate(item).model_dump(mode="json") for item in items])
+
+
+@router.post("/projects/{project_id}/members")
+def api_add_project_member(project_id: str, payload: ProjectMemberCreate, request: Request, db: Session = Depends(get_db)):
+    _require_real_human_principal(db, request)
+    resolve_project_write_principal(db, request, project_id, require_privileged=True, action="collaboration.member.create")
+    return ok(ProjectMemberRead.model_validate(add_project_member(db, project_id, payload)).model_dump(mode="json"))
+
+
+@router.patch("/projects/{project_id}/members/{member_id}")
+def api_update_project_member(
+    project_id: str, member_id: str, payload: ProjectMemberUpdate, request: Request, db: Session = Depends(get_db)
+):
+    _require_real_human_principal(db, request)
+    resolve_project_write_principal(db, request, project_id, require_privileged=True, action="collaboration.member.update")
+    return ok(ProjectMemberRead.model_validate(update_project_member(db, project_id, member_id, payload)).model_dump(mode="json"))
+
+
+@router.delete("/projects/{project_id}/members/{member_id}")
+def api_remove_project_member(
+    project_id: str,
+    member_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    principal = _require_real_human_principal(db, request)
+    resolve_project_write_principal(db, request, project_id, require_privileged=True, action="collaboration.member.delete")
+    return ok(
+        ProjectMemberRead.model_validate(
+            remove_project_member(db, project_id, member_id, actor_type="human", actor_id=principal.user_id)
+        ).model_dump(mode="json")
+    )
+
+
+@router.get("/summary")
+def api_collaboration_summary(request: Request, db: Session = Depends(get_db)):
+    _require_real_human_principal(db, request)
+    return ok(CollaborationSummaryRead.model_validate(get_collaboration_summary(db)).model_dump(mode="json"))
+
+
+@router.get("/projects/{project_id}/config")
+def api_get_project_config(project_id: str, request: Request, db: Session = Depends(get_db)):
+    require_project_read_access(db, request, project_id, action="project.collaboration_config.read")
+    return ok(ProjectConfigRead.model_validate(get_project_collaboration_config(db, project_id)).model_dump(mode="json"))
+
+
+@router.patch("/projects/{project_id}/config")
+def api_update_project_config(project_id: str, payload: CollaborationConfigUpdate, request: Request, db: Session = Depends(get_db)):
+    _require_real_human_principal(db, request)
+    resolve_project_write_principal(db, request, project_id, require_privileged=True, action="project.collaboration_config.update")
+    return ok(ProjectConfigRead.model_validate(update_project_collaboration_config(db, project_id, payload)).model_dump(mode="json"))
+
+
+@router.get("/projects/{project_id}/ai-providers")
+def api_list_project_ai_providers(project_id: str, request: Request, db: Session = Depends(get_db)):
+    require_project_read_access(db, request, project_id, action="project.collaboration_provider.read")
+    items = list_project_ai_providers(db, project_id)
+    return ok([CollaborationProviderRead.model_validate(item).model_dump(mode="json") for item in items])
+
+
+@router.get("/projects/{project_id}/ai-providers/{provider_id}")
+def api_get_project_ai_provider(project_id: str, provider_id: str, request: Request, db: Session = Depends(get_db)):
+    require_project_read_access(db, request, project_id, action="project.collaboration_provider.read")
+    return ok(CollaborationProviderRead.model_validate(get_project_ai_provider(db, project_id, provider_id)).model_dump(mode="json"))
+
+
+@router.post("/projects/{project_id}/ai-providers")
+def api_create_project_ai_provider(project_id: str, payload: CollaborationProviderCreate, request: Request, db: Session = Depends(get_db)):
+    _require_real_human_principal(db, request)
+    resolve_project_write_principal(db, request, project_id, require_privileged=True, action="project.collaboration_provider.create")
+    return ok(CollaborationProviderRead.model_validate(create_project_ai_provider(db, project_id, payload)).model_dump(mode="json"))
+
+
+@router.patch("/projects/{project_id}/ai-providers/{provider_id}")
+def api_update_project_ai_provider(project_id: str, provider_id: str, payload: CollaborationProviderUpdate, request: Request, db: Session = Depends(get_db)):
+    _require_real_human_principal(db, request)
+    resolve_project_write_principal(db, request, project_id, require_privileged=True, action="project.collaboration_provider.update")
+    return ok(CollaborationProviderRead.model_validate(update_project_ai_provider(db, project_id, provider_id, payload)).model_dump(mode="json"))
+
+
+@router.delete("/projects/{project_id}/ai-providers/{provider_id}")
+def api_delete_project_ai_provider(project_id: str, provider_id: str, request: Request, db: Session = Depends(get_db)):
+    _require_real_human_principal(db, request)
+    resolve_project_write_principal(db, request, project_id, require_privileged=True, action="project.collaboration_provider.delete")
+    return ok(CollaborationProviderRead.model_validate(delete_project_ai_provider(db, project_id, provider_id)).model_dump(mode="json"))
+
+
+@router.get("/projects/{project_id}/computer-nodes")
+def api_list_project_computer_nodes(project_id: str, request: Request, db: Session = Depends(get_db)):
+    require_project_read_access(db, request, project_id, action="project.collaboration_node.read")
+    items = list_project_computer_nodes(db, project_id)
+    return ok([CollaborationComputerNodeRead.model_validate(item).model_dump(mode="json") for item in items])
+
+
+@router.get("/projects/{project_id}/computer-nodes/{node_id}")
+def api_get_project_computer_node(project_id: str, node_id: str, request: Request, db: Session = Depends(get_db)):
+    require_project_read_access(db, request, project_id, action="project.collaboration_node.read")
+    return ok(CollaborationComputerNodeRead.model_validate(get_project_computer_node(db, project_id, node_id)).model_dump(mode="json"))
+
+
+@router.get("/projects/{project_id}/computer-nodes/{node_id}/pairing-token")
+def api_get_project_computer_node_pairing_token(
+    project_id: str,
+    node_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    _resolve_computer_node_manager_principal(
+        db,
+        request,
+        project_id=project_id,
+        node_id=node_id,
+        action="project.collaboration_node.pairing.read",
+    )
+    return ok(
+        ComputerNodePairingTokenRead.model_validate(
+            get_project_computer_node_pairing_status(db, project_id, node_id)
+        ).model_dump(mode="json")
+    )
+
+
+@router.post("/projects/{project_id}/computer-nodes/{node_id}/pairing-token")
+def api_rotate_project_computer_node_pairing_token(
+    project_id: str,
+    node_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    _resolve_computer_node_manager_principal(
+        db,
+        request,
+        project_id=project_id,
+        node_id=node_id,
+        action="project.collaboration_node.pairing.rotate",
+    )
+    return ok(
+        ComputerNodePairingTokenRead.model_validate(
+            rotate_project_computer_node_pairing_token(db, project_id, node_id)
+        ).model_dump(mode="json")
+    )
+
+
+@router.delete("/projects/{project_id}/computer-nodes/{node_id}/pairing-token")
+def api_revoke_project_computer_node_pairing_token(
+    project_id: str,
+    node_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    _resolve_computer_node_manager_principal(
+        db,
+        request,
+        project_id=project_id,
+        node_id=node_id,
+        action="project.collaboration_node.pairing.revoke",
+    )
+    return ok(
+        ComputerNodePairingTokenRead.model_validate(
+            revoke_project_computer_node_pairing_token(db, project_id, node_id)
+        ).model_dump(mode="json")
+    )
+
+
+@router.post("/projects/{project_id}/computer-nodes")
+def api_create_project_computer_node(project_id: str, payload: CollaborationComputerNodeCreate, request: Request, db: Session = Depends(get_db)):
+    principal = _require_real_human_principal(db, request)
+    resolve_project_write_principal(db, request, project_id, action="project.collaboration_node.create")
+    current_user = get_user_or_404(db, principal.user_id) if principal.user_id else None
+    metadata = dict(payload.metadata or {})
+    metadata.setdefault("owner_user_id", principal.user_id)
+    metadata.setdefault("owner_name", current_user.name if current_user else None)
+    metadata.setdefault("owner_email", current_user.email if current_user else None)
+    metadata.setdefault("source", metadata.get("source") or "user_project_workbench")
+    next_payload = payload.model_copy(update={"metadata": metadata})
+    return ok(
+        CollaborationComputerNodeRead.model_validate(create_project_computer_node(db, project_id, next_payload)).model_dump(mode="json")
+    )
+
+
+@router.patch("/projects/{project_id}/computer-nodes/{node_id}")
+def api_update_project_computer_node(project_id: str, node_id: str, payload: CollaborationComputerNodeUpdate, request: Request, db: Session = Depends(get_db)):
+    _resolve_computer_node_manager_principal(
+        db,
+        request,
+        project_id=project_id,
+        node_id=node_id,
+        action="project.collaboration_node.update",
+    )
+    return ok(CollaborationComputerNodeRead.model_validate(update_project_computer_node(db, project_id, node_id, payload)).model_dump(mode="json"))
+
+
+@router.delete("/projects/{project_id}/computer-nodes/{node_id}")
+def api_delete_project_computer_node(project_id: str, node_id: str, request: Request, db: Session = Depends(get_db)):
+    _resolve_computer_node_manager_principal(
+        db,
+        request,
+        project_id=project_id,
+        node_id=node_id,
+        action="project.collaboration_node.delete",
+    )
+    return ok(CollaborationComputerNodeRead.model_validate(delete_project_computer_node(db, project_id, node_id)).model_dump(mode="json"))
+
+
+@router.get("/projects/{project_id}/thread-workstations")
+def api_list_project_thread_workstations(project_id: str, request: Request, db: Session = Depends(get_db)):
+    require_project_read_access(db, request, project_id, action="project.collaboration_workstation.read")
+    items = list_project_thread_workstations(db, project_id)
+    return ok([CollaborationWorkstationRead.model_validate(item).model_dump(mode="json") for item in items])
+
+
+@router.get("/projects/{project_id}/thread-workstations/{workstation_id}")
+def api_get_project_thread_workstation(project_id: str, workstation_id: str, request: Request, db: Session = Depends(get_db)):
+    require_project_read_access(db, request, project_id, action="project.collaboration_workstation.read")
+    return ok(CollaborationWorkstationRead.model_validate(get_project_thread_workstation(db, project_id, workstation_id)).model_dump(mode="json"))
+
+
+@router.post("/projects/{project_id}/thread-workstations")
+def api_create_project_thread_workstation(
+    project_id: str,
+    payload: CollaborationWorkstationCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    _resolve_workstation_manager_principal(
+        db,
+        request,
+        project_id=project_id,
+        computer_node_id=payload.computer_node_id or payload.computer_node,
+        action="project.collaboration_workstation.create",
+    )
+    return ok(CollaborationWorkstationRead.model_validate(create_project_thread_workstation(db, project_id, payload)).model_dump(mode="json"))
+
+
+@router.patch("/projects/{project_id}/thread-workstations/{workstation_id}")
+def api_update_project_thread_workstation(
+    project_id: str,
+    workstation_id: str,
+    payload: CollaborationWorkstationUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    workstation = get_project_thread_workstation(db, project_id, workstation_id)
+    _resolve_workstation_manager_principal(
+        db,
+        request,
+        project_id=project_id,
+        computer_node_id=_workstation_computer_node_id(workstation),
+        action="project.collaboration_workstation.update",
+    )
+    return ok(CollaborationWorkstationRead.model_validate(update_project_thread_workstation(db, project_id, workstation_id, payload)).model_dump(mode="json"))
+
+
+@router.delete("/projects/{project_id}/thread-workstations/{workstation_id}")
+def api_delete_project_thread_workstation(project_id: str, workstation_id: str, request: Request, db: Session = Depends(get_db)):
+    workstation = get_project_thread_workstation(db, project_id, workstation_id)
+    _resolve_workstation_manager_principal(
+        db,
+        request,
+        project_id=project_id,
+        computer_node_id=_workstation_computer_node_id(workstation),
+        action="project.collaboration_workstation.delete",
+    )
+    return ok(CollaborationWorkstationRead.model_validate(delete_project_thread_workstation(db, project_id, workstation_id)).model_dump(mode="json"))
+
+
+@router.post("/projects/{project_id}/thread-workstations/{workstation_id}/messages")
+def api_create_workstation_message(
+    project_id: str,
+    workstation_id: str,
+    payload: CollaborationMessageCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    _require_real_human_principal(db, request)
+    resolve_project_write_principal(db, request, project_id, action="collaboration.workstation_message.create")
+    workstation = get_project_thread_workstation(db, project_id, workstation_id)
+    if payload.message_type in {"runner_command", "runner_ack", "runner_result"}:
+        raise AppError("FORBIDDEN_MESSAGE_TYPE", "runner relay 消息必须走专用接口", status_code=403)
+    item = create_collaboration_message(
+        db,
+        payload.model_copy(
+            update={
+                "project_id": project_id,
+                "agent_id": workstation_id,
+                "sender_type": "agent",
+                "sender_id": workstation_id,
+            }
+        ),
+    )
+    return ok(
+        {
+            "message": CollaborationMessageRead.model_validate(item).model_dump(mode="json"),
+            "workstation": CollaborationWorkstationRead.model_validate(workstation).model_dump(mode="json"),
+        }
+    )
+
+
+@router.get("/projects/{project_id}/thread-workstations/{workstation_id}/inbox")
+def api_get_workstation_inbox(
+    project_id: str,
+    workstation_id: str,
+    request: Request,
+    status: str | None = None,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+):
+    _require_workstation_inbox_access(
+        db,
+        request,
+        project_id,
+        workstation_id,
+        write=False,
+        action="collaboration.workstation_inbox.read",
+    )
+    items = list_workstation_inbox_messages(db, project_id, workstation_id, status=status, limit=limit)
+    return ok([CollaborationMessageRead.model_validate(item).model_dump(mode="json") for item in items])
+
+
+@router.get("/projects/{project_id}/thread-workstations/{workstation_id}/adapter-config")
+def api_get_workstation_adapter_config(
+    project_id: str,
+    workstation_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    _require_workstation_inbox_access(
+        db,
+        request,
+        project_id,
+        workstation_id,
+        write=False,
+        action="collaboration.workstation_adapter_config.read",
+    )
+    config = get_project_workstation_adapter_config(db, project_id, workstation_id)
+    return ok(WorkstationAdapterConfigRead.model_validate(config).model_dump(mode="json"))
+
+
+@router.get("/projects/{project_id}/thread-workstations/{workstation_id}/adapter-token")
+def api_get_workstation_adapter_token(
+    project_id: str,
+    workstation_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    workstation = get_project_thread_workstation(db, project_id, workstation_id)
+    _resolve_workstation_manager_principal(
+        db,
+        request,
+        project_id=project_id,
+        computer_node_id=_workstation_computer_node_id(workstation),
+        action="project.collaboration_workstation.adapter_token.read",
+    )
+    status = get_project_workstation_adapter_token_status(db, project_id, workstation_id)
+    return ok(WorkstationAdapterTokenRead.model_validate(status).model_dump(mode="json"))
+
+
+@router.post("/projects/{project_id}/thread-workstations/{workstation_id}/adapter-token")
+def api_rotate_workstation_adapter_token(
+    project_id: str,
+    workstation_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    workstation = get_project_thread_workstation(db, project_id, workstation_id)
+    _resolve_workstation_manager_principal(
+        db,
+        request,
+        project_id=project_id,
+        computer_node_id=_workstation_computer_node_id(workstation),
+        action="project.collaboration_workstation.adapter_token.rotate",
+    )
+    status = rotate_project_workstation_adapter_token(db, project_id, workstation_id)
+    return ok(WorkstationAdapterTokenRead.model_validate(status).model_dump(mode="json"))
+
+
+@router.delete("/projects/{project_id}/thread-workstations/{workstation_id}/adapter-token")
+def api_revoke_workstation_adapter_token(
+    project_id: str,
+    workstation_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    workstation = get_project_thread_workstation(db, project_id, workstation_id)
+    _resolve_workstation_manager_principal(
+        db,
+        request,
+        project_id=project_id,
+        computer_node_id=_workstation_computer_node_id(workstation),
+        action="project.collaboration_workstation.adapter_token.revoke",
+    )
+    status = revoke_project_workstation_adapter_token(db, project_id, workstation_id)
+    return ok(WorkstationAdapterTokenRead.model_validate(status).model_dump(mode="json"))
+
+
+@router.post("/projects/{project_id}/thread-workstations/{workstation_id}/messages/{message_id}/ack")
+def api_ack_workstation_message(
+    project_id: str,
+    workstation_id: str,
+    message_id: str,
+    payload: WorkstationInboxAckCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    _require_workstation_inbox_access(
+        db,
+        request,
+        project_id,
+        workstation_id,
+        write=True,
+        action="collaboration.workstation_inbox.ack",
+    )
+    result = ack_workstation_command(db, project_id, workstation_id, message_id, payload)
+    return ok(
+        {
+            "command": CollaborationMessageRead.model_validate(result["command"]).model_dump(mode="json"),
+            "receipt": (
+                CollaborationMessageRead.model_validate(result["receipt"]).model_dump(mode="json")
+                if result["receipt"] is not None
+                else None
+            ),
+        }
+    )
+
+
+@router.post("/projects/{project_id}/thread-workstations/{workstation_id}/messages/{message_id}/complete")
+def api_complete_workstation_message(
+    project_id: str,
+    workstation_id: str,
+    message_id: str,
+    payload: WorkstationInboxCompleteCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    _require_workstation_inbox_access(
+        db,
+        request,
+        project_id,
+        workstation_id,
+        write=True,
+        action="collaboration.workstation_inbox.complete",
+    )
+    result = complete_workstation_command(db, project_id, workstation_id, message_id, payload)
+    return ok(
+        {
+            "command": CollaborationMessageRead.model_validate(result["command"]).model_dump(mode="json"),
+            "receipt": (
+                CollaborationMessageRead.model_validate(result["receipt"]).model_dump(mode="json")
+                if result["receipt"] is not None
+                else None
+            ),
+        }
+    )
+
+
+@router.get("/messages")
+def api_list_messages(
+    project_id: str | None = None,
+    task_id: str | None = None,
+    approval_id: str | None = None,
+    handoff_id: str | None = None,
+    requirement_id: str | None = None,
+    agent_id: str | None = None,
+    message_type: str | None = None,
+    request: Request = None,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+):
+    _require_real_human_principal(db, request)
+    scoped_project_id = _collaboration_message_scope_project_id(
+        db,
+        project_id=project_id,
+        task_id=task_id,
+        approval_id=approval_id,
+        handoff_id=handoff_id,
+        requirement_id=requirement_id,
+        agent_id=agent_id,
+    )
+    require_project_read_access(db, request, scoped_project_id, action="collaboration.message.read")
+    items = list_messages(
+        db,
+        project_id=scoped_project_id,
+        task_id=task_id,
+        approval_id=approval_id,
+        handoff_id=handoff_id,
+        requirement_id=requirement_id,
+        agent_id=agent_id,
+        message_type=message_type,
+        limit=limit,
+    )
+    return ok([CollaborationMessageRead.model_validate(item).model_dump(mode="json") for item in items])
+
+
+@router.post("/messages/preview")
+def api_preview_message(payload: CollaborationMessageCreate, request: Request, db: Session = Depends(get_db)):
+    principal = _require_real_human_principal(db, request)
+    project_id = _collaboration_message_project_id(db, payload)
+    resolve_project_write_principal(db, request, project_id, action="collaboration.message.preview")
+
+    blockers: list[str] = []
+    warnings: list[str] = []
+    preview_notes: list[str] = ["这一步只生成预演，不会写入平台协作消息池。"]
+
+    if payload.message_type in {"runner_command", "runner_ack", "runner_result"}:
+        blockers.append("runner relay 消息必须走专用接口，不能从通用协作入口直接发送。")
+
+    cleaned_body = str(payload.body or "").strip()
+    if not cleaned_body:
+        blockers.append("指令正文不能为空。")
+
+    cleaned_recipient_id = str(payload.recipient_id or "").strip()
+    cleaned_recipient_type = str(payload.recipient_type or "").strip()
+    recipient_label: str | None = None
+    if not cleaned_recipient_id:
+        blockers.append("还没有选择目标线程或 NPC。")
+    elif not cleaned_recipient_type:
+        blockers.append("还没有指定目标类型。")
+    else:
+        try:
+            recipient_label, _ = _resolve_collaboration_message_recipient_label(
+                db,
+                project_id=project_id,
+                recipient_type=cleaned_recipient_type,
+                recipient_id=cleaned_recipient_id,
+            )
+        except AppError:
+            blockers.append("目标线程或电脑不存在，可能已经被删除或换了项目。")
+
+    pending_target_message_count = 0
+    recent_same_type_count = 0
+    if cleaned_recipient_id and cleaned_recipient_type:
+        target_messages = list(
+            db.scalars(
+                select(CollaborationMessage).where(
+                    CollaborationMessage.project_id == project_id,
+                    CollaborationMessage.recipient_type == cleaned_recipient_type,
+                    CollaborationMessage.recipient_id == cleaned_recipient_id,
+                )
+            )
+        )
+        pending_target_message_count = sum(
+            1
+            for item in target_messages
+            if str(item.status or "").strip().lower() not in {"completed", "failed", "done", "cancelled"}
+        )
+        recent_same_type_count = sum(
+            1
+            for item in target_messages
+            if str(item.message_type or "").strip().lower() == str(payload.message_type or "").strip().lower()
+        )
+        if pending_target_message_count:
+            warnings.append(f"这个目标当前还有 {pending_target_message_count} 条未收口的协作消息。")
+        if recent_same_type_count:
+            preview_notes.append(f"同类型历史消息 {recent_same_type_count} 条，可先核对回执后再决定是否继续派工。")
+
+    if len(cleaned_body) < 20:
+        warnings.append("这条指令比较短，建议把验收标准或回执要求写完整。")
+    if not str(payload.title or "").strip():
+        warnings.append("建议补一个标题，后续最终回复池和对话框会更容易追踪。")
+
+    ready = not blockers
+    preview_notes.append(
+        f"目标：{recipient_label or cleaned_recipient_id or '未选择'} / 类型：{str(payload.message_type or 'comment_message').strip() or 'comment_message'}"
+    )
+    next_step = "可以正式登记到平台协作消息池。" if ready else "先处理预演阻塞，再正式登记。"
+    preview_signature = _build_collaboration_message_preview_signature(
+        payload,
+        project_id=project_id,
+        sender_id=str(principal.user_id or "").strip() or None,
+    )
+
+    return ok(
+        CollaborationMessagePreviewRead(
+            project_id=project_id,
+            task_id=payload.task_id,
+            approval_id=payload.approval_id,
+            handoff_id=payload.handoff_id,
+            requirement_id=payload.requirement_id,
+            agent_id=payload.agent_id,
+            message_type=str(payload.message_type or "comment_message").strip() or "comment_message",
+            title=(str(payload.title or "").strip() or None),
+            body=cleaned_body,
+            sender_type="human",
+            sender_id=str(principal.user_id or "").strip() or None,
+            recipient_type=cleaned_recipient_type or None,
+            recipient_id=cleaned_recipient_id or None,
+            recipient_label=recipient_label,
+            status=str(payload.status or "open").strip() or "open",
+            ready=ready,
+            preview_signature=preview_signature,
+            pending_target_message_count=pending_target_message_count,
+            recent_same_type_count=recent_same_type_count,
+            blockers=blockers,
+            warnings=warnings,
+            preview_notes=preview_notes,
+            next_step=next_step,
+        ).model_dump(mode="json")
+    )
+
+
+@router.post("/messages")
+def api_create_message(payload: CollaborationMessageCreate, request: Request, db: Session = Depends(get_db)):
+    principal = _require_real_human_principal(db, request)
+    if payload.message_type in {"runner_command", "runner_ack", "runner_result"}:
+        raise AppError("FORBIDDEN_MESSAGE_TYPE", "runner relay 消息必须走专用接口", status_code=403)
+    project_id = _collaboration_message_project_id(db, payload)
+    resolve_project_write_principal(db, request, project_id, action="collaboration.message.create")
+    item = create_collaboration_message(
+        db,
+        payload.model_copy(update={"project_id": project_id, "sender_type": "human", "sender_id": principal.user_id}),
+    )
+    return ok(CollaborationMessageRead.model_validate(item).model_dump(mode="json"))
+
+
+@router.patch("/messages/{message_id}")
+def api_update_message(
+    message_id: str,
+    payload: CollaborationMessageUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    principal = _require_real_human_principal(db, request)
+    existing = get_collaboration_message_or_404(db, message_id)
+    project_id = _collaboration_message_scope_project_id(
+        db,
+        project_id=existing.project_id,
+        task_id=existing.task_id,
+        approval_id=existing.approval_id,
+        handoff_id=existing.handoff_id,
+        requirement_id=existing.requirement_id,
+        agent_id=existing.agent_id,
+    )
+    resolve_project_write_principal(db, request, project_id, action="collaboration.message.update")
+    item = update_collaboration_message(db, message_id, payload, actor_type="human", actor_id=principal.user_id)
+    return ok(CollaborationMessageRead.model_validate(item).model_dump(mode="json"))
+
+
+@router.post("/projects/{project_id}/runner-commands")
+def api_create_runner_command(
+    project_id: str,
+    payload: RunnerRelayCommandCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    principal = _require_real_human_principal(db, request)
+    resolve_project_write_principal(db, request, project_id, require_privileged=True, action="collaboration.runner_command.create")
+    item = create_runner_command(db, project_id, sender_id=principal.user_id or "", payload=payload)
+    return ok(RunnerRelayMessageRead.model_validate(item).model_dump(mode="json"))

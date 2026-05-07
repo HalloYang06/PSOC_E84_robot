@@ -1,0 +1,471 @@
+# Identity
+
+- Role: NPC4
+- Scope: Mode entry planner
+- Workstation: `codex-session-019db52e-dca5-7412-ba6c-621d0fc78537`
+- Requirement: `8cf1343a-828f-4325-ad23-ba2e8a060678`
+- Date: `2026-04-22`
+
+## Current platform check
+
+- Local NPC4 bridge state still points to the same requirement:
+  - `8cf1343a-828f-4325-ad23-ba2e8a060678`
+- No newer queued NPC4 dispatch was visible in the local workstation mirror during this pass.
+- Direct platform write-back is still not assumed from this heartbeat thread, so this slice stayed local and handoff-backed.
+
+## Scope boundary
+
+- Edited in the current NPC4 line:
+  - `apps/web/app/actions.ts`
+  - `apps/web/app/login/page.tsx`
+  - `apps/web/app/not-found.tsx`
+  - `apps/web/app/projects/projects-plaza-workbench.tsx`
+  - `apps/web/app/projects/mode-choice/page.tsx`
+  - `apps/web/app/projects/mode-choice/2d-edu/page.tsx`
+  - `apps/web/app/projects/mode-choice/3d-dev/page.tsx`
+  - `apps/web/app/projects/mode-choice/3d-edu/page.tsx`
+  - `apps/web/app/projects/[id]/project-playable-shell.tsx`
+  - `docs/ai-handoffs/npc4-mode-entry-2026-04-22.md`
+- Intentionally kept intact:
+  - the farm map base layer
+  - the embedded `harvest-moon-phaser3-game` runtime
+  - the exchange-panel main cards
+  - existing NPC proof / bridge visibility surfaces
+
+## What is now true
+
+- The project now has a real post-`/projects` branch placeholder route:
+  - `/projects/mode-choice`
+- The live default entry path is still unchanged:
+  - `/login -> /projects -> /projects/[id] -> 2D developer mode entry`
+- The placeholder route does **not** steal today’s live 2D path:
+  - it exists to make the future branch layer real
+  - it does not replace the farm-based current-project shell
+- The placeholder route now supports project-aware and mode-aware inspection:
+  - `/projects/mode-choice?projectId=<id>&mode=<mode>`
+- All three future modes now also have real downstream placeholder shells after the branch board:
+  - `/projects/mode-choice/2d-edu`
+  - `/projects/mode-choice/3d-dev`
+  - `/projects/mode-choice/3d-edu`
+
+## Delivered in this pass
+
+- Promoted the branch-board page’s own four-mode planning helpers into shared mode-entry path helpers:
+  - `apps/web/app/projects/mode-entry-paths.ts`
+  - `apps/web/app/projects/mode-choice/page.tsx`
+  - added shared `ProjectModeDefinition`, `buildProjectModeChoiceRoute(...)`, and `buildProjectModeDefinitions(...)`
+  - switched `/projects/mode-choice` to consume those shared helpers instead of maintaining its own local `ModeDefinition`, branch-route builder, and per-mode planner builder
+- This means the branch board’s route-plan truth is now anchored in the same shared mode-entry helper layer that already owns:
+  - live-route builders
+  - mode board/shell paths
+  - current-project mode-entry paths
+  - project normalization / selection helpers
+- Extended that shared mode-definition truth back into the live current-project shell:
+  - `apps/web/app/projects/[id]/project-playable-shell.tsx`
+  - the in-project four-mode planner now reads `label / state / detail / branchRule` from shared `ProjectModeDefinition` data instead of carrying a second drifting copy for those fields
+  - the live `2d-dev` front-door chain inside the planner now shows the real current-project path (`/projects/<id>`) and its matching in-shell live-layer hint instead of the older generic `/projects/[id]` marker
+- Added the same future-mode downstream-shell jump to more concrete current-project action rows:
+  - `apps/web/app/projects/[id]/project-playable-shell.tsx`
+  - the header action row and the backpack panel action row now both expose `打开当前模式占位壳` when the selected mode is a planned future mode, so users no longer have to reopen the mode dock first to reach the selected mode's downstream placeholder shell
+- Added the same future-mode current-project direct-entry jump to those concrete action rows as well:
+  - `apps/web/app/projects/[id]/project-playable-shell.tsx`
+  - the header action row and the backpack panel action row now both expose `打开当前模式直达页` for planned future modes, so users can jump straight back into `/projects/[id]?mode=<future-mode>` without first reopening the mode dock
+- Made the current-project shell's top badge mode-aware as well:
+  - `apps/web/app/projects/[id]/project-playable-shell.tsx`
+  - the top badge no longer always claims `2D 开发者模式入口`; it now reflects the selected future-mode inspection state while still keeping the current-project entry shell framing intact
+- Tightened the current-project shell's live `2d-dev` rule copy to the real project path:
+  - `apps/web/app/projects/[id]/project-playable-shell.tsx`
+  - the `今天的真实落点` rule text for the live 2D card now points at the actual current-project route (`/projects/<id>`) instead of the older generic `/projects/[id]` placeholder marker
+- While re-verifying, fixed one small null-safety hole surfaced by the full TypeScript pass:
+  - `apps/web/app/projects/[id]/project-playable-shell.tsx`
+  - the platform-dispatch bridge label now handles a missing `seatView` explicitly instead of passing `null` into `seatBridgeChip(...)`
+
+- Consolidated the current-project shell’s repeated future-mode tail structure into shared helpers:
+  - `apps/web/app/projects/[id]/project-playable-shell.tsx`
+  - added `buildFutureModeTailSteps(...)` so the three planned modes now reuse the same `模式选择页 -> 模式占位壳` step structure after the shared `/login -> /projects` front door
+  - added `buildFutureModeActions(...)` so the three planned modes also reuse the same `打开占位壳 + 回当前项目分流页` CTA shape
+- This means the current-project four-mode planner now has one shared definition for:
+  - the common front door before divergence
+  - the common planned-mode tail after divergence
+  - only the mode-specific text and target paths vary
+
+- Consolidated the current-project shell’s duplicated `shared front door` steps into one local helper:
+  - `apps/web/app/projects/[id]/project-playable-shell.tsx`
+  - added `buildSharedModeFrontDoorSteps(...)` so the four mode cards inside the current-project planner now all reuse the same `登录页 -> 项目管理入口页` route-step structure
+  - the helper keeps only the mode-specific detail strings variable, while the labels, route hints, layer kinds, and branch-state markers for the shared front door now come from one place
+- This makes the current-project 2D-developer-first planner match the product truth we have been surfacing elsewhere:
+  - the shared front door is one stable chain
+  - mode divergence starts only after `/projects`
+  - the farm base and live 2D path remain unchanged
+
+- Removed the last dead local project-parser blocks from the real mode-entry server surfaces instead of leaving shadow parsing code beside the shared helpers:
+  - `apps/web/app/projects/mode-choice/page.tsx`
+  - `apps/web/app/projects/mode-choice/2d-edu/page.tsx`
+  - `apps/web/app/projects/mode-choice/3d-dev/page.tsx`
+  - `apps/web/app/projects/mode-choice/3d-edu/page.tsx`
+  - those four pages no longer carry their own unused `ProjectSummary` / `normalizeProjects(...)` blocks after the shared `normalizeModeEntryProjects(...)`, `selectModeEntryProject(...)`, and `requireModeEntryProjectContext(...)` consolidation
+- Rebuilt the top-of-file mode-definition block in `apps/web/app/projects/mode-choice/page.tsx` into a smaller clean local builder set (`ModeDefinition`, `buildBranchPlaceholderRoute(...)`, `buildModeDefinitions(...)`) so the branch board keeps only the board-specific route/view metadata it still owns, while project/workspace loading stays fully shared.
+- This closes the last meaningful safe cleanup on the current 2D-developer-first entry slice without touching the farm base or changing today’s live default path.
+
+- Tightened the `/projects/mode-choice` branch-board CTA language so its user-facing actions now match the rest of the Chinese mode-entry system instead of mixing English labels into the same front door:
+  - the top selected-project card now uses `进入当前项目 2D live 入口` / `打开当前模式占位壳` / `打开当前项目同模式视角` / `打开 2D live 入口`
+  - the selected-mode card and per-project list cards now also use the same Chinese entry verbs (`进入 2D live 入口`, `打开 <模式> 占位壳`, `打开这个项目分流板`, `打开当前项目同模式视角`)
+- This closes another small but visible drift layer: the branch board now speaks one entry language across live 2D, future-mode shells, and same-mode current-project jumps.
+
+- Tightened the three downstream future-mode shell pages so they no longer carry dead raw string fallbacks for their own shell path:
+  - `apps/web/app/projects/mode-choice/2d-edu/page.tsx`
+  - `apps/web/app/projects/mode-choice/3d-dev/page.tsx`
+  - `apps/web/app/projects/mode-choice/3d-edu/page.tsx`
+  - each page now trusts `buildModeShellPath("<future-mode>", selectedProject?.id)` directly for its visible shell-path readout
+- This removes another small path-drift branch: future shell pages no longer keep a helper path plus a bare hard-coded fallback path in parallel.
+
+- Tightened `apps/web/app/projects/mode-choice/page.tsx` into a clearer single-source-of-truth shape for mode-entry routing:
+  - parked the stale top-level static `liveDefaultRoute` / `branchPlaceholderRoute` / `modeDefinitions` block so the board no longer visually carries two competing route-definition systems in one file
+  - the live board now relies on the dynamic builder set (`buildLiveDefaultRoute(...)`, `buildBranchPlaceholderRoute(...)`, `buildModeDefinitions(...)`) as the only active route-definition path
+  - the selected future-mode shell launcher on the board now reuses `selectedMode.shellPath` from that dynamic mode definition instead of recomputing it again
+  - `ModeDefinition.shellPath` is now typed as a required `string | null`, matching the real dynamic builder output
+- This reduces another maintenance-drift risk: future NPC4 edits to mode-entry rules on the board now have one active definition path instead of a live path plus a stale shadow copy in the same file.
+
+- Tightened the real branch-board surfaces so the mode-choice board and all three downstream future-mode placeholder shells now display project-aware path truth instead of falling back to bare template routes:
+  - `apps/web/app/projects/mode-choice/page.tsx` now builds its visible live-route chain, branch-placeholder chain, per-mode `routeSummary`, and per-mode `branchRule` from the same shared generators used by real entry CTAs
+  - the board's `selectedProjectModeBoardPath` no longer falls back to `/projects` when no project is selected; it now stays anchored to the real mode-aware board view
+  - `apps/web/app/projects/mode-choice/2d-edu/page.tsx`, `3d-dev/page.tsx`, and `3d-edu/page.tsx` now show both their upstream board path and their own downstream shell path from shared generators instead of hard-coded bare markers
+- This closes another visible drift layer: the branch board, its downstream shells, and the entry CTAs now all agree on the same project-aware board/shell paths.
+
+- Tightened the visible mode-entry path truth on the live `/projects` plaza and the current-project four-mode planner instead of only keeping the underlying CTAs correct:
+  - `apps/web/app/projects/projects-plaza-workbench-client.tsx` now shows the shared `modeChoicePath` / `modeChoice2dDevPath` markers instead of hard-coded bare strings
+  - each project card's secondary CTA now reads as the real `2D` default branch-board action instead of a generic branch-board label
+  - `apps/web/app/projects/[id]/project-playable-shell.tsx` now renders the selected mode's actual current-project board path in the planner legend note
+- Tightened the current-project four-mode planner's future-mode route descriptions so they now expose project-aware real branch-board and shell paths instead of repeating the generic bare `/projects/mode-choice` marker:
+  - `2d-edu`, `3d-dev`, and `3d-edu` route rules now interpolate their actual `modeBoardPaths[...]`
+  - the corresponding `模式选择页` and downstream shell entry steps now also show `modeBoardPaths[...]` / `modeShellPaths[...]` as their visible route hints
+- This means the visible entry-planning copy now matches the same shared path generators already used by the live CTAs, so the planner, plaza, and board surfaces stop disagreeing about which path is the real current-project branch board for a selected mode.
+
+- Added `apps/web/app/projects/mode-choice/3d-edu/page.tsx` as the third real downstream placeholder shell for a future mode.
+- Wired the `3d-edu` view inside `apps/web/app/projects/mode-choice/page.tsx` to that shell through:
+  - `shellPath: "/projects/mode-choice/3d-edu"`
+- Extended `revalidateProjectSurfaces(projectId)` so the new `3d-edu` downstream shell revalidates with the rest of the entry surfaces.
+- Aligned the current-project four-mode planner in `apps/web/app/projects/[id]/project-playable-shell.tsx` so future-mode tails are now honest:
+  - `2d-edu` points to `/projects/mode-choice/2d-edu`
+  - `3d-dev` points to `/projects/mode-choice/3d-dev`
+  - `3d-edu` points to `/projects/mode-choice/3d-edu`
+- This means the in-project planner no longer describes those three mode tails as abstract `planned mode surface` endpoints once a real downstream shell exists.
+- Upgraded the current-project four-mode planner again so each future mode now exposes direct CTA actions from inside the live current-project shell:
+  - open that mode's downstream placeholder shell directly
+  - jump back to the current project's `/projects/mode-choice` branch board
+- This turns the in-project planner from a read-only route explainer into a project-aware branch launcher for all non-live future modes.
+- Upgraded the `/projects/mode-choice` project list so future-mode views are now project-aware launchers instead of board-only switchers:
+  - each project card still keeps the direct `2D live` path
+  - when the selected mode is a future mode, the same card now also exposes a direct CTA into that project's matching downstream placeholder shell
+  - the project-aware branch-board CTA remains available as a separate action
+- Upgraded the top user card on `/projects/mode-choice` so future-mode views now expose the same direct selected-project shell CTA there as well:
+  - keep the existing `2D live` action
+  - add a direct `selected mode shell` action when the selected mode is not `2d-dev`
+  - keep the path back to the projects plaza
+- Tightened the `/projects/mode-choice` top user card behavior again so future-mode views now route its primary action directly to the selected mode shell while still exposing an explicit `2D live` fallback alongside it.
+- Cleaned the `/projects/mode-choice` top user card primary CTA label so it now matches that mode-aware routing instead of still reading like a hard-coded 2D-live action.
+- Upgraded the selected-project mode card in the middle of `/projects/mode-choice` so future-mode views now expose a direct `2D live` fallback there too:
+  - keep the mode-specific downstream-shell primary action
+  - add a direct `2D live` fallback action
+  - keep the stay-on-board action for the current project and current mode view
+- Upgraded the current-project live shell header (`mode dock`) so future-mode views there now expose a direct selected-mode-shell launcher:
+  - keep the current live shell intact
+  - keep the branch-board entry path
+  - add a direct jump from the live current-project shell into the selected future-mode placeholder shell
+- Tightened the current-project live shell again so jumps back into `/projects/mode-choice` now preserve the currently selected mode view:
+  - the mode-dock `view branch board` action now carries `mode=<selected mode>`
+  - the planner footnote link now carries the same selected-mode context
+  - moving between the live current-project shell and the branch board no longer resets future-mode inspection back to `2d-dev`
+- Tightened the current-project four-mode planner again so future-mode cards no longer lose mode context when returning to the branch board:
+  - each future-mode card’s `模式选择页` step now opens the mode-specific branch-board view
+  - each `回当前项目分流页` action now points to that same mode-specific branch-board view
+  - planner-internal navigation now matches the live-shell dock behavior instead of resetting to the default branch
+- Promoted the current-project four-mode selection from page-local state into URL-backed state:
+  - `apps/web/app/projects/[id]/page.tsx` now accepts `searchParams.mode`
+  - `ProjectPlayableShell` now accepts `initialModeId`
+  - the live current-project shell now resolves the selected mode from the URL instead of relying on page-local planner state
+  - non-default selections now travel through direct mode-aware entry links like `/projects/[id]?mode=<id>`
+  - refreshing or reopening a current-project link with `?mode=...` now restores that future-mode inspection instead of resetting to `2d-dev`
+- Tightened the current-project mode system again so the URL is now the real selector instead of only a mirrored afterthought:
+  - the four-mode rail on `apps/web/app/projects/[id]/project-playable-shell.tsx` now uses direct mode-aware links into `/projects/[id]` and `/projects/[id]?mode=<id>`
+  - the planner no longer relies on page-local mode state to decide which mode is active
+  - browser refresh, reopen, and same-page mode-aware navigation now stay aligned to the URL instead of risking a local-state mismatch
+- Added an explicit current-mode direct-entry CTA and route hint to the current-project live-shell header (`mode dock`):
+  - the dock now exposes `打开当前模式直达页`
+  - the dock meta now names the direct-entry formula such as `/projects/[id]?mode=3d-dev`
+- Corrected the four-mode rail wrapper so its `data-mode-entry` attribute now tracks the selected mode instead of staying hard-coded at `2d-dev`
+- Tightened the current-project deep-link behavior again so mode-aware non-default entries are no longer dropped into a collapsed planner:
+  - `apps/web/app/projects/[id]/project-playable-shell.tsx` now auto-opens the four-mode planner when the resolved mode is not `2d-dev`
+  - opening `/projects/[id]?mode=2d-edu`, `/projects/[id]?mode=3d-dev`, or `/projects/[id]?mode=3d-edu` now lands on a visible selected-mode plan instead of only changing the dock summary
+- Tightened current-project in-page navigation so mode-aware deep links no longer lose their route context during support actions:
+  - `reloginPath` now returns to the mode-aware current-project entry instead of the bare `/projects/[id]`
+  - current-project `team / npc-create / skills` panel links now build from the mode-aware entry path, so opening NPC editors, seat cards, or the Skill library no longer silently resets future-mode inspection back to `2d-dev`
+  - NPC editor `return_to` paths now also preserve the current mode context while moving through the Skill library
+- Tightened all three downstream future-mode placeholder shells so they can return to the current-project shell without throwing away the inspected mode:
+  - `apps/web/app/projects/mode-choice/2d-edu/page.tsx`
+  - `apps/web/app/projects/mode-choice/3d-dev/page.tsx`
+  - `apps/web/app/projects/mode-choice/3d-edu/page.tsx`
+  - each shell still keeps the explicit `2D live` primary return path
+  - each shell now also exposes a same-mode return action back into `/projects/[id]?mode=<selected future mode>`
+- Cleaned the temporary duplicate secondary `2D live` branch left behind in `apps/web/app/projects/mode-choice/2d-edu/page.tsx`, so all three future-mode placeholder shells now expose the same visible action structure:
+  - primary = explicit `2D live` fallback
+  - secondary = same-mode return into the current-project shell
+  - secondary = branch-board return into `/projects/mode-choice`
+- Tightened the selected-project mode card in `apps/web/app/projects/mode-choice/page.tsx` so future-mode views now expose a direct current-project same-mode path in addition to the shell path:
+  - the branch board still keeps the selected future-mode shell as the primary action
+  - the card now also exposes `Open current-project mode view` into `/projects/[id]?mode=<selected future mode>`
+  - the explicit `Open 2D live` fallback and stay-on-board action remain available
+- Tightened the top selected-project card in `apps/web/app/projects/mode-choice/page.tsx` so it now matches that same navigation truth in future-mode views:
+  - primary action still opens the selected future-mode shell
+  - the card now also exposes `Open current-project mode view` into `/projects/[id]?mode=<selected future mode>`
+  - the explicit `Open 2D live` fallback and plaza exit remain available
+- Tightened the project list cards in `apps/web/app/projects/mode-choice/page.tsx` so future-mode views now also expose a direct current-project same-mode path for every project:
+  - each project card still keeps the explicit `2D live` path
+  - each future-mode card still keeps the downstream shell path
+  - each future-mode card now also exposes `Open current-project mode view` into `/projects/[id]?mode=<selected future mode>`
+  - the branch-board switch action remains available
+- Aligned the `/projects/mode-choice` project-list explainer with the now-real action set:
+  - it no longer claims every project row only exposes two actions
+  - it now explicitly describes the stable `2D live` path plus the extra future-mode actions (`mode shell`, `same-mode current-project view`, and `branch-board switch`)
+- Tightened the current-project shell exits in `apps/web/app/projects/[id]/project-playable-shell.tsx` so future-mode inspections can return to the current project's branch board without first falling back to `/projects`:
+  - the top header action row now exposes `回当前项目分流板` when the selected mode is not `2d-dev`
+  - the backpack panel action row now exposes that same `回当前项目分流板` exit
+  - the original `回项目管理页` exit still remains available
+- Removed the dead commented duplicate `2D live` button stub from `apps/web/app/projects/mode-choice/2d-edu/page.tsx`, so the code now matches the already-clean visible action structure used by all three future-mode shells.
+- Aligned `apps/web/app/projects/projects-plaza-workbench.tsx` with the real project-entry action structure:
+  - fixed the leftover garbled project-card CTA labels
+  - made the plaza's project-list explainer explicitly name the two stable per-project front doors: `进入 2D live 入口` and that project's own `/projects/mode-choice?projectId=...` branch board
+- Tightened the `/projects` plaza branch-board CTA again so it now encodes the current 2D-first default explicitly:
+  - per-project branch-board links now open `/projects/mode-choice?projectId=...&mode=2d-dev`
+  - the plaza explainer now names that explicit `2d-dev` view instead of relying on the branch board's implicit default
+- Tightened the remaining top-level front-door links so they also stop relying on the branch board's implicit default:
+  - `apps/web/app/projects/projects-plaza-workbench.tsx` top branch-board CTA now opens `/projects/mode-choice?mode=2d-dev`
+  - `apps/web/app/not-found.tsx` recovery CTA now opens `/projects/mode-choice?mode=2d-dev`
+  - `apps/web/app/login/page.tsx` now explicitly names `/projects/mode-choice?mode=2d-dev` as the direct current-default board view while still describing bare `/projects/mode-choice` as the underlying route layer
+- Completed that top-level current-default board path on the login surface as a real CTA:
+  - `apps/web/app/login/page.tsx` route panel now also includes a clickable `查看当前 2D 分流视角` link to `/projects/mode-choice?mode=2d-dev`
+  - the login front door now matches the plaza and 404 recovery surfaces instead of only describing the explicit `2d-dev` board view in text
+- Aligned the actual in-use plaza surface, not only its sibling duplicate:
+  - `apps/web/app/projects/page.tsx` imports `projects-plaza-workbench-client.tsx`, so NPC4 updated that live client file to match the newer two-action project-card structure
+  - the live plaza now exposes the same explicit current-default board CTA (`/projects/mode-choice?mode=2d-dev`) at the top and the same per-project dual actions (`进入 2D live 入口` + project-specific branch board)
+- Removed the plaza-workbench duplication trap after aligning both copies:
+  - `apps/web/app/projects/projects-plaza-workbench.tsx` now simply re-exports `ProjectsPlazaWorkbench` from `projects-plaza-workbench-client.tsx`
+  - future NPC4 edits now have one live source of truth for the projects plaza instead of two drifting copies of the same front-door UI
+- Added a shared mode-entry path helper so the remaining front doors stop hand-writing branch-board URLs:
+  - `apps/web/app/projects/mode-entry-paths.ts` now owns `modeChoicePath`, `modeChoice2dDevPath`, and `buildProjectModeChoicePath(...)`
+  - `apps/web/app/login/page.tsx`, `apps/web/app/not-found.tsx`, `apps/web/app/projects/projects-plaza-workbench-client.tsx`, `apps/web/app/projects/mode-choice/page.tsx`, and `apps/web/app/projects/[id]/project-playable-shell.tsx` now all consume that shared helper instead of repeating their own `/projects/mode-choice?...` string assembly
+- This also made the current-project shell's default branch-board path explicit through the shared helper:
+  - the shell-level `modeChoicePath` now resolves to the explicit current-default board view instead of a bare `/projects/mode-choice`
+  - future-mode board links in the current-project shell now share the same generator as the plaza and board surfaces
+- Extended that shared helper down into the future-mode placeholder shells and board-page helpers:
+  - `apps/web/app/projects/mode-entry-paths.ts` now also owns `ModeEntryId`, `normalizeModeEntryId(...)`, `buildModeShellPath(...)`, and `buildProjectModeEntryPath(...)`
+  - the three downstream placeholder shells (`2d-edu`, `3d-dev`, `3d-edu`) now use the shared helper for their `returnTo`, branch-board return, same-mode current-project return, and `2D live` fallback paths
+  - `apps/web/app/projects/mode-choice/page.tsx` and `apps/web/app/projects/[id]/project-playable-shell.tsx` now also use the same shared mode-shell / mode-entry builders instead of locally assembling those URLs
+- Aligned the visible route readouts with those same mode-aware paths:
+  - `apps/web/app/projects/mode-choice/page.tsx` summary row now shows the actual current board path instead of a bare `/projects/mode-choice`
+  - the three downstream placeholder shells now show their real upstream board path in both the route chain and the `上游分流层` summary card, so visible path truth matches the actual board-return link
+- Tightened the current-project shell wording so mode-aware board entry is no longer described as a generic placeholder page:
+  - `apps/web/app/projects/[id]/project-playable-shell.tsx` now says `查看当前项目分流板` / `打开当前项目分流板`
+  - those actions still point at the selected mode's `selectedModeBoardPath`, but the label now matches the real project-aware branch-board behavior
+
+## Current truth after this heartbeat
+
+- Visible path hints now follow the same shared generators as the actual entry CTAs:
+  - the `/projects` plaza names the real explicit default board view with `modeChoice2dDevPath`
+  - the current-project planner now shows the selected mode's actual current-project branch-board path instead of a generic bare `/projects/mode-choice`
+  - the `/projects/mode-choice` board now shows its current project/mode route as a real generated board path instead of falling back to `/projects` in no-project state
+  - the three downstream future-mode shells now show their real upstream board path and their own generated shell path instead of hard-coded bare `/projects/mode-choice*` markers
+  - the `/projects/mode-choice` board file itself now only has one active route-definition system: the dynamic builder path
+  - the three downstream future-mode shell files now also only keep the shared helper output for their shell path, not a parallel raw fallback string
+  - the `/projects/mode-choice` board CTA labels now also use the same Chinese mode-entry wording as the plaza and current-project planner, instead of mixing English action names into that front door
+- Only `2D developer mode entry` is live.
+- `2D education`, `3D developer`, and `3D education` are still planned-only product branches.
+- The front-door surfaces now agree on one system:
+  - `/login` = auth only
+  - `/projects` = project-management entry page
+  - `/projects/mode-choice` = real placeholder branch layer
+  - `/projects/[id]` = current-project entry shell carrying the live 2D developer mode
+- The current-project shell and the branch board now agree on future-mode routing:
+  - the branch point is real
+  - the downstream placeholder shells are also real
+  - the live farm base is still untouched
+- The current-project shell now also exposes direct launch actions into those future-mode placeholder tails without leaving the planner as a dead-end explainer.
+- The `/projects/mode-choice` branch board now also exposes direct per-project launch actions into future-mode placeholder tails, so project switching no longer forces an extra board-only stop before entering those shells.
+- The top selected-project card on `/projects/mode-choice` now matches that same behavior, so future-mode views expose a direct shell launch both in the page header and in the project list below.
+- The top selected-project card on `/projects/mode-choice` now routes like the rest of the branch board in future-mode views:
+  - primary action = selected future-mode shell
+  - secondary action = direct `2D live` fallback
+  - plaza exit remains available
+- The top selected-project card’s primary CTA label now also reflects that mode-aware routing, so the visible action text no longer implies the old fixed `2D live` path.
+- The selected-project mode card in the center of `/projects/mode-choice` now also matches that navigation pattern, so future-mode views expose both the future-shell path and the immediate `2D live` fallback without leaving the board context.
+- The current-project live shell header now also matches that same route truth, so selecting a future mode in the four-mode planner exposes a direct shell jump right in the live page header without forcing an intermediate branch-board stop.
+- The current-project live shell and `/projects/mode-choice` now also preserve mode context when moving back to the branch board, so a future-mode inspection no longer silently resets to the default `2d-dev` branch view.
+- The current-project four-mode planner now also preserves that same mode context inside its own future-mode cards, so returning to the branch board from inside a future-mode card no longer resets the inspected mode.
+- The current-project page itself now treats the mode-aware URL as the real selector, so mode inspection is no longer only an in-memory planner state that happens to mirror `?mode=...`.
+- The current-project live-shell header now also exposes the selected mode's direct entry path explicitly, so `/projects/[id]?mode=<id>` is visible as a first-class route and not just an address-bar side effect.
+- Non-default current-project mode deep links now also auto-expand the four-mode planner, so opening `/projects/[id]?mode=<id>` immediately reveals the selected mode's route plan instead of landing on a collapsed panel.
+- Current-project support navigation now also stays inside the same mode-aware entry path, so relogin, team panel jumps, NPC binding, and Skill-library detours no longer drop a future-mode deep link back to the default `2d-dev` route.
+- The three downstream future-mode placeholder shells now also preserve that same inspection loop, so leaving `/projects/mode-choice/*` for the current-project shell no longer forces a reset to bare `/projects/[id]` unless the user intentionally chooses the `2D live` fallback.
+- The selected-project future-mode card on `/projects/mode-choice` now also preserves that same inspection loop, so the branch board itself can jump directly into the current-project same-mode shell instead of forcing users to choose only between the downstream placeholder shell and the `2D live` fallback.
+- The top selected-project future-mode card on `/projects/mode-choice` now also preserves that same inspection loop, so the branch board header itself can jump directly into the current-project same-mode shell instead of only offering the downstream shell and the `2D live` fallback.
+- The future-mode project list cards on `/projects/mode-choice` now also preserve that same inspection loop, so any project row can jump directly into the current-project same-mode shell instead of only offering the downstream shell and the `2D live` fallback.
+- The `/projects/mode-choice` project-list explainer now matches those future-mode cards, so the branch board no longer describes a stale two-action model after the extra mode-aware actions were added.
+- The current-project future-mode shell now also preserves that same inspection loop at its top-level exits, so users can return directly to the current project's branch board from the header or backpack panel instead of dropping out to `/projects` first.
+- The `/projects` plaza now also states and labels those project-level front doors correctly, so the broadest project-selection surface no longer mixes the real two-action entry structure with stale or garbled CTA text.
+- The `/projects` plaza now also encodes the current `2d-dev` branch-board view explicitly in those per-project board links, so the current 2D-first front door is visible in the URL instead of only implied by default behavior.
+- The top-level login / plaza / 404 front doors now also agree on that explicit current-default board view, so direct links into the branch board no longer rely on the implicit `2d-dev` fallback when the user is not yet in a specific project context.
+- The login page now also exposes that explicit current-default board view as a direct clickable path, so all three top-level front doors both describe and launch the same `/projects/mode-choice?mode=2d-dev` view.
+- The actual live `/projects` plaza surface now matches that same system, so the page users really see no longer lags behind the newer two-action project-card structure or the explicit `2d-dev` board CTA.
+- The projects plaza now also has a single maintained implementation path, so future mode-entry work is less likely to silently land in the wrong sibling file.
+- The branch-board path rules themselves now also have a single maintained implementation path, so future mode-entry edits are less likely to reintroduce mixed implicit-vs-explicit `2d-dev` entry URLs across front-door surfaces.
+- The future-mode placeholder-shell path rules now also have a single maintained implementation path, so same-mode return links, shell links, and current-project entry links are less likely to drift apart across the board, shell, and current-project surfaces.
+- Tightened `apps/web/app/projects/[id]/project-playable-shell.tsx` again so the current-project shell no longer keeps its own duplicate mode normalization or project-entry URL builder:
+  - `initialModeId` now resolves through shared `normalizeModeEntryId(...)`
+  - current-project direct-entry links now resolve through shared `buildProjectModeEntryPath(...)`
+  - the shell's future-mode tail map now also trusts shared `buildModeShellPath(...)` instead of carrying dead fallback shell URLs
+- Tightened `apps/web/app/projects/mode-entry-paths.ts` so future-mode shell ids are typed explicitly (`FutureModeEntryId`) and `buildModeShellPath(...)` now returns concrete shell paths for those three non-live modes, removing the need for defensive fallback URLs in the downstream placeholder shells.
+- Tightened the live branch-board surfaces again so even their `2D live` exits now share the same current-project entry generator:
+  - `apps/web/app/projects/mode-choice/page.tsx` now uses shared `buildProjectModeEntryPath(..., "2d-dev")` for its selected-project card, selected-mode card, and project-list live actions
+  - `apps/web/app/projects/projects-plaza-workbench-client.tsx` now uses that same shared helper for per-project `进入 2D live 入口` CTAs
+- Tightened the remaining default live-entry seams so project creation and current-project shell fallback now use the same generator too:
+  - `apps/web/app/actions.ts` now redirects new project creation through shared `buildProjectModeEntryPath(..., "2d-dev")` instead of hand-writing `/projects/${id}`
+  - `apps/web/app/projects/[id]/project-playable-shell.tsx` now derives its base `projectPath` from that same shared helper instead of carrying its own raw `/projects/${id}` fallback
+- Tightened the first real mode-aware mutation return path so Skill deletion no longer drops future-mode inspection back to a bare current-project URL:
+  - `apps/web/app/projects/[id]/project-playable-shell.tsx` now posts `return_to={skillLibraryReturnPath}` on each custom-skill delete form
+  - `apps/web/app/actions.ts` now routes `删除项目Skill` through shared `normalizeProjectReturnPath(...)` and `withQueryValue(...)`, matching the already-mode-aware Skill creation flow
+- Tightened the current-project Git panel's main autonomy action so it now returns to the right in-shell surface instead of falling back to a hard-coded exchange tab:
+  - `apps/web/app/projects/[id]/project-playable-shell.tsx` now posts `return_to={gitPanelReturnPath}` on the `自治推进一轮` form
+  - `apps/web/app/actions.ts` now routes `运行平台自治推进` through shared `normalizeProjectReturnPath(...)` and `withQueryValue(...)`, preserving `?mode=` and returning to the Git panel instead of a bare `/projects/${id}?panel=team&tab=exchange`
+- Tightened the current-project machine-room scan action so it now preserves the same mode-aware in-shell return path:
+  - `apps/web/app/projects/[id]/project-playable-shell.tsx` now posts `return_to={machineRoomReturnPath}` on each `扫描线程并继续` form
+  - `apps/web/app/actions.ts` now routes `请求扫描电脑线程` through shared `normalizeProjectReturnPath(...)` and `withQueryValue(...)`, preserving `?mode=` while still returning to the machine-room tab
+- Tightened the current-project `npc-create` workflow so its real mutation actions now preserve the same mode-aware in-shell return path instead of hard-resetting to a bare `npc-create` route:
+  - `apps/web/app/projects/[id]/project-playable-shell.tsx` now posts `return_to` on the NPC editor form, thread-list quick-create forms, batch knowledge-backfill form, seat-list autonomy recalibration form, and seat delete form
+  - `apps/web/app/actions.ts` now routes `创建Npc驻场席位`、`更新Npc驻场席位`、`校准Codex席位自治桥`、`补齐项目Npc固定知识库` and `删除Codex驻场席位` through shared `normalizeProjectReturnPath(...)` and `withQueryValue(...)`, preserving `?mode=` while keeping users inside the right `npc-create` subview
+- Tightened the current-project computers panel's pairing-token actions so they now preserve the same mode-aware in-shell return path:
+  - `apps/web/app/projects/[id]/project-playable-shell.tsx` now posts `return_to={computersPanelReturnPath}` on both `生成配对令牌` and `吊销令牌` forms
+  - `apps/web/app/actions.ts` now routes `生成电脑配对令牌` and `吊销电脑配对令牌` through shared `normalizeProjectReturnPath(...)`, preserving `?mode=` while keeping users on the computers tab and still appending pairing query state when a new token is issued
+- Tightened the current-project Git panel's `下发 Runner 命令` action so it now reuses the same mode-aware in-shell return path instead of silently refreshing:
+  - `apps/web/app/projects/[id]/project-playable-shell.tsx` now posts `return_to={gitPanelReturnPath}` on the `下发 Runner 命令` form
+  - `apps/web/app/actions.ts` now routes `下发Runner命令` through shared `normalizeProjectReturnPath(...)` and `withQueryValue(...)`, preserving `?mode=` while returning to the Git panel with explicit success/error feedback
+- The visible route hints now also match those shared mode-aware paths, so users are no longer shown a bare `/projects/mode-choice` marker when the actual board they are on is already scoped by `mode=` and sometimes `projectId=`.
+- The current-project shell now also labels its board-jump actions as a real project branch board instead of a vague placeholder page, which better matches the now-project-aware `/projects/mode-choice` behavior.
+- Future-mode routing is now no longer one-off:
+  - every planned non-live mode has a real post-branch placeholder shell
+  - later work can attach teaching NPCs, 3D world shells, bridge layers, and experiment/result flows to those shells instead of only editing summary cards
+
+## Verification
+
+- Command:
+  - `node .\\node_modules\\typescript\\bin\\tsc -p apps/web/tsconfig.json --noEmit --incremental false`
+- Result:
+  - passed after adding the real `/projects/mode-choice` placeholder route
+  - passed again after aligning the plaza, login, 404, and current-project planner copy to that real route
+  - passed again after adding the project-aware current-shell CTA into `/projects/mode-choice?projectId=<id>`
+  - passed again after splitting `/projects` plaza project cards into `enter live 2D` and `view project-aware placeholder branch page` actions
+  - passed again after turning `/projects/mode-choice?projectId=<id>` into a project-aware branch board with live/planned mode cards and project switching
+  - passed again after extending `/projects/mode-choice?projectId=<id>&mode=<mode>` into a mode-aware branch board that still defaults to `2d-dev`
+  - passed again after adding `/projects/mode-choice/2d-edu` as the first downstream placeholder shell for a future mode
+  - passed again after adding `/projects/mode-choice/3d-dev` as the second downstream placeholder shell for a future mode
+  - passed again after adding `/projects/mode-choice/3d-edu` as the third downstream placeholder shell for a future mode and aligning the current-project planner tails
+  - passed again after turning the current-project planner into a direct launcher for each future-mode placeholder shell
+  - passed again after upgrading the `/projects/mode-choice` project list so future-mode views can launch a selected project's matching downstream placeholder shell directly
+  - passed again after upgrading the top `/projects/mode-choice` user card so future-mode views there can launch the selected project's matching downstream placeholder shell directly
+  - passed again after adding the direct `2D live` fallback CTA to the selected-project mode card on `/projects/mode-choice`
+  - passed again after adding the direct future-mode shell launcher to the current-project live-shell header (`mode dock`)
+  - passed again after making the `/projects/mode-choice` top user card route its primary future-mode action directly to the selected mode shell while keeping the `2D live` fallback
+  - passed again after making live-shell jumps back into `/projects/mode-choice` preserve the currently selected mode view
+  - passed again after making future-mode planner cards preserve their own mode context when jumping back to `/projects/mode-choice`
+  - passed again after making the `/projects/mode-choice` top user card primary CTA label match its mode-aware routing
+  - passed again after making the current-project page persist non-default mode selection in the URL via `?mode=<id>`
+  - passed again after converting the current-project four-mode rail into direct mode-aware entry links and making the mode-aware URL the source of truth for the selected mode
+  - passed again after auto-opening the current-project four-mode planner for non-default mode deep links
+  - passed again after making current-project relogin and team/skills panel paths preserve the current mode-aware entry route
+  - passed again after making all three future-mode downstream placeholder shells expose same-mode return links back into the current-project shell
+  - passed again after removing the leftover duplicate visible `2D live` secondary branch from the `2d-edu` placeholder shell
+  - passed again after making the branch board's selected-project future-mode card expose a direct current-project same-mode entry path
+  - passed again after making the branch board's top selected-project future-mode card expose that same direct current-project same-mode entry path
+  - passed again after making the branch board's future-mode project list cards expose the same direct current-project same-mode entry path
+  - passed again after making the current-project future-mode shell expose direct `回当前项目分流板` exits in both the header and backpack panel action rows
+  - passed again after aligning the branch-board project-list explainer with the now-real mode-aware action set and removing the dead duplicate `2D live` button stub from the `2d-edu` placeholder shell
+  - passed again after aligning the `/projects` plaza project-list explainer and project-card CTA labels with the real `进入 2D live` + `project-specific branch board` action structure
+  - passed again after making the `/projects` plaza's per-project branch-board links encode the current `2d-dev` view explicitly and updating the explainer to match
+  - passed again after making the remaining top-level branch-board CTAs and explanations (`/login`, `/projects`, and `not-found`) point at or name the explicit current-default board view `/projects/mode-choice?mode=2d-dev`
+  - passed again after turning the login page's explicit current-default board view into a real CTA instead of text-only guidance
+  - passed again after aligning the actual imported plaza client file (`projects-plaza-workbench-client.tsx`) to the explicit current-default board CTA and two-action project-card structure, and after renaming the current-project shell's stale `分流占位页` buttons to `当前项目分流板`
+  - passed again after collapsing `projects-plaza-workbench.tsx` into a direct re-export of `projects-plaza-workbench-client.tsx`, removing the duplicate plaza implementation risk
+  - passed again after introducing `apps/web/app/projects/mode-entry-paths.ts` as the shared branch-board path generator and switching the login, 404, plaza, mode-choice board, and current-project shell to it
+  - passed again after extending that shared helper to own mode-shell and current-project mode-entry paths, and after switching the three future-mode placeholder shells plus the board/current-project shell consumers to the same generators
+  - passed again after making the mode-choice board and all three downstream placeholder shells display their actual mode-aware board path instead of a stale bare `/projects/mode-choice` marker
+  - passed again after tightening the shared path helper with typed future-mode shells, removing dead shell-path fallbacks from the current-project/future-shell surfaces, and switching the board/plaza `2D live` exits to shared `buildProjectModeEntryPath(...)`
+  - passed again after switching new-project creation and the current-project shell's base live-entry fallback onto that same shared `buildProjectModeEntryPath(..., "2d-dev")` generator
+  - passed again after making custom-skill deletion reuse the same mode-aware `return_to` flow as skill creation, so deleting a skill from a future-mode current-project view no longer strips its `?mode=` context
+  - passed again after making the current-project Git panel's `自治推进一轮` action reuse the same mode-aware `return_to` flow, so Git-surface autonomy runs now preserve `?mode=` and return to the Git panel instead of hard-resetting to the exchange tab
+  - passed again after making current-project machine-room thread scans reuse a mode-aware `return_to` flow, so scan requests/results now preserve `?mode=` while returning to the machine-room tab instead of hard-resetting to a bare project route
+  - passed again after making the current-project `npc-create` workflow's create/update/calibrate/backfill/delete actions reuse mode-aware `return_to` paths, so NPC management no longer strips `?mode=` or bounces users out of the correct `npc-create` subview
+  - passed again after making current-project computers-panel pairing-token actions reuse mode-aware `return_to` paths, so issuing/revoking pairing tokens now preserves `?mode=` while keeping users on the computers tab
+  - passed again after making the current-project Git panel's `下发 Runner 命令` action reuse a mode-aware `return_to` path, so command dispatch now preserves `?mode=` and returns to the Git panel with explicit feedback instead of a silent refresh
+
+- passed again after aligning the visible plaza and current-project planner path markers to the shared mode-entry generators, so future-mode route hints now show real project-aware board and shell paths instead of a stale bare `/projects/mode-choice`
+- passed again after making the `/projects/mode-choice` board and all three downstream future-mode shells display project-aware board/shell paths from the shared generators, so those visible route chains no longer drift from the actual mode-aware CTAs
+- passed again after collapsing the active `/projects/mode-choice` board route-definition path onto the dynamic builders and reusing `selectedMode.shellPath` as the board's selected-shell source of truth
+- passed again after removing the dead raw shell-path fallbacks from the three downstream future-mode shell pages, so those pages now trust the shared helper output directly
+- passed again after aligning the `/projects/mode-choice` board CTA labels to the same Chinese mode-entry wording used by the rest of the entry surfaces
+- passed again after removing the remaining dead commented-out route-definition draft and stale CTA-label comment branches from `apps/web/app/projects/mode-choice/page.tsx`, so the branch-board file now exposes only the live dynamic builder path instead of carrying historical shadow code beside it
+- passed again after extending `apps/web/app/projects/mode-entry-paths.ts` to own the generic current-project entry-shell route hints (`/projects/[id]` and `/projects/[id]?mode=...`) and switching both `apps/web/app/projects/mode-choice/page.tsx` and `apps/web/app/projects/[id]/project-playable-shell.tsx` to that shared helper path, so the planner-facing route formulas no longer drift across those two core mode-entry surfaces
+- passed again after wiring the remaining top-level front-door route displays (`/login`, `not-found`, and the live `/projects` plaza client) to the shared current-project entry-shell hint constants from `apps/web/app/projects/mode-entry-paths.ts`, so those surfaces now render the same shell/layer markers as the mode board and current-project shell instead of owning a separate live-route marker truth
+- passed again after making the live-2D branch-board view explicit in the last two core callers that still relied on `buildProjectModeChoicePath(...)` defaults (`apps/web/app/projects/projects-plaza-workbench-client.tsx` project cards and `apps/web/app/projects/[id]/project-playable-shell.tsx` shell-level `modeChoicePath`), so the current `2d-dev` front-door branch view is now spelled out instead of inferred in those paths
+- passed again after adding `applyProjectEntryLiveRouteMarkers(...)` to `apps/web/app/projects/mode-entry-paths.ts` and switching `/login`, `not-found`, and the live `/projects` plaza client to that shared helper, so the top-level live-route marker patching logic is no longer duplicated across those three front-door surfaces
+- passed again after removing that temporary `applyProjectEntryLiveRouteMarkers(...)` helper and switching `/login`, `not-found`, and the live `/projects` plaza client to reference `projectEntryShellPath` / `projectEntryLiveModeLayerHint` directly inside their `liveRoute` arrays, so those three front-door surfaces now point at the shared marker constants without any post-definition patch step
+- passed again after promoting that duplicated top-level live-route array itself into shared `projectEntryLiveRoute` data inside `apps/web/app/projects/mode-entry-paths.ts` and switching `/login`, `not-found`, and the live `/projects` plaza client to consume it directly, so the three front-door surfaces now share one route-chain source of truth instead of hand-maintaining parallel arrays
+- passed again after extending that shared live-route truth into `buildProjectEntryLiveRoute(projectId?)` inside `apps/web/app/projects/mode-entry-paths.ts` and switching `apps/web/app/projects/mode-choice/page.tsx` to it, so the project-aware `/projects/mode-choice` live-default route panel now uses the same shared builder as the top-level front doors instead of carrying its own local array copy
+- passed again after promoting the three future-mode board/shell path maps into shared generators inside `apps/web/app/projects/mode-entry-paths.ts` (`buildProjectFutureModeChoicePaths(...)` and `buildProjectFutureModeShellPaths(...)`) and switching both `apps/web/app/projects/mode-choice/page.tsx` and `apps/web/app/projects/[id]/project-playable-shell.tsx` to them, so the non-live mode tails no longer maintain parallel `2d-edu / 3d-dev / 3d-edu` path maps in two core entry surfaces
+- passed again after promoting each downstream future-mode shell page's `returnTo / board / current-project same-mode / 2D live / shell` path bundle into shared `buildProjectFutureModeShellNavigation(...)` inside `apps/web/app/projects/mode-entry-paths.ts` and switching `apps/web/app/projects/mode-choice/2d-edu/page.tsx`, `3d-dev/page.tsx`, and `3d-edu/page.tsx` to it, so those three placeholder shells no longer reassemble the same mode-entry navigation context independently
+- passed again after promoting the mode-entry project normalization path into shared `normalizeModeEntryProjects(...)` inside `apps/web/app/projects/mode-entry-paths.ts` and switching the actual consumers in `apps/web/app/projects/mode-choice/page.tsx` plus the three downstream future-mode shell pages to it, so those four mode-entry surfaces now resolve workspace projects through one shared parser instead of four independent call sites
+- passed again after promoting the `selectedProject` lookup into shared `selectModeEntryProject(...)` inside `apps/web/app/projects/mode-entry-paths.ts` and switching `/projects/mode-choice` plus the three downstream future-mode shell pages to it, so those four mode-entry surfaces now share the same current-project selection rule instead of each carrying its own inline `.find(...)` path
+- passed again after introducing server-only `apps/web/app/projects/mode-entry-server.ts` with shared `requireModeEntryWorkspace(returnTo)` and switching `/projects/mode-choice` plus the three downstream future-mode shell pages to it, so those four mode-entry server pages now share one authenticated workspace-entry guard and typed workspace contract instead of each duplicating `getWorkspaceState()` + login redirect logic
+- passed again after extending `apps/web/app/projects/mode-entry-server.ts` with shared `requireModeEntryProjectContext(returnTo, selectedProjectId)` and switching `/projects/mode-choice` plus the three downstream future-mode shell pages to it, so those four mode-entry server pages now share the whole `workspace -> projects -> selectedProject` loading path instead of only the auth guard
+- passed again after removing the last dead local `ProjectSummary` / `normalizeProjects(...)` blocks from `/projects/mode-choice` and the three downstream future-mode shell pages, and after rebuilding the branch board’s tiny board-specific mode-definition block without reintroducing duplicate project/workspace loading logic
+- passed again after consolidating the current-project shell’s duplicated `登录页 -> 项目管理入口页` front-door steps into shared `buildSharedModeFrontDoorSteps(...)`, so the four mode cards now share one `shared front door` definition before their post-`/projects` divergence
+- passed again after consolidating the current-project shell’s planned-mode tail steps and actions into shared `buildFutureModeTailSteps(...)` and `buildFutureModeActions(...)`, so the three future modes now share one post-divergence structure instead of each hand-maintaining its own `模式选择页 -> 模式占位壳` pair and matching CTA block
+- passed again after promoting `/projects/mode-choice` board planning into shared `ProjectModeDefinition` / `buildProjectModeChoiceRoute(...)` / `buildProjectModeDefinitions(...)` helpers inside `apps/web/app/projects/mode-entry-paths.ts`, and after fixing the small nullable `seatBridgeChip(...)` call hole exposed during full verification
+
+- passed again after wiring the current-project shell's four-mode planner back onto those shared `ProjectModeDefinition` fields and replacing its live `2d-dev` generic `/projects/[id]` marker with the real project-aware `/projects/<id>` path hint, so the branch board and in-project planner now expose the same mode truth while the live 2D chain reads as an actual current-project route
+- passed again after adding `打开当前模式占位壳` to both the header action row and the backpack panel action row on `apps/web/app/projects/[id]/project-playable-shell.tsx`, so planned future-mode inspections now have direct downstream-shell exits from those concrete current-project surfaces instead of only from the mode dock
+
+- passed again after adding `打开当前模式直达页` to those same header and backpack action rows on `apps/web/app/projects/[id]/project-playable-shell.tsx`, so planned future-mode inspections now also have direct current-project same-mode entry links from those concrete surfaces instead of only from the mode dock
+
+- passed again after making the current-project shell's top badge mode-aware on `apps/web/app/projects/[id]/project-playable-shell.tsx`, so future-mode inspections no longer still render the misleading fixed `2D 开发者模式入口` label at the very top of the page
+
+- passed again after tightening the current-project shell's live `2d-dev` `今天的真实落点` rule text on `apps/web/app/projects/[id]/project-playable-shell.tsx` from the generic `/projects/[id]` placeholder to the actual current-project route `/projects/<id>`, so the live-mode rule summary now matches the real selected-project path shown elsewhere in the planner
+
+- passed again after switching the current-project shell's top mode-dock `直达入口` summary on `apps/web/app/projects/[id]/project-playable-shell.tsx` from the generic route-hint placeholder to the real project-aware mode entry URL (`/projects/<id>` or `/projects/<id>?mode=...`), so the header-level entry summary now matches the selected project's actual deep link instead of a template path
+
+- passed again after tightening the current-project shell's live mode-layer hint to key off the real `projectId` instead of a truthy `projectPath` fallback, and after removing the now-unused generic `buildProjectModeEntryRouteHint(...)` helper from `apps/web/app/projects/mode-entry-paths.ts`, so the mode-entry slice no longer retains a dead `/projects/[id]`-style template helper or an `inside /projects` fallback path in its live-layer truth
+
+- passed again after introducing a local current-project-shell mode-entry helper inside `apps/web/app/projects/[id]/project-playable-shell.tsx` and switching the shell's base route, current-mode deep link, and four-mode rail links to it, so broken-state fallbacks now stay on current-project shell placeholders (`/projects/[id]` or `/projects/[id]?mode=...`) instead of collapsing to the top-level `/projects` plaza path
+
+- passed again after introducing a sibling local current-project-shell mode-board helper inside `apps/web/app/projects/[id]/project-playable-shell.tsx` and switching the shell's default/current selected board links to it, so project-shell-level `当前项目分流板` navigation now shares the same project-aware fallback layer as the direct mode-entry links instead of mixing in a separate inline board-path builder
+
+## Next recommended step
+
+- Do not spend the next NPC4 slice on more summary chips or wording polish.
+- The next meaningful NPC4 continuation should be one of:
+  - start attaching real mode-specific payload to one downstream shell
+  - decide whether new-project creation should remain direct to `/projects/[id]` or eventually stage through `/projects/mode-choice`
+  - add explicit project-aware CTAs from more concrete current-project surfaces into the mode-specific downstream shells
+- Keep the same guardrail:
+  - do not replace the farm base while the live 2D developer route still depends on it
+
+## Risks / gaps
+
+- `/projects/mode-choice` is still an honest placeholder branch board, not a real mode-switching controller.
+- The three future-mode downstream shells are still structural placeholders only:
+  - no teaching NPC chains yet
+  - no 3D world shell yet
+  - no experiment/result loop yet
+- The current-project planner can now launch future placeholder shells directly, but those shells still carry placeholder-only content rather than mode-specific payload.
+- The current-project page now uses `?mode=...` as the real selector for non-default mode inspection, but the default `2d-dev` view still intentionally collapses to the clean base URL.
+- The `/projects/mode-choice` top user card behavior is now mode-aware and its primary CTA label matches that routing, but the remaining secondary plaza copy on that card could still be cleaned up further.
+- Plaza project cards still default straight to `/projects/[id]`, which is correct for today’s live 2D path but means branching is not yet part of the default click path.
+- Platform-side final reply for NPC4 is still not emitted directly from this heartbeat thread.

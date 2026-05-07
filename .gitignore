@@ -23,13 +23,54 @@ artifacts/
 
 # scratch / reference dumps
 .tmp-*/
+tmp-*.js
+tmp-*.md
+tmp-*.ps1
 
 # app runtime files
 *.log
+*.pid
+*.err
+*.tsbuildinfo
+ai_collab.db
 apps/api/ai_collab.db
+apps/api/test_suite.db
+apps/api/tests/test_suite.db
+apps/api/.pytest-file-scan/
 apps/api/alembic/versions/__pycache__/
 apps/web/*.log
+api-run.err
+logs-*.txt
+
+# screenshots / scratch images
+screenshot-*.png
+apps/api/screenshot-*.png
+
+# scripts / runner state
+scripts/.npc*-thread-consumer-state.json
+ai-collab-runner/inbox/
 
 # IDE
 .vscode/
 .idea/
+
+# Reference Unity demos / large 3rd-party assets — kept locally, not in repo
+unity-rpg-topdown-adventure/
+unity-sprite-action-demo/
+unity-topdown-life-sim/
+unity-dragon-animation-demo/
+unity-dragon-animation-demo-*.log
+unity-dragon-mcp-import.log
+3D MODULE/
+tmp_new_terrain_sources/
+art/
+design/
+
+# Large built/binary public assets — keep what's already tracked, ignore the rest until explicitly added
+apps/web/public/assets/
+apps/web/public/unity/
+apps/web/public/vendor/
+
+# Build / runtime artifacts
+*.tsbuildinfo
+apps/web/next-env.d.ts
