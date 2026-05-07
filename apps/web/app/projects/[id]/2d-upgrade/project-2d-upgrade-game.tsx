@@ -38,6 +38,7 @@ import styles from "./project-2d-upgrade-game.module.css";
 import { ClaudeCommandPalette } from "../_components/claude-command-palette";
 import { BroadcastModal } from "../_components/broadcast-modal";
 import { WorkstationProfileEditor } from "../_components/workstation-profile-editor";
+import { CrossWorkstationHandoffs } from "../_components/cross-workstation-handoffs";
 
 type GameProject = {
   id: string;
@@ -3172,6 +3173,19 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             npcSeats={npcSeats}
             computers={computers}
             onBroadcast={(scope, label) => setBroadcastTarget({ scope, label })}
+          />
+          <CrossWorkstationHandoffs
+            apiBaseUrl={apiBaseUrl}
+            projectId={project.id}
+            seats={npcSeats.map((s) => ({
+              id: s.id,
+              name: s.name || s.title || s.id,
+              computerNodeId: s.computerNodeId || "",
+              computerNodeName: s.computerNodeId
+                ? (computers.find((c) => c.id === s.computerNodeId)?.title ??
+                   computers.find((c) => c.id === s.computerNodeId)?.name ?? s.computerNodeId)
+                : "未绑定电脑",
+            }))}
           />
           {scorecard && scorecardOpen ? (
             <div className={styles.scorecardPanel}>
