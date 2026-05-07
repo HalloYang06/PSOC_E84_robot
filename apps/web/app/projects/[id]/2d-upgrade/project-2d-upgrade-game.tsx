@@ -36,6 +36,7 @@ import { TeamNoticeToast } from "../../../../components/team-notice-toast";
 import { buildComputerOneClickConnectCommand, suggestedComputerRunnerId } from "../../../../lib/runner-onboarding-commands";
 import styles from "./project-2d-upgrade-game.module.css";
 import { ClaudeCommandPalette } from "../_components/claude-command-palette";
+import { BroadcastModal } from "../_components/broadcast-modal";
 
 type GameProject = {
   id: string;
@@ -566,10 +567,12 @@ function WorkstationGroupsSection({
   projectId,
   npcSeats,
   computers,
+  onBroadcast,
 }: {
   projectId: string;
   npcSeats: FeedItem[];
   computers: FeedItem[];
+  onBroadcast: (scope: string, label: string) => void;
 }) {
   const computerNameById = new Map<string, string>();
   for (const c of computers) {
@@ -606,12 +609,26 @@ function WorkstationGroupsSection({
                 <span className={styles.workstationGroupCount}>
                   {group.seats.length} 个 NPC · 自动化 {automationOn}
                 </span>
-                <span
-                  className={styles.workstationGroupBroadcastDisabled}
-                  title="组内广播：S3 阶段接入（一键发给本组所有 NPC）"
-                >
-                  组内广播 (S3)
-                </span>
+                {group.key === "__unbound__" ? (
+                  <span
+                    className={styles.workstationGroupBroadcastDisabled}
+                    title="未绑定电脑的 NPC 暂不支持组内广播，先在 NPC 编辑里绑定电脑"
+                  >
+                    组内广播 (需先绑定电脑)
+                  </span>
+                ) : (
+                  <span
+                    className={styles.workstationGroupBroadcast}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onBroadcast(`workstation:${group.key}`, group.name);
+                    }}
+                    title="组内广播：一键发给本组所有 NPC"
+                  >
+                    组内广播
+                  </span>
+                )}
               </summary>
               <ul className={styles.workstationGroupSeatList}>
                 {group.seats.map((seat) => (
@@ -993,6 +1010,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
     indicators: Array<{ key: string; label: string; grade?: string; detail: string }>;
   } | null>(null);
   const [scorecardOpen, setScorecardOpen] = useState(false);
+  const [broadcastTarget, setBroadcastTarget] = useState<{ scope: string; label: string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -3057,6 +3075,15 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
               >
                 NPC 工作台 →
               </Link>
+              <button
+                type="button"
+                className={styles.cockpitPrimary}
+                onClick={() => setBroadcastTarget({ scope: "all", label: "全员" })}
+                disabled={npcSeats.length === 0}
+                title={npcSeats.length === 0 ? "项目没有 NPC，先去 NPC 入驻" : "一键给项目所有 NPC 发同一条指令（带预演 + 二次确认）"}
+              >
+                📣 全员广播
+              </button>
               {scorecard ? (
                 <button
                   type="button"
@@ -3133,6 +3160,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             projectId={project.id}
             npcSeats={npcSeats}
             computers={computers}
+            onBroadcast={(scope, label) => setBroadcastTarget({ scope, label })}
           />
           {scorecard && scorecardOpen ? (
             <div className={styles.scorecardPanel}>
@@ -3342,6 +3370,15 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         <span>当前阶段：先搬功能入口和 UI 风格。所有业务操作先从右侧按钮点击打开，暂不启用 Unity 物件交互。</span>
       </footer>
     </main>
+    {broadcastTarget ? (
+      <BroadcastModal
+        apiBaseUrl={apiBaseUrl}
+        projectId={project.id}
+        scope={broadcastTarget.scope}
+        scopeLabel={broadcastTarget.label}
+        onClose={() => setBroadcastTarget(null)}
+      />
+    ) : null}
     </>
   );
 }

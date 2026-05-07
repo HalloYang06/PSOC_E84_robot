@@ -3,7 +3,9 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import uuid
 
+from pydantic import BaseModel, Field
 from sqlalchemy import or_, select
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
@@ -1204,3 +1206,156 @@ def api_create_runner_command(
     resolve_project_write_principal(db, request, project_id, require_privileged=True, action="collaboration.runner_command.create")
     item = create_runner_command(db, project_id, sender_id=principal.user_id or "", payload=payload)
     return ok(RunnerRelayMessageRead.model_validate(item).model_dump(mode="json"))
+
+
+class BroadcastRequest(BaseModel):
+    scope: str = Field(..., description='"all" 或 "workstation:<computer_node_id>"')
+    title: str | None = None
+    body: str
+    message_type: str = Field(default="comment_message")
+
+
+def _is_npc_seat(record: dict) -> bool:
+    if not isinstance(record, dict):
+        return False
+    seat_type = ""
+    metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
+    extra_data = record.get("extra_data") if isinstance(record.get("extra_data"), dict) else {}
+    for source in (metadata, extra_data, record):
+        candidate = source.get("seat_type") if isinstance(source, dict) else None
+        if candidate:
+            seat_type = str(candidate).strip().lower()
+            break
+    return seat_type in {"codex", "npc"}
+
+
+def _resolve_broadcast_targets(config: dict, scope: str) -> tuple[list[dict], str]:
+    workstations = config.get("collaboration_config", {}) if isinstance(config.get("collaboration_config"), dict) else config
+    raw = (
+        workstations.get("thread_workstations")
+        or workstations.get("threadWorkstations")
+        or workstations.get("workstations")
+        or []
+    )
+    seats = [item for item in raw if isinstance(item, dict) and _is_npc_seat(item)]
+    scope = (scope or "all").strip()
+    if scope == "all":
+        return seats, "全员"
+    if scope.startswith("workstation:"):
+        node_id = scope.split(":", 1)[1].strip()
+        if not node_id:
+            return [], "未指定工位"
+        targets = [
+            seat
+            for seat in seats
+            if str(seat.get("computer_node_id") or seat.get("computerNodeId") or "").strip() == node_id
+        ]
+        return targets, f"工位 {node_id}"
+    return [], "未知 scope"
+
+
+def _broadcast_target_summary(seat: dict) -> dict:
+    return {
+        "id": str(seat.get("id") or seat.get("config_id") or seat.get("row_id") or ""),
+        "name": str(seat.get("name") or seat.get("title") or "未命名 NPC"),
+        "computer_node_id": str(seat.get("computer_node_id") or seat.get("computerNodeId") or ""),
+        "provider_label": str(seat.get("provider_label") or seat.get("providerLabel") or seat.get("provider_id") or ""),
+        "responsibility": str(seat.get("responsibility") or "")[:60],
+    }
+
+
+def _estimate_broadcast_tokens(body: str, target_count: int) -> int:
+    body_chars = len(body or "")
+    per_target = max(160, body_chars + 80)
+    return per_target * max(1, target_count)
+
+
+@router.post("/projects/{project_id}/broadcast/preview")
+def api_broadcast_preview(
+    project_id: str,
+    payload: BroadcastRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    _require_real_human_principal(db, request)
+    resolve_project_write_principal(db, request, project_id, action="collaboration.broadcast.preview")
+    config = get_project_collaboration_config(db, project_id)
+    targets, scope_label = _resolve_broadcast_targets(config, payload.scope)
+    body = (payload.body or "").strip()
+    blockers: list[str] = []
+    warnings: list[str] = []
+    if not body:
+        blockers.append("广播内容不能为空。")
+    if len(body) < 30:
+        warnings.append("广播内容偏短，建议补全验收标准 / 回执要求。")
+    if not targets:
+        blockers.append(f"{scope_label} 没有可派发的 NPC。")
+    if len(targets) > 20:
+        warnings.append(f"将一次性派发给 {len(targets)} 个 NPC，建议先在小范围验证。")
+    estimated = _estimate_broadcast_tokens(body, len(targets))
+    requires_human_review = len(targets) >= 5 or len(body) >= 1500
+    return ok(
+        {
+            "scope": payload.scope,
+            "scope_label": scope_label,
+            "target_count": len(targets),
+            "targets": [_broadcast_target_summary(seat) for seat in targets],
+            "estimated_tokens": estimated,
+            "requires_human_review": requires_human_review,
+            "blockers": blockers,
+            "warnings": warnings,
+            "ready": not blockers,
+        }
+    )
+
+
+@router.post("/projects/{project_id}/broadcast/commit")
+def api_broadcast_commit(
+    project_id: str,
+    payload: BroadcastRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    principal = _require_real_human_principal(db, request)
+    resolve_project_write_principal(db, request, project_id, action="collaboration.broadcast.commit")
+    config = get_project_collaboration_config(db, project_id)
+    targets, scope_label = _resolve_broadcast_targets(config, payload.scope)
+    body = (payload.body or "").strip()
+    if not body:
+        raise AppError("BAD_REQUEST", "广播内容不能为空", status_code=400)
+    if not targets:
+        raise AppError("BAD_REQUEST", f"{scope_label} 没有可派发的 NPC", status_code=400)
+    broadcast_id = uuid.uuid4().hex
+    title = (payload.title or "").strip() or f"{scope_label} 广播"
+    message_type = (payload.message_type or "comment_message").strip() or "comment_message"
+    if message_type in {"runner_command", "runner_ack", "runner_result"}:
+        raise AppError("FORBIDDEN_MESSAGE_TYPE", "广播不支持 runner relay 类型", status_code=403)
+    created: list[str] = []
+    for seat in targets:
+        seat_id = str(seat.get("id") or seat.get("config_id") or seat.get("row_id") or "").strip()
+        if not seat_id:
+            continue
+        message_payload = CollaborationMessageCreate(
+            project_id=project_id,
+            message_type=message_type,
+            title=title,
+            body=body,
+            sender_type="human",
+            sender_id=principal.user_id,
+            recipient_type="thread_workstation",
+            recipient_id=seat_id,
+            status="open",
+        )
+        item = create_collaboration_message(db, message_payload, dispatch_id=broadcast_id)
+        created.append(item.id)
+    return ok(
+        {
+            "broadcast_id": broadcast_id,
+            "scope": payload.scope,
+            "scope_label": scope_label,
+            "title": title,
+            "message_type": message_type,
+            "target_count": len(targets),
+            "created_message_ids": created,
+        }
+    )
