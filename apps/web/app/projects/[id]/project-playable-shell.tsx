@@ -5996,10 +5996,13 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
     }
     return options;
   }, [gitExecutionRepository.github_url, gitExecutionRepository.local_git_url]);
-  const pairingNodeId = text(props.pairingNodeId, "");
-  const pairingToken = text(props.pairingToken, "");
-  const workstationTokenId = text(props.workstationTokenId, "");
-  const workstationToken = text(props.workstationToken, "");
+  const pairingNodeId = text(searchParams?.get("pairing_node") ?? props.pairingNodeId, "");
+  const pairingToken = text(searchParams?.get("pairing_token") ?? props.pairingToken, "");
+  const workstationTokenId = text(
+    searchParams?.get("adapter_workstation") ?? props.workstationTokenId,
+    "",
+  );
+  const workstationToken = text(searchParams?.get("adapter_token") ?? props.workstationToken, "");
   const initialView = normalizePanelView(
     props.initialPanelView ?? (workstationToken ? "machine-room" : pairingToken ? "computers" : "exchange"),
   );
