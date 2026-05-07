@@ -74,3 +74,4 @@ apps/web/public/vendor/
 # Build / runtime artifacts
 *.tsbuildinfo
 apps/web/next-env.d.ts
+ai-collab-runner/
