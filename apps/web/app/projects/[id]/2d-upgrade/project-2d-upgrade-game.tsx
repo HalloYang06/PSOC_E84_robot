@@ -32,6 +32,7 @@ import {
 } from "../../../actions";
 import { useTeamNoticeToast } from "../../../../lib/use-team-notice-toast";
 import { TeamNoticeToast } from "../../../../components/team-notice-toast";
+import { buildComputerOneClickConnectCommand } from "../../../../lib/runner-onboarding-commands";
 import styles from "./project-2d-upgrade-game.module.css";
 
 type GameProject = {
@@ -1756,7 +1757,13 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
 
     if (moduleTab === "computers" && action.id === "pairing-token") {
       const connectCommand = pairingResult
-        ? `powershell -NoProfile -ExecutionPolicy Bypass -Command "& { New-Item -ItemType Directory -Force -Path .\\ai-collab-runner | Out-Null; Invoke-WebRequest -UseBasicParsing -Uri '${webBaseUrl}/downloads/runner/connect-ai-collab-runner.ps1' -OutFile '.\\ai-collab-runner\\connect-ai-collab-runner.ps1'; & '.\\ai-collab-runner\\connect-ai-collab-runner.ps1' -Server '${apiBaseUrl}' -PairingToken '${pairingResult.token}' -ComputerNodeId '${pairingResult.nodeId}' -RunnerName '${pairingResult.nodeId} Runner' -RunnerId 'runner-${pairingResult.nodeId}' -ProjectId '${project.id}' }"`
+        ? buildComputerOneClickConnectCommand(
+            apiBaseUrl,
+            project.id,
+            { id: pairingResult.nodeId, label: pairingResult.nodeId },
+            pairingResult.token,
+            `runner-${pairingResult.nodeId}`,
+          )
         : "";
       return (
         <div className={styles.realActionStack} data-unity-real-form="computer-pairing">
