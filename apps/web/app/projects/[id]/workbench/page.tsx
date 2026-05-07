@@ -89,6 +89,7 @@ export default async function WorkbenchPage({ params }: { params: { id: string }
     <WorkbenchClient
       projectId={String(project.id ?? params.id)}
       projectName={text(project.name, `项目 ${params.id.slice(0, 8)}`)}
+      apiBaseUrl={(process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8010").trim().replace(/\/$/, "")}
       seats={seats}
     />
   );

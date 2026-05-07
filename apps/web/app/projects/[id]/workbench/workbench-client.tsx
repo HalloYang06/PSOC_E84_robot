@@ -8,10 +8,11 @@ import { NpcTile, type WorkbenchSeat } from "./_components/npc-tile";
 type WorkbenchClientProps = {
   projectId: string;
   projectName: string;
+  apiBaseUrl: string;
   seats: WorkbenchSeat[];
 };
 
-export function WorkbenchClient({ projectId, projectName, seats }: WorkbenchClientProps) {
+export function WorkbenchClient({ projectId, projectName, apiBaseUrl, seats }: WorkbenchClientProps) {
   const [openIds, setOpenIds] = useState<string[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState("");
@@ -176,6 +177,7 @@ export function WorkbenchClient({ projectId, projectName, seats }: WorkbenchClie
                 <NpcTile
                   key={seat.id}
                   projectId={projectId}
+                  apiBaseUrl={apiBaseUrl}
                   seat={seat}
                   onClose={() => closeOpen(seat.id)}
                 />

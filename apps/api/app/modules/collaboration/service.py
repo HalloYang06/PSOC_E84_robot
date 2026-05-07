@@ -1377,6 +1377,8 @@ def list_messages(
     requirement_id: str | None = None,
     agent_id: str | None = None,
     message_type: str | None = None,
+    recipient_type: str | None = None,
+    recipient_id: str | None = None,
     limit: int = 100,
 ):
     stmt = select(CollaborationMessage).order_by(CollaborationMessage.created_at.desc())
@@ -1394,7 +1396,11 @@ def list_messages(
         stmt = stmt.where(CollaborationMessage.agent_id == agent_id)
     if message_type:
         stmt = stmt.where(CollaborationMessage.message_type == message_type)
-    return list(db.scalars(stmt.limit(max(1, min(limit, 200)))))
+    if recipient_type:
+        stmt = stmt.where(CollaborationMessage.recipient_type == recipient_type)
+    if recipient_id:
+        stmt = stmt.where(CollaborationMessage.recipient_id == recipient_id)
+    return list(db.scalars(stmt.limit(max(1, min(limit, 500)))))
 
 
 def get_collaboration_message_or_404(db: Session, message_id: str) -> CollaborationMessage:

@@ -1022,6 +1022,8 @@ def api_list_messages(
     requirement_id: str | None = None,
     agent_id: str | None = None,
     message_type: str | None = None,
+    recipient_type: str | None = None,
+    recipient_id: str | None = None,
     request: Request = None,
     limit: int = 100,
     db: Session = Depends(get_db),
@@ -1046,6 +1048,8 @@ def api_list_messages(
         requirement_id=requirement_id,
         agent_id=agent_id,
         message_type=message_type,
+        recipient_type=recipient_type,
+        recipient_id=recipient_id,
         limit=limit,
     )
     return ok([CollaborationMessageRead.model_validate(item).model_dump(mode="json") for item in items])
