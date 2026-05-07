@@ -75,6 +75,32 @@ function classifyMessage(msg: CollabMessage): { kind: "command" | "result" | "er
   return { kind, summary, noisy };
 }
 
+type RoleTrack = "human" | "self" | "peer" | "external" | "watcher" | "system";
+
+function classifyRole(
+  msg: CollabMessage,
+  selfId: string,
+  peerIds: Set<string>,
+  externalAgentIds: Set<string>,
+): { role: RoleTrack; label: string } {
+  const senderType = (msg.sender_type || "").toLowerCase();
+  const senderId = msg.sender_id || "";
+  const recipientId = msg.recipient_id || "";
+  const body = (msg.body || "").toLowerCase();
+  const type = (msg.message_type || "").toLowerCase();
+
+  if (senderType === "human") return { role: "human", label: "用户" };
+  if (senderType === "runner" || senderType === "watcher" || type.includes("watcher") || type.includes("heartbeat") || body.startsWith("watcher")) {
+    return { role: "watcher", label: "Claude CLI/Watcher" };
+  }
+  if (senderType === "agent" && senderId === selfId) return { role: "self", label: "本 NPC" };
+  if (senderType === "agent" && peerIds.has(senderId)) return { role: "peer", label: "同工位 NPC" };
+  if (senderType === "agent" && externalAgentIds.has(senderId)) return { role: "external", label: "跨工位 NPC" };
+  if (senderType === "agent") return { role: "external", label: "其他 Agent" };
+  if (recipientId === selfId && senderType === "system") return { role: "system", label: "系统" };
+  return { role: "system", label: senderType || "系统" };
+}
+
 function formatTime(iso?: string | null): string {
   if (!iso) return "";
   const d = new Date(iso);
@@ -145,15 +171,34 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, onOpenTeammate
       setFetching(true);
       setFetchError(null);
       try {
-        const url = `${apiBaseUrl}/api/collaboration/messages?project_id=${encodeURIComponent(projectId)}&recipient_type=thread_workstation&recipient_id=${encodeURIComponent(seat.id)}&limit=${size}`;
-        const res = await fetch(url, { credentials: "include" });
-        const json = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          const msg = json?.error?.message ?? json?.message ?? `HTTP ${res.status}`;
+        const base = `${apiBaseUrl}/api/collaboration/messages?project_id=${encodeURIComponent(projectId)}&limit=${size}`;
+        const incomingUrl = `${base}&recipient_type=thread_workstation&recipient_id=${encodeURIComponent(seat.id)}`;
+        const outgoingUrl = `${base}&sender_id=${encodeURIComponent(seat.id)}`;
+        const [r1, r2] = await Promise.all([
+          fetch(incomingUrl, { credentials: "include" }),
+          fetch(outgoingUrl, { credentials: "include" }),
+        ]);
+        const j1 = await r1.json().catch(() => ({}));
+        const j2 = await r2.json().catch(() => ({}));
+        if (!r1.ok) {
+          const msg = j1?.error?.message ?? j1?.message ?? `HTTP ${r1.status}`;
           throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
         }
-        const data = (json?.data ?? []) as CollabMessage[];
-        setMessages(data);
+        const incoming = (j1?.data ?? []) as CollabMessage[];
+        const outgoing = r2.ok ? ((j2?.data ?? []) as CollabMessage[]) : [];
+        const seen = new Set<string>();
+        const merged: CollabMessage[] = [];
+        for (const m of [...incoming, ...outgoing]) {
+          if (!m.id || seen.has(m.id)) continue;
+          seen.add(m.id);
+          merged.push(m);
+        }
+        merged.sort((a, b) => {
+          const ta = a.created_at ? Date.parse(a.created_at) : 0;
+          const tb = b.created_at ? Date.parse(b.created_at) : 0;
+          return tb - ta;
+        });
+        setMessages(merged);
       } catch (e) {
         setFetchError(e instanceof Error ? e.message : "加载失败");
       } finally {
@@ -171,6 +216,17 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, onOpenTeammate
     const t = setInterval(() => load(limit), 15000);
     return () => clearInterval(t);
   }, [load, limit]);
+
+  const peerIds = useMemo(() => new Set(teammates.map((t) => t.id)), [teammates]);
+  const externalAgentIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const m of messages || []) {
+      if ((m.sender_type || "").toLowerCase() === "agent" && m.sender_id && m.sender_id !== seat.id && !peerIds.has(m.sender_id)) {
+        ids.add(m.sender_id);
+      }
+    }
+    return ids;
+  }, [messages, peerIds, seat.id]);
 
   const visible = useMemo(() => {
     const list = (messages || []).slice().reverse();
@@ -412,6 +468,14 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, onOpenTeammate
           <small>
             {filteredCount}/{totalLoaded} 条{fetching ? " · 刷新中…" : ""}
           </small>
+          <small className={styles.legend} title="消息按发送方着色">
+            <span className={`${styles.legendDot} ${styles.roleBadge_human}`}>用户</span>
+            <span className={`${styles.legendDot} ${styles.roleBadge_self}`}>本 NPC</span>
+            <span className={`${styles.legendDot} ${styles.roleBadge_peer}`}>同工位</span>
+            <span className={`${styles.legendDot} ${styles.roleBadge_external}`}>跨工位</span>
+            <span className={`${styles.legendDot} ${styles.roleBadge_watcher}`}>CLI</span>
+          </small>
+        </div>
         </div>
         <div className={styles.streamToolbarRight}>
           <label className={styles.noiseToggle} title="过滤 watcher 启动 / mcp 加载 / heartbeat 等噪声日志">
@@ -457,12 +521,32 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, onOpenTeammate
         ) : (
           visible.map((msg) => {
             const { kind, summary } = classifyMessage(msg);
+            const { role, label: roleLabel } = classifyRole(msg, seat.id, peerIds, externalAgentIds);
             const expanded = expandedIds.has(msg.id);
             const body = msg.body || "";
             const canExpand = body.length > 160 || body.includes("\n");
+            const senderLabel =
+              role === "human"
+                ? "用户"
+                : role === "self"
+                  ? `本 NPC · ${seat.name}`
+                  : role === "peer"
+                    ? `同工位 · ${teammates.find((t) => t.id === msg.sender_id)?.name || msg.sender_id}`
+                    : role === "external"
+                      ? `跨工位 · ${msg.sender_id || "?"}`
+                      : role === "watcher"
+                        ? "Claude CLI / Watcher"
+                        : roleLabel;
             return (
-              <div key={msg.id} className={`${styles.msg} ${styles[`msg_${kind}`] || ""}`}>
+              <div
+                key={msg.id}
+                className={`${styles.msg} ${styles[`msg_${kind}`] || ""} ${styles[`role_${role}`] || ""}`}
+                data-role={role}
+              >
                 <div className={styles.msgHead}>
+                  <span className={`${styles.roleBadge} ${styles[`roleBadge_${role}`] || ""}`} title={senderLabel}>
+                    {senderLabel}
+                  </span>
                   <span className={`${styles.badge} ${styles[`badge_${kind}`] || ""}`}>
                     {kind === "command" ? "派单" : kind === "result" ? "回执" : kind === "error" ? "错误" : "备注"}
                   </span>

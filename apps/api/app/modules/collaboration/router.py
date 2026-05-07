@@ -1190,6 +1190,7 @@ def api_list_messages(
     message_type: str | None = None,
     recipient_type: str | None = None,
     recipient_id: str | None = None,
+    sender_id: str | None = None,
     request: Request = None,
     limit: int = 100,
     db: Session = Depends(get_db),
@@ -1216,6 +1217,7 @@ def api_list_messages(
         message_type=message_type,
         recipient_type=recipient_type,
         recipient_id=recipient_id,
+        sender_id=sender_id,
         limit=limit,
     )
     return ok([CollaborationMessageRead.model_validate(item).model_dump(mode="json") for item in items])
@@ -1335,10 +1337,20 @@ def api_create_message(payload: CollaborationMessageCreate, request: Request, db
         raise AppError("FORBIDDEN_MESSAGE_TYPE", "runner relay 消息必须走专用接口", status_code=403)
     project_id = _collaboration_message_project_id(db, payload)
     resolve_project_write_principal(db, request, project_id, action="collaboration.message.create")
-    item = create_collaboration_message(
-        db,
-        payload.model_copy(update={"project_id": project_id, "sender_type": "human", "sender_id": principal.user_id}),
-    )
+    sender_type = (payload.sender_type or "").strip().lower()
+    sender_id = (payload.sender_id or "").strip()
+    if sender_type == "agent" and sender_id:
+        cfg = get_project_collaboration_config(db, project_id)
+        inner = cfg.get("collaboration_config", {}) if isinstance(cfg.get("collaboration_config"), dict) else {}
+        seats = inner.get("thread_workstations") or []
+        valid_ids = {str(s.get("id") or "") for s in seats} | {str(s.get("config_id") or "") for s in seats} | {str(s.get("row_id") or "") for s in seats}
+        if sender_id in valid_ids:
+            override = {"project_id": project_id}
+        else:
+            override = {"project_id": project_id, "sender_type": "human", "sender_id": principal.user_id}
+    else:
+        override = {"project_id": project_id, "sender_type": "human", "sender_id": principal.user_id}
+    item = create_collaboration_message(db, payload.model_copy(update=override))
     return ok(CollaborationMessageRead.model_validate(item).model_dump(mode="json"))
 
 

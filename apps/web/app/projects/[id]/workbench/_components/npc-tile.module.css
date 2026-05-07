@@ -397,6 +397,49 @@
   margin-left: auto;
 }
 
+/* 角色分轨：通过左侧色带 + roleBadge 区分 用户 / 本 NPC / 同工位 NPC / 跨工位 / Claude CLI / 系统 */
+.role_human    { box-shadow: inset 4px 0 0 rgba(255, 200, 96, 0.92); background: rgba(255, 200, 96, 0.06); }
+.role_self     { box-shadow: inset 4px 0 0 rgba(88, 240, 255, 0.92); background: rgba(88, 240, 255, 0.07); }
+.role_peer     { box-shadow: inset 4px 0 0 rgba(190, 130, 255, 0.92); background: rgba(190, 130, 255, 0.07); }
+.role_external { box-shadow: inset 4px 0 0 rgba(255, 130, 200, 0.92); background: rgba(255, 130, 200, 0.06); }
+.role_watcher  { box-shadow: inset 4px 0 0 rgba(170, 170, 170, 0.7);  background: rgba(180, 180, 180, 0.04); opacity: 0.92; }
+.role_system   { box-shadow: inset 4px 0 0 rgba(120, 200, 255, 0.7);  background: rgba(120, 200, 255, 0.04); }
+
+.roleBadge {
+  font-size: 10px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.roleBadge_human    { color: #ffd28b; background: rgba(255, 200, 96, 0.12); }
+.roleBadge_self     { color: #b9fff3; background: rgba(88, 240, 255, 0.16); }
+.roleBadge_peer     { color: #e3c8ff; background: rgba(190, 130, 255, 0.16); }
+.roleBadge_external { color: #ffd0e6; background: rgba(255, 130, 200, 0.16); }
+.roleBadge_watcher  { color: rgba(220, 220, 220, 0.85); background: rgba(180, 180, 180, 0.12); }
+.roleBadge_system   { color: #c8e6ff; background: rgba(120, 200, 255, 0.12); }
+
+.legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+  flex-wrap: wrap;
+}
+.legendDot {
+  font-size: 9.5px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border: 1px solid currentColor;
+}
+
 .msgSummary {
   font-size: 12px;
   line-height: 1.5;
