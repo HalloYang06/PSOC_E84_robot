@@ -2970,6 +2970,13 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                 {sceneVisible ? "隐藏场景" : "显示场景"}
               </button>
               <Link href="/projects" className={styles.cockpitGhost}>项目列表</Link>
+              <Link
+                href={`/projects/${project.id}/workbench`}
+                className={styles.cockpitGhost}
+                title="多 NPC 同屏工作台：左栏勾选/+号开瓷砖，多开自动平分"
+              >
+                NPC 工作台 →
+              </Link>
               {scorecard ? (
                 <button
                   type="button"
