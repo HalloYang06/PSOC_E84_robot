@@ -3,8 +3,10 @@ from __future__ import annotations
 import json
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
+from .cli_bridge import dispatch_prompt_to_cli
 from .client import PlatformClient
 from .config import RunnerConfig, ensure_dirs
 from .executor import LimitedExecutor
@@ -50,6 +52,19 @@ def _write_prompt_inbox_file(cfg: RunnerConfig, message: dict[str, Any], log: Lo
         log.write("error", f"Failed to write runner inbox file {file_path}: {exc}")
         return None
     return str(file_path)
+
+
+def _archive_inbox_file(inbox_path: Path, log: LogCollector) -> None:
+    """Move a fully-handled inbox file into inbox/processed/ so the next poll skips it."""
+    try:
+        processed_dir = inbox_path.parent / "processed"
+        processed_dir.mkdir(parents=True, exist_ok=True)
+        target = processed_dir / inbox_path.name
+        if target.exists():
+            target.unlink()
+        inbox_path.replace(target)
+    except Exception as exc:
+        log.write("warn", f"Failed to archive inbox file {inbox_path}: {exc}")
 
 
 def _handle_task(task: dict[str, Any], ws_mgr: WorkspaceManager, client: PlatformClient, cfg: RunnerConfig) -> None:
@@ -146,6 +161,27 @@ def _handle_runner_relay_message(
             )
         except Exception as exc:
             log.write("error", f"Failed to ack runner relay {message_id}: {exc}")
+
+    provider = (cfg.cli_provider or "disabled").strip().lower()
+    if provider in {"claude", "codex"} and inbox_path:
+        cli_result = dispatch_prompt_to_cli(message, Path(inbox_path), cfg, log)
+        try:
+            client.complete_runner_message(
+                cfg.runner_id,
+                message_id,
+                result_status=str(cli_result.get("result_status") or "failed"),
+                note=str(cli_result.get("note") or ""),
+            )
+        except Exception as exc:
+            log.write("error", f"Failed to complete runner relay {message_id}: {exc}")
+        _archive_inbox_file(Path(inbox_path), log)
+        log.write(
+            "info",
+            f"Handled runner relay {message_id} kind=cli.invoke provider={provider} "
+            f"status={cli_result.get('result_status')}",
+        )
+        return True
+
     completion_note = (
         f"Runner persisted the prompt to {note_target}. "
         f"Local CLI / adapter polling that folder will execute it next."
