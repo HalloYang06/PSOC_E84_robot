@@ -273,12 +273,14 @@ async function main() {
     step("assert sender_id=NPC1 (row_id or config_id)", true, { got: auto.sender_id });
 
     if (!String(auto.recipient_id || "").includes(downstreamSeatId) && auto.recipient_id !== downstreamSeatId) {
-      // recipient 可能是 workstation config_id；进一步对照 downstream config_id
+      // recipient 可能是 workstation config_id 或 seat row_id（D1 修复后改为 row_id）
       const downstreamConfigId = String(downstream.config_id || downstream.id);
-      if (auto.recipient_id !== downstreamConfigId) {
+      const downstreamRowId = String(downstream.row_id || downstream.id);
+      const acceptedDownstream = new Set([downstreamSeatId, downstreamConfigId, downstreamRowId]);
+      if (!acceptedDownstream.has(String(auto.recipient_id || ""))) {
         step("assert recipient is downstream workstation", false, {
           got: auto.recipient_id,
-          expect_one_of: [downstreamSeatId, downstreamConfigId],
+          expect_one_of: [...acceptedDownstream],
         });
         throw new Error("recipient not pointing to downstream workstation");
       }

@@ -671,11 +671,23 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, currentUserId,
             <small className={styles.muted}>跨工位默认走人审；通过后才会派给本 NPC，打回则取消。</small>
           </div>
           <ul className={styles.reviewList}>
-            {pendingReviews.slice(0, 5).map((m) => (
+            {pendingReviews.slice(0, 5).map((m) => {
+              const body = String(m.body || "");
+              const crossMatch = body.match(/跨工位：([是否])/);
+              const sourceMatch = body.match(/来源：([a-z_]+)/);
+              const upstreamMatch = body.match(/上游 NPC:\s*([^\r\n]+)/);
+              const isCross = crossMatch?.[1] === "是";
+              const source = sourceMatch?.[1] || "";
+              const upstream = upstreamMatch?.[1]?.trim() || "";
+              return (
               <li key={m.id} className={styles.reviewItem}>
                 <div className={styles.reviewMeta}>
-                  <span className={styles.reviewSender}>来自 {(m.sender_type || "?")}/{String(m.sender_id || "").slice(0, 10)}</span>
-                  <span className={styles.reviewTitle}>{m.title || (m.body || "").slice(0, 60)}</span>
+                  <span className={styles.reviewSender}>
+                    {upstream ? `来自 NPC ${upstream}` : `来自 ${(m.sender_type || "?")}/${String(m.sender_id || "").slice(0, 10)}`}
+                    {isCross ? <span style={{ marginLeft: 6, padding: "1px 6px", borderRadius: 999, background: "rgba(255,232,109,0.16)", border: "1px solid rgba(255,232,109,0.4)", color: "#ffe8b3", fontSize: 10 }}>跨工位</span> : null}
+                    {source ? <span style={{ marginLeft: 4, padding: "1px 6px", borderRadius: 999, background: "rgba(88,240,255,0.12)", border: "1px solid rgba(88,240,255,0.28)", color: "#b9fff3", fontSize: 10 }}>policy: {source}</span> : null}
+                  </span>
+                  <span className={styles.reviewTitle}>{m.title || body.slice(0, 60)}</span>
                 </div>
                 <div className={styles.reviewActions}>
                   <button
@@ -696,7 +708,8 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, currentUserId,
                   </button>
                 </div>
               </li>
-            ))}
+              );
+            })}
           </ul>
           {reviewNote ? <small className={styles.reviewNote}>{reviewNote}</small> : null}
         </div>

@@ -1400,8 +1400,15 @@ def api_review_approve_message(
     resolve_project_write_principal(db, request, project_id, require_privileged=False, action="collaboration.message.review.approve")
     if (existing.status or "") != "pending_review":
         raise AppError("MESSAGE_NOT_PENDING_REVIEW", f"消息当前状态={existing.status}，不在 pending_review", status_code=409)
-    existing.status = "queued"
-    db.add(existing)
+    # 用 WHERE status='pending_review' 守护并发：只有第一个并发请求会改成 queued，后到的 rowcount=0
+    from app.db.models.collaboration_message import CollaborationMessage
+    rowcount = db.query(CollaborationMessage).filter(
+        CollaborationMessage.id == existing.id,
+        CollaborationMessage.status == "pending_review",
+    ).update({"status": "queued"}, synchronize_session=False)
+    if rowcount == 0:
+        db.rollback()
+        raise AppError("MESSAGE_NOT_PENDING_REVIEW", "消息已被其他人审批，请刷新", status_code=409)
     if existing.requirement_id:
         from app.db.models.requirement import Requirement
         req = db.get(Requirement, existing.requirement_id)
@@ -1434,8 +1441,14 @@ def api_review_reject_message(
     resolve_project_write_principal(db, request, project_id, require_privileged=False, action="collaboration.message.review.reject")
     if (existing.status or "") != "pending_review":
         raise AppError("MESSAGE_NOT_PENDING_REVIEW", f"消息当前状态={existing.status}，不在 pending_review", status_code=409)
-    existing.status = "cancelled"
-    db.add(existing)
+    from app.db.models.collaboration_message import CollaborationMessage
+    rowcount = db.query(CollaborationMessage).filter(
+        CollaborationMessage.id == existing.id,
+        CollaborationMessage.status == "pending_review",
+    ).update({"status": "cancelled"}, synchronize_session=False)
+    if rowcount == 0:
+        db.rollback()
+        raise AppError("MESSAGE_NOT_PENDING_REVIEW", "消息已被其他人审批，请刷新", status_code=409)
     if existing.requirement_id:
         from app.db.models.requirement import Requirement
         req = db.get(Requirement, existing.requirement_id)

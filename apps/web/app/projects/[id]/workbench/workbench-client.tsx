@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import styles from "./workbench.module.css";
 import { NpcTile, type WorkbenchSeat } from "./_components/npc-tile";
+import { RequirementDispatcher } from "../_components/requirement-dispatcher";
 
 type WorkbenchClientProps = {
   projectId: string;
@@ -183,6 +184,18 @@ export function WorkbenchClient({ projectId, projectName, apiBaseUrl, seats, cur
         </aside>
 
         <section className={styles.main}>
+          <div style={{ marginBottom: 12 }}>
+            <RequirementDispatcher
+              apiBaseUrl={apiBaseUrl}
+              projectId={projectId}
+              seats={seats.map((s) => ({
+                id: s.id,
+                name: s.name,
+                computerNodeId: s.computerNodeId || "",
+                computerNodeName: s.computerNodeName || (s.computerNodeId ? s.computerNodeId : "未绑定电脑"),
+              }))}
+            />
+          </div>
           {openSeats.length === 0 ? (
             <div className={styles.placeholder}>
               <strong>点击左栏 NPC 行的 + 号，打开它的工作卡</strong>
