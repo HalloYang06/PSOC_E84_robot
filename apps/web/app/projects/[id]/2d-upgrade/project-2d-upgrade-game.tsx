@@ -2970,6 +2970,18 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
               <span>AI 线程</span>
               <strong>{npcSeats.length} 个 · 在线电脑 {stats.onlineComputerCount}/{stats.computerCount}</strong>
               <p>本月 token ￥{stats.tokenSpend} · 协作消息 {stats.messageCount}</p>
+              <p>
+                本机线程怎么接单？看{" "}
+                <a
+                  href="https://github.com/wenjunyong666/ai-/blob/main/docs/user-guides/THREAD_WATCHER_QUICKSTART_2026-05-07.md"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="docs/user-guides/THREAD_WATCHER_QUICKSTART_2026-05-07.md"
+                >
+                  线程 watcher 上手
+                </a>
+                （每条线程要一个 PS 终端常驻）
+              </p>
             </article>
           </div>
           {scorecard && scorecardOpen ? (

@@ -11725,6 +11725,17 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
 
         <form action={sendRunnerCommand.bind(null, projectId)} className={styles.skillManagerForm}>
           <strong>给在线电脑发一条最小命令</strong>
+          <p className={styles.microCopy}>
+            目标电脑要先有 watcher 进程在跑才能接到单。线程级 watcher（每条线程一个 PS 终端）见{" "}
+            <a
+              href="https://github.com/wenjunyong666/ai-/blob/main/docs/user-guides/THREAD_WATCHER_QUICKSTART_2026-05-07.md"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              线程 watcher 上手
+            </a>
+            。
+          </p>
           <input type="hidden" name="target_mode" value="computer_node_id" />
           <input type="hidden" name="return_to" value={gitPanelReturnPath} />
           <label className={styles.fieldLabel}>
