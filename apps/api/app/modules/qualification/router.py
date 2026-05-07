@@ -57,6 +57,11 @@ def _grade(score: float) -> str:
     return "D"
 
 
+# 项目刚创建、还没接入数据时，对应指标显示为中性"-"，而不是把"什么都没发生"
+# 误判成红色的 D。前端 CSS 对 "-" 走灰色样式（与 D 红色区分）。
+NEUTRAL_GRADE = "-"
+
+
 @router.get("/projects/{project_id}/scorecard")
 def get_project_scorecard(
     project_id: str,
@@ -96,7 +101,14 @@ def get_project_scorecard(
                     heartbeat = heartbeat.replace(tzinfo=timezone.utc)
                 if (now - heartbeat).total_seconds() <= 300:
                     online_runners += 1
-    thread_health_ratio = _ratio(online_runners, max(total_runners, 1))
+    if total_runners == 0:
+        thread_health_ratio = None
+        thread_health_grade = NEUTRAL_GRADE
+        thread_health_detail = "尚未绑定 runner，先到电脑接入抽屉登记一台"
+    else:
+        thread_health_ratio = _ratio(online_runners, total_runners)
+        thread_health_grade = _grade(thread_health_ratio)
+        thread_health_detail = f"在线 {online_runners}/{total_runners} 个 runner"
 
     # 2. npc_handover_health: # of handoff events in last 7d / # of NPCs
     npcs = list(
@@ -126,7 +138,21 @@ def get_project_scorecard(
         )
         or 0
     )
-    npc_handover_score = _ratio(handoff_event_count + handoff_records, max(npc_count, 1))
+    total_handoffs = handoff_event_count + handoff_records
+    if npc_count == 0:
+        npc_handover_score = None
+        npc_handover_grade = NEUTRAL_GRADE
+        npc_handover_detail = "尚未创建 NPC，先到 NPC 管理器创建一个长期员工"
+    elif total_handoffs == 0:
+        # 有 NPC 但 7 天没换手，是稳态项目的常态，不该判 D。给 B（达标）。
+        npc_handover_score = 0.75
+        npc_handover_grade = "B"
+        npc_handover_detail = f"近 7 天无换手记录 / {npc_count} 个 NPC（稳态运行）"
+    else:
+        raw = _ratio(total_handoffs, npc_count)
+        npc_handover_score = min(1.0, raw)
+        npc_handover_grade = _grade(npc_handover_score)
+        npc_handover_detail = f"近 7 天 {total_handoffs} 次交接 / {npc_count} 个 NPC"
 
     # 3. human_review_responsiveness: avg minutes from approval.created_at to updated_at on approved/rejected
     closed_approvals = list(
@@ -164,6 +190,25 @@ def get_project_scorecard(
         )
         or 0
     )
+    # 显式判 None，避免 0.0 被 truthy 误判为"无数据"
+    if median_review_min is None:
+        if pending_approvals == 0:
+            review_score = None
+            review_grade = NEUTRAL_GRADE
+            review_detail = "暂无审批记录"
+        else:
+            review_score = 0.5
+            review_grade = "C"
+            review_detail = f"{pending_approvals} 条待处理，无已闭合审批"
+    else:
+        if median_review_min <= 30:
+            review_score = 1.0
+        elif median_review_min <= 120:
+            review_score = 0.7
+        else:
+            review_score = 0.4
+        review_grade = _grade(review_score)
+        review_detail = f"中位数 {median_review_min} 分钟，{pending_approvals} 条待处理"
 
     # 4. hardware_redline_count: H3/H4 approvals touched in last 7d
     redline_count = (
@@ -196,7 +241,22 @@ def get_project_scorecard(
         )
         or 0
     )
-    collab_density = round(messages_count / max(active_tasks_count, 1), 2)
+    if active_tasks_count == 0 and messages_count == 0:
+        collab_density = None
+        collab_score = None
+        collab_grade = NEUTRAL_GRADE
+        collab_detail = "暂无活跃任务，也无近 7 天协作消息"
+    elif active_tasks_count == 0:
+        # 有消息但没活跃任务（任务都做完了），按消息绝对值给中性偏好评价
+        collab_density = round(messages_count, 2)
+        collab_score = 0.75
+        collab_grade = "B"
+        collab_detail = f"近 7 天 {messages_count} 条消息，活跃任务已清空"
+    else:
+        collab_density = round(messages_count / active_tasks_count, 2)
+        collab_score = min(1.0, collab_density / 3.0)
+        collab_grade = _grade(collab_score)
+        collab_detail = f"近 7 天 {messages_count} 条消息 / {active_tasks_count} 条活跃任务"
 
     # 6. token spend last 7d
     spend_cents = (
@@ -210,16 +270,33 @@ def get_project_scorecard(
     )
     spend_yuan = round(int(spend_cents) / 100.0, 2)
 
-    # weighted overall score
-    review_score = 1.0 if median_review_min is not None and median_review_min <= 30 else (0.7 if median_review_min and median_review_min <= 120 else 0.4)
-    collab_score = min(1.0, collab_density / 3.0) if active_tasks_count > 0 else 0.5
-    overall_score = round(
-        0.35 * thread_health_ratio
-        + 0.25 * min(1.0, npc_handover_score)
-        + 0.2 * review_score
-        + 0.2 * collab_score,
-        3,
-    )
+    # weighted overall score：只对"有数据"的指标加权，避免空项目被零分母兜底拉成 D。
+    weighted_components: list[tuple[float, float]] = []  # (weight, score)
+    if thread_health_ratio is not None:
+        weighted_components.append((0.35, thread_health_ratio))
+    if npc_handover_score is not None:
+        weighted_components.append((0.25, npc_handover_score))
+    if review_score is not None:
+        weighted_components.append((0.2, review_score))
+    if collab_score is not None:
+        weighted_components.append((0.2, collab_score))
+
+    if weighted_components:
+        total_weight = sum(w for w, _ in weighted_components)
+        overall_score: float | None = round(
+            sum(w * s for w, s in weighted_components) / total_weight, 3
+        )
+        overall_grade = _grade(overall_score)
+        if overall_score >= 0.7:
+            overall_summary = "项目协作合格"
+        elif overall_score >= 0.5:
+            overall_summary = "项目可用但需关注红色指标"
+        else:
+            overall_summary = "协作链路存在阻塞，建议先排查"
+    else:
+        overall_score = None
+        overall_grade = NEUTRAL_GRADE
+        overall_summary = "项目刚开始，先绑电脑 / 创建 NPC / 创建任务，让数据流起来"
 
     return ok({
         "project_id": project_id,
@@ -228,25 +305,21 @@ def get_project_scorecard(
             "thread_call_health": {
                 "label": "本机线程调用通畅率",
                 "value": thread_health_ratio,
-                "detail": f"在线 {online_runners}/{total_runners} 个 runner",
-                "grade": _grade(thread_health_ratio),
+                "detail": thread_health_detail,
+                "grade": thread_health_grade,
             },
             "npc_handover_health": {
                 "label": "NPC 换手记录密度",
                 "value": npc_handover_score,
-                "detail": f"近 7 天 {handoff_event_count + handoff_records} 次交接 / {npc_count} 个 NPC",
-                "grade": _grade(min(1.0, npc_handover_score)),
+                "detail": npc_handover_detail,
+                "grade": npc_handover_grade,
             },
             "human_review_responsiveness": {
                 "label": "人工审核响应",
                 "median_minutes": median_review_min,
                 "pending_count": int(pending_approvals),
-                "detail": (
-                    f"中位数 {median_review_min} 分钟，{pending_approvals} 条待处理"
-                    if median_review_min is not None
-                    else f"暂无已闭合审批，{pending_approvals} 条待处理"
-                ),
-                "grade": _grade(review_score),
+                "detail": review_detail,
+                "grade": review_grade,
             },
             "hardware_redline_count": {
                 "label": "硬件红线触发",
@@ -257,20 +330,19 @@ def get_project_scorecard(
             "collaboration_density": {
                 "label": "协作消息密度",
                 "messages_per_task": collab_density,
-                "detail": f"近 7 天 {messages_count} 条消息 / {active_tasks_count} 条活跃任务",
-                "grade": _grade(collab_score),
+                "detail": collab_detail,
+                "grade": collab_grade,
             },
             "token_spend_7d_yuan": {
                 "label": "近 7 天 token 花费",
                 "yuan": spend_yuan,
                 "detail": f"￥{spend_yuan}",
+                "grade": NEUTRAL_GRADE,
             },
         },
         "overall": {
             "score": overall_score,
-            "grade": _grade(overall_score),
-            "summary": (
-                "项目协作合格" if overall_score >= 0.7 else "项目可用但需关注红色指标" if overall_score >= 0.5 else "协作链路存在阻塞，建议先排查"
-            ),
+            "grade": overall_grade,
+            "summary": overall_summary,
         },
     })

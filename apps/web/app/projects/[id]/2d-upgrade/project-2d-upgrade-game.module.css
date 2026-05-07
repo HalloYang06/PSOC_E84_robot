@@ -1641,6 +1641,7 @@
 .gradeChipB { background: rgba(94, 240, 255, 0.18); color: #93fbff; }
 .gradeChipC { background: rgba(255, 232, 109, 0.22); color: #ffec8a; border-color: rgba(255, 232, 109, 0.7); }
 .gradeChipD { background: rgba(255, 123, 123, 0.22); color: #ffd2d2; border-color: rgba(255, 123, 123, 0.7); }
+.gradeChipNeutral { background: rgba(180, 200, 220, 0.16); color: #cfd9e3; border-color: rgba(180, 200, 220, 0.5); }
 
 .scorecardPanel {
   margin-top: 8px;
@@ -1684,6 +1685,7 @@
 .scoreGradeB { color: #93fbff; }
 .scoreGradeC { color: #ffec8a; }
 .scoreGradeD { color: #ffa3a3; }
+.scoreGradeNeutral { color: #cfd9e3; }
 
 .cockpitHeader {
   display: flex;

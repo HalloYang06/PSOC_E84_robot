@@ -834,7 +834,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
 
   const [scorecard, setScorecard] = useState<{
     grade: string;
-    score: number;
+    score: number | null;
     summary: string;
     indicators: Array<{ key: string; label: string; grade?: string; detail: string }>;
   } | null>(null);
@@ -854,7 +854,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         }));
         setScorecard({
           grade: data.overall?.grade || "—",
-          score: data.overall?.score ?? 0,
+          score: data.overall?.score ?? null,
           summary: data.overall?.summary || "",
           indicators: inds,
         });
@@ -2817,11 +2817,12 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
               {scorecard ? (
                 <button
                   type="button"
-                  className={`${styles.gradeChip} ${styles[`gradeChip${scorecard.grade}`] ?? ""}`}
+                  className={`${styles.gradeChip} ${styles[`gradeChip${scorecard.grade === "-" ? "Neutral" : scorecard.grade}`] ?? ""}`}
                   onClick={() => setScorecardOpen((v) => !v)}
                   title={`${scorecard.summary}（点击展开 6 项指标）`}
                 >
-                  合格性 {scorecard.grade} ({scorecard.score})
+                  合格性 {scorecard.grade}
+                  {scorecard.score !== null ? ` (${scorecard.score})` : ""}
                 </button>
               ) : null}
               <button
@@ -2861,17 +2862,23 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
           {scorecard && scorecardOpen ? (
             <div className={styles.scorecardPanel}>
               <div className={styles.scorecardHeader}>
-                <strong>合格性 {scorecard.grade} ({scorecard.score})</strong>
+                <strong>
+                  合格性 {scorecard.grade}
+                  {scorecard.score !== null ? ` (${scorecard.score})` : ""}
+                </strong>
                 <small>{scorecard.summary} · 近 7 天</small>
               </div>
               <div className={styles.scorecardGrid}>
-                {scorecard.indicators.map((ind) => (
-                  <div key={ind.key} className={`${styles.scorecardItem} ${styles[`scoreGrade${ind.grade ?? ""}`] ?? ""}`}>
-                    <span className={styles.scoreGradeBadge}>{ind.grade ?? "—"}</span>
-                    <strong>{ind.label}</strong>
-                    <small>{ind.detail}</small>
-                  </div>
-                ))}
+                {scorecard.indicators.map((ind) => {
+                  const gradeKey = (ind.grade && ind.grade !== "-" ? ind.grade : "Neutral");
+                  return (
+                    <div key={ind.key} className={`${styles.scorecardItem} ${styles[`scoreGrade${gradeKey}`] ?? ""}`}>
+                      <span className={styles.scoreGradeBadge}>{ind.grade && ind.grade !== "-" ? ind.grade : "—"}</span>
+                      <strong>{ind.label}</strong>
+                      <small>{ind.detail}</small>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ) : null}
