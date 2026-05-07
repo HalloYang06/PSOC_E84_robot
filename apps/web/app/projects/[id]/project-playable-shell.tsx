@@ -5558,7 +5558,7 @@ function TokenResultCard({ title, subtitle, token, command, testId }: TokenResul
 
 export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
   const router = useRouter();
-  const teamNoticeToast = useTeamNoticeToast();
+  const teamNoticeToast = useTeamNoticeToast({ onRefresh: () => router.refresh() });
   const nodes = asArray(props.config?.nodes);
   const onlineNodes = nodes.filter((node) => isOnlineStatus(node.status));
   const watchReadyNodes = nodes.filter((node) => runnerWatchInfo(node).active);

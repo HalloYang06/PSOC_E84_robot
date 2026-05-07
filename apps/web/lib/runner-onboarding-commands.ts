@@ -119,7 +119,8 @@ export function normalizeComputerRunnerSlug(value: unknown) {
 
 export function suggestedComputerRunnerId(node: AnyRecord) {
   const nodeId = text(node.id ?? node.node_id ?? node.name ?? node.label, "computer");
-  return `runner-${normalizeComputerRunnerSlug(nodeId)}`;
+  const slug = normalizeComputerRunnerSlug(nodeId);
+  return slug.startsWith("runner-") ? slug : `runner-${slug}`;
 }
 
 export function buildComputerRunnerRegisterCommand(

@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
 
@@ -32,7 +33,7 @@ import {
 } from "../../../actions";
 import { useTeamNoticeToast } from "../../../../lib/use-team-notice-toast";
 import { TeamNoticeToast } from "../../../../components/team-notice-toast";
-import { buildComputerOneClickConnectCommand } from "../../../../lib/runner-onboarding-commands";
+import { buildComputerOneClickConnectCommand, suggestedComputerRunnerId } from "../../../../lib/runner-onboarding-commands";
 import styles from "./project-2d-upgrade-game.module.css";
 
 type GameProject = {
@@ -770,7 +771,8 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
     teamNotice,
     teamError,
   } = props;
-  const teamNoticeToast = useTeamNoticeToast();
+  const router = useRouter();
+  const teamNoticeToast = useTeamNoticeToast({ onRefresh: () => router.refresh() });
   const [hudHidden, setHudHidden] = useState(true);
   const [dockHidden, setDockHidden] = useState(false);
   const [activePanel, setActivePanel] = useState<ModuleTab | null>(null);
@@ -1757,13 +1759,16 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
 
     if (moduleTab === "computers" && action.id === "pairing-token") {
       const connectCommand = pairingResult
-        ? buildComputerOneClickConnectCommand(
-            apiBaseUrl,
-            project.id,
-            { id: pairingResult.nodeId, label: pairingResult.nodeId },
-            pairingResult.token,
-            `runner-${pairingResult.nodeId}`,
-          )
+        ? (() => {
+            const node = { id: pairingResult.nodeId, label: pairingResult.nodeId };
+            return buildComputerOneClickConnectCommand(
+              apiBaseUrl,
+              project.id,
+              node,
+              pairingResult.token,
+              suggestedComputerRunnerId(node),
+            );
+          })()
         : "";
       return (
         <div className={styles.realActionStack} data-unity-real-form="computer-pairing">
