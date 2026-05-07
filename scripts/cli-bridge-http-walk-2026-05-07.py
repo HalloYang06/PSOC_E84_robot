@@ -20,6 +20,7 @@ Requires:
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import sys
 import time
@@ -39,8 +40,12 @@ import runner.main as runner_main  # noqa: E402
 
 API_BASE = "http://127.0.0.1:8000"
 DB_PATH = REPO_ROOT / "apps" / "api" / "ai_collab.db"
-RUNNER_ID = f"runner-c3-http-{uuid.uuid4().hex[:6]}"
+WALK_PROVIDER = (os.environ.get("WALK_PROVIDER") or "claude").strip().lower()
+if WALK_PROVIDER not in {"claude", "codex", "qwen"}:
+    raise SystemExit(f"WALK_PROVIDER must be claude|codex|qwen (got {WALK_PROVIDER!r})")
+RUNNER_ID = f"runner-c3-http-{WALK_PROVIDER}-{uuid.uuid4().hex[:6]}"
 RUNNER_NAME = f"C3 HTTP Walk {RUNNER_ID[-6:]}"
+CLI_TIMEOUT_SECONDS = 600 if WALK_PROVIDER == "codex" else 180
 
 
 def insert_pending_message(message_id: str, body: str, title: str, project_id: str) -> None:
@@ -88,6 +93,7 @@ def fetch_message_history(message_id: str) -> list[dict[str, Any]]:
 def main() -> int:
     print(f"[walk] API_BASE={API_BASE}")
     print(f"[walk] DB_PATH={DB_PATH} exists={DB_PATH.is_file()}")
+    print(f"[walk] WALK_PROVIDER={WALK_PROVIDER} CLI_TIMEOUT={CLI_TIMEOUT_SECONDS}s")
     print(f"[walk] RUNNER_ID={RUNNER_ID}")
 
     if not DB_PATH.is_file():
@@ -108,9 +114,9 @@ def main() -> int:
         max_concurrent_tasks=1,
         heartbeat_seconds=15,
         poll_seconds=10,
-        cli_provider="claude",
+        cli_provider=WALK_PROVIDER,
         cli_executor_path=None,
-        cli_timeout_seconds=180,
+        cli_timeout_seconds=CLI_TIMEOUT_SECONDS,
     )
     ensure_dirs(cfg)
     log = LogCollector(workdir / "logs" / "c3-http.log")

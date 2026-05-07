@@ -39,15 +39,18 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DB_PATH = REPO_ROOT / "apps" / "api" / "ai_collab.db"
 PROJECT_ID = "proj_ai_collab"
 PROBE_TAG = uuid.uuid4().hex[:8]
-WORKSTATION_CONFIG_ID = f"watcher-walk-{PROBE_TAG}"
-WORKSTATION_NAME = f"Thread Watcher Walk {PROBE_TAG}"
+WALK_PROVIDER = (os.environ.get("WALK_PROVIDER") or "claude").strip().lower()
+if WALK_PROVIDER not in {"claude", "codex", "qwen"}:
+    raise SystemExit(f"WALK_PROVIDER must be claude|codex|qwen (got {WALK_PROVIDER!r})")
+WORKSTATION_CONFIG_ID = f"watcher-walk-{WALK_PROVIDER}-{PROBE_TAG}"
+WORKSTATION_NAME = f"Thread Watcher Walk {WALK_PROVIDER} {PROBE_TAG}"
 COMPUTER_NODE_ID = "runner-pc1"
 MESSAGE_ID = f"msg-thread-watcher-{PROBE_TAG}"
 PROBE_REPLY = f"pong-watcher-{PROBE_TAG}"
 PROMPT_BODY = f"请只回复一行：最终回复：{PROBE_REPLY}"
 PROMPT_TITLE = "Thread Watcher 端到端 ping"
 
-WATCHER_RUNTIME_SECONDS = 90
+WATCHER_RUNTIME_SECONDS = 240 if WALK_PROVIDER == "codex" else 90
 SUMMARY_DIR = REPO_ROOT / "artifacts" / "thread-watcher-walk"
 
 
@@ -73,7 +76,7 @@ def insert_workstation() -> str:
                 WORKSTATION_CONFIG_ID,
                 WORKSTATION_NAME,
                 COMPUTER_NODE_ID,
-                "claude",
+                WALK_PROVIDER,
                 now,
                 now,
             ),
@@ -154,6 +157,7 @@ def main() -> int:
     run_log = SUMMARY_DIR / "run.log"
 
     print(f"[walk] PROJECT_ID={PROJECT_ID}")
+    print(f"[walk] WALK_PROVIDER={WALK_PROVIDER} WATCHER_RUNTIME_SECONDS={WATCHER_RUNTIME_SECONDS}")
     print(f"[walk] WORKSTATION_CONFIG_ID={WORKSTATION_CONFIG_ID}")
     print(f"[walk] MESSAGE_ID={MESSAGE_ID}")
     print(f"[walk] PROBE_REPLY={PROBE_REPLY}")
@@ -186,6 +190,8 @@ def main() -> int:
             PROJECT_ID,
             "--workstation-id",
             WORKSTATION_CONFIG_ID,
+            "--provider",
+            WALK_PROVIDER,
             "--auto-ack",
             "--execute-provider-cli",
             "--executor-cwd",
@@ -206,6 +212,8 @@ def main() -> int:
             PROJECT_ID,
             "-WorkstationId",
             WORKSTATION_CONFIG_ID,
+            "-Provider",
+            WALK_PROVIDER,
             "-PollSeconds",
             "3",
         ]
@@ -306,6 +314,7 @@ def main() -> int:
 
     summary = {
         "probe_tag": PROBE_TAG,
+        "walk_provider": WALK_PROVIDER,
         "project_id": PROJECT_ID,
         "workstation_config_id": WORKSTATION_CONFIG_ID,
         "message_id": MESSAGE_ID,

@@ -2,6 +2,8 @@
 
 > 通道 B（workstation watcher · 线程 = 工位 = 一个 PS 终端）的合格性证据。
 > 通道 A（runner relay · 整机接单）见 [`cli-bridge-walk-2026-05-07.md`](./cli-bridge-walk-2026-05-07.md)。
+>
+> **`provider=codex` 版本见 [`thread-watcher-walk-codex-2026-05-07.md`](./thread-watcher-walk-codex-2026-05-07.md)（4/5 信号 PASS，writeback 被外部 codex 配额挡住，等 quota 恢复后重跑）。**
 
 ## 环境
 

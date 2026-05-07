@@ -3,6 +3,8 @@
 > 通道 A 端到端补完（计划 `handoff-schema-gentle-pillow.md` 的 S5/C3 步）。本文档是合格性证据：证明在
 > `RUNNER_CLI_PROVIDER=claude` 时，runner 收到一条普通文本 prompt 后，会真的调起本机 `claude.cmd`，
 > 把 stdout 通过 `complete_runner_message` 回写到平台，并把已处理的 inbox 文件归档到 `inbox/processed/`。
+>
+> **`provider=codex` 版本见 [`cli-bridge-walk-codex-2026-05-07.md`](./cli-bridge-walk-codex-2026-05-07.md)（已 PASS）。**
 
 ## 环境
 
