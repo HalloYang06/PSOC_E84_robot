@@ -2,9 +2,23 @@ from __future__ import annotations
 
 import json
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from typing import Any
+
+
+def _encode_header_value(value: str) -> tuple[str, bool]:
+    """Return (header_value, was_encoded). urllib encodes header values as latin-1
+    so non-ASCII identifiers (e.g. 中文 workstation_id) explode at request time.
+    Percent-encode the value when it has non-ASCII bytes; receiver decodes back."""
+    if not value:
+        return "", False
+    try:
+        value.encode("ascii")
+        return value, False
+    except UnicodeEncodeError:
+        return urllib.parse.quote(value, safe=""), True
 
 
 @dataclass(frozen=True)
@@ -16,11 +30,14 @@ class PlatformClient:
     def _request(self, method: str, path: str, payload: dict[str, Any] | None = None, timeout_s: int = 10) -> Any:
         url = f"{self.base_url}{path}"
         data = None
+        runner_id_value, runner_id_encoded = _encode_header_value(self.runner_id)
         headers = {
             "Content-Type": "application/json",
             "Accept": "application/json",
-            "X-Runner-Id": self.runner_id,
+            "X-Runner-Id": runner_id_value,
         }
+        if runner_id_encoded:
+            headers["X-Runner-Id-Encoding"] = "percent"
         if self.runner_token and self.runner_token != "change-me":
             headers["X-Runner-Registration-Token"] = self.runner_token
         if payload is not None:

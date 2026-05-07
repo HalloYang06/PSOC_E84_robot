@@ -525,3 +525,82 @@ def test_workstation_adapter_config_allows_missing_provider_registration() -> No
     assert data["provider_id"] == "claude"
     assert data["provider_label"] == "claude"
     assert data["executor_cwd"] == "D:/node/repo"
+
+
+def test_inbox_accepts_non_ascii_workstation_id_via_percent_encoding() -> None:
+    """Regression: 中文 workstation_id 必须能通过 percent-encoded header 完成鉴权。
+
+    urllib 默认按 latin-1 编码 header，所以远端 adapter 把非 ASCII id 用
+    percent-encoding + X-Workstation-Id-Encoding: percent 一起发；API 端的
+    read_identity_header 会还原。"""
+    from urllib.parse import quote
+
+    owner_token, owner_user_id = issue_session_token(client)
+    workstation_id = "前端工位"
+    project = create_project(
+        client,
+        owner_token,
+        name_prefix="Non-ASCII WS Inbox",
+        collaboration_config={
+            "thread_workstations": [
+                {
+                    "id": workstation_id,
+                    "name": workstation_id,
+                    "status": "active",
+                    "ai_provider_id": "claude",
+                }
+            ],
+        },
+    )
+    project_id = project["id"]
+    add_project_member(client, project_id, owner_token, owner_user_id, role="owner", is_owner=True)
+
+    encoded_path_id = quote(workstation_id, safe="")
+    encoded_header = quote(workstation_id, safe="")
+
+    response = client.get(
+        f"/api/collaboration/projects/{project_id}/thread-workstations/{encoded_path_id}/inbox",
+        headers={
+            "X-Workstation-Id": encoded_header,
+            "X-Workstation-Id-Encoding": "percent",
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["data"] == []
+
+
+def test_inbox_rejects_mismatched_decoded_workstation_id() -> None:
+    """When the percent-encoded header decodes to a different workstation than the
+    URL path, auth must still fail."""
+    from urllib.parse import quote
+
+    owner_token, owner_user_id = issue_session_token(client)
+    workstation_id = "前端工位"
+    other_id = "执行工位"
+    project = create_project(
+        client,
+        owner_token,
+        name_prefix="Non-ASCII WS Mismatch",
+        collaboration_config={
+            "thread_workstations": [
+                {
+                    "id": workstation_id,
+                    "name": workstation_id,
+                    "status": "active",
+                    "ai_provider_id": "claude",
+                }
+            ],
+        },
+    )
+    project_id = project["id"]
+    add_project_member(client, project_id, owner_token, owner_user_id, role="owner", is_owner=True)
+
+    encoded_path_id = quote(workstation_id, safe="")
+    response = client.get(
+        f"/api/collaboration/projects/{project_id}/thread-workstations/{encoded_path_id}/inbox",
+        headers={
+            "X-Workstation-Id": quote(other_id, safe=""),
+            "X-Workstation-Id-Encoding": "percent",
+        },
+    )
+    assert response.status_code == 403, response.text

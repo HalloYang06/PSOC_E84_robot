@@ -74,8 +74,23 @@ def _json_request(method: str, url: str, *, headers: dict[str, str], payload: di
     return json.loads(raw) if raw else {}
 
 
+def _encode_header_value(value: str) -> tuple[str, bool]:
+    """urllib encodes header values as latin-1 — non-ASCII workstation ids
+    crash at send time. Percent-encode + flag header so the receiver decodes back."""
+    if not value:
+        return "", False
+    try:
+        value.encode("ascii")
+        return value, False
+    except UnicodeEncodeError:
+        return quote(value, safe=""), True
+
+
 def _headers(workstation_id: str, token: str | None = None) -> dict[str, str]:
-    headers = {"X-Workstation-Id": workstation_id}
+    encoded, was_encoded = _encode_header_value(workstation_id)
+    headers = {"X-Workstation-Id": encoded}
+    if was_encoded:
+        headers["X-Workstation-Id-Encoding"] = "percent"
     if token:
         headers["X-Workstation-Token"] = token
     return headers

@@ -4,6 +4,7 @@ import base64
 import hashlib
 import hmac
 import json
+import urllib.parse
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -20,6 +21,25 @@ from app.db.models.task import Task
 from app.db.models.task_event import TaskEvent
 from app.db.models.user import User
 from app.settings import DEFAULT_DEV_SECRET_KEY, get_settings
+
+
+def read_identity_header(request: Request, header_name: str) -> str:
+    """Read an X-*-Id style header that may be percent-encoded for non-ASCII transport.
+
+    HTTP headers are latin-1 by spec, so clients with non-ASCII identifiers
+    (e.g. 中文 workstation_id) percent-encode the value and set a sibling
+    header `<Header>-Encoding: percent`. This helper transparently decodes both
+    forms and returns the original utf-8 string."""
+    raw = str(request.headers.get(header_name) or "").strip()
+    if not raw:
+        return ""
+    encoding = str(request.headers.get(f"{header_name}-Encoding") or "").strip().lower()
+    if encoding == "percent":
+        try:
+            return urllib.parse.unquote(raw)
+        except Exception:
+            return raw
+    return raw
 
 
 TOKEN_PREFIX = "ai-auth.v1"
@@ -338,7 +358,7 @@ def resolve_runner_principal(
     runner = _get_runner(db, runner_id)
 
     token = _bearer_token(request)
-    header_runner_id = request.headers.get("x-runner-id")
+    header_runner_id = read_identity_header(request, "x-runner-id")
     registration_token = request.headers.get("x-runner-registration-token", "").strip()
     if token:
         raise AppError("UNAUTHORIZED", "Runner written endpoints require x-runner-id", status_code=401)
@@ -395,7 +415,7 @@ def resolve_runner_task_principal(
 
     claimed_runner_id = _latest_runner_claim(db, task_id)
     token = _bearer_token(request)
-    header_runner_id = request.headers.get("x-runner-id")
+    header_runner_id = read_identity_header(request, "x-runner-id")
     if token:
         raise AppError("UNAUTHORIZED", "Runner written endpoints require x-runner-id", status_code=401)
 

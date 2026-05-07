@@ -8,7 +8,7 @@ from sqlalchemy import or_, select
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
-from app.common.access import resolve_human_principal, resolve_project_write_principal
+from app.common.access import read_identity_header, resolve_human_principal, resolve_project_write_principal
 from app.common.errors import AppError
 from app.common.response import ok
 from app.db.models.collaboration_message import CollaborationMessage
@@ -417,7 +417,7 @@ def _require_workstation_inbox_access(
     action: str,
 ) -> dict[str, object]:
     workstation = get_project_thread_workstation(db, project_id, workstation_id)
-    header_workstation_id = str(request.headers.get("x-workstation-id") or "").strip()
+    header_workstation_id = read_identity_header(request, "x-workstation-id")
     if not header_workstation_id:
         if write:
             resolve_project_write_principal(db, request, project_id, action=action)
