@@ -789,7 +789,13 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
   const [activeAction, setActiveAction] = useState<PanelAction | null>(null);
   const [focusedNpcId, setFocusedNpcId] = useState<string | null>(null);
   const [loadingActionId, setLoadingActionId] = useState<string | null>(null);
-  const [pairingResult, setPairingResult] = useState<{ nodeId: string; token: string } | null>(null);
+  // pairingResult 直接从 URL searchParams 派生，避免 useState + 单次 useEffect
+  // 错过 server-action redirect 后的 query 变化（用户反馈：生成令牌后还是要 F5）
+  const pairingResult = useMemo(() => {
+    const node = searchParams?.get("pairing_node") || "";
+    const tk = searchParams?.get("pairing_token") || "";
+    return node && tk ? { nodeId: node, token: tk } : null;
+  }, [searchParams]);
   const [webBaseUrl, setWebBaseUrl] = useState("http://127.0.0.1:3000");
   const [sceneVisible, setSceneVisible] = useState(false);
   const [copyState, setCopyState] = useState<{ kind: "idle" | "loading" | "ok" | "err"; message?: string }>({ kind: "idle" });
@@ -1059,7 +1065,6 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
     setActivePanel(tab);
     setActiveAction(null);
     setLoadingActionId(null);
-    setPairingResult(null);
     setPanelNotice(`${source} 已打开：${modules.find((item) => item.tab === tab)?.label ?? "平台功能"}`);
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
@@ -1093,7 +1098,6 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
     setActiveAction(null);
     setFocusedNpcId(null);
     setLoadingActionId(null);
-    setPairingResult(null);
     setPanelNotice("已回到 Unity 背景。继续点击右侧功能入口即可打开平台面板。");
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
@@ -1142,7 +1146,6 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
   function openAction(action: PanelAction) {
     setLoadingActionId(action.id);
     setPanelNotice(`正在打开三级抽屉：${action.label}`);
-    if (action.id !== "pairing-token") setPairingResult(null);
     window.setTimeout(() => {
       setActiveAction(action);
       setLoadingActionId(null);
@@ -1177,8 +1180,6 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
       setWebBaseUrl(window.location.origin);
       const tab = params.get("panel") || params.get("tab");
       const actionId = params.get("action");
-      const pairingNode = params.get("pairing_node") || "";
-      const pairingToken = params.get("pairing_token") || "";
       if (isModuleTab(tab)) {
         setActivePanel(tab);
         const action = actionId ? PANEL_ACTIONS[tab].find((item) => item.id === actionId) ?? null : null;
@@ -1187,7 +1188,6 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
           setPanelNotice(`已打开三级抽屉：${action.label}`);
         }
       }
-      setPairingResult(pairingNode && pairingToken ? { nodeId: pairingNode, token: pairingToken } : null);
     }
 
     function handleMessage(event: MessageEvent) {
