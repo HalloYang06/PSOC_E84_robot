@@ -30,6 +30,8 @@ import {
   请求串口USB扫描,
   下发串口调试指令,
 } from "../../../actions";
+import { useTeamNoticeToast } from "../../../../lib/use-team-notice-toast";
+import { TeamNoticeToast } from "../../../../components/team-notice-toast";
 import styles from "./project-2d-upgrade-game.module.css";
 
 type GameProject = {
@@ -767,6 +769,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
     teamNotice,
     teamError,
   } = props;
+  const teamNoticeToast = useTeamNoticeToast();
   const [hudHidden, setHudHidden] = useState(true);
   const [dockHidden, setDockHidden] = useState(false);
   const [activePanel, setActivePanel] = useState<ModuleTab | null>(null);
@@ -2713,7 +2716,9 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
   }
 
   return (
-    <main className={styles.shell}>
+    <>
+      <TeamNoticeToast toast={teamNoticeToast} />
+      <main className={styles.shell}>
       {sceneVisible ? (
         <iframe
           title="A Agent Education2D Interior Lab"
@@ -3021,5 +3026,6 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         <span>当前阶段：先搬功能入口和 UI 风格。所有业务操作先从右侧按钮点击打开，暂不启用 Unity 物件交互。</span>
       </footer>
     </main>
+    </>
   );
 }

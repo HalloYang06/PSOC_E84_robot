@@ -97,6 +97,8 @@ import {
   platformRepoContextSummary,
 } from "../../../lib/platform-repo-context";
 import { summarizeNpcProvisioning } from "../../../lib/npc-provisioning";
+import { useTeamNoticeToast } from "../../../lib/use-team-notice-toast";
+import { TeamNoticeToast } from "../../../components/team-notice-toast";
 import {
   DEFAULT_AUTOMATION_HEARTBEAT_SECONDS,
   buildComputerClaudeThreadSyncCommand,
@@ -5556,6 +5558,7 @@ function TokenResultCard({ title, subtitle, token, command, testId }: TokenResul
 
 export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
   const router = useRouter();
+  const teamNoticeToast = useTeamNoticeToast();
   const nodes = asArray(props.config?.nodes);
   const onlineNodes = nodes.filter((node) => isOnlineStatus(node.status));
   const watchReadyNodes = nodes.filter((node) => runnerWatchInfo(node).active);
@@ -14969,7 +14972,9 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
   const shellClassName = [styles.shell, skinPreviewEnabled ? styles.skinAAgentLab : ""].filter(Boolean).join(" ");
 
   return (
-    <main className={shellClassName} data-game-style-pack={skinPreviewEnabled ? "a-agent-lab" : "harvest-current"}>
+    <>
+      <TeamNoticeToast toast={teamNoticeToast} />
+      <main className={shellClassName} data-game-style-pack={skinPreviewEnabled ? "a-agent-lab" : "harvest-current"}>
       <header className={styles.topBar}>
         <div className={styles.projectMeta}>
           <span className={styles.badge}>{selectedMode?.active ? "2D 开发者模式" : `${selectedMode?.label ?? "未来模式"}`}</span>
@@ -15835,6 +15840,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
         ) : null}
       </section>
     </main>
+    </>
   );
 }
 
