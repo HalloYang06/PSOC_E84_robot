@@ -851,6 +851,113 @@ def api_create_project_thread_workstation(
     return ok(CollaborationWorkstationRead.model_validate(create_project_thread_workstation(db, project_id, payload)).model_dump(mode="json"))
 
 
+_OCCUPANCY_HEARTBEAT_TIMEOUT_SECONDS = 90
+
+
+def _now_iso() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _parse_iso(value: str | None) -> float:
+    if not value:
+        return 0.0
+    try:
+        from datetime import datetime
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+    except Exception:
+        return 0.0
+
+
+def _resolve_occupancy(seat: dict) -> dict | None:
+    metadata = seat.get("metadata") if isinstance(seat.get("metadata"), dict) else {}
+    extra = seat.get("extra_data") if isinstance(seat.get("extra_data"), dict) else {}
+    occ = (metadata.get("occupancy") if isinstance(metadata.get("occupancy"), dict) else None) or \
+          (extra.get("occupancy") if isinstance(extra.get("occupancy"), dict) else None)
+    if not occ:
+        return None
+    if not occ.get("user_id"):
+        return None
+    import time
+    age = time.time() - _parse_iso(occ.get("heartbeat_at") or occ.get("acquired_at"))
+    if age > _OCCUPANCY_HEARTBEAT_TIMEOUT_SECONDS:
+        return None
+    return occ
+
+
+class OccupancyClaimPayload(BaseModel):
+    force: bool = False
+    user_name: str | None = None
+
+
+@router.post("/projects/{project_id}/thread-workstations/{workstation_id}/occupy")
+def api_occupy_seat(
+    project_id: str,
+    workstation_id: str,
+    payload: OccupancyClaimPayload,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    principal = _require_real_human_principal(db, request)
+    resolve_project_write_principal(db, request, project_id, action="project.collaboration_workstation.occupy")
+    seat = get_project_thread_workstation(db, project_id, workstation_id)
+    current = _resolve_occupancy(seat)
+    me = principal.user_id or principal.actor_id
+    if current and current.get("user_id") != me and not payload.force:
+        return ok({
+            "ok": False,
+            "occupied_by": current,
+            "seat_id": seat.get("id") or seat.get("config_id"),
+        })
+    metadata = dict(seat.get("metadata") or {}) if isinstance(seat.get("metadata"), dict) else {}
+    now = _now_iso()
+    metadata["occupancy"] = {
+        "user_id": me,
+        "user_name": payload.user_name or current and current.get("user_name") or me,
+        "acquired_at": current.get("acquired_at") if (current and current.get("user_id") == me) else now,
+        "heartbeat_at": now,
+        "preempted": bool(current and current.get("user_id") != me and payload.force),
+        "preempted_user": current.get("user_id") if (current and current.get("user_id") != me and payload.force) else None,
+    }
+    update_payload = CollaborationWorkstationUpdate(metadata=metadata)
+    update_project_thread_workstation(db, project_id, workstation_id, update_payload)
+    return ok({"ok": True, "occupancy": metadata["occupancy"]})
+
+
+@router.post("/projects/{project_id}/thread-workstations/{workstation_id}/release")
+def api_release_seat(
+    project_id: str,
+    workstation_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    principal = _require_real_human_principal(db, request)
+    resolve_project_write_principal(db, request, project_id, action="project.collaboration_workstation.release")
+    seat = get_project_thread_workstation(db, project_id, workstation_id)
+    current = _resolve_occupancy(seat)
+    me = principal.user_id or principal.actor_id
+    if current and current.get("user_id") != me:
+        return ok({"ok": False, "reason": "not the holder", "occupied_by": current})
+    metadata = dict(seat.get("metadata") or {}) if isinstance(seat.get("metadata"), dict) else {}
+    metadata["occupancy"] = None
+    update_payload = CollaborationWorkstationUpdate(metadata=metadata)
+    update_project_thread_workstation(db, project_id, workstation_id, update_payload)
+    return ok({"ok": True})
+
+
+@router.get("/projects/{project_id}/thread-workstations/{workstation_id}/occupancy")
+def api_get_seat_occupancy(
+    project_id: str,
+    workstation_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    require_project_read_access(db, request, project_id, action="project.collaboration_workstation.occupancy.read")
+    seat = get_project_thread_workstation(db, project_id, workstation_id)
+    current = _resolve_occupancy(seat)
+    return ok({"occupancy": current})
+
+
 @router.patch("/projects/{project_id}/thread-workstations/{workstation_id}")
 def api_update_project_thread_workstation(
     project_id: str,
