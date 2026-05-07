@@ -15,6 +15,7 @@ export function WorkstationProfileEditor({ apiBaseUrl, projectId, nodeId }: Prop
   const [localPath, setLocalPath] = useState("");
   const [reviewPolicy, setReviewPolicy] = useState("inherit");
   const [knowledgePath, setKnowledgePath] = useState(`docs/workstations/${nodeId}.md`);
+  const [skillInheritance, setSkillInheritance] = useState("");
   const [saving, setSaving] = useState(false);
   const [note, setNote] = useState<string | null>(null);
 
@@ -34,6 +35,9 @@ export function WorkstationProfileEditor({ apiBaseUrl, projectId, nodeId }: Prop
         if (cur.local_repo_path) setLocalPath(String(cur.local_repo_path));
         if (cur.review_policy) setReviewPolicy(String(cur.review_policy));
         if (cur.knowledge_path) setKnowledgePath(String(cur.knowledge_path));
+        if (Array.isArray(cur.skill_inheritance)) {
+          setSkillInheritance(cur.skill_inheritance.join(", "));
+        }
       } catch {
         /* ignore — UI 会用默认值 */
       } finally {
@@ -56,6 +60,10 @@ export function WorkstationProfileEditor({ apiBaseUrl, projectId, nodeId }: Prop
             local_repo_path: localPath.trim() || null,
             review_policy: reviewPolicy,
             knowledge_path: knowledgePath.trim() || null,
+            skill_inheritance: skillInheritance
+              .split(/[,\n]+/)
+              .map((s) => s.trim())
+              .filter(Boolean),
           }),
         },
       );
@@ -111,6 +119,15 @@ export function WorkstationProfileEditor({ apiBaseUrl, projectId, nodeId }: Prop
           value={knowledgePath}
           onChange={(e) => setKnowledgePath(e.target.value)}
           placeholder="docs/workstations/<id>.md"
+        />
+      </div>
+      <div className={styles.row}>
+        <label className={styles.label}>工位继承的 skill（逗号分隔，本工位 NPC 默认带上）</label>
+        <input
+          className={styles.input}
+          value={skillInheritance}
+          onChange={(e) => setSkillInheritance(e.target.value)}
+          placeholder="例如：claude-code-skill, mcp-fs, scorecard-poll"
         />
       </div>
       <div className={styles.actions}>
