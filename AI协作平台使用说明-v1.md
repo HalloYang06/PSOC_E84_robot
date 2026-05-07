@@ -11,6 +11,7 @@
 ```powershell
 # 1) 起后端 API（保留这个窗口）
 cd D:\ai合作产品\apps\api
+$env:CORS_ALLOWED_ORIGINS="http://127.0.0.1:3000,http://127.0.0.1:3100,http://localhost:3000,http://localhost:3100"
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8010
 
 # 2) 另开一个窗口起前端
@@ -59,21 +60,13 @@ npm run dev
 
 ---
 
-## 3 · 项目驾驶舱（三层下钻）
+## 3 · 项目详情（v1：直接进工作台）
 
-点项目名进入：`/projects/proj_ai_collab`
+点项目名 → 自动跳到 `/projects/proj_ai_collab/workbench`（NPC 工作台）。
 
-![cockpit](docs/screenshots/v1/03-cockpit.png)
+> v1 不再保留旧版本的"农场游戏化外壳"。**老的游戏壳通过 `?legacy=1` 兜底进**（比如 `/projects/proj_ai_collab?legacy=1`），但默认不再触达。
 
-**驾驶舱看什么**：
-- 顶部工具条：scorecard 合格性 grade chip / "NPC 工作台 →" 按钮 / "📣 全员广播"按钮
-- 中部：工位分组卡（按 computer_node 切片）
-- 下部：跨工位 Handoff 面板、需求触发链、协作消息池入口
-
-**最常用 3 个动作**：
-1. **派全员广播**：点 📣 → 写内容 → preview（看 token 估算 + blocker） → commit
-2. **进 NPC 工作台**：点 "NPC 工作台 →" 进入瓷砖式同时管理多 NPC
-3. **看 scorecard**：grade chip 显示项目健康度（A-F），点开看详细自检结果
+如果你想看驾驶舱式的全景视图（scorecard / 工位分组 / 跨工位 Handoff / 全员广播），下一版会做一个干净的纯文本驾驶舱页替代游戏壳。
 
 ---
 
@@ -262,9 +255,11 @@ node scripts/validate-screenshots-v1.mjs
 
 | 症状 | 解 |
 |---|---|
+| 登录卡住 / 401 | 启 API 时**必须**带 `CORS_ALLOWED_ORIGINS`（见 §0），否则浏览器跨域 fetch 8010 会被静默拦 |
 | API 401 | 检查 `Authorization: Bearer <token>`；浏览器里登过没（cookie 名 `ai_collab_session`）|
 | 跨域被 CORS 拦 | 启 API 时设 `CORS_ALLOWED_ORIGINS=http://127.0.0.1:3000,http://127.0.0.1:3100` |
 | 改完代码 API 没反应 | `cmd /c "taskkill /F /IM python.exe"` 全杀，再重启 |
+| 进项目跳到农场游戏 | v1 已修：默认 redirect 到 /workbench；旧游戏壳走 `?legacy=1` 进 |
 | SQLite 锁了 | 同上，删 `ai_collab.db` 前必须杀干净 python（`feedback_sqlite_lock`）|
 | 中文路径 alembic 报 GBK | `feedback_alembic_windows`：alembic.ini 里别带中文 |
 | eslint 跑不动 | 已知问题（中文路径），暂时跳过 ESLint，用 typecheck 兜底 |
@@ -286,9 +281,8 @@ node scripts/validate-screenshots-v1.mjs
 |---|---|
 | `docs/screenshots/v1/01-login.png` | 登录页 |
 | `02-projects-list.png` | 项目列表 |
-| `03-cockpit.png` | 项目驾驶舱 |
-| `04-workbench-empty.png` | NPC 工作台空状态 |
+| `04-workbench-empty.png` | NPC 工作台空状态（项目入口跳到这里） |
 | `05-workbench-2-tiles-with-occupancy.png` | 双开瓷砖（含占用锁 badge） |
 | `06-workbench-stream-focus.png` | 收起档案后的消息流主视图 |
 
-> 重新生成截图：`node scripts/validate-screenshots-v1.mjs`（要求 API + web 都已起，参见 §0）。脚本会先写入 `artifacts/platform-screenshots-v1/`（gitignore），如要更新文档，复制到 `docs/screenshots/v1/`。
+> 重新生成截图：`cd apps/web && node ../../scripts/validate-screenshots-v1.mjs`（要求 API + web 都已起，参见 §0）。脚本写入 `apps/web/artifacts/platform-screenshots-v1/`（gitignore），如要更新文档复制到 `docs/screenshots/v1/`。

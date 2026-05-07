@@ -536,8 +536,12 @@ export default async function ProjectDetailPage({
       pairing_token?: string;
       adapter_workstation?: string;
       adapter_token?: string;
+      legacy?: string;
     };
   }) {
+  if (!searchParams?.legacy && !searchParams?.mode && !searchParams?.zone) {
+    redirect(`/projects/${params.id}/workbench`);
+  }
   const projectState = await getProjectState(params.id);
   const projectReturnPath = encodeURIComponent(`/projects/${params.id}`);
   if (projectState.status === 401) {
