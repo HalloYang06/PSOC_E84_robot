@@ -5445,6 +5445,115 @@ function buildSeatMapPayload(options: {
   });
 }
 
+type TokenResultCardProps = {
+  title: string;
+  subtitle?: string;
+  token: string;
+  command: string;
+  testId?: string;
+};
+
+function TokenResultCard({ title, subtitle, token, command, testId }: TokenResultCardProps) {
+  const [copyState, setCopyState] = useState<{ kind: "idle" | "ok" | "err"; message?: string }>({
+    kind: "idle",
+  });
+
+  async function copyText(text: string, okMessage: string) {
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else if (typeof document !== "undefined") {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      } else {
+        throw new Error("剪贴板不可用");
+      }
+      setCopyState({ kind: "ok", message: okMessage });
+      setTimeout(() => setCopyState({ kind: "idle" }), 3000);
+    } catch (error) {
+      setCopyState({
+        kind: "err",
+        message: `复制失败：${error instanceof Error ? error.message : "未知错误"}`,
+      });
+      setTimeout(() => setCopyState({ kind: "idle" }), 4000);
+    }
+  }
+
+  return (
+    <article
+      className={styles.successBanner}
+      data-token-result-card={testId || "true"}
+      style={{ display: "flex", flexDirection: "column", gap: 8 }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
+        <strong>{title}</strong>
+        {subtitle ? <span style={{ fontWeight: 400, opacity: 0.85 }}>{subtitle}</span> : null}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <code style={{ background: "rgba(0,0,0,0.25)", padding: "2px 6px", borderRadius: 6, wordBreak: "break-all" }}>
+          {token}
+        </code>
+        <button
+          type="button"
+          className={styles.ghostButton}
+          onClick={() => copyText(token, "令牌已复制到剪贴板")}
+          data-token-copy-token={testId || "true"}
+        >
+          复制令牌
+        </button>
+      </div>
+      <p style={{ margin: "4px 0", fontWeight: 400, opacity: 0.9 }}>
+        把下面命令发到目标电脑运行（PowerShell）。命令会自动下载平台最新版接入脚本，无需提前 clone 仓库。
+      </p>
+      <textarea
+        readOnly
+        rows={4}
+        value={command}
+        aria-label="电脑接入命令"
+        data-token-command={testId || "true"}
+        style={{
+          width: "100%",
+          fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace",
+          fontSize: 11,
+          background: "rgba(0,0,0,0.32)",
+          color: "#f6edd8",
+          border: "1px solid rgba(246,237,216,0.12)",
+          borderRadius: 10,
+          padding: "8px 10px",
+          resize: "vertical",
+        }}
+      />
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <button
+          type="button"
+          className={styles.ghostButton}
+          onClick={() => copyText(command, "接入命令已复制，可以粘贴到目标电脑 PowerShell 运行")}
+          data-token-copy-command={testId || "true"}
+        >
+          复制完整命令
+        </button>
+        {copyState.kind !== "idle" && copyState.message ? (
+          <small
+            style={{
+              opacity: 0.95,
+              color: copyState.kind === "ok" ? "#b7f0ad" : "#ffb4b4",
+            }}
+            data-token-copy-status={copyState.kind}
+          >
+            {copyState.message}
+          </small>
+        ) : null}
+      </div>
+    </article>
+  );
+}
+
 export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
   const router = useRouter();
   const nodes = asArray(props.config?.nodes);
@@ -10911,16 +11020,27 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
           </div>
         ) : null}
 
-        {pairingToken ? (
-          <div
-            className={styles.successBanner}
-            data-computer-pairing-banner="true"
-            data-computer-pairing-node={pairingNodeId || ""}
-            data-computer-pairing-token={pairingToken}
-          >
-            配对令牌：{pairingToken}{pairingNodeId ? ` / 电脑 ${pairingNodeId}` : ""}
-          </div>
-        ) : null}
+        {pairingToken ? (() => {
+          const pairingNode = resolveManagedComputer(pairingNodeId) ?? {};
+          const pairingServerUrl = text(props.computerConnectServerUrl, "http://127.0.0.1:3000");
+          const pairingRunnerId = text(pairingNode.runner_id, "") || suggestedComputerRunnerId(pairingNode);
+          const pairingCommand = buildComputerOneClickConnectCommand(
+            pairingServerUrl,
+            projectId,
+            pairingNode,
+            pairingToken,
+            pairingRunnerId,
+          );
+          return (
+            <TokenResultCard
+              title="电脑配对令牌已生成"
+              subtitle={pairingNodeId ? `电脑 ${pairingNodeId}` : undefined}
+              token={pairingToken}
+              command={pairingCommand}
+              testId="computer-pairing"
+            />
+          );
+        })() : null}
 
         {watchBlockedNodes.length ? (
           <div className={styles.noticeCard} data-computer-watch-blocked-count={String(watchBlockedNodes.length)}>
@@ -11417,12 +11537,24 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
           </article>
         </div>
 
-        {workstationToken ? (
-          <div className={styles.successBanner}>
-            工位令牌：{workstationToken}
-            {workstationTokenId ? ` / 工位 ${workstationTokenId}` : ""}
-          </div>
-        ) : null}
+        {workstationToken ? (() => {
+          const workstationServerUrl = text(props.computerConnectServerUrl, "http://127.0.0.1:8010");
+          const workstationCommand = buildWorkstationAdapterCommand(
+            projectId,
+            workstationTokenId,
+            workstationToken,
+            workstationServerUrl,
+          );
+          return (
+            <TokenResultCard
+              title="工位接入令牌已签发"
+              subtitle={workstationTokenId ? `工位 ${workstationTokenId}` : undefined}
+              token={workstationToken}
+              command={workstationCommand}
+              testId="workstation-adapter"
+            />
+          );
+        })() : null}
 
         {machineRoomAttentionThreads.length ? (
           <div className={styles.panelStack} data-machine-room-attention="true">
