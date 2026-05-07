@@ -3104,6 +3104,32 @@
   color: #dcecff;
 }
 
+.primaryStateChip {
+  min-height: 26px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+}
+
+.threadDetailsToggle {
+  margin-top: 6px;
+  font-size: 11px;
+  color: rgba(246, 237, 216, 0.7);
+}
+.threadDetailsToggle summary {
+  cursor: pointer;
+  padding: 2px 4px;
+  list-style: none;
+  user-select: none;
+  color: rgba(246, 237, 216, 0.78);
+}
+.threadDetailsToggle summary::-webkit-details-marker { display: none; }
+.threadDetailsToggle summary:hover { color: #fdf3d2; }
+.threadDetailsToggle[open] summary { color: #fdf3d2; }
+
 .adapterCommandCard {
   margin-top: 10px;
   padding: 10px 12px;

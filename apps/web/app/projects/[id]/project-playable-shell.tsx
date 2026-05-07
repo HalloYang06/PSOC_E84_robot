@@ -119,6 +119,7 @@ import {
 } from "../../../lib/development-workshop";
 import agencyAgentsSkillPack from "../../../lib/skill-packs/agency-agents-skill-pack.json";
 import styles from "./project-playable-shell.module.css";
+import { ClaudeCommandPalette } from "./_components/claude-command-palette";
 
 type AnyRecord = Record<string, any>;
 type DisplayResolver = (value: unknown, fallback: string) => string;
@@ -11650,24 +11651,33 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                     <strong>{display(item.thread.name, threadId)}</strong>
                     <p>{item.recoveryProfile.summary}</p>
                     <div className={styles.chipRow}>
-                      <span className={`${styles.miniChip} ${recoveryChipClass}`} data-machine-thread-recovery-label={threadId}>
+                      <span
+                        className={`${styles.miniChip} ${styles.primaryStateChip} ${recoveryChipClass}`}
+                        data-machine-thread-recovery-label={threadId}
+                        title="一眼能看出这条线程当前的主要状态；其他细节折叠在下方"
+                      >
                         {item.recoveryProfile.label}
                       </span>
-                      <span className={styles.miniChip}>{providerLabel}</span>
-                      <span className={styles.miniChip}>{item.boundSeat ? `已绑 ${text(item.boundSeat.name, "NPC")}` : "未绑定 NPC"}</span>
-                      {item.activityProfile.activityFreshnessLabel ? (
-                        <span className={styles.miniChip}>{item.activityProfile.activityFreshnessLabel}</span>
-                      ) : null}
-                      {item.activityProfile.latestCommandAt ? (
-                        <span className={styles.miniChip}>{item.activityProfile.latestCommandTypeLabel} {formatStamp(item.activityProfile.latestCommandAt)}</span>
-                      ) : null}
-                      {item.activityProfile.latestAckAt ? (
-                        <span className={styles.miniChip}>最近回执 {formatStamp(item.activityProfile.latestAckAt)}</span>
-                      ) : null}
-                      {item.activityProfile.latestFinalReplyAt ? (
-                        <span className={styles.miniChip}>最近最终回复 {formatStamp(item.activityProfile.latestFinalReplyAt)}</span>
-                      ) : null}
                     </div>
+                    <details className={styles.threadDetailsToggle}>
+                      <summary>展开细节（provider / 绑定 / 最近活动）</summary>
+                      <div className={styles.chipRow}>
+                        <span className={styles.miniChip}>{providerLabel}</span>
+                        <span className={styles.miniChip}>{item.boundSeat ? `已绑 ${text(item.boundSeat.name, "NPC")}` : "未绑定 NPC"}</span>
+                        {item.activityProfile.activityFreshnessLabel ? (
+                          <span className={styles.miniChip}>{item.activityProfile.activityFreshnessLabel}</span>
+                        ) : null}
+                        {item.activityProfile.latestCommandAt ? (
+                          <span className={styles.miniChip}>{item.activityProfile.latestCommandTypeLabel} {formatStamp(item.activityProfile.latestCommandAt)}</span>
+                        ) : null}
+                        {item.activityProfile.latestAckAt ? (
+                          <span className={styles.miniChip}>最近回执 {formatStamp(item.activityProfile.latestAckAt)}</span>
+                        ) : null}
+                        {item.activityProfile.latestFinalReplyAt ? (
+                          <span className={styles.miniChip}>最近最终回复 {formatStamp(item.activityProfile.latestFinalReplyAt)}</span>
+                        ) : null}
+                      </div>
+                    </details>
                     <p className={styles.microCopy} data-machine-thread-recovery-next={threadId}>
                       建议动作：{item.recoveryProfile.nextStep}
                     </p>
@@ -11724,6 +11734,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
         ) : null}
 
         <form action={sendRunnerCommand.bind(null, projectId)} className={styles.skillManagerForm}>
+          <ClaudeCommandPalette />
           <strong>给在线电脑发一条最小命令</strong>
           <p className={styles.microCopy}>
             目标电脑要先有 watcher 进程在跑才能接到单。线程级 watcher（每条线程一个 PS 终端）见{" "}

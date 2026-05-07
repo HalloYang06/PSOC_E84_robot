@@ -35,6 +35,7 @@ import { useTeamNoticeToast } from "../../../../lib/use-team-notice-toast";
 import { TeamNoticeToast } from "../../../../components/team-notice-toast";
 import { buildComputerOneClickConnectCommand, suggestedComputerRunnerId } from "../../../../lib/runner-onboarding-commands";
 import styles from "./project-2d-upgrade-game.module.css";
+import { ClaudeCommandPalette } from "../_components/claude-command-palette";
 
 type GameProject = {
   id: string;
@@ -140,6 +141,21 @@ const PANEL_TABS = [
 ] as const;
 
 type ModuleTab = (typeof PANEL_TABS)[number];
+
+const SCORECARD_FIX_TAB: Record<string, ModuleTab> = {
+  thread_call_health: "machine-room",
+  npc_handover_health: "npc-create",
+  human_review_responsiveness: "exchange",
+  hardware_redline_count: "ai-debug",
+  collaboration_density: "exchange",
+  token_spend_7d_yuan: "ai-debug",
+};
+
+function buildWatcherCommand(projectId: string, workstationId: string): string {
+  const quote = (value: string) =>
+    /^[A-Za-z0-9_\-]+$/.test(value) ? value : `'${value.replace(/'/g, "''")}'`;
+  return `cd D:\\ai合作产品; .\\scripts\\start-thread-watcher.ps1 -ProjectId ${quote(projectId)} -WorkstationId ${quote(workstationId)}`;
+}
 
 type ModuleLink = {
   label: string;
@@ -799,6 +815,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
   const [webBaseUrl, setWebBaseUrl] = useState("http://127.0.0.1:3000");
   const [sceneVisible, setSceneVisible] = useState(false);
   const [copyState, setCopyState] = useState<{ kind: "idle" | "loading" | "ok" | "err"; message?: string }>({ kind: "idle" });
+  const [watcherCopyState, setWatcherCopyState] = useState<{ kind: "idle" | "ok" | "err"; message?: string }>({ kind: "idle" });
   const [handoffPreview, setHandoffPreview] = useState<{ npcName: string; prompt: string; at: string } | null>(null);
   const [handoffTaskId, setHandoffTaskId] = useState<string>("");
   const [cockpitOpen, setCockpitOpen] = useState(true);
@@ -861,6 +878,31 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
     } catch (error) {
       setCopyState({ kind: "err", message: `复制失败：${error instanceof Error ? error.message : "未知错误"}` });
       setTimeout(() => setCopyState({ kind: "idle" }), 4000);
+    }
+  }
+
+  async function copyWatcherCommand(workstationId: string) {
+    const command = buildWatcherCommand(project.id, workstationId);
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(command);
+      } else if (typeof document !== "undefined") {
+        const ta = document.createElement("textarea");
+        ta.value = command;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      } else {
+        throw new Error("剪贴板不可用");
+      }
+      setWatcherCopyState({ kind: "ok", message: `已复制：粘贴到新 PowerShell 终端即可起 watcher（线程 ${workstationId}）` });
+      setTimeout(() => setWatcherCopyState({ kind: "idle" }), 4000);
+    } catch (error) {
+      setWatcherCopyState({ kind: "err", message: `复制失败：${error instanceof Error ? error.message : "未知错误"}` });
+      setTimeout(() => setWatcherCopyState({ kind: "idle" }), 4000);
     }
   }
 
@@ -1991,6 +2033,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
     if (moduleTab === "exchange" && action.id === "dispatch-command") {
       return (
         <div className={styles.realActionStack} data-unity-real-form="exchange-dispatch">
+          <ClaudeCommandPalette />
           <form action={previewCollaborationMessage} className={styles.drawerForm}>
             <input type="hidden" name="project_id" value={project.id} />
             <input type="hidden" name="return_to" value={returnPath("exchange", "dispatch-command")} />
@@ -2982,6 +3025,21 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                 </a>
                 （每条线程要一个 PS 终端常驻）
               </p>
+              {firstWorkstation ? (
+                <button
+                  type="button"
+                  className={styles.watcherCopyButton}
+                  onClick={() => copyWatcherCommand(firstWorkstation.id)}
+                  title={`复制 ${firstWorkstation.id} 的 start-thread-watcher.ps1 命令`}
+                >
+                  📋 复制 Watch 命令（{firstWorkstation.id}）
+                </button>
+              ) : null}
+              {watcherCopyState.message ? (
+                <p className={watcherCopyState.kind === "err" ? styles.watcherCopyErr : styles.watcherCopyOk}>
+                  {watcherCopyState.message}
+                </p>
+              ) : null}
             </article>
           </div>
           {scorecard && scorecardOpen ? (
@@ -2996,11 +3054,23 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
               <div className={styles.scorecardGrid}>
                 {scorecard.indicators.map((ind) => {
                   const gradeKey = (ind.grade && ind.grade !== "-" ? ind.grade : "Neutral");
+                  const fixTab = SCORECARD_FIX_TAB[ind.key];
+                  const showFix = fixTab && (ind.grade === "C" || ind.grade === "D");
                   return (
                     <div key={ind.key} className={`${styles.scorecardItem} ${styles[`scoreGrade${gradeKey}`] ?? ""}`}>
                       <span className={styles.scoreGradeBadge}>{ind.grade && ind.grade !== "-" ? ind.grade : "—"}</span>
                       <strong>{ind.label}</strong>
                       <small>{ind.detail}</small>
+                      {showFix ? (
+                        <button
+                          type="button"
+                          className={styles.scorecardFixButton}
+                          onClick={() => openPanel(fixTab, "合格性指标")}
+                          title={`跳到 ${modules.find((m) => m.tab === fixTab)?.label ?? fixTab} 模块`}
+                        >
+                          去修复 →
+                        </button>
+                      ) : null}
                     </div>
                   );
                 })}

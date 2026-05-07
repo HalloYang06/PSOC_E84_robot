@@ -1687,6 +1687,55 @@
 .scoreGradeD { color: #ffa3a3; }
 .scoreGradeNeutral { color: #cfd9e3; }
 
+.scorecardFixButton {
+  grid-column: 1 / -1;
+  margin-top: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(255, 163, 163, 0.12);
+  color: #ffc7c7;
+  border: 1px solid rgba(255, 163, 163, 0.45);
+  cursor: pointer;
+  align-self: start;
+  justify-self: start;
+  transition: background 0.15s, color 0.15s;
+}
+.scorecardFixButton:hover {
+  background: rgba(255, 163, 163, 0.22);
+  color: #ffe2e2;
+  border-color: rgba(255, 200, 200, 0.78);
+}
+
+.watcherCopyButton {
+  margin-top: 6px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(88, 240, 255, 0.12);
+  color: #b9fff3;
+  border: 1px solid rgba(88, 240, 255, 0.42);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.watcherCopyButton:hover {
+  background: rgba(88, 240, 255, 0.22);
+  color: #ddfff8;
+  border-color: rgba(167, 255, 237, 0.78);
+}
+.watcherCopyOk {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #b9fff3;
+}
+.watcherCopyErr {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #ffa3a3;
+}
+
 .cockpitHeader {
   display: flex;
   align-items: center;
