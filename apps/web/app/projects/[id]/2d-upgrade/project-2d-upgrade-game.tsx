@@ -872,6 +872,34 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
     };
   }, [project.id]);
 
+  // Keyboard shortcuts to escape Unity iframe focus and re-orient on the
+  // dashboard. Acceptance feedback flagged that Unity dominated the screen and
+  // there was no fast way to hide it; the cockpit's "隐藏场景" button works but
+  // is buried in a toolbar. Esc collapses the cockpit (gives Unity full focus),
+  // Alt+U toggles the Unity scene visibility, Alt+T toggles the task board.
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      const tag = (target?.tagName || "").toLowerCase();
+      if (tag === "input" || tag === "textarea" || target?.isContentEditable) return;
+      if (event.altKey && (event.key === "u" || event.key === "U")) {
+        event.preventDefault();
+        setSceneVisible((value) => !value);
+        return;
+      }
+      if (event.altKey && (event.key === "t" || event.key === "T")) {
+        event.preventDefault();
+        setTaskBoardOpen((value) => !value);
+        return;
+      }
+      if (event.key === "Escape" && !event.altKey && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
+        setCockpitOpen((value) => !value);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   const unitySrc = useMemo(() => {
     const query = new URLSearchParams({
       projectId: project.id,
@@ -2850,7 +2878,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                 type="button"
                 className={styles.cockpitGhost}
                 onClick={() => setSceneVisible((value) => !value)}
-                title="显示/隐藏 Unity 场景背景"
+                title="显示/隐藏 Unity 场景背景 (快捷键 Alt+U)"
               >
                 {sceneVisible ? "隐藏场景" : "显示场景"}
               </button>
@@ -2929,7 +2957,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
           type="button"
           className={styles.cockpitReopen}
           onClick={() => setCockpitOpen(true)}
-          title="显示驾驶舱"
+          title="显示驾驶舱（快捷键 Esc）"
         >
           ▼ 显示驾驶舱
         </button>
@@ -2972,7 +3000,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                 type="button"
                 className={styles.taskBoardToggle}
                 onClick={() => setTaskBoardOpen(false)}
-                title="完全隐藏任务看板（不挡视野）"
+                title="完全隐藏任务看板（快捷键 Alt+T）"
               >
                 ✕ 隐藏
               </button>
