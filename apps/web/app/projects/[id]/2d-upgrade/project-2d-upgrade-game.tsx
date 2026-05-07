@@ -562,6 +562,86 @@ function automationLabel(item?: FeedItem) {
   return item?.automationEnabled ? "持续自动化" : "单次执行";
 }
 
+function WorkstationGroupsSection({
+  projectId,
+  npcSeats,
+  computers,
+}: {
+  projectId: string;
+  npcSeats: FeedItem[];
+  computers: FeedItem[];
+}) {
+  const computerNameById = new Map<string, string>();
+  for (const c of computers) {
+    computerNameById.set(c.id, itemTitle(c));
+  }
+  type Group = { key: string; name: string; seats: FeedItem[] };
+  const groupMap = new Map<string, Group>();
+  for (const seat of npcSeats) {
+    const key = seat.computerNodeId || seat.sourceWorkstationId || "__unbound__";
+    const name = seat.computerNodeId
+      ? computerNameById.get(seat.computerNodeId) ?? seat.computerNodeId
+      : "未绑定电脑";
+    const bucket = groupMap.get(key) ?? { key, name, seats: [] };
+    bucket.seats.push(seat);
+    groupMap.set(key, bucket);
+  }
+  const groups = Array.from(groupMap.values()).sort((a, b) => b.seats.length - a.seats.length);
+
+  if (groups.length === 0) return null;
+
+  return (
+    <section className={styles.workstationGroups}>
+      <header className={styles.workstationGroupsHead}>
+        <strong>按工位分组的 NPC（{groups.length} 个工位 / {npcSeats.length} 个 NPC）</strong>
+        <small>展开后可逐个工位发指令；总 / 工位广播按钮 S3 接入</small>
+      </header>
+      <div className={styles.workstationGroupsList}>
+        {groups.map((group) => {
+          const automationOn = group.seats.filter((s) => s.automationEnabled).length;
+          return (
+            <details key={group.key} className={styles.workstationGroupCard}>
+              <summary className={styles.workstationGroupSummary}>
+                <span className={styles.workstationGroupName}>🖥 {group.name}</span>
+                <span className={styles.workstationGroupCount}>
+                  {group.seats.length} 个 NPC · 自动化 {automationOn}
+                </span>
+                <span
+                  className={styles.workstationGroupBroadcastDisabled}
+                  title="组内广播：S3 阶段接入（一键发给本组所有 NPC）"
+                >
+                  组内广播 (S3)
+                </span>
+              </summary>
+              <ul className={styles.workstationGroupSeatList}>
+                {group.seats.map((seat) => (
+                  <li key={seat.id} className={styles.workstationGroupSeatRow}>
+                    <strong>{itemTitle(seat)}</strong>
+                    <small>
+                      {seat.providerLabel || seat.providerId || "未绑定 provider"}
+                      {seat.responsibility ? ` · ${seat.responsibility.slice(0, 28)}${seat.responsibility.length > 28 ? "…" : ""}` : ""}
+                      {seat.automationEnabled ? " · 持续自动化" : ""}
+                    </small>
+                  </li>
+                ))}
+              </ul>
+              <div className={styles.workstationGroupActions}>
+                <Link
+                  href={`/projects/${projectId}/workbench`}
+                  className={styles.workstationGroupOpenLink}
+                  title="到工作台同时打开本组 NPC 的瓷砖"
+                >
+                  到 NPC 工作台 →
+                </Link>
+              </div>
+            </details>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function listToFormValue(items?: string[]) {
   return (items ?? []).filter(Boolean).join("\n");
 }
@@ -3049,6 +3129,11 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
               ) : null}
             </article>
           </div>
+          <WorkstationGroupsSection
+            projectId={project.id}
+            npcSeats={npcSeats}
+            computers={computers}
+          />
           {scorecard && scorecardOpen ? (
             <div className={styles.scorecardPanel}>
               <div className={styles.scorecardHeader}>

@@ -1736,6 +1736,125 @@
   color: #ffa3a3;
 }
 
+.workstationGroups {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(2, 28, 39, 0.55), rgba(2, 13, 20, 0.5));
+  border: 1px solid rgba(88, 240, 255, 0.22);
+}
+
+.workstationGroupsHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 0 4px 8px;
+  border-bottom: 1px solid rgba(88, 240, 255, 0.16);
+  margin-bottom: 8px;
+}
+.workstationGroupsHead strong { font-size: 13px; color: #b9fff3; }
+.workstationGroupsHead small { font-size: 11px; color: rgba(190, 220, 240, 0.7); }
+
+.workstationGroupsList {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 8px;
+}
+
+.workstationGroupCard {
+  border-radius: 10px;
+  background: rgba(2, 22, 33, 0.55);
+  border: 1px solid rgba(88, 240, 255, 0.18);
+  overflow: hidden;
+}
+.workstationGroupCard[open] { border-color: rgba(167, 255, 237, 0.5); }
+
+.workstationGroupSummary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  background: rgba(23, 215, 255, 0.06);
+}
+.workstationGroupSummary::-webkit-details-marker { display: none; }
+.workstationGroupSummary:hover { background: rgba(23, 215, 255, 0.12); }
+
+.workstationGroupName {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #f4ffff;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workstationGroupCount {
+  font-size: 11px;
+  color: rgba(190, 220, 240, 0.78);
+}
+
+.workstationGroupBroadcastDisabled {
+  font-size: 10.5px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(255, 232, 109, 0.06);
+  color: rgba(255, 232, 109, 0.55);
+  border: 1px dashed rgba(255, 232, 109, 0.32);
+  cursor: not-allowed;
+}
+
+.workstationGroupSeatList {
+  list-style: none;
+  margin: 0;
+  padding: 6px 12px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.workstationGroupSeatRow {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 5px 8px;
+  border-radius: 7px;
+  background: rgba(2, 13, 20, 0.45);
+  border: 1px solid rgba(88, 240, 255, 0.1);
+}
+.workstationGroupSeatRow strong {
+  font-size: 12px;
+  color: #f4ffff;
+}
+.workstationGroupSeatRow small {
+  font-size: 10.5px;
+  color: rgba(190, 220, 240, 0.68);
+}
+
+.workstationGroupActions {
+  padding: 6px 12px 10px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.workstationGroupOpenLink {
+  font-size: 11px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(88, 240, 255, 0.16);
+  color: #b9fff3;
+  border: 1px solid rgba(88, 240, 255, 0.42);
+  text-decoration: none;
+}
+.workstationGroupOpenLink:hover { background: rgba(88, 240, 255, 0.28); }
+
 .cockpitHeader {
   display: flex;
   align-items: center;
