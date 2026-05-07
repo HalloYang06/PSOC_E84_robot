@@ -839,6 +839,31 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
     }
   }
 
+  async function copyTextToClipboard(value: string, okMessage: string) {
+    if (!value) return;
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value);
+      } else if (typeof document !== "undefined") {
+        const ta = document.createElement("textarea");
+        ta.value = value;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      } else {
+        throw new Error("剪贴板不可用");
+      }
+      setCopyState({ kind: "ok", message: okMessage });
+      setTimeout(() => setCopyState({ kind: "idle" }), 3000);
+    } catch (error) {
+      setCopyState({ kind: "err", message: `复制失败：${error instanceof Error ? error.message : "未知错误"}` });
+      setTimeout(() => setCopyState({ kind: "idle" }), 4000);
+    }
+  }
+
   const [scorecard, setScorecard] = useState<{
     grade: string;
     score: number | null;
@@ -1852,12 +1877,31 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
       return (
         <div className={styles.realActionStack} data-unity-real-form="computer-pairing">
           {pairingResult ? (
-            <article className={styles.resultCard}>
+            <article className={styles.resultCard} data-token-result-card="computer-pairing">
               <span>配对令牌已生成</span>
               <b>{pairingResult.nodeId}</b>
               <p>不用刷新页面。把下面命令发到目标电脑运行；如果目标电脑没有仓库文件，也会从平台下载 runner 脚本。</p>
-              <code>{pairingResult.token}</code>
-              <textarea readOnly rows={5} value={connectCommand} aria-label="电脑接入命令" />
+              <code data-token-copy-token="computer-pairing">{pairingResult.token}</code>
+              <textarea readOnly rows={5} value={connectCommand} aria-label="电脑接入命令" data-token-command="computer-pairing" />
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <button
+                  type="button"
+                  onClick={() => copyTextToClipboard(pairingResult.token, "令牌已复制到剪贴板")}
+                  data-token-copy-token-btn="computer-pairing"
+                >
+                  复制令牌
+                </button>
+                <button
+                  type="button"
+                  onClick={() => copyTextToClipboard(connectCommand, "接入命令已复制，可粘贴到目标电脑 PowerShell 运行")}
+                  data-token-copy-command-btn="computer-pairing"
+                >
+                  复制完整命令
+                </button>
+                {copyState.kind !== "idle" && copyState.message ? (
+                  <small data-token-copy-status={copyState.kind}>{copyState.message}</small>
+                ) : null}
+              </div>
             </article>
           ) : null}
           <form action={createCollaborationNode.bind(null, project.id)} className={styles.drawerForm}>
