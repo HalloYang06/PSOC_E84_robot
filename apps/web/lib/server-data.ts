@@ -1039,6 +1039,18 @@ export async function getHandoffsData() {
   return [];
 }
 
+export async function getProjectScorecardState(projectId: string): Promise<ApiLoadState<any | null>> {
+  try {
+    const data = await fetchJson<any>(`/api/qualification/projects/${projectId}/scorecard`);
+    return okState(data && typeof data === "object" ? data : null);
+  } catch (error) {
+    if (error instanceof ApiRequestError) {
+      return { data: null, status: error.status, error };
+    }
+    return errorState(error, null, "PROJECT_SCORECARD_UNAVAILABLE");
+  }
+}
+
 export async function getGitProjectWorkspaceData(projectId: string) {
   try {
     return await fetchJson<any>(`/api/git/projects/${projectId}/workspace`);

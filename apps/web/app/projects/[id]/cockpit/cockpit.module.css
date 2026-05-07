@@ -1,0 +1,289 @@
+.page {
+  min-height: 100vh;
+  background: linear-gradient(180deg, #04132a 0%, #050b1d 100%);
+  color: #e6f6ff;
+  padding: 20px 28px 40px;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "PingFang SC", sans-serif;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: rgba(7, 25, 51, 0.85);
+  border: 1px solid rgba(60, 220, 255, 0.18);
+  border-radius: 14px;
+  margin-bottom: 18px;
+}
+
+.topbarLeft {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.topbarRight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.projectName {
+  color: #93fbff;
+  font-size: 16px;
+}
+
+.muted {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.sep {
+  color: #325172;
+}
+
+.link {
+  color: #93fbff;
+  text-decoration: none;
+}
+
+.link:hover {
+  text-decoration: underline;
+}
+
+.primaryBtn {
+  background: #1a8cff;
+  color: white;
+  padding: 6px 14px;
+  border-radius: 8px;
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.primaryBtn:hover {
+  background: #2596ff;
+}
+
+.ghostBtn {
+  background: transparent;
+  color: #94a3b8;
+  border: 1px solid rgba(60, 220, 255, 0.18);
+  padding: 6px 14px;
+  border-radius: 8px;
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.ghostBtn:hover {
+  color: #e6f6ff;
+}
+
+.section {
+  background: rgba(7, 25, 51, 0.55);
+  border: 1px solid rgba(60, 220, 255, 0.15);
+  border-radius: 14px;
+  padding: 16px 18px;
+  margin-bottom: 14px;
+}
+
+.section h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #e6f6ff;
+}
+
+.sectionHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.gradeChip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 24px;
+  border-radius: 6px;
+  color: #04132a;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.gradeChipSm {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 5px;
+  color: #04132a;
+  font-weight: 700;
+  font-size: 11px;
+}
+
+.scoreGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.scoreCard {
+  background: rgba(13, 32, 60, 0.7);
+  border: 1px solid rgba(60, 220, 255, 0.12);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.scoreHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.scoreLabel {
+  font-size: 13px;
+  color: #cbe7ff;
+}
+
+.scoreDetail {
+  font-size: 12px;
+  color: #94a3b8;
+  line-height: 1.4;
+}
+
+.repoList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 6px 16px;
+  font-size: 13px;
+}
+
+.repoList li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.repoKey {
+  color: #6b8aab;
+  min-width: 80px;
+}
+
+.repoVal {
+  color: #cbe7ff;
+  word-break: break-all;
+}
+
+.workstationGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+.workstationCard {
+  background: rgba(13, 32, 60, 0.7);
+  border: 1px solid rgba(60, 220, 255, 0.12);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.workstationHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.seatList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.seatItem {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 12px;
+  padding: 3px 0;
+  border-top: 1px dashed rgba(60, 220, 255, 0.08);
+}
+
+.seatItem:first-child {
+  border-top: none;
+}
+
+.seatName {
+  color: #cbe7ff;
+}
+
+.handoffList,
+.messageList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.handoffItem,
+.messageItem {
+  display: grid;
+  grid-template-columns: 80px 1fr auto;
+  gap: 10px;
+  font-size: 12px;
+  padding: 5px 8px;
+  background: rgba(13, 32, 60, 0.55);
+  border-radius: 6px;
+  align-items: center;
+}
+
+.handoffStatus,
+.msgType {
+  color: #93fbff;
+  font-variant-numeric: tabular-nums;
+}
+
+.handoffTitle,
+.msgBody {
+  color: #cbe7ff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.msgSender {
+  color: #94a3b8;
+  font-family: ui-monospace, "Cascadia Mono", monospace;
+}
+
+.msgType {
+  min-width: 90px;
+}
+
+.messageItem {
+  grid-template-columns: 80px 110px 1fr;
+}
+
+.footer {
+  margin-top: 12px;
+  padding: 10px 16px;
+  text-align: center;
+}

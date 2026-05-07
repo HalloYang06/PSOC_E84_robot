@@ -814,7 +814,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, currentUserId,
               : sendNote || (seat.permissionLevel ? `权限：${seat.permissionLevel}` : "发送后会写入协作消息池，目标线程 watcher 会拉到")}
           </small>
           <div className={styles.composerActions}>
-            <Link href={`/projects/${projectId}`} className={styles.linkBtn} title="返回项目驾驶舱">
+            <Link href={`/projects/${projectId}/cockpit`} className={styles.linkBtn} title="返回项目驾驶舱">
               驾驶舱
             </Link>
             <button

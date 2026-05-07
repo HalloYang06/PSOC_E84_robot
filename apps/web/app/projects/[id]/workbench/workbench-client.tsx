@@ -97,7 +97,7 @@ export function WorkbenchClient({ projectId, projectName, apiBaseUrl, seats, cur
     <main className={styles.shell}>
       <header className={styles.topbar}>
         <div className={styles.topbarLeft}>
-          <Link href={`/projects/${projectId}`} className={styles.backLink} title="返回项目驾驶舱">
+          <Link href={`/projects/${projectId}/cockpit`} className={styles.backLink} title="返回项目驾驶舱">
             ← 驾驶舱
           </Link>
           <div className={styles.title}>
