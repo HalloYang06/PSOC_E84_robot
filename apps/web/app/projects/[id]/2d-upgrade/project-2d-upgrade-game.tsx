@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
 
@@ -772,7 +772,17 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
     teamError,
   } = props;
   const router = useRouter();
+  const searchParams = useSearchParams();
   const teamNoticeToast = useTeamNoticeToast({ onRefresh: () => router.refresh() });
+
+  const teamNoticeKey = searchParams?.get("team_notice") ?? "";
+  const pairingTokenKey = searchParams?.get("pairing_token") ?? "";
+  const adapterTokenKey = searchParams?.get("adapter_token") ?? "";
+  useEffect(() => {
+    if (!teamNoticeKey && !pairingTokenKey && !adapterTokenKey) return;
+    router.refresh();
+  }, [router, teamNoticeKey, pairingTokenKey, adapterTokenKey]);
+
   const [hudHidden, setHudHidden] = useState(true);
   const [dockHidden, setDockHidden] = useState(false);
   const [activePanel, setActivePanel] = useState<ModuleTab | null>(null);

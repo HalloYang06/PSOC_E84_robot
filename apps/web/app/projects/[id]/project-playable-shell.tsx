@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { type Dispatch, type FormEvent, type SetStateAction, useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -5558,7 +5558,19 @@ function TokenResultCard({ title, subtitle, token, command, testId }: TokenResul
 
 export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const teamNoticeToast = useTeamNoticeToast({ onRefresh: () => router.refresh() });
+
+  // server action redirect 后 URL 上一定带 team_notice，作为"动作完成"的可靠信号；
+  // 主动 router.refresh() 强制重新拉 server data，避免用户看到旧 props。
+  // useTeamNoticeToast 也会调一次 onRefresh，这里再加一道保险（依赖 searchParams 变化）。
+  const teamNoticeKey = searchParams?.get("team_notice") ?? "";
+  const pairingTokenKey = searchParams?.get("pairing_token") ?? "";
+  const adapterTokenKey = searchParams?.get("adapter_token") ?? "";
+  useEffect(() => {
+    if (!teamNoticeKey && !pairingTokenKey && !adapterTokenKey) return;
+    router.refresh();
+  }, [router, teamNoticeKey, pairingTokenKey, adapterTokenKey]);
   const nodes = asArray(props.config?.nodes);
   const onlineNodes = nodes.filter((node) => isOnlineStatus(node.status));
   const watchReadyNodes = nodes.filter((node) => runnerWatchInfo(node).active);
