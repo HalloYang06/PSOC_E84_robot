@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import styles from "./requirement-dispatcher.module.css";
+import { apiClientUrl } from "../../../../lib/api-client-url";
 
 type SeatLite = {
   id: string;
@@ -38,7 +39,7 @@ export function RequirementDispatcher({ apiBaseUrl, projectId, seats }: Props) {
     (async () => {
       try {
         const res = await fetch(
-          `${apiBaseUrl}/api/requirements?project_id=${encodeURIComponent(projectId)}`,
+          apiClientUrl(`/api/requirements?project_id=${encodeURIComponent(projectId)}`),
           { credentials: "include" },
         );
         const json = await res.json().catch(() => ({}));
@@ -58,7 +59,7 @@ export function RequirementDispatcher({ apiBaseUrl, projectId, seats }: Props) {
     setBusy(true);
     setNote(null);
     try {
-      const createRes = await fetch(`${apiBaseUrl}/api/requirements`, {
+      const createRes = await fetch(apiClientUrl(`/api/requirements`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -84,7 +85,7 @@ export function RequirementDispatcher({ apiBaseUrl, projectId, seats }: Props) {
       if (!reqId) throw new Error("Requirement 创建成功但未返回 id");
 
       if (trigger === "manual") {
-        const dispRes = await fetch(`${apiBaseUrl}/api/requirements/${encodeURIComponent(reqId)}/dispatch`, {
+        const dispRes = await fetch(apiClientUrl(`/api/requirements/${encodeURIComponent(reqId)}/dispatch`), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",

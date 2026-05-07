@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import styles from "./broadcast-modal.module.css";
+import { apiClientUrl } from "../../../../lib/api-client-url";
 
 type BroadcastTarget = {
   id: string;
@@ -60,7 +61,7 @@ export function BroadcastModal({ apiBaseUrl, projectId, scope, scopeLabel, onClo
   }, [body, scope]);
 
   async function callApi<T>(path: string): Promise<T> {
-    const res = await fetch(`${apiBaseUrl}${path}`, {
+    const res = await fetch(apiClientUrl(path), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",

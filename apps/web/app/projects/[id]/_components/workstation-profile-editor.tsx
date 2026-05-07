@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import styles from "./workstation-profile-editor.module.css";
+import { apiClientUrl } from "../../../../lib/api-client-url";
 
 type Props = {
   apiBaseUrl: string;
@@ -24,7 +25,7 @@ export function WorkstationProfileEditor({ apiBaseUrl, projectId, nodeId }: Prop
     (async () => {
       try {
         const res = await fetch(
-          `${apiBaseUrl}/api/collaboration/projects/${encodeURIComponent(projectId)}/config`,
+          apiClientUrl(`/api/collaboration/projects/${encodeURIComponent(projectId)}/config`),
           { credentials: "include" },
         );
         const json = await res.json().catch(() => ({}));
@@ -51,7 +52,7 @@ export function WorkstationProfileEditor({ apiBaseUrl, projectId, nodeId }: Prop
     setNote(null);
     try {
       const res = await fetch(
-        `${apiBaseUrl}/api/collaboration/projects/${encodeURIComponent(projectId)}/workstation-profiles/${encodeURIComponent(nodeId)}`,
+        apiClientUrl(`/api/collaboration/projects/${encodeURIComponent(projectId)}/workstation-profiles/${encodeURIComponent(nodeId)}`),
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },

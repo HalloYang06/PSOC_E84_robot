@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import styles from "./cross-workstation-handoffs.module.css";
+import { apiClientUrl } from "../../../../lib/api-client-url";
 
 type HandoffItem = {
   id: string;
@@ -46,7 +47,7 @@ export function CrossWorkstationHandoffs({ apiBaseUrl, projectId, seats }: Props
     setError(null);
     try {
       const res = await fetch(
-        `${apiBaseUrl}/api/handoffs?project_id=${encodeURIComponent(projectId)}&limit=100`,
+        apiClientUrl(`/api/handoffs?project_id=${encodeURIComponent(projectId)}&limit=100`),
         { credentials: "include" },
       );
       const json = await res.json().catch(() => ({}));

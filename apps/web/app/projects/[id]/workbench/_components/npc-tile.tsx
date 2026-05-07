@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import styles from "./npc-tile.module.css";
+import { apiClientUrl } from "../../../../../lib/api-client-url";
 
 export type WorkbenchSeat = {
   id: string;
@@ -148,7 +149,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, currentUserId,
   const occupancyHeldByMe = !!occupancy && occupancy.user_id === currentUserId;
   const occupancyHeldByOther = !!occupancy && !occupancyHeldByMe;
 
-  const occupyUrl = `${apiBaseUrl}/api/collaboration/projects/${encodeURIComponent(projectId)}/thread-workstations/${encodeURIComponent(seat.id)}`;
+  const occupyUrl = apiClientUrl(`/api/collaboration/projects/${encodeURIComponent(projectId)}/thread-workstations/${encodeURIComponent(seat.id)}`);
 
   const refreshOccupancy = useCallback(async () => {
     try {
@@ -273,7 +274,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, currentUserId,
     setIdentityNote(null);
     try {
       const res = await fetch(
-        `${apiBaseUrl}/api/collaboration/projects/${encodeURIComponent(projectId)}/thread-workstations/${encodeURIComponent(seat.id)}`,
+        apiClientUrl(`/api/collaboration/projects/${encodeURIComponent(projectId)}/thread-workstations/${encodeURIComponent(seat.id)}`),
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -307,7 +308,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, currentUserId,
       setFetching(true);
       setFetchError(null);
       try {
-        const base = `${apiBaseUrl}/api/collaboration/messages?project_id=${encodeURIComponent(projectId)}&limit=${size}`;
+        const base = apiClientUrl(`/api/collaboration/messages?project_id=${encodeURIComponent(projectId)}&limit=${size}`);
         const incomingUrl = `${base}&recipient_type=thread_workstation&recipient_id=${encodeURIComponent(seat.id)}`;
         const outgoingUrl = `${base}&sender_id=${encodeURIComponent(seat.id)}`;
         const [r1, r2] = await Promise.all([
@@ -398,7 +399,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, currentUserId,
     setSendNote(null);
     const peerSeat = senderSeatId ? teammates.find((t) => t.id === senderSeatId) : null;
     try {
-      const res = await fetch(`${apiBaseUrl}/api/collaboration/messages`, {
+      const res = await fetch(apiClientUrl("/api/collaboration/messages"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",

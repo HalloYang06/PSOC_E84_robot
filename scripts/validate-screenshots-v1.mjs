@@ -54,19 +54,7 @@ async function shoot(page, name) {
       localStorage.setItem("ai_collab_token", t);
       localStorage.setItem("ai_collab_session", t);
     } catch (e) {}
-    // Inject Authorization on all cross-origin fetch to 8010
-    const origFetch = window.fetch.bind(window);
-    window.fetch = (input, init = {}) => {
-      try {
-        const url = typeof input === "string" ? input : input?.url || "";
-        if (url.includes("127.0.0.1:8010") || url.includes("localhost:8010")) {
-          const h = new Headers(init.headers || {});
-          if (!h.has("Authorization")) h.set("Authorization", `Bearer ${t}`);
-          return origFetch(input, { ...init, headers: h, credentials: "include" });
-        }
-      } catch (e) {}
-      return origFetch(input, init);
-    };
+    // v1 已上 BFF proxy，client 端直接同源 fetch /api/proxy/*，不需要再手动注入 Authorization
   }, token);
   page.on("pageerror", (err) => console.log("[pageerror]", err.message));
   page.on("console", (msg) => {
