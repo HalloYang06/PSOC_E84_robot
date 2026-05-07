@@ -405,16 +405,16 @@ Add-StepResult $steps "refresh-runner-support-scripts" $supportScriptStatus $sup
 if (-not $SkipCodex) {
   try {
     $codexScript = Download-RunnerScript -WebBase $webBase -ScriptName "sync-codex-session-threads.ps1" -RunnerDir $runnerDir
-    $codexArgs = @(
-      "-Server", $apiBase,
-      "-RunnerId", $RunnerId,
-      "-ProjectId", $ProjectId,
-      "-ComputerNodeId", $ComputerNodeId,
-      "-Take", $Take,
-      "-MaxAgeDays", $CodexMaxAgeDays
-    )
+    $codexArgs = @{
+      Server = $apiBase
+      RunnerId = $RunnerId
+      ProjectId = $ProjectId
+      ComputerNodeId = $ComputerNodeId
+      Take = $Take
+      MaxAgeDays = $CodexMaxAgeDays
+    }
     if ($workspaceRootProvided) {
-      $codexArgs += @("-WorkspaceRoot", $WorkspaceRoot)
+      $codexArgs["WorkspaceRoot"] = $WorkspaceRoot
     }
     & $codexScript @codexArgs
     Add-StepResult $steps "sync-codex-session-threads" "ok" "Codex session scan completed."
@@ -427,16 +427,16 @@ if (-not $SkipCodex) {
 if (-not $SkipClaude) {
   try {
     $claudeScript = Download-RunnerScript -WebBase $webBase -ScriptName "sync-claude-session-threads.ps1" -RunnerDir $runnerDir
-    $claudeArgs = @(
-      "-Server", $apiBase,
-      "-RunnerId", $RunnerId,
-      "-ProjectId", $ProjectId,
-      "-ComputerNodeId", $ComputerNodeId,
-      "-Take", $Take,
-      "-MaxAgeHours", $ClaudeMaxAgeHours
-    )
+    $claudeArgs = @{
+      Server = $apiBase
+      RunnerId = $RunnerId
+      ProjectId = $ProjectId
+      ComputerNodeId = $ComputerNodeId
+      Take = $Take
+      MaxAgeHours = $ClaudeMaxAgeHours
+    }
     if ($workspaceRootProvided) {
-      $claudeArgs += @("-WorkspaceRoot", $WorkspaceRoot)
+      $claudeArgs["WorkspaceRoot"] = $WorkspaceRoot
     }
     & $claudeScript @claudeArgs
     Add-StepResult $steps "sync-claude-session-threads" "ok" "Claude session scan completed."
