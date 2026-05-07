@@ -18,6 +18,7 @@ import {
   previewCollaborationMessage,
   previewProjectGitRollback,
   requestComputerThreadScan,
+  recordNpcHandoff,
   requestProjectGitRollback,
   sendWorkspaceInvitation,
   submitCollaborationMessage,
@@ -776,6 +777,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
   const [webBaseUrl, setWebBaseUrl] = useState("http://127.0.0.1:3000");
   const [sceneVisible, setSceneVisible] = useState(false);
   const [copyState, setCopyState] = useState<{ kind: "idle" | "loading" | "ok" | "err"; message?: string }>({ kind: "idle" });
+  const [handoffTaskId, setHandoffTaskId] = useState<string>("");
   const [cockpitOpen, setCockpitOpen] = useState(true);
   const [taskBoardOpen, setTaskBoardOpen] = useState(true);
   const setPanelNotice = (_value: string) => {};
@@ -1641,6 +1643,21 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         <>
           <div className={styles.npcHandoffBar}>
             <span>切换线程时，把这个 NPC 的知识、Skill、任务进展打包给新 AI：</span>
+            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ opacity: 0.7, fontSize: 12 }}>关联任务</span>
+              <select
+                value={handoffTaskId}
+                onChange={(e) => setHandoffTaskId(e.target.value)}
+                style={{ minWidth: 160 }}
+              >
+                <option value="">请选择当前线程在做的任务</option>
+                {tasks.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {(t.title || t.name || t.id).slice(0, 40)}
+                  </option>
+                ))}
+              </select>
+            </label>
             <button
               type="button"
               className={styles.cockpitPrimary}
@@ -1651,13 +1668,35 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                   setTimeout(() => setCopyState({ kind: "idle" }), 3000);
                   return;
                 }
+                if (!handoffTaskId) {
+                  setCopyState({ kind: "err", message: "请先选择关联任务（用于落库 Handoff 记录）" });
+                  setTimeout(() => setCopyState({ kind: "idle" }), 4000);
+                  return;
+                }
                 setCopyState({ kind: "loading" });
                 try {
                   const data = await fetchNpcHandoffContext(project.id, targetId);
                   const prompt = String(data?.prompt ?? "").trim();
                   if (!prompt) throw new Error("接手 prompt 为空");
                   await navigator.clipboard.writeText(prompt);
-                  setCopyState({ kind: "ok", message: `已复制 ${focusedNpcSeat?.name || "NPC"} 的接手 prompt，粘贴到新线程即可。` });
+                  let recordedId: string | null = null;
+                  try {
+                    const recorded = await recordNpcHandoff(project.id, targetId, { task_id: handoffTaskId });
+                    recordedId = String(recorded?.handoff?.id || "") || null;
+                  } catch (err) {
+                    setCopyState({
+                      kind: "ok",
+                      message: `已复制 ${focusedNpcSeat?.name || "NPC"} 的接手 prompt（落库失败：${err instanceof Error ? err.message : "未知错误"}），仍可粘贴到新线程使用。`,
+                    });
+                    setTimeout(() => setCopyState({ kind: "idle" }), 6000);
+                    return;
+                  }
+                  setCopyState({
+                    kind: "ok",
+                    message: recordedId
+                      ? `已复制并登记接手记录（Handoff ${recordedId.slice(0, 8)}…），粘贴到新线程即可。`
+                      : `已复制 ${focusedNpcSeat?.name || "NPC"} 的接手 prompt，粘贴到新线程即可。`,
+                  });
                   setTimeout(() => setCopyState({ kind: "idle" }), 5000);
                 } catch (e) {
                   setCopyState({ kind: "err", message: `复制失败：${e instanceof Error ? e.message : "未知错误"}` });

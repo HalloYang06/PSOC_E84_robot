@@ -27,6 +27,9 @@ from app.db.models.requirement import Requirement
 from app.db.models.task import Task
 from app.db.models.task_event import TaskEvent
 from app.db.session import get_db
+from app.modules.handoffs.schemas import HandoffPackageCreate
+from app.modules.handoffs.service import _to_read_dict as _handoff_to_read_dict
+from app.modules.handoffs.service import create_handoff
 from app.modules.read_access import (
     require_project_read_access,
     require_real_human_principal,
@@ -191,6 +194,27 @@ def _npc_metadata(npc: ProjectThreadWorkstation) -> dict[str, Any]:
     return raw
 
 
+def _resolve_project_npc(db: Session, project_id: str, npc_id: str) -> ProjectThreadWorkstation | None:
+    """Look up an NPC seat by PK, config_id, name, or agent_id within a project.
+
+    The frontend passes whatever id field it has on hand; the JSON-backed list
+    endpoint returns `id == config_id` while the table PK is a separate UUID,
+    so we accept all common identifiers to avoid 404s on legitimate calls.
+    """
+    cleaned = str(npc_id or "").strip()
+    if not cleaned:
+        return None
+    return db.scalar(
+        select(ProjectThreadWorkstation).where(
+            ProjectThreadWorkstation.project_id == project_id,
+            (ProjectThreadWorkstation.id == cleaned)
+            | (ProjectThreadWorkstation.config_id == cleaned)
+            | (ProjectThreadWorkstation.name == cleaned)
+            | (ProjectThreadWorkstation.agent_id == cleaned),
+        )
+    )
+
+
 def _npc_brief(npc: ProjectThreadWorkstation) -> dict[str, Any]:
     meta = _npc_metadata(npc)
     knowledge = meta.get("npc_knowledge") if isinstance(meta.get("npc_knowledge"), dict) else {}
@@ -310,8 +334,8 @@ def get_npc_context(
     project = db.get(Project, project_id)
     if project is None:
         raise AppError("PROJECT_NOT_FOUND", "project not found", status_code=404)
-    npc = db.get(ProjectThreadWorkstation, npc_id)
-    if npc is None or str(npc.project_id) != project_id:
+    npc = _resolve_project_npc(db, project_id, npc_id)
+    if npc is None:
         raise AppError("NPC_NOT_FOUND", "npc not found in project", status_code=404)
 
     recent_tasks = list(
@@ -366,6 +390,98 @@ def get_npc_context(
         },
         "prompt": _build_npc_prompt(project, npc, recent_tasks, handoff_events),
     })
+
+
+@router.post("/projects/{project_id}/npcs/{npc_id}/handoff")
+def post_npc_handoff(
+    project_id: str,
+    npc_id: str,
+    payload: dict[str, Any],
+    request: Request,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Pack the NPC onboarding prompt and persist a Handoff record in one call.
+
+    Closes the "NPC reduces AI handover cost" loop: the existing GET endpoint
+    only renders a prompt; this writes the same handover into the Handoffs
+    table so qualification scorecard / handoff history can see it, and so the
+    next AI taking the seat can read past handovers.
+    """
+    principal = require_real_human_principal(db, request)
+    require_project_read_access(db, request, project_id, action="claude_bridge.npc_handoff.write")
+
+    project = db.get(Project, project_id)
+    if project is None:
+        raise AppError("PROJECT_NOT_FOUND", "project not found", status_code=404)
+    npc = _resolve_project_npc(db, project_id, npc_id)
+    if npc is None:
+        raise AppError("NPC_NOT_FOUND", "npc not found in project", status_code=404)
+
+    task_id = str(payload.get("task_id") or "").strip()
+    if not task_id:
+        raise AppError("VALIDATION_ERROR", "task_id is required", status_code=422)
+    task = db.get(Task, task_id)
+    if task is None or str(task.project_id) != project_id:
+        raise AppError("TASK_NOT_FOUND", "task not found in project", status_code=404)
+
+    recent_tasks_for_prompt = [task]
+    handoff_events = list(
+        db.scalars(
+            select(TaskEvent)
+            .where(
+                TaskEvent.task_id == task_id,
+                TaskEvent.event_type.in_(["claude_handoff", "claude_handoff_note", "handoff", "context_handoff"]),
+            )
+            .order_by(TaskEvent.created_at.desc())
+            .limit(3)
+        )
+    )
+    prompt = _build_npc_prompt(project, npc, recent_tasks_for_prompt, handoff_events)
+
+    summary_input = str(payload.get("summary") or "").strip()
+    if not summary_input:
+        first_block = prompt.strip().split("\n\n", 1)[0]
+        summary_input = first_block[:600]
+
+    next_steps_raw = payload.get("next_steps") or []
+    if isinstance(next_steps_raw, list):
+        next_steps = [str(s).strip() for s in next_steps_raw if str(s).strip()][:20]
+    else:
+        next_steps = []
+
+    notes_input = str(payload.get("notes") or "").strip() or None
+
+    meta = _npc_metadata(npc)
+    context_health_raw = meta.get("context_health") if isinstance(meta.get("context_health"), dict) else {}
+
+    create_payload = HandoffPackageCreate(
+        project_id=project_id,
+        task_id=task_id,
+        handoff_from=npc.agent_id or npc.id,
+        handoff_to=None,
+        summary=summary_input or None,
+        reason="npc_thread_handover",
+        current_status="prepared",
+        next_steps=next_steps,
+        notes=notes_input,
+        context_health=dict(context_health_raw or {}),
+        payload={
+            "source": "claude_bridge.npc_handoff",
+            "npc_id": npc.id,
+            "npc_config_id": npc.config_id,
+            "npc_name": npc.name,
+            "initiated_by_user_id": principal.user_id,
+        },
+    )
+    handoff = create_handoff(db, create_payload)
+
+    return ok({
+        "prompt": prompt,
+        "handoff": _handoff_to_read_dict(handoff),
+        "npc": _npc_brief(npc),
+        "task": _task_brief(task),
+    })
+
 
 
 @router.post("/projects/{project_id}/handoff")

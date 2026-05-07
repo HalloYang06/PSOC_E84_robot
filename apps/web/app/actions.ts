@@ -6305,6 +6305,28 @@ export async function fetchNpcHandoffContext(projectId: string, npcId: string) {
   }
 }
 
+export async function 登记NPC接手交接(
+  projectId: string,
+  npcId: string,
+  body: { task_id: string; summary?: string; next_steps?: string[]; notes?: string },
+) {
+  const result = await postJson(
+    `/api/claude-bridge/projects/${encodeURIComponent(projectId)}/npcs/${encodeURIComponent(npcId)}/handoff`,
+    {
+      task_id: body.task_id,
+      ...(body.summary ? { summary: body.summary } : {}),
+      ...(body.next_steps ? { next_steps: body.next_steps } : {}),
+      ...(body.notes ? { notes: body.notes } : {}),
+    },
+  );
+  revalidatePath(`/projects/${projectId}`);
+  revalidatePath(`/projects/${projectId}/2d-upgrade`);
+  revalidatePath("/handoffs");
+  return result?.data ?? null;
+}
+
+export const recordNpcHandoff = 登记NPC接手交接;
+
 
 
 

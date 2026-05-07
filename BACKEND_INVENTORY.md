@@ -172,11 +172,10 @@
   - 🔗 联通 runner：runner 上报 AI 调用时自动记 usage
 
 #### 19. `claude_bridge` — Claude Code 桥接（本轮新加）
-- **完成度**：✅ 已实现 3 端点（project context / task prompt / handoff）
+- **完成度**：✅ 已实现 5 端点（project context / task prompt / NPC context / NPC handoff 落库 / project handoff 回传）
 - **建议**：
-  - 🆕 补 `GET /npc/{npc_id}/context`——按 NPC 维度返回（核心：减少 AI 换手成本）
   - 🆕 补 `GET /workshops/{ws_id}/context`——按工坊维度
-  - 🔗 联通 development（工坊知识）、handoffs（交接历史）、context（健康度）
+  - 🔗 联通 development（工坊知识）、context（健康度）
 
 #### 20. `read_access.py` — 工具：项目级读权限校验
 - **完成度**：✅ 完整
@@ -239,8 +238,8 @@
 ### P0：先把"NPC 减少 AI 换手成本"这条核心链路打通
 1. **新增 Skill 模块**（#15）—— 独立 skills 表 + CRUD
 2. **完善 Workshop 后端**（#14）—— 独立表 + NPC 多对多关联
-3. **NPC 上下文打包端点**（#19 补）—— `GET /claude-bridge/npc/{id}/context` 自动汇总：NPC 个人知识 + 工坊知识 + Skill + 当前任务 + 最近交接
-4. **handoff 与 NPC 知识库联通**（#6）—— 切线程时自动生成 handoff，新 AI 进来读 handoff + NPC 知识 = 0 指导接手
+3. ✅ **NPC 上下文打包端点**（#19 补）—— `GET /claude-bridge/projects/{p}/npcs/{n}/context` 已实现（commit 9107a13）
+4. ✅ **handoff 与 NPC 知识库联通**（#6）—— `POST /claude-bridge/projects/{p}/npcs/{n}/handoff` 复制 prompt 时同步落 Handoff 记录；qualification 看板 NPC 换手记录密度由此真实反映；前端 2d-upgrade 驾驶舱按钮已接入
 
 ### P1：消除重复 + 补缺口
 5. **collaboration vs messages 边界裁剪**（#10 #11）—— 决定谁主谁辅
