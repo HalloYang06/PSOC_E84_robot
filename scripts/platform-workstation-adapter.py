@@ -431,6 +431,88 @@ def run_executor(
     }
 
 
+def _resolve_bound_session(
+    *,
+    base: str,
+    project_id: str,
+    workstation_id: str,
+    headers: dict[str, str],
+) -> dict[str, Any]:
+    """读 seat 的 thread_workstation 行，解析它绑定的 claude/codex session_id + cwd + provider。
+
+    返回 dict: {provider, session_id, cwd, source_file, seat_name, error?}
+    - 如果 config_id 是 `claude-session-<uuid>` / `codex-session-<uuid>`，session_id 就是后缀
+    - cwd 优先 extra_data.cwd，其次 workspace_root；都空就 None（让 caller 退化）
+    - 解析不出 session_id 时返回 error，caller 应在窗口里报错并停在 Read-Host
+    """
+    from urllib.parse import quote as _q
+    encoded_project_id = _q(project_id, safe="")
+    encoded_workstation_id = _q(workstation_id, safe="")
+    list_url = f"{base.rstrip('/')}/api/collaboration/projects/{encoded_project_id}/thread-workstations"
+    try:
+        payload = _json_request("GET", list_url, headers=headers)
+    except Exception as exc:
+        return {"error": f"无法读取 seat 列表: {exc}"}
+    seats = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(seats, list):
+        return {"error": "seat 列表返回格式异常"}
+    me = next(
+        (
+            s for s in seats
+            if str(s.get("id") or "") == workstation_id
+            or str(s.get("config_id") or "") == workstation_id
+            or str(s.get("name") or "") == workstation_id
+        ),
+        None,
+    )
+    if me is None:
+        return {"error": f"在项目 {project_id} 下找不到 seat {workstation_id!r}"}
+    # API 把 DB 列 extra_data 通过 alias 映射到字段名 `metadata`（见 schemas.py 的 from_attributes alias）。
+    # 老字段名 extra_data 也兼容一下（DB 直读路径）。
+    extra = me.get("metadata") if isinstance(me.get("metadata"), dict) else (me.get("extra_data") if isinstance(me.get("extra_data"), dict) else {})
+    config_id = str(me.get("config_id") or "")
+    # 优先从 config_id 前缀抽 session_id
+    session_id = ""
+    provider_family = ""
+    if config_id.startswith("claude-session-"):
+        session_id = config_id[len("claude-session-"):]
+        provider_family = "claude"
+    elif config_id.startswith("codex-session-"):
+        session_id = config_id[len("codex-session-"):]
+        provider_family = "codex"
+    else:
+        # 兜底：extra_data 里偶尔会有 session_id 字段
+        session_id = str(extra.get("session_id") or "").strip()
+        provider_family = str(extra.get("provider_family") or extra.get("ai_provider") or "").strip().lower()
+    cwd = str(extra.get("cwd") or extra.get("workspace_root") or "").strip() or None
+    source_file = str(extra.get("source_file") or "").strip() or None
+    # sync-claude-session-threads.ps1 把扫描到的 cwd 字段按系统 ANSI 写库导致中文乱码（如 'D:\\ai������Ʒ'）。
+    # 从对应 jsonl 第一段读 UTF-8 的 cwd 兜底，覆盖掉乱码值。
+    if source_file and Path(source_file).exists():
+        try:
+            with open(source_file, "r", encoding="utf-8", errors="replace") as f:
+                for _i, _line in enumerate(f):
+                    if _i > 5:
+                        break
+                    try:
+                        _rec = json.loads(_line)
+                    except Exception:
+                        continue
+                    _real_cwd = _rec.get("cwd") if isinstance(_rec, dict) else None
+                    if isinstance(_real_cwd, str) and _real_cwd.strip():
+                        cwd = _real_cwd.strip()
+                        break
+        except Exception:
+            pass
+    return {
+        "provider": provider_family or "claude",
+        "session_id": session_id or None,
+        "cwd": cwd,
+        "source_file": source_file,
+        "seat_name": str(me.get("name") or me.get("config_id") or workstation_id),
+    }
+
+
 def _open_persistent_window(
     *,
     provider: str,
@@ -440,52 +522,145 @@ def _open_persistent_window(
     project_id: str,
     workstation_id: str,
     seat_id: str,
+    session_id: str | None = None,
+    seat_name: str = "",
+    bind_error: str = "",
 ) -> None:
-    """长开模式：watcher 启动时弹一次 PowerShell 窗口，里面跑交互式 claude REPL。
+    """长开模式：watcher 启动时弹一次 PowerShell 窗口，里面跑 `claude --resume <session_id>` 续上 NPC 绑定的会话。
     之后所有派单都只追加到 inbox_md_path（一个共享 markdown 文件）。
     NPC 在窗口里通过 MCP `read_my_inbox` 拉新派单 + `mark_done` 写回执。
-    用户可在窗口直接打字。watcher 不阻塞；窗口关与不关都不影响 watcher 主循环。"""
+    用户可在窗口直接打字。watcher 不阻塞；窗口关与不关都不影响 watcher 主循环。
+    如果 seat 还没绑定 session_id（bind_error 非空），就在窗口里红字提示，停在 Read-Host 不起 claude。"""
     if os.name != "nt":
         print(f"[platform] --persistent-window 目前仅支持 Windows；当前平台 {os.name}，已忽略。", flush=True)
         return
     inbox_str = str(inbox_md_path).replace("'", "''")
-    cwd_clause = f"Set-Location -LiteralPath '{cwd}'; " if cwd else ""
+    # Windows 下 / 和 \ 都能用，但 npm shim 的 join 在 / 风格 cwd 下会拼错路径，统一成 \。
+    cwd_normalized = str(Path(cwd).resolve()) if cwd else ""
+    cwd_clause = f"Set-Location -LiteralPath '{cwd_normalized.replace(chr(39), chr(39)*2)}'; " if cwd_normalized else ""
     intro = (
         f"Write-Host '========================================' -ForegroundColor Cyan; "
-        f"Write-Host 'NPC 长开 CLI 终端' -ForegroundColor Green; "
-        f"Write-Host '项目: {project_id}' -ForegroundColor Yellow; "
-        f"Write-Host '工位: {workstation_id}' -ForegroundColor Yellow; "
-        f"Write-Host 'seat: {seat_id}' -ForegroundColor Yellow; "
-        f"Write-Host '派单 inbox: {inbox_str}' -ForegroundColor Gray; "
+        f"Write-Host 'NPC persistent CLI window' -ForegroundColor Green; "
+        f"Write-Host ('project: {project_id}') -ForegroundColor Yellow; "
+        f"Write-Host ('workstation: {workstation_id}') -ForegroundColor Yellow; "
+        f"Write-Host ('seat: {seat_id}') -ForegroundColor Yellow; "
+        f"Write-Host ('inbox: {inbox_str}') -ForegroundColor Gray; "
         f"Write-Host '----------------------------------------' -ForegroundColor Cyan; "
-        f"Write-Host '使用方法：' -ForegroundColor Cyan; "
-        f"Write-Host '  1) claude REPL 已启动，直接输入指令与 AI 对话' -ForegroundColor Gray; "
-        f"Write-Host '  2) 平台派的新单会写到上面 inbox 文件，告诉 claude `调 read_my_inbox 拉新派单`' -ForegroundColor Gray; "
-        f"Write-Host '  3) 处理完一条派单后，让 claude 调 mark_done(message_id, body) 写回执' -ForegroundColor Gray; "
-        f"Write-Host '  4) 关掉这个窗口不会停 watcher；watcher 仍在另一个终端 poll' -ForegroundColor Gray; "
+        f"Write-Host 'How to use:' -ForegroundColor Cyan; "
+        f"Write-Host '  1) Talk to claude directly here.' -ForegroundColor Gray; "
+        f"Write-Host '  2) New dispatches appended to the inbox file. Tell claude: call read_my_inbox.' -ForegroundColor Gray; "
+        f"Write-Host '  3) After handling a dispatch, claude calls mark_done(message_id, body).' -ForegroundColor Gray; "
+        f"Write-Host '  4) Closing this window does NOT stop the watcher.' -ForegroundColor Gray; "
         f"Write-Host '========================================' -ForegroundColor Cyan; "
     )
-    repl_cmd = "claude" if provider.lower() in {"claude", "claude-code", ""} else provider.lower()
+    # 长开模式里直接根据 seat 绑定的 provider 选可执行命令名（claude / codex），不管 adapter-config 的 provider label。
+    p_lower = (provider or "").lower()
+    if "codex" in p_lower:
+        repl_cmd = "codex"
+    else:
+        repl_cmd = "claude"
+    # 直接在 Python 里解析真实 .exe 全路径写进 ps1，绕开 PS 里 -match 的不稳定 + npm shim 的路径拼接 bug。
+    import shutil as _sh
+    repl_exe_full = ""
+    try:
+        shim = _sh.which(repl_cmd) or ""
+        if shim and (shim.lower().endswith(".ps1") or shim.lower().endswith(".cmd") or shim.lower().endswith(".bat")):
+            shim_dir = str(Path(shim).parent)
+            for cand in [
+                Path(shim_dir) / "node_modules" / "@anthropic-ai" / "claude-code" / "bin" / "claude.exe",
+                Path(shim_dir) / "node_modules" / "@openai" / "codex" / "bin" / "codex.exe",
+            ]:
+                if cand.exists():
+                    repl_exe_full = str(cand)
+                    break
+        if not repl_exe_full and shim:
+            repl_exe_full = shim
+    except Exception:
+        repl_exe_full = ""
+    # PowerShell 里 -Command 参数的字符串里不能出现裸单引号（`’` / `'`），也不能漏闭合。
+    # 一律把 PS 字符串里的单引号 escape 成双单引号。
+    def _psq(s: str) -> str:
+        return s.replace("'", "''")
+    # 把 watcher 进程当下的 PLATFORM_* env 显式写进 ps1，让窗口里的 claude 一开就用对 seat 身份
+    # （否则 PLATFORM_SEAT_ID 要等第一条派单才设置，这时 claude 已经 fork 了拿不到）。
+    env_lines = []
+    for var in ("PLATFORM_API_BASE", "PLATFORM_PROJECT_ID", "PLATFORM_WORKSTATION_ID", "PLATFORM_SEAT_ID", "PLATFORM_ADAPTER_TOKEN", "PLATFORM_AUTH_TOKEN"):
+        val = os.environ.get(var) or ""
+        if val:
+            env_lines.append(f"$env:{var} = '{_psq(val)}'; ")
+    # 保底：如果 PLATFORM_SEAT_ID 为空就用 watcher 拿到的 seat_id 兜底（一一对应）
+    if "PLATFORM_SEAT_ID" not in os.environ or not os.environ.get("PLATFORM_SEAT_ID"):
+        env_lines.append(f"$env:PLATFORM_SEAT_ID = '{_psq(seat_id)}'; ")
+    env_block = "".join(env_lines)
     ps_body = (
-        f"$Host.UI.RawUI.WindowTitle = '{title}'; "
+        f"$Host.UI.RawUI.WindowTitle = '{_psq(title)}'; "
         f"{cwd_clause}"
+        f"{env_block}"
         f"{intro}"
-        f"& {repl_cmd}; "
+        f"$ErrorActionPreference = 'Continue'; "
+    )
+    if bind_error:
+        # seat 没绑 session：直接在窗口红字提示，不起 claude；用户处理后下次再起 watcher
+        ps_body += (
+            f"Write-Host ''; "
+            f"Write-Host '[platform] 这个 NPC 还没绑定具体的 claude/codex 线程，无法 resume：' -ForegroundColor Red; "
+            f"Write-Host ' {_psq(bind_error)}' -ForegroundColor Red; "
+            f"Write-Host ''; "
+            f"Write-Host '解决：' -ForegroundColor Yellow; "
+            f"Write-Host '  1) 先在另一个 PowerShell 跑 sync-claude-session-threads.ps1 把本机线程同步上来' -ForegroundColor Gray; "
+            f"Write-Host '  2) 在驾驶舱机房面板把这个 NPC 绑定到一条具体的 claude session' -ForegroundColor Gray; "
+            f"Write-Host '  3) 重起 watcher' -ForegroundColor Gray; "
+        )
+    else:
+        # Python 已解析好真实 .exe 全路径（repl_exe_full）；ps1 里直接 & 它，不再做任何 PS 端解析。
+        if not repl_exe_full:
+            # which 找不到 claude/codex
+            ps_body += (
+                f"Write-Host ''; "
+                f"Write-Host '[platform] {repl_cmd} 没找到（PATH 里没有 .ps1/.cmd shim），无法启动 REPL。' -ForegroundColor Red; "
+                f"Write-Host '安装：npm i -g @anthropic-ai/claude-code  (或 codex 对应包)' -ForegroundColor Yellow; "
+            )
+        else:
+            # 关键：PS 5.1 的 & 调含 @ 的反斜杠绝对路径报 CommandNotFoundException，
+            # 但同样路径换正斜杠 / 就能跑（npm 自己的 claude.ps1 shim 也是这么写的）。
+            forward_slash_exe = repl_exe_full.replace("\\", "/")
+            ps_body += f"$exe = '{_psq(forward_slash_exe)}'; "
+            # 用户要求：不再 --resume 历史 session，直接长开新 claude REPL（在窗口里 cd 到 NPC cwd 即可）。
+            # 用户要 resume 时手动在窗口里输 /resume <id>。
+            ps_body += (
+                f"Write-Host ('[platform] launching: ' + $exe + ' (new session in NPC cwd / type slash-resume in claude to pick history)') -ForegroundColor Green; "
+                f"& $exe; "
+                f"$exit = $LASTEXITCODE; "
+                f"Write-Host ''; "
+                f"Write-Host ('[platform] {repl_cmd} REPL exited (exit=' + $exit + ')') -ForegroundColor Yellow; "
+            )
+    ps_body += (
         f"Write-Host ''; "
-        f"Write-Host '[platform] {provider} REPL 已退出。按 Enter 关闭此窗口。' -ForegroundColor Yellow; "
+        f"Write-Host 'Press Enter to close this window (watcher keeps running)...' -ForegroundColor Cyan; "
         f"$null = Read-Host"
     )
-    full_command = (
-        f"powershell.exe -NoProfile -Command "
-        f"\"Start-Process -FilePath powershell -ArgumentList "
-        f"@('-NoProfile','-Command',\\\"{ps_body.replace(chr(34), chr(34) * 2)}\\\") "
-        f"\""
-    )
+    # 长 -Command argv 走 cmd.exe / powershell 编码层会被 GBK 截断（中文 workstation_id 是常见触发点），
+    # 改为写到临时 .ps1 文件 + -File 启动，绕开 argv 编码完全可控。
+    import tempfile as _tmp
+    ps1 = Path(_tmp.gettempdir()) / f"platform-window-{os.getpid()}.ps1"
+    # 不写 BOM、不用 chcp（之前那两条会让某些命令在 -File 模式下状态异常）。
+    # PowerShell 5.1 默认按系统 ANSI 读 .ps1，所以脚本里**禁止**出现非 ASCII 字符——
+    # 中文标题等都已经在 ps_body 里只用 ASCII（重要中文已经从 intro 里清掉了）。
+    ps1.write_text(ps_body, encoding="utf-8-sig" if any(ord(c) > 127 for c in ps_body) else "ascii", errors="replace")
+    # 直接用 argv 列表调 powershell，绕过 cmd.exe / shell=True 的 quote 剥离链。
+    # 关键：用 CREATE_NEW_CONSOLE flag 让 powershell 自己开新窗口（不依赖 Start-Process）。
+    creationflags = 0
+    if hasattr(subprocess, "CREATE_NEW_CONSOLE"):
+        creationflags = subprocess.CREATE_NEW_CONSOLE
     try:
-        subprocess.run(full_command, shell=True, timeout=10)
-        print(f"[{_now_hms()}] [platform] 已弹出长开 {provider} REPL 窗口", flush=True)
-    except subprocess.TimeoutExpired:
-        print(f"[{_now_hms()}] [platform] 弹窗超时（窗口可能仍在启动）", flush=True)
+        subprocess.Popen(
+            ["powershell.exe", "-NoProfile", "-NoExit", "-ExecutionPolicy", "Bypass", "-File", str(ps1)],
+            creationflags=creationflags,
+            close_fds=True,
+        )
+        print(f"[{_now_hms()}] [platform] persistent {provider} REPL window spawned (ps1={ps1})", flush=True)
+    except Exception as exc:
+        print(f"[{_now_hms()}] [platform] window spawn failed: {exc}", flush=True)
 
 
 def _append_dispatch_to_inbox(inbox_md_path: Path, command: dict[str, Any], *, project_id: str, workstation_id: str, provider: str) -> None:
@@ -776,6 +951,10 @@ def main() -> int:
     os.environ["PLATFORM_API_BASE"] = base
     os.environ["PLATFORM_PROJECT_ID"] = str(args.project_id or "")
     os.environ["PLATFORM_WORKSTATION_ID"] = str(args.workstation_id or "")
+    # 长开模式：watcher 启动时就把 SEAT_ID 钉到 workstation_id（同一个 seat 一对一），
+    # 让弹窗里的 claude 一开就有正确身份；后续每条派单仍会按 recipient_id 覆盖（兼容工位长转交场景）。
+    if args.persistent_window and not os.environ.get("PLATFORM_SEAT_ID"):
+        os.environ["PLATFORM_SEAT_ID"] = str(args.workstation_id or "")
     if args.token:
         os.environ["PLATFORM_ADAPTER_TOKEN"] = str(args.token)
     if auth_token:
@@ -971,15 +1150,40 @@ def main() -> int:
             print(f"模式: 一次性弹窗（每条派单弹一次）", flush=True)
         print("========================================", flush=True)
         if args.persistent_window and persistent_inbox_path is not None:
+            # 解析 seat 的绑定 session（claude --resume 用）
+            bind = _resolve_bound_session(
+                base=base,
+                project_id=str(args.project_id),
+                workstation_id=str(args.workstation_id),
+                headers=headers,
+            )
             seat_for_window = str(os.environ.get("PLATFORM_SEAT_ID") or "").strip() or str(args.workstation_id or "")
+            seat_name = bind.get("seat_name") or str(args.workstation_id or "")
+            session_id = bind.get("session_id")
+            bind_provider = bind.get("provider") or resolved_provider
+            bind_cwd = bind.get("cwd") or resolved_executor_cwd
+            bind_error = bind.get("error") or ""
+            if not bind_error and not session_id:
+                bind_error = (
+                    f"seat config_id 不是 claude-session-<uuid> 或 codex-session-<uuid> 形式，"
+                    f"也没在 extra_data 里发现 session_id（这通常是手动建的逻辑工位，未做线程绑定）"
+                )
+            short_sid = (session_id or "")[:8]
+            window_title = (
+                f"NPC {seat_name} · {bind_provider}"
+                + (f" · session={short_sid}" if short_sid else "")
+            )
             _open_persistent_window(
-                provider=resolved_provider,
-                cwd=resolved_executor_cwd,
-                title=f"NPC {args.workstation_id} · {resolved_provider} (长开)",
+                provider=bind_provider,
+                cwd=bind_cwd,
+                title=window_title,
                 inbox_md_path=persistent_inbox_path,
                 project_id=str(args.project_id),
                 workstation_id=str(args.workstation_id),
                 seat_id=seat_for_window,
+                session_id=session_id,
+                seat_name=seat_name,
+                bind_error=bind_error,
             )
         print("等待平台指令... (Ctrl+C 退出)\n", flush=True)
         try:

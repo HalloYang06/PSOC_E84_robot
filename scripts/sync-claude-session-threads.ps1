@@ -388,10 +388,17 @@ foreach ($session in $sessionRows) {
   } else {
     $sessionId.Substring(0, [Math]::Min(8, $sessionId.Length))
   }
+  # 加 session 前 8 位 + 最近活跃日期，避免同 cwd 多 session 重名（用户反馈 2026-05-08）
+  $sidShort = $sessionId.Substring(0, [Math]::Min(8, $sessionId.Length))
+  $activityShort = ""
+  $activityUtc = Parse-AnyDateUtc ([string]$session.last_activity_at)
+  if ($activityUtc) {
+    $activityShort = " @ " + $activityUtc.ToString("MM-dd HH:mm")
+  }
   $status = if ($session.live_process_seen) { "active" } else { "open" }
   $workstations += @{
     workstation_id = "claude-session-$sessionId"
-    workstation_name = "Claude / $namePart"
+    workstation_name = "Claude / $namePart [$sidShort]$activityShort"
     workstation_status = $status
     cwd = Sanitize-SessionText ([string]$session.cwd)
     model = Sanitize-SessionText $Model
