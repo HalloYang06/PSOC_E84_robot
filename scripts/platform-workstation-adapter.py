@@ -1066,6 +1066,25 @@ def main() -> int:
     )
 
     persistent_inbox_path = output_root / "_persistent_inbox.md" if args.persistent_window else None
+    persistent_seen_path = output_root / "_persistent_seen.json" if args.persistent_window else None
+    seen_ids: set[str] = set()
+    if persistent_seen_path is not None and persistent_seen_path.exists():
+        try:
+            seen_ids = set(json.loads(persistent_seen_path.read_text(encoding="utf-8")) or [])
+        except Exception:
+            seen_ids = set()
+
+    def _persist_seen() -> None:
+        if persistent_seen_path is None:
+            return
+        try:
+            persistent_seen_path.parent.mkdir(parents=True, exist_ok=True)
+            persistent_seen_path.write_text(
+                json.dumps(sorted(seen_ids)[-500:], ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except Exception as exc:
+            print(f"[dedupe] 写 {persistent_seen_path} 失败: {exc}", flush=True)
 
     def process_one_round() -> dict[str, Any]:
         payload = _json_request("GET", inbox_url, headers=headers)
@@ -1073,6 +1092,12 @@ def main() -> int:
         written: list[str] = []
         receipts: list[dict[str, Any]] = []
         executions: list[dict[str, Any]] = []
+
+        if args.persistent_window:
+            fresh = [c for c in commands if str(c.get("id") or "").strip() not in seen_ids]
+            if args.watch and commands and not fresh:
+                pass
+            commands = fresh
 
         if args.watch and commands:
             print(f"\n[{_now_hms()}] 收到 {len(commands)} 条平台指令", flush=True)
@@ -1124,6 +1149,9 @@ def main() -> int:
                     workstation_id=args.workstation_id,
                     provider=resolved_provider,
                 )
+                if message_id:
+                    seen_ids.add(message_id)
+                    _persist_seen()
                 # ack 已在上面处理；done 回执由 claude 调 mark_done 写，不在这里写。
                 if args.watch:
                     print(
@@ -1231,6 +1259,7 @@ def main() -> int:
                     f"seat config_id 不是 claude-session-<uuid> 或 codex-session-<uuid> 形式，"
                     f"也没在 extra_data 里发现 session_id（这通常是手动建的逻辑工位，未做线程绑定）"
                 )
+            print(f"[{_now_hms()}] [platform] bind: session={(session_id or '')[:8] or '<none>'} provider={bind_provider} cwd={bind_cwd or '<none>'}{' bind_error=' + bind_error if bind_error else ''}", flush=True)
             short_sid = (session_id or "")[:8]
             window_title = (
                 f"NPC {seat_name} · {bind_provider}"
