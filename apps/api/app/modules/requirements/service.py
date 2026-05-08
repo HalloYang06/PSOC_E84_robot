@@ -443,8 +443,13 @@ def _resolve_review_for_dispatch(
         return {"requires_review": seat_pol == "force", "source": "npc", "policy": seat_pol}
     cfg = _project_collab_config(db, downstream_seat.project_id)
     profiles = cfg.get("workstation_profiles") if isinstance(cfg.get("workstation_profiles"), dict) else {}
-    node_id = str(getattr(downstream_seat, "computer_node_id", "") or "").strip()
-    profile = profiles.get(node_id) if isinstance(profiles, dict) else None
+    ws_key = _seat_workstation_key(downstream_seat)
+    profile = profiles.get(ws_key) if isinstance(profiles, dict) and ws_key else None
+    if profile is None and isinstance(profiles, dict):
+        # legacy fallback：旧数据 key 是 computer_node_id
+        legacy_key = str(getattr(downstream_seat, "computer_node_id", "") or "").strip()
+        if legacy_key and legacy_key != ws_key:
+            profile = profiles.get(legacy_key)
     if isinstance(profile, dict):
         ws_pol = str(profile.get("review_policy") or profile.get("reviewPolicy") or "").strip().lower()
         if ws_pol in {"force", "always", "on"}:
@@ -460,11 +465,7 @@ def _resolve_review_for_dispatch(
         return {"requires_review": True, "source": "project", "policy": project_default}
     if project_default == "never" or project_default == "skip":
         return {"requires_review": False, "source": "project", "policy": project_default}
-    is_cross = bool(
-        upstream_seat
-        and str(getattr(upstream_seat, "computer_node_id", "") or "").strip()
-        != str(getattr(downstream_seat, "computer_node_id", "") or "").strip()
-    )
+    is_cross = _seats_cross_workstation(upstream_seat, downstream_seat)
     return {
         "requires_review": is_cross,
         "source": "project_default_cross_only",
@@ -472,109 +473,24 @@ def _resolve_review_for_dispatch(
     }
 
 
-def _trigger_dependent_requirements(
-    db: Session,
-    source_requirement: Requirement,
-    *,
-    actor_id: str | None = None,
-) -> list[dict[str, object]]:
-    """source_requirement 进入 done 时，按 项目→工位→NPC 派下游：
-    - 找所有 dependency_requirement_id=source.id + trigger_kind=on_requirement_done + 还在 waiting_response 的 requirement
-    - 对每个下游：sender = source.target_seat_id (上游 NPC), recipient = downstream.target_seat_id 的 workstation
-    - 应用三级 review_policy 决定派单时 status=queued 或 pending_review
-    """
-    project_id = source_requirement.project_id
-    if not project_id:
-        return []
-    stmt = select(Requirement).where(
-        Requirement.dependency_requirement_id == source_requirement.id,
-        Requirement.trigger_kind == "on_requirement_done",
-        Requirement.status.in_(["waiting_response", "queued", "blocked"]),
-    )
-    affected: list[dict[str, object]] = []
-    upstream_seat = _resolve_seat(db, project_id, source_requirement.target_seat_id)
-    upstream_seat_id = upstream_seat.id if upstream_seat else (source_requirement.target_seat_id or "")
-    for downstream in db.scalars(stmt):
-        target_seat_ref = (downstream.target_seat_id or "").strip()
-        if not target_seat_ref:
-            continue
-        downstream_seat = _resolve_seat(db, project_id, target_seat_ref)
-        if downstream_seat is None:
-            continue
-        review = _resolve_review_for_dispatch(db, upstream_seat, downstream_seat)
-        is_cross = bool(
-            upstream_seat
-            and str(getattr(upstream_seat, "computer_node_id", "") or "").strip()
-            != str(getattr(downstream_seat, "computer_node_id", "") or "").strip()
-        )
-        new_status = "pending_review" if review["requires_review"] else "queued"
-        downstream.to_agent = _workstation_dispatch_target_id(downstream_seat)
-        downstream.status = new_status if not review["requires_review"] else "blocked"
-        db.add(downstream)
-        body_lines = [
-            f"上游需求 [{source_requirement.title}] 已完成，请继续推进 [{downstream.title}]。",
-            "",
-            f"期望产出：{(downstream.expected_output or downstream.context_summary or '').strip() or '（沿用上游）'}",
-            "",
-            f"路由：项目 {project_id} → 工位 {getattr(downstream_seat, 'computer_node_id', '') or '未绑定'} → NPC {downstream_seat.name}",
-            f"上游 NPC: {upstream_seat.name if upstream_seat else upstream_seat_id or '(未知)'}",
-            f"跨工位：{'是' if is_cross else '否'}；审核：{'要' if review['requires_review'] else '免'}（来源：{review['source']}）",
-        ]
-        try:
-            dispatch_message = repo.create_requirement_collaboration_message(
-                db,
-                downstream,
-                message_type="requirement_dispatch",
-                title=f"[自主合作] {source_requirement.title} → {downstream.title}",
-                body="\n".join(body_lines),
-                sender_type="agent",
-                sender_id=upstream_seat_id or None,
-                recipient_type="thread_workstation",
-                recipient_id=str(downstream_seat.id),
-                status=new_status,
-                agent_id=_workstation_dispatch_target_id(downstream_seat),
-                dedupe_key=f"auto_collab_dispatch:{source_requirement.id}:{downstream.id}",
-            )
-        except IntegrityError:
-            db.rollback()
-            existing = _collaboration_message_by_dedupe_key(
-                db, f"auto_collab_dispatch:{source_requirement.id}:{downstream.id}"
-            )
-            if existing is None:
-                continue
-            dispatch_message = existing
-        create_audit_log(
-            db,
-            project_id=project_id,
-            task_id=downstream.task_id,
-            actor_type="agent",
-            actor_id=upstream_seat_id or None,
-            action="requirement.autonomous_dispatched",
-            resource_type="requirement",
-            resource_id=downstream.id,
-            before={"status": "waiting_response"},
-            after={
-                "status": new_status,
-                "to_agent": downstream.to_agent,
-                "source_requirement_id": source_requirement.id,
-                "review": review,
-                "is_cross_workstation": is_cross,
-            },
-        )
-        affected.append({
-            "requirement_id": downstream.id,
-            "title": downstream.title,
-            "source_seat_id": upstream_seat_id,
-            "target_seat_id": _workstation_dispatch_target_id(downstream_seat),
-            "is_cross_workstation": is_cross,
-            "requires_review": review["requires_review"],
-            "review_source": review["source"],
-            "message_id": dispatch_message.id,
-            "status": new_status,
-        })
-    if affected:
-        db.commit()
-    return affected
+def _seat_workstation_key(seat: ProjectThreadWorkstation | None) -> str:
+    """返回 NPC 所在的逻辑工位 key（优先 workstation_id，无则 fallback computer_node_id）。
+    仅用于"同/跨工位"判定，不要用来表示电脑节点。"""
+    if seat is None:
+        return ""
+    ws_id = str(getattr(seat, "workstation_id", "") or "").strip()
+    if ws_id:
+        return ws_id
+    return str(getattr(seat, "computer_node_id", "") or "").strip()
+
+
+def _seats_cross_workstation(
+    upstream: ProjectThreadWorkstation | None,
+    downstream: ProjectThreadWorkstation | None,
+) -> bool:
+    if upstream is None or downstream is None:
+        return False
+    return _seat_workstation_key(upstream) != _seat_workstation_key(downstream)
 
 
 _DONE_STATES = frozenset({"done", "answered", "completed", "accepted", "closed"})
@@ -590,12 +506,7 @@ def create_requirement(db: Session, payload: RequirementCreate):
 
 def update_requirement(db: Session, requirement_id: str, payload: RequirementUpdate):
     requirement = get_requirement_or_404(db, requirement_id)
-    before_done = _is_done_status(requirement.status)
-    updated = repo.update_requirement(db, requirement, payload)
-    after_done = _is_done_status(updated.status)
-    if after_done and not before_done:
-        _trigger_dependent_requirements(db, updated)
-    return updated
+    return repo.update_requirement(db, requirement, payload)
 
 
 def add_requirement_reply(db: Session, requirement_id: str, payload: RequirementReplyCreate):
@@ -1319,8 +1230,6 @@ def add_requirement_final_reply(
         raise
     db.refresh(requirement_reply)
     db.refresh(collaboration_reply)
-    if _is_done_status(requirement.status):
-        _trigger_dependent_requirements(db, requirement)
     return {"reply": requirement_reply, "message": collaboration_reply}
 
 
@@ -1403,7 +1312,6 @@ def run_requirement_action(db: Session, requirement_id: str, action: str, payloa
     if action not in status_map:
         raise AppError("BAD_REQUEST", f"unsupported requirement action: {action}", status_code=400)
     before = {"status": requirement.status}
-    before_done = _is_done_status(requirement.status)
     requirement.status = payload.status or status_map[action]
     db.add(requirement)
     create_audit_log(
@@ -1420,8 +1328,6 @@ def run_requirement_action(db: Session, requirement_id: str, action: str, payloa
     )
     db.commit()
     db.refresh(requirement)
-    if _is_done_status(requirement.status) and not before_done:
-        _trigger_dependent_requirements(db, requirement, actor_id=payload.actor_id)
     return requirement
 
 

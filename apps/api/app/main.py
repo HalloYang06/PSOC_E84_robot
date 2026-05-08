@@ -44,6 +44,7 @@ from app.modules.runners.router import router as runners_router
 from app.modules.runners.service import mark_stale_runners_offline
 from app.modules.tasks.router import router as tasks_router
 from app.modules.usage.router import router as usage_router
+from app.modules.workstations.router import router as workstations_router
 from app.modules.claude_bridge.router import router as claude_bridge_router
 from app.modules.qualification.router import router as qualification_router
 from app.modules.realtime.router import router as realtime_router
@@ -237,3 +238,4 @@ app.include_router(usage_router)
 app.include_router(claude_bridge_router)
 app.include_router(qualification_router)
 app.include_router(realtime_router)
+app.include_router(workstations_router)
