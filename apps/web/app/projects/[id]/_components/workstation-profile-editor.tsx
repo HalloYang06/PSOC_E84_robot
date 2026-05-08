@@ -8,15 +8,17 @@ type Props = {
   apiBaseUrl: string;
   projectId: string;
   nodeId: string;
+  seatChoices?: { id: string; name: string }[];
 };
 
-export function WorkstationProfileEditor({ apiBaseUrl, projectId, nodeId }: Props) {
+export function WorkstationProfileEditor({ apiBaseUrl, projectId, nodeId, seatChoices = [] }: Props) {
   const [open, setOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [localPath, setLocalPath] = useState("");
   const [reviewPolicy, setReviewPolicy] = useState("inherit");
   const [knowledgePath, setKnowledgePath] = useState(`docs/workstations/${nodeId}.md`);
   const [skillInheritance, setSkillInheritance] = useState("");
+  const [leadSeatId, setLeadSeatId] = useState("");
   const [saving, setSaving] = useState(false);
   const [note, setNote] = useState<string | null>(null);
 
@@ -39,6 +41,7 @@ export function WorkstationProfileEditor({ apiBaseUrl, projectId, nodeId }: Prop
         if (Array.isArray(cur.skill_inheritance)) {
           setSkillInheritance(cur.skill_inheritance.join(", "));
         }
+        if (cur.lead_seat_id) setLeadSeatId(String(cur.lead_seat_id));
       } catch {
         /* ignore — UI 会用默认值 */
       } finally {
@@ -65,6 +68,7 @@ export function WorkstationProfileEditor({ apiBaseUrl, projectId, nodeId }: Prop
               .split(/[,\n]+/)
               .map((s) => s.trim())
               .filter(Boolean),
+            lead_seat_id: leadSeatId.trim() || null,
           }),
         },
       );
@@ -130,6 +134,21 @@ export function WorkstationProfileEditor({ apiBaseUrl, projectId, nodeId }: Prop
           onChange={(e) => setSkillInheritance(e.target.value)}
           placeholder="例如：claude-code-skill, mcp-fs, scorecard-poll"
         />
+      </div>
+      <div className={styles.row}>
+        <label className={styles.label}>工位长（跨工位消息默认转交此 NPC）</label>
+        <select
+          className={styles.input}
+          value={leadSeatId}
+          onChange={(e) => setLeadSeatId(e.target.value)}
+        >
+          <option value="">未指定（跨工位消息按默认审核流）</option>
+          {seatChoices.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name}
+            </option>
+          ))}
+        </select>
       </div>
       <div className={styles.actions}>
         <button type="button" className={styles.saveBtn} onClick={save} disabled={saving}>

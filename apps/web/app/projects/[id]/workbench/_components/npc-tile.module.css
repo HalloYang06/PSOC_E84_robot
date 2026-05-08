@@ -676,3 +676,24 @@
 .reviewApproveBtn:disabled,
 .reviewRejectBtn:disabled { opacity: 0.45; cursor: not-allowed; }
 .reviewNote { display: block; margin-top: 4px; color: #ffe8b3; font-size: 11px; }
+
+.leadChip {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(255, 195, 64, 0.85), rgba(255, 224, 130, 0.6));
+  color: #2b1c00;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  border: 1px solid rgba(255, 220, 120, 0.85);
+  vertical-align: middle;
+}
+
+.peerChip[data-lead="1"] {
+  border-color: rgba(255, 200, 80, 0.7);
+  background: linear-gradient(180deg, rgba(60, 40, 8, 0.6), rgba(2, 22, 33, 0.55));
+}
+.peerChip[data-lead="1"] .peerName { color: #ffe7a8; }

@@ -48,6 +48,9 @@ export default async function WorkbenchPage({ params }: { params: { id: string }
   );
   const seatRecords = rawWorkstations.filter((item) => isNpcSeatRecord(item));
   const configNodes = asArray<AnyRecord>(config.computer_nodes ?? config.nodes);
+  const workstationProfiles = (config.workstation_profiles && typeof config.workstation_profiles === "object")
+    ? (config.workstation_profiles as AnyRecord)
+    : {};
 
   const nodeMap = new Map<string, string>();
   for (const node of [...configNodes, ...liveNodes]) {
@@ -55,6 +58,14 @@ export default async function WorkbenchPage({ params }: { params: { id: string }
     if (!id) continue;
     const name = text(node?.name ?? node?.label ?? node?.hostname ?? id, id);
     nodeMap.set(id, name);
+  }
+
+  const leadByNode = new Map<string, string>();
+  for (const [nodeId, profile] of Object.entries(workstationProfiles)) {
+    if (profile && typeof profile === "object") {
+      const lead = text((profile as AnyRecord).lead_seat_id ?? (profile as AnyRecord).leadSeatId, "");
+      if (lead) leadByNode.set(String(nodeId), lead);
+    }
   }
 
   const seats = seatRecords.map((seat, index) => {
@@ -76,6 +87,8 @@ export default async function WorkbenchPage({ params }: { params: { id: string }
       `bot+${id}@noreply.invalid`,
     );
     const reviewPolicy = text(meta.review_policy ?? meta.reviewPolicy, "inherit");
+    const leadSeatId = computerNodeId ? (leadByNode.get(computerNodeId) ?? "") : "";
+    const isLead = !!leadSeatId && leadSeatId === id;
     return {
       id,
       name,
@@ -92,6 +105,8 @@ export default async function WorkbenchPage({ params }: { params: { id: string }
       gitUserName,
       gitUserEmail,
       reviewPolicy,
+      leadSeatId,
+      isLead,
     };
   });
 

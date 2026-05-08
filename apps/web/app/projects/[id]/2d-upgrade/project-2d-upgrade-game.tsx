@@ -660,6 +660,7 @@ function WorkstationGroupsSection({
                     apiBaseUrl={apiBaseUrl}
                     projectId={projectId}
                     nodeId={group.key}
+                    seatChoices={group.seats.map((s) => ({ id: s.id, name: itemTitle(s) }))}
                   />
                 ) : null}
               </div>

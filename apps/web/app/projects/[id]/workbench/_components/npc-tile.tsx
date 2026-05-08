@@ -21,6 +21,8 @@ export type WorkbenchSeat = {
   gitUserName: string;
   gitUserEmail: string;
   reviewPolicy: string;
+  leadSeatId: string;
+  isLead: boolean;
 };
 
 type NpcTileProps = {
@@ -483,6 +485,11 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, currentUserId,
         <div className={styles.headLeft}>
           <strong className={styles.name} title={seat.name}>
             {seat.name}
+            {seat.isLead ? (
+              <span className={styles.leadChip} title="本工位的工位长：跨工位消息默认转交给此 NPC">
+                👑 工位长
+              </span>
+            ) : null}
           </strong>
           <small className={styles.subline}>
             <span title="所属电脑">🖥 {seat.computerNodeName || "未绑定"}</span>
@@ -662,14 +669,17 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, currentUserId,
             ) : (
               <div className={styles.peerRow}>
                 {teammates.map((peer) => (
-                  <div key={peer.id} className={styles.peerChip}>
+                  <div key={peer.id} className={styles.peerChip} data-lead={peer.isLead ? "1" : "0"}>
                     <button
                       type="button"
                       className={styles.peerOpenBtn}
                       onClick={() => onOpenTeammate(peer.id)}
-                      title={`打开 ${peer.name} 的瓷砖`}
+                      title={`打开 ${peer.name} 的瓷砖${peer.isLead ? "（工位长）" : ""}`}
                     >
-                      <span className={styles.peerName}>{peer.name}</span>
+                      <span className={styles.peerName}>
+                        {peer.isLead ? "👑 " : ""}
+                        {peer.name}
+                      </span>
                       <span className={styles.peerMeta}>{peer.providerLabel || peer.providerId || "—"}</span>
                     </button>
                     <button

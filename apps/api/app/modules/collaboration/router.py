@@ -617,6 +617,7 @@ class WorkstationProfilePatch(BaseModel):
     review_policy: str | None = None
     skill_inheritance: list[str] | None = None
     knowledge_path: str | None = None
+    lead_seat_id: str | None = None
 
 
 @router.patch("/projects/{project_id}/workstation-profiles/{node_id}")
