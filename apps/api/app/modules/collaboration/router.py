@@ -1352,6 +1352,42 @@ def api_create_message(payload: CollaborationMessageCreate, request: Request, db
             override = {"project_id": project_id, "sender_type": "human", "sender_id": principal.user_id}
     else:
         override = {"project_id": project_id, "sender_type": "human", "sender_id": principal.user_id}
+
+    # NPC 之间互派需求/消息：自动应用三级 review_policy + 跨工位强审
+    final_sender_type = (override.get("sender_type") or sender_type or "").lower()
+    final_sender_id = (override.get("sender_id") or sender_id or "").strip()
+    recipient_type = (payload.recipient_type or "").strip().lower()
+    recipient_id = (payload.recipient_id or "").strip()
+    if (
+        final_sender_type == "agent"
+        and final_sender_id
+        and recipient_type == "thread_workstation"
+        and recipient_id
+        and (payload.message_type or "") in {"comment_message", "requirement_dispatch", "agent_command"}
+    ):
+        from app.modules.requirements.service import _resolve_seat, _resolve_review_for_dispatch
+        upstream = _resolve_seat(db, project_id, final_sender_id)
+        downstream = _resolve_seat(db, project_id, recipient_id)
+        if upstream is not None and downstream is not None:
+            review = _resolve_review_for_dispatch(db, upstream, downstream)
+            is_cross = (
+                str(getattr(upstream, "computer_node_id", "") or "").strip()
+                != str(getattr(downstream, "computer_node_id", "") or "").strip()
+            )
+            requested_status = (override.get("status") or payload.status or "").strip() or "open"
+            new_status = "pending_review" if review["requires_review"] else (
+                requested_status if requested_status in {"queued", "pending_review", "open"} else "queued"
+            )
+            override["status"] = new_status
+            route_line = (
+                f"\n\n[路由] 跨工位：{'是' if is_cross else '否'}；"
+                f"审核：{'要' if review['requires_review'] else '免'}（来源：{review.get('source')}:{review.get('policy')}）；"
+                f"上游 NPC: {getattr(upstream, 'name', '')}；下游 NPC: {getattr(downstream, 'name', '')}"
+            )
+            body_text = str(payload.body or "")
+            if "[路由]" not in body_text:
+                override["body"] = body_text + route_line
+
     item = create_collaboration_message(db, payload.model_copy(update=override))
     return ok(CollaborationMessageRead.model_validate(item).model_dump(mode="json"))
 
