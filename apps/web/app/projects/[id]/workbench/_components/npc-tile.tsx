@@ -139,6 +139,42 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
   const streamRef = useRef<HTMLDivElement | null>(null);
   const autoScrollRef = useRef(true);
 
+  type SeatQueueItem = {
+    id: string;
+    title: string;
+    status: string;
+    priority?: string;
+    module?: string | null;
+    from_agent?: string | null;
+    to_agent?: string | null;
+    target_seat_id?: string | null;
+    trigger_kind?: string;
+    context_summary?: string | null;
+    created_at?: string | null;
+    updated_at?: string | null;
+    branch?: string | null;
+    due_at?: string | null;
+  };
+  type SeatQueues = {
+    requirement_inbox: { items: SeatQueueItem[]; count: number };
+    task_todo: { items: SeatQueueItem[]; count: number };
+  };
+  type Receipt = {
+    id: string;
+    receipt_kind: "ack" | "progress" | "done" | "reject";
+    parent_requirement_id: string;
+    sender_seat_id: string | null;
+    recipient_seat_id: string | null;
+    cross_workstation: boolean;
+    title: string | null;
+    body: string;
+    created_at: string | null;
+  };
+  const [seatQueues, setSeatQueues] = useState<SeatQueues | null>(null);
+  const [receipts, setReceipts] = useState<Receipt[] | null>(null);
+  const [queueTab, setQueueTab] = useState<"inbox" | "todo" | "dispatch">("inbox");
+  const [receiptDirection, setReceiptDirection] = useState<"incoming" | "outgoing">("incoming");
+
   type Occupancy = {
     user_id: string;
     user_name?: string | null;
@@ -315,9 +351,13 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
         const base = apiClientUrl(`/api/collaboration/messages?project_id=${encodeURIComponent(projectId)}&limit=${size}`);
         const incomingUrl = `${base}&recipient_type=thread_workstation&recipient_id=${encodeURIComponent(seat.id)}`;
         const outgoingUrl = `${base}&sender_id=${encodeURIComponent(seat.id)}`;
-        const [r1, r2] = await Promise.all([
+        const queuesUrl = apiClientUrl(`/api/seats/${encodeURIComponent(seat.id)}/queues?limit=30`);
+        const receiptsUrl = apiClientUrl(`/api/receipts/by-seat/${encodeURIComponent(seat.id)}?direction=${receiptDirection}&limit=30`);
+        const [r1, r2, r3, r4] = await Promise.all([
           fetch(incomingUrl, { credentials: "include" }),
           fetch(outgoingUrl, { credentials: "include" }),
+          fetch(queuesUrl, { credentials: "include" }).catch(() => null),
+          fetch(receiptsUrl, { credentials: "include" }).catch(() => null),
         ]);
         const j1 = await r1.json().catch(() => ({}));
         const j2 = await r2.json().catch(() => ({}));
@@ -340,13 +380,23 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
           return tb - ta;
         });
         setMessages(merged);
+        if (r3 && r3.ok) {
+          const j3 = await r3.json().catch(() => ({}));
+          const data = (j3?.data ?? null) as SeatQueues | null;
+          if (data) setSeatQueues(data);
+        }
+        if (r4 && r4.ok) {
+          const j4 = await r4.json().catch(() => ({}));
+          const data = (j4?.data ?? []) as Receipt[];
+          setReceipts(Array.isArray(data) ? data : []);
+        }
       } catch (e) {
         setFetchError(e instanceof Error ? e.message : "加载失败");
       } finally {
         setFetching(false);
       }
     },
-    [apiBaseUrl, projectId, seat.id],
+    [apiBaseUrl, projectId, seat.id, receiptDirection],
   );
 
   useEffect(() => {
@@ -800,34 +850,153 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
         </div>
       ) : null}
 
-      {myQueue.length > 0 ? (
+      {(() => {
+        const inboxItems = seatQueues?.requirement_inbox.items ?? [];
+        const todoItems = seatQueues?.task_todo.items ?? [];
+        const dispatchItems = myQueue;
+        const inboxCount = seatQueues?.requirement_inbox.count ?? 0;
+        const todoCount = seatQueues?.task_todo.count ?? 0;
+        if (inboxCount === 0 && todoCount === 0 && dispatchItems.length === 0 && (receipts?.length ?? 0) === 0) {
+          return null;
+        }
+        const activeItems = queueTab === "inbox" ? inboxItems : queueTab === "todo" ? todoItems : null;
+        return (
+          <div className={styles.queueBox}>
+            <div className={styles.queueHead}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={() => setQueueTab("inbox")}
+                  className={styles.iconBtn}
+                  data-active={queueTab === "inbox" ? "1" : undefined}
+                  title="需求队列：别人/自己派给我、未关闭的 requirement"
+                >
+                  📥 需求 {inboxCount}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setQueueTab("todo")}
+                  className={styles.iconBtn}
+                  data-active={queueTab === "todo" ? "1" : undefined}
+                  title="任务队列：以本 NPC 的 agent 为 assignee 的未结 task"
+                >
+                  📋 任务 {todoCount}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setQueueTab("dispatch")}
+                  className={styles.iconBtn}
+                  data-active={queueTab === "dispatch" ? "1" : undefined}
+                  title="派单消息：直接发给本 NPC 的 collaboration_message"
+                >
+                  ✉ 派单 {dispatchItems.length}
+                </button>
+              </div>
+              <small className={styles.muted}>
+                {queueTab === "inbox" ? "未接 / 在评估" : queueTab === "todo" ? "已接 task" : "FIFO；最老在最上"}
+              </small>
+            </div>
+            {queueTab === "dispatch" ? (
+              <ul className={styles.queueList}>
+                {dispatchItems.slice(0, 6).map((m, i) => {
+                  const isFromPeer = (m.sender_type || "").toLowerCase() === "agent" && peerIds.has(m.sender_id || "");
+                  const isFromExternal = (m.sender_type || "").toLowerCase() === "agent" && !!m.sender_id && m.sender_id !== seat.id && !peerIds.has(m.sender_id);
+                  const fromLabel = isFromPeer
+                    ? `同工位 · ${teammates.find((t) => t.id === m.sender_id)?.name || m.sender_id}`
+                    : isFromExternal
+                      ? `跨工位 · ${m.sender_id}`
+                      : (m.sender_type || "?");
+                  return (
+                    <li key={m.id} className={styles.queueItem} data-from={isFromPeer ? "peer" : isFromExternal ? "external" : (m.sender_type || "")}>
+                      <span className={styles.queuePos}>#{i + 1}</span>
+                      <div className={styles.queueMeta}>
+                        <span className={styles.queueFrom}>{fromLabel}</span>
+                        <span className={styles.queueTitle}>{m.title || (m.body || "").slice(0, 60) || "(无标题)"}</span>
+                      </div>
+                      <span className={styles.queueStatus} data-status={m.status}>{m.status}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : activeItems && activeItems.length > 0 ? (
+              <ul className={styles.queueList}>
+                {activeItems.slice(0, 6).map((it, i) => (
+                  <li key={it.id} className={styles.queueItem} data-from={queueTab}>
+                    <span className={styles.queuePos}>#{i + 1}</span>
+                    <div className={styles.queueMeta}>
+                      <span className={styles.queueFrom}>
+                        {queueTab === "inbox"
+                          ? (it.from_agent ? `← ${it.from_agent}` : it.trigger_kind || "manual")
+                          : (it.module ? `module: ${it.module}` : it.priority || "—")}
+                      </span>
+                      <span className={styles.queueTitle}>{it.title || "(无标题)"}</span>
+                    </div>
+                    <span className={styles.queueStatus} data-status={it.status}>{it.status}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className={styles.muted} style={{ paddingLeft: 8 }}>
+                {queueTab === "inbox" ? "暂无需求" : "暂无任务"}
+              </p>
+            )}
+            {queueTab === "dispatch" && dispatchItems.length > 6 ? (
+              <small className={styles.muted}>… 还有 {dispatchItems.length - 6} 条</small>
+            ) : null}
+            {queueTab !== "dispatch" && activeItems && activeItems.length > 6 ? (
+              <small className={styles.muted}>… 还有 {activeItems.length - 6} 条</small>
+            ) : null}
+          </div>
+        );
+      })()}
+
+      {receipts && receipts.length > 0 ? (
         <div className={styles.queueBox}>
           <div className={styles.queueHead}>
-            <strong>📥 我的任务队列（{myQueue.length}）</strong>
-            <small className={styles.muted}>FIFO；最老的在最上面</small>
+            <strong>🧾 回执流（{receipts.length}）</strong>
+            <div style={{ display: "flex", gap: 6 }}>
+              <button
+                type="button"
+                onClick={() => setReceiptDirection("incoming")}
+                className={styles.iconBtn}
+                data-active={receiptDirection === "incoming" ? "1" : undefined}
+                title="发给我的回执"
+              >
+                📨 收到
+              </button>
+              <button
+                type="button"
+                onClick={() => setReceiptDirection("outgoing")}
+                className={styles.iconBtn}
+                data-active={receiptDirection === "outgoing" ? "1" : undefined}
+                title="我发的回执"
+              >
+                📤 发出
+              </button>
+            </div>
           </div>
           <ul className={styles.queueList}>
-            {myQueue.slice(0, 6).map((m, i) => {
-              const isFromPeer = (m.sender_type || "").toLowerCase() === "agent" && peerIds.has(m.sender_id || "");
-              const isFromExternal = (m.sender_type || "").toLowerCase() === "agent" && !!m.sender_id && m.sender_id !== seat.id && !peerIds.has(m.sender_id);
-              const fromLabel = isFromPeer
-                ? `同工位 · ${teammates.find((t) => t.id === m.sender_id)?.name || m.sender_id}`
-                : isFromExternal
-                  ? `跨工位 · ${m.sender_id}`
-                  : (m.sender_type || "?");
+            {receipts.slice(0, 6).map((r) => {
+              const kindLabel = ({ ack: "已接", progress: "进度", done: "完成", reject: "拒绝" } as const)[r.receipt_kind];
               return (
-                <li key={m.id} className={styles.queueItem} data-from={isFromPeer ? "peer" : isFromExternal ? "external" : (m.sender_type || "")}>
-                  <span className={styles.queuePos}>#{i + 1}</span>
+                <li key={r.id} className={styles.queueItem} data-from={r.cross_workstation ? "external" : "peer"}>
+                  <span className={styles.queuePos}>{kindLabel}</span>
                   <div className={styles.queueMeta}>
-                    <span className={styles.queueFrom}>{fromLabel}</span>
-                    <span className={styles.queueTitle}>{m.title || (m.body || "").slice(0, 60) || "(无标题)"}</span>
+                    <span className={styles.queueFrom}>
+                      {r.cross_workstation ? "跨工位" : "同工位"}
+                      {" · "}
+                      {receiptDirection === "incoming"
+                        ? (r.sender_seat_id ? `← ${r.sender_seat_id.slice(0, 8)}` : "(系统)")
+                        : (r.recipient_seat_id ? `→ ${r.recipient_seat_id.slice(0, 8)}` : "(广播)")}
+                    </span>
+                    <span className={styles.queueTitle}>{r.title || r.body.slice(0, 60) || "(无标题)"}</span>
                   </div>
-                  <span className={styles.queueStatus} data-status={m.status}>{m.status}</span>
+                  <span className={styles.queueStatus} data-status={r.receipt_kind}>{r.receipt_kind}</span>
                 </li>
               );
             })}
           </ul>
-          {myQueue.length > 6 ? <small className={styles.muted}>… 还有 {myQueue.length - 6} 条</small> : null}
+          {receipts.length > 6 ? <small className={styles.muted}>… 还有 {receipts.length - 6} 条</small> : null}
         </div>
       ) : null}
 
