@@ -36,6 +36,7 @@ import { TeamNoticeToast } from "../../../../components/team-notice-toast";
 import { buildComputerOneClickConnectCommand, suggestedComputerRunnerId } from "../../../../lib/runner-onboarding-commands";
 import styles from "./project-2d-upgrade-game.module.css";
 import { ClaudeCommandPalette } from "../_components/claude-command-palette";
+import { apiClientUrl } from "../../../../lib/api-client-url";
 import { BroadcastModal } from "../_components/broadcast-modal";
 import { WorkstationProfileEditor } from "../_components/workstation-profile-editor";
 import { CrossWorkstationHandoffs } from "../_components/cross-workstation-handoffs";
@@ -595,6 +596,101 @@ function WorkstationGroupsSection({
   projectWorkstations: ProjectWorkstation[];
   onBroadcast: (scope: string, label: string) => void;
 }) {
+  const router = useRouter();
+  const [busyId, setBusyId] = useState<string | "create" | null>(null);
+  const [adminNote, setAdminNote] = useState<string | null>(null);
+  const [newName, setNewName] = useState("");
+  const [editingWsId, setEditingWsId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editLeadSeatId, setEditLeadSeatId] = useState("");
+
+  async function callApi(method: string, path: string, body?: unknown): Promise<{ ok: boolean; json: any }> {
+    const res = await fetch(apiClientUrl(path), {
+      method,
+      credentials: "include",
+      headers: body ? { "Content-Type": "application/json" } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const json = await res.json().catch(() => ({}));
+    return { ok: res.ok, json };
+  }
+
+  async function createLogicalWorkstation(name: string) {
+    if (!name.trim()) {
+      setAdminNote("请输入工位名");
+      return;
+    }
+    setBusyId("create");
+    setAdminNote(null);
+    try {
+      const r = await callApi("POST", `/api/projects/${encodeURIComponent(projectId)}/workstations`, { name: name.trim() });
+      if (!r.ok) throw new Error(r.json?.error?.message ?? `HTTP ${r.json?.error?.code ?? "?"}`);
+      setAdminNote(`✓ 已创建：${r.json?.data?.name}`);
+      setNewName("");
+      router.refresh();
+    } catch (e) {
+      setAdminNote(`创建失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function renameLogicalWorkstation(wsId: string, name: string) {
+    if (!name.trim()) {
+      setAdminNote("请输入新名字");
+      return;
+    }
+    setBusyId(wsId);
+    setAdminNote(null);
+    try {
+      const r = await callApi("PATCH", `/api/projects/${encodeURIComponent(projectId)}/workstations/${encodeURIComponent(wsId)}`, { name: name.trim() });
+      if (!r.ok) throw new Error(r.json?.error?.message ?? "rename failed");
+      setAdminNote("✓ 已改名");
+      setEditingWsId(null);
+      router.refresh();
+    } catch (e) {
+      setAdminNote(`改名失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function setLogicalWorkstationLead(wsId: string, seatId: string) {
+    setBusyId(wsId);
+    setAdminNote(null);
+    try {
+      const r = await callApi(
+        "POST",
+        `/api/projects/${encodeURIComponent(projectId)}/workstations/${encodeURIComponent(wsId)}/lead`,
+        { seat_id: seatId || null },
+      );
+      if (!r.ok) throw new Error(r.json?.error?.message ?? "set lead failed");
+      setAdminNote(seatId ? "✓ 已设工位长" : "✓ 已清空工位长");
+      setEditingWsId(null);
+      router.refresh();
+    } catch (e) {
+      setAdminNote(`设工位长失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function deleteLogicalWorkstation(wsId: string, name: string) {
+    if (!confirm(`删除工位「${name}」？\n（必须先把里面的 NPC 调走，否则后端会拒绝）`)) return;
+    setBusyId(wsId);
+    setAdminNote(null);
+    try {
+      const r = await callApi("DELETE", `/api/projects/${encodeURIComponent(projectId)}/workstations/${encodeURIComponent(wsId)}`);
+      if (!r.ok) throw new Error(r.json?.error?.message ?? "delete failed");
+      setAdminNote(`✓ 已删除：${name}`);
+      router.refresh();
+    } catch (e) {
+      setAdminNote(`删除失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   const computerNameById = new Map<string, string>();
   for (const c of computers) {
     computerNameById.set(c.id, itemTitle(c));
@@ -603,30 +699,41 @@ function WorkstationGroupsSection({
   for (const ws of projectWorkstations) {
     if (ws.id) workstationNameById.set(ws.id, ws.name || ws.id);
   }
-  type Group = { key: string; name: string; isLogicalWorkstation: boolean; seats: FeedItem[] };
+  type Group = {
+    key: string;
+    name: string;
+    isLogicalWorkstation: boolean;
+    workstationId: string | null;
+    nodeId: string | null;
+    seats: FeedItem[];
+  };
   const groupMap = new Map<string, Group>();
   for (const seat of npcSeats) {
     let key = "__unbound__";
     let name = "未归属工位";
     let isLogical = false;
+    let workstationId: string | null = null;
+    let nodeId: string | null = null;
     if (seat.workstationId) {
       key = `ws:${seat.workstationId}`;
       name = seat.workstationName || workstationNameById.get(seat.workstationId) || seat.workstationId;
       isLogical = true;
+      workstationId = seat.workstationId;
     } else if (seat.computerNodeId) {
       key = `node:${seat.computerNodeId}`;
       name = computerNameById.get(seat.computerNodeId) ?? seat.computerNodeId;
+      nodeId = seat.computerNodeId;
     } else if (seat.sourceWorkstationId) {
       key = `legacy:${seat.sourceWorkstationId}`;
       name = seat.sourceWorkstationId;
     }
-    const bucket = groupMap.get(key) ?? { key, name, isLogicalWorkstation: isLogical, seats: [] };
+    const bucket = groupMap.get(key) ?? { key, name, isLogicalWorkstation: isLogical, workstationId, nodeId, seats: [] };
     bucket.seats.push(seat);
     groupMap.set(key, bucket);
   }
   const groups = Array.from(groupMap.values()).sort((a, b) => b.seats.length - a.seats.length);
 
-  if (groups.length === 0) return null;
+  // groups 为空时仍展示工位管理面板（让用户能新建第一个工位）
 
   return (
     <section className={styles.workstationGroups}>
@@ -634,6 +741,130 @@ function WorkstationGroupsSection({
         <strong>按工位分组的 NPC（{groups.length} 个工位 / {npcSeats.length} 个 NPC）</strong>
         <small>展开后可逐个工位发指令；总 / 工位广播按钮 S3 接入</small>
       </header>
+
+      <details style={{ margin: "8px 0", padding: "8px 10px", background: "rgba(255,255,255,0.04)", borderRadius: 8 }}>
+        <summary style={{ cursor: "pointer", fontWeight: 600 }}>
+          🛠 工位管理（{projectWorkstations.length} 个逻辑工位）
+        </summary>
+        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              createLogicalWorkstation(newName);
+            }}
+            style={{ display: "flex", gap: 6, alignItems: "center" }}
+          >
+            <input
+              type="text"
+              placeholder="新建工位（例：软件工位 / 硬件工位 / 嵌入式工位）"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              style={{ flex: 1, padding: "4px 8px", borderRadius: 4, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(0,0,0,0.3)", color: "inherit" }}
+            />
+            <button type="submit" disabled={busyId === "create"} className={styles.workstationGroupBroadcast}>
+              {busyId === "create" ? "创建中…" : "+ 新建"}
+            </button>
+          </form>
+          {projectWorkstations.length === 0 ? (
+            <small style={{ opacity: 0.6 }}>还没有逻辑工位。新建一个软件/硬件/嵌入式工位吧。</small>
+          ) : (
+            <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+              {projectWorkstations.map((ws) => {
+                const isEditing = editingWsId === ws.id;
+                const seatChoicesForWs = npcSeats.filter((s) => s.workstationId === ws.id);
+                return (
+                  <li
+                    key={ws.id}
+                    style={{
+                      display: "flex",
+                      gap: 8,
+                      alignItems: "center",
+                      padding: "6px 8px",
+                      borderRadius: 6,
+                      background: "rgba(255,255,255,0.03)",
+                    }}
+                  >
+                    <span style={{ minWidth: 20 }}>🏷</span>
+                    {isEditing ? (
+                      <>
+                        <input
+                          type="text"
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                          style={{ flex: 1, padding: "3px 6px", borderRadius: 4, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(0,0,0,0.3)", color: "inherit" }}
+                        />
+                        <select
+                          value={editLeadSeatId}
+                          onChange={(e) => setEditLeadSeatId(e.target.value)}
+                          style={{ padding: "3px 6px", borderRadius: 4, background: "rgba(0,0,0,0.3)", color: "inherit", border: "1px solid rgba(255,255,255,0.2)" }}
+                          title="工位长（跨工位投递时默认转交给本人）"
+                        >
+                          <option value="">— 不设工位长 —</option>
+                          {seatChoicesForWs.map((s) => (
+                            <option key={s.id} value={s.id}>{itemTitle(s)}</option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          className={styles.workstationGroupBroadcast}
+                          disabled={busyId === ws.id}
+                          onClick={async () => {
+                            if (editName.trim() && editName.trim() !== ws.name) {
+                              await renameLogicalWorkstation(ws.id, editName);
+                            }
+                            if (editLeadSeatId !== (ws.leadSeatId ?? "")) {
+                              await setLogicalWorkstationLead(ws.id, editLeadSeatId);
+                            }
+                            setEditingWsId(null);
+                          }}
+                        >
+                          保存
+                        </button>
+                        <button type="button" className={styles.workstationGroupBroadcastDisabled} onClick={() => setEditingWsId(null)}>
+                          取消
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <strong style={{ flex: 1 }}>
+                          {ws.name}
+                          <small style={{ marginLeft: 8, opacity: 0.6 }}>
+                            {ws.seatCount} 个 NPC
+                            {ws.leadSeatId
+                              ? ` · 工位长：${npcSeats.find((s) => s.id === ws.leadSeatId)?.name ?? ws.leadSeatId.slice(0, 8)}`
+                              : " · 未设工位长"}
+                          </small>
+                        </strong>
+                        <button
+                          type="button"
+                          className={styles.workstationGroupBroadcast}
+                          onClick={() => {
+                            setEditingWsId(ws.id);
+                            setEditName(ws.name);
+                            setEditLeadSeatId(ws.leadSeatId ?? "");
+                          }}
+                        >
+                          ✎ 改名 / 工位长
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.workstationGroupBroadcastDisabled}
+                          disabled={busyId === ws.id || ws.seatCount > 0}
+                          onClick={() => deleteLogicalWorkstation(ws.id, ws.name)}
+                          title={ws.seatCount > 0 ? "请先把里面的 NPC 调走" : "删除这个工位"}
+                        >
+                          🗑 删除
+                        </button>
+                      </>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {adminNote ? <small style={{ opacity: 0.85 }}>{adminNote}</small> : null}
+        </div>
+      </details>
       <div className={styles.workstationGroupsList}>
         {groups.map((group) => {
           const automationOn = group.seats.filter((s) => s.automationEnabled).length;
@@ -688,11 +919,11 @@ function WorkstationGroupsSection({
                 >
                   到 NPC 工作台 →
                 </Link>
-                {group.key !== "__unbound__" ? (
+                {group.nodeId ? (
                   <WorkstationProfileEditor
                     apiBaseUrl={apiBaseUrl}
                     projectId={projectId}
-                    nodeId={group.key}
+                    nodeId={group.nodeId}
                     seatChoices={group.seats.map((s) => ({ id: s.id, name: itemTitle(s) }))}
                   />
                 ) : null}
