@@ -6,6 +6,13 @@
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "PingFang SC", sans-serif;
 }
 
+.page[data-embed="drawer"] {
+  padding: 14px 18px 28px;
+}
+.page[data-embed="drawer"] .topbar {
+  display: none;
+}
+
 .topbar {
   display: flex;
   align-items: center;

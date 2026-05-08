@@ -22,7 +22,7 @@ function text(value: unknown, fallback = "") {
   return next || fallback;
 }
 
-export default async function WorkbenchPage({ params }: { params: { id: string } }) {
+export default async function WorkbenchPage({ params, searchParams }: { params: { id: string }; searchParams?: { embed?: string } }) {
   const auth = await getCurrentAuthState();
   if (!auth.data?.user) {
     redirect(`/login?next=/projects/${params.id}/workbench`);
@@ -122,6 +122,7 @@ export default async function WorkbenchPage({ params }: { params: { id: string }
       seats={seats}
       currentUserId={currentUserId}
       currentUserName={currentUserName}
+      embedded={searchParams?.embed === "drawer"}
     />
   );
 }

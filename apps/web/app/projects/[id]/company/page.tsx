@@ -22,7 +22,7 @@ function text(value: unknown, fallback = "") {
   return next || fallback;
 }
 
-export default async function CompanyPage({ params }: { params: { id: string } }) {
+export default async function CompanyPage({ params, searchParams }: { params: { id: string }; searchParams?: { embed?: string } }) {
   const auth = await getCurrentAuthState();
   if (!auth.data?.user) {
     redirect(`/login?next=/projects/${params.id}/company`);
@@ -125,6 +125,7 @@ export default async function CompanyPage({ params }: { params: { id: string } }
       currentUserId={currentUserId}
       currentUserName={currentUserName}
       pageMode="company"
+      embedded={searchParams?.embed === "drawer"}
     />
   );
 }

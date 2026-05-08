@@ -32,6 +32,7 @@ import {
   getUsageData,
 } from "../../../lib/server-data";
 import { ProjectPlayableShell } from "./project-playable-shell";
+import { GameShell } from "./_components/game-shell";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -540,7 +541,28 @@ export default async function ProjectDetailPage({
     };
   }) {
   if (!searchParams?.legacy && !searchParams?.mode && !searchParams?.zone) {
-    redirect(`/projects/${params.id}/workbench`);
+    const projectState = await getProjectState(params.id);
+    if (projectState.status === 401) {
+      const projectReturnPath = encodeURIComponent(`/projects/${params.id}`);
+      redirect(`/login?returnTo=${projectReturnPath}`);
+    }
+    if (projectState.status === 403) {
+      redirect(
+        `/projects?tab=projects&team_error=${encodeURIComponent("当前账号没有这个项目的访问权限，请从项目列表重新进入。")}`,
+      );
+    }
+    if (projectState.status === 404) {
+      redirect(`/projects?tab=projects&team_error=${encodeURIComponent("这个项目不存在，或者你没有被授权访问。")}`);
+    }
+    const project = projectState?.data ?? fallbackProject(params.id);
+    const projectIdStr = String(project.id ?? params.id);
+    const projectName = String(project.name ?? `项目 ${params.id.slice(0, 8)}`).trim() || `项目 ${params.id.slice(0, 8)}`;
+    return (
+      <GameShell
+        projectId={projectIdStr}
+        projectName={projectName}
+      />
+    );
   }
   const projectState = await getProjectState(params.id);
   const projectReturnPath = encodeURIComponent(`/projects/${params.id}`);

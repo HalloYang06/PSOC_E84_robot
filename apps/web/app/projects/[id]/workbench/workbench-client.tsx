@@ -14,9 +14,10 @@ type WorkbenchClientProps = {
   currentUserId: string;
   currentUserName: string;
   pageMode?: "workbench" | "company";
+  embedded?: boolean;
 };
 
-export function WorkbenchClient({ projectId, projectName, apiBaseUrl, seats, currentUserId, currentUserName, pageMode = "workbench" }: WorkbenchClientProps) {
+export function WorkbenchClient({ projectId, projectName, apiBaseUrl, seats, currentUserId, currentUserName, pageMode = "workbench", embedded = false }: WorkbenchClientProps) {
   const isCompany = pageMode === "company";
   const [openIds, setOpenIds] = useState<string[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -115,7 +116,7 @@ export function WorkbenchClient({ projectId, projectName, apiBaseUrl, seats, cur
   }
 
   return (
-    <main className={styles.shell}>
+    <main className={styles.shell} data-embed={embedded ? "drawer" : undefined}>
       <header className={styles.topbar}>
         <div className={styles.topbarLeft}>
           <Link href={`/projects/${projectId}/cockpit`} className={styles.backLink} title="返回项目驾驶舱">

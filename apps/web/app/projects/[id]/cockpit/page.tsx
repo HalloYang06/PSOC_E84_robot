@@ -41,7 +41,8 @@ function gradeColor(grade: string): string {
   }
 }
 
-export default async function ProjectCockpitPage({ params }: { params: { id: string } }) {
+export default async function ProjectCockpitPage({ params, searchParams }: { params: { id: string }; searchParams?: { embed?: string } }) {
+  const embedded = searchParams?.embed === "drawer";
   const auth = await getCurrentAuthState();
   if (!auth.data?.user) {
     redirect(`/login?next=/projects/${params.id}/cockpit`);
@@ -118,7 +119,7 @@ export default async function ProjectCockpitPage({ params }: { params: { id: str
   ].filter((entry) => entry.row && typeof entry.row === "object");
 
   return (
-    <main className={styles.page}>
+    <main className={styles.page} data-embed={embedded ? "drawer" : undefined}>
       <header className={styles.topbar}>
         <div className={styles.topbarLeft}>
           <Link href="/projects" className={styles.link}>← 项目列表</Link>
