@@ -559,24 +559,6 @@ def _open_persistent_window(
         repl_cmd = "codex"
     else:
         repl_cmd = "claude"
-    # 直接在 Python 里解析真实 .exe 全路径写进 ps1，绕开 PS 里 -match 的不稳定 + npm shim 的路径拼接 bug。
-    import shutil as _sh
-    repl_exe_full = ""
-    try:
-        shim = _sh.which(repl_cmd) or ""
-        if shim and (shim.lower().endswith(".ps1") or shim.lower().endswith(".cmd") or shim.lower().endswith(".bat")):
-            shim_dir = str(Path(shim).parent)
-            for cand in [
-                Path(shim_dir) / "node_modules" / "@anthropic-ai" / "claude-code" / "bin" / "claude.exe",
-                Path(shim_dir) / "node_modules" / "@openai" / "codex" / "bin" / "codex.exe",
-            ]:
-                if cand.exists():
-                    repl_exe_full = str(cand)
-                    break
-        if not repl_exe_full and shim:
-            repl_exe_full = shim
-    except Exception:
-        repl_exe_full = ""
     # PowerShell 里 -Command 参数的字符串里不能出现裸单引号（`’` / `'`），也不能漏闭合。
     # 一律把 PS 字符串里的单引号 escape 成双单引号。
     def _psq(s: str) -> str:
@@ -612,33 +594,61 @@ def _open_persistent_window(
             f"Write-Host '  3) 重起 watcher' -ForegroundColor Gray; "
         )
     else:
-        # Python 已解析好真实 .exe 全路径（repl_exe_full）；ps1 里直接 & 它，不再做任何 PS 端解析。
-        if not repl_exe_full:
-            # which 找不到 claude/codex
-            ps_body += (
-                f"Write-Host ''; "
-                f"Write-Host '[platform] {repl_cmd} 没找到（PATH 里没有 .ps1/.cmd shim），无法启动 REPL。' -ForegroundColor Red; "
-                f"Write-Host '安装：npm i -g @anthropic-ai/claude-code  (或 codex 对应包)' -ForegroundColor Yellow; "
-            )
-        else:
-            # 关键：PS 5.1 的 & 调含 @ 的反斜杠绝对路径报 CommandNotFoundException，
-            # 但同样路径换正斜杠 / 就能跑（npm 自己的 claude.ps1 shim 也是这么写的）。
-            forward_slash_exe = repl_exe_full.replace("\\", "/")
-            ps_body += f"$exe = '{_psq(forward_slash_exe)}'; "
-            # 用户要求：不再 --resume 历史 session，直接长开新 claude REPL（在窗口里 cd 到 NPC cwd 即可）。
-            # 用户要 resume 时手动在窗口里输 /resume <id>。
-            ps_body += (
-                f"Write-Host ('[platform] launching: ' + $exe + ' (new session in NPC cwd / type slash-resume in claude to pick history)') -ForegroundColor Green; "
-                f"& $exe; "
-                f"$exit = $LASTEXITCODE; "
-                f"Write-Host ''; "
-                f"Write-Host ('[platform] {repl_cmd} REPL exited (exit=' + $exit + ')') -ForegroundColor Yellow; "
-            )
-    ps_body += (
-        f"Write-Host ''; "
-        f"Write-Host 'Press Enter to close this window (watcher keeps running)...' -ForegroundColor Cyan; "
-        f"$null = Read-Host"
-    )
+        # 历史教训（5-08 撞 4 次）：
+        # - npm 的 claude.ps1 shim 内部 `& "$basedir/.../claude.exe"` 因为路径含 `@`，PS 5.1 + 7 **都**崩
+        #   （5.1 报 ApplicationFailedException，7 报 CommandNotFoundException —— 都是 `& "..."` 字符串路径
+        #   被 PS parser 错误处理）
+        # - 任何让 ps1 调 npm shim 的方式（`& $shim` / 裸 `claude` / `cmd /c $shim`）都会进到这条 `& "..."` 崩
+        # - 真解 = **绕过 shim，让 ps1 用 Start-Process 直接调真实 .exe**
+        #   Start-Process 走 Windows CreateProcess，不经过 PS string parser，含 @ 的路径完全不受影响
+        #
+        # Start-Process 路径解析：在 ps1 里查 npm 全局 prefix，拼 node_modules/@anthropic-ai/claude-code/bin/claude.exe
+        # 这是 npm 标准布局，每台正确 npm i -g 的机器都一样。
+        ps_body += (
+            f"Write-Host ''; "
+            f"Write-Host '[platform] window ready — workspace cwd is set, env is injected.' -ForegroundColor Green; "
+            f"$npmBin = Join-Path $env:APPDATA 'npm'; "
+            f"if (Test-Path -LiteralPath $npmBin) {{ $env:PATH = $npmBin + ';' + $env:PATH }}; "
+            f"$candidates = @(); "
+            f"if ($env:CLAUDE_CODE_EXECPATH) {{ $candidates += $env:CLAUDE_CODE_EXECPATH }}; "
+            f"$shimSrc = (Get-Command {repl_cmd} -ErrorAction SilentlyContinue).Source; "
+            f"if ($shimSrc) {{ "
+            f"  $shimDir = Split-Path -Parent $shimSrc; "
+            f"  $candidates += (Join-Path $shimDir 'node_modules\\@anthropic-ai\\claude-code\\bin\\{repl_cmd}.exe'); "
+            f"}}; "
+            f"$candidates += (Join-Path $env:APPDATA 'npm\\node_modules\\@anthropic-ai\\claude-code\\bin\\{repl_cmd}.exe'); "
+            f"$candidates += ('C:\\Users\\' + $env:USERNAME + '\\AppData\\Roaming\\npm\\node_modules\\@anthropic-ai\\claude-code\\bin\\{repl_cmd}.exe'); "
+            f"$exePath = $null; "
+            f"foreach ($c in $candidates) {{ if ($c -and (Test-Path -LiteralPath $c)) {{ $exePath = $c; break }} }}; "
+            f"if (-not $exePath) {{ "
+            f"  Write-Host '[platform] WARNING: {repl_cmd}.exe not found. Tried:' -ForegroundColor Red; "
+            f"  $candidates | ForEach-Object {{ Write-Host ('  - ' + $_) -ForegroundColor Red }}; "
+            f"  Write-Host '[platform] Install: npm i -g @anthropic-ai/claude-code' -ForegroundColor Yellow; "
+            f"}} else {{ "
+            f"  Write-Host ('[platform] launching ' + $exePath) -ForegroundColor Cyan; "
+            f"  Write-Host '[platform] inside the REPL, slash-resume to pick a previous session for history.' -ForegroundColor Gray; "
+            f"  Write-Host ''; "
+            f"  Start-Process -FilePath $exePath -NoNewWindow -Wait; "
+            f"  Write-Host ''; "
+            f"  Write-Host ('[platform] {repl_cmd} REPL exited (code=' + $LASTEXITCODE + ')') -ForegroundColor Yellow; "
+            f"}}; "
+        )
+    # 不再 Read-Host —— 让 -NoExit 直接把 PS 提示符交给用户，他们自己输 `claude`/`codex` 启 REPL。
+    # 这样：每台电脑都能用（靠 PATH shim）、watcher 不阻塞、用户能 cd 切目录、能输 git 命令、能多次重启 REPL。
+    if not bind_error:
+        ps_body += (
+            f"Write-Host ''; "
+            f"Write-Host '----------------------------------------' -ForegroundColor Cyan; "
+            f"Write-Host '[platform] this PS window stays open. Type a command:' -ForegroundColor Cyan; "
+            f"Write-Host ''; "
+        )
+    else:
+        # bind_error 路径仍然停一停让用户看清提示
+        ps_body += (
+            f"Write-Host ''; "
+            f"Write-Host 'Press Enter to dismiss (watcher keeps running)...' -ForegroundColor Cyan; "
+            f"$null = Read-Host"
+        )
     # 长 -Command argv 走 cmd.exe / powershell 编码层会被 GBK 截断（中文 workstation_id 是常见触发点），
     # 改为写到临时 .ps1 文件 + -File 启动，绕开 argv 编码完全可控。
     import tempfile as _tmp
@@ -652,13 +662,30 @@ def _open_persistent_window(
     creationflags = 0
     if hasattr(subprocess, "CREATE_NEW_CONSOLE"):
         creationflags = subprocess.CREATE_NEW_CONSOLE
+    # 优先 pwsh 7（没有 -File 占 stdin 的坑，ps1 能自动起 claude REPL）；找不到 fallback powershell 5.1。
+    import shutil as _sh
+    pwsh_exe = _sh.which("pwsh") or _sh.which("pwsh.exe") or ""
+    if not pwsh_exe:
+        # 兜底几个标准安装位置
+        for cand in [
+            r"C:\Program Files\PowerShell\7\pwsh.exe",
+            r"C:\Program Files (x86)\PowerShell\7\pwsh.exe",
+        ]:
+            if Path(cand).exists():
+                pwsh_exe = cand
+                break
+    shell_exe = pwsh_exe or "powershell.exe"
+    shell_label = "pwsh7" if pwsh_exe else "powershell5.1"
     try:
         subprocess.Popen(
-            ["powershell.exe", "-NoProfile", "-NoExit", "-ExecutionPolicy", "Bypass", "-File", str(ps1)],
+            [shell_exe, "-NoProfile", "-NoExit", "-ExecutionPolicy", "Bypass", "-File", str(ps1)],
             creationflags=creationflags,
             close_fds=True,
         )
-        print(f"[{_now_hms()}] [platform] persistent {provider} REPL window spawned (ps1={ps1})", flush=True)
+        print(f"[{_now_hms()}] [platform] persistent {provider} REPL window spawned via {shell_label} (ps1={ps1})", flush=True)
+        if shell_label == "powershell5.1":
+            print(f"[{_now_hms()}] [platform] HINT: install PowerShell 7 to enable auto-launch of {provider} inside the window:", flush=True)
+            print(f"[{_now_hms()}] [platform]   winget install --id Microsoft.PowerShell --source winget", flush=True)
     except Exception as exc:
         print(f"[{_now_hms()}] [platform] window spawn failed: {exc}", flush=True)
 
