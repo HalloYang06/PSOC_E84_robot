@@ -1565,10 +1565,18 @@ def ack_workstation_command(
     payload: WorkstationInboxAckCreate,
 ):
     workstation, message = _get_workstation_command_or_404(db, project_id, workstation_id, message_id)
-    if message.status not in {"queued", "pending", "acked", "in_progress"}:
-        raise AppError("MESSAGE_NOT_PENDING", "workstation command is already closed", status_code=409)
+    # 队列原子化：只允许 queued/pending → acked，被并发抢占或已收尾时返回 409，避免两个 watcher 双跑
+    if message.status not in {"queued", "pending"}:
+        raise AppError("MESSAGE_ALREADY_CLAIMED", f"命令当前 status={message.status}，已被其他 watcher 接走或已收尾", status_code=409)
     before_status = message.status
-    message.status = "acked"
+    rowcount = db.query(CollaborationMessage).filter(
+        CollaborationMessage.id == message.id,
+        CollaborationMessage.status.in_(["queued", "pending"]),
+    ).update({"status": "acked"}, synchronize_session=False)
+    if rowcount == 0:
+        db.rollback()
+        raise AppError("MESSAGE_ALREADY_CLAIMED", "命令已被其他 watcher 接走", status_code=409)
+    db.refresh(message)
     note = payload.note or "Agent acknowledged the command and is preparing to execute it."
     append_audit_log(
         db,
@@ -1631,7 +1639,15 @@ def complete_workstation_command(
     if message.status not in {"queued", "pending", "acked", "in_progress"}:
         raise AppError("MESSAGE_NOT_PENDING", "workstation command is already closed", status_code=409)
     before_status = message.status
-    message.status = payload.result_status
+    # 队列原子化：终态只允许从 open(queued/pending/acked/in_progress) 变更，被并发收尾时只有第一个 rowcount=1
+    rowcount = db.query(CollaborationMessage).filter(
+        CollaborationMessage.id == message.id,
+        CollaborationMessage.status.in_(["queued", "pending", "acked", "in_progress"]),
+    ).update({"status": payload.result_status}, synchronize_session=False)
+    if rowcount == 0:
+        db.rollback()
+        raise AppError("MESSAGE_ALREADY_CLOSED", "命令已被其他线程收尾", status_code=409)
+    db.refresh(message)
     note = payload.note or (
         "Agent completed the command and returned a final result."
         if payload.result_status == "completed"
