@@ -42,6 +42,7 @@ from app.modules.projects.router import router as projects_router
 from app.modules.requirements.router import router as requirements_router
 from app.modules.runners.router import router as runners_router
 from app.modules.runners.service import mark_stale_runners_offline
+from app.modules.seats.router import router as seats_router
 from app.modules.tasks.router import router as tasks_router
 from app.modules.usage.router import router as usage_router
 from app.modules.workstations.router import router as workstations_router
@@ -239,3 +240,4 @@ app.include_router(claude_bridge_router)
 app.include_router(qualification_router)
 app.include_router(realtime_router)
 app.include_router(workstations_router)
+app.include_router(seats_router)
