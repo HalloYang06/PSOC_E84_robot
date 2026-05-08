@@ -107,12 +107,16 @@ def _adapter_headers(workstation_id: str, *, workstation_token: str | None = Non
 def _command_markdown(command: dict[str, Any], *, project_id: str, workstation_id: str, provider: str) -> str:
     title = str(command.get("title") or "Untitled platform command").strip()
     body = str(command.get("body") or "").strip()
+    recipient_id = str(command.get("recipient_id") or "").strip()
+    seat_id = recipient_id if recipient_id and recipient_id != workstation_id else ""
     lines = [
         f"# {title}",
         "",
         "## Platform Envelope",
         f"- project_id: `{project_id}`",
         f"- workstation_id: `{workstation_id}`",
+        f"- recipient_id: `{recipient_id or workstation_id}`",
+        f"- seat_id (your NPC identity for docs): `{seat_id or workstation_id}`",
         f"- provider: `{provider}`",
         f"- message_id: `{command.get('id')}`",
         f"- message_type: `{command.get('message_type')}`",
@@ -125,6 +129,18 @@ def _command_markdown(command: dict[str, Any], *, project_id: str, workstation_i
         "- If this computer uses a different local path, resolve the repository locally instead of trusting another computer's path.",
         "- Before doing work, read docs/ai-requirements/ai-required-requirements-ledger.md if present; obey proposer, target, review gate, one-shot/heartbeat mode, and reply-to fields.",
         "- If the task requires human review, stop after analysis/minimal acknowledgement and wait for approval.",
+        "",
+        "## NPC Knowledge Library Convention",
+        f"- Your role manual lives at `docs/npcs/{seat_id or workstation_id}/` (create if missing — see `docs/npcs/README.md`).",
+        f"- Workstation context: `docs/workstations/{workstation_id}.md`.",
+        "- Project context: `docs/projects/<project-id>/README.md`.",
+        "- Read all three before acting; cite the file path you relied on in your reply.",
+        "",
+        "## Reply Formatting",
+        "- Reply in GitHub-flavored Markdown.",
+        "- Cite touched files / commits / PRs as GitHub links: `https://github.com/<owner>/<repo>/blob/<branch>/<path>` or `/commit/<sha>`. Use the local repo's actual remote — do not invent placeholder URLs.",
+        "- If the requirement asks for code changes, list each change in a bullet with the link.",
+        "- Keep platform-routing chatter out of the reply body (the adapter handles ack/complete envelopes).",
         "",
         "## User Instruction",
         body or "No body was provided.",
@@ -190,20 +206,39 @@ def _executor_template(provider: str, explicit_command: str | None, use_provider
 def _extract_executor_prompt(command_text: str) -> str:
     """Keep platform routing out of the provider prompt; the adapter handles ack/final receipts."""
     title = ""
+    seat_id = ""
+    workstation_id = ""
     for line in command_text.splitlines():
         stripped = line.strip()
-        if stripped.startswith("# "):
+        if stripped.startswith("# ") and not title:
             title = stripped.lstrip("#").strip()
-            break
+        elif stripped.startswith("- seat_id"):
+            after = stripped.split(":", 1)[1] if ":" in stripped else ""
+            seat_id = after.strip().strip("`").split()[0] if after.strip() else ""
+        elif stripped.startswith("- workstation_id"):
+            after = stripped.split(":", 1)[1] if ":" in stripped else ""
+            workstation_id = after.strip().strip("`").split()[0] if after.strip() else ""
     instruction = command_text
     marker = "## User Instruction"
     if marker in command_text:
         instruction = command_text.split(marker, 1)[1].strip()
+    seat_label = seat_id or workstation_id or "<seat>"
+    workstation_label = workstation_id or "<workstation>"
     parts = [
         "你是当前电脑线程上的执行 AI。",
         "平台适配器已经负责最小回执和最终回写；不要再调用平台 API，也不要尝试自己发送回执。",
         "开工前如果存在 docs/ai-requirements/ai-required-requirements-ledger.md，必须遵守其中的提需求者、被提需求者、人工审核边界、一次性/心跳模式和完成后回给谁。",
         "凡是标记为需要人工审核的内容，只能分析和说明，不能继续自动执行。",
+        (
+            "你这个 NPC 的「岗位手册」在 docs/npcs/" + seat_label + "/ 下；"
+            "本工位（电脑节点）的手册在 docs/workstations/" + workstation_label + ".md；"
+            "项目级背景在 docs/projects/<project-id>/README.md。"
+            "开工前先读这三处（任何一处缺失就跳过该层），并在最终回复里注明你引用了哪份文档。"
+        ),
+        (
+            "回复必须用 GitHub-flavored Markdown。引用代码/提交/PR 时一律给出 GitHub 链接（owner/repo/blob/branch/path 或 /commit/<sha>），"
+            "用当前仓库真实的 remote，不要编造占位 URL。如果改了文件，按「- 修改 <文件名>：<一句话原因> — <github 链接>」列清单。"
+        ),
         "请只根据下面的用户指令输出最终回复内容。",
     ]
     if title:
