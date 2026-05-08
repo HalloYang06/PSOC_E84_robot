@@ -304,7 +304,10 @@ async function main() {
     await page.screenshot({ path: p, fullPage: true });
     result.shots.push(p);
     const dispatchBtnOk = (await page.locator("button", { hasText: "→ 派" }).count()) >= 1;
-    const queueOk = (await page.locator("text=我的任务队列").count()) >= 1;
+    // 队列卡用 "📥 需求 N" / "📋 任务 N" / "📤 我派的" 三 tab；任一存在即认为队列卡渲染了
+    const queueOk = (await page.locator('button[title*="需求队列"]').count()) >= 1
+      || (await page.locator('button[title*="任务队列"]').count()) >= 1
+      || (await page.getByText(/📥\s*需求/).count()) >= 1;
     result.steps.push({ name: "G NPC 瓷砖：→派 按钮存在", ok: dispatchBtnOk });
     result.steps.push({ name: "G NPC 瓷砖：任务队列卡显示", ok: queueOk });
 
