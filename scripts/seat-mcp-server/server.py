@@ -7,10 +7,14 @@ the human UI.
 Three tools, all stdio + line-delimited JSON-RPC (Claude Code / Codex CLIs both
 accept this transport):
 
-- list_peers()                          → 同工位 / 跨工位伙伴名单（seat_id + 姓名 + 是否工位长）
+- list_peers()                          → 同工位 / 跨工位伙伴名单。【判定按逻辑工位 workstation_id】
+                                          （workstation_id 为空时退回 computer_node_id），与后端
+                                          `_seat_workstation_key` 对齐。
 - request_help(role, ask, expected="")  → 平台按 role 在同工位匹配一个 NPC，发派单
                                           （有审 → pending_review；免审 → queued）
-- dispatch_to_peer(seat_id, title, body)→ 直接指名派单（同上 review 行为）
+- dispatch_to_peer(seat_id, title, body, force_direct=False)
+                                        → 直接指名派单。跨工位时默认改投到目标工位长转手；
+                                          force_direct=True 才直送（不推荐）。
 
 每个工具内部都只做一件事：调现成的后端 `POST /api/collaboration/messages`，
 让后端 `_resolve_review_for_dispatch` 自动决定 pending_review / queued。这就是
@@ -85,6 +89,13 @@ def _list_seats(project_id: str) -> list[dict[str, Any]]:
     return data if isinstance(data, list) else []
 
 
+def _list_workstations(project_id: str) -> list[dict[str, Any]]:
+    """新逻辑工位表（项目内自定义"软件/硬件/嵌入式…"）。"""
+    payload = _http_json("GET", f"{_api_base()}/api/projects/{project_id}/workstations")
+    data = payload.get("data") if isinstance(payload, dict) else None
+    return data if isinstance(data, list) else []
+
+
 def _project_config(project_id: str) -> dict[str, Any]:
     payload = _http_json("GET", f"{_api_base()}/api/collaboration/projects/{project_id}/config")
     if isinstance(payload, dict):
@@ -102,33 +113,75 @@ def _self_seat(project_id: str, seat_id: str) -> dict[str, Any] | None:
     return None
 
 
-def _peers(project_id: str, seat_id: str) -> dict[str, list[dict[str, Any]]]:
+def _seat_workstation_key(seat: dict[str, Any]) -> str:
+    """与后端 `_seat_workstation_key` 对齐：workstation_id 优先，否则退回 computer_node_id。"""
+    ws = str(seat.get("workstation_id") or "").strip()
+    if ws:
+        return ws
+    return str(seat.get("computer_node_id") or "").strip()
+
+
+def _peers(project_id: str, seat_id: str) -> dict[str, Any]:
     seats = _list_seats(project_id)
+    workstations = _list_workstations(project_id)
     cfg = _project_config(project_id)
     inner = cfg.get("collaboration_config") if isinstance(cfg, dict) else None
     profiles = (inner or {}).get("workstation_profiles") if isinstance(inner, dict) else None
     profiles = profiles if isinstance(profiles, dict) else {}
+
+    ws_name_by_id: dict[str, str] = {}
+    lead_by_ws: dict[str, str] = {}
+    for ws in workstations:
+        wid = str(ws.get("id") or "").strip()
+        if not wid:
+            continue
+        ws_name_by_id[wid] = str(ws.get("name") or wid)
+        lead = str(ws.get("lead_seat_id") or "").strip()
+        if lead:
+            lead_by_ws[wid] = lead
+
     me = _self_seat(project_id, seat_id) or {}
-    my_node = str(me.get("computer_node_id") or "").strip()
+    my_key = _seat_workstation_key(me)
+    my_ws_id = str(me.get("workstation_id") or "").strip()
+    my_ws_name = ws_name_by_id.get(my_ws_id) if my_ws_id else ""
+
     same: list[dict[str, Any]] = []
     cross: list[dict[str, Any]] = []
     for s in seats:
         sid = str(s.get("id") or "")
         if not sid or sid == str(me.get("id") or ""):
             continue
-        node = str(s.get("computer_node_id") or "").strip()
-        node_profile = profiles.get(node) if isinstance(profiles, dict) else None
-        is_lead = bool(node_profile and (node_profile.get("lead_seat_id") or node_profile.get("leadSeatId")) in {sid, s.get("config_id"), s.get("name")})
+        peer_key = _seat_workstation_key(s)
+        peer_ws_id = str(s.get("workstation_id") or "").strip()
+        peer_node = str(s.get("computer_node_id") or "").strip()
+        peer_ws_name = ws_name_by_id.get(peer_ws_id) if peer_ws_id else ""
+        is_lead = False
+        if peer_ws_id and lead_by_ws.get(peer_ws_id) == sid:
+            is_lead = True
+        else:
+            node_profile = profiles.get(peer_node) if peer_node else None
+            if isinstance(node_profile, dict):
+                cand = node_profile.get("lead_seat_id") or node_profile.get("leadSeatId")
+                if cand in {sid, s.get("config_id"), s.get("name")}:
+                    is_lead = True
         info = {
             "seat_id": sid,
             "name": s.get("name") or s.get("config_id") or sid,
             "provider": s.get("provider_id") or s.get("provider_label") or "",
-            "computer_node_id": node,
+            "workstation_id": peer_ws_id or "",
+            "workstation_name": peer_ws_name or "",
+            "computer_node_id": peer_node,
             "is_lead": is_lead,
             "responsibility": s.get("responsibility") or "",
         }
-        (same if node == my_node else cross).append(info)
-    return {"same_workstation": same, "cross_workstation": cross}
+        (same if peer_key and peer_key == my_key else cross).append(info)
+    return {
+        "my_workstation_id": my_ws_id,
+        "my_workstation_name": my_ws_name or "",
+        "my_workstation_key": my_key,
+        "same_workstation": same,
+        "cross_workstation": cross,
+    }
 
 
 def _create_message(*, project_id: str, sender_seat_id: str, recipient_seat_id: str, title: str, body: str, message_type: str = "agent_command") -> dict[str, Any]:
@@ -221,9 +274,47 @@ def _tool_dispatch_to_peer(args: dict[str, Any]) -> dict[str, Any]:
     target_seat_id = str(args.get("seat_id") or "").strip()
     title = str(args.get("title") or "").strip()
     body = str(args.get("body") or "").strip()
+    force_direct = bool(args.get("force_direct") or False)
     if not target_seat_id or not title or not body:
         return {"ok": False, "error": "seat_id, title and body are required"}
-    body_full = body + f"\n\n（NPC `{seat_id}` 通过 seat-mcp `dispatch_to_peer` 主动发起，后端 review 策略接管。）"
+
+    peers = _peers(project_id, seat_id)
+    me_key = peers.get("my_workstation_key") or ""
+    target_seat: dict[str, Any] | None = None
+    for p in (peers.get("same_workstation") or []) + (peers.get("cross_workstation") or []):
+        if str(p.get("seat_id") or "") == target_seat_id:
+            target_seat = p
+            break
+
+    routed_to_lead = False
+    original_target_id = target_seat_id
+    original_target_name = ""
+    if target_seat is not None:
+        original_target_name = str(target_seat.get("name") or "")
+        peer_key = str(target_seat.get("workstation_id") or target_seat.get("computer_node_id") or "")
+        is_cross = bool(me_key) and bool(peer_key) and peer_key != me_key
+        if is_cross and not force_direct and not target_seat.get("is_lead"):
+            target_ws_id = str(target_seat.get("workstation_id") or "")
+            if target_ws_id:
+                lead_id = ""
+                for ws in _list_workstations(project_id):
+                    if str(ws.get("id") or "") == target_ws_id:
+                        lead_id = str(ws.get("lead_seat_id") or "").strip()
+                        break
+                if lead_id and lead_id != target_seat_id:
+                    target_seat_id = lead_id
+                    routed_to_lead = True
+
+    routing_note = (
+        f"\n\n[路由] 跨工位默认转交工位长：原指定 `{original_target_id}`（{original_target_name}）→ 经工位长 `{target_seat_id}` 转手"
+        if routed_to_lead
+        else ""
+    )
+    body_full = (
+        body
+        + routing_note
+        + f"\n\n（NPC `{seat_id}` 通过 seat-mcp `dispatch_to_peer` 主动发起，后端 review 策略接管。）"
+    )
     resp = _create_message(
         project_id=project_id,
         sender_seat_id=seat_id,
@@ -239,13 +330,16 @@ def _tool_dispatch_to_peer(args: dict[str, Any]) -> dict[str, Any]:
         "message_id": msg.get("id"),
         "status": msg.get("status"),
         "needs_review": (msg.get("status") == "pending_review"),
+        "routed_via_lead": routed_to_lead,
+        "delivered_to_seat_id": target_seat_id,
+        "originally_addressed_seat_id": original_target_id,
     }
 
 
 TOOLS = [
     {
         "name": "list_peers",
-        "description": "列出我（当前 NPC seat）能接触到的伙伴：分组为同工位（same_workstation）和跨工位（cross_workstation），每个伙伴含 seat_id / name / provider / is_lead。同工位的伙伴默认不需要审核；跨工位会被强制走工位长 + 审核。",
+        "description": "列出我（当前 NPC seat）能接触到的伙伴：分组为同工位（same_workstation）和跨工位（cross_workstation）。判定按【逻辑工位】（workstation_id）：相同 workstation_id 视为同工位；workstation_id 为空时退回 computer_node_id 比较。返回还含 my_workstation_id / my_workstation_name 让我能引用自己。每个伙伴含 seat_id / name / workstation_id / workstation_name / computer_node_id / is_lead / responsibility。同工位默认免审核；跨工位会被强制走工位长 + 审核。",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
     {
@@ -264,13 +358,14 @@ TOOLS = [
     },
     {
         "name": "dispatch_to_peer",
-        "description": "我已经知道要找哪位伙伴（有 seat_id），直接指名派单。仍走 review gate（同工位免审 / 跨工位强审，除非项目/工位/NPC 上覆盖了 skip）。",
+        "description": "我已经知道要找哪位伙伴（有 seat_id），直接指名派单。同工位 → 直送目标。跨工位 → 默认改投到目标工位的【工位长】转手（除非 force_direct=True 或目标本身就是 lead）。仍走 review gate（同工位免审 / 跨工位强审，除非项目/工位/NPC 上覆盖了 skip）。返回额外字段 routed_via_lead / delivered_to_seat_id / originally_addressed_seat_id。",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "seat_id": {"type": "string", "description": "目标 NPC 的 seat_id（list_peers 返回的同名字段）。"},
                 "title": {"type": "string", "description": "派单标题。"},
                 "body": {"type": "string", "description": "派单正文。"},
+                "force_direct": {"type": "boolean", "description": "跨工位时是否绕过工位长，直送指定 seat（不推荐，仅在你确认对方工位长不在或已授权时使用）。默认 false。"},
             },
             "required": ["seat_id", "title", "body"],
             "additionalProperties": False,

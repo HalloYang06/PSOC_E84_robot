@@ -416,8 +416,38 @@ def delete_project_computer_node(db: Session, project_id: str, node_id: str) -> 
 
 
 def list_project_thread_workstations(db: Session, project_id: str) -> list[dict[str, object]]:
+    from app.db.models.project_collaboration import ProjectThreadWorkstation as _Seat
+
     config = get_project_config(db, project_id).get("collaboration_config") or {}
-    return [dict(item) for item in config.get("thread_workstations") or []]
+    items = [dict(item) for item in config.get("thread_workstations") or []]
+    # Merge live DB row's workstation_id (JSON 双写没存逻辑工位归属)
+    rows = list(
+        db.scalars(
+            select(_Seat).where(_Seat.project_id == project_id)
+        )
+    )
+    by_pk: dict[str, _Seat] = {row.id: row for row in rows}
+    by_config_id: dict[str, _Seat] = {row.config_id: row for row in rows if row.config_id}
+    by_name: dict[str, _Seat] = {row.name: row for row in rows if row.name}
+    for item in items:
+        if item.get("workstation_id"):
+            continue
+        candidates = [
+            str(item.get("row_id") or ""),
+            str(item.get("id") or ""),
+            str(item.get("config_id") or ""),
+            str(item.get("name") or ""),
+        ]
+        row: _Seat | None = None
+        for cand in candidates:
+            if not cand:
+                continue
+            row = by_pk.get(cand) or by_config_id.get(cand) or by_name.get(cand)
+            if row is not None:
+                break
+        if row is not None and row.workstation_id:
+            item["workstation_id"] = row.workstation_id
+    return items
 
 
 def get_project_thread_workstation(db: Session, project_id: str, workstation_name: str) -> dict[str, object]:

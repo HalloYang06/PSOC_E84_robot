@@ -105,6 +105,7 @@ class CollaborationWorkstationRead(BaseModel):
     project_id: str | None = None
     name: str
     agent_id: str | None = None
+    workstation_id: str | None = None
     source_workstation_id: str | None = None
     computer_node: str | None = None
     computer_node_id: str | None = None
