@@ -71,6 +71,8 @@ type FeedItem = {
   providerLabel?: string;
   computerNodeId?: string;
   sourceWorkstationId?: string;
+  workstationId?: string;
+  workstationName?: string;
   responsibility?: string;
   model?: string;
   permissionLevel?: string;
@@ -108,6 +110,17 @@ type WorkshopStationItem = {
   knowledgeTags: string[];
 };
 
+type ProjectWorkstation = {
+  id: string;
+  configId: string;
+  name: string;
+  description: string | null;
+  leadSeatId: string | null;
+  reviewPolicy: string | null;
+  sortOrder: number;
+  seatCount: number;
+};
+
 type Project2dUpgradeGameProps = {
   project: GameProject;
   apiBaseUrl: string;
@@ -123,6 +136,7 @@ type Project2dUpgradeGameProps = {
   projectMembers: FeedItem[];
   workstations: FeedItem[];
   npcSeats: FeedItem[];
+  projectWorkstations: ProjectWorkstation[];
   workshopStations: WorkshopStationItem[];
   skills: FeedItem[];
   teamNotice?: string;
@@ -571,26 +585,42 @@ function WorkstationGroupsSection({
   apiBaseUrl,
   npcSeats,
   computers,
+  projectWorkstations,
   onBroadcast,
 }: {
   projectId: string;
   apiBaseUrl: string;
   npcSeats: FeedItem[];
   computers: FeedItem[];
+  projectWorkstations: ProjectWorkstation[];
   onBroadcast: (scope: string, label: string) => void;
 }) {
   const computerNameById = new Map<string, string>();
   for (const c of computers) {
     computerNameById.set(c.id, itemTitle(c));
   }
-  type Group = { key: string; name: string; seats: FeedItem[] };
+  const workstationNameById = new Map<string, string>();
+  for (const ws of projectWorkstations) {
+    if (ws.id) workstationNameById.set(ws.id, ws.name || ws.id);
+  }
+  type Group = { key: string; name: string; isLogicalWorkstation: boolean; seats: FeedItem[] };
   const groupMap = new Map<string, Group>();
   for (const seat of npcSeats) {
-    const key = seat.computerNodeId || seat.sourceWorkstationId || "__unbound__";
-    const name = seat.computerNodeId
-      ? computerNameById.get(seat.computerNodeId) ?? seat.computerNodeId
-      : "未绑定电脑";
-    const bucket = groupMap.get(key) ?? { key, name, seats: [] };
+    let key = "__unbound__";
+    let name = "未归属工位";
+    let isLogical = false;
+    if (seat.workstationId) {
+      key = `ws:${seat.workstationId}`;
+      name = seat.workstationName || workstationNameById.get(seat.workstationId) || seat.workstationId;
+      isLogical = true;
+    } else if (seat.computerNodeId) {
+      key = `node:${seat.computerNodeId}`;
+      name = computerNameById.get(seat.computerNodeId) ?? seat.computerNodeId;
+    } else if (seat.sourceWorkstationId) {
+      key = `legacy:${seat.sourceWorkstationId}`;
+      name = seat.sourceWorkstationId;
+    }
+    const bucket = groupMap.get(key) ?? { key, name, isLogicalWorkstation: isLogical, seats: [] };
     bucket.seats.push(seat);
     groupMap.set(key, bucket);
   }
@@ -610,16 +640,19 @@ function WorkstationGroupsSection({
           return (
             <details key={group.key} className={styles.workstationGroupCard}>
               <summary className={styles.workstationGroupSummary}>
-                <span className={styles.workstationGroupName}>🖥 {group.name}</span>
+                <span className={styles.workstationGroupName}>
+                  {group.isLogicalWorkstation ? "🏷" : "🖥"} {group.name}
+                  {group.isLogicalWorkstation ? <small style={{ marginLeft: 6, opacity: 0.7 }}>逻辑工位</small> : null}
+                </span>
                 <span className={styles.workstationGroupCount}>
                   {group.seats.length} 个 NPC · 自动化 {automationOn}
                 </span>
                 {group.key === "__unbound__" ? (
                   <span
                     className={styles.workstationGroupBroadcastDisabled}
-                    title="未绑定电脑的 NPC 暂不支持组内广播，先在 NPC 编辑里绑定电脑"
+                    title="未归属工位的 NPC 暂不支持组内广播，先在工位管理里把它分配到一个工位"
                   >
-                    组内广播 (需先绑定电脑)
+                    组内广播 (需先归属工位)
                   </span>
                 ) : (
                   <span
@@ -892,6 +925,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
     projectMembers,
     workstations,
     npcSeats,
+    projectWorkstations,
     workshopStations,
     skills,
     teamNotice,
@@ -3181,20 +3215,31 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             apiBaseUrl={apiBaseUrl}
             npcSeats={npcSeats}
             computers={computers}
+            projectWorkstations={projectWorkstations}
             onBroadcast={(scope, label) => setBroadcastTarget({ scope, label })}
           />
           <CrossWorkstationHandoffs
             apiBaseUrl={apiBaseUrl}
             projectId={project.id}
-            seats={npcSeats.map((s) => ({
-              id: s.id,
-              name: s.name || s.title || s.id,
-              computerNodeId: s.computerNodeId || "",
-              computerNodeName: s.computerNodeId
-                ? (computers.find((c) => c.id === s.computerNodeId)?.title ??
-                   computers.find((c) => c.id === s.computerNodeId)?.name ?? s.computerNodeId)
-                : "未绑定电脑",
-            }))}
+            seats={npcSeats.map((s) => {
+              const wsName = s.workstationId
+                ? (projectWorkstations.find((w) => w.id === s.workstationId)?.name ?? s.workstationName ?? s.workstationId)
+                : s.computerNodeId
+                  ? (computers.find((c) => c.id === s.computerNodeId)?.title ??
+                     computers.find((c) => c.id === s.computerNodeId)?.name ?? s.computerNodeId)
+                  : "未归属工位";
+              return {
+                id: s.id,
+                name: s.name || s.title || s.id,
+                workstationId: s.workstationId || s.computerNodeId || "",
+                workstationName: wsName,
+                computerNodeId: s.computerNodeId || "",
+                computerNodeName: s.computerNodeId
+                  ? (computers.find((c) => c.id === s.computerNodeId)?.title ??
+                     computers.find((c) => c.id === s.computerNodeId)?.name ?? s.computerNodeId)
+                  : "未绑定电脑",
+              };
+            })}
           />
           <RequirementDispatcher
             apiBaseUrl={apiBaseUrl}

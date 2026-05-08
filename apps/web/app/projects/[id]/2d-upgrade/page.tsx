@@ -7,6 +7,7 @@ import {
   getProjectMembersState,
   getProjectState,
   getProjectThreadWorkstationsState,
+  getProjectWorkstationsState,
   getRequirementsState,
   getTasksDataScopedState,
   getUsageData,
@@ -112,13 +113,14 @@ export default async function Project2dUpgradePage({
     redirect(`/projects?tab=projects&team_error=${encodeURIComponent("这个项目不存在，或者你没有被授权访问。")}`);
   }
 
-  const [authState, taskState, requirementState, messageState, nodeState, workstationState, memberState, usage] = await Promise.all([
+  const [authState, taskState, requirementState, messageState, nodeState, workstationState, projectWorkstationsState, memberState, usage] = await Promise.all([
     safeLoad(getCurrentAuthState(), { data: null, status: 500, error: null }),
     safeLoad(getTasksDataScopedState({ projectIds: [params.id] }), { data: [], status: 500, error: null }),
     safeLoad(getRequirementsState({ projectIds: [params.id] }), { data: [], status: 500, error: null }),
     safeLoad(getCollaborationMessagesState({ projectId: params.id }), { data: [], status: 500, error: null }),
     safeLoad(getProjectComputerNodesState(params.id), { data: [], status: 500, error: null }),
     safeLoad(getProjectThreadWorkstationsState(params.id), { data: [], status: 500, error: null }),
+    safeLoad(getProjectWorkstationsState(params.id), { data: [], status: 500, error: null }),
     safeLoad(getProjectMembersState(params.id), { data: [], status: 500, error: null }),
     safeLoad(getUsageData(), []),
   ]);
@@ -134,6 +136,12 @@ export default async function Project2dUpgradePage({
   const messages = Array.isArray(messageState.data) ? messageState.data : [];
   const nodes = Array.isArray(nodeState.data) ? nodeState.data : [];
   const workstations = Array.isArray(workstationState.data) ? workstationState.data : [];
+  const projectWorkstations = Array.isArray(projectWorkstationsState.data) ? projectWorkstationsState.data : [];
+  const projectWorkstationNameById = new Map<string, string>();
+  for (const ws of projectWorkstations) {
+    const id = String(ws.id ?? "");
+    if (id) projectWorkstationNameById.set(id, String(ws.name ?? id));
+  }
   const members = Array.isArray(memberState.data) ? memberState.data : [];
   const workshopStationRows = normalizeDevelopmentWorkshopStations(collaborationConfig.development_workshop_stations);
   const activeTasks = tasks.filter((task) => !isDoneStatus(task.status));
@@ -210,6 +218,16 @@ export default async function Project2dUpgradePage({
         at: text(node.runner_last_heartbeat_at, ""),
         providerId: text(node.runner_id, ""),
       }))}
+      projectWorkstations={projectWorkstations.map((ws) => ({
+        id: String(ws.id ?? ""),
+        configId: String(ws.config_id ?? ws.id ?? ""),
+        name: String(ws.name ?? ""),
+        description: ws.description ? String(ws.description) : null,
+        leadSeatId: ws.lead_seat_id ? String(ws.lead_seat_id) : null,
+        reviewPolicy: ws.review_policy ? String(ws.review_policy) : null,
+        sortOrder: Number(ws.sort_order ?? 0) || 0,
+        seatCount: Number(ws.seat_count ?? 0) || 0,
+      }))}
       projectMembers={members.slice(0, 24).map((member, index) => {
         const user = member.user && typeof member.user === "object" ? (member.user as AnyRecord) : {};
         const role = text(member.role, member.is_owner ? "owner" : "member");
@@ -235,6 +253,8 @@ export default async function Project2dUpgradePage({
         const metadata = metadataOf(workstation);
         const npcKnowledge = metadata.npc_knowledge && typeof metadata.npc_knowledge === "object" ? (metadata.npc_knowledge as AnyRecord) : {};
         const providerId = text(workstation.ai_provider_id ?? metadata.ai_provider_id ?? metadata.provider_id, "npc");
+        const workstationId = text(workstation.workstation_id ?? metadata.workstation_id, "");
+        const workstationName = workstationId ? projectWorkstationNameById.get(workstationId) ?? "" : "";
         return {
           id: text(workstation.id ?? workstation.workstation_id ?? workstation.thread_id, `npc-${index + 1}`),
           name: text(workstation.name ?? workstation.workstation_name ?? workstation.thread_name, `NPC ${index + 1}`),
@@ -243,6 +263,8 @@ export default async function Project2dUpgradePage({
           body: text(workstation.description ?? workstation.responsibility ?? metadata.responsibility ?? workstation.notes, ""),
           providerId,
           providerLabel: text(workstation.ai_provider ?? metadata.ai_provider ?? metadata.provider_label, providerId),
+          workstationId,
+          workstationName,
           computerNodeId: text(workstation.computer_node_id ?? metadata.computer_node_id, ""),
           sourceWorkstationId: text(workstation.source_workstation_id ?? metadata.source_workstation_id, ""),
           responsibility: text(workstation.responsibility ?? metadata.responsibility ?? workstation.description, ""),

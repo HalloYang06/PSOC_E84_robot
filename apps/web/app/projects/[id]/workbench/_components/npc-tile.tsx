@@ -8,6 +8,8 @@ import { apiClientUrl } from "../../../../../lib/api-client-url";
 export type WorkbenchSeat = {
   id: string;
   name: string;
+  workstationId: string;
+  workstationName: string;
   computerNodeId: string;
   computerNodeName: string;
   providerId: string;

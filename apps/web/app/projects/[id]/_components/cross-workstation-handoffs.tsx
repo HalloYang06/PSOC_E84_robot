@@ -20,6 +20,8 @@ type HandoffItem = {
 type SeatLite = {
   id: string;
   name: string;
+  workstationId: string;
+  workstationName: string;
   computerNodeId: string;
   computerNodeName: string;
 };
@@ -76,13 +78,15 @@ export function CrossWorkstationHandoffs({ apiBaseUrl, projectId, seats }: Props
     const from = seatOf(item.handoff_from);
     const to = seatOf(item.handoff_to);
     if (!from || !to) return { isCross: false, label: "未识别" };
-    if (!from.computerNodeId || !to.computerNodeId) return { isCross: false, label: "工位未绑" };
-    const cross = from.computerNodeId !== to.computerNodeId;
+    const fromKey = from.workstationId || from.computerNodeId;
+    const toKey = to.workstationId || to.computerNodeId;
+    if (!fromKey || !toKey) return { isCross: false, label: "工位未归属" };
+    const cross = fromKey !== toKey;
+    const fromLabel = from.workstationName || from.computerNodeName;
+    const toLabel = to.workstationName || to.computerNodeName;
     return {
       isCross: cross,
-      label: cross
-        ? `${from.computerNodeName} → ${to.computerNodeName}`
-        : `本工位（${from.computerNodeName}）`,
+      label: cross ? `${fromLabel} → ${toLabel}` : `本工位（${fromLabel}）`,
     };
   }
 

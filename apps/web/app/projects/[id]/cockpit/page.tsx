@@ -5,6 +5,7 @@ import {
   getProjectComputerNodesState,
   getProjectScorecardState,
   getProjectState,
+  getProjectWorkstationsState,
   getCollaborationMessagesState,
   getHandoffsData,
 } from "../../../../lib/server-data";
@@ -48,9 +49,10 @@ export default async function ProjectCockpitPage({ params, searchParams }: { par
     redirect(`/login?next=/projects/${params.id}/cockpit`);
   }
 
-  const [projectState, computerNodesState, scorecardState, handoffsAll, messagesState, pendingReviewState] = await Promise.all([
+  const [projectState, computerNodesState, projectWorkstationsState, scorecardState, handoffsAll, messagesState, pendingReviewState] = await Promise.all([
     getProjectState(params.id),
     getProjectComputerNodesState(params.id),
+    getProjectWorkstationsState(params.id),
     getProjectScorecardState(params.id),
     getHandoffsData(),
     getCollaborationMessagesState({ projectId: params.id }),
@@ -81,13 +83,31 @@ export default async function ProjectCockpitPage({ params, searchParams }: { par
     const name = text(node?.name ?? node?.label ?? node?.hostname ?? id, id);
     nodeMap.set(id, name);
   }
+  const projectWorkstations = asArray<AnyRecord>(projectWorkstationsState.data);
+  const workstationNameById = new Map<string, string>();
+  for (const ws of projectWorkstations) {
+    const id = text(ws?.id, "");
+    if (id) workstationNameById.set(id, text(ws?.name, id));
+  }
 
-  const seatsByNode = new Map<string, AnyRecord[]>();
+  const seatGroups = new Map<string, { label: string; isLogical: boolean; seats: AnyRecord[] }>();
   for (const seat of seatRecords) {
-    const nodeId = text(seat.computer_node_id ?? seat.computerNodeId, "__unbound__");
-    const list = seatsByNode.get(nodeId) ?? [];
-    list.push(seat);
-    seatsByNode.set(nodeId, list);
+    const wsId = text(seat.workstation_id ?? seat.workstationId, "");
+    const nodeId = text(seat.computer_node_id ?? seat.computerNodeId, "");
+    let key = "__unbound__";
+    let label = "未归属工位";
+    let isLogical = false;
+    if (wsId) {
+      key = `ws:${wsId}`;
+      label = workstationNameById.get(wsId) ?? wsId;
+      isLogical = true;
+    } else if (nodeId) {
+      key = `node:${nodeId}`;
+      label = nodeMap.get(nodeId) ?? nodeId;
+    }
+    const bucket = seatGroups.get(key) ?? { label, isLogical, seats: [] };
+    bucket.seats.push(seat);
+    seatGroups.set(key, bucket);
   }
 
   const sc = scorecardState.data as AnyRecord | null;
@@ -134,8 +154,8 @@ export default async function ProjectCockpitPage({ params, searchParams }: { par
           <Link href={`/projects/${params.id}/company`} className={styles.ghostBtn} title="公司层：只看每个工位的工位长（👑），跨工位指派的默认入口">
             🏢 公司层
           </Link>
-          <Link href={`/projects/${params.id}?legacy=1`} className={styles.ghostBtn} title="进入旧版农场壳（仅诊断）">
-            旧版页面
+          <Link href={`/projects/${params.id}/2d-upgrade`} className={styles.ghostBtn} title="返回项目主页面（2D 开发壳，含右侧所有操作面板）">
+            ← 主页面
           </Link>
         </div>
       </header>
@@ -198,22 +218,24 @@ export default async function ProjectCockpitPage({ params, searchParams }: { par
       <section className={styles.section}>
         <div className={styles.sectionHead}>
           <h2>工位 · NPC 分组</h2>
-          <span className={styles.muted}>共 {seatRecords.length} 个 NPC / {seatsByNode.size} 个工位</span>
+          <span className={styles.muted}>共 {seatRecords.length} 个 NPC / {seatGroups.size} 个工位</span>
         </div>
-        {seatsByNode.size === 0 ? (
+        {seatGroups.size === 0 ? (
           <p className={styles.muted}>还没有 NPC，去工作台 "+" 创建第一个。</p>
         ) : (
           <div className={styles.workstationGrid}>
-            {Array.from(seatsByNode.entries()).map(([nodeId, seats]) => {
-              const nodeName = nodeId === "__unbound__" ? "未绑定电脑" : (nodeMap.get(nodeId) ?? nodeId);
+            {Array.from(seatGroups.entries()).map(([key, group]) => {
               return (
-                <div key={nodeId} className={styles.workstationCard}>
+                <div key={key} className={styles.workstationCard}>
                   <div className={styles.workstationHead}>
-                    <strong>{nodeName}</strong>
-                    <span className={styles.muted}>{seats.length} 个 NPC</span>
+                    <strong>
+                      {group.isLogical ? "🏷 " : "🖥 "}{group.label}
+                      {group.isLogical ? <small style={{ marginLeft: 6, opacity: 0.7 }}>逻辑工位</small> : null}
+                    </strong>
+                    <span className={styles.muted}>{group.seats.length} 个 NPC</span>
                   </div>
                   <ul className={styles.seatList}>
-                    {seats.map((seat) => {
+                    {group.seats.map((seat) => {
                       const sid = text(seat.id ?? seat.config_id, "");
                       const sname = text(seat.name, sid.slice(0, 8) || "未命名");
                       const provider = text(seat.provider_label ?? seat.providerLabel ?? seat.provider_id ?? seat.providerId, "");

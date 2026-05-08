@@ -24,11 +24,20 @@ export function WorkbenchClient({ projectId, projectName, apiBaseUrl, seats, cur
   const [filter, setFilter] = useState("");
 
   const grouped = useMemo(() => {
-    const groups = new Map<string, { name: string; seats: WorkbenchSeat[] }>();
+    const groups = new Map<string, { name: string; isLogical: boolean; seats: WorkbenchSeat[] }>();
     for (const seat of seats) {
-      const key = seat.computerNodeId || "__unbound__";
-      const name = seat.computerNodeName || (seat.computerNodeId ? seat.computerNodeId : "未绑定电脑");
-      const bucket = groups.get(key) ?? { name, seats: [] };
+      let key = "__unbound__";
+      let name = "未归属工位";
+      let isLogical = false;
+      if (seat.workstationId) {
+        key = `ws:${seat.workstationId}`;
+        name = seat.workstationName || seat.workstationId;
+        isLogical = true;
+      } else if (seat.computerNodeId) {
+        key = `node:${seat.computerNodeId}`;
+        name = seat.computerNodeName || seat.computerNodeId;
+      }
+      const bucket = groups.get(key) ?? { name, isLogical, seats: [] };
       bucket.seats.push(seat);
       groups.set(key, bucket);
     }
@@ -44,7 +53,7 @@ export function WorkbenchClient({ projectId, projectName, apiBaseUrl, seats, cur
         seats: group.seats.filter(
           (s) =>
             s.name.toLowerCase().includes(q) ||
-            s.computerNodeName.toLowerCase().includes(q) ||
+            (s.workstationName || s.computerNodeName).toLowerCase().includes(q) ||
             s.responsibility.toLowerCase().includes(q),
         ),
       }))
@@ -56,15 +65,16 @@ export function WorkbenchClient({ projectId, projectName, apiBaseUrl, seats, cur
     [openIds, seats],
   );
 
+  function seatGroupKey(s: WorkbenchSeat): string {
+    return s.workstationId || s.computerNodeId || "";
+  }
+
   const teammatesBySeat = useMemo(() => {
     const map = new Map<string, WorkbenchSeat[]>();
     for (const seat of seats) {
+      const myKey = seatGroupKey(seat);
       const peers = seats.filter(
-        (other) =>
-          other.id !== seat.id &&
-          (seat.computerNodeId
-            ? other.computerNodeId === seat.computerNodeId
-            : !other.computerNodeId),
+        (other) => other.id !== seat.id && (myKey ? seatGroupKey(other) === myKey : !seatGroupKey(other)),
       );
       map.set(seat.id, peers);
     }
@@ -75,14 +85,15 @@ export function WorkbenchClient({ projectId, projectName, apiBaseUrl, seats, cur
     const map = new Map<string, WorkbenchSeat[]>();
     const seenLeadIds = new Set<string>();
     const allLeads = seats.filter((s) => {
-      if (!s.isLead || !s.computerNodeId) return false;
+      if (!s.isLead || !seatGroupKey(s)) return false;
       if (seenLeadIds.has(s.id)) return false;
       seenLeadIds.add(s.id);
       return true;
     });
     for (const seat of seats) {
+      const myKey = seatGroupKey(seat);
       const others = allLeads.filter(
-        (lead) => lead.computerNodeId !== seat.computerNodeId && lead.id !== seat.id,
+        (lead) => seatGroupKey(lead) !== myKey && lead.id !== seat.id,
       );
       map.set(seat.id, others);
     }
@@ -177,8 +188,8 @@ export function WorkbenchClient({ projectId, projectName, apiBaseUrl, seats, cur
               {filteredGroups.map((group) => (
                 <li key={group.key} className={styles.group}>
                   <div className={styles.groupHeader}>
-                    <span>{group.name}</span>
-                    <small>{group.seats.length} 个 NPC</small>
+                    <span>{group.isLogical ? "🏷 " : "🖥 "}{group.name}</span>
+                    <small>{group.seats.length} 个 NPC{group.isLogical ? " · 逻辑工位" : ""}</small>
                   </div>
                   <ul className={styles.npcList}>
                     {group.seats.map((seat) => {

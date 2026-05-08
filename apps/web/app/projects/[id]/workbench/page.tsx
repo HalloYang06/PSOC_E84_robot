@@ -4,6 +4,7 @@ import {
   getCurrentAuthState,
   getProjectComputerNodesState,
   getProjectState,
+  getProjectWorkstationsState,
 } from "../../../../lib/server-data";
 import { isNpcSeatRecord, platformProviderIdFromSeat } from "../../../../lib/platform-provider";
 import { WorkbenchClient } from "./workbench-client";
@@ -40,7 +41,9 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
   }
 
   const computerNodesState = await getProjectComputerNodesState(params.id);
+  const projectWorkstationsState = await getProjectWorkstationsState(params.id);
   const liveNodes = asArray<AnyRecord>(computerNodesState.data);
+  const projectWorkstations = asArray<AnyRecord>(projectWorkstationsState.data);
 
   const config = (project.collaboration_config ?? {}) as AnyRecord;
   const rawWorkstations = asArray<AnyRecord>(
@@ -60,6 +63,16 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
     nodeMap.set(id, name);
   }
 
+  const workstationNameById = new Map<string, string>();
+  const leadByWorkstation = new Map<string, string>();
+  for (const ws of projectWorkstations) {
+    const wsId = text(ws?.id, "");
+    if (!wsId) continue;
+    workstationNameById.set(wsId, text(ws?.name, wsId));
+    const lead = text(ws?.lead_seat_id ?? ws?.leadSeatId, "");
+    if (lead) leadByWorkstation.set(wsId, lead);
+  }
+
   const leadByNode = new Map<string, string>();
   for (const [nodeId, profile] of Object.entries(workstationProfiles)) {
     if (profile && typeof profile === "object") {
@@ -71,6 +84,7 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
   const seats = seatRecords.map((seat, index) => {
     const id = text(seat.id ?? seat.config_id ?? seat.row_id, `seat-${index}`);
     const name = text(seat.name ?? seat.title, `NPC ${index + 1}`);
+    const workstationId = text(seat.workstation_id ?? seat.workstationId, "");
     const computerNodeId = text(seat.computer_node_id ?? seat.computerNodeId, "");
     const providerId = platformProviderIdFromSeat(seat) || text(seat.provider_id ?? seat.providerId, "");
     const providerLabel = text(seat.provider_label ?? seat.providerLabel ?? providerId, providerId);
@@ -87,11 +101,15 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
       `bot+${id}@noreply.invalid`,
     );
     const reviewPolicy = text(meta.review_policy ?? meta.reviewPolicy, "inherit");
-    const leadSeatId = computerNodeId ? (leadByNode.get(computerNodeId) ?? "") : "";
+    const leadSeatId = workstationId
+      ? (leadByWorkstation.get(workstationId) ?? "")
+      : (computerNodeId ? (leadByNode.get(computerNodeId) ?? "") : "");
     const isLead = !!leadSeatId && leadSeatId === id;
     return {
       id,
       name,
+      workstationId,
+      workstationName: workstationId ? (workstationNameById.get(workstationId) ?? workstationId) : "",
       computerNodeId,
       computerNodeName: computerNodeId ? nodeMap.get(computerNodeId) ?? computerNodeId : "",
       providerId,

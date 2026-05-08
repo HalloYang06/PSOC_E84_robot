@@ -251,6 +251,7 @@ function normalizeWorkstation(value: unknown, index: number) {
       item.permission_level ?? item.permissionLevel ?? item.access_level ?? item.permission ?? metadata.permission_level ?? null,
     seat_type: item.seat_type ?? item.seatType ?? metadata.seat_type ?? null,
     source_workstation_id: item.source_workstation_id ?? item.sourceWorkstationId ?? metadata.source_workstation_id ?? null,
+    workstation_id: item.workstation_id ?? item.workstationId ?? metadata.workstation_id ?? null,
     skill_loadout: asArray<string>(item.skill_loadout ?? item.skillLoadout ?? metadata.skill_loadout),
     git_boundary: normalizePathList(item.git_boundary ?? item.gitBoundary ?? metadata.git_boundary),
     scene_key: item.scene_key ?? item.sceneKey ?? item.scene ?? metadata.scene_key ?? metadata.scene ?? null,
@@ -893,6 +894,35 @@ export async function getProjectThreadWorkstationsState(projectId: string): Prom
 
 export async function getProjectThreadWorkstationsData(projectId: string) {
   return (await getProjectThreadWorkstationsState(projectId)).data;
+}
+
+export async function getProjectWorkstationsState(projectId: string): Promise<ApiLoadState<any[]>> {
+  try {
+    const data = asArray<any>(
+      await fetchJson<any>(`/api/projects/${projectId}/workstations`),
+    );
+    return okState(
+      Array.isArray(data)
+        ? data.map((item) => ({
+            id: String(item.id ?? ""),
+            config_id: String(item.config_id ?? item.configId ?? item.id ?? ""),
+            name: String(item.name ?? ""),
+            description: item.description ?? null,
+            lead_seat_id: item.lead_seat_id ?? item.leadSeatId ?? null,
+            review_policy: item.review_policy ?? item.reviewPolicy ?? null,
+            sort_order: Number(item.sort_order ?? item.sortOrder ?? 0) || 0,
+            seat_count: Number(item.seat_count ?? item.seatCount ?? 0) || 0,
+            extra_data: item.extra_data ?? item.extraData ?? null,
+          }))
+        : [],
+    );
+  } catch (error) {
+    return errorState(error, [], "PROJECT_WORKSTATIONS_UNAVAILABLE");
+  }
+}
+
+export async function getProjectWorkstationsData(projectId: string) {
+  return (await getProjectWorkstationsState(projectId)).data;
 }
 
 export async function getAgentData(agentId: string) {
