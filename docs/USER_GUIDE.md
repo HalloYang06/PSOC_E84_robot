@@ -97,7 +97,7 @@
 
 **让 Claude/Codex 在自己的窗口运行**（用户能看到 AI 真在打字）：
 - 在 `start-thread-watcher.ps1` 后加 `-SpawnWindow`：每次 watcher 收到平台指令，都会**弹出一个独立 PowerShell 窗口**跑那条 claude/codex CLI 调用，用户能看到完整的对话。
-- 弹出的窗口标题为 `NPC <workstation_id> · <provider>`，stdout 全部进 transcript，等 CLI 退出 3 秒后自动关闭。adapter 同时把 transcript 内容回写为 done 回执 body。
+- 弹出的窗口标题为 `NPC <workstation_id> · <provider>`，stdout 全部进 transcript 文件。CLI 退出后窗口**不会自动关闭**，一直停在那等用户按 Enter 关闭（方便回看 AI 对话）。adapter 不等用户关窗口，CLI 一退出就把 transcript 内容回写为 done 回执 body。
 
 > 跨电脑配置见 §6 + `scripts/seat-mcp-server/README.md`
 

@@ -459,36 +459,46 @@ def _spawn_in_new_window(
         ps_body += f"Set-Location -LiteralPath '{cwd}'; "
     if cwd_warning:
         ps_body += f"Write-Host '{cwd_warning}' -ForegroundColor Yellow; "
+    # 关键：watcher 不阻塞等用户关窗口；只等 Stop-Transcript 写完文件就读它
+    # 用一个 sentinel 文件标记"CLI 已退出"
+    sentinel = capture.with_suffix(".done")
     ps_body += (
         f"Write-Host '[platform] 正在启动 {provider} CLI...' -ForegroundColor Cyan; "
         f"Invoke-Expression \"{rendered_escaped}\"; "
         f"$exit = $LASTEXITCODE; "
         f"Stop-Transcript | Out-Null; "
+        f"New-Item -Path '{str(sentinel).replace(chr(39), chr(39)*2)}' -ItemType File -Force | Out-Null; "
         f"Write-Host ''; "
-        f"Write-Host '[platform] 已完成，3 秒后自动关闭 (exit={'$exit'})' -ForegroundColor Cyan; "
-        f"Start-Sleep -Seconds 3; "
+        f"Write-Host '[platform] CLI 已退出 (exit=' -NoNewline -ForegroundColor Cyan; "
+        f"Write-Host \"$exit\" -NoNewline -ForegroundColor Yellow; "
+        f"Write-Host ')，按 Enter 关闭此窗口（保留窗口随时回看对话）...' -ForegroundColor Cyan; "
+        f"$null = Read-Host; "
         f"exit $exit"
     )
-    start_cmd = [
-        "powershell.exe",
-        "-NoProfile",
-        "-Command",
-        f"Start-Process powershell -Wait -ArgumentList @('-NoExit','-NoProfile','-Command', @'\n{ps_body}\n'@)",
-    ]
-    # 简化：直接起一个新窗口并等它结束
+    # Start-Process 不带 -Wait：watcher 立刻不阻塞
     full_command = (
         f"powershell.exe -NoProfile -Command "
-        f"\"Start-Process -FilePath powershell -Wait -ArgumentList "
+        f"\"Start-Process -FilePath powershell -ArgumentList "
         f"@('-NoProfile','-Command',\\\"{ps_body.replace(chr(34), chr(34) * 2)}\\\") "
         f"\""
     )
     import subprocess as _sp
-    started_at = __import__('time').time()
+    import time as _time
+    started_at = _time.time()
     try:
-        proc = _sp.run(full_command, shell=True, timeout=timeout_seconds)
-        rc = proc.returncode
+        _sp.run(full_command, shell=True, timeout=10)  # 启动窗口本身只用几秒
     except _sp.TimeoutExpired:
-        rc = None
+        pass
+    # 等 sentinel 文件出现（即 Stop-Transcript 完成）
+    while _time.time() - started_at < timeout_seconds:
+        if sentinel.exists():
+            break
+        _time.sleep(0.5)
+    rc = 0 if sentinel.exists() else None
+    try:
+        sentinel.unlink(missing_ok=True)
+    except Exception:
+        pass
     try:
         stdout = capture.read_text(encoding="utf-8", errors="replace") if capture.exists() else ""
     except Exception:
@@ -497,7 +507,7 @@ def _spawn_in_new_window(
         "ok": rc == 0,
         "returncode": rc,
         "stdout": stdout,
-        "stderr": "",
+        "stderr": "" if rc == 0 else f"executor timed out after {timeout_seconds}s (window may still be open)",
         "note": "\n".join(
             part for part in [cwd_warning, stdout or f"{provider} executor completed without stdout."] if part
         ),
