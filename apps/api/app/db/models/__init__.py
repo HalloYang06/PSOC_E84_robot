@@ -6,7 +6,7 @@ from .context_health import ContextHealthRecord
 from .handoff import Handoff
 from .message import Message
 from .project import Project
-from .project_collaboration import ProjectAIProvider, ProjectComputerNode, ProjectThreadWorkstation
+from .project_collaboration import ProjectAIProvider, ProjectComputerNode, ProjectThreadWorkstation, ProjectWorkstation
 from .project_invite import ProjectInvite
 from .project_member import ProjectMember
 from .requirement import Requirement, RequirementMessage
@@ -22,6 +22,7 @@ __all__ = [
     "ProjectAIProvider",
     "ProjectComputerNode",
     "ProjectThreadWorkstation",
+    "ProjectWorkstation",
     "User",
     "ProjectMember",
     "ProjectInvite",

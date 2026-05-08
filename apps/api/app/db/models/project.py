@@ -44,7 +44,10 @@ class Project(Base):
     thread_workstations: Mapped[list["ProjectThreadWorkstation"]] = relationship(
         back_populates="project", cascade="all, delete-orphan"
     )
+    workstations: Mapped[list["ProjectWorkstation"]] = relationship(
+        back_populates="project", cascade="all, delete-orphan"
+    )
 
 
 from .task import Task  # noqa: E402  (relationship target)
-from .project_collaboration import ProjectAIProvider, ProjectComputerNode, ProjectThreadWorkstation  # noqa: E402
+from .project_collaboration import ProjectAIProvider, ProjectComputerNode, ProjectThreadWorkstation, ProjectWorkstation  # noqa: E402
