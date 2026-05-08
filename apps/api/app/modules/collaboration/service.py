@@ -1755,7 +1755,7 @@ def create_message(
     ):
         raise AppError("BAD_REQUEST", "collaboration message requires a project, task, approval, handoff, requirement, or workstation scope", status_code=400)
 
-    message = CollaborationMessage(**payload.model_dump(), dispatch_id=str(dispatch_id or "").strip() or None)
+    message = CollaborationMessage(**payload.model_dump(by_alias=True), dispatch_id=str(dispatch_id or "").strip() or None)
     db.add(message)
     db.flush()
     append_audit_log(

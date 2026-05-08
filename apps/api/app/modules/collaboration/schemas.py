@@ -3,7 +3,7 @@
 import re
 from datetime import datetime
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class UserCreate(BaseModel):
@@ -127,6 +127,18 @@ class CollaborationMessageCreate(BaseModel):
     recipient_type: str | None = None
     recipient_id: str | None = None
     status: str = "open"
+    metadata: dict | None = Field(default=None, alias="extra_data")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_metadata_alias(cls, value):
+        if isinstance(value, dict) and "metadata" in value and "extra_data" not in value:
+            data = dict(value)
+            data["extra_data"] = data.pop("metadata")
+            return data
+        return value
 
 
 class CollaborationMessageUpdate(BaseModel):
@@ -142,6 +154,8 @@ class CollaborationMessageUpdate(BaseModel):
 
 
 class CollaborationMessageRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
     id: str
     project_id: str | None
     task_id: str | None
@@ -158,11 +172,9 @@ class CollaborationMessageRead(BaseModel):
     recipient_type: str | None
     recipient_id: str | None
     status: str
+    metadata: dict | None = Field(default=None, alias="extra_data")
     created_at: datetime | None
     updated_at: datetime | None
-
-    class Config:
-        from_attributes = True
 
 
 class CollaborationMessagePreviewRead(BaseModel):

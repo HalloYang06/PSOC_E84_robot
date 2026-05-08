@@ -124,8 +124,8 @@ async function main() {
 
   // 找有没有"→ 派"按钮文本（peerDispatchBtn）
   const dispatchBtnCount = await page.locator("button", { hasText: "→ 派" }).count();
-  // 任务队列文本 "我的任务队列"
-  const queueExists = await page.locator("text=我的任务队列").count();
+  // 任务队列：tabs 区有"📥 需求"或"📋 任务"按钮（瓷砖双队列已升级 — 老文案"我的任务队列"已被 tabs 替代）
+  const queueExists = await page.locator("button", { hasText: /📥 需求|📋 任务/ }).count();
   // 分色：找消息流里的 .role_peer / .role_external 元素（CSS module hash 后名字会变，用 inline data-role 兜底）
   const peerColored = await page.locator('[data-role="peer"], [data-role="external"], [data-role="human"]').count();
 
