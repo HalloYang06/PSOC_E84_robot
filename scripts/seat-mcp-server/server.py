@@ -336,6 +336,89 @@ def _tool_dispatch_to_peer(args: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _tool_read_my_inbox(args: dict[str, Any]) -> dict[str, Any]:
+    """让 NPC 在 CLI 线程内自查：我收到的派单 + 别人给我的回执 + 我发出的派单的当前状态。"""
+    project_id = _env("PLATFORM_PROJECT_ID")
+    seat_id = _env("PLATFORM_SEAT_ID") or _env("PLATFORM_WORKSTATION_ID")
+    if not project_id or not seat_id:
+        return {"ok": False, "error": "missing PLATFORM_PROJECT_ID or PLATFORM_SEAT_ID env"}
+    limit = int(args.get("limit") or 15)
+    # 同名异 id 兜底（JSON 中文 id vs DB UUID）
+    me = _self_seat(project_id, seat_id) or {}
+    candidates = {seat_id, str(me.get("id") or ""), str(me.get("config_id") or ""), str(me.get("name") or "")}
+    candidates.discard("")
+
+    incoming_dispatches: list[dict[str, Any]] = []  # 别人派给我的（thread_workstation 收件）
+    incoming_receipts: list[dict[str, Any]] = []     # 别人对我派单的回执（agent 收件 + receipt_kind）
+    outgoing_status: list[dict[str, Any]] = []       # 我发出的、对方还没回执的
+    outgoing_done: list[dict[str, Any]] = []         # 我发出的、已收到回执的
+
+    seen = set()
+    for sid in candidates:
+        for params in (
+            f"?project_id={project_id}&recipient_type=thread_workstation&recipient_id={sid}&limit={limit * 2}",
+            f"?project_id={project_id}&recipient_type=agent&recipient_id={sid}&limit={limit * 2}",
+            f"?project_id={project_id}&sender_id={sid}&limit={limit * 2}",
+        ):
+            payload = _http_json("GET", f"{_api_base()}/api/collaboration/messages{params}")
+            data = payload.get("data") if isinstance(payload, dict) else None
+            if not isinstance(data, list):
+                continue
+            for m in data:
+                mid = str(m.get("id") or "")
+                if not mid or mid in seen:
+                    continue
+                seen.add(mid)
+                meta = m.get("metadata") if isinstance(m.get("metadata"), dict) else {}
+                receipt_kind = str((meta or {}).get("receipt_kind") or "")
+                sender = str(m.get("sender_id") or "")
+                recv = str(m.get("recipient_id") or "")
+                rtype = str(m.get("recipient_type") or "")
+                title = str(m.get("title") or "")
+                body = str(m.get("body") or "")
+                status = str(m.get("status") or "")
+                short = {
+                    "id": mid,
+                    "title": title[:120],
+                    "status": status,
+                    "sender_id": sender,
+                    "recipient_id": recv,
+                    "receipt_kind": receipt_kind,
+                    "parent_message_id": str((meta or {}).get("parent_message_id") or ""),
+                    "created_at": str(m.get("created_at") or ""),
+                    "body_preview": body[:300] + ("…" if len(body) > 300 else ""),
+                }
+                if recv in candidates and rtype == "thread_workstation":
+                    incoming_dispatches.append(short)
+                elif recv in candidates and rtype == "agent" and receipt_kind:
+                    incoming_receipts.append(short)
+                elif sender in candidates:
+                    if str(m.get("message_type") or "") == "agent_command":
+                        outgoing_status.append(short)
+                    else:
+                        outgoing_done.append(short)
+
+    incoming_dispatches.sort(key=lambda x: x["created_at"], reverse=True)
+    incoming_receipts.sort(key=lambda x: x["created_at"], reverse=True)
+    outgoing_status.sort(key=lambda x: x["created_at"], reverse=True)
+    outgoing_done.sort(key=lambda x: x["created_at"], reverse=True)
+    return {
+        "ok": True,
+        "self_seat_id": seat_id,
+        "self_name": str(me.get("name") or ""),
+        "incoming_dispatches": incoming_dispatches[:limit],
+        "incoming_receipts": incoming_receipts[:limit],
+        "outgoing_dispatches": outgoing_status[:limit],
+        "outgoing_results": outgoing_done[:limit],
+        "hint": (
+            f"incoming_dispatches: 别人派给我、待我处理的任务（共 {len(incoming_dispatches)} 条）；"
+            f"incoming_receipts: 我之前派出去的任务，对方已经发回的 ack/done/reject/progress 回执（共 {len(incoming_receipts)} 条）；"
+            f"outgoing_dispatches: 我发出去的派单（共 {len(outgoing_status)} 条）；"
+            f"如果一条 outgoing 还没出现在 incoming_receipts，说明对方还没回。"
+        ),
+    }
+
+
 TOOLS = [
     {
         "name": "list_peers",
@@ -368,6 +451,17 @@ TOOLS = [
                 "force_direct": {"type": "boolean", "description": "跨工位时是否绕过工位长，直送指定 seat（不推荐，仅在你确认对方工位长不在或已授权时使用）。默认 false。"},
             },
             "required": ["seat_id", "title", "body"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "read_my_inbox",
+        "description": "在 CLI 线程内自查我（当前 NPC）的协作流：（1）incoming_dispatches：别人派给我的、还未我处理的派单。（2）incoming_receipts：我之前派出去的任务，对方已发回的 ack/done/reject/progress 回执。（3）outgoing_dispatches：我自己发出的派单（含 pending_review/queued/completed 状态）。（4）outgoing_results：我发出的回执。每条带 title/sender_id/recipient_id/status/receipt_kind/parent_message_id/created_at/body_preview。在 work 卡住、要确认对方有没有回、要复述上下文时调用一次。",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer", "description": "每类返回多少条，默认 15。"},
+            },
             "additionalProperties": False,
         },
     },
@@ -409,6 +503,8 @@ def handle(message: dict[str, Any]) -> dict[str, Any] | None:
             return _ok(req_id, _content(_tool_request_help(args if isinstance(args, dict) else {})))
         if name == "dispatch_to_peer":
             return _ok(req_id, _content(_tool_dispatch_to_peer(args if isinstance(args, dict) else {})))
+        if name == "read_my_inbox":
+            return _ok(req_id, _content(_tool_read_my_inbox(args if isinstance(args, dict) else {})))
         return _err(req_id, -32601, f"unknown tool {name!r}")
     if method in {"ping"}:
         return _ok(req_id, {})

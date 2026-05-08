@@ -142,7 +142,8 @@ def _command_markdown(command: dict[str, Any], *, project_id: str, workstation_i
         "  - `list_peers()`：看你能调动的伙伴（含同工位 / 跨工位 / 工位长）。",
         "  - `request_help(role, ask, expected?)`：按角色关键字找伙伴并自动发起派单。",
         "  - `dispatch_to_peer(seat_id, title, body)`：知道具体 seat_id 时直接指名派单。",
-        "- 三个工具都会经过平台 review gate：同工位默认免审；跨工位默认 pending_review，由用户在驾驶舱通过后才真发出。",
+        "  - `read_my_inbox(limit?)`：自查我的协作流——别人派给我的派单 / 别人对我派单的 ack/done/reject 回执 / 我自己发出的派单状态。**在做事之前先调一次，可以确认上下文、避免重复劳动；卡住时再调一次确认对方回了没。**",
+        "- 四个工具都会经过平台 review gate：同工位默认免审；跨工位默认 pending_review，由用户在驾驶舱通过后才真发出。",
         "- 工具返回 `needs_review=true` 时，你**只需告诉用户「已发起求助，等审核」**，不要重复发也不要切换到自己干。",
         "",
         "## Reply Formatting",
@@ -306,6 +307,7 @@ def run_executor(
     cwd: str | None,
     timeout_seconds: int,
     live_output: bool = False,
+    spawn_window: bool = False,
 ) -> dict[str, Any]:
     command_text = command_path.read_text(encoding="utf-8")
     prompt_text = _extract_executor_prompt(command_text)
@@ -334,6 +336,15 @@ def run_executor(
         message_id=message_id,
         model=model,
     )
+    if spawn_window:
+        return _spawn_in_new_window(
+            rendered,
+            cwd=resolved_cwd,
+            timeout_seconds=timeout_seconds,
+            provider=provider,
+            cwd_warning=cwd_warning,
+            title=f"NPC {workstation_id} · {provider}",
+        )
     if live_output:
         return _run_executor_streaming(
             rendered,
@@ -416,6 +427,81 @@ def run_executor(
             ]
             if part
         ),
+    }
+
+
+def _spawn_in_new_window(
+    rendered: str,
+    *,
+    cwd: str | None,
+    timeout_seconds: int,
+    provider: str,
+    cwd_warning: str,
+    title: str = "Claude Code 线程",
+    output_capture_path: Path | None = None,
+) -> dict[str, Any]:
+    """在 Windows 下弹独立 PowerShell 终端跑 CLI，让用户能看到真实的 AI 对话过程。
+    为了能把 CLI 的 stdout 拉回 watcher，用 Tee-Object 把 stdout 同时写到
+    output_capture_path；watcher 等进程结束后读这个文件作为 note。"""
+    import shlex
+    capture = output_capture_path
+    if capture is None:
+        import tempfile, uuid
+        capture = Path(tempfile.gettempdir()) / f"platform-claude-{uuid.uuid4().hex[:8]}.log"
+    capture_str = str(capture).replace("'", "''")
+    rendered_escaped = rendered.replace('"', '""')
+    # PowerShell 里：先 cd，再用 Start-Transcript 抓 stdout，再执行命令；完成后按任意键关闭
+    ps_body = (
+        f"$Host.UI.RawUI.WindowTitle = '{title}'; "
+        f"Start-Transcript -Path '{capture_str}' -Force | Out-Null; "
+    )
+    if cwd:
+        ps_body += f"Set-Location -LiteralPath '{cwd}'; "
+    if cwd_warning:
+        ps_body += f"Write-Host '{cwd_warning}' -ForegroundColor Yellow; "
+    ps_body += (
+        f"Write-Host '[platform] 正在启动 {provider} CLI...' -ForegroundColor Cyan; "
+        f"Invoke-Expression \"{rendered_escaped}\"; "
+        f"$exit = $LASTEXITCODE; "
+        f"Stop-Transcript | Out-Null; "
+        f"Write-Host ''; "
+        f"Write-Host '[platform] 已完成，3 秒后自动关闭 (exit={'$exit'})' -ForegroundColor Cyan; "
+        f"Start-Sleep -Seconds 3; "
+        f"exit $exit"
+    )
+    start_cmd = [
+        "powershell.exe",
+        "-NoProfile",
+        "-Command",
+        f"Start-Process powershell -Wait -ArgumentList @('-NoExit','-NoProfile','-Command', @'\n{ps_body}\n'@)",
+    ]
+    # 简化：直接起一个新窗口并等它结束
+    full_command = (
+        f"powershell.exe -NoProfile -Command "
+        f"\"Start-Process -FilePath powershell -Wait -ArgumentList "
+        f"@('-NoProfile','-Command',\\\"{ps_body.replace(chr(34), chr(34) * 2)}\\\") "
+        f"\""
+    )
+    import subprocess as _sp
+    started_at = __import__('time').time()
+    try:
+        proc = _sp.run(full_command, shell=True, timeout=timeout_seconds)
+        rc = proc.returncode
+    except _sp.TimeoutExpired:
+        rc = None
+    try:
+        stdout = capture.read_text(encoding="utf-8", errors="replace") if capture.exists() else ""
+    except Exception:
+        stdout = ""
+    return {
+        "ok": rc == 0,
+        "returncode": rc,
+        "stdout": stdout,
+        "stderr": "",
+        "note": "\n".join(
+            part for part in [cwd_warning, stdout or f"{provider} executor completed without stdout."] if part
+        ),
+        "captured_log_path": str(capture),
     }
 
 
@@ -579,6 +665,13 @@ def main() -> int:
         default=3.0,
         help="Seconds to sleep between inbox polls when --watch is enabled (default 3).",
     )
+    parser.add_argument(
+        "--spawn-window",
+        action="store_true",
+        help="Launch each provider CLI invocation in a separate PowerShell window so the user "
+             "can watch Claude/Codex talk in its own terminal (Windows only). Otherwise output "
+             "streams to the current watcher terminal.",
+    )
     args = parser.parse_args()
 
     base = args.api_base.rstrip("/")
@@ -702,6 +795,7 @@ def main() -> int:
                     cwd=resolved_executor_cwd,
                     timeout_seconds=resolved_timeout,
                     live_output=args.watch,
+                    spawn_window=args.spawn_window,
                 )
                 executions.append(
                     {

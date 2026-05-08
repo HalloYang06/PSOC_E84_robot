@@ -86,13 +86,18 @@
 | 4. NPC 自主求助 ⭐ | NPC 自己在 CLI 里调 seat-mcp 工具 | **同上，这才是真自主协作** |
 
 **自主求助怎么用**：
-- 你启动 NPC（`scripts/start-thread-watcher.ps1 -ProjectId .. -WorkstationId ..`）后，NPC 的 Claude/Codex CLI 会自动加载 `seat-mcp` MCP server
-- NPC 干活时如果需要别的 NPC 帮忙，**它自己**调三个工具之一：
+- 你启动 NPC（`scripts/start-thread-watcher.ps1 -ProjectId .. -WorkstationId .. [-SpawnWindow]`）后，NPC 的 Claude/Codex CLI 会自动加载 `seat-mcp` MCP server
+- NPC 干活时如果需要别的 NPC 帮忙，**它自己**调四个工具之一：
   - `list_peers()` — 看谁在
   - `request_help(role, ask)` — 按角色找伙伴
   - `dispatch_to_peer(seat_id, title, body)` — 直接指名
+  - `read_my_inbox(limit?)` — **自查自己的协作流**：别人派给我的派单 / 别人对我派单的 ack/done/reject 回执 / 我自己发出的派单状态。NPC 在 CLI 终端里直接看见完整交互。
 - 工具调用结果会触发后端创建消息，**同工位默认 queued、跨工位默认 pending_review**
 - 用户在驾驶舱待审区点"通过" → 真发出去；点"打回" → 取消
+
+**让 Claude/Codex 在自己的窗口运行**（用户能看到 AI 真在打字）：
+- 在 `start-thread-watcher.ps1` 后加 `-SpawnWindow`：每次 watcher 收到平台指令，都会**弹出一个独立 PowerShell 窗口**跑那条 claude/codex CLI 调用，用户能看到完整的对话。
+- 弹出的窗口标题为 `NPC <workstation_id> · <provider>`，stdout 全部进 transcript，等 CLI 退出 3 秒后自动关闭。adapter 同时把 transcript 内容回写为 done 回执 body。
 
 > 跨电脑配置见 §6 + `scripts/seat-mcp-server/README.md`
 

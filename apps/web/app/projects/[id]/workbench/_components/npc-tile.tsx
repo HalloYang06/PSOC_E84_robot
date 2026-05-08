@@ -61,12 +61,40 @@ const NOISE_PREFIXES = [
   "mcp server",
   "heartbeat",
   "心跳",
+  "[mcp]",
+  "adapter started",
+  "adapter ready",
+  "adapter ack",
+  "executor",
+  "platform routing chatter",
 ];
+
+const NOISE_INFIX = [
+  "watcher 心跳",
+  "polling inbox",
+  "no new messages",
+];
+
+function stripPlatformChatter(body: string): string {
+  // 隐藏后端注入的 [路由]/[NPC ...自主发起]/经工位长 X 转交 等元信息行（用户只想看正文）
+  const lines = body.split(/\r?\n/);
+  const filtered = lines.filter((ln) => {
+    const t = ln.trim();
+    if (!t) return true;
+    if (t.startsWith("[路由]") || t.startsWith("[Route]")) return false;
+    if (t.startsWith("（NPC ") && t.includes("seat-mcp")) return false;
+    if (t.startsWith("（本消息由 NPC")) return false;
+    if (t.startsWith("[ack]") && t.length < 80) return false;
+    return true;
+  });
+  return filtered.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
 
 function classifyMessage(msg: CollabMessage): { kind: "command" | "result" | "error" | "note"; summary: string; noisy: boolean } {
   const body = (msg.body || "").trim();
   const bodyLower = body.toLowerCase();
-  const noisy = NOISE_PREFIXES.some((p) => bodyLower.startsWith(p.toLowerCase()));
+  const noisy = NOISE_PREFIXES.some((p) => bodyLower.startsWith(p.toLowerCase()))
+    || NOISE_INFIX.some((p) => bodyLower.includes(p.toLowerCase()));
   const type = (msg.message_type || "").toLowerCase();
   let kind: "command" | "result" | "error" | "note" = "note";
   if (type.includes("command") || type === "requirement_dispatch" || msg.sender_type === "human") kind = "command";
@@ -76,7 +104,7 @@ function classifyMessage(msg: CollabMessage): { kind: "command" | "result" | "er
   const title = (msg.title || "").trim();
   let summary = title;
   if (!summary) {
-    const firstLine = body.split(/\r?\n/).map((s) => s.trim()).find(Boolean) || "";
+    const firstLine = stripPlatformChatter(body).split(/\r?\n/).map((s) => s.trim()).find(Boolean) || "";
     summary = firstLine.slice(0, 160);
   }
   if (!summary) summary = "(空消息)";
@@ -1060,7 +1088,8 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
             const { kind, summary } = classifyMessage(msg);
             const { role, label: roleLabel } = classifyRole(msg, seat.id, peerIds, externalAgentIds);
             const expanded = expandedIds.has(msg.id);
-            const body = msg.body || "";
+            const rawBody = msg.body || "";
+            const body = stripPlatformChatter(rawBody);
             const canExpand = body.length > 160 || body.includes("\n");
             const senderLabel =
               role === "human"

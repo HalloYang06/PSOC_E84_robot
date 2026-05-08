@@ -48,7 +48,9 @@ param(
 
   [string]$ExecutorCwd = "",
 
-  [double]$PollSeconds = 3.0
+  [double]$PollSeconds = 3.0,
+
+  [switch]$SpawnWindow
 )
 
 Set-StrictMode -Version Latest
@@ -88,6 +90,9 @@ $pyArgs = @(
 )
 if ($Provider) {
   $pyArgs += @("--provider", $Provider)
+}
+if ($SpawnWindow) {
+  $pyArgs += @("--spawn-window")
 }
 
 # 不要把 stdout PIPE 走，让 adapter 的横幅 + claude 流式输出直接进当前终端
