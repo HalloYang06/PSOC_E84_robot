@@ -140,6 +140,18 @@ async function getRequirement(token, reqId) {
   return (j.data || []).find((x) => x.id === reqId) || null;
 }
 
+async function ackWorkstationMessage(token, projectId, workstationConfigId, messageId) {
+  const url = `${API}/api/collaboration/projects/${encodeURIComponent(projectId)}/thread-workstations/${encodeURIComponent(workstationConfigId)}/messages/${encodeURIComponent(messageId)}/ack`;
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ note: "validate-npc-autonomous-collab: watcher ack" }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(`ack HTTP ${r.status}: ${JSON.stringify(j)}`);
+  return j.data;
+}
+
 async function approveMessage(token, messageId) {
   const r = await fetch(`${API}/api/collaboration/messages/${encodeURIComponent(messageId)}/review/approve`, {
     method: "POST",
@@ -313,6 +325,15 @@ async function main() {
         throw new Error("approve did not flip requirement to queued");
       }
       step("assert approve flips requirement to queued", true);
+
+      // A: 模拟 watcher 走 inbox ack 端点拿走自主合作派的消息（recipient_type=thread_workstation）
+      const downstreamWsId = String(downstream.config_id || downstream.id);
+      const ackedMsg = await ackWorkstationMessage(token, PROJECT, downstreamWsId, auto.id);
+      if (ackedMsg.command?.status !== "acked" && ackedMsg.status !== "acked") {
+        step("assert watcher ack flips message to acked", false, { got: ackedMsg });
+        throw new Error("ack did not flip message to acked");
+      }
+      step("assert watcher ack flips message to acked", true);
     } else {
       if (reqBAfter.status !== "queued") {
         step("assert same-workstation skip review", false, {
@@ -322,6 +343,15 @@ async function main() {
         throw new Error("same-workstation should skip review");
       }
       step("assert same-workstation skip review", true, { status: reqBAfter.status });
+
+      // A: 同工位场景 — 消息已经是 queued，直接 watcher ack
+      const downstreamWsId = String(downstream.config_id || downstream.id);
+      const ackedMsg = await ackWorkstationMessage(token, PROJECT, downstreamWsId, auto.id);
+      if (ackedMsg.command?.status !== "acked" && ackedMsg.status !== "acked") {
+        step("assert watcher ack flips message to acked", false, { got: ackedMsg });
+        throw new Error("ack did not flip message to acked");
+      }
+      step("assert watcher ack flips message to acked", true);
     }
 
     result.pass = true;

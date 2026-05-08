@@ -1503,7 +1503,7 @@ def list_workstation_inbox_messages(
         select(CollaborationMessage)
         .where(
             CollaborationMessage.project_id == project_id,
-            CollaborationMessage.recipient_type == "workstation",
+            CollaborationMessage.recipient_type.in_(["workstation", "thread_workstation"]),
             CollaborationMessage.recipient_id.in_(candidate_ids),
             CollaborationMessage.message_type.in_(["agent_command", "requirement_dispatch"]),
         )
@@ -1525,10 +1525,13 @@ def _get_workstation_command_or_404(
     workstation = _project_workstation(db, project_id, workstation_id)
     candidate_ids = _workstation_identity_values(workstation, workstation_id)
     message = db.get(CollaborationMessage, message_id)
+    # 兼容两种 recipient_type：
+    # - "workstation"        → 老式 agent_command（recipient_id 通常是 config_id）
+    # - "thread_workstation" → D1 修复后自主合作派的 requirement_dispatch（recipient_id = seat.row_id）
     if (
         message is None
         or message.project_id != project_id
-        or message.recipient_type != "workstation"
+        or message.recipient_type not in {"workstation", "thread_workstation"}
         or str(message.recipient_id or "") not in candidate_ids
     ):
         raise AppError("MESSAGE_NOT_FOUND", "workstation inbox does not contain this message", status_code=404)
