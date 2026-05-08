@@ -68,6 +68,24 @@ export function WorkbenchClient({ projectId, projectName, apiBaseUrl, seats, cur
     return map;
   }, [seats]);
 
+  const crossLeadsBySeat = useMemo(() => {
+    const map = new Map<string, WorkbenchSeat[]>();
+    const seenLeadIds = new Set<string>();
+    const allLeads = seats.filter((s) => {
+      if (!s.isLead || !s.computerNodeId) return false;
+      if (seenLeadIds.has(s.id)) return false;
+      seenLeadIds.add(s.id);
+      return true;
+    });
+    for (const seat of seats) {
+      const others = allLeads.filter(
+        (lead) => lead.computerNodeId !== seat.computerNodeId && lead.id !== seat.id,
+      );
+      map.set(seat.id, others);
+    }
+    return map;
+  }, [seats]);
+
   function toggleOpen(id: string) {
     setOpenIds((curr) => (curr.includes(id) ? curr : [...curr, id]));
   }
@@ -210,6 +228,7 @@ export function WorkbenchClient({ projectId, projectName, apiBaseUrl, seats, cur
                   apiBaseUrl={apiBaseUrl}
                   seat={seat}
                   teammates={teammatesBySeat.get(seat.id) ?? []}
+                  crossLeads={crossLeadsBySeat.get(seat.id) ?? []}
                   currentUserId={currentUserId}
                   currentUserName={currentUserName}
                   onOpenTeammate={toggleOpen}

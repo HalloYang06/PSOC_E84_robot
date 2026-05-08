@@ -30,6 +30,7 @@ type NpcTileProps = {
   apiBaseUrl: string;
   seat: WorkbenchSeat;
   teammates: WorkbenchSeat[];
+  crossLeads?: WorkbenchSeat[];
   currentUserId: string;
   currentUserName: string;
   onOpenTeammate: (id: string) => void;
@@ -116,7 +117,7 @@ function formatTime(iso?: string | null): string {
   return d.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
-export function NpcTile({ projectId, apiBaseUrl, seat, teammates, currentUserId, currentUserName, onOpenTeammate, onClose }: NpcTileProps) {
+export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [], currentUserId, currentUserName, onOpenTeammate, onClose }: NpcTileProps) {
   const [messages, setMessages] = useState<CollabMessage[] | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [hideNoisy, setHideNoisy] = useState(true);
@@ -703,6 +704,46 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, currentUserId,
               </div>
             )}
           </div>
+          {crossLeads.length > 0 ? (
+            <div className={styles.profileRow}>
+              <small className={styles.sectionLabel}>
+                跨工位通道（经工位长，{crossLeads.length}）
+                <span className={styles.peerHint}>· 跨工位禁直派；后端兜底改寄给目标工位的工位长</span>
+              </small>
+              <div className={styles.peerRow}>
+                {crossLeads.map((lead) => (
+                  <div key={lead.id} className={styles.peerChip} data-cross="1">
+                    <button
+                      type="button"
+                      className={styles.peerOpenBtn}
+                      onClick={() => onOpenTeammate(lead.id)}
+                      title={`打开 ${lead.name}（${lead.computerNodeName} 的工位长）的瓷砖`}
+                    >
+                      <span className={styles.peerName}>👑 {lead.name}</span>
+                      <span className={styles.peerMeta}>{lead.computerNodeName || lead.computerNodeId}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.peerDispatchBtn}
+                      data-cross="1"
+                      onClick={() => {
+                        if (!draft.trim()) {
+                          setSendNote(`先在底部 textarea 写内容，再点「→ 转交工位长 ${lead.name}」`);
+                          setTimeout(() => setSendNote(null), 4000);
+                          return;
+                        }
+                        sendCommand({ peerId: lead.id, peerName: lead.name });
+                      }}
+                      disabled={sending}
+                      title={`以 ${seat.name} 身份请 ${lead.name}（${lead.computerNodeName} 工位长）转交（默认走人审）`}
+                    >
+                      → 转交
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </section>
       ) : null}
 

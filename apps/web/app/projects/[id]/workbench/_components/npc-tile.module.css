@@ -697,3 +697,15 @@
   background: linear-gradient(180deg, rgba(60, 40, 8, 0.6), rgba(2, 22, 33, 0.55));
 }
 .peerChip[data-lead="1"] .peerName { color: #ffe7a8; }
+
+.peerChip[data-cross="1"] {
+  border-color: rgba(123, 63, 191, 0.55);
+  background: linear-gradient(180deg, rgba(45, 20, 70, 0.6), rgba(2, 22, 33, 0.55));
+}
+.peerChip[data-cross="1"] .peerName { color: #e5ccff; }
+.peerChip[data-cross="1"] .peerOpenBtn { border-right-color: rgba(123, 63, 191, 0.32); color: #e5ccff; }
+.peerDispatchBtn[data-cross="1"] {
+  background: rgba(123, 63, 191, 0.3);
+  color: #f1e3ff;
+}
+.peerDispatchBtn[data-cross="1"]:hover:not(:disabled) { background: rgba(123, 63, 191, 0.5); }

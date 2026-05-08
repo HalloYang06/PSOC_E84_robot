@@ -1370,11 +1370,30 @@ def api_create_message(payload: CollaborationMessageCreate, request: Request, db
         upstream = _resolve_seat(db, project_id, final_sender_id)
         downstream = _resolve_seat(db, project_id, recipient_id)
         if upstream is not None and downstream is not None:
-            review = _resolve_review_for_dispatch(db, upstream, downstream)
             is_cross = (
                 str(getattr(upstream, "computer_node_id", "") or "").strip()
                 != str(getattr(downstream, "computer_node_id", "") or "").strip()
             )
+            via_lead_note = ""
+            if is_cross:
+                cfg_full = get_project_collaboration_config(db, project_id)
+                inner_cfg = cfg_full.get("collaboration_config", {}) if isinstance(cfg_full.get("collaboration_config"), dict) else {}
+                profiles = inner_cfg.get("workstation_profiles") if isinstance(inner_cfg.get("workstation_profiles"), dict) else {}
+                downstream_node = str(getattr(downstream, "computer_node_id", "") or "").strip()
+                profile = profiles.get(downstream_node) if isinstance(profiles, dict) else None
+                lead_ref = ""
+                if isinstance(profile, dict):
+                    lead_ref = str(profile.get("lead_seat_id") or profile.get("leadSeatId") or "").strip()
+                if lead_ref and lead_ref not in {downstream.id, downstream.config_id, downstream.name}:
+                    new_lead_seat = _resolve_seat(db, project_id, lead_ref)
+                    if new_lead_seat is not None:
+                        original_target_name = getattr(downstream, "name", "")
+                        original_target_id = recipient_id
+                        override["recipient_id"] = new_lead_seat.id
+                        recipient_id = new_lead_seat.id
+                        downstream = new_lead_seat
+                        via_lead_note = f"经工位长 {getattr(new_lead_seat, 'name', '')} 转交（原始目标 NPC: {original_target_name} / {original_target_id}）"
+            review = _resolve_review_for_dispatch(db, upstream, downstream)
             requested_status = (override.get("status") or payload.status or "").strip() or "open"
             new_status = "pending_review" if review["requires_review"] else (
                 requested_status if requested_status in {"queued", "pending_review", "open"} else "queued"
@@ -1385,6 +1404,8 @@ def api_create_message(payload: CollaborationMessageCreate, request: Request, db
                 f"审核：{'要' if review['requires_review'] else '免'}（来源：{review.get('source')}:{review.get('policy')}）；"
                 f"上游 NPC: {getattr(upstream, 'name', '')}；下游 NPC: {getattr(downstream, 'name', '')}"
             )
+            if via_lead_note:
+                route_line += f"；{via_lead_note}"
             body_text = str(payload.body or "")
             if "[路由]" not in body_text:
                 override["body"] = body_text + route_line
