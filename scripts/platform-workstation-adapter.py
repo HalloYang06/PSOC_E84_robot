@@ -594,44 +594,26 @@ def _open_persistent_window(
             f"Write-Host '  3) 重起 watcher' -ForegroundColor Gray; "
         )
     else:
-        # 历史教训（5-08 撞 4 次）：
-        # - npm 的 claude.ps1 shim 内部 `& "$basedir/.../claude.exe"` 因为路径含 `@`，PS 5.1 + 7 **都**崩
-        #   （5.1 报 ApplicationFailedException，7 报 CommandNotFoundException —— 都是 `& "..."` 字符串路径
-        #   被 PS parser 错误处理）
-        # - 任何让 ps1 调 npm shim 的方式（`& $shim` / 裸 `claude` / `cmd /c $shim`）都会进到这条 `& "..."` 崩
-        # - 真解 = **绕过 shim，让 ps1 用 Start-Process 直接调真实 .exe**
-        #   Start-Process 走 Windows CreateProcess，不经过 PS string parser，含 @ 的路径完全不受影响
-        #
-        # Start-Process 路径解析：在 ps1 里查 npm 全局 prefix，拼 node_modules/@anthropic-ai/claude-code/bin/claude.exe
-        # 这是 npm 标准布局，每台正确 npm i -g 的机器都一样。
+        # 历史教训（5-08 撞 5 次后定型）：用户最早原话是「开个 powershell 输 claude」——
+        # ps1 别尝试任何形式自动起 claude REPL（`& exe` / Start-Process / 裸名字 / cmd /c shim 全踩坑）。
+        # ps1 只做 setup：cwd / env / PATH 修好，然后 -NoExit 把 PS 提示符给用户，
+        # 用户在交互 prompt 里输 `claude`（PS 走交互 stdin，避免任何 string-parser / TTY-sniffing 问题）。
+        # 这条路用户已亲测 OK（"2.1.133 (Claude Code)" 在此模式下能起 REPL）。
         ps_body += (
             f"Write-Host ''; "
             f"Write-Host '[platform] window ready — workspace cwd is set, env is injected.' -ForegroundColor Green; "
             f"$npmBin = Join-Path $env:APPDATA 'npm'; "
             f"if (Test-Path -LiteralPath $npmBin) {{ $env:PATH = $npmBin + ';' + $env:PATH }}; "
-            f"$candidates = @(); "
-            f"if ($env:CLAUDE_CODE_EXECPATH) {{ $candidates += $env:CLAUDE_CODE_EXECPATH }}; "
-            f"$shimSrc = (Get-Command {repl_cmd} -ErrorAction SilentlyContinue).Source; "
-            f"if ($shimSrc) {{ "
-            f"  $shimDir = Split-Path -Parent $shimSrc; "
-            f"  $candidates += (Join-Path $shimDir 'node_modules\\@anthropic-ai\\claude-code\\bin\\{repl_cmd}.exe'); "
-            f"}}; "
-            f"$candidates += (Join-Path $env:APPDATA 'npm\\node_modules\\@anthropic-ai\\claude-code\\bin\\{repl_cmd}.exe'); "
-            f"$candidates += ('C:\\Users\\' + $env:USERNAME + '\\AppData\\Roaming\\npm\\node_modules\\@anthropic-ai\\claude-code\\bin\\{repl_cmd}.exe'); "
-            f"$exePath = $null; "
-            f"foreach ($c in $candidates) {{ if ($c -and (Test-Path -LiteralPath $c)) {{ $exePath = $c; break }} }}; "
-            f"if (-not $exePath) {{ "
-            f"  Write-Host '[platform] WARNING: {repl_cmd}.exe not found. Tried:' -ForegroundColor Red; "
-            f"  $candidates | ForEach-Object {{ Write-Host ('  - ' + $_) -ForegroundColor Red }}; "
-            f"  Write-Host '[platform] Install: npm i -g @anthropic-ai/claude-code' -ForegroundColor Yellow; "
+            f"if (Get-Command {repl_cmd} -ErrorAction SilentlyContinue) {{ "
+            f"  Write-Host '[platform] {repl_cmd} is on PATH.' -ForegroundColor Green; "
             f"}} else {{ "
-            f"  Write-Host ('[platform] launching ' + $exePath) -ForegroundColor Cyan; "
-            f"  Write-Host '[platform] inside the REPL, slash-resume to pick a previous session for history.' -ForegroundColor Gray; "
-            f"  Write-Host ''; "
-            f"  Start-Process -FilePath $exePath -NoNewWindow -Wait; "
-            f"  Write-Host ''; "
-            f"  Write-Host ('[platform] {repl_cmd} REPL exited (code=' + $LASTEXITCODE + ')') -ForegroundColor Yellow; "
+            f"  Write-Host '[platform] WARNING: {repl_cmd} not on PATH. Install: npm i -g @anthropic-ai/claude-code' -ForegroundColor Red; "
             f"}}; "
+            f"Write-Host ''; "
+            f"Write-Host '----------------------------------------' -ForegroundColor Cyan; "
+            f"Write-Host ('[platform] type ''{repl_cmd}'' below to launch the REPL.') -ForegroundColor Cyan; "
+            f"Write-Host '[platform] inside the REPL, slash-resume to pick a previous session for history.' -ForegroundColor Gray; "
+            f"Write-Host ''; "
         )
     # 不再 Read-Host —— 让 -NoExit 直接把 PS 提示符交给用户，他们自己输 `claude`/`codex` 启 REPL。
     # 这样：每台电脑都能用（靠 PATH shim）、watcher 不阻塞、用户能 cd 切目录、能输 git 命令、能多次重启 REPL。
