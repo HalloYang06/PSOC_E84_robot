@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import DateTime, Index, String, Text, func, text
+from sqlalchemy import DateTime, Index, JSON, String, Text, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 try:
@@ -45,6 +45,7 @@ class CollaborationMessage(Base):
     recipient_type: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
     recipient_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="open", index=True)
+    extra_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[object] = mapped_column(
