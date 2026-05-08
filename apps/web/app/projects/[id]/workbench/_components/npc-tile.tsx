@@ -374,6 +374,19 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, currentUserId,
     return (messages || []).filter((m) => (m.status || "") === "pending_review");
   }, [messages]);
 
+  // 我的任务队列：收件给本 NPC、still open、按 created_at 正序（FIFO）
+  const myQueue = useMemo(() => {
+    const arr = (messages || []).filter((m) => {
+      if ((m.recipient_id || "") !== seat.id) return false;
+      const t = (m.message_type || "").toLowerCase();
+      if (!["agent_command", "requirement_dispatch", "comment_message"].includes(t)) return false;
+      const s = (m.status || "").toLowerCase();
+      return ["queued", "pending", "acked", "in_progress"].includes(s);
+    });
+    // 按 created_at 升序（最老在前 = 队首）
+    return arr.slice().sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")));
+  }, [messages, seat.id]);
+
   const [reviewBusyId, setReviewBusyId] = useState<string | null>(null);
   const [reviewNote, setReviewNote] = useState<string | null>(null);
   async function reviewMessage(id: string, action: "approve" | "reject") {
@@ -420,11 +433,12 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, currentUserId,
     });
   }
 
-  async function sendCommand() {
+  async function sendCommand(opts?: { peerId?: string; peerName?: string }) {
     const body = draft.trim();
     if (!body) return;
     setSending(true);
     setSendNote(null);
+    const isPeer = !!opts?.peerId;
     try {
       const res = await fetch(apiClientUrl("/api/collaboration/messages"), {
         method: "POST",
@@ -433,13 +447,14 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, currentUserId,
         body: JSON.stringify({
           project_id: projectId,
           message_type: "comment_message",
-          title: null,
+          title: isPeer ? `[NPC ${seat.name} → ${opts!.peerName || opts!.peerId}] 同工位派单` : null,
           body,
-          sender_type: "human",
-          sender_id: null,
+          // 同工位伙伴派单：sender 用本 NPC（agent + seat.id），recipient = 对方 seat.id
+          sender_type: isPeer ? "agent" : "human",
+          sender_id: isPeer ? seat.id : null,
           recipient_type: "thread_workstation",
-          recipient_id: seat.id,
-          status: "open",
+          recipient_id: isPeer ? opts!.peerId! : seat.id,
+          status: "queued",
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -448,7 +463,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, currentUserId,
         throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
       }
       setDraft("");
-      setSendNote("已派发 ✓");
+      setSendNote(isPeer ? `已派给 ${opts!.peerName || opts!.peerId} ✓` : "已派发 ✓");
       autoScrollRef.current = true;
       await load(limit);
     } catch (e) {
@@ -647,16 +662,33 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, currentUserId,
             ) : (
               <div className={styles.peerRow}>
                 {teammates.map((peer) => (
-                  <button
-                    key={peer.id}
-                    type="button"
-                    className={styles.peerChip}
-                    onClick={() => onOpenTeammate(peer.id)}
-                    title={`打开 ${peer.name} 的瓷砖（NPC 之间的协作走需求触发链，不再支持人扮 NPC 代发）`}
-                  >
-                    <span className={styles.peerName}>{peer.name}</span>
-                    <span className={styles.peerMeta}>{peer.providerLabel || peer.providerId || "—"}</span>
-                  </button>
+                  <div key={peer.id} className={styles.peerChip}>
+                    <button
+                      type="button"
+                      className={styles.peerOpenBtn}
+                      onClick={() => onOpenTeammate(peer.id)}
+                      title={`打开 ${peer.name} 的瓷砖`}
+                    >
+                      <span className={styles.peerName}>{peer.name}</span>
+                      <span className={styles.peerMeta}>{peer.providerLabel || peer.providerId || "—"}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.peerDispatchBtn}
+                      onClick={() => {
+                        if (!draft.trim()) {
+                          setSendNote(`先在底部 textarea 写内容，再点「派给 ${peer.name}」`);
+                          setTimeout(() => setSendNote(null), 4000);
+                          return;
+                        }
+                        sendCommand({ peerId: peer.id, peerName: peer.name });
+                      }}
+                      disabled={sending}
+                      title={`以 ${seat.name} 身份直接派单给 ${peer.name}（同工位免审）`}
+                    >
+                      → 派
+                    </button>
+                  </div>
                 ))}
               </div>
             )}
@@ -715,18 +747,50 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, currentUserId,
         </div>
       ) : null}
 
+      {myQueue.length > 0 ? (
+        <div className={styles.queueBox}>
+          <div className={styles.queueHead}>
+            <strong>📥 我的任务队列（{myQueue.length}）</strong>
+            <small className={styles.muted}>FIFO；最老的在最上面</small>
+          </div>
+          <ul className={styles.queueList}>
+            {myQueue.slice(0, 6).map((m, i) => {
+              const isFromPeer = (m.sender_type || "").toLowerCase() === "agent" && peerIds.has(m.sender_id || "");
+              const isFromExternal = (m.sender_type || "").toLowerCase() === "agent" && !!m.sender_id && m.sender_id !== seat.id && !peerIds.has(m.sender_id);
+              const fromLabel = isFromPeer
+                ? `同工位 · ${teammates.find((t) => t.id === m.sender_id)?.name || m.sender_id}`
+                : isFromExternal
+                  ? `跨工位 · ${m.sender_id}`
+                  : (m.sender_type || "?");
+              return (
+                <li key={m.id} className={styles.queueItem} data-from={isFromPeer ? "peer" : isFromExternal ? "external" : (m.sender_type || "")}>
+                  <span className={styles.queuePos}>#{i + 1}</span>
+                  <div className={styles.queueMeta}>
+                    <span className={styles.queueFrom}>{fromLabel}</span>
+                    <span className={styles.queueTitle}>{m.title || (m.body || "").slice(0, 60) || "(无标题)"}</span>
+                  </div>
+                  <span className={styles.queueStatus} data-status={m.status}>{m.status}</span>
+                </li>
+              );
+            })}
+          </ul>
+          {myQueue.length > 6 ? <small className={styles.muted}>… 还有 {myQueue.length - 6} 条</small> : null}
+        </div>
+      ) : null}
+
       <div className={styles.streamToolbar}>
         <div className={styles.streamToolbarLeft}>
           <strong>消息流</strong>
           <small>
             {filteredCount}/{totalLoaded} 条{fetching ? " · 刷新中…" : ""}
           </small>
-          <small className={styles.legend} title="消息按发送方着色">
-            <span className={`${styles.legendDot} ${styles.roleBadge_human}`}>用户</span>
-            <span className={`${styles.legendDot} ${styles.roleBadge_self}`}>本 NPC</span>
+          <small className={styles.legend} title="按发送方/性质着色：人灰｜本NPC青｜同工位绿｜跨工位紫｜回执蓝｜系统红｜自主合作黄">
+            <span className={`${styles.legendDot} ${styles.roleBadge_human}`}>人</span>
+            <span className={`${styles.legendDot} ${styles.roleBadge_self}`}>我</span>
             <span className={`${styles.legendDot} ${styles.roleBadge_peer}`}>同工位</span>
             <span className={`${styles.legendDot} ${styles.roleBadge_external}`}>跨工位</span>
             <span className={`${styles.legendDot} ${styles.roleBadge_watcher}`}>CLI</span>
+            <span className={`${styles.legendDot} ${styles.roleBadge_system}`}>系统</span>
           </small>
         </div>        <div className={styles.streamToolbarRight}>
           <label className={styles.noiseToggle} title="过滤 watcher 启动 / mcp 加载 / heartbeat 等噪声日志">
