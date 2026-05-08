@@ -336,6 +336,41 @@ def _tool_dispatch_to_peer(args: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _tool_mark_done(args: dict[str, Any]) -> dict[str, Any]:
+    """长开窗口模式下，NPC 处理完一条派单后显式声明完成。
+    通过平台 /messages/{id}/complete 端点写 done 回执。"""
+    project_id = _env("PLATFORM_PROJECT_ID")
+    workstation_id = _env("PLATFORM_WORKSTATION_ID")
+    if not project_id or not workstation_id:
+        return {"ok": False, "error": "missing PLATFORM_PROJECT_ID or PLATFORM_WORKSTATION_ID env"}
+    message_id = str(args.get("message_id") or "").strip()
+    body = str(args.get("body") or "").strip()
+    failed = bool(args.get("failed") or False)
+    if not message_id or not body:
+        return {"ok": False, "error": "message_id and body are required"}
+    from urllib.parse import quote as _q
+    url = (
+        f"{_api_base()}/api/collaboration/projects/{_q(project_id, safe='')}"
+        f"/thread-workstations/{_q(workstation_id, safe='')}"
+        f"/messages/{_q(message_id, safe='')}/complete"
+    )
+    resp = _http_json("POST", url, {
+        "result_status": "failed" if failed else "completed",
+        "note": body,
+    })
+    msg = resp.get("data") if isinstance(resp, dict) else None
+    if not isinstance(msg, dict):
+        return {"ok": False, "error": "platform rejected the completion", "raw": resp}
+    return {
+        "ok": True,
+        "message_id": msg.get("id"),
+        "parent_message_id": message_id,
+        "status": msg.get("status"),
+        "receipt_kind": ((msg.get("metadata") or {}).get("receipt_kind") if isinstance(msg.get("metadata"), dict) else None),
+        "hint": "已写入 done 回执；对方 NPC 的 inbox 会看到这条结果。",
+    }
+
+
 def _tool_read_my_inbox(args: dict[str, Any]) -> dict[str, Any]:
     """让 NPC 在 CLI 线程内自查：我收到的派单 + 别人给我的回执 + 我发出的派单的当前状态。"""
     project_id = _env("PLATFORM_PROJECT_ID")
@@ -465,6 +500,20 @@ TOOLS = [
             "additionalProperties": False,
         },
     },
+    {
+        "name": "mark_done",
+        "description": "长开窗口（PersistentWindow）模式下声明一条派单已处理完。message_id 来自 read_my_inbox 的 incoming_dispatches[].id；body 是你给对方的最终回复（GitHub-flavored Markdown，链接用真实 GitHub 仓库地址）。失败时把 failed 设 true。**仅在长开模式使用**——一次性弹窗模式由 watcher 自动写回，不要重复调。",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "message_id": {"type": "string", "description": "要标记完成的派单 id（来自 read_my_inbox 的 incoming_dispatches[].id）。"},
+                "body": {"type": "string", "description": "给对方的最终回复 Markdown 正文。"},
+                "failed": {"type": "boolean", "description": "如果是失败回执则设 true（默认 false）。"},
+            },
+            "required": ["message_id", "body"],
+            "additionalProperties": False,
+        },
+    },
 ]
 
 
@@ -505,6 +554,8 @@ def handle(message: dict[str, Any]) -> dict[str, Any] | None:
             return _ok(req_id, _content(_tool_dispatch_to_peer(args if isinstance(args, dict) else {})))
         if name == "read_my_inbox":
             return _ok(req_id, _content(_tool_read_my_inbox(args if isinstance(args, dict) else {})))
+        if name == "mark_done":
+            return _ok(req_id, _content(_tool_mark_done(args if isinstance(args, dict) else {})))
         return _err(req_id, -32601, f"unknown tool {name!r}")
     if method in {"ping"}:
         return _ok(req_id, {})

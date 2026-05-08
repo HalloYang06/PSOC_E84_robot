@@ -67,6 +67,17 @@ def fake_http_json(method, url, body=None):
         }
         CREATED.append(msg)
         return {"data": msg}
+    if "/messages/" in url and url.endswith("/complete") and method == "POST":
+        # 长开模式 mark_done 工具走这里
+        msg = {
+            "id": f"receipt_{len(CREATED)+1}",
+            "status": "completed",
+            "metadata": {"receipt_kind": "done", "parent_message_id": url.split("/messages/", 1)[1].split("/", 1)[0]},
+            "body": (body or {}).get("note"),
+            "result_status": (body or {}).get("result_status"),
+        }
+        CREATED.append(msg)
+        return {"data": msg}
     return {"_status": 404, "_error": f"unmatched url={url} method={method}"}
 
 
@@ -110,9 +121,14 @@ def main() -> int:
     results.append(_check("有 list_peers", "list_peers" in tools))
     results.append(_check("有 request_help", "request_help" in tools))
     results.append(_check("有 dispatch_to_peer", "dispatch_to_peer" in tools))
+    results.append(_check("有 read_my_inbox", "read_my_inbox" in tools))
+    results.append(_check("有 mark_done（长开模式专用）", "mark_done" in tools))
     rh = next((t for t in tlist["result"]["tools"] if t["name"] == "request_help"), {})
     results.append(_check("request_help inputSchema 有 role", "role" in (rh.get("inputSchema", {}).get("properties", {}))))
     results.append(_check("request_help inputSchema 有 ask", "ask" in (rh.get("inputSchema", {}).get("properties", {}))))
+    md = next((t for t in tlist["result"]["tools"] if t["name"] == "mark_done"), {})
+    results.append(_check("mark_done inputSchema 有 message_id", "message_id" in (md.get("inputSchema", {}).get("properties", {}))))
+    results.append(_check("mark_done inputSchema 有 body", "body" in (md.get("inputSchema", {}).get("properties", {}))))
 
     print("\n[C] list_peers — 区分同/跨工位")
     peers = call_tool("list_peers", {})
@@ -151,13 +167,24 @@ def main() -> int:
     results.append(_check("recipient=Carol", CREATED and CREATED[0]["recipient_id"] == "seat_carol"))
     results.append(_check("body 含工具来源标记", "dispatch_to_peer" in (CREATED[0]["body"] if CREATED else "")))
 
-    print("\n[G] 错误路径")
+    print("\n[G] mark_done — 长开模式写 done 回执")
+    CREATED.clear()
+    md = call_tool("mark_done", {"message_id": "msg_incoming_xyz", "body": "已修复，PR https://github.com/owner/repo/pull/42"})
+    results.append(_check("ok=True", md.get("ok") is True))
+    results.append(_check("parent_message_id 回带", md.get("parent_message_id") == "msg_incoming_xyz"))
+    results.append(_check("receipt_kind=done", md.get("receipt_kind") == "done"))
+    results.append(_check("后端真创建了一条回执消息", len(CREATED) == 1))
+    results.append(_check("回执 status=completed", CREATED and CREATED[0].get("status") == "completed"))
+    bad_md = call_tool("mark_done", {"message_id": "", "body": ""})
+    results.append(_check("缺参数返回 ok=False", bad_md.get("ok") is False))
+
+    print("\n[H] 错误路径")
     bad = call_tool("request_help", {"role": "", "ask": ""})
     results.append(_check("缺参数返回 ok=False", bad.get("ok") is False))
     bad2 = call_tool("request_help", {"role": "DBA", "ask": "help"})  # 没人匹配
     results.append(_check("没人匹配返回 ok=False", bad2.get("ok") is False))
 
-    print("\n[H] 未知方法 / 未知工具")
+    print("\n[I] 未知方法 / 未知工具")
     nope = call("unknown/method")
     results.append(_check("未知方法返回 -32601", nope.get("error", {}).get("code") == -32601))
     nope2 = call("tools/call", {"name": "no_such_tool", "arguments": {}})

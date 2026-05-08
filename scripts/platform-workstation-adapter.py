@@ -143,7 +143,8 @@ def _command_markdown(command: dict[str, Any], *, project_id: str, workstation_i
         "  - `request_help(role, ask, expected?)`：按角色关键字找伙伴并自动发起派单。",
         "  - `dispatch_to_peer(seat_id, title, body)`：知道具体 seat_id 时直接指名派单。",
         "  - `read_my_inbox(limit?)`：自查我的协作流——别人派给我的派单 / 别人对我派单的 ack/done/reject 回执 / 我自己发出的派单状态。**在做事之前先调一次，可以确认上下文、避免重复劳动；卡住时再调一次确认对方回了没。**",
-        "- 四个工具都会经过平台 review gate：同工位默认免审；跨工位默认 pending_review，由用户在驾驶舱通过后才真发出。",
+        "  - `mark_done(message_id, body, failed?)`：**仅长开窗口模式（PersistentWindow）使用**——处理完一条 incoming_dispatch 后调一次，写 done 回执。一次性弹窗模式不用调（watcher 自动写）。",
+        "- 五个工具都会经过平台 review gate：同工位默认免审；跨工位默认 pending_review，由用户在驾驶舱通过后才真发出。",
         "- 工具返回 `needs_review=true` 时，你**只需告诉用户「已发起求助，等审核」**，不要重复发也不要切换到自己干。",
         "",
         "## Reply Formatting",
@@ -430,6 +431,81 @@ def run_executor(
     }
 
 
+def _open_persistent_window(
+    *,
+    provider: str,
+    cwd: str | None,
+    title: str,
+    inbox_md_path: Path,
+    project_id: str,
+    workstation_id: str,
+    seat_id: str,
+) -> None:
+    """长开模式：watcher 启动时弹一次 PowerShell 窗口，里面跑交互式 claude REPL。
+    之后所有派单都只追加到 inbox_md_path（一个共享 markdown 文件）。
+    NPC 在窗口里通过 MCP `read_my_inbox` 拉新派单 + `mark_done` 写回执。
+    用户可在窗口直接打字。watcher 不阻塞；窗口关与不关都不影响 watcher 主循环。"""
+    if os.name != "nt":
+        print(f"[platform] --persistent-window 目前仅支持 Windows；当前平台 {os.name}，已忽略。", flush=True)
+        return
+    inbox_str = str(inbox_md_path).replace("'", "''")
+    cwd_clause = f"Set-Location -LiteralPath '{cwd}'; " if cwd else ""
+    intro = (
+        f"Write-Host '========================================' -ForegroundColor Cyan; "
+        f"Write-Host 'NPC 长开 CLI 终端' -ForegroundColor Green; "
+        f"Write-Host '项目: {project_id}' -ForegroundColor Yellow; "
+        f"Write-Host '工位: {workstation_id}' -ForegroundColor Yellow; "
+        f"Write-Host 'seat: {seat_id}' -ForegroundColor Yellow; "
+        f"Write-Host '派单 inbox: {inbox_str}' -ForegroundColor Gray; "
+        f"Write-Host '----------------------------------------' -ForegroundColor Cyan; "
+        f"Write-Host '使用方法：' -ForegroundColor Cyan; "
+        f"Write-Host '  1) claude REPL 已启动，直接输入指令与 AI 对话' -ForegroundColor Gray; "
+        f"Write-Host '  2) 平台派的新单会写到上面 inbox 文件，告诉 claude `调 read_my_inbox 拉新派单`' -ForegroundColor Gray; "
+        f"Write-Host '  3) 处理完一条派单后，让 claude 调 mark_done(message_id, body) 写回执' -ForegroundColor Gray; "
+        f"Write-Host '  4) 关掉这个窗口不会停 watcher；watcher 仍在另一个终端 poll' -ForegroundColor Gray; "
+        f"Write-Host '========================================' -ForegroundColor Cyan; "
+    )
+    repl_cmd = "claude" if provider.lower() in {"claude", "claude-code", ""} else provider.lower()
+    ps_body = (
+        f"$Host.UI.RawUI.WindowTitle = '{title}'; "
+        f"{cwd_clause}"
+        f"{intro}"
+        f"& {repl_cmd}; "
+        f"Write-Host ''; "
+        f"Write-Host '[platform] {provider} REPL 已退出。按 Enter 关闭此窗口。' -ForegroundColor Yellow; "
+        f"$null = Read-Host"
+    )
+    full_command = (
+        f"powershell.exe -NoProfile -Command "
+        f"\"Start-Process -FilePath powershell -ArgumentList "
+        f"@('-NoProfile','-Command',\\\"{ps_body.replace(chr(34), chr(34) * 2)}\\\") "
+        f"\""
+    )
+    try:
+        subprocess.run(full_command, shell=True, timeout=10)
+        print(f"[{_now_hms()}] [platform] 已弹出长开 {provider} REPL 窗口", flush=True)
+    except subprocess.TimeoutExpired:
+        print(f"[{_now_hms()}] [platform] 弹窗超时（窗口可能仍在启动）", flush=True)
+
+
+def _append_dispatch_to_inbox(inbox_md_path: Path, command: dict[str, Any], *, project_id: str, workstation_id: str, provider: str) -> None:
+    """长开模式下把派单追加到 markdown inbox 文件，给窗口里的 claude 看。"""
+    inbox_md_path.parent.mkdir(parents=True, exist_ok=True)
+    block = _command_markdown(command, project_id=project_id, workstation_id=workstation_id, provider=provider)
+    sep = "\n\n---\n\n"
+    header = f"\n\n# 📥 新派单 @ {_now_hms()} (message_id={command.get('id')})\n\n"
+    if not inbox_md_path.exists():
+        inbox_md_path.write_text(
+            "# NPC 长开模式派单 inbox\n\n"
+            "> 这个文件由 watcher 维护。每条新派单会追加到下面。\n"
+            "> 在 claude 窗口里调 `read_my_inbox` 看完整字段（含 id / sender / status）。\n"
+            "> 处理完后调 `mark_done(message_id, body)` 写回执；watcher 不会自动写。\n",
+            encoding="utf-8",
+        )
+    with inbox_md_path.open("a", encoding="utf-8") as f:
+        f.write(sep + header + block)
+
+
 def _spawn_in_new_window(
     rendered: str,
     *,
@@ -682,6 +758,14 @@ def main() -> int:
              "can watch Claude/Codex talk in its own terminal (Windows only). Otherwise output "
              "streams to the current watcher terminal.",
     )
+    parser.add_argument(
+        "--persistent-window",
+        action="store_true",
+        help="(长开模式) watcher 启动时弹一次 claude REPL 长开窗口，后续派单只追加到 inbox 文件——"
+             "不再每条派单弹一次，也不再自动写 done 回执。NPC 在窗口里调 MCP read_my_inbox "
+             "拉新派单、调 mark_done 显式声明完成。用户可在窗口直接打字与 claude 互动。"
+             "和 --spawn-window 互斥；--persistent-window 优先。",
+    )
     args = parser.parse_args()
 
     base = args.api_base.rstrip("/")
@@ -739,6 +823,8 @@ def main() -> int:
         args.execute_provider_cli,
     )
 
+    persistent_inbox_path = output_root / "_persistent_inbox.md" if args.persistent_window else None
+
     def process_one_round() -> dict[str, Any]:
         payload = _json_request("GET", inbox_url, headers=headers)
         commands = payload.get("data") or []
@@ -787,7 +873,23 @@ def main() -> int:
                     print(f"[已 ack] {ack_note}", flush=True)
 
             executor_result: dict[str, Any] | None = None
-            if executor_template and message_id:
+            if args.persistent_window and persistent_inbox_path is not None:
+                # 长开模式：不 spawn CLI，只把派单追加到 inbox 文件，让窗口里的 claude 自己拉。
+                _append_dispatch_to_inbox(
+                    persistent_inbox_path,
+                    command,
+                    project_id=args.project_id,
+                    workstation_id=args.workstation_id,
+                    provider=resolved_provider,
+                )
+                # ack 已在上面处理；done 回执由 claude 调 mark_done 写，不在这里写。
+                if args.watch:
+                    print(
+                        f"[长开模式] 已追加到 {persistent_inbox_path}\n"
+                        f"  → 让 claude 在窗口里调 `read_my_inbox` 拉这条；处理完调 `mark_done({message_id!r}, body)` 写回执。",
+                        flush=True,
+                    )
+            elif executor_template and message_id:
                 if args.watch:
                     print(f"\n[正在调用 {resolved_provider} CLI ...]\n", flush=True)
                 # Step 8 — expose THIS message's recipient seat to the seat-mcp-server
@@ -860,7 +962,25 @@ def main() -> int:
         print(f"提供商: {resolved_provider}", flush=True)
         print(f"轮询: 每 {args.poll_seconds}s 一次  执行目录: {resolved_executor_cwd or '(adapter 启动目录)'}", flush=True)
         print(f"API: {base}", flush=True)
+        if args.persistent_window and persistent_inbox_path is not None:
+            print(f"模式: 长开窗口（PersistentWindow）", flush=True)
+            print(f"派单 inbox: {persistent_inbox_path}", flush=True)
+            print(f"  watcher 不会 spawn CLI；新派单会追加到 inbox 文件。", flush=True)
+            print(f"  在弹出的 claude 窗口里调 read_my_inbox / mark_done 处理。", flush=True)
+        elif args.spawn_window:
+            print(f"模式: 一次性弹窗（每条派单弹一次）", flush=True)
         print("========================================", flush=True)
+        if args.persistent_window and persistent_inbox_path is not None:
+            seat_for_window = str(os.environ.get("PLATFORM_SEAT_ID") or "").strip() or str(args.workstation_id or "")
+            _open_persistent_window(
+                provider=resolved_provider,
+                cwd=resolved_executor_cwd,
+                title=f"NPC {args.workstation_id} · {resolved_provider} (长开)",
+                inbox_md_path=persistent_inbox_path,
+                project_id=str(args.project_id),
+                workstation_id=str(args.workstation_id),
+                seat_id=seat_for_window,
+            )
         print("等待平台指令... (Ctrl+C 退出)\n", flush=True)
         try:
             while True:

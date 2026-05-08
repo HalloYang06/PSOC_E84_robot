@@ -95,9 +95,30 @@
 - 工具调用结果会触发后端创建消息，**同工位默认 queued、跨工位默认 pending_review**
 - 用户在驾驶舱待审区点"通过" → 真发出去；点"打回" → 取消
 
-**让 Claude/Codex 在自己的窗口运行**（用户能看到 AI 真在打字）：
-- 在 `start-thread-watcher.ps1` 后加 `-SpawnWindow`：每次 watcher 收到平台指令，都会**弹出一个独立 PowerShell 窗口**跑那条 claude/codex CLI 调用，用户能看到完整的对话。
-- 弹出的窗口标题为 `NPC <workstation_id> · <provider>`，stdout 全部进 transcript 文件。CLI 退出后窗口**不会自动关闭**，一直停在那等用户按 Enter 关闭（方便回看 AI 对话）。adapter 不等用户关窗口，CLI 一退出就把 transcript 内容回写为 done 回执 body。
+**自主求助怎么用**：
+- 你启动 NPC（`scripts/start-thread-watcher.ps1 -ProjectId .. -WorkstationId .. [-SpawnWindow] [-PersistentWindow]`）后，NPC 的 Claude/Codex CLI 会自动加载 `seat-mcp` MCP server
+- NPC 干活时如果需要别的 NPC 帮忙，**它自己**调五个工具之一：
+  - `list_peers()` — 看谁在
+  - `request_help(role, ask)` — 按角色找伙伴
+  - `dispatch_to_peer(seat_id, title, body)` — 直接指名
+  - `read_my_inbox(limit?)` — **自查自己的协作流**：别人派给我的派单 / 别人对我派单的 ack/done/reject 回执 / 我自己发出的派单状态。NPC 在 CLI 终端里直接看见完整交互。
+  - `mark_done(message_id, body, failed?)` — **仅长开窗口模式使用**，处理完一条派单后显式写 done 回执（一次性弹窗模式由 watcher 自动写，不用调）。
+- 工具调用结果会触发后端创建消息，**同工位默认 queued、跨工位默认 pending_review**
+- 用户在驾驶舱待审区点"通过" → 真发出去；点"打回" → 取消
+
+**让 Claude/Codex 在自己的窗口运行 — 两种模式**：
+
+| 模式 | 命令 | 行为 | 何时用 |
+|---|---|---|---|
+| 一次性弹窗 | `start-thread-watcher.ps1 ... -SpawnWindow` | 每条派单弹一个独立 PowerShell 窗口跑 `claude -p`；CLI 退出 = watcher 自动写 done 回执；窗口停在 "Enter 关闭" 等用户回看 | 跨电脑黑盒工位，无人值守 |
+| 长开窗口 | `start-thread-watcher.ps1 ... -PersistentWindow` | watcher 启动时弹**一次** claude REPL 窗口长开；后续派单只**追加**到 `artifacts/workstation-inbox/<project>/<ws>/_persistent_inbox.md` 文件；NPC 在窗口里调 `read_my_inbox` 拉新派单、调 `mark_done(message_id, body)` 写回执；用户可在窗口直接打字与 claude 互动 | 本机用户想边聊边推、要看 claude 真打字 |
+
+**长开模式注意事项**（劣势 / 边界）：
+- **回执时机由 NPC 决定**：claude 必须显式调 `mark_done` 才有 done 回执；如果它忘了，平台看不到完成。
+- **派单变被动**：claude 不主动 reload，用户得提醒它「调 read_my_inbox 看新派单」（adapter 注入的 prompt 已经强调了）。
+- **上下文 token 累积**：一个 NPC 长跑一天会吃满 200k context，用 `/compact` 触发压缩。
+- **窗口关 ≠ watcher 停**：watcher 仍在另一个终端 poll；要彻底停就 Ctrl+C watcher。
+- 两种模式互斥；同时给 `-SpawnWindow` 和 `-PersistentWindow` 时以 `-PersistentWindow` 为准。
 
 > 跨电脑配置见 §6 + `scripts/seat-mcp-server/README.md`
 
