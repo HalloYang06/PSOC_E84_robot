@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "seat-mcp": {
+      "command": "python",
+      "args": ["D:/ai合作产品/scripts/seat-mcp-server/server.py"],
+      "env": {
+        "PLATFORM_API_BASE": "http://127.0.0.1:8010"
+      }
+    }
+  }
+}

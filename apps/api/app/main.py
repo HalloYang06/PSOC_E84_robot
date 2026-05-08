@@ -191,6 +191,32 @@ def health() -> dict[str, object]:
     return ok({"status": "ok", "version": "0.1.0"})
 
 
+@app.get("/health")
+def health_short() -> dict[str, object]:
+    return ok({"status": "ok", "version": "0.1.0"})
+
+
+@app.get("/static/seat-mcp-server.py")
+def serve_seat_mcp_server() -> "Response":
+    """Expose seat-mcp-server.py for one-shot setup script consumption.
+
+    Used by scripts/setup-seat-mcp.{ps1,sh} so worker PCs can pull a fresh copy
+    without needing access to the source repo. Read-only; no auth required —
+    the file is published source code, not a secret."""
+    from pathlib import Path
+    from fastapi import HTTPException
+    from fastapi.responses import Response
+
+    candidates = [
+        Path(__file__).resolve().parents[3] / "scripts" / "seat-mcp-server" / "server.py",
+        Path.cwd() / "scripts" / "seat-mcp-server" / "server.py",
+    ]
+    for path in candidates:
+        if path.is_file():
+            return Response(content=path.read_text(encoding="utf-8"), media_type="text/x-python; charset=utf-8")
+    raise HTTPException(status_code=404, detail="seat-mcp-server.py not found on this host")
+
+
 app.include_router(projects_router)
 app.include_router(auth_router)
 app.include_router(requirements_router)

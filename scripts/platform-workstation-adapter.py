@@ -136,6 +136,15 @@ def _command_markdown(command: dict[str, Any], *, project_id: str, workstation_i
         "- Project context: `docs/projects/<project-id>/README.md`.",
         "- Read all three before acting; cite the file path you relied on in your reply.",
         "",
+        "## Autonomous Collaboration (seat-mcp tools)",
+        "- 你的 CLI 应该已经加载了 `seat-mcp` 这个 MCP server（见 `scripts/seat-mcp-server/README.md`）。",
+        "- 当你工作中需要别的 NPC（例如代码审核、前端联调、文档撰写），**不要叫用户去派单**，直接调以下工具：",
+        "  - `list_peers()`：看你能调动的伙伴（含同工位 / 跨工位 / 工位长）。",
+        "  - `request_help(role, ask, expected?)`：按角色关键字找伙伴并自动发起派单。",
+        "  - `dispatch_to_peer(seat_id, title, body)`：知道具体 seat_id 时直接指名派单。",
+        "- 三个工具都会经过平台 review gate：同工位默认免审；跨工位默认 pending_review，由用户在驾驶舱通过后才真发出。",
+        "- 工具返回 `needs_review=true` 时，你**只需告诉用户「已发起求助，等审核」**，不要重复发也不要切换到自己干。",
+        "",
         "## Reply Formatting",
         "- Reply in GitHub-flavored Markdown.",
         "- Cite touched files / commits / PRs as GitHub links: `https://github.com/<owner>/<repo>/blob/<branch>/<path>` or `/commit/<sha>`. Use the local repo's actual remote — do not invent placeholder URLs.",
@@ -238,6 +247,10 @@ def _extract_executor_prompt(command_text: str) -> str:
         (
             "回复必须用 GitHub-flavored Markdown。引用代码/提交/PR 时一律给出 GitHub 链接（owner/repo/blob/branch/path 或 /commit/<sha>），"
             "用当前仓库真实的 remote，不要编造占位 URL。如果改了文件，按「- 修改 <文件名>：<一句话原因> — <github 链接>」列清单。"
+        ),
+        (
+            "需要其他 NPC 帮忙时，直接调 MCP 工具 `list_peers` / `request_help(role, ask)` / `dispatch_to_peer(seat_id, title, body)` "
+            "（来自 seat-mcp server）。同工位默认免审、跨工位默认走 pending_review。不要让用户去 UI 上替你派单——这就是平台说的「自主协作」。"
         ),
         "请只根据下面的用户指令输出最终回复内容。",
     ]
@@ -571,6 +584,15 @@ def main() -> int:
     base = args.api_base.rstrip("/")
     auth_token = str(args.auth_token or os.environ.get("PLATFORM_AUTH_TOKEN") or "").strip() or None
     headers = _adapter_headers(args.workstation_id, workstation_token=args.token, auth_token=auth_token)
+    # Step 8 — expose platform identity to child executors so the seat-mcp-server
+    # the NPC's CLI loads can dispatch on the seat's behalf (NPC-initiated collab).
+    os.environ["PLATFORM_API_BASE"] = base
+    os.environ["PLATFORM_PROJECT_ID"] = str(args.project_id or "")
+    os.environ["PLATFORM_WORKSTATION_ID"] = str(args.workstation_id or "")
+    if args.token:
+        os.environ["PLATFORM_ADAPTER_TOKEN"] = str(args.token)
+    if auth_token:
+        os.environ["PLATFORM_AUTH_TOKEN"] = auth_token
     adapter_config = _fetch_adapter_config(
         base,
         project_id=args.project_id,
@@ -665,6 +687,10 @@ def main() -> int:
             if executor_template and message_id:
                 if args.watch:
                     print(f"\n[正在调用 {resolved_provider} CLI ...]\n", flush=True)
+                # Step 8 — expose THIS message's recipient seat to the seat-mcp-server
+                # so the NPC self-dispatches as itself (sender_id = recipient of this msg).
+                seat_for_msg = str(command.get("recipient_id") or "").strip() or str(args.workstation_id or "")
+                os.environ["PLATFORM_SEAT_ID"] = seat_for_msg
                 executor_result = run_executor(
                     template=executor_template,
                     command_path=command_path,
