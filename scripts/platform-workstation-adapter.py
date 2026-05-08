@@ -664,12 +664,66 @@ def _open_persistent_window(
             creationflags=creationflags,
             close_fds=True,
         )
-        print(f"[{_now_hms()}] [platform] persistent {provider} REPL window spawned via {shell_label} (ps1={ps1})", flush=True)
-        if shell_label == "powershell5.1":
-            print(f"[{_now_hms()}] [platform] HINT: install PowerShell 7 to enable auto-launch of {provider} inside the window:", flush=True)
-            print(f"[{_now_hms()}] [platform]   winget install --id Microsoft.PowerShell --source winget", flush=True)
+        print(f"[{_now_hms()}] [platform] persistent {provider} setup window spawned via {shell_label} (ps1={ps1})", flush=True)
     except Exception as exc:
-        print(f"[{_now_hms()}] [platform] window spawn failed: {exc}", flush=True)
+        print(f"[{_now_hms()}] [platform] setup window spawn failed: {exc}", flush=True)
+
+    # 关键改动（2026-05-08 第 6 次尝试）：不让 ps1 起 claude（任何 PS 路径都崩），
+    # 改成 Python 直接 Popen claude.exe + CREATE_NEW_CONSOLE 自己开第二个窗口。
+    # 完全绕开 PS string parser / shim chain / TTY sniffing 链路。
+    # 直接 CreateProcess 行 — sandbox 已验过 Python `subprocess.run([exe, '--version'])` exit=0。
+    if not bind_error:
+        # 多候选解析 .exe 真路径（npm 全局标准布局；APPDATA 重定向兜底）
+        repl_exe_full = ""
+        candidates: list[str] = []
+        ccp = os.environ.get("CLAUDE_CODE_EXECPATH") or ""
+        if ccp:
+            candidates.append(ccp)
+        # 通过 shutil.which 找 shim，shim 同目录里 node_modules/...
+        try:
+            shim_path = _sh.which(repl_cmd) or _sh.which(f"{repl_cmd}.cmd") or _sh.which(f"{repl_cmd}.ps1") or ""
+            if shim_path:
+                shim_dir = Path(shim_path).resolve().parent
+                candidates.append(str(shim_dir / "node_modules" / "@anthropic-ai" / "claude-code" / "bin" / f"{repl_cmd}.exe"))
+        except Exception:
+            pass
+        # APPDATA / 硬编码兜底
+        appdata = os.environ.get("APPDATA") or ""
+        if appdata:
+            candidates.append(str(Path(appdata) / "npm" / "node_modules" / "@anthropic-ai" / "claude-code" / "bin" / f"{repl_cmd}.exe"))
+        username = os.environ.get("USERNAME") or ""
+        if username:
+            candidates.append(f"C:\\Users\\{username}\\AppData\\Roaming\\npm\\node_modules\\@anthropic-ai\\claude-code\\bin\\{repl_cmd}.exe")
+        for cand in candidates:
+            if cand and Path(cand).exists():
+                repl_exe_full = cand
+                break
+
+        if not repl_exe_full:
+            print(f"[{_now_hms()}] [platform] {repl_cmd}.exe not found, tried:", flush=True)
+            for cand in candidates:
+                print(f"[{_now_hms()}]   - {cand}", flush=True)
+            print(f"[{_now_hms()}] [platform] install: npm i -g @anthropic-ai/{repl_cmd}-code", flush=True)
+        else:
+            try:
+                # CREATE_NEW_CONSOLE 让 claude.exe 自己开终端窗口；env 完整继承（PLATFORM_* 已注入）；
+                # cwd 用 NPC 绑定的 cwd 让 claude 进对项目目录。
+                claude_env = dict(os.environ)
+                # 保险：再次确认 PLATFORM_* env 注入（理论上已经在）
+                claude_env["PLATFORM_API_BASE"] = os.environ.get("PLATFORM_API_BASE") or base
+                claude_env["PLATFORM_PROJECT_ID"] = os.environ.get("PLATFORM_PROJECT_ID") or str(args.project_id)
+                claude_env["PLATFORM_SEAT_ID"] = os.environ.get("PLATFORM_SEAT_ID") or seat_id
+                claude_env["PLATFORM_WORKSTATION_ID"] = os.environ.get("PLATFORM_WORKSTATION_ID") or str(args.workstation_id)
+                subprocess.Popen(
+                    [repl_exe_full],
+                    cwd=cwd_normalized or None,
+                    env=claude_env,
+                    creationflags=creationflags,
+                    close_fds=True,
+                )
+                print(f"[{_now_hms()}] [platform] {repl_cmd} REPL spawned in its own console (exe={repl_exe_full})", flush=True)
+            except Exception as exc:
+                print(f"[{_now_hms()}] [platform] {repl_cmd} spawn failed: {exc}", flush=True)
 
 
 def _append_dispatch_to_inbox(inbox_md_path: Path, command: dict[str, Any], *, project_id: str, workstation_id: str, provider: str) -> None:
