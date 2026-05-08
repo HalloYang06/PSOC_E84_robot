@@ -13,9 +13,11 @@ type WorkbenchClientProps = {
   seats: WorkbenchSeat[];
   currentUserId: string;
   currentUserName: string;
+  pageMode?: "workbench" | "company";
 };
 
-export function WorkbenchClient({ projectId, projectName, apiBaseUrl, seats, currentUserId, currentUserName }: WorkbenchClientProps) {
+export function WorkbenchClient({ projectId, projectName, apiBaseUrl, seats, currentUserId, currentUserName, pageMode = "workbench" }: WorkbenchClientProps) {
+  const isCompany = pageMode === "company";
   const [openIds, setOpenIds] = useState<string[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState("");
@@ -121,13 +123,28 @@ export function WorkbenchClient({ projectId, projectName, apiBaseUrl, seats, cur
           </Link>
           <div className={styles.title}>
             <strong>{projectName}</strong>
-            <small>NPC 工作台 · 同时打开多个 NPC 的对话/状态卡</small>
+            <small>
+              {isCompany
+                ? "🏢 公司层 · 工位长会议室（每个工位的 lead 瓷砖；跨工位转交、群组决策都从这里发起）"
+                : "NPC 工作台 · 同时打开多个 NPC 的对话/状态卡"}
+            </small>
           </div>
         </div>
         <div className={styles.topbarRight}>
-          <span className={styles.kpi}>共 {seats.length} 个 NPC</span>
+          <span className={styles.kpi}>
+            {isCompany ? `共 ${seats.length} 位工位长` : `共 ${seats.length} 个 NPC`}
+          </span>
           <span className={styles.kpi}>已打开 {openIds.length}</span>
           <span className={styles.kpi}>已勾选 {selectedIds.size}</span>
+          {isCompany ? (
+            <Link href={`/projects/${projectId}/workbench`} className={styles.backLink} title="返回 NPC 工作台（看所有 NPC）">
+              工作台 →
+            </Link>
+          ) : (
+            <Link href={`/projects/${projectId}/company`} className={styles.backLink} title="进入公司层：只看每个工位的工位长">
+              🏢 公司层 →
+            </Link>
+          )}
         </div>
       </header>
 
@@ -216,8 +233,18 @@ export function WorkbenchClient({ projectId, projectName, apiBaseUrl, seats, cur
           </div>
           {openSeats.length === 0 ? (
             <div className={styles.placeholder}>
-              <strong>点击左栏 NPC 行的 + 号，打开它的工作卡</strong>
-              <p>多开会自动平分屏幕；单开则全屏。后续 S4 会把 Claude/Codex 的关键信息流实时挂进卡片。</p>
+              <strong>
+                {isCompany
+                  ? seats.length === 0
+                    ? "还没有任何工位长"
+                    : "点击左栏工位长行的 + 号，打开 ta 的会议室瓷砖"
+                  : "点击左栏 NPC 行的 + 号，打开它的工作卡"}
+              </strong>
+              <p>
+                {isCompany
+                  ? "公司层只显示每个工位指定的工位长（👑）。在工位卡的「工位长」下拉里选定后会出现在这里。跨工位的消息默认会被路由到对应工位长。"
+                  : "多开会自动平分屏幕；单开则全屏。后续 S4 会把 Claude/Codex 的关键信息流实时挂进卡片。"}
+              </p>
             </div>
           ) : (
             <div className={styles.tileGrid} data-tile-count={openSeats.length}>

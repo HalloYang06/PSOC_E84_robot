@@ -130,6 +130,9 @@ export default async function ProjectCockpitPage({ params }: { params: { id: str
           <Link href={`/projects/${params.id}/workbench`} className={styles.primaryBtn}>
             打开工作台 →
           </Link>
+          <Link href={`/projects/${params.id}/company`} className={styles.ghostBtn} title="公司层：只看每个工位的工位长（👑），跨工位指派的默认入口">
+            🏢 公司层
+          </Link>
           <Link href={`/projects/${params.id}?legacy=1`} className={styles.ghostBtn} title="进入旧版农场壳（仅诊断）">
             旧版页面
           </Link>

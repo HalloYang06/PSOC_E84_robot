@@ -3088,6 +3088,13 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
               >
                 NPC 工作台 →
               </Link>
+              <Link
+                href={`/projects/${project.id}/company`}
+                className={styles.cockpitGhost}
+                title="公司层：只看每个工位的工位长（👑），跨工位转交都从这里发起"
+              >
+                🏢 公司层
+              </Link>
               <button
                 type="button"
                 className={styles.cockpitPrimary}
