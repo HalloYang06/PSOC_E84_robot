@@ -7,8 +7,11 @@
   一个项目线程 = 本机一个 watcher 终端，watcher 一直 poll 该线程的 inbox，
   收到指令就在当前终端打印「收到平台指令 / 正在调用 CLI / CLI 输出 / 已回写」。
 
-  默认：API 在 http://127.0.0.1:8000；provider 自动从 adapter-config 解析；
-  执行目录默认是仓库根目录（D:\ai合作产品）。
+  默认：API 在 http://127.0.0.1:8010；provider 自动从 adapter-config 解析；
+  执行目录默认是仓库根目录（脚本自动从 $PSScriptRoot/.. 推导，与本地路径无关）。
+
+  跨平台说明：本脚本是 Windows / PowerShell 版；macOS / Linux / git-bash 用同名 .sh
+  版本（scripts/start-thread-watcher.sh），两者参数完全等价。
 
 .PARAMETER ProjectId
   项目 id（如 proj_ai_collab）。可在 DB 表 projects 里查。
@@ -18,7 +21,8 @@
   比如 proj_ai_collab 下的"前端工位"是 'ǰ��工位'（DB 中文 config_id）。
 
 .PARAMETER ApiBase
-  平台 API 根路径，默认 http://127.0.0.1:8000。
+  平台 API 根路径，默认 http://127.0.0.1:8010。
+  跨电脑接入填主机内网 IP，如 http://192.168.1.10:8010。
 
 .PARAMETER Provider
   覆盖 adapter-config 里的 provider 解析，可填 claude/codex/qwen。
@@ -41,7 +45,7 @@ param(
   [Parameter(Mandatory = $true)]
   [string]$WorkstationId,
 
-  [string]$ApiBase = "http://127.0.0.1:8000",
+  [string]$ApiBase = "http://127.0.0.1:8010",
 
   [ValidateSet("claude", "codex", "qwen", "")]
   [string]$Provider = "",
@@ -77,6 +81,9 @@ Write-Host "API:  $ApiBase" -ForegroundColor Gray
 Write-Host "执行目录: $ExecutorCwd" -ForegroundColor Gray
 if ($Provider) { Write-Host "Provider 覆盖: $Provider" -ForegroundColor Gray }
 Write-Host "轮询: 每 ${PollSeconds}s" -ForegroundColor Gray
+if (-not $env:PLATFORM_AUTH_TOKEN -and -not $env:PLATFORM_ADAPTER_TOKEN) {
+  Write-Host "⚠ PLATFORM_AUTH_TOKEN / PLATFORM_ADAPTER_TOKEN 未设置，watcher 拉 inbox 会 401。" -ForegroundColor Yellow
+}
 Write-Host "========================================" -ForegroundColor Cyan
 
 $pyArgs = @(
