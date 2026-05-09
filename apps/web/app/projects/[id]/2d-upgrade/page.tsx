@@ -131,6 +131,17 @@ export default async function Project2dUpgradePage({
       ? (project.collaboration_config as AnyRecord)
       : {};
   const projectSkills = Array.isArray(collaborationConfig.skill_library) ? (collaborationConfig.skill_library as AnyRecord[]) : [];
+  const inheritedSkillsByNode = new Map<string, string[]>();
+  const workstationProfiles =
+    collaborationConfig.workstation_profiles && typeof collaborationConfig.workstation_profiles === "object"
+      ? (collaborationConfig.workstation_profiles as AnyRecord)
+      : {};
+  for (const [nodeId, profile] of Object.entries(workstationProfiles)) {
+    if (profile && typeof profile === "object") {
+      const inh = stringArray((profile as AnyRecord).skill_inheritance ?? (profile as AnyRecord).skillInheritance);
+      if (inh.length) inheritedSkillsByNode.set(String(nodeId), inh);
+    }
+  }
   const tasks = Array.isArray(taskState.data) ? taskState.data : [];
   const requirements = Array.isArray(requirementState.data) ? requirementState.data : [];
   const messages = Array.isArray(messageState.data) ? messageState.data : [];
@@ -277,6 +288,10 @@ export default async function Project2dUpgradePage({
           mapX: numberOrNull(workstation.x ?? metadata.map_x ?? metadata.x),
           mapY: numberOrNull(workstation.y ?? metadata.map_y ?? metadata.y),
           skillLoadout: stringArray(workstation.skill_loadout ?? metadata.skill_loadout),
+          inheritedSkills: (() => {
+            const node = text(workstation.computer_node_id ?? metadata.computer_node_id, "");
+            return node ? (inheritedSkillsByNode.get(node) ?? []) : [];
+          })(),
           knowledgeSummary: text(npcKnowledge.summary ?? metadata.knowledge_summary, ""),
           knowledgeHandoffPath: text(npcKnowledge.handoff_path ?? metadata.knowledge_handoff_path, ""),
         };

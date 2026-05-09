@@ -84,6 +84,7 @@ type FeedItem = {
   mapX?: number | null;
   mapY?: number | null;
   skillLoadout?: string[];
+  inheritedSkills?: string[];
   knowledgeSummary?: string;
   knowledgeHandoffPath?: string;
 };
@@ -2092,10 +2093,12 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         <div className={styles.realActionStack} data-unity-real-form="npc-skills">
           <article className={styles.realNote}>
             <b>这里只给 NPC 装配 Skill，Skill 源头仍在 Skill 仓库</b>
-            <p>固定 Skill 会随 NPC 保存；每次派单前，NPC 都应该先读自己的固定 Skill 和项目必读需求表。</p>
+            <p>固定 Skill 会随 NPC 保存；每次派单前，NPC 都应该先读自己的固定 Skill 和项目必读需求表。⇪ 标记的 Skill 来自所在工位的 skill_inheritance（去工位设置改）。</p>
           </article>
           {npcSeats.length ? (
-            npcSeats.map((seat) => (
+            npcSeats.map((seat) => {
+              const inheritedSet = new Set((seat.inheritedSkills ?? []).filter(Boolean));
+              return (
               <form key={seat.id} action={updateNpcWorkstationSeat.bind(null, project.id, seat.id)} className={styles.inlineActionForm}>
                 {renderNpcSeatHiddenFields(seat, "npc-create", { includeSkillLoadout: false, returnActionId: "npc-skills" })}
                 <input type="hidden" name="source_workstation_id" value={seat.sourceWorkstationId || ""} />
@@ -2103,22 +2106,31 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                 <input type="hidden" name="automation_enabled" value={seat.automationEnabled ? "true" : "false"} />
                 <input type="hidden" name="automation_heartbeat_seconds" value={String(seat.automationHeartbeatSeconds ?? 900)} />
                 <div className={styles.skillChecklist}>
-                  <b>{itemTitle(seat)} 已装配 Skill</b>
+                  <b>{itemTitle(seat)} 已装配 Skill {inheritedSet.size ? `· 工位继承 ${inheritedSet.size}` : ""}</b>
                   {skills.length ? (
-                    skills.map((skill) => (
-                      <label key={skill.id} className={styles.skillOption}>
-                        <input type="checkbox" name="skill_loadout" value={skill.id} defaultChecked={(seat.skillLoadout ?? []).includes(skill.id)} />
-                        <span>{itemTitle(skill)}</span>
-                        <small>{skill.body || skill.type || "项目 Skill 仓库条目"}</small>
-                      </label>
-                    ))
+                    skills.map((skill) => {
+                      const isInherited = inheritedSet.has(skill.id);
+                      const ownChecked = (seat.skillLoadout ?? []).includes(skill.id);
+                      return (
+                        <label key={skill.id} className={styles.skillOption} style={isInherited ? { opacity: 0.85 } : undefined}>
+                          {isInherited ? (
+                            <input type="checkbox" checked readOnly disabled title="本 skill 由工位 skill_inheritance 注入，不会写进 NPC；要改请去工位设置" />
+                          ) : (
+                            <input type="checkbox" name="skill_loadout" value={skill.id} defaultChecked={ownChecked} />
+                          )}
+                          <span>{isInherited ? "⇪ " : ""}{itemTitle(skill)}{isInherited ? "（工位继承）" : ""}</span>
+                          <small>{skill.body || skill.type || "项目 Skill 仓库条目"}</small>
+                        </label>
+                      );
+                    })
                   ) : (
                     <p className={styles.emptyHint}>Skill 仓库暂无条目。先去 Skill 仓库添加或从 GitHub 导入。</p>
                   )}
                 </div>
                 <SubmitButton label="保存 Skill 装配" disabled={!skills.length} />
               </form>
-            ))
+              );
+            })
           ) : (
             <p className={styles.emptyHint}>还没有 NPC。先创建 NPC，再装配 Skill。</p>
           )}
