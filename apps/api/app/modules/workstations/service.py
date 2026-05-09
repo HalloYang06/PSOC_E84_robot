@@ -198,6 +198,7 @@ def set_workstation_lead(
 ) -> WorkstationRead:
     row = get_workstation_or_404(db, project_id, workstation_id)
     seat_id = (payload.seat_id or "").strip() or None
+    resolved_seat_pk: str | None = None
     if seat_id:
         seat = _validate_seat_belongs_to_project(db, project_id, seat_id)
         if seat.workstation_id and seat.workstation_id != row.id:
@@ -207,7 +208,8 @@ def set_workstation_lead(
                 status_code=409,
                 details={"seat_workstation_id": seat.workstation_id, "workstation_id": row.id},
             )
-    row.lead_seat_id = seat_id
+        resolved_seat_pk = seat.id
+    row.lead_seat_id = resolved_seat_pk
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -233,8 +235,22 @@ def assign_seats_to_workstation(
             )
         )
     )
-    found_ids = {seat.id for seat in seats}
-    missing = [sid for sid in target_ids if sid not in found_ids]
+    found_pks = {seat.id for seat in seats}
+    missing_after_pk = [sid for sid in target_ids if sid not in found_pks]
+    if missing_after_pk:
+        more = list(
+            db.scalars(
+                select(ProjectThreadWorkstation).where(
+                    ProjectThreadWorkstation.project_id == project_id,
+                    ProjectThreadWorkstation.config_id.in_(missing_after_pk),
+                )
+            )
+        )
+        seats.extend(more)
+        for seat in more:
+            found_pks.add(seat.id)
+    found_lookup_ids = found_pks | {seat.config_id for seat in seats if seat.config_id}
+    missing = [sid for sid in target_ids if sid not in found_lookup_ids]
     if missing:
         raise AppError(
             "SEATS_NOT_FOUND",
@@ -289,6 +305,13 @@ def _validate_seat_belongs_to_project(
             ProjectThreadWorkstation.id == seat_id,
         )
     )
+    if seat is None:
+        seat = db.scalar(
+            select(ProjectThreadWorkstation).where(
+                ProjectThreadWorkstation.project_id == project_id,
+                ProjectThreadWorkstation.config_id == seat_id,
+            )
+        )
     if seat is None:
         raise AppError("SEAT_NOT_FOUND", "seat not found in this project", status_code=404)
     return seat
