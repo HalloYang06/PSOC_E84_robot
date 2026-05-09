@@ -146,3 +146,87 @@
   flex-direction: column;
   gap: 2px;
 }
+
+.statusPending,
+.statusAssigned,
+.statusAccepted {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.statusPending {
+  background: rgba(255, 178, 100, 0.16);
+  color: #ffd2a3;
+  border: 1px solid rgba(255, 178, 100, 0.42);
+}
+.statusAssigned {
+  background: rgba(170, 140, 255, 0.14);
+  color: #d6c9ff;
+  border: 1px solid rgba(170, 140, 255, 0.42);
+}
+.statusAccepted {
+  background: rgba(120, 230, 170, 0.16);
+  color: #a8f0c6;
+  border: 1px solid rgba(120, 230, 170, 0.42);
+}
+
+.acceptArea {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px dashed rgba(88, 240, 255, 0.18);
+}
+
+.acceptForm {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.acceptInput {
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(2, 22, 33, 0.7);
+  border: 1px solid rgba(88, 240, 255, 0.28);
+  color: #eaffff;
+  font-size: 11.5px;
+  min-width: 140px;
+}
+.acceptInput:disabled { opacity: 0.6; }
+
+.acceptBtn {
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(120, 230, 170, 0.14);
+  color: #a8f0c6;
+  border: 1px solid rgba(120, 230, 170, 0.42);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.acceptBtn:hover:not(:disabled) { background: rgba(120, 230, 170, 0.26); }
+.acceptBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.cancelBtn {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 117, 117, 0.08);
+  color: #ffb8b8;
+  border: 1px solid rgba(255, 117, 117, 0.32);
+  font-size: 11px;
+  cursor: pointer;
+}
+.cancelBtn:hover:not(:disabled) { background: rgba(255, 117, 117, 0.18); }
+
+.acceptOk {
+  font-size: 11px;
+  color: #a8f0c6;
+}
+.acceptErr {
+  font-size: 11px;
+  color: #ffb8b8;
+}

@@ -32,6 +32,13 @@ type Props = {
   seats: SeatLite[];
 };
 
+type AcceptState =
+  | { kind: "idle" }
+  | { kind: "picking"; handoffId: string; taskId: string }
+  | { kind: "submitting"; handoffId: string }
+  | { kind: "ok"; handoffId: string; message: string }
+  | { kind: "err"; handoffId: string; message: string };
+
 function fmtTime(iso: string | null): string {
   if (!iso) return "";
   const d = new Date(iso);
@@ -43,6 +50,9 @@ export function CrossWorkstationHandoffs({ apiBaseUrl, projectId, seats }: Props
   const [items, setItems] = useState<HandoffItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [acceptState, setAcceptState] = useState<AcceptState>({ kind: "idle" });
+  const [pickedSeatId, setPickedSeatId] = useState<string>("");
+  const [acceptNote, setAcceptNote] = useState<string>("");
 
   async function load() {
     setLoading(true);
@@ -90,6 +100,65 @@ export function CrossWorkstationHandoffs({ apiBaseUrl, projectId, seats }: Props
     };
   }
 
+  function statusBadge(status: string | null): { label: string; cls: string } {
+    const s = (status || "pending").toLowerCase();
+    if (s === "accepted") return { label: "已接手", cls: styles.statusAccepted };
+    if (s === "assigned") return { label: "已指派", cls: styles.statusAssigned };
+    return { label: "待接手", cls: styles.statusPending };
+  }
+
+  function startAccept(item: HandoffItem) {
+    const defaultPick = item.handoff_to || (seats[0]?.id ?? "");
+    setPickedSeatId(defaultPick);
+    setAcceptNote("");
+    setAcceptState({ kind: "picking", handoffId: item.id, taskId: item.task_id });
+  }
+
+  function cancelAccept() {
+    setAcceptState({ kind: "idle" });
+    setPickedSeatId("");
+    setAcceptNote("");
+  }
+
+  async function submitAccept(item: HandoffItem) {
+    if (!pickedSeatId) {
+      setAcceptState({ kind: "err", handoffId: item.id, message: "请先选一个 NPC 作为接手人" });
+      return;
+    }
+    setAcceptState({ kind: "submitting", handoffId: item.id });
+    try {
+      const res = await fetch(
+        apiClientUrl(`/api/tasks/${encodeURIComponent(item.task_id)}/handoffs/${encodeURIComponent(item.id)}/accept`),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            actor_type: "agent",
+            actor_id: pickedSeatId,
+            note: acceptNote.trim() || null,
+          }),
+        },
+      );
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = json?.error?.message ?? json?.message ?? `HTTP ${res.status}`;
+        throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
+      }
+      setAcceptState({ kind: "ok", handoffId: item.id, message: "已接手 ✓" });
+      setPickedSeatId("");
+      setAcceptNote("");
+      await load();
+      setTimeout(() => setAcceptState({ kind: "idle" }), 2400);
+    } catch (e) {
+      setAcceptState({
+        kind: "err",
+        handoffId: item.id,
+        message: e instanceof Error ? e.message : "接手失败",
+      });
+    }
+  }
+
   return (
     <section className={styles.shell}>
       <header className={styles.head}>
@@ -116,12 +185,19 @@ export function CrossWorkstationHandoffs({ apiBaseUrl, projectId, seats }: Props
             const scope = classifyScope(item);
             const from = seatOf(item.handoff_from);
             const to = seatOf(item.handoff_to);
+            const badge = statusBadge(item.current_status);
+            const isAccepted = (item.current_status || "").toLowerCase() === "accepted";
+            const picking = acceptState.kind === "picking" && acceptState.handoffId === item.id;
+            const submitting = acceptState.kind === "submitting" && acceptState.handoffId === item.id;
+            const okHere = acceptState.kind === "ok" && acceptState.handoffId === item.id;
+            const errHere = acceptState.kind === "err" && acceptState.handoffId === item.id;
             return (
               <li key={item.id} className={`${styles.row} ${scope.isCross ? styles.rowCross : ""}`}>
                 <div className={styles.rowHead}>
                   <span className={scope.isCross ? styles.tagCross : styles.tagSame}>
                     {scope.isCross ? "跨工位" : "同工位"}
                   </span>
+                  <span className={badge.cls}>{badge.label}</span>
                   <strong className={styles.rowTitle}>
                     {from?.name || item.handoff_from || "?"} → {to?.name || item.handoff_to || "?"}
                   </strong>
@@ -148,6 +224,65 @@ export function CrossWorkstationHandoffs({ apiBaseUrl, projectId, seats }: Props
                       ))}
                     </ul>
                   </details>
+                ) : null}
+                {!isAccepted ? (
+                  <div className={styles.acceptArea}>
+                    {!picking ? (
+                      <button
+                        type="button"
+                        className={styles.acceptBtn}
+                        onClick={() => startAccept(item)}
+                        title="选一个 NPC 作为接手人，状态会变成 accepted"
+                      >
+                        ✋ 我接手
+                      </button>
+                    ) : (
+                      <div className={styles.acceptForm}>
+                        <select
+                          className={styles.acceptInput}
+                          value={pickedSeatId}
+                          onChange={(e) => setPickedSeatId(e.target.value)}
+                          disabled={submitting}
+                        >
+                          <option value="">— 选 NPC —</option>
+                          {seats.map((s) => {
+                            const wsLabel = s.workstationName || s.computerNodeName || "未归属";
+                            return (
+                              <option key={s.id} value={s.id}>
+                                {s.name}（{wsLabel}）
+                              </option>
+                            );
+                          })}
+                        </select>
+                        <input
+                          className={styles.acceptInput}
+                          type="text"
+                          placeholder="备注（可选）"
+                          value={acceptNote}
+                          onChange={(e) => setAcceptNote(e.target.value)}
+                          disabled={submitting}
+                        />
+                        <button
+                          type="button"
+                          className={styles.acceptBtn}
+                          onClick={() => submitAccept(item)}
+                          disabled={submitting || !pickedSeatId}
+                        >
+                          {submitting ? "接手中…" : "确认接手"}
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.cancelBtn}
+                          onClick={cancelAccept}
+                          disabled={submitting}
+                        >
+                          取消
+                        </button>
+                      </div>
+                    )}
+                    {okHere ? <small className={styles.acceptOk}>{(acceptState as { message: string }).message}</small> : null}
+                    {errHere ? <small className={styles.acceptErr}>{(acceptState as { message: string }).message}</small> : null}
+                  </div>
                 ) : null}
               </li>
             );
