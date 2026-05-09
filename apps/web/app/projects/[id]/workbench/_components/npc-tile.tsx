@@ -16,6 +16,8 @@ export type WorkbenchSeat = {
   providerLabel: string;
   responsibility: string;
   skillLoadout: string[];
+  inheritedSkills?: string[];
+  workstationKnowledgePath?: string;
   knowledgeSummary: string;
   automationEnabled: boolean;
   model: string;
@@ -649,17 +651,37 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
             <small className={styles.sectionLabel}>职责</small>
             <p className={styles.profileText}>{seat.responsibility || "未填写"}</p>
           </div>
-          {seat.skillLoadout.length > 0 ? (
-            <div className={styles.profileRow}>
-              <small className={styles.sectionLabel}>Skill ({seat.skillLoadout.length})</small>
-              <div className={styles.chipRow}>
-                {seat.skillLoadout.slice(0, 6).map((skill) => (
-                  <span key={skill} className={styles.chip}>{skill}</span>
-                ))}
-                {seat.skillLoadout.length > 6 ? (
-                  <span className={styles.chipMore}>+{seat.skillLoadout.length - 6}</span>
-                ) : null}
+          {(() => {
+            const inherited = (seat.inheritedSkills ?? []).filter(Boolean);
+            const inheritedSet = new Set(inherited);
+            const own = (seat.skillLoadout ?? []).filter((s) => !inheritedSet.has(s));
+            const total = inherited.length + own.length;
+            if (total === 0) return null;
+            return (
+              <div className={styles.profileRow}>
+                <small className={styles.sectionLabel}>
+                  Skill ({total})
+                  {inherited.length > 0 ? <span className={styles.peerHint}> · 工位继承 {inherited.length} / 自加 {own.length}</span> : null}
+                </small>
+                <div className={styles.chipRow}>
+                  {inherited.slice(0, 6).map((skill) => (
+                    <span key={`inh-${skill}`} className={styles.chipInherit} title="从本工位 skill_inheritance 继承">⇪ {skill}</span>
+                  ))}
+                  {own.slice(0, 6).map((skill) => (
+                    <span key={`own-${skill}`} className={styles.chip}>{skill}</span>
+                  ))}
+                  {total > 12 ? <span className={styles.chipMore}>+{total - 12}</span> : null}
+                </div>
               </div>
+            );
+          })()}
+          {seat.workstationKnowledgePath ? (
+            <div className={styles.profileRow}>
+              <small className={styles.sectionLabel}>工位知识库</small>
+              <p className={styles.profileText}>
+                <code style={{ fontSize: "11px", color: "#a8e1ff" }}>{seat.workstationKnowledgePath}</code>
+                <span className={styles.peerHint}> · 本工位所有 NPC 共读</span>
+              </p>
             </div>
           ) : null}
           {seat.knowledgeSummary ? (

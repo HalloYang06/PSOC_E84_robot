@@ -104,7 +104,15 @@ def _adapter_headers(workstation_id: str, *, workstation_token: str | None = Non
     return _headers(workstation_id, workstation_token)
 
 
-def _command_markdown(command: dict[str, Any], *, project_id: str, workstation_id: str, provider: str) -> str:
+def _command_markdown(
+    command: dict[str, Any],
+    *,
+    project_id: str,
+    workstation_id: str,
+    provider: str,
+    computer_node_id: str = "",
+    workstation_knowledge_path: str = "",
+) -> str:
     title = str(command.get("title") or "Untitled platform command").strip()
     body = str(command.get("body") or "").strip()
     recipient_id = str(command.get("recipient_id") or "").strip()
@@ -115,6 +123,7 @@ def _command_markdown(command: dict[str, Any], *, project_id: str, workstation_i
         "## Platform Envelope",
         f"- project_id: `{project_id}`",
         f"- workstation_id: `{workstation_id}`",
+        f"- computer_node_id: `{computer_node_id or ''}`",
         f"- recipient_id: `{recipient_id or workstation_id}`",
         f"- seat_id (your NPC identity for docs): `{seat_id or workstation_id}`",
         f"- provider: `{provider}`",
@@ -132,7 +141,7 @@ def _command_markdown(command: dict[str, Any], *, project_id: str, workstation_i
         "",
         "## NPC Knowledge Library Convention",
         f"- Your role manual lives at `docs/npcs/{seat_id or workstation_id}/` (create if missing — see `docs/npcs/README.md`).",
-        f"- Workstation context: `docs/workstations/{workstation_id}.md`.",
+        f"- Workstation context: `{workstation_knowledge_path or (f'docs/workstations/{computer_node_id}.md' if computer_node_id else 'docs/workstations/<computer_node_id>.md (not yet bound to a node)')}`.",
         "- Project context: `docs/projects/<project-id>/README.md`.",
         "- Read all three before acting; cite the file path you relied on in your reply.",
         "",
@@ -160,13 +169,29 @@ def _command_markdown(command: dict[str, Any], *, project_id: str, workstation_i
     return "\n".join(lines)
 
 
-def write_command_file(command: dict[str, Any], *, output_dir: Path, project_id: str, workstation_id: str, provider: str) -> Path:
+def write_command_file(
+    command: dict[str, Any],
+    *,
+    output_dir: Path,
+    project_id: str,
+    workstation_id: str,
+    provider: str,
+    computer_node_id: str = "",
+    workstation_knowledge_path: str = "",
+) -> Path:
     message_id = str(command.get("id") or "message").strip()
     safe_id = "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in message_id) or "message"
     output_dir.mkdir(parents=True, exist_ok=True)
     path = output_dir / f"{safe_id}.md"
     path.write_text(
-        _command_markdown(command, project_id=project_id, workstation_id=workstation_id, provider=provider),
+        _command_markdown(
+            command,
+            project_id=project_id,
+            workstation_id=workstation_id,
+            provider=provider,
+            computer_node_id=computer_node_id,
+            workstation_knowledge_path=workstation_knowledge_path,
+        ),
         encoding="utf-8",
     )
     return path
@@ -219,22 +244,44 @@ def _extract_executor_prompt(command_text: str) -> str:
     title = ""
     seat_id = ""
     workstation_id = ""
+    computer_node_id = ""
+    workstation_knowledge_path = ""
+    in_knowledge_block = False
     for line in command_text.splitlines():
         stripped = line.strip()
         if stripped.startswith("# ") and not title:
             title = stripped.lstrip("#").strip()
         elif stripped.startswith("- seat_id"):
             after = stripped.split(":", 1)[1] if ":" in stripped else ""
-            seat_id = after.strip().strip("`").split()[0] if after.strip() else ""
+            tokens = after.strip().strip("`").split()
+            seat_id = tokens[0].strip("`") if tokens else ""
         elif stripped.startswith("- workstation_id"):
             after = stripped.split(":", 1)[1] if ":" in stripped else ""
-            workstation_id = after.strip().strip("`").split()[0] if after.strip() else ""
+            tokens = after.strip().strip("`").split()
+            workstation_id = tokens[0].strip("`") if tokens else ""
+        elif stripped.startswith("- computer_node_id"):
+            after = stripped.split(":", 1)[1] if ":" in stripped else ""
+            tokens = after.strip().strip("`").split()
+            computer_node_id = tokens[0].strip("`") if tokens else ""
+        if stripped.startswith("## NPC Knowledge Library Convention"):
+            in_knowledge_block = True
+            continue
+        if in_knowledge_block and stripped.startswith("## "):
+            in_knowledge_block = False
+        if in_knowledge_block and stripped.startswith("- Workstation context:"):
+            chunk = stripped.split(":", 1)[1] if ":" in stripped else ""
+            chunk = chunk.strip().strip(".").strip()
+            if chunk.startswith("`") and chunk.endswith("`"):
+                workstation_knowledge_path = chunk.strip("`")
     instruction = command_text
     marker = "## User Instruction"
     if marker in command_text:
         instruction = command_text.split(marker, 1)[1].strip()
     seat_label = seat_id or workstation_id or "<seat>"
-    workstation_label = workstation_id or "<workstation>"
+    workstation_doc_path = (
+        workstation_knowledge_path
+        or (f"docs/workstations/{computer_node_id}.md" if computer_node_id else "docs/workstations/<computer_node_id>.md")
+    )
     parts = [
         "你是当前电脑线程上的执行 AI。",
         "平台适配器已经负责最小回执和最终回写；不要再调用平台 API，也不要尝试自己发送回执。",
@@ -242,7 +289,7 @@ def _extract_executor_prompt(command_text: str) -> str:
         "凡是标记为需要人工审核的内容，只能分析和说明，不能继续自动执行。",
         (
             "你这个 NPC 的「岗位手册」在 docs/npcs/" + seat_label + "/ 下；"
-            "本工位（电脑节点）的手册在 docs/workstations/" + workstation_label + ".md；"
+            "本工位（电脑节点）的手册在 " + workstation_doc_path + "；"
             "项目级背景在 docs/projects/<project-id>/README.md。"
             "开工前先读这三处（任何一处缺失就跳过该层），并在最终回复里注明你引用了哪份文档。"
         ),
@@ -726,10 +773,26 @@ def _open_persistent_window(
                 print(f"[{_now_hms()}] [platform] {repl_cmd} spawn failed: {exc}", flush=True)
 
 
-def _append_dispatch_to_inbox(inbox_md_path: Path, command: dict[str, Any], *, project_id: str, workstation_id: str, provider: str) -> None:
+def _append_dispatch_to_inbox(
+    inbox_md_path: Path,
+    command: dict[str, Any],
+    *,
+    project_id: str,
+    workstation_id: str,
+    provider: str,
+    computer_node_id: str = "",
+    workstation_knowledge_path: str = "",
+) -> None:
     """长开模式下把派单追加到 markdown inbox 文件，给窗口里的 claude 看。"""
     inbox_md_path.parent.mkdir(parents=True, exist_ok=True)
-    block = _command_markdown(command, project_id=project_id, workstation_id=workstation_id, provider=provider)
+    block = _command_markdown(
+        command,
+        project_id=project_id,
+        workstation_id=workstation_id,
+        provider=provider,
+        computer_node_id=computer_node_id,
+        workstation_knowledge_path=workstation_knowledge_path,
+    )
     sep = "\n\n---\n\n"
     header = f"\n\n# 📥 新派单 @ {_now_hms()} (message_id={command.get('id')})\n\n"
     if not inbox_md_path.exists():
@@ -1034,6 +1097,10 @@ def main() -> int:
         or "generic"
     )
     resolved_provider_key = resolved_provider.strip().lower()
+    resolved_computer_node_id = str(adapter_config.get("computer_node_id") or "").strip()
+    resolved_workstation_knowledge_path = (
+        f"docs/workstations/{resolved_computer_node_id}.md" if resolved_computer_node_id else ""
+    )
     resolved_executor_model = (
         str(args.executor_model or "").strip()
         or str(os.environ.get("PLATFORM_EXECUTOR_MODEL") or "").strip()
@@ -1109,6 +1176,8 @@ def main() -> int:
                 project_id=args.project_id,
                 workstation_id=args.workstation_id,
                 provider=resolved_provider,
+                computer_node_id=resolved_computer_node_id,
+                workstation_knowledge_path=resolved_workstation_knowledge_path,
             )
             written.append(str(command_path))
             message_id = str(command.get("id") or "").strip()
@@ -1148,6 +1217,8 @@ def main() -> int:
                     project_id=args.project_id,
                     workstation_id=args.workstation_id,
                     provider=resolved_provider,
+                    computer_node_id=resolved_computer_node_id,
+                    workstation_knowledge_path=resolved_workstation_knowledge_path,
                 )
                 if message_id:
                     seen_ids.add(message_id)

@@ -370,6 +370,15 @@
   color: #ffe8b3;
 }
 
+.chipInherit {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  background: rgba(170, 140, 255, 0.12);
+  border: 1px solid rgba(170, 140, 255, 0.4);
+  color: #d6c9ff;
+}
+
 .chipMore {
   padding: 2px 8px;
   border-radius: 999px;

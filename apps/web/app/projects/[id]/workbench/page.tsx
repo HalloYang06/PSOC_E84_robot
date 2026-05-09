@@ -74,10 +74,19 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
   }
 
   const leadByNode = new Map<string, string>();
+  const inheritedSkillsByNode = new Map<string, string[]>();
+  const knowledgePathByNode = new Map<string, string>();
   for (const [nodeId, profile] of Object.entries(workstationProfiles)) {
     if (profile && typeof profile === "object") {
-      const lead = text((profile as AnyRecord).lead_seat_id ?? (profile as AnyRecord).leadSeatId, "");
+      const p = profile as AnyRecord;
+      const lead = text(p.lead_seat_id ?? p.leadSeatId, "");
       if (lead) leadByNode.set(String(nodeId), lead);
+      const inh = asArray<string>(p.skill_inheritance ?? p.skillInheritance)
+        .map((s) => String(s).trim())
+        .filter(Boolean);
+      if (inh.length) inheritedSkillsByNode.set(String(nodeId), inh);
+      const kp = text(p.knowledge_path ?? p.knowledgePath, "");
+      if (kp) knowledgePathByNode.set(String(nodeId), kp);
     }
   }
 
@@ -90,6 +99,10 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
     const providerLabel = text(seat.provider_label ?? seat.providerLabel ?? providerId, providerId);
     const responsibility = text(seat.responsibility ?? seat.body, "待分配职责");
     const skillLoadout = asArray<string>(seat.skill_loadout ?? seat.skillLoadout).map((s) => String(s)).filter(Boolean);
+    const inheritedSkills = computerNodeId ? (inheritedSkillsByNode.get(computerNodeId) ?? []) : [];
+    const workstationKnowledgePath = computerNodeId
+      ? (knowledgePathByNode.get(computerNodeId) ?? `docs/workstations/${computerNodeId}.md`)
+      : "";
     const knowledgeSummary = text(seat.knowledge_summary ?? seat.knowledgeSummary, "");
     const automationEnabled = Boolean(seat.automation_enabled ?? seat.automationEnabled ?? false);
     const model = text(seat.model, "");
@@ -116,6 +129,8 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
       providerLabel,
       responsibility,
       skillLoadout,
+      inheritedSkills,
+      workstationKnowledgePath,
       knowledgeSummary,
       automationEnabled,
       model,
