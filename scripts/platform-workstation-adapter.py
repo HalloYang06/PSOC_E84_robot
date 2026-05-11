@@ -145,6 +145,7 @@ def _command_markdown(
     body = str(command.get("body") or "").strip()
     recipient_id = str(command.get("recipient_id") or "").strip()
     seat_id = recipient_id if recipient_id and recipient_id != workstation_id else ""
+    project_knowledge_path = f"docs/projects/{project_id}/README.md"
     lines = [
         f"# {title}",
         "",
@@ -170,7 +171,7 @@ def _command_markdown(
         "## NPC Knowledge Library Convention",
         f"- Your role manual lives at `docs/npcs/{seat_id or workstation_id}/` (create if missing — see `docs/npcs/README.md`).",
         f"- Workstation context: `{workstation_knowledge_path or (f'docs/workstations/{computer_node_id}.md' if computer_node_id else 'docs/workstations/<computer_node_id>.md (not yet bound to a node)')}`.",
-        "- Project context: `docs/projects/<project-id>/README.md`.",
+        f"- Project context: `{project_knowledge_path}`.",
         "- Read all three before acting; cite the file path you relied on in your reply.",
         "",
         "## Autonomous Collaboration (seat-mcp tools)",
@@ -314,6 +315,7 @@ def _extract_executor_prompt(command_text: str) -> str:
     workstation_id = ""
     computer_node_id = ""
     workstation_knowledge_path = ""
+    project_knowledge_path = ""
     in_knowledge_block = False
     for line in command_text.splitlines():
         stripped = line.strip()
@@ -345,6 +347,11 @@ def _extract_executor_prompt(command_text: str) -> str:
             chunk = chunk.strip().strip(".").strip()
             if chunk.startswith("`") and chunk.endswith("`"):
                 workstation_knowledge_path = chunk.strip("`")
+        if in_knowledge_block and stripped.startswith("- Project context:"):
+            chunk = stripped.split(":", 1)[1] if ":" in stripped else ""
+            chunk = chunk.strip().strip(".").strip()
+            if chunk.startswith("`") and chunk.endswith("`"):
+                project_knowledge_path = chunk.strip("`")
     instruction = command_text
     marker = "## User Instruction"
     if marker in command_text:
@@ -354,6 +361,7 @@ def _extract_executor_prompt(command_text: str) -> str:
         workstation_knowledge_path
         or (f"docs/workstations/{computer_node_id}.md" if computer_node_id else "docs/workstations/<computer_node_id>.md")
     )
+    project_doc_path = project_knowledge_path or "docs/projects/<project-id>/README.md"
     parts = [
         "你是当前电脑线程上的执行 AI。",
         (
@@ -366,7 +374,7 @@ def _extract_executor_prompt(command_text: str) -> str:
         (
             "你这个 NPC 的「岗位手册」在 docs/npcs/" + seat_label + "/ 下；"
             "本工位（电脑节点）的手册在 " + workstation_doc_path + "；"
-            "项目级背景在 docs/projects/<project-id>/README.md。"
+            "项目级背景在 " + project_doc_path + "。"
             "开工前先读这三处（任何一处缺失就跳过该层），并在最终回复里注明你引用了哪份文档。"
         ),
         (

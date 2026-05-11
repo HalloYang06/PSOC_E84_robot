@@ -305,6 +305,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
   const streamRef = useRef<HTMLDivElement | null>(null);
   const draftRef = useRef<HTMLTextAreaElement | null>(null);
   const autoScrollRef = useRef(true);
+  const sendInFlightRef = useRef(false);
 
   type SeatQueueItem = {
     id: string;
@@ -1178,7 +1179,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
         .replace(/\s+/g, " ")
         .trim();
     const normalized = normalizeForRoute(text);
-    const explicitRouteIntent = /(@|转交给|转给|派给|派单给|交给|找.{0,16}(处理|复核|实现|验证|接手))/i.test(text);
+    const explicitRouteIntent = /(@|转交给|转给|派单给|交给|找.{0,16}(处理|复核|实现|验证|接手))/i.test(text);
     if (!explicitRouteIntent) return null;
     const candidates = [...crossLeads, ...teammates];
     for (const candidate of candidates) {
@@ -1230,6 +1231,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
   }, [draft, sending, occupancyHeldByOther, reviewBusyId]);
 
   async function sendCommand(opts?: { peerId?: string; peerName?: string }) {
+    if (sendInFlightRef.current) return;
     const liveDraft = draftRef.current?.value ?? draft;
     const body = liveDraft.trim();
     if (!body) return;
@@ -1263,6 +1265,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
     }
     const implicitTarget = opts ? null : resolveImplicitDispatchTarget(body);
     const targetOpts = opts || (implicitTarget ? { peerId: implicitTarget.peerId, peerName: implicitTarget.peerName } : undefined);
+    sendInFlightRef.current = true;
     setSending(true);
     setDispatchingPeerId(targetOpts?.peerId || "__self__");
     setSendNote(null);
@@ -1331,6 +1334,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
     } catch (e) {
       setSendNote(`派发失败：${e instanceof Error ? e.message : "未知错误"}`);
     } finally {
+      sendInFlightRef.current = false;
       setSending(false);
       setDispatchingPeerId(null);
       setTimeout(() => setSendNote(null), 7000);

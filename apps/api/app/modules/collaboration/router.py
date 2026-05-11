@@ -338,6 +338,10 @@ def _build_collaboration_message_preview_signature(
     return hashlib.sha256(json.dumps(normalized, ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()[:24]
 
 
+def _collaboration_payload_extra_data(payload: CollaborationMessageCreate) -> dict[str, object]:
+    return dict(payload.metadata or {}) if isinstance(payload.metadata, dict) else {}
+
+
 def _resolve_collaboration_message_recipient_label(
     db: Session,
     *,
@@ -1582,7 +1586,11 @@ def api_create_message(payload: CollaborationMessageCreate, request: Request, db
         seats = inner.get("thread_workstations") or []
         valid_ids = {str(s.get("id") or "") for s in seats} | {str(s.get("config_id") or "") for s in seats} | {str(s.get("row_id") or "") for s in seats}
         if sender_id in valid_ids:
-            override = {"project_id": project_id}
+            metadata = _collaboration_payload_extra_data(payload)
+            metadata.setdefault("origin", "human_proxy")
+            metadata.setdefault("actor_user_id", principal.user_id)
+            metadata.setdefault("claimed_sender_agent_id", sender_id)
+            override = {"project_id": project_id, "metadata": metadata}
         else:
             override = {"project_id": project_id, "sender_type": "human", "sender_id": principal.user_id}
     else:

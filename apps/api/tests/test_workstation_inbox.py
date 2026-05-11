@@ -164,6 +164,33 @@ def test_workstation_complete_closes_in_progress_launch_ack() -> None:
         assert ack_message.status == "completed"
 
 
+def test_human_proxy_agent_dispatch_keeps_audit_origin() -> None:
+    owner_token, project_id, workstation_id = _project_with_workstation("Human Proxy Agent Audit")
+
+    response = client.post(
+        "/api/collaboration/messages",
+        headers=auth_headers(owner_token),
+        json={
+            "project_id": project_id,
+            "message_type": "requirement_dispatch",
+            "title": "Proxy dispatch",
+            "body": "Use the NPC tile to send a teammate request.",
+            "sender_type": "agent",
+            "sender_id": workstation_id,
+            "recipient_type": "thread_workstation",
+            "recipient_id": workstation_id,
+            "status": "queued",
+        },
+    )
+    assert response.status_code == 200, response.text
+    message = response.json()["data"]
+    assert message["sender_type"] == "agent"
+    assert message["sender_id"] == workstation_id
+    assert message["metadata"]["origin"] == "human_proxy"
+    assert message["metadata"]["claimed_sender_agent_id"] == workstation_id
+    assert message["metadata"]["actor_user_id"]
+
+
 def test_workstation_progress_marks_command_in_progress_and_dedupes_receipt() -> None:
     owner_token, project_id, workstation_id = _project_with_workstation("Desktop Progress")
 
