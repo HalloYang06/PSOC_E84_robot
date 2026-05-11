@@ -17,6 +17,7 @@ type WorkbenchClientProps = {
   resourceIndex?: WorkbenchResourceIndex;
   members?: WorkbenchMember[];
   messages?: WorkbenchMessage[];
+  bossPlans?: WorkbenchBossPlan[];
   currentUserId: string;
   currentUserName: string;
   initialOpenSeatIds?: string[];
@@ -72,6 +73,32 @@ type BossPlanTask = {
   body: string;
   skills: string[];
   missing: boolean;
+};
+
+type WorkbenchBossPlanItem = {
+  id: string;
+  role: string;
+  targetSeatId: string;
+  targetName: string;
+  title: string;
+  status: string;
+  dispatchMessageId: string;
+  receiptMessageId: string;
+  skills: string[];
+  knowledgePaths: string[];
+  acceptance: string;
+};
+
+type WorkbenchBossPlan = {
+  id: string;
+  title: string;
+  goal: string;
+  status: string;
+  bossSeatId: string;
+  contractPath: string;
+  createdAt: string;
+  updatedAt: string;
+  items: WorkbenchBossPlanItem[];
 };
 
 function seatApiId(seat?: WorkbenchSeat | null): string {
@@ -162,6 +189,7 @@ export function WorkbenchClient({
   resourceIndex,
   members = [],
   messages = [],
+  bossPlans = [],
   currentUserId,
   currentUserName,
   initialOpenSeatIds = [],
@@ -175,6 +203,7 @@ export function WorkbenchClient({
   const sourcePath = `/projects/${projectId}/${isCompany ? "company" : "workbench"}`;
   const sourceKey = isCompany ? "company" : "workbench";
   const [liveMessages, setLiveMessages] = useState(messages);
+  const latestBossPlan = bossPlans[0] ?? null;
   const [openIds, setOpenIds] = useState<string[]>(initialOpenSeatIds);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState("");
@@ -1144,6 +1173,23 @@ export function WorkbenchClient({
                 </div>
               </div>
               {bossNote ? <small className={styles.bossNote}>{bossNote}</small> : null}
+              {latestBossPlan ? (
+                <section className={styles.bossServerPlan} aria-label="服务端 Boss 分工闭环">
+                  <div>
+                    <strong>最近 Boss Plan</strong>
+                    <small>{latestBossPlan.status || "unknown"} · {latestBossPlan.items.length} 个子任务</small>
+                  </div>
+                  <p>{latestBossPlan.title || latestBossPlan.goal}</p>
+                  {latestBossPlan.contractPath ? <code>{latestBossPlan.contractPath}</code> : null}
+                  <div className={styles.bossServerItems}>
+                    {latestBossPlan.items.slice(0, 4).map((item) => (
+                      <span key={item.id} data-status={item.status}>
+                        {item.role || item.targetName}: {item.status || "planned"}
+                      </span>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
               {bossPlan ? (
                 <div className={styles.bossPlan}>
                   <div className={styles.bossContract}>

@@ -121,29 +121,18 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         {errorText ? <div className={styles.errorBanner}>{errorText}</div> : null}
 
         {mode === "login" ? (
-          <>
-            <form action={loginWorkspace} className={styles.form}>
-              <input type="hidden" name="return_to" value={returnTo} />
-              <input type="hidden" name="email" value="lead@example.com" />
-              <input type="hidden" name="password" value="password" />
-              <button type="submit" className={styles.submitButton} style={{ background: "linear-gradient(135deg,#22c55e,#16a34a)", marginBottom: 12 }}>
-                使用演示账号一键进入（lead@example.com）
-              </button>
-            </form>
-            <p style={{ textAlign: "center", margin: "0 0 14px", color: "#94a3b8", fontSize: 12 }}>或使用自己的账号登录</p>
-            <form action={loginWorkspace} className={styles.form}>
-              <input type="hidden" name="return_to" value={returnTo} />
-              <label className={styles.field}>
-                <span>邮箱</span>
-                <input name="email" type="email" placeholder="name@example.com" required defaultValue="lead@example.com" />
-              </label>
-              <label className={styles.field}>
-                <span>密码</span>
-                <input name="password" type="password" placeholder="输入登录密码" required defaultValue="password" />
-              </label>
-              <button type="submit" className={styles.submitButton}>进入项目空间</button>
-            </form>
-          </>
+          <form action={loginWorkspace} className={styles.form}>
+            <input type="hidden" name="return_to" value={returnTo} />
+            <label className={styles.field}>
+              <span>邮箱</span>
+              <input name="email" type="email" placeholder="name@example.com" required autoComplete="email" />
+            </label>
+            <label className={styles.field}>
+              <span>密码</span>
+              <input name="password" type="password" placeholder="输入登录密码" required autoComplete="current-password" />
+            </label>
+            <button type="submit" className={styles.submitButton}>进入项目空间</button>
+          </form>
         ) : (
           <form action={registerWorkspace} className={styles.form}>
             <input type="hidden" name="return_to" value={returnTo} />

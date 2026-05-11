@@ -551,6 +551,60 @@
   line-height: 1.45;
 }
 
+.bossServerPlan {
+  margin-top: 8px;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(88, 240, 255, 0.2);
+  background: rgba(88, 240, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.bossServerPlan > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: baseline;
+}
+.bossServerPlan strong {
+  color: #dffff0;
+  font-size: 11.5px;
+}
+.bossServerPlan small,
+.bossServerPlan code {
+  color: rgba(190, 220, 240, 0.68);
+  font-size: 10px;
+}
+.bossServerPlan p {
+  margin: 0;
+  color: rgba(220, 240, 255, 0.76);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.bossServerItems {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.bossServerItems span {
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(167, 255, 237, 0.18);
+  background: rgba(167, 255, 237, 0.07);
+  color: rgba(220, 240, 255, 0.74);
+  font-size: 9.5px;
+}
+.bossServerItems span[data-status="in_progress"] {
+  border-color: rgba(88, 240, 255, 0.38);
+  color: #b9fff3;
+}
+.bossServerItems span[data-status="blocked"],
+.bossServerItems span[data-status="failed"] {
+  border-color: rgba(255, 117, 117, 0.32);
+  color: #ffb8b8;
+}
+
 .bossPrimaryBtn {
   min-width: 104px;
   padding: 6px 10px;

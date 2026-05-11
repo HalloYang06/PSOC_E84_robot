@@ -6,6 +6,7 @@ import {
   getCurrentAuthState,
   getCollaborationMessagesState,
   getProjectComputerNodesState,
+  getProjectBossPlansState,
   getProjectMembersState,
   getProjectState,
   getProjectThreadWorkstationAdapterConfigState,
@@ -107,12 +108,14 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
     projectWorkstationsState,
     projectMembersState,
     collaborationMessagesState,
+    bossPlansState,
   ] = await Promise.all([
     getProjectComputerNodesState(params.id),
     getProjectThreadWorkstationsState(params.id),
     getProjectWorkstationsState(params.id),
     getProjectMembersState(params.id),
     getCollaborationMessagesState({ projectId: params.id }),
+    getProjectBossPlansState(params.id, 5),
   ]);
   const liveNodes = asArray<AnyRecord>(computerNodesState.data);
   const liveThreadWorkstations = asArray<AnyRecord>(threadWorkstationsState.data);
@@ -549,6 +552,29 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
         sender_id: text(message.sender_id ?? message.senderId, ""),
         recipient_type: text(message.recipient_type ?? message.recipientType, ""),
         recipient_id: text(message.recipient_id ?? message.recipientId, ""),
+      }))}
+      bossPlans={asArray<AnyRecord>(bossPlansState.data).map((plan, index) => ({
+        id: text(plan.id, `boss-plan-${index + 1}`),
+        title: text(plan.title, ""),
+        goal: text(plan.goal, ""),
+        status: text(plan.status, ""),
+        bossSeatId: text(plan.boss_seat_id ?? plan.bossSeatId, ""),
+        contractPath: text(plan.contract_path ?? plan.contractPath, ""),
+        createdAt: text(plan.created_at ?? plan.createdAt, ""),
+        updatedAt: text(plan.updated_at ?? plan.updatedAt, ""),
+        items: asArray<AnyRecord>(plan.items).map((item, itemIndex) => ({
+          id: text(item.id, `boss-plan-item-${itemIndex + 1}`),
+          role: text(item.role, ""),
+          targetSeatId: text(item.target_seat_id ?? item.targetSeatId, ""),
+          targetName: text(item.target_name ?? item.targetName, ""),
+          title: text(item.title, ""),
+          status: text(item.status, ""),
+          dispatchMessageId: text(item.dispatch_message_id ?? item.dispatchMessageId, ""),
+          receiptMessageId: text(item.receipt_message_id ?? item.receiptMessageId, ""),
+          skills: asArray<string>(item.skills).map((skill) => text(skill, "")).filter(Boolean),
+          knowledgePaths: asArray<string>(item.knowledge_paths ?? item.knowledgePaths).map((path) => text(path, "")).filter(Boolean),
+          acceptance: text(item.acceptance, ""),
+        })),
       }))}
       members={projectMembers.map((member, index) => ({
         id: text(member.user_id ?? member.user?.id ?? member.id, `member-${index + 1}`),

@@ -806,6 +806,16 @@ export async function getSeatSkillAssignmentsState(projectId: string): Promise<A
   }
 }
 
+export async function getProjectBossPlansState(projectId: string, limit = 5): Promise<ApiLoadState<any[]>> {
+  try {
+    const query = new URLSearchParams({ limit: String(Math.max(1, Math.min(limit, 30))) });
+    const data = asArray<any>(await fetchJson<any>(`/api/projects/${projectId}/boss-plans?${query.toString()}`));
+    return okState(Array.isArray(data) ? data : []);
+  } catch (error) {
+    return errorState(error, [], "PROJECT_BOSS_PLANS_UNAVAILABLE");
+  }
+}
+
 export async function getUsersData() {
   try {
     const data = asArray<any>(await fetchJson<any>("/api/auth/users"));
