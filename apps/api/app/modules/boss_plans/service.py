@@ -128,9 +128,30 @@ def sync_boss_plan_status_from_messages(db: Session, plan: BossPlan) -> BossPlan
             )
         )
     }
+    receipts_by_source_id = {
+        str(message.extra_data.get("source_message_id")): message
+        for message in db.scalars(
+            select(CollaborationMessage).where(
+                CollaborationMessage.project_id == plan.project_id,
+                CollaborationMessage.message_type.in_(["agent_result", "requirement_final_reply", "runner_result"]),
+                CollaborationMessage.status.in_(["completed", "done"]),
+            )
+        )
+        if isinstance(message.extra_data, dict)
+        and str(message.extra_data.get("source_message_id") or "") in dispatch_ids
+    }
     changed = False
     for item in plan.items:
         if not item.dispatch_message_id:
+            continue
+        receipt = receipts_by_source_id.get(item.dispatch_message_id)
+        if receipt is not None:
+            if item.status != "completed":
+                item.status = "completed"
+                changed = True
+            if item.receipt_message_id != receipt.id:
+                item.receipt_message_id = receipt.id
+                changed = True
             continue
         message = messages.get(item.dispatch_message_id)
         if message is None:

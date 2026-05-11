@@ -199,3 +199,87 @@ def test_boss_plan_status_follows_dispatch_message_status() -> None:
     assert completed_plan["id"] == plan["id"]
     assert completed_plan["status"] == "completed"
     assert completed_plan["items"][0]["status"] == "completed"
+
+
+def test_boss_plan_item_closes_from_final_receipt_source_message() -> None:
+    owner_token, owner_user_id = issue_session_token(client)
+    project = create_project(
+        client,
+        owner_token,
+        name_prefix="Boss Plan Receipt",
+        collaboration_config={
+            "thread_workstations": [
+                {"id": "boss-seat", "name": "Boss NPC", "status": "active", "ai_provider_id": "codex"},
+                {"id": "frontend-seat", "name": "Frontend NPC", "status": "active", "ai_provider_id": "codex"},
+            ],
+        },
+    )
+    project_id = project["id"]
+    add_project_member(client, project_id, owner_token, owner_user_id, role="owner", is_owner=True)
+
+    dispatch_response = client.post(
+        "/api/collaboration/messages",
+        headers=auth_headers(owner_token),
+        json={
+            "project_id": project_id,
+            "message_type": "requirement_dispatch",
+            "title": "Frontend slice",
+            "body": "Implement frontend slice.",
+            "sender_type": "agent",
+            "sender_id": "boss-seat",
+            "recipient_type": "thread_workstation",
+            "recipient_id": "frontend-seat",
+            "status": "in_progress",
+        },
+    )
+    assert dispatch_response.status_code == 200, dispatch_response.text
+    dispatch_id = dispatch_response.json()["data"]["id"]
+
+    create_response = client.post(
+        f"/api/projects/{project_id}/boss-plans",
+        headers=auth_headers(owner_token),
+        json={
+            "boss_seat_id": "boss-seat",
+            "goal": "Close from final receipt.",
+            "title": "Receipt plan",
+            "status": "in_progress",
+            "items": [
+                {
+                    "role": "Frontend",
+                    "target_seat_id": "frontend-seat",
+                    "title": "Frontend slice",
+                    "body": "Do frontend work.",
+                    "status": "in_progress",
+                    "dispatch_message_id": dispatch_id,
+                }
+            ],
+        },
+    )
+    assert create_response.status_code == 200, create_response.text
+    plan = create_response.json()["data"]
+
+    receipt_response = client.post(
+        "/api/collaboration/messages",
+        headers=auth_headers(owner_token),
+        json={
+            "project_id": project_id,
+            "message_type": "agent_result",
+            "title": "Frontend slice",
+            "body": "Final result.",
+            "sender_type": "agent",
+            "sender_id": "frontend-seat",
+            "recipient_type": "agent",
+            "recipient_id": "boss-seat",
+            "status": "completed",
+            "extra_data": {"source_message_id": dispatch_id},
+        },
+    )
+    assert receipt_response.status_code == 200, receipt_response.text
+    receipt_id = receipt_response.json()["data"]["id"]
+
+    read_response = client.get(f"/api/projects/{project_id}/boss-plans/{plan['id']}", headers=auth_headers(owner_token))
+    assert read_response.status_code == 200, read_response.text
+    closed_plan = read_response.json()["data"]
+    assert closed_plan["status"] == "completed"
+    assert closed_plan["items"][0]["status"] == "completed"
+    assert closed_plan["items"][0]["receipt_message_id"] == receipt_id
