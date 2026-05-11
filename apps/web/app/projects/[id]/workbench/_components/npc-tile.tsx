@@ -168,6 +168,44 @@ function firstUsefulLine(body: string): string {
   return body.split(/\r?\n/).map((s) => s.trim()).find(Boolean) || "";
 }
 
+function finalReceiptPreview(body: string, maxLines = 5): string[] {
+  const lines = stripPlatformChatter(body)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !/^[-*]\s*\[GitHub\]\(/i.test(line));
+  const picked: string[] = [];
+  const conclusion = lines.filter((line) => {
+    const lower = line.toLowerCase();
+    return lower.startsWith("understood") || lower.startsWith("blocked") || lower.startsWith("next");
+  });
+  const changedFiles = lines.filter((line) => {
+    const lower = line.toLowerCase();
+    return (
+      lower.includes("docs/ai-handoffs/")
+      || lower.includes("apps/web/")
+      || lower.includes("apps/api/")
+      || lower.includes("tests/")
+      || lower.includes("commit")
+      || lower.includes("github.com/")
+    );
+  });
+  const validation = lines.filter((line) => {
+    const lower = line.toLowerCase();
+    return lower.startsWith("validated") || lower.includes("pytest") || lower.includes("浏览器") || lower.includes("smoke");
+  });
+  const source = [...conclusion.slice(0, 1), ...changedFiles.slice(0, 3), ...validation.slice(0, 1)];
+  const fallback = source.length ? source : lines;
+  for (const line of fallback) {
+    const compact = line.replace(/\s+/g, " ");
+    if (!compact) continue;
+    if (picked.includes(compact)) continue;
+    picked.push(compact.length > 180 ? `${compact.slice(0, 180)}...` : compact);
+    if (picked.length >= maxLines) break;
+  }
+  return picked;
+}
+
 function messageMetadata(msg: CollabMessage): Record<string, unknown> {
   const meta = msg.metadata && typeof msg.metadata === "object" ? msg.metadata : {};
   const extra = msg.extra_data && typeof msg.extra_data === "object" ? msg.extra_data : {};
@@ -683,12 +721,14 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
           (id) => `${baseWithLimit}&recipient_type=thread_workstation&recipient_id=${encodeURIComponent(id)}`,
         );
         const outgoingUrls = identityIds.map((id) => `${baseWithLimit}&sender_id=${encodeURIComponent(id)}`);
+        const agentUrls = identityIds.map((id) => `${baseWithLimit}&agent_id=${encodeURIComponent(id)}`);
         const scopedProject = encodeURIComponent(projectId);
         const queuesUrl = apiClientUrl(`/api/seats/${encodeURIComponent(seatApiId)}/queues?project_id=${scopedProject}&limit=30`);
         const receiptsUrl = apiClientUrl(`/api/receipts/by-seat/${encodeURIComponent(seatApiId)}?project_id=${scopedProject}&direction=${receiptDirection}&limit=30`);
-        const [incomingResponses, outgoingResponses, r3, r4] = await Promise.all([
+        const [incomingResponses, outgoingResponses, agentResponses, r3, r4] = await Promise.all([
           Promise.all(incomingUrls.map((url) => fetch(url, { credentials: "include" }))),
           Promise.all(outgoingUrls.map((url) => fetch(url, { credentials: "include" }))),
+          Promise.all(agentUrls.map((url) => fetch(url, { credentials: "include" }))),
           fetch(queuesUrl, { credentials: "include" }).catch(() => null),
           fetch(receiptsUrl, { credentials: "include" }).catch(() => null),
         ]);
@@ -700,11 +740,13 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
         }
         const incomingJson = await Promise.all(incomingResponses.map((res) => res.json().catch(() => ({}))));
         const outgoingJson = await Promise.all(outgoingResponses.map((res) => res.ok ? res.json().catch(() => ({})) : Promise.resolve({})));
+        const agentJson = await Promise.all(agentResponses.map((res) => res.ok ? res.json().catch(() => ({})) : Promise.resolve({})));
         const incoming = incomingJson.flatMap((json) => (json?.data ?? []) as CollabMessage[]);
         const outgoing = outgoingJson.flatMap((json) => (json?.data ?? []) as CollabMessage[]);
+        const agentScoped = agentJson.flatMap((json) => (json?.data ?? []) as CollabMessage[]);
         const seen = new Set<string>();
         const merged: CollabMessage[] = [];
-        for (const m of [...incoming, ...outgoing]) {
+        for (const m of [...incoming, ...outgoing, ...agentScoped]) {
           if (!m.id || seen.has(m.id)) continue;
           seen.add(m.id);
           merged.push(m);
@@ -2294,12 +2336,20 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
       {latestFinalReceipt ? (() => {
         const refined = summarizeCollabMessage(latestFinalReceipt);
         const body = refined.cleanBody || refined.rawBody || "";
+        const previewLines = finalReceiptPreview(body);
         return (
           <div className={styles.latestReceipt} data-kind={refined.kind}>
             <div>
               <small>最新最终回执 · {formatTime(latestFinalReceipt.created_at)}</small>
               <strong>{refined.headline}</strong>
               <p>{refined.detail || "目标线程已返回最终结果；完整处理过程仍在绑定桌面线程中。"}</p>
+              {previewLines.length ? (
+                <ul className={styles.latestReceiptPreview} aria-label="最终回执摘要">
+                  {previewLines.map((line, index) => (
+                    <li key={`${latestFinalReceipt.id}-preview-${index}`}>{line}</li>
+                  ))}
+                </ul>
+              ) : null}
             </div>
             {body ? (
               <button
