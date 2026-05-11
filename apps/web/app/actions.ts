@@ -260,14 +260,38 @@ function asArray<T>(value: unknown): T[] {
 
 function normalizeProjectReturnPath(projectId: string, value: unknown, fallbackTab = "skills") {
   const raw = text(value, "");
-  if (raw.startsWith(`/projects/${projectId}`)) return raw;
+  if (raw.startsWith(`/projects/${projectId}`) && isSafeLocalReturnPath(raw)) return raw;
   return `/projects/${projectId}?panel=team&tab=${fallbackTab}`;
 }
 
 function normalizeWorkspaceReturnPath(value: unknown, fallback = "/projects") {
   const raw = text(value, "");
-  if (raw.startsWith("/projects") || raw.startsWith("/members")) return raw;
+  if ((raw.startsWith("/projects") || raw.startsWith("/members")) && isSafeLocalReturnPath(raw)) return raw;
   return fallback;
+}
+
+function normalizeAuthReturnPath(value: unknown, fallback = "/projects") {
+  const raw = text(value, "");
+  if (
+    isSafeLocalReturnPath(raw)
+    && (
+      raw === "/projects"
+      || raw.startsWith("/projects/")
+      || raw.startsWith("/projects?")
+      || raw === "/members"
+      || raw.startsWith("/members?")
+    )
+  ) {
+    return raw;
+  }
+  return fallback;
+}
+
+function isSafeLocalReturnPath(value: string) {
+  if (!value || !value.startsWith("/")) return false;
+  if (value.startsWith("//")) return false;
+  if (/[\\\u0000-\u001f\u007f]/.test(value)) return false;
+  return !/^[a-z][a-z0-9+.-]*:/i.test(value);
 }
 
 function readSeatAutomationEnabled(
@@ -4804,7 +4828,7 @@ export async function 更新工位配置(agentId: string, formData: FormData) {
 export async function 注册用户(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
-  const returnTo = String(formData.get("return_to") ?? "").trim();
+  const returnTo = normalizeAuthReturnPath(formData.get("return_to"));
   let result: any;
   try {
     await postJson("/api/auth/register", {
@@ -4845,7 +4869,7 @@ export async function 注册用户(formData: FormData) {
 
 export async function 登录用户(formData: FormData) {
   let result: any;
-  const returnTo = String(formData.get("return_to") ?? "").trim();
+  const returnTo = normalizeAuthReturnPath(formData.get("return_to"));
   try {
     result = await postJson("/api/auth/session", {
       email: String(formData.get("email") ?? ""),
@@ -4878,7 +4902,7 @@ export async function 登录用户(formData: FormData) {
   }
 
 export async function 退出登录(formData?: FormData) {
-  const returnTo = String(formData?.get("return_to") ?? "").trim();
+  const returnTo = normalizeAuthReturnPath(formData?.get("return_to"), "/login");
   const cookieStore = cookies();
   cookieStore.delete(ACCESS_TOKEN_COOKIE);
   cookieStore.delete(USER_COOKIE);

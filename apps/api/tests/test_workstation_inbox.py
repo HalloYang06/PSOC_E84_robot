@@ -1398,6 +1398,62 @@ def test_cross_workstation_agent_message_routes_to_target_lead_for_review() -> N
     assert "原始目标 NPC: Frontend Worker / frontend-worker" in message["body"]
 
 
+def test_human_message_to_boss_is_not_rewritten_as_npc_cross_route() -> None:
+    """User-to-Boss dialogue must reach Boss even when it mentions other teams.
+
+    Boss is responsible for planning and deciding whether to route work. The
+    platform should not keyword-route a human's planning prompt away from Boss.
+    """
+    owner_token, owner_user_id = issue_session_token(client)
+    project = create_project(
+        client,
+        owner_token,
+        name_prefix="Boss Direct Dialogue",
+        collaboration_config={
+            "thread_workstations": [
+                {
+                    "id": "boss",
+                    "name": "Boss NPC",
+                    "status": "active",
+                    "workstation_id": "planning",
+                    "ai_provider_id": "codex",
+                },
+                {
+                    "id": "backend-lead",
+                    "name": "Backend Lead",
+                    "status": "active",
+                    "workstation_id": "backend",
+                    "ai_provider_id": "codex",
+                },
+            ],
+        },
+    )
+    project_id = project["id"]
+    add_project_member(client, project_id, owner_token, owner_user_id, role="owner", is_owner=True)
+
+    response = client.post(
+        "/api/collaboration/messages",
+        headers=auth_headers(owner_token),
+        json={
+            "project_id": project_id,
+            "message_type": "agent_command",
+            "title": "[用户 → Boss NPC] 对话指令",
+            "body": "请 Boss 制定方案，并给出下一步要分配给 Backend、Frontend、QA 的一句话任务。",
+            "sender_type": "human",
+            "sender_id": owner_user_id,
+            "recipient_type": "thread_workstation",
+            "recipient_id": "boss",
+            "status": "queued",
+        },
+    )
+    assert response.status_code == 200, response.text
+    message = response.json()["data"]
+    assert message["sender_type"] == "human"
+    assert message["recipient_id"] == "boss"
+    assert message["status"] == "queued"
+    assert "[路由]" not in message["body"]
+
+
 def test_npc_pair_review_exemption_can_be_enabled_and_disabled() -> None:
     owner_token, owner_user_id = issue_session_token(client)
     project = create_project(

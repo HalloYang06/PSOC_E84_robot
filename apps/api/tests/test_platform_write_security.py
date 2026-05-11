@@ -5,7 +5,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from app.main import app
-from tests.helpers import add_project_member, auth_headers, create_project, create_task, issue_session_token, register_user
+from tests.helpers import add_project_member, auth_headers, create_project, create_requirement, create_task, issue_session_token, register_user
 from tests.helpers import create_handoff
 
 
@@ -97,6 +97,64 @@ def test_platform_global_write_endpoints_require_explicit_auth() -> None:
     for response in responses:
         assert response.status_code == 401
         assert response.json()["error"]["code"] == "UNAUTHORIZED"
+
+
+def test_receipt_create_requires_project_write_access() -> None:
+    owner_token, owner_user_id = issue_session_token(client)
+    project = create_project(
+        client,
+        owner_token,
+        name_prefix="Receipt Write Security",
+        collaboration_config={
+            "thread_workstations": [
+                {"id": "qa-seat", "name": "QA Seat", "status": "active", "ai_provider_id": "codex"},
+                {"id": "boss-seat", "name": "Boss Seat", "status": "active", "ai_provider_id": "codex"},
+            ],
+        },
+    )
+    project_id = project["id"]
+    add_project_member(client, project_id, owner_token, owner_user_id, role="owner", is_owner=True)
+    requirement = create_requirement(
+        client,
+        owner_token,
+        project_id=project_id,
+        title="Receipt write must be scoped",
+        target_seat_id="qa-seat",
+    )
+
+    viewer_user_id, viewer_email = register_user(
+        client,
+        f"receipt-viewer-{uuid4().hex[:8]}@example.com",
+        "Receipt Viewer",
+    )
+    add_project_member(client, project_id, owner_token, viewer_user_id, role="viewer", is_owner=False)
+    viewer_token, _ = issue_session_token(client, viewer_email)
+
+    response = client.post(
+        "/api/receipts",
+        headers=auth_headers(viewer_token),
+        json={
+            "parent_requirement_id": requirement["id"],
+            "receipt_kind": "progress",
+            "sender_seat_id": "qa-seat",
+            "recipient_seat_id": "boss-seat",
+            "body": "viewer must not forge NPC receipt",
+        },
+    )
+    assert response.status_code == 403
+
+    owner_response = client.post(
+        "/api/receipts",
+        headers=auth_headers(owner_token),
+        json={
+            "parent_requirement_id": requirement["id"],
+            "receipt_kind": "progress",
+            "sender_seat_id": "qa-seat",
+            "recipient_seat_id": "boss-seat",
+            "body": "owner scoped receipt",
+        },
+    )
+    assert owner_response.status_code == 200
 
 
 def test_context_lab_usage_and_audit_writes_require_scoped_auth() -> None:

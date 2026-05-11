@@ -10,6 +10,7 @@ type LoginPageProps = {
     mode?: string;
     error?: string;
     returnTo?: string;
+    next?: string;
   };
 };
 
@@ -30,8 +31,32 @@ const capabilityItems = [
   "人工审核、自动化开关、最终回复池都回到项目内",
 ];
 
+function isSafeLocalReturnPath(value: string) {
+  if (!value || !value.startsWith("/")) return false;
+  if (value.startsWith("//")) return false;
+  if (/[\\\u0000-\u001f\u007f]/.test(value)) return false;
+  return !/^[a-z][a-z0-9+.-]*:/i.test(value);
+}
+
+function normalizeLoginReturnPath(value?: string) {
+  const decoded = value ? decodeURIComponent(value) : "";
+  if (
+    isSafeLocalReturnPath(decoded)
+    && (
+      decoded === "/projects"
+      || decoded.startsWith("/projects/")
+      || decoded.startsWith("/projects?")
+      || decoded === "/members"
+      || decoded.startsWith("/members?")
+    )
+  ) {
+    return decoded;
+  }
+  return "";
+}
+
 export default async function LoginPage({ searchParams }: LoginPageProps) {
-  const returnTo = searchParams?.returnTo ? decodeURIComponent(searchParams.returnTo) : "";
+  const returnTo = normalizeLoginReturnPath(searchParams?.returnTo ?? searchParams?.next);
   const authState = await getCurrentAuthState();
   const hasActiveSession = Boolean(authState.data?.user?.id ?? authState.data?.user?.email);
 

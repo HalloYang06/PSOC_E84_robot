@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
 from app.common.response import ok
+from app.common.access import resolve_project_write_principal
 from app.db.models.requirement import Requirement
 from app.db.session import get_db
 from app.modules.read_access import require_project_read_access
@@ -20,7 +21,7 @@ def api_create_receipt(payload: ReceiptCreate, request: Request, db: Session = D
     requirement = db.get(Requirement, payload.parent_requirement_id)
     project_id = (requirement.project_id if requirement else "") or ""
     if project_id:
-        require_project_read_access(db, request, project_id, action="receipts.write")
+        resolve_project_write_principal(db, request, project_id, require_privileged=True, action="receipts.write")
     return ok(create_receipt(db, payload).model_dump())
 
 

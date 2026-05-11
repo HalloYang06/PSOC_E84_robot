@@ -1178,7 +1178,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
         .replace(/\s+/g, " ")
         .trim();
     const normalized = normalizeForRoute(text);
-    const explicitRouteIntent = /(@|转交给|转给|派给|派单给|分配给|交给|找.{0,16}(处理|复核|实现|验证|接手))/i.test(text);
+    const explicitRouteIntent = /(@|转交给|转给|派给|派单给|交给|找.{0,16}(处理|复核|实现|验证|接手))/i.test(text);
     if (!explicitRouteIntent) return null;
     const candidates = [...crossLeads, ...teammates];
     for (const candidate of candidates) {
