@@ -99,13 +99,14 @@ function localGitState(localPath: string) {
   }
 }
 
-export default async function WorkbenchPage({ params, searchParams }: { params: { id: string }; searchParams?: { embed?: string; seat?: string; team_notice?: string; team_error?: string; return_to?: string; from?: string } }) {
+export default async function WorkbenchPage({ params, searchParams }: { params: { id: string }; searchParams?: { embed?: string; seat?: string; seats?: string; team_notice?: string; team_error?: string; return_to?: string; from?: string } }) {
   const auth = await getCurrentAuthState();
   if (!auth.data?.user) {
     const query = new URLSearchParams();
     if (searchParams?.return_to) query.set("return_to", searchParams.return_to);
     if (searchParams?.from) query.set("from", searchParams.from);
     if (searchParams?.seat) query.set("seat", searchParams.seat);
+    if (searchParams?.seats) query.set("seats", searchParams.seats);
     const suffix = query.toString() ? `?${query.toString()}` : "";
     redirect(`/login?returnTo=${encodeURIComponent(`/projects/${params.id}/workbench${suffix}`)}`);
   }
@@ -523,11 +524,19 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
   const currentUserId = text(me?.id, "");
   const currentUserName = text(me?.name ?? me?.email ?? me?.id, currentUserId || "我");
   const focusSeatParam = text(searchParams?.seat, "");
+  const focusSeatParams = [
+    focusSeatParam,
+    ...text(searchParams?.seats, "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean),
+  ].filter(Boolean);
   const returnToPath = safeProjectReturnPath(params.id, searchParams?.return_to);
-  const focusSeat = focusSeatParam
-    ? seats.find((seat) => identitySet(seat.id, seat.rowId, seat.threadId, seat.name).has(focusSeatParam))
-    : null;
-  const focusSeatId = focusSeat?.id ?? "";
+  const focusSeatIds = focusSeatParams.length
+    ? seats
+        .filter((seat) => focusSeatParams.some((focus) => identitySet(seat.id, seat.rowId, seat.threadId, seat.name).has(focus)))
+        .map((seat) => seat.id)
+    : [];
   const projectGithubUrl = text(project.github_url, "");
   const projectLocalPath = text(project.local_git_url, "");
   const repoLocalState = localGitState(projectLocalPath);
@@ -606,8 +615,8 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
       }))}
       currentUserId={currentUserId}
       currentUserName={currentUserName}
-      initialOpenSeatIds={focusSeatId ? [focusSeatId] : []}
-      initialLaunchPackSeatIds={focusSeatId ? [focusSeatId] : []}
+      initialOpenSeatIds={focusSeatIds}
+      initialLaunchPackSeatIds={focusSeatIds}
       surfaceNotice={text(searchParams?.team_notice, "")}
       surfaceError={text(searchParams?.team_error, "")}
       returnTo={returnToPath}

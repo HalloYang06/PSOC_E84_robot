@@ -115,6 +115,17 @@ function withReturnTo(href: string, returnTo: string, source = "workbench"): str
   return `${path}?${params.toString()}`;
 }
 
+function withOpenSeat(href: string, seatId: string, openIds: string[]): string {
+  const [path, query = ""] = href.split("?");
+  const params = new URLSearchParams(query);
+  const nextIds = openIds.includes(seatId) ? openIds.filter((id) => id !== seatId) : [...openIds, seatId];
+  params.delete("seat");
+  if (nextIds.length) params.set("seats", nextIds.join(","));
+  else params.delete("seats");
+  const nextQuery = params.toString();
+  return nextQuery ? `${path}?${nextQuery}` : path;
+}
+
 function isBossPlanningRole(role: string): boolean {
   const text = role.toLowerCase();
   return text.includes("boss") || text.includes("产品与分工") || text.includes("产品拆解");
@@ -1122,15 +1133,18 @@ export function WorkbenchClient({
                               {seat.automationEnabled ? " · 自动化已开" : ""}
                             </small>
                           </div>
-                          <button
-                            type="button"
+                          <Link
+                            href={withOpenSeat(sourcePath, seat.id, openIds)}
                             className={styles.openBtn}
                             data-workbench-open-tile={seat.id}
-                            onClick={() => (isOpen ? closeOpen(seat.id) : toggleOpen(seat.id))}
+                            onClick={(event) => {
+                              event.preventDefault();
+                              isOpen ? closeOpen(seat.id) : toggleOpen(seat.id);
+                            }}
                             title={isOpen ? "关闭瓷砖" : "打开瓷砖"}
                           >
                             {isOpen ? "✕" : "+"}
-                          </button>
+                          </Link>
                         </li>
                       );
                     })}

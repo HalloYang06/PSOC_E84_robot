@@ -271,10 +271,14 @@
   background: rgba(88, 240, 255, 0.12);
   color: #b9fff3;
   border: 1px solid rgba(88, 240, 255, 0.32);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
   line-height: 1;
+  text-decoration: none;
 }
 .openBtn:hover { background: rgba(88, 240, 255, 0.28); }
 
