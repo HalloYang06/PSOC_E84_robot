@@ -86,6 +86,28 @@ def _post_workstation_progress(
     ).get("data") or {}
 
 
+def _complete_workstation_command(
+    *,
+    base: str,
+    project_id: str,
+    workstation_id: str,
+    message_id: str,
+    headers: dict[str, str],
+    note: str,
+    result_status: str = "completed",
+) -> dict[str, Any]:
+    complete_url = _message_action_url(base, project_id, workstation_id, message_id, "complete")
+    return _json_request(
+        "POST",
+        complete_url,
+        headers=headers,
+        payload={
+            "result_status": result_status,
+            "note": note,
+        },
+    ).get("data") or {}
+
+
 def _json_request(method: str, url: str, *, headers: dict[str, str], payload: dict[str, Any] | None = None) -> dict[str, Any]:
     body = None
     req_headers = dict(headers)
@@ -1798,11 +1820,47 @@ def main() -> int:
         except Exception as exc:
             print(f"[dedupe] 写 {persistent_seen_path} 失败: {exc}", flush=True)
 
+    def sweep_desktop_receipts() -> list[dict[str, Any]]:
+        if executor_template != CODEX_DESKTOP_UI_EXECUTOR or not resolved_session_id:
+            return []
+        sweep_url = f"{_workstation_messages_url(base, args.project_id, args.workstation_id)}/inbox?limit={args.limit}&status=all"
+        payload = _json_request("GET", sweep_url, headers=headers)
+        candidates = payload.get("data") or []
+        receipts: list[dict[str, Any]] = []
+        for command in candidates:
+            if not isinstance(command, dict):
+                continue
+            message_id = str(command.get("id") or "").strip()
+            status = str(command.get("status") or "").strip().lower()
+            if not message_id or status not in {"acked", "in_progress"}:
+                continue
+            desktop_seen = _codex_desktop_prompt_seen(session_id=resolved_session_id, message_id=message_id)
+            if not desktop_seen:
+                continue
+            desktop_reply = _find_codex_desktop_reply(session_id=resolved_session_id, message_id=message_id)
+            final_note = str((desktop_reply or {}).get("text") or "").strip()
+            if not final_note:
+                continue
+            receipts.append(
+                _complete_workstation_command(
+                    base=base,
+                    project_id=args.project_id,
+                    workstation_id=args.workstation_id,
+                    message_id=message_id,
+                    headers=headers,
+                    note=final_note,
+                )
+            )
+            if args.watch:
+                print(f"[桌面回执补偿] 已补回 Desktop final reply：{message_id} 长度={len(final_note)}", flush=True)
+        return receipts
+
     def process_one_round() -> dict[str, Any]:
+        swept_receipts = sweep_desktop_receipts()
         payload = _json_request("GET", inbox_url, headers=headers)
         commands = payload.get("data") or []
         written: list[str] = []
-        receipts: list[dict[str, Any]] = []
+        receipts: list[dict[str, Any]] = list(swept_receipts)
         executions: list[dict[str, Any]] = []
 
         if args.persistent_window:
@@ -1985,18 +2043,16 @@ def main() -> int:
                             flush=True,
                         )
             if final_note and message_id:
-                complete_url = _message_action_url(base, args.project_id, args.workstation_id, message_id, "complete")
                 receipts.append(
-                    _json_request(
-                        "POST",
-                        complete_url,
+                    _complete_workstation_command(
+                        base=base,
+                        project_id=args.project_id,
+                        workstation_id=args.workstation_id,
+                        message_id=message_id,
                         headers=headers,
-                        payload={
-                            "result_status": "failed" if result_failed else "completed",
-                            "note": final_note,
-                        },
-                    ).get("data")
-                    or {}
+                        result_status="failed" if result_failed else "completed",
+                        note=final_note,
+                    )
                 )
                 if args.watch:
                     final_status = "failed" if result_failed else "completed"
