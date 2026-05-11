@@ -586,11 +586,11 @@ const PANEL_ACTIONS: Record<ModuleTab, PanelAction[]> = {
   exchange: [
     {
       id: "dispatch-command",
-      label: "下发协作指令",
-      summary: "指定给某个 NPC/线程发一条任务。",
-      detail: "三级抽屉必须显示目标、需求文档、是否自动化、预期最小回执。",
-      primaryLabel: "打开派单抽屉",
-      safety: "关闭自动化时只做一次最终回复。",
+      label: "协作审计",
+      summary: "查看派单、审核、回执链路，不在主页面直接派单。",
+      detail: "真实 NPC 对话和启动处理只在 workbench 瓷砖里进行；这里负责索引和治理。",
+      primaryLabel: "打开审计抽屉",
+      safety: "只读查看，不触发执行。",
     },
     {
       id: "final-pool",
@@ -3259,69 +3259,35 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
 
     if (moduleTab === "exchange" && action.id === "dispatch-command") {
       return (
-        <div className={styles.realActionStack} data-unity-real-form="exchange-dispatch">
-          <ClaudeCommandPalette />
-          <form action={previewCollaborationMessage} className={styles.drawerForm}>
-            <input type="hidden" name="project_id" value={project.id} />
-            <input type="hidden" name="return_to" value={returnPath("exchange", "dispatch-command")} />
-            <input type="hidden" name="message_type" value="agent_command" />
-            <input type="hidden" name="recipient_type" value="workstation" />
-            <input type="hidden" name="preview_key" value="unity-2d-dispatch" />
-            <article className={styles.realNote}>
-              <b>执行模式跟随目标 NPC 的自动化开关</b>
-              <p>目标 NPC 关闭自动化时，这条指令只执行当前一轮；目标 NPC 开启自动化时，才允许按心跳继续推进。要改模式，请到“AI 调试”。</p>
-            </article>
-            <label>
-              <span>目标 NPC / 线程</span>
-            <select name="recipient_id" defaultValue={focusedNpcSeat?.id ?? firstWorkstation?.id ?? ""} required>
-                <option value="">请选择一个 NPC 或线程</option>
-                {collaborationTargets.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {collaborationTargetLabel(item)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span>标题</span>
-              <input name="title" required placeholder="例如：资料收集：A Agent 商业化入口" />
-            </label>
-            <label>
-              <span>指令正文</span>
-              <textarea name="body" required rows={5} placeholder="先预演，确认是否需要人工审核，再正式发送。" />
-            </label>
-            <SubmitButton label="先预演" disabled={!collaborationTargets.length} />
-          </form>
-          <form action={submitCollaborationMessage} className={styles.drawerForm}>
-            <input type="hidden" name="project_id" value={project.id} />
-            <input type="hidden" name="return_to" value={returnPath("exchange", "dispatch-command")} />
-            <input type="hidden" name="message_type" value="agent_command" />
-            <input type="hidden" name="recipient_type" value="workstation" />
-            <article className={styles.realNote}>
-              <b>正式登记前确认 token 边界</b>
-              <p>下拉框会显示“单次执行”或“自动化开启”。关闭自动化的 NPC 不会自循环，平台只尝试拉起一次执行并等待最终回复。</p>
-            </article>
-            <label>
-              <span>目标 NPC / 线程</span>
-              <select name="recipient_id" defaultValue={focusedNpcSeat?.id ?? firstWorkstation?.id ?? ""} required>
-                <option value="">请选择一个 NPC 或线程</option>
-                {collaborationTargets.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {collaborationTargetLabel(item)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span>标题</span>
-              <input name="title" required placeholder="例如：只读协作验证" />
-            </label>
-            <label>
-              <span>指令正文</span>
-              <textarea name="body" required rows={5} placeholder="默认经过平台治理；涉及硬件/删除/发布会转人工审核。" />
-            </label>
-            <SubmitButton label="正式登记到协作池" disabled={!collaborationTargets.length} />
-          </form>
+        <div className={styles.realActionStack} data-unity-real-form="exchange-audit">
+          <article className={styles.realNote}>
+            <b>协作消息现在只做审计和索引</b>
+            <p>为了不让主页面和 NPC 工作台重复，正式对话、审核、启动真实处理都回到 workbench 的 NPC 瓷砖里完成。</p>
+          </article>
+          <Link
+            href={`/projects/${encodeURIComponent(project.id)}/workbench?return_to=${encodeURIComponent(returnPath("exchange", "dispatch-command"))}`}
+            className={styles.primaryPanelLink}
+          >
+            去 NPC 工作台对话
+          </Link>
+          <div className={styles.layeredList}>
+            {dispatchMessages.length ? (
+              dispatchMessages.slice(0, 10).map((message) => (
+                <article key={message.id} className={styles.layeredItem}>
+                  <span>{message.type || "派单"}</span>
+                  <b>{itemTitle(message)}</b>
+                  <small>{statusLabel(message.status)} / {message.at || "暂无时间"}</small>
+                  <p>{itemBody(message)}</p>
+                </article>
+              ))
+            ) : (
+              <article className={styles.layeredItem}>
+                <span>空状态</span>
+                <b>暂无派单审计</b>
+                <p>去 workbench 给某个 NPC 发消息，平台会把用户指令、NPC 间消息、审核和回执沉淀到这里。</p>
+              </article>
+            )}
+          </div>
         </div>
       );
     }
@@ -4190,11 +4156,11 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             <article className={styles.panelCard}>
               <span>协作汇总</span>
               <strong>{stats.messageCount} 条消息 / 最终回复 {finalReplyCount} 条</strong>
-              <p>协作池不再当日志墙：先看链路状态，再进三级抽屉看派单、最终回复或必读需求。</p>
+              <p>协作池是审计面，不是执行面；NPC 对话、审核按钮和启动处理统一回 workbench。</p>
             </article>
             <article className={styles.panelCard}>
               <span>最新消息</span>
-              {renderList(messages, "暂无协作消息，先向 NPC 或线程派单。")}
+              {renderList(messages, "暂无协作消息。去 workbench 和 NPC 对话后会在这里沉淀审计记录。")}
             </article>
           </div>
           {renderCollaborationFlowBoard()}
