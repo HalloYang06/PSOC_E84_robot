@@ -32,6 +32,7 @@ from app.modules.agents.router import router as agents_router
 from app.modules.approvals.router import router as approvals_router
 from app.modules.auth.router import router as auth_router
 from app.modules.audit.router import router as audit_router
+from app.modules.boss_plans.router import router as boss_plans_router
 from app.modules.collaboration.router import router as collaboration_router
 from app.modules.context.router import router as context_router
 from app.modules.development.router import router as development_router
@@ -265,6 +266,7 @@ app.include_router(knowledge_router)
 app.include_router(messages_router)
 app.include_router(approvals_router)
 app.include_router(audit_router)
+app.include_router(boss_plans_router)
 app.include_router(collaboration_router)
 app.include_router(git_router)
 app.include_router(usage_router)

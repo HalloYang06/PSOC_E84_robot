@@ -1,6 +1,7 @@
 from .agent import Agent
 from .approval import Approval
 from .audit_log import AuditLog
+from .boss_plan import BossPlan, BossPlanItem
 from .collaboration_message import CollaborationMessage
 from .context_health import ContextHealthRecord
 from .handoff import Handoff
@@ -24,6 +25,8 @@ __all__ = [
     "ProjectComputerNode",
     "ProjectThreadWorkstation",
     "ProjectWorkstation",
+    "BossPlan",
+    "BossPlanItem",
     "ProjectKnowledgeDocument",
     "ProjectSkill",
     "SeatSkillAssignment",

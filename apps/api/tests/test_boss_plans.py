@@ -1,0 +1,116 @@
+from __future__ import annotations
+
+from uuid import uuid4
+
+from fastapi.testclient import TestClient
+
+from app.main import app
+from tests.helpers import add_project_member, auth_headers, create_project, issue_session_token, register_user
+
+
+client = TestClient(app)
+
+
+def test_boss_plan_records_items_and_rejects_local_knowledge_paths() -> None:
+    owner_token, owner_user_id = issue_session_token(client)
+    project = create_project(
+        client,
+        owner_token,
+        name_prefix="Boss Plan",
+        collaboration_config={
+            "thread_workstations": [
+                {"id": "boss-seat", "name": "Boss NPC", "status": "active", "ai_provider_id": "codex"},
+                {"id": "backend-seat", "name": "Backend NPC", "status": "active", "ai_provider_id": "codex"},
+            ],
+        },
+    )
+    project_id = project["id"]
+    add_project_member(client, project_id, owner_token, owner_user_id, role="owner", is_owner=True)
+
+    bad_response = client.post(
+        f"/api/projects/{project_id}/boss-plans",
+        headers=auth_headers(owner_token),
+        json={
+            "boss_seat_id": "boss-seat",
+            "goal": "Plan with bad path",
+            "contract_path": r"D:\\english_a_agent\\docs\\contract.md",
+        },
+    )
+    assert bad_response.status_code == 422
+    assert bad_response.json()["error"]["code"] == "BAD_REPO_PATH"
+
+    message_response = client.post(
+        "/api/collaboration/messages",
+        headers=auth_headers(owner_token),
+        json={
+            "project_id": project_id,
+            "message_type": "requirement_dispatch",
+            "title": "Backend slice",
+            "body": "Implement backend slice.",
+            "sender_type": "agent",
+            "sender_id": "boss-seat",
+            "recipient_type": "thread_workstation",
+            "recipient_id": "backend-seat",
+            "status": "queued",
+        },
+    )
+    assert message_response.status_code == 200, message_response.text
+    dispatch_id = message_response.json()["data"]["id"]
+
+    create_response = client.post(
+        f"/api/projects/{project_id}/boss-plans",
+        headers=auth_headers(owner_token),
+        json={
+            "boss_seat_id": "boss-seat",
+            "goal": "Build the first product slice.",
+            "title": "First slice",
+            "status": "dispatched",
+            "contract_path": "docs/ai-handoffs/project-operating-contract.md",
+            "items": [
+                {
+                    "role": "Backend",
+                    "target_seat_id": "backend-seat",
+                    "target_name": "Backend NPC",
+                    "title": "Backend data contract",
+                    "body": "Use repo-relative paths only.",
+                    "status": "queued",
+                    "dispatch_message_id": dispatch_id,
+                    "skills": ["backend-api"],
+                    "knowledge_paths": ["README.md", "docs/mvp/api.md"],
+                    "acceptance": "Return changed / validated / blocked / next.",
+                }
+            ],
+        },
+    )
+    assert create_response.status_code == 200, create_response.text
+    plan = create_response.json()["data"]
+    assert plan["boss_seat_id"]
+    assert plan["status"] == "dispatched"
+    assert plan["items"][0]["target_seat_id"]
+    assert plan["items"][0]["dispatch_message_id"] == dispatch_id
+    assert plan["items"][0]["knowledge_paths"] == ["README.md", "docs/mvp/api.md"]
+
+    member_user_id, member_email = register_user(client, f"boss-plan-member-{uuid4().hex[:8]}@example.com", "Boss Plan Member")
+    member_token, _ = issue_session_token(client, member_email)
+    add_project_member(client, project_id, owner_token, member_user_id, role="member", is_owner=False)
+
+    read_response = client.get(f"/api/projects/{project_id}/boss-plans", headers=auth_headers(member_token))
+    assert read_response.status_code == 200
+    assert read_response.json()["data"][0]["id"] == plan["id"]
+
+    update_response = client.patch(
+        f"/api/projects/{project_id}/boss-plans/{plan['id']}/items/{plan['items'][0]['id']}",
+        headers=auth_headers(member_token),
+        json={"status": "in_progress"},
+    )
+    assert update_response.status_code == 200, update_response.text
+    assert update_response.json()["data"]["status"] == "in_progress"
+
+    outsider_user_id, outsider_email = register_user(
+        client,
+        f"boss-plan-outsider-{uuid4().hex[:8]}@example.com",
+        "Boss Plan Outsider",
+    )
+    outsider_token, _ = issue_session_token(client, outsider_email)
+    outsider_response = client.get(f"/api/projects/{project_id}/boss-plans", headers=auth_headers(outsider_token))
+    assert outsider_response.status_code == 403
