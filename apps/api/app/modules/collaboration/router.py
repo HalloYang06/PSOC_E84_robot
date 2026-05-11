@@ -50,6 +50,7 @@ from .schemas import (
     RunnerRelayCommandCreate,
     RunnerRelayCompleteCreate,
     WorkstationInboxAckCreate,
+    WorkstationInboxProgressCreate,
     WorkstationAdapterConfigRead,
     WorkstationAdapterTokenRead,
     WorkstationInboxCompleteCreate,
@@ -83,6 +84,7 @@ from .service import (
     create_runner_command,
     ack_workstation_command,
     complete_workstation_command,
+    progress_workstation_command,
     get_collaboration_summary,
     get_collaboration_message_or_404,
     get_project_ai_provider,
@@ -1382,6 +1384,32 @@ def api_complete_workstation_message(
                 if result["receipt"] is not None
                 else None
             ),
+        }
+    )
+
+
+@router.post("/projects/{project_id}/thread-workstations/{workstation_id}/messages/{message_id}/progress")
+def api_progress_workstation_message(
+    project_id: str,
+    workstation_id: str,
+    message_id: str,
+    payload: WorkstationInboxProgressCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    _require_workstation_inbox_access(
+        db,
+        request,
+        project_id,
+        workstation_id,
+        write=True,
+        action="collaboration.workstation_inbox.progress",
+    )
+    result = progress_workstation_command(db, project_id, workstation_id, message_id, payload)
+    return ok(
+        {
+            "command": CollaborationMessageRead.model_validate(result["command"]).model_dump(mode="json"),
+            "receipt": CollaborationMessageRead.model_validate(result["receipt"]).model_dump(mode="json"),
         }
     )
 

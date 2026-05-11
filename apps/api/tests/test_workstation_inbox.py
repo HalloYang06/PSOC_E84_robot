@@ -164,6 +164,72 @@ def test_workstation_complete_closes_in_progress_launch_ack() -> None:
         assert ack_message.status == "completed"
 
 
+def test_workstation_progress_marks_command_in_progress_and_dedupes_receipt() -> None:
+    owner_token, project_id, workstation_id = _project_with_workstation("Desktop Progress")
+
+    command_response = client.post(
+        "/api/collaboration/messages",
+        headers=auth_headers(owner_token),
+        json={
+            "project_id": project_id,
+            "message_type": "agent_command",
+            "title": "Desktop visible turn",
+            "body": "Send this to a bound Codex Desktop thread.",
+            "recipient_type": "workstation",
+            "recipient_id": workstation_id,
+            "status": "queued",
+        },
+    )
+    assert command_response.status_code == 200
+    command = command_response.json()["data"]
+
+    ack_response = client.post(
+        f"/api/collaboration/projects/{project_id}/thread-workstations/{workstation_id}/messages/{command['id']}/ack",
+        headers={"X-Workstation-Id": workstation_id},
+        json={"note": "Accepted and delivering to Desktop."},
+    )
+    assert ack_response.status_code == 200
+
+    progress_payload = {
+        "note": "已送进 Codex Desktop，等待最终回复。",
+        "state": "awaiting_desktop_reply",
+        "metadata": {"delivery_mode": "codex_desktop_ui", "desktop_visible": True},
+    }
+    progress_response = client.post(
+        f"/api/collaboration/projects/{project_id}/thread-workstations/{workstation_id}/messages/{command['id']}/progress",
+        headers={"X-Workstation-Id": workstation_id},
+        json=progress_payload,
+    )
+    assert progress_response.status_code == 200
+    progress = progress_response.json()["data"]
+    assert progress["command"]["status"] == "in_progress"
+    assert progress["receipt"]["message_type"] == "agent_progress"
+    assert progress["receipt"]["status"] == "in_progress"
+    assert progress["receipt"]["metadata"]["source_message_id"] == command["id"]
+    assert progress["receipt"]["metadata"]["progress_state"] == "awaiting_desktop_reply"
+    progress_receipt_id = progress["receipt"]["id"]
+
+    second_progress_response = client.post(
+        f"/api/collaboration/projects/{project_id}/thread-workstations/{workstation_id}/messages/{command['id']}/progress",
+        headers={"X-Workstation-Id": workstation_id},
+        json={**progress_payload, "note": "仍在等待 Codex Desktop 最终回复。"},
+    )
+    assert second_progress_response.status_code == 200
+    second_progress = second_progress_response.json()["data"]
+    assert second_progress["receipt"]["id"] == progress_receipt_id
+    assert second_progress["receipt"]["body"] == "仍在等待 Codex Desktop 最终回复。"
+
+    complete_response = client.post(
+        f"/api/collaboration/projects/{project_id}/thread-workstations/{workstation_id}/messages/{command['id']}/complete",
+        headers={"X-Workstation-Id": workstation_id},
+        json={"result_status": "completed", "note": "Desktop final answer synced."},
+    )
+    assert complete_response.status_code == 200
+    completed = complete_response.json()["data"]
+    assert completed["command"]["status"] == "completed"
+    assert completed["receipt"]["message_type"] == "agent_result"
+
+
 def test_list_messages_repairs_stale_launch_ack_after_completed_command() -> None:
     owner_token, project_id, workstation_id = _project_with_workstation("Launch Ack Read Repair")
 

@@ -38,6 +38,7 @@ from .schemas import (
     RunnerRelayCompleteCreate,
     WorkstationInboxAckCreate,
     WorkstationInboxCompleteCreate,
+    WorkstationInboxProgressCreate,
     ProjectInviteAcceptRequest,
     ProjectInviteCreate,
     ProjectInviteUpdate,
@@ -2097,6 +2098,94 @@ def ack_workstation_command(
         recipient_type=message.sender_type if message.sender_type else "project",
         recipient_id=message.sender_id or message.project_id,
         status="delivered",
+        extra_data=receipt_extra,
+    )
+    db.add(receipt)
+    db.commit()
+    db.refresh(message)
+    db.refresh(receipt)
+    return {"command": message, "receipt": receipt}
+
+
+def progress_workstation_command(
+    db: Session,
+    project_id: str,
+    workstation_id: str,
+    message_id: str,
+    payload: WorkstationInboxProgressCreate,
+):
+    workstation, message = _get_workstation_command_or_404(db, project_id, workstation_id, message_id)
+    if message.status not in {"queued", "pending", "acked", "in_progress"}:
+        raise AppError("MESSAGE_NOT_PENDING", "workstation command is already closed", status_code=409)
+    before_status = message.status
+    if message.status != "in_progress":
+        rowcount = db.query(CollaborationMessage).filter(
+            CollaborationMessage.id == message.id,
+            CollaborationMessage.status.in_(["queued", "pending", "acked"]),
+        ).update({"status": "in_progress"}, synchronize_session=False)
+        if rowcount == 0:
+            db.rollback()
+            raise AppError("MESSAGE_ALREADY_CLAIMED", "命令状态已变化，请刷新后重试", status_code=409)
+        db.refresh(message)
+    note = payload.note.strip()
+    progress_state = str(payload.state or "in_progress").strip() or "in_progress"
+    append_audit_log(
+        db,
+        project_id=message.project_id,
+        task_id=message.task_id,
+        actor_type="agent",
+        actor_id=workstation.config_id,
+        action="collaboration.workstation_command.progress",
+        resource_type="collaboration_message",
+        resource_id=message.id,
+        before={"status": before_status},
+        after={"status": message.status, "progress_state": progress_state},
+    )
+    source_extra = dict(message.extra_data or {}) if isinstance(message.extra_data, dict) else {}
+    receipt_extra = {
+        "source_message_id": message.id,
+        "source_message_type": message.message_type,
+        "progress_state": progress_state,
+        **(payload.metadata or {}),
+    }
+    if source_extra.get("source"):
+        receipt_extra["source"] = source_extra.get("source")
+    existing_receipt = db.scalar(
+        select(CollaborationMessage)
+        .where(
+            CollaborationMessage.project_id == message.project_id,
+            CollaborationMessage.message_type == "agent_progress",
+            CollaborationMessage.status == "in_progress",
+            CollaborationMessage.extra_data["source_message_id"].as_string() == message.id,
+            CollaborationMessage.extra_data["progress_state"].as_string() == progress_state,
+        )
+        .order_by(CollaborationMessage.created_at.desc())
+        .limit(1)
+    )
+    if existing_receipt is not None:
+        existing_receipt.body = note
+        existing_receipt.extra_data = {**_metadata_dict(existing_receipt.extra_data), **receipt_extra}
+        db.add(existing_receipt)
+        db.commit()
+        db.refresh(message)
+        db.refresh(existing_receipt)
+        return {"command": message, "receipt": existing_receipt}
+    receipt = CollaborationMessage(
+        project_id=message.project_id,
+        task_id=message.task_id,
+        approval_id=message.approval_id,
+        handoff_id=message.handoff_id,
+        requirement_id=message.requirement_id,
+        dispatch_id=message.dispatch_id,
+        agent_id=workstation.config_id,
+        title=message.title or "Agent progress",
+        body=note,
+        message_type="agent_progress",
+        sender_type="agent",
+        sender_id=workstation.config_id,
+        recipient_type=message.sender_type if message.sender_type else "project",
+        recipient_id=message.sender_id or message.project_id,
+        status="in_progress",
         extra_data=receipt_extra,
     )
     db.add(receipt)

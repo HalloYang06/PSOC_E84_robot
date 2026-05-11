@@ -62,6 +62,30 @@ def _message_action_url(base: str, project_id: str, workstation_id: str, message
     return f"{_workstation_messages_url(base, project_id, workstation_id)}/messages/{encoded_message_id}/{action}"
 
 
+def _post_workstation_progress(
+    *,
+    base: str,
+    project_id: str,
+    workstation_id: str,
+    message_id: str,
+    headers: dict[str, str],
+    note: str,
+    state: str = "in_progress",
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    progress_url = _message_action_url(base, project_id, workstation_id, message_id, "progress")
+    return _json_request(
+        "POST",
+        progress_url,
+        headers=headers,
+        payload={
+            "note": note,
+            "state": state,
+            "metadata": metadata or {},
+        },
+    ).get("data") or {}
+
+
 def _json_request(method: str, url: str, *, headers: dict[str, str], payload: dict[str, Any] | None = None) -> dict[str, Any]:
     body = None
     req_headers = dict(headers)
@@ -1908,6 +1932,32 @@ def main() -> int:
                     # without pretending delivery itself is completion.
                     final_note = ""
                     result_failed = False
+                    progress_note = (
+                        "已把这条派单送进绑定的 Codex Desktop 线程；完整处理过程在桌面版继续。"
+                        "平台正在等待 Desktop session JSONL 写出最终回复。"
+                    )
+                    try:
+                        progress_receipt = _post_workstation_progress(
+                            base=base,
+                            project_id=args.project_id,
+                            workstation_id=args.workstation_id,
+                            message_id=message_id,
+                            headers=headers,
+                            note=progress_note,
+                            state="awaiting_desktop_reply",
+                            metadata={
+                                "delivery_mode": "codex_desktop_ui",
+                                "desktop_visible": True,
+                                "desktop_thread_url": executor_result.get("desktop_thread_url"),
+                                "thread_id": executor_result.get("thread_id"),
+                            },
+                        )
+                        receipts.append(progress_receipt)
+                        if args.watch:
+                            print("[桌面投递] 已向平台写入等待 Desktop 最终回复的进度。", flush=True)
+                    except Exception as exc:
+                        if args.watch:
+                            print(f"[桌面投递] 写入 progress 失败：{exc}", flush=True)
                     desktop_reply = _wait_for_codex_desktop_reply(
                         session_id=resolved_session_id,
                         message_id=message_id,
