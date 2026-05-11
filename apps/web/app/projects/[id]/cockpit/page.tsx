@@ -148,14 +148,14 @@ export default async function ProjectCockpitPage({ params, searchParams }: { par
           <span className={styles.muted} title={text(project.id ?? params.id)}>#{text(project.id ?? params.id).slice(0, 8)}</span>
         </div>
         <div className={styles.topbarRight}>
-          <Link href={`/projects/${params.id}/workbench`} className={styles.primaryBtn}>
-            打开工作台 →
+          <Link href={`/projects/${params.id}/2d-upgrade`} className={styles.primaryBtn}>
+            打开项目主页面 →
           </Link>
           <Link href={`/projects/${params.id}/company`} className={styles.ghostBtn} title="公司层：只看每个工位的工位长（👑），跨工位指派的默认入口">
             🏢 公司层
           </Link>
-          <Link href={`/projects/${params.id}/2d-upgrade`} className={styles.ghostBtn} title="返回项目主页面（2D 开发壳，含右侧所有操作面板）">
-            ← 主页面
+          <Link href={`/projects/${params.id}`} className={styles.ghostBtn} title="返回项目入口壳（可打开驾驶舱、工作台、公司层）">
+            ← 项目入口
           </Link>
         </div>
       </header>
@@ -212,7 +212,7 @@ export default async function ProjectCockpitPage({ params, searchParams }: { par
             <span className={styles.repoVal}>{developBranch || <em className={styles.muted}>未设置</em>}</span>
           </li>
         </ul>
-        <p className={styles.muted}>修改入口在工作台顶部"⚙ 项目设置"（v1.1 添加）。</p>
+        <p className={styles.muted}>修改入口在工作台顶部&quot;⚙ 项目设置&quot;（v1.1 添加）。</p>
       </section>
 
       <section className={styles.section}>
@@ -221,7 +221,7 @@ export default async function ProjectCockpitPage({ params, searchParams }: { par
           <span className={styles.muted}>共 {seatRecords.length} 个 NPC / {seatGroups.size} 个工位</span>
         </div>
         {seatGroups.size === 0 ? (
-          <p className={styles.muted}>还没有 NPC，去工作台 "+" 创建第一个。</p>
+          <p className={styles.muted}>还没有 NPC，去工作台 &quot;+&quot; 创建第一个。</p>
         ) : (
           <div className={styles.workstationGrid}>
             {Array.from(seatGroups.entries()).map(([key, group]) => {

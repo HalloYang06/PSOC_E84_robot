@@ -46,6 +46,20 @@ function searchText(value: unknown) {
   return text(value, "");
 }
 
+function searchParamsQuery(searchParams?: Record<string, string | string[] | undefined>) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(searchParams ?? {})) {
+    if (Array.isArray(value)) {
+      value.forEach((item) => {
+        if (item !== undefined) params.append(key, item);
+      });
+    } else if (value !== undefined) {
+      params.set(key, value);
+    }
+  }
+  return params.toString();
+}
+
 function metadataOf(value: AnyRecord) {
   const metadata = value.metadata;
   return metadata && typeof metadata === "object" && !Array.isArray(metadata) ? (metadata as AnyRecord) : {};
@@ -100,7 +114,8 @@ export default async function Project2dUpgradePage({
   searchParams?: Record<string, string | string[] | undefined>;
 }) {
   const projectState = await getProjectState(params.id);
-  const returnTo = encodeURIComponent(`/projects/${params.id}/2d-upgrade`);
+  const query = searchParamsQuery(searchParams);
+  const returnTo = encodeURIComponent(`/projects/${params.id}/2d-upgrade${query ? `?${query}` : ""}`);
   const apiBaseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8010").trim().replace(/\/$/, "");
 
   if (projectState.status === 401) {
@@ -132,6 +147,7 @@ export default async function Project2dUpgradePage({
       : {};
   const projectSkills = Array.isArray(collaborationConfig.skill_library) ? (collaborationConfig.skill_library as AnyRecord[]) : [];
   const inheritedSkillsByNode = new Map<string, string[]>();
+  const inheritedSkillsByWorkstation = new Map<string, string[]>();
   const workstationProfiles =
     collaborationConfig.workstation_profiles && typeof collaborationConfig.workstation_profiles === "object"
       ? (collaborationConfig.workstation_profiles as AnyRecord)
@@ -140,6 +156,7 @@ export default async function Project2dUpgradePage({
     if (profile && typeof profile === "object") {
       const inh = stringArray((profile as AnyRecord).skill_inheritance ?? (profile as AnyRecord).skillInheritance);
       if (inh.length) inheritedSkillsByNode.set(String(nodeId), inh);
+      if (inh.length) inheritedSkillsByWorkstation.set(String(nodeId), inh);
     }
   }
   const tasks = Array.isArray(taskState.data) ? taskState.data : [];
@@ -157,24 +174,36 @@ export default async function Project2dUpgradePage({
   const workshopStationRows = normalizeDevelopmentWorkshopStations(collaborationConfig.development_workshop_stations);
   const activeTasks = tasks.filter((task) => !isDoneStatus(task.status));
   const blockedTasks = tasks.filter((task) => isBlockedStatus(task.status));
-  const onlineNodes = nodes.filter((node) => isOnlineStatus(node.status));
+  const onlineNodes = nodes.filter((node) => isOnlineStatus(node.runner_effective_status ?? node.runner_status ?? node.status));
   const npcSeatRows = workstations.filter(isNpcSeat);
   const sourceWorkstations = workstations.filter((workstation) => !isNpcSeat(workstation));
   const selectableWorkstations = sourceWorkstations.length ? sourceWorkstations : workstations;
-  const recentMessages = messages
+  const sortedMessages = messages
     .slice()
     .sort((a, b) => {
       const bt = new Date(String(b.created_at ?? b.updated_at ?? 0)).getTime();
       const at = new Date(String(a.created_at ?? a.updated_at ?? 0)).getTime();
       return bt - at;
-    })
-    .slice(0, 8)
+    });
+  const recentAndGitMessages = [
+    ...sortedMessages.slice(0, 8),
+    ...sortedMessages.filter((message) => /git|回退|rollback|对齐/i.test(`${message.message_type ?? message.type ?? ""} ${message.title ?? ""} ${message.body ?? message.content ?? message.summary ?? ""}`)),
+  ].filter((message, index, list) => {
+    const id = text(message.id ?? message.message_id, "");
+    return !id || list.findIndex((candidate) => text(candidate.id ?? candidate.message_id, "") === id) === index;
+  });
+  const recentMessages = recentAndGitMessages
+    .slice(0, 40)
     .map((message, index) => ({
       id: text(message.id ?? message.message_id, `message-${index + 1}`),
+      title: text(message.title ?? message.subject, ""),
       type: text(message.message_type ?? message.type, "协作消息"),
       body: text(message.content ?? message.body ?? message.summary, "平台收到一条协作动态，等待线程回执。"),
       status: text(message.status, "new"),
       at: text(message.created_at ?? message.updated_at, ""),
+      providerId: text(message.sender_id ?? message.senderId, ""),
+      sourceWorkstationId: text(message.recipient_id ?? message.recipientId, ""),
+      knowledgeSummary: JSON.stringify(message.extra_data ?? message.metadata ?? {}),
     }));
 
   return (
@@ -184,6 +213,11 @@ export default async function Project2dUpgradePage({
         name: text(project.name ?? project.project_name, `项目 ${params.id.slice(0, 8)}`),
         description: text(project.description, "小A工作室 2D 开发者模式升级入口，聚合项目、NPC、电脑、线程与协作回执。"),
         type: text(project.project_type, "software"),
+        collaboration_config: collaborationConfig,
+        github_url: text(project.github_url, ""),
+        local_git_url: text(project.local_git_url, ""),
+        default_branch: text(project.default_branch, "main"),
+        develop_branch: text(project.develop_branch, "develop"),
       }}
       apiBaseUrl={apiBaseUrl}
       currentUser={{
@@ -204,6 +238,8 @@ export default async function Project2dUpgradePage({
         id: text(task.id ?? task.task_id, `task-${index + 1}`),
         title: text(task.title ?? task.name, `开发任务 ${index + 1}`),
         status: text(task.status, "todo"),
+        body: text(task.description ?? task.summary, ""),
+        providerId: text(task.branch ?? task.git_branch, ""),
       }))}
       requirements={requirements.slice(0, 8).map((requirement, index) => ({
         id: text(requirement.id ?? requirement.requirement_id, `requirement-${index + 1}`),
@@ -222,12 +258,19 @@ export default async function Project2dUpgradePage({
             ? `心跳 ${node.runner_heartbeat_age_seconds}s 前`
             : "",
           text(node.runner_watch_detail, ""),
+          text(node.desktop_bridge_label, ""),
           text(node.host, ""),
           text(node.os, ""),
           text(node.workspace_root ?? node.git_root, ""),
         ].filter(Boolean).join(" / "),
         at: text(node.runner_last_heartbeat_at, ""),
         providerId: text(node.runner_id, ""),
+        threadScanCount: numberValue(node.thread_scan_count ?? node.threadScanCount, 0),
+        desktopProcessDetected: booleanValue(node.desktop_process_detected ?? node.desktopProcessDetected, false),
+        desktopBridgeConnected: booleanValue(node.desktop_bridge_connected ?? node.desktopBridgeConnected, false),
+        desktopDeliveryMode: text(node.desktop_delivery_mode ?? node.desktopDeliveryMode, ""),
+        desktopBridgeLabel: text(node.desktop_bridge_label ?? node.desktopBridgeLabel, ""),
+        desktopBridgeNote: text(node.desktop_bridge_note ?? node.desktopBridgeNote, ""),
       }))}
       projectWorkstations={projectWorkstations.map((ws) => ({
         id: String(ws.id ?? ""),
@@ -268,6 +311,7 @@ export default async function Project2dUpgradePage({
         const workstationName = workstationId ? projectWorkstationNameById.get(workstationId) ?? "" : "";
         return {
           id: text(workstation.id ?? workstation.workstation_id ?? workstation.thread_id, `npc-${index + 1}`),
+          rowId: text(workstation.row_id ?? workstation.rowId, ""),
           name: text(workstation.name ?? workstation.workstation_name ?? workstation.thread_name, `NPC ${index + 1}`),
           type: text(workstation.seat_type ?? metadata.seat_type ?? providerId, "npc"),
           status: text(workstation.status, "idle"),
@@ -290,7 +334,12 @@ export default async function Project2dUpgradePage({
           skillLoadout: stringArray(workstation.skill_loadout ?? metadata.skill_loadout),
           inheritedSkills: (() => {
             const node = text(workstation.computer_node_id ?? metadata.computer_node_id, "");
-            return node ? (inheritedSkillsByNode.get(node) ?? []) : [];
+            const logicalWorkstation = text(workstation.workstation_id ?? metadata.workstation_id, "");
+            return logicalWorkstation
+              ? (inheritedSkillsByWorkstation.get(logicalWorkstation) ?? [])
+              : node
+                ? (inheritedSkillsByNode.get(node) ?? [])
+                : [];
           })(),
           knowledgeSummary: text(npcKnowledge.summary ?? metadata.knowledge_summary, ""),
           knowledgeHandoffPath: text(npcKnowledge.handoff_path ?? metadata.knowledge_handoff_path, ""),
@@ -318,12 +367,12 @@ export default async function Project2dUpgradePage({
         knowledgeHandoffPath: station.knowledgeBase.handoffPath,
         knowledgeTags: station.knowledgeBase.tags,
       }))}
-      skills={projectSkills.slice(0, 24).map((skill, index) => ({
+      skills={projectSkills.map((skill, index) => ({
         id: text(skill.id ?? skill.skill_id ?? skill.slug, `skill-${index + 1}`),
         name: text(skill.name ?? skill.title ?? skill.label, `Skill ${index + 1}`),
         type: text(skill.category ?? skill.source ?? skill.type, "项目 Skill"),
         status: text(skill.status, "available"),
-        body: text(skill.description ?? skill.summary ?? skill.instructions, ""),
+        body: text(skill.note ?? skill.description ?? skill.summary ?? skill.instructions, ""),
       }))}
       teamNotice={searchText(searchParams?.team_notice)}
       teamError={searchText(searchParams?.team_error)}

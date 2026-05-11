@@ -1,11 +1,19 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import {
   getCurrentAuthState,
+  getCollaborationMessagesState,
   getProjectComputerNodesState,
+  getProjectMembersState,
   getProjectState,
+  getProjectThreadWorkstationAdapterConfigState,
+  getProjectThreadWorkstationsState,
   getProjectWorkstationsState,
 } from "../../../../lib/server-data";
+import { normalizeDevelopmentWorkshopStations } from "../../../../lib/development-workshop";
+import { DEFAULT_PLATFORM_SKILL_LIBRARY } from "../../../../lib/platform-skills";
 import { isNpcSeatRecord, platformProviderIdFromSeat } from "../../../../lib/platform-provider";
 import { WorkbenchClient } from "./workbench-client";
 
@@ -23,7 +31,60 @@ function text(value: unknown, fallback = "") {
   return next || fallback;
 }
 
-export default async function WorkbenchPage({ params, searchParams }: { params: { id: string }; searchParams?: { embed?: string } }) {
+function record(value: unknown): AnyRecord {
+  return value && typeof value === "object" ? (value as AnyRecord) : {};
+}
+
+function firstText(...values: unknown[]) {
+  for (const value of values) {
+    const next = text(value, "");
+    if (next) return next;
+  }
+  return "";
+}
+
+function deriveThreadKind(providerId: string, threadId: string) {
+  const raw = `${providerId} ${threadId}`.toLowerCase();
+  if (raw.includes("claude")) return "Claude Code";
+  if (raw.includes("codex")) return "Codex";
+  return providerId || "thread";
+}
+
+function codexDesktopThreadUrl(providerId: string, threadId: string) {
+  const normalizedProvider = `${providerId} ${threadId}`.toLowerCase();
+  if (!normalizedProvider.includes("codex")) return "";
+  const raw = threadId.trim().replace(/^codex-session-/i, "");
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw)) return "";
+  return `codex://threads/${raw.toLowerCase()}`;
+}
+
+function localGitState(localPath: string) {
+  const normalized = text(localPath, "");
+  if (!normalized) {
+    return { checked: false, exists: false, isGit: false, message: "" };
+  }
+  if (/^https?:\/\//i.test(normalized) || /^git@/i.test(normalized)) {
+    return { checked: false, exists: false, isGit: false, message: "本地路径不是当前电脑目录，仅作为远程/说明。" };
+  }
+  try {
+    const exists = existsSync(normalized);
+    const isGit = exists && existsSync(join(normalized, ".git"));
+    return {
+      checked: true,
+      exists,
+      isGit,
+      message: !exists
+        ? "当前电脑找不到这个本地路径。"
+        : isGit
+          ? "当前电脑本地 Git 仓库可用。"
+          : "当前电脑这个目录不是 Git 仓库。",
+    };
+  } catch {
+    return { checked: true, exists: false, isGit: false, message: "当前电脑无法读取这个本地路径。" };
+  }
+}
+
+export default async function WorkbenchPage({ params, searchParams }: { params: { id: string }; searchParams?: { embed?: string; seat?: string; team_notice?: string; team_error?: string } }) {
   const auth = await getCurrentAuthState();
   if (!auth.data?.user) {
     redirect(`/login?next=/projects/${params.id}/workbench`);
@@ -40,17 +101,68 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
     );
   }
 
-  const computerNodesState = await getProjectComputerNodesState(params.id);
-  const projectWorkstationsState = await getProjectWorkstationsState(params.id);
+  const [
+    computerNodesState,
+    threadWorkstationsState,
+    projectWorkstationsState,
+    projectMembersState,
+    collaborationMessagesState,
+  ] = await Promise.all([
+    getProjectComputerNodesState(params.id),
+    getProjectThreadWorkstationsState(params.id),
+    getProjectWorkstationsState(params.id),
+    getProjectMembersState(params.id),
+    getCollaborationMessagesState({ projectId: params.id }),
+  ]);
   const liveNodes = asArray<AnyRecord>(computerNodesState.data);
+  const liveThreadWorkstations = asArray<AnyRecord>(threadWorkstationsState.data);
   const projectWorkstations = asArray<AnyRecord>(projectWorkstationsState.data);
+  const projectMembers = asArray<AnyRecord>(projectMembersState.data);
 
   const config = (project.collaboration_config ?? {}) as AnyRecord;
   const rawWorkstations = asArray<AnyRecord>(
     config.thread_workstations ?? config.threadWorkstations ?? config.workstations,
   );
-  const seatRecords = rawWorkstations.filter((item) => isNpcSeatRecord(item));
+  const seatRecords = (liveThreadWorkstations.length ? liveThreadWorkstations : rawWorkstations).filter((item) => isNpcSeatRecord(item));
+  const adapterConfigs = await Promise.all(
+    seatRecords.map(async (seat, index) => {
+      const id = text(seat.row_id ?? seat.rowId ?? seat.id ?? seat.config_id, `seat-${index}`);
+      if (!id) return null;
+      const state = await getProjectThreadWorkstationAdapterConfigState(params.id, id);
+      return state.data ? { id, data: state.data } : null;
+    }),
+  );
+  const adapterConfigBySeatId = new Map<string, AnyRecord>();
+  for (const item of adapterConfigs) {
+    if (item?.id && item.data) adapterConfigBySeatId.set(item.id, item.data);
+  }
+  const threadRecordById = new Map<string, AnyRecord>();
+  for (const seat of liveThreadWorkstations) {
+    const keys = [
+      seat.id,
+      seat.config_id,
+      seat.row_id,
+      seat.rowId,
+      seat.thread_id,
+      seat.threadId,
+      seat.source_workstation_id,
+      seat.sourceWorkstationId,
+    ].map((value) => text(value, "")).filter(Boolean);
+    for (const key of keys) threadRecordById.set(key, seat);
+  }
   const configNodes = asArray<AnyRecord>(config.computer_nodes ?? config.nodes);
+  const skillLibrary = [
+    ...DEFAULT_PLATFORM_SKILL_LIBRARY,
+    ...asArray<AnyRecord>(config.skill_library ?? config.skillLibrary),
+  ].filter((item, index, list) => {
+    const recordItem = item as AnyRecord;
+    const id = text(recordItem.id ?? recordItem.skill_id ?? recordItem.slug, "");
+    return id && list.findIndex((candidate) => {
+      const candidateRecord = candidate as AnyRecord;
+      return text(candidateRecord.id ?? candidateRecord.skill_id ?? candidateRecord.slug, "") === id;
+    }) === index;
+  });
+  const workshopStations = normalizeDevelopmentWorkshopStations(config.development_workshop_stations);
   const workstationProfiles = (config.workstation_profiles && typeof config.workstation_profiles === "object")
     ? (config.workstation_profiles as AnyRecord)
     : {};
@@ -65,16 +177,37 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
 
   const workstationNameById = new Map<string, string>();
   const leadByWorkstation = new Map<string, string>();
+  const workstationByLeadIdentity = new Map<string, string>();
+  const knowledgePathByWorkstation = new Map<string, string>();
   for (const ws of projectWorkstations) {
     const wsId = text(ws?.id, "");
     if (!wsId) continue;
     workstationNameById.set(wsId, text(ws?.name, wsId));
     const lead = text(ws?.lead_seat_id ?? ws?.leadSeatId, "");
-    if (lead) leadByWorkstation.set(wsId, lead);
+    if (lead) {
+      leadByWorkstation.set(wsId, lead);
+      workstationByLeadIdentity.set(lead, wsId);
+    }
+    const extra = record(ws?.extra_data ?? ws?.extraData);
+    const knowledgePath = text(
+      ws?.knowledge_path ??
+        ws?.knowledgePath ??
+        extra.knowledge_path ??
+        extra.knowledgePath,
+      "",
+    );
+    if (knowledgePath) {
+      knowledgePathByWorkstation.set(wsId, knowledgePath.replace(/\\/g, "/").replace(/^\/+/, ""));
+    }
+  }
+
+  function identitySet(...values: unknown[]) {
+    return new Set(values.map((value) => text(value, "")).filter(Boolean));
   }
 
   const leadByNode = new Map<string, string>();
   const inheritedSkillsByNode = new Map<string, string[]>();
+  const inheritedSkillsByWorkstation = new Map<string, string[]>();
   const knowledgePathByNode = new Map<string, string>();
   for (const [nodeId, profile] of Object.entries(workstationProfiles)) {
     if (profile && typeof profile === "object") {
@@ -85,29 +218,233 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
         .map((s) => String(s).trim())
         .filter(Boolean);
       if (inh.length) inheritedSkillsByNode.set(String(nodeId), inh);
+      if (inh.length) inheritedSkillsByWorkstation.set(String(nodeId), inh);
       const kp = text(p.knowledge_path ?? p.knowledgePath, "");
       if (kp) knowledgePathByNode.set(String(nodeId), kp);
+      if (kp) knowledgePathByWorkstation.set(String(nodeId), kp.replace(/\\/g, "/").replace(/^\/+/, ""));
     }
   }
 
   const seats = seatRecords.map((seat, index) => {
     const id = text(seat.id ?? seat.config_id ?? seat.row_id, `seat-${index}`);
+    const rowId = text(seat.row_id ?? seat.rowId, "");
     const name = text(seat.name ?? seat.title, `NPC ${index + 1}`);
-    const workstationId = text(seat.workstation_id ?? seat.workstationId, "");
+    const ownIdentities = identitySet(seat.id, seat.row_id, seat.rowId, seat.config_id, seat.name, seat.thread_id, seat.threadId);
+    const leadWorkstationId = Array.from(ownIdentities)
+      .map((identity) => workstationByLeadIdentity.get(identity))
+      .find((value): value is string => !!value);
+    const workstationId = text(seat.workstation_id ?? seat.workstationId, "") || leadWorkstationId || "";
     const computerNodeId = text(seat.computer_node_id ?? seat.computerNodeId, "");
     const providerId = platformProviderIdFromSeat(seat) || text(seat.provider_id ?? seat.providerId, "");
     const providerLabel = text(seat.provider_label ?? seat.providerLabel ?? providerId, providerId);
     const responsibility = text(seat.responsibility ?? seat.body, "待分配职责");
     const skillLoadout = asArray<string>(seat.skill_loadout ?? seat.skillLoadout).map((s) => String(s)).filter(Boolean);
-    const inheritedSkills = computerNodeId ? (inheritedSkillsByNode.get(computerNodeId) ?? []) : [];
-    const workstationKnowledgePath = computerNodeId
-      ? (knowledgePathByNode.get(computerNodeId) ?? `docs/workstations/${computerNodeId}.md`)
-      : "";
+    const inheritedSkills = workstationId
+      ? (inheritedSkillsByWorkstation.get(workstationId) ?? [])
+      : computerNodeId
+        ? (inheritedSkillsByNode.get(computerNodeId) ?? [])
+        : [];
+    const workstationKnowledgePath = workstationId
+      ? (knowledgePathByWorkstation.get(workstationId) ?? `docs/workstations/${workstationId}.md`)
+      : computerNodeId
+        ? (knowledgePathByNode.get(computerNodeId) ?? `docs/workstations/${computerNodeId}.md`)
+        : "";
     const knowledgeSummary = text(seat.knowledge_summary ?? seat.knowledgeSummary, "");
-    const automationEnabled = Boolean(seat.automation_enabled ?? seat.automationEnabled ?? false);
     const model = text(seat.model, "");
     const permissionLevel = text(seat.permission_level ?? seat.permissionLevel, "");
-    const meta = (seat.metadata && typeof seat.metadata === "object") ? (seat.metadata as AnyRecord) : {};
+    const meta = record(seat.metadata);
+    const extra = record(seat.extra_data ?? seat.extraData);
+    const adapterConfig = adapterConfigBySeatId.get(rowId || id) ?? adapterConfigBySeatId.get(id) ?? {};
+    const automationEnabled = Boolean(
+      seat.automation_enabled
+      ?? seat.automationEnabled
+      ?? meta.automation_enabled
+      ?? meta.automationEnabled
+      ?? extra.automation_enabled
+      ?? extra.automationEnabled
+      ?? false,
+    );
+    const adapter = { ...record(meta.adapter ?? extra.adapter), ...adapterConfig };
+    const threadId = firstText(
+      seat.target_thread_id,
+      seat.targetThreadId,
+      seat.session_id,
+      seat.sessionId,
+      seat.thread_id,
+      seat.threadId,
+      seat.source_workstation_id,
+      seat.sourceWorkstationId,
+      meta.target_thread_id,
+      meta.targetThreadId,
+      meta.session_id,
+      meta.sessionId,
+      meta.claude_session_id,
+      meta.codex_thread_id,
+      meta.thread_id,
+      meta.threadId,
+      meta.source_thread_id,
+      meta.bound_thread_id,
+      meta.source_workstation_id,
+      extra.target_thread_id,
+      extra.session_id,
+      extra.thread_id,
+      extra.source_thread_id,
+      extra.bound_thread_id,
+      extra.source_workstation_id,
+    );
+    const boundThreadRecord = threadRecordById.get(threadId) ?? threadRecordById.get(`codex-session-${threadId}`);
+    const boundThreadMeta = record(boundThreadRecord?.metadata);
+    const boundThreadExtra = record(boundThreadRecord?.extra_data ?? boundThreadRecord?.extraData);
+    const boundThreadAdapter = record(boundThreadMeta.adapter ?? boundThreadExtra.adapter);
+    const threadKind = firstText(seat.thread_kind, seat.threadKind, meta.thread_kind, meta.threadKind, adapter.kind, deriveThreadKind(providerId, threadId));
+    const desktopDeliveryMode = firstText(
+      meta.desktop_delivery_mode,
+      meta.desktopDeliveryMode,
+      adapter.desktop_delivery_mode,
+      adapter.desktopDeliveryMode,
+      boundThreadMeta.desktop_delivery_mode,
+      boundThreadMeta.desktopDeliveryMode,
+      boundThreadAdapter.desktop_delivery_mode,
+      boundThreadAdapter.desktopDeliveryMode,
+      "",
+    );
+    const deliveryMode = firstText(
+      meta.delivery_mode,
+      meta.deliveryMode,
+      adapter.delivery_mode,
+      adapter.deliveryMode,
+      boundThreadMeta.delivery_mode,
+      boundThreadMeta.deliveryMode,
+      boundThreadAdapter.delivery_mode,
+      boundThreadAdapter.deliveryMode,
+      desktopDeliveryMode,
+      threadId && providerId.toLowerCase().includes("codex") ? "codex_app_server" : "",
+    );
+    const deliveryLabel = firstText(
+      meta.delivery_label,
+      meta.deliveryLabel,
+      adapter.delivery_label,
+      adapter.deliveryLabel,
+      boundThreadMeta.delivery_label,
+      boundThreadMeta.deliveryLabel,
+      boundThreadAdapter.delivery_label,
+      boundThreadAdapter.deliveryLabel,
+      boundThreadMeta.desktop_bridge_label,
+      boundThreadMeta.desktopBridgeLabel,
+      desktopDeliveryMode === "codex_desktop_ui" ? "Codex Desktop UI 投递" : "",
+      deliveryMode === "codex_app_server" ? "Codex session append (not Desktop live)" : "",
+    );
+    const desktopProcessDetected = Boolean(
+      meta.desktop_process_detected
+      ?? meta.desktopProcessDetected
+      ?? meta.codex_desktop_process_detected
+      ?? adapter.desktop_process_detected
+      ?? adapter.desktopProcessDetected
+      ?? boundThreadMeta.desktop_process_detected
+      ?? boundThreadMeta.desktopProcessDetected
+      ?? boundThreadMeta.codex_desktop_process_detected
+      ?? boundThreadAdapter.desktop_process_detected
+      ?? boundThreadAdapter.desktopProcessDetected
+      ?? false,
+    );
+    const desktopBridgeConnected = Boolean(
+      meta.desktop_bridge_connected
+      ?? meta.desktopBridgeConnected
+      ?? meta.codex_desktop_bridge_connected
+      ?? adapter.desktop_bridge_connected
+      ?? adapter.desktopBridgeConnected
+      ?? boundThreadMeta.desktop_bridge_connected
+      ?? boundThreadMeta.desktopBridgeConnected
+      ?? boundThreadMeta.codex_desktop_bridge_connected
+      ?? boundThreadAdapter.desktop_bridge_connected
+      ?? boundThreadAdapter.desktopBridgeConnected
+      ?? false,
+    );
+    const desktopVisible = Boolean(
+      meta.desktop_visible
+      ?? meta.desktopVisible
+      ?? adapter.desktop_visible
+      ?? adapter.desktopVisible
+      ?? boundThreadMeta.desktop_visible
+      ?? boundThreadMeta.desktopVisible
+      ?? boundThreadAdapter.desktop_visible
+      ?? boundThreadAdapter.desktopVisible
+      ?? (desktopBridgeConnected && desktopDeliveryMode === "codex_desktop_ui")
+      ?? false,
+    );
+    const desktopBridgeLabel = firstText(
+      meta.desktop_bridge_label,
+      meta.desktopBridgeLabel,
+      adapter.desktop_bridge_label,
+      adapter.desktopBridgeLabel,
+      boundThreadMeta.desktop_bridge_label,
+      boundThreadMeta.desktopBridgeLabel,
+      boundThreadAdapter.desktop_bridge_label,
+      boundThreadAdapter.desktopBridgeLabel,
+      "",
+    );
+    const desktopBridgeNote = firstText(
+      meta.desktop_bridge_note,
+      meta.desktopBridgeNote,
+      meta.codex_desktop_bridge_note,
+      adapter.desktop_bridge_note,
+      adapter.desktopBridgeNote,
+      boundThreadMeta.desktop_bridge_note,
+      boundThreadMeta.desktopBridgeNote,
+      boundThreadMeta.codex_desktop_bridge_note,
+      boundThreadAdapter.desktop_bridge_note,
+      boundThreadAdapter.desktopBridgeNote,
+      "",
+    );
+    const desktopThreadUrl = firstText(
+      meta.desktop_thread_url,
+      meta.desktopThreadUrl,
+      adapter.desktop_thread_url,
+      adapter.desktopThreadUrl,
+      boundThreadMeta.desktop_thread_url,
+      boundThreadMeta.desktopThreadUrl,
+      boundThreadAdapter.desktop_thread_url,
+      boundThreadAdapter.desktopThreadUrl,
+      codexDesktopThreadUrl(providerId, threadId),
+    );
+    const executorCwd = firstText(
+      adapter.executor_cwd,
+      adapter.executorCwd,
+      meta.executor_cwd,
+      meta.executorCwd,
+      extra.cwd,
+      extra.git_root,
+      extra.workspace_root,
+    );
+    const deliveryWarning = firstText(
+      meta.delivery_warning,
+      meta.deliveryWarning,
+      adapter.delivery_warning,
+      adapter.deliveryWarning,
+      boundThreadMeta.delivery_warning,
+      boundThreadMeta.deliveryWarning,
+      boundThreadAdapter.delivery_warning,
+      boundThreadAdapter.deliveryWarning,
+      desktopDeliveryMode === "codex_desktop_ui"
+        ? "通过该电脑交互式桌面打开绑定 Codex 线程，并把派单作为普通用户消息发送；完整处理过程会显示在 Codex Desktop。"
+        : "",
+      deliveryMode === "codex_app_server"
+        ? "通过独立 Codex app-server 写入并执行绑定 session；这不是当前已打开 Codex Desktop 窗口的实时输入通道。"
+        : "",
+    );
+    const threadHealth = firstText(
+      seat.bridge_health_label,
+      seat.bridgeHealthLabel,
+      seat.thread_health,
+      seat.threadHealth,
+      meta.bridge_health_label,
+      meta.bridgeHealthLabel,
+      meta.thread_health,
+      meta.threadHealth,
+      adapter.health,
+      adapter.status,
+      automationEnabled ? "watcher ready" : "待接入",
+    );
     const gitUserName = text(meta.git_user_name ?? meta.gitUserName, name);
     const gitUserEmail = text(
       meta.git_user_email ?? meta.gitUserEmail,
@@ -117,9 +454,11 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
     const leadSeatId = workstationId
       ? (leadByWorkstation.get(workstationId) ?? "")
       : (computerNodeId ? (leadByNode.get(computerNodeId) ?? "") : "");
-    const isLead = !!leadSeatId && leadSeatId === id;
+    const isLead = !!leadSeatId && identitySet(id, rowId, seat.config_id, seat.name, threadId).has(leadSeatId);
     return {
       id,
+      rowId,
+      configId: text(seat.config_id ?? seat.configId, ""),
       name,
       workstationId,
       workstationName: workstationId ? (workstationNameById.get(workstationId) ?? workstationId) : "",
@@ -127,6 +466,21 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
       computerNodeName: computerNodeId ? nodeMap.get(computerNodeId) ?? computerNodeId : "",
       providerId,
       providerLabel,
+      threadId,
+      threadKind,
+      threadHealth,
+      deliveryMode,
+      deliveryLabel,
+      deliveryWarning,
+      desktopVisible,
+      desktopProcessDetected,
+      desktopBridgeConnected,
+      desktopBridgeLabel,
+      desktopBridgeNote,
+      desktopThreadUrl,
+      executorCwd,
+      codexLaunchPrompt: text(meta.codex_launch_prompt ?? meta.codexLaunchPrompt, ""),
+      metadata: meta,
       responsibility,
       skillLoadout,
       inheritedSkills,
@@ -146,15 +500,70 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
   const me = auth.data?.user as AnyRecord | null;
   const currentUserId = text(me?.id, "");
   const currentUserName = text(me?.name ?? me?.email ?? me?.id, currentUserId || "我");
+  const focusSeatParam = text(searchParams?.seat, "");
+  const focusSeat = focusSeatParam
+    ? seats.find((seat) => identitySet(seat.id, seat.rowId, seat.threadId, seat.name).has(focusSeatParam))
+    : null;
+  const focusSeatId = focusSeat?.id ?? "";
+  const projectGithubUrl = text(project.github_url, "");
+  const projectLocalPath = text(project.local_git_url, "");
+  const repoLocalState = localGitState(projectLocalPath);
 
   return (
     <WorkbenchClient
       projectId={String(project.id ?? params.id)}
       projectName={text(project.name, `项目 ${params.id.slice(0, 8)}`)}
-      apiBaseUrl={(process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8010").trim().replace(/\/$/, "")}
+      projectDescription={text(project.description, "")}
+      projectGithubUrl={projectGithubUrl}
+      projectLocalPath={projectLocalPath}
+      apiBaseUrl={(process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8011").trim().replace(/\/$/, "")}
       seats={seats}
+      resourceIndex={{
+        computers: [...configNodes, ...liveNodes].filter((node, index, list) => {
+          const id = text(node.id ?? node.node_id, "");
+          return id && list.findIndex((candidate) => text(candidate.id ?? candidate.node_id, "") === id) === index;
+        }).length,
+        onlineComputers: [...configNodes, ...liveNodes].filter((node, index, list) => {
+          const id = text(node.id ?? node.node_id, "");
+          const unique = id && list.findIndex((candidate) => text(candidate.id ?? candidate.node_id, "") === id) === index;
+          return unique && /online|ready|active/i.test(text(node.runner_effective_status ?? node.runner_status ?? node.status, ""));
+        }).length,
+        logicalWorkstations: projectWorkstations.length,
+        workshopStations: workshopStations.length,
+        skills: skillLibrary.length,
+        projectSkills: skillLibrary.filter((skill) => text(skill.source, "") !== "platform-baseline" && text(skill.scope, "") !== "baseline").length,
+        repoReady: Boolean(projectGithubUrl || projectLocalPath),
+        repoLocalChecked: repoLocalState.checked,
+        repoLocalExists: repoLocalState.exists,
+        repoLocalIsGit: repoLocalState.isGit,
+        repoLocalMessage: repoLocalState.message,
+      }}
+      messages={asArray<AnyRecord>(collaborationMessagesState.data).map((message, index) => ({
+        id: text(message.id, `message-${index + 1}`),
+        title: text(message.title, ""),
+        body: text(message.body, ""),
+        status: text(message.status, ""),
+        message_type: text(message.message_type ?? message.messageType, ""),
+        created_at: text(message.created_at ?? message.createdAt, ""),
+        sender_type: text(message.sender_type ?? message.senderType, ""),
+        sender_id: text(message.sender_id ?? message.senderId, ""),
+        recipient_type: text(message.recipient_type ?? message.recipientType, ""),
+        recipient_id: text(message.recipient_id ?? message.recipientId, ""),
+      }))}
+      members={projectMembers.map((member, index) => ({
+        id: text(member.user_id ?? member.user?.id ?? member.id, `member-${index + 1}`),
+        name: text(member.name ?? member.user?.name ?? member.email ?? member.user?.email, `协作者 ${index + 1}`),
+        email: text(member.email ?? member.user?.email, ""),
+        role: text(member.role, member.is_owner ? "owner" : "member"),
+        status: text(member.status, "active"),
+        isOwner: Boolean(member.is_owner ?? member.isOwner),
+      }))}
       currentUserId={currentUserId}
       currentUserName={currentUserName}
+      initialOpenSeatIds={focusSeatId ? [focusSeatId] : []}
+      initialLaunchPackSeatIds={focusSeatId ? [focusSeatId] : []}
+      surfaceNotice={text(searchParams?.team_notice, "")}
+      surfaceError={text(searchParams?.team_error, "")}
       embedded={searchParams?.embed === "drawer"}
     />
   );

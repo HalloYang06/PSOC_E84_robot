@@ -1,4 +1,4 @@
-import { getApiBaseUrl, useMockData } from "./config";
+import { getApiBaseUrl, shouldUseMockData } from "./config";
 import * as mock from "./mock/data";
 
 export type ApiErrorShape = {
@@ -47,7 +47,7 @@ async function request<T>(
   path: string,
   init?: RequestInit & { json?: unknown }
 ): Promise<T> {
-  if (useMockData()) {
+  if (shouldUseMockData()) {
     return mock.handleMockRequest<T>(path, init);
   }
 
@@ -93,4 +93,3 @@ export const api = {
     request<T>(path, { method: "PATCH", json }),
   del: <T>(path: string) => request<T>(path, { method: "DELETE" })
 };
-

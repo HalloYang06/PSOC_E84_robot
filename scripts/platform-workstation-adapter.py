@@ -7,6 +7,7 @@ import os
 import shlex
 import subprocess
 import sys
+import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
@@ -33,6 +34,9 @@ DEFAULT_PROVIDER_EXECUTORS = {
     "qwen": "python @PROVIDER_EXECUTOR@ @PROMPT_FILE@ --provider @PROVIDER@ --message-id @MESSAGE_ID@ --project-id @PROJECT_ID@ --workstation-id @WORKSTATION_ID@",
     "codex": "python @PROVIDER_EXECUTOR@ @PROMPT_FILE@ --provider @PROVIDER@ --message-id @MESSAGE_ID@ --project-id @PROJECT_ID@ --workstation-id @WORKSTATION_ID@ --model @MODEL@",
 }
+
+CODEX_APP_SERVER_EXECUTOR = "__codex_app_server_turn__"
+CODEX_DESKTOP_UI_EXECUTOR = "__codex_desktop_ui_turn__"
 
 
 def _adapter_config_url(base: str, project_id: str, workstation_id: str) -> str:
@@ -238,10 +242,50 @@ def _executor_template(provider: str, explicit_command: str | None, use_provider
         return ""
     return DEFAULT_PROVIDER_EXECUTORS.get(provider.strip().lower(), "")
 
+def _strip_session_prefix(value: str | None, provider: str | None = None) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    lowered_provider = str(provider or "").strip().lower()
+    prefixes = []
+    if lowered_provider:
+        prefixes.append(f"{lowered_provider}-session-")
+    prefixes.extend(["codex-session-", "claude-session-"])
+    for prefix in prefixes:
+        if text.startswith(prefix):
+            return text[len(prefix):].strip()
+    return text
+
+
+def _default_executor_template(
+    provider: str,
+    explicit_command: str | None,
+    use_provider_default: bool,
+    *,
+    automation_thread_id: str | None = None,
+    desktop_delivery_mode: str | None = None,
+) -> tuple[str, str]:
+    explicit = str(explicit_command or "").strip()
+    if explicit:
+        return explicit, "custom"
+    if not use_provider_default:
+        return "", "disabled"
+    provider_key = str(provider or "").strip().lower()
+    session_id = _strip_session_prefix(automation_thread_id, provider_key)
+    if provider_key == "codex" and session_id:
+        if str(desktop_delivery_mode or "").strip().lower() == "codex_desktop_ui":
+            return CODEX_DESKTOP_UI_EXECUTOR, "codex_desktop_ui"
+        # Use Codex's app-server protocol so a platform dispatch becomes a
+        # normal turn in the bound Codex session, not a detached automation or
+        # a separate CLI-only resume run.
+        return CODEX_APP_SERVER_EXECUTOR, "codex_app_server"
+    return DEFAULT_PROVIDER_EXECUTORS.get(provider_key, ""), "provider_exec"
+
 
 def _extract_executor_prompt(command_text: str) -> str:
     """Keep platform routing out of the provider prompt; the adapter handles ack/final receipts."""
     title = ""
+    message_id = ""
     seat_id = ""
     workstation_id = ""
     computer_node_id = ""
@@ -251,6 +295,10 @@ def _extract_executor_prompt(command_text: str) -> str:
         stripped = line.strip()
         if stripped.startswith("# ") and not title:
             title = stripped.lstrip("#").strip()
+        elif stripped.startswith("- message_id"):
+            after = stripped.split(":", 1)[1] if ":" in stripped else ""
+            tokens = after.strip().strip("`").split()
+            message_id = tokens[0].strip("`") if tokens else ""
         elif stripped.startswith("- seat_id"):
             after = stripped.split(":", 1)[1] if ":" in stripped else ""
             tokens = after.strip().strip("`").split()
@@ -284,6 +332,10 @@ def _extract_executor_prompt(command_text: str) -> str:
     )
     parts = [
         "你是当前电脑线程上的执行 AI。",
+        (
+            "平台跟踪标记：message_id: `" + message_id + "`。"
+            "请保留这个标记在本轮上下文中；平台用它把桌面线程的最终回复同步回 NPC 对话框。"
+        ) if message_id else "",
         "平台适配器已经负责最小回执和最终回写；不要再调用平台 API，也不要尝试自己发送回执。",
         "开工前如果存在 docs/ai-requirements/ai-required-requirements-ledger.md，必须遵守其中的提需求者、被提需求者、人工审核边界、一次性/心跳模式和完成后回给谁。",
         "凡是标记为需要人工审核的内容，只能分析和说明，不能继续自动执行。",
@@ -325,6 +377,7 @@ def _render_executor_command(
     provider: str,
     message_id: str,
     model: str | None,
+    session_id: str | None,
 ) -> str:
     provider_executor = Path(__file__).resolve().with_name("platform-provider-executor.py")
     replacements = {
@@ -335,12 +388,501 @@ def _render_executor_command(
         "@PROVIDER@": _shell_arg(provider),
         "@MESSAGE_ID@": _shell_arg(message_id),
         "@MODEL@": _shell_arg(str(model or "").strip()),
+        "@SESSION_ID@": _shell_arg(str(session_id or "").strip()),
         "@PROVIDER_EXECUTOR@": _shell_arg(str(provider_executor)),
     }
     rendered = template
     for marker, value in replacements.items():
         rendered = rendered.replace(marker, value)
     return rendered
+
+
+def _codex_bin_path() -> str:
+    local_app_data = os.environ.get("LOCALAPPDATA") or ""
+    if local_app_data:
+        candidate = Path(local_app_data) / "OpenAI" / "Codex" / "bin" / "codex.exe"
+        if candidate.exists():
+            return str(candidate)
+    return "codex"
+
+
+def _codex_desktop_thread_url(thread_id: str) -> str:
+    return f"codex://threads/{thread_id.lower()}"
+
+
+def _codex_sessions_root() -> Path:
+    return Path(os.environ.get("CODEX_HOME") or (Path.home() / ".codex")) / "sessions"
+
+
+def _find_codex_session_file(session_id: str | None) -> Path | None:
+    thread_id = _strip_session_prefix(session_id, "codex")
+    if not thread_id:
+        return None
+    root = _codex_sessions_root()
+    if not root.is_dir():
+        return None
+    matches = sorted(
+        root.rglob(f"*{thread_id}.jsonl"),
+        key=lambda item: item.stat().st_mtime if item.exists() else 0,
+        reverse=True,
+    )
+    return matches[0] if matches else None
+
+
+def _content_parts_to_text(parts: Any) -> str:
+    if isinstance(parts, str):
+        return parts
+    if not isinstance(parts, list):
+        return ""
+    texts: list[str] = []
+    for part in parts:
+        if isinstance(part, str):
+            texts.append(part)
+            continue
+        if not isinstance(part, dict):
+            continue
+        value = part.get("text") or part.get("output_text") or part.get("input_text")
+        if value:
+            texts.append(str(value))
+    return "\n".join(text for text in texts if text).strip()
+
+
+def _codex_record_role_and_text(record: dict[str, Any]) -> tuple[str, str, str]:
+    """Return (role, text, phase) for known Codex Desktop jsonl event shapes."""
+    record_type = str(record.get("type") or "")
+    payload = record.get("payload") if isinstance(record.get("payload"), dict) else {}
+    phase = str(payload.get("phase") or "")
+    if record_type == "response_item":
+        item_type = str(payload.get("type") or "")
+        if item_type == "message":
+            return (
+                str(payload.get("role") or ""),
+                _content_parts_to_text(payload.get("content")),
+                phase,
+            )
+    if record_type == "event_msg":
+        event_type = str(payload.get("type") or "")
+        if event_type == "agent_message":
+            return "assistant", str(payload.get("message") or "").strip(), phase
+        if event_type == "user_message":
+            return "user", str(payload.get("message") or "").strip(), phase
+    return "", "", phase
+
+
+def _message_id_marker(message_id: str) -> str:
+    return f"message_id: `{message_id}`"
+
+
+def _find_codex_desktop_reply(
+    *,
+    session_id: str | None,
+    message_id: str,
+) -> dict[str, Any] | None:
+    session_file = _find_codex_session_file(session_id)
+    if session_file is None or not session_file.exists():
+        return None
+
+    marker = _message_id_marker(message_id)
+    try:
+        lines = session_file.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return None
+
+    marker_index = -1
+    for index, line in enumerate(lines):
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        role, text, _phase = _codex_record_role_and_text(record)
+        if role == "user" and marker in text:
+            marker_index = index
+
+    if marker_index < 0:
+        return None
+
+    latest_reply: dict[str, Any] | None = None
+    for line in lines[marker_index + 1 :]:
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        role, text, phase = _codex_record_role_and_text(record)
+        if role == "user" and marker in text:
+            latest_reply = None
+            continue
+        if role != "assistant" or not text:
+            continue
+        if phase and phase not in {"final_answer", "commentary"}:
+            continue
+        latest_reply = {
+            "text": text,
+            "phase": phase,
+            "timestamp": record.get("timestamp"),
+            "session_file": str(session_file),
+        }
+        if phase == "final_answer":
+            return latest_reply
+    return latest_reply
+
+
+def _codex_desktop_prompt_seen(
+    *,
+    session_id: str | None,
+    message_id: str,
+) -> dict[str, Any] | None:
+    session_file = _find_codex_session_file(session_id)
+    if session_file is None or not session_file.exists():
+        return None
+    marker = _message_id_marker(message_id)
+    try:
+        lines = session_file.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return None
+    for line in reversed(lines):
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        role, text, phase = _codex_record_role_and_text(record)
+        if role == "user" and marker in text:
+            return {
+                "timestamp": record.get("timestamp"),
+                "phase": phase,
+                "session_file": str(session_file),
+            }
+    return None
+
+
+def _wait_for_codex_desktop_reply(
+    *,
+    session_id: str | None,
+    message_id: str,
+    timeout_seconds: int,
+    poll_seconds: float = 2.0,
+) -> dict[str, Any] | None:
+    deadline = time.time() + max(0, timeout_seconds)
+    while time.time() <= deadline:
+        reply = _find_codex_desktop_reply(session_id=session_id, message_id=message_id)
+        if reply:
+            return reply
+        time.sleep(max(0.5, poll_seconds))
+    return None
+
+
+def _run_codex_desktop_ui_turn(
+    *,
+    prompt_text: str,
+    session_id: str | None,
+    timeout_seconds: int,
+) -> dict[str, Any]:
+    thread_id = _strip_session_prefix(session_id, "codex")
+    if not thread_id:
+        return {
+            "ok": False,
+            "returncode": None,
+            "stdout": "",
+            "stderr": "Codex Desktop UI delivery requires a bound Codex thread id.",
+            "note": "Codex Desktop UI delivery failed: missing bound thread id.",
+            "delivery_mode": "codex_desktop_ui",
+            "desktop_visible": False,
+        }
+    if os.name != "nt":
+        return {
+            "ok": False,
+            "returncode": None,
+            "stdout": "",
+            "stderr": "Codex Desktop UI delivery is currently implemented for interactive Windows runners only.",
+            "note": "Codex Desktop UI delivery failed: this runner is not an interactive Windows desktop.",
+            "delivery_mode": "codex_desktop_ui",
+            "desktop_visible": False,
+            "thread_id": thread_id,
+        }
+
+    helper = r"""
+param(
+  [Parameter(Mandatory = $true)][string]$ThreadUrl,
+  [Parameter(Mandatory = $true)][string]$PromptText,
+  [int]$InitialWaitMs = 2600
+)
+$ErrorActionPreference = "Stop"
+Add-Type -AssemblyName System.Windows.Forms
+Start-Process -FilePath "cmd.exe" -ArgumentList @("/c", "start", '""', $ThreadUrl) -WindowStyle Hidden | Out-Null
+Start-Sleep -Milliseconds $InitialWaitMs
+[System.Windows.Forms.Clipboard]::SetText($PromptText)
+[System.Windows.Forms.SendKeys]::SendWait("^v")
+Start-Sleep -Milliseconds 120
+[System.Windows.Forms.SendKeys]::SendWait("^{ENTER}")
+Start-Sleep -Milliseconds 120
+[System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
+"""
+    thread_url = _codex_desktop_thread_url(thread_id)
+    wait_ms = 3200
+    helper_path = None
+    try:
+        with tempfile.NamedTemporaryFile("w", suffix=".ps1", delete=False, encoding="utf-8") as helper_file:
+            helper_file.write(helper)
+            helper_path = helper_file.name
+        completed = subprocess.run(
+            [
+                "powershell",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                helper_path,
+                "-ThreadUrl",
+                thread_url,
+                "-PromptText",
+                prompt_text,
+                "-InitialWaitMs",
+                str(wait_ms),
+            ],
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            capture_output=True,
+            timeout=max(12, min(timeout_seconds, 30)),
+        )
+    except Exception as exc:
+        return {
+            "ok": False,
+            "returncode": None,
+            "stdout": "",
+            "stderr": str(exc),
+            "note": f"Codex Desktop UI delivery failed: {exc}",
+            "delivery_mode": "codex_desktop_ui",
+            "desktop_visible": False,
+            "thread_id": thread_id,
+            "desktop_thread_url": thread_url,
+        }
+    finally:
+        if helper_path:
+            try:
+                Path(helper_path).unlink(missing_ok=True)
+            except Exception:
+                pass
+    ok = completed.returncode == 0
+    if ok:
+        return {
+            "ok": True,
+            "returncode": completed.returncode,
+            "stdout": completed.stdout,
+            "stderr": completed.stderr,
+            "note": (
+                "已把这条平台派单发送到绑定的 Codex Desktop 线程。"
+                "完整处理过程会在桌面版 Codex 对话框里继续；平台不会把这次投递当作最终完成。"
+            ),
+            "delivery_mode": "codex_desktop_ui",
+            "desktop_visible": True,
+            "thread_id": thread_id,
+            "desktop_thread_url": thread_url,
+        }
+    return {
+        "ok": False,
+        "returncode": completed.returncode,
+        "stdout": completed.stdout,
+        "stderr": completed.stderr,
+        "note": f"Codex Desktop UI delivery failed: {completed.stderr or completed.stdout or 'unknown error'}",
+        "delivery_mode": "codex_desktop_ui",
+        "desktop_visible": False,
+        "thread_id": thread_id,
+        "desktop_thread_url": thread_url,
+    }
+
+
+def _jsonrpc_send(proc: subprocess.Popen[str], payload: dict[str, Any]) -> None:
+    if proc.stdin is None:
+        raise RuntimeError("codex app-server stdin is not available")
+    proc.stdin.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    proc.stdin.flush()
+
+
+def _run_codex_app_server_turn(
+    *,
+    prompt_text: str,
+    session_id: str | None,
+    cwd: str | None,
+    timeout_seconds: int,
+    model: str | None,
+) -> dict[str, Any]:
+    thread_id = _strip_session_prefix(session_id, "codex")
+    if not thread_id:
+        return {
+            "ok": False,
+            "returncode": None,
+            "stdout": "",
+            "stderr": "Codex app-server delivery requires a bound Codex thread id.",
+            "note": "Codex app-server delivery failed: missing bound thread id.",
+        }
+    resolved_cwd = str(cwd or "").strip() or None
+    cwd_warning = ""
+    if resolved_cwd:
+        cwd_path = Path(resolved_cwd).expanduser()
+        if cwd_path.is_dir():
+            resolved_cwd = str(cwd_path)
+        else:
+            cwd_warning = f"本机配置的执行目录不可用：{resolved_cwd!r}；已自动改用适配器启动目录。"
+            resolved_cwd = None
+    codex_bin = _codex_bin_path()
+    try:
+        proc = subprocess.Popen(
+            [codex_bin, "app-server", "--listen", "stdio://"],
+            cwd=resolved_cwd,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            bufsize=1,
+        )
+    except OSError as exc:
+        return {
+            "ok": False,
+            "returncode": None,
+            "stdout": "",
+            "stderr": str(exc),
+            "note": "\n".join(part for part in [cwd_warning, f"Codex app-server could not start: {exc}"] if part),
+        }
+
+    stdout_lines: list[str] = []
+    stderr_chunks: list[str] = []
+    final_text_parts: list[str] = []
+    thread_resumed = False
+    turn_started = False
+    turn_completed = False
+    request_error: dict[str, Any] | None = None
+    started_at = time.time()
+
+    import threading
+
+    def _read_stderr() -> None:
+        if proc.stderr is None:
+            return
+        try:
+            for chunk in iter(proc.stderr.readline, ""):
+                if chunk == "":
+                    break
+                stderr_chunks.append(chunk)
+        except Exception:
+            pass
+
+    stderr_thread = threading.Thread(target=_read_stderr, daemon=True)
+    stderr_thread.start()
+
+    try:
+        _jsonrpc_send(
+            proc,
+            {
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "clientInfo": {
+                        "name": "ai-collab-platform",
+                        "title": "AI Collab Platform",
+                        "version": "0.1.0",
+                    },
+                    "capabilities": {"experimentalApi": True},
+                },
+            },
+        )
+        if proc.stdout is None:
+            raise RuntimeError("codex app-server stdout is not available")
+        while time.time() - started_at < timeout_seconds:
+            line = proc.stdout.readline()
+            if line == "":
+                if proc.poll() is not None:
+                    break
+                time.sleep(0.05)
+                continue
+            stdout_lines.append(line)
+            try:
+                msg = json.loads(line)
+            except Exception:
+                continue
+            if msg.get("id") == 1 and msg.get("result"):
+                resume_params: dict[str, Any] = {
+                    "threadId": thread_id,
+                    "cwd": resolved_cwd,
+                    "approvalPolicy": "never",
+                    "sandbox": "danger-full-access",
+                    "persistExtendedHistory": True,
+                }
+                if model:
+                    resume_params["model"] = model
+                _jsonrpc_send(proc, {"id": 2, "method": "thread/resume", "params": resume_params})
+            elif msg.get("id") == 2:
+                if msg.get("error"):
+                    request_error = dict(msg.get("error") or {})
+                    break
+                thread_resumed = True
+                turn_params: dict[str, Any] = {
+                    "threadId": thread_id,
+                    "cwd": resolved_cwd,
+                    "input": [{"type": "text", "text": prompt_text}],
+                    "approvalPolicy": "never",
+                    "sandboxPolicy": {"type": "dangerFullAccess"},
+                }
+                if model:
+                    turn_params["model"] = model
+                _jsonrpc_send(proc, {"id": 3, "method": "turn/start", "params": turn_params})
+            elif msg.get("id") == 3:
+                if msg.get("error"):
+                    request_error = dict(msg.get("error") or {})
+                    break
+                turn_started = True
+            elif msg.get("method") == "turn/started":
+                turn_started = True
+            elif msg.get("method") == "item/agentMessage/delta":
+                params = msg.get("params") if isinstance(msg.get("params"), dict) else {}
+                final_text_parts.append(str(params.get("delta") or ""))
+            elif msg.get("method") == "item/completed":
+                params = msg.get("params") if isinstance(msg.get("params"), dict) else {}
+                item = params.get("item") if isinstance(params.get("item"), dict) else {}
+                if item.get("type") == "agentMessage" and item.get("phase") == "final_answer":
+                    text = str(item.get("text") or "").strip()
+                    if text:
+                        final_text_parts = [text]
+            elif msg.get("method") == "turn/completed":
+                turn_completed = True
+                break
+        else:
+            request_error = {"message": f"Codex app-server turn timed out after {timeout_seconds}s"}
+    except Exception as exc:
+        request_error = {"message": str(exc)}
+    finally:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+        stderr_thread.join(timeout=1)
+
+    stdout = "".join(stdout_lines).strip()
+    stderr = "".join(stderr_chunks).strip()
+    final_text = "".join(final_text_parts).strip()
+    ok = bool(thread_resumed and turn_started and turn_completed and not request_error)
+    if ok:
+        note = final_text or "Codex app-server session turn completed without a final text."
+        return {
+            "ok": True,
+            "returncode": 0,
+            "stdout": final_text or stdout,
+            "stderr": stderr,
+            "note": "\n".join(part for part in [cwd_warning, note] if part),
+            "delivery_mode": "codex_app_server",
+            "thread_id": thread_id,
+        }
+    error_text = str((request_error or {}).get("message") or stderr or "Codex app-server turn failed")
+    return {
+        "ok": False,
+        "returncode": proc.returncode,
+        "stdout": stdout,
+        "stderr": stderr or error_text,
+        "note": "\n".join(part for part in [cwd_warning, f"Codex app-server delivery failed: {error_text}"] if part),
+        "delivery_mode": "codex_app_server",
+        "thread_id": thread_id,
+    }
 
 
 def run_executor(
@@ -352,6 +894,7 @@ def run_executor(
     provider: str,
     message_id: str,
     model: str | None,
+    session_id: str | None = None,
     cwd: str | None,
     timeout_seconds: int,
     live_output: bool = False,
@@ -362,6 +905,43 @@ def run_executor(
     executor_prompt_path = command_path.with_name(f"{command_path.stem}.executor.md")
     executor_prompt_path.write_text(prompt_text, encoding="utf-8")
     executor_prompt_path = executor_prompt_path.resolve()
+    if template == CODEX_APP_SERVER_EXECUTOR:
+        return _run_codex_app_server_turn(
+            prompt_text=prompt_text,
+            session_id=session_id,
+            cwd=cwd,
+            timeout_seconds=timeout_seconds,
+            model=model,
+        )
+    if template == CODEX_DESKTOP_UI_EXECUTOR:
+        ui_result = _run_codex_desktop_ui_turn(
+            prompt_text=prompt_text,
+            session_id=session_id,
+            timeout_seconds=timeout_seconds,
+        )
+        if ui_result.get("ok"):
+            return ui_result
+        fallback = _run_codex_app_server_turn(
+            prompt_text=prompt_text,
+            session_id=session_id,
+            cwd=cwd,
+            timeout_seconds=timeout_seconds,
+            model=model,
+        )
+        fallback_note = str(fallback.get("note") or "").strip()
+        ui_note = str(ui_result.get("note") or "").strip()
+        fallback["note"] = "\n".join(
+            part
+            for part in [
+                ui_note,
+                "已降级为后台 Codex app-server 执行；桌面版可能不会实时显示这条消息。",
+                fallback_note,
+            ]
+            if part
+        )
+        fallback["desktop_visible"] = False
+        fallback["delivery_mode"] = "codex_app_server_fallback"
+        return fallback
     resolved_cwd = str(cwd or "").strip() or None
     cwd_warning = ""
     if resolved_cwd:
@@ -383,6 +963,7 @@ def run_executor(
         provider=provider,
         message_id=message_id,
         model=model,
+        session_id=session_id,
     )
     if spawn_window:
         return _spawn_in_new_window(
@@ -1020,12 +1601,17 @@ def main() -> int:
         help="Run the default local CLI executor for the provider and complete with its stdout.",
     )
     parser.add_argument(
+        "--ignore-automation-switch",
+        action="store_true",
+        help="Process inbox commands even when adapter-config reports automation_enabled=false.",
+    )
+    parser.add_argument(
         "--executor-command",
         default=None,
         help=(
             "Shell command template to run for each inbox item. "
             "Placeholders: @PROMPT_FILE@, @PROMPT_TEXT@, @PROJECT_ID@, @WORKSTATION_ID@, "
-            "@PROVIDER@, @MESSAGE_ID@, @MODEL@, @PROVIDER_EXECUTOR@."
+            "@PROVIDER@, @MESSAGE_ID@, @MODEL@, @SESSION_ID@, @PROVIDER_EXECUTOR@."
         ),
     )
     parser.add_argument(
@@ -1091,6 +1677,30 @@ def main() -> int:
         workstation_id=args.workstation_id,
         headers=headers,
     )
+    automation_enabled = bool(adapter_config.get("automation_enabled"))
+    if not automation_enabled and not args.ignore_automation_switch:
+        result = {
+            "project_id": args.project_id,
+            "workstation_id": args.workstation_id,
+            "automation_enabled": False,
+            "automation_mode": adapter_config.get("automation_mode") or "manual",
+            "commands": 0,
+            "written": [],
+            "receipts": [],
+            "executions": [],
+            "note": "NPC automation is disabled in adapter-config; watcher is in manual mode.",
+        }
+        if args.watch:
+            print("========================================", flush=True)
+            print("NPC 自动化未开启", flush=True)
+            print(f"项目: {args.project_id}", flush=True)
+            print(f"线程: {args.workstation_id}", flush=True)
+            print("平台会继续记录派单，但本 watcher 不会自动接单或执行。", flush=True)
+            print("如需临时绕过，启动 adapter 时加 --ignore-automation-switch。", flush=True)
+            print("========================================", flush=True)
+            return 0
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
     resolved_provider = (
         str(args.provider or "").strip()
         or str(adapter_config.get("provider_id") or adapter_config.get("provider_label") or "").strip()
@@ -1126,10 +1736,13 @@ def main() -> int:
         inbox_url += f"&status={args.status}"
 
     output_root = Path(args.output_dir) / _safe_path_component(args.project_id, "project") / _safe_path_component(args.workstation_id, "workstation")
-    executor_template = _executor_template(
+    resolved_session_id = _strip_session_prefix(adapter_config.get("automation_thread_id"), resolved_provider)
+    executor_template, executor_mode = _default_executor_template(
         resolved_provider,
         resolved_executor_command,
         args.execute_provider_cli,
+        automation_thread_id=adapter_config.get("automation_thread_id"),
+        desktop_delivery_mode=adapter_config.get("desktop_delivery_mode"),
     )
 
     persistent_inbox_path = output_root / "_persistent_inbox.md" if args.persistent_window else None
@@ -1231,25 +1844,47 @@ def main() -> int:
                         flush=True,
                     )
             elif executor_template and message_id:
-                if args.watch:
-                    print(f"\n[正在调用 {resolved_provider} CLI ...]\n", flush=True)
-                # Step 8 — expose THIS message's recipient seat to the seat-mcp-server
-                # so the NPC self-dispatches as itself (sender_id = recipient of this msg).
-                seat_for_msg = str(command.get("recipient_id") or "").strip() or str(args.workstation_id or "")
-                os.environ["PLATFORM_SEAT_ID"] = seat_for_msg
-                executor_result = run_executor(
-                    template=executor_template,
-                    command_path=command_path,
-                    project_id=args.project_id,
-                    workstation_id=args.workstation_id,
-                    provider=resolved_provider,
-                    message_id=message_id,
-                    model=resolved_executor_model,
-                    cwd=resolved_executor_cwd,
-                    timeout_seconds=resolved_timeout,
-                    live_output=args.watch,
-                    spawn_window=args.spawn_window,
+                desktop_prompt_seen = (
+                    _codex_desktop_prompt_seen(session_id=resolved_session_id, message_id=message_id)
+                    if executor_template == CODEX_DESKTOP_UI_EXECUTOR
+                    else None
                 )
+                if desktop_prompt_seen:
+                    if args.watch:
+                        print(
+                            f"\n[桌面同步] 该派单已存在于 Codex Desktop session，跳过重复投递：{message_id}\n",
+                            flush=True,
+                        )
+                    executor_result = {
+                        "ok": True,
+                        "returncode": 0,
+                        "stdout": "",
+                        "stderr": "",
+                        "note": "已检测到该派单已投递到 Codex Desktop，正在同步桌面最终回执。",
+                        "delivery_mode": "codex_desktop_ui",
+                        "desktop_visible": True,
+                    }
+                else:
+                    if args.watch:
+                        print(f"\n[正在调用 {resolved_provider} CLI ...]\n", flush=True)
+                    # Step 8 — expose THIS message's recipient seat to the seat-mcp-server
+                    # so the NPC self-dispatches as itself (sender_id = recipient of this msg).
+                    seat_for_msg = str(command.get("recipient_id") or "").strip() or str(args.workstation_id or "")
+                    os.environ["PLATFORM_SEAT_ID"] = seat_for_msg
+                    executor_result = run_executor(
+                        template=executor_template,
+                        command_path=command_path,
+                        project_id=args.project_id,
+                        workstation_id=args.workstation_id,
+                        provider=resolved_provider,
+                        message_id=message_id,
+                        model=resolved_executor_model,
+                        session_id=resolved_session_id,
+                        cwd=resolved_executor_cwd,
+                        timeout_seconds=resolved_timeout,
+                        live_output=args.watch,
+                        spawn_window=args.spawn_window,
+                    )
                 executions.append(
                     {
                         "message_id": message_id,
@@ -1265,6 +1900,32 @@ def main() -> int:
             if executor_result is not None:
                 final_note = str(executor_result.get("note") or "").strip()
                 result_failed = not bool(executor_result.get("ok"))
+                if executor_result.get("delivery_mode") == "codex_desktop_ui" and executor_result.get("ok"):
+                    # Desktop UI delivery only submits the prompt into the visible Codex thread.
+                    # The real work happens in Desktop. Wait for the bound session jsonl to
+                    # receive an assistant reply, then project that final answer back to the
+                    # platform as a compact receipt. This keeps the full process in Desktop
+                    # without pretending delivery itself is completion.
+                    final_note = ""
+                    result_failed = False
+                    desktop_reply = _wait_for_codex_desktop_reply(
+                        session_id=resolved_session_id,
+                        message_id=message_id,
+                        timeout_seconds=min(max(resolved_timeout, 1), 1800),
+                    )
+                    if desktop_reply:
+                        final_note = str(desktop_reply.get("text") or "").strip()
+                        if args.watch:
+                            print(
+                                f"[桌面回执同步] 已读取 Codex Desktop 回复，长度={len(final_note)}",
+                                flush=True,
+                            )
+                    elif args.watch:
+                        print(
+                            "[桌面回执同步] 已完成桌面投递，但等待 Desktop 最终回复超时；"
+                            "平台保留 in_progress，稍后可再次运行 adapter 同步。",
+                            flush=True,
+                        )
             if final_note and message_id:
                 complete_url = _message_action_url(base, args.project_id, args.workstation_id, message_id, "complete")
                 receipts.append(
@@ -1289,6 +1950,8 @@ def main() -> int:
             "workstation_id": args.workstation_id,
             "provider": resolved_provider,
             "adapter_config": adapter_config,
+            "executor_mode": executor_mode,
+            "session_id": resolved_session_id,
             "commands": len(commands),
             "written": written,
             "receipts": receipts,
@@ -1301,6 +1964,7 @@ def main() -> int:
         print(f"项目: {args.project_id}", flush=True)
         print(f"线程: {args.workstation_id}", flush=True)
         print(f"提供商: {resolved_provider}", flush=True)
+        print(f"执行模式: {executor_mode}  会话: {resolved_session_id or '<none>'}", flush=True)
         print(f"轮询: 每 {args.poll_seconds}s 一次  执行目录: {resolved_executor_cwd or '(adapter 启动目录)'}", flush=True)
         print(f"API: {base}", flush=True)
         if args.persistent_window and persistent_inbox_path is not None:

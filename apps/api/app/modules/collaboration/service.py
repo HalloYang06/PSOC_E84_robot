@@ -198,6 +198,11 @@ def _enrich_computer_nodes_with_thread_scan(project: Project, nodes: list[dict[s
         if node_threads or scan:
             scan["status"] = scan.get("status") or "completed"
             scan["thread_count"] = len(node_threads)
+            desktop_process_detected = False
+            desktop_bridge_connected = False
+            desktop_delivery_modes: list[str] = []
+            desktop_bridge_labels: list[str] = []
+            desktop_bridge_notes: list[str] = []
             scan["threads"] = [
                 {
                     "workstation_id": str(station.get("id") or station.get("workstation_id") or "").strip(),
@@ -206,6 +211,31 @@ def _enrich_computer_nodes_with_thread_scan(project: Project, nodes: list[dict[s
                 }
                 for station in node_threads
             ]
+            for station in node_threads:
+                station_metadata = station.get("metadata") if isinstance(station.get("metadata"), dict) else {}
+                desktop_process_detected = desktop_process_detected or bool(
+                    station_metadata.get("desktop_process_detected")
+                    or station_metadata.get("codex_desktop_process_detected")
+                )
+                desktop_bridge_connected = desktop_bridge_connected or bool(
+                    station_metadata.get("desktop_bridge_connected")
+                    or station_metadata.get("codex_desktop_bridge_connected")
+                )
+                delivery_mode = str(station_metadata.get("desktop_delivery_mode") or "").strip()
+                if delivery_mode and delivery_mode not in desktop_delivery_modes:
+                    desktop_delivery_modes.append(delivery_mode)
+                bridge_label = str(station_metadata.get("desktop_bridge_label") or "").strip()
+                if bridge_label and bridge_label not in desktop_bridge_labels:
+                    desktop_bridge_labels.append(bridge_label)
+                bridge_note = str(station_metadata.get("desktop_bridge_note") or station_metadata.get("codex_desktop_bridge_note") or "").strip()
+                if bridge_note and bridge_note not in desktop_bridge_notes:
+                    desktop_bridge_notes.append(bridge_note)
+            scan["desktop_process_detected"] = desktop_process_detected
+            scan["desktop_bridge_connected"] = desktop_bridge_connected
+            scan["desktop_delivery_modes"] = desktop_delivery_modes
+            scan["desktop_delivery_mode"] = desktop_delivery_modes[0] if desktop_delivery_modes else None
+            scan["desktop_bridge_label"] = desktop_bridge_labels[0] if desktop_bridge_labels else None
+            scan["desktop_bridge_note"] = desktop_bridge_notes[0] if desktop_bridge_notes else None
         if scan:
             metadata["thread_scan"] = scan
         elif "thread_scan" in metadata:
@@ -430,8 +460,6 @@ def list_project_thread_workstations(db: Session, project_id: str) -> list[dict[
     by_config_id: dict[str, _Seat] = {row.config_id: row for row in rows if row.config_id}
     by_name: dict[str, _Seat] = {row.name: row for row in rows if row.name}
     for item in items:
-        if item.get("workstation_id"):
-            continue
         candidates = [
             str(item.get("row_id") or ""),
             str(item.get("id") or ""),
@@ -445,8 +473,18 @@ def list_project_thread_workstations(db: Session, project_id: str) -> list[dict[
             row = by_pk.get(cand) or by_config_id.get(cand) or by_name.get(cand)
             if row is not None:
                 break
-        if row is not None and row.workstation_id:
-            item["workstation_id"] = row.workstation_id
+        if row is not None:
+            item["row_id"] = row.id
+            item["project_id"] = row.project_id
+            if row.workstation_id and not item.get("workstation_id"):
+                item["workstation_id"] = row.workstation_id
+            extra_data = _metadata_dict(row.extra_data)
+            metadata = _metadata_dict(item.get("metadata"))
+            for key, value in _thread_binding_aliases({**item, "extra_data": extra_data}).items():
+                item.setdefault(key, value)
+                metadata.setdefault(key, value)
+            if metadata:
+                item["metadata"] = metadata
     return items
 
 
@@ -554,6 +592,51 @@ def _metadata_dict(value: object | None) -> dict[str, object]:
     return dict(value) if isinstance(value, dict) else {}
 
 
+def _thread_binding_id_from_workstation_item(item: dict[str, object]) -> str | None:
+    metadata = _metadata_dict(item.get("metadata"))
+    extra_data = _metadata_dict(item.get("extra_data"))
+    for value in (
+        metadata.get("source_workstation_id"),
+        metadata.get("bound_thread_id"),
+        metadata.get("target_thread_id"),
+        item.get("source_workstation_id"),
+        item.get("bound_thread_id"),
+        item.get("target_thread_id"),
+        extra_data.get("source_workstation_id"),
+        extra_data.get("bound_thread_id"),
+        extra_data.get("target_thread_id"),
+    ):
+        text = str(value or "").strip()
+        if text:
+            return text
+    return None
+
+
+def _thread_binding_aliases(item: dict[str, object]) -> dict[str, object]:
+    binding_id = _thread_binding_id_from_workstation_item(item)
+    return (
+        {
+            "source_workstation_id": binding_id,
+            "bound_thread_id": binding_id,
+            "target_thread_id": binding_id,
+        }
+        if binding_id
+        else {}
+    )
+
+
+def _normalize_workstation_thread_binding(item: dict[str, object]) -> dict[str, object]:
+    aliases = _thread_binding_aliases(item)
+    binding_id = str(aliases.get("source_workstation_id") or "").strip()
+    if not aliases or not binding_id:
+        return item
+    metadata = _metadata_dict(item.get("metadata"))
+    metadata.update(aliases)
+    item["metadata"] = metadata
+    item.update(aliases)
+    return item
+
+
 def _metadata_runtime_value(
     metadata: dict[str, object],
     field: str,
@@ -581,6 +664,158 @@ def _resolve_executor_timeout(value: object | None) -> int | None:
     except (TypeError, ValueError):
         return None
     return timeout if timeout > 0 else None
+
+
+def _truthy_metadata_flag(value: object | None) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on", "enabled", "open", "auto", "自动化", "已开"}
+    return False
+
+
+def _strip_provider_session_prefix(value: object | None, provider_id: str | None = None) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    prefixes: list[str] = []
+    provider = str(provider_id or "").strip().lower()
+    if provider:
+        prefixes.append(f"{provider}-session-")
+    prefixes.extend(["codex-session-", "claude-session-"])
+    for prefix in prefixes:
+        if text.startswith(prefix):
+            return text[len(prefix):].strip()
+    return text
+
+
+def _codex_desktop_thread_url(session_id: str) -> str | None:
+    session = str(session_id or "").strip()
+    if not session:
+        return None
+    if not re.fullmatch(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", session):
+        return None
+    return f"codex://threads/{session.lower()}"
+
+
+def _adapter_delivery_state(
+    *,
+    provider_id: str | None,
+    executor_command: object | None,
+    automation_thread_id: object | None,
+    executor_cwd: object | None,
+    metadata: dict[str, object] | None = None,
+) -> dict[str, object]:
+    provider = str(provider_id or "").strip().lower()
+    command = str(executor_command or "").strip()
+    thread_id = _strip_provider_session_prefix(automation_thread_id, provider)
+    cwd_ready = bool(str(executor_cwd or "").strip())
+    meta = _metadata_dict(metadata)
+    desktop_process_detected = bool(meta.get("desktop_process_detected") or meta.get("codex_desktop_process_detected"))
+    desktop_bridge_connected = bool(meta.get("desktop_bridge_connected") or meta.get("codex_desktop_bridge_connected"))
+    desktop_bridge_label = str(meta.get("desktop_bridge_label") or "").strip() or None
+    desktop_bridge_note = str(meta.get("desktop_bridge_note") or meta.get("codex_desktop_bridge_note") or "").strip() or None
+    desktop_delivery_mode = str(meta.get("desktop_delivery_mode") or meta.get("codex_desktop_delivery_mode") or "").strip() or None
+    desktop_thread_url = _codex_desktop_thread_url(thread_id) if provider == "codex" else None
+    if provider == "codex" and command:
+        mode = "custom"
+        label = "自定义执行器"
+        visible = False
+        warning = "此 NPC 使用自定义 Codex 执行命令；平台无法保证消息会出现在桌面版 Codex 对话里。"
+    elif provider == "codex" and thread_id:
+        if desktop_bridge_connected and desktop_delivery_mode == "codex_desktop_ui":
+            mode = "codex_desktop_ui"
+            label = desktop_bridge_label or "Codex Desktop UI 投递"
+            visible = True
+            warning = "Runner 会在该电脑交互式桌面打开绑定的 Codex 线程，并把平台派单作为一条普通用户消息发送；完整处理过程会显示在 Codex Desktop。"
+        else:
+            mode = "codex_app_server"
+            label = "Codex session append (not Desktop live)"
+            visible = False
+            suffix = "Runner 上报检测到 Codex Desktop 进程，但未上报可接入的实时 UI 刷新桥。" if desktop_process_detected else "Runner 未上报 Codex Desktop 实时桥能力。"
+            warning = f"平台会通过该电脑 Runner 启动独立 Codex app-server，对绑定 session 发起普通 turn，并写入同一个本地 Codex 会话文件；这不是当前已打开 Codex Desktop 窗口的实时输入通道，用户不会在桌面窗口里即时看到这句话。{suffix}"
+    elif provider == "codex":
+        mode = "codex_exec_ephemeral"
+        label = "Codex 临时执行"
+        visible = False
+        warning = "未绑定 Codex session，平台只能退化为临时 CLI 执行或写 prompt 文件。"
+    elif provider == "claude" and command:
+        mode = "custom"
+        label = "自定义执行器"
+        visible = False
+        warning = "此 NPC 使用自定义 Claude 执行命令；平台无法保证消息会出现在 Claude Code 对话里。"
+    elif provider == "claude" and thread_id:
+        mode = "claude_bridge"
+        label = "Claude Code 桥接"
+        visible = False
+        warning = "Claude 线程通过本机桥接处理；完整过程以 Claude Code/桥接窗口为准。"
+    else:
+        mode = "provider_exec"
+        label = "本机执行器"
+        visible = False
+        warning = "平台会调用本机执行器；完整过程不一定出现在桌面客户端。"
+    if not cwd_ready:
+        warning = (warning + " " if warning else "") + "当前未解析到执行目录，runner 可能只写 prompt 文件。"
+    return {
+        "delivery_mode": mode,
+        "delivery_label": label,
+        "desktop_delivery_mode": desktop_delivery_mode,
+        "desktop_visible": visible,
+        "desktop_process_detected": desktop_process_detected,
+        "desktop_bridge_connected": desktop_bridge_connected,
+        "desktop_bridge_label": desktop_bridge_label,
+        "desktop_bridge_note": desktop_bridge_note,
+        "desktop_thread_url": desktop_thread_url,
+        "delivery_warning": warning,
+    }
+
+def _resolve_bound_scanned_thread_cwd(
+    db: Session,
+    *,
+    project_id: str,
+    bound_thread_id: object | None,
+) -> tuple[str | None, str | None]:
+    thread_id = str(bound_thread_id or "").strip()
+    if not thread_id:
+        return None, None
+    stmt = select(ProjectThreadWorkstation).where(
+        ProjectThreadWorkstation.project_id == project_id,
+        (ProjectThreadWorkstation.config_id == thread_id)
+        | (ProjectThreadWorkstation.id == thread_id)
+        | (ProjectThreadWorkstation.name == thread_id),
+    )
+    row = db.scalar(stmt)
+    if row is None:
+        return None, None
+    extra_data = _metadata_dict(row.extra_data)
+    for key in ("git_root", "cwd", "workspace_root", "scan_root"):
+        value = str(extra_data.get(key) or "").strip()
+        if value:
+            return value, f"bound_thread.metadata.{key}"
+    return None, None
+
+
+def _resolve_bound_scanned_thread_metadata(
+    db: Session,
+    *,
+    project_id: str,
+    bound_thread_id: object | None,
+) -> dict[str, object]:
+    thread_id = str(bound_thread_id or "").strip()
+    if not thread_id:
+        return {}
+    stmt = select(ProjectThreadWorkstation).where(
+        ProjectThreadWorkstation.project_id == project_id,
+        (ProjectThreadWorkstation.config_id == thread_id)
+        | (ProjectThreadWorkstation.id == thread_id)
+        | (ProjectThreadWorkstation.name == thread_id),
+    )
+    row = db.scalar(stmt)
+    if row is None:
+        return {}
+    return _metadata_dict(row.extra_data)
 
 
 def get_project_workstation_adapter_config(db: Session, project_id: str, workstation_name: str) -> dict[str, object]:
@@ -638,12 +873,50 @@ def get_project_workstation_adapter_config(db: Session, project_id: str, worksta
         str(workstation.get("model") or "").strip()
         or str(provider.get("model") or "").strip() if isinstance(provider, dict) else ""
     ) or None
+    automation_enabled_value = workstation.get("automation_enabled")
+    if automation_enabled_value in (None, ""):
+        automation_enabled_value = resolve_field("automation_enabled", aliases=("automationEnabled", "auto_enabled", "autoEnabled"))
+    automation_mode_value = workstation.get("automation_mode")
+    if automation_mode_value in (None, ""):
+        automation_mode_value = resolve_field("automation_mode", aliases=("automationMode", "auto_mode", "autoMode"))
+    automation_thread_id_value = workstation.get("automation_thread_id")
+    if automation_thread_id_value in (None, ""):
+        automation_thread_id_value = resolve_field(
+        "automation_thread_id",
+        aliases=("automationThreadId", "target_thread_id", "thread_id", "session_id", "bound_thread_id", "source_thread_id"),
+        )
+    automation_enabled = _truthy_metadata_flag(automation_enabled_value)
+    bound_thread_metadata = _resolve_bound_scanned_thread_metadata(
+        db,
+        project_id=project_id,
+        bound_thread_id=automation_thread_id_value,
+    )
+
+    if not executor_cwd:
+        bound_cwd, bound_cwd_source = (None, None)
+        for key in ("git_root", "cwd", "workspace_root", "scan_root"):
+            value = str(bound_thread_metadata.get(key) or "").strip()
+            if value:
+                bound_cwd, bound_cwd_source = value, f"bound_thread.metadata.{key}"
+                break
+        if bound_cwd:
+            executor_cwd = bound_cwd
+            if bound_cwd_source:
+                settings_source["executor_cwd"] = bound_cwd_source
 
     provider_label = None
     if isinstance(provider, dict):
         provider_label = str(provider.get("label") or provider.get("id") or "").strip() or None
     if not provider_label:
         provider_label = str(workstation.get("ai_provider") or workstation.get("ai_provider_id") or "").strip() or None
+
+    delivery_state = _adapter_delivery_state(
+        provider_id=provider_id or provider_label,
+        executor_command=executor_command,
+        automation_thread_id=automation_thread_id_value,
+        executor_cwd=executor_cwd,
+        metadata={**provider_metadata, **bound_thread_metadata, **workstation_metadata},
+    )
 
     return {
         "project_id": project_id,
@@ -653,6 +926,10 @@ def get_project_workstation_adapter_config(db: Session, project_id: str, worksta
         "provider_id": provider_id,
         "provider_label": provider_label,
         "model": model,
+        "automation_enabled": automation_enabled,
+        "automation_mode": str(automation_mode_value).strip() if automation_mode_value not in (None, "") else None,
+        "automation_thread_id": str(automation_thread_id_value).strip() if automation_thread_id_value not in (None, "") else None,
+        **delivery_state,
         "executor_command": str(executor_command).strip() if executor_command not in (None, "") else None,
         "executor_cwd": str(executor_cwd).strip() if executor_cwd not in (None, "") else None,
         "executor_timeout_seconds": executor_timeout_seconds,
@@ -698,6 +975,7 @@ def update_project_thread_workstation(
     current = items[index]
     updated = dict(current)
     updated.update(payload.model_dump(exclude_unset=True))
+    updated = _normalize_workstation_thread_binding(updated)
     new_name = str(updated.get("name") or current.get("name") or workstation_name).strip()
     updated["name"] = new_name
     updated["id"] = str(updated.get("id") or current.get("id") or new_name).strip()
@@ -713,6 +991,61 @@ def update_project_thread_workstation(
         after=after,
         action="project.collaboration_workstation.updated",
     )
+    row = None
+    row_candidates = [
+        str(updated.get("row_id") or "").strip(),
+        str(updated.get("id") or "").strip(),
+        str(updated.get("config_id") or "").strip(),
+        str(current.get("row_id") or "").strip(),
+        str(current.get("id") or "").strip(),
+        str(current.get("config_id") or "").strip(),
+        workstation_name,
+        new_name,
+    ]
+    for candidate in row_candidates:
+        if not candidate:
+            continue
+        stmt = select(ProjectThreadWorkstation).where(
+            ProjectThreadWorkstation.project_id == project_id,
+            (ProjectThreadWorkstation.id == candidate)
+            | (ProjectThreadWorkstation.config_id == candidate)
+            | (ProjectThreadWorkstation.name == candidate)
+            | (ProjectThreadWorkstation.agent_id == candidate),
+        )
+        row = db.scalar(stmt)
+        if row is not None:
+            break
+    if row is not None:
+        row.name = new_name
+        row.agent_id = updated.get("agent_id")  # type: ignore[assignment]
+        row.computer_node_id = updated.get("computer_node_id")  # type: ignore[assignment]
+        row.ai_provider_id = updated.get("ai_provider_id")  # type: ignore[assignment]
+        row.status = str(updated.get("status") or row.status or "idle")
+        row.description = updated.get("description")  # type: ignore[assignment]
+        row.notes = updated.get("notes")  # type: ignore[assignment]
+        row.sort_order = int(updated.get("sort_order") or row.sort_order or 0)
+        metadata = _metadata_dict(updated.get("metadata"))
+        extra_data = _metadata_dict(row.extra_data)
+        extra_data.update(metadata)
+        for key in (
+            "source_workstation_id",
+            "source_thread_id",
+            "bound_thread_id",
+            "target_thread_id",
+            "provider_id",
+            "provider_label",
+            "seat_type",
+        ):
+            if key in updated and updated.get(key) not in (None, ""):
+                extra_data[key] = updated.get(key)
+        binding_id = _thread_binding_id_from_workstation_item(updated)
+        if binding_id:
+            extra_data["source_workstation_id"] = binding_id
+            extra_data["bound_thread_id"] = binding_id
+            extra_data["target_thread_id"] = binding_id
+        row.extra_data = extra_data or None
+        db.add(row)
+        db.flush()
     return get_project_thread_workstation(db, project_id, new_name)
 
 
@@ -1405,6 +1738,103 @@ def _normalize_runner_command_body(body: str, dispatch_id: str | None = None) ->
     return f"{cleaned_body}\n\n{dispatch_line}"
 
 
+def _message_body_marks_review_exempt(message: CollaborationMessage) -> bool:
+    return "审核：免" in str(message.body or "")
+
+
+def _repair_review_status_consistency(db: Session, messages: list[CollaborationMessage]) -> list[CollaborationMessage]:
+    repaired = False
+    for message in messages:
+        if (message.status or "") == "pending_review" and _message_body_marks_review_exempt(message):
+            message.status = "queued"
+            db.add(message)
+            repaired = True
+    if repaired:
+        db.commit()
+        for message in messages:
+            db.refresh(message)
+    return messages
+
+
+def _repair_launch_ack_status_consistency(db: Session, messages: list[CollaborationMessage]) -> list[CollaborationMessage]:
+    source_ids: set[str] = set()
+    open_launch_acks: list[CollaborationMessage] = []
+    for message in messages:
+        if (message.message_type or "") != "agent_ack":
+            continue
+        if (message.status or "") not in {"queued", "pending", "acked", "in_progress"}:
+            continue
+        if "单次线程处理已启动" in str(message.title or ""):
+            open_launch_acks.append(message)
+        extra_data = _metadata_dict(message.extra_data)
+        source_id = str(extra_data.get("source_message_id") or "").strip()
+        if source_id:
+            source_ids.add(source_id)
+    if not source_ids and not open_launch_acks:
+        return messages
+
+    source_status_by_id = {}
+    if source_ids:
+        source_status_by_id = {
+            row.id: row.status
+            for row in db.scalars(
+                select(CollaborationMessage).where(CollaborationMessage.id.in_(source_ids))
+            )
+        }
+    latest_final_by_pair: dict[tuple[str | None, str | None], object] = {}
+    latest_final_by_sender: dict[str | None, object] = {}
+    latest_final_by_agent_label: dict[str, object] = {}
+    for row in messages:
+        if (row.message_type or "") not in {"agent_result", "requirement_final_reply"}:
+            continue
+        if (row.status or "") not in {"completed", "done"}:
+            continue
+        key = (row.sender_id, row.recipient_id)
+        previous = latest_final_by_pair.get(key)
+        if previous is None or str(row.created_at) > str(previous):
+            latest_final_by_pair[key] = row.created_at
+        sender_previous = latest_final_by_sender.get(row.sender_id)
+        if sender_previous is None or str(row.created_at) > str(sender_previous):
+            latest_final_by_sender[row.sender_id] = row.created_at
+        for label in (row.agent_id, row.sender_id):
+            normalized = str(label or "").strip()
+            if not normalized:
+                continue
+            label_previous = latest_final_by_agent_label.get(normalized)
+            if label_previous is None or str(row.created_at) > str(label_previous):
+                latest_final_by_agent_label[normalized] = row.created_at
+
+    repaired = False
+    for message in messages:
+        extra_data = _metadata_dict(message.extra_data)
+        source_id = str(extra_data.get("source_message_id") or "").strip()
+        source_status = (source_status_by_id.get(source_id) or "").lower()
+        if source_status in {"completed", "done"} and (message.status or "") != "completed":
+            message.status = "completed"
+            db.add(message)
+            repaired = True
+        elif source_status in {"failed", "rejected"} and (message.status or "") != "failed":
+            message.status = "failed"
+            db.add(message)
+            repaired = True
+        elif message in open_launch_acks:
+            launch_agent_label = str(message.title or "").split("/", 1)[-1].strip() if "/" in str(message.title or "") else ""
+            final_at = (
+                latest_final_by_pair.get((message.sender_id, message.recipient_id))
+                or latest_final_by_sender.get(message.sender_id)
+                or latest_final_by_agent_label.get(launch_agent_label)
+            )
+            if final_at is not None and str(final_at) >= str(message.created_at):
+                message.status = "completed"
+                db.add(message)
+                repaired = True
+    if repaired:
+        db.commit()
+        for message in messages:
+            db.refresh(message)
+    return messages
+
+
 def list_messages(
     db: Session,
     *,
@@ -1444,7 +1874,12 @@ def list_messages(
         stmt = stmt.where(CollaborationMessage.status == status)
     if sender_id:
         stmt = stmt.where(CollaborationMessage.sender_id == sender_id)
-    return list(db.scalars(stmt.limit(max(1, min(limit, 500)))))
+    items = list(db.scalars(stmt.limit(max(1, min(limit, 500)))))
+    items = _repair_review_status_consistency(db, items)
+    items = _repair_launch_ack_status_consistency(db, items)
+    if status:
+        return [item for item in items if item.status == status]
+    return items
 
 
 def get_collaboration_message_or_404(db: Session, message_id: str) -> CollaborationMessage:
@@ -1565,7 +2000,7 @@ def _get_workstation_command_or_404(
         or str(message.recipient_id or "") not in candidate_ids
     ):
         raise AppError("MESSAGE_NOT_FOUND", "workstation inbox does not contain this message", status_code=404)
-    if message.message_type not in {"agent_command", "requirement_dispatch"}:
+    if message.message_type not in {"agent_command", "requirement_dispatch", "comment_message"}:
         raise AppError("MESSAGE_NOT_COMMAND", "this message is not a workstation command", status_code=409)
     return workstation, message
 
@@ -1637,6 +2072,15 @@ def ack_workstation_command(
         db.refresh(message)
         return {"command": message, "receipt": receipt}
 
+    source_extra = dict(message.extra_data or {}) if isinstance(message.extra_data, dict) else {}
+    receipt_extra = {
+        "source_message_id": message.id,
+        "source_message_type": message.message_type,
+    }
+    if source_extra.get("source"):
+        receipt_extra["source"] = source_extra.get("source")
+    if source_extra.get("target_ref"):
+        receipt_extra["target_ref"] = source_extra.get("target_ref")
     receipt = CollaborationMessage(
         project_id=message.project_id,
         task_id=message.task_id,
@@ -1653,6 +2097,7 @@ def ack_workstation_command(
         recipient_type=message.sender_type if message.sender_type else "project",
         recipient_id=message.sender_id or message.project_id,
         status="delivered",
+        extra_data=receipt_extra,
     )
     db.add(receipt)
     db.commit()
@@ -1698,6 +2143,12 @@ def complete_workstation_command(
         before={"status": before_status},
         after={"status": message.status},
     )
+    db.query(CollaborationMessage).filter(
+        CollaborationMessage.project_id == message.project_id,
+        CollaborationMessage.message_type == "agent_ack",
+        CollaborationMessage.status.in_(["queued", "pending", "acked", "in_progress"]),
+        CollaborationMessage.extra_data["source_message_id"].as_string() == message.id,
+    ).update({"status": "completed" if payload.result_status == "completed" else "failed"}, synchronize_session=False)
     receipt: CollaborationMessage | None = None
     if message.requirement_id and payload.result_status == "completed":
         from app.modules.requirements.service import add_requirement_final_reply
@@ -1712,6 +2163,15 @@ def complete_workstation_command(
         db.refresh(message)
         return {"command": message, "receipt": receipt}
 
+    source_extra = dict(message.extra_data or {}) if isinstance(message.extra_data, dict) else {}
+    receipt_extra = {
+        "source_message_id": message.id,
+        "source_message_type": message.message_type,
+    }
+    if source_extra.get("source"):
+        receipt_extra["source"] = source_extra.get("source")
+    if source_extra.get("target_ref"):
+        receipt_extra["target_ref"] = source_extra.get("target_ref")
     receipt = CollaborationMessage(
         project_id=message.project_id,
         task_id=message.task_id,
@@ -1728,6 +2188,7 @@ def complete_workstation_command(
         recipient_type=message.sender_type if message.sender_type else "project",
         recipient_id=message.sender_id or message.project_id,
         status=payload.result_status,
+        extra_data=receipt_extra,
     )
     db.add(receipt)
     db.commit()
@@ -1755,7 +2216,10 @@ def create_message(
     ):
         raise AppError("BAD_REQUEST", "collaboration message requires a project, task, approval, handoff, requirement, or workstation scope", status_code=400)
 
-    message = CollaborationMessage(**payload.model_dump(by_alias=True), dispatch_id=str(dispatch_id or "").strip() or None)
+    data = payload.model_dump(by_alias=True)
+    if data.get("status") == "pending_review" and "审核：免" in str(data.get("body") or ""):
+        data["status"] = "queued"
+    message = CollaborationMessage(**data, dispatch_id=str(dispatch_id or "").strip() or None)
     db.add(message)
     db.flush()
     append_audit_log(

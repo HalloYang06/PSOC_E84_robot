@@ -48,6 +48,43 @@ function Normalize-Slug {
   return "computer"
 }
 
+function Test-CodexDesktopProcess {
+  try {
+    $process = Get-CimInstance Win32_Process -ErrorAction Stop |
+      Where-Object { $_.Name -eq "Codex.exe" -and $_.CommandLine -notmatch "--type=" } |
+      Select-Object -First 1
+    return [bool]$process
+  } catch {
+    return $false
+  }
+}
+
+function Get-CodexDesktopBridgeMetadata {
+  $desktopProcessDetected = Test-CodexDesktopProcess
+  $desktopUiAutomationAvailable = $false
+  if ($desktopProcessDetected) {
+    try {
+      Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
+      $desktopUiAutomationAvailable = [Environment]::UserInteractive
+    } catch {
+      $desktopUiAutomationAvailable = $false
+    }
+  }
+  return @{
+    codex_desktop_process_detected = [bool]$desktopProcessDetected
+    desktop_process_detected = [bool]$desktopProcessDetected
+    codex_desktop_bridge_connected = [bool]$desktopUiAutomationAvailable
+    desktop_bridge_connected = [bool]$desktopUiAutomationAvailable
+    desktop_bridge_label = if ($desktopUiAutomationAvailable) { "Codex Desktop UI automation" } else { $null }
+    desktop_bridge_note = if ($desktopUiAutomationAvailable) {
+      "Runner can open codex://threads/<id> on this interactive desktop and send a single prompt through the Codex Desktop UI. No Codex config is changed."
+    } else {
+      "Codex Desktop app-server is managed by the local desktop process; this runner has not detected an interactive desktop UI input bridge."
+    }
+    desktop_delivery_mode = if ($desktopUiAutomationAvailable) { "codex_desktop_ui" } else { $null }
+  }
+}
+
 function Add-UniquePath {
   param(
     [System.Collections.ArrayList]$Paths,
@@ -197,6 +234,29 @@ function Short-SessionTitle {
   return $clean
 }
 
+function Test-PlatformProbeSession {
+  param(
+    [AllowNull()][string]$Title,
+    [AllowNull()][string]$SourceFile
+  )
+  $cleanTitle = Sanitize-SessionText $Title
+  if ($cleanTitle -match "AI_COLLAB_DESKTOP_BRIDGE_PROBE") { return $true }
+  if ($cleanTitle -match "平台桌面投递连通性测试") { return $true }
+
+  $filePath = Sanitize-SessionText $SourceFile
+  if ($filePath -and (Test-Path -LiteralPath $filePath)) {
+    try {
+      $head = (Get-Content -LiteralPath $filePath -Encoding UTF8 -TotalCount 80 -ErrorAction SilentlyContinue) -join "`n"
+      if ($head -match "AI_COLLAB_DESKTOP_BRIDGE_PROBE" -or $head -match "平台桌面投递连通性测试") {
+        return $true
+      }
+    } catch {
+      return $false
+    }
+  }
+  return $false
+}
+
 function Session-NameFromFile {
   param(
     [System.IO.FileInfo]$File,
@@ -252,28 +312,29 @@ function Get-CodexSessionFileRows {
     [int]$Limit
   )
 
-  $files = @()
+  $files = [System.Collections.ArrayList]::new()
   foreach ($directory in $SessionDirectories) {
     if (-not (Test-Path -LiteralPath $directory)) { continue }
-    $files += Get-ChildItem -LiteralPath $directory -Recurse -File -Include "*.jsonl", "*.json" -ErrorAction SilentlyContinue |
-      Where-Object { $_.LastWriteTimeUtc -ge $Cutoff }
+    Get-ChildItem -LiteralPath $directory -Recurse -File -Include "*.jsonl", "*.json" -ErrorAction SilentlyContinue |
+      Where-Object { $_.LastWriteTimeUtc -ge $Cutoff } |
+      ForEach-Object { [void]$files.Add($_) }
   }
 
   $seen = @{}
-  $rows = @()
+  $rows = [System.Collections.ArrayList]::new()
   foreach ($file in ($files | Sort-Object LastWriteTimeUtc -Descending)) {
     $sessionId = Session-IdFromFile $file
     if (-not $sessionId -or $seen.ContainsKey($sessionId)) { continue }
     $seen[$sessionId] = $true
     $titleInfo = Session-NameFromFile -File $file -SessionId $sessionId -ReturnSource
-    $rows += [pscustomobject]@{
+    [void]$rows.Add([pscustomobject]@{
       id = $sessionId
       thread_name = [string]$titleInfo.title
       thread_name_source = [string]$titleInfo.source
       updated_at = $file.LastWriteTimeUtc.ToString("o")
       source_kind = "session_file_fallback"
       source_file = $file.FullName
-    }
+    })
     if ($rows.Count -ge $Limit) { break }
   }
   return @($rows)
@@ -296,7 +357,8 @@ function New-FallbackWorkstation {
     [string]$ProviderLabel,
     [string]$Issue,
     [array]$CheckedPaths,
-    [string]$Root
+    [string]$Root,
+    [hashtable]$DesktopBridgeMetadata
   )
   $nodeSlug = Normalize-Slug $ComputerNodeId
   return @{
@@ -325,6 +387,13 @@ function New-FallbackWorkstation {
       scan_issue = Sanitize-SessionText $Issue
       checked_paths = @($CheckedPaths)
       manual_bind_hint = "Open $ProviderLabel on this computer, or run sync-runner-threads.ps1 with a custom ThreadId/ThreadName."
+      codex_desktop_process_detected = [bool]$DesktopBridgeMetadata.codex_desktop_process_detected
+      desktop_process_detected = [bool]$DesktopBridgeMetadata.desktop_process_detected
+      codex_desktop_bridge_connected = [bool]$DesktopBridgeMetadata.codex_desktop_bridge_connected
+      desktop_bridge_connected = [bool]$DesktopBridgeMetadata.desktop_bridge_connected
+      desktop_bridge_label = $DesktopBridgeMetadata.desktop_bridge_label
+      desktop_bridge_note = $DesktopBridgeMetadata.desktop_bridge_note
+      desktop_delivery_mode = $DesktopBridgeMetadata.desktop_delivery_mode
     }
   }
 }
@@ -338,7 +407,7 @@ $resolvedSessionIndexPath = [string]$sessionIndexInfo.path
 $checkedSessionIndexPaths = @($sessionIndexInfo.checked)
 $checkedSessionDirectories = @(Resolve-CodexSessionDirectories $SessionIndexPath)
 $scanIssue = ""
-$rows = @()
+$rows = [System.Collections.ArrayList]::new()
 $cutoff = (Get-Date).ToUniversalTime().AddDays(-1 * [Math]::Abs($MaxAgeDays))
 
 if ($resolvedSessionIndexPath) {
@@ -365,11 +434,13 @@ if ($resolvedSessionIndexPath) {
         return
       }
       $seenIds[$sessionId] = $true
-      $script:rows += $_
+      [void]$script:rows.Add($_)
     }
 
   if ($rows.Count -gt $Take) {
-    $rows = $rows | Select-Object -First $Take
+    $trimmedRows = [System.Collections.ArrayList]::new()
+    $rows | Select-Object -First $Take | ForEach-Object { [void]$trimmedRows.Add($_) }
+    $rows = $trimmedRows
   }
   if (-not $rows.Count) {
     $scanIssue = "No recent Codex sessions found in $resolvedSessionIndexPath within the last $MaxAgeDays day(s)."
@@ -388,11 +459,13 @@ if ($fileRows.Count) {
   }
   foreach ($row in $fileRows) {
     if ($row -and $row.id -and -not $seenIds.ContainsKey([string]$row.id)) {
-      $rows += $row
+      [void]$rows.Add($row)
       $seenIds[[string]$row.id] = $true
     }
   }
-  $rows = $rows | Sort-Object { [datetime]($_.updated_at) } -Descending | Select-Object -First $Take
+  $sortedRows = [System.Collections.ArrayList]::new()
+  $rows | Sort-Object { [datetime]($_.updated_at) } -Descending | Select-Object -First $Take | ForEach-Object { [void]$sortedRows.Add($_) }
+  $rows = $sortedRows
   if ($scanIssue) {
     Write-Host "Codex session index warning: $scanIssue"
   }
@@ -408,7 +481,8 @@ $defaultSkillLoadout = @(
   "handoff-path-output",
   "verify-before-claim"
 )
-$workstations = @()
+$desktopBridgeMetadata = Get-CodexDesktopBridgeMetadata
+$workstations = [System.Collections.ArrayList]::new()
 foreach ($row in $rows) {
   $sessionId = [string]$row.id
   $name = Sanitize-SessionText ([string]$row.thread_name)
@@ -418,8 +492,12 @@ foreach ($row in $rows) {
   $sourceKind = Sanitize-SessionText ([string]$row.source_kind)
   $sourceFile = Sanitize-SessionText ([string]$row.source_file)
   $threadNameSource = Sanitize-SessionText ([string]$row.thread_name_source)
+  if (Test-PlatformProbeSession -Title $name -SourceFile $sourceFile) {
+    Write-Host "Skipping platform probe Codex session $sessionId ..."
+    continue
+  }
 
-  $workstations += @{
+  [void]$workstations.Add(@{
     workstation_id = "codex-session-$sessionId"
     workstation_name = $name
     workstation_status = "active"
@@ -441,13 +519,20 @@ foreach ($row in $rows) {
       thread_name_source = $threadNameSource
       scan_status = "active_session_found"
       checked_session_directories = @($checkedSessionDirectories)
+      codex_desktop_process_detected = $desktopBridgeMetadata.codex_desktop_process_detected
+      desktop_process_detected = $desktopBridgeMetadata.desktop_process_detected
+      codex_desktop_bridge_connected = $desktopBridgeMetadata.codex_desktop_bridge_connected
+      desktop_bridge_connected = $desktopBridgeMetadata.desktop_bridge_connected
+      desktop_bridge_label = $desktopBridgeMetadata.desktop_bridge_label
+      desktop_bridge_note = $desktopBridgeMetadata.desktop_bridge_note
+      desktop_delivery_mode = $desktopBridgeMetadata.desktop_delivery_mode
     }
-  }
+  })
 }
 
 if (-not $workstations.Count) {
   Write-Warning $scanIssue
-  $workstations += New-FallbackWorkstation -ProviderId $AiProviderId -ProviderLabel $AiProviderLabel -Issue $scanIssue -CheckedPaths $checkedSessionIndexPaths -Root $projectWorkspaceRoot
+  [void]$workstations.Add((New-FallbackWorkstation -ProviderId $AiProviderId -ProviderLabel $AiProviderLabel -Issue $scanIssue -CheckedPaths $checkedSessionIndexPaths -Root $projectWorkspaceRoot -DesktopBridgeMetadata $desktopBridgeMetadata))
   $workstations[0].metadata.checked_session_directories = @($checkedSessionDirectories)
 }
 

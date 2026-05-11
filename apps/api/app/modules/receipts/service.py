@@ -26,8 +26,21 @@ def _iso(value) -> str | None:
     return str(value)
 
 
-def _seat_or_404(db: Session, seat_id: str) -> ProjectThreadWorkstation:
+def get_receipt_seat_or_404(db: Session, seat_id: str, *, project_id: str | None = None) -> ProjectThreadWorkstation:
     seat = db.get(ProjectThreadWorkstation, seat_id)
+    if seat is not None and project_id and seat.project_id != project_id:
+        seat = None
+    if seat is None:
+        cleaned = str(seat_id or "").strip()
+        if cleaned:
+            stmt = select(ProjectThreadWorkstation).where(
+                (ProjectThreadWorkstation.config_id == cleaned)
+                | (ProjectThreadWorkstation.name == cleaned)
+                | (ProjectThreadWorkstation.agent_id == cleaned)
+            )
+            if project_id:
+                stmt = stmt.where(ProjectThreadWorkstation.project_id == project_id)
+            seat = db.scalars(stmt).first()
     if seat is None:
         raise AppError("SEAT_NOT_FOUND", f"seat {seat_id} not found", status_code=404)
     return seat
@@ -92,10 +105,10 @@ def create_receipt(
     payload: ReceiptCreate,
 ) -> ReceiptRead:
     requirement = _requirement_or_404(db, payload.parent_requirement_id)
-    sender_seat = _seat_or_404(db, payload.sender_seat_id)
+    sender_seat = get_receipt_seat_or_404(db, payload.sender_seat_id)
 
     if payload.recipient_seat_id:
-        recipient_seat = _seat_or_404(db, payload.recipient_seat_id)
+        recipient_seat = get_receipt_seat_or_404(db, payload.recipient_seat_id)
     else:
         recipient_seat = _resolve_originator_seat(db, requirement)
 
@@ -204,13 +217,15 @@ def list_receipts_for_seat(
     db: Session,
     seat_id: str,
     *,
+    project_id: str | None = None,
     direction: str = "incoming",
     limit: int = 50,
 ) -> list[ReceiptRead]:
     """direction = incoming（发给我的） / outgoing（我发的） / both"""
-    seat = _seat_or_404(db, seat_id)
+    seat = get_receipt_seat_or_404(db, seat_id, project_id=project_id)
     stmt = select(CollaborationMessage).where(
         CollaborationMessage.message_type == "agent_result",
+        CollaborationMessage.project_id == seat.project_id,
     )
     if direction == "incoming":
         stmt = stmt.where(CollaborationMessage.recipient_id == seat.id)
@@ -267,6 +282,7 @@ def _status_for_kind(kind: str) -> str:
 
 __all__ = [
     "create_receipt",
+    "get_receipt_seat_or_404",
     "list_receipts_for_requirement",
     "list_receipts_for_seat",
 ]

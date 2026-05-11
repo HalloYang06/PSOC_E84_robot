@@ -424,12 +424,46 @@ def _seat_review_policy(seat: ProjectThreadWorkstation) -> str:
 def _project_collab_config(db: Session, project_id: str | None) -> dict:
     if not project_id:
         return {}
-    from app.db.models.project import Project  # local import to avoid cycle
-    proj = db.get(Project, project_id)
-    if proj is None:
-        return {}
-    cfg = getattr(proj, "collaboration_config", None)
+    from app.modules.projects.service import get_project_config  # local import to avoid cycle
+    try:
+        cfg = get_project_config(db, project_id).get("collaboration_config")
+    except Exception:
+        cfg = None
     return cfg if isinstance(cfg, dict) else {}
+
+
+def _review_pair_key(
+    upstream_seat: ProjectThreadWorkstation | None,
+    downstream_seat: ProjectThreadWorkstation | None,
+) -> str:
+    if upstream_seat is None or downstream_seat is None:
+        return ""
+    upstream_id = str(getattr(upstream_seat, "id", "") or "").strip()
+    downstream_id = str(getattr(downstream_seat, "id", "") or "").strip()
+    if not upstream_id or not downstream_id:
+        return ""
+    return f"{upstream_id}->{downstream_id}"
+
+
+def _resolve_pair_review_rule(
+    cfg: dict,
+    upstream_seat: ProjectThreadWorkstation | None,
+    downstream_seat: ProjectThreadWorkstation | None,
+) -> tuple[str, dict] | None:
+    key = _review_pair_key(upstream_seat, downstream_seat)
+    if not key:
+        return None
+    rp = cfg.get("review_policy") if isinstance(cfg.get("review_policy"), dict) else {}
+    pair_rules = rp.get("npc_pair_rules") if isinstance(rp, dict) and isinstance(rp.get("npc_pair_rules"), dict) else {}
+    rule = pair_rules.get(key)
+    if not isinstance(rule, dict):
+        return None
+    policy = str(rule.get("policy") or "").strip().lower()
+    if policy in {"force", "always", "on"}:
+        return "force", rule
+    if policy in {"skip", "never", "off"}:
+        return "skip", rule
+    return None
 
 
 def _resolve_review_for_dispatch(
@@ -437,11 +471,23 @@ def _resolve_review_for_dispatch(
     upstream_seat: ProjectThreadWorkstation | None,
     downstream_seat: ProjectThreadWorkstation,
 ) -> dict:
-    """三级 review policy：NPC > 工位 > 项目 default。返回 {requires_review, source, policy}。"""
+    """review policy：目标 NPC 强审 > NPC 关系 > NPC 免审 > 工位 > 项目 default。"""
     seat_pol = _seat_review_policy(downstream_seat)
-    if seat_pol in {"force", "skip"}:
-        return {"requires_review": seat_pol == "force", "source": "npc", "policy": seat_pol}
+    if seat_pol == "force":
+        return {"requires_review": True, "source": "npc", "policy": seat_pol}
     cfg = _project_collab_config(db, downstream_seat.project_id)
+    pair_rule = _resolve_pair_review_rule(cfg, upstream_seat, downstream_seat)
+    if pair_rule is not None:
+        pair_policy, rule = pair_rule
+        return {
+            "requires_review": pair_policy == "force",
+            "source": "npc_pair",
+            "policy": pair_policy,
+            "pair_key": _review_pair_key(upstream_seat, downstream_seat),
+            "rule": rule,
+        }
+    if seat_pol == "skip":
+        return {"requires_review": False, "source": "npc", "policy": seat_pol}
     profiles = cfg.get("workstation_profiles") if isinstance(cfg.get("workstation_profiles"), dict) else {}
     ws_key = _seat_workstation_key(downstream_seat)
     profile = profiles.get(ws_key) if isinstance(profiles, dict) and ws_key else None
@@ -1395,4 +1441,3 @@ def find_similar_requirements(
         like_value = f"%{title.strip()}%"
         stmt = stmt.where(or_(Requirement.title.ilike(like_value), Requirement.context_summary.ilike(like_value)))
     return list(db.scalars(stmt.limit(max(1, min(limit, 100)))))
-

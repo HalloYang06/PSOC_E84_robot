@@ -10,6 +10,8 @@ type GameShellProps = {
   projectId: string;
   projectName: string;
   gradeChip?: { grade: string; summary: string; color: string } | null;
+  actionHint?: string;
+  actionPanel?: PanelKey;
 };
 
 const PANELS: { key: PanelKey; label: string; title: string; path: (id: string) => string }[] = [
@@ -18,7 +20,7 @@ const PANELS: { key: PanelKey; label: string; title: string; path: (id: string) 
   { key: "company", label: "🏢 公司层", title: "工位长会议室", path: (id) => `/projects/${id}/company` },
 ];
 
-export function GameShell({ projectId, projectName, gradeChip = null }: GameShellProps) {
+export function GameShell({ projectId, projectName, gradeChip = null, actionHint = "", actionPanel = "workbench" }: GameShellProps) {
   const [openPanel, setOpenPanel] = useState<PanelKey | null>(null);
   const [gameHidden, setGameHidden] = useState(false);
 
@@ -38,6 +40,16 @@ export function GameShell({ projectId, projectName, gradeChip = null }: GameShel
             >
               合格性 {gradeChip.grade}
             </span>
+          ) : null}
+          {actionHint ? (
+            <button
+              type="button"
+              className={styles.actionHint}
+              title={`打开${PANELS.find((p) => p.key === actionPanel)?.title ?? "下一步面板"}`}
+              onClick={() => setOpenPanel(actionPanel)}
+            >
+              {actionHint}
+            </button>
           ) : null}
         </div>
         <nav className={styles.navRight}>

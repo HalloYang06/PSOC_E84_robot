@@ -15,8 +15,21 @@ INBOX_STATUSES = ("waiting_response", "queued", "blocked", "pending_review", "ro
 TODO_STATUSES = ("draft", "ready", "in_progress", "review", "blocked")
 
 
-def get_seat_or_404(db: Session, seat_id: str) -> ProjectThreadWorkstation:
+def get_seat_or_404(db: Session, seat_id: str, *, project_id: str | None = None) -> ProjectThreadWorkstation:
     seat = db.get(ProjectThreadWorkstation, seat_id)
+    if seat is not None and project_id and seat.project_id != project_id:
+        seat = None
+    if seat is None:
+        cleaned = str(seat_id or "").strip()
+        if cleaned:
+            stmt = select(ProjectThreadWorkstation).where(
+                (ProjectThreadWorkstation.config_id == cleaned)
+                | (ProjectThreadWorkstation.name == cleaned)
+                | (ProjectThreadWorkstation.agent_id == cleaned)
+            )
+            if project_id:
+                stmt = stmt.where(ProjectThreadWorkstation.project_id == project_id)
+            seat = db.scalars(stmt).first()
     if seat is None:
         raise AppError("SEAT_NOT_FOUND", "seat not found", status_code=404)
     return seat
@@ -138,8 +151,8 @@ def _seat_summary(seat: ProjectThreadWorkstation) -> dict[str, object]:
     }
 
 
-def get_seat_queues(db: Session, seat_id: str, *, limit: int = 50) -> dict[str, object]:
-    seat = get_seat_or_404(db, seat_id)
+def get_seat_queues(db: Session, seat_id: str, *, project_id: str | None = None, limit: int = 50) -> dict[str, object]:
+    seat = get_seat_or_404(db, seat_id, project_id=project_id)
     inbox = _list_inbox(db, seat, limit=limit)
     todo = _list_todo(db, seat, limit=limit)
     return {

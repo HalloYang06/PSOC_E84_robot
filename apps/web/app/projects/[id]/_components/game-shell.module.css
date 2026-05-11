@@ -57,6 +57,26 @@
   white-space: nowrap;
 }
 
+.actionHint {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  min-width: 0;
+  max-width: min(520px, 42vw);
+  color: rgba(234, 255, 255, 0.72);
+  font-size: 11.5px;
+  font: inherit;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.actionHint:hover {
+  color: #b9fff3;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .navRight {
   display: flex;
   align-items: center;
@@ -201,4 +221,5 @@
 @media (max-width: 900px) {
   .drawer { width: 100vw; }
   .projectName { max-width: 120px; }
+  .actionHint { display: none; }
 }

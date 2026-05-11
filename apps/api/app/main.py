@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import socket
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -61,6 +63,7 @@ RUNNER_OFFLINE_SWEEP_INTERVAL_SECONDS = 60
 
 app = FastAPI(title="AI Collab Platform API", version="0.1.0")
 settings = get_settings()
+SERVICE_HEALTH_PORTS = (3000, 8010, 8011)
 
 if settings.cors_allowed_origins_list and not settings.supertokens_enabled:
     app.add_middleware(
@@ -72,6 +75,35 @@ if settings.cors_allowed_origins_list and not settings.supertokens_enabled:
     )
 
 setup_supertokens(app, settings)
+
+
+def _port_has_listener(port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(0.08)
+        return sock.connect_ex(("127.0.0.1", port)) == 0
+
+
+def _local_service_probe() -> list[dict[str, object]]:
+    return [
+        {
+            "host": "127.0.0.1",
+            "port": port,
+            "listening": _port_has_listener(port),
+        }
+        for port in SERVICE_HEALTH_PORTS
+    ]
+
+
+def _health_payload(request: Request) -> dict[str, object]:
+    return {
+        "status": "ok",
+        "version": "0.1.0",
+        "pid": os.getpid(),
+        "host": request.url.hostname,
+        "port": request.url.port,
+        "base_url": str(request.base_url).rstrip("/"),
+        "local_services": _local_service_probe(),
+    }
 
 
 def _startup_settings():
@@ -190,13 +222,13 @@ async def http_exception_handler(_: Request, exc: StarletteHTTPException):
 
 
 @app.get("/api/health")
-def health() -> dict[str, object]:
-    return ok({"status": "ok", "version": "0.1.0"})
+def health(request: Request) -> dict[str, object]:
+    return ok(_health_payload(request))
 
 
 @app.get("/health")
-def health_short() -> dict[str, object]:
-    return ok({"status": "ok", "version": "0.1.0"})
+def health_short(request: Request) -> dict[str, object]:
+    return ok(_health_payload(request))
 
 
 @app.get("/static/seat-mcp-server.py")

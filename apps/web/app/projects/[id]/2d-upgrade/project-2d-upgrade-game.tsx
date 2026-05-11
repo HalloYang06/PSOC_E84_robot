@@ -14,7 +14,6 @@ import {
   fetchNpcHandoffContext,
   fetchProjectClaudeContext,
   fetchProjectScorecard,
-  importGithubProjectSkill,
   issueComputerNodePairingToken,
   previewCollaborationMessage,
   previewProjectGitRollback,
@@ -47,6 +46,11 @@ type GameProject = {
   name: string;
   description: string;
   type: string;
+  collaboration_config?: Record<string, unknown>;
+  github_url?: string;
+  local_git_url?: string;
+  default_branch?: string;
+  develop_branch?: string;
 };
 
 type GameStats = {
@@ -62,6 +66,7 @@ type GameStats = {
 
 type FeedItem = {
   id: string;
+  rowId?: string;
   title?: string;
   name?: string;
   type?: string;
@@ -87,6 +92,12 @@ type FeedItem = {
   inheritedSkills?: string[];
   knowledgeSummary?: string;
   knowledgeHandoffPath?: string;
+  threadScanCount?: number;
+  desktopProcessDetected?: boolean;
+  desktopBridgeConnected?: boolean;
+  desktopDeliveryMode?: string;
+  desktopBridgeLabel?: string;
+  desktopBridgeNote?: string;
 };
 
 type WorkshopStationItem = {
@@ -144,6 +155,89 @@ type Project2dUpgradeGameProps = {
   teamNotice?: string;
   teamError?: string;
 };
+
+type ServiceHealthState = {
+  status: "checking" | "ok" | "error";
+  webUrl: string;
+  apiBaseUrl: string;
+  apiPid?: string;
+  apiVersion?: string;
+  apiSeenUrl?: string;
+  localServices?: Array<{ host: string; port: number; listening: boolean }>;
+  message?: string;
+};
+
+type RecommendedProjectSkill = {
+  id: string;
+  label: string;
+  note: string;
+  recommendedFor: string[];
+};
+
+function safeProjectReturnPath(projectId: string, value: string | null | undefined): string {
+  const raw = String(value ?? "").trim();
+  if (!raw.startsWith(`/projects/${projectId}/`)) return "";
+  if (raw.includes("://") || raw.startsWith("//") || raw.includes("\\") || raw.includes("\n") || raw.includes("\r")) return "";
+  return raw;
+}
+
+function labelProjectReturnPath(value: string): string {
+  if (value.includes("/workbench")) return "返回 NPC 工作台";
+  if (value.includes("/company")) return "返回公司层";
+  if (value.includes("/cockpit")) return "返回驾驶舱";
+  if (value.includes("/unity-client")) return "返回 Unity 工作台";
+  return "返回来源页面";
+}
+
+const YUESPEAK_RECOMMENDED_SKILLS: RecommendedProjectSkill[] = [
+  {
+    id: "yuespeak-boss-planning",
+    label: "YueSpeak Boss 分工规划",
+    note: "把用户的一句话需求拆成可执行方案、工位分工、NPC 职责、GitHub 知识库路径和验收口径；Boss 只做规划、派单、收口，不直接替执行 NPC 写实现。",
+    recommendedFor: ["Boss NPC", "产品与分工工位", "项目负责人"],
+  },
+  {
+    id: "yuespeak-backend-api",
+    label: "YueSpeak 后端接口与数据",
+    note: "负责阅读 YueSpeak 仓库文档，梳理接口、数据模型、标注流程、导出格式和迁移风险；输出要能被前端和 QA NPC 复用。",
+    recommendedFor: ["后端数据 NPC", "标注与导出工位"],
+  },
+  {
+    id: "yuespeak-frontend-miniapp",
+    label: "YueSpeak 小程序体验",
+    note: "负责学生端录音、跟读、纠音反馈、教师端查看与任务流体验；提交前必须从真实用户路径说明点击步骤和页面状态。",
+    recommendedFor: ["前端小程序 NPC", "学生教师体验工位"],
+  },
+  {
+    id: "yuespeak-dataset-export",
+    label: "YueSpeak 数据集导出",
+    note: "关注音频、文本、评分、标注结果的导入导出闭环；每次改动要说明字段来源、兼容旧数据方式和可回滚点。",
+    recommendedFor: ["后端数据 NPC", "数据治理 NPC"],
+  },
+  {
+    id: "yuespeak-browser-acceptance",
+    label: "YueSpeak 浏览器验收",
+    note: "用用户视角验证页面能不能用、密度是否舒服、核心按钮是否找得到；每次给出截图或明确的路由、操作、结果。",
+    recommendedFor: ["QA 验收 NPC", "验收风险工位"],
+  },
+  {
+    id: "yuespeak-cross-station-routing",
+    label: "跨工位协作路由",
+    note: "同一工位 NPC 互相认识并按职责找人；不同工位只能通过目标工位长 NPC 沟通，回执必须回到发起 NPC 和 Boss 收口。",
+    recommendedFor: ["Boss NPC", "工位长 NPC", "协作平台 NPC"],
+  },
+];
+
+function normalizeSkillLibraryItem(skill: RecommendedProjectSkill) {
+  return {
+    id: skill.id,
+    label: skill.label,
+    note: skill.note,
+    source: "custom",
+    scope: "role",
+    recommended_for: skill.recommendedFor,
+  };
+}
 
 const PANEL_TABS = [
   "development-workshop",
@@ -426,16 +520,16 @@ const PANEL_ACTIONS: Record<ModuleTab, PanelAction[]> = {
     {
       id: "automation-toggle",
       label: "自动化开关",
-      summary: "按 NPC 控制是否进入持续自动化。",
-      detail: "关闭时只执行当前指令；开启时才进入心跳自动化模式。",
+      summary: "高级开关：按 NPC 控制是否进入持续自动化。",
+      detail: "默认关闭。当前 YueSpeak 开发由 Codex 通过平台手动推进，不建议给项目 NPC 开心跳自动化。",
       primaryLabel: "打开自动化抽屉",
       safety: "默认关闭，节省 token。",
     },
     {
       id: "heartbeat-time",
       label: "心跳时间",
-      summary: "配置 5/15/30 分钟等心跳节奏。",
-      detail: "不同 NPC 可设置不同自动化频率，避免所有线程一起烧 token。",
+      summary: "高级配置：只有明确开启 NPC 自动化时才需要。",
+      detail: "当前 YueSpeak 开发不依赖这里；不要把 Codex 自己的叫醒自动化和项目 NPC 自动化混在一起。",
       primaryLabel: "打开心跳抽屉",
       safety: "超过预算时自动暂停。",
     },
@@ -568,6 +662,22 @@ function itemBody(item?: FeedItem) {
   return item.body || item.status || "暂无详细说明";
 }
 
+function uniqueText(values: unknown[]) {
+  return Array.from(
+    new Set(
+      values
+        .map((value) => String(value ?? "").trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
+function shortCopy(value: unknown, fallback = "暂无说明", maxLength = 88) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return fallback;
+  return raw.length > maxLength ? `${raw.slice(0, maxLength).trimEnd()}...` : raw;
+}
+
 function statusLabel(value?: string) {
   const normalized = String(value ?? "").toLowerCase();
   if (["done", "completed", "archived"].includes(normalized)) return "完成";
@@ -604,6 +714,12 @@ function WorkstationGroupsSection({
   const [editingWsId, setEditingWsId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editLeadSeatId, setEditLeadSeatId] = useState("");
+  const yueSpeakBlueprintNames = [
+    "YueSpeak Boss / 产品与分工工位",
+    "YueSpeak Backend Data / 标注与导出工位",
+    "YueSpeak Frontend Miniapp / 学生教师体验工位",
+    "YueSpeak QA Acceptance / 验收风险工位",
+  ];
 
   async function callApi(method: string, path: string, body?: unknown): Promise<{ ok: boolean; json: any }> {
     const res = await fetch(apiClientUrl(path), {
@@ -676,6 +792,118 @@ function WorkstationGroupsSection({
     }
   }
 
+  async function createYueSpeakBlueprint() {
+    setBusyId("create");
+    setAdminNote(null);
+    try {
+      const existingNames = new Set(projectWorkstations.map((ws) => ws.name.trim().toLowerCase()));
+      const missing = yueSpeakBlueprintNames.filter((name) => !existingNames.has(name.toLowerCase()));
+      if (!missing.length) {
+        setAdminNote("YueSpeak 推荐工位已存在。");
+        return;
+      }
+      for (const name of missing) {
+        const r = await callApi("POST", `/api/projects/${encodeURIComponent(projectId)}/workstations`, { name });
+        if (!r.ok) throw new Error(`${name}: ${r.json?.error?.message ?? "create failed"}`);
+      }
+      setAdminNote(`✓ 已创建 ${missing.length} 个 YueSpeak 推荐工位`);
+      router.refresh();
+    } catch (e) {
+      setAdminNote(`创建推荐工位失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function assignNpcToLogicalWorkstation(wsId: string, seatId: string, seatName: string) {
+    if (!wsId || !seatId) return;
+    setBusyId(`assign:${seatId}`);
+    setAdminNote(null);
+    try {
+      const r = await callApi(
+        "POST",
+        `/api/projects/${encodeURIComponent(projectId)}/workstations/${encodeURIComponent(wsId)}/seats`,
+        { seat_ids: [seatId] },
+      );
+      if (!r.ok) throw new Error(r.json?.error?.message ?? "assign seat failed");
+      setAdminNote(`✓ 已把 ${seatName} 分配到逻辑工位`);
+      router.refresh();
+    } catch (e) {
+      setAdminNote(`分配失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function setSingleNpcWorkstationsAsLeads(groupsToScan: Group[]) {
+    const candidates = groupsToScan.filter((group) => group.isLogicalWorkstation && group.workstationId && group.seats.length === 1);
+    if (!candidates.length) {
+      setAdminNote("没有可自动设置的单 NPC 逻辑工位。");
+      return;
+    }
+    setBusyId("lead:auto");
+    setAdminNote(null);
+    try {
+      for (const group of candidates) {
+        const wsId = group.workstationId!;
+        const seatId = group.seats[0]?.id;
+        if (!seatId) continue;
+        const r = await callApi(
+          "POST",
+          `/api/projects/${encodeURIComponent(projectId)}/workstations/${encodeURIComponent(wsId)}/lead`,
+          { seat_id: seatId },
+        );
+        if (!r.ok) throw new Error(`${group.name}: ${r.json?.error?.message ?? "set lead failed"}`);
+      }
+      setAdminNote(`✓ 已为 ${candidates.length} 个单 NPC 工位设置工位长`);
+      router.refresh();
+    } catch (e) {
+      setAdminNote(`设置工位长失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function autoArrangeYueSpeakWorkstations() {
+    const mapping = [
+      { npc: "YueSpeak Boss", station: "YueSpeak Boss / 产品与分工工位" },
+      { npc: "YueSpeak Backend Data", station: "YueSpeak Backend Data / 标注与导出工位" },
+      { npc: "YueSpeak Frontend Miniapp", station: "YueSpeak Frontend Miniapp / 学生教师体验工位" },
+      { npc: "YueSpeak QA Acceptance", station: "YueSpeak QA Acceptance / 验收风险工位" },
+    ];
+    setBusyId("yuespeak:auto");
+    setAdminNote(null);
+    try {
+      const arranged: Array<{ wsId: string; seatId: string; station: string }> = [];
+      for (const item of mapping) {
+        const seat = npcSeats.find((candidate) => itemTitle(candidate).includes(item.npc));
+        const workstation = projectWorkstations.find((candidate) => candidate.name === item.station);
+        if (!seat || !workstation) continue;
+        const r = await callApi(
+          "POST",
+          `/api/projects/${encodeURIComponent(projectId)}/workstations/${encodeURIComponent(workstation.id)}/seats`,
+          { seat_ids: [seat.id] },
+        );
+        if (!r.ok) throw new Error(`${item.npc}: ${r.json?.error?.message ?? "assign seat failed"}`);
+        arranged.push({ wsId: workstation.id, seatId: seat.id, station: item.station });
+      }
+      for (const item of arranged) {
+        const r = await callApi(
+          "POST",
+          `/api/projects/${encodeURIComponent(projectId)}/workstations/${encodeURIComponent(item.wsId)}/lead`,
+          { seat_id: item.seatId },
+        );
+        if (!r.ok) throw new Error(`${item.station}: ${r.json?.error?.message ?? "set lead failed"}`);
+      }
+      setAdminNote(`✓ 已按 YueSpeak 蓝图归位 ${arranged.length} 个 NPC，并设为各自工位长`);
+      router.refresh();
+    } catch (e) {
+      setAdminNote(`YueSpeak 自动归位失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function deleteLogicalWorkstation(wsId: string, name: string) {
     if (!confirm(`删除工位「${name}」？\n（必须先把里面的 NPC 调走，否则后端会拒绝）`)) return;
     setBusyId(wsId);
@@ -733,21 +961,81 @@ function WorkstationGroupsSection({
     groupMap.set(key, bucket);
   }
   const groups = Array.from(groupMap.values()).sort((a, b) => b.seats.length - a.seats.length);
+  const unassignedNpcSeats = npcSeats.filter((seat) => !seat.workstationId);
+  const missingLeadCount = projectWorkstations.filter((ws) => !ws.leadSeatId).length;
+  const leadNameForWorkstation = (ws: ProjectWorkstation) => {
+    if (!ws.leadSeatId) return "未设工位长";
+    return npcSeats.find((s) => s.id === ws.leadSeatId || s.rowId === ws.leadSeatId || itemTitle(s) === ws.leadSeatId)?.name ?? ws.leadSeatId.slice(0, 8);
+  };
 
   // groups 为空时仍展示工位管理面板（让用户能新建第一个工位）
 
   return (
     <section className={styles.workstationGroups}>
       <header className={styles.workstationGroupsHead}>
-        <strong>按工位分组的 NPC（{groups.length} 个工位 / {npcSeats.length} 个 NPC）</strong>
-        <small>展开后可逐个工位发指令；总 / 工位广播按钮 S3 接入</small>
+        <strong>按执行归属分组的 NPC（{groups.length} 组 / {npcSeats.length} 个 NPC）</strong>
+        <small>逻辑工位优先；未归属时只按电脑/线程临时分组，不能代表部门协作关系。</small>
       </header>
+      <section className={styles.workstationHealthStrip} aria-label="逻辑工位健康摘要">
+        <div>
+          <strong>逻辑工位链路</strong>
+          <small>同工位互认，跨工位走目标工位长；这里是所有工作台复用的资源源头。</small>
+        </div>
+        <div className={styles.workstationHealthSteps}>
+          <span data-ok={projectWorkstations.length > 0 ? "1" : "0"}>工位 {projectWorkstations.length}</span>
+          <span data-ok={unassignedNpcSeats.length === 0 && npcSeats.length > 0 ? "1" : "0"}>未归属 {unassignedNpcSeats.length}</span>
+          <span data-ok={missingLeadCount === 0 && projectWorkstations.length > 0 ? "1" : "0"}>缺工位长 {missingLeadCount}</span>
+        </div>
+        {projectWorkstations.length ? (
+          <div className={styles.workstationLeadChips}>
+            {projectWorkstations.map((ws) => (
+              <span key={ws.id} data-missing={ws.leadSeatId ? undefined : "1"}>
+                {ws.name} · 工位长：{leadNameForWorkstation(ws)}
+              </span>
+            ))}
+          </div>
+        ) : null}
+      </section>
 
-      <details style={{ margin: "8px 0", padding: "8px 10px", background: "rgba(255,255,255,0.04)", borderRadius: 8 }}>
+      <details
+        open={projectWorkstations.length === 0 || unassignedNpcSeats.length > 0 || missingLeadCount > 0}
+        style={{ margin: "8px 0", padding: "8px 10px", background: "rgba(255,255,255,0.04)", borderRadius: 8 }}
+      >
         <summary style={{ cursor: "pointer", fontWeight: 600 }}>
           🛠 工位管理（{projectWorkstations.length} 个逻辑工位）
         </summary>
         <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+          <section className={styles.workstationSetupGuide}>
+            <div>
+              <strong>YueSpeak 协作先做这三步</strong>
+              <p>创建逻辑工位，把 NPC 分配进去，再给每个工位指定工位长。工位知识库用 GitHub 仓库相对路径，本地工程目录只作为当前电脑执行目录。</p>
+            </div>
+            <div className={styles.workstationSetupSteps}>
+              <span data-done={projectWorkstations.length > 0 ? "1" : "0"}>1. 逻辑工位 {projectWorkstations.length}</span>
+              <span data-done={unassignedNpcSeats.length === 0 && npcSeats.length > 0 ? "1" : "0"}>2. 未归属 NPC {unassignedNpcSeats.length}</span>
+              <span data-done={missingLeadCount === 0 && projectWorkstations.length > 0 ? "1" : "0"}>3. 未设工位长 {missingLeadCount}</span>
+            </div>
+          </section>
+          {projectWorkstations.length === 0 ? (
+            <button
+              type="button"
+              className={styles.workstationBlueprintBtn}
+              onClick={createYueSpeakBlueprint}
+              disabled={busyId === "create"}
+            >
+              {busyId === "create" ? "创建推荐工位中..." : "一键创建 YueSpeak 推荐工位"}
+            </button>
+          ) : null}
+          {projectWorkstations.length > 0 ? (
+            <button
+              type="button"
+              className={styles.workstationBlueprintBtn}
+              onClick={autoArrangeYueSpeakWorkstations}
+              disabled={busyId === "yuespeak:auto"}
+            >
+              {busyId === "yuespeak:auto" ? "YueSpeak 自动归位中..." : "按 YueSpeak NPC 名称自动归位并设置工位长"}
+            </button>
+          ) : null}
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -831,9 +1119,7 @@ function WorkstationGroupsSection({
                           {ws.name}
                           <small style={{ marginLeft: 8, opacity: 0.6 }}>
                             {ws.seatCount} 个 NPC
-                            {ws.leadSeatId
-                              ? ` · 工位长：${npcSeats.find((s) => s.id === ws.leadSeatId)?.name ?? ws.leadSeatId.slice(0, 8)}`
-                              : " · 未设工位长"}
+                            {` · 工位长：${leadNameForWorkstation(ws)}`}
                           </small>
                         </strong>
                         <button
@@ -863,6 +1149,47 @@ function WorkstationGroupsSection({
               })}
             </ul>
           )}
+          {projectWorkstations.length > 0 && unassignedNpcSeats.length > 0 ? (
+            <section className={styles.unassignedNpcAssignBox}>
+              <strong>未归属 NPC，需要分配到逻辑工位</strong>
+              <p>同工位互相认识、工位知识库、跨工位走工位长，都从这里的归属关系开始。</p>
+              <div className={styles.unassignedNpcGrid}>
+                {unassignedNpcSeats.map((seat) => (
+                  <div key={seat.id} className={styles.unassignedNpcItem}>
+                    <div>
+                      <b>{itemTitle(seat)}</b>
+                      <small>{seat.responsibility || seat.providerLabel || "待补职责"}</small>
+                    </div>
+                    <select
+                      defaultValue=""
+                      onChange={(e) => {
+                        const nextWs = e.target.value;
+                        if (!nextWs) return;
+                        assignNpcToLogicalWorkstation(nextWs, seat.id, itemTitle(seat));
+                      }}
+                      disabled={busyId === `assign:${seat.id}`}
+                      title="选择后立即把 NPC 分配到这个逻辑工位"
+                    >
+                      <option value="">分配到...</option>
+                      {projectWorkstations.map((ws) => (
+                        <option key={ws.id} value={ws.id}>{ws.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
+          {projectWorkstations.length > 0 ? (
+            <button
+              type="button"
+              className={styles.workstationBlueprintBtn}
+              onClick={() => setSingleNpcWorkstationsAsLeads(groups)}
+              disabled={busyId === "lead:auto"}
+            >
+              {busyId === "lead:auto" ? "设置工位长中..." : "单 NPC 工位一键设为工位长"}
+            </button>
+          ) : null}
           {adminNote ? <small style={{ opacity: 0.85 }}>{adminNote}</small> : null}
         </div>
       </details>
@@ -903,12 +1230,34 @@ function WorkstationGroupsSection({
               <ul className={styles.workstationGroupSeatList}>
                 {group.seats.map((seat) => (
                   <li key={seat.id} className={styles.workstationGroupSeatRow}>
-                    <strong>{itemTitle(seat)}</strong>
-                    <small>
-                      {seat.providerLabel || seat.providerId || "未绑定 provider"}
-                      {seat.responsibility ? ` · ${seat.responsibility.slice(0, 28)}${seat.responsibility.length > 28 ? "…" : ""}` : ""}
-                      {seat.automationEnabled ? " · 持续自动化" : ""}
-                    </small>
+                    <div>
+                      <strong>{itemTitle(seat)}</strong>
+                      <small>
+                        {seat.providerLabel || seat.providerId || "未绑定 provider"}
+                        {seat.responsibility ? ` · ${seat.responsibility.slice(0, 28)}${seat.responsibility.length > 28 ? "…" : ""}` : ""}
+                        {seat.automationEnabled ? " · 持续自动化" : ""}
+                      </small>
+                    </div>
+                    {projectWorkstations.length > 0 ? (
+                      <select
+                        className={styles.workstationSeatMoveSelect}
+                        aria-label={`调整 ${itemTitle(seat)} 的逻辑工位归属`}
+                        data-testid={`workstation-seat-move-${seat.id}`}
+                        value={seat.workstationId || ""}
+                        onChange={(e) => {
+                          const nextWs = e.target.value;
+                          if (!nextWs || nextWs === seat.workstationId) return;
+                          assignNpcToLogicalWorkstation(nextWs, seat.id, itemTitle(seat));
+                        }}
+                        disabled={busyId === `assign:${seat.id}`}
+                        title="调整这个 NPC 的逻辑工位归属"
+                      >
+                        <option value="">未归属</option>
+                        {projectWorkstations.map((ws) => (
+                          <option key={ws.id} value={ws.id}>{ws.name}</option>
+                        ))}
+                      </select>
+                    ) : null}
                   </li>
                 ))}
               </ul>
@@ -1000,6 +1349,21 @@ function threadUserHint(thread: FeedItem) {
   return thread.body;
 }
 
+function threadProviderId(thread?: FeedItem) {
+  return String(thread?.type || thread?.providerId || thread?.providerLabel || "").trim().toLowerCase();
+}
+
+function isCodexThread(thread?: FeedItem) {
+  return threadProviderId(thread).includes("codex") || String(thread?.id || "").toLowerCase().startsWith("codex-session-");
+}
+
+function sourceThreadOptionLabel(thread: FeedItem) {
+  const provider = thread.type || "线程";
+  const status = statusLabel(thread.status);
+  if (isCodexThread(thread)) return `${itemTitle(thread)} / ${provider} / 可绑定执行 / ${status}`;
+  return `${itemTitle(thread)} / ${provider} / ${status}`;
+}
+
 function memberRoleLabel(member: FeedItem) {
   const role = String(member.permissionLevel || member.type || member.status || "member").toLowerCase();
   if (role.includes("owner")) return "项目负责人";
@@ -1010,7 +1374,7 @@ function memberRoleLabel(member: FeedItem) {
 }
 
 function computerThreadCount(computer: FeedItem, workstations: FeedItem[]) {
-  return workstations.filter((thread) => thread.computerNodeId === computer.id).length;
+  return computer.threadScanCount ?? workstations.filter((thread) => thread.computerNodeId === computer.id).length;
 }
 
 function computerUserHint(computer: FeedItem, workstations: FeedItem[]) {
@@ -1021,6 +1385,24 @@ function computerUserHint(computer: FeedItem, workstations: FeedItem[]) {
   if (status.includes("stale") || status.includes("expired")) return "心跳过期：让目标电脑重新运行 runner 接入命令或刷新心跳。";
   if (status.includes("offline")) return "离线：确认目标电脑是否开机、是否进入项目、runner 是否仍在运行。";
   return "状态需要确认：先看 runner 心跳和线程扫描结果，再派单。";
+}
+
+function computerDesktopCapabilityLabel(computer: FeedItem) {
+  if (computer.desktopBridgeConnected && computer.desktopDeliveryMode === "codex_desktop_ui") {
+    return computer.desktopBridgeLabel || "Codex Desktop UI 可见";
+  }
+  if (computer.desktopProcessDetected) return "检测到桌面进程，未确认 UI 投递";
+  return "未检测到桌面投递桥";
+}
+
+function computerDesktopCapabilityHint(computer: FeedItem) {
+  if (computer.desktopBridgeConnected && computer.desktopDeliveryMode === "codex_desktop_ui") {
+    return computer.desktopBridgeNote || "这台电脑可把单次派单作为普通消息送进已绑定的 Codex Desktop 线程。";
+  }
+  if (computer.desktopProcessDetected) {
+    return "Runner 看到本机桌面进程，但没有上报可交互 UI 输入桥；可能只能走 app-server 或文件投递。";
+  }
+  return "这台电脑未上报 Desktop UI bridge；用户要先在目标电脑打开 AI 桌面版并重新扫描线程。";
 }
 
 function providerSummary(workstations: FeedItem[]) {
@@ -1170,6 +1552,8 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
   const teamNoticeKey = searchParams?.get("team_notice") ?? "";
   const pairingTokenKey = searchParams?.get("pairing_token") ?? "";
   const adapterTokenKey = searchParams?.get("adapter_token") ?? "";
+  const returnToPath = safeProjectReturnPath(project.id, searchParams?.get("return_to"));
+  const returnToLabel = returnToPath ? labelProjectReturnPath(returnToPath) : "";
   useEffect(() => {
     if (!teamNoticeKey && !pairingTokenKey && !adapterTokenKey) return;
     router.refresh();
@@ -1192,12 +1576,62 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
   const [sceneVisible, setSceneVisible] = useState(false);
   const [copyState, setCopyState] = useState<{ kind: "idle" | "loading" | "ok" | "err"; message?: string }>({ kind: "idle" });
   const [watcherCopyState, setWatcherCopyState] = useState<{ kind: "idle" | "ok" | "err"; message?: string }>({ kind: "idle" });
+  const [serviceHealth, setServiceHealth] = useState<ServiceHealthState>({
+    status: "checking",
+    webUrl: "",
+    apiBaseUrl,
+  });
   const [handoffPreview, setHandoffPreview] = useState<{ npcName: string; prompt: string; at: string } | null>(null);
   const [handoffTaskId, setHandoffTaskId] = useState<string>("");
   const [cockpitOpen, setCockpitOpen] = useState(true);
   const [taskBoardOpen, setTaskBoardOpen] = useState(true);
+  const [recommendedSkillSavingId, setRecommendedSkillSavingId] = useState<string | null>(null);
+  const [recommendedSkillNotice, setRecommendedSkillNotice] = useState<string | null>(null);
+  const [selectedRecommendedSkillId, setSelectedRecommendedSkillId] = useState("");
+  const [githubSkillImporting, setGithubSkillImporting] = useState(false);
+  const [workstationRepairing, setWorkstationRepairing] = useState(false);
+  const [workstationRepairNotice, setWorkstationRepairNotice] = useState<string | null>(null);
   const setPanelNotice = (_value: string) => {};
   const panelNotice = "";
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadServiceHealth() {
+      const webUrl = typeof window !== "undefined" ? window.location.origin : "";
+      setServiceHealth((prev) => ({ ...prev, status: "checking", webUrl, apiBaseUrl }));
+      try {
+        const res = await fetch(apiClientUrl("/api/health"), { credentials: "include", cache: "no-store" });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json?.error?.message ?? `HTTP ${res.status}`);
+        const data = json?.data ?? json;
+        if (cancelled) return;
+        setServiceHealth({
+          status: String(data?.status || "").toLowerCase() === "ok" ? "ok" : "error",
+          webUrl,
+          apiBaseUrl,
+          apiPid: data?.pid != null ? String(data.pid) : "",
+          apiVersion: data?.version != null ? String(data.version) : "",
+          apiSeenUrl: data?.base_url != null ? String(data.base_url) : "",
+          localServices: Array.isArray(data?.local_services) ? data.local_services : [],
+          message: String(data?.status || "unknown"),
+        });
+      } catch (error) {
+        if (cancelled) return;
+        setServiceHealth({
+          status: "error",
+          webUrl,
+          apiBaseUrl,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    loadServiceHealth();
+    const timer = window.setInterval(loadServiceHealth, 30000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [apiBaseUrl]);
 
   async function copyClaudePrompt() {
     if (copyState.kind === "loading") return;
@@ -1279,6 +1713,78 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
     } catch (error) {
       setWatcherCopyState({ kind: "err", message: `复制失败：${error instanceof Error ? error.message : "未知错误"}` });
       setTimeout(() => setWatcherCopyState({ kind: "idle" }), 4000);
+    }
+  }
+
+  async function createRecommendedSkill(skillId: string) {
+    const selected = YUESPEAK_RECOMMENDED_SKILLS.find((skill) => skill.id === skillId);
+    if (!selected) {
+      setRecommendedSkillNotice("请先选择一个推荐 Skill。");
+      return;
+    }
+    const existingSkillIds = new Set(skills.map((skill) => String(skill.id ?? "").trim().toLowerCase()).filter(Boolean));
+    if (existingSkillIds.has(selected.id)) {
+      setRecommendedSkillNotice("这个 Skill 已经创建过。");
+      return;
+    }
+    setRecommendedSkillSavingId(selected.id);
+    setRecommendedSkillNotice(null);
+    try {
+      const currentConfig =
+        project.collaboration_config && typeof project.collaboration_config === "object"
+          ? { ...project.collaboration_config }
+          : {};
+      const currentLibrary = Array.isArray(currentConfig.skill_library)
+        ? [...(currentConfig.skill_library as Record<string, unknown>[])]
+        : skills.map((skill) => ({
+            id: skill.id,
+            label: itemTitle(skill),
+            note: itemBody(skill),
+            source: skill.type || "custom",
+            scope: "role",
+          }));
+      const nextLibrary = [...currentLibrary, normalizeSkillLibraryItem(selected)].sort((left, right) =>
+        String(left.label ?? left.id ?? "").localeCompare(String(right.label ?? right.id ?? ""), "zh-CN"),
+      );
+      const res = await fetch(apiClientUrl(`/api/projects/${encodeURIComponent(project.id)}`), {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          collaboration_config: {
+            ...currentConfig,
+            skill_library: nextLibrary,
+          },
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error?.message ?? `HTTP ${res.status}`);
+      setRecommendedSkillNotice(`已创建：${selected.label}`);
+      router.refresh();
+    } catch (error) {
+      setRecommendedSkillNotice(`创建失败：${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setRecommendedSkillSavingId(null);
+    }
+  }
+
+  async function submitGithubSkillImport(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (githubSkillImporting) return;
+    const form = event.currentTarget;
+    setGithubSkillImporting(true);
+    try {
+      const response = await fetch(form.action, {
+        method: "POST",
+        body: new FormData(form),
+        credentials: "include",
+        redirect: "follow",
+      });
+      window.location.assign(response.url || returnPath("skills", "github-import"));
+    } catch (error) {
+      const target = new URL(returnPath("skills", "github-import"), window.location.origin);
+      target.searchParams.set("team_error", error instanceof Error ? error.message : "导入 GitHub Skill 失败");
+      window.location.assign(target.toString());
     }
   }
 
@@ -1496,10 +2002,139 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
   const focusedNpcSeat = npcSeats.find((seat) => seat.id === focusedNpcId) ?? firstNpcSeat ?? null;
   const collaborationTargets = npcSeats.length ? [...npcSeats, ...workstations] : workstations;
   const todayText = new Date().toISOString().slice(0, 10);
+  const projectGithubUrl = String(project.github_url ?? "").trim();
+  const projectLocalGitUrl = String(project.local_git_url ?? "").trim();
+  const projectDefaultBranch = String(project.default_branch ?? "").trim() || "main";
+  const projectDevelopBranch = String(project.develop_branch ?? "").trim() || "develop";
+  const [gitRollbackTargetRef, setGitRollbackTargetRef] = useState(projectDevelopBranch);
+  const gitVersionIndex = useMemo(() => {
+    const versions: Array<{ ref: string; label: string; source: string; detail: string; tone: "branch" | "task" | "activity" | "default" }> = [];
+    const remember = (item: { ref: string; label: string; source: string; detail: string; tone: "branch" | "task" | "activity" | "default" }) => {
+      if (!item.ref || versions.some((version) => version.ref === item.ref)) return;
+      versions.push(item);
+    };
+    remember({
+      ref: projectDevelopBranch,
+      label: "开发分支",
+      source: "项目配置",
+      detail: "回到当前协作主线，适合让 Boss 和各工位重新对齐。",
+      tone: "branch",
+    });
+    if (projectDefaultBranch !== projectDevelopBranch) {
+      remember({
+        ref: projectDefaultBranch,
+        label: "默认分支",
+        source: "项目配置",
+        detail: "回到稳定主线，登记后应同步给 Boss 和工位长。",
+        tone: "branch",
+      });
+    }
+    remember({
+      ref: "HEAD~1",
+      label: "上一个提交",
+      source: "安全快捷项",
+      detail: "只作为预演目标，不直接执行 reset。",
+      tone: "default",
+    });
+    tasks
+      .filter((task) => task.providerId)
+      .slice(0, 8)
+      .forEach((task) => {
+        remember({
+          ref: String(task.providerId),
+          label: itemTitle(task),
+          source: "任务分支",
+          detail: `${statusLabel(task.status)} / ${shortCopy(task.body, "任务分支可用于预演影响面", 64)}`,
+          tone: "task",
+        });
+      });
+    messages
+      .filter((message) => /git|回退|rollback|同步|sync/i.test(`${message.type} ${message.title} ${message.body}`))
+      .slice(0, 6)
+      .forEach((message) => {
+        const bodyTargetRefs = [
+          ...String(message.body ?? "").matchAll(/(?:目标版本|target_ref|ref)[:：\s]+([A-Za-z0-9._/~\-]+)/gi),
+        ].map((value) => value[1]);
+        const candidates = uniqueText([
+          ...bodyTargetRefs,
+          message.providerId,
+        ]);
+        const targetRef = candidates[0] ?? "";
+        if (!targetRef) return;
+        remember({
+          ref: targetRef,
+          label: itemTitle(message),
+          source: "协作动态",
+          detail: shortCopy(message.body, "最近 Git 动态提到的目标引用", 72),
+          tone: "activity",
+        });
+      });
+    return versions.slice(0, 16);
+  }, [messages, projectDefaultBranch, projectDevelopBranch, tasks]);
+  const gitRollbackAlignmentMessages = useMemo(() => {
+    const parseMeta = (message: FeedItem) => {
+      try {
+        const parsed = JSON.parse(String(message.knowledgeSummary || "{}"));
+        return parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : {};
+      } catch {
+        return {};
+      }
+    };
+    const receiptsBySource = new Map<string, FeedItem[]>();
+    for (const message of messages) {
+      const meta = parseMeta(message);
+      const sourceId = String(meta.source_message_id || "").trim();
+      if (!sourceId) continue;
+      const list = receiptsBySource.get(sourceId) ?? [];
+      list.push(message);
+      receiptsBySource.set(sourceId, list);
+    }
+    const npcNameByIdentity = new Map<string, string>();
+    for (const seat of npcSeats) {
+      const label = itemTitle(seat);
+      [seat.id, seat.rowId, seat.name, seat.sourceWorkstationId, seat.providerId]
+        .filter(Boolean)
+        .forEach((value) => npcNameByIdentity.set(String(value), label));
+    }
+    return messages
+      .filter((message) => {
+        const meta = parseMeta(message);
+        return meta.source === "git_rollback_alignment" || /Git 回退对齐|回退对齐/i.test(`${message.title} ${message.body}`);
+      })
+      .filter((message) => message.type === "agent_command")
+      .slice()
+      .sort((a, b) => String(b.at || "").localeCompare(String(a.at || "")))
+      .slice(0, 8)
+      .map((message) => {
+        const meta = parseMeta(message);
+        const receipts = (receiptsBySource.get(message.id) ?? []).slice().sort((a, b) => String(b.at || "").localeCompare(String(a.at || "")));
+        const latestReceipt = receipts[0];
+        const body = String(message.body ?? "");
+        const refMatch = body.match(/目标版本[:：]\s*([^\s\r\n]+)/);
+        return {
+          id: message.id,
+          title: itemTitle(message),
+          status: latestReceipt ? statusLabel(latestReceipt.status) : statusLabel(message.status),
+          rawStatus: message.status,
+          targetRef: String(meta.target_ref || refMatch?.[1] || message.providerId || "未识别"),
+          targetNpc: npcNameByIdentity.get(message.sourceWorkstationId || "") || message.sourceWorkstationId || "未识别 NPC",
+          at: latestReceipt?.at || message.at,
+          receiptCount: receipts.length,
+          receiptTitle: latestReceipt ? itemTitle(latestReceipt) : "",
+        };
+      });
+  }, [messages, npcSeats]);
+  useEffect(() => {
+    if (gitRollbackTargetRef.trim()) return;
+    setGitRollbackTargetRef(gitVersionIndex[0]?.ref ?? projectDevelopBranch);
+  }, [gitRollbackTargetRef, gitVersionIndex, projectDevelopBranch]);
 
   function returnPath(tab: ModuleTab, actionId?: string) {
     const params = new URLSearchParams({ panel: tab });
     if (actionId) params.set("action", actionId);
+    if (returnToPath) params.set("return_to", returnToPath);
+    const source = searchParams?.get("from");
+    if (source) params.set("from", source);
     return `/projects/${project.id}/2d-upgrade?${params.toString()}`;
   }
 
@@ -1619,21 +2254,19 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
   function openAction(action: PanelAction) {
     setLoadingActionId(action.id);
     setPanelNotice(`正在打开三级抽屉：${action.label}`);
-    window.setTimeout(() => {
-      setActiveAction(action);
-      setLoadingActionId(null);
-      setPanelNotice(`三级抽屉已打开：${action.label}`);
-      if (typeof window !== "undefined" && activeModule) {
-        const url = new URL(window.location.href);
-        url.searchParams.set("panel", activeModule.tab);
-        url.searchParams.set("action", action.id);
-        if (action.id !== "pairing-token") {
-          url.searchParams.delete("pairing_node");
-          url.searchParams.delete("pairing_token");
-        }
-        window.history.replaceState(null, "", url.toString());
+    setActiveAction(action);
+    setLoadingActionId(null);
+    setPanelNotice(`三级抽屉已打开：${action.label}`);
+    if (typeof window !== "undefined" && activeModule) {
+      const url = new URL(window.location.href);
+      url.searchParams.set("panel", activeModule.tab);
+      url.searchParams.set("action", action.id);
+      if (action.id !== "pairing-token") {
+        url.searchParams.delete("pairing_node");
+        url.searchParams.delete("pairing_token");
       }
-    }, 420);
+      window.history.replaceState(null, "", url.toString());
+    }
   }
 
   function closeAction() {
@@ -1708,6 +2341,98 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         <span><b>{stats.activeTaskCount}</b>进行中</span>
         <span><b>{stats.blockedTaskCount}</b>阻塞</span>
         <span><b>{stats.onlineComputerCount}/{stats.computerCount}</b>在线电脑</span>
+      </div>
+    );
+  }
+
+  function renderLogicalWorkstationSummary() {
+    const unassignedNpcCount = npcSeats.filter((seat) => !seat.workstationId).length;
+    const missingLeadCount = projectWorkstations.filter((ws) => !ws.leadSeatId).length;
+    const leadOnlyWorkstations = projectWorkstations.filter((ws) => ws.leadSeatId && ws.seatCount === 0);
+    const canRepairLeadMembership = leadOnlyWorkstations.length > 0;
+    async function repairLeadMembership() {
+      if (!canRepairLeadMembership || workstationRepairing) return;
+      setWorkstationRepairing(true);
+      setWorkstationRepairNotice(null);
+      try {
+        let repaired = 0;
+        for (const ws of leadOnlyWorkstations) {
+          const leadSeatId = ws.leadSeatId || "";
+          const leadSeat = npcSeats.find((seat) =>
+            seat.id === leadSeatId || seat.rowId === leadSeatId || itemTitle(seat) === leadSeatId,
+          );
+          const seatId = leadSeat?.id || leadSeat?.rowId || leadSeatId;
+          if (!seatId) continue;
+          const res = await fetch(apiClientUrl(`/api/projects/${encodeURIComponent(project.id)}/workstations/${encodeURIComponent(ws.id)}/seats`), {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ seat_ids: [seatId] }),
+          });
+          const json = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(json?.error?.message ?? `${ws.name} 归位失败`);
+          repaired += 1;
+        }
+        setWorkstationRepairNotice(`已补齐 ${repaired} 个工位长的 NPC 归属`);
+        router.refresh();
+      } catch (error) {
+        setWorkstationRepairNotice(`补齐失败：${error instanceof Error ? error.message : String(error)}`);
+      } finally {
+        setWorkstationRepairing(false);
+      }
+    }
+    return (
+      <div className={styles.logicalWorkstationSummary}>
+        <section className={styles.workstationSetupGuide}>
+          <div>
+            <strong>YueSpeak 协作先做这三步</strong>
+            <p>逻辑工位、NPC 归属、工位长都在主页面治理；工作台只复用这些资源。</p>
+          </div>
+          <div className={styles.workstationSetupSteps}>
+            <span data-done={projectWorkstations.length > 0 ? "1" : "0"}>1. 逻辑工位 {projectWorkstations.length}</span>
+            <span data-done={unassignedNpcCount === 0 && npcSeats.length > 0 ? "1" : "0"}>2. 未归属 NPC {unassignedNpcCount}</span>
+            <span data-done={missingLeadCount === 0 && projectWorkstations.length > 0 ? "1" : "0"}>3. 未设工位长 {missingLeadCount}</span>
+          </div>
+        </section>
+        {canRepairLeadMembership ? (
+          <section className={styles.workstationSetupGuide}>
+            <div>
+              <strong>工位长已选，但 NPC 还没归位</strong>
+              <p>这会让工作台看不到同工位关系。平台可以直接按已选工位长补齐归属，不需要用户再写提示词。</p>
+              {workstationRepairNotice ? <small>{workstationRepairNotice}</small> : null}
+            </div>
+            <button
+              type="button"
+              className={styles.workstationBlueprintBtn}
+              onClick={repairLeadMembership}
+              disabled={workstationRepairing}
+            >
+              {workstationRepairing ? "补齐中..." : "一键补齐工位长归属"}
+            </button>
+          </section>
+        ) : workstationRepairNotice ? (
+          <small>{workstationRepairNotice}</small>
+        ) : null}
+        <ul className={styles.logicalWorkstationList}>
+          {projectWorkstations.length ? (
+            projectWorkstations.map((ws) => {
+              const leadName = ws.leadSeatId
+                ? (npcSeats.find((seat) => seat.id === ws.leadSeatId || seat.rowId === ws.leadSeatId || itemTitle(seat) === ws.leadSeatId)?.name ?? ws.leadSeatId.slice(0, 8))
+                : "未设工位长";
+              return (
+                <li key={ws.id}>
+                  <b>{ws.name}</b>
+                  <small>{ws.seatCount} 个 NPC · 工位长：{leadName}</small>
+                </li>
+              );
+            })
+          ) : (
+            <li>
+              <b>还没有逻辑工位</b>
+              <small>先添加工位，再把 NPC 分配进去。</small>
+            </li>
+          )}
+        </ul>
       </div>
     );
   }
@@ -1805,6 +2530,71 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
   }
 
   function renderActionForm(action: PanelAction, moduleTab: ModuleTab) {
+    function renderGitRollbackVersionIndex() {
+      return (
+        <section className={styles.githubImportGuide} data-git-rollback-version-index="1">
+          <b>可回退版本索引</b>
+          <p>
+            先选一个目标做只读预演。知识库和跨电脑协作仍以 GitHub 仓库为准，本地路径只属于各自 Runner。
+          </p>
+          <dl>
+            <div>
+              <dt>仓库</dt>
+              <dd>{projectGithubUrl || projectLocalGitUrl || "尚未绑定仓库地址"}</dd>
+            </div>
+            <div>
+              <dt>规则</dt>
+              <dd>登记请求不会直接 reset；必须通过人审、Runner 只读预检和 NPC 对齐回执。</dd>
+            </div>
+          </dl>
+          <div className={styles.gitVersionIndexGrid}>
+            {gitVersionIndex.map((version) => (
+              <button
+                key={`git-version-${version.ref}`}
+                type="button"
+                className={styles.gitVersionCard}
+                data-active={gitRollbackTargetRef === version.ref ? "1" : undefined}
+                data-tone={version.tone}
+                onClick={() => setGitRollbackTargetRef(version.ref)}
+                title={`选择 ${version.ref} 作为回退预演目标`}
+              >
+                <span>{version.source}</span>
+                <b>{version.label}</b>
+                <code>{version.ref}</code>
+                <small>{version.detail}</small>
+              </button>
+            ))}
+          </div>
+          <div className={styles.gitAlignmentStatus}>
+            <div className={styles.gitAlignmentHead}>
+              <strong>NPC 对齐回执</strong>
+              <Link href={`/projects/${project.id}/workbench`} title="进入工作台查看 NPC 对话和最终回执">
+                去工作台
+              </Link>
+            </div>
+            {gitRollbackAlignmentMessages.length ? (
+              <ul>
+                {gitRollbackAlignmentMessages.map((message) => (
+                  <li key={`git-align-${message.id}`}>
+                    <span>{message.targetRef}</span>
+                    <strong>{message.title}</strong>
+                    <small>
+                      {message.targetNpc} · {message.status}
+                      {message.receiptCount ? ` · 回执 ${message.receiptCount}` : " · 待回执"}
+                      {message.receiptTitle ? ` · ${message.receiptTitle}` : ""}
+                      {message.at ? ` · ${message.at}` : ""}
+                    </small>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>暂无 NPC 对齐消息。登记回退请求后，Boss / 工位长会在工作台收到对齐任务并回最小回执。</p>
+            )}
+          </div>
+        </section>
+      );
+    }
+
     if (moduleTab === "development-workshop" && action.id === "create-station") {
       return (
         <form action={createDevelopmentWorkshopStation.bind(null, project.id)} className={styles.drawerForm} data-unity-real-form="workshop-create-station">
@@ -2027,7 +2817,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                     <option value="">不绑定线程</option>
                     {workstations.map((item) => (
                       <option key={item.id} value={item.id}>
-                        {itemTitle(item)} / {item.type || "线程"} / {statusLabel(item.status)}
+                        {sourceThreadOptionLabel(item)}
                       </option>
                     ))}
                   </select>
@@ -2296,11 +3086,12 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         ? (() => {
             const node = { id: pairingResult.nodeId, label: pairingResult.nodeId };
             return buildComputerOneClickConnectCommand(
-              apiBaseUrl,
+              webBaseUrl,
               project.id,
               node,
               pairingResult.token,
               suggestedComputerRunnerId(node),
+              { serverUrl: apiBaseUrl },
             );
           })()
         : "";
@@ -2396,10 +3187,12 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                   <b>{itemTitle(computer)}</b>
                   <small>{computer.providerId || "runner 未绑定"} / {computerThreadCount(computer, workstations)} 条线程</small>
                   <p>{computer.body || computerUserHint(computer, workstations)}</p>
+                  <p>{computerDesktopCapabilityLabel(computer)}：{computerDesktopCapabilityHint(computer)}</p>
                   <details className={styles.itemDetails}>
                     <summary>下一步判断</summary>
                     <dl>
                       <div><dt>用户动作</dt><dd>{computerUserHint(computer, workstations)}</dd></div>
+                      <div><dt>桌面投递</dt><dd>{computerDesktopCapabilityHint(computer)}</dd></div>
                       <div><dt>协作边界</dt><dd>不在线或无线程时只允许只读检查，不应自动派复杂任务。</dd></div>
                       <div><dt>最近心跳</dt><dd>{computer.at || "暂无心跳时间"}</dd></div>
                     </dl>
@@ -2578,55 +3371,140 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
 
     if (moduleTab === "skills" && action.id === "github-import") {
       return (
-        <form action={importGithubProjectSkill.bind(null, project.id)} className={styles.drawerForm} data-unity-real-form="skill-github-import">
-          <input type="hidden" name="return_to" value={returnPath("skills", "github-import")} />
-          <label>
-            <span>GitHub 地址</span>
-            <input name="github_url" required placeholder="repo / tree / blob / raw 地址，例如：https://github.com/org/repo/tree/main/skills" />
-          </label>
-          <label>
-            <span>子路径，可选</span>
-            <input name="github_path" placeholder="例如：skills/web-research" />
-          </label>
-          <label>
-            <span>分支，可选</span>
-            <input name="github_branch" placeholder="例如：main" />
-          </label>
-          <label>
-            <span>分类</span>
-            <input name="category" defaultValue="github" />
-          </label>
-          <label>
-            <span>适用职业，逗号分隔</span>
-            <input name="recommended_for" placeholder="例如：前端工程师, 嵌入式工程师, 测试工程师" />
-          </label>
-          <SubmitButton label="从 GitHub 导入 Skill" />
-        </form>
+        <div className={styles.realActionStack}>
+          <section className={styles.githubImportGuide} aria-label="GitHub Skill 导入规则">
+            <b>可以从 GitHub 导入 Skill</b>
+            <p>当前支持公开仓库的 repo、tree、blob 或 raw 地址。平台会识别 SKILL.md、skill.json、skills.json、skills/ 目录，也能把普通角色 Markdown 转成 Skill 草稿。</p>
+            <dl>
+              <div><dt>推荐结构</dt><dd>skills/yuespeak-boss/SKILL.md</dd></div>
+              <div><dt>知识库路径</dt><dd>写 GitHub 仓库相对路径，不写本机 D:\ 目录</dd></div>
+              <div><dt>私有仓库</dt><dd>暂不读取私有仓库；后续接 GitHub App、OAuth 或 Runner 凭据</dd></div>
+            </dl>
+          </section>
+          <form
+            action={`/projects/${encodeURIComponent(project.id)}/github-skill`}
+            method="post"
+            className={styles.drawerForm}
+            data-unity-real-form="skill-github-import"
+            onSubmit={submitGithubSkillImport}
+          >
+            <input type="hidden" name="return_to" value={returnPath("skills", "github-import")} />
+            <label>
+              <span>GitHub 地址</span>
+              <input name="github_url" required placeholder="repo / tree / blob / raw 地址，例如：https://github.com/org/repo/tree/main/skills" />
+            </label>
+            <label>
+              <span>子路径，可选</span>
+              <input name="github_path" placeholder="例如：skills/web-research" />
+            </label>
+            <label>
+              <span>分支，可选</span>
+              <input name="github_branch" placeholder="例如：main" />
+            </label>
+            <label>
+              <span>分类</span>
+              <input name="category" defaultValue="github" />
+            </label>
+            <label>
+              <span>适用职业，逗号分隔</span>
+              <input name="recommended_for" placeholder="例如：前端工程师, 嵌入式工程师, 测试工程师" />
+            </label>
+            <SubmitButton label="从 GitHub 导入 Skill" disabled={githubSkillImporting} pendingLabel="导入中..." />
+          </form>
+        </div>
       );
     }
 
     if (moduleTab === "skills" && (action.id === "skill-category" || action.id === "skill-detail")) {
+      const existingSkillIds = new Set(skills.map((skill) => String(skill.id ?? "").trim().toLowerCase()).filter(Boolean));
+      const allRecommendedCreated = YUESPEAK_RECOMMENDED_SKILLS.every((skill) => existingSkillIds.has(skill.id));
       return (
-        <form action={createProjectSkill.bind(null, project.id)} className={styles.drawerForm} data-unity-real-form="skill-create-custom">
-          <input type="hidden" name="return_to" value={returnPath("skills", action.id)} />
-          <label>
-            <span>Skill 标识</span>
-            <input name="skill_id" required placeholder="例如：unity-ui-screenshot-qa" />
-          </label>
-          <label>
-            <span>中文名字</span>
-            <input name="label" required placeholder="例如：Unity UI 截图验收" />
-          </label>
-          <label>
-            <span>中文说明</span>
-            <textarea name="note" required rows={6} placeholder="具体说明用途、触发条件、输入输出、截图验证要求、人工审核边界和 token 风险。" />
-          </label>
-          <label>
-            <span>推荐给哪些职业，逗号分隔</span>
-            <input name="recommended_for" placeholder="例如：Unity UI 工程师, 前端工程师" />
-          </label>
-          <SubmitButton label="新增项目 Skill" />
-        </form>
+        <div className={styles.realActionStack} data-unity-real-form="skill-create-custom">
+          <section className={styles.recommendedSkillStack} aria-label="YueSpeak 推荐 Skill">
+            <div className={styles.realNote}>
+              <b>YueSpeak 推荐 Skill</b>
+              <p>先把 Boss、后端、前端、QA 和跨工位路由的基础 Skill 建起来，后面 NPC 装配时直接索引仓库。</p>
+            </div>
+            {YUESPEAK_RECOMMENDED_SKILLS.map((skill) => {
+              const created = existingSkillIds.has(skill.id);
+              return (
+                <article
+                  key={skill.id}
+                  className={`${styles.recommendedSkillItem} ${created ? styles.recommendedSkillItemReady : ""}`}
+                >
+                  <b>{skill.label}</b>
+                  <small>{skill.note}</small>
+                  <small>推荐：{skill.recommendedFor.join("、")}</small>
+                  <span>{created ? "已创建" : "待创建"}</span>
+                  <form
+                    action={`/projects/${encodeURIComponent(project.id)}/recommended-skill`}
+                    method="post"
+                    className={styles.recommendedSkillCreateForm}
+                  >
+                    <input type="hidden" name="return_to" value={returnPath("skills", action.id)} />
+                    <input type="hidden" name="skill_id" value={skill.id} />
+                    <button type="submit" disabled={created}>{created ? "已创建" : "创建这个 Skill"}</button>
+                  </form>
+                </article>
+              );
+            })}
+            <div
+              className={styles.inlineActionForm}
+              data-unity-real-form="skill-create-recommended"
+            >
+              <label>
+                <span>选择一个推荐 Skill</span>
+                <select
+                  name="skill_id"
+                  required
+                  value={selectedRecommendedSkillId}
+                  onChange={(event) => setSelectedRecommendedSkillId(event.currentTarget.value)}
+                >
+                  <option value="" disabled>选择后创建</option>
+                  {YUESPEAK_RECOMMENDED_SKILLS.map((skill) => {
+                    const created = existingSkillIds.has(skill.id);
+                    return (
+                      <option key={skill.id} value={skill.id} disabled={created}>
+                        {created ? "已创建 / " : ""}{skill.label}
+                      </option>
+                    );
+                  })}
+                </select>
+              </label>
+              <p className={styles.emptyHint}>选择后平台会自动带入标识、说明和推荐职业。</p>
+              {recommendedSkillNotice ? <p className={styles.emptyHint}>{recommendedSkillNotice}</p> : null}
+              <button
+                type="button"
+                disabled={allRecommendedCreated || Boolean(recommendedSkillSavingId) || !selectedRecommendedSkillId}
+                aria-busy={Boolean(recommendedSkillSavingId)}
+                onClick={() => void createRecommendedSkill(selectedRecommendedSkillId)}
+              >
+                {recommendedSkillSavingId ? "创建中..." : allRecommendedCreated ? "推荐 Skill 已齐" : "创建所选推荐 Skill"}
+              </button>
+            </div>
+          </section>
+
+          <form action={createProjectSkill.bind(null, project.id)} className={styles.drawerForm}>
+            <input type="hidden" name="return_to" value={returnPath("skills", action.id)} />
+            <label>
+              <span>Skill 标识</span>
+              <input name="skill_id" required placeholder="例如：unity-ui-screenshot-qa" />
+            </label>
+            <label>
+              <span>中文名字</span>
+              <input name="label" required placeholder="例如：Unity UI 截图验收" />
+            </label>
+            <label>
+              <span>中文说明</span>
+              <textarea name="note" required rows={6} placeholder="具体说明用途、触发条件、输入输出、截图验证要求、人工审核边界和 token 风险。" />
+            </label>
+            <label>
+              <span>推荐给哪些职业，逗号分隔</span>
+              <input name="recommended_for" placeholder="例如：Unity UI 工程师, 前端工程师" />
+            </label>
+            <SubmitButton label="新增项目 Skill" />
+          </form>
+        </div>
       );
     }
 
@@ -2752,8 +3630,8 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
       return (
         <div className={styles.realActionStack} data-unity-real-form={`ai-debug-${action.id}`}>
           <article className={styles.realNote}>
-            <b>按 NPC 单独控制 token 消耗</b>
-            <p>关闭自动化时，平台只执行当前发送的单条指令；开启后才允许心跳自动推进。这个配置会写回真实 NPC 席位。</p>
+            <b>高级开关，默认不要开启</b>
+            <p>这不是 Codex 自己的叫醒自动化。当前 YueSpeak 开发由 Codex 通过平台手动推进，NPC 自动化保持关闭；只有用户明确要某个 NPC 持续拉取派单时才开启。</p>
           </article>
           {npcSeats.length ? (
             npcSeats.map((seat) => (
@@ -2764,12 +3642,12 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                 <label>
                   <span>{itemTitle(seat)} 自动化模式</span>
                   <select name="automation_enabled" defaultValue={seat.automationEnabled ? "true" : "false"}>
-                    <option value="false">关闭：只执行当前指令</option>
-                    <option value="true">开启：进入心跳自动化</option>
+                    <option value="false">关闭：只执行当前指令（推荐）</option>
+                    <option value="true">开启：让这个 NPC 持续心跳</option>
                   </select>
                 </label>
                 <label>
-                  <span>心跳间隔秒数</span>
+                  <span>心跳间隔秒数（仅开启时生效）</span>
                   <input name="automation_heartbeat_seconds" type="number" min={300} step={60} defaultValue={seat.automationHeartbeatSeconds ?? 900} />
                 </label>
                 <SubmitButton label="保存自动化设置" />
@@ -2944,6 +3822,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                     <b>{itemTitle(computer)}</b>
                     <small>{computerThreadCount(computer, workstations)} 条线程 / {computer.type || "runner"}</small>
                     <p>{computerUserHint(computer, workstations)}</p>
+                    <p>{computerDesktopCapabilityLabel(computer)}</p>
                   </article>
                 ))
               ) : (
@@ -3034,35 +3913,57 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         );
       }
       return (
-        <form action={previewProjectGitRollback.bind(null, project.id)} className={styles.drawerForm} data-unity-real-form="git-rollback-preview">
-          <input type="hidden" name="return_to" value={returnPath("git", "rollback-request")} />
-          <label>
-            <span>目标版本</span>
-            <input name="target_ref" required placeholder="例如：HEAD~1 或 develop" />
-          </label>
-          <label>
-            <span>备注</span>
-            <textarea name="notes" rows={4} placeholder="说明为什么要回退，先只做预演和只读预检。" />
-          </label>
-          <SubmitButton label="生成回退预演" />
-        </form>
+        <div className={styles.realActionStack} data-unity-real-form="git-rollback-preview">
+          {renderGitRollbackVersionIndex()}
+          <form action={previewProjectGitRollback.bind(null, project.id)} className={styles.drawerForm}>
+            <input type="hidden" name="return_to" value={returnPath("git", "rollback-request")} />
+            <label>
+              <span>目标版本</span>
+              <input
+                name="target_ref"
+                required
+                placeholder="例如：HEAD~1 或 develop"
+                value={gitRollbackTargetRef}
+                onChange={(event) => setGitRollbackTargetRef(event.target.value)}
+              />
+            </label>
+            <label>
+              <span>备注</span>
+              <textarea name="notes" rows={4} placeholder="说明为什么要回退，先只做预演和只读预检。" />
+            </label>
+            <SubmitButton label="生成回退预演" />
+          </form>
+        </div>
       );
     }
 
     if (moduleTab === "git" && action.id === "rollback-request") {
       return (
-        <form action={requestProjectGitRollback.bind(null, project.id)} className={styles.drawerForm} data-unity-real-form="git-rollback-request">
-          <input type="hidden" name="return_to" value={returnPath("git", "rollback-request")} />
-          <label>
-            <span>目标版本</span>
-            <input name="target_ref" required placeholder="例如：HEAD~1 或 develop" />
-          </label>
-          <label>
-            <span>人工确认备注</span>
-            <textarea name="notes" rows={4} placeholder="登记请求后仍会先下发只读预检，不直接执行破坏性 reset。" />
-          </label>
-          <SubmitButton label="登记回退请求" />
-        </form>
+        <div className={styles.realActionStack} data-unity-real-form="git-rollback-request">
+          {renderGitRollbackVersionIndex()}
+          <article className={styles.realNote}>
+            <b>登记后仍不直接回退</b>
+            <p>平台会记录请求并下发只读预检。下一步必须把对齐请求同步给 Boss NPC、相关工位长和执行 NPC，让它们回执“已对齐 / 阻塞 / 需人工”。</p>
+          </article>
+          <form action={requestProjectGitRollback.bind(null, project.id)} className={styles.drawerForm}>
+            <input type="hidden" name="return_to" value={returnPath("git", "rollback-request")} />
+            <label>
+              <span>目标版本</span>
+              <input
+                name="target_ref"
+                required
+                placeholder="例如：HEAD~1 或 develop"
+                value={gitRollbackTargetRef}
+                onChange={(event) => setGitRollbackTargetRef(event.target.value)}
+              />
+            </label>
+            <label>
+              <span>人工确认备注</span>
+              <textarea name="notes" rows={4} placeholder="登记请求后仍会先下发只读预检，不直接执行破坏性 reset。" />
+            </label>
+            <SubmitButton label="登记回退请求" />
+          </form>
+        </div>
       );
     }
 
@@ -3080,13 +3981,13 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         <div className={styles.panelGrid}>
           <article className={styles.panelCard}>
             <span>工坊总览</span>
-            <strong>工位是用户可编辑的项目工作区</strong>
-            <p>开发工坊是共用系统，NPC 只是挂到工位下面。后续这里接入工位创建、工位知识库、负责 NPC 和风险边界。</p>
+            <strong>主页面治理工位和工位长</strong>
+            <p>同工位 NPC 互相认识；跨工位协作只走目标工位长。这里先把资源关系看清，再去工作台执行。</p>
             {renderMetricGrid()}
           </article>
           <article className={styles.panelCard}>
-            <span>需求队列</span>
-            {renderList(requirements, "暂无需求，先从需求箱写入下一步。")}
+            <span>逻辑工位</span>
+            {renderLogicalWorkstationSummary()}
           </article>
         </div>
       );
@@ -3328,7 +4229,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         </section>
       ) : null}
 
-      {cockpitOpen ? (
+      {cockpitOpen && !activePanel ? (
         <header className={styles.cockpit} aria-label="开发者驾驶舱">
           <div className={styles.cockpitHeader}>
             <div className={styles.cockpitProject}>
@@ -3358,6 +4259,11 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                 {sceneVisible ? "隐藏场景" : "显示场景"}
               </button>
               <Link href="/projects" className={styles.cockpitGhost}>项目列表</Link>
+              {returnToPath ? (
+                <Link href={returnToPath} className={styles.cockpitReturn}>
+                  {returnToLabel}
+                </Link>
+              ) : null}
               <Link
                 href={`/projects/${project.id}/workbench`}
                 className={styles.cockpitGhost}
@@ -3409,6 +4315,74 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
           ) : null}
           {teamError ? <div className={`${styles.cockpitToast} ${styles.cockpitToastErr}`}>操作失败：{teamError}</div> : null}
           {!teamError && teamNotice ? <div className={`${styles.cockpitToast} ${styles.cockpitToastOk}`}>{teamNotice}</div> : null}
+          <section className={styles.serviceHealthBar} aria-label="平台服务实例健康">
+            <div>
+              <span data-status={serviceHealth.status}>
+                {serviceHealth.status === "ok" ? "服务已连接" : serviceHealth.status === "checking" ? "检查中" : "服务异常"}
+              </span>
+              <strong>平台连接</strong>
+              <p>前端 {serviceHealth.webUrl || "未知"} · API {serviceHealth.apiSeenUrl || serviceHealth.apiBaseUrl}</p>
+            </div>
+            <dl>
+              <div>
+                <dt>API PID</dt>
+                <dd>{serviceHealth.apiPid || "未确认"}</dd>
+              </div>
+              <div>
+                <dt>版本</dt>
+                <dd>{serviceHealth.apiVersion || "未知"}</dd>
+              </div>
+              <div>
+                <dt>电脑</dt>
+                <dd>{stats.onlineComputerCount}/{stats.computerCount} 在线</dd>
+              </div>
+              <div>
+                <dt>本机端口</dt>
+                <dd>
+                  {(serviceHealth.localServices || [])
+                    .filter((item) => item.listening)
+                    .map((item) => item.port)
+                    .join(" / ") || "未探测"}
+                </dd>
+              </div>
+            </dl>
+            <small>
+              {serviceHealth.status === "ok"
+                ? "页面正在读取当前 API 实例；若 8010/8011 同时在线，优先确认前端配置指向哪个 API。"
+                : serviceHealth.message || "等待检测"}
+            </small>
+          </section>
+          <section className={styles.workspaceMatrix} aria-label="项目工作台结构">
+            <article>
+              <span>资源中心</span>
+              <strong>主页面统一创建和治理</strong>
+              <p>电脑、Runner、NPC、工位、Skill、仓库和成员都在这里维护，避免每个工作台各做一套。</p>
+              <div>
+                <button type="button" onClick={() => openPanel("development-workshop", "工作台结构")}>工位</button>
+                <button type="button" onClick={() => openPanel("npc-create", "工作台结构")}>NPC</button>
+                <button type="button" onClick={() => openPanel("computers", "工作台结构")}>电脑</button>
+                <button type="button" onClick={() => openPanel("skills", "工作台结构")}>Skill</button>
+              </div>
+            </article>
+            <article>
+              <span>协作工作台</span>
+              <strong>多 NPC 同屏协作</strong>
+              <p>只消费主页面资源：Boss 分工、线程绑定、派单、精简回执和人工审核都在这里看执行现场。</p>
+              <div>
+                <Link href={`/projects/${project.id}/workbench`}>打开 NPC 工作台</Link>
+                <Link href={`/projects/${project.id}/company`}>公司层</Link>
+              </div>
+            </article>
+            <article>
+              <span>专业工作台</span>
+              <strong>硬件仿真 / PID 调试预留</strong>
+              <p>后续新工作台只索引同一套资源，不重复创建电脑、NPC、Skill 和工位。</p>
+              <div>
+                <button type="button" onClick={() => openPanel("ai-simulation", "工作台结构")}>AI 仿真</button>
+                <button type="button" onClick={() => openPanel("serial-tv", "工作台结构")}>串口调试</button>
+              </div>
+            </article>
+          </section>
           <div className={styles.cockpitMetrics}>
             <article className={styles.cockpitMetricCard}>
               <span>当前任务</span>
@@ -3635,7 +4609,14 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
               <p>{activeModule.primary}：{activeModule.description}</p>
               <small>{activeModule.farmSource}</small>
             </div>
-            <button type="button" className={styles.closePanel} onClick={closePanel}>关闭</button>
+            <div className={styles.panelHeaderActions}>
+              {returnToPath ? (
+                <Link href={returnToPath} className={styles.panelReturn}>
+                  {returnToLabel}
+                </Link>
+              ) : null}
+              <button type="button" className={styles.closePanel} onClick={closePanel}>关闭</button>
+            </div>
           </header>
           {renderPanelContent(activeModule.tab)}
           {renderConnectivityBoard(activeModule.tab)}

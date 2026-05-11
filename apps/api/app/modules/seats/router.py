@@ -17,9 +17,10 @@ router = APIRouter(prefix="/api/seats", tags=["seats"])
 def api_seat_queues(
     seat_id: str,
     request: Request,
+    project_id: str | None = None,
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
 ):
-    seat = get_seat_or_404(db, seat_id)
+    seat = get_seat_or_404(db, seat_id, project_id=project_id)
     require_project_read_access(db, request, seat.project_id or "", action="seats.queues.read")
-    return ok(get_seat_queues(db, seat_id, limit=limit))
+    return ok(get_seat_queues(db, seat_id, project_id=seat.project_id, limit=limit))

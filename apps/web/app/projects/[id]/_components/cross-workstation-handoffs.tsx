@@ -35,9 +35,9 @@ type Props = {
 type AcceptState =
   | { kind: "idle" }
   | { kind: "picking"; handoffId: string; taskId: string }
-  | { kind: "submitting"; handoffId: string }
+  | { kind: "submitting"; handoffId: string; taskId: string }
   | { kind: "ok"; handoffId: string; message: string }
-  | { kind: "err"; handoffId: string; message: string };
+  | { kind: "err"; handoffId: string; taskId: string; message: string };
 
 function fmtTime(iso: string | null): string {
   if (!iso) return "";
@@ -84,17 +84,24 @@ export function CrossWorkstationHandoffs({ apiBaseUrl, projectId, seats }: Props
     return seats.find((s) => s.id === agentId) || null;
   }
 
-  function classifyScope(item: HandoffItem): { isCross: boolean; label: string } {
+  function classifyScope(item: HandoffItem): { kind: "cross" | "same" | "unknown"; isCross: boolean; label: string } {
     const from = seatOf(item.handoff_from);
     const to = seatOf(item.handoff_to);
-    if (!from || !to) return { isCross: false, label: "未识别" };
+    if (!from || !to) {
+      return {
+        kind: "unknown",
+        isCross: false,
+        label: "历史 agent id 暂未映射到当前 NPC",
+      };
+    }
     const fromKey = from.workstationId || from.computerNodeId;
     const toKey = to.workstationId || to.computerNodeId;
-    if (!fromKey || !toKey) return { isCross: false, label: "工位未归属" };
+    if (!fromKey || !toKey) return { kind: "unknown", isCross: false, label: "工位未归属" };
     const cross = fromKey !== toKey;
     const fromLabel = from.workstationName || from.computerNodeName;
     const toLabel = to.workstationName || to.computerNodeName;
     return {
+      kind: cross ? "cross" : "same",
       isCross: cross,
       label: cross ? `${fromLabel} → ${toLabel}` : `本工位（${fromLabel}）`,
     };
@@ -108,7 +115,7 @@ export function CrossWorkstationHandoffs({ apiBaseUrl, projectId, seats }: Props
   }
 
   function startAccept(item: HandoffItem) {
-    const defaultPick = item.handoff_to || (seats[0]?.id ?? "");
+    const defaultPick = seats.some((seat) => seat.id === item.handoff_to) ? item.handoff_to || "" : (seats[0]?.id ?? "");
     setPickedSeatId(defaultPick);
     setAcceptNote("");
     setAcceptState({ kind: "picking", handoffId: item.id, taskId: item.task_id });
@@ -121,11 +128,11 @@ export function CrossWorkstationHandoffs({ apiBaseUrl, projectId, seats }: Props
   }
 
   async function submitAccept(item: HandoffItem) {
-    if (!pickedSeatId) {
-      setAcceptState({ kind: "err", handoffId: item.id, message: "请先选一个 NPC 作为接手人" });
+    if (!pickedSeatId || !seats.some((seat) => seat.id === pickedSeatId)) {
+      setAcceptState({ kind: "err", handoffId: item.id, taskId: item.task_id, message: "请先选一个 NPC 作为接手人" });
       return;
     }
-    setAcceptState({ kind: "submitting", handoffId: item.id });
+    setAcceptState({ kind: "submitting", handoffId: item.id, taskId: item.task_id });
     try {
       const res = await fetch(
         apiClientUrl(`/api/tasks/${encodeURIComponent(item.task_id)}/handoffs/${encodeURIComponent(item.id)}/accept`),
@@ -154,6 +161,7 @@ export function CrossWorkstationHandoffs({ apiBaseUrl, projectId, seats }: Props
       setAcceptState({
         kind: "err",
         handoffId: item.id,
+        taskId: item.task_id,
         message: e instanceof Error ? e.message : "接手失败",
       });
     }
@@ -189,13 +197,15 @@ export function CrossWorkstationHandoffs({ apiBaseUrl, projectId, seats }: Props
             const isAccepted = (item.current_status || "").toLowerCase() === "accepted";
             const picking = acceptState.kind === "picking" && acceptState.handoffId === item.id;
             const submitting = acceptState.kind === "submitting" && acceptState.handoffId === item.id;
+            const recoverableError = acceptState.kind === "err" && acceptState.handoffId === item.id;
+            const accepting = picking || submitting || recoverableError;
             const okHere = acceptState.kind === "ok" && acceptState.handoffId === item.id;
             const errHere = acceptState.kind === "err" && acceptState.handoffId === item.id;
             return (
               <li key={item.id} className={`${styles.row} ${scope.isCross ? styles.rowCross : ""}`}>
                 <div className={styles.rowHead}>
-                  <span className={scope.isCross ? styles.tagCross : styles.tagSame}>
-                    {scope.isCross ? "跨工位" : "同工位"}
+                  <span className={scope.kind === "cross" ? styles.tagCross : scope.kind === "unknown" ? styles.tagUnknown : styles.tagSame}>
+                    {scope.kind === "cross" ? "跨工位" : scope.kind === "unknown" ? "待映射" : "同工位"}
                   </span>
                   <span className={badge.cls}>{badge.label}</span>
                   <strong className={styles.rowTitle}>
@@ -205,6 +215,11 @@ export function CrossWorkstationHandoffs({ apiBaseUrl, projectId, seats }: Props
                   <small className={styles.rowTime}>{fmtTime(item.created_at)}</small>
                 </div>
                 {item.summary ? <p className={styles.rowSummary}>{item.summary}</p> : null}
+                {scope.kind === "unknown" ? (
+                  <p className={styles.mappingHint}>
+                    这条记录来自旧线程身份，先选当前项目里的真实 NPC 接手；后续再把历史 agent id 归档映射到 NPC。
+                  </p>
+                ) : null}
                 {item.next_steps && item.next_steps.length > 0 ? (
                   <details className={styles.rowDetails}>
                     <summary>展开 next_steps（{item.next_steps.length}）</summary>
@@ -227,7 +242,7 @@ export function CrossWorkstationHandoffs({ apiBaseUrl, projectId, seats }: Props
                 ) : null}
                 {!isAccepted ? (
                   <div className={styles.acceptArea}>
-                    {!picking ? (
+                    {!accepting ? (
                       <button
                         type="button"
                         className={styles.acceptBtn}

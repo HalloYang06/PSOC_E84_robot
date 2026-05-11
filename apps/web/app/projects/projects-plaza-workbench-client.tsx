@@ -11,7 +11,6 @@ import {
   sendWorkspaceInvitation,
   signOutWorkspace,
 } from "../actions";
-import { buildProject2dUpgradePath, buildProjectModeEntryPath, modeChoicePath } from "./mode-entry-paths";
 import styles from "./page.module.css";
 
 type ProjectItem = {
@@ -123,9 +122,9 @@ export function ProjectsPlazaWorkbench({
       <section className={styles.plazaHero}>
         <div>
           <p className={styles.plazaEyebrow}>小A工作室 · 项目管理</p>
-          <h1>选择一个项目，进入 AI 协作现场。</h1>
+          <h1>选择项目，进入 AI 协作工作台。</h1>
           <p>
-            这里负责项目隔离、成员邀请和入口选择。真正的游戏化操作会逐步迁到 Unity 客户端；旧农场只保留为过渡入口。
+            这里只保留项目、成员和入口选择。真正的开发协作从项目工作台开始，由 Boss NPC 拆解目标并派给各工位 NPC。
           </p>
         </div>
         <form action={signOutWorkspace}>
@@ -199,14 +198,8 @@ export function ProjectsPlazaWorkbench({
                       </div>
                     ) : null}
                     <div className={styles.plazaProjectActions}>
-                      <Link className={styles.plazaPrimaryButton} href={`/projects/${encodeURIComponent(project.id)}/unity-client`}>
-                        打开 Unity 客户端
-                      </Link>
-                      <Link className={styles.plazaPrimaryButton} href={buildProject2dUpgradePath(project.id)}>
-                        进入 Unity 2D 升级版
-                      </Link>
-                      <Link className={styles.plazaSecondaryButton} href={buildProjectModeEntryPath(project.id, "2d-dev")}>
-                        进入当前协作页
+                      <Link className={styles.plazaPrimaryButton} href={`/projects/${encodeURIComponent(project.id)}/2d-upgrade`}>
+                        进入项目主页面
                       </Link>
                       {canInvite(project) ? (
                         <button
@@ -294,7 +287,7 @@ export function ProjectsPlazaWorkbench({
               <div>
                 <p className={styles.plazaEyebrow}>新建项目</p>
                 <h2>从一个干净项目空间开始</h2>
-                <p>项目创建后会进入当前 2D 开发者模式；后续 Unity 2D 升级版会成为主入口。</p>
+                <p>项目创建后进入工作台：先创建 Boss/NPC、绑定线程，再开始自动化协作。</p>
               </div>
               <form action={createProjectWorkspace} className={styles.plazaForm}>
                 <input type="hidden" name="project_type" value="software" />
@@ -309,6 +302,10 @@ export function ProjectsPlazaWorkbench({
                 <label>
                   <span>GitHub 地址（可选）</span>
                   <input name="github_url" placeholder="https://github.com/owner/repo" />
+                </label>
+                <label>
+                  <span>本机路径（可选）</span>
+                  <input name="local_git_url" placeholder="D:/your/local/project" />
                 </label>
                 <div className={styles.plazaFormRow}>
                   <label>
@@ -328,8 +325,7 @@ export function ProjectsPlazaWorkbench({
       </section>
 
       <footer className={styles.plazaFooter}>
-        <span>模式入口：<Link href={modeChoicePath}>教育版 / 开发版 / 3D 占位</Link></span>
-        <span>建议下一步：从项目卡打开 Unity 客户端，逐步替换旧农场。</span>
+        <span>建议下一步：进入工作台，让 Boss NPC 把一句话目标拆成可执行分工。</span>
       </footer>
     </main>
   );

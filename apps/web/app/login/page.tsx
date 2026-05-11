@@ -24,8 +24,8 @@ function getErrorText(error?: string) {
 }
 
 const capabilityItems = [
-  "Unity 教育 2D 客户端逐步替换旧农场界面",
   "项目、账号、电脑、线程、NPC 数据互相隔离",
+  "Boss NPC 把一句话目标拆成工位、NPC、skill 和验收口",
   "Codex、Claude、Qwen 等线程统一进入协作链路",
   "人工审核、自动化开关、最终回复池都回到项目内",
 ];
@@ -57,14 +57,13 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         </div>
 
         <div className={styles.heroCopy}>
-          <p className={styles.eyebrow}>AI embedded learning RPG</p>
-          <h1>一台盒子，接入你的 AI 协作团队。</h1>
+          <p className={styles.eyebrow}>AI collaboration workspace</p>
+          <h1>一句目标，启动你的 AI 协作团队。</h1>
           <p className={styles.subtitle}>
-            先登录进入项目空间，再选择 Unity 教育版、2D 开发版或多电脑 AI 协作流程。这里不再塞满说明，只负责让用户安全进入自己的项目。
+            先登录进入项目空间，再让 Boss NPC 拆解目标、建议 NPC 和 skill，并把任务派给绑定了 Codex / Claude Code 线程的工位。
           </p>
           <div className={styles.heroActions}>
             <a href="#auth" className={styles.primaryLink}>进入平台</a>
-            <Link href="/projects/mode-choice" className={styles.secondaryLink}>查看模式入口</Link>
           </div>
         </div>
 

@@ -287,6 +287,8 @@ function normalizeProvider(value: unknown, index: number) {
 
 function normalizeComputerNode(value: unknown, index: number) {
   const item = value && typeof value === "object" ? (value as Record<string, any>) : {};
+  const metadata = pickNormalizedObject(item.metadata, item.extra_data);
+  const threadScan = pickNormalizedObject(metadata.thread_scan, metadata.threadScan);
   return {
     ...item,
     id: String(item.id ?? item.label ?? item.name ?? `node_${index + 1}`),
@@ -306,9 +308,16 @@ function normalizeComputerNode(value: unknown, index: number) {
     git_root: item.git_root ?? item.gitRoot ?? item.repo_root ?? item.repository_root ?? null,
     read_paths: normalizePathList(item.read_paths ?? item.readPaths ?? item.read_dirs ?? item.readable_paths),
     write_paths: normalizePathList(item.write_paths ?? item.writePaths ?? item.write_dirs ?? item.writable_paths),
+    thread_scan: threadScan,
+    thread_scan_count: Number(threadScan.thread_count ?? threadScan.threadCount ?? 0) || 0,
+    desktop_process_detected: Boolean(threadScan.desktop_process_detected ?? threadScan.desktopProcessDetected),
+    desktop_bridge_connected: Boolean(threadScan.desktop_bridge_connected ?? threadScan.desktopBridgeConnected),
+    desktop_delivery_mode: threadScan.desktop_delivery_mode ?? threadScan.desktopDeliveryMode ?? null,
+    desktop_bridge_label: normalizeOptionalDisplayText(threadScan.desktop_bridge_label ?? threadScan.desktopBridgeLabel ?? null),
+    desktop_bridge_note: normalizeOptionalDisplayText(threadScan.desktop_bridge_note ?? threadScan.desktopBridgeNote ?? null),
     host: item.host ?? null,
     os: item.os ?? item.platform ?? null,
-    metadata: pickNormalizedObject(item.metadata, item.extra_data),
+    metadata,
   };
 }
 
@@ -896,6 +905,20 @@ export async function getProjectThreadWorkstationsData(projectId: string) {
   return (await getProjectThreadWorkstationsState(projectId)).data;
 }
 
+export async function getProjectThreadWorkstationAdapterConfigState(
+  projectId: string,
+  workstationId: string,
+): Promise<ApiLoadState<Record<string, any> | null>> {
+  try {
+    const data = await fetchJson<any>(
+      `/api/collaboration/projects/${projectId}/thread-workstations/${encodeURIComponent(workstationId)}/adapter-config`,
+    );
+    return okState(normalizeObject(data));
+  } catch (error) {
+    return errorState(error, null, "PROJECT_THREAD_WORKSTATION_ADAPTER_CONFIG_UNAVAILABLE");
+  }
+}
+
 export async function getProjectWorkstationsState(projectId: string): Promise<ApiLoadState<any[]>> {
   try {
     const data = asArray<any>(
@@ -1153,4 +1176,3 @@ export async function getOverviewData() {
   }
   return null;
 }
-

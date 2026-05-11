@@ -105,6 +105,7 @@
 }
 
 .tagCross,
+.tagUnknown,
 .tagSame {
   font-size: 10px;
   padding: 1px 6px;
@@ -122,12 +123,28 @@
   color: #a7ffed;
   border: 1px solid rgba(167, 255, 237, 0.4);
 }
+.tagUnknown {
+  background: rgba(170, 140, 255, 0.14);
+  color: #d6c9ff;
+  border: 1px solid rgba(170, 140, 255, 0.42);
+}
 
 .rowSummary {
   font-size: 11.5px;
   line-height: 1.5;
   color: #e0f2ff;
   margin: 0;
+}
+
+.mappingHint {
+  margin: 2px 0 0;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(170, 140, 255, 0.1);
+  border: 1px dashed rgba(170, 140, 255, 0.34);
+  color: #d6c9ff;
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .rowDetails summary {

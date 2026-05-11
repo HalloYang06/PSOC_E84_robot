@@ -21,6 +21,7 @@ import {
 import {
   cleanupClaudeSeatSessionRegistration,
   ensureClaudeSeatSessionRegistration,
+  launchClaudeSeatMessageBridge,
   launchClaudeSeatSession,
   readClaudeSeatAutonomyStatus,
 } from "../lib/claude-seat-bridge";
@@ -62,7 +63,6 @@ import {
   normalizeDevelopmentWorkshopStation,
   normalizeDevelopmentWorkshopStations,
 } from "../lib/development-workshop";
-import { buildProjectModeEntryPath } from "./projects/mode-entry-paths";
 
 const ACCESS_TOKEN_COOKIE = "farm_access_token";
 const USER_COOKIE = "farm_user";
@@ -226,6 +226,14 @@ async function deleteJson(path: string) {
 function text(value: unknown, fallback = "") {
   const next = String(value ?? "").trim();
   return next || fallback;
+}
+
+function slugifyAscii(value: unknown, fallback = "item") {
+  const normalized = text(value, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return normalized || fallback;
 }
 
 function booleanFromUnknown(value: unknown, fallback = false) {
@@ -440,6 +448,7 @@ function buildAiRequiredRequirementLedgerBlock(
     `心跳间隔: ${heartbeatInterval}`,
     `人审规则: ${reviewPolicy}`,
     `执行边界: ${executionMode}`,
+    "显示边界: 真实处理过程留在绑定的 Codex / Claude Code / Runner 线程中；平台只回写最小回执、最终结果、阻塞原因和可追踪索引。",
     `预计 token: ${estimatedTokens}`,
     "开工前动作:",
     `1. 先阅读 ${AI_REQUIRED_REQUIREMENT_LEDGER_PATH}，确认自己是不是被提需求者。`,
@@ -623,6 +632,45 @@ function normalizeStringList(value: unknown) {
   return (Array.isArray(value) ? value : typeof value === "string" ? value.split(/[\n,]/) : [])
     .map((item) => text(item))
     .filter(Boolean);
+}
+
+function repoRelativePath(value: unknown) {
+  return text(value, "").replace(/\\/g, "/").replace(/^\/+/, "");
+}
+
+function readRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+}
+
+function recordId(item: Record<string, unknown>) {
+  return text(item.id ?? item.config_id ?? item.row_id, "");
+}
+
+function displaySlug(value: unknown, fallback = "item") {
+  return slugifyAscii(text(value, ""), fallback).replace(/^-+|-+$/g, "") || fallback;
+}
+
+function recordIdentitySet(item: Record<string, unknown>) {
+  const metadata = readRecord(item.metadata);
+  const extraData = readRecord(item.extra_data ?? item.extraData);
+  return new Set(
+    [
+      item.id,
+      item.config_id,
+      item.row_id,
+      item.rowId,
+      item.name,
+      item.workstation_name,
+      item.agent_id,
+      item.agentId,
+      item.source_workstation_id,
+      metadata.source_workstation_id,
+      metadata.bound_thread_id,
+      extraData.source_workstation_id,
+    ]
+      .map((value) => text(value, ""))
+      .filter(Boolean),
+  );
 }
 
 function readProjectCollaborationConfig(project: Record<string, unknown> | null | undefined) {
@@ -1391,6 +1439,39 @@ function sortProjectSkillLibrary(skills: Record<string, unknown>[]) {
   });
 }
 
+const YUESPEAK_RECOMMENDED_PROJECT_SKILLS: Record<string, { label: string; note: string; recommendedFor: string[] }> = {
+  "yuespeak-boss-planning": {
+    label: "YueSpeak Boss 分工规划",
+    note: "把用户的一句话需求拆成可执行方案、工位分工、NPC 职责、GitHub 知识库路径和验收口径；Boss 只做规划、派单、收口，不直接替执行 NPC 写实现。",
+    recommendedFor: ["Boss NPC", "产品与分工工位", "项目负责人"],
+  },
+  "yuespeak-backend-api": {
+    label: "YueSpeak 后端接口与数据",
+    note: "负责阅读 YueSpeak 仓库文档，梳理接口、数据模型、标注流程、导出格式和迁移风险；输出要能被前端和 QA NPC 复用。",
+    recommendedFor: ["后端数据 NPC", "标注与导出工位"],
+  },
+  "yuespeak-frontend-miniapp": {
+    label: "YueSpeak 小程序体验",
+    note: "负责学生端录音、跟读、纠音反馈、教师端查看与任务流体验；提交前必须从真实用户路径说明点击步骤和页面状态。",
+    recommendedFor: ["前端小程序 NPC", "学生教师体验工位"],
+  },
+  "yuespeak-dataset-export": {
+    label: "YueSpeak 数据集导出",
+    note: "关注音频、文本、评分、标注结果的导入导出闭环；每次改动要说明字段来源、兼容旧数据方式和可回滚点。",
+    recommendedFor: ["后端数据 NPC", "数据治理 NPC"],
+  },
+  "yuespeak-browser-acceptance": {
+    label: "YueSpeak 浏览器验收",
+    note: "用用户视角验证页面能不能用、密度是否舒服、核心按钮是否找得到；每次给出截图或明确的路由、操作、结果。",
+    recommendedFor: ["QA 验收 NPC", "验收风险工位"],
+  },
+  "yuespeak-cross-station-routing": {
+    label: "跨工位协作路由",
+    note: "同一工位 NPC 互相认识并按职责找人；不同工位只能通过目标工位长 NPC 沟通，回执必须回到发起 NPC 和 Boss 收口。",
+    recommendedFor: ["Boss NPC", "工位长 NPC", "协作平台 NPC"],
+  },
+};
+
 async function readAgencyAgentsSkillPack(): Promise<ExternalSkillPackPayload> {
   const candidates = [
     path.join(process.cwd(), "lib", "skill-packs", "agency-agents-skill-pack.json"),
@@ -1682,10 +1763,13 @@ function extractMarkdownHeading(markdown: string) {
 function extractMarkdownSummary(markdown: string) {
   const body = stripMarkdownFrontmatter(markdown)
     .replace(/```[\s\S]*?```/g, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/!\[[^\]]*]\([^)]+\)/g, " ")
+    .replace(/\[[^\]]+]\([^)]+\)/g, (match) => match.replace(/^\[|\]\([^)]+\)$/g, ""))
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line && !line.startsWith("#") && !line.startsWith("---") && !line.startsWith("|"));
-  return trimToLength(body.slice(0, 3).join(" "), 360);
+  return trimToLength(body.slice(0, 3).join(" ").replace(/\s+/g, " "), 360);
 }
 
 function buildGithubProjectSkillId(sourceFile: GithubSkillSourceFile, rawId: unknown, index = 0) {
@@ -2152,6 +2236,72 @@ async function ensureCodexSeatAutonomyBridge(options: {
   return { consumerScript, heartbeat };
 }
 
+function buildCodexThreadLaunchPrompt(options: {
+  projectId: string;
+  projectName: string;
+  repositoryUrl?: string | null;
+  localGitUrl?: string | null;
+  branch?: string | null;
+  seatName: string;
+  responsibility?: string | null;
+  sourceWorkstationId: string;
+  handoffPath: string;
+  workstationName?: string | null;
+  workstationKnowledgePath?: string | null;
+  npcKnowledgeSummary?: string | null;
+  sameWorkstationDirectory?: string[];
+  crossWorkstationLeads?: string[];
+  skills: string[];
+  readPaths: string[];
+  writePaths: string[];
+}) {
+  const skills = options.skills.length ? options.skills.join(", ") : "general-codex-collaboration";
+  const readPaths = options.readPaths.length ? options.readPaths.join(", ") : "README.md, docs/";
+  const writePaths = options.writePaths.length ? options.writePaths.join(", ") : "only files assigned by Boss NPC";
+  const workstationKnowledgePath = repoRelativePath(options.workstationKnowledgePath) || "docs/workstations/<logical-workstation>.md";
+  const npcHandoffPath = repoRelativePath(options.handoffPath);
+  const sameWorkstationDirectory = options.sameWorkstationDirectory?.length
+    ? options.sameWorkstationDirectory.join("；")
+    : "暂无同工位伙伴；有缺口先回 Boss NPC 或工位长";
+  const crossWorkstationLeads = options.crossWorkstationLeads?.length
+    ? options.crossWorkstationLeads.join("；")
+    : "暂无其他工位长；跨工位需求先回 Boss NPC";
+  return [
+    `你是 ${options.seatName}，这是平台为用户已创建 Codex 线程生成的上岗提示词。`,
+    "",
+    "身份:",
+    `- Project: ${options.projectName} (${options.projectId})`,
+    `- NPC: ${options.seatName}`,
+    `- Logical workstation: ${text(options.workstationName, "未归属工位")}`,
+    `- Bound thread id: ${options.sourceWorkstationId}`,
+    `- Responsibility: ${text(options.responsibility, "按 Boss NPC 派单推进")}`,
+    `- Required skills: ${skills}`,
+    "",
+    "仓库和路径:",
+    `- GitHub: ${text(options.repositoryUrl, "未绑定")}`,
+    `- Local workspace: ${text(options.localGitUrl, "仅作当前电脑参考；所有交接和知识库必须写 GitHub 仓库相对路径")}`,
+    `- Branch: ${text(options.branch, "按项目默认分支")}`,
+    `- Read paths: ${readPaths}`,
+    `- Write paths: ${writePaths}`,
+    "",
+    "必须先读（全部是 GitHub 仓库相对路径，不要依赖任何电脑绝对路径）:",
+    "- docs/ai-handoffs/project-operating-contract.md",
+    `- 工位知识库: ${workstationKnowledgePath}`,
+    `- NPC 知识库: ${npcHandoffPath}`,
+    options.npcKnowledgeSummary ? `- NPC 长期记忆摘要: ${options.npcKnowledgeSummary}` : "- NPC 长期记忆摘要: 先阅读 NPC 知识库后补齐",
+    "",
+    "协作规则:",
+    "- 只使用 Codex，本项目禁止切到 Claude 线程。",
+    "- 平台只展示精简消息；复杂推理、代码修改和验证过程留在本 Codex 线程。",
+    `- 同工位通讯录: ${sameWorkstationDirectory}`,
+    `- 跨工位入口: ${crossWorkstationLeads}`,
+    "- 同工位 NPC 互相认识；有需求先按职责找同工位最匹配 NPC，不确定就问本工位工位长。",
+    "- 跨工位禁止直连普通 NPC，只能找目标工位工位长转交；工位长负责分派给本工位具体 NPC。",
+    "- 收到派单后先给最小 ack，完成后用 Understood / Changed / Validated / Blocked / Next 回执。",
+    "- 并行开发前声明写入范围，避免覆盖其他 NPC 工作。",
+  ].join("\n");
+}
+
 function readSourceThreadCatalog(formData: FormData) {
   const parsed = parseOptionalJson(String(formData.get("source_thread_catalog") ?? ""));
   return asArray<Record<string, unknown>>(parsed);
@@ -2515,6 +2665,7 @@ function launchDetachedWorkstationOneShot(options: {
   workstationId: string;
   providerId?: string | null;
   seatName?: string | null;
+  ignoreAutomationSwitch?: boolean;
 }) {
   const providerId = normalizePlatformProviderId(options.providerId);
 
@@ -2574,8 +2725,14 @@ function launchDetachedWorkstationOneShot(options: {
     "--output-dir",
     path.join("artifacts", "workstation-inbox", "oneshot"),
   ];
+  if (providerId === "codex") {
+    baseArgs.push("--executor-timeout-seconds", "600");
+  }
   if (text(options.providerId, "")) {
     baseArgs.push("--provider", text(options.providerId, ""));
+  }
+  if (options.ignoreAutomationSwitch) {
+    baseArgs.push("--ignore-automation-switch");
   }
 
   let lastError: unknown = null;
@@ -2944,12 +3101,134 @@ async function readNpcProvisioningSummary(options: {
 
 function revalidateProjectSurfaces(projectId: string) {
   revalidatePath(`/projects/${projectId}`);
+  revalidatePath(`/projects/${projectId}/2d-upgrade`);
+  revalidatePath(`/projects/${projectId}/workbench`);
   revalidatePath("/projects");
   revalidatePath("/projects/mode-choice");
   revalidatePath("/projects/mode-choice/2d-edu");
   revalidatePath("/projects/mode-choice/3d-dev");
   revalidatePath("/projects/mode-choice/3d-edu");
   revalidatePath("/login");
+}
+
+function seatIdentityValues(item: Record<string, unknown>) {
+  const metadata = readRecord(item.metadata);
+  const extraData = readRecord(item.extra_data ?? item.extraData);
+  return [
+    item.id,
+    item.config_id,
+    item.row_id,
+    item.rowId,
+    item.name,
+    item.workstation_name,
+    item.agent_id,
+    item.agentId,
+    item.source_workstation_id,
+    metadata.source_workstation_id,
+    metadata.bound_thread_id,
+    extraData.source_workstation_id,
+  ]
+    .map((value) => text(value, ""))
+    .filter(Boolean);
+}
+
+function canonicalSeatRecipientId(seat: Record<string, unknown>) {
+  return text(seat.row_id ?? seat.rowId ?? seat.id ?? seat.config_id, "");
+}
+
+function resolveGitRollbackAlignmentTargets(project: Record<string, unknown>) {
+  const config = readProjectCollaborationConfig(project);
+  const seats = readProjectThreadWorkstations(project);
+  const workstationProfiles = readRecord(config.workstation_profiles);
+  const targets = new Map<string, { id: string; label: string; reason: string }>();
+  const rememberSeat = (seat: Record<string, unknown>, reason: string) => {
+    const id = canonicalSeatRecipientId(seat);
+    if (!id || targets.has(id)) return;
+    targets.set(id, {
+      id,
+      label: text(seat.name ?? seat.workstation_name, id),
+      reason,
+    });
+  };
+
+  for (const seat of seats) {
+    const haystack = `${text(seat.name ?? seat.workstation_name, "")} ${text(seat.responsibility, "")}`.toLowerCase();
+    if (/(boss|负责人|分工|总控|项目经理|pm|产品)/i.test(haystack)) {
+      rememberSeat(seat, "Boss / 项目收口");
+    }
+  }
+
+  for (const [workstationId, rawProfile] of Object.entries(workstationProfiles)) {
+    const profile = readRecord(rawProfile);
+    const leadId = text(profile.lead_seat_id ?? profile.leadSeatId, "");
+    if (!leadId) continue;
+    const leadSeat = seats.find((seat) => seatIdentityValues(seat).includes(leadId));
+    if (leadSeat) {
+      rememberSeat(leadSeat, `工位长 / ${text(profile.name, workstationId) || workstationId}`);
+    }
+  }
+
+  const projectName = text(project.name ?? project.project_name, "").toLowerCase();
+  if (targets.size === 0 && /yuespeak|yue/i.test(projectName)) {
+    const boss = seats.find((seat) => /boss/i.test(`${text(seat.name ?? seat.workstation_name, "")} ${text(seat.responsibility, "")}`));
+    if (boss) rememberSeat(boss, "Boss / YueSpeak 收口");
+  }
+  if (targets.size === 0 && seats[0]) {
+    rememberSeat(seats[0], "默认项目 NPC");
+  }
+  return Array.from(targets.values()).slice(0, 12);
+}
+
+async function notifyGitRollbackAlignmentTargets(
+  projectId: string,
+  project: Record<string, unknown>,
+  options: {
+    targetRef: string;
+    notes: string;
+    requestedBy: string;
+    preflightQueued: number;
+    preflightRunnableNodeCount: number;
+  },
+) {
+  const targets = resolveGitRollbackAlignmentTargets(project);
+  let queued = 0;
+  const repository = text(project.github_url ?? project.githubUrl ?? project.local_git_url ?? project.localGitUrl, "未绑定仓库");
+  for (const target of targets) {
+    const body = [
+      `类型：Git 回退对齐请求`,
+      `目标版本：${options.targetRef}`,
+      `仓库：${repository}`,
+      `发起人：${options.requestedBy}`,
+      `原因：${options.notes || "未填写"}`,
+      `Runner 只读预检：${options.preflightQueued ? `已下发 ${options.preflightQueued} 台` : options.preflightRunnableNodeCount ? "存在可运行电脑但下发失败，请检查 Runner 收件箱" : "暂无已绑定 Runner 的电脑"}`,
+      "",
+      "请在绑定线程中只做对齐检查，不要执行 destructive git reset。",
+      "回执格式：已对齐 / 阻塞 / 需人工；同时说明当前分支、未提交改动、需要保留的文件和下一步建议。",
+    ].join("\n");
+    try {
+      await postJson("/api/collaboration/messages", {
+        project_id: projectId,
+        agent_id: target.id,
+        message_type: "agent_command",
+        title: `Git 回退对齐 / ${options.targetRef}`,
+        body,
+        sender_type: "human",
+        sender_id: options.requestedBy,
+        recipient_type: "thread_workstation",
+        recipient_id: target.id,
+        status: "queued",
+        metadata: {
+          source: "git_rollback_alignment",
+          target_ref: options.targetRef,
+          target_reason: target.reason,
+        },
+      });
+      queued += 1;
+    } catch {
+      // 单个 NPC 通知失败不阻断 Git 回退登记，避免前端把已登记请求误判为失败。
+    }
+  }
+  return { queued, targetCount: targets.length };
 }
 
 export async function 创建项目工作区(formData: FormData) {
@@ -2965,7 +3244,8 @@ export async function 创建项目工作区(formData: FormData) {
   const project = result.data ?? result;
   revalidatePath("/projects");
   revalidatePath("/");
-  redirect(buildProjectModeEntryPath(String(project.id ?? "").trim() || undefined, "2d-dev"));
+  const projectId = String(project.id ?? "").trim();
+  redirect(projectId ? `/projects/${encodeURIComponent(projectId)}/2d-upgrade` : "/projects");
 }
 
 export async function 创建项目任务(formData: FormData) {
@@ -3789,13 +4069,25 @@ export async function 登记项目Git回退(projectId: string, formData: FormDat
       notes,
       requestedBy: text(currentUser?.id ?? currentUser?.email, "human-chief"),
     });
+    const alignment = await notifyGitRollbackAlignmentTargets(projectId, project, {
+      targetRef,
+      notes,
+      requestedBy: text(currentUser?.id ?? currentUser?.email, "human-chief"),
+      preflightQueued: preflight.queued,
+      preflightRunnableNodeCount: preflight.runnableNodeCount,
+    });
     revalidateProjectSurfaces(projectId);
     const preflightNotice = preflight.queued
       ? `；已向 ${preflight.queued} 台已接入电脑下发只读预检`
       : preflight.runnableNodeCount
         ? "；只读预检未能下发，请检查 Runner 收件箱"
         : "；暂无已绑定 Runner 的电脑，只登记项目活动";
-    redirect(withQueryValue(returnTo, "team_notice", `Git 回退请求已登记：${targetRef}${preflightNotice}`));
+    const alignmentNotice = alignment.queued
+      ? `；已通知 ${alignment.queued} 个 Boss/工位长 NPC 对齐`
+      : alignment.targetCount
+        ? "；NPC 对齐消息未能写入，请到工作台手动同步"
+        : "；暂无可通知的 Boss/工位长 NPC";
+    redirect(withQueryValue(returnTo, "team_notice", `Git 回退请求已登记：${targetRef}${preflightNotice}${alignmentNotice}`));
   } catch (error) {
     rethrowRedirectError(error);
     const message = error instanceof Error ? error.message : "登记 Git 回退失败";
@@ -3844,6 +4136,7 @@ export async function 创建项目Skill(projectId: string, formData: FormData) {
     const rawId = String(formData.get("skill_id") ?? "").trim().toLowerCase();
     const skillId = rawId.replace(/[^a-z0-9-_]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
     const recommendedFor = parseStringList(formData.get("recommended_for")) ?? [];
+    const recommendedPreset = YUESPEAK_RECOMMENDED_PROJECT_SKILLS[skillId];
     if (!skillId) {
       throw new Error("请先填写 skill 标识");
     }
@@ -3856,11 +4149,11 @@ export async function 创建项目Skill(projectId: string, formData: FormData) {
 
     const nextSkill = {
       id: skillId,
-      label: String(formData.get("label") ?? "").trim() || skillId,
-      note: String(formData.get("note") ?? "").trim() || "项目自定义 skill",
+      label: String(formData.get("label") ?? "").trim() || recommendedPreset?.label || skillId,
+      note: String(formData.get("note") ?? "").trim() || recommendedPreset?.note || "项目自定义 skill",
       source: "custom",
       scope: "role",
-      recommended_for: recommendedFor,
+      recommended_for: recommendedFor.length ? recommendedFor : (recommendedPreset?.recommendedFor ?? []),
     };
 
     await patchJson(`/api/projects/${projectId}`, {
@@ -4790,10 +5083,13 @@ export async function 提交协作消息(formData: FormData) {
       resolveAiRequiredLedgerOptions(project, payload, currentUserId, governancePreview),
     );
     const messageResult = await postJson("/api/collaboration/messages", outgoingPayload);
+    const messageRecord =
+      messageResult && typeof messageResult === "object" ? (messageResult as Record<string, unknown>) : {};
+    const messageData = messageRecord.data && typeof messageRecord.data === "object"
+      ? (messageRecord.data as Record<string, unknown>)
+      : {};
     const messageId =
-      messageResult && typeof messageResult === "object" && (messageResult as Record<string, unknown>).data
-        ? text((messageResult as Record<string, unknown>).data?.id)
-        : text((messageResult as Record<string, unknown>)?.id) || `msg-${Date.now()}`;
+      text(messageData.id) || text(messageRecord.id) || `msg-${Date.now()}`;
 
     const npcDispatchMode =
       project && projectId
@@ -5960,6 +6256,446 @@ export async function 校准Codex席位自治桥(projectId: string, workstationI
   }
 }
 
+export async function 启动Npc真实线程处理(projectId: string, workstationId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "workbench");
+  const messageId = text(formData.get("message_id"), "");
+  try {
+    await ensureProjectCollaborationAccess(projectId);
+    const workstationsResult = await getJson(`/api/collaboration/projects/${projectId}/thread-workstations`);
+    const workstations = asArray<Record<string, unknown>>(workstationsResult?.data ?? workstationsResult);
+    const seat =
+      workstations.find((item) =>
+        workstationLookupKeys(item).some((candidate) => candidate === workstationId),
+      ) ?? null;
+    if (!seat) {
+      throw new Error("没有找到这个 NPC，无法启动真实线程处理。");
+    }
+
+    const metadata = seat.metadata && typeof seat.metadata === "object" ? (seat.metadata as Record<string, unknown>) : {};
+    const seatName = text(seat.name ?? seat.workstation_name, workstationId) || "NPC";
+    const providerId =
+      normalizePlatformProviderId(
+        seat.ai_provider_id ?? seat.ai_provider ?? metadata.provider_id ?? metadata.provider_label,
+      ) || "codex";
+    const automationEnabled = readSeatAutomationEnabled(metadata, false);
+    const recipientId =
+      text(seat.row_id ?? seat.rowId ?? seat.id ?? seat.config_id, "") || workstationId;
+
+    if (providerId === "codex" && automationEnabled) {
+      const sourceWorkstationId =
+        text(seat.source_workstation_id ?? metadata.source_workstation_id, "") ||
+        text(metadata.target_thread_id ?? metadata.bound_thread_id ?? metadata.thread_id, "");
+      if (isCodexSessionWorkstationId(sourceWorkstationId)) {
+        const storedKnowledge =
+          metadata.npc_knowledge && typeof metadata.npc_knowledge === "object"
+            ? (metadata.npc_knowledge as Record<string, unknown>)
+            : {};
+        const npcKnowledge = buildNpcKnowledgeProfile({
+          seatId: recipientId,
+          name: seatName,
+          responsibility: text(seat.responsibility ?? metadata.responsibility, "") || null,
+          knowledgeSlug: text(storedKnowledge.slug ?? metadata.npc_identity_key, "").replace(/^npc:/, "") || null,
+          knowledgeSummary: text(storedKnowledge.summary, "") || null,
+          knowledgeHandoffPath: text(storedKnowledge.handoff_path, "") || null,
+          knowledgeTags: asArray<string>(storedKnowledge.tags).map((item) => text(item)).filter(Boolean),
+        });
+        await ensureCodexSeatAutonomyBridge({
+          projectId,
+          seatName,
+          responsibility: text(seat.responsibility ?? metadata.responsibility, "") || null,
+          sourceWorkstationId,
+          handoffPath: npcKnowledge.handoff_path,
+          computerNodeId: text(seat.computer_node_id ?? seat.computerNodeId ?? metadata.computer_node_id, "") || null,
+          model: text(seat.model ?? metadata.model, "gpt-5.4") || "gpt-5.4",
+          additionalSkillIds: mergePlatformSkillLoadout(
+            seat.skill_loadout,
+            seat.skillLoadout,
+            metadata.additional_skill_ids,
+            metadata.skill_loadout,
+          ),
+          collabProtocol: resolvePlatformCollabProtocol(metadata.collab_protocol, {
+            providerId: "codex",
+            roleText: text(seat.responsibility ?? metadata.responsibility, "") || undefined,
+            threadText: seatName,
+          }),
+          heartbeatIntervalSeconds: readSeatAutomationHeartbeatSeconds(metadata),
+        });
+      }
+    }
+
+    const launchResult = launchDetachedWorkstationOneShot({
+      projectId,
+      workstationId: recipientId,
+      providerId,
+      seatName,
+      ignoreAutomationSwitch: !automationEnabled,
+    });
+
+    await postJson("/api/collaboration/messages", {
+      project_id: projectId,
+      agent_id: recipientId,
+      message_type: "agent_ack",
+      title: `真实线程处理已启动 / ${seatName}`,
+      body: [
+        automationEnabled
+          ? `平台已按 ${seatName} 的 NPC 自动化设置拉起真实 ${platformProviderLabel(providerId)} 处理器。`
+          : `平台已把这一句话派给 ${seatName} 的绑定 ${platformProviderLabel(providerId)} 线程做单次处理，未创建 NPC 自动化。`,
+        messageId ? `派单消息：${messageId}` : "",
+        launchResult.launched ? `启动器：${launchResult.launcher || "platform-workstation-adapter.py"}` : `启动失败：${launchResult.error || "未知错误"}`,
+        launchResult.stdoutPath ? `stdout：${launchResult.stdoutPath}` : "",
+        launchResult.stderrPath ? `stderr：${launchResult.stderrPath}` : "",
+        "平台只等待最小回执和最终结果；完整推理/修改过程以绑定线程或本机执行器日志为准。",
+      ].filter(Boolean).join("\n"),
+      sender_type: "agent",
+      sender_id: recipientId,
+      recipient_type: "thread_workstation",
+      recipient_id: recipientId,
+      status: launchResult.launched ? "in_progress" : "failed",
+    });
+
+    revalidateProjectSurfaces(projectId);
+    redirect(
+      withQueryValue(
+        returnTo,
+        launchResult.launched ? "team_notice" : "team_error",
+        launchResult.launched
+          ? automationEnabled
+            ? `${seatName} 的真实 ${platformProviderLabel(providerId)} 自动处理器已启动，等待线程回写结果`
+          : `${seatName} 的单次 ${platformProviderLabel(providerId)} 派单已启动；当前 Codex Desktop 窗口不会实时显示时，以平台回执/日志为准`
+          : `${seatName} 的真实处理器启动失败：${launchResult.error ?? "请检查本机 Python / Codex CLI / 绑定线程"}`,
+      ),
+    );
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "启动真实线程处理失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
+export async function 启动Npc单次线程处理(projectId: string, workstationId: string, messageId: string) {
+  try {
+    await ensureProjectCollaborationAccess(projectId);
+    const workstationsResult = await getJson(`/api/collaboration/projects/${projectId}/thread-workstations`);
+    const workstations = asArray<Record<string, unknown>>(workstationsResult?.data ?? workstationsResult);
+    const seat =
+      workstations.find((item) =>
+        workstationLookupKeys(item).some((candidate) => candidate === workstationId),
+      ) ?? null;
+    if (!seat) {
+      throw new Error("没有找到这个 NPC，无法启动单次线程处理。");
+    }
+
+    const metadata = seat.metadata && typeof seat.metadata === "object" ? (seat.metadata as Record<string, unknown>) : {};
+    const seatName = text(seat.name ?? seat.workstation_name, workstationId) || "NPC";
+    const providerId =
+      normalizePlatformProviderId(
+        seat.ai_provider_id ?? seat.ai_provider ?? metadata.provider_id ?? metadata.provider_label,
+      ) || "codex";
+    const recipientId = text(seat.row_id ?? seat.rowId ?? seat.id ?? seat.config_id, "") || workstationId;
+    let adapterConfig: Record<string, unknown> = {};
+    try {
+      const configResult = await getJson(
+        `/api/collaboration/projects/${projectId}/thread-workstations/${encodeURIComponent(recipientId)}/adapter-config`,
+      );
+      adapterConfig = (configResult?.data && typeof configResult.data === "object" ? configResult.data : {}) as Record<string, unknown>;
+    } catch {
+      adapterConfig = {};
+    }
+    const deliveryLabel = text(adapterConfig.delivery_label, "");
+    const deliveryWarning = text(adapterConfig.delivery_warning, "");
+    const desktopVisible = Boolean(adapterConfig.desktop_visible);
+    const launchResult = launchDetachedWorkstationOneShot({
+      projectId,
+      workstationId: recipientId,
+      providerId,
+      seatName,
+      ignoreAutomationSwitch: true,
+    });
+
+    await postJson("/api/collaboration/messages", {
+      project_id: projectId,
+      agent_id: recipientId,
+      message_type: "agent_ack",
+      title: `单次线程处理已启动 / ${seatName}`,
+      body: [
+        `平台已把这一句话交给 ${seatName} 的 ${deliveryLabel || platformProviderLabel(providerId)} 做单次处理，未创建 NPC 自动化。`,
+        desktopVisible ? "桌面线程可见：是。" : "桌面实时显示：否；当前走独立 app-server/session 写入，完整过程以平台回执和本机日志为准。",
+        deliveryWarning,
+        messageId ? `派单消息：${messageId}` : "",
+        launchResult.launched ? `启动器：${launchResult.launcher || "platform-workstation-adapter.py"}` : `启动失败：${launchResult.error || "未知错误"}`,
+        launchResult.stdoutPath ? `stdout：${launchResult.stdoutPath}` : "",
+        launchResult.stderrPath ? `stderr：${launchResult.stderrPath}` : "",
+        "平台只等待最小回执和最终结果；完整处理过程以绑定线程或本机执行器日志为准。",
+      ].filter(Boolean).join("\n"),
+      sender_type: "agent",
+      sender_id: recipientId,
+      recipient_type: "thread_workstation",
+      recipient_id: recipientId,
+      status: launchResult.launched ? "in_progress" : "failed",
+    });
+
+    revalidateProjectSurfaces(projectId);
+    return {
+      launched: Boolean(launchResult.launched),
+      providerId,
+      seatName,
+      deliveryLabel,
+      deliveryWarning,
+      desktopVisible,
+      launcher: launchResult.launcher ?? null,
+      stdoutPath: launchResult.stdoutPath ?? null,
+      stderrPath: launchResult.stderrPath ?? null,
+      error: launchResult.launched ? null : launchResult.error ?? "请检查本机 Python / Codex CLI / 绑定线程",
+    };
+  } catch (error) {
+    return {
+      launched: false,
+      providerId: null,
+      seatName: null,
+      deliveryLabel: null,
+      deliveryWarning: null,
+      desktopVisible: false,
+      launcher: null,
+      stdoutPath: null,
+      stderrPath: null,
+      error: error instanceof Error ? error.message : "启动单次线程处理失败",
+    };
+  }
+}
+
+export async function 准备Codex线程上岗包(projectId: string, workstationId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "npc-create");
+  try {
+    const { project } = await ensureProjectCollaborationAccess(projectId);
+    const workstationsResult = await getJson(`/api/collaboration/projects/${projectId}/thread-workstations`);
+    const workstations: Record<string, unknown>[] = asArray<Record<string, unknown>>(workstationsResult?.data ?? workstationsResult);
+    const seat: Record<string, unknown> | null =
+      workstations.find((item) =>
+        workstationLookupKeys(item as Record<string, unknown>).some((candidate) => candidate === workstationId),
+      ) ?? null;
+    if (!seat) throw new Error("没有找到这个 NPC。");
+
+    const metadata = seat?.metadata && typeof seat.metadata === "object" ? (seat.metadata as Record<string, unknown>) : {};
+    const seatName = text(seat?.name ?? seat?.workstation_name, workstationId || "Codex NPC") || "Codex NPC";
+    const responsibility = text(seat?.responsibility ?? metadata.responsibility, "") || "按 Boss NPC 派单推进";
+    const rawThreadId =
+      text(formData.get("codex_thread_id"), "") ||
+      text(formData.get("source_workstation_id"), "") ||
+      text(seat?.source_workstation_id ?? metadata.source_workstation_id, "") ||
+      text(metadata.target_thread_id ?? metadata.bound_thread_id ?? metadata.thread_id, "");
+    if (!rawThreadId) {
+      throw new Error("请先填入用户已经创建好的 Codex 线程 ID，再生成上岗包。");
+    }
+    const sourceWorkstationId = rawThreadId.toLowerCase().startsWith("codex-session-")
+      ? rawThreadId
+      : `codex-session-${slugifyAscii(rawThreadId, slugifyAscii(seatName, "codex-thread"))}`;
+    const model = text(seat?.model ?? metadata.model, "gpt-5.4") || "gpt-5.4";
+    const computerNodeId = text(seat?.computer_node_id ?? seat?.computerNodeId ?? metadata.computer_node_id, "") || null;
+    const logicalWorkstationId =
+      text(seat?.workstation_id ?? seat?.workstationId ?? metadata.workstation_id ?? metadata.workstationId, "") ||
+      null;
+    const logicalWorkstationsResult = await getJson(`/api/projects/${projectId}/workstations`).catch(() => ({ data: [] }));
+    const logicalWorkstations = asArray<Record<string, unknown>>(logicalWorkstationsResult?.data ?? logicalWorkstationsResult);
+    const logicalWorkstation = logicalWorkstationId
+      ? logicalWorkstations.find((item) =>
+          [recordId(item), text(item.config_id, ""), text(item.name, "")].includes(logicalWorkstationId),
+        ) ?? null
+      : null;
+    const workstationName =
+      text(logicalWorkstation?.name, "") ||
+      text(seat?.workstation_name ?? seat?.workstationName ?? metadata.workstation_name ?? metadata.workstationName, "") ||
+      (logicalWorkstationId ? logicalWorkstationId : null);
+    const workstationExtra = readRecord(logicalWorkstation?.extra_data ?? logicalWorkstation?.extraData);
+    const config = readProjectCollaborationConfig(project);
+    const workstationProfiles = readRecord(config.workstation_profiles);
+    const workstationProfile = readRecord(
+      (logicalWorkstationId && workstationProfiles[logicalWorkstationId]) ||
+        (workstationName && workstationProfiles[workstationName]) ||
+        (computerNodeId && workstationProfiles[computerNodeId]) ||
+        {},
+    );
+    const workstationSlug = displaySlug(workstationName || logicalWorkstationId || computerNodeId, "unassigned");
+    const workstationKnowledgePath =
+      repoRelativePath(
+        logicalWorkstation?.knowledge_path ??
+          logicalWorkstation?.knowledgePath ??
+          workstationExtra.knowledge_path ??
+          workstationExtra.knowledgePath ??
+          workstationProfile.knowledge_path ??
+          workstationProfile.knowledgePath,
+      ) || `docs/workstations/${workstationSlug}.md`;
+    const skillLoadout = mergePlatformSkillLoadout(
+      seat?.skill_loadout,
+      seat?.skillLoadout,
+      metadata.additional_skill_ids,
+      metadata.skill_loadout,
+    );
+    const storedKnowledge =
+      metadata.npc_knowledge && typeof metadata.npc_knowledge === "object"
+        ? (metadata.npc_knowledge as Record<string, unknown>)
+        : {};
+    const npcKnowledge = buildNpcKnowledgeProfile({
+      seatId: workstationId,
+      name: seatName,
+      responsibility,
+      knowledgeSlug: text(storedKnowledge.slug ?? metadata.npc_identity_key, "").replace(/^npc:/, "") || null,
+      knowledgeSummary: text(storedKnowledge.summary, "") || null,
+      knowledgeHandoffPath: text(storedKnowledge.handoff_path, "") || null,
+      knowledgeTags: asArray<string>(storedKnowledge.tags).map((item) => text(item)).filter(Boolean),
+    });
+    const seatGroupKey = (item: Record<string, unknown>) =>
+      text(item.workstation_id ?? item.workstationId, "") ||
+      text(item.computer_node_id ?? item.computerNodeId, "");
+    const myGroupKey = logicalWorkstationId || computerNodeId || "";
+    const sameWorkstationDirectory = workstations
+      .filter((item) => recordId(item) !== workstationId && recordId(item) !== recordId(seat) && seatGroupKey(item) === myGroupKey)
+      .map((item) => {
+        const itemMeta = readRecord(item.metadata);
+        return `${text(item.name ?? item.workstation_name, recordId(item))}（${text(item.responsibility ?? itemMeta.responsibility, "待补职责")}）`;
+      })
+      .filter(Boolean)
+      .slice(0, 12);
+    const leadByLogicalWorkstation = new Map<string, string>();
+    for (const item of logicalWorkstations) {
+      const wsId = recordId(item);
+      const lead = text(item.lead_seat_id ?? item.leadSeatId, "");
+      if (wsId && lead) leadByLogicalWorkstation.set(wsId, lead);
+    }
+    const crossWorkstationLeads = workstations
+      .filter((item) => {
+        const id = recordId(item);
+        const group = seatGroupKey(item);
+        if (!id || !group || group === myGroupKey) return false;
+        const identities = recordIdentitySet(item);
+        const logicalLead = leadByLogicalWorkstation.get(group);
+        if (logicalLead) return identities.has(logicalLead);
+        const itemMeta = readRecord(item.metadata);
+        const profile = readRecord(workstationProfiles[group]);
+        const profileLead = text(profile.lead_seat_id ?? profile.leadSeatId, "");
+        return profileLead ? identities.has(profileLead) : Boolean(itemMeta.is_lead ?? itemMeta.isLead);
+      })
+      .map((item) => {
+        const group = seatGroupKey(item);
+        const targetWorkstationName =
+          text(logicalWorkstations.find((ws) => recordId(ws) === group || text(ws.config_id, "") === group)?.name, "") ||
+          text(item.workstation_name ?? item.workstationName ?? item.workstation_id ?? item.workstationId ?? item.computer_node_id, "其他工位");
+        return `${text(item.name ?? item.workstation_name, recordId(item))}（${targetWorkstationName} 工位长）`;
+      })
+      .filter(Boolean)
+      .slice(0, 12);
+    const readPaths = normalizeStringList(seat?.read_paths ?? metadata.read_paths);
+    const writePaths = normalizeStringList(seat?.write_paths ?? metadata.write_paths ?? metadata.git_boundary);
+    const collabProtocol = enrichNpcCollabProtocolWithRepoContext(
+      project,
+      resolvePlatformCollabProtocol(metadata.collab_protocol, {
+        providerId: "codex",
+        roleText: responsibility,
+        threadText: seatName,
+      }),
+      {
+        gitBoundary: writePaths,
+        handoffPath: npcKnowledge.handoff_path,
+      },
+    );
+    const repoContext = resolvePlatformRepoContext(collabProtocol.repo_context);
+    const launchPrompt = buildCodexThreadLaunchPrompt({
+      projectId,
+      projectName: text(project?.name, projectId),
+      repositoryUrl: (repoContext?.repository_url ?? text(project?.github_url ?? project?.githubUrl, "")) || null,
+      localGitUrl: text(project?.local_git_url ?? project?.localGitUrl, "") || null,
+      branch: (repoContext?.branch ?? text(project?.develop_branch ?? project?.default_branch, "")) || null,
+      seatName,
+      responsibility,
+      sourceWorkstationId,
+      handoffPath: npcKnowledge.handoff_path,
+      workstationName,
+      workstationKnowledgePath,
+      npcKnowledgeSummary: npcKnowledge.summary,
+      sameWorkstationDirectory,
+      crossWorkstationLeads,
+      skills: skillLoadout,
+      readPaths,
+      writePaths,
+    });
+
+    await ensureNpcKnowledgeDoc({
+      handoffPath: npcKnowledge.handoff_path,
+      seatName,
+      responsibility,
+      projectId,
+      additionalSkillIds: skillLoadout,
+      providerLabel: "Codex",
+      sourceWorkstationId,
+      computerNodeId,
+      model,
+      collabProtocol,
+    });
+
+    const automationEnabled = readSeatAutomationEnabled(metadata, false);
+    const continuity = automationEnabled
+      ? await ensureCodexSeatAutonomyBridge({
+          projectId,
+          seatName,
+          responsibility,
+          sourceWorkstationId,
+          handoffPath: npcKnowledge.handoff_path,
+          computerNodeId,
+          model,
+          additionalSkillIds: skillLoadout,
+          collabProtocol,
+          heartbeatIntervalSeconds: readSeatAutomationHeartbeatSeconds(metadata),
+        })
+      : { consumerScript: null, heartbeat: null };
+
+    await patchJson(
+      `/api/collaboration/projects/${projectId}/thread-workstations/${encodeURIComponent(workstationId)}`,
+      {
+        ai_provider: "Codex",
+        ai_provider_id: "codex",
+        source_workstation_id: sourceWorkstationId,
+        target_thread_id: sourceWorkstationId,
+        bound_thread_id: sourceWorkstationId,
+        model,
+        metadata: mergeSeatMetadata(metadata, {
+          seat_type: "codex",
+          provider_id: "codex",
+          provider_label: "Codex",
+          source_workstation_id: sourceWorkstationId,
+          target_thread_id: sourceWorkstationId,
+          source_thread_id: sourceWorkstationId,
+          bound_thread_id: sourceWorkstationId,
+          thread_kind: "Codex",
+          thread_health: "已登记",
+          bridge_health_label: automationEnabled ? "watcher ready" : "已登记",
+          additional_skill_ids: skillLoadout,
+          skill_loadout: skillLoadout,
+          npc_knowledge: npcKnowledge,
+          npc_identity_key: npcKnowledge.key,
+          collab_protocol: collabProtocol,
+          codex_launch_prompt: launchPrompt,
+          codex_launch_prompt_updated_at: new Date().toISOString(),
+        }),
+      },
+    );
+
+    revalidateProjectSurfaces(projectId);
+    revalidatePath(`/projects/${projectId}/workbench`);
+    let nextPath = withQueryValue(
+      returnTo,
+      "team_notice",
+      `已为 ${seatName} 绑定用户创建的 Codex 线程并生成上岗包${continuity.consumerScript ? `，consumer：${continuity.consumerScript}` : ""}${continuity.heartbeat ? `，心跳：${continuity.heartbeat.id}` : ""}`,
+    );
+    nextPath = withQueryValue(nextPath, "seat", workstationId);
+    redirect(nextPath);
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "准备 Codex 线程上岗包失败";
+    let nextPath = withQueryValue(returnTo, "team_error", message);
+    nextPath = withQueryValue(nextPath, "seat", workstationId);
+    redirect(nextPath);
+  }
+}
+
 export async function 校准Claude席位会话(projectId: string, workstationId: string, formData: FormData) {
   const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "npc-create");
   try {
@@ -6275,6 +7011,9 @@ export const createNpcWorkstationSeat = 创建Npc驻场席位;
 export const updateNpcWorkstationSeat = 更新Npc驻场席位;
 export const createCodexWorkstationSeat = 创建Npc驻场席位;
 export const updateCodexWorkstationSeat = 更新Npc驻场席位;
+export const prepareCodexThreadLaunchPack = 准备Codex线程上岗包;
+export const launchNpcRealThreadProcessing = 启动Npc真实线程处理;
+export const launchNpcOneShotThreadProcessing = 启动Npc单次线程处理;
 export const calibrateClaudeSeatSession = 校准Claude席位会话;
 export const backfillProjectNpcKnowledge = 补齐项目Npc固定知识库;
 export const deleteNpcWorkstationSeat = 删除Codex驻场席位;

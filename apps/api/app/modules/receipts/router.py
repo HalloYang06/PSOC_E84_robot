@@ -4,13 +4,12 @@ from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
 from app.common.response import ok
-from app.db.models.project_collaboration import ProjectThreadWorkstation
 from app.db.models.requirement import Requirement
 from app.db.session import get_db
 from app.modules.read_access import require_project_read_access
 
 from .schemas import ReceiptCreate
-from .service import create_receipt, list_receipts_for_requirement, list_receipts_for_seat
+from .service import create_receipt, get_receipt_seat_or_404, list_receipts_for_requirement, list_receipts_for_seat
 
 
 router = APIRouter(prefix="/api/receipts", tags=["receipts"])
@@ -41,14 +40,15 @@ def api_list_receipts_for_requirement(
 def api_list_receipts_for_seat(
     seat_id: str,
     request: Request,
+    project_id: str | None = None,
     direction: str = Query("incoming", pattern="^(incoming|outgoing|both)$"),
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
 ):
-    seat = db.get(ProjectThreadWorkstation, seat_id)
-    if seat is not None and seat.project_id:
+    seat = get_receipt_seat_or_404(db, seat_id, project_id=project_id)
+    if seat.project_id:
         require_project_read_access(db, request, seat.project_id, action="receipts.read")
     return ok([
         r.model_dump()
-        for r in list_receipts_for_seat(db, seat_id, direction=direction, limit=limit)
+        for r in list_receipts_for_seat(db, seat_id, project_id=project_id, direction=direction, limit=limit)
     ])

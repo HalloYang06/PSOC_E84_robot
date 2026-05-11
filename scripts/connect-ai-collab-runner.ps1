@@ -53,6 +53,9 @@ function Resolve-WebBaseUrl {
   if ($base -match ":8010$") {
     return ($base -replace ":8010$", ":3000")
   }
+  if ($base -match ":8011$") {
+    return ($base -replace ":8011$", ":3000")
+  }
   if ($base -match ":8000$") {
     return ($base -replace ":8000$", ":3000")
   }

@@ -141,13 +141,16 @@ export function buildComputerRunnerRegisterCommand(
 }
 
 export function buildComputerOneClickConnectCommand(
-  serverUrl: string,
+  webBaseUrl: string,
   projectId: string,
   node: AnyRecord,
   pairingToken: string,
   runnerId: string,
-  options: { watch?: boolean; executeProviderCli?: boolean } = {},
+  options: { watch?: boolean; executeProviderCli?: boolean; serverUrl?: string } = {},
 ) {
+  const serverUrl = text(options.serverUrl, webBaseUrl)
+    .replace(/\/+$/, "")
+    .replace(/:3000$/, ":8011");
   const nodeId = text(node.id ?? node.node_id ?? node.name ?? node.label, "computer");
   const runnerName = `${text(node.label ?? node.name, nodeId)} Runner`;
   const workspaceRoot = text(node.git_root ?? node.workspace_root, "");
@@ -168,7 +171,7 @@ export function buildComputerOneClickConnectCommand(
   if (options.executeProviderCli) {
     args.push(["-WatchExecuteProviderCli", true]);
   }
-  return buildPowerShellRunnerScriptCommand(serverUrl, "connect-ai-collab-runner.ps1", args);
+  return buildPowerShellRunnerScriptCommand(webBaseUrl, "connect-ai-collab-runner.ps1", args);
 }
 
 export function buildComputerRunnerWatchCommand(

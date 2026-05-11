@@ -5560,7 +5560,7 @@ function TokenResultCard({ title, subtitle, token, command, watchCommand, testId
             ▷ 想让平台下发的指令真的进 CLI？复制下面这条「持续协作」命令运行（替代上面那条）
           </summary>
           <p style={{ margin: "6px 0", fontWeight: 400, opacity: 0.9 }}>
-            上面"一键接入"只跑一次就退出。要让平台派单 / 指令实时进入本机 Claude / Codex CLI，
+            上面&quot;一键接入&quot;只跑一次就退出。要让平台派单 / 指令实时进入本机 Claude / Codex CLI，
             必须用下面这条带 <code>-Watch -WatchExecuteProviderCli</code> 的命令，并保持窗口运行。
           </p>
           <textarea
@@ -6021,6 +6021,84 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
       ]),
     [props.project?.developBranch, props.project?.defaultBranch, props.tasks],
   );
+  const gitRollbackVersionIndex = useMemo(() => {
+    type RollbackVersionOption = {
+      ref: string;
+      label: string;
+      source: string;
+      detail: string;
+      tone: "default" | "branch" | "task" | "activity";
+    };
+    const options: RollbackVersionOption[] = [];
+    const remember = (option: RollbackVersionOption) => {
+      const ref = text(option.ref, "");
+      if (!ref || options.some((item) => item.ref === ref)) return;
+      options.push({ ...option, ref });
+    };
+    const developBranch = text(props.project?.developBranch, "");
+    const defaultBranch = text(props.project?.defaultBranch, "");
+    if (developBranch) {
+      remember({
+        ref: developBranch,
+        label: "开发分支",
+        source: "项目配置",
+        detail: "适合回到当前协作主线，让所有 NPC 重新对齐。",
+        tone: "branch",
+      });
+    }
+    if (defaultBranch && defaultBranch !== developBranch) {
+      remember({
+        ref: defaultBranch,
+        label: "默认分支",
+        source: "项目配置",
+        detail: "适合回到稳定主线，登记后需要通知 Boss 和工位长。",
+        tone: "branch",
+      });
+    }
+    remember({
+      ref: "HEAD~1",
+      label: "上一个提交",
+      source: "安全快捷项",
+      detail: "只作为预演目标，不会直接执行 git reset。",
+      tone: "default",
+    });
+    sortedByUpdatedAt(props.tasks)
+      .map((task) => ({
+        branch: text(task.branch, ""),
+        title: text(task.title ?? task.name, "任务分支"),
+        status: text(task.status, "unknown"),
+        updatedAt: task.updated_at ?? task.updatedAt ?? task.created_at,
+      }))
+      .filter((item) => item.branch)
+      .slice(0, 8)
+      .forEach((item) => {
+        remember({
+          ref: item.branch,
+          label: item.title,
+          source: "任务分支",
+          detail: `${item.status}${item.updatedAt ? ` / ${formatStamp(item.updatedAt)}` : ""}`,
+          tone: "task",
+        });
+      });
+    sortedByUpdatedAt(asArray(props.gitActivity))
+      .map((item) => ({
+        targetRef: text(item.target_ref ?? item.targetRef, ""),
+        title: text(item.title ?? item.action, "Git 动态"),
+        body: text(item.body ?? item.summary ?? item.description, ""),
+      }))
+      .filter((item) => item.targetRef)
+      .slice(0, 6)
+      .forEach((item) => {
+        remember({
+          ref: item.targetRef,
+          label: item.title,
+          source: "历史登记",
+          detail: shortText(item.body, "最近一次 Git 活动提到的目标引用", 76),
+          tone: "activity",
+        });
+      });
+    return options.slice(0, 16);
+  }, [props.gitActivity, props.project?.defaultBranch, props.project?.developBranch, props.tasks]);
   const gitSyncProviderOptions = useMemo(() => {
     const options: { id: string; label: string; target: string | null }[] = [];
     const githubUrl = text(gitExecutionRepository.github_url, "");
@@ -12821,17 +12899,30 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
           <p>
             用户先在这里选目标分支或提交引用，填一句原因，先预演，再登记。平台只会把正式登记写进项目活动流，后续再由真实线程或工位按项目约定执行。
           </p>
-          <div className={styles.inlineActions}>
-            {gitRollbackPresets.map((preset) => (
-              <button
-                key={`git-rollback-preset-${preset}`}
-                type="button"
-                className={gitRollbackTargetRef === preset ? styles.inlineActionLink : `${styles.inlineActionLink} ${styles.ghostButton}`}
-                onClick={() => setGitRollbackTargetRef(preset)}
-              >
-                {preset}
-              </button>
-            ))}
+          <div className={styles.versionIndexGrid} data-git-rollback-version-index="1">
+            {gitRollbackVersionIndex.length ? (
+              gitRollbackVersionIndex.map((version) => (
+                <button
+                  key={`git-rollback-version-${version.ref}`}
+                  type="button"
+                  className={styles.versionIndexCard}
+                  data-active={gitRollbackTargetRef === version.ref ? "1" : undefined}
+                  data-tone={version.tone}
+                  onClick={() => setGitRollbackTargetRef(version.ref)}
+                  title={`选择回退预演目标：${version.ref}`}
+                >
+                  <span>{version.source}</span>
+                  <strong>{version.label}</strong>
+                  <code>{version.ref}</code>
+                  <small>{version.detail}</small>
+                </button>
+              ))
+            ) : (
+              <div className={styles.noticeCard}>
+                <strong>还没有可索引版本</strong>
+                <p>先绑定 GitHub 仓库或让真实线程产生 Git 动态。临时仍可在下方手填分支、tag 或 commit 引用。</p>
+              </div>
+            )}
           </div>
           {rollbackBlockers.length ? (
             <ul className={styles.list}>
@@ -15064,7 +15155,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
         <div className={styles.projectMeta}>
           <span className={styles.badge}>{selectedMode?.active ? "2D 开发者模式" : `${selectedMode?.label ?? "未来模式"}`}</span>
           <strong>{projectName}</strong>
-          <small>入口已锁定，细节进管理器。</small>
+          <small>{recommendedAction}</small>
           {selectedMode ? (
             <div className={styles.modeDock}>
               <div className={styles.modeDockSummary}>

@@ -2,7 +2,9 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import {
   getCurrentAuthState,
+  getCollaborationMessagesState,
   getProjectComputerNodesState,
+  getProjectMembersState,
   getProjectState,
   getProjectWorkstationsState,
 } from "../../../../lib/server-data";
@@ -23,6 +25,25 @@ function text(value: unknown, fallback = "") {
   return next || fallback;
 }
 
+function record(value: unknown): AnyRecord {
+  return value && typeof value === "object" ? (value as AnyRecord) : {};
+}
+
+function firstText(...values: unknown[]) {
+  for (const value of values) {
+    const next = text(value, "");
+    if (next) return next;
+  }
+  return "";
+}
+
+function deriveThreadKind(providerId: string, threadId: string) {
+  const raw = `${providerId} ${threadId}`.toLowerCase();
+  if (raw.includes("claude")) return "Claude Code";
+  if (raw.includes("codex")) return "Codex";
+  return providerId || "thread";
+}
+
 export default async function CompanyPage({ params, searchParams }: { params: { id: string }; searchParams?: { embed?: string } }) {
   const auth = await getCurrentAuthState();
   if (!auth.data?.user) {
@@ -40,10 +61,15 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
     );
   }
 
-  const computerNodesState = await getProjectComputerNodesState(params.id);
-  const projectWorkstationsState = await getProjectWorkstationsState(params.id);
+  const [computerNodesState, projectWorkstationsState, projectMembersState, collaborationMessagesState] = await Promise.all([
+    getProjectComputerNodesState(params.id),
+    getProjectWorkstationsState(params.id),
+    getProjectMembersState(params.id),
+    getCollaborationMessagesState({ projectId: params.id }),
+  ]);
   const liveNodes = asArray<AnyRecord>(computerNodesState.data);
   const projectWorkstations = asArray<AnyRecord>(projectWorkstationsState.data);
+  const projectMembers = asArray<AnyRecord>(projectMembersState.data);
 
   const config = (project.collaboration_config ?? {}) as AnyRecord;
   const rawWorkstations = asArray<AnyRecord>(
@@ -104,10 +130,61 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
       ? (knowledgePathByNode.get(computerNodeId) ?? `docs/workstations/${computerNodeId}.md`)
       : "";
     const knowledgeSummary = text(seat.knowledge_summary ?? seat.knowledgeSummary, "");
-    const automationEnabled = Boolean(seat.automation_enabled ?? seat.automationEnabled ?? false);
     const model = text(seat.model, "");
     const permissionLevel = text(seat.permission_level ?? seat.permissionLevel, "");
-    const meta = (seat.metadata && typeof seat.metadata === "object") ? (seat.metadata as AnyRecord) : {};
+    const meta = record(seat.metadata);
+    const extra = record(seat.extra_data ?? seat.extraData);
+    const automationEnabled = Boolean(
+      seat.automation_enabled
+      ?? seat.automationEnabled
+      ?? meta.automation_enabled
+      ?? meta.automationEnabled
+      ?? extra.automation_enabled
+      ?? extra.automationEnabled
+      ?? false,
+    );
+    const adapter = record(meta.adapter ?? extra.adapter);
+    const threadId = firstText(
+      seat.target_thread_id,
+      seat.targetThreadId,
+      seat.session_id,
+      seat.sessionId,
+      seat.thread_id,
+      seat.threadId,
+      seat.source_workstation_id,
+      seat.sourceWorkstationId,
+      meta.target_thread_id,
+      meta.targetThreadId,
+      meta.session_id,
+      meta.sessionId,
+      meta.claude_session_id,
+      meta.codex_thread_id,
+      meta.thread_id,
+      meta.threadId,
+      meta.source_thread_id,
+      meta.bound_thread_id,
+      meta.source_workstation_id,
+      extra.target_thread_id,
+      extra.session_id,
+      extra.thread_id,
+      extra.source_thread_id,
+      extra.bound_thread_id,
+      extra.source_workstation_id,
+    );
+    const threadKind = firstText(seat.thread_kind, seat.threadKind, meta.thread_kind, meta.threadKind, adapter.kind, deriveThreadKind(providerId, threadId));
+    const threadHealth = firstText(
+      seat.bridge_health_label,
+      seat.bridgeHealthLabel,
+      seat.thread_health,
+      seat.threadHealth,
+      meta.bridge_health_label,
+      meta.bridgeHealthLabel,
+      meta.thread_health,
+      meta.threadHealth,
+      adapter.health,
+      adapter.status,
+      automationEnabled ? "watcher ready" : "待接入",
+    );
     const gitUserName = text(meta.git_user_name ?? meta.gitUserName, name);
     const gitUserEmail = text(
       meta.git_user_email ?? meta.gitUserEmail,
@@ -127,6 +204,11 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
       computerNodeName: computerNodeId ? nodeMap.get(computerNodeId) ?? computerNodeId : "",
       providerId,
       providerLabel,
+      threadId,
+      threadKind,
+      threadHealth,
+      codexLaunchPrompt: text(meta.codex_launch_prompt ?? meta.codexLaunchPrompt, ""),
+      metadata: meta,
       responsibility,
       skillLoadout,
       inheritedSkills,
@@ -153,8 +235,30 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
     <WorkbenchClient
       projectId={String(project.id ?? params.id)}
       projectName={text(project.name, `项目 ${params.id.slice(0, 8)}`)}
+      projectDescription={text(project.description, "")}
+      projectGithubUrl={text(project.github_url, "")}
+      projectLocalPath={text(project.local_git_url, "")}
       apiBaseUrl={(process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8010").trim().replace(/\/$/, "")}
       seats={leadSeats}
+      messages={asArray<AnyRecord>(collaborationMessagesState.data).map((message, index) => ({
+        id: text(message.id, `message-${index + 1}`),
+        title: text(message.title, ""),
+        body: text(message.body, ""),
+        status: text(message.status, ""),
+        message_type: text(message.message_type ?? message.messageType, ""),
+        created_at: text(message.created_at ?? message.createdAt, ""),
+        sender_type: text(message.sender_type ?? message.senderType, ""),
+        sender_id: text(message.sender_id ?? message.senderId, ""),
+        recipient_id: text(message.recipient_id ?? message.recipientId, ""),
+      }))}
+      members={projectMembers.map((member, index) => ({
+        id: text(member.user_id ?? member.user?.id ?? member.id, `member-${index + 1}`),
+        name: text(member.name ?? member.user?.name ?? member.email ?? member.user?.email, `协作者 ${index + 1}`),
+        email: text(member.email ?? member.user?.email, ""),
+        role: text(member.role, member.is_owner ? "owner" : "member"),
+        status: text(member.status, "active"),
+        isOwner: Boolean(member.is_owner ?? member.isOwner),
+      }))}
       currentUserId={currentUserId}
       currentUserName={currentUserName}
       pageMode="company"

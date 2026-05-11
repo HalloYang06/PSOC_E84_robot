@@ -2421,6 +2421,66 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.versionIndexGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.versionIndexCard {
+  display: grid;
+  gap: 6px;
+  min-height: 124px;
+  padding: 12px;
+  text-align: left;
+  border-radius: 14px;
+  border: 1px solid rgba(246, 237, 216, 0.12);
+  background: rgba(255, 255, 255, 0.055);
+  color: #fff8ea;
+  cursor: pointer;
+}
+
+.versionIndexCard:hover,
+.versionIndexCard[data-active="1"] {
+  border-color: rgba(216, 193, 104, 0.62);
+  background:
+    linear-gradient(180deg, rgba(216, 193, 104, 0.16), rgba(216, 193, 104, 0.05)),
+    rgba(255, 255, 255, 0.06);
+}
+
+.versionIndexCard span {
+  width: fit-content;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(246, 237, 216, 0.72);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.versionIndexCard strong {
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.versionIndexCard code {
+  width: fit-content;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  padding: 4px 7px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.22);
+  color: #d8ffbf;
+  font-size: 11px;
+}
+
+.versionIndexCard small {
+  color: rgba(246, 237, 216, 0.68);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 .exchangeGuideGrid {
   display: grid;
   gap: 10px;

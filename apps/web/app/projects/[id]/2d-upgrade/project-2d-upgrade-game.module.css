@@ -436,6 +436,14 @@
   margin-bottom: 18px;
 }
 
+.panelHeaderActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .panelHeader span {
   display: grid;
   place-items: center;
@@ -466,6 +474,29 @@
 .panelActionRow button {
   min-height: 42px;
   padding: 0 16px;
+}
+
+.panelReturn,
+.cockpitReturn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 0 16px;
+  border: 1px solid rgba(255, 225, 118, 0.64);
+  background: rgba(61, 42, 5, 0.72);
+  color: #fff1a8;
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 850;
+  white-space: nowrap;
+  clip-path: polygon(8px 0, calc(100% - 8px) 0, 100% 50%, calc(100% - 8px) 100%, 8px 100%, 0 50%);
+}
+
+.panelReturn:hover,
+.cockpitReturn:hover {
+  background: rgba(128, 90, 12, 0.82);
+  border-color: rgba(255, 239, 166, 0.92);
 }
 
 .closePanel:hover,
@@ -514,6 +545,37 @@
 .panelList b {
   color: #ffffff;
   font-size: 14px;
+}
+
+.logicalWorkstationSummary {
+  display: grid;
+  gap: 10px;
+}
+
+.logicalWorkstationList {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.logicalWorkstationList li {
+  display: grid;
+  gap: 4px;
+  padding: 10px 11px;
+  border: 1px solid rgba(119, 237, 255, 0.16);
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.logicalWorkstationList b {
+  color: #ffffff;
+  font-size: 13px;
+}
+
+.logicalWorkstationList small {
+  color: rgba(219, 251, 255, 0.72);
+  font-size: 12px;
 }
 
 .connectivityBoard {
@@ -1205,6 +1267,243 @@
   justify-self: start;
 }
 
+.recommendedSkillStack {
+  display: grid;
+  gap: 8px;
+}
+
+.recommendedSkillItem {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid rgba(121, 238, 255, 0.18);
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.recommendedSkillItemReady {
+  border-color: rgba(154, 255, 170, 0.34);
+  background: rgba(77, 180, 98, 0.08);
+}
+
+.recommendedSkillItem b {
+  color: #ffffff;
+  font-size: 13px;
+}
+
+.recommendedSkillItem small,
+.recommendedSkillStack small {
+  color: rgba(219, 251, 255, 0.68);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.recommendedSkillItem span {
+  width: fit-content;
+  padding: 3px 8px;
+  border: 1px solid rgba(255, 231, 104, 0.36);
+  color: #ffe980;
+  font-size: 11px;
+  font-weight: 1000;
+}
+
+.recommendedSkillItemReady span {
+  border-color: rgba(154, 255, 170, 0.46);
+  color: #baffc3;
+}
+
+.recommendedSkillItem button,
+.recommendedSkillCreateForm button {
+  justify-self: start;
+  min-height: 34px;
+  padding: 0 10px;
+}
+
+.recommendedSkillCreateForm {
+  display: grid;
+}
+
+.githubImportGuide {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(121, 238, 255, 0.2);
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.githubImportGuide b {
+  color: #ffffff;
+  font-size: 13px;
+}
+
+.githubImportGuide p {
+  margin: 0;
+  color: rgba(219, 251, 255, 0.72);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.githubImportGuide dl {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.githubImportGuide div {
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.githubImportGuide dt,
+.githubImportGuide dd {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.githubImportGuide dt {
+  color: #ffe980;
+  font-weight: 1000;
+}
+
+.githubImportGuide dd {
+  color: rgba(219, 251, 255, 0.76);
+  overflow-wrap: anywhere;
+}
+
+.gitVersionIndexGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+  gap: 8px;
+}
+
+.gitVersionCard {
+  display: grid;
+  gap: 6px;
+  min-height: 118px;
+  padding: 10px;
+  text-align: left;
+  border: 1px solid rgba(121, 238, 255, 0.18);
+  background: rgba(0, 0, 0, 0.2);
+  color: #f4ffff;
+  cursor: pointer;
+}
+
+.gitVersionCard:hover,
+.gitVersionCard[data-active="1"] {
+  border-color: rgba(255, 231, 104, 0.62);
+  background: rgba(255, 231, 104, 0.12);
+}
+
+.gitVersionCard span {
+  width: fit-content;
+  padding: 3px 8px;
+  border: 1px solid rgba(121, 238, 255, 0.24);
+  color: rgba(219, 251, 255, 0.72);
+  font-size: 11px;
+  font-weight: 1000;
+}
+
+.gitVersionCard b {
+  color: #ffffff;
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.gitVersionCard code {
+  width: fit-content;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  padding: 3px 7px;
+  background: rgba(2, 10, 14, 0.72);
+  color: #baffc3;
+  font-size: 11px;
+}
+
+.gitVersionCard small {
+  color: rgba(219, 251, 255, 0.68);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.gitAlignmentStatus {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(166, 255, 196, 0.22);
+  background: rgba(21, 96, 56, 0.12);
+}
+
+.githubImportGuide .gitAlignmentStatus {
+  grid-template-columns: 1fr;
+}
+
+.gitAlignmentHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.gitAlignmentHead strong {
+  color: #d9ffe6;
+  font-size: 13px;
+}
+
+.gitAlignmentHead a {
+  color: #b9fff3;
+  font-size: 12px;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.gitAlignmentStatus ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gitAlignmentStatus li {
+  display: grid;
+  grid-template-columns: minmax(76px, 0.38fr) minmax(0, 1fr);
+  gap: 3px 8px;
+  padding: 8px;
+  border: 1px solid rgba(121, 238, 255, 0.14);
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.gitAlignmentStatus li span {
+  grid-row: 1 / span 2;
+  align-self: start;
+  width: fit-content;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  padding: 3px 7px;
+  background: rgba(2, 10, 14, 0.72);
+  color: #baffc3;
+  font-size: 11px;
+}
+
+.gitAlignmentStatus li strong {
+  min-width: 0;
+  color: #ffffff;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gitAlignmentStatus li small,
+.gitAlignmentStatus p {
+  margin: 0;
+  color: rgba(219, 251, 255, 0.68);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 .skillChecklist {
   display: grid;
   gap: 8px;
@@ -1757,6 +2056,194 @@
 .workstationGroupsHead strong { font-size: 13px; color: #b9fff3; }
 .workstationGroupsHead small { font-size: 11px; color: rgba(190, 220, 240, 0.7); }
 
+.workstationHealthStrip {
+  display: grid;
+  gap: 9px;
+  margin: 8px 0;
+  padding: 10px;
+  border: 1px solid rgba(255, 232, 109, 0.22);
+  border-radius: 8px;
+  background: rgba(255, 232, 109, 0.06);
+}
+
+.workstationHealthStrip strong {
+  display: block;
+  color: #ffe7a8;
+  font-size: 13px;
+}
+
+.workstationHealthStrip small {
+  color: rgba(255, 246, 210, 0.72);
+  font-size: 11.5px;
+}
+
+.workstationHealthSteps,
+.workstationLeadChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.workstationHealthSteps span,
+.workstationLeadChips span {
+  min-width: 0;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(120, 230, 170, 0.28);
+  background: rgba(120, 230, 170, 0.08);
+  color: #baf7d1;
+  font-size: 11px;
+}
+
+.workstationHealthSteps span[data-ok="0"],
+.workstationLeadChips span[data-missing="1"] {
+  border-color: rgba(255, 232, 109, 0.34);
+  background: rgba(255, 232, 109, 0.1);
+  color: #ffe7a8;
+}
+
+.workstationLeadChips span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workstationSetupGuide {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid rgba(255, 232, 109, 0.22);
+  border-radius: 8px;
+  background: rgba(255, 232, 109, 0.07);
+}
+
+.workstationSetupGuide strong {
+  display: block;
+  color: #ffe7a8;
+  font-size: 13px;
+  margin-bottom: 3px;
+}
+
+.workstationSetupGuide p {
+  margin: 0;
+  color: rgba(255, 246, 210, 0.72);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.workstationSetupSteps {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.workstationSetupSteps span {
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 232, 109, 0.28);
+  background: rgba(255, 232, 109, 0.08);
+  color: #ffe7a8;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.workstationSetupSteps span[data-done="1"] {
+  border-color: rgba(120, 230, 170, 0.32);
+  background: rgba(120, 230, 170, 0.1);
+  color: #baf7d1;
+}
+
+.workstationBlueprintBtn {
+  width: fit-content;
+  padding: 7px 11px;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 232, 109, 0.36);
+  background: rgba(255, 232, 109, 0.12);
+  color: #ffe7a8;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.workstationBlueprintBtn:hover:not(:disabled) {
+  background: rgba(255, 232, 109, 0.2);
+}
+
+.workstationBlueprintBtn:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.unassignedNpcAssignBox {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(88, 240, 255, 0.18);
+  border-radius: 8px;
+  background: rgba(88, 240, 255, 0.055);
+}
+
+.unassignedNpcAssignBox strong {
+  color: #b9fff3;
+  font-size: 13px;
+}
+
+.unassignedNpcAssignBox p {
+  margin: -3px 0 0;
+  color: rgba(220, 240, 255, 0.68);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.unassignedNpcGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 7px;
+}
+
+.unassignedNpcItem {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(112px, 148px);
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  border: 1px solid rgba(88, 240, 255, 0.14);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.16);
+}
+
+.unassignedNpcItem b {
+  display: block;
+  color: #ffffff;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.unassignedNpcItem small {
+  display: block;
+  color: rgba(220, 240, 255, 0.62);
+  font-size: 10.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.unassignedNpcItem select {
+  min-width: 0;
+  padding: 5px 7px;
+  border-radius: 6px;
+  border: 1px solid rgba(88, 240, 255, 0.22);
+  background: rgba(0, 0, 0, 0.34);
+  color: #eaffff;
+  font-size: 11px;
+}
+
 .workstationGroupsList {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -1834,21 +2321,40 @@
 }
 
 .workstationGroupSeatRow {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(132px, 190px);
+  gap: 8px;
+  align-items: center;
   padding: 5px 8px;
   border-radius: 7px;
   background: rgba(2, 13, 20, 0.45);
   border: 1px solid rgba(88, 240, 255, 0.1);
 }
 .workstationGroupSeatRow strong {
+  display: block;
   font-size: 12px;
   color: #f4ffff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .workstationGroupSeatRow small {
+  display: block;
   font-size: 10.5px;
   color: rgba(190, 220, 240, 0.68);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workstationSeatMoveSelect {
+  min-width: 0;
+  padding: 5px 7px;
+  border-radius: 6px;
+  border: 1px solid rgba(88, 240, 255, 0.2);
+  background: rgba(0, 0, 0, 0.28);
+  color: #eaffff;
+  font-size: 11px;
 }
 
 .workstationGroupActions {
@@ -1958,6 +2464,12 @@
   border-color: rgba(88, 240, 255, 0.42);
 }
 
+.cockpitReturn {
+  min-height: 34px;
+  height: 34px;
+  padding: 0 14px;
+}
+
 .cockpitGhost:hover {
   background: rgba(23, 215, 255, 0.18);
   color: #b9fff3;
@@ -1981,6 +2493,166 @@
 .cockpitToastErr {
   border-color: #ff7b7b;
   color: #ffd2d2;
+}
+
+.serviceHealthBar {
+  display: grid;
+  grid-template-columns: minmax(190px, 0.8fr) minmax(0, 1.6fr);
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(120, 230, 170, 0.24);
+  background: rgba(2, 18, 24, 0.58);
+}
+
+.serviceHealthBar > div {
+  min-width: 0;
+}
+
+.serviceHealthBar span {
+  display: inline-flex;
+  width: fit-content;
+  margin-bottom: 5px;
+  padding: 2px 7px;
+  border: 1px solid rgba(120, 230, 170, 0.36);
+  background: rgba(120, 230, 170, 0.1);
+  color: #a8f0c6;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.serviceHealthBar span[data-status="checking"] {
+  border-color: rgba(255, 232, 109, 0.36);
+  background: rgba(255, 232, 109, 0.1);
+  color: #ffe8b3;
+}
+
+.serviceHealthBar span[data-status="error"] {
+  border-color: rgba(255, 110, 110, 0.38);
+  background: rgba(128, 32, 48, 0.18);
+  color: #ffd0d0;
+}
+
+.serviceHealthBar strong {
+  display: block;
+  color: #f4ffff;
+  font-size: 13px;
+}
+
+.serviceHealthBar p {
+  margin: 4px 0 0;
+  color: rgba(220, 240, 255, 0.68);
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.serviceHealthBar dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+}
+
+.serviceHealthBar dl div {
+  min-width: 0;
+  padding: 6px 7px;
+  border: 1px solid rgba(88, 240, 255, 0.14);
+  background: rgba(2, 13, 20, 0.44);
+}
+
+.serviceHealthBar dt,
+.serviceHealthBar dd {
+  margin: 0;
+}
+
+.serviceHealthBar dt {
+  color: rgba(190, 220, 240, 0.62);
+  font-size: 10px;
+}
+
+.serviceHealthBar dd {
+  margin-top: 2px;
+  color: #eaffff;
+  font-size: 11px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.serviceHealthBar > small {
+  grid-column: 1 / -1;
+  color: rgba(255, 232, 179, 0.72);
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+.workspaceMatrix {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.workspaceMatrix article {
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(88, 240, 255, 0.24);
+  background: rgba(2, 13, 20, 0.58);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.workspaceMatrix span {
+  width: fit-content;
+  padding: 3px 8px;
+  border: 1px solid rgba(122, 255, 244, 0.36);
+  background: rgba(23, 215, 255, 0.1);
+  color: #93fbff;
+  font-size: 10px;
+  font-weight: 1000;
+  letter-spacing: 0.08em;
+}
+
+.workspaceMatrix strong {
+  color: #f4ffff;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspaceMatrix p {
+  min-height: 48px;
+  margin: 0;
+  color: rgba(220, 252, 255, 0.72);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.workspaceMatrix div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.workspaceMatrix a,
+.workspaceMatrix button {
+  min-height: 26px;
+  padding: 0 8px;
+  border: 1px solid rgba(88, 240, 255, 0.32);
+  background: rgba(88, 240, 255, 0.08);
+  color: #b9fff3;
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.workspaceMatrix a:hover,
+.workspaceMatrix button:hover {
+  background: rgba(88, 240, 255, 0.18);
 }
 
 .cockpitMetrics {
@@ -2171,6 +2843,9 @@
   .cockpit,
   .taskBoard {
     right: 16px;
+  }
+  .workspaceMatrix {
+    grid-template-columns: 1fr;
   }
   .cockpitMetrics {
     grid-template-columns: repeat(2, 1fr);

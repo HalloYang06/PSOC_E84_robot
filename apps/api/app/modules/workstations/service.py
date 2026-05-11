@@ -208,6 +208,9 @@ def set_workstation_lead(
                 status_code=409,
                 details={"seat_workstation_id": seat.workstation_id, "workstation_id": row.id},
             )
+        if not seat.workstation_id:
+            seat.workstation_id = row.id
+            db.add(seat)
         resolved_seat_pk = seat.id
     row.lead_seat_id = resolved_seat_pk
     db.add(row)
@@ -261,6 +264,11 @@ def assign_seats_to_workstation(
     for seat in seats:
         seat.workstation_id = row.id
         db.add(seat)
+    if row.lead_seat_id:
+        lead = _validate_seat_belongs_to_project(db, project_id, row.lead_seat_id)
+        if not lead.workstation_id:
+            lead.workstation_id = row.id
+            db.add(lead)
     db.commit()
     db.refresh(row)
     counts = _seat_count_map(db, project_id)

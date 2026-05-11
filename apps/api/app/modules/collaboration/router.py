@@ -3,7 +3,9 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import re
 import uuid
+from datetime import UTC, datetime
 
 from pydantic import BaseModel, Field
 from sqlalchemy import or_, select
@@ -16,7 +18,7 @@ from app.common.response import ok
 from app.db.models.collaboration_message import CollaborationMessage
 from app.db.session import get_db
 from app.db.models.approval import Approval
-from app.db.models.project_collaboration import ProjectThreadWorkstation
+from app.db.models.project_collaboration import ProjectThreadWorkstation, ProjectWorkstation
 from app.db.models.task import Task
 from app.db.models.user import User
 from app.settings import get_settings
@@ -128,6 +130,52 @@ from .service import (
 
 
 router = APIRouter(prefix="/api/collaboration", tags=["collaboration"])
+
+
+HARDWARE_REVIEW_KEYWORDS = (
+    "上电",
+    "断电",
+    "实机",
+    "真机",
+    "机械臂",
+    "电机",
+    "舵机",
+    "急停",
+    "刷写",
+    "固件",
+    "烧录",
+    "电源",
+    "电压",
+    "电流",
+    "电池",
+    "夹爪",
+    "ros",
+    "vla",
+    "moveit",
+    "gpio",
+    "motor",
+    "servo",
+    "firmware",
+    "flash",
+    "power on",
+    "emergency stop",
+    "hardware",
+    "robot",
+    "robotic arm",
+)
+
+
+def _detect_hardware_review_risk(text: str) -> str | None:
+    cleaned = str(text or "").strip().lower()
+    if not cleaned:
+        return None
+    for keyword in HARDWARE_REVIEW_KEYWORDS:
+        if keyword.lower() in cleaned:
+            return keyword
+    risky_motion = re.search(r"(启动|运行|移动|校准|测试|执行|下发|控制).{0,16}(机械臂|电机|舵机|夹爪|实机|真机)", cleaned)
+    if risky_motion is not None:
+        return risky_motion.group(0)
+    return None
 
 
 def _require_real_human_principal(db: Session, request: Request):
@@ -620,6 +668,59 @@ class WorkstationProfilePatch(BaseModel):
     lead_seat_id: str | None = None
 
 
+def _seat_logical_workstation_key(seat: ProjectThreadWorkstation | None) -> str:
+    """Logical workstation first; computer node is only the execution host fallback."""
+    if seat is None:
+        return ""
+    workstation_id = str(getattr(seat, "workstation_id", "") or "").strip()
+    if workstation_id:
+        return workstation_id
+    return str(getattr(seat, "computer_node_id", "") or "").strip()
+
+
+def _seat_workstation_profile_key(seat: ProjectThreadWorkstation | None) -> str:
+    key = _seat_logical_workstation_key(seat)
+    return key or str(getattr(seat, "computer_node_id", "") or "").strip()
+
+
+def _project_workstation_by_id_or_config(
+    db: Session,
+    project_id: str,
+    workstation_ref: str,
+) -> ProjectWorkstation | None:
+    cleaned = str(workstation_ref or "").strip()
+    if not cleaned:
+        return None
+    stmt = select(ProjectWorkstation).where(
+        ProjectWorkstation.project_id == project_id,
+        or_(ProjectWorkstation.id == cleaned, ProjectWorkstation.config_id == cleaned),
+    )
+    return db.scalar(stmt)
+
+
+def _resolve_logical_workstation_lead_ref(
+    db: Session,
+    project_id: str,
+    seat: ProjectThreadWorkstation,
+    profiles: dict,
+) -> str:
+    ws_key = _seat_logical_workstation_key(seat)
+    if getattr(seat, "workstation_id", None):
+        logical_ws = _project_workstation_by_id_or_config(db, project_id, str(seat.workstation_id))
+        if logical_ws and logical_ws.lead_seat_id:
+            return str(logical_ws.lead_seat_id).strip()
+    if isinstance(profiles, dict) and ws_key:
+        profile = profiles.get(ws_key)
+        if isinstance(profile, dict):
+            return str(profile.get("lead_seat_id") or profile.get("leadSeatId") or "").strip()
+    node_key = str(getattr(seat, "computer_node_id", "") or "").strip()
+    if isinstance(profiles, dict) and node_key and node_key != ws_key:
+        profile = profiles.get(node_key)
+        if isinstance(profile, dict):
+            return str(profile.get("lead_seat_id") or profile.get("leadSeatId") or "").strip()
+    return ""
+
+
 @router.patch("/projects/{project_id}/workstation-profiles/{node_id}")
 def api_patch_workstation_profile(
     project_id: str,
@@ -650,6 +751,18 @@ class ProjectReviewPolicyPatch(BaseModel):
     default: str | None = None
 
 
+class ProjectNpcPairReviewPolicyPatch(BaseModel):
+    upstream_seat_id: str = Field(min_length=1)
+    downstream_seat_id: str = Field(min_length=1)
+    policy: str | None = None
+    reason: str | None = None
+
+
+class MessageReviewActionRequest(BaseModel):
+    remember_pair_policy: str | None = None
+    reason: str | None = None
+
+
 @router.patch("/projects/{project_id}/review-policy")
 def api_patch_project_review_policy(
     project_id: str,
@@ -670,6 +783,99 @@ def api_patch_project_review_policy(
             rp.pop("default", None)
     updated = update_project_collaboration_config(db, project_id, CollaborationConfigUpdate(review_policy=rp))
     return ok({"review_policy": rp, "config": ProjectConfigRead.model_validate(updated).model_dump(mode="json")})
+
+
+def _set_npc_pair_review_policy(
+    db: Session,
+    project_id: str,
+    *,
+    upstream_seat_id: str,
+    downstream_seat_id: str,
+    policy: str | None,
+    actor_id: str,
+    reason: str | None = None,
+) -> dict[str, object]:
+    from app.modules.requirements.service import _resolve_seat
+
+    upstream = _resolve_seat(db, project_id, upstream_seat_id)
+    downstream = _resolve_seat(db, project_id, downstream_seat_id)
+    if upstream is None or downstream is None:
+        raise AppError("NPC_PAIR_NOT_FOUND", "找不到这对 NPC，请刷新工作台后重试", status_code=404)
+
+    normalized = str(policy or "").strip().lower()
+    config = get_project_collaboration_config(db, project_id)
+    inner = config.get("collaboration_config", {}) if isinstance(config.get("collaboration_config"), dict) else {}
+    rp = dict(inner.get("review_policy") or {})
+    pair_rules = dict(rp.get("npc_pair_rules") or {})
+    pair_key = f"{upstream.id}->{downstream.id}"
+
+    if normalized in {"", "inherit", "default", "off", "remove", "none"}:
+        pair_rules.pop(pair_key, None)
+        effective_policy = "inherit"
+    elif normalized in {"skip", "never", "免审"}:
+        effective_policy = "skip"
+        pair_rules[pair_key] = {
+            "policy": "skip",
+            "upstream_seat_id": upstream.id,
+            "upstream_name": upstream.name,
+            "downstream_seat_id": downstream.id,
+            "downstream_name": downstream.name,
+            "updated_by": actor_id,
+            "updated_at": datetime.now(UTC).isoformat(),
+            "reason": reason or "trusted from review flow",
+        }
+    elif normalized in {"force", "always", "强审"}:
+        effective_policy = "force"
+        pair_rules[pair_key] = {
+            "policy": "force",
+            "upstream_seat_id": upstream.id,
+            "upstream_name": upstream.name,
+            "downstream_seat_id": downstream.id,
+            "downstream_name": downstream.name,
+            "updated_by": actor_id,
+            "updated_at": datetime.now(UTC).isoformat(),
+            "reason": reason or "forced human review",
+        }
+    else:
+        raise AppError("INVALID_REVIEW_POLICY", "policy must be skip, force, or inherit", status_code=422)
+
+    if pair_rules:
+        rp["npc_pair_rules"] = pair_rules
+    else:
+        rp.pop("npc_pair_rules", None)
+    updated = update_project_collaboration_config(db, project_id, CollaborationConfigUpdate(review_policy=rp))
+    return {
+        "pair_key": pair_key,
+        "policy": effective_policy,
+        "upstream_seat_id": upstream.id,
+        "upstream_name": upstream.name,
+        "downstream_seat_id": downstream.id,
+        "downstream_name": downstream.name,
+        "review_policy": rp,
+        "config": ProjectConfigRead.model_validate(updated).model_dump(mode="json"),
+    }
+
+
+@router.patch("/projects/{project_id}/review-policy/npc-pairs")
+def api_patch_project_npc_pair_review_policy(
+    project_id: str,
+    payload: ProjectNpcPairReviewPolicyPatch,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    principal = _require_real_human_principal(db, request)
+    resolve_project_write_principal(db, request, project_id, require_privileged=False, action="project.review_policy.npc_pair.update")
+    return ok(
+        _set_npc_pair_review_policy(
+            db,
+            project_id,
+            upstream_seat_id=payload.upstream_seat_id,
+            downstream_seat_id=payload.downstream_seat_id,
+            policy=payload.policy,
+            actor_id=principal.user_id,
+            reason=payload.reason,
+        )
+    )
 
 
 @router.get("/projects/{project_id}/ai-providers")
@@ -1370,20 +1576,13 @@ def api_create_message(payload: CollaborationMessageCreate, request: Request, db
         upstream = _resolve_seat(db, project_id, final_sender_id)
         downstream = _resolve_seat(db, project_id, recipient_id)
         if upstream is not None and downstream is not None:
-            is_cross = (
-                str(getattr(upstream, "computer_node_id", "") or "").strip()
-                != str(getattr(downstream, "computer_node_id", "") or "").strip()
-            )
+            is_cross = _seat_logical_workstation_key(upstream) != _seat_logical_workstation_key(downstream)
             via_lead_note = ""
             if is_cross:
                 cfg_full = get_project_collaboration_config(db, project_id)
                 inner_cfg = cfg_full.get("collaboration_config", {}) if isinstance(cfg_full.get("collaboration_config"), dict) else {}
                 profiles = inner_cfg.get("workstation_profiles") if isinstance(inner_cfg.get("workstation_profiles"), dict) else {}
-                downstream_node = str(getattr(downstream, "computer_node_id", "") or "").strip()
-                profile = profiles.get(downstream_node) if isinstance(profiles, dict) else None
-                lead_ref = ""
-                if isinstance(profile, dict):
-                    lead_ref = str(profile.get("lead_seat_id") or profile.get("leadSeatId") or "").strip()
+                lead_ref = _resolve_logical_workstation_lead_ref(db, project_id, downstream, profiles)
                 if lead_ref and lead_ref not in {downstream.id, downstream.config_id, downstream.name}:
                     new_lead_seat = _resolve_seat(db, project_id, lead_ref)
                     if new_lead_seat is not None:
@@ -1394,16 +1593,30 @@ def api_create_message(payload: CollaborationMessageCreate, request: Request, db
                         downstream = new_lead_seat
                         via_lead_note = f"经工位长 {getattr(new_lead_seat, 'name', '')} 转交（原始目标 NPC: {original_target_name} / {original_target_id}）"
             review = _resolve_review_for_dispatch(db, upstream, downstream)
+            hardware_risk_keyword = _detect_hardware_review_risk(payload.body or "")
+            if hardware_risk_keyword:
+                review = {
+                    **review,
+                    "requires_review": True,
+                    "source": "hardware_risk",
+                    "policy": "force",
+                    "risk_keyword": hardware_risk_keyword,
+                }
             requested_status = (override.get("status") or payload.status or "").strip() or "open"
             new_status = "pending_review" if review["requires_review"] else (
                 requested_status if requested_status in {"queued", "pending_review", "open"} else "queued"
             )
+            if not review["requires_review"] and new_status == "pending_review":
+                new_status = "queued"
             override["status"] = new_status
             route_line = (
                 f"\n\n[路由] 跨工位：{'是' if is_cross else '否'}；"
                 f"审核：{'要' if review['requires_review'] else '免'}（来源：{review.get('source')}:{review.get('policy')}）；"
                 f"上游 NPC: {getattr(upstream, 'name', '')}；下游 NPC: {getattr(downstream, 'name', '')}"
+                f"；上游工位: {_seat_logical_workstation_key(upstream) or '未归属'}；下游工位: {_seat_logical_workstation_key(downstream) or '未归属'}"
             )
+            if hardware_risk_keyword:
+                route_line += f"；硬件风险: {hardware_risk_keyword}"
             if via_lead_note:
                 route_line += f"；{via_lead_note}"
             body_text = str(payload.body or "")
@@ -1411,6 +1624,11 @@ def api_create_message(payload: CollaborationMessageCreate, request: Request, db
                 override["body"] = body_text + route_line
 
     item = create_collaboration_message(db, payload.model_copy(update=override))
+    if (item.status or "") == "pending_review" and "审核：免" in str(item.body or ""):
+        item.status = "queued"
+        db.add(item)
+        db.commit()
+        db.refresh(item)
     return ok(CollaborationMessageRead.model_validate(item).model_dump(mode="json"))
 
 
@@ -1441,6 +1659,7 @@ def api_update_message(
 def api_review_approve_message(
     message_id: str,
     request: Request,
+    payload: MessageReviewActionRequest | None = None,
     db: Session = Depends(get_db),
 ):
     """通过待审消息：消息 status pending_review → queued；联动 requirement.status blocked → queued。"""
@@ -1473,9 +1692,24 @@ def api_review_approve_message(
         if req is not None and (req.status or "") in {"blocked", "pending_review"}:
             req.status = "queued"
             db.add(req)
+    remember_result = None
+    remember_policy = str(getattr(payload, "remember_pair_policy", "") or "").strip().lower()
+    if remember_policy in {"skip", "force"}:
+        remember_result = _set_npc_pair_review_policy(
+            db,
+            project_id,
+            upstream_seat_id=existing.sender_id or "",
+            downstream_seat_id=existing.recipient_id or "",
+            policy=remember_policy,
+            actor_id=principal.user_id,
+            reason=(payload.reason if payload else None) or f"set while approving message {existing.id}",
+        )
     db.commit()
     db.refresh(existing)
-    return ok(CollaborationMessageRead.model_validate(existing).model_dump(mode="json"))
+    data = CollaborationMessageRead.model_validate(existing).model_dump(mode="json")
+    if remember_result is not None:
+        data["review_pair_policy"] = remember_result
+    return ok(data)
 
 
 @router.post("/messages/{message_id}/review/reject")
@@ -1610,9 +1844,11 @@ def _seat_review_policy(seat: dict) -> str:
     )
 
 
-def _workstation_review_policy(config: dict, node_id: str) -> str:
+def _workstation_review_policy(config: dict, workstation_key: str, node_id: str = "") -> str:
     profiles = config.get("workstation_profiles") if isinstance(config.get("workstation_profiles"), dict) else {}
-    profile = profiles.get(node_id) if isinstance(profiles, dict) else None
+    profile = profiles.get(workstation_key) if isinstance(profiles, dict) and workstation_key else None
+    if not isinstance(profile, dict) and isinstance(profiles, dict) and node_id and node_id != workstation_key:
+        profile = profiles.get(node_id)
     if not isinstance(profile, dict):
         return "inherit"
     return _normalize_review_policy(profile.get("review_policy") or profile.get("reviewPolicy"))
@@ -1633,7 +1869,9 @@ def resolve_seat_review(
 ) -> dict:
     """合并三层 review policy，返回是否要走人审 + 来源。"""
     seat_id = str(seat.get("id") or seat.get("config_id") or seat.get("row_id") or "")
+    workstation_key = str(seat.get("workstation_id") or seat.get("workstationId") or "").strip()
     node_id = str(seat.get("computer_node_id") or seat.get("computerNodeId") or "")
+    profile_key = workstation_key or node_id
     seat_pol = _seat_review_policy(seat)
     if seat_pol in {"force", "skip"}:
         return {
@@ -1642,7 +1880,7 @@ def resolve_seat_review(
             "seat_id": seat_id,
             "policy": seat_pol,
         }
-    ws_pol = _workstation_review_policy(config, node_id) if node_id else "inherit"
+    ws_pol = _workstation_review_policy(config, profile_key, node_id) if profile_key else "inherit"
     if ws_pol in {"force", "skip"}:
         return {
             "requires_review": ws_pol == "force",
@@ -1695,7 +1933,8 @@ def api_broadcast_preview(
     config_inner = config.get("collaboration_config", {}) if isinstance(config.get("collaboration_config"), dict) else config
     scope_str = (payload.scope or "all").strip()
     is_cross_workstation_scope = scope_str == "all" and len({
-        str(seat.get("computer_node_id") or seat.get("computerNodeId") or "") for seat in targets
+        str(seat.get("workstation_id") or seat.get("workstationId") or seat.get("computer_node_id") or seat.get("computerNodeId") or "")
+        for seat in targets
     }) > 1
     review_decisions = [
         resolve_seat_review(config_inner, seat, is_cross_workstation=is_cross_workstation_scope)

@@ -557,10 +557,30 @@ export default async function ProjectDetailPage({
     const project = projectState?.data ?? fallbackProject(params.id);
     const projectIdStr = String(project.id ?? params.id);
     const projectName = String(project.name ?? `项目 ${params.id.slice(0, 8)}`).trim() || `项目 ${params.id.slice(0, 8)}`;
+    const [taskResult, collaborationMessageResult, liveNodeResult] = await Promise.all([
+      getTasksDataScopedState({ projectIds: [projectIdStr] }),
+      getCollaborationMessagesState({ projectId: projectIdStr, status: "pending_review" }),
+      getProjectComputerNodesState(projectIdStr),
+    ]);
+    const pendingApprovalCount = taskResult.data.filter((task) => isPendingApproval(task)).length;
+    const pendingReviewCount = collaborationMessageResult.data.length;
+    const onlineNodeCount = liveNodeResult.data.filter((node) => isOnlineNode(node.status)).length;
+    const actionHint =
+      pendingReviewCount > 0
+        ? `先处理 ${pendingReviewCount} 条跨工位人工审核`
+        : pendingApprovalCount > 0
+          ? `先处理 ${pendingApprovalCount} 条任务审批`
+          : onlineNodeCount === 0
+            ? "先接入一台电脑，再派 NPC 干活"
+            : `当前 ${onlineNodeCount} 台电脑在线，可进工作台打开 NPC`;
+    const actionPanel =
+      pendingReviewCount > 0 || pendingApprovalCount > 0 ? "cockpit" : onlineNodeCount === 0 ? "cockpit" : "workbench";
     return (
       <GameShell
         projectId={projectIdStr}
         projectName={projectName}
+        actionHint={actionHint}
+        actionPanel={actionPanel}
       />
     );
   }

@@ -511,6 +511,13 @@ def test_runner_thread_sync_counts_only_scanned_threads_and_preserves_manual_sea
                     "workstation_name": "Session A",
                     "workstation_status": "active",
                     "cwd": "D:/ai-collab-product",
+                    "metadata": {
+                        "desktop_process_detected": True,
+                        "desktop_bridge_connected": True,
+                        "desktop_delivery_mode": "codex_desktop_ui",
+                        "desktop_bridge_label": "Codex Desktop UI automation",
+                        "desktop_bridge_note": "Runner can open codex://threads/<id> and send a prompt.",
+                    },
                 },
                 {
                     "workstation_id": "codex-session-b",
@@ -541,6 +548,10 @@ def test_runner_thread_sync_counts_only_scanned_threads_and_preserves_manual_sea
     assert nodes_response.status_code == 200
     node = nodes_response.json()["data"][0]
     assert node["metadata"]["thread_scan"]["thread_count"] == 2
+    assert node["metadata"]["thread_scan"]["desktop_process_detected"] is True
+    assert node["metadata"]["thread_scan"]["desktop_bridge_connected"] is True
+    assert node["metadata"]["thread_scan"]["desktop_delivery_mode"] == "codex_desktop_ui"
+    assert node["metadata"]["thread_scan"]["desktop_bridge_label"] == "Codex Desktop UI automation"
     assert {item["workstation_id"] for item in node["metadata"]["thread_scan"]["threads"]} == {
         "codex-session-a",
         "codex-session-b",
