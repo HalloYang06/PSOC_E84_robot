@@ -760,13 +760,13 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
 
   const visible = useMemo(() => {
     const list = (messages || []).slice().reverse();
-    const withoutPendingReviews = list.filter((m) => (m.status || "").toLowerCase() !== "pending_review");
     const readable = hideNoisy
-      ? withoutPendingReviews.filter((m) => {
+      ? list.filter((m) => {
+      if ((m.status || "").toLowerCase() === "pending_review") return true;
       const refined = summarizeCollabMessage(m);
       return refined.showByDefault && !refined.noisy;
     })
-      : withoutPendingReviews;
+      : list;
     if (showFullHistory) return readable;
     const important = readable.filter((m) => {
       const status = (m.status || "").toLowerCase();
@@ -859,18 +859,6 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
       });
     }
 
-    for (const m of pendingReviews) {
-      push({
-        id: `review:${m.id}`,
-        tone: "review",
-        label: "待审",
-        title: m.title || stripPlatformChatter(m.body || "").slice(0, 90) || "跨工位自主协作待审核",
-        meta: "需要人类成员放行后进入目标线程",
-        status: m.status,
-        createdAt: m.created_at,
-      });
-    }
-
     for (const r of receipts || []) {
       const kindLabel = ({ ack: "接单", progress: "进度", done: "完成", reject: "拒绝" } as const)[r.receipt_kind];
       push({
@@ -913,7 +901,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
         return tb - ta;
       })
       .slice(0, 8);
-  }, [messages, myQueue, peerByIdentity, peerIds, pendingReviews, receiptDirection, receipts, seat.computerNodeId, seat.computerNodeName, seatIdentityIds, seat.name, seat.providerId, seat.providerLabel]);
+  }, [messages, myQueue, peerByIdentity, peerIds, receiptDirection, receipts, seat.computerNodeId, seat.computerNodeName, seatIdentityIds, seat.name, seat.providerId, seat.providerLabel]);
 
   const [reviewBusyId, setReviewBusyId] = useState<string | null>(null);
   const [reviewNote, setReviewNote] = useState<string | null>(null);
@@ -1381,7 +1369,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
 
   const totalLoaded = messages?.length ?? 0;
   const filteredCount = visible.length;
-  const hiddenHistoryCount = Math.max(0, totalLoaded - filteredCount - pendingReviews.length);
+  const hiddenHistoryCount = Math.max(0, totalLoaded - filteredCount);
   const threadStatusLabel = occupancyHeldByMe ? "我在操作" : occupancyHeldByOther ? "他人操作中" : "可接手";
   const launchPackNode = launchPackOpen ? (
     <div className={styles.launchPackBox}>
@@ -2272,7 +2260,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
       >
         {fetchError ? (
           <p className={styles.emptyError}>⚠ 加载失败：{fetchError}</p>
-        ) : visible.length === 0 && pendingReviews.length === 0 ? (
+        ) : visible.length === 0 ? (
           <p className={styles.emptyHint}>
             {messages === null
               ? "加载中…"
@@ -2283,6 +2271,9 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
         ) : (
           <>
           {visible.map((msg) => {
+            if ((msg.status || "").toLowerCase() === "pending_review") {
+              return renderReviewMessage(msg);
+            }
             const refined = summarizeCollabMessage(msg);
             const { role, label: roleLabel } = classifyRole(msg, seat.id, peerIds, externalAgentIds);
             const expanded = expandedIds.has(msg.id);
@@ -2373,7 +2364,6 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
               </div>
             );
           })}
-          {pendingReviews.slice(0, 5).map(renderReviewMessage)}
           {reviewNote ? <small className={styles.reviewNote}>{reviewNote}</small> : null}
           </>
         )}
