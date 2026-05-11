@@ -1516,6 +1516,15 @@
   list-style: none;
 }
 
+.gitAlignmentCurrent {
+  display: grid;
+  grid-template-columns: minmax(82px, 0.34fr) minmax(0, 1fr);
+  gap: 4px 10px;
+  padding: 10px;
+  border: 1px solid rgba(186, 255, 195, 0.32);
+  background: rgba(186, 255, 195, 0.1);
+}
+
 .gitAlignmentStatus li {
   display: grid;
   grid-template-columns: minmax(76px, 0.38fr) minmax(0, 1fr);
@@ -1525,6 +1534,7 @@
   background: rgba(0, 0, 0, 0.18);
 }
 
+.gitAlignmentCurrent span,
 .gitAlignmentStatus li span {
   grid-row: 1 / span 2;
   align-self: start;
@@ -1537,6 +1547,7 @@
   font-size: 11px;
 }
 
+.gitAlignmentCurrent strong,
 .gitAlignmentStatus li strong {
   min-width: 0;
   color: #ffffff;
@@ -1546,12 +1557,26 @@
   white-space: nowrap;
 }
 
+.gitAlignmentCurrent small,
 .gitAlignmentStatus li small,
 .gitAlignmentStatus p {
   margin: 0;
   color: rgba(219, 251, 255, 0.68);
   font-size: 11px;
   line-height: 1.45;
+}
+
+.gitAlignmentHistory {
+  display: grid;
+  gap: 6px;
+}
+
+.gitAlignmentHistory summary {
+  cursor: pointer;
+  width: fit-content;
+  color: rgba(219, 251, 255, 0.72);
+  font-size: 11px;
+  font-weight: 900;
 }
 
 .skillChecklist {

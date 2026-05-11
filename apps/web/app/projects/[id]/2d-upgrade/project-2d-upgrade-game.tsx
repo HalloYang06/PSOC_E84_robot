@@ -2186,10 +2186,19 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
       detail: "登记回退后会向在线 Runner 下发只读 Git 预检；仍不会执行 reset / revert / delete。",
     };
   }, [computers, messages]);
+  const currentGitRollbackAlignment = useMemo(() => {
+    const target = gitRollbackTargetRef.trim();
+    if (!target) return gitRollbackAlignmentMessages[0] ?? null;
+    return gitRollbackAlignmentMessages.find((message) => message.targetRef === target) ?? gitRollbackAlignmentMessages[0] ?? null;
+  }, [gitRollbackAlignmentMessages, gitRollbackTargetRef]);
+  const historicalGitRollbackAlignments = useMemo(() => {
+    const currentId = currentGitRollbackAlignment?.id;
+    return gitRollbackAlignmentMessages.filter((message) => message.id !== currentId).slice(0, 5);
+  }, [currentGitRollbackAlignment, gitRollbackAlignmentMessages]);
   useEffect(() => {
     if (gitRollbackTargetRef.trim()) return;
-    setGitRollbackTargetRef(gitVersionIndex[0]?.ref ?? projectDevelopBranch);
-  }, [gitRollbackTargetRef, gitVersionIndex, projectDevelopBranch]);
+    setGitRollbackTargetRef(gitRollbackAlignmentMessages[0]?.targetRef ?? gitVersionIndex[0]?.ref ?? projectDevelopBranch);
+  }, [gitRollbackAlignmentMessages, gitRollbackTargetRef, gitVersionIndex, projectDevelopBranch]);
 
   function returnPath(tab: ModuleTab, actionId?: string) {
     const params = new URLSearchParams({ panel: tab });
@@ -2671,29 +2680,44 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
           </div>
           <div className={styles.gitAlignmentStatus}>
             <div className={styles.gitAlignmentHead}>
-              <strong>NPC 对齐回执</strong>
+              <strong>当前目标的 NPC 对齐</strong>
               <Link href={surfacePath("workbench", "git")} title="进入工作台查看 NPC 对话和最终回执">
                 去工作台
               </Link>
             </div>
-            {gitRollbackAlignmentMessages.length ? (
-              <ul>
-                {gitRollbackAlignmentMessages.map((message) => (
-                  <li key={`git-align-${message.id}`}>
-                    <span>{message.targetRef}</span>
-                    <strong>{message.title}</strong>
-                    <small>
-                      {message.targetNpc} · {message.status}
-                      {message.receiptCount ? ` · 回执 ${message.receiptCount}` : " · 待回执"}
-                      {message.receiptTitle ? ` · ${message.receiptTitle}` : ""}
-                      {message.at ? ` · ${message.at}` : ""}
-                    </small>
-                  </li>
-                ))}
-              </ul>
+            {currentGitRollbackAlignment ? (
+              <article className={styles.gitAlignmentCurrent}>
+                <span>{currentGitRollbackAlignment.targetRef}</span>
+                <strong>{currentGitRollbackAlignment.title}</strong>
+                <small>
+                  {currentGitRollbackAlignment.targetNpc} · {currentGitRollbackAlignment.status}
+                  {currentGitRollbackAlignment.receiptCount ? ` · 回执 ${currentGitRollbackAlignment.receiptCount}` : " · 待回执"}
+                  {currentGitRollbackAlignment.receiptTitle ? ` · ${currentGitRollbackAlignment.receiptTitle}` : ""}
+                  {currentGitRollbackAlignment.at ? ` · ${currentGitRollbackAlignment.at}` : ""}
+                </small>
+              </article>
             ) : (
-              <p>暂无 NPC 对齐消息。登记回退请求后，Boss / 工位长会在工作台收到对齐任务并回最小回执。</p>
+              <p>当前目标还没有 NPC 对齐消息。登记回退请求后，Boss / 工位长会在工作台收到对齐任务并回最小回执。</p>
             )}
+            {historicalGitRollbackAlignments.length ? (
+              <details className={styles.gitAlignmentHistory}>
+                <summary>历史对齐记录（{historicalGitRollbackAlignments.length}）</summary>
+                <ul>
+                  {historicalGitRollbackAlignments.map((message) => (
+                    <li key={`git-align-${message.id}`}>
+                      <span>{message.targetRef}</span>
+                      <strong>{message.title}</strong>
+                      <small>
+                        {message.targetNpc} · {message.status}
+                        {message.receiptCount ? ` · 回执 ${message.receiptCount}` : " · 待回执"}
+                        {message.receiptTitle ? ` · ${message.receiptTitle}` : ""}
+                        {message.at ? ` · ${message.at}` : ""}
+                      </small>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ) : null}
           </div>
         </section>
       );
