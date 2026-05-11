@@ -831,6 +831,22 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
     });
   }, [messages, hideNoisy, showFullHistory, activeQueueMessageId]);
 
+  const latestFinalReceipt = useMemo(() => {
+    const candidates = (messages || []).filter((m) => {
+      const status = (m.status || "").toLowerCase();
+      const type = (m.message_type || "").toLowerCase();
+      if (!["completed", "done"].includes(status) && !type.includes("result") && !type.includes("final")) return false;
+      return type.includes("result") || type.includes("final") || type === "ai_reply";
+    });
+    return candidates
+      .slice()
+      .sort((a, b) => {
+        const ta = a.created_at ? Date.parse(a.created_at) : 0;
+        const tb = b.created_at ? Date.parse(b.created_at) : 0;
+        return tb - ta;
+      })[0] || null;
+  }, [messages]);
+
   const pendingReviews = useMemo(() => {
     return (messages || [])
       .filter((m) => (m.status || "").toLowerCase() === "pending_review")
@@ -2274,6 +2290,35 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
           </button>
         </div>
       </div>
+
+      {latestFinalReceipt ? (() => {
+        const refined = summarizeCollabMessage(latestFinalReceipt);
+        const body = refined.cleanBody || refined.rawBody || "";
+        return (
+          <div className={styles.latestReceipt} data-kind={refined.kind}>
+            <div>
+              <small>最新最终回执 · {formatTime(latestFinalReceipt.created_at)}</small>
+              <strong>{refined.headline}</strong>
+              <p>{refined.detail || "目标线程已返回最终结果；完整处理过程仍在绑定桌面线程中。"}</p>
+            </div>
+            {body ? (
+              <button
+                type="button"
+                className={styles.inlineBtn}
+                onClick={() => {
+                  setExpandedIds((prev) => {
+                    const next = new Set(prev);
+                    next.add(latestFinalReceipt.id);
+                    return next;
+                  });
+                }}
+              >
+                查看回执 ({body.length} 字)
+              </button>
+            ) : null}
+          </div>
+        );
+      })() : null}
 
       <div
         className={styles.stream}
