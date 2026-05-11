@@ -194,6 +194,20 @@ def sync_boss_plan_status_from_messages(db: Session, plan: BossPlan) -> BossPlan
     return plan
 
 
+def sync_project_boss_plans_from_messages(db: Session, project_id: str) -> int:
+    plans = list(
+        db.scalars(
+            select(BossPlan)
+            .options(selectinload(BossPlan.items))
+            .where(BossPlan.project_id == project_id)
+            .order_by(BossPlan.updated_at.desc())
+        )
+    )
+    for plan in plans:
+        sync_boss_plan_status_from_messages(db, plan)
+    return len(plans)
+
+
 def create_boss_plan(db: Session, project_id: str, payload: BossPlanCreate) -> BossPlan:
     _project_or_404(db, project_id)
     boss_seat_id = _resolve_seat_id(db, project_id, payload.boss_seat_id)

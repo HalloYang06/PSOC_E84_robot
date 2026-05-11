@@ -2329,6 +2329,14 @@ def create_message(
             "title": payload.title,
         },
     )
+    if (
+        payload.project_id
+        and payload.message_type in {"agent_result", "requirement_final_reply", "runner_result"}
+        and str(payload.status or "").strip().lower() in {"completed", "done"}
+    ):
+        from app.modules.boss_plans.service import sync_project_boss_plans_from_messages
+
+        sync_project_boss_plans_from_messages(db, payload.project_id)
     if commit:
         db.commit()
         db.refresh(message)
