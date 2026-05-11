@@ -98,6 +98,9 @@ type FeedItem = {
   desktopDeliveryMode?: string;
   desktopBridgeLabel?: string;
   desktopBridgeNote?: string;
+  runnerId?: string;
+  runnerWatchState?: string;
+  runnerEffectiveStatus?: string;
 };
 
 type WorkshopStationItem = {
@@ -2145,6 +2148,44 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         };
       });
   }, [messages, npcSeats]);
+  const gitRunnerPreflightStatus = useMemo(() => {
+    const isRunnerOnline = (value: string | undefined) => {
+      const normalized = String(value || "").toLowerCase();
+      return ["online", "watching", "connected", "ready", "active"].some((status) => normalized.includes(status));
+    };
+    const onlineComputers = computers.filter((computer) => isRunnerOnline(computer.runnerEffectiveStatus || computer.status));
+    const runnableComputers = onlineComputers.filter((computer) => computer.runnerId || computer.providerId);
+    const gitPreflightMessages = messages.filter((message) => /Git 回退只读预检|git\.preflight/i.test(`${message.title} ${message.body}`));
+    const openPreflights = gitPreflightMessages.filter((message) =>
+      ["queued", "pending", "acked", "in_progress"].includes(String(message.status || "").toLowerCase()),
+    );
+    if (openPreflights.length) {
+      return {
+        tone: "pending",
+        title: `只读预检待回执 ${openPreflights.length} 条`,
+        detail: "已有回退预检命令进入队列，等待对应 Runner ack/result。若电脑离线，请先回“电脑接入”重启 Runner。",
+      };
+    }
+    if (!onlineComputers.length) {
+      return {
+        tone: "blocked",
+        title: "暂无在线 Runner",
+        detail: "登记回退会保留审计和 Boss 对齐，但不会假装已经完成本地 Git 只读预检。",
+      };
+    }
+    if (!runnableComputers.length) {
+      return {
+        tone: "blocked",
+        title: "在线电脑缺少 Runner 绑定",
+        detail: "先回电脑接入面板生成配对令牌，并让目标电脑完成 runner 注册。",
+      };
+    }
+    return {
+      tone: "ready",
+      title: `在线 Runner ${runnableComputers.length} 台`,
+      detail: "登记回退后会向在线 Runner 下发只读 Git 预检；仍不会执行 reset / revert / delete。",
+    };
+  }, [computers, messages]);
   useEffect(() => {
     if (gitRollbackTargetRef.trim()) return;
     setGitRollbackTargetRef(gitVersionIndex[0]?.ref ?? projectDevelopBranch);
@@ -2604,6 +2645,10 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             <div>
               <dt>规则</dt>
               <dd>登记请求不会直接 reset；必须通过人审、Runner 只读预检和 NPC 对齐回执。</dd>
+            </div>
+            <div>
+              <dt>Runner</dt>
+              <dd>{gitRunnerPreflightStatus.title}：{gitRunnerPreflightStatus.detail}</dd>
             </div>
           </dl>
           <div className={styles.gitVersionIndexGrid}>
@@ -4697,6 +4742,23 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             <strong>{activeAction.label}</strong>
             <button type="button" onClick={closeAction}>收起</button>
           </header>
+          <nav className={styles.drawerActionSwitch} aria-label={`${activeModule.label} 抽屉切换`}>
+            {PANEL_ACTIONS[activeModule.tab].map((action) => {
+              const isCurrent = activeAction.id === action.id;
+              return (
+                <button
+                  key={action.id}
+                  type="button"
+                  data-panel-action-switch={action.id}
+                  className={isCurrent ? styles.drawerActionSwitchActive : ""}
+                  aria-current={isCurrent ? "page" : undefined}
+                  onClick={() => openAction(action)}
+                >
+                  {action.label}
+                </button>
+              );
+            })}
+          </nav>
           <article>
             <b>{activeAction.summary}</b>
             <p>{activeAction.detail}</p>

@@ -983,6 +983,35 @@
   padding: 0 12px;
 }
 
+.drawerActionSwitch {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 8px;
+  border: 1px solid rgba(121, 238, 255, 0.18);
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.drawerActionSwitch button {
+  min-height: 34px;
+  padding: 0 10px;
+  border-color: rgba(126, 241, 255, 0.26);
+  background: rgba(7, 49, 61, 0.78);
+  color: rgba(226, 252, 255, 0.78);
+  font-size: 12px;
+}
+
+.drawerActionSwitch button:hover {
+  border-color: rgba(255, 235, 123, 0.68);
+}
+
+.drawerActionSwitchActive {
+  border-color: rgba(255, 235, 123, 0.9) !important;
+  background: rgba(103, 84, 24, 0.9) !important;
+  color: #ffffff !important;
+}
+
 .tertiaryDrawer article {
   margin-bottom: 12px;
   padding: 14px;

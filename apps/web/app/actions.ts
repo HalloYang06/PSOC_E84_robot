@@ -865,10 +865,29 @@ async function dispatchProjectGitPreflightToRunners(
 ) {
   const result = await getJson(`/api/collaboration/projects/${projectId}/computer-nodes`);
   const nodes = asArray<Record<string, unknown>>(result?.data ?? result);
+  const onlineNodes = nodes.filter((node) => {
+    const extraData = readRecord(node.extra_data ?? node.extraData);
+    const status = text(node.status, "").toLowerCase();
+    const runnerStatus = text(extraData.runner_effective_status ?? extraData.runner_status, "").toLowerCase();
+    const watchState = text(extraData.runner_watch_state, "").toLowerCase();
+    return (
+      status === "online" ||
+      runnerStatus === "online" ||
+      watchState === "watching"
+    );
+  });
   const runnableNodes = nodes.filter((node) => {
     const nodeId = text(node.id ?? node.node_id ?? node.config_id ?? node.label, "");
     const runnerId = text(node.runner_id ?? node.runnerId, "");
-    return Boolean(nodeId && runnerId);
+    const extraData = readRecord(node.extra_data ?? node.extraData);
+    const status = text(node.status, "").toLowerCase();
+    const runnerStatus = text(extraData.runner_effective_status ?? extraData.runner_status, "").toLowerCase();
+    const watchState = text(extraData.runner_watch_state, "").toLowerCase();
+    const isOnline =
+      status === "online" ||
+      runnerStatus === "online" ||
+      watchState === "watching";
+    return Boolean(nodeId && runnerId && isOnline);
   });
   const body = buildProjectGitPreflightCommandBody(project, options);
   let queued = 0;
@@ -890,6 +909,7 @@ async function dispatchProjectGitPreflightToRunners(
     queued,
     failed,
     availableNodeCount: nodes.length,
+    onlineNodeCount: onlineNodes.length,
     runnableNodeCount: runnableNodes.length,
   };
 }
@@ -3212,6 +3232,7 @@ async function notifyGitRollbackAlignmentTargets(
     requestedBy: string;
     preflightQueued: number;
     preflightRunnableNodeCount: number;
+    preflightOnlineNodeCount?: number;
   },
 ) {
   const targets = resolveGitRollbackAlignmentTargets(project);
@@ -3224,7 +3245,15 @@ async function notifyGitRollbackAlignmentTargets(
       `仓库：${repository}`,
       `发起人：${options.requestedBy}`,
       `原因：${options.notes || "未填写"}`,
-      `Runner 只读预检：${options.preflightQueued ? `已下发 ${options.preflightQueued} 台` : options.preflightRunnableNodeCount ? "存在可运行电脑但下发失败，请检查 Runner 收件箱" : "暂无已绑定 Runner 的电脑"}`,
+      `Runner 只读预检：${
+        options.preflightQueued
+          ? `已下发 ${options.preflightQueued} 台`
+          : options.preflightRunnableNodeCount
+            ? "存在在线 Runner 但下发失败，请检查 Runner 收件箱"
+            : options.preflightOnlineNodeCount
+              ? "在线电脑缺少 Runner 绑定，请先回电脑接入面板修复"
+              : "暂无在线 Runner，预检待电脑上线后重试"
+      }`,
       "",
       "请在绑定线程中只做对齐检查，不要执行 destructive git reset。",
       "回执格式：已对齐 / 阻塞 / 需人工；同时说明当前分支、未提交改动、需要保留的文件和下一步建议。",
@@ -4037,7 +4066,9 @@ export async function 登记项目Git同步(projectId: string, formData: FormDat
       ? `；已向 ${preflight.queued} 台已接入电脑下发只读预检`
       : preflight.runnableNodeCount
         ? "；只读预检未能下发，请检查 Runner 收件箱"
-        : "；暂无已绑定 Runner 的电脑，只登记项目活动";
+        : preflight.onlineNodeCount
+          ? "；在线电脑缺少 Runner 绑定，请回电脑接入面板修复"
+          : "；暂无在线 Runner，只登记项目活动";
     redirect(withQueryValue(returnTo, "team_notice", `Git 同步请求已登记：${provider}${preflightNotice}`));
   } catch (error) {
     rethrowRedirectError(error);
@@ -4099,13 +4130,16 @@ export async function 登记项目Git回退(projectId: string, formData: FormDat
       requestedBy: text(currentUser?.id ?? currentUser?.email, "human-chief"),
       preflightQueued: preflight.queued,
       preflightRunnableNodeCount: preflight.runnableNodeCount,
+      preflightOnlineNodeCount: preflight.onlineNodeCount,
     });
     revalidateProjectSurfaces(projectId);
     const preflightNotice = preflight.queued
       ? `；已向 ${preflight.queued} 台已接入电脑下发只读预检`
       : preflight.runnableNodeCount
-        ? "；只读预检未能下发，请检查 Runner 收件箱"
-        : "；暂无已绑定 Runner 的电脑，只登记项目活动";
+        ? "；在线 Runner 下发失败，请检查 Runner 收件箱"
+        : preflight.onlineNodeCount
+          ? "；在线电脑缺少 Runner 绑定，请回电脑接入面板修复"
+          : "；暂无在线 Runner，预检待电脑上线后重试";
     const alignmentNotice = alignment.queued
       ? `；已通知 ${alignment.queued} 个 Boss/工位长 NPC 对齐`
       : alignment.targetCount
