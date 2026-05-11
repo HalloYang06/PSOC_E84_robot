@@ -1,252 +1,245 @@
-# 用户使用文档（USER_GUIDE）
+# AI 协作平台用户手册
 
-> 平台：AI 协作平台（项目→工位→NPC→线程 四层结构）
-> 版本：2026-05-08（Step 0–8 全部上线）
-> 适用：项目 owner / 工位用户 / NPC 监管员
+版本：2026-05-11  
+适用：项目负责人、协作者、Runner 电脑维护者、NPC 线程维护者
 
----
+平台的核心结构是：项目 -> 工位 -> NPC -> 线程。  
+主页面负责创建和治理资源，NPC 工作台负责执行协作。Codex / Claude Code 仍是完整处理过程所在，平台只显示用户指令、NPC 消息、审核、最小回执、最终结果和索引信息。
 
-## 1. 三件套先看哪里
+## 1. 登录或注册
 
-打开浏览器到 `http://<平台主机>:3000/projects/<项目id>`，**默认进游戏壳**（Phaser 农场场景），顶部有一条 36px 高的薄 nav：
+![登录页](./screenshots/v2/01-login.png)
 
-| 按钮 | 抽屉里显示什么 | 何时点 |
-|---|---|---|
-| 🛠️ 驾驶舱 | 项目全局视图（合格性 / 跨工位 / 待审 / 进度） | 每天上班先点一次扫一眼 |
-| 🧑‍💼 工作台 | NPC 瓷砖（多 NPC 同屏，6 色消息流） | **大部分操作在这里** |
-| 🏢 公司层 | 各工位的工位长瓷砖会议室 | 跨工位协调时打开 |
-| 🙈 隐藏游戏 | 占位符 + 抽屉照常用 | 不想看动画时 |
+打开 `http://127.0.0.1:3000/login`。
 
-抽屉是 70vw 宽、从右拉出，iframe 嵌的同一套页面（带 `?embed=drawer`），头部有「↗ 独立页」可在新标签页打开。**点遮罩或 ✕ 关闭。**
+登录区有两个入口：
 
-> 截图证据：`artifacts/full-walk-2026-05-08/03-game-shell.png` / `04-cockpit-drawer.png` / `05-company-drawer.png`
-
----
-
-## 2. 工作台（用得最多）
-
-打开「🧑‍💼 工作台」抽屉，或直接 `/projects/<id>/workbench`：
-
-- 左栏 NPC 列表，按工位（电脑节点）分组
-- 每行 NPC 名字旁有 `+` 号，点开瓷砖
-- 瓷砖布局：1 个 = 全屏，2 个 = 横分，3-4 个 = 2×2，5+ 个自动滚动
-
-> 截图证据：`06-workbench-overview.png` / `07-tile-opened.png`
-
-### 2.1 NPC 瓷砖里能看到什么
-
-打开 NPC B 瓷砖后从上到下：
-
-1. **头部**：NPC 名 + provider + 工位长 chip（👑 金）+ review_policy
-2. **同工位伙伴行**：本工位其他 NPC 的 chip（lead 加 👑 + 金边），右侧每个有 `→ 派` 按钮（**人工代发**，不是自主协作）
-3. **跨工位通道（紫）**：列出其他工位的工位长，跨工位消息默认走这里转交
-4. **我的任务队列（FIFO，最多 6 条）**：发件方着色，状态 chip
-5. **消息流主体**：6 色着色（详见 §2.2），上滚翻历史，"过滤噪声"复选框过滤 watcher 启动等
-6. **底部派单 textarea**：写指令，Ctrl+Enter 发送
-
-### 2.2 消息流的六种颜色（关键）
-
-每条消息 div 都带 `data-role="..."`，CSS 按 role 着色：
-
-| role | 颜色 | 含义 | 例子 |
-|---|---|---|---|
-| `human` | 灰 | 人在 UI 派的单 | "请加登出按钮" |
-| `self` | 青 | 本 NPC 发的（多半是回执） | "已修，链接 https://github.com/..." |
-| `peer` | 绿 | **同工位**别的 NPC 发的 | "兄弟看下 PR #42" |
-| `external` | 紫 | **跨工位** NPC 发的（默认要审） | "API 加了 paginate" |
-| `watcher` | 蓝 | Claude CLI / watcher 回的 | watcher 心跳 / mcp 加载 |
-| `system` | 红 | 平台系统消息 / 错误 | watcher 启动失败 |
-| 加上：`status=pending_review` | 橙边 | 待审 | 跨工位默认状态 |
-
-> 截图证据：`08-message-stream-colors.png`（实测 human=4 / self=8 / peer=8）
-
-**用户为什么需要看到这些颜色**：一眼看出"哪条是别的 NPC 在找我"vs"哪条是用户在派我"vs"我自己的回执"。颜色是定位话题的最快路径，不用读 sender 字段。
-
----
-
-## 3. 公司层（工位长会议室）
-
-`/projects/<id>/company` 或顶 nav「🏢 公司层」抽屉：
-
-- 只渲染 `isLead === true` 的 NPC 瓷砖
-- 复用 NpcTile 组件，所以同样有 6 色消息流
-- 工位长瓷砖会**同时出现在两处**：本工位（工作台）+ 公司层
-
-> 截图证据：`05-company-drawer.png` / `10-company-page.png`
-
----
-
-## 4. 派单的 4 种路径（按"自主程度"排序）
-
-| 谁触发 | 怎么做 | 默认审核 |
-|---|---|---|
-| 1. 用户人工 | 瓷砖底部 textarea → 发送 | 跨工位强审，同工位免审 |
-| 2. 用户代发某 NPC | 同工位伙伴 chip 上的 `→ 派` 按钮 | 同上 |
-| 3. 需求依赖触发 | 父 requirement done → 自动派下游 | 按 review_policy |
-| 4. NPC 自主求助 ⭐ | NPC 自己在 CLI 里调 seat-mcp 工具 | **同上，这才是真自主协作** |
-
-**自主求助怎么用**：
-- 你启动 NPC（`scripts/start-thread-watcher.ps1 -ProjectId .. -WorkstationId .. [-SpawnWindow]`）后，NPC 的 Claude/Codex CLI 会自动加载 `seat-mcp` MCP server
-- NPC 干活时如果需要别的 NPC 帮忙，**它自己**调四个工具之一：
-  - `list_peers()` — 看谁在
-  - `request_help(role, ask)` — 按角色找伙伴
-  - `dispatch_to_peer(seat_id, title, body)` — 直接指名
-  - `read_my_inbox(limit?)` — **自查自己的协作流**：别人派给我的派单 / 别人对我派单的 ack/done/reject 回执 / 我自己发出的派单状态。NPC 在 CLI 终端里直接看见完整交互。
-- 工具调用结果会触发后端创建消息，**同工位默认 queued、跨工位默认 pending_review**
-- 用户在驾驶舱待审区点"通过" → 真发出去；点"打回" → 取消
-
-**自主求助怎么用**：
-- 你启动 NPC（`scripts/start-thread-watcher.ps1 -ProjectId .. -WorkstationId .. [-SpawnWindow] [-PersistentWindow]`）后，NPC 的 Claude/Codex CLI 会自动加载 `seat-mcp` MCP server
-- NPC 干活时如果需要别的 NPC 帮忙，**它自己**调五个工具之一：
-  - `list_peers()` — 看谁在
-  - `request_help(role, ask)` — 按角色找伙伴
-  - `dispatch_to_peer(seat_id, title, body)` — 直接指名
-  - `read_my_inbox(limit?)` — **自查自己的协作流**：别人派给我的派单 / 别人对我派单的 ack/done/reject 回执 / 我自己发出的派单状态。NPC 在 CLI 终端里直接看见完整交互。
-  - `mark_done(message_id, body, failed?)` — **仅长开窗口模式使用**，处理完一条派单后显式写 done 回执（一次性弹窗模式由 watcher 自动写，不用调）。
-- 工具调用结果会触发后端创建消息，**同工位默认 queued、跨工位默认 pending_review**
-- 用户在驾驶舱待审区点"通过" → 真发出去；点"打回" → 取消
-
-**让 Claude/Codex 在自己的窗口运行 — 两种模式**：
-
-| 模式 | 命令 | 行为 | 何时用 |
-|---|---|---|---|
-| 一次性弹窗 | `start-thread-watcher.ps1 ... -SpawnWindow` | 每条派单弹一个独立 PowerShell 窗口跑 `claude -p`；CLI 退出 = watcher 自动写 done 回执；窗口停在 "Enter 关闭" 等用户回看 | 跨电脑黑盒工位，无人值守 |
-| 长开窗口 | `start-thread-watcher.ps1 ... -PersistentWindow` | watcher 启动时弹**一次** claude REPL 窗口长开；后续派单只**追加**到 `artifacts/workstation-inbox/<project>/<ws>/_persistent_inbox.md` 文件；NPC 在窗口里调 `read_my_inbox` 拉新派单、调 `mark_done(message_id, body)` 写回执；用户可在窗口直接打字与 claude 互动 | 本机用户想边聊边推、要看 claude 真打字 |
-
-**长开模式注意事项**（劣势 / 边界）：
-- **回执时机由 NPC 决定**：claude 必须显式调 `mark_done` 才有 done 回执；如果它忘了，平台看不到完成。
-- **派单变被动**：claude 不主动 reload，用户得提醒它「调 read_my_inbox 看新派单」（adapter 注入的 prompt 已经强调了）。
-- **上下文 token 累积**：一个 NPC 长跑一天会吃满 200k context，用 `/compact` 触发压缩。
-- **窗口关 ≠ watcher 停**：watcher 仍在另一个终端 poll；要彻底停就 Ctrl+C watcher。
-- 两种模式互斥；同时给 `-SpawnWindow` 和 `-PersistentWindow` 时以 `-PersistentWindow` 为准。
-
-> 跨电脑配置见 §6 + `scripts/seat-mcp-server/README.md`
-
----
-
-## 5. 三级 review_policy（人工审核开关）
-
-判定优先级：**NPC > 工位 > 项目 default > 内置规则（跨工位强审）**
-
-```
-seat.extra_data.review_policy: force / skip / inherit
-  ↓ inherit 时穿透到下层
-collaboration_config.workstation_profiles[node].review_policy: force / skip / inherit
-  ↓
-collaboration_config.review_policy.default: always / cross_workstation_only(默认) / never
-  ↓
-内置：computer_node_id 不同 → 强审
-```
-
-设置入口（API 层，前端 toggle 在驾驶舱设置抽屉）：
-
-- 项目级：`PATCH /api/collaboration/projects/{id}/review-policy { default: "never" }`
-- 工位级：`PATCH /api/collaboration/projects/{id}/workstation-profiles/{node_id} { review_policy: "skip" }`
-- NPC 级：改 seat 的 extra_data
-
-**最常用**：把"代码审核 NPC"工位的 review_policy 设成 skip，让其他 NPC 找他时不需要等用户点通过。
-
----
-
-## 6. 跨电脑接入（局域网工位）
-
-平台支持多电脑分担工位（一台电脑不够跑那么多 NPC）。在另一台 Windows / Mac / Linux 电脑上配置：
-
-### 一键脚本
-
-**Windows**（在工位电脑 PowerShell 里跑）：
-
-```powershell
-pwsh -ExecutionPolicy Bypass -File scripts/setup-seat-mcp.ps1 `
-  -ApiBase http://<平台主机IP>:8010
-```
-
-**macOS / Linux**：
-
-```bash
-bash scripts/setup-seat-mcp.sh --api-base http://<平台主机IP>:8010
-```
-
-脚本自动做：
-1. 检测 Python ≥ 3.10
-2. 从 `<ApiBase>/static/seat-mcp-server.py` 下载 server.py（或用 `-SourcePath` 指本地副本）
-3. 注册到 Claude / Codex CLI（`claude mcp add` / `~/.codex/config.toml`）
-4. 写入用户级 `PLATFORM_API_BASE` 环境变量（PowerShell 里 `[Environment]::SetEnvironmentVariable` / Linux 写 `~/.profile`）
-5. ping `<ApiBase>/health` 自检
-
-### 之后启动 watcher
-
-工位电脑上：
-```powershell
-pwsh scripts/start-thread-watcher.ps1 `
-  -ProjectId <项目id> `
-  -WorkstationId <该电脑的工位id> `
-  -ApiBase http://<平台主机IP>:8010
-```
-
-watcher 拉起 Claude/Codex CLI 时会注入：
-- `PLATFORM_API_BASE` / `PROJECT_ID` / `WORKSTATION_ID` / `SEAT_ID`（每条消息动态刷）
-- `PLATFORM_ADAPTER_TOKEN` 或 `PLATFORM_AUTH_TOKEN`
-
-CLI 内部加载的 seat-mcp server 自动继承 env，无需重复配置。
-
-### 必须检查的网络项
-
-| 项 | 检查命令 |
+| 按钮 | 作用 |
 |---|---|
-| 平台 API 可达 | `curl http://<host>:8010/health`（200 OK） |
-| Python ≥ 3.10 | `python --version` |
-| 防火墙 | 平台主机放行 8010 入站；工位放行 Python 出站 |
+| 登录 | 使用已有账号进入项目空间 |
+| 注册 | 创建新账号后进入项目空间 |
+| 进入项目空间 | 提交邮箱和密码 |
 
-故障排查表见 `scripts/seat-mcp-server/README.md` § 故障排查。
+本机验证账号：
 
----
+```text
+邮箱：lead@example.com
+密码：password
+```
 
-## 7. 验收脚本一览
+注册新用户时只需要显示名、邮箱、密码。新用户登录后会进入项目列表；如果别人邀请了你，邀请会出现在“收到”页签。
 
-| 脚本 | 验什么 | 命令 |
+## 2. 项目列表、邀请和新建项目
+
+![项目列表](./screenshots/v2/02-projects.png)
+
+项目列表是登录后的入口页。
+
+| 区域/按钮 | 作用 |
+|---|---|
+| 当前账号 | 查看当前登录用户 |
+| 项目 | 展示你已经加入的项目 |
+| 邀请 | 给别人发送项目邀请 |
+| 收到 | 接受别人发来的邀请 |
+| 新建 | 创建一个新项目空间 |
+| 进入项目主页面 | 进入该项目的资源治理页 |
+| 邀请成员 | 进入邀请表单，添加协作者邮箱 |
+
+接受邀请后，协作者会成为该项目成员；之后他只能看到自己有权限的项目，不会串到其他项目消息。
+
+## 3. 项目主页面
+
+![项目主页面](./screenshots/v2/03-main-2d-upgrade.png)
+
+`/projects/<project_id>/2d-upgrade` 是资源治理主页面，不是 NPC 执行面。机器人项目、YueSpeak 项目、未来硬件仿真和 PID 调试工作台都应复用这里的资源。
+
+顶部常用按钮：
+
+| 按钮 | 作用 |
+|---|---|
+| 项目列表 | 回到所有项目 |
+| NPC 工作台 | 进入多 NPC 对话瓷砖执行面 |
+| 公司层 | 只看各工位长 NPC 的跨工位协作 |
+| 全员广播 | 给项目成员/NPC 广播信息 |
+| 仓库地址 | 进入 Git/GitHub 设置 |
+| 显示场景 / 隐藏 | 展开或收起主页面场景和面板 |
+
+右侧固定功能栏：
+
+| 按钮 | 作用 |
+|---|---|
+| 开发工坊 | 管理逻辑工位、项目知识库和调度入口 |
+| 主角管理 | 管理人类成员、账号主角、名下电脑与线程 |
+| NPC 管理 | 创建 NPC、绑定 Codex/Claude 线程、装配 Skill |
+| 电脑接入 | 注册 Runner、生成配对令牌、扫描本机线程 |
+| Skill 仓库 | 创建 Skill、从 GitHub 导入 Skill |
+| 日程 DDL | 管理每日安排、截止时间和审核提醒 |
+| 串口电视 | USB/串口扫描和硬件调试入口 |
+| AI 调试 | token、跑飞保护、回执质量检查 |
+| AI 仿真 | 机器人/软件任务预演 |
+| 协作消息 | 审计派单、最小回执、最终回复池 |
+| 线程调试 | 真实线程、心跳、队列状态 |
+| Git 回退 | 版本点、只读预检、人工确认 |
+
+主页面的“逻辑工位链路”必须先干净：NPC 要归属到工位，每个工位要有工位长。同工位 NPC 才能互相认识；跨工位请求必须走目标工位长。
+
+## 4. 电脑接入和 Runner
+
+![电脑接入](./screenshots/v2/04-main-computers.png)
+
+进入主页面右侧“电脑接入”。
+
+| 卡片/按钮 | 作用 |
+|---|---|
+| 新建电脑 | 登记一台本地或远程电脑 |
+| 生成配对令牌 | 让该电脑 Runner 绑定到项目 |
+| 本机/其他电脑接入命令 | 展示复制到目标电脑执行的 Runner 命令 |
+| 扫描线程 | 扫描该电脑上的 Codex / Claude Code 线程 |
+| 绑定 Runner | 把已在线 Runner 绑定到项目电脑 |
+| 解绑 Runner | 解除当前电脑的 Runner 绑定 |
+
+多电脑原则：
+
+- 每台电脑由自己的 Runner 上报本机能力、线程和执行目录。
+- 平台不要保存别的电脑本地绝对路径。
+- 知识库、Skill 和任务范围使用 GitHub 仓库相对路径。
+- Claude 可以扫描和展示；当前 YueSpeak 验证只使用 Codex 执行。
+
+## 5. Skill 仓库和 GitHub 导入
+
+![Skill GitHub 导入](./screenshots/v2/05-main-skills-github-import.png)
+
+进入主页面右侧“Skill 仓库”，再打开“GitHub 导入”。
+
+| 字段/按钮 | 作用 |
+|---|---|
+| GitHub 仓库 | 填 Skill 仓库或 agent 仓库地址 |
+| 分支 | 指定导入分支 |
+| 路径 | 指定仓库内相对路径 |
+| 导入到 Skill 仓库 | 读取 GitHub 内容并转成项目 Skill |
+
+Skill 用来约束 NPC 会什么、该看哪些知识库、输出什么回执。Boss NPC 会根据项目目标建议需要哪些 Skill，但用户不应该手写长提示词给每个 NPC；平台应生成上岗包。
+
+## 6. NPC 工作台
+
+![NPC 工作台](./screenshots/v2/06-workbench-overview.png)
+
+`/projects/<project_id>/workbench` 是执行面。布局规则保持：
+
+- 左侧固定索引：人类成员、工位、NPC。
+- 中间是 NPC 对话瓷砖；最多两列，第三个 NPC 自动换到下一行。
+- 右侧固定工具栏；新功能放这里开浮窗，不挤占对话主区域。
+- 审核消息直接出现在对应 NPC 对话时间线，消息后面带审核按钮。
+
+常用按钮：
+
+| 按钮 | 作用 |
+|---|---|
+| + | 打开某个 NPC 对话瓷砖 |
+| 打开全部 | 同时打开所有 NPC |
+| 收起全部 | 关闭所有 NPC 瓷砖 |
+| 自动生成方案 | 让 Boss NPC 生成工位、NPC、Skill、验收方案 |
+| 发给 Boss | 把当前目标发给 Boss NPC |
+| 派发 | 把 Boss Plan 子任务派给对应 NPC |
+| 去主页面创建 NPC | 返回主页面 NPC 管理入口 |
+
+NPC 自动化规则：
+
+- 自动化关闭：用户在 NPC 对话框发一句话，只触发一次单次派单，不创建持续自动化。
+- 自动化开启：才允许创建或使用持续心跳自动化。
+- 平台只显示最小回执和最终结果，完整处理过程在绑定的 Codex / Claude Code 桌面线程里。
+
+## 7. NPC 到 NPC 协作和审核
+
+同工位 NPC 默认可以顺滑互相请求帮助。跨工位必须走目标工位长，并默认进入人工审核。
+
+审核规则：
+
+| 场景 | 默认处理 |
+|---|---|
+| 同工位普通协作 | 可直接 queued |
+| 跨工位协作 | pending_review，等人审核 |
+| 硬件、机器人、ROS、VLA、上电、固件、电机 | 强制人工审核 |
+| destructive Git、删除、reset、生产发布 | 强制人工审核 |
+| 用户选择“下次不再审核” | 只对该 NPC 关系免审，可随时关闭 |
+
+审核按钮应该跟在待审消息后面。用户只需要在对话框里看上下文，然后点通过或拒绝。
+
+## 8. Codex Desktop 投递和回执
+
+NPC 绑定 Codex Desktop 线程后，平台派单会进入该线程。当前已验证：
+
+- YueSpeak Boss 绑定到 Codex Desktop 线程“制定语音训练采集方案”。
+- 自动化关闭时，一句话派单不会创建自动化。
+- 平台能把派单送进 Codex Desktop。
+- 平台能从 session JSONL 同步最终回执回 NPC 对话框。
+
+如果桌面线程没有立刻回最终答案，平台会显示等待 Desktop 回执，而不是假装完成。之后 adapter 的补偿同步会按 message_id 找回 acked / in_progress 的单条消息。
+
+## 9. Git 回退闭环
+
+![Git 回退](./screenshots/v2/07-git-rollback.png)
+
+进入主页面右侧“Git 回退”，再打开“申请回退”。
+
+| 区域/按钮 | 作用 |
+|---|---|
+| 可回退版本索引 | 选择 develop、main、HEAD~1 或最近协作动态引用 |
+| Runner 状态 | 显示只读预检是否已下发、是否待回执 |
+| 当前目标的 NPC 对齐 | 显示当前回退目标的 Boss/NPC 回执 |
+| 历史对齐记录 | 折叠旧回退请求，避免干扰当前判断 |
+| 目标版本 | 输入要预演的 ref |
+| 人工确认备注 | 写明为什么要回退 |
+| 登记回退请求 | 只登记、预检、通知 NPC，不直接 reset |
+| 去工作台 | 回到 NPC 工作台查看对话和最终回执 |
+
+安全规则：
+
+- 登记回退不会执行 destructive 命令。
+- Runner 只做只读预检。
+- Boss / 工位长要回执“已对齐 / 阻塞 / 需人工”。
+- 真正 reset / revert / delete 必须人工确认。
+
+## 10. 机器人和多电脑项目怎么用
+
+机器人项目通常分成 App、硬件、Linux、ROS、VLA、仿真、测试验收等工位。
+
+推荐结构：
+
+| 工位 | 典型 NPC | 电脑/Runner |
 |---|---|---|
-| `scripts/validate-full-walk-2026-05-08.mjs` | 全盘截图（用户视角，10 张） | `node scripts/validate-full-walk-2026-05-08.mjs` |
-| `scripts/validate-game-shell-ui.mjs` | 游戏壳 + 抽屉 6 项断言 | `node scripts/validate-game-shell-ui.mjs` |
-| `scripts/validate-tile-ui-2026-05-08.mjs` | NPC 瓷砖 → 派 / 队列 / 分色 | `node scripts/validate-tile-ui-2026-05-08.mjs` |
-| `scripts/validate-cross-workstation-lead-redirect.mjs` | 跨工位走工位长 | 同上 |
-| `scripts/validate-watcher-prompt-injection.py` | watcher 注入文档约定 | `python scripts/validate-watcher-prompt-injection.py` |
-| `scripts/validate-seat-mcp-server.py` | MCP 工具 + review gate | `python scripts/validate-seat-mcp-server.py` |
-| `scripts/validate-npc-autonomous-collab.mjs` | 自主合作端到端 | 同上 |
-| `scripts/validate-queue-concurrency.mjs` | 队列并发原子性 | 同上 |
-| `scripts/validate-seat-to-seat-direct.mjs` | 同工位直派 / 跨工位 pending | 同上 |
+| Boss / 系统集成 | Boss NPC、架构 NPC | 任意可看全仓库的电脑 |
+| App / 前端 | App NPC、UI QA NPC | 前端开发电脑 |
+| Linux / ROS | ROS NPC、驱动 NPC | Linux 机器人电脑 |
+| 硬件 / 固件 | 固件 NPC、上电检查 NPC | 硬件调试电脑 |
+| VLA / 算法 | 训练 NPC、评估 NPC | GPU 电脑 |
+| QA / 风险 | 验收 NPC、安全 NPC | 可访问测试环境的电脑 |
 
-最近一次全盘走查：**13/13 PASS**，报告在 `docs/screenshots/v1/full-walk-2026-05-08.md`。
+所有工位共享 GitHub 相对知识库路径；每台电脑自己的本地路径由本机 Runner 决定。
 
----
+## 11. 当前已验证状态
 
-## 8. 用户视角易犯的错（FAQ）
+- 登录页无登录态可打开，不再被 bootstrap 身份误跳转。
+- 项目列表、邀请入口、进入项目主页面可见。
+- 主页面统一治理 Runner、NPC、线程绑定、Skill、知识库、工位。
+- YueSpeak 4 个 NPC 已归属到 4 个逻辑工位，未归属为 0。
+- Workbench 保持 NPC 对话瓷砖为主。
+- Codex Desktop 单次派单和最终回执同步已打通。
+- Git 回退显示当前目标 Boss 回执，历史记录折叠，Runner 预检 pending 会诚实展示。
 
-**Q：进 `/projects/<id>` 看不到游戏壳，进了旧农场页？**
-A：URL 上有 `legacy=` / `mode=` / `zone=` 参数会走旧版。去掉这些参数即可。
+## 12. 常见问题
 
-**Q：瓷砖里看不到"跨工位通道"section？**
-A：项目里没人当工位长。在驾驶舱（或 PATCH workstation-profile）设 `lead_seat_id`。
+Q：为什么平台里看不到完整推理过程？  
+A：平台不是替代 Codex / Claude Code。完整过程在绑定线程里，平台只显示精简回执和最终结果。
 
-**Q：跨工位消息发出去后对方收不到？**
-A：状态是 `pending_review`（橙）。去驾驶舱待审区点通过；或者把 review_policy 改成 skip。
+Q：为什么回退请求显示 Runner 待回执？  
+A：说明对应 Runner 没有完成只读预检。先回“电脑接入”确认 Runner 在线，再让 Runner 拉取队列。
 
-**Q：另一台电脑的 NPC 调 `request_help` 报 "missing PLATFORM_PROJECT_ID"？**
-A：那台电脑没起 watcher，CLI 是裸跑的。用 `start-thread-watcher.ps1` 启动，或在 .mcp.json 的 env 里手动写 `PLATFORM_API_BASE`。
+Q：为什么跨工位消息要审核？  
+A：跨工位会影响别的部门上下文，硬件/机器人/Git 风险更高，默认需要人工放行。
 
-**Q：消息流没颜色？**
-A：先确认浏览器没缓存旧 CSS（强刷 Ctrl+Shift+R）。再确认 sender_id 用的是 `seat.id`（中文名）不是 `row_id`（UUID） — 前端 peerIds 取的是 `seat.id`。
+Q：为什么不能写本地绝对知识库路径？  
+A：多电脑路径不同。知识库必须用 GitHub 仓库相对路径，本地路径只属于各自 Runner。
 
----
-
-## 9. 一句话操作清单
-
-1. 起服务：`uvicorn app.main:app --port 8010` + `npm run dev:web`
-2. 浏览器 → `http://localhost:3000/projects/proj_ai_collab`
-3. 顶 nav 点「🧑‍💼 工作台」 → 抽屉拉出 → 左栏点 `+` 开 NPC 瓷砖
-4. 看 6 色消息流定位需要处理的事情（橙=待审 / 紫=跨工位别人找你）
-5. 待审消息点通过；普通消息直接读
-6. 自己派单：底部 textarea / 同工位伙伴 → 派
-7. 让 NPC 自主合作：起 watcher → NPC 自己调 seat-mcp 工具
-
-跨电脑工位：跑 `setup-seat-mcp.{ps1,sh}` 一键搞定，再启 watcher。
+Q：用户创建线程后还要写提示词吗？  
+A：不应该。用户只负责创建/授权线程，Boss NPC 和平台负责生成分工、上岗包、Skill 和知识库约定。

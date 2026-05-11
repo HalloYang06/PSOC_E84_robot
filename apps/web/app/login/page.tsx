@@ -58,7 +58,10 @@ function normalizeLoginReturnPath(value?: string) {
 export default async function LoginPage({ searchParams }: LoginPageProps) {
   const returnTo = normalizeLoginReturnPath(searchParams?.returnTo ?? searchParams?.next);
   const authState = await getCurrentAuthState();
-  const hasActiveSession = Boolean(authState.data?.user?.id ?? authState.data?.user?.email);
+  const authMode = String(authState.data?.principal?.auth_mode ?? "").toLowerCase();
+  const hasActiveSession = authState.status === 200
+    && authMode !== "bootstrap"
+    && Boolean(authState.data?.user?.id ?? authState.data?.user?.email);
 
   if (hasActiveSession) {
     redirect(returnTo || "/projects");
