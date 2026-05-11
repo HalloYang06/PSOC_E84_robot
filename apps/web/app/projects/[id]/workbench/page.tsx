@@ -102,7 +102,12 @@ function localGitState(localPath: string) {
 export default async function WorkbenchPage({ params, searchParams }: { params: { id: string }; searchParams?: { embed?: string; seat?: string; team_notice?: string; team_error?: string; return_to?: string; from?: string } }) {
   const auth = await getCurrentAuthState();
   if (!auth.data?.user) {
-    redirect(`/login?returnTo=${encodeURIComponent(`/projects/${params.id}/workbench`)}`);
+    const query = new URLSearchParams();
+    if (searchParams?.return_to) query.set("return_to", searchParams.return_to);
+    if (searchParams?.from) query.set("from", searchParams.from);
+    if (searchParams?.seat) query.set("seat", searchParams.seat);
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    redirect(`/login?returnTo=${encodeURIComponent(`/projects/${params.id}/workbench${suffix}`)}`);
   }
 
   const projectState = await getProjectState(params.id);

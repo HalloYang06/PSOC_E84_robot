@@ -44,10 +44,28 @@ function deriveThreadKind(providerId: string, threadId: string) {
   return providerId || "thread";
 }
 
-export default async function CompanyPage({ params, searchParams }: { params: { id: string }; searchParams?: { embed?: string } }) {
+function safeProjectReturnPath(projectId: string, value: unknown) {
+  const raw = text(value, "");
+  if (!raw.startsWith(`/projects/${projectId}/`)) return "";
+  if (/^\/\//.test(raw) || raw.includes("\\") || raw.includes("://")) return "";
+  return raw;
+}
+
+function labelProjectReturnPath(value: string) {
+  if (value.includes("/2d-upgrade")) return "← 返回主页面";
+  if (value.includes("/workbench")) return "← 返回工作台";
+  if (value.includes("/company")) return "← 返回公司层";
+  return "← 返回来源";
+}
+
+export default async function CompanyPage({ params, searchParams }: { params: { id: string }; searchParams?: { embed?: string; return_to?: string; from?: string } }) {
   const auth = await getCurrentAuthState();
   if (!auth.data?.user) {
-    redirect(`/login?next=/projects/${params.id}/company`);
+    const query = new URLSearchParams();
+    if (searchParams?.return_to) query.set("return_to", searchParams.return_to);
+    if (searchParams?.from) query.set("from", searchParams.from);
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    redirect(`/login?returnTo=${encodeURIComponent(`/projects/${params.id}/company${suffix}`)}`);
   }
 
   const projectState = await getProjectState(params.id);
@@ -230,6 +248,7 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
   const me = auth.data?.user as AnyRecord | null;
   const currentUserId = text(me?.id, "");
   const currentUserName = text(me?.name ?? me?.email ?? me?.id, currentUserId || "我");
+  const returnToPath = safeProjectReturnPath(params.id, searchParams?.return_to);
 
   return (
     <WorkbenchClient
@@ -262,6 +281,8 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
       currentUserId={currentUserId}
       currentUserName={currentUserName}
       pageMode="company"
+      returnTo={returnToPath}
+      returnToLabel={returnToPath ? labelProjectReturnPath(returnToPath) : ""}
       embedded={searchParams?.embed === "drawer"}
     />
   );
