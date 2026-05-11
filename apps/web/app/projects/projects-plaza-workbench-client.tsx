@@ -239,7 +239,7 @@ export function ProjectsPlazaWorkbench({
                 </label>
                 <label>
                   <span>对方邮箱</span>
-                  <input name="email" type="email" placeholder="partner@example.com" required />
+                  <input name="email" type="email" placeholder="teammate@company.com" required />
                 </label>
                 <label>
                   <span>角色</span>

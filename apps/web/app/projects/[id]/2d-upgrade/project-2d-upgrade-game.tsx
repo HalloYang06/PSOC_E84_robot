@@ -2760,7 +2760,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
           <input type="hidden" name="return_to" value={returnPath("human-party", "invite-member")} />
           <label>
             <span>协作者邮箱</span>
-            <input name="email" type="email" required placeholder="例如：partner@example.com" />
+            <input name="email" type="email" required placeholder="例如：teammate@company.com" />
           </label>
           <label>
             <span>角色</span>

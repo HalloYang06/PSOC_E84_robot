@@ -125,7 +125,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
             <input type="hidden" name="return_to" value={returnTo} />
             <label className={styles.field}>
               <span>邮箱</span>
-              <input name="email" type="email" placeholder="name@example.com" required autoComplete="email" />
+              <input name="email" type="email" placeholder="you@company.com" required autoComplete="email" />
             </label>
             <label className={styles.field}>
               <span>密码</span>
@@ -142,7 +142,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
             </label>
             <label className={styles.field}>
               <span>邮箱</span>
-              <input name="email" type="email" placeholder="name@example.com" required />
+              <input name="email" type="email" placeholder="you@company.com" required />
             </label>
             <label className={styles.field}>
               <span>密码</span>

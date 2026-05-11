@@ -862,7 +862,7 @@ def seed_if_empty(db: Session) -> None:
 
     if not _has_rows(db, User):
         users = [
-            User(email="lead@example.com", name="lead", display_name="Human Lead", bio="owner", is_active=True),
+            User(email="lead@example.com", name="项目负责人", display_name="项目负责人", bio="owner", is_active=True),
             User(email="frontend@example.com", name="frontend", display_name="Frontend Lead", bio="member", is_active=True),
             User(email="runner@example.com", name="runner", display_name="Runner Lead", bio="member", is_active=True),
             User(email="collab@example.com", name="collab", display_name="Collaboration Member", bio="member", is_active=True),
