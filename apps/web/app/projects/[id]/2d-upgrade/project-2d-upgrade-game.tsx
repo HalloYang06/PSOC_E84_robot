@@ -134,6 +134,20 @@ type ProjectWorkstation = {
   seatCount: number;
 };
 
+type KnowledgeDocumentItem = {
+  id: string;
+  title: string;
+  repoRelativePath: string;
+  scope: string;
+  ownerType: string;
+  ownerId: string;
+  existsInRepo: boolean | null;
+  versionRef: string;
+  lastSyncedAt: string;
+  summary: string;
+  tags: string[];
+};
+
 type Project2dUpgradeGameProps = {
   project: GameProject;
   apiBaseUrl: string;
@@ -152,6 +166,7 @@ type Project2dUpgradeGameProps = {
   projectWorkstations: ProjectWorkstation[];
   workshopStations: WorkshopStationItem[];
   skills: FeedItem[];
+  knowledgeDocuments: KnowledgeDocumentItem[];
   teamNotice?: string;
   teamError?: string;
 };
@@ -1542,6 +1557,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
     projectWorkstations,
     workshopStations,
     skills,
+    knowledgeDocuments,
     teamNotice,
     teamError,
   } = props;
@@ -2330,6 +2346,36 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             <small>{itemBody(item) || statusLabel(item.status)}</small>
           </li>
         ))}
+      </ul>
+    );
+  }
+
+  function renderKnowledgeDocumentList(items: KnowledgeDocumentItem[], emptyText: string) {
+    const visible = items.slice(0, 8);
+    return (
+      <ul className={styles.panelList}>
+        {visible.length ? visible.map((item) => {
+          const syncDetail = [
+            item.existsInRepo === true ? "已确认存在" : item.existsInRepo === false ? "未确认存在" : "待同步",
+            item.versionRef ? `版本 ${item.versionRef}` : "",
+            item.lastSyncedAt ? `同步 ${item.lastSyncedAt.slice(0, 10)}` : "",
+          ].filter(Boolean).join(" / ");
+          const ownerDetail = [item.scope, item.ownerType && item.ownerId ? `${item.ownerType}:${item.ownerId}` : ""]
+            .filter(Boolean)
+            .join(" · ");
+          return (
+            <li key={item.id}>
+              <b>{item.title}</b>
+              <small>{item.repoRelativePath}</small>
+              <small>{[ownerDetail, syncDetail].filter(Boolean).join(" ｜ ")}</small>
+            </li>
+          );
+        }) : (
+          <li>
+            <b>空状态</b>
+            <small>{emptyText}</small>
+          </li>
+        )}
       </ul>
     );
   }
@@ -3425,6 +3471,12 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
               <b>YueSpeak 推荐 Skill</b>
               <p>先把 Boss、后端、前端、QA 和跨工位路由的基础 Skill 建起来，后面 NPC 装配时直接索引仓库。</p>
             </div>
+            <article className={styles.panelCard}>
+              <span>GitHub 知识库索引</span>
+              <strong>{knowledgeDocuments.length} 份正式文档</strong>
+              <p>这里显示平台正式登记的仓库相对路径、存在状态、版本和同步时间；不要写本机 D:\ 路径。</p>
+              {renderKnowledgeDocumentList(knowledgeDocuments, "暂无正式知识库文档，先登记 GitHub 仓库相对路径。")}
+            </article>
             {YUESPEAK_RECOMMENDED_SKILLS.map((skill) => {
               const created = existingSkillIds.has(skill.id);
               return (

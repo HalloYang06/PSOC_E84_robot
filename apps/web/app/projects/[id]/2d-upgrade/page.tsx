@@ -435,6 +435,19 @@ export default async function Project2dUpgradePage({
           return [base, repoNote].filter(Boolean).join(" ｜ ");
         })(),
       }))}
+      knowledgeDocuments={knowledgeDocuments.map((doc, index) => ({
+        id: text(doc.id, `knowledge-${index + 1}`),
+        title: text(doc.title, `知识文档 ${index + 1}`),
+        repoRelativePath: text(doc.repo_relative_path, ""),
+        scope: text(doc.scope, "project"),
+        ownerType: text(doc.owner_type, ""),
+        ownerId: text(doc.owner_id, ""),
+        existsInRepo: doc.exists_in_repo === true ? true : doc.exists_in_repo === false ? false : null,
+        versionRef: text(doc.version_ref, ""),
+        lastSyncedAt: text(doc.last_synced_at, ""),
+        summary: text(doc.summary, ""),
+        tags: stringArray(doc.tags),
+      }))}
       teamNotice={searchText(searchParams?.team_notice)}
       teamError={searchText(searchParams?.team_error)}
     />
