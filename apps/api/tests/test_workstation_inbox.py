@@ -1925,6 +1925,29 @@ def test_codex_desktop_executor_prompt_keeps_platform_message_id() -> None:
     assert "请只回复 Validated。" in prompt
 
 
+def test_adapter_message_id_recovery_queries_all_statuses_by_default() -> None:
+    adapter = _load_platform_workstation_adapter()
+
+    url = adapter._workstation_inbox_url(
+        "http://127.0.0.1:8011",
+        "project-1",
+        "boss-seat",
+        limit=5,
+        message_id="platform-message-1",
+    )
+    explicit_url = adapter._workstation_inbox_url(
+        "http://127.0.0.1:8011",
+        "project-1",
+        "boss-seat",
+        limit=5,
+        status="queued",
+        message_id="platform-message-1",
+    )
+
+    assert url.endswith("/inbox?limit=5&status=all")
+    assert explicit_url.endswith("/inbox?limit=5&status=queued")
+
+
 def test_inbox_rejects_mismatched_decoded_workstation_id() -> None:
     """When the percent-encoded header decodes to a different workstation than the
     URL path, auth must still fail."""

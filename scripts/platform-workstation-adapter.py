@@ -57,6 +57,26 @@ def _workstation_messages_url(base: str, project_id: str, workstation_id: str) -
     )
 
 
+def _workstation_inbox_url(
+    base: str,
+    project_id: str,
+    workstation_id: str,
+    *,
+    limit: int,
+    status: str | None = None,
+    message_id: str | None = None,
+) -> str:
+    url = f"{_workstation_messages_url(base, project_id, workstation_id)}/inbox?limit={limit}"
+    normalized_status = str(status or "").strip()
+    if normalized_status:
+        url += f"&status={quote(normalized_status, safe='')}"
+    elif str(message_id or "").strip():
+        # One-shot recovery often targets an acked/in_progress Desktop dispatch.
+        # Query all states so the local message-id filter can still find it.
+        url += "&status=all"
+    return url
+
+
 def _message_action_url(base: str, project_id: str, workstation_id: str, message_id: str, action: str) -> str:
     encoded_message_id = quote(message_id, safe="")
     return f"{_workstation_messages_url(base, project_id, workstation_id)}/messages/{encoded_message_id}/{action}"
@@ -1640,6 +1660,11 @@ def main() -> int:
     )
     parser.add_argument("--status", default=None, help="queued, acked, all; default uses active inbox statuses")
     parser.add_argument("--limit", type=int, default=10)
+    parser.add_argument(
+        "--message-id",
+        default=None,
+        help="Process only one platform inbox message id. Useful for manual one-shot recovery without touching older backlog.",
+    )
     parser.add_argument("--output-dir", default="artifacts/workstation-inbox")
     parser.add_argument("--auto-ack", action="store_true", help="Immediately write a minimal ack for each queued command.")
     parser.add_argument("--ack-note", default=None, help="Custom minimal acknowledgement note to write when --auto-ack is enabled.")
@@ -1781,9 +1806,14 @@ def main() -> int:
             resolved_timeout = 1800
     if resolved_timeout <= 0:
         resolved_timeout = 1800
-    inbox_url = f"{_workstation_messages_url(base, args.project_id, args.workstation_id)}/inbox?limit={args.limit}"
-    if args.status:
-        inbox_url += f"&status={args.status}"
+    inbox_url = _workstation_inbox_url(
+        base,
+        args.project_id,
+        args.workstation_id,
+        limit=args.limit,
+        status=args.status,
+        message_id=args.message_id,
+    )
 
     output_root = Path(args.output_dir) / _safe_path_component(args.project_id, "project") / _safe_path_component(args.workstation_id, "workstation")
     resolved_session_id = _strip_session_prefix(adapter_config.get("automation_thread_id"), resolved_provider)
@@ -1855,6 +1885,9 @@ def main() -> int:
         swept_receipts = sweep_desktop_receipts()
         payload = _json_request("GET", inbox_url, headers=headers)
         commands = payload.get("data") or []
+        if args.message_id:
+            wanted_message_id = str(args.message_id).strip()
+            commands = [c for c in commands if str(c.get("id") or "").strip() == wanted_message_id]
         written: list[str] = []
         receipts: list[dict[str, Any]] = list(swept_receipts)
         executions: list[dict[str, Any]] = []
