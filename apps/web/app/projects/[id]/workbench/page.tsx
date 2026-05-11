@@ -59,6 +59,20 @@ function codexDesktopThreadUrl(providerId: string, threadId: string) {
   return `codex://threads/${raw.toLowerCase()}`;
 }
 
+function safeProjectReturnPath(projectId: string, value: unknown) {
+  const raw = text(value, "");
+  if (!raw.startsWith(`/projects/${projectId}/`)) return "";
+  if (/^\/\//.test(raw) || raw.includes("\\") || raw.includes("://")) return "";
+  return raw;
+}
+
+function labelProjectReturnPath(value: string) {
+  if (value.includes("/2d-upgrade")) return "← 返回主页面";
+  if (value.includes("/company")) return "← 返回公司层";
+  if (value.includes("/workbench")) return "← 返回工作台";
+  return "← 返回来源";
+}
+
 function localGitState(localPath: string) {
   const normalized = text(localPath, "");
   if (!normalized) {
@@ -85,7 +99,7 @@ function localGitState(localPath: string) {
   }
 }
 
-export default async function WorkbenchPage({ params, searchParams }: { params: { id: string }; searchParams?: { embed?: string; seat?: string; team_notice?: string; team_error?: string } }) {
+export default async function WorkbenchPage({ params, searchParams }: { params: { id: string }; searchParams?: { embed?: string; seat?: string; team_notice?: string; team_error?: string; return_to?: string; from?: string } }) {
   const auth = await getCurrentAuthState();
   if (!auth.data?.user) {
     redirect(`/login?returnTo=${encodeURIComponent(`/projects/${params.id}/workbench`)}`);
@@ -504,6 +518,7 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
   const currentUserId = text(me?.id, "");
   const currentUserName = text(me?.name ?? me?.email ?? me?.id, currentUserId || "我");
   const focusSeatParam = text(searchParams?.seat, "");
+  const returnToPath = safeProjectReturnPath(params.id, searchParams?.return_to);
   const focusSeat = focusSeatParam
     ? seats.find((seat) => identitySet(seat.id, seat.rowId, seat.threadId, seat.name).has(focusSeatParam))
     : null;
@@ -590,6 +605,8 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
       initialLaunchPackSeatIds={focusSeatId ? [focusSeatId] : []}
       surfaceNotice={text(searchParams?.team_notice, "")}
       surfaceError={text(searchParams?.team_error, "")}
+      returnTo={returnToPath}
+      returnToLabel={returnToPath ? labelProjectReturnPath(returnToPath) : ""}
       embedded={searchParams?.embed === "drawer"}
     />
   );

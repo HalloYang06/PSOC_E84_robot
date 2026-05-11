@@ -713,6 +713,7 @@ function WorkstationGroupsSection({
   npcSeats,
   computers,
   projectWorkstations,
+  returnTo,
   onBroadcast,
 }: {
   projectId: string;
@@ -720,6 +721,7 @@ function WorkstationGroupsSection({
   npcSeats: FeedItem[];
   computers: FeedItem[];
   projectWorkstations: ProjectWorkstation[];
+  returnTo?: string;
   onBroadcast: (scope: string, label: string) => void;
 }) {
   const router = useRouter();
@@ -1278,7 +1280,10 @@ function WorkstationGroupsSection({
               </ul>
               <div className={styles.workstationGroupActions}>
                 <Link
-                  href={`/projects/${projectId}/workbench`}
+                  href={`/projects/${projectId}/workbench?${new URLSearchParams({
+                    return_to: returnTo || `/projects/${projectId}/2d-upgrade?panel=development-workshop`,
+                    from: "2d-upgrade",
+                  }).toString()}`}
                   className={styles.workstationGroupOpenLink}
                   title="到工作台同时打开本组 NPC 的瓷砖"
                 >
@@ -2154,6 +2159,14 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
     return `/projects/${project.id}/2d-upgrade?${params.toString()}`;
   }
 
+  function surfacePath(surface: "workbench" | "company", tab: ModuleTab = activePanel ?? "exchange", actionId = activeAction?.id) {
+    const params = new URLSearchParams({
+      return_to: returnPath(tab, actionId),
+      from: "2d-upgrade",
+    });
+    return `/projects/${project.id}/${surface}?${params.toString()}`;
+  }
+
   function renderWorkshopStationHiddenFields(
     station: WorkshopStationItem,
     returnTab: ModuleTab = "development-workshop",
@@ -2614,7 +2627,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
           <div className={styles.gitAlignmentStatus}>
             <div className={styles.gitAlignmentHead}>
               <strong>NPC 对齐回执</strong>
-              <Link href={`/projects/${project.id}/workbench`} title="进入工作台查看 NPC 对话和最终回执">
+              <Link href={surfacePath("workbench", "git")} title="进入工作台查看 NPC 对话和最终回执">
                 去工作台
               </Link>
             </div>
@@ -4287,14 +4300,14 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                 </Link>
               ) : null}
               <Link
-                href={`/projects/${project.id}/workbench`}
+                href={surfacePath("workbench")}
                 className={styles.cockpitGhost}
                 title="多 NPC 同屏工作台：左栏勾选/+号开瓷砖，多开自动平分"
               >
                 NPC 工作台 →
               </Link>
               <Link
-                href={`/projects/${project.id}/company`}
+                href={surfacePath("company")}
                 className={styles.cockpitGhost}
                 title="公司层：只看每个工位的工位长（👑），跨工位转交都从这里发起"
               >
@@ -4391,8 +4404,8 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
               <strong>多 NPC 同屏协作</strong>
               <p>只消费主页面资源：Boss 分工、线程绑定、派单、精简回执和人工审核都在这里看执行现场。</p>
               <div>
-                <Link href={`/projects/${project.id}/workbench`}>打开 NPC 工作台</Link>
-                <Link href={`/projects/${project.id}/company`}>公司层</Link>
+                <Link href={surfacePath("workbench", "exchange", "dispatch-command")}>打开 NPC 工作台</Link>
+                <Link href={surfacePath("company", "exchange", "dispatch-command")}>公司层</Link>
               </div>
             </article>
             <article>
@@ -4455,6 +4468,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             npcSeats={npcSeats}
             computers={computers}
             projectWorkstations={projectWorkstations}
+            returnTo={returnPath("development-workshop")}
             onBroadcast={(scope, label) => setBroadcastTarget({ scope, label })}
           />
           <CrossWorkstationHandoffs

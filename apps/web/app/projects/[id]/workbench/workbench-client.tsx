@@ -25,6 +25,8 @@ type WorkbenchClientProps = {
   surfaceNotice?: string;
   surfaceError?: string;
   pageMode?: "workbench" | "company";
+  returnTo?: string;
+  returnToLabel?: string;
   embedded?: boolean;
 };
 
@@ -197,6 +199,8 @@ export function WorkbenchClient({
   surfaceNotice = "",
   surfaceError = "",
   pageMode = "workbench",
+  returnTo = "",
+  returnToLabel = "",
   embedded = false,
 }: WorkbenchClientProps) {
   const isCompany = pageMode === "company";
@@ -744,6 +748,28 @@ export function WorkbenchClient({
           const bossGroup = bossSeat ? seatGroupKey(bossSeat) : "";
           const targetGroup = targetSeat ? seatGroupKey(targetSeat) : "";
           const needsHumanReview = Boolean(bossGroup && targetGroup && bossGroup !== targetGroup);
+          const routeSeat = needsHumanReview
+            ? seats.find((item) => item.isLead && seatGroupKey(item) === targetGroup)
+            : targetSeat;
+          if (!routeSeat) {
+            throw new Error(
+              needsHumanReview
+                ? `${task.targetName}: 目标工位还没有工位长，先在主页面给该工位设置 lead NPC。`
+                : `${task.targetName}: 未找到目标 NPC，请先回主页面绑定线程/NPC。`,
+            );
+          }
+          const routeSeatId = seatApiId(routeSeat);
+          const routedBody = needsHumanReview
+            ? [
+                task.body,
+                "",
+                "----",
+                "平台路由说明:",
+                `- Boss 原始目标 NPC: ${task.targetName}`,
+                `- 跨工位入口 NPC: ${routeSeat.name}`,
+                "- 请目标工位长先审核任务、选择本工位最匹配 NPC，再把任务转交给最终执行者。",
+              ].join("\n")
+            : task.body;
           const res = await fetch(apiClientUrl("/api/collaboration/messages"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -751,12 +777,12 @@ export function WorkbenchClient({
             body: JSON.stringify({
               project_id: projectId,
               message_type: "requirement_dispatch",
-              title: task.title,
-              body: task.body,
+              title: needsHumanReview ? `${task.title}（跨工位，经 ${routeSeat.name}）` : task.title,
+              body: routedBody,
               sender_type: "agent",
               sender_id: seatApiId(bossSeat),
               recipient_type: "thread_workstation",
-              recipient_id: task.targetSeatId,
+              recipient_id: routeSeatId,
               status: needsHumanReview ? "pending_review" : "queued",
               metadata: {
                 source: "boss_npc_project_generator",
@@ -767,6 +793,10 @@ export function WorkbenchClient({
                 route_review_reason: needsHumanReview ? "cross_workstation_boss_dispatch" : "same_workstation_boss_dispatch",
                 upstream_seat_id: seatApiId(bossSeat),
                 downstream_seat_id: task.targetSeatId,
+                routed_recipient_seat_id: routeSeatId,
+                routed_recipient_name: routeSeat.name,
+                intended_target_seat_id: task.targetSeatId,
+                intended_target_name: task.targetName,
               },
             }),
           });
@@ -778,7 +808,14 @@ export function WorkbenchClient({
           return task;
         }),
       );
-      openSeatGroup(results.map((task) => task.targetOpenId || task.targetSeatId));
+      openSeatGroup(results.map((task) => {
+        const targetSeat = seats.find((item) => seatApiId(item) === task.targetSeatId || item.id === task.targetOpenId);
+        const bossGroup = bossSeat ? seatGroupKey(bossSeat) : "";
+        const targetGroup = targetSeat ? seatGroupKey(targetSeat) : "";
+        const needsHumanReview = Boolean(bossGroup && targetGroup && bossGroup !== targetGroup);
+        const routeSeat = needsHumanReview ? seats.find((item) => item.isLead && seatGroupKey(item) === targetGroup) : targetSeat;
+        return routeSeat?.id || task.targetOpenId || task.targetSeatId;
+      }));
       setBossNote(`已派发 ${results.length} 个子任务。真实执行仍由各 NPC 绑定的线程完成，工作台只显示精简回执。`);
     } catch (e) {
       setBossNote(`派发失败：${e instanceof Error ? e.message : "未知错误"}`);
@@ -965,6 +1002,11 @@ export function WorkbenchClient({
           <Link href={`/projects/${projectId}/cockpit`} className={styles.backLink} title="返回项目驾驶舱">
             ← 驾驶舱
           </Link>
+          {returnTo ? (
+            <Link href={returnTo} className={styles.backLink} title="回到刚才进入工作台的位置">
+              {returnToLabel || "← 返回来源"}
+            </Link>
+          ) : null}
           <div className={styles.title}>
             <strong>{projectName}</strong>
             <small>
