@@ -1804,6 +1804,49 @@ def test_codex_desktop_reply_sync_reads_final_answer_for_matching_message(tmp_pa
     assert reply["session_file"] == str(session_file)
 
 
+def test_codex_desktop_reply_sync_ignores_commentary_until_final_answer(tmp_path) -> None:
+    adapter = _load_platform_workstation_adapter()
+    previous_codex_home = os.environ.get("CODEX_HOME")
+    codex_home = tmp_path / "codex-home"
+    session_id = "019e153e-8202-7f51-bd36-13be006e801b"
+    session_file = codex_home / "sessions" / "2026" / "05" / "11" / f"rollout-test-{session_id}.jsonl"
+    session_file.parent.mkdir(parents=True)
+    records = [
+        {
+            "timestamp": "2026-05-11T04:15:00.000Z",
+            "type": "event_msg",
+            "payload": {
+                "type": "user_message",
+                "message": "# Target\n\n- message_id: `platform-message-1`\n\nPlease handle it.",
+            },
+        },
+        {
+            "timestamp": "2026-05-11T04:15:01.000Z",
+            "type": "event_msg",
+            "payload": {
+                "type": "agent_message",
+                "phase": "commentary",
+                "message": "我先读取项目资料，这还不是最终回执。",
+            },
+        },
+    ]
+    session_file.write_text("\n".join(json.dumps(item, ensure_ascii=False) for item in records), encoding="utf-8")
+
+    try:
+        os.environ["CODEX_HOME"] = str(codex_home)
+        reply = adapter._find_codex_desktop_reply(
+            session_id=f"codex-session-{session_id}",
+            message_id="platform-message-1",
+        )
+    finally:
+        if previous_codex_home is None:
+            os.environ.pop("CODEX_HOME", None)
+        else:
+            os.environ["CODEX_HOME"] = previous_codex_home
+
+    assert reply is None
+
+
 def test_codex_desktop_prompt_seen_detects_existing_platform_dispatch(tmp_path) -> None:
     adapter = _load_platform_workstation_adapter()
     previous_codex_home = os.environ.get("CODEX_HOME")

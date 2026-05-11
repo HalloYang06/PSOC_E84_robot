@@ -555,7 +555,6 @@ def _find_codex_desktop_reply(
     if marker_index < 0:
         return None
 
-    latest_reply: dict[str, Any] | None = None
     for line in lines[marker_index + 1 :]:
         try:
             record = json.loads(line)
@@ -563,21 +562,18 @@ def _find_codex_desktop_reply(
             continue
         role, text, phase = _codex_record_role_and_text(record)
         if role == "user" and marker in text:
-            latest_reply = None
             continue
         if role != "assistant" or not text:
             continue
-        if phase and phase not in {"final_answer", "commentary"}:
+        if phase != "final_answer":
             continue
-        latest_reply = {
+        return {
             "text": text,
             "phase": phase,
             "timestamp": record.get("timestamp"),
             "session_file": str(session_file),
         }
-        if phase == "final_answer":
-            return latest_reply
-    return latest_reply
+    return None
 
 
 def _codex_desktop_prompt_seen(
