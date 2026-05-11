@@ -624,6 +624,22 @@ def _codex_desktop_prompt_seen(
     return None
 
 
+def _wait_for_codex_desktop_prompt_seen(
+    *,
+    session_id: str | None,
+    message_id: str,
+    timeout_seconds: int,
+    poll_seconds: float = 0.75,
+) -> dict[str, Any] | None:
+    deadline = time.time() + max(0, timeout_seconds)
+    while time.time() <= deadline:
+        seen = _codex_desktop_prompt_seen(session_id=session_id, message_id=message_id)
+        if seen:
+            return seen
+        time.sleep(max(0.25, poll_seconds))
+    return None
+
+
 def _wait_for_codex_desktop_reply(
     *,
     session_id: str | None,
@@ -644,6 +660,7 @@ def _run_codex_desktop_ui_turn(
     *,
     prompt_text: str,
     session_id: str | None,
+    message_id: str,
     timeout_seconds: int,
 ) -> dict[str, Any]:
     thread_id = _strip_session_prefix(session_id, "codex")
@@ -734,6 +751,28 @@ Start-Sleep -Milliseconds 120
                 pass
     ok = completed.returncode == 0
     if ok:
+        seen = _wait_for_codex_desktop_prompt_seen(
+            session_id=session_id,
+            message_id=message_id,
+            timeout_seconds=min(max(timeout_seconds, 1), 20),
+        )
+        if not seen:
+            return {
+                "ok": False,
+                "returncode": completed.returncode,
+                "stdout": completed.stdout,
+                "stderr": completed.stderr,
+                "note": (
+                    "Codex Desktop UI delivery was attempted, but the bound session JSONL "
+                    f"did not show message_id `{message_id}`. The platform will not mark this "
+                    "as Desktop-visible delivery."
+                ),
+                "delivery_mode": "codex_desktop_ui",
+                "desktop_visible": False,
+                "desktop_delivery_confirmed": False,
+                "thread_id": thread_id,
+                "desktop_thread_url": thread_url,
+            }
         return {
             "ok": True,
             "returncode": completed.returncode,
@@ -745,6 +784,8 @@ Start-Sleep -Milliseconds 120
             ),
             "delivery_mode": "codex_desktop_ui",
             "desktop_visible": True,
+            "desktop_delivery_confirmed": True,
+            "desktop_seen": seen,
             "thread_id": thread_id,
             "desktop_thread_url": thread_url,
         }
@@ -987,6 +1028,7 @@ def run_executor(
         ui_result = _run_codex_desktop_ui_turn(
             prompt_text=prompt_text,
             session_id=session_id,
+            message_id=message_id,
             timeout_seconds=timeout_seconds,
         )
         if ui_result.get("ok"):
@@ -1982,6 +2024,8 @@ def main() -> int:
                         "note": "已检测到该派单已投递到 Codex Desktop，正在同步桌面最终回执。",
                         "delivery_mode": "codex_desktop_ui",
                         "desktop_visible": True,
+                        "desktop_delivery_confirmed": True,
+                        "desktop_seen": desktop_prompt_seen,
                     }
                 else:
                     if args.watch:
@@ -2043,8 +2087,14 @@ def main() -> int:
                             metadata={
                                 "delivery_mode": "codex_desktop_ui",
                                 "desktop_visible": True,
+                                "desktop_delivery_confirmed": True,
                                 "desktop_thread_url": executor_result.get("desktop_thread_url"),
                                 "thread_id": executor_result.get("thread_id"),
+                                "session_file": (
+                                    executor_result.get("desktop_seen", {}).get("session_file")
+                                    if isinstance(executor_result.get("desktop_seen"), dict)
+                                    else None
+                                ),
                             },
                         )
                         receipts.append(progress_receipt)

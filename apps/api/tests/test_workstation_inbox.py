@@ -1901,6 +1901,53 @@ def test_codex_desktop_prompt_seen_detects_existing_platform_dispatch(tmp_path) 
         assert missing is None
 
 
+def test_codex_desktop_prompt_seen_waits_for_matching_dispatch(tmp_path) -> None:
+    adapter = _load_platform_workstation_adapter()
+    previous_codex_home = os.environ.get("CODEX_HOME")
+    codex_home = tmp_path / "codex-home"
+    session_id = "019e153e-8202-7f51-bd36-13be006e801b"
+    session_file = codex_home / "sessions" / "2026" / "05" / "11" / f"rollout-test-{session_id}.jsonl"
+    session_file.parent.mkdir(parents=True)
+    session_file.write_text(
+        json.dumps(
+            {
+                "timestamp": "2026-05-11T04:15:00.000Z",
+                "type": "event_msg",
+                "payload": {
+                    "type": "user_message",
+                    "message": "# Target\n\n- message_id: `platform-message-1`\n\nPlease handle it.",
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    try:
+        os.environ["CODEX_HOME"] = str(codex_home)
+        seen = adapter._wait_for_codex_desktop_prompt_seen(
+            session_id=f"codex-session-{session_id}",
+            message_id="platform-message-1",
+            timeout_seconds=1,
+            poll_seconds=0.1,
+        )
+        missing = adapter._wait_for_codex_desktop_prompt_seen(
+            session_id=f"codex-session-{session_id}",
+            message_id="platform-message-2",
+            timeout_seconds=0,
+            poll_seconds=0.1,
+        )
+    finally:
+        if previous_codex_home is None:
+            os.environ.pop("CODEX_HOME", None)
+        else:
+            os.environ["CODEX_HOME"] = previous_codex_home
+
+    assert seen is not None
+    assert seen["session_file"] == str(session_file)
+    assert missing is None
+
+
 def test_codex_desktop_executor_prompt_keeps_platform_message_id() -> None:
     adapter = _load_platform_workstation_adapter()
 

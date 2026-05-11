@@ -6487,7 +6487,9 @@ export async function 启动Npc单次线程处理(projectId: string, workstation
       title: `单次线程处理已启动 / ${seatName}`,
       body: [
         `平台已把这一句话交给 ${seatName} 的 ${deliveryLabel || platformProviderLabel(providerId)} 做单次处理，未创建 NPC 自动化。`,
-        desktopVisible ? "桌面线程可见：是。" : "桌面实时显示：否；当前走独立 app-server/session 写入，完整过程以平台回执和本机日志为准。",
+        desktopVisible
+          ? "投递状态：正在确认目标 Codex Desktop 线程是否已收到；确认后会在本对话框显示“等待最终回复”。"
+          : "投递状态：后台 session/app-server 处理；当前不会声称桌面窗口实时可见。",
         deliveryWarning,
         messageId ? `派单消息：${messageId}` : "",
         launchResult.launched ? `启动器：${launchResult.launcher || "platform-workstation-adapter.py"}` : `启动失败：${launchResult.error || "未知错误"}`,
@@ -6500,6 +6502,14 @@ export async function 启动Npc单次线程处理(projectId: string, workstation
       recipient_type: "thread_workstation",
       recipient_id: recipientId,
       status: launchResult.launched ? "in_progress" : "failed",
+      metadata: {
+        source_message_id: messageId,
+        launch_state: launchResult.launched ? "delivery_pending_confirmation" : "launch_failed",
+        delivery_label: deliveryLabel || platformProviderLabel(providerId),
+        desktop_visible_capability: desktopVisible,
+        stdout_path: launchResult.stdoutPath ?? null,
+        stderr_path: launchResult.stderrPath ?? null,
+      },
     });
 
     revalidateProjectSurfaces(projectId);

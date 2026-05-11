@@ -77,6 +77,8 @@ type CollabMessage = {
   status: string;
   created_at?: string | null;
   dispatch_id?: string | null;
+  metadata?: Record<string, unknown> | null;
+  extra_data?: Record<string, unknown> | null;
 };
 
 const NOISE_PREFIXES = [
@@ -166,6 +168,12 @@ function firstUsefulLine(body: string): string {
   return body.split(/\r?\n/).map((s) => s.trim()).find(Boolean) || "";
 }
 
+function messageMetadata(msg: CollabMessage): Record<string, unknown> {
+  const meta = msg.metadata && typeof msg.metadata === "object" ? msg.metadata : {};
+  const extra = msg.extra_data && typeof msg.extra_data === "object" ? msg.extra_data : {};
+  return { ...extra, ...meta };
+}
+
 function summarizeCollabMessage(msg: CollabMessage): RefinedMessage {
   const classified = classifyMessage(msg);
   const type = (msg.message_type || "").toLowerCase();
@@ -206,12 +214,20 @@ function summarizeCollabMessage(msg: CollabMessage): RefinedMessage {
   let detail = cleanFirst && cleanFirst !== headline ? cleanFirst : "";
   if (!detail) {
     if (statusLabel === "派单") detail = "已写入协作消息池，等待绑定的执行线程处理。";
-    else if (statusLabel === "已接单") detail = "已写入绑定线程；完整处理过程在 Codex / Claude Code 中继续。";
+    else if (statusLabel === "已接单") detail = "目标执行器已接到指令；若是 Desktop 投递，还需要等待目标线程确认收到。";
     else if (statusLabel === "处理中") detail = "绑定线程正在推进；平台只保留最小回执和最终结果。";
     else if (statusLabel === "需人审") detail = "需要人类成员查看正文后决定是否放行。";
     else if (statusLabel === "已完成") detail = "线程已返回最终结果；详细过程仍在绑定的 Codex / Claude Code 线程里。";
     else if (statusLabel === "异常") detail = "线程或桥接报告异常，展开可查看失败原文。";
     else detail = "协作事件已记录。";
+  }
+  const meta = messageMetadata(msg);
+  const progressState = String(meta.progress_state || "");
+  const launchState = String(meta.launch_state || "");
+  if (progressState === "awaiting_desktop_reply") {
+    detail = "已确认进入 Codex Desktop 目标线程，正在等待最终回执。";
+  } else if (launchState === "delivery_pending_confirmation") {
+    detail = "启动器已拉起，正在确认目标桌面线程是否真的收到这条消息。";
   }
   if (detail.length > 120) detail = `${detail.slice(0, 120)}...`;
 
@@ -1308,7 +1324,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
         setSendNote(
           launchResult.launched
             ? launchResult.desktopVisible
-              ? "已进入绑定桌面线程 ✓"
+              ? "已启动，正在确认桌面线程收到 ✓"
               : `已执行到绑定 session；当前 Desktop 窗口不直播，结果会回到这个对话框`
             : `已派发，但单次处理启动失败：${launchResult.error || "请检查本机执行器"}`,
         );
