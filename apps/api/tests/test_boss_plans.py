@@ -104,7 +104,7 @@ def test_boss_plan_records_items_and_rejects_local_knowledge_paths() -> None:
         json={"status": "in_progress"},
     )
     assert update_response.status_code == 200, update_response.text
-    assert update_response.json()["data"]["status"] == "in_progress"
+    assert update_response.json()["data"]["status"] == "dispatched"
 
     outsider_user_id, outsider_email = register_user(
         client,
@@ -114,3 +114,88 @@ def test_boss_plan_records_items_and_rejects_local_knowledge_paths() -> None:
     outsider_token, _ = issue_session_token(client, outsider_email)
     outsider_response = client.get(f"/api/projects/{project_id}/boss-plans", headers=auth_headers(outsider_token))
     assert outsider_response.status_code == 403
+
+
+def test_boss_plan_status_follows_dispatch_message_status() -> None:
+    owner_token, owner_user_id = issue_session_token(client)
+    project = create_project(
+        client,
+        owner_token,
+        name_prefix="Boss Plan Sync",
+        collaboration_config={
+            "thread_workstations": [
+                {"id": "boss-seat", "name": "Boss NPC", "status": "active", "ai_provider_id": "codex"},
+                {"id": "backend-seat", "name": "Backend NPC", "status": "active", "ai_provider_id": "codex"},
+            ],
+        },
+    )
+    project_id = project["id"]
+    add_project_member(client, project_id, owner_token, owner_user_id, role="owner", is_owner=True)
+
+    message_response = client.post(
+        "/api/collaboration/messages",
+        headers=auth_headers(owner_token),
+        json={
+            "project_id": project_id,
+            "message_type": "requirement_dispatch",
+            "title": "Backend implementation",
+            "body": "Implement backend.",
+            "sender_type": "agent",
+            "sender_id": "boss-seat",
+            "recipient_type": "thread_workstation",
+            "recipient_id": "backend-seat",
+            "status": "queued",
+        },
+    )
+    assert message_response.status_code == 200, message_response.text
+    dispatch_id = message_response.json()["data"]["id"]
+
+    create_response = client.post(
+        f"/api/projects/{project_id}/boss-plans",
+        headers=auth_headers(owner_token),
+        json={
+            "boss_seat_id": "boss-seat",
+            "goal": "Sync status from real dispatch.",
+            "title": "Sync plan",
+            "status": "dispatched",
+            "items": [
+                {
+                    "role": "Backend",
+                    "target_seat_id": "backend-seat",
+                    "title": "Backend implementation",
+                    "body": "Do the backend slice.",
+                    "status": "queued",
+                    "dispatch_message_id": dispatch_id,
+                }
+            ],
+        },
+    )
+    assert create_response.status_code == 200, create_response.text
+    plan = create_response.json()["data"]
+    item = plan["items"][0]
+
+    progress_response = client.patch(
+        f"/api/collaboration/messages/{dispatch_id}",
+        headers=auth_headers(owner_token),
+        json={"status": "in_progress"},
+    )
+    assert progress_response.status_code == 200, progress_response.text
+    read_progress = client.get(f"/api/projects/{project_id}/boss-plans/{plan['id']}", headers=auth_headers(owner_token))
+    assert read_progress.status_code == 200, read_progress.text
+    progress_plan = read_progress.json()["data"]
+    assert progress_plan["status"] == "in_progress"
+    assert progress_plan["items"][0]["id"] == item["id"]
+    assert progress_plan["items"][0]["status"] == "in_progress"
+
+    completed_response = client.patch(
+        f"/api/collaboration/messages/{dispatch_id}",
+        headers=auth_headers(owner_token),
+        json={"status": "completed"},
+    )
+    assert completed_response.status_code == 200, completed_response.text
+    read_completed = client.get(f"/api/projects/{project_id}/boss-plans", headers=auth_headers(owner_token))
+    assert read_completed.status_code == 200, read_completed.text
+    completed_plan = read_completed.json()["data"][0]
+    assert completed_plan["id"] == plan["id"]
+    assert completed_plan["status"] == "completed"
+    assert completed_plan["items"][0]["status"] == "completed"

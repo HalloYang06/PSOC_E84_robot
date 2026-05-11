@@ -16,6 +16,20 @@ from .schemas import BossPlanCreate, BossPlanItemUpdate
 VALID_PLAN_STATUSES = {"draft", "sent_to_boss", "dispatching", "dispatched", "in_progress", "blocked", "completed", "cancelled"}
 VALID_ITEM_STATUSES = {"planned", "queued", "pending_review", "in_progress", "blocked", "completed", "failed", "cancelled"}
 
+MESSAGE_STATUS_TO_ITEM_STATUS = {
+    "acked": "in_progress",
+    "cancelled": "cancelled",
+    "completed": "completed",
+    "done": "completed",
+    "failed": "failed",
+    "in_progress": "in_progress",
+    "open": "queued",
+    "pending": "queued",
+    "pending_review": "pending_review",
+    "queued": "queued",
+    "rejected": "failed",
+}
+
 
 def _project_or_404(db: Session, project_id: str) -> Project:
     project = db.get(Project, project_id)
@@ -66,12 +80,12 @@ def get_boss_plan_or_404(db: Session, project_id: str, plan_id: str) -> BossPlan
     )
     if plan is None:
         raise AppError("BOSS_PLAN_NOT_FOUND", "Boss plan not found", status_code=404)
-    return plan
+    return sync_boss_plan_status_from_messages(db, plan)
 
 
 def list_boss_plans(db: Session, project_id: str, *, limit: int = 30) -> list[BossPlan]:
     _project_or_404(db, project_id)
-    return list(
+    plans = list(
         db.scalars(
             select(BossPlan)
             .options(selectinload(BossPlan.items))
@@ -80,6 +94,60 @@ def list_boss_plans(db: Session, project_id: str, *, limit: int = 30) -> list[Bo
             .limit(max(1, min(limit, 100)))
         )
     )
+    return [sync_boss_plan_status_from_messages(db, plan) for plan in plans]
+
+
+def _plan_status_from_items(items: list[BossPlanItem]) -> str:
+    statuses = {item.status for item in items}
+    if not statuses:
+        return "draft"
+    if statuses <= {"completed"}:
+        return "completed"
+    if statuses & {"blocked", "failed"}:
+        return "blocked"
+    if "in_progress" in statuses:
+        return "in_progress"
+    if statuses & {"queued", "pending_review"}:
+        return "dispatched"
+    if statuses <= {"cancelled"}:
+        return "cancelled"
+    return "dispatching"
+
+
+def sync_boss_plan_status_from_messages(db: Session, plan: BossPlan) -> BossPlan:
+    dispatch_ids = [item.dispatch_message_id for item in plan.items if item.dispatch_message_id]
+    if not dispatch_ids:
+        return plan
+
+    messages = {
+        message.id: message
+        for message in db.scalars(
+            select(CollaborationMessage).where(
+                CollaborationMessage.project_id == plan.project_id,
+                CollaborationMessage.id.in_(dispatch_ids),
+            )
+        )
+    }
+    changed = False
+    for item in plan.items:
+        if not item.dispatch_message_id:
+            continue
+        message = messages.get(item.dispatch_message_id)
+        if message is None:
+            continue
+        next_status = MESSAGE_STATUS_TO_ITEM_STATUS.get(str(message.status or "").strip().lower())
+        if next_status and next_status != item.status:
+            item.status = next_status
+            changed = True
+    next_plan_status = _plan_status_from_items(plan.items)
+    if next_plan_status != plan.status:
+        plan.status = next_plan_status
+        changed = True
+    if changed:
+        db.add(plan)
+        db.commit()
+        db.refresh(plan)
+    return plan
 
 
 def create_boss_plan(db: Session, project_id: str, payload: BossPlanCreate) -> BossPlan:
@@ -151,15 +219,7 @@ def update_boss_plan_item(db: Session, project_id: str, plan_id: str, item_id: s
         item.receipt_message_id = payload.receipt_message_id.strip() or None
     if payload.metadata is not None:
         item.extra_data = payload.metadata
-    statuses = {candidate.status for candidate in plan.items}
-    if statuses and statuses <= {"completed"}:
-        plan.status = "completed"
-    elif "in_progress" in statuses:
-        plan.status = "in_progress"
-    elif "blocked" in statuses or "failed" in statuses:
-        plan.status = "blocked"
-    elif any(status in statuses for status in {"queued", "pending_review"}):
-        plan.status = "dispatched"
+    plan.status = _plan_status_from_items(plan.items)
     db.add(plan)
     db.commit()
     return get_boss_plan_or_404(db, project_id, plan.id)

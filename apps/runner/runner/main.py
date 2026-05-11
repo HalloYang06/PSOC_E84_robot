@@ -182,21 +182,8 @@ def _handle_runner_relay_message(
         )
         return True
 
-    completion_note = (
-        f"Runner persisted the prompt to {note_target}. "
-        f"Local CLI / adapter polling that folder will execute it next."
-    )
-    if title:
-        completion_note = f"[{title}] {completion_note}"
-    try:
-        client.complete_runner_message(
-            cfg.runner_id,
-            message_id,
-            result_status="completed",
-            note=completion_note,
-        )
-    except Exception as exc:
-        log.write("error", f"Failed to complete runner relay {message_id}: {exc}")
+    # Inbox persistence is delivery, not execution. Keep the platform command
+    # acked until a CLI, Desktop bridge, or adapter reports the final result.
     log.write(
         "info",
         f"Handled runner relay {message_id} kind=prompt.inbox path={inbox_path or '<failed>'}",

@@ -6,8 +6,9 @@ instruction in the dispatch panel would see it stay "pending" forever and never
 reach the local Claude/Codex CLI.
 
 The fix in ``apps/runner/runner/main.py`` writes a JSON file under
-``RUNNER_WORKDIR/inbox/`` for every unrecognised message and reports the
-message as completed so the platform UI clears the "排队中" state.
+``RUNNER_WORKDIR/inbox/`` for every unrecognised message and acknowledges the
+message as delivered. It must not mark the message completed until a CLI,
+Desktop bridge, or adapter reports a real final result.
 """
 
 from __future__ import annotations
@@ -87,10 +88,7 @@ def test_plain_prompt_persisted_to_inbox(tmp_path: Path) -> None:
             f"{inbox_files[0]}.",
         }
     ]
-    assert len(client.completions) == 1
-    assert client.completions[0]["result_status"] == "completed"
-    assert "[测试派单]" in client.completions[0]["note"]
-    assert str(inbox_files[0]) in client.completions[0]["note"]
+    assert client.completions == []
 
 
 def test_serial_command_still_short_circuits_before_inbox(tmp_path: Path) -> None:
