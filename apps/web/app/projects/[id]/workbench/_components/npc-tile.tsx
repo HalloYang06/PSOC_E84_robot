@@ -660,12 +660,13 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
       setFetching(true);
       setFetchError(null);
       try {
-        const base = apiClientUrl(`/api/collaboration/messages?project_id=${encodeURIComponent(projectId)}&limit=${size}`);
         const identityIds = Array.from(seatIdentityIds);
+        const messageLimit = Math.max(120, size);
+        const baseWithLimit = apiClientUrl(`/api/collaboration/messages?project_id=${encodeURIComponent(projectId)}&limit=${messageLimit}`);
         const incomingUrls = identityIds.map(
-          (id) => `${base}&recipient_type=thread_workstation&recipient_id=${encodeURIComponent(id)}`,
+          (id) => `${baseWithLimit}&recipient_type=thread_workstation&recipient_id=${encodeURIComponent(id)}`,
         );
-        const outgoingUrls = identityIds.map((id) => `${base}&sender_id=${encodeURIComponent(id)}`);
+        const outgoingUrls = identityIds.map((id) => `${baseWithLimit}&sender_id=${encodeURIComponent(id)}`);
         const scopedProject = encodeURIComponent(projectId);
         const queuesUrl = apiClientUrl(`/api/seats/${encodeURIComponent(seatApiId)}/queues?project_id=${scopedProject}&limit=30`);
         const receiptsUrl = apiClientUrl(`/api/receipts/by-seat/${encodeURIComponent(seatApiId)}?project_id=${scopedProject}&direction=${receiptDirection}&limit=30`);
@@ -758,6 +759,31 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
     return ids;
   }, [messages, peerIds, seatIdentityIds]);
 
+  // 我的任务队列：收件给本 NPC、still open；只让最该处理的一条暴露启动/拒绝动作。
+  const myQueue = useMemo(() => {
+    const arr = (messages || []).filter((m) => {
+      if (!seatIdentityIds.has(m.recipient_id || "")) return false;
+      const t = (m.message_type || "").toLowerCase();
+      if (!["agent_command", "requirement_dispatch", "comment_message"].includes(t)) return false;
+      const s = (m.status || "").toLowerCase();
+      return ["queued", "pending", "acked", "in_progress"].includes(s);
+    });
+    const priority = (status: string) => {
+      const value = status.toLowerCase();
+      if (value === "in_progress") return 0;
+      if (value === "queued" || value === "pending") return 1;
+      if (value === "acked") return 2;
+      return 2;
+    };
+    return arr.slice().sort((a, b) => {
+      const pa = priority(a.status || "");
+      const pb = priority(b.status || "");
+      if (pa !== pb) return pa - pb;
+      return String(b.created_at || "").localeCompare(String(a.created_at || ""));
+    });
+  }, [messages, seatIdentityIds]);
+  const activeQueueMessageId = myQueue[0]?.id || null;
+
   const visible = useMemo(() => {
     const list = (messages || []).slice().reverse();
     const readable = hideNoisy
@@ -773,7 +799,8 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
       const type = (m.message_type || "").toLowerCase();
       const title = (m.title || "").toLowerCase();
       return (
-        title.includes("git 回退")
+        m.id === activeQueueMessageId
+        || title.includes("git 回退")
         || ["failed", "rejected", "completed", "done", "in_progress"].includes(status)
         || type.includes("result")
         || type.includes("ack")
@@ -786,7 +813,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
       seen.add(m.id);
       return true;
     });
-  }, [messages, hideNoisy, showFullHistory]);
+  }, [messages, hideNoisy, showFullHistory, activeQueueMessageId]);
 
   const pendingReviews = useMemo(() => {
     return (messages || [])
@@ -794,29 +821,6 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
       .slice()
       .sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")));
   }, [messages]);
-
-  // 我的任务队列：收件给本 NPC、still open、按 created_at 正序（FIFO）
-  const myQueue = useMemo(() => {
-    const arr = (messages || []).filter((m) => {
-      if (!seatIdentityIds.has(m.recipient_id || "")) return false;
-      const t = (m.message_type || "").toLowerCase();
-      if (!["agent_command", "requirement_dispatch", "comment_message"].includes(t)) return false;
-      const s = (m.status || "").toLowerCase();
-      return ["queued", "pending", "acked", "in_progress"].includes(s);
-    });
-    const priority = (status: string) => {
-      const value = status.toLowerCase();
-      if (value === "in_progress" || value === "acked") return 0;
-      if (value === "queued" || value === "pending") return 1;
-      return 2;
-    };
-    return arr.slice().sort((a, b) => {
-      const pa = priority(a.status || "");
-      const pb = priority(b.status || "");
-      if (pa !== pb) return pa - pb;
-      return String(b.created_at || "").localeCompare(String(a.created_at || ""));
-    });
-  }, [messages, seatIdentityIds]);
 
   type CollaborationEvent = {
     id: string;
@@ -2063,9 +2067,9 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
                       </div>
                       <div className={styles.queueRight}>
                         <span className={styles.queueStatus} data-status={m.status}>{m.status}</span>
-                        <div className={styles.queueActions} aria-label="派单处理">
-                          {renderRealThreadLauncher(m, "compact", isLatest)}
-                          {["queued", "pending", "acked", "in_progress"].includes((m.status || "").toLowerCase()) ? (
+                        {m.id === activeQueueMessageId ? (
+                          <div className={styles.queueActions} aria-label="派单处理">
+                            {renderRealThreadLauncher(m, "compact", isLatest)}
                             <button
                               type="button"
                               className={styles.queueActionBtn}
@@ -2076,8 +2080,10 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
                             >
                               拒绝
                             </button>
-                          ) : null}
-                        </div>
+                          </div>
+                        ) : (
+                          <small className={styles.muted}>排队中</small>
+                        )}
                       </div>
                     </li>
                   );
@@ -2347,19 +2353,23 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
                 {seatIdentityIds.has(msg.recipient_id || "")
                 && ["agent_command", "requirement_dispatch", "comment_message"].includes((msg.message_type || "").toLowerCase())
                 && ["queued", "pending", "acked", "in_progress"].includes((msg.status || "").toLowerCase()) ? (
-                  <div className={styles.messageInlineActions} aria-label="当前消息处理">
-                    {renderRealThreadLauncher(msg, "compact", visible.findIndex((item) => item.id === msg.id) === 0)}
-                    <button
-                      type="button"
-                      className={styles.queueActionBtn}
-                      data-danger="1"
-                      onClick={() => updateDispatchStatus(msg, "reject")}
-                      disabled={queueBusyId !== null}
-                      title="写入阻塞/拒绝回执"
-                    >
-                      {(msg.title || "").includes("Git 回退") ? "阻塞" : "拒绝"}
-                    </button>
-                  </div>
+                  msg.id === activeQueueMessageId ? (
+                    <div className={styles.messageInlineActions} aria-label="当前消息处理">
+                      {renderRealThreadLauncher(msg, "compact", visible.findIndex((item) => item.id === msg.id) === 0)}
+                      <button
+                        type="button"
+                        className={styles.queueActionBtn}
+                        data-danger="1"
+                        onClick={() => updateDispatchStatus(msg, "reject")}
+                        disabled={queueBusyId !== null}
+                        title="写入阻塞/拒绝回执"
+                      >
+                        {(msg.title || "").includes("Git 回退") ? "阻塞" : "拒绝"}
+                      </button>
+                    </div>
+                  ) : (
+                    <small className={styles.muted}>已在指令队列中；先处理队列顶部那条，避免误启动旧任务。</small>
+                  )
                 ) : null}
               </div>
             );
