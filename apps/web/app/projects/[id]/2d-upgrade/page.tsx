@@ -5,6 +5,9 @@ import {
   getCurrentAuthState,
   getProjectComputerNodesState,
   getProjectMembersState,
+  getProjectKnowledgeDocumentsState,
+  getProjectSkillsState,
+  getSeatSkillAssignmentsState,
   getProjectState,
   getProjectThreadWorkstationsState,
   getProjectWorkstationsState,
@@ -128,7 +131,7 @@ export default async function Project2dUpgradePage({
     redirect(`/projects?tab=projects&team_error=${encodeURIComponent("这个项目不存在，或者你没有被授权访问。")}`);
   }
 
-  const [authState, taskState, requirementState, messageState, nodeState, workstationState, projectWorkstationsState, memberState, usage] = await Promise.all([
+  const [authState, taskState, requirementState, messageState, nodeState, workstationState, projectWorkstationsState, memberState, knowledgeDocumentState, formalSkillState, seatSkillAssignmentState, usage] = await Promise.all([
     safeLoad(getCurrentAuthState(), { data: null, status: 500, error: null }),
     safeLoad(getTasksDataScopedState({ projectIds: [params.id] }), { data: [], status: 500, error: null }),
     safeLoad(getRequirementsState({ projectIds: [params.id] }), { data: [], status: 500, error: null }),
@@ -137,6 +140,9 @@ export default async function Project2dUpgradePage({
     safeLoad(getProjectThreadWorkstationsState(params.id), { data: [], status: 500, error: null }),
     safeLoad(getProjectWorkstationsState(params.id), { data: [], status: 500, error: null }),
     safeLoad(getProjectMembersState(params.id), { data: [], status: 500, error: null }),
+    safeLoad(getProjectKnowledgeDocumentsState(params.id), { data: [], status: 500, error: null }),
+    safeLoad(getProjectSkillsState(params.id), { data: [], status: 500, error: null }),
+    safeLoad(getSeatSkillAssignmentsState(params.id), { data: [], status: 500, error: null }),
     safeLoad(getUsageData(), []),
   ]);
 
@@ -145,7 +151,28 @@ export default async function Project2dUpgradePage({
     project.collaboration_config && typeof project.collaboration_config === "object" && !Array.isArray(project.collaboration_config)
       ? (project.collaboration_config as AnyRecord)
       : {};
-  const projectSkills = Array.isArray(collaborationConfig.skill_library) ? (collaborationConfig.skill_library as AnyRecord[]) : [];
+  const legacyProjectSkills = Array.isArray(collaborationConfig.skill_library) ? (collaborationConfig.skill_library as AnyRecord[]) : [];
+  const formalProjectSkills = Array.isArray(formalSkillState.data) ? formalSkillState.data : [];
+  const projectSkills = [
+    ...formalProjectSkills.map((skill) => ({
+      ...skill,
+      id: skill.skill_id ?? skill.id,
+      label: skill.label ?? skill.name,
+      note: skill.description ?? skill.note,
+      source: skill.source ?? "formal",
+      metadata: {
+        ...(skill.metadata && typeof skill.metadata === "object" ? skill.metadata : {}),
+        repo_relative_path: skill.repo_relative_path ?? null,
+        exists_in_repo: skill.exists_in_repo ?? null,
+        last_synced_at: skill.last_synced_at ?? null,
+        formal_resource_id: skill.id,
+      },
+    })),
+    ...legacyProjectSkills.filter((legacy) => {
+      const legacyId = text(legacy.id ?? legacy.skill_id, "").toLowerCase();
+      return legacyId && !formalProjectSkills.some((formal) => text(formal.skill_id ?? formal.id, "").toLowerCase() === legacyId);
+    }),
+  ];
   const inheritedSkillsByNode = new Map<string, string[]>();
   const inheritedSkillsByWorkstation = new Map<string, string[]>();
   const workstationProfiles =
@@ -171,6 +198,23 @@ export default async function Project2dUpgradePage({
     if (id) projectWorkstationNameById.set(id, String(ws.name ?? id));
   }
   const members = Array.isArray(memberState.data) ? memberState.data : [];
+  const knowledgeDocuments = Array.isArray(knowledgeDocumentState.data) ? knowledgeDocumentState.data : [];
+  const seatSkillAssignments = Array.isArray(seatSkillAssignmentState.data) ? seatSkillAssignmentState.data : [];
+  const knowledgeByOwner = new Map<string, AnyRecord[]>();
+  for (const doc of knowledgeDocuments) {
+    const ownerKey = `${text(doc.owner_type, "")}:${text(doc.owner_id, "")}`;
+    if (!knowledgeByOwner.has(ownerKey)) knowledgeByOwner.set(ownerKey, []);
+    knowledgeByOwner.get(ownerKey)!.push(doc);
+  }
+  const skillsBySeat = new Map<string, string[]>();
+  for (const assignment of seatSkillAssignments) {
+    const seatId = text(assignment.seat_id, "");
+    const skillId = text(assignment.skill_id, "");
+    if (!seatId || !skillId || text(assignment.status, "active") !== "active") continue;
+    const list = skillsBySeat.get(seatId) ?? [];
+    list.push(skillId);
+    skillsBySeat.set(seatId, list);
+  }
   const workshopStationRows = normalizeDevelopmentWorkshopStations(collaborationConfig.development_workshop_stations);
   const activeTasks = tasks.filter((task) => !isDoneStatus(task.status));
   const blockedTasks = tasks.filter((task) => isBlockedStatus(task.status));
@@ -309,6 +353,18 @@ export default async function Project2dUpgradePage({
         const providerId = text(workstation.ai_provider_id ?? metadata.ai_provider_id ?? metadata.provider_id, "npc");
         const workstationId = text(workstation.workstation_id ?? metadata.workstation_id, "");
         const workstationName = workstationId ? projectWorkstationNameById.get(workstationId) ?? "" : "";
+        const seatId = text(workstation.id ?? workstation.row_id ?? workstation.config_id, "");
+        const formalSkillLoadout = [
+          ...(skillsBySeat.get(seatId) ?? []),
+          ...(skillsBySeat.get(text(workstation.config_id, "")) ?? []),
+        ].filter(Boolean);
+        const formalKnowledgeDocs = [
+          ...(knowledgeByOwner.get(`seat:${seatId}`) ?? []),
+          ...(knowledgeByOwner.get(`seat:${text(workstation.config_id, "")}`) ?? []),
+        ];
+        const formalKnowledgeSummary = formalKnowledgeDocs.length
+          ? `GitHub 知识文档：${formalKnowledgeDocs.map((doc) => text(doc.repo_relative_path, "")).filter(Boolean).slice(0, 3).join(" / ")}${formalKnowledgeDocs.length > 3 ? ` 等 ${formalKnowledgeDocs.length} 份` : ""}`
+          : "";
         return {
           id: text(workstation.id ?? workstation.workstation_id ?? workstation.thread_id, `npc-${index + 1}`),
           rowId: text(workstation.row_id ?? workstation.rowId, ""),
@@ -331,7 +387,7 @@ export default async function Project2dUpgradePage({
           avatarKey: text(workstation.sprite_key ?? metadata.avatar_key ?? metadata.sprite_key, "a-agent-lab-npc"),
           mapX: numberOrNull(workstation.x ?? metadata.map_x ?? metadata.x),
           mapY: numberOrNull(workstation.y ?? metadata.map_y ?? metadata.y),
-          skillLoadout: stringArray(workstation.skill_loadout ?? metadata.skill_loadout),
+          skillLoadout: Array.from(new Set([...stringArray(workstation.skill_loadout ?? metadata.skill_loadout), ...formalSkillLoadout])),
           inheritedSkills: (() => {
             const node = text(workstation.computer_node_id ?? metadata.computer_node_id, "");
             const logicalWorkstation = text(workstation.workstation_id ?? metadata.workstation_id, "");
@@ -341,7 +397,7 @@ export default async function Project2dUpgradePage({
                 ? (inheritedSkillsByNode.get(node) ?? [])
                 : [];
           })(),
-          knowledgeSummary: text(npcKnowledge.summary ?? metadata.knowledge_summary, ""),
+          knowledgeSummary: text(npcKnowledge.summary ?? metadata.knowledge_summary, formalKnowledgeSummary),
           knowledgeHandoffPath: text(npcKnowledge.handoff_path ?? metadata.knowledge_handoff_path, ""),
         };
       })}
@@ -372,7 +428,12 @@ export default async function Project2dUpgradePage({
         name: text(skill.name ?? skill.title ?? skill.label, `Skill ${index + 1}`),
         type: text(skill.category ?? skill.source ?? skill.type, "项目 Skill"),
         status: text(skill.status, "available"),
-        body: text(skill.note ?? skill.description ?? skill.summary ?? skill.instructions, ""),
+        body: (() => {
+          const base = text(skill.note ?? skill.description ?? skill.summary ?? skill.instructions, "");
+          const repoPath = text(metadataOf(skill).repo_relative_path, "");
+          const repoNote = repoPath ? `GitHub 路径：${repoPath}${metadataOf(skill).exists_in_repo === true ? " / 已确认存在" : ""}` : "";
+          return [base, repoNote].filter(Boolean).join(" ｜ ");
+        })(),
       }))}
       teamNotice={searchText(searchParams?.team_notice)}
       teamError={searchText(searchParams?.team_error)}

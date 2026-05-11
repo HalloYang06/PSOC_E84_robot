@@ -47,7 +47,17 @@ class Project(Base):
     workstations: Mapped[list["ProjectWorkstation"]] = relationship(
         back_populates="project", cascade="all, delete-orphan"
     )
+    knowledge_documents: Mapped[list["ProjectKnowledgeDocument"]] = relationship(
+        back_populates="project", cascade="all, delete-orphan"
+    )
+    skills: Mapped[list["ProjectSkill"]] = relationship(
+        back_populates="project", cascade="all, delete-orphan"
+    )
+    seat_skill_assignments: Mapped[list["SeatSkillAssignment"]] = relationship(
+        back_populates="project", cascade="all, delete-orphan"
+    )
 
 
 from .task import Task  # noqa: E402  (relationship target)
 from .project_collaboration import ProjectAIProvider, ProjectComputerNode, ProjectThreadWorkstation, ProjectWorkstation  # noqa: E402
+from .project_knowledge import ProjectKnowledgeDocument, ProjectSkill, SeatSkillAssignment  # noqa: E402

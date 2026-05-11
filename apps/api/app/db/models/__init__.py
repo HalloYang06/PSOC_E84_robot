@@ -7,6 +7,7 @@ from .handoff import Handoff
 from .message import Message
 from .project import Project
 from .project_collaboration import ProjectAIProvider, ProjectComputerNode, ProjectThreadWorkstation, ProjectWorkstation
+from .project_knowledge import ProjectKnowledgeDocument, ProjectSkill, SeatSkillAssignment
 from .project_invite import ProjectInvite
 from .project_member import ProjectMember
 from .requirement import Requirement, RequirementMessage
@@ -23,6 +24,9 @@ __all__ = [
     "ProjectComputerNode",
     "ProjectThreadWorkstation",
     "ProjectWorkstation",
+    "ProjectKnowledgeDocument",
+    "ProjectSkill",
+    "SeatSkillAssignment",
     "User",
     "ProjectMember",
     "ProjectInvite",

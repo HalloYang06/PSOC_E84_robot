@@ -8,7 +8,7 @@ import socket
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.common.errors import AppError
@@ -232,7 +232,7 @@ def health_short(request: Request) -> dict[str, object]:
 
 
 @app.get("/static/seat-mcp-server.py")
-def serve_seat_mcp_server() -> "Response":
+def serve_seat_mcp_server() -> Response:
     """Expose seat-mcp-server.py for one-shot setup script consumption.
 
     Used by scripts/setup-seat-mcp.{ps1,sh} so worker PCs can pull a fresh copy
@@ -240,7 +240,6 @@ def serve_seat_mcp_server() -> "Response":
     the file is published source code, not a secret."""
     from pathlib import Path
     from fastapi import HTTPException
-    from fastapi.responses import Response
 
     candidates = [
         Path(__file__).resolve().parents[3] / "scripts" / "seat-mcp-server" / "server.py",

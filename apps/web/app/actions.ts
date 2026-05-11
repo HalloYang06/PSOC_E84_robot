@@ -4180,6 +4180,16 @@ export async function 创建项目Skill(projectId: string, formData: FormData) {
       recommended_for: recommendedFor.length ? recommendedFor : (recommendedPreset?.recommendedFor ?? []),
     };
 
+    await postJson(`/api/knowledge/projects/${projectId}/skills`, {
+      skill_id: nextSkill.id,
+      label: nextSkill.label,
+      source: nextSkill.source,
+      category: "custom",
+      description: nextSkill.note,
+      recommended_for: nextSkill.recommended_for,
+      exists_in_repo: false,
+    });
+
     await patchJson(`/api/projects/${projectId}`, {
       collaboration_config: {
         ...collaborationConfig,

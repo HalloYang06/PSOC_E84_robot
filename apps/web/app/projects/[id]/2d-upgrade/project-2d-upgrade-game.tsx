@@ -4052,6 +4052,10 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             <p>支持从 GitHub 导入 skill，写中文说明、分类和适用职业；NPC 装配时从这里索引。</p>
           </article>
           <article className={styles.panelCard}>
+            <span>项目 Skill 条目</span>
+            {renderList(skills, "暂无项目 Skill。先从 GitHub 导入，或创建一个适合 Boss/NPC 的 Skill。")}
+          </article>
+          <article className={styles.panelCard}>
             <span>固定必备 Skill</span>
             <ul className={styles.panelList}>
               <li><b>截图验收</b><small>每个 NPC 提交前必须用户视角验证。</small></li>

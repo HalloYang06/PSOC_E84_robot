@@ -779,6 +779,33 @@ export async function getKnowledgeData() {
   return [];
 }
 
+export async function getProjectKnowledgeDocumentsState(projectId: string): Promise<ApiLoadState<any[]>> {
+  try {
+    const data = asArray<any>(await fetchJson<any>(`/api/knowledge/projects/${projectId}/documents`));
+    return okState(Array.isArray(data) ? data : []);
+  } catch (error) {
+    return errorState(error, [], "PROJECT_KNOWLEDGE_DOCUMENTS_UNAVAILABLE");
+  }
+}
+
+export async function getProjectSkillsState(projectId: string): Promise<ApiLoadState<any[]>> {
+  try {
+    const data = asArray<any>(await fetchJson<any>(`/api/knowledge/projects/${projectId}/skills`));
+    return okState(Array.isArray(data) ? data : []);
+  } catch (error) {
+    return errorState(error, [], "PROJECT_SKILLS_UNAVAILABLE");
+  }
+}
+
+export async function getSeatSkillAssignmentsState(projectId: string): Promise<ApiLoadState<any[]>> {
+  try {
+    const data = asArray<any>(await fetchJson<any>(`/api/knowledge/projects/${projectId}/seat-skill-assignments`));
+    return okState(Array.isArray(data) ? data : []);
+  } catch (error) {
+    return errorState(error, [], "SEAT_SKILL_ASSIGNMENTS_UNAVAILABLE");
+  }
+}
+
 export async function getUsersData() {
   try {
     const data = asArray<any>(await fetchJson<any>("/api/auth/users"));
