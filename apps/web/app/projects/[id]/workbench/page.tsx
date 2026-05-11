@@ -88,7 +88,7 @@ function localGitState(localPath: string) {
 export default async function WorkbenchPage({ params, searchParams }: { params: { id: string }; searchParams?: { embed?: string; seat?: string; team_notice?: string; team_error?: string } }) {
   const auth = await getCurrentAuthState();
   if (!auth.data?.user) {
-    redirect(`/login?next=/projects/${params.id}/workbench`);
+    redirect(`/login?returnTo=${encodeURIComponent(`/projects/${params.id}/workbench`)}`);
   }
 
   const projectState = await getProjectState(params.id);
