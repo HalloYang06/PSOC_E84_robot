@@ -255,6 +255,10 @@ def test_workstation_progress_marks_command_in_progress_and_dedupes_receipt() ->
     completed = complete_response.json()["data"]
     assert completed["command"]["status"] == "completed"
     assert completed["receipt"]["message_type"] == "agent_result"
+    with SessionLocal() as db:
+        progress_message = db.get(CollaborationMessage, progress_receipt_id)
+        assert progress_message is not None
+        assert progress_message.status == "completed"
 
 
 def test_list_messages_repairs_stale_launch_ack_after_completed_command() -> None:

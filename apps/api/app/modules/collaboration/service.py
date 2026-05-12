@@ -1761,11 +1761,11 @@ def _repair_launch_ack_status_consistency(db: Session, messages: list[Collaborat
     source_ids: set[str] = set()
     open_launch_acks: list[CollaborationMessage] = []
     for message in messages:
-        if (message.message_type or "") != "agent_ack":
+        if (message.message_type or "") not in {"agent_ack", "agent_progress"}:
             continue
         if (message.status or "") not in {"queued", "pending", "acked", "in_progress"}:
             continue
-        if "单次线程处理已启动" in str(message.title or ""):
+        if (message.message_type or "") == "agent_ack" and "单次线程处理已启动" in str(message.title or ""):
             open_launch_acks.append(message)
         extra_data = _metadata_dict(message.extra_data)
         source_id = str(extra_data.get("source_message_id") or "").strip()
@@ -2234,7 +2234,7 @@ def complete_workstation_command(
     )
     db.query(CollaborationMessage).filter(
         CollaborationMessage.project_id == message.project_id,
-        CollaborationMessage.message_type == "agent_ack",
+        CollaborationMessage.message_type.in_(["agent_ack", "agent_progress"]),
         CollaborationMessage.status.in_(["queued", "pending", "acked", "in_progress"]),
         CollaborationMessage.extra_data["source_message_id"].as_string() == message.id,
     ).update({"status": "completed" if payload.result_status == "completed" else "failed"}, synchronize_session=False)
