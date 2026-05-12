@@ -13,4 +13,4 @@ def test_health() -> None:
     assert payload["data"]["status"] == "ok"
     assert isinstance(payload["data"]["pid"], int)
     assert isinstance(payload["data"]["local_services"], list)
-    assert {item["port"] for item in payload["data"]["local_services"]} >= {3000, 8010, 8011}
+    assert {item["port"] for item in payload["data"]["local_services"]} >= {3000, 3001, 8010, 8011}

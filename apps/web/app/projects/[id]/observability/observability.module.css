@@ -182,6 +182,64 @@
   gap: 10px;
 }
 
+.servicePanel {
+  display: grid;
+  gap: 14px;
+  padding: 0 56px 34px;
+}
+
+.serviceGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  background: rgba(166, 191, 255, 0.14);
+}
+
+.serviceGrid article {
+  min-height: 148px;
+  padding: 18px;
+  background: #070d14;
+}
+
+.serviceGrid span {
+  color: #a6bfff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.serviceGrid strong {
+  display: block;
+  margin: 10px 0 8px;
+  word-break: break-word;
+  font-size: 20px;
+}
+
+.serviceGrid p {
+  margin: 0;
+  color: rgba(241, 247, 255, 0.64);
+  line-height: 1.55;
+}
+
+.portList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.portList span {
+  padding: 7px 10px;
+  border: 1px solid rgba(166, 191, 255, 0.22);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(241, 247, 255, 0.72);
+  font-size: 12px;
+}
+
+.portList span[data-live="1"] {
+  border-color: rgba(131, 247, 207, 0.45);
+  color: #c9ffef;
+}
+
 .referencePanel {
   display: grid;
   gap: 14px;
@@ -223,6 +281,15 @@
   .referencePanel {
     padding-left: 24px;
     padding-right: 24px;
+  }
+
+  .servicePanel {
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+
+  .serviceGrid {
+    grid-template-columns: 1fr;
   }
 }
 

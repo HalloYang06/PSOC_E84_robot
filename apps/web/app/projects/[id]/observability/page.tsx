@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
   getCollaborationMessagesState,
+  getApiHealthState,
   getCurrentAuthState,
   getProjectComputerNodesState,
   getProjectScorecardState,
@@ -103,6 +104,7 @@ export default async function ProjectObservabilityPage({
     messagesState,
     pendingReviewState,
     scorecardState,
+    healthState,
     usageData,
   ] = await Promise.all([
     getProjectComputerNodesState(projectId),
@@ -112,6 +114,7 @@ export default async function ProjectObservabilityPage({
     getCollaborationMessagesState({ projectId }),
     getCollaborationMessagesState({ projectId, status: "pending_review" }),
     getProjectScorecardState(projectId),
+    getApiHealthState(),
     getUsageData(),
   ]);
 
@@ -129,6 +132,9 @@ export default async function ProjectObservabilityPage({
   const blockedTasks = tasks.filter((item) => /blocked|failed|error/.test(statusText(item.status))).length;
   const activeTasks = tasks.filter((item) => /active|running|in_progress|queued/.test(statusText(item.status))).length;
   const sc = scorecardState.data as AnyRecord | null;
+  const health = (healthState.data ?? {}) as AnyRecord;
+  const localServices = asArray<AnyRecord>(health.local_services ?? health.localServices);
+  const listeningPorts = localServices.filter((item) => Boolean(item.listening)).map((item) => text(item.port, ""));
   const overall = (sc?.overall ?? {}) as AnyRecord;
   const grade = text(overall.grade, "-");
   const returnTo = safeProjectReturnPath(projectId, searchParams?.return_to);
@@ -223,6 +229,38 @@ export default async function ProjectObservabilityPage({
             </Link>
           </div>
         </aside>
+      </section>
+
+      <section className={styles.servicePanel} aria-label="服务实例健康">
+        <div className={styles.sectionHead}>
+          <span>服务实例健康</span>
+          <h2>先确认你看的页面连的是哪个 API。</h2>
+        </div>
+        <div className={styles.serviceGrid}>
+          <article>
+            <span>API 状态</span>
+            <strong>{text(health.status, healthState.error ? "不可用" : "未知")}</strong>
+            <p>{healthState.error ? `${healthState.error.status} · ${healthState.error.message}` : "当前页面服务端读取 /api/health 的结果。"}</p>
+          </article>
+          <article>
+            <span>API 实例</span>
+            <strong>{text(health.base_url ?? health.baseUrl, "未确认")}</strong>
+            <p>PID {text(health.pid, "未知")} · version {text(health.version, "未知")}</p>
+          </article>
+          <article>
+            <span>本机端口</span>
+            <strong>{listeningPorts.length ? listeningPorts.join(" / ") : "未探测"}</strong>
+            <p>用于识别 3000/3001、8010/8011 是否同时存在旧实例。</p>
+          </article>
+        </div>
+        <div className={styles.portList}>
+          {localServices.map((item) => (
+            <span key={`${text(item.host, "127.0.0.1")}:${text(item.port, "")}`} data-live={item.listening ? "1" : "0"}>
+              {text(item.host, "127.0.0.1")}:{text(item.port, "?")} {item.listening ? "监听中" : "未监听"}
+            </span>
+          ))}
+          {!localServices.length ? <span data-live="0">API 未返回本机端口探测</span> : null}
+        </div>
       </section>
 
       <section className={styles.referencePanel}>

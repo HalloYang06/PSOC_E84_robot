@@ -744,6 +744,17 @@ export async function getCurrentAuthData() {
   return (await getCurrentAuthState()).data;
 }
 
+export async function getApiHealthState(): Promise<ApiLoadState<Record<string, any> | null>> {
+  try {
+    const data = await fetchJson<any>("/api/health");
+    const normalized = normalizeObject(data);
+    const health = normalizeObject(normalized.data ?? normalized);
+    return okState(Object.keys(health).length ? health : null);
+  } catch (error) {
+    return errorState(error, null, "API_HEALTH_UNAVAILABLE");
+  }
+}
+
 export async function getWorkspaceData() {
   try {
     return normalizeWorkspace(await fetchJsonWithAsciiSession<any>("/api/auth/workspace"));

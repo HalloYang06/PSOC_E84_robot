@@ -64,7 +64,7 @@ RUNNER_OFFLINE_SWEEP_INTERVAL_SECONDS = 60
 
 app = FastAPI(title="AI Collab Platform API", version="0.1.0")
 settings = get_settings()
-SERVICE_HEALTH_PORTS = (3000, 8010, 8011)
+SERVICE_HEALTH_PORTS = (3000, 3001, 8010, 8011)
 
 if settings.cors_allowed_origins_list and not settings.supertokens_enabled:
     app.add_middleware(
