@@ -1057,6 +1057,13 @@ export function WorkbenchClient({
           >
             AI 实验室 →
           </Link>
+          <Link
+            href={withReturnTo(`/projects/${projectId}/robotics`, sourcePath, sourceKey)}
+            className={styles.backLink}
+            title="打开 App、Linux、ROS、硬件和 VLA 机器人现场"
+          >
+            机器人现场 →
+          </Link>
         </div>
       </header>
 

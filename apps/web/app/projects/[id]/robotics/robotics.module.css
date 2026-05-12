@@ -1,0 +1,321 @@
+.shell {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 82% 18%, rgba(85, 210, 255, 0.16), transparent 28%),
+    linear-gradient(135deg, #071114 0%, #0b1713 48%, #12140b 100%);
+  color: #effff8;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+.emptyPage {
+  min-height: 100vh;
+  padding: 32px;
+  background: #071114;
+  color: #effff8;
+}
+
+.shell a,
+.emptyPage a {
+  color: inherit;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 20px;
+  border-bottom: 1px solid rgba(191, 255, 225, 0.16);
+  background: rgba(5, 12, 13, 0.86);
+  backdrop-filter: blur(18px);
+}
+
+.topbar nav,
+.topbar div,
+.heroActions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.topbar a,
+.topbar span,
+.heroActions a {
+  padding: 7px 10px;
+  border: 1px solid rgba(191, 255, 225, 0.24);
+  border-radius: 8px;
+  background: rgba(191, 255, 225, 0.08);
+  text-decoration: none;
+  font-size: 12px;
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 420px;
+  gap: 34px;
+  padding: 58px 56px 34px;
+  border-bottom: 1px solid rgba(191, 255, 225, 0.14);
+}
+
+.heroText {
+  display: grid;
+  align-content: center;
+  gap: 16px;
+  max-width: 780px;
+}
+
+.heroText span,
+.sectionHead span,
+.lanes span {
+  color: #9fffd6;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.heroText h1 {
+  margin: 0;
+  max-width: 700px;
+  font-size: 56px;
+  line-height: 1.02;
+  letter-spacing: 0;
+}
+
+.heroText p {
+  margin: 0;
+  max-width: 680px;
+  color: rgba(239, 255, 248, 0.72);
+  font-size: 17px;
+  line-height: 1.65;
+}
+
+.heroActions a:first-child {
+  border-color: rgba(255, 218, 122, 0.6);
+  background: #ffda7a;
+  color: #14180e;
+  font-weight: 900;
+}
+
+.radar {
+  display: grid;
+  gap: 18px;
+  padding: 24px;
+  border: 1px solid rgba(191, 255, 225, 0.22);
+  border-radius: 22px;
+  background:
+    repeating-radial-gradient(circle at 50% 44%, rgba(159, 255, 214, 0.12) 0 1px, transparent 1px 38px),
+    rgba(7, 17, 18, 0.82);
+}
+
+.radarDial {
+  display: grid;
+  place-items: center;
+  align-self: center;
+  justify-self: center;
+  width: 220px;
+  height: 220px;
+  border-radius: 999px;
+  background:
+    conic-gradient(#9fffd6 var(--ready), rgba(255, 255, 255, 0.09) 0),
+    #071114;
+}
+
+.radarDial strong {
+  font-size: 50px;
+}
+
+.radarDial span {
+  color: rgba(239, 255, 248, 0.64);
+  font-size: 12px;
+}
+
+.radar dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0;
+  background: rgba(191, 255, 225, 0.14);
+}
+
+.radar div {
+  padding: 12px;
+  background: rgba(4, 13, 14, 0.94);
+}
+
+.radar dt {
+  color: rgba(239, 255, 248, 0.58);
+  font-size: 11px;
+}
+
+.radar dd {
+  margin: 6px 0 0;
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.lanes {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  background: rgba(191, 255, 225, 0.16);
+}
+
+.lanes article {
+  min-height: 164px;
+  padding: 22px;
+  background: rgba(6, 16, 17, 0.96);
+}
+
+.lanes strong {
+  display: block;
+  margin-top: 16px;
+  font-size: 20px;
+}
+
+.lanes p,
+.timeline li,
+.computerList p,
+.gateGrid p,
+.referenceGrid p {
+  color: rgba(239, 255, 248, 0.68);
+  line-height: 1.58;
+}
+
+.board {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 32px;
+  padding: 34px 56px 56px;
+}
+
+.timeline {
+  position: sticky;
+  top: 82px;
+  height: fit-content;
+  padding: 20px;
+  border-left: 2px solid #9fffd6;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.timeline strong {
+  font-size: 16px;
+}
+
+.timeline ol {
+  display: grid;
+  gap: 14px;
+  margin: 18px 0 0;
+  padding-left: 18px;
+}
+
+.mainGrid {
+  display: grid;
+  gap: 32px;
+}
+
+.sectionHead {
+  display: grid;
+  gap: 8px;
+  max-width: 760px;
+  margin-bottom: 16px;
+}
+
+.sectionHead h2 {
+  margin: 0;
+  font-size: 30px;
+  letter-spacing: 0;
+}
+
+.computerList,
+.gateGrid,
+.referenceGrid {
+  display: grid;
+  gap: 12px;
+}
+
+.computerList {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.gateGrid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.referenceGrid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.computerList article,
+.gateGrid article,
+.referenceGrid a {
+  min-height: 136px;
+  padding: 18px;
+  border-top: 2px solid rgba(159, 255, 214, 0.68);
+  background: rgba(255, 255, 255, 0.045);
+  text-decoration: none;
+}
+
+.referenceGrid a:hover {
+  background: rgba(159, 255, 214, 0.08);
+}
+
+.computerList strong,
+.gateGrid strong,
+.referenceGrid strong {
+  font-size: 16px;
+}
+
+.referenceGrid span {
+  display: block;
+  margin-bottom: 10px;
+  color: #9fffd6;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.emptyHint {
+  margin: 0;
+  color: rgba(239, 255, 248, 0.64);
+}
+
+@media (max-width: 1080px) {
+  .hero,
+  .board {
+    grid-template-columns: 1fr;
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+
+  .timeline {
+    position: static;
+  }
+
+  .lanes,
+  .computerList,
+  .gateGrid,
+  .referenceGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .topbar,
+  .heroActions {
+    align-items: flex-start;
+  }
+
+  .heroText h1 {
+    font-size: 38px;
+  }
+
+  .radar dl,
+  .lanes,
+  .computerList,
+  .gateGrid,
+  .referenceGrid {
+    grid-template-columns: 1fr;
+  }
+}

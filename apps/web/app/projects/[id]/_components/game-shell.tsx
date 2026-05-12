@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import styles from "./game-shell.module.css";
 
-type PanelKey = "cockpit" | "workbench" | "datasets" | "ai-lab" | "company";
+type PanelKey = "cockpit" | "workbench" | "datasets" | "ai-lab" | "robotics" | "company";
 
 type GameShellProps = {
   projectId: string;
@@ -19,6 +19,7 @@ const PANELS: { key: PanelKey; label: string; title: string; path: (id: string) 
   { key: "workbench", label: "🧑‍💼 工作台", title: "NPC 工作台 · 瓷砖主操作面", path: (id) => `/projects/${id}/workbench` },
   { key: "datasets", label: "🧪 数据工场", title: "训练数据采集、标注、质检和导出", path: (id) => `/projects/${id}/datasets` },
   { key: "ai-lab", label: "⚡ AI 实验室", title: "AI 调试、仿真和审批边界", path: (id) => `/projects/${id}/ai-lab` },
+  { key: "robotics", label: "🤖 机器人现场", title: "App、Linux、ROS、硬件和 VLA 现场", path: (id) => `/projects/${id}/robotics` },
   { key: "company", label: "🏢 公司层", title: "工位长会议室", path: (id) => `/projects/${id}/company` },
 ];
 

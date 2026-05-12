@@ -211,6 +211,7 @@ function labelProjectReturnPath(value: string): string {
   if (value.includes("/workbench")) return "返回 NPC 工作台";
   if (value.includes("/datasets")) return "返回数据工场";
   if (value.includes("/ai-lab")) return "返回 AI 实验室";
+  if (value.includes("/robotics")) return "返回机器人现场";
   if (value.includes("/company")) return "返回公司层";
   if (value.includes("/cockpit")) return "返回驾驶舱";
   if (value.includes("/unity-client")) return "返回 Unity 工作台";
@@ -2229,7 +2230,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
     return `/projects/${project.id}/2d-upgrade?${params.toString()}`;
   }
 
-  function surfacePath(surface: "workbench" | "company" | "datasets" | "ai-lab", tab: ModuleTab = activePanel ?? "exchange", actionId = activeAction?.id) {
+  function surfacePath(surface: "workbench" | "company" | "datasets" | "ai-lab" | "robotics", tab: ModuleTab = activePanel ?? "exchange", actionId = activeAction?.id) {
     const params = new URLSearchParams({
       return_to: returnPath(tab, actionId),
       from: "2d-upgrade",
@@ -4527,6 +4528,13 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                 AI 实验室 →
               </Link>
               <Link
+                href={surfacePath("robotics")}
+                className={styles.cockpitGhost}
+                title="App、Linux、ROS、硬件、VLA 和多电脑机器人现场"
+              >
+                机器人现场 →
+              </Link>
+              <Link
                 href={surfacePath("company")}
                 className={styles.cockpitGhost}
                 title="公司层：只看每个工位的工位长（👑），跨工位转交都从这里发起"
@@ -4635,6 +4643,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
               <div>
                 <Link href={surfacePath("datasets", "development-workshop")}>打开数据工场</Link>
                 <Link href={surfacePath("ai-lab", "ai-debug")}>打开 AI 实验室</Link>
+                <Link href={surfacePath("robotics", "machine-room")}>机器人现场</Link>
                 <button type="button" onClick={() => openPanel("ai-simulation", "工作台结构")}>AI 仿真</button>
                 <button type="button" onClick={() => openPanel("serial-tv", "工作台结构")}>串口调试</button>
               </div>
