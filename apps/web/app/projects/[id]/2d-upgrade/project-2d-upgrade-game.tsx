@@ -11,6 +11,7 @@ import {
   createDevelopmentWorkshopStation,
   createNpcWorkstationSeat,
   createProjectSkill,
+  启用Npc自造Skill,
   fetchNpcHandoffContext,
   fetchProjectClaudeContext,
   fetchProjectScorecard,
@@ -66,12 +67,19 @@ type GameStats = {
 
 type FeedItem = {
   id: string;
+  skillId?: string;
   rowId?: string;
   title?: string;
   name?: string;
   type?: string;
   body?: string;
   status: string;
+  repoRelativePath?: string;
+  source?: string;
+  category?: string;
+  draftStatus?: string;
+  authorSeatId?: string;
+  assignedSeatIds?: string[];
   at?: string;
   providerId?: string;
   providerLabel?: string;
@@ -700,10 +708,20 @@ function statusLabel(value?: string) {
   const normalized = String(value ?? "").toLowerCase();
   if (["done", "completed", "archived"].includes(normalized)) return "完成";
   if (["blocked", "failed", "error"].includes(normalized)) return "阻塞";
+  if (normalized === "draft") return "草稿";
+  if (normalized === "available") return "可用";
   if (["active", "running", "in_progress", "queued"].includes(normalized)) return "进行中";
   if (["online", "ready"].includes(normalized)) return "在线";
   if (["offline", "idle"].includes(normalized)) return "空闲";
   return value || "待处理";
+}
+
+function skillLifecycleLabel(skill: FeedItem) {
+  const draftStatus = String(skill.draftStatus || skill.status || "").toLowerCase();
+  if (draftStatus === "draft") return "草稿待确认";
+  if (draftStatus === "ready" || skill.status === "active") return "已启用";
+  if (skill.source === "npc-authored") return "NPC 沉淀";
+  return statusLabel(skill.status);
 }
 
 function automationLabel(item?: FeedItem) {
@@ -2443,6 +2461,35 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
     );
   }
 
+  function renderSkillLifecycleList(items: FeedItem[], emptyText: string) {
+    const visible = items.slice(0, 10);
+    return (
+      <ul className={styles.skillLifecycleList}>
+        {visible.length ? visible.map((skill) => {
+          const assignedCount = skill.assignedSeatIds?.length ?? 0;
+          return (
+            <li key={skill.id} data-source={skill.source || skill.type} data-draft={skill.draftStatus || skill.status}>
+              <div>
+                <b>{itemTitle(skill)}</b>
+                <small>{shortCopy(itemBody(skill), "暂无说明", 96)}</small>
+                {skill.repoRelativePath ? <small>路径：{skill.repoRelativePath}</small> : null}
+              </div>
+              <span>{skillLifecycleLabel(skill)}</span>
+              <small>{assignedCount ? `已关联 ${assignedCount} 个 NPC` : "未关联 NPC"}</small>
+            </li>
+          );
+        }) : (
+          <li>
+            <div>
+              <b>{emptyText}</b>
+              <small>从 GitHub 导入，或让 NPC 在项目开发中沉淀 Skill 草稿。</small>
+            </div>
+          </li>
+        )}
+      </ul>
+    );
+  }
+
   function renderMetricGrid() {
     return (
       <div className={styles.metricGrid}>
@@ -3661,6 +3708,37 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
               <SubmitButton label="沉淀为 Skill 草稿" disabled={!npcSeats.length} />
             </form>
           </section>
+
+          <section className={styles.npcAuthoredSkillPanel} aria-label="NPC 自造 Skill 草稿治理">
+            <div className={styles.realNote}>
+              <b>草稿治理</b>
+              <p>草稿先保留为 NPC 的候选能力；确认稳定后启用，后续派单才把它当作长期角色特性使用。</p>
+            </div>
+            {skills.filter((skill) => skill.source === "npc-authored").length ? (
+              <ul className={styles.skillLifecycleList}>
+                {skills.filter((skill) => skill.source === "npc-authored").map((skill) => {
+                  const isDraft = String(skill.draftStatus || skill.status).toLowerCase() === "draft";
+                  return (
+                    <li key={`npc-authored-${skill.id}`} data-source={skill.source} data-draft={skill.draftStatus || skill.status}>
+                      <div>
+                        <b>{itemTitle(skill)}</b>
+                        <small>{skillLifecycleLabel(skill)} / {skill.repoRelativePath || "未登记仓库相对路径"}</small>
+                        <small>{shortCopy(itemBody(skill), "暂无说明", 110)}</small>
+                      </div>
+                      <form action={启用Npc自造Skill.bind(null, project.id, skill.skillId || skill.id)}>
+                        <input type="hidden" name="return_to" value={returnPath("skills", action.id)} />
+                        <button type="submit" disabled={!isDraft} aria-label={`${isDraft ? "确认可用" : "已启用"}：${itemTitle(skill)}`}>
+                          {isDraft ? "确认可用" : "已启用"}
+                        </button>
+                      </form>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <p className={styles.emptyHint}>当前还没有 NPC 自造 Skill 草稿。先让 Boss、前端或 QA NPC 在开发中沉淀一条。</p>
+            )}
+          </section>
         </div>
       );
     }
@@ -4210,7 +4288,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
           </article>
           <article className={styles.panelCard}>
             <span>项目 Skill 条目</span>
-            {renderList(skills, "暂无项目 Skill。先从 GitHub 导入，或创建一个适合 Boss/NPC 的 Skill。")}
+            {renderSkillLifecycleList(skills, "暂无项目 Skill")}
           </article>
           <article className={styles.panelCard}>
             <span>固定必备 Skill</span>

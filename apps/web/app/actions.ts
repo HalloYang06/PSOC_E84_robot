@@ -652,6 +652,12 @@ function parseStringListAll(formData: FormData, field: string): string[] | null 
   return parseStringList(formData.get(field));
 }
 
+function normalizeUnknownStringList(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map((item) => text(item)).filter(Boolean);
+  if (typeof value === "string") return parseStringList(value) ?? [];
+  return [];
+}
+
 function normalizeStringList(value: unknown) {
   return (Array.isArray(value) ? value : typeof value === "string" ? value.split(/[\n,]/) : [])
     .map((item) => text(item))
@@ -4304,6 +4310,81 @@ export async function 删除项目Skill(projectId: string, skillId: string, form
   } catch (error) {
     rethrowRedirectError(error);
     const message = error instanceof Error ? error.message : "删除项目 Skill 失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
+export async function 启用Npc自造Skill(projectId: string, skillId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "skills");
+  try {
+    const { project } = await ensureProjectCollaborationAccess(projectId);
+    const collaborationConfig =
+      project?.collaboration_config && typeof project.collaboration_config === "object"
+        ? { ...(project.collaboration_config as Record<string, unknown>) }
+        : {};
+    const skillLibrary = Array.isArray(collaborationConfig.skill_library)
+      ? [...(collaborationConfig.skill_library as Record<string, unknown>[])]
+      : [];
+    const normalizedId = text(skillId, "").toLowerCase();
+    if (!normalizedId) {
+      throw new Error("缺少 Skill 标识");
+    }
+    const existing = skillLibrary.find((item) => text(item.id ?? item.skill_id, "").toLowerCase() === normalizedId);
+    if (!existing) {
+      throw new Error("没有在项目 Skill 仓库里找到这个草稿");
+    }
+    const extra = readRecord(existing.metadata ?? existing.extra_data ?? existing.extraData);
+    const nextSkill = {
+      ...existing,
+      status: "active",
+      metadata: {
+        ...extra,
+        draft_status: "ready",
+        activated_at: new Date().toISOString(),
+      },
+    };
+
+    await postJson(`/api/knowledge/projects/${projectId}/skills`, {
+      skill_id: text(existing.id ?? existing.skill_id, normalizedId),
+      label: text(existing.label ?? existing.name, normalizedId),
+      source: text(existing.source, "npc-authored"),
+      category: text(existing.category, "npc-authored"),
+      repo_relative_path: text(existing.repo_relative_path ?? extra.repo_relative_path, "") || `skills/${normalizedId}/SKILL.md`,
+      description: text(existing.note ?? existing.description, ""),
+      recommended_for: normalizeUnknownStringList(existing.recommended_for),
+      exists_in_repo: existing.exists_in_repo === true,
+      extra_data: nextSkill.metadata,
+    });
+
+    const authorSeatId = text(extra.author_seat_id, "");
+    if (authorSeatId) {
+      await postJson(`/api/knowledge/projects/${projectId}/seat-skill-assignments`, {
+        seat_id: authorSeatId,
+        skill_id: normalizedId,
+        assignment_type: "direct",
+        status: "active",
+        notes: "NPC 自造 Skill 已确认可用，后续派单可作为长期角色能力复用。",
+        extra_data: {
+          author_seat_id: authorSeatId,
+          draft_status: "ready",
+          activated_at: nextSkill.metadata.activated_at,
+        },
+      });
+    }
+
+    await patchJson(`/api/projects/${projectId}`, {
+      collaboration_config: {
+        ...collaborationConfig,
+        skill_library: sortProjectSkillLibrary(
+          skillLibrary.map((item) => (text(item.id ?? item.skill_id, "").toLowerCase() === normalizedId ? nextSkill : item)),
+        ),
+      },
+    });
+    revalidateProjectSurfaces(projectId);
+    redirect(withQueryValue(returnTo, "team_notice", `已启用 NPC 自造 Skill：${text(existing.label ?? existing.name, normalizedId)}`));
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "启用 NPC 自造 Skill 失败";
     redirect(withQueryValue(returnTo, "team_error", message));
   }
 }

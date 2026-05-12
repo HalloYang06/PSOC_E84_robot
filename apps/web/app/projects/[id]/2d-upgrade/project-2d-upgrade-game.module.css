@@ -1441,6 +1441,68 @@
   padding: 0;
 }
 
+.skillLifecycleList {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.skillLifecycleList li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 10px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid rgba(121, 238, 255, 0.18);
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.skillLifecycleList li[data-source="npc-authored"] {
+  border-color: rgba(255, 232, 112, 0.36);
+  background: rgba(255, 229, 98, 0.08);
+}
+
+.skillLifecycleList li[data-draft="draft"] {
+  border-style: dashed;
+}
+
+.skillLifecycleList b {
+  display: block;
+  color: #ffffff;
+  font-size: 13px;
+}
+
+.skillLifecycleList small {
+  display: block;
+  margin-top: 3px;
+  color: rgba(219, 251, 255, 0.68);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.skillLifecycleList span {
+  width: fit-content;
+  padding: 4px 9px;
+  border: 1px solid rgba(255, 231, 104, 0.38);
+  color: #ffe980;
+  font-size: 11px;
+  font-weight: 1000;
+  white-space: nowrap;
+}
+
+.skillLifecycleList form {
+  display: grid;
+  justify-items: end;
+}
+
+.skillLifecycleList button {
+  min-height: 32px;
+  padding: 0 10px;
+}
+
 .gitVersionIndexGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));

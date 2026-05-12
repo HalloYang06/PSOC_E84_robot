@@ -162,6 +162,7 @@ export default async function Project2dUpgradePage({
       source: skill.source ?? "formal",
       metadata: {
         ...(skill.metadata && typeof skill.metadata === "object" ? skill.metadata : {}),
+        ...(skill.extra_data && typeof skill.extra_data === "object" ? skill.extra_data : {}),
         repo_relative_path: skill.repo_relative_path ?? null,
         exists_in_repo: skill.exists_in_repo ?? null,
         last_synced_at: skill.last_synced_at ?? null,
@@ -200,6 +201,18 @@ export default async function Project2dUpgradePage({
   const members = Array.isArray(memberState.data) ? memberState.data : [];
   const knowledgeDocuments = Array.isArray(knowledgeDocumentState.data) ? knowledgeDocumentState.data : [];
   const seatSkillAssignments = Array.isArray(seatSkillAssignmentState.data) ? seatSkillAssignmentState.data : [];
+  const skillAssignedSeatIds = new Map<string, string[]>();
+  const skillDraftSeatIds = new Map<string, string[]>();
+  for (const assignment of seatSkillAssignments) {
+    const skillId = text(assignment.skill_id, "");
+    const seatId = text(assignment.seat_id, "");
+    const status = text(assignment.status, "active").toLowerCase();
+    if (!skillId || !seatId) continue;
+    const targetMap = status === "draft" ? skillDraftSeatIds : skillAssignedSeatIds;
+    const list = targetMap.get(skillId) ?? [];
+    list.push(seatId);
+    targetMap.set(skillId, list);
+  }
   const knowledgeByOwner = new Map<string, AnyRecord[]>();
   for (const doc of knowledgeDocuments) {
     const ownerKey = `${text(doc.owner_type, "")}:${text(doc.owner_id, "")}`;
@@ -426,18 +439,32 @@ export default async function Project2dUpgradePage({
         knowledgeHandoffPath: station.knowledgeBase.handoffPath,
         knowledgeTags: station.knowledgeBase.tags,
       }))}
-      skills={projectSkills.map((skill, index) => ({
-        id: text(skill.id ?? skill.skill_id ?? skill.slug, `skill-${index + 1}`),
-        name: text(skill.name ?? skill.title ?? skill.label, `Skill ${index + 1}`),
-        type: text(skill.category ?? skill.source ?? skill.type, "项目 Skill"),
-        status: text(skill.status, "available"),
-        body: (() => {
-          const base = text(skill.note ?? skill.description ?? skill.summary ?? skill.instructions, "");
-          const repoPath = text(metadataOf(skill).repo_relative_path, "");
-          const repoNote = repoPath ? `GitHub 路径：${repoPath}${metadataOf(skill).exists_in_repo === true ? " / 已确认存在" : ""}` : "";
-          return [base, repoNote].filter(Boolean).join(" ｜ ");
-        })(),
-      }))}
+      skills={projectSkills.map((skill, index) => {
+        const metadata = metadataOf(skill);
+        const skillId = text(skill.skill_id ?? skill.id ?? skill.slug, `skill-${index + 1}`);
+        const repoPath = text(metadata.repo_relative_path ?? skill.repo_relative_path, "");
+        const repoNote = repoPath ? `GitHub 路径：${repoPath}${metadata.exists_in_repo === true || skill.exists_in_repo === true ? " / 已确认存在" : ""}` : "";
+        const draftStatus = text(metadata.draft_status, "");
+        const assignedSeatIds = [
+          ...(skillAssignedSeatIds.get(skillId) ?? []),
+          ...(skillDraftSeatIds.get(skillId) ?? []),
+        ];
+        return {
+          id: skillId,
+          skillId,
+          rowId: text(skill.row_id ?? skill.formal_resource_id ?? metadata.formal_resource_id, ""),
+          name: text(skill.name ?? skill.title ?? skill.label, `Skill ${index + 1}`),
+          type: text(skill.category ?? skill.source ?? skill.type, "项目 Skill"),
+          source: text(skill.source ?? skill.type, ""),
+          category: text(skill.category ?? metadata.category, ""),
+          status: draftStatus || text(skill.status, "available"),
+          body: [text(skill.note ?? skill.description ?? skill.summary ?? skill.instructions, ""), repoNote].filter(Boolean).join(" ｜ "),
+          repoRelativePath: repoPath,
+          draftStatus,
+          authorSeatId: text(metadata.author_seat_id, ""),
+          assignedSeatIds,
+        };
+      })}
       knowledgeDocuments={knowledgeDocuments.map((doc, index) => ({
         id: text(doc.id, `knowledge-${index + 1}`),
         title: text(doc.title, `知识文档 ${index + 1}`),
