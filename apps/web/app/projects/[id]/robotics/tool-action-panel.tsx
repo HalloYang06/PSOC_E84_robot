@@ -88,7 +88,6 @@ export function ToolActionPanel() {
           <button type="button" data-testid={`robotics-tool-${tool.id}`} onClick={() => runAction(tool.id)}>
             {tool.platformAction}
           </button>
-          <a href={tool.github} target="_blank" rel="noreferrer">源码</a>
         </article>
       ))}
     </div>

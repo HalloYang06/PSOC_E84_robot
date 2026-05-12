@@ -600,8 +600,7 @@
   font-weight: 850;
 }
 
-.externalList button,
-.externalList a {
+.externalList button {
   min-height: 30px;
   border: 1px solid rgba(241, 208, 107, 0.44);
   border-radius: 7px;
@@ -613,15 +612,6 @@
   text-align: center;
   text-decoration: none;
   cursor: pointer;
-}
-
-.externalList a {
-  display: grid;
-  place-items: center;
-  padding: 0 8px;
-  border-color: rgba(142, 240, 199, 0.28);
-  background: rgba(142, 240, 199, 0.07);
-  color: #eefcf7;
 }
 
 .resourceList strong {
