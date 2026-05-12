@@ -1,0 +1,507 @@
+.shell {
+  min-height: 100vh;
+  background:
+    linear-gradient(180deg, rgba(9, 14, 18, 0.94), rgba(6, 12, 14, 1)),
+    repeating-linear-gradient(90deg, rgba(139, 255, 218, 0.04) 0 1px, transparent 1px 80px);
+  color: #eefcf7;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+.emptyPage {
+  min-height: 100vh;
+  padding: 32px;
+  background: #081014;
+  color: #eefcf7;
+}
+
+.shell a,
+.emptyPage a {
+  color: inherit;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 20px;
+  border-bottom: 1px solid rgba(152, 255, 224, 0.16);
+  background: rgba(5, 12, 15, 0.88);
+  backdrop-filter: blur(18px);
+}
+
+.topbarLeft,
+.topbarRight {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.navLink,
+.topbarRight span,
+.heroActions a,
+.trackList a,
+.handoffActions a {
+  border: 1px solid rgba(161, 255, 229, 0.24);
+  border-radius: 8px;
+  background: rgba(161, 255, 229, 0.08);
+  color: #dffdf2;
+  text-decoration: none;
+}
+
+.navLink {
+  padding: 7px 10px;
+  font-size: 12px;
+}
+
+.topbarRight span {
+  padding: 6px 10px;
+  color: rgba(225, 252, 245, 0.78);
+  font-size: 11px;
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(360px, 0.95fr);
+  gap: 28px;
+  min-height: 430px;
+  padding: 56px 56px 28px;
+  border-bottom: 1px solid rgba(152, 255, 224, 0.13);
+}
+
+.heroCopy {
+  display: grid;
+  align-content: center;
+  gap: 16px;
+  max-width: 760px;
+}
+
+.eyebrow,
+.sectionHead span,
+.handoffPanel span {
+  color: #8dffdd;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.hero h1 {
+  margin: 0;
+  max-width: 640px;
+  font-size: 52px;
+  line-height: 1.04;
+  letter-spacing: 0;
+}
+
+.hero p {
+  margin: 0;
+  max-width: 660px;
+  color: rgba(232, 252, 246, 0.72);
+  font-size: 17px;
+  line-height: 1.65;
+}
+
+.heroActions,
+.handoffActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.heroActions a,
+.handoffActions a,
+.trackList a {
+  padding: 10px 13px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.heroActions a:first-child {
+  border-color: rgba(255, 209, 117, 0.58);
+  background: #ffd175;
+  color: #172018;
+}
+
+.stage {
+  align-self: center;
+  min-height: 320px;
+  border: 1px solid rgba(152, 255, 224, 0.22);
+  border-radius: 18px;
+  background:
+    linear-gradient(145deg, rgba(13, 35, 32, 0.82), rgba(11, 17, 21, 0.94)),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.04) 0 1px, transparent 1px 38px);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.34);
+  overflow: hidden;
+}
+
+.stageHeader {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border-bottom: 1px solid rgba(152, 255, 224, 0.18);
+}
+
+.stageHeader span {
+  padding: 14px;
+  color: rgba(232, 252, 246, 0.72);
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.traceRail {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  min-height: 150px;
+  padding: 26px;
+}
+
+.traceRail::before {
+  content: "";
+  position: absolute;
+  left: 54px;
+  right: 54px;
+  top: 50%;
+  height: 2px;
+  background: linear-gradient(90deg, #8dffdd, #ffd175, #ff9fa3);
+}
+
+.traceRail i {
+  position: relative;
+  display: block;
+  width: 28px;
+  height: 28px;
+  place-self: center;
+  border: 2px solid #8dffdd;
+  border-radius: 999px;
+  background: #091015;
+  box-shadow: 0 0 32px rgba(141, 255, 221, 0.28);
+  animation: pulse 2.4s ease-in-out infinite;
+}
+
+.traceRail i:nth-child(2) {
+  border-color: #ffd175;
+  animation-delay: 0.28s;
+}
+
+.traceRail i:nth-child(3) {
+  border-color: #ff9fa3;
+  animation-delay: 0.56s;
+}
+
+.signalGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border-top: 1px solid rgba(152, 255, 224, 0.18);
+}
+
+.signalGrid strong,
+.signalGrid span {
+  padding: 12px 14px;
+  text-align: center;
+}
+
+.signalGrid strong {
+  font-size: 28px;
+}
+
+.signalGrid span {
+  color: rgba(232, 252, 246, 0.62);
+  font-size: 11px;
+}
+
+.resourceStrip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  background: rgba(152, 255, 224, 0.14);
+}
+
+.resourceItem {
+  display: grid;
+  gap: 8px;
+  min-height: 148px;
+  padding: 20px;
+  background: rgba(8, 17, 20, 0.96);
+  text-decoration: none;
+}
+
+.resourceItem:hover {
+  background: rgba(18, 35, 32, 0.98);
+}
+
+.resourceItem span {
+  color: #8dffdd;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.resourceItem strong {
+  font-size: 30px;
+}
+
+.resourceItem small {
+  color: rgba(232, 252, 246, 0.64);
+  line-height: 1.55;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 34px;
+  padding: 34px 56px 54px;
+}
+
+.rail {
+  position: sticky;
+  top: 80px;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  height: fit-content;
+}
+
+.rail a {
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(152, 255, 224, 0.14);
+  color: rgba(232, 252, 246, 0.72);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.content {
+  display: grid;
+  gap: 34px;
+}
+
+.debugPanel,
+.simulationPanel,
+.boundaryPanel,
+.robotPanel,
+.referencePanel,
+.handoffPanel {
+  display: grid;
+  gap: 18px;
+}
+
+.sectionHead {
+  display: grid;
+  gap: 8px;
+  max-width: 760px;
+}
+
+.sectionHead h2 {
+  margin: 0;
+  font-size: 30px;
+  letter-spacing: 0;
+}
+
+.guardGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.guardGrid article {
+  min-height: 150px;
+  padding: 18px;
+  border-top: 2px solid rgba(141, 255, 221, 0.72);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.guardGrid strong,
+.trackList strong,
+.boundaryLine strong,
+.handoffPanel strong {
+  font-size: 17px;
+}
+
+.guardGrid p,
+.trackList p,
+.boundaryLine p,
+.handoffPanel p {
+  margin: 9px 0 0;
+  color: rgba(232, 252, 246, 0.66);
+  line-height: 1.58;
+}
+
+.trackList {
+  display: grid;
+  gap: 12px;
+}
+
+.trackList article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  min-height: 138px;
+  padding: 20px;
+  border-left: 4px solid #8dffdd;
+  background: linear-gradient(90deg, rgba(141, 255, 221, 0.12), rgba(255, 255, 255, 0.03));
+}
+
+.trackList article[data-tone="amber"] {
+  border-left-color: #ffd175;
+  background: linear-gradient(90deg, rgba(255, 209, 117, 0.13), rgba(255, 255, 255, 0.03));
+}
+
+.trackList article[data-tone="rose"] {
+  border-left-color: #ff9fa3;
+  background: linear-gradient(90deg, rgba(255, 159, 163, 0.13), rgba(255, 255, 255, 0.03));
+}
+
+.trackList small {
+  display: block;
+  margin-bottom: 8px;
+  color: rgba(232, 252, 246, 0.48);
+  font-weight: 900;
+}
+
+.boundaryLine {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border: 1px solid rgba(152, 255, 224, 0.18);
+}
+
+.boundaryLine div {
+  min-height: 168px;
+  padding: 22px;
+}
+
+.boundaryLine div + div {
+  border-left: 1px solid rgba(152, 255, 224, 0.18);
+}
+
+.robotGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  background: rgba(152, 255, 224, 0.14);
+}
+
+.robotGrid article {
+  min-height: 158px;
+  padding: 20px;
+  background:
+    radial-gradient(circle at 80% 20%, rgba(141, 255, 221, 0.12), transparent 34%),
+    rgba(8, 17, 20, 0.98);
+}
+
+.robotGrid strong,
+.referenceGrid strong {
+  font-size: 16px;
+}
+
+.robotGrid p,
+.referenceGrid p {
+  margin: 10px 0 0;
+  color: rgba(232, 252, 246, 0.66);
+  line-height: 1.58;
+}
+
+.referenceGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.referenceGrid a {
+  display: grid;
+  gap: 8px;
+  min-height: 164px;
+  padding: 18px;
+  border-bottom: 2px solid rgba(141, 255, 221, 0.6);
+  background: rgba(255, 255, 255, 0.04);
+  text-decoration: none;
+}
+
+.referenceGrid a:hover {
+  background: rgba(141, 255, 221, 0.08);
+}
+
+.referenceGrid span {
+  color: rgba(141, 255, 221, 0.76);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.handoffPanel {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  padding: 24px;
+  border: 1px solid rgba(255, 209, 117, 0.28);
+  background: rgba(255, 209, 117, 0.08);
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.16);
+  }
+}
+
+@media (max-width: 1080px) {
+  .hero,
+  .workspace {
+    grid-template-columns: 1fr;
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+
+  .rail {
+    position: static;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .resourceStrip,
+  .guardGrid,
+  .robotGrid,
+  .referenceGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .topbar,
+  .trackList article,
+  .handoffPanel {
+    align-items: flex-start;
+    grid-template-columns: 1fr;
+  }
+
+  .hero {
+    padding-top: 32px;
+  }
+
+  .hero h1 {
+    font-size: 38px;
+  }
+
+  .stage {
+    min-height: 260px;
+  }
+
+  .resourceStrip,
+  .guardGrid,
+  .boundaryLine,
+  .robotGrid,
+  .referenceGrid,
+  .rail {
+    grid-template-columns: 1fr;
+  }
+
+  .boundaryLine div + div {
+    border-left: 0;
+    border-top: 1px solid rgba(152, 255, 224, 0.18);
+  }
+}

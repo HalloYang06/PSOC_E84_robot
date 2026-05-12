@@ -329,6 +329,99 @@
   align-items: center;
 }
 
+.sectionHead {
+  display: grid;
+  gap: 6px;
+}
+
+.sectionHead span {
+  color: rgba(185, 245, 255, 0.72);
+  font-size: 12px;
+}
+
+.sectionHead strong {
+  font-size: 18px;
+}
+
+.productionPanel,
+.referencePanel {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid rgba(112, 238, 255, 0.16);
+  border-radius: 12px;
+  background: rgba(4, 19, 30, 0.62);
+}
+
+.laneGrid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1px;
+  background: rgba(112, 238, 255, 0.12);
+}
+
+.laneGrid article {
+  display: grid;
+  gap: 7px;
+  min-height: 142px;
+  padding: 14px;
+  background: #061923;
+}
+
+.laneGrid small {
+  color: #7de5ff;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.laneGrid strong {
+  font-size: 15px;
+}
+
+.laneGrid p,
+.laneGrid span,
+.referenceGrid p {
+  margin: 0;
+  color: rgba(210, 235, 245, 0.66);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.laneGrid span {
+  color: rgba(185, 245, 255, 0.74);
+}
+
+.referenceGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.referenceGrid a {
+  display: grid;
+  gap: 7px;
+  min-height: 146px;
+  padding: 14px;
+  border: 1px solid rgba(112, 238, 255, 0.14);
+  border-radius: 10px;
+  background: rgba(112, 238, 255, 0.06);
+  text-decoration: none;
+}
+
+.referenceGrid a:hover {
+  border-color: rgba(112, 238, 255, 0.34);
+  background: rgba(112, 238, 255, 0.1);
+}
+
+.referenceGrid span {
+  color: #7de5ff;
+  font-size: 11px;
+}
+
+.referenceGrid strong {
+  font-size: 14px;
+}
+
 .auditPanel div:first-child {
   display: grid;
   gap: 6px;
@@ -357,7 +450,9 @@
   }
 
   .resourceGrid,
-  .pipeline {
+  .pipeline,
+  .laneGrid,
+  .referenceGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -374,7 +469,9 @@
   .resourceGrid,
   .pipeline,
   .datasetGrid,
-  .datasetList {
+  .datasetList,
+  .laneGrid,
+  .referenceGrid {
     grid-template-columns: 1fr;
   }
 

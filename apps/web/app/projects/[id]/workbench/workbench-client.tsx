@@ -1050,6 +1050,13 @@ export function WorkbenchClient({
           >
             数据工场 →
           </Link>
+          <Link
+            href={withReturnTo(`/projects/${projectId}/ai-lab`, sourcePath, sourceKey)}
+            className={styles.backLink}
+            title="打开 AI 调试、仿真和审批边界工作台"
+          >
+            AI 实验室 →
+          </Link>
         </div>
       </header>
 

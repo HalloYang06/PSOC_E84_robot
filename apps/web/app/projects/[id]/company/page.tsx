@@ -54,6 +54,7 @@ function safeProjectReturnPath(projectId: string, value: unknown) {
 function labelProjectReturnPath(value: string) {
   if (value.includes("/2d-upgrade")) return "← 返回主页面";
   if (value.includes("/datasets")) return "← 返回数据工场";
+  if (value.includes("/ai-lab")) return "← 返回 AI 实验室";
   if (value.includes("/workbench")) return "← 返回工作台";
   if (value.includes("/company")) return "← 返回公司层";
   return "← 返回来源";

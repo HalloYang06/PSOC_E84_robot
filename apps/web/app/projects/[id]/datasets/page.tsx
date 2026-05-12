@@ -42,6 +42,7 @@ function labelProjectReturnPath(value: string) {
   if (value.includes("/2d-upgrade")) return "返回主页面";
   if (value.includes("/workbench")) return "返回 NPC 工作台";
   if (value.includes("/company")) return "返回公司层";
+  if (value.includes("/ai-lab")) return "返回 AI 实验室";
   if (value.includes("/datasets")) return "返回数据工场";
   return "返回来源";
 }
@@ -92,6 +93,41 @@ const dataSurfaces = [
     annotation: "成功失败、语言指令、关键帧、奖励标签",
     export: "episode manifest + instruction JSONL",
   },
+];
+
+const openSourceLessons = [
+  {
+    name: "多类型标注模板",
+    source: "Label Studio / CVAT",
+    detail: "同一页面要能承接音频、文本、图像、视频、时序信号和机器人 episode，并按类型切换标注模板。",
+    href: "https://github.com/HumanSignal/label-studio",
+  },
+  {
+    name: "ROS bag / topic 回放",
+    source: "Webviz / ROSboard",
+    detail: "机器人数据不能只看文件名，要显示 bag、topic、时间轴、TF、相机和传感器完整性。",
+    href: "https://github.com/cruise-automation/webviz",
+  },
+  {
+    name: "数据版本和导出包",
+    source: "DVC / ClearML Data",
+    detail: "数据集需要 version、manifest、split、artifact、远端缓存和回滚索引，方便多电脑协作。",
+    href: "https://github.com/treeverse/dvc",
+  },
+  {
+    name: "模型预标注",
+    source: "Label Studio ML Backend",
+    detail: "可由 NPC 或模型先预标注，人只审核差异；平台记录最小回执和最终导出状态。",
+    href: "https://github.com/HumanSignal/label-studio",
+  },
+];
+
+const productionLanes = [
+  ["导入", "文件 / 云端 / Runner 目录 / ROS bag / App 上传", "建立来源索引和权限。"],
+  ["抽样", "按项目、设备、采集人、时间段、质量分筛选", "先看小样本再批处理。"],
+  ["标注", "人工、NPC 建议、模型预标注、双人复核", "每条数据保留审核轨迹。"],
+  ["质检", "隐私、schema、文件存在、时间戳、topic 完整性", "不合格批次不进入训练。"],
+  ["版本", "dataset_version、manifest、split、artifact", "可回退、可复现、可通知 NPC。"],
 ];
 
 export default async function ProjectDatasetsPage({
@@ -207,6 +243,7 @@ export default async function ProjectDatasetsPage({
           <Link href={`/projects/${projectId}/cockpit`} className={styles.backLink}>驾驶舱</Link>
           <Link href={`/projects/${projectId}/2d-upgrade?return_to=${encodeURIComponent(selfPath)}&from=datasets`} className={styles.backLink}>主页面</Link>
           <Link href={`/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=datasets`} className={styles.backLink}>NPC 工作台</Link>
+          <Link href={`/projects/${projectId}/ai-lab?return_to=${encodeURIComponent(selfPath)}&from=datasets`} className={styles.backLink}>AI 实验室</Link>
           {returnTo ? <Link href={returnTo} className={styles.backLink}>{labelProjectReturnPath(returnTo)}</Link> : null}
           <div className={styles.title}>
             <strong>{text(project.name, "项目")} · 数据工场</strong>
@@ -301,6 +338,39 @@ export default async function ProjectDatasetsPage({
                 </dl>
               </article>
             ))}
+          </section>
+
+          <section className={styles.productionPanel} aria-label="训练数据生产线">
+            <div className={styles.sectionHead}>
+              <span>生产线</span>
+              <strong>从采集到训练包，不靠散落文件夹推进。</strong>
+            </div>
+            <div className={styles.laneGrid}>
+              {productionLanes.map(([label, scope, detail], index) => (
+                <article key={label}>
+                  <small>{String(index + 1).padStart(2, "0")}</small>
+                  <strong>{label}</strong>
+                  <p>{scope}</p>
+                  <span>{detail}</span>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className={styles.referencePanel} aria-label="开源产品参考">
+            <div className={styles.sectionHead}>
+              <span>参考开源能力</span>
+              <strong>吸收成熟工具的结构，不把平台变成另一个孤立标注站。</strong>
+            </div>
+            <div className={styles.referenceGrid}>
+              {openSourceLessons.map((item) => (
+                <a key={item.name} href={item.href} target="_blank" rel="noreferrer">
+                  <span>{item.source}</span>
+                  <strong>{item.name}</strong>
+                  <p>{item.detail}</p>
+                </a>
+              ))}
+            </div>
           </section>
 
           <section className={styles.auditPanel} aria-label="导出和审核闭环">
