@@ -190,7 +190,7 @@
 
 .serviceGrid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 1px;
   background: rgba(166, 191, 255, 0.14);
 }

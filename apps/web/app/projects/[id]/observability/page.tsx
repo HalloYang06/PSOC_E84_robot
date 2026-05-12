@@ -12,6 +12,7 @@ import {
   getTasksDataScopedState,
   getUsageData,
 } from "../../../../lib/server-data";
+import { CurrentBrowserInstance } from "./current-browser-instance";
 import styles from "./observability.module.css";
 
 export const dynamic = "force-dynamic";
@@ -237,6 +238,7 @@ export default async function ProjectObservabilityPage({
           <h2>先确认你看的页面连的是哪个 API。</h2>
         </div>
         <div className={styles.serviceGrid}>
+          <CurrentBrowserInstance />
           <article>
             <span>API 状态</span>
             <strong>{text(health.status, healthState.error ? "不可用" : "未知")}</strong>
