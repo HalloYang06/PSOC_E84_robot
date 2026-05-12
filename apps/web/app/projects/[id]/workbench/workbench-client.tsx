@@ -1043,6 +1043,13 @@ export function WorkbenchClient({
               🏢 公司层 →
             </Link>
           )}
+          <Link
+            href={withReturnTo(`/projects/${projectId}/datasets`, sourcePath, sourceKey)}
+            className={styles.backLink}
+            title="打开训练数据采集、标注、质检和导出工作台"
+          >
+            数据工场 →
+          </Link>
         </div>
       </header>
 
