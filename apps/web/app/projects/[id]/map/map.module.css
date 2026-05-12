@@ -83,7 +83,76 @@
 .groups {
   display: grid;
   gap: 28px;
-  padding: 34px 56px 56px;
+  padding: 0 56px 56px;
+}
+
+.commandCenter {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 24px;
+  padding: 34px 56px;
+}
+
+.readinessGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  background: rgba(180, 223, 255, 0.16);
+}
+
+.readinessCard {
+  min-height: 150px;
+  padding: 20px;
+  background: rgba(7, 13, 19, 0.98);
+  text-decoration: none;
+}
+
+.readinessCard:hover {
+  background: rgba(18, 32, 42, 0.98);
+}
+
+.readinessCard span,
+.nextPanel span {
+  color: #9feaff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.readinessCard strong {
+  display: block;
+  margin: 12px 0 10px;
+  word-break: break-word;
+  font-size: 24px;
+}
+
+.readinessCard p {
+  margin: 0;
+  color: rgba(244, 251, 255, 0.66);
+  line-height: 1.55;
+}
+
+.nextPanel {
+  align-self: stretch;
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid rgba(180, 223, 255, 0.18);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.nextPanel div {
+  display: grid;
+  gap: 10px;
+}
+
+.nextPanel a {
+  padding: 10px 12px;
+  border: 1px solid rgba(180, 223, 255, 0.24);
+  border-radius: 8px;
+  background: rgba(180, 223, 255, 0.08);
+  text-decoration: none;
+  font-size: 13px;
 }
 
 .group {
@@ -136,12 +205,18 @@
 
 @media (max-width: 980px) {
   .hero,
+  .commandCenter,
   .groups {
     padding-left: 24px;
     padding-right: 24px;
   }
 
+  .commandCenter,
   .group {
+    grid-template-columns: 1fr;
+  }
+
+  .readinessGrid {
     grid-template-columns: 1fr;
   }
 

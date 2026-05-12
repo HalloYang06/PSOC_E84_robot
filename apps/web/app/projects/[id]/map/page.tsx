@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
   getCurrentAuthState,
+  getApiHealthState,
   getProjectComputerNodesState,
   getProjectKnowledgeDocumentsState,
   getProjectSkillsState,
@@ -102,21 +103,53 @@ export default async function ProjectMapPage({
     );
   }
 
-  const [computersState, seatsState, workstationsState, skillsState, docsState] = await Promise.all([
+  const [computersState, seatsState, workstationsState, skillsState, docsState, healthState] = await Promise.all([
     getProjectComputerNodesState(projectId),
     getProjectThreadWorkstationsState(projectId),
     getProjectWorkstationsState(projectId),
     getProjectSkillsState(projectId),
     getProjectKnowledgeDocumentsState(projectId),
+    getApiHealthState(),
   ]);
   const computers = asArray<AnyRecord>(computersState.data);
   const seats = asArray<AnyRecord>(seatsState.data);
   const workstations = asArray<AnyRecord>(workstationsState.data);
   const skills = asArray<AnyRecord>(skillsState.data);
   const docs = asArray<AnyRecord>(docsState.data);
+  const health = (healthState.data ?? {}) as AnyRecord;
+  const localServices = asArray<AnyRecord>(health.local_services ?? health.localServices);
+  const listeningPorts = localServices.filter((item) => Boolean(item.listening)).map((item) => text(item.port, ""));
+  const hasMultipleFrontendPorts = listeningPorts.includes("3000") && listeningPorts.includes("3001");
   const onlineComputers = computers.filter((node) => /online|ready|active/.test(statusText(node.runner_effective_status ?? node.runner_status ?? node.status))).length;
   const returnTo = safeProjectReturnPath(projectId, searchParams?.return_to);
   const selfPath = `/projects/${projectId}/map`;
+  const readiness = [
+    {
+      title: "资源底座",
+      value: onlineComputers && seats.length && workstations.length ? "可执行" : "待补齐",
+      detail: `电脑 ${onlineComputers}/${computers.length} · NPC ${seats.length} · 工位 ${workstations.length}`,
+      href: `/projects/${projectId}/2d-upgrade?return_to=${encodeURIComponent(selfPath)}&from=map`,
+    },
+    {
+      title: "知识与 Skill",
+      value: skills.length && docs.length ? "可复用" : "待沉淀",
+      detail: `Skill ${skills.length} · 知识库 ${docs.length}`,
+      href: `/projects/${projectId}/skill-forge?return_to=${encodeURIComponent(selfPath)}&from=map`,
+    },
+    {
+      title: "服务实例",
+      value: text(health.base_url ?? health.baseUrl, healthState.error ? "不可用" : "待确认"),
+      detail: hasMultipleFrontendPorts ? "3000 和 3001 同时在线，先到观测台确认当前页面。" : `监听端口 ${listeningPorts.join(" / ") || "未探测"}`,
+      href: `/projects/${projectId}/observability?return_to=${encodeURIComponent(selfPath)}&from=map`,
+    },
+  ];
+  const nextActions = [
+    onlineComputers ? null : ["接入电脑 / Runner", `/projects/${projectId}/2d-upgrade?panel=computers&return_to=${encodeURIComponent(selfPath)}&from=map`],
+    seats.length ? null : ["绑定 NPC 线程", `/projects/${projectId}/2d-upgrade?panel=npcs&return_to=${encodeURIComponent(selfPath)}&from=map`],
+    skills.length ? null : ["准备项目 Skill", `/projects/${projectId}/skill-forge?return_to=${encodeURIComponent(selfPath)}&from=map`],
+    docs.length ? null : ["索引 GitHub 知识库", `/projects/${projectId}/2d-upgrade?panel=knowledge&return_to=${encodeURIComponent(selfPath)}&from=map`],
+    hasMultipleFrontendPorts ? ["确认当前服务实例", `/projects/${projectId}/observability?return_to=${encodeURIComponent(selfPath)}&from=map`] : null,
+  ].filter(Boolean) as string[][];
 
   return (
     <main className={styles.shell}>
@@ -139,6 +172,27 @@ export default async function ProjectMapPage({
         <span>项目导航</span>
         <h1>{text(project.name, "项目")} 工作台地图</h1>
         <p>页面越来越多时，地图负责告诉你每个入口的职责：主页面管资源，工作台管执行，专业页面管数据、仿真、机器人、观测和 Skill。</p>
+      </section>
+
+      <section className={styles.commandCenter} aria-label="项目就绪度">
+        <div className={styles.readinessGrid}>
+          {readiness.map((item) => (
+            <Link key={item.title} href={item.href} className={styles.readinessCard}>
+              <span>{item.title}</span>
+              <strong>{item.value}</strong>
+              <p>{item.detail}</p>
+            </Link>
+          ))}
+        </div>
+        <aside className={styles.nextPanel}>
+          <span>建议下一步</span>
+          <div>
+            {nextActions.map(([label, href]) => (
+              <Link key={label} href={href}>{label}</Link>
+            ))}
+            {!nextActions.length ? <Link href={`/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=map`}>进入 NPC 工作台派单</Link> : null}
+          </div>
+        </aside>
       </section>
 
       <section className={styles.groups}>
