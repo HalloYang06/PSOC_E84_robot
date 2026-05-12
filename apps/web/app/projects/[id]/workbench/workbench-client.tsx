@@ -1034,6 +1034,13 @@ export function WorkbenchClient({
           </span>
           <span className={styles.kpi}>已打开 {openIds.length}</span>
           <span className={styles.kpi}>已勾选 {selectedIds.size}</span>
+          <Link
+            href={withReturnTo(`/projects/${projectId}/map`, sourcePath, sourceKey)}
+            className={styles.backLink}
+            title="打开项目工作台地图"
+          >
+            地图 →
+          </Link>
           {isCompany ? (
             <Link href={`/projects/${projectId}/workbench`} className={styles.backLink} title="返回 NPC 工作台（看所有 NPC）">
               工作台 →

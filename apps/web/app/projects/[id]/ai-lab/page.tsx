@@ -192,6 +192,7 @@ export default async function ProjectAiLabPage({
       <header className={styles.topbar}>
         <div className={styles.topbarLeft}>
           <Link href={`/projects/${projectId}/cockpit`} className={styles.navLink}>驾驶舱</Link>
+          <Link href={`/projects/${projectId}/map?return_to=${encodeURIComponent(selfPath)}&from=ai-lab`} className={styles.navLink}>地图</Link>
           <Link href={`/projects/${projectId}/2d-upgrade?return_to=${encodeURIComponent(selfPath)}&from=ai-lab`} className={styles.navLink}>主页面</Link>
           <Link href={`/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=ai-lab`} className={styles.navLink}>NPC 工作台</Link>
           <Link href={`/projects/${projectId}/datasets?return_to=${encodeURIComponent(selfPath)}&from=ai-lab`} className={styles.navLink}>数据工场</Link>

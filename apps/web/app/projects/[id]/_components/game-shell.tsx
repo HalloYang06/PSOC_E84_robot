@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import styles from "./game-shell.module.css";
 
-type PanelKey = "cockpit" | "workbench" | "datasets" | "ai-lab" | "robotics" | "observability" | "skill-forge" | "company";
+type PanelKey = "map" | "cockpit" | "workbench" | "observability" | "company";
 
 type GameShellProps = {
   projectId: string;
@@ -15,13 +15,10 @@ type GameShellProps = {
 };
 
 const PANELS: { key: PanelKey; label: string; title: string; path: (id: string) => string }[] = [
+  { key: "map", label: "🗺️ 地图", title: "项目工作台地图 · 所有一级入口", path: (id) => `/projects/${id}/map` },
   { key: "cockpit", label: "🛠️ 驾驶舱", title: "项目驾驶舱（合格性 / KPI / 广播）", path: (id) => `/projects/${id}/cockpit` },
   { key: "workbench", label: "🧑‍💼 工作台", title: "NPC 工作台 · 瓷砖主操作面", path: (id) => `/projects/${id}/workbench` },
-  { key: "datasets", label: "🧪 数据工场", title: "训练数据采集、标注、质检和导出", path: (id) => `/projects/${id}/datasets` },
-  { key: "ai-lab", label: "⚡ AI 实验室", title: "AI 调试、仿真和审批边界", path: (id) => `/projects/${id}/ai-lab` },
-  { key: "robotics", label: "🤖 机器人现场", title: "App、Linux、ROS、硬件和 VLA 现场", path: (id) => `/projects/${id}/robotics` },
   { key: "observability", label: "📡 观测台", title: "派单、回执、待审、Runner 和风险观测", path: (id) => `/projects/${id}/observability` },
-  { key: "skill-forge", label: "🧩 Skill 工坊", title: "Skill 起草、审查、绑定和复用", path: (id) => `/projects/${id}/skill-forge` },
   { key: "company", label: "🏢 公司层", title: "工位长会议室", path: (id) => `/projects/${id}/company` },
 ];
 

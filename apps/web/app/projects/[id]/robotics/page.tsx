@@ -152,6 +152,7 @@ export default async function ProjectRoboticsPage({
       <header className={styles.topbar}>
         <nav>
           <Link href={`/projects/${projectId}/cockpit`}>驾驶舱</Link>
+          <Link href={`/projects/${projectId}/map?return_to=${encodeURIComponent(selfPath)}&from=robotics`}>地图</Link>
           <Link href={`/projects/${projectId}/2d-upgrade?return_to=${encodeURIComponent(selfPath)}&from=robotics`}>主页面</Link>
           <Link href={`/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=robotics`}>NPC 工作台</Link>
           <Link href={`/projects/${projectId}/datasets?return_to=${encodeURIComponent(selfPath)}&from=robotics`}>数据工场</Link>

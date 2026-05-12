@@ -244,6 +244,7 @@ export default async function ProjectDatasetsPage({
       <header className={styles.topbar}>
         <div className={styles.topbarLeft}>
           <Link href={`/projects/${projectId}/cockpit`} className={styles.backLink}>驾驶舱</Link>
+          <Link href={`/projects/${projectId}/map?return_to=${encodeURIComponent(selfPath)}&from=datasets`} className={styles.backLink}>地图</Link>
           <Link href={`/projects/${projectId}/2d-upgrade?return_to=${encodeURIComponent(selfPath)}&from=datasets`} className={styles.backLink}>主页面</Link>
           <Link href={`/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=datasets`} className={styles.backLink}>NPC 工作台</Link>
           <Link href={`/projects/${projectId}/ai-lab?return_to=${encodeURIComponent(selfPath)}&from=datasets`} className={styles.backLink}>AI 实验室</Link>

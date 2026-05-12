@@ -112,6 +112,7 @@ export default async function ProjectSkillForgePage({
       <header className={styles.topbar}>
         <nav>
           <Link href={`/projects/${projectId}/cockpit`}>驾驶舱</Link>
+          <Link href={`/projects/${projectId}/map?return_to=${encodeURIComponent(selfPath)}&from=skill-forge`}>地图</Link>
           <Link href={`/projects/${projectId}/2d-upgrade?return_to=${encodeURIComponent(selfPath)}&from=skill-forge`}>主页面</Link>
           <Link href={`/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=skill-forge`}>NPC 工作台</Link>
           <Link href={`/projects/${projectId}/observability?return_to=${encodeURIComponent(selfPath)}&from=skill-forge`}>观测台</Link>

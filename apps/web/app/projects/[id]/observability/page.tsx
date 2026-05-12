@@ -148,6 +148,7 @@ export default async function ProjectObservabilityPage({
       <header className={styles.topbar}>
         <nav>
           <Link href={`/projects/${projectId}/cockpit`}>驾驶舱</Link>
+          <Link href={`/projects/${projectId}/map?return_to=${encodeURIComponent(selfPath)}&from=observability`}>地图</Link>
           <Link href={`/projects/${projectId}/2d-upgrade?return_to=${encodeURIComponent(selfPath)}&from=observability`}>主页面</Link>
           <Link href={`/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=observability`}>NPC 工作台</Link>
           <Link href={`/projects/${projectId}/datasets?return_to=${encodeURIComponent(selfPath)}&from=observability`}>数据工场</Link>
