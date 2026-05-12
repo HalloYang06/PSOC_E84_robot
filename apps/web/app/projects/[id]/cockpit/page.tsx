@@ -160,10 +160,13 @@ export default async function ProjectCockpitPage({ params, searchParams }: { par
           <Link href={`/projects/${params.id}/robotics?return_to=${encodeURIComponent(`/projects/${params.id}/cockpit`)}&from=cockpit`} className={styles.ghostBtn} title="App、Linux、ROS、硬件和 VLA 机器人现场">
             🤖 机器人现场
           </Link>
+          <Link href={`/projects/${params.id}/observability?return_to=${encodeURIComponent(`/projects/${params.id}/cockpit`)}&from=cockpit`} className={styles.ghostBtn} title="派单、回执、待审、Runner 和风险观测">
+            📡 观测台
+          </Link>
           <Link href={`/projects/${params.id}/company`} className={styles.ghostBtn} title="公司层：只看每个工位的工位长（👑），跨工位指派的默认入口">
             🏢 公司层
           </Link>
-          <Link href={`/projects/${params.id}`} className={styles.ghostBtn} title="返回项目入口壳（可打开驾驶舱、工作台、数据工场、AI 实验室、机器人现场、公司层）">
+          <Link href={`/projects/${params.id}`} className={styles.ghostBtn} title="返回项目入口壳（可打开驾驶舱、工作台、数据工场、AI 实验室、机器人现场、观测台、公司层）">
             ← 项目入口
           </Link>
         </div>

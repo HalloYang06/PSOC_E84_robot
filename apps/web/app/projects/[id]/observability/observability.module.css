@@ -1,0 +1,245 @@
+.shell {
+  min-height: 100vh;
+  background:
+    linear-gradient(180deg, rgba(8, 12, 18, 0.96), rgba(5, 9, 13, 1)),
+    repeating-linear-gradient(0deg, rgba(120, 160, 255, 0.04) 0 1px, transparent 1px 42px);
+  color: #f1f7ff;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+.emptyPage {
+  min-height: 100vh;
+  padding: 32px;
+  background: #080c12;
+  color: #f1f7ff;
+}
+
+.shell a,
+.emptyPage a {
+  color: inherit;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 20px;
+  border-bottom: 1px solid rgba(166, 191, 255, 0.18);
+  background: rgba(5, 9, 13, 0.88);
+  backdrop-filter: blur(18px);
+}
+
+.topbar nav,
+.topbar div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.topbar a,
+.topbar span,
+.alertList a {
+  padding: 7px 10px;
+  border: 1px solid rgba(166, 191, 255, 0.24);
+  border-radius: 8px;
+  background: rgba(166, 191, 255, 0.08);
+  text-decoration: none;
+  font-size: 12px;
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 420px;
+  align-items: center;
+  gap: 36px;
+  padding: 58px 56px 34px;
+  border-bottom: 1px solid rgba(166, 191, 255, 0.15);
+}
+
+.hero span,
+.sectionHead span,
+.referenceGrid span,
+.kpiGrid span {
+  color: #a6bfff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.hero h1 {
+  margin: 12px 0;
+  max-width: 720px;
+  font-size: 56px;
+  line-height: 1.02;
+  letter-spacing: 0;
+}
+
+.hero p {
+  margin: 0;
+  max-width: 710px;
+  color: rgba(241, 247, 255, 0.7);
+  font-size: 17px;
+  line-height: 1.65;
+}
+
+.traceBox {
+  display: grid;
+  grid-template-columns: 1fr 36px 1fr 36px 1fr;
+  align-items: center;
+  min-height: 210px;
+  padding: 28px;
+  border: 1px solid rgba(166, 191, 255, 0.22);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.traceBox span {
+  text-align: center;
+  color: #f1f7ff;
+  font-weight: 900;
+}
+
+.traceBox i {
+  height: 2px;
+  background: linear-gradient(90deg, #a6bfff, #83f7cf);
+}
+
+.kpiGrid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 1px;
+  background: rgba(166, 191, 255, 0.16);
+}
+
+.kpiGrid article {
+  min-height: 148px;
+  padding: 20px;
+  background: #070d14;
+}
+
+.kpiGrid strong {
+  display: block;
+  margin: 10px 0 8px;
+  font-size: 30px;
+}
+
+.kpiGrid p,
+.timeline p,
+.referenceGrid p {
+  margin: 0;
+  color: rgba(241, 247, 255, 0.64);
+  line-height: 1.55;
+}
+
+.contentGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 28px;
+  padding: 34px 56px;
+}
+
+.sectionHead {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.sectionHead h2 {
+  margin: 0;
+  font-size: 28px;
+  letter-spacing: 0;
+}
+
+.timeline ol {
+  display: grid;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: rgba(166, 191, 255, 0.14);
+}
+
+.timeline li {
+  padding: 16px;
+  background: #070d14;
+}
+
+.timeline strong {
+  font-size: 15px;
+}
+
+.sidePanel {
+  align-self: start;
+  padding: 18px;
+  border: 1px solid rgba(166, 191, 255, 0.18);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.alertList {
+  display: grid;
+  gap: 10px;
+}
+
+.referencePanel {
+  display: grid;
+  gap: 14px;
+  padding: 0 56px 56px;
+}
+
+.referenceGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.referenceGrid article {
+  min-height: 148px;
+  padding: 18px;
+  border-top: 2px solid rgba(166, 191, 255, 0.7);
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.referenceGrid strong {
+  display: block;
+  margin: 10px 0;
+  font-size: 16px;
+}
+
+@media (max-width: 1080px) {
+  .hero,
+  .contentGrid {
+    grid-template-columns: 1fr;
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+
+  .kpiGrid,
+  .referenceGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .referencePanel {
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+}
+
+@media (max-width: 720px) {
+  .hero h1 {
+    font-size: 38px;
+  }
+
+  .traceBox,
+  .kpiGrid,
+  .referenceGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .traceBox i {
+    height: 32px;
+    width: 2px;
+    justify-self: center;
+  }
+}

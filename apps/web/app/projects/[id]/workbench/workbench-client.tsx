@@ -1064,6 +1064,13 @@ export function WorkbenchClient({
           >
             机器人现场 →
           </Link>
+          <Link
+            href={withReturnTo(`/projects/${projectId}/observability`, sourcePath, sourceKey)}
+            className={styles.backLink}
+            title="打开派单、回执、待审、Runner 和风险观测台"
+          >
+            观测台 →
+          </Link>
         </div>
       </header>
 

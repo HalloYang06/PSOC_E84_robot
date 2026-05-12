@@ -44,6 +44,7 @@ function labelProjectReturnPath(value: string) {
   if (value.includes("/ai-lab")) return "返回 AI 实验室";
   if (value.includes("/company")) return "返回公司层";
   if (value.includes("/robotics")) return "返回机器人现场";
+  if (value.includes("/observability")) return "返回观测台";
   return "返回来源";
 }
 
@@ -154,6 +155,7 @@ export default async function ProjectRoboticsPage({
           <Link href={`/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=robotics`}>NPC 工作台</Link>
           <Link href={`/projects/${projectId}/datasets?return_to=${encodeURIComponent(selfPath)}&from=robotics`}>数据工场</Link>
           <Link href={`/projects/${projectId}/ai-lab?return_to=${encodeURIComponent(selfPath)}&from=robotics`}>AI 实验室</Link>
+          <Link href={`/projects/${projectId}/observability?return_to=${encodeURIComponent(selfPath)}&from=robotics`}>观测台</Link>
           <Link href={`/projects/${projectId}/company?return_to=${encodeURIComponent(selfPath)}&from=robotics`}>公司层</Link>
           {returnTo ? <Link href={returnTo}>{labelProjectReturnPath(returnTo)}</Link> : null}
         </nav>
