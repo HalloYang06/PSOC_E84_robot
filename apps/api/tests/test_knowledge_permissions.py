@@ -175,6 +175,42 @@ def test_project_knowledge_documents_and_skill_assignments_are_project_scoped() 
     assert skill_response.status_code == 200, skill_response.text
     assert skill_response.json()["data"]["skill_id"] == "speech-data-contracts"
 
+    bad_skill_path_response = client.post(
+        f"/api/knowledge/projects/{project_id}/skills",
+        headers=auth_headers(owner_token),
+        json={
+            "skill_id": "bad-local-skill",
+            "label": "Bad Local Skill",
+            "source": "npc-authored",
+            "repo_relative_path": r"D:\\english_a_agent\\skills\\bad-local-skill\\SKILL.md",
+        },
+    )
+    assert bad_skill_path_response.status_code == 422
+    assert bad_skill_path_response.json()["error"]["code"] == "BAD_REPO_PATH"
+
+    npc_authored_skill_response = client.post(
+        f"/api/knowledge/projects/{project_id}/skills",
+        headers=auth_headers(owner_token),
+        json={
+            "skill_id": "teacher-progress-review",
+            "label": "Teacher Progress Review",
+            "source": "npc-authored",
+            "category": "npc-authored",
+            "repo_relative_path": "skills/teacher-progress-review/SKILL.md",
+            "exists_in_repo": False,
+            "extra_data": {
+                "author_seat_id": "boss-seat",
+                "draft_status": "draft",
+                "skill_creator_version": "openai-skill-creator",
+            },
+        },
+    )
+    assert npc_authored_skill_response.status_code == 200, npc_authored_skill_response.text
+    npc_authored_skill = npc_authored_skill_response.json()["data"]
+    assert npc_authored_skill["source"] == "npc-authored"
+    assert npc_authored_skill["repo_relative_path"] == "skills/teacher-progress-review/SKILL.md"
+    assert npc_authored_skill["extra_data"]["author_seat_id"] == "boss-seat"
+
     assignment_response = client.post(
         f"/api/knowledge/projects/{project_id}/seat-skill-assignments",
         headers=auth_headers(owner_token),
@@ -190,9 +226,24 @@ def test_project_knowledge_documents_and_skill_assignments_are_project_scoped() 
     assert assignment["seat_id"]
     assert assignment["skill_id"] == "speech-data-contracts"
 
+    npc_authored_assignment_response = client.post(
+        f"/api/knowledge/projects/{project_id}/seat-skill-assignments",
+        headers=auth_headers(owner_token),
+        json={
+            "seat_id": "boss-seat",
+            "skill_id": "teacher-progress-review",
+            "assignment_type": "npc-authored-draft",
+            "status": "draft",
+            "notes": "NPC-authored reusable behavior draft.",
+            "extra_data": {"author_seat_id": "boss-seat"},
+        },
+    )
+    assert npc_authored_assignment_response.status_code == 200, npc_authored_assignment_response.text
+    assert npc_authored_assignment_response.json()["data"]["status"] == "draft"
+
     assignment_list_response = client.get(
         f"/api/knowledge/projects/{project_id}/seat-skill-assignments",
         headers=auth_headers(member_token),
     )
     assert assignment_list_response.status_code == 200
-    assert len(assignment_list_response.json()["data"]) == 1
+    assert len(assignment_list_response.json()["data"]) == 2

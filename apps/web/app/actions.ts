@@ -4204,25 +4204,63 @@ export async function 创建项目Skill(projectId: string, formData: FormData) {
     if (skillLibrary.some((item) => String(item.id ?? "").trim().toLowerCase() === skillId)) {
       throw new Error("这个 skill 标识已经存在");
     }
+    const source = text(formData.get("source"), "custom") || "custom";
+    const category = text(formData.get("category"), source === "npc-authored" ? "npc-authored" : "custom");
+    const repoRelativePath = text(formData.get("repo_relative_path"), "");
+    const authorSeatId = text(formData.get("author_seat_id"), "");
+    const assignmentSeatId = text(formData.get("assignment_seat_id"), "");
+    const createdFromMessageId = text(formData.get("created_from_message_id"), "");
+    const draftStatus = text(formData.get("draft_status"), source === "npc-authored" ? "draft" : "");
+    const shouldAssignToAuthor = readBooleanFormField(formData, "assign_to_author", false);
+    const shouldAssignToSeat = Boolean(assignmentSeatId) || shouldAssignToAuthor;
+    const targetSeatId = assignmentSeatId || authorSeatId;
 
     const nextSkill = {
       id: skillId,
       label: String(formData.get("label") ?? "").trim() || recommendedPreset?.label || skillId,
       note: String(formData.get("note") ?? "").trim() || recommendedPreset?.note || "项目自定义 skill",
-      source: "custom",
+      source,
       scope: "role",
       recommended_for: recommendedFor.length ? recommendedFor : (recommendedPreset?.recommendedFor ?? []),
+      repo_relative_path: repoRelativePath || (source === "npc-authored" ? `skills/${skillId}/SKILL.md` : undefined),
+      metadata: {
+        ...(source === "npc-authored"
+          ? {
+              author_seat_id: authorSeatId || null,
+              created_from_message_id: createdFromMessageId || null,
+              draft_status: draftStatus || "draft",
+              skill_creator_version: "openai-skill-creator",
+              template: "SKILL.md + optional agents/openai.yaml + references/scripts/assets",
+            }
+          : {}),
+      },
     };
 
     await postJson(`/api/knowledge/projects/${projectId}/skills`, {
       skill_id: nextSkill.id,
       label: nextSkill.label,
       source: nextSkill.source,
-      category: "custom",
+      category,
+      repo_relative_path: nextSkill.repo_relative_path ?? null,
       description: nextSkill.note,
       recommended_for: nextSkill.recommended_for,
-      exists_in_repo: false,
+      exists_in_repo: source === "npc-authored" ? false : false,
+      extra_data: nextSkill.metadata,
     });
+
+    if (shouldAssignToSeat && targetSeatId) {
+      await postJson(`/api/knowledge/projects/${projectId}/seat-skill-assignments`, {
+        seat_id: targetSeatId,
+        skill_id: nextSkill.id,
+        assignment_type: source === "npc-authored" ? "npc-authored-draft" : "direct",
+        status: source === "npc-authored" ? "draft" : "active",
+        notes: source === "npc-authored" ? "NPC 在项目开发中沉淀的可复用 Skill 草稿，确认后可设为 active。" : null,
+        extra_data: {
+          author_seat_id: authorSeatId || null,
+          draft_status: draftStatus || null,
+        },
+      });
+    }
 
     await patchJson(`/api/projects/${projectId}`, {
       collaboration_config: {

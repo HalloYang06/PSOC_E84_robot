@@ -1372,7 +1372,8 @@
   display: grid;
 }
 
-.githubImportGuide {
+.githubImportGuide,
+.npcAuthoredSkillPanel {
   display: grid;
   gap: 8px;
   padding: 12px;
@@ -1380,45 +1381,64 @@
   background: rgba(255, 255, 255, 0.055);
 }
 
-.githubImportGuide b {
+.githubImportGuide b,
+.npcAuthoredSkillPanel b {
   color: #ffffff;
   font-size: 13px;
 }
 
-.githubImportGuide p {
+.githubImportGuide p,
+.npcAuthoredSkillPanel p {
   margin: 0;
   color: rgba(219, 251, 255, 0.72);
   font-size: 12px;
   line-height: 1.55;
 }
 
-.githubImportGuide dl {
+.githubImportGuide dl,
+.npcAuthoredSkillPanel dl {
   display: grid;
   gap: 6px;
   margin: 0;
 }
 
-.githubImportGuide div {
+.githubImportGuide div,
+.npcAuthoredSkillPanel dl div {
   display: grid;
   grid-template-columns: 74px minmax(0, 1fr);
   gap: 8px;
 }
 
 .githubImportGuide dt,
-.githubImportGuide dd {
+.githubImportGuide dd,
+.npcAuthoredSkillPanel dt,
+.npcAuthoredSkillPanel dd {
   margin: 0;
   font-size: 12px;
   line-height: 1.45;
 }
 
-.githubImportGuide dt {
+.githubImportGuide dt,
+.npcAuthoredSkillPanel dt {
   color: #ffe980;
   font-weight: 1000;
 }
 
-.githubImportGuide dd {
+.githubImportGuide dd,
+.npcAuthoredSkillPanel dd {
   color: rgba(219, 251, 255, 0.76);
   overflow-wrap: anywhere;
+}
+
+.inlineCheck {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+}
+
+.inlineCheck input {
+  width: 18px;
+  min-height: 18px;
+  padding: 0;
 }
 
 .gitVersionIndexGrid {

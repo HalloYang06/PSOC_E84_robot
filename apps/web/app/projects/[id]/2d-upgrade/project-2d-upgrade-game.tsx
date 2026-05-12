@@ -3604,6 +3604,63 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             </label>
             <SubmitButton label="新增项目 Skill" />
           </form>
+
+          <section className={styles.npcAuthoredSkillPanel} aria-label="NPC 自造 Skill">
+            <div className={styles.realNote}>
+              <b>NPC 自造 Skill</b>
+              <p>当某个 NPC 在开发中形成稳定做法，把它沉淀成项目 Skill 草稿。完整处理仍在 Codex / Claude Code 线程里，平台只保存可复用的角色能力索引。</p>
+            </div>
+            <dl>
+              <div><dt>必备文件</dt><dd>skills/&lt;skill-id&gt;/SKILL.md</dd></div>
+              <div><dt>推荐附加</dt><dd>agents/openai.yaml、references/、scripts/、assets/</dd></div>
+              <div><dt>沉淀边界</dt><dd>只写长期有效的触发条件、流程、验收和禁区，不保存一次性聊天过程。</dd></div>
+            </dl>
+            <form action={createProjectSkill.bind(null, project.id)} className={styles.drawerForm}>
+              <input type="hidden" name="return_to" value={returnPath("skills", action.id)} />
+              <input type="hidden" name="source" value="npc-authored" />
+              <input type="hidden" name="category" value="npc-authored" />
+              <input type="hidden" name="draft_status" value="draft" />
+              <label>
+                <span>作者 NPC</span>
+                <select name="author_seat_id" required>
+                  <option value="" disabled>选择沉淀这个 Skill 的 NPC</option>
+                  {npcSeats.map((seat) => (
+                    <option key={seat.id} value={seat.id}>{itemTitle(seat)}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Skill 标识</span>
+                <input name="skill_id" required placeholder="例如：yuespeak-teacher-progress-review" />
+              </label>
+              <label>
+                <span>Skill 名字</span>
+                <input name="label" required placeholder="例如：教师进度页验收" />
+              </label>
+              <label>
+                <span>仓库相对路径</span>
+                <input name="repo_relative_path" placeholder="默认：skills/<skill-id>/SKILL.md" />
+              </label>
+              <label>
+                <span>草稿内容</span>
+                <textarea
+                  name="note"
+                  required
+                  rows={7}
+                  placeholder="写这个 NPC 以后什么时候触发、先读哪些仓库相对路径、执行步骤、需要哪些真实前端验证、哪些动作必须人审。"
+                />
+              </label>
+              <label>
+                <span>推荐给哪些职业，逗号分隔</span>
+                <input name="recommended_for" placeholder="例如：前端小程序 NPC, QA 验收 NPC" />
+              </label>
+              <label className={styles.inlineCheck}>
+                <input type="checkbox" name="assign_to_author" value="true" defaultChecked />
+                <span>创建后先挂到作者 NPC，保持草稿状态</span>
+              </label>
+              <SubmitButton label="沉淀为 Skill 草稿" disabled={!npcSeats.length} />
+            </form>
+          </section>
         </div>
       );
     }
