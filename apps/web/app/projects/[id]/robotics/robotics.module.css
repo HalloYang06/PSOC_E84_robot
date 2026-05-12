@@ -572,15 +572,25 @@
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 4px 8px;
-  padding: 10px;
-  border: 1px solid rgba(157, 234, 207, 0.15);
+  min-height: 118px;
+  padding: 11px;
+  border: 1px solid rgba(142, 240, 199, 0.26);
   border-radius: 8px;
-  background: #0b191b;
+  background:
+    linear-gradient(135deg, rgba(142, 240, 199, 0.08), rgba(11, 25, 27, 1));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.018);
+}
+
+.externalList article:hover {
+  border-color: rgba(241, 208, 107, 0.72);
+  background:
+    linear-gradient(135deg, rgba(241, 208, 107, 0.11), rgba(11, 25, 27, 1));
 }
 
 .externalList small {
   grid-column: 1 / -1;
   color: rgba(238, 252, 247, 0.58);
+  line-height: 1.4;
 }
 
 .externalList em {
@@ -588,6 +598,30 @@
   font-size: 11px;
   font-style: normal;
   font-weight: 850;
+}
+
+.externalList button,
+.externalList a {
+  min-height: 30px;
+  border: 1px solid rgba(241, 208, 107, 0.44);
+  border-radius: 7px;
+  background: rgba(241, 208, 107, 0.14);
+  color: #f7e4a5;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 900;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.externalList a {
+  display: grid;
+  place-items: center;
+  padding: 0 8px;
+  border-color: rgba(142, 240, 199, 0.28);
+  background: rgba(142, 240, 199, 0.07);
+  color: #eefcf7;
 }
 
 .resourceList strong {

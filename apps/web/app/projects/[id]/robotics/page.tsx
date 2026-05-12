@@ -11,6 +11,7 @@ import {
   getProjectWorkstationsState,
 } from "../../../../lib/server-data";
 import { ModelImportInspector } from "./model-import-inspector";
+import { ToolActionPanel } from "./tool-action-panel";
 import styles from "./robotics.module.css";
 
 export const dynamic = "force-dynamic";
@@ -61,13 +62,6 @@ const topicRows = [
   ["/tf", "tf2_msgs/TFMessage", "60 Hz", "只读"],
   ["/camera/front", "sensor_msgs/Image", "12 Hz", "存档"],
   ["/imu/data", "sensor_msgs/Imu", "100 Hz", "波形"],
-];
-
-const externalTools = [
-  ["Foxglove", "3D / TF / rosbag", "layout"],
-  ["PlotJuggler", "高频波形", "timeseries"],
-  ["Gazebo / Webots", "仿真状态", "sim"],
-  ["rosbridge", "WebSocket 只读桥", "bridge"],
 ];
 
 const operationQueue = [
@@ -327,15 +321,7 @@ export default async function ProjectRoboticsPage({
         </section>
         <section>
           <span>外部工具</span>
-          <div className={styles.externalList}>
-            {externalTools.map(([label, detail, state]) => (
-              <article key={label}>
-                <strong>{label}</strong>
-                <small>{detail}</small>
-                <em>{state}</em>
-              </article>
-            ))}
-          </div>
+          <ToolActionPanel />
         </section>
         <section>
           <span>项目资源</span>

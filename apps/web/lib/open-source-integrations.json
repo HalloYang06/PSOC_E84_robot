@@ -1,0 +1,72 @@
+[
+  {
+    "id": "foxglove",
+    "name": "Foxglove",
+    "category": "robotics-visualization",
+    "github": "https://github.com/foxglove/studio",
+    "docs": "https://docs.foxglove.dev/docs/visualization/panels/3d",
+    "uiUse": "3D / TF / URDF / rosbag",
+    "runnerUse": "生成 Foxglove layout，索引 /robot_description、/tf、/joint_states、bag/MCAP 文件，不替代 Foxglove 3D 面板。",
+    "platformAction": "打开 3D 可视化入口"
+  },
+  {
+    "id": "robotwebtools",
+    "name": "Robot Web Tools",
+    "category": "ros-browser-bridge",
+    "github": "https://github.com/RobotWebTools/ros3djs",
+    "docs": "https://github.com/RobotWebTools/rosbridge_suite",
+    "uiUse": "rosbridge / roslibjs / ros3djs",
+    "runnerUse": "Runner 上报 rosbridge/foxglove_bridge 地址，平台只读订阅 topic、TF、URDF 和 marker。",
+    "platformAction": "配置只读 ROS 桥"
+  },
+  {
+    "id": "plotjuggler",
+    "name": "PlotJuggler",
+    "category": "timeseries",
+    "github": "https://github.com/facontidavide/PlotJuggler",
+    "docs": "https://github.com/PlotJuggler/plotjuggler-ros-plugins",
+    "uiUse": "高频波形 / ROS topic / rosbag",
+    "runnerUse": "为 audio、IMU、joint、current 等时序信号生成 PlotJuggler layout 和可回放数据索引。",
+    "platformAction": "打开波形分析入口"
+  },
+  {
+    "id": "robot-descriptions",
+    "name": "robot_descriptions.py",
+    "category": "robot-model-library",
+    "github": "https://github.com/robot-descriptions/robot_descriptions.py",
+    "docs": "https://github.com/robot-descriptions/robot_descriptions.py",
+    "uiUse": "URDF / MJCF 机器人模型索引",
+    "runnerUse": "作为模型库来源，按机器人类型、自由度、license、URDF/MJCF 路径建立项目索引。",
+    "platformAction": "导入模型库索引"
+  },
+  {
+    "id": "label-studio",
+    "name": "Label Studio",
+    "category": "annotation",
+    "github": "https://github.com/HumanSignal/label-studio",
+    "docs": "https://labelstud.io/",
+    "uiUse": "多模态标注 / 审核 / Data Manager",
+    "runnerUse": "数据工场可生成标注任务、导入导出配置和人审队列，不复制完整标注站。",
+    "platformAction": "创建标注任务模板"
+  },
+  {
+    "id": "mlflow",
+    "name": "MLflow",
+    "category": "experiment-tracking",
+    "github": "https://github.com/mlflow/mlflow",
+    "docs": "https://mlflow.org/docs/latest/index.html",
+    "uiUse": "Run / metrics / artifacts / model registry",
+    "runnerUse": "AI 实验室索引实验输入、参数、指标、artifact、最终回执和可复现命令。",
+    "platformAction": "创建实验记录入口"
+  },
+  {
+    "id": "langfuse",
+    "name": "Langfuse",
+    "category": "llm-observability",
+    "github": "https://github.com/langfuse/langfuse",
+    "docs": "https://langfuse.com/docs",
+    "uiUse": "LLM trace / prompt version / eval",
+    "runnerUse": "AI 实验室可按 trace 回放失败输入、工具调用、成本、延迟和评测结果。",
+    "platformAction": "打开 Trace 调试入口"
+  }
+]
