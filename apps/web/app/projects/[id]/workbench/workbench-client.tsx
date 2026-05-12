@@ -1071,6 +1071,13 @@ export function WorkbenchClient({
           >
             观测台 →
           </Link>
+          <Link
+            href={withReturnTo(`/projects/${projectId}/skill-forge`, sourcePath, sourceKey)}
+            className={styles.backLink}
+            title="打开 Skill 起草、审查、绑定和复用工作台"
+          >
+            Skill 工坊 →
+          </Link>
         </div>
       </header>
 

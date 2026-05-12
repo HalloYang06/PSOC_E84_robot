@@ -1,0 +1,260 @@
+.shell {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 78% 14%, rgba(255, 218, 122, 0.16), transparent 26%),
+    linear-gradient(135deg, #10100a, #071214 52%, #090d12);
+  color: #fffaf0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+.emptyPage {
+  min-height: 100vh;
+  padding: 32px;
+  background: #10100a;
+  color: #fffaf0;
+}
+
+.shell a,
+.emptyPage a {
+  color: inherit;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 20px;
+  border-bottom: 1px solid rgba(255, 232, 168, 0.18);
+  background: rgba(9, 13, 14, 0.88);
+  backdrop-filter: blur(18px);
+}
+
+.topbar nav,
+.topbar div,
+.heroActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.topbar a,
+.topbar span,
+.heroActions a {
+  padding: 7px 10px;
+  border: 1px solid rgba(255, 232, 168, 0.25);
+  border-radius: 8px;
+  background: rgba(255, 232, 168, 0.08);
+  text-decoration: none;
+  font-size: 12px;
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 36px;
+  padding: 58px 56px 34px;
+  border-bottom: 1px solid rgba(255, 232, 168, 0.14);
+}
+
+.hero span,
+.sectionHead span,
+.referenceGrid span,
+.pipeline small {
+  color: #ffe8a8;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.hero h1 {
+  margin: 12px 0;
+  max-width: 720px;
+  font-size: 56px;
+  line-height: 1.02;
+  letter-spacing: 0;
+}
+
+.hero p {
+  margin: 0 0 8px;
+  max-width: 710px;
+  color: rgba(255, 250, 240, 0.72);
+  font-size: 17px;
+  line-height: 1.65;
+}
+
+.heroActions a:first-child {
+  background: #ffe8a8;
+  color: #16130a;
+  font-weight: 900;
+}
+
+.matrix {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-self: center;
+  border: 1px solid rgba(255, 232, 168, 0.22);
+  border-radius: 18px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.matrix strong,
+.matrix span {
+  padding: 22px;
+  border-bottom: 1px solid rgba(255, 232, 168, 0.14);
+}
+
+.matrix strong {
+  font-size: 34px;
+}
+
+.matrix span {
+  color: rgba(255, 250, 240, 0.68);
+}
+
+.pipeline {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1px;
+  background: rgba(255, 232, 168, 0.14);
+}
+
+.pipeline article {
+  min-height: 176px;
+  padding: 20px;
+  background: rgba(8, 15, 17, 0.96);
+}
+
+.pipeline strong {
+  display: block;
+  margin: 12px 0;
+  font-size: 18px;
+}
+
+.pipeline p,
+.rows p,
+.referenceGrid p {
+  margin: 0;
+  color: rgba(255, 250, 240, 0.66);
+  line-height: 1.58;
+}
+
+.board {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 28px;
+  padding: 34px 56px;
+}
+
+.sectionHead {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.sectionHead h2 {
+  margin: 0;
+  font-size: 28px;
+  letter-spacing: 0;
+}
+
+.rows {
+  display: grid;
+  gap: 1px;
+  background: rgba(255, 232, 168, 0.14);
+}
+
+.rows article {
+  padding: 16px;
+  background: rgba(8, 15, 17, 0.96);
+}
+
+.rows strong,
+.referenceGrid strong {
+  font-size: 16px;
+}
+
+.side {
+  align-self: start;
+  padding: 18px;
+  border: 1px solid rgba(255, 232, 168, 0.18);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.side dl {
+  display: grid;
+  gap: 1px;
+  margin: 0;
+  background: rgba(255, 232, 168, 0.14);
+}
+
+.side div {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px;
+  background: rgba(8, 15, 17, 0.96);
+}
+
+.side dt {
+  color: rgba(255, 250, 240, 0.64);
+}
+
+.side dd {
+  margin: 0;
+  font-weight: 900;
+}
+
+.referencePanel {
+  padding: 0 56px 56px;
+}
+
+.referenceGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.referenceGrid article {
+  min-height: 152px;
+  padding: 18px;
+  border-top: 2px solid rgba(255, 232, 168, 0.7);
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.referenceGrid strong {
+  display: block;
+  margin: 10px 0;
+}
+
+@media (max-width: 1080px) {
+  .hero,
+  .board {
+    grid-template-columns: 1fr;
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+
+  .pipeline,
+  .referenceGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .referencePanel {
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+}
+
+@media (max-width: 720px) {
+  .hero h1 {
+    font-size: 38px;
+  }
+
+  .pipeline,
+  .referenceGrid,
+  .matrix {
+    grid-template-columns: 1fr;
+  }
+}

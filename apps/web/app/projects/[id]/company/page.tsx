@@ -57,6 +57,7 @@ function labelProjectReturnPath(value: string) {
   if (value.includes("/ai-lab")) return "← 返回 AI 实验室";
   if (value.includes("/robotics")) return "← 返回机器人现场";
   if (value.includes("/observability")) return "← 返回观测台";
+  if (value.includes("/skill-forge")) return "← 返回 Skill 工坊";
   if (value.includes("/workbench")) return "← 返回工作台";
   if (value.includes("/company")) return "← 返回公司层";
   return "← 返回来源";

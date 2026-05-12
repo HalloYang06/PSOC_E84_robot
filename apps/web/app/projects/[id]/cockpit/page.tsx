@@ -163,6 +163,9 @@ export default async function ProjectCockpitPage({ params, searchParams }: { par
           <Link href={`/projects/${params.id}/observability?return_to=${encodeURIComponent(`/projects/${params.id}/cockpit`)}&from=cockpit`} className={styles.ghostBtn} title="派单、回执、待审、Runner 和风险观测">
             📡 观测台
           </Link>
+          <Link href={`/projects/${params.id}/skill-forge?return_to=${encodeURIComponent(`/projects/${params.id}/cockpit`)}&from=cockpit`} className={styles.ghostBtn} title="Skill 起草、审查、绑定和复用">
+            🧩 Skill 工坊
+          </Link>
           <Link href={`/projects/${params.id}/company`} className={styles.ghostBtn} title="公司层：只看每个工位的工位长（👑），跨工位指派的默认入口">
             🏢 公司层
           </Link>
