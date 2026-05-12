@@ -2238,6 +2238,23 @@ def complete_workstation_command(
         CollaborationMessage.status.in_(["queued", "pending", "acked", "in_progress"]),
         CollaborationMessage.extra_data["source_message_id"].as_string() == message.id,
     ).update({"status": "completed" if payload.result_status == "completed" else "failed"}, synchronize_session=False)
+    # SQLite JSON path behavior can differ between SQLAlchemy versions and live local
+    # databases. Keep the set-based update above for databases that support it, then
+    # do a small Python-side pass so stale Desktop progress never survives a final.
+    sibling_final_status = "completed" if payload.result_status == "completed" else "failed"
+    sibling_receipts = db.scalars(
+        select(CollaborationMessage).where(
+            CollaborationMessage.project_id == message.project_id,
+            CollaborationMessage.message_type.in_(["agent_ack", "agent_progress"]),
+            CollaborationMessage.status.in_(["queued", "pending", "acked", "in_progress"]),
+        )
+    )
+    for sibling in sibling_receipts:
+        sibling_extra = _metadata_dict(sibling.extra_data)
+        if str(sibling_extra.get("source_message_id") or "").strip() != message.id:
+            continue
+        sibling.status = sibling_final_status
+        db.add(sibling)
     receipt: CollaborationMessage | None = None
     if message.requirement_id and payload.result_status == "completed":
         from app.modules.requirements.service import add_requirement_final_reply
