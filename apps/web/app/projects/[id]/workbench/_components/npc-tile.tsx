@@ -6,6 +6,8 @@ import styles from "./npc-tile.module.css";
 import { apiClientUrl } from "../../../../../lib/api-client-url";
 import { launchNpcOneShotThreadProcessing } from "../../../../actions";
 
+type NpcPanelTab = "dialog" | "needs" | "tasks";
+
 export type WorkbenchSeat = {
   id: string;
   rowId?: string;
@@ -1434,6 +1436,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
   const [automationEnabled, setAutomationEnabled] = useState(seat.automationEnabled);
   const [automationBusy, setAutomationBusy] = useState(false);
   const [automationNote, setAutomationNote] = useState<string | null>(null);
+  const [activePanelTab, setActivePanelTab] = useState<NpcPanelTab>("dialog");
   const tileRef = useRef<HTMLElement | null>(null);
   const streamRef = useRef<HTMLDivElement | null>(null);
   const draftRef = useRef<HTMLTextAreaElement | null>(null);
@@ -1475,7 +1478,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
   };
   const [seatQueues, setSeatQueues] = useState<SeatQueues | null>(null);
   const [receipts, setReceipts] = useState<Receipt[] | null>(null);
-  const [queueTab, setQueueTab] = useState<"needs" | "tasks" | "dispatch">("needs");
+  const [queueTab, setQueueTab] = useState<"needs" | "tasks" | "dispatch">("dispatch");
   const [receiptDirection, setReceiptDirection] = useState<"incoming" | "outgoing">("incoming");
   const [queueBusyId, setQueueBusyId] = useState<string | null>(null);
   const [queueNote, setQueueNote] = useState<string | null>(null);
@@ -1943,6 +1946,10 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
   }, [messages, seatIdentityIds]);
   const activeQueueMessageId = myQueue[0]?.id || null;
   const activeDispatchCount = myQueue.length;
+  const myNeedItems = seatQueues?.my_needs?.items ?? seatQueues?.requirement_inbox.items ?? [];
+  const myTaskItems = seatQueues?.my_tasks?.items ?? seatQueues?.task_todo.items ?? [];
+  const myNeedCount = seatQueues?.my_needs?.count ?? seatQueues?.requirement_inbox.count ?? 0;
+  const myTaskCount = seatQueues?.my_tasks?.count ?? seatQueues?.task_todo.count ?? 0;
   const pendingCloseoutCount = messages?.filter((item) => {
     if (!isDesktopCloseoutMessage(item)) return false;
     return !sourceHasFinalReceipt(messages, closeoutSourceMessageId(item));
@@ -2813,6 +2820,55 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
   const hiddenHistoryCount = Math.max(0, totalLoaded - filteredCount);
   const threadStatusLabel = occupancyHeldByMe ? "我在操作" : occupancyHeldByOther ? "他人操作中" : "可接手";
 
+  function renderNeedTaskPanel(kind: "needs" | "tasks") {
+    const activeItems = kind === "needs" ? myNeedItems : myTaskItems;
+    const count = kind === "needs" ? myNeedCount : myTaskCount;
+    const title = kind === "needs" ? "我的需求" : "我的任务";
+    const subtitle = kind === "needs"
+      ? "这个 NPC 缺什么、等谁满足；需求不是任务。"
+      : "分配给这个 NPC 要完成的工作；任务不是消息。";
+    return (
+      <section className={styles.queueWorkspace} aria-label={title}>
+        <div className={styles.queueWorkspaceHead}>
+          <div>
+            <span>{title}</span>
+            <strong>{count} 项</strong>
+          </div>
+          <small>{subtitle}</small>
+        </div>
+        {activeItems.length > 0 ? (
+          <ul className={styles.queueList}>
+            {activeItems.slice(0, 10).map((it, i) => (
+              <li key={it.id} className={styles.queueItem} data-from={kind}>
+                <span className={styles.queuePos}>#{i + 1}</span>
+                <div className={styles.queueMeta}>
+                  <span className={styles.queueFrom}>
+                    {kind === "needs"
+                      ? (it.to_agent || it.target_seat_id ? `等待 ${it.to_agent || it.target_seat_id}` : it.trigger_kind || "待路由")
+                      : (it.module ? `模块 ${it.module}` : it.priority || "待排期")}
+                  </span>
+                  <span className={styles.queueTitle}>{it.title || "(无标题)"}</span>
+                </div>
+                <span className={styles.queueStatus} data-status={it.status}>{it.status}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className={styles.queueEmpty}>
+            <strong>{kind === "needs" ? "暂无待满足需求" : "暂无待办任务"}</strong>
+            <p>
+              {kind === "needs"
+                ? "NPC 只有明确写入结构化需求后，这里才会出现路由、审核和结果状态。"
+                : "用户手动派单或其他 NPC 的需求被路由过来后，这里才会出现任务。"}
+            </p>
+          </div>
+        )}
+        {activeItems.length > 10 ? <small className={styles.muted}>… 还有 {activeItems.length - 10} 项</small> : null}
+        {queueNote ? <small className={styles.queueNote}>{queueNote}</small> : null}
+      </section>
+    );
+  }
+
   const renderReviewMessage = (m: CollabMessage) => {
     const body = String(m.body || "");
     const cleanBody = stripPlatformChatter(body);
@@ -3055,6 +3111,26 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
         )}
         {occupancyError ? <small className={styles.occupancyHint}>{occupancyError}</small> : null}
       </div>
+
+      <nav className={styles.panelTabs} aria-label={`${seat.name} 工作区切换`}>
+        {[
+          ["dialog", "对话", filteredCount],
+          ["needs", "我的需求", myNeedCount],
+          ["tasks", "我的任务", myTaskCount],
+        ].map(([tab, label, count]) => (
+          <button
+            key={String(tab)}
+            type="button"
+            className={styles.panelTab}
+            data-active={activePanelTab === tab ? "1" : undefined}
+            onClick={() => setActivePanelTab(tab as NpcPanelTab)}
+            title={tab === "dialog" ? "对话、回执、审核入口" : tab === "needs" ? "这个 NPC 发出的结构化需求" : "这个 NPC 承接的任务"}
+          >
+            <span>{label}</span>
+            <strong>{count}</strong>
+          </button>
+        ))}
+      </nav>
 
       {!headerCollapsed ? (
         <section className={styles.profile}>
@@ -3314,18 +3390,18 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
             {" / "}
             任务 {(seatQueues?.my_tasks?.count ?? seatQueues?.task_todo.count ?? 0)}
             {" / "}
-            指令 {myQueue.length}
+            对话指令 {myQueue.length}
             {" / "}
             回执 {receipts?.length ?? 0}
           </small>
         </summary>
         <div className={styles.runtimeBody}>
       {(() => {
-        const needItems = seatQueues?.my_needs?.items ?? seatQueues?.requirement_inbox.items ?? [];
-        const taskItems = seatQueues?.my_tasks?.items ?? seatQueues?.task_todo.items ?? [];
+        const needItems = myNeedItems;
+        const taskItems = myTaskItems;
         const dispatchItems = myQueue;
-        const needCount = seatQueues?.my_needs?.count ?? seatQueues?.requirement_inbox.count ?? 0;
-        const taskCount = seatQueues?.my_tasks?.count ?? seatQueues?.task_todo.count ?? 0;
+        const needCount = myNeedCount;
+        const taskCount = myTaskCount;
         if (needCount === 0 && taskCount === 0 && dispatchItems.length === 0 && (receipts?.length ?? 0) === 0) {
           return null;
         }
@@ -3336,34 +3412,16 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button
                   type="button"
-                  onClick={() => setQueueTab("needs")}
-                  className={styles.iconBtn}
-                  data-active={queueTab === "needs" ? "1" : undefined}
-                  title="我的需求：本 NPC 发出、等待别人满足的需求"
-                >
-                  📥 需求 {needCount}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setQueueTab("tasks")}
-                  className={styles.iconBtn}
-                  data-active={queueTab === "tasks" ? "1" : undefined}
-                  title="我的任务：分配给本 NPC 的未结任务"
-                >
-                  📋 任务 {taskCount}
-                </button>
-                <button
-                  type="button"
                   onClick={() => setQueueTab("dispatch")}
                   className={styles.iconBtn}
                   data-active={queueTab === "dispatch" ? "1" : undefined}
                   title="派单消息：直接发给本 NPC 的 collaboration_message"
                 >
-                  ✉ 指令 {dispatchItems.length}
+                  ✉ 对话指令 {dispatchItems.length}
                 </button>
               </div>
               <small className={styles.muted}>
-                {queueTab === "needs" ? "我缺什么 / 等谁满足" : queueTab === "tasks" ? "我要做什么 / 当前进度" : "优先显示进行中，其次最新待接"}
+                对话 Tab 只显示直发派单的接单队列；需求和任务请看上方主 Tab。
               </small>
             </div>
             {queueTab === "dispatch" ? (
@@ -3500,6 +3558,10 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
         </div>
       </details>
 
+      {activePanelTab === "needs" ? renderNeedTaskPanel("needs") : null}
+      {activePanelTab === "tasks" ? renderNeedTaskPanel("tasks") : null}
+
+      <div className={styles.dialogPane} data-active={activePanelTab === "dialog" ? "1" : "0"}>
       <div className={styles.streamToolbar}>
         <div className={styles.streamToolbarLeft}>
           <strong>与 {seat.name} 的对话</strong>
@@ -3910,6 +3972,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
           </div>
         </div>
       </form>
+      </div>
     </article>
   );
 }
