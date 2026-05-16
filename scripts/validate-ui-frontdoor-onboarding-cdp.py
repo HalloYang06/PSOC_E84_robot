@@ -1,7 +1,9 @@
 ﻿from __future__ import annotations
 
+import argparse
 import importlib.util
 import json
+import os
 import subprocess
 import shutil
 import sys
@@ -39,14 +41,25 @@ verify_projects_plaza = dual_helper.verify_projects_plaza
 create_npc_via_ui = dual_helper.create_npc_via_ui
 js_string = dual_helper.js_string
 
-WEB_BASE = 'http://127.0.0.1:3000'
-API_BASE = 'http://127.0.0.1:8010'
+WEB_BASE = os.environ.get('WEB_BASE', 'http://127.0.0.1:3001')
+API_BASE = os.environ.get('API_BASE', 'http://127.0.0.1:8011')
 OUTPUT_DIR = REPO_ROOT / 'artifacts'
 VIEWPORT_WIDTH = 1720
 VIEWPORT_HEIGHT = 1080
-OWNER_EMAIL = 'lead@example.com'
-OWNER_PASSWORD = 'password'
-OWNER_NAME = 'Lead'
+OWNER_EMAIL = os.environ.get('OWNER_EMAIL', 'lead@example.com')
+OWNER_PASSWORD = os.environ.get('OWNER_PASSWORD', 'password')
+OWNER_NAME = os.environ.get('OWNER_NAME', 'Lead')
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description='Validate frontdoor onboarding through the real UI.')
+    parser.add_argument('--web-base', default=WEB_BASE)
+    parser.add_argument('--api-base', default=API_BASE)
+    parser.add_argument('--owner-email', default=OWNER_EMAIL)
+    parser.add_argument('--owner-password', default=OWNER_PASSWORD)
+    parser.add_argument('--owner-name', default=OWNER_NAME)
+    parser.add_argument('--output-dir', default=str(OUTPUT_DIR))
+    return parser.parse_args()
 
 
 def create_project_via_ui_pure(
@@ -406,6 +419,14 @@ def attempt_thread_scan_via_ui(flow: BrowserFlow, *, project_id: str, computer_i
 
 
 def main() -> int:
+    global WEB_BASE, API_BASE, OWNER_EMAIL, OWNER_PASSWORD, OWNER_NAME, OUTPUT_DIR
+    args = parse_args()
+    WEB_BASE = str(args.web_base).rstrip('/')
+    API_BASE = str(args.api_base).rstrip('/')
+    OWNER_EMAIL = str(args.owner_email)
+    OWNER_PASSWORD = str(args.owner_password)
+    OWNER_NAME = str(args.owner_name)
+    OUTPUT_DIR = Path(str(args.output_dir))
     stamp = datetime.now().strftime('%Y%m%d-%H%M%S')
     output_dir = OUTPUT_DIR
     output_dir.mkdir(parents=True, exist_ok=True)
