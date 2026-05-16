@@ -572,6 +572,14 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
   const me = auth.data?.user as AnyRecord | null;
   const currentUserId = text(me?.id, "");
   const currentUserName = text(me?.name ?? me?.email ?? me?.id, currentUserId || "我");
+  function decodedFocusValue(value: string) {
+    try {
+      return decodeURIComponent(value);
+    } catch {
+      return value;
+    }
+  }
+
   const focusSeatParam = text(searchParams?.seat, "");
   const focusSeatParams = [
     focusSeatParam,
@@ -579,11 +587,20 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
       .split(",")
       .map((value) => value.trim())
       .filter(Boolean),
-  ].filter(Boolean);
+  ]
+    .filter(Boolean)
+    .flatMap((value) => {
+      const decoded = decodedFocusValue(value);
+      return decoded === value ? [value] : [value, decoded];
+    });
   const returnToPath = safeProjectReturnPath(params.id, searchParams?.return_to);
   const focusSeatIds = focusSeatParams.length
     ? seats
-        .filter((seat) => focusSeatParams.some((focus) => identitySet(seat.id, seat.rowId, seat.threadId, seat.name).has(focus)))
+        .filter((seat) =>
+          focusSeatParams.some((focus) =>
+            identitySet(seat.id, seat.rowId, seat.configId, seat.threadId, seat.name).has(focus),
+          ),
+        )
         .map((seat) => seat.id)
     : [];
   const projectGithubUrl = text(project.github_url, "");
