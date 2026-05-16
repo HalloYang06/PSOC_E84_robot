@@ -31,7 +31,7 @@
   执行 CLI 的工作目录。默认仓库根。
 
 .PARAMETER PollSeconds
-  轮询间隔秒数，默认 3。
+  轮询间隔秒数，默认 1.5。用于平台 inbox 和 Codex Desktop JSONL 同步。
 
 .EXAMPLE
   .\start-thread-watcher.ps1 -ProjectId proj_ai_collab -WorkstationId 'frontend-thread'
@@ -52,7 +52,7 @@ param(
 
   [string]$ExecutorCwd = "",
 
-  [double]$PollSeconds = 3.0,
+  [double]$PollSeconds = 1.5,
 
   [switch]$SpawnWindow,
 

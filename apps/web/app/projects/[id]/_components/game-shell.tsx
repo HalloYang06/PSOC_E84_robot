@@ -18,7 +18,7 @@ const PANELS: { key: PanelKey; label: string; title: string; path: (id: string) 
   { key: "map", label: "🗺️ 地图", title: "项目工作台地图 · 所有一级入口", path: (id) => `/projects/${id}/map` },
   { key: "cockpit", label: "🛠️ 驾驶舱", title: "项目驾驶舱（合格性 / KPI / 广播）", path: (id) => `/projects/${id}/cockpit` },
   { key: "workbench", label: "🧑‍💼 工作台", title: "NPC 工作台 · 瓷砖主操作面", path: (id) => `/projects/${id}/workbench` },
-  { key: "observability", label: "📡 观测台", title: "派单、回执、待审、Runner 和风险观测", path: (id) => `/projects/${id}/observability` },
+  { key: "observability", label: "📡 观测台", title: "派单、回执、待审、执行电脑和风险观测", path: (id) => `/projects/${id}/observability` },
   { key: "company", label: "🏢 公司层", title: "工位长会议室", path: (id) => `/projects/${id}/company` },
 ];
 

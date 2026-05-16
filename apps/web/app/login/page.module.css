@@ -272,6 +272,36 @@
   outline: none;
 }
 
+.passwordControl {
+  position: relative;
+}
+
+.passwordControl input {
+  padding-right: 74px;
+}
+
+.passwordToggle {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  min-width: 54px;
+  min-height: 32px;
+  border: 1px solid rgba(119, 231, 255, 0.28);
+  border-radius: 12px;
+  color: #c8f7ff;
+  background: rgba(7, 28, 42, 0.92);
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.passwordToggle:hover,
+.passwordToggle:focus-visible {
+  border-color: rgba(129, 247, 255, 0.72);
+  color: #061019;
+  background: #8cfce2;
+  outline: none;
+}
+
 .field input:focus {
   border-color: rgba(129, 247, 255, 0.72);
   box-shadow: 0 0 0 3px rgba(74, 221, 255, 0.13);

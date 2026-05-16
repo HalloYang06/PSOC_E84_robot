@@ -26,6 +26,10 @@ function adapterShellArg(value: unknown) {
   return `"${raw.replace(/"/g, "\\\"")}"`;
 }
 
+function bashSingleQuoted(value: unknown) {
+  return `'${text(value, "").replace(/'/g, `'\\''`)}'`;
+}
+
 function powerShellQuoted(value: unknown) {
   return `'${text(value, "").replace(/'/g, "''")}'`;
 }
@@ -34,8 +38,17 @@ export function buildRunnerScriptUrl(webBaseUrl: string, scriptName: string) {
   const base = text(webBaseUrl, "http://127.0.0.1:3000")
     .replace(/\/+$/, "")
     .replace(/:8010$/, ":3000")
+    .replace(/:8011$/, ":3001")
     .replace(/:8000$/, ":3000");
   return `${base}/downloads/runner/${encodeURIComponent(scriptName)}`;
+}
+
+export function buildRunnerApiBaseUrl(serverUrl: string) {
+  return text(serverUrl, "http://127.0.0.1:8010")
+    .replace(/\/+$/, "")
+    .replace(/:3000$/, ":8010")
+    .replace(/:3001$/, ":8011")
+    .replace(/:8000$/, ":8010");
 }
 
 function buildRunnerScriptBootstrapCommand(webBaseUrl: string, scriptName: string) {
@@ -69,6 +82,29 @@ function buildPowerShellRunnerScriptCommand(
     "-Command",
     adapterShellArg(commandBody),
   ].join(" ");
+}
+
+function buildBashRunnerScriptCommand(
+  webBaseUrl: string,
+  scriptName: string,
+  args: Array<[string, unknown]>,
+) {
+  const scriptUrl = buildRunnerScriptUrl(webBaseUrl, scriptName);
+  const argText = args
+    .map(([name, value]) => {
+      if (value === true) return name;
+      if (value === false || value === null || value === undefined) return "";
+      return `${name} ${bashSingleQuoted(value)}`;
+    })
+    .filter(Boolean)
+    .join(" ");
+  const scriptPath = `./ai-collab-runner/${scriptName}`;
+  return [
+    "mkdir -p ./ai-collab-runner",
+    `curl -fsSL ${bashSingleQuoted(scriptUrl)} -o ${bashSingleQuoted(scriptPath)}`,
+    `chmod +x ${bashSingleQuoted(scriptPath)}`,
+    `${scriptPath} ${argText}`.trim(),
+  ].join(" && ");
 }
 
 export function buildWorkstationAdapterCommand(
@@ -111,6 +147,40 @@ export function buildWorkstationAdapterCommand(
   ].join(" ");
 }
 
+export function buildWorkstationAdapterBashCommand(
+  projectId: string,
+  workstationId: string,
+  token?: string | null,
+  serverUrl = "http://127.0.0.1:8010",
+) {
+  const adapterScript = "platform-workstation-adapter.py";
+  const providerExecutorScript = "platform-provider-executor.py";
+  const adapterScriptPath = "./ai-collab-runner/platform-workstation-adapter.py";
+  const providerExecutorPath = "./ai-collab-runner/platform-provider-executor.py";
+  const adapterUrl = buildRunnerScriptUrl(serverUrl, adapterScript);
+  const providerUrl = buildRunnerScriptUrl(serverUrl, providerExecutorScript);
+  const command = [
+    "python3",
+    bashSingleQuoted(adapterScriptPath),
+    "--api-base",
+    bashSingleQuoted(serverUrl),
+    "--project-id",
+    bashSingleQuoted(projectId),
+    "--workstation-id",
+    bashSingleQuoted(workstationId),
+    "--auto-ack",
+  ];
+  if (text(token, "")) {
+    command.push("--token", bashSingleQuoted(token));
+  }
+  return [
+    "mkdir -p ./ai-collab-runner",
+    `curl -fsSL ${bashSingleQuoted(adapterUrl)} -o ${bashSingleQuoted(adapterScriptPath)}`,
+    `curl -fsSL ${bashSingleQuoted(providerUrl)} -o ${bashSingleQuoted(providerExecutorPath)}`,
+    command.join(" "),
+  ].join(" && ");
+}
+
 export function normalizeComputerRunnerSlug(value: unknown) {
   const raw = text(value, "").toLowerCase();
   const slug = raw.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
@@ -129,14 +199,33 @@ export function buildComputerRunnerRegisterCommand(
   pairingToken: string,
   runnerId: string,
 ) {
+  const apiBaseUrl = buildRunnerApiBaseUrl(serverUrl);
   const nodeId = text(node.id ?? node.node_id ?? node.name ?? node.label, "computer");
   const runnerName = `${text(node.label ?? node.name, nodeId)} Runner`;
   return buildPowerShellRunnerScriptCommand(serverUrl, "register-runner.ps1", [
-    ["-Server", serverUrl],
+    ["-Server", apiBaseUrl],
     ["-PairingToken", pairingToken],
     ["-ComputerNodeId", nodeId],
     ["-RunnerName", runnerName],
     ["-RunnerId", runnerId],
+  ]);
+}
+
+export function buildComputerRunnerRegisterBashCommand(
+  serverUrl: string,
+  node: AnyRecord,
+  pairingToken: string,
+  runnerId: string,
+) {
+  const apiBaseUrl = buildRunnerApiBaseUrl(serverUrl);
+  const nodeId = text(node.id ?? node.node_id ?? node.name ?? node.label, "computer");
+  const runnerName = `${text(node.label ?? node.name, nodeId)} Runner`;
+  return buildBashRunnerScriptCommand(serverUrl, "register-runner.sh", [
+    ["--server", apiBaseUrl],
+    ["--pairing-token", pairingToken],
+    ["--computer-node-id", nodeId],
+    ["--runner-name", runnerName],
+    ["--runner-id", runnerId],
   ]);
 }
 
@@ -148,9 +237,7 @@ export function buildComputerOneClickConnectCommand(
   runnerId: string,
   options: { watch?: boolean; executeProviderCli?: boolean; serverUrl?: string } = {},
 ) {
-  const serverUrl = text(options.serverUrl, webBaseUrl)
-    .replace(/\/+$/, "")
-    .replace(/:3000$/, ":8011");
+  const serverUrl = buildRunnerApiBaseUrl(text(options.serverUrl, webBaseUrl));
   const nodeId = text(node.id ?? node.node_id ?? node.name ?? node.label, "computer");
   const runnerName = `${text(node.label ?? node.name, nodeId)} Runner`;
   const workspaceRoot = text(node.git_root ?? node.workspace_root, "");
@@ -174,6 +261,38 @@ export function buildComputerOneClickConnectCommand(
   return buildPowerShellRunnerScriptCommand(webBaseUrl, "connect-ai-collab-runner.ps1", args);
 }
 
+export function buildComputerOneClickConnectBashCommand(
+  webBaseUrl: string,
+  projectId: string,
+  node: AnyRecord,
+  pairingToken: string,
+  runnerId: string,
+  options: { watch?: boolean; executeProviderCli?: boolean; serverUrl?: string } = {},
+) {
+  const serverUrl = buildRunnerApiBaseUrl(text(options.serverUrl, webBaseUrl));
+  const nodeId = text(node.id ?? node.node_id ?? node.name ?? node.label, "computer");
+  const runnerName = `${text(node.label ?? node.name, nodeId)} Runner`;
+  const workspaceRoot = text(node.git_root ?? node.workspace_root, "");
+  const args: Array<[string, unknown]> = [
+    ["--server", serverUrl],
+    ["--pairing-token", pairingToken],
+    ["--computer-node-id", nodeId],
+    ["--runner-name", runnerName],
+    ["--runner-id", runnerId],
+    ["--project-id", projectId],
+  ];
+  if (workspaceRoot) {
+    args.push(["--workspace-root", workspaceRoot]);
+  }
+  if (options.watch) {
+    args.push(["--watch", true]);
+  }
+  if (options.executeProviderCli) {
+    args.push(["--watch-execute-provider-cli", true]);
+  }
+  return buildBashRunnerScriptCommand(webBaseUrl, "connect-ai-collab-runner.sh", args);
+}
+
 export function buildComputerRunnerWatchCommand(
   serverUrl: string,
   projectId: string,
@@ -181,11 +300,12 @@ export function buildComputerRunnerWatchCommand(
   runnerId: string,
   options: { executeProviderCli?: boolean; pollSeconds?: number | null } = {},
 ) {
+  const apiBaseUrl = buildRunnerApiBaseUrl(serverUrl);
   const nodeId = text(node.id ?? node.node_id ?? node.name ?? node.label, "computer");
   const runnerName = `${text(node.label ?? node.name, nodeId)} Runner`;
   const workspaceRoot = text(node.git_root ?? node.workspace_root, "");
   const args: Array<[string, unknown]> = [
-    ["-Server", serverUrl],
+    ["-Server", apiBaseUrl],
     ["-PairingToken", "already-bound-runner-reuse"],
     ["-ComputerNodeId", nodeId],
     ["-RunnerName", runnerName],
@@ -205,18 +325,67 @@ export function buildComputerRunnerWatchCommand(
   return buildPowerShellRunnerScriptCommand(serverUrl, "connect-ai-collab-runner.ps1", args);
 }
 
+export function buildComputerRunnerWatchBashCommand(
+  serverUrl: string,
+  projectId: string,
+  node: AnyRecord,
+  runnerId: string,
+  options: { executeProviderCli?: boolean; pollSeconds?: number | null } = {},
+) {
+  const apiBaseUrl = buildRunnerApiBaseUrl(serverUrl);
+  const nodeId = text(node.id ?? node.node_id ?? node.name ?? node.label, "computer");
+  const runnerName = `${text(node.label ?? node.name, nodeId)} Runner`;
+  const workspaceRoot = text(node.git_root ?? node.workspace_root, "");
+  const args: Array<[string, unknown]> = [
+    ["--server", apiBaseUrl],
+    ["--pairing-token", "already-bound-runner-reuse"],
+    ["--computer-node-id", nodeId],
+    ["--runner-name", runnerName],
+    ["--runner-id", runnerId],
+    ["--project-id", projectId],
+    ["--skip-codex", true],
+    ["--skip-claude", true],
+    ["--watch", true],
+    ["--watch-poll-seconds", normalizeAutomationHeartbeatSeconds(options.pollSeconds)],
+  ];
+  if (options.executeProviderCli) {
+    args.push(["--watch-execute-provider-cli", true]);
+  }
+  if (workspaceRoot) {
+    args.push(["--workspace-root", workspaceRoot]);
+  }
+  return buildBashRunnerScriptCommand(serverUrl, "connect-ai-collab-runner.sh", args);
+}
+
 export function buildComputerCodexThreadSyncCommand(
   serverUrl: string,
   projectId: string,
   node: AnyRecord,
   runnerId: string,
 ) {
+  const apiBaseUrl = buildRunnerApiBaseUrl(serverUrl);
   const nodeId = text(node.id ?? node.node_id ?? node.name ?? node.label, "computer");
   return buildPowerShellRunnerScriptCommand(serverUrl, "sync-codex-session-threads.ps1", [
-    ["-Server", serverUrl],
+    ["-Server", apiBaseUrl],
     ["-RunnerId", runnerId],
     ["-ProjectId", projectId],
     ["-ComputerNodeId", nodeId],
+  ]);
+}
+
+export function buildComputerCodexThreadSyncBashCommand(
+  serverUrl: string,
+  projectId: string,
+  node: AnyRecord,
+  runnerId: string,
+) {
+  const apiBaseUrl = buildRunnerApiBaseUrl(serverUrl);
+  const nodeId = text(node.id ?? node.node_id ?? node.name ?? node.label, "computer");
+  return buildBashRunnerScriptCommand(serverUrl, "sync-codex-session-threads.sh", [
+    ["--server", apiBaseUrl],
+    ["--runner-id", runnerId],
+    ["--project-id", projectId],
+    ["--computer-node-id", nodeId],
   ]);
 }
 
@@ -226,10 +395,11 @@ export function buildComputerClaudeThreadSyncCommand(
   node: AnyRecord,
   runnerId: string,
 ) {
+  const apiBaseUrl = buildRunnerApiBaseUrl(serverUrl);
   const nodeId = text(node.id ?? node.node_id ?? node.name ?? node.label, "computer");
   const workspaceRoot = text(node.git_root ?? node.workspace_root, "");
   const args: Array<[string, unknown]> = [
-    ["-Server", serverUrl],
+    ["-Server", apiBaseUrl],
     ["-RunnerId", runnerId],
     ["-ProjectId", projectId],
     ["-ComputerNodeId", nodeId],
@@ -240,19 +410,41 @@ export function buildComputerClaudeThreadSyncCommand(
   return buildPowerShellRunnerScriptCommand(serverUrl, "sync-claude-session-threads.ps1", args);
 }
 
+export function buildComputerClaudeThreadSyncBashCommand(
+  serverUrl: string,
+  projectId: string,
+  node: AnyRecord,
+  runnerId: string,
+) {
+  const apiBaseUrl = buildRunnerApiBaseUrl(serverUrl);
+  const nodeId = text(node.id ?? node.node_id ?? node.name ?? node.label, "computer");
+  const workspaceRoot = text(node.git_root ?? node.workspace_root, "");
+  const args: Array<[string, unknown]> = [
+    ["--server", apiBaseUrl],
+    ["--runner-id", runnerId],
+    ["--project-id", projectId],
+    ["--computer-node-id", nodeId],
+  ];
+  if (workspaceRoot) {
+    args.push(["--workspace-root", workspaceRoot]);
+  }
+  return buildBashRunnerScriptCommand(serverUrl, "sync-claude-session-threads.sh", args);
+}
+
 export function buildComputerManualThreadSyncCommand(
   serverUrl: string,
   projectId: string,
   node: AnyRecord,
   runnerId: string,
 ) {
+  const apiBaseUrl = buildRunnerApiBaseUrl(serverUrl);
   const nodeId = text(node.id ?? node.node_id ?? node.name ?? node.label, "computer");
   const nodeLabel = text(node.label ?? node.name, nodeId);
   const manualThreadId = `codex-${normalizeComputerRunnerSlug(nodeId)}-mainline`;
   const manualThreadName = `${nodeLabel} / Codex 主线程`;
   const cwd = text(node.git_root ?? node.workspace_root, "");
   const args: Array<[string, unknown]> = [
-    ["-Server", serverUrl],
+    ["-Server", apiBaseUrl],
     ["-RunnerId", runnerId],
     ["-ProjectId", projectId],
     ["-ComputerNodeId", nodeId],
@@ -263,4 +455,30 @@ export function buildComputerManualThreadSyncCommand(
     args.push(["-Cwd", cwd]);
   }
   return buildPowerShellRunnerScriptCommand(serverUrl, "sync-runner-threads.ps1", args);
+}
+
+export function buildComputerManualThreadSyncBashCommand(
+  serverUrl: string,
+  projectId: string,
+  node: AnyRecord,
+  runnerId: string,
+) {
+  const apiBaseUrl = buildRunnerApiBaseUrl(serverUrl);
+  const nodeId = text(node.id ?? node.node_id ?? node.name ?? node.label, "computer");
+  const nodeLabel = text(node.label ?? node.name, nodeId);
+  const manualThreadId = `codex-${normalizeComputerRunnerSlug(nodeId)}-mainline`;
+  const manualThreadName = `${nodeLabel} / Codex 主线程`;
+  const cwd = text(node.git_root ?? node.workspace_root, "");
+  const args: Array<[string, unknown]> = [
+    ["--server", apiBaseUrl],
+    ["--runner-id", runnerId],
+    ["--project-id", projectId],
+    ["--computer-node-id", nodeId],
+    ["--thread-id", manualThreadId],
+    ["--thread-name", manualThreadName],
+  ];
+  if (cwd) {
+    args.push(["--cwd", cwd]);
+  }
+  return buildBashRunnerScriptCommand(serverUrl, "sync-runner-threads.sh", args);
 }

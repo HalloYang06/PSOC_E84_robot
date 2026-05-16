@@ -1,12 +1,18 @@
 ﻿from __future__ import annotations
 
 import hashlib
+import os
 import secrets
 import re
-from datetime import datetime, timezone
+import subprocess
+import sys
+import tempfile
+from datetime import datetime, timedelta, timezone
+from pathlib import Path, PurePosixPath
 import uuid
 
 from sqlalchemy import func, or_, select
+from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.orm import Session
 
 from app.common.audit import append_audit_log
@@ -77,6 +83,17 @@ def _project_collaboration_items(project: Project, section: str) -> list[dict[st
     return [dict(item) for item in config.get(section) or []]
 
 
+def _looks_like_local_executor_path(value: object | None) -> bool:
+    text = str(value or "").strip()
+    if not text:
+        return False
+    if "://" in text:
+        return False
+    if text.startswith(("/", "\\")):
+        return True
+    return bool(re.match(r"^[A-Za-z]:[\\/]", text))
+
+
 def _workstation_is_runner_scan(item: dict[str, object]) -> bool:
     metadata = item.get("metadata")
     if not isinstance(metadata, dict):
@@ -138,7 +155,52 @@ def _update_project_collaboration_section(
     )
 
 
-def _find_item_index(items: list[dict[str, object]], identifier: str, *, section: str) -> int:
+def _thread_workstation_row_aliases(db: Session | None, project_id: str | None, identifier: str) -> set[str]:
+    cleaned = str(identifier or "").strip()
+    if db is None or not project_id or not cleaned:
+        return set()
+    row = db.scalar(
+        select(ProjectThreadWorkstation).where(
+            ProjectThreadWorkstation.project_id == project_id,
+            (ProjectThreadWorkstation.id == cleaned)
+            | (ProjectThreadWorkstation.config_id == cleaned)
+            | (ProjectThreadWorkstation.name == cleaned)
+            | (ProjectThreadWorkstation.agent_id == cleaned),
+        )
+    )
+    if row is None:
+        return set()
+    aliases = {
+        str(row.id or ""),
+        str(row.config_id or ""),
+        str(row.name or ""),
+        str(row.agent_id or ""),
+    }
+    extra_data = _metadata_dict(row.extra_data)
+    aliases.update(
+        str(extra_data.get(key) or "")
+        for key in (
+            "source_workstation_id",
+            "source_thread_id",
+            "bound_thread_id",
+            "target_thread_id",
+            "npc_identity_key",
+        )
+    )
+    return {item for item in aliases if item}
+
+
+def _find_item_index(
+    items: list[dict[str, object]],
+    identifier: str,
+    *,
+    section: str,
+    db: Session | None = None,
+    project_id: str | None = None,
+) -> int:
+    wanted = {str(identifier or "").strip()}
+    wanted.update(_thread_workstation_row_aliases(db, project_id, identifier))
+    wanted.discard("")
     for index, item in enumerate(items):
         metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
         extra_data = item.get("extra_data") if isinstance(item.get("extra_data"), dict) else {}
@@ -150,9 +212,17 @@ def _find_item_index(items: list[dict[str, object]], identifier: str, *, section
             str(item.get("row_id") or ""),
             str(item.get("source_workstation_id") or ""),
             str(metadata.get("source_workstation_id") or ""),
+            str(metadata.get("source_thread_id") or ""),
+            str(metadata.get("bound_thread_id") or ""),
+            str(metadata.get("target_thread_id") or ""),
+            str(metadata.get("npc_identity_key") or ""),
             str(extra_data.get("source_workstation_id") or ""),
+            str(extra_data.get("source_thread_id") or ""),
+            str(extra_data.get("bound_thread_id") or ""),
+            str(extra_data.get("target_thread_id") or ""),
+            str(extra_data.get("npc_identity_key") or ""),
         }
-        if identifier in candidates:
+        if wanted.intersection(candidates):
             return index
     raise AppError("NOT_FOUND", f"{section} does not exist", status_code=404)
 
@@ -249,6 +319,142 @@ def _enrich_computer_nodes_with_thread_scan(project: Project, nodes: list[dict[s
 def get_project_collaboration_config(db: Session, project_id: str) -> dict[str, object]:
     project = get_project_or_404(db, project_id)
     return get_project_config(db, project.id)
+
+
+def _maybe_autostart_workstation_command(
+    db: Session,
+    message: CollaborationMessage,
+    *,
+    force_retry: bool = False,
+    trigger: str = "message_created",
+) -> None:
+    if str(message.message_type or "").strip() not in {"agent_command", "requirement_dispatch", "comment_message"}:
+        return
+    if str(message.recipient_type or "").strip() not in {"workstation", "thread_workstation"}:
+        return
+    allowed_statuses = {"queued", "pending", "open"}
+    if force_retry:
+        allowed_statuses.add("in_progress")
+    if str(message.status or "").strip() not in allowed_statuses:
+        return
+
+    project_id = str(message.project_id or "").strip()
+    workstation_id = str(message.recipient_id or "").strip()
+    message_id = str(message.id or "").strip()
+    if not project_id or not workstation_id or not message_id:
+        return
+
+    metadata = _metadata_dict(message.extra_data)
+    if metadata.get("auto_start_launch_status") == "launched" and not force_retry:
+        return
+    attempt_count = 0
+    try:
+        attempt_count = int(metadata.get("auto_start_attempt_count") or 0)
+    except (TypeError, ValueError):
+        attempt_count = 0
+
+    try:
+        adapter = get_project_workstation_adapter_config(db, project_id, workstation_id)
+    except Exception as exc:
+        metadata.update(
+            {
+                "auto_start_attempted_at": datetime.now(timezone.utc).isoformat(),
+                "auto_start_attempt_count": attempt_count + 1,
+                "auto_start_trigger": trigger,
+                "auto_start_launch_status": "config_unavailable",
+                "auto_start_last_error": str(exc),
+            }
+        )
+        message.extra_data = metadata
+        db.add(message)
+        return
+
+    delivery_mode = str(adapter.get("delivery_mode") or "").strip() or None
+    automation_enabled = bool(adapter.get("automation_enabled"))
+    desktop_visible = bool(adapter.get("desktop_visible") or adapter.get("desktop_process_detected"))
+    executor_command = str(adapter.get("executor_command") or "").strip()
+    if delivery_mode in {"codex_desktop_ui", "codex_desktop_ui_required"} and os.environ.get(
+        "AI_COLLAB_ENABLE_SERVER_DESKTOP_AUTOSTART"
+    ) != "1":
+        metadata.update(
+            {
+                "auto_start_attempted_at": datetime.now(timezone.utc).isoformat(),
+                "auto_start_attempt_count": attempt_count + 1,
+                "auto_start_trigger": trigger,
+                "auto_start_delivery_mode": delivery_mode,
+                "auto_start_launch_status": "waiting_for_bound_runner",
+                "auto_start_last_error": "desktop delivery is handled by the bound computer runner, not the API server",
+                "desktop_sync_retry_available": True,
+            }
+        )
+        message.extra_data = metadata
+        flag_modified(message, "extra_data")
+        db.add(message)
+        return
+    can_single_shot_launch = automation_enabled or desktop_visible or bool(executor_command)
+    if not can_single_shot_launch:
+        metadata.update(
+            {
+                "auto_start_attempted_at": datetime.now(timezone.utc).isoformat(),
+                "auto_start_attempt_count": attempt_count + 1,
+                "auto_start_trigger": trigger,
+                "auto_start_launch_status": "waiting_for_desktop_binding",
+                "auto_start_delivery_mode": delivery_mode,
+                "auto_start_last_error": "target workstation has no visible desktop thread or executor command",
+            }
+        )
+        message.extra_data = metadata
+        db.add(message)
+        return
+
+    launch = _launch_workstation_autostart(
+        project_id=project_id,
+        workstation_id=workstation_id,
+        message_id=message_id,
+    )
+    metadata.update(
+        {
+            "auto_start_attempted_at": datetime.now(timezone.utc).isoformat(),
+            "auto_start_attempt_count": attempt_count + 1,
+            "auto_start_trigger": trigger,
+            "auto_start_delivery_mode": delivery_mode,
+            "auto_start_launch_status": launch.get("status"),
+            "auto_start_launch_pid": launch.get("pid"),
+            "auto_start_stdout_path": launch.get("stdout_path"),
+            "auto_start_stderr_path": launch.get("stderr_path"),
+        }
+    )
+    if launch.get("reason"):
+        metadata["auto_start_last_error"] = launch.get("reason")
+    elif launch.get("launched"):
+        metadata.pop("auto_start_last_error", None)
+    if force_retry and launch.get("launched"):
+        metadata["desktop_sync_retry_requested"] = False
+        metadata["desktop_sync_retry_dispatched_at"] = datetime.now(timezone.utc).isoformat()
+        metadata["desktop_closeout_waiting"] = True
+    message.extra_data = metadata
+    flag_modified(message, "extra_data")
+    db.add(message)
+    append_audit_log(
+        db,
+        project_id=project_id,
+        task_id=message.task_id,
+        actor_type="system",
+        actor_id="platform-autostart",
+        action="collaboration.message.autostart_attempted",
+        resource_type="collaboration_message",
+        resource_id=message.id,
+        after={
+            "workstation_id": workstation_id,
+            "delivery_mode": delivery_mode,
+            "launch_status": launch.get("status"),
+            "pid": launch.get("pid"),
+        },
+    )
+
+
+def autostart_workstation_command_after_review(db: Session, message: CollaborationMessage) -> None:
+    _maybe_autostart_workstation_command(db, message, trigger="review_approved")
 
 
 def update_project_collaboration_config(db: Session, project_id: str, payload: CollaborationConfigUpdate) -> dict[str, object]:
@@ -481,27 +687,61 @@ def list_project_thread_workstations(db: Session, project_id: str) -> list[dict[
                 item["workstation_id"] = row.workstation_id
             extra_data = _metadata_dict(row.extra_data)
             metadata = _metadata_dict(item.get("metadata"))
+            item["authoritative_seat_id"] = row.id
+            item["authoritative_seat_ref"] = str(row.config_id or row.id or "").strip() or None
+            metadata.setdefault("authoritative_seat_id", row.id)
+            metadata.setdefault("authoritative_seat_ref", str(row.config_id or row.id or "").strip() or None)
+            metadata.setdefault("historical_aliases", [])
             for key, value in _thread_binding_aliases({**item, "extra_data": extra_data}).items():
                 item.setdefault(key, value)
                 metadata.setdefault(key, value)
+            alias_values = []
+            for value in (
+                item.get("source_workstation_id"),
+                metadata.get("source_workstation_id"),
+                extra_data.get("source_workstation_id"),
+            ):
+                text = str(value or "").strip()
+                if text and text not in {str(row.id or "").strip(), str(row.config_id or "").strip()} and text not in alias_values:
+                    alias_values.append(text)
+            if alias_values:
+                item["historical_aliases"] = alias_values
+                metadata["historical_aliases"] = alias_values
             if metadata:
                 item["metadata"] = metadata
     return items
 
 
-def get_project_thread_workstation(db: Session, project_id: str, workstation_name: str) -> dict[str, object]:
+def get_project_thread_workstation(
+    db: Session,
+    project_id: str,
+    workstation_name: str,
+    *,
+    allow_historical_alias: bool = False,
+) -> dict[str, object]:
     for item in list_project_thread_workstations(db, project_id):
         metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
         extra_data = item.get("extra_data") if isinstance(item.get("extra_data"), dict) else {}
-        if workstation_name in {
+        formal_candidates = {
             str(item.get("id") or ""),
             str(item.get("config_id") or ""),
             str(item.get("name") or ""),
             str(item.get("row_id") or ""),
+            str(item.get("agent_id") or ""),
+            str(item.get("workstation_id") or ""),
+        }
+        alias_candidates = {
             str(item.get("source_workstation_id") or ""),
             str(metadata.get("source_workstation_id") or ""),
+            str(metadata.get("source_thread_id") or ""),
+            str(metadata.get("bound_thread_id") or ""),
             str(extra_data.get("source_workstation_id") or ""),
-        }:
+            str(extra_data.get("source_thread_id") or ""),
+            str(extra_data.get("bound_thread_id") or ""),
+        }
+        if workstation_name in formal_candidates or (
+            allow_historical_alias and workstation_name in alias_candidates
+        ):
             return item
     raise AppError("NOT_FOUND", "thread workstation does not exist", status_code=404)
 
@@ -591,6 +831,390 @@ def _workstation_token_payload(project_id: str, workstation: dict[str, object], 
 
 def _metadata_dict(value: object | None) -> dict[str, object]:
     return dict(value) if isinstance(value, dict) else {}
+
+
+def _normalize_workstation_artifact_path(
+    path: object | None,
+    *,
+    project_id: str | None = None,
+    workstation_id: str | None = None,
+) -> str | None:
+    raw = str(path or "").strip()
+    if not raw:
+        return None
+    normalized = raw.replace("\\", "/")
+    marker = "artifacts/workstation-inbox"
+    lowered = normalized.lower()
+    idx = lowered.find(marker)
+    if idx < 0:
+        return raw
+    tail = normalized[idx + len(marker):].lstrip("/")
+    parts = [part for part in PurePosixPath(tail).parts if part not in {"", "."}]
+    project = str(project_id or "").strip()
+    workstation = str(workstation_id or "").strip()
+    while parts and project and parts[0].lower() == project.lower():
+        parts.pop(0)
+    while parts and workstation and parts[0].lower() == workstation.lower():
+        parts.pop(0)
+    while len(parts) >= 2 and project and workstation and parts[0].lower() == "proj_ai_collab" and parts[1].lower() == workstation.lower():
+        parts = parts[2:]
+    rebuilt: list[str] = ["artifacts", "workstation-inbox"]
+    if project:
+        rebuilt.append(project)
+    if workstation:
+        rebuilt.append(workstation)
+    rebuilt.extend(parts)
+    return str(PurePosixPath(*rebuilt))
+
+
+def _workspace_root() -> Path:
+    return Path(__file__).resolve().parents[5]
+
+
+def _adapter_script_path() -> Path:
+    return _workspace_root() / "scripts" / "platform-workstation-adapter.py"
+
+
+def _autostart_log_dir() -> Path:
+    path = Path(tempfile.gettempdir()) / "ai-collab-autostart-logs"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _launch_workstation_autostart(
+    *,
+    project_id: str,
+    workstation_id: str,
+    message_id: str,
+) -> dict[str, object]:
+    adapter_script = _adapter_script_path()
+    if not adapter_script.exists():
+        return {
+            "launched": False,
+            "status": "script_missing",
+            "reason": f"adapter script missing: {adapter_script}",
+        }
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
+    safe_workstation = re.sub(r"[^a-zA-Z0-9._-]+", "-", workstation_id)[:96] or "workstation"
+    log_dir = _autostart_log_dir()
+    stdout_path = log_dir / f"{safe_workstation}-{message_id}-{stamp}.out.log"
+    stderr_path = log_dir / f"{safe_workstation}-{message_id}-{stamp}.err.log"
+    cmd = [
+        sys.executable,
+        str(adapter_script),
+        "--api-base",
+        os.environ.get("PLATFORM_API_BASE") or os.environ.get("INTERNAL_API_BASE_URL") or "http://127.0.0.1:8011",
+        "--project-id",
+        project_id,
+        "--workstation-id",
+        workstation_id,
+        "--message-id",
+        message_id,
+        "--auto-ack",
+        "--execute-provider-cli",
+        "--ignore-automation-switch",
+        "--output-dir",
+        str(_workspace_root() / "artifacts" / "workstation-inbox"),
+    ]
+    creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
+    try:
+        stdout_fh = stdout_path.open("a", encoding="utf-8", errors="replace")
+        stderr_fh = stderr_path.open("a", encoding="utf-8", errors="replace")
+        try:
+            proc = subprocess.Popen(
+                cmd,
+                cwd=str(_workspace_root()),
+                stdin=subprocess.DEVNULL,
+                stdout=stdout_fh,
+                stderr=stderr_fh,
+                env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+                creationflags=creationflags,
+            )
+        finally:
+            stdout_fh.close()
+            stderr_fh.close()
+    except Exception as exc:
+        return {
+            "launched": False,
+            "status": "launch_failed",
+            "reason": str(exc),
+            "stdout_path": str(stdout_path),
+            "stderr_path": str(stderr_path),
+        }
+    return {
+        "launched": True,
+        "status": "launched",
+        "pid": int(proc.pid),
+        "stdout_path": str(stdout_path),
+        "stderr_path": str(stderr_path),
+    }
+
+
+def _normalize_blocked_taxonomy(
+    metadata: dict[str, object] | None,
+    *,
+    status: str | None,
+    body: str | None,
+) -> dict[str, object]:
+    data = dict(metadata or {})
+    payload = data.get("payload_json")
+    if isinstance(payload, dict):
+        payload_taxonomy = payload.get("blocked_taxonomy")
+        if isinstance(payload_taxonomy, dict):
+            merged = dict(payload_taxonomy)
+            merged.update(data.get("blocked_taxonomy") or {})
+            data["blocked_taxonomy"] = merged
+    taxonomy = data.get("blocked_taxonomy")
+    taxonomy = dict(taxonomy) if isinstance(taxonomy, dict) else {}
+    text = str(body or "")
+    lowered_text = text.lower()
+    lowered_status = str(status or "").strip().lower()
+
+    desktop_closeout_waiting = bool(
+        taxonomy.get("desktop_closeout_waiting")
+        or data.get("desktop_closeout_waiting")
+        or data.get("needs_manual_closeout")
+    )
+    if data.get("timeout_repair"):
+        desktop_closeout_waiting = True
+    failed = lowered_status in {"failed", "error", "rejected"} or (
+        lowered_status == "blocked" and not desktop_closeout_waiting
+    )
+    timed_out = bool(
+        taxonomy.get("timed_out")
+        or data.get("timeout_repair")
+        or data.get("timed_out")
+        or "timeout" in lowered_text
+        or "超时" in text
+        or "超过" in text
+    )
+    auto_closed = bool(
+        taxonomy.get("auto_closed")
+        or data.get("auto_closed")
+        or (data.get("timeout_repair") and not desktop_closeout_waiting)
+    )
+    retryable = bool(taxonomy.get("retryable") or data.get("retryable"))
+    split_suggested = bool(
+        taxonomy.get("split_suggested")
+        or data.get("split_suggested")
+        or "split" in lowered_text
+        or "拆分" in text
+    )
+    log_available = bool(taxonomy.get("log_available"))
+    if not log_available:
+        for key in ("stdout_path", "stderr_path"):
+            path = str(data.get(key) or "").strip()
+            if path and "artifacts" in path.replace("\\", "/").lower():
+                log_available = True
+                break
+        if not log_available:
+            for key in ("evidence_artifacts", "artifact_refs"):
+                entries = data.get(key)
+                if isinstance(entries, list) and any(
+                    isinstance(item, dict) and str(item.get("path") or item.get("uri") or "").strip()
+                    for item in entries
+                ):
+                    log_available = True
+                    break
+    exception_kind = str(
+        taxonomy.get("exception_kind")
+        or data.get("exception_kind")
+        or ("timeout" if timed_out else "failed" if failed else "")
+    ).strip() or None
+    blocked_reason_code = str(
+        taxonomy.get("blocked_reason_code")
+        or data.get("blocked_reason_code")
+        or (
+            "desktop_final_sync_lag"
+            if data.get("timeout_repair")
+            else "receipt_link_missing" if failed and data.get("source_message_id") is None else ""
+        )
+    ).strip() or None
+    blocked_reason_label = str(
+        taxonomy.get("blocked_reason_label")
+        or data.get("blocked_reason_label")
+        or (
+            "桌面 final 同步滞后，等待催办或手动收口"
+            if blocked_reason_code == "desktop_final_sync_lag"
+            else "回执证据链不完整" if blocked_reason_code == "receipt_link_missing" else ""
+        )
+    ).strip() or None
+    evidence_complete = taxonomy.get("evidence_complete")
+    if evidence_complete is None:
+        evidence_complete = data.get("evidence_complete")
+    if evidence_complete is None:
+        evidence_complete = not (failed and not data.get("source_message_id"))
+    platform_defect = bool(
+        taxonomy.get("platform_defect")
+        or data.get("platform_defect")
+        or data.get("timeout_repair")
+    )
+    nudge_required = bool(
+        taxonomy.get("nudge_required")
+        or data.get("nudge_required")
+        or data.get("timeout_repair")
+    )
+    wait_extension_available = bool(
+        taxonomy.get("wait_extension_available")
+        or data.get("wait_extension_available")
+        or data.get("timeout_repair")
+    )
+    manual_close_required = bool(
+        taxonomy.get("manual_close_required")
+        or data.get("manual_close_required")
+        or data.get("timeout_repair")
+    )
+    if data.get("timeout_repair") and not blocked_reason_code:
+        blocked_reason_code = "desktop_final_sync_lag"
+    if data.get("timeout_repair"):
+        failed = False
+        auto_closed = False
+        evidence_complete = False
+
+    data["blocked_taxonomy"] = {
+        "failed": failed,
+        "timed_out": timed_out,
+        "auto_closed": auto_closed,
+        "retryable": retryable,
+        "log_available": log_available,
+        "split_suggested": split_suggested,
+        "exception_kind": exception_kind,
+        "blocked_reason_code": blocked_reason_code,
+        "blocked_reason_label": blocked_reason_label,
+        "evidence_complete": bool(evidence_complete),
+        "platform_defect": platform_defect,
+        "nudge_required": nudge_required,
+        "wait_extension_available": wait_extension_available,
+        "manual_close_required": manual_close_required,
+        "desktop_closeout_waiting": desktop_closeout_waiting,
+    }
+    return data
+
+
+def _apply_final_receipt_effects(
+    db: Session,
+    message: CollaborationMessage,
+) -> None:
+    status = str(message.status or "").strip().lower()
+    if status not in {"completed", "done", "failed", "rejected"}:
+        return
+
+    metadata = _normalize_blocked_taxonomy(
+        _metadata_dict(message.extra_data),
+        status=message.status,
+        body=message.body,
+    )
+    if metadata != _metadata_dict(message.extra_data):
+        message.extra_data = metadata
+        db.add(message)
+
+    source_message_id = str(metadata.get("source_message_id") or "").strip() or None
+    dispatch_id = str(
+        message.dispatch_id or metadata.get("dispatch_id") or metadata.get("dispatchId") or ""
+    ).strip() or None
+
+    if dispatch_id is None and source_message_id:
+        source_message = db.get(CollaborationMessage, source_message_id)
+        if source_message is not None and str(source_message.project_id or "").strip() == str(message.project_id or "").strip():
+            source_metadata = _metadata_dict(source_message.extra_data)
+            dispatch_id = str(
+                source_message.dispatch_id
+                or source_metadata.get("dispatch_id")
+                or source_metadata.get("dispatchId")
+                or ""
+            ).strip() or None
+            if message.dispatch_id is None and dispatch_id:
+                message.dispatch_id = dispatch_id
+                db.add(message)
+        elif source_message is not None:
+            blocked_taxonomy = dict(metadata.get("blocked_taxonomy") or {})
+            blocked_taxonomy.update(
+                {
+                    "failed": True,
+                    "timed_out": False,
+                    "auto_closed": False,
+                    "retryable": False,
+                    "log_available": False,
+                    "split_suggested": False,
+                    "exception_kind": "source_message_project_mismatch",
+                    "blocked_reason_code": "source_message_project_mismatch",
+                    "blocked_reason_label": "source_message_id 指向了其他项目的历史链路",
+                    "evidence_complete": False,
+                }
+            )
+            metadata["blocked_taxonomy"] = blocked_taxonomy
+            message.extra_data = metadata
+            db.add(message)
+        if dispatch_id is None and source_message is None:
+            dispatch_id = source_message_id
+            if message.dispatch_id is None:
+                message.dispatch_id = dispatch_id
+                db.add(message)
+
+    if dispatch_id and message.task_id:
+        from app.modules.tasks.service import sync_task_dispatch_status
+
+        sync_task_dispatch_status(
+            db,
+            dispatch_id=dispatch_id,
+            task_id=message.task_id,
+            runner_id=None,
+            status="completed" if status in {"completed", "done"} else "failed",
+            note=message.body,
+            relay_message_id=source_message_id,
+            actor_type=message.sender_type or "agent",
+            actor_id=message.sender_id,
+        )
+
+    if message.task_id:
+        from app.modules.tasks.service import record_task_result
+
+        task = db.get(Task, message.task_id)
+        current_task_status = str(getattr(task, "status", "") or "").strip().lower() if task is not None else ""
+        task_status: str | None = None
+        if status in {"completed", "done"}:
+            if current_task_status == "running":
+                task_status = "reviewing"
+            elif current_task_status == "reviewing":
+                task_status = "reviewing"
+        else:
+            task_status = "failed" if current_task_status in {"running", "reviewing"} else "blocked"
+        if task is not None and task_status is not None and task.status != task_status:
+            record_task_result(
+                db,
+                message.task_id,
+                {
+                    "final_receipt_message_id": message.id,
+                    "source_message_id": source_message_id,
+                    "dispatch_id": dispatch_id,
+                    "result_status": status,
+                    "blocked_taxonomy": metadata.get("blocked_taxonomy"),
+                },
+                status=task_status,
+                message=message.body or ("final receipt received" if status in {"completed", "done"} else "final failure receipt received"),
+                data={"dispatch_id": dispatch_id, "source_message_id": source_message_id},
+                commit=False,
+            )
+
+    if message.task_id and status in {"completed", "done"}:
+        from app.modules.requirements.service import sync_task_execution_to_requirements
+
+        sync_task_execution_to_requirements(
+            db,
+            task_id=message.task_id,
+            project_id=message.project_id,
+            workstation_id=message.agent_id or message.sender_id,
+            agent_id=message.agent_id or message.sender_id,
+            reply_status="done",
+            message=message.body or "已收到最终回执。",
+            title=message.title,
+            actor_id=message.sender_id,
+        )
+
+    if message.project_id:
+        from app.modules.boss_plans.service import sync_project_boss_plans_from_messages
+
+        sync_project_boss_plans_from_messages(db, message.project_id)
 
 
 def _thread_binding_id_from_workstation_item(item: dict[str, object]) -> str | None:
@@ -714,11 +1338,24 @@ def _adapter_delivery_state(
     thread_id = _strip_provider_session_prefix(automation_thread_id, provider)
     cwd_ready = bool(str(executor_cwd or "").strip())
     meta = _metadata_dict(metadata)
+    desktop_visible_flag = bool(meta.get("desktop_visible") or meta.get("codex_desktop_visible"))
     desktop_process_detected = bool(meta.get("desktop_process_detected") or meta.get("codex_desktop_process_detected"))
-    desktop_bridge_connected = bool(meta.get("desktop_bridge_connected") or meta.get("codex_desktop_bridge_connected"))
+    desktop_delivery_mode = (
+        str(
+            meta.get("desktop_delivery_mode")
+            or meta.get("codex_desktop_delivery_mode")
+            or meta.get("delivery_mode")
+            or ""
+        ).strip()
+        or None
+    )
+    desktop_bridge_connected = bool(
+        meta.get("desktop_bridge_connected")
+        or meta.get("codex_desktop_bridge_connected")
+        or (desktop_visible_flag and desktop_delivery_mode == "codex_desktop_ui")
+    )
     desktop_bridge_label = str(meta.get("desktop_bridge_label") or "").strip() or None
     desktop_bridge_note = str(meta.get("desktop_bridge_note") or meta.get("codex_desktop_bridge_note") or "").strip() or None
-    desktop_delivery_mode = str(meta.get("desktop_delivery_mode") or meta.get("codex_desktop_delivery_mode") or "").strip() or None
     desktop_thread_url = _codex_desktop_thread_url(thread_id) if provider == "codex" else None
     if provider == "codex" and command:
         mode = "custom"
@@ -726,17 +1363,22 @@ def _adapter_delivery_state(
         visible = False
         warning = "此 NPC 使用自定义 Codex 执行命令；平台无法保证消息会出现在桌面版 Codex 对话里。"
     elif provider == "codex" and thread_id:
-        if desktop_bridge_connected and desktop_delivery_mode == "codex_desktop_ui":
-            mode = "codex_desktop_ui"
-            label = desktop_bridge_label or "Codex Desktop UI 投递"
-            visible = True
-            warning = "Runner 会在该电脑交互式桌面打开绑定的 Codex 线程，并把平台派单作为一条普通用户消息发送；完整处理过程会显示在 Codex Desktop。"
-        else:
+        if desktop_delivery_mode == "codex_app_server":
             mode = "codex_app_server"
-            label = "Codex session append (not Desktop live)"
+            label = "Codex session append (explicit background mode)"
             visible = False
-            suffix = "Runner 上报检测到 Codex Desktop 进程，但未上报可接入的实时 UI 刷新桥。" if desktop_process_detected else "Runner 未上报 Codex Desktop 实时桥能力。"
-            warning = f"平台会通过该电脑 Runner 启动独立 Codex app-server，对绑定 session 发起普通 turn，并写入同一个本地 Codex 会话文件；这不是当前已打开 Codex Desktop 窗口的实时输入通道，用户不会在桌面窗口里即时看到这句话。{suffix}"
+            warning = "此 NPC 已显式配置为 Codex app-server 后台处理；桌面版不会显示完整处理过程。仅适合用户明确允许的后台任务。"
+        elif desktop_bridge_connected and desktop_delivery_mode == "codex_desktop_ui":
+            mode = "codex_desktop_ui"
+            label = "桌面线程可见"
+            visible = True
+            warning = "平台会把派单送入绑定桌面线程；完整处理过程在桌面版可见，平台同步最小回执和最终结果。"
+        else:
+            mode = "codex_desktop_ui_required"
+            label = "等待桌面线程接入"
+            visible = False
+            suffix = "检测到桌面版进程，但还没有确认可写入目标线程。" if desktop_process_detected else "还没有检测到可用的桌面版处理通道。"
+            warning = f"平台要求用户派工、Boss 派工、NPC 互派都能在桌面版看到详细处理过程；当前还不能确认目标桌面线程可接收派单。{suffix}请在目标电脑打开桌面版并重新同步线程状态。"
     elif provider == "codex":
         mode = "codex_exec_ephemeral"
         label = "Codex 临时执行"
@@ -820,6 +1462,7 @@ def _resolve_bound_scanned_thread_metadata(
 
 
 def get_project_workstation_adapter_config(db: Session, project_id: str, workstation_name: str) -> dict[str, object]:
+    project = get_project_or_404(db, project_id)
     workstation = get_project_thread_workstation(db, project_id, workstation_name)
     workstation_metadata = _metadata_dict(workstation.get("metadata"))
     provider_id = str(workstation.get("ai_provider_id") or workstation.get("ai_provider") or "").strip() or None
@@ -905,6 +1548,12 @@ def get_project_workstation_adapter_config(db: Session, project_id: str, worksta
             if bound_cwd_source:
                 settings_source["executor_cwd"] = bound_cwd_source
 
+    if not executor_cwd:
+        project_local_git = str(getattr(project, "local_git_url", None) or "").strip()
+        if _looks_like_local_executor_path(project_local_git):
+            executor_cwd = project_local_git
+            settings_source["executor_cwd"] = "project.local_git_url"
+
     provider_label = None
     if isinstance(provider, dict):
         provider_label = str(provider.get("label") or provider.get("id") or "").strip() or None
@@ -972,7 +1621,7 @@ def update_project_thread_workstation(
     project = get_project_or_404(db, project_id)
     before = _project_collaboration_config(project)
     items = _project_collaboration_items(project, "thread_workstations")
-    index = _find_item_index(items, workstation_name, section="宸ヤ綅绾跨▼")
+    index = _find_item_index(items, workstation_name, section="宸ヤ綅绾跨▼", db=db, project_id=project_id)
     current = items[index]
     updated = dict(current)
     updated.update(payload.model_dump(exclude_unset=True))
@@ -1054,7 +1703,7 @@ def delete_project_thread_workstation(db: Session, project_id: str, workstation_
     project = get_project_or_404(db, project_id)
     before = _project_collaboration_config(project)
     items = _project_collaboration_items(project, "thread_workstations")
-    index = _find_item_index(items, workstation_name, section="宸ヤ綅绾跨▼")
+    index = _find_item_index(items, workstation_name, section="宸ヤ綅绾跨▼", db=db, project_id=project_id)
     removed = items.pop(index)
     after = dict(before)
     after["thread_workstations"] = items
@@ -1078,7 +1727,7 @@ def rotate_project_workstation_adapter_token(db: Session, project_id: str, works
     workstation_row = _project_workstation(db, project_id, workstation_name)
     before = _project_collaboration_config(project)
     items = _project_collaboration_items(project, "thread_workstations")
-    index = _find_item_index(items, workstation_name, section="工位线程")
+    index = _find_item_index(items, workstation_name, section="工位线程", db=db, project_id=project_id)
     current = dict(items[index])
     metadata = _metadata_dict(current.get("metadata"))
     extra_data = _metadata_dict(current.get("extra_data"))
@@ -1117,7 +1766,7 @@ def revoke_project_workstation_adapter_token(db: Session, project_id: str, works
     workstation_row = _project_workstation(db, project_id, workstation_name)
     before = _project_collaboration_config(project)
     items = _project_collaboration_items(project, "thread_workstations")
-    index = _find_item_index(items, workstation_name, section="工位线程")
+    index = _find_item_index(items, workstation_name, section="工位线程", db=db, project_id=project_id)
     current = dict(items[index])
     metadata = _metadata_dict(current.get("metadata"))
     extra_data = _metadata_dict(current.get("extra_data"))
@@ -1628,23 +2277,9 @@ def _project_workstation(db: Session, project_id: str, identifier: str) -> Proje
     stmt = select(ProjectThreadWorkstation).where(
         ProjectThreadWorkstation.project_id == project_id,
         (ProjectThreadWorkstation.id == cleaned)
-        | (ProjectThreadWorkstation.config_id == cleaned)
-        | (ProjectThreadWorkstation.name == cleaned)
-        | (ProjectThreadWorkstation.agent_id == cleaned),
+        | (ProjectThreadWorkstation.config_id == cleaned),
     )
     workstation = db.scalar(stmt)
-    if workstation is None and cleaned:
-        for item in db.scalars(
-            select(ProjectThreadWorkstation).where(ProjectThreadWorkstation.project_id == project_id)
-        ):
-            extra_data = dict(item.extra_data or {})
-            if cleaned in {
-                str(extra_data.get("source_workstation_id") or ""),
-                str(extra_data.get("source_thread_id") or ""),
-                str(extra_data.get("bound_thread_id") or ""),
-            }:
-                workstation = item
-                break
     if workstation is None:
         raise AppError("WORKSTATION_NOT_FOUND", "project workstation does not exist", status_code=404)
     return workstation
@@ -1836,6 +2471,254 @@ def _repair_launch_ack_status_consistency(db: Session, messages: list[Collaborat
     return messages
 
 
+def _message_timestamp(value: object) -> datetime | None:
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+    return None
+
+
+def _workstation_receipt_authority_metadata(
+    message: CollaborationMessage,
+    metadata: dict[str, object] | None = None,
+) -> dict[str, object]:
+    source = _metadata_dict(metadata if metadata is not None else message.extra_data)
+    authority: dict[str, object] = {}
+    authoritative_seat_id = str(
+        source.get("authoritative_target_seat_id")
+        or source.get("authoritative_seat_id")
+        or message.recipient_id
+        or message.agent_id
+        or ""
+    ).strip()
+    if authoritative_seat_id:
+        authority["authoritative_seat_id"] = authoritative_seat_id
+        authority["authoritative_seat_ref"] = str(
+            source.get("authoritative_seat_ref")
+            or source.get("canonical_workstation_id")
+            or authoritative_seat_id
+        ).strip() or authoritative_seat_id
+    delegation_context = source.get("delegation_context")
+    if isinstance(delegation_context, dict) and delegation_context:
+        authority["delegation_context"] = dict(delegation_context)
+    if "historical_alias_non_authoritative" in source:
+        authority["historical_alias_non_authoritative"] = bool(
+            source.get("historical_alias_non_authoritative")
+        )
+    return authority
+
+
+def _repair_stale_workstation_command_timeouts(
+    db: Session,
+    messages: list[CollaborationMessage],
+    *,
+    timeout_minutes: int = 10,
+    auto_retry_threshold: int = 1,
+) -> list[CollaborationMessage]:
+    open_commands = [
+        item
+        for item in messages
+        if (item.message_type or "") in {"agent_command", "requirement_dispatch", "comment_message"}
+        and (item.status or "") in {"acked", "in_progress"}
+        and (item.recipient_type or "") in {"workstation", "thread_workstation"}
+    ]
+    if not open_commands:
+        return messages
+
+    now = datetime.now(timezone.utc)
+    deadline = timedelta(minutes=max(1, timeout_minutes))
+    open_ids = [str(item.id) for item in open_commands if str(item.id or "").strip()]
+    existing_final_source_ids = {
+        str(_metadata_dict(row.extra_data).get("source_message_id") or "").strip()
+        for row in db.scalars(
+            select(CollaborationMessage).where(
+                CollaborationMessage.project_id.in_(
+                    [item.project_id for item in open_commands if item.project_id]
+                ),
+                CollaborationMessage.message_type == "agent_result",
+                CollaborationMessage.extra_data["source_message_id"].as_string().in_(open_ids),
+            )
+        )
+    }
+
+    repaired = False
+    generated_receipts: list[CollaborationMessage] = []
+    for command in open_commands:
+        command_id = str(command.id or "").strip()
+        if not command_id or command_id in existing_final_source_ids:
+            continue
+        command_extra = _metadata_dict(command.extra_data)
+        if command_extra.get("desktop_closeout_waiting"):
+            continue
+        touched_at = _message_timestamp(command.updated_at) or _message_timestamp(command.created_at)
+        if touched_at is None or now - touched_at < deadline:
+            continue
+        before_status = command.status
+        command.status = "in_progress"
+        workstation_id = str(command.recipient_id or command.agent_id or "").strip()
+        retry_count = 0
+        try:
+            retry_count = int(command_extra.get("desktop_sync_retry_count") or 0)
+        except (TypeError, ValueError):
+            retry_count = 0
+        next_retry_count = retry_count + 1
+        command_extra.update(
+            {
+                "desktop_sync_retry_requested": True,
+                "desktop_sync_retry_count": next_retry_count,
+                "desktop_sync_retry_requested_at": now.isoformat(),
+            }
+        )
+        threshold_reached = next_retry_count > max(0, auto_retry_threshold)
+        if threshold_reached:
+            command_extra["desktop_closeout_waiting"] = True
+            command_extra["needs_manual_closeout"] = True
+        command.extra_data = command_extra
+        db.add(command)
+
+        if threshold_reached:
+            note = (
+                f"平台等待桌面收口：NPC 命令已处于 {before_status} 超过 {timeout_minutes} 分钟，"
+                f"平台已自动重试 {next_retry_count} 次但仍未拿到 final。桌面线程仍可能在处理，"
+                "请催办、延长等待，或在确认桌面结果后手动收口；不要把这类情况直接判成 NPC 执行失败。"
+            )
+            receipt = CollaborationMessage(
+                project_id=command.project_id,
+                task_id=command.task_id,
+                approval_id=command.approval_id,
+                handoff_id=command.handoff_id,
+                requirement_id=command.requirement_id,
+                dispatch_id=command.dispatch_id,
+                agent_id=workstation_id or None,
+                title=command.title or "NPC command timed out",
+                body=note,
+                message_type="agent_result",
+                sender_type="agent",
+                sender_id=workstation_id or command.recipient_id,
+                recipient_type=command.sender_type if command.sender_type else "project",
+                recipient_id=command.sender_id or command.project_id,
+                status="blocked",
+                extra_data={
+                    "source_message_id": command.id,
+                    "source_message_type": command.message_type,
+                    "dispatch_id": command.dispatch_id,
+                    "timeout_minutes": timeout_minutes,
+                    "timeout_repair": True,
+                    "desktop_closeout_waiting": True,
+                    "needs_manual_closeout": True,
+                    "desktop_sync_retry_requested": True,
+                    "desktop_sync_retry_count": next_retry_count,
+                    "blocked_taxonomy": {
+                        "failed": False,
+                        "timed_out": True,
+                        "auto_closed": False,
+                        "retryable": True,
+                        "log_available": False,
+                        "split_suggested": True,
+                        "exception_kind": "desktop_final_sync_lag",
+                        "blocked_reason_code": "desktop_final_sync_lag",
+                        "blocked_reason_label": "桌面 final 同步滞后，等待催办或手动收口",
+                        "evidence_complete": False,
+                        "platform_defect": True,
+                        "nudge_required": True,
+                        "wait_extension_available": True,
+                        "manual_close_required": True,
+                        "desktop_closeout_waiting": True,
+                        "desktop_sync_retry_requested": True,
+                        "desktop_sync_retry_count": next_retry_count,
+                    },
+                    **_workstation_receipt_authority_metadata(command, command_extra),
+                },
+            )
+        else:
+            note = (
+                f"平台自动重试桌面同步：NPC 命令已处于 {before_status} 超过 {timeout_minutes} 分钟，"
+                f"已发起第 {next_retry_count} 次自动重试，并继续等待桌面 final 回执。"
+            )
+            receipt = CollaborationMessage(
+                project_id=command.project_id,
+                task_id=command.task_id,
+                approval_id=command.approval_id,
+                handoff_id=command.handoff_id,
+                requirement_id=command.requirement_id,
+                dispatch_id=command.dispatch_id,
+                agent_id=workstation_id or None,
+                title=command.title or "NPC command retrying desktop sync",
+                body=note,
+                message_type="agent_progress",
+                sender_type="agent",
+                sender_id=workstation_id or command.recipient_id,
+                recipient_type=command.sender_type if command.sender_type else "project",
+                recipient_id=command.sender_id or command.project_id,
+                status="in_progress",
+                extra_data={
+                    "source_message_id": command.id,
+                    "source_message_type": command.message_type,
+                    "dispatch_id": command.dispatch_id,
+                    "timeout_minutes": timeout_minutes,
+                    "desktop_sync_retry_requested": True,
+                    "desktop_sync_retry_count": next_retry_count,
+                    "desktop_closeout_action": "retry_desktop_sync",
+                    "desktop_closeout_action_label": "重新同步",
+                    "desktop_closeout_waiting": False,
+                    "blocked_taxonomy": {
+                        "failed": False,
+                        "timed_out": True,
+                        "auto_closed": False,
+                        "retryable": True,
+                        "log_available": False,
+                        "split_suggested": False,
+                        "exception_kind": "desktop_sync_retry",
+                        "blocked_reason_code": "desktop_sync_retry",
+                        "blocked_reason_label": "平台已自动重试桌面同步",
+                        "evidence_complete": False,
+                        "platform_defect": False,
+                        "nudge_required": False,
+                        "wait_extension_available": True,
+                        "manual_close_required": False,
+                        "desktop_closeout_waiting": False,
+                        "desktop_sync_retry_requested": True,
+                        "desktop_sync_retry_count": next_retry_count,
+                    },
+                    **_workstation_receipt_authority_metadata(command, command_extra),
+                },
+            )
+        db.add(receipt)
+        generated_receipts.append(receipt)
+        append_audit_log(
+            db,
+            project_id=command.project_id,
+            task_id=command.task_id,
+            actor_type="system",
+            actor_id="workstation-timeout-sweeper",
+            action=(
+                "collaboration.workstation_command.auto_retry_requested"
+                if not threshold_reached
+                else "collaboration.workstation_command.timeout_repaired"
+            ),
+            resource_type="collaboration_message",
+            resource_id=command.id,
+            before={"status": before_status},
+            after={
+                "status": "in_progress",
+                "timeout_minutes": timeout_minutes,
+                "desktop_sync_retry_count": next_retry_count,
+                "desktop_closeout_waiting": bool(command_extra.get("desktop_closeout_waiting")),
+            },
+        )
+        repaired = True
+
+    if repaired:
+        db.commit()
+        for message in messages:
+            db.refresh(message)
+        for receipt in generated_receipts:
+            db.refresh(receipt)
+        messages.extend(generated_receipts)
+    return messages
+
+
 def list_messages(
     db: Session,
     *,
@@ -1878,9 +2761,98 @@ def list_messages(
     items = list(db.scalars(stmt.limit(max(1, min(limit, 500)))))
     items = _repair_review_status_consistency(db, items)
     items = _repair_launch_ack_status_consistency(db, items)
+    items = _repair_stale_workstation_command_timeouts(db, items)
+    _attach_related_artifact_evidence(db, items)
     if status:
         return [item for item in items if item.status == status]
     return items
+
+
+def _attach_related_artifact_evidence(db: Session, items: list[CollaborationMessage]) -> None:
+    source_ids = {str(item.id) for item in items if str(item.id or "").strip()}
+    for item in items:
+        extra = _metadata_dict(item.extra_data)
+        source_id = str(extra.get("source_message_id") or "").strip()
+        if source_id:
+            source_ids.add(source_id)
+    if not source_ids:
+        return
+
+    receipts = list(
+        db.scalars(
+            select(CollaborationMessage).where(
+                CollaborationMessage.extra_data["source_message_id"].as_string().in_(source_ids)
+            )
+        )
+    )
+    evidence_by_source: dict[str, list[dict[str, str]]] = {}
+    path_keys = {
+        "stdout_path": "执行日志",
+        "stderr_path": "错误日志",
+        "prompt_path": "提示词",
+        "artifact_path": "证据",
+        "receipt_path": "回执文件",
+    }
+    for receipt in receipts:
+        extra = _metadata_dict(receipt.extra_data)
+        source_id = str(extra.get("source_message_id") or "").strip()
+        if not source_id:
+            continue
+        seat_id = str(
+            extra.get("authoritative_seat_ref")
+            or extra.get("authoritative_seat_id")
+            or receipt.sender_id
+            or receipt.recipient_id
+            or ""
+        ).strip() or None
+        for key, label in path_keys.items():
+            value = _normalize_workstation_artifact_path(
+                extra.get(key),
+                project_id=receipt.project_id,
+                workstation_id=seat_id,
+            )
+            if not value or "artifacts" not in value.replace("\\", "/").lower():
+                continue
+            evidence_by_source.setdefault(source_id, []).append({"label": label, "path": value})
+    if not evidence_by_source:
+        return
+
+    for item in items:
+        extra = _metadata_dict(item.extra_data)
+        item_sources = [str(item.id or "").strip(), str(extra.get("source_message_id") or "").strip()]
+        merged: list[dict[str, str]] = []
+        seen: set[str] = set()
+        for source_id in item_sources:
+            for entry in evidence_by_source.get(source_id, []):
+                path = str(entry.get("path") or "").strip()
+                if not path or path in seen:
+                    continue
+                seen.add(path)
+                merged.append({"label": str(entry.get("label") or "证据"), "path": path})
+        existing = extra.get("evidence_artifacts")
+        if isinstance(existing, list):
+            seat_id = str(
+                extra.get("authoritative_seat_ref")
+                or extra.get("authoritative_seat_id")
+                or item.sender_id
+                or item.recipient_id
+                or ""
+            ).strip() or None
+            for entry in existing:
+                if not isinstance(entry, dict):
+                    continue
+                path = _normalize_workstation_artifact_path(
+                    entry.get("path"),
+                    project_id=item.project_id,
+                    workstation_id=seat_id,
+                )
+                if not path or path in seen:
+                    continue
+                seen.add(path)
+                merged.append({"label": str(entry.get("label") or "证据"), "path": path})
+        if merged:
+            extra["evidence_artifacts"] = merged[:6]
+            item.extra_data = extra
 
 
 def get_collaboration_message_or_404(db: Session, message_id: str) -> CollaborationMessage:
@@ -2077,7 +3049,9 @@ def ack_workstation_command(
     receipt_extra = {
         "source_message_id": message.id,
         "source_message_type": message.message_type,
+        "dispatch_id": message.dispatch_id,
     }
+    receipt_extra.update(_workstation_receipt_authority_metadata(message, source_extra))
     if source_extra.get("source"):
         receipt_extra["source"] = source_extra.get("source")
     if source_extra.get("target_ref"):
@@ -2148,6 +3122,7 @@ def progress_workstation_command(
         "progress_state": progress_state,
         **(payload.metadata or {}),
     }
+    receipt_extra.update(_workstation_receipt_authority_metadata(message, source_extra))
     if source_extra.get("source"):
         receipt_extra["source"] = source_extra.get("source")
     existing_receipt = db.scalar(
@@ -2203,13 +3178,14 @@ def complete_workstation_command(
     payload: WorkstationInboxCompleteCreate,
 ):
     workstation, message = _get_workstation_command_or_404(db, project_id, workstation_id, message_id)
-    if message.status not in {"queued", "pending", "acked", "in_progress"}:
+    closeable_statuses = {"open", "queued", "pending", "acked", "in_progress"}
+    if message.status not in closeable_statuses:
         raise AppError("MESSAGE_NOT_PENDING", "workstation command is already closed", status_code=409)
     before_status = message.status
     # 队列原子化：终态只允许从 open(queued/pending/acked/in_progress) 变更，被并发收尾时只有第一个 rowcount=1
     rowcount = db.query(CollaborationMessage).filter(
         CollaborationMessage.id == message.id,
-        CollaborationMessage.status.in_(["queued", "pending", "acked", "in_progress"]),
+        CollaborationMessage.status.in_(list(closeable_statuses)),
     ).update({"status": payload.result_status}, synchronize_session=False)
     if rowcount == 0:
         db.rollback()
@@ -2273,11 +3249,26 @@ def complete_workstation_command(
     receipt_extra = {
         "source_message_id": message.id,
         "source_message_type": message.message_type,
+        "dispatch_id": message.dispatch_id,
     }
+    receipt_extra.update(_workstation_receipt_authority_metadata(message, source_extra))
     if source_extra.get("source"):
         receipt_extra["source"] = source_extra.get("source")
     if source_extra.get("target_ref"):
         receipt_extra["target_ref"] = source_extra.get("target_ref")
+    if payload.result_status != "completed":
+        receipt_extra["blocked_taxonomy"] = {
+            "failed": True,
+            "timed_out": False,
+            "auto_closed": False,
+            "retryable": False,
+            "log_available": False,
+            "split_suggested": False,
+            "exception_kind": "failed",
+            "blocked_reason_code": "agent_execution_failed",
+            "blocked_reason_label": "目标 NPC 执行失败",
+            "evidence_complete": True,
+        }
     receipt = CollaborationMessage(
         project_id=message.project_id,
         task_id=message.task_id,
@@ -2303,11 +3294,185 @@ def complete_workstation_command(
     return {"command": message, "receipt": receipt}
 
 
+def closeout_workstation_command(
+    db: Session,
+    project_id: str,
+    workstation_id: str,
+    message_id: str,
+    *,
+    action: str,
+    note: str | None = None,
+    actor_type: str = "human",
+    actor_id: str | None = None,
+):
+    workstation, message = _get_workstation_command_or_404(db, project_id, workstation_id, message_id)
+    normalized_action = str(action or "").strip()
+    if normalized_action not in {"nudge", "extend_wait", "retry_desktop_sync", "manual_close"}:
+        raise AppError("BAD_REQUEST", "unknown closeout action", status_code=400)
+    if message.status not in {"queued", "pending", "acked", "in_progress"}:
+        raise AppError("MESSAGE_ALREADY_CLOSED", "workstation command is already closed", status_code=409)
+
+    action_labels = {
+        "nudge": "催办",
+        "extend_wait": "延长等待",
+        "retry_desktop_sync": "重新同步",
+        "manual_close": "手动收口",
+    }
+    action_label = action_labels[normalized_action]
+    cleaned_note = str(note or "").strip()
+    default_note = (
+        "用户已催办：请目标桌面线程尽快同步最终回执。"
+        if normalized_action == "nudge"
+        else "用户已延长等待：目标桌面线程仍可继续处理，平台保持待收口状态。"
+        if normalized_action == "extend_wait"
+        else "用户已请求重新同步桌面线程：平台保持待收口状态，并等待桌面线程回写最小回执或最终结果。"
+        if normalized_action == "retry_desktop_sync"
+        else "用户已确认手动收口：平台把该命令标记为 completed，后续桌面 final 如到达仍可作为补充证据。"
+    )
+    body = cleaned_note or default_note
+
+    before_status = message.status
+    source_extra = _metadata_dict(message.extra_data)
+    if normalized_action == "retry_desktop_sync":
+        retry_count = 0
+        try:
+            retry_count = int(source_extra.get("desktop_sync_retry_count") or 0)
+        except (TypeError, ValueError):
+            retry_count = 0
+        source_extra.update(
+            {
+                "desktop_sync_retry_requested": True,
+                "desktop_sync_retry_count": retry_count + 1,
+                "desktop_sync_retry_requested_at": datetime.now(timezone.utc).isoformat(),
+                "desktop_closeout_waiting": True,
+                "auto_start_launch_status": "retry_requested",
+                "auto_start_retry_requested_at": datetime.now(timezone.utc).isoformat(),
+                "desktop_delivery_priority": "foreground_until_submitted",
+                "desktop_delivery_auto_retry": True,
+                "desktop_delivery_recoverable_on_focus_loss": True,
+            }
+        )
+        message.extra_data = source_extra
+    elif normalized_action == "manual_close":
+        if source_extra:
+            source_extra["desktop_sync_retry_requested"] = False
+            source_extra["desktop_closeout_waiting"] = False
+            message.extra_data = source_extra
+
+    if normalized_action == "manual_close":
+        message.status = "completed"
+    else:
+        message.status = "in_progress"
+    db.add(message)
+
+    if normalized_action == "retry_desktop_sync":
+        _maybe_autostart_workstation_command(
+            db,
+            message,
+            force_retry=True,
+            trigger="desktop_retry_action",
+        )
+        source_extra = _metadata_dict(message.extra_data)
+
+    receipt_extra = {
+        "source_message_id": message.id,
+        "source_message_type": message.message_type,
+        "dispatch_id": message.dispatch_id,
+        "desktop_closeout_action": normalized_action,
+        "desktop_closeout_action_label": action_label,
+        "desktop_closeout_waiting": normalized_action != "manual_close",
+        "desktop_sync_retry_requested": normalized_action == "retry_desktop_sync",
+        "desktop_sync_retry_count": source_extra.get("desktop_sync_retry_count"),
+        "auto_start_launch_status": source_extra.get("auto_start_launch_status"),
+        "auto_start_attempt_count": source_extra.get("auto_start_attempt_count"),
+        "auto_start_launch_pid": source_extra.get("auto_start_launch_pid"),
+        "human_operated": True,
+        "blocked_taxonomy": {
+            "failed": False,
+            "timed_out": True,
+            "auto_closed": False,
+            "retryable": normalized_action != "manual_close",
+            "log_available": False,
+            "split_suggested": False,
+            "exception_kind": "desktop_final_sync_lag",
+            "blocked_reason_code": "desktop_final_sync_lag",
+            "blocked_reason_label": "桌面 final 同步滞后，等待催办或手动收口",
+            "evidence_complete": normalized_action == "manual_close",
+            "platform_defect": True,
+            "nudge_required": normalized_action != "manual_close",
+            "wait_extension_available": normalized_action != "manual_close",
+            "desktop_sync_retry_available": normalized_action != "manual_close",
+            "desktop_sync_retry_requested": normalized_action == "retry_desktop_sync",
+            "desktop_sync_retry_count": source_extra.get("desktop_sync_retry_count"),
+            "manual_close_required": normalized_action != "manual_close",
+            "desktop_closeout_waiting": normalized_action != "manual_close",
+        },
+    }
+    receipt_extra.update(_workstation_receipt_authority_metadata(message, source_extra))
+    if source_extra.get("source"):
+        receipt_extra["source"] = source_extra.get("source")
+    if source_extra.get("target_ref"):
+        receipt_extra["target_ref"] = source_extra.get("target_ref")
+
+    receipt = CollaborationMessage(
+        project_id=message.project_id,
+        task_id=message.task_id,
+        approval_id=message.approval_id,
+        handoff_id=message.handoff_id,
+        requirement_id=message.requirement_id,
+        dispatch_id=message.dispatch_id,
+        agent_id=workstation.config_id,
+        title=f"{action_label}：{message.title or '桌面待收口'}",
+        body=body,
+        message_type="agent_progress" if normalized_action != "manual_close" else "agent_result",
+        sender_type=actor_type or "human",
+        sender_id=actor_id,
+        recipient_type="thread_workstation",
+        recipient_id=workstation.config_id,
+        status="in_progress" if normalized_action != "manual_close" else "completed",
+        extra_data=receipt_extra,
+    )
+    db.add(receipt)
+
+    if normalized_action == "manual_close":
+        sibling_receipts = db.scalars(
+            select(CollaborationMessage).where(
+                CollaborationMessage.project_id == message.project_id,
+                CollaborationMessage.message_type.in_(["agent_ack", "agent_progress"]),
+                CollaborationMessage.status.in_(["queued", "pending", "acked", "in_progress", "blocked"]),
+            )
+        )
+        for sibling in sibling_receipts:
+            sibling_extra = _metadata_dict(sibling.extra_data)
+            if str(sibling_extra.get("source_message_id") or "").strip() != message.id:
+                continue
+            sibling.status = "completed"
+            db.add(sibling)
+
+    append_audit_log(
+        db,
+        project_id=message.project_id,
+        task_id=message.task_id,
+        actor_type=actor_type or "human",
+        actor_id=actor_id,
+        action=f"collaboration.workstation_command.closeout.{normalized_action}",
+        resource_type="collaboration_message",
+        resource_id=message.id,
+        before={"status": before_status},
+        after={"status": message.status, "desktop_closeout_action": normalized_action},
+    )
+    db.commit()
+    db.refresh(message)
+    db.refresh(receipt)
+    return {"command": message, "receipt": receipt}
+
+
 def create_message(
     db: Session,
     payload: CollaborationMessageCreate,
     *,
     dispatch_id: str | None = None,
+    dedupe_key: str | None = None,
     commit: bool = True,
 ):
     if not any(
@@ -2323,9 +3488,43 @@ def create_message(
         raise AppError("BAD_REQUEST", "collaboration message requires a project, task, approval, handoff, requirement, or workstation scope", status_code=400)
 
     data = payload.model_dump(by_alias=True)
+    payload_dispatch_id = str(data.pop("dispatch_id", "") or "").strip() or None
+    extra_data = data.get("extra_data") if isinstance(data.get("extra_data"), dict) else {}
+    extra_data = dict(extra_data or {})
+    source_message_id = str(extra_data.get("source_message_id") or "").strip() or None
+    if source_message_id and payload.project_id:
+        source_message = db.get(CollaborationMessage, source_message_id)
+        if source_message is not None and str(source_message.project_id or "").strip() != str(payload.project_id or "").strip():
+            raise AppError(
+                "SOURCE_MESSAGE_PROJECT_MISMATCH",
+                "source_message_id 必须属于当前项目，不能引用历史项目或其他项目链路",
+                status_code=409,
+            )
     if data.get("status") == "pending_review" and "审核：免" in str(data.get("body") or ""):
         data["status"] = "queued"
-    message = CollaborationMessage(**data, dispatch_id=str(dispatch_id or "").strip() or None)
+    message_type = str(data.get("message_type") or "").strip()
+    recipient_type = str(data.get("recipient_type") or "").strip()
+    recipient_id = str(data.get("recipient_id") or "").strip()
+    status = str(data.get("status") or "").strip()
+    if (
+        message_type in {"agent_command", "requirement_dispatch", "comment_message"}
+        and recipient_type in {"workstation", "thread_workstation"}
+        and recipient_id
+        and status in {"queued", "open", "pending"}
+    ):
+        extra_data.setdefault("auto_start_requested", True)
+        extra_data.setdefault("auto_start_target_workstation_id", recipient_id)
+        extra_data.setdefault("auto_start_requested_at", datetime.now(timezone.utc).isoformat())
+        extra_data.setdefault("desktop_delivery_priority", "foreground_until_submitted")
+        extra_data.setdefault("desktop_delivery_auto_retry", True)
+        extra_data.setdefault("desktop_delivery_recoverable_on_focus_loss", True)
+        extra_data.setdefault("desktop_sync_retry_available", True)
+        data["extra_data"] = extra_data
+    message = CollaborationMessage(
+        **data,
+        dispatch_id=str(dispatch_id or payload_dispatch_id or "").strip() or None,
+        dedupe_key=str(dedupe_key or "").strip() or None,
+    )
     db.add(message)
     db.flush()
     append_audit_log(
@@ -2344,16 +3543,17 @@ def create_message(
             "recipient_id": payload.recipient_id,
             "status": payload.status,
             "title": payload.title,
+            "auto_start_requested": (
+                data.get("extra_data", {}).get("auto_start_requested")
+                if isinstance(data.get("extra_data"), dict)
+                else None
+            ),
         },
     )
-    if (
-        payload.project_id
-        and payload.message_type in {"agent_result", "requirement_final_reply", "runner_result"}
-        and str(payload.status or "").strip().lower() in {"completed", "done"}
-    ):
-        from app.modules.boss_plans.service import sync_project_boss_plans_from_messages
-
-        sync_project_boss_plans_from_messages(db, payload.project_id)
+    if payload.message_type in {"agent_result", "requirement_final_reply", "runner_result"}:
+        _apply_final_receipt_effects(db, message)
+    elif payload.message_type in {"agent_command", "requirement_dispatch", "comment_message"}:
+        _maybe_autostart_workstation_command(db, message)
     if commit:
         db.commit()
         db.refresh(message)
@@ -2541,6 +3741,29 @@ def complete_runner_command(db: Session, runner_id: str, message_id: str, payloa
             recipient_type="human",
             recipient_id=message.sender_id,
             status=payload.result_status,
+            extra_data={
+                "source_message_id": message.id,
+                "source_message_type": message.message_type,
+                "dispatch_id": message.dispatch_id,
+                **(
+                    {
+                        "blocked_taxonomy": {
+                            "failed": True,
+                            "timed_out": False,
+                            "auto_closed": False,
+                            "retryable": False,
+                            "log_available": False,
+                            "split_suggested": False,
+                            "exception_kind": "runner_failed",
+                            "blocked_reason_code": "runner_execution_failed",
+                            "blocked_reason_label": "Runner 执行失败",
+                            "evidence_complete": True,
+                        }
+                    }
+                    if payload.result_status != "completed"
+                    else {}
+                ),
+            },
         )
         db.add(result_message)
         db.flush()

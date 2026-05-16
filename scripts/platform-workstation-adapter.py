@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -21,6 +22,11 @@ def _now_hms() -> str:
 
 
 DEFAULT_API_BASE = "http://127.0.0.1:8010"
+MAX_PLATFORM_NOTE_CHARS = 3800
+PEER_DISPATCH_FENCE_RE = re.compile(
+    r"```platform-peer-dispatches\s*(?P<payload>.*?)```",
+    re.IGNORECASE | re.DOTALL,
+)
 
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -37,6 +43,8 @@ DEFAULT_PROVIDER_EXECUTORS = {
 
 CODEX_APP_SERVER_EXECUTOR = "__codex_app_server_turn__"
 CODEX_DESKTOP_UI_EXECUTOR = "__codex_desktop_ui_turn__"
+CODEX_DESKTOP_UI_LOCK_PATH = Path(tempfile.gettempdir()) / "ai-collab-codex-desktop-ui-delivery.lock"
+CODEX_DESKTOP_UI_MAX_DELIVERY_ATTEMPTS = 8
 
 
 def _adapter_config_url(base: str, project_id: str, workstation_id: str) -> str:
@@ -82,6 +90,45 @@ def _message_action_url(base: str, project_id: str, workstation_id: str, message
     return f"{_workstation_messages_url(base, project_id, workstation_id)}/messages/{encoded_message_id}/{action}"
 
 
+def _command_metadata(command: dict[str, Any]) -> dict[str, Any]:
+    metadata = command.get("metadata")
+    if isinstance(metadata, dict):
+        return dict(metadata)
+    extra_data = command.get("extra_data")
+    if isinstance(extra_data, dict):
+        return dict(extra_data)
+    return {}
+
+
+def _desktop_retry_dedupe_key(command: dict[str, Any]) -> str:
+    message_id = str(command.get("id") or "").strip()
+    metadata = _command_metadata(command)
+    retry_requested = bool(metadata.get("desktop_sync_retry_requested"))
+    retry_count = str(metadata.get("desktop_sync_retry_count") or "").strip()
+    if retry_requested and retry_count:
+        return f"{message_id}:desktop-retry:{retry_count}"
+    return message_id
+
+
+def _root_message_id_for_child_dispatch(command: dict[str, Any]) -> str | None:
+    metadata = _command_metadata(command)
+    for value in (
+        metadata.get("root_message_id"),
+        (metadata.get("delegation_context") or {}).get("root_message_id")
+        if isinstance(metadata.get("delegation_context"), dict)
+        else None,
+        metadata.get("source_message_id"),
+        (metadata.get("delegation_context") or {}).get("source_message_id")
+        if isinstance(metadata.get("delegation_context"), dict)
+        else None,
+        command.get("id"),
+    ):
+        cleaned = str(value or "").strip()
+        if cleaned:
+            return cleaned
+    return None
+
+
 def _post_workstation_progress(
     *,
     base: str,
@@ -117,15 +164,250 @@ def _complete_workstation_command(
     result_status: str = "completed",
 ) -> dict[str, Any]:
     complete_url = _message_action_url(base, project_id, workstation_id, message_id, "complete")
+    try:
+        return _json_request(
+            "POST",
+            complete_url,
+            headers=headers,
+            payload={
+                "result_status": result_status,
+                "note": note,
+            },
+        ).get("data") or {}
+    except RuntimeError as exc:
+        raw = str(exc)
+        if "HTTP 409" in raw and "MESSAGE_NOT_PENDING" in raw:
+            return {
+                "already_closed": True,
+                "message_id": message_id,
+                "result_status": result_status,
+                "note": "平台指令已收口，本次重复同步已跳过。",
+            }
+        raise
+
+
+def _sync_desktop_event(
+    *,
+    base: str,
+    project_id: str,
+    workstation_id: str,
+    headers: dict[str, str],
+    role: str,
+    note: str,
+    session_id: str | None,
+    source_event_id: str | None,
+    source_timestamp: str | None,
+    phase: str | None = None,
+    linked_message_id: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    sync_url = f"{_workstation_messages_url(base, project_id, workstation_id)}/desktop-sync"
     return _json_request(
         "POST",
-        complete_url,
+        sync_url,
         headers=headers,
         payload={
-            "result_status": result_status,
+            "role": role,
             "note": note,
+            "phase": phase,
+            "session_id": session_id,
+            "source_event_id": source_event_id,
+            "source_timestamp": source_timestamp,
+            "linked_message_id": linked_message_id,
+            "metadata": metadata or {},
         },
     ).get("data") or {}
+
+
+def _create_peer_dispatch(
+    *,
+    base: str,
+    project_id: str,
+    sender_seat_id: str,
+    headers: dict[str, str],
+    payload: dict[str, Any],
+    source_message_id: str | None = None,
+    root_message_id: str | None = None,
+) -> dict[str, Any] | None:
+    target = str(payload.get("seat_id") or payload.get("recipient_id") or "").strip()
+    title = str(payload.get("title") or "").strip()
+    body = str(payload.get("body") or payload.get("ask") or "").strip()
+    if not target or not title or not body:
+        return None
+    metadata = {
+        "origin": "platform_peer_dispatches",
+        "source": "npc_final_reply",
+        "source_agent_id": sender_seat_id,
+        "payload_json": payload.get("payload_json") if isinstance(payload.get("payload_json"), dict) else {
+            "card_kind": str(payload.get("card_kind") or "task"),
+            "title": title[:200],
+            "summary": str(payload.get("summary") or "NPC 自主协作派单"),
+            "status": "queued",
+            "risk_level": str(payload.get("risk_level") or "L1"),
+            "items": [
+                {"label": "来源 NPC", "value": sender_seat_id},
+                {"label": "目标 NPC", "value": target},
+            ],
+            "actions": [{"label": "回执", "value": "返回协作结果"}],
+        },
+    }
+    cleaned_source = str(payload.get("source_message_id") or source_message_id or "").strip()
+    cleaned_root = str(payload.get("root_message_id") or root_message_id or cleaned_source).strip()
+    if cleaned_source:
+        metadata["source_message_id"] = cleaned_source
+    if cleaned_root:
+        metadata["root_message_id"] = cleaned_root
+    message_payload = {
+        "project_id": project_id,
+        "sender_type": "agent",
+        "sender_id": sender_seat_id,
+        "recipient_type": "thread_workstation",
+        "recipient_id": target,
+        "message_type": "agent_command",
+        "title": title[:200],
+        "body": body
+        + "\n\n（由上游 NPC 在当前目标链中发起协作；平台会按项目规则记录、审核和回收回执。）",
+        "status": "queued",
+        "metadata": metadata,
+    }
+    return _json_request(
+        "POST",
+        f"{base.rstrip('/')}/api/collaboration/messages",
+        headers=headers,
+        payload=message_payload,
+    ).get("data") or {}
+
+
+def _launch_peer_dispatch_adapter(
+    *,
+    base: str,
+    project_id: str,
+    target_workstation_id: str,
+    message_id: str,
+    auth_token: str | None,
+    output_dir: Path,
+    timeout_seconds: int,
+) -> dict[str, Any]:
+    target = str(target_workstation_id or "").strip()
+    command_id = str(message_id or "").strip()
+    if not target or not command_id:
+        return {"launched": False, "error": "missing target workstation or message id"}
+
+    safe_target = re.sub(r"[^a-zA-Z0-9._-]+", "-", target)[:96] or "workstation"
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+    output_base_dir = _normalize_workstation_output_base(output_dir, project_id=project_id)
+    root_output_dir = output_base_dir / project_id
+    target_output_dir = root_output_dir / target
+    log_dir = root_output_dir / "peer-launch-logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    stdout_path = log_dir / f"{safe_target}-{command_id}-{stamp}.out.log"
+    stderr_path = log_dir / f"{safe_target}-{command_id}-{stamp}.err.log"
+
+    cmd = [
+        sys.executable,
+        str(Path(__file__).resolve()),
+        "--api-base",
+        base,
+        "--project-id",
+        project_id,
+        "--workstation-id",
+        target,
+        "--message-id",
+        command_id,
+        "--auto-ack",
+        "--execute-provider-cli",
+        "--ignore-automation-switch",
+        "--output-dir",
+        str(output_base_dir),
+        "--executor-timeout-seconds",
+        str(max(1, int(timeout_seconds or 1800))),
+    ]
+    if auth_token:
+        cmd.extend(["--auth-token", auth_token])
+
+    env = dict(os.environ)
+    if auth_token:
+        env["PLATFORM_AUTH_TOKEN"] = auth_token
+    env["PYTHONIOENCODING"] = "utf-8"
+
+    try:
+        stdout_fh = stdout_path.open("a", encoding="utf-8", errors="replace")
+        stderr_fh = stderr_path.open("a", encoding="utf-8", errors="replace")
+        try:
+            proc = subprocess.Popen(
+                cmd,
+                cwd=str(Path.cwd()),
+                stdin=subprocess.DEVNULL,
+                stdout=stdout_fh,
+                stderr=stderr_fh,
+                env=env,
+                creationflags=(subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0),
+            )
+        finally:
+            stdout_fh.close()
+            stderr_fh.close()
+        return {
+            "launched": True,
+            "pid": proc.pid,
+            "target_workstation_id": target,
+            "message_id": command_id,
+            "stdout_path": str(stdout_path),
+            "stderr_path": str(stderr_path),
+        }
+    except Exception as exc:
+        return {
+            "launched": False,
+            "target_workstation_id": target,
+            "message_id": command_id,
+            "error": str(exc),
+            "stdout_path": str(stdout_path),
+            "stderr_path": str(stderr_path),
+        }
+
+
+def _extract_peer_dispatches(note: str) -> list[dict[str, Any]]:
+    dispatches: list[dict[str, Any]] = []
+    for match in PEER_DISPATCH_FENCE_RE.finditer(str(note or "")):
+        raw = match.group("payload").strip()
+        if not raw:
+            continue
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        items = parsed if isinstance(parsed, list) else [parsed]
+        for item in items:
+            if isinstance(item, dict):
+                dispatches.append(item)
+    return dispatches
+
+
+def _fit_platform_note(note: str, *, message_id: str, result_status: str, output_path: Path | None = None) -> str:
+    normalized = str(note or "").strip()
+    if len(normalized) <= MAX_PLATFORM_NOTE_CHARS:
+        return normalized
+    suffix_parts = [
+        "",
+        "",
+        "[平台提示] NPC 回执超过平台单条 note 限制，已截断以保证任务可以收口。",
+        f"message_id: {message_id}",
+        f"result_status: {result_status}",
+    ]
+    if output_path is not None:
+        suffix_parts.append("完整输出已保存为平台证据，可在工作台点“证据/查看回执”预览。")
+    suffix = "\n".join(suffix_parts)
+    budget = max(400, MAX_PLATFORM_NOTE_CHARS - len(suffix))
+    return f"{normalized[:budget].rstrip()}{suffix}"
+
+
+def _prepare_final_note(note: str, *, message_id: str, result_status: str, output_path: Path | None = None) -> str:
+    if output_path is not None:
+        try:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(str(note or ""), encoding="utf-8")
+        except Exception:
+            pass
+    return _fit_platform_note(note, message_id=message_id, result_status=result_status, output_path=output_path)
 
 
 def _json_request(method: str, url: str, *, headers: dict[str, str], payload: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -156,22 +438,30 @@ def _encode_header_value(value: str) -> tuple[str, bool]:
         return quote(value, safe=""), True
 
 
-def _headers(workstation_id: str, token: str | None = None) -> dict[str, str]:
+def _headers(workstation_id: str, token: str | None = None, runner_id: str | None = None) -> dict[str, str]:
     encoded, was_encoded = _encode_header_value(workstation_id)
     headers = {"X-Workstation-Id": encoded}
     if was_encoded:
         headers["X-Workstation-Id-Encoding"] = "percent"
     if token:
         headers["X-Workstation-Token"] = token
+    if runner_id:
+        headers["X-Runner-Id"] = runner_id
     return headers
 
 
-def _adapter_headers(workstation_id: str, *, workstation_token: str | None = None, auth_token: str | None = None) -> dict[str, str]:
+def _adapter_headers(
+    workstation_id: str,
+    *,
+    workstation_token: str | None = None,
+    auth_token: str | None = None,
+    runner_id: str | None = None,
+) -> dict[str, str]:
     # Real remote adapters identify as a workstation. A platform-launched one-shot can instead
     # use the current human session, so it does not rotate or invalidate a remote adapter token.
     if auth_token and not workstation_token:
         return {"Authorization": f"Bearer {auth_token}"}
-    return _headers(workstation_id, workstation_token)
+    return _headers(workstation_id, workstation_token, runner_id)
 
 
 def _command_markdown(
@@ -187,7 +477,18 @@ def _command_markdown(
     body = str(command.get("body") or "").strip()
     recipient_id = str(command.get("recipient_id") or "").strip()
     seat_id = recipient_id if recipient_id and recipient_id != workstation_id else ""
+    seat_doc_path = f"docs/npcs/{seat_id or workstation_id}"
+    default_workstation_doc_path = f"docs/workstations/{computer_node_id}.md" if computer_node_id else ""
     project_knowledge_path = f"docs/projects/{project_id}/README.md"
+    knowledge_lines: list[str] = []
+    if Path(seat_doc_path).exists():
+        knowledge_lines.append(f"- Role manual: `{seat_doc_path}`.")
+    if workstation_knowledge_path and Path(workstation_knowledge_path).exists():
+        knowledge_lines.append(f"- Workstation context: `{workstation_knowledge_path}`.")
+    elif default_workstation_doc_path and Path(default_workstation_doc_path).exists():
+        knowledge_lines.append(f"- Workstation context: `{default_workstation_doc_path}`.")
+    if Path(project_knowledge_path).exists():
+        knowledge_lines.append(f"- Project context: `{project_knowledge_path}`.")
     lines = [
         f"# {title}",
         "",
@@ -210,11 +511,9 @@ def _command_markdown(
         "- Before doing work, read docs/ai-requirements/ai-required-requirements-ledger.md if present; obey proposer, target, review gate, one-shot/heartbeat mode, and reply-to fields.",
         "- If the task requires human review, stop after analysis/minimal acknowledgement and wait for approval.",
         "",
-        "## NPC Knowledge Library Convention",
-        f"- Your role manual lives at `docs/npcs/{seat_id or workstation_id}/` (create if missing — see `docs/npcs/README.md`).",
-        f"- Workstation context: `{workstation_knowledge_path or (f'docs/workstations/{computer_node_id}.md' if computer_node_id else 'docs/workstations/<computer_node_id>.md (not yet bound to a node)')}`.",
-        f"- Project context: `{project_knowledge_path}`.",
-        "- Read all three before acting; cite the file path you relied on in your reply.",
+        "## NPC Knowledge Library",
+        *(knowledge_lines if knowledge_lines else ["- No project/NPC/workstation knowledge file is currently registered on disk for this seat. Do not report missing default docs; proceed from the platform command and cite only files you actually read."]),
+        "- Read the listed knowledge files before acting. Cite only files that exist and that you actually relied on.",
         "",
         "## Autonomous Collaboration (seat-mcp tools)",
         "- 你的 CLI 应该已经加载了 `seat-mcp` 这个 MCP server（见 `scripts/seat-mcp-server/README.md`）。",
@@ -226,6 +525,13 @@ def _command_markdown(
         "  - `mark_done(message_id, body, failed?)`：**仅长开窗口模式（PersistentWindow）使用**——处理完一条 incoming_dispatch 后调一次，写 done 回执。一次性弹窗模式不用调（watcher 自动写）。",
         "- 五个工具都会经过平台 review gate：同工位默认免审；跨工位默认 pending_review，由用户在驾驶舱通过后才真发出。",
         "- 工具返回 `needs_review=true` 时，你**只需告诉用户「已发起求助，等审核」**，不要重复发也不要切换到自己干。",
+        "- 如果当前 CLI 没有成功加载 seat-mcp，但你确实需要其他 NPC 协作，请在最终回复末尾追加一个 JSON 代码块：",
+        "  ```platform-peer-dispatches",
+        "  [{\"seat_id\":\"platform-npc-1\",\"title\":\"请协作...\",\"body\":\"具体请求...\",\"card_kind\":\"task\",\"risk_level\":\"L1\"}]",
+        "  ```",
+        "  平台 adapter 会把它转换为真实的 NPC-to-NPC 派单。只有你确实需要同伴时才输出这段。",
+        "- 如果用户明确要求你“自己组织 / 主动派单 / 自主合作 / 不要让用户手动派单”，而当前 CLI 又没有 seat-mcp 工具，"
+        "你必须使用 `platform-peer-dispatches` 代码块发起同伴派单；不能只写“建议派给谁”。",
         "",
         "## Reply Formatting",
         "- Reply in GitHub-flavored Markdown.",
@@ -276,15 +582,14 @@ def _default_ack_note(
     execute_provider_cli: bool,
     executor_cwd: str | None,
 ) -> str:
-    local_prompt = str(command_path.resolve())
-    cwd_note = str(executor_cwd or "").strip() or "not configured; this runner will only write the prompt file"
-    cli_note = "on" if execute_provider_cli else "off"
+    mode = "桌面线程处理中" if execute_provider_cli else "已写入待办，等待桌面线程处理"
+    cwd_note = "本项目工作区" if str(executor_cwd or "").strip() else "待绑定工作区"
     return "\n".join(
         [
-            f"{provider} adapter accepted command {message_id}.",
-            f"Local prompt file: {local_prompt}",
-            f"Provider CLI execution: {cli_note}",
-            f"Executor cwd: {cwd_note}",
+            f"目标 NPC 已接到平台派单：{message_id}。",
+            f"处理方式：{mode}。",
+            f"工作区：{cwd_note}。",
+            "平台会继续同步最小回执、待收口状态和最终结果。",
         ]
     )
 
@@ -340,12 +645,15 @@ def _default_executor_template(
     provider_key = str(provider or "").strip().lower()
     session_id = _strip_session_prefix(automation_thread_id, provider_key)
     if provider_key == "codex" and session_id:
+        if str(desktop_delivery_mode or "").strip().lower() == "codex_app_server":
+            return CODEX_APP_SERVER_EXECUTOR, "codex_app_server"
         if str(desktop_delivery_mode or "").strip().lower() == "codex_desktop_ui":
             return CODEX_DESKTOP_UI_EXECUTOR, "codex_desktop_ui"
-        # Use Codex's app-server protocol so a platform dispatch becomes a
-        # normal turn in the bound Codex session, not a detached automation or
-        # a separate CLI-only resume run.
-        return CODEX_APP_SERVER_EXECUTOR, "codex_app_server"
+        # A bound Codex thread should be visible in Codex Desktop by default.
+        # If the UI bridge is not really available, the delivery attempt fails
+        # loudly instead of silently turning user/Boss/NPC dispatches into a
+        # background app-server run that the human cannot watch.
+        return CODEX_DESKTOP_UI_EXECUTOR, "codex_desktop_ui_required"
     return DEFAULT_PROVIDER_EXECUTORS.get(provider_key, ""), "provider_exec"
 
 
@@ -356,6 +664,7 @@ def _extract_executor_prompt(command_text: str) -> str:
     seat_id = ""
     workstation_id = ""
     computer_node_id = ""
+    seat_doc_path = ""
     workstation_knowledge_path = ""
     project_knowledge_path = ""
     in_knowledge_block = False
@@ -379,11 +688,16 @@ def _extract_executor_prompt(command_text: str) -> str:
             after = stripped.split(":", 1)[1] if ":" in stripped else ""
             tokens = after.strip().strip("`").split()
             computer_node_id = tokens[0].strip("`") if tokens else ""
-        if stripped.startswith("## NPC Knowledge Library Convention"):
+        if stripped.startswith("## NPC Knowledge Library"):
             in_knowledge_block = True
             continue
         if in_knowledge_block and stripped.startswith("## "):
             in_knowledge_block = False
+        if in_knowledge_block and stripped.startswith("- Role manual:"):
+            chunk = stripped.split(":", 1)[1] if ":" in stripped else ""
+            chunk = chunk.strip().strip(".").strip()
+            if chunk.startswith("`") and chunk.endswith("`"):
+                seat_doc_path = chunk.strip("`")
         if in_knowledge_block and stripped.startswith("- Workstation context:"):
             chunk = stripped.split(":", 1)[1] if ":" in stripped else ""
             chunk = chunk.strip().strip(".").strip()
@@ -399,11 +713,19 @@ def _extract_executor_prompt(command_text: str) -> str:
     if marker in command_text:
         instruction = command_text.split(marker, 1)[1].strip()
     seat_label = seat_id or workstation_id or "<seat>"
-    workstation_doc_path = (
-        workstation_knowledge_path
-        or (f"docs/workstations/{computer_node_id}.md" if computer_node_id else "docs/workstations/<computer_node_id>.md")
-    )
-    project_doc_path = project_knowledge_path or "docs/projects/<project-id>/README.md"
+    knowledge_targets = [
+        label
+        for label in [seat_doc_path, workstation_knowledge_path, project_knowledge_path]
+        if label and Path(label).exists()
+    ]
+    if knowledge_targets:
+        knowledge_instruction = (
+            "开工前先读这些已存在的知识文件，并在最终回复里注明你引用了哪份文档："
+            + "、".join(knowledge_targets)
+            + "。"
+        )
+    else:
+        knowledge_instruction = "当前没有为此 NPC 注册到磁盘的知识文件；不要报告默认路径缺失，直接按平台命令和实际代码/文档行动。"
     parts = [
         "你是当前电脑线程上的执行 AI。",
         (
@@ -413,12 +735,7 @@ def _extract_executor_prompt(command_text: str) -> str:
         "平台适配器已经负责最小回执和最终回写；不要再调用平台 API，也不要尝试自己发送回执。",
         "开工前如果存在 docs/ai-requirements/ai-required-requirements-ledger.md，必须遵守其中的提需求者、被提需求者、人工审核边界、一次性/心跳模式和完成后回给谁。",
         "凡是标记为需要人工审核的内容，只能分析和说明，不能继续自动执行。",
-        (
-            "你这个 NPC 的「岗位手册」在 docs/npcs/" + seat_label + "/ 下；"
-            "本工位（电脑节点）的手册在 " + workstation_doc_path + "；"
-            "项目级背景在 " + project_doc_path + "。"
-            "开工前先读这三处（任何一处缺失就跳过该层），并在最终回复里注明你引用了哪份文档。"
-        ),
+        knowledge_instruction,
         (
             "回复必须用 GitHub-flavored Markdown。引用代码/提交/PR 时一律给出 GitHub 链接（owner/repo/blob/branch/path 或 /commit/<sha>），"
             "用当前仓库真实的 remote，不要编造占位 URL。如果改了文件，按「- 修改 <文件名>：<一句话原因> — <github 链接>」列清单。"
@@ -426,6 +743,21 @@ def _extract_executor_prompt(command_text: str) -> str:
         (
             "需要其他 NPC 帮忙时，直接调 MCP 工具 `list_peers` / `request_help(role, ask)` / `dispatch_to_peer(seat_id, title, body)` "
             "（来自 seat-mcp server）。同工位默认免审、跨工位默认走 pending_review。不要让用户去 UI 上替你派单——这就是平台说的「自主协作」。"
+        ),
+        (
+            "如果当前执行环境没有暴露 seat-mcp 工具，但用户要求你自己组织、主动派单、自主合作、协调 1-6 号 NPC，"
+            "你不能把“工具不可用”当作最终答案。请先给出一句简短说明，然后在最终回复末尾追加一个 "
+            "`platform-peer-dispatches` fenced JSON 代码块。平台 adapter 会把这个代码块转换成真实的 NPC-to-NPC 派单。"
+        ),
+        (
+            "兜底派单格式示例：\n"
+            "```platform-peer-dispatches\n"
+            "[{\"seat_id\":\"platform-npc-1\",\"title\":\"请协作前端规划\",\"body\":\"请从前端用户体验角度审查机器人开发平台结构。\",\"card_kind\":\"task\",\"risk_level\":\"L1\"}]\n"
+            "```"
+        ),
+        (
+            "只有确实需要同伴协作时才输出 `platform-peer-dispatches`；一旦用户明确要求自主组织协作，"
+            "至少派给一个明确 seat_id，不能只写建议名单。"
         ),
         "请只根据下面的用户指令输出最终回复内容。",
     ]
@@ -465,6 +797,27 @@ def _render_executor_command(
         "@SESSION_ID@": _shell_arg(str(session_id or "").strip()),
         "@PROVIDER_EXECUTOR@": _shell_arg(str(provider_executor)),
     }
+
+
+def _normalize_workstation_output_base(output_dir: Path, *, project_id: str) -> Path:
+    """Return the base directory before <project>/<seat> for workstation artifacts.
+
+    Boss/NPC peer launches may start from an already seat-scoped directory. Keeping a
+    single normalization point prevents paths such as proj/seat/proj/seat/...
+    """
+    raw = Path(output_dir)
+    project = str(project_id or "").strip()
+    if not project:
+        return raw
+    parts = list(raw.parts)
+    lowered_project = project.lower()
+    for index in range(len(parts)):
+        if parts[index].lower() == lowered_project:
+            base_parts = parts[:index]
+            if not base_parts:
+                return Path(".")
+            return Path(*base_parts)
+    return raw
     rendered = template
     for marker, value in replacements.items():
         rendered = rendered.replace(marker, value)
@@ -596,6 +949,74 @@ def _find_codex_desktop_reply(
     return None
 
 
+def _codex_desktop_event_id(record: dict[str, Any], index: int) -> str:
+    for key in ("id", "event_id", "item_id", "message_id"):
+        value = str(record.get(key) or "").strip()
+        if value:
+            return value
+    payload = record.get("payload") if isinstance(record.get("payload"), dict) else {}
+    for key in ("id", "event_id", "item_id", "message_id"):
+        value = str(payload.get(key) or "").strip()
+        if value:
+            return value
+    return f"jsonl:{index}"
+
+
+def _codex_desktop_followup_events(
+    *,
+    session_id: str | None,
+    known_message_ids: set[str],
+    max_events: int = 20,
+) -> list[dict[str, Any]]:
+    session_file = _find_codex_session_file(session_id)
+    if session_file is None or not session_file.exists():
+        return []
+    try:
+        lines = session_file.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
+
+    marker_index = -1
+    markers = [_message_id_marker(message_id) for message_id in known_message_ids if message_id]
+    if not markers:
+        return []
+    for index, line in enumerate(lines):
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        role, text, _phase = _codex_record_role_and_text(record)
+        if role == "user" and any(marker in text for marker in markers):
+            marker_index = index
+    if marker_index < 0:
+        return []
+
+    events: list[dict[str, Any]] = []
+    for index, line in enumerate(lines[marker_index + 1 :], start=marker_index + 1):
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        role, text, phase = _codex_record_role_and_text(record)
+        if role not in {"user", "assistant"} or not text:
+            continue
+        if role == "user" and any(marker in text for marker in markers):
+            continue
+        if role == "assistant" and phase not in {"", "minimal_ack", "final_answer"}:
+            continue
+        events.append(
+            {
+                "role": role,
+                "text": text,
+                "phase": phase or ("minimal_ack" if role == "assistant" else "user_message"),
+                "timestamp": record.get("timestamp"),
+                "event_id": _codex_desktop_event_id(record, index),
+                "session_file": str(session_file),
+            }
+        )
+    return events[-max_events:]
+
+
 def _codex_desktop_prompt_seen(
     *,
     session_id: str | None,
@@ -656,6 +1077,49 @@ def _wait_for_codex_desktop_reply(
     return None
 
 
+class _DesktopDeliveryLock:
+    def __init__(self, path: Path, *, timeout_seconds: int = 180) -> None:
+        self.path = path
+        self.timeout_seconds = max(1, timeout_seconds)
+        self.handle = None
+
+    def __enter__(self):
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        deadline = time.time() + self.timeout_seconds
+        last_error: Exception | None = None
+        while time.time() <= deadline:
+            try:
+                self.handle = self.path.open("x")
+                self.handle.write(f"pid={os.getpid()} acquired_at={datetime.now().isoformat()}\n")
+                self.handle.flush()
+                return self
+            except FileExistsError as exc:
+                last_error = exc
+                try:
+                    age = time.time() - self.path.stat().st_mtime
+                except OSError:
+                    age = 0
+                if age > self.timeout_seconds:
+                    try:
+                        self.path.unlink()
+                    except OSError:
+                        pass
+                    continue
+                time.sleep(0.5)
+        raise TimeoutError(f"timed out waiting for Codex Desktop UI delivery lock: {self.path}") from last_error
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        if self.handle is not None:
+            try:
+                self.handle.close()
+            except Exception:
+                pass
+        try:
+            self.path.unlink()
+        except OSError:
+            pass
+
+
 def _run_codex_desktop_ui_turn(
     *,
     prompt_text: str,
@@ -694,52 +1158,206 @@ param(
 )
 $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.Windows.Forms
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class Win32Focus {
+  [DllImport("user32.dll")]
+  public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")]
+  public static extern bool SetForegroundWindow(IntPtr hWnd);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)]
+  public static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder text, int count);
+}
+"@
+
+function Get-ForegroundTitle {
+  $handle = [Win32Focus]::GetForegroundWindow()
+  $builder = New-Object System.Text.StringBuilder 512
+  [void][Win32Focus]::GetWindowText($handle, $builder, $builder.Capacity)
+  return $builder.ToString()
+}
+
+function Focus-CodexDesktop {
+  $shell = New-Object -ComObject WScript.Shell
+  $matched = $false
+  foreach ($name in @("Codex", "codex")) {
+    try {
+      if ($shell.AppActivate($name)) {
+        $matched = $true
+        Start-Sleep -Milliseconds 320
+        break
+      }
+    } catch {
+    }
+  }
+  if (-not $matched) {
+    Start-Process -FilePath "cmd.exe" -ArgumentList @("/c", "start", '""', $ThreadUrl) -WindowStyle Hidden | Out-Null
+    Start-Sleep -Milliseconds 900
+  }
+  return Get-ForegroundTitle
+}
+
+function Assert-CodexForeground {
+  param([string]$Stage)
+  $title = Get-ForegroundTitle
+  if ($title -notmatch "(?i)codex") {
+    throw ("desktop_focus_lost stage=" + $Stage + "; foreground=" + $title)
+  }
+  return $title
+}
+
+function Try-SetClipboardText {
+  param([string]$Text)
+  $lastError = $null
+  for ($i = 0; $i -lt 8; $i++) {
+    try {
+      [System.Windows.Forms.Clipboard]::SetText($Text)
+      return $true
+    } catch {
+      $lastError = $_
+      Start-Sleep -Milliseconds (180 + ($i * 120))
+    }
+  }
+  throw $lastError
+}
+
+function Try-SendPlatformPrompt {
+  param([string]$Text)
+  $title = Focus-CodexDesktop
+  Assert-CodexForeground -Stage "before_clipboard" | Out-Null
+  Try-SetClipboardText -Text $Text | Out-Null
+  Start-Sleep -Milliseconds 180
+  $title = Focus-CodexDesktop
+  Assert-CodexForeground -Stage "before_paste" | Out-Null
+  [System.Windows.Forms.SendKeys]::SendWait("^v")
+  Start-Sleep -Milliseconds 220
+  $title = Focus-CodexDesktop
+  Assert-CodexForeground -Stage "before_submit" | Out-Null
+  [System.Windows.Forms.SendKeys]::SendWait("^{ENTER}")
+  Start-Sleep -Milliseconds 180
+  Assert-CodexForeground -Stage "after_submit" | Out-Null
+  Write-Output ("delivery_attempt=1; foreground=" + $title)
+}
+
 Start-Process -FilePath "cmd.exe" -ArgumentList @("/c", "start", '""', $ThreadUrl) -WindowStyle Hidden | Out-Null
 Start-Sleep -Milliseconds $InitialWaitMs
-[System.Windows.Forms.Clipboard]::SetText($PromptText)
-[System.Windows.Forms.SendKeys]::SendWait("^v")
-Start-Sleep -Milliseconds 120
-[System.Windows.Forms.SendKeys]::SendWait("^{ENTER}")
-Start-Sleep -Milliseconds 120
-[System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
+Try-SendPlatformPrompt -Text $PromptText
 """
     thread_url = _codex_desktop_thread_url(thread_id)
     wait_ms = 3200
     helper_path = None
+    delivery_attempts = 0
     try:
-        with tempfile.NamedTemporaryFile("w", suffix=".ps1", delete=False, encoding="utf-8") as helper_file:
-            helper_file.write(helper)
-            helper_path = helper_file.name
-        completed = subprocess.run(
-            [
-                "powershell",
-                "-NoProfile",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-File",
-                helper_path,
-                "-ThreadUrl",
-                thread_url,
-                "-PromptText",
-                prompt_text,
-                "-InitialWaitMs",
-                str(wait_ms),
-            ],
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            capture_output=True,
-            timeout=max(12, min(timeout_seconds, 30)),
-        )
+        with _DesktopDeliveryLock(CODEX_DESKTOP_UI_LOCK_PATH, timeout_seconds=max(60, min(timeout_seconds, 240))):
+            with tempfile.NamedTemporaryFile("w", suffix=".ps1", delete=False, encoding="utf-8") as helper_file:
+                helper_file.write(helper)
+                helper_path = helper_file.name
+            completed: subprocess.CompletedProcess[str] | None = None
+            seen = None
+            max_attempts = max(1, CODEX_DESKTOP_UI_MAX_DELIVERY_ATTEMPTS)
+            for attempt in range(max_attempts):
+                delivery_attempts = attempt + 1
+                attempt_wait_ms = wait_ms if attempt == 0 else 900
+                current = subprocess.run(
+                    [
+                        "powershell",
+                        "-NoProfile",
+                        "-ExecutionPolicy",
+                        "Bypass",
+                        "-File",
+                        helper_path,
+                        "-ThreadUrl",
+                        thread_url,
+                        "-PromptText",
+                        prompt_text,
+                        "-InitialWaitMs",
+                        str(attempt_wait_ms),
+                    ],
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    capture_output=True,
+                    timeout=max(12, min(timeout_seconds, 30)),
+                )
+                if completed is None:
+                    completed = current
+                else:
+                    completed = subprocess.CompletedProcess(
+                        completed.args,
+                        current.returncode,
+                        stdout=f"{completed.stdout}\n{current.stdout}".strip(),
+                        stderr=f"{completed.stderr}\n{current.stderr}".strip(),
+                    )
+                if current.returncode != 0 and attempt < max_attempts - 1:
+                    time.sleep(0.4)
+                    continue
+                if current.returncode == 0:
+                    seen = _wait_for_codex_desktop_prompt_seen(
+                        session_id=session_id,
+                        message_id=message_id,
+                        timeout_seconds=min(max(timeout_seconds, 1), 12),
+                    )
+                    if seen:
+                        break
+                if attempt < max_attempts - 1:
+                    time.sleep(min(1.6, 0.35 + (attempt * 0.2)))
+            if completed and completed.returncode == 0:
+                if not seen:
+                    return {
+                        "ok": False,
+                        "recoverable": True,
+                        "returncode": completed.returncode,
+                        "stdout": completed.stdout,
+                        "stderr": completed.stderr,
+                        "note": (
+                            "已尝试把派单送到绑定桌面线程，但桌面线程还没有确认收到。"
+                            "可能是桌面窗口被用户操作打断；平台会保持待收口，可重新同步或手动收口。"
+                        ),
+                        "delivery_mode": "codex_desktop_ui",
+                        "desktop_visible": True,
+                        "desktop_delivery_confirmed": False,
+                        "desktop_delivery_unconfirmed": True,
+                        "desktop_delivery_attempts": delivery_attempts,
+                        "desktop_delivery_auto_retried": delivery_attempts > 1,
+                        "thread_id": thread_id,
+                        "desktop_thread_url": thread_url,
+                    }
+                return {
+                    "ok": True,
+                    "returncode": completed.returncode,
+                    "stdout": completed.stdout,
+                    "stderr": completed.stderr,
+                    "note": (
+                        "已把这条平台派单发送到绑定的 Codex Desktop 线程。"
+                        "完整处理过程会在桌面版 Codex 对话框里继续；平台不会把这次投递当作最终完成。"
+                    ),
+                    "delivery_mode": "codex_desktop_ui",
+                    "desktop_visible": True,
+                    "desktop_delivery_confirmed": True,
+                    "desktop_delivery_attempts": delivery_attempts,
+                    "desktop_delivery_auto_retried": delivery_attempts > 1,
+                    "desktop_seen": seen,
+                    "thread_id": thread_id,
+                    "desktop_thread_url": thread_url,
+                }
     except Exception as exc:
         return {
             "ok": False,
+            "recoverable": True,
             "returncode": None,
             "stdout": "",
             "stderr": str(exc),
-            "note": f"Codex Desktop UI delivery failed: {exc}",
+            "note": (
+                "桌面投递被本机操作打断，平台已保留任务并进入待收口。"
+                "请点击“重新同步”再次发送，或确认桌面结果后手动收口。"
+            ),
             "delivery_mode": "codex_desktop_ui",
-            "desktop_visible": False,
+            "desktop_visible": True,
+            "desktop_delivery_confirmed": False,
+            "desktop_delivery_unconfirmed": True,
+            "desktop_delivery_attempts": delivery_attempts,
+            "desktop_delivery_auto_retried": delivery_attempts > 1,
             "thread_id": thread_id,
             "desktop_thread_url": thread_url,
         }
@@ -759,17 +1377,18 @@ Start-Sleep -Milliseconds 120
         if not seen:
             return {
                 "ok": False,
+                "recoverable": True,
                 "returncode": completed.returncode,
                 "stdout": completed.stdout,
                 "stderr": completed.stderr,
                 "note": (
-                    "Codex Desktop UI delivery was attempted, but the bound session JSONL "
-                    f"did not show message_id `{message_id}`. The platform will not mark this "
-                    "as Desktop-visible delivery."
+                    "已尝试把派单送到绑定桌面线程，但桌面线程还没有确认收到。"
+                    "可能是桌面窗口被用户操作打断；平台会保持待收口，可重新同步或手动收口。"
                 ),
                 "delivery_mode": "codex_desktop_ui",
-                "desktop_visible": False,
+                "desktop_visible": True,
                 "desktop_delivery_confirmed": False,
+                "desktop_delivery_unconfirmed": True,
                 "thread_id": thread_id,
                 "desktop_thread_url": thread_url,
             }
@@ -791,12 +1410,20 @@ Start-Sleep -Milliseconds 120
         }
     return {
         "ok": False,
+        "recoverable": True,
         "returncode": completed.returncode,
         "stdout": completed.stdout,
         "stderr": completed.stderr,
-        "note": f"Codex Desktop UI delivery failed: {completed.stderr or completed.stdout or 'unknown error'}",
+        "note": (
+            "桌面投递暂未成功确认，平台已保留任务并进入待收口。"
+            "请点击“重新同步”再次发送，或确认桌面结果后手动收口。"
+        ),
         "delivery_mode": "codex_desktop_ui",
-        "desktop_visible": False,
+        "desktop_visible": True,
+        "desktop_delivery_confirmed": False,
+        "desktop_delivery_unconfirmed": True,
+        "desktop_delivery_attempts": delivery_attempts,
+        "desktop_delivery_auto_retried": delivery_attempts > 1,
         "thread_id": thread_id,
         "desktop_thread_url": thread_url,
     }
@@ -1033,27 +1660,35 @@ def run_executor(
         )
         if ui_result.get("ok"):
             return ui_result
-        fallback = _run_codex_app_server_turn(
-            prompt_text=prompt_text,
-            session_id=session_id,
-            cwd=cwd,
-            timeout_seconds=timeout_seconds,
-            model=model,
-        )
-        fallback_note = str(fallback.get("note") or "").strip()
         ui_note = str(ui_result.get("note") or "").strip()
-        fallback["note"] = "\n".join(
-            part
-            for part in [
-                ui_note,
-                "已降级为后台 Codex app-server 执行；桌面版可能不会实时显示这条消息。",
-                fallback_note,
-            ]
-            if part
-        )
-        fallback["desktop_visible"] = False
-        fallback["delivery_mode"] = "codex_app_server_fallback"
-        return fallback
+        if ui_result.get("recoverable") and ui_result.get("desktop_delivery_confirmed") is False:
+            return {
+                **ui_result,
+                "ok": False,
+                "recoverable": True,
+                "note": ui_note
+                or (
+                    "桌面线程暂未确认收到这条派单。平台会保持待收口，"
+                    "可重新同步、延长等待或手动收口。"
+                ),
+                "desktop_visible": bool(ui_result.get("desktop_visible", True)),
+                "delivery_mode": "codex_desktop_ui",
+            }
+        return {
+            **ui_result,
+            "ok": False,
+            "note": "\n".join(
+                part
+                for part in [
+                    ui_note,
+                    "平台要求用户派工、Boss 派工、NPC 互派都必须在桌面版看到详细处理过程；本次未确认 Codex Desktop 可见投递，已停止后台降级。",
+                    "请在工作台点击“重新同步”，或确认桌面结果后手动收口；管理员也可以检查该 NPC 的桌面线程绑定。",
+                ]
+                if part
+            ),
+            "desktop_visible": False,
+            "delivery_mode": "codex_desktop_ui_required_failed",
+        }
     resolved_cwd = str(cwd or "").strip() or None
     cwd_warning = ""
     if resolved_cwd:
@@ -1693,6 +2328,7 @@ def main() -> int:
     parser.add_argument("--api-base", default=DEFAULT_API_BASE)
     parser.add_argument("--project-id", required=True)
     parser.add_argument("--workstation-id", required=True)
+    parser.add_argument("--runner-id", default=None, help="Bound runner id for multi-computer workstation routing.")
     parser.add_argument("--provider", default=None)
     parser.add_argument("--token", default=None)
     parser.add_argument(
@@ -1752,8 +2388,8 @@ def main() -> int:
     parser.add_argument(
         "--poll-seconds",
         type=float,
-        default=3.0,
-        help="Seconds to sleep between inbox polls when --watch is enabled (default 3).",
+        default=1.5,
+        help="Seconds to sleep between inbox and Desktop JSONL sync polls when --watch is enabled (default 1.5).",
     )
     parser.add_argument(
         "--spawn-window",
@@ -1774,12 +2410,15 @@ def main() -> int:
 
     base = args.api_base.rstrip("/")
     auth_token = str(args.auth_token or os.environ.get("PLATFORM_AUTH_TOKEN") or "").strip() or None
-    headers = _adapter_headers(args.workstation_id, workstation_token=args.token, auth_token=auth_token)
+    runner_id = str(args.runner_id or os.environ.get("PLATFORM_RUNNER_ID") or "").strip() or None
+    headers = _adapter_headers(args.workstation_id, workstation_token=args.token, auth_token=auth_token, runner_id=runner_id)
     # Step 8 — expose platform identity to child executors so the seat-mcp-server
     # the NPC's CLI loads can dispatch on the seat's behalf (NPC-initiated collab).
     os.environ["PLATFORM_API_BASE"] = base
     os.environ["PLATFORM_PROJECT_ID"] = str(args.project_id or "")
     os.environ["PLATFORM_WORKSTATION_ID"] = str(args.workstation_id or "")
+    if runner_id:
+        os.environ["PLATFORM_RUNNER_ID"] = runner_id
     # 长开模式：watcher 启动时就把 SEAT_ID 钉到 workstation_id（同一个 seat 一对一），
     # 让弹窗里的 claude 一开就有正确身份；后续每条派单仍会按 recipient_id 覆盖（兼容工位长转交场景）。
     if args.persistent_window and not os.environ.get("PLATFORM_SEAT_ID"):
@@ -1857,7 +2496,8 @@ def main() -> int:
         message_id=args.message_id,
     )
 
-    output_root = Path(args.output_dir) / _safe_path_component(args.project_id, "project") / _safe_path_component(args.workstation_id, "workstation")
+    output_base = _normalize_workstation_output_base(Path(args.output_dir), project_id=args.project_id)
+    output_root = output_base / _safe_path_component(args.project_id, "project") / _safe_path_component(args.workstation_id, "workstation")
     resolved_session_id = _strip_session_prefix(adapter_config.get("automation_thread_id"), resolved_provider)
     executor_template, executor_mode = _default_executor_template(
         resolved_provider,
@@ -1909,6 +2549,12 @@ def main() -> int:
             final_note = str((desktop_reply or {}).get("text") or "").strip()
             if not final_note:
                 continue
+            safe_note = _prepare_final_note(
+                final_note,
+                message_id=message_id,
+                result_status="completed",
+                output_path=output_root / f"{message_id}.md",
+            )
             receipts.append(
                 _complete_workstation_command(
                     base=base,
@@ -1916,26 +2562,79 @@ def main() -> int:
                     workstation_id=args.workstation_id,
                     message_id=message_id,
                     headers=headers,
-                    note=final_note,
+                    note=safe_note,
                 )
             )
             if args.watch:
                 print(f"[桌面回执补偿] 已补回 Desktop final reply：{message_id} 长度={len(final_note)}", flush=True)
         return receipts
 
+    def sync_desktop_followups(candidates: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+        if executor_template != CODEX_DESKTOP_UI_EXECUTOR or not resolved_session_id:
+            return []
+        known_message_ids = {
+            str(item.get("id") or "").strip()
+            for item in (candidates or [])
+            if isinstance(item, dict) and str(item.get("id") or "").strip()
+        }
+        if not known_message_ids:
+            sweep_url = f"{_workstation_messages_url(base, args.project_id, args.workstation_id)}/inbox?limit={args.limit}&status=all"
+            payload = _json_request("GET", sweep_url, headers=headers)
+            known_message_ids = {
+                str(item.get("id") or "").strip()
+                for item in (payload.get("data") or [])
+                if isinstance(item, dict) and str(item.get("id") or "").strip()
+            }
+        events = _codex_desktop_followup_events(
+            session_id=resolved_session_id,
+            known_message_ids=known_message_ids,
+            max_events=20,
+        )
+        synced: list[dict[str, Any]] = []
+        linked_message_id = sorted(known_message_ids)[-1] if known_message_ids else None
+        for event in events:
+            text_value = str(event.get("text") or "").strip()
+            if not text_value:
+                continue
+            if event.get("role") == "assistant":
+                # Final answers are completed through the stronger complete endpoint.
+                # The sync endpoint keeps quick questions/minimal acks visible.
+                if str(event.get("phase") or "") == "final_answer" and len(text_value) > 800:
+                    continue
+            synced.append(
+                _sync_desktop_event(
+                    base=base,
+                    project_id=args.project_id,
+                    workstation_id=args.workstation_id,
+                    headers=headers,
+                    role=str(event.get("role") or ""),
+                    note=text_value[:3900],
+                    phase=str(event.get("phase") or ""),
+                    session_id=resolved_session_id,
+                    source_event_id=str(event.get("event_id") or ""),
+                    source_timestamp=str(event.get("timestamp") or ""),
+                    linked_message_id=linked_message_id,
+                    metadata={"session_file": event.get("session_file")},
+                )
+            )
+        if args.watch and synced:
+            print(f"[桌面快速同步] 已同步 {len(synced)} 条 Desktop 提问/最小回执", flush=True)
+        return synced
+
     def process_one_round() -> dict[str, Any]:
-        swept_receipts = sweep_desktop_receipts()
         payload = _json_request("GET", inbox_url, headers=headers)
         commands = payload.get("data") or []
+        desktop_sync_receipts = sync_desktop_followups(commands)
+        swept_receipts = sweep_desktop_receipts()
         if args.message_id:
             wanted_message_id = str(args.message_id).strip()
             commands = [c for c in commands if str(c.get("id") or "").strip() == wanted_message_id]
         written: list[str] = []
-        receipts: list[dict[str, Any]] = list(swept_receipts)
+        receipts: list[dict[str, Any]] = [*desktop_sync_receipts, *swept_receipts]
         executions: list[dict[str, Any]] = []
 
         if args.persistent_window:
-            fresh = [c for c in commands if str(c.get("id") or "").strip() not in seen_ids]
+            fresh = [c for c in commands if _desktop_retry_dedupe_key(c) not in seen_ids]
             if args.watch and commands and not fresh:
                 pass
             commands = fresh
@@ -1995,7 +2694,7 @@ def main() -> int:
                     workstation_knowledge_path=resolved_workstation_knowledge_path,
                 )
                 if message_id:
-                    seen_ids.add(message_id)
+                    seen_ids.add(_desktop_retry_dedupe_key(command))
                     _persist_seen()
                 # ack 已在上面处理；done 回执由 claude 调 mark_done 写，不在这里写。
                 if args.watch:
@@ -2063,7 +2762,66 @@ def main() -> int:
             if executor_result is not None:
                 final_note = str(executor_result.get("note") or "").strip()
                 result_failed = not bool(executor_result.get("ok"))
-                if executor_result.get("delivery_mode") == "codex_desktop_ui" and executor_result.get("ok"):
+                if (
+                    executor_result.get("delivery_mode") == "codex_desktop_ui"
+                    and executor_result.get("desktop_delivery_confirmed") is False
+                    and executor_result.get("recoverable")
+                ):
+                    final_note = ""
+                    result_failed = False
+                    progress_note = (
+                        "桌面线程暂未确认收到这条派单。可能是窗口焦点被打断，平台已保留任务，"
+                        "可点击“重新同步”“延长等待”或在确认桌面结果后“手动收口”。"
+                    )
+                    try:
+                        progress_receipt = _post_workstation_progress(
+                            base=base,
+                            project_id=args.project_id,
+                            workstation_id=args.workstation_id,
+                            message_id=message_id,
+                            headers=headers,
+                            note=progress_note,
+                            state="desktop_delivery_unconfirmed",
+                            metadata={
+                                "delivery_mode": "codex_desktop_ui",
+                                "desktop_visible": True,
+                                "desktop_delivery_confirmed": False,
+                                "desktop_delivery_unconfirmed": True,
+                                "desktop_delivery_attempts": executor_result.get("desktop_delivery_attempts"),
+                                "desktop_delivery_auto_retried": executor_result.get("desktop_delivery_auto_retried"),
+                                "desktop_closeout_waiting": True,
+                                "desktop_sync_retry_available": True,
+                                "desktop_thread_url": executor_result.get("desktop_thread_url"),
+                                "thread_id": executor_result.get("thread_id"),
+                                "blocked_taxonomy": {
+                                    "failed": False,
+                                    "timed_out": True,
+                                    "auto_closed": False,
+                                    "retryable": True,
+                                    "log_available": False,
+                                    "split_suggested": False,
+                                    "exception_kind": "desktop_delivery_unconfirmed",
+                                    "blocked_reason_code": "desktop_delivery_unconfirmed",
+                                    "blocked_reason_label": "桌面线程暂未确认收到，可重新同步",
+                                    "evidence_complete": False,
+                                    "platform_defect": False,
+                                    "nudge_required": True,
+                                    "wait_extension_available": True,
+                                    "desktop_sync_retry_available": True,
+                                    "manual_close_required": True,
+                                    "desktop_closeout_waiting": True,
+                                    "desktop_delivery_attempts": executor_result.get("desktop_delivery_attempts"),
+                                    "desktop_delivery_auto_retried": executor_result.get("desktop_delivery_auto_retried"),
+                                },
+                            },
+                        )
+                        receipts.append(progress_receipt)
+                        if args.watch:
+                            print("[桌面投递] 未确认收到，已保持待收口并提供重新同步。", flush=True)
+                    except Exception as exc:
+                        if args.watch:
+                            print(f"[桌面投递] 写入未确认进度失败：{exc}", flush=True)
+                elif executor_result.get("delivery_mode") == "codex_desktop_ui" and executor_result.get("ok"):
                     # Desktop UI delivery only submits the prompt into the visible Codex thread.
                     # The real work happens in Desktop. Wait for the bound session jsonl to
                     # receive an assistant reply, then project that final answer back to the
@@ -2072,8 +2830,8 @@ def main() -> int:
                     final_note = ""
                     result_failed = False
                     progress_note = (
-                        "已把这条派单送进绑定的 Codex Desktop 线程；完整处理过程在桌面版继续。"
-                        "平台正在等待 Desktop session JSONL 写出最终回复。"
+                        "已把这条派单送进绑定桌面线程；完整处理过程在桌面版继续。"
+                        "平台正在等待桌面线程写出最终回复。"
                     )
                     try:
                         progress_receipt = _post_workstation_progress(
@@ -2088,6 +2846,8 @@ def main() -> int:
                                 "delivery_mode": "codex_desktop_ui",
                                 "desktop_visible": True,
                                 "desktop_delivery_confirmed": True,
+                                "desktop_delivery_attempts": executor_result.get("desktop_delivery_attempts"),
+                                "desktop_delivery_auto_retried": executor_result.get("desktop_delivery_auto_retried"),
                                 "desktop_thread_url": executor_result.get("desktop_thread_url"),
                                 "thread_id": executor_result.get("thread_id"),
                                 "session_file": (
@@ -2122,6 +2882,48 @@ def main() -> int:
                             flush=True,
                         )
             if final_note and message_id:
+                final_status = "failed" if result_failed else "completed"
+                for peer_payload in _extract_peer_dispatches(final_note):
+                    peer_dispatch = _create_peer_dispatch(
+                        base=base,
+                        project_id=args.project_id,
+                        sender_seat_id=args.workstation_id,
+                        headers=headers,
+                        payload=peer_payload,
+                        source_message_id=message_id,
+                        root_message_id=_root_message_id_for_child_dispatch(command),
+                    )
+                    if peer_dispatch:
+                        receipts.append(peer_dispatch)
+                        peer_status = str(peer_dispatch.get("status") or "").strip().lower()
+                        peer_target = str(peer_dispatch.get("recipient_id") or "").strip()
+                        if peer_status == "queued" and peer_target:
+                            launch_receipt = _launch_peer_dispatch_adapter(
+                                base=base,
+                                project_id=args.project_id,
+                                target_workstation_id=peer_target,
+                                message_id=str(peer_dispatch.get("id") or ""),
+                                auth_token=auth_token,
+                                output_dir=output_root,
+                                timeout_seconds=resolved_timeout,
+                            )
+                            receipts.append({"peer_dispatch_launch": launch_receipt})
+                            if args.watch:
+                                print(
+                                    f"[自主协作] 已自动启动下游 NPC: {peer_target} "
+                                    f"message={peer_dispatch.get('id')} launched={launch_receipt.get('launched')}",
+                                    flush=True,
+                                )
+                        elif args.watch and peer_status == "pending_review":
+                            print(
+                                f"[自主协作] 下游派单待审，未自动启动: {peer_dispatch.get('id')} -> {peer_target}",
+                                flush=True,
+                            )
+                        if args.watch:
+                            print(
+                                f"[自主协作] 已创建 peer dispatch: {peer_dispatch.get('id')} -> {peer_dispatch.get('recipient_id')}",
+                                flush=True,
+                            )
                 receipts.append(
                     _complete_workstation_command(
                         base=base,
@@ -2129,12 +2931,16 @@ def main() -> int:
                         workstation_id=args.workstation_id,
                         message_id=message_id,
                         headers=headers,
-                        result_status="failed" if result_failed else "completed",
-                        note=final_note,
+                        result_status=final_status,
+                        note=_prepare_final_note(
+                            final_note,
+                            message_id=message_id,
+                            result_status=final_status,
+                            output_path=command_path,
+                        ),
                     )
                 )
                 if args.watch:
-                    final_status = "failed" if result_failed else "completed"
                     print(f"\n[已回写平台] status={final_status} note 长度={len(final_note)}", flush=True)
                     print("等待下一条平台指令...\n", flush=True)
 

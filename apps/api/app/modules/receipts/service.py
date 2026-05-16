@@ -34,15 +34,15 @@ def get_receipt_seat_or_404(db: Session, seat_id: str, *, project_id: str | None
         cleaned = str(seat_id or "").strip()
         if cleaned:
             stmt = select(ProjectThreadWorkstation).where(
-                (ProjectThreadWorkstation.config_id == cleaned)
+                (ProjectThreadWorkstation.id == cleaned)
+                | (ProjectThreadWorkstation.config_id == cleaned)
                 | (ProjectThreadWorkstation.name == cleaned)
-                | (ProjectThreadWorkstation.agent_id == cleaned)
             )
             if project_id:
                 stmt = stmt.where(ProjectThreadWorkstation.project_id == project_id)
             seat = db.scalars(stmt).first()
     if seat is None:
-        raise AppError("SEAT_NOT_FOUND", f"seat {seat_id} not found", status_code=404)
+        raise AppError("SEAT_NOT_FOUND", f"formal seat {seat_id} not found", status_code=404)
     return seat
 
 
@@ -78,8 +78,6 @@ def _resolve_originator_seat(
         identity = {
             str(seat.id or ""),
             str(seat.config_id or ""),
-            str(seat.name or ""),
-            str(seat.agent_id or ""),
         }
         identity = {v for v in identity if v}
         if identity & set(candidates):
@@ -98,6 +96,20 @@ def _build_receipt_body(payload: ReceiptCreate) -> str:
         if extras:
             return base + "\n\n" + "\n".join(extras) if base else "\n".join(extras)
     return base
+
+
+def _receipt_authority_metadata(
+    sender_seat: ProjectThreadWorkstation,
+    recipient_seat: ProjectThreadWorkstation | None,
+) -> dict[str, Any]:
+    return {
+        "authoritative_seat_id": str(sender_seat.id or "").strip() or None,
+        "authoritative_seat_ref": str(sender_seat.config_id or sender_seat.id or "").strip() or None,
+        "authoritative_target_seat_id": (
+            str(recipient_seat.id or "").strip() or None if recipient_seat is not None else None
+        ),
+        "historical_alias_non_authoritative": False,
+    }
 
 
 def create_receipt(
@@ -123,8 +135,27 @@ def create_receipt(
         ),
         "cross_workstation": cross,
     }
+    extra.update(_receipt_authority_metadata(sender_seat, recipient_seat))
     if payload.artifacts:
         extra["artifacts"] = payload.artifacts
+    taxonomy = {
+        "failed": payload.receipt_kind == "reject",
+        "timed_out": False,
+        "auto_closed": False,
+        "retryable": bool(payload.retryable),
+        "log_available": bool(payload.log_available or payload.artifacts),
+        "split_suggested": bool(payload.split_suggested),
+        "exception_kind": "rejected" if payload.receipt_kind == "reject" else None,
+        "blocked_reason_code": payload.blocked_reason_code,
+        "blocked_reason_label": payload.blocked_reason_label or payload.reject_reason,
+        "evidence_complete": True if payload.evidence_complete is None else bool(payload.evidence_complete),
+    }
+    if payload.receipt_kind == "reject" or any(
+        value
+        for key, value in taxonomy.items()
+        if key in {"retryable", "log_available", "split_suggested", "blocked_reason_code", "blocked_reason_label"}
+    ):
+        extra["blocked_taxonomy"] = taxonomy
     if payload.receipt_kind == "reject":
         if payload.reject_reason:
             extra["reject_reason"] = payload.reject_reason
@@ -160,7 +191,7 @@ def create_receipt(
     db.commit()
     db.refresh(message)
 
-    return ReceiptRead(
+    return ReceiptRead.with_authority(
         id=message.id,
         project_id=message.project_id,
         receipt_kind=payload.receipt_kind,
@@ -196,7 +227,7 @@ def list_receipts_for_requirement(
         if kind not in {"ack", "progress", "done", "reject"}:
             continue
         out.append(
-            ReceiptRead(
+            ReceiptRead.with_authority(
                 id=row.id,
                 project_id=row.project_id,
                 receipt_kind=kind,  # type: ignore[arg-type]
@@ -248,7 +279,7 @@ def list_receipts_for_seat(
         if kind not in {"ack", "progress", "done", "reject"}:
             continue
         out.append(
-            ReceiptRead(
+            ReceiptRead.with_authority(
                 id=row.id,
                 project_id=row.project_id,
                 receipt_kind=kind,  # type: ignore[arg-type]

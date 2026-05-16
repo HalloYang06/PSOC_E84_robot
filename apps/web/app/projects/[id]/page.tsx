@@ -98,7 +98,7 @@ async function resolveComputerConnectServerUrl() {
       }
       const webUrl = text(parsed.web_url, "");
       if (webUrl) {
-        return webUrl.replace(":3000", ":8010");
+        return webUrl.replace(":3000", ":8010").replace(":3001", ":8011");
       }
     } catch {
       continue;
@@ -113,7 +113,7 @@ async function resolveComputerConnectServerUrl() {
       const proto =
         forwardedProto ||
         (/^(localhost|127\.0\.0\.1|192\.168\.|10\.|172\.(1[6-9]|2\d|3[0-1])\.)/i.test(host) ? "http" : "https");
-      return `${proto}://${host}`.replace(":3000", ":8010");
+      return `${proto}://${host}`.replace(":3000", ":8010").replace(":3001", ":8011");
     }
   } catch {
     // fall through to localhost
@@ -313,6 +313,27 @@ function isOnlineNode(status: unknown) {
   return ["online", "ready", "active"].includes(String(status ?? "").toLowerCase());
 }
 
+function objectRecord(value: unknown): AnyRecord {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as AnyRecord) : {};
+}
+
+function asNumber(value: unknown) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function isRunnerHeartbeating(node: AnyRecord | null | undefined) {
+  const metadata = objectRecord(node?.metadata ?? node?.extra_data ?? node?.extraData);
+  const effectiveStatus = text(node?.runner_effective_status ?? metadata.runner_effective_status, "").toLowerCase();
+  if (effectiveStatus) return effectiveStatus === "online";
+  const watchState = text(node?.runner_watch_state ?? metadata.runner_watch_state, "").toLowerCase();
+  if (watchState === "watching") return true;
+  const runnerStatus = text(node?.runner_status ?? metadata.runner_status, "").toLowerCase();
+  const heartbeatAgeSeconds = asNumber(node?.runner_heartbeat_age_seconds ?? metadata.runner_heartbeat_age_seconds);
+  const freshSeconds = asNumber(node?.runner_watch_fresh_seconds ?? metadata.runner_watch_fresh_seconds) ?? 180;
+  return isOnlineNode(runnerStatus) && heartbeatAgeSeconds !== null && heartbeatAgeSeconds <= freshSeconds;
+}
+
 function isActiveThreadStatus(status: unknown) {
   return ["active", "running", "open", "processing", "in_progress", "queued", "routed"].includes(
     String(status ?? "").toLowerCase(),
@@ -438,7 +459,7 @@ function fallbackProject(id: string): AnyRecord {
   return {
     id,
     name: `项目 ${id.slice(0, 8)}`,
-    description: "当前先以可玩的农场地图为主，平台信息保持轻量，不压住游戏视野。",
+    description: "当前以项目工作台为主，平台信息保持轻量，突出电脑、线程、任务和专业工具面。",
     collaboration_config: {
       thread_workstations: [],
       ai_providers: [],
@@ -540,7 +561,7 @@ export default async function ProjectDetailPage({
       legacy?: string;
     };
   }) {
-  if (!searchParams?.legacy && !searchParams?.mode && !searchParams?.zone) {
+  if (searchParams?.legacy === "1") {
     const projectState = await getProjectState(params.id);
     if (projectState.status === 401) {
       const projectReturnPath = encodeURIComponent(`/projects/${params.id}`);
@@ -564,17 +585,17 @@ export default async function ProjectDetailPage({
     ]);
     const pendingApprovalCount = taskResult.data.filter((task) => isPendingApproval(task)).length;
     const pendingReviewCount = collaborationMessageResult.data.length;
-    const onlineNodeCount = liveNodeResult.data.filter((node) => isOnlineNode(node.status)).length;
+    const runnerOnlineNodeCount = liveNodeResult.data.filter((node) => isRunnerHeartbeating(node)).length;
     const actionHint =
       pendingReviewCount > 0
         ? `先处理 ${pendingReviewCount} 条跨工位人工审核`
         : pendingApprovalCount > 0
           ? `先处理 ${pendingApprovalCount} 条任务审批`
-          : onlineNodeCount === 0
+          : runnerOnlineNodeCount === 0
             ? "先接入一台电脑，再派 NPC 干活"
-            : `当前 ${onlineNodeCount} 台电脑在线，可进工作台打开 NPC`;
+            : `当前 ${runnerOnlineNodeCount} 台 Runner 心跳正常，可进工作台打开 NPC`;
     const actionPanel =
-      pendingReviewCount > 0 || pendingApprovalCount > 0 ? "cockpit" : onlineNodeCount === 0 ? "cockpit" : "workbench";
+      pendingReviewCount > 0 || pendingApprovalCount > 0 ? "cockpit" : runnerOnlineNodeCount === 0 ? "cockpit" : "workbench";
     return (
       <GameShell
         projectId={projectIdStr}
@@ -743,7 +764,7 @@ export default async function ProjectDetailPage({
     ...claudeAutonomyStatuses,
   };
   const taskIds = new Set(tasks.map((task) => String(task.id ?? task.task_id ?? "")));
-  const onlineComputers = config.nodes.filter((node: AnyRecord) => isOnlineNode(node.status)).length;
+  const onlineComputers = config.nodes.filter((node: AnyRecord) => isRunnerHeartbeating(node)).length;
   const activeTasks = tasks.filter((task) => !isDoneTask(task.status));
   const blockedTasks = tasks.filter((task) => isBlockedTask(task.status));
   const pendingApprovals = tasks.filter((task) => isPendingApproval(task));
@@ -775,13 +796,13 @@ export default async function ProjectDetailPage({
     typeof searchParams?.team_error === "string"
       ? searchParams.team_error
       : hasProtectedReadAuthError
-        ? "当前登录态没有拿到真实协作数据，但当前项目页入口壳里的 2D 开发者模式入口还在。请重新登录后再看 requirement、回执和最终回复。"
+        ? "当前登录态没有拿到真实协作数据，但当前项目工作台入口还在。请重新登录后再看需求、回执和最终回复。"
         : undefined;
   const derivedTeamNotice =
     typeof searchParams?.team_notice === "string"
       ? searchParams.team_notice
       : hasProtectedReadAuthError
-        ? "当前项目页入口壳和其中的 2D 开发者模式入口还在，但受保护的协作数据没有读到。"
+        ? "当前项目工作台入口还在，但受保护的协作数据没有读到。"
         : undefined;
   const collaborationPreview = decodePreviewSearchParam(searchParams?.collab_preview);
   const gitSyncPreview = decodePreviewSearchParam(searchParams?.git_sync_preview);
@@ -854,7 +875,7 @@ export default async function ProjectDetailPage({
       project={{
         id: String(project.id ?? params.id),
         name: String(project.name ?? `项目 ${params.id.slice(0, 8)}`),
-        description: String(project.description ?? "").trim() || "当前先以可玩的农场地图为主，平台信息保持轻量，不压住游戏视野。",
+        description: String(project.description ?? "").trim() || "当前以项目工作台为主，平台信息保持轻量，突出电脑、线程、任务和专业工具面。",
         collaboration_config: project.collaboration_config ?? {},
         githubUrl: project.github_url ?? null,
         localGitUrl: project.local_git_url ?? null,

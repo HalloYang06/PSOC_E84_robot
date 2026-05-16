@@ -116,6 +116,42 @@ def test_boss_plan_records_items_and_rejects_local_knowledge_paths() -> None:
     assert outsider_response.status_code == 403
 
 
+def test_boss_plan_rejects_historical_seat_alias_name_lookup() -> None:
+    owner_token, owner_user_id = issue_session_token(client)
+    project = create_project(
+        client,
+        owner_token,
+        name_prefix="Boss Plan Formal Seat",
+        collaboration_config={
+            "thread_workstations": [
+                {"id": "boss-seat", "name": "Boss NPC", "status": "active", "ai_provider_id": "codex"},
+                {"id": "backend-seat", "name": "Backend NPC", "status": "active", "ai_provider_id": "codex"},
+            ],
+        },
+    )
+    project_id = project["id"]
+    add_project_member(client, project_id, owner_token, owner_user_id, role="owner", is_owner=True)
+
+    response = client.post(
+        f"/api/projects/{project_id}/boss-plans",
+        headers=auth_headers(owner_token),
+        json={
+            "boss_seat_id": "Boss NPC",
+            "goal": "Should fail on seat alias lookup.",
+            "items": [
+                {
+                    "role": "Backend",
+                    "target_seat_id": "Backend NPC",
+                    "title": "Backend data contract",
+                    "body": "Use formal seat ids only.",
+                }
+            ],
+        },
+    )
+    assert response.status_code == 404, response.text
+    assert response.json()["error"]["code"] == "SEAT_NOT_FOUND"
+
+
 def test_boss_plan_status_follows_dispatch_message_status() -> None:
     owner_token, owner_user_id = issue_session_token(client)
     project = create_project(
@@ -453,3 +489,99 @@ def test_boss_plan_item_closes_immediately_when_followup_final_is_written() -> N
     assert immediate_plan["status"] == "completed"
     assert immediate_plan["items"][0]["status"] == "completed"
     assert immediate_plan["items"][0]["receipt_message_id"] == receipt_id
+
+
+def test_boss_plan_item_becomes_blocked_from_failed_final_receipt() -> None:
+    owner_token, owner_user_id = issue_session_token(client)
+    project = create_project(
+        client,
+        owner_token,
+        name_prefix="Boss Plan Failed Receipt",
+        collaboration_config={
+            "thread_workstations": [
+                {"id": "boss-seat", "name": "Boss NPC", "status": "active", "ai_provider_id": "codex"},
+                {"id": "backend-seat", "name": "Backend NPC", "status": "active", "ai_provider_id": "codex"},
+            ],
+        },
+    )
+    project_id = project["id"]
+    add_project_member(client, project_id, owner_token, owner_user_id, role="owner", is_owner=True)
+
+    dispatch_response = client.post(
+        "/api/collaboration/messages",
+        headers=auth_headers(owner_token),
+        json={
+            "project_id": project_id,
+            "message_type": "requirement_dispatch",
+            "title": "Backend slice",
+            "body": "Implement backend slice.",
+            "sender_type": "agent",
+            "sender_id": "boss-seat",
+            "recipient_type": "thread_workstation",
+            "recipient_id": "backend-seat",
+            "status": "in_progress",
+        },
+    )
+    assert dispatch_response.status_code == 200, dispatch_response.text
+    dispatch_id = dispatch_response.json()["data"]["id"]
+
+    create_response = client.post(
+        f"/api/projects/{project_id}/boss-plans",
+        headers=auth_headers(owner_token),
+        json={
+            "boss_seat_id": "boss-seat",
+            "goal": "Observe failed final receipt.",
+            "title": "Failed receipt plan",
+            "status": "in_progress",
+            "items": [
+                {
+                    "role": "Backend",
+                    "target_seat_id": "backend-seat",
+                    "title": "Backend slice",
+                    "body": "Do backend work.",
+                    "status": "in_progress",
+                    "dispatch_message_id": dispatch_id,
+                }
+            ],
+        },
+    )
+    assert create_response.status_code == 200, create_response.text
+    plan = create_response.json()["data"]
+
+    receipt_response = client.post(
+        "/api/collaboration/messages",
+        headers=auth_headers(owner_token),
+        json={
+            "project_id": project_id,
+            "message_type": "agent_result",
+            "title": "Backend slice failed",
+            "body": "Final failure receipt.",
+            "sender_type": "agent",
+            "sender_id": "backend-seat",
+            "recipient_type": "agent",
+            "recipient_id": "boss-seat",
+            "status": "failed",
+            "metadata": {
+                "source_message_id": dispatch_id,
+                "blocked_taxonomy": {
+                    "failed": True,
+                    "timed_out": False,
+                    "auto_closed": False,
+                    "retryable": True,
+                    "log_available": False,
+                    "split_suggested": True,
+                    "exception_kind": "dependency_missing",
+                    "blocked_reason_code": "dependency_missing",
+                    "blocked_reason_label": "依赖环境缺失",
+                    "evidence_complete": True,
+                },
+            },
+        },
+    )
+    assert receipt_response.status_code == 200, receipt_response.text
+
+    read_response = client.get(f"/api/projects/{project_id}/boss-plans/{plan['id']}", headers=auth_headers(owner_token))
+    assert read_response.status_code == 200, read_response.text
+    blocked_plan = read_response.json()["data"]
+    assert blocked_plan["status"] == "blocked"
+    assert blocked_plan["items"][0]["status"] == "failed"

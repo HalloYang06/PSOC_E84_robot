@@ -47,12 +47,10 @@ def _resolve_seat_id(db: Session, project_id: str, seat_id: str | None) -> str |
             ProjectThreadWorkstation.project_id == project_id,
             (ProjectThreadWorkstation.id == raw)
             | (ProjectThreadWorkstation.config_id == raw)
-            | (ProjectThreadWorkstation.name == raw)
-            | (ProjectThreadWorkstation.agent_id == raw),
         )
     )
     if seat is None:
-        raise AppError("SEAT_NOT_FOUND", f"NPC 不存在或不属于该项目：{raw}", status_code=404)
+        raise AppError("SEAT_NOT_FOUND", f"NPC 不存在或不属于该项目正式 seat：{raw}", status_code=404)
     return seat.id
 
 
@@ -134,7 +132,7 @@ def sync_boss_plan_status_from_messages(db: Session, plan: BossPlan) -> BossPlan
             select(CollaborationMessage).where(
                 CollaborationMessage.project_id == plan.project_id,
                 CollaborationMessage.message_type.in_(["agent_result", "requirement_final_reply", "runner_result"]),
-                CollaborationMessage.status.in_(["completed", "done"]),
+                CollaborationMessage.status.in_(["completed", "done", "failed", "rejected"]),
             )
         )
         if isinstance(message.extra_data, dict)
@@ -145,7 +143,7 @@ def sync_boss_plan_status_from_messages(db: Session, plan: BossPlan) -> BossPlan
             select(CollaborationMessage).where(
                 CollaborationMessage.project_id == plan.project_id,
                 CollaborationMessage.message_type.in_(["agent_result", "requirement_final_reply", "runner_result"]),
-                CollaborationMessage.status.in_(["completed", "done"]),
+                CollaborationMessage.status.in_(["completed", "done", "failed", "rejected"]),
             )
         )
     )
@@ -169,8 +167,9 @@ def sync_boss_plan_status_from_messages(db: Session, plan: BossPlan) -> BossPlan
                 receipt = candidate
                 break
         if receipt is not None:
-            if item.status != "completed":
-                item.status = "completed"
+            target_status = "completed" if str(receipt.status or "").strip().lower() in {"completed", "done"} else "failed"
+            if item.status != target_status:
+                item.status = target_status
                 changed = True
             if item.receipt_message_id != receipt.id:
                 item.receipt_message_id = receipt.id

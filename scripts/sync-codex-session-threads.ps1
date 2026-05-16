@@ -546,7 +546,16 @@ $headers = @{
   "x-runner-id" = $RunnerId
 }
 
-$url = ($Server.TrimEnd("/")) + "/api/runners/$RunnerId/thread-workstations/sync"
+function Resolve-ApiBaseUrl {
+  param([Parameter(Mandatory = $true)][string]$Value)
+  $base = $Value.Trim().TrimEnd("/")
+  if ($base -match ":3000$") { return ($base -replace ":3000$", ":8010") }
+  if ($base -match ":3001$") { return ($base -replace ":3001$", ":8011") }
+  return $base
+}
+
+$apiBase = Resolve-ApiBaseUrl $Server
+$url = ($apiBase.TrimEnd("/")) + "/api/runners/$RunnerId/thread-workstations/sync"
 
 Write-Host "Syncing $($workstations.Count) Codex session thread slot(s) to $url ..."
 if ($DryRun) {

@@ -48,7 +48,11 @@ type WorkbenchMessage = {
   created_at?: string | null;
   sender_type?: string | null;
   sender_id?: string | null;
+  recipient_type?: string | null;
   recipient_id?: string | null;
+  dispatch_id?: string | null;
+  metadata?: Record<string, unknown> | null;
+  extra_data?: Record<string, unknown> | null;
 };
 
 type WorkbenchResourceIndex = {
@@ -64,6 +68,104 @@ type WorkbenchResourceIndex = {
   repoLocalIsGit?: boolean;
   repoLocalMessage?: string;
 };
+
+function objectRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function messageMetadata(message: WorkbenchMessage): Record<string, unknown> {
+  return { ...objectRecord(message.extra_data), ...objectRecord(message.metadata) };
+}
+
+function isPlatformValidationMessage(message: WorkbenchMessage): boolean {
+  const metadata = messageMetadata(message);
+  const validationKind = String(
+    metadata.validation_kind
+      ?? metadata.validationKind
+      ?? metadata.validation
+      ?? "",
+  ).trim();
+  if (/^(cloud_runner_|runner_|platform_validation|workbench_validation)/i.test(validationKind)) return true;
+  const title = `${String(message.title ?? "")} ${String(message.body ?? "")}`;
+  return /云端多电脑隔离验收|隔离验收电脑|隔离验收 NPC|平台验收脚本/i.test(title);
+}
+
+function messageIsDesktopCloseoutWaiting(message: WorkbenchMessage): boolean {
+  const metadata = messageMetadata(message);
+  const taxonomy = objectRecord(metadata.blocked_taxonomy);
+  const reasonCode = String(
+    taxonomy.blocked_reason_code
+      ?? taxonomy.exception_kind
+      ?? metadata.progress_state
+      ?? "",
+  ).toLowerCase();
+  return Boolean(metadata.desktop_closeout_waiting || metadata.needs_manual_closeout || taxonomy.desktop_closeout_waiting)
+    || reasonCode === "desktop_final_sync_lag"
+    || reasonCode === "desktop_delivery_unconfirmed";
+}
+
+function relatedSourceMessageId(message: WorkbenchMessage): string {
+  const metadata = messageMetadata(message);
+  return String(metadata.source_message_id ?? metadata.sourceMessageId ?? "").trim();
+}
+
+function closeoutSourceMessageId(message: WorkbenchMessage): string {
+  return relatedSourceMessageId(message) || String(message.id || "").trim();
+}
+
+function messageIsFinalReceipt(message: WorkbenchMessage): boolean {
+  const type = String(message.message_type || "").toLowerCase();
+  const status = String(message.status || "").toLowerCase();
+  return ["completed", "done", "delivered", "finaled"].includes(status)
+    || type.includes("final")
+    || type.includes("result");
+}
+
+function sourceHasFinalReceipt(messages: WorkbenchMessage[], sourceId: string): boolean {
+  if (!sourceId) return false;
+  return messages.some((message) => {
+    if (!messageIsFinalReceipt(message)) return false;
+    if (relatedSourceMessageId(message) === sourceId) return true;
+    return String(message.dispatch_id || "").trim() === sourceId;
+  });
+}
+
+function messageIsOpenDesktopCloseout(message: WorkbenchMessage, messages: WorkbenchMessage[]): boolean {
+  if (!messageIsDesktopCloseoutWaiting(message)) return false;
+  return !sourceHasFinalReceipt(messages, closeoutSourceMessageId(message));
+}
+
+function seatCanTakeTask(seat: WorkbenchSeat): boolean {
+  if (!seat.threadId) return false;
+  const health = `${seat.threadHealth || ""} ${seat.deliveryLabel || ""} ${seat.deliveryMode || ""}`.toLowerCase();
+  return Boolean(seat.automationEnabled || seat.desktopVisible || /可接单|ready|已登记|online|ok|watcher|就绪|线程可见|桌面线程可见/i.test(health));
+}
+
+function userFacingMessageText(value: unknown, fallback = ""): string {
+  const next = String(value ?? "")
+    .replace(/alias_display_non_authoritative/gi, "历史标识展示规则")
+    .replace(/historical[_\s-]*alias(?:[_\s-]*non[_\s-]*authoritative)?/gi, "历史标识")
+    .replace(/历史\s*alias/gi, "历史标识")
+    .replace(/current\s+alias/gi, "当前标识")
+    .replace(/source_thread/gi, "来源桌面线程")
+    .replace(/canonical_workstation_id/gi, "正式工位")
+    .replace(/requested_workstation_id/gi, "请求工位")
+    .replace(/authoritative_([a-z]+_)?seat_id/gi, "正式 NPC")
+    .replace(/authoritative_target_seat_id/gi, "目标 NPC")
+    .replace(/sender_id/gi, "发送方")
+    .replace(/codex-session-[0-9a-z-]+/gi, "绑定桌面线程")
+    .replace(/codex-session/gi, "桌面线程")
+    .replace(/线程\s*codex/gi, "桌面线程")
+    .replace(/session JSONL/gi, "桌面线程记录")
+    .replace(/Provider CLI/gi, "执行程序")
+    .replace(/Local prompt file/gi, "本地提示文件")
+    .replace(/adapter/gi, "同步")
+    .replace(/bridge/gi, "同步")
+    .replace(/执行失败[:：]?/g, "待收口")
+    .replace(/hard failed/gi, "待收口")
+    .trim();
+  return next || fallback;
+}
 
 type BossPlanTask = {
   id: string;
@@ -353,7 +455,7 @@ export function WorkbenchClient({
 
   const threadOverview = useMemo(() => {
     const registered = seats.filter((seat) => seat.threadId).length;
-    const threadReady = seats.filter((seat) => seat.threadId && /ready|已登记|online|ok|watcher/i.test(seat.threadHealth || "")).length;
+    const canTakeTask = seats.filter(seatCanTakeTask).length;
     const automationEnabled = seats.filter((seat) => seat.automationEnabled).length;
     const missing = Math.max(0, seats.length - registered);
     const byWorkspace = new Map<string, { key: string; label: string; seats: WorkbenchSeat[]; registered: number }>();
@@ -367,7 +469,7 @@ export function WorkbenchClient({
     }
     return {
       registered,
-      threadReady,
+      canTakeTask,
       automationEnabled,
       missing,
       unboundSeats: seats.filter((seat) => !seat.threadId),
@@ -403,11 +505,11 @@ export function WorkbenchClient({
         value: `${resource.onlineComputers}/${resource.computers}`,
         href: withReturnTo(`/projects/${projectId}/2d-upgrade?panel=computers`, sourcePath, sourceKey),
         warning: resource.computers === 0 || resource.onlineComputers === 0,
-        hint: "Runner / 扫描",
+        hint: "执行电脑 / 扫描",
       },
       {
         key: "skills",
-        label: "Skill",
+        label: "能力包",
         value: resource.skills,
         href: withReturnTo(`/projects/${projectId}/2d-upgrade?panel=skills`, sourcePath, sourceKey),
         warning: resource.skills === 0,
@@ -435,7 +537,7 @@ export function WorkbenchClient({
           : lower.includes("qa") || lower.includes("验收") || lower.includes("测试")
             ? "浏览器验收、合规风险、测试清单"
             : "按 Boss 派单承接项目任务";
-      const provider = seat.providerLabel || seat.providerId || "Codex";
+      const provider = seat.providerLabel || seat.providerId || "桌面线程";
       return {
         seat,
         provider,
@@ -490,8 +592,9 @@ export function WorkbenchClient({
         if (value) seatById.set(value, seat);
       }
     }
-    const statuses = liveMessages.map((message) => String(message.status || "").toLowerCase());
-    const setupBlocked = liveMessages.filter((message) => {
+    const operationalMessages = liveMessages.filter((message) => !isPlatformValidationMessage(message));
+    const statuses = operationalMessages.map((message) => String(message.status || "").toLowerCase());
+    const setupBlocked = operationalMessages.filter((message) => {
       const status = String(message.status || "").toLowerCase();
       if (!["queued", "pending", "acked", "in_progress"].includes(status)) return false;
       const recipientId = String(message.recipient_id || "").trim();
@@ -499,26 +602,122 @@ export function WorkbenchClient({
       return Boolean(seat && !seat.threadId);
     }).length;
     const pendingReview = statuses.filter((status) => status === "pending_review").length;
-    const active = liveMessages.filter((message) => {
+    const active = operationalMessages.filter((message) => {
       const status = String(message.status || "").toLowerCase();
       if (!["queued", "pending", "acked", "in_progress"].includes(status)) return false;
       const recipientId = String(message.recipient_id || "").trim();
       const seat = recipientId ? seatById.get(recipientId) : null;
       return !(seat && !seat.threadId);
     }).length;
+    const pendingCloseoutMessages = operationalMessages
+      .filter((message) => messageIsOpenDesktopCloseout(message, operationalMessages))
+      .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
+    const pendingCloseout = pendingCloseoutMessages.length;
     const done = statuses.filter((status) => ["completed", "done", "delivered"].includes(status)).length;
-    const failed = statuses.filter((status) => ["failed", "rejected", "cancelled"].includes(status)).length;
-    const latest = liveMessages
+    const failedMessages = operationalMessages
+      .filter((message) => {
+        if (messageIsOpenDesktopCloseout(message, operationalMessages)) return false;
+        return ["failed", "rejected", "cancelled"].includes(String(message.status || "").toLowerCase());
+      })
+      .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
+    const failed = failedMessages.length;
+    const latest = operationalMessages
       .slice()
       .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")))[0];
+    const latestFailed = failedMessages[0];
+    const latestCloseout = pendingCloseoutMessages[0];
+    const activeTargetIds = new Set(
+      operationalMessages
+        .filter((message) => ["queued", "pending", "acked", "in_progress", "pending_review"].includes(String(message.status || "").toLowerCase()))
+        .map((message) => String(message.recipient_id || message.sender_id || "").trim())
+        .filter(Boolean),
+    );
+    const currentFailed = failedMessages.filter((message) => {
+      const recipient = String(message.recipient_id || "").trim();
+      const sender = String(message.sender_id || "").trim();
+      return (recipient && activeTargetIds.has(recipient)) || (sender && activeTargetIds.has(sender));
+    }).length;
+    const archivedFailed = Math.max(0, failed - currentFailed);
+    const latestPendingReview = operationalMessages
+      .filter((message) => String(message.status || "").toLowerCase() === "pending_review")
+      .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")))[0];
+    let nextActionTitle = "继续观察";
+    let nextActionDetail = "当前没有必须立刻处理的协作项。";
+    if (pendingReview > 0) {
+      nextActionTitle = "先审待审";
+      nextActionDetail = userFacingMessageText(latestPendingReview?.title || latestPendingReview?.body?.slice(0, 72), "打开对应 NPC，对正文做通过或打回。");
+    } else if (setupBlocked > 0) {
+      nextActionTitle = "先补线程";
+      nextActionDetail = "有任务发到了还没绑定线程的 NPC，先打开上岗包完成绑定。";
+    } else if (pendingCloseout > 0) {
+      nextActionTitle = "先收口桌面线程";
+      nextActionDetail = userFacingMessageText(latestCloseout?.title || latestCloseout?.body?.slice(0, 72), "桌面线程可能仍在处理，先点催办、重新同步或手动收口。");
+    } else if (active > 0) {
+      nextActionTitle = "盯最小回执";
+      nextActionDetail = "先看进行中的 NPC 是否已回最小回执，再决定是否催办或转人工。";
+    } else if (currentFailed > 0) {
+      nextActionTitle = "复查最新异常";
+      nextActionDetail = userFacingMessageText(latestFailed?.title || latestFailed?.body?.slice(0, 72), "异常多为历史收口，先打开最新相关 NPC。");
+    } else if (archivedFailed > 0) {
+      nextActionTitle = "历史异常已归档";
+      nextActionDetail = "当前没有新的异常动作；历史失败只保留审计，后续按最新任务继续推进。";
+    }
     return {
       pendingReview,
       setupBlocked,
+      pendingCloseout,
       active,
       done,
       failed,
-      latestTitle: latest?.title || latest?.body?.slice(0, 48) || "暂无协作消息",
-      latestStatus: latest?.status || "",
+      currentFailed,
+      archivedFailed,
+      latestTitle: userFacingMessageText(latest?.title || latest?.body?.slice(0, 48), "暂无协作消息"),
+      latestStatus: latest && messageIsOpenDesktopCloseout(latest, operationalMessages) ? "待收口" : userFacingMessageText(latest?.status || ""),
+      latestFailedTitle: userFacingMessageText(latestFailed?.title || latestFailed?.body?.slice(0, 48)),
+      latestCloseoutTitle: userFacingMessageText(latestCloseout?.title || latestCloseout?.body?.slice(0, 48)),
+      nextActionTitle,
+      nextActionDetail,
+    };
+  }, [liveMessages, seats]);
+
+  const dispatchEvidence = useMemo(() => {
+    const deliverable = seats.filter(seatCanTakeTask).length;
+    const desktopReady = seats.filter((seat) => seat.desktopVisible && seat.deliveryMode === "codex_desktop_ui").length;
+    const notLive = seats.filter((seat) => {
+      const warning = `${seat.deliveryWarning || ""} ${seat.deliveryLabel || ""} ${seat.desktopBridgeNote || ""}`;
+      return /not Desktop live|app-server|adapter/i.test(warning);
+    }).length;
+    const operationalMessages = liveMessages.filter((message) => !isPlatformValidationMessage(message));
+    const completedReceipts = operationalMessages.filter((message) => {
+      const status = String(message.status || "").toLowerCase();
+      const type = String(message.message_type || "").toLowerCase();
+      return ["completed", "done", "delivered"].includes(status) && (type === "agent_result" || type.includes("receipt"));
+    }).length;
+    const completedHumanDispatches = operationalMessages.filter((message) => {
+      const status = String(message.status || "").toLowerCase();
+      return ["completed", "done", "delivered"].includes(status) && String(message.sender_type || "").toLowerCase() === "human";
+    }).length;
+    const completedPeerDispatches = operationalMessages.filter((message) => {
+      const status = String(message.status || "").toLowerCase();
+      const sender = String(message.sender_type || "").toLowerCase();
+      const recipient = String(message.recipient_type || "").toLowerCase();
+      return ["completed", "done", "delivered"].includes(status) && sender.includes("agent") && recipient.includes("agent");
+    }).length;
+    const hardwarePending = operationalMessages.filter((message) => {
+      const status = String(message.status || "").toLowerCase();
+      const body = `${message.title || ""} ${message.body || ""} ${JSON.stringify(message.metadata || {})}`.toLowerCase();
+      return status === "pending_review" && /(hardware|ros|motion|firmware|deploy|restart|硬件|实机|运动)/i.test(body);
+    }).length;
+    const ready = deliverable === seats.length && completedReceipts > 0 && completedHumanDispatches > 0;
+    return {
+      ready,
+      deliverable,
+      desktopReady,
+      notLive,
+      completedReceipts,
+      completedHumanDispatches,
+      completedPeerDispatches,
+      hardwarePending,
     };
   }, [liveMessages, seats]);
 
@@ -541,8 +740,35 @@ export function WorkbenchClient({
     return ids;
   }, [liveMessages, seats]);
 
+  const failedSeatIds = useMemo(() => {
+    const operationalMessages = liveMessages.filter((item) => !isPlatformValidationMessage(item));
+    const seatById = new Map<string, WorkbenchSeat>();
+    for (const seat of seats) {
+      for (const value of [seat.id, seat.rowId, seat.configId, seat.threadId, seat.name]) {
+        if (value) seatById.set(value, seat);
+      }
+    }
+    const ids: string[] = [];
+    const seen = new Set<string>();
+    for (const message of operationalMessages) {
+      const status = String(message.status || "").toLowerCase();
+      if (!["failed", "rejected", "cancelled"].includes(status) && !messageIsOpenDesktopCloseout(message, operationalMessages)) continue;
+      const candidates = [message.recipient_id, message.sender_id].map((value) => String(value || "").trim()).filter(Boolean);
+      const seat = candidates.map((value) => seatById.get(value)).find(Boolean);
+      if (!seat || seen.has(seat.id)) continue;
+      ids.push(seat.id);
+      seen.add(seat.id);
+    }
+    return ids;
+  }, [liveMessages, seats]);
+
   function openPendingReviews() {
     openSeatGroup(pendingReviewSeatIds);
+    setLanesOpen(true);
+  }
+
+  function openFailedConversations() {
+    openSeatGroup(failedSeatIds);
     setLanesOpen(true);
   }
 
@@ -578,37 +804,74 @@ export function WorkbenchClient({
     const typed = bossPrompt.trim();
     if (typed) return typed;
     const haystack = `${projectName} ${projectDescription} ${projectGithubUrl} ${projectLocalPath}`.toLowerCase();
+    if (projectId === "proj_ai_collab" || haystack.includes("ai合作") || haystack.includes("ai collab") || haystack.includes("collaboration platform")) {
+      return "把平台推进成 AI 项目公司控制台：用户提出目标和边界，Boss/NPC 自动拆分、执行、回执和验收；同级工作台覆盖数据工场、AI 实验室、机器人现场和观测台，机器人开发作为重点模板但不固定死为机器人专用系统。";
+    }
     if (haystack.includes("yuespeak") || haystack.includes("english_a_agent") || haystack.includes("粤听说")) {
-      return "开发 YueSpeak MVP：完成题库建设、学生录音上传、音频质检、ASR 初稿、人工标注、审核、数据集导出和 baseline 评测闭环。";
+      return "推进当前教育语音项目的可交付 MVP：完成题库建设、学生录音上传、音频质检、识别初稿、人工标注、审核、数据集导出和基线评测闭环。";
     }
     const parts = [projectName, projectDescription].map((item) => item.trim()).filter(Boolean);
-    return parts.length ? `推进 ${parts.join("：")} 的可交付 MVP，并拆分线程、NPC、skill、知识库和验收口。` : "推进当前项目的可交付 MVP，并拆分线程、NPC、skill、知识库和验收口。";
+    return parts.length ? `推进 ${parts.join("：")} 的可交付 MVP，并拆分线程、NPC、能力包、知识库和验收口。` : "推进当前项目的可交付 MVP，并拆分线程、NPC、能力包、知识库和验收口。";
   }
 
   function bossRoleDefs() {
     const haystack = `${projectName} ${projectDescription} ${projectGithubUrl} ${projectLocalPath}`.toLowerCase();
+    if (projectId === "proj_ai_collab" || haystack.includes("ai合作") || haystack.includes("ai collab") || haystack.includes("collaboration platform")) {
+      return [
+        {
+          role: "平台 Boss / 产品统筹",
+          keywords: ["boss", "产品", "需求", "pm", "owner", "lead", "项目", "总控", "负责人"],
+          skills: ["requirements-ledger", "project-planning", "acceptance-criteria"],
+          repoPaths: ["docs/platform-ai-work-structure.md", "docs/npc-workbench-structure-contract.md", "docs/ai-requirements"],
+        },
+        {
+          role: "数据工场 / 采集标注 AI 化",
+          keywords: ["data", "dataset", "数据", "标注", "采集", "qa", "manifest", "export"],
+          skills: ["dataset-workbench", "annotation-workflow", "quality-review"],
+          repoPaths: ["apps/web/app/projects/[id]/datasets", "apps/api/app/modules/tasks", "docs/platform-ai-work-structure.md"],
+        },
+        {
+          role: "AI 实验室 / 仿真训练闭环",
+          keywords: ["ai", "lab", "实验", "训练", "评估", "仿真", "回放", "模型"],
+          skills: ["experiment-workflow", "simulation-replay", "model-evaluation"],
+          repoPaths: ["apps/web/app/projects/[id]/ai-lab", "apps/api/app/modules/tasks", "docs/platform-ai-work-structure.md"],
+        },
+        {
+          role: "机器人现场 / ROS 电机只读诊断",
+          keywords: ["robot", "机器人", "ros", "硬件", "电机", "现场", "仿真", "topic"],
+          skills: ["robotics-readonly", "ros-diagnostics", "hardware-review-gate"],
+          repoPaths: ["apps/web/app/projects/[id]/robotics", "apps/api/app/modules/collaboration", "docs/platform-ai-work-structure.md"],
+        },
+        {
+          role: "观测台 / 全链路验收",
+          keywords: ["qa", "验收", "测试", "playwright", "验证", "截图", "观测", "审计"],
+          skills: ["acceptance-test", "browser-validation", "risk-check"],
+          repoPaths: ["apps/web/app/projects/[id]/observability", "scripts/validate-professional-surfaces-fullchain-cdp.py", "scripts/validate-five-workbench-click-chain-cdp.py"],
+        },
+      ];
+    }
     if (haystack.includes("yuespeak") || haystack.includes("english_a_agent") || haystack.includes("粤听说")) {
       return [
         {
-          role: "YueSpeak Boss / 产品与分工",
+          role: "教育语音 Boss / 产品与分工",
           keywords: ["boss", "产品", "需求", "pm", "owner", "lead", "项目", "总控", "负责人"],
           skills: ["requirements-ledger", "project-planning", "acceptance-criteria"],
           repoPaths: ["README.md", "docs/mvp", "docs/ai-handoffs", "docs/ai-requirements"],
         },
         {
-          role: "YueSpeak Backend Data / 标注与导出",
+          role: "教育语音后端 / 标注与导出",
           keywords: ["backend", "后端", "api", "数据", "标注", "导出", "asr", "python", "fastapi"],
           skills: ["backend-api", "dataset-export", "annotation-workflow", "contract-test"],
           repoPaths: ["docs/mvp/05_接口与数据表草案.md", "docs/mvp/04_数据集与导出规范.md", "apps/api"],
         },
         {
-          role: "YueSpeak Frontend Miniapp / 学生与教师体验",
+          role: "教育语音前端 / 学生与教师体验",
           keywords: ["frontend", "miniapp", "前端", "小程序", "ui", "ux", "页面", "录音"],
           skills: ["frontend", "recording-flow", "teacher-dashboard", "playwright"],
           repoPaths: ["docs/mvp/01_MVP产品需求文档.md", "apps/web"],
         },
         {
-          role: "YueSpeak QA Acceptance / 验收与风险",
+          role: "教育语音验收 / 风险与基线",
           keywords: ["qa", "验收", "测试", "playwright", "验证", "截图", "合规", "baseline"],
           skills: ["acceptance-test", "browser-validation", "data-compliance", "risk-check"],
           repoPaths: ["docs/mvp/07_研发排期与验收清单.md", "docs/mvp/08_数据合规与授权协议草案.md"],
@@ -662,7 +925,7 @@ export function WorkbenchClient({
           projectLocalPath ? `- 本机参考路径：${projectLocalPath}` : "- 本机参考路径：未绑定",
           `- 建议先读：${def.repoPaths.join("；")}`,
           `- 知识库：${PROJECT_OPERATING_CONTRACT.knowledgePaths.join("；")}`,
-          `- 推荐 skill：${def.skills.join("、")}`,
+          `- 推荐能力包：${def.skills.join("、")}`,
           "",
           "NPC 路由协议（必须遵守）：",
           `- 本 NPC 所在工位：${seat?.workstationName || seat?.computerNodeName || "未归属工位"}`,
@@ -711,13 +974,13 @@ export function WorkbenchClient({
           ? `${task.targetName} 已绑定 ${provider} 线程`
           : status === "needs_npc"
             ? `先创建 ${task.role} NPC，再让用户开一个 ${provider} 线程绑定`
-            : `用户开一个 ${provider} 线程，绑定给 ${task.targetName}，再点 NPC 上岗包生成提示词/skill/知识库`,
+            : `用户开一个 ${provider} 线程，绑定给 ${task.targetName}，再点 NPC 上岗包生成提示词、能力包和知识库`,
       };
     });
     rememberBossPlan({
       goal,
       bossName: bossThreadReady && bossSeat ? bossSeat.name : "未绑定 Boss NPC",
-      phases: ["澄清目标和验收口", "创建或补齐 NPC/skill", "按工位派单执行", "收集回执并二次分派", "浏览器/测试验收后给用户最终回复"],
+      phases: ["澄清目标和验收口", "创建或补齐 NPC/能力包", "按工位派单执行", "收集回执并二次分派", "浏览器/测试验收后给用户最终回复"],
       threadNeeds,
       tasks,
       contract: PROJECT_OPERATING_CONTRACT,
@@ -729,7 +992,7 @@ export function WorkbenchClient({
             ? "Boss NPC 也必须绑定用户已创建的执行线程；绑定前只能规划需要几个线程，不能代表项目派工。"
             : task.targetSeatId
               ? "这个 NPC 已存在，但还没有绑定用户创建的执行线程；先开线程、绑定并生成上岗包后再派发。"
-            : "当前没有明显匹配职责/skill 的 NPC，建议先创建或补装 skill。",
+            : "当前没有明显匹配职责/能力包的 NPC，建议先创建或补装能力包。",
           skills: task.skills,
         })),
     });
@@ -850,26 +1113,26 @@ export function WorkbenchClient({
       `Boss NPC 立项自检：${bossPlan.goal}`,
       "",
       "平台定位：",
-      "- 真实处理过程留在绑定的 Codex / Claude Code 线程。",
+      "- 真实处理过程留在绑定桌面线程。",
       "- 工作台只显示分工摘要、最小回执、审核结果、阻塞和最终结果。",
       "",
       "当前可执行：",
       ...(readyTasks.length
-        ? readyTasks.map((task) => `- ${task.role} -> ${task.targetName}；skill：${task.skills.join("、")}`)
+        ? readyTasks.map((task) => `- ${task.role} -> ${task.targetName}；能力包：${task.skills.join("、")}`)
         : ["- 暂无已绑定执行 NPC。"]),
       "",
-      "线程 / Skill 缺口：",
+      "线程 / 能力包缺口：",
       ...(blockedTasks.length
-        ? blockedTasks.map((task) => `- ${task.role}：先绑定用户创建的执行线程，再派发；建议 skill：${task.skills.join("、")}`)
+        ? blockedTasks.map((task) => `- ${task.role}：先绑定用户创建的执行线程，再派发；建议能力包：${task.skills.join("、")}`)
         : ["- 暂无缺口。"]),
       "",
       "GitHub 相对知识库路径：",
       ...bossPlan.contract.knowledgePaths.map((item) => `- ${item}`),
       "",
       "Boss 下一步：",
-      "- 先把 YueSpeak 第一阶段拆成数据闭环验收口。",
+      "- 先把当前平台目标拆成可验收的数据工场、AI 实验室、机器人现场、观测台薄片。",
       "- 只给已绑定线程的 NPC 派发可执行任务。",
-      "- 未绑定 NPC 只生成上岗包、skill、知识库和线程提示。",
+      "- 未绑定 NPC 只生成上岗包、能力包、知识库和线程提示。",
       "- 收到回执后再判断是否需要跨工位转交。",
       "",
       "回执格式：",
@@ -1074,16 +1337,16 @@ export function WorkbenchClient({
           <Link
             href={withReturnTo(`/projects/${projectId}/observability`, sourcePath, sourceKey)}
             className={styles.backLink}
-            title="打开派单、回执、待审、Runner 和风险观测台"
+            title="打开派单、回执、待审、执行电脑和风险观测台"
           >
             观测台 →
           </Link>
           <Link
             href={withReturnTo(`/projects/${projectId}/skill-forge`, sourcePath, sourceKey)}
             className={styles.backLink}
-            title="打开 Skill 起草、审查、绑定和复用工作台"
+            title="打开能力包起草、审查、绑定和复用工作台"
           >
-            Skill 工坊 →
+            能力工坊 →
           </Link>
         </div>
       </header>
@@ -1236,10 +1499,10 @@ export function WorkbenchClient({
                 <strong>Boss NPC 项目生成器</strong>
                 <small>
                   {bossThreadReady && bossSeat
-                    ? `${bossSeat.name} 的线程已绑定，负责把一句话目标拆成工位/NPC/skill/验收口`
+                    ? `${bossSeat.name} 的线程已绑定，负责把一句话目标拆成工位/NPC/能力包/验收口`
                     : bossSeat
-                      ? `${bossSeat.name} 可能是 Boss，但还没有绑定真实线程；先登记 Codex thread id`
-                      : "先创建一个 Boss NPC，并像其它 NPC 一样绑定 Codex 线程"}
+                      ? `${bossSeat.name} 可能是 Boss，但还没有绑定真实线程；先到主页面按线程名字选择桌面线程`
+                      : "先创建一个 Boss NPC，并像其它 NPC 一样绑定桌面线程"}
                 </small>
               </div>
               <span>{bossThreadReady ? (bossPlan ? `${bossPlan.tasks.length} 个子任务` : "Boss 线程就绪") : "Boss 线程未绑定"}</span>
@@ -1328,7 +1591,7 @@ export function WorkbenchClient({
                       <p key={`${item.role}-${item.targetName}`} data-status={item.status}>
                         <span>{item.status === "bound" ? "已绑" : item.status === "needs_npc" ? "缺 NPC" : "待开线程"}</span>
                         {item.role}：{item.promptHint}
-                        {item.status !== "bound" ? ` 推荐 skill：${item.skills.join("、")}；先读：${item.repoPaths.join("、")}` : ""}
+                        {item.status !== "bound" ? ` 推荐能力包：${item.skills.join("、")}；先读：${item.repoPaths.join("、")}` : ""}
                       </p>
                     ))}
                   </div>
@@ -1337,7 +1600,7 @@ export function WorkbenchClient({
                       <article key={task.id} className={styles.bossTask} data-missing={task.missing ? "1" : undefined}>
                         <div>
                           <strong>{task.role}</strong>
-                          <small>{task.missing ? "建议新建/补 skill" : `派给 ${task.targetName}`}</small>
+                          <small>{task.missing ? "建议新建/补能力包" : `派给 ${task.targetName}`}</small>
                         </div>
                         <p>{task.title}</p>
                         <div>
@@ -1350,9 +1613,9 @@ export function WorkbenchClient({
                   </div>
                   {bossPlan.missingRoles.length > 0 ? (
                     <div className={styles.bossMissing}>
-                      <strong>创建 NPC / skill 缺口</strong>
+                      <strong>创建 NPC / 能力包缺口</strong>
                       {bossPlan.missingRoles.map((item) => (
-                        <p key={item.role}>{item.role}：{item.reason} 推荐 skill：{item.skills.join("、")}</p>
+                        <p key={item.role}>{item.role}：{item.reason} 推荐能力包：{item.skills.join("、")}</p>
                       ))}
                     </div>
                   ) : null}
@@ -1361,7 +1624,7 @@ export function WorkbenchClient({
               <div className={styles.bossPrepBar}>
                 <div>
                   <strong>协作准备</strong>
-                  <small>Boss 先判断要几个执行线程；主页面负责创建 NPC、电脑、工位和 Skill，工作台只索引并执行协作。</small>
+                  <small>Boss 先判断要几个执行线程；主页面负责创建 NPC、电脑、工位和能力包，工作台只索引并执行协作。</small>
                 </div>
                 <Link href={withReturnTo(`/projects/${projectId}/2d-upgrade?panel=npc-create`, sourcePath, sourceKey)} className={styles.threadOverviewLink}>
                   去主页面创建 NPC
@@ -1404,7 +1667,7 @@ export function WorkbenchClient({
                 <p>
                   {resource.repoLocalMessage || "本地工程目录不是 Git 仓库。"}
                   {" "}
-                  知识库可以继续用 GitHub 相对路径，但代码开发、回退索引和 Runner 执行前，需要先在主页面 Git 治理里修正仓库来源。
+                  知识库可以继续用 GitHub 相对路径，但代码开发、回退索引和执行电脑运行前，需要先在主页面 Git 治理里修正仓库来源。
                 </p>
               </div>
               <Link href={withReturnTo(`/projects/${projectId}/2d-upgrade?panel=git`, sourcePath, sourceKey)} className={styles.threadOverviewLink}>
@@ -1424,7 +1687,6 @@ export function WorkbenchClient({
                   crossLeads={crossLeadsBySeat.get(seat.id) ?? []}
                   currentUserId={currentUserId}
                   currentUserName={currentUserName}
-                  launchPackAutoOpen={autoOpenLaunchPackIds.has(seat.id)}
                   onOpenTeammate={toggleOpen}
                   sourcePath={sourcePath}
                   onClose={() => closeOpen(seat.id)}
@@ -1442,6 +1704,8 @@ export function WorkbenchClient({
                 {" / "}
                 完成 {operationsSummary.done}
                 {" / "}
+                待收口 {operationsSummary.pendingCloseout}
+                {" / "}
                 异常 {operationsSummary.failed}
               </small>
             </summary>
@@ -1449,10 +1713,63 @@ export function WorkbenchClient({
               <strong>协同工作台 MVP</strong>
               <span data-hot={operationsSummary.pendingReview > 0 ? "1" : undefined}>待审 {operationsSummary.pendingReview}</span>
               <span data-hot={operationsSummary.setupBlocked > 0 ? "1" : undefined}>待绑定 {operationsSummary.setupBlocked}</span>
+              <span data-hot={operationsSummary.pendingCloseout > 0 ? "1" : undefined}>待收口 {operationsSummary.pendingCloseout}</span>
               <span>进行中 {operationsSummary.active}</span>
               <span>完成 {operationsSummary.done}</span>
-              <span data-hot={operationsSummary.failed > 0 ? "1" : undefined}>异常 {operationsSummary.failed}</span>
+              <span data-hot={operationsSummary.currentFailed > 0 ? "1" : undefined}>当前异常 {operationsSummary.currentFailed}</span>
+              <span data-muted="1">历史 {operationsSummary.archivedFailed}</span>
               <small>{operationsSummary.latestTitle}{operationsSummary.latestStatus ? ` · ${operationsSummary.latestStatus}` : ""}</small>
+            </div>
+            <div className={styles.opsActionStrip}>
+              <div>
+                <strong>{operationsSummary.nextActionTitle}</strong>
+                <small>{operationsSummary.nextActionDetail}</small>
+              </div>
+              <div className={styles.opsActionButtons}>
+                <button
+                  type="button"
+                  className={styles.threadOverviewBtn}
+                  onClick={openPendingReviews}
+                  disabled={pendingReviewSeatIds.length === 0}
+                >
+                  待审
+                </button>
+                <button
+                  type="button"
+                  className={styles.threadOverviewBtn}
+                  onClick={openFailedConversations}
+                  disabled={failedSeatIds.length === 0}
+                >
+                  待收口 / 异常
+                </button>
+              </div>
+            </div>
+            <div className={styles.dispatchEvidenceStrip} data-ready={dispatchEvidence.ready ? "1" : undefined}>
+              <div className={styles.dispatchEvidencePulse} aria-hidden="true" />
+              <div className={styles.dispatchEvidenceMain}>
+                <strong>派工验真</strong>
+                <small>{dispatchEvidence.ready ? "可接单通道、用户派工和最小回执已进入平台索引" : "先补齐可接单通道和最小回执索引"}</small>
+              </div>
+              <div className={styles.dispatchEvidenceMetrics}>
+                <span data-ok={dispatchEvidence.deliverable === seats.length ? "1" : undefined}>
+                  可接单 {dispatchEvidence.deliverable}/{seats.length}
+                </span>
+                <span data-ok={dispatchEvidence.desktopReady > 0 ? "1" : undefined}>
+                  桌面可见 {dispatchEvidence.desktopReady}/{seats.length}
+                </span>
+                <span data-ok={dispatchEvidence.completedHumanDispatches > 0 ? "1" : undefined}>
+                  用户派工 {dispatchEvidence.completedHumanDispatches}
+                </span>
+                <span data-ok={dispatchEvidence.completedPeerDispatches > 0 ? "1" : undefined}>
+                  NPC互派 {dispatchEvidence.completedPeerDispatches}
+                </span>
+                <span data-ok={dispatchEvidence.completedReceipts > 0 ? "1" : undefined}>
+                  回执 {dispatchEvidence.completedReceipts}
+                </span>
+                <span data-warn={dispatchEvidence.hardwarePending > 0 ? "1" : undefined}>
+                  硬件强审 {dispatchEvidence.hardwarePending}
+                </span>
+              </div>
             </div>
             {operationsSummary.pendingReview > 0 ? (
               <div className={styles.pendingReviewJump}>
@@ -1507,7 +1824,7 @@ export function WorkbenchClient({
             <div className={styles.threadOverviewHead}>
               <strong>{isCompany ? "工位长线程总览" : "多线程协作总览"}</strong>
               <span>线程 {threadOverview.registered}/{seats.length}</span>
-              <span>线程就绪 {threadOverview.threadReady}</span>
+              <span>可接单 {threadOverview.canTakeTask}</span>
               <span data-warning={threadOverview.automationEnabled > 0 ? "1" : undefined}>NPC 自动化 {threadOverview.automationEnabled}</span>
               <span data-warning={threadOverview.missing > 0 ? "1" : undefined}>未登记 {threadOverview.missing}</span>
               <button type="button" className={styles.threadOverviewBtn} onClick={() => openSeatGroup(seats.map((seat) => seat.id))} disabled={seats.length === 0}>
@@ -1546,10 +1863,10 @@ export function WorkbenchClient({
                           data-open={openIds.includes(seat.id) ? "1" : undefined}
                           data-missing={seat.threadId ? undefined : "1"}
                           onClick={() => toggleOpen(seat.id)}
-                          title={`${seat.name} · ${seat.threadKind || seat.providerLabel || seat.providerId || "thread"} · ${seat.threadId || "未登记真实线程"}`}
+                          title={`${seat.name} · ${seat.threadKind || "桌面线程"} · ${seat.threadId ? "已绑定" : "未登记真实线程"}`}
                         >
                           <span>{seat.name}</span>
-                          <small>{seat.threadId ? (seat.threadKind || seat.providerLabel || seat.providerId || "thread") : "未登记"}</small>
+                          <small>{seat.threadId ? (seat.threadKind || "桌面线程") : "未登记"}</small>
                         </button>
                       ))}
                     </div>
@@ -1570,7 +1887,7 @@ export function WorkbenchClient({
               <p>
                 {isCompany
                   ? "公司层只显示每个工位指定的工位长（👑）。在工位卡的「工位长」下拉里选定后会出现在这里。跨工位的消息默认会被路由到对应工位长。"
-                  : "人类成员负责决策、审核和接手；NPC 绑定 Codex 线程负责执行。同工位协作默认顺滑，跨工位协作走工位长和审核。"}
+                  : "人类成员负责决策、审核和接手；NPC 绑定桌面线程负责执行。同工位协作默认顺滑，跨工位协作走工位长和审核。"}
               </p>
             </div>
           ) : null}

@@ -1489,33 +1489,33 @@ function sortProjectSkillLibrary(skills: Record<string, unknown>[]) {
   });
 }
 
-const YUESPEAK_RECOMMENDED_PROJECT_SKILLS: Record<string, { label: string; note: string; recommendedFor: string[] }> = {
-  "yuespeak-boss-planning": {
-    label: "YueSpeak Boss 分工规划",
+const RECOMMENDED_PROJECT_SKILLS: Record<string, { label: string; note: string; recommendedFor: string[] }> = {
+  "platform-boss-planning": {
+    label: "Boss 分工规划",
     note: "把用户的一句话需求拆成可执行方案、工位分工、NPC 职责、GitHub 知识库路径和验收口径；Boss 只做规划、派单、收口，不直接替执行 NPC 写实现。",
     recommendedFor: ["Boss NPC", "产品与分工工位", "项目负责人"],
   },
-  "yuespeak-backend-api": {
-    label: "YueSpeak 后端接口与数据",
-    note: "负责阅读 YueSpeak 仓库文档，梳理接口、数据模型、标注流程、导出格式和迁移风险；输出要能被前端和 QA NPC 复用。",
+  "platform-backend-api": {
+    label: "后端接口与数据",
+    note: "负责阅读项目仓库文档，梳理接口、数据模型、标注流程、导出格式和迁移风险；输出要能被前端和 QA NPC 复用。",
     recommendedFor: ["后端数据 NPC", "标注与导出工位"],
   },
-  "yuespeak-frontend-miniapp": {
-    label: "YueSpeak 小程序体验",
-    note: "负责学生端录音、跟读、纠音反馈、教师端查看与任务流体验；提交前必须从真实用户路径说明点击步骤和页面状态。",
-    recommendedFor: ["前端小程序 NPC", "学生教师体验工位"],
+  "platform-frontend-experience": {
+    label: "前端体验验收",
+    note: "负责核心页面、表单、工作台和跨端体验；提交前必须从真实用户路径说明点击步骤和页面状态。",
+    recommendedFor: ["前端体验 NPC", "用户体验工位"],
   },
-  "yuespeak-dataset-export": {
-    label: "YueSpeak 数据集导出",
-    note: "关注音频、文本、评分、标注结果的导入导出闭环；每次改动要说明字段来源、兼容旧数据方式和可回滚点。",
+  "platform-dataset-export": {
+    label: "数据集导入导出",
+    note: "关注项目数据、标注结果、采样片段和训练清单的导入导出闭环；每次改动要说明字段来源、兼容旧数据方式和可回滚点。",
     recommendedFor: ["后端数据 NPC", "数据治理 NPC"],
   },
-  "yuespeak-browser-acceptance": {
-    label: "YueSpeak 浏览器验收",
+  "platform-browser-acceptance": {
+    label: "浏览器用户验收",
     note: "用用户视角验证页面能不能用、密度是否舒服、核心按钮是否找得到；每次给出截图或明确的路由、操作、结果。",
     recommendedFor: ["QA 验收 NPC", "验收风险工位"],
   },
-  "yuespeak-cross-station-routing": {
+  "platform-cross-station-routing": {
     label: "跨工位协作路由",
     note: "同一工位 NPC 互相认识并按职责找人；不同工位只能通过目标工位长 NPC 沟通，回执必须回到发起 NPC 和 Boss 收口。",
     recommendedFor: ["Boss NPC", "工位长 NPC", "协作平台 NPC"],
@@ -2713,6 +2713,7 @@ async function disableNpcSeatContinuity(options: {
 function launchDetachedWorkstationOneShot(options: {
   projectId: string;
   workstationId: string;
+  messageId?: string | null;
   providerId?: string | null;
   seatName?: string | null;
   ignoreAutomationSwitch?: boolean;
@@ -2775,8 +2776,14 @@ function launchDetachedWorkstationOneShot(options: {
     "--output-dir",
     path.join("artifacts", "workstation-inbox", "oneshot"),
   ];
+  if (text(options.messageId, "")) {
+    baseArgs.push("--message-id", text(options.messageId, ""));
+  }
   if (providerId === "codex") {
     baseArgs.push("--executor-timeout-seconds", "600");
+  }
+  if (accessToken) {
+    baseArgs.push("--auth-token", accessToken);
   }
   if (text(options.providerId, "")) {
     baseArgs.push("--provider", text(options.providerId, ""));
@@ -3041,6 +3048,7 @@ async function resolveNpcSeatDispatchMode(options: {
   project: Record<string, unknown>;
   formData: FormData;
   payload: CollaborationMessagePayload;
+  messageId?: string | null;
 }) {
   const npcSeatId = normalizeMessageFormValue(options.formData.get("npc_seat_id"));
   if (
@@ -3080,6 +3088,7 @@ async function resolveNpcSeatDispatchMode(options: {
   const launchResult = launchDetachedWorkstationOneShot({
     projectId: options.payload.project_id,
     workstationId: options.payload.recipient_id,
+    messageId: options.messageId,
     providerId,
     seatName,
   });
@@ -3221,7 +3230,7 @@ function resolveGitRollbackAlignmentTargets(project: Record<string, unknown>) {
   const projectName = text(project.name ?? project.project_name, "").toLowerCase();
   if (targets.size === 0 && /yuespeak|yue/i.test(projectName)) {
     const boss = seats.find((seat) => /boss/i.test(`${text(seat.name ?? seat.workstation_name, "")} ${text(seat.responsibility, "")}`));
-    if (boss) rememberSeat(boss, "Boss / YueSpeak 收口");
+    if (boss) rememberSeat(boss, "Boss / 项目收口");
   }
   if (targets.size === 0 && seats[0]) {
     rememberSeat(seats[0], "默认项目 NPC");
@@ -3257,7 +3266,7 @@ async function notifyGitRollbackAlignmentTargets(
           : options.preflightRunnableNodeCount
             ? "存在在线 Runner 但下发失败，请检查 Runner 收件箱"
             : options.preflightOnlineNodeCount
-              ? "在线电脑缺少 Runner 绑定，请先回电脑接入面板修复"
+              ? "电脑登记在线但缺少 Runner 绑定，请先回电脑接入面板修复"
               : "暂无在线 Runner，预检待电脑上线后重试"
       }`,
       "",
@@ -3819,7 +3828,7 @@ export async function 保存项目日程安排(projectId: string, formData: Form
 }
 
 export async function 保存串口电视配置(projectId: string, formData: FormData) {
-  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "serial-tv");
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "device-debug");
   const baudRate = Number(formData.get("baud_rate") ?? 115200) || 115200;
   const protocol = String(formData.get("protocol") ?? "aicollab-csv-v1").trim() || "aicollab-csv-v1";
   const frameFormat =
@@ -3856,15 +3865,15 @@ export async function 保存串口电视配置(projectId: string, formData: Form
       },
     });
     revalidateProjectSurfaces(projectId);
-    redirect(withQueryValue(returnTo, "team_notice", "串口电视协议已保存"));
+    redirect(withQueryValue(returnTo, "team_notice", "设备调试协议已保存"));
   } catch (error) {
-    const message = error instanceof Error ? error.message : "保存串口电视协议失败";
+    const message = error instanceof Error ? error.message : "保存设备调试协议失败";
     redirect(withQueryValue(returnTo, "team_error", message));
   }
 }
 
 export async function 请求串口USB扫描(projectId: string, formData: FormData) {
-  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "serial-tv");
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "device-debug");
   const targetNodeId = String(formData.get("computer_node_id") ?? "all").trim() || "all";
   try {
     await ensureProjectCollaborationAccess(projectId);
@@ -3885,7 +3894,7 @@ export async function 请求串口USB扫描(projectId: string, formData: FormDat
       if (!nodeId) continue;
       await postJson(`/api/collaboration/projects/${projectId}/runner-commands`, {
         computer_node_id: nodeId,
-        title: "串口电视 / 扫描 USB 与串口设备",
+        title: "设备调试台 / 扫描 USB 与串口设备",
         body: JSON.stringify(
           {
             kind: "serial.usb.scan",
@@ -3920,7 +3929,7 @@ export async function 请求串口USB扫描(projectId: string, formData: FormDat
 }
 
 export async function 下发串口调试指令(projectId: string, formData: FormData) {
-  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "serial-tv");
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "device-debug");
   const nodeId = String(formData.get("computer_node_id") ?? "").trim();
   const port = String(formData.get("port") ?? "").trim();
   const baudRate = Number(formData.get("baud_rate") ?? 115200) || 115200;
@@ -3933,7 +3942,7 @@ export async function 下发串口调试指令(projectId: string, formData: Form
     await ensureProjectCollaborationAccess(projectId);
     await postJson(`/api/collaboration/projects/${projectId}/runner-commands`, {
       computer_node_id: nodeId,
-      title: `串口电视 / 写入 ${port}`,
+      title: `设备调试台 / 写入 ${port}`,
       body: JSON.stringify(
         {
           kind: "serial.write",
@@ -4073,7 +4082,7 @@ export async function 登记项目Git同步(projectId: string, formData: FormDat
       : preflight.runnableNodeCount
         ? "；只读预检未能下发，请检查 Runner 收件箱"
         : preflight.onlineNodeCount
-          ? "；在线电脑缺少 Runner 绑定，请回电脑接入面板修复"
+          ? "；电脑登记在线但缺少 Runner 绑定，请回电脑接入面板修复"
           : "；暂无在线 Runner，只登记项目活动";
     redirect(withQueryValue(returnTo, "team_notice", `Git 同步请求已登记：${provider}${preflightNotice}`));
   } catch (error) {
@@ -4144,7 +4153,7 @@ export async function 登记项目Git回退(projectId: string, formData: FormDat
       : preflight.runnableNodeCount
         ? "；在线 Runner 下发失败，请检查 Runner 收件箱"
         : preflight.onlineNodeCount
-          ? "；在线电脑缺少 Runner 绑定，请回电脑接入面板修复"
+          ? "；电脑登记在线但缺少 Runner 绑定，请回电脑接入面板修复"
           : "；暂无在线 Runner，预检待电脑上线后重试";
     const alignmentNotice = alignment.queued
       ? `；已通知 ${alignment.queued} 个 Boss/工位长 NPC 对齐`
@@ -4200,7 +4209,7 @@ export async function 创建项目Skill(projectId: string, formData: FormData) {
     const rawId = String(formData.get("skill_id") ?? "").trim().toLowerCase();
     const skillId = rawId.replace(/[^a-z0-9-_]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
     const recommendedFor = parseStringList(formData.get("recommended_for")) ?? [];
-    const recommendedPreset = YUESPEAK_RECOMMENDED_PROJECT_SKILLS[skillId];
+    const recommendedPreset = RECOMMENDED_PROJECT_SKILLS[skillId];
     if (!skillId) {
       throw new Error("请先填写 skill 标识");
     }
@@ -5284,6 +5293,7 @@ export async function 提交协作消息(formData: FormData) {
             project,
             formData,
             payload: outgoingPayload,
+            messageId,
           })
         : null;
 
@@ -5328,8 +5338,8 @@ export async function 提交协作消息(formData: FormData) {
       let notice = `已登记协作消息：${payload.title ?? payload.message_type}`;
       if (npcDispatchMode?.mode === "one-shot") {
         notice += npcDispatchMode.launched
-          ? ` / ${platformProviderLabel(npcDispatchMode.providerId)} 自动化已关闭，这次改为单次执行`
-          : ` / ${platformProviderLabel(npcDispatchMode.providerId)} 自动化已关闭，但本机单次执行器未能拉起：${npcDispatchMode.error ?? "请手动执行 adapter"}`;
+          ? ` / 平台已通过内部执行桥启动 ${platformProviderLabel(npcDispatchMode.providerId)} 单次处理`
+          : ` / 桌面线程启动失败：${npcDispatchMode.error ?? "请检查绑定线程和桌面同步状态"}`;
       }
       redirect(withQueryValue(returnTo, "team_notice", notice));
     }
@@ -5681,14 +5691,18 @@ export async function 启动Npc接力协作(formData: FormData) {
 export async function 下发Runner命令(projectId: string, formData: FormData) {
   const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "git");
   const targetMode = String(formData.get("target_mode") ?? "computer_node_id").trim() || "computer_node_id";
+  const body = String(formData.get("body") ?? "").trim();
   const payload: Record<string, unknown> = {
     title: String(formData.get("title") ?? "").trim() || null,
-    body: String(formData.get("body") ?? "").trim(),
+    body,
     task_id: String(formData.get("task_id") ?? "").trim() || null,
   };
   const targetValue = String(formData.get(targetMode) ?? "").trim();
-  if (!payload.body || !targetValue) {
-    return;
+  if (!body) {
+    redirect(withQueryValue(returnTo, "team_error", "请先填写要下发给电脑的命令内容"));
+  }
+  if (!targetValue) {
+    redirect(withQueryValue(returnTo, "team_error", "当前没有可接单电脑。请先在目标电脑运行持续接单命令，等状态变成常驻接单后再派任务。"));
   }
   payload[targetMode] = targetValue;
   try {
@@ -6510,13 +6524,14 @@ export async function 启动Npc真实线程处理(projectId: string, workstation
       }
     }
 
-    const launchResult = launchDetachedWorkstationOneShot({
-      projectId,
-      workstationId: recipientId,
-      providerId,
-      seatName,
-      ignoreAutomationSwitch: !automationEnabled,
-    });
+  const launchResult = launchDetachedWorkstationOneShot({
+    projectId,
+    workstationId: recipientId,
+    messageId,
+    providerId,
+    seatName,
+    ignoreAutomationSwitch: !automationEnabled,
+  });
 
     await postJson("/api/collaboration/messages", {
       project_id: projectId,
@@ -6526,12 +6541,12 @@ export async function 启动Npc真实线程处理(projectId: string, workstation
       body: [
         automationEnabled
           ? `平台已按 ${seatName} 的 NPC 自动化设置拉起真实 ${platformProviderLabel(providerId)} 处理器。`
-          : `平台已把这一句话派给 ${seatName} 的绑定 ${platformProviderLabel(providerId)} 线程做单次处理，未创建 NPC 自动化。`,
+          : `平台已把这一句话派给 ${seatName} 的绑定 ${platformProviderLabel(providerId)} 线程做单次处理，用户不需要手动启动本机桥。`,
         messageId ? `派单消息：${messageId}` : "",
-        launchResult.launched ? `启动器：${launchResult.launcher || "platform-workstation-adapter.py"}` : `启动失败：${launchResult.error || "未知错误"}`,
+        launchResult.launched ? "平台内部执行桥：已启动" : `启动失败：${launchResult.error || "未知错误"}`,
         launchResult.stdoutPath ? `stdout：${launchResult.stdoutPath}` : "",
         launchResult.stderrPath ? `stderr：${launchResult.stderrPath}` : "",
-        "平台只等待最小回执和最终结果；完整推理/修改过程以绑定线程或本机执行器日志为准。",
+        "平台会同步桌面提问、最小回执和最终结果；完整处理过程留在绑定桌面线程中可追踪。",
       ].filter(Boolean).join("\n"),
       sender_type: "agent",
       sender_id: recipientId,
@@ -6548,7 +6563,7 @@ export async function 启动Npc真实线程处理(projectId: string, workstation
         launchResult.launched
           ? automationEnabled
             ? `${seatName} 的真实 ${platformProviderLabel(providerId)} 自动处理器已启动，等待线程回写结果`
-          : `${seatName} 的单次 ${platformProviderLabel(providerId)} 派单已启动；当前 Codex Desktop 窗口不会实时显示时，以平台回执/日志为准`
+          : `${seatName} 的单次 ${platformProviderLabel(providerId)} 派单已启动；平台会同步桌面过程和回执`
           : `${seatName} 的真实处理器启动失败：${launchResult.error ?? "请检查本机 Python / Codex CLI / 绑定线程"}`,
       ),
     );
@@ -6579,6 +6594,14 @@ export async function 启动Npc单次线程处理(projectId: string, workstation
         seat.ai_provider_id ?? seat.ai_provider ?? metadata.provider_id ?? metadata.provider_label,
       ) || "codex";
     const recipientId = text(seat.row_id ?? seat.rowId ?? seat.id ?? seat.config_id, "") || workstationId;
+    const messageResult = await getJson(
+      `/api/collaboration/messages?project_id=${encodeURIComponent(projectId)}&limit=200`,
+    );
+    const sourceMessage =
+      asArray<Record<string, unknown>>(messageResult?.data ?? messageResult).find((item) => text(item.id, "") === messageId) ??
+      null;
+    const sourceTitle = text(sourceMessage?.title, "NPC 单次处理");
+    const sourceBody = text(sourceMessage?.body, "");
     let adapterConfig: Record<string, unknown> = {};
     try {
       const configResult = await getJson(
@@ -6591,13 +6614,74 @@ export async function 启动Npc单次线程处理(projectId: string, workstation
     const deliveryLabel = text(adapterConfig.delivery_label, "");
     const deliveryWarning = text(adapterConfig.delivery_warning, "");
     const desktopVisible = Boolean(adapterConfig.desktop_visible);
-    const launchResult = launchDetachedWorkstationOneShot({
-      projectId,
-      workstationId: recipientId,
-      providerId,
-      seatName,
-      ignoreAutomationSwitch: true,
-    });
+
+    try {
+      const runnerCommand = await postJson(`/api/collaboration/projects/${projectId}/runner-commands`, {
+        title: sourceTitle ? `NPC 派工：${sourceTitle}` : `NPC 派工：${seatName}`,
+        body: [
+          `目标 NPC：${seatName}`,
+          `目标工位：${recipientId}`,
+          messageId ? `平台消息：${messageId}` : "",
+          sourceBody || "请处理这条平台派工，并回写最小回执和最终结果。",
+        ].filter(Boolean).join("\n\n"),
+        workstation_id: recipientId,
+      });
+      const runnerData =
+        runnerCommand && typeof runnerCommand === "object" && "data" in runnerCommand
+          ? ((runnerCommand as Record<string, unknown>).data as Record<string, unknown>)
+          : (runnerCommand as Record<string, unknown>);
+      await postJson("/api/collaboration/messages", {
+        project_id: projectId,
+        agent_id: recipientId,
+        message_type: "agent_ack",
+        title: `已投递到执行电脑 / ${seatName}`,
+        body: [
+          `平台已把这条派工送到 ${seatName} 所在电脑的 Runner 队列。`,
+          text(runnerData?.recipient_id, "") ? `执行电脑 Runner：${text(runnerData?.recipient_id, "")}` : "",
+          text(runnerData?.id, "") ? `队列消息：${text(runnerData?.id, "")}` : "",
+          messageId ? `派单消息：${messageId}` : "",
+          desktopVisible
+            ? "目标电脑报告桌面线程可见；Runner 接单后会继续同步过程回执。"
+            : deliveryWarning || "目标电脑接单后会回写最小回执；如桌面线程未连接，平台会显示待收口状态。",
+        ].filter(Boolean).join("\n"),
+        sender_type: "agent",
+        sender_id: recipientId,
+        recipient_type: "thread_workstation",
+        recipient_id: recipientId,
+        status: "in_progress",
+        metadata: {
+          source_message_id: messageId,
+          runner_command_id: text(runnerData?.id, "") || null,
+          runner_id: text(runnerData?.recipient_id, "") || null,
+          delivery_label: "执行电脑队列",
+          desktop_visible_capability: desktopVisible,
+        },
+      });
+      revalidateProjectSurfaces(projectId);
+      return {
+        launched: true,
+        providerId,
+        seatName,
+        deliveryLabel: "执行电脑队列",
+        deliveryWarning,
+        desktopVisible,
+        launcher: "runner-command",
+        stdoutPath: null,
+        stderrPath: null,
+        error: null,
+      };
+    } catch (runnerError) {
+      console.warn("投递执行电脑队列失败，回退到平台单次处理:", runnerError);
+    }
+
+  const launchResult = launchDetachedWorkstationOneShot({
+    projectId,
+    workstationId: recipientId,
+    messageId,
+    providerId,
+    seatName,
+    ignoreAutomationSwitch: true,
+  });
 
     await postJson("/api/collaboration/messages", {
       project_id: projectId,
@@ -6605,16 +6689,16 @@ export async function 启动Npc单次线程处理(projectId: string, workstation
       message_type: "agent_ack",
       title: `单次线程处理已启动 / ${seatName}`,
       body: [
-        `平台已把这一句话交给 ${seatName} 的 ${deliveryLabel || platformProviderLabel(providerId)} 做单次处理，未创建 NPC 自动化。`,
+        `平台已把这一句话交给 ${seatName} 的 ${deliveryLabel || platformProviderLabel(providerId)} 做单次处理，用户不需要手动启动本机桥。`,
         desktopVisible
           ? "投递状态：正在确认目标 Codex Desktop 线程是否已收到；确认后会在本对话框显示“等待最终回复”。"
-          : "投递状态：后台 session/app-server 处理；当前不会声称桌面窗口实时可见。",
+          : "投递状态：平台内部通道处理中；若未连接桌面实时桥，本对话框仍会显示最小回执和最终结果。",
         deliveryWarning,
         messageId ? `派单消息：${messageId}` : "",
-        launchResult.launched ? `启动器：${launchResult.launcher || "platform-workstation-adapter.py"}` : `启动失败：${launchResult.error || "未知错误"}`,
+        launchResult.launched ? "平台内部执行桥：已启动" : `启动失败：${launchResult.error || "未知错误"}`,
         launchResult.stdoutPath ? `stdout：${launchResult.stdoutPath}` : "",
         launchResult.stderrPath ? `stderr：${launchResult.stderrPath}` : "",
-        "平台只等待最小回执和最终结果；完整处理过程以绑定线程或本机执行器日志为准。",
+        "平台会同步桌面提问、最小回执和最终结果；完整处理过程留在绑定桌面线程中可追踪。",
       ].filter(Boolean).join("\n"),
       sender_type: "agent",
       sender_id: recipientId,

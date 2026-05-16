@@ -6,10 +6,15 @@ import { NextResponse } from "next/server";
 
 const ALLOWED_RUNNER_SCRIPTS = new Set([
   "register-runner.ps1",
+  "register-runner.sh",
   "connect-ai-collab-runner.ps1",
+  "connect-ai-collab-runner.sh",
   "sync-runner-threads.ps1",
+  "sync-runner-threads.sh",
   "sync-codex-session-threads.ps1",
+  "sync-codex-session-threads.sh",
   "sync-claude-session-threads.ps1",
+  "sync-claude-session-threads.sh",
   "platform-workstation-adapter.py",
   "platform-provider-executor.py",
 ]);

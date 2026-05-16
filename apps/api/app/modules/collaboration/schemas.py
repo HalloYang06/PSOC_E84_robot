@@ -119,6 +119,7 @@ class CollaborationMessageCreate(BaseModel):
     handoff_id: str | None = None
     requirement_id: str | None = None
     agent_id: str | None = None
+    dispatch_id: str | None = None
     message_type: str = "comment_message"
     title: str | None = Field(default=None, max_length=300)
     body: str = Field(min_length=1)
@@ -173,8 +174,69 @@ class CollaborationMessageRead(BaseModel):
     recipient_id: str | None
     status: str
     metadata: dict | None = Field(default=None, alias="extra_data")
+    authoritative_seat_id: str | None = None
+    authoritative_seat_ref: str | None = None
+    authoritative_target_seat_id: str | None = None
+    historical_alias_non_authoritative: bool = False
     created_at: datetime | None
     updated_at: datetime | None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _inject_authority_fields(cls, value):
+        if isinstance(value, dict):
+            data = dict(value)
+        else:
+            data = {
+                "id": getattr(value, "id", None),
+                "project_id": getattr(value, "project_id", None),
+                "task_id": getattr(value, "task_id", None),
+                "approval_id": getattr(value, "approval_id", None),
+                "handoff_id": getattr(value, "handoff_id", None),
+                "requirement_id": getattr(value, "requirement_id", None),
+                "agent_id": getattr(value, "agent_id", None),
+                "dispatch_id": getattr(value, "dispatch_id", None),
+                "message_type": getattr(value, "message_type", None),
+                "title": getattr(value, "title", None),
+                "body": getattr(value, "body", None),
+                "sender_type": getattr(value, "sender_type", None),
+                "sender_id": getattr(value, "sender_id", None),
+                "recipient_type": getattr(value, "recipient_type", None),
+                "recipient_id": getattr(value, "recipient_id", None),
+                "status": getattr(value, "status", None),
+                "extra_data": getattr(value, "extra_data", None),
+                "created_at": getattr(value, "created_at", None),
+                "updated_at": getattr(value, "updated_at", None),
+            }
+        metadata = data.get("extra_data")
+        if not isinstance(metadata, dict):
+            metadata = {}
+        authoritative_seat_id = (
+            data.get("authoritative_seat_id")
+            or metadata.get("authoritative_seat_id")
+            or metadata.get("authoritative_sender_seat_id")
+            or data.get("sender_id")
+        )
+        authoritative_seat_ref = (
+            data.get("authoritative_seat_ref")
+            or metadata.get("authoritative_seat_ref")
+            or metadata.get("canonical_workstation_id")
+            or authoritative_seat_id
+        )
+        authoritative_target_seat_id = (
+            data.get("authoritative_target_seat_id")
+            or metadata.get("authoritative_target_seat_id")
+            or data.get("recipient_id")
+        )
+        data["authoritative_seat_id"] = str(authoritative_seat_id or "").strip() or None
+        data["authoritative_seat_ref"] = str(authoritative_seat_ref or "").strip() or None
+        data["authoritative_target_seat_id"] = str(authoritative_target_seat_id or "").strip() or None
+        data["historical_alias_non_authoritative"] = bool(
+            data.get("historical_alias_non_authoritative")
+            if data.get("historical_alias_non_authoritative") is not None
+            else metadata.get("historical_alias_non_authoritative")
+        )
+        return data
 
 
 class CollaborationMessagePreviewRead(BaseModel):
@@ -274,6 +336,33 @@ class WorkstationInboxProgressCreate(BaseModel):
 class WorkstationInboxCompleteCreate(BaseModel):
     result_status: str = Field(default="completed", pattern="^(completed|failed)$")
     note: str | None = Field(default=None, max_length=4000)
+
+
+class DesktopCloseoutActionCreate(BaseModel):
+    action: str = Field(pattern="^(nudge|extend_wait|retry_desktop_sync|manual_close)$")
+    note: str | None = Field(default=None, max_length=4000)
+
+
+class DesktopThreadSyncCreate(BaseModel):
+    role: str = Field(pattern="^(user|assistant)$")
+    note: str = Field(min_length=1, max_length=4000)
+    phase: str | None = Field(default=None, max_length=80)
+    session_id: str | None = Field(default=None, max_length=128)
+    source_event_id: str | None = Field(default=None, max_length=256)
+    source_timestamp: str | None = Field(default=None, max_length=80)
+    linked_message_id: str | None = Field(default=None, max_length=64)
+    metadata: dict | None = Field(default=None, alias="extra_data")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_metadata_alias(cls, value):
+        if isinstance(value, dict) and "metadata" in value and "extra_data" not in value:
+            data = dict(value)
+            data["extra_data"] = data.pop("metadata")
+            return data
+        return value
 
 
 class WorkstationAdapterConfigRead(BaseModel):

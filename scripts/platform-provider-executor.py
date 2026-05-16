@@ -21,7 +21,8 @@ DEFAULT_SYSTEM_PROMPT = (
     "根据平台命令生成一条可以直接回写到最终回复池的中文最终回复。"
     "开工前遵守 docs/ai-requirements/ai-required-requirements-ledger.md 的需求表和人工审核边界。"
     "默认只能做阅读、分析、总结、审查类工作；禁止修改文件、删除文件、安装软件、提交代码或执行会产生副作用的操作。"
-    "只输出最终回复正文，不要解释过程，不要使用 markdown 代码块。"
+    "只输出最终回复正文，不要解释过程。"
+    "除非平台任务要求自主协作且 seat-mcp 工具不可用，否则不要使用 markdown 代码块。"
     "输出必须以“最终回复：”开头，内容尽量简洁、具体、可交付。"
 )
 
@@ -53,14 +54,26 @@ def _extract_platform_command(prompt_text: str) -> tuple[str, str]:
 
 def _compose_prompt(prompt_text: str, *, message_id: str) -> str:
     title, instruction = _extract_platform_command(prompt_text)
+    autonomous_peer_dispatch = "platform-peer-dispatches" in prompt_text or any(
+        keyword in instruction
+        for keyword in ("自己组织", "主动派单", "自主合作", "协调 1-6", "协调1-6", "分配给 1", "分配给1")
+    )
     prefix = (
         "请根据下面的平台协作任务，直接产出一条给用户看的最终回复。"
         "开工前如果存在 docs/ai-requirements/ai-required-requirements-ledger.md，必须先遵守其中的提需求者、被提需求者、人工审核边界、一次性/心跳模式和完成后回给谁。"
         "不要复述平台 envelope，不要列环境信息，不要解释过程，不要说你已经收到任务。"
         "除非任务正文明确要求且人类已经批准，否则只允许阅读、分析、总结、审查，不允许改文件或执行有副作用的动作。"
         "如果任务正文要求先最小回执再最终回复，这里只负责最终回复。"
-        "输出必须只有一句中文，以“最终回复：”开头，尽量控制在 80 个汉字以内。"
+        "输出必须以“最终回复：”开头，尽量简洁。"
     )
+    if autonomous_peer_dispatch:
+        prefix += (
+            " 如果你需要其他 NPC 协作但当前工具环境无法直接调用 seat-mcp，"
+            "不要说工具不可用，也不要让用户手动派单；请在最终回复末尾追加 ```platform-peer-dispatches fenced JSON 代码块，"
+            "数组元素包含 seat_id、title、body、card_kind、risk_level。平台会自动转成真实 NPC 派单。"
+        )
+    else:
+        prefix += " 非必要不要使用 markdown 代码块，尽量控制在 80 个汉字以内。"
     if message_id.strip():
         prefix += f" 当前 message_id={message_id.strip()}。"
     return f"{prefix}\n\n任务标题：{title}\n任务正文：{instruction}\n"

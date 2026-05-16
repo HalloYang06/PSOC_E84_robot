@@ -141,6 +141,296 @@
   line-height: 1.58;
 }
 
+.materialLab {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 28px;
+  padding: 36px 56px;
+  border-bottom: 1px solid rgba(255, 232, 168, 0.14);
+  background:
+    linear-gradient(90deg, rgba(132, 247, 207, 0.08), transparent 42%),
+    rgba(255, 255, 255, 0.025);
+}
+
+.materialIntro {
+  display: grid;
+  gap: 12px;
+  align-content: center;
+}
+
+.materialIntro span,
+.materialCard span,
+.adoptionPanel span,
+.materialAcceptance span {
+  color: #83f7cf;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.materialIntro h2 {
+  max-width: 820px;
+  margin: 0;
+  font-size: 34px;
+  line-height: 1.14;
+  letter-spacing: 0;
+}
+
+.materialIntro p,
+.materialCard small,
+.adoptionPanel p,
+.materialAcceptance p {
+  margin: 0;
+  color: rgba(255, 250, 240, 0.68);
+  line-height: 1.6;
+}
+
+.materialActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.materialActions a {
+  padding: 8px 11px;
+  border: 1px solid rgba(131, 247, 207, 0.3);
+  border-radius: 8px;
+  background: rgba(131, 247, 207, 0.08);
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.materialActions a:first-child {
+  background: #83f7cf;
+  color: #071214;
+}
+
+.materialConsole {
+  position: relative;
+  min-height: 230px;
+  display: grid;
+  align-content: end;
+  gap: 8px;
+  padding: 20px;
+  overflow: hidden;
+  border: 1px solid rgba(131, 247, 207, 0.22);
+  border-radius: 8px;
+  background:
+    repeating-linear-gradient(90deg, rgba(131, 247, 207, 0.05) 0 1px, transparent 1px 34px),
+    linear-gradient(145deg, rgba(131, 247, 207, 0.1), rgba(255, 232, 168, 0.04)),
+    #061014;
+}
+
+.materialConsole::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 0 26%, rgba(255, 255, 255, 0.14) 32%, transparent 39% 100%);
+  transform: translateX(-70%);
+  animation: materialSweep 6s ease-in-out infinite;
+}
+
+.signalLine {
+  position: absolute;
+  inset: 16px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  opacity: 0.82;
+}
+
+.signalLine span {
+  align-self: end;
+  height: 42%;
+  border-radius: 999px 999px 0 0;
+  background: linear-gradient(180deg, rgba(131, 247, 207, 0.9), rgba(131, 247, 207, 0.08));
+  transform-origin: bottom;
+  animation: signalPulse 2.8s ease-in-out infinite;
+}
+
+.signalLine span:nth-child(2) {
+  height: 72%;
+  animation-delay: 0.35s;
+}
+
+.signalLine span:nth-child(3) {
+  height: 54%;
+  animation-delay: 0.7s;
+}
+
+.signalLine span:nth-child(4) {
+  height: 88%;
+  animation-delay: 1.05s;
+}
+
+.materialConsole strong,
+.materialConsole p {
+  position: relative;
+}
+
+.materialConsole strong {
+  font-size: 20px;
+}
+
+.materialConsole p {
+  margin: 0;
+  color: rgba(255, 250, 240, 0.68);
+  line-height: 1.5;
+}
+
+.materialGrid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1px;
+  background: rgba(131, 247, 207, 0.14);
+}
+
+.materialCard {
+  min-height: 330px;
+  display: grid;
+  align-content: start;
+  gap: 9px;
+  padding: 18px;
+  border-top: 3px solid rgba(131, 247, 207, 0.72);
+  background: rgba(8, 15, 17, 0.98);
+}
+
+.materialCard[data-registered="1"] {
+  border-top-color: rgba(255, 232, 168, 0.78);
+  background:
+    linear-gradient(180deg, rgba(255, 232, 168, 0.055), transparent 42%),
+    rgba(8, 15, 17, 0.98);
+}
+
+.materialCard strong {
+  font-size: 18px;
+}
+
+.materialCard p {
+  margin: 0;
+  color: #fffaf0;
+  line-height: 1.42;
+}
+
+.materialCard dl {
+  display: grid;
+  gap: 1px;
+  margin: 4px 0;
+  background: rgba(131, 247, 207, 0.12);
+}
+
+.materialCard dl div {
+  display: grid;
+  gap: 4px;
+  padding: 9px;
+  background: rgba(6, 16, 20, 0.92);
+}
+
+.materialCard dt {
+  color: rgba(131, 247, 207, 0.78);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.materialCard dd {
+  margin: 0;
+  color: rgba(255, 250, 240, 0.76);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.materialNext {
+  padding: 9px 10px;
+  border: 1px solid rgba(255, 232, 168, 0.18);
+  background: rgba(255, 232, 168, 0.055);
+  color: rgba(255, 250, 240, 0.78) !important;
+  font-size: 12px;
+}
+
+.materialRegisterForm {
+  align-self: end;
+  margin-top: 2px;
+}
+
+.materialRegisterForm button {
+  width: 100%;
+  min-height: 36px;
+  padding: 8px 10px;
+  border: 1px solid rgba(131, 247, 207, 0.36);
+  border-radius: 8px;
+  background: rgba(131, 247, 207, 0.1);
+  color: #d9fff3;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.materialRegisterForm button:hover {
+  background: rgba(131, 247, 207, 0.18);
+}
+
+.materialRegistered {
+  align-self: end;
+  min-height: 36px;
+  display: grid;
+  place-items: center;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 232, 168, 0.32);
+  border-radius: 8px;
+  background: rgba(255, 232, 168, 0.1);
+  color: #ffe8a8;
+  font-size: 12px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.adoptionPanel {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  padding: 24px 56px 0;
+}
+
+.adoptionPanel article {
+  min-height: 142px;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid rgba(131, 247, 207, 0.18);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.adoptionPanel strong {
+  font-size: 16px;
+  line-height: 1.35;
+}
+
+.materialAcceptance {
+  display: grid;
+  gap: 14px;
+  padding: 28px 56px 0;
+}
+
+.acceptanceGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  background: rgba(255, 232, 168, 0.14);
+}
+
+.acceptanceGrid article {
+  min-height: 116px;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 16px;
+  background: rgba(8, 15, 17, 0.96);
+  border-top: 3px solid rgba(255, 232, 168, 0.5);
+}
+
 .board {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 300px;
@@ -230,20 +520,29 @@
 
 @media (max-width: 1080px) {
   .hero,
-  .board {
+  .board,
+  .materialLab {
     grid-template-columns: 1fr;
     padding-left: 24px;
     padding-right: 24px;
   }
 
   .pipeline,
-  .referenceGrid {
+  .referenceGrid,
+  .materialGrid,
+  .adoptionPanel {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .referencePanel {
+  .referencePanel,
+  .materialAcceptance,
+  .adoptionPanel {
     padding-left: 24px;
     padding-right: 24px;
+  }
+
+  .acceptanceGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -254,7 +553,35 @@
 
   .pipeline,
   .referenceGrid,
+  .materialGrid,
+  .adoptionPanel,
+  .acceptanceGrid,
   .matrix {
     grid-template-columns: 1fr;
+  }
+}
+
+@keyframes signalPulse {
+  0%,
+  100% {
+    transform: scaleY(0.68);
+    opacity: 0.55;
+  }
+
+  45% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+@keyframes materialSweep {
+  0%,
+  44% {
+    transform: translateX(-72%);
+  }
+
+  70%,
+  100% {
+    transform: translateX(72%);
   }
 }

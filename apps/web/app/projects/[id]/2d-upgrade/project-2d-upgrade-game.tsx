@@ -213,46 +213,46 @@ function labelProjectReturnPath(value: string): string {
   if (value.includes("/ai-lab")) return "返回 AI 实验室";
   if (value.includes("/robotics")) return "返回机器人现场";
   if (value.includes("/observability")) return "返回观测台";
-  if (value.includes("/skill-forge")) return "返回 Skill 工坊";
+  if (value.includes("/skill-forge")) return "返回能力工坊";
   if (value.includes("/company")) return "返回公司层";
   if (value.includes("/cockpit")) return "返回驾驶舱";
   if (value.includes("/unity-client")) return "返回 Unity 工作台";
   return "返回来源页面";
 }
 
-const YUESPEAK_RECOMMENDED_SKILLS: RecommendedProjectSkill[] = [
+const PLATFORM_RECOMMENDED_SKILLS: RecommendedProjectSkill[] = [
   {
-    id: "yuespeak-boss-planning",
-    label: "YueSpeak Boss 分工规划",
+    id: "platform-boss-planning",
+    label: "平台 Boss 分工规划",
     note: "把用户的一句话需求拆成可执行方案、工位分工、NPC 职责、GitHub 知识库路径和验收口径；Boss 只做规划、派单、收口，不直接替执行 NPC 写实现。",
     recommendedFor: ["Boss NPC", "产品与分工工位", "项目负责人"],
   },
   {
-    id: "yuespeak-backend-api",
-    label: "YueSpeak 后端接口与数据",
-    note: "负责阅读 YueSpeak 仓库文档，梳理接口、数据模型、标注流程、导出格式和迁移风险；输出要能被前端和 QA NPC 复用。",
+    id: "platform-backend-api",
+    label: "平台后端接口与数据",
+    note: "负责阅读项目仓库文档，梳理接口、数据模型、数据流、导出格式和迁移风险；输出要能被前端和 QA NPC 复用。",
     recommendedFor: ["后端数据 NPC", "标注与导出工位"],
   },
   {
-    id: "yuespeak-frontend-miniapp",
-    label: "YueSpeak 小程序体验",
-    note: "负责学生端录音、跟读、纠音反馈、教师端查看与任务流体验；提交前必须从真实用户路径说明点击步骤和页面状态。",
-    recommendedFor: ["前端小程序 NPC", "学生教师体验工位"],
+    id: "platform-frontend-workbench",
+    label: "平台前端工作台体验",
+    note: "负责从真实用户路径检查页面密度、主操作、工作台布局和状态反馈；提交前必须说明点击步骤和页面状态。",
+    recommendedFor: ["前端体验 NPC", "工作台体验工位"],
   },
   {
-    id: "yuespeak-dataset-export",
-    label: "YueSpeak 数据集导出",
+    id: "platform-dataset-export",
+    label: "平台数据集导出",
     note: "关注音频、文本、评分、标注结果的导入导出闭环；每次改动要说明字段来源、兼容旧数据方式和可回滚点。",
     recommendedFor: ["后端数据 NPC", "数据治理 NPC"],
   },
   {
-    id: "yuespeak-browser-acceptance",
-    label: "YueSpeak 浏览器验收",
+    id: "platform-browser-acceptance",
+    label: "平台浏览器验收",
     note: "用用户视角验证页面能不能用、密度是否舒服、核心按钮是否找得到；每次给出截图或明确的路由、操作、结果。",
     recommendedFor: ["QA 验收 NPC", "验收风险工位"],
   },
   {
-    id: "yuespeak-cross-station-routing",
+    id: "platform-cross-station-routing",
     label: "跨工位协作路由",
     note: "同一工位 NPC 互相认识并按职责找人；不同工位只能通过目标工位长 NPC 沟通，回执必须回到发起 NPC 和 Boss 收口。",
     recommendedFor: ["Boss NPC", "工位长 NPC", "协作平台 NPC"],
@@ -429,7 +429,7 @@ const PANEL_ACTIONS: Record<ModuleTab, PanelAction[]> = {
     {
       id: "npc-skills",
       label: "装配 Skill",
-      summary: "从 Skill 仓库给 NPC 选择固定技能。",
+      summary: "从能力仓库给 NPC 选择固定能力包。",
       detail: "仓库在 Skill 管理里维护；这里仅给具体 NPC 装配或卸载。",
       primaryLabel: "打开装配抽屉",
       safety: "装配变更不会立即派单。",
@@ -447,7 +447,7 @@ const PANEL_ACTIONS: Record<ModuleTab, PanelAction[]> = {
     {
       id: "pairing-token",
       label: "生成配对令牌",
-      summary: "给新电脑生成 runner 接入令牌。",
+      summary: "给新电脑生成执行接入令牌。",
       detail: "三级抽屉展示一键命令、局域网地址和失败排查，不再让按钮一直转圈。",
       primaryLabel: "打开配对抽屉",
       safety: "令牌过期后不能复用。",
@@ -462,7 +462,7 @@ const PANEL_ACTIONS: Record<ModuleTab, PanelAction[]> = {
     },
     {
       id: "runner-health",
-      label: "Runner 健康",
+      label: "执行电脑健康",
       summary: "确认电脑在线、心跳、队列和最近错误。",
       detail: "如果电脑没进入项目或 runner 离线，首页需要持续提醒。",
       primaryLabel: "打开健康抽屉",
@@ -482,7 +482,7 @@ const PANEL_ACTIONS: Record<ModuleTab, PanelAction[]> = {
       id: "skill-category",
       label: "分类管理",
       summary: "按固定必备、职业、硬件、UI、验证等分类。",
-      detail: "Skill 仓库是来源库，NPC 装配只索引这里的条目。",
+      detail: "能力仓库是来源库，NPC 装配只索引这里的条目。",
       primaryLabel: "打开分类抽屉",
       safety: "分类修改不影响已装配 NPC，除非用户确认同步。",
     },
@@ -507,7 +507,7 @@ const PANEL_ACTIONS: Record<ModuleTab, PanelAction[]> = {
     {
       id: "daily-plan",
       label: "生成今日安排",
-      summary: "根据任务、在线电脑和审核边界安排今日工作。",
+      summary: "根据任务、Runner 心跳和审核边界安排今日工作。",
       detail: "AI 可给建议，但涉及硬件和危险操作必须先人工审核。",
       primaryLabel: "打开今日安排抽屉",
       safety: "只生成计划，不执行。",
@@ -552,7 +552,7 @@ const PANEL_ACTIONS: Record<ModuleTab, PanelAction[]> = {
       id: "automation-toggle",
       label: "自动化开关",
       summary: "高级开关：按 NPC 控制是否进入持续自动化。",
-      detail: "默认关闭。当前 YueSpeak 开发由 Codex 通过平台手动推进，不建议给项目 NPC 开心跳自动化。",
+      detail: "默认关闭。项目开发由人类负责人决定节奏，不建议给项目 NPC 直接开启持续自动化。",
       primaryLabel: "打开自动化抽屉",
       safety: "默认关闭，节省 token。",
     },
@@ -560,7 +560,7 @@ const PANEL_ACTIONS: Record<ModuleTab, PanelAction[]> = {
       id: "heartbeat-time",
       label: "心跳时间",
       summary: "高级配置：只有明确开启 NPC 自动化时才需要。",
-      detail: "当前 YueSpeak 开发不依赖这里；不要把 Codex 自己的叫醒自动化和项目 NPC 自动化混在一起。",
+      detail: "普通项目开发不依赖这里；不要把平台维护线程和项目 NPC 自动化混在一起。",
       primaryLabel: "打开心跳抽屉",
       safety: "超过预算时自动暂停。",
     },
@@ -757,11 +757,11 @@ function WorkstationGroupsSection({
   const [editingWsId, setEditingWsId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editLeadSeatId, setEditLeadSeatId] = useState("");
-  const yueSpeakBlueprintNames = [
-    "YueSpeak Boss / 产品与分工工位",
-    "YueSpeak Backend Data / 标注与导出工位",
-    "YueSpeak Frontend Miniapp / 学生教师体验工位",
-    "YueSpeak QA Acceptance / 验收风险工位",
+  const platformBlueprintNames = [
+    "Boss 总控 / 产品与分工工位",
+    "后端数据 / 接口与数据流工位",
+    "前端体验 / 工作台界面工位",
+    "QA 验收 / 用户路径工位",
   ];
 
   async function callApi(method: string, path: string, body?: unknown): Promise<{ ok: boolean; json: any }> {
@@ -835,21 +835,21 @@ function WorkstationGroupsSection({
     }
   }
 
-  async function createYueSpeakBlueprint() {
+  async function createPlatformBlueprint() {
     setBusyId("create");
     setAdminNote(null);
     try {
       const existingNames = new Set(projectWorkstations.map((ws) => ws.name.trim().toLowerCase()));
-      const missing = yueSpeakBlueprintNames.filter((name) => !existingNames.has(name.toLowerCase()));
+      const missing = platformBlueprintNames.filter((name) => !existingNames.has(name.toLowerCase()));
       if (!missing.length) {
-        setAdminNote("YueSpeak 推荐工位已存在。");
+        setAdminNote("平台推荐工位已存在。");
         return;
       }
       for (const name of missing) {
         const r = await callApi("POST", `/api/projects/${encodeURIComponent(projectId)}/workstations`, { name });
         if (!r.ok) throw new Error(`${name}: ${r.json?.error?.message ?? "create failed"}`);
       }
-      setAdminNote(`✓ 已创建 ${missing.length} 个 YueSpeak 推荐工位`);
+      setAdminNote(`✓ 已创建 ${missing.length} 个平台推荐工位`);
       router.refresh();
     } catch (e) {
       setAdminNote(`创建推荐工位失败：${e instanceof Error ? e.message : String(e)}`);
@@ -907,14 +907,14 @@ function WorkstationGroupsSection({
     }
   }
 
-  async function autoArrangeYueSpeakWorkstations() {
+  async function autoArrangePlatformWorkstations() {
     const mapping = [
-      { npc: "YueSpeak Boss", station: "YueSpeak Boss / 产品与分工工位" },
-      { npc: "YueSpeak Backend Data", station: "YueSpeak Backend Data / 标注与导出工位" },
-      { npc: "YueSpeak Frontend Miniapp", station: "YueSpeak Frontend Miniapp / 学生教师体验工位" },
-      { npc: "YueSpeak QA Acceptance", station: "YueSpeak QA Acceptance / 验收风险工位" },
+      { npc: "Boss", station: "Boss 总控 / 产品与分工工位" },
+      { npc: "后端", station: "后端数据 / 接口与数据流工位" },
+      { npc: "前端", station: "前端体验 / 工作台界面工位" },
+      { npc: "QA", station: "QA 验收 / 用户路径工位" },
     ];
-    setBusyId("yuespeak:auto");
+    setBusyId("platform:auto");
     setAdminNote(null);
     try {
       const arranged: Array<{ wsId: string; seatId: string; station: string }> = [];
@@ -938,10 +938,10 @@ function WorkstationGroupsSection({
         );
         if (!r.ok) throw new Error(`${item.station}: ${r.json?.error?.message ?? "set lead failed"}`);
       }
-      setAdminNote(`✓ 已按 YueSpeak 蓝图归位 ${arranged.length} 个 NPC，并设为各自工位长`);
+      setAdminNote(`✓ 已按平台蓝图归位 ${arranged.length} 个 NPC，并设为各自工位长`);
       router.refresh();
     } catch (e) {
-      setAdminNote(`YueSpeak 自动归位失败：${e instanceof Error ? e.message : String(e)}`);
+      setAdminNote(`平台蓝图自动归位失败：${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setBusyId(null);
     }
@@ -1050,7 +1050,7 @@ function WorkstationGroupsSection({
         <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
           <section className={styles.workstationSetupGuide}>
             <div>
-              <strong>YueSpeak 协作先做这三步</strong>
+              <strong>平台协作先做这三步</strong>
               <p>创建逻辑工位，把 NPC 分配进去，再给每个工位指定工位长。工位知识库用 GitHub 仓库相对路径，本地工程目录只作为当前电脑执行目录。</p>
             </div>
             <div className={styles.workstationSetupSteps}>
@@ -1063,20 +1063,20 @@ function WorkstationGroupsSection({
             <button
               type="button"
               className={styles.workstationBlueprintBtn}
-              onClick={createYueSpeakBlueprint}
+              onClick={createPlatformBlueprint}
               disabled={busyId === "create"}
             >
-              {busyId === "create" ? "创建推荐工位中..." : "一键创建 YueSpeak 推荐工位"}
+              {busyId === "create" ? "创建推荐工位中..." : "一键创建平台推荐工位"}
             </button>
           ) : null}
           {projectWorkstations.length > 0 ? (
             <button
               type="button"
               className={styles.workstationBlueprintBtn}
-              onClick={autoArrangeYueSpeakWorkstations}
-              disabled={busyId === "yuespeak:auto"}
+              onClick={autoArrangePlatformWorkstations}
+              disabled={busyId === "platform:auto"}
             >
-              {busyId === "yuespeak:auto" ? "YueSpeak 自动归位中..." : "按 YueSpeak NPC 名称自动归位并设置工位长"}
+              {busyId === "platform:auto" ? "平台蓝图自动归位中..." : "按 NPC 名称自动归位并设置工位长"}
             </button>
           ) : null}
           <form
@@ -1428,14 +1428,14 @@ function computerUserHint(computer: FeedItem, workstations: FeedItem[]) {
   const threads = computerThreadCount(computer, workstations);
   if (["online", "ready", "active"].includes(status) && threads > 0) return `可接单：已发现 ${threads} 条线程，可继续绑定 NPC 或下发只读任务。`;
   if (["online", "ready", "active"].includes(status)) return "Runner 在线但暂无线程：请打开 Codex/Claude/Qwen 后重新扫描。";
-  if (status.includes("stale") || status.includes("expired")) return "心跳过期：让目标电脑重新运行 runner 接入命令或刷新心跳。";
+  if (status.includes("stale") || status.includes("expired")) return "心跳过期：让目标电脑重新运行执行接入命令或刷新心跳。";
   if (status.includes("offline")) return "离线：确认目标电脑是否开机、是否进入项目、runner 是否仍在运行。";
   return "状态需要确认：先看 runner 心跳和线程扫描结果，再派单。";
 }
 
 function computerDesktopCapabilityLabel(computer: FeedItem) {
   if (computer.desktopBridgeConnected && computer.desktopDeliveryMode === "codex_desktop_ui") {
-    return computer.desktopBridgeLabel || "Codex Desktop UI 可见";
+    return computer.desktopBridgeLabel || "桌面线程可见";
   }
   if (computer.desktopProcessDetected) return "检测到桌面进程，未确认 UI 投递";
   return "未检测到桌面投递桥";
@@ -1448,7 +1448,7 @@ function computerDesktopCapabilityHint(computer: FeedItem) {
   if (computer.desktopProcessDetected) {
     return "Runner 看到本机桌面进程，但没有上报可交互 UI 输入桥；可能只能走 app-server 或文件投递。";
   }
-  return "这台电脑未上报 Desktop UI bridge；用户要先在目标电脑打开 AI 桌面版并重新扫描线程。";
+  return "这台电脑还未确认桌面线程可接收派单；用户要先在目标电脑打开 AI 桌面版并重新同步线程。";
 }
 
 function providerSummary(workstations: FeedItem[]) {
@@ -1764,14 +1764,14 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
   }
 
   async function createRecommendedSkill(skillId: string) {
-    const selected = YUESPEAK_RECOMMENDED_SKILLS.find((skill) => skill.id === skillId);
+    const selected = PLATFORM_RECOMMENDED_SKILLS.find((skill) => skill.id === skillId);
     if (!selected) {
-      setRecommendedSkillNotice("请先选择一个推荐 Skill。");
+      setRecommendedSkillNotice("请先选择一个推荐能力包。");
       return;
     }
     const existingSkillIds = new Set(skills.map((skill) => String(skill.id ?? "").trim().toLowerCase()).filter(Boolean));
     if (existingSkillIds.has(selected.id)) {
-      setRecommendedSkillNotice("这个 Skill 已经创建过。");
+      setRecommendedSkillNotice("这个能力包已经创建过。");
       return;
     }
     setRecommendedSkillSavingId(selected.id);
@@ -1917,8 +1917,8 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         tab: "development-workshop",
         tone: "workshop",
         primary: "把项目拆成可协作工位",
-        description: "承接农场里的开发工坊：NanoPi、App、Unity、测试等工位都从这里管理。",
-        farmSource: "农场：开发工坊 / 工位管理",
+        description: "承接项目开发工坊：电脑、App、嵌入式、数据、测试等工位都从这里管理。",
+        farmSource: "主页面：开发工坊 / 工位管理",
       },
       {
         label: "主角管理",
@@ -1927,18 +1927,18 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         tab: "human-party",
         tone: "core",
         primary: "管理多人多电脑协作身份",
-        description: "承接农场右侧主角栏，但默认不常驻遮挡视野，只在点击后打开。",
-        farmSource: "农场：项目主角栏",
+        description: "承接项目成员与负责人视角，默认不常驻遮挡工作区，只在点击后打开。",
+        farmSource: "主页面：成员与电脑归属",
       },
       {
         label: "NPC 管理",
         short: "精",
-        hint: "创建 NPC、绑定线程、装配 Skill",
+        hint: "创建 NPC、绑定线程、装配能力包",
         tab: "npc-create",
         tone: "agent",
-        primary: "创建 AI 协作精灵",
-        description: "承接农场 NPC 管理：名字、职责、知识库、Skill、线程绑定、最近任务和对话。",
-        farmSource: "农场：NPC 管理器",
+        primary: "创建 AI 协作角色",
+        description: "承接 NPC 管理：名字、职责、知识库、能力包、线程绑定、最近任务和对话。",
+        farmSource: "主页面：NPC 管理器",
       },
       {
         label: "电脑接入",
@@ -1947,18 +1947,18 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         tab: "computers",
         tone: "computer",
         primary: "接入真实电脑",
-        description: "承接农场电脑接入管理：生成配对令牌、注册 runner、扫描 Codex/Claude/Qwen 线程。",
-        farmSource: "农场：电脑接入管理",
+        description: "承接电脑接入管理：生成配对令牌、注册执行电脑、扫描 Codex/Claude/Qwen 线程。",
+        farmSource: "主页面：电脑接入管理",
       },
       {
-        label: "Skill 仓库",
+        label: "能力包仓库",
         short: "技",
         hint: "GitHub 导入、中文说明、分类管理",
         tab: "skills",
         tone: "skill",
         primary: "管理可复用能力仓库",
-        description: "承接农场 Skill 管理仓库：这里是仓库，不是 NPC 装配页；NPC 从这里索引。",
-        farmSource: "农场：Skill 管理仓库",
+        description: "承接能力包管理仓库：这里是来源库，不是 NPC 装配页；NPC 从这里索引。",
+        farmSource: "主页面：能力包仓库",
       },
       {
         label: "日程 DDL",
@@ -1967,18 +1967,18 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         tab: "schedule",
         tone: "tool",
         primary: "安排今天怎么协作",
-        description: "承接农场主房日历：任务 DDL、每日安排、AI 当日执行顺序。",
-        farmSource: "农场：主房日历",
+        description: "承接项目日程：任务 DDL、每日安排、AI 当日执行顺序。",
+        farmSource: "主页面：日程计划",
       },
       {
-        label: "串口电视",
+        label: "设备调试",
         short: "波",
-        hint: "USB 扫描、串口收发、波形调试",
+        hint: "USB/CAN 扫描、串口收发、波形调试",
         tab: "serial-tv",
         tone: "tool",
         primary: "打开硬件调试台",
-        description: "承接农场主房电视机：后续扩展成 VOFA+ 类串口调试和波形入口。",
-        farmSource: "农场：主房电视机",
+        description: "承接设备调试入口：后续扩展成串口、USB、CAN、波形和日志工作台。",
+        farmSource: "主页面：设备调试台",
       },
       {
         label: "AI 调试",
@@ -1987,8 +1987,8 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         tab: "ai-debug",
         tone: "review",
         primary: "调试 AI 协作行为",
-        description: "承接农场协作稳定性验收：排查 token 消耗、自动化开关、最小回执和最终回复。",
-        farmSource: "农场：协作稳定性入口",
+        description: "承接协作稳定性验收：排查 token 消耗、自动化开关、最小回执和最终回复。",
+        farmSource: "主页面：协作稳定性入口",
       },
       {
         label: "AI 仿真",
@@ -1997,8 +1997,8 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         tab: "ai-simulation",
         tone: "tool",
         primary: "先仿真再真实执行",
-        description: "承接农场以战养战链路：机器人和嵌入式动作先在仿真层确认边界。",
-        farmSource: "农场：开发工坊扩展入口",
+        description: "承接仿真验证链路：机器人和嵌入式动作先在仿真层确认边界。",
+        farmSource: "主页面：仿真验证入口",
       },
       {
         label: "协作消息",
@@ -2007,8 +2007,8 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         tab: "exchange",
         tone: "review",
         primary: "查看协作现场",
-        description: "承接农场协作消息池：统一派单、最小回执、最终回复、人工审核提醒。",
-        farmSource: "农场：协作消息池",
+        description: "承接协作消息池：统一派单、最小回执、最终回复、人工审核提醒。",
+        farmSource: "主页面：协作消息池",
       },
       {
         label: "线程调试",
@@ -2017,8 +2017,8 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         tab: "machine-room",
         tone: "computer",
         primary: "确认线程是否能接单",
-        description: "承接农场电脑车间/机房：确认 Codex、Claude、Qwen 等真实线程是否在线。",
-        farmSource: "农场：电脑车间 / 线程调试",
+        description: "承接电脑线程调试：确认 Codex、Claude、Qwen 等真实线程是否在线。",
+        farmSource: "主页面：电脑线程调试",
       },
       {
         label: "Git 回退",
@@ -2027,8 +2027,8 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         tab: "git",
         tone: "review",
         primary: "守住版本安全",
-        description: "承接农场 Git 回退：可视化版本点、差异预检、回滚确认和审计记录。",
-        farmSource: "农场：Git 回退入口",
+        description: "承接 Git 安全回退：可视化版本点、差异预检、回滚确认和审计记录。",
+        farmSource: "主页面：Git 回退入口",
       },
     ],
     [],
@@ -2199,7 +2199,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
     if (!runnableComputers.length) {
       return {
         tone: "blocked",
-        title: "在线电脑缺少 Runner 绑定",
+        title: "电脑登记在线但缺少 Runner 绑定",
         detail: "先回电脑接入面板生成配对令牌，并让目标电脑完成 runner 注册。",
       };
     }
@@ -2501,7 +2501,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         <span><b>{stats.requirementCount}</b>需求</span>
         <span><b>{stats.activeTaskCount}</b>进行中</span>
         <span><b>{stats.blockedTaskCount}</b>阻塞</span>
-        <span><b>{stats.onlineComputerCount}/{stats.computerCount}</b>在线电脑</span>
+        <span><b>{stats.onlineComputerCount}/{stats.computerCount}</b>Runner 心跳</span>
       </div>
     );
   }
@@ -2546,7 +2546,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
       <div className={styles.logicalWorkstationSummary}>
         <section className={styles.workstationSetupGuide}>
           <div>
-            <strong>YueSpeak 协作先做这三步</strong>
+              <strong>平台协作先做这三步</strong>
             <p>逻辑工位、NPC 归属、工位长都在主页面治理；工作台只复用这些资源。</p>
           </div>
           <div className={styles.workstationSetupSteps}>
@@ -2817,7 +2817,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         <form action={createDevelopmentWorkshopStation.bind(null, project.id)} className={styles.drawerForm} data-unity-real-form="workshop-knowledge">
           <input type="hidden" name="return_to" value={returnPath("development-workshop", "station-knowledge")} />
           <input type="hidden" name="label" value="临时知识库工位" />
-          <input type="hidden" name="detail" value="从 Unity 2D 工坊知识库抽屉沉淀的共享知识。" />
+          <input type="hidden" name="detail" value="从项目工坊知识库抽屉沉淀的共享知识。" />
           <label>
             <span>知识库标签</span>
             <input name="knowledge_tags" placeholder="例如：unity-ui, runner, serial, git-safe" />
@@ -2950,7 +2950,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
           </label>
           <label>
             <span>职责</span>
-            <textarea name="responsibility" required rows={3} placeholder="例如：负责 Unity 2D UI 验收、截图、前端接线和最终回复。" />
+            <textarea name="responsibility" required rows={3} placeholder="例如：负责工作台 UI 验收、截图、前端接线和最终回复。" />
           </label>
           <label>
             <span>绑定线程，可选</span>
@@ -3062,8 +3062,8 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
       return (
         <div className={styles.realActionStack} data-unity-real-form="npc-skills">
           <article className={styles.realNote}>
-            <b>这里只给 NPC 装配 Skill，Skill 源头仍在 Skill 仓库</b>
-            <p>固定 Skill 会随 NPC 保存；每次派单前，NPC 都应该先读自己的固定 Skill 和项目必读需求表。⇪ 标记的 Skill 来自所在工位的 skill_inheritance（去工位设置改）。</p>
+            <b>这里只给 NPC 装配能力包，能力包源头仍在能力仓库</b>
+            <p>固定能力包会随 NPC 保存；每次派单前，NPC 都应该先读自己的固定能力包和项目必读需求表。⇪ 标记的能力包来自所在工位继承（去工位设置改）。</p>
           </article>
           {npcSeats.length ? (
             npcSeats.map((seat) => {
@@ -3076,7 +3076,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                 <input type="hidden" name="automation_enabled" value={seat.automationEnabled ? "true" : "false"} />
                 <input type="hidden" name="automation_heartbeat_seconds" value={String(seat.automationHeartbeatSeconds ?? 900)} />
                 <div className={styles.skillChecklist}>
-                  <b>{itemTitle(seat)} 已装配 Skill {inheritedSet.size ? `· 工位继承 ${inheritedSet.size}` : ""}</b>
+                  <b>{itemTitle(seat)} 已装配能力包 {inheritedSet.size ? `· 工位继承 ${inheritedSet.size}` : ""}</b>
                   {skills.length ? (
                     skills.map((skill) => {
                       const isInherited = inheritedSet.has(skill.id);
@@ -3084,20 +3084,20 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                       return (
                         <label key={skill.id} className={styles.skillOption} style={isInherited ? { opacity: 0.85 } : undefined}>
                           {isInherited ? (
-                            <input type="checkbox" checked readOnly disabled title="本 skill 由工位 skill_inheritance 注入，不会写进 NPC；要改请去工位设置" />
+                            <input type="checkbox" checked readOnly disabled title="本能力包由工位继承注入，不会写进 NPC；要改请去工位设置" />
                           ) : (
                             <input type="checkbox" name="skill_loadout" value={skill.id} defaultChecked={ownChecked} />
                           )}
                           <span>{isInherited ? "⇪ " : ""}{itemTitle(skill)}{isInherited ? "（工位继承）" : ""}</span>
-                          <small>{skill.body || skill.type || "项目 Skill 仓库条目"}</small>
+                          <small>{skill.body || skill.type || "项目能力仓库条目"}</small>
                         </label>
                       );
                     })
                   ) : (
-                    <p className={styles.emptyHint}>Skill 仓库暂无条目。先去 Skill 仓库添加或从 GitHub 导入。</p>
+                    <p className={styles.emptyHint}>能力仓库暂无条目。先去能力仓库添加或从 GitHub 导入。</p>
                   )}
                 </div>
-                <SubmitButton label="保存 Skill 装配" disabled={!skills.length} />
+                <SubmitButton label="保存能力包装配" disabled={!skills.length} />
               </form>
               );
             })
@@ -3249,7 +3249,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
           </label>
           <label>
             <span>标题</span>
-            <input name="title" required placeholder="例如：只读检查 Unity 2D 入口" />
+            <input name="title" required placeholder="例如：只读检查项目工作台入口" />
           </label>
           <label>
             <span>指令正文</span>
@@ -3346,7 +3346,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
               </form>
             ))
           ) : (
-            <p className={styles.emptyHint}>还没有电脑。先登记电脑并完成 runner 接入。</p>
+            <p className={styles.emptyHint}>还没有电脑。先登记电脑并完成执行接入。</p>
           )}
         </div>
       );
@@ -3356,7 +3356,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
       return (
         <div className={styles.realActionStack} data-unity-real-form="runner-health">
           <article className={styles.realNote}>
-            <b>Runner 健康要看“电脑在线 + 心跳 + 线程数”</b>
+            <b>执行电脑健康要看“电脑在线 + 心跳 + 线程数”</b>
             <p>电脑在线但扫不到线程时，不要直接派单；先让用户打开对应 AI 工具，再重新扫描线程。</p>
           </article>
           <div className={styles.layeredList}>
@@ -3365,7 +3365,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                 <article key={computer.id} className={styles.layeredItem}>
                   <span>{statusLabel(computer.status)}</span>
                   <b>{itemTitle(computer)}</b>
-                  <small>{computer.providerId || "runner 未绑定"} / {computerThreadCount(computer, workstations)} 条线程</small>
+                  <small>{computer.providerId || "执行程序未绑定"} / {computerThreadCount(computer, workstations)} 条线程</small>
                   <p>{computer.body || computerUserHint(computer, workstations)}</p>
                   <p>{computerDesktopCapabilityLabel(computer)}：{computerDesktopCapabilityHint(computer)}</p>
                   <details className={styles.itemDetails}>
@@ -3383,7 +3383,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
               <article className={styles.layeredItem}>
                 <span>空状态</span>
                 <b>暂无电脑状态</b>
-                <p>先到“生成配对令牌”登记电脑，再让目标电脑运行 runner 接入命令。</p>
+                <p>先到“生成配对令牌”登记电脑，再让目标电脑运行执行接入命令。</p>
               </article>
             )}
           </div>
@@ -3522,7 +3522,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             <b>可以从 GitHub 导入 Skill</b>
             <p>当前支持公开仓库的 repo、tree、blob 或 raw 地址。平台会识别 SKILL.md、skill.json、skills.json、skills/ 目录，也能把普通角色 Markdown 转成 Skill 草稿。</p>
             <dl>
-              <div><dt>推荐结构</dt><dd>skills/yuespeak-boss/SKILL.md</dd></div>
+              <div><dt>推荐结构</dt><dd>skills/project-boss/SKILL.md</dd></div>
               <div><dt>知识库路径</dt><dd>写 GitHub 仓库相对路径，不写本机 D:\ 目录</dd></div>
               <div><dt>私有仓库</dt><dd>暂不读取私有仓库；后续接 GitHub App、OAuth 或 Runner 凭据</dd></div>
             </dl>
@@ -3563,13 +3563,13 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
 
     if (moduleTab === "skills" && (action.id === "skill-category" || action.id === "skill-detail")) {
       const existingSkillIds = new Set(skills.map((skill) => String(skill.id ?? "").trim().toLowerCase()).filter(Boolean));
-      const allRecommendedCreated = YUESPEAK_RECOMMENDED_SKILLS.every((skill) => existingSkillIds.has(skill.id));
+      const allRecommendedCreated = PLATFORM_RECOMMENDED_SKILLS.every((skill) => existingSkillIds.has(skill.id));
       return (
         <div className={styles.realActionStack} data-unity-real-form="skill-create-custom">
-          <section className={styles.recommendedSkillStack} aria-label="YueSpeak 推荐 Skill">
+          <section className={styles.recommendedSkillStack} aria-label="平台推荐能力包">
             <div className={styles.realNote}>
-              <b>YueSpeak 推荐 Skill</b>
-              <p>先把 Boss、后端、前端、QA 和跨工位路由的基础 Skill 建起来，后面 NPC 装配时直接索引仓库。</p>
+              <b>平台推荐能力包</b>
+              <p>先把 Boss、后端、前端、QA 和跨工位路由的基础能力包建起来，后面 NPC 装配时直接索引仓库。</p>
             </div>
             <article className={styles.panelCard}>
               <span>GitHub 知识库索引</span>
@@ -3577,7 +3577,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
               <p>这里显示平台正式登记的仓库相对路径、存在状态、版本和同步时间；不要写本机 D:\ 路径。</p>
               {renderKnowledgeDocumentList(knowledgeDocuments, "暂无正式知识库文档，先登记 GitHub 仓库相对路径。")}
             </article>
-            {YUESPEAK_RECOMMENDED_SKILLS.map((skill) => {
+            {PLATFORM_RECOMMENDED_SKILLS.map((skill) => {
               const created = existingSkillIds.has(skill.id);
               return (
                 <article
@@ -3595,7 +3595,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                   >
                     <input type="hidden" name="return_to" value={returnPath("skills", action.id)} />
                     <input type="hidden" name="skill_id" value={skill.id} />
-                    <button type="submit" disabled={created}>{created ? "已创建" : "创建这个 Skill"}</button>
+                    <button type="submit" disabled={created}>{created ? "已创建" : "创建这个能力包"}</button>
                   </form>
                 </article>
               );
@@ -3605,7 +3605,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
               data-unity-real-form="skill-create-recommended"
             >
               <label>
-                <span>选择一个推荐 Skill</span>
+                <span>选择一个推荐能力包</span>
                 <select
                   name="skill_id"
                   required
@@ -3613,7 +3613,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                   onChange={(event) => setSelectedRecommendedSkillId(event.currentTarget.value)}
                 >
                   <option value="" disabled>选择后创建</option>
-                  {YUESPEAK_RECOMMENDED_SKILLS.map((skill) => {
+                  {PLATFORM_RECOMMENDED_SKILLS.map((skill) => {
                     const created = existingSkillIds.has(skill.id);
                     return (
                       <option key={skill.id} value={skill.id} disabled={created}>
@@ -3623,7 +3623,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                   })}
                 </select>
               </label>
-              <p className={styles.emptyHint}>选择后平台会自动带入标识、说明和推荐职业。</p>
+              <p className={styles.emptyHint}>选择后平台会自动带入标识、说明和推荐角色。</p>
               {recommendedSkillNotice ? <p className={styles.emptyHint}>{recommendedSkillNotice}</p> : null}
               <button
                 type="button"
@@ -3631,7 +3631,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                 aria-busy={Boolean(recommendedSkillSavingId)}
                 onClick={() => void createRecommendedSkill(selectedRecommendedSkillId)}
               >
-                {recommendedSkillSavingId ? "创建中..." : allRecommendedCreated ? "推荐 Skill 已齐" : "创建所选推荐 Skill"}
+                {recommendedSkillSavingId ? "创建中..." : allRecommendedCreated ? "推荐能力包已齐" : "创建所选推荐能力包"}
               </button>
             </div>
           </section>
@@ -3639,8 +3639,8 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
           <form action={createProjectSkill.bind(null, project.id)} className={styles.drawerForm}>
             <input type="hidden" name="return_to" value={returnPath("skills", action.id)} />
             <label>
-              <span>Skill 标识</span>
-              <input name="skill_id" required placeholder="例如：unity-ui-screenshot-qa" />
+              <span>能力包标识</span>
+              <input name="skill_id" required placeholder="例如：workbench-ui-screenshot-qa" />
             </label>
             <label>
               <span>中文名字</span>
@@ -3683,7 +3683,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
               </label>
               <label>
                 <span>Skill 标识</span>
-                <input name="skill_id" required placeholder="例如：yuespeak-teacher-progress-review" />
+                <input name="skill_id" required placeholder="例如：workbench-review-checklist" />
               </label>
               <label>
                 <span>Skill 名字</span>
@@ -3823,7 +3823,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             <span>备注</span>
             <textarea name="notes" rows={3} placeholder="例如：后续单片机按 @xy,12,34 发送，平台转成二维轨迹和波形。" />
           </label>
-          <SubmitButton label="保存串口电视格式" />
+          <SubmitButton label="保存设备调试格式" />
         </form>
       );
     }
@@ -3871,7 +3871,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         <div className={styles.realActionStack} data-unity-real-form={`ai-debug-${action.id}`}>
           <article className={styles.realNote}>
             <b>高级开关，默认不要开启</b>
-            <p>这不是 Codex 自己的叫醒自动化。当前 YueSpeak 开发由 Codex 通过平台手动推进，NPC 自动化保持关闭；只有用户明确要某个 NPC 持续拉取派单时才开启。</p>
+            <p>这不是平台维护线程的叫醒自动化。项目 NPC 自动化默认关闭；只有用户明确要某个 NPC 持续拉取派单时才开启。</p>
           </article>
           {npcSeats.length ? (
             npcSeats.map((seat) => (
@@ -4081,7 +4081,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         <div className={styles.realActionStack} data-unity-real-form={`machine-room-${action.id}`}>
           <article className={styles.realNote}>
             <b>{action.label}</b>
-            <p>这里承接农场电脑房：只读展示真实电脑、runner 和线程状态。扫描与配对动作已放在“电脑接入”。</p>
+            <p>这里承接电脑线程调试：只读展示真实电脑、执行程序和线程状态。扫描与配对动作已放在“电脑接入”。</p>
           </article>
           <div className={styles.layeredList}>
             {messages.filter(isAdapterMessage).slice(0, 8).map((message) => (
@@ -4210,7 +4210,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
     return (
       <article className={styles.realNote}>
         <b>这一项已完成入口搬迁，真实表单下一批接线。</b>
-        <p>当前先保证 Unity 2D 不再跳回农场、不靠地图交互；下一轮继续把旧农场对应 server action 搬进这个抽屉。</p>
+        <p>当前先保证工作台入口不再依赖旧场景交互；下一轮继续把旧入口对应的服务动作搬进这个抽屉。</p>
       </article>
     );
   }
@@ -4239,7 +4239,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
           <article className={styles.panelCard}>
             <span>当前主角</span>
             <strong>{currentUser.name}</strong>
-            <p>{currentUser.email || "未拿到邮箱"} / 这里承接农场主角栏，但只点击打开，不再长期挡住地图。</p>
+            <p>{currentUser.email || "未拿到邮箱"} / 这里承接项目负责人视角，只点击打开，不再长期挡住工作区。</p>
             {renderMetricGrid()}
           </article>
           <article className={styles.panelCard}>
@@ -4254,7 +4254,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
       return (
         <div className={styles.panelGrid}>
           <article className={styles.panelCard}>
-            <span>NPC 精灵栏</span>
+            <span>NPC 管理栏</span>
             <strong>创建、绑定、装配和对话都放这里</strong>
             <p>后续三级抽屉会包含 NPC 基础信息、职责、自动化开关、知识库、Skill 装配、绑定电脑/线程和对话框。</p>
           </article>
@@ -4271,7 +4271,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         <div className={styles.panelGrid}>
           <article className={styles.panelCard}>
             <span>电脑状态</span>
-            <strong>{stats.onlineComputerCount}/{stats.computerCount} 台在线</strong>
+            <strong>{stats.onlineComputerCount}/{stats.computerCount} 台 Runner 心跳正常</strong>
             <p>这里接入真实电脑、生成配对令牌、注册 runner、扫描 Codex / Claude / Qwen 线程。</p>
             <small>{providerSummary(workstations)}</small>
           </article>
@@ -4287,16 +4287,16 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
       return (
         <div className={styles.panelGrid}>
           <article className={styles.panelCard}>
-            <span>Skill 仓库</span>
-            <strong>这里是仓库，不是 NPC 装配页</strong>
-            <p>支持从 GitHub 导入 skill，写中文说明、分类和适用职业；NPC 装配时从这里索引。</p>
+            <span>能力包仓库</span>
+            <strong>这里是来源库，不是 NPC 装配页</strong>
+            <p>支持从 GitHub 导入能力包，写中文说明、分类和适用角色；NPC 装配时从这里索引。</p>
           </article>
           <article className={styles.panelCard}>
-            <span>项目 Skill 条目</span>
-            {renderSkillLifecycleList(skills, "暂无项目 Skill")}
+            <span>项目能力包条目</span>
+            {renderSkillLifecycleList(skills, "暂无项目能力包")}
           </article>
           <article className={styles.panelCard}>
-            <span>固定必备 Skill</span>
+            <span>固定必备能力包</span>
             <ul className={styles.panelList}>
               <li><b>截图验收</b><small>每个 NPC 提交前必须用户视角验证。</small></li>
               <li><b>需求必读表</b><small>AI 做任务前先读提需求者、被提需求者、边界和验收。</small></li>
@@ -4313,7 +4313,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
           <article className={styles.panelCard}>
             <span>日程日历</span>
             <strong>任务 DDL 和每日安排</strong>
-            <p>后续这里接入主房日历：编辑 DDL、今天安排、人工审核提醒，并让 AI 给出当日执行顺序。</p>
+            <p>后续这里接入项目日程：编辑 DDL、今天安排、人工审核提醒，并让 AI 给出当日执行顺序。</p>
           </article>
           <article className={styles.panelCard}>
             <span>今日可安排任务</span>
@@ -4327,13 +4327,13 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
       return (
         <div className={styles.panelGrid}>
           <article className={styles.panelCard}>
-            <span>串口电视</span>
-            <strong>USB 扫描 / 串口收发 / 波形查看</strong>
-            <p>先做入口框架，后续接 Runner 扫描 USB 设备、串口收发格式和数字数据波形。</p>
+            <span>设备调试台</span>
+            <strong>USB/CAN 扫描 / 串口收发 / 波形查看</strong>
+            <p>先做入口框架，后续接执行电脑扫描 USB/CAN/串口设备、收发格式和数字数据波形。</p>
           </article>
           <article className={styles.panelCard}>
             <span>可调试电脑</span>
-            {renderList(computers, "暂无在线电脑可调试。")}
+            {renderList(computers, "暂无 Runner 心跳正常的电脑可调试。")}
           </article>
         </div>
       );
@@ -4498,7 +4498,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                 type="button"
                 className={styles.cockpitGhost}
                 onClick={() => setSceneVisible((value) => !value)}
-                title="显示/隐藏 Unity 场景背景 (快捷键 Alt+U)"
+                title="显示/隐藏工作区背景 (快捷键 Alt+U)"
               >
                 {sceneVisible ? "隐藏场景" : "显示场景"}
               </button>
@@ -4546,9 +4546,9 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
               <Link
                 href={surfacePath("skill-forge")}
                 className={styles.cockpitGhost}
-                title="把 NPC 稳定经验沉淀成可审查、可绑定、可复用的 Skill"
+                title="把 NPC 稳定经验沉淀成可审查、可绑定、可复用的能力包"
               >
-                Skill 工坊 →
+                能力工坊 →
               </Link>
               <Link
                 href={surfacePath("company")}
@@ -4613,7 +4613,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
               </div>
               <div>
                 <dt>电脑</dt>
-                <dd>{stats.onlineComputerCount}/{stats.computerCount} 在线</dd>
+                <dd>{stats.onlineComputerCount}/{stats.computerCount} Runner 心跳</dd>
               </div>
               <div>
                 <dt>本机端口</dt>
@@ -4661,7 +4661,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                 <Link href={surfacePath("ai-lab", "ai-debug")}>打开 AI 实验室</Link>
                 <Link href={surfacePath("robotics", "machine-room")}>机器人现场</Link>
                 <Link href={surfacePath("observability", "exchange")}>打开观测台</Link>
-                <Link href={surfacePath("skill-forge", "skills")}>打开 Skill 工坊</Link>
+                <Link href={surfacePath("skill-forge", "skills")}>打开能力工坊</Link>
                 <button type="button" onClick={() => openPanel("ai-simulation", "工作台结构")}>AI 仿真</button>
                 <button type="button" onClick={() => openPanel("serial-tv", "工作台结构")}>串口调试</button>
               </div>
@@ -4680,7 +4680,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             </article>
             <article className={styles.cockpitMetricCard}>
               <span>AI 线程</span>
-              <strong>{npcSeats.length} 个 · 在线电脑 {stats.onlineComputerCount}/{stats.computerCount}</strong>
+              <strong>{npcSeats.length} 个 · Runner 心跳 {stats.onlineComputerCount}/{stats.computerCount}</strong>
               <p>本月 token ￥{stats.tokenSpend} · 协作消息 {stats.messageCount}</p>
               <p>
                 本机线程怎么接单？看{" "}
@@ -4934,7 +4934,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             </div>
           </div>
           <div className={styles.panelActionRow}>
-            <button type="button" className={styles.panelGhost} onClick={closePanel}>返回游戏背景</button>
+            <button type="button" className={styles.panelGhost} onClick={closePanel}>返回工作面背景</button>
           </div>
         </section>
       ) : null}
@@ -4985,7 +4985,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
       ) : null}
 
       <footer className={styles.helpBar}>
-        <span>当前阶段：先搬功能入口和 UI 风格。所有业务操作先从右侧按钮点击打开，暂不启用 Unity 物件交互。</span>
+        <span>当前阶段：先固定功能入口和工作台风格。所有业务操作先从右侧按钮点击打开，暂不启用可视化场景物件交互。</span>
       </footer>
     </main>
     {broadcastTarget ? (

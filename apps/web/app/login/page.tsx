@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { 登录用户 as loginWorkspace, 注册用户 as registerWorkspace } from "../actions";
 import { getCurrentAuthState } from "../../lib/server-data";
+import { PasswordField } from "./password-field";
 import styles from "./page.module.css";
 
 type LoginPageProps = {
@@ -128,11 +129,11 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
             <input type="hidden" name="return_to" value={returnTo} />
             <label className={styles.field}>
               <span>邮箱</span>
-              <input name="email" type="email" placeholder="you@company.com" required autoComplete="email" />
+              <input name="email" type="text" inputMode="email" placeholder="you@company.com" required autoComplete="email" />
             </label>
             <label className={styles.field}>
               <span>密码</span>
-              <input name="password" type="password" placeholder="输入登录密码" required autoComplete="current-password" />
+              <PasswordField placeholder="输入登录密码" autoComplete="current-password" />
             </label>
             <button type="submit" className={styles.submitButton}>进入项目空间</button>
           </form>
@@ -145,11 +146,11 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
             </label>
             <label className={styles.field}>
               <span>邮箱</span>
-              <input name="email" type="email" placeholder="you@company.com" required />
+              <input name="email" type="text" inputMode="email" placeholder="you@company.com" required autoComplete="email" />
             </label>
             <label className={styles.field}>
               <span>密码</span>
-              <input name="password" type="password" placeholder="至少 4 位密码" required />
+              <PasswordField placeholder="至少 4 位密码" autoComplete="new-password" />
             </label>
             <button type="submit" className={styles.submitButton}>创建账号并进入</button>
           </form>

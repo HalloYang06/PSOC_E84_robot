@@ -1,0 +1,997 @@
+.shell {
+  min-height: 100vh;
+  background:
+    linear-gradient(180deg, rgba(7, 12, 18, 0.98), rgba(5, 9, 14, 1)),
+    repeating-linear-gradient(90deg, rgba(123, 197, 255, 0.04) 0 1px, transparent 1px 84px);
+  color: #eff7ff;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+.shell a {
+  color: inherit;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 20px;
+  border-bottom: 1px solid rgba(140, 196, 255, 0.16);
+  background: rgba(5, 9, 14, 0.86);
+  backdrop-filter: blur(18px);
+}
+
+.topbarNav,
+.topbarMeta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.navLink,
+.metaChip,
+.taskActions a,
+.railSection a,
+.artifactList a,
+.signalList a {
+  border: 1px solid rgba(140, 196, 255, 0.22);
+  border-radius: 8px;
+  background: rgba(140, 196, 255, 0.08);
+  text-decoration: none;
+}
+
+.navLink {
+  padding: 7px 10px;
+  font-size: 12px;
+}
+
+.navLink[data-active="1"] {
+  border-color: rgba(255, 213, 122, 0.56);
+  background: rgba(255, 213, 122, 0.14);
+  color: #fff2cb;
+}
+
+.metaChip {
+  padding: 6px 10px;
+  color: rgba(239, 247, 255, 0.72);
+  font-size: 11px;
+}
+
+.taskBar {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.9fr) auto;
+  gap: 16px;
+  padding: 18px 20px;
+  border-bottom: 1px solid rgba(140, 196, 255, 0.14);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.taskIntro {
+  display: grid;
+  gap: 8px;
+}
+
+.eyebrow,
+.sectionHead span,
+.taskIntro span,
+.taskStats span,
+.railSection > span,
+.artifactList span,
+.signalList span {
+  color: #8dc6ff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.taskIntro strong {
+  font-size: 28px;
+  line-height: 1.1;
+}
+
+.taskIntro p {
+  margin: 0;
+  max-width: 760px;
+  color: rgba(239, 247, 255, 0.72);
+  line-height: 1.6;
+}
+
+.taskStats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  align-self: stretch;
+  background: rgba(140, 196, 255, 0.14);
+}
+
+.taskStats article {
+  min-height: 88px;
+  display: grid;
+  align-content: center;
+  gap: 6px;
+  padding: 12px;
+  background: rgba(6, 12, 18, 0.94);
+}
+
+.taskStats strong {
+  font-size: 24px;
+}
+
+.taskStats article[data-alert="1"] strong {
+  color: #ffd57a;
+}
+
+.taskActions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.taskActions a {
+  padding: 10px 12px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.taskActions a[data-primary="1"] {
+  border-color: rgba(255, 213, 122, 0.66);
+  background: #ffd57a;
+  color: #151a16;
+}
+
+.contextStrip {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.1fr) minmax(260px, 1fr) minmax(220px, 0.9fr) auto;
+  gap: 14px;
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(140, 196, 255, 0.14);
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.contextSummary,
+.contextMeta,
+.contextActions {
+  display: grid;
+  gap: 8px;
+}
+
+.contextSummary span,
+.contextChips span,
+.contextMeta span {
+  color: #8dc6ff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.contextSummary strong {
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.contextSummary p,
+.contextMeta p {
+  margin: 0;
+  color: rgba(239, 247, 255, 0.7);
+  line-height: 1.5;
+  font-size: 12px;
+}
+
+.contextChips {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  background: rgba(140, 196, 255, 0.14);
+}
+
+.contextChips article,
+.contextMeta article {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  background: rgba(6, 12, 18, 0.94);
+}
+
+.contextChips strong,
+.contextMeta strong {
+  font-size: 14px;
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+.contextActions {
+  align-content: start;
+}
+
+.contextActions a {
+  padding: 10px 12px;
+  border: 1px solid rgba(140, 196, 255, 0.22);
+  border-radius: 8px;
+  background: rgba(140, 196, 255, 0.08);
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.contextActions a[data-primary="1"] {
+  border-color: rgba(255, 213, 122, 0.66);
+  background: rgba(255, 213, 122, 0.16);
+  color: #fff2cb;
+}
+
+.body {
+  display: grid;
+  grid-template-columns: 188px minmax(560px, 1fr) 320px;
+  gap: 14px;
+  padding: 14px 20px 0;
+}
+
+.leftRail,
+.rightRail {
+  align-self: start;
+  position: sticky;
+  top: 118px;
+  display: grid;
+  gap: 10px;
+  max-height: calc(100vh - 150px);
+  overflow: auto;
+}
+
+.leftRail {
+  padding: 10px;
+  border: 1px solid rgba(140, 196, 255, 0.14);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.actorStack,
+.npcIndexPanel,
+.leftContextPanel,
+.toolLauncher {
+  display: grid;
+  gap: 8px;
+}
+
+.actorCard,
+.npcIndexPanel,
+.leftContextPanel,
+.toolLauncher {
+  padding: 10px;
+  border: 1px solid rgba(140, 196, 255, 0.16);
+  background: rgba(8, 16, 24, 0.78);
+}
+
+.actorCard {
+  display: grid;
+  gap: 5px;
+  border-left: 3px solid rgba(140, 196, 255, 0.5);
+}
+
+.actorCard[data-kind="hero"] {
+  border-left-color: rgba(255, 213, 122, 0.78);
+}
+
+.actorCard span,
+.npcIndexPanel > span,
+.leftContextPanel > span,
+.toolLauncher > span,
+.debugToolbar span {
+  color: #8dc6ff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.actorCard strong {
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.actorCard small,
+.leftContextPanel small,
+.npcIndexPanel a small,
+.toolLauncher small {
+  color: rgba(239, 247, 255, 0.58);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.npcIndexPanel a,
+.leftContextPanel article,
+.toolLauncher a {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  padding: 8px 9px;
+  border: 1px solid rgba(140, 196, 255, 0.16);
+  background: rgba(140, 196, 255, 0.055);
+  text-decoration: none;
+}
+
+.npcIndexPanel a,
+.toolLauncher a {
+  transform: translateY(0);
+  transition: transform 140ms ease, border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+}
+
+.npcIndexPanel a:hover,
+.toolLauncher a:hover,
+.toolLauncher a[data-active="1"] {
+  transform: translateY(-1px);
+  border-color: rgba(255, 213, 122, 0.58);
+  background: rgba(255, 213, 122, 0.12);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+}
+
+.toolLauncher a:active,
+.npcIndexPanel a:active {
+  transform: translateY(0);
+}
+
+.leftContextPanel article strong,
+.toolLauncher strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.leftRail a,
+.railSection a,
+.artifactList a,
+.signalList a {
+  min-height: 36px;
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.leftRail a {
+  border-left: 3px solid rgba(140, 196, 255, 0.3);
+  background: rgba(8, 16, 24, 0.78);
+}
+
+.leftRail a small,
+.artifactList small,
+.signalList small,
+.railSection small {
+  color: rgba(239, 247, 255, 0.6);
+}
+
+.content {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  min-height: calc(100vh - 238px);
+}
+
+.debugToolbar {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 6px 8px;
+  border: 1px solid rgba(140, 196, 255, 0.14);
+  background: rgba(5, 9, 14, 0.84);
+  overflow: auto hidden;
+}
+
+.debugToolbar small {
+  flex: 0 0 auto;
+  min-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  border: 1px solid rgba(140, 196, 255, 0.16);
+  background: rgba(140, 196, 255, 0.055);
+  color: rgba(239, 247, 255, 0.68);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.workbenchCanvas {
+  min-width: 0;
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+.hero,
+.startPanel {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  border: 1px solid rgba(140, 196, 255, 0.16);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.startPanel {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.hero h1,
+.startPanel h1 {
+  margin: 0;
+  font-size: 36px;
+  line-height: 1.04;
+}
+
+.hero p,
+.startPanel p {
+  margin: 0;
+  max-width: 780px;
+  color: rgba(239, 247, 255, 0.7);
+  line-height: 1.6;
+}
+
+.startActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.startActions a {
+  padding: 10px 12px;
+  border: 1px solid rgba(140, 196, 255, 0.22);
+  border-radius: 8px;
+  background: rgba(140, 196, 255, 0.08);
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.startActions a[data-primary="1"] {
+  border-color: rgba(255, 213, 122, 0.66);
+  background: #ffd57a;
+  color: #151a16;
+}
+
+.signalList,
+.artifactList,
+.railSection {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(140, 196, 255, 0.16);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.drawer,
+.bottomDrawer {
+  border: 1px solid rgba(140, 196, 255, 0.16);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.drawer summary,
+.bottomDrawer summary {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  list-style: none;
+}
+
+.drawer summary::-webkit-details-marker,
+.bottomDrawer summary::-webkit-details-marker {
+  display: none;
+}
+
+.drawer summary::after,
+.bottomDrawer summary::after {
+  content: "+";
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(140, 196, 255, 0.22);
+  color: #8dc6ff;
+  font-weight: 900;
+}
+
+.drawer[open] summary::after,
+.bottomDrawer[open] summary::after {
+  content: "-";
+}
+
+.drawer summary span,
+.bottomDrawer summary span {
+  color: #8dc6ff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.drawer summary strong,
+.bottomDrawer summary strong {
+  min-width: 0;
+  color: rgba(239, 247, 255, 0.88);
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.drawerBody {
+  display: grid;
+  gap: 8px;
+  padding: 0 10px 10px;
+}
+
+.drawerItem {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid rgba(140, 196, 255, 0.14);
+  background: rgba(8, 16, 24, 0.72);
+  text-decoration: none;
+}
+
+.drawerItem span {
+  color: #8dc6ff;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.drawerItem strong {
+  font-size: 14px;
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+.drawerItem p {
+  margin: 0;
+  color: rgba(239, 247, 255, 0.66);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.drawerItem small {
+  color: #ffd57a;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.bottomDock {
+  z-index: 15;
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  min-height: 92px;
+  max-height: 132px;
+  padding: 8px 16px;
+  border-top: 1px solid rgba(140, 196, 255, 0.16);
+  background: rgba(5, 9, 14, 0.92);
+  backdrop-filter: blur(18px);
+}
+
+.logHeader {
+  display: grid;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid rgba(140, 196, 255, 0.14);
+  background: rgba(8, 16, 24, 0.72);
+}
+
+.logHeader span {
+  color: #8dc6ff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.logHeader strong {
+  font-size: 13px;
+}
+
+.dockRows {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  max-height: 110px;
+  overflow: auto;
+  padding: 0;
+}
+
+.dockRows article {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid rgba(140, 196, 255, 0.12);
+  background: rgba(8, 16, 24, 0.76);
+  border-left: 3px solid rgba(140, 196, 255, 0.44);
+}
+
+.dockRows article[data-tone="success"] {
+  border-left-color: #7ee59d;
+}
+
+.dockRows article[data-tone="warning"] {
+  border-left-color: #ffd57a;
+}
+
+.dockRows article[data-tone="error"] {
+  border-left-color: #ff7d7d;
+}
+
+.dockRows article[data-tone="review"] {
+  border-left-color: #ffb86b;
+}
+
+.dockRows article[data-tone="npc"] {
+  border-left-color: #8dc6ff;
+}
+
+.dockRows span {
+  color: #8dc6ff;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.dockRows strong {
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.dockRows p {
+  max-height: 3.8em;
+  overflow: hidden;
+  margin: 0;
+  color: rgba(239, 247, 255, 0.66);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.artifactList article,
+.signalList article,
+.artifactList a,
+.signalList a {
+  padding: 10px 12px;
+  border: 1px solid rgba(140, 196, 255, 0.14);
+  background: rgba(140, 196, 255, 0.05);
+}
+
+.artifactList a,
+.signalList a {
+  min-height: 84px;
+  display: grid;
+  align-content: start;
+  gap: 2px;
+}
+
+.artifactList strong,
+.signalList strong,
+.railSection strong {
+  display: block;
+  margin-top: 2px;
+  font-size: 14px;
+}
+
+.artifactList p,
+.signalList p,
+.railSection p {
+  margin: 6px 0 0;
+  color: rgba(239, 247, 255, 0.68);
+  line-height: 1.5;
+}
+
+.artifactList a small,
+.signalList a small {
+  margin-top: 8px;
+  color: #ffd57a;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.emptyText {
+  color: rgba(239, 247, 255, 0.54);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+@media (max-width: 1280px) {
+  .body {
+    grid-template-columns: 1fr;
+    padding-bottom: 0;
+  }
+
+  .leftRail,
+  .rightRail {
+    position: static;
+    top: auto;
+  }
+
+  .leftRail {
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(160px, 1fr);
+    overflow: auto;
+  }
+
+  .rightRail {
+    grid-template-columns: repeat(3, minmax(220px, 1fr));
+    overflow: visible;
+    max-height: none;
+  }
+}
+
+@media (min-width: 1281px) {
+  .shell {
+    height: 100vh;
+    max-height: 100vh;
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    overflow: hidden;
+  }
+
+  .topbar {
+    position: static;
+    padding: 10px 16px;
+  }
+
+  .taskBar {
+    grid-template-columns: minmax(0, 1fr) minmax(360px, 0.62fr) auto;
+    gap: 12px;
+    padding: 8px 16px;
+  }
+
+  .taskIntro {
+    gap: 4px;
+  }
+
+  .taskIntro strong {
+    font-size: 19px;
+  }
+
+  .taskIntro p {
+    max-height: 1.45em;
+    overflow: hidden;
+    line-height: 1.45;
+  }
+
+  .taskStats article {
+    min-height: 48px;
+    padding: 8px 10px;
+  }
+
+  .taskStats strong {
+    font-size: 20px;
+  }
+
+  .taskActions a {
+    min-height: 32px;
+    padding: 6px 10px;
+  }
+
+  .taskActions {
+    display: none;
+  }
+
+  .contextStrip {
+    display: none;
+  }
+
+  .body {
+    min-height: 0;
+    height: 100%;
+    grid-template-columns: 176px minmax(0, 1fr) 308px;
+    gap: 10px;
+    padding: 8px 16px 58px;
+    overflow: hidden;
+  }
+
+  .leftRail,
+  .rightRail {
+    position: static;
+    top: auto;
+    max-height: none;
+    min-height: 0;
+    overflow: auto;
+  }
+
+  .content {
+    min-height: 0;
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 10px;
+    overflow: hidden;
+  }
+
+  .startPanel {
+    min-height: 48px;
+    padding: 8px 12px;
+  }
+
+  .startPanel h1 {
+    font-size: 21px;
+  }
+
+  .startPanel p {
+    max-height: 1.45em;
+    overflow: hidden;
+    line-height: 1.45;
+  }
+
+  .startActions a {
+    padding: 7px 10px;
+  }
+
+  .workbenchCanvas {
+    min-height: 0;
+    gap: 0;
+    overflow: hidden;
+  }
+
+  .bottomDock {
+    position: fixed;
+    left: 16px;
+    right: 16px;
+    bottom: 8px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    pointer-events: none;
+  }
+
+  .bottomDrawer {
+    background: rgba(5, 9, 14, 0.94);
+    pointer-events: auto;
+  }
+
+  .bottomDrawer:not([open]) {
+    height: 42px;
+  }
+
+  .bottomDrawer[open] {
+    max-height: 220px;
+  }
+}
+
+@media (max-width: 980px) {
+  .taskBar {
+    grid-template-columns: 1fr;
+  }
+
+  .contextStrip {
+    grid-template-columns: 1fr;
+  }
+
+  .taskActions {
+    justify-content: flex-start;
+  }
+
+  .taskStats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .bottomDock,
+  .dockRows,
+  .rightRail {
+    grid-template-columns: 1fr;
+  }
+
+  .bottomDock {
+    position: static;
+  }
+}
+
+@media (min-width: 981px) {
+  .shell {
+    height: 100vh;
+    max-height: 100vh;
+    min-height: 0;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    overflow: hidden;
+  }
+
+  .topbar {
+    position: static;
+    padding: 10px 16px;
+  }
+
+  .body {
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+    grid-template-columns: 168px minmax(0, 1fr) 296px;
+    gap: 10px;
+    padding: 8px 16px;
+  }
+
+  .leftRail,
+  .rightRail {
+    position: static;
+    top: auto;
+    align-self: stretch;
+    min-height: 0;
+    max-height: none;
+    overflow: auto;
+  }
+
+  .content {
+    min-height: 0;
+    align-content: stretch;
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 10px;
+    overflow: hidden;
+  }
+
+  .workbenchCanvas {
+    min-height: 0;
+    height: 100%;
+    align-content: stretch;
+    grid-template-rows: auto minmax(0, 1fr);
+    overflow: auto;
+    scrollbar-gutter: stable;
+  }
+
+  .rightRail .drawerBody {
+    max-height: min(28vh, 260px);
+    overflow: auto;
+  }
+
+  .bottomDock {
+    min-height: 96px;
+    max-height: 116px;
+  }
+
+  .dockRows {
+    max-height: 96px;
+    overflow: auto;
+  }
+}
+
+@media (min-width: 981px) {
+  .taskBar,
+  .contextStrip,
+  .hero,
+  .startPanel,
+  .signalList,
+  .artifactList,
+  .railSection,
+  .bottomDrawer {
+    display: none;
+  }
+
+  .topbar {
+    min-height: 52px;
+  }
+
+  .body {
+    grid-template-columns: 180px minmax(0, 1fr) 304px;
+  }
+
+  .workbenchCanvas > * {
+    min-height: 0;
+  }
+
+  .toolLauncher a,
+  .npcIndexPanel a {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .toolLauncher a::after,
+  .npcIndexPanel a::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+    transform: translateX(-110%);
+    transition: transform 220ms ease;
+  }
+
+  .toolLauncher a:hover::after,
+  .npcIndexPanel a:hover::after,
+  .toolLauncher a[data-active="1"]::after {
+    transform: translateX(110%);
+  }
+}

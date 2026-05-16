@@ -1039,6 +1039,15 @@ export async function getTaskGateData(taskId: string) {
   };
 }
 
+export async function getTaskProfessionalViewState(taskId: string): Promise<ApiLoadState<any | null>> {
+  try {
+    const data = await fetchJson<any>(`/api/tasks/${encodeURIComponent(taskId)}/professional-view`);
+    return okState(data && typeof data === "object" ? data : null);
+  } catch (error) {
+    return errorState(error, null, "TASK_PROFESSIONAL_VIEW_UNAVAILABLE");
+  }
+}
+
 export async function getTaskEventsData(taskId: string) {
   try {
     const data = asArray<any>(await fetchJson<any>(`/api/tasks/${taskId}/events`));

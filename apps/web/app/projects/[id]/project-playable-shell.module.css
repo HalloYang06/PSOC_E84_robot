@@ -1162,6 +1162,133 @@
   z-index: 2;
 }
 
+.mainControlDeck {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 16px;
+  z-index: 4;
+  display: grid;
+  gap: 12px;
+  max-width: min(980px, calc(100vw - 32px));
+  padding: 14px;
+  border: 1px solid rgba(216, 193, 104, 0.22);
+  border-radius: 24px;
+  background:
+    linear-gradient(135deg, rgba(11, 21, 9, 0.94), rgba(12, 24, 18, 0.9)),
+    rgba(8, 16, 7, 0.88);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+    0 24px 58px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(14px);
+}
+
+.mainControlHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.mainControlHead span {
+  display: block;
+  color: rgba(216, 193, 104, 0.82);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.mainControlHead strong {
+  display: block;
+  margin-top: 4px;
+  color: #fff8ea;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.mainControlHead small {
+  flex: 0 0 auto;
+  max-width: 310px;
+  color: rgba(246, 237, 216, 0.64);
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: right;
+}
+
+.mainControlGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mainControlButton {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  column-gap: 9px;
+  row-gap: 3px;
+  align-items: center;
+  min-height: 72px;
+  padding: 10px;
+  border: 1px solid rgba(108, 136, 79, 0.28);
+  border-radius: 16px;
+  background: rgba(14, 24, 11, 0.78);
+  color: #fff8ea;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transform: translateY(0);
+  transition: transform 140ms ease, border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+}
+
+.mainControlButton:hover,
+.mainControlButton:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(216, 193, 104, 0.48);
+  background: rgba(32, 46, 18, 0.92);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.24);
+  outline: none;
+}
+
+.mainControlButton:active {
+  transform: translateY(0);
+}
+
+.mainControlIcon {
+  grid-row: 1 / span 2;
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgba(216, 193, 104, 0.2);
+  border-radius: 12px;
+  background: rgba(216, 193, 104, 0.14);
+  color: #d8c168;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.mainControlButton strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #fff8ea;
+  font-size: 13px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mainControlButton small {
+  min-width: 0;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  color: rgba(246, 237, 216, 0.58);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 .mapBottomTip {
   position: absolute;
   left: 50%;
@@ -3662,6 +3789,28 @@
     grid-template-columns: 1fr;
   }
 
+  .mainControlDeck {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    max-width: none;
+    max-height: min(52vh, 420px);
+    overflow: auto;
+  }
+
+  .mainControlHead {
+    flex-direction: column;
+  }
+
+  .mainControlHead small {
+    max-width: none;
+    text-align: left;
+  }
+
+  .mainControlGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .focusRailToggle {
     left: 12px;
     right: auto;
@@ -3691,6 +3840,10 @@
 
 @media (max-width: 640px) {
   .modeRail {
+    grid-template-columns: 1fr;
+  }
+
+  .mainControlGrid {
     grid-template-columns: 1fr;
   }
 }

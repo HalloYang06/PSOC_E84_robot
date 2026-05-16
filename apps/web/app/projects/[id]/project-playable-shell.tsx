@@ -101,13 +101,20 @@ import { useTeamNoticeToast } from "../../../lib/use-team-notice-toast";
 import { TeamNoticeToast } from "../../../components/team-notice-toast";
 import {
   DEFAULT_AUTOMATION_HEARTBEAT_SECONDS,
+  buildComputerClaudeThreadSyncBashCommand,
   buildComputerClaudeThreadSyncCommand,
+  buildComputerCodexThreadSyncBashCommand,
   buildComputerCodexThreadSyncCommand,
+  buildComputerManualThreadSyncBashCommand,
   buildComputerManualThreadSyncCommand,
+  buildComputerOneClickConnectBashCommand,
   buildComputerOneClickConnectCommand,
+  buildComputerRunnerRegisterBashCommand,
   buildComputerRunnerRegisterCommand,
+  buildComputerRunnerWatchBashCommand,
   buildComputerRunnerWatchCommand,
   buildRunnerScriptUrl,
+  buildWorkstationAdapterBashCommand,
   buildWorkstationAdapterCommand,
   normalizeAutomationHeartbeatSeconds,
   normalizeComputerRunnerSlug,
@@ -568,17 +575,28 @@ type ModeEntryAction = ModeEntry["actions"][number];
 
 const PANEL_DEFINITIONS: PanelDefinition[] = [
   { id: "development-workshop", label: "开发工坊", icon: "工", layer: "primary", detail: "把项目生成、环境搭建、连线选型、调试、AI 教练和仿真串成一条开发链。" },
-  { id: "human-party", label: "主角协作管理", icon: "主", layer: "primary", detail: "按项目成员管理主角、名下电脑、线程和协作状态，不再把整列主角卡长期压在地图右边。" },
-  { id: "npc-create", label: "NPC 管理", icon: "精", layer: "primary", detail: "NPC 精灵栏、对话框、任务、Skill 装配、知识库和线程绑定。" },
-  { id: "computers", label: "电脑接入管理", icon: "电", layer: "primary", detail: "接入真实电脑，查看电脑属性和这台电脑上的 Codex、Claude、Qwen 线程。" },
-    { id: "skills", label: "Skill 管理仓库", icon: "技", layer: "primary", detail: "维护 Skill 中文名、说明和适用职业；NPC 从这里索引装配。" },
-    { id: "schedule", label: "日程日历", icon: "历", layer: "setup", detail: "在主房日历编辑任务 DDL、每日安排，并让 AI 给出当日执行顺序。" },
-    { id: "serial-tv", label: "串口电视", icon: "波", layer: "setup", detail: "扫描各电脑 USB/串口设备，做串口收发和数字波形调试。" },
+  { id: "human-party", label: "主角管理", icon: "主", layer: "primary", detail: "按项目成员管理主角、名下电脑、线程和协作状态，不再把整列主角卡长期压在地图右边。" },
+  { id: "npc-create", label: "NPC 管理", icon: "N", layer: "primary", detail: "NPC 角色栏、对话框、任务、能力包装配、知识库和线程绑定。" },
+  { id: "computers", label: "电脑接入", icon: "电", layer: "primary", detail: "接入真实电脑，查看电脑属性和这台电脑上的 Codex、Claude、Qwen 线程。" },
+    { id: "skills", label: "能力包仓库", icon: "技", layer: "primary", detail: "维护 Skill 中文名、说明和适用职业；NPC 从这里索引装配。" },
+    { id: "schedule", label: "日程 DDL", icon: "历", layer: "primary", detail: "在主房日历编辑任务 DDL、每日安排，并让 AI 给出当日执行顺序。" },
+    { id: "serial-tv", label: "设备调试台", icon: "波", layer: "setup", detail: "扫描各电脑 USB/CAN/串口设备，做串口收发和数字波形调试。" },
     { id: "ai-debug", label: "AI 调试", icon: "调", layer: "setup", detail: "调试 AI 协作行为、token 预算、跑飞保护、最小回执和最终回复，不直接动真实硬件。" },
     { id: "ai-simulation", label: "AI 仿真", icon: "仿", layer: "setup", detail: "机器人和纯软件任务先进入仿真/沙盘视角，确认风险边界后再派真实线程执行。" },
     { id: "exchange", label: "协作消息池", icon: "讯", layer: "setup", detail: "查看跨 NPC、跨线程的统一派单、最小回执和最终回复。" },
   { id: "machine-room", label: "线程调试", icon: "线", layer: "setup", detail: "确认 Codex、Claude 等真实线程是否可用。" },
-  { id: "git", label: "Git 协作与回退", icon: "Git", layer: "advanced", detail: "固定仓库来源、同步约束和可视化回退入口。" },
+  { id: "git", label: "Git 回退", icon: "Git", layer: "primary", detail: "固定仓库来源、同步约束和可视化回退入口。" },
+];
+
+const MAIN_CONTROL_PANEL_IDS: PanelView[] = [
+  "development-workshop",
+  "human-party",
+  "npc-create",
+  "computers",
+  "machine-room",
+  "skills",
+  "git",
+  "schedule",
 ];
 
 const PLATFORM_SEAT_KEY = "farm-platform-codex-seats-v1";
@@ -2167,6 +2185,13 @@ function isOnlineNode(status: unknown) {
   return ["online", "ready", "active"].includes(String(status ?? "").toLowerCase());
 }
 
+function computerRegistrationLabel(node: AnyRecord | null | undefined) {
+  const status = text(node?.status, "");
+  if (!status) return "登记状态未记录";
+  if (isOnlineNode(status)) return `登记状态 ${status}，不等于可接单`;
+  return `登记状态 ${status}`;
+}
+
 function normalizeHumanPresenceState(value: unknown) {
   const normalized = text(value, "").toLowerCase();
   return normalized === "online" || normalized === "stale" || normalized === "never_seen"
@@ -2328,7 +2353,7 @@ function buildHumanPartyHudEntries(
     const candidateKeys = uniqueStrings([player.id, player.name, player.ownership]).map((value) => value.toLowerCase());
     const ownedNodes = nodes.filter((node) => nodeMatchesRouteKeys(node, candidateKeys, allowOwnerlessNodeFallback));
     const ownedNodeIds = new Set(ownedNodes.map((node) => text(node.id ?? node.node_id ?? node.name, "")).filter(Boolean));
-    const onlineOwnedNodes = ownedNodes.filter((node) => isOnlineNode(node.status));
+    const onlineOwnedNodes = ownedNodes.filter((node) => isComputerRunnerOnline(node));
     const threadCount = activeSourceThreads.filter((thread) => {
       const nodeId = text(thread?.computer_node_id ?? thread?.computerNodeId, "");
       return Boolean(nodeId) && ownedNodeIds.has(nodeId);
@@ -2376,7 +2401,7 @@ function buildHumanPartyHudEntries(
           72,
         )
       : ownedNodes.length
-        ? `${onlineOwnedNodes.length}/${ownedNodes.length} 台电脑在线 / ${threadCount} 条线程可见，可继续多人分工。`
+        ? `${onlineOwnedNodes.length}/${ownedNodes.length} 台电脑 Runner 心跳正常 / ${threadCount} 条线程可见。扫描到线程不代表自动接单，常驻 Watch 才能领取平台派工。`
       : activeTaskCount > 0
         ? `当前有 ${activeTaskCount} 条共享任务，适合继续联机分工。`
         : player.isCurrentPlayer
@@ -2393,7 +2418,7 @@ function buildHumanPartyHudEntries(
       stateLabel,
       stateTone,
       stateHint,
-      detail: `${player.role} / ${player.ownership} / ${sceneLabel} / 电脑 ${onlineOwnedNodes.length}/${ownedNodes.length} 台 / 线程 ${threadCount} 条`,
+      detail: `${player.role} / ${player.ownership} / ${sceneLabel} / Runner 心跳 ${onlineOwnedNodes.length}/${ownedNodes.length} 台 / 线程 ${threadCount} 条`,
       routeKeys: candidateKeys,
       computerCount: ownedNodes.length,
       onlineComputerCount: onlineOwnedNodes.length,
@@ -2436,7 +2461,7 @@ function buildComputerFleetGroups(
       isCurrentPlayer: player.isCurrentPlayer,
       stateLabel: player.stateLabel,
       computerCount: ownedNodes.length,
-      onlineComputerCount: ownedNodes.filter((node) => isOnlineNode(node.status)).length,
+      onlineComputerCount: ownedNodes.filter((node) => isComputerRunnerOnline(node)).length,
       threadCount,
       routeKeys: player.routeKeys,
       computers: ownedNodes,
@@ -2458,7 +2483,7 @@ function buildComputerFleetGroups(
       isCurrentPlayer: false,
       stateLabel: "待整理",
       computerCount: unassignedNodes.length,
-      onlineComputerCount: unassignedNodes.filter((node) => isOnlineNode(node.status)).length,
+      onlineComputerCount: unassignedNodes.filter((node) => isComputerRunnerOnline(node)).length,
       threadCount: activeThreads.filter((thread) => {
         const nodeId = text(thread.computer_node_id ?? thread.computerNodeId, "");
         return Boolean(nodeId) && nodeIds.has(nodeId);
@@ -3083,10 +3108,20 @@ function isOnlineStatus(status: unknown) {
   return ["online", "ready", "active"].includes(text(status, "").toLowerCase());
 }
 
+function isComputerRunnerOnline(node: AnyRecord | null | undefined) {
+  const metadata = objectRecord(node?.metadata);
+  const effectiveStatus = text(node?.runner_effective_status ?? metadata.runner_effective_status, "").toLowerCase();
+  if (effectiveStatus) return effectiveStatus === "online";
+  const runnerStatus = text(node?.runner_status ?? metadata.runner_status, "").toLowerCase();
+  const heartbeatAgeSeconds = asNumber(node?.runner_heartbeat_age_seconds ?? metadata.runner_heartbeat_age_seconds);
+  const freshSeconds = asNumber(node?.runner_watch_fresh_seconds ?? metadata.runner_watch_fresh_seconds) ?? 180;
+  return isOnlineStatus(runnerStatus) && heartbeatAgeSeconds !== null && heartbeatAgeSeconds <= freshSeconds;
+}
+
 function runnerWatchInfo(node: AnyRecord | null | undefined) {
   const metadata = objectRecord(node?.metadata);
   const runnerId = text(node?.runner_id ?? metadata.runner_id, "");
-  const runnerStatus = text(node?.runner_status ?? metadata.runner_status ?? node?.status, "").toLowerCase();
+  const runnerStatus = text(node?.runner_status ?? metadata.runner_status, "").toLowerCase();
   const lastHeartbeat = text(node?.runner_last_heartbeat_at ?? metadata.runner_last_heartbeat_at, "");
   const heartbeatAgeSeconds = asNumber(node?.runner_heartbeat_age_seconds ?? metadata.runner_heartbeat_age_seconds);
   const freshSeconds = asNumber(node?.runner_watch_fresh_seconds ?? metadata.runner_watch_fresh_seconds) ?? 180;
@@ -5453,11 +5488,22 @@ type TokenResultCardProps = {
   subtitle?: string;
   token: string;
   command: string;
+  linuxCommand?: string;
   watchCommand?: string;
+  linuxWatchCommand?: string;
   testId?: string;
 };
 
-function TokenResultCard({ title, subtitle, token, command, watchCommand, testId }: TokenResultCardProps) {
+function TokenResultCard({
+  title,
+  subtitle,
+  token,
+  command,
+  linuxCommand,
+  watchCommand,
+  linuxWatchCommand,
+  testId,
+}: TokenResultCardProps) {
   const [copyState, setCopyState] = useState<{ kind: "idle" | "ok" | "err"; message?: string }>({
     kind: "idle",
   });
@@ -5513,8 +5559,9 @@ function TokenResultCard({ title, subtitle, token, command, watchCommand, testId
         </button>
       </div>
       <p style={{ margin: "4px 0", fontWeight: 400, opacity: 0.9 }}>
-        把下面命令发到目标电脑运行（PowerShell）。命令会自动下载平台最新版接入脚本，无需提前 clone 仓库。
+        把下面命令发到目标电脑运行。命令会自动下载平台最新版接入脚本，无需提前 clone 仓库。
       </p>
+      <p style={{ margin: "4px 0", fontWeight: 700, opacity: 0.95 }}>Windows PowerShell</p>
       <textarea
         readOnly
         rows={4}
@@ -5554,6 +5601,38 @@ function TokenResultCard({ title, subtitle, token, command, watchCommand, testId
           </small>
         ) : null}
       </div>
+      {linuxCommand ? (
+        <>
+          <p style={{ margin: "4px 0", fontWeight: 700, opacity: 0.95 }}>Linux / macOS bash</p>
+          <textarea
+            readOnly
+            rows={4}
+            value={linuxCommand}
+            aria-label="Linux 或 macOS 接入命令"
+            data-token-linux-command={testId || "true"}
+            style={{
+              width: "100%",
+              fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace",
+              fontSize: 11,
+              background: "rgba(0,0,0,0.32)",
+              color: "#f6edd8",
+              border: "1px solid rgba(246,237,216,0.12)",
+              borderRadius: 10,
+              padding: "8px 10px",
+              resize: "vertical",
+            }}
+          />
+          <button
+            type="button"
+            className={styles.ghostButton}
+            onClick={() => copyText(linuxCommand, "Linux / macOS 接入命令已复制")}
+            data-token-copy-linux-command={testId || "true"}
+            style={{ alignSelf: "flex-start" }}
+          >
+            复制 Linux / macOS 命令
+          </button>
+        </>
+      ) : null}
       {watchCommand ? (
         <details style={{ marginTop: 4 }} data-token-watch-card={testId || "true"}>
           <summary style={{ cursor: "pointer", fontWeight: 600 }}>
@@ -5590,6 +5669,38 @@ function TokenResultCard({ title, subtitle, token, command, watchCommand, testId
           >
             复制持续协作命令
           </button>
+          {linuxWatchCommand ? (
+            <>
+              <p style={{ margin: "8px 0 4px", fontWeight: 700, opacity: 0.95 }}>Linux / macOS bash</p>
+              <textarea
+                readOnly
+                rows={4}
+                value={linuxWatchCommand}
+                aria-label="Linux 或 macOS 持续协作命令"
+                data-token-linux-watch-command={testId || "true"}
+                style={{
+                  width: "100%",
+                  fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace",
+                  fontSize: 11,
+                  background: "rgba(0,0,0,0.32)",
+                  color: "#f6edd8",
+                  border: "1px solid rgba(246,237,216,0.12)",
+                  borderRadius: 10,
+                  padding: "8px 10px",
+                  resize: "vertical",
+                }}
+              />
+              <button
+                type="button"
+                className={styles.ghostButton}
+                onClick={() => copyText(linuxWatchCommand, "Linux / macOS 持续协作命令已复制")}
+                data-token-copy-linux-watch={testId || "true"}
+                style={{ marginTop: 6 }}
+              >
+                复制 Linux / macOS 持续协作命令
+              </button>
+            </>
+          ) : null}
         </details>
       ) : null}
     </article>
@@ -5612,7 +5723,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
     router.refresh();
   }, [router, teamNoticeKey, pairingTokenKey, adapterTokenKey]);
   const nodes = asArray(props.config?.nodes);
-  const onlineNodes = nodes.filter((node) => isOnlineStatus(node.status));
+  const onlineNodes = nodes.filter((node) => isComputerRunnerOnline(node));
   const watchReadyNodes = nodes.filter((node) => runnerWatchInfo(node).active);
   const watchBlockedNodes = nodes.filter((node) => runnerWatchInfo(node).needsAttention);
   const sourceThreads = asArray(props.config?.sourceThreads);
@@ -7808,6 +7919,9 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
   ];
   const activePanelDefinition =
     PANEL_DEFINITIONS.find((item) => item.id === panelView) ?? PANEL_DEFINITIONS[0];
+  const mainControlPanels = MAIN_CONTROL_PANEL_IDS
+    .map((id) => PANEL_DEFINITIONS.find((item) => item.id === id))
+    .filter(Boolean) as PanelDefinition[];
   const currentPlayerViewLabel = !panelOpen
     ? "地图主场景"
     : managerDrawer?.kind === "npc-profile"
@@ -10795,7 +10909,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             <h3>{selectedPlayer?.name ?? "还没有项目主角"}</h3>
             <p>
               {selectedPlayer
-                ? `${selectedPlayer.role} / ${selectedPlayer.ownership} / ${selectedPlayer.stateLabel} / 在线电脑 ${selectedPlayer.onlineComputerCount}/${selectedPlayer.computerCount} 台 / 线程 ${selectedPlayer.threadCount} 条`
+                ? `${selectedPlayer.role} / ${selectedPlayer.ownership} / ${selectedPlayer.stateLabel} / Runner 心跳 ${selectedPlayer.onlineComputerCount}/${selectedPlayer.computerCount} 台 / 线程 ${selectedPlayer.threadCount} 条`
                 : "这里按项目成员管理主角、名下电脑、线程和协作状态。先邀请协作者，让对方进入项目后再来这里看。"}
             </p>
           </div>
@@ -10874,7 +10988,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             <section className={styles.managerPreviewPanel}>
               <div className={styles.listHead}>
                 <strong>名下电脑与线程</strong>
-                <span className={styles.stateBadge}>{`${selectedPlayer.onlineComputerCount}/${selectedPlayer.computerCount} 台电脑 / ${selectedPlayer.threadCount} 条线程`}</span>
+                <span className={styles.stateBadge}>{`Runner 心跳 ${selectedPlayer.onlineComputerCount}/${selectedPlayer.computerCount} 台 / ${selectedPlayer.threadCount} 条线程`}</span>
               </div>
               {selectedComputers.length ? (
                 <ul className={styles.list}>
@@ -10886,7 +11000,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                       <li key={`human-party-computer-${nodeId}`}>
                         <strong>{nodeLabel}</strong>
                         <p>
-                          {`${resolveComputerOwnerLabel(node, ownerlessNodeFallbackLabel)} / ${text(node.status ?? node.platform ?? node.os, "在线 / 待扫描线程")}${isCurrentComputerOwner(node, props.currentUser as AnyRecord | null | undefined, allowOwnerlessNodeFallback) ? " / 当前账号" : ""}`}
+                          {`${resolveComputerOwnerLabel(node, ownerlessNodeFallbackLabel)} / ${computerRegistrationLabel(node)} / ${runnerWatchInfo(node).label}${isCurrentComputerOwner(node, props.currentUser as AnyRecord | null | undefined, allowOwnerlessNodeFallback) ? " / 当前账号" : ""}`}
                         </p>
                         <p>{`${nodeThreads.length} 条线程 / Runner ${text(node.runner_id, "未绑定")} / ${shortText(text(node.note ?? node.description, ""), "这台电脑已经归到当前主角名下。", 72)}`}</p>
                         <div className={styles.inlineActions}>
@@ -10941,7 +11055,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
     );
   }
 
-  function renderComputerOnboardingGuide(node: AnyRecord | null, options: { alwaysShowScripts?: boolean } = {}) {
+  function renderComputerOnboardingGuide(node: AnyRecord | null, options: { alwaysShowScripts?: boolean; reconnectMode?: boolean } = {}) {
     const nodeId = text(node?.id ?? node?.node_id ?? node?.name ?? node?.label, "");
     if (!nodeId) return null;
     const visiblePairingToken = pairingNodeId === nodeId ? text(pairingToken, "") : "";
@@ -10950,7 +11064,8 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
     const needsRunner = !hasRunner;
     const needsThreadSync = !selectedThreads.length;
     const alwaysShowScripts = Boolean(options.alwaysShowScripts);
-    if (!visiblePairingToken && !needsRunner && !needsThreadSync && !alwaysShowScripts) return null;
+    const reconnectMode = Boolean(options.reconnectMode);
+    if (!visiblePairingToken && !needsRunner && !needsThreadSync && !alwaysShowScripts && !reconnectMode) return null;
 
     const runnerId = text(node?.runner_id, "") || suggestedComputerRunnerId(node ?? {});
     const serverUrl = text(props.computerConnectServerUrl, "http://127.0.0.1:3000");
@@ -10964,27 +11079,48 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
     const oneClickConnectCommand = visiblePairingToken
       ? buildComputerOneClickConnectCommand(serverUrl, projectId, node ?? {}, visiblePairingToken, runnerId)
       : "";
+    const oneClickConnectBashCommand = visiblePairingToken
+      ? buildComputerOneClickConnectBashCommand(serverUrl, projectId, node ?? {}, visiblePairingToken, runnerId)
+      : "";
     const runnerWatchCommand = buildComputerRunnerWatchCommand(serverUrl, projectId, node ?? {}, runnerId, {
+      pollSeconds: nodeAutomationHeartbeatSeconds,
+    });
+    const runnerWatchBashCommand = buildComputerRunnerWatchBashCommand(serverUrl, projectId, node ?? {}, runnerId, {
       pollSeconds: nodeAutomationHeartbeatSeconds,
     });
     const runnerWatchExecuteCommand = buildComputerRunnerWatchCommand(serverUrl, projectId, node ?? {}, runnerId, {
       executeProviderCli: true,
       pollSeconds: nodeAutomationHeartbeatSeconds,
     });
+    const runnerWatchExecuteBashCommand = buildComputerRunnerWatchBashCommand(serverUrl, projectId, node ?? {}, runnerId, {
+      executeProviderCli: true,
+      pollSeconds: nodeAutomationHeartbeatSeconds,
+    });
     const registerCommand = visiblePairingToken
       ? buildComputerRunnerRegisterCommand(serverUrl, node ?? {}, visiblePairingToken, runnerId)
       : "";
+    const registerBashCommand = visiblePairingToken
+      ? buildComputerRunnerRegisterBashCommand(serverUrl, node ?? {}, visiblePairingToken, runnerId)
+      : "";
     const codexSyncCommand = buildComputerCodexThreadSyncCommand(serverUrl, projectId, node ?? {}, runnerId);
+    const codexSyncBashCommand = buildComputerCodexThreadSyncBashCommand(serverUrl, projectId, node ?? {}, runnerId);
     const claudeSyncCommand = buildComputerClaudeThreadSyncCommand(serverUrl, projectId, node ?? {}, runnerId);
+    const claudeSyncBashCommand = buildComputerClaudeThreadSyncBashCommand(serverUrl, projectId, node ?? {}, runnerId);
     const manualSyncCommand = buildComputerManualThreadSyncCommand(serverUrl, projectId, node ?? {}, runnerId);
+    const manualSyncBashCommand = buildComputerManualThreadSyncBashCommand(serverUrl, projectId, node ?? {}, runnerId);
     const connectScriptUrl = buildRunnerScriptUrl(serverUrl, "connect-ai-collab-runner.ps1");
+    const connectBashScriptUrl = buildRunnerScriptUrl(serverUrl, "connect-ai-collab-runner.sh");
     const codexScriptUrl = buildRunnerScriptUrl(serverUrl, "sync-codex-session-threads.ps1");
+    const codexBashScriptUrl = buildRunnerScriptUrl(serverUrl, "sync-codex-session-threads.sh");
     const claudeScriptUrl = buildRunnerScriptUrl(serverUrl, "sync-claude-session-threads.ps1");
+    const claudeBashScriptUrl = buildRunnerScriptUrl(serverUrl, "sync-claude-session-threads.sh");
 
     return (
-      <details className={styles.adapterCommandCard} open={Boolean(visiblePairingToken || needsRunner || needsThreadSync || alwaysShowScripts)}>
+      <details className={styles.adapterCommandCard} open={Boolean(visiblePairingToken || needsRunner || needsThreadSync || alwaysShowScripts || reconnectMode)}>
         <summary>
-          {visiblePairingToken || needsRunner
+          {reconnectMode
+            ? "重新连接这台电脑"
+            : visiblePairingToken || needsRunner
             ? "下一步：把这台电脑真正接进平台"
             : needsThreadSync
               ? "下一步：把这台电脑的线程同步回平台"
@@ -10998,7 +11134,9 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
               : " 未填写工作区路径时，平台只扫描本机 AI 会话，不会把服务器当前目录当成远端项目路径。"}
           </p>
           <p className={styles.microCopy}>
-            {visiblePairingToken
+            {reconnectMode
+              ? "如果 Runner 掉线、心跳超时，直接在那台电脑原来的终端重新运行“自动化心跳 / 持续接单”命令；不需要重新建电脑，也不需要重新绑定线程。"
+              : visiblePairingToken
               ? "推荐先复制“一键接入”命令：它只下载接入器、注册 runner、自动扫描 Codex / Claude 线程，跑完就退出；不会默认进入持续自动化。"
               : needsRunner
                 ? "这台电脑还没接入 runner。先重新生成配对令牌，这里就会立刻出现第 1 条接入命令。"
@@ -11024,24 +11162,37 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             </ul>
             <div className={styles.runnerScriptLinkGrid}>
               <a href={connectScriptUrl} target="_blank" rel="noreferrer">一键接入脚本</a>
+              <a href={connectBashScriptUrl} target="_blank" rel="noreferrer">Linux/macOS 接入脚本</a>
               <a href={codexScriptUrl} target="_blank" rel="noreferrer">Codex 扫描脚本</a>
+              <a href={codexBashScriptUrl} target="_blank" rel="noreferrer">Linux/macOS Codex 扫描脚本</a>
               <a href={claudeScriptUrl} target="_blank" rel="noreferrer">Claude 扫描脚本</a>
+              <a href={claudeBashScriptUrl} target="_blank" rel="noreferrer">Linux/macOS Claude 扫描脚本</a>
             </div>
           </section>
           {visiblePairingToken ? (
             <>
               <p className={styles.microCopy}><strong>第 1 步推荐：</strong>一键接入这台电脑，只注册 runner 并扫描线程，完成后 PowerShell 可以关闭。</p>
               <pre className={styles.commandBlock} data-computer-one-click-connect-command={nodeId}><code>{oneClickConnectCommand}</code></pre>
+              <p className={styles.microCopy}><strong>Linux / macOS：</strong>在 bash 里注册 runner，并扫描本机 Codex / Claude 线程。</p>
+              <pre className={styles.commandBlock} data-computer-one-click-connect-linux-command={nodeId}><code>{oneClickConnectBashCommand}</code></pre>
               <details className={styles.adapterCommandCard}>
                 <summary>高级备用：分步注册 / 单独同步</summary>
                 <p className={styles.microCopy}><strong>第 1 步：</strong>只注册 runner</p>
                 <pre className={styles.commandBlock} data-computer-register-command={nodeId}><code>{registerCommand}</code></pre>
+                <p className={styles.microCopy}><strong>Linux / macOS：</strong>只注册 runner</p>
+                <pre className={styles.commandBlock} data-computer-register-linux-command={nodeId}><code>{registerBashCommand}</code></pre>
                 <p className={styles.microCopy}><strong>第 2 步：</strong>只同步这台电脑最近的 Codex 线程</p>
                 <pre className={styles.commandBlock} data-computer-codex-sync-command={nodeId}><code>{codexSyncCommand}</code></pre>
+                <p className={styles.microCopy}><strong>Linux / macOS：</strong>只同步这台电脑最近的 Codex 线程</p>
+                <pre className={styles.commandBlock} data-computer-codex-sync-linux-command={nodeId}><code>{codexSyncBashCommand}</code></pre>
                 <p className={styles.microCopy}><strong>第 2 步可选：</strong>如果这台电脑开了 Claude 终端，也同步 Claude 线程</p>
                 <pre className={styles.commandBlock} data-computer-claude-sync-command={nodeId}><code>{claudeSyncCommand}</code></pre>
+                <p className={styles.microCopy}><strong>Linux / macOS：</strong>如果这台电脑开了 Claude 终端，也同步 Claude 线程</p>
+                <pre className={styles.commandBlock} data-computer-claude-sync-linux-command={nodeId}><code>{claudeSyncBashCommand}</code></pre>
                 <p className={styles.microCopy}><strong>第 2 步备用：</strong>如果现在只想先手动登记 1 条线程，用这条单线程同步命令</p>
                 <pre className={styles.commandBlock} data-computer-manual-sync-command={nodeId}><code>{manualSyncCommand}</code></pre>
+                <p className={styles.microCopy}><strong>Linux / macOS：</strong>手动登记 1 条线程</p>
+                <pre className={styles.commandBlock} data-computer-manual-sync-linux-command={nodeId}><code>{manualSyncBashCommand}</code></pre>
               </details>
             </>
           ) : needsRunner ? (
@@ -11053,10 +11204,16 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             <>
               <p className={styles.microCopy}><strong>同步 Codex：</strong>自动同步这台电脑最近的 Codex 线程</p>
               <pre className={styles.commandBlock} data-computer-codex-sync-command={nodeId}><code>{codexSyncCommand}</code></pre>
+              <p className={styles.microCopy}><strong>Linux / macOS：</strong>自动同步这台电脑最近的 Codex 线程</p>
+              <pre className={styles.commandBlock} data-computer-codex-sync-linux-command={nodeId}><code>{codexSyncBashCommand}</code></pre>
               <p className={styles.microCopy}><strong>同步 Claude：</strong>如果这台电脑开了 Claude 终端，也同步 Claude 线程</p>
               <pre className={styles.commandBlock} data-computer-claude-sync-command={nodeId}><code>{claudeSyncCommand}</code></pre>
+              <p className={styles.microCopy}><strong>Linux / macOS：</strong>如果这台电脑开了 Claude 终端，也同步 Claude 线程</p>
+              <pre className={styles.commandBlock} data-computer-claude-sync-linux-command={nodeId}><code>{claudeSyncBashCommand}</code></pre>
               <p className={styles.microCopy}><strong>备用：</strong>如果现在只想先手动登记 1 条线程，用这条单线程同步命令</p>
               <pre className={styles.commandBlock} data-computer-manual-sync-command={nodeId}><code>{manualSyncCommand}</code></pre>
+              <p className={styles.microCopy}><strong>Linux / macOS：</strong>手动登记 1 条线程</p>
+              <pre className={styles.commandBlock} data-computer-manual-sync-linux-command={nodeId}><code>{manualSyncBashCommand}</code></pre>
             </>
           )}
           <details className={styles.adapterCommandCard}>
@@ -11065,16 +11222,25 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
               这条命令会复用已绑定 runner，并持续心跳、轮询平台 inbox。不开 NPC 自动化时不要运行它；
               不然每条平台指令都会被当成持续协作来处理，容易浪费 token。
             </p>
-            <p className={styles.microCopy}>
-              当前建议心跳间隔：{nodeAutomationHeartbeatSeconds} 秒。这个值来自本电脑已绑定 NPC 里最激进的心跳配置；如果没有 NPC 配置，则用默认 60 秒。
+          <p className={styles.microCopy}>
+            当前建议心跳间隔：{nodeAutomationHeartbeatSeconds} 秒。这个值来自本电脑已绑定 NPC 里最激进的心跳配置；如果没有 NPC 配置，则用默认 60 秒。
+          </p>
+          {reconnectMode ? (
+            <p className={styles.microCopy} data-computer-reconnect-command-help={nodeId}>
+              重连检查：命令执行后不要关闭终端；回到平台刷新，看到“常驻接单中”后再下发任务。Windows 复制 PowerShell 命令，Linux / macOS 复制 Bash 命令。
             </p>
-            <pre className={styles.commandBlock} data-computer-watch-command={nodeId}><code>{runnerWatchCommand}</code></pre>
+          ) : null}
+          <pre className={styles.commandBlock} data-computer-watch-command={nodeId}><code>{runnerWatchCommand}</code></pre>
+            <p className={styles.microCopy}><strong>Linux / macOS：</strong>持续心跳 / 接单。</p>
+            <pre className={styles.commandBlock} data-computer-watch-linux-command={nodeId}><code>{runnerWatchBashCommand}</code></pre>
             <details className={styles.adapterCommandCard}>
               <summary>高风险：允许本机 AI CLI 自动执行并回最终回复</summary>
               <p className={styles.microCopy}>
                 只给可信电脑使用。其它电脑做阅读类验证时，先用上面的默认心跳，让它只写 inbox prompt 和最小回执。
               </p>
               <pre className={styles.commandBlock} data-computer-watch-execute-command={nodeId}><code>{runnerWatchExecuteCommand}</code></pre>
+              <p className={styles.microCopy}><strong>Linux / macOS：</strong>允许本机 AI CLI 自动执行并回最终回复。</p>
+              <pre className={styles.commandBlock} data-computer-watch-execute-linux-command={nodeId}><code>{runnerWatchExecuteBashCommand}</code></pre>
             </details>
           </details>
           <p className={styles.microCopy}>
@@ -11108,7 +11274,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             <h3>{selectedNode ? text(selectedNode.label ?? selectedNode.name, selectedNodeId) : "还没有电脑"}</h3>
             <p>
               {selectedNode
-                ? `归属 ${selectedNodeOwner}${selectedNodeIsCurrentOwner ? "（当前账号）" : ""} / 状态 ${text(selectedNode.status, "unknown")} / Runner ${text(selectedNode.runner_id, "未绑定")} / 接单 ${selectedWatch.label} / 线程 ${selectedThreads.length} 条`
+                ? `归属 ${selectedNodeOwner}${selectedNodeIsCurrentOwner ? "（当前账号）" : ""} / ${computerRegistrationLabel(selectedNode)} / Runner ${text(selectedNode.runner_id, "未绑定")} / 接单 ${selectedWatch.label} / 线程 ${selectedThreads.length} 条`
                 : "先点左侧 + 添加电脑，接入后再扫描 Codex、Claude、Qwen 等线程。"}
             </p>
           </div>
@@ -11116,7 +11282,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
 
         <div className={styles.managerStatGrid}>
           <article><span>全部电脑</span><strong>{nodes.length}</strong></article>
-          <article><span>在线电脑</span><strong>{onlineNodes.length}</strong></article>
+          <article><span>Runner 心跳</span><strong>{onlineNodes.length}</strong></article>
           <article><span>常驻接单</span><strong>{watchReadyNodes.length}</strong></article>
           <article><span>真实线程</span><strong>{realThreadCount}</strong></article>
           <article><span>已接入玩家</span><strong>{connectedHumanPartyCount}</strong></article>
@@ -11153,6 +11319,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             <p>
               {selectedWatch.detail}。扫描到线程不等于正在接单；要让平台派工被自动领取，需要在那台电脑保持“自动化心跳 / 持续接单”窗口运行。
             </p>
+            {text(selectedNode.runner_id, "") ? renderComputerOnboardingGuide(selectedNode, { reconnectMode: true }) : null}
           </div>
         ) : null}
 
@@ -11263,7 +11430,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                     </span>
                   </div>
                   <p className={styles.computerFleetMeta}>
-                    {`${group.onlineComputerCount}/${group.computerCount} 台在线 / ${group.threadCount} 条线程`}
+                    {`Runner 心跳 ${group.onlineComputerCount}/${group.computerCount} 台 / ${group.threadCount} 条线程`}
                   </p>
                   <ul className={styles.computerFleetNodeList}>
                     {group.computers.slice(0, 4).map((node, index) => {
@@ -11282,7 +11449,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                           >
                             {display(node.name ?? node.label, nodeId)}
                           </button>
-                          <span>{nodeWatch.active ? nodeWatch.label : `${text(node.status, "unknown")} / ${nodeWatch.label}`}</span>
+                          <span>{nodeWatch.active ? nodeWatch.label : `${computerRegistrationLabel(node)} / ${nodeWatch.label}`}</span>
                         </li>
                       );
                     })}
@@ -11690,12 +11857,19 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             workstationToken,
             workstationServerUrl,
           );
+          const workstationBashCommand = buildWorkstationAdapterBashCommand(
+            projectId,
+            workstationTokenId,
+            workstationToken,
+            workstationServerUrl,
+          );
           return (
             <TokenResultCard
               title="工位接入令牌已签发"
               subtitle={workstationTokenId ? `工位 ${workstationTokenId}` : undefined}
               token={workstationToken}
               command={workstationCommand}
+              linuxCommand={workstationBashCommand}
               testId="workstation-adapter"
             />
           );
@@ -11813,9 +11987,10 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
 
         <form action={sendRunnerCommand.bind(null, projectId)} className={styles.skillManagerForm}>
           <ClaudeCommandPalette />
-          <strong>给在线电脑发一条最小命令</strong>
+          <strong>给 Runner 心跳正常的电脑发一条最小命令</strong>
           <p className={styles.microCopy}>
-            目标电脑要先有 watcher 进程在跑才能接到单。线程级 watcher（每条线程一个 PS 终端）见{" "}
+            目标电脑要先保持“自动化心跳 / 持续接单”窗口运行才能接到单。没有可选电脑时，这里不会把任务假装派出去；先到“电脑接入”复制持续接单命令，在目标电脑终端运行并等状态变成常驻接单。
+            线程级 watcher（每条线程一个终端）见{" "}
             <a
               href="https://github.com/wenjunyong666/ai-/blob/main/docs/user-guides/THREAD_WATCHER_QUICKSTART_2026-05-07.md"
               target="_blank"
@@ -11830,10 +12005,14 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
           <label className={styles.fieldLabel}>
             <span>目标电脑</span>
             <select name="computer_node_id" className={styles.select} defaultValue={text(onlineNodes[0]?.id, "")}>
-              {onlineNodes.map((node) => {
-                const nodeId = text(node.id, "");
-                return <option key={nodeId} value={nodeId}>{text(node.label ?? node.name, nodeId)}</option>;
-              })}
+              {onlineNodes.length ? (
+                onlineNodes.map((node) => {
+                  const nodeId = text(node.id, "");
+                  return <option key={nodeId} value={nodeId}>{text(node.label ?? node.name, nodeId)}</option>;
+                })
+              ) : (
+                <option value="">没有正在接单的电脑</option>
+              )}
             </select>
           </label>
           <label className={styles.fieldLabel}>
@@ -11844,6 +12023,11 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             <span>命令正文</span>
             <textarea name="body" placeholder="写给真实 runner 的一句话命令">请检查这台电脑上的最新线程状态，并回一条最小回执。</textarea>
           </label>
+          {!onlineNodes.length ? (
+            <p className={styles.microCopy} data-runner-command-disabled-reason="no-watch-ready-computer">
+              已登记电脑不会自动接单；需要在目标电脑运行“持续心跳 / 接单”命令后，平台才会把任务送进那台电脑的收件箱。
+            </p>
+          ) : null}
           <button type="submit" disabled={!onlineNodes.length}>下发 Runner 命令</button>
         </form>
 
@@ -12114,6 +12298,12 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                 issuedAdapterToken || undefined,
                 text(props.computerConnectServerUrl, "http://127.0.0.1:8010"),
               );
+              const adapterBashCommand = buildWorkstationAdapterBashCommand(
+                projectId,
+                threadId,
+                issuedAdapterToken || undefined,
+                text(props.computerConnectServerUrl, "http://127.0.0.1:8010"),
+              );
               const executorHint = providerExecutorHint(providerId);
               const suggestedThreadSkills = recommendRoleSkillIds({
                 roleText: suggestedRole,
@@ -12218,6 +12408,10 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                       </div>
                     ) : null}
                     <pre className={styles.commandBlock} data-adapter-command={threadId}><code>{adapterCommand}</code></pre>
+                    <p className={styles.microCopy}>
+                      Linux / macOS 电脑使用下面这条 bash 命令接入平台工位消息通道。
+                    </p>
+                    <pre className={styles.commandBlock} data-adapter-linux-command={threadId}><code>{adapterBashCommand}</code></pre>
                       <p className={styles.microCopy}>
                         这条命令会先下载最新版 adapter，再读取平台里的 provider 模板和工位覆盖；如果只是临时单机调试，再追加：<code>{executorHint}</code>
                       </p>
@@ -12335,7 +12529,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
           ) : (
             <li>
               <strong>还没有活跃线程</strong>
-              <p>先扫描在线电脑上的真实线程，这里才会长出可派单目标。</p>
+              <p>先扫描目标电脑上的真实线程；后续派工还需要对应 Runner 保持常驻接单。</p>
             </li>
           )}
         </ul>
@@ -15518,6 +15712,40 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             </button>
           ) : null}
 
+          {!panelOpen ? (
+            <section className={styles.mainControlDeck} aria-label="平台主控入口">
+              <div className={styles.mainControlHead}>
+                <div>
+                  <span>平台主控</span>
+                  <strong>接电脑、管 NPC、派任务都从这里进</strong>
+                </div>
+                <small>{`${watchReadyNodes.length}/${nodes.length} 台接单 · ${realThreadCount} 条线程 · ${queuedCollaborationCommandCount} 条排队`}</small>
+              </div>
+              <div className={styles.mainControlGrid}>
+                {mainControlPanels.map((item) => (
+                  <button
+                    key={`main-control-${item.id}`}
+                    type="button"
+                    className={styles.mainControlButton}
+                    data-main-control={item.id}
+                    onClick={() => {
+                      setPendingActionLabel(null);
+                      if (item.id === "human-party") {
+                        openHumanPartyPanel(currentHumanPartyPlayer?.id ?? humanPartyHud[0]?.id ?? "");
+                        return;
+                      }
+                      openBackpackPanel(item.id);
+                    }}
+                  >
+                    <span className={styles.mainControlIcon}>{item.icon}</span>
+                    <strong>{item.label}</strong>
+                    <small>{item.detail}</small>
+                  </button>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
           {focusRailOpen ? (
             <div className={styles.focusRail} aria-label="当前协作焦点">
               {summaryCards.map((card, index) => (
@@ -15861,7 +16089,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                             <span className={styles.objectAvatar}>主</span>
                             <strong>{player.name}</strong>
                             <small>
-                              {`${player.projectPresenceLabel} / ${player.stateLabel} / ${player.onlineComputerCount}/${player.computerCount} 台电脑 / ${player.threadCount} 条线程`}
+                              {`${player.projectPresenceLabel} / ${player.stateLabel} / Runner 心跳 ${player.onlineComputerCount}/${player.computerCount} 台 / ${player.threadCount} 条线程`}
                             </small>
                           </button>
                         ))
@@ -15904,7 +16132,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                                 humanPartyHud.length === 1
                                   ? currentHumanPartyPlayer?.name || humanPartyHud[0]?.ownership || "当前主角"
                                   : "",
-                              )} / ${text(node.status ?? node.platform ?? node.os, "在线 / 待扫描线程")}${
+                              )} / ${computerRegistrationLabel(node)} / ${runnerWatchInfo(node).label}${
                                 isCurrentComputerOwner(
                                   node,
                                   props.currentUser as AnyRecord | null | undefined,

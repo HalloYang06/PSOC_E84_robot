@@ -13,8 +13,9 @@ from app.db.models.project import Project
 from app.db.models.project_collaboration import ProjectAIProvider, ProjectComputerNode, ProjectThreadWorkstation
 from app.db.models.runner import Runner
 from app.db.models.task import Task
+from app.db.models.task_dispatch import TaskDispatch
 from app.db.models.task_event import TaskEvent
-from app.modules.projects.service import RUNNER_WATCH_FRESH_SECONDS, sync_project_collaboration_inventory
+from app.modules.projects.service import RUNNER_WATCH_FRESH_SECONDS, _runner_watch_snapshot, sync_project_collaboration_inventory
 from app.modules.tasks import repo as task_repo
 from app.modules.tasks.schemas import TaskTransitionCreate
 from app.modules.tasks.service import record_task_log, record_task_result, transition_task_status
@@ -32,7 +33,9 @@ def _runner_binding_rows(db: Session, runner_id: str) -> list[dict[str, object]]
         .order_by(Project.created_at.desc(), ProjectComputerNode.sort_order.asc(), ProjectComputerNode.created_at.asc())
     )
     bindings: list[dict[str, object]] = []
+    now = datetime.now(timezone.utc)
     for node, project_name, develop_branch, default_branch in db.execute(stmt).all():
+        watch = _runner_watch_snapshot(node, now=now)
         bindings.append(
             {
                 "project_id": node.project_id,
@@ -45,6 +48,7 @@ def _runner_binding_rows(db: Session, runner_id: str) -> list[dict[str, object]]
                 "computer_node_host": node.host,
                 "computer_node_os": node.os,
                 "sort_order": node.sort_order,
+                **watch,
             }
         )
     return bindings
@@ -439,11 +443,40 @@ def sync_runner_thread_workstations(
         metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
         source = str(metadata.get("source") or "").strip()
         provider_key = _runner_scan_provider_key(item)
-        should_replace_scan = same_node and source == "runner_thread_scan" and (
+        should_replace_scan = same_node and not item.get("authoritative_seat_id") and source == "runner_thread_scan" and (
             not incoming_provider_keys or (provider_key in incoming_provider_keys)
         )
         if not should_replace_scan:
             retained.append(dict(item))
+
+    def _item_match_keys(raw_item: dict[str, object]) -> set[str]:
+        metadata = raw_item.get("metadata") if isinstance(raw_item.get("metadata"), dict) else {}
+        keys = {
+            str(raw_item.get("id") or "").strip(),
+            str(raw_item.get("config_id") or "").strip(),
+            str(raw_item.get("agent_id") or "").strip(),
+            str(raw_item.get("name") or "").strip(),
+            str(metadata.get("thread_title") or "").strip(),
+            str(metadata.get("bound_thread_label") or "").strip(),
+        }
+        return {key for key in keys if key}
+
+    def _find_retained_index_for_scan(scan_item: dict[str, object]) -> int | None:
+        scan_keys = _item_match_keys(
+            {
+                "id": scan_item.get("workstation_id"),
+                "agent_id": scan_item.get("agent_id"),
+                "name": scan_item.get("workstation_name"),
+                "metadata": scan_item.get("metadata") if isinstance(scan_item.get("metadata"), dict) else {},
+            }
+        )
+        if not scan_keys:
+            return None
+        for retained_index, retained_item in enumerate(retained):
+            retained_keys = _item_match_keys(retained_item)
+            if scan_keys & retained_keys:
+                return retained_index
+        return None
 
     synced_items: list[dict[str, object]] = []
     for index, item in enumerate(incoming_items):
@@ -470,32 +503,65 @@ def sync_runner_thread_workstations(
             metadata["skill_loadout"] = skill_loadout
         if item.get("ai_provider_label"):
             metadata["ai_provider_label"] = item.get("ai_provider_label")
-        synced_items.append(
-            {
-                "id": str(item.get("workstation_id") or item.get("workstation_name") or f"{payload.computer_node_id}-thread-{index+1}").strip(),
-                "name": str(item.get("workstation_name") or item.get("workstation_id") or f"线程 {index+1}").strip(),
-                "agent_id": item.get("agent_id"),
-                "computer_node_id": payload.computer_node_id,
-                "computer_node": node.label,
-                "ai_provider_id": item.get("ai_provider_id"),
-                "ai_provider": item.get("ai_provider_label") or item.get("ai_provider_id"),
-                "status": str(item.get("workstation_status") or "idle").strip() or "idle",
-                "description": item.get("description"),
-                "notes": item.get("notes"),
-                "model": item.get("model"),
-                "metadata": metadata,
-            }
-        )
+        workstation_id = str(item.get("workstation_id") or item.get("workstation_name") or f"{payload.computer_node_id}-thread-{index+1}").strip()
+        workstation_name = str(item.get("workstation_name") or item.get("workstation_id") or f"线程 {index+1}").strip()
+        merged_item: dict[str, object] = {
+            "id": workstation_id,
+            "name": workstation_name,
+            "agent_id": item.get("agent_id"),
+            "computer_node_id": payload.computer_node_id,
+            "computer_node": node.label,
+            "ai_provider_id": item.get("ai_provider_id"),
+            "ai_provider": item.get("ai_provider_label") or item.get("ai_provider_id"),
+            "status": str(item.get("workstation_status") or "idle").strip() or "idle",
+            "description": item.get("description"),
+            "notes": item.get("notes"),
+            "model": item.get("model"),
+            "source_workstation_id": workstation_id,
+            "bound_thread_id": workstation_id,
+            "metadata": metadata,
+        }
+        retained_index = _find_retained_index_for_scan(item)
+        if retained_index is not None:
+            current = dict(retained[retained_index])
+            current_metadata = dict(current.get("metadata") or {}) if isinstance(current.get("metadata"), dict) else {}
+            existing_source = str(current_metadata.get("source") or "").strip()
+            current_metadata.update(metadata)
+            if existing_source and existing_source != "runner_thread_scan":
+                current_metadata["source"] = existing_source
+                current_metadata["runner_thread_scan_source"] = "runner_thread_scan"
+            current_metadata["desktop_visible"] = True
+            current_metadata["thread_binding_label"] = workstation_name
+            current.update(
+                {
+                    key: value
+                    for key, value in merged_item.items()
+                    if value not in (None, "")
+                    and key not in {"id", "name", "metadata"}
+                }
+            )
+            current["id"] = str(current.get("id") or workstation_id).strip() or workstation_id
+            current["name"] = str(current.get("name") or workstation_name).strip() or workstation_name
+            current["metadata"] = current_metadata
+            retained[retained_index] = current
+            synced_items.append(current)
+        else:
+            synced_items.append(merged_item)
 
-    retained.extend(synced_items)
+    retained_ids = {id(item) for item in synced_items}
+    retained.extend(item for item in synced_items if id(item) not in retained_ids or item not in retained)
     config["thread_workstations"] = retained
     node_scan_items = [
         item
         for item in retained
         if isinstance(item, dict)
         and str(item.get("computer_node_id") or "") == payload.computer_node_id
-        and str((item.get("metadata") if isinstance(item.get("metadata"), dict) else {}).get("source") or "").strip()
-        == "runner_thread_scan"
+        and (
+            str((item.get("metadata") if isinstance(item.get("metadata"), dict) else {}).get("source") or "").strip()
+            == "runner_thread_scan"
+            or str((item.get("metadata") if isinstance(item.get("metadata"), dict) else {}).get("runner_thread_scan_source") or "").strip()
+            == "runner_thread_scan"
+        )
     ]
 
     for item in config.get("computer_nodes") or []:
@@ -639,8 +705,14 @@ def fetch_next_task(db: Session, runner_id: str):
         return None
 
     stmt = (
-        select(Task)
-        .where(Task.status == "ready", Task.project_id.in_(project_ids))
+        select(Task, TaskDispatch)
+        .join(TaskDispatch, TaskDispatch.task_id == Task.id)
+        .where(
+            Task.status.in_(["ready", "queued"]),
+            Task.project_id.in_(project_ids),
+            TaskDispatch.runner_id == runner_id,
+            TaskDispatch.status.in_(["dispatched", "queued", "delivered", "pending", "created"]),
+        )
         .order_by(
             case(
                 (Task.priority == "P0", 0),
@@ -649,15 +721,57 @@ def fetch_next_task(db: Session, runner_id: str):
                 (Task.priority == "P3", 3),
                 else_=4,
             ),
+            TaskDispatch.created_at.asc(),
             Task.created_at.asc(),
         )
     )
     task = None
-    for candidate in db.scalars(stmt):
+    dispatch = None
+    for candidate, candidate_dispatch in db.execute(stmt):
         if _pending_high_risk_approvals(db, candidate.id):
             continue
         task = candidate
+        dispatch = candidate_dispatch
         break
+    if task is None:
+        single_runner_project_ids: list[str] = []
+        for project_id in project_ids:
+            bound_runner_ids = {
+                str(value or "").strip()
+                for value in db.scalars(
+                    select(ProjectComputerNode.runner_id).where(
+                        ProjectComputerNode.project_id == project_id,
+                        ProjectComputerNode.runner_id.is_not(None),
+                    )
+                )
+                if str(value or "").strip()
+            }
+            if bound_runner_ids == {runner_id}:
+                single_runner_project_ids.append(project_id)
+        if single_runner_project_ids:
+            fallback_stmt = (
+                select(Task)
+                .where(
+                    Task.status == "ready",
+                    Task.project_id.in_(single_runner_project_ids),
+                    ~select(TaskDispatch.id).where(TaskDispatch.task_id == Task.id).exists(),
+                )
+                .order_by(
+                    case(
+                        (Task.priority == "P0", 0),
+                        (Task.priority == "P1", 1),
+                        (Task.priority == "P2", 2),
+                        (Task.priority == "P3", 3),
+                        else_=4,
+                    ),
+                    Task.created_at.asc(),
+                )
+            )
+            for candidate in db.scalars(fallback_stmt):
+                if _pending_high_risk_approvals(db, candidate.id):
+                    continue
+                task = candidate
+                break
     if task is None:
         return None
 
@@ -677,6 +791,9 @@ def fetch_next_task(db: Session, runner_id: str):
     }
     task.status = "running"
     db.add(task)
+    if dispatch is not None:
+        dispatch.status = "running"
+        db.add(dispatch)
     task_repo.create_task_event(
         db,
         task.id,
@@ -684,6 +801,7 @@ def fetch_next_task(db: Session, runner_id: str):
         f"Runner claimed task: {runner_id}",
         {
             "runner_id": runner_id,
+            "dispatch_id": dispatch.id if dispatch is not None else None,
             "from_status": before["status"],
             "to_status": "running",
         },

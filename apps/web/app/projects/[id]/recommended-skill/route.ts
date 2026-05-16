@@ -5,33 +5,33 @@ import { getApiBaseUrl } from "../../../../lib/config";
 
 const ACCESS_TOKEN_COOKIE = "farm_access_token";
 
-const YUESPEAK_RECOMMENDED_PROJECT_SKILLS: Record<string, { label: string; note: string; recommendedFor: string[] }> = {
-  "yuespeak-boss-planning": {
-    label: "YueSpeak Boss 分工规划",
+const PLATFORM_RECOMMENDED_PROJECT_SKILLS: Record<string, { label: string; note: string; recommendedFor: string[] }> = {
+  "platform-boss-planning": {
+    label: "平台 Boss 分工规划",
     note: "把用户的一句话需求拆成可执行方案、工位分工、NPC 职责、GitHub 知识库路径和验收口径；Boss 只做规划、派单、收口，不直接替执行 NPC 写实现。",
     recommendedFor: ["Boss NPC", "产品与分工工位", "项目负责人"],
   },
-  "yuespeak-backend-api": {
-    label: "YueSpeak 后端接口与数据",
-    note: "负责阅读 YueSpeak 仓库文档，梳理接口、数据模型、标注流程、导出格式和迁移风险；输出要能被前端和 QA NPC 复用。",
+  "platform-backend-api": {
+    label: "平台后端接口与数据",
+    note: "负责阅读项目仓库文档，梳理接口、数据模型、数据流、导出格式和迁移风险；输出要能被前端和 QA NPC 复用。",
     recommendedFor: ["后端数据 NPC", "标注与导出工位"],
   },
-  "yuespeak-frontend-miniapp": {
-    label: "YueSpeak 小程序体验",
-    note: "负责学生端录音、跟读、纠音反馈、教师端查看与任务流体验；提交前必须从真实用户路径说明点击步骤和页面状态。",
-    recommendedFor: ["前端小程序 NPC", "学生教师体验工位"],
+  "platform-frontend-workbench": {
+    label: "平台前端工作台体验",
+    note: "负责从真实用户路径检查页面密度、主操作、工作台布局和状态反馈；提交前必须说明点击步骤和页面状态。",
+    recommendedFor: ["前端体验 NPC", "工作台体验工位"],
   },
-  "yuespeak-dataset-export": {
-    label: "YueSpeak 数据集导出",
+  "platform-dataset-export": {
+    label: "平台数据集导出",
     note: "关注音频、文本、评分、标注结果的导入导出闭环；每次改动要说明字段来源、兼容旧数据方式和可回滚点。",
     recommendedFor: ["后端数据 NPC", "数据治理 NPC"],
   },
-  "yuespeak-browser-acceptance": {
-    label: "YueSpeak 浏览器验收",
+  "platform-browser-acceptance": {
+    label: "平台浏览器验收",
     note: "用用户视角验证页面能不能用、密度是否舒服、核心按钮是否找得到；每次给出截图或明确的路由、操作、结果。",
     recommendedFor: ["QA 验收 NPC", "验收风险工位"],
   },
-  "yuespeak-cross-station-routing": {
+  "platform-cross-station-routing": {
     label: "跨工位协作路由",
     note: "同一工位 NPC 互相认识并按职责找人；不同工位只能通过目标工位长 NPC 沟通，回执必须回到发起 NPC 和 Boss 收口。",
     recommendedFor: ["Boss NPC", "工位长 NPC", "协作平台 NPC"],
@@ -98,7 +98,7 @@ export async function POST(request: Request, ctx: { params: { id: string } }) {
     const token = cookies().get(ACCESS_TOKEN_COOKIE)?.value ?? "";
     if (!token) throw new Error("登录态已过期，请重新登录后再创建 Skill。");
     const skillId = normalizeSkillId(formData.get("skill_id"));
-    const preset = YUESPEAK_RECOMMENDED_PROJECT_SKILLS[skillId];
+    const preset = PLATFORM_RECOMMENDED_PROJECT_SKILLS[skillId];
     if (!preset) throw new Error("没有找到这个推荐 Skill。");
 
     const project = await readUpstreamJson(`/api/projects/${encodeURIComponent(projectId)}`, token);

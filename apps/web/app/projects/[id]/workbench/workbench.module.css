@@ -955,6 +955,11 @@
   border-color: rgba(255, 232, 109, 0.34);
   color: #ffe8b3;
 }
+.productStatus span[data-muted="1"] {
+  background: rgba(167, 255, 237, 0.045);
+  border-color: rgba(167, 255, 237, 0.11);
+  color: rgba(202, 230, 238, 0.56);
+}
 .productStatus small {
   flex: 1;
   min-width: 160px;
@@ -963,6 +968,127 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.opsActionStrip {
+  margin-bottom: 8px;
+  padding: 8px 9px;
+  border-radius: 8px;
+  border: 1px solid rgba(88, 240, 255, 0.18);
+  background: rgba(3, 22, 30, 0.52);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.opsActionStrip > div:first-child {
+  min-width: 0;
+}
+
+.opsActionStrip strong {
+  display: block;
+  color: #eafffb;
+  font-size: 12px;
+}
+
+.opsActionStrip small {
+  display: block;
+  margin-top: 2px;
+  color: rgba(202, 230, 238, 0.68);
+  font-size: 10.5px;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.opsActionButtons {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.dispatchEvidenceStrip {
+  margin-bottom: 8px;
+  padding: 8px 9px;
+  border-radius: 8px;
+  border: 1px solid rgba(88, 240, 255, 0.18);
+  background: linear-gradient(90deg, rgba(88, 240, 255, 0.075), rgba(167, 255, 237, 0.035));
+  display: grid;
+  grid-template-columns: auto minmax(150px, 0.72fr) minmax(260px, 1.28fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.dispatchEvidenceStrip[data-ready="1"] {
+  border-color: rgba(167, 255, 237, 0.26);
+  background: linear-gradient(90deg, rgba(167, 255, 237, 0.105), rgba(88, 240, 255, 0.035));
+}
+
+.dispatchEvidencePulse {
+  width: 8px;
+  height: 34px;
+  border-radius: 999px;
+  background: #58f0ff;
+  box-shadow: 0 0 18px rgba(88, 240, 255, 0.4);
+}
+
+.dispatchEvidenceStrip[data-ready="1"] .dispatchEvidencePulse {
+  background: #a7ffed;
+  box-shadow: 0 0 18px rgba(167, 255, 237, 0.42);
+}
+
+.dispatchEvidenceMain {
+  min-width: 0;
+}
+
+.dispatchEvidenceMain strong {
+  display: block;
+  color: #f4ffff;
+  font-size: 12px;
+}
+
+.dispatchEvidenceMain small {
+  display: block;
+  margin-top: 2px;
+  color: rgba(202, 230, 238, 0.68);
+  font-size: 10.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dispatchEvidenceMetrics {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.dispatchEvidenceMetrics span {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(202, 230, 238, 0.055);
+  border: 1px solid rgba(202, 230, 238, 0.14);
+  color: rgba(220, 240, 255, 0.72);
+  font-size: 10.2px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.dispatchEvidenceMetrics span[data-ok="1"] {
+  background: rgba(167, 255, 237, 0.11);
+  border-color: rgba(167, 255, 237, 0.28);
+  color: #b9fff3;
+}
+
+.dispatchEvidenceMetrics span[data-warn="1"] {
+  background: rgba(255, 232, 109, 0.13);
+  border-color: rgba(255, 232, 109, 0.32);
+  color: #ffe8b3;
 }
 
 .setupChecklist {

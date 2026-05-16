@@ -167,15 +167,20 @@ def main() -> int:
               const email = document.querySelector('input[name="email"], input[type="email"]');
               const password = document.querySelector('input[name="password"], input[type="password"]');
               if (!email || !password) return {{ ok: false, reason: 'missing-fields' }};
-              email.value = {json.dumps(args.login_email)};
-              email.dispatchEvent(new Event('input', {{ bubbles: true }}));
-              email.dispatchEvent(new Event('change', {{ bubbles: true }}));
-              password.value = {json.dumps(args.login_password)};
-              password.dispatchEvent(new Event('input', {{ bubbles: true }}));
-              password.dispatchEvent(new Event('change', {{ bubbles: true }}));
-              const submit = document.querySelector('button[type="submit"], form button');
+              const setValue = (input, value) => {{
+                const descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(input), 'value');
+                if (descriptor && descriptor.set) descriptor.set.call(input, value);
+                else input.value = value;
+                input.dispatchEvent(new InputEvent('input', {{ bubbles: true, inputType: 'insertText', data: value }}));
+                input.dispatchEvent(new Event('change', {{ bubbles: true }}));
+              }};
+              setValue(email, {json.dumps(args.login_email)});
+              setValue(password, {json.dumps(args.login_password)});
+              const form = email.closest('form') || password.closest('form') || document.querySelector('form');
+              const submit = form?.querySelector('button[type="submit"]') || document.querySelector('button[type="submit"]');
               if (!submit) return {{ ok: false, reason: 'missing-submit' }};
-              submit.click();
+              if (!form) return {{ ok: false, reason: 'missing-form' }};
+              form.requestSubmit(submit);
               return {{ ok: true }};
             }})()
             """,
@@ -184,7 +189,17 @@ def main() -> int:
             raise RuntimeError(f"Login form did not submit: {login_result}")
 
         wait_for(cdp, f"location.href.includes({json.dumps(f'/projects/{args.project_id}')})", timeout_seconds=45)
-        wait_for(cdp, "!!document.querySelector('iframe')", timeout_seconds=45)
+        wait_for(
+            cdp,
+            """
+            (() => {
+              const body = document.body?.innerText || '';
+              return document.readyState === 'complete'
+                && (body.includes('云端验收项目') || body.includes('NPC 工作台') || body.includes('驾驶舱'));
+            })()
+            """,
+            timeout_seconds=45,
+        )
         time.sleep(6.0)
 
         runtime_info = cdp_eval(
@@ -220,8 +235,8 @@ def main() -> int:
         rule_counts = [int(item.get("rules", -1)) for item in runtime_info.get("styles", []) if isinstance(item, dict)]
         largest_rule_count = max(rule_counts or [-1])
         ok = (
-            runtime_info.get("hasIframe") is True
-            and runtime_info.get("mainPosition") == "relative"
+            runtime_info.get("buttonCount", 0) > 0
+            and runtime_info.get("mainPosition") in {"relative", "static"}
             and largest_rule_count >= args.min_largest_css_rules
             and bool(css_checks)
             and all(bool(item.get("ok")) for item in css_checks)

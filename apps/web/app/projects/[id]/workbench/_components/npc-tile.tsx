@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import styles from "./npc-tile.module.css";
 import { apiClientUrl } from "../../../../../lib/api-client-url";
-import { launchNpcOneShotThreadProcessing, launchNpcRealThreadProcessing, prepareCodexThreadLaunchPack } from "../../../../actions";
+import { launchNpcOneShotThreadProcessing } from "../../../../actions";
 
 export type WorkbenchSeat = {
   id: string;
@@ -59,7 +59,6 @@ type NpcTileProps = {
   crossLeads?: WorkbenchSeat[];
   currentUserId: string;
   currentUserName: string;
-  launchPackAutoOpen?: boolean;
   onOpenTeammate: (id: string) => void;
   sourcePath?: string;
   onClose: () => void;
@@ -76,9 +75,97 @@ type CollabMessage = {
   recipient_id: string | null;
   status: string;
   created_at?: string | null;
+  task_id?: string | null;
   dispatch_id?: string | null;
   metadata?: Record<string, unknown> | null;
   extra_data?: Record<string, unknown> | null;
+};
+
+type StructuredMessageKind =
+  | "boundary"
+  | "task"
+  | "approval"
+  | "receipt"
+  | "peer-dispatch-status"
+  | "tool"
+  | "chart"
+  | "model"
+  | "waveform"
+  | "dataset"
+  | "device"
+  | "git"
+  | "risk";
+
+type StructuredMessageCard = {
+  kind: StructuredMessageKind;
+  title: string;
+  summary: string;
+  status: string;
+  riskLevel: string;
+  items: Array<{ label: string; value: string }>;
+  metrics: Array<{ label: string; value: string }>;
+  actions: Array<{ label: string; status: string }>;
+};
+
+type ProfessionalSurface = "datasets" | "ai-lab" | "robotics";
+
+type ProfessionalViewEntry = {
+  surface: ProfessionalSurface;
+  label: string;
+  hint: string;
+};
+
+type EvidenceArtifact = {
+  label: string;
+  path: string;
+};
+
+type ArtifactPreviewState = {
+  loading?: boolean;
+  error?: string;
+  path?: string;
+  name?: string;
+  sizeBytes?: number;
+  truncated?: boolean;
+  content?: string;
+};
+
+const STRUCTURED_MESSAGE_KINDS = new Set<StructuredMessageKind>([
+  "boundary",
+  "task",
+  "approval",
+  "receipt",
+  "peer-dispatch-status",
+  "tool",
+  "chart",
+  "model",
+  "waveform",
+  "dataset",
+  "device",
+  "git",
+  "risk",
+]);
+
+const STRUCTURED_KIND_LABEL: Record<StructuredMessageKind, string> = {
+  boundary: "边界",
+  task: "任务",
+  approval: "审核",
+  receipt: "回执",
+  "peer-dispatch-status": "协作",
+  tool: "工具",
+  chart: "图表",
+  model: "模型",
+  waveform: "波形",
+  dataset: "数据",
+  device: "设备",
+  git: "Git",
+  risk: "风险",
+};
+
+const PROFESSIONAL_SURFACE_LABEL: Record<ProfessionalSurface, string> = {
+  datasets: "数据工场",
+  "ai-lab": "AI 实验室",
+  robotics: "机器人现场",
 };
 
 const NOISE_PREFIXES = [
@@ -94,6 +181,11 @@ const NOISE_PREFIXES = [
   "adapter ready",
   "adapter ack",
   "executor",
+  "codex adapter accepted command",
+  "local prompt file",
+  "provider cli execution",
+  "executor cwd",
+  "codex desktop ui delivery failed",
   "platform routing chatter",
 ];
 
@@ -109,18 +201,93 @@ function stripPlatformChatter(body: string): string {
     /AI_REQUIRED_REQUIREMENT_LEDGER_V1[\s\S]*?AI_REQUIRED_REQUIREMENT_LEDGER_END\s*/g,
     "",
   );
+  const normalizedBody = withoutLedger
+    .replace(/alias_display_non_authoritative/gi, "历史标识展示规则")
+    .replace(/historical[_\s-]*alias(?:[_\s-]*non[_\s-]*authoritative)?/gi, "历史标识")
+    .replace(/历史\s*alias/gi, "历史标识")
+    .replace(/current\s+alias/gi, "当前标识")
+    .replace(/source_thread/gi, "来源桌面线程")
+    .replace(/canonical_workstation_id/gi, "正式工位")
+    .replace(/requested_workstation_id/gi, "请求工位")
+    .replace(/authoritative_([a-z]+_)?seat_id/gi, "正式 NPC")
+    .replace(/authoritative_target_seat_id/gi, "目标 NPC")
+    .replace(/`?\bmessage_id\s*[:：]\s*[0-9a-f-]{8,}`?/gi, "平台已记录这次回执")
+    .replace(/`?\bdispatch_id\s*[:：]\s*[0-9a-f-]{8,}`?/gi, "平台已记录这次派工")
+    .replace(/`?\btask_id\s*[:：]\s*[0-9a-f-]{8,}`?/gi, "平台已记录这次任务")
+    .replace(/目标\s+NPC\s+已接到平台派单[:：]\s*[0-9a-f-]{8,}/gi, "目标线程已接到平台派单")
+    .replace(/sender_id/gi, "发送方")
+    .replace(/完整输出可查看本地 artifact[:：]?\s*[^\r\n]+/gi, "完整输出已保存为平台证据，可在工作台点“证据/查看回执”预览。")
+    .replace(/artifacts[\\/]workstation-inbox[\\/]?/gi, "平台证据目录")
+    .replace(/\.codex[\\/]sessions[\\/]?/gi, "桌面线程记录")
+    .replace(/[A-Za-z]:[\\/][^\s"'`<>),\]]*artifacts[\\/][^\s"'`<>),\]]+\.(?:md|txt|log|json|jsonl|yaml|yml)/gi, "平台证据文件")
+    .replace(/artifacts[\\/][^\s"'`<>),\]]+\.(?:md|txt|log|json|jsonl|yaml|yml)/gi, "平台证据文件")
+    .replace(/Codex Desktop UI 投递/g, "桌面线程可见")
+    .replace(/Codex Desktop UI delivery failed:?/gi, "桌面线程暂未确认收到")
+    .replace(/Codex app-server/gi, "后台线程")
+    .replace(/session JSONL/gi, "桌面记录")
+    .replace(/Local prompt file/gi, "本地任务说明")
+    .replace(/Provider CLI/gi, "执行通道")
+    .replace(/provider cli execution/gi, "执行通道运行")
+    .replace(/adapter/gi, "同步")
+    .replace(/bridge/gi, "同步")
+    .replace(/codex-session-[0-9a-z-]+/gi, "绑定桌面线程")
+    .replace(/codex-session/gi, "桌面线程")
+    .replace(/线程\s*codex/gi, "桌面线程");
   // 隐藏后端注入的 [路由]/[NPC ...自主发起]/经工位长 X 转交 等元信息行（用户只想看正文）
-  const lines = withoutLedger.split(/\r?\n/);
+  const lines = normalizedBody.split(/\r?\n/);
   const filtered = lines.filter((ln) => {
     const t = ln.trim();
+    const lower = t.toLowerCase();
     if (!t) return true;
+    if (NOISE_PREFIXES.some((prefix) => lower.startsWith(prefix.toLowerCase()))) return false;
     if (t.startsWith("[路由]") || t.startsWith("[Route]")) return false;
     if (t.startsWith("（NPC ") && t.includes("seat-mcp")) return false;
     if (t.startsWith("（本消息由 NPC")) return false;
     if (t.startsWith("[ack]") && t.length < 80) return false;
+    if (/^目标\s+NPC\s+已接到平台派单[:：]\s*[0-9a-f-]{8,}/i.test(t)) return false;
+    if (/^[A-Z]:\\/.test(t) || /^\/[\w.-]+/.test(t)) return false;
     return true;
   });
   return filtered.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function userFacingCollabText(value: unknown, fallback = ""): string {
+  const next = stripPlatformChatter(String(value ?? "").trim())
+    .replace(/alias_display_non_authoritative/gi, "历史标识展示规则")
+    .replace(/historical[_\s-]*alias(?:[_\s-]*non[_\s-]*authoritative)?/gi, "历史标识")
+    .replace(/历史\s*alias/gi, "历史标识")
+    .replace(/current\s+alias/gi, "当前标识")
+    .replace(/source_thread/gi, "来源桌面线程")
+    .replace(/canonical_workstation_id/gi, "正式工位")
+    .replace(/requested_workstation_id/gi, "请求工位")
+    .replace(/authoritative_([a-z]+_)?seat_id/gi, "正式 NPC")
+    .replace(/authoritative_target_seat_id/gi, "目标 NPC")
+    .replace(/`?\bmessage_id\s*[:：]\s*[0-9a-f-]{8,}`?/gi, "平台已记录这次回执")
+    .replace(/`?\bdispatch_id\s*[:：]\s*[0-9a-f-]{8,}`?/gi, "平台已记录这次派工")
+    .replace(/`?\btask_id\s*[:：]\s*[0-9a-f-]{8,}`?/gi, "平台已记录这次任务")
+    .replace(/目标\s+NPC\s+已接到平台派单[:：]\s*[0-9a-f-]{8,}/gi, "目标线程已接到平台派单")
+    .replace(/sender_id/gi, "发送方")
+    .replace(/完整输出可查看本地 artifact[:：]?\s*[^\r\n]+/gi, "完整输出已保存为平台证据，可在工作台点“证据/查看回执”预览。")
+    .replace(/artifacts[\\/]workstation-inbox[\\/]?/gi, "平台证据目录")
+    .replace(/\.codex[\\/]sessions[\\/]?/gi, "桌面线程记录")
+    .replace(/[A-Za-z]:[\\/][^\s"'`<>),\]]*artifacts[\\/][^\s"'`<>),\]]+\.(?:md|txt|log|json|jsonl|yaml|yml)/gi, "平台证据文件")
+    .replace(/artifacts[\\/][^\s"'`<>),\]]+\.(?:md|txt|log|json|jsonl|yaml|yml)/gi, "平台证据文件")
+    .replace(/Codex Desktop UI/gi, "桌面线程")
+    .replace(/Codex app-server/gi, "后台线程")
+    .replace(/session JSONL/gi, "桌面记录")
+    .replace(/Local prompt file/gi, "本地任务说明")
+    .replace(/Provider CLI/gi, "执行通道")
+    .replace(/provider cli execution/gi, "执行通道运行")
+    .replace(/\badapter\b/gi, "同步")
+    .replace(/\bbridge\b/gi, "同步")
+    .replace(/执行失败[:：]?/g, "待收口")
+    .replace(/hard failed/gi, "待收口")
+    .replace(/failed/gi, "待收口")
+    .replace(/codex-session-[0-9a-z-]+/gi, "绑定桌面线程")
+    .replace(/codex-session/gi, "桌面线程")
+    .replace(/线程\s*codex/gi, "桌面线程")
+    .trim();
+  return next || fallback;
 }
 
 function classifyMessage(msg: CollabMessage): { kind: "command" | "result" | "error" | "note"; summary: string; noisy: boolean } {
@@ -134,7 +301,7 @@ function classifyMessage(msg: CollabMessage): { kind: "command" | "result" | "er
   else if (type.includes("result") || type === "ai_reply") kind = "result";
   if ((msg.status || "").toLowerCase() === "failed" || bodyLower.includes("error") || bodyLower.includes("失败")) kind = "error";
 
-  const title = (msg.title || "").trim();
+  const title = userFacingCollabText(msg.title || "");
   let summary = title;
   if (!summary) {
     const firstLine = stripPlatformChatter(body).split(/\r?\n/).map((s) => s.trim()).find(Boolean) || "";
@@ -154,6 +321,20 @@ type RefinedMessage = {
   noisy: boolean;
   showByDefault: boolean;
 };
+
+type MessageProcessMeta = {
+  origin: string;
+  target: string;
+  process: string;
+  signal: string;
+};
+
+function desktopSyncLatencyLabel(value: unknown): string {
+  const ms = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(ms) || ms < 0) return "";
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`;
+}
 
 const IMPORTANT_WATCHER_TYPES = new Set([
   "runner_ack",
@@ -212,66 +393,968 @@ function messageMetadata(msg: CollabMessage): Record<string, unknown> {
   return { ...extra, ...meta };
 }
 
+function safeRecord(value: unknown): Record<string, unknown> {
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? parsed as Record<string, unknown>
+        : {};
+    } catch {
+      return {};
+    }
+  }
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function safeText(value: unknown, fallback = ""): string {
+  const next = String(value ?? "").trim();
+  return next || fallback;
+}
+
+function isHistoricalAliasValue(value: string): boolean {
+  return /codex-session|claude-session|session-|thread-|旧|legacy|alias/i.test(value);
+}
+
+function seatNameByAuthoritativeRef(
+  value: unknown,
+  peerByIdentity: Map<string, WorkbenchSeat>,
+  fallback = "协作者",
+): string {
+  const raw = safeText(value, "");
+  if (!raw) return fallback;
+  const seat = peerByIdentity.get(raw);
+  if (seat) return seat.name;
+  return isHistoricalAliasValue(raw) ? "历史标识" : userFacingCollabText(raw, fallback);
+}
+
+function cleanActorFallback(value: string, fallback: string): string {
+  const cleaned = userFacingCollabText(value, "").trim();
+  if (!cleaned) return fallback;
+  if (/^(发起|目标)\s*NPC$/i.test(cleaned)) return fallback;
+  if (/^desktop-user$/i.test(cleaned)) return "桌面用户";
+  if (looksInternalIdentifier(cleaned)) return fallback;
+  return cleaned;
+}
+
+function displaySenderName(
+  msg: CollabMessage,
+  peerByIdentity: Map<string, WorkbenchSeat>,
+  fallback = "协作者",
+): string {
+  const metadata = messageMetadata(msg);
+  const authoritative = metadata.authoritative_sender_seat_id
+    ?? metadata.authoritative_seat_id
+    ?? metadata.delegated_via_seat_id
+    ?? msg.sender_id;
+  return seatNameByAuthoritativeRef(authoritative, peerByIdentity, fallback);
+}
+
+function displayTargetName(
+  msg: CollabMessage,
+  peerByIdentity: Map<string, WorkbenchSeat>,
+  fallback = "当前承接方",
+): string {
+  const metadata = messageMetadata(msg);
+  const authoritative = metadata.authoritative_target_seat_id
+    ?? metadata.intended_target_seat_id
+    ?? metadata.routed_recipient_seat_id
+    ?? metadata.downstream_seat_id
+    ?? msg.recipient_id;
+  return seatNameByAuthoritativeRef(authoritative, peerByIdentity, fallback);
+}
+
+function displayReviewEndpointName(
+  value: unknown,
+  peerByIdentity: Map<string, WorkbenchSeat>,
+  fallback: string,
+): string {
+  const raw = safeText(value, "");
+  if (!raw) return fallback;
+  return seatNameByAuthoritativeRef(raw, peerByIdentity, fallback);
+}
+
+function normalizeStructuredKind(value: unknown): StructuredMessageKind | null {
+  const kind = safeText(value, "").toLowerCase().replace(/_/g, "-");
+  const normalized = kind === "model3d" || kind === "model-3d"
+    ? "model"
+    : kind === "data" || kind === "dataset-preview"
+      ? "dataset"
+      : kind === "wave" || kind === "telemetry-waveform"
+        ? "waveform"
+      : kind === "approval-risk"
+        ? "risk"
+        : kind === "boundary-card" || kind === "dispatch-boundary" || kind === "pre-dispatch"
+          ? "boundary"
+          : kind;
+  return STRUCTURED_MESSAGE_KINDS.has(normalized as StructuredMessageKind)
+    ? normalized as StructuredMessageKind
+    : null;
+}
+
+function normalizeStructuredPairs(value: unknown): Array<{ label: string; value: string }> {
+  if (Array.isArray(value)) {
+    return value
+      .map((item, index) => {
+        if (item && typeof item === "object") {
+          const rec = item as Record<string, unknown>;
+          const label = safeText(rec.label ?? rec.name ?? rec.key, `项 ${index + 1}`);
+          const val = safeText(rec.value ?? rec.status ?? rec.detail ?? rec.summary, "");
+          return val ? { label, value: val } : null;
+        }
+        const val = safeText(item, "");
+        return val ? { label: `项 ${index + 1}`, value: val } : null;
+      })
+      .filter((item): item is { label: string; value: string } => Boolean(item))
+      .slice(0, 6);
+  }
+  if (value && typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>)
+      .map(([key, val]) => ({ label: key, value: safeText(val, "") || JSON.stringify(val) }))
+      .filter((item) => item.value && item.value !== undefined)
+      .slice(0, 6);
+  }
+  return [];
+}
+
+function collectProfessionalSignals(msg: CollabMessage, card: StructuredMessageCard | null): string {
+  const metadata = messageMetadata(msg);
+  const payload = safeRecord(metadata.payload_json ?? metadata.payloadJson);
+  return [
+    msg.title,
+    msg.body,
+    metadata.object_type,
+    metadata.objectType,
+    metadata.surface,
+    metadata.surface_hint,
+    metadata.surfaceHint,
+    metadata.category,
+    payload.object_type,
+    payload.objectType,
+    payload.surface,
+    payload.surface_hint,
+    payload.surfaceHint,
+    card?.kind,
+    card?.title,
+    card?.summary,
+    ...card?.items.flatMap((item) => [item.label, item.value]) ?? [],
+    ...card?.metrics.flatMap((item) => [item.label, item.value]) ?? [],
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function inferProfessionalViews(msg: CollabMessage, card: StructuredMessageCard | null): ProfessionalViewEntry[] {
+  const metadata = messageMetadata(msg);
+  const payload = safeRecord(metadata.payload_json ?? metadata.payloadJson);
+  const entries = new Map<ProfessionalSurface, ProfessionalViewEntry>();
+  const signals = collectProfessionalSignals(msg, card);
+  const add = (surface: ProfessionalSurface, hint: string) => {
+    if (!entries.has(surface)) {
+      entries.set(surface, { surface, label: PROFESSIONAL_SURFACE_LABEL[surface], hint });
+    }
+  };
+
+  if (card?.kind === "dataset" || card?.kind === "chart") add("datasets", "看样本、质检和版本");
+  if (card?.kind === "waveform") {
+    add("datasets", "看时序数据和入库");
+    add("robotics", "看现场波形和 topic");
+  }
+  if (card?.kind === "model" || card?.kind === "device") add("robotics", "看模型、设备和现场状态");
+  if (card?.kind === "boundary" || card?.kind === "approval" || card?.kind === "risk") {
+    add("ai-lab", "看预演、边界和放行条件");
+  }
+
+  if (/\b(dataset|sample|manifest|episode|rosbag|bag|audio|image|video|label|schema|imu|telemetry)\b/.test(signals)
+    || /数据|样本|质检|标注|入库|版本/.test(signals)) {
+    add("datasets", "看证据链和数据状态");
+  }
+  if (/\b(robot|ros|topic|tf|joint|serial|imu|urdf|gltf|glb|device|sensor)\b/.test(signals)
+    || /机器人|现场|模型|传感器|串口|主控板|设备|关节|波形|ros/.test(signals)) {
+    add("robotics", "看现场对象和运行态");
+  }
+  if (/\b(sim|simulation|review|approval|risk|guard|boundary|policy)\b/.test(signals)
+    || /仿真|预演|审核|风险|边界|放行|策略/.test(signals)) {
+    add("ai-lab", "看预演、风险和审核条件");
+  }
+
+  const preferredSurface = safeText(
+    metadata.surface
+      ?? metadata.surface_hint
+      ?? metadata.surfaceHint
+      ?? payload.surface
+      ?? payload.surface_hint
+      ?? payload.surfaceHint,
+    "",
+  ).toLowerCase();
+  if (preferredSurface.includes("dataset")) add("datasets", "看证据链和数据状态");
+  if (preferredSurface.includes("robot")) add("robotics", "看现场对象和运行态");
+  if (preferredSurface.includes("lab") || preferredSurface.includes("sim")) add("ai-lab", "看预演、风险和审核条件");
+
+  return Array.from(entries.values()).slice(0, 3);
+}
+
+function normalizeEvidencePath(rawValue: unknown): string | null {
+  const value = safeText(rawValue, "").replace(/\\/g, "/").trim();
+  if (!value) return null;
+  const match = value.match(/(?:^|[A-Za-z]:\/.*?)(artifacts\/[^\s"'`<>),\]]+\.(?:md|txt|log|json|jsonl|yaml|yml))/i)
+    || value.match(/(artifacts\/[^\s"'`<>),\]]+\.(?:md|txt|log|json|jsonl|yaml|yml))/i);
+  if (!match) return null;
+  return match[1].replace(/[,.;:]+$/g, "");
+}
+
+function evidenceLabelFromKey(key: string, path: string): string {
+  const lowered = `${key} ${path}`.toLowerCase();
+  if (lowered.includes("stdout") || lowered.endsWith(".out.log")) return "执行日志";
+  if (lowered.includes("stderr") || lowered.endsWith(".err.log")) return "错误日志";
+  if (lowered.includes("screenshot")) return "截图记录";
+  if (lowered.includes("receipt") || lowered.includes("result")) return "回执文件";
+  if (lowered.includes("manifest")) return "清单";
+  if (lowered.includes("prompt")) return "提示词";
+  return "证据";
+}
+
+function userFacingEvidencePath(path: string): string {
+  const normalized = safeText(path, "").replace(/\\/g, "/");
+  const fileName = normalized.split("/").filter(Boolean).pop() || "证据文件";
+  return `平台证据 · ${fileName}`;
+}
+
+function extractEvidenceArtifacts(msg: CollabMessage): EvidenceArtifact[] {
+  const metadata = messageMetadata(msg);
+  const payload = safeRecord(metadata.payload_json ?? metadata.payloadJson);
+  const candidates: Array<{ key: string; value: unknown }> = [];
+  for (const source of [metadata, payload]) {
+    for (const [key, value] of Object.entries(source)) {
+      if (/path|artifact|evidence|stdout|stderr|log|manifest|receipt|result/i.test(key)) {
+        candidates.push({ key, value });
+      }
+      if (Array.isArray(value) && /artifacts|evidence|files|logs/i.test(key)) {
+        value.forEach((item, index) => candidates.push({ key: `${key}_${index + 1}`, value: item }));
+      }
+    }
+  }
+  const textCandidates = [
+    msg.body,
+    msg.title,
+    ...candidates.map((item) => {
+      if (typeof item.value === "string") return item.value;
+      try {
+        return JSON.stringify(item.value);
+      } catch {
+        return "";
+      }
+    }),
+  ];
+  const found: EvidenceArtifact[] = [];
+  const seen = new Set<string>();
+  for (const item of candidates) {
+    const path = normalizeEvidencePath(item.value);
+    if (!path || seen.has(path)) continue;
+    seen.add(path);
+    found.push({ label: evidenceLabelFromKey(item.key, path), path });
+  }
+  const artifactRegex = /(?:[A-Za-z]:[\\/][^\s"'`<>),\]]*[\\/])?(artifacts[\\/][^\s"'`<>),\]]+\.(?:md|txt|log|json|jsonl|yaml|yml))/gi;
+  for (const text of textCandidates) {
+    const raw = safeText(text, "");
+    let match: RegExpExecArray | null;
+    while ((match = artifactRegex.exec(raw)) !== null) {
+      const path = normalizeEvidencePath(match[1]);
+      if (!path || seen.has(path)) continue;
+      seen.add(path);
+      found.push({ label: evidenceLabelFromKey("", path), path });
+    }
+  }
+  return found.slice(0, 4);
+}
+
+function boundaryCardMetadataFromText(body: string, sourceName: string, targetName: string): Record<string, unknown> | null {
+  const cleaned = body.trim();
+  if (!/^(边界卡|boundary card|pre-dispatch|派单边界)[:：\s]/i.test(cleaned)) return null;
+  const lines = cleaned.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const first = (lines[0] || cleaned).replace(/^(边界卡|boundary card|pre-dispatch|派单边界)[:：\s]*/i, "").trim();
+  const itemLines = lines.slice(1).filter((line) => /^[-*•]/.test(line) || /[:：]/.test(line)).slice(0, 5);
+  return {
+    payload_json: {
+      card_kind: "boundary",
+      title: first || "派单前边界卡",
+      summary: "审批前只允许 NPC 讨论目标、接口、风险和验收；通过后再进入正式执行。",
+      risk_level: "需人审",
+      items: [
+        { label: "发起", value: sourceName },
+        { label: "目标", value: targetName },
+        ...(itemLines.length
+          ? itemLines.map((line, index) => {
+              const normalized = line.replace(/^[-*•]\s*/, "");
+              const [label, ...rest] = normalized.split(/[:：]/);
+              return {
+                label: rest.length ? label.trim().slice(0, 18) || `边界 ${index + 1}` : `边界 ${index + 1}`,
+                value: (rest.length ? rest.join("：") : normalized).trim().slice(0, 80),
+              };
+            })
+          : [
+              { label: "允许", value: "讨论接口、验收、风险、依赖" },
+              { label: "禁止", value: "未经审批直接改代码或触碰禁区" },
+            ]),
+      ],
+      actions: [
+        { label: "当前", value: "等待人审" },
+        { label: "通过后", value: "再创建正式派单" },
+      ],
+    },
+  };
+}
+
+function getStructuredMessageCard(msg: CollabMessage): StructuredMessageCard | null {
+  const metadata = messageMetadata(msg);
+  const payload = safeRecord(metadata.payload_json ?? metadata.payloadJson);
+  const kind = normalizeStructuredKind(
+    payload.card_kind
+      ?? payload.cardKind
+      ?? payload.kind
+      ?? metadata.card_kind
+      ?? metadata.cardKind
+      ?? metadata.kind
+  );
+  if (!kind) return null;
+  const status = safeText(msg.status ?? metadata.card_status ?? payload.status, "");
+  return {
+    kind,
+    title: userFacingCollabText(payload.title ?? msg.title, STRUCTURED_KIND_LABEL[kind]),
+    summary: userFacingCollabText(payload.summary ?? payload.description ?? metadata.summary ?? "", ""),
+    status,
+    riskLevel: userFacingCollabText(payload.risk_level ?? payload.riskLevel ?? metadata.risk_level ?? metadata.riskLevel, ""),
+    items: normalizeStructuredPairs(payload.items ?? payload.fields ?? payload.links ?? payload.resources).map((item) => ({
+      label: userFacingCollabText(item.label),
+      value: userFacingCollabText(item.value),
+    })),
+    metrics: normalizeStructuredPairs(payload.metrics ?? payload.stats).map((item) => ({
+      label: userFacingCollabText(item.label),
+      value: userFacingCollabText(item.value),
+    })),
+    actions: normalizeStructuredPairs(payload.actions).map((item) => ({
+      label: userFacingCollabText(item.label),
+      status: userFacingCollabText(item.value),
+    })),
+  };
+}
+
+function isPreDispatchBoundaryMessage(msg: CollabMessage | null): boolean {
+  if (!msg) return false;
+  const metadata = messageMetadata(msg);
+  if (metadata.pre_dispatch_gate === true) return true;
+  const payload = safeRecord(metadata.payload_json ?? metadata.payloadJson);
+  return normalizeStructuredKind(
+    payload.card_kind
+      ?? payload.cardKind
+      ?? payload.kind
+      ?? metadata.card_kind
+      ?? metadata.cardKind
+      ?? metadata.kind
+  ) === "boundary";
+}
+
+function shouldRenderAsReviewMessage(msg: CollabMessage | null): boolean {
+  if (!msg || (msg.status || "").toLowerCase() !== "pending_review") return false;
+  if (isPreDispatchBoundaryMessage(msg)) return true;
+  const senderType = safeText(msg.sender_type, "").toLowerCase();
+  const type = safeText(msg.message_type, "").toLowerCase();
+  const body = String(msg.body || "");
+  const source = body.match(/来源：([a-z_]+)/)?.[1] || safeText(messageMetadata(msg).route_review_source, "").toLowerCase();
+  if (source === "hardware_risk") return true;
+  return senderType === "agent" && ["requirement_dispatch", "agent_command", "comment_message"].includes(type);
+}
+
+function withSeatReturnParam(path: string, seatId: string): string {
+  const [base, query = ""] = path.split("?");
+  const params = new URLSearchParams(query);
+  params.set("seat", seatId);
+  return `${base}?${params.toString()}`;
+}
+
+function humanizeDispatchCardStatus(status: string): string {
+  const normalized = safeText(status, "").toLowerCase();
+  if (normalized === "pending_closeout") return "待收口";
+  if (normalized === "finaled") return "已收 final";
+  if (normalized === "acked") return "已收最小回执";
+  if (normalized === "delivered") return "等待目标回执";
+  if (normalized === "blocked") return "已阻塞";
+  if (normalized === "queued") return "等待发送";
+  if (normalized === "next_ready") return "可继续";
+  return safeText(status, "处理中");
+}
+
+function renderStructuredMessageCard(card: StructuredMessageCard) {
+  const primaryPairs = [...card.metrics, ...card.items].slice(0, 6);
+  return (
+    <div className={styles.structuredCard} data-card-kind={card.kind} data-card-status={card.status}>
+      <div className={styles.structuredCardHead}>
+        <span>{STRUCTURED_KIND_LABEL[card.kind]}</span>
+        {card.status ? <small>{humanizeDispatchCardStatus(card.status)}</small> : null}
+        {card.riskLevel ? <small data-risk="1">{card.riskLevel}</small> : null}
+      </div>
+      <strong>{card.title}</strong>
+      {card.summary ? <p>{card.summary}</p> : null}
+      {primaryPairs.length ? (
+        <dl className={styles.structuredCardGrid}>
+          {primaryPairs.map((item, index) => (
+            <div key={`${card.kind}-${item.label}-${index}`}>
+              <dt>{item.label}</dt>
+              <dd>{item.value}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
+      {card.actions.length ? (
+        <div className={styles.structuredActionRow}>
+          {card.actions.slice(0, 4).map((action, index) => (
+            <span key={`${card.kind}-action-${action.label}-${index}`}>
+              {action.label}{action.status ? ` · ${action.status}` : ""}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function relatedSourceMessageId(msg: CollabMessage): string {
+  const metadata = messageMetadata(msg);
+  return safeText(metadata.source_message_id ?? metadata.sourceMessageId, "");
+}
+
+function messageCompletesSource(msg: CollabMessage, sourceId: string): boolean {
+  if (!sourceId) return false;
+  const status = safeText(msg.status, "").toLowerCase();
+  if (!["completed", "done", "delivered", "finaled"].includes(status) && !isFinalReceipt(msg)) return false;
+  if (relatedSourceMessageId(msg) === sourceId) return true;
+  return safeText(msg.dispatch_id, "") === sourceId || safeText(msg.task_id, "") === sourceId;
+}
+
+function sourceHasFinalReceipt(messages: CollabMessage[] | null | undefined, sourceId: string): boolean {
+  if (!sourceId) return false;
+  return (messages || []).some((item) => messageCompletesSource(item, sourceId));
+}
+
+function dialogChainKey(msg: CollabMessage): string {
+  const metadata = messageMetadata(msg);
+  return safeText(
+    metadata.source_message_id
+      ?? metadata.sourceMessageId
+      ?? msg.dispatch_id
+      ?? msg.task_id,
+    "",
+  );
+}
+
+function dialogDedupeKey(msg: CollabMessage): string {
+  const created = msg.created_at ? new Date(msg.created_at) : null;
+  const minute = created && !Number.isNaN(created.getTime())
+    ? Math.floor(created.getTime() / 60000)
+    : "";
+  const headline = userFacingCollabText(msg.title || "", "");
+  const firstLine = firstUsefulLine(stripPlatformChatter(msg.body || ""));
+  return [
+    safeText(msg.message_type, "").toLowerCase(),
+    safeText(msg.status, "").toLowerCase(),
+    safeText(msg.sender_type, "").toLowerCase(),
+    safeText(msg.sender_id, "").toLowerCase(),
+    safeText(msg.recipient_id, "").toLowerCase(),
+    headline,
+    firstLine.slice(0, 160),
+    minute,
+  ].join("|");
+}
+
+function isIntermediateReceipt(msg: CollabMessage): boolean {
+  const type = safeText(msg.message_type, "").toLowerCase();
+  const status = safeText(msg.status, "").toLowerCase();
+  const metadata = messageMetadata(msg);
+  const progressState = safeText(metadata.progress_state, "").toLowerCase();
+  if (isFinalReceipt(msg)) return true;
+  return status === "acked"
+    || status === "in_progress"
+    || type.includes("ack")
+    || type.includes("progress")
+    || progressState === "awaiting_desktop_reply"
+    || progressState === "delivery_pending_confirmation";
+}
+
+function isFinalReceipt(msg: CollabMessage): boolean {
+  const type = safeText(msg.message_type, "").toLowerCase();
+  const status = safeText(msg.status, "").toLowerCase();
+  return ["completed", "done", "finaled"].includes(status)
+    || type.includes("final")
+    || type.includes("result");
+}
+
+function looksInternalIdentifier(value: string): boolean {
+  const raw = value.trim();
+  return /^platform-npc-\d+$/i.test(raw)
+    || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw)
+    || /^agent-[0-9a-f-]+$/i.test(raw);
+}
+
+function processActorLabel(value: string, peerByIdentity: Map<string, WorkbenchSeat>, fallback: string): string {
+  const raw = safeText(value, "");
+  if (!raw) return fallback;
+  const peer = peerByIdentity.get(raw) ?? peerByIdentity.get(raw.toLowerCase());
+  if (peer?.name) return peer.name;
+  return cleanActorFallback(raw, fallback);
+}
+
+function messageTypeLabel(msg: CollabMessage): string {
+  const type = safeText(msg.message_type, "").toLowerCase();
+  if (type === "desktop_user_question") return "桌面提问";
+  if (type === "desktop_minimal_receipt") return "最小回执";
+  if (type === "requirement_dispatch") return "NPC 派工";
+  if (type === "agent_command") return "用户派工";
+  if (type.includes("progress")) return "过程回执";
+  if (type.includes("final") || type.includes("result")) return "最终回执";
+  if (type.includes("ack")) return "接单回执";
+  if (type.includes("review")) return "人工审核";
+  if (type.includes("comment")) return "协作消息";
+  return "协作消息";
+}
+
+function processSignalLabel(value: string): string {
+  const normalized = safeText(value, "").toLowerCase();
+  if (!normalized) return "";
+  if (normalized === "awaiting_desktop_reply") return "等待桌面回执";
+  if (normalized === "desktop_delivery_unconfirmed") return "桌面未确认收到";
+  if (normalized === "delivery_pending_confirmation") return "等待桌面确认";
+  if (normalized === "desktop_final_sync_lag") return "最终回执待同步";
+  if (normalized === "desktop_retry_action") return "重新同步中";
+  if (looksInternalIdentifier(normalized)) return "关联消息";
+  return userFacingCollabText(normalized, "协作信号");
+}
+
+function reviewSourceLabel(value: string): string {
+  const normalized = safeText(value, "").toLowerCase();
+  if (!normalized) return "";
+  if (normalized === "hardware_risk") return "硬件强审";
+  if (normalized === "cross_workstation") return "跨工位审核";
+  if (normalized === "boundary_card") return "边界卡";
+  if (normalized === "human_review") return "人工审核";
+  return userFacingCollabText(normalized.replace(/_/g, " "), "审核策略");
+}
+
+function messageProcessMeta(
+  msg: CollabMessage,
+  role: RoleTrack,
+  senderLabel: string,
+  peerByIdentity: Map<string, WorkbenchSeat>,
+  seatName: string,
+  refined: RefinedMessage,
+): MessageProcessMeta {
+  const metadata = messageMetadata(msg);
+  const senderRaw = role === "human"
+    ? "用户"
+    : role === "self"
+      ? seatName
+      : senderLabel.replace(/^(同工位|跨工位|本 NPC|同步线程|系统)\s*·?\s*/, "") || senderLabel;
+  const sender = processActorLabel(senderRaw, peerByIdentity, role === "watcher" ? "桌面线程" : "协作者");
+  const targetRaw = safeText(
+    metadata.authoritative_target_seat_id
+      ?? metadata.intended_target_seat_id
+      ?? metadata.routed_recipient_seat_id
+      ?? metadata.downstream_seat_id
+      ?? msg.recipient_id,
+    "",
+  );
+  const target = targetRaw
+    ? processActorLabel(targetRaw, peerByIdentity, seatName || "当前承接方")
+    : role === "self"
+      ? "用户 / 平台"
+      : seatName;
+  const typeLabel = messageTypeLabel(msg);
+  const status = refined.statusLabel;
+  const dispatchId = safeText(msg.dispatch_id, "");
+  const taskId = safeText(msg.task_id, "");
+  const sourceId = safeText(metadata.source_message_id ?? metadata.sourceMessageId, "");
+  const idLabel = dispatchId || taskId || sourceId ? "关联当前派工" : "当前对话";
+  const signal = desktopSyncLatencyLabel(metadata.desktop_sync_latency_ms)
+    || processSignalLabel(safeText(metadata.progress_state, ""))
+    || processSignalLabel(safeText(metadata.launch_state, ""))
+    || idLabel;
+  return {
+    origin: sender,
+    target,
+    process: `${typeLabel} · ${status}`,
+    signal,
+  };
+}
+
+function textArrayFromMetadata(...values: unknown[]): string[] {
+  const out: string[] = [];
+  const push = (value: unknown) => {
+    if (Array.isArray(value)) {
+      for (const item of value) push(item);
+      return;
+    }
+    const text = userFacingCollabText(value, "");
+    if (!text) return;
+    for (const part of text.split(/[,，、\n]/)) {
+      const clean = userFacingCollabText(part, "");
+      if (clean && !out.includes(clean)) out.push(clean);
+    }
+  };
+  values.forEach(push);
+  return out.slice(0, 6);
+}
+
+function buildConversationCollabCard(
+  msg: CollabMessage,
+  peerByIdentity: Map<string, WorkbenchSeat>,
+  seatName: string,
+): StructuredMessageCard | null {
+  const metadata = messageMetadata(msg);
+  const type = safeText(msg.message_type, "").toLowerCase();
+  const senderType = safeText(msg.sender_type, "").toLowerCase();
+  const isDispatch = type === "requirement_dispatch" || type === "agent_command" || type === "comment_message";
+  const isResult = type.includes("result") || type.includes("final") || type.includes("ack") || type.includes("progress");
+  const isSelfStatusReceipt = senderType === "agent"
+    && (isResult || type === "desktop_minimal_receipt")
+    && safeText(msg.sender_id, "") === safeText(msg.recipient_id, "");
+  const hasCollabHints = Boolean(
+    metadata.recommended_skills
+      || metadata.required_skills
+      || metadata.skills
+      || metadata.knowledge_paths
+      || metadata.repo_paths
+      || metadata.boss_name
+      || metadata.goal
+      || metadata.role
+      || metadata.source === "boss_npc_project_generator"
+      || metadata.source === "codex-user-orchestrator"
+      || senderType === "agent",
+  );
+  if (isSelfStatusReceipt) return null;
+  if (!hasCollabHints || (!isDispatch && !isResult)) return null;
+
+  const targetSeatId = safeText(
+    metadata.authoritative_target_seat_id
+      ?? metadata.intended_target_seat_id
+      ?? metadata.downstream_seat_id
+      ?? metadata.routed_recipient_seat_id
+      ?? msg.recipient_id,
+    "",
+  );
+  const targetName = processActorLabel(
+    safeText(metadata.intended_target_name ?? metadata.routed_recipient_name ?? targetSeatId, ""),
+    peerByIdentity,
+    seatName || "当前承接方",
+  );
+  const senderName = processActorLabel(
+    safeText(metadata.upstream_seat_id ?? metadata.delegated_via_seat_id ?? metadata.claimed_sender_agent_id ?? msg.sender_id, ""),
+    peerByIdentity,
+    senderType === "human" ? "用户" : seatName || "当前协作方",
+  );
+  const skills = textArrayFromMetadata(metadata.recommended_skills, metadata.required_skills, metadata.skills);
+  const knowledge = textArrayFromMetadata(metadata.knowledge_paths, metadata.repo_paths, metadata.repoPaths);
+  const source = userFacingCollabText(metadata.source, "");
+  const goal = userFacingCollabText(metadata.goal, "");
+  const role = userFacingCollabText(metadata.role, "");
+  const routeReason = userFacingCollabText(metadata.route_review_reason, "");
+  const roleLabel = cleanActorFallback(role, isResult ? "按回执结果验收" : "按任务说明执行");
+  const capabilityLabel = skills.length ? skills.join(" / ") : "使用已绑定能力";
+  const knowledgeLabel = knowledge.length ? knowledge.join(" / ") : "项目知识库与当前证据链";
+  const status = normalizeDispatchState(safeText(msg.status, ""));
+  const title = safeText(msg.title, isResult ? "协作回执" : "协作派单");
+
+  return {
+    kind: "peer-dispatch-status",
+    title,
+    summary: `${senderName} -> ${targetName}${roleLabel ? ` · ${roleLabel}` : ""}`,
+    status,
+    riskLevel: userFacingCollabText(metadata.risk_level ?? metadata.riskLevel, ""),
+    items: [
+      { label: "发起方", value: senderName },
+      { label: "目标", value: targetName },
+      { label: "职责", value: roleLabel },
+      { label: "能力", value: capabilityLabel },
+      { label: "知识", value: knowledgeLabel },
+      { label: "验收", value: goal || routeReason || (isResult ? "看 final 和证据链" : "等待最小回执 / final") },
+    ],
+    metrics: [
+      { label: "来源", value: source || (senderType === "agent" ? "NPC 协作" : "用户派工") },
+      { label: "下一步", value: isResult ? "看回执" : "等接单" },
+    ],
+    actions: [
+      { label: "对话", status: "当前卡片" },
+      { label: "能力", status: skills.length ? `${skills.length} 个` : "已绑定" },
+      { label: "知识", status: knowledge.length ? `${knowledge.length} 条` : "项目默认" },
+      { label: "验收", status: isResult ? "final" : "等待" },
+    ],
+  };
+}
+
+function normalizeDispatchState(value: string): "queued" | "delivered" | "acked" | "blocked" | "finaled" | "next_ready" | "pending_closeout" {
+  const normalized = value.toLowerCase();
+  if (["failed", "rejected", "blocked"].includes(normalized)) return "blocked";
+  if (["completed", "done", "delivered"].includes(normalized)) return "finaled";
+  if (["acked"].includes(normalized) || normalized.includes("ack")) return "acked";
+  if (["in_progress", "running", "active"].includes(normalized)) return "delivered";
+  if (["next_ready", "ready_for_next"].includes(normalized)) return "next_ready";
+  return "queued";
+}
+
+function buildPeerDispatchStatusCard(
+  msg: CollabMessage,
+  allMessages: CollabMessage[],
+  seatName: string,
+  peerByIdentity: Map<string, WorkbenchSeat>,
+): StructuredMessageCard | null {
+  const type = safeText(msg.message_type, "").toLowerCase();
+  const senderType = safeText(msg.sender_type, "").toLowerCase();
+  if (type !== "requirement_dispatch" || senderType !== "agent") return null;
+
+  const metadata = messageMetadata(msg);
+  const sourceId = msg.id;
+  const sourceDispatchId = safeText(msg.dispatch_id, "");
+  const linked = allMessages.filter((item) => {
+    if (item.id === sourceId) return false;
+    const itemSourceId = relatedSourceMessageId(item);
+    if (itemSourceId && itemSourceId === sourceId) return true;
+    if (sourceDispatchId && safeText(item.dispatch_id, "") === sourceDispatchId) return true;
+    return false;
+  });
+
+  const targetSeatId = safeText(
+    metadata.authoritative_target_seat_id
+      ?? metadata.intended_target_seat_id
+      ?? metadata.downstream_seat_id
+      ?? metadata.routed_recipient_seat_id
+      ?? msg.recipient_id,
+    "",
+  );
+  const targetSeatName = seatNameByAuthoritativeRef(
+    targetSeatId,
+    peerByIdentity,
+    cleanActorFallback(safeText(metadata.intended_target_name ?? metadata.routed_recipient_name, ""), seatName || "当前承接方"),
+  );
+  const latestAck = linked
+    .filter((item) => {
+      const status = safeText(item.status, "").toLowerCase();
+      const itemType = safeText(item.message_type, "").toLowerCase();
+      return status === "acked" || itemType.includes("ack");
+    })
+    .sort((a, b) => safeText(b.created_at, "").localeCompare(safeText(a.created_at, "")))[0] || null;
+  const latestBlocked = linked
+    .filter((item) => {
+      const status = safeText(item.status, "").toLowerCase();
+      return ["failed", "rejected", "blocked"].includes(status);
+    })
+    .sort((a, b) => safeText(b.created_at, "").localeCompare(safeText(a.created_at, "")))[0] || null;
+  const blockedTaxonomy = safeRecord(messageMetadata(latestBlocked ?? msg).blocked_taxonomy);
+  const blockedReasonCode = safeText(
+    blockedTaxonomy.blocked_reason_code
+      ?? blockedTaxonomy.exception_kind
+      ?? messageMetadata(latestBlocked ?? msg).blocked_reason_code,
+    "",
+  );
+  const blockedReasonLabel = safeText(
+    blockedTaxonomy.blocked_reason_label
+      ?? blockedTaxonomy.exception_kind
+      ?? messageMetadata(latestBlocked ?? msg).blocked_reason_label,
+    "",
+  );
+  const platformDefect = Boolean(
+    blockedTaxonomy.platform_defect || messageMetadata(latestBlocked ?? msg).platform_defect,
+  );
+  const nudgeRequired = Boolean(
+    blockedTaxonomy.nudge_required || messageMetadata(latestBlocked ?? msg).nudge_required,
+  );
+  const waitExtensionAvailable = Boolean(
+    blockedTaxonomy.wait_extension_available || messageMetadata(latestBlocked ?? msg).wait_extension_available,
+  );
+  const manualCloseRequired = Boolean(
+    blockedTaxonomy.manual_close_required || messageMetadata(latestBlocked ?? msg).manual_close_required,
+  );
+  const pendingCloseout = blockedReasonCode === "desktop_final_sync_lag"
+    || platformDefect
+    || nudgeRequired
+    || waitExtensionAvailable
+    || manualCloseRequired;
+  const latestFinal = linked
+    .filter((item) => {
+      const status = safeText(item.status, "").toLowerCase();
+      const itemType = safeText(item.message_type, "").toLowerCase();
+      return ["completed", "done", "delivered"].includes(status) || itemType.includes("result") || itemType.includes("final");
+    })
+    .sort((a, b) => safeText(b.created_at, "").localeCompare(safeText(a.created_at, "")))[0] || null;
+
+  let currentState: StructuredMessageCard["status"] = "queued";
+  if (pendingCloseout) currentState = "pending_closeout";
+  else if (latestBlocked) currentState = "blocked";
+  else if (latestFinal) currentState = "finaled";
+  else if (latestAck) currentState = "acked";
+  else if (safeText(msg.status, "").toLowerCase() === "in_progress") currentState = "delivered";
+
+  const blockedReason = blockedReasonLabel || (latestBlocked ? firstUsefulLine(stripPlatformChatter(latestBlocked.body || "")) : "");
+  const finalPreview = latestFinal ? firstUsefulLine(stripPlatformChatter(latestFinal.body || "")) : "";
+  const nextAction =
+    currentState === "pending_closeout"
+      ? "待收口"
+      : currentState === "blocked"
+      ? "看阻塞"
+      : currentState === "finaled"
+        ? "看 final"
+        : currentState === "acked"
+          ? "继续下一步"
+          : "看状态";
+
+  return {
+    kind: "peer-dispatch-status",
+    title: safeText(msg.title, "免审协作派单"),
+    summary: `${displaySenderName(msg, peerByIdentity, seatName)} -> ${targetSeatName}`,
+    status: currentState,
+    riskLevel: "",
+    items: [
+      { label: "目标", value: targetSeatName },
+      { label: "当前状态", value: humanizeDispatchCardStatus(currentState) },
+      { label: "最小回执", value: latestAck ? "已收到" : "等待中" },
+      { label: "Final", value: latestFinal ? "已同步" : pendingCloseout ? "待收口" : "未收到" },
+      { label: "当前卡点", value: blockedReason || (pendingCloseout ? "等待最终收口" : "无") },
+      {
+        label: "系统状态",
+        value: pendingCloseout
+          ? "待收口"
+          : platformDefect
+            ? "需要处理"
+            : "正常推进",
+      },
+    ],
+    metrics: [
+      { label: "关联消息", value: String(linked.length) },
+      { label: "下一步", value: nextAction },
+    ],
+    actions: [
+      { label: "看状态", status: humanizeDispatchCardStatus(currentState) },
+      {
+        label: "看阻塞",
+        status: pendingCloseout
+          ? "待收口"
+          : blockedReason
+            ? "有"
+            : "无",
+      },
+      { label: "看 final", status: latestFinal ? "已同步" : pendingCloseout ? "待收口" : "等待" },
+      {
+        label: "继续下一步",
+        status: pendingCloseout
+          ? [
+              nudgeRequired ? "催办" : "",
+              waitExtensionAvailable ? "延长等待" : "",
+              "重新同步",
+              manualCloseRequired ? "手动收口" : "",
+            ].filter(Boolean).join(" / ") || "待收口"
+          : currentState === "acked" || currentState === "finaled"
+            ? "可继续"
+            : "稍后",
+      },
+    ],
+  };
+}
+
 function summarizeCollabMessage(msg: CollabMessage): RefinedMessage {
   const classified = classifyMessage(msg);
+  const structuredCard = getStructuredMessageCard(msg);
   const type = (msg.message_type || "").toLowerCase();
   const status = (msg.status || "").toLowerCase();
   const rawBody = msg.body || "";
   const cleanBody = stripPlatformChatter(rawBody);
   const rawLower = rawBody.toLowerCase();
   const cleanFirst = firstUsefulLine(cleanBody);
-  const title = (msg.title || "").trim();
+  const title = userFacingCollabText((msg.title || "").trim());
+  const meta = messageMetadata(msg);
+  const isDesktopQuestion = type === "desktop_user_question";
+  const isDesktopReceipt = type === "desktop_minimal_receipt";
+  const isDesktopSync = isDesktopQuestion || isDesktopReceipt || meta.desktop_sync === true;
+  const desktopLatency = desktopSyncLatencyLabel(meta.desktop_sync_latency_ms);
+  const blockedTaxonomy = safeRecord(meta.blocked_taxonomy);
+  const blockedReasonCode = safeText(
+    blockedTaxonomy.blocked_reason_code ?? blockedTaxonomy.exception_kind ?? meta.progress_state,
+    "",
+  ).toLowerCase();
+  const desktopCloseoutWaiting = Boolean(
+    blockedTaxonomy.desktop_closeout_waiting
+      || meta.desktop_closeout_waiting
+      || meta.needs_manual_closeout,
+  )
+    || blockedReasonCode === "desktop_final_sync_lag"
+    || blockedReasonCode === "desktop_delivery_unconfirmed";
   const isWatcher = (msg.sender_type || "").toLowerCase() === "runner"
     || (msg.sender_type || "").toLowerCase() === "watcher"
     || type.includes("watcher")
     || rawLower.startsWith("watcher");
   const statusLabel =
-    status === "pending_review"
-      ? "需人审"
-      : status === "acked" || type.endsWith("_ack")
-        ? "已接单"
-        : status === "in_progress" || type.includes("progress")
-          ? "处理中"
-          : status === "completed" || status === "done" || type.includes("final") || type.includes("result")
-            ? "已完成"
-            : status === "failed" || status === "rejected" || rawLower.includes("失败") || rawLower.includes("error")
-              ? "异常"
-              : classified.kind === "command"
-                ? "派单"
-                : classified.kind === "result"
-                  ? "回执"
-                  : "协作";
+    isDesktopQuestion
+      ? "桌面提问"
+      : isDesktopReceipt
+        ? "最小回执"
+        : status === "pending_review"
+        ? "需人审"
+        : desktopCloseoutWaiting
+          ? "待收口"
+          : status === "acked" || type.endsWith("_ack")
+            ? "已接单"
+            : status === "in_progress" || type.includes("progress")
+              ? "处理中"
+              : status === "completed" || status === "done" || type.includes("final") || type.includes("result")
+                ? "已完成"
+                : status === "failed" || status === "rejected" || rawLower.includes("失败") || rawLower.includes("error")
+                  ? "异常"
+                  : classified.kind === "command"
+                    ? "派单"
+                    : classified.kind === "result"
+                      ? "回执"
+                      : "协作";
 
   const headline =
-    title
+    (isDesktopQuestion ? "桌面提问" : "")
+    || (isDesktopReceipt ? "最小回执" : "")
+    || title
     || (statusLabel === "已接单" ? "目标线程已接单" : "")
     || (statusLabel === "已完成" ? "目标线程已回执" : "")
-    || cleanFirst.slice(0, 96)
+    || userFacingCollabText(cleanFirst).slice(0, 96)
     || "(空消息)";
 
-  let detail = cleanFirst && cleanFirst !== headline ? cleanFirst : "";
+  let detail = cleanFirst && cleanFirst !== headline ? userFacingCollabText(cleanFirst) : "";
   if (!detail) {
-    if (statusLabel === "派单") detail = "已写入协作消息池，等待绑定的执行线程处理。";
-    else if (statusLabel === "已接单") detail = "目标执行器已接到指令；若是 Desktop 投递，还需要等待目标线程确认收到。";
-    else if (statusLabel === "处理中") detail = "绑定线程正在推进；平台只保留最小回执和最终结果。";
+    if (isDesktopQuestion) detail = cleanFirst || "用户在桌面线程里补充了问题，已同步到平台对话流。";
+    else if (isDesktopReceipt) detail = cleanFirst || "桌面线程已返回最小回执，最终结果仍按任务回执收口。";
+    else if (statusLabel === "派单") detail = "已写入协作消息池，等待平台送达绑定桌面线程。";
+    else if (statusLabel === "已接单") detail = "目标线程已接到指令；若是桌面投递，还需要等待目标线程确认收到。";
+    else if (statusLabel === "处理中") detail = "绑定线程正在推进；平台同步桌面提问、最小回执和最终结果。";
+    else if (statusLabel === "待收口") detail = "桌面线程可能仍在处理；请催办、延长等待，或确认桌面结果后手动收口。";
     else if (statusLabel === "需人审") detail = "需要人类成员查看正文后决定是否放行。";
-    else if (statusLabel === "已完成") detail = "线程已返回最终结果；详细过程仍在绑定的 Codex / Claude Code 线程里。";
-    else if (statusLabel === "异常") detail = "线程或桥接报告异常，展开可查看失败原文。";
+    else if (statusLabel === "已完成") detail = "线程已返回最终结果；详细过程仍可在绑定桌面线程里追踪。";
+    else if (statusLabel === "异常") detail = "线程同步报告异常，展开可查看收口信息。";
     else detail = "协作事件已记录。";
   }
-  const meta = messageMetadata(msg);
   const progressState = String(meta.progress_state || "");
   const launchState = String(meta.launch_state || "");
   if (progressState === "awaiting_desktop_reply") {
-    detail = "已确认进入 Codex Desktop 目标线程，正在等待最终回执。";
+    detail = "已确认进入目标桌面线程，正在等待最终回执。";
+  } else if (progressState === "desktop_delivery_unconfirmed") {
+    const retryCount = safeText(meta.desktop_delivery_attempts ?? blockedTaxonomy.desktop_delivery_attempts, "");
+    detail = retryCount
+      ? `桌面线程暂未确认收到，平台已自动重试 ${retryCount} 次；可继续重新同步、延长等待或手动收口。`
+      : "桌面线程暂未确认收到，平台会自动重试；可重新同步、延长等待或手动收口。";
   } else if (launchState === "delivery_pending_confirmation") {
-    detail = "启动器已拉起，正在确认目标桌面线程是否真的收到这条消息。";
+    detail = "平台已启动送达流程，正在确认目标桌面线程是否收到这条消息。";
   }
+  detail = userFacingCollabText(detail);
   if (detail.length > 120) detail = `${detail.slice(0, 120)}...`;
+  if (isDesktopSync && desktopLatency) {
+    detail = detail ? `${detail} · 同步 ${desktopLatency}` : `同步 ${desktopLatency}`;
+  }
 
-  const showByDefault = !isWatcher || IMPORTANT_WATCHER_TYPES.has(type) || ["failed", "rejected", "completed", "done"].includes(status);
+  const showByDefault = Boolean(structuredCard) || !isWatcher || IMPORTANT_WATCHER_TYPES.has(type) || ["failed", "rejected", "completed", "done"].includes(status);
   return {
-    kind: classified.kind,
+    kind: isDesktopReceipt ? "result" : isDesktopQuestion ? "command" : classified.kind,
     statusLabel,
     headline,
     detail,
@@ -296,9 +1379,11 @@ function classifyRole(
   const body = (msg.body || "").toLowerCase();
   const type = (msg.message_type || "").toLowerCase();
 
+  if (type === "desktop_user_question") return { role: "human", label: "桌面用户" };
+  if (type === "desktop_minimal_receipt") return { role: "self", label: "桌面线程" };
   if (senderType === "human") return { role: "human", label: "用户" };
   if (senderType === "runner" || senderType === "watcher" || type.includes("watcher") || type.includes("heartbeat") || body.startsWith("watcher")) {
-    return { role: "watcher", label: "线程 Watcher" };
+    return { role: "watcher", label: "线程同步" };
   }
   if (senderType === "agent" && senderId === selfId) return { role: "self", label: "本 NPC" };
   if (senderType === "agent" && peerIds.has(senderId)) return { role: "peer", label: "同工位 NPC" };
@@ -318,7 +1403,7 @@ function formatTime(iso?: string | null): string {
   return d.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
-export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [], currentUserId, currentUserName, launchPackAutoOpen = false, onOpenTeammate, sourcePath, onClose }: NpcTileProps) {
+export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [], currentUserId, currentUserName, onOpenTeammate, sourcePath, onClose }: NpcTileProps) {
   const seatApiId = seat.rowId || seat.id;
   const seatIdentityKey = [seat.id, seat.rowId, seat.configId, seat.threadId, seat.name].filter(Boolean).join("|");
   const seatIdentityIds = useMemo(
@@ -333,6 +1418,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
   const [limit, setLimit] = useState(50);
   const [fetching, setFetching] = useState(false);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [artifactPreviews, setArtifactPreviews] = useState<Record<string, ArtifactPreviewState>>({});
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [sendNote, setSendNote] = useState<string | null>(null);
@@ -345,13 +1431,6 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
   const [pairReviewPolicies, setPairReviewPolicies] = useState<Record<string, string>>({});
   const [savingIdentity, setSavingIdentity] = useState(false);
   const [identityNote, setIdentityNote] = useState<string | null>(null);
-  const [editingThread, setEditingThread] = useState(false);
-  const [threadIdDraft, setThreadIdDraft] = useState(seat.threadId);
-  const [threadKindDraft, setThreadKindDraft] = useState(seat.threadKind || seat.providerLabel || seat.providerId || "thread");
-  const [threadHealthDraft, setThreadHealthDraft] = useState(seat.threadHealth || "待接入");
-  const [savingThread, setSavingThread] = useState(false);
-  const [threadNote, setThreadNote] = useState<string | null>(null);
-  const [launchPackOpen, setLaunchPackOpen] = useState(launchPackAutoOpen);
   const [automationEnabled, setAutomationEnabled] = useState(seat.automationEnabled);
   const [automationBusy, setAutomationBusy] = useState(false);
   const [automationNote, setAutomationNote] = useState<string | null>(null);
@@ -378,6 +1457,8 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
     due_at?: string | null;
   };
   type SeatQueues = {
+    my_needs?: { items: SeatQueueItem[]; count: number };
+    my_tasks?: { items: SeatQueueItem[]; count: number };
     requirement_inbox: { items: SeatQueueItem[]; count: number };
     task_todo: { items: SeatQueueItem[]; count: number };
   };
@@ -394,7 +1475,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
   };
   const [seatQueues, setSeatQueues] = useState<SeatQueues | null>(null);
   const [receipts, setReceipts] = useState<Receipt[] | null>(null);
-  const [queueTab, setQueueTab] = useState<"inbox" | "todo" | "dispatch">("inbox");
+  const [queueTab, setQueueTab] = useState<"needs" | "tasks" | "dispatch">("needs");
   const [receiptDirection, setReceiptDirection] = useState<"incoming" | "outgoing">("incoming");
   const [queueBusyId, setQueueBusyId] = useState<string | null>(null);
   const [queueNote, setQueueNote] = useState<string | null>(null);
@@ -567,63 +1648,19 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
     }
   }
 
-  async function saveThreadBinding() {
-    setSavingThread(true);
-    setThreadNote(null);
-    const nextThreadId = threadIdDraft.trim();
-    const nextKind = threadKindDraft.trim() || seat.providerLabel || seat.providerId || "thread";
-    const nextHealth = threadHealthDraft.trim() || "已登记";
-    try {
-      const nextMetadata = {
-        ...(seat.metadata ?? {}),
-        git_user_name: gitName.trim() || seat.name,
-        git_user_email: gitEmail.trim() || `bot+${seatApiId}@noreply.invalid`,
-        review_policy: reviewPolicy,
-        target_thread_id: nextThreadId,
-        source_thread_id: nextThreadId,
-        bound_thread_id: nextThreadId,
-        thread_kind: nextKind,
-        thread_health: nextHealth,
-        bridge_health_label: nextHealth,
-        source: "workbench_thread_binding",
-      };
-      const res = await fetch(
-        apiClientUrl(`/api/collaboration/projects/${encodeURIComponent(projectId)}/thread-workstations/${encodeURIComponent(seatApiId)}`),
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ metadata: nextMetadata }),
-        },
-      );
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        const msg = json?.error?.message ?? json?.message ?? `HTTP ${res.status}`;
-        throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
-      }
-      setThreadNote("线程绑定已保存 ✓（刷新后同步到瓷砖头部）");
-      setEditingThread(false);
-    } catch (e) {
-      setThreadNote(`保存失败：${e instanceof Error ? e.message : "未知错误"}`);
-    } finally {
-      setSavingThread(false);
-      setTimeout(() => setThreadNote(null), 5000);
-    }
-  }
-
   async function toggleAutomation(nextEnabled: boolean) {
     setAutomationBusy(true);
     setAutomationNote(null);
     try {
       const nextHealth = nextEnabled
-        ? (threadHealthDraft.trim() || seat.threadHealth || "automation requested")
+        ? (seat.threadHealth || "automation requested")
         : "automation paused";
       const nextMetadata = {
         ...(seat.metadata ?? {}),
         automation_enabled: nextEnabled,
         automation_mode: nextEnabled ? "thread_watcher" : "manual",
-        automation_provider: seat.providerId || seat.providerLabel || threadKindDraft || "thread",
-        automation_thread_id: threadIdDraft.trim() || seat.threadId || "",
+        automation_provider: seat.providerId || seat.providerLabel || seat.threadKind || "thread",
+        automation_thread_id: seat.threadId || "",
         thread_health: nextHealth,
         bridge_health_label: nextHealth,
         automation_updated_at: new Date().toISOString(),
@@ -644,7 +1681,6 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
         throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
       }
       setAutomationEnabled(nextEnabled);
-      setThreadHealthDraft(nextHealth);
       setAutomationNote(nextEnabled ? "自动化已请求开启 ✓" : "自动化已暂停 ✓");
     } catch (e) {
       setAutomationNote(`切换失败：${e instanceof Error ? e.message : "未知错误"}`);
@@ -668,10 +1704,9 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
     ].join(" ");
   }, [projectId, seatApiId, seat.providerId, seat.providerLabel]);
 
-  const prepareLaunchPackAction = prepareCodexThreadLaunchPack.bind(null, projectId, seatApiId);
-  const launchRealThreadAction = launchNpcRealThreadProcessing.bind(null, projectId, seatApiId);
   const governanceReturnTo = sourcePath || `/projects/${projectId}/workbench`;
   const governanceSource = governanceReturnTo.includes("/company") ? "company" : "workbench";
+  const canUseDesktopAutomation = Boolean(seat.threadId && (seat.desktopVisible || seat.desktopThreadUrl));
   const governanceHref = useCallback(
     (panel: string, action?: string) => {
       const params = new URLSearchParams({ panel, return_to: governanceReturnTo, from: governanceSource });
@@ -679,6 +1714,19 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
       return `/projects/${projectId}/2d-upgrade?${params.toString()}`;
     },
     [governanceReturnTo, governanceSource, projectId],
+  );
+  const professionalViewHref = useCallback(
+    (surface: ProfessionalSurface, msg: CollabMessage) => {
+      const params = new URLSearchParams({ return_to: governanceReturnTo, from: governanceSource, focus: "message" });
+      params.set("message_id", msg.id);
+      if (msg.task_id) params.set("task_id", msg.task_id);
+      if (msg.dispatch_id) params.set("dispatch_id", msg.dispatch_id);
+      params.set("source_seat", seatApiId);
+      params.set("source_label", seat.name || seatApiId);
+      if (msg.title) params.set("source_title", msg.title.slice(0, 120));
+      return `/projects/${projectId}/${surface}?${params.toString()}`;
+    },
+    [governanceReturnTo, governanceSource, projectId, seat.name, seatApiId],
   );
 
   function renderRealThreadLauncher(message: CollabMessage, variant: "compact" | "inline" = "inline", isPrimary = true) {
@@ -688,25 +1736,57 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
     if (!isExecutableCommand) return null;
     const runnable = ["queued", "pending", "acked", "in_progress"].includes(status);
     if (!runnable) return null;
+    const launchMessage = async () => {
+      await launchQueuedMessage(message, "button");
+    };
     return (
-      <form action={launchRealThreadAction} className={variant === "compact" ? styles.realThreadMiniForm : styles.realThreadForm}>
-        <input type="hidden" name="return_to" value={governanceReturnTo} />
-        <input type="hidden" name="message_id" value={message.id} />
+      <div
+        className={variant === "compact" ? styles.realThreadMiniForm : styles.realThreadForm}
+      >
         <button
-          type="submit"
+          type="button"
           className={styles.realThreadBtn}
           data-secondary={!isPrimary ? "1" : undefined}
-          title="拉起本机 adapter，让绑定的 Codex / Claude Code 线程处理这条派单并回写结果"
+          onClick={launchMessage}
+          disabled={launchingMessageId === message.id}
+          title="让平台把这条派单送到绑定桌面线程并回写结果"
         >
-          {isPrimary ? "启动真实处理" : "启动"}
+          {launchingMessageId === message.id ? "已提交，刷新中" : isPrimary ? "启动真实处理" : "启动"}
         </button>
         {variant === "inline" ? (
           <small className={styles.realThreadHint}>
-            平台只等待最小回执和最终结果；过程在绑定线程里看。
+            平台同步最小回执和最终结果；详细过程在绑定桌面线程中可追踪。
           </small>
         ) : null}
-      </form>
+      </div>
     );
+  }
+
+  async function launchQueuedMessage(message: CollabMessage, source: "button" | "review" | "intent" = "button") {
+    if (!message?.id || launchingMessageId === message.id) return;
+    setLaunchingMessageId(message.id);
+    setSendNote(
+      source === "review"
+        ? "已通过审核，正在自动启动目标 NPC 的真实处理..."
+        : "已提交启动请求，正在等待平台回执刷新...",
+    );
+    try {
+      const result = await launchNpcOneShotThreadProcessing(projectId, seatApiId, message.id);
+      setSendNote(
+        result.launched
+          ? `${result.seatName || seat.name} 的单次处理已启动，等待最小回执 / 最终结果。`
+          : `启动失败：${result.error || "请检查绑定线程、Runner 或执行目录。"}`,
+      );
+    } catch (error) {
+      setSendNote(`启动失败：${error instanceof Error ? error.message : "未知错误"}`);
+    } finally {
+      await load(limit);
+      window.setTimeout(() => load(limit), 1500);
+      window.setTimeout(() => load(limit), 4000);
+      window.setTimeout(() => {
+        setLaunchingMessageId((current) => current === message.id ? null : current);
+      }, 5500);
+    }
   }
 
   const load = useCallback(
@@ -714,6 +1794,13 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
       setFetching(true);
       setFetchError(null);
       try {
+        const safeFetch = async (url: string) => {
+          try {
+            return await fetch(url, { credentials: "include" });
+          } catch {
+            return null;
+          }
+        };
         const identityIds = Array.from(seatIdentityIds);
         const messageLimit = Math.max(120, size);
         const baseWithLimit = apiClientUrl(`/api/collaboration/messages?project_id=${encodeURIComponent(projectId)}&limit=${messageLimit}`);
@@ -726,21 +1813,25 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
         const queuesUrl = apiClientUrl(`/api/seats/${encodeURIComponent(seatApiId)}/queues?project_id=${scopedProject}&limit=30`);
         const receiptsUrl = apiClientUrl(`/api/receipts/by-seat/${encodeURIComponent(seatApiId)}?project_id=${scopedProject}&direction=${receiptDirection}&limit=30`);
         const [incomingResponses, outgoingResponses, agentResponses, r3, r4] = await Promise.all([
-          Promise.all(incomingUrls.map((url) => fetch(url, { credentials: "include" }))),
-          Promise.all(outgoingUrls.map((url) => fetch(url, { credentials: "include" }))),
-          Promise.all(agentUrls.map((url) => fetch(url, { credentials: "include" }))),
+          Promise.all(incomingUrls.map((url) => safeFetch(url))),
+          Promise.all(outgoingUrls.map((url) => safeFetch(url))),
+          Promise.all(agentUrls.map((url) => safeFetch(url))),
           fetch(queuesUrl, { credentials: "include" }).catch(() => null),
           fetch(receiptsUrl, { credentials: "include" }).catch(() => null),
         ]);
-        const firstIncomingError = incomingResponses.find((res) => !res.ok);
-        if (firstIncomingError) {
+        const liveIncomingResponses = incomingResponses.filter((res): res is Response => Boolean(res));
+        const firstIncomingError = liveIncomingResponses.find((res) => !res.ok);
+        if (!liveIncomingResponses.length) {
+          throw new Error("主对话暂时无法连接，平台会继续重试。");
+        }
+        if (firstIncomingError && liveIncomingResponses.every((res) => !res.ok)) {
           const json = await firstIncomingError.json().catch(() => ({}));
           const msg = json?.error?.message ?? json?.message ?? `HTTP ${firstIncomingError.status}`;
           throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
         }
-        const incomingJson = await Promise.all(incomingResponses.map((res) => res.json().catch(() => ({}))));
-        const outgoingJson = await Promise.all(outgoingResponses.map((res) => res.ok ? res.json().catch(() => ({})) : Promise.resolve({})));
-        const agentJson = await Promise.all(agentResponses.map((res) => res.ok ? res.json().catch(() => ({})) : Promise.resolve({})));
+        const incomingJson = await Promise.all(liveIncomingResponses.map((res) => res.ok ? res.json().catch(() => ({})) : Promise.resolve({})));
+        const outgoingJson = await Promise.all(outgoingResponses.map((res) => res?.ok ? res.json().catch(() => ({})) : Promise.resolve({})));
+        const agentJson = await Promise.all(agentResponses.map((res) => res?.ok ? res.json().catch(() => ({})) : Promise.resolve({})));
         const incoming = incomingJson.flatMap((json) => (json?.data ?? []) as CollabMessage[]);
         const outgoing = outgoingJson.flatMap((json) => (json?.data ?? []) as CollabMessage[]);
         const agentScoped = agentJson.flatMap((json) => (json?.data ?? []) as CollabMessage[]);
@@ -790,8 +1881,18 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
   }, [load, limit]);
 
   useEffect(() => {
-    const t = setInterval(() => load(limit), 15000);
-    return () => clearInterval(t);
+    const refresh = () => {
+      if (document.visibilityState !== "visible") return;
+      void load(limit);
+    };
+    const t = setInterval(refresh, 6000);
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("focus", refresh);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", refresh);
+      window.removeEventListener("focus", refresh);
+    };
   }, [load, limit]);
 
   const peerIds = useMemo(
@@ -841,17 +1942,106 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
     });
   }, [messages, seatIdentityIds]);
   const activeQueueMessageId = myQueue[0]?.id || null;
+  const activeDispatchCount = myQueue.length;
+  const pendingCloseoutCount = messages?.filter((item) => {
+    if (!isDesktopCloseoutMessage(item)) return false;
+    return !sourceHasFinalReceipt(messages, closeoutSourceMessageId(item));
+  }).length ?? 0;
+  const latestActiveDispatch = myQueue[0] || null;
+  const automationModeLabel = automationEnabled ? "自动继续中" : canUseDesktopAutomation ? "人工确认中" : "待绑定线程";
+  const automationModeHint = automationEnabled
+    ? "免审边界内，NPC 可继续找合适的协作方并等待回执。"
+    : canUseDesktopAutomation
+      ? "派单会进入队列，由你决定何时启动或开启自动推进。"
+      : "先绑定桌面线程，平台才能显示完整处理过程。";
+  const automationCurrentLabel = pendingCloseoutCount > 0
+    ? `待收口 ${pendingCloseoutCount}`
+    : activeDispatchCount > 0
+      ? `等待结果 ${activeDispatchCount}`
+      : automationEnabled
+        ? "空闲待命"
+        : "人工确认";
+  const automationNextLabel = pendingCloseoutCount > 0
+    ? "催办 / 延长等待 / 重新同步 / 手动收口"
+    : automationEnabled
+      ? "收到回执后可继续下一步"
+      : canUseDesktopAutomation
+        ? "可开启自动推进"
+        : "去绑定桌面线程";
+  const pendingReviews = useMemo(() => {
+    return (messages || [])
+      .filter((m) => shouldRenderAsReviewMessage(m))
+      .slice()
+      .sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")));
+  }, [messages]);
+  const dialogStateCards = useMemo(() => {
+    const cards: Array<{
+      id: string;
+      status: string;
+      title: string;
+      detail: string;
+      tone: "ok" | "manual" | "warn" | "danger";
+      action?: "enable_automation" | "disable_automation";
+      actionLabel?: string;
+    }> = [];
+    cards.push({
+      id: "runtime-mode",
+      status: automationModeLabel,
+      title: automationEnabled ? "自动继续已开启" : canUseDesktopAutomation ? "当前由人确认推进" : "需要先绑定桌面线程",
+      detail: automationModeHint,
+      tone: automationEnabled ? "ok" : canUseDesktopAutomation ? "manual" : "warn",
+      action: automationEnabled ? "disable_automation" : canUseDesktopAutomation ? "enable_automation" : undefined,
+      actionLabel: automationEnabled ? "暂停自动继续" : canUseDesktopAutomation ? "开启自动继续" : undefined,
+    });
+    if (pendingCloseoutCount > 0) {
+      cards.push({
+        id: "closeout",
+        status: `待收口 ${pendingCloseoutCount}`,
+        title: "有桌面过程等待最终收口",
+        detail: "在对应消息上可直接催办、延长等待、重新同步或手动收口。",
+        tone: "danger",
+      });
+    }
+    if (latestActiveDispatch) {
+      cards.push({
+        id: "active-dispatch",
+        status: automationCurrentLabel,
+        title: userFacingCollabText(latestActiveDispatch.title || "当前派单"),
+        detail: automationNextLabel,
+        tone: pendingCloseoutCount > 0 ? "danger" : "manual",
+      });
+    }
+    if (pendingReviews.length === 0) {
+      cards.push({
+        id: "review-context",
+        status: "待审 0",
+        title: "当前没有待审消息",
+        detail: "只有 NPC 明确提出跨工位或高风险需求时，才会在这里出现通过/打回控件；你自己手动派单不需要自审。",
+        tone: "manual",
+      });
+    }
+    return cards;
+  }, [
+    automationCurrentLabel,
+    automationEnabled,
+    automationModeHint,
+    automationModeLabel,
+    automationNextLabel,
+    canUseDesktopAutomation,
+    latestActiveDispatch,
+    pendingCloseoutCount,
+    pendingReviews.length,
+  ]);
 
   const visible = useMemo(() => {
     const list = (messages || []).slice().reverse();
     const readable = hideNoisy
       ? list.filter((m) => {
-      if ((m.status || "").toLowerCase() === "pending_review") return true;
+      if (shouldRenderAsReviewMessage(m)) return true;
       const refined = summarizeCollabMessage(m);
       return refined.showByDefault && !refined.noisy;
     })
       : list;
-    if (showFullHistory) return readable;
     const important = readable.filter((m) => {
       const status = (m.status || "").toLowerCase();
       const type = (m.message_type || "").toLowerCase();
@@ -859,6 +2049,8 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
       return (
         m.id === activeQueueMessageId
         || title.includes("git 回退")
+        || type === "desktop_user_question"
+        || type === "desktop_minimal_receipt"
         || ["failed", "rejected", "completed", "done", "in_progress"].includes(status)
         || type.includes("result")
         || type.includes("ack")
@@ -866,35 +2058,64 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
     });
     const recent = readable.slice(-8);
     const seen = new Set<string>();
-    return [...important, ...recent].filter((m) => {
+    const combined = [...important, ...recent].filter((m) => {
       if (!m.id || seen.has(m.id)) return false;
       seen.add(m.id);
       return true;
     });
+    if (showFullHistory) return combined;
+    const duplicateSeen = new Set<string>();
+    const chainBest = new Map<string, CollabMessage>();
+    const chainOrder: string[] = [];
+    const passthrough: CollabMessage[] = [];
+    const directCommandByChain = new Set<string>();
+    const hasFinalByChain = new Set<string>();
+    for (const msg of combined) {
+      const key = dialogChainKey(msg);
+      const type = safeText(msg.message_type, "").toLowerCase();
+      const status = safeText(msg.status, "").toLowerCase();
+      if (key && ["agent_command", "requirement_dispatch", "comment_message"].includes(type) && ["queued", "pending", "completed", "done"].includes(status)) {
+        directCommandByChain.add(key);
+      }
+      if (key && isFinalReceipt(msg)) hasFinalByChain.add(key);
+    }
+    for (const msg of combined) {
+      const duplicateKey = dialogDedupeKey(msg);
+      if (duplicateSeen.has(duplicateKey)) continue;
+      duplicateSeen.add(duplicateKey);
+      if (shouldRenderAsReviewMessage(msg)) {
+        passthrough.push(msg);
+        continue;
+      }
+      const chainKey = dialogChainKey(msg);
+      if (!chainKey || !isIntermediateReceipt(msg)) {
+        passthrough.push(msg);
+        continue;
+      }
+      if (directCommandByChain.has(chainKey) && !isFinalReceipt(msg)) continue;
+      if (hasFinalByChain.has(chainKey) && !isFinalReceipt(msg)) continue;
+      const current = chainBest.get(chainKey);
+      if (!current) {
+        chainBest.set(chainKey, msg);
+        chainOrder.push(chainKey);
+        continue;
+      }
+      const preferMsg = isFinalReceipt(msg) || (!isFinalReceipt(current) && String(msg.created_at || "").localeCompare(String(current.created_at || "")) > 0);
+      if (preferMsg) chainBest.set(chainKey, msg);
+    }
+    const compacted = [...passthrough, ...chainOrder.map((key) => chainBest.get(key)).filter((m): m is CollabMessage => Boolean(m))];
+    compacted.sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")));
+    return compacted;
   }, [messages, hideNoisy, showFullHistory, activeQueueMessageId]);
 
-  const latestFinalReceipt = useMemo(() => {
-    const candidates = (messages || []).filter((m) => {
-      const status = (m.status || "").toLowerCase();
-      const type = (m.message_type || "").toLowerCase();
-      if (!["completed", "done"].includes(status) && !type.includes("result") && !type.includes("final")) return false;
-      return type.includes("result") || type.includes("final") || type === "ai_reply";
-    });
-    return candidates
-      .slice()
-      .sort((a, b) => {
-        const ta = a.created_at ? Date.parse(a.created_at) : 0;
-        const tb = b.created_at ? Date.parse(b.created_at) : 0;
-        return tb - ta;
-      })[0] || null;
-  }, [messages]);
-
-  const pendingReviews = useMemo(() => {
-    return (messages || [])
-      .filter((m) => (m.status || "").toLowerCase() === "pending_review")
-      .slice()
-      .sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")));
-  }, [messages]);
+  const peerDispatchCards = useMemo(() => {
+    const cards = new Map<string, StructuredMessageCard>();
+    for (const message of messages || []) {
+      const card = buildPeerDispatchStatusCard(message, messages || [], seat.name, peerByIdentity);
+      if (card) cards.set(message.id, card);
+    }
+    return cards;
+  }, [messages, peerByIdentity, seat.name]);
 
   type CollaborationEvent = {
     id: string;
@@ -917,12 +2138,14 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
 
     for (const m of myQueue) {
       const senderType = (m.sender_type || "").toLowerCase();
+      if (senderType === "human") continue;
       const isPeer = senderType === "agent" && peerIds.has(m.sender_id || "");
       const isExternal = senderType === "agent" && !!m.sender_id && !peerIds.has(m.sender_id) && !seatIdentityIds.has(m.sender_id);
+      const senderName = displaySenderName(m, peerByIdentity, "协作者");
       const from = isPeer
-        ? `同工位 ${peerByIdentity.get(m.sender_id || "")?.name || m.sender_id}`
+        ? `同工位 ${senderName}`
         : isExternal
-          ? `跨工位 ${m.sender_id}`
+          ? `跨工位 ${senderName}`
           : senderType === "human"
             ? "人类成员"
             : senderType || "系统";
@@ -930,7 +2153,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
         id: `queue:${m.id}`,
         tone: isPeer ? "peer" : isExternal ? "external" : "human",
         label: "派单",
-        title: m.title || stripPlatformChatter(m.body || "").slice(0, 90) || "(无标题)",
+        title: userFacingCollabText(m.title || stripPlatformChatter(m.body || "").slice(0, 90), "(无标题)"),
         meta: `${from} -> ${seat.name}`,
         status: m.status,
         createdAt: m.created_at,
@@ -943,7 +2166,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
         id: `receipt:${r.id}`,
         tone: "receipt",
         label: kindLabel,
-        title: r.title || r.body.slice(0, 90) || "(无标题回执)",
+        title: userFacingCollabText(r.title || r.body.slice(0, 90), "(无标题回执)"),
         meta: `${r.cross_workstation ? "跨工位" : "同工位"}回执 ${receiptDirection === "incoming" ? "-> 本 NPC" : "从本 NPC ->"}`,
         status: r.receipt_kind,
         createdAt: r.created_at,
@@ -965,7 +2188,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
         id: `thread:${m.id}`,
         tone: "thread",
         label,
-        title: m.title || stripPlatformChatter(m.body || "").slice(0, 90) || "(线程事件)",
+        title: userFacingCollabText(m.title || stripPlatformChatter(m.body || "").slice(0, 90), "(线程事件)"),
         meta: `${seat.providerLabel || seat.providerId || "provider"} / ${seat.computerNodeName || seat.computerNodeId || "未绑定电脑"}`,
         status: m.status,
         createdAt: m.created_at,
@@ -983,6 +2206,8 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
 
   const [reviewBusyId, setReviewBusyId] = useState<string | null>(null);
   const [reviewNote, setReviewNote] = useState<string | null>(null);
+  const [launchingMessageId, setLaunchingMessageId] = useState<string | null>(null);
+  const [closeoutBusyId, setCloseoutBusyId] = useState<string | null>(null);
 
   const refreshPairReviewPolicies = useCallback(async () => {
     try {
@@ -1044,7 +2269,9 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
   async function reviewMessage(id: string, action: "approve" | "reject", rememberPolicy?: "skip") {
     setReviewBusyId(id);
     setReviewNote(null);
+    let approvedMessage: CollabMessage | null = null;
     try {
+      approvedMessage = action === "approve" ? (messages || []).find((m) => m.id === id) || null : null;
       const res = await fetch(apiClientUrl(`/api/collaboration/messages/${encodeURIComponent(id)}/review/${action}`), {
         method: "POST",
         headers: rememberPolicy ? { "Content-Type": "application/json" } : undefined,
@@ -1060,9 +2287,19 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
         const pair = json.data.review_pair_policy;
         setPairReviewPolicies((curr) => ({ ...curr, [`${pair.upstream_seat_id}->${pair.downstream_seat_id}`]: pair.policy || "skip" }));
       }
-      setReviewNote(action === "approve" ? (rememberPolicy ? "✓ 已通过，并记住这对 NPC 下次免审" : "✓ 已通过") : "✓ 已打回");
+      const isBoundaryApproval = action === "approve" && isPreDispatchBoundaryMessage(approvedMessage);
+      setReviewNote(
+        action === "approve"
+          ? isBoundaryApproval
+            ? "✓ 边界卡已通过；请基于这个边界再发正式派单"
+            : (rememberPolicy ? "✓ 已通过，并记住这对 NPC 下次免审，正在启动处理" : "✓ 已通过，正在启动处理")
+          : "✓ 已打回",
+      );
       await load(limit);
       window.dispatchEvent(new CustomEvent("workbench:collab-updated", { detail: { projectId, messageId: id, action } }));
+      if (action === "approve" && approvedMessage && !isBoundaryApproval) {
+        await launchQueuedMessage({ ...approvedMessage, status: "queued" }, "review");
+      }
     } catch (e) {
       setReviewNote(`失败：${e instanceof Error ? e.message : "未知错误"}`);
     } finally {
@@ -1092,6 +2329,122 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
     });
   }
 
+  function closeoutSourceMessageId(msg: CollabMessage): string {
+    const meta = messageMetadata(msg);
+    const sourceId = safeText(meta.source_message_id ?? meta.sourceMessageId, "");
+    return sourceId || msg.id;
+  }
+
+  function isDesktopCloseoutMessage(msg: CollabMessage): boolean {
+    const meta = messageMetadata(msg);
+    const taxonomy = safeRecord(meta.blocked_taxonomy);
+    const reason = safeText(taxonomy.blocked_reason_code ?? taxonomy.exception_kind ?? meta.blocked_reason_code, "");
+    return Boolean(
+      reason === "desktop_final_sync_lag"
+        || taxonomy.desktop_closeout_waiting
+        || meta.desktop_closeout_waiting
+        || meta.needs_manual_closeout
+        || meta.timeout_repair
+        || meta.nudge_required
+        || meta.wait_extension_available
+        || meta.manual_close_required,
+    );
+  }
+
+  function isOpenDesktopCloseoutMessage(msg: CollabMessage): boolean {
+    if (!isDesktopCloseoutMessage(msg)) return false;
+    return !sourceHasFinalReceipt(messages, closeoutSourceMessageId(msg));
+  }
+
+  async function runCloseoutAction(msg: CollabMessage, action: "nudge" | "extend_wait" | "retry_desktop_sync" | "manual_close") {
+    const sourceId = closeoutSourceMessageId(msg);
+    setCloseoutBusyId(`${sourceId}:${action}`);
+    setReviewNote(null);
+    const actionLabel = action === "nudge" ? "催办" : action === "extend_wait" ? "延长等待" : action === "retry_desktop_sync" ? "重新同步" : "手动收口";
+    try {
+      const res = await fetch(
+        apiClientUrl(
+          `/api/collaboration/projects/${encodeURIComponent(projectId)}/thread-workstations/${encodeURIComponent(seatApiId)}/messages/${encodeURIComponent(sourceId)}/closeout-action`,
+        ),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ action }),
+        },
+      );
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msgText = json?.error?.message ?? json?.message ?? `HTTP ${res.status}`;
+        throw new Error(typeof msgText === "string" ? msgText : JSON.stringify(msgText));
+      }
+      setReviewNote(`✓ 已${actionLabel}`);
+      await load(limit);
+      window.dispatchEvent(new CustomEvent("workbench:collab-updated", { detail: { projectId, messageId: sourceId, action } }));
+    } catch (error) {
+      setReviewNote(`${actionLabel}失败：${error instanceof Error ? error.message : "未知错误"}`);
+    } finally {
+      setCloseoutBusyId(null);
+      setTimeout(() => setReviewNote(null), 5000);
+    }
+  }
+
+  async function openArtifactPreview(msg: CollabMessage, artifact: EvidenceArtifact) {
+    const previewKey = `${msg.id}:${artifact.path}`;
+    const current = artifactPreviews[previewKey];
+    if (current?.content && !current.error) {
+      setArtifactPreviews((prev) => ({
+        ...prev,
+        [previewKey]: { ...current, content: undefined },
+      }));
+      return;
+    }
+    setArtifactPreviews((prev) => ({
+      ...prev,
+      [previewKey]: { ...(prev[previewKey] || {}), loading: true, error: undefined, path: artifact.path },
+    }));
+    try {
+      const params = new URLSearchParams({
+        project_id: projectId,
+        path: artifact.path,
+      });
+      if (msg.task_id) params.set("task_id", msg.task_id);
+      if (msg.dispatch_id) params.set("dispatch_id", msg.dispatch_id);
+      params.set("source_message_id", msg.id);
+      const res = await fetch(
+        apiClientUrl(`/api/collaboration/artifacts/preview?${params.toString()}`),
+        { credentials: "include" },
+      );
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = json?.error?.message ?? json?.message ?? `HTTP ${res.status}`;
+        throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
+      }
+      const data = json?.data ?? {};
+      setArtifactPreviews((prev) => ({
+        ...prev,
+        [previewKey]: {
+          loading: false,
+          path: String(data.path || artifact.path),
+          name: String(data.name || artifact.label),
+          sizeBytes: typeof data.size_bytes === "number" ? data.size_bytes : undefined,
+          truncated: Boolean(data.truncated),
+          content: String(data.content ?? ""),
+        },
+      }));
+    } catch (error) {
+      setArtifactPreviews((prev) => ({
+        ...prev,
+        [previewKey]: {
+          ...(prev[previewKey] || {}),
+          loading: false,
+          path: artifact.path,
+          error: error instanceof Error ? error.message : "证据预览失败",
+        },
+      }));
+    }
+  }
+
   function buildDispatchBody(rawBody: string, targetName: string) {
     const sameWorkstationDirectory = teammates.length
       ? teammates.map((peer) => `${peer.isLead ? "工位长 " : ""}${peer.name}（${peer.responsibility || peer.providerLabel || "待补职责"}）`).join("；")
@@ -1112,7 +2465,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
       `- 同工位通讯录: ${sameWorkstationDirectory}`,
       `- 跨工位入口: ${crossLeadDirectory}`,
       "- 路由规则: 同工位先按职责找最匹配 NPC；跨工位只找目标工位工位长转交。",
-      "- 显示边界: 详细处理过程留在绑定的 Codex / Claude Code 线程；平台只回写最小回执、最终结果、阻塞原因和可追踪索引。",
+      "- 显示边界: 详细处理过程留在绑定桌面线程；平台只回写最小回执、最终结果、阻塞原因和可追踪索引。",
       "- 回执格式: Understood / Changed / Validated / Blocked / Next。",
     ].join("\n");
   }
@@ -1175,16 +2528,21 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
     );
   }
 
+  function peerDispatchLabel(mode: "same" | "cross", busy: boolean): string {
+    if (busy) return "派发中...";
+    return mode === "cross" ? "派给工位长" : "派单";
+  }
+
   function renderPeerDirectoryCard(peer: WorkbenchSeat, mode: "same" | "cross") {
     const peerId = peer.rowId || peer.id;
     const isCross = mode === "cross";
-    const dispatchLabel = dispatchingPeerId === peerId ? (isCross ? "转交中..." : "派发中...") : (isCross ? "转交" : "派单");
+    const dispatchLabel = peerDispatchLabel(mode, dispatchingPeerId === peerId);
     const emptyHint = isCross
-      ? `先在底部 textarea 写内容，再点「转交 ${peer.name}」`
+      ? `先在底部 textarea 写内容，再点「派给工位长 ${peer.name}」`
       : `先在底部 textarea 写内容，再点「派单 ${peer.name}」`;
     const title = isCross
-      ? `以 ${seat.name} 身份请 ${peer.name}（${peer.computerNodeName || peer.workstationName || "目标工位"} 工位长）转交`
-      : `以 ${seat.name} 身份直接派单给 ${peer.name}`;
+      ? `用户手动把任务派给 ${peer.name}（${peer.computerNodeName || peer.workstationName || "目标工位"} 工位长）`
+      : `用户手动把任务派给 ${peer.name}`;
     return (
       <div key={peer.id} className={styles.peerChip} data-lead={peer.isLead ? "1" : "0"} data-cross={isCross ? "1" : "0"}>
         <button
@@ -1321,49 +2679,52 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
       if (draftRef.current) draftRef.current.value = "";
       setDraft("");
       if (action === "launch") {
-        setSendNote("请点击该派单旁边的“启动真实处理”，平台会拉起绑定线程；后续会做成回车直接触发。");
-        setTimeout(() => setSendNote(null), 5000);
+        setSendNote("正在启动第一条派单的真实处理...");
+        await launchQueuedMessage(myQueue[0], "intent");
         return;
       }
       setSendNote("正在拒绝第一条派单并写回执...");
       await updateDispatchStatus(myQueue[0], action);
       return;
     }
-    const implicitTarget = opts ? null : resolveImplicitDispatchTarget(body);
-    const targetOpts = opts || (implicitTarget ? { peerId: implicitTarget.peerId, peerName: implicitTarget.peerName } : undefined);
+    const targetOpts = opts;
     sendInFlightRef.current = true;
     setSending(true);
     setDispatchingPeerId(targetOpts?.peerId || "__self__");
     setSendNote(null);
     const isPeer = !!targetOpts?.peerId;
+    const manualTargetName = targetOpts?.peerName || seat.name;
     const targetSeat = targetOpts?.peerId
       ? [...teammates, ...crossLeads].find((candidate) => seatIdentityList(candidate).includes(targetOpts.peerId!))
       : null;
     const isCrossWorkstation = Boolean(
       targetSeat && seatGroupKeyLocal(targetSeat) && seatGroupKeyLocal(seat) && seatGroupKeyLocal(targetSeat) !== seatGroupKeyLocal(seat),
     );
+    const boundaryMetadata = boundaryCardMetadataFromText(
+      body,
+      seat.name,
+      targetOpts?.peerName || seat.name,
+    );
+    const isBoundaryCard = Boolean(boundaryMetadata);
     try {
-      setSendNote(isPeer ? `正在${implicitTarget ? "自动" : ""}转交给 ${targetOpts!.peerName || targetOpts!.peerId}...` : "正在写入协作消息池...");
+      setSendNote(isPeer ? `正在派给 ${manualTargetName}...` : "正在写入协作消息池...");
       const res = await fetch(apiClientUrl("/api/collaboration/messages"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
           project_id: projectId,
-          message_type: isPeer ? "requirement_dispatch" : "agent_command",
+          message_type: "agent_command",
           title: isPeer
-            ? `[NPC ${seat.name} → ${targetOpts!.peerName || targetOpts!.peerId}] ${isCrossWorkstation ? "跨工位转交" : "同工位派单"}`
+            ? `[用户 → ${manualTargetName}] 手动派单`
             : `[用户 → ${seat.name}] 对话指令`,
-          body: buildDispatchBody(
-            implicitTarget ? `${body}\n\n[平台自动路由] ${implicitTarget.reason}` : body,
-            targetOpts?.peerName || seat.name,
-          ),
-          // 同工位伙伴派单：sender/recipient 使用稳定 DB rowId，展示仍保留 NPC 名称。
-          sender_type: isPeer ? "agent" : "human",
-          sender_id: isPeer ? seatApiId : null,
+          body: buildDispatchBody(body, manualTargetName),
+          sender_type: "human",
+          sender_id: null,
           recipient_type: "thread_workstation",
           recipient_id: isPeer ? targetOpts!.peerId! : seatApiId,
-          status: isCrossWorkstation ? "pending_review" : "queued",
+          status: isBoundaryCard ? "pending_review" : "queued",
+          ...(boundaryMetadata ? { metadata: boundaryMetadata } : {}),
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -1376,21 +2737,23 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
       }
       if (draftRef.current) draftRef.current.value = "";
       setDraft("");
-      if (!isPeer && !automationEnabled) {
-        setSendNote("已派发，正在拉起绑定线程做单次处理...");
+      if (isBoundaryCard) {
+        setSendNote("边界卡已登记，等待人审；审批前不会启动真实处理 ✓");
+      } else if (!isPeer && !automationEnabled) {
+        setSendNote("已派发，平台正在通过内部执行桥送达绑定线程...");
         const launchResult = await launchNpcOneShotThreadProcessing(projectId, seatApiId, json.data.id);
         setSendNote(
           launchResult.launched
             ? launchResult.desktopVisible
               ? "已启动，正在确认桌面线程收到 ✓"
-              : `已执行到绑定 session；当前 Desktop 窗口不直播，结果会回到这个对话框`
-            : `已派发，但单次处理启动失败：${launchResult.error || "请检查本机执行器"}`,
+              : `已进入绑定线程通道；最小回执和最终结果会回到这个对话框`
+            : `已派发，但桌面线程启动失败：${launchResult.error || "请检查绑定线程或桌面同步状态"}`,
         );
         if (launchResult.launched) refreshAfterOneShot();
       } else {
         setSendNote(
           isPeer
-            ? (isCrossWorkstation ? `已转交给 ${targetOpts!.peerName || targetOpts!.peerId}，等待人审 ✓` : `已派给 ${targetOpts!.peerName || targetOpts!.peerId} ✓`)
+            ? `已手动派给 ${manualTargetName} ✓`
             : (automationEnabled ? "已派发，等待 NPC 自动化拉取 ✓" : "已派发 ✓"),
         );
       }
@@ -1449,33 +2812,6 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
   const filteredCount = visible.length;
   const hiddenHistoryCount = Math.max(0, totalLoaded - filteredCount);
   const threadStatusLabel = occupancyHeldByMe ? "我在操作" : occupancyHeldByOther ? "他人操作中" : "可接手";
-  const launchPackNode = launchPackOpen ? (
-    <div className={styles.launchPackBox}>
-      <form action={prepareLaunchPackAction} className={styles.launchPackForm}>
-        <input type="hidden" name="return_to" value={governanceReturnTo} />
-        <label>
-          <span>用户已创建的 Codex 线程 ID</span>
-          <input
-            name="codex_thread_id"
-            defaultValue={threadIdDraft || seat.threadId}
-            placeholder="粘贴真实 Codex thread id"
-            required
-          />
-        </label>
-        <button type="submit" className={styles.iconBtn}>
-          绑定并生成
-        </button>
-      </form>
-      {seat.codexLaunchPrompt ? (
-        <details className={styles.launchPromptDrawer}>
-          <summary>查看线程提示词</summary>
-          <pre>{seat.codexLaunchPrompt}</pre>
-        </details>
-      ) : (
-        <p className={styles.profileTextDim}>用户开好线程后，把线程 ID 填上；平台会生成提示词、skill、知识库和回执约定。</p>
-      )}
-    </div>
-  ) : null;
 
   const renderReviewMessage = (m: CollabMessage) => {
     const body = String(m.body || "");
@@ -1494,6 +2830,11 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
     const expanded = expandedIds.has(m.id);
     const displayBody = cleanBody || body || "(空消息)";
     const bodyPreview = displayBody.split(/\r?\n/).map((line) => line.trim()).find(Boolean) || "(空消息)";
+    const structuredCard = getStructuredMessageCard(m);
+    const isBoundaryReview = isPreDispatchBoundaryMessage(m);
+    const upstreamLabel = displayReviewEndpointName(upstream || m.sender_id, peerByIdentity, "未知上游");
+    const downstreamLabel = displayReviewEndpointName(downstream || m.recipient_id, peerByIdentity, "未知目标");
+    const reviewReason = reviewSourceLabel(source) || (isCross ? "跨工位审核" : "人工审核");
     return (
       <div
         key={`review-${m.id}`}
@@ -1506,7 +2847,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
           {isCross ? <span className={styles.reviewInlineBadge} data-tone="cross">跨工位</span> : null}
           {source ? (
             <span className={styles.reviewInlineBadge} data-tone={isHardwareRiskReview ? "risk" : "policy"}>
-              {isHardwareRiskReview ? "硬件强审" : `policy: ${source}`}
+              {reviewSourceLabel(source)}
             </span>
           ) : null}
           {pairPolicy === "skip" && !isHardwareRiskReview ? (
@@ -1517,13 +2858,20 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
           ) : null}
           <small className={styles.msgTime}>{formatTime(m.created_at)}</small>
         </div>
+        <div className={styles.processLine} aria-label="协作过程">
+          <span title="来源">{upstreamLabel}</span>
+          <b aria-hidden>→</b>
+          <span title="目标">{downstreamLabel}</span>
+          <em>人工审核 · 待确认</em>
+          <small>{reviewReason}</small>
+        </div>
         <p className={styles.msgSummary}>
-          <strong>{m.title || "NPC 自主合作请求"}</strong>
+          <strong>{userFacingCollabText(m.title || "NPC 自主合作请求")}</strong>
           <span>
-            {upstream || m.sender_id || "未知上游"} → {downstream || m.recipient_id || "未知目标"}
-            {m.status ? ` · ${m.status}` : ""}
+            {reviewReason}，通过后才会继续送达；打回会保留审计记录。
           </span>
         </p>
+        {structuredCard ? renderStructuredMessageCard(structuredCard) : null}
         {expanded ? (
           <div className={styles.msgDrawer}>
             <small className={styles.msgDrawerLabel}>审核正文</small>
@@ -1549,48 +2897,35 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
             type="button"
             className={styles.reviewApproveBtn}
             disabled={reviewBusyId === m.id}
-            onMouseDown={(e) => {
+            onClick={(e) => {
               e.preventDefault();
               if (reviewBusyId !== m.id) reviewMessage(m.id, "approve");
             }}
-            onPointerDown={(e) => {
-              e.preventDefault();
-              if (reviewBusyId !== m.id) reviewMessage(m.id, "approve");
-            }}
-            onClick={(e) => e.preventDefault()}
           >
-            通过
+            {isBoundaryReview ? "通过边界" : "通过"}
           </button>
-          <button
-            type="button"
-            className={styles.reviewRememberBtn}
-            disabled={reviewBusyId === m.id}
-            onMouseDown={(e) => {
-              e.preventDefault();
-              if (reviewBusyId !== m.id) reviewMessage(m.id, "approve", "skip");
-            }}
-            onPointerDown={(e) => {
-              e.preventDefault();
-              if (reviewBusyId !== m.id) reviewMessage(m.id, "approve", "skip");
-            }}
-            onClick={(e) => e.preventDefault()}
-            title="通过这条消息，并让同一对 NPC 下次直接派发"
-          >
-            通过并免审
-          </button>
+          {isBoundaryReview ? null : (
+            <button
+              type="button"
+              className={styles.reviewRememberBtn}
+              disabled={reviewBusyId === m.id}
+              onClick={(e) => {
+                e.preventDefault();
+                if (reviewBusyId !== m.id) reviewMessage(m.id, "approve", "skip");
+              }}
+              title="通过这条消息，并让同一对 NPC 下次直接派发"
+            >
+              通过并免审
+            </button>
+          )}
           <button
             type="button"
             className={styles.reviewRejectBtn}
             disabled={reviewBusyId === m.id}
-            onMouseDown={(e) => {
+            onClick={(e) => {
               e.preventDefault();
               if (reviewBusyId !== m.id) reviewMessage(m.id, "reject");
             }}
-            onPointerDown={(e) => {
-              e.preventDefault();
-              if (reviewBusyId !== m.id) reviewMessage(m.id, "reject");
-            }}
-            onClick={(e) => e.preventDefault()}
           >
             打回
           </button>
@@ -1618,69 +2953,39 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
             {automationEnabled ? <span className={styles.pillOk}>自动化</span> : null}
           </small>
           <div className={styles.threadBinding} data-busy={occupancyHeldByOther ? "1" : occupancyHeldByMe ? "me" : "0"}>
-            <Link
-              href={governanceHref("npc-create")}
-              className={styles.threadChip}
-              title="回到主页面：NPC / 线程绑定"
-            >
-              线程 {seat.providerLabel || seat.providerId || "未绑定"}
-            </Link>
-            <Link
-              href={governanceHref("npc-create")}
-              className={styles.threadChip}
-              title="回到主页面：登记或修正真实执行线程 ID"
-            >
-              ID {seat.threadId || "未登记"}
-            </Link>
-            <Link
-              href={governanceHref("computers")}
-              className={styles.threadChip}
-              title="回到主页面：电脑 / Runner / 扫描"
-            >
-              电脑 {seat.computerNodeName || seat.computerNodeId || "未绑定"}
-            </Link>
-            <Link
-              href={governanceHref("computers")}
-              className={styles.threadChip}
-              title="回到主页面：查看 Runner 和桥接健康"
-            >
-              {seat.threadKind || "thread"} · {seat.threadHealth || "未知"}
-            </Link>
+            <span className={styles.threadChip} title="桌面线程在主页面 NPC 管理中绑定；这里仅显示当前协作状态">
+              {seat.threadId ? "桌面线程已绑定" : "待在主页面绑定线程"}
+            </span>
             <span className={`${styles.threadChip} ${styles.occupancyChip}`} title="当前操作占用状态">
               {threadStatusLabel}
             </span>
             <Link
-              href={governanceHref("computers")}
+              href={governanceHref("npc-create")}
               className={styles.threadChip}
-              title="回到主页面：Runner 自动化和电脑接入"
+              title="回到主页面 NPC 管理，从扫描到的桌面线程列表里按名称选择"
             >
-              自动化 {automationEnabled ? "已开" : "手动"}
+              去主页面选择线程
             </Link>
             {seat.desktopVisible ? (
               <span
                 className={`${styles.threadChip} ${styles.desktopVisibleChip}`}
-                title="平台派单会作为普通用户消息进入绑定的 Codex Desktop 线程，完整处理过程在桌面版显示"
+                title="平台派单会作为普通用户消息进入绑定桌面线程，完整处理过程在桌面版显示"
               >
                 桌面可见
               </span>
             ) : seat.desktopProcessDetected ? (
               <span
                 className={`${styles.threadChip} ${styles.desktopDetectedChip}`}
-                title="检测到桌面版，但当前绑定线程未上报实时 UI 桥；平台会诚实显示为非实时可见"
+                title="检测到桌面版，但当前绑定线程还不能确认实时可见"
               >
-                桌面待桥接
-              </span>
-            ) : null}
-            {seat.deliveryLabel ? (
-              <span className={styles.threadChip} title={seat.deliveryWarning || "当前 NPC 的投递方式"}>
-                {seat.deliveryLabel}
+                桌面待确认
               </span>
             ) : null}
             {seat.desktopThreadUrl ? (
               <a
                 className={`${styles.threadChip} ${styles.desktopThreadChip}`}
                 href={seat.desktopThreadUrl}
-                title="在 Codex Desktop 打开这个 NPC 绑定的线程"
+                title="在桌面版打开这个 NPC 绑定的线程"
               >
                 打开桌面线程
               </a>
@@ -1751,15 +3056,6 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
         {occupancyError ? <small className={styles.occupancyHint}>{occupancyError}</small> : null}
       </div>
 
-      {headerCollapsed && launchPackNode ? (
-        <section className={styles.profile} data-compact="launch-pack">
-          <div className={styles.profileRow}>
-            <small className={styles.sectionLabel}>上岗包 / 线程绑定</small>
-            {launchPackNode}
-          </div>
-        </section>
-      ) : null}
-
       {!headerCollapsed ? (
         <section className={styles.profile}>
           <div className={styles.profileRow}>
@@ -1774,13 +3070,13 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
             if (total === 0) {
               return (
                 <div className={styles.profileRow}>
-                  <small className={styles.sectionLabel}>Skill / 知识装配</small>
+                  <small className={styles.sectionLabel}>能力包 / 知识装配</small>
                   <p className={styles.profileTextDim}>
-                    暂无 NPC skill 或工位继承 skill。先到主页面给逻辑工位配置 skill_inheritance，或给这个 NPC 装配项目 Skill。
+                    暂无 NPC 能力包或工位继承能力包。先到主页面配置工位继承，或给这个 NPC 装配项目能力包。
                   </p>
                   <div className={styles.inlineActions}>
                     <Link href={governanceHref("skills", "skill-category")} className={styles.linkBtn}>
-                      配置 Skill
+                      配置能力包
                     </Link>
                     <Link href={governanceHref("development-workshop")} className={styles.linkBtn}>
                       配置工位
@@ -1792,7 +3088,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
             return (
               <div className={styles.profileRow}>
                 <small className={styles.sectionLabel}>
-                  Skill / 知识装配 ({total})
+                  能力包 / 知识装配 ({total})
                   {inherited.length > 0 ? <span className={styles.peerHint}> · 工位继承 {inherited.length} / 自加 {own.length}</span> : null}
                 </small>
                 <div className={styles.chipRow}>
@@ -1801,7 +3097,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
                       key={`inh-${skill}`}
                       href={governanceHref("skills")}
                       className={styles.chipInherit}
-                      title="回到主页面：查看 Skill 仓库和工位继承"
+                      title="回到主页面：查看能力包仓库和工位继承"
                     >
                       ⇪ {skill}
                     </Link>
@@ -1811,7 +3107,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
                       key={`own-${skill}`}
                       href={governanceHref("skills")}
                       className={styles.chip}
-                      title="回到主页面：查看 NPC Skill 装配"
+                      title="回到主页面：查看 NPC 能力包装配"
                     >
                       {skill}
                     </Link>
@@ -1828,7 +3124,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
                 <Link href={governanceHref("git")} className={styles.codeLink} title="回到主页面：仓库与 GitHub 相对路径约定">
                   {seat.workstationKnowledgePath}
                 </Link>
-                <span className={styles.peerHint}> · 本工位所有 NPC 共读，本地路径只作执行目录</span>
+                <span className={styles.peerHint}> · 本工位所有 NPC 共读，运行目录只用于当前电脑执行定位</span>
               </p>
             </div>
           ) : (
@@ -1851,87 +3147,36 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
           ) : null}
           <div className={styles.profileRow}>
             <small className={styles.sectionLabel}>线程绑定</small>
-            {editingThread ? (
-              <div className={styles.identityForm}>
-                <input
-                  className={styles.identityInput}
-                  value={threadIdDraft}
-                  onChange={(e) => setThreadIdDraft(e.target.value)}
-                  placeholder="Codex thread id"
-                />
-                <input
-                  className={styles.identityInput}
-                  value={threadKindDraft}
-                  onChange={(e) => setThreadKindDraft(e.target.value)}
-                  placeholder="Codex"
-                />
-                <input
-                  className={styles.identityInput}
-                  value={threadHealthDraft}
-                  onChange={(e) => setThreadHealthDraft(e.target.value)}
-                  placeholder="watcher ready / 待接入 / 需唤醒"
-                />
-                <div className={styles.identityActions}>
-                  <button type="button" className={styles.iconBtn} onClick={saveThreadBinding} disabled={savingThread}>
-                    {savingThread ? "保存中…" : "保存绑定"}
-                  </button>
-                  <button type="button" className={styles.iconBtn} onClick={() => setEditingThread(false)} disabled={savingThread}>
-                    取消
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className={styles.identityRow}>
-                <span className={styles.identityMeta}>
-                  {seat.threadKind || seat.providerLabel || seat.providerId || "thread"} · {seat.threadId || "未登记真实线程 ID"} · {seat.threadHealth || "未知"}
-                </span>
-                {seat.desktopVisible ? (
-                  <span className={styles.statusPill} title="平台派单会作为普通用户消息进入绑定的 Codex Desktop 线程">
-                    桌面可见
-                  </span>
-                ) : null}
-                {seat.desktopThreadUrl ? (
-                  <a className={styles.iconBtn} href={seat.desktopThreadUrl} title="在 Codex Desktop 打开这个 NPC 绑定的线程">
-                    打开桌面线程
-                  </a>
-                ) : null}
-                <button type="button" className={styles.iconBtn} onClick={() => setEditingThread(true)} title="登记或修正这个 NPC 绑定的执行线程">
-                  绑定
-                </button>
-                <button type="button" className={styles.iconBtn} onClick={() => setLaunchPackOpen((value) => !value)} title="为用户已创建的 Codex 线程生成提示词、skill 和知识库">
-                  上岗包
-                </button>
-              </div>
-            )}
-            {threadNote ? <small className={styles.identityNote}>{threadNote}</small> : null}
-            {launchPackNode}
-          </div>
-          <div className={styles.deliveryBanner} data-visible={seat.desktopVisible ? "1" : "0"}>
-            <div>
-              <strong>{seat.deliveryLabel || seat.threadKind || seat.providerLabel || "线程投递"}</strong>
-              <span>
-                {seat.desktopVisible
-                  ? "桌面线程可见"
-                  : seat.desktopProcessDetected
-                    ? "检测到桌面版，实时桥未连接"
-                    : "桌面实时显示不可用"}
+            <div className={styles.identityRow}>
+              <span className={styles.identityMeta}>
+                {seat.threadId ? "已绑定桌面线程" : "未绑定桌面线程"} · {seat.threadHealth || "未知"}
               </span>
+              {seat.desktopVisible ? (
+                <span className={styles.statusPill} title="平台派单会作为普通用户消息进入绑定桌面线程">
+                  桌面可见
+                </span>
+              ) : null}
+              {seat.desktopThreadUrl ? (
+                <a className={styles.iconBtn} href={seat.desktopThreadUrl} title="在桌面版打开这个 NPC 绑定的线程">
+                  打开桌面线程
+                </a>
+              ) : null}
+              <Link
+                href={`/projects/${projectId}?panel=team&tab=npc-create&focus_seat=${encodeURIComponent(seatApiId)}`}
+                className={styles.iconBtn}
+                title="回到主页面 NPC 管理，从平台扫描到的线程列表里按线程名选择"
+              >
+                去主页面选择线程
+              </Link>
             </div>
-            <details className={styles.deliveryDetails}>
-              <summary>桌面状态</summary>
-              <small>
-                {seat.executorCwd ? `执行目录：${seat.executorCwd}` : "执行目录未登记"}
-                {seat.desktopBridgeLabel ? ` · 桥接：${seat.desktopBridgeLabel}` : ""}
-                {seat.desktopThreadUrl ? ` · 可打开：${seat.desktopThreadUrl}` : ""}
-                {seat.desktopBridgeNote ? ` · ${seat.desktopBridgeNote}` : ""}
-                {seat.deliveryWarning ? ` · ${seat.deliveryWarning}` : ""}
-              </small>
-            </details>
+            <small className={styles.profileTextDim}>
+              线程绑定在主页面 NPC 管理完成：先让平台扫描电脑上的桌面线程，再按线程名字选择。这里不要求用户填写任何编号。
+            </small>
           </div>
           <div className={styles.profileRow}>
             <small className={styles.sectionLabel}>
               NPC 自动化
-              <span className={styles.peerHint}>· 执行过程在绑定线程中跑，平台只看摘要回执</span>
+              <span className={styles.peerHint}>· 平台内部送达绑定线程，并同步桌面过程摘要</span>
             </small>
             <div className={styles.automationRow}>
               <button
@@ -1940,26 +3185,26 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
                 onClick={() => toggleAutomation(!automationEnabled)}
                 disabled={automationBusy}
                 aria-pressed={automationEnabled}
-                title={automationEnabled ? "暂停此 NPC 的自动接单/回执桥接" : "开启此 NPC 的自动接单/回执桥接"}
+                title={automationEnabled ? "暂停此 NPC 的自动接单和回执同步" : "开启此 NPC 的自动接单和回执同步"}
               >
                 <span className={styles.automationKnob} />
-                <span>{automationEnabled ? "自动化已开" : "手动模式"}</span>
+                <span>{automationEnabled ? "自动推进已开" : "手动模式"}</span>
               </button>
               <span className={styles.identityMeta}>
                 {automationEnabled
-                  ? `${seat.providerLabel || seat.providerId || "线程"} watcher 会拉取派单；复杂过程在绑定线程里处理。`
-                  : "关闭时发送只跑当前这一条；Codex 会写入/执行绑定 session，不创建持续自动化。"}
+                  ? "平台会自动继续当前派单；详细处理过程仍留在桌面线程里。"
+                  : "关闭时只处理当前这一条；你可先看回执，再决定是否继续。"}
               </span>
             </div>
             {!automationEnabled ? (
               <small className={styles.identityNote}>
-                Desktop 还没有可接入的实时输入桥；平台只显示最小回执和最终结果。
+                当前只显示最小回执和最终结果；详细处理过程继续留在桌面线程。
               </small>
             ) : null}
             {automationNote ? <small className={styles.identityNote}>{automationNote}</small> : null}
-            <code className={styles.automationCommand} title="在绑定电脑上运行，让这个 NPC 的绑定线程开始自动拉取派单">
-              {watcherCommand}
-            </code>
+            <small className={styles.identityMeta}>
+              绑定线程保持在线后，可继续自动接收、返回最小回执，并在待收口时支持重新同步。
+            </small>
           </div>
           <div className={styles.profileRow}>
             <small className={styles.sectionLabel}>
@@ -2065,9 +3310,9 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
         <summary>
           <span>运行详情</span>
           <small>
-            需求 {(seatQueues?.requirement_inbox.count ?? 0)}
+            需求 {(seatQueues?.my_needs?.count ?? seatQueues?.requirement_inbox.count ?? 0)}
             {" / "}
-            任务 {(seatQueues?.task_todo.count ?? 0)}
+            任务 {(seatQueues?.my_tasks?.count ?? seatQueues?.task_todo.count ?? 0)}
             {" / "}
             指令 {myQueue.length}
             {" / "}
@@ -2076,36 +3321,36 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
         </summary>
         <div className={styles.runtimeBody}>
       {(() => {
-        const inboxItems = seatQueues?.requirement_inbox.items ?? [];
-        const todoItems = seatQueues?.task_todo.items ?? [];
+        const needItems = seatQueues?.my_needs?.items ?? seatQueues?.requirement_inbox.items ?? [];
+        const taskItems = seatQueues?.my_tasks?.items ?? seatQueues?.task_todo.items ?? [];
         const dispatchItems = myQueue;
-        const inboxCount = seatQueues?.requirement_inbox.count ?? 0;
-        const todoCount = seatQueues?.task_todo.count ?? 0;
-        if (inboxCount === 0 && todoCount === 0 && dispatchItems.length === 0 && (receipts?.length ?? 0) === 0) {
+        const needCount = seatQueues?.my_needs?.count ?? seatQueues?.requirement_inbox.count ?? 0;
+        const taskCount = seatQueues?.my_tasks?.count ?? seatQueues?.task_todo.count ?? 0;
+        if (needCount === 0 && taskCount === 0 && dispatchItems.length === 0 && (receipts?.length ?? 0) === 0) {
           return null;
         }
-        const activeItems = queueTab === "inbox" ? inboxItems : queueTab === "todo" ? todoItems : null;
+        const activeItems = queueTab === "needs" ? needItems : queueTab === "tasks" ? taskItems : null;
         return (
           <div className={styles.queueBox}>
             <div className={styles.queueHead}>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button
                   type="button"
-                  onClick={() => setQueueTab("inbox")}
+                  onClick={() => setQueueTab("needs")}
                   className={styles.iconBtn}
-                  data-active={queueTab === "inbox" ? "1" : undefined}
-                  title="需求队列：别人/自己派给我、未关闭的 requirement"
+                  data-active={queueTab === "needs" ? "1" : undefined}
+                  title="我的需求：本 NPC 发出、等待别人满足的需求"
                 >
-                  📥 需求 {inboxCount}
+                  📥 需求 {needCount}
                 </button>
                 <button
                   type="button"
-                  onClick={() => setQueueTab("todo")}
+                  onClick={() => setQueueTab("tasks")}
                   className={styles.iconBtn}
-                  data-active={queueTab === "todo" ? "1" : undefined}
-                  title="任务队列：以本 NPC 的 agent 为 assignee 的未结 task"
+                  data-active={queueTab === "tasks" ? "1" : undefined}
+                  title="我的任务：分配给本 NPC 的未结任务"
                 >
-                  📋 任务 {todoCount}
+                  📋 任务 {taskCount}
                 </button>
                 <button
                   type="button"
@@ -2118,7 +3363,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
                 </button>
               </div>
               <small className={styles.muted}>
-                {queueTab === "inbox" ? "未接 / 在评估" : queueTab === "todo" ? "已接 task" : "优先显示进行中，其次最新待接"}
+                {queueTab === "needs" ? "我缺什么 / 等谁满足" : queueTab === "tasks" ? "我要做什么 / 当前进度" : "优先显示进行中，其次最新待接"}
               </small>
             </div>
             {queueTab === "dispatch" ? (
@@ -2126,10 +3371,11 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
                 {dispatchItems.slice(0, 6).map((m, i) => {
                   const isFromPeer = (m.sender_type || "").toLowerCase() === "agent" && peerIds.has(m.sender_id || "");
                   const isFromExternal = (m.sender_type || "").toLowerCase() === "agent" && !!m.sender_id && m.sender_id !== seat.id && !peerIds.has(m.sender_id);
+                  const senderName = displaySenderName(m, peerByIdentity, "协作者");
                   const fromLabel = isFromPeer
-                    ? `同工位 · ${peerByIdentity.get(m.sender_id || "")?.name || m.sender_id}`
+                    ? `同工位 · ${senderName}`
                     : isFromExternal
-                      ? `跨工位 · ${m.sender_id}`
+                      ? `跨工位 · ${senderName}`
                       : (m.sender_type || "?");
                   const isLatest = i === 0;
                   return (
@@ -2170,8 +3416,8 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
                     <span className={styles.queuePos}>#{i + 1}</span>
                     <div className={styles.queueMeta}>
                       <span className={styles.queueFrom}>
-                        {queueTab === "inbox"
-                          ? (it.from_agent ? `← ${it.from_agent}` : it.trigger_kind || "manual")
+                        {queueTab === "needs"
+                          ? (it.to_agent || it.target_seat_id ? `→ ${it.to_agent || it.target_seat_id}` : it.trigger_kind || "待路由")
                           : (it.module ? `module: ${it.module}` : it.priority || "—")}
                       </span>
                       <span className={styles.queueTitle}>{it.title || "(无标题)"}</span>
@@ -2182,7 +3428,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
               </ul>
             ) : (
               <p className={styles.muted} style={{ paddingLeft: 8 }}>
-                {queueTab === "inbox" ? "暂无需求" : "暂无任务"}
+                {queueTab === "needs" ? "暂无需求" : "暂无任务"}
               </p>
             )}
             {queueTab === "dispatch" && dispatchItems.length > 6 ? (
@@ -2251,36 +3497,6 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
         </div>
       ) : null}
 
-      <div className={styles.eventBox}>
-        <div className={styles.eventHead}>
-          <strong>协作事件线</strong>
-          <small>人 / NPC / 线程 / 回执</small>
-        </div>
-        {collaborationEvents.length > 0 ? (
-          <ol className={styles.eventList}>
-            {collaborationEvents.map((event) => (
-              <li key={event.id} className={styles.eventItem} data-tone={event.tone}>
-                <span className={styles.eventDot} />
-                <div className={styles.eventMain}>
-                  <div className={styles.eventTitleRow}>
-                    <span className={styles.eventLabel}>{event.label}</span>
-                    <strong>{event.title}</strong>
-                  </div>
-                  <small className={styles.eventMeta}>
-                    {event.meta}
-                    {event.status ? ` · ${event.status}` : ""}
-                    {event.createdAt ? ` · ${formatTime(event.createdAt)}` : ""}
-                  </small>
-                </div>
-              </li>
-            ))}
-          </ol>
-        ) : (
-          <p className={styles.eventEmpty}>
-            暂无可归并事件。给这个 NPC 派单后，这里会按「派单 / 接单 / 进度 / 完成或拒绝 / 回执」展示协同过程。
-          </p>
-        )}
-      </div>
         </div>
       </details>
 
@@ -2296,7 +3512,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
             <span className={`${styles.legendDot} ${styles.roleBadge_self}`}>我</span>
             <span className={`${styles.legendDot} ${styles.roleBadge_peer}`}>同工位</span>
             <span className={`${styles.legendDot} ${styles.roleBadge_external}`}>跨工位</span>
-            <span className={`${styles.legendDot} ${styles.roleBadge_watcher}`}>CLI</span>
+            <span className={`${styles.legendDot} ${styles.roleBadge_watcher}`}>线程</span>
             <span className={`${styles.legendDot} ${styles.roleBadge_system}`}>系统</span>
           </small>
         </div>        <div className={styles.streamToolbarRight}>
@@ -2333,43 +3549,6 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
         </div>
       </div>
 
-      {latestFinalReceipt ? (() => {
-        const refined = summarizeCollabMessage(latestFinalReceipt);
-        const body = refined.cleanBody || refined.rawBody || "";
-        const previewLines = finalReceiptPreview(body);
-        return (
-          <div className={styles.latestReceipt} data-kind={refined.kind}>
-            <div>
-              <small>最新最终回执 · {formatTime(latestFinalReceipt.created_at)}</small>
-              <strong>{refined.headline}</strong>
-              <p>{refined.detail || "目标线程已返回最终结果；完整处理过程仍在绑定桌面线程中。"}</p>
-              {previewLines.length ? (
-                <ul className={styles.latestReceiptPreview} aria-label="最终回执摘要">
-                  {previewLines.map((line, index) => (
-                    <li key={`${latestFinalReceipt.id}-preview-${index}`}>{line}</li>
-                  ))}
-                </ul>
-              ) : null}
-            </div>
-            {body ? (
-              <button
-                type="button"
-                className={styles.inlineBtn}
-                onClick={() => {
-                  setExpandedIds((prev) => {
-                    const next = new Set(prev);
-                    next.add(latestFinalReceipt.id);
-                    return next;
-                  });
-                }}
-              >
-                查看回执 ({body.length} 字)
-              </button>
-            ) : null}
-          </div>
-        );
-      })() : null}
-
       <div
         className={styles.stream}
         ref={streamRef}
@@ -2382,37 +3561,120 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
             {messages === null
               ? "加载中…"
               : hideNoisy && totalLoaded > 0
-                ? "摘要流暂无可读信号，取消勾选「只看摘要」可查看原始桥接消息。"
+                ? "摘要流暂无可读信号，取消勾选「只看摘要」可查看原始同步消息。"
                 : "暂无协作消息。绑定线程会处理完整过程，平台这里只显示必要摘要。"}
           </p>
         ) : (
           <>
+          {dialogStateCards.map((card) => (
+            <div
+              key={card.id}
+              className={`${styles.msg} ${styles.msg_note} ${styles.role_system} ${styles.dialogStateMsg}`}
+              data-role="system"
+              data-tone={card.tone}
+              data-message-type="dialog_state"
+            >
+              <div className={styles.msgHead}>
+                <span className={`${styles.roleBadge} ${styles.roleBadge_system}`}>系统状态</span>
+                <span className={`${styles.badge} ${styles.badge_note}`}>{card.status}</span>
+                <small className={styles.msgStatus}>跟随对话更新</small>
+              </div>
+              <div className={styles.processLine} aria-label="协作过程">
+                <span title="来源">平台</span>
+                <b aria-hidden>→</b>
+                <span title="目标">{seat.name}</span>
+                <em>{card.status}</em>
+                <small>{card.id === "runtime-mode" ? "持续状态" : "当前卡点"}</small>
+              </div>
+              <p className={styles.msgSummary}>
+                <strong>{card.title}</strong>
+                <span>{card.detail}</span>
+              </p>
+              {card.action ? (
+                <div className={styles.messageInlineActions} aria-label="自动继续操作">
+                  <button
+                    type="button"
+                    className={styles.queueActionBtn}
+                    onClick={() => toggleAutomation(card.action === "enable_automation")}
+                    disabled={automationBusy}
+                    title={card.action === "enable_automation" ? "允许平台在免审边界内自动继续" : "暂停自动继续，改为人工确认"}
+                  >
+                    {automationBusy ? "处理中" : card.actionLabel}
+                  </button>
+                  <Link
+                    href={governanceHref("npc-create")}
+                    className={styles.inlineLinkBtn}
+                    title="线程绑定只在主页面 NPC 管理里选择，不在对话框填写线程编号"
+                  >
+                    管理线程绑定
+                  </Link>
+                </div>
+              ) : null}
+            </div>
+          ))}
+          {collaborationEvents.length > 0 ? (
+            <details className={styles.dialogEvents}>
+              <summary>
+                <span>协作过程摘要</span>
+                <small>{collaborationEvents.length} 条关键事件</small>
+              </summary>
+              <ol className={styles.eventList}>
+                {collaborationEvents.map((event) => (
+                  <li key={event.id} className={styles.eventItem} data-tone={event.tone}>
+                    <span className={styles.eventDot} />
+                    <div className={styles.eventMain}>
+                      <div className={styles.eventTitleRow}>
+                        <span className={styles.eventLabel}>{event.label}</span>
+                        <strong>{event.title}</strong>
+                      </div>
+                      <small className={styles.eventMeta}>
+                        {event.meta}
+                        {event.status ? ` · ${humanizeDispatchCardStatus(event.status)}` : ""}
+                        {event.createdAt ? ` · ${formatTime(event.createdAt)}` : ""}
+                      </small>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </details>
+          ) : null}
           {visible.map((msg) => {
-            if ((msg.status || "").toLowerCase() === "pending_review") {
+            if (shouldRenderAsReviewMessage(msg)) {
               return renderReviewMessage(msg);
             }
             const refined = summarizeCollabMessage(msg);
             const { role, label: roleLabel } = classifyRole(msg, seat.id, peerIds, externalAgentIds);
             const expanded = expandedIds.has(msg.id);
-            const body = refined.cleanBody || refined.rawBody || "(空消息)";
+            const body = userFacingCollabText(refined.cleanBody || refined.rawBody || "", "(空消息)");
             const canExpand = body.length > 0;
+            const structuredCard = peerDispatchCards.get(msg.id) || getStructuredMessageCard(msg);
+            const skipConversationCollabCard = role === "self"
+              && (refined.kind === "result" || ["已接单", "处理中", "已完成", "最小回执"].includes(refined.statusLabel));
+            const conversationCollabCard = skipConversationCollabCard ? null : buildConversationCollabCard(msg, peerByIdentity, seat.name);
+            const professionalViews = inferProfessionalViews(msg, structuredCard);
+            const evidenceArtifacts = extractEvidenceArtifacts(msg);
+            const desktopCloseout = isOpenDesktopCloseoutMessage(msg);
+            const closeoutSourceId = desktopCloseout ? closeoutSourceMessageId(msg) : "";
             const senderLabel =
               role === "human"
                 ? "用户"
                 : role === "self"
                   ? `本 NPC · ${seat.name}`
                   : role === "peer"
-                    ? `同工位 · ${peerByIdentity.get(msg.sender_id || "")?.name || msg.sender_id}`
+                      ? `同工位 · ${displaySenderName(msg, peerByIdentity, "协作者")}`
                     : role === "external"
-                      ? `跨工位 · ${msg.sender_id || "?"}`
+                      ? `跨工位 · ${displaySenderName(msg, peerByIdentity, "协作者")}`
                       : role === "watcher"
-                        ? "线程 Watcher"
+                        ? "同步线程"
                         : roleLabel;
+            const processMeta = messageProcessMeta(msg, role, senderLabel, peerByIdentity, seat.name, refined);
             return (
               <div
                 key={msg.id}
                 className={`${styles.msg} ${styles[`msg_${refined.kind}`] || ""} ${styles[`role_${role}`] || ""}`}
                 data-role={role}
+                data-message-id={msg.id}
+                data-message-type={msg.message_type || ""}
               >
                 <div className={styles.msgHead}>
                   <span className={`${styles.roleBadge} ${styles[`roleBadge_${role}`] || ""}`} title={senderLabel}>
@@ -2422,12 +3684,123 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
                     {refined.statusLabel}
                   </span>
                   <small className={styles.msgTime}>{formatTime(msg.created_at)}</small>
-                  <small className={styles.msgStatus}>{msg.status}</small>
+                  <small className={styles.msgStatus}>{refined.statusLabel}</small>
+                </div>
+                <div className={styles.processLine} aria-label="协作过程">
+                  <span title="来源">{processMeta.origin}</span>
+                  <b aria-hidden>→</b>
+                  <span title="目标">{processMeta.target}</span>
+                  <em>{processMeta.process}</em>
+                  <small>{processMeta.signal}</small>
                 </div>
                 <p className={styles.msgSummary}>
                   <strong>{refined.headline}</strong>
                   {refined.detail ? <span>{refined.detail}</span> : null}
                 </p>
+                {structuredCard ? renderStructuredMessageCard(structuredCard) : null}
+                {conversationCollabCard && (!structuredCard || conversationCollabCard.summary !== structuredCard.summary) ? renderStructuredMessageCard(conversationCollabCard) : null}
+                {desktopCloseout ? (
+                  <div className={styles.closeoutActions} aria-label="桌面待收口操作">
+                    <span>待收口：已收到过程回执，正在等最终收口</span>
+                    <button
+                      type="button"
+                      onClick={() => runCloseoutAction(msg, "nudge")}
+                      disabled={closeoutBusyId !== null}
+                      title="提醒目标继续处理，当前命令仍保持处理中"
+                    >
+                      {closeoutBusyId === `${closeoutSourceId}:nudge` ? "催办中" : "催办"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => runCloseoutAction(msg, "extend_wait")}
+                      disabled={closeoutBusyId !== null}
+                      title="继续等待最终收口，当前命令保持处理中"
+                    >
+                      {closeoutBusyId === `${closeoutSourceId}:extend_wait` ? "延长中" : "延长等待"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => runCloseoutAction(msg, "retry_desktop_sync")}
+                      disabled={closeoutBusyId !== null}
+                      title="重新拉取最终结果，不需要理解平台内部同步细节"
+                    >
+                      {closeoutBusyId === `${closeoutSourceId}:retry_desktop_sync` ? "同步中" : "重新同步"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => runCloseoutAction(msg, "manual_close")}
+                      disabled={closeoutBusyId !== null}
+                      data-danger="1"
+                      title="确认桌面结果后，由人手动完成平台收口"
+                    >
+                      {closeoutBusyId === `${closeoutSourceId}:manual_close` ? "收口中" : "手动收口"}
+                    </button>
+                  </div>
+                ) : null}
+                {professionalViews.length ? (
+                  <div className={styles.professionalStrip} aria-label="进入专业视图">
+                    <small className={styles.professionalStripLabel}>专业视图</small>
+                    <div className={styles.professionalStripLinks}>
+                      {professionalViews.map((entry) => (
+                        <Link
+                          key={`${msg.id}-${entry.surface}`}
+                          href={professionalViewHref(entry.surface, msg)}
+                          className={styles.professionalStripLink}
+                          data-surface={entry.surface}
+                          title={`${entry.label}：${entry.hint}`}
+                        >
+                          <span>{entry.label}</span>
+                          <small>{entry.hint}</small>
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                {evidenceArtifacts.length ? (
+                  <div className={styles.evidenceStrip} aria-label="证据文件">
+                    <span className={styles.evidenceLabel}>证据</span>
+                    {evidenceArtifacts.map((artifact) => {
+                      const previewKey = `${msg.id}:${artifact.path}`;
+                      const preview = artifactPreviews[previewKey];
+                      return (
+                        <button
+                          key={previewKey}
+                          type="button"
+                          className={styles.evidenceBtn}
+                          onClick={() => openArtifactPreview(msg, artifact)}
+                          title={artifact.path}
+                          data-open={preview?.content ? "1" : undefined}
+                        >
+                          {preview?.loading ? "读取中..." : artifact.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
+                {evidenceArtifacts.map((artifact) => {
+                  const previewKey = `${msg.id}:${artifact.path}`;
+                  const preview = artifactPreviews[previewKey];
+                  if (!preview || (!preview.content && !preview.error && !preview.loading)) return null;
+                  return (
+                    <div key={`${previewKey}-preview`} className={styles.evidencePreview}>
+                      <div className={styles.evidencePreviewHead}>
+                        <strong>{preview.name || artifact.label}</strong>
+                        <small>
+                          {userFacingEvidencePath(preview.path || artifact.path)}
+                          {typeof preview.sizeBytes === "number" ? ` · ${Math.ceil(preview.sizeBytes / 1024)} KB` : ""}
+                          {preview.truncated ? " · 已截断" : ""}
+                        </small>
+                      </div>
+                      {preview.error ? (
+                        <p className={styles.evidenceError}>{preview.error}</p>
+                      ) : preview.loading ? (
+                        <p className={styles.evidenceError}>正在读取证据预览...</p>
+                      ) : (
+                        <pre className={styles.evidenceContent}>{preview.content}</pre>
+                      )}
+                    </div>
+                  );
+                })}
                 {expanded ? (
                   <div className={styles.msgDrawer}>
                     <small className={styles.msgDrawerLabel}>平台登记的回执 / 最终结果；完整过程请看绑定线程</small>
@@ -2516,7 +3889,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
           <small className={styles.composerHint}>
             {occupancyHeldByOther
               ? `⚠ ${occupancy?.user_name || "他人"} 正在占用，先抢占再发送`
-              : sendNote || (seat.permissionLevel ? `权限：${seat.permissionLevel} · 详细处理在绑定线程中` : "发送后写入协作池；Codex / Claude Code 线程处理，平台只收最小回执和最终结果")}
+              : sendNote || (seat.permissionLevel ? `风险级别 ${seat.permissionLevel} · 详细过程在桌面线程中` : "发送后写入协作池；NPC 处理，平台同步最小回执和最终结果")}
           </small>
           <div className={styles.composerActions}>
             <Link href={`/projects/${projectId}/cockpit`} className={styles.linkBtn} title="返回项目驾驶舱">

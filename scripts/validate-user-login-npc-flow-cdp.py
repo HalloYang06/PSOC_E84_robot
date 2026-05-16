@@ -143,15 +143,30 @@ def main() -> int:
               const email = document.querySelector('input[name="email"], input[type="email"]');
               const password = document.querySelector('input[name="password"], input[type="password"]');
               if (!email || !password) return {{ ok: false, reason: 'missing-fields' }};
-              email.value = {json.dumps(args.login_email)};
+              const setValue = (input, value) => {{
+                const proto = Object.getPrototypeOf(input);
+                const descriptor = Object.getOwnPropertyDescriptor(proto, 'value');
+                if (descriptor && descriptor.set) {{
+                  descriptor.set.call(input, value);
+                }} else {{
+                  input.value = value;
+                }}
+                input.dispatchEvent(new InputEvent('input', {{ bubbles: true, inputType: 'insertText', data: value }}));
+                input.dispatchEvent(new Event('change', {{ bubbles: true }}));
+              }};
+              email.focus();
+              setValue(email, {json.dumps(args.login_email)});
               email.dispatchEvent(new Event('input', {{ bubbles: true }}));
               email.dispatchEvent(new Event('change', {{ bubbles: true }}));
-              password.value = {json.dumps(args.login_password)};
+              password.focus();
+              setValue(password, {json.dumps(args.login_password)});
               password.dispatchEvent(new Event('input', {{ bubbles: true }}));
               password.dispatchEvent(new Event('change', {{ bubbles: true }}));
-              const submit = document.querySelector('button[type="submit"], form button');
+              const form = email.closest('form') || password.closest('form') || document.querySelector('form');
+              const submit = form?.querySelector('button[type="submit"]') || document.querySelector('button[type="submit"]');
               if (!submit) return {{ ok: false, reason: 'missing-submit' }};
-              submit.click();
+              if (!form) return {{ ok: false, reason: 'missing-form' }};
+              form.requestSubmit(submit);
               return {{ ok: true }};
             }})()
             """,
@@ -159,7 +174,23 @@ def main() -> int:
         if not isinstance(login_result, dict) or not login_result.get("ok"):
             raise RuntimeError(f"Login form did not submit: {login_result}")
 
-        wait_for(cdp, "location.pathname.includes('/projects')", timeout_seconds=35)
+        wait_for(
+            cdp,
+            """
+            (() => {
+              if (location.pathname.includes('/projects')) return true;
+              const body = document.body?.innerText || '';
+              if (location.pathname.includes('/login') && (body.includes('邮箱或密码不正确') || body.includes('登录没有完成'))) {
+                return `login-error:${body.slice(0, 240)}`;
+              }
+              return false;
+            })()
+            """,
+            timeout_seconds=35,
+        )
+        current_path = cdp_eval(cdp, "location.pathname")
+        if isinstance(current_path, str) and "/login" in current_path:
+            raise RuntimeError(f"Login stayed on login page: {cdp_eval(cdp, 'document.body.innerText.slice(0, 500)')}")
         time.sleep(1.0)
         shot_projects = output_dir / f"user-login-02-projects-after-login-{stamp}.png"
         screenshot(cdp, shot_projects)
@@ -181,6 +212,84 @@ def main() -> int:
             cdp.send("Page.navigate", {"url": f"{web_base}/projects/{args.project_id}"})
 
         wait_for(cdp, f"location.href.includes({json.dumps(args.project_id)})", timeout_seconds=35)
+        wait_for(
+            cdp,
+            """
+            (() => {
+              const body = document.body?.innerText || '';
+              return document.readyState === 'complete'
+                && body.includes('NPC 工作台')
+                && (body.includes('云端验收项目') || body.includes('项目'));
+            })()
+            """,
+            timeout_seconds=35,
+        )
+        shot_project_home = output_dir / f"user-login-03-project-home-{stamp}.png"
+        screenshot(cdp, shot_project_home)
+
+        workbench_nav = cdp_eval(
+            cdp,
+            """
+            (() => {
+              const links = Array.from(document.querySelectorAll('a'));
+              const link = links.find((item) => (item.textContent || '').includes('NPC 工作台'))
+                || links.find((item) => (item.getAttribute('href') || '').includes('/workbench'));
+              if (!link) return { ok: false, reason: 'missing-workbench-link', text: document.body.innerText.slice(0, 800) };
+              link.click();
+              return { ok: true, href: link.getAttribute('href'), label: (link.textContent || '').trim().slice(0, 80) };
+            })()
+            """,
+        )
+        if not isinstance(workbench_nav, dict) or not workbench_nav.get("ok"):
+            cdp.send("Page.navigate", {"url": f"{web_base}/projects/{args.project_id}/workbench"})
+        wait_for(
+            cdp,
+            """
+            (() => {
+              const body = document.body?.innerText || '';
+              return location.pathname.includes('/workbench')
+                && body.includes('协同工作台')
+                && body.includes('NPC')
+                && (body.includes('项目资源索引') || body.includes('对话') || body.includes('打开全部'));
+            })()
+            """,
+            timeout_seconds=35,
+        )
+        shot_dialog = output_dir / f"user-login-04-npc-workbench-{stamp}.png"
+        screenshot(cdp, shot_dialog)
+        dialog_info = cdp_eval(
+            cdp,
+            """
+            (() => ({
+              url: location.href,
+              hasTextarea: !!document.querySelector('textarea[name="body"], textarea'),
+              hasWorkbench: (document.body.innerText || '').includes('协同工作台'),
+              bodyText: document.body.innerText.slice(0, 1200)
+            }))()
+            """,
+        )
+
+        report = {
+            "stamp": stamp,
+            "project_id": args.project_id,
+            "login_email": args.login_email,
+            "screenshots": [
+                str(shot_login),
+                str(shot_projects),
+                str(shot_project_home),
+                str(shot_dialog),
+            ],
+            "login_result": login_result,
+            "project_click": project_click,
+            "workbench_nav": workbench_nav,
+            "dialog_info": dialog_info,
+            "final_url": dialog_info.get("url") if isinstance(dialog_info, dict) else "",
+        }
+        report_path = output_dir / f"user-login-npc-flow-report-{stamp}.json"
+        report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+        return 0
+
         wait_for(cdp, "!!document.querySelector('iframe')", timeout_seconds=35)
         wait_for(
             cdp,

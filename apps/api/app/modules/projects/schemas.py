@@ -103,10 +103,13 @@ class CollaborationWorkstationRead(BaseModel):
     config_id: str | None = None
     row_id: str | None = None
     project_id: str | None = None
+    authoritative_seat_id: str | None = None
+    authoritative_seat_ref: str | None = None
     name: str
     agent_id: str | None = None
     workstation_id: str | None = None
     source_workstation_id: str | None = None
+    historical_aliases: list[str] | None = None
     computer_node: str | None = None
     computer_node_id: str | None = None
     ai_provider: str | None = None
@@ -135,6 +138,14 @@ class CollaborationWorkstationRead(BaseModel):
                 data["responsibility"] = data["role"]
             if not data.get("source_workstation_id") and isinstance(data.get("metadata"), dict):
                 data["source_workstation_id"] = data["metadata"].get("source_workstation_id")
+            if not data.get("authoritative_seat_id"):
+                data["authoritative_seat_id"] = data.get("row_id") or data.get("id")
+            if not data.get("authoritative_seat_ref"):
+                data["authoritative_seat_ref"] = data.get("config_id") or data.get("id")
+            if data.get("historical_aliases") is None and isinstance(data.get("metadata"), dict):
+                aliases = data["metadata"].get("historical_aliases")
+                if isinstance(aliases, list):
+                    data["historical_aliases"] = aliases
             if not data.get("model") and data.get("default_model"):
                 data["model"] = data["default_model"]
             if not data.get("model") and data.get("model_name"):

@@ -20,6 +20,9 @@ artifacts/
 # runtime / tooling state
 .claude/
 .codex-runtime/
+.codex-cloud-ssh/
+Codex-Manager/
+CodexManager-service-v*/
 
 # scratch / reference dumps
 .tmp-*/

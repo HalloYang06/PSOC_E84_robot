@@ -5,11 +5,12 @@ import hmac
 import json
 import re
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 from pydantic import BaseModel, Field
 from sqlalchemy import or_, select
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
 from app.common.access import read_identity_header, resolve_human_principal, resolve_project_write_principal
@@ -18,9 +19,11 @@ from app.common.response import ok
 from app.db.models.collaboration_message import CollaborationMessage
 from app.db.session import get_db
 from app.db.models.approval import Approval
-from app.db.models.project_collaboration import ProjectThreadWorkstation, ProjectWorkstation
+from app.db.models.project import Project
+from app.db.models.project_collaboration import ProjectComputerNode, ProjectThreadWorkstation, ProjectWorkstation
 from app.db.models.task import Task
 from app.db.models.user import User
+from app.modules.audit.service import create_audit_log
 from app.settings import get_settings
 from app.modules.projects.schemas import (
     CollaborationComputerNodeRead,
@@ -46,10 +49,12 @@ from .schemas import (
     CollaborationMessageRead,
     CollaborationMessageUpdate,
     ComputerNodePairingTokenRead,
+    DesktopCloseoutActionCreate,
     RunnerRelayAckCreate,
     RunnerRelayCommandCreate,
     RunnerRelayCompleteCreate,
     WorkstationInboxAckCreate,
+    DesktopThreadSyncCreate,
     WorkstationInboxProgressCreate,
     WorkstationAdapterConfigRead,
     WorkstationAdapterTokenRead,
@@ -84,6 +89,7 @@ from .service import (
     create_runner_command,
     ack_workstation_command,
     complete_workstation_command,
+    closeout_workstation_command,
     progress_workstation_command,
     get_collaboration_summary,
     get_collaboration_message_or_404,
@@ -128,6 +134,7 @@ from .service import (
     update_project_invite,
     update_project_member,
     update_user,
+    autostart_workstation_command_after_review,
 )
 
 
@@ -167,9 +174,117 @@ HARDWARE_REVIEW_KEYWORDS = (
 )
 
 
+READONLY_FRONTEND_REVIEW_EXEMPT_MARKERS = (
+    "只读前端",
+    "只读工作面",
+    "只读能力",
+    "只读入口",
+    "只读证据",
+    "只读诊断",
+    "只读规划",
+    "只读观测",
+    "桌面同步",
+    "执行线程恢复",
+    "恢复验证",
+    "抗干扰",
+    "建议卡",
+    "调参建议",
+    "强审动作卡",
+    "不得自动执行",
+    "不得执行",
+    "不能自动执行",
+    "不自动执行",
+    "截图验收",
+    "浏览器验收",
+    "点击链验收",
+    "全链路验收",
+    "fullchain",
+    "复验",
+    "结构契约",
+    "工作台结构",
+    "dom 检查",
+    "dom检查",
+    "页面验收",
+    "前端验收",
+    "只跑验证",
+    "不改硬件",
+    "不要碰真实硬件",
+    "不碰真实硬件",
+    "不执行 ros",
+    "不执行ros",
+    "不写操作",
+    "不要写操作",
+    "不部署",
+    "不运动",
+    "前端能力",
+    "read-only frontend",
+    "readonly frontend",
+    "screenshot validation",
+    "dom check",
+    "cdp",
+    "browser validation",
+    "click-chain validation",
+    "fullchain validation",
+)
+
+HARDWARE_ACTION_MARKERS = (
+    "上电",
+    "断电",
+    "实机",
+    "真机",
+    "刷写",
+    "固件",
+    "烧录",
+    "写参数",
+    "下发",
+    "运动",
+    "移动",
+    "急停",
+    "部署",
+    "publish",
+    "service",
+    "action",
+    "write parameter",
+    "firmware",
+    "flash",
+    "power on",
+    "motion",
+    "deploy",
+)
+
+HARDWARE_GUARDRAIL_MARKERS = (
+    "必须单独做强审",
+    "必须强审",
+    "必须走强审",
+    "强制人审",
+    "不得自动执行",
+    "不能自动执行",
+    "不自动执行",
+    "不要碰",
+    "不碰真实硬件",
+    "不执行",
+    "不部署",
+    "不运动",
+    "不写",
+    "不能直接下发",
+    "不能下发",
+    "只能生成建议",
+    "只展示",
+    "只读",
+)
+
+
 def _detect_hardware_review_risk(text: str) -> str | None:
     cleaned = str(text or "").strip().lower()
     if not cleaned:
+        return None
+    has_readonly_exempt_marker = any(marker.lower() in cleaned for marker in READONLY_FRONTEND_REVIEW_EXEMPT_MARKERS)
+    has_guardrail_marker = any(marker.lower() in cleaned for marker in HARDWARE_GUARDRAIL_MARKERS)
+    if any(marker.lower() in cleaned for marker in READONLY_FRONTEND_REVIEW_EXEMPT_MARKERS) and not any(
+        marker.lower() in cleaned for marker in HARDWARE_ACTION_MARKERS
+    ):
+        return None
+    if has_readonly_exempt_marker and has_guardrail_marker:
         return None
     for keyword in HARDWARE_REVIEW_KEYWORDS:
         if keyword.lower() in cleaned:
@@ -342,6 +457,120 @@ def _collaboration_payload_extra_data(payload: CollaborationMessageCreate) -> di
     return dict(payload.metadata or {}) if isinstance(payload.metadata, dict) else {}
 
 
+def _payload_card_kind(metadata: dict[str, object]) -> str:
+    payload = metadata.get("payload_json") or metadata.get("payloadJson")
+    if isinstance(payload, str):
+        try:
+            parsed = json.loads(payload)
+        except json.JSONDecodeError:
+            parsed = {}
+        payload = parsed
+    if not isinstance(payload, dict):
+        payload = {}
+    raw = payload.get("card_kind") or payload.get("cardKind") or payload.get("kind") or metadata.get("card_kind") or metadata.get("cardKind")
+    return str(raw or "").strip().lower().replace("_", "-")
+
+
+def _payload_risk_level(metadata: dict[str, object]) -> str:
+    payload = metadata.get("payload_json") or metadata.get("payloadJson")
+    if isinstance(payload, str):
+        try:
+            parsed = json.loads(payload)
+        except json.JSONDecodeError:
+            parsed = {}
+        payload = parsed
+    if isinstance(payload, dict):
+        raw = payload.get("risk_level") or payload.get("riskLevel")
+        if raw:
+            return str(raw).strip() or "L1"
+    raw = metadata.get("risk_level") or metadata.get("riskLevel")
+    return str(raw or "L1").strip() or "L1"
+
+
+def _ensure_peer_delegation_context(
+    metadata: dict[str, object],
+    *,
+    project_id: str,
+    delegated_by_user_id: str | None,
+    delegated_via_seat_id: str,
+    target_seat_id: str,
+    source_message_id: str | None,
+) -> dict[str, object]:
+    now = datetime.now(UTC)
+    existing = metadata.get("delegation_context")
+    if isinstance(existing, dict) and existing.get("kind") == "project_delegation":
+        context = dict(existing)
+    else:
+        context = {
+            "kind": "project_delegation",
+            "version": 1,
+            "project_id": project_id,
+            "delegated_by_user_id": delegated_by_user_id,
+            "delegated_via_seat_id": delegated_via_seat_id,
+            "grantee_type": "seat",
+            "grantee_id": delegated_via_seat_id,
+            "target_seat_id": target_seat_id,
+            "scope": [
+                "collaboration.message.create",
+                "collaboration.peer_dispatch.create",
+                "collaboration.receipt.write",
+            ],
+            "max_risk_level": _payload_risk_level(metadata),
+            "source_message_id": source_message_id,
+            "source": str(metadata.get("origin") or metadata.get("source") or "agent_peer_dispatch"),
+            "issued_at": now.isoformat(),
+            "expires_at": (now + timedelta(hours=12)).isoformat(),
+            "revoked_at": None,
+            "status": "active",
+        }
+    metadata["delegation_context"] = context
+    metadata.setdefault("delegated_by_user_id", context.get("delegated_by_user_id"))
+    metadata.setdefault("delegated_via_seat_id", context.get("delegated_via_seat_id"))
+    metadata.setdefault("delegation_scope", context.get("scope"))
+    metadata.setdefault("delegation_status", context.get("status"))
+    return metadata
+
+
+def _resolve_delegated_by_user_id_for_peer_dispatch(
+    db: Session,
+    *,
+    project_id: str,
+    source_message_id: str | None,
+    fallback_user_id: str | None,
+) -> str | None:
+    cleaned_fallback = str(fallback_user_id or "").strip() or None
+    if cleaned_fallback:
+        return cleaned_fallback
+    cleaned_source = str(source_message_id or "").strip()
+    visited: set[str] = set()
+    while cleaned_source and cleaned_source not in visited:
+        visited.add(cleaned_source)
+        source = db.get(CollaborationMessage, cleaned_source)
+        if source is None or source.project_id != project_id:
+            return None
+        if (source.sender_type or "").lower() == "human" and source.sender_id:
+            return str(source.sender_id)
+        extra = source.extra_data if isinstance(source.extra_data, dict) else {}
+        delegated_by = str(extra.get("delegated_by_user_id") or "").strip()
+        if delegated_by:
+            return delegated_by
+        context = extra.get("delegation_context")
+        if isinstance(context, dict):
+            context_user = str(context.get("delegated_by_user_id") or "").strip()
+            if context_user:
+                return context_user
+            next_source = str(context.get("source_message_id") or "").strip()
+            if next_source and next_source != cleaned_source:
+                cleaned_source = next_source
+                continue
+        next_source = str(extra.get("source_message_id") or extra.get("root_message_id") or "").strip()
+        if next_source and next_source != cleaned_source:
+            cleaned_source = next_source
+            continue
+        return None
+    return None
+
+
 def _resolve_collaboration_message_recipient_label(
     db: Session,
     *,
@@ -354,17 +583,20 @@ def _resolve_collaboration_message_recipient_label(
     if not cleaned_type or not cleaned_id:
         return None, False
     if cleaned_type == "workstation":
-        workstation = get_project_thread_workstation(db, project_id, cleaned_id)
-        if isinstance(workstation, dict):
-            label = str(
-                workstation.get("name")
-                or workstation.get("agent_id")
-                or workstation.get("id")
-                or workstation.get("workstation_id")
-                or cleaned_id
-            ).strip() or cleaned_id
-        else:
-            label = str(workstation.name or workstation.agent_id or workstation.id or cleaned_id).strip() or cleaned_id
+        workstation = _project_workstation_by_id_or_config(db, project_id, cleaned_id)
+        if workstation is None:
+            from app.modules.requirements.service import _resolve_seat
+
+            seat = _resolve_seat(db, project_id, cleaned_id)
+            if seat is None:
+                raise AppError(
+                    "NOT_FOUND",
+                    "thread workstation does not exist",
+                    status_code=404,
+                )
+            label = str(seat.name or seat.id or seat.config_id or cleaned_id).strip() or cleaned_id
+            return label, True
+        label = str(workstation.name or workstation.id or workstation.config_id or cleaned_id).strip() or cleaned_id
         return label, True
     if cleaned_type == "computer_node":
         node = get_project_computer_node(db, project_id, cleaned_id)
@@ -403,9 +635,8 @@ def _collaboration_message_scope_project_id(
             for item in db.scalars(
                 select(ProjectThreadWorkstation.project_id).where(
                     or_(
+                        ProjectThreadWorkstation.id == cleaned_agent_id,
                         ProjectThreadWorkstation.config_id == cleaned_agent_id,
-                        ProjectThreadWorkstation.name == cleaned_agent_id,
-                        ProjectThreadWorkstation.agent_id == cleaned_agent_id,
                     )
                 )
             )
@@ -489,6 +720,44 @@ def _require_workstation_inbox_access(
             status_code=403,
             details={"project_id": project_id, "workstation_id": workstation_id, "header_workstation_id": header_workstation_id},
         )
+
+    header_runner_id = read_identity_header(request, "x-runner-id")
+    if header_runner_id:
+        computer_node_id = _workstation_computer_node_id(workstation)
+        if not computer_node_id:
+            raise AppError(
+                "PERMISSION_DENIED",
+                f"{action} workstation is not bound to a computer",
+                status_code=403,
+                details={"project_id": project_id, "workstation_id": workstation_id},
+            )
+        node = db.scalar(
+            select(ProjectComputerNode).where(
+                ProjectComputerNode.project_id == project_id,
+                ProjectComputerNode.config_id == computer_node_id,
+            )
+        )
+        bound_runner_id = str(node.runner_id or "").strip() if node else ""
+        if not bound_runner_id:
+            raise AppError(
+                "RUNNER_NOT_BOUND",
+                f"{action} workstation computer is not bound to a runner",
+                status_code=409,
+                details={"project_id": project_id, "workstation_id": workstation_id, "computer_node_id": computer_node_id},
+            )
+        if header_runner_id != bound_runner_id:
+            raise AppError(
+                "PERMISSION_DENIED",
+                f"{action} runner is not bound to this workstation computer",
+                status_code=403,
+                details={
+                    "project_id": project_id,
+                    "workstation_id": workstation_id,
+                    "computer_node_id": computer_node_id,
+                    "runner_id": header_runner_id,
+                },
+            )
+        return workstation
 
     expected_hash = _workstation_adapter_hash(workstation)
     provided_token = str(request.headers.get("x-workstation-token") or "").strip()
@@ -715,6 +984,25 @@ def _resolve_logical_workstation_lead_ref(
         logical_ws = _project_workstation_by_id_or_config(db, project_id, str(seat.workstation_id))
         if logical_ws and logical_ws.lead_seat_id:
             return str(logical_ws.lead_seat_id).strip()
+        # Users often create a logical workstation with a product-facing id
+        # ("frontend") while seats still carry an older group key ("planning").
+        # If the exact workstation id is missing, find a registered workstation
+        # whose lead belongs to the same logical group as the target seat.
+        candidates = db.scalars(
+            select(ProjectWorkstation).where(
+                ProjectWorkstation.project_id == project_id,
+                ProjectWorkstation.lead_seat_id.is_not(None),
+            )
+        )
+        for candidate in candidates:
+            lead_ref = str(candidate.lead_seat_id or "").strip()
+            if not lead_ref:
+                continue
+            from app.modules.requirements.service import _resolve_seat
+
+            lead_seat = _resolve_seat(db, project_id, lead_ref)
+            if lead_seat is not None and _seat_logical_workstation_key(lead_seat) == ws_key:
+                return lead_ref
     if isinstance(profiles, dict) and ws_key:
         profile = profiles.get(ws_key)
         if isinstance(profile, dict):
@@ -1044,7 +1332,16 @@ def api_list_project_thread_workstations(project_id: str, request: Request, db: 
 @router.get("/projects/{project_id}/thread-workstations/{workstation_id}")
 def api_get_project_thread_workstation(project_id: str, workstation_id: str, request: Request, db: Session = Depends(get_db)):
     require_project_read_access(db, request, project_id, action="project.collaboration_workstation.read")
-    return ok(CollaborationWorkstationRead.model_validate(get_project_thread_workstation(db, project_id, workstation_id)).model_dump(mode="json"))
+    return ok(
+        CollaborationWorkstationRead.model_validate(
+            get_project_thread_workstation(
+                db,
+                project_id,
+                workstation_id,
+                allow_historical_alias=True,
+            )
+        ).model_dump(mode="json")
+    )
 
 
 @router.post("/projects/{project_id}/thread-workstations")
@@ -1256,6 +1553,87 @@ def api_get_workstation_inbox(
     return ok([CollaborationMessageRead.model_validate(item).model_dump(mode="json") for item in items])
 
 
+@router.post("/projects/{project_id}/thread-workstations/{workstation_id}/desktop-sync")
+def api_sync_desktop_thread_event(
+    project_id: str,
+    workstation_id: str,
+    payload: DesktopThreadSyncCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    workstation = _require_workstation_inbox_access(
+        db,
+        request,
+        project_id,
+        workstation_id,
+        write=True,
+        action="collaboration.workstation_desktop_sync.write",
+    )
+    role = payload.role.strip().lower()
+    note = payload.note.strip()
+    received_at = datetime.now(UTC)
+    sync_latency_ms = None
+    if payload.source_timestamp:
+        try:
+            source_timestamp = datetime.fromisoformat(payload.source_timestamp.replace("Z", "+00:00"))
+            if source_timestamp.tzinfo is None:
+                source_timestamp = source_timestamp.replace(tzinfo=UTC)
+            sync_latency_ms = max(0, int((received_at - source_timestamp.astimezone(UTC)).total_seconds() * 1000))
+        except ValueError:
+            sync_latency_ms = None
+    metadata = dict(payload.metadata or {})
+    canonical_workstation_id = str(workstation.get("id") or workstation.get("config_id") or workstation_id).strip() or workstation_id
+    user_visible_workstation_id = workstation_id
+    metadata.update(
+        {
+            "source": "desktop_thread_sync",
+            "desktop_sync": True,
+            "desktop_role": role,
+            "desktop_phase": payload.phase,
+            "desktop_session_id": payload.session_id,
+            "desktop_source_event_id": payload.source_event_id,
+            "desktop_source_timestamp": payload.source_timestamp,
+            "desktop_sync_received_at": received_at.isoformat(),
+            "desktop_sync_latency_ms": sync_latency_ms,
+            "linked_message_id": payload.linked_message_id,
+            "requested_workstation_id": user_visible_workstation_id,
+            "canonical_workstation_id": canonical_workstation_id,
+            "authoritative_seat_id": canonical_workstation_id,
+            "authoritative_seat_ref": canonical_workstation_id,
+            "historical_alias_non_authoritative": user_visible_workstation_id != canonical_workstation_id,
+        }
+    )
+    source_key = payload.source_event_id or f"{payload.session_id or workstation_id}:{payload.source_timestamp or ''}:{role}:{note[:80]}"
+    dedupe_key = f"desktop_sync:{project_id}:{workstation_id}:{source_key}"[:128]
+    message_type = "desktop_user_question" if role == "user" else "desktop_minimal_receipt"
+    existing = db.scalar(
+        select(CollaborationMessage)
+        .where(CollaborationMessage.dedupe_key == dedupe_key)
+        .limit(1)
+    )
+    if existing is not None:
+        return ok({"message": CollaborationMessageRead.model_validate(existing).model_dump(mode="json"), "deduped": True})
+    item = create_collaboration_message(
+        db,
+        CollaborationMessageCreate(
+            project_id=project_id,
+            agent_id=canonical_workstation_id,
+            message_type=message_type,
+            title="Desktop 提问" if role == "user" else "Desktop 最小回执",
+            body=note,
+            sender_type="human" if role == "user" else "agent",
+            sender_id="desktop-user" if role == "user" else canonical_workstation_id,
+            recipient_type="thread_workstation" if role == "user" else "human",
+            recipient_id=canonical_workstation_id if role == "user" else "desktop-user",
+            status="open" if role == "user" else "delivered",
+            metadata=metadata,
+        ),
+        dispatch_id=None,
+        dedupe_key=dedupe_key,
+    )
+    return ok({"message": CollaborationMessageRead.model_validate(item).model_dump(mode="json"), "deduped": False})
+
+
 @router.get("/projects/{project_id}/thread-workstations/{workstation_id}/adapter-config")
 def api_get_workstation_adapter_config(
     project_id: str,
@@ -1418,6 +1796,40 @@ def api_progress_workstation_message(
     )
 
 
+@router.post("/projects/{project_id}/thread-workstations/{workstation_id}/messages/{message_id}/closeout-action")
+def api_closeout_workstation_message(
+    project_id: str,
+    workstation_id: str,
+    message_id: str,
+    payload: DesktopCloseoutActionCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    principal = resolve_project_write_principal(
+        db,
+        request,
+        project_id,
+        require_privileged=False,
+        action="collaboration.workstation_inbox.closeout_action",
+    )
+    result = closeout_workstation_command(
+        db,
+        project_id,
+        workstation_id,
+        message_id,
+        action=payload.action,
+        note=payload.note,
+        actor_type=principal.actor_type,
+        actor_id=principal.actor_id,
+    )
+    return ok(
+        {
+            "command": CollaborationMessageRead.model_validate(result["command"]).model_dump(mode="json"),
+            "receipt": CollaborationMessageRead.model_validate(result["receipt"]).model_dump(mode="json"),
+        }
+    )
+
+
 @router.get("/messages")
 def api_list_messages(
     project_id: str | None = None,
@@ -1462,6 +1874,200 @@ def api_list_messages(
         limit=limit,
     )
     return ok([CollaborationMessageRead.model_validate(item).model_dump(mode="json") for item in items])
+
+
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[5]
+
+
+def _safe_artifact_text_path(raw_path: str) -> Path:
+    cleaned = str(raw_path or "").strip().strip('"').strip("'")
+    if not cleaned:
+        raise AppError("ARTIFACT_PATH_REQUIRED", "artifact path is required", status_code=400)
+    cleaned = cleaned.replace("\\", "/")
+    lowered = cleaned.lower()
+    marker = "/artifacts/"
+    if marker in lowered:
+        cleaned = cleaned[lowered.index(marker) + 1 :]
+    elif lowered.startswith("artifacts/"):
+        cleaned = cleaned
+    else:
+        raise AppError("ARTIFACT_PATH_NOT_ALLOWED", "only files under artifacts/ can be previewed", status_code=400)
+    if "\x00" in cleaned or ".." in Path(cleaned).parts:
+        raise AppError("ARTIFACT_PATH_NOT_ALLOWED", "artifact path is not allowed", status_code=400)
+    path = (_repo_root() / cleaned).resolve()
+    artifacts_root = (_repo_root() / "artifacts").resolve()
+    try:
+        path.relative_to(artifacts_root)
+    except ValueError as exc:
+        raise AppError("ARTIFACT_PATH_NOT_ALLOWED", "artifact path is outside artifacts/", status_code=400) from exc
+    if not path.is_file():
+        raise AppError("ARTIFACT_NOT_FOUND", "artifact file not found", status_code=404)
+    if path.suffix.lower() not in {".md", ".txt", ".log", ".json", ".jsonl", ".yaml", ".yml"}:
+        raise AppError("ARTIFACT_TYPE_NOT_PREVIEWABLE", "only text artifacts can be previewed", status_code=400)
+    return path
+
+
+@router.get("/artifacts/preview")
+def api_preview_project_artifact_legacy_order(
+    project_id: str = Query(..., min_length=1, max_length=120),
+    path: str = Query(..., min_length=1, max_length=1200),
+    task_id: str | None = Query(default=None, min_length=1, max_length=120),
+    dispatch_id: str | None = Query(default=None, min_length=1, max_length=120),
+    source_message_id: str | None = Query(default=None, min_length=1, max_length=120),
+    workstation_id: str | None = Query(default=None, min_length=1, max_length=120),
+    request: Request = None,
+    db: Session = Depends(get_db),
+):
+    return _preview_project_artifact(
+        db,
+        request,
+        project_id,
+        path,
+        task_id=task_id,
+        dispatch_id=dispatch_id,
+        source_message_id=source_message_id,
+        workstation_id=workstation_id,
+    )
+
+
+@router.get("/projects/{project_id}/artifacts/preview")
+def api_preview_project_artifact(
+    project_id: str,
+    path: str = Query(..., min_length=1, max_length=1200),
+    task_id: str | None = Query(default=None, min_length=1, max_length=120),
+    dispatch_id: str | None = Query(default=None, min_length=1, max_length=120),
+    source_message_id: str | None = Query(default=None, min_length=1, max_length=120),
+    workstation_id: str | None = Query(default=None, min_length=1, max_length=120),
+    request: Request = None,
+    db: Session = Depends(get_db),
+):
+    return _preview_project_artifact(
+        db,
+        request,
+        project_id,
+        path,
+        task_id=task_id,
+        dispatch_id=dispatch_id,
+        source_message_id=source_message_id,
+        workstation_id=workstation_id,
+    )
+
+
+def _artifact_preview_scope_requested(
+    *,
+    task_id: str | None,
+    dispatch_id: str | None,
+    source_message_id: str | None,
+    workstation_id: str | None,
+) -> bool:
+    return any(str(value or "").strip() for value in (task_id, dispatch_id, source_message_id, workstation_id))
+
+
+def _assert_artifact_preview_scope(
+    db: Session,
+    *,
+    project_id: str,
+    artifact_path: str,
+    task_id: str | None,
+    dispatch_id: str | None,
+    source_message_id: str | None,
+    workstation_id: str | None,
+) -> None:
+    cleaned_task_id = str(task_id or "").strip()
+    if not cleaned_task_id:
+        raise AppError("ARTIFACT_CONTEXT_REQUIRED", "task_id is required for scoped artifact preview", status_code=400)
+
+    task = db.get(Task, cleaned_task_id)
+    if task is None or str(task.project_id or "") != str(project_id or ""):
+        raise AppError("ARTIFACT_CONTEXT_NOT_FOUND", "artifact preview context was not found in this project", status_code=404)
+
+    from app.modules.tasks.service import get_task_artifact_index
+
+    cleaned_dispatch_id = str(dispatch_id or "").strip()
+    cleaned_source_message_id = str(source_message_id or "").strip()
+    cleaned_workstation_id = str(workstation_id or "").strip()
+    for entry in get_task_artifact_index(db, cleaned_task_id):
+        if str(entry.get("path") or "").replace("\\", "/") != artifact_path:
+            continue
+        if cleaned_dispatch_id and str(entry.get("dispatch_id") or "") != cleaned_dispatch_id:
+            continue
+        if cleaned_source_message_id and str(entry.get("source_message_id") or "") != cleaned_source_message_id:
+            continue
+        if cleaned_workstation_id:
+            candidates = {
+                str(entry.get("workstation_id") or ""),
+                str(entry.get("sender_id") or ""),
+                str(entry.get("authoritative_seat_id") or ""),
+                str(entry.get("authoritative_target_seat_id") or ""),
+            }
+            if cleaned_workstation_id not in candidates:
+                continue
+        return
+
+    raise AppError(
+        "ARTIFACT_NOT_IN_CONTEXT",
+        "artifact is not registered in this task evidence chain",
+        status_code=403,
+    )
+
+
+def _preview_project_artifact(
+    db: Session,
+    request: Request,
+    project_id: str,
+    path: str,
+    *,
+    task_id: str | None = None,
+    dispatch_id: str | None = None,
+    source_message_id: str | None = None,
+    workstation_id: str | None = None,
+):
+    principal = None
+    if request is not None and request.headers.get("authorization"):
+        principal = require_project_read_access(db, request, project_id, action="collaboration.artifact.preview")
+    else:
+        try:
+            principal = require_project_read_access(db, request, project_id, action="collaboration.artifact.preview")
+        except AppError as exc:
+            if exc.code != "UNAUTHORIZED":
+                raise
+    if principal is None:
+        project = db.get(Project, str(project_id or "").strip())
+        if project is None:
+            raise AppError("PROJECT_NOT_FOUND", "project not found", status_code=404)
+    artifact_path = _safe_artifact_text_path(path)
+    artifact_relative_path = str(artifact_path.relative_to(_repo_root())).replace("\\", "/")
+    if _artifact_preview_scope_requested(
+        task_id=task_id,
+        dispatch_id=dispatch_id,
+        source_message_id=source_message_id,
+        workstation_id=workstation_id,
+    ):
+        _assert_artifact_preview_scope(
+            db,
+            project_id=project_id,
+            artifact_path=artifact_relative_path,
+            task_id=task_id,
+            dispatch_id=dispatch_id,
+            source_message_id=source_message_id,
+            workstation_id=workstation_id,
+        )
+    max_chars = 120_000
+    content = artifact_path.read_text(encoding="utf-8", errors="replace")
+    truncated = len(content) > max_chars
+    if truncated:
+        content = content[:max_chars].rstrip() + "\n\n[平台提示] 预览已截断，请在本机 artifact 文件中查看完整内容。"
+    return ok(
+        {
+            "project_id": project_id,
+            "path": artifact_relative_path,
+            "name": artifact_path.name,
+            "size_bytes": artifact_path.stat().st_size,
+            "truncated": truncated,
+            "content": content,
+        }
+    )
 
 
 @router.post("/messages/preview")
@@ -1573,13 +2179,49 @@ def api_preview_message(payload: CollaborationMessageCreate, request: Request, d
 
 @router.post("/messages")
 def api_create_message(payload: CollaborationMessageCreate, request: Request, db: Session = Depends(get_db)):
-    principal = _require_real_human_principal(db, request)
     if payload.message_type in {"runner_command", "runner_ack", "runner_result"}:
         raise AppError("FORBIDDEN_MESSAGE_TYPE", "runner relay 消息必须走专用接口", status_code=403)
     project_id = _collaboration_message_project_id(db, payload)
-    resolve_project_write_principal(db, request, project_id, action="collaboration.message.create")
     sender_type = (payload.sender_type or "").strip().lower()
     sender_id = (payload.sender_id or "").strip()
+    recipient_type = (payload.recipient_type or "").strip().lower()
+    recipient_id = (payload.recipient_id or "").strip()
+    message_type = (payload.message_type or "").strip()
+    header_workstation_id = read_identity_header(request, "x-workstation-id")
+    workstation_peer_principal = False
+    principal_user_id: str | None = None
+    if (
+        header_workstation_id
+        and sender_type == "agent"
+        and sender_id
+        and recipient_type == "thread_workstation"
+        and recipient_id
+        and message_type in {"comment_message", "requirement_dispatch", "agent_command"}
+    ):
+        from app.modules.requirements.service import _resolve_seat
+
+        header_seat = _resolve_seat(db, project_id, header_workstation_id)
+        sender_seat = _resolve_seat(db, project_id, sender_id)
+        if header_seat is None or sender_seat is None or header_seat.id != sender_seat.id:
+            raise AppError(
+                "PERMISSION_DENIED",
+                "NPC 自主派单必须由当前项目里的正式发送 NPC 发起",
+                status_code=403,
+                details={"project_id": project_id, "sender_id": sender_id, "header_workstation_id": header_workstation_id},
+            )
+        _require_workstation_inbox_access(
+            db,
+            request,
+            project_id,
+            header_workstation_id,
+            write=True,
+            action="collaboration.peer_dispatch.create",
+        )
+        workstation_peer_principal = True
+    else:
+        principal = _require_real_human_principal(db, request)
+        principal_user_id = str(principal.user_id or "").strip() or None
+        resolve_project_write_principal(db, request, project_id, action="collaboration.message.create")
     if sender_type == "agent" and sender_id:
         cfg = get_project_collaboration_config(db, project_id)
         inner = cfg.get("collaboration_config", {}) if isinstance(cfg.get("collaboration_config"), dict) else {}
@@ -1587,20 +2229,39 @@ def api_create_message(payload: CollaborationMessageCreate, request: Request, db
         valid_ids = {str(s.get("id") or "") for s in seats} | {str(s.get("config_id") or "") for s in seats} | {str(s.get("row_id") or "") for s in seats}
         if sender_id in valid_ids:
             metadata = _collaboration_payload_extra_data(payload)
-            metadata.setdefault("origin", "human_proxy")
-            metadata.setdefault("actor_user_id", principal.user_id)
+            if workstation_peer_principal:
+                metadata.setdefault("origin", "agent_peer_dispatch")
+                metadata.setdefault("actor_workstation_id", header_workstation_id)
+            else:
+                metadata.setdefault("origin", "human_proxy")
+                metadata.setdefault("actor_user_id", principal_user_id)
             metadata.setdefault("claimed_sender_agent_id", sender_id)
             override = {"project_id": project_id, "metadata": metadata}
         else:
+            if workstation_peer_principal:
+                raise AppError(
+                    "NPC_SENDER_NOT_FOUND",
+                    "sender_id 必须是当前项目里的正式 seat，不能使用 session 或历史别名",
+                    status_code=404,
+                    details={"blocked_reason": "NPC_SENDER_NOT_FOUND"},
+                )
             override = {"project_id": project_id, "sender_type": "human", "sender_id": principal.user_id}
     else:
+        if workstation_peer_principal:
+            raise AppError("FORBIDDEN_MESSAGE_TYPE", "NPC 工位身份只能发起 NPC 互派消息", status_code=403)
         override = {"project_id": project_id, "sender_type": "human", "sender_id": principal.user_id}
+
+    metadata = _collaboration_payload_extra_data(payload)
+    if _payload_card_kind(metadata) in {"boundary", "boundary-card", "dispatch-boundary", "pre-dispatch"}:
+        metadata.setdefault("pre_dispatch_gate", True)
+        metadata.setdefault("requires_human_review", True)
+        metadata.setdefault("gate_policy", "boundary_card_before_dispatch")
+        override["metadata"] = metadata
+        override["status"] = "pending_review"
 
     # NPC 之间互派需求/消息：自动应用三级 review_policy + 跨工位强审
     final_sender_type = (override.get("sender_type") or sender_type or "").lower()
     final_sender_id = (override.get("sender_id") or sender_id or "").strip()
-    recipient_type = (payload.recipient_type or "").strip().lower()
-    recipient_id = (payload.recipient_id or "").strip()
     if (
         final_sender_type == "agent"
         and final_sender_id
@@ -1611,58 +2272,167 @@ def api_create_message(payload: CollaborationMessageCreate, request: Request, db
         from app.modules.requirements.service import _resolve_seat, _resolve_review_for_dispatch
         upstream = _resolve_seat(db, project_id, final_sender_id)
         downstream = _resolve_seat(db, project_id, recipient_id)
-        if upstream is not None and downstream is not None:
-            is_cross = _seat_logical_workstation_key(upstream) != _seat_logical_workstation_key(downstream)
-            via_lead_note = ""
-            if is_cross:
-                cfg_full = get_project_collaboration_config(db, project_id)
-                inner_cfg = cfg_full.get("collaboration_config", {}) if isinstance(cfg_full.get("collaboration_config"), dict) else {}
-                profiles = inner_cfg.get("workstation_profiles") if isinstance(inner_cfg.get("workstation_profiles"), dict) else {}
-                lead_ref = _resolve_logical_workstation_lead_ref(db, project_id, downstream, profiles)
-                if lead_ref and lead_ref not in {downstream.id, downstream.config_id, downstream.name}:
-                    new_lead_seat = _resolve_seat(db, project_id, lead_ref)
-                    if new_lead_seat is not None:
-                        original_target_name = getattr(downstream, "name", "")
-                        original_target_id = recipient_id
-                        override["recipient_id"] = new_lead_seat.id
-                        recipient_id = new_lead_seat.id
-                        downstream = new_lead_seat
-                        via_lead_note = f"经工位长 {getattr(new_lead_seat, 'name', '')} 转交（原始目标 NPC: {original_target_name} / {original_target_id}）"
-            review = _resolve_review_for_dispatch(db, upstream, downstream)
-            hardware_risk_keyword = _detect_hardware_review_risk(payload.body or "")
-            if hardware_risk_keyword:
-                review = {
-                    **review,
-                    "requires_review": True,
-                    "source": "hardware_risk",
-                    "policy": "force",
-                    "risk_keyword": hardware_risk_keyword,
-                }
-            requested_status = (override.get("status") or payload.status or "").strip() or "open"
-            new_status = "pending_review" if review["requires_review"] else (
-                requested_status if requested_status in {"queued", "pending_review", "open"} else "queued"
+        if upstream is None:
+            create_audit_log(
+                db,
+                project_id=project_id,
+                actor_type=final_sender_type or "agent",
+                actor_id=final_sender_id or None,
+                action="dispatch.blocked_history_alias",
+                resource_type="collaboration_message",
+                before={
+                    "sender_id": final_sender_id,
+                    "recipient_id": recipient_id,
+                    "message_type": payload.message_type,
+                },
+                after={
+                    "blocked_reason": "NPC_SENDER_NOT_FOUND",
+                    "blocked_detail": "sender must resolve by formal seat id/config_id inside current project",
+                },
+                success=False,
+                error_message="sender_id must be a formal seat id/config_id in the current project",
             )
-            if not review["requires_review"] and new_status == "pending_review":
-                new_status = "queued"
-            override["status"] = new_status
-            route_line = (
-                f"\n\n[路由] 跨工位：{'是' if is_cross else '否'}；"
-                f"审核：{'要' if review['requires_review'] else '免'}（来源：{review.get('source')}:{review.get('policy')}）；"
-                f"上游 NPC: {getattr(upstream, 'name', '')}；下游 NPC: {getattr(downstream, 'name', '')}"
-                f"；上游工位: {_seat_logical_workstation_key(upstream) or '未归属'}；下游工位: {_seat_logical_workstation_key(downstream) or '未归属'}"
+            db.commit()
+            raise AppError(
+                "NPC_SENDER_NOT_FOUND",
+                "sender_id 必须是当前项目里的正式 seat，不能使用 session 或历史别名",
+                status_code=404,
+                details={"blocked_reason": "NPC_SENDER_NOT_FOUND"},
             )
-            if hardware_risk_keyword:
-                route_line += f"；硬件风险: {hardware_risk_keyword}"
-            if via_lead_note:
-                route_line += f"；{via_lead_note}"
-            body_text = str(payload.body or "")
-            if "[路由]" not in body_text:
-                override["body"] = body_text + route_line
+        if downstream is None:
+            create_audit_log(
+                db,
+                project_id=project_id,
+                actor_type=final_sender_type or "agent",
+                actor_id=final_sender_id or None,
+                action="dispatch.blocked_history_alias",
+                resource_type="collaboration_message",
+                before={
+                    "sender_id": final_sender_id,
+                    "recipient_id": recipient_id,
+                    "message_type": payload.message_type,
+                },
+                after={
+                    "blocked_reason": "NPC_RECIPIENT_NOT_FOUND",
+                    "blocked_detail": "recipient must resolve by formal seat id/config_id inside current project",
+                },
+                success=False,
+                error_message="recipient_id must be a formal seat id/config_id in the current project",
+            )
+            db.commit()
+            raise AppError(
+                "NPC_RECIPIENT_NOT_FOUND",
+                "recipient_id 必须是当前项目里的正式 seat，不能使用 session 或历史别名",
+                status_code=404,
+                details={"blocked_reason": "NPC_RECIPIENT_NOT_FOUND"},
+            )
+        metadata = dict(override.get("metadata") or _collaboration_payload_extra_data(payload))
+        source_message_id = str(
+            metadata.get("source_message_id")
+            or metadata.get("sourceMessageId")
+            or metadata.get("linked_message_id")
+            or metadata.get("linkedMessageId")
+            or ""
+        ).strip() or None
+        metadata = _ensure_peer_delegation_context(
+            metadata,
+            project_id=project_id,
+            delegated_by_user_id=_resolve_delegated_by_user_id_for_peer_dispatch(
+                db,
+                project_id=project_id,
+                source_message_id=source_message_id,
+                fallback_user_id=principal_user_id,
+            ),
+            delegated_via_seat_id=final_sender_id,
+            target_seat_id=recipient_id,
+            source_message_id=source_message_id,
+        )
+        metadata.setdefault("authoritative_sender_seat_id", final_sender_id)
+        metadata.setdefault("authoritative_target_seat_id", recipient_id)
+        metadata.setdefault("historical_alias_non_authoritative", False)
+        override["metadata"] = metadata
+        is_cross = _seat_logical_workstation_key(upstream) != _seat_logical_workstation_key(downstream)
+        via_lead_note = ""
+        if is_cross:
+            cfg_full = get_project_collaboration_config(db, project_id)
+            inner_cfg = cfg_full.get("collaboration_config", {}) if isinstance(cfg_full.get("collaboration_config"), dict) else {}
+            profiles = inner_cfg.get("workstation_profiles") if isinstance(inner_cfg.get("workstation_profiles"), dict) else {}
+            lead_ref = _resolve_logical_workstation_lead_ref(db, project_id, downstream, profiles)
+            if lead_ref and lead_ref not in {downstream.id, downstream.config_id, downstream.name}:
+                new_lead_seat = _resolve_seat(db, project_id, lead_ref)
+                if new_lead_seat is not None:
+                    original_target_name = getattr(downstream, "name", "")
+                    original_target_id = recipient_id
+                    override["recipient_id"] = new_lead_seat.id
+                    recipient_id = new_lead_seat.id
+                    downstream = new_lead_seat
+                    via_lead_note = f"经工位长 {getattr(new_lead_seat, 'name', '')} 转交（原始目标 NPC: {original_target_name} / {original_target_id}）"
+        review = _resolve_review_for_dispatch(db, upstream, downstream)
+        hardware_risk_keyword = _detect_hardware_review_risk(payload.body or "")
+        if hardware_risk_keyword:
+            review = {
+                **review,
+                "requires_review": True,
+                "source": "hardware_risk",
+                "policy": "force",
+                "risk_keyword": hardware_risk_keyword,
+            }
+        requested_status = (override.get("status") or payload.status or "").strip() or "open"
+        new_status = "pending_review" if review["requires_review"] else (
+            requested_status if requested_status in {"queued", "pending_review", "open"} else "queued"
+        )
+        if not review["requires_review"] and new_status == "pending_review":
+            new_status = "queued"
+        override["status"] = new_status
+        review_label = "需要人工确认" if review["requires_review"] else "同工位免审" if not is_cross else "按项目规则免审"
+        route_line = (
+            f"\n\n[协作路由] 跨工位：{'是' if is_cross else '否'}；"
+            f"审核：{review_label}；"
+            f"上游 NPC: {getattr(upstream, 'name', '')}；下游 NPC: {getattr(downstream, 'name', '')}"
+            f"；上游工位: {_seat_logical_workstation_key(upstream) or '未归属'}；下游工位: {_seat_logical_workstation_key(downstream) or '未归属'}"
+        )
+        if hardware_risk_keyword:
+            route_line += f"；硬件风险: {hardware_risk_keyword}"
+        if via_lead_note:
+            route_line += f"；{via_lead_note}"
+        body_text = str(payload.body or "")
+        if "[路由]" not in body_text and "[协作路由]" not in body_text:
+            override["body"] = body_text + route_line
 
     item = create_collaboration_message(db, payload.model_copy(update=override))
-    if (item.status or "") == "pending_review" and "审核：免" in str(item.body or ""):
+    if (item.status or "") == "pending_review" and ("审核：免" in str(item.body or "") or "审核：同工位免审" in str(item.body or "")):
         item.status = "queued"
         db.add(item)
+        db.commit()
+        db.refresh(item)
+    item_metadata = _collaboration_payload_extra_data(payload)
+    if (
+        (item.sender_type or "").lower() == "agent"
+        and item.sender_id
+        and (item.recipient_type or "").lower() == "thread_workstation"
+        and item.recipient_id
+        and isinstance(item.extra_data, dict)
+        and isinstance(item.extra_data.get("delegation_context"), dict)
+    ):
+        create_audit_log(
+            db,
+            project_id=project_id,
+            actor_type="agent",
+            actor_id=item.sender_id,
+            action="collaboration.delegation.peer_dispatch.created",
+            resource_type="collaboration_message",
+            resource_id=item.id,
+            before={
+                "origin": item_metadata.get("origin"),
+                "sender_id": item.sender_id,
+                "recipient_id": item.recipient_id,
+            },
+            after={
+                "delegation_context": item.extra_data.get("delegation_context"),
+                "status": item.status,
+            },
+            success=True,
+        )
         db.commit()
         db.refresh(item)
     return ok(CollaborationMessageRead.model_validate(item).model_dump(mode="json"))
@@ -1740,6 +2510,8 @@ def api_review_approve_message(
             actor_id=principal.user_id,
             reason=(payload.reason if payload else None) or f"set while approving message {existing.id}",
         )
+    db.refresh(existing)
+    autostart_workstation_command_after_review(db, existing)
     db.commit()
     db.refresh(existing)
     data = CollaborationMessageRead.model_validate(existing).model_dump(mode="json")

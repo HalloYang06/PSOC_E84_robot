@@ -10,6 +10,11 @@ from app.main import app
 client = TestClient(app)
 
 
+def _assert_metadata_contains_user_values(actual: dict, expected: dict) -> None:
+    for key, value in expected.items():
+        assert actual[key] == value
+
+
 def _issue_session_token() -> tuple[str, str]:
     response = client.post(
         "/api/auth/session",
@@ -427,7 +432,11 @@ def test_thread_workstation_employee_metadata_round_trips_through_inventory() ->
     )
     assert create_response.status_code == 200
     workstation_id = create_response.json()["data"]["id"]
-    assert create_response.json()["data"]["metadata"] == metadata
+    create_metadata = create_response.json()["data"]["metadata"]
+    _assert_metadata_contains_user_values(create_metadata, metadata)
+    assert create_metadata["authoritative_seat_ref"] == "frontend-employee"
+    assert "authoritative_seat_id" in create_metadata
+    assert isinstance(create_metadata["historical_aliases"], list)
 
     updated_metadata = {
         "responsibility": "full-stack",
@@ -447,7 +456,11 @@ def test_thread_workstation_employee_metadata_round_trips_through_inventory() ->
         },
     )
     assert update_response.status_code == 200
-    assert update_response.json()["data"]["metadata"] == updated_metadata
+    update_metadata = update_response.json()["data"]["metadata"]
+    _assert_metadata_contains_user_values(update_metadata, updated_metadata)
+    assert update_metadata["authoritative_seat_ref"] == "frontend-employee"
+    assert "authoritative_seat_id" in update_metadata
+    assert isinstance(update_metadata["historical_aliases"], list)
 
     auth = {"Authorization": f"Bearer {token}"}
 
@@ -458,7 +471,7 @@ def test_thread_workstation_employee_metadata_round_trips_through_inventory() ->
     assert project_response.status_code == 200
     project = project_response.json()["data"]
     workstation = project["collaboration_config"]["thread_workstations"][0]
-    assert workstation["metadata"] == updated_metadata
+    _assert_metadata_contains_user_values(workstation["metadata"], updated_metadata)
 
     config_response = client.get(
         f"/api/collaboration/projects/{project_id}/config",
@@ -466,7 +479,7 @@ def test_thread_workstation_employee_metadata_round_trips_through_inventory() ->
     )
     assert config_response.status_code == 200
     config = config_response.json()["data"]["collaboration_config"]
-    assert config["thread_workstations"][0]["metadata"] == updated_metadata
+    _assert_metadata_contains_user_values(config["thread_workstations"][0]["metadata"], updated_metadata)
 
 
 def test_thread_workstation_ai_employee_fields_round_trip_through_inventory() -> None:

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from uuid import uuid4
+
 from fastapi.testclient import TestClient
 
 from app.db.models.collaboration_message import CollaborationMessage
@@ -128,17 +130,104 @@ def test_task_dispatch_assigns_workstation_and_updates_task_snapshot() -> None:
         db.add(message)
         db.commit()
 
+
+def test_runner_next_task_only_claims_dispatch_bound_to_that_runner() -> None:
+    owner_token, _ = issue_session_token(client)
+    runner_a = f"runner-a-{uuid4().hex[:8]}"
+    runner_b = f"runner-b-{uuid4().hex[:8]}"
+    for runner_id in (runner_a, runner_b):
+        response = client.post(
+            "/api/runners/register",
+            json={
+                "runner_id": runner_id,
+                "runner_name": runner_id,
+                "capabilities": ["relay", "shell"],
+                "hardware_access": False,
+            },
+        )
+        assert response.status_code == 200
+
+    project = create_project(client, owner_token, name_prefix="Runner Isolation")
+    project_id = project["id"]
+    config_response = client.patch(
+        f"/api/projects/{project_id}",
+        headers=auth_headers(owner_token),
+        json={
+            "collaboration_config": {
+                "computer_nodes": [
+                    {"id": "pc-a", "label": "电脑 A", "status": "online", "runner_id": runner_a},
+                    {"id": "pc-b", "label": "电脑 B", "status": "online", "runner_id": runner_b},
+                ],
+                "thread_workstations": [
+                    {
+                        "id": "ws-a",
+                        "name": "A 工位",
+                        "agent_id": "agent-a",
+                        "computer_node_id": "pc-a",
+                        "status": "idle",
+                    },
+                    {
+                        "id": "ws-b",
+                        "name": "B 工位",
+                        "agent_id": "agent-b",
+                        "computer_node_id": "pc-b",
+                        "status": "idle",
+                    },
+                ],
+            }
+        },
+    )
+    assert config_response.status_code == 200
+
+    task = create_task(
+        client,
+        owner_token,
+        project_id,
+        title="Only runner A may claim this",
+        status="ready",
+        assignee_agent_id=None,
+    )
+    dispatch_response = client.post(
+        f"/api/tasks/{task['id']}/dispatch",
+        headers=auth_headers(owner_token),
+        json={"workstation_id": "ws-a", "notes": "bound to runner A"},
+    )
+    assert dispatch_response.status_code == 200
+    assert dispatch_response.json()["data"]["runner_id"] == runner_a
+
+    runner_b_response = client.get(f"/api/runners/{runner_b}/next-task", headers={"X-Runner-Id": runner_b})
+    assert runner_b_response.status_code == 200
+    runner_b_payload = runner_b_response.json()["data"]
+    assert runner_b_payload["task"] is None
+    assert runner_b_payload["claimed"] is False
+
+    task_after_b = client.get(f"/api/tasks/{task['id']}", headers=auth_headers(owner_token)).json()["data"]
+    assert task_after_b["status"] == "queued"
+    assert task_after_b["latest_dispatch"]["status"] == "dispatched"
+
+    runner_a_response = client.get(f"/api/runners/{runner_a}/next-task", headers={"X-Runner-Id": runner_a})
+    assert runner_a_response.status_code == 200
+    runner_a_payload = runner_a_response.json()["data"]
+    assert runner_a_payload["task"]["id"] == task["id"]
+    assert runner_a_payload["claimed"] is True
+
+    task_after_a = client.get(f"/api/tasks/{task['id']}", headers=auth_headers(owner_token)).json()["data"]
+    assert task_after_a["status"] == "running"
+    assert task_after_a["latest_dispatch"]["status"] == "running"
+
     message_response = client.get(
         f"/api/collaboration/messages?project_id={project_id}&task_id={task['id']}&message_type=runner_command",
         headers=auth_headers(owner_token),
     )
     assert message_response.status_code == 200
     runner_messages = message_response.json()["data"]
-    assert any(item["id"] == command["id"] for item in runner_messages)
+    assert len(runner_messages) == 1
+    command = runner_messages[0]
+    assert command["recipient_id"] == runner_a
 
     ack_response = client.post(
-        f"/api/runners/runner-alpha/messages/{command['id']}/ack",
-        headers={"X-Runner-Id": "runner-alpha"},
+        f"/api/runners/{runner_a}/messages/{command['id']}/ack",
+        headers={"X-Runner-Id": runner_a},
         json={"note": "runner picked up the task"},
     )
     assert ack_response.status_code == 200
@@ -155,8 +244,8 @@ def test_task_dispatch_assigns_workstation_and_updates_task_snapshot() -> None:
     assert acked_task["latest_dispatch"]["status"] == "acked"
 
     complete_response = client.post(
-        f"/api/runners/runner-alpha/messages/{command['id']}/complete",
-        headers={"X-Runner-Id": "runner-alpha"},
+        f"/api/runners/{runner_a}/messages/{command['id']}/complete",
+        headers={"X-Runner-Id": runner_a},
         json={"result_status": "completed", "note": "task finished"},
     )
     assert complete_response.status_code == 200

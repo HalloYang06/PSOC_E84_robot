@@ -46,9 +46,46 @@ function firstText(...values: unknown[]) {
 
 function deriveThreadKind(providerId: string, threadId: string) {
   const raw = `${providerId} ${threadId}`.toLowerCase();
-  if (raw.includes("claude")) return "Claude Code";
-  if (raw.includes("codex")) return "Codex";
-  return providerId || "thread";
+  if (raw.includes("claude")) return "桌面执行线程";
+  if (raw.includes("codex")) return "桌面执行线程";
+  return providerId ? "执行线程" : "待绑定线程";
+}
+
+function publicProviderLabel(value: string) {
+  const raw = `${value || ""}`.trim();
+  if (!raw) return "";
+  const lower = raw.toLowerCase();
+  if (lower.includes("codex") || lower.includes("claude")) return "桌面线程";
+  return raw;
+}
+
+function publicThreadKindLabel(value: string, providerId: string, threadId: string) {
+  const raw = `${value || ""}`.trim();
+  const lower = `${raw} ${providerId || ""} ${threadId || ""}`.toLowerCase();
+  if (!raw) return deriveThreadKind(providerId, threadId);
+  if (lower.includes("codex") || lower.includes("claude") || lower.includes("session")) return "桌面执行线程";
+  return raw;
+}
+
+function publicThreadHealthLabel(value: string, automationEnabled: boolean) {
+  const raw = `${value || ""}`.toLowerCase();
+  if (automationEnabled || /ready|online|ok|watcher|已登记|就绪/.test(raw)) return "可接单";
+  if (/fail|error|offline|不可用|失败/.test(raw)) return "需检查";
+  if (/pending|waiting|待|未/.test(raw)) return "待确认";
+  return value ? "已登记" : "待确认";
+}
+
+function publicDeliveryLabel(value: string, deliveryMode: string, desktopDeliveryMode: string) {
+  const raw = `${value || ""} ${deliveryMode || ""} ${desktopDeliveryMode || ""}`.toLowerCase();
+  if (raw.includes("desktop") || raw.includes("codex_desktop_ui")) return "桌面线程可见";
+  if (raw.includes("app_server") || raw.includes("session")) return "后台线程同步";
+  return value || "";
+}
+
+function publicDeliveryWarning(value: string, deliveryMode: string) {
+  const rawMode = `${deliveryMode || ""}`.toLowerCase();
+  if (rawMode.includes("codex_app_server")) return "平台会通过后台通道同步处理过程；用户仍可在工作台看最小回执。";
+  return value ? "平台会把派单送到绑定桌面线程，完整过程在桌面版可追踪。" : "";
 }
 
 function codexDesktopThreadUrl(providerId: string, threadId: string) {
@@ -72,7 +109,7 @@ function labelProjectReturnPath(value: string) {
   if (value.includes("/ai-lab")) return "← 返回 AI 实验室";
   if (value.includes("/robotics")) return "← 返回机器人现场";
   if (value.includes("/observability")) return "← 返回观测台";
-  if (value.includes("/skill-forge")) return "← 返回 Skill 工坊";
+  if (value.includes("/skill-forge")) return "← 返回能力工坊";
   if (value.includes("/company")) return "← 返回公司层";
   if (value.includes("/workbench")) return "← 返回工作台";
   return "← 返回来源";
@@ -264,7 +301,7 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
     const workstationId = text(seat.workstation_id ?? seat.workstationId, "") || leadWorkstationId || "";
     const computerNodeId = text(seat.computer_node_id ?? seat.computerNodeId, "");
     const providerId = platformProviderIdFromSeat(seat) || text(seat.provider_id ?? seat.providerId, "");
-    const providerLabel = text(seat.provider_label ?? seat.providerLabel ?? providerId, providerId);
+    const providerLabel = publicProviderLabel(text(seat.provider_label ?? seat.providerLabel ?? providerId, providerId));
     const responsibility = text(seat.responsibility ?? seat.body, "待分配职责");
     const skillLoadout = asArray<string>(seat.skill_loadout ?? seat.skillLoadout).map((s) => String(s)).filter(Boolean);
     const inheritedSkills = workstationId
@@ -324,12 +361,16 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
     const boundThreadMeta = record(boundThreadRecord?.metadata);
     const boundThreadExtra = record(boundThreadRecord?.extra_data ?? boundThreadRecord?.extraData);
     const boundThreadAdapter = record(boundThreadMeta.adapter ?? boundThreadExtra.adapter);
-    const threadKind = firstText(seat.thread_kind, seat.threadKind, meta.thread_kind, meta.threadKind, adapter.kind, deriveThreadKind(providerId, threadId));
+    const threadKind = publicThreadKindLabel(
+      firstText(seat.thread_kind, seat.threadKind, meta.thread_kind, meta.threadKind, adapter.kind, ""),
+      providerId,
+      threadId,
+    );
     const desktopDeliveryMode = firstText(
-      meta.desktop_delivery_mode,
-      meta.desktopDeliveryMode,
       adapter.desktop_delivery_mode,
       adapter.desktopDeliveryMode,
+      meta.desktop_delivery_mode,
+      meta.desktopDeliveryMode,
       boundThreadMeta.desktop_delivery_mode,
       boundThreadMeta.desktopDeliveryMode,
       boundThreadAdapter.desktop_delivery_mode,
@@ -337,30 +378,30 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
       "",
     );
     const deliveryMode = firstText(
-      meta.delivery_mode,
-      meta.deliveryMode,
       adapter.delivery_mode,
       adapter.deliveryMode,
+      desktopDeliveryMode,
+      meta.delivery_mode,
+      meta.deliveryMode,
       boundThreadMeta.delivery_mode,
       boundThreadMeta.deliveryMode,
       boundThreadAdapter.delivery_mode,
       boundThreadAdapter.deliveryMode,
-      desktopDeliveryMode,
       threadId && providerId.toLowerCase().includes("codex") ? "codex_app_server" : "",
     );
     const deliveryLabel = firstText(
-      meta.delivery_label,
-      meta.deliveryLabel,
       adapter.delivery_label,
       adapter.deliveryLabel,
+      desktopDeliveryMode === "codex_desktop_ui" ? "桌面线程可见" : "",
+      meta.delivery_label,
+      meta.deliveryLabel,
       boundThreadMeta.delivery_label,
       boundThreadMeta.deliveryLabel,
       boundThreadAdapter.delivery_label,
       boundThreadAdapter.deliveryLabel,
       boundThreadMeta.desktop_bridge_label,
       boundThreadMeta.desktopBridgeLabel,
-      desktopDeliveryMode === "codex_desktop_ui" ? "Codex Desktop UI 投递" : "",
-      deliveryMode === "codex_app_server" ? "Codex session append (not Desktop live)" : "",
+      deliveryMode === "codex_app_server" ? "后台线程同步" : "",
     );
     const desktopProcessDetected = Boolean(
       meta.desktop_process_detected
@@ -445,22 +486,22 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
       extra.workspace_root,
     );
     const deliveryWarning = firstText(
-      meta.delivery_warning,
-      meta.deliveryWarning,
       adapter.delivery_warning,
       adapter.deliveryWarning,
+      desktopDeliveryMode === "codex_desktop_ui"
+        ? "平台会打开绑定桌面线程并把派单作为普通用户消息发送；完整处理过程会在桌面版显示。"
+        : "",
+      meta.delivery_warning,
+      meta.deliveryWarning,
       boundThreadMeta.delivery_warning,
       boundThreadMeta.deliveryWarning,
       boundThreadAdapter.delivery_warning,
       boundThreadAdapter.deliveryWarning,
-      desktopDeliveryMode === "codex_desktop_ui"
-        ? "通过该电脑交互式桌面打开绑定 Codex 线程，并把派单作为普通用户消息发送；完整处理过程会显示在 Codex Desktop。"
-        : "",
       deliveryMode === "codex_app_server"
-        ? "通过独立 Codex app-server 写入并执行绑定 session；这不是当前已打开 Codex Desktop 窗口的实时输入通道。"
+        ? "平台会通过后台线程同步处理过程；用户仍可在工作台看最小回执和最终结果。"
         : "",
     );
-    const threadHealth = firstText(
+    const rawThreadHealth = firstText(
       seat.bridge_health_label,
       seat.bridgeHealthLabel,
       seat.thread_health,
@@ -473,6 +514,9 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
       adapter.status,
       automationEnabled ? "watcher ready" : "待接入",
     );
+    const threadHealth = publicThreadHealthLabel(rawThreadHealth, automationEnabled);
+    const publicDelivery = publicDeliveryLabel(deliveryLabel, deliveryMode, desktopDeliveryMode);
+    const publicWarning = publicDeliveryWarning(deliveryWarning, deliveryMode);
     const gitUserName = text(meta.git_user_name ?? meta.gitUserName, name);
     const gitUserEmail = text(
       meta.git_user_email ?? meta.gitUserEmail,
@@ -498,8 +542,8 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
       threadKind,
       threadHealth,
       deliveryMode,
-      deliveryLabel,
-      deliveryWarning,
+      deliveryLabel: publicDelivery,
+      deliveryWarning: publicWarning,
       desktopVisible,
       desktopProcessDetected,
       desktopBridgeConnected,
@@ -586,6 +630,9 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
         sender_id: text(message.sender_id ?? message.senderId, ""),
         recipient_type: text(message.recipient_type ?? message.recipientType, ""),
         recipient_id: text(message.recipient_id ?? message.recipientId, ""),
+        dispatch_id: text(message.dispatch_id ?? message.dispatchId, ""),
+        metadata: record(message.metadata),
+        extra_data: record(message.extra_data ?? message.extraData),
       }))}
       bossPlans={asArray<AnyRecord>(bossPlansState.data).map((plan, index) => ({
         id: text(plan.id, `boss-plan-${index + 1}`),

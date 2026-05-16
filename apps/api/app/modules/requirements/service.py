@@ -71,13 +71,13 @@ def _validate_requirement_dispatch_target(
     stmt = select(ProjectThreadWorkstation).where(ProjectThreadWorkstation.project_id == requirement.project_id)
     workstations = list(db.scalars(stmt))
     if target_type == "workstation":
-        exists = any(cleaned in {item.id, item.config_id, item.name} for item in workstations)
+        exists = any(cleaned in {item.id, item.config_id} for item in workstations)
     else:
         exists = any(cleaned == (item.agent_id or "") for item in workstations)
     if not exists:
         raise AppError(
             "TARGET_NOT_FOUND",
-            f"dispatch target {target_type}:{cleaned} is not bound to this project",
+            f"dispatch target {target_type}:{cleaned} is not bound to this project via formal seat id/config_id",
             status_code=404,
         )
 
@@ -401,13 +401,13 @@ def _workstation_dispatch_target_id(workstation: ProjectThreadWorkstation) -> st
 
 
 def _resolve_seat(db: Session, project_id: str | None, seat_ref: str | None) -> ProjectThreadWorkstation | None:
-    """按 项目→工位→NPC 结构解析 seat：在项目内按 id/config_id/name 三种引用方式匹配。"""
+    """按正式 seat 标识解析 seat，仅允许项目内 id/config_id。"""
     cleaned = str(seat_ref or "").strip()
     if not cleaned or not project_id:
         return None
     stmt = select(ProjectThreadWorkstation).where(ProjectThreadWorkstation.project_id == project_id)
     for seat in db.scalars(stmt):
-        if cleaned in {seat.id, seat.config_id, seat.name}:
+        if cleaned in {seat.id, seat.config_id}:
             return seat
     return None
 

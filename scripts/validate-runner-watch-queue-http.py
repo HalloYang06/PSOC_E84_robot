@@ -76,6 +76,37 @@ def is_queued_status(value: object) -> bool:
     return text(value).lower() in {"queued", "open", "waiting_response", "routed", "pending"}
 
 
+def queued_target_node_id(message: dict[str, object]) -> str:
+    metadata = message.get("metadata") if isinstance(message.get("metadata"), dict) else {}
+    for key in (
+        "computer_node_id",
+        "computerNodeId",
+        "target_computer_node_id",
+        "targetComputerNodeId",
+    ):
+        value = text(metadata.get(key))
+        if value:
+            return value
+    msg_type = text(message.get("message_type")).lower()
+    recipient_id = text(message.get("recipient_id"))
+    if msg_type in {"thread_scan_request", "runner_command"}:
+        return recipient_id
+    return ""
+
+
+def is_offline_node(node: dict[str, object] | None) -> bool:
+    if not isinstance(node, dict):
+        return False
+    watch_state = text(node.get("runner_watch_state")).lower()
+    effective_status = text(node.get("runner_effective_status")).lower()
+    runner_status = text(node.get("runner_status")).lower()
+    return (
+        watch_state in {"runner_offline", "offline", "missing"}
+        or effective_status == "offline"
+        or runner_status == "offline"
+    )
+
+
 def main() -> int:
     args = parse_args()
     api_base = args.api_base.rstrip("/")
@@ -119,6 +150,15 @@ def main() -> int:
         for item in queued_messages
         if (queued_age_minutes(item, now=now) or 0) >= args.queued_warning_minutes
     ]
+    node_by_id = {text(node.get("id")): node for node in nodes}
+    stale_waiting_for_offline_nodes = [
+        item
+        for item in stale_queued_messages
+        if (target := queued_target_node_id(item)) and is_offline_node(node_by_id.get(target))
+    ]
+    stale_unexplained_messages = [
+        item for item in stale_queued_messages if item not in stale_waiting_for_offline_nodes
+    ]
 
     ready_nodes = [
         node
@@ -149,11 +189,19 @@ def main() -> int:
     issues: list[str] = []
     if missing_watch_fields:
         issues.append(f"missing runner watch fields on nodes: {', '.join(missing_watch_fields)}")
-    if nodes and queued_messages and not ready_nodes:
+    if nodes and stale_unexplained_messages and not ready_nodes:
         issues.append("platform has queued commands but no computer is in runner watch/ready state")
-    if stale_queued_messages:
-        oldest = max(queued_age_minutes(item, now=now) or 0 for item in stale_queued_messages)
-        issues.append(f"{len(stale_queued_messages)} queued command(s) older than {args.queued_warning_minutes} minutes; oldest {oldest} minutes")
+    warnings: list[str] = []
+    if stale_waiting_for_offline_nodes:
+        oldest = max(queued_age_minutes(item, now=now) or 0 for item in stale_waiting_for_offline_nodes)
+        warnings.append(
+            f"{len(stale_waiting_for_offline_nodes)} queued command(s) older than {args.queued_warning_minutes} minutes are waiting for offline target computers; oldest {oldest} minutes"
+        )
+    if stale_unexplained_messages:
+        oldest = max(queued_age_minutes(item, now=now) or 0 for item in stale_unexplained_messages)
+        issues.append(
+            f"{len(stale_unexplained_messages)} queued command(s) older than {args.queued_warning_minutes} minutes are not explained by offline target computers; oldest {oldest} minutes"
+        )
 
     report = {
         "stamp": stamp,
@@ -166,6 +214,8 @@ def main() -> int:
             "runner_watch_blocked_count": len(blocked_nodes),
             "queued_command_count": len(queued_messages),
             "stale_queued_command_count": len(stale_queued_messages),
+            "stale_waiting_for_offline_target_count": len(stale_waiting_for_offline_nodes),
+            "stale_unexplained_command_count": len(stale_unexplained_messages),
         },
         "blocked_nodes": blocked_nodes,
         "queued_messages": [
@@ -179,11 +229,12 @@ def main() -> int:
             }
             for item in queued_messages[:50]
         ],
+        "warnings": warnings,
         "issues": issues,
     }
     report_path = output_dir / f"runner-watch-queue-http-report-{stamp}.json"
     report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(json.dumps({"report_path": str(report_path), **report["summary"], "issues": issues}, ensure_ascii=False))
+    print(json.dumps({"report_path": str(report_path), **report["summary"], "warnings": warnings, "issues": issues}, ensure_ascii=False))
     return 1 if args.strict and issues else 0
 
 

@@ -268,7 +268,7 @@ export default async function Project2dUpgradePage({
       project={{
         id: text(project.id, params.id),
         name: text(project.name ?? project.project_name, `项目 ${params.id.slice(0, 8)}`),
-        description: text(project.description, "小A工作室 2D 开发者模式升级入口，聚合项目、NPC、电脑、线程与协作回执。"),
+        description: text(project.description, "项目工作台入口，聚合项目、NPC、电脑、线程与协作回执。"),
         type: text(project.project_type, "software"),
         collaboration_config: collaborationConfig,
         github_url: text(project.github_url, ""),
@@ -278,7 +278,7 @@ export default async function Project2dUpgradePage({
       }}
       apiBaseUrl={apiBaseUrl}
       currentUser={{
-        name: text((authState.data as AnyRecord | null)?.user?.name, "小A操作者"),
+        name: text((authState.data as AnyRecord | null)?.user?.name, "项目负责人"),
         email: text((authState.data as AnyRecord | null)?.user?.email, ""),
       }}
       stats={{

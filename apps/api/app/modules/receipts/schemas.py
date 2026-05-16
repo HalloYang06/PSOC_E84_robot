@@ -21,6 +21,12 @@ class ReceiptCreate(BaseModel):
     artifacts: dict[str, Any] | None = None
     reject_reason: str | None = Field(default=None, max_length=400)
     suggested_seat_id: str | None = Field(default=None, max_length=64)
+    blocked_reason_code: str | None = Field(default=None, max_length=80)
+    blocked_reason_label: str | None = Field(default=None, max_length=200)
+    retryable: bool | None = None
+    log_available: bool | None = None
+    split_suggested: bool | None = None
+    evidence_complete: bool | None = None
 
 
 class ReceiptRead(BaseModel):
@@ -36,4 +42,29 @@ class ReceiptRead(BaseModel):
     title: str | None = None
     body: str
     extra_data: dict[str, Any] | None = None
+    authoritative_seat_id: str | None = None
+    authoritative_seat_ref: str | None = None
+    authoritative_target_seat_id: str | None = None
+    historical_alias_non_authoritative: bool = False
     created_at: str | None = None
+
+    @classmethod
+    def _authority_from_extra(cls, extra_data: dict[str, Any] | None) -> dict[str, Any]:
+        extra = extra_data if isinstance(extra_data, dict) else {}
+        return {
+            "authoritative_seat_id": str(
+                extra.get("authoritative_seat_id")
+                or extra.get("authoritative_sender_seat_id")
+                or ""
+            ).strip()
+            or None,
+            "authoritative_seat_ref": str(extra.get("authoritative_seat_ref") or "").strip() or None,
+            "authoritative_target_seat_id": str(extra.get("authoritative_target_seat_id") or "").strip() or None,
+            "historical_alias_non_authoritative": bool(extra.get("historical_alias_non_authoritative")),
+        }
+
+    @classmethod
+    def with_authority(cls, **data: Any) -> "ReceiptRead":
+        merged = dict(data)
+        merged.update(cls._authority_from_extra(merged.get("extra_data")))
+        return cls(**merged)

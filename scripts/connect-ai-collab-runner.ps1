@@ -38,6 +38,9 @@ function Resolve-ApiBaseUrl {
   if ($base -match ":3000$") {
     return ($base -replace ":3000$", ":8010")
   }
+  if ($base -match ":3001$") {
+    return ($base -replace ":3001$", ":8011")
+  }
   return $base
 }
 
@@ -54,7 +57,7 @@ function Resolve-WebBaseUrl {
     return ($base -replace ":8010$", ":3000")
   }
   if ($base -match ":8011$") {
-    return ($base -replace ":8011$", ":3000")
+    return ($base -replace ":8011$", ":3001")
   }
   if ($base -match ":8000$") {
     return ($base -replace ":8000$", ":3000")
@@ -184,6 +187,52 @@ function Test-RunnerWorkspaceBinding {
   return $false
 }
 
+function Invoke-RunnerInboxPoll {
+  param(
+    [Parameter(Mandatory = $true)][string]$ApiBase,
+    [Parameter(Mandatory = $true)][string]$RunnerId,
+    [Parameter(Mandatory = $true)][string]$RunnerName
+  )
+  $inboxUrl = ($ApiBase.TrimEnd("/")) + "/api/runners/" + $RunnerId + "/inbox?limit=20"
+  $response = Invoke-RestMethod -Method Get -Uri $inboxUrl -Headers @{
+    "X-Runner-Id" = $RunnerId
+  }
+  $items = if ($response.data) { @($response.data) } else { @($response) }
+  $results = [System.Collections.ArrayList]::new()
+  foreach ($item in $items) {
+    $status = ([string]$item.status).Trim().ToLowerInvariant()
+    if ($status -notin @("pending", "queued")) {
+      continue
+    }
+    $messageId = ([string]$item.id).Trim()
+    if ([string]::IsNullOrWhiteSpace($messageId)) {
+      continue
+    }
+    $title = ([string]$item.title).Trim()
+    if ([string]::IsNullOrWhiteSpace($title)) {
+      $title = "Platform dispatch"
+    }
+    $note = "Runner $RunnerName received platform dispatch: $title. The computer connection is reachable; enable NPC automation or bind a desktop thread before real execution."
+    $ackBody = @{ note = $note } | ConvertTo-Json -Depth 4
+    $completeBody = @{ result_status = "completed"; note = $note } | ConvertTo-Json -Depth 4
+    $messageBase = ($ApiBase.TrimEnd("/")) + "/api/runners/" + $RunnerId + "/messages/" + $messageId
+    Invoke-RestMethod -Method Post -Uri ($messageBase + "/ack") -Headers @{
+      "Content-Type" = "application/json"
+      "X-Runner-Id" = $RunnerId
+    } -Body ([System.Text.Encoding]::UTF8.GetBytes($ackBody)) | Out-Null
+    Invoke-RestMethod -Method Post -Uri ($messageBase + "/complete") -Headers @{
+      "Content-Type" = "application/json"
+      "X-Runner-Id" = $RunnerId
+    } -Body ([System.Text.Encoding]::UTF8.GetBytes($completeBody)) | Out-Null
+    [void]$results.Add([ordered]@{
+      message_id = $messageId
+      title = $title
+      status = "completed"
+    })
+  }
+  return $results
+}
+
 function Invoke-WorkstationInboxPoll {
   param(
     [Parameter(Mandatory = $true)][string]$ApiBase,
@@ -227,6 +276,7 @@ function Invoke-WorkstationInboxPoll {
       "--api-base", $ApiBase,
       "--project-id", $ProjectId,
       "--workstation-id", $workstationId,
+      "--runner-id", $RunnerId,
       "--provider", $provider,
       "--auto-ack",
       "--limit", "20",
@@ -283,6 +333,7 @@ function Start-RunnerWatchLoop {
     $loop += 1
     try {
       [void](Invoke-RunnerHeartbeat -ApiBase $ApiBase -RunnerId $RunnerId)
+      $runnerCommands = Invoke-RunnerInboxPoll -ApiBase $ApiBase -RunnerId $RunnerId -RunnerName $RunnerName
       $pollResults = Invoke-WorkstationInboxPoll `
         -ApiBase $ApiBase `
         -WebBase $WebBase `
@@ -298,7 +349,9 @@ function Start-RunnerWatchLoop {
         project_id = $ProjectId
         computer_node_id = $ComputerNodeId
         workstation_count = @($pollResults).Count
+        runner_command_count = @($runnerCommands).Count
         execute_provider_cli = [bool]$ExecuteProviderCli
+        runner_commands = $runnerCommands
         results = $pollResults
       }
       $summary | ConvertTo-Json -Depth 12

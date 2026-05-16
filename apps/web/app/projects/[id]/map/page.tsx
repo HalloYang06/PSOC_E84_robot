@@ -38,13 +38,13 @@ function safeProjectReturnPath(projectId: string, value: unknown) {
 }
 
 function labelProjectReturnPath(value: string) {
-  if (value.includes("/2d-upgrade")) return "返回主页面";
+  if (value.includes("/2d-upgrade")) return "返回项目入口";
   if (value.includes("/workbench")) return "返回 NPC 工作台";
   if (value.includes("/datasets")) return "返回数据工场";
   if (value.includes("/ai-lab")) return "返回 AI 实验室";
   if (value.includes("/robotics")) return "返回机器人现场";
   if (value.includes("/observability")) return "返回观测台";
-  if (value.includes("/skill-forge")) return "返回 Skill 工坊";
+  if (value.includes("/skill-forge")) return "返回能力工坊";
   if (value.includes("/company")) return "返回公司层";
   return "返回来源";
 }
@@ -52,7 +52,7 @@ function labelProjectReturnPath(value: string) {
 const surfaceGroups = [
   {
     title: "资源治理",
-    note: "电脑、Runner、NPC、工位、Skill、GitHub 知识库都回主页面维护。",
+    note: "电脑、执行线程、NPC、工位、能力包、GitHub 知识库都回主页面维护。",
     items: [
       ["项目主页面", "资源源头和治理面", "2d-upgrade"],
       ["驾驶舱", "项目合格性、KPI、广播", "cockpit"],
@@ -61,10 +61,10 @@ const surfaceGroups = [
   },
   {
     title: "协作执行",
-    note: "完整过程在 Codex/Claude Code 桌面线程，平台显示最小回执。",
+    note: "完整过程在桌面线程，平台显示最小回执、异常和下一步。",
     items: [
       ["NPC 工作台", "多 NPC 对话瓷砖、审核、派单、回执", "workbench"],
-      ["观测台", "派单、回执、待审、Runner 和风险观测", "observability"],
+      ["观测台", "派单、回执、待审、执行电脑和风险观测", "observability"],
     ],
   },
   {
@@ -74,7 +74,7 @@ const surfaceGroups = [
       ["数据工场", "训练数据采集、标注、质检和导出", "datasets"],
       ["AI 实验室", "AI 调试、仿真和审批边界", "ai-lab"],
       ["机器人现场", "App、Linux、ROS、硬件和 VLA 现场", "robotics"],
-      ["Skill 工坊", "Skill 起草、审查、绑定和复用", "skill-forge"],
+      ["能力工坊", "能力包起草、审查、绑定和复用", "skill-forge"],
     ],
   },
 ];
@@ -131,22 +131,22 @@ export default async function ProjectMapPage({
       href: `/projects/${projectId}/2d-upgrade?return_to=${encodeURIComponent(selfPath)}&from=map`,
     },
     {
-      title: "知识与 Skill",
+      title: "知识与能力包",
       value: skills.length && docs.length ? "可复用" : "待沉淀",
-      detail: `Skill ${skills.length} · 知识库 ${docs.length}`,
+      detail: `能力包 ${skills.length} · 知识库 ${docs.length}`,
       href: `/projects/${projectId}/skill-forge?return_to=${encodeURIComponent(selfPath)}&from=map`,
     },
     {
       title: "服务实例",
       value: text(health.base_url ?? health.baseUrl, healthState.error ? "不可用" : "待确认"),
-      detail: hasMultipleFrontendPorts ? "3000 和 3001 同时在线，先到观测台确认当前页面。" : `监听端口 ${listeningPorts.join(" / ") || "未探测"}`,
+      detail: hasMultipleFrontendPorts ? "多个前端实例同时在线，先到观测台确认当前页面。" : `服务端口 ${listeningPorts.join(" / ") || "未探测"}`,
       href: `/projects/${projectId}/observability?return_to=${encodeURIComponent(selfPath)}&from=map`,
     },
   ];
   const nextActions = [
-    onlineComputers ? null : ["接入电脑 / Runner", `/projects/${projectId}/2d-upgrade?panel=computers&return_to=${encodeURIComponent(selfPath)}&from=map`],
+    onlineComputers ? null : ["接入电脑 / 执行线程", `/projects/${projectId}/2d-upgrade?panel=computers&return_to=${encodeURIComponent(selfPath)}&from=map`],
     seats.length ? null : ["绑定 NPC 线程", `/projects/${projectId}/2d-upgrade?panel=npcs&return_to=${encodeURIComponent(selfPath)}&from=map`],
-    skills.length ? null : ["准备项目 Skill", `/projects/${projectId}/skill-forge?return_to=${encodeURIComponent(selfPath)}&from=map`],
+    skills.length ? null : ["准备项目能力包", `/projects/${projectId}/skill-forge?return_to=${encodeURIComponent(selfPath)}&from=map`],
     docs.length ? null : ["索引 GitHub 知识库", `/projects/${projectId}/2d-upgrade?panel=knowledge&return_to=${encodeURIComponent(selfPath)}&from=map`],
     hasMultipleFrontendPorts ? ["确认当前服务实例", `/projects/${projectId}/observability?return_to=${encodeURIComponent(selfPath)}&from=map`] : null,
   ].filter(Boolean) as string[][];
@@ -163,7 +163,7 @@ export default async function ProjectMapPage({
           <span>电脑 {onlineComputers}/{computers.length}</span>
           <span>NPC {seats.length}</span>
           <span>工位 {workstations.length}</span>
-          <span>Skill {skills.length}</span>
+          <span>能力包 {skills.length}</span>
           <span>知识库 {docs.length}</span>
         </div>
       </header>
@@ -171,7 +171,7 @@ export default async function ProjectMapPage({
       <section className={styles.hero}>
         <span>项目导航</span>
         <h1>{text(project.name, "项目")} 工作台地图</h1>
-        <p>页面越来越多时，地图负责告诉你每个入口的职责：主页面管资源，工作台管执行，专业页面管数据、仿真、机器人、观测和 Skill。</p>
+        <p>页面越来越多时，地图负责告诉你每个入口的职责：主页面管资源，工作台管执行，专业页面管数据、仿真、机器人、观测和能力包。</p>
       </section>
 
       <section className={styles.commandCenter} aria-label="项目就绪度">

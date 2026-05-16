@@ -84,26 +84,137 @@
   line-height: 1.65;
 }
 
-.traceBox {
-  display: grid;
-  grid-template-columns: 1fr 36px 1fr 36px 1fr;
-  align-items: center;
+.evidenceConsole {
   min-height: 210px;
-  padding: 28px;
+  padding: 24px;
   border: 1px solid rgba(166, 191, 255, 0.22);
-  border-radius: 18px;
+  border-radius: 12px;
   background: rgba(255, 255, 255, 0.04);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 18px;
 }
 
-.traceBox span {
-  text-align: center;
-  color: #f1f7ff;
+.evidenceConsole[data-ready="1"] {
+  border-color: rgba(131, 247, 207, 0.34);
+  background: rgba(131, 247, 207, 0.055);
+}
+
+.evidenceConsole strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 30px;
+  letter-spacing: 0;
+}
+
+.evidenceConsole p {
+  margin: 10px 0 0;
+  color: rgba(241, 247, 255, 0.68);
+  line-height: 1.55;
+}
+
+.evidenceConsole a,
+.consoleStatus {
+  align-self: flex-start;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 9px 12px;
+  border: 1px solid rgba(131, 247, 207, 0.42);
+  border-radius: 8px;
+  background: rgba(131, 247, 207, 0.12);
+  color: #c9ffef;
+  text-decoration: none;
+  font-size: 12px;
   font-weight: 900;
 }
 
-.traceBox i {
-  height: 2px;
-  background: linear-gradient(90deg, #a6bfff, #83f7cf);
+.evidenceMetrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+  .evidenceMetrics span {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 6px 8px;
+  border: 1px solid rgba(166, 191, 255, 0.2);
+  border-radius: 999px;
+  color: rgba(241, 247, 255, 0.72);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.evidenceMetrics span[data-ok="1"] {
+  border-color: rgba(131, 247, 207, 0.42);
+  color: #c9ffef;
+  background: rgba(131, 247, 207, 0.08);
+}
+
+.evidenceMetrics span[data-warn="1"] {
+  border-color: rgba(255, 214, 102, 0.46);
+  color: #ffe7a3;
+  background: rgba(255, 214, 102, 0.09);
+}
+
+.flowStrip {
+  display: grid;
+  grid-template-columns: 1.2fr repeat(5, minmax(0, 1fr));
+  gap: 1px;
+  background: rgba(166, 191, 255, 0.16);
+  border-bottom: 1px solid rgba(166, 191, 255, 0.15);
+}
+
+.flowLabel {
+  min-height: 82px;
+  padding: 16px 20px;
+  background: #070d14;
+  border-top: 3px solid rgba(166, 191, 255, 0.62);
+}
+
+.flowLabel strong {
+  display: block;
+  font-size: 16px;
+}
+
+.flowLabel span {
+  display: block;
+  margin-top: 7px;
+  color: rgba(241, 247, 255, 0.62);
+  font-size: 12px;
+}
+
+.flowStrip article {
+  min-height: 82px;
+  padding: 16px 20px;
+  background: #070d14;
+  border-top: 3px solid rgba(166, 191, 255, 0.3);
+}
+
+.flowStrip article[data-state="ok"] {
+  border-top-color: rgba(131, 247, 207, 0.88);
+}
+
+.flowStrip article[data-state="warn"] {
+  border-top-color: rgba(255, 214, 102, 0.88);
+}
+
+.flowStrip strong {
+  display: block;
+  color: #f1f7ff;
+  font-size: 16px;
+}
+
+.flowStrip span {
+  display: block;
+  margin-top: 7px;
+  color: rgba(241, 247, 255, 0.62);
+  font-size: 12px;
 }
 
 .kpiGrid {
@@ -133,11 +244,620 @@
   line-height: 1.55;
 }
 
-.contentGrid {
+.firstLookGrid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
-  gap: 28px;
-  padding: 34px 56px;
+  grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+  gap: 18px;
+  padding: 28px 56px 0;
+}
+
+.actionPanel,
+.recentEvidencePanel {
+  padding: 20px;
+  border: 1px solid rgba(166, 191, 255, 0.16);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.primaryActionList,
+.recentEvidenceList {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.primaryActionList a,
+.recentEvidenceList li {
+  min-height: 114px;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 16px;
+  background: #070d14;
+  border-left: 3px solid rgba(131, 247, 207, 0.62);
+  text-decoration: none;
+}
+
+.recentEvidenceList li {
+  border-left-color: rgba(166, 191, 255, 0.5);
+}
+
+.primaryActionList span,
+.recentEvidenceList span {
+  color: #a6bfff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.primaryActionList strong,
+.recentEvidenceList strong {
+  font-size: 18px;
+  line-height: 1.35;
+}
+
+.primaryActionList p,
+.recentEvidenceList p {
+  margin: 0;
+  color: rgba(241, 247, 255, 0.66);
+  line-height: 1.55;
+}
+
+.closeoutPanel {
+  display: grid;
+  gap: 14px;
+  padding: 34px 56px 0;
+}
+
+.focusSection,
+.routePanel,
+.referencePanel {
+  display: grid;
+  gap: 14px;
+  padding: 34px 56px 0;
+}
+
+.focusHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+}
+
+.focusHead strong {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 24px;
+}
+
+.focusHead p {
+  margin: 0;
+  max-width: 680px;
+  color: rgba(241, 247, 255, 0.68);
+  line-height: 1.55;
+}
+
+.focusActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.focusActions a,
+.focusActions span {
+  padding: 9px 12px;
+  border: 1px solid rgba(166, 191, 255, 0.26);
+  border-radius: 8px;
+  background: rgba(166, 191, 255, 0.08);
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.chainGrid,
+.routeGrid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 1px;
+  background: rgba(166, 191, 255, 0.14);
+}
+
+.chainGrid article,
+.routeGrid a {
+  min-height: 138px;
+  padding: 18px;
+  background: #070d14;
+}
+
+.chainGrid article span,
+.routeGrid a span {
+  color: #a6bfff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.chainGrid article strong,
+.routeGrid a strong {
+  display: block;
+  margin: 10px 0 8px;
+  font-size: 20px;
+  line-height: 1.25;
+}
+
+.chainGrid article p,
+.routeGrid a p {
+  margin: 0;
+  color: rgba(241, 247, 255, 0.66);
+  line-height: 1.5;
+}
+
+.routeGrid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.routeGrid a {
+  text-decoration: none;
+  border-top: 3px solid rgba(131, 247, 207, 0.56);
+}
+
+.closeoutGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  background: rgba(166, 191, 255, 0.14);
+}
+
+.closeoutGrid a {
+  min-height: 126px;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 18px;
+  background: #070d14;
+  text-decoration: none;
+  border-top: 3px solid rgba(255, 211, 110, 0.58);
+}
+
+.closeoutGrid strong {
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.exceptionBand {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) repeat(6, auto);
+  align-items: center;
+  gap: 10px;
+  padding: 14px 56px;
+  border-bottom: 1px solid rgba(166, 191, 255, 0.15);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.exceptionBand span {
+  color: #ffd36e;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.exceptionBand strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 15px;
+}
+
+.exceptionBand a {
+  padding: 9px 12px;
+  border: 1px solid rgba(255, 211, 110, 0.36);
+  border-radius: 8px;
+  background: rgba(255, 211, 110, 0.09);
+  color: #ffe5a3;
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.operatorDeck {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.28fr) minmax(0, 1fr) minmax(360px, 0.42fr);
+  gap: 18px;
+  padding: 34px 56px 0;
+  align-items: start;
+}
+
+.lineageRail {
+  display: grid;
+  gap: 14px;
+  position: sticky;
+  top: 76px;
+}
+
+.lineageStack {
+  display: grid;
+  gap: 1px;
+  background: rgba(166, 191, 255, 0.14);
+}
+
+.lineageStack article,
+.lineageCardGrid article {
+  min-height: 110px;
+  padding: 16px;
+  background: #070d14;
+  border-top: 3px solid rgba(166, 191, 255, 0.42);
+}
+
+.lineageStack span,
+.lineageCardGrid span {
+  color: #a6bfff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.lineageStack strong,
+.lineageCardGrid strong {
+  display: block;
+  margin: 8px 0 6px;
+  font-size: 18px;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.lineageStack p,
+.lineageCardGrid p {
+  margin: 0;
+  color: rgba(241, 247, 255, 0.64);
+  line-height: 1.48;
+}
+
+.deckWorkspace {
+  min-height: 520px;
+  padding: 20px;
+  border: 1px solid rgba(166, 191, 255, 0.16);
+  background:
+    linear-gradient(135deg, rgba(131, 247, 207, 0.06), transparent 34%),
+    rgba(255, 255, 255, 0.035);
+}
+
+.operatorBoard {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(220px, 0.85fr);
+  grid-auto-rows: minmax(190px, auto);
+  gap: 1px;
+  background: rgba(166, 191, 255, 0.14);
+}
+
+.operatorBoard article {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  padding: 20px;
+  background: #070d14;
+  border-top: 3px solid rgba(131, 247, 207, 0.58);
+}
+
+.operatorBoard article:first-child {
+  grid-row: span 2;
+  border-top-color: rgba(255, 211, 110, 0.72);
+}
+
+.operatorBoard span,
+.drawerRail summary span,
+.bottomLog summary span {
+  color: #a6bfff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.operatorBoard strong {
+  font-size: 24px;
+  line-height: 1.25;
+}
+
+.operatorBoard p {
+  margin: 0;
+  color: rgba(241, 247, 255, 0.66);
+  line-height: 1.55;
+}
+
+.operatorBoard a {
+  align-self: end;
+  justify-self: start;
+  padding: 9px 12px;
+  border: 1px solid rgba(131, 247, 207, 0.38);
+  border-radius: 8px;
+  background: rgba(131, 247, 207, 0.1);
+  color: #c9ffef;
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.drawerRail {
+  display: grid;
+  gap: 10px;
+  max-height: calc(100vh - 96px);
+  overflow: auto;
+  position: sticky;
+  top: 76px;
+}
+
+.actorStack,
+.toolLauncher,
+.npcIndexBox,
+.debugToolbar {
+  display: grid;
+  gap: 8px;
+}
+
+.actorCard,
+.npcIndexBox,
+.toolLauncher {
+  padding: 10px;
+  border: 1px solid rgba(166, 191, 255, 0.18);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.actorCard {
+  border-left: 3px solid rgba(166, 191, 255, 0.56);
+}
+
+.actorCard[data-kind="hero"] {
+  border-left-color: rgba(255, 214, 102, 0.8);
+}
+
+.actorCard span,
+.npcIndexBox span,
+.toolLauncher > span,
+.debugToolbar span {
+  color: #a6bfff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.actorCard strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 15px;
+  line-height: 1.25;
+}
+
+.actorCard p,
+.toolLauncher small {
+  margin: 0;
+  color: rgba(241, 247, 255, 0.62);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.npcIndexBox a,
+.toolLauncher a {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  padding: 8px 9px;
+  border: 1px solid rgba(166, 191, 255, 0.17);
+  background: rgba(166, 191, 255, 0.07);
+  color: inherit;
+  text-decoration: none;
+  transform: translateY(0);
+  transition: transform 140ms ease, border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+}
+
+.npcIndexBox a:hover,
+.toolLauncher a:hover,
+.toolLauncher a[data-active="1"] {
+  transform: translateY(-1px);
+  border-color: rgba(255, 214, 102, 0.58);
+  background: rgba(255, 214, 102, 0.12);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+}
+
+.toolLauncher strong {
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.debugToolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  margin-bottom: 10px;
+  padding: 6px 8px;
+  border: 1px solid rgba(166, 191, 255, 0.15);
+  background: rgba(5, 9, 13, 0.82);
+  overflow: auto hidden;
+}
+
+.debugToolbar small {
+  flex: 0 0 auto;
+  min-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  border: 1px solid rgba(166, 191, 255, 0.16);
+  background: rgba(166, 191, 255, 0.065);
+  color: rgba(241, 247, 255, 0.66);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.drawerRail details,
+.bottomLog details,
+.historyDrawer {
+  border: 1px solid rgba(166, 191, 255, 0.18);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.drawerRail summary,
+.bottomLog summary,
+.historyDrawer summary {
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.drawerRail summary::-webkit-details-marker,
+.bottomLog summary::-webkit-details-marker,
+.historyDrawer summary::-webkit-details-marker {
+  display: none;
+}
+
+.drawerRail summary::after,
+.bottomLog summary::after,
+.historyDrawer summary::after {
+  content: "+";
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(166, 191, 255, 0.22);
+  border-radius: 999px;
+  color: rgba(241, 247, 255, 0.72);
+}
+
+.drawerRail details[open] summary::after,
+.bottomLog details[open] summary::after,
+.historyDrawer[open] summary::after {
+  content: "-";
+}
+
+.drawerRail summary strong,
+.bottomLog summary strong,
+.historyDrawer summary strong {
+  font-size: 14px;
+  color: #f1f7ff;
+}
+
+.lineageCardGrid {
+  display: grid;
+  gap: 1px;
+  padding: 0 14px 14px;
+  background: rgba(166, 191, 255, 0.14);
+}
+
+.chainSeatGrid {
+  display: grid;
+  gap: 1px;
+  padding: 0 14px 14px;
+  background: rgba(166, 191, 255, 0.14);
+}
+
+.chainSeatGrid article {
+  min-height: 96px;
+  padding: 14px;
+  background: #070d14;
+  border-top: 3px solid rgba(255, 145, 77, 0.54);
+}
+
+.chainSeatGrid article[data-ok="1"] {
+  border-top-color: rgba(131, 247, 207, 0.72);
+}
+
+.chainSeatGrid span {
+  color: #a6bfff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.chainSeatGrid strong {
+  display: block;
+  margin: 8px 0 6px;
+  font-size: 18px;
+  line-height: 1.35;
+}
+
+.chainSeatGrid p {
+  margin: 0;
+  color: rgba(241, 247, 255, 0.64);
+  line-height: 1.48;
+}
+
+.peerMatrix {
+  display: grid;
+  gap: 1px;
+  background: rgba(166, 191, 255, 0.14);
+}
+
+.peerMatrixRow {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1px;
+  background: rgba(166, 191, 255, 0.12);
+}
+
+.peerMatrixRow > div {
+  min-height: 96px;
+  padding: 14px;
+  background: #070d14;
+  border-top: 3px solid rgba(166, 191, 255, 0.24);
+}
+
+.peerMatrixRow[data-state="acked"] > div {
+  border-top-color: rgba(131, 247, 207, 0.72);
+}
+
+.peerMatrixRow[data-state="finaled"] > div {
+  border-top-color: rgba(255, 213, 122, 0.72);
+}
+
+.peerMatrixRow[data-state="blocked"] > div {
+  border-top-color: rgba(255, 127, 127, 0.72);
+}
+
+.peerMatrixRow[data-state="pending_closeout"] > div {
+  border-top-color: rgba(255, 145, 77, 0.86);
+}
+
+.peerMatrixRow span {
+  color: #a6bfff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.peerMatrixRow strong {
+  display: block;
+  margin: 8px 0 6px;
+  font-size: 18px;
+  color: #f1f7ff;
+}
+
+.peerMatrixRow p {
+  margin: 0;
+  color: rgba(241, 247, 255, 0.66);
+  line-height: 1.5;
+}
+
+.closeoutActionLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.closeoutActionLinks a {
+  padding: 6px 8px;
+  border: 1px solid rgba(255, 145, 77, 0.42);
+  border-radius: 8px;
+  background: rgba(255, 145, 77, 0.1);
+  color: #ffd0b3;
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.peerMatrixEmpty {
+  margin: 0;
+  padding: 18px;
+  background: #070d14;
+  color: rgba(241, 247, 255, 0.62);
 }
 
 .sectionHead {
@@ -152,69 +872,188 @@
   letter-spacing: 0;
 }
 
-.timeline ol {
-  display: grid;
-  gap: 1px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  background: rgba(166, 191, 255, 0.14);
-}
-
-.timeline li {
-  padding: 16px;
-  background: #070d14;
-}
-
-.timeline strong {
-  font-size: 15px;
-}
-
-.sidePanel {
-  align-self: start;
-  padding: 18px;
-  border: 1px solid rgba(166, 191, 255, 0.18);
-  background: rgba(255, 255, 255, 0.04);
-}
-
 .alertList {
   display: grid;
   gap: 10px;
+  padding: 0 14px 14px;
 }
 
-.servicePanel {
-  display: grid;
-  gap: 14px;
-  padding: 0 56px 34px;
+.historyDrawer {
+  margin: 0 14px 14px;
+  background: rgba(255, 255, 255, 0.025);
 }
 
-.serviceGrid {
+.historyGrid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1px;
-  background: rgba(166, 191, 255, 0.14);
+  padding: 0 12px 12px;
+  background: rgba(166, 191, 255, 0.12);
 }
 
-.serviceGrid article {
-  min-height: 148px;
-  padding: 18px;
+.historyGrid article {
+  min-height: 108px;
+  padding: 14px;
   background: #070d14;
+  border-top: 3px solid rgba(166, 191, 255, 0.36);
 }
 
-.serviceGrid span {
+.historyGrid span {
   color: #a6bfff;
   font-size: 12px;
   font-weight: 900;
 }
 
-.serviceGrid strong {
+.historyGrid strong {
+  display: block;
+  margin: 8px 0 6px;
+  font-size: 22px;
+}
+
+.historyGrid p {
+  margin: 0;
+  color: rgba(241, 247, 255, 0.62);
+  line-height: 1.45;
+}
+
+.recoveryGrid {
+  display: grid;
+  gap: 1px;
+  padding: 0 14px 14px;
+  background: rgba(166, 191, 255, 0.14);
+}
+
+.recoveryGrid a {
+  min-height: 116px;
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  padding: 14px;
+  border-top: 3px solid rgba(166, 191, 255, 0.42);
+  background: #070d14;
+  text-decoration: none;
+}
+
+.recoveryGrid a[data-state="connected"] {
+  border-top-color: rgba(131, 247, 207, 0.72);
+}
+
+.recoveryGrid a[data-state="resync"],
+.recoveryGrid a[data-state="retry"] {
+  border-top-color: rgba(255, 213, 122, 0.78);
+}
+
+.recoveryGrid a[data-state="extended"] {
+  border-top-color: rgba(166, 191, 255, 0.82);
+}
+
+.recoveryGrid a[data-state="waiting"],
+.recoveryGrid a[data-state="manual"] {
+  border-top-color: rgba(255, 145, 77, 0.82);
+}
+
+.recoveryGrid span {
+  color: #a6bfff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.recoveryGrid strong {
+  font-size: 16px;
+  line-height: 1.32;
+}
+
+.recoveryGrid p {
+  margin: 0;
+  color: rgba(241, 247, 255, 0.64);
+  line-height: 1.48;
+}
+
+.serviceGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1px;
+  margin: 0 14px 14px;
+  background: rgba(166, 191, 255, 0.14);
+}
+
+.deploymentGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  padding: 0 14px 14px;
+  background: rgba(166, 191, 255, 0.14);
+}
+
+.executionGrid,
+.coverageGrid {
+  display: grid;
+  gap: 1px;
+  padding: 0 14px 14px;
+  background: rgba(166, 191, 255, 0.14);
+}
+
+.executionGrid {
+  grid-template-columns: 1fr;
+}
+
+.coverageGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding-top: 0;
+}
+
+.serviceGrid article,
+.deploymentGrid article,
+.executionGrid article,
+.coverageGrid article {
+  min-height: 126px;
+  padding: 14px;
+  background: #070d14;
+}
+
+.deploymentGrid article,
+.executionGrid article,
+.coverageGrid article {
+  display: grid;
+  gap: 7px;
+  min-height: 112px;
+  border-top: 3px solid rgba(131, 247, 207, 0.72);
+}
+
+.deploymentGrid article[data-state="watch"],
+.executionGrid article[data-state="watch"],
+.coverageGrid article[data-state="watch"] {
+  border-top-color: rgba(255, 213, 122, 0.82);
+}
+
+.deploymentGrid article[data-state="blocked"],
+.executionGrid article[data-state="blocked"],
+.coverageGrid article[data-state="blocked"] {
+  border-top-color: rgba(255, 127, 127, 0.82);
+}
+
+.serviceGrid span,
+.deploymentGrid span,
+.executionGrid span,
+.coverageGrid span {
+  color: #a6bfff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.serviceGrid strong,
+.deploymentGrid strong,
+.executionGrid strong {
   display: block;
   margin: 10px 0 8px;
   word-break: break-word;
   font-size: 20px;
 }
 
-.serviceGrid p {
+.serviceGrid p,
+.deploymentGrid p,
+.executionGrid p,
+.coverageGrid p {
   margin: 0;
   color: rgba(241, 247, 255, 0.64);
   line-height: 1.55;
@@ -224,6 +1063,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  padding: 0 14px 14px;
 }
 
 .portList span {
@@ -240,23 +1080,19 @@
   color: #c9ffef;
 }
 
-.referencePanel {
-  display: grid;
-  gap: 14px;
-  padding: 0 56px 56px;
-}
-
 .referenceGrid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: 1fr;
+  gap: 1px;
+  padding: 0 14px 14px;
+  background: rgba(166, 191, 255, 0.14);
 }
 
 .referenceGrid article {
-  min-height: 148px;
-  padding: 18px;
-  border-top: 2px solid rgba(166, 191, 255, 0.7);
-  background: rgba(255, 255, 255, 0.045);
+  min-height: 116px;
+  padding: 14px;
+  border-top: 2px solid rgba(166, 191, 255, 0.5);
+  background: #070d14;
 }
 
 .referenceGrid strong {
@@ -265,31 +1101,77 @@
   font-size: 16px;
 }
 
+.bottomLog {
+  padding: 18px 56px 36px;
+}
+
+.bottomLog ol {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0;
+  padding: 0 14px 14px;
+  list-style: none;
+  background: rgba(166, 191, 255, 0.14);
+}
+
+.bottomLog li {
+  min-height: 112px;
+  padding: 14px;
+  background: #070d14;
+}
+
+.bottomLog li strong {
+  display: block;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.bottomLog li p {
+  margin: 8px 0 0;
+  color: rgba(241, 247, 255, 0.64);
+  line-height: 1.5;
+}
+
 @media (max-width: 1080px) {
   .hero,
-  .contentGrid {
+  .operatorDeck,
+  .firstLookGrid {
     grid-template-columns: 1fr;
     padding-left: 24px;
     padding-right: 24px;
   }
 
   .kpiGrid,
-  .referenceGrid {
+    .closeoutGrid,
+    .chainGrid,
+    .routeGrid,
+    .historyGrid,
+    .deploymentGrid,
+    .coverageGrid,
+    .bottomLog ol {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .referencePanel {
+  .closeoutPanel,
+  .focusSection,
+  .routePanel {
     padding-left: 24px;
     padding-right: 24px;
   }
 
-  .servicePanel {
-    padding-left: 24px;
-    padding-right: 24px;
+  .drawerRail {
+    position: static;
+    max-height: none;
   }
 
-  .serviceGrid {
-    grid-template-columns: 1fr;
+  .lineageRail {
+    position: static;
+  }
+
+  .bottomLog {
+    padding-left: 24px;
+    padding-right: 24px;
   }
 }
 
@@ -298,15 +1180,264 @@
     font-size: 38px;
   }
 
-  .traceBox,
+  .evidenceConsole,
   .kpiGrid,
-  .referenceGrid {
+  .closeoutGrid,
+  .flowStrip,
+  .exceptionBand,
+    .chainGrid,
+    .routeGrid,
+    .historyGrid,
+    .deploymentGrid,
+    .coverageGrid,
+    .firstLookGrid,
+  .operatorBoard,
+  .bottomLog ol {
     grid-template-columns: 1fr;
   }
 
-  .traceBox i {
-    height: 32px;
-    width: 2px;
-    justify-self: center;
+  .focusHead {
+    display: grid;
+  }
+}
+
+@media (min-width: 981px) {
+  .shell {
+    height: 100vh;
+    max-height: 100vh;
+    min-height: 0;
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    overflow: hidden;
+  }
+
+  .topbar {
+    position: static;
+    padding: 10px 16px;
+  }
+
+  .hero {
+    grid-template-columns: minmax(0, 1fr) 360px;
+    gap: 14px;
+    padding: 8px 16px;
+  }
+
+  .hero h1 {
+    margin: 4px 0;
+    font-size: 23px;
+  }
+
+  .hero p {
+    max-height: 1.45em;
+    overflow: hidden;
+    font-size: 13px;
+    line-height: 1.45;
+  }
+
+  .evidenceConsole {
+    min-height: 0;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: 8px;
+  }
+
+  .evidenceConsole strong {
+    margin-top: 4px;
+    font-size: 16px;
+  }
+
+  .evidenceConsole p {
+    max-height: 1.35em;
+    overflow: hidden;
+    margin-top: 6px;
+    line-height: 1.35;
+  }
+
+  .evidenceMetrics {
+    max-height: 34px;
+    overflow: auto;
+  }
+
+  .focusSection {
+    display: none;
+  }
+
+  .firstLookGrid,
+  .closeoutPanel,
+  .routePanel,
+  .flowStrip,
+  .exceptionBand,
+  .kpiGrid {
+    display: none;
+  }
+
+  .focusActions,
+  .topbar nav {
+    pointer-events: none;
+  }
+
+  .operatorDeck {
+    height: 100%;
+    min-height: 0;
+    grid-template-columns: 240px minmax(0, 1fr) 336px;
+    gap: 10px;
+    padding: 8px 16px 58px;
+    align-items: stretch;
+    overflow: hidden;
+  }
+
+  .lineageRail,
+  .drawerRail {
+    position: static;
+    top: auto;
+    min-height: 0;
+    max-height: none;
+    overflow: auto;
+  }
+
+  .actorStack {
+    margin-bottom: 10px;
+  }
+
+  .sectionHead {
+    gap: 4px;
+    margin-bottom: 8px;
+  }
+
+  .sectionHead h2 {
+    font-size: 18px;
+  }
+
+  .lineageStack article,
+  .lineageCardGrid article,
+  .chainSeatGrid article,
+  .historyGrid article {
+    min-height: 82px;
+    padding: 10px;
+  }
+
+  .lineageStack strong,
+  .lineageCardGrid strong,
+  .chainSeatGrid strong {
+    font-size: 14px;
+  }
+
+  .lineageStack p,
+  .lineageCardGrid p,
+  .chainSeatGrid p,
+  .peerMatrixRow p,
+  .referenceGrid p,
+  .recoveryGrid p,
+  .serviceGrid p {
+    max-height: 3em;
+    overflow: hidden;
+    line-height: 1.35;
+  }
+
+  .deckWorkspace {
+    min-height: 0;
+    overflow: hidden;
+    padding: 12px;
+  }
+
+  .operatorBoard {
+    height: calc(100% - 54px);
+    min-height: 0;
+    grid-auto-rows: minmax(0, 1fr);
+  }
+
+  .operatorBoard article {
+    gap: 8px;
+    padding: 14px;
+  }
+
+  .operatorBoard strong {
+    font-size: 18px;
+  }
+
+  .operatorBoard p {
+    max-height: 5.5em;
+    overflow: hidden;
+    line-height: 1.45;
+  }
+
+  .drawerRail {
+    gap: 8px;
+  }
+
+  .drawerRail details,
+  .bottomLog details,
+  .historyDrawer {
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .drawerRail summary,
+  .bottomLog summary,
+  .historyDrawer summary {
+    min-height: 40px;
+    padding: 8px 12px;
+  }
+
+  .drawerRail details[open] > div,
+  .historyDrawer[open] > div {
+    max-height: 28vh;
+    overflow: auto;
+  }
+
+  .peerMatrixRow > div,
+  .recoveryGrid a,
+  .serviceGrid article,
+  .referenceGrid article {
+    min-height: 88px;
+    padding: 10px;
+  }
+
+  .peerMatrixRow strong {
+    font-size: 14px;
+  }
+
+  .bottomLog {
+    position: fixed;
+    left: 16px;
+    right: 16px;
+    bottom: 8px;
+    min-height: 0;
+    max-height: none;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  .bottomLog details {
+    background: rgba(5, 9, 13, 0.94);
+    pointer-events: auto;
+  }
+
+  .bottomLog details:not([open]) {
+    height: 42px;
+  }
+
+  .bottomLog details[open] {
+    max-height: 220px;
+  }
+
+  .bottomLog ol {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    max-height: 80px;
+    overflow: auto;
+  }
+
+  .bottomLog li {
+    min-height: 78px;
+    padding: 10px;
+  }
+
+  .bottomLog li p {
+    max-height: 2.8em;
+    overflow: hidden;
+    line-height: 1.35;
   }
 }

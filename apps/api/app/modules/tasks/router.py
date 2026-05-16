@@ -20,6 +20,8 @@ from app.modules.messages.schemas import MessageCreate, MessageRead
 from app.modules.messages.service import create_entity_message, list_entity_messages
 
 from .schemas import (
+    ArtifactIndexEntryRead,
+    ProfessionalTaskViewRead,
     TaskCreate,
     TaskEventRead,
     TaskLogCreate,
@@ -44,6 +46,7 @@ from .service import (
     run_named_task_action,
     transition_task_status,
     update_task,
+    get_task_professional_view,
 )
 
 
@@ -83,6 +86,20 @@ def api_get_task(task_id: str, request: Request, db: Session = Depends(get_db)):
 def api_task_gate(task_id: str, request: Request, db: Session = Depends(get_db)):
     require_project_read_access(db, request, resolve_task_project_id(db, task_id), action="task.read")
     return ok(get_task_gate_state(db, task_id))
+
+
+@router.get("/{task_id}/professional-view")
+def api_task_professional_view(task_id: str, request: Request, db: Session = Depends(get_db)):
+    require_project_read_access(db, request, resolve_task_project_id(db, task_id), action="task.read")
+    return ok(ProfessionalTaskViewRead.model_validate(get_task_professional_view(db, task_id)).model_dump(mode="json"))
+
+
+@router.get("/{task_id}/artifact-index")
+def api_task_artifact_index(task_id: str, request: Request, db: Session = Depends(get_db)):
+    require_project_read_access(db, request, resolve_task_project_id(db, task_id), action="task.read")
+    from .service import get_task_artifact_index
+
+    return ok([ArtifactIndexEntryRead.model_validate(item).model_dump(mode="json") for item in get_task_artifact_index(db, task_id)])
 
 
 @router.patch("/{task_id}")
