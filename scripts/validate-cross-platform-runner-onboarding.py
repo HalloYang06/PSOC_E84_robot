@@ -17,6 +17,11 @@ def assert_contains(text: str, needle: str, label: str) -> None:
         raise AssertionError(f"Missing {label}: {needle}")
 
 
+def assert_not_contains(text: str, needle: str, label: str) -> None:
+    if needle in text:
+        raise AssertionError(f"Unexpected {label}: {needle}")
+
+
 def main() -> int:
     commands = read("apps/web/lib/runner-onboarding-commands.ts")
     download_route = read("apps/web/app/downloads/runner/[script]/route.ts")
@@ -59,11 +64,14 @@ def main() -> int:
 
     for script_name in (
         "register-runner.ps1",
+        "connect-ai-collab-runner.ps1",
         "sync-codex-session-threads.ps1",
         "sync-claude-session-threads.ps1",
         "sync-runner-threads.ps1",
     ):
         assert_contains(read(f"scripts/{script_name}"), ':3001$', f"{script_name} accepts cloud web port 3001")
+        assert_contains(read(f"scripts/{script_name}"), ':8011', f"{script_name} resolves to cloud API port 8011")
+        assert_not_contains(read(f"scripts/{script_name}"), ':3000$", ":8010', f"{script_name} old 3000 to 8010 mapping")
 
     for script_name in (
         "register-runner.sh",
@@ -73,6 +81,19 @@ def main() -> int:
         "sync-runner-threads.sh",
     ):
         assert_contains(read(f"scripts/{script_name}"), ":3001", f"{script_name} accepts cloud web port 3001")
+        assert_contains(read(f"scripts/{script_name}"), ":8011", f"{script_name} resolves to cloud API port 8011")
+        assert_not_contains(read(f"scripts/{script_name}"), ":3000/:8010", f"{script_name} old 3000 to 8010 mapping")
+
+    for rel in (
+        "apps/web/app/projects/[id]/page.tsx",
+        "apps/web/app/projects/[id]/project-playable-shell.tsx",
+        "apps/web/app/projects/[id]/2d-upgrade/page.tsx",
+        "apps/web/app/projects/[id]/company/page.tsx",
+        "apps/web/app/projects/[id]/unity-client/page.tsx",
+    ):
+        source = read(rel)
+        assert_contains(source, "8011", f"{rel} production API fallback")
+        assert_not_contains(source, "127.0.0.1:8010", f"{rel} stale local API fallback")
 
     for test_attr in (
         "data-computer-one-click-connect-linux-command",
