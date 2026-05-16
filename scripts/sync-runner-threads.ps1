@@ -65,7 +65,7 @@ $headers = @{
 function Resolve-ApiBaseUrl {
   param([Parameter(Mandatory = $true)][string]$Value)
   $base = $Value.Trim().TrimEnd("/")
-  if ($base -match ":3000$") { return ($base -replace ":3000$", ":8010") }
+  if ($base -match ":3000$") { return ($base -replace ":3000$", ":8011") }
   if ($base -match ":3001$") { return ($base -replace ":3001$", ":8011") }
   return $base
 }

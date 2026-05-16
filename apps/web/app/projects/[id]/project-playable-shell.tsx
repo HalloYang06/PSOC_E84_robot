@@ -11850,7 +11850,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
         </div>
 
         {workstationToken ? (() => {
-          const workstationServerUrl = text(props.computerConnectServerUrl, "http://127.0.0.1:8010");
+          const workstationServerUrl = text(props.computerConnectServerUrl, "http://127.0.0.1:8011");
           const workstationCommand = buildWorkstationAdapterCommand(
             projectId,
             workstationTokenId,
@@ -12296,13 +12296,13 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                 projectId,
                 threadId,
                 issuedAdapterToken || undefined,
-                text(props.computerConnectServerUrl, "http://127.0.0.1:8010"),
+                text(props.computerConnectServerUrl, "http://127.0.0.1:8011"),
               );
               const adapterBashCommand = buildWorkstationAdapterBashCommand(
                 projectId,
                 threadId,
                 issuedAdapterToken || undefined,
-                text(props.computerConnectServerUrl, "http://127.0.0.1:8010"),
+                text(props.computerConnectServerUrl, "http://127.0.0.1:8011"),
               );
               const executorHint = providerExecutorHint(providerId);
               const suggestedThreadSkills = recommendRoleSkillIds({

@@ -36,7 +36,7 @@ function Resolve-ApiBaseUrl {
   param([Parameter(Mandatory = $true)][string]$Value)
   $base = Normalize-BaseUrl $Value
   if ($base -match ":3000$") {
-    return ($base -replace ":3000$", ":8010")
+    return ($base -replace ":3000$", ":8011")
   }
   if ($base -match ":3001$") {
     return ($base -replace ":3001$", ":8011")
@@ -54,7 +54,7 @@ function Resolve-WebBaseUrl {
   }
   $base = Normalize-BaseUrl $ServerValue
   if ($base -match ":8010$") {
-    return ($base -replace ":8010$", ":3000")
+    return ($base -replace ":8010$", ":3001")
   }
   if ($base -match ":8011$") {
     return ($base -replace ":8011$", ":3001")

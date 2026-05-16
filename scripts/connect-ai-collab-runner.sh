@@ -72,9 +72,9 @@ resolve_web_base() {
     return
   fi
   local base="${1%/}"
-  base="${base/:8010/:3000}"
+  base="${base/:8010/:3001}"
   base="${base/:8011/:3001}"
-  base="${base/:8000/:3000}"
+  base="${base/:8000/:3001}"
   echo "$base"
 }
 

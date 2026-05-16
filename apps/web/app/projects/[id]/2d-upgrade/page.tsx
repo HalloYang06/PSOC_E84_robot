@@ -119,7 +119,7 @@ export default async function Project2dUpgradePage({
   const projectState = await getProjectState(params.id);
   const query = searchParamsQuery(searchParams);
   const returnTo = encodeURIComponent(`/projects/${params.id}/2d-upgrade${query ? `?${query}` : ""}`);
-  const apiBaseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8010").trim().replace(/\/$/, "");
+  const apiBaseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8011").trim().replace(/\/$/, "");
 
   if (projectState.status === 401) {
     redirect(`/login?returnTo=${returnTo}`);

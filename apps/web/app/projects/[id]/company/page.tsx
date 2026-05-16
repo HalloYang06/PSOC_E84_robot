@@ -262,7 +262,7 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
       projectDescription={text(project.description, "")}
       projectGithubUrl={text(project.github_url, "")}
       projectLocalPath={text(project.local_git_url, "")}
-      apiBaseUrl={(process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8010").trim().replace(/\/$/, "")}
+      apiBaseUrl={(process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8011").trim().replace(/\/$/, "")}
       seats={leadSeats}
       messages={asArray<AnyRecord>(collaborationMessagesState.data).map((message, index) => ({
         id: text(message.id, `message-${index + 1}`),

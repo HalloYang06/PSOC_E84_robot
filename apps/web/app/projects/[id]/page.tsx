@@ -98,7 +98,7 @@ async function resolveComputerConnectServerUrl() {
       }
       const webUrl = text(parsed.web_url, "");
       if (webUrl) {
-        return webUrl.replace(":3000", ":8010").replace(":3001", ":8011");
+        return webUrl.replace(":3000", ":8011").replace(":3001", ":8011");
       }
     } catch {
       continue;
@@ -113,13 +113,13 @@ async function resolveComputerConnectServerUrl() {
       const proto =
         forwardedProto ||
         (/^(localhost|127\.0\.0\.1|192\.168\.|10\.|172\.(1[6-9]|2\d|3[0-1])\.)/i.test(host) ? "http" : "https");
-      return `${proto}://${host}`.replace(":3000", ":8010").replace(":3001", ":8011");
+      return `${proto}://${host}`.replace(":3000", ":8011").replace(":3001", ":8011");
     }
   } catch {
     // fall through to localhost
   }
 
-  return "http://127.0.0.1:8010";
+  return "http://127.0.0.1:8011";
 }
 
 const STALE_NPC_MOJIBAKE_REGEX = /(?:[\uFFFD�]|鍦ㄧ嚎|绂荤嚎|鐮斿彂鍩哄湴|寮€|寮�|鏈懡|搴勫洯|浠诲姟|鍗忎綔|闃熼暱|涓荤▼|鏈烘埧|鐢佃剳|绾跨▼|銆)/;

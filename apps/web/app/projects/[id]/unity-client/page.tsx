@@ -30,7 +30,7 @@ const UNITY_SCENE_PATH = "Assets/Education2D/Scenes/ReferenceBuilds/Education2D_
 const TUANJIE_WEBGL_SUPPORT_PATH = "D:/unity/2022.3.62t7/Editor/Data/PlaybackEngines/WebGLSupport";
 
 function getUnityBrowserApiBaseUrl() {
-  return (process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8010").trim().replace(/\/$/, "");
+  return (process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8011").trim().replace(/\/$/, "");
 }
 
 function readJson<T>(filePath: string): T | null {

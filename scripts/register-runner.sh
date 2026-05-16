@@ -52,7 +52,7 @@ PY
 )"
 
 API_BASE="${SERVER%/}"
-API_BASE="${API_BASE/:3000/:8010}"
+API_BASE="${API_BASE/:3000/:8011}"
 API_BASE="${API_BASE/:3001/:8011}"
 URL="${API_BASE%/}/api/runners/register"
 echo "Registering runner to $URL ..."

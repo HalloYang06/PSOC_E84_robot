@@ -250,7 +250,7 @@ with open(os.environ["BODY_FILE"], "w", encoding="utf-8") as handle:
 PY
 
 API_BASE="${SERVER%/}"
-API_BASE="${API_BASE/:3000/:8010}"
+API_BASE="${API_BASE/:3000/:8011}"
 API_BASE="${API_BASE/:3001/:8011}"
 URL="${API_BASE%/}/api/runners/$RUNNER_ID/thread-workstations/sync"
 echo "Syncing Claude thread slots to $URL ..."
