@@ -125,8 +125,20 @@ def main() -> int:
         "platform-workstation-adapter.py",
         "sync-codex-session-threads.sh",
         "sync-claude-session-threads.sh",
+        "the runner will retry automatically",
+        "Consecutive failed loop(s)",
+        "Runner watch recovered",
     ):
         assert_contains(connect_sh, token, f"connect bash token {token}")
+
+    connect_ps1 = read("scripts/connect-ai-collab-runner.ps1")
+    for token in (
+        "Runner watch loop failed",
+        "Runner watch is still active",
+        "Consecutive failed loop(s)",
+        "Runner watch recovered",
+    ):
+        assert_contains(connect_ps1, token, f"connect PowerShell retry token {token}")
 
     for token in ("curl -fsSL", "--server", "--pairing-token", "--computer-node-id", "--runner-name"):
         assert_contains(register_sh, token, f"register bash token {token}")

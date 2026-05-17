@@ -329,6 +329,7 @@ function Start-RunnerWatchLoop {
   }
 
   $loop = 0
+  $failureStreak = 0
   while ($true) {
     $loop += 1
     try {
@@ -355,8 +356,14 @@ function Start-RunnerWatchLoop {
         results = $pollResults
       }
       $summary | ConvertTo-Json -Depth 12
+      if ($failureStreak -gt 0) {
+        Write-Host "Runner watch recovered after $failureStreak failed loop(s)."
+      }
+      $failureStreak = 0
     } catch {
-      Write-Warning "Runner watch loop failed once: $($_.Exception.Message)"
+      $failureStreak += 1
+      Write-Warning "Runner watch loop failed: $($_.Exception.Message)"
+      Write-Warning "Runner watch is still active. Consecutive failed loop(s): $failureStreak. Next retry in $PollSeconds seconds."
     }
 
     if ($MaxLoops -gt 0 -and $loop -ge $MaxLoops) {

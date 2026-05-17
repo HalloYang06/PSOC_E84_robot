@@ -346,11 +346,31 @@ if [[ "$WATCH" == "true" ]]; then
     echo "Provider CLI execution is OFF. The runner will keep heartbeat and write minimal acknowledgements."
   fi
   loop=0
+  failure_streak=0
   while true; do
     loop=$((loop + 1))
-    heartbeat_runner || echo "heartbeat failed once" >&2
-    poll_runner_inbox_once || echo "runner inbox poll failed once" >&2
-    poll_workstations_once || echo "workstation poll failed once" >&2
+    loop_ok="true"
+    if ! heartbeat_runner; then
+      echo "heartbeat failed; the runner will retry automatically." >&2
+      loop_ok="false"
+    fi
+    if ! poll_runner_inbox_once; then
+      echo "runner inbox poll failed; the runner will retry automatically." >&2
+      loop_ok="false"
+    fi
+    if ! poll_workstations_once; then
+      echo "workstation poll failed; the runner will retry automatically." >&2
+      loop_ok="false"
+    fi
+    if [[ "$loop_ok" == "true" ]]; then
+      if [[ "$failure_streak" -gt 0 ]]; then
+        echo "Runner watch recovered after $failure_streak failed loop(s)."
+      fi
+      failure_streak=0
+    else
+      failure_streak=$((failure_streak + 1))
+      echo "Runner watch is still active. Consecutive failed loop(s): $failure_streak. Next retry in $WATCH_POLL_SECONDS seconds." >&2
+    fi
     if [[ "$WATCH_MAX_LOOPS" != "0" && "$loop" -ge "$WATCH_MAX_LOOPS" ]]; then
       break
     fi
