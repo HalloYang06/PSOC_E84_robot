@@ -11279,7 +11279,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
               <pre className={styles.commandBlock} data-computer-manual-sync-linux-command={nodeId}><code>{manualSyncBashCommand}</code></pre>
             </>
           )}
-          <details className={styles.adapterCommandCard}>
+          <details className={styles.adapterCommandCard} open={Boolean(alwaysShowScripts || reconnectMode)}>
             <summary>自动化心跳 / 持续接单（只在 NPC 已开启自动化时使用）</summary>
             <p className={styles.microCopy}>
               这条命令会复用已绑定 runner，并持续心跳、轮询平台 inbox。不开 NPC 自动化时不要运行它；
