@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -3184,6 +3184,17 @@ function runnerWatchInfo(node: AnyRecord | null | undefined) {
   };
 }
 
+function queuedCommandTargetNodeId(message: AnyRecord) {
+  const metadata = objectRecord(message.metadata ?? message.extra_data);
+  for (const key of ["computer_node_id", "computerNodeId", "target_computer_node_id", "targetComputerNodeId"]) {
+    const value = text(metadata[key], "");
+    if (value) return value;
+  }
+  const messageType = text(message.message_type, "").toLowerCase();
+  if (messageType === "thread_scan_request") return text(message.recipient_id, "");
+  return "";
+}
+
 function defaultActorLabel(senderType: string) {
   if (senderType === "runner") return "Runner";
   if (senderType === "human") return "人工协作者";
@@ -5723,6 +5734,20 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
     router.refresh();
   }, [router, teamNoticeKey, pairingTokenKey, adapterTokenKey]);
   const nodes = asArray(props.config?.nodes);
+  const queueNodeById = new Map<string, AnyRecord>();
+  nodes.forEach((node) => {
+    [
+      node.id,
+      node.node_id,
+      node.config_id,
+      node.name,
+      node.label,
+      node.runner_id,
+    ].forEach((candidate) => {
+      const key = text(candidate, "").toLowerCase();
+      if (key && !queueNodeById.has(key)) queueNodeById.set(key, node);
+    });
+  });
   const onlineNodes = nodes.filter((node) => isComputerRunnerOnline(node));
   const watchReadyNodes = nodes.filter((node) => runnerWatchInfo(node).active);
   const watchBlockedNodes = nodes.filter((node) => runnerWatchInfo(node).needsAttention);
@@ -5740,8 +5765,11 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
       const createdAt = new Date(text(message.created_at ?? message.createdAt ?? message.updated_at ?? message.updatedAt, "1970-01-01")).getTime();
       const ageMinutes = queueAgeMinutes(createdAt);
       const messageType = text(message.message_type, "agent_command");
+      const targetNodeId = queuedCommandTargetNodeId(message);
+      const targetNode = targetNodeId ? queueNodeById.get(targetNodeId.toLowerCase()) ?? null : null;
+      const targetWatch = runnerWatchInfo(targetNode);
       const target = safeDisplayTitle(
-        message.recipient_label ?? message.recipient_name ?? message.recipient_id ?? message.workstation_id ?? message.agent_id,
+        targetNode?.label ?? targetNode?.name ?? message.recipient_label ?? message.recipient_name ?? message.recipient_id ?? message.workstation_id ?? message.agent_id,
         "目标线程",
       );
       return {
@@ -5752,6 +5780,9 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
         stateLabel: queueStateLabel(ageMinutes) ?? "等待接单",
         title: safeDisplayTitle(message.title, "平台排队指令"),
         target,
+        targetNodeId,
+        targetWatch,
+        waitsForOfflineNode: Boolean(targetNode && !targetWatch.active),
         typeLabel: messageType === "thread_scan_request" ? "线程扫描" : messageType === "requirement_dispatch" ? "需求派单" : "AI 指令",
       };
     })
@@ -5761,6 +5792,9 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
   );
   const oldestQueuedCollaborationCommand = queuedCollaborationCommandDetails[0] ?? null;
   const staleQueuedCommandCount = staleQueuedCollaborationCommands.length;
+  const queuedCommandsWaitingForOfflineNodes = queuedCollaborationCommandDetails.filter((item) => item.waitsForOfflineNode);
+  const staleQueuedCommandsWaitingForOfflineNodes = staleQueuedCollaborationCommands.filter((item) => item.waitsForOfflineNode);
+  const queueBlockedByOfflineNodesCount = queuedCommandsWaitingForOfflineNodes.length;
   const providerRecords = useMemo(() => {
     const providerMap = new Map<string, AnyRecord>();
     const rememberProvider = (candidate: AnyRecord | null | undefined, fallback?: { id?: string | null; label?: string | null; model?: string | null }) => {
@@ -11304,9 +11338,21 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
           </strong>
           <p>
             {watchReadyNodes.length
-              ? `可自动领取平台派工；仍有 ${queuedCollaborationCommandCount} 条指令处于队列/等待态，必要时进入“协作消息池”查看回执。`
+              ? queueBlockedByOfflineNodesCount
+                ? `可自动领取新的平台派工；当前 ${queueBlockedByOfflineNodesCount} 条旧指令在等待目标电脑重连，必要时进入“协作消息池”查看回执。`
+                : `可自动领取平台派工；仍有 ${queuedCollaborationCommandCount} 条指令处于队列/等待态，必要时进入“协作消息池”查看回执。`
               : `平台已经登记 ${nodes.length} 台电脑、扫描到 ${realThreadCount} 条线程，但自动协作需要远端电脑保持“自动化心跳 / 持续接单”窗口运行。`}
           </p>
+          {staleQueuedCommandsWaitingForOfflineNodes.length ? (
+            <ul className={styles.compactList} data-computer-offline-queue-list="true">
+              {staleQueuedCommandsWaitingForOfflineNodes.slice(0, 3).map((item) => (
+                <li key={`offline-queue-${text(item.message.id, item.title)}`} data-computer-offline-queue-item={item.targetNodeId || item.target}>
+                  <strong>{item.target}</strong>
+                  <span>{`${item.typeLabel} 已等 ${item.ageLabel}，${item.targetWatch.label}`}</span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </div>
 
         {selectedNode && !selectedWatch.active ? (
@@ -11358,7 +11404,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
           <div className={styles.noticeCard} data-computer-watch-blocked-count={String(watchBlockedNodes.length)}>
             <strong>有 {watchBlockedNodes.length} 台电脑已登记但没有稳定接单</strong>
             <p>
-              平台可以继续派工，但这些目标只会堆在队列里。优先打开对应电脑的三级抽屉，复制“自动化心跳 / 持续接单”命令并保持窗口运行。
+              平台可以继续派给已接单的电脑；派给这些电脑的目标会堆在队列里。优先打开对应电脑的三级抽屉，复制“自动化心跳 / 持续接单”命令并保持窗口运行。
             </p>
             <div className={styles.chipRow} data-computer-watch-recovery-list="true">
               {watchBlockedNodes.map((node, index) => {
