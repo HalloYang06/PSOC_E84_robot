@@ -1,0 +1,332 @@
+.shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 16px;
+  color: #e8fbf7;
+  background:
+    linear-gradient(135deg, rgba(7, 14, 18, 0.98), rgba(13, 22, 22, 0.98)),
+    #071014;
+}
+
+.shell a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.topNav {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.topNav a,
+.toolbarActions a,
+.drawerBody a {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 12px;
+  border: 1px solid rgba(123, 211, 199, 0.22);
+  border-radius: 7px;
+  background: rgba(13, 25, 29, 0.82);
+  color: #c8fff3;
+  font-size: 12px;
+  font-weight: 800;
+  transition: transform 140ms ease, border-color 140ms ease, background 140ms ease;
+}
+
+.topNav a:hover,
+.toolbarActions a:hover,
+.drawerBody a:hover {
+  transform: translateY(-1px);
+  border-color: rgba(248, 214, 106, 0.72);
+  background: rgba(34, 42, 34, 0.92);
+}
+
+.header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(420px, 0.85fr);
+  gap: 14px;
+  align-items: stretch;
+  border: 1px solid rgba(123, 211, 199, 0.14);
+  background: rgba(9, 19, 23, 0.76);
+  padding: 14px;
+}
+
+.header span,
+.railHead span,
+.toolbar span,
+.logHeader span,
+.drawerBody span {
+  color: #75e9d8;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.header h1 {
+  margin: 5px 0;
+  font-size: 22px;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+.header p,
+.workstationList p,
+.tableRow p,
+.drawerBody p,
+.logRows p,
+.emptyText {
+  margin: 0;
+  color: rgba(225, 244, 239, 0.68);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.statusStrip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.statusStrip article,
+.workstationList article,
+.employeeTable,
+.rightRail details,
+.bottomDock,
+.logRows article {
+  border: 1px solid rgba(123, 211, 199, 0.14);
+  background: rgba(8, 19, 24, 0.74);
+}
+
+.statusStrip article {
+  min-height: 74px;
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+}
+
+.statusStrip strong {
+  font-size: 20px;
+}
+
+.statusStrip small,
+.workstationList small,
+.tableRow small {
+  color: rgba(222, 246, 240, 0.58);
+  font-size: 11px;
+}
+
+.layout {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr) 300px;
+  gap: 12px;
+}
+
+.leftRail,
+.centerPane,
+.rightRail {
+  min-height: 0;
+}
+
+.leftRail,
+.centerPane {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.railHead,
+.toolbar,
+.logHeader {
+  min-height: 42px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid rgba(123, 211, 199, 0.14);
+  background: rgba(8, 19, 24, 0.76);
+  padding: 10px;
+}
+
+.railHead a {
+  color: #ffe38b;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.workstationList {
+  min-height: 0;
+  display: grid;
+  gap: 8px;
+  overflow: auto;
+}
+
+.workstationList article {
+  display: grid;
+  gap: 6px;
+  padding: 11px;
+  border-left: 3px solid rgba(123, 211, 199, 0.22);
+}
+
+.workstationList article[data-active="1"] {
+  border-color: rgba(248, 214, 106, 0.86);
+  background: rgba(28, 32, 27, 0.86);
+}
+
+.workstationList strong,
+.tableRow strong,
+.drawerBody strong,
+.logRows strong {
+  color: #f3fffc;
+  font-size: 13px;
+}
+
+.toolbar {
+  align-items: center;
+}
+
+.toolbar strong {
+  display: block;
+  margin-top: 3px;
+  font-size: 18px;
+}
+
+.toolbarActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.employeeTable {
+  min-height: 0;
+  overflow: auto;
+}
+
+.tableHead,
+.tableRow {
+  display: grid;
+  grid-template-columns: 1.05fr 1.4fr 1.1fr 0.8fr 0.9fr;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+}
+
+.tableHead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  color: #75e9d8;
+  background: rgba(10, 24, 29, 0.96);
+  border-bottom: 1px solid rgba(123, 211, 199, 0.14);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.tableRow {
+  border-bottom: 1px solid rgba(123, 211, 199, 0.1);
+}
+
+.tableRow:hover {
+  background: rgba(18, 31, 35, 0.66);
+}
+
+.emptyRow {
+  padding: 20px;
+}
+
+.rightRail {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  overflow: auto;
+}
+
+.rightRail details {
+  padding: 0;
+}
+
+.rightRail summary {
+  min-height: 42px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  cursor: pointer;
+}
+
+.rightRail summary strong {
+  color: #ffe38b;
+  font-size: 12px;
+}
+
+.drawerBody {
+  display: grid;
+  gap: 8px;
+  padding: 0 10px 10px;
+}
+
+.drawerBody article {
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+  border: 1px solid rgba(123, 211, 199, 0.12);
+  background: rgba(6, 16, 20, 0.72);
+}
+
+.bottomDock {
+  min-height: 96px;
+  max-height: 164px;
+  overflow: hidden;
+}
+
+.logRows {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px;
+  overflow: auto;
+}
+
+.logRows article {
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+}
+
+.logRows span {
+  color: #75e9d8;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+@media (max-width: 1100px) {
+  .header,
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .statusStrip,
+  .logRows {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .shell {
+    padding: 10px;
+  }
+
+  .statusStrip,
+  .tableHead,
+  .tableRow,
+  .logRows {
+    grid-template-columns: 1fr;
+  }
+}

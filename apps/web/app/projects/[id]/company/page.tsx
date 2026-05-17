@@ -4,12 +4,11 @@ import {
   getCurrentAuthState,
   getCollaborationMessagesState,
   getProjectComputerNodesState,
-  getProjectMembersState,
   getProjectState,
   getProjectWorkstationsState,
 } from "../../../../lib/server-data";
 import { isNpcSeatRecord, platformProviderIdFromSeat } from "../../../../lib/platform-provider";
-import { WorkbenchClient } from "../workbench/workbench-client";
+import styles from "./company.module.css";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -42,6 +41,32 @@ function deriveThreadKind(providerId: string, threadId: string) {
   if (raw.includes("claude")) return "Claude Code";
   if (raw.includes("codex")) return "Codex";
   return providerId || "thread";
+}
+
+function publicThreadState(value: unknown, automationEnabled = false) {
+  const raw = text(value, "").toLowerCase();
+  if (/online|ready|ok|watcher ready|connected|active/.test(raw)) return "可接单";
+  if (/stale|timeout|delay/.test(raw)) return "可能延迟";
+  if (/offline|lost|failed|error/.test(raw)) return "需重连";
+  return automationEnabled ? "可接单" : "待接入";
+}
+
+function reviewPolicyLabel(value: unknown) {
+  const raw = text(value, "inherit").toLowerCase();
+  if (/strict|always|manual|required/.test(raw)) return "强审";
+  if (/trusted|auto|bypass|allow/.test(raw)) return "免审边界";
+  return "继承工位策略";
+}
+
+function orgEventTypeLabel(value: unknown) {
+  const raw = text(value, "").toLowerCase();
+  if (/runner_command|dispatch/.test(raw)) return "派单事件";
+  if (/final|reply|receipt/.test(raw)) return "回执";
+  if (/review|approval/.test(raw)) return "审核事件";
+  if (/desktop|question/.test(raw)) return "桌面消息";
+  if (/requirement|need/.test(raw)) return "协作需求";
+  if (/progress|ack|running/.test(raw)) return "进度";
+  return text(value, "组织事件");
 }
 
 function safeProjectReturnPath(projectId: string, value: unknown) {
@@ -84,15 +109,13 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
     );
   }
 
-  const [computerNodesState, projectWorkstationsState, projectMembersState, collaborationMessagesState] = await Promise.all([
+  const [computerNodesState, projectWorkstationsState, collaborationMessagesState] = await Promise.all([
     getProjectComputerNodesState(params.id),
     getProjectWorkstationsState(params.id),
-    getProjectMembersState(params.id),
     getCollaborationMessagesState({ projectId: params.id }),
   ]);
   const liveNodes = asArray<AnyRecord>(computerNodesState.data);
   const projectWorkstations = asArray<AnyRecord>(projectWorkstationsState.data);
-  const projectMembers = asArray<AnyRecord>(projectMembersState.data);
 
   const config = (project.collaboration_config ?? {}) as AnyRecord;
   const rawWorkstations = asArray<AnyRecord>(
@@ -248,47 +271,194 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
     };
   });
 
-  const leadSeats = allSeats.filter((s) => s.isLead);
+  const seatsByWorkstation = new Map<string, typeof allSeats>();
+  for (const seat of allSeats) {
+    const key = seat.workstationId || "unassigned";
+    seatsByWorkstation.set(key, [...(seatsByWorkstation.get(key) ?? []), seat]);
+  }
+  const workstationRows = [
+    ...projectWorkstations.map((ws, index) => {
+      const id = text(ws.id, `workstation-${index + 1}`);
+      const seats = seatsByWorkstation.get(id) ?? [];
+      const leadId = text(ws.lead_seat_id ?? ws.leadSeatId, "");
+      const lead = allSeats.find((seat) => seat.id === leadId);
+      return {
+        id,
+        name: text(ws.name, `工位 ${index + 1}`),
+        description: text(ws.description ?? ws.summary, "负责一类长期工作，不绑定具体电脑。"),
+        seats,
+        leadName: lead?.name ?? "待指定",
+      };
+    }),
+    ...(seatsByWorkstation.get("unassigned")?.length
+      ? [{
+          id: "unassigned",
+          name: "未归属员工",
+          description: "这些 NPC 还需要分配到逻辑工位，之后才能稳定继承职责、知识库和审核策略。",
+          seats: seatsByWorkstation.get("unassigned") ?? [],
+          leadName: "待指定",
+        }]
+      : []),
+  ];
+  const selectedWorkstation = workstationRows[0] ?? {
+    id: "empty",
+    name: "待创建工位",
+    description: "先在主页面创建 NPC 和工位，再回到公司层治理组织结构。",
+    seats: [] as typeof allSeats,
+    leadName: "待指定",
+  };
+  const selectedSeats = selectedWorkstation.seats;
+  const primarySeat = selectedSeats[0] ?? allSeats[0] ?? null;
+  const threadReadyCount = allSeats.filter((seat) => publicThreadState(seat.threadHealth, seat.automationEnabled) === "可接单").length;
+  const strictReviewCount = allSeats.filter((seat) => reviewPolicyLabel(seat.reviewPolicy) === "强审").length;
+  const skillAssignedCount = allSeats.filter((seat) => seat.skillLoadout.length || seat.inheritedSkills.length).length;
+  const knowledgeAssignedCount = allSeats.filter((seat) => seat.knowledgeSummary || seat.workstationKnowledgePath).length;
 
-  const me = auth.data?.user as AnyRecord | null;
-  const currentUserId = text(me?.id, "");
-  const currentUserName = text(me?.name ?? me?.email ?? me?.id, currentUserId || "我");
   const returnToPath = safeProjectReturnPath(params.id, searchParams?.return_to);
 
+  const recentOrgEvents = asArray<AnyRecord>(collaborationMessagesState.data).slice(0, 6);
+  const projectId = String(project.id ?? params.id);
+  const selfPath = `/projects/${projectId}/company`;
+
   return (
-    <WorkbenchClient
-      projectId={String(project.id ?? params.id)}
-      projectName={text(project.name, `项目 ${params.id.slice(0, 8)}`)}
-      projectDescription={text(project.description, "")}
-      projectGithubUrl={text(project.github_url, "")}
-      projectLocalPath={text(project.local_git_url, "")}
-      apiBaseUrl={(process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8011").trim().replace(/\/$/, "")}
-      seats={leadSeats}
-      messages={asArray<AnyRecord>(collaborationMessagesState.data).map((message, index) => ({
-        id: text(message.id, `message-${index + 1}`),
-        title: text(message.title, ""),
-        body: text(message.body, ""),
-        status: text(message.status, ""),
-        message_type: text(message.message_type ?? message.messageType, ""),
-        created_at: text(message.created_at ?? message.createdAt, ""),
-        sender_type: text(message.sender_type ?? message.senderType, ""),
-        sender_id: text(message.sender_id ?? message.senderId, ""),
-        recipient_id: text(message.recipient_id ?? message.recipientId, ""),
-      }))}
-      members={projectMembers.map((member, index) => ({
-        id: text(member.user_id ?? member.user?.id ?? member.id, `member-${index + 1}`),
-        name: text(member.name ?? member.user?.name ?? member.email ?? member.user?.email, `协作者 ${index + 1}`),
-        email: text(member.email ?? member.user?.email, ""),
-        role: text(member.role, member.is_owner ? "owner" : "member"),
-        status: text(member.status, "active"),
-        isOwner: Boolean(member.is_owner ?? member.isOwner),
-      }))}
-      currentUserId={currentUserId}
-      currentUserName={currentUserName}
-      pageMode="company"
-      returnTo={returnToPath}
-      returnToLabel={returnToPath ? labelProjectReturnPath(returnToPath) : ""}
-      embedded={searchParams?.embed === "drawer"}
-    />
+    <main className={styles.shell} data-embedded={searchParams?.embed === "drawer" ? "1" : undefined}>
+      <nav className={styles.topNav} aria-label="公司层导航">
+        <Link href={`/projects/${projectId}`}>主页面</Link>
+        <Link href={`/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=company`}>NPC 工作台</Link>
+        <Link href={`/projects/${projectId}/skill-forge?return_to=${encodeURIComponent(selfPath)}&from=company`}>能力工坊</Link>
+        <Link href={`/projects/${projectId}/observability?return_to=${encodeURIComponent(selfPath)}&from=company`}>观测台</Link>
+        {returnToPath ? <Link href={returnToPath}>{labelProjectReturnPath(returnToPath)}</Link> : null}
+      </nav>
+
+      <header className={styles.header}>
+        <div>
+          <span>公司层 / 员工表</span>
+          <h1>{text(project.name, "AI 合作平台")} 组织结构</h1>
+          <p>公司层只负责工位、NPC 员工表、职责边界、Skill/知识库和审核策略；线程绑定和电脑接入仍回主页面管理。</p>
+        </div>
+        <section className={styles.statusStrip} aria-label="组织状态">
+          <article><span>工位</span><strong>{workstationRows.length}</strong><small>逻辑部门</small></article>
+          <article><span>NPC</span><strong>{allSeats.length}</strong><small>员工表</small></article>
+          <article><span>可接单</span><strong>{threadReadyCount}/{allSeats.length || 0}</strong><small>线程状态</small></article>
+          <article><span>强审</span><strong>{strictReviewCount}</strong><small>安全策略</small></article>
+        </section>
+      </header>
+
+      <section className={styles.layout}>
+        <aside className={styles.leftRail} aria-label="工位列表">
+          <div className={styles.railHead}>
+            <span>工位列表</span>
+            <Link href={`/projects/${projectId}`}>管理工位</Link>
+          </div>
+          <div className={styles.workstationList}>
+            {workstationRows.map((ws, index) => (
+              <article key={ws.id} data-active={index === 0 ? "1" : undefined}>
+                <span>{String(index + 1).padStart(2, "0")}</span>
+                <strong>{ws.name}</strong>
+                <p>{ws.description}</p>
+                <small>工位长：{ws.leadName} · NPC {ws.seats.length}</small>
+              </article>
+            ))}
+          </div>
+        </aside>
+
+        <section className={styles.centerPane} aria-label="NPC 员工表">
+          <div className={styles.toolbar}>
+            <div>
+              <span>当前工位</span>
+              <strong>{selectedWorkstation.name}</strong>
+            </div>
+            <div className={styles.toolbarActions}>
+              <Link href={`/projects/${projectId}`}>创建 / 绑定 NPC</Link>
+              <Link href={`/projects/${projectId}/skill-forge?return_to=${encodeURIComponent(selfPath)}&from=company`}>补 Skill</Link>
+              <Link href={`/projects/${projectId}/observability?return_to=${encodeURIComponent(selfPath)}&from=company`}>看证据</Link>
+            </div>
+          </div>
+
+          <div className={styles.employeeTable} role="table" aria-label="NPC 员工表">
+            <div className={styles.tableHead} role="row">
+              <span>NPC</span>
+              <span>职责</span>
+              <span>能力/知识</span>
+              <span>审核</span>
+              <span>执行状态</span>
+            </div>
+            {(selectedSeats.length ? selectedSeats : allSeats).map((seat) => (
+              <article key={seat.id} className={styles.tableRow} role="row">
+                <div>
+                  <strong>{seat.name}</strong>
+                  <small>{seat.isLead ? "工位长" : seat.workstationName || "待归属"}</small>
+                </div>
+                <p>{seat.responsibility}</p>
+                <div>
+                  <strong>{seat.skillLoadout.length + seat.inheritedSkills.length || 0} 项</strong>
+                  <small>{seat.knowledgeSummary || seat.workstationKnowledgePath || "待绑定知识库"}</small>
+                </div>
+                <div>
+                  <strong>{reviewPolicyLabel(seat.reviewPolicy)}</strong>
+                  <small>{seat.permissionLevel || "继承权限"}</small>
+                </div>
+                <div>
+                  <strong>{publicThreadState(seat.threadHealth, seat.automationEnabled)}</strong>
+                  <small>{seat.threadKind || "线程待确认"}</small>
+                </div>
+              </article>
+            ))}
+            {!allSeats.length ? (
+              <article className={styles.emptyRow}>
+                <strong>还没有 NPC 员工</strong>
+                <p>先在主页面创建 NPC、扫描线程并绑定，再回公司层分配职责和审核策略。</p>
+              </article>
+            ) : null}
+          </div>
+        </section>
+
+        <aside className={styles.rightRail} aria-label="员工属性和策略">
+          <details open>
+            <summary><span>员工属性</span><strong>{primarySeat?.name ?? "待选择"}</strong></summary>
+            {primarySeat ? (
+              <div className={styles.drawerBody}>
+                <article><span>职责边界</span><p>{primarySeat.responsibility}</p></article>
+                <article><span>模型 / 通道</span><p>{primarySeat.model || primarySeat.providerLabel || "继承默认配置"}</p></article>
+                <article><span>线程状态</span><p>{publicThreadState(primarySeat.threadHealth, primarySeat.automationEnabled)} · 线程选择回主页面处理</p></article>
+              </div>
+            ) : <p className={styles.emptyText}>选择或创建 NPC 后显示员工属性。</p>}
+          </details>
+          <details open>
+            <summary><span>Skill / 知识库</span><strong>{skillAssignedCount}/{allSeats.length || 0}</strong></summary>
+            <div className={styles.drawerBody}>
+              <article><span>已绑定能力</span><p>{skillAssignedCount} 名 NPC 已有 Skill loadout 或工位继承能力。</p></article>
+              <article><span>知识库</span><p>{knowledgeAssignedCount} 名 NPC 有知识库摘要或工位知识路径。</p></article>
+              <Link href={`/projects/${projectId}/skill-forge?return_to=${encodeURIComponent(selfPath)}&from=company`}>打开能力工坊</Link>
+            </div>
+          </details>
+          <details>
+            <summary><span>审核策略</span><strong>{strictReviewCount ? "有强审" : "继承默认"}</strong></summary>
+            <div className={styles.drawerBody}>
+              <article><span>原则</span><p>跨工位、高风险、硬件、部署、模型发布和 Git 回退都必须由人确认。</p></article>
+              <Link href={`/projects/${projectId}/cockpit?return_to=${encodeURIComponent(selfPath)}&from=company`}>去驾驶舱处理待审</Link>
+            </div>
+          </details>
+        </aside>
+      </section>
+
+      <section className={styles.bottomDock} aria-label="组织变更日志">
+        <div className={styles.logHeader}>
+          <span>组织变更 / 协作事件</span>
+          <strong>{recentOrgEvents.length ? `${recentOrgEvents.length} 条` : "等待事件"}</strong>
+        </div>
+        <div className={styles.logRows}>
+          {recentOrgEvents.length ? recentOrgEvents.map((event, index) => (
+            <article key={text(event.id, `event-${index}`)}>
+              <span>{text(event.status, "已记录")}</span>
+              <strong>{text(event.title, "协作事件")}</strong>
+              <p>{orgEventTypeLabel(event.message_type ?? event.body)} · 组织事件已进入项目记录。</p>
+            </article>
+          )) : (
+            <p className={styles.emptyText}>还没有组织变更事件。创建工位、绑定能力或调整审核策略后会在这里显示摘要。</p>
+          )}
+        </div>
+      </section>
+    </main>
   );
 }
