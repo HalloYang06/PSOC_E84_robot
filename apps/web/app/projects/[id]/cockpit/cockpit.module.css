@@ -211,9 +211,17 @@
   transition: transform 140ms ease, border-color 140ms ease, background 140ms ease;
 }
 
+.emptyState {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .decisionItem p,
 .emptyState p {
   grid-column: 2;
+}
+
+.emptyState p {
+  grid-column: auto;
 }
 
 .decisionItem strong,
