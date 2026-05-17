@@ -33,6 +33,13 @@ function statusText(value: unknown) {
   return text(value, "").toLowerCase();
 }
 
+function computerDispatchReady(node: AnyRecord | undefined) {
+  if (!node) return false;
+  const watchState = statusText(node.runner_watch_state ?? node.runnerWatchState);
+  const effective = statusText(node.runner_effective_status ?? node.runnerEffectiveStatus ?? node.runner_status ?? node.runnerStatus ?? node.status);
+  return watchState === "watching" || /watching|online|ready|active|connected/.test(effective);
+}
+
 function safeProjectReturnPath(projectId: string, value: unknown) {
   const raw = text(value, "");
   if (!raw.startsWith(`/projects/${projectId}/`)) return "";
@@ -276,7 +283,7 @@ export default async function ProjectDatasetsPage({
   const messageFocus = Boolean(searchParams?.message_id || searchParams?.dispatch_id || searchParams?.source_seat);
   const focusTitle = text((searchParams as AnyRecord | undefined)?.source_title, "来自 NPC 工作台的证据链焦点");
   const focusSeat = publicFocusSeat((searchParams as AnyRecord | undefined)?.source_label ?? searchParams?.source_seat);
-  const onlineComputers = computers.filter((node) => /online|ready|active/.test(statusText(node.runner_effective_status ?? node.runner_status ?? node.status))).length;
+  const onlineComputers = computers.filter(computerDispatchReady).length;
   const returnTo = safeProjectReturnPath(projectId, searchParams?.return_to);
   const selfPath = `/projects/${projectId}/datasets`;
   const repoReady = Boolean(project.github_url || project.local_git_url);
