@@ -111,6 +111,8 @@ import {
   buildComputerOneClickConnectCommand,
   buildComputerRunnerRegisterBashCommand,
   buildComputerRunnerRegisterCommand,
+  buildComputerRunnerWatchServiceBashCommand,
+  buildComputerRunnerWatchServiceCommand,
   buildComputerRunnerWatchBashCommand,
   buildComputerRunnerWatchCommand,
   buildRunnerScriptUrl,
@@ -11237,6 +11239,12 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
       executeProviderCli: true,
       pollSeconds: nodeAutomationHeartbeatSeconds,
     });
+    const runnerWatchServiceCommand = buildComputerRunnerWatchServiceCommand(serverUrl, projectId, node ?? {}, runnerId, {
+      pollSeconds: nodeAutomationHeartbeatSeconds,
+    });
+    const runnerWatchServiceBashCommand = buildComputerRunnerWatchServiceBashCommand(serverUrl, projectId, node ?? {}, runnerId, {
+      pollSeconds: nodeAutomationHeartbeatSeconds,
+    });
     const registerCommand = visiblePairingToken
       ? buildComputerRunnerRegisterCommand(serverUrl, node ?? {}, visiblePairingToken, runnerId)
       : "";
@@ -11298,6 +11306,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
               <li>Claude：同样优先同步真实线程；当前电脑暂时没有会话时，也会保留可继续绑定的位置。</li>
               <li>不开自动化：平台只发送并执行当前这一条指令，目标线程回一次最终回复后结束。</li>
               <li>开自动化：再运行“自动化心跳 / 持续接单”命令，窗口保持打开；默认只做最小回执和本机任务提示，不替你做高风险执行。</li>
+              <li>要长期稳定：用“后台守护 / 开机自启”命令，Windows 用计划任务，Linux / macOS 优先用 systemd 用户服务，终端关闭后也会自动重连。</li>
               <li>如果要让本机 AI 工具自动产出最终回复，必须使用高风险命令，并先确认该电脑适合执行。</li>
               <li>每次复制下面命令都会重新下载平台当前最新版脚本，不依赖旧聊天记录。</li>
             </ul>
@@ -11363,6 +11372,13 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
               这条命令会复用已绑定 runner，并持续心跳、轮询平台 inbox。不开 NPC 自动化时不要运行它；
               不然每条平台指令都会被当成持续协作来处理，容易浪费 token。
             </p>
+          <div className={styles.noticeCard} data-computer-runner-persistence-note={nodeId}>
+            <strong>为什么会断线？</strong>
+            <p>
+              普通持续接单依赖当前终端窗口；窗口关闭、电脑休眠、网络断开超过几分钟，平台就会把它标成“等待电脑恢复”。
+              要让它长期稳定，用下面的“后台守护 / 开机自启”。扫描到线程只代表平台看见过线程，不代表 runner 正在接单。
+            </p>
+          </div>
           <p className={styles.microCopy}>
             当前建议心跳间隔：{nodeAutomationHeartbeatSeconds} 秒。这个值来自本电脑已绑定 NPC 里最激进的心跳配置；如果没有 NPC 配置，则用默认 60 秒。
           </p>
@@ -11374,6 +11390,15 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
           <pre className={styles.commandBlock} data-computer-watch-command={nodeId}><code>{runnerWatchCommand}</code></pre>
             <p className={styles.microCopy}><strong>Linux / macOS：</strong>持续心跳 / 接单。</p>
             <pre className={styles.commandBlock} data-computer-watch-linux-command={nodeId}><code>{runnerWatchBashCommand}</code></pre>
+            <details className={styles.adapterCommandCard} open={Boolean(reconnectMode)}>
+              <summary>后台守护 / 开机自启（推荐长期接单）</summary>
+              <p className={styles.microCopy}>
+                这组命令会把安全持续接单注册成后台守护。Windows 会创建当前用户登录后自动启动的计划任务；Linux / macOS 会优先创建 systemd 用户服务，环境不支持时用 nohup 兜底。
+              </p>
+              <pre className={styles.commandBlock} data-computer-watch-service-command={nodeId}><code>{runnerWatchServiceCommand}</code></pre>
+              <p className={styles.microCopy}><strong>Linux / macOS：</strong>systemd 用户服务；不支持时自动改用 nohup 后台进程。</p>
+              <pre className={styles.commandBlock} data-computer-watch-service-linux-command={nodeId}><code>{runnerWatchServiceBashCommand}</code></pre>
+            </details>
             <details className={styles.adapterCommandCard}>
               <summary>高风险：允许本机 AI CLI 自动执行并回最终回复</summary>
               <p className={styles.microCopy}>

@@ -34,6 +34,22 @@ function powerShellQuoted(value: unknown) {
   return `'${text(value, "").replace(/'/g, "''")}'`;
 }
 
+function powerShellDoubleQuoted(value: unknown) {
+  return `"${text(value, "").replace(/`/g, "``").replace(/\$/g, "`$").replace(/"/g, '`"')}"`;
+}
+
+function powerShellHereString(value: unknown) {
+  return `@'\n${text(value, "").replace(/'@/g, "' + '@' + '")}\n'@`;
+}
+
+function bashDoubleQuoted(value: unknown) {
+  return `"${text(value, "").replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\$/g, "\\$").replace(/`/g, "\\`")}"`;
+}
+
+function bashSingleLine(value: unknown) {
+  return text(value, "").replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
+}
+
 export function buildRunnerScriptUrl(webBaseUrl: string, scriptName: string) {
   const base = text(webBaseUrl, "http://127.0.0.1:3000")
     .replace(/\/+$/, "")
@@ -355,6 +371,107 @@ export function buildComputerRunnerWatchBashCommand(
     args.push(["--workspace-root", workspaceRoot]);
   }
   return buildBashRunnerScriptCommand(serverUrl, "connect-ai-collab-runner.sh", args);
+}
+
+export function buildComputerRunnerWatchServiceCommand(
+  serverUrl: string,
+  projectId: string,
+  node: AnyRecord,
+  runnerId: string,
+  options: { executeProviderCli?: boolean; pollSeconds?: number | null } = {},
+) {
+  const apiBaseUrl = buildRunnerApiBaseUrl(serverUrl);
+  const webBaseUrl = buildRunnerScriptUrl(serverUrl, "connect-ai-collab-runner.ps1").replace(/\/downloads\/runner\/connect-ai-collab-runner\.ps1$/, "");
+  const nodeId = text(node.id ?? node.node_id ?? node.name ?? node.label, "computer");
+  const runnerName = `${text(node.label ?? node.name, nodeId)} Runner`;
+  const workspaceRoot = text(node.git_root ?? node.workspace_root, "");
+  const slug = normalizeComputerRunnerSlug(`${nodeId}-${runnerId}`);
+  const taskName = `AI Collab Runner ${slug}`;
+  const argLines = [
+    `  -Server ${powerShellQuoted(apiBaseUrl)}`,
+    `  -WebBaseUrl ${powerShellQuoted(webBaseUrl)}`,
+    `  -PairingToken ${powerShellQuoted("already-bound-runner-reuse")}`,
+    `  -ComputerNodeId ${powerShellQuoted(nodeId)}`,
+    `  -RunnerName ${powerShellQuoted(runnerName)}`,
+    `  -RunnerId ${powerShellQuoted(runnerId)}`,
+    `  -ProjectId ${powerShellQuoted(projectId)}`,
+    "  -SkipCodex",
+    "  -SkipClaude",
+    "  -Watch",
+    `  -WatchPollSeconds ${normalizeAutomationHeartbeatSeconds(options.pollSeconds)}`,
+  ];
+  if (options.executeProviderCli) {
+    argLines.push("  -WatchExecuteProviderCli");
+  }
+  if (workspaceRoot) {
+    argLines.push(`  -WorkspaceRoot ${powerShellQuoted(workspaceRoot)}`);
+  }
+  const scriptBody = [
+    `$ErrorActionPreference = "Stop"`,
+    `$RunnerDir = Join-Path $env:USERPROFILE "ai-collab-runner"`,
+    `New-Item -ItemType Directory -Force -Path $RunnerDir | Out-Null`,
+    `$LogDir = Join-Path $RunnerDir "logs"`,
+    `New-Item -ItemType Directory -Force -Path $LogDir | Out-Null`,
+    `$Script = Join-Path $RunnerDir "connect-ai-collab-runner.ps1"`,
+    `Invoke-WebRequest -UseBasicParsing -Uri ${powerShellQuoted(buildRunnerScriptUrl(serverUrl, "connect-ai-collab-runner.ps1"))} -OutFile $Script`,
+    `Set-Location $env:USERPROFILE`,
+    `& $Script \``,
+    argLines.join(" `\n"),
+  ].join("\n");
+  const commandBody = [
+    `$RunnerDir = Join-Path $env:USERPROFILE "ai-collab-runner"`,
+    `New-Item -ItemType Directory -Force -Path $RunnerDir | Out-Null`,
+    `$WatchScript = Join-Path $RunnerDir "runner-watch-${slug}.ps1"`,
+    `Set-Content -Encoding UTF8 -LiteralPath $WatchScript -Value ${powerShellHereString(scriptBody)}`,
+    `$Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument ("-NoProfile -ExecutionPolicy Bypass -File " + $WatchScript)`,
+    `$Trigger = New-ScheduledTaskTrigger -AtLogOn`,
+    `$Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1)`,
+    `Register-ScheduledTask -TaskName ${powerShellQuoted(taskName)} -Action $Action -Trigger $Trigger -Settings $Settings -Force | Out-Null`,
+    `Start-ScheduledTask -TaskName ${powerShellQuoted(taskName)}`,
+    `Write-Host "AI 协作平台后台守护已启动。任务名：${taskName}；日志目录：$RunnerDir\\logs"`,
+  ].join("; ");
+  return [
+    "powershell",
+    "-NoProfile",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-Command",
+    adapterShellArg(`& { ${commandBody} }`),
+  ].join(" ");
+}
+
+export function buildComputerRunnerWatchServiceBashCommand(
+  serverUrl: string,
+  projectId: string,
+  node: AnyRecord,
+  runnerId: string,
+  options: { executeProviderCli?: boolean; pollSeconds?: number | null } = {},
+) {
+  const watchCommand = bashSingleLine(buildComputerRunnerWatchBashCommand(serverUrl, projectId, node, runnerId, options));
+  const nodeId = text(node.id ?? node.node_id ?? node.name ?? node.label, "computer");
+  const slug = normalizeComputerRunnerSlug(`${nodeId}-${runnerId}`);
+  const serviceName = `ai-collab-runner-${slug}.service`;
+  const serviceBody = [
+    "[Unit]",
+    `Description=AI Collab Runner ${slug}`,
+    "After=network-online.target",
+    "",
+    "[Service]",
+    "Type=simple",
+    "WorkingDirectory=%h",
+    `ExecStart=/usr/bin/env bash -lc ${bashDoubleQuoted(watchCommand)}`,
+    "Restart=always",
+    "RestartSec=5",
+    "",
+    "[Install]",
+    "WantedBy=default.target",
+  ].join("\n");
+  const fallback = `mkdir -p "$HOME/ai-collab-runner/logs" && nohup bash -lc ${bashSingleQuoted(watchCommand)} >> "$HOME/ai-collab-runner/logs/runner-watch-${slug}.log" 2>&1 & echo "AI 协作平台后台守护已用 nohup 启动；日志：$HOME/ai-collab-runner/logs/runner-watch-${slug}.log"`;
+  return [
+    `mkdir -p "$HOME/.config/systemd/user" "$HOME/ai-collab-runner/logs"`,
+    `cat > "$HOME/.config/systemd/user/${serviceName}" <<'AI_COLLAB_RUNNER_SERVICE'\n${serviceBody}\nAI_COLLAB_RUNNER_SERVICE`,
+    `if command -v systemctl >/dev/null 2>&1 && systemctl --user daemon-reload >/dev/null 2>&1; then systemctl --user enable --now ${bashSingleQuoted(serviceName)} && echo "AI 协作平台后台守护已启动：${serviceName}"; else ${fallback}; fi`,
+  ].join(" && ");
 }
 
 export function buildComputerCodexThreadSyncCommand(

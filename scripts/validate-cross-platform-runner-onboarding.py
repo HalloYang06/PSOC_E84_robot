@@ -45,6 +45,8 @@ def main() -> int:
         "buildRunnerApiBaseUrl",
         "buildComputerOneClickConnectBashCommand",
         "buildComputerRunnerWatchBashCommand",
+        "buildComputerRunnerWatchServiceCommand",
+        "buildComputerRunnerWatchServiceBashCommand",
         "buildComputerRunnerRegisterBashCommand",
         "buildWorkstationAdapterBashCommand",
         "buildComputerCodexThreadSyncBashCommand",
@@ -105,6 +107,8 @@ def main() -> int:
     for test_attr in (
         "data-computer-one-click-connect-linux-command",
         "data-computer-watch-linux-command",
+        "data-computer-watch-service-command",
+        "data-computer-watch-service-linux-command",
         "data-computer-watch-execute-linux-command",
         "data-computer-codex-sync-linux-command",
         "data-computer-claude-sync-linux-command",
@@ -117,6 +121,7 @@ def main() -> int:
 
     for token in (
         "接入成功后要持续接单",
+        "后台守护 / 开机自启",
         "默认只做最小回执和本机任务提示",
         "linuxCommand={pairingBashCommand}",
         "linuxWatchCommand={pairingWatchBashCommand}",
@@ -127,6 +132,17 @@ def main() -> int:
     assert_contains(shell, "data-token-desktop-watch-card", "desktop-visible dispatch command is separated from safe watch")
     assert_contains(shell, "真实硬件、部署、Git 回退等高风险动作仍然需要人工确认", "desktop-visible dispatch safety copy")
     assert_contains(shell, "{ watch: true }", "safe watch command remains the default pairing watch")
+    assert_contains(shell, "扫描到线程只代表平台看见过线程，不代表 runner 正在接单", "runner persistence state copy")
+
+    for token in (
+        "New-ScheduledTaskAction",
+        "Register-ScheduledTask",
+        "Start-ScheduledTask",
+        "systemctl --user enable --now",
+        "nohup bash -lc",
+        "already-bound-runner-reuse",
+    ):
+        assert_contains(commands, token, f"persistent runner command token {token}")
 
     for token in (
         "curl -fsSL",

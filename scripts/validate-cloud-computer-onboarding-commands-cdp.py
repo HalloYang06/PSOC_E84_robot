@@ -208,7 +208,9 @@ def main() -> int:
                     && Boolean(document.querySelector(`[data-computer-one-click-connect-command="${{node}}"]`))
                     && Boolean(document.querySelector(`[data-computer-one-click-connect-linux-command="${{node}}"]`))
                     && Boolean(document.querySelector(`[data-computer-watch-command="${{node}}"]`))
-                    && Boolean(document.querySelector(`[data-computer-watch-linux-command="${{node}}"]`));
+                    && Boolean(document.querySelector(`[data-computer-watch-linux-command="${{node}}"]`))
+                    && Boolean(document.querySelector(`[data-computer-watch-service-command="${{node}}"]`))
+                    && Boolean(document.querySelector(`[data-computer-watch-service-linux-command="${{node}}"]`));
                 }})()
                 """,
                 timeout_seconds=45,
@@ -227,6 +229,8 @@ def main() -> int:
                     oneClickLinux: read(`[data-computer-one-click-connect-linux-command="${{node}}"]`),
                     watchWindows: read(`[data-computer-watch-command="${{node}}"]`),
                     watchLinux: read(`[data-computer-watch-linux-command="${{node}}"]`),
+                    watchServiceWindows: read(`[data-computer-watch-service-command="${{node}}"]`),
+                    watchServiceLinux: read(`[data-computer-watch-service-linux-command="${{node}}"]`),
                     tokenWatchWindows: read(`[data-token-watch-command="computer-pairing"]`),
                     tokenWatchLinux: read(`[data-token-linux-watch-command="computer-pairing"]`),
                     pageText: document.body ? document.body.innerText.slice(0, 3000) : '',
@@ -262,6 +266,8 @@ def main() -> int:
             "oneClickLinux": ["connect-ai-collab-runner.sh", expected_web, expected_api, "--server", "--project-id"],
             "watchWindows": ["connect-ai-collab-runner.ps1", expected_web, expected_api, "-Watch", "-SkipCodex", "-SkipClaude"],
             "watchLinux": ["connect-ai-collab-runner.sh", expected_web, expected_api, "--watch", "--skip-codex", "--skip-claude"],
+            "watchServiceWindows": ["Register-ScheduledTask", "Start-ScheduledTask", "connect-ai-collab-runner.ps1", expected_web, expected_api, "-Watch"],
+            "watchServiceLinux": ["systemctl --user enable --now", "nohup bash -lc", "connect-ai-collab-runner.sh", expected_web, expected_api, "--watch"],
             "tokenWatchWindows": ["connect-ai-collab-runner.ps1", expected_web, expected_api, "-Watch"],
             "tokenWatchLinux": ["connect-ai-collab-runner.sh", expected_web, expected_api, "--watch"],
         }
@@ -276,6 +282,8 @@ def main() -> int:
         unsafe_watch_tokens = {
             "watchWindows": "-WatchExecuteProviderCli",
             "watchLinux": "--watch-execute-provider-cli",
+            "watchServiceWindows": "-WatchExecuteProviderCli",
+            "watchServiceLinux": "--watch-execute-provider-cli",
             "tokenWatchWindows": "-WatchExecuteProviderCli",
             "tokenWatchLinux": "--watch-execute-provider-cli",
         }
