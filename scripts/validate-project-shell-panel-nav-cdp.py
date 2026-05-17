@@ -261,7 +261,12 @@ def main() -> int:
               const root = document.scrollingElement || document.documentElement;
               return {
                 hasOpsWorkbench: text.includes('开发工坊 / 主页面') && text.includes('配置资源，然后进入对应工作台干活'),
-                hasLegacyMapPrompt: text.includes('靠近粉色点后按 Enter') || text.includes('方向键移动'),
+                hasLegacyMapPrompt: text.includes('靠近粉色点后按 Enter') ||
+                  text.includes('方向键移动') ||
+                  text.includes('2D 开发者模式') ||
+                  text.includes('预览试验皮肤') ||
+                  text.includes('显示协作焦点') ||
+                  text.includes('隐藏协作焦点'),
                 horizontalOverflow: Math.max(0, root.scrollWidth - root.clientWidth),
               };
             })()

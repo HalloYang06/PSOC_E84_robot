@@ -15561,7 +15561,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
       <main className={shellClassName} data-game-style-pack={skinPreviewEnabled ? "a-agent-lab" : "harvest-current"}>
       <header className={styles.topBar}>
         <div className={styles.projectMeta}>
-          <span className={styles.badge}>{selectedMode?.active ? "2D 开发者模式" : `${selectedMode?.label ?? "未来模式"}`}</span>
+          <span className={styles.badge}>主页面 / 资源配置</span>
           <strong>{projectName}</strong>
           <small>{recommendedAction}</small>
           {selectedMode ? (
@@ -15870,7 +15870,6 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             </div>
           ) : null}
           <span className={styles.inlineMapLink}>已锁定：AI 合作平台项目入口</span>
-          {skinPreviewEnabled ? <span className={styles.stylePackNotice}>试验皮肤：A Agent Lab，只预览 UI 壳层</span> : null}
         </div>
 
         <div className={styles.actions}>
@@ -15883,9 +15882,6 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
           {selectedModeDockShellHref ? (
             <Link href={selectedModeDockShellHref}>打开当前模式占位壳</Link>
           ) : null}
-          <button type="button" className={styles.panelButton} onClick={toggleSkinPreview}>
-            {skinPreviewEnabled ? "关闭试验皮肤" : "预览试验皮肤"}
-          </button>
           <Link href="/projects">项目列表</Link>
         </div>
       </header>
@@ -15901,15 +15897,6 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             aria-hidden="true"
             tabIndex={-1}
           />
-
-          <button
-            type="button"
-            className={styles.focusRailToggle}
-            aria-expanded={focusRailOpen}
-            onClick={() => setFocusRailOpen((value) => !value)}
-          >
-            {focusRailOpen ? "隐藏协作焦点" : "显示协作焦点"}
-          </button>
 
           {runnerQueueAttention ? (
             <button
@@ -16028,18 +16015,6 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             </section>
           ) : null}
 
-          {focusRailOpen ? (
-            <div className={styles.focusRail} aria-label="当前协作焦点">
-              {summaryCards.map((card, index) => (
-                <article key={card.id} className={styles.focusCard} data-focus-index={index + 1}>
-                  <span>{card.title}</span>
-                  <strong>{card.body}</strong>
-                  <p>{card.meta}</p>
-                </article>
-              ))}
-            </div>
-          ) : null}
-
           {humanPartyHud.length ? (
             <aside
               className={`${styles.partyHud} ${styles.partyHudLauncher}`}
@@ -16129,7 +16104,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             主页面只保留资源配置；具体工作进入右侧功能或专业工作台。
           </div>
 
-          {starterDrawerOpen ? (
+          {starterDrawerOpen && panelOpen ? (
             <aside className={styles.starterDrawer} data-guide="starter-drawer">
               <div className={styles.starterDrawerHead}>
                 <div>
@@ -16186,7 +16161,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                 ))}
               </div>
             </aside>
-          ) : (
+          ) : panelOpen ? (
             <button
               type="button"
               className={styles.starterHandle}
@@ -16194,7 +16169,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             >
               新手任务
             </button>
-          )}
+          ) : null}
 
           {!panelOpen ? (
             <div className={styles.gameDock} aria-label="一级管理入口">
