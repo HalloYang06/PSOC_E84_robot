@@ -294,6 +294,20 @@ def main() -> int:
         step("exception", "failed", message=str(exc))
         return 1
     finally:
+        if token and command_id and not report["ok"]:
+            try:
+                status, payload = request_json(
+                    api_url(api_base, f"/api/collaboration/messages/{quote(command_id)}"),
+                    method="PATCH",
+                    token=token,
+                    payload={
+                        "status": "cancelled",
+                        "body": "隔离验收未完成，测试消息已自动关闭，避免留在用户队列。",
+                    },
+                )
+                step("cleanup_command", "ok" if status == 200 else "warning", http_status=status, payload=payload)
+            except Exception as exc:  # noqa: BLE001
+                step("cleanup_command", "warning", message=str(exc))
         if token and not args.keep_fixtures:
             for path, name in (
                 (f"/api/collaboration/projects/{quote(args.project_id)}/thread-workstations/{quote(workstation_id)}", "cleanup_workstation"),
