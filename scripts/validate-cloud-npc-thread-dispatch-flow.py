@@ -222,7 +222,7 @@ def create_or_update_npc(
         "source_thread_id": thread_id,
         "bound_thread_id": thread_id,
         "target_thread_id": thread_id,
-        "responsibility": f"机械臂平台协作 {number} 号线程，绑定扫描到的线程：{thread_name}",
+        "responsibility": f"AI 协作平台 {number} 号线程，绑定扫描到的线程：{thread_name}",
         "model": "gpt-5.4",
         "permission_level": "L2",
         "status": "active",
@@ -421,9 +421,13 @@ def main() -> int:
                     }
                 )
         report["offline_bound_targets"] = offline_bound_targets
-        if offline_bound_targets:
+        if offline_bound_targets and args.allow_offline_dispatch:
             report["warnings"].append(
-                "绑定完成，但目标电脑当前没有常驻接单；派活会进入队列，需在对应电脑重新运行持续接单命令。"
+                "绑定完成，但目标电脑当前没有常驻接单；本次按参数允许离线派活，测试消息会进入队列并按清理参数处理。"
+            )
+        elif offline_bound_targets:
+            report["warnings"].append(
+                "绑定完成，但目标电脑当前没有常驻接单；本次只验证绑定和状态，不创建会滞留的测试派单。"
             )
         step("check_runner_readiness", "ok" if not offline_bound_targets else "warning", offline_bound_targets=offline_bound_targets)
 
@@ -443,9 +447,6 @@ def main() -> int:
                     "target_name": text(target.get("name")),
                     "target_node_id": target_node_id,
                 }
-                report["warnings"].append(
-                    "目标电脑当前没有常驻接单，本次只验证绑定和状态，不创建会滞留的测试派单。"
-                )
                 step("dispatch_smoke_task", "skipped", dispatch=report["dispatch"])
             else:
                 title = f"1-6号线程派活体验 {stamp}"
