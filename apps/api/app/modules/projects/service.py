@@ -56,15 +56,15 @@ def _runner_watch_snapshot(row: ProjectComputerNode, *, now: datetime) -> dict[s
     if not runner_id:
         watch_state = "unbound"
         effective_status = "offline"
-        watch_detail = "This computer node has no runner binding yet."
+        watch_detail = "这台电脑还没有完成执行程序接入。"
     elif runner is None:
         watch_state = "runner_missing"
         effective_status = "offline"
-        watch_detail = "The bound runner record was not found."
+        watch_detail = "这台电脑绑定的执行程序记录不存在，请重新接入。"
     elif not last_heartbeat_at:
         watch_state = "not_started"
         effective_status = runner_status or "offline"
-        watch_detail = "The runner is registered, but no heartbeat has been received."
+        watch_detail = "执行程序已注册，但还没有持续心跳。"
     elif heartbeat_age_seconds is not None and heartbeat_age_seconds <= RUNNER_WATCH_FRESH_SECONDS and runner_status in {
         "online",
         "ready",
@@ -72,15 +72,15 @@ def _runner_watch_snapshot(row: ProjectComputerNode, *, now: datetime) -> dict[s
     }:
         watch_state = "watching"
         effective_status = "online"
-        watch_detail = "The runner is actively heartbeating and can poll platform work."
+        watch_detail = "执行程序正在持续心跳，可以领取平台任务。"
     elif runner_status not in {"online", "ready", "active"}:
         watch_state = "runner_offline"
         effective_status = runner_status or "offline"
-        watch_detail = "The runner is not online, so queued platform work will not be picked up."
+        watch_detail = "执行程序当前不在线，平台任务会继续排队。"
     else:
         watch_state = "stale"
         effective_status = "stale"
-        watch_detail = "The runner heartbeat is stale; restart the runner in watch mode."
+        watch_detail = "执行程序心跳已超时，请重新运行持续接单命令。"
 
     return {
         "runner_name": runner_name,

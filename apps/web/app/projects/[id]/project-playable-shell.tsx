@@ -1649,7 +1649,7 @@ function threadBootstrapBlocker(thread: AnyRecord) {
   const providerId = platformProviderIdFromThread(thread);
   const providerLabel = platformProviderLabelFromThread(thread);
   if (!supportsPlatformNpcCreation(providerId)) {
-    return `当前先展示并识别 ${providerLabel} 线程；等它接入统一 adapter 后，这里会直接开放创建。`;
+    return `当前先展示并识别 ${providerLabel} 线程；等它接入统一执行通道后，这里会直接开放创建。`;
   }
   if (providerId === "claude") {
     if (isManualUserThreadEntry(thread)) return "";
@@ -2976,7 +2976,7 @@ function buildWorkstationRecoverySummary(options: {
       severity: "critical",
       label: "派单后还没回信",
       summary: "平台已经把任务发到这条线程，但它还没有回过最小回执或最终回复。",
-      nextStep: hasToken ? "先确认目标终端在线，再重跑接入命令；如果仍然没回，轮换工位令牌后重连 adapter。" : "先生成工位令牌并运行接入命令，再让线程先回一条最小回执。",
+      nextStep: hasToken ? "先确认目标终端在线，再重跑接入命令；如果仍然没回，轮换工位令牌后重新连接执行通道。" : "先生成工位令牌并运行接入命令，再让线程先回一条最小回执。",
       needsAttention: true,
       suggestTokenRotation: true,
       suggestSeatCalibration: shouldOfferCalibration,
@@ -2989,7 +2989,7 @@ function buildWorkstationRecoverySummary(options: {
       severity: "critical",
       label: "命令后长期未更新",
       summary: `${activityProfile.activityFreshnessLabel}，而且平台最近一次派单时间晚于最后协作信号，说明这条线程更像是派单后掉线了。`,
-      nextStep: hasToken ? "优先轮换工位令牌并重连 adapter，再检查目标终端是否卡住或切到别的目录。" : "先补工位令牌，再让目标电脑按接入命令重新上线。",
+      nextStep: hasToken ? "优先轮换工位令牌并重新连接执行通道，再检查目标终端是否卡住或切到别的目录。" : "先补工位令牌，再让目标电脑按接入命令重新上线。",
       needsAttention: true,
       suggestTokenRotation: true,
       suggestSeatCalibration: shouldOfferCalibration,
@@ -3006,7 +3006,7 @@ function buildWorkstationRecoverySummary(options: {
         : hasAck
           ? `这条线程上次只回过最小回执，但现在 ${activityProfile.activityFreshnessLabel}。`
           : `这条线程 ${activityProfile.activityFreshnessLabel}。`,
-      nextStep: hasFinalReply ? "如果它后面还要继续接任务，先重连 adapter 保持在线；如果暂时不用，可以保留现状。" : "先确认终端在线，再补一条最小回执，避免平台误判它还在处理中。",
+      nextStep: hasFinalReply ? "如果它后面还要继续接任务，先重新连接执行通道保持在线；如果暂时不用，可以保留现状。" : "先确认终端在线，再补一条最小回执，避免平台误判它还在处理中。",
       needsAttention: true,
       suggestTokenRotation: true,
       suggestSeatCalibration: shouldOfferCalibration,
@@ -3018,7 +3018,7 @@ function buildWorkstationRecoverySummary(options: {
       code: "token-missing",
       severity: "warning",
       label: "还没签发接入令牌",
-      summary: "这条线程已经出现在机房里，但还没有稳定的 adapter 令牌，跨电脑接入还不够稳。",
+      summary: "这条线程已经出现在机房里，但还没有稳定的工位接入令牌，跨电脑接入还不够稳。",
       nextStep: "先生成工位令牌，再到目标电脑运行接入命令，把这条线程纳入平台统一消息格式。",
       needsAttention: hasBoundSeat || hasCommand || hasSignal,
       suggestTokenRotation: true,
@@ -3081,7 +3081,7 @@ function machineRoomRecoveryCommandBody(thread: AnyRecord, recoveryProfile: Retu
     `目标线程：${threadId}`,
     `当前恢复判断：${recoveryProfile.label}`,
     `平台观察：${recoveryProfile.summary}`,
-    "请先回一条最小回执，说明终端是否在线、当前目录是否正确、adapter 是否还在工作。",
+    "请先回一条最小回执，说明终端是否在线、当前目录是否正确、执行通道是否还在工作。",
     "如果线程可以继续接任务，再补一条最终回复，明确说明“当前可继续协作”或“当前阻塞点是什么”。",
   ].join("\n");
 }
@@ -3145,7 +3145,7 @@ function runnerWatchInfo(node: AnyRecord | null | undefined) {
       active: true,
       needsAttention: false,
       label: "常驻接单中",
-      detail: ageLabel ? `最近心跳 ${ageLabel}` : "runner 正在 watch 平台任务",
+      detail: ageLabel ? `最近心跳 ${ageLabel}` : "执行程序正在持续监听平台任务",
     };
   }
   if (state === "stale") {
@@ -3154,7 +3154,7 @@ function runnerWatchInfo(node: AnyRecord | null | undefined) {
       active: false,
       needsAttention: true,
       label: "心跳超时",
-      detail: ageLabel ? `最后心跳 ${ageLabel}，请重启 -Watch` : "请重启自动化心跳 / 持续接单命令",
+      detail: ageLabel ? `最后心跳 ${ageLabel}，请重新运行持续接单命令` : "请重新运行自动化心跳 / 持续接单命令",
     };
   }
   if (state === "runner_offline") {
@@ -3162,8 +3162,8 @@ function runnerWatchInfo(node: AnyRecord | null | undefined) {
       state,
       active: false,
       needsAttention: true,
-      label: "Runner 离线",
-      detail: "runner 不是在线状态，平台指令只会排队",
+      label: "执行程序离线",
+      detail: "执行程序不在线，平台指令只会排队等待",
     };
   }
   if (state === "unbound") {
@@ -3171,7 +3171,7 @@ function runnerWatchInfo(node: AnyRecord | null | undefined) {
       state,
       active: false,
       needsAttention: false,
-      label: "未绑定 Runner",
+      label: "未接入执行程序",
       detail: "先生成配对令牌并运行一键接入命令",
     };
   }
@@ -3180,7 +3180,7 @@ function runnerWatchInfo(node: AnyRecord | null | undefined) {
     active: false,
     needsAttention: true,
     label: "已登记未监听",
-    detail: lastHeartbeat ? `最近心跳 ${formatStamp(lastHeartbeat)}，但没有常驻监听` : "已注册或已扫描，但没有收到 watch 心跳",
+    detail: lastHeartbeat ? `最近心跳 ${formatStamp(lastHeartbeat)}，但没有持续监听` : "已注册或已扫描，但没有收到持续接单心跳",
   };
 }
 
@@ -5640,7 +5640,7 @@ function TokenResultCard({
           </summary>
           <p style={{ margin: "6px 0", fontWeight: 400, opacity: 0.9 }}>
             上面&quot;一键接入&quot;只跑一次就退出。要让平台派单 / 指令实时进入本机 Claude / Codex CLI，
-            必须用下面这条带 <code>-Watch -WatchExecuteProviderCli</code> 的命令，并保持窗口运行。
+            必须用下面这条高风险持续执行命令，并保持窗口运行。
           </p>
           <textarea
             readOnly
@@ -9182,7 +9182,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                       data-exchange-watch-target-node={text(targetLink?.computerNodeId, "")}
                     >
                       <span className={`${styles.miniChip} ${styles.miniChipWarning}`}>
-                        已排队但目标电脑未常驻接单，请在对应电脑运行 -Watch 命令
+                        已排队但目标电脑未常驻接单，请在对应电脑运行持续接单命令
                       </span>
                       <button
                         type="button"
@@ -9190,7 +9190,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                         data-exchange-open-watch-command={text(targetLink?.computerNodeId, "")}
                         onClick={() => openManagerDrawer("computer-threads", text(targetLink?.computerNodeId, ""))}
                       >
-                        去复制 Watch 命令
+                        去复制持续接单命令
                       </button>
                     </div>
                   ) : null}
@@ -11153,11 +11153,11 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
               </p>
             </div>
             <ul>
-              <li>Codex：先找 <code>.codex/session_index.jsonl</code>，没有索引就继续扫 <code>.codex/sessions</code>，两者都没有才生成 <code>codex-manual-{normalizeComputerRunnerSlug(nodeId)}</code>。</li>
-              <li>Claude：找不到 <code>.claude</code> 或 live session 时生成 <code>claude-manual-{normalizeComputerRunnerSlug(nodeId)}</code>。</li>
+              <li>Codex：优先同步这台电脑已经打开过的桌面线程；找不到时会生成一个“待绑定线程槽”，方便后续手动绑定。</li>
+              <li>Claude：同样优先同步真实线程；当前电脑暂时没有会话时，也会保留可继续绑定的位置。</li>
               <li>不开自动化：平台只发送并执行当前这一条指令，目标线程回一次最终回复后结束。</li>
-              <li>开自动化：再运行“自动化心跳 / 持续接单”命令，窗口保持打开；默认只做最小回执和写入本机 inbox prompt 文件。</li>
-              <li>如果要让本机 AI CLI 自动产出最终回复，必须使用带 <code>-WatchExecuteProviderCli</code> 的高风险命令，并先确认该电脑适合执行。</li>
+              <li>开自动化：再运行“自动化心跳 / 持续接单”命令，窗口保持打开；默认只做最小回执和本机任务提示，不替你做高风险执行。</li>
+              <li>如果要让本机 AI 工具自动产出最终回复，必须使用高风险命令，并先确认该电脑适合执行。</li>
               <li>每次复制下面命令都会重新下载平台当前最新版脚本，不依赖旧聊天记录。</li>
             </ul>
             <div className={styles.runnerScriptLinkGrid}>
@@ -11236,7 +11236,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             <details className={styles.adapterCommandCard}>
               <summary>高风险：允许本机 AI CLI 自动执行并回最终回复</summary>
               <p className={styles.microCopy}>
-                只给可信电脑使用。其它电脑做阅读类验证时，先用上面的默认心跳，让它只写 inbox prompt 和最小回执。
+                只给可信电脑使用。其它电脑做阅读类验证时，先用上面的默认心跳，让它只写任务提示和最小回执。
               </p>
               <pre className={styles.commandBlock} data-computer-watch-execute-command={nodeId}><code>{runnerWatchExecuteCommand}</code></pre>
               <p className={styles.microCopy}><strong>Linux / macOS：</strong>允许本机 AI CLI 自动执行并回最终回复。</p>
@@ -11274,7 +11274,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             <h3>{selectedNode ? text(selectedNode.label ?? selectedNode.name, selectedNodeId) : "还没有电脑"}</h3>
             <p>
               {selectedNode
-                ? `归属 ${selectedNodeOwner}${selectedNodeIsCurrentOwner ? "（当前账号）" : ""} / ${computerRegistrationLabel(selectedNode)} / Runner ${text(selectedNode.runner_id, "未绑定")} / 接单 ${selectedWatch.label} / 线程 ${selectedThreads.length} 条`
+                ? `归属 ${selectedNodeOwner}${selectedNodeIsCurrentOwner ? "（当前账号）" : ""} / ${computerRegistrationLabel(selectedNode)} / 执行程序 ${text(selectedNode.runner_id, "未接入")} / 接单 ${selectedWatch.label} / 线程 ${selectedThreads.length} 条`
                 : "先点左侧 + 添加电脑，接入后再扫描 Codex、Claude、Qwen 等线程。"}
             </p>
           </div>
@@ -11282,7 +11282,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
 
         <div className={styles.managerStatGrid}>
           <article><span>全部电脑</span><strong>{nodes.length}</strong></article>
-          <article><span>Runner 心跳</span><strong>{onlineNodes.length}</strong></article>
+          <article><span>执行程序心跳</span><strong>{onlineNodes.length}</strong></article>
           <article><span>常驻接单</span><strong>{watchReadyNodes.length}</strong></article>
           <article><span>真实线程</span><strong>{realThreadCount}</strong></article>
           <article><span>已接入玩家</span><strong>{connectedHumanPartyCount}</strong></article>
@@ -11430,7 +11430,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                     </span>
                   </div>
                   <p className={styles.computerFleetMeta}>
-                    {`Runner 心跳 ${group.onlineComputerCount}/${group.computerCount} 台 / ${group.threadCount} 条线程`}
+                    {`执行程序心跳 ${group.onlineComputerCount}/${group.computerCount} 台 / ${group.threadCount} 条线程`}
                   </p>
                   <ul className={styles.computerFleetNodeList}>
                     {group.computers.slice(0, 4).map((node, index) => {
@@ -12092,7 +12092,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
           <summary className={styles.formSectionSummary}>
             <div className={styles.formSectionText}>
               <strong>平台执行配置</strong>
-              <small>先给 AI 提供方配置默认模板，再按具体工位做覆盖。workstation adapter 现在会直接从平台读取这些值，不再要求用户在命令里手填 provider。</small>
+              <small>先给 AI 提供方配置默认模板，再按具体工位做覆盖。工位接入通道会直接从平台读取这些值，不再要求用户在命令里手填提供方。</small>
             </div>
             <span className={styles.formSectionState}>{machineRoomProviderCards.length} 个提供方 / {machineRoomExecutionWorkstations.length} 个工位</span>
           </summary>
@@ -12413,7 +12413,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                     </p>
                     <pre className={styles.commandBlock} data-adapter-linux-command={threadId}><code>{adapterBashCommand}</code></pre>
                       <p className={styles.microCopy}>
-                        这条命令会先下载最新版 adapter，再读取平台里的 provider 模板和工位覆盖；如果只是临时单机调试，再追加：<code>{executorHint}</code>
+                        这条命令会先下载最新版接入器，再读取平台里的提供方模板和工位覆盖；如果只是临时单机调试，再追加：<code>{executorHint}</code>
                       </p>
                     {executionProfile ? (
                       <>
@@ -14648,7 +14648,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
       <div className={styles.drawerStack} data-computer-threads-drawer={selectedNodeId || ""}>
         <div className={styles.drawerSubject}>
           <strong>{selectedNode ? text(selectedNode.label ?? selectedNode.name, selectedNodeId) : "未选择电脑"}</strong>
-          <p>{selectedThreads.length} 条线程 / Runner {text(selectedNode?.runner_id, "未绑定")}</p>
+          <p>{selectedThreads.length} 条线程 / 执行程序 {text(selectedNode?.runner_id, "未接入")}</p>
         </div>
         <div className={styles.managerActionGrid}>
           <form action={issueComputerNodePairingToken.bind(null, projectId, selectedNodeId)} data-computer-pairing-form={selectedNodeId || ""}>
@@ -14683,7 +14683,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             <li>
               <span>空</span>
               <strong>还没有线程</strong>
-              <p>{text(scan.status, "").toLowerCase() === "awaiting_runner" ? "这台电脑还没接入 runner。先运行上面的接入命令，再回来扫描线程。" : "先生成配对令牌，让对应电脑接入，再扫描线程。"}</p>
+              <p>{text(scan.status, "").toLowerCase() === "awaiting_runner" ? "这台电脑还没接入执行程序。先运行上面的接入命令，再回来扫描线程。" : "先生成配对令牌，让对应电脑接入，再扫描线程。"}</p>
             </li>
           )}
         </ul>
