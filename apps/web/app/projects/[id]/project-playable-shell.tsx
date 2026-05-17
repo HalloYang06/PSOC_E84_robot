@@ -15894,10 +15894,12 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
         <div className={styles.mapStage}>
           <iframe
             ref={gameFrameRef}
-            className={styles.gameFrame}
+            className={styles.legacyGameFrame}
             src={embeddedMapSrc}
-            title={`${projectName} 农场地图`}
+            title={`${projectName} 兼容地图底座`}
             onLoad={(event) => handleGameFrameLoad(event.currentTarget)}
+            aria-hidden="true"
+            tabIndex={-1}
           />
 
           <button
@@ -15927,36 +15929,102 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
           ) : null}
 
           {!panelOpen ? (
-            <section className={styles.mainControlDeck} aria-label="平台主控入口">
-              <div className={styles.mainControlHead}>
-                <div>
-                  <span>平台主控</span>
-                  <strong>接电脑、管 NPC、派任务都从这里进</strong>
+            <section className={styles.projectOpsWorkbench} aria-label="平台项目资源操作台">
+              <aside className={styles.opsObjectRail} aria-label="项目对象索引">
+                <div className={styles.opsRailHead}>
+                  <span>对象索引</span>
+                  <strong>{projectName}</strong>
                 </div>
-                <small>{`${watchReadyNodes.length}/${nodes.length} 台接单 · ${realThreadCount} 条线程 · ${queuedCollaborationCommandCount} 条排队`}</small>
-              </div>
-              <div className={styles.mainControlGrid}>
-                {mainControlPanels.map((item) => (
-                  <button
-                    key={`main-control-${item.id}`}
-                    type="button"
-                    className={styles.mainControlButton}
-                    data-main-control={item.id}
-                    onClick={() => {
-                      setPendingActionLabel(null);
-                      if (item.id === "human-party") {
-                        openHumanPartyPanel(currentHumanPartyPlayer?.id ?? humanPartyHud[0]?.id ?? "");
-                        return;
-                      }
-                      openBackpackPanel(item.id);
-                    }}
-                  >
-                    <span className={styles.mainControlIcon}>{item.icon}</span>
-                    <strong>{item.label}</strong>
-                    <small>{item.detail}</small>
-                  </button>
+                <button
+                  type="button"
+                  className={styles.opsObjectActive}
+                  onClick={() => openHumanPartyPanel(currentHumanPartyPlayer?.id ?? humanPartyHud[0]?.id ?? "")}
+                >
+                  <span className={styles.opsObjectIcon}>主</span>
+                  <strong>主角管理</strong>
+                  <small>{`${projectPresentHumanPartyCount}/${humanPartyHud.length || 0} 项目在线`}</small>
+                </button>
+                <button type="button" className={styles.opsObjectItem} onClick={() => openBackpackPanel("npc-create")}>
+                  <span className={styles.opsObjectIcon}>N</span>
+                  <strong>NPC 管理</strong>
+                  <small>{`${mapSeatPayload.length || codexSeats.length} 个长期席位 · ${realThreadCount} 条线程`}</small>
+                </button>
+                <button type="button" className={styles.opsObjectItem} onClick={() => openBackpackPanel("computers")}>
+                  <span className={styles.opsObjectIcon}>电</span>
+                  <strong>电脑接入</strong>
+                  <small>{`${watchReadyNodes.length}/${nodes.length} 台持续接单`}</small>
+                </button>
+                <button type="button" className={styles.opsObjectItem} onClick={() => openBackpackPanel("machine-room")}>
+                  <span className={styles.opsObjectIcon}>线</span>
+                  <strong>线程调试</strong>
+                  <small>{`${realThreadCount} 条扫描线程`}</small>
+                </button>
+              </aside>
+
+              <section className={styles.opsCenter} aria-label="当前工作内容">
+                <div className={styles.opsCenterHead}>
+                  <div>
+                    <span>开发工坊 / 主页面</span>
+                    <h2>配置资源，然后进入对应工作台干活</h2>
+                    <p>主页面只保留项目资源和派工前置检查；数据、实验、机器人和证据链进入各自工作台。</p>
+                  </div>
+                  <div className={styles.opsStateCluster}>
+                    <span>{`${watchReadyNodes.length}/${nodes.length} 接单`}</span>
+                    <span>{`${realThreadCount} 线程`}</span>
+                    <span>{`${queuedCollaborationCommandCount} 排队`}</span>
+                  </div>
+                </div>
+                <div className={styles.opsPrimaryGrid}>
+                  {mainControlPanels.map((item) => (
+                    <button
+                      key={`main-control-${item.id}`}
+                      type="button"
+                      className={styles.mainControlButton}
+                      data-main-control={item.id}
+                      onClick={() => {
+                        setPendingActionLabel(null);
+                        if (item.id === "human-party") {
+                          openHumanPartyPanel(currentHumanPartyPlayer?.id ?? humanPartyHud[0]?.id ?? "");
+                          return;
+                        }
+                        openBackpackPanel(item.id);
+                      }}
+                    >
+                      <span className={styles.mainControlIcon}>{item.icon}</span>
+                      <strong>{item.label}</strong>
+                      <small>{item.detail}</small>
+                    </button>
+                  ))}
+                </div>
+                <div className={styles.opsJumpStrip} aria-label="专业工作台入口">
+                  <Link href={`/projects/${projectId}/cockpit`}>驾驶舱</Link>
+                  <Link href={`/projects/${projectId}/workbench`}>NPC 工作台</Link>
+                  <Link href={`/projects/${projectId}/datasets`}>数据工厂</Link>
+                  <Link href={`/projects/${projectId}/ai-lab`}>AI 实验室</Link>
+                  <Link href={`/projects/${projectId}/robotics`}>机器人现场</Link>
+                  <Link href={`/projects/${projectId}/observability`}>观测台</Link>
+                  <Link href={`/projects/${projectId}/skill-forge`}>能力工坊</Link>
+                </div>
+              </section>
+
+              <aside className={styles.opsToolRail} aria-label="右侧功能按钮">
+                <button type="button" onClick={() => openBackpackPanel("computers")}>电脑接入</button>
+                <button type="button" onClick={() => openBackpackPanel("npc-create")}>创建 / 绑定 NPC</button>
+                <button type="button" onClick={() => openBackpackPanel("machine-room")}>扫描线程</button>
+                <button type="button" onClick={() => openBackpackPanel("skills")}>能力包仓库</button>
+                <button type="button" onClick={() => openBackpackPanel("git")}>Git 回退</button>
+                <button type="button" onClick={() => openBackpackPanel("schedule")}>日程 DDL</button>
+              </aside>
+
+              <footer className={styles.opsLogDock} aria-label="状态日志">
+                {summaryCards.slice(0, 4).map((card, index) => (
+                  <article key={`ops-log-${card.id}`} data-tone={index === 0 && runnerQueueAttention ? "warning" : "info"}>
+                    <span>{card.title}</span>
+                    <strong>{card.body}</strong>
+                    <small>{card.meta}</small>
+                  </article>
                 ))}
-              </div>
+              </footer>
             </section>
           ) : null}
 
@@ -16055,10 +16123,10 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             </div>
           </div>
 
-          <div className={styles.mapPrompt}>靠近粉色点后按 Enter</div>
+          <div className={styles.mapPrompt}>兼容地图已收起</div>
 
           <div className={styles.mapBottomTip}>
-            方向键移动。靠近 NPC 可交互；也可以先打开 NPC 管理查看对话、任务、Skill 和知识库。
+            主页面只保留资源配置；具体工作进入右侧功能或专业工作台。
           </div>
 
           {starterDrawerOpen ? (

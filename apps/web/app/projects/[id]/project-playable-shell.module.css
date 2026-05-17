@@ -633,15 +633,18 @@
   position: relative;
   min-height: 100vh;
   overflow: hidden;
-  background: #000;
+  background: #071114;
 }
 
 .mapStage {
   position: relative;
   min-height: 100vh;
   background:
-    radial-gradient(circle at 50% 50%, rgba(255, 120, 179, 0.08), transparent 22%),
-    linear-gradient(180deg, rgba(9, 12, 8, 0.98), rgba(0, 0, 0, 1));
+    linear-gradient(rgba(103, 245, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(103, 245, 255, 0.03) 1px, transparent 1px),
+    radial-gradient(circle at 18% 12%, rgba(34, 197, 213, 0.16), transparent 30%),
+    linear-gradient(135deg, #071114 0%, #08191c 48%, #0b1015 100%);
+  background-size: 42px 42px, 42px 42px, auto, auto;
 }
 
 .gameFrame {
@@ -651,6 +654,15 @@
   height: 100%;
   border: 0;
   background: #000;
+}
+
+.legacyGameFrame {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .focusRailToggle {
@@ -1287,6 +1299,329 @@
   color: rgba(246, 237, 216, 0.58);
   font-size: 11px;
   line-height: 1.35;
+}
+
+.projectOpsWorkbench {
+  position: absolute;
+  inset: 88px 18px 18px;
+  z-index: 4;
+  display: grid;
+  grid-template-columns: minmax(210px, 0.72fr) minmax(0, 1.8fr) minmax(190px, 0.56fr);
+  grid-template-rows: minmax(0, 1fr) minmax(96px, auto);
+  gap: 12px;
+  min-height: 0;
+}
+
+.opsObjectRail,
+.opsCenter,
+.opsToolRail,
+.opsLogDock {
+  min-width: 0;
+  border: 1px solid rgba(103, 245, 255, 0.16);
+  border-radius: 20px;
+  background:
+    linear-gradient(180deg, rgba(9, 25, 29, 0.93), rgba(7, 17, 20, 0.94)),
+    rgba(7, 17, 20, 0.92);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.035),
+    0 22px 52px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(14px);
+}
+
+.opsObjectRail {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  padding: 14px;
+  overflow: hidden;
+}
+
+.opsRailHead,
+.opsCenterHead {
+  min-width: 0;
+}
+
+.opsRailHead span,
+.opsCenterHead span {
+  display: block;
+  color: #75f4ff;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.opsRailHead strong {
+  display: block;
+  margin-top: 5px;
+  overflow: hidden;
+  color: #effeff;
+  font-size: 15px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.opsObjectItem,
+.opsObjectActive {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  column-gap: 10px;
+  row-gap: 3px;
+  align-items: center;
+  min-height: 66px;
+  padding: 10px;
+  border: 1px solid rgba(103, 245, 255, 0.13);
+  border-radius: 16px;
+  background: rgba(10, 32, 36, 0.62);
+  color: #effeff;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 140ms ease, border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+}
+
+.opsObjectActive {
+  border-color: rgba(103, 245, 255, 0.34);
+  background: linear-gradient(135deg, rgba(21, 86, 94, 0.62), rgba(10, 32, 36, 0.78));
+}
+
+.opsObjectItem:hover,
+.opsObjectItem:focus-visible,
+.opsObjectActive:hover,
+.opsObjectActive:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(125, 249, 255, 0.5);
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.24);
+  outline: none;
+}
+
+.opsObjectItem:active,
+.opsObjectActive:active {
+  transform: translateY(0);
+}
+
+.opsObjectIcon {
+  grid-row: 1 / span 2;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  border: 1px solid rgba(103, 245, 255, 0.22);
+  background: rgba(103, 245, 255, 0.1);
+  color: #75f4ff;
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.opsObjectItem strong,
+.opsObjectActive strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.opsObjectItem small,
+.opsObjectActive small {
+  min-width: 0;
+  overflow: hidden;
+  color: rgba(226, 252, 255, 0.66);
+  font-size: 11px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.opsCenter {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 16px;
+  overflow: hidden;
+}
+
+.opsCenterHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.opsCenterHead h2 {
+  margin: 5px 0 0;
+  color: #effeff;
+  font-size: clamp(22px, 2.2vw, 34px);
+  line-height: 1.05;
+  letter-spacing: 0;
+}
+
+.opsCenterHead p {
+  max-width: 720px;
+  margin: 8px 0 0;
+  color: rgba(226, 252, 255, 0.68);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.opsStateCluster {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+  max-width: 300px;
+}
+
+.opsStateCluster span {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  padding: 0 10px;
+  border: 1px solid rgba(103, 245, 255, 0.16);
+  border-radius: 999px;
+  background: rgba(103, 245, 255, 0.08);
+  color: #dffcff;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.opsPrimaryGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-content: start;
+  gap: 10px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.opsPrimaryGrid .mainControlButton {
+  min-height: 88px;
+  border-color: rgba(103, 245, 255, 0.16);
+  background: rgba(9, 31, 36, 0.72);
+}
+
+.opsPrimaryGrid .mainControlIcon {
+  border-color: rgba(103, 245, 255, 0.24);
+  background: rgba(103, 245, 255, 0.1);
+  color: #75f4ff;
+}
+
+.opsJumpStrip {
+  display: flex;
+  gap: 8px;
+  overflow: auto;
+  padding-top: 2px;
+}
+
+.opsJumpStrip a {
+  flex: 0 0 auto;
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  border: 1px solid rgba(103, 245, 255, 0.16);
+  border-radius: 999px;
+  background: rgba(103, 245, 255, 0.07);
+  color: #dffcff;
+  font-size: 12px;
+  font-weight: 850;
+  text-decoration: none;
+}
+
+.opsJumpStrip a:hover,
+.opsJumpStrip a:focus-visible {
+  border-color: rgba(125, 249, 255, 0.48);
+  background: rgba(103, 245, 255, 0.12);
+  outline: none;
+}
+
+.opsToolRail {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 14px;
+  overflow: hidden;
+}
+
+.opsToolRail button {
+  min-height: 42px;
+  border: 1px solid rgba(103, 245, 255, 0.16);
+  border-radius: 14px;
+  background: rgba(103, 245, 255, 0.07);
+  color: #effeff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+  transition: transform 140ms ease, border-color 140ms ease, background 140ms ease;
+}
+
+.opsToolRail button:hover,
+.opsToolRail button:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(125, 249, 255, 0.5);
+  background: rgba(103, 245, 255, 0.13);
+  outline: none;
+}
+
+.opsToolRail button:active {
+  transform: translateY(0);
+}
+
+.opsLogDock {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px;
+  overflow: hidden;
+}
+
+.opsLogDock article {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  padding: 8px 10px;
+  border-left: 3px solid rgba(103, 245, 255, 0.46);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.opsLogDock article[data-tone="warning"] {
+  border-left-color: #ffcf70;
+}
+
+.opsLogDock span {
+  overflow: hidden;
+  color: rgba(226, 252, 255, 0.58);
+  font-size: 10px;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.opsLogDock strong {
+  overflow: hidden;
+  color: #effeff;
+  font-size: 12px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.opsLogDock small {
+  overflow: hidden;
+  color: rgba(226, 252, 255, 0.6);
+  font-size: 10px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mapBottomTip {
@@ -3770,6 +4105,37 @@
     grid-template-columns: 1fr;
   }
 
+  .projectOpsWorkbench {
+    position: relative;
+    inset: auto;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+    min-height: auto;
+    padding: 88px 12px 12px;
+  }
+
+  .opsCenter {
+    min-height: 420px;
+  }
+
+  .opsCenterHead {
+    flex-direction: column;
+  }
+
+  .opsStateCluster {
+    justify-content: flex-start;
+    max-width: none;
+  }
+
+  .opsPrimaryGrid,
+  .opsLogDock {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .opsToolRail {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .exchangeActionDock {
     grid-template-columns: 1fr;
   }
@@ -3843,7 +4209,10 @@
     grid-template-columns: 1fr;
   }
 
-  .mainControlGrid {
+  .mainControlGrid,
+  .opsPrimaryGrid,
+  .opsToolRail,
+  .opsLogDock {
     grid-template-columns: 1fr;
   }
 }

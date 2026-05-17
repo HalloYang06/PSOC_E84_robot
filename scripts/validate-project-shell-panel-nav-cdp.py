@@ -88,22 +88,14 @@ def screenshot_with_min_size(cdp: object, output: Path, *, min_bytes: int = 90_0
 
 
 def wait_for_project_map_visual(cdp: object, *, timeout_seconds: float = 30) -> None:
-    """Wait for the game shell/HUD to settle before the first map screenshot.
-
-    The game view is allowed to be canvas, DOM layers, or mixed assets. The
-    important validation rule is user-visible: wait until the game HUD exists,
-    then use screenshot-size retry to avoid a mostly black pre-paint capture.
-    """
+    """Wait for the project resource workbench to settle before the screenshot."""
     wait_for(
         cdp,
         """
         (() => {
           const text = document.body ? document.body.innerText : '';
-          const hasGameHud = text.includes('项目列表') && (
-            text.includes('显示协作焦点') ||
-            text.includes('NPC 管理') ||
-            text.includes('电脑接入管理')
-          );
+          const hasGameHud = text.includes('平台项目资源操作台') ||
+            (text.includes('开发工坊 / 主页面') && text.includes('对象索引') && text.includes('电脑接入'));
           const viewportReady = document.documentElement.clientWidth > 1000 && document.documentElement.clientHeight > 700;
           return hasGameHud && viewportReady;
         })()
@@ -252,7 +244,7 @@ def main() -> int:
         wait_for(cdp, f"location.href.includes({json.dumps(args.project_id)})", timeout_seconds=45)
         wait_for(
             cdp,
-            "document.body && (document.body.innerText.includes('项目主角') || document.body.innerText.includes('显示协作焦点') || document.body.innerText.includes('开发工坊'))",
+            "document.body && (document.body.innerText.includes('开发工坊 / 主页面') || document.body.innerText.includes('项目主角') || document.body.innerText.includes('电脑接入'))",
             timeout_seconds=45,
         )
         wait_for_project_map_visual(cdp)
@@ -260,6 +252,28 @@ def main() -> int:
         screenshot_with_min_size(cdp, shot)
         screenshots.append(str(shot))
         add_step("project-map", "ok")
+
+        first_screen_state = cdp_eval(
+            cdp,
+            """
+            (() => {
+              const text = document.body ? document.body.innerText : '';
+              const root = document.scrollingElement || document.documentElement;
+              return {
+                hasOpsWorkbench: text.includes('开发工坊 / 主页面') && text.includes('配置资源，然后进入对应工作台干活'),
+                hasLegacyMapPrompt: text.includes('靠近粉色点后按 Enter') || text.includes('方向键移动'),
+                horizontalOverflow: Math.max(0, root.scrollWidth - root.clientWidth),
+              };
+            })()
+            """,
+        )
+        if not isinstance(first_screen_state, dict) or not first_screen_state.get("hasOpsWorkbench"):
+            raise RuntimeError(f"Project front door did not expose the resource workbench: {first_screen_state}")
+        if first_screen_state.get("hasLegacyMapPrompt"):
+            raise RuntimeError(f"Project front door still exposes legacy map instructions: {first_screen_state}")
+        if int(first_screen_state.get("horizontalOverflow") or 0) > 2:
+            raise RuntimeError(f"Project front door has horizontal overflow: {first_screen_state}")
+        results["front_door_state"] = first_screen_state
 
         panels = [
             ("主角协作管理", "主角协作管理", "panel-nav-02-human-party"),
