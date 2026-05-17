@@ -17,6 +17,9 @@ export type WorkbenchSeat = {
   workstationName: string;
   computerNodeId: string;
   computerNodeName: string;
+  runnerWatchState?: string;
+  runnerEffectiveStatus?: string;
+  runnerDispatchState?: string;
   providerId: string;
   providerLabel: string;
   threadId: string;

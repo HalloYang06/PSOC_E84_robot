@@ -137,8 +137,7 @@ function messageIsOpenDesktopCloseout(message: WorkbenchMessage, messages: Workb
 
 function seatCanTakeTask(seat: WorkbenchSeat): boolean {
   if (!seat.threadId) return false;
-  const health = `${seat.threadHealth || ""} ${seat.deliveryLabel || ""} ${seat.deliveryMode || ""}`.toLowerCase();
-  return Boolean(seat.automationEnabled || seat.desktopVisible || /可接单|ready|已登记|online|ok|watcher|就绪|线程可见|桌面线程可见/i.test(health));
+  return seat.runnerDispatchState === "可接单";
 }
 
 function userFacingMessageText(value: unknown, fallback = ""): string {
@@ -1741,11 +1740,11 @@ export function WorkbenchClient({
               <div className={styles.dispatchEvidencePulse} aria-hidden="true" />
               <div className={styles.dispatchEvidenceMain}>
                 <strong>派工验真</strong>
-                <small>{dispatchEvidence.ready ? "可接单通道、用户派工和最小回执已进入平台索引" : "先补齐可接单通道和最小回执索引"}</small>
+                <small>{dispatchEvidence.ready ? "目标电脑持续接单、用户派工和最小回执已进入平台索引" : "先恢复目标电脑持续接单，再补齐最小回执索引"}</small>
               </div>
               <div className={styles.dispatchEvidenceMetrics}>
                 <span data-ok={dispatchEvidence.deliverable === seats.length ? "1" : undefined}>
-                  可接单 {dispatchEvidence.deliverable}/{seats.length}
+                  电脑接单 {dispatchEvidence.deliverable}/{seats.length}
                 </span>
                 <span data-ok={dispatchEvidence.desktopReady > 0 ? "1" : undefined}>
                   桌面可见 {dispatchEvidence.desktopReady}/{seats.length}
@@ -1817,7 +1816,7 @@ export function WorkbenchClient({
             <div className={styles.threadOverviewHead}>
               <strong>{isCompany ? "工位长线程总览" : "多线程协作总览"}</strong>
               <span>线程 {threadOverview.registered}/{seats.length}</span>
-              <span>可接单 {threadOverview.canTakeTask}</span>
+              <span>电脑接单 {threadOverview.canTakeTask}</span>
               <span data-warning={threadOverview.automationEnabled > 0 ? "1" : undefined}>NPC 自动化 {threadOverview.automationEnabled}</span>
               <span data-warning={threadOverview.missing > 0 ? "1" : undefined}>未登记 {threadOverview.missing}</span>
               <button type="button" className={styles.threadOverviewBtn} onClick={() => openSeatGroup(seats.map((seat) => seat.id))} disabled={seats.length === 0}>

@@ -36,12 +36,26 @@ function record(value: unknown): AnyRecord {
   return value && typeof value === "object" ? (value as AnyRecord) : {};
 }
 
+function statusText(value: unknown) {
+  return text(value, "").toLowerCase();
+}
+
 function firstText(...values: unknown[]) {
   for (const value of values) {
     const next = text(value, "");
     if (next) return next;
   }
   return "";
+}
+
+function computerDispatchState(node: AnyRecord | undefined) {
+  if (!node) return "状态未知";
+  const watchState = statusText(node.runner_watch_state ?? node.runnerWatchState);
+  const effective = statusText(node.runner_effective_status ?? node.runnerEffectiveStatus ?? node.runner_status ?? node.runnerStatus ?? node.status);
+  if (watchState === "watching" || /watching|online|ready|active|connected/.test(effective)) return "可接单";
+  if (/stale|timeout|delay|recent/.test(watchState) || /stale|timeout|delay|recent/.test(effective)) return "可能延迟";
+  if (/offline|lost|disconnect|error|runner_offline|missing/.test(watchState) || /offline|lost|disconnect|error/.test(effective)) return "需重连";
+  return "状态未知";
 }
 
 function deriveThreadKind(providerId: string, threadId: string) {
@@ -233,11 +247,13 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
     : {};
 
   const nodeMap = new Map<string, string>();
+  const nodeStateMap = new Map<string, AnyRecord>();
   for (const node of [...configNodes, ...liveNodes]) {
     const id = text(node?.id ?? node?.node_id, "");
     if (!id) continue;
     const name = text(node?.name ?? node?.label ?? node?.hostname ?? id, id);
     nodeMap.set(id, name);
+    nodeStateMap.set(id, node);
   }
 
   const workstationNameById = new Map<string, string>();
@@ -527,6 +543,7 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
       ? (leadByWorkstation.get(workstationId) ?? "")
       : (computerNodeId ? (leadByNode.get(computerNodeId) ?? "") : "");
     const isLead = !!leadSeatId && identitySet(id, rowId, seat.config_id, seat.name, threadId).has(leadSeatId);
+    const nodeState = computerNodeId ? nodeStateMap.get(computerNodeId) : undefined;
     return {
       id,
       rowId,
@@ -536,6 +553,9 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
       workstationName: workstationId ? (workstationNameById.get(workstationId) ?? workstationId) : "",
       computerNodeId,
       computerNodeName: computerNodeId ? nodeMap.get(computerNodeId) ?? computerNodeId : "",
+      runnerWatchState: text(nodeState?.runner_watch_state ?? nodeState?.runnerWatchState, ""),
+      runnerEffectiveStatus: text(nodeState?.runner_effective_status ?? nodeState?.runnerEffectiveStatus ?? nodeState?.runner_status ?? nodeState?.runnerStatus ?? nodeState?.status, ""),
+      runnerDispatchState: computerDispatchState(nodeState),
       providerId,
       providerLabel,
       threadId,
@@ -624,7 +644,7 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
         onlineComputers: [...configNodes, ...liveNodes].filter((node, index, list) => {
           const id = text(node.id ?? node.node_id, "");
           const unique = id && list.findIndex((candidate) => text(candidate.id ?? candidate.node_id, "") === id) === index;
-          return unique && /online|ready|active/i.test(text(node.runner_effective_status ?? node.runner_status ?? node.status, ""));
+          return unique && computerDispatchState(node) === "可接单";
         }).length,
         logicalWorkstations: projectWorkstations.length,
         workshopStations: workshopStations.length,

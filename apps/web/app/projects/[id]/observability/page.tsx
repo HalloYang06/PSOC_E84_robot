@@ -50,6 +50,10 @@ function text(value: unknown, fallback = "") {
   return next || fallback;
 }
 
+function record(value: unknown): AnyRecord {
+  return value && typeof value === "object" ? (value as AnyRecord) : {};
+}
+
 function computerStatusLabel(value: unknown) {
   const normalized = statusText(value);
   if (/online|ready|active/.test(normalized)) return "在线";
@@ -223,7 +227,35 @@ function isDesktopCloseoutWaiting(item: AnyRecord | null | undefined) {
     || code === "desktop_delivery_unconfirmed";
 }
 
-function seatCanTakeTask(seat: AnyRecord, config: AnyRecord) {
+function computerDispatchState(node: AnyRecord | undefined) {
+  if (!node) return "状态未知";
+  const watchState = statusText(node.runner_watch_state ?? node.runnerWatchState);
+  const effective = statusText(node.runner_effective_status ?? node.runnerEffectiveStatus ?? node.runner_status ?? node.runnerStatus ?? node.status);
+  if (watchState === "watching" || /watching|online|ready|active|connected/.test(effective)) return "可接单";
+  if (/stale|timeout|delay|recent/.test(watchState) || /stale|timeout|delay|recent/.test(effective)) return "可能延迟";
+  if (/offline|lost|disconnect|error|runner_offline|missing/.test(watchState) || /offline|lost|disconnect|error/.test(effective)) return "需重连";
+  return "状态未知";
+}
+
+function seatComputerNodeId(seat: AnyRecord, config: AnyRecord = {}) {
+  const metadata = messageMetadata(seat);
+  const extra = record(seat.extra_data ?? seat.extraData);
+  return text(
+    seat.computer_node_id
+      ?? seat.computerNodeId
+      ?? seat.computer_node
+      ?? seat.computerNode
+      ?? metadata.computer_node_id
+      ?? metadata.computerNodeId
+      ?? extra.computer_node_id
+      ?? extra.computerNodeId
+      ?? config.computer_node_id
+      ?? config.computerNodeId,
+    "",
+  );
+}
+
+function seatCanTakeTask(seat: AnyRecord, config: AnyRecord, computerById: Map<string, AnyRecord>) {
   const threadId = text(
     seat.thread_id
       ?? seat.threadId
@@ -234,10 +266,9 @@ function seatCanTakeTask(seat: AnyRecord, config: AnyRecord) {
     "",
   );
   if (!threadId) return false;
-  const health = `${text(seat.thread_health ?? seat.threadHealth, "")} ${text(config.health, "")} ${text(config.status, "")} ${text(config.delivery_label ?? config.deliveryLabel, "")} ${text(config.delivery_mode ?? config.deliveryMode, "")}`.toLowerCase();
-  const desktopVisible = Boolean(config.desktop_visible ?? config.desktopVisible ?? seat.desktop_visible ?? seat.desktopVisible);
-  const automationEnabled = Boolean(seat.automation_enabled ?? seat.automationEnabled ?? messageMetadata(seat).automation_enabled ?? messageMetadata(seat).automationEnabled);
-  return Boolean(automationEnabled || desktopVisible || /可接单|ready|已登记|online|ok|watcher|就绪|线程可见|桌面线程可见/i.test(health));
+  const nodeId = seatComputerNodeId(seat, config);
+  if (!nodeId) return false;
+  return computerDispatchState(computerById.get(nodeId)) === "可接单";
 }
 
 function collaborationStatusLabel(item: AnyRecord) {
@@ -389,6 +420,11 @@ export default async function ProjectObservabilityPage({
   const computers = rawComputers.filter((item) => !isPlatformValidationRecord(item));
   const messages = rawMessages.filter((item) => !isPlatformValidationRecord(item));
   const pendingReview = rawPendingReview.filter((item) => !isPlatformValidationRecord(item));
+  const computerById = new Map<string, AnyRecord>();
+  for (const node of computers) {
+    const id = text(node.id ?? node.config_id ?? node.node_id ?? node.nodeId, "");
+    if (id) computerById.set(id, node);
+  }
   const adapterConfigs = await Promise.all(
     seats.map(async (seat) => {
       const id = text(seat.id ?? seat.name, "");
@@ -401,7 +437,7 @@ export default async function ProjectObservabilityPage({
   const platformNumberedSeats = seats.filter((seat) => /^platform-npc-[1-6]$/i.test(text(seat.id ?? seat.name, "")));
   const evidenceSeats = platformNumberedSeats.length >= 6 ? platformNumberedSeats : seats;
   const usage = asArray<AnyRecord>(usageData).filter((item) => !text(item.project_id ?? item.projectId, "") || text(item.project_id ?? item.projectId, "") === projectId);
-  const onlineComputers = computers.filter((node) => /online|ready|active/.test(statusText(node.runner_effective_status ?? node.runner_status ?? node.status))).length;
+  const onlineComputers = computers.filter((node) => computerDispatchState(node) === "可接单").length;
   const computerCapabilityRows = computers.map((node, index) => {
     const capabilities = Array.from(new Set([
       ...asTextList(node.capabilities),
@@ -409,14 +445,15 @@ export default async function ProjectObservabilityPage({
       ...asTextList(node.capability_labels ?? node.capabilityLabels),
     ])).slice(0, 5);
     const status = node.runner_effective_status ?? node.runner_status ?? node.status;
-    const isOnline = /online|ready|active/.test(statusText(status));
+    const dispatchState = computerDispatchState(node);
+    const isOnline = dispatchState === "可接单";
     const osLabel = text(node.os ?? node.platform ?? node.computer_node_os ?? node.computerNodeOs, "系统待识别");
     const hostLabel = text(node.host ?? node.hostname ?? node.computer_node_host ?? node.computerNodeHost, "");
     return {
       key: text(node.id ?? node.runner_id ?? node.name, `computer-${index}`),
       name: text(node.label ?? node.name ?? node.runner_label ?? node.runner_id, `执行电脑 ${index + 1}`),
-      status: computerStatusLabel(status),
-      state: isOnline ? "ready" : /busy|running|in_progress/.test(statusText(status)) ? "watch" : "blocked",
+      status: dispatchState === "可接单" ? "可接单" : dispatchState === "可能延迟" ? "可能延迟" : dispatchState === "需重连" ? "需重连" : computerStatusLabel(status),
+      state: isOnline ? "ready" : dispatchState === "可能延迟" || /busy|running|in_progress/.test(statusText(status)) ? "watch" : "blocked",
       osLabel,
       hostLabel,
       capabilities,
@@ -478,7 +515,7 @@ export default async function ProjectObservabilityPage({
   const deliverableSeats = evidenceSeats.filter((seat) => {
     const id = text(seat.id ?? seat.name, "");
     const config = adapterBySeat.get(id) ?? {};
-    return seatCanTakeTask(seat, config);
+    return seatCanTakeTask(seat, config, computerById);
   });
   const dispatchEvidenceReady =
     evidenceSeats.length > 0 &&
@@ -962,7 +999,7 @@ export default async function ProjectObservabilityPage({
       ? {
           state: "waiting",
           label: "等待恢复",
-          title: `${desktopNotLiveSeats.length} 个 NPC 线程走后台同步或需恢复桌面可见性`,
+          title: `${desktopNotLiveSeats.length} 个 NPC 线程需核对桌面可见性`,
           detail: "这不等于不能派活；平台会保留原派单，负责人可回 NPC 工作台查看通道和回执。",
           href: focusHref(projectId, "workbench", selfPath, { ...sharedFocus, filter: "failed" }),
         }
@@ -970,7 +1007,7 @@ export default async function ProjectObservabilityPage({
           state: "connected",
           label: "已重新连接",
           title: `可接单 ${deliverableSeats.length}/${evidenceSeats.length || 0}，桌面可见 ${desktopReadySeats.length}/${evidenceSeats.length || 0}`,
-          detail: "可接单表示平台能派活；桌面可见只是诊断信息，不等于派工能力。",
+          detail: "可接单只看目标电脑是否持续接单；桌面可见只是诊断信息，不等于派工能力。",
           href: focusHref(projectId, "workbench", selfPath, sharedFocus),
         },
     failedAutonomousMessages.length
@@ -1012,10 +1049,10 @@ export default async function ProjectObservabilityPage({
       detail: onlineComputers > 0 ? "已有执行电脑在线，可继续验证任务派发与回执。" : "部署前建议至少准备一台执行电脑或 runner 节点。",
     },
     {
-      label: "NPC 可接单",
+      label: "电脑接单",
       state: deliverableSeats.length === evidenceSeats.length && evidenceSeats.length > 0 ? "ready" : "watch",
       value: `${deliverableSeats.length}/${evidenceSeats.length || 0}`,
-      detail: `桌面可见 ${desktopReadySeats.length}/${evidenceSeats.length || 0}；后台同步线程也可接单。`,
+      detail: `桌面可见 ${desktopReadySeats.length}/${evidenceSeats.length || 0}；只有目标电脑持续接单才计入可接单。`,
     },
     {
       label: "当前待审",
