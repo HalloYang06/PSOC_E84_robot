@@ -404,7 +404,7 @@ const PANEL_ACTIONS: Record<ModuleTab, PanelAction[]> = {
       id: "bind-thread",
       label: "绑定线程",
       summary: "把 NPC 绑定到某台电脑的 Codex / Claude / Qwen 线程。",
-      detail: "三级抽屉显示电脑、runner、线程、模型和工作路径提醒。",
+      detail: "三级抽屉显示电脑、执行程序、线程、模型和工作路径提醒。",
       primaryLabel: "打开线程绑定抽屉",
       safety: "只绑定，不发任务。",
     },
@@ -454,7 +454,7 @@ const PANEL_ACTIONS: Record<ModuleTab, PanelAction[]> = {
       id: "runner-health",
       label: "执行电脑健康",
       summary: "确认电脑在线、心跳、队列和最近错误。",
-      detail: "如果电脑没进入项目或 runner 离线，首页需要持续提醒。",
+      detail: "如果电脑没进入项目或执行程序离线，首页需要持续提醒。",
       primaryLabel: "打开健康抽屉",
       safety: "只读状态检查。",
     },
@@ -532,7 +532,7 @@ const PANEL_ACTIONS: Record<ModuleTab, PanelAction[]> = {
       id: "online-check",
       label: "在线判断",
       summary: "判断电脑是否在线、是否登录、是否进入项目。",
-      detail: "离线电脑、未进入项目、runner 心跳断开要有明确状态。",
+      detail: "离线电脑、未进入项目、持续接单断开要有明确状态。",
       primaryLabel: "打开在线抽屉",
       safety: "只读心跳。",
     },
@@ -1276,7 +1276,7 @@ function safeThreadName(thread: FeedItem, index: number) {
 function threadUserHint(thread: FeedItem) {
   if (!thread.computerNodeId) return "未归属电脑：请重新扫描或在电脑接入里绑定到正确电脑。";
   if (!thread.name && !thread.title) return "无标题线程：建议打开对应 AI 工具后重新扫描，或手动命名。";
-  if (String(thread.status ?? "").toLowerCase() === "offline") return "离线：确认这台电脑的 runner 是否仍在心跳。";
+  if (String(thread.status ?? "").toLowerCase() === "offline") return "离线：确认这台电脑的持续接单窗口是否还在运行。";
   if (!thread.body) return "已发现线程：可继续绑定 NPC，或用于只读协作验证。";
   return thread.body;
 }
@@ -1313,10 +1313,10 @@ function computerUserHint(computer: FeedItem, workstations: FeedItem[]) {
   const status = String(computer.status ?? "").toLowerCase();
   const threads = computerThreadCount(computer, workstations);
   if (["online", "ready", "active"].includes(status) && threads > 0) return `可接单：已发现 ${threads} 条线程，可继续绑定 NPC 或下发只读任务。`;
-  if (["online", "ready", "active"].includes(status)) return "Runner 在线但暂无线程：请打开 Codex/Claude/Qwen 后重新扫描。";
+  if (["online", "ready", "active"].includes(status)) return "执行程序在线但暂无线程：请打开 Codex/Claude/Qwen 后重新扫描。";
   if (status.includes("stale") || status.includes("expired")) return "心跳过期：让目标电脑重新运行执行接入命令或刷新心跳。";
-  if (status.includes("offline")) return "离线：确认目标电脑是否开机、是否进入项目、runner 是否仍在运行。";
-  return "状态需要确认：先看 runner 心跳和线程扫描结果，再派单。";
+  if (status.includes("offline")) return "离线：确认目标电脑是否开机、是否进入项目、持续接单窗口是否仍在运行。";
+  return "状态需要确认：先看持续接单和线程扫描结果，再派单。";
 }
 
 function computerDesktopCapabilityLabel(computer: FeedItem) {
@@ -1332,7 +1332,7 @@ function computerDesktopCapabilityHint(computer: FeedItem) {
     return computer.desktopBridgeNote || "这台电脑可把单次派单作为普通消息送进已绑定的 Codex Desktop 线程。";
   }
   if (computer.desktopProcessDetected) {
-    return "Runner 看到本机桌面进程，但没有上报可交互 UI 输入桥；可能只能走 app-server 或文件投递。";
+    return "执行程序看到本机桌面进程，但没有确认可交互输入；可能只能走服务端或文件投递。";
   }
   return "这台电脑还未确认桌面线程可接收派单；用户要先在目标电脑打开 AI 桌面版并重新同步线程。";
 }
@@ -1817,7 +1817,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
       {
         label: "电脑接入",
         short: "电",
-        hint: "Runner、配对令牌、线程扫描",
+        hint: "执行程序、配对令牌、线程扫描",
         tab: "computers",
         tone: "computer",
         primary: "接入真实电脑",
@@ -2019,27 +2019,27 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
       return {
         tone: "pending",
         title: `只读预检待回执 ${openPreflights.length} 条`,
-        detail: "已有回退预检命令进入队列，等待对应 Runner ack/result。若电脑离线，请先回“电脑接入”重启 Runner。",
+        detail: "已有回退预检命令进入队列，等待对应执行程序回执。若电脑离线，请先回“电脑接入”重新运行持续接单命令。",
       };
     }
     if (!onlineComputers.length) {
       return {
         tone: "blocked",
-        title: "暂无在线 Runner",
+        title: "暂无常驻接单电脑",
         detail: "登记回退会保留审计和 Boss 对齐，但不会假装已经完成本地 Git 只读预检。",
       };
     }
     if (!runnableComputers.length) {
       return {
         tone: "blocked",
-        title: "电脑登记在线但缺少 Runner 绑定",
-        detail: "先回电脑接入面板生成配对令牌，并让目标电脑完成 runner 注册。",
+        title: "电脑登记在线但缺少执行程序绑定",
+        detail: "先回电脑接入面板生成配对令牌，并让目标电脑完成执行程序注册。",
       };
     }
     return {
       tone: "ready",
-      title: `在线 Runner ${runnableComputers.length} 台`,
-      detail: "登记回退后会向在线 Runner 下发只读 Git 预检；仍不会执行 reset / revert / delete。",
+      title: `常驻接单 ${runnableComputers.length} 台`,
+      detail: "登记回退后会向常驻接单电脑下发只读 Git 预检；仍不会执行 reset / revert / delete。",
     };
   }, [computers, messages]);
   const currentGitRollbackAlignment = useMemo(() => {
@@ -2334,7 +2334,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         <span><b>{stats.requirementCount}</b>需求</span>
         <span><b>{stats.activeTaskCount}</b>进行中</span>
         <span><b>{stats.blockedTaskCount}</b>阻塞</span>
-        <span><b>{stats.onlineComputerCount}/{stats.computerCount}</b>Runner 心跳</span>
+        <span><b>{stats.onlineComputerCount}/{stats.computerCount}</b>台常驻接单</span>
       </div>
     );
   }
@@ -2529,7 +2529,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         <section className={styles.githubImportGuide} data-git-rollback-version-index="1">
           <b>可回退版本索引</b>
           <p>
-            先选一个目标做只读预演。知识库和跨电脑协作仍以 GitHub 仓库为准，本地路径只属于各自 Runner。
+            先选一个目标做只读预演。知识库和跨电脑协作仍以 GitHub 仓库为准，每台电脑只管理自己的工作目录。
           </p>
           <dl>
             <div>
@@ -2538,10 +2538,10 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             </div>
             <div>
               <dt>规则</dt>
-              <dd>登记请求不会直接 reset；必须通过人审、Runner 只读预检和 NPC 对齐回执。</dd>
+              <dd>登记请求不会直接 reset；必须通过人审、执行电脑只读预检和 NPC 对齐回执。</dd>
             </div>
             <div>
-              <dt>Runner</dt>
+              <dt>执行电脑</dt>
               <dd>{gitRunnerPreflightStatus.title}：{gitRunnerPreflightStatus.detail}</dd>
             </div>
           </dl>
@@ -2629,7 +2629,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             <textarea name="knowledge_summary" rows={4} placeholder="写给这个工位下所有 NPC 必读的共享背景，例如仓库、硬件、接口、验收标准。" />
           </label>
           <label>
-            <span>Runner 能力，逗号分隔</span>
+            <span>执行电脑能力，逗号分隔</span>
             <input name="runner_capabilities" placeholder="例如：git, read-only, unity, serial" />
           </label>
           <label>
@@ -3114,7 +3114,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             <article className={styles.resultCard} data-token-result-card="computer-pairing">
               <span>配对令牌已生成</span>
               <b>{pairingResult.nodeId}</b>
-              <p>不用刷新页面。把下面命令发到目标电脑运行；如果目标电脑没有仓库文件，也会从平台下载 runner 脚本。</p>
+              <p>不用刷新页面。把下面命令发到目标电脑运行；如果目标电脑没有仓库文件，也会从平台下载接入脚本。</p>
               <code data-token-copy-token="computer-pairing">{pairingResult.token}</code>
               <textarea readOnly rows={5} value={connectCommand} aria-label="电脑接入命令" data-token-command="computer-pairing" />
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
@@ -3357,7 +3357,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             <dl>
               <div><dt>推荐结构</dt><dd>skills/project-boss/SKILL.md</dd></div>
               <div><dt>知识库路径</dt><dd>写 GitHub 仓库相对路径，不写本机 D:\ 目录</dd></div>
-              <div><dt>私有仓库</dt><dd>暂不读取私有仓库；后续接 GitHub App、OAuth 或 Runner 凭据</dd></div>
+              <div><dt>私有仓库</dt><dd>暂不读取私有仓库；后续接 GitHub App、OAuth 或执行电脑凭据</dd></div>
             </dl>
           </section>
           <form
@@ -3630,7 +3630,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                   </article>
                 ))
               ) : (
-                <p className={styles.emptyHint}>暂无线程。先接入电脑、注册 runner，再扫描 Codex / Claude / Qwen 线程。</p>
+                <p className={styles.emptyHint}>暂无线程。先接入电脑、注册执行程序，再扫描 Codex / Claude / Qwen 线程。</p>
               )}
             </div>
           </div>
@@ -3642,11 +3642,11 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
           <div className={styles.realActionStack} data-unity-real-form="machine-room-online-check">
             <article className={styles.realNote}>
               <b>在线不是一个状态，而是四层检查</b>
-              <p>商用时要同时看：电脑是否登记、Runner 是否心跳、账号是否进入项目、线程是否可接单。任何一层断了，都要告诉用户下一步做什么。</p>
+              <p>商用时要同时看：电脑是否登记、执行程序是否持续接单、账号是否进入项目、线程是否可用。任何一层断了，都要告诉用户下一步做什么。</p>
             </article>
             <div className={styles.onlineCheckGrid}>
               <span><b>{computers.length}</b>已登记电脑</span>
-              <span><b>{stats.onlineComputerCount}</b>Runner 在线</span>
+              <span><b>{stats.onlineComputerCount}</b>台常驻接单</span>
               <span><b>{workstations.length}</b>可见线程</span>
               <span><b>{npcSeats.length}</b>已绑定 NPC</span>
             </div>
@@ -3656,7 +3656,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                   <article key={computer.id} className={styles.layeredItem}>
                     <span>{statusLabel(computer.status)}</span>
                     <b>{itemTitle(computer)}</b>
-                    <small>{computerThreadCount(computer, workstations)} 条线程 / {computer.type || "runner"}</small>
+                    <small>{computerThreadCount(computer, workstations)} 条线程 / {computer.type || "执行程序"}</small>
                     <p>{computerUserHint(computer, workstations)}</p>
                     <p>{computerDesktopCapabilityLabel(computer)}</p>
                   </article>
@@ -3665,7 +3665,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                 <article className={styles.layeredItem}>
                   <span>空状态</span>
                   <b>暂无电脑在线状态</b>
-                  <p>先在电脑接入里生成配对令牌并运行 runner 接入命令。</p>
+                  <p>先在电脑接入里生成配对令牌并运行执行接入命令。</p>
                 </article>
               )}
             </div>
@@ -3733,7 +3733,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
               <label>
                 <span>凭据来源</span>
                 <select name="credential_source" defaultValue="runner_env">
-                  <option value="runner_env">各电脑 Runner 环境变量</option>
+                  <option value="runner_env">各电脑执行环境变量</option>
                   <option value="ssh_agent">各电脑 SSH Agent</option>
                   <option value="github_app">GitHub App</option>
                   <option value="manual_review">人工确认</option>
@@ -3867,8 +3867,8 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         <div className={styles.panelGrid}>
           <article className={styles.panelCard}>
             <span>电脑状态</span>
-            <strong>{stats.onlineComputerCount}/{stats.computerCount} 台 Runner 心跳正常</strong>
-            <p>这里接入真实电脑、生成配对令牌、注册 runner、扫描 Codex / Claude / Qwen 线程。</p>
+            <strong>{stats.onlineComputerCount}/{stats.computerCount} 台电脑常驻接单</strong>
+            <p>这里接入真实电脑、生成配对令牌、注册执行程序、扫描 Codex / Claude / Qwen 线程。</p>
             <small>{providerSummary(workstations)}</small>
           </article>
           <article className={styles.panelCard}>
@@ -3933,7 +3933,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
           </article>
           <article className={styles.panelCard}>
             <span>电脑/线程来源</span>
-            {renderList(computers, "暂无电脑，先完成 runner 接入。")}
+            {renderList(computers, "暂无电脑，先完成执行程序接入。")}
           </article>
         </div>
       );
@@ -4071,7 +4071,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
               <Link
                 href={surfacePath("observability")}
                 className={styles.cockpitGhost}
-                title="查看派单、回执、待审、Runner、任务状态和风险"
+                title="查看派单、回执、待审、执行电脑、任务状态和风险"
               >
                 观测台 →
               </Link>
@@ -4145,7 +4145,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
               </div>
               <div>
                 <dt>电脑</dt>
-                <dd>{stats.onlineComputerCount}/{stats.computerCount} Runner 心跳</dd>
+                <dd>{stats.onlineComputerCount}/{stats.computerCount} 台常驻接单</dd>
               </div>
               <div>
                 <dt>本机端口</dt>
@@ -4167,7 +4167,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             <article>
               <span>资源中心</span>
               <strong>主页面统一创建和治理</strong>
-              <p>电脑、Runner、NPC、工位、Skill、仓库和成员都在这里维护，避免每个工作台各做一套。</p>
+              <p>电脑、执行程序、NPC、工位、Skill、仓库和成员都在这里维护，避免每个工作台各做一套。</p>
               <div>
                 <button type="button" onClick={() => openPanel("development-workshop", "工作台结构")}>工位</button>
                 <button type="button" onClick={() => openPanel("npc-create", "工作台结构")}>NPC</button>
@@ -4210,7 +4210,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             </article>
             <article className={styles.cockpitMetricCard}>
               <span>AI 线程</span>
-              <strong>{npcSeats.length} 个 · Runner 心跳 {stats.onlineComputerCount}/{stats.computerCount}</strong>
+              <strong>{npcSeats.length} 个 · 常驻接单 {stats.onlineComputerCount}/{stats.computerCount}</strong>
               <p>本月 token ￥{stats.tokenSpend} · 协作消息 {stats.messageCount}</p>
               <p>
                 本机线程怎么接单？看{" "}

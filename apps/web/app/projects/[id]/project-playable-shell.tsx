@@ -1799,9 +1799,9 @@ function gitPreflightStatusLabel(messageType: string, status: string, ok: boolea
   const normalizedStatus = text(status, "").toLowerCase();
   if (messageType === "runner_command") {
     if (normalizedStatus === "pending") return "已下发，待接单";
-    if (normalizedStatus === "acked") return "Runner 已接单";
-    if (["completed", "done"].includes(normalizedStatus)) return "Runner 已完成";
-    if (["failed", "cancelled"].includes(normalizedStatus)) return "Runner 报错";
+    if (normalizedStatus === "acked") return "执行电脑已接单";
+    if (["completed", "done"].includes(normalizedStatus)) return "执行电脑已完成";
+    if (["failed", "cancelled"].includes(normalizedStatus)) return "执行电脑报错";
     return "已下发";
   }
   if (messageType === "runner_ack") return "最小回执已到";
@@ -2401,7 +2401,7 @@ function buildHumanPartyHudEntries(
           72,
         )
       : ownedNodes.length
-        ? `${onlineOwnedNodes.length}/${ownedNodes.length} 台电脑 Runner 心跳正常 / ${threadCount} 条线程可见。扫描到线程不代表自动接单，常驻 Watch 才能领取平台派工。`
+        ? `${onlineOwnedNodes.length}/${ownedNodes.length} 台电脑常驻接单 / ${threadCount} 条线程可见。扫描到线程不代表自动接单，要运行持续接单命令才能领取平台派工。`
       : activeTaskCount > 0
         ? `当前有 ${activeTaskCount} 条共享任务，适合继续联机分工。`
         : player.isCurrentPlayer
@@ -2418,7 +2418,7 @@ function buildHumanPartyHudEntries(
       stateLabel,
       stateTone,
       stateHint,
-      detail: `${player.role} / ${player.ownership} / ${sceneLabel} / Runner 心跳 ${onlineOwnedNodes.length}/${ownedNodes.length} 台 / 线程 ${threadCount} 条`,
+      detail: `${player.role} / ${player.ownership} / ${sceneLabel} / 常驻接单 ${onlineOwnedNodes.length}/${ownedNodes.length} 台 / 线程 ${threadCount} 条`,
       routeKeys: candidateKeys,
       computerCount: ownedNodes.length,
       onlineComputerCount: onlineOwnedNodes.length,
@@ -10674,7 +10674,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
 
         <form action={请求串口USB扫描.bind(null, projectId)} className={styles.skillManagerForm}>
           <strong>扫描所有电脑的 USB / 串口设备</strong>
-          <p className={styles.microCopy}>会向目标电脑下发 `serial.usb.scan` Runner 命令；Runner 回写后会进入最终回复池，并在这里提取显示 COM、ttyUSB、CH340、CP210x、STM32 VCP 等设备。</p>
+          <p className={styles.microCopy}>会向目标电脑下发只读 USB/串口扫描命令；执行电脑回写后会进入最终回复池，并在这里提取显示 COM、ttyUSB、CH340、CP210x、STM32 VCP 等设备。</p>
           <input type="hidden" name="return_to" value={serialReturnPath} />
           <div className={styles.skillManagerGrid}>
             <label className={styles.fieldLabel}>
@@ -10943,7 +10943,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             <h3>{selectedPlayer?.name ?? "还没有项目主角"}</h3>
             <p>
               {selectedPlayer
-                ? `${selectedPlayer.role} / ${selectedPlayer.ownership} / ${selectedPlayer.stateLabel} / Runner 心跳 ${selectedPlayer.onlineComputerCount}/${selectedPlayer.computerCount} 台 / 线程 ${selectedPlayer.threadCount} 条`
+                ? `${selectedPlayer.role} / ${selectedPlayer.ownership} / ${selectedPlayer.stateLabel} / 常驻接单 ${selectedPlayer.onlineComputerCount}/${selectedPlayer.computerCount} 台 / 线程 ${selectedPlayer.threadCount} 条`
                 : "这里按项目成员管理主角、名下电脑、线程和协作状态。先邀请协作者，让对方进入项目后再来这里看。"}
             </p>
           </div>
@@ -11022,7 +11022,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             <section className={styles.managerPreviewPanel}>
               <div className={styles.listHead}>
                 <strong>名下电脑与线程</strong>
-                <span className={styles.stateBadge}>{`Runner 心跳 ${selectedPlayer.onlineComputerCount}/${selectedPlayer.computerCount} 台 / ${selectedPlayer.threadCount} 条线程`}</span>
+                <span className={styles.stateBadge}>{`常驻接单 ${selectedPlayer.onlineComputerCount}/${selectedPlayer.computerCount} 台 / ${selectedPlayer.threadCount} 条线程`}</span>
               </div>
               {selectedComputers.length ? (
                 <ul className={styles.list}>
@@ -11169,13 +11169,13 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
           </p>
           <p className={styles.microCopy}>
             {reconnectMode
-              ? "如果 Runner 掉线、心跳超时，直接在那台电脑原来的终端重新运行“自动化心跳 / 持续接单”命令；不需要重新建电脑，也不需要重新绑定线程。"
+              ? "如果执行程序掉线、心跳超时，直接在那台电脑原来的终端重新运行“自动化心跳 / 持续接单”命令；不需要重新建电脑，也不需要重新绑定线程。"
               : visiblePairingToken
-              ? "推荐先复制“一键接入”命令：它只下载接入器、注册 runner、自动扫描 Codex / Claude 线程，跑完就退出；不会默认进入持续自动化。"
+              ? "推荐先复制“一键接入”命令：它只下载接入器、注册执行程序、自动扫描 Codex / Claude 线程，跑完就退出；不会默认进入持续自动化。"
               : needsRunner
-                ? "这台电脑还没接入 runner。先重新生成配对令牌，这里就会立刻出现第 1 条接入命令。"
+                ? "这台电脑还没接入执行程序。先重新生成配对令牌，这里就会立刻出现第 1 条接入命令。"
                 : needsThreadSync
-                  ? "这台电脑已经接入 runner；如果线程还是 0，直接执行下面的同步命令，再回来点“扫描线程”。"
+                  ? "这台电脑已经接入执行程序；如果线程还是 0，直接执行下面的同步命令，再回来点“扫描线程”。"
                   : "这台电脑已经接入过；如果远端脚本旧了、线程数量不对，直接从这里复制最新版同步命令重新扫。"}
           </p>
           <section className={styles.runnerScriptVersionCard} data-runner-script-version="2026-04-28-manual-bind">
@@ -11205,15 +11205,15 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
           </section>
           {visiblePairingToken ? (
             <>
-              <p className={styles.microCopy}><strong>第 1 步推荐：</strong>一键接入这台电脑，只注册 runner 并扫描线程，完成后 PowerShell 可以关闭。</p>
+              <p className={styles.microCopy}><strong>第 1 步推荐：</strong>一键接入这台电脑，只注册执行程序并扫描线程，完成后 PowerShell 可以关闭。</p>
               <pre className={styles.commandBlock} data-computer-one-click-connect-command={nodeId}><code>{oneClickConnectCommand}</code></pre>
-              <p className={styles.microCopy}><strong>Linux / macOS：</strong>在 bash 里注册 runner，并扫描本机 Codex / Claude 线程。</p>
+              <p className={styles.microCopy}><strong>Linux / macOS：</strong>在 bash 里注册执行程序，并扫描本机 Codex / Claude 线程。</p>
               <pre className={styles.commandBlock} data-computer-one-click-connect-linux-command={nodeId}><code>{oneClickConnectBashCommand}</code></pre>
               <details className={styles.adapterCommandCard}>
                 <summary>高级备用：分步注册 / 单独同步</summary>
-                <p className={styles.microCopy}><strong>第 1 步：</strong>只注册 runner</p>
+                <p className={styles.microCopy}><strong>第 1 步：</strong>只注册执行程序</p>
                 <pre className={styles.commandBlock} data-computer-register-command={nodeId}><code>{registerCommand}</code></pre>
-                <p className={styles.microCopy}><strong>Linux / macOS：</strong>只注册 runner</p>
+                <p className={styles.microCopy}><strong>Linux / macOS：</strong>只注册执行程序</p>
                 <pre className={styles.commandBlock} data-computer-register-linux-command={nodeId}><code>{registerBashCommand}</code></pre>
                 <p className={styles.microCopy}><strong>第 2 步：</strong>只同步这台电脑最近的 Codex 线程</p>
                 <pre className={styles.commandBlock} data-computer-codex-sync-command={nodeId}><code>{codexSyncCommand}</code></pre>
@@ -11531,7 +11531,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             ) : (
               <li>
                 <strong>{selectedNode ? "还没有线程结果" : "还没有电脑"}</strong>
-                <p>{selectedNode ? (text(scan.status, "").toLowerCase() === "awaiting_runner" ? "这台电脑还没接入 runner。先运行上面的接入命令，再回来扫描线程。" : "打开三级抽屉生成配对令牌或扫描线程。") : "添加电脑后，这里会显示该电脑上的线程。"}</p>
+                <p>{selectedNode ? (text(scan.status, "").toLowerCase() === "awaiting_runner" ? "这台电脑还没接入执行程序。先运行上面的接入命令，再回来扫描线程。" : "打开三级抽屉生成配对令牌或扫描线程。") : "添加电脑后，这里会显示该电脑上的线程。"}</p>
               </li>
             )}
           </ul>
@@ -12033,7 +12033,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
 
         <form action={sendRunnerCommand.bind(null, projectId)} className={styles.skillManagerForm}>
           <ClaudeCommandPalette />
-          <strong>给 Runner 心跳正常的电脑发一条最小命令</strong>
+          <strong>给常驻接单的电脑发一条最小命令</strong>
           <p className={styles.microCopy}>
             目标电脑要先保持“自动化心跳 / 持续接单”窗口运行才能接到单。没有可选电脑时，这里不会把任务假装派出去；先到“电脑接入”复制持续接单命令，在目标电脑终端运行并等状态变成常驻接单。
             线程级 watcher（每条线程一个终端）见{" "}
@@ -12067,14 +12067,14 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
           </label>
           <label className={styles.fieldLabel}>
             <span>命令正文</span>
-            <textarea name="body" placeholder="写给真实 runner 的一句话命令">请检查这台电脑上的最新线程状态，并回一条最小回执。</textarea>
+            <textarea name="body" placeholder="写给目标电脑的一句话命令">请检查这台电脑上的最新线程状态，并回一条最小回执。</textarea>
           </label>
           {!onlineNodes.length ? (
             <p className={styles.microCopy} data-runner-command-disabled-reason="no-watch-ready-computer">
               已登记电脑不会自动接单；需要在目标电脑运行“持续心跳 / 接单”命令后，平台才会把任务送进那台电脑的收件箱。
             </p>
           ) : null}
-          <button type="submit" disabled={!onlineNodes.length}>下发 Runner 命令</button>
+          <button type="submit" disabled={!onlineNodes.length}>下发电脑命令</button>
         </form>
 
         <form action={createCollaborationWorkstation.bind(null, projectId)} className={styles.skillManagerForm}>
@@ -15196,7 +15196,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
               <input name="backend_anchor" defaultValue={editingStation?.backendAnchor ?? ""} placeholder="例如：/api/collaboration/..." />
             </label>
             <label className={`${styles.fieldLabel} ${styles.fieldLabelWide}`}>
-              <span>Runner / 电脑能力</span>
+              <span>执行电脑能力</span>
               <input name="runner_capabilities" defaultValue={editingStation?.runnerCapabilities.join(", ") ?? ""} placeholder="例如：github-clone, build-test, serial-open" />
             </label>
             <label className={`${styles.fieldLabel} ${styles.fieldLabelWide}`}>
@@ -16135,7 +16135,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                             <span className={styles.objectAvatar}>主</span>
                             <strong>{player.name}</strong>
                             <small>
-                              {`${player.projectPresenceLabel} / ${player.stateLabel} / Runner 心跳 ${player.onlineComputerCount}/${player.computerCount} 台 / ${player.threadCount} 条线程`}
+                              {`${player.projectPresenceLabel} / ${player.stateLabel} / 常驻接单 ${player.onlineComputerCount}/${player.computerCount} 台 / ${player.threadCount} 条线程`}
                             </small>
                           </button>
                         ))
