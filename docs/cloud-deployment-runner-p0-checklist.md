@@ -37,6 +37,11 @@ python scripts/check_web_api_alignment.py --web-base http://106.55.62.122:3001 -
 python scripts/validate-cross-platform-runner-onboarding.py
 python scripts/validate-cloud-computer-onboarding-commands-cdp.py --web-base http://106.55.62.122:3001 --api-base http://106.55.62.122:8011 --project-id fe9bd342-f5ef-4afe-9c73-e7caa2ed17dd --login-email 3245056131@qq.com --login-password password --output-dir artifacts
 python scripts/validate-runner-watch-queue-http.py --api-base http://106.55.62.122:8011 --project-id fe9bd342-f5ef-4afe-9c73-e7caa2ed17dd --login-email 3245056131@qq.com --login-password password --output-dir artifacts
+python scripts/validate-cloud-runner-command-routing.py --api-base http://106.55.62.122:8011 --project-id fe9bd342-f5ef-4afe-9c73-e7caa2ed17dd --login-email 3245056131@qq.com --login-password password
+python scripts/validate-cloud-runner-dispatch-fullchain.py --api-base http://106.55.62.122:8011 --project-id fe9bd342-f5ef-4afe-9c73-e7caa2ed17dd --login-email 3245056131@qq.com --login-password password
+python scripts/validate-cloud-runner-workstation-isolation.py --api-base http://106.55.62.122:8011 --project-id fe9bd342-f5ef-4afe-9c73-e7caa2ed17dd --login-email 3245056131@qq.com --login-password password
+python scripts/validate-computer-thread-visibility-http.py --api-base http://106.55.62.122:8011 --web-base http://106.55.62.122:3001 --project-id fe9bd342-f5ef-4afe-9c73-e7caa2ed17dd --login-email 3245056131@qq.com --login-password password
+npm run build:web
 ```
 
 Expected result:
@@ -46,6 +51,10 @@ Expected result:
 - Windows and Linux onboarding commands are present.
 - Cloud-rendered onboarding commands use public Web downloads on `3001` and public API calls on `8011`.
 - Queue audit has no `issues`. Warnings are acceptable when an old command is explicitly waiting for an offline target computer.
+- Runner registration leaves the computer node explicitly bound to the runner. If an old cloud build fails to bind during registration, the P0 scripts must detect that instead of pretending dispatch is ready.
+- A command targeted at one computer is visible only to that computer's bound runner.
+- A workstation/NPC inbox command can only be read, acked, and completed by the runner bound to that workstation's computer.
+- Thread scan results appear in the computer panel as human-readable thread names; users do not type raw thread IDs.
 
 ## User-Visible Runner Semantics
 
@@ -62,16 +71,28 @@ Do not claim a computer can accept NPC work unless `runner_effective_status` is 
 
 Known reports:
 
-- `artifacts/p0-cloud-cross-platform-runner-report-20260516160900.json`
-- `artifacts/cloud-computer-onboarding-commands-report-20260516-162035.json`
-- `artifacts/runner-watch-queue-http-report-20260516-161612.json`
+- `artifacts/cloud-computer-onboarding-commands-report-20260517-174630.json`
+- `artifacts/runner-watch-queue-http-report-20260517-174653.json`
+- `artifacts/cloud-runner-command-routing/cloud-runner-command-routing-report-20260517-174653.json`
+- `artifacts/cloud-runner-dispatch/cloud-runner-dispatch-fullchain-report-20260517-174653.json`
+- `artifacts/cloud-runner-isolation/cloud-runner-workstation-isolation-report-20260517-174707.json`
+- `artifacts/computer-thread-visibility-http-report-20260517-174707.json`
+
+Latest deployed fingerprint:
+
+- `deployment.build_sha`: `c21747744f65`
+- `deployment.build_ref`: `ai/game-loop-core`
+- `deployment.build_time`: `2026-05-17T09:45:49Z`
 
 Validated paths:
 
-- Linux cloud runner registered from cloud-downloaded `connect-ai-collab-runner.sh`.
-- Windows runner registered from cloud-downloaded `connect-ai-collab-runner.ps1`.
-- Cloud runner commands reached both Windows and Linux runners and completed.
-- A Windows thread slot received a cloud workstation command through `platform-workstation-adapter.py` and wrote ack/final receipts without executing provider CLI.
+- Cloud Web and API agree on the same deployed build fingerprint through direct API and Web proxy.
+- Cloud-rendered pairing cards provide safe Windows and Linux/macOS watch commands, with public Web downloads on `3001` and public API calls on `8011`.
+- Linux and Windows onboarding scripts are available through the download route and local compatibility checks pass.
+- A synthetic runner can register, heartbeat, receive a cloud runner command, ack, complete, and expose visible receipts.
+- Two synthetic runners bound to two different computers cannot see each other's targeted commands.
+- A workstation command can be consumed only by the runner bound to that workstation's computer; wrong-runner read/ack is rejected.
+- Thread scan sync makes scanned thread names visible in the cloud computer panel.
 
 ## Safety Boundary
 

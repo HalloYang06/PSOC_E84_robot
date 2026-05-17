@@ -6,6 +6,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
+from urllib.error import HTTPError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
@@ -63,9 +64,15 @@ def request_json(
         headers["Content-Type"] = "application/json"
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     request = Request(url, data=data, headers=headers, method=method)
-    with urlopen(request, timeout=timeout) as response:
-        raw = response.read().decode("utf-8", errors="replace")
-    return json.loads(raw) if raw else {}
+    try:
+        with urlopen(request, timeout=timeout) as response:
+            raw = response.read().decode("utf-8", errors="replace")
+        return json.loads(raw) if raw else {}
+    except HTTPError as exc:
+        raw = exc.read().decode("utf-8", errors="replace")
+        payload = json.loads(raw) if raw else {}
+        payload["_http_status"] = exc.code
+        return payload
 
 
 def data_of(payload: dict[str, object]) -> object:
@@ -106,6 +113,23 @@ def project_node(api_base: str, project_id: str, token: str, node_id: str) -> di
         if isinstance(node, dict) and text(node.get("id")) == node_id:
             return node
     return None
+
+
+def project_node_direct(api_base: str, project_id: str, token: str, node_id: str) -> dict[str, object] | None:
+    payload = request_json(api_url(api_base, f"/api/collaboration/projects/{quote(project_id)}/computer-nodes/{quote(node_id)}"), token=token)
+    data = data_of(payload)
+    if isinstance(data, dict) and text(data.get("id")) == node_id:
+        return data
+    return None
+
+
+def wait_for_project_node(api_base: str, project_id: str, token: str, node_id: str, *, attempts: int = 5) -> dict[str, object]:
+    for attempt in range(attempts):
+        node = project_node_direct(api_base, project_id, token, node_id)
+        if node is not None:
+            return node
+        time.sleep(0.2 * (attempt + 1))
+    raise RuntimeError(f"computer node {node_id} was not readable after create")
 
 
 def main() -> int:
@@ -163,6 +187,7 @@ def main() -> int:
                 "metadata": {"validation_kind": "cloud_runner_dispatch_fullchain"},
             },
         )
+        wait_for_project_node(api_base, args.project_id, token, node_id)
         step("create_computer_node", "ok")
 
         pairing_payload = request_json(
@@ -193,6 +218,21 @@ def main() -> int:
         if not isinstance(register_data, dict) or text(register_data.get("id")) != runner_id:
             raise RuntimeError(f"runner registration returned unexpected payload: {register_payload}")
         step("register_runner", "ok")
+
+        node_after_register = wait_for_project_node(api_base, args.project_id, token, node_id)
+        if text(node_after_register.get("runner_id")) != runner_id:
+            bind_payload = request_json(
+                api_url(api_base, f"/api/runners/{quote(runner_id)}/bindings"),
+                method="POST",
+                token=token,
+                payload={"project_id": args.project_id, "computer_node_id": node_id},
+            )
+            bind_data = data_of(bind_payload)
+            if not isinstance(bind_data, dict) or text(bind_data.get("runner_id")) != runner_id:
+                raise RuntimeError(f"runner binding was not established after registration: {bind_payload}")
+            step("explicit_runner_binding_repaired", "ok")
+        else:
+            step("verify_runner_binding", "ok")
 
         for index in range(2):
             request_json(

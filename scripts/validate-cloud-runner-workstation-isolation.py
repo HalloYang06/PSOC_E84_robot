@@ -179,6 +179,26 @@ def main() -> int:
             )
             if hb_status != 200:
                 raise RuntimeError(f"heartbeat {runner_id} failed with HTTP {hb_status}: {hb_payload}")
+            node_status, node_payload = request_json(
+                api_url(api_base, f"/api/collaboration/projects/{quote(args.project_id)}/computer-nodes/{quote(node_id)}"),
+                token=token,
+            )
+            node_data = data_of(node_payload)
+            bound_runner_id = text(node_data.get("runner_id") if isinstance(node_data, dict) else "")
+            if node_status != 200:
+                raise RuntimeError(f"read node {node_id} after runner register failed with HTTP {node_status}: {node_payload}")
+            if bound_runner_id != runner_id:
+                bind_status, bind_payload = request_json(
+                    api_url(api_base, f"/api/runners/{quote(runner_id)}/bindings"),
+                    method="POST",
+                    token=token,
+                    payload={"project_id": args.project_id, "computer_node_id": node_id},
+                )
+                if bind_status != 200:
+                    raise RuntimeError(
+                        f"runner {runner_id} did not bind during registration and explicit bind failed with HTTP {bind_status}: {bind_payload}"
+                    )
+                step("explicit_runner_binding_repaired", "ok", node_id=node_id, runner_id=runner_id)
             step("create_and_register_runner", "ok", node_id=node_id, runner_id=runner_id)
 
         status, ws_payload = request_json(

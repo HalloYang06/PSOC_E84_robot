@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 from urllib.error import HTTPError
@@ -83,6 +84,32 @@ def command_ids(payload: dict[str, object]) -> set[str]:
     return {text(item.get("id")) for item in data if isinstance(item, dict) and text(item.get("id"))}
 
 
+def read_computer_node(api_base: str, project_id: str, token: str, node_id: str) -> tuple[int, dict[str, object]]:
+    return request_json(
+        api_url(api_base, f"/api/collaboration/projects/{quote(project_id)}/computer-nodes/{quote(node_id)}"),
+        token=token,
+    )
+
+
+def wait_for_computer_node(
+    api_base: str,
+    project_id: str,
+    token: str,
+    node_id: str,
+    *,
+    attempts: int = 5,
+) -> dict[str, object]:
+    last_status = 0
+    last_payload: dict[str, object] = {}
+    for attempt in range(attempts):
+        last_status, last_payload = read_computer_node(api_base, project_id, token, node_id)
+        node_data = data_of(last_payload)
+        if last_status == 200 and isinstance(node_data, dict) and text(node_data.get("id")) == node_id:
+            return node_data
+        time.sleep(0.2 * (attempt + 1))
+    raise RuntimeError(f"computer node {node_id} was not readable after create: HTTP {last_status}: {last_payload}")
+
+
 def main() -> int:
     args = parse_args()
     api_base = args.api_base.rstrip("/")
@@ -143,6 +170,7 @@ def main() -> int:
             )
             if status != 200:
                 raise RuntimeError(f"create computer node {node_id} failed with HTTP {status}: {create_payload}")
+            wait_for_computer_node(api_base, args.project_id, token, node_id)
             step("create_computer_node", "ok", node_id=node_id)
 
             status, token_payload = request_json(
@@ -183,6 +211,23 @@ def main() -> int:
             if status != 200:
                 raise RuntimeError(f"heartbeat {runner_id} failed with HTTP {status}: {heartbeat_payload}")
             step("runner_heartbeat", "ok", runner_id=runner_id)
+
+            node_after_register = wait_for_computer_node(api_base, args.project_id, token, node_id)
+            bound_runner_id = text(node_after_register.get("runner_id"))
+            if bound_runner_id != runner_id:
+                bind_status, bind_payload = request_json(
+                    api_url(api_base, f"/api/runners/{quote(runner_id)}/bindings"),
+                    method="POST",
+                    token=token,
+                    payload={"project_id": args.project_id, "computer_node_id": node_id},
+                )
+                if bind_status != 200:
+                    raise RuntimeError(
+                        f"runner {runner_id} did not bind during registration and explicit bind failed with HTTP {bind_status}: {bind_payload}"
+                    )
+                step("explicit_runner_binding_repaired", "ok", node_id=node_id, runner_id=runner_id)
+            else:
+                step("verify_runner_binding", "ok", node_id=node_id, runner_id=runner_id)
 
         commands: list[tuple[str, str, str]] = []
         for target_runner, target_node, title_suffix in (
