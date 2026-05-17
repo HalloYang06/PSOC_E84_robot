@@ -1141,8 +1141,8 @@ export default async function ProjectObservabilityPage({
           <section className={styles.mainSurface} aria-label="当前证据链">
             <div className={styles.surfaceHead}>
               <span>{currentBlocker.label}</span>
-              <strong>{currentBlocker.title}</strong>
-              <p>{currentBlocker.detail}</p>
+              <strong>派工验真 / 全链路入口</strong>
+              <p>{currentBlocker.title}：{currentBlocker.detail}</p>
             </div>
             <div className={styles.actionGrid}>
               {primaryActions.map((action) => (
@@ -1212,7 +1212,7 @@ export default async function ProjectObservabilityPage({
           </details>
 
           <details className={styles.drawerPanel} open id="execution-computers">
-            <summary><span>执行电脑</span><strong>{onlineComputers}/{computers.length}</strong></summary>
+            <summary><span>执行电脑能力</span><strong>{onlineComputers}/{computers.length}</strong></summary>
             <div className={styles.drawerGrid}>
               {computerCapabilityRows.map((node) => (
                 <article key={node.key} data-state={node.state}>
