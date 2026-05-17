@@ -33,6 +33,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--login-password", default="password")
     parser.add_argument("--output-dir", default=str(REPO_ROOT / "artifacts" / "cloud-npc-thread-dispatch"))
     parser.add_argument("--dispatch-seat", default="6", help="Seat number to send the smoke task to after binding.")
+    parser.add_argument(
+        "--allow-offline-dispatch",
+        action="store_true",
+        help="Create a queued smoke task even when the target computer is not in continuous pickup mode.",
+    )
+    parser.add_argument(
+        "--cleanup-dispatch",
+        action="store_true",
+        help="Close the smoke task before exiting so validation does not leave user-visible queue items.",
+    )
     return parser.parse_args()
 
 
@@ -287,6 +297,29 @@ def dispatch_to_workstation(
     return data
 
 
+def update_message_status(
+    api_base: str,
+    token: str,
+    *,
+    message_id: str,
+    status: str,
+    body: str | None = None,
+) -> dict[str, object]:
+    payload: dict[str, object] = {"status": status}
+    if body is not None:
+        payload["body"] = body
+    response = request_json(
+        api_url(api_base, f"/api/collaboration/messages/{quote(message_id)}"),
+        method="PATCH",
+        token=token,
+        payload=payload,
+    )
+    data = data_of(response)
+    if not isinstance(data, dict):
+        raise RuntimeError(f"message update response missing data: {response}")
+    return data
+
+
 def node_status_map(config: dict[str, object]) -> dict[str, dict[str, object]]:
     collab = collaboration_config(config)
     nodes = collab.get("computer_nodes")
@@ -397,41 +430,74 @@ def main() -> int:
         dispatch_number = text(args.dispatch_seat, "6")
         target = bound.get(dispatch_number) or next(iter(bound.values()), None)
         if target:
-            title = f"1-6号线程派活体验 {stamp}"
-            body = (
-                "请做最小回执即可：确认你已经收到平台从云端派到绑定线程的任务。"
-                "不要执行真实硬件、部署、ROS 写操作或电机动作。"
+            target_node_id = text(target.get("computer_node_id") or target.get("computer_node"))
+            target_node = nodes.get(target_node_id, {})
+            target_ready = (
+                text(target_node.get("runner_effective_status")) == "online"
+                and text(target_node.get("runner_watch_state")) == "watching"
             )
-            command = dispatch_to_workstation(
-                api_base,
-                args.project_id,
-                token,
-                user_id,
-                workstation=target,
-                title=title,
-                body=body,
-            )
-            report["dispatch"] = {
-                "command_id": text(command.get("id")),
-                "title": text(command.get("title")),
-                "status": text(command.get("status")),
-                "recipient_type": text(command.get("recipient_type")),
-                "recipient_id": text(command.get("recipient_id")),
-                "target_name": text(target.get("name")),
-            }
-            step("dispatch_smoke_task", "ok", dispatch=report["dispatch"])
-            messages = list_messages(api_base, args.project_id, token)
-            visible = next((item for item in messages if text(item.get("id")) == text(command.get("id"))), None)
-            if not visible:
-                report["issues"].append("dispatch command was not visible in collaboration messages")
-            else:
-                report["dispatch_visible_message"] = {
-                    "id": text(visible.get("id")),
-                    "title": text(visible.get("title")),
-                    "status": text(visible.get("status")),
-                    "recipient_id": text(visible.get("recipient_id")),
+            if not target_ready and not args.allow_offline_dispatch:
+                report["dispatch"] = {
+                    "status": "skipped",
+                    "reason": "target_computer_not_in_continuous_pickup",
+                    "target_name": text(target.get("name")),
+                    "target_node_id": target_node_id,
                 }
-            step("verify_dispatch_visible", "ok" if visible else "failed")
+                report["warnings"].append(
+                    "目标电脑当前没有常驻接单，本次只验证绑定和状态，不创建会滞留的测试派单。"
+                )
+                step("dispatch_smoke_task", "skipped", dispatch=report["dispatch"])
+            else:
+                title = f"1-6号线程派活体验 {stamp}"
+                body = (
+                    "请做最小回执即可：确认你已经收到平台从云端派到绑定线程的任务。"
+                    "不要执行真实硬件、部署、ROS 写操作或电机动作。"
+                )
+                command = dispatch_to_workstation(
+                    api_base,
+                    args.project_id,
+                    token,
+                    user_id,
+                    workstation=target,
+                    title=title,
+                    body=body,
+                )
+                command_id = text(command.get("id"))
+                report["dispatch"] = {
+                    "command_id": command_id,
+                    "title": text(command.get("title")),
+                    "status": text(command.get("status")),
+                    "recipient_type": text(command.get("recipient_type")),
+                    "recipient_id": text(command.get("recipient_id")),
+                    "target_name": text(target.get("name")),
+                    "target_ready": target_ready,
+                }
+                step("dispatch_smoke_task", "ok", dispatch=report["dispatch"])
+                messages = list_messages(api_base, args.project_id, token)
+                visible = next((item for item in messages if text(item.get("id")) == command_id), None)
+                if not visible:
+                    report["issues"].append("dispatch command was not visible in collaboration messages")
+                else:
+                    report["dispatch_visible_message"] = {
+                        "id": text(visible.get("id")),
+                        "title": text(visible.get("title")),
+                        "status": text(visible.get("status")),
+                        "recipient_id": text(visible.get("recipient_id")),
+                    }
+                step("verify_dispatch_visible", "ok" if visible else "failed")
+                if command_id and args.cleanup_dispatch:
+                    updated = update_message_status(
+                        api_base,
+                        token,
+                        message_id=command_id,
+                        status="cancelled",
+                        body="云端 NPC 派工验收清理：测试消息已关闭，避免留在用户队列。",
+                    )
+                    report["dispatch_cleanup"] = {
+                        "command_id": command_id,
+                        "status": text(updated.get("status")),
+                    }
+                    step("cleanup_dispatch", "ok", dispatch_cleanup=report["dispatch_cleanup"])
         else:
             report["issues"].append("no numbered NPC could be bound, so dispatch was skipped")
             step("dispatch_smoke_task", "skipped")

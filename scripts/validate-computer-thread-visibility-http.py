@@ -72,6 +72,27 @@ def fetch_text(url: str, *, token: str) -> str:
         return response.read().decode("utf-8", errors="replace")
 
 
+def request_runner_json(
+    url: str,
+    *,
+    runner_id: str,
+    payload: dict[str, object],
+) -> dict[str, object]:
+    request = Request(
+        url,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "X-Runner-Id": runner_id,
+        },
+        method="POST",
+    )
+    with urlopen(request, timeout=30) as response:
+        raw = response.read().decode("utf-8", errors="replace")
+    return json.loads(raw) if raw else {}
+
+
 def main() -> int:
     args = parse_args()
     api_base = args.api_base.rstrip("/")
@@ -142,20 +163,34 @@ def main() -> int:
             raise RuntimeError(f"register-runner failed: {register_result}")
         report["register_returncode"] = register_result["returncode"]
 
-        sync_result = onboarding.run_powershell_script(
-            "sync-codex-session-threads.ps1",
-            "-Server",
-            api_base,
-            "-RunnerId",
-            runner_id,
-            "-ProjectId",
-            project_id,
-            "-ComputerNodeId",
-            computer_id,
+        synthetic_thread_ids = [f"{computer_id}-thread-{index:02d}" for index in range(1, 10)]
+        synthetic_threads = [
+            {
+                "workstation_id": synthetic_thread_ids[index - 1],
+                "workstation_name": f"可见性验收线程 {index:02d}",
+                "workstation_status": "active",
+                "cwd": str(REPO_ROOT),
+                "model": "gpt-5.4",
+                "description": "Synthetic thread slot for computer visibility validation",
+                "notes": "Created by validate-computer-thread-visibility-http.py; safe to delete with the computer node.",
+                "ai_provider_id": "codex",
+            }
+            for index in range(1, 10)
+        ]
+        sync_payload = {
+            "project_id": project_id,
+            "computer_node_id": computer_id,
+            "workstations": synthetic_threads,
+        }
+        sync_response = request_runner_json(
+            f"{api_base}/api/runners/{runner_id}/thread-workstations/sync",
+            runner_id=runner_id,
+            payload=sync_payload,
         )
-        if int(sync_result.get("returncode", 1)) != 0:
-            raise RuntimeError(f"sync-codex-session-threads failed: {sync_result}")
-        report["sync_returncode"] = sync_result["returncode"]
+        sync_data = sync_response.get("data") if isinstance(sync_response, dict) else {}
+        report["sync_thread_count"] = int((sync_data or {}).get("thread_count") or 0) if isinstance(sync_data, dict) else 0
+        if report["sync_thread_count"] != len(synthetic_threads):
+            raise RuntimeError(f"synthetic thread sync count mismatch: {sync_response}")
 
         workstations_payload = request_json(
             f"{api_base}/api/collaboration/projects/{project_id}/thread-workstations",
@@ -203,6 +238,19 @@ def main() -> int:
             report["issues"].append(
                 f"expected more than 6 rendered threads for regression coverage, got {rendered_count}"
             )
+
+        cleanup_threads: list[dict[str, object]] = []
+        for thread_id in synthetic_thread_ids:
+            try:
+                cleanup_payload = request_json(
+                    f"{api_base}/api/collaboration/projects/{project_id}/thread-workstations/{thread_id}",
+                    method="DELETE",
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+                cleanup_threads.append({"id": thread_id, "status": "ok", "payload": cleanup_payload})
+            except Exception as exc:  # noqa: BLE001
+                cleanup_threads.append({"id": thread_id, "status": "warning", "message": str(exc)})
+        report["cleanup_threads"] = cleanup_threads
 
         report_path = output_dir / f"computer-thread-visibility-http-report-{stamp}.json"
         report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
