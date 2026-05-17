@@ -83,10 +83,26 @@ function itemTitle(item: AnyRecord | null | undefined, fallback = "未命名事�
 
 function computerState(value: unknown) {
   const raw = statusText(value);
-  if (/online|ready|active|connected/.test(raw)) return "在线";
-  if (/recent|stale|timeout/.test(raw)) return "可能延迟";
+  if (/watching|online|ready|active|connected/.test(raw)) return "在线";
+  if (/recent|stale|timeout|delay/.test(raw)) return "可能延迟";
   if (/offline|lost|disconnect|error/.test(raw)) return "离线，需重连";
   return "状态未知";
+}
+
+function computerDispatchState(node: AnyRecord | undefined) {
+  if (!node) return "状态未知";
+  const watchState = statusText(node.runner_watch_state ?? node.runnerWatchState);
+  const effective = statusText(node.runner_effective_status ?? node.runnerEffectiveStatus ?? node.runner_status ?? node.runnerStatus ?? node.status);
+  if (watchState === "watching" || /watching|online|ready|active|connected/.test(effective)) return "在线";
+  if (/stale|timeout|delay|recent/.test(watchState) || /stale|timeout|delay|recent/.test(effective)) return "可能延迟";
+  if (/offline|lost|disconnect|error|runner_offline|missing/.test(watchState) || /offline|lost|disconnect|error/.test(effective)) return "离线，需重连";
+  return "状态未知";
+}
+
+function seatCanDispatch(seat: AnyRecord, computerById: Map<string, AnyRecord>) {
+  const nodeId = text(seat.computer_node_id ?? seat.computerNodeId ?? seat.computer_node ?? seat.computerNode, "");
+  if (!nodeId) return false;
+  return computerDispatchState(computerById.get(nodeId)) === "在线";
 }
 
 export default async function ProjectCockpitPage({
@@ -130,6 +146,11 @@ export default async function ProjectCockpitPage({
   const computers = asArray<AnyRecord>(computersState.data);
   const seats = asArray<AnyRecord>(seatsState.data);
   const scorecard = scorecardState.data && typeof scorecardState.data === "object" ? (scorecardState.data as AnyRecord) : {};
+  const computerById = new Map<string, AnyRecord>();
+  for (const computer of computers) {
+    const id = text(computer.id ?? computer.config_id ?? computer.node_id, "");
+    if (id) computerById.set(id, computer);
+  }
 
   const pendingReviews = messages.filter((item) => /review|approval|pending_review|waiting_review/.test(statusText(item.status) + " " + statusText(item.message_type)));
   const blockedTasks = tasks.filter((item) => /blocked|failed|error|rejected|timeout/.test(statusText(item.status)));
@@ -142,9 +163,9 @@ export default async function ProjectCockpitPage({
     })
     .slice(0, 4);
   const riskyNeeds = requirements.filter((item) => /high|critical/.test(statusText(item.risk_level ?? item.riskLevel ?? item.priority)));
-  const onlineComputers = computers.filter((node) => computerState(node.runner_effective_status ?? node.runner_status ?? node.status) === "在线");
-  const staleComputers = computers.filter((node) => computerState(node.runner_effective_status ?? node.runner_status ?? node.status) !== "在线");
-  const readySeats = seats.filter((seat) => /ready|online|active|connected|watcher/.test(statusText(seat.thread_health ?? seat.threadHealth ?? seat.status ?? seat.automation_status)));
+  const onlineComputers = computers.filter((node) => computerDispatchState(node) === "在线");
+  const staleComputers = computers.filter((node) => computerDispatchState(node) !== "在线");
+  const readySeats = seats.filter((seat) => seatCanDispatch(seat, computerById));
   const grade = text(scorecard.grade ?? scorecard.overall_grade ?? scorecard.status, "待评估");
 
   const focusCards = [
@@ -271,9 +292,9 @@ export default async function ProjectCockpitPage({
             <div className={styles.drawerBody}>
               {(computers.length ? computers.slice(0, 5) : [{ name: "还没有电脑接入", status: "unknown" }]).map((node, index) => (
                 <article key={text(node.id, `computer-${index}`)}>
-                  <span>{computerState(node.runner_effective_status ?? node.runner_status ?? node.status)}</span>
+                  <span>{computerDispatchState(node)}</span>
                   <strong>{text(node.name ?? node.label ?? node.hostname, `执行电脑 ${index + 1}`)}</strong>
-                  <p>{computerState(node.runner_effective_status ?? node.runner_status ?? node.status) === "在线" ? "可用于派发和回执同步。" : "先检查接入、重连或改派。"}</p>
+                  <p>{computerDispatchState(node) === "在线" ? "可用于派发和回执同步。" : "先检查接入、重连或改派。"}</p>
                 </article>
               ))}
             </div>

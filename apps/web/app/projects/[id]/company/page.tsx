@@ -48,7 +48,20 @@ function publicThreadState(value: unknown, automationEnabled = false) {
   if (/online|ready|ok|watcher ready|connected|active/.test(raw)) return "可接单";
   if (/stale|timeout|delay/.test(raw)) return "可能延迟";
   if (/offline|lost|failed|error/.test(raw)) return "需重连";
-  return automationEnabled ? "可接单" : "待接入";
+  return automationEnabled ? "已绑定，待电脑接单" : "待接入";
+}
+
+function publicComputerDispatchState(node: AnyRecord | undefined) {
+  if (!node) return "状态未知";
+  const watchState = text(node.runner_watch_state ?? node.runnerWatchState, "").toLowerCase();
+  const effectiveStatus = text(
+    node.runner_effective_status ?? node.runnerEffectiveStatus ?? node.runner_status ?? node.runnerStatus ?? node.status,
+    "",
+  ).toLowerCase();
+  if (watchState === "watching" || /watching|online|ready|active|connected/.test(effectiveStatus)) return "可接单";
+  if (/stale|timeout|delay|recent/.test(watchState) || /stale|timeout|delay|recent/.test(effectiveStatus)) return "可能延迟";
+  if (/offline|lost|failed|error|runner_offline|missing/.test(watchState) || /offline|lost|failed|error/.test(effectiveStatus)) return "需重连";
+  return "状态未知";
 }
 
 function publicStatusLabel(value: unknown) {
@@ -144,11 +157,13 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
     : {};
 
   const nodeMap = new Map<string, string>();
+  const nodeStateMap = new Map<string, AnyRecord>();
   for (const node of [...configNodes, ...liveNodes]) {
     const id = text(node?.id ?? node?.node_id, "");
     if (!id) continue;
     const name = text(node?.name ?? node?.label ?? node?.hostname ?? id, id);
     nodeMap.set(id, name);
+    nodeStateMap.set(id, node);
   }
 
   const workstationNameById = new Map<string, string>();
@@ -247,6 +262,7 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
       adapter.status,
       automationEnabled ? "watcher ready" : "待接入",
     );
+    const dispatchState = computerNodeId ? publicComputerDispatchState(nodeStateMap.get(computerNodeId)) : "待接入";
     const gitUserName = text(meta.git_user_name ?? meta.gitUserName, name);
     const gitUserEmail = text(
       meta.git_user_email ?? meta.gitUserEmail,
@@ -269,6 +285,7 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
       threadId,
       threadKind,
       threadHealth,
+      dispatchState,
       codexLaunchPrompt: text(meta.codex_launch_prompt ?? meta.codexLaunchPrompt, ""),
       metadata: meta,
       responsibility,
@@ -325,7 +342,7 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
   };
   const selectedSeats = selectedWorkstation.seats;
   const primarySeat = selectedSeats[0] ?? allSeats[0] ?? null;
-  const threadReadyCount = allSeats.filter((seat) => publicThreadState(seat.threadHealth, seat.automationEnabled) === "可接单").length;
+  const threadReadyCount = allSeats.filter((seat) => seat.dispatchState === "可接单").length;
   const strictReviewCount = allSeats.filter((seat) => reviewPolicyLabel(seat.reviewPolicy) === "强审").length;
   const skillAssignedCount = allSeats.filter((seat) => seat.skillLoadout.length || seat.inheritedSkills.length).length;
   const knowledgeAssignedCount = allSeats.filter((seat) => seat.knowledgeSummary || seat.workstationKnowledgePath).length;
@@ -415,8 +432,8 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
                   <small>{seat.permissionLevel || "继承权限"}</small>
                 </div>
                 <div>
-                  <strong>{publicThreadState(seat.threadHealth, seat.automationEnabled)}</strong>
-                  <small>{seat.threadKind || "线程待确认"}</small>
+                  <strong>{seat.dispatchState}</strong>
+                  <small>{seat.dispatchState === "可接单" ? seat.threadKind || "线程待确认" : "先让电脑持续接单"}</small>
                 </div>
               </article>
             ))}
@@ -436,7 +453,7 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
               <div className={styles.drawerBody}>
                 <article><span>职责边界</span><p>{primarySeat.responsibility}</p></article>
                 <article><span>模型 / 通道</span><p>{primarySeat.model || primarySeat.providerLabel || "继承默认配置"}</p></article>
-                <article><span>线程状态</span><p>{publicThreadState(primarySeat.threadHealth, primarySeat.automationEnabled)} · 线程选择回主页面处理</p></article>
+                <article><span>线程状态</span><p>{primarySeat.dispatchState} · 线程选择回主页面处理，派单前以电脑持续接单为准</p></article>
               </div>
             ) : <p className={styles.emptyText}>选择或创建 NPC 后显示员工属性。</p>}
           </details>
