@@ -89,6 +89,10 @@ def main() -> int:
     retired_redirects = {
         "apps/web/app/projects/[id]/unity-client/page.tsx": "/robotics",
     }
+    server_data_backed_pages = {
+        "apps/web/app/projects/[id]/company/page.tsx",
+        "apps/web/app/projects/[id]/cockpit/page.tsx",
+    }
     for rel in (
         "apps/web/app/projects/[id]/page.tsx",
         "apps/web/app/projects/[id]/project-playable-shell.tsx",
@@ -100,6 +104,9 @@ def main() -> int:
         if rel in retired_redirects:
             assert_contains(source, "redirect(", f"{rel} retired route redirect")
             assert_contains(source, retired_redirects[rel], f"{rel} canonical route")
+        elif rel in server_data_backed_pages:
+            assert_contains(source, "server-data", f"{rel} unified server data API fallback")
+            assert_contains(read("apps/web/lib/config.ts"), "http://127.0.0.1:8011", "central production API fallback")
         else:
             assert_contains(source, "8011", f"{rel} production API fallback")
         assert_not_contains(source, "127.0.0.1:8010", f"{rel} stale local API fallback")
