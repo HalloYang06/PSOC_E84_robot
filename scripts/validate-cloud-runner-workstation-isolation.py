@@ -136,7 +136,6 @@ def main() -> int:
                     "id": node_id,
                     "label": f"{label} {suffix}",
                     "status": "offline",
-                    "runner_id": runner_id,
                     "connection_kind": "remote",
                     "os": "Linux/Windows compatible",
                     "metadata": {"validation_kind": "cloud_runner_workstation_isolation"},
@@ -144,11 +143,31 @@ def main() -> int:
             )
             if status != 200:
                 raise RuntimeError(f"create node {node_id} failed with HTTP {status}: {payload}")
+
+            token_status, token_payload = request_json(
+                api_url(api_base, f"/api/collaboration/projects/{quote(args.project_id)}/computer-nodes/{quote(node_id)}/pairing-token"),
+                method="POST",
+                token=token,
+            )
+            if token_status != 200:
+                raise RuntimeError(f"rotate pairing token for {node_id} failed with HTTP {token_status}: {token_payload}")
+            token_data = data_of(token_payload)
+            pairing_token = text(token_data.get("token") if isinstance(token_data, dict) else "")
+            if not pairing_token:
+                raise RuntimeError(f"pairing token missing for {node_id}: {token_payload}")
+            step("rotate_pairing_token", "ok", node_id=node_id)
+
             reg_status, reg_payload = request_json(
                 api_url(api_base, "/api/runners/register"),
                 method="POST",
                 runner_id=runner_id,
-                payload={"runner_id": runner_id, "runner_name": label, "capabilities": ["codex", "threads"]},
+                registration_token=pairing_token,
+                payload={
+                    "runner_id": runner_id,
+                    "runner_name": label,
+                    "computer_node_id": node_id,
+                    "capabilities": ["codex", "threads"],
+                },
             )
             if reg_status != 200:
                 raise RuntimeError(f"register runner {runner_id} failed with HTTP {reg_status}: {reg_payload}")
