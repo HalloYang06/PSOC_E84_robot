@@ -816,8 +816,8 @@ export default async function ProjectObservabilityPage({
               label: "当前状态",
               title: "当前链路可继续推进",
               detail: historicalBacklogCount > 0
-                ? "派工、最小回执和可接单通道已经接上；历史积压已收进抽屉，不再压住当前判断。"
-                : "派工、最小回执和可接单通道已经接上，负责人现在主要判断下一步去哪一层继续看证据。",
+                ? "派工、最小回执和可投递通道已经接上；历史积压已收进抽屉，不再压住当前判断。"
+                : "派工、最小回执和可投递通道已经接上，负责人现在主要判断下一步去哪一层继续看证据。",
               href: focusHref(projectId, "workbench", selfPath, sharedFocus),
               cta: "回 NPC 工作台",
             }
@@ -1001,8 +1001,8 @@ export default async function ProjectObservabilityPage({
       : {
           state: "connected",
           label: "已重新连接",
-          title: `可接单 ${deliverableSeats.length}/${evidenceSeats.length || 0}，桌面可见 ${desktopReadySeats.length}/${evidenceSeats.length || 0}`,
-          detail: "可接单只看目标电脑是否持续接单；桌面可见只是诊断信息，不等于派工能力。",
+          title: `可投递 ${deliverableSeats.length}/${evidenceSeats.length || 0}，桌面可见 ${desktopReadySeats.length}/${evidenceSeats.length || 0}`,
+          detail: "可投递只看目标电脑是否持续心跳并绑定线程；桌面可见只是诊断信息，不等于派工能力。",
           href: focusHref(projectId, "workbench", selfPath, sharedFocus),
         },
     failedAutonomousMessages.length
@@ -1044,10 +1044,10 @@ export default async function ProjectObservabilityPage({
       detail: onlineComputers > 0 ? "已有执行电脑在线，可继续验证任务派发与回执。" : "部署前建议至少准备一台执行电脑或 runner 节点。",
     },
     {
-      label: "电脑接单",
+      label: "电脑可投递",
       state: deliverableSeats.length === evidenceSeats.length && evidenceSeats.length > 0 ? "ready" : "watch",
       value: `${deliverableSeats.length}/${evidenceSeats.length || 0}`,
-      detail: `桌面可见 ${desktopReadySeats.length}/${evidenceSeats.length || 0}；只有目标电脑持续接单才计入可接单。`,
+      detail: `桌面可见 ${desktopReadySeats.length}/${evidenceSeats.length || 0}；只有目标电脑持续心跳并绑定线程才计入可投递。`,
     },
     {
       label: "当前待审",

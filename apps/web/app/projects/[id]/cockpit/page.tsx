@@ -236,7 +236,7 @@ export default async function ProjectCockpitPage({
         </div>
         <section className={styles.statusStrip}>
           <article><span>评分</span><strong>{grade}</strong><small>部署/协作状态</small></article>
-          <article><span>NPC</span><strong>{readySeats.length}/{seats.length || 0}</strong><small>可接单线程</small></article>
+          <article><span>NPC</span><strong>{readySeats.length}/{seats.length || 0}</strong><small>可投递线程</small></article>
           <article><span>任务</span><strong>{activeTasks.length}</strong><small>进行中</small></article>
           <article><span>电脑</span><strong>{onlineComputers.length}/{computers.length || 0}</strong><small>在线</small></article>
         </section>

@@ -49,7 +49,7 @@ function publicThreadState(value: unknown, automationEnabled = false) {
   if (/online|ready|ok|watcher ready|connected|active/.test(raw)) return "线程已绑定";
   if (/stale|timeout|delay/.test(raw)) return "可能延迟";
   if (/offline|lost|failed|error/.test(raw)) return "需重连";
-  return automationEnabled ? "已绑定，待电脑接单" : "待接入";
+  return automationEnabled ? "已绑定，待电脑可投递" : "待接入";
 }
 
 function publicComputerDispatchState(node: AnyRecord | undefined) {

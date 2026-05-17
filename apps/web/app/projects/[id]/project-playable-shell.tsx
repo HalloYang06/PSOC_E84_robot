@@ -6609,19 +6609,19 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
   const runnerQueueBlocker = currentQueuedCommandCount > 0 && watchReadyNodes.length === 0;
   const runnerQueueAttention = currentQueuedCommandCount > 0 && (runnerQueueBlocker || watchBlockedNodes.length > 0);
   const runnerQueueAttentionTitle = runnerQueueBlocker
-    ? `${currentQueuedCommandCount} 条当前指令排队，但 0 台电脑在常驻接单`
-    : `${currentQueuedCommandCount} 条当前指令仍在排队，${watchBlockedNodes.length} 台电脑未稳定接单`;
+    ? `${currentQueuedCommandCount} 条当前指令排队，但 0 台电脑可投递`
+    : `${currentQueuedCommandCount} 条当前指令仍在排队，${watchBlockedNodes.length} 台电脑未稳定可投递`;
   const runnerQueueAttentionBody = runnerQueueBlocker
     ? "先去电脑接入管理恢复自动化心跳，再继续派工；否则新指令只会继续堆在队列里。"
-    : `已有 ${watchReadyNodes.length} 台电脑可接单，但仍有 ${watchBlockedNodes.length} 台电脑心跳过期。继续派工前，先确认目标线程在哪台电脑上。`;
+    : `已有 ${watchReadyNodes.length} 台电脑可投递，但仍有 ${watchBlockedNodes.length} 台电脑心跳过期。继续派工前，先确认目标线程在哪台电脑上。`;
   const recommendedAction = hasProtectedDataGap
     ? "重新登录，恢复 requirement、回执和最终回复读取，再继续判断平台下一步。"
     : humanReviewAlert
       ? `先处理人工审核：${humanReviewAlert.detail}`
       : runnerQueueBlocker
-      ? `先恢复电脑常驻接单：当前 ${currentQueuedCommandCount} 条新指令排队，但 0 台电脑在持续心跳。进入电脑接入管理，复制“自动化心跳 / 持续接单”命令。`
+      ? `先恢复电脑可投递状态：当前 ${currentQueuedCommandCount} 条新指令排队，但 0 台电脑在持续心跳。进入电脑接入管理，复制“自动化心跳 / 持续接单”命令。`
       : runnerQueueAttention
-      ? `继续恢复剩余接单电脑：当前 ${currentQueuedCommandCount} 条新指令仍排队，${watchBlockedNodes.length} 台电脑心跳过期。进入电脑接入管理，优先恢复目标线程所在电脑。`
+      ? `继续恢复剩余可投递电脑：当前 ${currentQueuedCommandCount} 条新指令仍排队，${watchBlockedNodes.length} 台电脑心跳过期。进入电脑接入管理，优先恢复目标线程所在电脑。`
       : gitPreflightAttention?.summary
       ? gitPreflightAttention.summary
       : stalledSeatSummary?.detail
@@ -8626,7 +8626,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                 </div>
                 <div className={styles.inlineActions}>
                   <button type="button" onClick={() => openBackpackPanel("computers")}>
-                    {runnerQueueBlocker ? "去恢复电脑接单" : "去查看剩余阻塞电脑"}
+                    {runnerQueueBlocker ? "去恢复电脑可投递" : "去查看剩余阻塞电脑"}
                   </button>
                   <button type="button" className={styles.ghostButton} onClick={() => focusExchangeSection("thread-focus")}>
                     查看线程焦点
@@ -9269,7 +9269,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                   </button>
                 ) : null}
                 <button type="button" className={styles.ghostButton} onClick={() => openBackpackPanel("computers")}>
-                  查看电脑接单状态
+                  查看电脑可投递状态
                 </button>
               </div>
             </div>
@@ -11871,7 +11871,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
     const renderMachineRoomRecoveryDispatchForm = (
       item: (typeof machineRoomThreadModels)[number],
       heading = "一键最小检查",
-      description = "不用自己写文案，平台会自动生成一条标准检查指令，先让这条线程回最小回执，再补当前可接单状态。",
+      description = "不用自己写文案，平台会自动生成一条标准检查指令，先让这条线程回最小回执，再补当前可投递状态。",
     ) => {
       const recoveryPreviewKey = machineRoomRecoveryPreviewKey(item.threadId);
       const recoveryPreview =

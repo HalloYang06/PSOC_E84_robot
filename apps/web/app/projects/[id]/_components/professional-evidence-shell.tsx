@@ -416,8 +416,8 @@ export function ProfessionalEvidenceShell({
             <div className={styles.drawerBody}>
               <article className={styles.drawerItem}>
                 <span>执行电脑能力</span>
-                <strong>{currentRunnerId ? "当前任务已有执行通道" : "等待可接单电脑"}</strong>
-                <p>这里只展示是否可追踪和可接单，具体线程绑定仍在主页面或 NPC 管理里选择。</p>
+                <strong>{currentRunnerId ? "当前任务已有执行通道" : "等待可投递电脑"}</strong>
+                <p>这里只展示是否可追踪和可投递，具体线程绑定仍在主页面或 NPC 管理里选择。</p>
               </article>
               <Link href={`/projects/${projectId}/observability?from=${pageKey}`} className={styles.drawerItem}>
                 <span>证据索引</span>

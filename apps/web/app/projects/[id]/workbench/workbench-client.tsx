@@ -1744,7 +1744,7 @@ export function WorkbenchClient({
               </div>
               <div className={styles.dispatchEvidenceMetrics}>
                 <span data-ok={dispatchEvidence.deliverable === seats.length ? "1" : undefined}>
-                  电脑接单 {dispatchEvidence.deliverable}/{seats.length}
+                  电脑可投递 {dispatchEvidence.deliverable}/{seats.length}
                 </span>
                 <span data-ok={dispatchEvidence.desktopReady > 0 ? "1" : undefined}>
                   桌面可见 {dispatchEvidence.desktopReady}/{seats.length}
@@ -1816,7 +1816,7 @@ export function WorkbenchClient({
             <div className={styles.threadOverviewHead}>
               <strong>{isCompany ? "工位长线程总览" : "多线程协作总览"}</strong>
               <span>线程 {threadOverview.registered}/{seats.length}</span>
-              <span>电脑接单 {threadOverview.canTakeTask}</span>
+              <span>电脑可投递 {threadOverview.canTakeTask}</span>
               <span data-warning={threadOverview.automationEnabled > 0 ? "1" : undefined}>NPC 自动化 {threadOverview.automationEnabled}</span>
               <span data-warning={threadOverview.missing > 0 ? "1" : undefined}>未登记 {threadOverview.missing}</span>
               <button type="button" className={styles.threadOverviewBtn} onClick={() => openSeatGroup(seats.map((seat) => seat.id))} disabled={seats.length === 0}>

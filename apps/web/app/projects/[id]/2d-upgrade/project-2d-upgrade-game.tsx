@@ -1312,7 +1312,7 @@ function computerThreadCount(computer: FeedItem, workstations: FeedItem[]) {
 function computerUserHint(computer: FeedItem, workstations: FeedItem[]) {
   const status = String(computer.status ?? "").toLowerCase();
   const threads = computerThreadCount(computer, workstations);
-  if (["online", "ready", "active"].includes(status) && threads > 0) return `可接单：已发现 ${threads} 条线程，可继续绑定 NPC 或下发只读任务。`;
+  if (["online", "ready", "active"].includes(status) && threads > 0) return `可投递：已发现 ${threads} 条线程，可继续绑定 NPC 或下发只读任务。`;
   if (["online", "ready", "active"].includes(status)) return "执行程序在线但暂无线程：请打开 Codex/Claude/Qwen 后重新扫描。";
   if (status.includes("stale") || status.includes("expired")) return "心跳过期：让目标电脑重新运行执行接入命令或刷新心跳。";
   if (status.includes("offline")) return "离线：确认目标电脑是否开机、是否进入项目、持续接单窗口是否仍在运行。";
@@ -2739,7 +2739,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         <div className={styles.realActionStack} data-unity-real-form={`human-${action.id}`}>
           <article className={styles.realNote}>
             <b>{isRolePanel ? "权限变更必须项目负责人确认" : "协作现场按成员、电脑、线程三层看"}</b>
-            <p>{isRolePanel ? "这里先做可视化权限核对，不提供静默改权。邀请新成员走“邀请协作者”，已有成员改权后续必须加 owner 人审。" : "用户先确认谁在项目里、哪台电脑在线、哪些线程可接单，再决定是否下发协作指令。"}</p>
+            <p>{isRolePanel ? "这里先做可视化权限核对，不提供静默改权。邀请新成员走“邀请协作者”，已有成员改权后续必须加 owner 人审。" : "用户先确认谁在项目里、哪台电脑在线、哪些线程可投递，再决定是否下发协作指令。"}</p>
           </article>
           <div className={styles.layeredList}>
             {projectMembers.length ? (
