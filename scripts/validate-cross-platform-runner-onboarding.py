@@ -111,8 +111,23 @@ def main() -> int:
         "data-computer-manual-sync-linux-command",
         "data-adapter-linux-command",
         "data-token-linux-command",
+        "data-token-linux-watch-command",
     ):
         assert_contains(shell, test_attr, f"{test_attr} surface")
+
+    for token in (
+        "接入成功后要持续接单",
+        "默认只做心跳、任务提示和最小回执",
+        "linuxCommand={pairingBashCommand}",
+        "linuxWatchCommand={pairingWatchBashCommand}",
+    ):
+        assert_contains(shell, token, f"safe pairing token card text {token}")
+
+    for token in (
+        "高风险持续执行命令",
+        "{ watch: true, executeProviderCli: true }",
+    ):
+        assert_not_contains(shell, token, f"unsafe first pairing watch token {token}")
 
     for token in (
         "curl -fsSL",
