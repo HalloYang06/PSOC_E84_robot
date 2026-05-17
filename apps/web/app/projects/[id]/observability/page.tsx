@@ -1212,7 +1212,7 @@ export default async function ProjectObservabilityPage({
           </details>
 
           <details className={styles.drawerPanel} open id="execution-computers">
-            <summary><span>执行电脑能力</span><strong>{onlineComputers}/{computers.length}</strong></summary>
+            <summary><span>执行电脑能力 / 调度</span><strong>{onlineComputers}/{computers.length}</strong></summary>
             <div className={styles.drawerGrid}>
               {computerCapabilityRows.map((node) => (
                 <article key={node.key} data-state={node.state}>
