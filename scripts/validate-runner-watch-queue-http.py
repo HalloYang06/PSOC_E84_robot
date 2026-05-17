@@ -109,6 +109,13 @@ def is_offline_node(node: dict[str, object] | None) -> bool:
     )
 
 
+def is_current_queue_item(message: dict[str, object], *, now: datetime, warning_minutes: int) -> bool:
+    age = queued_age_minutes(message, now=now)
+    if age is None:
+        return True
+    return age < warning_minutes
+
+
 def resolve_target_node(
     message: dict[str, object],
     *,
@@ -202,8 +209,17 @@ def main() -> int:
             )[1]
         )
     ]
+    stale_historical_messages = [
+        item
+        for item in stale_queued_messages
+        if item not in stale_waiting_for_offline_nodes
+        and text(item.get("message_type")).lower() == "runner_command"
+        and not is_current_queue_item(item, now=now, warning_minutes=args.queued_warning_minutes)
+    ]
     stale_unexplained_messages = [
-        item for item in stale_queued_messages if item not in stale_waiting_for_offline_nodes
+        item
+        for item in stale_queued_messages
+        if item not in stale_waiting_for_offline_nodes and item not in stale_historical_messages
     ]
 
     ready_nodes = [
@@ -243,6 +259,11 @@ def main() -> int:
         warnings.append(
             f"{len(stale_waiting_for_offline_nodes)} queued command(s) older than {args.queued_warning_minutes} minutes are waiting for offline target computers; oldest {oldest} minutes"
         )
+    if stale_historical_messages:
+        oldest = max(queued_age_minutes(item, now=now) or 0 for item in stale_historical_messages)
+        warnings.append(
+            f"{len(stale_historical_messages)} old runner command(s) are historical closeout backlog, not current dispatch blockers; oldest {oldest} minutes"
+        )
     if stale_unexplained_messages:
         oldest = max(queued_age_minutes(item, now=now) or 0 for item in stale_unexplained_messages)
         issues.append(
@@ -261,6 +282,7 @@ def main() -> int:
             "queued_command_count": len(queued_messages),
             "stale_queued_command_count": len(stale_queued_messages),
             "stale_waiting_for_offline_target_count": len(stale_waiting_for_offline_nodes),
+            "stale_historical_closeout_count": len(stale_historical_messages),
             "stale_unexplained_command_count": len(stale_unexplained_messages),
         },
         "blocked_nodes": blocked_nodes,

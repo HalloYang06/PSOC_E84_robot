@@ -5872,6 +5872,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
   );
   const oldestQueuedCollaborationCommand = queuedCollaborationCommandDetails[0] ?? null;
   const staleQueuedCommandCount = staleQueuedCollaborationCommands.length;
+  const currentQueuedCommandCount = Math.max(0, queuedCollaborationCommandCount - staleQueuedCommandCount);
   const queuedCommandsWaitingForOfflineNodes = queuedCollaborationCommandDetails.filter((item) => item.waitsForOfflineNode);
   const staleQueuedCommandsWaitingForOfflineNodes = staleQueuedCollaborationCommands.filter((item) => item.waitsForOfflineNode);
   const queueBlockedByOfflineNodesCount = queuedCommandsWaitingForOfflineNodes.length;
@@ -6605,11 +6606,11 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
   );
   const starterSeatLabel = starterSeat?.name || "当前 NPC";
   const starterSeatProgressWarning = starterSeat?.progressWarningLabel ?? null;
-  const runnerQueueBlocker = queuedCollaborationCommandCount > 0 && watchReadyNodes.length === 0;
-  const runnerQueueAttention = queuedCollaborationCommandCount > 0 && (runnerQueueBlocker || watchBlockedNodes.length > 0);
+  const runnerQueueBlocker = currentQueuedCommandCount > 0 && watchReadyNodes.length === 0;
+  const runnerQueueAttention = currentQueuedCommandCount > 0 && (runnerQueueBlocker || watchBlockedNodes.length > 0);
   const runnerQueueAttentionTitle = runnerQueueBlocker
-    ? `${queuedCollaborationCommandCount} 条平台指令排队，但 0 台电脑在常驻接单`
-    : `${queuedCollaborationCommandCount} 条平台指令仍在排队，${watchBlockedNodes.length} 台电脑未稳定接单`;
+    ? `${currentQueuedCommandCount} 条当前指令排队，但 0 台电脑在常驻接单`
+    : `${currentQueuedCommandCount} 条当前指令仍在排队，${watchBlockedNodes.length} 台电脑未稳定接单`;
   const runnerQueueAttentionBody = runnerQueueBlocker
     ? "先去电脑接入管理恢复自动化心跳，再继续派工；否则新指令只会继续堆在队列里。"
     : `已有 ${watchReadyNodes.length} 台电脑可接单，但仍有 ${watchBlockedNodes.length} 台电脑心跳过期。继续派工前，先确认目标线程在哪台电脑上。`;
@@ -6618,9 +6619,9 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
     : humanReviewAlert
       ? `先处理人工审核：${humanReviewAlert.detail}`
       : runnerQueueBlocker
-      ? `先恢复电脑常驻接单：当前 ${queuedCollaborationCommandCount} 条平台指令排队，但 0 台电脑在持续心跳。进入电脑接入管理，复制“自动化心跳 / 持续接单”命令。`
+      ? `先恢复电脑常驻接单：当前 ${currentQueuedCommandCount} 条新指令排队，但 0 台电脑在持续心跳。进入电脑接入管理，复制“自动化心跳 / 持续接单”命令。`
       : runnerQueueAttention
-      ? `继续恢复剩余接单电脑：当前 ${queuedCollaborationCommandCount} 条平台指令仍排队，${watchBlockedNodes.length} 台电脑心跳过期。进入电脑接入管理，优先恢复目标线程所在电脑。`
+      ? `继续恢复剩余接单电脑：当前 ${currentQueuedCommandCount} 条新指令仍排队，${watchBlockedNodes.length} 台电脑心跳过期。进入电脑接入管理，优先恢复目标线程所在电脑。`
       : gitPreflightAttention?.summary
       ? gitPreflightAttention.summary
       : stalledSeatSummary?.detail
@@ -8611,7 +8612,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
               <div
                 className={`${styles.noticeCard} ${styles.featureCardFocused}`}
                 data-exchange-runner-queue-alert="true"
-                data-exchange-runner-queue-count={String(queuedCollaborationCommandCount)}
+                data-exchange-runner-queue-count={String(currentQueuedCommandCount)}
                 data-exchange-runner-ready-count={String(watchReadyNodes.length)}
                 data-exchange-runner-blocked-count={String(watchBlockedNodes.length)}
                 data-exchange-runner-hard-blocker={runnerQueueBlocker ? "true" : "false"}
@@ -8644,11 +8645,11 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                 <div className={styles.exchangeLevelHead}>
                   <span className={styles.exchangeLevelTag}>旧队列</span>
                   <div>
-                    <strong>{`${staleQueuedCommandCount} 条旧指令需要人工处理，不自动删除`}</strong>
+                    <strong>{`${staleQueuedCommandCount} 条旧指令已归为历史待收口，不阻塞当前派工`}</strong>
                     <p className={styles.microCopy}>
                       {oldestQueuedCollaborationCommand
-                        ? `最久等待 ${oldestQueuedCollaborationCommand.ageLabel}，代表项：${oldestQueuedCollaborationCommand.target} / ${oldestQueuedCollaborationCommand.title}。先恢复接单电脑，再判断是重派、归档还是保留。`
-                        : "先恢复接单电脑，再判断旧队列是重派、归档还是保留。"}
+                        ? `最久等待 ${oldestQueuedCollaborationCommand.ageLabel}，代表项：${oldestQueuedCollaborationCommand.target} / ${oldestQueuedCollaborationCommand.title}。它会留在抽屉里人工重派或归档，不再被当成新派单失败。`
+                        : "旧队列会留在抽屉里人工重派或归档，不再被当成新派单失败。"}
                     </p>
                   </div>
                 </div>
@@ -8661,7 +8662,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                   <article className={styles.card}>
                     <span>安全边界</span>
                     <strong>先看，不自动重派</strong>
-                    <p>旧队列可能是远端电脑断线、线程未绑定、或人审未通过，平台不能静默重复消耗 token。</p>
+                    <p>旧队列可能是远端电脑断线、线程未绑定、或人审未通过；平台不静默重复消耗 token，也不拿它吓阻新的有效派工。</p>
                   </article>
                 </div>
                 <div className={styles.inlineActions}>
@@ -8678,7 +8679,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                     查看线程焦点
                   </button>
                   <button type="button" className={styles.ghostButton} onClick={() => focusExchangeSection("dispatch")}>
-                    去派工区核对
+                    去派工区核对当前队列
                   </button>
                   <button type="button" className={styles.ghostButton} onClick={() => openBackpackPanel("computers")}>
                     恢复接单电脑
@@ -9218,7 +9219,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             <div
               className={`${styles.noticeCard} ${styles.featureCardFocused}`}
               data-exchange-dispatch-runner-queue-alert="true"
-              data-exchange-runner-queue-count={String(queuedCollaborationCommandCount)}
+              data-exchange-runner-queue-count={String(currentQueuedCommandCount)}
               data-exchange-runner-ready-count={String(watchReadyNodes.length)}
               data-exchange-runner-blocked-count={String(watchBlockedNodes.length)}
               data-exchange-runner-hard-blocker={runnerQueueBlocker ? "true" : "false"}
@@ -9226,7 +9227,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
               <div className={styles.exchangeLevelHead}>
                 <span className={styles.exchangeLevelTag}>{runnerQueueBlocker ? "接单阻塞" : "接单提醒"}</span>
                 <div>
-                  <strong>{runnerQueueBlocker ? `当前 ${queuedCollaborationCommandCount} 条平台指令还没有被电脑取走` : runnerQueueAttentionTitle}</strong>
+                  <strong>{runnerQueueBlocker ? `当前 ${currentQueuedCommandCount} 条新指令还没有被电脑取走` : runnerQueueAttentionTitle}</strong>
                   <p className={styles.microCopy}>
                     {runnerQueueBlocker
                       ? "这不是 AI 没有任务，而是所有接入电脑都没有处于常驻接单。先恢复任一目标电脑的持续接单，再发送新的协作指令。"
@@ -9249,11 +9250,11 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
               <div className={styles.exchangeLevelHead}>
                 <span className={styles.exchangeLevelTag}>旧队列</span>
                 <div>
-                  <strong>{`${staleQueuedCommandCount} 条旧指令正在排队，先处理再继续派工`}</strong>
+                  <strong>{`${staleQueuedCommandCount} 条旧指令是历史待收口，不阻塞当前派工`}</strong>
                   <p className={styles.microCopy}>
                     {oldestQueuedCollaborationCommand
-                      ? `最久等待 ${oldestQueuedCollaborationCommand.ageLabel}，目标电脑 ${oldestQueuedCollaborationCommand.target} 当前未稳定接单。可以保留等待、标记过期，或人工重派到正在接单的线程。`
-                      : "目标电脑离线时，继续发新任务只会让队列更乱。先恢复接单或处理旧队列。"}
+                      ? `最久等待 ${oldestQueuedCollaborationCommand.ageLabel}，目标 ${oldestQueuedCollaborationCommand.target}。这类旧记录只进人工收口，不再作为新任务是否能派出的判断。`
+                      : "旧记录只进人工收口，不再作为新任务是否能派出的判断。"}
                   </p>
                 </div>
               </div>
@@ -9268,7 +9269,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                   </button>
                 ) : null}
                 <button type="button" className={styles.ghostButton} onClick={() => openBackpackPanel("computers")}>
-                  去恢复电脑接单
+                  查看电脑接单状态
                 </button>
               </div>
             </div>

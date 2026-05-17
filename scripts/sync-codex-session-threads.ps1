@@ -566,4 +566,14 @@ if ($DryRun) {
 $utf8Body = [System.Text.Encoding]::UTF8.GetBytes($body)
 $response = Invoke-RestMethod -Method Post -Uri $url -Headers $headers -ContentType "application/json; charset=utf-8" -Body $utf8Body
 Write-Host "Codex session thread slots synced."
-$response | ConvertTo-Json -Depth 8
+$responseData = if ($response.data) { $response.data } else { $response }
+$syncedRows = @($responseData.workstations)
+$visibleNames = $syncedRows |
+  Select-Object -First 6 |
+  ForEach-Object {
+    $name = [string]$_.name
+    if ([string]::IsNullOrWhiteSpace($name)) { $name = [string]$_.id }
+    if ($name.Length -gt 40) { $name = $name.Substring(0, 40) + "..." }
+    $name
+  }
+Write-Host ("Synced {0} Codex thread slot(s). Visible examples: {1}" -f @($syncedRows).Count, ($visibleNames -join " / "))

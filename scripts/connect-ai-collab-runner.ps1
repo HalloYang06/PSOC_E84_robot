@@ -316,18 +316,37 @@ function Invoke-WorkstationInboxPoll {
     try {
       $adapterOutput = & python $adapterScript @adapterArgs 2>&1
       $adapterText = ($adapterOutput | Out-String).Trim()
+      $commands = $null
+      $written = $null
+      $receipts = $null
+      $executions = $null
+      $note = ""
+      try {
+        $adapterJson = $adapterText | ConvertFrom-Json
+        $commands = @($adapterJson.commands).Count
+        $written = @($adapterJson.written).Count
+        $receipts = @($adapterJson.receipts).Count
+        $executions = @($adapterJson.executions).Count
+        $note = [string]$adapterJson.note
+      } catch {
+        $note = if ($adapterText.Length -gt 180) { $adapterText.Substring(0, 180) + "..." } else { $adapterText }
+      }
       [void]$results.Add([ordered]@{
         workstation_id = $workstationId
         provider = $provider
         status = "ok"
-        output = $adapterText
+        commands = $commands
+        written = $written
+        receipts = $receipts
+        executions = $executions
+        note = $note
       })
     } catch {
       [void]$results.Add([ordered]@{
         workstation_id = $workstationId
         provider = $provider
         status = "warning"
-        output = $_.Exception.Message
+        note = $_.Exception.Message
       })
     }
   }
@@ -371,6 +390,9 @@ function Start-RunnerWatchLoop {
         -ComputerNodeId $ComputerNodeId `
         -RunnerDir $RunnerDir `
         -ExecuteProviderCli:$ExecuteProviderCli
+      $activePollResults = @($pollResults) | Where-Object {
+        (($_.commands -as [int]) -gt 0) -or (($_.written -as [int]) -gt 0) -or (($_.receipts -as [int]) -gt 0) -or (($_.executions -as [int]) -gt 0) -or ([string]$_.status -ne "ok")
+      }
       $summary = [ordered]@{
         loop = $loop
         at = (Get-Date).ToString("o")
@@ -381,9 +403,12 @@ function Start-RunnerWatchLoop {
         runner_command_count = @($runnerCommands).Count
         execute_provider_cli = [bool]$ExecuteProviderCli
         runner_commands = $runnerCommands
-        results = $pollResults
+        active_workstations = $activePollResults
       }
-      $summary | ConvertTo-Json -Depth 12
+      Write-Host ("Runner watch heartbeat ok. Loop {0}: checked {1} thread(s), runner command(s) {2}, active thread(s) {3}." -f $loop, @($pollResults).Count, @($runnerCommands).Count, @($activePollResults).Count)
+      if (@($runnerCommands).Count -or @($activePollResults).Count) {
+        $summary | ConvertTo-Json -Depth 8
+      }
       if ($failureStreak -gt 0) {
         Write-Host "Runner watch recovered after $failureStreak failed loop(s)."
       }
@@ -556,7 +581,9 @@ $summary = [ordered]@{
 }
 
 Write-Host "AI collaboration runner connect finished."
-$summary | ConvertTo-Json -Depth 8
+Write-Host ("Runner: {0} / Computer: {1} / Project: {2}" -f $RunnerId, $ComputerNodeId, $ProjectId)
+Write-Host ("API: {0} / Web: {1}" -f $apiBase, $webBase)
+Write-Host $summary.next_action
 
 if ($Watch) {
   Start-RunnerWatchLoop `
