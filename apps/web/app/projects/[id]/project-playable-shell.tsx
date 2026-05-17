@@ -16032,8 +16032,8 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
 
             <div className={styles.panelActionsRow}>
               <Link href="/projects">项目列表</Link>
-              <button type="button" onClick={() => openBackpackPanel("ai-debug")}>AI 调试</button>
-              <button type="button" onClick={() => openBackpackPanel("ai-simulation")}>AI 仿真</button>
+              <button type="button" onClick={() => openBackpackPanel("machine-room")}>线程调试</button>
+              <button type="button" onClick={() => openBackpackPanel("exchange")}>协作消息池</button>
               {managerDrawer ? <button type="button" onClick={closeManagerDrawer}>关闭三级抽屉</button> : null}
             </div>
 
