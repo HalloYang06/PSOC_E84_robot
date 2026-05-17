@@ -144,7 +144,12 @@ def main() -> int:
                 ok, detail = validate_powershell(path)
                 item["syntax_ok"] = ok
                 item["syntax_detail"] = detail
-                if not ok:
+                if ok:
+                    pass
+                elif "PowerShell executable not found" in detail:
+                    report["warnings"].append(f"{script} PowerShell syntax check skipped because PowerShell is unavailable on this machine")
+                    item["syntax_ok"] = "skipped"
+                else:
                     report["issues"].append(f"{script} PowerShell syntax check failed: {detail}")
             elif script.endswith(".sh"):
                 ok, detail = validate_bash(path)
