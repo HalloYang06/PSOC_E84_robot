@@ -90,6 +90,19 @@ function userFacingText(value: unknown, fallback = "") {
   return next || fallback;
 }
 
+function collaborationEventTypeLabel(value: unknown) {
+  const normalized = statusText(value);
+  if (/runner_command|task_dispatch|dispatch/.test(normalized)) return "派单事件";
+  if (/requirement_final_reply|final_reply|final/.test(normalized)) return "最终回执";
+  if (/requirement_progress_ack|progress_ack|agent_progress|ack/.test(normalized)) return "过程回执";
+  if (/desktop_user_question|desktop.*question/.test(normalized)) return "桌面提问";
+  if (/requirement|need/.test(normalized)) return "协作需求";
+  if (/review|approval/.test(normalized)) return "人工审核";
+  if (/artifact|evidence/.test(normalized)) return "证据";
+  if (/message|chat/.test(normalized)) return "协作消息";
+  return userFacingText(value, "协作消息");
+}
+
 function compactEvidenceId(value: unknown, fallback = "等待") {
   const raw = text(value, "");
   if (!raw) return fallback;
@@ -730,7 +743,7 @@ export default async function ProjectObservabilityPage({
       ? { label: "当前回执", title: messageTitle(latestTaskReceipt), detail: compactEvidenceId(currentReceiptId, "等待回执记录") }
       : null,
     latestTaskMessage
-      ? { label: "当前消息", title: messageTitle(latestTaskMessage), detail: userFacingText(text(latestTaskMessage.message_type, "message")) }
+      ? { label: "当前消息", title: messageTitle(latestTaskMessage), detail: collaborationEventTypeLabel(latestTaskMessage.message_type) }
       : null,
   ].filter(Boolean) as Array<{ label: string; title: string; detail: string }>;
   const observabilityTools = [
@@ -825,7 +838,7 @@ export default async function ProjectObservabilityPage({
       ? {
           label: "当前消息",
           title: messageTitle(latestTaskMessage),
-          detail: `${collaborationStatusLabel(latestTaskMessage)} · ${userFacingText(text(latestTaskMessage.message_type, "message"))}`,
+          detail: `${collaborationStatusLabel(latestTaskMessage)} · ${collaborationEventTypeLabel(latestTaskMessage.message_type)}`,
         }
       : null,
     (chainFocused ? currentPendingReview[0] : pendingReview[0])
@@ -846,7 +859,7 @@ export default async function ProjectObservabilityPage({
       ? {
           label: "最近协作",
           title: messageTitle(messages[0]),
-          detail: `${collaborationStatusLabel(messages[0])} · ${userFacingText(text(messages[0].message_type, "message"))}`,
+          detail: `${collaborationStatusLabel(messages[0])} · ${collaborationEventTypeLabel(messages[0].message_type)}`,
         }
       : null,
   ].filter(Boolean) as Array<{ label: string; title: string; detail: string }>;
@@ -1551,7 +1564,7 @@ export default async function ProjectObservabilityPage({
             {messages.slice(0, 8).map((item) => (
               <li key={text(item.id, messageTitle(item))}>
                 <strong>{messageTitle(item)}</strong>
-                <p>{collaborationStatusLabel(item)} · {userFacingText(text(item.message_type, "message"))} · {text(item.at ?? item.created_at ?? item.updated_at, "")}</p>
+                <p>{collaborationStatusLabel(item)} · {collaborationEventTypeLabel(item.message_type)} · {text(item.at ?? item.created_at ?? item.updated_at, "")}</p>
               </li>
             ))}
             {!messages.length ? <li><strong>暂无协作消息</strong><p>去 NPC 工作台发起第一条派单后，这里会出现事件线。</p></li> : null}
