@@ -1094,263 +1094,100 @@ export default async function ProjectObservabilityPage({
         </div>
       </header>
 
-      <section className={styles.hero}>
-        <div>
-          <span>项目负责人 / QA 工作面 / 异常入口</span>
-          <h1>{text(project.name, "项目")} 观测台</h1>
-          <p>这里先帮人把当前卡点、最近证据、派工验真和下一步整理清楚。AI 负责辅助归拢证据链，是否继续、待审还是打回，仍由负责人确认。</p>
-        </div>
-        <div className={styles.evidenceConsole} data-ready={dispatchEvidenceReady ? "1" : "0"}>
-          <div>
-            <span>{currentBlocker.label}</span>
-            <strong>{currentBlocker.title}</strong>
-            <p>{currentBlocker.detail}</p>
-          </div>
-          <div className={styles.evidenceMetrics}>
-            <span data-ok={hasCurrentSubject ? "1" : "0"}>当前主体 {currentSubjectName}</span>
-            <span data-ok={hasFocusedSubject ? "1" : "0"}>{hasFocusedSubject ? `正式 NPC ${currentSubjectName}` : "正式 NPC 待选择"}</span>
-            <span data-ok={deliverableSeats.length === evidenceSeats.length ? "1" : "0"}>可接单 {deliverableSeats.length}/{evidenceSeats.length}</span>
-            <span data-ok={desktopReadySeats.length > 0 ? "1" : "0"}>桌面可见 {desktopReadySeats.length}/{evidenceSeats.length}</span>
-            <span data-ok={completedHumanDispatches.length > 0 ? "1" : "0"}>用户派工 {completedHumanDispatches.length}</span>
-            <span data-ok={completedPeerDispatches.length > 0 ? "1" : "0"}>NPC互派 {completedPeerDispatches.length}</span>
-            <span data-ok={completedReceipts.length > 0 ? "1" : "0"}>回执 {completedReceipts.length}</span>
-            <span data-warn={currentHardwarePending.length > 0 ? "1" : "0"}>当前强审 {currentHardwarePending.length}</span>
-            <span data-warn={currentPendingReview.length > 0 ? "1" : "0"}>当前待审 {currentPendingReview.length}</span>
-            <span data-warn={(chainFocused ? currentCloseoutWaitingMessages.length + currentPendingCloseoutNumber : closeoutWaitingMessages.length) > 0 ? "1" : "0"}>当前待收口 {chainFocused ? currentCloseoutWaitingMessages.length + currentPendingCloseoutNumber : closeoutWaitingMessages.length}</span>
-            <span data-warn={historicalBacklogCount > 0 ? "1" : "0"}>历史积压 {historicalBacklogCount}</span>
-          </div>
-          <span className={styles.consoleStatus}>{currentBlocker.cta}</span>
-        </div>
-      </section>
-
-      {chainFocused ? (
-        <section className={styles.focusSection} aria-label="当前证据链">
-          <div className={styles.sectionHead}>
-            <span>当前证据链</span>
-            <h2>{focusTitle}</h2>
-          </div>
-          <div className={styles.focusHead}>
-            <div>
-              <strong>{focusSeat}</strong>
-              <p>只展示当前任务、派单、回执和证据状态，不把历史噪音抬成主角，也不把 AI 写成替负责人自动验收。</p>
-            </div>
-            <div className={styles.focusActions}>
-              {chainCards.slice(0, 3).map((card) => (
-                <span key={card.label}>{card.label}：{card.value}</span>
-              ))}
-            </div>
-          </div>
-          <div className={styles.chainGrid}>
-            {chainCards.map((card) => (
-              <article key={card.label}>
-                <span>{card.label}</span>
-                <strong>{card.value}</strong>
-                <p>{card.detail}</p>
-              </article>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      <section className={styles.firstLookGrid} aria-label="异常入口">
-        <article className={styles.actionPanel}>
-          <div className={styles.sectionHead}>
-            <span>下一步动作</span>
-            <h2>第一屏只保留 3 个主动作。</h2>
-          </div>
-          <div className={styles.primaryActionList}>
-            {primaryActions.map((action) => (
-              <Link key={action.label} href={action.href}>
-                <span>{action.label}</span>
-                <strong>{action.title}</strong>
-                <p>{action.detail}</p>
-              </Link>
-            ))}
-          </div>
-        </article>
-
-        <article className={styles.recentEvidencePanel} id="recent-evidence" aria-label="最近协作证据">
-          <div className={styles.sectionHead}>
-            <span>最近协作证据</span>
-            <h2>只留对负责人判断有帮助的最近三条。</h2>
-          </div>
-          <ol className={styles.recentEvidenceList}>
-            {recentEvidence.slice(0, 3).map((item) => (
-              <li key={`${item.label}-${item.title}`}>
-                <span>{item.label}</span>
-                <strong>{item.title}</strong>
-                <p>{item.detail}</p>
-              </li>
-            ))}
-          </ol>
-        </article>
-      </section>
-
-      <section className={styles.closeoutPanel} aria-label="桌面过程与待收口入口">
-        <div className={styles.sectionHead}>
-          <span>桌面过程 / 待收口</span>
-          <h2>AI 负责把动作入口排好，人决定是否继续催办、延长等待或打回。</h2>
-        </div>
-        <div className={styles.closeoutGrid}>
-          {closeoutActions.map(([label, href, detail]) => (
-            <Link key={label} href={href}>
-              <span>{label}</span>
-              <strong>{detail}</strong>
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      <section className={styles.routePanel} aria-label="全链路入口">
-        <div className={styles.sectionHead}>
-          <span>全链路入口</span>
-          <h2>从目标走到专业工作面，再回 NPC 工作台，不需要翻说明书。</h2>
-        </div>
-        <div className={styles.routeGrid}>
-          {routeCards.map((card) => (
-            <Link key={card.label} href={card.href}>
-              <span>{card.label}</span>
-              <strong>{card.title}</strong>
-              <p>{card.detail}</p>
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      <section className={styles.flowStrip} aria-label="派工证据流">
-        <div className={styles.flowLabel}>
-          <strong>派工证据流</strong>
-          <span>用户目标 → Boss → NPC → 回执 → 风险门</span>
-        </div>
-        {[
-          ["目标", completedHumanDispatches.length > 0 ? "ok" : "idle", "用户目标"],
-          ["Boss", completedPeerDispatches.length > 0 ? "ok" : "idle", "统筹拆分"],
-          ["NPC", progressMessages.length > 0 || completedPeerDispatches.length > 0 ? "ok" : "idle", "过程可见"],
-          ["回执", completedReceipts.length > 0 ? "ok" : "idle", "最小回执"],
-          ["风险门", currentHardwarePending.length > 0 ? "warn" : "ok", currentHardwarePending.length > 0 ? "当前强审" : "当前风险正常"],
-        ].map(([label, state, detail]) => (
-          <article key={label} data-state={state}>
-            <strong>{label}</strong>
-            <span>{detail}</span>
+      <section className={styles.workbenchLayout} aria-label="观测台工作台">
+        <aside className={styles.leftRail} aria-label="对象索引">
+          <article className={styles.actorCard} data-kind="lead">
+            <span>主角</span>
+            <strong>项目负责人</strong>
+            <p>最终验收、强审放行、异常打回都由人决定。</p>
           </article>
-        ))}
-      </section>
-
-      <section className={styles.exceptionBand} aria-label="异常入口">
-        <div>
-          <span>异常入口</span>
-          <strong>这里给负责人聚合入口，不替负责人做最终结论。</strong>
-        </div>
-        <Link href={focusHref(projectId, "workbench", selfPath, sharedFocus)}>
-          当前待审 {currentPendingReview.length}
-        </Link>
-        <Link href={focusHref(projectId, "workbench", selfPath, { ...sharedFocus, filter: "failed" })}>
-          当前待收口 {chainFocused ? currentCloseoutWaitingMessages.length + currentPendingCloseoutNumber : closeoutWaitingMessages.length}
-        </Link>
-        <Link href={focusHref(projectId, "workbench", selfPath, { ...sharedFocus, filter: "failed", action: "resync" })}>
-          重新同步
-        </Link>
-        <Link href={focusHref(projectId, "workbench", selfPath, { ...sharedFocus, filter: "failed", action: "nudge" })}>
-          催办
-        </Link>
-        <Link href={focusHref(projectId, "workbench", selfPath, { ...sharedFocus, filter: "failed", action: "extend_wait" })}>
-          延长等待
-        </Link>
-        <Link href={focusHref(projectId, "workbench", selfPath, { ...sharedFocus, filter: "failed" })}>
-          真异常 {failedAutonomousMessages.length}
-        </Link>
-        <Link href={`/projects/${projectId}/observability?focus=peer-dispatch`}>
-          免审链路 {peerDispatchRows.length}
-        </Link>
-      </section>
-
-      <section className={styles.kpiGrid} aria-label="观测指标">
-        {kpis.map(([label, value, detail]) => (
-          <article key={label}>
-            <span>{label}</span>
-            <strong>{value}</strong>
-            <p>{detail}</p>
+          <article className={styles.actorCard}>
+            <span>负责 NPC</span>
+            <strong>{currentSubjectName}</strong>
+            <p>{hasFocusedSubject ? "负责整理观测证据、待收口和下一步建议。" : "从 NPC 工作台打开任务链后显示负责 NPC。"}</p>
           </article>
-        ))}
-      </section>
-
-      <section className={styles.operatorDeck} aria-label="观测台工作抽屉">
-        <aside className={styles.lineageRail} aria-label="当前目标与链路对象">
-          <div className={styles.actorStack}>
-            <article className={styles.actorCard} data-kind="hero">
-              <span>主角</span>
-              <strong>项目负责人</strong>
-              <p>最终验收、强审放行、异常打回都由人决定。</p>
-            </article>
-            <article className={styles.actorCard} data-kind="npc">
-              <span>负责 NPC</span>
-              <strong>{currentSubjectName}</strong>
-              <p>{hasFocusedSubject ? "负责整理观测证据、待收口和下一步建议。" : "从 NPC 工作台打开一条任务证据链后显示负责 NPC。"}</p>
-            </article>
-            <div className={styles.npcIndexBox}>
-              <span>NPC 索引</span>
-              <Link href={`/projects/${projectId}?tab=npc-create&return_to=${encodeURIComponent(selfPath)}`}>添加 / 管理 NPC</Link>
-              <Link href={focusHref(projectId, "workbench", selfPath, sharedFocus)}>回 NPC 工作台</Link>
-            </div>
-          </div>
-
-          <div className={styles.sectionHead}>
-            <span>当前目标 / 链路</span>
-            <h2>先确认当前目标链是不是同一条目标。</h2>
-          </div>
-          <div className={styles.lineageStack}>
+          <section className={styles.indexPanel}>
+            <span>当前对象</span>
             {chainWorkbenchObjects.map((item) => (
               <article key={item.label}>
-                <span>{item.label}</span>
+                <small>{item.label}</small>
                 <strong>{item.value}</strong>
                 <p>{item.detail}</p>
               </article>
             ))}
-          </div>
+          </section>
+          <section className={styles.indexPanel}>
+            <span>链路成员</span>
+            {chainSeatCoverage.slice(0, 6).map((item) => (
+              <article key={item.seat} data-state={item.attached ? "ready" : "watch"}>
+                <small>{item.attached ? "已挂回" : "待确认"}</small>
+                <strong>{item.seat}</strong>
+                <p>{item.detail}</p>
+              </article>
+            ))}
+          </section>
         </aside>
 
-        <div className={styles.deckWorkspace}>
+        <section className={styles.centerPane} aria-label="观测工作区">
           <div className={styles.debugToolbar} aria-label="观测参数">
-            <span>观测参数</span>
+            <span>观测台</span>
             <small>过滤 {text(searchParams?.focus, "当前链路")}</small>
             <small>任务 {currentTaskId ? compactEvidenceId(currentTaskId) : "待选择"}</small>
             <small>待审 {currentPendingReview.length}</small>
             <small>待收口 {chainFocused ? currentCloseoutWaitingMessages.length + currentPendingCloseoutNumber : closeoutWaitingMessages.length}</small>
             <small>权限 只读 / 人审结论</small>
           </div>
-          <div className={styles.sectionHead}>
-            <span>工作内容 / 全链路入口</span>
-            <h2>负责人先看当前链路，细节放进抽屉。</h2>
-          </div>
-          <div className={styles.operatorBoard}>
-            <article>
-              <span>当前阻塞</span>
+
+          <section className={styles.mainSurface} aria-label="当前证据链">
+            <div className={styles.surfaceHead}>
+              <span>{currentBlocker.label}</span>
               <strong>{currentBlocker.title}</strong>
               <p>{currentBlocker.detail}</p>
-              <Link href={currentBlocker.href}>{currentBlocker.cta}</Link>
-            </article>
-            <article>
-              <span>NPC 协作</span>
-              <strong>{currentSubjectName}</strong>
-              <p>{hasFocusedSubject ? `${completedPeerDispatches.length}/${visiblePeerRows.length || 0} 条协作链路。当前正式 NPC 先在这里露出，细节再进右侧抽屉。` : "从 NPC 工作台选择一条任务证据链后，再显示负责 NPC 和协作链路。"}</p>
-              <Link href={focusHref(projectId, "workbench", selfPath, sharedFocus)}>看对话过程</Link>
-            </article>
-            <article>
-              <span>执行电脑调度</span>
-              <strong>{onlineComputers}/{computers.length} 在线</strong>
-              <p>{computerCapabilityRows.length ? "先确认哪台电脑在线、有什么能力，再决定是否派发采集、构建或执行任务。" : "还没有执行电脑登记，部署前先接入一台执行电脑。"}</p>
-              <Link href={`${selfPath}?focus=services#execution-computers`}>看执行能力</Link>
-            </article>
-            <article>
-          <span>人工边界</span>
-              <strong>{currentHardwarePending.length ? "当前有强审" : "当前只读正常"}</strong>
-              <p>AI 只整理证据和下一步，硬件、发布、最终验收仍由负责人决定。</p>
-              <Link href={focusHref(projectId, "workbench", selfPath, { ...sharedFocus, filter: "review" })}>处理待审</Link>
-            </article>
-          </div>
-        </div>
+            </div>
+            <div className={styles.actionGrid}>
+              {primaryActions.map((action) => (
+                <Link key={action.label} href={action.href}>
+                  <span>{action.label}</span>
+                  <strong>{action.title}</strong>
+                  <p>{action.detail}</p>
+                </Link>
+              ))}
+              <Link href={currentBlocker.href}>
+                <span>当前动作</span>
+                <strong>{currentBlocker.cta}</strong>
+                <p>只跳到对应上下文，不在观测台替用户做最终结论。</p>
+              </Link>
+            </div>
+            <div className={styles.chainGrid}>
+              {(chainFocused ? chainCards : currentLineageCards).map((card) => (
+                <article key={card.label}>
+                  <span>{card.label}</span>
+                  <strong>{card.value}</strong>
+                  <p>{card.detail}</p>
+                </article>
+              ))}
+            </div>
+          </section>
 
-        <aside className={styles.drawerRail} aria-label="观测抽屉">
+          <section className={styles.evidenceSurface} id="recent-evidence" aria-label="最近证据">
+            <div className={styles.surfaceHead}>
+              <span>最近证据</span>
+              <strong>{focusTitle}</strong>
+              <p>{chainFocused ? `当前负责：${focusSeat}` : "未聚焦任务时，只显示最近协作信号和部署就绪判断。"}</p>
+            </div>
+            <div className={styles.evidenceGrid}>
+              {recentEvidence.slice(0, 4).map((item) => (
+                <article key={`${item.label}-${item.title}`}>
+                  <span>{item.label}</span>
+                  <strong>{item.title}</strong>
+                  <p>{item.detail}</p>
+                </article>
+              ))}
+            </div>
+          </section>
+        </section>
+
+        <aside className={styles.rightRail} aria-label="操作抽屉">
           <section className={styles.toolLauncher} aria-label="观测功能">
             <span>功能</span>
             {observabilityTools.map((tool) => (
@@ -1361,177 +1198,9 @@ export default async function ProjectObservabilityPage({
             ))}
           </section>
 
-          <details open id="current-chain">
-            <summary>
-              <span>当前目标链</span>
-              <strong>{currentLineageCards.length} 项</strong>
-            </summary>
-            <div className={styles.lineageCardGrid}>
-              {currentLineageCards.map((card) => (
-                <article key={card.label}>
-                  <span>{card.label}</span>
-                  <strong>{card.value}</strong>
-                  <p>{card.detail}</p>
-                </article>
-              ))}
-            </div>
-          </details>
-
-          <details open>
-            <summary>
-              <span>当前链路成员</span>
-              <strong>{chainSeatCoverage.filter((item) => item.attached).length}/{chainSeatCoverage.length} 已挂回</strong>
-            </summary>
-            <div className={styles.chainSeatGrid}>
-              {chainSeatCoverage.map((item) => (
-                <article key={item.seat} data-ok={item.attached ? "1" : "0"}>
-                  <span>链路成员</span>
-                  <strong>{item.seat}</strong>
-                  <p>{item.detail}</p>
-                </article>
-              ))}
-            </div>
-          </details>
-
-          <details open id="receipt-chain">
-            <summary>
-              <span>证据抽屉</span>
-              <strong>{rightRailEvidence.length} 条</strong>
-            </summary>
-            <div className={styles.referenceGrid}>
-              {rightRailEvidence.map((card) => (
-                <article key={card.label}>
-                  <span>{card.label}</span>
-                  <strong>{card.title}</strong>
-                  <p>{card.detail}</p>
-                </article>
-              ))}
-            </div>
-          </details>
-
-          <details open>
-            <summary>
-              <span>NPC 协作抽屉</span>
-              <strong>{visiblePeerRows.length} 条</strong>
-            </summary>
-            <div className={styles.peerMatrix}>
-              {visiblePeerRows.slice(0, 6).map((row) => (
-                <article key={row.id} className={styles.peerMatrixRow} data-state={row.state}>
-                  <div>
-                    <span>目标 NPC</span>
-                    <strong>{row.targetName}</strong>
-                    <p>{row.title}</p>
-                  </div>
-                  <div>
-                    <span>状态 / 当前链路</span>
-                    <strong>{row.state === "pending_closeout" ? "待收口" : row.state}</strong>
-                    <p>{row.state === "pending_closeout" ? (row.platformDefect ? "平台缺陷 · 桌面最终同步滞后" : "桌面待收口，可催办或重新同步") : row.sourceName}</p>
-                    <p>起点记录 {lineageRecordLabel(row.sourceMessageId, "等待起点")} · 汇总记录 {lineageRecordLabel(row.rootMessageId, "等待汇总")} · 当前负责 {row.delegatedViaSeat || "等待"}</p>
-                  </div>
-                  <div>
-                    <span>回执 / final</span>
-                    <strong>{row.ack ? "已回执" : "等回执"} · {row.state === "pending_closeout" ? "待收口" : row.final ? "已 final" : "等 final"}</strong>
-                    <p>{row.blockedReason || row.nextAction || "无阻塞"}</p>
-                    {row.state === "pending_closeout" ? (
-                      <div className={styles.closeoutActionLinks}>
-                        <Link href={focusHref(projectId, "workbench", selfPath, { ...sharedFocus, filter: "failed", action: "resync" })}>
-                          重新同步
-                        </Link>
-                        <Link href={focusHref(projectId, "workbench", selfPath, { ...sharedFocus, filter: "failed", action: "nudge" })}>
-                          催办
-                        </Link>
-                        <Link href={focusHref(projectId, "workbench", selfPath, { ...sharedFocus, filter: "failed", action: "extend_wait" })}>
-                          延长等待
-                        </Link>
-                      </div>
-                    ) : null}
-                  </div>
-                </article>
-              ))}
-              {!visiblePeerRows.length ? <p className={styles.peerMatrixEmpty}>当前还没有可展示的免审协作记录。</p> : null}
-            </div>
-          </details>
-
-          <details>
-            <summary>
-              <span>异常与服务</span>
-              <strong>{currentPendingReview.length + currentCloseoutWaitingMessages.length + currentPendingCloseoutNumber} 项当前</strong>
-            </summary>
-            <div className={styles.recoveryGrid}>
-              {recoveryCards.map((card) => (
-                <Link key={`${card.label}-${card.title}`} href={card.href} data-state={card.state}>
-                  <span>{card.label}</span>
-                  <strong>{card.title}</strong>
-                  <p>{card.detail}</p>
-                </Link>
-              ))}
-            </div>
-            <div className={styles.alertList}>
-              <Link href={focusHref(projectId, "workbench", selfPath, sharedFocus)}>
-                当前待审 {currentPendingReview.length}
-              </Link>
-              <Link href={focusHref(projectId, "workbench", selfPath, { ...sharedFocus, filter: "failed" })}>
-                当前待收口 {chainFocused ? currentCloseoutWaitingMessages.length + currentPendingCloseoutNumber : closeoutWaitingMessages.length}
-              </Link>
-              <Link href={`/projects/${projectId}/observability?focus=services&return_to=${encodeURIComponent(selfPath)}&from=observability`}>
-                执行电脑在线 {onlineComputers}/{computers.length}
-              </Link>
-              <Link href={focusHref(projectId, "workbench", selfPath, { ...sharedFocus, filter: "git" })}>
-                Git 回退 / 版本索引
-              </Link>
-            </div>
-            <details className={styles.historyDrawer}>
-              <summary>
-                <span>历史积压</span>
-                <strong>{historicalBacklogCount} 项</strong>
-              </summary>
-              <div className={styles.historyGrid}>
-                <article>
-                  <span>历史待审</span>
-                  <strong>{historicalPendingReviewCount}</strong>
-                  <p>保留给负责人复盘，不压住当前链路。</p>
-                </article>
-                <article>
-                  <span>历史待收口</span>
-                  <strong>{historicalCloseoutCount}</strong>
-                  <p>需要时回 NPC 工作台逐条重新同步或手动收口。</p>
-                </article>
-                <article>
-                  <span>历史强审</span>
-                  <strong>{historicalHardwarePendingCount}</strong>
-                  <p>涉及硬件、部署、运动或写入动作时仍必须人工确认。</p>
-                </article>
-              </div>
-            </details>
-            <div className={styles.serviceGrid}>
-              <CurrentBrowserInstance />
-              <article>
-                <span>API 状态</span>
-                <strong>{text(health.status, healthState.error ? "不可用" : "未知")}</strong>
-                <p>{healthState.error ? `${healthState.error.status} · ${healthState.error.message}` : "当前页面服务端读取 /api/health 的结果。"}</p>
-              </article>
-              <article>
-                <span>API 实例</span>
-                <strong>{text(health.base_url ?? health.baseUrl, "未确认")}</strong>
-                <p>PID {text(health.pid, "未知")} · version {text(health.version, "未知")}</p>
-              </article>
-            </div>
-            <div className={styles.portList}>
-              {localServices.map((item) => (
-                <span key={`${text(item.host, "127.0.0.1")}:${text(item.port, "")}`} data-live={item.listening ? "1" : "0"}>
-                  {text(item.host, "127.0.0.1")}:{text(item.port, "?")} {item.listening ? "监听中" : "未监听"}
-                </span>
-              ))}
-              {!localServices.length ? <span data-live="0">API 未返回本机端口探测</span> : null}
-            </div>
-          </details>
-
-          <details open>
-            <summary>
-              <span>部署 / 稳定性检查</span>
-              <strong>{deploymentReadinessRows.filter((item) => item.state === "ready").length}/{deploymentReadinessRows.length} 通过</strong>
-            </summary>
-            <div className={styles.deploymentGrid}>
+          <details className={styles.drawerPanel} open>
+            <summary><span>部署 / 稳定性</span><strong>{deploymentReadinessRows.filter((item) => item.state === "ready").length}/{deploymentReadinessRows.length}</strong></summary>
+            <div className={styles.drawerGrid}>
               {deploymentReadinessRows.map((item) => (
                 <article key={item.label} data-state={item.state}>
                   <span>{item.label}</span>
@@ -1542,12 +1211,9 @@ export default async function ProjectObservabilityPage({
             </div>
           </details>
 
-          <details open id="execution-computers">
-            <summary>
-              <span>执行电脑能力</span>
-              <strong>{onlineComputers}/{computers.length} 在线</strong>
-            </summary>
-            <div className={styles.executionGrid}>
+          <details className={styles.drawerPanel} open id="execution-computers">
+            <summary><span>执行电脑</span><strong>{onlineComputers}/{computers.length}</strong></summary>
+            <div className={styles.drawerGrid}>
               {computerCapabilityRows.map((node) => (
                 <article key={node.key} data-state={node.state}>
                   <span>{node.status} · {node.osLabel}</span>
@@ -1563,22 +1229,41 @@ export default async function ProjectObservabilityPage({
                 </article>
               ) : null}
             </div>
-            <div className={styles.coverageGrid}>
-              {capabilityCoverageRows.map((item) => (
-                <article key={item.label} data-state={item.state}>
-                  <span>{item.label}</span>
-                  <p>{item.detail}</p>
-                </article>
+          </details>
+
+          <details className={styles.drawerPanel} open>
+            <summary><span>异常与服务</span><strong>{currentPendingReview.length + currentCloseoutWaitingMessages.length + currentPendingCloseoutNumber}</strong></summary>
+            <div className={styles.actionList}>
+              {closeoutActions.map(([label, href, detail]) => (
+                <Link key={label} href={href}>
+                  <span>{label}</span>
+                  <strong>{detail}</strong>
+                </Link>
               ))}
+              <Link href={focusHref(projectId, "workbench", selfPath, { ...sharedFocus, filter: "failed" })}>
+                <span>真异常</span>
+                <strong>{failedAutonomousMessages.length}</strong>
+              </Link>
             </div>
           </details>
 
-          <details id="acceptance-paths">
-            <summary>
-              <span>验收路径</span>
-              <strong>{acceptanceCards.length} 条</strong>
-            </summary>
-            <div className={styles.referenceGrid}>
+          <details className={styles.drawerPanel}>
+            <summary><span>NPC 协作</span><strong>{visiblePeerRows.length}</strong></summary>
+            <div className={styles.drawerGrid}>
+              {visiblePeerRows.slice(0, 6).map((row) => (
+                <article key={row.id} data-state={row.state}>
+                  <span>{row.sourceName}</span>
+                  <strong>{row.targetName}</strong>
+                  <p>{row.title} · {row.ack ? "已回执" : "等回执"} · {row.final ? "已 final" : "等 final"}</p>
+                </article>
+              ))}
+              {!visiblePeerRows.length ? <article><span>空</span><strong>暂无免审协作</strong><p>NPC 创建结构化需求后才进入协作链路。</p></article> : null}
+            </div>
+          </details>
+
+          <details className={styles.drawerPanel}>
+            <summary><span>验收路径</span><strong>{acceptanceCards.length}</strong></summary>
+            <div className={styles.drawerGrid}>
               {acceptanceCards.map((card) => (
                 <article key={card.label}>
                   <span>{card.label}</span>

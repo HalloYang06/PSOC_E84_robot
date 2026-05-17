@@ -199,103 +199,161 @@ export default async function ProjectSkillForgePage({
         </div>
       </header>
 
-      <section className={styles.hero}>
-        <div>
-          <span>一级工作台</span>
-          <h1>{text(project.name, "项目")} Skill 工坊</h1>
-          <p>把 NPC 在真实开发里沉淀出的稳定经验，变成可审查、可绑定、可禁用、可复用的 Skill，而不是让仓库堆满散文档。</p>
-          <div className={styles.heroActions}>
+      <section className={styles.workbenchLayout} aria-label="能力工坊工作台">
+        <aside className={styles.leftRail}>
+          <article className={styles.actorCard} data-kind="lead">
+            <span>主角</span>
+            <strong>项目负责人</strong>
+            <small>{text(project.name, "项目")}</small>
+          </article>
+          <article className={styles.actorCard}>
+            <span>负责 NPC</span>
+            <strong>{seats.length ? `${seats.length} 个 NPC 可装配` : "待创建 NPC"}</strong>
+            <small>Skill 绑定仍回主页面 / NPC 管理确认。</small>
+          </article>
+          <section className={styles.indexPanel}>
+            <span>对象索引</span>
+            <article><small>项目 Skill</small><strong>{skills.length}</strong></article>
+            <article><small>NPC 沉淀</small><strong>{npcAuthored.length}</strong></article>
+            <article><small>素材入库</small><strong>{registeredMaterialCount}/{reactBitsCatalog.length}</strong></article>
+            <article><small>知识库</small><strong>{documents.length}</strong></article>
+          </section>
+          <section className={styles.indexPanel}>
+            <span>流程</span>
+            {forgeSteps.slice(0, 5).map(([label, detail]) => (
+              <article key={label}>
+                <small>{label}</small>
+                <strong>{detail}</strong>
+              </article>
+            ))}
+          </section>
+        </aside>
+
+        <section className={styles.centerPane}>
+          <section className={styles.debugToolbar}>
+            <span>能力工坊</span>
+            <small>来源治理</small>
+            <small>绑定 {assignments.length}</small>
+            <small>草稿 {draftSkills.length}</small>
+            <small>权限 人审启用</small>
+          </section>
+
+          <section className={styles.mainSurface} aria-label="Skill 仓库">
+            <div className={styles.surfaceHead}>
+              <span>中央工作区</span>
+              <strong>Skill 仓库 / 素材治理</strong>
+              <p>这里保留能直接操作的 Skill、素材来源、绑定对象和审核边界；旧的长说明区已经收进右侧抽屉。</p>
+            </div>
+            <div className={styles.skillGrid}>
+              {skills.slice(0, 8).map((skill) => (
+                <article key={text(skill.id ?? skill.name, text(skill.title, "skill"))}>
+                  <span>{text(skill.source ?? skill.category, "项目 Skill")}</span>
+                  <strong>{text(skill.name ?? skill.title ?? skill.id, "未命名 Skill")}</strong>
+                  <p>{text(skill.description ?? skill.note ?? skill.source, "暂无说明")}</p>
+                </article>
+              ))}
+              {!skills.length ? (
+                <article>
+                  <span>空仓库</span>
+                  <strong>还没有 Skill</strong>
+                  <p>从 GitHub 导入，或让 NPC 在工作台起草一个最小 Skill。</p>
+                </article>
+              ) : null}
+            </div>
+          </section>
+
+          <section className={styles.materialSurface} aria-label="React Bits 素材治理">
+            <div className={styles.surfaceHead}>
+              <span>素材治理</span>
+              <strong>React Bits 候选素材</strong>
+              <p>素材先登记为 Skill，再按页面试点；不直接替换 NPC 工作台。</p>
+            </div>
+            <div className={styles.materialRows}>
+              {reactBitsCatalog.map((item) => {
+                const registered = existingSkillIds.has(item.id);
+                return (
+                  <article key={item.id} data-registered={registered ? "1" : "0"}>
+                    <div>
+                      <span>{item.state}</span>
+                      <strong>{item.kind}</strong>
+                      <p>{item.examples} · {item.target}</p>
+                    </div>
+                    {registered ? (
+                      <small>已入库</small>
+                    ) : (
+                      <form action={createProjectSkill.bind(null, projectId)}>
+                        <input type="hidden" name="return_to" value={selfPath} />
+                        <input type="hidden" name="skill_id" value={item.id} />
+                        <input type="hidden" name="label" value={`${item.kind}素材治理`} />
+                        <input type="hidden" name="source" value="github-material" />
+                        <input type="hidden" name="category" value="frontend-material" />
+                        <input type="hidden" name="repo_relative_path" value="" />
+                        <input type="hidden" name="recommended_for" value="frontend, ui, professional-workbench, material-governance" />
+                        <input
+                          type="hidden"
+                          name="note"
+                          value={`React Bits 候选素材：${item.examples}。用途：${item.usage} 目标：${item.target}。权限：${item.permission}。下一步：${item.nextStep} 来源 https://github.com/DavidHDev/react-bits 和 https://reactbits.dev/。保护边界：不碰 NPC 工作台结构；引入运行时依赖、外链、复制组件代码前必须做供应链和授权审查。`}
+                        />
+                        <button type="submit">入库</button>
+                      </form>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+        </section>
+
+        <aside className={styles.rightRail}>
+          <section className={styles.toolPanel}>
+            <span>功能</span>
             <Link href={withReturnTo(projectId, "skills", selfPath, "github-import")}>导入 GitHub Skill</Link>
             <Link href={withReturnTo(projectId, "skills", selfPath)}>管理 Skill 仓库</Link>
             <Link href={`/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=skill-forge`}>派 NPC 起草</Link>
-          </div>
-        </div>
-        <div className={styles.matrix}>
-          <strong>{skills.length}</strong>
-          <span>项目 Skill</span>
-          <strong>{npcAuthored.length}</strong>
-          <span>NPC 沉淀</span>
-          <strong>{registeredMaterialCount}/{reactBitsCatalog.length}</strong>
-          <span>素材入库</span>
-          <strong>{documents.length}</strong>
-          <span>知识库路径</span>
-        </div>
-      </section>
+            <a href="https://github.com/DavidHDev/react-bits" target="_blank" rel="noreferrer">React Bits 源仓库</a>
+          </section>
 
-      <section className={styles.pipeline}>
-        {forgeSteps.map(([label, detail], index) => (
-          <article key={label}>
-            <small>{String(index + 1).padStart(2, "0")}</small>
-            <strong>{label}</strong>
-            <p>{detail}</p>
-          </article>
-        ))}
-      </section>
-
-      <section className={styles.materialLab} aria-label="React Bits 前端素材接入台">
-        <div className={styles.materialIntro}>
-          <span>前端素材接入台</span>
-          <h2>React Bits 先作为平台素材来源接入，不直接污染核心工作流。</h2>
-          <p>
-            平台后续需要一套可审查、可复用、可逐页启用的动效素材层。这里先打通来源、授权、分类、适用工作台和落地顺序；真正复制或改写第三方组件前，先过供应链和产品边界。
-          </p>
-          <div className={styles.materialActions}>
-            <a href="https://github.com/DavidHDev/react-bits" target="_blank" rel="noreferrer">查看 React Bits</a>
-            <a href="https://reactbits.dev/" target="_blank" rel="noreferrer">打开文档站</a>
-            <Link href={withReturnTo(projectId, "skills", selfPath, "github-import")}>登记素材来源</Link>
-          </div>
-        </div>
-        <div className={styles.materialConsole}>
-          <div className={styles.signalLine}>
-            <span />
-            <span />
-            <span />
-            <span />
-          </div>
-          <strong>Material source is staged</strong>
-          <p>组件只进入能力工坊和专业工作台；NPC 对话框结构保持原样。</p>
-        </div>
-      </section>
-
-      <section className={styles.materialGrid} aria-label="React Bits 素材目录">
-        {reactBitsCatalog.map((item) => {
-          const registered = existingSkillIds.has(item.id);
-          return (
-          <article key={item.id} className={styles.materialCard} data-registered={registered ? "1" : "0"}>
-            <span>{item.state}</span>
-            <strong>{item.kind}</strong>
-            <p>{item.examples}</p>
-            <small>{item.usage}</small>
+          <details className={styles.drawerPanel} open>
+            <summary><span>绑定对象</span><strong>{assignments.length}</strong></summary>
             <dl>
-              <div><dt>目标</dt><dd>{item.target}</dd></div>
-              <div><dt>权限</dt><dd>{item.permission}</dd></div>
+              <div><dt>NPC</dt><dd>{seats.length}</dd></div>
+              <div><dt>工位</dt><dd>{workstations.length}</dd></div>
+              <div><dt>绑定</dt><dd>{assignments.length}</dd></div>
             </dl>
-            <p className={styles.materialNext}>{item.nextStep}</p>
-            {registered ? (
-              <div className={styles.materialRegistered}>已入库，可在项目 Skill 列表里治理</div>
-            ) : (
-              <form action={createProjectSkill.bind(null, projectId)} className={styles.materialRegisterForm}>
-                <input type="hidden" name="return_to" value={selfPath} />
-                <input type="hidden" name="skill_id" value={item.id} />
-                <input type="hidden" name="label" value={`${item.kind}素材治理`} />
-                <input type="hidden" name="source" value="github-material" />
-                <input type="hidden" name="category" value="frontend-material" />
-                <input type="hidden" name="repo_relative_path" value="" />
-                <input type="hidden" name="recommended_for" value="frontend, ui, professional-workbench, material-governance" />
-                <input
-                  type="hidden"
-                  name="note"
-                  value={`React Bits 候选素材：${item.examples}。用途：${item.usage} 目标：${item.target}。权限：${item.permission}。下一步：${item.nextStep} 来源 https://github.com/DavidHDev/react-bits 和 https://reactbits.dev/。保护边界：不碰 NPC 工作台结构；引入运行时依赖、外链、复制组件代码前必须做供应链和授权审查。`}
-                />
-                <button type="submit">登记为素材 Skill</button>
-              </form>
-            )}
-          </article>
-        );
-        })}
+          </details>
+
+          <details className={styles.drawerPanel}>
+            <summary><span>素材规则</span><strong>{materialAcceptance.length}</strong></summary>
+            <div className={styles.drawerRows}>
+              {materialAcceptance.map(([label, detail]) => (
+                <article key={label}>
+                  <span>{label}</span>
+                  <p>{detail}</p>
+                </article>
+              ))}
+            </div>
+          </details>
+
+          <details className={styles.drawerPanel}>
+            <summary><span>参考</span><strong>{references.length}</strong></summary>
+            <div className={styles.drawerRows}>
+              {references.map(([name, source, detail]) => (
+                <article key={name}>
+                  <span>{source}</span>
+                  <strong>{name}</strong>
+                  <p>{detail}</p>
+                </article>
+              ))}
+            </div>
+          </details>
+        </aside>
       </section>
 
-      <section className={styles.adoptionPanel} aria-label="素材接入验收">
+      <section className={styles.bottomDock} aria-label="能力工坊日志">
+        <div>
+          <span>信息日志</span>
+          <strong>能力治理</strong>
+        </div>
         {reactBitsAdoption.map(([label, value, detail]) => (
           <article key={label}>
             <span>{label}</span>
@@ -303,67 +361,6 @@ export default async function ProjectSkillForgePage({
             <p>{detail}</p>
           </article>
         ))}
-      </section>
-
-      <section className={styles.materialAcceptance} aria-label="素材治理检查表">
-        <div className={styles.sectionHead}>
-          <span>素材治理检查表</span>
-          <h2>素材先入库、再试点、再推广；不能从好看直接跳到全站替换。</h2>
-        </div>
-        <div className={styles.acceptanceGrid}>
-          {materialAcceptance.map(([label, detail]) => (
-            <article key={label}>
-              <span>{label}</span>
-              <p>{detail}</p>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className={styles.board}>
-        <div className={styles.skillList}>
-          <div className={styles.sectionHead}>
-            <span>当前 Skill</span>
-            <h2>先看来源和绑定，再决定是否放进长期上下文。</h2>
-          </div>
-          <div className={styles.rows}>
-            {skills.slice(0, 10).map((skill) => (
-              <article key={text(skill.id ?? skill.name, text(skill.title, "skill"))}>
-                <strong>{text(skill.name ?? skill.title ?? skill.id, "未命名 Skill")}</strong>
-                <p>{text(skill.description ?? skill.note ?? skill.source, "暂无说明")}</p>
-              </article>
-            ))}
-            {!skills.length ? <article><strong>还没有 Skill</strong><p>从 GitHub 导入或让 NPC 在工作台起草一个最小 Skill。</p></article> : null}
-          </div>
-        </div>
-
-        <aside className={styles.side}>
-          <div className={styles.sectionHead}>
-            <span>绑定对象</span>
-            <h2>Skill 应该跟角色走。</h2>
-          </div>
-          <dl>
-            <div><dt>NPC</dt><dd>{seats.length}</dd></div>
-            <div><dt>工位</dt><dd>{workstations.length}</dd></div>
-            <div><dt>绑定</dt><dd>{assignments.length}</dd></div>
-          </dl>
-        </aside>
-      </section>
-
-      <section className={styles.referencePanel}>
-        <div className={styles.sectionHead}>
-          <span>产品参考</span>
-          <h2>Skill 是长期能力层，不是文档垃圾桶。</h2>
-        </div>
-        <div className={styles.referenceGrid}>
-          {references.map(([name, source, detail]) => (
-            <article key={name}>
-              <span>{source}</span>
-              <strong>{name}</strong>
-              <p>{detail}</p>
-            </article>
-          ))}
-        </div>
       </section>
     </main>
   );

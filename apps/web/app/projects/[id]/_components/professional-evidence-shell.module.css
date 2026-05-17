@@ -1,10 +1,19 @@
 .shell {
   min-height: 100vh;
   background:
-    linear-gradient(180deg, rgba(7, 12, 18, 0.98), rgba(5, 9, 14, 1)),
-    repeating-linear-gradient(90deg, rgba(123, 197, 255, 0.04) 0 1px, transparent 1px 84px);
-  color: #eff7ff;
+    linear-gradient(180deg, rgba(2, 28, 39, 0.95), rgba(2, 8, 14, 1)),
+    repeating-linear-gradient(90deg, rgba(88, 240, 255, 0.035) 0 1px, transparent 1px 84px);
+  color: #eaffff;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --surface-panel: rgba(2, 13, 20, 0.72);
+  --surface-panel-strong: rgba(2, 22, 33, 0.86);
+  --surface-border: rgba(88, 240, 255, 0.18);
+  --surface-border-strong: rgba(88, 240, 255, 0.36);
+  --surface-text: #eaffff;
+  --surface-muted: rgba(190, 220, 240, 0.7);
+  --surface-accent: #b9fff3;
+  --surface-accent-strong: #58f0ff;
+  --surface-gold: #ffe38b;
 }
 
 .shell a {
@@ -20,8 +29,8 @@
   justify-content: space-between;
   gap: 16px;
   padding: 14px 20px;
-  border-bottom: 1px solid rgba(140, 196, 255, 0.16);
-  background: rgba(5, 9, 14, 0.86);
+  border-bottom: 1px solid var(--surface-border);
+  background: linear-gradient(180deg, rgba(2, 28, 39, 0.88), rgba(2, 13, 20, 0.8));
   backdrop-filter: blur(18px);
 }
 
@@ -39,10 +48,24 @@
 .railSection a,
 .artifactList a,
 .signalList a {
-  border: 1px solid rgba(140, 196, 255, 0.22);
+  border: 1px solid var(--surface-border-strong);
   border-radius: 8px;
-  background: rgba(140, 196, 255, 0.08);
+  background: rgba(88, 240, 255, 0.09);
   text-decoration: none;
+  transition: transform 140ms ease, border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+}
+
+.navLink:hover,
+.taskActions a:hover,
+.railSection a:hover,
+.artifactList a:hover,
+.signalList a:hover,
+.contextActions a:hover,
+.startActions a:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 227, 139, 0.72);
+  background: rgba(88, 240, 255, 0.16);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
 }
 
 .navLink {
@@ -51,14 +74,14 @@
 }
 
 .navLink[data-active="1"] {
-  border-color: rgba(255, 213, 122, 0.56);
-  background: rgba(255, 213, 122, 0.14);
-  color: #fff2cb;
+  border-color: rgba(255, 227, 139, 0.72);
+  background: rgba(255, 227, 139, 0.14);
+  color: #fff4cb;
 }
 
 .metaChip {
   padding: 6px 10px;
-  color: rgba(239, 247, 255, 0.72);
+  color: var(--surface-muted);
   font-size: 11px;
 }
 
@@ -67,8 +90,8 @@
   grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.9fr) auto;
   gap: 16px;
   padding: 18px 20px;
-  border-bottom: 1px solid rgba(140, 196, 255, 0.14);
-  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid var(--surface-border);
+  background: rgba(2, 13, 20, 0.52);
 }
 
 .taskIntro {
@@ -83,7 +106,7 @@
 .railSection > span,
 .artifactList span,
 .signalList span {
-  color: #8dc6ff;
+  color: var(--surface-accent);
   font-size: 12px;
   font-weight: 900;
 }
@@ -96,7 +119,7 @@
 .taskIntro p {
   margin: 0;
   max-width: 760px;
-  color: rgba(239, 247, 255, 0.72);
+  color: var(--surface-muted);
   line-height: 1.6;
 }
 
@@ -105,7 +128,7 @@
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 1px;
   align-self: stretch;
-  background: rgba(140, 196, 255, 0.14);
+  background: var(--surface-border);
 }
 
 .taskStats article {
@@ -114,7 +137,7 @@
   align-content: center;
   gap: 6px;
   padding: 12px;
-  background: rgba(6, 12, 18, 0.94);
+  background: var(--surface-panel-strong);
 }
 
 .taskStats strong {
@@ -122,7 +145,7 @@
 }
 
 .taskStats article[data-alert="1"] strong {
-  color: #ffd57a;
+  color: var(--surface-gold);
 }
 
 .taskActions {
@@ -140,9 +163,9 @@
 }
 
 .taskActions a[data-primary="1"] {
-  border-color: rgba(255, 213, 122, 0.66);
-  background: #ffd57a;
-  color: #151a16;
+  border-color: rgba(255, 227, 139, 0.72);
+  background: var(--surface-gold);
+  color: #111815;
 }
 
 .contextStrip {
@@ -150,8 +173,8 @@
   grid-template-columns: minmax(260px, 1.1fr) minmax(260px, 1fr) minmax(220px, 0.9fr) auto;
   gap: 14px;
   padding: 16px 20px;
-  border-bottom: 1px solid rgba(140, 196, 255, 0.14);
-  background: rgba(255, 255, 255, 0.018);
+  border-bottom: 1px solid var(--surface-border);
+  background: rgba(2, 13, 20, 0.44);
 }
 
 .contextSummary,
@@ -164,7 +187,7 @@
 .contextSummary span,
 .contextChips span,
 .contextMeta span {
-  color: #8dc6ff;
+  color: var(--surface-accent);
   font-size: 12px;
   font-weight: 900;
 }
@@ -177,7 +200,7 @@
 .contextSummary p,
 .contextMeta p {
   margin: 0;
-  color: rgba(239, 247, 255, 0.7);
+  color: var(--surface-muted);
   line-height: 1.5;
   font-size: 12px;
 }
@@ -186,7 +209,7 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1px;
-  background: rgba(140, 196, 255, 0.14);
+  background: var(--surface-border);
 }
 
 .contextChips article,
@@ -194,7 +217,7 @@
   display: grid;
   gap: 6px;
   padding: 12px;
-  background: rgba(6, 12, 18, 0.94);
+  background: var(--surface-panel-strong);
 }
 
 .contextChips strong,
@@ -210,18 +233,18 @@
 
 .contextActions a {
   padding: 10px 12px;
-  border: 1px solid rgba(140, 196, 255, 0.22);
+  border: 1px solid var(--surface-border-strong);
   border-radius: 8px;
-  background: rgba(140, 196, 255, 0.08);
+  background: rgba(88, 240, 255, 0.09);
   text-decoration: none;
   font-size: 12px;
   font-weight: 800;
 }
 
 .contextActions a[data-primary="1"] {
-  border-color: rgba(255, 213, 122, 0.66);
-  background: rgba(255, 213, 122, 0.16);
-  color: #fff2cb;
+  border-color: rgba(255, 227, 139, 0.72);
+  background: rgba(255, 227, 139, 0.14);
+  color: #fff4cb;
 }
 
 .body {
@@ -244,8 +267,8 @@
 
 .leftRail {
   padding: 10px;
-  border: 1px solid rgba(140, 196, 255, 0.14);
-  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--surface-border);
+  background: rgba(2, 13, 20, 0.5);
 }
 
 .actorStack,
@@ -261,18 +284,18 @@
 .leftContextPanel,
 .toolLauncher {
   padding: 10px;
-  border: 1px solid rgba(140, 196, 255, 0.16);
-  background: rgba(8, 16, 24, 0.78);
+  border: 1px solid var(--surface-border);
+  background: var(--surface-panel);
 }
 
 .actorCard {
   display: grid;
   gap: 5px;
-  border-left: 3px solid rgba(140, 196, 255, 0.5);
+  border-left: 3px solid rgba(88, 240, 255, 0.5);
 }
 
 .actorCard[data-kind="hero"] {
-  border-left-color: rgba(255, 213, 122, 0.78);
+  border-left-color: rgba(255, 227, 139, 0.78);
 }
 
 .actorCard span,
@@ -280,7 +303,7 @@
 .leftContextPanel > span,
 .toolLauncher > span,
 .debugToolbar span {
-  color: #8dc6ff;
+  color: var(--surface-accent);
   font-size: 12px;
   font-weight: 900;
 }
@@ -294,7 +317,7 @@
 .leftContextPanel small,
 .npcIndexPanel a small,
 .toolLauncher small {
-  color: rgba(239, 247, 255, 0.58);
+  color: var(--surface-muted);
   font-size: 11px;
   line-height: 1.35;
 }
@@ -306,8 +329,8 @@
   display: grid;
   gap: 4px;
   padding: 8px 9px;
-  border: 1px solid rgba(140, 196, 255, 0.16);
-  background: rgba(140, 196, 255, 0.055);
+  border: 1px solid var(--surface-border);
+  background: rgba(88, 240, 255, 0.06);
   text-decoration: none;
 }
 
@@ -321,8 +344,8 @@
 .toolLauncher a:hover,
 .toolLauncher a[data-active="1"] {
   transform: translateY(-1px);
-  border-color: rgba(255, 213, 122, 0.58);
-  background: rgba(255, 213, 122, 0.12);
+  border-color: rgba(255, 227, 139, 0.7);
+  background: rgba(255, 227, 139, 0.12);
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
 }
 
@@ -354,8 +377,8 @@
 }
 
 .leftRail a {
-  border-left: 3px solid rgba(140, 196, 255, 0.3);
-  background: rgba(8, 16, 24, 0.78);
+  border-left: 3px solid rgba(88, 240, 255, 0.32);
+  background: var(--surface-panel);
 }
 
 .leftRail a small,
@@ -380,8 +403,8 @@
   gap: 8px;
   min-height: 34px;
   padding: 6px 8px;
-  border: 1px solid rgba(140, 196, 255, 0.14);
-  background: rgba(5, 9, 14, 0.84);
+  border: 1px solid var(--surface-border);
+  background: rgba(2, 13, 20, 0.82);
   overflow: auto hidden;
 }
 
@@ -391,9 +414,9 @@
   display: inline-flex;
   align-items: center;
   padding: 0 8px;
-  border: 1px solid rgba(140, 196, 255, 0.16);
-  background: rgba(140, 196, 255, 0.055);
-  color: rgba(239, 247, 255, 0.68);
+  border: 1px solid var(--surface-border);
+  background: rgba(88, 240, 255, 0.06);
+  color: var(--surface-muted);
   font-size: 11px;
   white-space: nowrap;
 }
@@ -410,8 +433,8 @@
   display: grid;
   gap: 10px;
   padding: 18px;
-  border: 1px solid rgba(140, 196, 255, 0.16);
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--surface-border);
+  background: var(--surface-panel);
 }
 
 .startPanel {
@@ -430,7 +453,7 @@
 .startPanel p {
   margin: 0;
   max-width: 780px;
-  color: rgba(239, 247, 255, 0.7);
+  color: var(--surface-muted);
   line-height: 1.6;
 }
 
@@ -443,18 +466,18 @@
 
 .startActions a {
   padding: 10px 12px;
-  border: 1px solid rgba(140, 196, 255, 0.22);
+  border: 1px solid var(--surface-border-strong);
   border-radius: 8px;
-  background: rgba(140, 196, 255, 0.08);
+  background: rgba(88, 240, 255, 0.09);
   text-decoration: none;
   font-size: 12px;
   font-weight: 800;
 }
 
 .startActions a[data-primary="1"] {
-  border-color: rgba(255, 213, 122, 0.66);
-  background: #ffd57a;
-  color: #151a16;
+  border-color: rgba(255, 227, 139, 0.72);
+  background: var(--surface-gold);
+  color: #111815;
 }
 
 .signalList,
@@ -463,14 +486,14 @@
   display: grid;
   gap: 10px;
   padding: 14px;
-  border: 1px solid rgba(140, 196, 255, 0.16);
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--surface-border);
+  background: var(--surface-panel);
 }
 
 .drawer,
 .bottomDrawer {
-  border: 1px solid rgba(140, 196, 255, 0.16);
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--surface-border);
+  background: var(--surface-panel);
 }
 
 .drawer summary,
@@ -496,8 +519,8 @@
   height: 20px;
   display: grid;
   place-items: center;
-  border: 1px solid rgba(140, 196, 255, 0.22);
-  color: #8dc6ff;
+  border: 1px solid var(--surface-border-strong);
+  color: var(--surface-accent);
   font-weight: 900;
 }
 
@@ -508,7 +531,7 @@
 
 .drawer summary span,
 .bottomDrawer summary span {
-  color: #8dc6ff;
+  color: var(--surface-accent);
   font-size: 12px;
   font-weight: 900;
 }
@@ -516,7 +539,7 @@
 .drawer summary strong,
 .bottomDrawer summary strong {
   min-width: 0;
-  color: rgba(239, 247, 255, 0.88);
+  color: rgba(234, 255, 255, 0.9);
   font-size: 13px;
   line-height: 1.25;
 }
@@ -531,13 +554,13 @@
   display: grid;
   gap: 4px;
   padding: 10px;
-  border: 1px solid rgba(140, 196, 255, 0.14);
-  background: rgba(8, 16, 24, 0.72);
+  border: 1px solid var(--surface-border);
+  background: rgba(2, 22, 33, 0.72);
   text-decoration: none;
 }
 
 .drawerItem span {
-  color: #8dc6ff;
+  color: var(--surface-accent);
   font-size: 11px;
   font-weight: 900;
 }
@@ -550,13 +573,13 @@
 
 .drawerItem p {
   margin: 0;
-  color: rgba(239, 247, 255, 0.66);
+  color: var(--surface-muted);
   font-size: 12px;
   line-height: 1.45;
 }
 
 .drawerItem small {
-  color: #ffd57a;
+  color: var(--surface-gold);
   font-size: 11px;
   font-weight: 800;
 }
@@ -570,8 +593,8 @@
   min-height: 92px;
   max-height: 132px;
   padding: 8px 16px;
-  border-top: 1px solid rgba(140, 196, 255, 0.16);
-  background: rgba(5, 9, 14, 0.92);
+  border-top: 1px solid var(--surface-border);
+  background: rgba(2, 13, 20, 0.92);
   backdrop-filter: blur(18px);
 }
 
@@ -579,12 +602,12 @@
   display: grid;
   gap: 4px;
   padding: 8px 10px;
-  border: 1px solid rgba(140, 196, 255, 0.14);
-  background: rgba(8, 16, 24, 0.72);
+  border: 1px solid var(--surface-border);
+  background: rgba(2, 22, 33, 0.74);
 }
 
 .logHeader span {
-  color: #8dc6ff;
+  color: var(--surface-accent);
   font-size: 12px;
   font-weight: 900;
 }
@@ -606,9 +629,9 @@
   display: grid;
   gap: 4px;
   padding: 10px;
-  border: 1px solid rgba(140, 196, 255, 0.12);
-  background: rgba(8, 16, 24, 0.76);
-  border-left: 3px solid rgba(140, 196, 255, 0.44);
+  border: 1px solid var(--surface-border);
+  background: rgba(2, 22, 33, 0.78);
+  border-left: 3px solid rgba(88, 240, 255, 0.44);
 }
 
 .dockRows article[data-tone="success"] {
@@ -628,11 +651,11 @@
 }
 
 .dockRows article[data-tone="npc"] {
-  border-left-color: #8dc6ff;
+  border-left-color: var(--surface-accent-strong);
 }
 
 .dockRows span {
-  color: #8dc6ff;
+  color: var(--surface-accent);
   font-size: 11px;
   font-weight: 900;
 }
@@ -646,7 +669,7 @@
   max-height: 3.8em;
   overflow: hidden;
   margin: 0;
-  color: rgba(239, 247, 255, 0.66);
+  color: var(--surface-muted);
   font-size: 12px;
   line-height: 1.45;
 }
@@ -656,8 +679,8 @@
 .artifactList a,
 .signalList a {
   padding: 10px 12px;
-  border: 1px solid rgba(140, 196, 255, 0.14);
-  background: rgba(140, 196, 255, 0.05);
+  border: 1px solid var(--surface-border);
+  background: rgba(88, 240, 255, 0.055);
 }
 
 .artifactList a,
@@ -680,20 +703,20 @@
 .signalList p,
 .railSection p {
   margin: 6px 0 0;
-  color: rgba(239, 247, 255, 0.68);
+  color: var(--surface-muted);
   line-height: 1.5;
 }
 
 .artifactList a small,
 .signalList a small {
   margin-top: 8px;
-  color: #ffd57a;
+  color: var(--surface-gold);
   font-size: 11px;
   font-weight: 800;
 }
 
 .emptyText {
-  color: rgba(239, 247, 255, 0.54);
+  color: rgba(190, 220, 240, 0.58);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -841,7 +864,7 @@
   }
 
   .bottomDrawer {
-    background: rgba(5, 9, 14, 0.94);
+    background: rgba(2, 13, 20, 0.94);
     pointer-events: auto;
   }
 
