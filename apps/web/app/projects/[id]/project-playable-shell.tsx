@@ -5651,17 +5651,17 @@ function TokenResultCard({
       {watchCommand ? (
         <details style={{ marginTop: 4 }} data-token-watch-card={testId || "true"}>
           <summary style={{ cursor: "pointer", fontWeight: 600 }}>
-            ▷ 想让平台下发的指令真的进 CLI？复制下面这条「持续协作」命令运行（替代上面那条）
+            ▷ 接入成功后要持续接单？再运行这条“自动化心跳 / 持续接单”命令
           </summary>
           <p style={{ margin: "6px 0", fontWeight: 400, opacity: 0.9 }}>
-            上面&quot;一键接入&quot;只跑一次就退出。要让平台派单 / 指令实时进入本机 Claude / Codex CLI，
-            必须用下面这条高风险持续执行命令，并保持窗口运行。
+            先跑上面的一键接入命令；确认电脑已登记后，再运行这条命令并保持窗口打开。
+            默认只做心跳、任务提示和最小回执，不替你做高风险执行。
           </p>
           <textarea
             readOnly
             rows={4}
             value={watchCommand}
-            aria-label="持续协作命令"
+            aria-label="持续接单命令"
             data-token-watch-command={testId || "true"}
             style={{
               width: "100%",
@@ -5678,11 +5678,11 @@ function TokenResultCard({
           <button
             type="button"
             className={styles.ghostButton}
-            onClick={() => copyText(watchCommand, "持续协作命令已复制，请在目标电脑运行并保持窗口")}
+            onClick={() => copyText(watchCommand, "持续接单命令已复制，请在目标电脑运行并保持窗口")}
             data-token-copy-watch={testId || "true"}
             style={{ marginTop: 6 }}
           >
-            复制持续协作命令
+            复制持续接单命令
           </button>
           {linuxWatchCommand ? (
             <>
@@ -5691,7 +5691,7 @@ function TokenResultCard({
                 readOnly
                 rows={4}
                 value={linuxWatchCommand}
-                aria-label="Linux 或 macOS 持续协作命令"
+                aria-label="Linux 或 macOS 持续接单命令"
                 data-token-linux-watch-command={testId || "true"}
                 style={{
                   width: "100%",
@@ -5708,11 +5708,11 @@ function TokenResultCard({
               <button
                 type="button"
                 className={styles.ghostButton}
-                onClick={() => copyText(linuxWatchCommand, "Linux / macOS 持续协作命令已复制")}
+                onClick={() => copyText(linuxWatchCommand, "Linux / macOS 持续接单命令已复制")}
                 data-token-copy-linux-watch={testId || "true"}
                 style={{ marginTop: 6 }}
               >
-                复制 Linux / macOS 持续协作命令
+                复制 Linux / macOS 持续接单命令
               </button>
             </>
           ) : null}
@@ -11413,13 +11413,28 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             pairingToken,
             pairingRunnerId,
           );
+          const pairingBashCommand = buildComputerOneClickConnectBashCommand(
+            pairingServerUrl,
+            projectId,
+            pairingNode,
+            pairingToken,
+            pairingRunnerId,
+          );
           const pairingWatchCommand = buildComputerOneClickConnectCommand(
             pairingServerUrl,
             projectId,
             pairingNode,
             pairingToken,
             pairingRunnerId,
-            { watch: true, executeProviderCli: true },
+            { watch: true },
+          );
+          const pairingWatchBashCommand = buildComputerOneClickConnectBashCommand(
+            pairingServerUrl,
+            projectId,
+            pairingNode,
+            pairingToken,
+            pairingRunnerId,
+            { watch: true },
           );
           return (
             <TokenResultCard
@@ -11427,7 +11442,9 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
               subtitle={pairingNodeId ? `电脑 ${pairingNodeId}` : undefined}
               token={pairingToken}
               command={pairingCommand}
+              linuxCommand={pairingBashCommand}
               watchCommand={pairingWatchCommand}
+              linuxWatchCommand={pairingWatchBashCommand}
               testId="computer-pairing"
             />
           );

@@ -227,6 +227,8 @@ def main() -> int:
                     oneClickLinux: read(`[data-computer-one-click-connect-linux-command="${{node}}"]`),
                     watchWindows: read(`[data-computer-watch-command="${{node}}"]`),
                     watchLinux: read(`[data-computer-watch-linux-command="${{node}}"]`),
+                    tokenWatchWindows: read(`[data-token-watch-command="computer-pairing"]`),
+                    tokenWatchLinux: read(`[data-token-linux-watch-command="computer-pairing"]`),
                     pageText: document.body ? document.body.innerText.slice(0, 3000) : '',
                     href: location.href,
                   }};
@@ -260,6 +262,8 @@ def main() -> int:
             "oneClickLinux": ["connect-ai-collab-runner.sh", expected_web, expected_api, "--server", "--project-id"],
             "watchWindows": ["connect-ai-collab-runner.ps1", expected_web, expected_api, "-Watch", "-SkipCodex", "-SkipClaude"],
             "watchLinux": ["connect-ai-collab-runner.sh", expected_web, expected_api, "--watch", "--skip-codex", "--skip-claude"],
+            "tokenWatchWindows": ["connect-ai-collab-runner.ps1", expected_web, expected_api, "-Watch"],
+            "tokenWatchLinux": ["connect-ai-collab-runner.sh", expected_web, expected_api, "--watch"],
         }
         issues: list[str] = []
         for key, needles in checks.items():
@@ -269,6 +273,16 @@ def main() -> int:
             for needle in needles:
                 if needle not in command:
                     issues.append(f"{key} missing {needle}")
+        unsafe_watch_tokens = {
+            "watchWindows": "-WatchExecuteProviderCli",
+            "watchLinux": "--watch-execute-provider-cli",
+            "tokenWatchWindows": "-WatchExecuteProviderCli",
+            "tokenWatchLinux": "--watch-execute-provider-cli",
+        }
+        for key, needle in unsafe_watch_tokens.items():
+            command = text(report["commands"].get(key) if isinstance(report.get("commands"), dict) else "")
+            if needle in command:
+                issues.append(f"{key} enables provider CLI execution from first pairing card")
         report["issues"] = issues
         report["ok"] = not issues
         report_path = output_dir / f"cloud-computer-onboarding-commands-report-{stamp}.json"
