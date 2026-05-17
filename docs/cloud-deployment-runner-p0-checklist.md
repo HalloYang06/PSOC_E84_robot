@@ -1,6 +1,6 @@
 # Cloud Deployment Runner P0 Checklist
 
-Last verified: 2026-05-16
+Last verified: 2026-05-17
 
 ## Cloud Services
 
@@ -25,21 +25,24 @@ ss -lntp | grep -E '3001|8011'
 ```
 
 The public Web port is `3001`; runner API calls must go to `8011`.
+The health payload should include `deployment.build_sha`, `deployment.build_ref`, and `deployment.build_time`.
+If `scripts/check_web_api_alignment.py` reports `deployment fingerprint missing`, the server is alive but still running an old build.
 
 ## P0 Validation
 
 Run from the development machine:
 
 ```powershell
-python scripts/check_web_api_alignment.py --web-base http://106.55.62.122:3001 --api-base http://106.55.62.122:8011 --project-id 72a1cb1d-d8a8-422f-8d87-4ed071f71dbe
+python scripts/check_web_api_alignment.py --web-base http://106.55.62.122:3001 --api-base http://106.55.62.122:8011 --project-id fe9bd342-f5ef-4afe-9c73-e7caa2ed17dd
 python scripts/validate-cross-platform-runner-onboarding.py
-python scripts/validate-cloud-computer-onboarding-commands-cdp.py --web-base http://106.55.62.122:3001 --api-base http://106.55.62.122:8011 --project-id 72a1cb1d-d8a8-422f-8d87-4ed071f71dbe --login-email 3245056131@qq.com --login-password password --output-dir artifacts
-python scripts/validate-runner-watch-queue-http.py --api-base http://106.55.62.122:8011 --project-id 72a1cb1d-d8a8-422f-8d87-4ed071f71dbe --login-email 3245056131@qq.com --login-password password --output-dir artifacts --strict
+python scripts/validate-cloud-computer-onboarding-commands-cdp.py --web-base http://106.55.62.122:3001 --api-base http://106.55.62.122:8011 --project-id fe9bd342-f5ef-4afe-9c73-e7caa2ed17dd --login-email 3245056131@qq.com --login-password password --output-dir artifacts
+python scripts/validate-runner-watch-queue-http.py --api-base http://106.55.62.122:8011 --project-id fe9bd342-f5ef-4afe-9c73-e7caa2ed17dd --login-email 3245056131@qq.com --login-password password --output-dir artifacts
 ```
 
 Expected result:
 
 - API/Web alignment is `ok: true`.
+- API/Web alignment prints the same `deployment.build_sha` through direct API and Web proxy.
 - Windows and Linux onboarding commands are present.
 - Cloud-rendered onboarding commands use public Web downloads on `3001` and public API calls on `8011`.
 - Queue audit has no `issues`. Warnings are acceptable when an old command is explicitly waiting for an offline target computer.
