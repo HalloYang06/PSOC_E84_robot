@@ -1,13 +1,27 @@
 .shell {
+  --bg: #031018;
+  --panel: rgba(7, 25, 34, 0.86);
+  --panel-strong: rgba(9, 35, 47, 0.94);
+  --line: rgba(108, 226, 238, 0.18);
+  --line-strong: rgba(117, 247, 221, 0.38);
+  --text: #ecffff;
+  --muted: rgba(205, 232, 238, 0.68);
+  --accent: #75f7dd;
+  --warn: #ffd166;
   min-height: 100vh;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr) auto;
-  gap: 12px;
-  padding: 16px;
-  color: #e8fbf7;
+  gap: 10px;
+  overflow: hidden;
+  padding: 12px;
+  color: var(--text);
   background:
-    linear-gradient(135deg, rgba(7, 14, 18, 0.98), rgba(13, 22, 22, 0.98)),
-    #071014;
+    linear-gradient(90deg, rgba(117, 247, 221, 0.055) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(117, 247, 221, 0.04) 1px, transparent 1px),
+    radial-gradient(circle at 14% 0%, rgba(90, 215, 255, 0.18), transparent 34%),
+    var(--bg);
+  background-size: 34px 34px, 34px 34px, auto, auto;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
 }
 
 .shell a {
@@ -16,61 +30,83 @@
 }
 
 .topNav {
+  min-height: 36px;
   display: flex;
-  gap: 8px;
-  align-items: center;
   flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
 
 .topNav a,
 .toolbarActions a,
 .drawerBody a {
-  min-height: 32px;
+  min-height: 30px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 7px 12px;
-  border: 1px solid rgba(123, 211, 199, 0.22);
-  border-radius: 7px;
-  background: rgba(13, 25, 29, 0.82);
-  color: #c8fff3;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(117, 247, 221, 0.07);
+  color: rgba(236, 255, 255, 0.86);
   font-size: 12px;
-  font-weight: 800;
-  transition: transform 140ms ease, border-color 140ms ease, background 140ms ease;
+  font-weight: 900;
+  transition: transform 150ms ease, border-color 150ms ease, background 150ms ease;
 }
 
 .topNav a:hover,
 .toolbarActions a:hover,
-.drawerBody a:hover {
+.drawerBody a:hover,
+.workstationList article:hover,
+.tableRow:hover {
   transform: translateY(-1px);
-  border-color: rgba(248, 214, 106, 0.72);
-  background: rgba(34, 42, 34, 0.92);
+  border-color: var(--line-strong);
+  background: rgba(117, 247, 221, 0.13);
 }
 
 .header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(420px, 0.85fr);
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) minmax(380px, 0.82fr);
+  gap: 10px;
   align-items: stretch;
-  border: 1px solid rgba(123, 211, 199, 0.14);
-  background: rgba(9, 19, 23, 0.76);
-  padding: 14px;
+}
+
+.header > div,
+.statusStrip article,
+.workstationList article,
+.employeeTable,
+.rightRail details,
+.bottomDock,
+.railHead,
+.toolbar,
+.logRows article {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(10, 36, 48, 0.9), rgba(5, 18, 28, 0.86));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.header > div {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
 }
 
 .header span,
 .railHead span,
 .toolbar span,
 .logHeader span,
-.drawerBody span {
-  color: #75e9d8;
-  font-size: 12px;
+.drawerBody span,
+.logRows span {
+  color: var(--accent);
+  font-size: 11px;
   font-weight: 900;
 }
 
 .header h1 {
-  margin: 5px 0;
-  font-size: 22px;
-  line-height: 1.2;
+  margin: 0;
+  font-size: 21px;
+  line-height: 1.18;
   letter-spacing: 0;
 }
 
@@ -81,7 +117,7 @@
 .logRows p,
 .emptyText {
   margin: 0;
-  color: rgba(225, 244, 239, 0.68);
+  color: var(--muted);
   font-size: 12px;
   line-height: 1.45;
 }
@@ -92,21 +128,12 @@
   gap: 8px;
 }
 
-.statusStrip article,
-.workstationList article,
-.employeeTable,
-.rightRail details,
-.bottomDock,
-.logRows article {
-  border: 1px solid rgba(123, 211, 199, 0.14);
-  background: rgba(8, 19, 24, 0.74);
-}
-
 .statusStrip article {
-  min-height: 74px;
+  min-height: 68px;
   display: grid;
+  align-content: center;
   gap: 4px;
-  padding: 10px;
+  padding: 9px;
 }
 
 .statusStrip strong {
@@ -116,7 +143,7 @@
 .statusStrip small,
 .workstationList small,
 .tableRow small {
-  color: rgba(222, 246, 240, 0.58);
+  color: var(--muted);
   font-size: 11px;
 }
 
@@ -124,70 +151,68 @@
   min-height: 0;
   display: grid;
   grid-template-columns: 250px minmax(0, 1fr) 300px;
-  gap: 12px;
+  gap: 10px;
+  overflow: hidden;
 }
 
 .leftRail,
 .centerPane,
 .rightRail {
   min-height: 0;
+  display: grid;
+  gap: 8px;
+  align-content: start;
 }
 
-.leftRail,
-.centerPane {
-  display: grid;
-  gap: 10px;
-  align-content: start;
+.workstationList,
+.employeeTable,
+.rightRail {
+  overflow: auto;
 }
 
 .railHead,
 .toolbar,
 .logHeader {
-  min-height: 42px;
+  min-height: 40px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 10px;
-  border: 1px solid rgba(123, 211, 199, 0.14);
-  background: rgba(8, 19, 24, 0.76);
   padding: 10px;
 }
 
 .railHead a {
-  color: #ffe38b;
+  color: var(--warn);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 900;
 }
 
 .workstationList {
-  min-height: 0;
   display: grid;
   gap: 8px;
-  overflow: auto;
 }
 
 .workstationList article {
   display: grid;
   gap: 6px;
-  padding: 11px;
-  border-left: 3px solid rgba(123, 211, 199, 0.22);
+  padding: 10px;
+  border-left: 3px solid rgba(117, 247, 221, 0.28);
+  transition: transform 150ms ease, border-color 150ms ease, background 150ms ease;
 }
 
 .workstationList article[data-active="1"] {
-  border-color: rgba(248, 214, 106, 0.86);
-  background: rgba(28, 32, 27, 0.86);
+  border-color: var(--warn);
+  background:
+    linear-gradient(135deg, rgba(255, 209, 102, 0.1), transparent 45%),
+    rgba(10, 36, 48, 0.92);
 }
 
 .workstationList strong,
 .tableRow strong,
 .drawerBody strong,
 .logRows strong {
-  color: #f3fffc;
+  color: var(--text);
   font-size: 13px;
-}
-
-.toolbar {
-  align-items: center;
 }
 
 .toolbar strong {
@@ -198,14 +223,9 @@
 
 .toolbarActions {
   display: flex;
-  gap: 8px;
   flex-wrap: wrap;
   justify-content: flex-end;
-}
-
-.employeeTable {
-  min-height: 0;
-  overflow: auto;
+  gap: 8px;
 }
 
 .tableHead,
@@ -221,48 +241,43 @@
   position: sticky;
   top: 0;
   z-index: 1;
-  color: #75e9d8;
-  background: rgba(10, 24, 29, 0.96);
-  border-bottom: 1px solid rgba(123, 211, 199, 0.14);
+  color: var(--accent);
+  background: rgba(5, 18, 28, 0.98);
+  border-bottom: 1px solid var(--line);
   font-size: 12px;
   font-weight: 900;
 }
 
 .tableRow {
-  border-bottom: 1px solid rgba(123, 211, 199, 0.1);
-}
-
-.tableRow:hover {
-  background: rgba(18, 31, 35, 0.66);
+  border-bottom: 1px solid rgba(117, 247, 221, 0.1);
+  transition: transform 150ms ease, border-color 150ms ease, background 150ms ease;
 }
 
 .emptyRow {
   padding: 20px;
 }
 
-.rightRail {
-  display: grid;
-  gap: 10px;
-  align-content: start;
-  overflow: auto;
-}
-
 .rightRail details {
-  padding: 0;
+  overflow: hidden;
 }
 
 .rightRail summary {
-  min-height: 42px;
+  min-height: 40px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 8px;
   padding: 10px;
   cursor: pointer;
+  list-style: none;
+}
+
+.rightRail summary::-webkit-details-marker {
+  display: none;
 }
 
 .rightRail summary strong {
-  color: #ffe38b;
+  color: var(--warn);
   font-size: 12px;
 }
 
@@ -276,13 +291,14 @@
   display: grid;
   gap: 5px;
   padding: 10px;
-  border: 1px solid rgba(123, 211, 199, 0.12);
-  background: rgba(6, 16, 20, 0.72);
+  border: 1px solid rgba(117, 247, 221, 0.14);
+  border-radius: 8px;
+  background: rgba(4, 16, 24, 0.72);
 }
 
 .bottomDock {
-  min-height: 96px;
-  max-height: 164px;
+  min-height: 92px;
+  max-height: 132px;
   overflow: hidden;
 }
 
@@ -290,7 +306,7 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
-  padding: 10px;
+  padding: 0 10px 10px;
   overflow: auto;
 }
 
@@ -300,16 +316,15 @@
   padding: 10px;
 }
 
-.logRows span {
-  color: #75e9d8;
-  font-size: 11px;
-  font-weight: 900;
-}
-
 @media (max-width: 1100px) {
+  .shell {
+    overflow: auto;
+  }
+
   .header,
   .layout {
     grid-template-columns: 1fr;
+    overflow: visible;
   }
 
   .statusStrip,
