@@ -128,6 +128,43 @@ function humanTaskStatus(value: string) {
   return text(value, "处理中");
 }
 
+function publicEventType(value: unknown) {
+  const normalized = text(value, "").toLowerCase();
+  if (/runner_command|dispatch/.test(normalized)) return "派单事件";
+  if (/receipt|reply|final|closeout/.test(normalized)) return "回执";
+  if (/review|approval/.test(normalized)) return "待人工确认";
+  if (/desktop|question/.test(normalized)) return "桌面消息";
+  if (/requirement|need/.test(normalized)) return "协作需求";
+  if (/artifact|evidence/.test(normalized)) return "证据";
+  if (/error|exception|failed/.test(normalized)) return "异常";
+  if (/progress|ack|running/.test(normalized)) return "进度";
+  return text(value, "日志");
+}
+
+function publicEventTitle(item: AnyRecord) {
+  const raw = text(item.title ?? item.status, "协作事件");
+  const cleaned = raw
+    .replace(/^Task dispatch:\s*/i, "任务派发：")
+    .replace(/^Dispatch:\s*/i, "派单：")
+    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, "当前任务")
+    .replace(/\b[0-9a-f]{12,}\b/gi, "当前任务");
+  return cleaned || "协作事件";
+}
+
+function publicEventBody(item: AnyRecord) {
+  const raw = text(item.body ?? item.summary ?? item.status, "等待更多内容。");
+  const type = text(item.message_type ?? item.type, "").toLowerCase();
+  if (/runner_command|dispatch/.test(type)) {
+    const status = userStatus(item.status, "已进入队列");
+    return `任务已进入执行链路，当前状态：${status}。完整回执、异常和证据在观测台查看。`;
+  }
+  const cleaned = raw
+    .replace(/\b(Task dispatch|Dispatch ID|Task ID|Message ID|Runner ID|source_message_id|source_thread|canonical|requested id|session JSONL|local path|adapter|bridge)\b/gi, "链路记录")
+    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, "当前任务")
+    .replace(/\b[0-9a-f]{12,}\b/gi, "当前任务");
+  return cleaned.length > 180 ? `${cleaned.slice(0, 180)}...` : cleaned;
+}
+
 function firstContextValue(values: unknown[], fallback = "") {
   for (const value of values) {
     const next = text(value, "");
@@ -423,9 +460,9 @@ export function ProfessionalEvidenceShell({
         <div className={styles.dockRows}>
           {[...recentReceipts, ...recentMessages].length ? [...recentReceipts, ...recentMessages].slice(0, 6).map((item, index) => (
             <article key={text(item.id ?? item.message_id, `log-${index}`)} data-tone={consoleTone(item.status ?? item.message_type)}>
-              <span>{text(item.message_type ?? item.type, "日志")}</span>
-              <strong>{text(item.title ?? item.status, "协作事件")}</strong>
-              <p>{text(item.body ?? item.summary ?? item.status, "等待更多内容。")}</p>
+              <span>{publicEventType(item.message_type ?? item.type)}</span>
+              <strong>{publicEventTitle(item)}</strong>
+              <p>{publicEventBody(item)}</p>
             </article>
           )) : <p className={styles.emptyText}>还没有事件进入当前任务。先在中央工作区确认下一步，再让 NPC 或执行电脑继续。</p>}
         </div>
