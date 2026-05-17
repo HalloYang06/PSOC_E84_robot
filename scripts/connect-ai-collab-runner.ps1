@@ -403,25 +403,29 @@ function Start-RunnerWatchLoop {
           status = [string]$_.status
         }
       }
-      $summary = [ordered]@{
-        loop = $loop
-        at = (Get-Date).ToString("o")
-        runner_id = $RunnerId
-        project_id = $ProjectId
-        computer_node_id = $ComputerNodeId
-        workstation_count = @($pollResults).Count
-        runner_command_count = @($runnerCommands).Count
-        already_closed_old_command_count = @($runnerSkipped).Count
-        execute_provider_cli = [bool]$ExecuteProviderCli
-        runner_commands = @($publicRunnerCommands)
-        active_workstations = @($activePollResults)
+      $publicActiveWorkstations = @($activePollResults) | ForEach-Object {
+        [ordered]@{
+          provider = [string]$_.provider
+          status = [string]$_.status
+          commands = $_.commands
+          written = $_.written
+          receipts = $_.receipts
+          executions = $_.executions
+          note = [string]$_.note
+        }
       }
       Write-Host ("Runner watch heartbeat ok. Loop {0}: checked {1} thread(s), runner command(s) {2}, active thread(s) {3}." -f $loop, @($pollResults).Count, @($runnerCommands).Count, @($activePollResults).Count)
       if (@($runnerSkipped).Count) {
         Write-Host ("Skipped {0} old command(s) that were already claimed or closed." -f @($runnerSkipped).Count)
       }
-      if (@($runnerCompleted).Count -or @($runnerAttention).Count -or @($activePollResults).Count) {
-        $summary | ConvertTo-Json -Depth 8
+      foreach ($command in @($publicRunnerCommands)) {
+        Write-Host ("Current runner command: {0} [{1}]" -f $command.title, $command.status)
+      }
+      foreach ($thread in @($publicActiveWorkstations)) {
+        Write-Host ("Active NPC thread: provider {0}, status {1}, command(s) {2}, prompt file(s) {3}, receipt(s) {4}, execution(s) {5}." -f $thread.provider, $thread.status, $thread.commands, $thread.written, $thread.receipts, $thread.executions)
+        if (-not [string]::IsNullOrWhiteSpace($thread.note)) {
+          Write-Host ("Thread note: {0}" -f $thread.note)
+        }
       }
       if ($failureStreak -gt 0) {
         Write-Host "Runner watch recovered after $failureStreak failed loop(s)."
@@ -576,28 +580,16 @@ if (-not $SkipClaude) {
   }
 }
 
-$summary = [ordered]@{
-  runner_id = $RunnerId
-  computer_node_id = $ComputerNodeId
-  project_id = $ProjectId
-  api_base = $apiBase
-  web_base = $webBase
-  workspace_root = if ($workspaceRootProvided) { $WorkspaceRoot } else { $null }
-  runner_dir = $runnerDir
-  steps = $steps
-  watch_enabled = [bool]$Watch
-  watch_execute_provider_cli = [bool]$WatchExecuteProviderCli
-  next_action = if ($Watch) {
-    "Keep this PowerShell window open. The runner is now heartbeating and polling workstation inbox commands."
-  } else {
-    "Return to the platform and click Scan Threads once. For real continuous collaboration, rerun the command with -Watch."
-  }
+$nextAction = if ($Watch) {
+  "Keep this PowerShell window open. The runner is now heartbeating and polling workstation inbox commands."
+} else {
+  "Return to the platform and click Scan Threads once. For real continuous collaboration, rerun the command with -Watch."
 }
 
 Write-Host "AI collaboration runner connect finished."
-Write-Host ("Runner: {0} / Computer: {1} / Project: {2}" -f $RunnerId, $ComputerNodeId, $ProjectId)
+Write-Host ("Connected computer: {0}" -f $RunnerName)
 Write-Host ("API: {0} / Web: {1}" -f $apiBase, $webBase)
-Write-Host $summary.next_action
+Write-Host $nextAction
 
 if ($Watch) {
   Start-RunnerWatchLoop `

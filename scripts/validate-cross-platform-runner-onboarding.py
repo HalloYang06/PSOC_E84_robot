@@ -180,8 +180,29 @@ def main() -> int:
         "Runner watch is still active",
         "Consecutive failed loop(s)",
         "Runner watch recovered",
+        "Current runner command:",
+        "Active NPC thread:",
     ):
         assert_contains(connect_ps1, token, f"connect PowerShell retry token {token}")
+    watch_loop_start = connect_ps1.index("function Start-RunnerWatchLoop")
+    watch_loop_end = connect_ps1.index("$workspaceRootProvided", watch_loop_start)
+    watch_loop_text = connect_ps1[watch_loop_start:watch_loop_end]
+    for token in (
+        "runner_id = $RunnerId",
+        "project_id = $ProjectId",
+        "computer_node_id = $ComputerNodeId",
+        "workstation_count = @($pollResults).Count",
+        "active_workstations = @($activePollResults)",
+        "ConvertTo-Json -Depth 8",
+        "current_runner_commands",
+        "active_threads",
+    ):
+        assert_not_contains(watch_loop_text, token, f"PowerShell watch summary should hide internal identifier text {token}")
+    for token in (
+        "Runner: {0} / Computer: {1} / Project: {2}",
+        "$summary.next_action",
+    ):
+        assert_not_contains(connect_ps1, token, f"PowerShell normal output should hide internal identifier text {token}")
 
     for token in ("curl -fsSL", "--server", "--pairing-token", "--computer-node-id", "--runner-name"):
         assert_contains(register_sh, token, f"register bash token {token}")
