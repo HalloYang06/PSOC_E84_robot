@@ -51,6 +51,15 @@ function publicThreadState(value: unknown, automationEnabled = false) {
   return automationEnabled ? "可接单" : "待接入";
 }
 
+function publicStatusLabel(value: unknown) {
+  const raw = text(value, "").toLowerCase();
+  if (/completed|done|success|resolved/.test(raw)) return "已完成";
+  if (/delivered|acked|accepted|queued/.test(raw)) return "已送达";
+  if (/running|progress|active|pending/.test(raw)) return "处理中";
+  if (/failed|error|blocked|rejected/.test(raw)) return "待处理";
+  return text(value, "已记录");
+}
+
 function reviewPolicyLabel(value: unknown) {
   const raw = text(value, "inherit").toLowerCase();
   if (/strict|always|manual|required/.test(raw)) return "强审";
@@ -60,13 +69,20 @@ function reviewPolicyLabel(value: unknown) {
 
 function orgEventTypeLabel(value: unknown) {
   const raw = text(value, "").toLowerCase();
+  if (/agent_result|final|reply|receipt/.test(raw)) return "回执";
+  if (/agent_command|runner_command|dispatch/.test(raw)) return "派单事件";
   if (/runner_command|dispatch/.test(raw)) return "派单事件";
-  if (/final|reply|receipt/.test(raw)) return "回执";
   if (/review|approval/.test(raw)) return "审核事件";
   if (/desktop|question/.test(raw)) return "桌面消息";
   if (/requirement|need/.test(raw)) return "协作需求";
   if (/progress|ack|running/.test(raw)) return "进度";
   return text(value, "组织事件");
+}
+
+function knowledgeLabel(seat: { knowledgeSummary: string; workstationKnowledgePath: string }) {
+  if (seat.knowledgeSummary) return seat.knowledgeSummary;
+  if (seat.workstationKnowledgePath) return "工位知识库已配置";
+  return "待绑定知识库";
 }
 
 function safeProjectReturnPath(projectId: string, value: unknown) {
@@ -392,7 +408,7 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
                 <p>{seat.responsibility}</p>
                 <div>
                   <strong>{seat.skillLoadout.length + seat.inheritedSkills.length || 0} 项</strong>
-                  <small>{seat.knowledgeSummary || seat.workstationKnowledgePath || "待绑定知识库"}</small>
+                  <small>{knowledgeLabel(seat)}</small>
                 </div>
                 <div>
                   <strong>{reviewPolicyLabel(seat.reviewPolicy)}</strong>
@@ -450,7 +466,7 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
         <div className={styles.logRows}>
           {recentOrgEvents.length ? recentOrgEvents.map((event, index) => (
             <article key={text(event.id, `event-${index}`)}>
-              <span>{text(event.status, "已记录")}</span>
+              <span>{publicStatusLabel(event.status)}</span>
               <strong>{text(event.title, "协作事件")}</strong>
               <p>{orgEventTypeLabel(event.message_type ?? event.body)} · 组织事件已进入项目记录。</p>
             </article>
