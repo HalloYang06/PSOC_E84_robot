@@ -90,6 +90,14 @@ def main() -> int:
     if direct_health.status == 200 and proxy_health.status == 200 and str(direct_port) != str(proxy_port):
         issues.append(f"web proxy points to API port {proxy_port}, expected {direct_port}")
 
+    direct_deployment = direct_health_data.get("deployment")
+    proxy_deployment = proxy_health_data.get("deployment")
+    if isinstance(direct_deployment, dict) and isinstance(proxy_deployment, dict):
+        direct_sha = str(direct_deployment.get("build_sha") or "")
+        proxy_sha = str(proxy_deployment.get("build_sha") or "")
+        if direct_sha and proxy_sha and direct_sha != proxy_sha:
+            issues.append(f"web proxy points to API build {proxy_sha}, expected direct API build {direct_sha}")
+
     artifact_route_loaded = proxy_artifact_code in {"ARTIFACT_NOT_FOUND", "PROJECT_NOT_FOUND", "UNAUTHORIZED"}
     if proxy_artifact.status == 404 and proxy_artifact_code in {"", "HTTP_ERROR"}:
         issues.append("web proxy reached an API instance that does not know /api/collaboration/artifacts/preview")
@@ -109,12 +117,14 @@ def main() -> int:
             "pid": direct_health_data.get("pid"),
             "port": direct_health_data.get("port"),
             "base_url": direct_health_data.get("base_url"),
+            "deployment": direct_health_data.get("deployment"),
         },
         "proxy_health": {
             "status": proxy_health.status,
             "pid": proxy_health_data.get("pid"),
             "port": proxy_health_data.get("port"),
             "base_url": proxy_health_data.get("base_url"),
+            "deployment": proxy_health_data.get("deployment"),
         },
         "artifact_preview_route": {
             "direct_status": direct_artifact.status,
@@ -123,6 +133,11 @@ def main() -> int:
             "proxy_error_code": proxy_artifact_code,
             "loaded_through_proxy": artifact_route_loaded,
         },
+        "warnings": [
+            "deployment fingerprint missing; cloud API has not been updated to a build that reports deployment metadata"
+        ]
+        if direct_health.status == 200 and not isinstance(direct_health_data.get("deployment"), dict)
+        else [],
         "issues": issues,
     }
     print(json.dumps(report, ensure_ascii=False, indent=2))

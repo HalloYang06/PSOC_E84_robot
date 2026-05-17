@@ -15,6 +15,10 @@ if [[ -f .env ]]; then
   set +a
 fi
 
+export AI_COLLAB_BUILD_SHA="${AI_COLLAB_BUILD_SHA:-$(git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)}"
+export AI_COLLAB_BUILD_REF="${AI_COLLAB_BUILD_REF:-$(git branch --show-current 2>/dev/null || echo unknown)}"
+export AI_COLLAB_BUILD_TIME="${AI_COLLAB_BUILD_TIME:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
+
 mkdir -p "$ROOT"
 
 health_ok() {

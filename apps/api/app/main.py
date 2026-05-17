@@ -99,6 +99,12 @@ def _health_payload(request: Request) -> dict[str, object]:
     return {
         "status": "ok",
         "version": "0.1.0",
+        "deployment": {
+            "build_sha": os.environ.get("AI_COLLAB_BUILD_SHA", "").strip() or "unknown",
+            "build_ref": os.environ.get("AI_COLLAB_BUILD_REF", "").strip() or "unknown",
+            "build_time": os.environ.get("AI_COLLAB_BUILD_TIME", "").strip() or "unknown",
+            "app_env": settings.app_env,
+        },
         "pid": os.getpid(),
         "host": request.url.hostname,
         "port": request.url.port,
