@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import argparse
 import json
 import re
 import shutil
@@ -45,6 +46,19 @@ OWNER_PASSWORD = onboarding.OWNER_PASSWORD
 PROJECT_ID = "7f2d9a27-cecf-4e61-af25-3792c24971e6"
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Validate that a computer's scanned threads are visible in the project computer panel.",
+    )
+    parser.add_argument("--api-base", default=API_BASE)
+    parser.add_argument("--web-base", default=WEB_BASE)
+    parser.add_argument("--project-id", default=PROJECT_ID)
+    parser.add_argument("--login-email", default=OWNER_EMAIL)
+    parser.add_argument("--login-password", default=OWNER_PASSWORD)
+    parser.add_argument("--output-dir", default=str(OUTPUT_DIR))
+    return parser.parse_args()
+
+
 def fetch_text(url: str, *, token: str) -> str:
     request = Request(
         url,
@@ -59,29 +73,34 @@ def fetch_text(url: str, *, token: str) -> str:
 
 
 def main() -> int:
+    args = parse_args()
+    api_base = args.api_base.rstrip("/")
+    web_base = args.web_base.rstrip("/")
+    project_id = args.project_id
+    output_dir = Path(args.output_dir)
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
     runtime_dir = Path(tempfile.mkdtemp(prefix="computer-thread-visibility-http-"))
     computer_id = f"thread-http-{stamp[-6:]}"
     computer_label = f"Thread HTTP {stamp[-6:]}"
     runner_id = f"runner-http-{stamp[-6:]}"
     runner_name = f"Runner HTTP {stamp[-6:]}"
-    html_dump_path = OUTPUT_DIR / f"computer-thread-visibility-html-{stamp}.html"
+    html_dump_path = output_dir / f"computer-thread-visibility-html-{stamp}.html"
 
     report: dict[str, object] = {
         "stamp": stamp,
-        "project_id": PROJECT_ID,
+        "project_id": project_id,
         "computer_id": computer_id,
         "runner_id": runner_id,
         "html_dump": str(html_dump_path),
         "issues": [],
     }
 
-    token, _user = api_login(API_BASE, OWNER_EMAIL, OWNER_PASSWORD)
+    token, _user = api_login(api_base, args.login_email, args.login_password)
 
     try:
         request_json(
-            f"{API_BASE.rstrip('/')}/api/collaboration/projects/{PROJECT_ID}/computer-nodes",
+            f"{api_base}/api/collaboration/projects/{project_id}/computer-nodes",
             method="POST",
             headers={"Authorization": f"Bearer {token}"},
             payload={
@@ -96,7 +115,7 @@ def main() -> int:
         )
 
         pairing = request_json(
-            f"{API_BASE.rstrip('/')}/api/collaboration/projects/{PROJECT_ID}/computer-nodes/{computer_id}/pairing-token",
+            f"{api_base}/api/collaboration/projects/{project_id}/computer-nodes/{computer_id}/pairing-token",
             method="POST",
             headers={"Authorization": f"Bearer {token}"},
             payload={},
@@ -109,7 +128,7 @@ def main() -> int:
         register_result = onboarding.run_powershell_script(
             "register-runner.ps1",
             "-Server",
-            API_BASE,
+            api_base,
             "-PairingToken",
             pairing_token,
             "-ComputerNodeId",
@@ -126,11 +145,11 @@ def main() -> int:
         sync_result = onboarding.run_powershell_script(
             "sync-codex-session-threads.ps1",
             "-Server",
-            API_BASE,
+            api_base,
             "-RunnerId",
             runner_id,
             "-ProjectId",
-            PROJECT_ID,
+            project_id,
             "-ComputerNodeId",
             computer_id,
         )
@@ -139,7 +158,7 @@ def main() -> int:
         report["sync_returncode"] = sync_result["returncode"]
 
         workstations_payload = request_json(
-            f"{API_BASE.rstrip('/')}/api/collaboration/projects/{PROJECT_ID}/thread-workstations",
+            f"{api_base}/api/collaboration/projects/{project_id}/thread-workstations",
             headers={"Authorization": f"Bearer {token}"},
         )
         workstations = workstations_payload.get("data") if isinstance(workstations_payload, dict) else []
@@ -152,7 +171,7 @@ def main() -> int:
         report["api_thread_count"] = len(synced_threads)
 
         html = fetch_text(
-            f"{WEB_BASE.rstrip('/')}/projects/{PROJECT_ID}?panel=team&tab=computers&computer={computer_id}",
+            f"{web_base}/projects/{project_id}?panel=team&tab=computers&computer={computer_id}",
             token=token,
         )
         html_dump_path.write_text(html, encoding="utf-8")
@@ -185,14 +204,14 @@ def main() -> int:
                 f"expected more than 6 rendered threads for regression coverage, got {rendered_count}"
             )
 
-        report_path = OUTPUT_DIR / f"computer-thread-visibility-http-report-{stamp}.json"
+        report_path = output_dir / f"computer-thread-visibility-http-report-{stamp}.json"
         report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         print(json.dumps({"report_path": str(report_path), "issues": report["issues"]}, ensure_ascii=False))
         return 0 if not report["issues"] else 1
     finally:
         try:
             request_json(
-                f"{API_BASE.rstrip('/')}/api/collaboration/projects/{PROJECT_ID}/computer-nodes/{computer_id}",
+                f"{api_base}/api/collaboration/projects/{project_id}/computer-nodes/{computer_id}",
                 method="DELETE",
                 headers={"Authorization": f"Bearer {token}"},
             )
