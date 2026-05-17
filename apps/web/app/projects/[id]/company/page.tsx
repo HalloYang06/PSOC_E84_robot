@@ -8,6 +8,7 @@ import {
   getProjectWorkstationsState,
 } from "../../../../lib/server-data";
 import { isNpcSeatRecord, platformProviderIdFromSeat } from "../../../../lib/platform-provider";
+import { runnerStateLabel } from "../../../../lib/runner-status";
 import styles from "./company.module.css";
 
 export const dynamic = "force-dynamic";
@@ -45,23 +46,14 @@ function deriveThreadKind(providerId: string, threadId: string) {
 
 function publicThreadState(value: unknown, automationEnabled = false) {
   const raw = text(value, "").toLowerCase();
-  if (/online|ready|ok|watcher ready|connected|active/.test(raw)) return "可接单";
+  if (/online|ready|ok|watcher ready|connected|active/.test(raw)) return "线程已绑定";
   if (/stale|timeout|delay/.test(raw)) return "可能延迟";
   if (/offline|lost|failed|error/.test(raw)) return "需重连";
   return automationEnabled ? "已绑定，待电脑接单" : "待接入";
 }
 
 function publicComputerDispatchState(node: AnyRecord | undefined) {
-  if (!node) return "状态未知";
-  const watchState = text(node.runner_watch_state ?? node.runnerWatchState, "").toLowerCase();
-  const effectiveStatus = text(
-    node.runner_effective_status ?? node.runnerEffectiveStatus ?? node.runner_status ?? node.runnerStatus ?? node.status,
-    "",
-  ).toLowerCase();
-  if (watchState === "watching" || /watching|online|ready|active|connected/.test(effectiveStatus)) return "可接单";
-  if (/stale|timeout|delay|recent/.test(watchState) || /stale|timeout|delay|recent/.test(effectiveStatus)) return "可能延迟";
-  if (/offline|lost|failed|error|runner_offline|missing/.test(watchState) || /offline|lost|failed|error/.test(effectiveStatus)) return "需重连";
-  return "状态未知";
+  return runnerStateLabel(node);
 }
 
 function publicStatusLabel(value: unknown) {
@@ -262,7 +254,8 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
       adapter.status,
       automationEnabled ? "watcher ready" : "待接入",
     );
-    const dispatchState = computerNodeId ? publicComputerDispatchState(nodeStateMap.get(computerNodeId)) : "待接入";
+    const computerState = computerNodeId ? publicComputerDispatchState(nodeStateMap.get(computerNodeId)) : "状态未知，先检查接入";
+    const dispatchState = threadId && computerNodeId ? computerState : "状态未知，先检查接入";
     const gitUserName = text(meta.git_user_name ?? meta.gitUserName, name);
     const gitUserEmail = text(
       meta.git_user_email ?? meta.gitUserEmail,
@@ -342,7 +335,7 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
   };
   const selectedSeats = selectedWorkstation.seats;
   const primarySeat = selectedSeats[0] ?? allSeats[0] ?? null;
-  const threadReadyCount = allSeats.filter((seat) => seat.dispatchState === "可接单").length;
+  const threadReadyCount = allSeats.filter((seat) => seat.dispatchState === "可投递").length;
   const strictReviewCount = allSeats.filter((seat) => reviewPolicyLabel(seat.reviewPolicy) === "强审").length;
   const skillAssignedCount = allSeats.filter((seat) => seat.skillLoadout.length || seat.inheritedSkills.length).length;
   const knowledgeAssignedCount = allSeats.filter((seat) => seat.knowledgeSummary || seat.workstationKnowledgePath).length;
@@ -372,7 +365,7 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
         <section className={styles.statusStrip} aria-label="组织状态">
           <article><span>工位</span><strong>{workstationRows.length}</strong><small>逻辑部门</small></article>
           <article><span>NPC</span><strong>{allSeats.length}</strong><small>员工表</small></article>
-          <article><span>可接单</span><strong>{threadReadyCount}/{allSeats.length || 0}</strong><small>线程状态</small></article>
+          <article><span>可投递</span><strong>{threadReadyCount}/{allSeats.length || 0}</strong><small>线程状态</small></article>
           <article><span>强审</span><strong>{strictReviewCount}</strong><small>安全策略</small></article>
         </section>
       </header>
@@ -433,7 +426,7 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
                 </div>
                 <div>
                   <strong>{seat.dispatchState}</strong>
-                  <small>{seat.dispatchState === "可接单" ? seat.threadKind || "线程待确认" : "先让电脑持续接单"}</small>
+                  <small>{seat.dispatchState === "可投递" ? seat.threadKind || "线程待确认" : "先检查线程绑定和电脑接入"}</small>
                 </div>
               </article>
             ))}

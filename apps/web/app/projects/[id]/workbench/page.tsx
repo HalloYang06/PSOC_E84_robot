@@ -16,6 +16,7 @@ import {
 import { normalizeDevelopmentWorkshopStations } from "../../../../lib/development-workshop";
 import { DEFAULT_PLATFORM_SKILL_LIBRARY } from "../../../../lib/platform-skills";
 import { isNpcSeatRecord, platformProviderIdFromSeat } from "../../../../lib/platform-provider";
+import { runnerStateLabel } from "../../../../lib/runner-status";
 import { WorkbenchClient } from "./workbench-client";
 
 export const dynamic = "force-dynamic";
@@ -49,13 +50,7 @@ function firstText(...values: unknown[]) {
 }
 
 function computerDispatchState(node: AnyRecord | undefined) {
-  if (!node) return "状态未知";
-  const watchState = statusText(node.runner_watch_state ?? node.runnerWatchState);
-  const effective = statusText(node.runner_effective_status ?? node.runnerEffectiveStatus ?? node.runner_status ?? node.runnerStatus ?? node.status);
-  if (watchState === "watching" || /watching|online|ready|active|connected/.test(effective)) return "可接单";
-  if (/stale|timeout|delay|recent/.test(watchState) || /stale|timeout|delay|recent/.test(effective)) return "可能延迟";
-  if (/offline|lost|disconnect|error|runner_offline|missing/.test(watchState) || /offline|lost|disconnect|error/.test(effective)) return "需重连";
-  return "状态未知";
+  return runnerStateLabel(node);
 }
 
 function deriveThreadKind(providerId: string, threadId: string) {
@@ -83,7 +78,7 @@ function publicThreadKindLabel(value: string, providerId: string, threadId: stri
 
 function publicThreadHealthLabel(value: string, automationEnabled: boolean) {
   const raw = `${value || ""}`.toLowerCase();
-  if (automationEnabled || /ready|online|ok|watcher|已登记|就绪/.test(raw)) return "可接单";
+  if (automationEnabled || /ready|online|ok|watcher|已登记|就绪/.test(raw)) return "线程已绑定";
   if (/fail|error|offline|不可用|失败/.test(raw)) return "需检查";
   if (/pending|waiting|待|未/.test(raw)) return "待确认";
   return value ? "已登记" : "待确认";
@@ -555,7 +550,7 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
       computerNodeName: computerNodeId ? nodeMap.get(computerNodeId) ?? computerNodeId : "",
       runnerWatchState: text(nodeState?.runner_watch_state ?? nodeState?.runnerWatchState, ""),
       runnerEffectiveStatus: text(nodeState?.runner_effective_status ?? nodeState?.runnerEffectiveStatus ?? nodeState?.runner_status ?? nodeState?.runnerStatus ?? nodeState?.status, ""),
-      runnerDispatchState: computerDispatchState(nodeState),
+      runnerDispatchState: threadId && computerNodeId ? computerDispatchState(nodeState) : "状态未知，先检查接入",
       providerId,
       providerLabel,
       threadId,
@@ -644,7 +639,7 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
         onlineComputers: [...configNodes, ...liveNodes].filter((node, index, list) => {
           const id = text(node.id ?? node.node_id, "");
           const unique = id && list.findIndex((candidate) => text(candidate.id ?? candidate.node_id, "") === id) === index;
-          return unique && computerDispatchState(node) === "可接单";
+          return unique && computerDispatchState(node) === "可投递";
         }).length,
         logicalWorkstations: projectWorkstations.length,
         workshopStations: workshopStations.length,

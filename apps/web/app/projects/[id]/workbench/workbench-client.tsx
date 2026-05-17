@@ -137,7 +137,7 @@ function messageIsOpenDesktopCloseout(message: WorkbenchMessage, messages: Workb
 
 function seatCanTakeTask(seat: WorkbenchSeat): boolean {
   if (!seat.threadId) return false;
-  return seat.runnerDispatchState === "可接单";
+  return seat.runnerDispatchState === "可投递";
 }
 
 function userFacingMessageText(value: unknown, fallback = ""): string {

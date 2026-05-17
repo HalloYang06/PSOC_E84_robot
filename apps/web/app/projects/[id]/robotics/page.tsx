@@ -11,6 +11,7 @@ import {
   getProjectWorkstationsState,
   getTaskProfessionalViewState,
 } from "../../../../lib/server-data";
+import { runnerStateLabel } from "../../../../lib/runner-status";
 import { ProfessionalEvidenceShell } from "../_components/professional-evidence-shell";
 import { ModelImportInspector } from "./model-import-inspector";
 import { RosNodeConnector } from "./ros-node-connector";
@@ -35,13 +36,7 @@ function statusText(value: unknown) {
 }
 
 function computerDispatchState(node: AnyRecord | undefined) {
-  if (!node) return "待确认";
-  const watchState = statusText(node.runner_watch_state ?? node.runnerWatchState);
-  const effective = statusText(node.runner_effective_status ?? node.runnerEffectiveStatus ?? node.runner_status ?? node.runnerStatus ?? node.status);
-  if (watchState === "watching" || /watching|online|ready|active|connected/.test(effective)) return "可接单";
-  if (/stale|timeout|delay|recent/.test(watchState) || /stale|timeout|delay|recent/.test(effective)) return "可能延迟";
-  if (/offline|lost|disconnect|error|runner_offline|missing/.test(watchState) || /offline|lost|disconnect|error/.test(effective)) return "需重连";
-  return "待确认";
+  return runnerStateLabel(node);
 }
 
 function safeProjectReturnPath(projectId: string, value: unknown) {
@@ -369,7 +364,7 @@ export default async function ProjectRoboticsPage({
   const messageFocus = Boolean(searchParams?.message_id || searchParams?.dispatch_id || searchParams?.source_seat);
   const focusTitle = text(searchParams?.source_title, "来自 NPC 工作台的机器人现场焦点");
   const focusSeat = publicFocusSeat(searchParams?.source_label ?? searchParams?.source_seat);
-  const onlineComputers = computers.filter((node) => computerDispatchState(node) === "可接单").length;
+  const onlineComputers = computers.filter((node) => computerDispatchState(node) === "可投递").length;
   const computerCapabilityRows = computers.length
     ? computers.map((node, index) => {
         const capabilities = nodeCapabilities(node);
@@ -380,7 +375,7 @@ export default async function ProjectRoboticsPage({
             text(node.os, "系统待确认"),
             text(node.host, "地址待确认"),
           ].join(" · "),
-          state: dispatchState === "可接单" ? "可接单" : dispatchState === "可能延迟" ? "可能延迟" : dispatchState === "需重连" ? "需重连" : "待确认",
+          state: dispatchState,
           can: supportsDeviceMode(capabilities, "can"),
           serial: supportsDeviceMode(capabilities, "serial"),
           usb: supportsDeviceMode(capabilities, "usb"),
@@ -596,7 +591,7 @@ export default async function ProjectRoboticsPage({
                       <strong>{node.label}</strong>
                       <small>{node.summary}</small>
                     </div>
-                    <span data-state={node.state === "在线" ? "ready" : "wait"}>{node.state}</span>
+                    <span data-state={node.state === "可投递" ? "ready" : "wait"}>{node.state}</span>
                     <em>CAN {node.can}</em>
                     <em>串口 {node.serial}</em>
                     <em>USB {node.usb}</em>

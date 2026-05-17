@@ -8,6 +8,7 @@ import {
   getProjectThreadWorkstationsState,
   getTaskProfessionalViewState,
 } from "../../../../lib/server-data";
+import { runnerCanDispatch } from "../../../../lib/runner-status";
 import { ProfessionalEvidenceShell } from "../_components/professional-evidence-shell";
 import styles from "./ai-lab.module.css";
 
@@ -25,15 +26,8 @@ function text(value: unknown, fallback = "") {
   return next || fallback;
 }
 
-function statusText(value: unknown) {
-  return text(value, "").toLowerCase();
-}
-
 function computerDispatchReady(node: AnyRecord | undefined) {
-  if (!node) return false;
-  const watchState = statusText(node.runner_watch_state ?? node.runnerWatchState);
-  const effective = statusText(node.runner_effective_status ?? node.runnerEffectiveStatus ?? node.runner_status ?? node.runnerStatus ?? node.status);
-  return watchState === "watching" || /watching|online|ready|active|connected/.test(effective);
+  return runnerCanDispatch(node);
 }
 
 function safeProjectReturnPath(projectId: string, value: unknown) {

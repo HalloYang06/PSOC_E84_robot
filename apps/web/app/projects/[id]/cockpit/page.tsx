@@ -10,6 +10,7 @@ import {
   getRequirementsState,
   getTasksDataScopedState,
 } from "../../../../lib/server-data";
+import { runnerCanDispatch, runnerStateLabel } from "../../../../lib/runner-status";
 import styles from "./cockpit.module.css";
 
 export const dynamic = "force-dynamic";
@@ -90,19 +91,13 @@ function computerState(value: unknown) {
 }
 
 function computerDispatchState(node: AnyRecord | undefined) {
-  if (!node) return "状态未知";
-  const watchState = statusText(node.runner_watch_state ?? node.runnerWatchState);
-  const effective = statusText(node.runner_effective_status ?? node.runnerEffectiveStatus ?? node.runner_status ?? node.runnerStatus ?? node.status);
-  if (watchState === "watching" || /watching|online|ready|active|connected/.test(effective)) return "在线";
-  if (/stale|timeout|delay|recent/.test(watchState) || /stale|timeout|delay|recent/.test(effective)) return "可能延迟";
-  if (/offline|lost|disconnect|error|runner_offline|missing/.test(watchState) || /offline|lost|disconnect|error/.test(effective)) return "离线，需重连";
-  return "状态未知";
+  return runnerStateLabel(node);
 }
 
 function seatCanDispatch(seat: AnyRecord, computerById: Map<string, AnyRecord>) {
   const nodeId = text(seat.computer_node_id ?? seat.computerNodeId ?? seat.computer_node ?? seat.computerNode, "");
   if (!nodeId) return false;
-  return computerDispatchState(computerById.get(nodeId)) === "在线";
+  return runnerCanDispatch(computerById.get(nodeId));
 }
 
 export default async function ProjectCockpitPage({
@@ -163,8 +158,8 @@ export default async function ProjectCockpitPage({
     })
     .slice(0, 4);
   const riskyNeeds = requirements.filter((item) => /high|critical/.test(statusText(item.risk_level ?? item.riskLevel ?? item.priority)));
-  const onlineComputers = computers.filter((node) => computerDispatchState(node) === "在线");
-  const staleComputers = computers.filter((node) => computerDispatchState(node) !== "在线");
+  const onlineComputers = computers.filter((node) => runnerCanDispatch(node));
+  const staleComputers = computers.filter((node) => !runnerCanDispatch(node));
   const readySeats = seats.filter((seat) => seatCanDispatch(seat, computerById));
   const grade = text(scorecard.grade ?? scorecard.overall_grade ?? scorecard.status, "待评估");
 
@@ -294,7 +289,7 @@ export default async function ProjectCockpitPage({
                 <article key={text(node.id, `computer-${index}`)}>
                   <span>{computerDispatchState(node)}</span>
                   <strong>{text(node.name ?? node.label ?? node.hostname, `执行电脑 ${index + 1}`)}</strong>
-                  <p>{computerDispatchState(node) === "在线" ? "可用于派发和回执同步。" : "先检查接入、重连或改派。"}</p>
+                  <p>{runnerCanDispatch(node) ? "可用于派发和回执同步。" : "先检查接入、重连或改派。"}</p>
                 </article>
               ))}
             </div>
