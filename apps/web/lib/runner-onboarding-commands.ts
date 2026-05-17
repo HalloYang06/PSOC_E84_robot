@@ -34,12 +34,21 @@ function powerShellQuoted(value: unknown) {
   return `'${text(value, "").replace(/'/g, "''")}'`;
 }
 
-function powerShellDoubleQuoted(value: unknown) {
-  return `"${text(value, "").replace(/`/g, "``").replace(/\$/g, "`$").replace(/"/g, '`"')}"`;
-}
-
 function powerShellHereString(value: unknown) {
   return `@'\n${text(value, "").replace(/'@/g, "' + '@' + '")}\n'@`;
+}
+
+function powerShellEncodedCommand(value: unknown) {
+  const raw = text(value, "");
+  if (typeof Buffer !== "undefined") {
+    return Buffer.from(raw, "utf16le").toString("base64");
+  }
+  let binary = "";
+  for (let index = 0; index < raw.length; index += 1) {
+    const code = raw.charCodeAt(index);
+    binary += String.fromCharCode(code & 0xff, code >> 8);
+  }
+  return btoa(binary);
 }
 
 function bashDoubleQuoted(value: unknown) {
@@ -435,8 +444,8 @@ export function buildComputerRunnerWatchServiceCommand(
     "-NoProfile",
     "-ExecutionPolicy",
     "Bypass",
-    "-Command",
-    adapterShellArg(`& { ${commandBody} }`),
+    "-EncodedCommand",
+    powerShellEncodedCommand(`& { ${commandBody} }`),
   ].join(" ");
 }
 

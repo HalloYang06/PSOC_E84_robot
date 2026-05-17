@@ -138,6 +138,7 @@ def main() -> int:
         "New-ScheduledTaskAction",
         "Register-ScheduledTask",
         "Start-ScheduledTask",
+        "-EncodedCommand",
         "systemctl --user enable --now",
         "nohup bash -lc",
         "already-bound-runner-reuse",
