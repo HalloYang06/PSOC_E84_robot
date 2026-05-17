@@ -252,8 +252,8 @@ def main() -> int:
             (() => {
               const body = document.body?.innerText || '';
               return document.readyState === 'complete'
-                && body.includes('云端验收项目')
-                && (body.includes('线程调试') || body.includes('AI 线程') || body.includes('6 个 · 在线电脑 1/1'));
+                && (body.includes('线程调试') || body.includes('AI 线程') || body.includes('电脑接入'))
+                && (body.includes('扫描到') || body.includes('真实线程') || body.includes('持续接单') || body.includes('等待电脑恢复'));
             })()
             """,
             timeout_seconds=60,

@@ -76,7 +76,7 @@ def is_queued_status(value: object) -> bool:
     return text(value).lower() in {"queued", "open", "waiting_response", "routed", "pending"}
 
 
-def queued_target_node_id(message: dict[str, object]) -> str:
+def queued_target_identity(message: dict[str, object]) -> tuple[str, str]:
     metadata = message.get("metadata") if isinstance(message.get("metadata"), dict) else {}
     for key in (
         "computer_node_id",
@@ -86,12 +86,14 @@ def queued_target_node_id(message: dict[str, object]) -> str:
     ):
         value = text(metadata.get(key))
         if value:
-            return value
+            return "computer", value
     msg_type = text(message.get("message_type")).lower()
     recipient_id = text(message.get("recipient_id"))
     if msg_type in {"thread_scan_request", "runner_command"}:
-        return recipient_id
-    return ""
+        return "runner", recipient_id
+    if msg_type in {"agent_command", "requirement_dispatch"}:
+        return "workstation", recipient_id
+    return "", ""
 
 
 def is_offline_node(node: dict[str, object] | None) -> bool:
@@ -105,6 +107,27 @@ def is_offline_node(node: dict[str, object] | None) -> bool:
         or effective_status == "offline"
         or runner_status == "offline"
     )
+
+
+def resolve_target_node(
+    message: dict[str, object],
+    *,
+    node_by_id: dict[str, dict[str, object]],
+    node_by_runner_id: dict[str, dict[str, object]],
+    workstation_node_by_id: dict[str, str],
+) -> tuple[str, dict[str, object] | None, str]:
+    target_kind, target_id = queued_target_identity(message)
+    if not target_id:
+        return "", None, ""
+    if target_kind == "computer":
+        return target_id, node_by_id.get(target_id), "computer_node_id"
+    if target_kind == "runner":
+        node = node_by_runner_id.get(target_id)
+        return text(node.get("id")) if node else target_id, node, "runner_id"
+    if target_kind == "workstation":
+        node_id = workstation_node_by_id.get(target_id, "")
+        return node_id or target_id, node_by_id.get(node_id), "workstation_id"
+    return target_id, None, target_kind
 
 
 def main() -> int:
@@ -151,10 +174,33 @@ def main() -> int:
         if (queued_age_minutes(item, now=now) or 0) >= args.queued_warning_minutes
     ]
     node_by_id = {text(node.get("id")): node for node in nodes}
+    node_by_runner_id = {text(node.get("runner_id")): node for node in nodes if text(node.get("runner_id"))}
+    workstation_node_by_id: dict[str, str] = {}
+    for seat in threads:
+        node_id = text(seat.get("computer_node_id") or seat.get("computerNodeId"))
+        if not node_id:
+            continue
+        for key in (
+            seat.get("id"),
+            seat.get("config_id"),
+            seat.get("authoritative_seat_ref"),
+            seat.get("agent_id"),
+            seat.get("name"),
+        ):
+            key_text = text(key)
+            if key_text:
+                workstation_node_by_id[key_text] = node_id
     stale_waiting_for_offline_nodes = [
         item
         for item in stale_queued_messages
-        if (target := queued_target_node_id(item)) and is_offline_node(node_by_id.get(target))
+        if is_offline_node(
+            resolve_target_node(
+                item,
+                node_by_id=node_by_id,
+                node_by_runner_id=node_by_runner_id,
+                workstation_node_by_id=workstation_node_by_id,
+            )[1]
+        )
     ]
     stale_unexplained_messages = [
         item for item in stale_queued_messages if item not in stale_waiting_for_offline_nodes
@@ -226,6 +272,28 @@ def main() -> int:
                 "recipient_id": text(item.get("recipient_id")),
                 "title": text(item.get("title")),
                 "age_minutes": queued_age_minutes(item, now=now),
+                "target_resolution": {
+                    "target_node_id": resolve_target_node(
+                        item,
+                        node_by_id=node_by_id,
+                        node_by_runner_id=node_by_runner_id,
+                        workstation_node_by_id=workstation_node_by_id,
+                    )[0],
+                    "resolution_source": resolve_target_node(
+                        item,
+                        node_by_id=node_by_id,
+                        node_by_runner_id=node_by_runner_id,
+                        workstation_node_by_id=workstation_node_by_id,
+                    )[2],
+                    "target_offline": is_offline_node(
+                        resolve_target_node(
+                            item,
+                            node_by_id=node_by_id,
+                            node_by_runner_id=node_by_runner_id,
+                            workstation_node_by_id=workstation_node_by_id,
+                        )[1]
+                    ),
+                },
             }
             for item in queued_messages[:50]
         ],

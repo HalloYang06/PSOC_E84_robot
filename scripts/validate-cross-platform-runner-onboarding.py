@@ -117,17 +117,16 @@ def main() -> int:
 
     for token in (
         "接入成功后要持续接单",
-        "默认只做心跳、任务提示和最小回执",
+        "默认只做最小回执和本机任务提示",
         "linuxCommand={pairingBashCommand}",
         "linuxWatchCommand={pairingWatchBashCommand}",
     ):
         assert_contains(shell, token, f"safe pairing token card text {token}")
 
-    for token in (
-        "高风险持续执行命令",
-        "{ watch: true, executeProviderCli: true }",
-    ):
-        assert_not_contains(shell, token, f"unsafe first pairing watch token {token}")
+    assert_not_contains(shell, "高风险持续执行命令", "unsafe first pairing watch token label")
+    assert_contains(shell, "data-token-desktop-watch-card", "desktop-visible dispatch command is separated from safe watch")
+    assert_contains(shell, "真实硬件、部署、Git 回退等高风险动作仍然需要人工确认", "desktop-visible dispatch safety copy")
+    assert_contains(shell, "{ watch: true }", "safe watch command remains the default pairing watch")
 
     for token in (
         "curl -fsSL",

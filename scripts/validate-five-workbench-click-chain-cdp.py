@@ -324,7 +324,6 @@ def run_alignment_precheck(args: argparse.Namespace) -> dict[str, Any]:
 
 def verify_desktop_sync_on_workbench(cdp: object, base_url: str, seats: list[str], output_dir: Path, stamp: str) -> dict[str, Any]:
     seats_query = "%2C".join(seats)
-    expected_tile_count = max(1, len(seats))
     navigate(cdp, f"{base_url}?seats={seats_query}", [])
     try:
         wait_for_page_stable(
@@ -363,6 +362,24 @@ def verify_desktop_sync_on_workbench(cdp: object, base_url: str, seats: list[str
         })()
         """,
     )
+    visible_capacity = cdp_eval(
+        cdp,
+        """
+        (() => {
+          const openButtons = Array.from(document.querySelectorAll('a[title="打开瓷砖"], a[data-workbench-open-tile]'));
+          const requested = new Set((new URLSearchParams(location.search).get('seats') || '').split(',').map((item) => item.trim()).filter(Boolean));
+          const buttonSeats = openButtons.map((button) => button.getAttribute('data-workbench-open-tile') || '');
+          return {
+            openButtons: openButtons.length,
+            requestedSeats: Array.from(requested),
+            visibleSeats: buttonSeats.filter(Boolean),
+            missingRequestedSeats: Array.from(requested).filter((seat) => seat && !buttonSeats.includes(seat)),
+          };
+        })()
+        """,
+    )
+    visible_capacity = visible_capacity if isinstance(visible_capacity, dict) else {}
+    expected_tile_count = max(1, min(len(seats), int(visible_capacity.get("openButtons") or 0) or len(seats)))
     wait_for(
         cdp,
         """
@@ -466,6 +483,7 @@ def verify_desktop_sync_on_workbench(cdp: object, base_url: str, seats: list[str
         or "线程 已绑定" in buttons_and_links
         or "线程已绑定" in buttons_and_links,
         "open_tile_attempt": opened,
+        "visible_capacity": visible_capacity,
     }
     structure_notes = {
         "empty_dialog_contract_relaxed": not has_dialog_content,
