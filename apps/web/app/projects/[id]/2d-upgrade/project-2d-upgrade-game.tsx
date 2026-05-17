@@ -16,7 +16,6 @@ import {
   fetchProjectClaudeContext,
   fetchProjectScorecard,
   issueComputerNodePairingToken,
-  previewCollaborationMessage,
   previewProjectGitRollback,
   requestComputerThreadScan,
   recordNpcHandoff,
@@ -26,10 +25,6 @@ import {
   updateProjectGitSettings,
   updateDevelopmentWorkshopStation,
   updateNpcWorkstationSeat,
-  保存串口电视配置,
-  保存项目日程安排,
-  请求串口USB扫描,
-  下发串口调试指令,
 } from "../../../actions";
 import { useTeamNoticeToast } from "../../../../lib/use-team-notice-toast";
 import { TeamNoticeToast } from "../../../../components/team-notice-toast";
@@ -276,10 +271,6 @@ const PANEL_TABS = [
   "npc-create",
   "computers",
   "skills",
-  "schedule",
-  "serial-tv",
-  "ai-debug",
-  "ai-simulation",
   "exchange",
   "machine-room",
   "git",
@@ -291,9 +282,8 @@ const SCORECARD_FIX_TAB: Record<string, ModuleTab> = {
   thread_call_health: "machine-room",
   npc_handover_health: "npc-create",
   human_review_responsiveness: "exchange",
-  hardware_redline_count: "ai-debug",
   collaboration_density: "exchange",
-  token_spend_7d_yuan: "ai-debug",
+  token_spend_7d_yuan: "exchange",
 };
 
 function buildWatcherCommand(projectId: string, workstationId: string): string {
@@ -495,110 +485,6 @@ const PANEL_ACTIONS: Record<ModuleTab, PanelAction[]> = {
       safety: "编辑后保留版本记录。",
     },
   ],
-  schedule: [
-    {
-      id: "create-ddl",
-      label: "添加 DDL",
-      summary: "给任务设置日期、优先级和负责人。",
-      detail: "主房日历功能迁移到这里；后续在 Unity 日历物件上只做视觉，不做入口。",
-      primaryLabel: "打开 DDL 抽屉",
-      safety: "不会自动派单。",
-    },
-    {
-      id: "daily-plan",
-      label: "生成今日安排",
-      summary: "根据任务、Runner 心跳和审核边界安排今日工作。",
-      detail: "AI 可给建议，但涉及硬件和危险操作必须先人工审核。",
-      primaryLabel: "打开今日安排抽屉",
-      safety: "只生成计划，不执行。",
-    },
-    {
-      id: "human-review",
-      label: "人工审核提醒",
-      summary: "把需要人确认的事项怼到首页。",
-      detail: "发布、删除、回滚、硬件烧录、串口写入等必须持续提醒。",
-      primaryLabel: "打开审核抽屉",
-      safety: "高风险动作默认阻塞。",
-    },
-  ],
-  "serial-tv": [
-    {
-      id: "usb-scan",
-      label: "扫描 USB",
-      summary: "扫描所有接入电脑的 USB/串口设备。",
-      detail: "后续由 runner 只读上报设备列表，用户选择目标端口。",
-      primaryLabel: "打开 USB 扫描抽屉",
-      safety: "扫描不写串口。",
-    },
-    {
-      id: "serial-format",
-      label: "配置收发格式",
-      summary: "配置后续单片机发送的横纵坐标数据格式。",
-      detail: "先定义帧头、分隔符、校验和、采样率，再显示波形。",
-      primaryLabel: "打开格式抽屉",
-      safety: "保存格式不连接硬件。",
-    },
-    {
-      id: "wave-view",
-      label: "波形视图",
-      summary: "类似 VOFA+ 的数字数据转波形入口。",
-      detail: "这里先做入口，后续接实时图表和串口收发。",
-      primaryLabel: "打开波形抽屉",
-      safety: "只读绘图。",
-    },
-  ],
-  "ai-debug": [
-    {
-      id: "automation-toggle",
-      label: "自动化开关",
-      summary: "高级开关：按 NPC 控制是否进入持续自动化。",
-      detail: "默认关闭。项目开发由人类负责人决定节奏，不建议给项目 NPC 直接开启持续自动化。",
-      primaryLabel: "打开自动化抽屉",
-      safety: "默认关闭，节省 token。",
-    },
-    {
-      id: "heartbeat-time",
-      label: "心跳时间",
-      summary: "高级配置：只有明确开启 NPC 自动化时才需要。",
-      detail: "普通项目开发不依赖这里；不要把平台维护线程和项目 NPC 自动化混在一起。",
-      primaryLabel: "打开心跳抽屉",
-      safety: "超过预算时自动暂停。",
-    },
-    {
-      id: "runaway-guard",
-      label: "跑飞保护",
-      summary: "检查 AI 是否重复原地踏步、越权或无验证。",
-      detail: "如果没有截图、没有最终回复、没有交接，就提示人审。",
-      primaryLabel: "打开保护抽屉",
-      safety: "异常时不继续派单。",
-    },
-  ],
-  "ai-simulation": [
-    {
-      id: "software-sim",
-      label: "软件任务仿真",
-      summary: "纯软件任务先模拟拆解和验收链。",
-      detail: "让 AI 先产出计划、风险和验收点，再决定是否自动推进。",
-      primaryLabel: "打开软件仿真抽屉",
-      safety: "不改文件。",
-    },
-    {
-      id: "robot-sim",
-      label: "机器人仿真",
-      summary: "机器人/嵌入式动作先进入仿真。",
-      detail: "串口、烧录、运动控制、真实设备动作都先沙盘确认。",
-      primaryLabel: "打开机器人仿真抽屉",
-      safety: "硬件动作必须人审。",
-    },
-    {
-      id: "approval-boundary",
-      label: "审批边界",
-      summary: "定义哪些任务可以自动做、哪些必须问人。",
-      detail: "商业化必须把安全边界可视化，不让 AI 自己猜。",
-      primaryLabel: "打开边界抽屉",
-      safety: "边界修改需要负责人确认。",
-    },
-  ],
   exchange: [
     {
       id: "dispatch-command",
@@ -635,11 +521,11 @@ const PANEL_ACTIONS: Record<ModuleTab, PanelAction[]> = {
       safety: "只读查看。",
     },
     {
-      id: "adapter-logs",
-      label: "Adapter 日志",
-      summary: "查看 Codex/Claude/Qwen adapter 的接单和回写状态。",
-      detail: "用于判断到底是平台协作，还是 Codex 自带自动化在跑。",
-      primaryLabel: "打开日志抽屉",
+      id: "execution-logs",
+      label: "执行日志",
+      summary: "查看 Codex/Claude/Qwen 执行程序的接单和回写状态。",
+      detail: "用于判断任务是否送到正确电脑、是否有回执、是否需要重新连接。",
+      primaryLabel: "打开执行日志",
       safety: "默认不暴露长日志给小白。",
     },
     {
@@ -1374,7 +1260,7 @@ function isHumanReviewMessage(message: FeedItem) {
   return source.includes("human_review") || source.includes("approval") || source.includes("审核") || source.includes("审批") || source.includes("人审") || source.includes("blocked");
 }
 
-function isAdapterMessage(message: FeedItem) {
+function isExecutionChannelMessage(message: FeedItem) {
   const source = `${message.type ?? ""} ${message.status ?? ""} ${message.title ?? ""} ${message.body ?? ""}`.toLowerCase();
   return source.includes("adapter") || source.includes("scan") || source.includes("runner") || source.includes("thread") || source.includes("claude") || source.includes("codex") || source.includes("qwen");
 }
@@ -1487,13 +1373,6 @@ const REAL_WRITE_ACTIONS = new Set([
   "skills:github-import",
   "skills:skill-category",
   "skills:skill-detail",
-  "schedule:create-ddl",
-  "schedule:daily-plan",
-  "serial-tv:usb-scan",
-  "serial-tv:serial-format",
-  "serial-tv:wave-view",
-  "ai-debug:automation-toggle",
-  "ai-debug:heartbeat-time",
   "git:checkpoint",
   "git:diff-preview",
   "git:rollback-request",
@@ -1501,15 +1380,10 @@ const REAL_WRITE_ACTIONS = new Set([
 
 const PREVIEW_ACTIONS = new Set([
   "exchange:dispatch-command",
-  "ai-simulation:software-sim",
-  "ai-simulation:robot-sim",
-  "ai-simulation:approval-boundary",
 ]);
 
 const REVIEW_ACTIONS = new Set([
   "human-party:role-permission",
-  "schedule:human-review",
-  "ai-debug:runaway-guard",
   "git:rollback-request",
 ]);
 
@@ -1519,7 +1393,7 @@ const READONLY_ACTIONS = new Set([
   "exchange:final-pool",
   "exchange:required-ledger",
   "machine-room:thread-list",
-  "machine-room:adapter-logs",
+  "machine-room:execution-logs",
   "machine-room:online-check",
 ]);
 
@@ -1961,46 +1835,6 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         farmSource: "主页面：能力包仓库",
       },
       {
-        label: "日程 DDL",
-        short: "历",
-        hint: "每日安排、DDL、人工审核提醒",
-        tab: "schedule",
-        tone: "tool",
-        primary: "安排今天怎么协作",
-        description: "承接项目日程：任务 DDL、每日安排、AI 当日执行顺序。",
-        farmSource: "主页面：日程计划",
-      },
-      {
-        label: "设备调试",
-        short: "波",
-        hint: "USB/CAN 扫描、串口收发、波形调试",
-        tab: "serial-tv",
-        tone: "tool",
-        primary: "打开硬件调试台",
-        description: "承接设备调试入口：后续扩展成串口、USB、CAN、波形和日志工作台。",
-        farmSource: "主页面：设备调试台",
-      },
-      {
-        label: "AI 调试",
-        short: "调",
-        hint: "token、跑飞保护、回执质量",
-        tab: "ai-debug",
-        tone: "review",
-        primary: "调试 AI 协作行为",
-        description: "承接协作稳定性验收：排查 token 消耗、自动化开关、最小回执和最终回复。",
-        farmSource: "主页面：协作稳定性入口",
-      },
-      {
-        label: "AI 仿真",
-        short: "仿",
-        hint: "机器人/软件任务先沙盘预演",
-        tab: "ai-simulation",
-        tone: "tool",
-        primary: "先仿真再真实执行",
-        description: "承接仿真验证链路：机器人和嵌入式动作先在仿真层确认边界。",
-        farmSource: "主页面：仿真验证入口",
-      },
-      {
         label: "协作消息",
         short: "讯",
         hint: "派单、最小回执、最终回复池",
@@ -2048,7 +1882,6 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
   const firstNpcSeat = npcSeats[0] ?? null;
   const focusedNpcSeat = npcSeats.find((seat) => seat.id === focusedNpcId) ?? firstNpcSeat ?? null;
   const collaborationTargets = npcSeats.length ? [...npcSeats, ...workstations] : workstations;
-  const todayText = new Date().toISOString().slice(0, 10);
   const projectGithubUrl = String(project.github_url ?? "").trim();
   const projectLocalGitUrl = String(project.local_git_url ?? "").trim();
   const projectDefaultBranch = String(project.default_branch ?? "").trim() || "main";
@@ -3748,243 +3581,6 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
       );
     }
 
-    if (moduleTab === "schedule" && (action.id === "create-ddl" || action.id === "daily-plan")) {
-      return (
-        <form action={保存项目日程安排.bind(null, project.id)} className={styles.drawerForm} data-unity-real-form="schedule-save-plan">
-          <input type="hidden" name="return_to" value={returnPath("schedule", action.id)} />
-          <label>
-            <span>日期</span>
-            <input name="schedule_date" type="date" defaultValue={todayText} />
-          </label>
-          <label>
-            <span>今日安排</span>
-            <textarea name="daily_plan" required rows={5} placeholder="写今天要推进的事项、负责 NPC/电脑、哪些要人审、哪些可以自动做。" />
-          </label>
-          <label>
-            <span>DDL / 审核提醒</span>
-            <textarea name="ddl_note" rows={4} placeholder="例如：19:00 前完成只读验收；串口写入和 Git 回退必须人工确认。" />
-          </label>
-          <SubmitButton label="保存日程安排" />
-        </form>
-      );
-    }
-
-    if (moduleTab === "schedule" && action.id === "human-review") {
-      return (
-        <div className={styles.realActionStack} data-unity-real-form="schedule-human-review">
-          <article className={styles.realNote}>
-            <b>需要人工审核的边界</b>
-            <p>硬件写入、烧录、删除文件、Git 回退、发布上线、跨账号权限变更，都必须在人审卡片里持续提醒，不能让 AI 静默执行。</p>
-          </article>
-          {renderList(tasks.filter((task) => ["blocked", "failed", "error"].includes(task.status.toLowerCase())), "当前没有阻塞任务。")}
-        </div>
-      );
-    }
-
-    if (moduleTab === "serial-tv" && action.id === "usb-scan") {
-      return (
-        <form action={请求串口USB扫描.bind(null, project.id)} className={styles.drawerForm} data-unity-real-form="serial-usb-scan">
-          <input type="hidden" name="return_to" value={returnPath("serial-tv", "usb-scan")} />
-          <label>
-            <span>目标电脑</span>
-            <select name="computer_node_id" defaultValue="all">
-              <option value="all">所有已接入电脑</option>
-              {computers.map((computer) => (
-                <option key={computer.id} value={computer.id}>{itemTitle(computer)} / {statusLabel(computer.status)}</option>
-              ))}
-            </select>
-          </label>
-          <SubmitButton label="下发 USB/串口扫描" disabled={!computers.length} />
-        </form>
-      );
-    }
-
-    if (moduleTab === "serial-tv" && action.id === "serial-format") {
-      return (
-        <form action={保存串口电视配置.bind(null, project.id)} className={styles.drawerForm} data-unity-real-form="serial-format">
-          <input type="hidden" name="return_to" value={returnPath("serial-tv", "serial-format")} />
-          <label>
-            <span>波特率</span>
-            <input name="baud_rate" type="number" defaultValue={115200} />
-          </label>
-          <label>
-            <span>协议名</span>
-            <input name="protocol" defaultValue="aicollab-csv-v1" />
-          </label>
-          <label>
-            <span>帧格式</span>
-            <textarea name="frame_format" rows={4} defaultValue={"@xy,<x>,<y>\\n 或 @sample,<t>,<ch1>,<ch2>...\\n"} />
-          </label>
-          <label>
-            <span>通道名，逗号分隔</span>
-            <input name="channel_names" defaultValue="x,y" />
-          </label>
-          <label>
-            <span>备注</span>
-            <textarea name="notes" rows={3} placeholder="例如：后续单片机按 @xy,12,34 发送，平台转成二维轨迹和波形。" />
-          </label>
-          <SubmitButton label="保存设备调试格式" />
-        </form>
-      );
-    }
-
-    if (moduleTab === "serial-tv" && action.id === "wave-view") {
-      return (
-        <form action={下发串口调试指令.bind(null, project.id)} className={styles.drawerForm} data-unity-real-form="serial-write-command">
-          <input type="hidden" name="return_to" value={returnPath("serial-tv", "wave-view")} />
-          <label>
-            <span>目标电脑</span>
-            <select name="computer_node_id" required>
-              <option value="">请选择电脑</option>
-              {computers.map((computer) => (
-                <option key={computer.id} value={computer.id}>{itemTitle(computer)} / {statusLabel(computer.status)}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>端口</span>
-            <input name="port" required placeholder="例如：COM3 或 /dev/ttyUSB0" />
-          </label>
-          <label>
-            <span>波特率</span>
-            <input name="baud_rate" type="number" defaultValue={115200} />
-          </label>
-          <label>
-            <span>发送格式</span>
-            <select name="payload_format" defaultValue="text-lf">
-              <option value="text-lf">文本 + 换行</option>
-              <option value="text">原始文本</option>
-              <option value="hex">HEX</option>
-            </select>
-          </label>
-          <label>
-            <span>发送数据</span>
-            <textarea name="payload" required rows={4} placeholder="@xy,12,34" />
-          </label>
-          <SubmitButton label="下发串口调试指令" disabled={!computers.length} />
-        </form>
-      );
-    }
-
-    if (moduleTab === "ai-debug" && (action.id === "automation-toggle" || action.id === "heartbeat-time")) {
-      return (
-        <div className={styles.realActionStack} data-unity-real-form={`ai-debug-${action.id}`}>
-          <article className={styles.realNote}>
-            <b>高级开关，默认不要开启</b>
-            <p>这不是平台维护线程的叫醒自动化。项目 NPC 自动化默认关闭；只有用户明确要某个 NPC 持续拉取派单时才开启。</p>
-          </article>
-          {npcSeats.length ? (
-            npcSeats.map((seat) => (
-              <form key={seat.id} action={updateNpcWorkstationSeat.bind(null, project.id, seat.id)} className={styles.inlineActionForm}>
-                {renderNpcSeatHiddenFields(seat, "ai-debug", { returnActionId: action.id })}
-                <input type="hidden" name="source_workstation_id" value={seat.sourceWorkstationId || ""} />
-                <input type="hidden" name="computer_node_id" value={seat.computerNodeId || ""} />
-                <label>
-                  <span>{itemTitle(seat)} 自动化模式</span>
-                  <select name="automation_enabled" defaultValue={seat.automationEnabled ? "true" : "false"}>
-                    <option value="false">关闭：只执行当前指令（推荐）</option>
-                    <option value="true">开启：让这个 NPC 持续心跳</option>
-                  </select>
-                </label>
-                <label>
-                  <span>心跳间隔秒数（仅开启时生效）</span>
-                  <input name="automation_heartbeat_seconds" type="number" min={300} step={60} defaultValue={seat.automationHeartbeatSeconds ?? 900} />
-                </label>
-                <SubmitButton label="保存自动化设置" />
-              </form>
-            ))
-          ) : (
-            <p className={styles.emptyHint}>还没有 NPC。先到 NPC 管理创建，再回来配置自动化。</p>
-          )}
-        </div>
-      );
-    }
-
-    if (moduleTab === "ai-debug" && action.id === "runaway-guard") {
-      return (
-        <div className={styles.realActionStack} data-unity-real-form="ai-debug-runaway-guard">
-          <article className={styles.realNote}>
-            <b>跑飞保护先以只读审计呈现</b>
-            <p>这里集中看每个 NPC 是否开启自动化、心跳是否过密、是否缺少绑定线程。后续再接入预算阈值和自动暂停。</p>
-          </article>
-          <ul className={styles.realList}>
-            {feedSummary(npcSeats, "暂无 NPC 可审计。").map((seat) => (
-              <li key={seat.id}>
-                <b>{itemTitle(seat)}</b>
-                <small>
-                  {automationLabel(seat)} / {seat.automationHeartbeatSeconds ?? 900}s / 线程 {seat.sourceWorkstationId || "未绑定"}
-                </small>
-              </li>
-            ))}
-          </ul>
-        </div>
-      );
-    }
-
-    if (moduleTab === "ai-simulation" && action.id) {
-      const simulationPreset =
-        action.id === "robot-sim"
-          ? "机器人/嵌入式仿真：先列出硬件边界、串口/烧录/运动控制风险、需要人审的动作，再给出只读验证计划。"
-          : action.id === "approval-boundary"
-            ? "审批边界仿真：列出哪些任务可自动推进，哪些必须人工审核，触发暂停的条件是什么。"
-            : "软件任务仿真：先模拟需求拆解、责任人、最小回执、最终回复和验收点，不改文件。";
-      return (
-        <div className={styles.realActionStack} data-unity-real-form={`${moduleTab}-${action.id}`}>
-          <article className={styles.realNote}>
-            <b>{action.label} 先预演，再决定是否真实执行</b>
-            <p>仿真不会直接改文件或操作硬件；它先向指定 NPC/线程发出“只读仿真”要求，拿到边界和验收点后再决定是否派真实任务。</p>
-          </article>
-          <form action={previewCollaborationMessage} className={styles.drawerForm}>
-            <input type="hidden" name="project_id" value={project.id} />
-            <input type="hidden" name="return_to" value={returnPath("ai-simulation", action.id)} />
-            <input type="hidden" name="message_type" value="agent_command" />
-            <input type="hidden" name="recipient_type" value="workstation" />
-            <input type="hidden" name="preview_key" value={`unity-2d-${action.id}`} />
-            <label>
-              <span>仿真目标 NPC / 线程</span>
-              <select name="recipient_id" defaultValue={focusedNpcSeat?.id ?? firstWorkstation?.id ?? ""} required>
-                <option value="">请选择一个 NPC 或线程</option>
-                {collaborationTargets.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {itemTitle(item)} / {item.type || "线程"}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span>仿真标题</span>
-              <input name="title" required defaultValue={`${action.label}：只读预演`} />
-            </label>
-            <label>
-              <span>仿真指令</span>
-              <textarea name="body" required rows={6} defaultValue={simulationPreset} />
-            </label>
-            <SubmitButton label="先预演仿真" disabled={!collaborationTargets.length} />
-          </form>
-          <form action={submitCollaborationMessage} className={styles.drawerForm}>
-            <input type="hidden" name="project_id" value={project.id} />
-            <input type="hidden" name="return_to" value={returnPath("ai-simulation", action.id)} />
-            <input type="hidden" name="message_type" value="agent_command" />
-            <input type="hidden" name="recipient_type" value="workstation" />
-            <label>
-              <span>正式登记仿真目标</span>
-              <select name="recipient_id" defaultValue={focusedNpcSeat?.id ?? firstWorkstation?.id ?? ""} required>
-                <option value="">请选择一个 NPC 或线程</option>
-                {collaborationTargets.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {itemTitle(item)} / {item.type || "线程"}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <input type="hidden" name="title" value={`${action.label}：只读仿真`} />
-            <input type="hidden" name="body" value={simulationPreset} />
-            <SubmitButton label="登记到协作池" disabled={!collaborationTargets.length} />
-          </form>
-        </div>
-      );
-    }
-
     if (moduleTab === "machine-room") {
       if (action.id === "thread-list") {
         const unassignedThreads = workstations.filter((thread) => !thread.computerNodeId);
@@ -4084,18 +3680,18 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             <p>这里承接电脑线程调试：只读展示真实电脑、执行程序和线程状态。扫描与配对动作已放在“电脑接入”。</p>
           </article>
           <div className={styles.layeredList}>
-            {messages.filter(isAdapterMessage).slice(0, 8).map((message) => (
+            {messages.filter(isExecutionChannelMessage).slice(0, 8).map((message) => (
               <article key={message.id} className={styles.layeredItem}>
-                <span>{message.type || "adapter"}</span>
+                <span>{message.type ? statusLabel(message.type) : "执行通道"}</span>
                 <b>{itemTitle(message)}</b>
                 <small>{statusLabel(message.status)} / {message.at || "暂无时间"}</small>
                 <p>{itemBody(message)}</p>
               </article>
             ))}
-            {!messages.filter(isAdapterMessage).length ? (
+            {!messages.filter(isExecutionChannelMessage).length ? (
               <article className={styles.layeredItem}>
                 <span>空状态</span>
-                <b>暂无 adapter 摘要</b>
+                <b>暂无执行通道摘要</b>
                 <p>长日志不再堆到首页；这里只显示接单、扫描、心跳、失败原因和最终回写摘要。若电脑已接入但这里为空，请先在“电脑接入”重新扫描线程。</p>
               </article>
             ) : null}
@@ -4307,70 +3903,6 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
       );
     }
 
-    if (tab === "schedule") {
-      return (
-        <div className={styles.panelGrid}>
-          <article className={styles.panelCard}>
-            <span>日程日历</span>
-            <strong>任务 DDL 和每日安排</strong>
-            <p>后续这里接入项目日程：编辑 DDL、今天安排、人工审核提醒，并让 AI 给出当日执行顺序。</p>
-          </article>
-          <article className={styles.panelCard}>
-            <span>今日可安排任务</span>
-            {renderList(tasks, "暂无今日任务。")}
-          </article>
-        </div>
-      );
-    }
-
-    if (tab === "serial-tv") {
-      return (
-        <div className={styles.panelGrid}>
-          <article className={styles.panelCard}>
-            <span>设备调试台</span>
-            <strong>USB/CAN 扫描 / 串口收发 / 波形查看</strong>
-            <p>先做入口框架，后续接执行电脑扫描 USB/CAN/串口设备、收发格式和数字数据波形。</p>
-          </article>
-          <article className={styles.panelCard}>
-            <span>可调试电脑</span>
-            {renderList(computers, "暂无 Runner 心跳正常的电脑可调试。")}
-          </article>
-        </div>
-      );
-    }
-
-    if (tab === "ai-debug") {
-      return (
-        <div className={styles.panelGrid}>
-          <article className={styles.panelCard}>
-            <span>AI 调试</span>
-            <strong>防跑飞、控 token、看回执</strong>
-            <p>这里后续专门看自动化开关、心跳时间、队列堆积、最小回执质量和最终回复是否收口。</p>
-          </article>
-          <article className={styles.panelCard}>
-            <span>协作信号</span>
-            {renderList(messages, "暂无协作消息。")}
-          </article>
-        </div>
-      );
-    }
-
-    if (tab === "ai-simulation") {
-      return (
-        <div className={styles.panelGrid}>
-          <article className={styles.panelCard}>
-            <span>AI 仿真</span>
-            <strong>机器人和软件任务先沙盘预演</strong>
-            <p>纯软件可自动推进；嵌入式、硬件、串口、发布、删除和真实设备动作必须先进入人工审核。</p>
-          </article>
-          <article className={styles.panelCard}>
-            <span>待仿真需求</span>
-            {renderList(requirements, "暂无待仿真需求。")}
-          </article>
-        </div>
-      );
-    }
-
     if (tab === "exchange") {
       return (
         <>
@@ -4396,7 +3928,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
           <article className={styles.panelCard}>
             <span>线程调试</span>
             <strong>真实线程是否能接单</strong>
-            <p>这里显示每台电脑的 Codex、Claude、Qwen 线程、心跳、adapter 状态和队列健康。</p>
+            <p>这里显示每台电脑的 Codex、Claude、Qwen 线程、心跳、执行通道状态和队列健康。</p>
             <small>{providerSummary(workstations)}</small>
           </article>
           <article className={styles.panelCard}>
@@ -4658,12 +4190,10 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
               <p>训练数据、机器人传感器、仿真和串口调试都只索引同一套资源，不重复创建电脑、NPC、Skill 和工位。</p>
               <div>
                 <Link href={surfacePath("datasets", "development-workshop")}>打开数据工场</Link>
-                <Link href={surfacePath("ai-lab", "ai-debug")}>打开 AI 实验室</Link>
+                <Link href={surfacePath("ai-lab", "exchange")}>打开 AI 实验室</Link>
                 <Link href={surfacePath("robotics", "machine-room")}>机器人现场</Link>
                 <Link href={surfacePath("observability", "exchange")}>打开观测台</Link>
                 <Link href={surfacePath("skill-forge", "skills")}>打开能力工坊</Link>
-                <button type="button" onClick={() => openPanel("ai-simulation", "工作台结构")}>AI 仿真</button>
-                <button type="button" onClick={() => openPanel("serial-tv", "工作台结构")}>串口调试</button>
               </div>
             </article>
           </section>

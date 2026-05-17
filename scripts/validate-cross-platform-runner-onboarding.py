@@ -84,6 +84,9 @@ def main() -> int:
         assert_contains(read(f"scripts/{script_name}"), ":8011", f"{script_name} resolves to cloud API port 8011")
         assert_not_contains(read(f"scripts/{script_name}"), ":3000/:8010", f"{script_name} old 3000 to 8010 mapping")
 
+    retired_redirects = {
+        "apps/web/app/projects/[id]/unity-client/page.tsx": "/robotics",
+    }
     for rel in (
         "apps/web/app/projects/[id]/page.tsx",
         "apps/web/app/projects/[id]/project-playable-shell.tsx",
@@ -92,7 +95,11 @@ def main() -> int:
         "apps/web/app/projects/[id]/unity-client/page.tsx",
     ):
         source = read(rel)
-        assert_contains(source, "8011", f"{rel} production API fallback")
+        if rel in retired_redirects:
+            assert_contains(source, "redirect(", f"{rel} retired route redirect")
+            assert_contains(source, retired_redirects[rel], f"{rel} canonical route")
+        else:
+            assert_contains(source, "8011", f"{rel} production API fallback")
         assert_not_contains(source, "127.0.0.1:8010", f"{rel} stale local API fallback")
 
     for test_attr in (

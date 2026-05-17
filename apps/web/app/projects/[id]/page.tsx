@@ -595,7 +595,7 @@ export default async function ProjectDetailPage({
             ? "先接入一台电脑，再派 NPC 干活"
             : `当前 ${runnerOnlineNodeCount} 台 Runner 心跳正常，可进工作台打开 NPC`;
     const actionPanel =
-      pendingReviewCount > 0 || pendingApprovalCount > 0 ? "cockpit" : runnerOnlineNodeCount === 0 ? "cockpit" : "workbench";
+      pendingReviewCount > 0 || pendingApprovalCount > 0 ? "observability" : runnerOnlineNodeCount === 0 ? "company" : "workbench";
     return (
       <GameShell
         projectId={projectIdStr}

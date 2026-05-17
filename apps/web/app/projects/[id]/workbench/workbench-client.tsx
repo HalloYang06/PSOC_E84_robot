@@ -1273,8 +1273,8 @@ export function WorkbenchClient({
     <main className={styles.shell} data-embed={embedded ? "drawer" : undefined}>
       <header className={styles.topbar}>
         <div className={styles.topbarLeft}>
-          <Link href={`/projects/${projectId}/cockpit`} className={styles.backLink} title="返回项目驾驶舱">
-            ← 驾驶舱
+          <Link href={`/projects/${projectId}/2d-upgrade`} className={styles.backLink} title="返回项目主页面">
+            ← 主页面
           </Link>
           {returnTo ? (
             <Link href={returnTo} className={styles.backLink} title="回到刚才进入工作台的位置">
@@ -1297,13 +1297,6 @@ export function WorkbenchClient({
           </span>
           <span className={styles.kpi}>已打开 {openIds.length}</span>
           <span className={styles.kpi}>已勾选 {selectedIds.size}</span>
-          <Link
-            href={withReturnTo(`/projects/${projectId}/map`, sourcePath, sourceKey)}
-            className={styles.backLink}
-            title="打开项目工作台地图"
-          >
-            地图 →
-          </Link>
           {isCompany ? (
             <Link href={`/projects/${projectId}/workbench`} className={styles.backLink} title="返回 NPC 工作台（看所有 NPC）">
               工作台 →
