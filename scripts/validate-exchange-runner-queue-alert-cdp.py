@@ -110,6 +110,28 @@ def read_alert(flow: object, selector: str) -> dict[str, str]:
     return {str(key): str(value) for key, value in state.items()}
 
 
+def read_optional_alert(flow: object, selector: str) -> dict[str, str] | None:
+    state = flow.eval(
+        f"""
+        (() => {{
+          const alert = document.querySelector({json.dumps(selector)});
+          if (!alert) return null;
+          return {{
+            text: (alert.textContent || '').replace(/\\s+/g, ' ').trim(),
+            queuedCount: alert.getAttribute('data-exchange-runner-queue-count') || '',
+            readyCount: alert.getAttribute('data-exchange-runner-ready-count') || '',
+            blockedCount: alert.getAttribute('data-exchange-runner-blocked-count') || '',
+            hardBlocker: alert.getAttribute('data-exchange-runner-hard-blocker') || '',
+            href: location.href,
+          }};
+        }})()
+        """,
+    )
+    if not isinstance(state, dict):
+        return None
+    return {str(key): str(value) for key, value in state.items()}
+
+
 def main() -> int:
     args = parse_args()
     web_base = args.web_base.rstrip("/")
@@ -130,12 +152,13 @@ def main() -> int:
             overview_url = f"{web_base}/projects/{args.project_id}?panel=team&tab=exchange&exchange_section=overview"
             flow.navigate(overview_url)
             flow.wait_for_selector('[data-exchange-section="overview"]', timeout_seconds=60)
-            overview_state = read_alert(flow, '[data-exchange-runner-queue-alert="true"]')
-            states["overview"] = overview_state
-            if not overview_state.get("queuedCount") or overview_state.get("queuedCount") == "0":
-                issues.append("overview_queued_count_missing")
-            if "接单阻塞" not in overview_state.get("text", "") and "接单提醒" not in overview_state.get("text", ""):
-                issues.append("overview_missing_queue_attention_language")
+            overview_state = read_optional_alert(flow, '[data-exchange-runner-queue-alert="true"]')
+            if overview_state is not None:
+                states["overview"] = overview_state
+                if not overview_state.get("queuedCount") or overview_state.get("queuedCount") == "0":
+                    issues.append("overview_queued_count_missing")
+                if "接单阻塞" not in overview_state.get("text", "") and "接单提醒" not in overview_state.get("text", ""):
+                    issues.append("overview_missing_queue_attention_language")
 
             stale_queue_state = flow.eval(
                 """
@@ -150,19 +173,23 @@ def main() -> int:
                 })()
                 """,
             )
-            if int(overview_state.get("queuedCount") or "0") > 0:
-                if not isinstance(stale_queue_state, dict):
-                    issues.append("overview_stale_queue_guidance_missing")
+            if not isinstance(stale_queue_state, dict):
+                if overview_state is None:
+                    issues.append("overview_no_current_alert_or_historical_guidance")
                 else:
-                    states["stale_queue_guidance"] = {str(k): str(v) for k, v in stale_queue_state.items()}
-                    if not states["stale_queue_guidance"].get("count") or states["stale_queue_guidance"].get("count") == "0":
-                        issues.append("overview_stale_queue_count_missing")
+                    states["stale_queue_guidance"] = {"count": "0", "text": "no historical backlog card"}
+            else:
+                states["stale_queue_guidance"] = {str(k): str(v) for k, v in stale_queue_state.items()}
+                if not states["stale_queue_guidance"].get("count") or states["stale_queue_guidance"].get("count") == "0":
+                    issues.append("overview_stale_queue_count_missing")
+                if "不阻塞当前派工" not in states["stale_queue_guidance"].get("text", ""):
+                    issues.append("overview_stale_queue_not_marked_historical")
 
             overview_shot = output_dir / f"exchange-runner-queue-alert-02-overview-{stamp}.png"
             flow.screenshot(overview_shot)
             screenshots["overview"] = str(overview_shot)
 
-            if int(overview_state.get("queuedCount") or "0") > 0:
+            if isinstance(stale_queue_state, dict):
                 opened_queue_drawer = flow.eval(
                     """
                     (() => {
@@ -209,23 +236,26 @@ def main() -> int:
                     flow.navigate(overview_url)
                     flow.wait_for_selector('[data-exchange-section="overview"]', timeout_seconds=60)
 
-            clicked = flow.eval(
-                """
-                (() => {
-                  const alert = document.querySelector('[data-exchange-runner-queue-alert="true"]');
-                  const button = alert && Array.from(alert.querySelectorAll('button')).find((item) =>
-                    ((item.textContent || '')).includes('接单') || ((item.textContent || '')).includes('阻塞')
-                  );
-                  if (!button) return false;
-                  button.scrollIntoView({ block: 'center', inline: 'center' });
-                  button.click();
-                  return true;
-                })()
-                """,
-            )
-            if not clicked:
-                issues.append("overview_restore_button_missing")
+            if overview_state is not None:
+                clicked = flow.eval(
+                    """
+                    (() => {
+                      const alert = document.querySelector('[data-exchange-runner-queue-alert="true"]');
+                      const button = alert && Array.from(alert.querySelectorAll('button')).find((item) =>
+                        ((item.textContent || '')).includes('接单') || ((item.textContent || '')).includes('阻塞')
+                      );
+                      if (!button) return false;
+                      button.scrollIntoView({ block: 'center', inline: 'center' });
+                      button.click();
+                      return true;
+                    })()
+                    """,
+                )
+                if not clicked:
+                    issues.append("overview_restore_button_missing")
             else:
+                clicked = False
+            if clicked:
                 computer_state = flow.wait_for(
                     """
                     (() => {
@@ -251,12 +281,28 @@ def main() -> int:
             dispatch_url = f"{web_base}/projects/{args.project_id}?panel=team&tab=exchange&exchange_section=dispatch"
             flow.navigate(dispatch_url)
             flow.wait_for_selector('[data-exchange-section="dispatch"]', timeout_seconds=60)
-            dispatch_state = read_alert(flow, '[data-exchange-dispatch-runner-queue-alert="true"]')
-            states["dispatch"] = dispatch_state
-            if not dispatch_state.get("queuedCount") or dispatch_state.get("queuedCount") == "0":
-                issues.append("dispatch_queued_count_missing")
-            if "接单阻塞" not in dispatch_state.get("text", "") and "接单提醒" not in dispatch_state.get("text", "") and "目标电脑" not in dispatch_state.get("text", ""):
-                issues.append("dispatch_missing_queue_attention_language")
+            dispatch_state = read_optional_alert(flow, '[data-exchange-dispatch-runner-queue-alert="true"]')
+            if dispatch_state is not None:
+                states["dispatch"] = dispatch_state
+                if not dispatch_state.get("queuedCount") or dispatch_state.get("queuedCount") == "0":
+                    issues.append("dispatch_queued_count_missing")
+                if "接单阻塞" not in dispatch_state.get("text", "") and "接单提醒" not in dispatch_state.get("text", "") and "目标电脑" not in dispatch_state.get("text", ""):
+                    issues.append("dispatch_missing_queue_attention_language")
+            else:
+                dispatch_historical_state = flow.eval(
+                    """
+                    (() => {
+                      const cards = Array.from(document.querySelectorAll('[data-exchange-section="dispatch"] *'));
+                      const card = cards.find((item) => ((item.textContent || '')).includes('旧指令是历史待收口'));
+                      if (!card) return null;
+                      return { text: (card.textContent || '').replace(/\\s+/g, ' ').trim() };
+                    })()
+                    """,
+                )
+                if isinstance(dispatch_historical_state, dict):
+                    states["dispatch_historical_queue"] = {str(k): str(v) for k, v in dispatch_historical_state.items()}
+                else:
+                    issues.append("dispatch_no_current_alert_or_historical_guidance")
 
             dispatch_shot = output_dir / f"exchange-runner-queue-alert-04-dispatch-{stamp}.png"
             flow.screenshot(dispatch_shot)

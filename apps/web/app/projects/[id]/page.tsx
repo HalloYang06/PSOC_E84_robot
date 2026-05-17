@@ -776,6 +776,13 @@ export default async function ProjectDetailPage({
       return bt - at;
     })
     .slice(0, 10);
+  const mergedCollaborationMessages = [...collaborationMessages];
+  for (const item of relayTimeline) {
+    const id = text(item.id, "");
+    if (id && !collaborationMessages.some((message) => text(message.id, "") === id)) {
+      mergedCollaborationMessages.push(item);
+    }
+  }
   const hasTeamAccess = hasProjectCollaborationAccess(authData, project, projectMembers);
   const protectedReadStatuses = [
     authResult.status,
@@ -893,7 +900,7 @@ export default async function ProjectDetailPage({
         const taskId = String(item.task_id ?? "");
         return String(item.project_id ?? item.payload?.project_id ?? "") === String(project.id) || (taskId && taskIds.has(taskId));
       })}
-      collaborationMessages={collaborationMessages}
+      collaborationMessages={mergedCollaborationMessages}
       runnerCommandCount={relayCommands.length}
       relayTimeline={relayTimeline}
       gitExecution={gitExecution}

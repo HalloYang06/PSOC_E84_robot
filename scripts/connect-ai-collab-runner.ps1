@@ -391,7 +391,17 @@ function Start-RunnerWatchLoop {
         -RunnerDir $RunnerDir `
         -ExecuteProviderCli:$ExecuteProviderCli
       $activePollResults = @($pollResults) | Where-Object {
-        (($_.commands -as [int]) -gt 0) -or (($_.written -as [int]) -gt 0) -or (($_.receipts -as [int]) -gt 0) -or (($_.executions -as [int]) -gt 0) -or ([string]$_.status -ne "ok")
+        (($_.written -as [int]) -gt 0) -or (($_.receipts -as [int]) -gt 0) -or (($_.executions -as [int]) -gt 0) -or ([string]$_.status -ne "ok")
+      }
+      $runnerCommandRows = @($runnerCommands)
+      $runnerCompleted = @($runnerCommandRows | Where-Object { [string]$_.status -eq "completed" })
+      $runnerSkipped = @($runnerCommandRows | Where-Object { [string]$_.status -eq "skipped_conflict" })
+      $runnerAttention = @($runnerCommandRows | Where-Object { [string]$_.status -notin @("completed", "skipped_conflict") })
+      $publicRunnerCommands = @($runnerCompleted + $runnerAttention) | ForEach-Object {
+        [ordered]@{
+          title = [string]$_.title
+          status = [string]$_.status
+        }
       }
       $summary = [ordered]@{
         loop = $loop
@@ -401,12 +411,16 @@ function Start-RunnerWatchLoop {
         computer_node_id = $ComputerNodeId
         workstation_count = @($pollResults).Count
         runner_command_count = @($runnerCommands).Count
+        already_closed_old_command_count = @($runnerSkipped).Count
         execute_provider_cli = [bool]$ExecuteProviderCli
-        runner_commands = $runnerCommands
-        active_workstations = $activePollResults
+        runner_commands = @($publicRunnerCommands)
+        active_workstations = @($activePollResults)
       }
       Write-Host ("Runner watch heartbeat ok. Loop {0}: checked {1} thread(s), runner command(s) {2}, active thread(s) {3}." -f $loop, @($pollResults).Count, @($runnerCommands).Count, @($activePollResults).Count)
-      if (@($runnerCommands).Count -or @($activePollResults).Count) {
+      if (@($runnerSkipped).Count) {
+        Write-Host ("Skipped {0} old command(s) that were already claimed or closed." -f @($runnerSkipped).Count)
+      }
+      if (@($runnerCompleted).Count -or @($runnerAttention).Count -or @($activePollResults).Count) {
         $summary | ConvertTo-Json -Depth 8
       }
       if ($failureStreak -gt 0) {
