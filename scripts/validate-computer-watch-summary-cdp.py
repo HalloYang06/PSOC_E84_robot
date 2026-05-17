@@ -66,27 +66,48 @@ def main() -> int:
             screenshots["login"] = str(login_shot)
 
             flow.navigate(f"{web_base}/projects/{args.project_id}?panel=team&tab=computers")
-            state = flow.wait_for(
-                """
-                (() => {
-                  const summary = document.querySelector('[data-computer-watch-summary="true"]');
-                  const panel = document.querySelector('#project-main-panel');
-                  if (!summary || !panel) return false;
-                  summary.scrollIntoView({ block: 'center', inline: 'nearest' });
-                  return {
-                    href: location.href,
-                    text: (summary.textContent || '').trim(),
-                    readyCount: summary.getAttribute('data-computer-watch-ready-count') || '',
-                    blockedCount: summary.getAttribute('data-computer-watch-blocked-count') || '',
-                    queuedCount: summary.getAttribute('data-computer-queued-command-count') || '',
-                    recoveryCount: String(document.querySelectorAll('[data-computer-watch-recovery-node]').length),
-                    body: document.body ? document.body.innerText.slice(0, 2200) : '',
-                  };
-                })()
-                """,
-                timeout_seconds=60,
-                interval_seconds=0.5,
-            )
+            summary_expression = """
+            (() => {
+              const summary = document.querySelector('[data-computer-watch-summary="true"]');
+              const panel = document.querySelector('#project-main-panel');
+              if (!summary || !panel) return false;
+              summary.scrollIntoView({ block: 'center', inline: 'nearest' });
+              return {
+                href: location.href,
+                text: (summary.textContent || '').trim(),
+                readyCount: summary.getAttribute('data-computer-watch-ready-count') || '',
+                blockedCount: summary.getAttribute('data-computer-watch-blocked-count') || '',
+                queuedCount: summary.getAttribute('data-computer-queued-command-count') || '',
+                recoveryCount: String(document.querySelectorAll('[data-computer-watch-recovery-node]').length),
+                body: document.body ? document.body.innerText.slice(0, 2200) : '',
+              };
+            })()
+            """
+            try:
+                state = flow.wait_for(
+                    summary_expression,
+                    timeout_seconds=60,
+                    interval_seconds=0.5,
+                )
+            except Exception as exc:
+                failed_shot = output_dir / f"computer-watch-summary-02-summary-missing-{stamp}.png"
+                flow.screenshot(failed_shot)
+                screenshots["summary_missing"] = str(failed_shot)
+                fallback_state = flow.eval(
+                    """
+                    (() => ({
+                      href: location.href,
+                      title: document.title || '',
+                      body: document.body ? document.body.innerText.slice(0, 3000) : '',
+                      hasPanel: Boolean(document.querySelector('#project-main-panel')),
+                      hasSummary: Boolean(document.querySelector('[data-computer-watch-summary="true"]')),
+                      computerButtons: document.querySelectorAll('[data-manager-drawer-kind="computer-threads"], [data-computer-watch-recovery-node]').length,
+                    }))()
+                    """,
+                )
+                raise RuntimeError(
+                    f"Computer watch summary was not visible: {exc}; state={fallback_state}"
+                ) from exc
             if not isinstance(state, dict):
                 raise RuntimeError(f"Computer watch summary was not visible: {state}")
             if "常驻接单" not in str(state.get("text") or ""):
@@ -120,11 +141,17 @@ def main() -> int:
                     drawer_state = flow.wait_for(
                         """
                         (() => {
-                          const command = document.querySelector('[data-computer-watch-command]');
+                          const drawer =
+                            document.querySelector('[data-manager-drawer-kind="computer-threads"]')
+                            || document.querySelector('[data-computer-threads-drawer]');
+                          const command = drawer
+                            ? drawer.querySelector('[data-computer-watch-command]')
+                            : document.querySelector('[data-computer-watch-command]');
                           if (!command) return false;
+                          command.scrollIntoView({ block: 'center', inline: 'nearest' });
                           return {
                             node: command.getAttribute('data-computer-watch-command') || '',
-                            text: (command.textContent || '').slice(0, 600),
+                            text: (command.textContent || '').slice(0, 900),
                           };
                         })()
                         """,
