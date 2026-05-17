@@ -69,6 +69,18 @@ function firstText(values: unknown[], fallback = "") {
   return fallback;
 }
 
+function isRawIdentifier(value: unknown) {
+  const raw = text(value, "");
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw)
+    || /^[0-9a-f]{12,}$/i.test(raw);
+}
+
+function publicFocusSeat(value: unknown, fallback = "负责 NPC") {
+  const raw = text(value, "");
+  if (!raw || isRawIdentifier(raw)) return fallback;
+  return raw;
+}
+
 function splitDeviceChannels(value: string) {
   const normalized = value.includes(":") ? value.slice(value.indexOf(":") + 1) : value;
   return normalized
@@ -263,7 +275,7 @@ export default async function ProjectDatasetsPage({
   const taskException = exceptionSummary(taskView);
   const messageFocus = Boolean(searchParams?.message_id || searchParams?.dispatch_id || searchParams?.source_seat);
   const focusTitle = text((searchParams as AnyRecord | undefined)?.source_title, "来自 NPC 工作台的证据链焦点");
-  const focusSeat = text((searchParams as AnyRecord | undefined)?.source_label ?? searchParams?.source_seat, "未知 NPC");
+  const focusSeat = publicFocusSeat((searchParams as AnyRecord | undefined)?.source_label ?? searchParams?.source_seat);
   const onlineComputers = computers.filter((node) => /online|ready|active/.test(statusText(node.runner_effective_status ?? node.runner_status ?? node.status))).length;
   const returnTo = safeProjectReturnPath(projectId, searchParams?.return_to);
   const selfPath = `/projects/${projectId}/datasets`;
@@ -350,11 +362,12 @@ export default async function ProjectDatasetsPage({
       ]
     : sampleRows;
   const contextCards = [
-    { label: "任务", value: currentTaskId || "当前焦点", detail: taskView ? "当前工作对象" : "等待派单进入数据工场" },
-    { label: "派单", value: currentDispatchId, detail: "当前执行链路" },
-    { label: "回执", value: currentReceiptId, detail: `${currentReceiptCount} 条最小/最终回执` },
+    { label: "任务", value: currentTaskId ? "已聚焦" : "当前焦点", detail: taskView ? "当前工作对象" : "等待派单进入数据工场" },
+    { label: "派单", value: currentDispatchId === "待生成" ? "待生成" : "已进入队列", detail: "当前执行链路" },
+    { label: "回执", value: currentReceiptId === "等待回执" ? "等待回执" : "已回流", detail: `${currentReceiptCount} 条最小/最终回执` },
     { label: "证据", value: currentArtifactCount, detail: "manifest / schema / 异常样本" },
   ];
+  const sourceMessageState = currentSourceMessageId === "待回流" || !currentSourceMessageId ? "待回流" : "已回流";
   const nextActionCards = [
     {
       label: "采集队列",
@@ -465,7 +478,7 @@ export default async function ProjectDatasetsPage({
             <div>
               <span>当前证据链</span>
               <strong>{taskView ? text(taskView.task?.title, focusTitle) : focusTitle}</strong>
-              <p>{focusSeat} · {currentSampleState}</p>
+              <p>{focusSeat} · {currentSampleState} · 质检和数据版本会沿同一条证据链回流。</p>
             </div>
             <div className={styles.taskWorkbenchActions}>
               <Link href={`/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=datasets${currentTaskId ? `&task_id=${encodeURIComponent(currentTaskId)}` : ""}${currentSourceMessageId && currentSourceMessageId !== "待回流" ? `&message_id=${encodeURIComponent(currentSourceMessageId)}` : ""}`}>回 NPC 工作台</Link>
@@ -480,6 +493,21 @@ export default async function ProjectDatasetsPage({
                 <small>{card.detail}</small>
               </article>
             ))}
+            <article>
+              <span>质检</span>
+              <strong>人工确认</strong>
+              <small>schema / privacy / timestamp 通过后才能放行</small>
+            </article>
+            <article>
+              <span>数据版本</span>
+              <strong>manifest/export</strong>
+              <small>只把人工确认过的数据版本送入实验室</small>
+            </article>
+            <article>
+              <span>执行电脑调度</span>
+              <strong>{deviceRunnerState}</strong>
+              <small>采样、回执和异常状态回观测台收口</small>
+            </article>
           </div>
           <div className={styles.nextActionGrid}>
             {nextActionCards.map((card) => (
@@ -603,7 +631,7 @@ export default async function ProjectDatasetsPage({
               <span>当前消息上下文</span>
               <strong>{taskView ? text(taskView.task?.title, focusTitle) : focusTitle}</strong>
               <small>
-                {focusSeat} · 消息 {currentSourceMessageId}
+                {focusSeat} · 消息 {sourceMessageState}
               </small>
             </div>
             <div className={styles.contextStats}>
@@ -822,7 +850,7 @@ export default async function ProjectDatasetsPage({
           <details className={styles.detailDrawer}>
             <summary>
               <span>导出 / 回执日志</span>
-              <strong>manifest、导出和训练回写</strong>
+              <strong>数据版本、manifest、导出和训练回写</strong>
             </summary>
             <div className={styles.exportRows}>
               {exportRows.map(([label, version, detail, actionLabel, target]) => (

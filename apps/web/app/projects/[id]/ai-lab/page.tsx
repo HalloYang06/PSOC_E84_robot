@@ -72,6 +72,18 @@ function goalChainTitle(value: unknown) {
   return raw;
 }
 
+function isRawIdentifier(value: unknown) {
+  const raw = text(value, "");
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw)
+    || /^[0-9a-f]{12,}$/i.test(raw);
+}
+
+function publicFocusSeat(value: unknown, fallback = "当前工位") {
+  const raw = text(value, "");
+  if (!raw || isRawIdentifier(raw)) return fallback;
+  return raw;
+}
+
 function humanSignalType(value: unknown, fallback = "消息") {
   const raw = text(value, fallback);
   const normalized = raw.toLowerCase();
@@ -595,7 +607,7 @@ export default async function ProjectAiLabPage({
   const returnTo = safeProjectReturnPath(projectId, searchParams?.return_to);
   const selfPath = `/projects/${projectId}/ai-lab`;
   const focusTitle = text(searchParams?.source_title, itemTitle(taskView?.task));
-  const focusSeat = text(searchParams?.source_label ?? searchParams?.source_seat, "当前工位");
+  const focusSeat = publicFocusSeat(searchParams?.source_label ?? searchParams?.source_seat);
   const boundSeats = seats.filter((seat) =>
     text(seat.sourceWorkstationId ?? seat.source_workstation_id ?? seat.bound_thread_id ?? seat.target_thread_id, ""),
   ).length;
@@ -715,7 +727,7 @@ export default async function ProjectAiLabPage({
       <section id="lab-surface" className={styles.surface}>
         <div className={styles.surfaceHeader}>
           <div className={styles.surfaceIntro}>
-            <span className={styles.sectionTag}>当前任务 / 证据链</span>
+            <span className={styles.sectionTag}>实验态势 / 当前证据链</span>
             <h2>{taskView ? itemTitle(taskView.task) : "等待任务焦点进入实验室"}</h2>
             <p>{nextStepLine} AI 实验室只把实验运行、指标、训练数据、回放和训练发布门转成给工程师的下一步建议，不替人选择模型、训练放行或发布。</p>
           </div>
@@ -744,13 +756,36 @@ export default async function ProjectAiLabPage({
           <Link href={observabilityHref}>
             <span>02</span>
             <strong>看观测台证据</strong>
-            <small>异常、待收口、回放和回执都回到同一任务链。</small>
+            <small>异常入口、待收口、运行回放和证据索引都回到同一任务链。</small>
           </Link>
           <Link href={`/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=ai-lab`}>
             <span>03</span>
             <strong>回工作台确认</strong>
             <small>模型选择、训练放行和发布继续由工程师确认。</small>
           </Link>
+        </div>
+
+        <div className={styles.labStatusStrip} aria-label="实验态势">
+          <article>
+            <span>实验态势</span>
+            <strong>{humanStatus(runStatus)}</strong>
+            <small>下一步动作由工程师确认</small>
+          </article>
+          <article>
+            <span>运行回放</span>
+            <strong>{replayReady ? "已就绪" : "等待"}</strong>
+            <small>回放只作为证据，不自动放行</small>
+          </article>
+          <article>
+            <span>证据索引</span>
+            <strong>{firstEvidence ? "已回流" : "等待"}</strong>
+            <small>报告、日志、回执集中到观测台</small>
+          </article>
+          <article>
+            <span>异常入口</span>
+            <strong>{taskException.actionable ? "需处理" : "无当前异常"}</strong>
+            <small>阻塞、待收口先回观测台</small>
+          </article>
         </div>
 
         <div className={styles.evidenceRibbon}>

@@ -206,6 +206,37 @@
   line-height: 1.45;
 }
 
+.labStatusStrip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.labStatusStrip article {
+  display: grid;
+  gap: 7px;
+  min-height: 82px;
+  padding: 12px;
+  border: 1px solid rgba(134, 220, 205, 0.14);
+  background: rgba(7, 14, 17, 0.58);
+}
+
+.labStatusStrip span {
+  color: rgba(176, 232, 222, 0.84);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.labStatusStrip strong {
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+.labStatusStrip small {
+  color: rgba(226, 244, 240, 0.62);
+  line-height: 1.4;
+}
+
 .firstLookPanel a:hover {
   border-color: rgba(111, 225, 204, 0.34);
   background: rgba(19, 33, 39, 0.92);

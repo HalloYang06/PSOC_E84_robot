@@ -52,6 +52,24 @@ function labelProjectReturnPath(value: string) {
   return "返回来源";
 }
 
+function isRawIdentifier(value: unknown) {
+  const raw = text(value, "");
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw)
+    || /^[0-9a-f]{12,}$/i.test(raw);
+}
+
+function publicFocusSeat(value: unknown, fallback = "负责 NPC") {
+  const raw = text(value, "");
+  if (!raw || isRawIdentifier(raw)) return fallback;
+  return raw;
+}
+
+function publicComputerName(node: AnyRecord, index: number) {
+  const name = text(node.name ?? node.label ?? node.display_name, "");
+  if (name && !isRawIdentifier(name)) return name;
+  return `执行电脑 ${index + 1}`;
+}
+
 function professionalMetric(view: AnyRecord | null, key: string) {
   const value = view?.summary?.[key];
   return Number.isFinite(Number(value)) ? String(Number(value)) : "0";
@@ -340,7 +358,7 @@ export default async function ProjectRoboticsPage({
   const taskException = exceptionSummary(taskView);
   const messageFocus = Boolean(searchParams?.message_id || searchParams?.dispatch_id || searchParams?.source_seat);
   const focusTitle = text(searchParams?.source_title, "来自 NPC 工作台的机器人现场焦点");
-  const focusSeat = text(searchParams?.source_label ?? searchParams?.source_seat, "未知 NPC");
+  const focusSeat = publicFocusSeat(searchParams?.source_label ?? searchParams?.source_seat);
   const onlineComputers = computers.filter((node) => /online|ready|active/.test(statusText(node.runner_effective_status ?? node.runner_status ?? node.status))).length;
   const computerCapabilityRows = computers.length
     ? computers.map((node, index) => {
@@ -447,7 +465,7 @@ export default async function ProjectRoboticsPage({
     { label: "异常", value: `${String(taskException.failed ?? 0)}`, detail: taskException.actionable ? "先看异常和日志证据。" : "当前可以继续只读观测。", href: `/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=robotics`, actionLabel: "回工作台处理" },
   ];
   const taskActions = [
-    { label: "看观测台", href: `/projects/${projectId}/observability?return_to=${encodeURIComponent(selfPath)}&from=robotics`, primary: true },
+    { label: "查看观测台", href: `/projects/${projectId}/observability?return_to=${encodeURIComponent(selfPath)}&from=robotics`, primary: true },
     { label: "回 NPC 工作台", href: `/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=robotics` },
     { label: "进 AI 实验室回放", href: `/projects/${projectId}/ai-lab?return_to=${encodeURIComponent(selfPath)}&from=robotics` },
   ];
@@ -495,7 +513,7 @@ export default async function ProjectRoboticsPage({
               <span>任务证据链 · 来自 NPC 对话</span>
               <strong>{taskView ? text(taskView.task?.title, focusTitle) : focusTitle}</strong>
               <small>
-                {focusSeat} · 派单 {text(searchParams?.dispatch_id, "未指定")}
+                {focusSeat} · 派单 {text(searchParams?.dispatch_id, "") ? "已进入队列" : "未指定"}
               </small>
             </div>
             <div className={styles.contextStats}>
@@ -508,6 +526,7 @@ export default async function ProjectRoboticsPage({
             </div>
             <div className={styles.contextActions}>
               <Link href={`/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=robotics`}>回工作台</Link>
+              <Link href={`/projects/${projectId}/observability?return_to=${encodeURIComponent(selfPath)}&from=robotics`}>查看观测台</Link>
               <Link href={`/projects/${projectId}/datasets?task_id=${encodeURIComponent(text(searchParams?.task_id, ""))}&message_id=${encodeURIComponent(text(searchParams?.message_id, ""))}&return_to=${encodeURIComponent(selfPath)}&from=robotics`}>入数据工场</Link>
             </div>
           </section>
@@ -967,9 +986,9 @@ export default async function ProjectRoboticsPage({
               <Link href={`/projects/${projectId}/observability?return_to=${encodeURIComponent(selfPath)}&from=robotics`}>管理</Link>
             </div>
             <div className={styles.deviceList}>
-              {computers.length ? computers.slice(0, 6).map((node) => (
+              {computers.length ? computers.slice(0, 6).map((node, index) => (
                 <article key={text(node.id, text(node.name, "computer"))}>
-                  <strong>{text(node.name ?? node.runner_id ?? node.id, "未命名电脑")}</strong>
+                  <strong>{publicComputerName(node, index)}</strong>
                   <span>{text(node.runner_effective_status ?? node.runner_status ?? node.status, "未知状态")}</span>
                 </article>
               )) : <p className={styles.emptyHint}>还没有电脑接入。</p>}

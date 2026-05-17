@@ -106,6 +106,18 @@ function presentLinkState(value: unknown, ready = "已关联", waiting = "待回
   return text(value, "") ? ready : waiting;
 }
 
+function isRawIdentifier(value: unknown) {
+  const raw = text(value, "");
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw)
+    || /^[0-9a-f]{12,}$/i.test(raw);
+}
+
+function publicFocusSeat(value: unknown) {
+  const raw = text(value, "");
+  if (!raw || isRawIdentifier(raw)) return "负责 NPC";
+  return raw;
+}
+
 function humanTaskStatus(value: string) {
   const normalized = text(value, "").toLowerCase();
   if (["completed", "done", "resolved"].includes(normalized)) return "已完成";
@@ -167,6 +179,7 @@ export function ProfessionalEvidenceShell({
 }) {
   const taskException = exceptionSummary(taskView);
   const artifacts = taskArtifacts(taskView, projectId, pageKey);
+  const safeFocusSeat = publicFocusSeat(focusSeat);
   const primaryTaskActions = taskActions.slice(0, 3);
   const primarySignals = signalCards.slice(0, 3);
   const primaryCapabilities = capabilityCards.slice(0, 4);
@@ -232,7 +245,7 @@ export function ProfessionalEvidenceShell({
             </article>
             <article className={styles.actorCard} data-kind="npc">
               <span>负责 NPC</span>
-              <strong>{focusSeat}</strong>
+              <strong>{safeFocusSeat}</strong>
               <small>{activeTool ? `当前工具：${activeTool.label}` : pageTitle}</small>
             </article>
           </div>
@@ -255,6 +268,14 @@ export function ProfessionalEvidenceShell({
                 <strong>{value}</strong>
               </article>
             ))}
+            <article>
+              <small>当前证据链</small>
+              <strong>{taskView ? "已聚焦" : "等待任务"}</strong>
+            </article>
+            <article>
+              <small>执行电脑调度</small>
+              <strong>{currentRunnerId ? "可追踪" : "待确认"}</strong>
+            </article>
           </div>
         </aside>
 
@@ -264,6 +285,8 @@ export function ProfessionalEvidenceShell({
             <small>{taskTitle}</small>
             <small>证据 {userStatus(evidenceStatus, "等待")}</small>
             <small>执行电脑 {currentRunnerId ? "已分配" : "待分配"}</small>
+            <small>当前证据链 {taskView ? "已聚焦" : "等待"}</small>
+            <small>执行电脑调度 {currentRunnerId ? "可追踪" : "待确认"}</small>
             <small>{pendingCloseoutCount > 0 ? "待收口优先" : hasActionableException ? "异常优先" : "可继续"}</small>
             <small>权限 只读 / 人审写入</small>
           </section>
@@ -275,6 +298,14 @@ export function ProfessionalEvidenceShell({
         <aside className={styles.rightRail} aria-label="功能按钮和证据抽屉">
           <section className={styles.toolLauncher} aria-label="功能按钮">
             <span>功能</span>
+            <Link href={`/projects/${projectId}/observability?from=${pageKey}${taskView?.task?.id ? `&task_id=${encodeURIComponent(text(taskView.task.id, ""))}` : ""}`}>
+              <strong>当前证据链</strong>
+              <small>派单 / 回执 / 证据索引</small>
+            </Link>
+            <Link href={`/projects/${projectId}/observability?from=${pageKey}`}>
+              <strong>执行电脑能力</strong>
+              <small>在线 / 队列 / 最近心跳</small>
+            </Link>
             {primarySectionLinks.map((link) => (
               link.href.startsWith("#") ? (
                 <a key={link.label} href={link.href} data-active={link.active ? "1" : undefined}>
@@ -337,6 +368,26 @@ export function ProfessionalEvidenceShell({
                   </article>
                 )
               )) : <p className={styles.emptyText}>当前任务还没有证据索引，先从 NPC 工作台发起派单或等待最小回执回流。</p>}
+            </div>
+          </details>
+
+          <details className={styles.drawer}>
+            <summary>
+              <span>执行电脑调度</span>
+              <strong>{currentRunnerId ? "已分配" : "待确认"}</strong>
+            </summary>
+            <div className={styles.drawerBody}>
+              <article className={styles.drawerItem}>
+                <span>执行电脑能力</span>
+                <strong>{currentRunnerId ? "当前任务已有执行通道" : "等待可接单电脑"}</strong>
+                <p>这里只展示是否可追踪和可接单，具体线程绑定仍在主页面或 NPC 管理里选择。</p>
+              </article>
+              <Link href={`/projects/${projectId}/observability?from=${pageKey}`} className={styles.drawerItem}>
+                <span>证据索引</span>
+                <strong>查看观测台</strong>
+                <p>回执、异常入口、待收口和执行电脑状态都在同一条证据链里查看。</p>
+                <small>查看观测台</small>
+              </Link>
             </div>
           </details>
 
