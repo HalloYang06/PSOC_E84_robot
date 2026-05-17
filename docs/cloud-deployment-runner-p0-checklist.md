@@ -41,6 +41,8 @@ python scripts/validate-cloud-runner-command-routing.py --api-base http://106.55
 python scripts/validate-cloud-runner-dispatch-fullchain.py --api-base http://106.55.62.122:8011 --project-id fe9bd342-f5ef-4afe-9c73-e7caa2ed17dd --login-email 3245056131@qq.com --login-password password
 python scripts/validate-cloud-runner-workstation-isolation.py --api-base http://106.55.62.122:8011 --project-id fe9bd342-f5ef-4afe-9c73-e7caa2ed17dd --login-email 3245056131@qq.com --login-password password
 python scripts/validate-computer-thread-visibility-http.py --api-base http://106.55.62.122:8011 --web-base http://106.55.62.122:3001 --project-id fe9bd342-f5ef-4afe-9c73-e7caa2ed17dd --login-email 3245056131@qq.com --login-password password
+python scripts/validate-desktop-need-task-roundtrip.py --api-base http://106.55.62.122:8011 --project-id fe9bd342-f5ef-4afe-9c73-e7caa2ed17dd --login-email 3245056131@qq.com --login-password password --workstation-id platform-npc-1 --runner-id runner-windows-desktop-main
+python scripts/validate-structured-need-task-routing.py --api-base http://106.55.62.122:8011 --project-id fe9bd342-f5ef-4afe-9c73-e7caa2ed17dd --login-email 3245056131@qq.com --login-password password --requester-seat platform-npc-1 --target-seat platform-npc-2
 npm run build:web
 ```
 
@@ -93,6 +95,9 @@ Validated paths:
 - Two synthetic runners bound to two different computers cannot see each other's targeted commands.
 - A workstation command can be consumed only by the runner bound to that workstation's computer; wrong-runner read/ack is rejected.
 - Thread scan sync makes scanned thread names visible in the cloud computer panel.
+- A user-origin message typed in Codex Desktop can be synced back into platform messages as a Desktop question for the bound NPC.
+- Need and Task queues are both executable enough to prove the loop: Need create -> Need dispatch message -> Need final reply, and Task create -> Task dispatch -> bound runner claim -> runner result.
+- Structured NPC Need routing is explicit enough to prove the core contract: requester NPC creates a structured Need, route preview names a target NPC, route-to-task creates a Task, requester `my_needs` contains the Need, target `my_tasks` contains the Task, and the Task has a `created_from_need` event carrying the source Need id.
 
 ## Safety Boundary
 

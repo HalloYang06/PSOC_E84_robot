@@ -10,6 +10,7 @@ from app.db.models.collaboration_message import CollaborationMessage
 from app.db.models.project_collaboration import ProjectThreadWorkstation
 from app.db.models.requirement import Requirement
 from app.db.models.task import Task
+from app.db.models.task_event import TaskEvent
 
 INBOX_STATUSES = ("waiting_response", "queued", "blocked", "pending_review", "routed", "in_progress", "answered")
 TODO_STATUSES = ("draft", "ready", "queued", "running", "in_progress", "review", "reviewing", "blocked")
@@ -124,14 +125,29 @@ def _list_todo(db: Session, seat: ProjectThreadWorkstation, *, limit: int) -> li
     蓝图里"assignee_seat_id"留待后续迁移加列）。"""
     if not seat.project_id:
         return []
-    if not seat.agent_id:
+    candidates = _seat_identity_values(seat)
+    conditions = []
+    if seat.agent_id:
+        conditions.append(Task.assignee_agent_id == seat.agent_id)
+    if candidates:
+        linked_task_ids = [
+            str(event.task_id)
+            for event in db.scalars(
+                select(TaskEvent).where(TaskEvent.event_type == "created_from_need")
+            )
+            if isinstance(event.data, dict)
+            and str(event.data.get("assignee_seat_id") or "").strip() in candidates
+        ]
+        if linked_task_ids:
+            conditions.append(Task.id.in_(linked_task_ids))
+    if not conditions:
         return []
     stmt = (
         select(Task)
         .where(
             Task.project_id == seat.project_id,
-            Task.assignee_agent_id == seat.agent_id,
             Task.status.in_(TODO_STATUSES),
+            or_(*conditions),
         )
         .order_by(Task.created_at.desc())
         .limit(max(1, min(limit, 200)))

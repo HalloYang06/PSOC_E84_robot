@@ -390,6 +390,7 @@ class WorkstationAdapterConfigRead(BaseModel):
     executor_cwd: str | None = None
     executor_timeout_seconds: int | None = None
     settings_source: dict[str, str] = Field(default_factory=dict)
+    employee_skill_context: dict = Field(default_factory=dict)
 
 
 class CollaborationProviderCreate(BaseModel):

@@ -5506,6 +5506,8 @@ type TokenResultCardProps = {
   linuxCommand?: string;
   watchCommand?: string;
   linuxWatchCommand?: string;
+  desktopWatchCommand?: string;
+  linuxDesktopWatchCommand?: string;
   testId?: string;
 };
 
@@ -5517,6 +5519,8 @@ function TokenResultCard({
   linuxCommand,
   watchCommand,
   linuxWatchCommand,
+  desktopWatchCommand,
+  linuxDesktopWatchCommand,
   testId,
 }: TokenResultCardProps) {
   const [copyState, setCopyState] = useState<{ kind: "idle" | "ok" | "err"; message?: string }>({
@@ -5651,11 +5655,11 @@ function TokenResultCard({
       {watchCommand ? (
         <details style={{ marginTop: 4 }} data-token-watch-card={testId || "true"}>
           <summary style={{ cursor: "pointer", fontWeight: 600 }}>
-            ▷ 接入成功后要持续接单？再运行这条“自动化心跳 / 持续接单”命令
+            ▷ 接入成功后要持续接单？先运行这条“只保活 / 只写待办”命令
           </summary>
           <p style={{ margin: "6px 0", fontWeight: 400, opacity: 0.9 }}>
             先跑上面的一键接入命令；确认电脑已登记后，再运行这条命令并保持窗口打开。
-            默认只做心跳、任务提示和最小回执，不替你做高风险执行。
+            这条默认安全命令只做心跳、任务提示和最小回执；它不会自动打开 Codex Desktop 对话框，所以用户不一定能在桌面版里看到派单过程。
           </p>
           <textarea
             readOnly
@@ -5713,6 +5717,76 @@ function TokenResultCard({
                 style={{ marginTop: 6 }}
               >
                 复制 Linux / macOS 持续接单命令
+              </button>
+            </>
+          ) : null}
+        </details>
+      ) : null}
+      {desktopWatchCommand ? (
+        <details style={{ marginTop: 4 }} data-token-desktop-watch-card={testId || "true"} open>
+          <summary style={{ cursor: "pointer", fontWeight: 600 }}>
+            ▷ 要在 Codex Desktop 里看到 NPC 派单？运行这条“桌面版可见派单”命令
+          </summary>
+          <p style={{ margin: "6px 0", fontWeight: 400, opacity: 0.9 }}>
+            这条命令会保持电脑在线，并把已绑定 NPC 的任务送进对应桌面线程；适合你要亲眼看见 1-6 号线程接单。
+            真实硬件、部署、Git 回退等高风险动作仍然需要人工确认。
+          </p>
+          <textarea
+            readOnly
+            rows={4}
+            value={desktopWatchCommand}
+            aria-label="桌面版可见派单命令"
+            data-token-desktop-watch-command={testId || "true"}
+            style={{
+              width: "100%",
+              fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace",
+              fontSize: 11,
+              background: "rgba(0,0,0,0.32)",
+              color: "#f6edd8",
+              border: "1px solid rgba(246,237,216,0.12)",
+              borderRadius: 10,
+              padding: "8px 10px",
+              resize: "vertical",
+            }}
+          />
+          <button
+            type="button"
+            className={styles.ghostButton}
+            onClick={() => copyText(desktopWatchCommand, "桌面版可见派单命令已复制，请在目标电脑运行并保持窗口")}
+            data-token-copy-desktop-watch={testId || "true"}
+            style={{ marginTop: 6 }}
+          >
+            复制桌面版可见派单命令
+          </button>
+          {linuxDesktopWatchCommand ? (
+            <>
+              <p style={{ margin: "8px 0 4px", fontWeight: 700, opacity: 0.95 }}>Linux / macOS bash</p>
+              <textarea
+                readOnly
+                rows={4}
+                value={linuxDesktopWatchCommand}
+                aria-label="Linux 或 macOS 桌面版可见派单命令"
+                data-token-linux-desktop-watch-command={testId || "true"}
+                style={{
+                  width: "100%",
+                  fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace",
+                  fontSize: 11,
+                  background: "rgba(0,0,0,0.32)",
+                  color: "#f6edd8",
+                  border: "1px solid rgba(246,237,216,0.12)",
+                  borderRadius: 10,
+                  padding: "8px 10px",
+                  resize: "vertical",
+                }}
+              />
+              <button
+                type="button"
+                className={styles.ghostButton}
+                onClick={() => copyText(linuxDesktopWatchCommand, "Linux / macOS 桌面版可见派单命令已复制")}
+                data-token-copy-linux-desktop-watch={testId || "true"}
+                style={{ marginTop: 6 }}
+              >
+                复制 Linux / macOS 桌面版可见派单命令
               </button>
             </>
           ) : null}
@@ -11436,6 +11510,22 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             pairingRunnerId,
             { watch: true },
           );
+          const pairingDesktopWatchCommand = buildComputerOneClickConnectCommand(
+            pairingServerUrl,
+            projectId,
+            pairingNode,
+            pairingToken,
+            pairingRunnerId,
+            { watch: true, executeProviderCli: true },
+          );
+          const pairingDesktopWatchBashCommand = buildComputerOneClickConnectBashCommand(
+            pairingServerUrl,
+            projectId,
+            pairingNode,
+            pairingToken,
+            pairingRunnerId,
+            { watch: true, executeProviderCli: true },
+          );
           return (
             <TokenResultCard
               title="电脑配对令牌已生成"
@@ -11445,6 +11535,8 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
               linuxCommand={pairingBashCommand}
               watchCommand={pairingWatchCommand}
               linuxWatchCommand={pairingWatchBashCommand}
+              desktopWatchCommand={pairingDesktopWatchCommand}
+              linuxDesktopWatchCommand={pairingDesktopWatchBashCommand}
               testId="computer-pairing"
             />
           );

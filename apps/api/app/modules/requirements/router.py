@@ -19,6 +19,7 @@ from app.modules.read_access import (
 )
 
 from .schemas import (
+    NeedRouteRequest,
     RequirementActionRequest,
     RequirementCreate,
     RequirementDispatchRequest,
@@ -28,17 +29,21 @@ from .schemas import (
     RequirementRead,
     RequirementReplyCreate,
     RequirementRouteRequest,
+    StructuredNeedCreate,
     RequirementUpdate,
 )
 from .service import (
     add_requirement_reply,
     add_requirement_final_reply,
+    create_structured_need,
     create_requirement,
     dispatch_requirement,
     find_similar_requirements,
     get_requirement_or_404,
     list_requirements,
+    preview_need_route,
     promote_requirement_to_knowledge,
+    route_need_to_task,
     route_requirement,
     run_requirement_autonomy_sweep,
     run_requirement_action,
@@ -87,6 +92,41 @@ def api_create_requirement(payload: RequirementCreate, request: Request, db: Ses
     resolve_project_write_principal_for_target(db, request, project_id, action="requirement.create")
     item = create_requirement(db, payload)
     return ok(RequirementRead.model_validate(item).model_dump(mode="json"))
+
+
+@router.post("/structured-need")
+def api_create_structured_need(payload: StructuredNeedCreate, request: Request, db: Session = Depends(get_db)):
+    resolve_project_write_principal_for_target(db, request, payload.project_id, action="requirement.structured_need.create")
+    result = create_structured_need(db, payload)
+    route_result = result.get("route_result") if isinstance(result.get("route_result"), dict) else None
+    return ok(
+        {
+            "requirement": RequirementRead.model_validate(result["requirement"]).model_dump(mode="json"),
+            "route_preview": result["route_preview"],
+            "route_result": None
+            if route_result is None
+            else {
+                "requirement": RequirementRead.model_validate(route_result["requirement"]).model_dump(mode="json"),
+                "route_preview": route_result["route_preview"],
+                "task": None
+                if route_result.get("task") is None
+                else {
+                    "id": route_result["task"].id,
+                    "title": route_result["task"].title,
+                    "status": route_result["task"].status,
+                    "assignee_agent_id": route_result["task"].assignee_agent_id,
+                },
+                "dispatch": None
+                if route_result.get("dispatch") is None
+                else {
+                    "id": route_result["dispatch"].id,
+                    "status": route_result["dispatch"].status,
+                    "workstation_id": route_result["dispatch"].workstation_id,
+                    "runner_id": route_result["dispatch"].runner_id,
+                },
+            },
+        }
+    )
 
 
 @router.get("/similar")
@@ -166,6 +206,42 @@ def api_route_requirement(requirement_id: str, payload: RequirementRouteRequest,
     resolve_project_write_principal_for_target(db, request, project_id, action="requirement.route")
     item = route_requirement(db, requirement_id, payload)
     return ok(RequirementRead.model_validate(item).model_dump(mode="json"))
+
+
+@router.get("/{requirement_id}/route-preview")
+def api_preview_need_route(requirement_id: str, target_seat_id: str | None = None, request: Request = None, db: Session = Depends(get_db)):
+    require_project_read_access(db, request, resolve_requirement_project_id(db, requirement_id), action="requirement.route_preview.read")
+    return ok(preview_need_route(db, requirement_id, target_seat_id=target_seat_id))
+
+
+@router.post("/{requirement_id}/route-to-task")
+def api_route_need_to_task(requirement_id: str, payload: NeedRouteRequest, request: Request, db: Session = Depends(get_db)):
+    project_id = _requirement_project_id(db, requirement_id)
+    principal = resolve_project_write_principal_for_target(db, request, project_id, action="requirement.route_to_task")
+    payload = payload.model_copy(update={"actor_type": "human", "actor_id": principal.user_id})
+    result = route_need_to_task(db, requirement_id, payload)
+    return ok(
+        {
+            "requirement": RequirementRead.model_validate(result["requirement"]).model_dump(mode="json"),
+            "route_preview": result["route_preview"],
+            "task": None
+            if result.get("task") is None
+            else {
+                "id": result["task"].id,
+                "title": result["task"].title,
+                "status": result["task"].status,
+                "assignee_agent_id": result["task"].assignee_agent_id,
+            },
+            "dispatch": None
+            if result.get("dispatch") is None
+            else {
+                "id": result["dispatch"].id,
+                "status": result["dispatch"].status,
+                "workstation_id": result["dispatch"].workstation_id,
+                "runner_id": result["dispatch"].runner_id,
+            },
+        }
+    )
 
 
 @router.post("/{requirement_id}/dispatch")

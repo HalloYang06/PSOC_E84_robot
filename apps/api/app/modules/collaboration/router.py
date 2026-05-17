@@ -34,6 +34,9 @@ from app.modules.projects.schemas import (
 from app.modules.handoffs.service import get_handoff_or_404
 from app.modules.messages.service import create_entity_message
 from app.modules.requirements.service import get_requirement_or_404
+from app.modules.requirements.schemas import RequirementRead, StructuredNeedCreate
+from app.modules.requirements.service import create_structured_need
+from app.modules.seats.service import get_seat_queues
 from app.modules.read_access import (
     readable_project_ids,
     require_project_read_access,
@@ -1532,6 +1535,63 @@ def api_create_workstation_message(
     )
 
 
+@router.post("/projects/{project_id}/thread-workstations/{workstation_id}/structured-need")
+def api_create_workstation_structured_need(
+    project_id: str,
+    workstation_id: str,
+    payload: StructuredNeedCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    workstation = _require_workstation_inbox_access(
+        db,
+        request,
+        project_id,
+        workstation_id,
+        write=True,
+        action="collaboration.workstation_structured_need.create",
+    )
+    requester_id = str(workstation.get("row_id") or workstation.get("id") or workstation_id).strip() or workstation_id
+    result = create_structured_need(
+        db,
+        payload.model_copy(
+            update={
+                "project_id": project_id,
+                "requester_seat_id": requester_id,
+            }
+        ),
+    )
+    route_result = result.get("route_result") if isinstance(result.get("route_result"), dict) else None
+    return ok(
+        {
+            "requirement": RequirementRead.model_validate(result["requirement"]).model_dump(mode="json"),
+            "route_preview": result["route_preview"],
+            "route_result": None
+            if route_result is None
+            else {
+                "requirement": RequirementRead.model_validate(route_result["requirement"]).model_dump(mode="json"),
+                "route_preview": route_result["route_preview"],
+                "task": None
+                if route_result.get("task") is None
+                else {
+                    "id": route_result["task"].id,
+                    "title": route_result["task"].title,
+                    "status": route_result["task"].status,
+                    "assignee_agent_id": route_result["task"].assignee_agent_id,
+                },
+                "dispatch": None
+                if route_result.get("dispatch") is None
+                else {
+                    "id": route_result["dispatch"].id,
+                    "status": route_result["dispatch"].status,
+                    "workstation_id": route_result["dispatch"].workstation_id,
+                    "runner_id": route_result["dispatch"].runner_id,
+                },
+            },
+        }
+    )
+
+
 @router.get("/projects/{project_id}/thread-workstations/{workstation_id}/inbox")
 def api_get_workstation_inbox(
     project_id: str,
@@ -1551,6 +1611,26 @@ def api_get_workstation_inbox(
     )
     items = list_workstation_inbox_messages(db, project_id, workstation_id, status=status, limit=limit)
     return ok([CollaborationMessageRead.model_validate(item).model_dump(mode="json") for item in items])
+
+
+@router.get("/projects/{project_id}/thread-workstations/{workstation_id}/queues")
+def api_get_workstation_queues(
+    project_id: str,
+    workstation_id: str,
+    request: Request,
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
+    workstation = _require_workstation_inbox_access(
+        db,
+        request,
+        project_id,
+        workstation_id,
+        write=False,
+        action="collaboration.workstation_queues.read",
+    )
+    seat_id = str(workstation.get("row_id") or workstation.get("id") or workstation_id).strip() or workstation_id
+    return ok(get_seat_queues(db, seat_id, project_id=project_id, limit=limit))
 
 
 @router.post("/projects/{project_id}/thread-workstations/{workstation_id}/desktop-sync")

@@ -15,6 +15,7 @@ from app.modules.collaboration.service import create_message as create_collabora
 
 from . import repo
 from .schemas import (
+    NeedRouteRequest,
     RequirementActionRequest,
     RequirementCreate,
     RequirementDispatchRequest,
@@ -22,6 +23,7 @@ from .schemas import (
     RequirementPromoteRequest,
     RequirementReplyCreate,
     RequirementRouteRequest,
+    StructuredNeedCreate,
     RequirementUpdate,
 )
 
@@ -540,10 +542,381 @@ def _seats_cross_workstation(
 
 
 _DONE_STATES = frozenset({"done", "answered", "completed", "accepted", "closed"})
+HIGH_RISK_NEED_MARKERS = (
+    "上电",
+    "断电",
+    "实机",
+    "真机",
+    "机械臂",
+    "电机",
+    "舵机",
+    "急停",
+    "刷写",
+    "固件",
+    "烧录",
+    "写参数",
+    "下发",
+    "运动",
+    "部署",
+    "ros",
+    "vla",
+    "moveit",
+    "firmware",
+    "flash",
+    "power on",
+    "motion",
+    "deploy",
+    "hardware",
+    "robot",
+)
 
 
 def _is_done_status(value: object) -> bool:
     return str(value or "").strip().lower() in _DONE_STATES
+
+
+def _metadata_dict(value: object | None) -> dict[str, object]:
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def _seat_identity_values(seat: ProjectThreadWorkstation | None) -> set[str]:
+    if seat is None:
+        return set()
+    values = {
+        str(seat.id or ""),
+        str(seat.config_id or ""),
+        str(seat.name or ""),
+        str(seat.agent_id or ""),
+    }
+    return {item.strip() for item in values if item and item.strip()}
+
+
+def _seat_display_name(seat: ProjectThreadWorkstation | None) -> str:
+    if seat is None:
+        return ""
+    return str(seat.name or seat.config_id or seat.id or "").strip()
+
+
+def _seat_responsibility_text(seat: ProjectThreadWorkstation | None) -> str:
+    if seat is None:
+        return ""
+    extra = _metadata_dict(getattr(seat, "extra_data", None))
+    chunks = [
+        getattr(seat, "description", None),
+        getattr(seat, "notes", None),
+        extra.get("responsibility"),
+        extra.get("responsibility_text"),
+        extra.get("role"),
+        extra.get("accepted_task_types"),
+        extra.get("skill_loadout"),
+        extra.get("knowledge_paths"),
+    ]
+    return " ".join(str(chunk or "") for chunk in chunks).strip().lower()
+
+
+def _need_text_for_risk(payload_or_requirement: object) -> str:
+    if isinstance(payload_or_requirement, StructuredNeedCreate):
+        parts = [
+            payload_or_requirement.title,
+            payload_or_requirement.why_needed,
+            payload_or_requirement.required_capability,
+            payload_or_requirement.expected_output,
+            payload_or_requirement.input_context,
+        ]
+    else:
+        requirement = payload_or_requirement
+        parts = [
+            getattr(requirement, "title", ""),
+            getattr(requirement, "context_summary", ""),
+            getattr(requirement, "expected_output", ""),
+        ]
+    return "\n".join(str(part or "") for part in parts).lower()
+
+
+def _needs_human_review_for_risk(risk_level: str | None, text: str) -> tuple[bool, str | None]:
+    normalized = str(risk_level or "").strip().lower()
+    if normalized in {"high", "critical"}:
+        return True, f"风险级别为 {normalized}，需要人类确认"
+    for marker in HIGH_RISK_NEED_MARKERS:
+        if marker.lower() in text:
+            return True, f"包含高风险动作关键词：{marker}"
+    return False, None
+
+
+def _seat_can_accept_capability(seat: ProjectThreadWorkstation, required_capability: str) -> bool:
+    capability = str(required_capability or "").strip().lower()
+    if not capability:
+        return False
+    haystack = _seat_responsibility_text(seat)
+    if capability in haystack:
+        return True
+    for token in [part for part in capability.replace("/", " ").replace(",", " ").split() if len(part) >= 2]:
+        if token in haystack:
+            return True
+    return False
+
+
+def _list_project_seats(db: Session, project_id: str) -> list[ProjectThreadWorkstation]:
+    return list(
+        db.scalars(
+            select(ProjectThreadWorkstation)
+            .where(ProjectThreadWorkstation.project_id == project_id)
+            .order_by(ProjectThreadWorkstation.sort_order.asc(), ProjectThreadWorkstation.created_at.asc())
+        )
+    )
+
+
+def _choose_need_target(
+    db: Session,
+    *,
+    project_id: str,
+    requester: ProjectThreadWorkstation,
+    required_capability: str,
+    suggested_assignee: str | None,
+) -> tuple[ProjectThreadWorkstation | None, list[dict[str, object]], str | None]:
+    seats = [seat for seat in _list_project_seats(db, project_id) if seat.id != requester.id]
+    suggested = _resolve_seat(db, project_id, suggested_assignee)
+    alternatives: list[dict[str, object]] = []
+    for seat in seats:
+        matched = _seat_can_accept_capability(seat, required_capability)
+        score = 0
+        reasons: list[str] = []
+        if suggested is not None and seat.id == suggested.id:
+            score += 100
+            reasons.append("用户/NPC 指定")
+        if _seat_workstation_key(seat) == _seat_workstation_key(requester):
+            score += 20
+            reasons.append("同工位")
+        if matched:
+            score += 50
+            reasons.append("能力匹配")
+        if str(seat.status or "").strip().lower() in {"online", "idle", "ready", "active"}:
+            score += 5
+            reasons.append("状态可用")
+        if score > 0:
+            alternatives.append(
+                {
+                    "seat_id": seat.id,
+                    "seat_ref": seat.config_id,
+                    "name": _seat_display_name(seat),
+                    "workstation_id": seat.workstation_id,
+                    "score": score,
+                    "reasons": reasons or ["候选"],
+                }
+            )
+    alternatives.sort(key=lambda item: int(item.get("score") or 0), reverse=True)
+    if suggested is not None:
+        return suggested, alternatives, None
+    if alternatives:
+        target_id = str(alternatives[0].get("seat_id") or "")
+        return _resolve_seat(db, project_id, target_id), alternatives, None
+    return None, alternatives, "没有找到匹配该能力的 NPC，请先在员工表补职责/skill，或手动指定承接 NPC"
+
+
+def preview_need_route(db: Session, requirement_id: str, target_seat_id: str | None = None) -> dict[str, object]:
+    requirement = get_requirement_or_404(db, requirement_id)
+    project_id = str(requirement.project_id or "").strip()
+    if not project_id:
+        raise AppError("PROJECT_NOT_FOUND", "Need 缺少项目上下文", status_code=404)
+    requester = _resolve_seat(db, project_id, requirement.from_agent)
+    if requester is None:
+        raise AppError("REQUESTER_SEAT_NOT_FOUND", "Need 发起 NPC 不存在", status_code=404)
+    required_capability = ""
+    risk_level = ""
+    for line in str(requirement.context_summary or "").splitlines():
+        if line.startswith("需要能力："):
+            required_capability = line.split("：", 1)[1].strip()
+        elif line.startswith("风险级别："):
+            risk_level = line.split("：", 1)[1].strip()
+    target, alternatives, blocked_reason = _choose_need_target(
+        db,
+        project_id=project_id,
+        requester=requester,
+        required_capability=required_capability or requirement.title,
+        suggested_assignee=target_seat_id or requirement.target_seat_id or requirement.to_agent,
+    )
+    risk_review, risk_reason = _needs_human_review_for_risk(risk_level, _need_text_for_risk(requirement))
+    review = {"requires_review": False, "source": "none", "policy": "auto"}
+    if target is not None:
+        review = _resolve_review_for_dispatch(db, requester, target)
+    requires_review = bool(review.get("requires_review")) or risk_review or target is None
+    review_reason = risk_reason or (
+        "没有可路由目标" if target is None else "跨工位或策略要求审核" if review.get("requires_review") else "同工位/可信策略允许自动路由"
+    )
+    return {
+        "need_id": requirement.id,
+        "requester_seat_id": requester.id,
+        "requester_name": _seat_display_name(requester),
+        "recommended_assignee_id": target.id if target is not None else None,
+        "recommended_assignee_ref": target.config_id if target is not None else None,
+        "recommended_assignee_name": _seat_display_name(target),
+        "alternatives": alternatives,
+        "requires_review": requires_review,
+        "review_reason": review_reason,
+        "route_risk": "high" if risk_review else "review" if requires_review else "low",
+        "will_create_tasks": []
+        if target is None
+        else [
+            {
+                "title": requirement.title,
+                "assignee_seat_id": target.id,
+                "assignee_seat_ref": target.config_id,
+                "source_need_id": requirement.id,
+            }
+        ],
+        "blocked_reason": blocked_reason,
+        "review_policy": review,
+    }
+
+
+def create_structured_need(db: Session, payload: StructuredNeedCreate) -> dict[str, object]:
+    requester = _resolve_seat(db, payload.project_id, payload.requester_seat_id)
+    if requester is None:
+        raise AppError("REQUESTER_SEAT_NOT_FOUND", "Need 发起 NPC 不存在", status_code=404)
+    target, _alternatives, _blocked = _choose_need_target(
+        db,
+        project_id=payload.project_id,
+        requester=requester,
+        required_capability=payload.required_capability,
+        suggested_assignee=payload.suggested_assignee,
+    )
+    risk_review, _risk_reason = _needs_human_review_for_risk(payload.risk_level, _need_text_for_risk(payload))
+    opening = "\n".join(
+        [
+            payload.why_needed,
+            "",
+            f"需要能力：{payload.required_capability}",
+            f"风险级别：{payload.risk_level}",
+            f"期望产出：{payload.expected_output}",
+            f"输入上下文：{payload.input_context}",
+            "验收标准：",
+            *[f"- {item}" for item in payload.acceptance_criteria],
+        ]
+    ).strip()
+    requirement = repo.create_requirement(
+        db,
+        RequirementCreate(
+            project_id=payload.project_id,
+            title=payload.title,
+            requirement_type="npc_structured_need",
+            module=payload.module,
+            priority=payload.priority,
+            status="needs_human_review" if risk_review else "ready_to_route",
+            from_agent=requester.id,
+            to_agent=target.id if target is not None else None,
+            target_seat_id=target.id if target is not None else None,
+            context_summary=opening,
+            expected_output=payload.expected_output,
+            opening_message=opening,
+        ),
+    )
+    preview = preview_need_route(db, requirement.id)
+    route_result = None
+    if payload.auto_route and not preview.get("requires_review") and not preview.get("blocked_reason"):
+        route_result = route_need_to_task(
+            db,
+            requirement.id,
+            NeedRouteRequest(
+                target_seat_id=str(preview.get("recommended_assignee_id") or ""),
+                approved=True,
+                auto_dispatch=True,
+                actor_type="agent",
+                actor_id=requester.id,
+                note="structured Need auto route",
+            ),
+        )
+    return {"requirement": requirement, "route_preview": preview, "route_result": route_result}
+
+
+def route_need_to_task(db: Session, requirement_id: str, payload: NeedRouteRequest) -> dict[str, object]:
+    requirement = get_requirement_or_404(db, requirement_id)
+    project_id = str(requirement.project_id or "").strip()
+    if not project_id:
+        raise AppError("PROJECT_NOT_FOUND", "Need 缺少项目上下文", status_code=404)
+    preview = preview_need_route(db, requirement_id, target_seat_id=payload.target_seat_id)
+    if preview.get("blocked_reason"):
+        raise AppError("NEED_ROUTE_BLOCKED", str(preview["blocked_reason"]), status_code=409, details=preview)
+    if preview.get("requires_review") and not payload.approved:
+        requirement.status = "needs_human_review"
+        db.add(requirement)
+        db.commit()
+        db.refresh(requirement)
+        return {"requirement": requirement, "route_preview": preview, "task": None, "dispatch": None}
+    target = _resolve_seat(db, project_id, str(preview.get("recommended_assignee_id") or ""))
+    if target is None:
+        raise AppError("TARGET_SEAT_NOT_FOUND", "承接 NPC 不存在", status_code=404, details=preview)
+
+    acceptance = [
+        "说明如何满足来源 Need",
+        f"回执必须引用 Need：{requirement.id}",
+    ]
+    if requirement.expected_output:
+        acceptance.append(requirement.expected_output)
+    task = Task(
+        project_id=project_id,
+        title=requirement.title,
+        description="\n".join(
+            [
+                f"来源 Need：{requirement.id}",
+                f"提需求 NPC：{preview.get('requester_name') or requirement.from_agent}",
+                f"承接 NPC：{_seat_display_name(target)}",
+                "",
+                requirement.context_summary or "",
+            ]
+        ).strip(),
+        module=requirement.module,
+        priority=requirement.priority if str(requirement.priority or "").startswith("P") else "P2",
+        status="ready",
+        assignee_agent_id=target.agent_id,
+        acceptance_criteria=acceptance,
+    )
+    db.add(task)
+    db.flush()
+    from app.modules.tasks import repo as task_repo
+    from app.modules.tasks.service import dispatch_task
+    from app.modules.tasks.schemas import TaskDispatchCreate
+
+    task_repo.create_task_event(
+        db,
+        task.id,
+        "created_from_need",
+        "由结构化 Need 路由生成任务",
+        {
+            "source_need_id": requirement.id,
+            "requester_seat_id": requirement.from_agent,
+            "assignee_seat_id": target.id,
+            "assignee_seat_ref": target.config_id,
+            "route_preview": preview,
+        },
+        actor_type=payload.actor_type,
+        actor_id=payload.actor_id,
+        commit=False,
+    )
+    requirement.task_id = task.id
+    requirement.to_agent = target.id
+    requirement.target_seat_id = target.id
+    requirement.status = "routed"
+    db.add(requirement)
+    dispatch = None
+    if payload.auto_dispatch:
+        db.commit()
+        db.refresh(task)
+        dispatch = dispatch_task(
+            db,
+            task.id,
+            TaskDispatchCreate(
+                workstation_id=str(target.config_id or target.id),
+                status="queued",
+                notes=f"由 Need {requirement.id} 路由生成。",
+            ),
+            dispatched_by_user_id=payload.actor_id,
+        )
+        requirement = get_requirement_or_404(db, requirement_id)
+    else:
+        db.commit()
+        db.refresh(task)
+        db.refresh(requirement)
+    return {"requirement": requirement, "route_preview": preview, "task": task, "dispatch": dispatch}
 
 
 def create_requirement(db: Session, payload: RequirementCreate):

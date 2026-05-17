@@ -1464,6 +1464,7 @@ def _resolve_bound_scanned_thread_metadata(
 def get_project_workstation_adapter_config(db: Session, project_id: str, workstation_name: str) -> dict[str, object]:
     project = get_project_or_404(db, project_id)
     workstation = get_project_thread_workstation(db, project_id, workstation_name)
+    employee_skill_context = _build_employee_skill_context(db, project_id, workstation)
     workstation_metadata = _metadata_dict(workstation.get("metadata"))
     provider_id = str(workstation.get("ai_provider_id") or workstation.get("ai_provider") or "").strip() or None
     provider: dict[str, object] | None = None
@@ -1584,6 +1585,80 @@ def get_project_workstation_adapter_config(db: Session, project_id: str, worksta
         "executor_cwd": str(executor_cwd).strip() if executor_cwd not in (None, "") else None,
         "executor_timeout_seconds": executor_timeout_seconds,
         "settings_source": settings_source,
+        "employee_skill_context": employee_skill_context,
+    }
+
+
+def _seat_skill_context_item(item: dict[str, object]) -> dict[str, object]:
+    metadata = _metadata_dict(item.get("metadata"))
+    extra_data = _metadata_dict(item.get("extra_data"))
+    return {
+        "seat_id": str(item.get("row_id") or item.get("id") or item.get("config_id") or "").strip(),
+        "seat_ref": str(item.get("config_id") or item.get("id") or "").strip(),
+        "name": str(item.get("name") or item.get("label") or item.get("id") or "").strip(),
+        "workstation_id": str(item.get("workstation_id") or "").strip(),
+        "computer_node_id": str(item.get("computer_node_id") or "").strip(),
+        "ai_provider_id": str(item.get("ai_provider_id") or item.get("ai_provider") or "").strip(),
+        "status": str(item.get("status") or "unknown").strip(),
+        "responsibility": str(
+            item.get("responsibility")
+            or metadata.get("responsibility")
+            or extra_data.get("responsibility")
+            or item.get("description")
+            or ""
+        ).strip(),
+        "responsibility_boundary": str(metadata.get("responsibility_boundary") or extra_data.get("responsibility_boundary") or "").strip(),
+        "accepted_task_types": metadata.get("accepted_task_types") or extra_data.get("accepted_task_types") or [],
+        "rejected_task_types": metadata.get("rejected_task_types") or extra_data.get("rejected_task_types") or [],
+        "skill_loadout": metadata.get("skill_loadout") or extra_data.get("skill_loadout") or [],
+        "knowledge_paths": metadata.get("knowledge_paths") or extra_data.get("knowledge_paths") or [],
+        "review_policy": metadata.get("review_policy") or extra_data.get("review_policy") or "inherit",
+        "runner_state": {
+            "thread_binding": str(
+                item.get("bound_thread_id")
+                or item.get("target_thread_id")
+                or metadata.get("bound_thread_id")
+                or metadata.get("target_thread_id")
+                or ""
+            ).strip(),
+            "desktop_visible": bool(metadata.get("desktop_process_detected") or metadata.get("desktop_bridge_connected")),
+        },
+    }
+
+
+def _build_employee_skill_context(
+    db: Session,
+    project_id: str,
+    workstation: dict[str, object],
+) -> dict[str, object]:
+    seats = list_project_thread_workstations(db, project_id)
+    current_id = str(workstation.get("row_id") or workstation.get("id") or workstation.get("config_id") or "").strip()
+    current_ws = str(workstation.get("workstation_id") or "").strip()
+    employees = [_seat_skill_context_item(item) for item in seats]
+    same = [item for item in employees if item["seat_id"] != current_id and item.get("workstation_id") == current_ws and current_ws]
+    cross = [item for item in employees if item["seat_id"] != current_id and item not in same]
+    return {
+        "version": 1,
+        "current_npc": _seat_skill_context_item(workstation),
+        "employees": employees,
+        "same_workstation_peers": same,
+        "cross_workstation_peers": cross,
+        "need_contract": {
+            "primary_tool": "create_need",
+            "do_not_use_keyword_guessing": True,
+            "required_fields": [
+                "title",
+                "why_needed",
+                "required_capability",
+                "expected_output",
+                "input_context",
+                "risk_level",
+                "priority",
+                "acceptance_criteria",
+            ],
+            "need_belongs_to": "requester NPC",
+            "task_belongs_to": "assignee NPC",
+        },
     }
 
 

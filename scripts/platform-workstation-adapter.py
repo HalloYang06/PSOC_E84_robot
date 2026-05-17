@@ -517,13 +517,17 @@ def _command_markdown(
         "",
         "## Autonomous Collaboration (seat-mcp tools)",
         "- 你的 CLI 应该已经加载了 `seat-mcp` 这个 MCP server（见 `scripts/seat-mcp-server/README.md`）。",
-        "- 当你工作中需要别的 NPC（例如代码审核、前端联调、文档撰写），**不要叫用户去派单**，直接调以下工具：",
-        "  - `list_peers()`：看你能调动的伙伴（含同工位 / 跨工位 / 工位长）。",
-        "  - `request_help(role, ask, expected?)`：按角色关键字找伙伴并自动发起派单。",
-        "  - `dispatch_to_peer(seat_id, title, body)`：知道具体 seat_id 时直接指名派单。",
-        "  - `read_my_inbox(limit?)`：自查我的协作流——别人派给我的派单 / 别人对我派单的 ack/done/reject 回执 / 我自己发出的派单状态。**在做事之前先调一次，可以确认上下文、避免重复劳动；卡住时再调一次确认对方回了没。**",
+        "- 当你工作中缺少输入、能力或协作产物时，**不要叫用户去派单**，先按员工表/基础 skill 判断自己缺什么，再调用结构化 Need 工具：",
+        "  - `list_peers()`：查看项目员工表里的伙伴、职责、工位和协作边界。",
+        "  - `create_need(title, why_needed, required_capability, expected_output, input_context, risk_level, priority, acceptance_criteria, suggested_assignee?)`：写入我的需求。平台 NeedRouter 会根据员工表、skill、知识库、状态和审核策略，把 Need 转成目标 NPC 的 Task。",
+        "  - `check_my_needs(limit?)`：查看我提出、等待别人满足的需求。",
+        "  - `check_my_tasks(limit?)`：查看分配给我承接的任务。",
+        "  - `request_help(role, ask, expected?)`：旧兼容工具，只会转成结构化 Need；不要把它当关键词自动派单。",
+        "  - `dispatch_to_peer(seat_id, title, body)`：旧兼容工具，仅在用户已经明确批准或低风险同工位场景使用。",
+        "  - `read_my_inbox(limit?)`：兼容旧消息队列查询。新语义优先用 `check_my_needs` / `check_my_tasks`。",
         "  - `mark_done(message_id, body, failed?)`：**仅长开窗口模式（PersistentWindow）使用**——处理完一条 incoming_dispatch 后调一次，写 done 回执。一次性弹窗模式不用调（watcher 自动写）。",
-        "- 五个工具都会经过平台 review gate：同工位默认免审；跨工位默认 pending_review，由用户在驾驶舱通过后才真发出。",
+        "- 结构化 Need 的归属：Need 属于提需求的 NPC；Task 属于承接的 NPC。不要把消息当队列。",
+        "- NeedRouter 会经过平台 review gate：高风险、跨工位、硬件/部署/固件/ROS 写/模型发布/Git 回退等必须等待用户审核。",
         "- 工具返回 `needs_review=true` 时，你**只需告诉用户「已发起求助，等审核」**，不要重复发也不要切换到自己干。",
         "- 如果当前 CLI 没有成功加载 seat-mcp，但你确实需要其他 NPC 协作，请在最终回复末尾追加一个 JSON 代码块：",
         "  ```platform-peer-dispatches",
@@ -741,8 +745,8 @@ def _extract_executor_prompt(command_text: str) -> str:
             "用当前仓库真实的 remote，不要编造占位 URL。如果改了文件，按「- 修改 <文件名>：<一句话原因> — <github 链接>」列清单。"
         ),
         (
-            "需要其他 NPC 帮忙时，直接调 MCP 工具 `list_peers` / `request_help(role, ask)` / `dispatch_to_peer(seat_id, title, body)` "
-            "（来自 seat-mcp server）。同工位默认免审、跨工位默认走 pending_review。不要让用户去 UI 上替你派单——这就是平台说的「自主协作」。"
+            "需要其他 NPC 帮忙时，优先调 MCP 工具 `create_need(...)`（来自 seat-mcp server）。"
+            "先用 `list_peers()` 看员工表，再把缺口写成结构化 Need；不要用关键词猜派单，也不要让用户去 UI 上替你派单。"
         ),
         (
             "如果当前执行环境没有暴露 seat-mcp 工具，但用户要求你自己组织、主动派单、自主合作、协调 1-6 号 NPC，"

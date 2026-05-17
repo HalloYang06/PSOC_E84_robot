@@ -10,8 +10,8 @@ accept this transport):
 - list_peers()                          → 同工位 / 跨工位伙伴名单。【判定按逻辑工位 workstation_id】
                                           （workstation_id 为空时退回 computer_node_id），与后端
                                           `_seat_workstation_key` 对齐。
-- request_help(role, ask, expected="")  → 平台按 role 在同工位匹配一个 NPC，发派单
-                                          （有审 → pending_review；免审 → queued）
+- create_need(...)                      → 当前 NPC 写入结构化 Need，由平台 NeedRouter 预览/路由成目标 NPC Task
+- request_help(role, ask, expected="")  → 兼容旧工具：只转成结构化 Need，不再按关键词直接派单
 - dispatch_to_peer(seat_id, title, body, force_direct=False)
                                         → 直接指名派单。跨工位时默认改投到目标工位长转手；
                                           force_direct=True 才直送（不推荐）。
@@ -224,46 +224,115 @@ def _tool_list_peers() -> dict[str, Any]:
 
 
 def _tool_request_help(args: dict[str, Any]) -> dict[str, Any]:
-    project_id = _env("PLATFORM_PROJECT_ID")
-    seat_id = _env("PLATFORM_SEAT_ID") or _env("PLATFORM_WORKSTATION_ID")
-    if not project_id or not seat_id:
-        return {"ok": False, "error": "missing PLATFORM_PROJECT_ID or PLATFORM_SEAT_ID env"}
     role = str(args.get("role") or "").strip()
     ask = str(args.get("ask") or "").strip()
     expected = str(args.get("expected") or "").strip()
     if not role or not ask:
         return {"ok": False, "error": "role and ask are required"}
-    peers = _peers(project_id, seat_id)
-    target = _match_role(peers["same_workstation"], role) or _match_role(peers["cross_workstation"], role)
-    if target is None:
-        return {"ok": False, "error": f"no peer matched role {role!r}", "peers": peers}
-    title = f"[自主求助] {role}"
-    body = f"## 我（NPC `{seat_id}`）的求助\n\n**找谁**：{role}\n\n**问题**：\n{ask}"
-    if expected:
-        body += f"\n\n**期望产物**：\n{expected}"
-    body += "\n\n（本消息由 NPC 通过 seat-mcp `request_help` 工具自主发起。后端 review 策略会决定 pending_review / queued。）"
-    resp = _create_message(
-        project_id=project_id,
-        sender_seat_id=seat_id,
-        recipient_seat_id=str(target.get("seat_id") or ""),
-        title=title,
-        body=body,
+    return _tool_create_need(
+        {
+            "title": f"需要 {role} 协助",
+            "why_needed": ask,
+            "required_capability": role,
+            "expected_output": expected or "给出可执行的协作结果和最小回执。",
+            "input_context": ask,
+            "risk_level": "low",
+            "priority": "P2",
+            "acceptance_criteria": [expected or "对方给出清晰结论或可执行产物"],
+            "auto_route": False,
+        }
     )
-    msg = resp.get("data") if isinstance(resp, dict) else None
-    if not isinstance(msg, dict):
-        return {"ok": False, "error": "platform rejected the dispatch", "raw": resp}
+
+
+def _tool_create_need(args: dict[str, Any]) -> dict[str, Any]:
+    project_id = _env("PLATFORM_PROJECT_ID")
+    seat_id = _env("PLATFORM_SEAT_ID") or _env("PLATFORM_WORKSTATION_ID")
+    if not project_id or not seat_id:
+        return {"ok": False, "error": "missing PLATFORM_PROJECT_ID or PLATFORM_SEAT_ID env"}
+    title = str(args.get("title") or "").strip()
+    why_needed = str(args.get("why_needed") or "").strip()
+    required_capability = str(args.get("required_capability") or "").strip()
+    expected_output = str(args.get("expected_output") or "").strip()
+    input_context = str(args.get("input_context") or "").strip()
+    acceptance_criteria = args.get("acceptance_criteria") or []
+    if isinstance(acceptance_criteria, str):
+        acceptance_criteria = [acceptance_criteria]
+    acceptance_criteria = [str(item).strip() for item in acceptance_criteria if str(item).strip()]
+    if not title or not why_needed or not required_capability or not expected_output or not input_context:
+        return {
+            "ok": False,
+            "error": "title, why_needed, required_capability, expected_output and input_context are required",
+        }
+    if not acceptance_criteria:
+        return {"ok": False, "error": "acceptance_criteria is required; draft Needs cannot route to tasks"}
+    payload = {
+        "project_id": project_id,
+        "requester_seat_id": seat_id,
+        "title": title,
+        "why_needed": why_needed,
+        "required_capability": required_capability,
+        "expected_output": expected_output,
+        "input_context": input_context,
+        "risk_level": str(args.get("risk_level") or "low").strip().lower(),
+        "priority": str(args.get("priority") or "P2").strip().upper(),
+        "suggested_assignee": str(args.get("suggested_assignee") or "").strip() or None,
+        "acceptance_criteria": acceptance_criteria,
+        "blocking_current_task": bool(args.get("blocking_current_task") or False),
+        "module": str(args.get("module") or "").strip() or None,
+        "auto_route": bool(args.get("auto_route") or False),
+    }
+    resp = _http_json(
+        "POST",
+        f"{_api_base()}/api/collaboration/projects/{project_id}/thread-workstations/{seat_id}/structured-need",
+        payload,
+    )
+    data = resp.get("data") if isinstance(resp, dict) else None
+    if not isinstance(data, dict):
+        return {"ok": False, "error": "platform rejected structured Need", "raw": resp}
+    preview = data.get("route_preview") if isinstance(data.get("route_preview"), dict) else {}
+    requirement = data.get("requirement") if isinstance(data.get("requirement"), dict) else {}
     return {
         "ok": True,
-        "matched_peer": target,
-        "message_id": msg.get("id"),
-        "status": msg.get("status"),
-        "needs_review": (msg.get("status") == "pending_review"),
-        "hint": (
-            "等待用户在驾驶舱/瓷砖待审区点通过；通过后才会真发送给目标 NPC。"
-            if msg.get("status") == "pending_review"
-            else "已直接进入目标 NPC 的队列（免审模式或同工位策略为 skip）。"
-        ),
+        "need_id": requirement.get("id"),
+        "need_status": requirement.get("status"),
+        "recommended_assignee_id": preview.get("recommended_assignee_id"),
+        "recommended_assignee_name": preview.get("recommended_assignee_name"),
+        "requires_review": preview.get("requires_review"),
+        "review_reason": preview.get("review_reason"),
+        "blocked_reason": preview.get("blocked_reason"),
+        "route_result": data.get("route_result"),
+        "hint": "Need 已进入我的需求；若策略允许自动路由，目标 NPC 的任务池会出现 Task。",
     }
+
+
+def _tool_check_my_needs(args: dict[str, Any]) -> dict[str, Any]:
+    project_id = _env("PLATFORM_PROJECT_ID")
+    seat_id = _env("PLATFORM_SEAT_ID") or _env("PLATFORM_WORKSTATION_ID")
+    if not project_id or not seat_id:
+        return {"ok": False, "error": "missing PLATFORM_PROJECT_ID or PLATFORM_SEAT_ID env"}
+    payload = _http_json(
+        "GET",
+        f"{_api_base()}/api/collaboration/projects/{project_id}/thread-workstations/{seat_id}/queues?limit={int(args.get('limit') or 20)}",
+    )
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(data, dict):
+        return {"ok": False, "error": "platform rejected queue read", "raw": payload}
+    return {"ok": True, "my_needs": data.get("my_needs")}
+
+
+def _tool_check_my_tasks(args: dict[str, Any]) -> dict[str, Any]:
+    project_id = _env("PLATFORM_PROJECT_ID")
+    seat_id = _env("PLATFORM_SEAT_ID") or _env("PLATFORM_WORKSTATION_ID")
+    if not project_id or not seat_id:
+        return {"ok": False, "error": "missing PLATFORM_PROJECT_ID or PLATFORM_SEAT_ID env"}
+    payload = _http_json(
+        "GET",
+        f"{_api_base()}/api/collaboration/projects/{project_id}/thread-workstations/{seat_id}/queues?limit={int(args.get('limit') or 20)}",
+    )
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(data, dict):
+        return {"ok": False, "error": "platform rejected queue read", "raw": payload}
+    return {"ok": True, "my_tasks": data.get("my_tasks")}
 
 
 def _tool_dispatch_to_peer(args: dict[str, Any]) -> dict[str, Any]:
@@ -456,13 +525,36 @@ def _tool_read_my_inbox(args: dict[str, Any]) -> dict[str, Any]:
 
 TOOLS = [
     {
+        "name": "create_need",
+        "description": "我（当前 NPC）明确缺少输入、能力或协作产物时调用。该工具写入结构化 Need：Need 属于我；平台 NeedRouter 会根据员工表、skill、知识库、在线状态和审核策略推荐目标 NPC，并在允许时转成目标 NPC 的 Task。不要用关键词猜派单。",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "需求标题。"},
+                "why_needed": {"type": "string", "description": "为什么我需要别人帮，说明当前阻塞。"},
+                "required_capability": {"type": "string", "description": "需要的能力，不是目标名字，例如 frontend-review / runner-debug / data-qa。"},
+                "expected_output": {"type": "string", "description": "对方交付什么才算满足。"},
+                "input_context": {"type": "string", "description": "给承接方的必要上下文。"},
+                "risk_level": {"type": "string", "enum": ["low", "medium", "high", "critical"]},
+                "priority": {"type": "string", "enum": ["P0", "P1", "P2", "P3"]},
+                "suggested_assignee": {"type": "string", "description": "可选，明确知道目标 NPC seat_id 时填写。"},
+                "acceptance_criteria": {"type": "array", "items": {"type": "string"}, "description": "验收标准。"},
+                "blocking_current_task": {"type": "boolean"},
+                "module": {"type": "string"},
+                "auto_route": {"type": "boolean", "description": "低风险且策略允许时是否自动转成目标 NPC 任务。默认 false。"},
+            },
+            "required": ["title", "why_needed", "required_capability", "expected_output", "input_context", "acceptance_criteria"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "list_peers",
         "description": "列出我（当前 NPC seat）能接触到的伙伴：分组为同工位（same_workstation）和跨工位（cross_workstation）。判定按【逻辑工位】（workstation_id）：相同 workstation_id 视为同工位；workstation_id 为空时退回 computer_node_id 比较。返回还含 my_workstation_id / my_workstation_name 让我能引用自己。每个伙伴含 seat_id / name / workstation_id / workstation_name / computer_node_id / is_lead / responsibility。同工位默认免审核；跨工位会被强制走工位长 + 审核。",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
     {
         "name": "request_help",
-        "description": "我（当前 NPC）需要找一位伙伴帮我做事时调用。平台按 role 关键字（匹配 name / responsibility / provider）在同工位优先匹配；找不到再到跨工位。匹配成功 → 自动发起一条派单 → 后端 review 策略决定 pending_review（要审）或 queued（免审）。返回 message_id、status、needs_review。",
+        "description": "兼容旧工具：我需要找伙伴帮忙时调用会被转换为结构化 Need。新工作流请优先使用 create_need，因为平台不再靠 role 关键词直接派单。",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -486,6 +578,24 @@ TOOLS = [
                 "force_direct": {"type": "boolean", "description": "跨工位时是否绕过工位长，直送指定 seat（不推荐，仅在你确认对方工位长不在或已授权时使用）。默认 false。"},
             },
             "required": ["seat_id", "title", "body"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "check_my_needs",
+        "description": "查看我（当前 NPC）自己提出、等待别人满足的 Need 队列。",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"limit": {"type": "integer"}},
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "check_my_tasks",
+        "description": "查看分配给我（当前 NPC）承接和完成的 Task 队列。",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"limit": {"type": "integer"}},
             "additionalProperties": False,
         },
     },
@@ -546,6 +656,8 @@ def handle(message: dict[str, Any]) -> dict[str, Any] | None:
     if method == "tools/call":
         name = str(params.get("name") or "")
         args = params.get("arguments") or {}
+        if name == "create_need":
+            return _ok(req_id, _content(_tool_create_need(args if isinstance(args, dict) else {})))
         if name == "list_peers":
             return _ok(req_id, _content(_tool_list_peers()))
         if name == "request_help":
@@ -554,6 +666,10 @@ def handle(message: dict[str, Any]) -> dict[str, Any] | None:
             return _ok(req_id, _content(_tool_dispatch_to_peer(args if isinstance(args, dict) else {})))
         if name == "read_my_inbox":
             return _ok(req_id, _content(_tool_read_my_inbox(args if isinstance(args, dict) else {})))
+        if name == "check_my_needs":
+            return _ok(req_id, _content(_tool_check_my_needs(args if isinstance(args, dict) else {})))
+        if name == "check_my_tasks":
+            return _ok(req_id, _content(_tool_check_my_tasks(args if isinstance(args, dict) else {})))
         if name == "mark_done":
             return _ok(req_id, _content(_tool_mark_done(args if isinstance(args, dict) else {})))
         return _err(req_id, -32601, f"unknown tool {name!r}")

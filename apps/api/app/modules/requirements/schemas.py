@@ -113,6 +113,32 @@ class RequirementPromoteRequest(BaseModel):
     note: str | None = None
 
 
+class StructuredNeedCreate(BaseModel):
+    project_id: str
+    requester_seat_id: str = Field(min_length=1, max_length=128)
+    title: str = Field(min_length=1, max_length=300)
+    why_needed: str = Field(min_length=1, max_length=2000)
+    required_capability: str = Field(min_length=1, max_length=300)
+    expected_output: str = Field(min_length=1, max_length=2000)
+    input_context: str = Field(min_length=1, max_length=4000)
+    risk_level: str = Field(default="low", pattern="^(low|medium|high|critical)$")
+    priority: str = Field(default="P2", pattern="^P[0-3]$")
+    suggested_assignee: str | None = Field(default=None, max_length=128)
+    acceptance_criteria: list[str] = Field(default_factory=list)
+    blocking_current_task: bool = False
+    module: str | None = Field(default=None, max_length=64)
+    auto_route: bool = False
+
+
+class NeedRouteRequest(BaseModel):
+    target_seat_id: str | None = Field(default=None, max_length=128)
+    approved: bool = False
+    auto_dispatch: bool = True
+    actor_type: str = "human"
+    actor_id: str | None = None
+    note: str | None = None
+
+
 class RequirementRead(BaseModel):
     id: str
     project_id: str | None
