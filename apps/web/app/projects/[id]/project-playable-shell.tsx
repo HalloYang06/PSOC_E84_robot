@@ -9164,6 +9164,35 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
               </div>
             </div>
           ) : null}
+          {staleQueuedCommandCount ? (
+            <div className={`${styles.noticeCard} ${styles.featureCardFocused}`}>
+              <div className={styles.exchangeLevelHead}>
+                <span className={styles.exchangeLevelTag}>旧队列</span>
+                <div>
+                  <strong>{`${staleQueuedCommandCount} 条旧指令正在排队，先处理再继续派工`}</strong>
+                  <p className={styles.microCopy}>
+                    {oldestQueuedCollaborationCommand
+                      ? `最久等待 ${oldestQueuedCollaborationCommand.ageLabel}，目标电脑 ${oldestQueuedCollaborationCommand.target} 当前未稳定接单。可以保留等待、标记过期，或人工重派到正在接单的线程。`
+                      : "目标电脑离线时，继续发新任务只会让队列更乱。先恢复接单或处理旧队列。"}
+                  </p>
+                </div>
+              </div>
+              <div className={styles.inlineActions}>
+                {oldestQueuedCollaborationCommand ? (
+                  <button
+                    type="button"
+                    data-exchange-dispatch-stale-queue-open-oldest="true"
+                    onClick={() => openManagerDrawer("exchange-detail", `queue:${text(oldestQueuedCollaborationCommand.message.id, "")}`)}
+                  >
+                    处理最旧排队项
+                  </button>
+                ) : null}
+                <button type="button" className={styles.ghostButton} onClick={() => openBackpackPanel("computers")}>
+                  去恢复电脑接单
+                </button>
+              </div>
+            </div>
+          ) : null}
           <ul className={styles.list}>
           {recentPlatformCommands.length ? (
             recentPlatformCommands.map((message, index) => {
