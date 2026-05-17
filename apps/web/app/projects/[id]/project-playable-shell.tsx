@@ -9144,12 +9144,12 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
               data-exchange-runner-hard-blocker={runnerQueueBlocker ? "true" : "false"}
             >
               <div className={styles.exchangeLevelHead}>
-                <span className={styles.exchangeLevelTag}>{runnerQueueBlocker ? "先别继续派工" : "先确认目标电脑"}</span>
+                <span className={styles.exchangeLevelTag}>{runnerQueueBlocker ? "接单阻塞" : "接单提醒"}</span>
                 <div>
                   <strong>{runnerQueueBlocker ? `当前 ${queuedCollaborationCommandCount} 条平台指令还没有被电脑取走` : runnerQueueAttentionTitle}</strong>
                   <p className={styles.microCopy}>
                     {runnerQueueBlocker
-                      ? "这不是 AI 没有任务，而是所有接入电脑都没有处于常驻接单。先恢复任一电脑的 Watch/心跳，再发送新的协作指令。"
+                      ? "这不是 AI 没有任务，而是所有接入电脑都没有处于常驻接单。先恢复任一目标电脑的持续接单，再发送新的协作指令。"
                       : "平台已经有电脑能接单，但不是所有目标都能接。派给未接单电脑的任务仍会卡住，先按目标线程恢复对应电脑。"}
                   </p>
                 </div>
