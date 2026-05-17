@@ -216,14 +216,42 @@ function Invoke-RunnerInboxPoll {
     $ackBody = @{ note = $note } | ConvertTo-Json -Depth 4
     $completeBody = @{ result_status = "completed"; note = $note } | ConvertTo-Json -Depth 4
     $messageBase = ($ApiBase.TrimEnd("/")) + "/api/runners/" + $RunnerId + "/messages/" + $messageId
-    Invoke-RestMethod -Method Post -Uri ($messageBase + "/ack") -Headers @{
-      "Content-Type" = "application/json"
-      "X-Runner-Id" = $RunnerId
-    } -Body ([System.Text.Encoding]::UTF8.GetBytes($ackBody)) | Out-Null
-    Invoke-RestMethod -Method Post -Uri ($messageBase + "/complete") -Headers @{
-      "Content-Type" = "application/json"
-      "X-Runner-Id" = $RunnerId
-    } -Body ([System.Text.Encoding]::UTF8.GetBytes($completeBody)) | Out-Null
+    try {
+      Invoke-RestMethod -Method Post -Uri ($messageBase + "/ack") -Headers @{
+        "Content-Type" = "application/json"
+        "X-Runner-Id" = $RunnerId
+      } -Body ([System.Text.Encoding]::UTF8.GetBytes($ackBody)) | Out-Null
+    } catch {
+      $ackError = Resolve-RestError $_
+      if ($ackError.status_code -eq 409 -or $ackError.message -match "already|closed|claimed|状态|收尾") {
+        [void]$results.Add([ordered]@{
+          message_id = $messageId
+          title = $title
+          status = "skipped_conflict"
+          detail = "This queued runner command was already claimed or closed; watch loop will continue."
+        })
+        continue
+      }
+      throw
+    }
+    try {
+      Invoke-RestMethod -Method Post -Uri ($messageBase + "/complete") -Headers @{
+        "Content-Type" = "application/json"
+        "X-Runner-Id" = $RunnerId
+      } -Body ([System.Text.Encoding]::UTF8.GetBytes($completeBody)) | Out-Null
+    } catch {
+      $completeError = Resolve-RestError $_
+      if ($completeError.status_code -eq 409 -or $completeError.message -match "already|closed|claimed|状态|收尾") {
+        [void]$results.Add([ordered]@{
+          message_id = $messageId
+          title = $title
+          status = "skipped_conflict"
+          detail = "This queued runner command was already closed before completion; watch loop will continue."
+        })
+        continue
+      }
+      throw
+    }
     [void]$results.Add([ordered]@{
       message_id = $messageId
       title = $title

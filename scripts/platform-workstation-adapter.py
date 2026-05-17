@@ -186,6 +186,41 @@ def _complete_workstation_command(
         raise
 
 
+def _ack_workstation_command(
+    *,
+    base: str,
+    project_id: str,
+    workstation_id: str,
+    message_id: str,
+    headers: dict[str, str],
+    note: str,
+) -> dict[str, Any]:
+    ack_url = _message_action_url(base, project_id, workstation_id, message_id, "ack")
+    try:
+        return _json_request(
+            "POST",
+            ack_url,
+            headers=headers,
+            payload={"note": note},
+        ).get("data") or {}
+    except RuntimeError as exc:
+        raw = str(exc)
+        if "HTTP 409" in raw and (
+            "MESSAGE_ALREADY_CLAIMED" in raw
+            or "MESSAGE_NOT_PENDING" in raw
+            or "already" in raw.lower()
+            or "closed" in raw.lower()
+            or "claimed" in raw.lower()
+            or "收尾" in raw
+        ):
+            return {
+                "already_claimed": True,
+                "message_id": message_id,
+                "note": "平台指令已被领取或收口，本次重复接单已跳过。",
+            }
+        raise
+
+
 def _sync_desktop_event(
     *,
     base: str,
@@ -2673,7 +2708,6 @@ def main() -> int:
                 print("========================================", flush=True)
 
             if args.auto_ack and message_id and status in {"queued", "pending"}:
-                ack_url = _message_action_url(base, args.project_id, args.workstation_id, message_id, "ack")
                 ack_note = str(args.ack_note or "").strip() or _default_ack_note(
                     provider=resolved_provider,
                     message_id=message_id,
@@ -2681,7 +2715,19 @@ def main() -> int:
                     execute_provider_cli=bool(executor_template),
                     executor_cwd=resolved_executor_cwd,
                 )
-                receipts.append(_json_request("POST", ack_url, headers=headers, payload={"note": ack_note}).get("data") or {})
+                ack_receipt = _ack_workstation_command(
+                    base=base,
+                    project_id=args.project_id,
+                    workstation_id=args.workstation_id,
+                    message_id=message_id,
+                    headers=headers,
+                    note=ack_note,
+                )
+                receipts.append(ack_receipt)
+                if ack_receipt.get("already_claimed"):
+                    if args.watch:
+                        print(f"[跳过旧指令] {message_id} 已被领取或收口，继续监听。", flush=True)
+                    continue
                 if args.watch:
                     print(f"[已 ack] {ack_note}", flush=True)
 
