@@ -139,6 +139,7 @@ def main() -> int:
         "Register-ScheduledTask",
         "Start-ScheduledTask",
         "-EncodedCommand",
+        "loginctl enable-linger",
         "systemctl --user enable --now",
         "nohup bash -lc",
         "already-bound-runner-reuse",
@@ -159,8 +160,19 @@ def main() -> int:
         "the runner will retry automatically",
         "Consecutive failed loop(s)",
         "Runner watch recovered",
+        "Runner command completed: ${title}",
+        "Skipped one old runner command",
+        "automatic inbox polling is not authorized yet",
     ):
         assert_contains(connect_sh, token, f"connect bash token {token}")
+    for token in (
+        "Runner command completed: $message_id",
+        "runner ack failed for $message_id",
+        "runner complete failed for $message_id",
+        "Workstation $workstation_id",
+        "workstation poll failed for $workstation_id",
+    ):
+        assert_not_contains(connect_sh, token, f"connect bash should hide internal identifier text {token}")
 
     connect_ps1 = read("scripts/connect-ai-collab-runner.ps1")
     for token in (

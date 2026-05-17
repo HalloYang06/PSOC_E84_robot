@@ -202,7 +202,9 @@ for item in items or []:
     print(f"{message_id}\t{title}")
 PY
     local note="Runner ${RUNNER_NAME} received platform dispatch: ${title}. The computer connection is reachable; enable NPC automation or bind a desktop thread before real execution."
-    curl -fsSL \
+    local ack_status="ok"
+    local ack_output
+    if ! ack_output="$(curl -fsSL \
       -X POST "${API_BASE%/}/api/runners/$RUNNER_ID/messages/$message_id/ack" \
       -H "Content-Type: application/json" \
       -H "X-Runner-Id: $RUNNER_ID" \
@@ -211,8 +213,16 @@ import json
 import os
 print(json.dumps({"note": os.environ["NOTE"]}, ensure_ascii=False))
 PY
-)" >/dev/null || echo "runner ack failed for $message_id" >&2
-    curl -fsSL \
+)")" 2>&1; then
+      if echo "$ack_output" | grep -Eiq "409|already|closed|claimed|状态|收尾"; then
+        echo "Skipped one old runner command that was already claimed or closed: ${title}"
+        continue
+      fi
+      echo "Runner command acknowledgement failed; the watch loop will retry automatically." >&2
+      return 1
+    fi
+    local complete_output
+    if ! complete_output="$(curl -fsSL \
       -X POST "${API_BASE%/}/api/runners/$RUNNER_ID/messages/$message_id/complete" \
       -H "Content-Type: application/json" \
       -H "X-Runner-Id: $RUNNER_ID" \
@@ -221,8 +231,15 @@ import json
 import os
 print(json.dumps({"result_status": "completed", "note": os.environ["NOTE"]}, ensure_ascii=False))
 PY
-)" >/dev/null || echo "runner complete failed for $message_id" >&2
-    echo "Runner command completed: $message_id $title"
+)")" 2>&1; then
+      if echo "$complete_output" | grep -Eiq "409|already|closed|claimed|状态|收尾"; then
+        echo "Skipped one old runner command that was already closed before completion: ${title}"
+        continue
+      fi
+      echo "Runner command completion failed; the watch loop will retry automatically." >&2
+      return 1
+    fi
+    echo "Runner command completed: ${title}"
   done
 }
 
@@ -269,9 +286,9 @@ PY
     local output
     if ! output="$(python3 "${args[@]}" 2>&1)"; then
       if echo "$output" | grep -Eq "HTTP 40(1|3)|UNAUTHORIZED|PERMISSION_DENIED"; then
-        echo "Workstation $workstation_id is visible to this runner, but it is not authorized for automatic thread inbox polling yet. Keep the runner watch window open, then enable/bind the thread from the platform before expecting NPC auto-execution." >&2
+        echo "A bound NPC thread is visible to this runner, but automatic inbox polling is not authorized yet. Keep the runner watch window open, then enable or bind the thread from the platform before expecting NPC auto-execution." >&2
       else
-        echo "workstation poll failed for $workstation_id" >&2
+        echo "NPC thread polling failed; the runner will retry automatically." >&2
         echo "$output" >&2
       fi
       continue

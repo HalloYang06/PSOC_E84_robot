@@ -267,7 +267,7 @@ def main() -> int:
             "watchWindows": ["connect-ai-collab-runner.ps1", expected_web, expected_api, "-Watch", "-SkipCodex", "-SkipClaude"],
             "watchLinux": ["connect-ai-collab-runner.sh", expected_web, expected_api, "--watch", "--skip-codex", "--skip-claude"],
             "watchServiceWindows": ["-EncodedCommand"],
-            "watchServiceLinux": ["systemctl --user enable --now", "nohup bash -lc", "connect-ai-collab-runner.sh", expected_web, expected_api, "--watch"],
+            "watchServiceLinux": ["loginctl enable-linger", "systemctl --user enable --now", "nohup bash -lc", "connect-ai-collab-runner.sh", expected_web, expected_api, "--watch"],
             "tokenWatchWindows": ["connect-ai-collab-runner.ps1", expected_web, expected_api, "-Watch"],
             "tokenWatchLinux": ["connect-ai-collab-runner.sh", expected_web, expected_api, "--watch"],
         }

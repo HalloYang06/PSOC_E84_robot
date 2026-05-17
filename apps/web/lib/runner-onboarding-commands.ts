@@ -479,6 +479,7 @@ export function buildComputerRunnerWatchServiceBashCommand(
   return [
     `mkdir -p "$HOME/.config/systemd/user" "$HOME/ai-collab-runner/logs"`,
     `cat > "$HOME/.config/systemd/user/${serviceName}" <<'AI_COLLAB_RUNNER_SERVICE'\n${serviceBody}\nAI_COLLAB_RUNNER_SERVICE`,
+    `if command -v loginctl >/dev/null 2>&1; then loginctl enable-linger "$USER" >/dev/null 2>&1 || true; fi`,
     `if command -v systemctl >/dev/null 2>&1 && systemctl --user daemon-reload >/dev/null 2>&1; then systemctl --user enable --now ${bashSingleQuoted(serviceName)} && echo "AI 协作平台后台守护已启动：${serviceName}"; else ${fallback}; fi`,
   ].join(" && ");
 }
