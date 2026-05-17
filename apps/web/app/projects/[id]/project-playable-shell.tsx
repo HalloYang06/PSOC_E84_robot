@@ -2186,10 +2186,13 @@ function isOnlineNode(status: unknown) {
 }
 
 function computerRegistrationLabel(node: AnyRecord | null | undefined) {
-  const status = text(node?.status, "");
-  if (!status) return "登记状态未记录";
-  if (isOnlineNode(status)) return `登记状态 ${status}，不等于可接单`;
-  return `登记状态 ${status}`;
+  const status = text(node?.status, "").toLowerCase();
+  if (!status) return "电脑登记未记录";
+  if (isOnlineNode(status)) return "电脑已登记在线，仍需持续接单";
+  if (status === "offline") return "电脑已登记，当前未确认在线";
+  if (status === "paired" || status === "registered") return "电脑已登记，等待持续接单";
+  if (status === "pending" || status === "pairing") return "等待电脑完成配对";
+  return `电脑登记 ${status}`;
 }
 
 function normalizeHumanPresenceState(value: unknown) {
