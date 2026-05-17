@@ -28,9 +28,13 @@ spec.loader.exec_module(cdp_helpers)
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Validate in-project panel navigation from a real login session.")
     parser.add_argument("--web-base", default="http://127.0.0.1:3000")
+    parser.add_argument("--api-base", default="")
     parser.add_argument("--project-id", default="10f6a858-f3e4-467c-87f5-726caa3cc2be")
     parser.add_argument("--login-email", default="codex-platform-npc@local.dev")
     parser.add_argument("--login-password", default="password")
+    parser.add_argument("--token", default="")
+    parser.add_argument("--userjson", default="")
+    parser.add_argument("--no-auth", action="store_true")
     parser.add_argument("--output-dir", default="artifacts")
     parser.add_argument("--viewport-width", type=int, default=1900)
     parser.add_argument("--viewport-height", type=int, default=1100)
@@ -217,30 +221,39 @@ def main() -> int:
         cdp.send("Network.enable")
         cdp.send("Emulation.setDeviceMetricsOverride", {"width": args.viewport_width, "height": args.viewport_height, "deviceScaleFactor": 1, "mobile": False})
 
-        cdp.send("Page.navigate", {"url": f"{args.web_base.rstrip('/')}/login?returnTo=/projects/{args.project_id}"})
-        wait_for(cdp, "document.readyState === 'complete' && !!document.querySelector('form')", timeout_seconds=35)
-        login_result = cdp_eval(
-            cdp,
-            f"""
-            (() => {{
-              const email = document.querySelector('input[name="email"], input[type="email"]');
-              const password = document.querySelector('input[name="password"], input[type="password"]');
-              if (!email || !password) return {{ ok: false, reason: 'missing-fields' }};
-              email.value = {json.dumps(args.login_email)};
-              email.dispatchEvent(new Event('input', {{ bubbles: true }}));
-              email.dispatchEvent(new Event('change', {{ bubbles: true }}));
-              password.value = {json.dumps(args.login_password)};
-              password.dispatchEvent(new Event('input', {{ bubbles: true }}));
-              password.dispatchEvent(new Event('change', {{ bubbles: true }}));
-              const submit = document.querySelector('button[type="submit"], form button');
-              if (!submit) return {{ ok: false, reason: 'missing-submit' }};
-              submit.click();
-              return {{ ok: true }};
-            }})()
-            """,
-        )
-        if not isinstance(login_result, dict) or not login_result.get("ok"):
-            raise RuntimeError(f"Login form did not submit: {login_result}")
+        if args.api_base:
+            token, user_json = cdp_helpers.authenticate(args)
+            origin = args.web_base.rstrip("/")
+            if token:
+                cdp.send("Network.setCookie", {"name": "farm_access_token", "value": token, "url": f"{origin}/", "path": "/", "sameSite": "Lax"})
+            if user_json:
+                cdp.send("Network.setCookie", {"name": "farm_user", "value": user_json, "url": f"{origin}/", "path": "/", "sameSite": "Lax"})
+            cdp.send("Page.navigate", {"url": f"{args.web_base.rstrip('/')}/projects/{args.project_id}"})
+        else:
+            cdp.send("Page.navigate", {"url": f"{args.web_base.rstrip('/')}/login?returnTo=/projects/{args.project_id}"})
+            wait_for(cdp, "document.readyState === 'complete' && !!document.querySelector('form')", timeout_seconds=35)
+            login_result = cdp_eval(
+                cdp,
+                f"""
+                (() => {{
+                  const email = document.querySelector('input[name="email"], input[type="email"]');
+                  const password = document.querySelector('input[name="password"], input[type="password"]');
+                  if (!email || !password) return {{ ok: false, reason: 'missing-fields' }};
+                  email.value = {json.dumps(args.login_email)};
+                  email.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                  email.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                  password.value = {json.dumps(args.login_password)};
+                  password.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                  password.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                  const submit = document.querySelector('button[type="submit"], form button');
+                  if (!submit) return {{ ok: false, reason: 'missing-submit' }};
+                  submit.click();
+                  return {{ ok: true }};
+                }})()
+                """,
+            )
+            if not isinstance(login_result, dict) or not login_result.get("ok"):
+                raise RuntimeError(f"Login form did not submit: {login_result}")
         wait_for(cdp, f"location.href.includes({json.dumps(args.project_id)})", timeout_seconds=45)
         wait_for(
             cdp,
@@ -281,11 +294,11 @@ def main() -> int:
         results["front_door_state"] = first_screen_state
 
         panels = [
-            ("主角协作管理", "主角协作管理", "panel-nav-02-human-party"),
+            ("主角管理", "主角管理", "panel-nav-02-human-party"),
             ("开发工坊", "开发工坊", "panel-nav-03-workshop"),
             ("NPC 管理", "NPC 管理", "panel-nav-04-npc"),
-            ("电脑接入管理", "电脑接入管理", "panel-nav-05-computers"),
-            ("Skill 管理仓库", "Skill 管理仓库", "panel-nav-06-skills"),
+            ("电脑接入", "电脑接入", "panel-nav-05-computers"),
+            ("能力包仓库", "能力包仓库", "panel-nav-06-skills"),
         ]
         for label, marker, slug in panels:
             try:
@@ -322,8 +335,8 @@ def main() -> int:
 
         # Skill detail from inside skills manager.
         try:
-            click_text_button(cdp, "Skill 管理仓库")
-            wait_for(cdp, "document.body && document.body.innerText.includes('Skill 管理仓库')", timeout_seconds=20)
+            click_text_button(cdp, "能力包仓库")
+            wait_for(cdp, "document.body && document.body.innerText.includes('能力包仓库')", timeout_seconds=20)
             click_selector(cdp, '[data-skill-open-detail="1"]')
             wait_for(cdp, "document.body && document.body.innerText.includes('Skill 详情')", timeout_seconds=20)
             shot = output_dir / f"panel-nav-09-skill-detail-{stamp}.png"
