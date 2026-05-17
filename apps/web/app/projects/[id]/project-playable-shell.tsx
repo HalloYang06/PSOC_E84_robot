@@ -3126,6 +3126,7 @@ function runnerWatchInfo(node: AnyRecord | null | undefined) {
   const runnerId = text(node?.runner_id ?? metadata.runner_id, "");
   const runnerStatus = text(node?.runner_status ?? metadata.runner_status, "").toLowerCase();
   const lastHeartbeat = text(node?.runner_last_heartbeat_at ?? metadata.runner_last_heartbeat_at, "");
+  const serverWatchDetail = text(node?.runner_watch_detail ?? metadata.runner_watch_detail, "");
   const heartbeatAgeSeconds = asNumber(node?.runner_heartbeat_age_seconds ?? metadata.runner_heartbeat_age_seconds);
   const freshSeconds = asNumber(node?.runner_watch_fresh_seconds ?? metadata.runner_watch_fresh_seconds) ?? 180;
   let state = text(node?.runner_watch_state ?? metadata.runner_watch_state, "").toLowerCase();
@@ -3148,7 +3149,7 @@ function runnerWatchInfo(node: AnyRecord | null | undefined) {
       active: true,
       needsAttention: false,
       label: "常驻接单中",
-      detail: ageLabel ? `最近心跳 ${ageLabel}` : "执行程序正在持续监听平台任务",
+      detail: serverWatchDetail || (ageLabel ? `最近心跳 ${ageLabel}` : "执行程序正在持续监听平台任务"),
     };
   }
   if (state === "stale") {
@@ -3157,7 +3158,7 @@ function runnerWatchInfo(node: AnyRecord | null | undefined) {
       active: false,
       needsAttention: true,
       label: "心跳超时",
-      detail: ageLabel ? `最后心跳 ${ageLabel}，请重新运行持续接单命令` : "请重新运行自动化心跳 / 持续接单命令",
+      detail: serverWatchDetail || (ageLabel ? `最后心跳 ${ageLabel}，请重新运行持续接单命令` : "请重新运行自动化心跳 / 持续接单命令"),
     };
   }
   if (state === "runner_offline") {
@@ -3166,7 +3167,7 @@ function runnerWatchInfo(node: AnyRecord | null | undefined) {
       active: false,
       needsAttention: true,
       label: "执行程序离线",
-      detail: "执行程序不在线，平台指令只会排队等待",
+      detail: serverWatchDetail || "执行程序不在线，平台指令只会排队等待",
     };
   }
   if (state === "unbound") {
@@ -3175,7 +3176,7 @@ function runnerWatchInfo(node: AnyRecord | null | undefined) {
       active: false,
       needsAttention: false,
       label: "未接入执行程序",
-      detail: "先生成配对令牌并运行一键接入命令",
+      detail: serverWatchDetail || "先生成配对令牌并运行一键接入命令",
     };
   }
   return {
@@ -3183,7 +3184,7 @@ function runnerWatchInfo(node: AnyRecord | null | undefined) {
     active: false,
     needsAttention: true,
     label: "已登记未监听",
-    detail: lastHeartbeat ? `最近心跳 ${formatStamp(lastHeartbeat)}，但没有持续监听` : "已注册或已扫描，但没有收到持续接单心跳",
+    detail: serverWatchDetail || (lastHeartbeat ? `最近心跳 ${formatStamp(lastHeartbeat)}，但没有持续监听` : "已注册或已扫描，但没有收到持续接单心跳"),
   };
 }
 
