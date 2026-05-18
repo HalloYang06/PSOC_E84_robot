@@ -38,6 +38,14 @@ function publicComputerName(node: AnyRecord, index: number) {
   return `执行电脑 ${index + 1}`;
 }
 
+function publicInterfaceName(value: unknown, fallback: string) {
+  const name = text(value, fallback);
+  return name
+    .replace(/\badapters?\b/gi, "适配器")
+    .replace(/\bbridges?\b/gi, "桥接器")
+    .replace(/\brunners?\b/gi, "接单进程");
+}
+
 function nodeScan(node: AnyRecord): AnyRecord {
   const direct = node.device_interface_scan;
   if (direct && typeof direct === "object") return direct as AnyRecord;
@@ -199,7 +207,7 @@ function buildDebugWindows(computers: AnyRecord[], seats: AnyRecord[]): DebugWin
     scanInterfaces(node).forEach((item, itemIndex) => {
       const kind = text(item.kind, "unknown").toLowerCase();
       const label = kindLabel(kind);
-      const rawName = text(item.name, `${label} ${itemIndex + 1}`);
+      const rawName = publicInterfaceName(item.name, `${label} ${itemIndex + 1}`);
       const status = text(item.status, "").toLowerCase();
       const writeCapability = text(item.write_capability ?? item.writeCapability, "review_required").toLowerCase();
       windows.push({

@@ -191,6 +191,7 @@ def main() -> int:
                 (() => {
                   const body = document.body.innerText || '';
                   const form = document.querySelector('form[class*="terminalCommandBar"]');
+                  const internalMatches = Array.from(new Set(body.match(/adapter|bridge|session JSONL|local path|source_thread|canonical|requested id|raw UUID|\\brunner\\b/ig) || []));
                   return {
                     href: location.href,
                     tileCount: document.querySelectorAll('article[class*="debugTilePanel"]').length,
@@ -201,7 +202,8 @@ def main() -> int:
                     submitDisabled: !!form?.querySelector('button[type="submit"]')?.disabled,
                     hasTileSettingsLink: !!document.querySelector('a[aria-label^="设置 "]'),
                     hasJumpSelectNpc: Array.from(document.querySelectorAll('a')).some((a) => (a.innerText || '').includes('选择 NPC')),
-                    hasInternalTerms: /adapter|bridge|session JSONL|local path|source_thread|canonical|requested id|raw UUID|\\brunner\\b/i.test(body),
+                    hasInternalTerms: internalMatches.length > 0,
+                    internalMatches,
                     hasHorizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 2,
                   };
                 })()
@@ -213,6 +215,8 @@ def main() -> int:
                 report["failures"].append("terminal tile controls missing")  # type: ignore[union-attr]
             if isinstance(tile, dict) and tile.get("hasJumpSelectNpc"):
                 report["failures"].append("NPC binding still jumps away")  # type: ignore[union-attr]
+            if isinstance(tile, dict) and tile.get("hasInternalTerms"):
+                report["failures"].append(f"robotics tile exposes internal terms: {tile.get('internalMatches')}")  # type: ignore[union-attr]
             click(cdp, 'a[aria-label^="设置 "]')
             wait_for(cdp, "location.search.includes('settings=') && document.body.innerText.includes('窗口设置')")
             settings_state = cdp_eval(
