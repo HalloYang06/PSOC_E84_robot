@@ -1220,6 +1220,13 @@
   font-size: 16px;
 }
 
+.commandLabel {
+  display: block;
+  color: #fff7be !important;
+  font-size: 12px !important;
+  letter-spacing: 0;
+}
+
 .resultCard code,
 .resultCard textarea {
   width: 100%;
@@ -1315,6 +1322,94 @@
 
 .inlineActionForm button {
   justify-self: start;
+}
+
+.reconnectChecklist {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(255, 232, 112, 0.34);
+  background:
+    linear-gradient(135deg, rgba(58, 48, 8, 0.72), rgba(4, 24, 28, 0.78)),
+    repeating-linear-gradient(90deg, rgba(255, 230, 112, 0.04) 0 1px, transparent 1px 22px);
+}
+
+.reconnectChecklist span {
+  width: fit-content;
+  padding: 3px 8px;
+  border: 1px solid rgba(255, 231, 104, 0.45);
+  background: rgba(255, 226, 84, 0.1);
+  color: #ffe980;
+  font-size: 11px;
+  font-weight: 1000;
+}
+
+.reconnectChecklist ol {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 20px;
+}
+
+.reconnectChecklist li {
+  color: rgba(226, 252, 255, 0.8);
+}
+
+.reconnectChecklist b {
+  display: block;
+  color: #ffffff;
+  font-size: 13px;
+}
+
+.reconnectChecklist small {
+  color: rgba(226, 252, 255, 0.7);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.reconnectCommandGrid {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+}
+
+.reconnectCommandGrid label {
+  display: grid;
+  gap: 7px;
+}
+
+.reconnectCommandGrid span {
+  color: #fff7be;
+  font-size: 12px;
+  font-weight: 1000;
+}
+
+.reconnectCommandGrid textarea {
+  width: 100%;
+  min-height: 92px;
+  border: 1px solid rgba(124, 244, 255, 0.22);
+  background: rgba(0, 0, 0, 0.34);
+  color: #dffcff;
+  font: 12px/1.55 "Consolas", "Courier New", monospace;
+  padding: 9px;
+  resize: vertical;
+}
+
+.reconnectCommandGrid button {
+  justify-self: start;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid rgba(122, 255, 244, 0.42);
+  background: rgba(16, 126, 130, 0.28);
+  color: #eaffff;
+  font-size: 12px;
+  font-weight: 1000;
+  cursor: pointer;
+}
+
+.reconnectCommandGrid button:hover {
+  border-color: rgba(255, 232, 112, 0.7);
+  background: rgba(255, 231, 104, 0.15);
 }
 
 .recommendedSkillStack {

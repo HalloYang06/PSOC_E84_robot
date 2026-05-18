@@ -28,7 +28,15 @@ import {
 } from "../../../actions";
 import { useTeamNoticeToast } from "../../../../lib/use-team-notice-toast";
 import { TeamNoticeToast } from "../../../../components/team-notice-toast";
-import { buildComputerOneClickConnectCommand, suggestedComputerRunnerId } from "../../../../lib/runner-onboarding-commands";
+import {
+  buildComputerOneClickConnectBashCommand,
+  buildComputerOneClickConnectCommand,
+  buildComputerRunnerWatchBashCommand,
+  buildComputerRunnerWatchCommand,
+  buildComputerRunnerWatchServiceBashCommand,
+  buildComputerRunnerWatchServiceCommand,
+  suggestedComputerRunnerId,
+} from "../../../../lib/runner-onboarding-commands";
 import styles from "./project-2d-upgrade-game.module.css";
 import { ClaudeCommandPalette } from "../_components/claude-command-palette";
 import { apiClientUrl } from "../../../../lib/api-client-url";
@@ -1335,6 +1343,27 @@ function computerDesktopCapabilityHint(computer: FeedItem) {
     return "执行程序看到本机桌面进程，但没有确认可交互输入；可能只能走服务端或文件投递。";
   }
   return "这台电脑还未确认桌面线程可接收派单；用户要先在目标电脑打开 AI 桌面版并重新同步线程。";
+}
+
+function isRunnerOnlineStatus(computer: FeedItem) {
+  const normalized = String(computer.runnerEffectiveStatus || computer.runnerWatchState || computer.status || "").toLowerCase();
+  return ["online", "watching", "connected", "ready", "active"].some((status) => normalized.includes(status));
+}
+
+function runnerDispatchLabel(computer: FeedItem) {
+  const normalized = String(computer.runnerEffectiveStatus || computer.runnerWatchState || computer.status || "").toLowerCase();
+  if (isRunnerOnlineStatus(computer)) return "常驻接单";
+  if (normalized.includes("stale") || normalized.includes("expired")) return "等待电脑恢复";
+  if (normalized.includes("offline")) return "离线，需重连";
+  return "状态待确认";
+}
+
+function runnerReconnectHint(computer: FeedItem, workstations: FeedItem[]) {
+  if (isRunnerOnlineStatus(computer)) {
+    const threads = computerThreadCount(computer, workstations);
+    return threads > 0 ? `已发现 ${threads} 条线程，可继续绑定 NPC 或派发任务。` : "执行程序在线；若要派给桌面线程，请先打开 AI 工具并重新扫描线程。";
+  }
+  return "复制下面的持续接单命令到这台电脑运行。命令会使用公网 API，不依赖开发者本机路径。";
 }
 
 function providerSummary(workstations: FeedItem[]) {
@@ -3114,9 +3143,25 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             <article className={styles.resultCard} data-token-result-card="computer-pairing">
               <span>配对令牌已生成</span>
               <b>{pairingResult.nodeId}</b>
-              <p>不用刷新页面。把下面命令发到目标电脑运行；如果目标电脑没有仓库文件，也会从平台下载接入脚本。</p>
+              <p>不用刷新页面。把下面命令发到目标电脑运行；如果目标电脑没有仓库文件，也会从平台下载接入脚本。用户自己在目标电脑终端运行不需要审核，后续 NPC 代操作才需要审核。</p>
               <code data-token-copy-token="computer-pairing">{pairingResult.token}</code>
+              <strong className={styles.commandLabel}>Windows PowerShell 一键接入</strong>
               <textarea readOnly rows={5} value={connectCommand} aria-label="电脑接入命令" data-token-command="computer-pairing" />
+              <strong className={styles.commandLabel}>Linux / macOS Bash 一键接入</strong>
+              <textarea
+                readOnly
+                rows={5}
+                value={buildComputerOneClickConnectBashCommand(
+                  webBaseUrl,
+                  project.id,
+                  { id: pairingResult.nodeId, label: pairingResult.nodeId },
+                  pairingResult.token,
+                  suggestedComputerRunnerId({ id: pairingResult.nodeId, label: pairingResult.nodeId }),
+                  { serverUrl: apiBaseUrl },
+                )}
+                aria-label="Linux 电脑接入命令"
+                data-token-command="computer-pairing-linux"
+              />
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                 <button
                   type="button"
@@ -3130,7 +3175,24 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                   onClick={() => copyTextToClipboard(connectCommand, "接入命令已复制，可粘贴到目标电脑 PowerShell 运行")}
                   data-token-copy-command-btn="computer-pairing"
                 >
-                  复制完整命令
+                  复制 Windows 命令
+                </button>
+                <button
+                  type="button"
+                  onClick={() => copyTextToClipboard(
+                    buildComputerOneClickConnectBashCommand(
+                      webBaseUrl,
+                      project.id,
+                      { id: pairingResult.nodeId, label: pairingResult.nodeId },
+                      pairingResult.token,
+                      suggestedComputerRunnerId({ id: pairingResult.nodeId, label: pairingResult.nodeId }),
+                      { serverUrl: apiBaseUrl },
+                    ),
+                    "Linux 命令已复制，可粘贴到目标电脑 Bash 运行",
+                  )}
+                  data-token-copy-command-btn="computer-pairing-linux"
+                >
+                  复制 Linux 命令
                 </button>
                 {copyState.kind !== "idle" && copyState.message ? (
                   <small data-token-copy-status={copyState.kind}>{copyState.message}</small>
@@ -3192,26 +3254,73 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             <b>执行电脑健康要看“电脑在线 + 心跳 + 线程数”</b>
             <p>电脑在线但扫不到线程时，不要直接派单；先让用户打开对应 AI 工具，再重新扫描线程。</p>
           </article>
+          <article className={styles.reconnectChecklist} aria-label="电脑重连三步">
+            <span>掉线重连三步</span>
+            <ol>
+              <li><b>复制持续接单命令</b><small>选择目标电脑，按系统复制 Windows 或 Linux 命令。</small></li>
+              <li><b>保持终端或启用守护</b><small>临时调试用前台持续接单；长期电脑启用后台守护。</small></li>
+              <li><b>回平台确认状态</b><small>看到“常驻接单”后再扫描线程、绑定 NPC、派任务。</small></li>
+            </ol>
+          </article>
           <div className={styles.layeredList}>
             {computers.length ? (
-              computers.map((computer) => (
-                <article key={computer.id} className={styles.layeredItem}>
-                  <span>{statusLabel(computer.status)}</span>
-                  <b>{itemTitle(computer)}</b>
-                  <small>{computer.providerId || "执行程序未绑定"} / {computerThreadCount(computer, workstations)} 条线程</small>
-                  <p>{computer.body || computerUserHint(computer, workstations)}</p>
-                  <p>{computerDesktopCapabilityLabel(computer)}：{computerDesktopCapabilityHint(computer)}</p>
-                  <details className={styles.itemDetails}>
-                    <summary>下一步判断</summary>
-                    <dl>
-                      <div><dt>用户动作</dt><dd>{computerUserHint(computer, workstations)}</dd></div>
-                      <div><dt>桌面投递</dt><dd>{computerDesktopCapabilityHint(computer)}</dd></div>
-                      <div><dt>协作边界</dt><dd>不在线或无线程时只允许只读检查，不应自动派复杂任务。</dd></div>
-                      <div><dt>最近心跳</dt><dd>{computer.at || "暂无心跳时间"}</dd></div>
-                    </dl>
-                  </details>
-                </article>
-              ))
+              computers.map((computer) => {
+                const runnerId = computer.runnerId || computer.providerId || suggestedComputerRunnerId(computer);
+                const watchCommand = buildComputerRunnerWatchCommand(apiBaseUrl, project.id, computer, runnerId, { pollSeconds: 30 });
+                const watchBashCommand = buildComputerRunnerWatchBashCommand(apiBaseUrl, project.id, computer, runnerId, { pollSeconds: 30 });
+                const serviceCommand = buildComputerRunnerWatchServiceCommand(apiBaseUrl, project.id, computer, runnerId, { pollSeconds: 30 });
+                const serviceBashCommand = buildComputerRunnerWatchServiceBashCommand(apiBaseUrl, project.id, computer, runnerId, { pollSeconds: 30 });
+                return (
+                  <article key={computer.id} className={styles.layeredItem}>
+                    <span>{runnerDispatchLabel(computer)}</span>
+                    <b>{itemTitle(computer)}</b>
+                    <small>{computer.providerId || runnerId} / {computerThreadCount(computer, workstations)} 条线程 / 最近心跳：{computer.at || "暂无"}</small>
+                    <p>{runnerReconnectHint(computer, workstations)}</p>
+                    <p>{computerDesktopCapabilityLabel(computer)}：{computerDesktopCapabilityHint(computer)}</p>
+                    <details className={styles.itemDetails} open={!isRunnerOnlineStatus(computer)}>
+                      <summary>持续接单 / 重连命令</summary>
+                      <div className={styles.reconnectCommandGrid}>
+                        <label>
+                          <span>Windows PowerShell 前台持续接单</span>
+                          <textarea readOnly rows={4} value={watchCommand} aria-label={`${itemTitle(computer)} Windows 持续接单命令`} />
+                          <button type="button" onClick={() => copyTextToClipboard(watchCommand, `${itemTitle(computer)} Windows 持续接单命令已复制`)}>
+                            复制 Windows 前台命令
+                          </button>
+                        </label>
+                        <label>
+                          <span>Linux / macOS Bash 前台持续接单</span>
+                          <textarea readOnly rows={4} value={watchBashCommand} aria-label={`${itemTitle(computer)} Linux 持续接单命令`} />
+                          <button type="button" onClick={() => copyTextToClipboard(watchBashCommand, `${itemTitle(computer)} Linux 持续接单命令已复制`)}>
+                            复制 Linux 前台命令
+                          </button>
+                        </label>
+                        <label>
+                          <span>Windows 后台守护</span>
+                          <textarea readOnly rows={4} value={serviceCommand} aria-label={`${itemTitle(computer)} Windows 后台守护命令`} />
+                          <button type="button" onClick={() => copyTextToClipboard(serviceCommand, `${itemTitle(computer)} Windows 后台守护命令已复制`)}>
+                            复制 Windows 守护命令
+                          </button>
+                        </label>
+                        <label>
+                          <span>Linux 后台守护</span>
+                          <textarea readOnly rows={4} value={serviceBashCommand} aria-label={`${itemTitle(computer)} Linux 后台守护命令`} />
+                          <button type="button" onClick={() => copyTextToClipboard(serviceBashCommand, `${itemTitle(computer)} Linux 后台守护命令已复制`)}>
+                            复制 Linux 守护命令
+                          </button>
+                        </label>
+                      </div>
+                      {copyState.kind !== "idle" && copyState.message ? (
+                        <p className={copyState.kind === "err" ? styles.watcherCopyErr : styles.watcherCopyOk}>{copyState.message}</p>
+                      ) : null}
+                      <dl>
+                        <div><dt>用户动作</dt><dd>{computerUserHint(computer, workstations)}</dd></div>
+                        <div><dt>派单判断</dt><dd>{isRunnerOnlineStatus(computer) ? "可接单；仍需确认线程已绑定到目标 NPC。" : "不可假装成功；新任务只允许排队等待恢复或改派。"}</dd></div>
+                        <div><dt>协作边界</dt><dd>用户自己在终端输入不需要审核；NPC 代操作终端必须先生成待审请求。</dd></div>
+                      </dl>
+                    </details>
+                  </article>
+                );
+              })
             ) : (
               <article className={styles.layeredItem}>
                 <span>空状态</span>
@@ -3863,6 +3972,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
     }
 
     if (tab === "computers") {
+      const firstComputer = computers[0];
       return (
         <div className={styles.panelGrid}>
           <article className={styles.panelCard}>
@@ -3870,6 +3980,12 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             <strong>{stats.onlineComputerCount}/{stats.computerCount} 台电脑常驻接单</strong>
             <p>这里接入真实电脑、生成配对令牌、注册执行程序、扫描 Codex / Claude / Qwen 线程。</p>
             <small>{providerSummary(workstations)}</small>
+          </article>
+          <article className={styles.panelCard}>
+            <span>重连检查</span>
+            <strong>复制持续接单命令 → 保持终端或启用守护 → 回平台确认状态</strong>
+            <p>{firstComputer ? runnerReconnectHint(firstComputer, workstations) : "还没有登记电脑。先点右侧“生成配对令牌”，在目标电脑运行 Windows 或 Linux 接入命令。"}</p>
+            <small>用户自己运行终端命令不需要审核；NPC 代操作终端会先进入待审。</small>
           </article>
           <article className={styles.panelCard}>
             <span>电脑列表</span>
