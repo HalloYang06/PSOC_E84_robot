@@ -164,6 +164,9 @@ def main() -> int:
                 settingsButtons: document.querySelectorAll('a[aria-label^="设置 "]').length,
                 createButtonText: document.querySelector('[class*="indexForm"] button')?.innerText || '',
                 interfaceLabel: document.querySelector('[class*="indexForm"] label span')?.innerText || '',
+                hasCreateTitle: body.includes('创建调试窗口'),
+                hasComputerJumpButton: Array.from(document.querySelectorAll('a')).some((a) => (a.innerText || '').includes('接入/检查电脑')),
+                hasNpcCreationSelect: !!document.querySelector('[class*="indexForm"] select[name="npc"]'),
                 disabledMarkers: document.querySelectorAll('[class*="openBtnDisabled"]').length,
                 hasNoDemoText: body.includes('不建假窗口') && !body.includes('模板'),
                 hasHorizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 2,
@@ -175,6 +178,10 @@ def main() -> int:
         screenshot(cdp, output_dir / f"robotics-terminal-userwalk-initial-{stamp}.png")
 
         if isinstance(first, dict) and int(first.get("usableOptions") or 0) > 0:
+            if first.get("hasComputerJumpButton"):
+                report["failures"].append("robotics page still has computer jump button")  # type: ignore[union-attr]
+            if not first.get("hasCreateTitle") or not first.get("hasNpcCreationSelect"):
+                report["failures"].append("debug window creation does not expose indexed NPC selection")  # type: ignore[union-attr]
             click(cdp, '[class*="indexForm"] button')
             wait_for(cdp, "location.search.includes('windows=') && document.querySelectorAll('article').length > 0")
             time.sleep(0.5)
@@ -188,6 +195,7 @@ def main() -> int:
                     href: location.href,
                     tileCount: document.querySelectorAll('article[class*="debugTilePanel"]').length,
                     hasTerminal: body.includes('$ open') && body.includes('mode=read-only'),
+                    hasTerminalIo: body.includes('--- I/O ---') && (body.includes('[terminal]') || body.includes('[ack]') || body.includes('[result') || body.includes('# queued')),
                     hasNpcSelect: !!document.querySelector('select[name="bound_npc"]'),
                     hasCommandInput: !!document.querySelector('input[name="command"]'),
                     submitDisabled: !!form?.querySelector('button[type="submit"]')?.disabled,
@@ -201,7 +209,7 @@ def main() -> int:
             )
             report["tile"] = tile
             screenshot(cdp, output_dir / f"robotics-terminal-userwalk-tile-{stamp}.png")
-            if not isinstance(tile, dict) or not tile.get("hasTerminal") or not tile.get("hasNpcSelect") or not tile.get("hasCommandInput"):
+            if not isinstance(tile, dict) or not tile.get("hasTerminal") or not tile.get("hasTerminalIo") or not tile.get("hasNpcSelect") or not tile.get("hasCommandInput"):
                 report["failures"].append("terminal tile controls missing")  # type: ignore[union-attr]
             if isinstance(tile, dict) and tile.get("hasJumpSelectNpc"):
                 report["failures"].append("NPC binding still jumps away")  # type: ignore[union-attr]

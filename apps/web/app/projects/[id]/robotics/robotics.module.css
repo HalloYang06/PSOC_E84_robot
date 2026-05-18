@@ -3209,6 +3209,11 @@
   color: #a8f0c6 !important;
 }
 
+.terminalDivider {
+  margin: 4px 0 2px;
+  color: rgba(247, 228, 165, 0.86) !important;
+}
+
 .terminalCommandBar {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) minmax(120px, 168px) auto;

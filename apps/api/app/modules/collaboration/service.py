@@ -3685,6 +3685,7 @@ def create_runner_command(
             recipient_type="runner",
             recipient_id=runner.id,
             status="pending",
+            metadata=payload.metadata,
         ),
         dispatch_id=dispatch.id if dispatch is not None else None,
         commit=dispatch is None,
@@ -3742,6 +3743,10 @@ def ack_runner_command(db: Session, runner_id: str, message_id: str, payload: Ru
             recipient_type="human",
             recipient_id=message.sender_id,
             status="delivered",
+            extra_data={
+                "source_message_id": message.id,
+                **_metadata_dict(message.extra_data),
+            },
         )
         db.add(ack_message)
         db.flush()
@@ -3820,6 +3825,7 @@ def complete_runner_command(db: Session, runner_id: str, message_id: str, payloa
                 "source_message_id": message.id,
                 "source_message_type": message.message_type,
                 "dispatch_id": message.dispatch_id,
+                **_metadata_dict(message.extra_data),
                 **(
                     {
                         "blocked_taxonomy": {

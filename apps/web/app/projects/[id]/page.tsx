@@ -561,6 +561,16 @@ export default async function ProjectDetailPage({
       legacy?: string;
     };
   }) {
+  if (searchParams?.legacy !== "1") {
+    const next = new URLSearchParams();
+    Object.entries(searchParams ?? {}).forEach(([key, value]) => {
+      if (key !== "legacy" && typeof value === "string" && value.trim()) {
+        next.set(key, value);
+      }
+    });
+    const suffix = next.toString();
+    redirect(`/projects/${encodeURIComponent(params.id)}/2d-upgrade${suffix ? `?${suffix}` : ""}`);
+  }
   if (searchParams?.legacy === "1") {
     const projectState = await getProjectState(params.id);
     if (projectState.status === 401) {

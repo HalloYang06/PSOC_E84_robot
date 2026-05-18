@@ -273,6 +273,18 @@ class RunnerRelayCommandCreate(BaseModel):
     runner_id: str | None = None
     computer_node_id: str | None = None
     workstation_id: str | None = None
+    metadata: dict | None = Field(default=None, alias="extra_data")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_metadata_alias(cls, value):
+        if isinstance(value, dict) and "metadata" in value and "extra_data" not in value:
+            data = dict(value)
+            data["extra_data"] = data.pop("metadata")
+            return data
+        return value
 
     @model_validator(mode="after")
     def validate_single_target(self):

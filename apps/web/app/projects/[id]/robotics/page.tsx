@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
+  getCollaborationMessagesState,
   getCurrentAuthState,
   getProjectComputerNodesState,
   getProjectState,
@@ -77,7 +78,7 @@ function terminalLines(tile: DebugWindow) {
     `$ open ${tile.name}`,
     `interface=${tile.kindLabel}  computer=${tile.computerLabel}`,
     `state=${tile.statusLabel}  mode=read-only`,
-    `npc=${tile.boundNpc || "未绑定，点击右侧选择 NPC"}`,
+    `npc=${tile.boundNpc || "未绑定，创建或设置时选择 NPC"}`,
   ];
   if (tile.kind === "can") {
     lines.push("filter=none  bitrate=待确认  sample=100Hz");
@@ -98,6 +99,41 @@ function terminalLines(tile: DebugWindow) {
     lines.push("config=等待扫描快照");
   }
   return lines;
+}
+
+function record(value: unknown): AnyRecord {
+  return value && typeof value === "object" ? value as AnyRecord : {};
+}
+
+function commandText(message: AnyRecord) {
+  const extra = record(message.extra_data ?? message.metadata);
+  const fromMeta = text(extra.terminal_command, "");
+  if (fromMeta) return fromMeta;
+  const body = text(message.body, "");
+  const match = body.match(/只读命令：(.+)/);
+  return match?.[1]?.trim() || body.split("\n").find((line) => line.includes("listen")) || "只读调试命令";
+}
+
+function terminalEventLines(tile: DebugWindow, messages: AnyRecord[]) {
+  const related = messages
+    .filter((message) => {
+      const extra = record(message.extra_data ?? message.metadata);
+      return text(extra.terminal_interface_id, "") === tile.id
+        || text(extra.source_message_id, "") && messages.some((source) => source.id === extra.source_message_id && text(record(source.extra_data ?? source.metadata).terminal_interface_id, "") === tile.id);
+    })
+    .slice(0, 8)
+    .reverse();
+  if (!related.length) {
+    return ["[terminal] 暂无输入输出。输入只读命令后，会在这里显示 queued / ack / result。"];
+  }
+  return related.map((message) => {
+    const type = text(message.message_type ?? message.messageType, "event");
+    const status = text(message.status, "open");
+    if (type === "runner_command") return `$ ${commandText(message)}  # ${status}`;
+    if (type === "runner_ack") return `[ack] ${text(message.body, "执行电脑已接单")}`;
+    if (type === "runner_result") return `[result:${status}] ${text(message.body, "执行电脑已返回结果")}`;
+    return `[${type}:${status}] ${text(message.title ?? message.body, "终端事件")}`;
+  });
 }
 
 type DebugWindow = {
@@ -212,8 +248,13 @@ export default async function ProjectRoboticsPage({
     getProjectComputerNodesState(projectId),
     getProjectThreadWorkstationsState(projectId),
   ]);
+  const messagesState = await getCollaborationMessagesState({
+    projectId,
+    limit: 200,
+  });
   const computers = asArray<AnyRecord>(computersState.data);
   const seats = asArray<AnyRecord>(seatsState.data);
+  const terminalMessages = asArray<AnyRecord>(messagesState.data);
   const windows = buildDebugWindows(computers, seats);
   const usableWindows = windows.filter((item) => item.isUsable);
   const openIds = selectedWindowIds(searchParams?.windows, windows);
@@ -245,9 +286,8 @@ export default async function ProjectRoboticsPage({
       <section className={styles.debugBody}>
         <aside className={styles.debugSidebar}>
           <div className={styles.sidebarHeader}>
-            <strong>调试窗口</strong>
-            <p>左栏只显示本项目电脑扫描到的真实调试接口；没有扫描就不建假窗口。</p>
-            <Link className={styles.batchBtn} href={`/projects/${projectId}?panel=computers`}>接入/检查电脑</Link>
+            <strong>创建调试窗口</strong>
+            <p>在当前页选择本项目电脑 runner、真实接口和协助 NPC；没有扫描结果就不创建假窗口。</p>
             <form className={styles.indexForm} action={`/projects/${projectId}/robotics`}>
               <label>
                 <span>电脑 runner / 真实接口</span>
@@ -271,7 +311,7 @@ export default async function ProjectRoboticsPage({
             </form>
           </div>
           <ul className={styles.npcList}>
-            <li className={styles.groupHeader}><span>已创建</span><strong>{windows.length}</strong></li>
+            <li className={styles.groupHeader}><span>真实接口索引</span><strong>{windows.length}</strong></li>
             {windows.map((window) => {
               const isOpen = openIds.includes(window.id);
               return (
@@ -336,6 +376,8 @@ export default async function ProjectRoboticsPage({
                   ) : null}
                   <section className={styles.terminalPane} aria-label={`${window.name} 终端`}>
                     {terminalLines(window).map((line) => <code key={line}>{line}</code>)}
+                    <code className={styles.terminalDivider}>--- I/O ---</code>
+                    {terminalEventLines(window, terminalMessages).map((line, index) => <code key={`${window.id}-event-${index}`}>{line}</code>)}
                     <code className={styles.terminalCursor}>$ _</code>
                   </section>
                   <form action={下发机器人调试命令.bind(null, projectId)} className={styles.terminalCommandBar}>

@@ -5747,6 +5747,15 @@ export async function 下发机器人调试命令(projectId: string, formData: F
       title,
       body,
       computer_node_id: computerNodeId,
+      metadata: {
+        terminal_interface_id: interfaceId,
+        terminal_interface_name: interfaceName,
+        terminal_interface_kind: interfaceKind,
+        terminal_bound_npc: boundNpc || null,
+        terminal_command: command,
+        terminal_mode: "read_only",
+        terminal_surface: "robotics",
+      },
     });
     revalidateProjectSurfaces(projectId);
     revalidatePath(`/projects/${projectId}/robotics`);
