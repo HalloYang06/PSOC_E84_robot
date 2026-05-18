@@ -332,3 +332,62 @@ def test_collaboration_message_read_and_runner_type_require_protected_paths() ->
         },
     )
     assert forged_response.status_code == 422 or forged_response.status_code == 403
+
+
+def test_robotics_npc_terminal_review_approval_queues_runner_command() -> None:
+    owner_token, project_id, runner_id, _ = _setup_runner_project()
+
+    review_response = client.post(
+        "/api/collaboration/messages",
+        headers=auth_headers(owner_token),
+        json={
+            "project_id": project_id,
+            "agent_id": "ws-relay",
+            "message_type": "robotics_terminal_npc_request",
+            "title": "NPC 代操作待审：CAN can0",
+            "body": "NPC 请求代用户发送一帧测试命令。",
+            "sender_type": "agent",
+            "sender_id": "ws-relay",
+            "recipient_type": "human",
+            "recipient_id": "project-owner",
+            "status": "pending_review",
+            "metadata": {
+                "terminal_interface_id": "pc-relay:can:can0",
+                "terminal_interface_name": "CAN · can0",
+                "terminal_interface_kind": "CAN",
+                "terminal_bound_npc_id": "ws-relay",
+                "terminal_bound_npc": "协作工位",
+                "terminal_command": "send 123#0102",
+                "terminal_mode": "npc_terminal_request",
+                "terminal_surface": "robotics",
+                "computer_node_id": "pc-relay",
+                "review_required_reason": "npc_operates_terminal",
+            },
+        },
+    )
+    assert review_response.status_code == 200
+    review_message = review_response.json()["data"]
+    assert review_message["status"] == "pending_review"
+
+    approve_response = client.post(
+        f"/api/collaboration/messages/{review_message['id']}/review/approve",
+        headers=auth_headers(owner_token),
+        json={},
+    )
+    assert approve_response.status_code == 200
+    assert approve_response.json()["data"]["status"] == "queued"
+
+    inbox_response = client.get(f"/api/runners/{runner_id}/inbox", headers={"X-Runner-Id": runner_id})
+    assert inbox_response.status_code == 200
+    inbox = inbox_response.json()["data"]
+    command = next(
+        item
+        for item in inbox
+        if item["message_type"] == "runner_command"
+        and item["metadata"]["review_message_id"] == review_message["id"]
+    )
+    assert command["recipient_id"] == runner_id
+    assert command["status"] == "pending"
+    assert "审核通过的 NPC 终端操作" in command["title"]
+    assert "send 123#0102" in command["body"]
+    assert command["metadata"]["terminal_mode"] == "npc_terminal_approved"

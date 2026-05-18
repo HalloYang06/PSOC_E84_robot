@@ -296,6 +296,8 @@ class RunnerRelayCommandCreate(BaseModel):
 
 
 class RunnerRelayMessageRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
     id: str
     project_id: str
     task_id: str | None = None
@@ -308,11 +310,9 @@ class RunnerRelayMessageRead(BaseModel):
     sender_id: str | None = None
     recipient_type: str | None = None
     recipient_id: str | None = None
+    metadata: dict | None = Field(default=None, alias="extra_data")
     created_at: datetime | None = None
     updated_at: datetime | None = None
-
-    class Config:
-        from_attributes = True
 
 
 class RunnerRelayAckCreate(BaseModel):

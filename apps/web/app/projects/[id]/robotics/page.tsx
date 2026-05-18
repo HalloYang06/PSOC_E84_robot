@@ -409,6 +409,11 @@ export default async function ProjectRoboticsPage({
                   <section className={styles.runnerGate} data-tone={window.runnerTone}>
                     <strong>{window.runnerCanDispatch ? "可立即提交" : window.runnerCanQueue ? "可排队，等电脑恢复" : "先重连执行电脑"}</strong>
                     <span>{window.runnerHint}</span>
+                    {!window.runnerCanDispatch ? (
+                      <Link href={`/projects/${projectId}?panel=team&tab=computers`} className={styles.runnerGateAction}>
+                        去电脑接入
+                      </Link>
+                    ) : null}
                   </section>
                   {settingsWindowId === window.id ? (
                     <section className={styles.settingsPanel} aria-label={`${window.name} 设置`}>
