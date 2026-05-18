@@ -150,7 +150,10 @@ def main() -> int:
 
         url = f"{web_base}/projects/{quote(args.project_id, safe='')}/robotics"
         cdp.send("Page.navigate", {"url": url})
-        wait_for(cdp, "document.readyState === 'complete' && document.body.innerText.includes('机器人现场')")
+        wait_for(
+            cdp,
+            "document.readyState === 'complete' && (document.body.innerText.includes('设备数据工作台') || document.body.innerText.includes('真实接口索引') || document.body.innerText.includes('机器人现场'))",
+        )
         first = cdp_eval(
             cdp,
             """
@@ -161,10 +164,11 @@ def main() -> int:
                 hasIndexSelect: !!document.querySelector('[class*="indexForm"] select[name="windows"]'),
                 usableOptions: Array.from(document.querySelectorAll('[class*="indexForm"] select[name="windows"] option')).filter((item) => item.value).length,
                 openButtons: document.querySelectorAll('a[aria-label^="打开 "]').length,
+                usableOpenButtons: Array.from(document.querySelectorAll('a[aria-label^="打开 "]')).filter((item) => !item.closest('[class*="openBtnDisabled"]')).length,
                 settingsButtons: document.querySelectorAll('a[aria-label^="设置 "]').length,
                 createButtonText: document.querySelector('[class*="indexForm"] button')?.innerText || '',
                 interfaceLabel: document.querySelector('[class*="indexForm"] label span')?.innerText || '',
-                hasCreateTitle: body.includes('创建调试窗口'),
+                hasCreateTitle: body.includes('创建调试窗口') || body.includes('真实接口索引') || body.includes('打开调试瓷砖'),
                 hasComputerJumpButton: Array.from(document.querySelectorAll('a')).some((a) => (a.innerText || '').includes('接入/检查电脑')),
                 hasNpcCreationSelect: !!document.querySelector('[class*="indexForm"] select[name="npc"]'),
                 disabledMarkers: document.querySelectorAll('[class*="openBtnDisabled"]').length,
@@ -177,13 +181,18 @@ def main() -> int:
         report["initial"] = first
         screenshot(cdp, output_dir / f"robotics-terminal-userwalk-initial-{stamp}.png")
 
-        if isinstance(first, dict) and int(first.get("usableOptions") or 0) > 0:
+        has_legacy_create = isinstance(first, dict) and int(first.get("usableOptions") or 0) > 0
+        has_index_open = isinstance(first, dict) and int(first.get("openButtons") or 0) > 0
+        if has_legacy_create or has_index_open:
             if first.get("hasComputerJumpButton"):
                 report["failures"].append("robotics page still has computer jump button")  # type: ignore[union-attr]
-            if not first.get("hasCreateTitle") or not first.get("hasNpcCreationSelect"):
+            if has_legacy_create and (not first.get("hasCreateTitle") or not first.get("hasNpcCreationSelect")):
                 report["failures"].append("debug window creation does not expose indexed NPC selection")  # type: ignore[union-attr]
-            click(cdp, '[class*="indexForm"] button')
-            wait_for(cdp, "location.search.includes('windows=') && document.querySelectorAll('article').length > 0")
+            if has_legacy_create:
+                click(cdp, '[class*="indexForm"] button')
+            else:
+                click(cdp, 'a[aria-label^="打开 "]')
+            wait_for(cdp, "document.body.innerText.includes('模式=用户终端') && document.querySelectorAll('article').length > 0")
             time.sleep(0.5)
             tile = cdp_eval(
                 cdp,
@@ -194,13 +203,13 @@ def main() -> int:
                   const internalMatches = Array.from(new Set(body.match(/adapter|bridge|session JSONL|local path|source_thread|canonical|requested id|raw UUID|\\brunner\\b/ig) || []));
                   return {
                     href: location.href,
-                    tileCount: document.querySelectorAll('article[class*="debugTilePanel"]').length,
+                    tileCount: document.querySelectorAll('article').length,
                     hasTerminal: body.includes('$ open') && body.includes('模式=用户终端'),
                     hasTerminalIo: body.includes('--- I/O ---') && (body.includes('[terminal]') || body.includes('[ack]') || body.includes('[result') || body.includes('# queued')),
                     hasNpcSelect: !!document.querySelector('select[name="bound_npc"]'),
                     hasCommandInput: !!document.querySelector('input[name="command"]'),
                     submitDisabled: !!form?.querySelector('button[type="submit"]')?.disabled,
-                    hasTileSettingsLink: !!document.querySelector('a[aria-label^="设置 "]'),
+                    hasTileSettingsLink: Array.from(document.querySelectorAll('button')).some((button) => (button.innerText || '').trim() === '设置'),
                     hasJumpSelectNpc: Array.from(document.querySelectorAll('a')).some((a) => (a.innerText || '').includes('选择 NPC')),
                     hasInternalTerms: internalMatches.length > 0,
                     internalMatches,
@@ -217,8 +226,15 @@ def main() -> int:
                 report["failures"].append("NPC binding still jumps away")  # type: ignore[union-attr]
             if isinstance(tile, dict) and tile.get("hasInternalTerms"):
                 report["failures"].append(f"robotics tile exposes internal terms: {tile.get('internalMatches')}")  # type: ignore[union-attr]
-            click(cdp, 'a[aria-label^="设置 "]')
-            wait_for(cdp, "location.search.includes('settings=') && document.body.innerText.includes('窗口设置')")
+            cdp.send(
+                "Runtime.evaluate",
+                {
+                    "expression": "(() => { const btn = Array.from(document.querySelectorAll('button')).find((button) => (button.innerText || '').trim() === '设置'); if (!btn) return false; btn.click(); return true; })()",
+                    "returnByValue": True,
+                    "userGesture": True,
+                },
+            )
+            wait_for(cdp, "document.body.innerText.includes('窗口设置')")
             settings_state = cdp_eval(
                 cdp,
                 """
