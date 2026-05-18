@@ -75,10 +75,12 @@ function statusLabel(status: unknown) {
 }
 
 function terminalLines(tile: DebugWindow) {
+  const dispatchMode = tile.runnerCanDispatch ? "ready" : tile.runnerCanQueue ? "queued-until-reconnect" : "blocked";
   const lines = [
     `$ open ${tile.name}`,
     `interface=${tile.kindLabel}  computer=${tile.computerLabel}`,
     `state=${tile.statusLabel}  mode=human-terminal`,
+    `dispatch=${dispatchMode}  runner=${tile.computerState}`,
     `io=read:${tile.readCapability ? "yes" : "no"}  write:${tile.writeCapabilityLabel}`,
     `npc=${tile.boundNpc || "未绑定，创建或设置时选择 NPC"}`,
   ];
@@ -126,7 +128,13 @@ function terminalEventLines(tile: DebugWindow, messages: AnyRecord[]) {
     .slice(0, 8)
     .reverse();
   if (!related.length) {
-    return ["[terminal] 暂无输入输出。用户自己输入会直接排队到执行电脑；NPC 代操作会先显示待审。"];
+    if (tile.runnerCanDispatch) {
+      return ["[terminal] 暂无输入输出。用户自己输入会直接排队到执行电脑；NPC 代操作会先显示待审。"];
+    }
+    if (tile.runnerCanQueue) {
+      return ["[terminal] 执行电脑暂不可立即接单。用户命令会进入队列，等目标 runner 恢复后再处理；NPC 代操作仍需先待审。"];
+    }
+    return ["[terminal] 执行电脑未处于可排队状态。先重连 runner，再提交用户终端命令或 NPC 代操作审核。"];
   }
   return related.map((message) => {
     const type = text(message.message_type ?? message.messageType, "event");
@@ -147,6 +155,18 @@ function seatName(seat: AnyRecord, fallback: string) {
   return text(seat.name ?? seat.label ?? seat.display_name, fallback);
 }
 
+function submitLabel(tile: DebugWindow) {
+  if (tile.runnerCanDispatch) return "提交终端请求";
+  if (tile.runnerCanQueue) return "排队等重连";
+  return "需重连";
+}
+
+function submitTitle(tile: DebugWindow) {
+  if (tile.runnerCanDispatch) return "目标电脑正在持续接单，会排队并等待最小回执";
+  if (tile.runnerCanQueue) return "目标电脑最近在线或等待恢复，命令会排队但不会假装已执行";
+  return tile.runnerHint;
+}
+
 type DebugWindow = {
   id: string;
   name: string;
@@ -155,8 +175,11 @@ type DebugWindow = {
   statusLabel: string;
   computerLabel: string;
   computerState: string;
+  runnerTone: string;
   computerNodeId: string;
   runnerReady: boolean;
+  runnerCanDispatch: boolean;
+  runnerCanQueue: boolean;
   runnerHint: string;
   transport: string;
   boundNpc: string;
@@ -187,8 +210,11 @@ function buildDebugWindows(computers: AnyRecord[], seats: AnyRecord[]): DebugWin
         statusLabel: statusLabel(item.status),
         computerLabel,
         computerState,
+        runnerTone: runnerState.tone,
         computerNodeId,
         runnerReady: runnerState.canQueue && Boolean(computerNodeId),
+        runnerCanDispatch: runnerState.canDispatch && Boolean(computerNodeId),
+        runnerCanQueue: runnerState.canQueue && Boolean(computerNodeId),
         runnerHint: runnerState.detail,
         transport: text(item.transport, "只读"),
         boundNpc: seatNames[itemIndex % Math.max(1, seatNames.length)] ?? "",
@@ -376,10 +402,14 @@ export default async function ProjectRoboticsPage({
                   <div className={styles.threadBinding}>
                     <span className={styles.threadChip}>{window.statusLabel}</span>
                     <span className={styles.threadChip}>电脑：{window.computerLabel}</span>
-                    <span className={styles.threadChip}>接单：{window.computerState}</span>
+                    <span className={styles.threadChip} data-tone={window.runnerTone}>接单：{window.computerState}</span>
                     <span className={styles.threadChip}>协助 NPC：{displayedNpc || window.boundNpc || "未绑定"}</span>
                     <Link className={styles.threadChip} href={withSettings(projectId, openIds, window.id, selectedNpc)}>设置</Link>
                   </div>
+                  <section className={styles.runnerGate} data-tone={window.runnerTone}>
+                    <strong>{window.runnerCanDispatch ? "可立即提交" : window.runnerCanQueue ? "可排队，等电脑恢复" : "先重连执行电脑"}</strong>
+                    <span>{window.runnerHint}</span>
+                  </section>
                   {settingsWindowId === window.id ? (
                     <section className={styles.settingsPanel} aria-label={`${window.name} 设置`}>
                       <strong>窗口设置</strong>
@@ -420,8 +450,8 @@ export default async function ProjectRoboticsPage({
                       })}
                     </select>
                     <input type="hidden" name="bound_npc_label" value={displayedNpc} />
-                    <button type="submit" disabled={!window.runnerReady} title={window.runnerReady ? "排队到所选执行电脑" : window.runnerHint}>
-                      {window.runnerReady ? "提交终端请求" : "需重连"}
+                    <button type="submit" disabled={!window.runnerReady} title={submitTitle(window)}>
+                      {submitLabel(window)}
                     </button>
                   </form>
                   <form action={创建机器人调试Npc操作审核.bind(null, projectId)} className={styles.npcReviewBar}>
@@ -434,8 +464,8 @@ export default async function ProjectRoboticsPage({
                     <input type="hidden" name="bound_npc_label" value={displayedNpc} />
                     <span>NPC 代操作待审</span>
                     <input name="command" placeholder="只有 NPC/AI 想替你操作时才填这里，例如 send 123#0102" />
-                    <button type="submit" disabled={!window.runnerReady || !selectedNpc}>
-                      提交审核
+                    <button type="submit" disabled={!window.runnerReady || !selectedNpc} title={selectedNpc ? submitTitle(window) : "先选择负责这个调试窗口的 NPC"}>
+                      {window.runnerReady ? "提交审核" : "需重连"}
                     </button>
                   </form>
                 </article>
