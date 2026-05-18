@@ -139,20 +139,6 @@ const reviewActionRows = [
   ["固件 / 驱动 / 部署", "强审", "先给仿真或台架计划，执行前回工作台审批。", "审批固件动作"],
 ];
 
-const debugActors = [
-  ["主角", "设备调试工程师", "负责判断、审批和现场安全"],
-  ["负责 NPC", "机器人现场 NPC", "整理只读记录、生成任务包"],
-  ["执行电脑", "Linux / NanoPi / Runner", "只读采集 CAN、串口、USB、ROS"],
-];
-
-const debugObjects = [
-  ["CAN 总线", "can0", "500k / 1M 待验", "ready"],
-  ["串口", "ttyUSB0", "115200 8N1", "ready"],
-  ["USB 设备", "USB-CAN / 调试器", "枚举中", "warn"],
-  ["ROS 只读桥", "/joint_states / /tf", "只读", "ready"],
-  ["数据采样", "100-500 Hz", "入数据工场", "ready"],
-];
-
 const debugModes = [
   ["can", "CAN 调试", "帧流、ID、decoder、采样频率"],
   ["serial", "串口调试", "日志、帧解析、波特率、只读采集"],
@@ -404,22 +390,6 @@ export default async function ProjectRoboticsPage({
         </section>
 
         <section className={styles.deviceDebugIde} aria-label="设备调试 IDE">
-          <aside className={styles.debugLeftPane}>
-            <div className={styles.debugPaneTitle}><span>对象树</span><strong>现场对象</strong></div>
-            <div className={styles.debugActorList}>
-              {debugActors.map(([role, name, detail]) => (
-                <article key={role}><span>{role}</span><strong>{name}</strong><p>{detail}</p></article>
-              ))}
-            </div>
-            <div className={styles.debugObjectTree}>
-              {debugObjects.map(([name, port, detail, state]) => (
-                <Link key={name} href={name.includes("CAN") ? debugModeHref("can") : name.includes("串口") ? debugModeHref("serial") : name.includes("USB") ? debugModeHref("usb") : debugModeHref("ros")} data-state={state}>
-                  <strong>{name}</strong><small>{port}</small><em>{detail}</em>
-                </Link>
-              ))}
-            </div>
-          </aside>
-
           <section className={styles.debugCenterPane}>
             <div className={styles.debugWorkbenchHeader}>
               <div><span>调试参数</span><strong>只读 · {samplingDraft.rate} · {samplingDraft.window}</strong></div>
@@ -459,17 +429,6 @@ export default async function ProjectRoboticsPage({
               <p>写 CAN、串口写命令、ROS publish/service/action、firmware 烧录和真实运动都不会在这里直接执行。</p>
             </div>
           </section>
-
-          <aside className={styles.debugRightPane}>
-            <div className={styles.debugPaneTitle}><span>右侧工具</span><strong>动作 / 属性 / 记录</strong></div>
-            <div className={styles.debugModeList}>
-              {debugModes.map(([mode, label, detail]) => (
-                <Link key={mode} href={debugModeHref(mode)} data-active={debugMode === mode ? "1" : undefined}><strong>{label}</strong><p>{detail}</p></Link>
-              ))}
-            </div>
-            <div className={styles.debugPropertyBox}><span>当前权限</span><strong>只读 / L0</strong><p>AI 和 NPC 只能辅助解释、生成采样任务、整理审批卡，不能替人执行硬件写入。</p></div>
-            <div className={styles.debugPropertyBox}><span>采样策略</span><strong>{samplingDraft.rate} · {samplingDraft.window}</strong><p>{samplingDraft.title}：{samplingDraft.schema}</p></div>
-          </aside>
         </section>
 
         <section className={styles.ideTwoColumns} id="safety">
