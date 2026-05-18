@@ -713,7 +713,7 @@
 }
 .queueItem {
   display: grid;
-  grid-template-columns: 36px 1fr auto;
+  grid-template-columns: 36px minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 8px;
   padding: 4px 6px;
@@ -755,6 +755,25 @@
 .queueStatus[data-status="in_progress"]   { background: rgba(22, 119, 255, 0.28);  color: #e6f4ff; }
 .queueStatus[data-status="pending"]       { background: rgba(255, 169, 64, 0.18);  color: #ffe2b3; }
 .queueStatus[data-status="pending_review"]{ background: rgba(255, 169, 64, 0.32);  color: #ffe2b3; }
+.queueArchiveBtn {
+  min-height: 22px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  border: 1px solid rgba(127, 184, 255, 0.28);
+  background: rgba(127, 184, 255, 0.1);
+  color: #d8ecff;
+  font-size: 10px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.queueArchiveBtn:hover:not(:disabled) {
+  background: rgba(127, 184, 255, 0.2);
+  color: #f4ffff;
+}
+.queueArchiveBtn:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
 .queueRight {
   display: flex;
   align-items: center;

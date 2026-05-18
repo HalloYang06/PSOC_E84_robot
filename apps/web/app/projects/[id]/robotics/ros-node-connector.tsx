@@ -31,8 +31,8 @@ const diagnosticsFeeds = [
 ];
 
 const exportTargets = [
-  ["送数据工场", "传感器样本、manifest、质量检查"],
-  ["去 AI 实验室", "回放、对齐、仿真计划"],
+  ["进入数据标注", "传感器样本、manifest、质量检查"],
+  ["进入图表实验", "回放、对齐、仿真计划"],
   ["回 NPC 工作台", "提交最小回执、阻塞、审批需求"],
 ];
 
@@ -79,14 +79,14 @@ export function RosNodeConnector() {
       },
       sensorChannels: sensorChannels.map(([label, topic, use]) => ({ label, topic, use })),
       dataFactoryRouting: {
-        destination: "数据工场",
+        destination: "设备数据工作台",
         manifest: "artifacts/robotics/arm-sensor-manifest.json",
         qualityChecks: ["timestamp_continuity", "topic_presence", "force_spike", "current_overload", "privacy"],
       },
       runnerTask: `连接 ${readonlyEndpoint}，只读扫描 ${robotId} 的模型、TF、joint_states、电流、力矩/末端力、IMU 和相机 topic；只采集传感器数据，不执行 publish/service/action。`,
       npcPrompt: missing.length
         ? `ROS 接入缺少 ${missing.join(", ")}。请给出最小修复计划，说明应该在哪台执行电脑或 ROS 主机补齐。`
-        : "机械臂 ROS 只读接入 topic 已齐，请确认是否可以进入 3D 可视化、波形监控和数据工场采集。",
+        : "机械臂 ROS 只读接入 topic 已齐，请确认是否可以进入 3D 可视化、波形监控和设备数据采集。",
       receiptRequired: ["connection_health", "topic_inventory", "sensor_manifest", "missing_topics", "final_status"],
     };
   }
@@ -154,7 +154,7 @@ export function RosNodeConnector() {
         <article>
           <strong>下一步去向</strong>
           <span>{packetPreview.dataFactoryRouting.destination}</span>
-          <small>证据优先送数据工场，回放与仿真去 AI 实验室。</small>
+          <small>证据优先进入数据标注，回放与仿真进入图表实验。</small>
         </article>
         <article>
           <strong>最小回执</strong>

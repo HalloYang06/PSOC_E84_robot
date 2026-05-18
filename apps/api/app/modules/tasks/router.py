@@ -190,6 +190,12 @@ def api_task_cancel(task_id: str, payload: TaskActionRequest, request: Request, 
     return ok(run_named_task_action(db, task_id, "cancel", payload))
 
 
+@router.post("/{task_id}/archive")
+def api_task_archive(task_id: str, payload: TaskActionRequest, request: Request, db: Session = Depends(get_db)):
+    resolve_task_write_principal(db, request, task_id, action="task.archive")
+    return ok(run_named_task_action(db, task_id, "archive", payload))
+
+
 @router.post("/{task_id}/review")
 def api_task_review(task_id: str, payload: TaskActionRequest, request: Request, db: Session = Depends(get_db)):
     resolve_task_write_principal(db, request, task_id, action="task.review")

@@ -37,6 +37,18 @@ function record(value: unknown): AnyRecord {
   return value && typeof value === "object" ? (value as AnyRecord) : {};
 }
 
+function stringList(...values: unknown[]) {
+  const items: string[] = [];
+  values.forEach((value) => {
+    const raw = Array.isArray(value) ? value : typeof value === "string" ? value.split(/[\n,]/) : [];
+    raw.forEach((item) => {
+      const next = text(item, "");
+      if (next && !items.includes(next)) items.push(next);
+    });
+  });
+  return items;
+}
+
 function statusText(value: unknown) {
   return text(value, "").toLowerCase();
 }
@@ -114,13 +126,13 @@ function safeProjectReturnPath(projectId: string, value: unknown) {
 
 function labelProjectReturnPath(value: string) {
   if (value.includes("/2d-upgrade")) return "← 返回主页面";
-  if (value.includes("/datasets")) return "← 返回数据工场";
-  if (value.includes("/ai-lab")) return "← 返回 AI 实验室";
-  if (value.includes("/robotics")) return "← 返回机器人现场";
-  if (value.includes("/observability")) return "← 返回观测台";
+  if (value.includes("/datasets")) return "← 返回设备数据工作台";
+  if (value.includes("/ai-lab")) return "← 返回设备数据工作台";
+  if (value.includes("/robotics")) return "← 返回设备数据工作台";
+  if (value.includes("/observability")) return "← 返回公司层";
   if (value.includes("/skill-forge")) return "← 返回能力工坊";
   if (value.includes("/company")) return "← 返回公司层";
-  if (value.includes("/workbench")) return "← 返回工作台";
+  if (value.includes("/workbench")) return "← 返回 NPC 工作台";
   return "← 返回来源";
 }
 
@@ -314,7 +326,20 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
     const providerId = platformProviderIdFromSeat(seat) || text(seat.provider_id ?? seat.providerId, "");
     const providerLabel = publicProviderLabel(text(seat.provider_label ?? seat.providerLabel ?? providerId, providerId));
     const responsibility = text(seat.responsibility ?? seat.body, "待分配职责");
-    const skillLoadout = asArray<string>(seat.skill_loadout ?? seat.skillLoadout).map((s) => String(s)).filter(Boolean);
+    const meta = record(seat.metadata);
+    const extra = record(seat.extra_data ?? seat.extraData);
+    const skillLoadout = stringList(
+      seat.skill_loadout,
+      seat.skillLoadout,
+      meta.skill_loadout,
+      meta.skillLoadout,
+      meta.additional_skill_ids,
+      meta.additionalSkillIds,
+      extra.skill_loadout,
+      extra.skillLoadout,
+      extra.additional_skill_ids,
+      extra.additionalSkillIds,
+    );
     const inheritedSkills = workstationId
       ? (inheritedSkillsByWorkstation.get(workstationId) ?? [])
       : computerNodeId
@@ -328,8 +353,6 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
     const knowledgeSummary = text(seat.knowledge_summary ?? seat.knowledgeSummary, "");
     const model = text(seat.model, "");
     const permissionLevel = text(seat.permission_level ?? seat.permissionLevel, "");
-    const meta = record(seat.metadata);
-    const extra = record(seat.extra_data ?? seat.extraData);
     const adapterConfig = adapterConfigBySeatId.get(rowId || id) ?? adapterConfigBySeatId.get(id) ?? {};
     const automationEnabled = Boolean(
       seat.automation_enabled

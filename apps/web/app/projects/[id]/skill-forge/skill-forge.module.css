@@ -1,240 +1,19 @@
-.shell {
-  --bg: #041018;
-  --panel: rgba(7, 25, 34, 0.86);
-  --panel-strong: rgba(10, 36, 48, 0.94);
-  --line: rgba(108, 226, 238, 0.18);
-  --line-strong: rgba(117, 247, 221, 0.38);
-  --text: #ecffff;
-  --muted: rgba(205, 232, 238, 0.68);
-  --accent: #75f7dd;
-  --accent-blue: #5ad7ff;
-  --warn: #ffd166;
-  min-height: 100vh;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  overflow: hidden;
-  background:
-    linear-gradient(90deg, rgba(117, 247, 221, 0.06) 1px, transparent 1px),
-    linear-gradient(180deg, rgba(117, 247, 221, 0.04) 1px, transparent 1px),
-    radial-gradient(circle at 18% 0%, rgba(90, 215, 255, 0.18), transparent 34%),
-    radial-gradient(circle at 82% 10%, rgba(255, 209, 102, 0.1), transparent 24%),
-    var(--bg);
-  background-size: 34px 34px, 34px 34px, auto, auto, auto;
-  color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-}
-
 .emptyPage {
   min-height: 100vh;
   display: grid;
   place-content: center;
   gap: 14px;
-  background: var(--bg);
-  color: var(--text);
+  background: #041018;
+  color: #ecffff;
 }
 
-.shell a,
 .emptyPage a {
   color: inherit;
 }
 
-.topbar {
-  min-height: 52px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--line);
-  background: rgba(4, 16, 24, 0.9);
-  backdrop-filter: blur(16px);
-}
-
-.topbar nav,
-.topbar div {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-
-.topbar a,
-.topbar span {
-  min-height: 30px;
-  display: inline-flex;
-  align-items: center;
-  padding: 6px 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: rgba(117, 247, 221, 0.07);
-  color: rgba(236, 255, 255, 0.86);
-  text-decoration: none;
-  font-size: 12px;
-  transition: transform 150ms ease, border-color 150ms ease, background 150ms ease;
-}
-
-.topbar a:hover,
-.toolPanel a:hover,
-.materialRows button:hover {
-  transform: translateY(-1px);
-  border-color: var(--line-strong);
-  background: rgba(117, 247, 221, 0.13);
-}
-
-.workbenchLayout {
-  min-height: 0;
-  display: grid;
-  grid-template-columns: 260px minmax(0, 1fr) 300px;
-  gap: 12px;
-  padding: 12px;
-  overflow: hidden;
-}
-
-.leftRail,
-.centerPane,
-.rightRail {
-  min-height: 0;
-  display: grid;
-  gap: 10px;
-}
-
-.leftRail,
-.rightRail {
-  align-content: start;
-  overflow: auto;
-}
-
-.centerPane {
-  grid-template-rows: auto minmax(0, 1fr) minmax(168px, 0.42fr);
-  overflow: hidden;
-}
-
-.actorCard,
-.indexPanel,
-.mainSurface,
-.materialSurface,
-.toolPanel,
-.drawerPanel {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: linear-gradient(180deg, rgba(10, 36, 48, 0.9), rgba(5, 18, 28, 0.86));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-}
-
-.actorCard {
-  display: grid;
-  gap: 6px;
-  padding: 12px;
-  border-left: 3px solid rgba(90, 215, 255, 0.7);
-}
-
-.actorCard[data-kind="lead"] {
-  border-left-color: var(--warn);
-  background:
-    linear-gradient(135deg, rgba(255, 209, 102, 0.12), transparent 45%),
-    var(--panel-strong);
-}
-
-.actorCard span,
-.indexPanel > span,
-.debugToolbar span,
-.surfaceHead span,
-.toolPanel span,
-.drawerPanel summary span,
-.bottomDock span,
-.skillGrid span,
-.materialRows span,
-.drawerRows span {
-  color: var(--accent);
-  font-size: 11px;
-  font-weight: 900;
-}
-
-.actorCard strong {
-  font-size: 15px;
-}
-
-.actorCard small,
-.indexPanel small,
-.surfaceHead p,
-.skillGrid p,
-.materialRows p,
-.drawerRows p,
-.bottomDock p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-.indexPanel {
-  display: grid;
-  gap: 1px;
-  padding: 10px;
-  background: rgba(117, 247, 221, 0.08);
-}
-
-.indexPanel > span {
-  padding: 2px 2px 8px;
-}
-
-.indexPanel article {
-  display: grid;
-  gap: 4px;
-  padding: 9px;
-  background: rgba(4, 16, 24, 0.78);
-  border-left: 2px solid rgba(117, 247, 221, 0.28);
-}
-
-.indexPanel strong {
-  color: rgba(236, 255, 255, 0.9);
-  font-size: 12px;
-  line-height: 1.35;
-}
-
-.debugToolbar {
-  min-height: 42px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  overflow: auto hidden;
-  padding: 8px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: rgba(3, 13, 20, 0.74);
-}
-
-.debugToolbar small {
-  white-space: nowrap;
-  padding: 5px 8px;
-  border: 1px solid rgba(117, 247, 221, 0.16);
-  border-radius: 999px;
-  color: rgba(205, 232, 238, 0.75);
-  font-size: 11px;
-}
-
-.mainSurface,
-.materialSurface {
-  min-height: 0;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  overflow: hidden;
-}
-
-.surfaceHead {
-  display: grid;
-  gap: 5px;
-  padding: 12px;
-  border-bottom: 1px solid var(--line);
-}
-
-.surfaceHead strong {
-  font-size: 18px;
-  letter-spacing: 0;
-}
-
 .skillGrid {
   min-height: 0;
+  flex: 1;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
@@ -253,19 +32,142 @@
   background: rgba(4, 16, 24, 0.72);
 }
 
+.skillGrid .editorCard {
+  border-color: rgba(255, 209, 102, 0.28);
+  background: rgba(24, 18, 7, 0.46);
+}
+
+.skillGrid .depositCard {
+  border-color: rgba(90, 215, 255, 0.24);
+  background: rgba(5, 20, 30, 0.7);
+}
+
+.skillGrid span,
+.materialRows span {
+  color: #75f7dd;
+  font-size: 11px;
+  font-weight: 900;
+}
+
 .skillGrid strong,
-.materialRows strong,
-.drawerRows strong {
+.materialRows strong {
+  color: #ecffff;
   font-size: 13px;
   line-height: 1.35;
 }
 
+.skillGrid p,
+.materialRows p {
+  margin: 0;
+  color: rgba(205, 232, 238, 0.68);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.skillGrid small,
+.materialRows small {
+  color: #ffd166;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.depositCard ul {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.depositCard li {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr);
+  gap: 6px;
+  align-items: center;
+  color: rgba(205, 232, 238, 0.72);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.depositCard code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #ecffff;
+  font-family: inherit;
+  font-size: 11px;
+}
+
+.inlineAction {
+  display: flex;
+}
+
+.stackForm {
+  display: grid;
+  gap: 7px;
+}
+
+.stackForm label {
+  display: grid;
+  gap: 4px;
+  color: rgba(205, 232, 238, 0.72);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.stackForm input,
+.stackForm textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid rgba(117, 247, 221, 0.2);
+  border-radius: 8px;
+  background: rgba(2, 9, 14, 0.82);
+  color: #ecffff;
+  font: inherit;
+  font-size: 12px;
+  padding: 7px 8px;
+  outline: none;
+}
+
+.stackForm input:focus,
+.stackForm textarea:focus {
+  border-color: rgba(117, 247, 221, 0.58);
+}
+
+.stackForm button,
+.inlineAction button {
+  min-height: 28px;
+  padding: 5px 8px;
+  border: 1px solid rgba(117, 247, 221, 0.38);
+  border-radius: 8px;
+  background: rgba(117, 247, 221, 0.1);
+  color: #75f7dd;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+  transition: transform 140ms ease, border-color 140ms ease, background 140ms ease;
+}
+
+.stackForm button {
+  justify-self: start;
+}
+
+.stackForm button:hover,
+.inlineAction button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(117, 247, 221, 0.62);
+  background: rgba(117, 247, 221, 0.16);
+}
+
 .materialRows {
-  min-height: 0;
+  flex-shrink: 0;
   display: grid;
   gap: 8px;
-  padding: 10px;
+  max-height: 148px;
   overflow: auto;
+  padding: 0 10px 10px;
 }
 
 .materialRows article {
@@ -279,200 +181,9 @@
   background: rgba(4, 16, 24, 0.72);
 }
 
-.materialRows article[data-registered="1"] {
-  border-color: rgba(255, 209, 102, 0.28);
-}
-
-.materialRows form {
-  display: flex;
-}
-
-.materialRows button,
-.materialRows small {
-  min-width: 58px;
-  min-height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 6px 10px;
-  border: 1px solid var(--line-strong);
-  border-radius: 8px;
-  background: rgba(117, 247, 221, 0.1);
-  color: var(--accent);
-  font: inherit;
-  font-size: 12px;
-  font-weight: 900;
-}
-
-.materialRows button {
-  cursor: pointer;
-}
-
-.materialRows small {
-  border-color: rgba(255, 209, 102, 0.32);
-  background: rgba(255, 209, 102, 0.1);
-  color: var(--warn);
-}
-
-.toolPanel {
-  display: grid;
-  gap: 8px;
-  padding: 10px;
-}
-
-.toolPanel a {
-  min-height: 36px;
-  display: flex;
-  align-items: center;
-  padding: 8px 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: rgba(117, 247, 221, 0.07);
-  text-decoration: none;
-  font-size: 12px;
-  font-weight: 800;
-  transition: transform 150ms ease, border-color 150ms ease, background 150ms ease;
-}
-
-.drawerPanel {
-  overflow: hidden;
-}
-
-.drawerPanel summary {
-  min-height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 10px;
-  cursor: pointer;
-  list-style: none;
-}
-
-.drawerPanel summary::-webkit-details-marker {
-  display: none;
-}
-
-.drawerPanel summary strong {
-  color: var(--warn);
-  font-size: 12px;
-}
-
-.drawerPanel dl,
-.drawerRows {
-  display: grid;
-  gap: 1px;
-  margin: 0;
-  padding: 0 10px 10px;
-  background: rgba(117, 247, 221, 0.08);
-}
-
-.drawerPanel dl div,
-.drawerRows article {
-  display: grid;
-  gap: 4px;
-  padding: 9px;
-  background: rgba(4, 16, 24, 0.78);
-}
-
-.drawerPanel dl div {
-  grid-template-columns: 1fr auto;
-}
-
-.drawerPanel dt {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.drawerPanel dd {
-  margin: 0;
-  color: var(--text);
-  font-size: 12px;
-  font-weight: 900;
-}
-
-.bottomDock {
-  min-height: 88px;
-  max-height: 138px;
-  display: grid;
-  grid-template-columns: 160px repeat(4, minmax(0, 1fr));
-  gap: 8px;
-  padding: 10px 12px;
-  overflow: auto hidden;
-  border-top: 1px solid var(--line);
-  background: rgba(3, 13, 20, 0.9);
-}
-
-.bottomDock > div,
-.bottomDock article {
-  min-width: 160px;
-  display: grid;
-  align-content: start;
-  gap: 4px;
-  padding: 9px;
-  border: 1px solid rgba(117, 247, 221, 0.14);
-  border-radius: 8px;
-  background: rgba(10, 36, 48, 0.72);
-}
-
-.bottomDock strong {
-  font-size: 12px;
-  line-height: 1.35;
-}
-
-@media (max-width: 1180px) {
-  .shell {
-    overflow: auto;
-  }
-
-  .workbenchLayout {
-    min-height: auto;
-    grid-template-columns: 220px minmax(0, 1fr);
-    overflow: visible;
-  }
-
-  .rightRail {
-    grid-column: 1 / -1;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    overflow: visible;
-  }
-
-  .centerPane {
-    min-height: 720px;
-  }
-}
-
 @media (max-width: 760px) {
-  .shell {
-    min-height: 100vh;
-    overflow: auto;
-  }
-
-  .topbar {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .workbenchLayout {
-    grid-template-columns: 1fr;
-  }
-
-  .centerPane {
-    min-height: 760px;
-  }
-
-  .rightRail,
-  .skillGrid {
-    grid-template-columns: 1fr;
-  }
-
+  .skillGrid,
   .materialRows article {
     grid-template-columns: 1fr;
-  }
-
-  .bottomDock {
-    grid-template-columns: 1fr;
-    max-height: none;
-    overflow: visible;
   }
 }

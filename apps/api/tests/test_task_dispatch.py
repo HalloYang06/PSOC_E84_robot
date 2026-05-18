@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from app.db.models.collaboration_message import CollaborationMessage
 from app.db.session import SessionLocal
 from app.main import app
-from tests.helpers import auth_headers, create_project, create_task, issue_session_token
+from tests.helpers import auth_headers, create_project, create_requirement, create_task, issue_session_token
 
 
 client = TestClient(app)
@@ -274,3 +274,58 @@ def test_task_dispatch_requires_existing_workstation() -> None:
     )
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "WORKSTATION_NOT_FOUND"
+
+
+def test_done_need_and_task_can_be_archived_without_deleting_evidence() -> None:
+    owner_token, owner_user_id = issue_session_token(client)
+    project = create_project(client, owner_token, name_prefix="Queue Archive")
+    project_id = project["id"]
+    task = create_task(client, owner_token, project_id, title="Finished queue task", status="running")
+
+    done_response = client.post(
+        f"/api/tasks/{task['id']}/transition",
+        headers=auth_headers(owner_token),
+        json={"status": "done", "actor_type": "human", "actor_id": owner_user_id, "message": "done with GitHub evidence"},
+    )
+    assert done_response.status_code == 200, done_response.text
+    assert done_response.json()["data"]["status"] == "done"
+
+    archive_task_response = client.post(
+        f"/api/tasks/{task['id']}/archive",
+        headers=auth_headers(owner_token),
+        json={"actor_type": "human", "actor_id": owner_user_id, "message": "clear current queue only"},
+    )
+    assert archive_task_response.status_code == 200, archive_task_response.text
+    assert archive_task_response.json()["data"]["status"] == "archived"
+
+    open_requirement = create_requirement(
+        client,
+        owner_token,
+        project_id=project_id,
+        task_id=task["id"],
+        title="Open need should stay visible",
+        status="waiting_response",
+    )
+    blocked_archive_response = client.post(
+        f"/api/requirements/{open_requirement['id']}/archive",
+        headers=auth_headers(owner_token),
+        json={"actor_type": "human", "actor_id": owner_user_id},
+    )
+    assert blocked_archive_response.status_code == 409
+    assert blocked_archive_response.json()["error"]["code"] == "REQUIREMENT_NOT_DONE"
+
+    close_response = client.post(
+        f"/api/requirements/{open_requirement['id']}/close",
+        headers=auth_headers(owner_token),
+        json={"actor_type": "human", "actor_id": owner_user_id, "note": "satisfied"},
+    )
+    assert close_response.status_code == 200, close_response.text
+    assert close_response.json()["data"]["status"] == "closed"
+
+    archive_requirement_response = client.post(
+        f"/api/requirements/{open_requirement['id']}/archive",
+        headers=auth_headers(owner_token),
+        json={"actor_type": "human", "actor_id": owner_user_id, "note": "clear current queue only"},
+    )
+    assert archive_requirement_response.status_code == 200, archive_requirement_response.text
+    assert archive_requirement_response.json()["data"]["status"] == "archived"

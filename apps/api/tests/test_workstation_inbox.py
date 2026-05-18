@@ -1692,6 +1692,90 @@ def test_seat_queues_split_my_needs_from_my_tasks() -> None:
     assert queue_b_data["my_needs"]["count"] == 0
     assert queue_b_data["my_tasks"]["count"] == 0
 
+    close_response = client.post(
+        f"/api/requirements/{need_response.json()['data']['id']}/close",
+        headers=auth_headers(owner_token),
+        json={"actor_type": "human", "actor_id": owner_user_id, "note": "review done"},
+    )
+    assert close_response.status_code == 200, close_response.text
+    archive_response = client.post(
+        f"/api/requirements/{need_response.json()['data']['id']}/archive",
+        headers=auth_headers(owner_token),
+        json={"actor_type": "human", "actor_id": owner_user_id, "note": "clear current queue only"},
+    )
+    assert archive_response.status_code == 200, archive_response.text
+
+    queue_after_archive = client.get(
+        f"/api/seats/seat-split-a/queues?project_id={project_id}&limit=20",
+        headers=auth_headers(owner_token),
+    )
+    assert queue_after_archive.status_code == 200
+    assert queue_after_archive.json()["data"]["my_needs"]["count"] == 0
+
+
+def test_seat_task_queue_matches_npc_seat_identity_without_agent() -> None:
+    owner_token, owner_user_id = issue_session_token(client)
+    project = create_project(
+        client,
+        owner_token,
+        name_prefix="Seat Identity Task Queue",
+        collaboration_config={
+            "thread_workstations": [
+                {
+                    "id": "seat-identity-a",
+                    "config_id": "identity-config-a",
+                    "name": "Identity A",
+                    "status": "active",
+                }
+            ],
+        },
+    )
+    project_id = project["id"]
+    add_project_member(client, project_id, owner_token, owner_user_id, role="owner", is_owner=True)
+    with SessionLocal() as db:
+        seat = db.query(ProjectThreadWorkstation).filter_by(project_id=project_id, config_id="seat-identity-a").one()
+        seat_id = str(seat.id)
+        seat.config_id = "identity-config-a"
+        db.add(seat)
+        db.commit()
+
+    task_by_seat_id = client.post(
+        "/api/tasks",
+        headers=auth_headers(owner_token),
+        json={
+            "project_id": project_id,
+            "title": "Task indexed to NPC seat id",
+            "description": "Created from a default NPC task receipt path.",
+            "module": "queue",
+            "priority": "P1",
+            "status": "queued",
+            "assignee_agent_id": seat_id,
+        },
+    )
+    assert task_by_seat_id.status_code == 200, task_by_seat_id.text
+    task_by_config_id = client.post(
+        "/api/tasks",
+        headers=auth_headers(owner_token),
+        json={
+            "project_id": project_id,
+            "title": "Task indexed to NPC config id",
+            "description": "Created from another NPC task receipt path.",
+            "module": "queue",
+            "priority": "P2",
+            "status": "queued",
+            "assignee_agent_id": "identity-config-a",
+        },
+    )
+    assert task_by_config_id.status_code == 200, task_by_config_id.text
+
+    queue = client.get(
+        f"/api/seats/{seat_id}/queues?project_id={project_id}&limit=20",
+        headers=auth_headers(owner_token),
+    )
+    assert queue.status_code == 200
+    titles = {item["title"] for item in queue.json()["data"]["my_tasks"]["items"]}
+    assert titles == {"Task indexed to NPC seat id", "Task indexed to NPC config id"}
+
 
 def test_structured_need_queue_includes_pre_route_statuses() -> None:
     owner_token, owner_user_id = issue_session_token(client)

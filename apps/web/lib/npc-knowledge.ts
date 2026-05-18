@@ -6,6 +6,10 @@ export type NpcKnowledgeProfile = {
   title: string;
   summary: string;
   handoff_path: string;
+  knowledge_deposit_path: string;
+  skill_deposit_path: string;
+  need_deposit_path: string;
+  task_deposit_path: string;
   tags: string[];
   continuity_mode: "persistent_npc_identity";
   continuity_note: string;
@@ -82,6 +86,22 @@ export function defaultNpcKnowledgeHandoffPath(slug: string) {
   return `docs/ai-handoffs/npc-memory/${slug}.md`;
 }
 
+export function defaultNpcKnowledgeDepositPath(slug: string) {
+  return `docs/npc-knowledge/${slug}/`;
+}
+
+export function defaultNpcSkillDepositPath(slug: string) {
+  return `skills/npc-authored/${slug}/`;
+}
+
+export function defaultNpcNeedDepositPath(slug: string) {
+  return `docs/npc-requests/${slug}/needs/`;
+}
+
+export function defaultNpcTaskDepositPath(slug: string) {
+  return `docs/npc-requests/${slug}/tasks/`;
+}
+
 export function defaultNpcKnowledgeSummary(options: {
   name?: string | null;
   responsibility?: string | null;
@@ -96,6 +116,10 @@ export function buildNpcKnowledgeProfile(options: {
   knowledgeTitle?: string | null;
   knowledgeSummary?: string | null;
   knowledgeHandoffPath?: string | null;
+  knowledgeDepositPath?: string | null;
+  skillDepositPath?: string | null;
+  needDepositPath?: string | null;
+  taskDepositPath?: string | null;
   knowledgeTags?: string[] | string | null;
   name?: string | null;
   responsibility?: string | null;
@@ -103,6 +127,10 @@ export function buildNpcKnowledgeProfile(options: {
 }) {
   const slug = defaultNpcKnowledgeSlug(options);
   const handoffPath = text(options.knowledgeHandoffPath, defaultNpcKnowledgeHandoffPath(slug));
+  const knowledgeDepositPath = text(options.knowledgeDepositPath, defaultNpcKnowledgeDepositPath(slug));
+  const skillDepositPath = text(options.skillDepositPath, defaultNpcSkillDepositPath(slug));
+  const needDepositPath = text(options.needDepositPath, defaultNpcNeedDepositPath(slug));
+  const taskDepositPath = text(options.taskDepositPath, defaultNpcTaskDepositPath(slug));
   const title = cleanKnowledgeText(options.knowledgeTitle, `${text(options.name, "NPC")} 固定知识库`);
   const summary = cleanKnowledgeText(options.knowledgeSummary, defaultNpcKnowledgeSummary(options));
   const tags = Array.from(
@@ -118,6 +146,10 @@ export function buildNpcKnowledgeProfile(options: {
     title,
     summary,
     handoff_path: handoffPath,
+    knowledge_deposit_path: knowledgeDepositPath,
+    skill_deposit_path: skillDepositPath,
+    need_deposit_path: needDepositPath,
+    task_deposit_path: taskDepositPath,
     tags,
     continuity_mode: "persistent_npc_identity" as const,
     continuity_note:
@@ -149,6 +181,10 @@ export function resolveNpcKnowledgeProfile(
     knowledgeTitle: text(stored.title),
     knowledgeSummary: text(stored.summary),
     knowledgeHandoffPath: text(stored.handoff_path),
+    knowledgeDepositPath: text(stored.knowledge_deposit_path),
+    skillDepositPath: text(stored.skill_deposit_path),
+    needDepositPath: text(stored.need_deposit_path),
+    taskDepositPath: text(stored.task_deposit_path),
     knowledgeTags: stored.tags,
   });
 }

@@ -1722,14 +1722,26 @@ def add_requirement_progress_ack(
 
 def run_requirement_action(db: Session, requirement_id: str, action: str, payload: RequirementActionRequest):
     requirement = get_requirement_or_404(db, requirement_id)
-    status_map = {"accept": "accepted", "escalate": "escalated", "close": "closed"}
+    status_map = {"accept": "accepted", "escalate": "escalated", "close": "closed", "archive": "archived"}
     audit_map = {
         "accept": "requirement.accepted",
         "escalate": "requirement.escalated",
         "close": "requirement.closed",
+        "archive": "requirement.archived",
     }
     if action not in status_map:
         raise AppError("BAD_REQUEST", f"unsupported requirement action: {action}", status_code=400)
+    if action == "archive" and str(requirement.status or "").strip().lower() not in {
+        "done",
+        "answered",
+        "completed",
+        "accepted",
+        "closed",
+        "rejected",
+        "cancelled",
+        "archived",
+    }:
+        raise AppError("REQUIREMENT_NOT_DONE", "只有已完成或已关闭的需求才能从当前队列归档", status_code=409)
     before = {"status": requirement.status}
     requirement.status = payload.status or status_map[action]
     db.add(requirement)

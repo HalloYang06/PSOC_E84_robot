@@ -21,6 +21,8 @@ from .schemas import (
 )
 from .service import (
     assign_seat_skill,
+    delete_knowledge_document,
+    delete_project_skill,
     list_knowledge_documents,
     list_project_skills,
     list_seat_skill_assignments,
@@ -94,9 +96,21 @@ def api_upsert_project_knowledge_document(
     request: Request,
     db: Session = Depends(get_db),
 ):
-    resolve_project_write_principal(db, request, project_id, require_privileged=True, action="knowledge.documents.write")
+    resolve_project_write_principal(db, request, project_id, require_privileged=False, action="knowledge.documents.write")
     item = upsert_knowledge_document(db, project_id, payload)
     return ok(KnowledgeDocumentRead.model_validate(item).model_dump(mode="json", by_alias=True))
+
+
+@router.delete("/projects/{project_id}/documents/{document_id:path}")
+def api_delete_project_knowledge_document(
+    project_id: str,
+    document_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    resolve_project_write_principal(db, request, project_id, require_privileged=False, action="knowledge.documents.write")
+    delete_knowledge_document(db, project_id, document_id)
+    return ok({"deleted": True, "document_id": document_id})
 
 
 @router.get("/projects/{project_id}/skills")
@@ -112,9 +126,21 @@ def api_upsert_project_skill(
     request: Request,
     db: Session = Depends(get_db),
 ):
-    resolve_project_write_principal(db, request, project_id, require_privileged=True, action="knowledge.skills.write")
+    resolve_project_write_principal(db, request, project_id, require_privileged=False, action="knowledge.skills.write")
     item = upsert_project_skill(db, project_id, payload)
     return ok(ProjectSkillRead.model_validate(item).model_dump(mode="json", by_alias=True))
+
+
+@router.delete("/projects/{project_id}/skills/{skill_id}")
+def api_delete_project_skill(
+    project_id: str,
+    skill_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    resolve_project_write_principal(db, request, project_id, require_privileged=False, action="knowledge.skills.write")
+    delete_project_skill(db, project_id, skill_id)
+    return ok({"deleted": True, "skill_id": skill_id})
 
 
 @router.get("/projects/{project_id}/seat-skill-assignments")

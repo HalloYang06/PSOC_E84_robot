@@ -804,7 +804,7 @@ export function WorkbenchClient({
     if (typed) return typed;
     const haystack = `${projectName} ${projectDescription} ${projectGithubUrl} ${projectLocalPath}`.toLowerCase();
     if (projectId === "proj_ai_collab" || haystack.includes("ai合作") || haystack.includes("ai collab") || haystack.includes("collaboration platform")) {
-      return "把平台推进成 AI 项目公司控制台：用户提出目标和边界，Boss/NPC 自动拆分、执行、回执和验收；同级工作台覆盖数据工场、AI 实验室、机器人现场和观测台，机器人开发作为重点模板但不固定死为机器人专用系统。";
+      return "把平台推进成 AI 项目公司控制台：用户提出目标和边界，Boss/NPC 自动拆分、执行、回执和验收；同级工作台覆盖公司层、设备数据工作台和能力工坊，机器人开发只是重点模板但不固定死为机器人专用系统。";
     }
     if (haystack.includes("yuespeak") || haystack.includes("english_a_agent") || haystack.includes("粤听说")) {
       return "推进当前教育语音项目的可交付 MVP：完成题库建设、学生录音上传、音频质检、识别初稿、人工标注、审核、数据集导出和基线评测闭环。";
@@ -824,16 +824,16 @@ export function WorkbenchClient({
           repoPaths: ["docs/platform-ai-work-structure.md", "docs/npc-workbench-structure-contract.md", "docs/ai-requirements"],
         },
         {
-          role: "数据工场 / 采集标注 AI 化",
+          role: "设备数据工作台 / 数据标注",
           keywords: ["data", "dataset", "数据", "标注", "采集", "qa", "manifest", "export"],
           skills: ["dataset-workbench", "annotation-workflow", "quality-review"],
-          repoPaths: ["apps/web/app/projects/[id]/datasets", "apps/api/app/modules/tasks", "docs/platform-ai-work-structure.md"],
+          repoPaths: ["apps/web/app/projects/[id]/robotics", "apps/api/app/modules/tasks", "docs/platform-agent-operating-architecture.md"],
         },
         {
-          role: "AI 实验室 / 仿真训练闭环",
+          role: "设备数据工作台 / 图表实验",
           keywords: ["ai", "lab", "实验", "训练", "评估", "仿真", "回放", "模型"],
           skills: ["experiment-workflow", "simulation-replay", "model-evaluation"],
-          repoPaths: ["apps/web/app/projects/[id]/ai-lab", "apps/api/app/modules/tasks", "docs/platform-ai-work-structure.md"],
+          repoPaths: ["apps/web/app/projects/[id]/robotics", "apps/api/app/modules/tasks", "docs/platform-agent-operating-architecture.md"],
         },
         {
           role: "机器人现场 / ROS 电机只读诊断",
@@ -842,10 +842,10 @@ export function WorkbenchClient({
           repoPaths: ["apps/web/app/projects/[id]/robotics", "apps/api/app/modules/collaboration", "docs/platform-ai-work-structure.md"],
         },
         {
-          role: "观测台 / 全链路验收",
+          role: "公司层 / 全链路验收",
           keywords: ["qa", "验收", "测试", "playwright", "验证", "截图", "观测", "审计"],
           skills: ["acceptance-test", "browser-validation", "risk-check"],
-          repoPaths: ["apps/web/app/projects/[id]/observability", "scripts/validate-professional-surfaces-fullchain-cdp.py", "scripts/validate-five-workbench-click-chain-cdp.py"],
+          repoPaths: ["apps/web/app/projects/[id]/company", "scripts/validate-professional-surfaces-fullchain-cdp.py", "scripts/validate-five-workbench-click-chain-cdp.py"],
         },
       ];
     }
@@ -1129,7 +1129,7 @@ export function WorkbenchClient({
       ...bossPlan.contract.knowledgePaths.map((item) => `- ${item}`),
       "",
       "Boss 下一步：",
-      "- 先把当前平台目标拆成可验收的数据工场、AI 实验室、机器人现场、观测台薄片。",
+      "- 先把当前平台目标拆成可验收的 NPC 工作台、设备数据工作台、公司层和能力工坊薄片。",
       "- 只给已绑定线程的 NPC 派发可执行任务。",
       "- 未绑定 NPC 只生成上岗包、能力包、知识库和线程提示。",
       "- 收到回执后再判断是否需要跨工位转交。",
@@ -1306,32 +1306,18 @@ export function WorkbenchClient({
             </Link>
           )}
           <Link
-            href={withReturnTo(`/projects/${projectId}/datasets`, sourcePath, sourceKey)}
-            className={styles.backLink}
-            title="打开训练数据采集、标注、质检和导出工作台"
-          >
-            数据工场 →
-          </Link>
-          <Link
-            href={withReturnTo(`/projects/${projectId}/ai-lab`, sourcePath, sourceKey)}
-            className={styles.backLink}
-            title="打开 AI 调试、仿真和审批边界工作台"
-          >
-            AI 实验室 →
-          </Link>
-          <Link
             href={withReturnTo(`/projects/${projectId}/robotics`, sourcePath, sourceKey)}
             className={styles.backLink}
-            title="打开 App、Linux、ROS、硬件和 VLA 机器人现场"
+            title="打开终端、数据标注和图表实验合一的设备数据工作台"
           >
-            机器人现场 →
+            设备数据工作台 →
           </Link>
           <Link
-            href={withReturnTo(`/projects/${projectId}/observability`, sourcePath, sourceKey)}
+            href={withReturnTo(`/projects/${projectId}/company`, sourcePath, sourceKey)}
             className={styles.backLink}
-            title="打开派单、回执、待审、执行电脑和风险观测台"
+            title="打开公司运行态势图、审核和证据摘要"
           >
-            观测台 →
+            公司层 →
           </Link>
           <Link
             href={withReturnTo(`/projects/${projectId}/skill-forge`, sourcePath, sourceKey)}

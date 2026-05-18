@@ -133,8 +133,11 @@ def _requirement_summary(r: Requirement) -> dict[str, object]:
 
 
 def _list_todo(db: Session, seat: ProjectThreadWorkstation, *, limit: int) -> list[dict[str, object]]:
-    """任务队列：assignee_agent_id = seat.agent_id 的未结 task（兼容当前数据模型；
-    蓝图里"assignee_seat_id"留待后续迁移加列）。"""
+    """我的任务：承接方是这个 NPC 坐席的未结 task。
+
+    过渡期 Task 仍只有 assignee_agent_id 字段，所以这里同时兼容真实 Agent ID
+    和 NPC 坐席自己的 id/config_id；线程/runner/电脑不能被当作 NPC 身份。
+    """
     if not seat.project_id:
         return []
     candidates = _seat_identity_values(seat)
@@ -142,6 +145,7 @@ def _list_todo(db: Session, seat: ProjectThreadWorkstation, *, limit: int) -> li
     if seat.agent_id:
         conditions.append(Task.assignee_agent_id == seat.agent_id)
     if candidates:
+        conditions.append(Task.assignee_agent_id.in_(list(candidates)))
         linked_task_ids = [
             str(event.task_id)
             for event in db.scalars(

@@ -1,7 +1,7 @@
 ﻿"use server";
 
 import { createHash } from "node:crypto";
-import { closeSync, mkdirSync, openSync } from "node:fs";
+import { closeSync, mkdirSync, openSync, type Dirent } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { execFileSync, spawn } from "node:child_process";
@@ -51,10 +51,12 @@ import {
   platformProviderEndpoint,
   platformProviderIdFromSeat,
   platformProviderLabel,
+  isNpcSeatRecord,
   seatTypeForProvider,
   supportsLocalCodexAutonomyBridge,
 } from "../lib/platform-provider";
 import {
+  DEFAULT_PLATFORM_SKILL_LIBRARY,
   RESERVED_PLATFORM_SKILL_IDS,
   mergePlatformSkillLoadout,
   splitPlatformSkillLoadout,
@@ -221,6 +223,10 @@ async function deleteJson(path: string) {
     throw error;
   }
   return res.json();
+}
+
+function encodeRepoPathForRoute(value: string) {
+  return value.split("/").map((part) => encodeURIComponent(part)).join("/");
 }
 
 function text(value: unknown, fallback = "") {
@@ -2053,6 +2059,10 @@ async function ensureNpcKnowledgeDoc(options: {
   responsibility: string;
   projectId: string;
   additionalSkillIds: string[];
+  knowledgeDepositPath?: string | null;
+  skillDepositPath?: string | null;
+  needDepositPath?: string | null;
+  taskDepositPath?: string | null;
   providerLabel?: string | null;
   sourceWorkstationId?: string | null;
   computerNodeId?: string | null;
@@ -2074,6 +2084,10 @@ async function ensureNpcKnowledgeDoc(options: {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   const role = options.responsibility || "待分配职责";
   const skillLine = options.additionalSkillIds.length ? options.additionalSkillIds.join(", ") : "No add-on skills yet";
+  const knowledgeDepositPath = repoRelativePath(options.knowledgeDepositPath) || `docs/npc-knowledge/${displaySlug(options.seatName, "npc")}/`;
+  const skillDepositPath = repoRelativePath(options.skillDepositPath) || `skills/npc-authored/${displaySlug(options.seatName, "npc")}/`;
+  const needDepositPath = repoRelativePath(options.needDepositPath) || `docs/npc-requests/${displaySlug(options.seatName, "npc")}/needs/`;
+  const taskDepositPath = repoRelativePath(options.taskDepositPath) || `docs/npc-requests/${displaySlug(options.seatName, "npc")}/tasks/`;
   const collabProtocol = resolvePlatformCollabProtocol(options.collabProtocol, {
     roleText: role,
     threadText: options.seatName,
@@ -2125,6 +2139,18 @@ NPC role: ${role}
 ## Add-on skills
 
 - ${skillLine}
+
+## Default deposit paths
+
+- Reusable knowledge deposit: ${knowledgeDepositPath}
+- NPC-authored skill deposit: ${skillDepositPath}
+- Need deposit: ${needDepositPath}
+- Task receipt deposit: ${taskDepositPath}
+- Write reusable discoveries and operating notes under the knowledge deposit path before asking the platform to index them.
+- Write reusable skills as \`SKILL.md\` folders under the skill deposit path before asking the platform to index them.
+- Write new needs under the need deposit path with required capability, expected output, risk, and preferred target if known.
+- Write task receipts under the task deposit path with changed files, validation, evidence, and next step.
+- Use GitHub repo-relative paths only; do not record another computer's absolute local path as shared truth.
 
 ## Continuation notes
 
@@ -2255,6 +2281,10 @@ async function ensureCodexSeatAutonomyBridge(options: {
   responsibility?: string | null;
   sourceWorkstationId?: string | null;
   handoffPath: string;
+  knowledgeDepositPath?: string | null;
+  skillDepositPath?: string | null;
+  needDepositPath?: string | null;
+  taskDepositPath?: string | null;
   computerNodeId?: string | null;
   model?: string | null;
   additionalSkillIds: string[];
@@ -2263,6 +2293,10 @@ async function ensureCodexSeatAutonomyBridge(options: {
 }) {
   await ensureNpcKnowledgeDoc({
     handoffPath: options.handoffPath,
+    knowledgeDepositPath: options.knowledgeDepositPath,
+    skillDepositPath: options.skillDepositPath,
+    needDepositPath: options.needDepositPath,
+    taskDepositPath: options.taskDepositPath,
     seatName: options.seatName,
     responsibility: text(options.responsibility, ""),
     projectId: options.projectId,
@@ -2296,6 +2330,10 @@ function buildCodexThreadLaunchPrompt(options: {
   responsibility?: string | null;
   sourceWorkstationId: string;
   handoffPath: string;
+  knowledgeDepositPath?: string | null;
+  skillDepositPath?: string | null;
+  needDepositPath?: string | null;
+  taskDepositPath?: string | null;
   workstationName?: string | null;
   workstationKnowledgePath?: string | null;
   npcKnowledgeSummary?: string | null;
@@ -2310,6 +2348,10 @@ function buildCodexThreadLaunchPrompt(options: {
   const writePaths = options.writePaths.length ? options.writePaths.join(", ") : "only files assigned by Boss NPC";
   const workstationKnowledgePath = repoRelativePath(options.workstationKnowledgePath) || "docs/workstations/<logical-workstation>.md";
   const npcHandoffPath = repoRelativePath(options.handoffPath);
+  const knowledgeDepositPath = repoRelativePath(options.knowledgeDepositPath) || `docs/npc-knowledge/${displaySlug(options.seatName, "npc")}/`;
+  const skillDepositPath = repoRelativePath(options.skillDepositPath) || `skills/npc-authored/${displaySlug(options.seatName, "npc")}/`;
+  const needDepositPath = repoRelativePath(options.needDepositPath) || `docs/npc-requests/${displaySlug(options.seatName, "npc")}/needs/`;
+  const taskDepositPath = repoRelativePath(options.taskDepositPath) || `docs/npc-requests/${displaySlug(options.seatName, "npc")}/tasks/`;
   const sameWorkstationDirectory = options.sameWorkstationDirectory?.length
     ? options.sameWorkstationDirectory.join("；")
     : "暂无同工位伙伴；有缺口先回 Boss NPC 或工位长";
@@ -2339,6 +2381,16 @@ function buildCodexThreadLaunchPrompt(options: {
     `- 工位知识库: ${workstationKnowledgePath}`,
     `- NPC 知识库: ${npcHandoffPath}`,
     options.npcKnowledgeSummary ? `- NPC 长期记忆摘要: ${options.npcKnowledgeSummary}` : "- NPC 长期记忆摘要: 先阅读 NPC 知识库后补齐",
+    "",
+    "默认沉淀路径（平台会从这些 GitHub 相对路径索引到能力工坊）:",
+    `- 可复用知识写到: ${knowledgeDepositPath}`,
+    `- 自造 Skill 写到: ${skillDepositPath}`,
+    `- 我提出的需求写到: ${needDepositPath}`,
+    `- 我承接任务的回执写到: ${taskDepositPath}`,
+    "- 知识条目优先写成 Markdown；Skill 优先写成独立目录里的 SKILL.md。",
+    "- Need 文件必须写清 required capability、expected output、risk、建议承接 NPC；Task 回执必须写清 changed files、validated、evidence、next。",
+    "- 写完后在最终回执里列出 repo-relative path，平台会把知识/Skill 归入能力工坊，把 Need/Task 归入 NPC 工作台供用户分配、归档或删除索引。",
+    "- 不要把 D:\\、/home/、runner 缓存路径写成共享知识或 Skill 来源。",
     "",
     "协作规则:",
     "- 只使用 Codex，本项目禁止切到 Claude 线程。",
@@ -2429,6 +2481,51 @@ function resolveNpcSourceThreadContext(project: any, formData: FormData) {
     model,
     threadName: text(matched?.name ?? matched?.workstation_name, "") || null,
   };
+}
+
+async function createSkillForgeHumanReviewRequest(options: {
+  projectId: string;
+  senderId: string | null;
+  title: string;
+  targetLabel: string;
+  actionSummary: string;
+  reason: string;
+  metadata?: Record<string, unknown>;
+}) {
+  const body = [
+    "能力工坊配置更新需要人工确认，平台没有直接改动 NPC 上岗包。",
+    "",
+    `配置对象: ${options.targetLabel}`,
+    `请求动作: ${options.actionSummary}`,
+    `需要确认: ${options.reason}`,
+    "",
+    "人工审核动作建议:",
+    "1. 确认这个 NPC 是否应该获得该能力或知识库。",
+    "2. 如果会影响正在执行的任务，先等任务结束或明确刷新下一轮上岗包。",
+    "3. 通过后再由能力工坊重新执行绑定动作。",
+  ].join("\n");
+  await postJson("/api/collaboration/messages", {
+    project_id: options.projectId,
+    message_type: "human_review_request",
+    title: `人工确认：${options.title}`,
+    body,
+    sender_type: "human",
+    sender_id: options.senderId,
+    recipient_type: "project",
+    recipient_id: options.projectId,
+    status: "pending_human_review",
+    extra_data: {
+      schema: "skill_forge_review_v1",
+      ...options.metadata,
+    },
+  });
+}
+
+function isHumanApprovalError(error: unknown) {
+  const err = error as (Error & { status?: number; code?: string }) | null;
+  const code = text(err?.code, "");
+  const message = text(err?.message, "");
+  return code === "HUMAN_APPROVAL_REQUIRED" || err?.status === 403 || /人工确认|项目负责人|审批|审核/.test(message);
 }
 
 function resolveNpcCollabProtocol(formData: FormData, options: {
@@ -2574,6 +2671,10 @@ async function ensureNpcSeatContinuity(options: {
   responsibility?: string | null;
   sourceWorkstationId?: string | null;
   handoffPath: string;
+  knowledgeDepositPath?: string | null;
+  skillDepositPath?: string | null;
+  needDepositPath?: string | null;
+  taskDepositPath?: string | null;
   computerNodeId?: string | null;
   model?: string | null;
   additionalSkillIds: string[];
@@ -2589,6 +2690,10 @@ async function ensureNpcSeatContinuity(options: {
       responsibility: options.responsibility,
       sourceWorkstationId: options.sourceWorkstationId,
       handoffPath: options.handoffPath,
+      knowledgeDepositPath: options.knowledgeDepositPath,
+      skillDepositPath: options.skillDepositPath,
+      needDepositPath: options.needDepositPath,
+      taskDepositPath: options.taskDepositPath,
       computerNodeId: options.computerNodeId,
       model: options.model,
       additionalSkillIds: options.additionalSkillIds,
@@ -2609,6 +2714,10 @@ async function ensureNpcSeatContinuity(options: {
     });
     await ensureNpcKnowledgeDoc({
       handoffPath: options.handoffPath,
+      knowledgeDepositPath: options.knowledgeDepositPath,
+      skillDepositPath: options.skillDepositPath,
+      needDepositPath: options.needDepositPath,
+      taskDepositPath: options.taskDepositPath,
       seatName: options.seatName,
       responsibility: text(options.responsibility, ""),
       projectId: options.projectId,
@@ -2645,6 +2754,10 @@ async function ensureNpcSeatContinuity(options: {
 
   await ensureNpcKnowledgeDoc({
     handoffPath: options.handoffPath,
+    knowledgeDepositPath: options.knowledgeDepositPath,
+    skillDepositPath: options.skillDepositPath,
+    needDepositPath: options.needDepositPath,
+    taskDepositPath: options.taskDepositPath,
     seatName: options.seatName,
     responsibility: text(options.responsibility, ""),
     projectId: options.projectId,
@@ -3162,6 +3275,9 @@ function revalidateProjectSurfaces(projectId: string) {
   revalidatePath(`/projects/${projectId}`);
   revalidatePath(`/projects/${projectId}/2d-upgrade`);
   revalidatePath(`/projects/${projectId}/workbench`);
+  revalidatePath(`/projects/${projectId}/skill-forge`);
+  revalidatePath(`/projects/${projectId}/company`);
+  revalidatePath(`/projects/${projectId}/robotics`);
   revalidatePath("/projects");
   revalidatePath("/projects/mode-choice");
   revalidatePath("/projects/mode-choice/2d-edu");
@@ -4307,18 +4423,364 @@ export async function 删除项目Skill(projectId: string, skillId: string, form
     const nextSkills = skillLibrary.filter(
       (item) => String(item.id ?? "").trim().toLowerCase() !== normalizedId,
     );
-
     await patchJson(`/api/projects/${projectId}`, {
       collaboration_config: {
         ...collaborationConfig,
         skill_library: sortProjectSkillLibrary(nextSkills),
       },
     });
+    if (normalizedId) {
+      try {
+        await deleteJson(`/api/knowledge/projects/${projectId}/skills/${encodeURIComponent(normalizedId)}`);
+      } catch (error) {
+        const err = error as (Error & { status?: number; code?: string }) | null;
+        if (err?.status !== 404 && err?.code !== "SKILL_NOT_FOUND") throw error;
+      }
+    }
     revalidateProjectSurfaces(projectId);
     redirect(withQueryValue(returnTo, "team_notice", "项目 Skill 已删除"));
   } catch (error) {
     rethrowRedirectError(error);
     const message = error instanceof Error ? error.message : "删除项目 Skill 失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
+export async function 保存能力工坊知识库(projectId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "skill-forge");
+  try {
+    await ensureProjectCollaborationAccess(projectId);
+    const title = text(formData.get("title"), "");
+    const repoRelativePathValue = repoRelativePath(formData.get("repo_relative_path"));
+    const scope = text(formData.get("scope"), "project") || "project";
+    const ownerType = text(formData.get("owner_type"), "");
+    const ownerId = text(formData.get("owner_id"), "");
+    const summary = text(formData.get("summary"), "");
+    const tags = parseStringList(formData.get("tags")) ?? [];
+    const authorSeatId = text(formData.get("author_seat_id"), "");
+    const sourceMessageId = text(formData.get("created_from_message_id"), "");
+    if (!title) throw new Error("请填写知识库标题");
+    if (!repoRelativePathValue) throw new Error("请填写仓库相对路径");
+
+    await postJson(`/api/knowledge/projects/${projectId}/documents`, {
+      title,
+      repo_relative_path: repoRelativePathValue,
+      scope,
+      owner_type: ownerType || null,
+      owner_id: ownerId || null,
+      exists_in_repo: readBooleanFormField(formData, "exists_in_repo", false),
+      summary,
+      tags,
+      extra_data: {
+        author_seat_id: authorSeatId || null,
+        created_from_message_id: sourceMessageId || null,
+        source: authorSeatId ? "npc-authored" : "human-authored",
+        updated_from: "skill-forge",
+        updated_at: new Date().toISOString(),
+      },
+    });
+    revalidateProjectSurfaces(projectId);
+    redirect(withQueryValue(returnTo, "team_notice", `已保存知识库：${title}`));
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "保存知识库失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
+export async function 删除能力工坊知识库(projectId: string, documentId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "skill-forge");
+  try {
+    await ensureProjectCollaborationAccess(projectId);
+    const normalizedId = text(documentId || formData.get("document_id"), "");
+    if (!normalizedId) throw new Error("请先选择知识库");
+    await deleteJson(`/api/knowledge/projects/${projectId}/documents/${encodeRepoPathForRoute(normalizedId)}`);
+    revalidateProjectSurfaces(projectId);
+    redirect(withQueryValue(returnTo, "team_notice", "知识库条目已删除"));
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "删除知识库失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
+async function safeRepoFileCandidates(relativeDir: string, options: { maxFiles?: number; fileNames?: string[]; extensions?: string[] } = {}) {
+  const relative = repoRelativePath(relativeDir).replace(/\/+$/, "");
+  if (!relative || relative.includes("..") || /^[a-zA-Z]:\//.test(relative)) return [];
+  const root = workspaceRoot();
+  const dirPath = path.resolve(root, relative);
+  const normalizedRoot = root.replace(/\\/g, "/").toLowerCase();
+  const normalizedDir = dirPath.replace(/\\/g, "/").toLowerCase();
+  if (!normalizedDir.startsWith(normalizedRoot)) return [];
+  const maxFiles = Math.max(1, Math.min(options.maxFiles ?? 12, 30));
+  const fileNames = new Set((options.fileNames ?? []).map((item) => item.toLowerCase()));
+  const extensions = new Set((options.extensions ?? [".md", ".mdx"]).map((item) => item.toLowerCase()));
+  const found: Array<{ relativePath: string; name: string; content: string }> = [];
+
+  async function walk(current: string) {
+    if (found.length >= maxFiles) return;
+    let entries: Dirent[];
+    try {
+      entries = await fs.readdir(current, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (found.length >= maxFiles) break;
+      if (entry.name.startsWith(".")) continue;
+      const fullPath = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        await walk(fullPath);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      const lower = entry.name.toLowerCase();
+      if (fileNames.size ? !fileNames.has(lower) : !extensions.has(path.extname(lower))) continue;
+      const relativePath = path.relative(root, fullPath).replace(/\\/g, "/");
+      let content = "";
+      try {
+        content = await fs.readFile(fullPath, "utf8");
+      } catch {}
+      found.push({ relativePath, name: entry.name, content });
+    }
+  }
+
+  await walk(dirPath);
+  return found;
+}
+
+function markdownTitle(content: string, fallback: string) {
+  const heading = content.split(/\r?\n/).find((line) => /^#\s+/.test(line.trim()));
+  return text(heading?.replace(/^#\s+/, ""), fallback);
+}
+
+function markdownSummary(content: string, fallback: string) {
+  const line = content
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .find((item) => item && !item.startsWith("#") && !item.startsWith("---"));
+  return text(line, fallback).slice(0, 260);
+}
+
+function markdownBullets(content: string, fallback: string[] = []) {
+  const bullets = content
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter((item) => /^[-*]\s+/.test(item))
+    .map((item) => item.replace(/^[-*]\s+/, "").trim())
+    .filter(Boolean)
+    .slice(0, 8);
+  return bullets.length ? bullets : fallback;
+}
+
+function markdownField(content: string, names: string[], fallback = "") {
+  const normalizedNames = names.map((item) => item.toLowerCase());
+  for (const rawLine of content.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    const match = line.match(/^[-*]?\s*([^:：]+)\s*[:：]\s*(.+)$/);
+    if (!match) continue;
+    const key = match[1].trim().toLowerCase();
+    if (normalizedNames.some((name) => key === name || key.includes(name))) {
+      return text(match[2], fallback);
+    }
+  }
+  return fallback;
+}
+
+function fileAlreadyIndexed(items: Record<string, unknown>[], repoPath: string) {
+  const normalized = repoRelativePath(repoPath).toLowerCase();
+  return items.some((item) => {
+    const extra = readRecord(item.extra_data ?? item.extraData ?? item.metadata);
+    return [
+      item.repo_relative_path,
+      item.repoRelativePath,
+      item.path,
+      item.related_issue,
+      item.relatedIssue,
+      extra.repo_relative_path,
+      extra.repoRelativePath,
+      extra.source_file,
+      extra.sourceFile,
+      ...normalizeUnknownStringList(item.related_files),
+      ...normalizeUnknownStringList(item.relatedFiles),
+      ...normalizeUnknownStringList(extra.related_files),
+      ...normalizeUnknownStringList(extra.relatedFiles),
+    ].some((candidate) => repoRelativePath(candidate).toLowerCase() === normalized);
+  });
+}
+
+export async function 索引Npc沉淀(projectId: string, seatId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "skill-forge");
+  try {
+    await ensureProjectCollaborationAccess(projectId);
+    const normalizedSeatId = text(seatId || formData.get("seat_id"), "");
+    if (!normalizedSeatId) throw new Error("请先选择 NPC");
+
+    const seatsResult = await getJson(`/api/collaboration/projects/${projectId}/thread-workstations`);
+    const seats = asArray<Record<string, unknown>>(seatsResult?.data ?? seatsResult);
+    const seat = seats.find((item) =>
+      isNpcSeatRecord(item) &&
+      (
+        workstationLookupKeys(item).some((candidate) => candidate === normalizedSeatId) ||
+        seatIdentityValues(item).some((candidate) => candidate === normalizedSeatId)
+      ),
+    ) ?? null;
+    if (!seat) throw new Error("没有找到这个 NPC，不能把线程或电脑当作 NPC 索引");
+
+    const metadata = readRecord(seat.metadata ?? seat.extra_data ?? seat.extraData);
+    const npcKnowledge = buildNpcKnowledgeProfile({
+      seatId: text(seat.row_id ?? seat.rowId ?? seat.id ?? seat.config_id, normalizedSeatId),
+      name: text(seat.name ?? seat.workstation_name, "NPC"),
+      responsibility: text(seat.responsibility ?? metadata.responsibility, ""),
+      knowledgeSlug: text(readRecord(metadata.npc_knowledge).slug ?? metadata.npc_identity_key, "").replace(/^npc:/, "") || null,
+      knowledgeSummary: text(readRecord(metadata.npc_knowledge).summary, "") || null,
+      knowledgeHandoffPath: text(readRecord(metadata.npc_knowledge).handoff_path, "") || null,
+      knowledgeDepositPath: text(readRecord(metadata.npc_knowledge).knowledge_deposit_path, "") || null,
+      skillDepositPath: text(readRecord(metadata.npc_knowledge).skill_deposit_path, "") || null,
+      needDepositPath: text(readRecord(metadata.npc_knowledge).need_deposit_path, "") || null,
+      taskDepositPath: text(readRecord(metadata.npc_knowledge).task_deposit_path, "") || null,
+      knowledgeTags: normalizeUnknownStringList(readRecord(metadata.npc_knowledge).tags),
+    });
+    const seatRecordId = text(seat.row_id ?? seat.rowId ?? seat.id ?? seat.config_id, normalizedSeatId);
+    const seatName = text(seat.name ?? seat.workstation_name, "该 NPC");
+
+    const knowledgeFiles = await safeRepoFileCandidates(npcKnowledge.knowledge_deposit_path, { maxFiles: 12, extensions: [".md", ".mdx"] });
+    const skillFiles = await safeRepoFileCandidates(npcKnowledge.skill_deposit_path, { maxFiles: 12, fileNames: ["skill.md"] });
+    const needFiles = await safeRepoFileCandidates(npcKnowledge.need_deposit_path, { maxFiles: 12, extensions: [".md", ".mdx", ".json"] });
+    const taskFiles = await safeRepoFileCandidates(npcKnowledge.task_deposit_path, { maxFiles: 12, extensions: [".md", ".mdx", ".json"] });
+    const [requirementsResult, tasksResult] = await Promise.all([
+      getJson(`/api/requirements?project_id=${encodeURIComponent(projectId)}`),
+      getJson(`/api/tasks?project_id=${encodeURIComponent(projectId)}&page_size=100`),
+    ]);
+    const existingRequirements = asArray<Record<string, unknown>>(requirementsResult?.data ?? requirementsResult);
+    const existingTasks = asArray<Record<string, unknown>>(tasksResult?.data ?? tasksResult);
+    let knowledgeCount = 0;
+    let skillCount = 0;
+    let needCount = 0;
+    let taskCount = 0;
+
+    for (const file of knowledgeFiles) {
+      await postJson(`/api/knowledge/projects/${projectId}/documents`, {
+        title: markdownTitle(file.content, `${seatName} 沉淀知识`),
+        repo_relative_path: file.relativePath,
+        scope: "npc",
+        owner_type: "seat",
+        owner_id: seatRecordId,
+        exists_in_repo: true,
+        summary: markdownSummary(file.content, "NPC 从工作中沉淀的知识条目。"),
+        tags: uniqueStrings(["npc-authored", npcKnowledge.slug, ...npcKnowledge.tags]),
+        extra_data: {
+          author_seat_id: seatRecordId,
+          source: "npc-authored",
+          indexed_from: "npc-deposit-path",
+          indexed_at: new Date().toISOString(),
+        },
+      });
+      knowledgeCount += 1;
+    }
+
+    for (const file of skillFiles) {
+      const skillId = slugifyAscii(`${npcKnowledge.slug}-${path.basename(path.dirname(file.relativePath))}`, `skill-${skillCount + 1}`);
+      await postJson(`/api/knowledge/projects/${projectId}/skills`, {
+        skill_id: skillId,
+        label: markdownTitle(file.content, `${seatName} 自造 Skill`),
+        source: "npc-authored",
+        category: "npc-authored",
+        repo_relative_path: file.relativePath,
+        description: markdownSummary(file.content, "NPC 从工作中沉淀的可复用 Skill。"),
+        recommended_for: [seatName],
+        exists_in_repo: true,
+        extra_data: {
+          author_seat_id: seatRecordId,
+          draft_status: "draft",
+          source: "npc-authored",
+          indexed_from: "npc-deposit-path",
+          indexed_at: new Date().toISOString(),
+        },
+      });
+      await postJson(`/api/knowledge/projects/${projectId}/seat-skill-assignments`, {
+        seat_id: seatRecordId,
+        skill_id: skillId,
+        assignment_type: "npc-authored-draft",
+        status: "draft",
+        notes: "从该 NPC 默认 Skill 写入目录索引，确认后可设为 active。",
+        extra_data: {
+          author_seat_id: seatRecordId,
+          indexed_from: "npc-deposit-path",
+        },
+      });
+      skillCount += 1;
+    }
+
+    for (const file of needFiles) {
+      if (fileAlreadyIndexed(existingRequirements, file.relativePath)) continue;
+      const title = markdownTitle(file.content, `${seatName} 提出的需求`);
+      const requiredCapability = markdownField(file.content, ["required capability", "required_capability", "需要能力", "能力"], "待平台路由判断");
+      const expectedOutput = markdownField(file.content, ["expected output", "expected_output", "期望产出", "输出"], markdownSummary(file.content, "等待补齐期望产出。"));
+      const riskLevel = markdownField(file.content, ["risk", "risk_level", "风险"], "low").toLowerCase();
+      const priority = markdownField(file.content, ["priority", "优先级"], "P2").toUpperCase();
+      const contextSummary = [
+        markdownField(file.content, ["why", "why_needed", "为什么"], markdownSummary(file.content, "NPC 从默认需求目录提交的需求。")),
+        "",
+        `需要能力：${requiredCapability}`,
+        `风险级别：${["low", "medium", "high", "critical"].includes(riskLevel) ? riskLevel : "low"}`,
+        `期望产出：${expectedOutput}`,
+        `证据路径：${file.relativePath}`,
+        "验收标准：",
+        ...markdownBullets(file.content, [expectedOutput]).map((item) => `- ${item}`),
+      ].join("\n").trim();
+      await postJson(`/api/requirements`, {
+        project_id: projectId,
+        title,
+        requirement_type: "npc_structured_need",
+        module: markdownField(file.content, ["module", "模块"], "") || null,
+        priority: /^P[0-3]$/.test(priority) ? priority : "P2",
+        status: ["high", "critical"].includes(riskLevel) ? "needs_human_review" : "ready_to_route",
+        from_agent: seatRecordId,
+        to_agent: markdownField(file.content, ["suggested assignee", "suggested_assignee", "建议承接"], "") || null,
+        context_summary: contextSummary,
+        expected_output: expectedOutput,
+        related_files: [file.relativePath],
+        opening_message: contextSummary,
+        target_seat_id: markdownField(file.content, ["suggested assignee", "suggested_assignee", "建议承接"], "") || null,
+        trigger_kind: "manual",
+      });
+      needCount += 1;
+    }
+
+    for (const file of taskFiles) {
+      if (fileAlreadyIndexed(existingTasks, file.relativePath)) continue;
+      const title = markdownTitle(file.content, `${seatName} 任务回执`);
+      const status = markdownField(file.content, ["status", "状态"], "done").toLowerCase();
+      await postJson(`/api/tasks`, {
+        project_id: projectId,
+        title,
+        description: [
+          markdownSummary(file.content, "NPC 从默认任务回执目录提交的回执。"),
+          "",
+          `证据路径：${file.relativePath}`,
+        ].join("\n").trim(),
+        module: markdownField(file.content, ["module", "模块"], "") || "npc-receipt",
+        priority: markdownField(file.content, ["priority", "优先级"], "P2").toUpperCase(),
+        status: ["draft", "ready", "running", "reviewing", "blocked", "done", "failed", "cancelled"].includes(status) ? status : "done",
+        related_issue: file.relativePath,
+        assignee_agent_id: text(seat.agent_id, seatRecordId),
+        acceptance_criteria: markdownBullets(file.content, ["回执必须引用证据路径和验证结果。"]),
+      });
+      taskCount += 1;
+    }
+
+    revalidateProjectSurfaces(projectId);
+    let nextPath = withQueryValue(
+      returnTo,
+      "team_notice",
+      `已索引 ${knowledgeCount} 条知识、${skillCount} 个 Skill 草稿、${needCount} 条需求、${taskCount} 条任务回执`,
+    );
+    nextPath = withQueryValue(nextPath, "seat", seatRecordId);
+    redirect(nextPath);
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "索引 NPC 沉淀失败";
     redirect(withQueryValue(returnTo, "team_error", message));
   }
 }
@@ -4394,6 +4856,426 @@ export async function 启用Npc自造Skill(projectId: string, skillId: string, f
   } catch (error) {
     rethrowRedirectError(error);
     const message = error instanceof Error ? error.message : "启用 NPC 自造 Skill 失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
+export async function 添加Skill到Npc(projectId: string, seatId: string, skillId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "skill-forge");
+  let reviewContext: {
+    senderId: string | null;
+    seatName: string;
+    skillLabel: string;
+    seatRecordId: string;
+    normalizedSkillId: string;
+  } | null = null;
+  try {
+    const { project, currentUser } = await ensureProjectCollaborationAccess(projectId);
+    const senderId = normalizeMessageFormValue(currentUser?.id) ?? normalizeMessageFormValue(currentUser?.email);
+    const normalizedSeatId = text(seatId || formData.get("seat_id"), "");
+    const normalizedSkillId = text(skillId || formData.get("skill_id"), "").toLowerCase();
+    if (!normalizedSeatId) {
+      throw new Error("请先选择 NPC");
+    }
+    if (!normalizedSkillId) {
+      throw new Error("请先选择 Skill");
+    }
+
+    const skillsResult = await getJson(`/api/knowledge/projects/${projectId}/skills`);
+    const projectSkills = asArray<Record<string, unknown>>(skillsResult?.data ?? skillsResult);
+    const collaborationConfig = readProjectCollaborationConfig(project);
+    const skillLibrary = asArray<Record<string, unknown>>(collaborationConfig.skill_library);
+    const targetSkill =
+      projectSkills.find((item) => text(item.skill_id ?? item.id, "").toLowerCase() === normalizedSkillId) ??
+      skillLibrary.find((item) => text(item.id ?? item.skill_id, "").toLowerCase() === normalizedSkillId) ??
+      DEFAULT_PLATFORM_SKILL_LIBRARY.find((item) => text(item.id, "").toLowerCase() === normalizedSkillId) ??
+      null;
+    if (!targetSkill) {
+      throw new Error("项目 Skill 仓库里没有找到这个 Skill");
+    }
+    const targetSkillRecord = targetSkill as Record<string, unknown>;
+    const skillLabel = text(targetSkillRecord.label ?? targetSkillRecord.name ?? targetSkillRecord.skill_id, normalizedSkillId);
+
+    const seatsResult = await getJson(`/api/collaboration/projects/${projectId}/thread-workstations`);
+    const seats = asArray<Record<string, unknown>>(seatsResult?.data ?? seatsResult);
+    const seat =
+      seats.find((item) =>
+        isNpcSeatRecord(item) &&
+        (
+          workstationLookupKeys(item).some((candidate) => candidate === normalizedSeatId) ||
+          seatIdentityValues(item).some((candidate) => candidate === normalizedSeatId)
+        ),
+      ) ?? null;
+    if (!seat) {
+      throw new Error("没有找到这个 NPC，不能把能力绑定到线程或电脑记录");
+    }
+
+    const seatRecordId = text(seat.row_id ?? seat.rowId ?? seat.id ?? seat.config_id, normalizedSeatId);
+    const seatName = text(seat.name ?? seat.workstation_name, "该 NPC");
+    reviewContext = {
+      senderId,
+      seatName,
+      skillLabel,
+      seatRecordId,
+      normalizedSkillId,
+    };
+
+    if (!projectSkills.some((item) => text(item.skill_id ?? item.id, "").toLowerCase() === normalizedSkillId)) {
+      await postJson(`/api/knowledge/projects/${projectId}/skills`, {
+        skill_id: normalizedSkillId,
+        label: text(targetSkillRecord.label ?? targetSkillRecord.name ?? targetSkillRecord.title, normalizedSkillId),
+        source: text(targetSkillRecord.source, "project-library"),
+        category: text(targetSkillRecord.category, "custom"),
+        repo_relative_path: text(targetSkillRecord.repo_relative_path ?? targetSkillRecord.doc_path, "") || null,
+        description: text(targetSkillRecord.description ?? targetSkillRecord.note ?? targetSkillRecord.summary, ""),
+        recommended_for: normalizeUnknownStringList(targetSkillRecord.recommended_for),
+        exists_in_repo: targetSkillRecord.exists_in_repo === true,
+        extra_data: readRecord(targetSkillRecord.metadata ?? targetSkillRecord.extra_data ?? targetSkillRecord.extraData),
+      });
+    }
+
+    await postJson(`/api/knowledge/projects/${projectId}/seat-skill-assignments`, {
+      seat_id: normalizedSeatId,
+      skill_id: normalizedSkillId,
+      assignment_type: "direct",
+      status: "active",
+      notes: "由能力工坊添加到该 NPC 的长期能力配置。",
+      extra_data: {
+        configured_from: "skill-forge",
+        configured_at: new Date().toISOString(),
+      },
+    });
+
+    const metadata = readRecord(seat.metadata ?? seat.extra_data ?? seat.extraData);
+    const existingLoadout = mergePlatformSkillLoadout(
+      seat.skill_loadout,
+      seat.skillLoadout,
+      metadata.additional_skill_ids,
+      metadata.skill_loadout,
+      normalizedSkillId,
+    );
+    const { roleSkillIds } = splitPlatformSkillLoadout(existingLoadout, skillLibrary);
+    const snapshot = {
+      source: "能力工坊",
+      generated_at: new Date().toISOString(),
+      changed_skill_id: normalizedSkillId,
+      changed_skill_label: text(targetSkillRecord.label ?? targetSkillRecord.name ?? targetSkillRecord.skill_id, normalizedSkillId),
+      summary: "能力工坊已更新该 NPC 的 Skill 配置源；后续新派单和刷新后的上岗包会读取这份配置。",
+    };
+
+    await patchJson(
+      `/api/collaboration/projects/${projectId}/thread-workstations/${encodeURIComponent(seatRecordId)}`,
+      {
+        metadata: mergeSeatMetadata(metadata, {
+          additional_skill_ids: roleSkillIds,
+          skill_loadout: existingLoadout,
+          skill_forge_snapshot: snapshot,
+        }),
+      },
+    );
+
+    revalidateProjectSurfaces(projectId);
+    let nextPath = withQueryValue(
+      returnTo,
+      "team_notice",
+      `已把 ${skillLabel} 添加到 ${seatName} 的配置源`,
+    );
+    nextPath = withQueryValue(nextPath, "seat", seatRecordId);
+    redirect(nextPath);
+  } catch (error) {
+    rethrowRedirectError(error);
+    if (reviewContext && isHumanApprovalError(error)) {
+      try {
+        await createSkillForgeHumanReviewRequest({
+          projectId,
+          senderId: reviewContext.senderId,
+          title: `给 ${reviewContext.seatName} 添加能力`,
+          targetLabel: reviewContext.seatName,
+          actionSummary: `添加能力：${reviewContext.skillLabel}`,
+          reason: "该能力配置会影响 NPC 上岗包，需要项目负责人或人工确认。",
+          metadata: {
+            action: "assign_skill_to_seat",
+            seat_id: reviewContext.seatRecordId,
+            skill_id: reviewContext.normalizedSkillId,
+            skill_label: reviewContext.skillLabel,
+          },
+        });
+        revalidateProjectSurfaces(projectId);
+        let nextPath = withQueryValue(returnTo, "team_notice", "已生成能力配置待确认请求，请到公司层决策带处理。");
+        nextPath = withQueryValue(nextPath, "seat", reviewContext.seatRecordId);
+        redirect(nextPath);
+      } catch (reviewError) {
+        rethrowRedirectError(reviewError);
+      }
+    }
+    const message = error instanceof Error ? error.message : "添加 Skill 到 NPC 失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
+export async function 绑定知识库到Npc(projectId: string, seatId: string, documentId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "skill-forge");
+  try {
+    await ensureProjectCollaborationAccess(projectId);
+    const normalizedSeatId = text(seatId || formData.get("seat_id"), "");
+    const normalizedDocumentId = text(documentId || formData.get("document_id"), "");
+    if (!normalizedSeatId) {
+      throw new Error("请先选择 NPC");
+    }
+    if (!normalizedDocumentId) {
+      throw new Error("请先选择知识库");
+    }
+
+    const [docsResult, seatsResult] = await Promise.all([
+      getJson(`/api/knowledge/projects/${projectId}/documents`),
+      getJson(`/api/collaboration/projects/${projectId}/thread-workstations`),
+    ]);
+    const documents = asArray<Record<string, unknown>>(docsResult?.data ?? docsResult);
+    const targetDoc =
+      documents.find((item) =>
+        [
+          item.id,
+          item.repo_relative_path,
+          item.repoRelativePath,
+          item.path,
+          item.title,
+        ].some((candidate) => text(candidate, "") === normalizedDocumentId),
+      ) ?? null;
+    if (!targetDoc) {
+      throw new Error("没有找到这份知识库");
+    }
+    const repoPath = repoRelativePath(targetDoc.repo_relative_path ?? targetDoc.repoRelativePath ?? targetDoc.path);
+    if (!repoPath) {
+      throw new Error("这份知识库缺少 GitHub 相对路径");
+    }
+
+    const seats = asArray<Record<string, unknown>>(seatsResult?.data ?? seatsResult);
+    const seat =
+      seats.find((item) =>
+        isNpcSeatRecord(item) &&
+        (
+          workstationLookupKeys(item).some((candidate) => candidate === normalizedSeatId) ||
+          seatIdentityValues(item).some((candidate) => candidate === normalizedSeatId)
+        ),
+      ) ?? null;
+    if (!seat) {
+      throw new Error("没有找到这个 NPC，不能把知识库绑定到线程或电脑记录");
+    }
+
+    const seatRecordId = text(seat.row_id ?? seat.rowId ?? seat.id ?? seat.config_id, normalizedSeatId);
+    const seatName = text(seat.name ?? seat.workstation_name, "该 NPC");
+    const metadata = readRecord(seat.metadata ?? seat.extra_data ?? seat.extraData);
+    const existingPaths = uniqueStrings([
+      ...normalizeUnknownStringList(seat.knowledge_paths),
+      ...normalizeUnknownStringList(metadata.knowledge_paths),
+      repoPath,
+    ]);
+    const storedKnowledge = readRecord(metadata.npc_knowledge);
+    const npcKnowledge = {
+      ...storedKnowledge,
+      summary: text(targetDoc.summary ?? targetDoc.description ?? storedKnowledge.summary, `已绑定知识库：${text(targetDoc.title, repoPath)}`),
+      handoff_path: text(storedKnowledge.handoff_path, repoPath),
+      tags: uniqueStrings([
+        ...normalizeUnknownStringList(storedKnowledge.tags),
+        ...normalizeUnknownStringList(targetDoc.tags),
+        "skill-forge",
+      ]),
+    };
+
+    await patchJson(
+      `/api/collaboration/projects/${projectId}/thread-workstations/${encodeURIComponent(seatRecordId)}`,
+      {
+        metadata: mergeSeatMetadata(metadata, {
+          knowledge_paths: existingPaths,
+          npc_knowledge: npcKnowledge,
+          knowledge_forge_snapshot: {
+            source: "能力工坊",
+            generated_at: new Date().toISOString(),
+            changed_path: repoPath,
+            changed_title: text(targetDoc.title ?? targetDoc.name, repoPath),
+            summary: "能力工坊已更新该 NPC 的知识库配置源；后续上岗包和新派单会读取这份知识。",
+          },
+        }),
+      },
+    );
+
+    revalidateProjectSurfaces(projectId);
+    let nextPath = withQueryValue(
+      returnTo,
+      "team_notice",
+      `已把 ${text(targetDoc.title ?? targetDoc.name, repoPath)} 绑定到 ${seatName} 的知识库配置源`,
+    );
+    nextPath = withQueryValue(nextPath, "seat", seatRecordId);
+    redirect(nextPath);
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "绑定知识库到 NPC 失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
+async function applySkillForgeSeatSkillAssignment(projectId: string, seatId: string, skillId: string) {
+  const { project } = await ensureProjectCollaborationAccess(projectId);
+  const normalizedSeatId = text(seatId, "");
+  const normalizedSkillId = text(skillId, "").toLowerCase();
+  if (!normalizedSeatId || !normalizedSkillId) {
+    throw new Error("缺少 NPC 或 Skill，不能执行能力配置。");
+  }
+
+  const [skillsResult, seatsResult] = await Promise.all([
+    getJson(`/api/knowledge/projects/${projectId}/skills`),
+    getJson(`/api/collaboration/projects/${projectId}/thread-workstations`),
+  ]);
+  const projectSkills = asArray<Record<string, unknown>>(skillsResult?.data ?? skillsResult);
+  const collaborationConfig = readProjectCollaborationConfig(project);
+  const skillLibrary = asArray<Record<string, unknown>>(collaborationConfig.skill_library);
+  const targetSkill =
+    projectSkills.find((item) => text(item.skill_id ?? item.id, "").toLowerCase() === normalizedSkillId) ??
+    skillLibrary.find((item) => text(item.id ?? item.skill_id, "").toLowerCase() === normalizedSkillId) ??
+    DEFAULT_PLATFORM_SKILL_LIBRARY.find((item) => text(item.id, "").toLowerCase() === normalizedSkillId) ??
+    null;
+  if (!targetSkill) {
+    throw new Error("项目 Skill 仓库里没有找到这个 Skill。");
+  }
+  const targetSkillRecord = targetSkill as Record<string, unknown>;
+  const skillLabel = text(targetSkillRecord.label ?? targetSkillRecord.name ?? targetSkillRecord.skill_id, normalizedSkillId);
+  const seats = asArray<Record<string, unknown>>(seatsResult?.data ?? seatsResult);
+  const seat =
+    seats.find((item) =>
+      isNpcSeatRecord(item) &&
+      (
+        workstationLookupKeys(item).some((candidate) => candidate === normalizedSeatId) ||
+        seatIdentityValues(item).some((candidate) => candidate === normalizedSeatId)
+      ),
+    ) ?? null;
+  if (!seat) {
+    throw new Error("没有找到这个 NPC，不能把能力绑定到线程或电脑记录。");
+  }
+  const seatRecordId = text(seat.row_id ?? seat.rowId ?? seat.id ?? seat.config_id, normalizedSeatId);
+  const seatName = text(seat.name ?? seat.workstation_name, "该 NPC");
+
+  if (!projectSkills.some((item) => text(item.skill_id ?? item.id, "").toLowerCase() === normalizedSkillId)) {
+    await postJson(`/api/knowledge/projects/${projectId}/skills`, {
+      skill_id: normalizedSkillId,
+      label: skillLabel,
+      source: text(targetSkillRecord.source, "project-library"),
+      category: text(targetSkillRecord.category, "custom"),
+      repo_relative_path: text(targetSkillRecord.repo_relative_path ?? targetSkillRecord.doc_path, "") || null,
+      description: text(targetSkillRecord.description ?? targetSkillRecord.note ?? targetSkillRecord.summary, ""),
+      recommended_for: normalizeUnknownStringList(targetSkillRecord.recommended_for),
+      exists_in_repo: targetSkillRecord.exists_in_repo === true,
+      extra_data: readRecord(targetSkillRecord.metadata ?? targetSkillRecord.extra_data ?? targetSkillRecord.extraData),
+    });
+  }
+
+  await postJson(`/api/knowledge/projects/${projectId}/seat-skill-assignments`, {
+    seat_id: seatRecordId,
+    skill_id: normalizedSkillId,
+    assignment_type: "direct",
+    status: "active",
+    notes: "由能力工坊人工确认后添加到该 NPC 的长期能力配置。",
+    extra_data: {
+      configured_from: "skill-forge",
+      configured_at: new Date().toISOString(),
+    },
+  });
+
+  const metadata = readRecord(seat.metadata ?? seat.extra_data ?? seat.extraData);
+  const existingLoadout = mergePlatformSkillLoadout(
+    seat.skill_loadout,
+    seat.skillLoadout,
+    metadata.additional_skill_ids,
+    metadata.skill_loadout,
+    normalizedSkillId,
+  );
+  const { roleSkillIds } = splitPlatformSkillLoadout(existingLoadout, skillLibrary);
+  await patchJson(
+    `/api/collaboration/projects/${projectId}/thread-workstations/${encodeURIComponent(seatRecordId)}`,
+    {
+      metadata: mergeSeatMetadata(metadata, {
+        additional_skill_ids: roleSkillIds,
+        skill_loadout: existingLoadout,
+        skill_forge_snapshot: {
+          source: "能力工坊",
+          generated_at: new Date().toISOString(),
+          changed_skill_id: normalizedSkillId,
+          changed_skill_label: skillLabel,
+          summary: "能力工坊已通过人工确认更新该 NPC 的 Skill 配置源；后续新派单和刷新后的上岗包会读取这份配置。",
+        },
+      }),
+    },
+  );
+  return { seatRecordId, seatName, skillLabel };
+}
+
+export async function 处理能力工坊待确认(projectId: string, messageId: string, decision: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "company");
+  try {
+    const { currentUser } = await ensureProjectCollaborationAccess(projectId);
+    const currentUserId = normalizeMessageFormValue(currentUser?.id) ?? normalizeMessageFormValue(currentUser?.email);
+    const messagesResult = await getJson(
+      `/api/collaboration/messages?project_id=${encodeURIComponent(projectId)}&message_type=human_review_request&limit=200`,
+    );
+    const messages = asArray<Record<string, unknown>>(messagesResult?.data ?? messagesResult);
+    const reviewMessage = messages.find((item) => text(item.id, "") === messageId);
+    if (!reviewMessage) {
+      throw new Error("没有找到这条待确认请求。");
+    }
+    const metadata = readRecord(reviewMessage.extra_data ?? reviewMessage.extraData ?? reviewMessage.metadata);
+    if (text(metadata.schema, "") !== "skill_forge_review_v1") {
+      throw new Error("这不是能力工坊待确认请求。");
+    }
+    const currentStatus = text(reviewMessage.status, "").toLowerCase();
+    if (!["pending_human_review", "pending", "open"].includes(currentStatus)) {
+      throw new Error("这条待确认请求已经处理过。");
+    }
+
+    const normalizedDecision = text(decision || formData.get("decision"), "approve");
+    if (normalizedDecision === "reject") {
+      await patchJson(`/api/collaboration/messages/${encodeURIComponent(messageId)}`, { status: "rejected" });
+      await postJson("/api/collaboration/messages", {
+        project_id: projectId,
+        message_type: "human_review_decision",
+        title: `已打回：${text(reviewMessage.title, "能力工坊待确认")}`,
+        body: "人工确认结论：打回。本次没有改动 NPC 能力配置源。",
+        sender_type: "human",
+        sender_id: currentUserId,
+        recipient_type: "project",
+        recipient_id: projectId,
+        status: "closed",
+      });
+      revalidateProjectSurfaces(projectId);
+      redirect(withQueryValue(returnTo, "team_notice", "已打回能力工坊待确认请求。"));
+    }
+
+    const result = await applySkillForgeSeatSkillAssignment(
+      projectId,
+      text(metadata.seat_id, ""),
+      text(metadata.skill_id, ""),
+    );
+    await patchJson(`/api/collaboration/messages/${encodeURIComponent(messageId)}`, { status: "approved" });
+    await postJson("/api/collaboration/messages", {
+      project_id: projectId,
+      message_type: "human_review_decision",
+      title: `已通过：${result.seatName} 添加 ${result.skillLabel}`,
+      body: "人工确认结论：通过。能力工坊已刷新该 NPC 的配置源和上岗包摘要，正在执行的任务仍保持旧快照。",
+      sender_type: "human",
+      sender_id: currentUserId,
+      recipient_type: "project",
+      recipient_id: projectId,
+      status: "closed",
+      extra_data: {
+        schema: "skill_forge_review_decision_v1",
+        review_message_id: messageId,
+        seat_id: result.seatRecordId,
+        skill_id: text(metadata.skill_id, ""),
+      },
+    });
+    revalidateProjectSurfaces(projectId);
+    redirect(withQueryValue(returnTo, "team_notice", `已通过并执行：${result.seatName} 添加 ${result.skillLabel}`));
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "处理能力工坊待确认失败";
     redirect(withQueryValue(returnTo, "team_error", message));
   }
 }
@@ -6235,6 +7117,10 @@ export async function 创建Npc驻场席位(projectId: string, formData: FormDat
       knowledgeSlug: String(formData.get("knowledge_slug") ?? "").trim() || null,
       knowledgeSummary: String(formData.get("knowledge_summary") ?? "").trim() || null,
       knowledgeHandoffPath: String(formData.get("knowledge_handoff_path") ?? "").trim() || null,
+      knowledgeDepositPath: String(formData.get("knowledge_deposit_path") ?? "").trim() || null,
+      skillDepositPath: String(formData.get("skill_deposit_path") ?? "").trim() || null,
+      needDepositPath: String(formData.get("need_deposit_path") ?? "").trim() || null,
+      taskDepositPath: String(formData.get("task_deposit_path") ?? "").trim() || null,
       knowledgeTags: parseStringList(formData.get("knowledge_tags")) ?? [],
     });
     const collabProtocol = enrichNpcCollabProtocolWithRepoContext(
@@ -6300,6 +7186,10 @@ export async function 创建Npc驻场席位(projectId: string, formData: FormDat
             responsibility,
             sourceWorkstationId,
             handoffPath: npcKnowledge.handoff_path,
+            knowledgeDepositPath: npcKnowledge.knowledge_deposit_path,
+            skillDepositPath: npcKnowledge.skill_deposit_path,
+            needDepositPath: npcKnowledge.need_deposit_path,
+            taskDepositPath: npcKnowledge.task_deposit_path,
             computerNodeId,
             model,
             additionalSkillIds,
@@ -6403,6 +7293,10 @@ export async function 更新Npc驻场席位(projectId: string, workstationId: st
       knowledgeSlug: String(formData.get("knowledge_slug") ?? "").trim() || null,
       knowledgeSummary: String(formData.get("knowledge_summary") ?? "").trim() || null,
       knowledgeHandoffPath: String(formData.get("knowledge_handoff_path") ?? "").trim() || null,
+      knowledgeDepositPath: String(formData.get("knowledge_deposit_path") ?? "").trim() || null,
+      skillDepositPath: String(formData.get("skill_deposit_path") ?? "").trim() || null,
+      needDepositPath: String(formData.get("need_deposit_path") ?? "").trim() || null,
+      taskDepositPath: String(formData.get("task_deposit_path") ?? "").trim() || null,
       knowledgeTags: parseStringList(formData.get("knowledge_tags")) ?? [],
     });
     const collabProtocol = enrichNpcCollabProtocolWithRepoContext(
@@ -6471,6 +7365,10 @@ export async function 更新Npc驻场席位(projectId: string, workstationId: st
             responsibility,
             sourceWorkstationId,
             handoffPath: npcKnowledge.handoff_path,
+            knowledgeDepositPath: npcKnowledge.knowledge_deposit_path,
+            skillDepositPath: npcKnowledge.skill_deposit_path,
+            needDepositPath: npcKnowledge.need_deposit_path,
+            taskDepositPath: npcKnowledge.task_deposit_path,
             computerNodeId: nodeId,
             model,
             additionalSkillIds,
@@ -6577,6 +7475,10 @@ export async function 校准Codex席位自治桥(projectId: string, workstationI
       responsibility,
       sourceWorkstationId,
       handoffPath: npcKnowledge.handoff_path,
+      knowledgeDepositPath: npcKnowledge.knowledge_deposit_path,
+      skillDepositPath: npcKnowledge.skill_deposit_path,
+      needDepositPath: npcKnowledge.need_deposit_path,
+      taskDepositPath: npcKnowledge.task_deposit_path,
       computerNodeId,
       model,
       additionalSkillIds: skillLoadout,
@@ -6642,6 +7544,10 @@ export async function 启动Npc真实线程处理(projectId: string, workstation
           knowledgeSlug: text(storedKnowledge.slug ?? metadata.npc_identity_key, "").replace(/^npc:/, "") || null,
           knowledgeSummary: text(storedKnowledge.summary, "") || null,
           knowledgeHandoffPath: text(storedKnowledge.handoff_path, "") || null,
+          knowledgeDepositPath: text(storedKnowledge.knowledge_deposit_path, "") || null,
+          skillDepositPath: text(storedKnowledge.skill_deposit_path, "") || null,
+          needDepositPath: text(storedKnowledge.need_deposit_path, "") || null,
+          taskDepositPath: text(storedKnowledge.task_deposit_path, "") || null,
           knowledgeTags: asArray<string>(storedKnowledge.tags).map((item) => text(item)).filter(Boolean),
         });
         await ensureCodexSeatAutonomyBridge({
@@ -6650,6 +7556,10 @@ export async function 启动Npc真实线程处理(projectId: string, workstation
           responsibility: text(seat.responsibility ?? metadata.responsibility, "") || null,
           sourceWorkstationId,
           handoffPath: npcKnowledge.handoff_path,
+          knowledgeDepositPath: npcKnowledge.knowledge_deposit_path,
+          skillDepositPath: npcKnowledge.skill_deposit_path,
+          needDepositPath: npcKnowledge.need_deposit_path,
+          taskDepositPath: npcKnowledge.task_deposit_path,
           computerNodeId: text(seat.computer_node_id ?? seat.computerNodeId ?? metadata.computer_node_id, "") || null,
           model: text(seat.model ?? metadata.model, "gpt-5.4") || "gpt-5.4",
           additionalSkillIds: mergePlatformSkillLoadout(
@@ -7033,6 +7943,10 @@ export async function 准备Codex线程上岗包(projectId: string, workstationI
       responsibility,
       sourceWorkstationId,
       handoffPath: npcKnowledge.handoff_path,
+      knowledgeDepositPath: npcKnowledge.knowledge_deposit_path,
+      skillDepositPath: npcKnowledge.skill_deposit_path,
+      needDepositPath: npcKnowledge.need_deposit_path,
+      taskDepositPath: npcKnowledge.task_deposit_path,
       workstationName,
       workstationKnowledgePath,
       npcKnowledgeSummary: npcKnowledge.summary,
@@ -7045,6 +7959,10 @@ export async function 准备Codex线程上岗包(projectId: string, workstationI
 
     await ensureNpcKnowledgeDoc({
       handoffPath: npcKnowledge.handoff_path,
+      knowledgeDepositPath: npcKnowledge.knowledge_deposit_path,
+      skillDepositPath: npcKnowledge.skill_deposit_path,
+      needDepositPath: npcKnowledge.need_deposit_path,
+      taskDepositPath: npcKnowledge.task_deposit_path,
       seatName,
       responsibility,
       projectId,
@@ -7064,6 +7982,10 @@ export async function 准备Codex线程上岗包(projectId: string, workstationI
           responsibility,
           sourceWorkstationId,
           handoffPath: npcKnowledge.handoff_path,
+          knowledgeDepositPath: npcKnowledge.knowledge_deposit_path,
+          skillDepositPath: npcKnowledge.skill_deposit_path,
+          needDepositPath: npcKnowledge.need_deposit_path,
+          taskDepositPath: npcKnowledge.task_deposit_path,
           computerNodeId,
           model,
           additionalSkillIds: skillLoadout,
@@ -7311,9 +8233,13 @@ export async function 补齐项目Npc固定知识库(projectId: string, formData
           projectId,
           seatName: text(seat?.name, "NPC 席位"),
           responsibility: responsibility || "",
-          sourceWorkstationId,
-          handoffPath: npcKnowledge.handoff_path,
-          computerNodeId,
+            sourceWorkstationId,
+            handoffPath: npcKnowledge.handoff_path,
+            knowledgeDepositPath: npcKnowledge.knowledge_deposit_path,
+            skillDepositPath: npcKnowledge.skill_deposit_path,
+            needDepositPath: npcKnowledge.need_deposit_path,
+            taskDepositPath: npcKnowledge.task_deposit_path,
+            computerNodeId,
           model,
           additionalSkillIds,
           providerId,

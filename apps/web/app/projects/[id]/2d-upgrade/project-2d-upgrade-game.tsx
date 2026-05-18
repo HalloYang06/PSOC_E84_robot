@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -212,13 +212,13 @@ function safeProjectReturnPath(projectId: string, value: string | null | undefin
 
 function labelProjectReturnPath(value: string): string {
   if (value.includes("/workbench")) return "返回 NPC 工作台";
-  if (value.includes("/datasets")) return "返回数据工场";
-  if (value.includes("/ai-lab")) return "返回 AI 实验室";
-  if (value.includes("/robotics")) return "返回机器人现场";
-  if (value.includes("/observability")) return "返回观测台";
+  if (value.includes("/datasets")) return "返回设备数据工作台";
+  if (value.includes("/ai-lab")) return "返回设备数据工作台";
+  if (value.includes("/robotics")) return "返回设备数据工作台";
+  if (value.includes("/observability")) return "返回公司层";
   if (value.includes("/skill-forge")) return "返回能力工坊";
   if (value.includes("/company")) return "返回公司层";
-  if (value.includes("/cockpit")) return "返回驾驶舱";
+  if (value.includes("/cockpit")) return "返回公司层";
   if (value.includes("/unity-client")) return "返回 Unity 工作台";
   return "返回来源页面";
 }
@@ -426,18 +426,18 @@ const PANEL_ACTIONS: Record<ModuleTab, PanelAction[]> = {
     },
     {
       id: "npc-skills",
-      label: "装配 Skill",
-      summary: "从能力仓库给 NPC 选择固定能力包。",
-      detail: "仓库在 Skill 管理里维护；这里仅给具体 NPC 装配或卸载。",
-      primaryLabel: "打开装配抽屉",
-      safety: "装配变更不会立即派单。",
+      label: "能力配置",
+      summary: "查看这个 NPC 当前能力摘要，完整配置进入能力工坊。",
+      detail: "主页面不再直接装配 Skill，避免和上岗包快照冲突。",
+      primaryLabel: "去能力工坊配置",
+      safety: "配置变更会按上岗包规则生成新快照。",
     },
     {
       id: "npc-dialogue",
-      label: "打开对话框",
-      summary: "查看用户发给 AI 的指令、AI 回执和最终回复。",
-      detail: "对话框会按派单、最小回执、最终回复分层，不把长消息堆满首屏。",
-      primaryLabel: "打开 NPC 对话抽屉",
+      label: "进入 NPC 工作台",
+      summary: "和 NPC 对话、查看我的需求和我的任务。",
+      detail: "对话、派单、审核和回执都回到 NPC 工作台瓷砖完成。",
+      primaryLabel: "打开 NPC 工作台",
       safety: "发送前显示目标 NPC 和是否自动化。",
     },
   ],
@@ -1863,24 +1863,24 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         farmSource: "主页面：电脑接入管理",
       },
       {
-        label: "能力包仓库",
+        label: "能力工坊",
         short: "技",
-        hint: "GitHub 导入、中文说明、分类管理",
+        hint: "能力包、知识库、Git 治理",
         tab: "skills",
         tone: "skill",
-        primary: "管理可复用能力仓库",
-        description: "承接能力包管理仓库：这里是来源库，不是 NPC 装配页；NPC 从这里索引。",
-        farmSource: "主页面：能力包仓库",
+        primary: "进入能力治理正门",
+        description: "Git 回退、能力包仓库、NPC 知识库和工位知识库统一收进能力工坊。",
+        farmSource: "能力工坊",
       },
       {
-        label: "协作消息",
+        label: "NPC 工作台",
         short: "讯",
-        hint: "派单、最小回执、最终回复池",
+        hint: "对话、需求、任务",
         tab: "exchange",
         tone: "review",
-        primary: "查看协作现场",
-        description: "承接协作消息池：统一派单、最小回执、最终回复、人工审核提醒。",
-        farmSource: "主页面：协作消息池",
+        primary: "进入 NPC 瓷砖",
+        description: "主页面只保留审计摘要；正式对话、派单和审核回 NPC 工作台。",
+        farmSource: "NPC 工作台",
       },
       {
         label: "线程调试",
@@ -1893,14 +1893,14 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         farmSource: "主页面：电脑线程调试",
       },
       {
-        label: "Git 回退",
+        label: "版本治理",
         short: "Git",
         hint: "版本点、预检、人工确认",
         tab: "git",
         tone: "review",
-        primary: "守住版本安全",
-        description: "承接 Git 安全回退：可视化版本点、差异预检、回滚确认和审计记录。",
-        farmSource: "主页面：Git 回退入口",
+        primary: "去能力工坊处理 Git",
+        description: "Git 仓库配置、预检、回退登记和审计记录统一进入能力工坊。",
+        farmSource: "能力工坊",
       },
     ],
     [],
@@ -2973,7 +2973,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
               );
             })
           ) : (
-            <p className={styles.emptyHint}>还没有 NPC。先创建 NPC，再装配 Skill。</p>
+            <p className={styles.emptyHint}>还没有 NPC。先创建 NPC，再到能力工坊配置能力。</p>
           )}
         </div>
       );
@@ -3346,7 +3346,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
       return (
         <div className={styles.realActionStack} data-unity-real-form="exchange-audit">
           <article className={styles.realNote}>
-            <b>协作消息现在只做审计和索引</b>
+            <b>NPC 协作现在只做审计和索引</b>
             <p>为了不让主页面和 NPC 工作台重复，正式对话、审核、启动真实处理都回到 workbench 的 NPC 瓷砖里完成。</p>
           </article>
           <Link
@@ -3395,7 +3395,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                   <details className={styles.itemDetails}>
                     <summary>查看收口详情</summary>
                     <dl>
-                      <div><dt>来源</dt><dd>{message.sourceWorkstationId || message.providerLabel || `协作消息 #${index + 1}`}</dd></div>
+                      <div><dt>来源</dt><dd>{message.sourceWorkstationId || message.providerLabel || `项目事件 #${index + 1}`}</dd></div>
                       <div><dt>下一步</dt><dd>若结果可用，回到“当前推荐动作”；若缺材料，写入“必读需求表”。</dd></div>
                       <div><dt>噪声规则</dt><dd>过程日志不进首页，只保留最终回复、阻塞原因和需要人工审核的动作。</dd></div>
                     </dl>
@@ -3432,7 +3432,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                   <summary>查看 AI 必读边界</summary>
                   <dl>
                     <div><dt>提需求者</dt><dd>当前项目成员或上游 AI</dd></div>
-                    <div><dt>被提需求者</dt><dd>待在协作消息里指定 NPC / 线程 / 工位</dd></div>
+                    <div><dt>被提需求者</dt><dd>待在 NPC 工作台或公司层指定 NPC / 工位</dd></div>
                     <div><dt>验收</dt><dd>完成后必须回到提需求者，并把最终回复写入最终回复池。</dd></div>
                   </dl>
                 </details>
@@ -3440,7 +3440,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             ))}
             {messages.slice(0, 5).map((message) => (
               <article key={`message-${message.id}`} className={styles.layeredItem}>
-                <span>{message.type || "协作消息"}</span>
+                <span>{message.type || "项目事件"}</span>
                 <b>{itemTitle(message)}</b>
                 <small>{statusLabel(message.status)} / 完成后回到提需求者</small>
                 <p>{itemBody(message)}</p>
@@ -3974,7 +3974,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
           </article>
           <article className={styles.panelCard}>
             <span>最近任务</span>
-            {renderList(tasks, "暂无任务，先从协作消息或工坊派发。")}
+            {renderList(tasks, "暂无任务，先从 NPC 工作台或公司层派发。")}
           </article>
         </div>
       );
@@ -4020,9 +4020,10 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
       return (
         <div className={styles.panelGrid}>
           <article className={styles.panelCard}>
-            <span>能力包仓库</span>
-            <strong>这里是来源库，不是 NPC 装配页</strong>
-            <p>支持从 GitHub 导入能力包，写中文说明、分类和适用角色；NPC 装配时从这里索引。</p>
+            <span>能力工坊</span>
+            <strong>能力、知识库和 Git 治理统一入口</strong>
+            <p>主页面只保留状态摘要；导入能力包、维护知识库、处理 Git 预检和回退登记都进入能力工坊。</p>
+            <Link href={surfacePath("skill-forge", "skills")}>打开能力工坊</Link>
           </article>
           <article className={styles.panelCard}>
             <span>项目能力包条目</span>
@@ -4051,7 +4052,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             </article>
             <article className={styles.panelCard}>
               <span>最新消息</span>
-              {renderList(messages, "暂无协作消息。去 workbench 和 NPC 对话后会在这里沉淀审计记录。")}
+              {renderList(messages, "暂无项目事件。去 NPC 工作台和 NPC 对话后会在这里沉淀审计记录。")}
             </article>
           </div>
           {renderCollaborationFlowBoard()}
@@ -4079,9 +4080,10 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
     return (
       <div className={styles.panelGrid}>
         <article className={styles.panelCard}>
-          <span>Git 回退</span>
-          <strong>可视化版本安全入口</strong>
-          <p>后续在这里做版本点、差异预检、回滚确认和 AI 改动审查。</p>
+          <span>版本治理</span>
+          <strong>去能力工坊处理 Git 安全动作</strong>
+          <p>这里保留兼容摘要；版本点、差异预检、回退确认和审计记录统一进入能力工坊。</p>
+          <Link href={surfacePath("skill-forge", "git", "rollback-request")}>打开能力工坊</Link>
         </article>
         <article className={styles.panelCard}>
           <span>安全动作</span>
@@ -4143,7 +4145,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
       ) : null}
 
       {cockpitOpen && !activePanel ? (
-        <header className={styles.cockpit} aria-label="开发者驾驶舱">
+        <header className={styles.cockpit} aria-label="项目控制台">
           <div className={styles.cockpitHeader}>
             <div className={styles.cockpitProject}>
               <span className={styles.cockpitEyebrow}>嵌入式机器人开发台</span>
@@ -4185,32 +4187,11 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                 NPC 工作台 →
               </Link>
               <Link
-                href={surfacePath("datasets")}
-                className={styles.cockpitGhost}
-                title="训练数据采集、标注、质检、导出和审计"
-              >
-                数据工场 →
-              </Link>
-              <Link
-                href={surfacePath("ai-lab")}
-                className={styles.cockpitGhost}
-                title="AI 调试、任务仿真、机器人安全边界和审批规则"
-              >
-                AI 实验室 →
-              </Link>
-              <Link
                 href={surfacePath("robotics")}
                 className={styles.cockpitGhost}
-                title="App、Linux、ROS、硬件、VLA 和多电脑机器人现场"
+                title="调试终端、数据标注、图表实验都在同一个设备数据工作台"
               >
-                机器人现场 →
-              </Link>
-              <Link
-                href={surfacePath("observability")}
-                className={styles.cockpitGhost}
-                title="查看派单、回执、待审、执行电脑、任务状态和风险"
-              >
-                观测台 →
+                设备数据工作台 →
               </Link>
               <Link
                 href={surfacePath("skill-forge")}
@@ -4250,7 +4231,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                 type="button"
                 className={styles.cockpitGhost}
                 onClick={() => setCockpitOpen(false)}
-                title="完全隐藏驾驶舱（不挡视野）"
+                title="完全隐藏控制台（不挡视野）"
               >
                 ✕ 隐藏
               </button>
@@ -4323,13 +4304,10 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             </article>
             <article>
               <span>专业工作台</span>
-              <strong>数据工场 / 硬件仿真 / PID 调试</strong>
-              <p>训练数据、机器人传感器、仿真和串口调试都只索引同一套资源，不重复创建电脑、NPC、Skill 和工位。</p>
+              <strong>终端 / 数据标注 / 图表实验</strong>
+              <p>机器人现场、数据标注和图表实验合成同一个设备数据工作台；每个调试窗口像 NPC 瓷砖一样切换三项能力。</p>
               <div>
-                <Link href={surfacePath("datasets", "development-workshop")}>打开数据工场</Link>
-                <Link href={surfacePath("ai-lab", "exchange")}>打开 AI 实验室</Link>
-                <Link href={surfacePath("robotics", "machine-room")}>机器人现场</Link>
-                <Link href={surfacePath("observability", "exchange")}>打开观测台</Link>
+                <Link href={surfacePath("robotics", "machine-room")}>打开设备数据工作台</Link>
                 <Link href={surfacePath("skill-forge", "skills")}>打开能力工坊</Link>
               </div>
             </article>
@@ -4348,7 +4326,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             <article className={styles.cockpitMetricCard}>
               <span>AI 线程</span>
               <strong>{npcSeats.length} 个 · 常驻接单 {stats.onlineComputerCount}/{stats.computerCount}</strong>
-              <p>本月 token ￥{stats.tokenSpend} · 协作消息 {stats.messageCount}</p>
+              <p>本月 token ￥{stats.tokenSpend} · 协作审计 {stats.messageCount}</p>
               <p>
                 本机线程怎么接单？看{" "}
                 <a
@@ -4464,9 +4442,9 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
           type="button"
           className={styles.cockpitReopen}
           onClick={() => setCockpitOpen(true)}
-          title="显示驾驶舱（快捷键 Esc）"
+          title="显示控制台（快捷键 Esc）"
         >
-          ▼ 显示驾驶舱
+          ▼ 显示控制台
         </button>
       )}
 

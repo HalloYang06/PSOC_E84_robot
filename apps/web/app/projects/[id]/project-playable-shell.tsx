@@ -578,16 +578,16 @@ type ModeEntryAction = ModeEntry["actions"][number];
 const PANEL_DEFINITIONS: PanelDefinition[] = [
   { id: "development-workshop", label: "开发工坊", icon: "工", layer: "primary", detail: "把项目生成、环境搭建、连线选型、调试、AI 教练和仿真串成一条开发链。" },
   { id: "human-party", label: "主角管理", icon: "主", layer: "primary", detail: "按项目成员管理主角、名下电脑、线程和协作状态，不再把整列主角卡长期压在地图右边。" },
-  { id: "npc-create", label: "NPC 管理", icon: "N", layer: "primary", detail: "NPC 角色栏、对话框、任务、能力包装配、知识库和线程绑定。" },
+  { id: "npc-create", label: "NPC 管理", icon: "N", layer: "primary", detail: "创建 NPC、绑定线程和查看上岗状态；对话进 NPC 工作台，能力和知识进能力工坊。" },
   { id: "computers", label: "电脑接入", icon: "电", layer: "primary", detail: "接入真实电脑，查看电脑属性和这台电脑上的 Codex、Claude、Qwen 线程。" },
-    { id: "skills", label: "能力包仓库", icon: "技", layer: "primary", detail: "维护 Skill 中文名、说明和适用职业；NPC 从这里索引装配。" },
+    { id: "skills", label: "能力包仓库", icon: "技", layer: "primary", detail: "查看仓库里的 Skill，创建项目 Skill，从 GitHub 或外部包导入 Skill。" },
     { id: "schedule", label: "日程 DDL", icon: "历", layer: "primary", detail: "在主房日历编辑任务 DDL、每日安排，并让 AI 给出当日执行顺序。" },
     { id: "serial-tv", label: "设备调试台", icon: "波", layer: "setup", detail: "扫描各电脑 USB/CAN/串口设备，做串口收发和数字波形调试。" },
     { id: "ai-debug", label: "AI 调试", icon: "调", layer: "setup", detail: "调试 AI 协作行为、token 预算、跑飞保护、最小回执和最终回复，不直接动真实硬件。" },
     { id: "ai-simulation", label: "AI 仿真", icon: "仿", layer: "setup", detail: "机器人和纯软件任务先进入仿真/沙盘视角，确认风险边界后再派真实线程执行。" },
-    { id: "exchange", label: "协作消息池", icon: "讯", layer: "setup", detail: "查看跨 NPC、跨线程的统一派单、最小回执和最终回复。" },
+    { id: "exchange", label: "协作摘要", icon: "讯", layer: "setup", detail: "只看最近协作摘要；完整对话和派单回到 NPC 工作台。" },
   { id: "machine-room", label: "线程调试", icon: "线", layer: "setup", detail: "确认 Codex、Claude 等真实线程是否可用。" },
-  { id: "git", label: "Git 回退", icon: "Git", layer: "primary", detail: "固定仓库来源、同步约束和可视化回退入口。" },
+  { id: "git", label: "版本治理", icon: "Git", layer: "primary", detail: "统一进入能力工坊管理 Git 配置、预检和回退登记。" },
 ];
 
 const MAIN_CONTROL_PANEL_IDS: PanelView[] = [
@@ -597,7 +597,6 @@ const MAIN_CONTROL_PANEL_IDS: PanelView[] = [
   "computers",
   "machine-room",
   "skills",
-  "git",
   "schedule",
 ];
 
@@ -3390,7 +3389,7 @@ function buildStarterDrawer(options: {
     return {
       title: "先恢复登录态",
       summary: "当前项目页入口壳里的 2D 开发者模式入口还能看，但受保护协作数据没拿到。先登录，再继续玩任务链。",
-      hint: "恢复后，第一层只看当前主线；细节继续进 NPC 管理和协作消息池。",
+      hint: "恢复后，第一层只看当前主线；细节继续进 NPC 工作台和公司层决策带。",
       statusLabel: "待登录",
       ctaLabel: "去登录页",
       ctaPanel: "exchange",
@@ -7651,6 +7650,10 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
       openExchangePanel("overview", null);
       return;
     }
+    if (nextPanel === "git") {
+      router.push(`/projects/${projectId}/skill-forge?return_to=${encodeURIComponent(projectEntryPath)}&from=main&panel=${nextPanel}`);
+      return;
+    }
     setPendingActionLabel(null);
     setManagerDrawer(null);
     clearExchangeFocus();
@@ -8084,7 +8087,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
           <span className={styles.stateBadge}>{ready ? "可正式发送" : "需要先处理"}</span>
         </div>
         <p>
-          这一步只是预演，不会写入平台协作消息池。正式发送时会再次校验当前输入是否和这次预演一致，避免用户改过内容却误发旧指令。
+          这一步只是预演，不会写入项目事件记录。正式发送时会再次校验当前输入是否和这次预演一致，避免用户改过内容却误发旧指令。
         </p>
         <div className={styles.cardGridCompact}>
           <article className={styles.card}>
@@ -10196,7 +10199,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
           return (
         <form action={submitCollaborationMessage} className={styles.skillManagerForm}>
           <strong>把当前工位交给 AI 规划</strong>
-          <p className={styles.microCopy}>这条会进入平台协作消息池，用同一格式派给 Codex、Claude、Qwen 或未来其他模型。</p>
+          <p className={styles.microCopy}>这条会进入项目事件记录，并由 NPC 工作台或公司层继续承接。</p>
           {renderCollaborationPreviewCard(workshopPreview, "最近一次工位规划预演")}
           <input type="hidden" name="project_id" value={projectId} />
           <input type="hidden" name="message_type" value="agent_command" />
@@ -10308,9 +10311,9 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             </article>
           </div>
           <div className={styles.managerActionGrid}>
-            <button type="button" onClick={() => openBackpackPanel("exchange")}>
-              打开协作消息池
-            </button>
+            <Link href={`/projects/${projectId}/workbench?return_to=${encodeURIComponent(projectEntryPath)}&from=main`}>
+              打开 NPC 工作台
+            </Link>
             <button type="button" onClick={() => openBackpackPanel("machine-room")}>
               打开线程机房
             </button>
@@ -10593,7 +10596,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
 
         <form action={submitCollaborationMessage} className={styles.skillManagerForm}>
           <strong>让 AI 安排今天</strong>
-          <p className={styles.microCopy}>这条会走平台统一协作消息池，后续由 Codex、Claude、Qwen 等适配器领取。</p>
+          <p className={styles.microCopy}>这条会走平台统一派工流程，后续由绑定 NPC 和目标电脑领取。</p>
           {renderCollaborationPreviewCard(schedulePreview, "最近一次日程排程预演")}
           <input type="hidden" name="project_id" value={projectId} />
           <input type="hidden" name="message_type" value="agent_command" />
@@ -11032,7 +11035,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
     if (type.includes("final") || type === "agent_result") return "最终回复";
     if (type.includes("ack")) return "最小回执";
     if (type.includes("command") || type.includes("dispatch")) return "发给 AI";
-    return "协作消息";
+    return "项目事件";
   }
 
   function renderHumanPartyPanel() {
@@ -11472,8 +11475,8 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
           <p>
             {watchReadyNodes.length
               ? queueBlockedByOfflineNodesCount
-                ? `可自动领取新的平台派工；当前 ${queueBlockedByOfflineNodesCount} 条旧指令在等待目标电脑重连，必要时进入“协作消息池”查看回执。`
-                : `可自动领取平台派工；仍有 ${queuedCollaborationCommandCount} 条指令处于队列/等待态，必要时进入“协作消息池”查看回执。`
+                ? `可自动领取新的平台派工；当前 ${queueBlockedByOfflineNodesCount} 条旧指令在等待目标电脑重连，必要时进入公司层查看回执。`
+                : `可自动领取平台派工；仍有 ${queuedCollaborationCommandCount} 条指令处于队列/等待态，必要时进入公司层查看回执。`
               : `平台已经登记 ${nodes.length} 台电脑、扫描到 ${realThreadCount} 条线程，但自动协作需要远端电脑保持“自动化心跳 / 持续接单”窗口运行。`}
           </p>
           {staleQueuedCommandsWaitingForOfflineNodes.length ? (
@@ -11778,21 +11781,19 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
         <div className={styles.managerActionGrid}>
           {selected.id ? (
             <>
-              <Link href={buildNpcSeatSurfaceHref(selected.id, "npc-dialog")} data-npc-open-dialog="1">
-                打开对话框
-              </Link>
-              <Link href={buildNpcSeatSurfaceHref(selected.id, "npc-profile")} data-npc-open-profile="1">
-                属性 / 知识库
+              <Link href={`/projects/${projectId}/workbench?return_to=${encodeURIComponent(projectEntryPath)}&from=main&seat=${encodeURIComponent(selected.id)}`} data-npc-open-dialog="1">
+                去 NPC 工作台
               </Link>
               <Link href={buildNpcSeatSurfaceHref(selected.id, "npc-bind")}>绑定线程</Link>
-              <Link href={buildNpcSeatSurfaceHref(selected.id, "npc-skills")}>装配 Skill</Link>
+              <Link href={`/projects/${projectId}/skill-forge?return_to=${encodeURIComponent(projectEntryPath)}&from=main&seat=${encodeURIComponent(selected.id)}&tab=skills`}>
+                能力 / 知识 / Git
+              </Link>
             </>
           ) : (
             <>
-              <button type="button" data-npc-open-dialog="1" disabled>打开对话框</button>
-              <button type="button" data-npc-open-profile="1" disabled>属性 / 知识库</button>
+              <button type="button" data-npc-open-dialog="1" disabled>去 NPC 工作台</button>
               <button type="button" disabled>绑定线程</button>
-              <button type="button" disabled>装配 Skill</button>
+              <button type="button" disabled>能力 / 知识 / Git</button>
             </>
           )}
         </div>
@@ -11813,7 +11814,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             ) : (
               <li>
                 <strong>{selected.id ? "还没有对话" : "还没有选中 NPC"}</strong>
-                <p>{selected.id ? "点“打开对话框”后，可以直接给这个 AI 发指令。" : "先创建或选择一个 NPC。"}</p>
+                <p>{selected.id ? "去 NPC 工作台后，可以直接给这个 AI 发指令。" : "先创建或选择一个 NPC。"}</p>
               </li>
             )}
           </ul>
@@ -12012,7 +12013,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
               这条线程当前不在 live 机房可见列表里，但它仍然被协作证据引用。
               {historicalMachineRoomFocus.proof
                 ? " 这说明我们至少还有一条 proof 能把它和项目现场对应起来。"
-                : " 这说明它还留有历史协作消息，需要按历史锚点继续排查。"}
+                : " 这说明它还留有历史项目事件，需要按历史锚点继续排查。"}
             </p>
             <div className={styles.chipRow}>
               <span className={styles.miniChip}>历史线程锚点</span>
@@ -13552,8 +13553,8 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             <h3>{selectedSkill ? text(selectedSkill.label, selectedSkillId) : "还没有 Skill"}</h3>
             <p className={styles.skillIntroCopy}>
               {selectedSkill
-                ? `${isBaselineSkill(selectedSkill) ? "固定必备" : "可装配职业 Skill"} / ${selectedSkillIntro}`
-                : "Skill 仓库只负责维护词条，给 NPC 装配要进入 NPC 的三级抽屉。"}
+                ? `${isBaselineSkill(selectedSkill) ? "固定必备" : "项目 Skill"} / ${selectedSkillIntro}`
+                : "能力包仓库只负责浏览、创建和导入 Skill；给 NPC 或工位装配要进入能力工坊。"}
             </p>
             {selectedSkill ? <p className={styles.microCopy}>{selectedSkillSourceLabel}</p> : null}
           </div>
@@ -13561,7 +13562,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
 
         <div className={styles.managerStatGrid}>
           <article><span>固定 Skill</span><strong>{baselineSkills.length}</strong></article>
-          <article><span>职业 Skill</span><strong>{roleSkills.length}</strong></article>
+          <article><span>项目 Skill</span><strong>{roleSkills.length}</strong></article>
           <article><span>仓库总数</span><strong>{skillLibrary.length}</strong></article>
         </div>
 
@@ -13595,6 +13596,9 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
               导入 Agency Agents 全量 Skill
             </button>
           </form>
+          <Link href={`/projects/${projectId}/skill-forge?return_to=${encodeURIComponent(projectEntryPath)}&from=main&panel=skills`}>
+            去能力工坊装配
+          </Link>
         </div>
 
         <section className={styles.managerPreviewPanel}>
@@ -13996,11 +14000,11 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
       case "npc-dialog":
         return "NPC 对话框";
       case "npc-profile":
-        return "NPC 属性与知识库";
+        return "NPC 能力摘要";
       case "npc-bind":
         return "绑定电脑与线程";
       case "npc-skills":
-        return "装配 Skill";
+        return "能力配置";
       case "computer-connect":
         return "添加电脑";
       case "computer-threads":
@@ -14707,7 +14711,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
           </p>
           {!roleSkills.length ? (
             <p className={styles.microCopy}>
-              这个 NPC 还没装职业 Skill。下面先按当前职责做一张自动推测卡，等你去“装配 Skill”后，这里会切成真实 Skill 摘要。
+              这个 NPC 还没绑定职业 Skill。下面先按当前职责做一张自动推测卡，等你去能力工坊配置后，这里会切成真实 Skill 摘要。
             </p>
           ) : null}
         </div>
@@ -14790,7 +14794,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
   function renderNpcSkillsDrawer() {
     const selected = resolveManagedSeat(managerDrawer?.id);
     if (!selected.id) {
-      return <p className={styles.microCopy}>先选择一个 NPC，再装配 Skill。</p>;
+      return <p className={styles.microCopy}>先选择一个 NPC，再到能力工坊配置 Skill。</p>;
     }
     return (
       <form action={updateNpcWorkstationSeat.bind(null, projectId, selected.id)} className={styles.drawerForm}>
@@ -16001,12 +16005,9 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                   ))}
                 </div>
                 <div className={styles.opsJumpStrip} aria-label="专业工作台入口">
-                  <Link href={`/projects/${projectId}/cockpit`}>驾驶舱</Link>
                   <Link href={`/projects/${projectId}/workbench`}>NPC 工作台</Link>
-                  <Link href={`/projects/${projectId}/datasets`}>数据工厂</Link>
-                  <Link href={`/projects/${projectId}/ai-lab`}>AI 实验室</Link>
-                  <Link href={`/projects/${projectId}/robotics`}>机器人现场</Link>
-                  <Link href={`/projects/${projectId}/observability`}>观测台</Link>
+                  <Link href={`/projects/${projectId}/company`}>公司层</Link>
+                  <Link href={`/projects/${projectId}/robotics`}>设备数据工作台</Link>
                   <Link href={`/projects/${projectId}/skill-forge`}>能力工坊</Link>
                 </div>
               </section>
@@ -16016,7 +16017,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                 <button type="button" onClick={() => openBackpackPanel("npc-create")}>创建 / 绑定 NPC</button>
                 <button type="button" onClick={() => openBackpackPanel("machine-room")}>扫描线程</button>
                 <button type="button" onClick={() => openBackpackPanel("skills")}>能力包仓库</button>
-                <button type="button" onClick={() => openBackpackPanel("git")}>Git 回退</button>
+                <Link href={`/projects/${projectId}/skill-forge?return_to=${encodeURIComponent(projectEntryPath)}&from=main`}>能力工坊</Link>
                 <button type="button" onClick={() => openBackpackPanel("schedule")}>日程 DDL</button>
               </aside>
 
@@ -16232,7 +16233,8 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             <div className={styles.panelActionsRow}>
               <Link href="/projects">项目列表</Link>
               <button type="button" onClick={() => openBackpackPanel("machine-room")}>线程调试</button>
-              <button type="button" onClick={() => openBackpackPanel("exchange")}>协作消息池</button>
+              <Link href={`/projects/${projectId}/workbench?return_to=${encodeURIComponent(projectEntryPath)}&from=main`}>NPC 工作台</Link>
+              <Link href={`/projects/${projectId}/skill-forge?return_to=${encodeURIComponent(projectEntryPath)}&from=main`}>能力工坊</Link>
               {managerDrawer ? <button type="button" onClick={closeManagerDrawer}>关闭三级抽屉</button> : null}
             </div>
 

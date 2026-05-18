@@ -326,6 +326,20 @@ def api_close_requirement(requirement_id: str, payload: RequirementActionRequest
     return ok(RequirementRead.model_validate(item).model_dump(mode="json"))
 
 
+@router.post("/{requirement_id}/archive")
+def api_archive_requirement(requirement_id: str, payload: RequirementActionRequest, request: Request, db: Session = Depends(get_db)):
+    project_id = _requirement_project_id(db, requirement_id)
+    resolve_project_write_principal_for_target(
+        db,
+        request,
+        project_id,
+        require_privileged=False,
+        action="requirement.archive",
+    )
+    item = run_requirement_action(db, requirement_id, "archive", payload)
+    return ok(RequirementRead.model_validate(item).model_dump(mode="json"))
+
+
 @router.post("/{requirement_id}/promote-to-knowledge")
 def api_promote_requirement(requirement_id: str, payload: RequirementPromoteRequest, request: Request, db: Session = Depends(get_db)):
     project_id = _requirement_project_id(db, requirement_id)

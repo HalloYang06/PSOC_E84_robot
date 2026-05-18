@@ -18,7 +18,7 @@ const internalLabels: Record<string, { name: string; detail: string; action: str
   },
   plotjuggler: {
     name: "波形数据包",
-    detail: "生成音频、IMU、关节信号的时序样例，供平台波形面板和数据工场复用。",
+    detail: "生成音频、IMU、关节信号的时序样例，供设备数据工作台复用。",
     action: "生成波形样例",
   },
   "robot-descriptions": {
@@ -32,7 +32,7 @@ const nativeReadonlyCapabilities = [
   {
     id: "rosbag",
     name: "rosbag 证据索引",
-    detail: "生成 bag / db3 回放索引、时间段和主题清单，供 AI 实验室与数据工场复用。",
+    detail: "生成 bag / db3 回放索引、时间段和主题清单，供数据标注与图表实验复用。",
     action: "生成 rosbag 索引",
   },
   {
@@ -56,7 +56,7 @@ const nativeReadonlyCapabilities = [
   {
     id: "risk-gate",
     name: "风险门摘要",
-    detail: "生成只读能力、仿真优先和强审动作的边界摘要，供工作台与观测台统一引用。",
+    detail: "生成只读能力、仿真优先和强审动作的边界摘要，供设备数据工作台统一引用。",
     action: "生成风险门",
   },
 ];
@@ -64,13 +64,13 @@ const nativeReadonlyCapabilities = [
 const deliveryHints: Record<string, string> = {
   foxglove: "下一步交给机器人现场 3D / TF 只读面板。",
   robotwebtools: "下一步交给执行电脑只读接入与工作台最小回执。",
-  plotjuggler: "下一步交给波形面板与数据工场质量检查。",
+  plotjuggler: "下一步交给数据标注质量检查。",
   "robot-descriptions": "下一步交给模型导入、候选筛选与证据索引。",
-  rosbag: "下一步交给 AI 实验室回放或数据工场样本索引。",
+  rosbag: "下一步交给图表实验回放或数据标注样本索引。",
   "motor-card": "下一步交给电机参数卡与风险说明。",
   "pid-foc": "下一步交给调参建议看板，不进入写参数。",
   "review-actions": "下一步交给 NPC 工作台审批，不在本页执行。",
-  "risk-gate": "下一步交给工作台与观测台统一边界展示。",
+  "risk-gate": "下一步交给设备数据工作台统一边界展示。",
 };
 
 function downloadText(fileName: string, content: string, type = "application/json") {
@@ -158,7 +158,7 @@ function buildRosbagIndexSeed() {
       recommendedReplays: ["对齐 joint/current 波形", "核对相机丢帧与 TF 时间轴"],
     },
     runnerTask: "扫描 rosbag / db3 文件元数据，提取时长、topic、时间片段与来源执行电脑。",
-    npcPrompt: "请根据 rosbag 索引给出下一步回放计划，并说明应送 AI 实验室还是数据工场。",
+    npcPrompt: "请根据 rosbag 索引给出下一步回放计划，并说明应进入图表实验还是数据标注。",
     approval: "只读索引；真实硬件动作与写入参数不在此能力内。",
   });
 }
@@ -271,8 +271,8 @@ function runAction(id: string) {
       artifactType: "telemetry_csv",
       outputPath: "artifacts/robotics/plotjuggler-telemetry-sample.csv",
       payload: buildPlotJugglerCsv(),
-      runnerTask: "采集 audio、IMU、joint/current 等时序信号并对齐时间戳，异常点回流数据工场。",
-      npcPrompt: "请查看波形样例和异常点，判断是否可进入数据工场或需要重采。",
+      runnerTask: "采集 audio、IMU、joint/current 等时序信号并对齐时间戳，异常点回流数据标注。",
+      npcPrompt: "请查看波形样例和异常点，判断是否可进入数据标注或需要重采。",
       approval: "只读采集可自动；真实硬件写入或动作控制必须人审。",
     });
     downloadText("platform-telemetry-waveform-packet.json", JSON.stringify(packet, null, 2));

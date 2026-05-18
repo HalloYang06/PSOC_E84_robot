@@ -4,6 +4,9 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
+from app.db.models.project_collaboration import ProjectThreadWorkstation
+from app.db.models.project import Project
+from app.db.session import SessionLocal
 from app.main import app
 from tests.helpers import add_project_member, auth_headers, create_project, create_requirement, create_task, issue_session_token, register_user
 
@@ -141,9 +144,15 @@ def test_project_knowledge_documents_and_skill_assignments_are_project_scoped() 
     member_write_response = client.post(
         f"/api/knowledge/projects/{project_id}/documents",
         headers=auth_headers(member_token),
-        json={"title": "Member write", "repo_relative_path": "docs/member.md"},
+        json={
+            "title": "Member write",
+            "repo_relative_path": "docs/member.md",
+            "scope": "project",
+            "summary": "A collaborator can add reusable knowledge without an approval gate.",
+        },
     )
-    assert member_write_response.status_code == 403
+    assert member_write_response.status_code == 200, member_write_response.text
+    assert member_write_response.json()["data"]["repo_relative_path"] == "docs/member.md"
 
     outsider_read_response = client.get(
         f"/api/knowledge/projects/{project_id}/documents",
@@ -156,9 +165,10 @@ def test_project_knowledge_documents_and_skill_assignments_are_project_scoped() 
         headers=auth_headers(member_token),
     )
     assert member_read_response.status_code == 200
-    assert [item["repo_relative_path"] for item in member_read_response.json()["data"]] == [
-        "docs/npcs/boss-seat/README.md"
-    ]
+    assert {item["repo_relative_path"] for item in member_read_response.json()["data"]} == {
+        "docs/member.md",
+        "docs/npcs/boss-seat/README.md",
+    }
 
     skill_response = client.post(
         f"/api/knowledge/projects/{project_id}/skills",
@@ -211,6 +221,21 @@ def test_project_knowledge_documents_and_skill_assignments_are_project_scoped() 
     assert npc_authored_skill["repo_relative_path"] == "skills/teacher-progress-review/SKILL.md"
     assert npc_authored_skill["extra_data"]["author_seat_id"] == "boss-seat"
 
+    member_authored_skill_response = client.post(
+        f"/api/knowledge/projects/{project_id}/skills",
+        headers=auth_headers(member_token),
+        json={
+            "skill_id": "member-debug-note",
+            "label": "Member Debug Note",
+            "source": "human-authored",
+            "category": "debug",
+            "repo_relative_path": "skills/member-debug-note/SKILL.md",
+            "exists_in_repo": False,
+        },
+    )
+    assert member_authored_skill_response.status_code == 200, member_authored_skill_response.text
+    assert member_authored_skill_response.json()["data"]["skill_id"] == "member-debug-note"
+
     assignment_response = client.post(
         f"/api/knowledge/projects/{project_id}/seat-skill-assignments",
         headers=auth_headers(owner_token),
@@ -225,6 +250,29 @@ def test_project_knowledge_documents_and_skill_assignments_are_project_scoped() 
     assignment = assignment_response.json()["data"]
     assert assignment["seat_id"]
     assert assignment["skill_id"] == "speech-data-contracts"
+    with SessionLocal() as db:
+        project_row = db.get(Project, project_id)
+        assert project_row is not None
+        project_row.collaboration_config = {
+            **(project_row.collaboration_config or {}),
+            "skill_library": [
+                {"id": "speech-data-contracts", "label": "Speech Data Contracts"},
+                {"id": "teacher-progress-review", "label": "Teacher Progress Review"},
+            ],
+        }
+        db.add(project_row)
+        seat = db.query(ProjectThreadWorkstation).filter_by(project_id=project_id, config_id="boss-seat").one()
+        seat.extra_data = {
+            **(seat.extra_data or {}),
+            "skill_loadout": ["speech-data-contracts", "teacher-progress-review"],
+            "additional_skill_ids": ["speech-data-contracts"],
+            "skill_forge_snapshot": {
+                "changed_skill_id": "speech-data-contracts",
+                "summary": "Skill was active.",
+            },
+        }
+        db.add(seat)
+        db.commit()
 
     npc_authored_assignment_response = client.post(
         f"/api/knowledge/projects/{project_id}/seat-skill-assignments",
@@ -247,3 +295,43 @@ def test_project_knowledge_documents_and_skill_assignments_are_project_scoped() 
     )
     assert assignment_list_response.status_code == 200
     assert len(assignment_list_response.json()["data"]) == 2
+
+    owner_delete_bound_skill_response = client.delete(
+        f"/api/knowledge/projects/{project_id}/skills/speech-data-contracts",
+        headers=auth_headers(owner_token),
+    )
+    assert owner_delete_bound_skill_response.status_code == 200, owner_delete_bound_skill_response.text
+    with SessionLocal() as db:
+        seat = db.query(ProjectThreadWorkstation).filter_by(project_id=project_id, config_id="boss-seat").one()
+        metadata = seat.extra_data or {}
+        assert metadata["skill_loadout"] == ["teacher-progress-review"]
+        assert metadata["additional_skill_ids"] == []
+        assert metadata["skill_forge_snapshot"]["removed_at"]
+        project_row = db.get(Project, project_id)
+        assert project_row is not None
+        skill_ids = [item["id"] for item in (project_row.collaboration_config or {}).get("skill_library", [])]
+        assert skill_ids == ["teacher-progress-review"]
+    assignment_list_after_delete_response = client.get(
+        f"/api/knowledge/projects/{project_id}/seat-skill-assignments",
+        headers=auth_headers(member_token),
+    )
+    assert assignment_list_after_delete_response.status_code == 200
+    assert {item["skill_id"] for item in assignment_list_after_delete_response.json()["data"]} == {"teacher-progress-review"}
+
+    outsider_delete_skill_response = client.delete(
+        f"/api/knowledge/projects/{project_id}/skills/member-debug-note",
+        headers=auth_headers(outsider_token),
+    )
+    assert outsider_delete_skill_response.status_code == 403
+
+    member_delete_skill_response = client.delete(
+        f"/api/knowledge/projects/{project_id}/skills/member-debug-note",
+        headers=auth_headers(member_token),
+    )
+    assert member_delete_skill_response.status_code == 200, member_delete_skill_response.text
+
+    member_delete_document_response = client.delete(
+        f"/api/knowledge/projects/{project_id}/documents/docs/member.md",
+        headers=auth_headers(member_token),
+    )
+    assert member_delete_document_response.status_code == 200, member_delete_document_response.text

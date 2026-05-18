@@ -112,7 +112,7 @@ type StructuredMessageCard = {
   actions: Array<{ label: string; status: string }>;
 };
 
-type ProfessionalSurface = "datasets" | "ai-lab" | "robotics";
+type ProfessionalSurface = "data-label" | "chart-lab" | "robotics";
 
 type ProfessionalViewEntry = {
   surface: ProfessionalSurface;
@@ -168,9 +168,9 @@ const STRUCTURED_KIND_LABEL: Record<StructuredMessageKind, string> = {
 };
 
 const PROFESSIONAL_SURFACE_LABEL: Record<ProfessionalSurface, string> = {
-  datasets: "数据工场",
-  "ai-lab": "AI 实验室",
-  robotics: "机器人现场",
+  "data-label": "设备数据工作台",
+  "chart-lab": "设备数据工作台",
+  robotics: "设备数据工作台",
 };
 
 const NOISE_PREFIXES = [
@@ -398,6 +398,43 @@ function messageMetadata(msg: CollabMessage): Record<string, unknown> {
   return { ...extra, ...meta };
 }
 
+function stringValues(value: unknown): string[] {
+  if (Array.isArray(value)) return value.flatMap((item) => stringValues(item));
+  if (value && typeof value === "object") return Object.values(value as Record<string, unknown>).flatMap((item) => stringValues(item));
+  const next = safeText(value, "");
+  return next ? [next] : [];
+}
+
+function isGitMessageForSeat(msg: CollabMessage, seatIdentityIds: Set<string>): boolean {
+  const meta = messageMetadata(msg);
+  const haystack = [
+    msg.message_type,
+    msg.title,
+    meta.source,
+    meta.kind,
+    meta.git_event,
+    meta.git_action,
+    meta.git_operation,
+    meta.rollback_preview,
+    meta.sync_preview,
+  ].map((item) => safeText(item, "").toLowerCase()).join(" ");
+  if (!/(^|[^a-z])git([^a-z]|$)|github|rollback|回退|提交|分支|pr|pull request|预检|同步/.test(haystack)) {
+    return false;
+  }
+  if (seatIdentityIds.has(msg.sender_id || "") || seatIdentityIds.has(msg.recipient_id || "")) return true;
+  const relatedValues = stringValues({
+    author_seat_id: meta.author_seat_id,
+    seat_id: meta.seat_id,
+    npc_id: meta.npc_id,
+    target_seat_id: meta.target_seat_id,
+    affected_seat_id: meta.affected_seat_id,
+    affected_seat_ids: meta.affected_seat_ids,
+    reviewer_seat_id: meta.reviewer_seat_id,
+    assignee_seat_id: meta.assignee_seat_id,
+  });
+  return relatedValues.some((value) => seatIdentityIds.has(value));
+}
+
 function safeRecord(value: unknown): Record<string, unknown> {
   if (typeof value === "string") {
     try {
@@ -561,19 +598,20 @@ function inferProfessionalViews(msg: CollabMessage, card: StructuredMessageCard 
     }
   };
 
-  if (card?.kind === "dataset" || card?.kind === "chart") add("datasets", "看样本、质检和版本");
+  if (card?.kind === "dataset") add("data-label", "打开数据标注");
+  if (card?.kind === "chart") add("chart-lab", "打开图表实验");
   if (card?.kind === "waveform") {
-    add("datasets", "看时序数据和入库");
-    add("robotics", "看现场波形和 topic");
+    add("data-label", "看时序数据和入库");
+    add("robotics", "看现场波形和接口");
   }
   if (card?.kind === "model" || card?.kind === "device") add("robotics", "看模型、设备和现场状态");
   if (card?.kind === "boundary" || card?.kind === "approval" || card?.kind === "risk") {
-    add("ai-lab", "看预演、边界和放行条件");
+    add("chart-lab", "看预演、风险和审核条件");
   }
 
   if (/\b(dataset|sample|manifest|episode|rosbag|bag|audio|image|video|label|schema|imu|telemetry)\b/.test(signals)
     || /数据|样本|质检|标注|入库|版本/.test(signals)) {
-    add("datasets", "看证据链和数据状态");
+    add("data-label", "打开数据标注");
   }
   if (/\b(robot|ros|topic|tf|joint|serial|imu|urdf|gltf|glb|device|sensor)\b/.test(signals)
     || /机器人|现场|模型|传感器|串口|主控板|设备|关节|波形|ros/.test(signals)) {
@@ -581,7 +619,7 @@ function inferProfessionalViews(msg: CollabMessage, card: StructuredMessageCard 
   }
   if (/\b(sim|simulation|review|approval|risk|guard|boundary|policy)\b/.test(signals)
     || /仿真|预演|审核|风险|边界|放行|策略/.test(signals)) {
-    add("ai-lab", "看预演、风险和审核条件");
+    add("chart-lab", "打开图表实验");
   }
 
   const preferredSurface = safeText(
@@ -593,9 +631,9 @@ function inferProfessionalViews(msg: CollabMessage, card: StructuredMessageCard 
       ?? payload.surfaceHint,
     "",
   ).toLowerCase();
-  if (preferredSurface.includes("dataset")) add("datasets", "看证据链和数据状态");
+  if (preferredSurface.includes("dataset")) add("data-label", "打开数据标注");
   if (preferredSurface.includes("robot")) add("robotics", "看现场对象和运行态");
-  if (preferredSurface.includes("lab") || preferredSurface.includes("sim")) add("ai-lab", "看预演、风险和审核条件");
+  if (preferredSurface.includes("lab") || preferredSurface.includes("sim")) add("chart-lab", "打开图表实验");
 
   return Array.from(entries.values()).slice(0, 3);
 }
@@ -1484,6 +1522,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
   const [queueTab, setQueueTab] = useState<"needs" | "tasks" | "dispatch">("dispatch");
   const [receiptDirection, setReceiptDirection] = useState<"incoming" | "outgoing">("incoming");
   const [queueBusyId, setQueueBusyId] = useState<string | null>(null);
+  const [archiveBusyId, setArchiveBusyId] = useState<string | null>(null);
   const [queueNote, setQueueNote] = useState<string | null>(null);
 
   type Occupancy = {
@@ -1717,6 +1756,9 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
     (panel: string, action?: string) => {
       const params = new URLSearchParams({ panel, return_to: governanceReturnTo, from: governanceSource });
       if (action) params.set("action", action);
+      if (panel === "skills" || panel === "git") {
+        return `/projects/${projectId}/skill-forge?${params.toString()}`;
+      }
       return `/projects/${projectId}/2d-upgrade?${params.toString()}`;
     },
     [governanceReturnTo, governanceSource, projectId],
@@ -1724,13 +1766,16 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
   const professionalViewHref = useCallback(
     (surface: ProfessionalSurface, msg: CollabMessage) => {
       const params = new URLSearchParams({ return_to: governanceReturnTo, from: governanceSource, focus: "message" });
+      if (surface === "data-label") params.set("tab", "data");
+      if (surface === "chart-lab") params.set("tab", "chart");
+      if (surface === "robotics") params.set("tab", "terminal");
       params.set("message_id", msg.id);
       if (msg.task_id) params.set("task_id", msg.task_id);
       if (msg.dispatch_id) params.set("dispatch_id", msg.dispatch_id);
       params.set("source_seat", seatApiId);
       params.set("source_label", seat.name || seatApiId);
       if (msg.title) params.set("source_title", msg.title.slice(0, 120));
-      return `/projects/${projectId}/${surface}?${params.toString()}`;
+      return `/projects/${projectId}/robotics?${params.toString()}`;
     },
     [governanceReturnTo, governanceSource, projectId, seat.name, seatApiId],
   );
@@ -2185,6 +2230,18 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
 
     for (const m of messages || []) {
       const type = (m.message_type || "").toLowerCase();
+      if (isGitMessageForSeat(m, seatIdentityIds)) {
+        push({
+          id: `git:${m.id}`,
+          tone: "review",
+          label: "Git",
+          title: userFacingCollabText(m.title || stripPlatformChatter(m.body || "").slice(0, 90), "Git 事件"),
+          meta: "来自该 NPC 的提交、预检或回退记录",
+          status: m.status,
+          createdAt: m.created_at,
+        });
+        continue;
+      }
       if (!["runner_ack", "runner_result", "agent_ack", "agent_result", "requirement_progress_ack", "requirement_final_reply"].includes(type)) continue;
       const { noisy } = classifyMessage(m);
       if (noisy) continue;
@@ -2396,6 +2453,45 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
     } finally {
       setCloseoutBusyId(null);
       setTimeout(() => setReviewNote(null), 5000);
+    }
+  }
+
+  function canArchiveQueueItem(item: SeatQueueItem) {
+    return ["done", "completed", "closed", "accepted", "answered", "cancelled", "rejected", "failed"].includes(
+      safeText(item.status, "").toLowerCase(),
+    );
+  }
+
+  async function archiveNeedTaskItem(kind: "needs" | "tasks", item: SeatQueueItem) {
+    const id = safeText(item.id, "");
+    if (!id || !canArchiveQueueItem(item)) return;
+    setArchiveBusyId(`${kind}:${id}`);
+    setQueueNote(null);
+    const path = kind === "needs" ? `/api/requirements/${encodeURIComponent(id)}/archive` : `/api/tasks/${encodeURIComponent(id)}/archive`;
+    try {
+      const res = await fetch(apiClientUrl(path), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          actor_type: "human",
+          actor_id: currentUserId,
+          note: "从当前工作台队列归档；GitHub 证据保留。",
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msgText = json?.error?.message ?? json?.message ?? `HTTP ${res.status}`;
+        throw new Error(typeof msgText === "string" ? msgText : JSON.stringify(msgText));
+      }
+      setQueueNote(kind === "needs" ? "已归档完成需求" : "已归档完成任务");
+      await load(limit);
+      window.dispatchEvent(new CustomEvent("workbench:queue-archived", { detail: { projectId, kind, id } }));
+    } catch (error) {
+      setQueueNote(`归档失败：${error instanceof Error ? error.message : "未知错误"}`);
+    } finally {
+      setArchiveBusyId(null);
+      setTimeout(() => setQueueNote(null), 5000);
     }
   }
 
@@ -2853,6 +2949,17 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
                   <span className={styles.queueTitle}>{it.title || "(无标题)"}</span>
                 </div>
                 <span className={styles.queueStatus} data-status={it.status}>{it.status}</span>
+                {canArchiveQueueItem(it) ? (
+                  <button
+                    type="button"
+                    className={styles.queueArchiveBtn}
+                    onClick={() => archiveNeedTaskItem(kind, it)}
+                    disabled={archiveBusyId !== null}
+                    title="从当前队列归档；GitHub 证据仍保留"
+                  >
+                    {archiveBusyId === `${kind}:${it.id}` ? "归档中" : "归档"}
+                  </button>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -3151,7 +3258,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
                 <div className={styles.profileRow}>
                   <small className={styles.sectionLabel}>能力包 / 知识装配</small>
                   <p className={styles.profileTextDim}>
-                    暂无 NPC 能力包或工位继承能力包。先到主页面配置工位继承，或给这个 NPC 装配项目能力包。
+                    暂无 NPC 能力包或工位继承能力包。先到能力工坊维护能力和知识，再在公司层分配给这个 NPC。
                   </p>
                   <div className={styles.inlineActions}>
                     <Link href={governanceHref("skills", "skill-category")} className={styles.linkBtn}>
@@ -3176,7 +3283,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
                       key={`inh-${skill}`}
                       href={governanceHref("skills")}
                       className={styles.chipInherit}
-                      title="回到主页面：查看能力包仓库和工位继承"
+                      title="去能力工坊：查看能力包仓库和工位继承"
                     >
                       ⇪ {skill}
                     </Link>
@@ -3186,7 +3293,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
                       key={`own-${skill}`}
                       href={governanceHref("skills")}
                       className={styles.chip}
-                      title="回到主页面：查看 NPC 能力包装配"
+                      title="去能力工坊：查看 NPC 能力包装配"
                     >
                       {skill}
                     </Link>
@@ -3200,7 +3307,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
             <div className={styles.profileRow}>
               <small className={styles.sectionLabel}>工位知识库（GitHub 相对路径）</small>
               <p className={styles.profileText}>
-                <Link href={governanceHref("git")} className={styles.codeLink} title="回到主页面：仓库与 GitHub 相对路径约定">
+                <Link href={governanceHref("git")} className={styles.codeLink} title="去能力工坊：仓库与知识库路径约定">
                   {seat.workstationKnowledgePath}
                 </Link>
                 <span className={styles.peerHint}> · 本工位所有 NPC 共读，运行目录只用于当前电脑执行定位</span>
@@ -3210,7 +3317,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
             <div className={styles.profileRow}>
               <small className={styles.sectionLabel}>工位知识库（待配置）</small>
               <p className={styles.profileTextDim}>
-                先在主页面给这个 NPC 分配逻辑工位，并设置 GitHub 相对路径知识库；否则同工位互认和跨工位工位长路由都会退化。
+                先在公司层给这个 NPC 分配逻辑工位，再到能力工坊设置知识库；否则同工位互认和跨工位工位长路由都会退化。
               </p>
             </div>
           )}
@@ -3894,9 +4001,9 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
                   <Link
                     href={governanceHref("git", "rollback-request")}
                     className={styles.inlineLinkBtn}
-                    title="回到主页面：Git 版本索引与回退登记"
+                    title="去能力工坊：Git 版本索引与回退登记"
                   >
-                    回到 Git 治理
+                    去能力工坊
                   </Link>
                 ) : null}
                 {seatIdentityIds.has(msg.recipient_id || "")
@@ -3957,8 +4064,8 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
               : sendNote || (seat.permissionLevel ? `风险级别 ${seat.permissionLevel} · 详细过程在桌面线程中` : "发送后写入协作池；NPC 处理，平台同步最小回执和最终结果")}
           </small>
           <div className={styles.composerActions}>
-            <Link href={`/projects/${projectId}/cockpit`} className={styles.linkBtn} title="返回项目驾驶舱">
-              驾驶舱
+            <Link href={`/projects/${projectId}/company`} className={styles.linkBtn} title="返回公司运行状态">
+              公司层
             </Link>
             <button
               type="submit"

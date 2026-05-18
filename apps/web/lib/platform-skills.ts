@@ -151,12 +151,12 @@ export const DEFAULT_PLATFORM_SKILL_LIBRARY: PlatformSkillRecord[] = [
   },
   {
     id: "thread-bridge-writeback",
-    label: "线程桥接与平台写回",
-    note: "适合线程侧 consumer、host bridge、本地 inbox 与平台回执写回。",
+    label: "线程同步与平台写回",
+    note: "适合线程侧接单、电脑端同步、待办同步与平台回执写回。",
     source: "platform-role",
     scope: "role",
     category: "多电脑/线程",
-    recommended_for: ["thread", "bridge", "writeback", "consumer", "inbox", "platform", "线程", "桥接"],
+    recommended_for: ["thread", "sync", "writeback", "todo", "receipt", "platform", "线程", "同步"],
   },
 ];
 
@@ -235,7 +235,7 @@ function contextHints(roleText: string, threadText: string) {
     [/(ui|front|界面|前端|视觉|展示)/, ["ui", "frontend", "visual", "layout"]],
     [/(game|map|农场|地图|npc|交互|phaser)/, ["game", "map", "npc", "farm", "interaction"]],
     [/(git|repo|仓库|分支|回流|merge)/, ["git", "repo", "branch", "merge", "result"]],
-    [/(dispatch|派单|ack|回执|runner|线程|relay|桥接)/, ["dispatch", "ack", "runner", "thread", "relay", "bridge"]],
+    [/(dispatch|派单|ack|回执|runner|线程|relay|同步)/, ["dispatch", "ack", "runner", "thread", "relay", "sync"]],
     [/(final|reply|最终回复|结果|续推|follow)/, ["final", "reply", "closure", "followup", "result"]],
     [/(review|审核|审批|人审|风险|proof|验收|截图)/, ["review", "approval", "audit", "human", "risk", "verify", "screenshot"]],
     [/(requirement|需求|需求表|ledger|必读|token)/, ["requirement", "ledger", "token-control", "review"]],

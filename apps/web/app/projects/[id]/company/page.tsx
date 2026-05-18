@@ -84,6 +84,25 @@ function orgEventTypeLabel(value: unknown) {
   return text(value, "组织事件");
 }
 
+function messageMeta(value: AnyRecord) {
+  return {
+    ...record(value.extra_data ?? value.extraData),
+    ...record(value.metadata),
+  };
+}
+
+function isPendingHumanReview(value: AnyRecord) {
+  const type = text(value.message_type ?? value.messageType, "").toLowerCase();
+  const status = text(value.status, "").toLowerCase();
+  return type === "human_review_request" && ["pending_human_review", "pending", "open"].includes(status);
+}
+
+function reviewSourceLabel(value: AnyRecord) {
+  const meta = messageMeta(value);
+  if (text(meta.schema, "") === "skill_forge_review_v1") return "能力工坊待确认";
+  return "待人工确认";
+}
+
 function knowledgeLabel(seat: { knowledgeSummary: string; workstationKnowledgePath: string }) {
   if (seat.knowledgeSummary) return seat.knowledgeSummary;
   if (seat.workstationKnowledgePath) return "工位知识库已配置";
@@ -99,14 +118,21 @@ function safeProjectReturnPath(projectId: string, value: unknown) {
 
 function labelProjectReturnPath(value: string) {
   if (value.includes("/2d-upgrade")) return "← 返回主页面";
-  if (value.includes("/datasets")) return "← 返回数据工场";
-  if (value.includes("/ai-lab")) return "← 返回 AI 实验室";
-  if (value.includes("/robotics")) return "← 返回机器人现场";
-  if (value.includes("/observability")) return "← 返回观测台";
-  if (value.includes("/skill-forge")) return "← 返回 Skill 工坊";
-  if (value.includes("/workbench")) return "← 返回工作台";
+  if (value.includes("/datasets")) return "← 返回设备数据工作台";
+  if (value.includes("/ai-lab")) return "← 返回设备数据工作台";
+  if (value.includes("/robotics")) return "← 返回设备数据工作台";
+  if (value.includes("/observability")) return "← 返回公司层";
+  if (value.includes("/skill-forge")) return "← 返回能力工坊";
+  if (value.includes("/workbench")) return "← 返回 NPC 工作台";
   if (value.includes("/company")) return "← 返回公司层";
   return "← 返回来源";
+}
+
+function statusTone(label: string) {
+  if (/可投递|在线|已完成|已送达/.test(label)) return "healthy";
+  if (/延迟|待审核|强审|待处理|等待|未知/.test(label)) return "review";
+  if (/离线|需重连|阻塞|失败/.test(label)) return "blocked";
+  return "idle";
 }
 
 export default async function CompanyPage({ params, searchParams }: { params: { id: string }; searchParams?: { embed?: string; return_to?: string; from?: string } }) {
@@ -326,25 +352,28 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
         }]
       : []),
   ];
-  const selectedWorkstation = workstationRows[0] ?? {
-    id: "empty",
-    name: "待创建工位",
-    description: "先在主页面创建 NPC 和工位，再回到公司层治理组织结构。",
-    seats: [] as typeof allSeats,
-    leadName: "待指定",
-  };
-  const selectedSeats = selectedWorkstation.seats;
-  const primarySeat = selectedSeats[0] ?? allSeats[0] ?? null;
   const threadReadyCount = allSeats.filter((seat) => seat.dispatchState === "可投递").length;
+  const waitingComputerCount = allSeats.filter((seat) => /等待|离线|重连|未知/.test(seat.dispatchState)).length;
   const strictReviewCount = allSeats.filter((seat) => reviewPolicyLabel(seat.reviewPolicy) === "强审").length;
   const skillAssignedCount = allSeats.filter((seat) => seat.skillLoadout.length || seat.inheritedSkills.length).length;
   const knowledgeAssignedCount = allSeats.filter((seat) => seat.knowledgeSummary || seat.workstationKnowledgePath).length;
+  const readyNodeCount = [...nodeStateMap.values()].filter((node) => publicComputerDispatchState(node) === "可投递").length;
 
   const returnToPath = safeProjectReturnPath(params.id, searchParams?.return_to);
 
-  const recentOrgEvents = asArray<AnyRecord>(collaborationMessagesState.data).slice(0, 6);
+  const allOrgEvents = asArray<AnyRecord>(collaborationMessagesState.data);
+  const pendingHumanReviews = allOrgEvents.filter(isPendingHumanReview);
+  const recentOrgEvents = allOrgEvents.slice(0, 6);
   const projectId = String(project.id ?? params.id);
   const selfPath = `/projects/${projectId}/company`;
+  const decisionItems = [
+    pendingHumanReviews.length ? `${pendingHumanReviews.length} 条待人工确认` : "",
+    waitingComputerCount ? `有 ${waitingComputerCount} 名 NPC 等待电脑恢复` : "",
+    strictReviewCount ? `${strictReviewCount} 名 NPC 启用强审策略` : "",
+    skillAssignedCount < allSeats.length ? `${Math.max(allSeats.length - skillAssignedCount, 0)} 名 NPC 待补 Skill` : "",
+    knowledgeAssignedCount < allSeats.length ? `${Math.max(allSeats.length - knowledgeAssignedCount, 0)} 名 NPC 待补知识库` : "",
+    recentOrgEvents.length ? `${recentOrgEvents.length} 条最近回执需要抽查` : "",
+  ].filter(Boolean).slice(0, 5);
 
   return (
     <main className={styles.shell} data-embedded={searchParams?.embed === "drawer" ? "1" : undefined}>
@@ -352,84 +381,95 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
         <Link href={`/projects/${projectId}`}>主页面</Link>
         <Link href={`/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=company`}>NPC 工作台</Link>
         <Link href={`/projects/${projectId}/skill-forge?return_to=${encodeURIComponent(selfPath)}&from=company`}>能力工坊</Link>
-        <Link href={`/projects/${projectId}/observability?return_to=${encodeURIComponent(selfPath)}&from=company`}>观测台</Link>
         {returnToPath ? <Link href={returnToPath}>{labelProjectReturnPath(returnToPath)}</Link> : null}
       </nav>
 
       <header className={styles.header}>
         <div>
-          <span>公司层 / 员工表</span>
-          <h1>{text(project.name, "AI 合作平台")} 组织结构</h1>
-          <p>公司层只负责工位、NPC 员工表、职责边界、Skill/知识库和审核策略；线程绑定和电脑接入仍回主页面管理。</p>
+          <span>公司层 / 运行态势图</span>
+          <h1>{text(project.name, "AI 合作平台")} 公司沙盘</h1>
+          <p>一眼看部门、NPC、任务流、审核风险和电脑健康；组织编辑和证据查看都在当前页抽屉里完成。</p>
         </div>
         <section className={styles.statusStrip} aria-label="组织状态">
           <article><span>工位</span><strong>{workstationRows.length}</strong><small>逻辑部门</small></article>
-          <article><span>NPC</span><strong>{allSeats.length}</strong><small>员工表</small></article>
-          <article><span>可投递</span><strong>{threadReadyCount}/{allSeats.length || 0}</strong><small>线程状态</small></article>
-          <article><span>强审</span><strong>{strictReviewCount}</strong><small>安全策略</small></article>
+          <article><span>NPC</span><strong>{allSeats.length}</strong><small>员工席位</small></article>
+          <article><span>可接单</span><strong>{threadReadyCount}/{allSeats.length || 0}</strong><small>NPC 状态</small></article>
+          <article><span>电脑健康</span><strong>{readyNodeCount}/{nodeStateMap.size || 0}</strong><small>真实设备</small></article>
         </section>
       </header>
 
       <section className={styles.layout}>
-        <aside className={styles.leftRail} aria-label="工位列表">
-          <div className={styles.railHead}>
-            <span>工位列表</span>
-            <Link href={`/projects/${projectId}`}>管理工位</Link>
-          </div>
-          <div className={styles.workstationList}>
-            {workstationRows.map((ws, index) => (
-              <article key={ws.id} data-active={index === 0 ? "1" : undefined}>
-                <span>{String(index + 1).padStart(2, "0")}</span>
-                <strong>{ws.name}</strong>
-                <p>{ws.description}</p>
-                <small>工位长：{ws.leadName} · NPC {ws.seats.length}</small>
-              </article>
-            ))}
-          </div>
-        </aside>
-
-        <section className={styles.centerPane} aria-label="NPC 员工表">
-          <div className={styles.toolbar}>
+        <section className={styles.centerPane} aria-label="公司运行状态一览图">
+          <div className={styles.decisionBand}>
             <div>
-              <span>当前工位</span>
-              <strong>{selectedWorkstation.name}</strong>
+              <span>今天先看</span>
+              <strong>{decisionItems[0] ?? "公司运行平稳"}</strong>
             </div>
-            <div className={styles.toolbarActions}>
-              <Link href={`/projects/${projectId}`}>创建 / 绑定 NPC</Link>
-              <Link href={`/projects/${projectId}/skill-forge?return_to=${encodeURIComponent(selfPath)}&from=company`}>补 Skill</Link>
-              <Link href={`/projects/${projectId}/observability?return_to=${encodeURIComponent(selfPath)}&from=company`}>看证据</Link>
+            <div className={styles.decisionChips}>
+              {(decisionItems.length ? decisionItems : ["暂无阻塞", "无待审提醒", "电脑状态正常"]).map((item, index) => (
+                <span key={`${item}-${index}`}>{item}</span>
+              ))}
             </div>
           </div>
 
-          <div className={styles.employeeTable} role="table" aria-label="NPC 员工表">
-            <div className={styles.tableHead} role="row">
-              <span>NPC</span>
-              <span>职责</span>
-              <span>能力/知识</span>
-              <span>审核</span>
-              <span>执行状态</span>
+          <div className={styles.sandbox}>
+            <div className={styles.flowLayer} aria-hidden="true">
+              <span />
+              <span />
+              <span />
             </div>
-            {(selectedSeats.length ? selectedSeats : allSeats).map((seat) => (
-              <article key={seat.id} className={styles.tableRow} role="row">
-                <div>
-                  <strong>{seat.name}</strong>
-                  <small>{seat.isLead ? "工位长" : seat.workstationName || "待归属"}</small>
-                </div>
-                <p>{seat.responsibility}</p>
-                <div>
-                  <strong>{seat.skillLoadout.length + seat.inheritedSkills.length || 0} 项</strong>
-                  <small>{knowledgeLabel(seat)}</small>
-                </div>
-                <div>
-                  <strong>{reviewPolicyLabel(seat.reviewPolicy)}</strong>
-                  <small>{seat.permissionLevel || "继承权限"}</small>
-                </div>
-                <div>
-                  <strong>{seat.dispatchState}</strong>
-                  <small>{seat.dispatchState === "可投递" ? seat.threadKind || "线程待确认" : "先检查线程绑定和电脑接入"}</small>
-                </div>
-              </article>
-            ))}
+            {workstationRows.map((ws, index) => {
+              const wsReady = ws.seats.filter((seat) => seat.dispatchState === "可投递").length;
+              const wsBlocked = ws.seats.filter((seat) => statusTone(seat.dispatchState) === "blocked").length;
+              const tone = wsBlocked ? "blocked" : wsReady ? "healthy" : "idle";
+              return (
+                <article key={ws.id} className={styles.departmentZone} data-tone={tone} data-active={index === 0 ? "1" : undefined}>
+                  <header>
+                    <div>
+                      <span>部门区域</span>
+                      <strong>{ws.name}</strong>
+                      <small>负责人：{ws.leadName}</small>
+                    </div>
+                    <dl>
+                      <div><dt>在线</dt><dd>{wsReady}/{ws.seats.length || 0}</dd></div>
+                      <div><dt>待审</dt><dd>{ws.seats.filter((seat) => reviewPolicyLabel(seat.reviewPolicy) === "强审").length}</dd></div>
+                      <div><dt>阻塞</dt><dd>{wsBlocked}</dd></div>
+                    </dl>
+                  </header>
+
+                  <div className={styles.seatGrid}>
+                    {ws.seats.length ? ws.seats.map((seat) => (
+                      <Link
+                        key={seat.id}
+                        href={`/projects/${projectId}/workbench?seat_id=${encodeURIComponent(seat.id)}&return_to=${encodeURIComponent(selfPath)}&from=company`}
+                        className={styles.seatNode}
+                        data-tone={statusTone(seat.dispatchState)}
+                        title={`打开 ${seat.name} 的 NPC 工作台`}
+                      >
+                        <span className={styles.avatar}>{seat.name.slice(0, 2).toUpperCase()}</span>
+                        <strong>{seat.name}</strong>
+                        <small>{seat.isLead ? "工位长" : reviewPolicyLabel(seat.reviewPolicy)}</small>
+                        <em>{seat.dispatchState}</em>
+                      </Link>
+                    )) : (
+                      <div className={styles.emptySeat}>
+                        <strong>待分配 NPC</strong>
+                        <p>先在主页面创建 NPC，再回公司层分配部门和职责。</p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className={styles.deviceDock}>
+                    {(ws.seats.length ? ws.seats : []).filter((seat) => seat.computerNodeName).slice(0, 4).map((seat) => (
+                      <span key={`${ws.id}-${seat.id}-node`} data-tone={statusTone(seat.dispatchState)}>
+                        {seat.computerNodeName}
+                      </span>
+                    ))}
+                    {!ws.seats.some((seat) => seat.computerNodeName) ? <span data-tone="idle">待绑定电脑</span> : null}
+                  </div>
+                </article>
+              );
+            })}
             {!allSeats.length ? (
               <article className={styles.emptyRow}>
                 <strong>还没有 NPC 员工</strong>
@@ -439,33 +479,6 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
           </div>
         </section>
 
-        <aside className={styles.rightRail} aria-label="员工属性和策略">
-          <details open>
-            <summary><span>员工属性</span><strong>{primarySeat?.name ?? "待选择"}</strong></summary>
-            {primarySeat ? (
-              <div className={styles.drawerBody}>
-                <article><span>职责边界</span><p>{primarySeat.responsibility}</p></article>
-                <article><span>模型 / 通道</span><p>{primarySeat.model || primarySeat.providerLabel || "继承默认配置"}</p></article>
-                <article><span>线程状态</span><p>{primarySeat.dispatchState} · 线程选择回主页面处理，派单前以电脑持续接单为准</p></article>
-              </div>
-            ) : <p className={styles.emptyText}>选择或创建 NPC 后显示员工属性。</p>}
-          </details>
-          <details open>
-            <summary><span>Skill / 知识库</span><strong>{skillAssignedCount}/{allSeats.length || 0}</strong></summary>
-            <div className={styles.drawerBody}>
-              <article><span>已绑定能力</span><p>{skillAssignedCount} 名 NPC 已有 Skill loadout 或工位继承能力。</p></article>
-              <article><span>知识库</span><p>{knowledgeAssignedCount} 名 NPC 有知识库摘要或工位知识路径。</p></article>
-              <Link href={`/projects/${projectId}/skill-forge?return_to=${encodeURIComponent(selfPath)}&from=company`}>打开能力工坊</Link>
-            </div>
-          </details>
-          <details>
-            <summary><span>审核策略</span><strong>{strictReviewCount ? "有强审" : "继承默认"}</strong></summary>
-            <div className={styles.drawerBody}>
-              <article><span>原则</span><p>跨工位、高风险、硬件、部署、模型发布和 Git 回退都必须由人确认。</p></article>
-              <Link href={`/projects/${projectId}/cockpit?return_to=${encodeURIComponent(selfPath)}&from=company`}>去驾驶舱处理待审</Link>
-            </div>
-          </details>
-        </aside>
       </section>
 
       <section className={styles.bottomDock} aria-label="组织变更日志">
@@ -474,15 +487,16 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
           <strong>{recentOrgEvents.length ? `${recentOrgEvents.length} 条` : "等待事件"}</strong>
         </div>
         <div className={styles.logRows}>
-          {recentOrgEvents.length ? recentOrgEvents.map((event, index) => (
+          {(pendingHumanReviews.length ? pendingHumanReviews.slice(0, 6) : recentOrgEvents).map((event, index) => (
             <article key={text(event.id, `event-${index}`)}>
-              <span>{publicStatusLabel(event.status)}</span>
+              <span>{isPendingHumanReview(event) ? reviewSourceLabel(event) : publicStatusLabel(event.status)}</span>
               <strong>{text(event.title, "协作事件")}</strong>
-              <p>{orgEventTypeLabel(event.message_type ?? event.body)} · 组织事件已进入项目记录。</p>
+              <p>{isPendingHumanReview(event) ? "需要项目负责人或人工确认后再继续。" : `${orgEventTypeLabel(event.message_type ?? event.body)} · 组织事件已进入项目记录。`}</p>
             </article>
-          )) : (
+          ))}
+          {!pendingHumanReviews.length && !recentOrgEvents.length ? (
             <p className={styles.emptyText}>还没有组织变更事件。创建工位、绑定能力或调整审核策略后会在这里显示摘要。</p>
-          )}
+          ) : null}
         </div>
       </section>
     </main>

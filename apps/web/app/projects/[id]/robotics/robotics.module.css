@@ -3045,6 +3045,74 @@
   overflow: hidden;
 }
 
+.tileTabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.tileTabs a,
+.tileTabs button {
+  min-height: 30px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(88, 240, 255, 0.22);
+  border-radius: 8px;
+  background: rgba(2, 22, 33, 0.72);
+  color: rgba(234, 255, 255, 0.86);
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.tileTabs a[data-active="1"],
+.tileTabs button[data-active="1"] {
+  border-color: rgba(167, 255, 237, 0.72);
+  background: rgba(23, 215, 255, 0.12);
+  color: #b9fff3;
+  box-shadow: inset 0 -2px 0 rgba(167, 255, 237, 0.72);
+}
+
+.dataWorkbenchPane {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  overflow: auto;
+}
+
+.dataWorkbenchPane article {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  padding: 12px;
+  border: 1px solid rgba(88, 240, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(2, 14, 22, 0.76);
+}
+
+.dataWorkbenchPane span {
+  color: #b9fff3;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.dataWorkbenchPane strong {
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.dataWorkbenchPane p {
+  margin: 0;
+  color: rgba(190, 220, 240, 0.72);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .tileHead {
   display: flex;
   align-items: flex-start;
@@ -3084,7 +3152,8 @@
   color: rgba(190, 220, 240, 0.72);
 }
 
-.tileHead a {
+.tileHead a,
+.tileHead button {
   width: 26px;
   height: 26px;
   flex-shrink: 0;
@@ -3097,6 +3166,7 @@
   text-decoration: none;
   font-size: 16px;
   font-weight: 800;
+  cursor: pointer;
 }
 
 .threadBinding {
@@ -3124,9 +3194,11 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   text-decoration: none;
+  font-family: inherit;
 }
 
-.threadChip[href]:hover {
+.threadChip[href]:hover,
+button.threadChip:hover {
   background: rgba(88, 240, 255, 0.18);
   border-color: rgba(88, 240, 255, 0.42);
   color: #eaffff;
@@ -3253,6 +3325,12 @@
   gap: 2px;
 }
 
+.settingsPanel label {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
 .settingsPanel span {
   color: rgba(247, 228, 165, 0.72);
   font-size: 10.5px;
@@ -3260,13 +3338,21 @@
 }
 
 .settingsPanel b,
-.settingsPanel p {
+.settingsPanel p,
+.settingsPanel select {
   overflow: hidden;
   color: rgba(234, 255, 255, 0.86);
   font-size: 11px;
   font-weight: 650;
   line-height: 1.45;
   text-overflow: ellipsis;
+}
+
+.settingsPanel select {
+  min-height: 28px;
+  border-radius: 7px;
+  border: 1px solid rgba(241, 208, 107, 0.24);
+  background: rgba(2, 13, 20, 0.66);
 }
 
 .settingsPanel p {

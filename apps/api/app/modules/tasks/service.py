@@ -30,6 +30,7 @@ ALLOWED_TASK_STATUSES = {
     "done",
     "failed",
     "cancelled",
+    "archived",
 }
 
 TASK_STATUS_TRANSITIONS: dict[str, set[str]] = {
@@ -39,9 +40,10 @@ TASK_STATUS_TRANSITIONS: dict[str, set[str]] = {
     "reviewing": {"done", "needs_changes", "blocked", "failed"},
     "needs_changes": {"ready", "running", "blocked", "cancelled"},
     "blocked": {"ready", "running", "cancelled"},
-    "done": set(),
-    "failed": {"ready", "cancelled"},
-    "cancelled": set(),
+    "done": {"archived"},
+    "failed": {"ready", "cancelled", "archived"},
+    "cancelled": {"archived"},
+    "archived": set(),
 }
 
 
@@ -1930,6 +1932,7 @@ TASK_ACTION_TO_STATUS: dict[str, str | None] = {
     "review": "reviewing",
     "merge": "done",
     "rollback": "blocked",
+    "archive": "archived",
 }
 
 TASK_ACTION_TO_AUDIT: dict[str, str] = {
@@ -1940,6 +1943,7 @@ TASK_ACTION_TO_AUDIT: dict[str, str] = {
     "review": "task.review_requested",
     "merge": "task.merge_requested",
     "rollback": "task.rollback_requested",
+    "archive": "task.archived",
 }
 
 TASK_ACTION_DEFAULT_MESSAGE: dict[str, str] = {
@@ -1950,6 +1954,7 @@ TASK_ACTION_DEFAULT_MESSAGE: dict[str, str] = {
     "review": "任务已进入审查阶段",
     "merge": "任务已收口，等待版本合并",
     "rollback": "任务已登记回滚处理",
+    "archive": "已从当前任务队列归档，GitHub 证据保留",
 }
 
 
