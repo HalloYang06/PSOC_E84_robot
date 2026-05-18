@@ -3,17 +3,12 @@ import { redirect } from "next/navigation";
 import {
   getCurrentAuthState,
   getProjectComputerNodesState,
-  getProjectKnowledgeDocumentsState,
-  getProjectMembersState,
-  getProjectSkillsState,
   getProjectState,
   getProjectThreadWorkstationsState,
-  getProjectWorkstationsState,
-  getSeatSkillAssignmentsState,
   getTaskProfessionalViewState,
 } from "../../../../lib/server-data";
 import { runnerCanDispatch } from "../../../../lib/runner-status";
-import { ProfessionalEvidenceShell } from "../_components/professional-evidence-shell";
+import { ProfessionalWorkbenchShell } from "../_components/professional-evidence-shell";
 import styles from "./datasets.module.css";
 
 export const dynamic = "force-dynamic";
@@ -98,15 +93,6 @@ const datasetTypes = [
   ["Episode", "action / state / instruction", "可训练 42"],
 ];
 
-const activeSampleCards = [
-  ["当前样本", "arm-episode-022", "片段 72-128 / joint + camera", "标注员正在确认抓取段落、落点标签和关键帧边界。"],
-  ["当前片段", "frame 72-128", "抓取前摇 / 接触 / 抬升", "当前工作段聚焦在接触到抬升的关键片段。"],
-  ["AI 预标注建议", "抓取 + 对齐", "置信 0.63 / 2 处冲突", "AI 只给建议标签和片段建议，是否采纳由人确认。"],
-  ["低置信定位", "frame 84 / frame 117", "夹爪角度波动 / depth 漂移", "先看低置信帧和片段，再决定补标、重标还是退回采集。"],
-  ["QA 放行", "待人工放行", "schema 通过 / timestamp 待补", "QA 只在人工确认后放行到 manifest/export。"],
-  ["训练回执", "等待回写", "dataset_v0.3.1", "导出后回看训练回执，再由人决定是否继续。"],
-];
-
 const annotationLabels = [
   ["抓取", "AI 建议", "0.63", "待人确认"],
   ["接触点", "冲突", "0.41", "先看帧 84"],
@@ -140,70 +126,10 @@ const versionRows = [
   ["episode_arm_v1", "episode manifest", "待 QA 收口", "看 QA", "observability"],
 ];
 
-const intakeStages = [
-  ["采集任务", "12 路", "2 路待补元数据", "补采集", "workbench"],
-  ["样本队列", "48 批", "7 批等 AI 预标注建议", "看队列", "queue"],
-  ["低置信复核", "18 条", "7 条待人工确认", "去复核", "quality"],
-  ["manifest/export", "3 版", "1 版等待训练回执", "去导出", "versions"],
-];
-
 const triageRows = [
   ["IMU 时间断点", "高", "118", "卡在 QA，等人工补 timestamp 再导出", "看异常", "observability"],
   ["音频缺 transcript", "中", "014", "卡在 AI 建议后复核，回工作台派单", "派复核", "workbench"],
   ["ROS bag 缺 topic", "高", "2026-05-12", "卡在 manifest/export，先补采集规则", "补采集", "workbench"],
-];
-
-const exportRows = [
-  ["训练集", "dataset_v0.3.1", "42 条已出 manifest，等待训练回执", "看回执", "observability"],
-  ["回放集", "episode_arm_v1", "7 条仍在低置信复核", "回工作台", "workbench"],
-  ["质检单", "quality_manifest_v4", "3 条异常会回流到样本队列", "看异常", "observability"],
-];
-
-const actionFlowRows = [
-  ["采集任务", "补元数据", "回 NPC 工作台", "先把采集任务补齐，再让样本进入队列", "补采集", "workbench"],
-  ["AI 预标注建议", "看建议", "派给 NPC", "AI 先给出建议标签，再由人决定是否采纳", "看预标注建议", "workbench"],
-  ["低置信复核", "人工确认", "看异常 / 回工作台", "把低置信样本压到 QA 之前，由人确认收口", "去复核", "quality"],
-  ["QA", "人工放行", "处理异常", "schema / privacy / timestamp 通过后，再由人决定是否导出", "看异常", "observability"],
-  ["manifest/export", "人工确认导出", "送去实验室", "只让人工确认过的版本进入训练和回放", "去导出", "ai-lab"],
-  ["训练回执", "看结果", "看观测台", "导出后回来看最小回执和训练结果，再决定下一步", "收回执", "observability"],
-];
-
-const blockerCards = [
-  ["当前卡点", "低置信复核 7 条", "先派复核任务，再进 QA", "去复核", "workbench"],
-  ["导出阻塞", "IMU timestamp", "修完再放行 manifest/export", "看异常", "observability"],
-  ["训练等待", "训练回执未齐", "回工作台或观测台收结果", "收回执", "receipt"],
-];
-
-const quickActionChips = [
-  ["派复核", "low-confidence"],
-  ["看异常", "exceptions"],
-  ["送实验室", "export"],
-  ["收回执", "receipt"],
-];
-
-const sideRuleCards = [
-  ["标注边界", "人确认", "AI 只给建议标签，是否采纳由标注员决定。"],
-  ["QA 放行", "人放行", "schema、timestamp、privacy 通过后再放行。"],
-  ["导出边界", "人确认", "只导出人工确认过的版本，不自动送训。"],
-  ["训练回看", "看回执", "训练完成后回来看回执，再决定下一步。"],
-];
-
-const sideEvidenceRows = [
-  ["schema", "12 字段", "manifest 字段已对齐训练入口。"],
-  ["导出规则", "3 条", "episode、audio、rosbag 分开出单。"],
-  ["训练回执", "dataset_v0.3.1", "等待训练完成后回写。"],
-];
-
-const sideExportConfigRows = [
-  ["manifest", "dataset_v0.3.1", "人工确认字段后再出训练单。"],
-  ["回流策略", "异常回队列", "QA 未放行的样本回到复核或采集。"],
-  ["训练入口", "AI 实验室", "导出完成后再由人决定是否送训。"],
-];
-
-const sampleDecisionRows = [
-  ["标签确认", "人确认", "采纳或修改 AI 建议后，人工提交标签和片段边界。"],
-  ["低置信处理", "人判断", "先补标、重标或退回采集，不自动收口。"],
-  ["导出边界", "人确认", "QA 通过后再决定是否进入 manifest/export 和训练回执。"],
 ];
 
 export default async function ProjectDatasetsPage({
@@ -248,39 +174,22 @@ export default async function ProjectDatasetsPage({
   const [
     computersState,
     threadWorkstationsState,
-    workstationsState,
-    skillsState,
-    documentsState,
-    assignmentsState,
-    membersState,
     taskProfessionalState,
   ] = await Promise.all([
     getProjectComputerNodesState(projectId),
     getProjectThreadWorkstationsState(projectId),
-    getProjectWorkstationsState(projectId),
-    getProjectSkillsState(projectId),
-    getProjectKnowledgeDocumentsState(projectId),
-    getSeatSkillAssignmentsState(projectId),
-    getProjectMembersState(projectId),
     searchParams?.task_id ? getTaskProfessionalViewState(searchParams.task_id) : Promise.resolve({ data: null, status: 200, error: null }),
   ]);
 
   const computers = asArray<AnyRecord>(computersState.data);
   const seats = asArray<AnyRecord>(threadWorkstationsState.data);
-  const workstations = asArray<AnyRecord>(workstationsState.data);
-  const skills = asArray<AnyRecord>(skillsState.data);
-  const documents = asArray<AnyRecord>(documentsState.data);
-  const assignments = asArray<AnyRecord>(assignmentsState.data);
-  const members = asArray<AnyRecord>(membersState.data);
   const taskView = taskProfessionalState.data as AnyRecord | null;
   const taskException = exceptionSummary(taskView);
-  const messageFocus = Boolean(searchParams?.message_id || searchParams?.dispatch_id || searchParams?.source_seat);
-  const focusTitle = text((searchParams as AnyRecord | undefined)?.source_title, "来自 NPC 工作台的证据链焦点");
+  const focusTitle = text((searchParams as AnyRecord | undefined)?.source_title, "来自 NPC 工作台的数据任务焦点");
   const focusSeat = publicFocusSeat((searchParams as AnyRecord | undefined)?.source_label ?? searchParams?.source_seat);
   const onlineComputers = computers.filter(computerDispatchReady).length;
   const returnTo = safeProjectReturnPath(projectId, searchParams?.return_to);
   const selfPath = `/projects/${projectId}/datasets`;
-  const repoReady = Boolean(project.github_url || project.local_git_url);
   const latestMessage = Array.isArray(taskView?.messages) ? (taskView.messages as AnyRecord[])[0] : null;
   const latestReceipt = Array.isArray(taskView?.receipts) ? (taskView.receipts as AnyRecord[])[0] : null;
   const latestDispatch = Array.isArray(taskView?.dispatches) ? (taskView.dispatches as AnyRecord[])[0] : null;
@@ -301,8 +210,6 @@ export default async function ProjectDatasetsPage({
     taskView?.summary?.latest_result_message_id,
   ], "等待回执");
   const currentReceiptCount = professionalMetric(taskView, "receipt_count");
-  const currentArtifactCount = professionalMetric(taskView, "artifact_count");
-  const currentSampleState = taskException.actionable ? "先处理异常样本，再由人确认下一步" : "可以继续人工标注、QA 放行或导出";
   const chainTaskParam = currentTaskId ? `&task_id=${encodeURIComponent(currentTaskId)}` : "";
   const chainMessageParam = currentSourceMessageId && currentSourceMessageId !== "待回流" ? `&message_id=${encodeURIComponent(currentSourceMessageId)}` : "";
   const workbenchHref = `/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=datasets${chainTaskParam}${chainMessageParam}`;
@@ -321,33 +228,12 @@ export default async function ProjectDatasetsPage({
     schema: text(searchParams?.schema, "待确认字段"),
   };
   const deviceChannelList = splitDeviceChannels(deviceSamplingDraft.channels);
-  const deviceRunnerState = onlineComputers > 0 ? `${onlineComputers} 台执行电脑在线` : "执行电脑能力待确认";
+  const deviceRunnerState = onlineComputers > 0 ? `${onlineComputers} 台执行电脑在线` : "执行通道待确认";
   const deviceSchemaFields = deviceSamplingDraft.schema
     .split("+")
     .map((item) => item.trim())
     .filter(Boolean);
   const roboticsReturnHref = `/projects/${projectId}/robotics?debug=${encodeURIComponent(deviceMode || "can")}&return_to=${encodeURIComponent(selfPath)}&from=datasets`;
-  const activeViewer = hasDeviceIntakeDraft
-    ? {
-        sample: `${deviceMode || "device"}-intake-draft`,
-        range: `${deviceSamplingDraft.rate} · ${deviceSamplingDraft.window}`,
-        meta: `${deviceSamplingDraft.channels} · ${deviceSamplingDraft.schema}`,
-      }
-    : {
-        sample: "arm-episode-022",
-        range: "frame 72-128",
-        meta: "joint + camera + imu · 当前只做复核和建议整理",
-      };
-  const activeCardsForView = hasDeviceIntakeDraft
-    ? [
-        ["当前样本", deviceSamplingDraft.title, deviceSamplingDraft.mode, "从设备调试台带来的只读采样草案，先确认通道、频率和窗口。"],
-        ["当前片段", deviceSamplingDraft.window, deviceSamplingDraft.channels, "先只读采集，不触发真实设备动作或参数写入。"],
-        ["AI 预标注建议", "等待采样", deviceSamplingDraft.schema, "AI 只能在样本入库后给出字段解释和低置信建议。"],
-        ["低置信定位", "待生成", "采样后计算", "采样完成后再定位断点、缺字段、异常帧和低置信片段。"],
-        ["QA 放行", "待人工放行", "schema / timestamp / 来源待核", "QA 只在人工确认后进入 manifest/export。"],
-        ["训练回执", "等待回写", "采样未完成", "导出和训练都要等人工确认后的数据版本。"],
-      ]
-    : activeSampleCards;
   const sampleRowsForView = hasDeviceIntakeDraft
     ? [
         [
@@ -362,35 +248,6 @@ export default async function ProjectDatasetsPage({
         ...sampleRows,
       ]
     : sampleRows;
-  const contextCards = [
-    { label: "任务", value: currentTaskId ? "已聚焦" : "当前焦点", detail: taskView ? "当前工作对象" : "等待派单进入数据工场" },
-    { label: "派单", value: currentDispatchId === "待生成" ? "待生成" : "已进入队列", detail: "当前执行链路" },
-    { label: "回执", value: currentReceiptId === "等待回执" ? "等待回执" : "已回流", detail: `${currentReceiptCount} 条最小/最终回执` },
-    { label: "证据", value: currentArtifactCount, detail: "manifest / schema / 异常样本" },
-  ];
-  const sourceMessageState = currentSourceMessageId === "待回流" || !currentSourceMessageId ? "待回流" : "已回流";
-  const nextActionCards = [
-    {
-      label: "采集队列",
-      title: "先收样本，再看 AI 预标注建议",
-      detail: taskException.actionable ? "异常样本优先，避免脏数据继续向后流。" : "先补齐 transcript、topic 和 episode 元数据，再由 AI 辅助给出预标注建议。",
-      href: "#queue",
-    },
-    {
-      label: "待复核",
-      title: "先收低置信样本，再由人确认 QA",
-      detail: "先收低置信样本，再看 schema、timestamp、privacy、缺 topic，由人决定是否放行。",
-      href: taskException.actionable
-        ? `/projects/${projectId}/observability?return_to=${encodeURIComponent(selfPath)}&from=datasets`
-        : "#quality",
-    },
-    {
-      label: "导出 / 回执",
-      title: "人工确认导出，再收训练回执",
-      detail: "只把人工确认过的版本送去实验室，再回来看最小回执和训练结果。",
-      href: "#versions",
-    },
-  ];
 
   const metrics = [
     ["样本", "70"],
@@ -415,14 +272,6 @@ export default async function ProjectDatasetsPage({
     { label: "导出版本", href: "#versions", detail: "manifest / export" },
     { label: "训练回执", href: workbenchHref, detail: "回执 / 指标 / 下一步" },
   ];
-  const resourceCards = [
-    ["执行电脑", `${onlineComputers}/${computers.length}`, observabilityHref],
-    ["NPC", `${seats.length}`, workbenchHref],
-    ["工位", `${workstations.length}`, observabilityHref],
-    ["能力包", `${skills.length}`, workbenchHref],
-    ["知识库", `${documents.length}`, observabilityHref],
-    ["Git", repoReady ? "已设置" : "待设置", observabilityHref],
-  ];
   const actions: Array<[string, string, boolean?]> = [
     ["派给 NPC", workbenchHref, true],
     ["创建采集 / 预标注建议任务", workbenchHref],
@@ -432,7 +281,7 @@ export default async function ProjectDatasetsPage({
   const capabilityCards = [
     { label: "任务", detail: "采集、预标注建议、复核、QA、导出" },
     { label: "回执", detail: "平台只收最小回执和训练 / 导出结果" },
-    { label: "证据", detail: "样本、manifest、schema、异常索引" },
+    { label: "产出", detail: "样本、manifest、schema、异常索引" },
     { label: "能力", detail: "排队、预标注建议、低置信定位、QA 提示、导出任务" },
   ];
   const signalCards = [
@@ -458,7 +307,7 @@ export default async function ProjectDatasetsPage({
           : workbenchHref;
 
   return (
-    <ProfessionalEvidenceShell
+    <ProfessionalWorkbenchShell
       projectId={projectId}
       pageKey="datasets"
       pageTitle="数据工场"
@@ -604,6 +453,6 @@ export default async function ProjectDatasetsPage({
           </div>
         </details>
       </section>
-    </ProfessionalEvidenceShell>
+    </ProfessionalWorkbenchShell>
   );
 }

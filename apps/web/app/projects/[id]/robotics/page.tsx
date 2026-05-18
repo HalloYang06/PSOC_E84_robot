@@ -2,7 +2,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
   getCurrentAuthState,
-  getProjectBossPlansState,
   getProjectComputerNodesState,
   getProjectKnowledgeDocumentsState,
   getProjectSkillsState,
@@ -12,7 +11,7 @@ import {
   getTaskProfessionalViewState,
 } from "../../../../lib/server-data";
 import { runnerStateLabel } from "../../../../lib/runner-status";
-import { ProfessionalEvidenceShell } from "../_components/professional-evidence-shell";
+import { ProfessionalWorkbenchShell } from "../_components/professional-evidence-shell";
 import { ModelImportInspector } from "./model-import-inspector";
 import { RosNodeConnector } from "./ros-node-connector";
 import styles from "./robotics.module.css";
@@ -75,11 +74,6 @@ function publicComputerName(node: AnyRecord, index: number) {
   return `执行电脑 ${index + 1}`;
 }
 
-function professionalMetric(view: AnyRecord | null, key: string) {
-  const value = view?.summary?.[key];
-  return Number.isFinite(Number(value)) ? String(Number(value)) : "0";
-}
-
 function exceptionSummary(view: AnyRecord | null): AnyRecord {
   const summary = view?.summary?.exception_summary;
   return summary && typeof summary === "object" ? summary as AnyRecord : {};
@@ -121,43 +115,10 @@ const topicRows = [
   ["/imu/data", "sensor_msgs/Imu", "100 Hz", "波形"],
 ];
 
-const operationQueue = [
-  ["导入模型", "URDF / GLTF / GLB", "浏览器轻量解析"],
-  ["连接仿真", "Gazebo / Webots / Isaac", "等执行电脑"],
-  ["整理证据", "audio / imu / joint / camera", "可送数据工场"],
-  ["高风险动作", "上电 / 运动 / 写参数", "人审"],
-];
-
-const safetyGates = [
-  ["只读观察", "topic / bag / 日志 / 数据预览"],
-  ["仿真优先", "先在 Gazebo / Webots / Isaac 验证"],
-  ["人审写入", "部署 / 回退 / 硬件动作需要审核"],
-];
-
-const waveformBars = [34, 58, 42, 82, 46, 70, 38, 92, 54, 76, 44, 66, 52, 86, 48, 62, 36, 72];
-
-const diagnosticRows = [
-  ["TF 未对齐", "1", "先看 joint_states 与模型是否一致"],
-  ["IMU 有断点", "2", "回数据工场补采样段"],
-  ["相机帧率偏低", "1", "先做只读复查，不触发写入"],
-];
-
-const firstLookCards = [
-  ["只读现场", "先看 topic、TF、波形和日志证据。", "先判断现场是否可继续推进"],
-  ["仿真优先", "调参或动作验证先走回放和仿真。", "先回放再决定"],
-  ["安全风险门", "写参数、部署和真实运动只走审批。", "风险先看清"],
-];
-
 const diagnosticsCards = [
   ["motor_driver", "warning", "2 路电机驱动进入降额，先查电流波形与温升日志", "看波形"],
   ["ros_time_sync", "ok", "TF 与 joint_states 时钟偏差 < 8ms，可继续只读分析", "看 TF"],
   ["camera_drop", "warning", "前相机有丢帧，建议回放 rosbag 验证", "看 rosbag"],
-];
-
-const logRows = [
-  ["执行电脑", "最新只读巡检", "14:18", "topic 列表、TF、joint_states 已回流", "看观测台"],
-  ["ros-sync", "连接观察", "14:11", "未执行 publish/service/action，仅做订阅检查", "看只读策略"],
-  ["sim-gazebo", "回放计划", "13:56", "仿真回放待进入 AI 实验室执行", "去 AI 实验室"],
 ];
 
 const rosbagRows = [
@@ -166,78 +127,16 @@ const rosbagRows = [
   ["foc_tuning_snapshot.db3", "90 秒", "current/velocity", "只读分析 PID/FOC 建议", "看调参建议"],
 ];
 
-const tfRows = [
-  ["base_link -> shoulder_link", "ok", "< 2 ms", "模型与 joint_states 对齐，保持只读观察"],
-  ["shoulder_link -> elbow_link", "warning", "11 ms", "先回放 rosbag，确认是否是时钟抖动"],
-  ["camera_front -> tool0", "warning", "缺 1 段", "先核对相机与末端坐标，不触发重标定写入"],
-];
-
 const motorRows = [
   ["M1 shoulder", "FOC 只读", "电流 1.8A / 速度波动 6%", "建议先降 P 增 D，进入仿真验证", "去仿真验证"],
   ["M2 elbow", "PID 建议", "过冲 12% / 温升稳定", "先采 30s 波形，不写入参数", "看波形"],
   ["M3 gripper", "限位复核", "位置闭环正常", "真实夹爪动作必须待审", "回工作台审批"],
 ];
 
-const tuningAdviceRows = [
-  ["电流纹波偏高", "先看 current / velocity 波形，再讨论 FOC 参数", "波形优先"],
-  ["过冲明显", "先做 AI 实验室回放，确认是否由目标速度突变引起", "回放优先"],
-  ["末端抖动", "先核对 TF 与 joint_states 时间轴，再决定是否需要仿真复核", "TF 优先"],
-];
-
 const reviewActionRows = [
   ["写入 PID / FOC 参数", "强审", "只能生成建议卡，不能直接下发。", "审批参数写入"],
   ["真实运动 / 夹爪动作", "强审", "必须由人确认安全范围、急停和现场状态。", "查看安全门"],
   ["固件 / 驱动 / 部署", "强审", "先给仿真或台架计划，执行前回工作台审批。", "审批固件动作"],
-];
-
-const readonlyCapabilityRows = [
-  ["Topic", "Foxglove / Webviz", "只读订阅、频率、来源、异常片段"],
-  ["Diagnostics", "Foxglove / ROS diagnostics", "设备状态、温升、时钟、驱动健康"],
-  ["TF / URDF", "Webviz / MoveIt", "模型关系、joint 层次、坐标一致性"],
-  ["rosbag", "rosbag2", "回放索引、时间段、主题覆盖、回放计划"],
-  ["波形", "PlotJuggler", "电流 / IMU / joint 对齐与异常定位"],
-  ["电机参数卡", "SimpleFOC / ODrive / moteus", "参数快照、风险说明、只读建议"],
-];
-
-const referenceModeRows = [
-  ["Foxglove / Webviz", "Topic、TF、3D 模型与相机主题", "转成平台内的只读现场面板、话题清单和证据索引"],
-  ["PlotJuggler", "波形对齐与异常片段定位", "转成波形面板、异常定位建议和数据工场入口"],
-  ["rosbag2", "回放文件、时间段与主题覆盖", "转成 rosbag 索引、回放计划和 AI 实验室入口"],
-  ["MoveIt / Gazebo / Webots", "规划、回放、仿真验证", "转成仿真优先的下一步动作卡，不在本页直接执行"],
-  ["SimpleFOC / ODrive / moteus", "电机参数快照与调参经验", "转成电机参数卡、PID / FOC 建议和强审风险门"],
-];
-
-const riskGateRows = [
-  ["只读能力", "可直接看", "topic、diagnostics、TF、rosbag、波形和参数卡都可以直接查看。", "看只读现场"],
-  ["仿真与计划", "建议先做", "先去 AI 实验室或仿真环境验证，再决定是否需要现场动作。", "看仿真入口"],
-  ["高风险动作", "必须强审", "实时控制、参数写入、固件、部署和真实运动只能走审批卡。", "去审批卡"],
-];
-
-const readonlyActionRows = [
-  ["1. 导入模型", "先在本页导入 URDF / GLTF，导出 manifest 留证。", "检查模型", "model"],
-  ["2. 做只读检查", "生成 topic 任务包，只做订阅与索引，不触发写入。", "生成只读检查", "model"],
-  ["3. 看波形与 rosbag", "顺着同一条证据链看 TF、波形、回放计划。", "看日志与回放", "logs"],
-  ["4. 提交证据或审批", "只读证据回平台；高风险动作一律回工作台审批。", "回 NPC 工作台", "workbench"],
-];
-
-const hmiStatusRows = [
-  ["只读诊断", "3", "TF / IMU / 相机", "warning"],
-  ["回放包", "3", "rosbag / db3", "ok"],
-  ["执行电脑", "live", "只读巡检回流", "ok"],
-  ["风险门", "强审", "写参数 / 运动", "danger"],
-];
-
-const hmiObjectRows = [
-  ["base_link", "ok", "60 Hz"],
-  ["shoulder / elbow", "warning", "32 Hz"],
-  ["camera_front", "warning", "12 Hz"],
-  ["imu/data", "ok", "100 Hz"],
-];
-
-const hmiMotorSnapshotRows = [
-  ["M1", "1.8A", "纹波偏高"],
-  ["M2", "12%", "过冲"],
-  ["M3", "ok", "限位正常"],
 ];
 
 const debugActors = [
@@ -341,7 +240,6 @@ export default async function ProjectRoboticsPage({
     workstationsState,
     skillsState,
     documentsState,
-    bossPlansState,
     taskProfessionalState,
   ] = await Promise.all([
     getProjectComputerNodesState(projectId),
@@ -349,7 +247,6 @@ export default async function ProjectRoboticsPage({
     getProjectWorkstationsState(projectId),
     getProjectSkillsState(projectId),
     getProjectKnowledgeDocumentsState(projectId),
-    getProjectBossPlansState(projectId, 5),
     searchParams?.task_id ? getTaskProfessionalViewState(searchParams.task_id) : Promise.resolve({ data: null, status: 200, error: null }),
   ]);
 
@@ -358,10 +255,8 @@ export default async function ProjectRoboticsPage({
   const workstations = asArray<AnyRecord>(workstationsState.data);
   const skills = asArray<AnyRecord>(skillsState.data);
   const documents = asArray<AnyRecord>(documentsState.data);
-  const bossPlans = asArray<AnyRecord>(bossPlansState.data);
   const taskView = taskProfessionalState.data as AnyRecord | null;
   const taskException = exceptionSummary(taskView);
-  const messageFocus = Boolean(searchParams?.message_id || searchParams?.dispatch_id || searchParams?.source_seat);
   const focusTitle = text(searchParams?.source_title, "来自 NPC 工作台的机器人现场焦点");
   const focusSeat = publicFocusSeat(searchParams?.source_label ?? searchParams?.source_seat);
   const onlineComputers = computers.filter((node) => computerDispatchState(node) === "可投递").length;
@@ -451,17 +346,10 @@ export default async function ProjectRoboticsPage({
     { label: "电机参数", href: "#motor", detail: "快照 / 波形 / 建议" },
     { label: "强审动作", href: `/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=robotics`, detail: "写入 / 运动 / 固件" },
   ];
-  const rightLinks = [
-    ["看当前异常", `/projects/${projectId}/observability?return_to=${encodeURIComponent(selfPath)}&from=robotics`],
-    ["提交诊断给 NPC", `/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=robotics`],
-    ["送样本入库", `/projects/${projectId}/datasets?return_to=${encodeURIComponent(selfPath)}&from=robotics`],
-    ["回放 / 仿真验证", `/projects/${projectId}/ai-lab?return_to=${encodeURIComponent(selfPath)}&from=robotics`],
-    ["申请强审动作", `/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=robotics`],
-  ];
   const capabilityCards = [
     { label: "主体", detail: "机器人/电机调试工程师负责判断与审批" },
     { label: "AI 辅助", detail: "只读诊断、波形解释、回放建议、审批卡整理" },
-    { label: "证据", detail: "manifest、topic 索引、波形证据" },
+    { label: "产出", detail: "manifest、topic 索引、波形记录" },
     { label: "边界", detail: "真实动作、写参数、firmware 都要人审" },
   ];
   const signalCards = [
@@ -486,7 +374,7 @@ export default async function ProjectRoboticsPage({
   };
 
   return (
-    <ProfessionalEvidenceShell
+    <ProfessionalWorkbenchShell
       projectId={projectId}
       pageKey="robotics"
       pageTitle="机器人现场"
@@ -590,7 +478,7 @@ export default async function ProjectRoboticsPage({
             <div className={styles.reviewActionGrid}>{reviewActionRows.map(([name, state, detail, actionLabel]) => <article key={name}><strong>{name}</strong><span>{state}</span><p>{detail}</p><Link href={actionLabel === "查看安全门" ? roboticsLinks.safety : roboticsLinks.workbench}>{actionLabel}</Link></article>)}</div>
           </section>
           <section>
-            <div className={styles.panelHead}><span>执行电脑能力</span><Link href={roboticsLinks.observability}>管理</Link></div>
+            <div className={styles.panelHead}><span>执行通道</span><Link href={roboticsLinks.observability}>管理</Link></div>
             <div className={styles.debugComputerRows}>{computerCapabilityRows.slice(0, 4).map((node) => <article key={node.label}><div><strong>{node.label}</strong><small>{node.summary}</small></div><span data-state={node.state === "可投递" ? "ready" : "wait"}>{node.state}</span><em>CAN {node.can}</em><em>串口 {node.serial}</em><em>USB {node.usb}</em><em>ROS {node.ros}</em></article>)}</div>
           </section>
         </section>
@@ -604,6 +492,6 @@ export default async function ProjectRoboticsPage({
           </div>
         </details>
       </section>
-    </ProfessionalEvidenceShell>
+    </ProfessionalWorkbenchShell>
   );
 }

@@ -78,10 +78,10 @@ function taskArtifacts(view: AnyRecord | null, projectId: string, pageKey: strin
         label: text(ref.label, artifactTitle(path) || "artifact"),
         path,
         detail: artifactDetail(path),
-        actionLabel: sourceMessageId ? "回消息看证据" : "定位到证据链",
+        actionLabel: sourceMessageId ? "回消息看产出" : "查看记录",
         href: sourceMessageId
           ? `/projects/${projectId}/workbench?from=${pageKey}&message_id=${encodeURIComponent(sourceMessageId)}`
-          : `/projects/${projectId}/observability?from=${pageKey}&task_id=${encodeURIComponent(text(view?.task?.id, ""))}`,
+            : `/projects/${projectId}/observability?from=${pageKey}&task_id=${encodeURIComponent(text(view?.task?.id, ""))}`,
       });
     }
   }
@@ -135,7 +135,7 @@ function publicEventType(value: unknown) {
   if (/review|approval/.test(normalized)) return "待人工确认";
   if (/desktop|question/.test(normalized)) return "桌面消息";
   if (/requirement|need/.test(normalized)) return "协作需求";
-  if (/artifact|evidence/.test(normalized)) return "证据";
+  if (/artifact|evidence/.test(normalized)) return "产出";
   if (/error|exception|failed/.test(normalized)) return "异常";
   if (/progress|ack|running/.test(normalized)) return "进度";
   return text(value, "日志");
@@ -156,7 +156,7 @@ function publicEventBody(item: AnyRecord) {
   const type = text(item.message_type ?? item.type, "").toLowerCase();
   if (/runner_command|dispatch/.test(type)) {
     const status = userStatus(item.status, "已进入队列");
-    return `任务已进入执行链路，当前状态：${status}。完整回执、异常和证据在观测台查看。`;
+    return `任务已进入执行链路，当前状态：${status}。完整回执、异常和产出记录在观测台查看。`;
   }
   const cleaned = raw
     .replace(/\b(Task dispatch|Dispatch ID|Task ID|Message ID|Runner ID|source_message_id|source_thread|canonical|requested id|session JSONL|local path|adapter|bridge)\b/gi, "链路记录")
@@ -183,7 +183,7 @@ function consoleTone(value: unknown): ConsoleTone {
   return "info";
 }
 
-export function ProfessionalEvidenceShell({
+export function ProfessionalWorkbenchShell({
   projectId,
   pageKey,
   pageTitle,
@@ -306,11 +306,11 @@ export function ProfessionalEvidenceShell({
               </article>
             ))}
             <article>
-              <small>当前证据链</small>
+              <small>协作记录</small>
               <strong>{taskView ? "已聚焦" : "等待任务"}</strong>
             </article>
             <article>
-              <small>执行电脑调度</small>
+              <small>执行通道</small>
               <strong>{currentRunnerId ? "可追踪" : "待确认"}</strong>
             </article>
           </div>
@@ -320,10 +320,10 @@ export function ProfessionalEvidenceShell({
           <section className={styles.debugToolbar} aria-label="工作区参数">
             <span>{activeTool ? activeTool.label : "总览"}</span>
             <small>{taskTitle}</small>
-            <small>证据 {userStatus(evidenceStatus, "等待")}</small>
+            <small>产出 {userStatus(evidenceStatus, "等待")}</small>
             <small>执行电脑 {currentRunnerId ? "已分配" : "待分配"}</small>
-            <small>当前证据链 {taskView ? "已聚焦" : "等待"}</small>
-            <small>执行电脑调度 {currentRunnerId ? "可追踪" : "待确认"}</small>
+            <small>协作记录 {taskView ? "已聚焦" : "等待"}</small>
+            <small>执行通道 {currentRunnerId ? "可追踪" : "待确认"}</small>
             <small>{pendingCloseoutCount > 0 ? "待收口优先" : hasActionableException ? "异常优先" : "可继续"}</small>
             <small>权限 只读 / 人审写入</small>
           </section>
@@ -336,11 +336,11 @@ export function ProfessionalEvidenceShell({
           <section className={styles.toolLauncher} aria-label="功能按钮">
             <span>功能</span>
             <Link href={`/projects/${projectId}/observability?from=${pageKey}${taskView?.task?.id ? `&task_id=${encodeURIComponent(text(taskView.task.id, ""))}` : ""}`}>
-              <strong>当前证据链</strong>
-              <small>派单 / 回执 / 证据索引</small>
+              <strong>当前记录</strong>
+              <small>派单 / 回执 / 产出索引</small>
             </Link>
             <Link href={`/projects/${projectId}/observability?from=${pageKey}`}>
-              <strong>执行电脑能力</strong>
+              <strong>执行通道</strong>
               <small>在线 / 队列 / 最近心跳</small>
             </Link>
             {primarySectionLinks.map((link) => (
@@ -385,7 +385,7 @@ export function ProfessionalEvidenceShell({
 
           <details className={styles.drawer}>
             <summary>
-              <span>证据</span>
+              <span>产出</span>
               <strong>{artifacts.length ? `${artifacts.length} 条` : "等待回流"}</strong>
             </summary>
             <div className={styles.drawerBody}>
@@ -395,7 +395,7 @@ export function ProfessionalEvidenceShell({
                     <span>{artifact.label}</span>
                     <strong>{artifactTitle(artifact.path)}</strong>
                     <p>{artifact.detail || artifactDetail(artifact.path)}</p>
-                    <small>{artifact.actionLabel || "定位到证据链"}</small>
+                    <small>{artifact.actionLabel || "查看记录"}</small>
                   </Link>
                 ) : (
                   <article key={artifact.path} className={styles.drawerItem}>
@@ -404,25 +404,25 @@ export function ProfessionalEvidenceShell({
                     <p>{artifact.detail || artifactDetail(artifact.path)}</p>
                   </article>
                 )
-              )) : <p className={styles.emptyText}>当前任务还没有证据索引，先从 NPC 工作台发起派单或等待最小回执回流。</p>}
+              )) : <p className={styles.emptyText}>当前任务还没有产出索引，先从 NPC 工作台发起派单或等待最小回执回流。</p>}
             </div>
           </details>
 
           <details className={styles.drawer}>
             <summary>
-              <span>执行电脑调度</span>
+              <span>执行通道</span>
               <strong>{currentRunnerId ? "已分配" : "待确认"}</strong>
             </summary>
             <div className={styles.drawerBody}>
               <article className={styles.drawerItem}>
-                <span>执行电脑能力</span>
+                <span>执行通道</span>
                 <strong>{currentRunnerId ? "当前任务已有执行通道" : "等待可投递电脑"}</strong>
                 <p>这里只展示是否可追踪和可投递，具体线程绑定仍在主页面或 NPC 管理里选择。</p>
               </article>
               <Link href={`/projects/${projectId}/observability?from=${pageKey}`} className={styles.drawerItem}>
-                <span>证据索引</span>
+                <span>记录索引</span>
                 <strong>查看观测台</strong>
-                <p>回执、异常入口、待收口和执行电脑状态都在同一条证据链里查看。</p>
+                <p>回执、异常入口、待收口和执行电脑状态都在同一条记录里查看。</p>
                 <small>查看观测台</small>
               </Link>
             </div>
@@ -452,9 +452,9 @@ export function ProfessionalEvidenceShell({
         </aside>
       </section>
 
-      <section className={styles.bottomDock} aria-label="信息日志">
+      <section className={styles.bottomDock} aria-label="事件日志">
         <div className={styles.logHeader}>
-          <span>信息日志</span>
+          <span>事件日志</span>
           <strong>{recentReceipts.length + recentMessages.length ? `${recentReceipts.length + recentMessages.length} 条` : "等待事件"}</strong>
         </div>
         <div className={styles.dockRows}>
@@ -470,3 +470,5 @@ export function ProfessionalEvidenceShell({
     </main>
   );
 }
+
+export const ProfessionalEvidenceShell = ProfessionalWorkbenchShell;

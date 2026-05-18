@@ -16,6 +16,11 @@
   --surface-gold: #ffe38b;
 }
 
+.shell,
+.shell * {
+  box-sizing: border-box;
+}
+
 .shell a {
   color: inherit;
 }
@@ -585,17 +590,18 @@
 }
 
 .bottomDock {
-  z-index: 15;
+  z-index: 5;
   display: grid;
   grid-template-columns: 150px minmax(0, 1fr);
   align-items: start;
   gap: 10px;
-  min-height: 92px;
-  max-height: 132px;
-  padding: 8px 16px;
+  min-height: 86px;
+  max-height: 120px;
+  margin: 0 20px 14px;
+  padding: 8px;
+  border: 1px solid var(--surface-border);
   border-top: 1px solid var(--surface-border);
-  background: rgba(2, 13, 20, 0.92);
-  backdrop-filter: blur(18px);
+  background: rgba(2, 13, 20, 0.76);
 }
 
 .logHeader {
@@ -807,7 +813,7 @@
     height: 100%;
     grid-template-columns: 176px minmax(0, 1fr) 308px;
     gap: 10px;
-    padding: 8px 16px 58px;
+    padding: 8px 16px;
     overflow: hidden;
   }
 
@@ -853,27 +859,11 @@
   }
 
   .bottomDock {
-    position: fixed;
-    left: 16px;
-    right: 16px;
-    bottom: 8px;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    pointer-events: none;
-  }
-
-  .bottomDrawer {
-    background: rgba(2, 13, 20, 0.94);
-    pointer-events: auto;
-  }
-
-  .bottomDrawer:not([open]) {
-    height: 42px;
-  }
-
-  .bottomDrawer[open] {
-    max-height: 220px;
+    position: static;
+    margin: 0 16px 10px;
+    padding: 8px;
+    border: 1px solid var(--surface-border);
+    background: rgba(2, 13, 20, 0.78);
   }
 }
 
