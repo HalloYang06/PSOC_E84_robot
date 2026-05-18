@@ -65,16 +65,47 @@ def interface(item_id: str, kind: str, name: str, **kwargs: object) -> dict[str,
 def scan_serial() -> list[dict[str, object]]:
     paths: list[str] = []
     if os.name == "nt":
-        # Windows COM ports are best scanned by pyserial when installed. Keep a
-        # conservative placeholder so the runner command still succeeds.
+        code, stdout, stderr = run_text(
+            [
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                "Get-CimInstance Win32_SerialPort | Select-Object DeviceID,Name,PNPDeviceID | ConvertTo-Json -Compress",
+            ],
+            timeout=8.0,
+        )
+        if code == 0 and stdout:
+            try:
+                raw = json.loads(stdout)
+                items = raw if isinstance(raw, list) else [raw]
+                rows: list[dict[str, object]] = []
+                for item in items:
+                    if not isinstance(item, dict):
+                        continue
+                    device_id = str(item.get("DeviceID") or "").strip()
+                    name = str(item.get("Name") or device_id or "Windows COM").strip()
+                    rows.append(
+                        interface(
+                            f"serial:{device_id or name}",
+                            "serial",
+                            name,
+                            status="available",
+                            transport="win32-com",
+                            details={"device": device_id, "pnp": str(item.get("PNPDeviceID") or "").strip()},
+                            risk_level="medium",
+                        )
+                    )
+                return rows
+            except Exception:
+                pass
         return [
             interface(
-                "serial:windows-com",
+                "serial:windows-com-scan",
                 "serial",
-                "Windows COM ports",
+                "Windows COM scan",
                 status="scan_tool_needed",
                 transport="win32",
-                details={"hint": "Install pyserial on the runner for exact COM port enumeration."},
+                details={"hint": stderr or "PowerShell COM inventory returned no serial ports."},
             )
         ]
     for pattern in ("/dev/ttyUSB*", "/dev/ttyACM*", "/dev/ttyAMA*", "/dev/ttyS*"):
@@ -151,14 +182,48 @@ def scan_usb() -> list[dict[str, object]]:
                     )
                 )
     else:
+        code, stdout, stderr = run_text(
+            [
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                "Get-PnpDevice -PresentOnly | Where-Object { $_.InstanceId -like 'USB*' } | Select-Object -First 80 FriendlyName,InstanceId,Status,Class | ConvertTo-Json -Compress",
+            ],
+            timeout=8.0,
+        )
+        if code == 0 and stdout:
+            try:
+                raw = json.loads(stdout)
+                items = raw if isinstance(raw, list) else [raw]
+                for index, item in enumerate(items):
+                    if not isinstance(item, dict):
+                        continue
+                    name = str(item.get("FriendlyName") or item.get("InstanceId") or f"USB {index + 1}").strip()
+                    rows.append(
+                        interface(
+                            f"usb:windows:{index + 1}",
+                            "usb",
+                            name,
+                            status="available" if str(item.get("Status") or "").upper() == "OK" else "misconfigured",
+                            transport="win32-pnp",
+                            details={
+                                "status": str(item.get("Status") or "").strip(),
+                                "class": str(item.get("Class") or "").strip(),
+                            },
+                            risk_level="low",
+                        )
+                    )
+                return rows
+            except Exception:
+                pass
         rows.append(
             interface(
-                "usb:windows",
+                "usb:windows-scan",
                 "usb",
-                "Windows USB inventory",
+                "Windows USB scan",
                 status="scan_tool_needed",
                 transport="win32",
-                details={"hint": "Use a runner helper with PowerShell PnPDevice support for full Windows USB inventory."},
+                details={"hint": stderr or "PowerShell USB inventory returned no devices."},
                 risk_level="low",
             )
         )

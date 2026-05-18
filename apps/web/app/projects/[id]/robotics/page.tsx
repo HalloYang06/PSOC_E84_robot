@@ -6,7 +6,8 @@ import {
   getProjectState,
   getProjectThreadWorkstationsState,
 } from "../../../../lib/server-data";
-import { runnerStateLabel } from "../../../../lib/runner-status";
+import { runnerStateLabel, summarizeRunnerDispatchState } from "../../../../lib/runner-status";
+import { 下发机器人调试命令 } from "../../../actions";
 import styles from "./robotics.module.css";
 
 export const dynamic = "force-dynamic";
@@ -66,7 +67,6 @@ function statusLabel(status: unknown) {
     case "permission_needed": return "需权限";
     case "misconfigured": return "需配置";
     case "scan_tool_needed": return "需工具";
-    case "template": return "模板";
     case "offline": return "离线";
     default: return "待确认";
   }
@@ -108,8 +108,12 @@ type DebugWindow = {
   statusLabel: string;
   computerLabel: string;
   computerState: string;
+  computerNodeId: string;
+  runnerReady: boolean;
+  runnerHint: string;
   transport: string;
   boundNpc: string;
+  isUsable: boolean;
 };
 
 function buildDebugWindows(computers: AnyRecord[], seats: AnyRecord[]): DebugWindow[] {
@@ -117,66 +121,38 @@ function buildDebugWindows(computers: AnyRecord[], seats: AnyRecord[]): DebugWin
   const windows: DebugWindow[] = [];
   computers.forEach((node, nodeIndex) => {
     const computerLabel = publicComputerName(node, nodeIndex);
-    const computerState = runnerStateLabel(node);
+    const runnerState = summarizeRunnerDispatchState(node);
+    const computerState = runnerState.state;
+    const computerNodeId = text(node.id ?? node.config_id ?? node.configId, "");
     scanInterfaces(node).forEach((item, itemIndex) => {
       const kind = text(item.kind, "unknown").toLowerCase();
       const label = kindLabel(kind);
       const rawName = text(item.name, `${label} ${itemIndex + 1}`);
+      const status = text(item.status, "").toLowerCase();
       windows.push({
-        id: text(item.id, `${nodeIndex}-${itemIndex}`),
+        id: `${computerNodeId || nodeIndex}:${text(item.id, `${nodeIndex}-${itemIndex}`)}`,
         name: `${label} · ${rawName}`,
         kind,
         kindLabel: label,
         statusLabel: statusLabel(item.status),
         computerLabel,
         computerState,
+        computerNodeId,
+        runnerReady: runnerState.canQueue && Boolean(computerNodeId),
+        runnerHint: runnerState.detail,
         transport: text(item.transport, "只读"),
         boundNpc: seatNames[itemIndex % Math.max(1, seatNames.length)] ?? "",
+        isUsable: Boolean(computerNodeId) && !["scan_tool_needed", "offline"].includes(status),
       });
     });
   });
-  if (windows.length) return windows;
-  return [
-    {
-      id: "terminal-socketcan",
-      name: "CAN 调试 · can0",
-      kind: "can",
-      kindLabel: "CAN",
-      statusLabel: "等待扫描",
-      computerLabel: "等待 Linux runner",
-      computerState: "等待电脑恢复",
-      transport: "SocketCAN",
-      boundNpc: seatNames[0] ?? "",
-    },
-    {
-      id: "terminal-spi-can",
-      name: "SPI-CAN 调试 · MCP251x",
-      kind: "spi-can",
-      kindLabel: "SPI-CAN",
-      statusLabel: "等待扫描",
-      computerLabel: "等待 Linux runner",
-      computerState: "等待电脑恢复",
-      transport: "SPI 转 CAN",
-      boundNpc: seatNames[1] ?? "",
-    },
-    {
-      id: "terminal-serial",
-      name: "串口调试 · ttyUSB0",
-      kind: "serial",
-      kindLabel: "串口",
-      statusLabel: "等待扫描",
-      computerLabel: "等待 runner",
-      computerState: "等待电脑恢复",
-      transport: "TTY/COM",
-      boundNpc: seatNames[2] ?? "",
-    },
-  ];
+  return windows;
 }
 
 function selectedWindowIds(searchValue: unknown, windows: DebugWindow[]) {
   const raw = text(searchValue, "");
   const requested = raw.split(",").map((item) => item.trim()).filter(Boolean);
-  const ids = requested.length ? requested : windows.slice(0, Math.min(2, windows.length)).map((item) => item.id);
+  const ids = requested.length ? requested : windows.filter((item) => item.isUsable).slice(0, Math.min(2, windows.length)).map((item) => item.id);
   const known = new Set(windows.map((item) => item.id));
   return ids.filter((id) => known.has(id));
 }
@@ -192,7 +168,7 @@ export default async function ProjectRoboticsPage({
   searchParams,
 }: {
   params: { id: string };
-  searchParams?: { windows?: string };
+  searchParams?: { windows?: string; team_notice?: string; team_error?: string };
 }) {
   const projectId = params.id;
   const auth = await getCurrentAuthState();
@@ -218,10 +194,13 @@ export default async function ProjectRoboticsPage({
   const computers = asArray<AnyRecord>(computersState.data);
   const seats = asArray<AnyRecord>(seatsState.data);
   const windows = buildDebugWindows(computers, seats);
+  const usableWindows = windows.filter((item) => item.isUsable);
   const openIds = selectedWindowIds(searchParams?.windows, windows);
   const openWindows = openIds.map((id) => windows.find((item) => item.id === id)).filter(Boolean) as DebugWindow[];
   const onlineComputers = computers.filter((node) => runnerStateLabel(node) === "可投递").length;
   const scanned = computers.filter((node) => scanInterfaces(node).length > 0).length;
+  const notice = text(searchParams?.team_notice, "");
+  const error = text(searchParams?.team_error, "");
 
   return (
     <main className={styles.debugShell}>
@@ -230,7 +209,7 @@ export default async function ProjectRoboticsPage({
           <Link className={styles.backLink} href={`/projects/${projectId}`}>返回项目</Link>
           <div className={styles.title}>
             <strong>机器人现场</strong>
-            <small>{text(project.name, "项目")} · 调试窗口像 NPC 对话框一样打开</small>
+          <small>{text(project.name, "项目")} · 只显示本项目 runner 扫描到的真实接口</small>
           </div>
         </div>
         <div className={styles.topbarRight}>
@@ -244,8 +223,28 @@ export default async function ProjectRoboticsPage({
         <aside className={styles.debugSidebar}>
           <div className={styles.sidebarHeader}>
             <strong>调试窗口</strong>
-            <p>左栏就是你创建过的串口、CAN、USB、SPI-CAN、ROS 调试窗口。</p>
+            <p>左栏只显示本项目电脑扫描到的真实调试接口；没有扫描就不建假窗口。</p>
             <Link className={styles.batchBtn} href={`/projects/${projectId}?panel=computers`}>接入/检查电脑</Link>
+            <form className={styles.indexForm} action={`/projects/${projectId}/robotics`}>
+              <label>
+                <span>真实接口</span>
+                <select name="windows" defaultValue={usableWindows[0]?.id ?? ""}>
+                  {usableWindows.length ? usableWindows.map((window) => (
+                    <option key={window.id} value={window.id}>{window.name} · {window.computerLabel}</option>
+                  )) : <option value="">暂无可打开接口</option>}
+                </select>
+              </label>
+              <label>
+                <span>默认协助 NPC</span>
+                <select name="npc">
+                  {seats.length ? seats.map((seat, index) => {
+                    const name = text(seat.name ?? seat.label, `NPC ${index + 1}`);
+                    return <option key={text(seat.id ?? seat.config_id ?? name, name)} value={name}>{name}</option>;
+                  }) : <option value="">暂无可绑定 NPC</option>}
+                </select>
+              </label>
+              <button type="submit" disabled={!usableWindows.length}>打开所选终端</button>
+            </form>
           </div>
           <ul className={styles.npcList}>
             <li className={styles.groupHeader}><span>已创建</span><strong>{windows.length}</strong></li>
@@ -258,7 +257,11 @@ export default async function ProjectRoboticsPage({
                     <span className={styles.npcName}>{window.name}</span>
                     <span className={styles.npcMeta}>{window.computerLabel} · {window.statusLabel}</span>
                   </div>
-                  <Link className={styles.openBtn} href={withOpenWindow(projectId, openIds, window.id)} aria-label={`打开 ${window.name}`}>+</Link>
+                  {window.isUsable ? (
+                    <Link className={styles.openBtn} href={withOpenWindow(projectId, openIds, window.id)} aria-label={`打开 ${window.name}`}>+</Link>
+                  ) : (
+                    <span className={styles.openBtnDisabled}>!</span>
+                  )}
                 </li>
               );
             })}
@@ -266,6 +269,8 @@ export default async function ProjectRoboticsPage({
         </aside>
 
         <section className={styles.debugMain} data-mode="chat">
+          {notice ? <div className={styles.inlineNotice} data-tone="success">{notice}</div> : null}
+          {error ? <div className={styles.inlineNotice} data-tone="danger">{error}</div> : null}
           {openWindows.length ? (
             <div className={styles.tileGrid} data-tile-count={String(openWindows.length)}>
               {openWindows.map((window) => (
@@ -279,28 +284,37 @@ export default async function ProjectRoboticsPage({
                   </header>
                   <div className={styles.threadBinding}>
                     <span className={styles.threadChip}>{window.statusLabel}</span>
-                    <span className={styles.threadChip}>绑定 NPC：{window.boundNpc || "未绑定"}</span>
-                    <Link className={styles.threadChip} href={`/projects/${projectId}/workbench?return_to=${encodeURIComponent(`/projects/${projectId}/robotics`)}`}>选择 NPC</Link>
-                    <Link className={styles.threadChip} href={`/projects/${projectId}/datasets?return_to=${encodeURIComponent(`/projects/${projectId}/robotics`)}`}>采样入库</Link>
+                    <span className={styles.threadChip}>电脑：{window.computerLabel}</span>
+                    <span className={styles.threadChip}>接单：{window.computerState}</span>
                   </div>
                   <section className={styles.terminalPane} aria-label={`${window.name} 终端`}>
                     {terminalLines(window).map((line) => <code key={line}>{line}</code>)}
                     <code className={styles.terminalCursor}>$ _</code>
                   </section>
-                  <footer className={styles.composer}>
-                    <textarea className={styles.composerInput} placeholder="输入只读采样计划、过滤条件或请绑定 NPC 分析；写入动作会转成待审申请。" />
-                    <div className={styles.composerFoot}>
-                      <span className={styles.composerHint}>只读调试窗口 · 写帧/写串口/ROS 写/固件/真实运动都必须人审</span>
-                      <button type="button">发送给 NPC</button>
-                    </div>
-                  </footer>
+                  <form action={下发机器人调试命令.bind(null, projectId)} className={styles.terminalCommandBar}>
+                    <input type="hidden" name="return_to" value={`/projects/${projectId}/robotics?windows=${encodeURIComponent(openIds.join(","))}`} />
+                    <input type="hidden" name="computer_node_id" value={window.computerNodeId} />
+                    <input type="hidden" name="interface_id" value={window.id} />
+                    <input type="hidden" name="interface_name" value={window.name} />
+                    <input type="hidden" name="interface_kind" value={window.kindLabel} />
+                    <span>$</span>
+                    <input name="command" placeholder="输入只读采样命令或过滤条件，例如 listen --rate 100Hz --window 30s" />
+                    <select name="bound_npc" aria-label="绑定 NPC">
+                      <option value="">不绑定 NPC</option>
+                      {seats.map((seat, index) => {
+                        const name = text(seat.name ?? seat.label, `NPC ${index + 1}`);
+                        return <option key={text(seat.id ?? seat.config_id ?? name, name)} value={name}>{name}</option>;
+                      })}
+                    </select>
+                    <button type="submit" disabled={!window.runnerReady} title={window.runnerReady ? "排队到所选执行电脑" : window.runnerHint}>排队执行</button>
+                  </form>
                 </article>
               ))}
             </div>
           ) : (
             <div className={styles.placeholder}>
-              <strong>从左栏点 + 打开调试窗口</strong>
-              <p>每个窗口都会像 NPC 对话框一样成为一个独立瓷砖。你可以给串口/CAN/USB/SPI-CAN/ROS 窗口命名、绑定 NPC，并把输出入数据工场。</p>
+              <strong>{windows.length ? "没有可打开的真实接口" : "等待本项目电脑扫描接口"}</strong>
+              <p>{windows.length ? "当前只有需要工具或权限的扫描项，先在对应电脑补齐扫描能力或权限，再打开调试终端。" : "请先在主页面接入电脑 runner，并执行接口扫描。平台不会创建 demo 调试窗口误导你。"}</p>
             </div>
           )}
         </section>

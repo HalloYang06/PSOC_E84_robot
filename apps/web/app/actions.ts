@@ -5716,6 +5716,48 @@ export async function 下发Runner命令(projectId: string, formData: FormData) 
   }
 }
 
+export async function 下发机器人调试命令(projectId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "robotics");
+  const computerNodeId = String(formData.get("computer_node_id") ?? "").trim();
+  const interfaceId = String(formData.get("interface_id") ?? "").trim();
+  const interfaceName = String(formData.get("interface_name") ?? "").trim();
+  const interfaceKind = String(formData.get("interface_kind") ?? "").trim();
+  const boundNpc = String(formData.get("bound_npc") ?? "").trim();
+  const command = String(formData.get("command") ?? "").trim();
+  if (!computerNodeId) {
+    redirect(withQueryValue(returnTo, "team_error", "先选择这条调试终端所在的执行电脑"));
+  }
+  if (!interfaceId) {
+    redirect(withQueryValue(returnTo, "team_error", "先选择一个本项目扫描到的真实调试接口"));
+  }
+  if (!command) {
+    redirect(withQueryValue(returnTo, "team_error", "先输入只读采样命令或过滤条件"));
+  }
+  const title = `机器人现场只读调试：${interfaceName || interfaceKind || "接口"}`;
+  const body = [
+    "请在目标电脑上对指定接口执行只读调试命令，并回写最小回执。",
+    `接口类型：${interfaceKind || "待确认"}`,
+    `接口名称：${interfaceName || interfaceId}`,
+    boundNpc ? `协助 NPC：${boundNpc}` : "协助 NPC：未绑定",
+    `只读命令：${command}`,
+    "安全边界：只能读取、采样、过滤和生成建议；串口写入、CAN 发送、SPI 配置修改、ROS publish/service/action、固件烧录、真实运动必须转成人工审核。",
+  ].join("\n");
+  try {
+    await postJson(`/api/collaboration/projects/${projectId}/runner-commands`, {
+      title,
+      body,
+      computer_node_id: computerNodeId,
+    });
+    revalidateProjectSurfaces(projectId);
+    revalidatePath(`/projects/${projectId}/robotics`);
+    redirect(withQueryValue(returnTo, "team_notice", "已排队到所选执行电脑；保持 runner 接单窗口打开，回执会回到平台"));
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "调试命令排队失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
 export async function 创建审批单(formData: FormData) {
   await postJson("/api/approvals", {
     project_id: String(formData.get("project_id") ?? "") || null,

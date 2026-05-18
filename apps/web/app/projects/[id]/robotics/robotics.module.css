@@ -2764,6 +2764,50 @@
   line-height: 1.45;
 }
 
+.indexForm {
+  display: grid;
+  gap: 7px;
+}
+
+.indexForm label {
+  display: grid;
+  gap: 4px;
+}
+
+.indexForm span {
+  color: rgba(185, 255, 243, 0.72);
+  font-size: 10.5px;
+  font-weight: 800;
+}
+
+.indexForm select,
+.indexForm button {
+  min-width: 0;
+  min-height: 30px;
+  border-radius: 7px;
+  border: 1px solid rgba(88, 240, 255, 0.22);
+  background: rgba(2, 13, 20, 0.7);
+  color: #eaffff;
+  font: inherit;
+  font-size: 11.5px;
+  padding: 5px 8px;
+}
+
+.indexForm button {
+  border-color: rgba(120, 230, 170, 0.34);
+  background: rgba(120, 230, 170, 0.14);
+  color: #dffff0;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.indexForm button:disabled {
+  cursor: not-allowed;
+  border-color: rgba(167, 219, 255, 0.16);
+  background: rgba(167, 219, 255, 0.06);
+  color: rgba(220, 240, 255, 0.42);
+}
+
 .batchBtn {
   padding: 6px 10px;
   border-radius: 8px;
@@ -2884,6 +2928,21 @@
   background: rgba(88, 240, 255, 0.28);
 }
 
+.openBtnDisabled {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: rgba(255, 232, 109, 0.08);
+  color: #ffe8b3;
+  border: 1px solid rgba(255, 232, 109, 0.28);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1;
+}
+
 .debugMain {
   position: relative;
   flex: 1;
@@ -2894,6 +2953,26 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.inlineNotice {
+  flex-shrink: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.inlineNotice[data-tone="success"] {
+  border: 1px solid rgba(120, 230, 170, 0.36);
+  background: rgba(120, 230, 170, 0.12);
+  color: #dffff0;
+}
+
+.inlineNotice[data-tone="danger"] {
+  border: 1px solid rgba(255, 139, 111, 0.38);
+  background: rgba(255, 139, 111, 0.12);
+  color: #ffd4c9;
 }
 
 .tileGrid {
@@ -3063,48 +3142,47 @@
   color: #a8f0c6 !important;
 }
 
-.composer {
+.terminalCommandBar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(120px, 168px) auto;
+  gap: 8px;
+  align-items: center;
   padding-top: 8px;
   border-top: 1px solid rgba(88, 240, 255, 0.14);
   flex-shrink: 0;
 }
 
-.composerInput {
-  width: 100%;
-  min-height: 54px;
-  max-height: 110px;
-  resize: vertical;
-  padding: 8px 10px;
+.terminalCommandBar span {
+  color: #a8f0c6;
+  font-family: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.terminalCommandBar input,
+.terminalCommandBar select {
+  min-height: 36px;
   border-radius: 8px;
   border: 1px solid rgba(88, 240, 255, 0.26);
   background: rgba(2, 13, 20, 0.68);
   color: #eaffff;
-  font: inherit;
+  font-family: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
   font-size: 12px;
-  line-height: 1.5;
+  padding: 7px 10px;
 }
 
-.composerInput:focus {
+.terminalCommandBar select {
+  color: rgba(234, 255, 255, 0.9);
+}
+
+.terminalCommandBar input:focus,
+.terminalCommandBar select:focus {
   outline: none;
   border-color: rgba(120, 230, 170, 0.72);
 }
 
-.composerFoot {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: 6px;
-}
-
-.composerHint {
-  color: rgba(220, 240, 255, 0.72);
-  font-size: 11px;
-  line-height: 1.45;
-}
-
-.composerFoot button {
-  min-width: 94px;
+.terminalCommandBar button {
+  min-height: 36px;
   padding: 6px 10px;
   border-radius: 7px;
   border: 1px solid rgba(120, 230, 170, 0.46);
@@ -3115,8 +3193,15 @@
   cursor: pointer;
 }
 
-.composerFoot button:hover {
+.terminalCommandBar button:hover {
   background: rgba(120, 230, 170, 0.26);
+}
+
+.terminalCommandBar button:disabled {
+  cursor: not-allowed;
+  border-color: rgba(167, 219, 255, 0.16);
+  background: rgba(167, 219, 255, 0.06);
+  color: rgba(220, 240, 255, 0.42);
 }
 
 .placeholder {
@@ -3152,8 +3237,13 @@
     grid-template-columns: 1fr;
   }
 
-  .composerFoot {
-    align-items: flex-start;
-    flex-direction: column;
+  .terminalCommandBar {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .terminalCommandBar select,
+  .terminalCommandBar button {
+    grid-column: 2;
+    justify-self: start;
   }
 }
