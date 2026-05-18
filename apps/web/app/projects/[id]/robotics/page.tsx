@@ -75,14 +75,14 @@ function statusLabel(status: unknown) {
 }
 
 function terminalLines(tile: DebugWindow) {
-  const dispatchMode = tile.runnerCanDispatch ? "ready" : tile.runnerCanQueue ? "queued-until-reconnect" : "blocked";
+  const dispatchMode = tile.runnerCanDispatch ? "可接单" : tile.runnerCanQueue ? "排队等恢复" : "暂停提交";
   const lines = [
     `$ open ${tile.name}`,
-    `interface=${tile.kindLabel}  computer=${tile.computerLabel}`,
-    `state=${tile.statusLabel}  mode=human-terminal`,
-    `dispatch=${dispatchMode}  runner=${tile.computerState}`,
-    `io=read:${tile.readCapability ? "yes" : "no"}  write:${tile.writeCapabilityLabel}`,
-    `npc=${tile.boundNpc || "未绑定，创建或设置时选择 NPC"}`,
+    `接口=${tile.kindLabel}  电脑=${tile.computerLabel}`,
+    `状态=${tile.statusLabel}  模式=用户终端`,
+    `接单=${dispatchMode}  电脑状态=${tile.computerState}`,
+    `读取=${tile.readCapability ? "可用" : "不可用"}  写入=${tile.writeCapabilityLabel}`,
+    `协助NPC=${tile.boundNpc || "未绑定，创建或设置时选择 NPC"}`,
   ];
   if (tile.kind === "can") {
     lines.push("filter=none  bitrate=待确认  sample=100Hz");
@@ -132,9 +132,9 @@ function terminalEventLines(tile: DebugWindow, messages: AnyRecord[]) {
       return ["[terminal] 暂无输入输出。用户自己输入会直接排队到执行电脑；NPC 代操作会先显示待审。"];
     }
     if (tile.runnerCanQueue) {
-      return ["[terminal] 执行电脑暂不可立即接单。用户命令会进入队列，等目标 runner 恢复后再处理；NPC 代操作仍需先待审。"];
+      return ["[terminal] 执行电脑暂不可立即接单。用户命令会进入队列，等目标电脑恢复后再处理；NPC 代操作仍需先待审。"];
     }
-    return ["[terminal] 执行电脑未处于可排队状态。先重连 runner，再提交用户终端命令或 NPC 代操作审核。"];
+    return ["[terminal] 执行电脑未处于可排队状态。先重连接单窗口，再提交用户终端命令或 NPC 代操作审核。"];
   }
   return related.map((message) => {
     const type = text(message.message_type ?? message.messageType, "event");
@@ -415,7 +415,7 @@ export default async function ProjectRoboticsPage({
                     <section className={styles.settingsPanel} aria-label={`${window.name} 设置`}>
                       <strong>窗口设置</strong>
                       <div>
-                        <span>电脑 runner</span>
+                        <span>执行电脑</span>
                         <b>{window.computerLabel} · {window.computerState}</b>
                       </div>
                       <div>
@@ -475,7 +475,7 @@ export default async function ProjectRoboticsPage({
           ) : (
             <div className={styles.placeholder}>
               <strong>{windows.length ? "没有可打开的真实接口" : "等待本项目电脑扫描接口"}</strong>
-              <p>{windows.length ? "当前只有需要工具或权限的扫描项，先在对应电脑补齐扫描能力或权限，再打开调试终端。" : "请先在主页面接入电脑 runner，并执行接口扫描。平台不会创建 demo 调试窗口误导你。"}</p>
+              <p>{windows.length ? "当前只有需要工具或权限的扫描项，先在对应电脑补齐扫描能力或权限，再打开调试终端。" : "请先在主页面接入电脑，并执行接口扫描。平台不会创建 demo 调试窗口误导你。"}</p>
             </div>
           )}
         </section>

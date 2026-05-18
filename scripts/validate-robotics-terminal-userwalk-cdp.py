@@ -194,14 +194,14 @@ def main() -> int:
                   return {
                     href: location.href,
                     tileCount: document.querySelectorAll('article[class*="debugTilePanel"]').length,
-                    hasTerminal: body.includes('$ open') && body.includes('mode=human-terminal'),
+                    hasTerminal: body.includes('$ open') && body.includes('模式=用户终端'),
                     hasTerminalIo: body.includes('--- I/O ---') && (body.includes('[terminal]') || body.includes('[ack]') || body.includes('[result') || body.includes('# queued')),
                     hasNpcSelect: !!document.querySelector('select[name="bound_npc"]'),
                     hasCommandInput: !!document.querySelector('input[name="command"]'),
                     submitDisabled: !!form?.querySelector('button[type="submit"]')?.disabled,
                     hasTileSettingsLink: !!document.querySelector('a[aria-label^="设置 "]'),
                     hasJumpSelectNpc: Array.from(document.querySelectorAll('a')).some((a) => (a.innerText || '').includes('选择 NPC')),
-                    hasInternalTerms: /adapter|session JSONL|local path|source_thread|canonical|requested id|raw UUID/.test(body),
+                    hasInternalTerms: /adapter|bridge|session JSONL|local path|source_thread|canonical|requested id|raw UUID|\\brunner\\b/i.test(body),
                     hasHorizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 2,
                   };
                 })()
@@ -222,7 +222,7 @@ def main() -> int:
                   const body = document.body.innerText || '';
                   return {
                     href: location.href,
-                    hasSettingsPanel: body.includes('窗口设置') && body.includes('电脑 runner') && body.includes('调试接口') && body.includes('协助 NPC'),
+                    hasSettingsPanel: body.includes('窗口设置') && body.includes('执行电脑') && body.includes('调试接口') && body.includes('协助 NPC'),
                     stillOnRobotics: location.pathname.endsWith('/robotics'),
                     hasHorizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 2,
                   };
