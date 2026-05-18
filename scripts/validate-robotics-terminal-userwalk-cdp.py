@@ -208,6 +208,10 @@ def main() -> int:
                     hasTerminalIo: body.includes('--- I/O ---') && (body.includes('[terminal]') || body.includes('[ack]') || body.includes('[result') || body.includes('# queued')),
                     hasNpcSelect: !!document.querySelector('select[name="bound_npc"]'),
                     hasCommandInput: !!document.querySelector('input[name="command"]'),
+                    hasCaptureControls: !!document.querySelector('form[class*="captureBar"] input[name="sample_hz"]')
+                      && !!document.querySelector('form[class*="captureBar"] input[name="channels"]')
+                      && Array.from(document.querySelectorAll('form[class*="captureBar"] button')).some((button) => (button.innerText || '').includes('开始采集'))
+                      && Array.from(document.querySelectorAll('form[class*="captureBar"] button')).some((button) => (button.innerText || '').includes('停止')),
                     submitDisabled: !!form?.querySelector('button[type="submit"]')?.disabled,
                     hasTileSettingsLink: Array.from(document.querySelectorAll('button')).some((button) => (button.innerText || '').trim() === '设置'),
                     hasJumpSelectNpc: Array.from(document.querySelectorAll('a')).some((a) => (a.innerText || '').includes('选择 NPC')),
@@ -220,12 +224,64 @@ def main() -> int:
             )
             report["tile"] = tile
             screenshot(cdp, output_dir / f"robotics-terminal-userwalk-tile-{stamp}.png")
-            if not isinstance(tile, dict) or not tile.get("hasTerminal") or not tile.get("hasTerminalIo") or not tile.get("hasNpcSelect") or not tile.get("hasCommandInput"):
+            if not isinstance(tile, dict) or not tile.get("hasTerminal") or not tile.get("hasTerminalIo") or not tile.get("hasNpcSelect") or not tile.get("hasCommandInput") or not tile.get("hasCaptureControls"):
                 report["failures"].append("terminal tile controls missing")  # type: ignore[union-attr]
             if isinstance(tile, dict) and tile.get("hasJumpSelectNpc"):
                 report["failures"].append("NPC binding still jumps away")  # type: ignore[union-attr]
             if isinstance(tile, dict) and tile.get("hasInternalTerms"):
                 report["failures"].append(f"robotics tile exposes internal terms: {tile.get('internalMatches')}")  # type: ignore[union-attr]
+            cdp.send(
+                "Runtime.evaluate",
+                {
+                    "expression": "(() => { const btn = Array.from(document.querySelectorAll('button')).find((button) => (button.innerText || '').includes('数据标注')); if (!btn) return false; btn.click(); return true; })()",
+                    "returnByValue": True,
+                    "userGesture": True,
+                },
+            )
+            wait_for(cdp, "document.body.innerText.includes('采集片段') && document.body.innerText.includes('变量选择') && document.body.innerText.includes('CSV / JSONL')")
+            dataset_state = cdp_eval(
+                cdp,
+                """
+                (() => {
+                  const body = document.body.innerText || '';
+                  return {
+                    hasDatasetTab: body.includes('采集片段') && body.includes('变量选择') && body.includes('CSV / JSONL'),
+                    stillOnRobotics: location.pathname.endsWith('/robotics'),
+                    hasHorizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 2,
+                  };
+                })()
+                """,
+            )
+            report["dataset"] = dataset_state
+            screenshot(cdp, output_dir / f"robotics-terminal-userwalk-dataset-{stamp}.png")
+            if not isinstance(dataset_state, dict) or not dataset_state.get("hasDatasetTab") or not dataset_state.get("stillOnRobotics"):
+                report["failures"].append("dataset tab did not stay in tile")  # type: ignore[union-attr]
+            cdp.send(
+                "Runtime.evaluate",
+                {
+                    "expression": "(() => { const btn = Array.from(document.querySelectorAll('button')).find((button) => (button.innerText || '').includes('图表实验')); if (!btn) return false; btn.click(); return true; })()",
+                    "returnByValue": True,
+                    "userGesture": True,
+                },
+            )
+            wait_for(cdp, "document.body.innerText.includes('横轴') && document.body.innerText.includes('纵轴') && document.body.innerText.includes('PID / FOC')")
+            chart_state = cdp_eval(
+                cdp,
+                """
+                (() => {
+                  const body = document.body.innerText || '';
+                  return {
+                    hasChartTab: body.includes('横轴') && body.includes('纵轴') && body.includes('PID / FOC'),
+                    stillOnRobotics: location.pathname.endsWith('/robotics'),
+                    hasHorizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 2,
+                  };
+                })()
+                """,
+            )
+            report["chart"] = chart_state
+            screenshot(cdp, output_dir / f"robotics-terminal-userwalk-chart-{stamp}.png")
+            if not isinstance(chart_state, dict) or not chart_state.get("hasChartTab") or not chart_state.get("stillOnRobotics"):
+                report["failures"].append("chart tab did not stay in tile")  # type: ignore[union-attr]
             cdp.send(
                 "Runtime.evaluate",
                 {

@@ -6682,6 +6682,193 @@ export async function 下发机器人调试命令(projectId: string, formData: F
   }
 }
 
+function safeArtifactSlug(value: unknown, fallback = "item") {
+  const raw = String(value ?? "").trim().toLowerCase();
+  const slug = raw.replace(/[^a-z0-9_.-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
+  return slug || fallback;
+}
+
+function roboticsCaptureManifestPath(projectId: string, interfaceId: string, captureId: string) {
+  return path.join(
+    workspaceRoot(),
+    "artifacts",
+    "robotics-captures",
+    safeArtifactSlug(projectId, "project"),
+    safeArtifactSlug(interfaceId, "interface"),
+    `${safeArtifactSlug(captureId, "capture")}.json`,
+  );
+}
+
+async function writeRoboticsCaptureManifest(options: {
+  projectId: string;
+  captureId: string;
+  interfaceId: string;
+  interfaceName: string;
+  interfaceKind: string;
+  computerNodeId: string;
+  boundNpc: string;
+  boundNpcLabel: string;
+  sampleHz: string;
+  channels: string[];
+  startedAt: string;
+  stoppedAt: string;
+}) {
+  const filePath = roboticsCaptureManifestPath(options.projectId, options.interfaceId, options.captureId);
+  const relativePath = path.relative(workspaceRoot(), filePath).replace(/\\/g, "/");
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  const manifest = {
+    schema: "robotics_capture_manifest_v1",
+    project_id: options.projectId,
+    capture_id: options.captureId,
+    interface_id: options.interfaceId,
+    interface_name: options.interfaceName,
+    interface_kind: options.interfaceKind,
+    computer_node_id: options.computerNodeId,
+    bound_npc_id: options.boundNpc || null,
+    bound_npc: options.boundNpcLabel || options.boundNpc || null,
+    sample_hz: options.sampleHz,
+    channels: options.channels,
+    started_at: options.startedAt,
+    stopped_at: options.stoppedAt,
+    artifact_path: relativePath,
+    notes: [
+      "This manifest is the platform capture segment index for the device data workbench.",
+      "Raw device files can be attached later by runner receipts under the same capture_id.",
+      "Use GitHub/repo-relative artifact evidence, not a private local path, as shared truth.",
+    ],
+  };
+  await fs.writeFile(filePath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+  return relativePath;
+}
+
+export async function 记录机器人采集片段(projectId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "robotics");
+  const mode = String(formData.get("capture_mode") ?? "").trim();
+  const computerNodeId = String(formData.get("computer_node_id") ?? "").trim();
+  const interfaceId = String(formData.get("interface_id") ?? "").trim();
+  const interfaceName = String(formData.get("interface_name") ?? "").trim();
+  const interfaceKind = String(formData.get("interface_kind") ?? "").trim();
+  const boundNpc = String(formData.get("bound_npc") ?? "").trim();
+  const boundNpcLabel = String(formData.get("bound_npc_label") ?? "").trim();
+  const sampleHz = String(formData.get("sample_hz") ?? "100").trim() || "100";
+  const channels = String(formData.get("channels") ?? "")
+    .split(/[\n,，]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  if (!computerNodeId || !interfaceId) {
+    redirect(withQueryValue(returnTo, "team_error", "采集需要先选择真实执行电脑和调试接口"));
+  }
+  if (!["start", "stop"].includes(mode)) {
+    redirect(withQueryValue(returnTo, "team_error", "请选择开始采集或停止采集"));
+  }
+
+  const now = new Date();
+  const timestamp = now.toISOString();
+  const captureSeed = `${projectId}:${interfaceId}:${timestamp}:${sampleHz}:${channels.join(",")}`;
+  const captureId = `capture-${createHash("sha1").update(captureSeed).digest("hex").slice(0, 12)}`;
+  const channelList = channels.length ? channels : ["time", "motor.current", "motor.velocity", "sensor.temperature", "bus.frame"];
+  try {
+    if (mode === "start") {
+      await postJson("/api/collaboration/messages", {
+        project_id: projectId,
+        agent_id: boundNpc || null,
+        title: `开始采集：${interfaceName || interfaceKind || "调试接口"}`,
+        body: [
+          "用户在设备数据工作台启动采集。",
+          `接口类型：${interfaceKind || "待确认"}`,
+          `接口名称：${interfaceName || interfaceId}`,
+          `采样频率：${sampleHz} Hz`,
+          `采集通道：${channelList.join("、")}`,
+          "停止采集后会在同一调试瓷砖的数据标注和图表实验里生成采集片段索引。",
+        ].join("\n"),
+        message_type: "robotics_capture_start",
+        sender_type: "human",
+        sender_id: "robotics-terminal",
+        recipient_type: boundNpc ? "thread_workstation" : "project",
+        recipient_id: boundNpc || projectId,
+        status: "running",
+        metadata: {
+          terminal_interface_id: interfaceId,
+          terminal_interface_name: interfaceName,
+          terminal_interface_kind: interfaceKind,
+          terminal_bound_npc_id: boundNpc || null,
+          terminal_bound_npc: boundNpcLabel || boundNpc || null,
+          terminal_surface: "robotics",
+          capture_id: captureId,
+          capture_mode: "start",
+          capture_sample_hz: sampleHz,
+          capture_channels: channelList,
+          computer_node_id: computerNodeId,
+          started_at: timestamp,
+        },
+      });
+      revalidateProjectSurfaces(projectId);
+      revalidatePath(`/projects/${projectId}/robotics`);
+      redirect(withQueryValue(returnTo, "team_notice", "已开始采集；停止后会生成采集片段索引"));
+    }
+
+    const artifactPath = await writeRoboticsCaptureManifest({
+      projectId,
+      captureId,
+      interfaceId,
+      interfaceName,
+      interfaceKind,
+      computerNodeId,
+      boundNpc,
+      boundNpcLabel,
+      sampleHz,
+      channels: channelList,
+      startedAt: timestamp,
+      stoppedAt: timestamp,
+    });
+    await postJson("/api/collaboration/messages", {
+      project_id: projectId,
+      agent_id: boundNpc || null,
+      title: `采集片段：${interfaceName || interfaceKind || "调试接口"}`,
+      body: [
+        "设备数据工作台生成了一个采集片段索引。",
+        `接口类型：${interfaceKind || "待确认"}`,
+        `接口名称：${interfaceName || interfaceId}`,
+        `采样频率：${sampleHz} Hz`,
+        `采集通道：${channelList.join("、")}`,
+        `证据文件：${artifactPath}`,
+        "这个片段会出现在同一瓷砖的数据标注和图表实验 tab，可继续预标注、导出数据集或画图分析。",
+      ].join("\n"),
+      message_type: "robotics_capture_segment",
+      sender_type: "human",
+      sender_id: "robotics-terminal",
+      recipient_type: boundNpc ? "thread_workstation" : "project",
+      recipient_id: boundNpc || projectId,
+      status: "captured",
+      metadata: {
+        terminal_interface_id: interfaceId,
+        terminal_interface_name: interfaceName,
+        terminal_interface_kind: interfaceKind,
+        terminal_bound_npc_id: boundNpc || null,
+        terminal_bound_npc: boundNpcLabel || boundNpc || null,
+        terminal_surface: "robotics",
+        capture_id: captureId,
+        capture_mode: "segment",
+        capture_sample_hz: sampleHz,
+        capture_channels: channelList,
+        computer_node_id: computerNodeId,
+        started_at: timestamp,
+        stopped_at: timestamp,
+        artifact_path: artifactPath,
+        artifact_refs: [{ label: "采集片段 manifest", path: artifactPath }],
+        evidence_artifacts: [{ label: "采集片段 manifest", path: artifactPath }],
+      },
+    });
+    revalidateProjectSurfaces(projectId);
+    revalidatePath(`/projects/${projectId}/robotics`);
+    redirect(withQueryValue(returnTo, "team_notice", "已生成采集片段；数据标注和图表实验可直接选择它"));
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "记录采集片段失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
 export async function 创建机器人调试Npc操作审核(projectId: string, formData: FormData) {
   const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "robotics");
   const computerNodeId = String(formData.get("computer_node_id") ?? "").trim();

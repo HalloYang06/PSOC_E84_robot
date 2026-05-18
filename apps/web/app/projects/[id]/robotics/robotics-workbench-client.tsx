@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { 下发机器人调试命令, 创建机器人调试Npc操作审核 } from "../../../actions";
+import { 下发机器人调试命令, 创建机器人调试Npc操作审核, 记录机器人采集片段 } from "../../../actions";
 import tileStyles from "../workbench/_components/npc-tile.module.css";
 import workbenchStyles from "../workbench/workbench.module.css";
 import styles from "./robotics.module.css";
@@ -97,9 +97,33 @@ function terminalEventLines(tile: DebugWindow, messages: AnyRecord[]) {
     if (type === "runner_command") return `$ ${commandText(message)}  # ${status}`;
     if (type === "runner_ack") return `[ack] ${text(message.body, "执行电脑已接单")}`;
     if (type === "runner_result") return `[result:${status}] ${text(message.body, "执行电脑已返回结果")}`;
+    if (type === "robotics_capture_start") return `[capture:running] ${text(message.title, "开始采集")}`;
+    if (type === "robotics_capture_segment") return `[capture:ready] ${text(record(message.extra_data ?? message.metadata).artifact_path, text(message.title, "采集片段"))}`;
     if (type === "robotics_terminal_review" || type === "robotics_terminal_npc_request") return `[npc-review:${status}] ${commandText(message)}`;
     return `[${type}:${status}] ${text(message.title ?? message.body, "终端事件")}`;
   });
+}
+
+function captureSegments(tile: DebugWindow, messages: AnyRecord[]) {
+  return messages
+    .filter((message) => {
+      const extra = record(message.extra_data ?? message.metadata);
+      return text(message.message_type ?? message.messageType, "") === "robotics_capture_segment"
+        && text(extra.terminal_interface_id, "") === tile.id;
+    })
+    .map((message, index) => {
+      const extra = record(message.extra_data ?? message.metadata);
+      const channels = Array.isArray(extra.capture_channels) ? extra.capture_channels.map((item) => text(item, "")).filter(Boolean) : [];
+      return {
+        id: text(extra.capture_id, text(message.id, `capture-${index + 1}`)),
+        title: text(message.title, `采集片段 ${index + 1}`),
+        artifactPath: text(extra.artifact_path, ""),
+        sampleHz: text(extra.capture_sample_hz, "100"),
+        channels: channels.length ? channels : ["time", "motor.current", "sensor.temperature"],
+        createdAt: text(message.created_at ?? message.createdAt ?? extra.stopped_at, ""),
+      };
+    })
+    .reverse();
 }
 
 function terminalLines(tile: DebugWindow, boundNpcLabel: string) {
@@ -176,6 +200,7 @@ function DebugTile({
   const selectedNpcRecord = npcSeats.find((seat) => seatId(seat, "") === boundNpcId);
   const boundNpcLabel = selectedNpcRecord ? seatName(selectedNpcRecord, boundNpcId) : "";
   const returnTo = windowsHref(projectId, openIds, boundNpcId);
+  const segments = captureSegments(tile, terminalMessages);
 
   return (
     <article className={tileStyles.tile}>
@@ -202,18 +227,21 @@ function DebugTile({
           ["terminal", "终端"],
           ["dataset", "数据标注"],
           ["chart", "图表实验"],
-        ].map(([tab, label]) => (
-          <button
-            key={tab}
-            type="button"
-            className={tileStyles.panelTab}
-            data-active={activeTab === tab ? "1" : "0"}
-            onClick={() => setActiveTab(tab as TileTab)}
-          >
-            <span>{label}</span>
-            <strong>{tab === "terminal" ? terminalMessages.length : 0}</strong>
-          </button>
-        ))}
+        ].map(([tab, label]) => {
+          const count = tab === "terminal" ? terminalEventLines(tile, terminalMessages).length : segments.length;
+          return (
+            <button
+              key={tab}
+              type="button"
+              className={tileStyles.panelTab}
+              data-active={activeTab === tab ? "1" : "0"}
+              onClick={() => setActiveTab(tab as TileTab)}
+            >
+              <span>{label}</span>
+              <strong>{count}</strong>
+            </button>
+          );
+        })}
       </nav>
       <section className={styles.runnerGate} data-tone={tile.runnerTone}>
         <strong>{tile.runnerCanDispatch ? "可立即提交" : tile.runnerCanQueue ? "可排队，等电脑恢复" : "先重连执行电脑"}</strong>
@@ -272,6 +300,25 @@ function DebugTile({
               {submitLabel(tile)}
             </button>
           </form>
+          <form action={记录机器人采集片段.bind(null, projectId)} className={styles.captureBar}>
+            <input type="hidden" name="return_to" value={returnTo} />
+            <input type="hidden" name="computer_node_id" value={tile.computerNodeId} />
+            <input type="hidden" name="interface_id" value={tile.id} />
+            <input type="hidden" name="interface_name" value={tile.name} />
+            <input type="hidden" name="interface_kind" value={tile.kindLabel} />
+            <input type="hidden" name="bound_npc" value={boundNpcId} />
+            <input type="hidden" name="bound_npc_label" value={boundNpcLabel} />
+            <label>
+              <span>采样频率</span>
+              <input name="sample_hz" defaultValue="100" inputMode="numeric" />
+            </label>
+            <label>
+              <span>通道</span>
+              <input name="channels" defaultValue="time,motor.current,motor.velocity,sensor.temperature,bus.frame" />
+            </label>
+            <button type="submit" name="capture_mode" value="start" disabled={!tile.runnerReady}>开始采集</button>
+            <button type="submit" name="capture_mode" value="stop" disabled={!tile.runnerReady}>停止并生成片段</button>
+          </form>
           <form action={创建机器人调试Npc操作审核.bind(null, projectId)} className={styles.npcReviewBar}>
             <input type="hidden" name="return_to" value={returnTo} />
             <input type="hidden" name="computer_node_id" value={tile.computerNodeId} />
@@ -291,36 +338,48 @@ function DebugTile({
         <section className={styles.dataWorkbenchPane} aria-label={`${tile.name} 数据标注`}>
           <article>
             <span>采集片段</span>
-            <strong>{tile.kindLabel} / {tile.computerLabel}</strong>
-            <p>从这个调试窗口开始/停止采集后，片段会按时间段出现在这里，可选择一个或多个片段标注。</p>
+            <strong>{segments.length ? `${segments.length} 个可标注片段` : `${tile.kindLabel} / ${tile.computerLabel}`}</strong>
+            {segments.length ? (
+              <ul className={styles.segmentList}>
+                {segments.slice(0, 4).map((segment) => (
+                  <li key={segment.id}>
+                    <b>{segment.title}</b>
+                    <small>{segment.sampleHz}Hz · {segment.channels.slice(0, 3).join(" / ")}</small>
+                    {segment.artifactPath ? <code>{segment.artifactPath}</code> : null}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>从这个调试窗口开始/停止采集后，片段会按时间段出现在这里，可选择一个或多个片段标注。</p>
+            )}
           </article>
           <article>
             <span>变量选择</span>
-            <strong>电机、传感器、总线字段</strong>
-            <p>用户可自由选择一个、两个或多个变量，NPC 只能先做预标注建议，不能替用户确认。</p>
+            <strong>{segments[0]?.channels.slice(0, 3).join(" / ") || "电机、传感器、总线字段"}</strong>
+            <p>{segments.length ? "这些变量来自采集片段 manifest。用户可选择任意组合，NPC 只能先做预标注建议，不能替用户确认。" : "用户可自由选择一个、两个或多个变量，NPC 只能先做预标注建议，不能替用户确认。"}</p>
           </article>
           <article>
             <span>导出</span>
             <strong>CSV / JSONL / Parquet / NPZ</strong>
-            <p>导出的可训练数据集下载到当前操作电脑，同时作为证据供图表实验复用。</p>
+            <p>{segments.length ? "下一步会把已确认标注导出为可训练数据集；当前片段已先作为证据供图表实验复用。" : "导出的可训练数据集下载到当前操作电脑，同时作为证据供图表实验复用。"}</p>
           </article>
         </section>
       ) : (
         <section className={styles.dataWorkbenchPane} aria-label={`${tile.name} 图表实验`}>
           <article>
             <span>横轴</span>
-            <strong>时间 / 采样序号 / CAN 字段</strong>
-            <p>从本窗口采集片段或标注数据集中选择横轴变量。</p>
+            <strong>{segments.length ? "time / sample_index" : "时间 / 采样序号 / CAN 字段"}</strong>
+            <p>{segments.length ? `已读取 ${segments.length} 个本窗口采集片段，可直接选择横轴。` : "从本窗口采集片段或标注数据集中选择横轴变量。"}</p>
           </article>
           <article>
             <span>纵轴</span>
-            <strong>角度 / 电流 / 温度 / 力矩 / IMU</strong>
+            <strong>{segments[0]?.channels.filter((item) => item !== "time").slice(0, 4).join(" / ") || "角度 / 电流 / 温度 / 力矩 / IMU"}</strong>
             <p>支持多曲线叠加、片段对比、异常点和标注覆盖层。</p>
           </article>
           <article>
             <span>目标值</span>
             <strong>PID / FOC 调试参考线</strong>
-            <p>用户设置目标值、上下限和振荡阈值，NPC 给出调参建议但不直接改硬件。</p>
+            <p>{segments.length ? "用户可基于这些片段设置目标值、上下限和振荡阈值，NPC 给出调参建议但不直接改硬件。" : "用户设置目标值、上下限和振荡阈值，NPC 给出调参建议但不直接改硬件。"}</p>
           </article>
         </section>
       )}
