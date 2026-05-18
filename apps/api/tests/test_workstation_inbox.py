@@ -1693,6 +1693,75 @@ def test_seat_queues_split_my_needs_from_my_tasks() -> None:
     assert queue_b_data["my_tasks"]["count"] == 0
 
 
+def test_structured_need_queue_includes_pre_route_statuses() -> None:
+    owner_token, owner_user_id = issue_session_token(client)
+    project = create_project(
+        client,
+        owner_token,
+        name_prefix="Structured Need Queue Statuses",
+        collaboration_config={
+            "thread_workstations": [
+                {
+                    "id": "seat-need-owner",
+                    "name": "Need Owner",
+                    "agent_id": "agent-need-owner",
+                    "status": "active",
+                },
+                {
+                    "id": "seat-need-target",
+                    "name": "Need Target",
+                    "agent_id": "agent-need-target",
+                    "status": "active",
+                },
+            ],
+        },
+    )
+    project_id = project["id"]
+    add_project_member(client, project_id, owner_token, owner_user_id, role="owner", is_owner=True)
+
+    for status in ("ready_to_route", "needs_human_review"):
+        response = client.post(
+            "/api/requirements",
+            headers=auth_headers(owner_token),
+            json={
+                "project_id": project_id,
+                "title": f"Structured Need {status}",
+                "requirement_type": "npc_structured_need",
+                "status": status,
+                "from_agent": "seat-need-owner",
+                "to_agent": "seat-need-target",
+                "target_seat_id": "seat-need-target",
+                "context_summary": "Pre-route structured Need must stay visible to the requester.",
+                "expected_output": "Target task after route.",
+            },
+        )
+        assert response.status_code == 200, response.text
+
+    owner_queue = client.get(
+        f"/api/seats/seat-need-owner/queues?project_id={project_id}&limit=20",
+        headers=auth_headers(owner_token),
+    )
+    assert owner_queue.status_code == 200, owner_queue.text
+    owner_data = owner_queue.json()["data"]
+    assert {"ready_to_route", "needs_human_review"}.issubset(set(owner_data["my_needs"]["statuses_included"]))
+    assert {item["status"] for item in owner_data["my_needs"]["items"]} == {
+        "ready_to_route",
+        "needs_human_review",
+    }
+
+    target_queue = client.get(
+        f"/api/seats/seat-need-target/queues?project_id={project_id}&limit=20",
+        headers=auth_headers(owner_token),
+    )
+    assert target_queue.status_code == 200, target_queue.text
+    target_data = target_queue.json()["data"]
+    assert {"ready_to_route", "needs_human_review"}.issubset(set(target_data["requirement_inbox"]["statuses_included"]))
+    assert {item["status"] for item in target_data["requirement_inbox"]["items"]} == {
+        "ready_to_route",
+        "needs_human_review",
+    }
+
+
 def test_human_review_request_can_be_closed_without_entering_workstation_inbox() -> None:
     owner_token, project_id, workstation_id = _project_with_workstation("Human Review Queue")
 

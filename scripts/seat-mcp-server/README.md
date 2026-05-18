@@ -4,20 +4,37 @@
 
 ## 它是什么
 
-一个 stdio MCP server（line-delimited JSON-RPC），在你的 NPC CLI 启动时被加载，提供三个工具：
+一个 stdio MCP server（line-delimited JSON-RPC），在你的 NPC CLI 启动时被加载。它把项目里的 NPC 员工表、工位关系和协作队列接进 NPC 线程，让 NPC 能按结构化方式提出 Need，而不是靠关键词猜要派给谁。
 
 | 工具 | NPC 会怎么用 |
 |---|---|
-| `list_peers()` | 我有哪些伙伴可以调动？返回同工位（同电脑）/ 跨工位（其他电脑）名单 |
-| `request_help(role, ask, expected?)` | 按角色关键字找伙伴自动派单（例："找一个 reviewer 帮我看 PR"） |
-| `dispatch_to_peer(seat_id, title, body)` | 已经知道伙伴 seat_id，直接指名派单 |
+| `list_peers()` | 看项目员工表：我是谁、同工位伙伴、跨工位伙伴、工位长、职责边界 |
+| `create_need(...)` | 我缺输入、能力或协作产物时，写入结构化 Need |
+| `check_my_needs(limit?)` | 查看我自己提出、等待别人满足的需求 |
+| `check_my_tasks(limit?)` | 查看分配给我承接和完成的任务 |
+| `request_help(role, ask, expected?)` | 兼容旧工具：内部只转成结构化 Need，不再按关键词直接派单 |
+| `dispatch_to_peer(seat_id, title, body)` | 旧直派工具：仅用于用户已批准或低风险同工位场景；新主路径优先 `create_need` |
+| `read_my_inbox(limit?)` | 兼容旧队列查询；新语义优先 `check_my_needs` / `check_my_tasks` |
+| `mark_done(message_id, body, failed?)` | 长开窗口模式下写回执 |
 
-每次调用都走平台后端 `POST /api/collaboration/messages`，**自动应用现有的三级 review_policy**：
-- 同工位 → 默认 `queued`（直接进对方队列）
-- 跨工位 → 默认 `pending_review`（用户在驾驶舱审核通过后才真发出）
-- 项目/工位/NPC 任意一层 `review_policy=skip` → 免审
+核心链路：
 
-返回里的 `needs_review` 字段告诉 NPC 自己"是否需要等用户点通过"。
+```text
+NPC 读员工表和基础 skill
+  -> 调 create_need 写入“我的需求”
+  -> 平台 NeedRouter 根据员工表、skill、知识库、状态和审核策略推荐承接 NPC
+  -> 需要人审时进入驾驶舱 / NPC 待审卡
+  -> 通过或免审后，目标 NPC 的“我的任务”出现 Task
+  -> runner 只投递到目标 NPC 绑定的电脑和线程
+```
+
+审核规则仍由平台统一执行：
+- 同工位、低风险、可信关系可以免审。
+- 跨工位、高风险、硬件/部署/固件/ROS 写/真实运动/Git 回退等必须人审。
+- 用户手动派单不需要用户审核自己。
+- NPC 普通聊天里提到别的 NPC 不会自动派单，只有结构化 `create_need` 才进入 NeedRouter。
+
+`request_help` 和 `dispatch_to_peer` 保留是为了兼容已有线程和旧 prompt；后续上岗包、文档和验收都应优先 `create_need`。
 
 ## 接入方式（本机）
 
@@ -71,7 +88,7 @@ cd "D:/ai合作产品"
 python scripts/validate-seat-mcp-server.py
 ```
 
-期望输出 `✅ PASS — N/N 项全部通过`。
+期望输出 `PASS — N/N 项全部通过`，并确认 `create_need`、`check_my_needs`、`check_my_tasks` 都在工具列表里。
 
 ## 接入方式（局域网另一台电脑）
 
@@ -125,8 +142,10 @@ python scripts/validate-seat-mcp-server.py
 | 现象 | 原因 | 修法 |
 |---|---|---|
 | `list_peers` 返回 `missing PLATFORM_PROJECT_ID or PLATFORM_SEAT_ID env` | watcher 没启动，CLI 在裸跑 | 用 `scripts/start-thread-watcher.ps1` 启动 NPC，不要手动 `claude` |
-| `request_help` 返回 `platform rejected the dispatch` | API 拒绝了 sender_id（不在项目 seat 列表） | 检查 `PLATFORM_SEAT_ID` 是不是该 NPC 的 row id |
-| `request_help` 总是 `needs_review=true` | 默认行为：跨工位强审 | 用户去驾驶舱待审区点通过，或在项目设置里把 `review_policy.default` 改成 `never` |
+| `create_need` 返回 `REQUESTER_SEAT_NOT_FOUND` | 当前 seat 不在项目员工表 | 检查 `PLATFORM_SEAT_ID` 是不是该 NPC 的 row id |
+| `create_need` 返回缺少字段 | Need 没有 expected_output 或 acceptance_criteria | 补齐期望产物和验收标准；草稿不能自动路由成任务 |
+| `create_need` 返回需要审核 | NeedRouter 判定跨工位或高风险 | 用户去驾驶舱或 NPC 待审卡通过/打回 |
+| `request_help` 仍被调用 | 旧线程或旧 prompt 还没迁移 | 它会被转成结构化 Need；更新上岗包让 NPC 优先用 `create_need` |
 | 调任何工具 HTTP 401 | 没传 token | 设 `PLATFORM_ADAPTER_TOKEN` 或 `PLATFORM_AUTH_TOKEN`（watcher 会自动注入） |
 | MCP server 不出现在 CLI 工具列表 | CLI 没识别到 .mcp.json | 重启 CLI session；或用 `claude mcp list` 检查 |
 
@@ -139,7 +158,7 @@ NPC 级 (seat.extra_data.review_policy)
     ↓ 不是 inherit 才生效
 项目级 default (collaboration_config.review_policy.default)
     ↓ 默认 cross_workstation_only
-内置：跨 computer_node_id → 强审
+内置：跨逻辑工位 → 强审；没有逻辑工位时退回 computer_node_id
 ```
 
 任何一层设 `force` → 一定 pending_review；设 `skip` → 一定 queued。
@@ -148,4 +167,4 @@ NPC 级 (seat.extra_data.review_policy)
 
 - 用户**第四次**强调："npc 自主协作，不是说我点击派那个按钮，他才会派发任务，而是需要我审核才能发出去，也可以开免审"（见 `project_autonomous_collab_true_definition.md`）。
 - 之前的"→派"按钮是**人工派单**换皮，不是自主协作。
-- seat-mcp 让 NPC 在 CLI 里**自己识别需要、自己调工具发起**，平台负责审核 gate——这才是"真自主协作"。
+- seat-mcp 让 NPC 在 CLI 里**自己识别需要、自己调 `create_need` 写入需求**，平台负责 NeedRouter、审核 gate、任务队列和 runner 投递。这才是“需求属于发起 NPC、任务属于承接 NPC”的多 agent 工作流。

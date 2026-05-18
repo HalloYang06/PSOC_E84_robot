@@ -12,7 +12,19 @@ from app.db.models.requirement import Requirement
 from app.db.models.task import Task
 from app.db.models.task_event import TaskEvent
 
-INBOX_STATUSES = ("waiting_response", "queued", "blocked", "pending_review", "routed", "in_progress", "answered")
+NEED_QUEUE_STATUSES = (
+    "draft",
+    "ready_to_route",
+    "needs_human_review",
+    "waiting_response",
+    "queued",
+    "blocked",
+    "pending_review",
+    "routed",
+    "in_progress",
+    "answered",
+)
+INBOX_STATUSES = NEED_QUEUE_STATUSES
 TODO_STATUSES = ("draft", "ready", "queued", "running", "in_progress", "review", "reviewing", "blocked")
 
 
