@@ -331,7 +331,7 @@ export default async function ProjectDatasetsPage({
           </div>
           <div className={styles.ideHeroActions}>
             <Link href={workbenchHref}>派给 NPC</Link>
-            <Link href={observabilityHref}>看证据</Link>
+            <Link href={observabilityHref}>看记录</Link>
             <Link href={aiLabHref}>送实验室</Link>
           </div>
         </section>

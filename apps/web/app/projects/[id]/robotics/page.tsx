@@ -141,7 +141,7 @@ const reviewActionRows = [
 
 const debugActors = [
   ["主角", "设备调试工程师", "负责判断、审批和现场安全"],
-  ["负责 NPC", "机器人现场 NPC", "整理只读证据、生成任务包"],
+  ["负责 NPC", "机器人现场 NPC", "整理只读记录、生成任务包"],
   ["执行电脑", "Linux / NanoPi / Runner", "只读采集 CAN、串口、USB、ROS"],
 ];
 
@@ -355,7 +355,7 @@ export default async function ProjectRoboticsPage({
   const signalCards = [
     { label: "现场就绪", value: `${readiness}%`, detail: "就绪度只反映只读观测链路。", href: `/projects/${projectId}/observability?return_to=${encodeURIComponent(selfPath)}&from=robotics`, actionLabel: "查看现场状态" },
     { label: "执行电脑", value: `${onlineComputers}/${computers.length}`, detail: "执行电脑状态异常先去观测台。", href: `/projects/${projectId}/observability?return_to=${encodeURIComponent(selfPath)}&from=robotics`, actionLabel: "检查执行状态" },
-    { label: "异常", value: `${String(taskException.failed ?? 0)}`, detail: taskException.actionable ? "先看异常和日志证据。" : "当前可以继续只读观测。", href: `/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=robotics`, actionLabel: "回工作台处理" },
+    { label: "异常", value: `${String(taskException.failed ?? 0)}`, detail: taskException.actionable ? "先看异常和日志记录。" : "当前可以继续只读观测。", href: `/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=robotics`, actionLabel: "回工作台处理" },
   ];
   const taskActions = [
     { label: "查看观测台", href: `/projects/${projectId}/observability?return_to=${encodeURIComponent(selfPath)}&from=robotics`, primary: true },
@@ -394,12 +394,12 @@ export default async function ProjectRoboticsPage({
           <div>
             <span>当前工具</span>
             <strong>{debugMode === "serial" ? "串口调试" : debugMode === "usb" ? "USB 调试" : debugMode === "ros" ? "ROS 只读桥" : "CAN 调试"}</strong>
-            <p>机器人现场只做只读检查、采样草案、证据整理和强审申请。写参数、真实运动、固件和 ROS 写操作都不能在这里直接执行。</p>
+            <p>机器人现场只做只读检查、采样草案、记录整理和强审申请。写参数、真实运动、固件和 ROS 写操作都不能在这里直接执行。</p>
           </div>
           <div className={styles.ideHeroActions}>
             <Link href={samplingDraftHref()}>采样入库</Link>
             <Link href={roboticsLinks.workbench}>申请强审</Link>
-            <Link href={roboticsLinks.observability}>看证据</Link>
+            <Link href={roboticsLinks.observability}>看记录</Link>
           </div>
         </section>
 
@@ -461,7 +461,7 @@ export default async function ProjectRoboticsPage({
           </section>
 
           <aside className={styles.debugRightPane}>
-            <div className={styles.debugPaneTitle}><span>右侧工具</span><strong>动作 / 属性 / 证据</strong></div>
+            <div className={styles.debugPaneTitle}><span>右侧工具</span><strong>动作 / 属性 / 记录</strong></div>
             <div className={styles.debugModeList}>
               {debugModes.map(([mode, label, detail]) => (
                 <Link key={mode} href={debugModeHref(mode)} data-active={debugMode === mode ? "1" : undefined}><strong>{label}</strong><p>{detail}</p></Link>
@@ -484,7 +484,7 @@ export default async function ProjectRoboticsPage({
         </section>
 
         <details className={styles.advancedEvidenceDrawer}>
-          <summary><span>高级证据区</span><strong>模型、波形、TF、电机参数和历史面板</strong></summary>
+          <summary><span>高级记录区</span><strong>模型、波形、TF、电机参数和历史面板</strong></summary>
           <div className={styles.ideDrawerGrid}>
             {[...diagnosticsCards, ...motorRows, ...rosbagRows].slice(0, 9).map((row) => (
               <article key={row[0]}><strong>{row[0]}</strong><span>{row[1]}</span><p>{row[2]}</p></article>

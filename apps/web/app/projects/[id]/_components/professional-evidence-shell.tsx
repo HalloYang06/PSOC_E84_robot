@@ -57,7 +57,7 @@ function artifactTitle(path: string) {
 
 function artifactDetail(path: string) {
   const normalized = text(path, "").replace(/\\/g, "/");
-  if (!normalized) return "证据文件";
+  if (!normalized) return "产出文件";
   const parts = normalized.split("/").filter(Boolean);
   const tail = parts.slice(-2);
   return tail.length ? tail.join(" / ") : normalized;
@@ -332,7 +332,7 @@ export function ProfessionalWorkbenchShell({
           </section>
         </section>
 
-        <aside className={styles.rightRail} aria-label="功能按钮和证据抽屉">
+        <aside className={styles.rightRail} aria-label="功能按钮和属性抽屉">
           <section className={styles.toolLauncher} aria-label="功能按钮">
             <span>功能</span>
             <Link href={`/projects/${projectId}/observability?from=${pageKey}${taskView?.task?.id ? `&task_id=${encodeURIComponent(text(taskView.task.id, ""))}` : ""}`}>
