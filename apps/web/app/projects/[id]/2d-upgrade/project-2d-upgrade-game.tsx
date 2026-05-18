@@ -1329,7 +1329,7 @@ function computerUserHint(computer: FeedItem, workstations: FeedItem[]) {
 
 function computerDesktopCapabilityLabel(computer: FeedItem) {
   if (computer.desktopBridgeConnected && computer.desktopDeliveryMode === "codex_desktop_ui") {
-    return computer.desktopBridgeLabel || "桌面线程可见";
+    return "桌面版可投递";
   }
   if (computer.desktopProcessDetected) return "检测到桌面进程，未确认 UI 投递";
   return "未检测到桌面投递桥";
@@ -1337,7 +1337,7 @@ function computerDesktopCapabilityLabel(computer: FeedItem) {
 
 function computerDesktopCapabilityHint(computer: FeedItem) {
   if (computer.desktopBridgeConnected && computer.desktopDeliveryMode === "codex_desktop_ui") {
-    return computer.desktopBridgeNote || "这台电脑可把单次派单作为普通消息送进已绑定的 Codex Desktop 线程。";
+    return "这台电脑可以把平台派单送进已绑定的 Codex 桌面线程；不会改动本机配置。";
   }
   if (computer.desktopProcessDetected) {
     return "执行程序看到本机桌面进程，但没有确认可交互输入；可能只能走服务端或文件投递。";
@@ -1364,6 +1364,15 @@ function runnerReconnectHint(computer: FeedItem, workstations: FeedItem[]) {
     return threads > 0 ? `已发现 ${threads} 条线程，可继续绑定 NPC 或派发任务。` : "执行程序在线；若要派给桌面线程，请先打开 AI 工具并重新扫描线程。";
   }
   return "复制下面的持续接单命令到这台电脑运行。命令会使用公网 API，不依赖开发者本机路径。";
+}
+
+function computerListDetail(computer: FeedItem, workstations: FeedItem[]) {
+  const title = computer.providerLabel || computer.runnerId || "";
+  const dispatch = runnerDispatchLabel(computer);
+  const threads = computerThreadCount(computer, workstations);
+  const platform = computer.type || computer.status || "待确认系统";
+  const heartbeat = computer.at ? `心跳 ${computer.at}` : "暂无心跳";
+  return [title, dispatch, `${threads} 条线程`, heartbeat, platform].filter(Boolean).join(" / ");
 }
 
 function providerSummary(workstations: FeedItem[]) {
@@ -3989,7 +3998,19 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
           </article>
           <article className={styles.panelCard}>
             <span>电脑列表</span>
-            {renderList(computers, "暂无电脑，先添加本机或局域网电脑。")}
+            <ul className={styles.panelList}>
+              {computers.length ? computers.map((computer) => (
+                <li key={computer.id}>
+                  <b>{itemTitle(computer)}</b>
+                  <small>{computerListDetail(computer, workstations)}</small>
+                </li>
+              )) : (
+                <li>
+                  <b>暂无电脑，先添加本机或局域网电脑。</b>
+                  <small>右侧打开“生成配对令牌”，复制 Windows 或 Linux 命令到目标电脑运行。</small>
+                </li>
+              )}
+            </ul>
           </article>
         </div>
       );
