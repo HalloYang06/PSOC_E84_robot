@@ -323,7 +323,7 @@ export default async function ProjectRoboticsPage({
           <Link className={styles.backLink} href={`/projects/${projectId}`}>返回项目</Link>
           <div className={styles.title}>
             <strong>机器人现场</strong>
-          <small>{text(project.name, "项目")} · 只显示本项目 runner 扫描到的真实接口</small>
+          <small>{text(project.name, "项目")} · 只显示本项目电脑扫描到的真实接口，不建假窗口</small>
           </div>
         </div>
         <div className={styles.topbarRight}>
@@ -337,10 +337,10 @@ export default async function ProjectRoboticsPage({
         <aside className={styles.debugSidebar}>
           <div className={styles.sidebarHeader}>
             <strong>创建调试窗口</strong>
-            <p>在当前页选择本项目电脑 runner、真实接口和协助 NPC；没有扫描结果就不创建假窗口。</p>
+            <p>在当前页选择本项目电脑、真实接口和协助 NPC；没有扫描结果就不建假窗口。</p>
             <form className={styles.indexForm} action={`/projects/${projectId}/robotics`}>
               <label>
-                <span>电脑 runner / 真实接口</span>
+                <span>电脑 / 真实接口</span>
                 <select name="windows" defaultValue={usableWindows[0]?.id ?? ""}>
                   {usableWindows.length ? usableWindows.map((window) => (
                     <option key={window.id} value={window.id}>{window.computerLabel} · {window.computerState} · {window.name}</option>
@@ -409,11 +409,7 @@ export default async function ProjectRoboticsPage({
                   <section className={styles.runnerGate} data-tone={window.runnerTone}>
                     <strong>{window.runnerCanDispatch ? "可立即提交" : window.runnerCanQueue ? "可排队，等电脑恢复" : "先重连执行电脑"}</strong>
                     <span>{window.runnerHint}</span>
-                    {!window.runnerCanDispatch ? (
-                      <Link href={`/projects/${projectId}/2d-upgrade?panel=computers&action=runner-health`} className={styles.runnerGateAction}>
-                        去电脑接入
-                      </Link>
-                    ) : null}
+                    {!window.runnerCanDispatch ? <em>保持目标电脑接单窗口在线后自动恢复</em> : null}
                   </section>
                   {settingsWindowId === window.id ? (
                     <section className={styles.settingsPanel} aria-label={`${window.name} 设置`}>

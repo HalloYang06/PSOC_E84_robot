@@ -194,7 +194,7 @@ def main() -> int:
                   return {
                     href: location.href,
                     tileCount: document.querySelectorAll('article[class*="debugTilePanel"]').length,
-                    hasTerminal: body.includes('$ open') && body.includes('mode=read-only'),
+                    hasTerminal: body.includes('$ open') && body.includes('mode=human-terminal'),
                     hasTerminalIo: body.includes('--- I/O ---') && (body.includes('[terminal]') || body.includes('[ack]') || body.includes('[result') || body.includes('# queued')),
                     hasNpcSelect: !!document.querySelector('select[name="bound_npc"]'),
                     hasCommandInput: !!document.querySelector('input[name="command"]'),

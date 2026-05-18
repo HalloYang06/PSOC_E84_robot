@@ -3180,24 +3180,19 @@
   white-space: nowrap;
 }
 
-.runnerGateAction {
+.runnerGate em {
   min-height: 28px;
   display: inline-grid;
   align-content: center;
   padding: 4px 8px;
   border-radius: 7px;
-  border: 1px solid rgba(88, 240, 255, 0.24);
-  background: rgba(88, 240, 255, 0.08);
-  color: #b9fff3;
+  border: 1px solid rgba(241, 208, 107, 0.24);
+  background: rgba(241, 208, 107, 0.08);
+  color: #f7e4a5;
   font-size: 11px;
   font-weight: 900;
-  text-decoration: none;
+  font-style: normal;
   white-space: nowrap;
-}
-
-.runnerGateAction:hover {
-  background: rgba(88, 240, 255, 0.18);
-  color: #eaffff;
 }
 
 .runnerGate[data-tone="ready"] {
