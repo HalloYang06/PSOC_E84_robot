@@ -9,11 +9,13 @@ import platform
 import socket
 import subprocess
 import sys
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
 
-SCANNER_VERSION = "2026-05-18.1"
+SCANNER_VERSION = "2026-05-18.2"
 
 
 def now_iso() -> str:
@@ -30,6 +32,27 @@ def run_text(command: list[str], timeout: float = 1.8) -> tuple[int, str, str]:
         return 124, "", "timeout"
     except Exception as exc:
         return 1, "", str(exc)
+
+
+def post_json(url: str, payload: dict[str, object], headers: dict[str, str], timeout: float = 20.0) -> dict[str, object]:
+    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    request = urllib.request.Request(
+        url,
+        data=data,
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            **headers,
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            raw = response.read().decode("utf-8", errors="replace")
+            return json.loads(raw) if raw else {}
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"HTTP {exc.code}: {body}") from exc
 
 
 def read_text(path: str | Path) -> str | None:
@@ -145,25 +168,63 @@ def scan_serial() -> list[dict[str, object]]:
 
 def scan_usb() -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
-    code, stdout, stderr = run_text(["lsusb"], timeout=1.5)
-    if code == 0 and stdout:
-        for index, line in enumerate(stdout.splitlines()):
-            name = line.strip()
-            device_id = f"usb:{index + 1}"
-            if " ID " in name:
-                device_id = "usb:" + name.split(" ID ", 1)[1].split(" ", 1)[0]
-            rows.append(
-                interface(
-                    device_id,
-                    "usb",
-                    name,
-                    status="available",
-                    transport="usb",
-                    details={"lsusb": name},
-                    risk_level="low",
+    stderr = ""
+    if os.name == "nt":
+        ps_commands = (
+            "Get-PnpDevice -PresentOnly | Where-Object { $_.InstanceId -like 'USB*' } | "
+            "Select-Object -First 80 FriendlyName,InstanceId,Status,Class | ConvertTo-Json -Compress"
+        )
+        for timeout in (12.0, 28.0):
+            code, stdout, stderr = run_text(["powershell", "-NoProfile", "-Command", ps_commands], timeout=timeout)
+            if code == 0 and stdout:
+                try:
+                    raw = json.loads(stdout)
+                    items = raw if isinstance(raw, list) else [raw]
+                    for index, item in enumerate(items):
+                        if not isinstance(item, dict):
+                            continue
+                        instance_id = str(item.get("InstanceId") or "").strip()
+                        name = str(item.get("FriendlyName") or instance_id or f"USB {index + 1}").strip()
+                        rows.append(
+                            interface(
+                                f"usb:windows:{index + 1}",
+                                "usb",
+                                name,
+                                status="available" if str(item.get("Status") or "").upper() == "OK" else "misconfigured",
+                                transport="win32-pnp",
+                                details={
+                                    "instance": instance_id,
+                                    "status": str(item.get("Status") or "").strip(),
+                                    "class": str(item.get("Class") or "").strip(),
+                                },
+                                risk_level="low",
+                            )
+                        )
+                    if rows:
+                        return rows
+                except Exception as exc:
+                    stderr = str(exc)
+    else:
+        code, stdout, stderr = run_text(["lsusb"], timeout=1.5)
+        if code == 0 and stdout:
+            for index, line in enumerate(stdout.splitlines()):
+                name = line.strip()
+                device_id = f"usb:{index + 1}"
+                if " ID " in name:
+                    device_id = "usb:" + name.split(" ID ", 1)[1].split(" ", 1)[0]
+                rows.append(
+                    interface(
+                        device_id,
+                        "usb",
+                        name,
+                        status="available",
+                        transport="usb",
+                        details={"lsusb": name},
+                        risk_level="low",
+                    )
                 )
-            )
-    elif os.name != "nt":
+        if rows:
+            return rows
         sysfs = sorted(Path("/sys/bus/usb/devices").glob("*")) if Path("/sys/bus/usb/devices").exists() else []
         for device in sysfs[:80]:
             vendor = read_text(device / "idVendor")
@@ -181,52 +242,6 @@ def scan_usb() -> list[dict[str, object]]:
                         risk_level="low",
                     )
                 )
-    else:
-        code, stdout, stderr = run_text(
-            [
-                "powershell",
-                "-NoProfile",
-                "-Command",
-                "Get-PnpDevice -PresentOnly | Where-Object { $_.InstanceId -like 'USB*' } | Select-Object -First 80 FriendlyName,InstanceId,Status,Class | ConvertTo-Json -Compress",
-            ],
-            timeout=8.0,
-        )
-        if code == 0 and stdout:
-            try:
-                raw = json.loads(stdout)
-                items = raw if isinstance(raw, list) else [raw]
-                for index, item in enumerate(items):
-                    if not isinstance(item, dict):
-                        continue
-                    name = str(item.get("FriendlyName") or item.get("InstanceId") or f"USB {index + 1}").strip()
-                    rows.append(
-                        interface(
-                            f"usb:windows:{index + 1}",
-                            "usb",
-                            name,
-                            status="available" if str(item.get("Status") or "").upper() == "OK" else "misconfigured",
-                            transport="win32-pnp",
-                            details={
-                                "status": str(item.get("Status") or "").strip(),
-                                "class": str(item.get("Class") or "").strip(),
-                            },
-                            risk_level="low",
-                        )
-                    )
-                return rows
-            except Exception:
-                pass
-        rows.append(
-            interface(
-                "usb:windows-scan",
-                "usb",
-                "Windows USB scan",
-                status="scan_tool_needed",
-                transport="win32",
-                details={"hint": stderr or "PowerShell USB inventory returned no devices."},
-                risk_level="low",
-            )
-        )
     if not rows and stderr:
         rows.append(
             interface(
@@ -352,8 +367,38 @@ def build_scan() -> dict[str, object]:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Read-only device interface scan for AI collaboration runner.")
     parser.add_argument("--pretty", action="store_true")
+    parser.add_argument("--sync", action="store_true", help="POST the scan to the platform runner device interface endpoint.")
+    parser.add_argument("--server", default=os.environ.get("AI_COLLAB_API_BASE", ""))
+    parser.add_argument("--runner-id", default=os.environ.get("RUNNER_ID", ""))
+    parser.add_argument("--project-id", default=os.environ.get("PROJECT_ID", ""))
+    parser.add_argument("--computer-node-id", default=os.environ.get("COMPUTER_NODE_ID", ""))
     args = parser.parse_args()
     scan = build_scan()
+    if args.sync:
+        missing = [
+            name
+            for name, value in (
+                ("--server", args.server),
+                ("--runner-id", args.runner_id),
+                ("--project-id", args.project_id),
+                ("--computer-node-id", args.computer_node_id),
+            )
+            if not str(value or "").strip()
+        ]
+        if missing:
+            raise SystemExit(f"--sync requires {', '.join(missing)}")
+        payload = {
+            **scan,
+            "project_id": args.project_id,
+            "computer_node_id": args.computer_node_id,
+        }
+        result = post_json(
+            f"{args.server.rstrip('/')}/api/runners/{args.runner_id}/device-interfaces/sync",
+            payload,
+            {"X-Runner-Id": args.runner_id},
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2 if args.pretty else None))
+        return 0
     print(json.dumps(scan, ensure_ascii=False, indent=2 if args.pretty else None))
     return 0
 

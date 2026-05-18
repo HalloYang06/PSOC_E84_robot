@@ -301,6 +301,16 @@ register_runner
 
 download_runner_script "platform-workstation-adapter.py"
 download_runner_script "platform-provider-executor.py"
+if download_runner_script "scan-device-interfaces.py"; then
+  if ! python3 "$RUNNER_DIR/scan-device-interfaces.py" \
+    --sync \
+    --server "$API_BASE" \
+    --runner-id "$RUNNER_ID" \
+    --project-id "$PROJECT_ID" \
+    --computer-node-id "$COMPUTER_NODE_ID" >/dev/null; then
+    echo "Device interface scan skipped or failed." >&2
+  fi
+fi
 
 if [[ "$SKIP_CODEX" != "true" ]]; then
   if download_runner_script "sync-codex-session-threads.sh"; then

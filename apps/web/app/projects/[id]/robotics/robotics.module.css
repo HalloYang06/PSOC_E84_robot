@@ -3276,6 +3276,61 @@
   color: rgba(220, 240, 255, 0.42);
 }
 
+.npcReviewBar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 7px 8px;
+  border: 1px solid rgba(241, 208, 107, 0.22);
+  border-radius: 8px;
+  background: rgba(241, 208, 107, 0.065);
+  flex-shrink: 0;
+}
+
+.npcReviewBar span {
+  color: #f7e4a5;
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.npcReviewBar input {
+  min-height: 32px;
+  min-width: 0;
+  border-radius: 7px;
+  border: 1px solid rgba(241, 208, 107, 0.24);
+  background: rgba(2, 13, 20, 0.66);
+  color: #fff7d7;
+  font-family: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+  font-size: 12px;
+  padding: 6px 9px;
+}
+
+.npcReviewBar input:focus {
+  outline: none;
+  border-color: rgba(241, 208, 107, 0.58);
+}
+
+.npcReviewBar button {
+  min-height: 32px;
+  padding: 5px 9px;
+  border-radius: 7px;
+  border: 1px solid rgba(241, 208, 107, 0.46);
+  background: rgba(241, 208, 107, 0.15);
+  color: #fff4ca;
+  font-size: 11.5px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.npcReviewBar button:disabled {
+  cursor: not-allowed;
+  border-color: rgba(167, 219, 255, 0.16);
+  background: rgba(167, 219, 255, 0.05);
+  color: rgba(220, 240, 255, 0.38);
+}
+
 .placeholder {
   display: flex;
   flex-direction: column;
@@ -3317,6 +3372,15 @@
   .terminalCommandBar button {
     grid-column: 2;
     justify-self: start;
+  }
+
+  .npcReviewBar {
+    grid-template-columns: 1fr;
+  }
+
+  .npcReviewBar span,
+  .npcReviewBar button {
+    width: 100%;
   }
 
   .settingsPanel {

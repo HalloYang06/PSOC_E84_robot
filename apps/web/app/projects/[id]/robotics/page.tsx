@@ -7,8 +7,9 @@ import {
   getProjectState,
   getProjectThreadWorkstationsState,
 } from "../../../../lib/server-data";
+import { isNpcSeatRecord } from "../../../../lib/platform-provider";
 import { runnerStateLabel, summarizeRunnerDispatchState } from "../../../../lib/runner-status";
-import { 下发机器人调试命令 } from "../../../actions";
+import { 下发机器人调试命令, 创建机器人调试Npc操作审核 } from "../../../actions";
 import styles from "./robotics.module.css";
 
 export const dynamic = "force-dynamic";
@@ -77,24 +78,25 @@ function terminalLines(tile: DebugWindow) {
   const lines = [
     `$ open ${tile.name}`,
     `interface=${tile.kindLabel}  computer=${tile.computerLabel}`,
-    `state=${tile.statusLabel}  mode=read-only`,
+    `state=${tile.statusLabel}  mode=human-terminal`,
+    `io=read:${tile.readCapability ? "yes" : "no"}  write:${tile.writeCapabilityLabel}`,
     `npc=${tile.boundNpc || "未绑定，创建或设置时选择 NPC"}`,
   ];
   if (tile.kind === "can") {
     lines.push("filter=none  bitrate=待确认  sample=100Hz");
-    lines.push("hint: 接入 SocketCAN 后显示 can0/can1；发送帧必须强审。");
+    lines.push("hint: 用户在这里手动发送不需要平台审核；NPC 代发必须先待审。");
   } else if (tile.kind === "spi-can") {
     lines.push("chip=MCP251x  spi-clock=待确认  irq=待确认");
     lines.push("hint: SPI-CAN 只给配置建议，不直接改 overlay / module。");
   } else if (tile.kind === "serial") {
     lines.push("baud=115200  parity=none  stop=1");
-    lines.push("hint: 串口写命令必须走审核，当前只读采集日志。");
+    lines.push("hint: 用户手动输入直接进执行电脑；NPC 代写串口命令必须先待审。");
   } else if (tile.kind === "usb") {
     lines.push("mode=enumerate  driver=待确认");
     lines.push("hint: 只读枚举设备，权限或驱动问题进入观测台。");
   } else if (tile.kind === "ros") {
     lines.push("topics=readonly  publish=blocked");
-    lines.push("hint: ROS publish/service/action 必须强审。");
+    lines.push("hint: ROS publish/service/action 若由 NPC 代操作，必须先待审。");
   } else {
     lines.push("config=等待扫描快照");
   }
@@ -124,7 +126,7 @@ function terminalEventLines(tile: DebugWindow, messages: AnyRecord[]) {
     .slice(0, 8)
     .reverse();
   if (!related.length) {
-    return ["[terminal] 暂无输入输出。输入只读命令后，会在这里显示 queued / ack / result。"];
+    return ["[terminal] 暂无输入输出。用户自己输入会直接排队到执行电脑；NPC 代操作会先显示待审。"];
   }
   return related.map((message) => {
     const type = text(message.message_type ?? message.messageType, "event");
@@ -132,8 +134,17 @@ function terminalEventLines(tile: DebugWindow, messages: AnyRecord[]) {
     if (type === "runner_command") return `$ ${commandText(message)}  # ${status}`;
     if (type === "runner_ack") return `[ack] ${text(message.body, "执行电脑已接单")}`;
     if (type === "runner_result") return `[result:${status}] ${text(message.body, "执行电脑已返回结果")}`;
+    if (type === "robotics_terminal_review" || type === "robotics_terminal_npc_request") return `[npc-review:${status}] ${commandText(message)}`;
     return `[${type}:${status}] ${text(message.title ?? message.body, "终端事件")}`;
   });
+}
+
+function seatId(seat: AnyRecord, fallback: string) {
+  return text(seat.id ?? seat.config_id ?? seat.configId ?? seat.row_id ?? seat.name, fallback);
+}
+
+function seatName(seat: AnyRecord, fallback: string) {
+  return text(seat.name ?? seat.label ?? seat.display_name, fallback);
 }
 
 type DebugWindow = {
@@ -149,11 +160,13 @@ type DebugWindow = {
   runnerHint: string;
   transport: string;
   boundNpc: string;
+  readCapability: boolean;
+  writeCapabilityLabel: string;
   isUsable: boolean;
 };
 
 function buildDebugWindows(computers: AnyRecord[], seats: AnyRecord[]): DebugWindow[] {
-  const seatNames = seats.map((seat) => text(seat.name ?? seat.label, "")).filter(Boolean);
+  const seatNames = seats.map((seat) => seatName(seat, "")).filter(Boolean);
   const windows: DebugWindow[] = [];
   computers.forEach((node, nodeIndex) => {
     const computerLabel = publicComputerName(node, nodeIndex);
@@ -165,6 +178,7 @@ function buildDebugWindows(computers: AnyRecord[], seats: AnyRecord[]): DebugWin
       const label = kindLabel(kind);
       const rawName = text(item.name, `${label} ${itemIndex + 1}`);
       const status = text(item.status, "").toLowerCase();
+      const writeCapability = text(item.write_capability ?? item.writeCapability, "review_required").toLowerCase();
       windows.push({
         id: `${computerNodeId || nodeIndex}:${text(item.id, `${nodeIndex}-${itemIndex}`)}`,
         name: `${label} · ${rawName}`,
@@ -178,6 +192,12 @@ function buildDebugWindows(computers: AnyRecord[], seats: AnyRecord[]): DebugWin
         runnerHint: runnerState.detail,
         transport: text(item.transport, "只读"),
         boundNpc: seatNames[itemIndex % Math.max(1, seatNames.length)] ?? "",
+        readCapability: item.read_capability !== false && item.readCapability !== false,
+        writeCapabilityLabel: writeCapability === "direct"
+          ? "可写"
+          : writeCapability === "blocked"
+            ? "禁止"
+            : "需审核",
         isUsable: Boolean(computerNodeId) && !["scan_tool_needed", "offline"].includes(status),
       });
     });
@@ -254,8 +274,9 @@ export default async function ProjectRoboticsPage({
   });
   const computers = asArray<AnyRecord>(computersState.data);
   const seats = asArray<AnyRecord>(seatsState.data);
+  const npcSeats = seats.filter((seat) => isNpcSeatRecord(seat));
   const terminalMessages = asArray<AnyRecord>(messagesState.data);
-  const windows = buildDebugWindows(computers, seats);
+  const windows = buildDebugWindows(computers, npcSeats);
   const usableWindows = windows.filter((item) => item.isUsable);
   const openIds = selectedWindowIds(searchParams?.windows, windows);
   const openWindows = openIds.map((id) => windows.find((item) => item.id === id)).filter(Boolean) as DebugWindow[];
@@ -264,6 +285,9 @@ export default async function ProjectRoboticsPage({
   const notice = text(searchParams?.team_notice, "");
   const error = text(searchParams?.team_error, "");
   const selectedNpc = text(searchParams?.npc, "");
+  const selectedNpcRecord = npcSeats.find((seat) => seatId(seat, "") === selectedNpc);
+  const selectedNpcLabel = selectedNpcRecord ? seatName(selectedNpcRecord, selectedNpc) : "";
+  const displayedNpc = selectedNpcLabel || "";
   const settingsWindowId = text(searchParams?.settings, "");
 
   return (
@@ -301,9 +325,9 @@ export default async function ProjectRoboticsPage({
                 <span>默认协助 NPC</span>
                 <select name="npc" defaultValue={selectedNpc}>
                   <option value="">暂不绑定</option>
-                  {seats.length ? seats.map((seat, index) => {
-                    const name = text(seat.name ?? seat.label, `NPC ${index + 1}`);
-                    return <option key={text(seat.id ?? seat.config_id ?? name, name)} value={name}>{name}</option>;
+                  {npcSeats.length ? npcSeats.map((seat, index) => {
+                    const name = seatName(seat, `NPC ${index + 1}`);
+                    return <option key={seatId(seat, name)} value={seatId(seat, name)}>{name}</option>;
                   }) : null}
                 </select>
               </label>
@@ -353,7 +377,7 @@ export default async function ProjectRoboticsPage({
                     <span className={styles.threadChip}>{window.statusLabel}</span>
                     <span className={styles.threadChip}>电脑：{window.computerLabel}</span>
                     <span className={styles.threadChip}>接单：{window.computerState}</span>
-                    <span className={styles.threadChip}>协助 NPC：{selectedNpc || window.boundNpc || "未绑定"}</span>
+                    <span className={styles.threadChip}>协助 NPC：{displayedNpc || window.boundNpc || "未绑定"}</span>
                     <Link className={styles.threadChip} href={withSettings(projectId, openIds, window.id, selectedNpc)}>设置</Link>
                   </div>
                   {settingsWindowId === window.id ? (
@@ -369,7 +393,7 @@ export default async function ProjectRoboticsPage({
                       </div>
                       <div>
                         <span>协助 NPC</span>
-                        <b>{selectedNpc || window.boundNpc || "未绑定"}</b>
+                        <b>{displayedNpc || window.boundNpc || "未绑定"}</b>
                       </div>
                       <p>{window.runnerHint}</p>
                     </section>
@@ -387,16 +411,31 @@ export default async function ProjectRoboticsPage({
                     <input type="hidden" name="interface_name" value={window.name} />
                     <input type="hidden" name="interface_kind" value={window.kindLabel} />
                     <span>$</span>
-                    <input name="command" placeholder="输入只读采样命令或过滤条件，例如 listen --rate 100Hz --window 30s" />
+                    <input name="command" placeholder="用户终端：自己输入直接执行；NPC 代操作才待审" />
                     <select name="bound_npc" aria-label="绑定 NPC" defaultValue={selectedNpc}>
                       <option value="">不绑定 NPC</option>
-                      {seats.map((seat, index) => {
-                        const name = text(seat.name ?? seat.label, `NPC ${index + 1}`);
-                        return <option key={text(seat.id ?? seat.config_id ?? name, name)} value={name}>{name}</option>;
+                      {npcSeats.map((seat, index) => {
+                        const name = seatName(seat, `NPC ${index + 1}`);
+                        return <option key={seatId(seat, name)} value={seatId(seat, name)}>{name}</option>;
                       })}
                     </select>
+                    <input type="hidden" name="bound_npc_label" value={displayedNpc} />
                     <button type="submit" disabled={!window.runnerReady} title={window.runnerReady ? "排队到所选执行电脑" : window.runnerHint}>
-                      {window.runnerReady ? "排队执行" : "需重连"}
+                      {window.runnerReady ? "提交终端请求" : "需重连"}
+                    </button>
+                  </form>
+                  <form action={创建机器人调试Npc操作审核.bind(null, projectId)} className={styles.npcReviewBar}>
+                    <input type="hidden" name="return_to" value={`/projects/${projectId}/robotics?windows=${encodeURIComponent(openIds.join(","))}`} />
+                    <input type="hidden" name="computer_node_id" value={window.computerNodeId} />
+                    <input type="hidden" name="interface_id" value={window.id} />
+                    <input type="hidden" name="interface_name" value={window.name} />
+                    <input type="hidden" name="interface_kind" value={window.kindLabel} />
+                    <input type="hidden" name="bound_npc" value={selectedNpc} />
+                    <input type="hidden" name="bound_npc_label" value={displayedNpc} />
+                    <span>NPC 代操作待审</span>
+                    <input name="command" placeholder="只有 NPC/AI 想替你操作时才填这里，例如 send 123#0102" />
+                    <button type="submit" disabled={!window.runnerReady || !selectedNpc}>
+                      提交审核
                     </button>
                   </form>
                 </article>

@@ -1060,6 +1060,41 @@ class MessageReviewActionRequest(BaseModel):
     reason: str | None = None
 
 
+def _runner_command_from_robotics_review(message: CollaborationMessage) -> RunnerRelayCommandCreate | None:
+    if str(message.message_type or "").strip() != "robotics_terminal_npc_request":
+        return None
+    metadata = message.extra_data if isinstance(message.extra_data, dict) else {}
+    computer_node_id = str(metadata.get("computer_node_id") or "").strip()
+    command = str(metadata.get("terminal_command") or "").strip()
+    if not computer_node_id or not command:
+        return None
+    interface_name = str(metadata.get("terminal_interface_name") or "").strip()
+    interface_kind = str(metadata.get("terminal_interface_kind") or "").strip()
+    npc_label = str(metadata.get("terminal_bound_npc") or message.sender_id or "NPC").strip()
+    body = "\n".join(
+        line
+        for line in [
+            "用户已通过 NPC 代操作审核，请在目标电脑调试终端执行并回写最小回执。",
+            f"协助 NPC：{npc_label}",
+            f"接口类型：{interface_kind or '待确认'}",
+            f"接口名称：{interface_name or str(metadata.get('terminal_interface_id') or '').strip()}",
+            f"审核后命令：{command}",
+            "边界：只执行本次审核通过的终端操作；新的写入、发送、运动、固件或 ROS 写操作必须重新申请审核。",
+        ]
+        if line
+    )
+    return RunnerRelayCommandCreate(
+        title=f"审核通过的 NPC 终端操作：{interface_name or interface_kind or '调试终端'}",
+        body=body,
+        computer_node_id=computer_node_id,
+        metadata={
+            **metadata,
+            "terminal_mode": "npc_terminal_approved",
+            "review_message_id": message.id,
+        },
+    )
+
+
 @router.patch("/projects/{project_id}/review-policy")
 def api_patch_project_review_policy(
     project_id: str,
@@ -2578,6 +2613,9 @@ def api_review_approve_message(
         if req is not None and (req.status or "") in {"blocked", "pending_review"}:
             req.status = "queued"
             db.add(req)
+    runner_command = _runner_command_from_robotics_review(existing)
+    if runner_command is not None:
+        create_runner_command(db, project_id, sender_id=principal.user_id or "", payload=runner_command)
     remember_result = None
     remember_policy = str(getattr(payload, "remember_pair_policy", "") or "").strip().lower()
     if remember_policy in {"skip", "force"}:

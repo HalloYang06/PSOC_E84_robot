@@ -5723,6 +5723,7 @@ export async function 下发机器人调试命令(projectId: string, formData: F
   const interfaceName = String(formData.get("interface_name") ?? "").trim();
   const interfaceKind = String(formData.get("interface_kind") ?? "").trim();
   const boundNpc = String(formData.get("bound_npc") ?? "").trim();
+  const boundNpcLabel = String(formData.get("bound_npc_label") ?? "").trim();
   const command = String(formData.get("command") ?? "").trim();
   if (!computerNodeId) {
     redirect(withQueryValue(returnTo, "team_error", "先选择这条调试终端所在的执行电脑"));
@@ -5731,18 +5732,49 @@ export async function 下发机器人调试命令(projectId: string, formData: F
     redirect(withQueryValue(returnTo, "team_error", "先选择一个本项目扫描到的真实调试接口"));
   }
   if (!command) {
-    redirect(withQueryValue(returnTo, "team_error", "先输入只读采样命令或过滤条件"));
+    redirect(withQueryValue(returnTo, "team_error", "先在终端输入要执行的调试请求"));
   }
-  const title = `机器人现场只读调试：${interfaceName || interfaceKind || "接口"}`;
+  const title = `机器人现场用户终端：${interfaceName || interfaceKind || "接口"}`;
   const body = [
-    "请在目标电脑上对指定接口执行只读调试命令，并回写最小回执。",
+    "用户本人在调试终端提交请求，请在目标电脑上执行并回写最小回执。",
     `接口类型：${interfaceKind || "待确认"}`,
     `接口名称：${interfaceName || interfaceId}`,
-    boundNpc ? `协助 NPC：${boundNpc}` : "协助 NPC：未绑定",
-    `只读命令：${command}`,
-    "安全边界：只能读取、采样、过滤和生成建议；串口写入、CAN 发送、SPI 配置修改、ROS publish/service/action、固件烧录、真实运动必须转成人工审核。",
+    boundNpc ? `协助 NPC：${boundNpcLabel || boundNpc}` : "协助 NPC：未绑定",
+    `用户终端输入：${command}`,
+    "权限边界：用户本人操作不走审核；NPC/AI 代操作调试终端必须先提交待审核请求，审核通过后才可下发。",
   ].join("\n");
   try {
+    if (boundNpc) {
+      await postJson("/api/collaboration/messages", {
+        project_id: projectId,
+        agent_id: boundNpc,
+        title: `负责调试窗口：${interfaceName || interfaceKind || "接口"}`,
+        body: [
+          "用户把这个调试窗口交给你辅助观察和建议。",
+          `接口类型：${interfaceKind || "待确认"}`,
+          `接口名称：${interfaceName || interfaceId}`,
+          `用户终端输入：${command}`,
+          "你可以给调试建议、解释回执、提出下一步操作请求；涉及写入、发送、运动、固件或 ROS 写操作时，必须创建待审核请求，不能直接执行。",
+        ].join("\n"),
+        message_type: "robotics_terminal_context",
+        sender_type: "human",
+        sender_id: "robotics-terminal",
+        recipient_type: "thread_workstation",
+        recipient_id: boundNpc,
+        status: "open",
+        metadata: {
+          terminal_interface_id: interfaceId,
+          terminal_interface_name: interfaceName,
+          terminal_interface_kind: interfaceKind,
+          terminal_bound_npc_id: boundNpc,
+          terminal_bound_npc: boundNpcLabel || boundNpc,
+          terminal_command: command,
+          terminal_mode: "npc_assist",
+          terminal_surface: "robotics",
+          computer_node_id: computerNodeId,
+        },
+      });
+    }
     await postJson(`/api/collaboration/projects/${projectId}/runner-commands`, {
       title,
       body,
@@ -5751,18 +5783,79 @@ export async function 下发机器人调试命令(projectId: string, formData: F
         terminal_interface_id: interfaceId,
         terminal_interface_name: interfaceName,
         terminal_interface_kind: interfaceKind,
-        terminal_bound_npc: boundNpc || null,
+        terminal_bound_npc_id: boundNpc || null,
+        terminal_bound_npc: boundNpcLabel || boundNpc || null,
         terminal_command: command,
-        terminal_mode: "read_only",
+        terminal_mode: "user_terminal",
         terminal_surface: "robotics",
       },
     });
     revalidateProjectSurfaces(projectId);
     revalidatePath(`/projects/${projectId}/robotics`);
-    redirect(withQueryValue(returnTo, "team_notice", "已排队到所选执行电脑；保持 runner 接单窗口打开，回执会回到平台"));
+    redirect(withQueryValue(returnTo, "team_notice", "用户终端请求已排队到所选执行电脑；保持 runner 接单窗口打开，回执会回到平台"));
   } catch (error) {
     rethrowRedirectError(error);
     const message = error instanceof Error ? error.message : "调试命令排队失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
+export async function 创建机器人调试Npc操作审核(projectId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "robotics");
+  const computerNodeId = String(formData.get("computer_node_id") ?? "").trim();
+  const interfaceId = String(formData.get("interface_id") ?? "").trim();
+  const interfaceName = String(formData.get("interface_name") ?? "").trim();
+  const interfaceKind = String(formData.get("interface_kind") ?? "").trim();
+  const boundNpc = String(formData.get("bound_npc") ?? "").trim();
+  const boundNpcLabel = String(formData.get("bound_npc_label") ?? "").trim();
+  const command = String(formData.get("command") ?? "").trim();
+  if (!computerNodeId || !interfaceId) {
+    redirect(withQueryValue(returnTo, "team_error", "NPC 代操作需要先绑定真实执行电脑和调试接口"));
+  }
+  if (!boundNpc) {
+    redirect(withQueryValue(returnTo, "team_error", "NPC 代操作需要先选择负责这个调试窗口的 NPC"));
+  }
+  if (!command) {
+    redirect(withQueryValue(returnTo, "team_error", "请先填写 NPC 想代你执行的终端操作"));
+  }
+  try {
+    await postJson("/api/collaboration/messages", {
+      project_id: projectId,
+      agent_id: boundNpc,
+      title: `NPC 代操作待审：${interfaceName || interfaceKind || "调试终端"}`,
+      body: [
+        `${boundNpcLabel || "NPC"} 请求代用户操作这个调试终端。`,
+        `接口类型：${interfaceKind || "待确认"}`,
+        `接口名称：${interfaceName || interfaceId}`,
+        `拟执行命令：${command}`,
+        "",
+        "审核规则：用户自己在终端输入不需要审核；这条是 NPC/AI 代操作，所以必须先由用户通过或打回。通过后才允许转成 runner 终端命令。",
+      ].join("\n"),
+      message_type: "robotics_terminal_npc_request",
+      sender_type: "agent",
+      sender_id: boundNpc,
+      recipient_type: "human",
+      recipient_id: "project-owner",
+      status: "pending_review",
+      metadata: {
+        terminal_interface_id: interfaceId,
+        terminal_interface_name: interfaceName,
+        terminal_interface_kind: interfaceKind,
+        terminal_bound_npc_id: boundNpc,
+        terminal_bound_npc: boundNpcLabel || boundNpc,
+        terminal_command: command,
+        terminal_mode: "npc_terminal_request",
+        terminal_surface: "robotics",
+        computer_node_id: computerNodeId,
+        review_required_reason: "npc_operates_terminal",
+      },
+    });
+    revalidateProjectSurfaces(projectId);
+    revalidatePath(`/projects/${projectId}/robotics`);
+    redirect(withQueryValue(returnTo, "team_notice", "NPC 代操作已进入待审核；通过前不会下发到执行电脑"));
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "创建 NPC 操作审核失败";
     redirect(withQueryValue(returnTo, "team_error", message));
   }
 }

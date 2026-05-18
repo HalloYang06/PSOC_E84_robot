@@ -536,6 +536,23 @@ try {
 }
 Add-StepResult $steps "refresh-runner-support-scripts" $supportScriptStatus $supportScriptDetail
 
+$deviceScanStatus = "ok"
+$deviceScanDetail = "Device interface scan synced to platform."
+try {
+  $deviceScanScript = Download-RunnerScript -WebBase $webBase -ScriptName "scan-device-interfaces.py" -RunnerDir $runnerDir
+  python $deviceScanScript `
+    --sync `
+    --server $apiBase `
+    --runner-id $RunnerId `
+    --project-id $ProjectId `
+    --computer-node-id $ComputerNodeId | Out-Null
+} catch {
+  $deviceScanStatus = "warning"
+  $deviceScanDetail = $_.Exception.Message
+  Write-Warning "Device interface scan skipped or failed: $deviceScanDetail"
+}
+Add-StepResult $steps "sync-device-interfaces" $deviceScanStatus $deviceScanDetail
+
 if (-not $SkipCodex) {
   try {
     $codexScript = Download-RunnerScript -WebBase $webBase -ScriptName "sync-codex-session-threads.ps1" -RunnerDir $runnerDir
