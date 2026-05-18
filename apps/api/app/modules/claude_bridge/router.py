@@ -23,6 +23,7 @@ from app.common.errors import AppError
 from app.common.response import ok
 from app.db.models.project import Project
 from app.db.models.project_collaboration import ProjectThreadWorkstation
+from app.db.models.project_knowledge import ProjectKnowledgeDocument, ProjectSkill, SeatSkillAssignment
 from app.db.models.requirement import Requirement
 from app.db.models.task import Task
 from app.db.models.task_event import TaskEvent
@@ -194,6 +195,94 @@ def _npc_metadata(npc: ProjectThreadWorkstation) -> dict[str, Any]:
     return raw
 
 
+def _clean_string_list(value: object) -> list[str]:
+    raw_items = value if isinstance(value, list) else []
+    seen: set[str] = set()
+    items: list[str] = []
+    for item in raw_items:
+        text = str(item or "").strip()
+        key = text.lower()
+        if text and key not in seen:
+            seen.add(key)
+            items.append(text)
+    return items
+
+
+def _seat_identity_keys(npc: ProjectThreadWorkstation) -> set[str]:
+    return {
+        key
+        for key in (npc.id, npc.config_id, npc.name, npc.agent_id)
+        if isinstance(key, str) and key.strip()
+    }
+
+
+def _seat_skill_context(db: Session, project_id: str, npc: ProjectThreadWorkstation) -> list[dict[str, Any]]:
+    seat_ids = _seat_identity_keys(npc)
+    assigned_ids = {
+        row.skill_id
+        for row in db.scalars(
+            select(SeatSkillAssignment).where(
+                SeatSkillAssignment.project_id == project_id,
+                SeatSkillAssignment.seat_id.in_(seat_ids),
+                SeatSkillAssignment.status == "active",
+            )
+        )
+    }
+    for skill_id in _clean_string_list(_npc_metadata(npc).get("skill_loadout")):
+        assigned_ids.add(skill_id)
+    if not assigned_ids:
+        return []
+    rows = list(
+        db.scalars(
+            select(ProjectSkill).where(
+                ProjectSkill.project_id == project_id,
+                ProjectSkill.skill_id.in_(assigned_ids),
+            )
+        )
+    )
+    by_id = {row.skill_id: row for row in rows}
+    context: list[dict[str, Any]] = []
+    for skill_id in sorted(assigned_ids):
+        row = by_id.get(skill_id)
+        context.append(
+            {
+                "skill_id": skill_id,
+                "label": row.label if row is not None else skill_id,
+                "repo_relative_path": row.repo_relative_path if row is not None else None,
+                "description": (row.description or "").strip() if row is not None else "",
+                "source": row.source if row is not None else "seat-metadata",
+            }
+        )
+    return context
+
+
+def _seat_knowledge_context(db: Session, project_id: str, npc: ProjectThreadWorkstation) -> list[dict[str, Any]]:
+    seat_ids = _seat_identity_keys(npc)
+    rows = list(
+        db.scalars(
+            select(ProjectKnowledgeDocument)
+            .where(
+                ProjectKnowledgeDocument.project_id == project_id,
+                (ProjectKnowledgeDocument.owner_id.in_(seat_ids))
+                | (ProjectKnowledgeDocument.scope.in_(["project", "workstation"])),
+            )
+            .order_by(ProjectKnowledgeDocument.scope.asc(), ProjectKnowledgeDocument.repo_relative_path.asc())
+            .limit(30)
+        )
+    )
+    return [
+        {
+            "title": row.title,
+            "scope": row.scope,
+            "owner_type": row.owner_type,
+            "owner_id": row.owner_id,
+            "repo_relative_path": row.repo_relative_path,
+            "summary": (row.summary or "").strip(),
+        }
+        for row in rows
+    ]
+
+
 def _resolve_project_npc(db: Session, project_id: str, npc_id: str) -> ProjectThreadWorkstation | None:
     """Look up an NPC seat by PK, config_id, name, or agent_id within a project.
 
@@ -231,7 +320,7 @@ def _npc_brief(npc: ProjectThreadWorkstation) -> dict[str, Any]:
         },
         "permission_level": meta.get("permission_level") or "L2",
         "automation_enabled": bool(meta.get("automation_enabled")),
-        "skill_loadout": list(meta.get("skill_loadout") or []),
+        "skill_loadout": _clean_string_list(meta.get("skill_loadout")),
         "knowledge": {
             "summary": (knowledge.get("summary") or meta.get("knowledge_summary") or "").strip(),
             "handoff_path": (knowledge.get("handoff_path") or meta.get("knowledge_handoff_path") or "").strip(),
@@ -245,6 +334,8 @@ def _build_npc_prompt(
     npc: ProjectThreadWorkstation,
     recent_tasks: list[Task],
     recent_handoff_events: list[TaskEvent],
+    skill_context: list[dict[str, Any]] | None = None,
+    knowledge_context: list[dict[str, Any]] | None = None,
 ) -> str:
     """Pack a complete handoff prompt for a new AI taking over an NPC's role.
 
@@ -254,7 +345,9 @@ def _build_npc_prompt(
     """
     meta = _npc_metadata(npc)
     knowledge = meta.get("npc_knowledge") if isinstance(meta.get("npc_knowledge"), dict) else {}
-    skills = list(meta.get("skill_loadout") or [])
+    skill_context = skill_context or []
+    knowledge_context = knowledge_context or []
+    skills = skill_context or [{"skill_id": item, "label": item} for item in _clean_string_list(meta.get("skill_loadout"))]
 
     lines: list[str] = []
     lines.append(f"# 你接手的岗位：{npc.name}")
@@ -285,9 +378,27 @@ def _build_npc_prompt(
             lines.append(f"_完整知识文档路径：`{handoff_path}`（如需深入请打开阅读）_")
         lines.append("")
     if skills:
-        lines.append("## 已装备的 Skill（你可以并应该使用这些能力）")
+        lines.append("## 已装备的 Skill（来自能力工坊配置源）")
         for s in skills:
-            lines.append(f"- {s}")
+            label = str(s.get("label") or s.get("skill_id") or "").strip()
+            repo_path = str(s.get("repo_relative_path") or "").strip()
+            description = str(s.get("description") or "").strip()
+            suffix = f" — {description[:180]}" if description else ""
+            lines.append(f"- {label}{suffix}")
+            if repo_path:
+                lines.append(f"  - GitHub 仓库相对路径：`{repo_path}`")
+        lines.append("")
+    if knowledge_context:
+        lines.append("## 可读取知识库（来自能力工坊索引）")
+        for doc in knowledge_context[:12]:
+            title = str(doc.get("title") or doc.get("repo_relative_path") or "").strip()
+            repo_path = str(doc.get("repo_relative_path") or "").strip()
+            summary = str(doc.get("summary") or "").strip()
+            lines.append(f"- {title}")
+            if repo_path:
+                lines.append(f"  - GitHub 仓库相对路径：`{repo_path}`")
+            if summary:
+                lines.append(f"  - 摘要：{summary[:180]}")
         lines.append("")
     if recent_tasks:
         lines.append("## 最近任务（按时间倒序）")
@@ -372,9 +483,17 @@ def get_npc_context(
             )
         )
 
+    skill_context = _seat_skill_context(db, project_id, npc)
+    knowledge_context = _seat_knowledge_context(db, project_id, npc)
+    npc_brief = _npc_brief(npc)
+
     return ok({
         "project": _project_brief(project),
-        "npc": _npc_brief(npc),
+        "npc": {
+            **npc_brief,
+            "skill_loadout": [item["skill_id"] for item in skill_context] or npc_brief["skill_loadout"],
+            "knowledge_documents": knowledge_context,
+        },
         "recent_tasks": [_task_brief(t) for t in recent_tasks],
         "recent_handoffs": [
             {
@@ -388,7 +507,7 @@ def get_npc_context(
         "hints": {
             "tip": "把 prompt 字段粘到新 Claude Code/Codex/Qwen 线程中，新 AI 即可零指导接手这个岗位。",
         },
-        "prompt": _build_npc_prompt(project, npc, recent_tasks, handoff_events),
+        "prompt": _build_npc_prompt(project, npc, recent_tasks, handoff_events, skill_context, knowledge_context),
     })
 
 
@@ -436,7 +555,14 @@ def post_npc_handoff(
             .limit(3)
         )
     )
-    prompt = _build_npc_prompt(project, npc, recent_tasks_for_prompt, handoff_events)
+    prompt = _build_npc_prompt(
+        project,
+        npc,
+        recent_tasks_for_prompt,
+        handoff_events,
+        _seat_skill_context(db, project_id, npc),
+        _seat_knowledge_context(db, project_id, npc),
+    )
 
     summary_input = str(payload.get("summary") or "").strip()
     if not summary_input:

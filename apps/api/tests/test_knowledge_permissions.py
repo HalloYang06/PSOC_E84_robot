@@ -251,6 +251,27 @@ def test_project_knowledge_documents_and_skill_assignments_are_project_scoped() 
     assert assignment["seat_id"]
     assert assignment["skill_id"] == "speech-data-contracts"
     with SessionLocal() as db:
+        seat = db.query(ProjectThreadWorkstation).filter_by(project_id=project_id, config_id="boss-seat").one()
+        assert "speech-data-contracts" in (seat.extra_data or {}).get("skill_loadout", [])
+        assert (seat.extra_data or {}).get("skill_forge_snapshot", {}).get("changed_skill_id") == "speech-data-contracts"
+
+    npc_context_response = client.get(
+        f"/api/claude-bridge/projects/{project_id}/npcs/boss-seat/context",
+        headers=auth_headers(owner_token),
+    )
+    assert npc_context_response.status_code == 200, npc_context_response.text
+    npc_context = npc_context_response.json()["data"]
+    assert "speech-data-contracts" in npc_context["npc"]["skill_loadout"]
+    assert any(
+        item["repo_relative_path"] == "docs/npcs/boss-seat/README.md"
+        for item in npc_context["npc"]["knowledge_documents"]
+    )
+    prompt = npc_context["prompt"]
+    assert "Speech Data Contracts" in prompt
+    assert "docs/skills/speech-data-contracts/SKILL.md" in prompt
+    assert "docs/npcs/boss-seat/README.md" in prompt
+
+    with SessionLocal() as db:
         project_row = db.get(Project, project_id)
         assert project_row is not None
         project_row.collaboration_config = {

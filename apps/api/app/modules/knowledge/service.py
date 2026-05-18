@@ -115,6 +115,31 @@ def _remove_skill_from_project_config(db: Session, project: Project, skill_id: s
         db.add(project)
 
 
+def _sync_skill_to_seat_metadata(seat: ProjectThreadWorkstation, skill_id: str, *, status: str, assignment_type: str) -> None:
+    normalized = str(skill_id or "").strip()
+    if not normalized:
+        return
+    metadata = dict(seat.extra_data or {}) if isinstance(seat.extra_data, dict) else {}
+    active = status.strip().lower() == "active"
+    if not active:
+        seat.extra_data = metadata or None
+        return
+    for key in ("skill_loadout", "additional_skill_ids"):
+        current = _clean_string_list(metadata.get(key))
+        next_values = current if any(item.lower() == normalized.lower() for item in current) else [*current, normalized]
+        metadata[key] = next_values
+    snapshot = dict(metadata.get("skill_forge_snapshot") or {}) if isinstance(metadata.get("skill_forge_snapshot"), dict) else {}
+    metadata["skill_forge_snapshot"] = {
+        **snapshot,
+        "changed_skill_id": normalized,
+        "assignment_type": assignment_type,
+        "status": status,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "summary": "能力工坊已同步该 NPC 的 Skill 配置，下一轮上岗包会读取此配置。",
+    }
+    seat.extra_data = metadata
+
+
 def upsert_knowledge_document(db: Session, project_id: str, payload: KnowledgeDocumentCreate) -> ProjectKnowledgeDocument:
     _project_or_404(db, project_id)
     path = normalize_repo_relative_path(payload.repo_relative_path, required=True)
@@ -263,6 +288,8 @@ def assign_seat_skill(db: Session, project_id: str, payload: SeatSkillAssignment
     row.status = (payload.status or "active").strip() or "active"
     row.notes = payload.notes
     row.extra_data = payload.metadata or None
+    _sync_skill_to_seat_metadata(seat, skill.skill_id, status=row.status, assignment_type=row.assignment_type)
+    db.add(seat)
     db.add(row)
     db.commit()
     db.refresh(row)
