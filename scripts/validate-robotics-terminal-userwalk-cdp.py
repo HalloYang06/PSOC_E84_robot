@@ -161,6 +161,9 @@ def main() -> int:
                 hasIndexSelect: !!document.querySelector('[class*="indexForm"] select[name="windows"]'),
                 usableOptions: Array.from(document.querySelectorAll('[class*="indexForm"] select[name="windows"] option')).filter((item) => item.value).length,
                 openButtons: document.querySelectorAll('a[aria-label^="打开 "]').length,
+                settingsButtons: document.querySelectorAll('a[aria-label^="设置 "]').length,
+                createButtonText: document.querySelector('[class*="indexForm"] button')?.innerText || '',
+                interfaceLabel: document.querySelector('[class*="indexForm"] label span')?.innerText || '',
                 disabledMarkers: document.querySelectorAll('[class*="openBtnDisabled"]').length,
                 hasNoDemoText: body.includes('不建假窗口') && !body.includes('模板'),
                 hasHorizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 2,
@@ -188,6 +191,7 @@ def main() -> int:
                     hasNpcSelect: !!document.querySelector('select[name="bound_npc"]'),
                     hasCommandInput: !!document.querySelector('input[name="command"]'),
                     submitDisabled: !!form?.querySelector('button[type="submit"]')?.disabled,
+                    hasTileSettingsLink: !!document.querySelector('a[aria-label^="设置 "]'),
                     hasJumpSelectNpc: Array.from(document.querySelectorAll('a')).some((a) => (a.innerText || '').includes('选择 NPC')),
                     hasInternalTerms: /adapter|session JSONL|local path|source_thread|canonical|requested id|raw UUID/.test(body),
                     hasHorizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 2,
@@ -201,6 +205,26 @@ def main() -> int:
                 report["failures"].append("terminal tile controls missing")  # type: ignore[union-attr]
             if isinstance(tile, dict) and tile.get("hasJumpSelectNpc"):
                 report["failures"].append("NPC binding still jumps away")  # type: ignore[union-attr]
+            click(cdp, 'a[aria-label^="设置 "]')
+            wait_for(cdp, "location.search.includes('settings=') && document.body.innerText.includes('窗口设置')")
+            settings_state = cdp_eval(
+                cdp,
+                """
+                (() => {
+                  const body = document.body.innerText || '';
+                  return {
+                    href: location.href,
+                    hasSettingsPanel: body.includes('窗口设置') && body.includes('电脑 runner') && body.includes('调试接口') && body.includes('协助 NPC'),
+                    stillOnRobotics: location.pathname.endsWith('/robotics'),
+                    hasHorizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 2,
+                  };
+                })()
+                """,
+            )
+            report["settings"] = settings_state
+            screenshot(cdp, output_dir / f"robotics-terminal-userwalk-settings-{stamp}.png")
+            if not isinstance(settings_state, dict) or not settings_state.get("hasSettingsPanel") or not settings_state.get("stillOnRobotics"):
+                report["failures"].append("settings panel did not open in-place")  # type: ignore[union-attr]
         else:
             empty_ok = isinstance(first, dict) and first.get("hasNoDemoText") and int(first.get("openButtons") or 0) == 0
             if not empty_ok:

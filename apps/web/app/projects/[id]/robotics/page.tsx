@@ -157,10 +157,31 @@ function selectedWindowIds(searchValue: unknown, windows: DebugWindow[]) {
   return ids.filter((id) => known.has(id));
 }
 
-function withOpenWindow(projectId: string, currentIds: string[], id: string) {
+function roboticsHref(projectId: string, params: Record<string, string>) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value) query.set(key, value);
+  });
+  const suffix = query.toString();
+  return `/projects/${projectId}/robotics${suffix ? `?${suffix}` : ""}`;
+}
+
+function withOpenWindow(projectId: string, currentIds: string[], id: string, npc = "", settings = "") {
   const next = currentIds.includes(id) ? currentIds.filter((item) => item !== id) : [...currentIds, id];
-  const query = next.length ? `?windows=${encodeURIComponent(next.join(","))}` : "";
-  return `/projects/${projectId}/robotics${query}`;
+  return roboticsHref(projectId, {
+    windows: next.join(","),
+    npc,
+    settings,
+  });
+}
+
+function withSettings(projectId: string, currentIds: string[], id: string, npc = "") {
+  const next = currentIds.includes(id) ? currentIds : [...currentIds, id];
+  return roboticsHref(projectId, {
+    windows: next.join(","),
+    npc,
+    settings: id,
+  });
 }
 
 export default async function ProjectRoboticsPage({
@@ -168,7 +189,7 @@ export default async function ProjectRoboticsPage({
   searchParams,
 }: {
   params: { id: string };
-  searchParams?: { windows?: string; team_notice?: string; team_error?: string };
+  searchParams?: { windows?: string; npc?: string; settings?: string; team_notice?: string; team_error?: string };
 }) {
   const projectId = params.id;
   const auth = await getCurrentAuthState();
@@ -201,6 +222,8 @@ export default async function ProjectRoboticsPage({
   const scanned = computers.filter((node) => scanInterfaces(node).length > 0).length;
   const notice = text(searchParams?.team_notice, "");
   const error = text(searchParams?.team_error, "");
+  const selectedNpc = text(searchParams?.npc, "");
+  const settingsWindowId = text(searchParams?.settings, "");
 
   return (
     <main className={styles.debugShell}>
@@ -227,23 +250,24 @@ export default async function ProjectRoboticsPage({
             <Link className={styles.batchBtn} href={`/projects/${projectId}?panel=computers`}>接入/检查电脑</Link>
             <form className={styles.indexForm} action={`/projects/${projectId}/robotics`}>
               <label>
-                <span>真实接口</span>
+                <span>电脑 runner / 真实接口</span>
                 <select name="windows" defaultValue={usableWindows[0]?.id ?? ""}>
                   {usableWindows.length ? usableWindows.map((window) => (
-                    <option key={window.id} value={window.id}>{window.name} · {window.computerLabel}</option>
+                    <option key={window.id} value={window.id}>{window.computerLabel} · {window.computerState} · {window.name}</option>
                   )) : <option value="">暂无可打开接口</option>}
                 </select>
               </label>
               <label>
                 <span>默认协助 NPC</span>
-                <select name="npc">
+                <select name="npc" defaultValue={selectedNpc}>
+                  <option value="">暂不绑定</option>
                   {seats.length ? seats.map((seat, index) => {
                     const name = text(seat.name ?? seat.label, `NPC ${index + 1}`);
                     return <option key={text(seat.id ?? seat.config_id ?? name, name)} value={name}>{name}</option>;
-                  }) : <option value="">暂无可绑定 NPC</option>}
+                  }) : null}
                 </select>
               </label>
-              <button type="submit" disabled={!usableWindows.length}>打开所选终端</button>
+              <button type="submit" disabled={!usableWindows.length}>创建并打开终端</button>
             </form>
           </div>
           <ul className={styles.npcList}>
@@ -258,7 +282,10 @@ export default async function ProjectRoboticsPage({
                     <span className={styles.npcMeta}>{window.computerLabel} · {window.statusLabel}</span>
                   </div>
                   {window.isUsable ? (
-                    <Link className={styles.openBtn} href={withOpenWindow(projectId, openIds, window.id)} aria-label={`打开 ${window.name}`}>+</Link>
+                    <div className={styles.rowActions}>
+                      <Link className={styles.openBtn} href={withOpenWindow(projectId, openIds, window.id, selectedNpc, settingsWindowId)} aria-label={`打开 ${window.name}`}>+</Link>
+                      <Link className={styles.settingsBtn} href={withSettings(projectId, openIds, window.id, selectedNpc)} aria-label={`设置 ${window.name}`}>设</Link>
+                    </div>
                   ) : (
                     <span className={styles.openBtnDisabled}>!</span>
                   )}
@@ -280,13 +307,33 @@ export default async function ProjectRoboticsPage({
                       <input aria-label="调试窗口名称" defaultValue={window.name} />
                       <small>{window.kindLabel} · {window.transport} · {window.computerState}</small>
                     </div>
-                    <Link href={withOpenWindow(projectId, openIds, window.id)} aria-label={`关闭 ${window.name}`}>×</Link>
+                    <Link href={withOpenWindow(projectId, openIds, window.id, selectedNpc, settingsWindowId === window.id ? "" : settingsWindowId)} aria-label={`关闭 ${window.name}`}>×</Link>
                   </header>
                   <div className={styles.threadBinding}>
                     <span className={styles.threadChip}>{window.statusLabel}</span>
                     <span className={styles.threadChip}>电脑：{window.computerLabel}</span>
                     <span className={styles.threadChip}>接单：{window.computerState}</span>
+                    <span className={styles.threadChip}>协助 NPC：{selectedNpc || window.boundNpc || "未绑定"}</span>
+                    <Link className={styles.threadChip} href={withSettings(projectId, openIds, window.id, selectedNpc)}>设置</Link>
                   </div>
+                  {settingsWindowId === window.id ? (
+                    <section className={styles.settingsPanel} aria-label={`${window.name} 设置`}>
+                      <strong>窗口设置</strong>
+                      <div>
+                        <span>电脑 runner</span>
+                        <b>{window.computerLabel} · {window.computerState}</b>
+                      </div>
+                      <div>
+                        <span>调试接口</span>
+                        <b>{window.name}</b>
+                      </div>
+                      <div>
+                        <span>协助 NPC</span>
+                        <b>{selectedNpc || window.boundNpc || "未绑定"}</b>
+                      </div>
+                      <p>{window.runnerHint}</p>
+                    </section>
+                  ) : null}
                   <section className={styles.terminalPane} aria-label={`${window.name} 终端`}>
                     {terminalLines(window).map((line) => <code key={line}>{line}</code>)}
                     <code className={styles.terminalCursor}>$ _</code>
@@ -299,7 +346,7 @@ export default async function ProjectRoboticsPage({
                     <input type="hidden" name="interface_kind" value={window.kindLabel} />
                     <span>$</span>
                     <input name="command" placeholder="输入只读采样命令或过滤条件，例如 listen --rate 100Hz --window 30s" />
-                    <select name="bound_npc" aria-label="绑定 NPC">
+                    <select name="bound_npc" aria-label="绑定 NPC" defaultValue={selectedNpc}>
                       <option value="">不绑定 NPC</option>
                       {seats.map((seat, index) => {
                         const name = text(seat.name ?? seat.label, `NPC ${index + 1}`);

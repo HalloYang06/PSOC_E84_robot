@@ -2907,7 +2907,14 @@
   box-shadow: 0 0 8px rgba(120, 230, 170, 0.45);
 }
 
-.openBtn {
+.rowActions {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.openBtn,
+.settingsBtn {
   width: 26px;
   height: 26px;
   border-radius: 7px;
@@ -2924,8 +2931,20 @@
   text-decoration: none;
 }
 
-.openBtn:hover {
+.settingsBtn {
+  background: rgba(241, 208, 107, 0.1);
+  border-color: rgba(241, 208, 107, 0.28);
+  color: #f7e4a5;
+  font-size: 12px;
+}
+
+.openBtn:hover,
+.settingsBtn:hover {
   background: rgba(88, 240, 255, 0.28);
+}
+
+.settingsBtn:hover {
+  background: rgba(241, 208, 107, 0.2);
 }
 
 .openBtnDisabled {
@@ -3113,6 +3132,54 @@
   color: #eaffff;
 }
 
+.settingsPanel {
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid rgba(241, 208, 107, 0.22);
+  border-radius: 8px;
+  background: rgba(241, 208, 107, 0.07);
+}
+
+.settingsPanel strong,
+.settingsPanel p {
+  grid-column: 1 / -1;
+}
+
+.settingsPanel strong {
+  color: #f7e4a5;
+  font-size: 12px;
+}
+
+.settingsPanel div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.settingsPanel span {
+  color: rgba(247, 228, 165, 0.72);
+  font-size: 10.5px;
+  font-weight: 850;
+}
+
+.settingsPanel b,
+.settingsPanel p {
+  overflow: hidden;
+  color: rgba(234, 255, 255, 0.86);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+}
+
+.settingsPanel p {
+  margin: 0;
+  color: rgba(220, 240, 255, 0.68);
+}
+
 .terminalPane {
   flex: 1;
   min-height: 0;
@@ -3245,5 +3312,9 @@
   .terminalCommandBar button {
     grid-column: 2;
     justify-self: start;
+  }
+
+  .settingsPanel {
+    grid-template-columns: 1fr;
   }
 }
