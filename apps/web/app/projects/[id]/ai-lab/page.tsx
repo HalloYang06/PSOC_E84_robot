@@ -9,7 +9,7 @@ import {
   getTaskProfessionalViewState,
 } from "../../../../lib/server-data";
 import { runnerCanDispatch } from "../../../../lib/runner-status";
-import { ProfessionalEvidenceShell } from "../_components/professional-evidence-shell";
+import { ProfessionalWorkbenchShell } from "../_components/professional-evidence-shell";
 import styles from "./ai-lab.module.css";
 
 export const dynamic = "force-dynamic";
@@ -67,12 +67,6 @@ function humanStatus(value: unknown, fallback = "等待") {
   return raw;
 }
 
-function goalChainTitle(value: unknown) {
-  const raw = text(value, "");
-  if (!raw || /^WORKBENCH-[A-Z0-9_-]+$/i.test(raw)) return "当前任务证据链";
-  return raw;
-}
-
 function isRawIdentifier(value: unknown) {
   const raw = text(value, "");
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw)
@@ -85,45 +79,9 @@ function publicFocusSeat(value: unknown, fallback = "当前工位") {
   return raw;
 }
 
-function humanSignalType(value: unknown, fallback = "消息") {
-  const raw = text(value, fallback);
-  const normalized = raw.toLowerCase();
-  if (/receipt/.test(normalized)) return "回执";
-  if (/artifact|evidence/.test(normalized)) return "证据";
-  if (/audit|review/.test(normalized)) return "审核";
-  if (/dispatch|task/.test(normalized)) return "任务";
-  if (/log|event/.test(normalized)) return "日志";
-  return raw;
-}
-
 function exceptionSummary(view: AnyRecord | null): AnyRecord {
   const summary = view?.summary?.exception_summary;
   return summary && typeof summary === "object" ? (summary as AnyRecord) : {};
-}
-
-function firstArtifact(view: AnyRecord | null) {
-  const messages = asArray<AnyRecord>(view?.messages);
-  for (const message of messages) {
-    const refs = asArray<AnyRecord>(message?.artifact_refs);
-    if (refs.length > 0) return refs[0];
-  }
-  return null;
-}
-
-function buildReplaySteps(view: AnyRecord | null) {
-  const summary = view?.summary ?? {};
-  const runStatus = text(summary?.experiment_run_status, "waiting");
-  const receiptStatus = text(summary?.training_receipt_status, "waiting");
-  const releaseStatus = text(summary?.release_gate_status, "waiting");
-  return asArray<AnyRecord>(view?.messages).slice(0, 4).map((message, index) => ({
-    id: text(message.id, `message-${index}`),
-    label: itemTitle(message),
-    type: humanSignalType(message.message_type),
-    status: humanStatus(message.status, "待处理"),
-    body:
-      text(message.body, "") ||
-      `实验运行=${humanStatus(runStatus)} · 回执=${humanStatus(receiptStatus)} · 训练发布门=${humanStatus(releaseStatus)}`,
-  }));
 }
 
 function buildEngineerNextStep(view: AnyRecord | null, projectId: string, selfPath: string, observabilityHref: string) {
@@ -134,7 +92,7 @@ function buildEngineerNextStep(view: AnyRecord | null, projectId: string, selfPa
   if (/review_required|pending_closeout|blocked|failed/.test(releaseStatus)) {
     return {
       label: "先处理阻塞",
-      detail: "训练发布门还不能通过，先看观测台里的异常、待收口或审批证据。",
+      detail: "训练发布门还不能通过，先看观测台里的异常、待收口或审批记录。",
       href: observabilityHref,
       state: "blocked",
     };
@@ -142,7 +100,7 @@ function buildEngineerNextStep(view: AnyRecord | null, projectId: string, selfPa
   if (!manifestPath) {
     return {
       label: "补齐训练数据入口",
-      detail: "先让样本清单回到证据链，再谈指标对比和下一次实验。",
+      detail: "先让样本清单回到任务记录，再谈指标对比和下一次实验。",
       href: `/projects/${projectId}/datasets?return_to=${encodeURIComponent(selfPath)}&from=ai-lab`,
       state: "watch",
     };
@@ -220,7 +178,7 @@ function buildRunBoard(view: AnyRecord | null, bossPlans: AnyRecord[]) {
     {
       label: "训练数据入口",
       status: manifestPath ? "ready" : "watch",
-      detail: manifestPath ? `已登记样本清单：${manifestPath}` : "等待样本清单路径回流到任务证据链。",
+      detail: manifestPath ? `已登记样本清单：${manifestPath}` : "等待样本清单路径回流到任务记录。",
       actionLabel: manifestPath ? "打开数据入口" : "等待样本清单回流",
     },
     {
@@ -274,7 +232,7 @@ function buildEvalModes(view: AnyRecord | null) {
       detail:
         qaStatus === "waiting"
           ? "等待样本质检状态和低置信样本计数回流。"
-          : "样本质量已进入同一任务证据链，辅助工程师决定补样本、复核或继续训练。",
+          : "样本质量已进入同一任务记录，辅助工程师决定补样本、复核或继续训练。",
       state: exception.actionable || /blocked|failed/.test(qaStatus) ? "blocked" : qaStatus === "waiting" ? "watch" : "ready",
       actionLabel: qaStatus === "waiting" ? "等待质检回流" : "按质检结果处理样本",
     },
@@ -329,7 +287,7 @@ function buildTrainingLanes(view: AnyRecord | null) {
       value: manifestPath ? "已有样本清单" : "等待入口",
       detail: manifestPath
         ? `${manifestVersion || "样本清单"} · 样本 ${numberText(sampleCount, "待回流")} · 低置信 ${numberText(lowConfidenceCount, "待回流")}`
-        : "等待样本清单证据路径回流到任务证据链。",
+        : "等待样本清单路径回流到任务记录。",
       actionLabel: manifestPath ? "查看样本清单入口" : "等待样本清单回流",
     },
     {
@@ -414,7 +372,7 @@ function buildReleaseChecklist(view: AnyRecord | null) {
     {
       label: "样本清单",
       state: manifestPath ? "ready" : "blocked",
-      detail: manifestPath ? "已挂回证据链" : "缺少样本清单，不能评估发布。",
+      detail: manifestPath ? "已挂回任务记录" : "缺少样本清单，不能评估发布。",
     },
     {
       label: "指标摘要",
@@ -520,12 +478,12 @@ function buildClosureActions(view: AnyRecord | null, projectId: string, selfPath
       label: "训练数据",
       detail: manifestPath
         ? `${manifestVersion || "样本清单"} 已登记，质检=${humanStatus(qaStatus)}，导出=${humanStatus(exportStatus)}。`
-        : "训练数据入口还没回流，先等样本清单进入证据链。",
+        : "训练数据入口还没回流，先等样本清单进入任务记录。",
       href: `/projects/${projectId}/datasets?return_to=${encodeURIComponent(selfPath)}&from=ai-lab`,
     },
     {
       label: "仿真 / 回放",
-      detail: replayReady ? "回放准备状态已回流，可沿回放复盘异常和下一次实验假设。" : "回放还没准备好，先等回放证据回流。",
+      detail: replayReady ? "回放准备状态已回流，可沿回放复盘异常和下一次实验假设。" : "回放还没准备好，先等回放记录回流。",
       href: `#replay`,
     },
     {
@@ -613,8 +571,6 @@ export default async function ProjectAiLabPage({
     text(seat.sourceWorkstationId ?? seat.source_workstation_id ?? seat.bound_thread_id ?? seat.target_thread_id, ""),
   ).length;
   const onlineComputers = computers.filter(computerDispatchReady).length;
-  const firstEvidence = firstArtifact(taskView);
-  const replaySteps = buildReplaySteps(taskView);
   const runBoard = buildRunBoard(taskView, bossPlans);
   const evalModes = buildEvalModes(taskView);
   const modelReviewRows = buildModelReviewRows(taskView);
@@ -626,22 +582,11 @@ export default async function ProjectAiLabPage({
   const manifestPath = text(taskView?.summary?.dataset_manifest_artifact_path, "");
   const releaseStatus = text(taskView?.summary?.release_gate_status, "waiting");
   const runStatus = text(taskView?.summary?.experiment_run_status, "waiting");
-  const manifestVersion = text(taskView?.summary?.manifest_version, "");
-  const sampleCount = taskView?.summary?.sample_count;
-  const lowConfidenceCount = taskView?.summary?.low_confidence_count;
   const qaStatus = text(taskView?.summary?.qa_status, "waiting");
-  const exportStatus = text(taskView?.summary?.export_status, "waiting");
-  const replayReady = Boolean(taskView?.summary?.replay_ready);
   const metricCount = Object.keys((taskView?.summary?.metrics_summary as AnyRecord | undefined) ?? {}).length;
   const taskId = text(taskView?.task?.id, searchParams?.task_id ?? "");
   const observabilityHref = buildObservabilityHref(projectId, selfPath, taskId, searchParams);
   const engineerNextStep = buildEngineerNextStep(taskView, projectId, selfPath, observabilityHref);
-  const goalChainLabel = goalChainTitle(searchParams?.source_title ?? searchParams?.goal_chain);
-  const evidenceLine = manifestPath
-    ? `${manifestVersion || "样本清单"} · 样本=${numberText(sampleCount)} · 低置信=${numberText(lowConfidenceCount)}`
-    : firstEvidence
-      ? text(firstEvidence.path ?? firstEvidence.label, "已有证据回流")
-      : "等待样本清单或证据回流";
   const nextStepLine =
     releaseStatus === "can_continue"
       ? "可回 NPC 工作台由工程师确认下一步。"
@@ -671,7 +616,7 @@ export default async function ProjectAiLabPage({
     { label: "回 NPC 工作台", href: `/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=ai-lab`, primary: true },
     { label: "看观测台", href: `/projects/${projectId}/observability?return_to=${encodeURIComponent(selfPath)}&from=ai-lab` },
     {
-      label: "当前证据链",
+      label: "当前记录",
       href: taskView
         ? `/projects/${projectId}/observability?from=ai-lab&task_id=${encodeURIComponent(text(taskView.task?.id, ""))}`
         : `/projects/${projectId}/observability?from=ai-lab`,
@@ -680,7 +625,7 @@ export default async function ProjectAiLabPage({
   const capabilityCards = [
     { label: "任务", detail: "实验对象仍是同一条任务链路" },
     { label: "回执", detail: "只看最小回执、最终状态和下一步动作" },
-    { label: "证据", detail: "回放、报告、日志都从证据索引进入" },
+    { label: "产出", detail: "回放、报告、日志都从记录索引进入" },
     { label: "审计", detail: "审批边界和收口动作继续在审计链上" },
   ];
   const signalCards = [
@@ -708,11 +653,11 @@ export default async function ProjectAiLabPage({
   ];
 
   return (
-    <ProfessionalEvidenceShell
+    <ProfessionalWorkbenchShell
       projectId={projectId}
       pageKey="ai-lab"
       pageTitle="AI 实验室"
-      pageSummary="把实验、仿真、指标、审批边界和回放证据收进同一条任务证据链，辅助工程师判断下一步。"
+      pageSummary="把实验、仿真、指标、审批边界和回放记录收进同一条任务记录，辅助工程师判断下一步。"
       projectName={text(project.name, "项目")}
       topLinks={topLinks}
       sectionLinks={sectionLinks}
@@ -723,146 +668,62 @@ export default async function ProjectAiLabPage({
       capabilityCards={capabilityCards}
       signalCards={signalCards}
     >
-      <section id="lab-surface" className={styles.surface}>
-        <div className={styles.surfaceHeader}>
-          <div className={styles.surfaceIntro}>
-            <span className={styles.sectionTag}>实验态势 / 当前证据链</span>
-            <h2>{taskView ? itemTitle(taskView.task) : "等待任务焦点进入实验室"}</h2>
-            <p>{nextStepLine} AI 实验室只把实验运行、指标、训练数据、回放和训练发布门转成给工程师的下一步建议，不替人选择模型、训练放行或发布。</p>
+      <section className={styles.labDesk} aria-label="AI 实验室主工作台">
+        <section className={styles.labHero}>
+          <div>
+            <span className={styles.sectionTag}>当前工具</span>
+            <h2>Run Board / 评估台</h2>
+            <p>{nextStepLine} AI 实验室只整理实验运行、指标、训练数据、回放和训练发布门，不替人选择模型、训练放行或发布。</p>
           </div>
-          <div className={styles.firstLookPanel} data-alert={taskException.actionable ? "1" : undefined}>
-            <span>证据摘要</span>
-            <strong>{evidenceLine}</strong>
-            <small>
-              实验运行={humanStatus(runStatus)} · 指标={metricCount ? `${metricCount} 项` : "等待"} · 质检={humanStatus(qaStatus)} · 训练发布门={humanStatus(releaseStatus)}
-            </small>
-            <Link href={observabilityHref}>看观测台</Link>
+          <div className={styles.heroActions}>
+            <Link href={engineerNextStep.href}>工程师下一步</Link>
+            <Link href={observabilityHref}>看记录</Link>
+            <Link href={`/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=ai-lab`}>回 NPC 工作台</Link>
           </div>
-        </div>
+        </section>
 
-        <Link href={engineerNextStep.href} className={styles.engineerNextStep} data-state={engineerNextStep.state}>
-          <span>工程师下一步</span>
-          <strong>{engineerNextStep.label}</strong>
-          <small>{engineerNextStep.detail}</small>
-        </Link>
-
-        <div className={styles.startRail} aria-label="第一屏开工路径">
-          <Link href={engineerNextStep.href} data-primary="1">
-            <span>01</span>
-            <strong>{engineerNextStep.label}</strong>
-            <small>先处理当前任务的下一步，直接按证据链开工。</small>
-          </Link>
-          <Link href={observabilityHref}>
-            <span>02</span>
-            <strong>看观测台证据</strong>
-            <small>异常入口、待收口、运行回放和证据索引都回到同一任务链。</small>
-          </Link>
-          <Link href={`/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=ai-lab`}>
-            <span>03</span>
-            <strong>回工作台确认</strong>
-            <small>模型选择、训练放行和发布继续由工程师确认。</small>
-          </Link>
-        </div>
-
-        <div className={styles.labStatusStrip} aria-label="实验态势">
-          <article>
-            <span>实验态势</span>
-            <strong>{humanStatus(runStatus)}</strong>
-            <small>下一步动作由工程师确认</small>
-          </article>
-          <article>
-            <span>运行回放</span>
-            <strong>{replayReady ? "已就绪" : "等待"}</strong>
-            <small>回放只作为证据，不自动放行</small>
-          </article>
-          <article>
-            <span>证据索引</span>
-            <strong>{firstEvidence ? "已回流" : "等待"}</strong>
-            <small>报告、日志、回执集中到观测台</small>
-          </article>
-          <article>
-            <span>异常入口</span>
-            <strong>{taskException.actionable ? "需处理" : "无当前异常"}</strong>
-            <small>阻塞、待收口先回观测台</small>
-          </article>
-        </div>
-
-        <div className={styles.evidenceRibbon}>
-          <span>目标链：{goalChainLabel}</span>
-          <span>来源：{focusSeat}</span>
-          <span>训练回执：{humanStatus(taskView?.summary?.training_receipt_status)}</span>
-          <span>回放：{replayReady ? "已就绪" : "等待回流"}</span>
-          <span>导出：{humanStatus(exportStatus)}</span>
-        </div>
-      </section>
-
-      <section id="tool-surface" className={styles.ideWorkspace} aria-label="AI 实验室工具面">
-        <aside className={styles.ideSidebar} aria-label="实验对象导航">
-          <span className={styles.sectionTag}>对象导航</span>
-          <a href="#run-board">
-            <strong>实验运行</strong>
-            <small>{humanStatus(runStatus)}</small>
-          </a>
-          <a href="#data-drawer">
-            <strong>数据</strong>
-            <small>{manifestPath ? manifestVersion || "样本清单已就绪" : "等待样本清单"}</small>
-          </a>
-          <a href="#replay">
-            <strong>仿真对象</strong>
-            <small>{replayReady ? "回放就绪" : "等待回放证据"}</small>
-          </a>
-          <a href="#model-review">
-            <strong>模型评估</strong>
-            <small>{metricCount ? `${metricCount} 项指标` : "等待指标"}</small>
-          </a>
-          <a href="#release-drawer">
-            <strong>训练发布门</strong>
-            <small>{humanStatus(releaseStatus)}</small>
-          </a>
-        </aside>
-
-        <section className={styles.ideCenter} aria-label="中央工作区">
-          <section id="run-board" className={styles.workPanel}>
-            <div className={styles.panelHeader}>
-              <div>
-                <span className={styles.sectionTag}>中央工作区</span>
-                <h3>实验运行、指标对比和实验建议放在主编辑区。</h3>
-              </div>
-              <span className={styles.inlineStatus}>人工确认留在 NPC 工作台</span>
+        <section className={styles.runBoardPanel} id="run-board">
+          <div className={styles.runHeader}>
+            <div>
+              <span className={styles.sectionTag}>Run Board</span>
+              <strong>{taskView ? itemTitle(taskView.task) : "等待任务焦点进入实验室"}</strong>
             </div>
-
-            <div className={styles.runBoard}>
-              {runBoard.map((item) => (
-                <article key={item.label} data-state={item.status}>
-                  <span>{item.label}</span>
-                  <strong>{item.status === "active" ? "进行中" : item.status === "ready" ? "已具备" : item.status === "watch" ? "待推进" : "等待"}</strong>
-                  <p>{item.detail}</p>
-                  <small>{item.actionLabel}</small>
-                </article>
-              ))}
+            <div className={styles.statusPills}>
+              <span>实验 {humanStatus(runStatus)}</span>
+              <span>指标 {metricCount ? `${metricCount} 项` : "等待"}</span>
+              <span>发布门 {humanStatus(releaseStatus)}</span>
             </div>
+          </div>
 
-            <div className={styles.evalGrid}>
-              {evalModes.map((item) => (
-                <article key={item.label} data-state={item.state}>
-                  <small>{item.source}</small>
-                  <strong>{item.label}</strong>
-                  <span>{item.actionLabel}</span>
-                  <p>{item.detail}</p>
-                </article>
-              ))}
+          <div className={styles.runBoard}>
+            {runBoard.map((item) => (
+              <article key={item.label} data-state={item.status}>
+                <span>{item.label}</span>
+                <strong>{item.status === "active" ? "进行中" : item.status === "ready" ? "已具备" : item.status === "watch" ? "待推进" : "等待"}</strong>
+                <p>{item.detail}</p>
+                <small>{item.actionLabel}</small>
+              </article>
+            ))}
+          </div>
+
+          <div className={styles.evalGrid}>
+            {evalModes.map((item) => (
+              <article key={item.label} data-state={item.state}>
+                <small>{item.source}</small>
+                <strong>{item.label}</strong>
+                <span>{item.actionLabel}</span>
+                <p>{item.detail}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className={styles.labSplit}>
+          <section className={styles.compactPanel} id="model-review">
+            <div className={styles.compactHead}>
+              <span className={styles.sectionTag}>模型评估</span>
+              <strong>指标、风险、回执、下一轮假设</strong>
             </div>
-          </section>
-
-          <section id="model-review" className={styles.workPanel}>
-            <div className={styles.panelHeader}>
-              <div>
-                <span className={styles.sectionTag}>模型评估工作区</span>
-                <h3>在评估台里看指标、样本风险、训练回执和下一次实验建议。</h3>
-              </div>
-              <span className={styles.inlineStatus}>训练数据在右侧抽屉核对</span>
-            </div>
-
             <div className={styles.modelReviewGrid}>
               {modelReviewRows.map((row) => (
                 <article key={row.label}>
@@ -872,84 +733,13 @@ export default async function ProjectAiLabPage({
                 </article>
               ))}
             </div>
-
-            <div className={styles.modelCandidateBoard} aria-label="候选模型评审台">
-              {modelCandidateRows.map((row) => (
-                <article key={row.label} data-state={row.state}>
-                  <span>{row.label}</span>
-                  <strong>{row.value}</strong>
-                  <p>{row.risk}</p>
-                  <small>{row.decision}</small>
-                </article>
-              ))}
-            </div>
           </section>
 
-          <section id="replay" className={styles.workPanel}>
-            <div className={styles.panelHeader}>
-              <div>
-                <span className={styles.sectionTag}>回放 / 仿真</span>
-                <h3>工程师在这里复盘证据，AI 只标出差异和异常线索。</h3>
-              </div>
-              {firstEvidence ? <span className={styles.inlineStatus}>证据已挂回当前链路</span> : null}
+          <section className={styles.compactPanel} id="release-drawer">
+            <div className={styles.compactHead}>
+              <span className={styles.sectionTag}>训练发布门</span>
+              <strong>{humanStatus(releaseStatus)}</strong>
             </div>
-
-            <div className={styles.replayGrid}>
-              <div className={styles.replayTimeline}>
-                {replaySteps.length ? (
-                  replaySteps.map((step, index) => (
-                    <article key={step.id} className={styles.replayStep}>
-                      <small>{String(index + 1).padStart(2, "0")}</small>
-                      <div>
-                        <strong>{step.label}</strong>
-                        <span>{humanSignalType(step.type)} · {humanStatus(step.status)}</span>
-                        <p>{step.body}</p>
-                      </div>
-                    </article>
-                  ))
-                ) : (
-                  <div className={styles.emptyBlock}>当前还没有回放步骤，先从 NPC 工作台触发一次实验或仿真派单。</div>
-                )}
-              </div>
-
-              <div className={styles.evidencePreview}>
-                <span>证据入口</span>
-                {manifestPath || firstEvidence ? (
-                  <>
-                    <strong>{manifestPath ? "样本清单" : text(firstEvidence?.label, "证据")}</strong>
-                    <p>{manifestPath || text(firstEvidence?.path, "等待证据路径")}</p>
-                    <small>
-                      {manifestPath
-                        ? `${manifestVersion || "样本清单"} · 样本=${numberText(sampleCount)} · 低置信=${numberText(lowConfidenceCount)} · 质检=${humanStatus(qaStatus)} · 导出=${humanStatus(exportStatus)}`
-                        : releaseStatus === "can_continue"
-                          ? `当前训练发布门=${humanStatus(releaseStatus)}，可带着证据评估下一次实验。`
-                          : `当前实验运行=${humanStatus(runStatus)} · 训练发布门=${humanStatus(releaseStatus)}，先按证据链继续判断。`}
-                    </small>
-                    <small>
-                      {replayReady ? "仿真/回放证据已准备好。" : "等待回放证据回流。"}
-                    </small>
-                  </>
-                ) : (
-                  <div className={styles.emptyBlock}>当前没有样本清单或证据回流，先等待数据回流，不伪造回放。</div>
-                )}
-              </div>
-            </div>
-          </section>
-        </section>
-
-        <aside className={styles.ideInspector} aria-label="右侧抽屉">
-          <section className={styles.drawerPanel}>
-            <span className={styles.sectionTag}>指标抽屉</span>
-            <strong>{metricCount ? `${metricCount} 项指标已回流` : "等待指标回流"}</strong>
-            <p>{metricCount ? "指标已进入同一证据链，可辅助工程师比较实验运行和规划下一次实验。" : "等待指标回流，不从日志里猜测模型优劣。"}</p>
-            <small>样本质检={humanStatus(qaStatus)} · 低置信={numberText(lowConfidenceCount)} · 回放={replayReady ? "已就绪" : "等待"}</small>
-          </section>
-
-          <section id="release-drawer" className={styles.drawerPanel}>
-            <span className={styles.sectionTag}>训练发布门</span>
-            <strong>{humanStatus(releaseStatus)}</strong>
-            <p>这是给工程师的放行建议入口，不替人选择模型、训练放行或发布。</p>
-            <small>需要证据链细节时，从顶部“看观测台”进入。</small>
             <div className={styles.releaseChecklist}>
               {releaseChecklist.map((item) => (
                 <article key={item.label} data-state={item.state}>
@@ -959,66 +749,27 @@ export default async function ProjectAiLabPage({
               ))}
             </div>
           </section>
+        </section>
 
-          <section id="data-drawer" className={styles.drawerPanel}>
-            <span className={styles.sectionTag}>数据契约</span>
-            <strong>{manifestPath ? "样本清单已回流" : "等待样本清单"}</strong>
-            <p>{manifestPath || "样本清单回流后，这里显示样本版本、低置信样本和导出状态。"}</p>
-            <small>版本={manifestVersion || "等待"} · 样本={numberText(sampleCount)} · 低置信={numberText(lowConfidenceCount)}</small>
-          </section>
-
-          <section className={styles.drawerPanel}>
-            <span className={styles.sectionTag}>训练回执</span>
-            {trainingLanes.slice(1).map((lane) => (
-              <div key={lane.label} className={styles.drawerRow}>
-                <strong>{lane.label}</strong>
-                <p>{lane.value}</p>
-                <small>{lane.actionLabel}</small>
-              </div>
-            ))}
-          </section>
-
-          <section className={styles.drawerPanel}>
-            <span className={styles.sectionTag}>放行条件</span>
-            <strong>人工确认</strong>
-            <p>需要工程师确认模型选择、训练放行和发布；AI 只把指标、回执、样本风险和回放线索整理到同一证据链。</p>
-            <small>训练发布门={humanStatus(releaseStatus)} · 训练回执={humanStatus(taskView?.summary?.training_receipt_status)} · 质检={humanStatus(qaStatus)}</small>
-          </section>
-        </aside>
-
-        <section className={styles.ideBottomDrawer} aria-label="底部日志和审批抽屉">
-          <div>
-            <span className={styles.sectionTag}>日志 / 审批抽屉</span>
-            <strong>数据契约、训练回执、训练发布门和日志不挤占中央工作区。</strong>
-          </div>
-          <div className={styles.boundaryGrid}>
-            {boundaryCards.map((item) => (
-              <article key={item.label} data-state={item.state}>
-                <span>{item.label}</span>
-                <strong>{item.value}</strong>
+        <details className={styles.labDetails} id="replay">
+          <summary>
+            <span>回放、数据契约、候选模型和边界记录</span>
+            <strong>展开高级信息</strong>
+          </summary>
+          <div className={styles.detailsGrid}>
+            {[...modelCandidateRows.map((row) => ({ title: row.label, body: row.value, detail: row.decision })),
+              ...trainingLanes.map((lane) => ({ title: lane.label, body: lane.value, detail: lane.actionLabel })),
+              ...boundaryCards.map((item) => ({ title: item.label, body: item.value, detail: item.detail })),
+              ...closureActions.slice(0, 3).map((item) => ({ title: item.label, body: "下一步动作", detail: item.detail }))].slice(0, 12).map((item) => (
+              <article key={`${item.title}-${item.body}`}>
+                <span>{item.title}</span>
+                <strong>{item.body}</strong>
                 <p>{item.detail}</p>
               </article>
             ))}
           </div>
-          <div className={styles.drawerActionGrid}>
-            {closureActions.map((item) => (
-              <Link key={item.label} href={item.href} className={styles.closureCard}>
-                <span>{item.label}</span>
-                <strong>{item.detail}</strong>
-              </Link>
-            ))}
-          </div>
-          <div className={styles.logStrip}>
-            {(replaySteps.length ? replaySteps : [{ id: "waiting", label: "等待日志回流", type: "log", status: "waiting", body: "训练日志、回执和回放事件回流后会进入底部抽屉。" }]).slice(0, 3).map((step) => (
-              <article key={step.id}>
-                <span>{humanSignalType(step.type)} · {humanStatus(step.status)}</span>
-                <strong>{step.label}</strong>
-                <p>{step.body}</p>
-              </article>
-            ))}
-          </div>
-        </section>
+        </details>
       </section>
-    </ProfessionalEvidenceShell>
+    </ProfessionalWorkbenchShell>
   );
 }

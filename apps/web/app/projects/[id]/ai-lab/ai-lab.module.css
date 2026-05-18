@@ -9,6 +9,175 @@
   color: #edf7f4;
 }
 
+/* P1 compact IDE rebuild */
+.labDesk {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+  height: 100%;
+  align-content: start;
+}
+
+.labHero,
+.runBoardPanel,
+.compactPanel,
+.labDetails {
+  border: 1px solid rgba(88, 240, 255, 0.18);
+  background: rgba(2, 13, 20, 0.68);
+}
+
+.labHero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 14px;
+  padding: 16px;
+}
+
+.labHero h2 {
+  margin: 4px 0 6px;
+  font-size: 30px;
+  line-height: 1.08;
+}
+
+.labHero p,
+.compactPanel p,
+.detailsGrid p,
+.runBoardPanel p {
+  margin: 0;
+  color: rgba(190, 220, 240, 0.72);
+  line-height: 1.5;
+}
+
+.heroActions,
+.statusPills {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.heroActions a,
+.statusPills span {
+  min-height: 30px;
+  display: inline-grid;
+  align-content: center;
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 227, 139, 0.46);
+  border-radius: 8px;
+  background: rgba(255, 227, 139, 0.12);
+  color: #fff4cb;
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.runBoardPanel {
+  min-height: 360px;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 1px;
+  background: rgba(88, 240, 255, 0.12);
+}
+
+.runHeader {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: rgba(2, 22, 33, 0.86);
+}
+
+.runHeader strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 18px;
+}
+
+.labSplit {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.72fr);
+  gap: 12px;
+}
+
+.compactPanel {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+  background: rgba(88, 240, 255, 0.12);
+}
+
+.compactHead {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  background: rgba(2, 22, 33, 0.86);
+}
+
+.compactHead strong {
+  font-size: 17px;
+}
+
+.labDetails summary {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  list-style: none;
+}
+
+.labDetails summary::-webkit-details-marker {
+  display: none;
+}
+
+.labDetails summary span,
+.detailsGrid span {
+  color: #b9fff3;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.detailsGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  padding: 0 12px 12px;
+  background: rgba(88, 240, 255, 0.12);
+}
+
+.detailsGrid article {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+  background: rgba(2, 22, 33, 0.86);
+}
+
+.detailsGrid strong {
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 1120px) {
+  .labHero,
+  .runHeader,
+  .labSplit,
+  .detailsGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .heroActions,
+  .statusPills {
+    justify-content: flex-start;
+  }
+}
+
 .emptyPage a {
   color: inherit;
 }
