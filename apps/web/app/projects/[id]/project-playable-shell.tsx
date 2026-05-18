@@ -11498,6 +11498,23 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             <p>
               {selectedWatch.detail}。扫描到线程不等于正在接单；要让平台派工被自动领取，需要在那台电脑保持“自动化心跳 / 持续接单”窗口运行。
             </p>
+            <div className={styles.reconnectChecklist} data-computer-reconnect-checklist={selectedNodeId}>
+              <article>
+                <span>1</span>
+                <strong>复制持续接单命令</strong>
+                <p>Windows 用 PowerShell，Linux / macOS 用 Bash；要在这台目标电脑上运行。</p>
+              </article>
+              <article>
+                <span>2</span>
+                <strong>保持终端或启用守护</strong>
+                <p>普通命令需要窗口保持打开；长期使用时改用后台守护 / 开机自启。</p>
+              </article>
+              <article>
+                <span>3</span>
+                <strong>回平台确认状态</strong>
+                <p>看到“常驻接单”后，再回机器人现场或 NPC 工作台派任务。</p>
+              </article>
+            </div>
             {text(selectedNode.runner_id, "") ? renderComputerOnboardingGuide(selectedNode, { reconnectMode: true }) : null}
           </div>
         ) : null}

@@ -3740,6 +3740,54 @@
   text-decoration: none;
 }
 
+.reconnectChecklist {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.reconnectChecklist article {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 8px;
+  align-content: start;
+  padding: 10px;
+  border: 1px solid rgba(255, 224, 138, 0.2);
+  border-radius: 12px;
+  background: rgba(255, 224, 138, 0.07);
+}
+
+.reconnectChecklist span {
+  width: 22px;
+  height: 22px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 7px;
+  background: rgba(255, 224, 138, 0.14);
+  color: #ffe08a;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.reconnectChecklist strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #fff8e2;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reconnectChecklist p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: rgba(246, 237, 216, 0.72);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 .skillManagerForm {
   display: grid;
   gap: 10px;
@@ -4145,6 +4193,10 @@
   }
 
   .computerFleetGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .reconnectChecklist {
     grid-template-columns: 1fr;
   }
 
