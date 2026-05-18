@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import case, select
+from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.orm import Session
 
 from app.common.audit import append_audit_log
@@ -21,7 +22,7 @@ from app.modules.tasks.schemas import TaskTransitionCreate
 from app.modules.tasks.service import record_task_log, record_task_result, transition_task_status
 
 from . import repo
-from .schemas import RunnerRegister
+from .schemas import RunnerDeviceInterfaceScanCreate, RunnerRegister
 from .schemas import RunnerThreadWorkstationSyncCreate
 
 
@@ -615,6 +616,92 @@ def sync_runner_thread_workstations(
         "thread_count": len(synced_items),
         "workstations": synced_items,
     }
+
+
+def sync_runner_device_interfaces(
+    db: Session,
+    runner_id: str,
+    payload: RunnerDeviceInterfaceScanCreate,
+) -> dict[str, object]:
+    runner = get_runner_or_404(db, runner_id)
+    project, node = _binding_row_or_404(db, payload.project_id, payload.computer_node_id)
+    if str(node.runner_id or "") != runner.id:
+        raise AppError("RUNNER_BINDING_NOT_FOUND", "computer node is not bound to this runner", status_code=404)
+
+    now = datetime.now(timezone.utc)
+    scanned_at = payload.scanned_at or now
+    interfaces = [item.model_dump(mode="json") for item in payload.interfaces]
+    summary = dict(payload.summary or {})
+    summary.setdefault("total", len(interfaces))
+    for kind in ("serial", "usb", "can", "spi", "spi-can", "ros"):
+        summary.setdefault(
+            f"{kind}_count",
+            len([item for item in interfaces if str(item.get("kind") or "").strip().lower() == kind]),
+        )
+    scan: dict[str, object] = {
+        "status": "completed",
+        "runner_id": runner.id,
+        "project_id": payload.project_id,
+        "computer_node_id": payload.computer_node_id,
+        "platform": payload.platform or runner.os,
+        "host": payload.host or runner.host,
+        "scanner_version": payload.scanner_version or "unknown",
+        "scanned_at": scanned_at.isoformat() if hasattr(scanned_at, "isoformat") else str(scanned_at),
+        "interface_count": len(interfaces),
+        "interfaces": interfaces,
+        "summary": summary,
+        "warnings": list(payload.warnings or []),
+        "safety": {
+            "mode": "read_only_scan",
+            "write_actions": "review_required",
+            "blocked_actions": [
+                "CAN send or bitrate changes",
+                "serial write",
+                "SPI overlay/module changes",
+                "ROS publish/service/action",
+                "firmware flash",
+                "real hardware motion",
+            ],
+        },
+    }
+
+    node_extra = dict(node.extra_data or {})
+    before = dict(node_extra.get("device_interface_scan") or {})
+    node_extra["device_interface_scan"] = scan
+    node.extra_data = node_extra
+    flag_modified(node, "extra_data")
+    db.add(node)
+
+    config = normalize_collaboration_config(project.collaboration_config)
+    for item in config.get("computer_nodes") or []:
+        if isinstance(item, dict) and str(item.get("id") or "") == payload.computer_node_id:
+            metadata = dict(item.get("metadata") or {})
+            metadata["device_interface_scan"] = scan
+            item["metadata"] = metadata
+            break
+    project.collaboration_config = config
+    db.add(project)
+
+    append_audit_log(
+        db,
+        project_id=project.id,
+        actor_type="runner",
+        actor_id=runner.id,
+        action="runner.device_interfaces.synced",
+        resource_type="computer_node",
+        resource_id=payload.computer_node_id,
+        before={
+            "interface_count": before.get("interface_count"),
+            "scanned_at": before.get("scanned_at"),
+        },
+        after={
+            "interface_count": len(interfaces),
+            "scanned_at": scan["scanned_at"],
+            "kinds": sorted({str(item.get("kind") or "unknown") for item in interfaces}),
+        },
+    )
+    db.commit()
+    return {"runner_id": runner.id, **scan}
 
 
 def list_runners(db: Session):

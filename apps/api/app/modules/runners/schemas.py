@@ -165,3 +165,42 @@ class RunnerThreadWorkstationSyncCreate(BaseModel):
     project_id: str
     computer_node_id: str
     workstations: list[RunnerThreadWorkstationSyncItem] = Field(default_factory=list)
+
+
+class RunnerDeviceInterfaceRead(BaseModel):
+    id: str
+    kind: str
+    name: str
+    status: str = "unknown"
+    transport: str | None = None
+    details: dict = Field(default_factory=dict)
+    read_capability: bool = True
+    write_capability: str = "review_required"
+    risk_level: str = "medium"
+
+
+class RunnerDeviceInterfaceScanCreate(BaseModel):
+    project_id: str
+    computer_node_id: str
+    platform: str | None = None
+    host: str | None = None
+    scanner_version: str | None = None
+    scanned_at: datetime | None = None
+    interfaces: list[RunnerDeviceInterfaceRead] = Field(default_factory=list)
+    summary: dict = Field(default_factory=dict)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class RunnerDeviceInterfaceScanRead(BaseModel):
+    runner_id: str
+    project_id: str
+    computer_node_id: str
+    status: str = "completed"
+    platform: str | None = None
+    host: str | None = None
+    scanner_version: str | None = None
+    scanned_at: datetime | str | None = None
+    interface_count: int = 0
+    interfaces: list[RunnerDeviceInterfaceRead] = Field(default_factory=list)
+    summary: dict = Field(default_factory=dict)
+    warnings: list[str] = Field(default_factory=list)

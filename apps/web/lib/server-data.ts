@@ -289,6 +289,7 @@ function normalizeComputerNode(value: unknown, index: number) {
   const item = value && typeof value === "object" ? (value as Record<string, any>) : {};
   const metadata = pickNormalizedObject(item.metadata, item.extra_data);
   const threadScan = pickNormalizedObject(metadata.thread_scan, metadata.threadScan);
+  const deviceInterfaceScan = pickNormalizedObject(metadata.device_interface_scan, metadata.deviceInterfaceScan);
   return {
     ...item,
     id: String(item.id ?? item.label ?? item.name ?? `node_${index + 1}`),
@@ -310,6 +311,8 @@ function normalizeComputerNode(value: unknown, index: number) {
     write_paths: normalizePathList(item.write_paths ?? item.writePaths ?? item.write_dirs ?? item.writable_paths),
     thread_scan: threadScan,
     thread_scan_count: Number(threadScan.thread_count ?? threadScan.threadCount ?? 0) || 0,
+    device_interface_scan: deviceInterfaceScan,
+    device_interface_count: Number(deviceInterfaceScan.interface_count ?? deviceInterfaceScan.interfaceCount ?? 0) || 0,
     desktop_process_detected: Boolean(threadScan.desktop_process_detected ?? threadScan.desktopProcessDetected),
     desktop_bridge_connected: Boolean(threadScan.desktop_bridge_connected ?? threadScan.desktopBridgeConnected),
     desktop_delivery_mode: threadScan.desktop_delivery_mode ?? threadScan.desktopDeliveryMode ?? null,

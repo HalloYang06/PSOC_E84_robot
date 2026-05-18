@@ -28,6 +28,8 @@ from .schemas import (
     RunnerBindingCreate,
     RunnerBindingDeleteRead,
     RunnerBindingRead,
+    RunnerDeviceInterfaceScanCreate,
+    RunnerDeviceInterfaceScanRead,
     RunnerHeartbeat,
     RunnerRead,
     RunnerRegister,
@@ -50,6 +52,7 @@ from .service import (
     register_runner_with_binding,
     serialize_runner_for_read,
     serialize_runner_workspace,
+    sync_runner_device_interfaces,
     sync_runner_thread_workstations,
     transition_runner_task,
     unbind_runner_from_computer_node,
@@ -290,6 +293,18 @@ def api_sync_runner_thread_workstations(
 ):
     resolve_runner_principal(db, request, runner_id, action="runner.thread_workstations.sync")
     return ok(sync_runner_thread_workstations(db, runner_id, payload))
+
+
+@router.post("/{runner_id}/device-interfaces/sync")
+def api_sync_runner_device_interfaces(
+    runner_id: str,
+    payload: RunnerDeviceInterfaceScanCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    resolve_runner_principal(db, request, runner_id, action="runner.device_interfaces.sync")
+    result = sync_runner_device_interfaces(db, runner_id, payload)
+    return ok(RunnerDeviceInterfaceScanRead.model_validate(result).model_dump(mode="json"))
 
 
 @router.post("/{runner_id}/bindings")
