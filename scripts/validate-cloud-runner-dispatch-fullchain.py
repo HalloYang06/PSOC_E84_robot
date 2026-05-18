@@ -75,6 +75,11 @@ def request_json(
         return payload
 
 
+def http_status(payload: dict[str, object]) -> int:
+    raw = payload.get("_http_status")
+    return int(raw) if isinstance(raw, int) else 200
+
+
 def data_of(payload: dict[str, object]) -> object:
     return payload.get("data") if isinstance(payload, dict) else None
 
@@ -124,12 +129,14 @@ def project_node_direct(api_base: str, project_id: str, token: str, node_id: str
 
 
 def wait_for_project_node(api_base: str, project_id: str, token: str, node_id: str, *, attempts: int = 5) -> dict[str, object]:
+    last_payload: dict[str, object] = {}
     for attempt in range(attempts):
         node = project_node_direct(api_base, project_id, token, node_id)
         if node is not None:
             return node
+        last_payload = request_json(api_url(api_base, f"/api/collaboration/projects/{quote(project_id)}/computer-nodes/{quote(node_id)}"), token=token)
         time.sleep(0.2 * (attempt + 1))
-    raise RuntimeError(f"computer node {node_id} was not readable after create")
+    raise RuntimeError(f"computer node {node_id} was not readable after create: last_payload={last_payload}")
 
 
 def main() -> int:
@@ -173,7 +180,7 @@ def main() -> int:
             raise RuntimeError("login did not return access_token")
         step("login", "ok")
 
-        request_json(
+        create_payload = request_json(
             api_url(api_base, f"/api/collaboration/projects/{quote(args.project_id)}/computer-nodes"),
             method="POST",
             token=token,
@@ -187,8 +194,13 @@ def main() -> int:
                 "metadata": {"validation_kind": "cloud_runner_dispatch_fullchain"},
             },
         )
+        if http_status(create_payload) != 200:
+            raise RuntimeError(f"create computer node failed with HTTP {http_status(create_payload)}: {create_payload}")
+        create_data = data_of(create_payload)
+        if not isinstance(create_data, dict) or text(create_data.get("id")) != node_id:
+            raise RuntimeError(f"create computer node returned unexpected payload: {create_payload}")
         wait_for_project_node(api_base, args.project_id, token, node_id)
-        step("create_computer_node", "ok")
+        step("create_computer_node", "ok", create_payload=create_payload)
 
         pairing_payload = request_json(
             api_url(api_base, f"/api/collaboration/projects/{quote(args.project_id)}/computer-nodes/{quote(node_id)}/pairing-token"),
