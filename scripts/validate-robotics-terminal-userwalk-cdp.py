@@ -158,8 +158,8 @@ def main() -> int:
               const body = document.body.innerText || '';
               return {
                 href: location.href,
-                hasIndexSelect: !!document.querySelector('.indexForm select[name="windows"]'),
-                usableOptions: Array.from(document.querySelectorAll('.indexForm select[name="windows"] option')).filter((item) => item.value).length,
+                hasIndexSelect: !!document.querySelector('[class*="indexForm"] select[name="windows"]'),
+                usableOptions: Array.from(document.querySelectorAll('[class*="indexForm"] select[name="windows"] option')).filter((item) => item.value).length,
                 openButtons: document.querySelectorAll('a[aria-label^="打开 "]').length,
                 disabledMarkers: document.querySelectorAll('[class*="openBtnDisabled"]').length,
                 hasNoDemoText: body.includes('不建假窗口') && !body.includes('模板'),
@@ -172,7 +172,7 @@ def main() -> int:
         screenshot(cdp, output_dir / f"robotics-terminal-userwalk-initial-{stamp}.png")
 
         if isinstance(first, dict) and int(first.get("usableOptions") or 0) > 0:
-            click(cdp, ".indexForm button")
+            click(cdp, '[class*="indexForm"] button')
             wait_for(cdp, "location.search.includes('windows=') && document.querySelectorAll('article').length > 0")
             time.sleep(0.5)
             tile = cdp_eval(

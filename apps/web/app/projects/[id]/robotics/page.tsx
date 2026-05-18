@@ -306,7 +306,9 @@ export default async function ProjectRoboticsPage({
                         return <option key={text(seat.id ?? seat.config_id ?? name, name)} value={name}>{name}</option>;
                       })}
                     </select>
-                    <button type="submit" disabled={!window.runnerReady} title={window.runnerReady ? "排队到所选执行电脑" : window.runnerHint}>排队执行</button>
+                    <button type="submit" disabled={!window.runnerReady} title={window.runnerReady ? "排队到所选执行电脑" : window.runnerHint}>
+                      {window.runnerReady ? "排队执行" : "需重连"}
+                    </button>
                   </form>
                 </article>
               ))}
