@@ -462,7 +462,7 @@ export default async function ProjectDatasetsPage({
       projectId={projectId}
       pageKey="datasets"
       pageTitle="数据工场"
-      pageSummary="中心工作面只保留样本队列、质检矩阵和数据版本时间线，不展示长日志。"
+      pageSummary="像标注 IDE 一样管理数据：左侧选对象，中间只看当前工具，右侧开功能，底部看事件。"
       projectName={text(project.name, "项目")}
       topLinks={topLinks}
       sectionLinks={sectionLinks}
@@ -473,499 +473,136 @@ export default async function ProjectDatasetsPage({
       capabilityCards={capabilityCards}
       signalCards={signalCards}
     >
-      <section className={styles.workspace}>
-        <section className={styles.taskWorkbench} aria-label="当前数据任务工作台">
-          <div className={styles.taskWorkbenchHead}>
-            <div>
-              <span>当前证据链</span>
-              <strong>{taskView ? text(taskView.task?.title, focusTitle) : focusTitle}</strong>
-              <p>{focusSeat} · {currentSampleState} · 质检和数据版本会沿同一条证据链回流。</p>
-            </div>
-            <div className={styles.taskWorkbenchActions}>
-              <Link href={`/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=datasets${currentTaskId ? `&task_id=${encodeURIComponent(currentTaskId)}` : ""}${currentSourceMessageId && currentSourceMessageId !== "待回流" ? `&message_id=${encodeURIComponent(currentSourceMessageId)}` : ""}`}>回 NPC 工作台</Link>
-              <Link href={`/projects/${projectId}/observability?return_to=${encodeURIComponent(selfPath)}&from=datasets${currentTaskId ? `&task_id=${encodeURIComponent(currentTaskId)}` : ""}`}>看观测台</Link>
-            </div>
+      <section className={styles.ideSurface} aria-label="数据工场 IDE 工作面">
+        <section className={styles.ideHero}>
+          <div>
+            <span>当前工具</span>
+            <strong>{hasDeviceIntakeDraft ? "设备采样入库草案" : "样本队列与标注 QA"}</strong>
+            <p>{hasDeviceIntakeDraft ? "从机器人现场带来的 CAN、串口、USB 或 ROS 只读采样建议，会先变成采集任务草案，再由人确认采样和入库。" : "数据工场只处理数据生命周期：采集、预标注建议、低置信复核、QA 放行、manifest/export 和训练回执。"}</p>
           </div>
-          <div className={styles.chainGrid}>
-            {contextCards.map((card) => (
-              <article key={card.label}>
-                <span>{card.label}</span>
-                <strong>{card.value}</strong>
-                <small>{card.detail}</small>
-              </article>
-            ))}
-            <article>
-              <span>质检</span>
-              <strong>人工确认</strong>
-              <small>schema / privacy / timestamp 通过后才能放行</small>
-            </article>
-            <article>
-              <span>数据版本</span>
-              <strong>manifest/export</strong>
-              <small>只把人工确认过的数据版本送入实验室</small>
-            </article>
-            <article>
-              <span>执行电脑调度</span>
-              <strong>{deviceRunnerState}</strong>
-              <small>采样、回执和异常状态回观测台收口</small>
-            </article>
-          </div>
-          <div className={styles.nextActionGrid}>
-            {nextActionCards.map((card) => (
-              card.href.startsWith("#") ? (
-                <a key={card.label} href={card.href}>
-                  <span>{card.label}</span>
-                  <strong>{card.title}</strong>
-                  <p>{card.detail}</p>
-                </a>
-              ) : (
-                <Link key={card.label} href={card.href}>
-                  <span>{card.label}</span>
-                  <strong>{card.title}</strong>
-                  <p>{card.detail}</p>
-                </Link>
-              )
-            ))}
+          <div className={styles.ideHeroActions}>
+            <Link href={workbenchHref}>派给 NPC</Link>
+            <Link href={observabilityHref}>看证据</Link>
+            <Link href={aiLabHref}>送实验室</Link>
           </div>
         </section>
 
+        <div className={styles.ideMetrics}>
+          {metrics.map(([label, value]) => (
+            <article key={label}>
+              <span>{label}</span>
+              <strong>{value}</strong>
+            </article>
+          ))}
+        </div>
+
         {hasDeviceIntakeDraft ? (
-          <section className={styles.deviceIntakeDraft} aria-label="设备采样任务草案">
-            <div className={styles.deviceIntakeHead}>
+          <section className={styles.ideToolPanel} aria-label="设备采样任务草案">
+            <div className={styles.idePanelHead}>
               <div>
-                <span>设备采样任务草案</span>
+                <span>{deviceSamplingDraft.mode}</span>
                 <strong>{deviceSamplingDraft.title}</strong>
-                <p>这只是从机器人现场带来的只读采样建议，采样、QA 和导出都需要人确认。</p>
               </div>
-              <div className={styles.deviceIntakeActions}>
+              <div>
                 <Link href={roboticsReturnHref}>回调试台</Link>
                 <Link href={workbenchHref}>交给 NPC 整理</Link>
               </div>
             </div>
-            <div className={styles.deviceIntakeGrid}>
-              <article>
-                <span>调试模式</span>
-                <strong>{deviceSamplingDraft.mode}</strong>
-                <small>只读进入采集队列</small>
-              </article>
-              <article>
-                <span>通道</span>
-                <strong>{deviceSamplingDraft.channels}</strong>
-                <small>由人确认是否全部采集</small>
-              </article>
-              <article>
-                <span>频率 / 窗口</span>
-                <strong>{deviceSamplingDraft.rate} · {deviceSamplingDraft.window}</strong>
-                <small>执行电脑按能力实际落地</small>
-              </article>
-              <article>
-                <span>字段草案</span>
-                <strong>{deviceSamplingDraft.schema}</strong>
-                <small>进入 manifest 前先过 QA</small>
-              </article>
+            <div className={styles.ideFourGrid}>
+              <article><span>通道</span><strong>{deviceSamplingDraft.channels}</strong><p>由人确认是否全部采集。</p></article>
+              <article><span>频率 / 窗口</span><strong>{deviceSamplingDraft.rate} · {deviceSamplingDraft.window}</strong><p>这是草案，不会直接启动真实采集。</p></article>
+              <article><span>字段</span><strong>{deviceSamplingDraft.schema}</strong><p>入库前确认 schema、timestamp 和单位。</p></article>
+              <article><span>执行电脑</span><strong>{deviceRunnerState}</strong><p>采样前仍要确认 runner、端口权限和设备状态。</p></article>
             </div>
-            <div className={styles.deviceIntakeWorkbench}>
+            <div className={styles.ideSplitGrid}>
               <section>
-                <div className={styles.deviceIntakeSubhead}>
-                  <span>通道队列</span>
-                  <strong>逐项确认是否采样</strong>
-                </div>
-                <div className={styles.deviceChannelRows}>
+                <div className={styles.idePanelHead}><span>通道队列</span><strong>逐项确认</strong></div>
+                <div className={styles.ideCompactRows}>
                   {(deviceChannelList.length ? deviceChannelList : ["待选择通道"]).map((channel, index) => (
-                    <article key={`${channel}-${index}`}>
-                      <strong>{channel}</strong>
-                      <span>{index === 0 ? "主通道" : "候选通道"}</span>
-                      <small>{deviceSamplingDraft.rate} · {deviceSamplingDraft.window}</small>
-                    </article>
+                    <article key={`${channel}-${index}`}><strong>{channel}</strong><span>{index === 0 ? "主通道" : "候选通道"}</span><small>{deviceSamplingDraft.rate}</small></article>
                   ))}
                 </div>
               </section>
               <section>
-                <div className={styles.deviceIntakeSubhead}>
-                  <span>采样控制</span>
-                  <strong>先生成任务，再人工确认采样</strong>
-                </div>
-                <div className={styles.deviceDraftControls}>
-                  <article>
-                    <span>执行电脑</span>
-                    <strong>{deviceRunnerState}</strong>
-                    <small>{onlineComputers > 0 ? "真实采集前仍需人工确认权限和设备连接。" : "先去观测台确认 runner、端口权限和采集能力。"}</small>
-                  </article>
-                  <article>
-                    <span>采样频率</span>
-                    <strong>{deviceSamplingDraft.rate}</strong>
-                    <small>草案值，不会直接启动真实采集。</small>
-                  </article>
-                  <article>
-                    <span>字段映射</span>
-                    <strong>{deviceSchemaFields.length ? deviceSchemaFields.join(" / ") : "待确认字段"}</strong>
-                    <small>入库前由人确认 schema、timestamp 和单位。</small>
-                  </article>
+                <div className={styles.idePanelHead}><span>入库控制</span><strong>先任务后采样</strong></div>
+                <div className={styles.ideCompactRows}>
+                  <article><strong>字段映射</strong><span>{deviceSchemaFields.length ? deviceSchemaFields.join(" / ") : "待确认字段"}</span><small>进入 manifest 前先过 QA。</small></article>
+                  <article><strong>人工确认</strong><span>必需</span><small>AI 只整理草案，不能替人确认采样。</small></article>
                 </div>
               </section>
             </div>
           </section>
-        ) : null}
-
-        <section className={styles.blockerStrip} aria-label="当前卡点">
-          {blockerCards.map(([label, value, detail, actionLabel, target]) => {
-            const href =
-              target === "observability"
-                ? `/projects/${projectId}/observability?return_to=${encodeURIComponent(selfPath)}&from=datasets`
-                : target === "receipt"
-                  ? `/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=datasets${currentTaskId ? `&task_id=${encodeURIComponent(currentTaskId)}` : ""}`
-                  : `/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=datasets`;
-            return (
-              <article key={label}>
-                <span>{label}</span>
-                <strong>{value}</strong>
-                <p>{detail}</p>
-                <Link href={href}>{actionLabel}</Link>
-              </article>
-            );
-          })}
-        </section>
-
-        {taskView || messageFocus ? (
-          <section className={styles.contextPanel} aria-label="任务证据链">
-            <div>
-              <span>当前消息上下文</span>
-              <strong>{taskView ? text(taskView.task?.title, focusTitle) : focusTitle}</strong>
-              <small>
-                {focusSeat} · 消息 {sourceMessageState}
-              </small>
+        ) : (
+          <section className={styles.ideToolPanel} aria-label="样本队列工作区">
+            <div className={styles.idePanelHead}>
+              <div>
+                <span>样本队列 / 当前样本</span>
+                <strong>{taskView ? text(taskView.task?.title, focusTitle) : "arm-episode-022"}</strong>
+              </div>
+              <div>
+                <a href="#quality">看 QA</a>
+                <a href="#versions">看导出</a>
+              </div>
             </div>
-            <div className={styles.contextStats}>
-              <article><span>派单</span><strong>{professionalMetric(taskView, "dispatch_count")}</strong></article>
-              <article><span>回执</span><strong>{currentReceiptCount}</strong></article>
-              <article><span>证据</span><strong>{professionalMetric(taskView, "artifact_count")}</strong></article>
-              <article data-alert={taskException.actionable ? "1" : undefined}>
-                <span>异常</span><strong>{String(taskException.failed ?? 0)}</strong>
-              </article>
-            </div>
-            <div className={styles.contextActions}>
-              <Link href={`/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=datasets`}>回工作台</Link>
-              <Link href={`/projects/${projectId}/ai-lab?task_id=${encodeURIComponent(currentTaskId)}&message_id=${encodeURIComponent(currentSourceMessageId === "待回流" ? text(searchParams?.message_id, "") : currentSourceMessageId)}&return_to=${encodeURIComponent(selfPath)}&from=datasets`}>送去实验室</Link>
-            </div>
-          </section>
-        ) : null}
-
-        <section className={styles.mainGrid}>
-          <section className={styles.activeSamplePanel} aria-label="当前标注工作对象">
-            <div className={styles.panelHead}>
-              <span>当前样本 / 标注台</span>
-              <Link href={`#quality`}>看 QA 状态</Link>
-            </div>
-            <div className={styles.annotationWorkbench}>
-              <div className={styles.sampleViewer}>
-                <div className={styles.viewerMeta}>
-                  <span>{activeViewer.sample}</span>
-                  <strong>{activeViewer.range}</strong>
-                  <small>{activeViewer.meta}</small>
-                </div>
-                <div className={styles.frameStage} aria-hidden="true">
-                  <i />
-                  <i />
-                  <i />
-                  <b />
-                </div>
+            <div className={styles.ideSplitGrid}>
+              <section className={styles.sampleStage}>
+                <div className={styles.frameStage} aria-hidden="true"><i /><i /><i /><b /></div>
                 <div className={styles.timeline}>
                   {timelineSegments.map(([label, range, state]) => (
-                    <article key={label} data-state={state}>
-                      <span>{label}</span>
-                      <strong>{range}</strong>
-                    </article>
+                    <article key={label} data-state={state}><span>{label}</span><strong>{range}</strong></article>
                   ))}
                 </div>
-              </div>
-              <div className={styles.labelInspector}>
-                <div>
-                  <span>标签建议</span>
-                  <strong>AI 只给建议，标注员确认后才写入</strong>
-                </div>
+              </section>
+              <section className={styles.ideCompactRows}>
                 {annotationLabels.map(([label, state, score, note]) => (
                   <article key={label} data-state={state}>
-                    <strong>{label}</strong>
-                    <span>{state}</span>
-                    <small>{score}</small>
-                    <p>{note}</p>
+                    <strong>{label}</strong><span>{state} · {score}</span><small>{note}</small>
                   </article>
                 ))}
-              </div>
+              </section>
             </div>
-            <div className={styles.activeSampleGrid}>
-              {activeCardsForView.map(([label, value, meta, detail]) => (
-                <article key={label}>
-                  <span>{label}</span>
-                  <strong>{value}</strong>
-                  <small>{meta}</small>
-                  <p>{detail}</p>
-                </article>
-              ))}
-            </div>
-            <div className={styles.sampleDecisionStrip}>
-              {sampleDecisionRows.map(([label, value, detail]) => (
-                <article key={label}>
-                  <span>{label}</span>
-                  <strong>{value}</strong>
-                  <p>{detail}</p>
-                </article>
-              ))}
-            </div>
-          </section>
-
-          <section className={styles.queuePanel} id="queue">
-            <div className={styles.panelHead}>
-              <span>样本队列 / AI 预标注</span>
-              <Link href={`/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=datasets`}>派给 NPC</Link>
-            </div>
-            <div className={styles.panelActionBar}>
-              <span>当前动作：先收样本，再看 AI 预标注建议</span>
-              <div>
-                <Link href={`/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=datasets`}>创建预标注建议任务</Link>
-                <Link href={`/projects/${projectId}/observability?return_to=${encodeURIComponent(selfPath)}&from=datasets`}>看异常</Link>
-              </div>
-            </div>
-            <div className={styles.sampleTable}>
+            <div className={styles.ideTable}>
               {sampleRowsForView.map(([id, type, state, signal, owner, actionLabel, target]) => (
                 <article key={id} data-state={state}>
                   <strong>{id}</strong>
                   <span>{type}</span>
                   <em>{state}</em>
                   <small>{signal}</small>
-                  <small>{owner}</small>
+                  <p>{owner}</p>
                   <Link href={actionHref(target)}>{actionLabel}</Link>
                 </article>
               ))}
             </div>
           </section>
-        </section>
+        )}
 
-        <section className={styles.opsGrid}>
-          <section className={styles.qualityPanel} id="quality">
-            <div className={styles.panelHead}>
-              <span>低置信复核 / QA</span>
-              <Link href={`/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=datasets`}>派单</Link>
-            </div>
-            <div className={styles.panelActionBar}>
-              <span>当前动作：先收低置信样本，再由人确认 QA 放行</span>
-              <div>
-                <Link href={`/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=datasets`}>派复核任务</Link>
-                <Link href={`/projects/${projectId}/observability?return_to=${encodeURIComponent(selfPath)}&from=datasets`}>处理异常</Link>
-              </div>
-            </div>
-            <div className={styles.qualityRows}>
+        <section className={styles.ideTwoColumns} id="quality">
+          <section>
+            <div className={styles.idePanelHead}><span>低置信复核 / QA</span><Link href={workbenchHref}>派复核</Link></div>
+            <div className={styles.ideCompactRows}>
               {qualityRows.map(([name, state, detail, actionLabel, target]) => (
-                <article key={name}>
-                  <strong>{name}</strong>
-                  <span>{state}</span>
-                  <p>{detail}</p>
-                  <Link href={actionHref(target)}>{actionLabel}</Link>
-                </article>
+                <article key={name}><strong>{name}</strong><span>{state}</span><p>{detail}</p><Link href={actionHref(target)}>{actionLabel}</Link></article>
               ))}
             </div>
           </section>
-
-          <section className={styles.versionPanel} id="versions">
-            <div className={styles.panelHead}>
-              <span>manifest / export</span>
-              <Link href={`/projects/${projectId}/ai-lab?return_to=${encodeURIComponent(selfPath)}&from=datasets`}>训练入口</Link>
-            </div>
-            <div className={styles.panelActionBar}>
-              <span>当前动作：人工确认导出后，再看训练回执</span>
-              <div>
-                <Link href={`/projects/${projectId}/ai-lab?return_to=${encodeURIComponent(selfPath)}&from=datasets`}>送去实验室</Link>
-                <Link href={`/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=datasets`}>回工作台</Link>
-              </div>
-            </div>
-            <div className={styles.versionRows}>
+          <section id="versions">
+            <div className={styles.idePanelHead}><span>manifest / export</span><Link href={aiLabHref}>训练入口</Link></div>
+            <div className={styles.ideCompactRows}>
               {versionRows.map(([name, bundle, state, actionLabel, target]) => (
-                <article key={name}>
-                  <strong>{name}</strong>
-                  <small>{bundle}</small>
-                  <span>{state}</span>
-                  <Link href={actionHref(target)}>{actionLabel}</Link>
-                </article>
+                <article key={name}><strong>{name}</strong><span>{bundle}</span><p>{state}</p><Link href={actionHref(target)}>{actionLabel}</Link></article>
               ))}
             </div>
           </section>
         </section>
 
-        <section className={styles.drawerDeck} aria-label="数据工场抽屉">
-          <details className={styles.detailDrawer}>
-            <summary>
-              <span>数据状态</span>
-              <strong>样本 / 预标注 / 复核 / 可训练</strong>
-            </summary>
-            <div className={styles.metrics}>
-              {metrics.map(([label, value]) => (
-                <article key={label}>
-                  <span>{label}</span>
-                  <strong>{value}</strong>
-                </article>
-              ))}
-            </div>
-          </details>
-
-          <details className={styles.detailDrawer}>
-            <summary>
-              <span>阶段索引</span>
-              <strong>采集到导出的任务链</strong>
-            </summary>
-            <div className={styles.intakeStrip}>
-              {intakeStages.map(([label, value, detail, actionLabel, target]) => (
-                <article key={label}>
-                  <span>{label}</span>
-                  <strong>{value}</strong>
-                  <small>{detail}</small>
-                  {target === "queue" || target === "quality" || target === "versions" ? (
-                    <a href={`#${target}`}>{actionLabel}</a>
-                  ) : (
-                    <Link href={actionHref(target)}>{actionLabel}</Link>
-                  )}
-                </article>
-              ))}
-            </div>
-          </details>
-
-          <details className={styles.detailDrawer}>
-            <summary>
-              <span>异常 / 回流日志</span>
-              <strong>卡点、回流和人工处理入口</strong>
-            </summary>
-            <div className={styles.triageRows}>
-              {triageRows.map(([label, level, sample, detail, actionLabel, target]) => (
-                <article key={label} data-level={level}>
-                  <strong>{label}</strong>
-                  <span>{level}</span>
-                  <small>{sample}</small>
-                  <p>{detail}</p>
-                  <Link href={actionHref(target)}>{actionLabel}</Link>
-                </article>
-              ))}
-            </div>
-          </details>
-        </section>
-
-        <section className={styles.drawerDeck} id="triage" aria-label="底部日志抽屉">
-          <details className={styles.detailDrawer}>
-            <summary>
-              <span>导出 / 回执日志</span>
-              <strong>数据版本、manifest、导出和训练回写</strong>
-            </summary>
-            <div className={styles.exportRows}>
-              {exportRows.map(([label, version, detail, actionLabel, target]) => (
-                <article key={label}>
-                  <strong>{label}</strong>
-                  <span>{version}</span>
-                  <p>{detail}</p>
-                  <Link href={actionHref(target)}>{actionLabel}</Link>
-                </article>
-              ))}
-            </div>
-          </details>
-
-          <details className={styles.detailDrawer}>
-            <summary>
-              <span>完整动作链</span>
-              <strong>展开看采集到训练的全链路</strong>
-            </summary>
-            <div className={styles.actionFlowGrid}>
-              {actionFlowRows.map(([label, action, next, detail, actionLabel, target]) => (
-                <article key={label}>
-                  <span>{label}</span>
-                  <strong>{action}</strong>
-                  <em>{next}</em>
-                  <p>{detail}</p>
-                  {target === "quality" ? (
-                    <a href="#quality">{actionLabel}</a>
-                  ) : (
-                    <Link href={actionHref(target)}>{actionLabel}</Link>
-                  )}
-                </article>
-              ))}
-            </div>
-          </details>
-        </section>
-
-      </section>
-      <section className={styles.rightRail}>
-        <section className={styles.resourcePanel}>
-          <div className={styles.panelHead}>
-            <span>Schema / 规则</span>
-            <Link href={`/projects/${projectId}/observability?return_to=${encodeURIComponent(selfPath)}&from=datasets`}>异常入口</Link>
-          </div>
-          <div className={styles.sideRuleGrid}>
-            {sideRuleCards.map(([label, value, detail]) => (
-              <article key={label}>
-                <span>{label}</span>
-                <strong>{value}</strong>
-                <p>{detail}</p>
-              </article>
-            ))}
-          </div>
-        </section>
-        <section className={styles.resourcePanel}>
-          <div className={styles.panelHead}>
-            <span>证据 / 训练回执</span>
-            <Link href={`/projects/${projectId}/ai-lab?return_to=${encodeURIComponent(selfPath)}&from=datasets`}>看实验室</Link>
-          </div>
-          <div className={styles.sideEvidenceList}>
-            {sideEvidenceRows.map(([label, value, detail]) => (
-              <article key={label}>
-                <span>{label}</span>
-                <strong>{value}</strong>
-                <p>{detail}</p>
-              </article>
-            ))}
-          </div>
-        </section>
-        <section className={styles.resourcePanel}>
-          <div className={styles.panelHead}>
-            <span>导出配置</span>
-            <Link href={`#versions`}>看导出区</Link>
-          </div>
-          <div className={styles.sideEvidenceList}>
-            {sideExportConfigRows.map(([label, value, detail]) => (
-              <article key={label}>
-                <span>{label}</span>
-                <strong>{value}</strong>
-                <p>{detail}</p>
-              </article>
-            ))}
-          </div>
-        </section>
-        <details className={styles.detailDrawer} id="types">
-          <summary>
-            <span>数据对象</span>
-            <strong>采集对象与当前状态</strong>
-          </summary>
-          <div className={styles.typeGrid}>
-            {datasetTypes.map(([label, detail, state]) => (
-              <article key={label} id={label}>
-                <strong>{label}</strong>
-                <p>{detail}</p>
-                <span>{state}</span>
-              </article>
+        <details className={styles.ideDrawer}>
+          <summary><span>数据对象 / 异常 / 完整动作链</span><strong>展开高级信息</strong></summary>
+          <div className={styles.ideDrawerGrid}>
+            {[...datasetTypes, ...triageRows.map(([label, level, sample, detail]) => [label, `${level} · ${sample}`, detail])].slice(0, 8).map(([label, detail, state]) => (
+              <article key={`${label}-${detail}`}><strong>{label}</strong><span>{state}</span><p>{detail}</p></article>
             ))}
           </div>
         </details>
-        <section>
-          <span>数据资源</span>
-          <div className={styles.resourceGrid}>
-            {resourceCards.map(([label, value, href]) => (
-              <Link key={label} href={href}>
-                <span>{label}</span>
-                <strong>{value}</strong>
-              </Link>
-            ))}
-          </div>
-          <div className={styles.resourceSummary}>
-            <div><strong>{members.length}</strong><small>成员</small></div>
-            <div><strong>{assignments.length}</strong><small>能力包绑定</small></div>
-            <div><strong>{documents.length}</strong><small>知识库</small></div>
-          </div>
-        </section>
       </section>
     </ProfessionalEvidenceShell>
   );

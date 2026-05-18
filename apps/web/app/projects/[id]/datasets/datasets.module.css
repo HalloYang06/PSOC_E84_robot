@@ -1457,3 +1457,245 @@
     display: none;
   }
 }
+
+/* P1 IDE/control-station rebuild */
+.ideSurface {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.ideHero,
+.ideToolPanel,
+.ideTwoColumns > section,
+.ideDrawer {
+  border: 1px solid rgba(88, 240, 255, 0.18);
+  background: rgba(2, 13, 20, 0.68);
+}
+
+.ideHero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 14px;
+  padding: 16px;
+}
+
+.ideHero span,
+.idePanelHead span,
+.ideMetrics span,
+.ideDrawer summary span,
+.ideFourGrid span,
+.ideCompactRows span {
+  color: #b9fff3;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.ideHero strong {
+  display: block;
+  margin-top: 5px;
+  font-size: 28px;
+  line-height: 1.08;
+}
+
+.ideHero p,
+.ideFourGrid p,
+.ideCompactRows p,
+.ideDrawerGrid p {
+  margin: 0;
+  color: rgba(190, 220, 240, 0.72);
+  line-height: 1.5;
+}
+
+.ideHeroActions,
+.idePanelHead > div:last-child {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.ideHeroActions a,
+.idePanelHead a,
+.ideCompactRows a,
+.ideTable a {
+  min-height: 32px;
+  display: inline-grid;
+  align-content: center;
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 227, 139, 0.48);
+  border-radius: 8px;
+  background: rgba(255, 227, 139, 0.12);
+  color: #fff4cb;
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 900;
+  transition: transform 140ms ease, background 140ms ease, border-color 140ms ease;
+}
+
+.ideHeroActions a:hover,
+.idePanelHead a:hover,
+.ideCompactRows a:hover,
+.ideTable a:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 227, 139, 0.78);
+  background: rgba(255, 227, 139, 0.18);
+}
+
+.ideMetrics,
+.ideFourGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  background: rgba(88, 240, 255, 0.16);
+}
+
+.ideMetrics article,
+.ideFourGrid article,
+.ideCompactRows article,
+.ideTable article,
+.ideDrawerGrid article {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  padding: 11px 12px;
+  background: rgba(2, 22, 33, 0.86);
+}
+
+.ideMetrics strong,
+.ideFourGrid strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 22px;
+  line-height: 1.08;
+}
+
+.ideToolPanel {
+  display: grid;
+  gap: 1px;
+  background: rgba(88, 240, 255, 0.14);
+}
+
+.idePanelHead {
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background: rgba(2, 13, 20, 0.9);
+}
+
+.idePanelHead strong {
+  display: block;
+  margin-top: 3px;
+  font-size: 14px;
+}
+
+.ideSplitGrid,
+.ideTwoColumns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.ideSplitGrid {
+  padding: 12px;
+  background: rgba(2, 13, 20, 0.72);
+}
+
+.ideSplitGrid > section,
+.sampleStage {
+  min-width: 0;
+}
+
+.ideCompactRows {
+  display: grid;
+  gap: 1px;
+  background: rgba(88, 240, 255, 0.13);
+}
+
+.ideCompactRows article strong,
+.ideTable article strong,
+.ideDrawerGrid article strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+}
+
+.ideCompactRows article small,
+.ideTable article small,
+.ideTable article p {
+  margin: 0;
+  color: rgba(190, 220, 240, 0.64);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.ideTable {
+  display: grid;
+  gap: 1px;
+  padding: 0 12px 12px;
+  background: rgba(88, 240, 255, 0.12);
+}
+
+.ideTable article {
+  grid-template-columns: minmax(130px, 0.9fr) minmax(120px, 0.8fr) minmax(90px, 0.6fr) minmax(120px, 0.8fr) minmax(0, 1.1fr) auto;
+  align-items: center;
+}
+
+.ideTable em {
+  color: #ffe38b;
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.ideTwoColumns {
+  align-items: start;
+}
+
+.ideTwoColumns > section {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+  background: rgba(88, 240, 255, 0.12);
+}
+
+.ideDrawer summary {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  list-style: none;
+}
+
+.ideDrawer summary::-webkit-details-marker {
+  display: none;
+}
+
+.ideDrawerGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  padding: 0 12px 12px;
+  background: rgba(88, 240, 255, 0.12);
+}
+
+@media (max-width: 1120px) {
+  .ideHero,
+  .ideSplitGrid,
+  .ideTwoColumns,
+  .ideMetrics,
+  .ideFourGrid,
+  .ideDrawerGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .ideTable article {
+    grid-template-columns: 1fr;
+  }
+}

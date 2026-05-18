@@ -2256,3 +2256,134 @@
     display: none;
   }
 }
+
+/* P1 IDE/control-station rebuild */
+.ideSurface {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.ideHero,
+.ideTwoColumns > section,
+.advancedEvidenceDrawer {
+  border: 1px solid rgba(88, 240, 255, 0.18);
+  background: rgba(2, 13, 20, 0.68);
+}
+
+.ideHero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 14px;
+  padding: 16px;
+}
+
+.ideHero span,
+.ideTwoColumns span,
+.advancedEvidenceDrawer summary span,
+.ideDrawerGrid span {
+  color: #b9fff3;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.ideHero strong {
+  display: block;
+  margin-top: 5px;
+  font-size: 28px;
+  line-height: 1.08;
+}
+
+.ideHero p,
+.ideDrawerGrid p {
+  margin: 0;
+  color: rgba(190, 220, 240, 0.72);
+  line-height: 1.5;
+}
+
+.ideHeroActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.ideHeroActions a {
+  min-height: 32px;
+  display: inline-grid;
+  align-content: center;
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 227, 139, 0.48);
+  border-radius: 8px;
+  background: rgba(255, 227, 139, 0.12);
+  color: #fff4cb;
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 900;
+  transition: transform 140ms ease, background 140ms ease, border-color 140ms ease;
+}
+
+.ideHeroActions a:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 227, 139, 0.78);
+  background: rgba(255, 227, 139, 0.18);
+}
+
+.ideTwoColumns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.ideTwoColumns > section {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+  background: rgba(88, 240, 255, 0.12);
+}
+
+.advancedEvidenceDrawer summary {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  list-style: none;
+}
+
+.advancedEvidenceDrawer summary::-webkit-details-marker {
+  display: none;
+}
+
+.ideDrawerGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  padding: 0 12px 12px;
+  background: rgba(88, 240, 255, 0.12);
+}
+
+.ideDrawerGrid article {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  padding: 11px 12px;
+  background: rgba(2, 22, 33, 0.86);
+}
+
+.ideDrawerGrid strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+}
+
+@media (max-width: 1120px) {
+  .ideHero,
+  .ideTwoColumns,
+  .ideDrawerGrid {
+    grid-template-columns: 1fr;
+  }
+}

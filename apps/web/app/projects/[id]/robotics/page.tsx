@@ -490,7 +490,7 @@ export default async function ProjectRoboticsPage({
       projectId={projectId}
       pageKey="robotics"
       pageTitle="机器人现场"
-      pageSummary="给机器人调试工程师和电机调参工程师看的只读安全现场页：中央看证据，右侧看风险，底部看日志与回放。"
+      pageSummary="像电机调试上位机一样工作：左侧对象树，中间当前调试工具，右侧动作与安全门，底部日志。"
       projectName={text(project.name, "项目")}
       topLinks={topLinks}
       sectionLinks={navItems}
@@ -501,641 +501,109 @@ export default async function ProjectRoboticsPage({
       capabilityCards={capabilityCards}
       signalCards={signalCards}
     >
-      <section className={styles.workspace}>
-        <section className={styles.firstLookStrip} aria-label="第一眼看到什么">
-          {firstLookCards.map(([label, detail, note]) => (
-            <article key={label}>
-              <strong>{label}</strong>
-              <p>{detail}</p>
-              <small>{note}</small>
-            </article>
-          ))}
-        </section>
-
-        {taskView || messageFocus ? (
-          <section className={styles.contextPanel} aria-label="任务证据链">
-            <div>
-              <span>任务证据链 · 来自 NPC 对话</span>
-              <strong>{taskView ? text(taskView.task?.title, focusTitle) : focusTitle}</strong>
-              <small>
-                {focusSeat} · 派单 {text(searchParams?.dispatch_id, "") ? "已进入队列" : "未指定"}
-              </small>
-            </div>
-            <div className={styles.contextStats}>
-              <article><span>派单</span><strong>{professionalMetric(taskView, "dispatch_count")}</strong></article>
-              <article><span>消息</span><strong>{professionalMetric(taskView, "message_count")}</strong></article>
-              <article><span>证据</span><strong>{professionalMetric(taskView, "artifact_count")}</strong></article>
-              <article data-alert={taskException.actionable ? "1" : undefined}>
-                <span>异常</span><strong>{String(taskException.failed ?? 0)}</strong>
-              </article>
-            </div>
-            <div className={styles.contextActions}>
-              <Link href={`/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=robotics`}>回工作台</Link>
-              <Link href={`/projects/${projectId}/observability?return_to=${encodeURIComponent(selfPath)}&from=robotics`}>查看观测台</Link>
-              <Link href={`/projects/${projectId}/datasets?task_id=${encodeURIComponent(text(searchParams?.task_id, ""))}&message_id=${encodeURIComponent(text(searchParams?.message_id, ""))}&return_to=${encodeURIComponent(selfPath)}&from=robotics`}>入数据工场</Link>
-            </div>
-          </section>
-        ) : null}
-
-        <section className={styles.reviewActionPanel} aria-label="强审动作">
-          <div className={styles.panelHead}>
-            <span>安全 / 强审动作卡</span>
-            <Link href={`/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=robotics`}>回工作台审批</Link>
+      <section className={styles.ideSurface} aria-label="机器人现场 IDE 工作面">
+        <section className={styles.ideHero}>
+          <div>
+            <span>当前工具</span>
+            <strong>{debugMode === "serial" ? "串口调试" : debugMode === "usb" ? "USB 调试" : debugMode === "ros" ? "ROS 只读桥" : "CAN 调试"}</strong>
+            <p>机器人现场只做只读检查、采样草案、证据整理和强审申请。写参数、真实运动、固件和 ROS 写操作都不能在这里直接执行。</p>
           </div>
-          <div className={styles.reviewActionGrid}>
-            {reviewActionRows.map(([name, state, detail, actionLabel]) => (
-              <article key={name}>
-                <strong>{name}</strong>
-                <span>{state}</span>
-                <p>{detail}</p>
-                <Link href={actionLabel === "查看风险门" ? roboticsLinks.safety : roboticsLinks.workbench}>{actionLabel}</Link>
-              </article>
-            ))}
+          <div className={styles.ideHeroActions}>
+            <Link href={samplingDraftHref()}>采样入库</Link>
+            <Link href={roboticsLinks.workbench}>申请强审</Link>
+            <Link href={roboticsLinks.observability}>看证据</Link>
           </div>
         </section>
 
         <section className={styles.deviceDebugIde} aria-label="设备调试 IDE">
           <aside className={styles.debugLeftPane}>
-            <div className={styles.debugPaneTitle}>
-              <span>现场主角</span>
-              <strong>设备调试工程师</strong>
-            </div>
+            <div className={styles.debugPaneTitle}><span>对象树</span><strong>现场对象</strong></div>
             <div className={styles.debugActorList}>
               {debugActors.map(([role, name, detail]) => (
-                <article key={role}>
-                  <span>{role}</span>
-                  <strong>{name}</strong>
-                  <p>{detail}</p>
-                </article>
+                <article key={role}><span>{role}</span><strong>{name}</strong><p>{detail}</p></article>
               ))}
             </div>
             <div className={styles.debugObjectTree}>
-              <span>对象树</span>
               {debugObjects.map(([name, port, detail, state]) => (
-                <a key={name} href={name.includes("CAN") ? "#can-debug" : name.includes("串口") ? "#serial-debug" : name.includes("USB") ? "#usb-debug" : "#ros-debug"} data-state={state}>
-                  <strong>{name}</strong>
-                  <small>{port}</small>
-                  <em>{detail}</em>
-                </a>
+                <Link key={name} href={name.includes("CAN") ? debugModeHref("can") : name.includes("串口") ? debugModeHref("serial") : name.includes("USB") ? debugModeHref("usb") : debugModeHref("ros")} data-state={state}>
+                  <strong>{name}</strong><small>{port}</small><em>{detail}</em>
+                </Link>
               ))}
-            </div>
-            <div className={styles.debugCapabilityMatrix}>
-              <div className={styles.debugPaneTitle}>
-                <span>执行电脑能力矩阵</span>
-                <strong>{onlineComputers}/{computers.length || 1} 在线</strong>
-              </div>
-              <div className={styles.debugComputerRows}>
-                {computerCapabilityRows.map((node) => (
-                  <article key={node.label}>
-                    <div>
-                      <strong>{node.label}</strong>
-                      <small>{node.summary}</small>
-                    </div>
-                    <span data-state={node.state === "可投递" ? "ready" : "wait"}>{node.state}</span>
-                    <em>CAN {node.can}</em>
-                    <em>串口 {node.serial}</em>
-                    <em>USB {node.usb}</em>
-                    <em>ROS {node.ros}</em>
-                  </article>
-                ))}
-              </div>
             </div>
           </aside>
 
           <section className={styles.debugCenterPane}>
             <div className={styles.debugWorkbenchHeader}>
-              <div>
-                <span>设备调试台 / 默认只读</span>
-                <strong>CAN、串口、USB、ROS 在同一个工程工作面里看</strong>
-              </div>
-              <div className={styles.debugHeaderActions}>
-                <Link href={samplingDraftHref()}>采样入库</Link>
-                <Link href={`/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=robotics`}>申请强审</Link>
-              </div>
+              <div><span>调试参数</span><strong>只读 · {samplingDraft.rate} · {samplingDraft.window}</strong></div>
+              <div className={styles.debugHeaderActions}><Link href={samplingDraftHref()}>生成采样草案</Link><Link href={roboticsLinks.datasets}>入数据工场</Link></div>
             </div>
-
             <div className={styles.debugTabs} role="tablist" aria-label="调试模式">
               {debugModes.map(([mode, label, detail]) => (
-                <Link key={mode} href={debugModeHref(mode)} data-active={debugMode === mode ? "1" : undefined}>
-                  <strong>{label}</strong>
-                  <span>{detail}</span>
-                </Link>
+                <Link key={mode} href={debugModeHref(mode)} data-active={debugMode === mode ? "1" : undefined}><strong>{label}</strong><span>{detail}</span></Link>
               ))}
             </div>
 
-            <div className={styles.debugMainGrid} data-mode={debugMode}>
-              {debugMode === "can" ? (
-              <section className={styles.debugPanel} id="can-debug" aria-label="CAN 调试">
-                <div className={styles.panelHead}>
-                  <span>CAN 调试</span>
-                  <Link href={samplingDraftHref("can")}>按频率采样</Link>
-                </div>
-                <div className={styles.canFrameTable}>
-                  {canFrameRows.map(([id, name, dlc, payload, rate]) => (
-                    <article key={`${id}-${name}`}>
-                      <strong>{id}</strong>
-                      <span>{name}</span>
-                      <small>DLC {dlc} · {rate}</small>
-                      <p>{payload}</p>
-                    </article>
-                  ))}
-                </div>
-              </section>
-              ) : null}
-
-              {debugMode === "serial" ? (
+            {debugMode === "serial" ? (
               <section className={styles.debugPanel} id="serial-debug" aria-label="串口调试">
-                <div className={styles.panelHead}>
-                  <span>串口调试</span>
-                  <Link href={samplingDraftHref("serial")}>生成采样草案</Link>
-                </div>
-                <div className={styles.serialConsole}>
-                  {serialRows.map(([port, device, baud, line]) => (
-                    <article key={`${port}-${device}`}>
-                      <strong>{port}</strong>
-                      <span>{device} · {baud}</span>
-                      <code>{line}</code>
-                    </article>
-                  ))}
-                </div>
+                <div className={styles.panelHead}><span>串口调试</span><Link href={samplingDraftHref("serial")}>生成采样草案</Link></div>
+                <div className={styles.serialConsole}>{serialRows.map(([port, device, baud, line]) => <article key={`${port}-${device}`}><strong>{port}</strong><span>{device} · {baud}</span><code>{line}</code></article>)}</div>
               </section>
-              ) : null}
-
-              {debugMode === "usb" ? (
+            ) : debugMode === "usb" ? (
               <section className={styles.debugPanel} id="usb-debug" aria-label="USB 调试">
-                <div className={styles.panelHead}>
-                  <span>USB 调试</span>
-                  <Link href={samplingDraftHref("usb")}>生成采样草案</Link>
-                </div>
-                <div className={styles.usbGrid}>
-                  {usbRows.map(([name, state, detail]) => (
-                    <article key={name} data-state={state}>
-                      <strong>{name}</strong>
-                      <span>{state}</span>
-                      <p>{detail}</p>
-                    </article>
-                  ))}
-                </div>
+                <div className={styles.panelHead}><span>USB 调试</span><Link href={samplingDraftHref("usb")}>生成采样草案</Link></div>
+                <div className={styles.usbGrid}>{usbRows.map(([name, state, detail]) => <article key={name} data-state={state}><strong>{name}</strong><span>{state}</span><p>{detail}</p></article>)}</div>
               </section>
-              ) : null}
-
-              {debugMode === "ros" ? (
+            ) : debugMode === "ros" ? (
               <section className={styles.debugPanel} id="ros-debug" aria-label="ROS 只读桥">
-                <div className={styles.panelHead}>
-                  <span>ROS 只读桥</span>
-                  <Link href={samplingDraftHref("ros")}>生成采样草案</Link>
-                </div>
-                <div className={styles.topicTable}>
-                  {topicRows.map(([topic, type, rate, mode]) => (
-                    <article key={topic}>
-                      <strong>{topic}</strong>
-                      <span>{type}</span>
-                      <small>{rate}</small>
-                      <em>{mode}</em>
-                    </article>
-                  ))}
-                </div>
+                <div className={styles.panelHead}><span>ROS 只读桥</span><Link href={samplingDraftHref("ros")}>生成采样草案</Link></div>
+                <div className={styles.topicTable}>{topicRows.map(([topic, type, rate, mode]) => <article key={topic}><strong>{topic}</strong><span>{type}</span><small>{rate}</small><em>{mode}</em></article>)}</div>
               </section>
-              ) : null}
-            </div>
+            ) : (
+              <section className={styles.debugPanel} id="can-debug" aria-label="CAN 调试">
+                <div className={styles.panelHead}><span>CAN 调试</span><Link href={samplingDraftHref("can")}>按频率采样</Link></div>
+                <div className={styles.canFrameTable}>{canFrameRows.map(([id, name, dlc, payload, rate]) => <article key={`${id}-${name}`}><strong>{id}</strong><span>{name}</span><small>DLC {dlc} · {rate}</small><p>{payload}</p></article>)}</div>
+              </section>
+            )}
 
             <div className={styles.debugBottomLog}>
               <span>事件 / 回执</span>
-              <strong>只读检查 · 生成任务包 · 数据工场采样 · 强审动作</strong>
+              <strong>只读检查 · 采样草案 · 强审动作</strong>
               <p>写 CAN、串口写命令、ROS publish/service/action、firmware 烧录和真实运动都不会在这里直接执行。</p>
             </div>
           </section>
 
           <aside className={styles.debugRightPane}>
-            <div className={styles.debugPaneTitle}>
-              <span>工具模式</span>
-              <strong>选择右侧工具</strong>
-            </div>
+            <div className={styles.debugPaneTitle}><span>右侧工具</span><strong>动作 / 属性 / 证据</strong></div>
             <div className={styles.debugModeList}>
               {debugModes.map(([mode, label, detail]) => (
-                <Link key={mode} href={debugModeHref(mode)} data-active={debugMode === mode ? "1" : undefined}>
-                  <strong>{label}</strong>
-                  <p>{detail}</p>
-                </Link>
+                <Link key={mode} href={debugModeHref(mode)} data-active={debugMode === mode ? "1" : undefined}><strong>{label}</strong><p>{detail}</p></Link>
               ))}
             </div>
-            <div className={styles.debugPropertyBox}>
-              <span>当前权限</span>
-              <strong>只读 / L0</strong>
-              <p>AI 和 NPC 只能辅助解释、生成采样任务、整理审批卡，不能替人执行硬件写入。</p>
-            </div>
-            <div className={styles.debugPropertyBox}>
-              <span>采样策略</span>
-              <strong>{samplingDraft.rate} · {samplingDraft.window}</strong>
-              <p>{samplingDraft.title}：{samplingDraft.schema}。进入数据工场后仍需人工确认采样任务。</p>
-            </div>
+            <div className={styles.debugPropertyBox}><span>当前权限</span><strong>只读 / L0</strong><p>AI 和 NPC 只能辅助解释、生成采样任务、整理审批卡，不能替人执行硬件写入。</p></div>
+            <div className={styles.debugPropertyBox}><span>采样策略</span><strong>{samplingDraft.rate} · {samplingDraft.window}</strong><p>{samplingDraft.title}：{samplingDraft.schema}</p></div>
           </aside>
         </section>
 
+        <section className={styles.ideTwoColumns} id="safety">
+          <section>
+            <div className={styles.panelHead}><span>安全 / 强审动作卡</span><Link href={roboticsLinks.workbench}>回工作台审批</Link></div>
+            <div className={styles.reviewActionGrid}>{reviewActionRows.map(([name, state, detail, actionLabel]) => <article key={name}><strong>{name}</strong><span>{state}</span><p>{detail}</p><Link href={actionLabel === "查看安全门" ? roboticsLinks.safety : roboticsLinks.workbench}>{actionLabel}</Link></article>)}</div>
+          </section>
+          <section>
+            <div className={styles.panelHead}><span>执行电脑能力</span><Link href={roboticsLinks.observability}>管理</Link></div>
+            <div className={styles.debugComputerRows}>{computerCapabilityRows.slice(0, 4).map((node) => <article key={node.label}><div><strong>{node.label}</strong><small>{node.summary}</small></div><span data-state={node.state === "可投递" ? "ready" : "wait"}>{node.state}</span><em>CAN {node.can}</em><em>串口 {node.serial}</em><em>USB {node.usb}</em><em>ROS {node.ros}</em></article>)}</div>
+          </section>
+        </section>
+
         <details className={styles.advancedEvidenceDrawer}>
-          <summary>
-            <span>高级证据区</span>
-            <strong>模型、波形、TF、电机参数和历史面板</strong>
-          </summary>
-
-        <section className={styles.commandDeck} id="model" aria-label="机器人现场总控">
-          <section className={styles.viewportPanel}>
-            <div className={styles.panelHead}>
-              <span>模型 / 仿真状态</span>
-              <div className={styles.segmented}>
-                <button type="button">模型</button>
-                <button type="button">TF</button>
-                <button type="button">仿真</button>
-              </div>
-            </div>
-              <div className={styles.scene}>
-                <div className={styles.sceneReadout}>
-                  <strong>工程师先看模型和同步状态</strong>
-                  <span>导入 URDF / GLTF 后识别关节；执行电脑可同步 robot_description、TF、joint_states。AI 只帮助解释证据，不代替你下现场动作。</span>
-                </div>
-              <div className={styles.floorGrid} />
-              <div className={styles.viewerFrame}>
-                <div className={styles.viewerCore}>
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                </div>
-              </div>
-              <div className={styles.layerDock}>
-                <span>URDF</span>
-                <span>TF</span>
-                <span>Joint</span>
-                <span>Map</span>
-              </div>
-              <div className={styles.hmiObjectTree}>
-                <span>对象树</span>
-                {hmiObjectRows.map(([name, state, rate]) => (
-                  <article key={name} data-state={state}>
-                    <strong>{name}</strong>
-                    <small>{rate}</small>
-                  </article>
-                ))}
-              </div>
-              <div className={styles.sceneWaveDock}>
-                <span>current / velocity / imu</span>
-                <div>
-                  {waveformBars.slice(0, 12).map((height, index) => <i key={`${height}-${index}`} style={{ ["--h" as string]: `${height}%` }} />)}
-                </div>
-              </div>
-              <div className={styles.motorSnapshot}>
-                <span>电机参数卡</span>
-                {hmiMotorSnapshotRows.map(([motor, value, note]) => (
-                  <article key={motor}>
-                    <strong>{motor}</strong>
-                    <small>{value}</small>
-                    <em>{note}</em>
-                  </article>
-                ))}
-              </div>
-            </div>
-          </section>
-
-          <section className={styles.modelColumn}>
-            <ModelImportInspector />
-            <RosNodeConnector />
-              <div className={styles.operationQueue}>
-                <div className={styles.panelHead}>
-                  <span>下一步</span>
-                  <Link href={`/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=robotics`}>整理给 NPC</Link>
-                </div>
-                {operationQueue.map(([label, detail, state]) => (
-                  <article key={label}>
-                  <strong>{label}</strong>
-                  <p>{detail}</p>
-                  <span>{state}</span>
-                </article>
-              ))}
-            </div>
-          </section>
-        </section>
-
-        <section className={styles.telemetryGrid} id="telemetry">
-          <section className={styles.topicPanel}>
-            <div className={styles.panelHead}>
-              <span>Topic / 数据流</span>
-              <Link href={`/projects/${projectId}/observability?return_to=${encodeURIComponent(selfPath)}&from=robotics`}>查看日志</Link>
-            </div>
-            <div className={styles.topicTable}>
-              {topicRows.map(([topic, type, rate, mode]) => (
-                <article key={topic}>
-                  <strong>{topic}</strong>
-                  <span>{type}</span>
-                  <small>{rate}</small>
-                  <em>{mode}</em>
-                </article>
-              ))}
-            </div>
-          </section>
-
-          <section className={styles.wavePanel}>
-            <div className={styles.panelHead}>
-              <span>波形 / 事件对齐</span>
-              <Link href={`/projects/${projectId}/datasets?return_to=${encodeURIComponent(selfPath)}&from=robotics`}>入库</Link>
-            </div>
-            <div className={styles.waveform}>
-              {waveformBars.map((height, index) => <i key={`${height}-${index}`} style={{ ["--h" as string]: `${height}%` }} />)}
-            </div>
-            <div className={styles.signalRows}>
-              <span>audio.in</span>
-              <span>imu.acc</span>
-              <span>joint.pos</span>
-            </div>
-          </section>
-        </section>
-
-        <section className={styles.tfPanel} aria-label="TF 与坐标一致性">
-          <div className={styles.panelHead}>
-            <span>TF / 坐标一致性</span>
-            <Link href={`${selfPath}#model`}>回模型视图</Link>
-          </div>
-          <div className={styles.tfRows}>
-            {tfRows.map(([name, state, lag, detail]) => (
-              <article key={name} data-state={state}>
-                <strong>{name}</strong>
-                <span>{state}</span>
-                <small>{lag}</small>
-                <p>{detail}</p>
-              </article>
+          <summary><span>高级证据区</span><strong>模型、波形、TF、电机参数和历史面板</strong></summary>
+          <div className={styles.ideDrawerGrid}>
+            {[...diagnosticsCards, ...motorRows, ...rosbagRows].slice(0, 9).map((row) => (
+              <article key={row[0]}><strong>{row[0]}</strong><span>{row[1]}</span><p>{row[2]}</p></article>
             ))}
           </div>
-        </section>
-
-        <section className={styles.hmiDock} id="logs" aria-label="现场底部状态抽屉">
-          <div className={styles.hmiStatusStrip}>
-            {hmiStatusRows.map(([label, value, detail, state]) => (
-              <article key={label} data-state={state}>
-                <span>{label}</span>
-                <strong>{value}</strong>
-                <p>{detail}</p>
-              </article>
-            ))}
-          </div>
-          <div className={styles.hmiDrawers}>
-            <details open>
-              <summary>
-                <span>诊断</span>
-                <strong>异常卡与日志</strong>
-              </summary>
-              <div className={styles.diagnosticsCardGrid}>
-                {diagnosticsCards.map(([name, state, detail, actionLabel]) => (
-                  <article key={name} data-state={state}>
-                    <strong>{name}</strong>
-                    <span>{state}</span>
-                    <p>{detail}</p>
-                    <Link href={actionLabel === "看 TF" ? roboticsLinks.model : actionLabel === "看 rosbag" ? roboticsLinks.logs : roboticsLinks.telemetry}>{actionLabel}</Link>
-                  </article>
-                ))}
-              </div>
-              <div className={styles.logRows}>
-                {logRows.map(([source, label, time, detail, actionLabel]) => (
-                  <article key={`${source}-${label}`}>
-                    <strong>{source}</strong>
-                    <span>{label}</span>
-                    <small>{time}</small>
-                    <p>{detail}</p>
-                    <Link href={actionLabel === "去 AI 实验室" ? roboticsLinks.aiLab : actionLabel === "看只读策略" ? roboticsLinks.safety : roboticsLinks.observability}>{actionLabel}</Link>
-                  </article>
-                ))}
-              </div>
-            </details>
-
-            <details>
-              <summary>
-                <span>回放</span>
-                <strong>rosbag / db3</strong>
-              </summary>
-              <div className={styles.rosbagRows}>
-                {rosbagRows.map(([name, duration, topics, action, actionLabel]) => (
-                  <article key={name}>
-                    <strong>{name}</strong>
-                    <span>{duration}</span>
-                    <small>{topics}</small>
-                    <p>{action}</p>
-                    <Link href={actionLabel === "去回放" ? roboticsLinks.aiLab : actionLabel === "看调参建议" ? `${selfPath}#motor` : roboticsLinks.logs}>{actionLabel}</Link>
-                  </article>
-                ))}
-              </div>
-            </details>
-
-            <details>
-              <summary>
-                <span>去向</span>
-                <strong>证据链下一步</strong>
-              </summary>
-              <div className={styles.hmiActionStrip}>
-                <Link href={`/projects/${projectId}/observability?return_to=${encodeURIComponent(selfPath)}&from=robotics`}>看观测台</Link>
-                <Link href={`/projects/${projectId}/ai-lab?return_to=${encodeURIComponent(selfPath)}&from=robotics`}>去 AI 实验室回放</Link>
-                <Link href={`/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=robotics`}>回 NPC 工作台审批</Link>
-              </div>
-            </details>
-
-            <details>
-              <summary>
-                <span>只读能力</span>
-                <strong>证据与观测能力</strong>
-              </summary>
-              <div className={styles.capabilityRows}>
-                {readonlyCapabilityRows.map(([name, source, detail]) => (
-                  <article key={name}>
-                    <strong>{name}</strong>
-                    <span>{source}</span>
-                    <p>{detail}</p>
-                  </article>
-                ))}
-              </div>
-              <div className={styles.referenceRows}>
-                {referenceModeRows.map(([source, focus, result]) => (
-                  <article key={source}>
-                    <strong>{source}</strong>
-                    <span>{focus}</span>
-                    <p>{result}</p>
-                  </article>
-                ))}
-              </div>
-            </details>
-
-            <details>
-              <summary>
-                <span>证据资源</span>
-                <strong>上下文与下一步</strong>
-              </summary>
-              <div className={styles.resourceList}>
-                <div><strong>{documents.length}</strong><small>知识库</small></div>
-                <div><strong>{skills.length}</strong><small>能力包</small></div>
-                <div><strong>{bossPlans.length}</strong><small>计划</small></div>
-              </div>
-              <div className={styles.workflowTrack}>
-                {readonlyActionRows.map(([label, detail, actionLabel, target], index) => (
-                  <article key={label}>
-                    <span>{String(index + 1).padStart(2, "0")}</span>
-                    <strong>{label.replace(/^\d+\.\s*/, "")}</strong>
-                    <p>{detail}</p>
-                    <Link href={target === "workbench" ? roboticsLinks.workbench : `${selfPath}#${target}`}>{actionLabel}</Link>
-                  </article>
-                ))}
-              </div>
-            </details>
-          </div>
-        </section>
-
-        <section className={styles.bottomGrid}>
-          <section className={styles.devicePanel}>
-            <div className={styles.panelHead}>
-              <span>电脑 / 执行状态</span>
-              <Link href={`/projects/${projectId}/observability?return_to=${encodeURIComponent(selfPath)}&from=robotics`}>管理</Link>
-            </div>
-            <div className={styles.deviceList}>
-              {computers.length ? computers.slice(0, 6).map((node, index) => (
-                <article key={text(node.id, text(node.name, "computer"))}>
-                  <strong>{publicComputerName(node, index)}</strong>
-                  <span>{text(node.runner_effective_status ?? node.runner_status ?? node.status, "未知状态")}</span>
-                </article>
-              )) : <p className={styles.emptyHint}>还没有电脑接入。</p>}
-            </div>
-          </section>
-
-          <section className={styles.safetyPanel} id="safety">
-            <div className={styles.panelHead}>
-              <span>安全闸门</span>
-              <Link href={`/projects/${projectId}/observability?return_to=${encodeURIComponent(selfPath)}&from=robotics`}>审计</Link>
-            </div>
-            <div className={styles.gateGrid}>
-              {safetyGates.map(([label, detail]) => (
-                <article key={label}>
-                  <strong>{label}</strong>
-                  <p>{detail}</p>
-                </article>
-              ))}
-            </div>
-          </section>
-        </section>
-
-        <section className={styles.diagnosticPanel}>
-          <div className={styles.panelHead}>
-            <span>只读诊断</span>
-            <Link href={`/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=robotics`}>派给 NPC</Link>
-          </div>
-          <div className={styles.diagnosticRows}>
-            {diagnosticRows.map(([label, count, detail]) => (
-              <article key={label}>
-                <strong>{label}</strong>
-                <span>{count}</span>
-                <p>{detail}</p>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className={styles.motorPanel} id="motor" aria-label="电机只读调试">
-          <div className={styles.panelHead}>
-            <span>电机 / 调参建议</span>
-            <Link href={`/projects/${projectId}/ai-lab?return_to=${encodeURIComponent(selfPath)}&from=robotics`}>仿真验证</Link>
-          </div>
-          <div className={styles.motorGrid}>
-            {motorRows.map(([name, mode, signal, advice, actionLabel]) => (
-              <article key={name}>
-                <div>
-                  <strong>{name}</strong>
-                  <span>{mode}</span>
-                </div>
-                <p>{signal}</p>
-                <small>{advice}</small>
-                <Link href={actionLabel === "回工作台审批" ? roboticsLinks.workbench : actionLabel === "看波形" ? roboticsLinks.telemetry : roboticsLinks.aiLab}>{actionLabel}</Link>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className={styles.tuningAdvicePanel} aria-label="调参建议看板">
-          <div className={styles.panelHead}>
-            <span>PID / FOC 建议看板</span>
-            <Link href={`${selfPath}#telemetry`}>看波形依据</Link>
-          </div>
-          <div className={styles.tuningAdviceGrid}>
-            {tuningAdviceRows.map(([title, detail, state]) => (
-              <article key={title}>
-                <strong>{title}</strong>
-                <span>{state}</span>
-                <p>{detail}</p>
-              </article>
-            ))}
-          </div>
-        </section>
         </details>
-
       </section>
-
-      <aside className={styles.rightRail}>
-        <details className={styles.sideDrawer} open>
-          <summary>
-            <span>当前对象</span>
-            <strong>模型 / Topic / 电机</strong>
-          </summary>
-          <div className={styles.objectInspector}>
-            <article>
-              <span>模型</span>
-              <strong>URDF / GLTF</strong>
-              <p>中央区导入和检查模型；右侧只显示对象状态，不放长说明。</p>
-            </article>
-            <article>
-              <span>遥测</span>
-              <strong>{topicRows.length} 个 topic</strong>
-              <p>只读订阅、频率、TF 和波形进入中央工作面。</p>
-            </article>
-            <article>
-              <span>电机</span>
-              <strong>{motorRows.length} 张参数卡</strong>
-              <p>AI 只给调参建议，写参数和真实运动必须回工作台审批。</p>
-            </article>
-          </div>
-        </details>
-
-        <details className={styles.sideDrawer} open>
-          <summary>
-            <span>风险门</span>
-            <strong>强审动作</strong>
-          </summary>
-          <div className={styles.toolList}>
-            <Link href={roboticsLinks.workbench}>审批写参数 / 运动</Link>
-            <Link href={roboticsLinks.aiLab}>先去仿真验证</Link>
-            <Link href={roboticsLinks.observability}>看风险证据</Link>
-          </div>
-        </details>
-
-        <details className={styles.sideDrawer}>
-          <summary>
-            <span>现场动作</span>
-            <strong>诊断去向</strong>
-          </summary>
-          <div className={styles.toolList}>
-            {rightLinks.map(([label, href]) => <Link key={label} href={href}>{label}</Link>)}
-          </div>
-        </details>
-
-        <details className={styles.sideDrawer}>
-          <summary>
-            <span>证据抽屉</span>
-            <strong>回执 / 资源 / 证据链</strong>
-          </summary>
-          <div className={styles.resourceList}>
-            <div><strong>{documents.length}</strong><small>知识库</small></div>
-            <div><strong>{skills.length}</strong><small>能力包</small></div>
-            <div><strong>{bossPlans.length}</strong><small>计划</small></div>
-          </div>
-          <div className={styles.toolList}>
-            <Link href={roboticsLinks.observability}>看观测台证据</Link>
-            <Link href={roboticsLinks.workbench}>回 NPC 工作台</Link>
-            <Link href={roboticsLinks.datasets}>送样本入库</Link>
-          </div>
-        </details>
-
-      </aside>
     </ProfessionalEvidenceShell>
   );
 }
