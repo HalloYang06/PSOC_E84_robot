@@ -163,7 +163,15 @@ def execute_device_capture_command(
         started_at = ""
         session_status = "captured" if samples else "empty"
         if not samples:
-            if _looks_like_serial(interface_kind, str(payload.get("interface_id") or "")) and serial_port:
+            if _looks_like_can(interface_kind, str(payload.get("interface_id") or "")):
+                can_result = _capture_can_preview(str(payload.get("interface_id") or ""), sample_hz=sample_hz)
+                samples = can_result["samples"]
+                capture_error = can_result["error"]
+                byte_count = can_result["byte_count"]
+                with preview_path.open("w", encoding="utf-8") as handle:
+                    for sample in samples:
+                        handle.write(json.dumps(sample, ensure_ascii=False) + "\n")
+            elif _looks_like_serial(interface_kind, str(payload.get("interface_id") or "")) and serial_port:
                 serial_result = _capture_serial_preview(serial_port, sample_hz=sample_hz, baud_rate=_safe_baud_rate(payload.get("baud_rate")))
                 samples = serial_result["samples"]
                 capture_error = serial_result["error"]
@@ -172,7 +180,7 @@ def execute_device_capture_command(
                     for sample in samples:
                         handle.write(json.dumps(sample, ensure_ascii=False) + "\n")
             else:
-                capture_error = "当前采集器只支持串口只读采样；CAN/USB/SPI-CAN/ROS 会按独立通道继续补齐。"
+                capture_error = "当前采集器支持串口和 SocketCAN 只读采样；USB/SPI-CAN/ROS 会按独立通道继续补齐。"
 
     stopped_at = datetime.now(timezone.utc).isoformat()
     manifest = {
@@ -230,10 +238,13 @@ def _run_capture_session(session: _CaptureSession) -> None:
     interface_kind = str(payload.get("interface_kind") or "").strip().lower()
     interface_id = str(payload.get("interface_id") or "").strip()
     serial_port = _serial_port_from_interface(interface_id, payload.get("port"))
+    if _looks_like_can(interface_kind, interface_id):
+        _run_can_capture_session(session)
+        return
     if not (_looks_like_serial(interface_kind, interface_id) and serial_port):
         with session.lock:
             session.status = "unsupported"
-            session.error = "当前后台采集器只支持串口只读采样；CAN/USB/SPI-CAN/ROS 会按独立通道继续补齐。"
+            session.error = "当前后台采集器支持串口和 SocketCAN 只读采样；USB/SPI-CAN/ROS 会按独立通道继续补齐。"
             _update_session_manifest(session)
         return
 
@@ -351,6 +362,118 @@ def _capture_serial_preview(port: str, *, sample_hz: int, baud_rate: int = 11520
     return {"samples": samples, "byte_count": byte_count, "error": "" if samples else "serial port returned no data in the short capture window"}
 
 
+def _run_can_capture_session(session: _CaptureSession) -> None:
+    payload = session.payload
+    can_iface = _can_interface_from_interface(payload.get("interface_id"), payload.get("channel"))
+    candump = shutil.which("candump")
+    if not can_iface:
+        with session.lock:
+            session.status = "failed"
+            session.error = "CAN interface is missing. Select a scanned SocketCAN interface such as can:can0."
+            _update_session_manifest(session)
+        return
+    if not candump:
+        with session.lock:
+            session.status = "failed"
+            session.error = "candump is not installed on this Linux runner. Install can-utils to enable SocketCAN capture."
+            _update_session_manifest(session)
+        return
+    session.preview_path.parent.mkdir(parents=True, exist_ok=True)
+    proc: subprocess.Popen[str] | None = None
+    try:
+        proc = subprocess.Popen([candump, "-L", can_iface], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=False)
+        with session.preview_path.open("a", encoding="utf-8") as handle:
+            while not session.stop_event.is_set() and session.byte_count < MAX_CAPTURE_BYTES:
+                if proc.stdout is None:
+                    break
+                line = proc.stdout.readline()
+                if not line:
+                    if proc.poll() is not None:
+                        break
+                    time.sleep(0.02)
+                    continue
+                raw = line.strip()
+                sample_bytes = len(raw.encode("utf-8"))
+                now = datetime.now(timezone.utc).isoformat()
+                sample = {"t": now, "interface": can_iface, "text": raw, "bytes": sample_bytes, **_parse_candump_line(raw)}
+                handle.write(json.dumps(sample, ensure_ascii=False) + "\n")
+                handle.flush()
+                with session.lock:
+                    session.sample_count += 1
+                    session.byte_count += sample_bytes
+                    session.last_sample_at = now
+                    session.status = "capturing"
+                if session.sample_count % 50 == 0:
+                    with session.lock:
+                        _update_session_manifest(session)
+    except Exception as exc:
+        with session.lock:
+            session.status = "failed" if not session.sample_count else "captured_with_error"
+            session.error = str(exc)
+            _update_session_manifest(session)
+        return
+    finally:
+        if proc and proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=1.5)
+            except Exception:
+                proc.kill()
+
+    with session.lock:
+        session.stopped_at = datetime.now(timezone.utc).isoformat()
+        if session.sample_count:
+            session.status = "captured"
+        elif not session.error:
+            session.status = "empty"
+            stderr = ""
+            if proc and proc.stderr is not None:
+                try:
+                    stderr = proc.stderr.read().strip()
+                except Exception:
+                    stderr = ""
+            session.error = stderr or "SocketCAN returned no frames while the capture session was running"
+        _update_session_manifest(session)
+
+
+def _capture_can_preview(interface_id: str, *, sample_hz: int) -> dict[str, Any]:
+    can_iface = _can_interface_from_interface(interface_id, None)
+    candump = shutil.which("candump")
+    if not can_iface:
+        return {"samples": [], "byte_count": 0, "error": "CAN interface is missing. Select a scanned SocketCAN interface such as can:can0."}
+    if not candump:
+        return {"samples": [], "byte_count": 0, "error": "candump is not installed on this Linux runner. Install can-utils to enable SocketCAN capture."}
+    deadline = time.time() + MAX_CAPTURE_SECONDS
+    samples: list[dict[str, Any]] = []
+    byte_count = 0
+    proc: subprocess.Popen[str] | None = None
+    try:
+        proc = subprocess.Popen([candump, "-L", can_iface], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=False)
+        while time.time() < deadline and byte_count < MAX_CAPTURE_BYTES and len(samples) < max(8, min(200, sample_hz)):
+            if proc.stdout is None:
+                break
+            line = proc.stdout.readline()
+            if not line:
+                if proc.poll() is not None:
+                    break
+                time.sleep(0.02)
+                continue
+            raw = line.strip()
+            sample_bytes = len(raw.encode("utf-8"))
+            byte_count += sample_bytes
+            samples.append({"t": datetime.now(timezone.utc).isoformat(), "interface": can_iface, "text": raw, "bytes": sample_bytes, **_parse_candump_line(raw)})
+    except Exception as exc:
+        return {"samples": samples, "byte_count": byte_count, "error": str(exc)}
+    finally:
+        if proc and proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=1.5)
+            except Exception:
+                proc.kill()
+    return {"samples": samples, "byte_count": byte_count, "error": "" if samples else "SocketCAN returned no frames in the short capture window"}
+
+
 def _safe_token(value: Any, fallback: str) -> str:
     raw = str(value or "").strip()
     safe = "".join(ch if ch.isalnum() or ch in "._-" else "-" for ch in raw).strip("-")
@@ -398,6 +521,31 @@ def _serial_port_from_interface(interface_id: Any, port: Any) -> str:
 def _looks_like_serial(interface_kind: str, interface_id: str) -> bool:
     lowered = f"{interface_kind} {interface_id}".lower()
     return "serial" in lowered or "串口" in lowered or interface_id.lower().startswith("serial:")
+
+
+def _looks_like_can(interface_kind: str, interface_id: str) -> bool:
+    lowered = f"{interface_kind} {interface_id}".lower()
+    return "socketcan" in lowered or interface_kind == "can" or interface_id.lower().startswith("can:")
+
+
+def _can_interface_from_interface(interface_id: Any, channel: Any) -> str:
+    explicit = str(channel or "").strip()
+    if explicit:
+        return explicit
+    raw = str(interface_id or "").strip()
+    if raw.lower().startswith("can:"):
+        return raw.split(":", 1)[1].strip()
+    return raw if raw.lower().startswith("can") else ""
+
+
+def _parse_candump_line(line: str) -> dict[str, Any]:
+    parts = line.split()
+    frame = parts[-1] if parts else ""
+    can_id = ""
+    data = ""
+    if "#" in frame:
+        can_id, data = frame.split("#", 1)
+    return {"can_id": can_id, "data_hex": data}
 
 
 def _relative_to_workdir(path: Path, workdir: Path) -> str:

@@ -25,7 +25,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO_ROOT / "apps" / "runner"))
 
 from runner.config import RunnerConfig, ensure_dirs  # noqa: E402
-from runner.hardware.device_capture import _serial_port_from_interface, execute_device_capture_command  # noqa: E402
+from runner.hardware.device_capture import _can_interface_from_interface, _parse_candump_line, _serial_port_from_interface, execute_device_capture_command  # noqa: E402
 from runner.logs import LogCollector  # noqa: E402
 from runner.main import _handle_runner_relay_message  # noqa: E402
 
@@ -270,6 +270,33 @@ def test_linux_scanned_serial_interface_id_resolves_to_dev_path() -> None:
     assert _serial_port_from_interface("serial:/dev/ttyAMA0", None) == "/dev/ttyAMA0"
     assert _serial_port_from_interface("serial:COM7", None) == "COM7"
     assert _serial_port_from_interface("serial:ttyUSB0", "COM9") == "COM9"
+
+
+def test_can_interface_and_candump_line_helpers() -> None:
+    assert _can_interface_from_interface("can:can0", None) == "can0"
+    assert _can_interface_from_interface("can0", None) == "can0"
+    assert _can_interface_from_interface("can:can0", "can1") == "can1"
+    assert _parse_candump_line("(1716100000.1) can0 123#DEADBEEF") == {"can_id": "123", "data_hex": "DEADBEEF"}
+
+
+def test_robotics_can_capture_start_returns_clear_missing_candump(tmp_path: Path, monkeypatch: Any) -> None:
+    monkeypatch.setattr("runner.hardware.device_capture.shutil.which", lambda name: None if name == "candump" else name)
+    payload = {
+        "project_id": "proj_can",
+        "capture_id": "capture-can",
+        "computer_node_id": "linux-board",
+        "interface_id": "can:can0",
+        "interface_kind": "can",
+        "sample_hz": 100,
+        "channels": ["time", "can_id", "data_hex"],
+    }
+
+    start = execute_device_capture_command({"kind": "robotics.capture.start", **payload}, allow_hardware_access=True, workdir=tmp_path)
+    stop = execute_device_capture_command({"kind": "robotics.capture.stop", **payload}, allow_hardware_access=True, workdir=tmp_path)
+
+    assert start["result_status"] == "completed"
+    assert stop["result_status"] == "failed"
+    assert "candump is not installed" in stop["result"]["error"]
 
 
 def test_message_without_id_returns_false(tmp_path: Path) -> None:
