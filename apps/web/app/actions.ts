@@ -3983,6 +3983,7 @@ export async function 保存串口电视配置(projectId: string, formData: Form
     revalidateProjectSurfaces(projectId);
     redirect(withQueryValue(returnTo, "team_notice", "设备调试协议已保存"));
   } catch (error) {
+    rethrowRedirectError(error);
     const message = error instanceof Error ? error.message : "保存设备调试协议失败";
     redirect(withQueryValue(returnTo, "team_error", message));
   }
@@ -4039,6 +4040,7 @@ export async function 请求串口USB扫描(projectId: string, formData: FormDat
     revalidatePath("/runners");
     redirect(withQueryValue(returnTo, "team_notice", `已向 ${targetNodes.length} 台电脑下发 USB/串口扫描`));
   } catch (error) {
+    rethrowRedirectError(error);
     const message = error instanceof Error ? error.message : "下发串口扫描失败";
     redirect(withQueryValue(returnTo, "team_error", message));
   }
@@ -4052,7 +4054,7 @@ function normalizeRoboticsDebugWindows(value: unknown) {
       type: text(item.type ?? item.kind, "serial"),
       baudRate: text(item.baudRate ?? item.baud_rate, "115200"),
       sampleHz: text(item.sampleHz ?? item.sample_hz, "100"),
-      channels: text(item.channels, "time,motor.current,motor.velocity,sensor.temperature,bus.frame"),
+      channels: text(item.channels, "time,signal.value,status.code,event.count"),
       boundNpc: text(item.boundNpc ?? item.bound_npc ?? item.bound_npc_id, ""),
       createdAt: text(item.createdAt ?? item.created_at, ""),
       updatedAt: text(item.updatedAt ?? item.updated_at, ""),
@@ -4068,7 +4070,7 @@ export async function 创建机器人调试窗口(projectId: string, formData: F
   const windowType = text(formData.get("window_type"), "serial");
   const baudRate = text(formData.get("baud_rate"), "115200");
   const sampleHz = text(formData.get("sample_hz"), "100");
-  const channels = text(formData.get("channels"), "time,motor.current,motor.velocity,sensor.temperature,bus.frame");
+  const channels = text(formData.get("channels"), "time,signal.value,status.code,event.count");
   const boundNpc = text(formData.get("bound_npc"), "");
 
   if (!resourceId) {
@@ -4136,7 +4138,7 @@ export async function 更新机器人调试窗口(projectId: string, formData: F
       type: text(formData.get("window_type"), current.type),
       baudRate: text(formData.get("baud_rate"), current.baudRate || "115200"),
       sampleHz: text(formData.get("sample_hz"), current.sampleHz || "100"),
-      channels: text(formData.get("channels"), current.channels || "time,motor.current,motor.velocity,sensor.temperature,bus.frame"),
+      channels: text(formData.get("channels"), current.channels || "time,signal.value,status.code,event.count"),
       boundNpc: text(formData.get("bound_npc"), ""),
       updatedAt: new Date().toISOString(),
       updatedBy: actorId,
@@ -7270,7 +7272,7 @@ export async function 创建机器人数据预标注请求(projectId: string, fo
   const captureIds = splitFormList(formData.getAll("capture_ids"));
   const captureTitles = splitFormList(formData.get("capture_titles"));
   const variables = splitFormList(formData.getAll("variables"));
-  const labelSchema = String(formData.get("label_schema") ?? "异常/正常/待确认").trim() || "异常/正常/待确认";
+  const labelSchema = String(formData.get("label_schema") ?? "").trim();
   const labelGoal = String(formData.get("label_goal") ?? "").trim();
   if (!interfaceId || !computerNodeId) {
     redirect(withQueryValue(returnTo, "team_error", "请先在真实接口瓷砖里发起数据预标注"));
@@ -7283,6 +7285,9 @@ export async function 创建机器人数据预标注请求(projectId: string, fo
   }
   if (!boundNpc) {
     redirect(withQueryValue(returnTo, "team_error", "NPC 预标注需要先选择负责这个调试窗口的 NPC"));
+  }
+  if (!labelSchema) {
+    redirect(withQueryValue(returnTo, "team_error", "请先填写本次数据的自定义标注规则，再让 NPC 预标注"));
   }
   const timestamp = new Date().toISOString();
   const annotationId = `annotation-${createHash("sha1").update(`${projectId}:${interfaceId}:${captureIds.join(",")}:${variables.join(",")}:${timestamp}`).digest("hex").slice(0, 12)}`;
@@ -7320,7 +7325,7 @@ export async function 创建机器人数据预标注请求(projectId: string, fo
         `采集片段：${captureIds.join("、")}`,
         `变量/通道：${variables.join("、")}`,
         `标注规则：${labelSchema}`,
-        labelGoal ? `标注目标：${labelGoal}` : "标注目标：按异常、稳定段、过冲、振荡、缺失样本给出建议。",
+        labelGoal ? `标注目标：${labelGoal}` : "标注目标：按用户选择的变量和片段给出可复核的预标注建议。",
         `证据文件：${artifactPath}`,
         "边界：这是预标注建议，最终标签必须由用户确认后才能导出为训练数据集。",
       ].join("\n"),
@@ -7367,7 +7372,7 @@ export async function 导出机器人标注数据(projectId: string, formData: F
   const computerNodeId = String(formData.get("computer_node_id") ?? "").trim();
   const captureIds = splitFormList(formData.getAll("capture_ids"));
   const variables = splitFormList(formData.getAll("variables"));
-  const labelSchema = String(formData.get("label_schema") ?? "confirmed_labels").trim() || "confirmed_labels";
+  const labelSchema = String(formData.get("label_schema") ?? "").trim() || "用户确认标签";
   const exportFormat = safeArtifactSlug(formData.get("export_format") ?? "jsonl", "jsonl");
   const labelNotes = String(formData.get("label_notes") ?? "").trim();
   const manualLabels = parseRoboticsManualLabels(formData.get("manual_labels"));
@@ -7567,7 +7572,7 @@ export async function 创建机器人图表实验(projectId: string, formData: F
     });
     revalidateProjectSurfaces(projectId);
     revalidatePath(`/projects/${projectId}/robotics`);
-    redirect(withQueryValue(returnTo, "team_notice", "图表实验快照已保存；可继续请求 NPC 调参建议"));
+    redirect(withQueryValue(returnTo, "team_notice", "图表实验快照已保存；可继续请求 NPC 分析建议"));
   } catch (error) {
     rethrowRedirectError(error);
     const message = error instanceof Error ? error.message : "保存图表实验失败";
@@ -7590,13 +7595,13 @@ export async function 创建机器人调参建议请求(projectId: string, formD
   const chartMode = String(formData.get("chart_mode") ?? "pid").trim() || "pid";
   const symptoms = String(formData.get("symptoms") ?? "").trim();
   if (!interfaceId || !computerNodeId) {
-    redirect(withQueryValue(returnTo, "team_error", "请先在真实接口瓷砖里请求调参建议"));
+    redirect(withQueryValue(returnTo, "team_error", "请先在真实接口瓷砖里请求分析建议"));
   }
   if (!boundNpc) {
-    redirect(withQueryValue(returnTo, "team_error", "调参建议需要先选择负责这个调试窗口的 NPC"));
+    redirect(withQueryValue(returnTo, "team_error", "分析建议需要先选择负责这个调试窗口的 NPC"));
   }
   if (!captureIds.length || !yAxes.length) {
-    redirect(withQueryValue(returnTo, "team_error", "调参建议需要选择采集片段和纵轴变量"));
+    redirect(withQueryValue(returnTo, "team_error", "分析建议需要选择采集片段和纵轴变量"));
   }
   const timestamp = new Date().toISOString();
   const tuningId = `tuning-${createHash("sha1").update(`${projectId}:${interfaceId}:${captureIds.join(",")}:${xAxis}:${yAxes.join(",")}:${targetValue}:${timestamp}`).digest("hex").slice(0, 12)}`;
@@ -7631,15 +7636,15 @@ export async function 创建机器人调参建议请求(projectId: string, formD
     await postJson("/api/collaboration/messages", {
       project_id: projectId,
       agent_id: boundNpc,
-      title: `调参建议：${interfaceName || interfaceKind || "调试接口"}`,
+      title: `数据分析建议：${interfaceName || interfaceKind || "调试接口"}`,
       body: [
-        `${boundNpcLabel || "NPC"} 请基于图表实验给出 ${chartMode.toUpperCase()} 调参建议。`,
+        `${boundNpcLabel || "NPC"} 请基于图表实验给出 ${chartMode.toUpperCase()} 分析建议。`,
         `采集片段：${captureIds.join("、")}`,
         `横轴：${xAxis}`,
         `纵轴：${yAxes.join("、")}`,
         targetValue ? `目标值：${targetValue}` : "目标值：未设置",
         Object.keys(runnerSummaries).length ? `采集摘要：${Object.keys(runnerSummaries).length} 个片段已有样本摘要` : "采集摘要：暂无 runner 数值摘要，请结合片段证据谨慎判断。",
-        symptoms ? `现象：${symptoms}` : "现象：请判断过冲、震荡、稳态误差、噪声和延迟。",
+        symptoms ? `现象：${symptoms}` : "现象：请判断趋势、异常区间、阈值附近波动、状态切换和延迟。",
         `证据文件：${artifactPath}`,
         "边界：只能给建议或生成待审核操作；不能直接写入真实硬件参数。",
       ].join("\n"),
@@ -7666,16 +7671,16 @@ export async function 创建机器人调参建议请求(projectId: string, formD
         symptoms,
         runner_capture_summaries: runnerSummaries,
         artifact_path: artifactPath,
-        artifact_refs: [{ label: "调参建议请求", path: artifactPath }],
-        evidence_artifacts: [{ label: "调参建议请求", path: artifactPath }],
+        artifact_refs: [{ label: "分析建议请求", path: artifactPath }],
+        evidence_artifacts: [{ label: "分析建议请求", path: artifactPath }],
       },
     });
     revalidateProjectSurfaces(projectId);
     revalidatePath(`/projects/${projectId}/robotics`);
-    redirect(withQueryValue(returnTo, "team_notice", "NPC 调参建议请求已创建；写入真实硬件仍会回到终端待审"));
+    redirect(withQueryValue(returnTo, "team_notice", "NPC 分析建议请求已创建；涉及真实设备写入仍会回到终端待审"));
   } catch (error) {
     rethrowRedirectError(error);
-    const message = error instanceof Error ? error.message : "创建调参建议请求失败";
+    const message = error instanceof Error ? error.message : "创建分析建议请求失败";
     redirect(withQueryValue(returnTo, "team_error", message));
   }
 }

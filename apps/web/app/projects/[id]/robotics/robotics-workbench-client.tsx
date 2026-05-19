@@ -251,7 +251,7 @@ function captureSegments(tile: DebugWindow, messages: AnyRecord[]) {
         title: text(message.title, `采集片段 ${index + 1}`),
         artifactPath: text(extra.artifact_path, ""),
         sampleHz: text(extra.capture_sample_hz, "100"),
-        channels: channels.length ? channels : ["time", "motor.current", "sensor.temperature"],
+        channels: channels.length ? channels : ["time", "signal.value", "status.code"],
         createdAt: text(message.created_at ?? message.createdAt ?? extra.stopped_at, ""),
         runnerResult: runnerResults.get(text(extra.capture_id, "")) || {},
       };
@@ -284,7 +284,7 @@ function segmentVariables(segments: ReturnType<typeof captureSegments>) {
     Object.keys(series).forEach((name) => values.add(name));
   }
   if (!values.size) {
-    ["time", "motor.current", "motor.velocity", "sensor.temperature", "bus.frame"].forEach((item) => values.add(item));
+    ["time", "signal.value", "status.code", "event.count"].forEach((item) => values.add(item));
   }
   return Array.from(values);
 }
@@ -509,7 +509,7 @@ function configuredDebugWindows(resources: DebugWindow[], configs: SavedDebugWin
         boundNpc: text(config.boundNpc, source.boundNpc),
         baudRate: text(config.baudRate, "115200"),
         sampleHz: text(config.sampleHz, "100"),
-        channels: text(config.channels, "time,motor.current,motor.velocity,sensor.temperature,bus.frame"),
+        channels: text(config.channels, "time,signal.value,status.code,event.count"),
       };
     })
     .filter(Boolean) as DebugWindow[];
@@ -547,7 +547,7 @@ function DebugTile({
   const [chartTargetValue, setChartTargetValue] = useState("");
   const sampleHz = text(tile.sampleHz, "100");
   const baudRate = text(tile.baudRate, "115200");
-  const channels = text(tile.channels, "time,motor.current,motor.velocity,sensor.temperature,bus.frame");
+  const channels = text(tile.channels, "time,signal.value,status.code,event.count");
 
   return (
     <article className={tileStyles.tile}>
@@ -929,11 +929,11 @@ function DebugTile({
                 </label>
                 <label className={styles.fieldStack}>
                   <span>实验类型</span>
-                  <select name="chart_mode" defaultValue="pid" aria-label="实验类型">
-                    <option value="pid">PID</option>
-                    <option value="foc">FOC</option>
-                    <option value="sensor">传感器</option>
-                    <option value="bus">总线</option>
+                  <select name="chart_mode" defaultValue="sensor" aria-label="实验类型">
+                    <option value="sensor">通用时序</option>
+                    <option value="bus">总线数据</option>
+                    <option value="pid">PID 调试</option>
+                    <option value="foc">FOC 调试</option>
                   </select>
                 </label>
                 <button type="submit" disabled={!segments.length}>保存图表快照</button>
@@ -1028,7 +1028,7 @@ export function RoboticsWorkbenchClient({
       type: text(formData.get("window_type"), resource.kind),
       baudRate: text(formData.get("baud_rate"), "115200"),
       sampleHz: text(formData.get("sample_hz"), "100"),
-      channels: text(formData.get("channels"), "time,motor.current,motor.velocity,sensor.temperature,bus.frame"),
+      channels: text(formData.get("channels"), "time,signal.value,status.code,event.count"),
       boundNpc: text(formData.get("bound_npc"), defaultNpcId),
     };
     window.setTimeout(() => {
@@ -1091,7 +1091,7 @@ export function RoboticsWorkbenchClient({
             <form action={创建机器人调试窗口.bind(null, projectId)} onSubmit={previewCreateWindow} className={styles.windowCreateForm}>
               <input type="hidden" name="return_to" value={`/projects/${projectId}/robotics`} />
               <strong>创建调试窗口</strong>
-              <input name="window_name" placeholder="窗口名，例如 左前轮电机串口" />
+              <input name="window_name" placeholder="窗口名，例如 产线传感器串口" />
               <label className={styles.createFullField}>
                 <span>窗口类型</span>
                 <select name="window_type" defaultValue="serial" aria-label="窗口类型">
@@ -1126,7 +1126,7 @@ export function RoboticsWorkbenchClient({
               </div>
               <label className={styles.createFullField}>
                 <span>采集通道</span>
-                <input name="channels" defaultValue="time,motor.current,motor.velocity,sensor.temperature,bus.frame" aria-label="采集通道" />
+                <input name="channels" defaultValue="time,signal.value,status.code,event.count" aria-label="采集通道" />
               </label>
               <label className={styles.createFullField}>
                 <span>协助 NPC</span>

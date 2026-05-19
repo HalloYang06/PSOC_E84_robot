@@ -45,7 +45,7 @@ const nativeReadonlyCapabilities = [
     id: "pid-foc",
     name: "PID / FOC 建议",
     detail: "把 SimpleFOC / ODrive / moteus 的调参经验转成平台建议卡，不直接写参数。",
-    action: "生成调参建议",
+    action: "生成分析建议",
   },
   {
     id: "review-actions",
@@ -68,7 +68,7 @@ const deliveryHints: Record<string, string> = {
   "robot-descriptions": "下一步交给模型导入、候选筛选与证据索引。",
   rosbag: "下一步交给图表实验回放或数据标注样本索引。",
   "motor-card": "下一步交给电机参数卡与风险说明。",
-  "pid-foc": "下一步交给调参建议看板，不进入写参数。",
+  "pid-foc": "下一步交给分析建议看板，不进入写参数。",
   "review-actions": "下一步交给 NPC 工作台审批，不在本页执行。",
   "risk-gate": "下一步交给设备数据工作台统一边界展示。",
 };
@@ -192,7 +192,7 @@ function buildPidFocAdviceSeed() {
         "FOC 相关建议只能作为下一步实验计划，不是执行命令。",
       ],
     },
-    runnerTask: "基于只读波形和日志生成 PID / FOC 调参建议卡。",
+    runnerTask: "基于只读波形和日志生成 PID / FOC 分析建议卡。",
     npcPrompt: "请输出建议、风险和下一步实验计划，并明确哪些动作必须审批。",
     approval: "建议卡免审可看；参数写入与真实运动必须强审。",
   });

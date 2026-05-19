@@ -134,7 +134,7 @@ function normalizeSavedDebugWindows(value: unknown): SavedDebugWindow[] {
       type: text(item.type ?? item.kind, "serial"),
       baudRate: text(item.baudRate ?? item.baud_rate, "115200"),
       sampleHz: text(item.sampleHz ?? item.sample_hz, "100"),
-      channels: text(item.channels, "time,motor.current,motor.velocity,sensor.temperature,bus.frame"),
+      channels: text(item.channels, "time,signal.value,status.code,event.count"),
       boundNpc: text(item.boundNpc ?? item.bound_npc ?? item.bound_npc_id, ""),
     }))
     .filter((item) => item.resourceId);
