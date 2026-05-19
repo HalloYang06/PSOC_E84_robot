@@ -781,6 +781,12 @@ NPC 互相协作：
 - 用户手动命令输入和 NPC 代操作待审输入分离。
 - 采集完成后自动在同瓷砖的数据标注 tab 出现片段索引。
 
+当前落地状态：
+
+- 设备数据工作台已经在同一个调试瓷砖内提供 `终端 / 数据标注 / 图表实验` 三个 tab。
+- 终端 tab 的开始/停止采集会登记平台消息，并把只读采集请求排队到所选执行电脑；停止采集会生成 `artifacts/robotics-captures/<project>/<interface>/<capture>.json` manifest，作为采集片段 Artifact 索引。
+- 数据标注和图表实验 tab 已按同一调试窗口的 `robotics_capture_segment` 消息读取片段、通道和 manifest 路径。下一步补 runner 回传真实原始数据文件、用户确认标注、训练集导出格式和图表曲线渲染。
+
 窗口工具类型：
 
 - CAN 调试
