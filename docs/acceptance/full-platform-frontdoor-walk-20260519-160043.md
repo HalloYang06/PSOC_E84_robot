@@ -46,3 +46,17 @@
 - 设备数据工作台的数据标注和图表证据区仍直接显示 `device-captures/...`、`artifacts/...` 路径。按 UI 约束应改为“预览文件 / 采集证据 / 下载片段”等用户词，不直接露路径。
 - 虚拟串口样本注入到 COM31 时本机 Python 写入进程卡住，已停止该写入进程；本轮确认了采集命令、后台 worker 和片段索引闭环，但真实样本内容还需重新用不阻塞的串口写入方式补验。
 - PowerShell `Start-Process -ArgumentList` 在 RunnerName 含中文/空格时会拆参导致 `Take/CodexMaxAgeDays` 参数绑定错误；页面生成的 runner 名 `codex-local-win-0518133234 Runner` 可运行。后续脚本/文档应提示整条命令直接粘贴运行，自动化执行时要用正确 quoting。
+
+### 2026-05-19 17:06 设备采集根因定位与本机实采复验
+
+- 先按合同重跑云端 Web/API 对齐：通过，Web/API 均为 `82b435e6976c`。
+- 阅读 `ai-collab-architecture-executor` skill 和总方案，确认本轮不另起炉灶，只在现有设备数据工作台 / runner 采集链路上补缺口。
+- runner 采集单元验证：`python -m pytest apps/runner/tests/test_relay_prompt_inbox.py -k "robotics_capture or preview_summary or preview_points or linux_scanned" -q`，8 项通过，说明后台采集会话、停止收口、summary 和图表点生成逻辑可用。
+- 本机真实串口复验：用 com0com `COM30`/`COM31`，通过同一份 `scripts/run-device-capture-command.py` 启动 `COM30` 后台采集，再向 `COM31` 写入 40 行 `time/motor.current/motor.velocity/bus.voltage` 样本，停止采集后得到 `sample_count=40`、`byte_count=2680`，并生成 `preview_summary` 与 `preview_points`。证据目录：`artifacts/serial-capture-manual-20260519/`。
+- 根因判断：云端前端创建的调试窗口 id 为 `电脑:serial:COM30` 形式，用于区分不同电脑资源；runner 采集器真实需要的是 `serial:COM30`。旧版本把前端窗口 id 直接作为采集命令 `interface_id` 下发，目标电脑无法解析真实端口，容易得到 0 样本。
+- 本地修复：设备数据工作台资源对象新增独立 `runnerInterfaceId`，前端表单保留窗口 id 做瓷砖/消息匹配，同时把 `runner_interface_id` 传给 server action；`robotics.capture.start/stop` 下发给 runner 时使用真实扫描接口 id。已跑 `npx tsc -p apps/web/tsconfig.json --noEmit --pretty false` 通过。
+- 总方案同步：补充“调试窗口 ID 与 runner 真实接口 ID 必须分离”的设备数据工作台合同，避免后续实现再把用户对象 id 当真实端口。
+
+待云端复验：
+
+- 部署本地修复后，从云端页面重新创建/打开 Windows COM30 调试窗口，前端点击开始采集，使用本机 COM31 注入样本，前端点击停止，确认数据标注 tab 和图表实验 tab 显示非 0 样本、可选真实数值变量并绘制曲线。

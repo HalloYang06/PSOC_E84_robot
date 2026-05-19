@@ -96,6 +96,7 @@ function seatName(seat: AnyRecord, fallback: string) {
 
 type DebugWindow = {
   id: string;
+  runnerInterfaceId: string;
   name: string;
   kind: string;
   kindLabel: string;
@@ -153,8 +154,10 @@ function buildDebugWindows(computers: AnyRecord[], seats: AnyRecord[]): DebugWin
       const rawName = publicInterfaceName(item.name, `${label} ${itemIndex + 1}`);
       const status = text(item.status, "").toLowerCase();
       const writeCapability = text(item.write_capability ?? item.writeCapability, "review_required").toLowerCase();
+      const scannedInterfaceId = text(item.id, `${nodeIndex}-${itemIndex}`);
       windows.push({
-        id: `${computerNodeId || nodeIndex}:${text(item.id, `${nodeIndex}-${itemIndex}`)}`,
+        id: `${computerNodeId || nodeIndex}:${scannedInterfaceId}`,
+        runnerInterfaceId: scannedInterfaceId,
         name: `${label} · ${rawName}`,
         kind,
         kindLabel: label,

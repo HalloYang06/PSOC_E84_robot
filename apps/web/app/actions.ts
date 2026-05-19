@@ -7057,6 +7057,7 @@ export async function 记录机器人采集片段(projectId: string, formData: F
   const mode = String(formData.get("capture_mode") ?? "").trim();
   const computerNodeId = String(formData.get("computer_node_id") ?? "").trim();
   const interfaceId = String(formData.get("interface_id") ?? "").trim();
+  const runnerInterfaceId = String(formData.get("runner_interface_id") ?? "").trim() || interfaceId;
   const interfaceName = String(formData.get("interface_name") ?? "").trim();
   const interfaceKind = String(formData.get("interface_kind") ?? "").trim();
   const boundNpc = String(formData.get("bound_npc") ?? "").trim();
@@ -7088,7 +7089,7 @@ export async function 记录机器人采集片段(projectId: string, formData: F
         kind: "robotics.capture.start",
         project_id: projectId,
         capture_id: captureId,
-        interface_id: interfaceId,
+        interface_id: runnerInterfaceId,
         interface_name: interfaceName,
         interface_kind: interfaceKind,
         computer_node_id: computerNodeId,
@@ -7175,7 +7176,7 @@ export async function 记录机器人采集片段(projectId: string, formData: F
       kind: "robotics.capture.stop",
       project_id: projectId,
       capture_id: captureId,
-      interface_id: interfaceId,
+      interface_id: runnerInterfaceId,
       interface_name: interfaceName,
       interface_kind: interfaceKind,
       computer_node_id: computerNodeId,

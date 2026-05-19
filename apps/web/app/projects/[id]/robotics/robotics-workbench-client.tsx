@@ -24,6 +24,7 @@ type AnyRecord = Record<string, any>;
 
 type DebugWindow = {
   id: string;
+  runnerInterfaceId: string;
   name: string;
   kind: string;
   kindLabel: string;
@@ -409,6 +410,7 @@ function HiddenTileFields({
       <input type="hidden" name="return_to" value={returnTo} />
       <input type="hidden" name="computer_node_id" value={tile.computerNodeId} />
       <input type="hidden" name="interface_id" value={tile.id} />
+      <input type="hidden" name="runner_interface_id" value={tile.runnerInterfaceId || tile.id} />
       <input type="hidden" name="interface_name" value={tile.name} />
       <input type="hidden" name="interface_kind" value={tile.kindLabel} />
       <input type="hidden" name="bound_npc" value={boundNpcId} />
@@ -639,6 +641,7 @@ function DebugTile({
             <input type="hidden" name="return_to" value={returnTo} />
             <input type="hidden" name="computer_node_id" value={tile.computerNodeId} />
             <input type="hidden" name="interface_id" value={tile.id} />
+            <input type="hidden" name="runner_interface_id" value={tile.runnerInterfaceId || tile.id} />
             <input type="hidden" name="interface_name" value={tile.name} />
             <input type="hidden" name="interface_kind" value={tile.kindLabel} />
             <span>$</span>
@@ -659,6 +662,7 @@ function DebugTile({
             <input type="hidden" name="return_to" value={returnTo} />
             <input type="hidden" name="computer_node_id" value={tile.computerNodeId} />
             <input type="hidden" name="interface_id" value={tile.id} />
+            <input type="hidden" name="runner_interface_id" value={tile.runnerInterfaceId || tile.id} />
             <input type="hidden" name="interface_name" value={tile.name} />
             <input type="hidden" name="interface_kind" value={tile.kindLabel} />
             <input type="hidden" name="bound_npc" value={boundNpcId} />
@@ -686,6 +690,7 @@ function DebugTile({
             <input type="hidden" name="return_to" value={returnTo} />
             <input type="hidden" name="computer_node_id" value={tile.computerNodeId} />
             <input type="hidden" name="interface_id" value={tile.id} />
+            <input type="hidden" name="runner_interface_id" value={tile.runnerInterfaceId || tile.id} />
             <input type="hidden" name="interface_name" value={tile.name} />
             <input type="hidden" name="interface_kind" value={tile.kindLabel} />
             <input type="hidden" name="bound_npc" value={boundNpcId} />
