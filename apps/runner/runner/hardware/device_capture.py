@@ -275,21 +275,16 @@ def _run_capture_session(session: _CaptureSession) -> None:
                     chunk = ser.readline() or ser.read(256)
                     if not chunk:
                         continue
-                    now = datetime.now(timezone.utc).isoformat()
-                    sample = {
-                        "t": now,
-                        "port": serial_port,
-                        "bytes": len(chunk),
-                        "text": chunk.decode("utf-8", errors="replace").strip(),
-                        "hex": chunk[:64].hex(" "),
-                    }
-                    handle.write(json.dumps(sample, ensure_ascii=False) + "\n")
+                    chunk_samples = _serial_chunk_samples(chunk, serial_port)
+                    for sample in chunk_samples:
+                        now = str(sample.get("t") or datetime.now(timezone.utc).isoformat())
+                        handle.write(json.dumps(sample, ensure_ascii=False) + "\n")
+                        with session.lock:
+                            session.sample_count += 1
+                            session.byte_count += int(sample.get("bytes") or 0)
+                            session.last_sample_at = now
+                            session.status = "capturing"
                     handle.flush()
-                    with session.lock:
-                        session.sample_count += 1
-                        session.byte_count += len(chunk)
-                        session.last_sample_at = now
-                        session.status = "capturing"
                     if session.sample_count % max(8, min(100, sample_hz)) == 0:
                         with session.lock:
                             _update_session_manifest(session)
@@ -352,21 +347,32 @@ def _capture_serial_preview(port: str, *, sample_hz: int, baud_rate: int = 11520
                 if not chunk:
                     continue
                 byte_count += len(chunk)
-                text = chunk.decode("utf-8", errors="replace").strip()
-                samples.append(
-                    {
-                        "t": datetime.now(timezone.utc).isoformat(),
-                        "port": port,
-                        "bytes": len(chunk),
-                        "text": text,
-                        "hex": chunk[:64].hex(" "),
-                    }
-                )
+                samples.extend(_serial_chunk_samples(chunk, port))
                 if len(samples) >= max(8, min(200, sample_hz)):
                     break
     except Exception as exc:
         return {"samples": samples, "byte_count": byte_count, "error": str(exc)}
     return {"samples": samples, "byte_count": byte_count, "error": "" if samples else "serial port returned no data in the short capture window"}
+
+
+def _serial_chunk_samples(chunk: bytes, port: str) -> list[dict[str, Any]]:
+    decoded = chunk.decode("utf-8", errors="replace")
+    parts = [part.strip() for part in decoded.splitlines() if part.strip()]
+    if not parts and decoded.strip():
+        parts = [decoded.strip()]
+    samples: list[dict[str, Any]] = []
+    for part in parts:
+        encoded = part.encode("utf-8", errors="replace")
+        samples.append(
+            {
+                "t": datetime.now(timezone.utc).isoformat(),
+                "port": port,
+                "bytes": len(encoded),
+                "text": part,
+                "hex": encoded[:64].hex(" "),
+            }
+        )
+    return samples
 
 
 def _run_can_capture_session(session: _CaptureSession) -> None:

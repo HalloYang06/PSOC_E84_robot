@@ -25,7 +25,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO_ROOT / "apps" / "runner"))
 
 from runner.config import RunnerConfig, ensure_dirs  # noqa: E402
-from runner.hardware.device_capture import _build_preview_points, _build_preview_summary, _can_interface_from_interface, _parse_candump_line, _serial_port_from_interface, execute_device_capture_command  # noqa: E402
+from runner.hardware.device_capture import _build_preview_points, _build_preview_summary, _can_interface_from_interface, _parse_candump_line, _serial_chunk_samples, _serial_port_from_interface, execute_device_capture_command  # noqa: E402
 from runner.logs import LogCollector  # noqa: E402
 from runner.main import _handle_runner_relay_message  # noqa: E402
 
@@ -338,6 +338,17 @@ def test_preview_points_extract_series_for_waveform_chart() -> None:
     assert points["series"]["current"][0]["y"] == 0.4
     assert points["series"]["velocity"][1]["y"] == 120
     assert points["series"]["sample.2"][0]["y"] == 3
+
+
+def test_serial_chunk_samples_split_multiple_lines() -> None:
+    samples = _serial_chunk_samples(b"@sample,0,0.4,100\n@sample,0.02,0.41,102\n", "COM30")
+
+    assert len(samples) == 2
+    assert samples[0]["text"] == "@sample,0,0.4,100"
+    assert samples[1]["text"] == "@sample,0.02,0.41,102"
+    summary = _build_preview_summary(samples)
+    assert set(summary["numeric_fields"]) >= {"sample.0", "sample.1", "sample.2"}
+    assert "sample.3" not in summary["numeric_fields"]
 
 
 def test_robotics_can_capture_start_returns_clear_missing_candump(tmp_path: Path, monkeypatch: Any) -> None:
