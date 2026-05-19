@@ -260,12 +260,13 @@ export function buildComputerOneClickConnectCommand(
   node: AnyRecord,
   pairingToken: string,
   runnerId: string,
-  options: { watch?: boolean; executeProviderCli?: boolean; serverUrl?: string; hardwareAccess?: boolean } = {},
+  options: { watch?: boolean; executeProviderCli?: boolean; serverUrl?: string; hardwareAccess?: boolean; deviceDataRepo?: string } = {},
 ) {
   const serverUrl = buildRunnerApiBaseUrl(text(options.serverUrl, webBaseUrl));
   const nodeId = text(node.id ?? node.node_id ?? node.name ?? node.label, "computer");
   const runnerName = `${text(node.label ?? node.name, nodeId)} Runner`;
   const workspaceRoot = text(node.git_root ?? node.workspace_root, "");
+  const deviceDataRepo = text(options.deviceDataRepo ?? node.device_data_repo ?? node.device_data_repository ?? "", "");
   const args: Array<[string, unknown]> = [
     ["-Server", serverUrl],
     ["-PairingToken", pairingToken],
@@ -283,6 +284,9 @@ export function buildComputerOneClickConnectCommand(
   if (options.hardwareAccess) {
     args.push(["-HardwareAccess", true]);
   }
+  if (deviceDataRepo) {
+    args.push(["-DeviceDataRepo", deviceDataRepo]);
+  }
   if (options.executeProviderCli) {
     args.push(["-WatchExecuteProviderCli", true]);
   }
@@ -295,12 +299,13 @@ export function buildComputerOneClickConnectBashCommand(
   node: AnyRecord,
   pairingToken: string,
   runnerId: string,
-  options: { watch?: boolean; executeProviderCli?: boolean; serverUrl?: string; hardwareAccess?: boolean } = {},
+  options: { watch?: boolean; executeProviderCli?: boolean; serverUrl?: string; hardwareAccess?: boolean; deviceDataRepo?: string } = {},
 ) {
   const serverUrl = buildRunnerApiBaseUrl(text(options.serverUrl, webBaseUrl));
   const nodeId = text(node.id ?? node.node_id ?? node.name ?? node.label, "computer");
   const runnerName = `${text(node.label ?? node.name, nodeId)} Runner`;
   const workspaceRoot = text(node.git_root ?? node.workspace_root, "");
+  const deviceDataRepo = text(options.deviceDataRepo ?? node.device_data_repo ?? node.device_data_repository ?? "", "");
   const args: Array<[string, unknown]> = [
     ["--server", serverUrl],
     ["--pairing-token", pairingToken],
@@ -317,6 +322,9 @@ export function buildComputerOneClickConnectBashCommand(
   }
   if (options.hardwareAccess) {
     args.push(["--hardware-access", true]);
+  }
+  if (deviceDataRepo) {
+    args.push(["--device-data-repo", deviceDataRepo]);
   }
   if (options.executeProviderCli) {
     args.push(["--watch-execute-provider-cli", true]);
@@ -335,6 +343,7 @@ export function buildComputerRunnerWatchCommand(
   const nodeId = text(node.id ?? node.node_id ?? node.name ?? node.label, "computer");
   const runnerName = `${text(node.label ?? node.name, nodeId)} Runner`;
   const workspaceRoot = text(node.git_root ?? node.workspace_root, "");
+  const deviceDataRepo = text(node.device_data_repo ?? node.device_data_repository ?? "", "");
   const args: Array<[string, unknown]> = [
     ["-Server", apiBaseUrl],
     ["-PairingToken", "already-bound-runner-reuse"],
@@ -353,6 +362,9 @@ export function buildComputerRunnerWatchCommand(
   if (workspaceRoot) {
     args.push(["-WorkspaceRoot", workspaceRoot]);
   }
+  if (deviceDataRepo) {
+    args.push(["-DeviceDataRepo", deviceDataRepo]);
+  }
   return buildPowerShellRunnerScriptCommand(serverUrl, "connect-ai-collab-runner.ps1", args);
 }
 
@@ -367,6 +379,7 @@ export function buildComputerRunnerWatchBashCommand(
   const nodeId = text(node.id ?? node.node_id ?? node.name ?? node.label, "computer");
   const runnerName = `${text(node.label ?? node.name, nodeId)} Runner`;
   const workspaceRoot = text(node.git_root ?? node.workspace_root, "");
+  const deviceDataRepo = text(node.device_data_repo ?? node.device_data_repository ?? "", "");
   const args: Array<[string, unknown]> = [
     ["--server", apiBaseUrl],
     ["--pairing-token", "already-bound-runner-reuse"],
@@ -384,6 +397,9 @@ export function buildComputerRunnerWatchBashCommand(
   }
   if (workspaceRoot) {
     args.push(["--workspace-root", workspaceRoot]);
+  }
+  if (deviceDataRepo) {
+    args.push(["--device-data-repo", deviceDataRepo]);
   }
   return buildBashRunnerScriptCommand(serverUrl, "connect-ai-collab-runner.sh", args);
 }

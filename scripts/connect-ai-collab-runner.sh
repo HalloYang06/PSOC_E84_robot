@@ -16,6 +16,8 @@ WATCH="false"
 WATCH_POLL_SECONDS="15"
 WATCH_MAX_LOOPS="0"
 DEVICE_SCAN_INTERVAL_SECONDS="60"
+DEVICE_DATA_REPO=""
+DEVICE_DATA_GIT_PUSH="false"
 WATCH_EXECUTE_PROVIDER_CLI="false"
 SKIP_CODEX="false"
 SKIP_CLAUDE="false"
@@ -38,6 +40,8 @@ while [[ $# -gt 0 ]]; do
     --watch-poll-seconds) WATCH_POLL_SECONDS="${2:-}"; shift 2 ;;
     --watch-max-loops) WATCH_MAX_LOOPS="${2:-}"; shift 2 ;;
     --device-scan-interval-seconds) DEVICE_SCAN_INTERVAL_SECONDS="${2:-}"; shift 2 ;;
+    --device-data-repo) DEVICE_DATA_REPO="${2:-}"; shift 2 ;;
+    --device-data-git-push) DEVICE_DATA_GIT_PUSH="true"; shift ;;
     --watch-execute-provider-cli) WATCH_EXECUTE_PROVIDER_CLI="true"; shift ;;
     --skip-codex) SKIP_CODEX="true"; shift ;;
     --skip-claude) SKIP_CLAUDE="true"; shift ;;
@@ -187,7 +191,8 @@ poll_runner_inbox_once() {
   payload="$(curl -fsSL \
     -H "X-Runner-Id: $RUNNER_ID" \
     "${API_BASE%/}/api/runners/$RUNNER_ID/inbox?limit=20")"
-  RUNNER_INBOX_JSON="$payload" RUNNER_ID="$RUNNER_ID" python3 - <<'PY' | while IFS=$'\t' read -r message_id title; do
+  RUNNER_INBOX_JSON="$payload" RUNNER_ID="$RUNNER_ID" python3 - <<'PY' | while IFS=$'\t' read -r message_id title body_b64; do
+import base64
 import json
 import os
 
@@ -201,9 +206,90 @@ for item in items or []:
     if not message_id:
         continue
     title = str(item.get("title") or "Platform dispatch").replace("\t", " ").replace("\n", " ").strip()
-    print(f"{message_id}\t{title}")
+    body = str(item.get("body") or "")
+    print(f"{message_id}\t{title}\t{base64.b64encode(body.encode()).decode()}")
 PY
+    local body_text
+    body_text="$(BODY_B64="$body_b64" python3 - <<'PY'
+import base64
+import os
+print(base64.b64decode(os.environ.get("BODY_B64") or "").decode())
+PY
+)"
+    local payload_kind
+    payload_kind="$(BODY_TEXT="$body_text" python3 - <<'PY'
+import json
+import os
+try:
+    payload = json.loads(os.environ.get("BODY_TEXT") or "{}")
+    print(str(payload.get("kind") or ""))
+except Exception:
+    print("")
+PY
+)"
     local note="Runner ${RUNNER_NAME} received platform dispatch: ${title}. The computer connection is reachable; enable NPC automation or bind a desktop thread before real execution."
+    local complete_metadata="{}"
+    local result_status="completed"
+    if [[ "$payload_kind" == "serial.usb.scan" ]]; then
+      if sync_device_interfaces_once; then
+        note="Runner ${RUNNER_NAME} scanned real device interfaces and synced them back to the platform."
+        complete_metadata="$(python3 - <<PY
+import json
+print(json.dumps({"runner_capability": "serial.usb.scan", "runner_result": {"kind": "serial.usb.scan", "ok": True, "computer_node_id": "$COMPUTER_NODE_ID"}}, ensure_ascii=False))
+PY
+)"
+      else
+        note="Runner ${RUNNER_NAME} tried to scan real device interfaces, but sync failed."
+        result_status="failed"
+      fi
+    elif [[ "$payload_kind" == "robotics.capture.start" || "$payload_kind" == "robotics.capture.stop" ]]; then
+      download_runner_script "run-device-capture-command.py"
+      local payload_file="$RUNNER_DIR/device-capture-payload-$(date +%s%N).json"
+      printf '%s' "$body_text" > "$payload_file"
+      local capture_args=("$RUNNER_DIR/run-device-capture-command.py" --payload-file "$payload_file" --workdir "$RUNNER_DIR")
+      if [[ "$HARDWARE_ACCESS" == "true" ]]; then
+        capture_args+=(--hardware-access)
+      fi
+      if [[ -n "$DEVICE_DATA_REPO" ]]; then
+        capture_args+=(--repo-root "$DEVICE_DATA_REPO")
+      fi
+      if [[ "$DEVICE_DATA_GIT_PUSH" == "true" ]]; then
+        capture_args+=(--git-push)
+      fi
+      local capture_output
+      if capture_output="$(python3 "${capture_args[@]}" 2>&1)"; then
+        :
+      else
+        result_status="failed"
+      fi
+      rm -f "$payload_file"
+      complete_metadata="$(CAPTURE_OUTPUT="$capture_output" python3 - <<'PY'
+import json
+import os
+raw = os.environ.get("CAPTURE_OUTPUT") or "{}"
+try:
+    payload = json.loads(raw)
+except Exception:
+    payload = {"result_status": "failed", "note": raw, "result": {"ok": False, "error": raw}}
+result = payload.get("result") if isinstance(payload.get("result"), dict) else {}
+print(json.dumps({"runner_capability": "robotics.capture", "runner_result": result}, ensure_ascii=False))
+PY
+)"
+      note="$(CAPTURE_OUTPUT="$capture_output" python3 - <<'PY'
+import json
+import os
+raw = os.environ.get("CAPTURE_OUTPUT") or ""
+try:
+    payload = json.loads(raw)
+    print(str(payload.get("note") or "Device capture command finished."))
+except Exception:
+    print(raw or "Device capture command failed.")
+PY
+)"
+      if [[ "$capture_output" == *'"result_status": "failed"'* ]]; then
+        result_status="failed"
+      fi
+    fi
     local ack_status="ok"
     local ack_output
     if ! ack_output="$(curl -fsSL \
@@ -228,10 +314,15 @@ PY
       -X POST "${API_BASE%/}/api/runners/$RUNNER_ID/messages/$message_id/complete" \
       -H "Content-Type: application/json" \
       -H "X-Runner-Id: $RUNNER_ID" \
-      --data-binary "$(NOTE="$note" python3 - <<'PY'
+      --data-binary "$(NOTE="$note" RESULT_STATUS="$result_status" COMPLETE_METADATA="$complete_metadata" python3 - <<'PY'
 import json
 import os
-print(json.dumps({"result_status": "completed", "note": os.environ["NOTE"]}, ensure_ascii=False))
+metadata = {}
+try:
+    metadata = json.loads(os.environ.get("COMPLETE_METADATA") or "{}")
+except Exception:
+    metadata = {}
+print(json.dumps({"result_status": os.environ.get("RESULT_STATUS") or "completed", "note": os.environ["NOTE"], "metadata": metadata}, ensure_ascii=False))
 PY
 )")" 2>&1; then
       if echo "$complete_output" | grep -Eiq "409|already|closed|claimed|状态|收尾"; then

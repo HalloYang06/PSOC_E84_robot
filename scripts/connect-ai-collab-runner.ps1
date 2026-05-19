@@ -17,6 +17,8 @@ param(
   [int]$WatchPollSeconds = 15,
   [int]$WatchMaxLoops = 0,
   [int]$DeviceScanIntervalSeconds = 60,
+  [string]$DeviceDataRepo = "",
+  [switch]$DeviceDataGitPush,
   [switch]$WatchExecuteProviderCli,
   [switch]$SkipCodex,
   [switch]$SkipClaude,
@@ -248,6 +250,8 @@ function Invoke-RunnerInboxPoll {
           -WebBase $WebBase `
           -PayloadJson $bodyText `
           -RunnerDir $RunnerDir `
+          -DeviceDataRepo $DeviceDataRepo `
+          -DeviceDataGitPush:$DeviceDataGitPush `
           -HardwareAccess:$HardwareAccess
         $captureStatus = [string]$captureResult.result_status
         $captureNote = [string]$captureResult.note
@@ -475,6 +479,8 @@ function Invoke-DeviceCaptureCommand {
     [Parameter(Mandatory = $true)][string]$WebBase,
     [Parameter(Mandatory = $true)][string]$PayloadJson,
     [Parameter(Mandatory = $true)][string]$RunnerDir,
+    [string]$DeviceDataRepo = "",
+    [switch]$DeviceDataGitPush,
     [switch]$HardwareAccess
   )
   $captureScript = Download-RunnerScript -WebBase $WebBase -ScriptName "run-device-capture-command.py" -RunnerDir $RunnerDir
@@ -487,6 +493,12 @@ function Invoke-DeviceCaptureCommand {
   )
   if ($HardwareAccess) {
     $captureArgs += "--hardware-access"
+  }
+  if (-not [string]::IsNullOrWhiteSpace($DeviceDataRepo)) {
+    $captureArgs += @("--repo-root", $DeviceDataRepo)
+  }
+  if ($DeviceDataGitPush) {
+    $captureArgs += "--git-push"
   }
   try {
     $captureOutput = & python @captureArgs 2>&1
@@ -517,6 +529,8 @@ function Start-RunnerWatchLoop {
     [int]$PollSeconds = 15,
     [int]$MaxLoops = 0,
     [int]$DeviceScanIntervalSeconds = 60,
+    [string]$DeviceDataRepo = "",
+    [switch]$DeviceDataGitPush,
     [switch]$HardwareAccess,
     [switch]$ExecuteProviderCli
   )
@@ -805,6 +819,8 @@ if ($Watch) {
     -PollSeconds $WatchPollSeconds `
     -MaxLoops $WatchMaxLoops `
     -DeviceScanIntervalSeconds $DeviceScanIntervalSeconds `
+    -DeviceDataRepo $DeviceDataRepo `
+    -DeviceDataGitPush:$DeviceDataGitPush `
     -HardwareAccess:$HardwareAccess `
     -ExecuteProviderCli:$WatchExecuteProviderCli
 }
