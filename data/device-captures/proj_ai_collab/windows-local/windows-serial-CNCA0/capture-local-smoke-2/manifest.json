@@ -1,0 +1,33 @@
+{
+  "schema": "runner_device_capture_result_v2",
+  "capture_id": "capture-local-smoke-2",
+  "project_id": "proj_ai_collab",
+  "computer_node_id": "windows-local",
+  "interface_id": "windows-serial-CNCA0",
+  "interface_name": "CNCA0",
+  "interface_kind": "串口",
+  "sample_hz": 20,
+  "channels": [
+    "time",
+    "raw"
+  ],
+  "started_at": "",
+  "stopped_at": "2026-05-19T07:27:43.833331+00:00",
+  "status": "empty",
+  "sample_count": 0,
+  "byte_count": 0,
+  "preview_summary": {
+    "schema": "runner_device_capture_preview_summary_v1",
+    "sample_count": 0,
+    "numeric_field_count": 0,
+    "numeric_fields": {}
+  },
+  "preview_points": {
+    "schema": "runner_device_capture_preview_points_v1",
+    "sample_count": 0,
+    "series": {}
+  },
+  "preview_file": "device-captures/proj_ai_collab/windows-local/windows-serial-CNCA0/capture-local-smoke-2/preview.jsonl",
+  "error": "当前采集器支持串口和 SocketCAN 只读采样；USB/SPI-CAN/ROS 会按独立通道继续补齐。",
+  "capture_mode": "short_window_fallback"
+}

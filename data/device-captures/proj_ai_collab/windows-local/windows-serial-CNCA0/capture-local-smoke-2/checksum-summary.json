@@ -1,0 +1,15 @@
+{
+  "schema": "runner_device_capture_checksum_v1",
+  "capture_id": "capture-local-smoke-2",
+  "files": [
+    {
+      "path": "data/device-captures/proj_ai_collab/windows-local/windows-serial-CNCA0/capture-local-smoke-2/manifest.json",
+      "bytes": 1067
+    },
+    {
+      "path": "data/device-captures/proj_ai_collab/windows-local/windows-serial-CNCA0/capture-local-smoke-2/preview.jsonl",
+      "bytes": 0
+    }
+  ],
+  "synced_at": "2026-05-19T07:27:43.849353+00:00"
+}
