@@ -136,6 +136,29 @@ def wait_for_test_window_saved(api_base: str, project_id: str, token: str, windo
     return False
 
 
+def wait_for_test_window_field(
+    api_base: str,
+    project_id: str,
+    token: str,
+    field_name: str,
+    expected_value: str,
+    window_name: str = "验收串口窗口",
+    timeout_seconds: float = 20,
+) -> bool:
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        try:
+            for item in fetch_robotics_debug_windows(api_base, project_id, token):
+                if str(item.get("name") or "").strip() != window_name:
+                    continue
+                if str(item.get(field_name) or "").strip() == expected_value:
+                    return True
+        except Exception:
+            pass
+        time.sleep(0.4)
+    return False
+
+
 def click(cdp: object, selector: str) -> dict[str, object]:
     state = cdp_eval(
         cdp,
@@ -478,6 +501,27 @@ def main() -> int:
             screenshot(cdp, output_dir / f"robotics-terminal-userwalk-settings-{stamp}.png")
             if not isinstance(settings_state, dict) or not settings_state.get("hasSettingsPanel") or not settings_state.get("stillOnRobotics"):
                 report["failures"].append("settings panel did not open in-place")  # type: ignore[union-attr]
+            cdp_eval(
+                cdp,
+                """
+                (() => {
+                  const sample = document.querySelector('form[class*="settingsPanel"] input[name="sample_hz"]');
+                  if (!sample) return false;
+                  sample.value = '125';
+                  sample.dispatchEvent(new Event('input', { bubbles: true }));
+                  sample.dispatchEvent(new Event('change', { bubbles: true }));
+                  const button = Array.from(document.querySelectorAll('form[class*="settingsPanel"] button'))
+                    .find((item) => (item.innerText || '').includes('保存设置'));
+                  if (!button) return false;
+                  button.click();
+                  return true;
+                })()
+                """,
+            )
+            settings_saved = wait_for_test_window_field(args.api_base, args.project_id, token, "sampleHz", "125")
+            report["settingsPersisted"] = settings_saved
+            if not settings_saved:
+                report["failures"].append("settings changes were not persisted in project state")  # type: ignore[union-attr]
             cdp_eval(
                 cdp,
                 """

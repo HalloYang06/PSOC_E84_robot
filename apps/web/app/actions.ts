@@ -4114,6 +4114,49 @@ export async function 创建机器人调试窗口(projectId: string, formData: F
   }
 }
 
+export async function 更新机器人调试窗口(projectId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "robotics");
+  const resourceId = text(formData.get("resource_id"), "");
+  if (!resourceId) {
+    redirect(withQueryValue(returnTo, "team_error", "请选择要更新的调试窗口"));
+  }
+
+  try {
+    const { currentUser, project } = await ensureProjectCollaborationAccess(projectId);
+    const actorId = text(currentUser?.id ?? currentUser?.email, "human-chief");
+    const collaborationConfig = readProjectCollaborationConfig(project);
+    const currentWindows = normalizeRoboticsDebugWindows(collaborationConfig.robotics_debug_windows);
+    const current = currentWindows.find((item) => item.resourceId === resourceId);
+    if (!current) {
+      redirect(withQueryValue(returnTo, "team_error", "这个调试窗口还没有保存，请先创建窗口"));
+    }
+    const nextWindow = {
+      ...current,
+      name: text(formData.get("window_name"), current.name),
+      type: text(formData.get("window_type"), current.type),
+      baudRate: text(formData.get("baud_rate"), current.baudRate || "115200"),
+      sampleHz: text(formData.get("sample_hz"), current.sampleHz || "100"),
+      channels: text(formData.get("channels"), current.channels || "time,motor.current,motor.velocity,sensor.temperature,bus.frame"),
+      boundNpc: text(formData.get("bound_npc"), ""),
+      updatedAt: new Date().toISOString(),
+      updatedBy: actorId,
+    };
+    await patchJson(`/api/projects/${projectId}`, {
+      collaboration_config: {
+        ...collaborationConfig,
+        robotics_debug_windows: currentWindows.map((item) => item.resourceId === resourceId ? nextWindow : item),
+      },
+    });
+    revalidateProjectSurfaces(projectId);
+    revalidatePath(`/projects/${projectId}/robotics`);
+    redirect(returnTo);
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "保存调试窗口设置失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
 export async function 删除机器人调试窗口(projectId: string, formData: FormData) {
   const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "robotics");
   const resourceId = text(formData.get("resource_id"), "");

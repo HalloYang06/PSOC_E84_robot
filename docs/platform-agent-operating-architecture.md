@@ -779,7 +779,7 @@ NPC 互相协作：
 
 - 左侧只显示用户已经创建好的调试窗口，不直接把扫描到的所有真实设备铺满左栏。
 - runner 扫描到的真实接口只作为“创建/设置调试窗口”时的绑定资源池；用户创建窗口时自己命名，选择串口/CAN/USB/SPI-CAN/ROS 等类型，从真实设备下拉里绑定接口，再填写参数。
-- 已创建调试窗口必须保存到项目级 `collaboration_config.robotics_debug_windows`，不是浏览器本地缓存。刷新页面、换电脑登录同一项目、或云端部署后，左侧仍能恢复这些窗口配置；扫描资源池仍来自真实电脑节点的设备扫描结果，二者不能混成一套列表。
+- 已创建调试窗口必须保存到项目级 `collaboration_config.robotics_debug_windows`，不是浏览器本地缓存。刷新页面、换电脑登录同一项目、或云端部署后，左侧仍能恢复这些窗口配置；扫描资源池仍来自真实电脑节点的设备扫描结果，二者不能混成一套列表。窗口设置面板里修改窗口名、协助 NPC、波特率、采样频率、采集通道时，也必须写回同一个项目配置。
 - 用户可以点击左侧窗口的 `+` 打开多个窗口，窗口像 NPC 工作台的 NPC 瓷砖一样常驻在中间工作区。
 - 创建窗口时必须选择窗口名称、工具类型、目标电脑/真实接口、关键参数和可选协助 NPC，不能让用户跳转到空白页填内部 ID。
 - 每个窗口必须保存工具类型和参数，所有参数都必须有明确标签：串口波特率下拉、校验、停止位；CAN 通道、bitrate、filter；USB 设备和权限状态；SPI-CAN 芯片/总线/中断脚；ROS 只读 endpoint/topic 过滤。
@@ -808,7 +808,7 @@ NPC 互相协作：
 当前落地状态：
 
 - 设备数据工作台已经在同一个调试瓷砖内提供 `终端 / 数据标注 / 图表实验` 三个 tab。
-- 前端方向已调整为“先创建调试窗口，再绑定真实扫描设备”：扫描设备不再直接铺到左栏，左栏只显示已创建窗口；创建区提供窗口名、窗口类型、真实设备下拉、波特率下拉、采样频率、采集通道和协助 NPC。已创建窗口已从浏览器缓存迁到项目级 `collaboration_config.robotics_debug_windows`，用户点击创建后会立即打开瓷砖，并在平台配置落库后支持刷新恢复。
+- 前端方向已调整为“先创建调试窗口，再绑定真实扫描设备”：扫描设备不再直接铺到左栏，左栏只显示已创建窗口；创建区提供窗口名、窗口类型、真实设备下拉、波特率下拉、采样频率、采集通道和协助 NPC。已创建窗口已从浏览器缓存迁到项目级 `collaboration_config.robotics_debug_windows`，用户点击创建后会立即打开瓷砖，并在平台配置落库后支持刷新恢复；窗口设置里的协助 NPC 和参数也已回写项目配置，避免刷新丢失。
 - 终端 tab 的开始/停止采集会登记平台消息，并把只读采集请求排队到所选执行电脑；停止采集会生成 `artifacts/robotics-captures/<project>/<interface>/<capture>.json` manifest，作为采集片段 Artifact 索引。
 - runner 已支持结构化 `robotics.capture.start` / `robotics.capture.stop` 命令。当前可验证版本支持串口和 Linux SocketCAN 只读后台采集会话：`start` 在目标电脑启动后台采样并立刻回执，不阻塞心跳和收件轮询；`stop` 停止同一会话，在 `RUNNER_WORKDIR/device-captures/<project>/<computer>/<interface>/<capture>/` 写 `manifest.json` 和 `preview.jsonl`，并把样本数、字节数、预览文件和错误原因作为结构化 `runner_result` 回执返回平台。若 runner 重启或找不到后台会话，`stop` 保留短窗口只读兜底；硬件权限关闭、未安装 pyserial、Linux 未安装 can-utils/candump、非支持接口或无数据时必须明确失败/空样本，不能伪造数据。
 - 采集停止时 runner 会从低频预览中生成 `preview_summary` 和轻量 `preview_points`：前者提取 `key=value`、`@sample` 和结构化数值字段的 count/min/max/mean/first/last，后者抽样最多 160 个数值点给图表实验 tab 立即画波形。完整高频曲线和训练数据仍以 GitHub 数据路径里的 `preview.jsonl`/raw 文件为准，平台消息只带小样本预览，避免云服务器被原始波形撑爆。

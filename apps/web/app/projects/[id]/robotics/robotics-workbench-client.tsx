@@ -10,6 +10,7 @@ import {
   创建机器人数据预标注请求,
   创建机器人调参建议请求,
   创建机器人调试Npc操作审核,
+  更新机器人调试窗口,
   删除机器人调试窗口,
   导出机器人标注数据,
   请求串口USB扫描,
@@ -538,7 +539,10 @@ function DebugTile({
         {!tile.runnerCanDispatch ? <em>保持目标电脑接单窗口在线后自动恢复</em> : null}
       </section>
       {settingsOpen ? (
-        <section className={styles.settingsPanel} aria-label={`${tile.name} 设置`}>
+        <form action={更新机器人调试窗口.bind(null, projectId)} className={styles.settingsPanel} aria-label={`${tile.name} 设置`}>
+          <input type="hidden" name="return_to" value={returnTo} />
+          <input type="hidden" name="resource_id" value={tile.id} />
+          <input type="hidden" name="window_type" value={tile.kind} />
           <strong>窗口设置</strong>
           <div>
             <span>执行电脑</span>
@@ -549,7 +553,12 @@ function DebugTile({
             <b>{tile.name}</b>
           </div>
           <label>
+            <span>窗口名</span>
+            <input name="window_name" defaultValue={tile.name} />
+          </label>
+          <label>
             <span>协助 NPC</span>
+            <input type="hidden" name="bound_npc" value={boundNpcId} />
             <select value={boundNpcId} onChange={(event) => setBoundNpcId(event.target.value)}>
               <option value="">未绑定</option>
               {npcSeats.map((seat, index) => {
@@ -558,8 +567,25 @@ function DebugTile({
               })}
             </select>
           </label>
+          <label>
+            <span>波特率</span>
+            <select name="baud_rate" defaultValue={baudRate} aria-label="设置波特率">
+              {["9600", "19200", "38400", "57600", "115200", "230400", "460800", "921600", "1000000", "2000000"].map((rate) => (
+                <option key={rate} value={rate}>{rate}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>采样频率</span>
+            <input name="sample_hz" defaultValue={sampleHz} inputMode="numeric" />
+          </label>
+          <label>
+            <span>采集通道</span>
+            <input name="channels" defaultValue={channels} />
+          </label>
+          <button type="submit">保存设置</button>
           <p>{tile.runnerHint}</p>
-        </section>
+        </form>
       ) : null}
       {activeTab === "terminal" ? (
         <>
@@ -880,10 +906,12 @@ export function RoboticsWorkbenchClient({
       channels: text(formData.get("channels"), "time,motor.current,motor.velocity,sensor.temperature,bus.frame"),
       boundNpc: text(formData.get("bound_npc"), defaultNpcId),
     };
-    setSavedWindows((current) => [...current.filter((item) => item.resourceId !== resourceId), next]);
-    setOpenIds((current) => current.includes(resourceId) ? current : [...current, resourceId]);
-    const nextOpenIds = openIds.includes(resourceId) ? openIds : [...openIds, resourceId];
-    window.history.replaceState(null, "", windowsHref(projectId, nextOpenIds, text(next.boundNpc, defaultNpcId)));
+    window.setTimeout(() => {
+      setSavedWindows((current) => [...current.filter((item) => item.resourceId !== resourceId), next]);
+      setOpenIds((current) => current.includes(resourceId) ? current : [...current, resourceId]);
+      const nextOpenIds = openIds.includes(resourceId) ? openIds : [...openIds, resourceId];
+      window.history.replaceState(null, "", windowsHref(projectId, nextOpenIds, text(next.boundNpc, defaultNpcId)));
+    }, 250);
   }
 
   function previewDeleteWindow(resourceId: string) {
