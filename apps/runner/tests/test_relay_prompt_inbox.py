@@ -14,6 +14,7 @@ Desktop bridge, or adapter reports a real final result.
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 import time
 import types
@@ -209,6 +210,58 @@ def test_robotics_capture_start_runs_background_session_until_stop(tmp_path: Pat
     data = json.loads(manifest.read_text(encoding="utf-8"))
     assert data["schema"] == "runner_device_capture_result_v2"
     assert data["status"] == "captured"
+
+
+def test_robotics_capture_stop_reports_waiting_repo_when_not_configured(tmp_path: Path) -> None:
+    payload = {
+        "kind": "robotics.capture.stop",
+        "project_id": "proj_repo_wait",
+        "capture_id": "capture-wait",
+        "computer_node_id": "linux-board",
+        "interface_id": "serial:ttyUSB0",
+        "interface_kind": "serial",
+        "sample_hz": 100,
+        "channels": ["time", "raw.text"],
+    }
+
+    result = execute_device_capture_command(payload, allow_hardware_access=True, workdir=tmp_path)
+
+    assert result["result_status"] == "failed"
+    assert result["result"]["repo_sync"]["status"] == "waiting_for_repo"
+    assert result["result"]["repo_sync"]["repo_relative_dir"] == "data/device-captures/proj_repo_wait/linux-board/serial-ttyUSB0/capture-wait"
+
+
+def test_robotics_capture_stop_syncs_manifest_preview_to_git_repo(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "config", "user.email", "runner@example.invalid"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Runner"], cwd=repo, check=True)
+
+    capture_dir = tmp_path / "device-captures" / "proj_repo" / "linux-board" / "serial-ttyUSB0" / "capture-sync"
+    capture_dir.mkdir(parents=True)
+    (capture_dir / "preview.jsonl").write_text('{"t":"2026-05-19T00:00:00Z","text":"ok"}\n', encoding="utf-8")
+    payload = {
+        "kind": "robotics.capture.stop",
+        "project_id": "proj_repo",
+        "capture_id": "capture-sync",
+        "computer_node_id": "linux-board",
+        "interface_id": "serial:ttyUSB0",
+        "interface_kind": "serial",
+        "sample_hz": 100,
+        "channels": ["time", "raw.text"],
+    }
+
+    result = execute_device_capture_command(payload, allow_hardware_access=True, workdir=tmp_path, repo_root=repo)
+
+    sync = result["result"]["repo_sync"]
+    assert sync["status"] == "committed"
+    assert sync["manifest"] == "data/device-captures/proj_repo/linux-board/serial-ttyUSB0/capture-sync/manifest.json"
+    assert (repo / sync["manifest"]).exists()
+    assert (repo / sync["preview"]).exists()
+    assert (repo / "data/device-captures/proj_repo/linux-board/serial-ttyUSB0/capture-sync/checksum-summary.json").exists()
+    log = subprocess.run(["git", "log", "--oneline", "-1"], cwd=repo, check=True, capture_output=True, text=True)
+    assert "Add device capture capture-sync" in log.stdout
 
 
 def test_message_without_id_returns_false(tmp_path: Path) -> None:

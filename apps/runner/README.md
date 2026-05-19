@@ -44,6 +44,8 @@ Set these environment variables before starting the runner:
 - `MAX_CONCURRENT_TASKS` - reserved configuration for later use, default: `1`
 - `HEARTBEAT_SECONDS` - heartbeat interval, default: `15`
 - `POLL_SECONDS` - task polling interval, default: `10`
+- `RUNNER_DEVICE_DATA_REPO` - optional local Git worktree used by this computer for device capture evidence. When set, stopped captures copy `manifest.json`, `preview.jsonl`, and a checksum summary to `data/device-captures/<project>/<computer>/<interface>/<capture>/` inside that worktree.
+- `RUNNER_DEVICE_DATA_GIT_PUSH` - `true` or `false`, default: `false`. When enabled, the runner tries to push the device capture commit after writing it. Keep this disabled until the target computer has a reviewed Git credential setup.
 
 ## Execution model
 
@@ -74,6 +76,8 @@ When `ALLOW_HARDWARE_ACCESS=true`, the runner can handle the serial TV commands 
 - `serial.write` - writes a bounded payload to one local serial port and returns a small readback preview.
 
 The runner still does not execute arbitrary shell commands for hardware work. These commands are parsed from the relay message body as JSON and must match the allowlist above.
+
+The device data workbench uses the same relay boundary for `robotics.capture.start` and `robotics.capture.stop`. Today the runner supports serial read-only background capture sessions. `start` returns quickly and keeps the capture loop in the background; `stop` flushes a local manifest and preview file, then optionally copies them into `RUNNER_DEVICE_DATA_REPO` under a GitHub repo-relative `data/device-captures/...` path and creates a commit. If no repo worktree is configured, the result says the capture is waiting for repository sync instead of pretending the data has already reached GitHub.
 
 The default data protocol exposed in the UI is `AICSV/1`:
 

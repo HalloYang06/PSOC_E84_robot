@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
 import threading
 import time
 from dataclasses import dataclass, field
@@ -48,6 +50,8 @@ def execute_device_capture_command(
     *,
     allow_hardware_access: bool,
     workdir: Path,
+    repo_root: Path | None = None,
+    git_push: bool = False,
 ) -> dict[str, Any]:
     kind = str(payload.get("kind") or "").strip()
     if kind not in DEVICE_CAPTURE_KINDS:
@@ -191,6 +195,16 @@ def execute_device_capture_command(
         "capture_mode": "background_session" if session else "short_window_fallback",
     }
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    sync_result = _sync_capture_to_repo(
+        manifest_path=manifest_path,
+        preview_path=preview_path,
+        repo_root=repo_root,
+        project_id=project_id,
+        computer_node_id=computer_node_id,
+        interface_id=interface_id,
+        capture_id=capture_id,
+        git_push=git_push,
+    )
     ok = bool(samples)
     return _result(
         True,
@@ -206,6 +220,7 @@ def execute_device_capture_command(
             "preview": _relative_to_workdir(preview_path, workdir),
             "error": capture_error,
             "capture_mode": manifest["capture_mode"],
+            "repo_sync": sync_result,
         },
     )
 
@@ -412,6 +427,132 @@ def _read_preview_samples(preview_path: Path) -> list[dict[str, Any]]:
     except OSError:
         return samples
     return samples
+
+
+def _sync_capture_to_repo(
+    *,
+    manifest_path: Path,
+    preview_path: Path,
+    repo_root: Path | None,
+    project_id: str,
+    computer_node_id: str,
+    interface_id: str,
+    capture_id: str,
+    git_push: bool,
+) -> dict[str, Any]:
+    repo_relative_dir = Path("data") / "device-captures" / project_id / computer_node_id / interface_id / capture_id
+    repo_relative_manifest = (repo_relative_dir / "manifest.json").as_posix()
+    repo_relative_preview = (repo_relative_dir / "preview.jsonl").as_posix()
+    if repo_root is None:
+        return {
+            "ok": False,
+            "status": "waiting_for_repo",
+            "repo_relative_dir": repo_relative_dir.as_posix(),
+            "message": "目标电脑未配置设备数据仓库工作副本，采集数据暂存在本机待同步缓存。",
+        }
+    root = repo_root.resolve()
+    if not root.exists():
+        return {
+            "ok": False,
+            "status": "repo_missing",
+            "repo_relative_dir": repo_relative_dir.as_posix(),
+            "message": "目标电脑配置的仓库工作副本不存在，采集数据暂存在本机待同步缓存。",
+        }
+    if not (root / ".git").exists():
+        return {
+            "ok": False,
+            "status": "not_git_repo",
+            "repo_relative_dir": repo_relative_dir.as_posix(),
+            "message": "目标电脑配置的目录不是 Git 工作副本，采集数据暂存在本机待同步缓存。",
+        }
+    target_dir = root / repo_relative_dir
+    try:
+        target_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(manifest_path, root / repo_relative_manifest)
+        if preview_path.exists():
+            shutil.copy2(preview_path, root / repo_relative_preview)
+        checksum = {
+            "schema": "runner_device_capture_checksum_v1",
+            "capture_id": capture_id,
+            "files": [
+                {"path": repo_relative_manifest, "bytes": (root / repo_relative_manifest).stat().st_size},
+                {"path": repo_relative_preview, "bytes": (root / repo_relative_preview).stat().st_size if (root / repo_relative_preview).exists() else 0},
+            ],
+            "synced_at": datetime.now(timezone.utc).isoformat(),
+        }
+        checksum_path = target_dir / "checksum-summary.json"
+        checksum_path.write_text(json.dumps(checksum, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    except Exception as exc:
+        return {
+            "ok": False,
+            "status": "copy_failed",
+            "repo_relative_dir": repo_relative_dir.as_posix(),
+            "message": f"写入仓库工作副本失败：{exc}",
+        }
+
+    git_paths = [repo_relative_manifest, repo_relative_preview, (repo_relative_dir / "checksum-summary.json").as_posix()]
+    add = _run_git(root, ["add", "--", *git_paths])
+    if not add["ok"]:
+        return {
+            "ok": False,
+            "status": "git_add_failed",
+            "repo_relative_dir": repo_relative_dir.as_posix(),
+            "message": "采集文件已写入仓库工作副本，但登记到 Git 暂存区失败。",
+            "git": add,
+        }
+    diff = _run_git(root, ["diff", "--cached", "--quiet", "--", *git_paths])
+    committed = False
+    commit_hash = ""
+    if diff["returncode"] != 0:
+        commit = _run_git(root, ["commit", "-m", f"Add device capture {capture_id}"])
+        if not commit["ok"]:
+            return {
+                "ok": False,
+                "status": "git_commit_failed",
+                "repo_relative_dir": repo_relative_dir.as_posix(),
+                "message": "采集文件已写入仓库工作副本，但提交失败，等待人工处理。",
+                "git": commit,
+            }
+        committed = True
+        rev = _run_git(root, ["rev-parse", "--short=12", "HEAD"])
+        commit_hash = str(rev.get("stdout") or "").strip()
+    push_result: dict[str, Any] | None = None
+    if git_push and committed:
+        push_result = _run_git(root, ["push"])
+    status = "pushed" if push_result and push_result.get("ok") else "committed" if committed else "unchanged"
+    if push_result and not push_result.get("ok"):
+        status = "push_failed"
+    return {
+        "ok": status in {"pushed", "committed", "unchanged"},
+        "status": status,
+        "repo_relative_dir": repo_relative_dir.as_posix(),
+        "manifest": repo_relative_manifest,
+        "preview": repo_relative_preview,
+        "commit": commit_hash or None,
+        "push_enabled": git_push,
+        "message": "采集数据已写入仓库证据目录" if status != "push_failed" else "采集数据已提交本地仓库，但推送失败，等待重试或人工处理。",
+        "push": push_result,
+    }
+
+
+def _run_git(cwd: Path, args: list[str]) -> dict[str, Any]:
+    try:
+        completed = subprocess.run(
+            ["git", *args],
+            cwd=str(cwd),
+            capture_output=True,
+            text=True,
+            timeout=30,
+            shell=False,
+        )
+    except Exception as exc:
+        return {"ok": False, "returncode": -1, "stdout": "", "stderr": str(exc)}
+    return {
+        "ok": completed.returncode == 0,
+        "returncode": completed.returncode,
+        "stdout": completed.stdout.strip()[:1200],
+        "stderr": completed.stderr.strip()[:1200],
+    }
 
 
 def _result(handled: bool, result_status: str, title: str, result: dict[str, Any]) -> dict[str, Any]:

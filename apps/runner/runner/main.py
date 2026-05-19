@@ -160,6 +160,8 @@ def _handle_runner_relay_message(
             payload or {},
             allow_hardware_access=cfg.allow_hardware_access,
             workdir=cfg.workdir,
+            repo_root=cfg.device_data_repo_root,
+            git_push=cfg.device_data_git_push,
         )
         client.complete_runner_message(
             cfg.runner_id,

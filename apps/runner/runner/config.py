@@ -31,6 +31,8 @@ class RunnerConfig:
     cli_provider: str = "disabled"
     cli_executor_path: Path | None = None
     cli_timeout_seconds: int = 1800
+    device_data_repo_root: Path | None = None
+    device_data_git_push: bool = False
 
     @staticmethod
     def from_env() -> "RunnerConfig":
@@ -52,6 +54,9 @@ class RunnerConfig:
         cli_executor_raw = _env("RUNNER_CLI_EXECUTOR", "").strip()
         cli_executor_path = Path(cli_executor_raw).resolve() if cli_executor_raw else None
         cli_timeout_seconds = int(_env("RUNNER_CLI_TIMEOUT_SECONDS", "1800"))
+        device_data_repo_raw = _env("RUNNER_DEVICE_DATA_REPO", "").strip()
+        device_data_repo_root = Path(device_data_repo_raw).resolve() if device_data_repo_raw else None
+        device_data_git_push = _env("RUNNER_DEVICE_DATA_GIT_PUSH", "false").lower() in ("1", "true", "yes", "y")
         return RunnerConfig(
             runner_id=runner_id,
             runner_name=runner_name,
@@ -68,6 +73,8 @@ class RunnerConfig:
             cli_provider=cli_provider,
             cli_executor_path=cli_executor_path,
             cli_timeout_seconds=cli_timeout_seconds,
+            device_data_repo_root=device_data_repo_root,
+            device_data_git_push=device_data_git_push,
         )
 
 

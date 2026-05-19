@@ -181,12 +181,24 @@ function captureResultLine(segment: ReturnType<typeof captureSegments>[number]) 
   const result = record(segment.runnerResult);
   const sampleCount = text(result.sample_count, "");
   const byteCount = text(result.byte_count, "");
-  const preview = text(result.preview, "");
+  const sync = record(result.repo_sync);
+  const preview = text(sync.preview, text(result.preview, ""));
+  const syncStatus = text(sync.status, "");
   const error = text(result.error, "");
+  const syncTail = syncStatus
+    ? syncStatus === "committed" || syncStatus === "pushed"
+      ? " · 已写入仓库证据"
+      : syncStatus === "waiting_for_repo"
+        ? " · 等待配置仓库同步"
+        : syncStatus === "push_failed"
+          ? " · 已本地提交，等待重试推送"
+          : ` · 同步状态：${syncStatus}`
+    : "";
   if (sampleCount && sampleCount !== "0") {
-    return `已回传 ${sampleCount} 个样本${byteCount ? ` / ${byteCount} bytes` : ""}${preview ? ` · ${preview}` : ""}`;
+    return `已回传 ${sampleCount} 个样本${byteCount ? ` / ${byteCount} bytes` : ""}${preview ? ` · ${preview}` : ""}${syncTail}`;
   }
-  if (preview) return `已回传预览文件 · ${preview}`;
+  if (preview) return `已回传预览文件 · ${preview}${syncTail}`;
+  if (syncTail) return syncTail.replace(/^ · /, "");
   if (error) return `采集回执：${error}`;
   return "";
 }
