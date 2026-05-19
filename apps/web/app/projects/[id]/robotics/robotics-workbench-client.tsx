@@ -220,6 +220,20 @@ function captureResultLine(segment: ReturnType<typeof captureSegments>[number]) 
   return "";
 }
 
+function captureSummaryLine(segment: ReturnType<typeof captureSegments>[number]) {
+  const summary = record(record(segment.runnerResult).preview_summary);
+  const fields = record(summary.numeric_fields);
+  const names = Object.keys(fields).slice(0, 3);
+  if (!names.length) return "";
+  return names.map((name) => {
+    const stats = record(fields[name]);
+    const min = text(stats.min, "");
+    const max = text(stats.max, "");
+    const mean = text(stats.mean, "");
+    return `${name}: ${min}~${max}${mean ? ` / 均值 ${Number(mean).toFixed(3)}` : ""}`;
+  }).join("；");
+}
+
 function HiddenTileFields({
   tile,
   returnTo,
@@ -624,6 +638,7 @@ function DebugTile({
                   <li key={`${segment.id}-runner-result`}>
                     <b>{segment.title}</b>
                     <small>{captureResultLine(segment)}</small>
+                    {captureSummaryLine(segment) ? <small>{captureSummaryLine(segment)}</small> : null}
                   </li>
                 ))}
               </ul>

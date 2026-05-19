@@ -25,7 +25,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO_ROOT / "apps" / "runner"))
 
 from runner.config import RunnerConfig, ensure_dirs  # noqa: E402
-from runner.hardware.device_capture import _can_interface_from_interface, _parse_candump_line, _serial_port_from_interface, execute_device_capture_command  # noqa: E402
+from runner.hardware.device_capture import _build_preview_summary, _can_interface_from_interface, _parse_candump_line, _serial_port_from_interface, execute_device_capture_command  # noqa: E402
 from runner.logs import LogCollector  # noqa: E402
 from runner.main import _handle_runner_relay_message  # noqa: E402
 
@@ -277,6 +277,23 @@ def test_can_interface_and_candump_line_helpers() -> None:
     assert _can_interface_from_interface("can0", None) == "can0"
     assert _can_interface_from_interface("can:can0", "can1") == "can1"
     assert _parse_candump_line("(1716100000.1) can0 123#DEADBEEF") == {"can_id": "123", "data_hex": "DEADBEEF"}
+
+
+def test_preview_summary_extracts_numeric_fields_for_charting() -> None:
+    summary = _build_preview_summary(
+        [
+            {"t": "2026-05-19T00:00:00Z", "bytes": 12, "text": "current=0.4,velocity=100"},
+            {"t": "2026-05-19T00:00:01Z", "bytes": 16, "text": "current=0.8,velocity=120"},
+            {"t": "2026-05-19T00:00:02Z", "bytes": 10, "text": "@sample,0,1.5,3"},
+        ]
+    )
+
+    assert summary["sample_count"] == 3
+    fields = summary["numeric_fields"]
+    assert fields["current"]["min"] == 0.4
+    assert fields["current"]["max"] == 0.8
+    assert fields["velocity"]["last"] == 120
+    assert fields["sample.1"]["mean"] == 1.5
 
 
 def test_robotics_can_capture_start_returns_clear_missing_candump(tmp_path: Path, monkeypatch: Any) -> None:

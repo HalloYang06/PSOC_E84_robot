@@ -183,6 +183,7 @@ def execute_device_capture_command(
                 capture_error = "当前采集器支持串口和 SocketCAN 只读采样；USB/SPI-CAN/ROS 会按独立通道继续补齐。"
 
     stopped_at = datetime.now(timezone.utc).isoformat()
+    preview_summary = _build_preview_summary(samples)
     manifest = {
         "schema": "runner_device_capture_result_v2",
         "capture_id": capture_id,
@@ -198,6 +199,7 @@ def execute_device_capture_command(
         "status": "captured" if samples else session_status,
         "sample_count": len(samples),
         "byte_count": byte_count,
+        "preview_summary": preview_summary,
         "preview_file": _relative_to_workdir(preview_path, workdir),
         "error": capture_error,
         "capture_mode": "background_session" if session else "short_window_fallback",
@@ -224,6 +226,7 @@ def execute_device_capture_command(
             "capture_id": capture_id,
             "sample_count": len(samples),
             "byte_count": byte_count,
+            "preview_summary": preview_summary,
             "manifest": _relative_to_workdir(manifest_path, workdir),
             "preview": _relative_to_workdir(preview_path, workdir),
             "error": capture_error,
@@ -472,6 +475,82 @@ def _capture_can_preview(interface_id: str, *, sample_hz: int) -> dict[str, Any]
             except Exception:
                 proc.kill()
     return {"samples": samples, "byte_count": byte_count, "error": "" if samples else "SocketCAN returned no frames in the short capture window"}
+
+
+def _build_preview_summary(samples: list[dict[str, Any]]) -> dict[str, Any]:
+    numeric: dict[str, list[float]] = {}
+    for sample in samples:
+        flattened = _flatten_numeric_sample(sample)
+        for key, value in flattened.items():
+            numeric.setdefault(key, []).append(value)
+        text = str(sample.get("text") or "").strip()
+        for key, value in _parse_numeric_text(text).items():
+            numeric.setdefault(key, []).append(value)
+    fields: dict[str, dict[str, float | int]] = {}
+    for key, values in numeric.items():
+        if not values:
+            continue
+        fields[key] = {
+            "count": len(values),
+            "min": min(values),
+            "max": max(values),
+            "mean": sum(values) / len(values),
+            "first": values[0],
+            "last": values[-1],
+        }
+    return {
+        "schema": "runner_device_capture_preview_summary_v1",
+        "sample_count": len(samples),
+        "numeric_field_count": len(fields),
+        "numeric_fields": fields,
+    }
+
+
+def _flatten_numeric_sample(sample: dict[str, Any]) -> dict[str, float]:
+    values: dict[str, float] = {}
+    for key, raw in sample.items():
+        if isinstance(raw, bool):
+            continue
+        if isinstance(raw, int | float):
+            values[str(key)] = float(raw)
+        elif isinstance(raw, str) and key not in {"text", "hex", "data_hex", "can_id", "port", "interface"}:
+            parsed = _parse_float(raw)
+            if parsed is not None:
+                values[str(key)] = parsed
+    return values
+
+
+def _parse_numeric_text(text: str) -> dict[str, float]:
+    values: dict[str, float] = {}
+    if not text:
+        return values
+    normalized = text.strip()
+    if normalized.startswith("@sample,"):
+        parts = normalized.split(",")[1:]
+        for index, part in enumerate(parts):
+            parsed = _parse_float(part)
+            if parsed is not None:
+                values[f"sample.{index}"] = parsed
+        return values
+    for token in normalized.replace(";", ",").split(","):
+        if "=" not in token:
+            continue
+        key, raw = token.split("=", 1)
+        safe_key = "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in key.strip()).strip("_")
+        parsed = _parse_float(raw)
+        if safe_key and parsed is not None:
+            values[safe_key] = parsed
+    return values
+
+
+def _parse_float(value: Any) -> float | None:
+    try:
+        text_value = str(value).strip()
+        if not text_value:
+            return None
+        return float(text_value)
+    except Exception:
+        return None
 
 
 def _safe_token(value: Any, fallback: str) -> str:

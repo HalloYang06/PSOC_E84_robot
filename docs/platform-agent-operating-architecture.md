@@ -804,6 +804,7 @@ NPC 互相协作：
 - 设备数据工作台已经在同一个调试瓷砖内提供 `终端 / 数据标注 / 图表实验` 三个 tab。
 - 终端 tab 的开始/停止采集会登记平台消息，并把只读采集请求排队到所选执行电脑；停止采集会生成 `artifacts/robotics-captures/<project>/<interface>/<capture>.json` manifest，作为采集片段 Artifact 索引。
 - runner 已支持结构化 `robotics.capture.start` / `robotics.capture.stop` 命令。当前可验证版本支持串口和 Linux SocketCAN 只读后台采集会话：`start` 在目标电脑启动后台采样并立刻回执，不阻塞心跳和收件轮询；`stop` 停止同一会话，在 `RUNNER_WORKDIR/device-captures/<project>/<computer>/<interface>/<capture>/` 写 `manifest.json` 和 `preview.jsonl`，并把样本数、字节数、预览文件和错误原因作为结构化 `runner_result` 回执返回平台。若 runner 重启或找不到后台会话，`stop` 保留短窗口只读兜底；硬件权限关闭、未安装 pyserial、Linux 未安装 can-utils/candump、非支持接口或无数据时必须明确失败/空样本，不能伪造数据。
+- 采集停止时 runner 会从低频预览中生成 `preview_summary`，提取 `key=value`、`@sample` 和结构化数值字段的 count/min/max/mean/first/last。图表实验 tab 可以先展示这些真实数据摘要，作为 PID/FOC 调参建议的轻量证据；完整曲线渲染仍读取 preview/raw 数据。
 - runner 已支持可选设备数据仓库同步：目标电脑配置 `RUNNER_DEVICE_DATA_REPO` 后，`stop` 会把小型 `manifest.json`、`preview.jsonl` 和 `checksum-summary.json` 写入该电脑自己的 Git 工作副本 `data/device-captures/<project>/<computer>/<interface>/<capture-id>/` 并提交；`RUNNER_DEVICE_DATA_GIT_PUSH=true` 时才尝试推送。未配置仓库或推送失败时，回执必须显示“等待配置仓库同步/等待重试推送”，不能假装已经进入 GitHub。
 - API 的 runner complete 回执已支持 `metadata/extra_data`，设备数据工作台会把同一 `capture_id` 的 `runner_result` 合并到采集片段列表和图表证据里显示，用户不需要翻 Markdown 回执才能知道是否真的采到样本。
 - 数据标注和图表实验 tab 已按同一调试窗口的 `robotics_capture_segment` 消息读取片段、通道和 manifest 路径。
