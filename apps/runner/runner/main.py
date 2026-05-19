@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import importlib.util
+import socket
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,6 +14,7 @@ from .config import RunnerConfig, ensure_dirs
 from .executor import LimitedExecutor
 from .git_tools import execute_git_preflight, is_git_preflight_command
 from .hardware.serial_tools import execute_serial_command, is_serial_command, parse_runner_command_body
+from .hardware.serial_tools import scan_usb_and_serial_devices
 from .logs import LogCollector
 from .workspace import WorkspaceManager
 
@@ -210,6 +213,95 @@ def _poll_runner_relay_inbox(client: PlatformClient, cfg: RunnerConfig, log: Log
                     pass
 
 
+def _build_device_interface_scan() -> dict[str, Any]:
+    scanner_path = Path(__file__).resolve().parents[3] / "scripts" / "scan-device-interfaces.py"
+    if scanner_path.exists():
+        spec = importlib.util.spec_from_file_location("ai_collab_device_scanner", scanner_path)
+        if spec is not None and spec.loader is not None:
+            scanner = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(scanner)
+            build_scan = getattr(scanner, "build_scan", None)
+            if callable(build_scan):
+                scan = build_scan()
+                if isinstance(scan, dict):
+                    return scan
+
+    serial_scan = scan_usb_and_serial_devices()
+    interfaces: list[dict[str, Any]] = []
+    for item in serial_scan.get("serial_devices") or []:
+        if not isinstance(item, dict):
+            continue
+        port = str(item.get("port") or item.get("label") or "").strip()
+        if not port:
+            continue
+        interfaces.append(
+            {
+                "id": f"serial:{port}",
+                "kind": "serial",
+                "name": str(item.get("label") or port),
+                "status": "available",
+                "transport": str(item.get("source") or "serial"),
+                "details": item,
+                "read_capability": True,
+                "write_capability": "review_required",
+                "risk_level": "medium",
+            }
+        )
+    for index, item in enumerate(serial_scan.get("usb_devices") or []):
+        if not isinstance(item, dict):
+            continue
+        label = str(item.get("label") or item.get("device_id") or f"USB {index + 1}").strip()
+        if not label:
+            continue
+        interfaces.append(
+            {
+                "id": f"usb:{index + 1}",
+                "kind": "usb",
+                "name": label,
+                "status": "available",
+                "transport": str(item.get("source") or "usb"),
+                "details": item,
+                "read_capability": True,
+                "write_capability": "review_required",
+                "risk_level": "low",
+            }
+        )
+    return {
+        "host": socket.gethostname(),
+        "platform": serial_scan.get("host_os") or "",
+        "scanner_version": "runner-package.v1",
+        "scanned_at": datetime.now(timezone.utc).isoformat(),
+        "interfaces": interfaces,
+        "summary": {
+            "total": len(interfaces),
+            "serial_count": len([item for item in interfaces if item.get("kind") == "serial"]),
+            "usb_count": len([item for item in interfaces if item.get("kind") == "usb"]),
+        },
+        "warnings": [],
+    }
+
+
+def _sync_device_interfaces_if_configured(client: PlatformClient, cfg: RunnerConfig, log: LogCollector) -> bool:
+    if not cfg.project_id or not cfg.computer_node_id:
+        return False
+    try:
+        scan = _build_device_interface_scan()
+        client.sync_device_interfaces(
+            cfg.runner_id,
+            project_id=cfg.project_id,
+            computer_node_id=cfg.computer_node_id,
+            scan=scan,
+        )
+        log.write(
+            "info",
+            f"Synced device interfaces project={cfg.project_id} computer={cfg.computer_node_id} count={len(scan['interfaces'])}",
+        )
+        return True
+    except Exception as exc:
+        log.write("warn", f"Device interface sync failed: {exc}")
+        return False
+
+
 def main() -> int:
     cfg = RunnerConfig.from_env()
     ensure_dirs(cfg)
@@ -230,6 +322,7 @@ def main() -> int:
         pass
 
     last_hb = 0.0
+    last_device_scan = 0.0
     while True:
         now = time.time()
         if now - last_hb >= cfg.heartbeat_seconds:
@@ -238,6 +331,9 @@ def main() -> int:
             except Exception:
                 pass
             last_hb = now
+        if now - last_device_scan >= cfg.device_scan_seconds:
+            _sync_device_interfaces_if_configured(client, cfg, relay_log)
+            last_device_scan = now
 
         try:
             _poll_runner_relay_inbox(client, cfg, relay_log)

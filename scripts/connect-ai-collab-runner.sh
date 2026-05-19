@@ -15,6 +15,7 @@ CLAUDE_MAX_AGE_HOURS="24"
 WATCH="false"
 WATCH_POLL_SECONDS="15"
 WATCH_MAX_LOOPS="0"
+DEVICE_SCAN_INTERVAL_SECONDS="60"
 WATCH_EXECUTE_PROVIDER_CLI="false"
 SKIP_CODEX="false"
 SKIP_CLAUDE="false"
@@ -36,6 +37,7 @@ while [[ $# -gt 0 ]]; do
     --watch) WATCH="true"; shift ;;
     --watch-poll-seconds) WATCH_POLL_SECONDS="${2:-}"; shift 2 ;;
     --watch-max-loops) WATCH_MAX_LOOPS="${2:-}"; shift 2 ;;
+    --device-scan-interval-seconds) DEVICE_SCAN_INTERVAL_SECONDS="${2:-}"; shift 2 ;;
     --watch-execute-provider-cli) WATCH_EXECUTE_PROVIDER_CLI="true"; shift ;;
     --skip-codex) SKIP_CODEX="true"; shift ;;
     --skip-claude) SKIP_CLAUDE="true"; shift ;;
@@ -297,17 +299,22 @@ PY
   done
 }
 
+sync_device_interfaces_once() {
+  download_runner_script "scan-device-interfaces.py"
+  python3 "$RUNNER_DIR/scan-device-interfaces.py" \
+    --sync \
+    --server "$API_BASE" \
+    --runner-id "$RUNNER_ID" \
+    --project-id "$PROJECT_ID" \
+    --computer-node-id "$COMPUTER_NODE_ID" >/dev/null
+}
+
 register_runner
 
 download_runner_script "platform-workstation-adapter.py"
 download_runner_script "platform-provider-executor.py"
 if download_runner_script "scan-device-interfaces.py"; then
-  if ! python3 "$RUNNER_DIR/scan-device-interfaces.py" \
-    --sync \
-    --server "$API_BASE" \
-    --runner-id "$RUNNER_ID" \
-    --project-id "$PROJECT_ID" \
-    --computer-node-id "$COMPUTER_NODE_ID" >/dev/null; then
+  if ! sync_device_interfaces_once; then
     echo "Device interface scan skipped or failed." >&2
   fi
 fi
@@ -358,6 +365,7 @@ print(json.dumps({
     "workspace_root": "$WORKSPACE_ROOT" or None,
     "runner_dir": "$RUNNER_DIR",
     "watch_enabled": "$WATCH" == "true",
+    "device_scan_interval_seconds": int("$DEVICE_SCAN_INTERVAL_SECONDS"),
     "watch_execute_provider_cli": "$WATCH_EXECUTE_PROVIDER_CLI" == "true",
 }, ensure_ascii=False, indent=2))
 PY
@@ -374,12 +382,26 @@ if [[ "$WATCH" == "true" ]]; then
   fi
   loop=0
   failure_streak=0
+  last_device_scan_epoch=0
+  if [[ "$DEVICE_SCAN_INTERVAL_SECONDS" -lt 15 ]]; then
+    DEVICE_SCAN_INTERVAL_SECONDS="15"
+  fi
   while true; do
     loop=$((loop + 1))
     loop_ok="true"
     if ! heartbeat_runner; then
       echo "heartbeat failed; the runner will retry automatically." >&2
       loop_ok="false"
+    fi
+    now_epoch="$(date +%s)"
+    if (( now_epoch - last_device_scan_epoch >= DEVICE_SCAN_INTERVAL_SECONDS )); then
+      if sync_device_interfaces_once; then
+        last_device_scan_epoch="$now_epoch"
+        echo "Device interfaces synced."
+      else
+        echo "device interface scan failed; the runner will retry automatically." >&2
+        loop_ok="false"
+      fi
     fi
     if ! poll_runner_inbox_once; then
       echo "runner inbox poll failed; the runner will retry automatically." >&2

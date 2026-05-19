@@ -129,9 +129,8 @@ def test_provider_disabled_keeps_legacy_inbox_only_behaviour(tmp_path, monkeypat
     )
 
     assert handled is True
-    assert len(client.completions) == 1
-    assert client.completions[0]["result_status"] == "completed"
-    assert "Local CLI / adapter polling" in (client.completions[0]["note"] or "")
+    assert len(client.acks) == 1
+    assert len(client.completions) == 0
 
     inbox_files = list((cfg.workdir / "inbox").glob("*.json"))
     assert len(inbox_files) == 1

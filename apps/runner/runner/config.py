@@ -25,6 +25,9 @@ class RunnerConfig:
     max_concurrent_tasks: int
     heartbeat_seconds: int
     poll_seconds: int
+    project_id: str = ""
+    computer_node_id: str = ""
+    device_scan_seconds: int = 60
     cli_provider: str = "disabled"
     cli_executor_path: Path | None = None
     cli_timeout_seconds: int = 1800
@@ -40,6 +43,9 @@ class RunnerConfig:
         max_concurrent_tasks = int(_env("MAX_CONCURRENT_TASKS", "1"))
         heartbeat_seconds = int(_env("HEARTBEAT_SECONDS", "15"))
         poll_seconds = int(_env("POLL_SECONDS", "10"))
+        project_id = _env("PROJECT_ID", "").strip()
+        computer_node_id = _env("COMPUTER_NODE_ID", "").strip()
+        device_scan_seconds = max(15, int(_env("DEVICE_SCAN_SECONDS", "60")))
         cli_provider = _env("RUNNER_CLI_PROVIDER", "disabled").strip().lower() or "disabled"
         if cli_provider not in {"claude", "codex", "disabled"}:
             cli_provider = "disabled"
@@ -56,6 +62,9 @@ class RunnerConfig:
             max_concurrent_tasks=max_concurrent_tasks,
             heartbeat_seconds=heartbeat_seconds,
             poll_seconds=poll_seconds,
+            project_id=project_id,
+            computer_node_id=computer_node_id,
+            device_scan_seconds=device_scan_seconds,
             cli_provider=cli_provider,
             cli_executor_path=cli_executor_path,
             cli_timeout_seconds=cli_timeout_seconds,
@@ -69,4 +78,3 @@ def ensure_dirs(cfg: RunnerConfig) -> None:
     (cfg.workdir / "artifacts").mkdir(parents=True, exist_ok=True)
     (cfg.workdir / "inbox").mkdir(parents=True, exist_ok=True)
     (cfg.workdir / "inbox" / "processed").mkdir(parents=True, exist_ok=True)
-

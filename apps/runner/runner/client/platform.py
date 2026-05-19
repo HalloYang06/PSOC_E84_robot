@@ -70,6 +70,26 @@ class PlatformClient:
     def heartbeat(self, runner_id: str) -> Any:
         return self._request("POST", "/api/runners/heartbeat", {"runner_id": runner_id})
 
+    def sync_device_interfaces(
+        self,
+        runner_id: str,
+        *,
+        project_id: str,
+        computer_node_id: str,
+        scan: dict[str, Any],
+    ) -> Any:
+        payload = {
+            **scan,
+            "project_id": project_id,
+            "computer_node_id": computer_node_id,
+        }
+        return self._request(
+            "POST",
+            f"/api/runners/{runner_id}/device-interfaces/sync",
+            payload,
+            timeout_s=20,
+        )
+
     def fetch_next_task(self, runner_id: str) -> dict[str, Any] | None:
         # First-version placeholder endpoint. Backend may not implement this yet.
         # Return None if not found / not supported.

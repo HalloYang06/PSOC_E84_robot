@@ -16,6 +16,7 @@ param(
   [switch]$Watch,
   [int]$WatchPollSeconds = 15,
   [int]$WatchMaxLoops = 0,
+  [int]$DeviceScanIntervalSeconds = 60,
   [switch]$WatchExecuteProviderCli,
   [switch]$SkipCodex,
   [switch]$SkipClaude,
@@ -353,6 +354,43 @@ function Invoke-WorkstationInboxPoll {
   return $results
 }
 
+function Invoke-DeviceInterfaceSync {
+  param(
+    [Parameter(Mandatory = $true)][string]$ApiBase,
+    [Parameter(Mandatory = $true)][string]$WebBase,
+    [Parameter(Mandatory = $true)][string]$RunnerId,
+    [Parameter(Mandatory = $true)][string]$ProjectId,
+    [Parameter(Mandatory = $true)][string]$ComputerNodeId,
+    [Parameter(Mandatory = $true)][string]$RunnerDir
+  )
+  $deviceScanScript = Download-RunnerScript -WebBase $WebBase -ScriptName "scan-device-interfaces.py" -RunnerDir $RunnerDir
+  $scanOutput = & python $deviceScanScript `
+    --sync `
+    --server $ApiBase `
+    --runner-id $RunnerId `
+    --project-id $ProjectId `
+    --computer-node-id $ComputerNodeId 2>&1
+  if ($LASTEXITCODE -ne 0) {
+    throw (($scanOutput | Out-String).Trim())
+  }
+  $scanText = ($scanOutput | Out-String).Trim()
+  try {
+    $scanJson = $scanText | ConvertFrom-Json
+    $scanData = if ($scanJson.data) { $scanJson.data } else { $scanJson }
+    return [ordered]@{
+      status = "ok"
+      interface_count = [int]($scanData.interface_count -as [int])
+      scanned_at = [string]$scanData.scanned_at
+    }
+  } catch {
+    return [ordered]@{
+      status = "ok"
+      interface_count = $null
+      scanned_at = ""
+    }
+  }
+}
+
 function Start-RunnerWatchLoop {
   param(
     [Parameter(Mandatory = $true)][string]$ApiBase,
@@ -363,10 +401,14 @@ function Start-RunnerWatchLoop {
     [Parameter(Mandatory = $true)][string]$RunnerDir,
     [int]$PollSeconds = 15,
     [int]$MaxLoops = 0,
+    [int]$DeviceScanIntervalSeconds = 60,
     [switch]$ExecuteProviderCli
   )
   if ($PollSeconds -lt 3) {
     $PollSeconds = 3
+  }
+  if ($DeviceScanIntervalSeconds -lt 15) {
+    $DeviceScanIntervalSeconds = 15
   }
   Write-Host "Runner watch mode started. Press Ctrl+C to stop. Poll interval: $PollSeconds seconds."
   if ($ExecuteProviderCli) {
@@ -377,10 +419,27 @@ function Start-RunnerWatchLoop {
 
   $loop = 0
   $failureStreak = 0
+  $lastDeviceScanAt = [datetime]::MinValue
   while ($true) {
     $loop += 1
     try {
       [void](Invoke-RunnerHeartbeat -ApiBase $ApiBase -RunnerId $RunnerId)
+      $deviceScanResult = $null
+      $secondsSinceDeviceScan = ([datetime]::UtcNow - $lastDeviceScanAt).TotalSeconds
+      if ($secondsSinceDeviceScan -ge $DeviceScanIntervalSeconds) {
+        try {
+          $deviceScanResult = Invoke-DeviceInterfaceSync `
+            -ApiBase $ApiBase `
+            -WebBase $WebBase `
+            -RunnerId $RunnerId `
+            -ProjectId $ProjectId `
+            -ComputerNodeId $ComputerNodeId `
+            -RunnerDir $RunnerDir
+          $lastDeviceScanAt = [datetime]::UtcNow
+        } catch {
+          Write-Warning "Device interface scan failed; the runner will retry automatically: $($_.Exception.Message)"
+        }
+      }
       $runnerCommands = Invoke-RunnerInboxPoll -ApiBase $ApiBase -RunnerId $RunnerId -RunnerName $RunnerName
       $pollResults = Invoke-WorkstationInboxPoll `
         -ApiBase $ApiBase `
@@ -415,6 +474,9 @@ function Start-RunnerWatchLoop {
         }
       }
       Write-Host ("Runner watch heartbeat ok. Loop {0}: checked {1} thread(s), runner command(s) {2}, active thread(s) {3}." -f $loop, @($pollResults).Count, @($runnerCommands).Count, @($activePollResults).Count)
+      if ($deviceScanResult) {
+        Write-Host ("Device interfaces synced: {0} interface(s), scanned at {1}." -f $deviceScanResult.interface_count, $deviceScanResult.scanned_at)
+      }
       if (@($runnerSkipped).Count) {
         Write-Host ("Skipped {0} old command(s) that were already claimed or closed." -f @($runnerSkipped).Count)
       }
@@ -618,5 +680,6 @@ if ($Watch) {
     -RunnerDir $runnerDir `
     -PollSeconds $WatchPollSeconds `
     -MaxLoops $WatchMaxLoops `
+    -DeviceScanIntervalSeconds $DeviceScanIntervalSeconds `
     -ExecuteProviderCli:$WatchExecuteProviderCli
 }
