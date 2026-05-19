@@ -219,7 +219,9 @@ function captureSegments(tile: DebugWindow, messages: AnyRecord[]) {
   for (const message of messages) {
     const extra = record(message.extra_data ?? message.metadata);
     if (text(message.message_type ?? message.messageType, "") !== "runner_result") continue;
-    if (text(extra.terminal_interface_id, "") !== tile.id) continue;
+    const belongsToTile = text(extra.terminal_interface_id, "") === tile.id
+      || text(extra.source_message_id, "") && messages.some((source) => source.id === extra.source_message_id && text(record(source.extra_data ?? source.metadata).terminal_interface_id, "") === tile.id);
+    if (!belongsToTile) continue;
     const result = record(extra.runner_result);
     const captureId = text(result.capture_id ?? extra.capture_id, "");
     if (captureId) runnerResults.set(captureId, result);
