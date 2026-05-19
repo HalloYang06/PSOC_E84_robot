@@ -767,11 +767,11 @@ function DebugTile({
                 </div>
                 <label className={styles.fieldStack}>
                   <span>标注规则</span>
-                  <input name="label_schema" defaultValue="正常 / 过冲 / 振荡 / 缺失 / 异常" />
+                  <input name="label_schema" placeholder="用户自定义标签，例如：状态A / 状态B / 异常 / 需复核" />
                 </label>
                 <label className={styles.fieldStack}>
                   <span>标注目标</span>
-                  <textarea name="label_goal" rows={3} placeholder="例如：找出电机电流突增和温度异常片段，先让 NPC 给预标注建议" />
+                  <textarea name="label_goal" rows={3} placeholder="例如：找出任意变量的异常区间、状态切换、缺失样本或需要人工复核的时间段" />
                 </label>
                 <button type="submit" disabled={!segments.length || !boundNpcId}>生成预标注建议</button>
               </form>
@@ -797,7 +797,7 @@ function DebugTile({
                 </div>
                 <label className={styles.fieldStack}>
                   <span>确认标签</span>
-                  <input name="label_schema" defaultValue="human_confirmed" />
+                  <input name="label_schema" placeholder="用户确认后的标签体系或版本名" />
                 </label>
                 <label className={styles.fieldStack}>
                   <span>人工备注</span>
@@ -808,7 +808,7 @@ function DebugTile({
                   <textarea
                     name="manual_labels"
                     rows={5}
-                    placeholder="每行一条：片段,变量,开始,结束,标签,备注。例如 capture-1,motor.current,1.2,2.4,过冲,启动段"
+                    placeholder="每行一条：片段,变量,开始,结束,标签,备注。例如 capture-1,signal.value,1.2,2.4,异常,启动段"
                   />
                 </label>
                 {segments.some((segment) => captureTrainingRowLine(segment, variables)) ? (
@@ -856,7 +856,7 @@ function DebugTile({
         <section className={styles.dataWorkbenchPane} aria-label={`${tile.name} 图表实验`}>
           <article className={`${styles.dataActionPanel} ${styles.dataFocusPanel}`}>
             <span>图表证据</span>
-            <strong>{chartEvents.length ? `${chartEvents.length} 条实验记录` : "等待图表快照或调参建议"}</strong>
+            <strong>{chartEvents.length ? `${chartEvents.length} 条实验记录` : "等待图表快照或分析建议"}</strong>
             {segments.length ? (
               <div className={styles.waveformStack}>
                 {segments.slice(0, 3).map((segment) => (
@@ -888,7 +888,7 @@ function DebugTile({
                 ))}
               </ul>
             ) : (
-              <p>NPC 可以基于用户选定的曲线、目标值和现象给建议；写入真实硬件参数仍回到终端待审。</p>
+              <p>NPC 可以基于用户选定的曲线、目标值和现象给分析建议；涉及真实设备写入时仍回到终端待审。</p>
             )}
           </article>
           <aside className={styles.dataDrawerRail} aria-label="图表实验操作抽屉">
@@ -923,7 +923,7 @@ function DebugTile({
                 </div>
                 <label className={styles.fieldStack}>
                   <span>水平目标值</span>
-                  <input name="target_value" placeholder="例如 1500 rpm / 0.8 A / 45 deg" value={chartTargetValue} onChange={(event) => setChartTargetValue(event.target.value)} />
+                  <input name="target_value" placeholder="例如 目标值 / 阈值 / 状态线 / 参考区间" value={chartTargetValue} onChange={(event) => setChartTargetValue(event.target.value)} />
                 </label>
                 <label className={styles.fieldStack}>
                   <span>实验类型</span>
@@ -939,7 +939,7 @@ function DebugTile({
             </details>
             <details className={styles.workbenchDrawer}>
               <summary>
-                <span>NPC 调参建议</span>
+                <span>NPC 分析建议</span>
                 <strong>{boundNpcLabel || "选择 NPC 后可用"}</strong>
               </summary>
               <form action={创建机器人调参建议请求.bind(null, projectId)} className={styles.dataActionPanel}>
@@ -967,19 +967,19 @@ function DebugTile({
                   <input name="target_value" placeholder="目标值或目标区间" />
                 </label>
                 <label className={styles.fieldStack}>
-                  <span>调参类型</span>
-                  <select name="chart_mode" defaultValue="pid" aria-label="调参类型">
-                    <option value="pid">PID</option>
-                    <option value="foc">FOC</option>
-                    <option value="sensor">传感器</option>
-                    <option value="bus">总线</option>
+                  <span>分析类型</span>
+                  <select name="chart_mode" defaultValue="sensor" aria-label="分析类型">
+                    <option value="sensor">通用时序</option>
+                    <option value="bus">总线数据</option>
+                    <option value="pid">PID 调试</option>
+                    <option value="foc">FOC 调试</option>
                   </select>
                 </label>
                 <label className={styles.fieldStack}>
                   <span>现象描述</span>
-                  <textarea name="symptoms" rows={3} placeholder="例如：启动过冲明显，稳态误差大，电流波形有高频抖动" />
+                  <textarea name="symptoms" rows={3} placeholder="例如：某段数据突然跳变、周期性波动、状态切换后延迟、阈值附近反复抖动" />
                 </label>
-                <button type="submit" disabled={!segments.length || !boundNpcId}>请求 NPC 调参建议</button>
+                <button type="submit" disabled={!segments.length || !boundNpcId}>请求 NPC 分析建议</button>
               </form>
             </details>
           </aside>
