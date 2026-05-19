@@ -575,7 +575,12 @@ function DebugTile({
           ["dataset", "数据标注"],
           ["chart", "图表实验"],
         ].map(([tab, label]) => {
-          const count = tab === "terminal" ? terminalEventLines(tile, terminalMessages).length : segments.length;
+          const count =
+            tab === "terminal"
+              ? terminalEventLines(tile, terminalMessages).length
+              : tab === "dataset"
+                ? segments.length + datasetEvents.length
+                : segments.length + chartEvents.length;
           return (
             <button
               key={tab}
