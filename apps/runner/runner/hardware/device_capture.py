@@ -741,7 +741,7 @@ def _sync_capture_to_repo(
     try:
         target_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(manifest_path, root / repo_relative_manifest)
-        if preview_path.exists():
+        if preview_path.exists() and preview_path.stat().st_size > 0:
             shutil.copy2(preview_path, root / repo_relative_preview)
         checksum = {
             "schema": "runner_device_capture_checksum_v1",
@@ -762,7 +762,9 @@ def _sync_capture_to_repo(
             "message": f"写入仓库工作副本失败：{exc}",
         }
 
-    git_paths = [repo_relative_manifest, repo_relative_preview, (repo_relative_dir / "checksum-summary.json").as_posix()]
+    git_paths = [repo_relative_manifest, (repo_relative_dir / "checksum-summary.json").as_posix()]
+    if (root / repo_relative_preview).exists() and (root / repo_relative_preview).stat().st_size > 0:
+        git_paths.insert(1, repo_relative_preview)
     add = _run_git(root, ["add", "--", *git_paths])
     if not add["ok"]:
         return {
@@ -799,7 +801,7 @@ def _sync_capture_to_repo(
         "status": status,
         "repo_relative_dir": repo_relative_dir.as_posix(),
         "manifest": repo_relative_manifest,
-        "preview": repo_relative_preview,
+        "preview": repo_relative_preview if (root / repo_relative_preview).exists() and (root / repo_relative_preview).stat().st_size > 0 else "",
         "commit": commit_hash or None,
         "push_enabled": git_push,
         "message": "采集数据已写入仓库证据目录" if status != "push_failed" else "采集数据已提交本地仓库，但推送失败，等待重试或人工处理。",

@@ -264,6 +264,35 @@ def test_robotics_capture_stop_syncs_manifest_preview_to_git_repo(tmp_path: Path
     assert "Add device capture capture-sync" in log.stdout
 
 
+def test_robotics_capture_stop_syncs_manifest_without_preview_to_git_repo(tmp_path: Path, monkeypatch: Any) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "config", "user.email", "runner@example.invalid"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Runner"], cwd=repo, check=True)
+    monkeypatch.setattr("runner.hardware.device_capture._capture_serial_preview", lambda *_args, **_kwargs: {"samples": [], "byte_count": 0, "error": "no data"})
+    payload = {
+        "kind": "robotics.capture.stop",
+        "project_id": "proj_empty_repo",
+        "capture_id": "capture-empty",
+        "computer_node_id": "windows-pc",
+        "interface_id": "serial:COM30",
+        "interface_kind": "serial",
+        "sample_hz": 100,
+        "channels": ["time", "raw.text"],
+    }
+
+    result = execute_device_capture_command(payload, allow_hardware_access=True, workdir=tmp_path, repo_root=repo)
+
+    sync = result["result"]["repo_sync"]
+    assert result["result_status"] == "failed"
+    assert sync["status"] == "committed"
+    assert sync["manifest"] == "data/device-captures/proj_empty_repo/windows-pc/serial-COM30/capture-empty/manifest.json"
+    assert sync["preview"] == ""
+    assert (repo / sync["manifest"]).exists()
+    assert not (repo / "data/device-captures/proj_empty_repo/windows-pc/serial-COM30/capture-empty/preview.jsonl").exists()
+
+
 def test_linux_scanned_serial_interface_id_resolves_to_dev_path() -> None:
     assert _serial_port_from_interface("serial:ttyUSB0", None) == "/dev/ttyUSB0"
     assert _serial_port_from_interface("serial:ttyACM1", None) == "/dev/ttyACM1"
