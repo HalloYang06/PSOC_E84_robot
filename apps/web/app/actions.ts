@@ -6719,6 +6719,28 @@ function splitFormList(value: FormDataEntryValue | FormDataEntryValue[] | null |
     .filter(Boolean);
 }
 
+function parseRoboticsManualLabels(value: unknown) {
+  return String(value ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 200)
+    .map((line, index) => {
+      const parts = line.split(/[,，|]/).map((part) => part.trim());
+      const [captureId, variable, start, end, label, ...noteParts] = parts;
+      return {
+        row: index + 1,
+        capture_id: captureId || "",
+        variable: variable || "",
+        start: start || "",
+        end: end || "",
+        label: label || line,
+        note: noteParts.join(" / "),
+        raw: line,
+      };
+    });
+}
+
 async function writeRoboticsDerivedArtifact(options: {
   projectId: string;
   interfaceId: string;
@@ -7170,6 +7192,7 @@ export async function 导出机器人标注数据(projectId: string, formData: F
   const labelSchema = String(formData.get("label_schema") ?? "confirmed_labels").trim() || "confirmed_labels";
   const exportFormat = safeArtifactSlug(formData.get("export_format") ?? "jsonl", "jsonl");
   const labelNotes = String(formData.get("label_notes") ?? "").trim();
+  const manualLabels = parseRoboticsManualLabels(formData.get("manual_labels"));
   if (!interfaceId || !computerNodeId) {
     redirect(withQueryValue(returnTo, "team_error", "请先在真实接口瓷砖里导出标注数据"));
   }
@@ -7193,14 +7216,26 @@ export async function 导出机器人标注数据(projectId: string, formData: F
       selected_variables: variables,
       label_schema: labelSchema,
       label_notes: labelNotes,
+      manual_labels: manualLabels,
       export_format: normalizedFormat,
       runner_capture_summaries: runnerSummaries,
       created_at: timestamp,
       storage_note: "Raw high-frequency data should live in the project GitHub data path; this artifact is the platform export index or lightweight export.",
     };
     const rows = [
-      ["dataset_id", "capture_id", "variable", "label_schema", "label_notes"],
-      ...captureIds.flatMap((captureId) => variables.map((variable) => [exportId, captureId, variable, labelSchema, labelNotes])),
+      ["dataset_id", "capture_id", "variable", "label_schema", "label", "start", "end", "note", "source"],
+      ...captureIds.flatMap((captureId) => variables.map((variable) => [exportId, captureId, variable, labelSchema, labelSchema, "", "", labelNotes, "human_summary"])),
+      ...manualLabels.map((label) => [
+        exportId,
+        label.capture_id || captureIds[0] || "",
+        label.variable || variables[0] || "",
+        labelSchema,
+        label.label,
+        label.start,
+        label.end,
+        label.note || labelNotes,
+        "human_label",
+      ]),
     ];
     const artifactPath = await writeRoboticsDerivedArtifact({
       projectId,
@@ -7238,6 +7273,7 @@ export async function 导出机器人标注数据(projectId: string, formData: F
         capture_ids: captureIds,
         selected_variables: variables,
         label_schema: labelSchema,
+        manual_labels: manualLabels,
         export_format: normalizedFormat,
         runner_capture_summaries: runnerSummaries,
         artifact_path: artifactPath,

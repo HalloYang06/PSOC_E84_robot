@@ -539,6 +539,14 @@ function DebugTile({
               <span>人工备注</span>
               <textarea name="label_notes" rows={3} placeholder="确认、修正或补充 NPC 预标注结果" />
             </label>
+            <label className={styles.fieldStack}>
+              <span>人工标签</span>
+              <textarea
+                name="manual_labels"
+                rows={5}
+                placeholder="每行一条：片段,变量,开始,结束,标签,备注。例如 capture-1,motor.current,1.2,2.4,过冲,启动段"
+              />
+            </label>
             <span>导出</span>
             <select name="export_format" defaultValue="jsonl" aria-label="导出格式">
               <option value="csv">CSV</option>

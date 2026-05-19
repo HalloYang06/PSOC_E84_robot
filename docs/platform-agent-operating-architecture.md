@@ -809,6 +809,7 @@ NPC 互相协作：
 - API 的 runner complete 回执已支持 `metadata/extra_data`，设备数据工作台会把同一 `capture_id` 的 `runner_result` 合并到采集片段列表和图表证据里显示，用户不需要翻 Markdown 回执才能知道是否真的采到样本。
 - 数据标注和图表实验 tab 已按同一调试窗口的 `robotics_capture_segment` 消息读取片段、通道和 manifest 路径。
 - 数据标注 tab 已有同瓷砖闭环动作：选择一个或多个采集片段、选择变量/通道、创建 `robotics_annotation_request` NPC 预标注请求、用户填写确认备注、按 CSV/JSONL/Parquet 清单/NPZ 清单/项目清单导出 `robotics_dataset_export` 证据。当前轻量导出先落 `artifacts/robotics-derived/...`；高频原始数据和重型二进制文件仍由 runner/GitHub 数据通道补齐。
+- 用户已可在数据标注 tab 手动输入多行人工标签，格式为“片段,变量,开始,结束,标签,备注”。导出时这些标签会进入 CSV/JSONL/manifest 行和 `manual_labels` 字段，作为用户确认标签；后续再补逐条可视化编辑和 NPC 预标注 diff。
 - 标注数据导出会回查同一调试窗口、同一 `capture_id` 的 runner 回执，把样本数、字节数、数值摘要和仓库同步状态写入导出 manifest，避免训练/图表实验只拿到空索引。
 - 图表实验 tab 已有同瓷砖闭环动作：选择采集片段、横轴、多个纵轴、目标值、PID/FOC/传感器/总线模式，保存 `robotics_chart_snapshot` 图表实验配置，并创建 `robotics_tuning_request` NPC 调参建议请求。NPC 只能给调参建议或生成待审核操作；不能直接写入真实硬件。
 - 下一步补 USB/SPI-CAN/ROS 只读采集器、大型原始数据 Git LFS/Release/对象存储指针和成功同步后的本地 TTL 清理、低频预览曲线渲染、NPC 预标注结果回填，以及用户确认标签的可编辑表格。
