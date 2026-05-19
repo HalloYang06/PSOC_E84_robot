@@ -3795,6 +3795,7 @@ def complete_runner_command(db: Session, runner_id: str, message_id: str, payloa
         raise AppError("MESSAGE_NOT_PENDING", "runner command is already closed", status_code=409)
     before_status = message.status
     message.status = payload.result_status
+    completion_metadata = _metadata_dict(getattr(payload, "metadata", None))
     append_audit_log(
         db,
         project_id=message.project_id,
@@ -3826,6 +3827,7 @@ def complete_runner_command(db: Session, runner_id: str, message_id: str, payloa
                 "source_message_type": message.message_type,
                 "dispatch_id": message.dispatch_id,
                 **_metadata_dict(message.extra_data),
+                **completion_metadata,
                 **(
                     {
                         "blocked_taxonomy": {

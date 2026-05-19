@@ -141,11 +141,12 @@ class PlatformClient:
         *,
         result_status: str,
         note: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> Any:
         return self._request(
             "POST",
             f"/api/runners/{runner_id}/messages/{message_id}/complete",
-            {"result_status": result_status, "note": note},
+            {"result_status": result_status, "note": note, "metadata": metadata or {}},
             timeout_s=20,
         )
 

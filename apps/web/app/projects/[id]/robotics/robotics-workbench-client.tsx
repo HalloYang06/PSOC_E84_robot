@@ -122,6 +122,15 @@ function terminalEventLines(tile: DebugWindow, messages: AnyRecord[]) {
 }
 
 function captureSegments(tile: DebugWindow, messages: AnyRecord[]) {
+  const runnerResults = new Map<string, AnyRecord>();
+  for (const message of messages) {
+    const extra = record(message.extra_data ?? message.metadata);
+    if (text(message.message_type ?? message.messageType, "") !== "runner_result") continue;
+    if (text(extra.terminal_interface_id, "") !== tile.id) continue;
+    const result = record(extra.runner_result);
+    const captureId = text(result.capture_id ?? extra.capture_id, "");
+    if (captureId) runnerResults.set(captureId, result);
+  }
   return messages
     .filter((message) => {
       const extra = record(message.extra_data ?? message.metadata);
@@ -138,6 +147,7 @@ function captureSegments(tile: DebugWindow, messages: AnyRecord[]) {
         sampleHz: text(extra.capture_sample_hz, "100"),
         channels: channels.length ? channels : ["time", "motor.current", "sensor.temperature"],
         createdAt: text(message.created_at ?? message.createdAt ?? extra.stopped_at, ""),
+        runnerResult: runnerResults.get(text(extra.capture_id, "")) || {},
       };
     })
     .reverse();
@@ -165,6 +175,20 @@ function segmentVariables(segments: ReturnType<typeof captureSegments>) {
     ["time", "motor.current", "motor.velocity", "sensor.temperature", "bus.frame"].forEach((item) => values.add(item));
   }
   return Array.from(values);
+}
+
+function captureResultLine(segment: ReturnType<typeof captureSegments>[number]) {
+  const result = record(segment.runnerResult);
+  const sampleCount = text(result.sample_count, "");
+  const byteCount = text(result.byte_count, "");
+  const preview = text(result.preview, "");
+  const error = text(result.error, "");
+  if (sampleCount && sampleCount !== "0") {
+    return `已回传 ${sampleCount} 个样本${byteCount ? ` / ${byteCount} bytes` : ""}${preview ? ` · ${preview}` : ""}`;
+  }
+  if (preview) return `已回传预览文件 · ${preview}`;
+  if (error) return `采集回执：${error}`;
+  return "";
 }
 
 function HiddenTileFields({
@@ -418,6 +442,7 @@ function DebugTile({
                     </label>
                     <input type="hidden" name="capture_titles" value={segment.title} />
                     <small>{segment.sampleHz}Hz · {segment.channels.slice(0, 3).join(" / ")}</small>
+                    {captureResultLine(segment) ? <small>{captureResultLine(segment)}</small> : null}
                     {segment.artifactPath ? <code>{segment.artifactPath}</code> : null}
                   </li>
                 ))}
@@ -560,6 +585,16 @@ function DebugTile({
           <article className={styles.dataActionPanel}>
             <span>图表证据</span>
             <strong>{chartEvents.length ? `${chartEvents.length} 条实验记录` : "等待图表快照或调参建议"}</strong>
+            {segments.some((segment) => captureResultLine(segment)) ? (
+              <ul className={styles.eventList}>
+                {segments.filter((segment) => captureResultLine(segment)).slice(0, 3).map((segment) => (
+                  <li key={`${segment.id}-runner-result`}>
+                    <b>{segment.title}</b>
+                    <small>{captureResultLine(segment)}</small>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
             {chartEvents.length ? (
               <ul className={styles.eventList}>
                 {chartEvents.map((event) => (

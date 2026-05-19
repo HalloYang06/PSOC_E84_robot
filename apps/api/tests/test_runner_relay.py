@@ -153,6 +153,51 @@ def test_runner_relay_command_round_trip() -> None:
     assert any(item["recipient_type"] == "human" and item["sender_id"] == runner_id for item in result_messages)
 
 
+def test_runner_relay_completion_preserves_structured_metadata() -> None:
+    owner_token, project_id, runner_id, task_id = _setup_runner_project()
+
+    command_response = client.post(
+        f"/api/collaboration/projects/{project_id}/runner-commands",
+        headers=auth_headers(owner_token),
+        json={
+            "computer_node_id": "pc-relay",
+            "task_id": task_id,
+            "title": "采集回执",
+            "body": "structured metadata result",
+            "metadata": {
+                "terminal_interface_id": "serial:COM1",
+                "capture_id": "capture-structured",
+            },
+        },
+    )
+    assert command_response.status_code == 200
+    command = command_response.json()["data"]
+
+    complete_response = client.post(
+        f"/api/runners/{runner_id}/messages/{command['id']}/complete",
+        headers={"X-Runner-Id": runner_id},
+        json={
+            "result_status": "completed",
+            "note": "采集完成。",
+            "metadata": {
+                "runner_result": {
+                    "capture_id": "capture-structured",
+                    "sample_count": 12,
+                    "preview": "device-captures/proj/pc/serial/capture/preview.jsonl",
+                },
+                "artifact_refs": [{"label": "采集预览", "path": "artifacts/robotics-captures/proj/capture.json"}],
+            },
+        },
+    )
+    assert complete_response.status_code == 200
+    receipt = complete_response.json()["data"]["receipt"]
+    assert receipt["message_type"] == "runner_result"
+    assert receipt["metadata"]["terminal_interface_id"] == "serial:COM1"
+    assert receipt["metadata"]["capture_id"] == "capture-structured"
+    assert receipt["metadata"]["runner_result"]["sample_count"] == 12
+    assert receipt["metadata"]["artifact_refs"][0]["label"] == "采集预览"
+
+
 def test_runner_relay_command_accepts_structured_dispatch_id_without_legacy_body_hint() -> None:
     owner_token, project_id, runner_id, task_id = _setup_runner_project()
 

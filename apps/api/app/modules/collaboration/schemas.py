@@ -322,6 +322,18 @@ class RunnerRelayAckCreate(BaseModel):
 class RunnerRelayCompleteCreate(BaseModel):
     result_status: str = Field(default="completed", pattern="^(completed|failed)$")
     note: str | None = Field(default=None, max_length=4000)
+    metadata: dict | None = Field(default=None, alias="extra_data")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_metadata_alias(cls, value):
+        if isinstance(value, dict) and "metadata" in value and "extra_data" not in value:
+            data = dict(value)
+            data["extra_data"] = data.pop("metadata")
+            return data
+        return value
 
 
 class WorkstationInboxAckCreate(BaseModel):

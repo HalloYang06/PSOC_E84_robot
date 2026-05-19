@@ -166,6 +166,7 @@ def _handle_runner_relay_message(
             message_id,
             result_status=str(result.get("result_status") or "failed"),
             note=str(result.get("note") or ""),
+            metadata={"runner_result": result.get("result") or {}, "runner_capability": "robotics.capture"},
         )
         log.write("info", f"Handled runner relay {message_id} kind={kind} status={result.get('result_status')}")
         return True

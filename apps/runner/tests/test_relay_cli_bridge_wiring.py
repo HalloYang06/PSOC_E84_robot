@@ -32,9 +32,17 @@ class _FakeClient:
     def ack_runner_message(self, runner_id: str, message_id: str, note: str | None = None) -> None:
         self.acks.append({"runner_id": runner_id, "message_id": message_id, "note": note})
 
-    def complete_runner_message(self, runner_id: str, message_id: str, *, result_status: str, note: str | None) -> None:
+    def complete_runner_message(
+        self,
+        runner_id: str,
+        message_id: str,
+        *,
+        result_status: str,
+        note: str | None,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
         self.completions.append(
-            {"runner_id": runner_id, "message_id": message_id, "result_status": result_status, "note": note}
+            {"runner_id": runner_id, "message_id": message_id, "result_status": result_status, "note": note, "metadata": metadata}
         )
 
 

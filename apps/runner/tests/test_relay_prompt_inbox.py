@@ -34,9 +34,17 @@ class _FakeClient:
     def ack_runner_message(self, runner_id: str, message_id: str, note: str | None = None) -> None:
         self.acks.append({"runner_id": runner_id, "message_id": message_id, "note": note})
 
-    def complete_runner_message(self, runner_id: str, message_id: str, *, result_status: str, note: str | None) -> None:
+    def complete_runner_message(
+        self,
+        runner_id: str,
+        message_id: str,
+        *,
+        result_status: str,
+        note: str | None,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
         self.completions.append(
-            {"runner_id": runner_id, "message_id": message_id, "result_status": result_status, "note": note}
+            {"runner_id": runner_id, "message_id": message_id, "result_status": result_status, "note": note, "metadata": metadata}
         )
 
 
@@ -136,6 +144,8 @@ def test_robotics_capture_command_short_circuits_before_inbox(tmp_path: Path) ->
     assert len(client.acks) == 1
     assert len(client.completions) == 1
     assert client.completions[0]["result_status"] == "completed"
+    assert client.completions[0]["metadata"]["runner_capability"] == "robotics.capture"
+    assert client.completions[0]["metadata"]["runner_result"]["capture_id"] == "capture-test"
     manifest = cfg.workdir / "device-captures" / "proj_x" / "windows-desktop-main" / "serial-COM1" / "capture-test" / "manifest.json"
     assert manifest.exists()
 
