@@ -25,7 +25,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO_ROOT / "apps" / "runner"))
 
 from runner.config import RunnerConfig, ensure_dirs  # noqa: E402
-from runner.hardware.device_capture import execute_device_capture_command  # noqa: E402
+from runner.hardware.device_capture import _serial_port_from_interface, execute_device_capture_command  # noqa: E402
 from runner.logs import LogCollector  # noqa: E402
 from runner.main import _handle_runner_relay_message  # noqa: E402
 
@@ -262,6 +262,14 @@ def test_robotics_capture_stop_syncs_manifest_preview_to_git_repo(tmp_path: Path
     assert (repo / "data/device-captures/proj_repo/linux-board/serial-ttyUSB0/capture-sync/checksum-summary.json").exists()
     log = subprocess.run(["git", "log", "--oneline", "-1"], cwd=repo, check=True, capture_output=True, text=True)
     assert "Add device capture capture-sync" in log.stdout
+
+
+def test_linux_scanned_serial_interface_id_resolves_to_dev_path() -> None:
+    assert _serial_port_from_interface("serial:ttyUSB0", None) == "/dev/ttyUSB0"
+    assert _serial_port_from_interface("serial:ttyACM1", None) == "/dev/ttyACM1"
+    assert _serial_port_from_interface("serial:/dev/ttyAMA0", None) == "/dev/ttyAMA0"
+    assert _serial_port_from_interface("serial:COM7", None) == "COM7"
+    assert _serial_port_from_interface("serial:ttyUSB0", "COM9") == "COM9"
 
 
 def test_message_without_id_returns_false(tmp_path: Path) -> None:

@@ -388,7 +388,10 @@ def _serial_port_from_interface(interface_id: Any, port: Any) -> str:
         return explicit
     raw = str(interface_id or "").strip()
     if raw.lower().startswith("serial:"):
-        return raw.split(":", 1)[1].strip()
+        value = raw.split(":", 1)[1].strip()
+        if value and "/" not in value and value.lower().startswith(("tty", "cu.")):
+            return f"/dev/{value}"
+        return value
     return ""
 
 
