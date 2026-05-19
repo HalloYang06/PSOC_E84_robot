@@ -4221,6 +4221,7 @@ export async function 下发串口调试指令(projectId: string, formData: Form
     revalidatePath("/runners");
     redirect(withQueryValue(returnTo, "team_notice", "串口写入命令已下发"));
   } catch (error) {
+    rethrowRedirectError(error);
     const message = error instanceof Error ? error.message : "下发串口写入失败";
     redirect(withQueryValue(returnTo, "team_error", message));
   }
@@ -6734,6 +6735,7 @@ export async function 下发Runner命令(projectId: string, formData: FormData) 
     revalidatePath("/runners");
     redirect(withQueryValue(returnTo, "team_notice", "Runner 命令已下发"));
   } catch (error) {
+    rethrowRedirectError(error);
     const message = error instanceof Error ? error.message : "下发 Runner 命令失败";
     redirect(withQueryValue(returnTo, "team_error", message));
   }
