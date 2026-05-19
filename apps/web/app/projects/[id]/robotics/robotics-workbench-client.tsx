@@ -537,6 +537,8 @@ function DebugTile({
   const [boundNpcId, setBoundNpcId] = useState(initialNpcId);
   const selectedNpcRecord = npcSeats.find((seat) => seatId(seat, "") === boundNpcId);
   const boundNpcLabel = selectedNpcRecord ? seatName(selectedNpcRecord, boundNpcId) : "";
+  const effectiveBoundNpcId = text(boundNpcId, tile.boundNpc);
+  const effectiveBoundNpcLabel = boundNpcLabel || tile.boundNpc || "";
   const returnTo = windowsHref(projectId, openIds, boundNpcId);
   const segments = captureSegments(tile, terminalMessages);
   const variables = segmentVariables(segments);
@@ -562,7 +564,7 @@ function DebugTile({
         <span className={tileStyles.threadChip}>{tile.statusLabel}</span>
         <span className={tileStyles.threadChip}>电脑：{tile.computerLabel}</span>
         <span className={tileStyles.threadChip}>接单：{tile.computerState}</span>
-        <span className={tileStyles.threadChip}>协助 NPC：{boundNpcLabel || tile.boundNpc || "未绑定"}</span>
+        <span className={tileStyles.threadChip}>协助 NPC：{effectiveBoundNpcLabel || "未绑定"}</span>
         <button type="button" className={`${tileStyles.threadChip} ${styles.chipButton}`} onClick={() => setSettingsOpen((value) => !value)}>
           设置
         </button>
@@ -666,7 +668,7 @@ function DebugTile({
                 return <option key={seatId(seat, name)} value={seatId(seat, name)}>{name}</option>;
               })}
             </select>
-            <input type="hidden" name="bound_npc_label" value={boundNpcLabel} />
+            <input type="hidden" name="bound_npc_label" value={effectiveBoundNpcLabel} />
             <button type="submit" disabled={!tile.runnerReady} title={submitTitle(tile)}>
               {submitLabel(tile)}
             </button>
@@ -678,8 +680,8 @@ function DebugTile({
             <input type="hidden" name="runner_interface_id" value={tile.runnerInterfaceId || tile.id} />
             <input type="hidden" name="interface_name" value={tile.name} />
             <input type="hidden" name="interface_kind" value={tile.kindLabel} />
-            <input type="hidden" name="bound_npc" value={boundNpcId} />
-            <input type="hidden" name="bound_npc_label" value={boundNpcLabel} />
+            <input type="hidden" name="bound_npc" value={effectiveBoundNpcId} />
+            <input type="hidden" name="bound_npc_label" value={effectiveBoundNpcLabel} />
             <label>
               <span>采样频率</span>
               <input name="sample_hz" defaultValue={sampleHz} inputMode="numeric" />
@@ -706,11 +708,11 @@ function DebugTile({
             <input type="hidden" name="runner_interface_id" value={tile.runnerInterfaceId || tile.id} />
             <input type="hidden" name="interface_name" value={tile.name} />
             <input type="hidden" name="interface_kind" value={tile.kindLabel} />
-            <input type="hidden" name="bound_npc" value={boundNpcId} />
-            <input type="hidden" name="bound_npc_label" value={boundNpcLabel} />
+            <input type="hidden" name="bound_npc" value={effectiveBoundNpcId} />
+            <input type="hidden" name="bound_npc_label" value={effectiveBoundNpcLabel} />
             <span>NPC 代操作待审</span>
             <input name="command" placeholder="只有 NPC/AI 想替你操作时才填这里，例如 send 123#0102" />
-            <button type="submit" disabled={!tile.runnerReady || !boundNpcId} title={boundNpcId ? submitTitle(tile) : "先选择负责这个调试窗口的 NPC"}>
+            <button type="submit" disabled={!tile.runnerReady || !effectiveBoundNpcId} title={effectiveBoundNpcId ? submitTitle(tile) : "先选择负责这个调试窗口的 NPC"}>
               {tile.runnerReady ? "提交审核" : "需重连"}
             </button>
           </form>
@@ -744,10 +746,10 @@ function DebugTile({
             <details className={styles.workbenchDrawer} open>
               <summary>
                 <span>NPC 预标注</span>
-                <strong>{boundNpcLabel || "选择 NPC 后可用"}</strong>
+                <strong>{effectiveBoundNpcLabel || "选择 NPC 后可用"}</strong>
               </summary>
               <form action={创建机器人数据预标注请求.bind(null, projectId)} className={styles.dataActionPanel}>
-                <HiddenTileFields tile={tile} returnTo={returnTo} boundNpcId={boundNpcId} boundNpcLabel={boundNpcLabel} />
+                <HiddenTileFields tile={tile} returnTo={returnTo} boundNpcId={effectiveBoundNpcId} boundNpcLabel={effectiveBoundNpcLabel} />
                 <span>选择片段</span>
                 {segments.length ? segments.slice(0, 6).map((segment) => (
                   <label key={segment.id} className={styles.checkLine}>
@@ -773,7 +775,7 @@ function DebugTile({
                   <span>标注目标</span>
                   <textarea name="label_goal" rows={3} placeholder="例如：找出任意变量的异常区间、状态切换、缺失样本或需要人工复核的时间段" />
                 </label>
-                <button type="submit" disabled={!segments.length || !boundNpcId}>生成预标注建议</button>
+                <button type="submit" disabled={!segments.length || !effectiveBoundNpcId}>生成预标注建议</button>
               </form>
             </details>
             <details className={styles.workbenchDrawer}>
@@ -782,7 +784,7 @@ function DebugTile({
                 <strong>CSV / JSONL / 清单</strong>
               </summary>
               <form action={导出机器人标注数据.bind(null, projectId)} className={styles.dataActionPanel}>
-                <HiddenTileFields tile={tile} returnTo={returnTo} boundNpcId={boundNpcId} boundNpcLabel={boundNpcLabel} />
+                <HiddenTileFields tile={tile} returnTo={returnTo} boundNpcId={effectiveBoundNpcId} boundNpcLabel={effectiveBoundNpcLabel} />
                 {segments.slice(0, 6).map((segment) => (
                   <input key={segment.id} type="hidden" name="capture_ids" value={segment.id} />
                 ))}
@@ -898,7 +900,7 @@ function DebugTile({
                 <strong>{segments.length ? `${segments.length} 个片段` : "等待采集"}</strong>
               </summary>
               <form action={创建机器人图表实验.bind(null, projectId)} className={styles.dataActionPanel}>
-                <HiddenTileFields tile={tile} returnTo={returnTo} boundNpcId={boundNpcId} boundNpcLabel={boundNpcLabel} />
+                <HiddenTileFields tile={tile} returnTo={returnTo} boundNpcId={effectiveBoundNpcId} boundNpcLabel={effectiveBoundNpcLabel} />
                 <span>选择片段</span>
                 {segments.slice(0, 6).map((segment) => (
                   <label key={segment.id} className={styles.checkLine}>
@@ -940,10 +942,10 @@ function DebugTile({
             <details className={styles.workbenchDrawer}>
               <summary>
                 <span>NPC 分析建议</span>
-                <strong>{boundNpcLabel || "选择 NPC 后可用"}</strong>
+                <strong>{effectiveBoundNpcLabel || "选择 NPC 后可用"}</strong>
               </summary>
               <form action={创建机器人调参建议请求.bind(null, projectId)} className={styles.dataActionPanel}>
-                <HiddenTileFields tile={tile} returnTo={returnTo} boundNpcId={boundNpcId} boundNpcLabel={boundNpcLabel} />
+                <HiddenTileFields tile={tile} returnTo={returnTo} boundNpcId={effectiveBoundNpcId} boundNpcLabel={effectiveBoundNpcLabel} />
                 {segments.slice(0, 6).map((segment) => (
                   <input key={segment.id} type="hidden" name="capture_ids" value={segment.id} />
                 ))}
@@ -979,7 +981,7 @@ function DebugTile({
                   <span>现象描述</span>
                   <textarea name="symptoms" rows={3} placeholder="例如：某段数据突然跳变、周期性波动、状态切换后延迟、阈值附近反复抖动" />
                 </label>
-                <button type="submit" disabled={!segments.length || !boundNpcId}>请求 NPC 分析建议</button>
+                <button type="submit" disabled={!segments.length || !effectiveBoundNpcId}>请求 NPC 分析建议</button>
               </form>
             </details>
           </aside>
