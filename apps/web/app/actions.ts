@@ -6834,6 +6834,7 @@ export async function 记录机器人采集片段(projectId: string, formData: F
   const boundNpc = String(formData.get("bound_npc") ?? "").trim();
   const boundNpcLabel = String(formData.get("bound_npc_label") ?? "").trim();
   const sampleHz = String(formData.get("sample_hz") ?? "100").trim() || "100";
+  const baudRate = String(formData.get("baud_rate") ?? "115200").trim() || "115200";
   const channels = String(formData.get("channels") ?? "")
     .split(/[\n,，]+/)
     .map((item) => item.trim())
@@ -6864,6 +6865,7 @@ export async function 记录机器人采集片段(projectId: string, formData: F
         interface_kind: interfaceKind,
         computer_node_id: computerNodeId,
         sample_hz: sampleHz,
+        baud_rate: baudRate,
         channels: channelList,
         readonly: true,
       });
@@ -6876,6 +6878,7 @@ export async function 记录机器人采集片段(projectId: string, formData: F
           `接口类型：${interfaceKind || "待确认"}`,
           `接口名称：${interfaceName || interfaceId}`,
           `采样频率：${sampleHz} Hz`,
+          `串口波特率：${baudRate}`,
           `采集通道：${channelList.join("、")}`,
           "停止采集后会在同一调试瓷砖的数据标注和图表实验里生成采集片段索引。",
         ].join("\n"),
@@ -6895,6 +6898,7 @@ export async function 记录机器人采集片段(projectId: string, formData: F
           capture_id: captureId,
           capture_mode: "start",
           capture_sample_hz: sampleHz,
+          capture_baud_rate: baudRate,
           capture_channels: channelList,
           computer_node_id: computerNodeId,
           started_at: timestamp,
@@ -6914,6 +6918,7 @@ export async function 记录机器人采集片段(projectId: string, formData: F
           terminal_mode: "capture_start",
           capture_id: captureId,
           capture_sample_hz: sampleHz,
+          capture_baud_rate: baudRate,
           capture_channels: channelList,
           computer_node_id: computerNodeId,
           started_at: timestamp,
@@ -6947,6 +6952,7 @@ export async function 记录机器人采集片段(projectId: string, formData: F
       interface_kind: interfaceKind,
       computer_node_id: computerNodeId,
       sample_hz: effectiveSampleHz,
+      baud_rate: baudRate,
       channels: effectiveChannels,
       platform_artifact_path: artifactPath,
       readonly: true,
@@ -6965,6 +6971,7 @@ export async function 记录机器人采集片段(projectId: string, formData: F
         terminal_mode: "capture_stop",
         capture_id: captureId,
         capture_sample_hz: effectiveSampleHz,
+        capture_baud_rate: baudRate,
         capture_channels: effectiveChannels,
         computer_node_id: computerNodeId,
         stopped_at: timestamp,
@@ -6982,6 +6989,7 @@ export async function 记录机器人采集片段(projectId: string, formData: F
         `接口类型：${interfaceKind || "待确认"}`,
         `接口名称：${interfaceName || interfaceId}`,
         `采样频率：${effectiveSampleHz} Hz`,
+        `串口波特率：${baudRate}`,
         `采集通道：${effectiveChannels.join("、")}`,
         `证据文件：${artifactPath}`,
         "这个片段会出现在同一瓷砖的数据标注和图表实验 tab，可继续预标注、导出数据集或画图分析。",
@@ -7002,6 +7010,7 @@ export async function 记录机器人采集片段(projectId: string, formData: F
         capture_id: captureId,
         capture_mode: "segment",
         capture_sample_hz: effectiveSampleHz,
+        capture_baud_rate: baudRate,
         capture_channels: effectiveChannels,
         computer_node_id: computerNodeId,
         started_at: latestStart?.startedAt || timestamp,

@@ -405,6 +405,10 @@ function DebugTile({
               <input name="sample_hz" defaultValue="100" inputMode="numeric" />
             </label>
             <label>
+              <span>波特率</span>
+              <input name="baud_rate" defaultValue="115200" inputMode="numeric" />
+            </label>
+            <label>
               <span>通道</span>
               <input name="channels" defaultValue="time,motor.current,motor.velocity,sensor.temperature,bus.frame" />
             </label>

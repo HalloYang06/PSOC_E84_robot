@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import json
 import sys
+import time
+import types
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +24,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO_ROOT / "apps" / "runner"))
 
 from runner.config import RunnerConfig, ensure_dirs  # noqa: E402
+from runner.hardware.device_capture import execute_device_capture_command  # noqa: E402
 from runner.logs import LogCollector  # noqa: E402
 from runner.main import _handle_runner_relay_message  # noqa: E402
 
@@ -148,6 +151,64 @@ def test_robotics_capture_command_short_circuits_before_inbox(tmp_path: Path) ->
     assert client.completions[0]["metadata"]["runner_result"]["capture_id"] == "capture-test"
     manifest = cfg.workdir / "device-captures" / "proj_x" / "windows-desktop-main" / "serial-COM1" / "capture-test" / "manifest.json"
     assert manifest.exists()
+
+
+def test_robotics_capture_start_runs_background_session_until_stop(tmp_path: Path, monkeypatch: Any) -> None:
+    class _FakeSerial:
+        def __init__(self, **_: Any) -> None:
+            self.closed = False
+
+        def __enter__(self) -> "_FakeSerial":
+            return self
+
+        def __exit__(self, *_: Any) -> None:
+            self.closed = True
+
+        def readline(self) -> bytes:
+            time.sleep(0.01)
+            return b"t=1,current=0.4\n"
+
+        def read(self, _: int) -> bytes:
+            return b""
+
+    monkeypatch.setitem(sys.modules, "serial", types.SimpleNamespace(Serial=_FakeSerial))
+    base_payload = {
+        "project_id": "proj_bg",
+        "capture_id": "capture-bg",
+        "computer_node_id": "windows-desktop-main",
+        "interface_id": "serial:COM9",
+        "interface_kind": "serial",
+        "sample_hz": 100,
+        "channels": ["time", "motor.current"],
+    }
+
+    start = execute_device_capture_command(
+        {"kind": "robotics.capture.start", **base_payload},
+        allow_hardware_access=True,
+        workdir=tmp_path,
+    )
+    assert start["result_status"] == "completed"
+    assert start["result"]["capture_mode"] == "background_session"
+
+    preview = tmp_path / "device-captures" / "proj_bg" / "windows-desktop-main" / "serial-COM9" / "capture-bg" / "preview.jsonl"
+    deadline = time.time() + 2
+    while time.time() < deadline and (not preview.exists() or not preview.read_text(encoding="utf-8").strip()):
+        time.sleep(0.02)
+
+    stop = execute_device_capture_command(
+        {"kind": "robotics.capture.stop", **base_payload},
+        allow_hardware_access=True,
+        workdir=tmp_path,
+    )
+
+    assert stop["result_status"] == "completed"
+    assert stop["result"]["sample_count"] > 0
+    assert stop["result"]["byte_count"] > 0
+    assert stop["result"]["capture_mode"] == "background_session"
+    manifest = tmp_path / stop["result"]["manifest"]
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    assert data["schema"] == "runner_device_capture_result_v2"
+    assert data["status"] == "captured"
 
 
 def test_message_without_id_returns_false(tmp_path: Path) -> None:

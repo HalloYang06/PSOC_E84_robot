@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import threading
 import time
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -11,6 +13,30 @@ DEVICE_CAPTURE_KINDS = {"robotics.capture.start", "robotics.capture.stop"}
 MAX_CAPTURE_SECONDS = 3.0
 MAX_CAPTURE_BYTES = 64_000
 MAX_COMPLETION_NOTE_CHARS = 3800
+MAX_SESSION_JOIN_SECONDS = 5.0
+
+
+@dataclass
+class _CaptureSession:
+    capture_id: str
+    manifest_path: Path
+    preview_path: Path
+    workdir: Path
+    payload: dict[str, Any]
+    stop_event: threading.Event = field(default_factory=threading.Event)
+    lock: threading.Lock = field(default_factory=threading.Lock)
+    thread: threading.Thread | None = None
+    status: str = "starting"
+    error: str = ""
+    sample_count: int = 0
+    byte_count: int = 0
+    started_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    stopped_at: str = ""
+    last_sample_at: str = ""
+
+
+_SESSIONS: dict[str, _CaptureSession] = {}
+_SESSIONS_LOCK = threading.Lock()
 
 
 def is_device_capture_command(payload: dict[str, Any] | None) -> bool:
@@ -39,10 +65,13 @@ def execute_device_capture_command(
     manifest_path = capture_dir / "manifest.json"
     preview_path = capture_dir / "preview.jsonl"
 
+    session_key = _session_key(project_id, computer_node_id, interface_id, capture_id)
+
     if kind == "robotics.capture.start":
         capture_dir.mkdir(parents=True, exist_ok=True)
+        started_at = datetime.now(timezone.utc).isoformat()
         manifest = {
-            "schema": "runner_device_capture_session_v1",
+            "schema": "runner_device_capture_session_v2",
             "capture_id": capture_id,
             "project_id": project_id,
             "computer_node_id": computer_node_id,
@@ -51,21 +80,46 @@ def execute_device_capture_command(
             "interface_kind": interface_kind,
             "sample_hz": sample_hz,
             "channels": channels,
-            "started_at": datetime.now(timezone.utc).isoformat(),
-            "status": "running",
+            "started_at": started_at,
+            "status": "running" if allow_hardware_access else "prepared",
             "preview_file": _relative_to_workdir(preview_path, workdir),
+            "capture_mode": "background_session",
         }
         manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        session = _CaptureSession(
+            capture_id=capture_id,
+            manifest_path=manifest_path,
+            preview_path=preview_path,
+            workdir=workdir,
+            payload={**payload, "capture_id": capture_id, "sample_hz": sample_hz, "channels": channels},
+            status="running" if allow_hardware_access else "prepared",
+            started_at=started_at,
+        )
+        if allow_hardware_access:
+            session.thread = threading.Thread(
+                target=_run_capture_session,
+                args=(session,),
+                name=f"robotics-capture-{capture_id[:24]}",
+                daemon=True,
+            )
+            session.thread.start()
+        with _SESSIONS_LOCK:
+            previous = _SESSIONS.get(session_key)
+            if previous and previous.thread and previous.thread.is_alive():
+                previous.stop_event.set()
+            _SESSIONS[session_key] = session
         return _result(
             True,
             "completed",
-            "采集会话已在目标电脑准备好",
+            "采集会话已在目标电脑后台运行" if allow_hardware_access else "采集会话已登记，等待目标电脑开启硬件访问",
             {
                 "ok": True,
                 "kind": kind,
                 "capture_id": capture_id,
-                "status": "running",
+                "status": session.status,
                 "manifest": _relative_to_workdir(manifest_path, workdir),
+                "preview": _relative_to_workdir(preview_path, workdir),
+                "capture_mode": "background_session",
             },
         )
 
@@ -83,26 +137,42 @@ def execute_device_capture_command(
             },
         )
 
-    capture_dir.mkdir(parents=True, exist_ok=True)
-    serial_port = _serial_port_from_interface(payload.get("interface_id"), payload.get("port"))
-    samples: list[dict[str, Any]] = []
-    capture_error = ""
-    byte_count = 0
-    if _looks_like_serial(interface_kind, str(payload.get("interface_id") or "")) and serial_port:
-        serial_result = _capture_serial_preview(serial_port, sample_hz=sample_hz)
-        samples = serial_result["samples"]
-        capture_error = serial_result["error"]
-        byte_count = serial_result["byte_count"]
-    else:
-        capture_error = "当前最小采集器只支持串口只读采样；CAN/USB/SPI-CAN 会在后续通道补齐。"
+    with _SESSIONS_LOCK:
+        session = _SESSIONS.pop(session_key, None)
 
-    with preview_path.open("w", encoding="utf-8") as handle:
-        for sample in samples:
-            handle.write(json.dumps(sample, ensure_ascii=False) + "\n")
+    samples: list[dict[str, Any]] = _read_preview_samples(preview_path)
+    if session:
+        session.stop_event.set()
+        if session.thread and session.thread.is_alive():
+            session.thread.join(timeout=MAX_SESSION_JOIN_SECONDS)
+        with session.lock:
+            samples = _read_preview_samples(preview_path)
+            capture_error = session.error
+            byte_count = session.byte_count
+            session_status = "captured" if session.sample_count else session.status
+            started_at = session.started_at
+    else:
+        capture_dir.mkdir(parents=True, exist_ok=True)
+        serial_port = _serial_port_from_interface(payload.get("interface_id"), payload.get("port"))
+        capture_error = ""
+        byte_count = 0
+        started_at = ""
+        session_status = "captured" if samples else "empty"
+        if not samples:
+            if _looks_like_serial(interface_kind, str(payload.get("interface_id") or "")) and serial_port:
+                serial_result = _capture_serial_preview(serial_port, sample_hz=sample_hz, baud_rate=_safe_baud_rate(payload.get("baud_rate")))
+                samples = serial_result["samples"]
+                capture_error = serial_result["error"]
+                byte_count = serial_result["byte_count"]
+                with preview_path.open("w", encoding="utf-8") as handle:
+                    for sample in samples:
+                        handle.write(json.dumps(sample, ensure_ascii=False) + "\n")
+            else:
+                capture_error = "当前采集器只支持串口只读采样；CAN/USB/SPI-CAN/ROS 会按独立通道继续补齐。"
 
     stopped_at = datetime.now(timezone.utc).isoformat()
     manifest = {
-        "schema": "runner_device_capture_result_v1",
+        "schema": "runner_device_capture_result_v2",
         "capture_id": capture_id,
         "project_id": project_id,
         "computer_node_id": computer_node_id,
@@ -111,12 +181,14 @@ def execute_device_capture_command(
         "interface_kind": interface_kind,
         "sample_hz": sample_hz,
         "channels": channels,
+        "started_at": started_at or payload.get("started_at") or "",
         "stopped_at": stopped_at,
-        "status": "captured" if samples else "empty",
+        "status": "captured" if samples else session_status,
         "sample_count": len(samples),
         "byte_count": byte_count,
         "preview_file": _relative_to_workdir(preview_path, workdir),
         "error": capture_error,
+        "capture_mode": "background_session" if session else "short_window_fallback",
     }
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     ok = bool(samples)
@@ -133,11 +205,104 @@ def execute_device_capture_command(
             "manifest": _relative_to_workdir(manifest_path, workdir),
             "preview": _relative_to_workdir(preview_path, workdir),
             "error": capture_error,
+            "capture_mode": manifest["capture_mode"],
         },
     )
 
 
-def _capture_serial_preview(port: str, *, sample_hz: int) -> dict[str, Any]:
+def _run_capture_session(session: _CaptureSession) -> None:
+    payload = session.payload
+    interface_kind = str(payload.get("interface_kind") or "").strip().lower()
+    interface_id = str(payload.get("interface_id") or "").strip()
+    serial_port = _serial_port_from_interface(interface_id, payload.get("port"))
+    if not (_looks_like_serial(interface_kind, interface_id) and serial_port):
+        with session.lock:
+            session.status = "unsupported"
+            session.error = "当前后台采集器只支持串口只读采样；CAN/USB/SPI-CAN/ROS 会按独立通道继续补齐。"
+            _update_session_manifest(session)
+        return
+
+    try:
+        import serial  # type: ignore
+    except Exception as exc:
+        with session.lock:
+            session.status = "failed"
+            session.error = f"pyserial is not installed: {exc}"
+            _update_session_manifest(session)
+        return
+
+    sample_hz = _safe_sample_hz(payload.get("sample_hz"))
+    baud_rate = _safe_baud_rate(payload.get("baud_rate"))
+    timeout = max(0.02, min(0.2, 1 / max(sample_hz, 1)))
+    session.preview_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with serial.Serial(port=serial_port, baudrate=baud_rate, timeout=timeout) as ser:
+            with session.preview_path.open("a", encoding="utf-8") as handle:
+                while not session.stop_event.is_set() and session.byte_count < MAX_CAPTURE_BYTES:
+                    chunk = ser.readline() or ser.read(256)
+                    if not chunk:
+                        continue
+                    now = datetime.now(timezone.utc).isoformat()
+                    sample = {
+                        "t": now,
+                        "port": serial_port,
+                        "bytes": len(chunk),
+                        "text": chunk.decode("utf-8", errors="replace").strip(),
+                        "hex": chunk[:64].hex(" "),
+                    }
+                    handle.write(json.dumps(sample, ensure_ascii=False) + "\n")
+                    handle.flush()
+                    with session.lock:
+                        session.sample_count += 1
+                        session.byte_count += len(chunk)
+                        session.last_sample_at = now
+                        session.status = "capturing"
+                    if session.sample_count % max(8, min(100, sample_hz)) == 0:
+                        with session.lock:
+                            _update_session_manifest(session)
+    except Exception as exc:
+        with session.lock:
+            session.status = "failed" if not session.sample_count else "captured_with_error"
+            session.error = str(exc)
+            _update_session_manifest(session)
+        return
+
+    with session.lock:
+        session.stopped_at = datetime.now(timezone.utc).isoformat()
+        if session.sample_count:
+            session.status = "captured"
+        elif not session.error:
+            session.status = "empty"
+            session.error = "serial port returned no data while the capture session was running"
+        _update_session_manifest(session)
+
+
+def _update_session_manifest(session: _CaptureSession) -> None:
+    payload = session.payload
+    manifest = {
+        "schema": "runner_device_capture_session_v2",
+        "capture_id": session.capture_id,
+        "project_id": _safe_token(payload.get("project_id"), "project"),
+        "computer_node_id": _safe_token(payload.get("computer_node_id"), "computer"),
+        "interface_id": _safe_token(payload.get("interface_id"), "interface"),
+        "interface_name": str(payload.get("interface_name") or payload.get("interface_id") or "").strip(),
+        "interface_kind": str(payload.get("interface_kind") or "").strip().lower(),
+        "sample_hz": _safe_sample_hz(payload.get("sample_hz")),
+        "channels": _safe_channels(payload.get("channels")),
+        "started_at": session.started_at,
+        "stopped_at": session.stopped_at,
+        "status": session.status,
+        "sample_count": session.sample_count,
+        "byte_count": session.byte_count,
+        "last_sample_at": session.last_sample_at,
+        "preview_file": _relative_to_workdir(session.preview_path, session.workdir),
+        "error": session.error,
+        "capture_mode": "background_session",
+    }
+    session.manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def _capture_serial_preview(port: str, *, sample_hz: int, baud_rate: int = 115200) -> dict[str, Any]:
     try:
         import serial  # type: ignore
     except Exception as exc:
@@ -148,7 +313,7 @@ def _capture_serial_preview(port: str, *, sample_hz: int) -> dict[str, Any]:
     samples: list[dict[str, Any]] = []
     byte_count = 0
     try:
-        with serial.Serial(port=port, baudrate=115200, timeout=timeout) as ser:
+        with serial.Serial(port=port, baudrate=baud_rate, timeout=timeout) as ser:
             while time.time() < deadline and byte_count < MAX_CAPTURE_BYTES:
                 chunk = ser.readline() or ser.read(256)
                 if not chunk:
@@ -185,6 +350,14 @@ def _safe_sample_hz(value: Any) -> int:
     return max(1, min(sample_hz, 2000))
 
 
+def _safe_baud_rate(value: Any) -> int:
+    try:
+        baud_rate = int(float(str(value)))
+    except Exception:
+        baud_rate = 115200
+    return max(300, min(baud_rate, 4_000_000))
+
+
 def _safe_channels(value: Any) -> list[str]:
     if isinstance(value, list):
         raw = value
@@ -214,6 +387,31 @@ def _relative_to_workdir(path: Path, workdir: Path) -> str:
         return path.relative_to(workdir).as_posix()
     except ValueError:
         return path.name
+
+
+def _session_key(project_id: str, computer_node_id: str, interface_id: str, capture_id: str) -> str:
+    return "\n".join([project_id, computer_node_id, interface_id, capture_id])
+
+
+def _read_preview_samples(preview_path: Path) -> list[dict[str, Any]]:
+    if not preview_path.exists():
+        return []
+    samples: list[dict[str, Any]] = []
+    try:
+        with preview_path.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    parsed = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(parsed, dict):
+                    samples.append(parsed)
+    except OSError:
+        return samples
+    return samples
 
 
 def _result(handled: bool, result_status: str, title: str, result: dict[str, Any]) -> dict[str, Any]:
