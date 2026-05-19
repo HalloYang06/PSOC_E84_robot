@@ -7311,6 +7311,7 @@ export async function 创建机器人图表实验(projectId: string, formData: F
   const timestamp = new Date().toISOString();
   const chartId = `chart-${createHash("sha1").update(`${projectId}:${interfaceId}:${captureIds.join(",")}:${xAxis}:${yAxes.join(",")}:${timestamp}`).digest("hex").slice(0, 12)}`;
   try {
+    const runnerSummaries = await collectRoboticsCaptureRunnerSummaries(projectId, interfaceId, captureIds);
     const artifactPath = await writeRoboticsDerivedArtifact({
       projectId,
       interfaceId,
@@ -7329,6 +7330,7 @@ export async function 创建机器人图表实验(projectId: string, formData: F
         y_axes: yAxes,
         target_value: targetValue,
         chart_mode: chartMode,
+        runner_capture_summaries: runnerSummaries,
         created_at: timestamp,
       },
     });
@@ -7362,6 +7364,7 @@ export async function 创建机器人图表实验(projectId: string, formData: F
         y_axes: yAxes,
         target_value: targetValue,
         chart_mode: chartMode,
+        runner_capture_summaries: runnerSummaries,
         artifact_path: artifactPath,
         artifact_refs: [{ label: "图表实验配置", path: artifactPath }],
         evidence_artifacts: [{ label: "图表实验配置", path: artifactPath }],
@@ -7403,6 +7406,7 @@ export async function 创建机器人调参建议请求(projectId: string, formD
   const timestamp = new Date().toISOString();
   const tuningId = `tuning-${createHash("sha1").update(`${projectId}:${interfaceId}:${captureIds.join(",")}:${xAxis}:${yAxes.join(",")}:${targetValue}:${timestamp}`).digest("hex").slice(0, 12)}`;
   try {
+    const runnerSummaries = await collectRoboticsCaptureRunnerSummaries(projectId, interfaceId, captureIds);
     const artifactPath = await writeRoboticsDerivedArtifact({
       projectId,
       interfaceId,
@@ -7422,6 +7426,7 @@ export async function 创建机器人调参建议请求(projectId: string, formD
         target_value: targetValue,
         chart_mode: chartMode,
         symptoms,
+        runner_capture_summaries: runnerSummaries,
         requested_npc_id: boundNpc,
         requested_npc: boundNpcLabel || boundNpc,
         created_at: timestamp,
@@ -7438,6 +7443,7 @@ export async function 创建机器人调参建议请求(projectId: string, formD
         `横轴：${xAxis}`,
         `纵轴：${yAxes.join("、")}`,
         targetValue ? `目标值：${targetValue}` : "目标值：未设置",
+        Object.keys(runnerSummaries).length ? `采集摘要：${Object.keys(runnerSummaries).length} 个片段已有样本摘要` : "采集摘要：暂无 runner 数值摘要，请结合片段证据谨慎判断。",
         symptoms ? `现象：${symptoms}` : "现象：请判断过冲、震荡、稳态误差、噪声和延迟。",
         `证据文件：${artifactPath}`,
         "边界：只能给建议或生成待审核操作；不能直接写入真实硬件参数。",
@@ -7463,6 +7469,7 @@ export async function 创建机器人调参建议请求(projectId: string, formD
         target_value: targetValue,
         chart_mode: chartMode,
         symptoms,
+        runner_capture_summaries: runnerSummaries,
         artifact_path: artifactPath,
         artifact_refs: [{ label: "调参建议请求", path: artifactPath }],
         evidence_artifacts: [{ label: "调参建议请求", path: artifactPath }],
