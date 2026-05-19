@@ -2421,6 +2421,9 @@ def _get_runner_command_or_404(db: Session, runner_id: str, message_id: str) -> 
 
 
 def _runner_command_dispatch_id(message: CollaborationMessage) -> str | None:
+    cleaned_dispatch_id = str(message.dispatch_id or "").strip()
+    if cleaned_dispatch_id:
+        return cleaned_dispatch_id
     match = re.search(r"^Dispatch ID:\s*([A-Za-z0-9-]+)\s*$", str(message.body or ""), re.MULTILINE)
     if match is None:
         return None
@@ -3752,6 +3755,7 @@ def ack_runner_command(db: Session, runner_id: str, message_id: str, payload: Ru
         db.flush()
     dispatch = sync_task_dispatch_status(
         db,
+        dispatch_id=_runner_command_dispatch_id(message),
         task_id=message.task_id,
         runner_id=runner_id,
         status="acked",
@@ -3852,6 +3856,7 @@ def complete_runner_command(db: Session, runner_id: str, message_id: str, payloa
         db.flush()
     dispatch = sync_task_dispatch_status(
         db,
+        dispatch_id=_runner_command_dispatch_id(message),
         task_id=message.task_id,
         runner_id=runner_id,
         status="completed" if payload.result_status == "completed" else "failed",

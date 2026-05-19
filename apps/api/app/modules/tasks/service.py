@@ -23,6 +23,7 @@ from .schemas import TaskActionRequest, TaskCreate, TaskDispatchCreate, TaskTran
 ALLOWED_TASK_STATUSES = {
     "draft",
     "ready",
+    "queued",
     "running",
     "reviewing",
     "blocked",
@@ -35,7 +36,8 @@ ALLOWED_TASK_STATUSES = {
 
 TASK_STATUS_TRANSITIONS: dict[str, set[str]] = {
     "draft": {"ready", "blocked", "cancelled"},
-    "ready": {"running", "blocked", "cancelled"},
+    "ready": {"queued", "running", "blocked", "cancelled"},
+    "queued": {"running", "blocked", "cancelled"},
     "running": {"reviewing", "blocked", "failed", "done"},
     "reviewing": {"done", "needs_changes", "blocked", "failed"},
     "needs_changes": {"ready", "running", "blocked", "cancelled"},

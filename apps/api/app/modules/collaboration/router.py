@@ -2686,9 +2686,31 @@ def api_create_runner_command(
     db: Session = Depends(get_db),
 ):
     principal = _require_real_human_principal(db, request)
-    resolve_project_write_principal(db, request, project_id, require_privileged=True, action="collaboration.runner_command.create")
+    resolve_project_write_principal(
+        db,
+        request,
+        project_id,
+        require_privileged=not _runner_command_is_user_robotics_safe(payload),
+        action="collaboration.runner_command.create",
+    )
     item = create_runner_command(db, project_id, sender_id=principal.user_id or "", payload=payload)
     return ok(RunnerRelayMessageRead.model_validate(item).model_dump(mode="json"))
+
+
+def _runner_command_is_user_robotics_safe(payload: RunnerRelayCommandCreate) -> bool:
+    metadata = payload.metadata if isinstance(payload.metadata, dict) else {}
+    terminal_surface = str(metadata.get("terminal_surface") or "").strip().lower()
+    terminal_mode = str(metadata.get("terminal_mode") or "").strip().lower()
+    if terminal_surface == "robotics" and terminal_mode in {"user_terminal", "capture_start", "capture_stop"}:
+        return True
+    try:
+        body = json.loads(str(payload.body or ""))
+    except Exception:
+        body = None
+    if not isinstance(body, dict):
+        return False
+    kind = str(body.get("kind") or "").strip().lower()
+    return kind in {"serial.usb.scan", "robotics.capture.start", "robotics.capture.stop"}
 
 
 class BroadcastRequest(BaseModel):

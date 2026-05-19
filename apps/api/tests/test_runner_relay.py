@@ -344,6 +344,47 @@ def test_runner_relay_respects_project_and_runner_scope() -> None:
     assert wrong_runner_response.json()["error"]["code"] == "MESSAGE_NOT_FOUND"
 
 
+def test_project_member_can_queue_readonly_robotics_scan_but_not_generic_runner_command() -> None:
+    owner_token, project_id, runner_id, _ = _setup_runner_project()
+    member_user_id, member_email = register_user(client, f"relay-member-{uuid4().hex[:8]}@example.com", "Relay Member")
+    member_token, _ = issue_session_token(client, member_email)
+    add_member_response = client.post(
+        f"/api/projects/{project_id}/members",
+        headers=auth_headers(owner_token),
+        json={
+            "user_id": member_user_id,
+            "role": "member",
+            "status": "active",
+            "is_owner": False,
+        },
+    )
+    assert add_member_response.status_code == 200
+
+    scan_response = client.post(
+        f"/api/collaboration/projects/{project_id}/runner-commands",
+        headers=auth_headers(member_token),
+        json={
+            "computer_node_id": "pc-relay",
+            "title": "扫描真实接口",
+            "body": '{"kind":"serial.usb.scan","scan":["serial_ports","usb_devices"]}',
+        },
+    )
+    assert scan_response.status_code == 200
+    assert scan_response.json()["data"]["recipient_id"] == runner_id
+
+    generic_response = client.post(
+        f"/api/collaboration/projects/{project_id}/runner-commands",
+        headers=auth_headers(member_token),
+        json={
+            "computer_node_id": "pc-relay",
+            "title": "通用命令",
+            "body": "run a privileged generic command",
+        },
+    )
+    assert generic_response.status_code == 403
+    assert generic_response.json()["error"]["code"] == "HUMAN_APPROVAL_REQUIRED"
+
+
 def test_collaboration_message_read_and_runner_type_require_protected_paths() -> None:
     owner_token, project_id, runner_id, task_id = _setup_runner_project()
 
