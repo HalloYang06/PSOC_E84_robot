@@ -6824,6 +6824,35 @@ async function findLatestRoboticsCaptureStart(projectId: string, interfaceId: st
   return null;
 }
 
+async function collectRoboticsCaptureRunnerSummaries(projectId: string, interfaceId: string, captureIds: string[]) {
+  const wanted = new Set(captureIds.map((item) => String(item ?? "").trim()).filter(Boolean));
+  if (!wanted.size) return {};
+  const summaries: Record<string, unknown> = {};
+  try {
+    const result = await getJson(`/api/collaboration/messages?project_id=${encodeURIComponent(projectId)}&limit=240`);
+    const rows = Array.isArray(result?.data) ? result.data : Array.isArray(result) ? result : [];
+    for (const row of rows) {
+      if (String(row?.message_type ?? row?.messageType ?? "").trim() !== "runner_result") continue;
+      const extra = row && typeof row === "object" ? (row.extra_data ?? row.metadata ?? {}) : {};
+      if (!extra || typeof extra !== "object") continue;
+      if (String((extra as Record<string, unknown>).terminal_interface_id ?? "").trim() !== interfaceId) continue;
+      const runnerResult = (extra as Record<string, unknown>).runner_result;
+      if (!runnerResult || typeof runnerResult !== "object") continue;
+      const captureId = String((runnerResult as Record<string, unknown>).capture_id ?? (extra as Record<string, unknown>).capture_id ?? "").trim();
+      if (!captureId || !wanted.has(captureId)) continue;
+      summaries[captureId] = {
+        sample_count: (runnerResult as Record<string, unknown>).sample_count ?? null,
+        byte_count: (runnerResult as Record<string, unknown>).byte_count ?? null,
+        preview_summary: (runnerResult as Record<string, unknown>).preview_summary ?? null,
+        repo_sync: (runnerResult as Record<string, unknown>).repo_sync ?? null,
+      };
+    }
+  } catch {
+    return summaries;
+  }
+  return summaries;
+}
+
 export async function 记录机器人采集片段(projectId: string, formData: FormData) {
   const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "robotics");
   const mode = String(formData.get("capture_mode") ?? "").trim();
@@ -7151,6 +7180,7 @@ export async function 导出机器人标注数据(projectId: string, formData: F
   const exportId = `dataset-${createHash("sha1").update(`${projectId}:${interfaceId}:${captureIds.join(",")}:${variables.join(",")}:${exportFormat}:${timestamp}`).digest("hex").slice(0, 12)}`;
   const normalizedFormat = ["csv", "jsonl", "parquet", "npz", "manifest"].includes(exportFormat) ? exportFormat : "manifest";
   try {
+    const runnerSummaries = await collectRoboticsCaptureRunnerSummaries(projectId, interfaceId, captureIds);
     const payload = {
       schema: "robotics_dataset_export_v1",
       project_id: projectId,
@@ -7164,6 +7194,7 @@ export async function 导出机器人标注数据(projectId: string, formData: F
       label_schema: labelSchema,
       label_notes: labelNotes,
       export_format: normalizedFormat,
+      runner_capture_summaries: runnerSummaries,
       created_at: timestamp,
       storage_note: "Raw high-frequency data should live in the project GitHub data path; this artifact is the platform export index or lightweight export.",
     };
@@ -7208,6 +7239,7 @@ export async function 导出机器人标注数据(projectId: string, formData: F
         selected_variables: variables,
         label_schema: labelSchema,
         export_format: normalizedFormat,
+        runner_capture_summaries: runnerSummaries,
         artifact_path: artifactPath,
         artifact_refs: [{ label: "标注数据导出", path: artifactPath }],
         evidence_artifacts: [{ label: "标注数据导出", path: artifactPath }],
