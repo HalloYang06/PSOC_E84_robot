@@ -17,6 +17,8 @@ const ALLOWED_RUNNER_SCRIPTS = new Set([
   "sync-claude-session-threads.sh",
   "platform-workstation-adapter.py",
   "platform-provider-executor.py",
+  "scan-device-interfaces.py",
+  "run-device-capture-command.py",
 ]);
 
 function findRunnerScriptPath(filename: string) {

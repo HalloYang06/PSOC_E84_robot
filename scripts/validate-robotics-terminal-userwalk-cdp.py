@@ -152,27 +152,39 @@ def main() -> int:
         cdp.send("Page.navigate", {"url": url})
         wait_for(
             cdp,
-            "document.readyState === 'complete' && (document.body.innerText.includes('设备数据工作台') || document.body.innerText.includes('真实接口索引') || document.body.innerText.includes('机器人现场'))",
+            "document.readyState === 'complete' && (document.body.innerText.includes('设备数据工作台') || document.body.innerText.includes('创建调试窗口') || document.body.innerText.includes('机器人现场'))",
+        )
+        cdp_eval(cdp, f"localStorage.removeItem('ai-collab.robotics.debug-windows.{args.project_id}') || true")
+        cdp.send("Page.navigate", {"url": url})
+        wait_for(
+            cdp,
+            "document.readyState === 'complete' && document.body.innerText.includes('创建调试窗口') && document.body.innerText.includes('绑定真实设备')",
         )
         first = cdp_eval(
             cdp,
             """
             (() => {
               const body = document.body.innerText || '';
+              const resourceOptions = Array.from(document.querySelectorAll('select[name="resource_id"] option')).filter((item) => item.value);
+              const leftWindowNames = Array.from(document.querySelectorAll('ul[class*="npcList"] strong')).map((item) => item.innerText || '');
               return {
                 href: location.href,
-                hasIndexSelect: !!document.querySelector('[class*="indexForm"] select[name="windows"]'),
-                usableOptions: Array.from(document.querySelectorAll('[class*="indexForm"] select[name="windows"] option')).filter((item) => item.value).length,
+                hasCreateWindowForm: body.includes('创建调试窗口') && !!document.querySelector('input[name="window_name"]'),
+                hasWindowType: body.includes('窗口类型') && !!document.querySelector('select[name="window_type"]'),
+                hasResourceSelect: body.includes('绑定真实设备') && !!document.querySelector('select[name="resource_id"]'),
+                resourceOptions: resourceOptions.length,
+                hasBaudSelect: body.includes('波特率') && Array.from(document.querySelectorAll('select[name="baud_rate"] option')).some((item) => item.value === '115200'),
+                hasSampleHz: body.includes('采样频率') && !!document.querySelector('input[name="sample_hz"]'),
+                hasChannels: body.includes('采集通道') && !!document.querySelector('input[name="channels"]'),
+                hasNpcSelect: body.includes('协助 NPC') && !!document.querySelector('select[name="bound_npc"]'),
+                leftWindowCountText: body.includes('0 个窗口'),
+                leftWindowNames,
                 openButtons: document.querySelectorAll('a[aria-label^="打开 "]').length,
-                usableOpenButtons: Array.from(document.querySelectorAll('a[aria-label^="打开 "]')).filter((item) => !item.closest('[class*="openBtnDisabled"]')).length,
-                settingsButtons: document.querySelectorAll('a[aria-label^="设置 "]').length,
-                createButtonText: document.querySelector('[class*="indexForm"] button')?.innerText || '',
-                interfaceLabel: document.querySelector('[class*="indexForm"] label span')?.innerText || '',
-                hasCreateTitle: body.includes('创建调试窗口') || body.includes('真实接口索引') || body.includes('打开调试瓷砖'),
+                createButtonText: Array.from(document.querySelectorAll('button')).find((button) => (button.innerText || '').includes('创建并打开'))?.innerText || '',
+                hasCreateTitle: body.includes('创建调试窗口') && body.includes('先创建一个调试窗口'),
                 hasComputerJumpButton: Array.from(document.querySelectorAll('a')).some((a) => (a.innerText || '').includes('接入/检查电脑')),
-                hasNpcCreationSelect: !!document.querySelector('[class*="indexForm"] select[name="npc"]'),
-                disabledMarkers: document.querySelectorAll('[class*="openBtnDisabled"]').length,
-                hasNoDemoText: body.includes('不建假窗口') && !body.includes('模板'),
+                directlyListsScannedResources: leftWindowNames.length > 3,
+                hasNoDemoText: body.includes('先创建调试窗口') && !body.includes('模板'),
                 hasHorizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 2,
               };
             })()
@@ -181,17 +193,45 @@ def main() -> int:
         report["initial"] = first
         screenshot(cdp, output_dir / f"robotics-terminal-userwalk-initial-{stamp}.png")
 
-        has_legacy_create = isinstance(first, dict) and int(first.get("usableOptions") or 0) > 0
-        has_index_open = isinstance(first, dict) and int(first.get("openButtons") or 0) > 0
-        if has_legacy_create or has_index_open:
+        has_create_flow = isinstance(first, dict) and first.get("hasCreateWindowForm") and int(first.get("resourceOptions") or 0) > 0
+        if has_create_flow:
             if first.get("hasComputerJumpButton"):
                 report["failures"].append("robotics page still has computer jump button")  # type: ignore[union-attr]
-            if has_legacy_create and (not first.get("hasCreateTitle") or not first.get("hasNpcCreationSelect")):
-                report["failures"].append("debug window creation does not expose indexed NPC selection")  # type: ignore[union-attr]
-            if has_legacy_create:
-                click(cdp, '[class*="indexForm"] button')
-            else:
-                click(cdp, 'a[aria-label^="打开 "]')
+            if not first.get("hasWindowType") or not first.get("hasResourceSelect") or not first.get("hasBaudSelect") or not first.get("hasSampleHz") or not first.get("hasChannels") or not first.get("hasNpcSelect"):
+                report["failures"].append("debug window creation does not expose labeled resource and parameter controls")  # type: ignore[union-attr]
+            if first.get("directlyListsScannedResources"):
+                report["failures"].append("left rail still directly lists scanned resources instead of created windows")  # type: ignore[union-attr]
+            created = cdp_eval(
+                cdp,
+                """
+                (() => {
+                  const setValue = (selector, value) => {
+                    const el = document.querySelector(selector);
+                    if (!el) return false;
+                    el.value = value;
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                    return true;
+                  };
+                  setValue('input[name="window_name"]', '验收串口窗口');
+                  setValue('select[name="window_type"]', 'serial');
+                  setValue('select[name="baud_rate"]', '115200');
+                  setValue('input[name="sample_hz"]', '100');
+                  setValue('input[name="channels"]', 'time,motor.current,motor.velocity');
+                  const npcSelect = document.querySelector('select[name="bound_npc"]');
+                  if (npcSelect && npcSelect.options.length > 1) {
+                    npcSelect.selectedIndex = 1;
+                    npcSelect.dispatchEvent(new Event('change', { bubbles: true }));
+                  }
+                  const button = Array.from(document.querySelectorAll('button')).find((item) => (item.innerText || '').includes('创建并打开'));
+                  if (!button) return false;
+                  button.click();
+                  return true;
+                })()
+                """,
+            )
+            if not created:
+                report["failures"].append("failed to create debug window from form")  # type: ignore[union-attr]
             wait_for(cdp, "document.body.innerText.includes('模式=用户终端') && document.querySelectorAll('article').length > 0")
             time.sleep(0.5)
             tile = cdp_eval(

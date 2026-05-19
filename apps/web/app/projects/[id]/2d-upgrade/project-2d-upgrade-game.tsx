@@ -3142,7 +3142,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
               node,
               pairingResult.token,
               suggestedComputerRunnerId(node),
-              { serverUrl: apiBaseUrl },
+              { serverUrl: apiBaseUrl, watch: true, hardwareAccess: true },
             );
           })()
         : "";
@@ -3166,7 +3166,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                   { id: pairingResult.nodeId, label: pairingResult.nodeId },
                   pairingResult.token,
                   suggestedComputerRunnerId({ id: pairingResult.nodeId, label: pairingResult.nodeId }),
-                  { serverUrl: apiBaseUrl },
+                  { serverUrl: apiBaseUrl, watch: true, hardwareAccess: true },
                 )}
                 aria-label="Linux 电脑接入命令"
                 data-token-command="computer-pairing-linux"
@@ -3195,7 +3195,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                       { id: pairingResult.nodeId, label: pairingResult.nodeId },
                       pairingResult.token,
                       suggestedComputerRunnerId({ id: pairingResult.nodeId, label: pairingResult.nodeId }),
-                      { serverUrl: apiBaseUrl },
+                      { serverUrl: apiBaseUrl, watch: true, hardwareAccess: true },
                     ),
                     "Linux 命令已复制，可粘贴到目标电脑 Bash 运行",
                   )}

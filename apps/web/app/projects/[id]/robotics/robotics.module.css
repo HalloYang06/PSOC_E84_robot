@@ -2998,6 +2998,97 @@
   display: grid;
 }
 
+.windowCreateForm {
+  display: grid;
+  gap: 7px;
+  padding: 9px;
+  border: 1px solid rgba(88, 240, 255, 0.18);
+  border-radius: 8px;
+  background: rgba(88, 240, 255, 0.055);
+}
+
+.windowCreateForm strong {
+  color: #f4ffff;
+  font-size: 12px;
+}
+
+.windowCreateForm input,
+.windowCreateForm select {
+  min-width: 0;
+  min-height: 30px;
+  padding: 6px 8px;
+  border: 1px solid rgba(88, 240, 255, 0.18);
+  border-radius: 7px;
+  background: rgba(2, 13, 20, 0.68);
+  color: #eaffff;
+  font: inherit;
+  font-size: 11px;
+}
+
+.windowCreateForm label {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.windowCreateForm label span {
+  color: rgba(220, 240, 255, 0.72);
+  font-size: 10.5px;
+  font-weight: 900;
+}
+
+.windowCreateForm button {
+  min-height: 32px;
+  border: 1px solid rgba(255, 232, 109, 0.42);
+  border-radius: 7px;
+  background: rgba(255, 232, 109, 0.14);
+  color: #ffe8b3;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.windowCreateForm button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.windowCreateForm small {
+  color: rgba(220, 240, 255, 0.64);
+  font-size: 10.5px;
+  line-height: 1.35;
+}
+
+.createParamGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.createFullField {
+  grid-column: 1 / -1;
+}
+
+.windowRowActions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.windowRowActions button {
+  min-width: 30px;
+  min-height: 30px;
+  border: 1px solid rgba(255, 117, 117, 0.28);
+  border-radius: 8px;
+  background: rgba(255, 117, 117, 0.08);
+  color: #ffd0d0;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
 .scanInlineForm button,
 .emptyScanForm button {
   min-height: 32px;
@@ -3570,7 +3661,7 @@ button.threadChip:hover {
 }
 
 .terminalPane {
-  flex: 1;
+  flex: 1 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -3608,7 +3699,7 @@ button.threadChip:hover {
   grid-template-columns: auto minmax(0, 1fr) minmax(120px, 168px) auto;
   gap: 8px;
   align-items: center;
-  padding-top: 8px;
+  padding-top: 6px;
   border-top: 1px solid rgba(88, 240, 255, 0.14);
   flex-shrink: 0;
 }
@@ -3622,7 +3713,7 @@ button.threadChip:hover {
 
 .terminalCommandBar input,
 .terminalCommandBar select {
-  min-height: 36px;
+  min-height: 32px;
   border-radius: 8px;
   border: 1px solid rgba(88, 240, 255, 0.26);
   background: rgba(2, 13, 20, 0.68);
@@ -3643,7 +3734,7 @@ button.threadChip:hover {
 }
 
 .terminalCommandBar button {
-  min-height: 36px;
+  min-height: 32px;
   padding: 6px 10px;
   border-radius: 7px;
   border: 1px solid rgba(120, 230, 170, 0.46);
@@ -3670,7 +3761,7 @@ button.threadChip:hover {
   grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
-  padding: 7px 8px;
+  padding: 5px 8px;
   border: 1px solid rgba(241, 208, 107, 0.22);
   border-radius: 8px;
   background: rgba(241, 208, 107, 0.065);
@@ -3723,10 +3814,10 @@ button.threadChip:hover {
 .captureBar {
   flex-shrink: 0;
   display: grid;
-  grid-template-columns: minmax(88px, 112px) minmax(0, 1fr) auto auto;
-  gap: 7px;
+  grid-template-columns: 84px 84px minmax(0, 1fr) auto auto;
+  gap: 6px;
   align-items: end;
-  padding: 7px 8px;
+  padding: 5px 8px;
   border: 1px solid rgba(120, 230, 170, 0.22);
   border-radius: 8px;
   background: rgba(120, 230, 170, 0.06);
@@ -3746,7 +3837,19 @@ button.threadChip:hover {
 
 .captureBar input {
   min-width: 0;
-  min-height: 30px;
+  min-height: 28px;
+  border-radius: 7px;
+  border: 1px solid rgba(120, 230, 170, 0.22);
+  background: rgba(2, 13, 20, 0.66);
+  color: #eaffff;
+  font-family: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+  font-size: 11.5px;
+  padding: 5px 8px;
+}
+
+.captureBar select {
+  min-width: 0;
+  min-height: 28px;
   border-radius: 7px;
   border: 1px solid rgba(120, 230, 170, 0.22);
   background: rgba(2, 13, 20, 0.66);
@@ -3757,7 +3860,7 @@ button.threadChip:hover {
 }
 
 .captureBar button {
-  min-height: 30px;
+  min-height: 28px;
   padding: 5px 9px;
   border-radius: 7px;
   border: 1px solid rgba(120, 230, 170, 0.42);

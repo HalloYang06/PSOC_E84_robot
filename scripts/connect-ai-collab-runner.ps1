@@ -192,7 +192,12 @@ function Invoke-RunnerInboxPoll {
   param(
     [Parameter(Mandatory = $true)][string]$ApiBase,
     [Parameter(Mandatory = $true)][string]$RunnerId,
-    [Parameter(Mandatory = $true)][string]$RunnerName
+    [Parameter(Mandatory = $true)][string]$RunnerName,
+    [string]$WebBase = "",
+    [string]$ProjectId = "",
+    [string]$ComputerNodeId = "",
+    [string]$RunnerDir = "",
+    [switch]$HardwareAccess
   )
   $inboxUrl = ($ApiBase.TrimEnd("/")) + "/api/runners/" + $RunnerId + "/inbox?limit=20"
   $response = Invoke-RestMethod -Method Get -Uri $inboxUrl -Headers @{
@@ -213,9 +218,81 @@ function Invoke-RunnerInboxPoll {
     if ([string]::IsNullOrWhiteSpace($title)) {
       $title = "Platform dispatch"
     }
+    $bodyText = [string]$item.body
+    $payloadKind = ""
+    try {
+      $payload = $bodyText | ConvertFrom-Json
+      $payloadKind = [string]$payload.kind
+    } catch {
+      $payloadKind = ""
+    }
+    $scanResult = $null
+    $captureResult = $null
     $note = "Runner $RunnerName received platform dispatch: $title. The computer connection is reachable; enable NPC automation or bind a desktop thread before real execution."
+    if ($payloadKind -eq "serial.usb.scan" -and -not [string]::IsNullOrWhiteSpace($WebBase) -and -not [string]::IsNullOrWhiteSpace($ProjectId) -and -not [string]::IsNullOrWhiteSpace($ComputerNodeId) -and -not [string]::IsNullOrWhiteSpace($RunnerDir)) {
+      try {
+        $scanResult = Invoke-DeviceInterfaceSync `
+          -ApiBase $ApiBase `
+          -WebBase $WebBase `
+          -RunnerId $RunnerId `
+          -ProjectId $ProjectId `
+          -ComputerNodeId $ComputerNodeId `
+          -RunnerDir $RunnerDir
+        $note = "Runner $RunnerName scanned real device interfaces and synced $($scanResult.interface_count) interface(s) back to the platform."
+      } catch {
+        $note = "Runner $RunnerName tried to scan real device interfaces, but sync failed: $($_.Exception.Message)"
+      }
+    } elseif ($payloadKind -in @("robotics.capture.start", "robotics.capture.stop") -and -not [string]::IsNullOrWhiteSpace($WebBase) -and -not [string]::IsNullOrWhiteSpace($RunnerDir)) {
+      try {
+        $captureResult = Invoke-DeviceCaptureCommand `
+          -WebBase $WebBase `
+          -PayloadJson $bodyText `
+          -RunnerDir $RunnerDir `
+          -HardwareAccess:$HardwareAccess
+        $captureStatus = [string]$captureResult.result_status
+        $captureNote = [string]$captureResult.note
+        if ([string]::IsNullOrWhiteSpace($captureNote)) {
+          $captureNote = "Device capture command finished."
+        }
+        $note = "Runner $RunnerName handled device capture: $captureNote"
+      } catch {
+        $note = "Runner $RunnerName tried to handle device capture, but it failed: $($_.Exception.Message)"
+        $captureResult = [ordered]@{
+          result_status = "failed"
+          note = $note
+          result = @{
+            ok = $false
+            kind = $payloadKind
+            error = $_.Exception.Message
+          }
+        }
+      }
+    }
     $ackBody = @{ note = $note } | ConvertTo-Json -Depth 4
-    $completeBody = @{ result_status = "completed"; note = $note } | ConvertTo-Json -Depth 4
+    $completeMetadata = @{}
+    if ($scanResult) {
+      $completeMetadata = @{
+        runner_capability = "serial.usb.scan"
+        runner_result = @{
+          kind = "serial.usb.scan"
+          ok = $true
+          interface_count = $scanResult.interface_count
+          scanned_at = $scanResult.scanned_at
+          computer_node_id = $ComputerNodeId
+        }
+      }
+    } elseif ($captureResult) {
+      $capturePayload = if ($captureResult.result) { $captureResult.result } else { @{} }
+      $completeMetadata = @{
+        runner_capability = "robotics.capture"
+        runner_result = $capturePayload
+      }
+    }
+    $completeStatus = "completed"
+    if ($captureResult -and [string]$captureResult.result_status -eq "failed") {
+      $completeStatus = "failed"
+    }
+    $completeBody = @{ result_status = $completeStatus; note = $note; metadata = $completeMetadata } | ConvertTo-Json -Depth 12
     $messageBase = ($ApiBase.TrimEnd("/")) + "/api/runners/" + $RunnerId + "/messages/" + $messageId
     try {
       Invoke-RestMethod -Method Post -Uri ($messageBase + "/ack") -Headers @{
@@ -257,6 +334,8 @@ function Invoke-RunnerInboxPoll {
       message_id = $messageId
       title = $title
       status = "completed"
+      interface_count = if ($scanResult) { $scanResult.interface_count } else { $null }
+      capture_id = if ($captureResult -and $captureResult.result) { $captureResult.result.capture_id } else { $null }
     })
   }
   return $results
@@ -391,6 +470,42 @@ function Invoke-DeviceInterfaceSync {
   }
 }
 
+function Invoke-DeviceCaptureCommand {
+  param(
+    [Parameter(Mandatory = $true)][string]$WebBase,
+    [Parameter(Mandatory = $true)][string]$PayloadJson,
+    [Parameter(Mandatory = $true)][string]$RunnerDir,
+    [switch]$HardwareAccess
+  )
+  $captureScript = Download-RunnerScript -WebBase $WebBase -ScriptName "run-device-capture-command.py" -RunnerDir $RunnerDir
+  $payloadFile = Join-Path $RunnerDir ("device-capture-payload-" + [System.Guid]::NewGuid().ToString("N") + ".json")
+  [System.IO.File]::WriteAllText($payloadFile, $PayloadJson, [System.Text.UTF8Encoding]::new($false))
+  $captureArgs = @(
+    $captureScript,
+    "--payload-file", $payloadFile,
+    "--workdir", $RunnerDir
+  )
+  if ($HardwareAccess) {
+    $captureArgs += "--hardware-access"
+  }
+  try {
+    $captureOutput = & python @captureArgs 2>&1
+  } finally {
+    Remove-Item -LiteralPath $payloadFile -Force -ErrorAction SilentlyContinue
+  }
+  $captureText = ($captureOutput | Out-String).Trim()
+  if ([string]::IsNullOrWhiteSpace($captureText)) {
+    throw "Device capture command returned no result."
+  }
+  try {
+    $captureJson = $captureText | ConvertFrom-Json
+    $captureResult = if ($captureJson.data) { $captureJson.data } else { $captureJson }
+    return $captureResult
+  } catch {
+    throw $captureText
+  }
+}
+
 function Start-RunnerWatchLoop {
   param(
     [Parameter(Mandatory = $true)][string]$ApiBase,
@@ -402,6 +517,7 @@ function Start-RunnerWatchLoop {
     [int]$PollSeconds = 15,
     [int]$MaxLoops = 0,
     [int]$DeviceScanIntervalSeconds = 60,
+    [switch]$HardwareAccess,
     [switch]$ExecuteProviderCli
   )
   if ($PollSeconds -lt 3) {
@@ -440,7 +556,15 @@ function Start-RunnerWatchLoop {
           Write-Warning "Device interface scan failed; the runner will retry automatically: $($_.Exception.Message)"
         }
       }
-      $runnerCommands = Invoke-RunnerInboxPoll -ApiBase $ApiBase -RunnerId $RunnerId -RunnerName $RunnerName
+      $runnerCommands = Invoke-RunnerInboxPoll `
+        -ApiBase $ApiBase `
+        -RunnerId $RunnerId `
+        -RunnerName $RunnerName `
+        -WebBase $WebBase `
+        -ProjectId $ProjectId `
+        -ComputerNodeId $ComputerNodeId `
+        -RunnerDir $RunnerDir `
+        -HardwareAccess:$HardwareAccess
       $pollResults = Invoke-WorkstationInboxPoll `
         -ApiBase $ApiBase `
         -WebBase $WebBase `
@@ -681,5 +805,6 @@ if ($Watch) {
     -PollSeconds $WatchPollSeconds `
     -MaxLoops $WatchMaxLoops `
     -DeviceScanIntervalSeconds $DeviceScanIntervalSeconds `
+    -HardwareAccess:$HardwareAccess `
     -ExecuteProviderCli:$WatchExecuteProviderCli
 }

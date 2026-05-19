@@ -260,7 +260,7 @@ export function buildComputerOneClickConnectCommand(
   node: AnyRecord,
   pairingToken: string,
   runnerId: string,
-  options: { watch?: boolean; executeProviderCli?: boolean; serverUrl?: string } = {},
+  options: { watch?: boolean; executeProviderCli?: boolean; serverUrl?: string; hardwareAccess?: boolean } = {},
 ) {
   const serverUrl = buildRunnerApiBaseUrl(text(options.serverUrl, webBaseUrl));
   const nodeId = text(node.id ?? node.node_id ?? node.name ?? node.label, "computer");
@@ -280,6 +280,9 @@ export function buildComputerOneClickConnectCommand(
   if (options.watch) {
     args.push(["-Watch", true]);
   }
+  if (options.hardwareAccess) {
+    args.push(["-HardwareAccess", true]);
+  }
   if (options.executeProviderCli) {
     args.push(["-WatchExecuteProviderCli", true]);
   }
@@ -292,7 +295,7 @@ export function buildComputerOneClickConnectBashCommand(
   node: AnyRecord,
   pairingToken: string,
   runnerId: string,
-  options: { watch?: boolean; executeProviderCli?: boolean; serverUrl?: string } = {},
+  options: { watch?: boolean; executeProviderCli?: boolean; serverUrl?: string; hardwareAccess?: boolean } = {},
 ) {
   const serverUrl = buildRunnerApiBaseUrl(text(options.serverUrl, webBaseUrl));
   const nodeId = text(node.id ?? node.node_id ?? node.name ?? node.label, "computer");
@@ -311,6 +314,9 @@ export function buildComputerOneClickConnectBashCommand(
   }
   if (options.watch) {
     args.push(["--watch", true]);
+  }
+  if (options.hardwareAccess) {
+    args.push(["--hardware-access", true]);
   }
   if (options.executeProviderCli) {
     args.push(["--watch-execute-provider-cli", true]);

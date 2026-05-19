@@ -35,6 +35,9 @@ type DebugWindow = {
   runnerHint: string;
   transport: string;
   boundNpc: string;
+  baudRate?: string;
+  sampleHz?: string;
+  channels?: string;
   readCapability: boolean;
   writeCapabilityLabel: string;
   isUsable: boolean;
@@ -55,6 +58,16 @@ type RoboticsWorkbenchClientProps = {
   scannedCount: number;
   notice?: string;
   error?: string;
+};
+
+type SavedDebugWindow = {
+  resourceId: string;
+  name: string;
+  type: string;
+  baudRate: string;
+  sampleHz: string;
+  channels: string;
+  boundNpc: string;
 };
 
 function text(value: unknown, fallback = "") {
@@ -88,7 +101,7 @@ function seatId(seat: AnyRecord, fallback: string) {
 }
 
 function seatName(seat: AnyRecord, fallback: string) {
-  return text(seat.name ?? seat.label ?? seat.display_name, fallback);
+  return userFacingTerminalText(seat.name ?? seat.label ?? seat.display_name ?? fallback);
 }
 
 function commandText(message: AnyRecord) {
@@ -107,6 +120,20 @@ function commandText(message: AnyRecord) {
   } catch {}
   const match = body.match(/只读命令：(.+)/);
   return match?.[1]?.trim() || body.split("\n").find((line) => line.includes("listen")) || "只读调试命令";
+}
+
+function userFacingTerminalText(value: unknown) {
+  return text(value, "")
+    .replace(/\bRunner\b/g, "接单窗口")
+    .replace(/\brunner\b/g, "接单窗口")
+    .replace(/\badapters?\b/gi, "适配器")
+    .replace(/\bbridges?\b/gi, "桥接器")
+    .replace(/\bsession JSONL\b/gi, "会话记录")
+    .replace(/\blocal path\b/gi, "当前电脑路径")
+    .replace(/\bsource_thread\b/gi, "来源线程")
+    .replace(/\bcanonical\b/gi, "标准")
+    .replace(/\brequested id\b/gi, "请求编号")
+    .replace(/\braw UUID\b/gi, "原始编号");
 }
 
 function terminalEventLines(tile: DebugWindow, messages: AnyRecord[]) {
@@ -132,7 +159,7 @@ function terminalEventLines(tile: DebugWindow, messages: AnyRecord[]) {
     const status = text(message.status, "open");
     const extra = record(message.extra_data ?? message.metadata);
     if (type === "runner_command") return `$ ${commandText(message)}  # ${status}`;
-    if (type === "runner_ack") return `[ack] ${text(message.body, "执行电脑已接单")}`;
+    if (type === "runner_ack") return `[ack] ${userFacingTerminalText(message.body) || "执行电脑已接单"}`;
     if (type === "runner_result") {
       const result = record(extra.runner_result);
       const captureId = text(result.capture_id ?? extra.capture_id, "");
@@ -148,7 +175,7 @@ function terminalEventLines(tile: DebugWindow, messages: AnyRecord[]) {
         }
         return `[capture:${resultStatus}] ${text(result.error, "执行电脑已返回采集回执")}`;
       }
-      return `[result:${status}] ${text(message.body, "执行电脑已返回结果")}`;
+      return `[result:${status}] ${userFacingTerminalText(message.body) || "执行电脑已返回结果"}`;
     }
     if (type === "robotics_capture_start") return `[capture:running] ${text(message.title, "开始采集")}`;
     if (type === "robotics_capture_segment") return `[capture:ready] ${text(record(message.extra_data ?? message.metadata).artifact_path, text(message.title, "采集片段"))}`;
@@ -348,6 +375,8 @@ function HiddenTileFields({
 
 function terminalLines(tile: DebugWindow, boundNpcLabel: string) {
   const dispatchMode = tile.runnerCanDispatch ? "可接单" : tile.runnerCanQueue ? "排队等恢复" : "暂停提交";
+  const sampleHz = text(tile.sampleHz, "100");
+  const baudRate = text(tile.baudRate, "115200");
   const lines = [
     `$ open ${tile.name}`,
     `接口=${tile.kindLabel}  电脑=${tile.computerLabel}`,
@@ -357,13 +386,13 @@ function terminalLines(tile: DebugWindow, boundNpcLabel: string) {
     `协助NPC=${boundNpcLabel || tile.boundNpc || "未绑定，创建或设置时选择 NPC"}`,
   ];
   if (tile.kind === "can") {
-    lines.push("filter=none  bitrate=待确认  sample=100Hz");
+    lines.push(`filter=none  bitrate=待确认  sample=${sampleHz}Hz`);
     lines.push("hint: 用户在这里手动发送不需要平台审核；NPC 代发必须先待审。");
   } else if (tile.kind === "spi-can") {
     lines.push("chip=MCP251x  spi-clock=待确认  irq=待确认");
     lines.push("hint: SPI-CAN 只给配置建议，不直接改 overlay / module。");
   } else if (tile.kind === "serial") {
-    lines.push("baud=115200  parity=none  stop=1");
+    lines.push(`baud=${baudRate}  parity=none  stop=1`);
     lines.push("hint: 用户手动输入直接进执行电脑；NPC 代写串口命令必须先待审。");
   } else if (tile.kind === "usb") {
     lines.push("mode=enumerate  driver=待确认");
@@ -397,6 +426,55 @@ function windowsHref(projectId: string, openIds: string[], npcId = "") {
   return `/projects/${projectId}/robotics${suffix ? `?${suffix}` : ""}`;
 }
 
+function windowStorageKey(projectId: string) {
+  return `ai-collab.robotics.debug-windows.${projectId}`;
+}
+
+function loadSavedWindows(projectId: string): SavedDebugWindow[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(windowStorageKey(projectId)) || "[]");
+    return Array.isArray(parsed) ? parsed as SavedDebugWindow[] : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveWindows(projectId: string, next: SavedDebugWindow[]) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(windowStorageKey(projectId), JSON.stringify(next));
+}
+
+function kindLabelForConfig(kind: string, fallback: string) {
+  switch (kind) {
+    case "serial": return "串口";
+    case "can": return "CAN";
+    case "usb": return "USB";
+    case "spi-can": return "SPI-CAN";
+    case "ros": return "ROS";
+    default: return fallback || "接口";
+  }
+}
+
+function configuredDebugWindows(resources: DebugWindow[], configs: SavedDebugWindow[]) {
+  return configs
+    .map((config) => {
+      const source = resources.find((item) => item.id === config.resourceId);
+      if (!source) return null;
+      return {
+        ...source,
+        name: text(config.name, source.name),
+        kind: text(config.type, source.kind),
+        kindLabel: kindLabelForConfig(text(config.type, source.kind), source.kindLabel),
+        boundNpc: text(config.boundNpc, source.boundNpc),
+        baudRate: text(config.baudRate, "115200"),
+        sampleHz: text(config.sampleHz, "100"),
+        channels: text(config.channels, "time,motor.current,motor.velocity,sensor.temperature,bus.frame"),
+      };
+    })
+    .filter(Boolean) as DebugWindow[];
+}
+
 function DebugTile({
   projectId,
   tile,
@@ -425,6 +503,9 @@ function DebugTile({
   const datasetEvents = tileEvents(tile, terminalMessages, ["robotics_annotation_request", "robotics_dataset_export"]);
   const chartEvents = tileEvents(tile, terminalMessages, ["robotics_chart_snapshot", "robotics_tuning_request"]);
   const [chartTargetValue, setChartTargetValue] = useState("");
+  const sampleHz = text(tile.sampleHz, "100");
+  const baudRate = text(tile.baudRate, "115200");
+  const channels = text(tile.channels, "time,motor.current,motor.velocity,sensor.temperature,bus.frame");
 
   return (
     <article className={tileStyles.tile}>
@@ -534,15 +615,19 @@ function DebugTile({
             <input type="hidden" name="bound_npc_label" value={boundNpcLabel} />
             <label>
               <span>采样频率</span>
-              <input name="sample_hz" defaultValue="100" inputMode="numeric" />
+              <input name="sample_hz" defaultValue={sampleHz} inputMode="numeric" />
             </label>
             <label>
               <span>波特率</span>
-              <input name="baud_rate" defaultValue="115200" inputMode="numeric" />
+              <select name="baud_rate" defaultValue={baudRate} aria-label="波特率">
+                {["9600", "19200", "38400", "57600", "115200", "230400", "460800", "921600", "1000000", "2000000"].map((rate) => (
+                  <option key={rate} value={rate}>{rate}</option>
+                ))}
+              </select>
             </label>
             <label>
               <span>通道</span>
-              <input name="channels" defaultValue="time,motor.current,motor.velocity,sensor.temperature,bus.frame" />
+              <input name="channels" defaultValue={channels} />
             </label>
             <button type="submit" name="capture_mode" value="start" disabled={!tile.runnerReady}>开始采集</button>
             <button type="submit" name="capture_mode" value="stop" disabled={!tile.runnerReady}>停止并生成片段</button>
@@ -785,13 +870,58 @@ export function RoboticsWorkbenchClient({
   notice = "",
   error = "",
 }: RoboticsWorkbenchClientProps) {
-  const [openIds, setOpenIds] = useState<string[]>(initialOpenIds);
   const [defaultNpcId, setDefaultNpcId] = useState(initialNpcId);
+  const [savedWindows, setSavedWindows] = useState<SavedDebugWindow[]>(() => {
+    const stored = loadSavedWindows(projectId);
+    if (stored.length) return stored;
+    return initialOpenIds
+      .map((id) => windows.find((item) => item.id === id))
+      .filter(Boolean)
+      .map((item) => ({
+        resourceId: item!.id,
+        name: item!.name,
+        type: item!.kind,
+        baudRate: "115200",
+        sampleHz: "100",
+        channels: "time,motor.current,motor.velocity,sensor.temperature,bus.frame",
+        boundNpc: initialNpcId,
+      }));
+  });
+  const configuredWindows = useMemo(() => configuredDebugWindows(windows, savedWindows), [windows, savedWindows]);
+  const [openIds, setOpenIds] = useState<string[]>(() => initialOpenIds.filter((id) => savedWindows.some((item) => item.resourceId === id)));
   const usableWindows = useMemo(() => windows.filter((item) => item.isUsable), [windows]);
+  const resourceById = useMemo(() => new Map(windows.map((item) => [item.id, item])), [windows]);
   const openWindows = useMemo(
-    () => openIds.map((id) => windows.find((item) => item.id === id)).filter(Boolean) as DebugWindow[],
-    [openIds, windows],
+    () => openIds.map((id) => configuredWindows.find((item) => item.id === id)).filter(Boolean) as DebugWindow[],
+    [openIds, configuredWindows],
   );
+
+  function updateSavedWindows(next: SavedDebugWindow[]) {
+    setSavedWindows(next);
+    saveWindows(projectId, next);
+  }
+
+  function createWindow(formData: FormData) {
+    const resourceId = text(formData.get("resource_id"), "");
+    const resource = resourceById.get(resourceId);
+    if (!resource) return;
+    const next: SavedDebugWindow = {
+      resourceId,
+      name: text(formData.get("window_name"), resource.name),
+      type: text(formData.get("window_type"), resource.kind),
+      baudRate: text(formData.get("baud_rate"), "115200"),
+      sampleHz: text(formData.get("sample_hz"), "100"),
+      channels: text(formData.get("channels"), "time,motor.current,motor.velocity,sensor.temperature,bus.frame"),
+      boundNpc: text(formData.get("bound_npc"), defaultNpcId),
+    };
+    updateSavedWindows([...savedWindows.filter((item) => item.resourceId !== resourceId), next]);
+    setOpenIds((curr) => curr.includes(resourceId) ? curr : [...curr, resourceId]);
+  }
+
+  function deleteWindow(resourceId: string) {
+    updateSavedWindows(savedWindows.filter((item) => item.resourceId !== resourceId));
+    setOpenIds((curr) => curr.filter((item) => item !== resourceId));
+  }
 
   function openWindow(id: string) {
     setOpenIds((curr) => curr.includes(id) ? curr : [...curr, id]);
@@ -812,13 +942,13 @@ export function RoboticsWorkbenchClient({
           <Link className={workbenchStyles.backLink} href={`/projects/${projectId}`}>← 主页面</Link>
           <div className={workbenchStyles.title}>
             <strong>{projectName}</strong>
-            <small>{projectName} · 只显示本项目电脑扫描到的真实接口，不建假窗口</small>
+            <small>{projectName} · 先创建调试窗口，再从真实扫描设备里绑定接口</small>
           </div>
         </div>
         <div className={workbenchStyles.topbarRight}>
           <span className={workbenchStyles.kpi}>执行电脑 {onlineComputers}/{computerCount}</span>
           <span className={workbenchStyles.kpi}>已扫描 {scannedCount}</span>
-          <span className={workbenchStyles.kpi}>窗口 {openWindows.length}/{windows.length}</span>
+          <span className={workbenchStyles.kpi}>窗口 {openWindows.length}/{configuredWindows.length}</span>
         </div>
       </header>
 
@@ -828,27 +958,79 @@ export function RoboticsWorkbenchClient({
             <input
               type="search"
               className={workbenchStyles.search}
-              placeholder="搜索真实接口 / 电脑 / NPC"
+              placeholder="搜索调试窗口 / 电脑 / NPC"
               readOnly
               value="设备数据工作台"
             />
-            <button type="button" className={workbenchStyles.batchBtn} onClick={() => setOpenIds(usableWindows.map((window) => window.id))}>
-              打开全部 ({usableWindows.length})
+            <button type="button" className={workbenchStyles.batchBtn} onClick={() => setOpenIds(configuredWindows.map((window) => window.id))}>
+              打开全部 ({configuredWindows.length})
             </button>
             <form action={请求串口USB扫描.bind(null, projectId)} className={styles.scanInlineForm}>
               <input type="hidden" name="return_to" value={`/projects/${projectId}/robotics`} />
               <input type="hidden" name="computer_node_id" value="all" />
               <button type="submit" disabled={!computerCount}>扫描真实接口</button>
             </form>
+            <form action={createWindow} className={styles.windowCreateForm}>
+              <strong>创建调试窗口</strong>
+              <input name="window_name" placeholder="窗口名，例如 左前轮电机串口" />
+              <label className={styles.createFullField}>
+                <span>窗口类型</span>
+                <select name="window_type" defaultValue="serial" aria-label="窗口类型">
+                  <option value="serial">串口</option>
+                  <option value="can">CAN</option>
+                  <option value="usb">USB</option>
+                  <option value="spi-can">SPI-CAN</option>
+                  <option value="ros">ROS</option>
+                </select>
+              </label>
+              <label className={styles.createFullField}>
+                <span>绑定真实设备</span>
+                <select name="resource_id" aria-label="绑定真实设备">
+                  {usableWindows.map((resource) => (
+                    <option key={resource.id} value={resource.id}>{resource.name} · {resource.computerLabel}</option>
+                  ))}
+                </select>
+              </label>
+              <div className={styles.createParamGrid}>
+                <label>
+                  <span>波特率</span>
+                  <select name="baud_rate" defaultValue="115200" aria-label="波特率">
+                    {["9600", "19200", "38400", "57600", "115200", "230400", "460800", "921600", "1000000", "2000000"].map((rate) => (
+                      <option key={rate} value={rate}>{rate}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>采样频率</span>
+                  <input name="sample_hz" defaultValue="100" aria-label="采样频率" />
+                </label>
+              </div>
+              <label className={styles.createFullField}>
+                <span>采集通道</span>
+                <input name="channels" defaultValue="time,motor.current,motor.velocity,sensor.temperature,bus.frame" aria-label="采集通道" />
+              </label>
+              <label className={styles.createFullField}>
+                <span>协助 NPC</span>
+                <select name="bound_npc" aria-label="协助 NPC" defaultValue={defaultNpcId} onChange={(event) => setDefaultNpcId(event.target.value)}>
+                  <option value="">不绑定 NPC</option>
+                  {npcSeats.map((seat, index) => {
+                    const name = seatName(seat, `NPC ${index + 1}`);
+                    return <option key={seatId(seat, name)} value={seatId(seat, name)}>{name}</option>;
+                  })}
+                </select>
+              </label>
+              <button type="submit" disabled={!usableWindows.length}>创建并打开</button>
+              <small>{usableWindows.length ? `${usableWindows.length} 个真实设备可绑定` : "先扫描或接入电脑后再创建窗口"}</small>
+            </form>
           </div>
           <ul className={workbenchStyles.groupList}>
             <li className={workbenchStyles.group}>
               <div className={workbenchStyles.groupHeader}>
-                <span>🖥 真实接口索引</span>
-                <small>{windows.length} 个接口</small>
+                <span>🖥 调试窗口</span>
+                <small>{configuredWindows.length} 个窗口</small>
               </div>
               <ul className={workbenchStyles.npcList}>
-                {windows.map((window) => {
+                {configuredWindows.map((window) => {
                   const isOpen = openIds.includes(window.id);
                   return (
                     <li key={window.id} className={`${workbenchStyles.npcRow} ${isOpen ? workbenchStyles.npcRowOpen : ""}`}>
@@ -860,17 +1042,20 @@ export function RoboticsWorkbenchClient({
                         </small>
                       </div>
                       {window.isUsable ? (
-                      <a
-                        className={workbenchStyles.openBtn}
-                        href={windowsHref(projectId, isOpen ? openIds.filter((id) => id !== window.id) : [...openIds, window.id], defaultNpcId)}
-                        aria-label={`${isOpen ? "关闭" : "打开"} ${window.name}`}
-                        onClick={(event) => {
-                          event.preventDefault();
-                          toggleWindow(window.id);
-                        }}
-                      >
-                        {isOpen ? "✕" : "+"}
-                      </a>
+                        <span className={styles.windowRowActions}>
+                          <a
+                            className={workbenchStyles.openBtn}
+                            href={windowsHref(projectId, isOpen ? openIds.filter((id) => id !== window.id) : [...openIds, window.id], defaultNpcId)}
+                            aria-label={`${isOpen ? "关闭" : "打开"} ${window.name}`}
+                            onClick={(event) => {
+                              event.preventDefault();
+                              toggleWindow(window.id);
+                            }}
+                          >
+                            {isOpen ? "✕" : "+"}
+                          </a>
+                          <button type="button" aria-label={`删除 ${window.name}`} onClick={() => deleteWindow(window.id)}>删</button>
+                        </span>
                       ) : (
                         <span className={styles.openBtnDisabled}>!</span>
                       )}
@@ -902,13 +1087,13 @@ export function RoboticsWorkbenchClient({
             </div>
           ) : (
             <div className={workbenchStyles.placeholder}>
-              <strong>{windows.length ? "点击左栏真实接口的 + 号打开调试瓷砖" : "等待本项目电脑扫描接口"}</strong>
-              <p>{windows.length ? "每个调试瓷砖都有自己的终端、数据标注和图表实验，不会在页面之间来回跳。" : "请先在主页面接入电脑，并执行接口扫描。平台不会创建 demo 调试窗口误导你。"}</p>
+              <strong>{configuredWindows.length ? "点击左栏调试窗口的 + 号打开瓷砖" : "先创建一个调试窗口"}</strong>
+              <p>{configuredWindows.length ? "每个调试瓷砖都有自己的大终端、数据标注和图表实验，不会在页面之间来回跳。" : "从左栏创建窗口：命名、选择串口/CAN/USB 等类型，再绑定真实扫描设备和参数。"}</p>
               <form action={请求串口USB扫描.bind(null, projectId)} className={styles.emptyScanForm}>
                 <input type="hidden" name="return_to" value={`/projects/${projectId}/robotics`} />
                 <input type="hidden" name="computer_node_id" value="all" />
                 <button type="submit" disabled={!computerCount}>扫描真实接口</button>
-                <span>{computerCount ? "向已接入电脑下发只读扫描，扫描结果会回到左栏。" : "先在主页面接入至少一台电脑。"}</span>
+                <span>{computerCount ? "扫描结果只进入创建窗口的设备下拉，不会直接铺到左栏。" : "先在主页面接入至少一台电脑。"}</span>
               </form>
             </div>
           )}

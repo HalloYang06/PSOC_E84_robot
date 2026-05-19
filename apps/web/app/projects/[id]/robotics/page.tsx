@@ -161,7 +161,7 @@ function buildDebugWindows(computers: AnyRecord[], seats: AnyRecord[]): DebugWin
 function selectedWindowIds(searchValue: unknown, windows: DebugWindow[]) {
   const raw = text(searchValue, "");
   const requested = raw.split(",").map((item) => item.trim()).filter(Boolean);
-  const ids = requested.length ? requested : windows.filter((item) => item.isUsable).slice(0, Math.min(2, windows.length)).map((item) => item.id);
+  const ids = requested.length ? requested : [];
   const known = new Set(windows.map((item) => item.id));
   return ids.filter((id) => known.has(id));
 }
