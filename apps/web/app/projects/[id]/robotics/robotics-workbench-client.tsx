@@ -111,9 +111,26 @@ function terminalEventLines(tile: DebugWindow, messages: AnyRecord[]) {
   return related.map((message) => {
     const type = text(message.message_type ?? message.messageType, "event");
     const status = text(message.status, "open");
+    const extra = record(message.extra_data ?? message.metadata);
     if (type === "runner_command") return `$ ${commandText(message)}  # ${status}`;
     if (type === "runner_ack") return `[ack] ${text(message.body, "执行电脑已接单")}`;
-    if (type === "runner_result") return `[result:${status}] ${text(message.body, "执行电脑已返回结果")}`;
+    if (type === "runner_result") {
+      const result = record(extra.runner_result);
+      const captureId = text(result.capture_id ?? extra.capture_id, "");
+      if (captureId) {
+        const mode = text(result.kind ?? extra.terminal_mode, "");
+        const resultStatus = text(result.status, text(result.capture_mode, status));
+        const sampleCount = text(result.sample_count, "");
+        if (mode === "robotics.capture.start" || text(extra.terminal_mode, "") === "capture_start") {
+          return `[capture:running] 目标电脑已开始后台采集 ${captureId}`;
+        }
+        if (sampleCount && sampleCount !== "0") {
+          return `[capture:done] 已收到 ${sampleCount} 个样本`;
+        }
+        return `[capture:${resultStatus}] ${text(result.error, "执行电脑已返回采集回执")}`;
+      }
+      return `[result:${status}] ${text(message.body, "执行电脑已返回结果")}`;
+    }
     if (type === "robotics_capture_start") return `[capture:running] ${text(message.title, "开始采集")}`;
     if (type === "robotics_capture_segment") return `[capture:ready] ${text(record(message.extra_data ?? message.metadata).artifact_path, text(message.title, "采集片段"))}`;
     if (type === "robotics_terminal_review" || type === "robotics_terminal_npc_request") return `[npc-review:${status}] ${commandText(message)}`;
