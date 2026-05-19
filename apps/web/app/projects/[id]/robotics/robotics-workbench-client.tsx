@@ -216,6 +216,14 @@ function terminalEventLines(tile: DebugWindow, messages: AnyRecord[]) {
 
 function captureSegments(tile: DebugWindow, messages: AnyRecord[]) {
   const runnerResults = new Map<string, AnyRecord>();
+  const resultScore = (result: AnyRecord) => {
+    const points = record(record(result).preview_points);
+    const summary = record(record(result).preview_summary);
+    return (Number(result.sample_count) || 0)
+      + Object.keys(record(points.series)).length * 1000
+      + Object.keys(record(summary.numeric_fields)).length * 100
+      + (text(result.kind, "") === "robotics.capture.stop" ? 10 : 0);
+  };
   for (const message of messages) {
     const extra = record(message.extra_data ?? message.metadata);
     if (text(message.message_type ?? message.messageType, "") !== "runner_result") continue;
@@ -224,7 +232,10 @@ function captureSegments(tile: DebugWindow, messages: AnyRecord[]) {
     if (!belongsToTile) continue;
     const result = record(extra.runner_result);
     const captureId = text(result.capture_id ?? extra.capture_id, "");
-    if (captureId) runnerResults.set(captureId, result);
+    if (captureId) {
+      const previous = runnerResults.get(captureId);
+      if (!previous || resultScore(result) >= resultScore(previous)) runnerResults.set(captureId, result);
+    }
   }
   return messages
     .filter((message) => {
