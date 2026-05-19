@@ -152,13 +152,15 @@ function roboticsCaptureAckLine(value: unknown) {
     const byteCount = text(payload.byte_count, "0");
     const error = text(payload.error, "");
     const sync = record(payload.repo_sync);
+    const cache = record(payload.local_cache);
     const syncStatus = text(sync.status, "");
+    const syncLine = captureSyncStatusLabel(syncStatus);
+    const cacheLine = captureCacheStatusLabel(text(cache.status, ""));
     const parts = [`采集回执：${sampleCount} 个样本`];
     if (byteCount && byteCount !== "0") parts.push(`${byteCount} bytes`);
     if (payload.preview) parts.push("预览文件已生成");
-    if (syncStatus === "committed" || syncStatus === "pushed") parts.push("已写入仓库证据");
-    else if (syncStatus === "waiting_for_repo") parts.push("等待配置仓库同步");
-    else if (syncStatus) parts.push(`同步状态：${syncStatus}`);
+    if (syncLine) parts.push(syncLine);
+    if (cacheLine) parts.push(cacheLine);
     if (error) parts.push(`提示：${userFacingTerminalText(error)}`);
     return parts.join(" · ");
   } catch {
@@ -289,23 +291,37 @@ function segmentVariables(segments: ReturnType<typeof captureSegments>) {
   return Array.from(values);
 }
 
+function captureSyncStatusLabel(status: string) {
+  if (status === "pushed") return "已推送到仓库";
+  if (status === "committed") return "已写入仓库证据";
+  if (status === "unchanged") return "仓库证据已存在";
+  if (status === "waiting_for_repo") return "等待配置仓库同步";
+  if (status === "repo_missing") return "设备数据仓库不可用";
+  if (status === "not_git_repo") return "设备数据仓库未初始化";
+  if (status === "copy_failed") return "写入仓库失败";
+  if (status === "git_add_failed" || status === "git_commit_failed") return "仓库登记失败";
+  if (status === "push_failed") return "已本地提交，等待重试推送";
+  return "";
+}
+
+function captureCacheStatusLabel(status: string) {
+  if (status === "cleaned" || status === "already_clean") return "本机临时缓存已清理";
+  if (status === "kept_for_retry") return "本机保留待同步缓存";
+  if (status === "cleanup_failed") return "本机缓存待人工清理";
+  return "";
+}
+
 function captureResultLine(segment: ReturnType<typeof captureSegments>[number]) {
   const result = record(segment.runnerResult);
   const sampleCount = text(result.sample_count, "");
   const byteCount = text(result.byte_count, "");
   const sync = record(result.repo_sync);
+  const cache = record(result.local_cache);
   const preview = text(sync.preview, text(result.preview, ""));
   const syncStatus = text(sync.status, "");
   const error = text(result.error, "");
-  const syncTail = syncStatus
-    ? syncStatus === "committed" || syncStatus === "pushed"
-      ? " · 已写入仓库证据"
-      : syncStatus === "waiting_for_repo"
-        ? " · 等待配置仓库同步"
-        : syncStatus === "push_failed"
-          ? " · 已本地提交，等待重试推送"
-          : ` · 同步状态：${syncStatus}`
-    : "";
+  const statusParts = [captureSyncStatusLabel(syncStatus), captureCacheStatusLabel(text(cache.status, ""))].filter(Boolean);
+  const syncTail = statusParts.length ? ` · ${statusParts.join(" · ")}` : "";
   if (sampleCount && sampleCount !== "0") {
     return `已回传 ${sampleCount} 个样本${byteCount ? ` / ${byteCount} bytes` : ""}${preview ? " · 预览文件已生成" : ""}${syncTail}`;
   }
