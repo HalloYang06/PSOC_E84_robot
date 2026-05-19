@@ -3210,9 +3210,9 @@
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
   gap: 8px;
-  overflow: auto;
+  overflow: hidden;
 }
 
 .dataWorkbenchPane article,
@@ -3225,6 +3225,81 @@
   border: 1px solid rgba(88, 240, 255, 0.16);
   border-radius: 8px;
   background: rgba(2, 14, 22, 0.76);
+}
+
+.dataFocusPanel {
+  min-height: 0;
+  overflow: auto;
+}
+
+.dataDrawerRail {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  overflow: auto;
+}
+
+.workbenchDrawer {
+  min-width: 0;
+  border: 1px solid rgba(88, 240, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(2, 14, 22, 0.72);
+}
+
+.workbenchDrawer > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.workbenchDrawer > summary::-webkit-details-marker {
+  display: none;
+}
+
+.workbenchDrawer > summary::after {
+  content: "+";
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(88, 240, 255, 0.22);
+  border-radius: 6px;
+  color: #8ef0c7;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.workbenchDrawer[open] > summary::after {
+  content: "-";
+}
+
+.workbenchDrawer > summary span {
+  color: #b9fff3;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.workbenchDrawer > summary strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #eaffff;
+  font-size: 12px;
+}
+
+.workbenchDrawer .dataActionPanel {
+  margin: 0 7px 7px;
+  border-color: rgba(88, 240, 255, 0.1);
+  background: rgba(1, 8, 12, 0.42);
 }
 
 .dataWorkbenchPane span,
@@ -3305,6 +3380,30 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 5px;
+}
+
+.variablePills {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.variablePills span {
+  max-width: 180px;
+  min-height: 24px;
+  display: inline-grid;
+  align-content: center;
+  padding: 4px 8px;
+  border: 1px solid rgba(88, 240, 255, 0.16);
+  border-radius: 999px;
+  background: rgba(88, 240, 255, 0.07);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(234, 255, 255, 0.86);
+  font-size: 11px;
+  font-weight: 850;
 }
 
 .checkLine {
@@ -4069,5 +4168,15 @@ button.threadChip:hover {
 
   .settingsPanel {
     grid-template-columns: 1fr;
+  }
+
+  .dataWorkbenchPane {
+    grid-template-columns: 1fr;
+    overflow: auto;
+  }
+
+  .dataDrawerRail,
+  .dataFocusPanel {
+    overflow: visible;
   }
 }
