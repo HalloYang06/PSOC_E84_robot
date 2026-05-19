@@ -4044,6 +4044,102 @@ export async function 请求串口USB扫描(projectId: string, formData: FormDat
   }
 }
 
+function normalizeRoboticsDebugWindows(value: unknown) {
+  return asArray<Record<string, unknown>>(value)
+    .map((item) => ({
+      resourceId: text(item.resourceId ?? item.resource_id ?? item.interface_id, ""),
+      name: text(item.name ?? item.label, ""),
+      type: text(item.type ?? item.kind, "serial"),
+      baudRate: text(item.baudRate ?? item.baud_rate, "115200"),
+      sampleHz: text(item.sampleHz ?? item.sample_hz, "100"),
+      channels: text(item.channels, "time,motor.current,motor.velocity,sensor.temperature,bus.frame"),
+      boundNpc: text(item.boundNpc ?? item.bound_npc ?? item.bound_npc_id, ""),
+      createdAt: text(item.createdAt ?? item.created_at, ""),
+      updatedAt: text(item.updatedAt ?? item.updated_at, ""),
+      updatedBy: text(item.updatedBy ?? item.updated_by, ""),
+    }))
+    .filter((item) => item.resourceId);
+}
+
+export async function 创建机器人调试窗口(projectId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "robotics");
+  const resourceId = text(formData.get("resource_id"), "");
+  const windowName = text(formData.get("window_name"), "");
+  const windowType = text(formData.get("window_type"), "serial");
+  const baudRate = text(formData.get("baud_rate"), "115200");
+  const sampleHz = text(formData.get("sample_hz"), "100");
+  const channels = text(formData.get("channels"), "time,motor.current,motor.velocity,sensor.temperature,bus.frame");
+  const boundNpc = text(formData.get("bound_npc"), "");
+
+  if (!resourceId) {
+    redirect(withQueryValue(returnTo, "team_error", "请先从真实扫描设备里选择要绑定的接口"));
+  }
+
+  try {
+    const { currentUser, project } = await ensureProjectCollaborationAccess(projectId);
+    const actorId = text(currentUser?.id ?? currentUser?.email, "human-chief");
+    const collaborationConfig = readProjectCollaborationConfig(project);
+    const currentWindows = normalizeRoboticsDebugWindows(collaborationConfig.robotics_debug_windows);
+    const timestamp = new Date().toISOString();
+    const nextWindow = {
+      resourceId,
+      name: windowName || `调试窗口 ${currentWindows.length + 1}`,
+      type: windowType,
+      baudRate,
+      sampleHz,
+      channels,
+      boundNpc,
+      createdAt: currentWindows.find((item) => item.resourceId === resourceId)?.createdAt || timestamp,
+      updatedAt: timestamp,
+      updatedBy: actorId,
+    };
+    const nextWindows = [
+      ...currentWindows.filter((item) => item.resourceId !== resourceId),
+      nextWindow,
+    ];
+
+    await patchJson(`/api/projects/${projectId}`, {
+      collaboration_config: {
+        ...collaborationConfig,
+        robotics_debug_windows: nextWindows,
+      },
+    });
+    revalidateProjectSurfaces(projectId);
+    revalidatePath(`/projects/${projectId}/robotics`);
+    redirect(withQueryValue(returnTo, "windows", resourceId));
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "创建调试窗口失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
+export async function 删除机器人调试窗口(projectId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "robotics");
+  const resourceId = text(formData.get("resource_id"), "");
+  if (!resourceId) {
+    redirect(withQueryValue(returnTo, "team_error", "请选择要删除的调试窗口"));
+  }
+  try {
+    const { project } = await ensureProjectCollaborationAccess(projectId);
+    const collaborationConfig = readProjectCollaborationConfig(project);
+    const currentWindows = normalizeRoboticsDebugWindows(collaborationConfig.robotics_debug_windows);
+    await patchJson(`/api/projects/${projectId}`, {
+      collaboration_config: {
+        ...collaborationConfig,
+        robotics_debug_windows: currentWindows.filter((item) => item.resourceId !== resourceId),
+      },
+    });
+    revalidateProjectSurfaces(projectId);
+    revalidatePath(`/projects/${projectId}/robotics`);
+    redirect(withoutQueryKeys(returnTo, ["windows", "team_notice", "team_error"]));
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "删除调试窗口失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
 export async function 下发串口调试指令(projectId: string, formData: FormData) {
   const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "device-debug");
   const nodeId = String(formData.get("computer_node_id") ?? "").trim();

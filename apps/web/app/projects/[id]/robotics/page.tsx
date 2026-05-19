@@ -115,6 +115,30 @@ type DebugWindow = {
   isUsable: boolean;
 };
 
+type SavedDebugWindow = {
+  resourceId: string;
+  name: string;
+  type: string;
+  baudRate: string;
+  sampleHz: string;
+  channels: string;
+  boundNpc: string;
+};
+
+function normalizeSavedDebugWindows(value: unknown): SavedDebugWindow[] {
+  return asArray<AnyRecord>(value)
+    .map((item) => ({
+      resourceId: text(item.resourceId ?? item.resource_id ?? item.interface_id, ""),
+      name: text(item.name ?? item.label, ""),
+      type: text(item.type ?? item.kind, "serial"),
+      baudRate: text(item.baudRate ?? item.baud_rate, "115200"),
+      sampleHz: text(item.sampleHz ?? item.sample_hz, "100"),
+      channels: text(item.channels, "time,motor.current,motor.velocity,sensor.temperature,bus.frame"),
+      boundNpc: text(item.boundNpc ?? item.bound_npc ?? item.bound_npc_id, ""),
+    }))
+    .filter((item) => item.resourceId);
+}
+
 function buildDebugWindows(computers: AnyRecord[], seats: AnyRecord[]): DebugWindow[] {
   const seatNames = seats.map((seat) => seatName(seat, "")).filter(Boolean);
   const windows: DebugWindow[] = [];
@@ -203,6 +227,8 @@ export default async function ProjectRoboticsPage({
   const npcSeats = seats.filter((seat) => isNpcSeatRecord(seat));
   const terminalMessages = asArray<AnyRecord>(messagesState.data);
   const windows = buildDebugWindows(computers, npcSeats);
+  const config = record(project.collaboration_config);
+  const savedWindows = normalizeSavedDebugWindows(config.robotics_debug_windows);
   const onlineComputers = computers.filter((node) => runnerStateLabel(node) === "可投递").length;
   const scanned = computers.filter((node) => scanInterfaces(node).length > 0).length;
   const notice = text(searchParams?.team_notice, "");
@@ -215,6 +241,7 @@ export default async function ProjectRoboticsPage({
       projectId={projectId}
       projectName={text(project.name, "项目")}
       windows={windows}
+      initialSavedWindows={savedWindows}
       npcSeats={npcSeats}
       terminalMessages={terminalMessages}
       initialOpenIds={initialOpenIds}

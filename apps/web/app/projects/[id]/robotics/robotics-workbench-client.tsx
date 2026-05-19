@@ -1,14 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { apiClientUrl } from "../../../../lib/api-client-url";
 import {
   下发机器人调试命令,
   创建机器人图表实验,
+  创建机器人调试窗口,
   创建机器人数据预标注请求,
   创建机器人调参建议请求,
   创建机器人调试Npc操作审核,
+  删除机器人调试窗口,
   导出机器人标注数据,
   请求串口USB扫描,
   记录机器人采集片段,
@@ -49,6 +51,7 @@ type RoboticsWorkbenchClientProps = {
   projectId: string;
   projectName: string;
   windows: DebugWindow[];
+  initialSavedWindows: SavedDebugWindow[];
   npcSeats: AnyRecord[];
   terminalMessages: AnyRecord[];
   initialOpenIds: string[];
@@ -424,25 +427,6 @@ function windowsHref(projectId: string, openIds: string[], npcId = "") {
   if (npcId) params.set("npc", npcId);
   const suffix = params.toString();
   return `/projects/${projectId}/robotics${suffix ? `?${suffix}` : ""}`;
-}
-
-function windowStorageKey(projectId: string) {
-  return `ai-collab.robotics.debug-windows.${projectId}`;
-}
-
-function loadSavedWindows(projectId: string): SavedDebugWindow[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(windowStorageKey(projectId)) || "[]");
-    return Array.isArray(parsed) ? parsed as SavedDebugWindow[] : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveWindows(projectId: string, next: SavedDebugWindow[]) {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(windowStorageKey(projectId), JSON.stringify(next));
 }
 
 function kindLabelForConfig(kind: string, fallback: string) {
@@ -860,6 +844,7 @@ export function RoboticsWorkbenchClient({
   projectId,
   projectName,
   windows,
+  initialSavedWindows,
   npcSeats,
   terminalMessages,
   initialOpenIds,
@@ -871,22 +856,7 @@ export function RoboticsWorkbenchClient({
   error = "",
 }: RoboticsWorkbenchClientProps) {
   const [defaultNpcId, setDefaultNpcId] = useState(initialNpcId);
-  const [savedWindows, setSavedWindows] = useState<SavedDebugWindow[]>(() => {
-    const stored = loadSavedWindows(projectId);
-    if (stored.length) return stored;
-    return initialOpenIds
-      .map((id) => windows.find((item) => item.id === id))
-      .filter(Boolean)
-      .map((item) => ({
-        resourceId: item!.id,
-        name: item!.name,
-        type: item!.kind,
-        baudRate: "115200",
-        sampleHz: "100",
-        channels: "time,motor.current,motor.velocity,sensor.temperature,bus.frame",
-        boundNpc: initialNpcId,
-      }));
-  });
+  const [savedWindows, setSavedWindows] = useState<SavedDebugWindow[]>(initialSavedWindows);
   const configuredWindows = useMemo(() => configuredDebugWindows(windows, savedWindows), [windows, savedWindows]);
   const [openIds, setOpenIds] = useState<string[]>(() => initialOpenIds.filter((id) => savedWindows.some((item) => item.resourceId === id)));
   const usableWindows = useMemo(() => windows.filter((item) => item.isUsable), [windows]);
@@ -896,12 +866,8 @@ export function RoboticsWorkbenchClient({
     [openIds, configuredWindows],
   );
 
-  function updateSavedWindows(next: SavedDebugWindow[]) {
-    setSavedWindows(next);
-    saveWindows(projectId, next);
-  }
-
-  function createWindow(formData: FormData) {
+  function previewCreateWindow(event: FormEvent<HTMLFormElement>) {
+    const formData = new FormData(event.currentTarget);
     const resourceId = text(formData.get("resource_id"), "");
     const resource = resourceById.get(resourceId);
     if (!resource) return;
@@ -914,17 +880,16 @@ export function RoboticsWorkbenchClient({
       channels: text(formData.get("channels"), "time,motor.current,motor.velocity,sensor.temperature,bus.frame"),
       boundNpc: text(formData.get("bound_npc"), defaultNpcId),
     };
-    updateSavedWindows([...savedWindows.filter((item) => item.resourceId !== resourceId), next]);
-    setOpenIds((curr) => curr.includes(resourceId) ? curr : [...curr, resourceId]);
+    setSavedWindows((current) => [...current.filter((item) => item.resourceId !== resourceId), next]);
+    setOpenIds((current) => current.includes(resourceId) ? current : [...current, resourceId]);
+    const nextOpenIds = openIds.includes(resourceId) ? openIds : [...openIds, resourceId];
+    window.history.replaceState(null, "", windowsHref(projectId, nextOpenIds, text(next.boundNpc, defaultNpcId)));
   }
 
-  function deleteWindow(resourceId: string) {
-    updateSavedWindows(savedWindows.filter((item) => item.resourceId !== resourceId));
-    setOpenIds((curr) => curr.filter((item) => item !== resourceId));
-  }
-
-  function openWindow(id: string) {
-    setOpenIds((curr) => curr.includes(id) ? curr : [...curr, id]);
+  function previewDeleteWindow(resourceId: string) {
+    setSavedWindows((current) => current.filter((item) => item.resourceId !== resourceId));
+    setOpenIds((current) => current.filter((item) => item !== resourceId));
+    window.history.replaceState(null, "", windowsHref(projectId, openIds.filter((item) => item !== resourceId), defaultNpcId));
   }
 
   function toggleWindow(id: string) {
@@ -970,7 +935,8 @@ export function RoboticsWorkbenchClient({
               <input type="hidden" name="computer_node_id" value="all" />
               <button type="submit" disabled={!computerCount}>扫描真实接口</button>
             </form>
-            <form action={createWindow} className={styles.windowCreateForm}>
+            <form action={创建机器人调试窗口.bind(null, projectId)} onSubmit={previewCreateWindow} className={styles.windowCreateForm}>
+              <input type="hidden" name="return_to" value={`/projects/${projectId}/robotics`} />
               <strong>创建调试窗口</strong>
               <input name="window_name" placeholder="窗口名，例如 左前轮电机串口" />
               <label className={styles.createFullField}>
@@ -1054,7 +1020,11 @@ export function RoboticsWorkbenchClient({
                           >
                             {isOpen ? "✕" : "+"}
                           </a>
-                          <button type="button" aria-label={`删除 ${window.name}`} onClick={() => deleteWindow(window.id)}>删</button>
+                          <form action={删除机器人调试窗口.bind(null, projectId)} onSubmit={() => previewDeleteWindow(window.id)}>
+                            <input type="hidden" name="return_to" value={`/projects/${projectId}/robotics`} />
+                            <input type="hidden" name="resource_id" value={window.id} />
+                            <button type="submit" aria-label={`删除 ${window.name}`}>删</button>
+                          </form>
                         </span>
                       ) : (
                         <span className={styles.openBtnDisabled}>!</span>

@@ -11,6 +11,7 @@ import tempfile
 import time
 from pathlib import Path
 from urllib.parse import quote, urlparse
+from urllib.request import Request, urlopen
 
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -77,6 +78,64 @@ def screenshot(cdp: object, path: Path) -> None:
     path.write_bytes(base64.b64decode(str(shot.get("data") or "")))
 
 
+def cleanup_test_window(api_base: str, project_id: str, token: str, window_name: str = "验收串口窗口") -> None:
+    if not api_base or not token:
+        return
+    headers = {"Accept": "application/json", "Authorization": f"Bearer {token}"}
+    project_url = f"{api_base.rstrip('/')}/api/projects/{quote(project_id, safe='')}"
+    request = Request(project_url, headers=headers, method="GET")
+    with urlopen(request, timeout=20) as response:
+        payload = json.loads(response.read().decode("utf-8", errors="replace"))
+    project = payload.get("data") if isinstance(payload, dict) else {}
+    if not isinstance(project, dict):
+        return
+    config = project.get("collaboration_config")
+    if not isinstance(config, dict):
+        return
+    windows = config.get("robotics_debug_windows")
+    if not isinstance(windows, list):
+        return
+    next_windows = [item for item in windows if not (isinstance(item, dict) and str(item.get("name") or "").strip() == window_name)]
+    if len(next_windows) == len(windows):
+        return
+    next_config = {**config, "robotics_debug_windows": next_windows}
+    body = json.dumps({"collaboration_config": next_config}, ensure_ascii=False).encode("utf-8")
+    patch_request = Request(
+        project_url,
+        data=body,
+        headers={**headers, "Content-Type": "application/json"},
+        method="PATCH",
+    )
+    with urlopen(patch_request, timeout=20):
+        pass
+
+
+def fetch_robotics_debug_windows(api_base: str, project_id: str, token: str) -> list[dict[str, object]]:
+    if not api_base or not token:
+        return []
+    headers = {"Accept": "application/json", "Authorization": f"Bearer {token}"}
+    project_url = f"{api_base.rstrip('/')}/api/projects/{quote(project_id, safe='')}"
+    request = Request(project_url, headers=headers, method="GET")
+    with urlopen(request, timeout=20) as response:
+        payload = json.loads(response.read().decode("utf-8", errors="replace"))
+    project = payload.get("data") if isinstance(payload, dict) else {}
+    config = project.get("collaboration_config") if isinstance(project, dict) else {}
+    windows = config.get("robotics_debug_windows") if isinstance(config, dict) else []
+    return [item for item in windows if isinstance(item, dict)] if isinstance(windows, list) else []
+
+
+def wait_for_test_window_saved(api_base: str, project_id: str, token: str, window_name: str = "验收串口窗口", timeout_seconds: float = 20) -> bool:
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        try:
+            if any(str(item.get("name") or "").strip() == window_name for item in fetch_robotics_debug_windows(api_base, project_id, token)):
+                return True
+        except Exception:
+            pass
+        time.sleep(0.4)
+    return False
+
+
 def click(cdp: object, selector: str) -> dict[str, object]:
     state = cdp_eval(
         cdp,
@@ -107,6 +166,7 @@ def main() -> int:
     report: dict[str, object] = {"project_id": args.project_id, "web_base": web_base, "steps": [], "failures": []}
 
     token, user_json = cdp_helpers.authenticate(args)
+    cleanup_test_window(args.api_base, args.project_id, token)
     port = cdp_helpers.find_free_port()
     profile_dir = Path(tempfile.mkdtemp(prefix="robotics-terminal-walk-"))
     edge_process: subprocess.Popen[bytes] | None = None
@@ -154,8 +214,6 @@ def main() -> int:
             cdp,
             "document.readyState === 'complete' && (document.body.innerText.includes('设备数据工作台') || document.body.innerText.includes('创建调试窗口') || document.body.innerText.includes('机器人现场'))",
         )
-        cdp_eval(cdp, f"localStorage.removeItem('ai-collab.robotics.debug-windows.{args.project_id}') || true")
-        cdp.send("Page.navigate", {"url": url})
         wait_for(
             cdp,
             "document.readyState === 'complete' && document.body.innerText.includes('创建调试窗口') && document.body.innerText.includes('绑定真实设备')",
@@ -234,6 +292,38 @@ def main() -> int:
                 report["failures"].append("failed to create debug window from form")  # type: ignore[union-attr]
             wait_for(cdp, "document.body.innerText.includes('模式=用户终端') && document.querySelectorAll('article').length > 0")
             time.sleep(0.5)
+            saved_by_api = wait_for_test_window_saved(args.api_base, args.project_id, token)
+            report["savedByApiBeforeReload"] = saved_by_api
+            if not saved_by_api:
+                report["failures"].append("created debug window was not saved before reload")  # type: ignore[union-attr]
+            persisted = cdp_eval(
+                cdp,
+                """
+                (() => {
+                  const before = (document.body.innerText || '').includes('验收串口窗口');
+                  location.reload();
+                  return before;
+                })()
+                """,
+            )
+            if not persisted:
+                report["failures"].append("created debug window did not appear before reload")  # type: ignore[union-attr]
+            wait_for(cdp, "document.readyState === 'complete' && document.body.innerText.includes('验收串口窗口') && document.body.innerText.includes('模式=用户终端')")
+            report["persistence"] = cdp_eval(
+                cdp,
+                """
+                (() => {
+                  const body = document.body.innerText || '';
+                  return {
+                    hasCreatedWindowAfterReload: body.includes('验收串口窗口'),
+                    hasOpenTileAfterReload: body.includes('模式=用户终端') && body.includes('$ open 验收串口窗口'),
+                    stillOnRobotics: location.pathname.endsWith('/robotics'),
+                  };
+                })()
+                """,
+            )
+            if not isinstance(report.get("persistence"), dict) or not report["persistence"].get("hasCreatedWindowAfterReload"):
+                report["failures"].append("created debug window was not persisted in project state")  # type: ignore[union-attr]
             tile = cdp_eval(
                 cdp,
                 """
@@ -388,6 +478,22 @@ def main() -> int:
             screenshot(cdp, output_dir / f"robotics-terminal-userwalk-settings-{stamp}.png")
             if not isinstance(settings_state, dict) or not settings_state.get("hasSettingsPanel") or not settings_state.get("stillOnRobotics"):
                 report["failures"].append("settings panel did not open in-place")  # type: ignore[union-attr]
+            cdp_eval(
+                cdp,
+                """
+                (() => {
+                  const button = Array.from(document.querySelectorAll('button[aria-label^="删除 "]'))
+                    .find((item) => (item.getAttribute('aria-label') || '').includes('验收串口窗口'));
+                  if (!button) return false;
+                  button.click();
+                  return true;
+                })()
+                """,
+            )
+            try:
+                wait_for(cdp, "!document.body.innerText.includes('验收串口窗口') || document.body.innerText.includes('调试窗口已删除')", timeout_seconds=8)
+            except TimeoutError:
+                report["failures"].append("cleanup failed: test debug window remained after delete")  # type: ignore[union-attr]
         else:
             empty_ok = isinstance(first, dict) and first.get("hasNoDemoText") and int(first.get("openButtons") or 0) == 0
             if not empty_ok:
