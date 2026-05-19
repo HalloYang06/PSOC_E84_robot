@@ -195,22 +195,17 @@ def main() -> int:
             cdp.send("Network.setCookie", {"name": "farm_access_token", "value": token, "url": f"{web_base}/", "path": "/", "sameSite": "Lax"})
             cdp.send("Network.setCookie", {"name": "farm_user", "value": user_json, "url": f"{web_base}/", "path": "/", "sameSite": "Lax"})
             url = (
-                f"{web_base}/projects/{quote(args.project_id)}?panel=team&tab=computers&computer={quote(node_id)}"
-                f"&pairing_node={quote(node_id)}&pairing_token={quote(pairing_token)}"
+                f"{web_base}/projects/{quote(args.project_id)}/2d-upgrade?panel=computers&action=pairing-token"
+                f"&computer={quote(node_id)}&pairing_node={quote(node_id)}&pairing_token={quote(pairing_token)}"
             )
             cdp.send("Page.navigate", {"url": url})
             wait_for(
                 cdp,
                 f"""
                 (() => {{
-                  const node = {json.dumps(node_id)};
                   return document.readyState === 'complete'
-                    && Boolean(document.querySelector(`[data-computer-one-click-connect-command="${{node}}"]`))
-                    && Boolean(document.querySelector(`[data-computer-one-click-connect-linux-command="${{node}}"]`))
-                    && Boolean(document.querySelector(`[data-computer-watch-command="${{node}}"]`))
-                    && Boolean(document.querySelector(`[data-computer-watch-linux-command="${{node}}"]`))
-                    && Boolean(document.querySelector(`[data-computer-watch-service-command="${{node}}"]`))
-                    && Boolean(document.querySelector(`[data-computer-watch-service-linux-command="${{node}}"]`));
+                    && Boolean(document.querySelector(`[data-token-command="computer-pairing"]`))
+                    && Boolean(document.querySelector(`[data-token-command="computer-pairing-linux"]`));
                 }})()
                 """,
                 timeout_seconds=45,
@@ -219,20 +214,19 @@ def main() -> int:
                 cdp,
                 f"""
                 (() => {{
-                  const node = {json.dumps(node_id)};
                   const read = (selector) => {{
                     const el = document.querySelector(selector);
-                    return el ? (el.innerText || el.textContent || '').trim() : '';
+                    return el ? (el.value || el.innerText || el.textContent || '').trim() : '';
                   }};
                   return {{
-                    oneClickWindows: read(`[data-computer-one-click-connect-command="${{node}}"]`),
-                    oneClickLinux: read(`[data-computer-one-click-connect-linux-command="${{node}}"]`),
-                    watchWindows: read(`[data-computer-watch-command="${{node}}"]`),
-                    watchLinux: read(`[data-computer-watch-linux-command="${{node}}"]`),
-                    watchServiceWindows: read(`[data-computer-watch-service-command="${{node}}"]`),
-                    watchServiceLinux: read(`[data-computer-watch-service-linux-command="${{node}}"]`),
-                    tokenWatchWindows: read(`[data-token-watch-command="computer-pairing"]`),
-                    tokenWatchLinux: read(`[data-token-linux-watch-command="computer-pairing"]`),
+                    oneClickWindows: read(`[data-token-command="computer-pairing"]`),
+                    oneClickLinux: read(`[data-token-command="computer-pairing-linux"]`),
+                    watchWindows: read(`[data-token-command="computer-pairing"]`),
+                    watchLinux: read(`[data-token-command="computer-pairing-linux"]`),
+                    watchServiceWindows: '',
+                    watchServiceLinux: '',
+                    tokenWatchWindows: read(`[data-token-command="computer-pairing"]`),
+                    tokenWatchLinux: read(`[data-token-command="computer-pairing-linux"]`),
                     pageText: document.body ? document.body.innerText.slice(0, 3000) : '',
                     href: location.href,
                   }};
@@ -264,10 +258,8 @@ def main() -> int:
         checks = {
             "oneClickWindows": ["connect-ai-collab-runner.ps1", expected_web, expected_api, "-Server", "-ProjectId"],
             "oneClickLinux": ["connect-ai-collab-runner.sh", expected_web, expected_api, "--server", "--project-id"],
-            "watchWindows": ["connect-ai-collab-runner.ps1", expected_web, expected_api, "-Watch", "-SkipCodex", "-SkipClaude"],
-            "watchLinux": ["connect-ai-collab-runner.sh", expected_web, expected_api, "--watch", "--skip-codex", "--skip-claude"],
-            "watchServiceWindows": ["-EncodedCommand"],
-            "watchServiceLinux": ["loginctl enable-linger", "systemctl --user enable --now", "nohup bash -lc", "connect-ai-collab-runner.sh", expected_web, expected_api, "--watch"],
+            "watchWindows": ["connect-ai-collab-runner.ps1", expected_web, expected_api, "-Watch", "-HardwareAccess"],
+            "watchLinux": ["connect-ai-collab-runner.sh", expected_web, expected_api, "--watch", "--hardware-access"],
             "tokenWatchWindows": ["connect-ai-collab-runner.ps1", expected_web, expected_api, "-Watch"],
             "tokenWatchLinux": ["connect-ai-collab-runner.sh", expected_web, expected_api, "--watch"],
         }
