@@ -140,6 +140,31 @@ function userFacingTerminalText(value: unknown) {
     .replace(/\braw UUID\b/gi, "原始编号");
 }
 
+function roboticsCaptureAckLine(value: unknown) {
+  const raw = text(value, "");
+  if (!/robotics\.capture|device capture|capture_id|preview_summary/.test(raw)) return "";
+  const jsonMatch = raw.match(/```json\s*([\s\S]*?)```/) ?? raw.match(/({[\s\S]*})/);
+  if (!jsonMatch?.[1]) return "采集回执已返回";
+  try {
+    const payload = JSON.parse(jsonMatch[1]) as AnyRecord;
+    const sampleCount = text(payload.sample_count, "0");
+    const byteCount = text(payload.byte_count, "0");
+    const error = text(payload.error, "");
+    const sync = record(payload.repo_sync);
+    const syncStatus = text(sync.status, "");
+    const parts = [`采集回执：${sampleCount} 个样本`];
+    if (byteCount && byteCount !== "0") parts.push(`${byteCount} bytes`);
+    if (payload.preview) parts.push("预览文件已生成");
+    if (syncStatus === "committed" || syncStatus === "pushed") parts.push("已写入仓库证据");
+    else if (syncStatus === "waiting_for_repo") parts.push("等待配置仓库同步");
+    else if (syncStatus) parts.push(`同步状态：${syncStatus}`);
+    if (error) parts.push(`提示：${userFacingTerminalText(error)}`);
+    return parts.join(" · ");
+  } catch {
+    return "采集回执已返回";
+  }
+}
+
 function terminalEventLines(tile: DebugWindow, messages: AnyRecord[]) {
   const related = messages
     .filter((message) => {
@@ -163,7 +188,7 @@ function terminalEventLines(tile: DebugWindow, messages: AnyRecord[]) {
     const status = text(message.status, "open");
     const extra = record(message.extra_data ?? message.metadata);
     if (type === "runner_command") return `$ ${commandText(message)}  # ${status}`;
-    if (type === "runner_ack") return `[ack] ${userFacingTerminalText(message.body) || "执行电脑已接单"}`;
+    if (type === "runner_ack") return `[ack] ${roboticsCaptureAckLine(message.body) || userFacingTerminalText(message.body) || "执行电脑已接单"}`;
     if (type === "runner_result") {
       const result = record(extra.runner_result);
       const captureId = text(result.capture_id ?? extra.capture_id, "");
