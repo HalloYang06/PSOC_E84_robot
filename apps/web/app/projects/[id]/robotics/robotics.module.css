@@ -19,6 +19,13 @@
   color: #eefcf7;
 }
 
+.roboticsWorkbenchShell {
+  min-height: 100vh;
+  min-height: 100dvh;
+  height: auto;
+  background: radial-gradient(ellipse at top, rgba(2, 28, 39, 0.95), rgba(2, 8, 14, 1));
+}
+
 .leftRail,
 .rightRail {
   position: sticky;

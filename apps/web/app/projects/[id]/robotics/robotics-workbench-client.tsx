@@ -1059,7 +1059,7 @@ export function RoboticsWorkbenchClient({
   }
 
   return (
-    <main className={workbenchStyles.shell}>
+    <main className={`${workbenchStyles.shell} ${styles.roboticsWorkbenchShell}`}>
       <header className={workbenchStyles.topbar}>
         <div className={workbenchStyles.topbarLeft}>
           <Link className={workbenchStyles.backLink} href={`/projects/${projectId}`}>← 主页面</Link>
