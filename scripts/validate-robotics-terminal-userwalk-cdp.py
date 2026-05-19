@@ -249,6 +249,7 @@ def main() -> int:
                     hasCaptureChecks: document.querySelectorAll('input[name="capture_ids"][type="checkbox"]').length > 0 || body.includes('从这个调试窗口开始/停止采集后'),
                     hasVariableChecks: document.querySelectorAll('input[name="variables"][type="checkbox"]').length > 0,
                     hasLabelSchema: !!document.querySelector('input[name="label_schema"]'),
+                    hasManualLabels: !!document.querySelector('textarea[name="manual_labels"]') && body.includes('人工标签'),
                     hasExportFormat: !!document.querySelector('select[name="export_format"]'),
                     hasPreLabelButton: Array.from(document.querySelectorAll('button')).some((button) => (button.innerText || '').includes('NPC 预标注')),
                     hasExportButton: Array.from(document.querySelectorAll('button')).some((button) => (button.innerText || '').includes('导出标注数据')),
@@ -266,6 +267,7 @@ def main() -> int:
                 or not dataset_state.get("hasDatasetTab")
                 or not dataset_state.get("hasVariableChecks")
                 or not dataset_state.get("hasLabelSchema")
+                or not dataset_state.get("hasManualLabels")
                 or not dataset_state.get("hasExportFormat")
                 or not dataset_state.get("hasPreLabelButton")
                 or not dataset_state.get("hasExportButton")
