@@ -6769,6 +6769,15 @@ export async function 记录机器人采集片段(projectId: string, formData: F
   const channelList = channels.length ? channels : ["time", "motor.current", "motor.velocity", "sensor.temperature", "bus.frame"];
   try {
     if (mode === "start") {
+      const commandBody = [
+        "设备数据工作台请求开始采集。请在目标电脑上对所选接口启动只读采集，并用 capture_id 回写最小回执。",
+        `capture_id：${captureId}`,
+        `接口类型：${interfaceKind || "待确认"}`,
+        `接口名称：${interfaceName || interfaceId}`,
+        `采样频率：${sampleHz} Hz`,
+        `采集通道：${channelList.join("、")}`,
+        "权限边界：采集为只读；任何写参数、运动、固件或 ROS 写动作必须另走待审核请求。",
+      ].join("\n");
       await postJson("/api/collaboration/messages", {
         project_id: projectId,
         agent_id: boundNpc || null,
@@ -6802,9 +6811,28 @@ export async function 记录机器人采集片段(projectId: string, formData: F
           started_at: timestamp,
         },
       });
+      await postJson(`/api/collaboration/projects/${projectId}/runner-commands`, {
+        title: `开始采集：${interfaceName || interfaceKind || "调试接口"}`,
+        body: commandBody,
+        computer_node_id: computerNodeId,
+        metadata: {
+          terminal_interface_id: interfaceId,
+          terminal_interface_name: interfaceName,
+          terminal_interface_kind: interfaceKind,
+          terminal_bound_npc_id: boundNpc || null,
+          terminal_bound_npc: boundNpcLabel || boundNpc || null,
+          terminal_surface: "robotics",
+          terminal_mode: "capture_start",
+          capture_id: captureId,
+          capture_sample_hz: sampleHz,
+          capture_channels: channelList,
+          computer_node_id: computerNodeId,
+          started_at: timestamp,
+        },
+      });
       revalidateProjectSurfaces(projectId);
       revalidatePath(`/projects/${projectId}/robotics`);
-      redirect(withQueryValue(returnTo, "team_notice", "已开始采集；停止后会生成采集片段索引"));
+      redirect(withQueryValue(returnTo, "team_notice", "采集请求已排队到目标电脑；停止后会生成采集片段索引"));
     }
 
     const artifactPath = await writeRoboticsCaptureManifest({
@@ -6820,6 +6848,36 @@ export async function 记录机器人采集片段(projectId: string, formData: F
       channels: channelList,
       startedAt: timestamp,
       stoppedAt: timestamp,
+    });
+    const commandBody = [
+      "设备数据工作台请求停止采集。请在目标电脑上停止所选接口采集，并把原始数据文件、摘要或错误回执挂到同一个 capture_id。",
+      `capture_id：${captureId}`,
+      `接口类型：${interfaceKind || "待确认"}`,
+      `接口名称：${interfaceName || interfaceId}`,
+      `平台片段索引：${artifactPath}`,
+      "权限边界：停止只读采集不需要额外审核；任何写参数、运动、固件或 ROS 写动作必须另走待审核请求。",
+    ].join("\n");
+    await postJson(`/api/collaboration/projects/${projectId}/runner-commands`, {
+      title: `停止采集：${interfaceName || interfaceKind || "调试接口"}`,
+      body: commandBody,
+      computer_node_id: computerNodeId,
+      metadata: {
+        terminal_interface_id: interfaceId,
+        terminal_interface_name: interfaceName,
+        terminal_interface_kind: interfaceKind,
+        terminal_bound_npc_id: boundNpc || null,
+        terminal_bound_npc: boundNpcLabel || boundNpc || null,
+        terminal_surface: "robotics",
+        terminal_mode: "capture_stop",
+        capture_id: captureId,
+        capture_sample_hz: sampleHz,
+        capture_channels: channelList,
+        computer_node_id: computerNodeId,
+        stopped_at: timestamp,
+        artifact_path: artifactPath,
+        artifact_refs: [{ label: "采集片段 manifest", path: artifactPath }],
+        evidence_artifacts: [{ label: "采集片段 manifest", path: artifactPath }],
+      },
     });
     await postJson("/api/collaboration/messages", {
       project_id: projectId,
