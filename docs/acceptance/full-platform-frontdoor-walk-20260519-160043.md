@@ -60,3 +60,14 @@
 待云端复验：
 
 - 部署本地修复后，从云端页面重新创建/打开 Windows COM30 调试窗口，前端点击开始采集，使用本机 COM31 注入样本，前端点击停止，确认数据标注 tab 和图表实验 tab 显示非 0 样本、可选真实数值变量并绘制曲线。
+
+### 2026-05-19 17:12-17:38 云端设备采集前端闭环复验
+
+- 部署 `5b280057` 后，云端对齐通过；云端设备数据工作台继续保持“左栏只显示用户创建窗口，真实设备只在创建下拉里索引”的结构。
+- 从云端可见页面打开 `Windows COM30` 调试瓷砖，前端点击“开始采集”。本机 Windows runner 下载并执行 `run-device-capture-command.py`，worker payload 中真实接口已变为 `serial:COM30`，不再是带电脑前缀的窗口 ID。
+- 通过本机 `COM31` 向 com0com 对端写入 30 行真实样本：`motor.current`、`motor.velocity`、`bus.voltage`。浏览器无法替代这个目标机串口注入动作，因此只这一步使用本机终端。
+- 前端点击“停止并生成片段”后，目标机 runner 生成 `manifest.json` 和 `preview.jsonl`，本机证据目录：`D:\ai合作产品\ai-collab-runner\device-captures\fe9bd342-f5ef-4afe-9c73-e7caa2ed17dd\codex-local-win-0518133234\serial-COM30\capture-43e51a924939\`。结果为 `sample_count=30`、`byte_count=1710`，包含 `preview_summary` 和 `preview_points`。
+- 发现并修复 runner complete 422：旧接入脚本把完整 JSON 塞进 `note`，超过 API 4000 字符限制；已改为短摘要，结构化 `runner_result` 仍走 metadata。Windows/Linux 接入脚本均已修复并部署为 `49854926`。
+- 发现并修复图表预览关联：同一 `capture_id` 的 start 回执会覆盖 stop 回执，导致图表 tab 只显示“等待低频预览点”。已改为优先保留 stop/有样本/有预览点的结果，并部署为 `94fc7654`。
+- 云端最终用户视角结果：终端 tab 显示 `[capture:done] 已收到 30 个样本`；数据标注 tab 显示两个片段、可选择 `motor.current` / `motor.velocity` / `bus.voltage` 等真实变量；图表实验 tab 显示 `motor.current / motor.velocity / bus.voltage` 预览波形，证据区显示“已回传 30 个样本 / 1710 bytes · 预览文件已生成 · 等待配置仓库同步”。
+- 仍需后续补齐：为该 Windows runner 配置 `RUNNER_DEVICE_DATA_REPO` 和可选推送，完成“采集停止后写入 GitHub 并清理本机缓存”的长期存储闭环；当前云端显示“等待配置仓库同步”是准确状态，不是假装已进 GitHub。
