@@ -92,7 +92,7 @@ function ArtifactPathActions({ projectId, artifactPath, label = "下载" }: { pr
   if (!artifactPath) return null;
   return (
     <span className={styles.artifactActions}>
-      <code>{artifactPath}</code>
+      <span>采集证据已生成</span>
       <a href={artifactDownloadHref(projectId, artifactPath)} download>
         {label}
       </a>
@@ -182,7 +182,7 @@ function terminalEventLines(tile: DebugWindow, messages: AnyRecord[]) {
       return `[result:${status}] ${userFacingTerminalText(message.body) || "执行电脑已返回结果"}`;
     }
     if (type === "robotics_capture_start") return `[capture:running] ${text(message.title, "开始采集")}`;
-    if (type === "robotics_capture_segment") return `[capture:ready] ${text(record(message.extra_data ?? message.metadata).artifact_path, text(message.title, "采集片段"))}`;
+    if (type === "robotics_capture_segment") return `[capture:ready] ${text(message.title, "采集片段")} 已生成`;
     if (type === "robotics_terminal_review" || type === "robotics_terminal_npc_request") return `[npc-review:${status}] ${commandText(message)}`;
     return `[${type}:${status}] ${text(message.title ?? message.body, "终端事件")}`;
   });
@@ -268,9 +268,9 @@ function captureResultLine(segment: ReturnType<typeof captureSegments>[number]) 
           : ` · 同步状态：${syncStatus}`
     : "";
   if (sampleCount && sampleCount !== "0") {
-    return `已回传 ${sampleCount} 个样本${byteCount ? ` / ${byteCount} bytes` : ""}${preview ? ` · ${preview}` : ""}${syncTail}`;
+    return `已回传 ${sampleCount} 个样本${byteCount ? ` / ${byteCount} bytes` : ""}${preview ? " · 预览文件已生成" : ""}${syncTail}`;
   }
-  if (preview) return `已回传预览文件 · ${preview}${syncTail}`;
+  if (preview) return `预览文件已生成${syncTail}`;
   if (syncTail) return syncTail.replace(/^ · /, "");
   if (error) return `采集回执：${error}`;
   return "";
