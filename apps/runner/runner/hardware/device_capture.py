@@ -218,6 +218,7 @@ def execute_device_capture_command(
         capture_id=capture_id,
         git_push=git_push,
     )
+    local_cache = _cleanup_capture_cache_after_sync(capture_dir, sync_result)
     ok = bool(samples)
     return _result(
         True,
@@ -236,6 +237,7 @@ def execute_device_capture_command(
             "error": capture_error,
             "capture_mode": manifest["capture_mode"],
             "repo_sync": sync_result,
+            "local_cache": local_cache,
         },
     )
 
@@ -812,6 +814,31 @@ def _sync_capture_to_repo(
         "push_enabled": git_push,
         "message": "采集数据已写入仓库证据目录" if status != "push_failed" else "采集数据已提交本地仓库，但推送失败，等待重试或人工处理。",
         "push": push_result,
+    }
+
+
+def _cleanup_capture_cache_after_sync(capture_dir: Path, sync_result: dict[str, Any]) -> dict[str, Any]:
+    status = str(sync_result.get("status") or "").strip()
+    if status not in {"pushed", "committed", "unchanged"}:
+        return {
+            "status": "kept_for_retry",
+            "message": "采集缓存保留在目标电脑，等待仓库同步或人工处理。",
+        }
+    try:
+        shutil.rmtree(capture_dir)
+    except FileNotFoundError:
+        return {
+            "status": "already_clean",
+            "message": "采集缓存已清理。",
+        }
+    except Exception as exc:
+        return {
+            "status": "cleanup_failed",
+            "message": f"采集数据已写入仓库证据目录，但本机缓存清理失败：{exc}",
+        }
+    return {
+        "status": "cleaned",
+        "message": "采集数据已写入仓库证据目录，本机临时缓存已清理。",
     }
 
 

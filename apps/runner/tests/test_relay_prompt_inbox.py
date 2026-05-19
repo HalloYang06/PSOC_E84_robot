@@ -229,6 +229,7 @@ def test_robotics_capture_stop_reports_waiting_repo_when_not_configured(tmp_path
     assert result["result_status"] == "failed"
     assert result["result"]["repo_sync"]["status"] == "waiting_for_repo"
     assert result["result"]["repo_sync"]["repo_relative_dir"] == "data/device-captures/proj_repo_wait/linux-board/serial-ttyUSB0/capture-wait"
+    assert result["result"]["local_cache"]["status"] == "kept_for_retry"
 
 
 def test_robotics_capture_stop_syncs_manifest_preview_to_git_repo(tmp_path: Path) -> None:
@@ -260,6 +261,8 @@ def test_robotics_capture_stop_syncs_manifest_preview_to_git_repo(tmp_path: Path
     assert (repo / sync["manifest"]).exists()
     assert (repo / sync["preview"]).exists()
     assert (repo / "data/device-captures/proj_repo/linux-board/serial-ttyUSB0/capture-sync/checksum-summary.json").exists()
+    assert result["result"]["local_cache"]["status"] == "cleaned"
+    assert not capture_dir.exists()
     log = subprocess.run(["git", "log", "--oneline", "-1"], cwd=repo, check=True, capture_output=True, text=True)
     assert "Add device capture capture-sync" in log.stdout
 
@@ -291,6 +294,35 @@ def test_robotics_capture_stop_syncs_manifest_without_preview_to_git_repo(tmp_pa
     assert sync["preview"] == ""
     assert (repo / sync["manifest"]).exists()
     assert not (repo / "data/device-captures/proj_empty_repo/windows-pc/serial-COM30/capture-empty/preview.jsonl").exists()
+    assert result["result"]["local_cache"]["status"] == "cleaned"
+
+
+def test_robotics_capture_stop_keeps_local_cache_when_git_push_fails(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "config", "user.email", "runner@example.invalid"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Runner"], cwd=repo, check=True)
+
+    capture_dir = tmp_path / "device-captures" / "proj_push" / "linux-board" / "serial-ttyUSB0" / "capture-push"
+    capture_dir.mkdir(parents=True)
+    (capture_dir / "preview.jsonl").write_text('{"t":"2026-05-19T00:00:00Z","text":"ok"}\n', encoding="utf-8")
+    payload = {
+        "kind": "robotics.capture.stop",
+        "project_id": "proj_push",
+        "capture_id": "capture-push",
+        "computer_node_id": "linux-board",
+        "interface_id": "serial:ttyUSB0",
+        "interface_kind": "serial",
+        "sample_hz": 100,
+        "channels": ["time", "raw.text"],
+    }
+
+    result = execute_device_capture_command(payload, allow_hardware_access=True, workdir=tmp_path, repo_root=repo, git_push=True)
+
+    assert result["result"]["repo_sync"]["status"] == "push_failed"
+    assert result["result"]["local_cache"]["status"] == "kept_for_retry"
+    assert capture_dir.exists()
 
 
 def test_linux_scanned_serial_interface_id_resolves_to_dev_path() -> None:
