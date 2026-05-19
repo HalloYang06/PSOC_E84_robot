@@ -281,9 +281,26 @@ import os
 raw = os.environ.get("CAPTURE_OUTPUT") or ""
 try:
     payload = json.loads(raw)
-    print(str(payload.get("note") or "Device capture command finished."))
+    result = payload.get("result") if isinstance(payload.get("result"), dict) else {}
+    capture_id = str(result.get("capture_id") or "").strip()
+    sample_count = str(result.get("sample_count") if result.get("sample_count") is not None else "0")
+    byte_count = str(result.get("byte_count") if result.get("byte_count") is not None else "0")
+    repo_sync = result.get("repo_sync") if isinstance(result.get("repo_sync"), dict) else {}
+    sync_status = str(repo_sync.get("status") or "").strip()
+    error = str(result.get("error") or "").strip()
+    parts = ["Runner handled device capture"]
+    if capture_id:
+        parts.append(f"capture={capture_id}")
+    parts.append(f"samples={sample_count}")
+    parts.append(f"bytes={byte_count}")
+    if sync_status:
+        parts.append(f"repo_sync={sync_status}")
+    if error:
+        parts.append("hint=" + error[:240])
+    note = "; ".join(parts) + "."
+    print(note[:3600])
 except Exception:
-    print(raw or "Device capture command failed.")
+    print((raw or "Device capture command failed.")[:3600])
 PY
 )"
       if [[ "$capture_output" == *'"result_status": "failed"'* ]]; then

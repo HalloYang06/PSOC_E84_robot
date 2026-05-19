@@ -77,6 +77,46 @@ function Normalize-Slug {
   return "computer"
 }
 
+function Limit-Text {
+  param(
+    [AllowNull()][string]$Value,
+    [int]$MaxLength = 1800
+  )
+  $text = [string]$Value
+  if ($text.Length -le $MaxLength) { return $text }
+  return $text.Substring(0, [Math]::Max(0, $MaxLength - 3)) + "..."
+}
+
+function Format-CaptureRunnerNote {
+  param(
+    [Parameter(Mandatory = $true)][string]$RunnerName,
+    [AllowNull()]$CaptureResult
+  )
+  $result = if ($CaptureResult -and $CaptureResult.result) { $CaptureResult.result } else { $null }
+  if ($result) {
+    $captureId = [string]$result.capture_id
+    $sampleCount = [string]$result.sample_count
+    $byteCount = [string]$result.byte_count
+    $syncStatus = ""
+    if ($result.repo_sync -and $result.repo_sync.status) {
+      $syncStatus = [string]$result.repo_sync.status
+    }
+    if ([string]::IsNullOrWhiteSpace($sampleCount)) { $sampleCount = "0" }
+    if ([string]::IsNullOrWhiteSpace($byteCount)) { $byteCount = "0" }
+    $parts = @("Runner $RunnerName handled device capture")
+    if (-not [string]::IsNullOrWhiteSpace($captureId)) { $parts += "capture=$captureId" }
+    $parts += "samples=$sampleCount"
+    $parts += "bytes=$byteCount"
+    if (-not [string]::IsNullOrWhiteSpace($syncStatus)) { $parts += "repo_sync=$syncStatus" }
+    if ($result.error) { $parts += ("hint=" + (Limit-Text -Value ([string]$result.error) -MaxLength 240)) }
+    return (($parts -join "; ") + ".")
+  }
+  if ($CaptureResult -and $CaptureResult.note) {
+    return "Runner $RunnerName handled device capture: $(Limit-Text -Value ([string]$CaptureResult.note) -MaxLength 1200)"
+  }
+  return "Runner $RunnerName handled device capture."
+}
+
 function Download-RunnerScript {
   param(
     [Parameter(Mandatory = $true)][string]$WebBase,
@@ -258,7 +298,7 @@ function Invoke-RunnerInboxPoll {
         if ([string]::IsNullOrWhiteSpace($captureNote)) {
           $captureNote = "Device capture command finished."
         }
-        $note = "Runner $RunnerName handled device capture: $captureNote"
+        $note = Format-CaptureRunnerNote -RunnerName $RunnerName -CaptureResult $captureResult
       } catch {
         $note = "Runner $RunnerName tried to handle device capture, but it failed: $($_.Exception.Message)"
         $captureResult = [ordered]@{
@@ -296,7 +336,7 @@ function Invoke-RunnerInboxPoll {
     if ($captureResult -and [string]$captureResult.result_status -eq "failed") {
       $completeStatus = "failed"
     }
-    $completeBody = @{ result_status = $completeStatus; note = $note; metadata = $completeMetadata } | ConvertTo-Json -Depth 12
+    $completeBody = @{ result_status = $completeStatus; note = (Limit-Text -Value $note -MaxLength 3600); metadata = $completeMetadata } | ConvertTo-Json -Depth 12
     $messageBase = ($ApiBase.TrimEnd("/")) + "/api/runners/" + $RunnerId + "/messages/" + $messageId
     try {
       Invoke-RestMethod -Method Post -Uri ($messageBase + "/ack") -Headers @{
