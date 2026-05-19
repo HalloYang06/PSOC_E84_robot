@@ -3868,6 +3868,38 @@ button.threadChip:hover {
   font-size: 10.5px;
 }
 
+.artifactActions {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.artifactActions code {
+  min-width: 0;
+}
+
+.artifactActions a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  padding: 0 8px;
+  border: 1px solid rgba(88, 240, 255, 0.22);
+  border-radius: 6px;
+  color: #b9fff3;
+  background: rgba(88, 240, 255, 0.08);
+  font-size: 11px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.artifactActions a:hover {
+  background: rgba(88, 240, 255, 0.14);
+}
+
 .placeholder {
   display: flex;
   flex-direction: column;

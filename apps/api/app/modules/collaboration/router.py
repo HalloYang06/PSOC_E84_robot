@@ -11,6 +11,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from sqlalchemy import or_, select
 from fastapi import APIRouter, Depends, Query, Request
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.common.access import read_identity_header, resolve_human_principal, resolve_project_write_principal
@@ -2066,6 +2067,22 @@ def api_preview_project_artifact(
         dispatch_id=dispatch_id,
         source_message_id=source_message_id,
         workstation_id=workstation_id,
+    )
+
+
+@router.get("/projects/{project_id}/artifacts/download")
+def api_download_project_artifact(
+    project_id: str,
+    path: str = Query(..., min_length=1, max_length=1200),
+    request: Request = None,
+    db: Session = Depends(get_db),
+):
+    require_project_read_access(db, request, project_id, action="collaboration.artifact.download")
+    artifact_path = _safe_artifact_text_path(path)
+    return FileResponse(
+        artifact_path,
+        media_type="application/octet-stream",
+        filename=artifact_path.name,
     )
 
 

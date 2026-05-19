@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { apiClientUrl } from "../../../../lib/api-client-url";
 import {
   下发机器人调试命令,
   创建机器人图表实验,
@@ -63,6 +64,23 @@ function text(value: unknown, fallback = "") {
 
 function record(value: unknown): AnyRecord {
   return value && typeof value === "object" ? value as AnyRecord : {};
+}
+
+function artifactDownloadHref(projectId: string, artifactPath: string) {
+  const params = new URLSearchParams({ path: artifactPath });
+  return apiClientUrl(`/api/collaboration/projects/${encodeURIComponent(projectId)}/artifacts/download?${params.toString()}`);
+}
+
+function ArtifactPathActions({ projectId, artifactPath, label = "下载" }: { projectId: string; artifactPath: string; label?: string }) {
+  if (!artifactPath) return null;
+  return (
+    <span className={styles.artifactActions}>
+      <code>{artifactPath}</code>
+      <a href={artifactDownloadHref(projectId, artifactPath)} download>
+        {label}
+      </a>
+    </span>
+  );
 }
 
 function seatId(seat: AnyRecord, fallback: string) {
@@ -561,7 +579,7 @@ function DebugTile({
                     <input type="hidden" name="capture_titles" value={segment.title} />
                     <small>{segment.sampleHz}Hz · {segment.channels.slice(0, 3).join(" / ")}</small>
                     {captureResultLine(segment) ? <small>{captureResultLine(segment)}</small> : null}
-                    {segment.artifactPath ? <code>{segment.artifactPath}</code> : null}
+                    {segment.artifactPath ? <ArtifactPathActions projectId={projectId} artifactPath={segment.artifactPath} label="下载片段" /> : null}
                   </li>
                 ))}
               </ul>
@@ -637,7 +655,9 @@ function DebugTile({
                   <li key={text(event.id, text(event.title, "event"))}>
                     <b>{text(event.title, "数据事件")}</b>
                     <small>{text(event.status, "open")}</small>
-                    {text(record(event.extra_data ?? event.metadata).artifact_path, "") ? <code>{text(record(event.extra_data ?? event.metadata).artifact_path, "")}</code> : null}
+                    {text(record(event.extra_data ?? event.metadata).artifact_path, "") ? (
+                      <ArtifactPathActions projectId={projectId} artifactPath={text(record(event.extra_data ?? event.metadata).artifact_path, "")} label="下载数据" />
+                    ) : null}
                   </li>
                 ))}
               </ul>
@@ -735,7 +755,9 @@ function DebugTile({
                   <li key={text(event.id, text(event.title, "event"))}>
                     <b>{text(event.title, "图表事件")}</b>
                     <small>{text(event.status, "open")}</small>
-                    {text(record(event.extra_data ?? event.metadata).artifact_path, "") ? <code>{text(record(event.extra_data ?? event.metadata).artifact_path, "")}</code> : null}
+                    {text(record(event.extra_data ?? event.metadata).artifact_path, "") ? (
+                      <ArtifactPathActions projectId={projectId} artifactPath={text(record(event.extra_data ?? event.metadata).artifact_path, "")} label="下载证据" />
+                    ) : null}
                   </li>
                 ))}
               </ul>

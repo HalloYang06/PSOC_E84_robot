@@ -1201,6 +1201,26 @@ def test_project_artifact_preview_reads_only_text_artifacts_under_artifacts() ->
         artifact_path.unlink(missing_ok=True)
 
 
+def test_project_artifact_download_reads_export_artifacts_under_artifacts() -> None:
+    owner_token, project_id, _workstation_id = _project_with_workstation("Artifact Download")
+    repo_root = Path(__file__).resolve().parents[3]
+    artifact_path = repo_root / "artifacts" / "tests" / f"artifact-download-{uuid4().hex}.jsonl"
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    artifact_path.write_text('{"label":"confirmed","value":1}\n', encoding="utf-8")
+    try:
+        response = client.get(
+            f"/api/collaboration/projects/{project_id}/artifacts/download",
+            headers=auth_headers(owner_token),
+            params={"path": str(artifact_path)},
+        )
+        assert response.status_code == 200
+        assert response.headers["content-disposition"].startswith("attachment;")
+        assert artifact_path.name in response.headers["content-disposition"]
+        assert response.text.strip() == '{"label":"confirmed","value":1}'
+    finally:
+        artifact_path.unlink(missing_ok=True)
+
+
 def test_project_artifact_preview_supports_proxy_safe_query_route() -> None:
     owner_token, project_id, _workstation_id = _project_with_workstation("Artifact Proxy Preview")
     repo_root = Path(__file__).resolve().parents[3]
