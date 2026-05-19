@@ -298,6 +298,7 @@ def main() -> int:
                     hasChartButton: Array.from(document.querySelectorAll('button')).some((button) => (button.innerText || '').includes('保存图表快照')),
                     hasTuningButton: Array.from(document.querySelectorAll('button')).some((button) => (button.innerText || '').includes('请求 NPC 调参建议')),
                     hasRunnerEvidenceSlot: body.includes('图表证据') && (body.includes('等待图表快照') || body.includes('已回传') || body.includes('采集回执')),
+                    hasSummarySlot: body.includes('图表证据') && (body.includes('均值') || body.includes('已收到') || body.includes('等待图表快照')),
                     stillOnRobotics: location.pathname.endsWith('/robotics'),
                     hasHorizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 2,
                   };
@@ -316,6 +317,7 @@ def main() -> int:
                 or not chart_state.get("hasChartButton")
                 or not chart_state.get("hasTuningButton")
                 or not chart_state.get("hasRunnerEvidenceSlot")
+                or not chart_state.get("hasSummarySlot")
                 or not chart_state.get("stillOnRobotics")
             ):
                 report["failures"].append("chart tab controls missing or did not stay in tile")  # type: ignore[union-attr]
