@@ -237,6 +237,12 @@ function segmentVariables(segments: ReturnType<typeof captureSegments>) {
     for (const channel of segment.channels) {
       values.add(channel);
     }
+    const summary = record(record(segment.runnerResult).preview_summary);
+    const numericFields = record(summary.numeric_fields);
+    Object.keys(numericFields).forEach((name) => values.add(name));
+    const previewPoints = record(record(segment.runnerResult).preview_points);
+    const series = record(previewPoints.series);
+    Object.keys(series).forEach((name) => values.add(name));
   }
   if (!values.size) {
     ["time", "motor.current", "motor.velocity", "sensor.temperature", "bus.frame"].forEach((item) => values.add(item));
@@ -282,6 +288,15 @@ function captureSummaryLine(segment: ReturnType<typeof captureSegments>[number])
     const mean = text(stats.mean, "");
     return `${name}: ${min}~${max}${mean ? ` / 均值 ${Number(mean).toFixed(3)}` : ""}`;
   }).join("；");
+}
+
+function captureTrainingRowLine(segment: ReturnType<typeof captureSegments>[number], variables: string[]) {
+  const summary = record(record(segment.runnerResult).preview_summary);
+  const fields = record(summary.numeric_fields);
+  const selected = variables.filter((variable) => fields[variable]).slice(0, 3);
+  if (!selected.length) return "";
+  const count = selected.reduce((total, variable) => total + (Number(record(fields[variable]).count) || 0), 0);
+  return `可导出 ${selected.join(" / ")} 的 count/min/max/mean 轻量训练行${count ? `，覆盖 ${count} 个样本统计` : ""}`;
 }
 
 function capturePreviewSeries(segment: ReturnType<typeof captureSegments>[number]) {
@@ -674,6 +689,7 @@ function DebugTile({
                     <input type="hidden" name="capture_titles" value={segment.title} />
                     <small>{segment.sampleHz}Hz · {segment.channels.slice(0, 3).join(" / ")}</small>
                     {captureResultLine(segment) ? <small>{captureResultLine(segment)}</small> : null}
+                    {captureTrainingRowLine(segment, variables) ? <small>{captureTrainingRowLine(segment, variables)}</small> : null}
                     {segment.artifactPath ? <ArtifactPathActions projectId={projectId} artifactPath={segment.artifactPath} label="下载片段" /> : null}
                   </li>
                 ))}
@@ -732,6 +748,9 @@ function DebugTile({
               />
             </label>
             <span>导出</span>
+            {segments.some((segment) => captureTrainingRowLine(segment, variables)) ? (
+              <p>{segments.map((segment) => captureTrainingRowLine(segment, variables)).filter(Boolean).slice(0, 2).join("；")}</p>
+            ) : null}
             <select name="export_format" defaultValue="jsonl" aria-label="导出格式">
               <option value="csv">CSV</option>
               <option value="jsonl">JSONL</option>

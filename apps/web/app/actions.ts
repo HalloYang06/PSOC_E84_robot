@@ -6880,6 +6880,43 @@ function parseRoboticsManualLabels(value: unknown) {
     });
 }
 
+function roboticsNumericSummaryRows(
+  runnerSummaries: Record<string, unknown>,
+  captureIds: string[],
+  variables: string[],
+  labelSchema: string,
+  labelNotes: string,
+) {
+  const selected = new Set(variables.map((item) => String(item ?? "").trim()).filter(Boolean));
+  return captureIds.flatMap((captureId) => {
+    const summary = runnerSummaries[captureId];
+    const previewSummary = summary && typeof summary === "object"
+      ? (summary as Record<string, unknown>).preview_summary
+      : null;
+    const numericFields = previewSummary && typeof previewSummary === "object"
+      ? (previewSummary as Record<string, unknown>).numeric_fields
+      : null;
+    if (!numericFields || typeof numericFields !== "object") return [];
+    return Object.entries(numericFields as Record<string, unknown>)
+      .filter(([variable]) => !selected.size || selected.has(variable))
+      .flatMap(([variable, rawStats]) => {
+        const stats = rawStats && typeof rawStats === "object" ? rawStats as Record<string, unknown> : {};
+        return ["count", "min", "max", "mean", "first", "last"].map((statistic) => ({
+          capture_id: captureId,
+          variable,
+          statistic,
+          value: String(stats[statistic] ?? ""),
+          label_schema: labelSchema,
+          label: labelSchema,
+          start: "",
+          end: "",
+          note: labelNotes,
+          source: "runner_numeric_summary",
+        })).filter((row) => row.value !== "");
+      });
+  });
+}
+
 async function writeRoboticsDerivedArtifact(options: {
   projectId: string;
   interfaceId: string;
@@ -7344,6 +7381,7 @@ export async function 导出机器人标注数据(projectId: string, formData: F
   const normalizedFormat = ["csv", "jsonl", "parquet", "npz", "manifest"].includes(exportFormat) ? exportFormat : "manifest";
   try {
     const runnerSummaries = await collectRoboticsCaptureRunnerSummaries(projectId, interfaceId, captureIds);
+    const numericSummaryRows = roboticsNumericSummaryRows(runnerSummaries, captureIds, variables, labelSchema, labelNotes);
     const payload = {
       schema: "robotics_dataset_export_v1",
       project_id: projectId,
@@ -7359,16 +7397,32 @@ export async function 导出机器人标注数据(projectId: string, formData: F
       manual_labels: manualLabels,
       export_format: normalizedFormat,
       runner_capture_summaries: runnerSummaries,
+      training_rows: numericSummaryRows,
       created_at: timestamp,
       storage_note: "Raw high-frequency data should live in the project GitHub data path; this artifact is the platform export index or lightweight export.",
     };
     const rows = [
-      ["dataset_id", "capture_id", "variable", "label_schema", "label", "start", "end", "note", "source"],
-      ...captureIds.flatMap((captureId) => variables.map((variable) => [exportId, captureId, variable, labelSchema, labelSchema, "", "", labelNotes, "human_summary"])),
+      ["dataset_id", "capture_id", "variable", "statistic", "value", "label_schema", "label", "start", "end", "note", "source"],
+      ...captureIds.flatMap((captureId) => variables.map((variable) => [exportId, captureId, variable, "selected", "", labelSchema, labelSchema, "", "", labelNotes, "human_selection"])),
+      ...numericSummaryRows.map((row) => [
+        exportId,
+        row.capture_id,
+        row.variable,
+        row.statistic,
+        row.value,
+        row.label_schema,
+        row.label,
+        row.start,
+        row.end,
+        row.note,
+        row.source,
+      ]),
       ...manualLabels.map((label) => [
         exportId,
         label.capture_id || captureIds[0] || "",
         label.variable || variables[0] || "",
+        "manual_range",
+        "",
         labelSchema,
         label.label,
         label.start,
