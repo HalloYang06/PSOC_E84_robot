@@ -803,7 +803,11 @@ NPC 互相协作：
 
 - 设备数据工作台已经在同一个调试瓷砖内提供 `终端 / 数据标注 / 图表实验` 三个 tab。
 - 终端 tab 的开始/停止采集会登记平台消息，并把只读采集请求排队到所选执行电脑；停止采集会生成 `artifacts/robotics-captures/<project>/<interface>/<capture>.json` manifest，作为采集片段 Artifact 索引。
-- 数据标注和图表实验 tab 已按同一调试窗口的 `robotics_capture_segment` 消息读取片段、通道和 manifest 路径。下一步补 runner 回传真实原始数据文件、用户确认标注、训练集导出格式和图表曲线渲染。
+- runner 已支持结构化 `robotics.capture.start` / `robotics.capture.stop` 命令。最小可验证版本先支持串口只读短窗口采样：在目标电脑 `RUNNER_WORKDIR/device-captures/<project>/<computer>/<interface>/<capture>/` 写 `manifest.json` 和 `preview.jsonl`，并把样本数、字节数、错误原因作为 runner 回执返回平台。硬件权限关闭、未安装 pyserial、非串口接口或短窗口无数据时必须明确失败/空样本，不能伪造数据。
+- 数据标注和图表实验 tab 已按同一调试窗口的 `robotics_capture_segment` 消息读取片段、通道和 manifest 路径。
+- 数据标注 tab 已有同瓷砖闭环动作：选择一个或多个采集片段、选择变量/通道、创建 `robotics_annotation_request` NPC 预标注请求、用户填写确认备注、按 CSV/JSONL/Parquet 清单/NPZ 清单/项目清单导出 `robotics_dataset_export` 证据。当前轻量导出先落 `artifacts/robotics-derived/...`；高频原始数据和重型二进制文件仍由 runner/GitHub 数据通道补齐。
+- 图表实验 tab 已有同瓷砖闭环动作：选择采集片段、横轴、多个纵轴、目标值、PID/FOC/传感器/总线模式，保存 `robotics_chart_snapshot` 图表实验配置，并创建 `robotics_tuning_request` NPC 调参建议请求。NPC 只能给调参建议或生成待审核操作；不能直接写入真实硬件。
+- 下一步补后台长采集会话、CAN/USB/SPI-CAN/ROS 只读采集器、runner 原始数据上传 GitHub/LFS/Release 后清理本地缓存、低频预览曲线渲染、NPC 预标注结果回填，以及用户确认标签的可编辑表格。
 
 窗口工具类型：
 

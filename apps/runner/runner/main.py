@@ -13,6 +13,7 @@ from .client import PlatformClient
 from .config import RunnerConfig, ensure_dirs
 from .executor import LimitedExecutor
 from .git_tools import execute_git_preflight, is_git_preflight_command
+from .hardware.device_capture import execute_device_capture_command, is_device_capture_command
 from .hardware.serial_tools import execute_serial_command, is_serial_command, parse_runner_command_body
 from .hardware.serial_tools import scan_usb_and_serial_devices
 from .logs import LogCollector
@@ -22,7 +23,7 @@ from .workspace import WorkspaceManager
 def _detect_capabilities(cfg: RunnerConfig) -> list[str]:
     capabilities = ["git", "git.preflight", "python", "node", "runner.inbox", "runner.prompt.relay"]
     if cfg.allow_hardware_access:
-        capabilities.extend(["hardware", "serial.usb.scan", "serial.write", "serial.waveform.aicsv"])
+        capabilities.extend(["hardware", "serial.usb.scan", "serial.write", "serial.waveform.aicsv", "robotics.capture"])
     return capabilities
 
 
@@ -137,6 +138,29 @@ def _handle_runner_relay_message(
                 note=f"{cfg.runner_name} accepted {kind}. It will only run read-only Git capability checks.",
             )
         result = execute_git_preflight(payload or {})
+        client.complete_runner_message(
+            cfg.runner_id,
+            message_id,
+            result_status=str(result.get("result_status") or "failed"),
+            note=str(result.get("note") or ""),
+        )
+        log.write("info", f"Handled runner relay {message_id} kind={kind} status={result.get('result_status')}")
+        return True
+
+    if is_device_capture_command(payload):
+        kind = str((payload or {}).get("kind") or "robotics.capture").strip()
+        status = str(message.get("status") or "").strip().lower()
+        if status == "pending":
+            client.ack_runner_message(
+                cfg.runner_id,
+                message_id,
+                note=f"{cfg.runner_name} accepted {kind} and is handling the device capture request.",
+            )
+        result = execute_device_capture_command(
+            payload or {},
+            allow_hardware_access=cfg.allow_hardware_access,
+            workdir=cfg.workdir,
+        )
         client.complete_runner_message(
             cfg.runner_id,
             message_id,

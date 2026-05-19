@@ -2,7 +2,15 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { 下发机器人调试命令, 创建机器人调试Npc操作审核, 记录机器人采集片段 } from "../../../actions";
+import {
+  下发机器人调试命令,
+  创建机器人图表实验,
+  创建机器人数据预标注请求,
+  创建机器人调参建议请求,
+  创建机器人调试Npc操作审核,
+  导出机器人标注数据,
+  记录机器人采集片段,
+} from "../../../actions";
 import tileStyles from "../workbench/_components/npc-tile.module.css";
 import workbenchStyles from "../workbench/workbench.module.css";
 import styles from "./robotics.module.css";
@@ -68,7 +76,16 @@ function commandText(message: AnyRecord) {
   const extra = record(message.extra_data ?? message.metadata);
   const fromMeta = text(extra.terminal_command, "");
   if (fromMeta) return fromMeta;
+  const mode = text(extra.terminal_mode, "");
+  if (mode === "capture_start") return `开始采集 ${text(extra.capture_sample_hz, "100")}Hz`;
+  if (mode === "capture_stop") return "停止采集并生成片段";
   const body = text(message.body, "");
+  try {
+    const payload = JSON.parse(body) as AnyRecord;
+    const kind = text(payload.kind, "");
+    if (kind === "robotics.capture.start") return `开始采集 ${text(payload.sample_hz, "100")}Hz`;
+    if (kind === "robotics.capture.stop") return "停止采集并生成片段";
+  } catch {}
   const match = body.match(/只读命令：(.+)/);
   return match?.[1]?.trim() || body.split("\n").find((line) => line.includes("listen")) || "只读调试命令";
 }
@@ -124,6 +141,54 @@ function captureSegments(tile: DebugWindow, messages: AnyRecord[]) {
       };
     })
     .reverse();
+}
+
+function tileEvents(tile: DebugWindow, messages: AnyRecord[], types: string[]) {
+  return messages
+    .filter((message) => {
+      const extra = record(message.extra_data ?? message.metadata);
+      return types.includes(text(message.message_type ?? message.messageType, ""))
+        && text(extra.terminal_interface_id, "") === tile.id;
+    })
+    .slice(0, 6)
+    .reverse();
+}
+
+function segmentVariables(segments: ReturnType<typeof captureSegments>) {
+  const values = new Set<string>();
+  for (const segment of segments) {
+    for (const channel of segment.channels) {
+      values.add(channel);
+    }
+  }
+  if (!values.size) {
+    ["time", "motor.current", "motor.velocity", "sensor.temperature", "bus.frame"].forEach((item) => values.add(item));
+  }
+  return Array.from(values);
+}
+
+function HiddenTileFields({
+  tile,
+  returnTo,
+  boundNpcId,
+  boundNpcLabel,
+}: {
+  tile: DebugWindow;
+  returnTo: string;
+  boundNpcId: string;
+  boundNpcLabel: string;
+}) {
+  return (
+    <>
+      <input type="hidden" name="return_to" value={returnTo} />
+      <input type="hidden" name="computer_node_id" value={tile.computerNodeId} />
+      <input type="hidden" name="interface_id" value={tile.id} />
+      <input type="hidden" name="interface_name" value={tile.name} />
+      <input type="hidden" name="interface_kind" value={tile.kindLabel} />
+      <input type="hidden" name="bound_npc" value={boundNpcId} />
+      <input type="hidden" name="bound_npc_label" value={boundNpcLabel} />
+    </>
+  );
 }
 
 function terminalLines(tile: DebugWindow, boundNpcLabel: string) {
@@ -201,6 +266,9 @@ function DebugTile({
   const boundNpcLabel = selectedNpcRecord ? seatName(selectedNpcRecord, boundNpcId) : "";
   const returnTo = windowsHref(projectId, openIds, boundNpcId);
   const segments = captureSegments(tile, terminalMessages);
+  const variables = segmentVariables(segments);
+  const datasetEvents = tileEvents(tile, terminalMessages, ["robotics_annotation_request", "robotics_dataset_export"]);
+  const chartEvents = tileEvents(tile, terminalMessages, ["robotics_chart_snapshot", "robotics_tuning_request"]);
 
   return (
     <article className={tileStyles.tile}>
@@ -336,14 +404,19 @@ function DebugTile({
         </>
       ) : activeTab === "dataset" ? (
         <section className={styles.dataWorkbenchPane} aria-label={`${tile.name} 数据标注`}>
-          <article>
+          <form action={创建机器人数据预标注请求.bind(null, projectId)} className={styles.dataActionPanel}>
+            <HiddenTileFields tile={tile} returnTo={returnTo} boundNpcId={boundNpcId} boundNpcLabel={boundNpcLabel} />
             <span>采集片段</span>
             <strong>{segments.length ? `${segments.length} 个可标注片段` : `${tile.kindLabel} / ${tile.computerLabel}`}</strong>
             {segments.length ? (
               <ul className={styles.segmentList}>
                 {segments.slice(0, 4).map((segment) => (
                   <li key={segment.id}>
-                    <b>{segment.title}</b>
+                    <label className={styles.checkLine}>
+                      <input type="checkbox" name="capture_ids" value={segment.id} defaultChecked />
+                      <b>{segment.title}</b>
+                    </label>
+                    <input type="hidden" name="capture_titles" value={segment.title} />
                     <small>{segment.sampleHz}Hz · {segment.channels.slice(0, 3).join(" / ")}</small>
                     {segment.artifactPath ? <code>{segment.artifactPath}</code> : null}
                   </li>
@@ -352,34 +425,154 @@ function DebugTile({
             ) : (
               <p>从这个调试窗口开始/停止采集后，片段会按时间段出现在这里，可选择一个或多个片段标注。</p>
             )}
-          </article>
-          <article>
+            <span>预标注变量</span>
+            <div className={styles.variableGrid}>
+              {variables.map((variable, index) => (
+                <label key={variable} className={styles.checkLine}>
+                  <input type="checkbox" name="variables" value={variable} defaultChecked={index < 4} />
+                  <span>{variable}</span>
+                </label>
+              ))}
+            </div>
+            <label className={styles.fieldStack}>
+              <span>标注规则</span>
+              <input name="label_schema" defaultValue="正常 / 过冲 / 振荡 / 缺失 / 异常" />
+            </label>
+            <label className={styles.fieldStack}>
+              <span>标注目标</span>
+              <textarea name="label_goal" rows={3} placeholder="例如：找出电机电流突增和温度异常片段，先让 NPC 给预标注建议" />
+            </label>
+            <button type="submit" disabled={!segments.length || !boundNpcId}>NPC 预标注</button>
+          </form>
+          <form action={导出机器人标注数据.bind(null, projectId)} className={styles.dataActionPanel}>
+            <HiddenTileFields tile={tile} returnTo={returnTo} boundNpcId={boundNpcId} boundNpcLabel={boundNpcLabel} />
             <span>变量选择</span>
-            <strong>{segments[0]?.channels.slice(0, 3).join(" / ") || "电机、传感器、总线字段"}</strong>
-            <p>{segments.length ? "这些变量来自采集片段 manifest。用户可选择任意组合，NPC 只能先做预标注建议，不能替用户确认。" : "用户可自由选择一个、两个或多个变量，NPC 只能先做预标注建议，不能替用户确认。"}</p>
-          </article>
-          <article>
+            <strong>自由选择一个或多个变量</strong>
+            {segments.slice(0, 4).map((segment) => (
+              <input key={segment.id} type="hidden" name="capture_ids" value={segment.id} />
+            ))}
+            <div className={styles.variableGrid}>
+              {variables.map((variable, index) => (
+                <label key={variable} className={styles.checkLine}>
+                  <input type="checkbox" name="variables" value={variable} defaultChecked={index < 4} />
+                  <span>{variable}</span>
+                </label>
+              ))}
+            </div>
+            <label className={styles.fieldStack}>
+              <span>确认标签</span>
+              <input name="label_schema" defaultValue="human_confirmed" />
+            </label>
+            <label className={styles.fieldStack}>
+              <span>人工备注</span>
+              <textarea name="label_notes" rows={3} placeholder="确认、修正或补充 NPC 预标注结果" />
+            </label>
             <span>导出</span>
-            <strong>CSV / JSONL / Parquet / NPZ</strong>
-            <p>{segments.length ? "下一步会把已确认标注导出为可训练数据集；当前片段已先作为证据供图表实验复用。" : "导出的可训练数据集下载到当前操作电脑，同时作为证据供图表实验复用。"}</p>
+            <select name="export_format" defaultValue="jsonl" aria-label="导出格式">
+              <option value="csv">CSV</option>
+              <option value="jsonl">JSONL</option>
+              <option value="parquet">Parquet 清单</option>
+              <option value="npz">NPZ 清单</option>
+              <option value="manifest">项目清单</option>
+            </select>
+            <button type="submit" disabled={!segments.length}>导出标注数据</button>
+          </form>
+          <article className={styles.dataActionPanel}>
+            <span>标注证据</span>
+            <strong>{datasetEvents.length ? `${datasetEvents.length} 条闭环记录` : "等待预标注或导出"}</strong>
+            {datasetEvents.length ? (
+              <ul className={styles.eventList}>
+                {datasetEvents.map((event) => (
+                  <li key={text(event.id, text(event.title, "event"))}>
+                    <b>{text(event.title, "数据事件")}</b>
+                    <small>{text(event.status, "open")}</small>
+                    {text(record(event.extra_data ?? event.metadata).artifact_path, "") ? <code>{text(record(event.extra_data ?? event.metadata).artifact_path, "")}</code> : null}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>NPC 预标注只生成建议；用户确认后再导出训练数据集，证据留在当前调试窗口。</p>
+            )}
           </article>
         </section>
       ) : (
         <section className={styles.dataWorkbenchPane} aria-label={`${tile.name} 图表实验`}>
-          <article>
+          <form action={创建机器人图表实验.bind(null, projectId)} className={styles.dataActionPanel}>
+            <HiddenTileFields tile={tile} returnTo={returnTo} boundNpcId={boundNpcId} boundNpcLabel={boundNpcLabel} />
             <span>横轴</span>
-            <strong>{segments.length ? "time / sample_index" : "时间 / 采样序号 / CAN 字段"}</strong>
-            <p>{segments.length ? `已读取 ${segments.length} 个本窗口采集片段，可直接选择横轴。` : "从本窗口采集片段或标注数据集中选择横轴变量。"}</p>
-          </article>
-          <article>
+            <strong>{segments.length ? `${segments.length} 个片段可画图` : "等待本窗口采集片段"}</strong>
+            {segments.slice(0, 4).map((segment) => (
+              <label key={segment.id} className={styles.checkLine}>
+                <input type="checkbox" name="capture_ids" value={segment.id} defaultChecked />
+                <span>{segment.title}</span>
+              </label>
+            ))}
+            <select name="x_axis" defaultValue={variables.includes("time") ? "time" : variables[0]} aria-label="横轴变量">
+              {variables.map((variable) => <option key={variable} value={variable}>{variable}</option>)}
+            </select>
             <span>纵轴</span>
-            <strong>{segments[0]?.channels.filter((item) => item !== "time").slice(0, 4).join(" / ") || "角度 / 电流 / 温度 / 力矩 / IMU"}</strong>
-            <p>支持多曲线叠加、片段对比、异常点和标注覆盖层。</p>
-          </article>
-          <article>
+            <div className={styles.variableGrid}>
+              {variables.filter((item) => item !== "time").map((variable, index) => (
+                <label key={variable} className={styles.checkLine}>
+                  <input type="checkbox" name="y_axes" value={variable} defaultChecked={index < 2} />
+                  <span>{variable}</span>
+                </label>
+              ))}
+            </div>
             <span>目标值</span>
+            <input name="target_value" placeholder="例如 1500 rpm / 0.8 A / 45 deg" />
+            <select name="chart_mode" defaultValue="pid" aria-label="实验类型">
+              <option value="pid">PID</option>
+              <option value="foc">FOC</option>
+              <option value="sensor">传感器</option>
+              <option value="bus">总线</option>
+            </select>
+            <button type="submit" disabled={!segments.length}>保存图表快照</button>
+          </form>
+          <form action={创建机器人调参建议请求.bind(null, projectId)} className={styles.dataActionPanel}>
+            <HiddenTileFields tile={tile} returnTo={returnTo} boundNpcId={boundNpcId} boundNpcLabel={boundNpcLabel} />
+            <span>NPC 调参</span>
             <strong>PID / FOC 调试参考线</strong>
-            <p>{segments.length ? "用户可基于这些片段设置目标值、上下限和振荡阈值，NPC 给出调参建议但不直接改硬件。" : "用户设置目标值、上下限和振荡阈值，NPC 给出调参建议但不直接改硬件。"}</p>
+            {segments.slice(0, 4).map((segment) => (
+              <input key={segment.id} type="hidden" name="capture_ids" value={segment.id} />
+            ))}
+            <select name="x_axis" defaultValue={variables.includes("time") ? "time" : variables[0]} aria-label="调参横轴">
+              {variables.map((variable) => <option key={variable} value={variable}>{variable}</option>)}
+            </select>
+            <div className={styles.variableGrid}>
+              {variables.filter((item) => item !== "time").map((variable, index) => (
+                <label key={variable} className={styles.checkLine}>
+                  <input type="checkbox" name="y_axes" value={variable} defaultChecked={index < 3} />
+                  <span>{variable}</span>
+                </label>
+              ))}
+            </div>
+            <input name="target_value" placeholder="目标值或目标区间" />
+            <select name="chart_mode" defaultValue="pid" aria-label="调参类型">
+              <option value="pid">PID</option>
+              <option value="foc">FOC</option>
+              <option value="sensor">传感器</option>
+              <option value="bus">总线</option>
+            </select>
+            <textarea name="symptoms" rows={3} placeholder="例如：启动过冲明显，稳态误差大，电流波形有高频抖动" />
+            <button type="submit" disabled={!segments.length || !boundNpcId}>请求 NPC 调参建议</button>
+          </form>
+          <article className={styles.dataActionPanel}>
+            <span>图表证据</span>
+            <strong>{chartEvents.length ? `${chartEvents.length} 条实验记录` : "等待图表快照或调参建议"}</strong>
+            {chartEvents.length ? (
+              <ul className={styles.eventList}>
+                {chartEvents.map((event) => (
+                  <li key={text(event.id, text(event.title, "event"))}>
+                    <b>{text(event.title, "图表事件")}</b>
+                    <small>{text(event.status, "open")}</small>
+                    {text(record(event.extra_data ?? event.metadata).artifact_path, "") ? <code>{text(record(event.extra_data ?? event.metadata).artifact_path, "")}</code> : null}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>NPC 可以基于用户选定的曲线、目标值和现象给建议；写入真实硬件参数仍回到终端待审。</p>
+            )}
           </article>
         </section>
       )}

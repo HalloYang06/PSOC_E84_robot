@@ -112,6 +112,34 @@ def test_serial_command_still_short_circuits_before_inbox(tmp_path: Path) -> Non
     assert client.completions[0]["result_status"] == "failed"
 
 
+def test_robotics_capture_command_short_circuits_before_inbox(tmp_path: Path) -> None:
+    cfg = _make_cfg(tmp_path)
+    log = LogCollector(cfg.workdir / "logs" / "test.log")
+    client = _FakeClient()
+    body = json.dumps(
+        {
+            "kind": "robotics.capture.start",
+            "project_id": "proj_x",
+            "capture_id": "capture-test",
+            "computer_node_id": "windows-desktop-main",
+            "interface_id": "serial:COM1",
+            "interface_kind": "serial",
+            "sample_hz": 100,
+            "channels": ["time", "raw.text"],
+        }
+    )
+
+    handled = _handle_runner_relay_message({"id": "msg-capture", "body": body, "status": "pending"}, client, cfg, log)
+
+    assert handled is True
+    assert list((cfg.workdir / "inbox").glob("*.json")) == []
+    assert len(client.acks) == 1
+    assert len(client.completions) == 1
+    assert client.completions[0]["result_status"] == "completed"
+    manifest = cfg.workdir / "device-captures" / "proj_x" / "windows-desktop-main" / "serial-COM1" / "capture-test" / "manifest.json"
+    assert manifest.exists()
+
+
 def test_message_without_id_returns_false(tmp_path: Path) -> None:
     cfg = _make_cfg(tmp_path)
     log = LogCollector(cfg.workdir / "logs" / "test.log")

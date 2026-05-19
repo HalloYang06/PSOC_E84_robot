@@ -238,14 +238,20 @@ def main() -> int:
                     "userGesture": True,
                 },
             )
-            wait_for(cdp, "document.body.innerText.includes('采集片段') && document.body.innerText.includes('变量选择') && document.body.innerText.includes('CSV / JSONL')")
+            wait_for(cdp, "document.body.innerText.includes('采集片段') && document.body.innerText.includes('变量选择') && document.body.innerText.includes('NPC 预标注') && document.body.innerText.includes('导出标注数据')")
             dataset_state = cdp_eval(
                 cdp,
                 """
                 (() => {
                   const body = document.body.innerText || '';
                   return {
-                    hasDatasetTab: body.includes('采集片段') && body.includes('变量选择') && body.includes('CSV / JSONL'),
+                    hasDatasetTab: body.includes('采集片段') && body.includes('变量选择') && body.includes('NPC 预标注') && body.includes('导出标注数据'),
+                    hasCaptureChecks: document.querySelectorAll('input[name="capture_ids"][type="checkbox"]').length > 0 || body.includes('从这个调试窗口开始/停止采集后'),
+                    hasVariableChecks: document.querySelectorAll('input[name="variables"][type="checkbox"]').length > 0,
+                    hasLabelSchema: !!document.querySelector('input[name="label_schema"]'),
+                    hasExportFormat: !!document.querySelector('select[name="export_format"]'),
+                    hasPreLabelButton: Array.from(document.querySelectorAll('button')).some((button) => (button.innerText || '').includes('NPC 预标注')),
+                    hasExportButton: Array.from(document.querySelectorAll('button')).some((button) => (button.innerText || '').includes('导出标注数据')),
                     stillOnRobotics: location.pathname.endsWith('/robotics'),
                     hasHorizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 2,
                   };
@@ -254,8 +260,17 @@ def main() -> int:
             )
             report["dataset"] = dataset_state
             screenshot(cdp, output_dir / f"robotics-terminal-userwalk-dataset-{stamp}.png")
-            if not isinstance(dataset_state, dict) or not dataset_state.get("hasDatasetTab") or not dataset_state.get("stillOnRobotics"):
-                report["failures"].append("dataset tab did not stay in tile")  # type: ignore[union-attr]
+            if (
+                not isinstance(dataset_state, dict)
+                or not dataset_state.get("hasDatasetTab")
+                or not dataset_state.get("hasVariableChecks")
+                or not dataset_state.get("hasLabelSchema")
+                or not dataset_state.get("hasExportFormat")
+                or not dataset_state.get("hasPreLabelButton")
+                or not dataset_state.get("hasExportButton")
+                or not dataset_state.get("stillOnRobotics")
+            ):
+                report["failures"].append("dataset tab controls missing or did not stay in tile")  # type: ignore[union-attr]
             cdp.send(
                 "Runtime.evaluate",
                 {
@@ -264,14 +279,20 @@ def main() -> int:
                     "userGesture": True,
                 },
             )
-            wait_for(cdp, "document.body.innerText.includes('横轴') && document.body.innerText.includes('纵轴') && document.body.innerText.includes('PID / FOC')")
+            wait_for(cdp, "document.body.innerText.includes('横轴') && document.body.innerText.includes('纵轴') && document.body.innerText.includes('保存图表快照') && document.body.innerText.includes('请求 NPC 调参建议')")
             chart_state = cdp_eval(
                 cdp,
                 """
                 (() => {
                   const body = document.body.innerText || '';
                   return {
-                    hasChartTab: body.includes('横轴') && body.includes('纵轴') && body.includes('PID / FOC'),
+                    hasChartTab: body.includes('横轴') && body.includes('纵轴') && body.includes('保存图表快照') && body.includes('请求 NPC 调参建议'),
+                    hasXAxis: !!document.querySelector('select[name="x_axis"]'),
+                    hasYAxis: document.querySelectorAll('input[name="y_axes"][type="checkbox"]').length > 0,
+                    hasTarget: !!document.querySelector('input[name="target_value"]'),
+                    hasMode: !!document.querySelector('select[name="chart_mode"]') && document.body.innerText.includes('PID') && document.body.innerText.includes('FOC'),
+                    hasChartButton: Array.from(document.querySelectorAll('button')).some((button) => (button.innerText || '').includes('保存图表快照')),
+                    hasTuningButton: Array.from(document.querySelectorAll('button')).some((button) => (button.innerText || '').includes('请求 NPC 调参建议')),
                     stillOnRobotics: location.pathname.endsWith('/robotics'),
                     hasHorizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 2,
                   };
@@ -280,8 +301,18 @@ def main() -> int:
             )
             report["chart"] = chart_state
             screenshot(cdp, output_dir / f"robotics-terminal-userwalk-chart-{stamp}.png")
-            if not isinstance(chart_state, dict) or not chart_state.get("hasChartTab") or not chart_state.get("stillOnRobotics"):
-                report["failures"].append("chart tab did not stay in tile")  # type: ignore[union-attr]
+            if (
+                not isinstance(chart_state, dict)
+                or not chart_state.get("hasChartTab")
+                or not chart_state.get("hasXAxis")
+                or not chart_state.get("hasYAxis")
+                or not chart_state.get("hasTarget")
+                or not chart_state.get("hasMode")
+                or not chart_state.get("hasChartButton")
+                or not chart_state.get("hasTuningButton")
+                or not chart_state.get("stillOnRobotics")
+            ):
+                report["failures"].append("chart tab controls missing or did not stay in tile")  # type: ignore[union-attr]
             cdp.send(
                 "Runtime.evaluate",
                 {
