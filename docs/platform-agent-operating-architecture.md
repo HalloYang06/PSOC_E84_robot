@@ -804,7 +804,7 @@ NPC 互相协作：
 - 设备数据工作台已经在同一个调试瓷砖内提供 `终端 / 数据标注 / 图表实验` 三个 tab。
 - 终端 tab 的开始/停止采集会登记平台消息，并把只读采集请求排队到所选执行电脑；停止采集会生成 `artifacts/robotics-captures/<project>/<interface>/<capture>.json` manifest，作为采集片段 Artifact 索引。
 - runner 已支持结构化 `robotics.capture.start` / `robotics.capture.stop` 命令。当前可验证版本支持串口和 Linux SocketCAN 只读后台采集会话：`start` 在目标电脑启动后台采样并立刻回执，不阻塞心跳和收件轮询；`stop` 停止同一会话，在 `RUNNER_WORKDIR/device-captures/<project>/<computer>/<interface>/<capture>/` 写 `manifest.json` 和 `preview.jsonl`，并把样本数、字节数、预览文件和错误原因作为结构化 `runner_result` 回执返回平台。若 runner 重启或找不到后台会话，`stop` 保留短窗口只读兜底；硬件权限关闭、未安装 pyserial、Linux 未安装 can-utils/candump、非支持接口或无数据时必须明确失败/空样本，不能伪造数据。
-- 采集停止时 runner 会从低频预览中生成 `preview_summary`，提取 `key=value`、`@sample` 和结构化数值字段的 count/min/max/mean/first/last。图表实验 tab 可以先展示这些真实数据摘要，作为 PID/FOC 调参建议的轻量证据；完整曲线渲染仍读取 preview/raw 数据。
+- 采集停止时 runner 会从低频预览中生成 `preview_summary` 和轻量 `preview_points`：前者提取 `key=value`、`@sample` 和结构化数值字段的 count/min/max/mean/first/last，后者抽样最多 160 个数值点给图表实验 tab 立即画波形。完整高频曲线和训练数据仍以 GitHub 数据路径里的 `preview.jsonl`/raw 文件为准，平台消息只带小样本预览，避免云服务器被原始波形撑爆。
 - runner 已支持可选设备数据仓库同步：目标电脑配置 `RUNNER_DEVICE_DATA_REPO` 后，`stop` 会把小型 `manifest.json`、`preview.jsonl` 和 `checksum-summary.json` 写入该电脑自己的 Git 工作副本 `data/device-captures/<project>/<computer>/<interface>/<capture-id>/` 并提交；`RUNNER_DEVICE_DATA_GIT_PUSH=true` 时才尝试推送。未配置仓库或推送失败时，回执必须显示“等待配置仓库同步/等待重试推送”，不能假装已经进入 GitHub。
 - API 的 runner complete 回执已支持 `metadata/extra_data`，设备数据工作台会把同一 `capture_id` 的 `runner_result` 合并到采集片段列表和图表证据里显示，用户不需要翻 Markdown 回执才能知道是否真的采到样本。
 - 数据标注和图表实验 tab 已按同一调试窗口的 `robotics_capture_segment` 消息读取片段、通道和 manifest 路径。
@@ -812,8 +812,8 @@ NPC 互相协作：
 - 用户已可在数据标注 tab 手动输入多行人工标签，格式为“片段,变量,开始,结束,标签,备注”。导出时这些标签会进入 CSV/JSONL/manifest 行和 `manual_labels` 字段，作为用户确认标签；后续再补逐条可视化编辑和 NPC 预标注 diff。
 - 标注数据导出会回查同一调试窗口、同一 `capture_id` 的 runner 回执，把样本数、字节数、数值摘要和仓库同步状态写入导出 manifest，避免训练/图表实验只拿到空索引。
 - 图表实验 tab 已有同瓷砖闭环动作：选择采集片段、横轴、多个纵轴、目标值、PID/FOC/传感器/总线模式，保存 `robotics_chart_snapshot` 图表实验配置，并创建 `robotics_tuning_request` NPC 调参建议请求。NPC 只能给调参建议或生成待审核操作；不能直接写入真实硬件。
-- 图表快照和 NPC 调参建议请求会回查同一 `capture_id` 的 runner 数值摘要，把真实样本概览随 Artifact 一起给 NPC；没有摘要时必须提示谨慎判断，不能假装有波形。
-- 下一步补 USB/SPI-CAN/ROS 只读采集器、大型原始数据 Git LFS/Release/对象存储指针和成功同步后的本地 TTL 清理、低频预览曲线渲染、NPC 预标注结果回填，以及用户确认标签的可编辑表格。
+- 图表快照和 NPC 调参建议请求会回查同一 `capture_id` 的 runner 数值摘要和轻量预览点，把真实样本概览和小样本波形随 Artifact 一起给 NPC；没有摘要/预览点时必须提示谨慎判断，不能假装有波形。
+- 下一步补 USB/SPI-CAN/ROS 只读采集器、大型原始数据 Git LFS/Release/对象存储指针和成功同步后的本地 TTL 清理、NPC 预标注结果回填，以及用户确认标签的可编辑表格。
 
 窗口工具类型：
 

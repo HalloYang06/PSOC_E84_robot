@@ -234,6 +234,75 @@ function captureSummaryLine(segment: ReturnType<typeof captureSegments>[number])
   }).join("；");
 }
 
+function capturePreviewSeries(segment: ReturnType<typeof captureSegments>[number]) {
+  const points = record(record(segment.runnerResult).preview_points);
+  const series = record(points.series);
+  return Object.entries(series)
+    .map(([name, rawPoints]) => {
+      const values = Array.isArray(rawPoints)
+        ? rawPoints
+            .map((point) => {
+              const next = record(point);
+              const x = Number(next.x);
+              const y = Number(next.y);
+              return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+            })
+            .filter(Boolean) as { x: number; y: number }[]
+        : [];
+      return { name, values };
+    })
+    .filter((item) => item.values.length >= 2)
+    .slice(0, 4);
+}
+
+function ChartPreview({ segment, targetValue }: { segment: ReturnType<typeof captureSegments>[number]; targetValue?: string }) {
+  const series = capturePreviewSeries(segment);
+  const target = Number(String(targetValue ?? "").trim());
+  const hasTarget = Number.isFinite(target);
+  if (!series.length) {
+    return (
+      <div className={styles.waveformPanel} data-empty="1">
+        <strong>{segment.title}</strong>
+        <span>等待低频预览点，先显示样本摘要</span>
+        {captureSummaryLine(segment) ? <small>{captureSummaryLine(segment)}</small> : null}
+      </div>
+    );
+  }
+  const all = series.flatMap((item) => item.values);
+  const minX = Math.min(...all.map((item) => item.x));
+  const maxX = Math.max(...all.map((item) => item.x));
+  const yValues = all.map((item) => item.y).concat(hasTarget ? [target] : []);
+  const minY = Math.min(...yValues);
+  const maxY = Math.max(...yValues);
+  const width = 320;
+  const height = 150;
+  const pad = 14;
+  const sx = (x: number) => pad + ((x - minX) / Math.max(maxX - minX, 1)) * (width - pad * 2);
+  const sy = (y: number) => height - pad - ((y - minY) / Math.max(maxY - minY, 1)) * (height - pad * 2);
+  const targetY = hasTarget ? sy(target) : 0;
+  return (
+    <div className={styles.waveformPanel}>
+      <div className={styles.waveformHead}>
+        <strong>{segment.title}</strong>
+        <small>{series.map((item) => item.name).join(" / ")}</small>
+      </div>
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${segment.title} 预览波形`}>
+        <line x1={pad} y1={height - pad} x2={width - pad} y2={height - pad} />
+        <line x1={pad} y1={pad} x2={pad} y2={height - pad} />
+        {hasTarget ? <line className={styles.targetLine} x1={pad} y1={targetY} x2={width - pad} y2={targetY} /> : null}
+        {series.map((item, index) => (
+          <polyline
+            key={item.name}
+            className={styles[`waveLine${index + 1}` as keyof typeof styles] || styles.waveLine1}
+            points={item.values.map((point) => `${sx(point.x).toFixed(1)},${sy(point.y).toFixed(1)}`).join(" ")}
+          />
+        ))}
+      </svg>
+      <small>{minY.toFixed(3)} ~ {maxY.toFixed(3)}{hasTarget ? ` · 目标 ${targetValue}` : ""}</small>
+    </div>
+  );
+}
+
 function HiddenTileFields({
   tile,
   returnTo,
@@ -336,6 +405,7 @@ function DebugTile({
   const variables = segmentVariables(segments);
   const datasetEvents = tileEvents(tile, terminalMessages, ["robotics_annotation_request", "robotics_dataset_export"]);
   const chartEvents = tileEvents(tile, terminalMessages, ["robotics_chart_snapshot", "robotics_tuning_request"]);
+  const [chartTargetValue, setChartTargetValue] = useState("");
 
   return (
     <article className={tileStyles.tile}>
@@ -600,7 +670,7 @@ function DebugTile({
               ))}
             </div>
             <span>目标值</span>
-            <input name="target_value" placeholder="例如 1500 rpm / 0.8 A / 45 deg" />
+            <input name="target_value" placeholder="例如 1500 rpm / 0.8 A / 45 deg" value={chartTargetValue} onChange={(event) => setChartTargetValue(event.target.value)} />
             <select name="chart_mode" defaultValue="pid" aria-label="实验类型">
               <option value="pid">PID</option>
               <option value="foc">FOC</option>
@@ -640,6 +710,13 @@ function DebugTile({
           <article className={styles.dataActionPanel}>
             <span>图表证据</span>
             <strong>{chartEvents.length ? `${chartEvents.length} 条实验记录` : "等待图表快照或调参建议"}</strong>
+            {segments.length ? (
+              <div className={styles.waveformStack}>
+                {segments.slice(0, 2).map((segment) => (
+                  <ChartPreview key={`${segment.id}-preview`} segment={segment} targetValue={chartTargetValue} />
+                ))}
+              </div>
+            ) : null}
             {segments.some((segment) => captureResultLine(segment)) ? (
               <ul className={styles.eventList}>
                 {segments.filter((segment) => captureResultLine(segment)).slice(0, 3).map((segment) => (

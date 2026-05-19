@@ -16,6 +16,7 @@ MAX_CAPTURE_SECONDS = 3.0
 MAX_CAPTURE_BYTES = 64_000
 MAX_COMPLETION_NOTE_CHARS = 3800
 MAX_SESSION_JOIN_SECONDS = 5.0
+MAX_PREVIEW_POINTS = 160
 
 
 @dataclass
@@ -184,6 +185,7 @@ def execute_device_capture_command(
 
     stopped_at = datetime.now(timezone.utc).isoformat()
     preview_summary = _build_preview_summary(samples)
+    preview_points = _build_preview_points(samples)
     manifest = {
         "schema": "runner_device_capture_result_v2",
         "capture_id": capture_id,
@@ -200,6 +202,7 @@ def execute_device_capture_command(
         "sample_count": len(samples),
         "byte_count": byte_count,
         "preview_summary": preview_summary,
+        "preview_points": preview_points,
         "preview_file": _relative_to_workdir(preview_path, workdir),
         "error": capture_error,
         "capture_mode": "background_session" if session else "short_window_fallback",
@@ -227,6 +230,7 @@ def execute_device_capture_command(
             "sample_count": len(samples),
             "byte_count": byte_count,
             "preview_summary": preview_summary,
+            "preview_points": preview_points,
             "manifest": _relative_to_workdir(manifest_path, workdir),
             "preview": _relative_to_workdir(preview_path, workdir),
             "error": capture_error,
@@ -504,6 +508,44 @@ def _build_preview_summary(samples: list[dict[str, Any]]) -> dict[str, Any]:
         "numeric_field_count": len(fields),
         "numeric_fields": fields,
     }
+
+
+def _build_preview_points(samples: list[dict[str, Any]]) -> dict[str, Any]:
+    if not samples:
+        return {"schema": "runner_device_capture_preview_points_v1", "sample_count": 0, "series": {}}
+    step = max(1, len(samples) // MAX_PREVIEW_POINTS)
+    selected = samples[::step][:MAX_PREVIEW_POINTS]
+    series: dict[str, list[dict[str, float]]] = {}
+    for index, sample in enumerate(selected):
+        flattened = _flatten_numeric_sample(sample)
+        text = str(sample.get("text") or "").strip()
+        for key, value in _parse_numeric_text(text).items():
+            flattened.setdefault(key, value)
+        x = _sample_x_value(sample, index)
+        for key, value in flattened.items():
+            if key in {"bytes"}:
+                continue
+            series.setdefault(key, []).append({"x": x, "y": value})
+    return {
+        "schema": "runner_device_capture_preview_points_v1",
+        "sample_count": len(samples),
+        "point_count": sum(len(points) for points in series.values()),
+        "series": series,
+    }
+
+
+def _sample_x_value(sample: dict[str, Any], fallback: int) -> float:
+    for key in ("time", "t", "timestamp"):
+        raw = sample.get(key)
+        parsed = _parse_float(raw)
+        if parsed is not None:
+            return parsed
+        if isinstance(raw, str):
+            try:
+                return datetime.fromisoformat(raw.replace("Z", "+00:00")).timestamp()
+            except Exception:
+                pass
+    return float(fallback)
 
 
 def _flatten_numeric_sample(sample: dict[str, Any]) -> dict[str, float]:

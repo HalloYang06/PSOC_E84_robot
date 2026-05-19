@@ -3201,6 +3201,87 @@
   white-space: nowrap;
 }
 
+.waveformStack {
+  display: grid;
+  gap: 7px;
+}
+
+.waveformPanel {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  padding: 8px;
+  border: 1px solid rgba(120, 230, 170, 0.16);
+  border-radius: 7px;
+  background: rgba(1, 8, 12, 0.5);
+}
+
+.waveformPanel[data-empty="1"] {
+  border-color: rgba(241, 208, 107, 0.18);
+  background: rgba(241, 208, 107, 0.06);
+}
+
+.waveformHead {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.waveformHead small,
+.waveformPanel small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(190, 220, 240, 0.72);
+  font-size: 10.5px;
+}
+
+.waveformPanel svg {
+  width: 100%;
+  aspect-ratio: 2.2 / 1;
+  border-radius: 6px;
+  background: linear-gradient(180deg, rgba(88, 240, 255, 0.06), rgba(1, 8, 12, 0.2));
+}
+
+.waveformPanel line {
+  stroke: rgba(190, 220, 240, 0.22);
+  stroke-width: 1;
+}
+
+.waveformPanel .targetLine {
+  stroke: rgba(241, 208, 107, 0.82);
+  stroke-dasharray: 4 4;
+}
+
+.waveLine1,
+.waveLine2,
+.waveLine3,
+.waveLine4 {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.waveLine1 {
+  stroke: #8ef0c7;
+}
+
+.waveLine2 {
+  stroke: #58f0ff;
+}
+
+.waveLine3 {
+  stroke: #f1d06b;
+}
+
+.waveLine4 {
+  stroke: #ffa6b5;
+}
+
 .tileHead {
   display: flex;
   align-items: flex-start;

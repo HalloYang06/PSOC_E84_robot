@@ -6866,6 +6866,7 @@ async function collectRoboticsCaptureRunnerSummaries(projectId: string, interfac
         sample_count: (runnerResult as Record<string, unknown>).sample_count ?? null,
         byte_count: (runnerResult as Record<string, unknown>).byte_count ?? null,
         preview_summary: (runnerResult as Record<string, unknown>).preview_summary ?? null,
+        preview_points: (runnerResult as Record<string, unknown>).preview_points ?? null,
         repo_sync: (runnerResult as Record<string, unknown>).repo_sync ?? null,
       };
     }
