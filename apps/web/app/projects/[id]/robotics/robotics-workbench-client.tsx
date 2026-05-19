@@ -9,6 +9,7 @@ import {
   创建机器人调参建议请求,
   创建机器人调试Npc操作审核,
   导出机器人标注数据,
+  请求串口USB扫描,
   记录机器人采集片段,
 } from "../../../actions";
 import tileStyles from "../workbench/_components/npc-tile.module.css";
@@ -812,6 +813,11 @@ export function RoboticsWorkbenchClient({
             <button type="button" className={workbenchStyles.batchBtn} onClick={() => setOpenIds(usableWindows.map((window) => window.id))}>
               打开全部 ({usableWindows.length})
             </button>
+            <form action={请求串口USB扫描.bind(null, projectId)} className={styles.scanInlineForm}>
+              <input type="hidden" name="return_to" value={`/projects/${projectId}/robotics`} />
+              <input type="hidden" name="computer_node_id" value="all" />
+              <button type="submit" disabled={!computerCount}>扫描真实接口</button>
+            </form>
           </div>
           <ul className={workbenchStyles.groupList}>
             <li className={workbenchStyles.group}>
@@ -876,6 +882,12 @@ export function RoboticsWorkbenchClient({
             <div className={workbenchStyles.placeholder}>
               <strong>{windows.length ? "点击左栏真实接口的 + 号打开调试瓷砖" : "等待本项目电脑扫描接口"}</strong>
               <p>{windows.length ? "每个调试瓷砖都有自己的终端、数据标注和图表实验，不会在页面之间来回跳。" : "请先在主页面接入电脑，并执行接口扫描。平台不会创建 demo 调试窗口误导你。"}</p>
+              <form action={请求串口USB扫描.bind(null, projectId)} className={styles.emptyScanForm}>
+                <input type="hidden" name="return_to" value={`/projects/${projectId}/robotics`} />
+                <input type="hidden" name="computer_node_id" value="all" />
+                <button type="submit" disabled={!computerCount}>扫描真实接口</button>
+                <span>{computerCount ? "向已接入电脑下发只读扫描，扫描结果会回到左栏。" : "先在主页面接入至少一台电脑。"}</span>
+              </form>
             </div>
           )}
         </section>

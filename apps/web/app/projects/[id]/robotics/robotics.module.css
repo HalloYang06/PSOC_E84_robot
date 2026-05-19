@@ -2994,6 +2994,46 @@
   color: #ffd4c9;
 }
 
+.scanInlineForm {
+  display: grid;
+}
+
+.scanInlineForm button,
+.emptyScanForm button {
+  min-height: 32px;
+  border: 1px solid rgba(120, 230, 170, 0.42);
+  border-radius: 7px;
+  background: rgba(120, 230, 170, 0.14);
+  color: #dffff0;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.scanInlineForm button:disabled,
+.emptyScanForm button:disabled {
+  cursor: not-allowed;
+  border-color: rgba(167, 219, 255, 0.16);
+  background: rgba(167, 219, 255, 0.05);
+  color: rgba(220, 240, 255, 0.38);
+}
+
+.emptyScanForm {
+  display: grid;
+  gap: 7px;
+  justify-items: center;
+}
+
+.emptyScanForm button {
+  min-width: 148px;
+}
+
+.emptyScanForm span {
+  color: rgba(190, 220, 240, 0.72);
+  font-size: 12px;
+}
+
 .tileGrid {
   display: grid;
   gap: 10px;
