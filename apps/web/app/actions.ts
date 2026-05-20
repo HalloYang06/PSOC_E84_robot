@@ -7048,6 +7048,7 @@ async function collectRoboticsCaptureRunnerSummaries(projectId: string, interfac
         preview_summary: (runnerResult as Record<string, unknown>).preview_summary ?? null,
         preview_points: (runnerResult as Record<string, unknown>).preview_points ?? null,
         repo_sync: (runnerResult as Record<string, unknown>).repo_sync ?? null,
+        local_cache: (runnerResult as Record<string, unknown>).local_cache ?? null,
       };
     }
   } catch {
