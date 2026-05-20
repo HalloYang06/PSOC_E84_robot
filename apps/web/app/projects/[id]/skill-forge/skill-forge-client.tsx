@@ -106,6 +106,7 @@ function skillDescriptionOf(value: AnyRecord) {
 function skillSourceLabel(value: AnyRecord) {
   const meta = metadataOf(value);
   const source = text(value.source ?? value.category ?? meta.imported_from, "项目 Skill");
+  if (/platform|baseline|role/i.test(source)) return "平台基础";
   if (/npc|agent/i.test(source)) return "NPC 沉淀";
   if (/human|custom/i.test(source)) return "用户创建";
   if (/github|repo/i.test(source)) return "GitHub 导入";
@@ -389,7 +390,7 @@ function ForgeTile({
       </header>
       <nav className={tileStyles.panelTabs} aria-label={`${resource.name} 配置切换`}>
         {[
-          ["skills", "Skill 配置", focusedAssignments.length],
+          ["skills", "Skill 配置", assignedSkills.length],
           ["knowledge", "知识库配置", focusedKnowledge.length],
           ["git", "Git 管理", 0],
         ].map(([tab, label, count]) => (
