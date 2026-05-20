@@ -32,6 +32,17 @@
   background: rgba(4, 16, 24, 0.72);
 }
 
+.skillGrid .wideCard {
+  grid-column: 1 / -1;
+}
+
+.skillGrid .boundCard {
+  border-color: rgba(117, 247, 221, 0.36);
+  background:
+    linear-gradient(135deg, rgba(117, 247, 221, 0.12), rgba(4, 16, 24, 0.76) 42%),
+    rgba(4, 16, 24, 0.72);
+}
+
 .skillGrid .editorCard {
   border-color: rgba(255, 209, 102, 0.28);
   background: rgba(24, 18, 7, 0.46);
@@ -69,6 +80,72 @@
   color: #ffd166;
   font-size: 11px;
   font-weight: 900;
+}
+
+.cardTopline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.repoLine {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 7px;
+  align-items: center;
+  padding: 7px 8px;
+  border: 1px solid rgba(90, 215, 255, 0.14);
+  border-radius: 7px;
+  background: rgba(1, 8, 13, 0.62);
+}
+
+.repoLine b,
+.repoLine em {
+  color: rgba(205, 232, 238, 0.64);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.repoLine code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #ecffff;
+  font-family: inherit;
+  font-size: 11px;
+}
+
+.repoLine a {
+  color: #75f7dd;
+  font-size: 11px;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.repoLine a:hover {
+  text-decoration: underline;
+}
+
+.actionColumns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.availableStrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  align-items: center;
+  padding-top: 4px;
+}
+
+.availableStrip > span {
+  flex-basis: 100%;
 }
 
 .depositCard ul {
@@ -183,7 +260,9 @@
 
 @media (max-width: 760px) {
   .skillGrid,
-  .materialRows article {
+  .materialRows article,
+  .actionColumns,
+  .repoLine {
     grid-template-columns: 1fr;
   }
 }

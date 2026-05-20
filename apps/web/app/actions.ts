@@ -5504,6 +5504,7 @@ export async function 导入Github项目Skill(projectId: string, formData: FormD
     const githubBranch = text(formData.get("github_branch"), "");
     const category = text(formData.get("category"), "github");
     const recommendedFor = parseStringList(formData.get("recommended_for")) ?? [];
+    const assignmentSeatId = text(formData.get("assignment_seat_id"), "");
     if (!githubUrl) {
       throw new Error("请先粘贴 GitHub repo、目录、blob 或 raw 文件地址。");
     }
@@ -5552,12 +5553,29 @@ export async function 导入Github项目Skill(projectId: string, formData: FormD
         skill_library: sortProjectSkillLibrary(nextSkills),
       },
     });
+    if (assignmentSeatId) {
+      for (const skill of importedSkills) {
+        const skillId = text(skill.id, "");
+        if (!skillId) continue;
+        await postJson(`/api/knowledge/projects/${projectId}/seat-skill-assignments`, {
+          seat_id: assignmentSeatId,
+          skill_id: skillId,
+          assignment_type: "github-import",
+          status: "active",
+          notes: "从 GitHub 导入后添加到该 NPC 的长期能力配置。",
+          extra_data: {
+            imported_from: "github",
+            source_url: text((skill.metadata as Record<string, unknown> | undefined)?.source_url, ""),
+          },
+        });
+      }
+    }
     revalidateProjectSurfaces(projectId);
     const repoLabel = `${target.owner}/${target.repo}`;
     const summary =
       addedCount || updatedCount
-        ? `已从 GitHub 导入 Skill：${repoLabel} / 文件 ${sourceFiles.length} 个 / 新增 ${addedCount} 条 / 更新 ${updatedCount} 条`
-        : `GitHub Skill 已是最新：${repoLabel} / ${importedSkills.length} 条`;
+        ? `已从 GitHub 导入 Skill：${repoLabel} / 文件 ${sourceFiles.length} 个 / 新增 ${addedCount} 条 / 更新 ${updatedCount} 条${assignmentSeatId ? " / 已添加到当前 NPC" : ""}`
+        : `GitHub Skill 已是最新：${repoLabel} / ${importedSkills.length} 条${assignmentSeatId ? " / 已添加到当前 NPC" : ""}`;
     redirect(withQueryValue(returnTo, "team_notice", summary));
   } catch (error) {
     rethrowRedirectError(error);

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { 删除能力工坊知识库, 删除项目Skill, 保存能力工坊知识库, 添加Skill到Npc, 索引Npc沉淀, 绑定知识库到Npc } from "../../../actions";
+import { 创建项目Skill, 删除能力工坊知识库, 删除项目Skill, 导入Github项目Skill, 保存能力工坊知识库, 添加Skill到Npc, 索引Npc沉淀, 绑定知识库到Npc } from "../../../actions";
 import tileStyles from "../workbench/_components/npc-tile.module.css";
 import workbenchStyles from "../workbench/workbench.module.css";
 import styles from "./skill-forge.module.css";
@@ -104,11 +104,39 @@ function skillDescriptionOf(value: AnyRecord) {
 }
 
 function skillSourceLabel(value: AnyRecord) {
-  const source = text(value.source ?? value.category, "项目 Skill");
+  const meta = metadataOf(value);
+  const source = text(value.source ?? value.category ?? meta.imported_from, "项目 Skill");
   if (/npc|agent/i.test(source)) return "NPC 沉淀";
-  if (/human|custom/i.test(source)) return "用户添加";
+  if (/human|custom/i.test(source)) return "用户创建";
   if (/github|repo/i.test(source)) return "GitHub 导入";
+  if (/local/i.test(source)) return "本地导入";
   return source;
+}
+
+function skillRepoPathOf(value: AnyRecord) {
+  const meta = metadataOf(value);
+  return text(value.repo_relative_path ?? value.repoRelativePath ?? value.path ?? meta.repo_relative_path ?? meta.external_path, "")
+    .replace(/\\/g, "/")
+    .replace(/^\/+/, "");
+}
+
+function githubBlobHref(projectRepo: string, repoPath: string) {
+  const normalizedPath = text(repoPath, "").replace(/^\/+/, "");
+  if (!normalizedPath) return "";
+  const repo = text(projectRepo, "");
+  if (!repo || repo === "待绑定 GitHub 仓库") return "";
+  if (/^https:\/\/github\.com\/[^/]+\/[^/]+/i.test(repo)) {
+    const cleanRepo = repo.replace(/\.git$/i, "").replace(/\/+$/, "");
+    return `${cleanRepo}/blob/main/${normalizedPath}`;
+  }
+  const ssh = repo.match(/^git@github\.com:([^/]+\/[^/]+?)(?:\.git)?$/i);
+  if (ssh) return `https://github.com/${ssh[1].replace(/\.git$/i, "")}/blob/main/${normalizedPath}`;
+  return "";
+}
+
+function externalSkillHref(value: AnyRecord) {
+  const meta = metadataOf(value);
+  return text(meta.source_url ?? meta.html_url ?? meta.raw_url, "");
 }
 
 function isBuiltInSkill(value: AnyRecord) {
@@ -193,7 +221,8 @@ function docSourceLabel(value: AnyRecord) {
   const metadata = value.extra_data && typeof value.extra_data === "object" ? value.extra_data : {};
   const source = text(metadata.source ?? value.source ?? value.scope, "知识库");
   if (/npc|agent/i.test(source)) return "NPC 沉淀";
-  if (/human|custom/i.test(source)) return "用户添加";
+  if (/human|custom/i.test(source)) return "用户创建";
+  if (/github|repo/i.test(source)) return "GitHub 导入";
   return source;
 }
 
@@ -334,6 +363,8 @@ function ForgeTile({
     if (leftAssigned !== rightAssigned) return leftAssigned - rightAssigned;
     return skillLabelOf(left).localeCompare(skillLabelOf(right), "zh-Hans-CN");
   });
+  const assignedSkills = orderedSkills.filter((skill) => assignedSkillIds.has(skillIdOf(skill)) || isBuiltInSkill(skill));
+  const availableSkills = orderedSkills.filter((skill) => !assignedSkills.includes(skill));
   const snapshot = sourceSeat?.metadata?.skill_forge_snapshot ?? sourceSeat?.extra_data?.skill_forge_snapshot ?? null;
   const deposits = resource.kind === "seat" ? npcDepositPaths(sourceSeat, resource) : null;
   const tabLabel = activeTab === "knowledge" ? "知识库配置" : activeTab === "git" ? "Git 管理" : "Skill 配置";
@@ -383,18 +414,29 @@ function ForgeTile({
       {activeTab === "skills" ? (
         <section className={styles.skillGrid}>
           {resource.kind === "seat" ? (
-            <article className={styles.editorCard}>
-              <span>仓库闭环</span>
-              <strong>Skill 从工作中沉淀</strong>
-              <p>NPC 工作中形成的可复用 Skill 先写入自己的仓库目录，再由平台索引进仓库；用户仍可编辑、删除和分配。</p>
-              {deposits ? <small>{deposits.skill}</small> : null}
+            <article className={`${styles.editorCard} ${styles.wideCard}`}>
+              <span>当前 NPC Skill</span>
+              <strong>{assignedSkills.length ? `${resource.name} 已装配 ${assignedSkills.length} 个 Skill` : `${resource.name} 还没有可运行 Skill`}</strong>
+              <p>这里先显示该 NPC 当前会带进上岗包的 Skill。NPC 自己写的、用户创建的、本地导入的、GitHub 导入的都必须有来源和仓库路径。</p>
+              {deposits ? <small>NPC 默认写入：{deposits.skill}</small> : null}
             </article>
           ) : null}
-          {orderedSkills.slice(0, 10).map((skill, index) => (
-            <article key={text(skill.id ?? skill.name, `skill-${index}`)}>
-              <span>{skillSourceLabel(skill)}</span>
+          {(resource.kind === "seat" ? assignedSkills : orderedSkills).map((skill, index) => {
+            const repoPath = skillRepoPathOf(skill) || (deposits && /npc/i.test(skillSourceLabel(skill)) ? `${deposits.skill}SKILL.md` : "");
+            const githubHref = externalSkillHref(skill) || githubBlobHref(projectRepo, repoPath);
+            return (
+            <article key={text(skill.id ?? skill.name, `skill-${index}`)} className={assignedSkillIds.has(skillIdOf(skill)) || isBuiltInSkill(skill) ? styles.boundCard : undefined}>
+              <div className={styles.cardTopline}>
+                <span>{skillSourceLabel(skill)}</span>
+                <small>{isBuiltInSkill(skill) ? "上岗基础" : assignedSkillIds.has(skillIdOf(skill)) ? "已装配" : "仓库可选"}</small>
+              </div>
               <strong>{skillLabelOf(skill, `Skill ${index + 1}`)}</strong>
               <p>{skillDescriptionOf(skill) || "暂无说明"}</p>
+              <div className={styles.repoLine}>
+                <b>仓库位置</b>
+                {repoPath ? <code>{repoPath}</code> : <em>待补仓库路径</em>}
+                {githubHref ? <a href={githubHref} target="_blank" rel="noreferrer">打开 GitHub</a> : null}
+              </div>
               {isBuiltInSkill(skill) ? (
                 <small>固定必备</small>
               ) : assignedSkillIds.has(skillIdOf(skill)) ? (
@@ -414,7 +456,55 @@ function ForgeTile({
                 </form>
               ) : null}
             </article>
-          ))}
+          )})}
+          {resource.kind === "seat" ? (
+            <article className={`${styles.editorCard} ${styles.wideCard}`}>
+              <span>给这个 NPC 添加 Skill</span>
+              <strong>用户创建 / 本地导入 / GitHub 导入</strong>
+              <div className={styles.actionColumns}>
+                <form className={styles.stackForm} action={创建项目Skill.bind(null, projectId)}>
+                  <input type="hidden" name="return_to" value={`/projects/${projectId}/skill-forge?resources=${encodeURIComponent(resourceKey(resource))}`} />
+                  <input type="hidden" name="assignment_seat_id" value={resource.seatRowId || resource.id} />
+                  <input type="hidden" name="source" value="custom" />
+                  <label>Skill 标识<input name="skill_id" placeholder="my-debug-helper" /></label>
+                  <label>显示名称<input name="label" placeholder="串口调试助手" /></label>
+                  <label>GitHub 仓库路径<input name="repo_relative_path" placeholder="skills/custom/my-debug-helper/SKILL.md" /></label>
+                  <label>说明<textarea name="note" rows={3} placeholder="这个 Skill 让 NPC 学会什么、什么时候使用。" /></label>
+                  <button type="submit">用户创建并装配</button>
+                </form>
+                <form className={styles.stackForm} action={创建项目Skill.bind(null, projectId)}>
+                  <input type="hidden" name="return_to" value={`/projects/${projectId}/skill-forge?resources=${encodeURIComponent(resourceKey(resource))}`} />
+                  <input type="hidden" name="assignment_seat_id" value={resource.seatRowId || resource.id} />
+                  <input type="hidden" name="source" value="local-import" />
+                  <label>本地 Skill 名称<input name="skill_id" placeholder="local-skill-name" /></label>
+                  <label>显示名称<input name="label" placeholder="从本机导入的 Skill" /></label>
+                  <label>同步后的 GitHub 路径<input name="repo_relative_path" placeholder="skills/imported/local-skill-name/SKILL.md" /></label>
+                  <label>说明<textarea name="note" rows={3} placeholder="本地 Skill 必须同步到 GitHub 后才作为跨电脑事实源。" /></label>
+                  <button type="submit">登记本地导入 Skill</button>
+                </form>
+                <form className={styles.stackForm} action={导入Github项目Skill.bind(null, projectId)}>
+                  <input type="hidden" name="return_to" value={`/projects/${projectId}/skill-forge?resources=${encodeURIComponent(resourceKey(resource))}`} />
+                  <input type="hidden" name="assignment_seat_id" value={resource.seatRowId || resource.id} />
+                  <input type="hidden" name="recommended_for" value={resource.id} />
+                  <label>GitHub 地址<input name="github_url" placeholder="https://github.com/owner/repo/tree/main/skills" /></label>
+                  <label>目录或文件路径<input name="github_path" placeholder="skills/my-skill/SKILL.md" /></label>
+                  <label>分支<input name="github_branch" placeholder="main" /></label>
+                  <button type="submit">从 GitHub 导入到仓库</button>
+                </form>
+              </div>
+              {availableSkills.length ? (
+                <div className={styles.availableStrip}>
+                  <span>仓库可添加</span>
+                  {availableSkills.slice(0, 8).map((skill) => (
+                    <form key={`add-${skillIdOf(skill)}`} className={styles.inlineAction} action={添加Skill到Npc.bind(null, projectId, resource.seatRowId || resource.id, skillIdOf(skill))}>
+                      <input type="hidden" name="return_to" value={`/projects/${projectId}/skill-forge?resources=${encodeURIComponent(resourceKey(resource))}`} />
+                      <button type="submit">{skillLabelOf(skill)}</button>
+                    </form>
+                  ))}
+                </div>
+              ) : null}
+            </article>
+          ) : null}
           {!skills.length ? (
             <article>
               <span>空仓库</span>
@@ -455,9 +545,17 @@ function ForgeTile({
           </article>
           {(focusedKnowledge.length ? focusedKnowledge : documents.slice(0, 10)).map((doc, index) => (
             <article key={`doc-${docKeyOf(doc, index)}`}>
-              <span>{docSourceLabel(doc)}</span>
+              <div className={styles.cardTopline}>
+                <span>{docSourceLabel(doc)}</span>
+                <small>{matchesKnowledge(doc, resource) || boundKnowledgePaths.has(docPathOf(doc)) ? "已绑定" : "可绑定"}</small>
+              </div>
               <strong>{text(doc.title ?? doc.name ?? doc.path, `知识库 ${index + 1}`)}</strong>
               <p>{text(doc.summary ?? doc.description ?? docPathOf(doc), "等待补齐摘要、版本和审核状态。")}</p>
+              <div className={styles.repoLine}>
+                <b>仓库位置</b>
+                {docPathOf(doc) ? <code>{docPathOf(doc)}</code> : <em>待补仓库路径</em>}
+                {githubBlobHref(projectRepo, docPathOf(doc)) ? <a href={githubBlobHref(projectRepo, docPathOf(doc))} target="_blank" rel="noreferrer">打开 GitHub</a> : null}
+              </div>
               {matchesKnowledge(doc, resource) || boundKnowledgePaths.has(docPathOf(doc)) ? (
                 <small>已绑定</small>
               ) : resource.kind === "seat" ? (
