@@ -14,7 +14,7 @@ from typing import Any
 DEVICE_CAPTURE_KINDS = {"robotics.capture.start", "robotics.capture.stop"}
 MAX_CAPTURE_SECONDS = 3.0
 MAX_CAPTURE_BYTES = 64_000
-MAX_COMPLETION_NOTE_CHARS = 3800
+MAX_COMPLETION_NOTE_CHARS = 900
 MAX_SESSION_JOIN_SECONDS = 5.0
 MAX_PREVIEW_POINTS = 160
 
@@ -872,9 +872,58 @@ def _result(handled: bool, result_status: str, title: str, result: dict[str, Any
 
 
 def _format_completion_note(title: str, result: dict[str, Any]) -> str:
-    raw = json.dumps(result, ensure_ascii=False, indent=2)
-    note = f"{title}\n\n```json\n{raw}\n```"
+    lines = [title]
+    capture_id = str(result.get("capture_id") or "").strip()
+    sample_count = str(result.get("sample_count") or "").strip()
+    byte_count = str(result.get("byte_count") or "").strip()
+    error = str(result.get("error") or "").strip()
+    if capture_id:
+        lines.append(f"采集片段：{capture_id}")
+    if sample_count:
+        summary = f"样本：{sample_count}"
+        if byte_count and byte_count != "0":
+            summary = f"{summary} / {byte_count} bytes"
+        lines.append(summary)
+    repo_sync = result.get("repo_sync")
+    if isinstance(repo_sync, dict):
+        sync_label = _sync_status_note(str(repo_sync.get("status") or ""))
+        if sync_label:
+            lines.append(f"仓库同步：{sync_label}")
+        repo_dir = str(repo_sync.get("repo_relative_dir") or "").strip()
+        if repo_dir:
+            lines.append(f"仓库证据目录：{repo_dir}")
+    local_cache = result.get("local_cache")
+    if isinstance(local_cache, dict):
+        cache_label = _cache_status_note(str(local_cache.get("status") or ""))
+        if cache_label:
+            lines.append(f"本机缓存：{cache_label}")
+    if error:
+        lines.append(f"提示：{error}")
+    note = "\n".join(lines)
     if len(note) <= MAX_COMPLETION_NOTE_CHARS:
         return note
-    trimmed = note[: MAX_COMPLETION_NOTE_CHARS - 80].rstrip()
-    return f"{trimmed}\n...\n```"
+    return note[: MAX_COMPLETION_NOTE_CHARS - 20].rstrip() + "\n..."
+
+
+def _sync_status_note(status: str) -> str:
+    return {
+        "pushed": "已推送到仓库",
+        "committed": "已写入仓库证据",
+        "unchanged": "仓库证据已存在",
+        "waiting_for_repo": "等待配置仓库同步",
+        "repo_missing": "设备数据仓库不可用",
+        "not_git_repo": "设备数据仓库未初始化",
+        "copy_failed": "写入仓库失败",
+        "git_add_failed": "仓库登记失败",
+        "git_commit_failed": "仓库提交失败",
+        "push_failed": "已本地提交，等待重试推送",
+    }.get(status, "")
+
+
+def _cache_status_note(status: str) -> str:
+    return {
+        "cleaned": "临时缓存已清理",
+        "already_clean": "临时缓存已清理",
+        "kept_for_retry": "保留待同步缓存",
+        "cleanup_failed": "待人工清理",
+    }.get(status, "")

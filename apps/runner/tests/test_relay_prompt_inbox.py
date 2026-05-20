@@ -150,6 +150,7 @@ def test_robotics_capture_command_short_circuits_before_inbox(tmp_path: Path) ->
     assert client.completions[0]["result_status"] == "completed"
     assert client.completions[0]["metadata"]["runner_capability"] == "robotics.capture"
     assert client.completions[0]["metadata"]["runner_result"]["capture_id"] == "capture-test"
+    assert "```json" not in (client.completions[0]["note"] or "")
     manifest = cfg.workdir / "device-captures" / "proj_x" / "windows-desktop-main" / "serial-COM1" / "capture-test" / "manifest.json"
     assert manifest.exists()
 
@@ -258,6 +259,9 @@ def test_robotics_capture_stop_syncs_manifest_preview_to_git_repo(tmp_path: Path
     sync = result["result"]["repo_sync"]
     assert sync["status"] == "committed"
     assert sync["manifest"] == "data/device-captures/proj_repo/linux-board/serial-ttyUSB0/capture-sync/manifest.json"
+    assert "```json" not in result["note"]
+    assert "仓库同步：已写入仓库证据" in result["note"]
+    assert "本机缓存：临时缓存已清理" in result["note"]
     assert (repo / sync["manifest"]).exists()
     assert (repo / sync["preview"]).exists()
     assert (repo / "data/device-captures/proj_repo/linux-board/serial-ttyUSB0/capture-sync/checksum-summary.json").exists()
