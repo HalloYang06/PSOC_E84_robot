@@ -73,6 +73,30 @@ def wait_for(cdp: object, expression: str, timeout_seconds: float = 35) -> objec
     raise RuntimeError(f"Timed out waiting for {expression[:180]} last={last}")
 
 
+def click_tab(cdp: object, label: str) -> None:
+    clicked = cdp_eval(
+        cdp,
+        f"""
+        (() => {{
+          const buttons = Array.from(document.querySelectorAll('button'));
+          const btn = buttons.find((button) => (button.innerText || '').includes({js(label)}));
+          if (!btn) return false;
+          btn.scrollIntoView({{ block: 'center', inline: 'center' }});
+          for (const type of ['pointerdown', 'mousedown', 'mouseup', 'click']) {{
+            btn.dispatchEvent(new MouseEvent(type, {{ bubbles: true, cancelable: true, view: window }}));
+          }}
+          return true;
+        }})()
+        """,
+    )
+    if not clicked:
+        raise RuntimeError(f"Cannot find robotics tile tab: {label}")
+    wait_for(
+        cdp,
+        f"Array.from(document.querySelectorAll('button')).some((button) => (button.innerText || '').includes({js(label)}) && button.dataset.active === '1')",
+    )
+
+
 def screenshot(cdp: object, path: Path) -> None:
     shot = cdp.send("Page.captureScreenshot", {"format": "png", "captureBeyondViewport": False})
     path.write_bytes(base64.b64decode(str(shot.get("data") or "")))
@@ -383,30 +407,24 @@ def main() -> int:
                 report["failures"].append("NPC binding still jumps away")  # type: ignore[union-attr]
             if isinstance(tile, dict) and tile.get("hasInternalTerms"):
                 report["failures"].append(f"robotics tile exposes internal terms: {tile.get('internalMatches')}")  # type: ignore[union-attr]
-            cdp.send(
-                "Runtime.evaluate",
-                {
-                    "expression": "(() => { const btn = Array.from(document.querySelectorAll('button')).find((button) => (button.innerText || '').includes('数据标注')); if (!btn) return false; btn.click(); return true; })()",
-                    "returnByValue": True,
-                    "userGesture": True,
-                },
-            )
-            wait_for(cdp, "document.body.innerText.includes('采集片段') && document.body.innerText.includes('变量选择') && document.body.innerText.includes('NPC 预标注') && document.body.innerText.includes('导出标注数据')")
+            click_tab(cdp, "数据标注")
+            wait_for(cdp, "document.body.innerText.includes('采集片段') && document.body.innerText.includes('可用变量') && document.body.innerText.includes('NPC 预标注')")
             dataset_state = cdp_eval(
                 cdp,
                 """
                 (() => {
                   const body = document.body.innerText || '';
+                  const summaries = Array.from(document.querySelectorAll('summary')).map((item) => item.innerText || '').join('\\n');
                   return {
-                    hasDatasetTab: body.includes('采集片段') && body.includes('变量选择') && body.includes('NPC 预标注') && body.includes('导出标注数据'),
+                    hasDatasetTab: body.includes('采集片段') && body.includes('可用变量') && body.includes('NPC 预标注') && summaries.includes('人工确认与导出'),
                     hasCaptureChecks: document.querySelectorAll('input[name="capture_ids"][type="checkbox"]').length > 0 || body.includes('从这个调试窗口开始/停止采集后'),
                     hasVariableChecks: document.querySelectorAll('input[name="variables"][type="checkbox"]').length > 0,
                     hasLabelSchema: !!document.querySelector('input[name="label_schema"]'),
-                    hasManualLabels: !!document.querySelector('textarea[name="manual_labels"]') && body.includes('人工标签'),
+                    hasManualLabels: !!document.querySelector('textarea[name="manual_labels"]'),
                     hasExportFormat: !!document.querySelector('select[name="export_format"]'),
-                    hasPreLabelButton: Array.from(document.querySelectorAll('button')).some((button) => (button.innerText || '').includes('NPC 预标注')),
-                    hasExportButton: Array.from(document.querySelectorAll('button')).some((button) => (button.innerText || '').includes('导出标注数据')),
-                    hasRunnerResultSlot: body.includes('采集回执') || body.includes('已回传') || body.includes('等待预标注或导出'),
+                    hasPreLabelButton: Array.from(document.querySelectorAll('button')).some((button) => (button.innerText || '').includes('预标注建议')),
+                    hasExportButton: Array.from(document.querySelectorAll('button')).some((button) => (button.innerText || '').includes('导出标注数据')) || summaries.includes('人工确认与导出'),
+                    hasRunnerResultSlot: body.includes('采集回执') || body.includes('已回传') || body.includes('本机临时缓存') || body.includes('从终端开始/停止采集'),
                     stillOnRobotics: location.pathname.endsWith('/robotics'),
                     hasHorizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 2,
                   };
@@ -428,28 +446,22 @@ def main() -> int:
                 or not dataset_state.get("stillOnRobotics")
             ):
                 report["failures"].append("dataset tab controls missing or did not stay in tile")  # type: ignore[union-attr]
-            cdp.send(
-                "Runtime.evaluate",
-                {
-                    "expression": "(() => { const btn = Array.from(document.querySelectorAll('button')).find((button) => (button.innerText || '').includes('图表实验')); if (!btn) return false; btn.click(); return true; })()",
-                    "returnByValue": True,
-                    "userGesture": True,
-                },
-            )
-            wait_for(cdp, "document.body.innerText.includes('横轴') && document.body.innerText.includes('纵轴') && document.body.innerText.includes('保存图表快照') && document.body.innerText.includes('请求 NPC 调参建议')")
+            click_tab(cdp, "图表实验")
+            wait_for(cdp, "document.body.innerText.includes('横轴') && document.body.innerText.includes('纵轴') && document.body.innerText.includes('保存图表快照')")
             chart_state = cdp_eval(
                 cdp,
                 """
                 (() => {
                   const body = document.body.innerText || '';
+                  const summaries = Array.from(document.querySelectorAll('summary')).map((item) => item.innerText || '').join('\\n');
                   return {
-                    hasChartTab: body.includes('横轴') && body.includes('纵轴') && body.includes('保存图表快照') && body.includes('请求 NPC 调参建议'),
+                    hasChartTab: body.includes('横轴') && body.includes('纵轴') && body.includes('保存图表快照') && summaries.includes('NPC 分析建议'),
                     hasXAxis: !!document.querySelector('select[name="x_axis"]'),
                     hasYAxis: document.querySelectorAll('input[name="y_axes"][type="checkbox"]').length > 0,
                     hasTarget: !!document.querySelector('input[name="target_value"]'),
                     hasMode: !!document.querySelector('select[name="chart_mode"]') && document.body.innerText.includes('PID') && document.body.innerText.includes('FOC'),
                     hasChartButton: Array.from(document.querySelectorAll('button')).some((button) => (button.innerText || '').includes('保存图表快照')),
-                    hasTuningButton: Array.from(document.querySelectorAll('button')).some((button) => (button.innerText || '').includes('请求 NPC 调参建议')),
+                    hasTuningButton: Array.from(document.querySelectorAll('button')).some((button) => (button.innerText || '').includes('请求 NPC 分析建议')) || summaries.includes('NPC 分析建议'),
                     hasRunnerEvidenceSlot: body.includes('图表证据') && (body.includes('等待图表快照') || body.includes('已回传') || body.includes('采集回执')),
                     hasSummarySlot: body.includes('图表证据') && (body.includes('均值') || body.includes('已收到') || body.includes('等待图表快照')),
                     stillOnRobotics: location.pathname.endsWith('/robotics'),
