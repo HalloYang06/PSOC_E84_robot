@@ -269,8 +269,7 @@ function tileEvents(tile: DebugWindow, messages: AnyRecord[], types: string[]) {
       return types.includes(text(message.message_type ?? message.messageType, ""))
         && text(extra.terminal_interface_id, "") === tile.id;
     })
-    .slice(0, 6)
-    .reverse();
+    .slice(0, 6);
 }
 
 function segmentVariables(segments: ReturnType<typeof captureSegments>) {
