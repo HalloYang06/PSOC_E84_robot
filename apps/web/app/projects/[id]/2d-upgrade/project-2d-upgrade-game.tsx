@@ -1592,7 +1592,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
     };
   }, [apiBaseUrl]);
 
-  async function copyClaudePrompt() {
+  async function copyAiHandoffPrompt() {
     if (copyState.kind === "loading") return;
     setCopyState({ kind: "loading" });
     try {
@@ -1600,7 +1600,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
       const prompt = String(data?.prompt ?? "").trim();
       if (!prompt) throw new Error("提示词为空");
       await navigator.clipboard.writeText(prompt);
-      setCopyState({ kind: "ok", message: "提示词已复制到剪贴板，粘贴到 Claude Code 即可继续。" });
+      setCopyState({ kind: "ok", message: "提示词已复制到剪贴板，粘贴到当前使用的 AI 开发工具即可继续。" });
       setTimeout(() => setCopyState({ kind: "idle" }), 4000);
     } catch (error) {
       setCopyState({ kind: "err", message: `复制失败：${error instanceof Error ? error.message : "未知错误"}` });
@@ -3611,7 +3611,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
           <section className={styles.npcAuthoredSkillPanel} aria-label="NPC 自造 Skill">
             <div className={styles.realNote}>
               <b>NPC 自造 Skill</b>
-              <p>当某个 NPC 在开发中形成稳定做法，把它沉淀成项目 Skill 草稿。完整处理仍在 Codex / Claude Code 线程里，平台只保存可复用的角色能力索引。</p>
+              <p>当某个 NPC 在开发中形成稳定做法，把它沉淀成项目 Skill 草稿。完整处理仍在已绑定的 AI 开发线程里，平台只保存可复用的角色能力索引。</p>
             </div>
             <dl>
               <div><dt>必备文件</dt><dd>skills/&lt;skill-id&gt;/SKILL.md</dd></div>
@@ -4156,11 +4156,11 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
               <button
                 type="button"
                 className={styles.cockpitPrimary}
-                onClick={copyClaudePrompt}
+                onClick={copyAiHandoffPrompt}
                 disabled={copyState.kind === "loading"}
-                title="把当前项目上下文复制为 Claude Code 提示词"
+                title="把当前项目上下文复制为 AI 开发工具接手提示词"
               >
-                {copyState.kind === "loading" ? "生成中..." : "复制 Claude Code 提示词"}
+                {copyState.kind === "loading" ? "生成中..." : "复制 AI 接入提示词"}
               </button>
               <button type="button" className={styles.cockpitGhost} onClick={copyRepoUrl} title="复制仓库地址">
                 仓库地址
