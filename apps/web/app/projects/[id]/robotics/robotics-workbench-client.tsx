@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import { apiClientUrl } from "../../../../lib/api-client-url";
 import {
   下发机器人调试命令,
@@ -1029,6 +1030,7 @@ export function RoboticsWorkbenchClient({
 }: RoboticsWorkbenchClientProps) {
   const [defaultNpcId, setDefaultNpcId] = useState(initialNpcId);
   const [savedWindows, setSavedWindows] = useState<SavedDebugWindow[]>(initialSavedWindows);
+  const router = useRouter();
   const configuredWindows = useMemo(() => configuredDebugWindows(windows, savedWindows), [windows, savedWindows]);
   const [openIds, setOpenIds] = useState<string[]>(() => initialOpenIds.filter((id) => savedWindows.some((item) => item.resourceId === id)));
   const usableWindows = useMemo(() => windows.filter((item) => item.isUsable), [windows]);
@@ -1037,6 +1039,22 @@ export function RoboticsWorkbenchClient({
     () => openIds.map((id) => configuredWindows.find((item) => item.id === id)).filter(Boolean) as DebugWindow[],
     [openIds, configuredWindows],
   );
+  const needsLiveRefresh = terminalMessages.some((message) => {
+    const type = text(message.message_type ?? message.messageType, "");
+    const status = text(message.status, "");
+    return (
+      (type === "runner_command" || type === "runner_ack" || type === "robotics_capture_start")
+      && !["completed", "failed", "cancelled", "done"].includes(status)
+    );
+  }) || openWindows.some((window) => window.runnerReady && window.statusLabel.includes("采集") || window.statusLabel.includes("排队"));
+
+  useEffect(() => {
+    if (!needsLiveRefresh) return;
+    const timer = window.setInterval(() => {
+      router.refresh();
+    }, 3500);
+    return () => window.clearInterval(timer);
+  }, [needsLiveRefresh, router]);
 
   function previewCreateWindow(event: FormEvent<HTMLFormElement>) {
     const formData = new FormData(event.currentTarget);

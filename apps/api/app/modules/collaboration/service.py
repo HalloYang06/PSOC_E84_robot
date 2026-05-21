@@ -3082,7 +3082,7 @@ def list_runner_inbox_messages(db: Session, runner_id: str, *, status: str | Non
             CollaborationMessage.recipient_id == runner_id,
             CollaborationMessage.message_type == "runner_command",
         )
-        .order_by(CollaborationMessage.created_at.desc())
+        .order_by(CollaborationMessage.created_at.asc(), CollaborationMessage.id.asc())
     )
     if status and status != "all":
         stmt = stmt.where(CollaborationMessage.status == status)
