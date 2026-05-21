@@ -1,5 +1,6 @@
 #include "can_driver.h"
 #include "control/control_layer.h"
+#include "control/control_layer_cfg.h"
 #include "CAN_config.h"
 #include "cy_gpio.h"
 #include "cy_sysclk.h"
@@ -109,7 +110,13 @@ static rt_uint32_t can_min_motor_private_ext_id(rt_uint8_t comm_type, rt_uint16_
 
 rt_err_t can_driver_init(void)
 {
-    return RT_EOK;
+    rt_err_t ret;
+
+    rt_kprintf("[can_driver] start control layer on %s\n", CONTROL_CAN_DEV_DEFAULT);
+    ret = control_layer_init(CONTROL_CAN_DEV_DEFAULT);
+    rt_kprintf("[can_driver] control layer ret=%d\n", ret);
+
+    return ret;
 }
 
 rt_err_t can_send_joint_target(joint_id_t joint, float target)

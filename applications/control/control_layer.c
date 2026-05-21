@@ -16,8 +16,8 @@
 #define CONTROL_CAN_USE_DIRECT_PDL 1
 #endif
 
-#if (CONTROL_MOTOR_JOINT_COUNT < 1U) || (CONTROL_MOTOR_JOINT_COUNT > 5U)
-#error "CONTROL_MOTOR_JOINT_COUNT must be within [1, 5]."
+#if (CONTROL_MOTOR_JOINT_COUNT < 1U) || (CONTROL_MOTOR_JOINT_COUNT > 7U)
+#error "CONTROL_MOTOR_JOINT_COUNT must be within [1, 7]."
 #endif
 
 #define MOTOR_PRIVATE_TYPE_CTRL            0x01U
@@ -77,13 +77,15 @@ typedef struct
 static rt_thread_t s_speed_hold_thread = RT_NULL;
 static control_speed_hold_ctx_t s_speed_hold_ctx;
 
-static const rt_uint8_t s_joint_motor_map[5] =
+static const rt_uint8_t s_joint_motor_map[7] =
 {
     (rt_uint8_t)CONTROL_MOTOR_JOINT1_ID,
     (rt_uint8_t)CONTROL_MOTOR_JOINT2_ID,
     (rt_uint8_t)CONTROL_MOTOR_JOINT3_ID,
     (rt_uint8_t)CONTROL_MOTOR_JOINT4_ID,
     (rt_uint8_t)CONTROL_MOTOR_JOINT5_ID,
+    (rt_uint8_t)CONTROL_MOTOR_JOINT6_ID,
+    (rt_uint8_t)CONTROL_MOTOR_JOINT7_ID,
 };
 
 static rt_uint16_t ctrl_u16_from_le(const rt_uint8_t *buf)
@@ -224,17 +226,32 @@ static rt_err_t ctrl_can_send(rt_uint32_t id, rt_uint8_t ide, const rt_uint8_t *
 static void ctrl_update_emg_report(const struct rt_can_msg *msg)
 {
     control_emg_report_t tmp;
+    float ch1_mv;
+    float ch2_mv;
+    float rms_mv;
 
-    if (msg->len < 6U)
+    if (msg->len < 8U)
     {
         return;
     }
 
-    tmp.ch1_raw = ctrl_u16_from_le(&msg->data[0]);
-    tmp.ch2_raw = ctrl_u16_from_le(&msg->data[2]);
-    tmp.rms_raw = ctrl_u16_from_le(&msg->data[4]);
-    tmp.seq = (msg->len > 6U) ? msg->data[6] : 0U;
-    tmp.status = (msg->len > 7U) ? msg->data[7] : 0U;
+    rt_memcpy(&ch1_mv, &msg->data[0], sizeof(ch1_mv));
+    rt_memcpy(&ch2_mv, &msg->data[4], sizeof(ch2_mv));
+    if (ch1_mv < 0.0f)
+    {
+        ch1_mv = 0.0f;
+    }
+    if (ch2_mv < 0.0f)
+    {
+        ch2_mv = 0.0f;
+    }
+    rms_mv = (ch1_mv + ch2_mv) * 0.5f;
+
+    tmp.ch1_raw = (rt_uint16_t)ctrl_float_to_scaled_i32(ch1_mv, 1.0f);
+    tmp.ch2_raw = (rt_uint16_t)ctrl_float_to_scaled_i32(ch2_mv, 1.0f);
+    tmp.rms_raw = (rt_uint16_t)ctrl_float_to_scaled_i32(rms_mv, 1.0f);
+    tmp.seq = 0U;
+    tmp.status = 0U;
     tmp.timestamp = rt_tick_get();
 
     rt_mutex_take(&s_data_lock, RT_WAITING_FOREVER);
@@ -245,17 +262,23 @@ static void ctrl_update_emg_report(const struct rt_can_msg *msg)
 static void ctrl_update_heart_report(const struct rt_can_msg *msg)
 {
     control_heart_report_t tmp;
+    rt_uint32_t timestamp_ms;
 
-    if (msg->len < 2U)
+    if (msg->len < 8U)
     {
         return;
     }
 
     tmp.bpm = ctrl_u16_from_le(&msg->data[0]);
-    tmp.hrv_ms = (msg->len >= 4U) ? ctrl_u16_from_le(&msg->data[2]) : 0U;
-    tmp.signal_quality = (msg->len >= 5U) ? msg->data[4] : 0U;
-    tmp.status = (msg->len >= 6U) ? msg->data[5] : 0U;
+    tmp.hrv_ms = ctrl_u16_from_le(&msg->data[2]);
+    timestamp_ms = (rt_uint32_t)msg->data[4] |
+                   ((rt_uint32_t)msg->data[5] << 8) |
+                   ((rt_uint32_t)msg->data[6] << 16) |
+                   ((rt_uint32_t)msg->data[7] << 24);
+    tmp.signal_quality = (tmp.hrv_ms > 0U) ? 100U : 0U;
+    tmp.status = 0U;
     tmp.timestamp = rt_tick_get();
+    RT_UNUSED(timestamp_ms);
 
     rt_mutex_take(&s_data_lock, RT_WAITING_FOREVER);
     s_heart_report = tmp;
@@ -525,9 +548,39 @@ static void ctrl_enqueue_ros_command(const control_ros_command_t *cmd)
     }
 }
 
+static rt_bool_t ctrl_handle_nanopi_heartbeat(const struct rt_can_msg *msg)
+{
+    rt_uint8_t payload[8] = {0};
+    rt_uint32_t tick;
+
+    if ((msg == RT_NULL) || (msg->ide != RT_CAN_STDID) ||
+        (msg->id != CONTROL_CAN_ID_NANOPI_HEARTBEAT))
+    {
+        return RT_FALSE;
+    }
+
+    tick = rt_tick_get();
+    payload[0] = 0xA5U;
+    payload[1] = (msg->len > 0U) ? msg->data[0] : 0U;
+    payload[2] = CONTROL_MOTOR_JOINT_COUNT;
+    payload[3] = 0U;
+    payload[4] = (rt_uint8_t)(tick & 0xFFU);
+    payload[5] = (rt_uint8_t)((tick >> 8) & 0xFFU);
+    payload[6] = (rt_uint8_t)((tick >> 16) & 0xFFU);
+    payload[7] = (rt_uint8_t)((tick >> 24) & 0xFFU);
+
+    (void)ctrl_can_send(CONTROL_CAN_ID_M33_STATUS, RT_CAN_STDID, payload, sizeof(payload));
+    return RT_TRUE;
+}
+
 static void ctrl_handle_can_message(const struct rt_can_msg *msg)
 {
     control_ros_command_t ros_cmd;
+
+    if (ctrl_handle_nanopi_heartbeat(msg))
+    {
+        return;
+    }
 
     if (ctrl_parse_ros_command_can(msg, &ros_cmd))
     {

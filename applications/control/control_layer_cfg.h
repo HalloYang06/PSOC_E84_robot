@@ -42,7 +42,7 @@
 #endif
 
 #ifndef CONTROL_MOTOR_JOINT_COUNT
-#define CONTROL_MOTOR_JOINT_COUNT          5U
+#define CONTROL_MOTOR_JOINT_COUNT          7U
 #endif
 
 #ifndef CONTROL_MOTOR_JOINT1_ID
@@ -63,6 +63,14 @@
 
 #ifndef CONTROL_MOTOR_JOINT5_ID
 #define CONTROL_MOTOR_JOINT5_ID            0x05U
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT6_ID
+#define CONTROL_MOTOR_JOINT6_ID            0x06U
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT7_ID
+#define CONTROL_MOTOR_JOINT7_ID            0x07U
 #endif
 
 #ifndef CONTROL_MOTOR_P_MIN_RAD
@@ -130,6 +138,14 @@
 #define CONTROL_CAN_ID_ROS_COMMAND         0x320U
 #endif
 
+#ifndef CONTROL_CAN_ID_NANOPI_HEARTBEAT
+#define CONTROL_CAN_ID_NANOPI_HEARTBEAT    0x321U
+#endif
+
+#ifndef CONTROL_CAN_ID_M33_STATUS
+#define CONTROL_CAN_ID_M33_STATUS          0x322U
+#endif
+
 #ifndef CONTROL_ROS_CMD_OP_ENABLE
 #define CONTROL_ROS_CMD_OP_ENABLE          0x01U
 #endif
@@ -160,11 +176,23 @@
 
 /* STM32C8T6 sensor report IDs (project custom) */
 #ifndef CONTROL_CAN_ID_EMG_REPORT
-#define CONTROL_CAN_ID_EMG_REPORT          0x301U
+#define CONTROL_CAN_ID_EMG_REPORT          0x300U
 #endif
 
 #ifndef CONTROL_CAN_ID_HEART_REPORT
-#define CONTROL_CAN_ID_HEART_REPORT        0x302U
+#define CONTROL_CAN_ID_HEART_REPORT        0x301U
+#endif
+
+#ifndef CONTROL_CAN_ID_IMU_ACCEL_REPORT
+#define CONTROL_CAN_ID_IMU_ACCEL_REPORT    0x302U
+#endif
+
+#ifndef CONTROL_CAN_ID_IMU_GYRO_REPORT
+#define CONTROL_CAN_ID_IMU_GYRO_REPORT     0x303U
+#endif
+
+#ifndef CONTROL_CAN_ID_SENSOR_STATUS
+#define CONTROL_CAN_ID_SENSOR_STATUS       0x304U
 #endif
 
 #ifndef CONTROL_CAN_ID_SENSOR_CTRL
