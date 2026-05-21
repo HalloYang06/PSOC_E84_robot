@@ -585,6 +585,10 @@ function cleanFeedCopy(value: unknown, fallback = "暂无可展示条目") {
     .replace(/\bbridge\b/gi, "同步通道");
 }
 
+function isRawUuid(value: unknown) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value ?? "").trim());
+}
+
 function itemTitle(item?: FeedItem) {
   if (!item) return "暂无可展示条目";
   return cleanFeedCopy(item.title || item.name || item.type || item.body || "", "平台记录");
@@ -2015,12 +2019,12 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
           message.providerId,
         ]);
         const targetRef = candidates[0] ?? "";
-        if (!targetRef) return;
+        if (!targetRef || isRawUuid(targetRef)) return;
         remember({
           ref: targetRef,
           label: itemTitle(message),
           source: "协作动态",
-          detail: shortCopy(message.body, "最近 Git 动态提到的目标引用", 72),
+          detail: shortCopy(cleanFeedCopy(message.body, "最近 Git 动态提到的目标引用"), "最近 Git 动态提到的目标引用", 72),
           tone: "activity",
         });
       });
@@ -2071,8 +2075,10 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
           title: itemTitle(message),
           status: latestReceipt ? statusLabel(latestReceipt.status) : statusLabel(message.status),
           rawStatus: message.status,
-          targetRef: String(meta.target_ref || refMatch?.[1] || message.providerId || "未识别"),
-          targetNpc: npcNameByIdentity.get(message.sourceWorkstationId || "") || message.sourceWorkstationId || "未识别 NPC",
+          targetRef: isRawUuid(meta.target_ref || refMatch?.[1] || message.providerId)
+            ? "平台记录"
+            : String(meta.target_ref || refMatch?.[1] || message.providerId || "未识别"),
+          targetNpc: npcNameByIdentity.get(message.sourceWorkstationId || "") || cleanFeedCopy(message.sourceWorkstationId, "未识别 NPC"),
           at: latestReceipt?.at || message.at,
           receiptCount: receipts.length,
           receiptTitle: latestReceipt ? itemTitle(latestReceipt) : "",
