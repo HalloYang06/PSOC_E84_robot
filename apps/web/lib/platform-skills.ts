@@ -88,7 +88,7 @@ export const DEFAULT_PLATFORM_SKILL_LIBRARY: PlatformSkillRecord[] = [
     metadata: {
       category: "project-management",
       description:
-        "适合担任 AI 协作契约守门位，重点负责需求表、派单边界、人审规则、最小回执、最终回复和下一步需求记录。常用于 10+ 线程协作前的开工必读、token 控制和跨 NPC 接力。",
+        "适合担任 AI 协作契约守门位，重点负责需求表、派单边界、人审规则、最小回执、最终回复和下一步需求记录。常用于多 NPC 协作前的开工必读、上下文控制和跨 NPC 接力。",
       preferred_stations: ["协作调度工位", "需求拆解工位", "审核工位", "交付工位"],
       deliverables: ["AI 必读需求表", "人工审核边界", "派单回执协议", "下一步需求记录"],
       matching_text: "requirement ledger review approval token-control handoff dispatch ack final reply",
@@ -125,7 +125,7 @@ export const DEFAULT_PLATFORM_SKILL_LIBRARY: PlatformSkillRecord[] = [
   {
     id: "dispatch-ack-closer",
     label: "派单与最小回执闭环",
-    note: "适合 requirement dispatch、最小回执、TaskDispatch 和 runner ack 收口。",
+    note: "适合派单、接单确认、过程回执和完成回执收口。",
     source: "platform-role",
     scope: "role",
     category: "协作闭环",
@@ -134,7 +134,7 @@ export const DEFAULT_PLATFORM_SKILL_LIBRARY: PlatformSkillRecord[] = [
   {
     id: "final-reply-closer",
     label: "最终回复与续推收口",
-    note: "适合 final reply、下一条 requirement、自检 sweep 和闭环补偿。",
+    note: "适合最终回复、下一步需求记录、自检和闭环补偿。",
     source: "platform-role",
     scope: "role",
     category: "协作闭环",
@@ -143,7 +143,7 @@ export const DEFAULT_PLATFORM_SKILL_LIBRARY: PlatformSkillRecord[] = [
   {
     id: "review-gatekeeper",
     label: "人工审核与风控分流",
-    note: "适合区分自动推进与等待人工审核的边界、证据说明和 token 控制。",
+    note: "适合区分自动推进与等待人工审核的边界、证据说明和上下文控制。",
     source: "platform-role",
     scope: "role",
     category: "安全/审核",
@@ -170,7 +170,7 @@ export const PLATFORM_SKILL_STARTER_KITS: PlatformSkillStarterKit[] = [
   {
     id: "dispatch-loop-kit",
     label: "派单闭环 / 回执套装",
-    note: "给负责 dispatch、ack、final reply 和自动续推的线程。",
+    note: "给负责派单、回执、最终回复和自动续推的 NPC。",
     skill_ids: ["dispatch-ack-closer", "final-reply-closer", "thread-bridge-writeback"],
   },
   {
