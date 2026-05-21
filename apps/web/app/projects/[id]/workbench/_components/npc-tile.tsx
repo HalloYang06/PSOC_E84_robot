@@ -901,6 +901,10 @@ function sourceHasFinalReceipt(messages: CollabMessage[] | null | undefined, sou
 
 function dialogChainKey(msg: CollabMessage): string {
   const metadata = messageMetadata(msg);
+  const type = safeText(msg.message_type, "").toLowerCase();
+  if (["agent_command", "requirement_dispatch", "comment_message"].includes(type)) {
+    return safeText(msg.id, "");
+  }
   return safeText(
     metadata.source_message_id
       ?? metadata.sourceMessageId
@@ -2185,11 +2189,19 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
       const duplicateKey = dialogDedupeKey(msg);
       if (duplicateSeen.has(duplicateKey)) continue;
       duplicateSeen.add(duplicateKey);
+      const chainKey = dialogChainKey(msg);
+      const type = safeText(msg.message_type, "").toLowerCase();
+      if (
+        chainKey
+        && hasFinalByChain.has(chainKey)
+        && ["agent_command", "requirement_dispatch", "comment_message"].includes(type)
+      ) {
+        continue;
+      }
       if (shouldRenderAsReviewMessage(msg)) {
         passthrough.push(msg);
         continue;
       }
-      const chainKey = dialogChainKey(msg);
       if (!chainKey || !isIntermediateReceipt(msg)) {
         passthrough.push(msg);
         continue;
@@ -2209,6 +2221,17 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
     compacted.sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")));
     return compacted;
   }, [messages, hideNoisy, showFullHistory, activeQueueMessageId, seat.desktopVisible]);
+  const messageReceiptCount = useMemo(() => {
+    return (messages || []).filter((message) => {
+      const type = safeText(message.message_type, "").toLowerCase();
+      if (!["runner_ack", "runner_result", "agent_ack", "agent_result", "requirement_progress_ack", "requirement_final_reply", "desktop_minimal_receipt"].includes(type)) {
+        return false;
+      }
+      const { noisy } = classifyMessage(message);
+      return !noisy;
+    }).length;
+  }, [messages]);
+  const totalReceiptCount = (receipts?.length ?? 0) + messageReceiptCount;
 
   const peerDispatchCards = useMemo(() => {
     const cards = new Map<string, StructuredMessageCard>();
@@ -3544,7 +3567,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
             {" / "}
             对话指令 {myQueue.length}
             {" / "}
-            回执 {receipts?.length ?? 0}
+            回执 {totalReceiptCount}
           </small>
         </summary>
         <div className={styles.runtimeBody}>
@@ -3554,7 +3577,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
         const dispatchItems = myQueue;
         const needCount = myNeedCount;
         const taskCount = myTaskCount;
-        if (needCount === 0 && taskCount === 0 && dispatchItems.length === 0 && (receipts?.length ?? 0) === 0) {
+        if (needCount === 0 && taskCount === 0 && dispatchItems.length === 0 && totalReceiptCount === 0) {
           return null;
         }
         const activeItems = queueTab === "needs" ? needItems : queueTab === "tasks" ? taskItems : null;

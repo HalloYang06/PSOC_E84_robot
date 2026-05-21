@@ -265,6 +265,45 @@ def _conflict_if_exists(
             raise AppError("CONFLICT", f"{section} identifier already exists", status_code=409)
 
 
+def _ensure_unique_formal_thread_binding(
+    items: list[dict[str, object]],
+    *,
+    binding_id: str | None,
+    excluding_index: int | None = None,
+) -> None:
+    binding = str(binding_id or "").strip()
+    if not binding:
+        return
+    for index, item in enumerate(items):
+        if excluding_index is not None and index == excluding_index:
+            continue
+        if _workstation_is_runner_scan(item):
+            continue
+        metadata = _metadata_dict(item.get("metadata"))
+        extra_data = _metadata_dict(item.get("extra_data"))
+        candidates = {
+            str(item.get("source_workstation_id") or "").strip(),
+            str(item.get("source_thread_id") or "").strip(),
+            str(item.get("bound_thread_id") or "").strip(),
+            str(item.get("target_thread_id") or "").strip(),
+            str(metadata.get("source_workstation_id") or "").strip(),
+            str(metadata.get("source_thread_id") or "").strip(),
+            str(metadata.get("bound_thread_id") or "").strip(),
+            str(metadata.get("target_thread_id") or "").strip(),
+            str(extra_data.get("source_workstation_id") or "").strip(),
+            str(extra_data.get("source_thread_id") or "").strip(),
+            str(extra_data.get("bound_thread_id") or "").strip(),
+            str(extra_data.get("target_thread_id") or "").strip(),
+        }
+        candidates.discard("")
+        if binding in candidates:
+            raise AppError(
+                "THREAD_BINDING_CONFLICT",
+                "this execution thread is already bound to another NPC seat",
+                status_code=409,
+            )
+
+
 def _section_payload(project: Project, section: str) -> list[dict[str, object]]:
     return _project_collaboration_items(project, section)
 
@@ -1713,6 +1752,8 @@ def create_project_thread_workstation(db: Session, project_id: str, payload: Col
     data["name"] = name
     data["id"] = str(data.get("id") or name).strip()
     _conflict_if_exists(items, key="id", value=str(data["id"]), section="瀹搞儰缍呯痪璺ㄢ柤")
+    if not _workstation_is_runner_scan(data):
+        _ensure_unique_formal_thread_binding(items, binding_id=_thread_binding_id_from_workstation_item(data))
     items.append(data)
     after = dict(before)
     after["thread_workstations"] = items
@@ -1745,6 +1786,12 @@ def update_project_thread_workstation(
     updated["id"] = str(updated.get("id") or current.get("id") or new_name).strip()
     _conflict_if_exists(items, key="id", value=str(updated["id"]), section="宸ヤ綅绾跨▼", excluding_index=index)
     _conflict_if_exists(items, key="name", value=new_name, section="宸ヤ綅绾跨▼", excluding_index=index)
+    if not _workstation_is_runner_scan(updated):
+        _ensure_unique_formal_thread_binding(
+            items,
+            binding_id=_thread_binding_id_from_workstation_item(updated),
+            excluding_index=index,
+        )
     items[index] = updated
     after = dict(before)
     after["thread_workstations"] = items

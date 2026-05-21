@@ -3000,6 +3000,57 @@ def test_thread_workstation_update_keeps_thread_binding_fields_in_sync() -> None
         assert seat.extra_data["target_thread_id"] == "codex-session-real-boss-thread"
 
 
+def test_formal_npc_seats_cannot_share_one_bound_thread() -> None:
+    """One real execution thread must not masquerade as multiple NPC seats."""
+    owner_token, owner_user_id = issue_session_token(client)
+    shared_thread = "codex-session-real-shared-thread"
+    project = create_project(
+        client,
+        owner_token,
+        name_prefix="Unique Formal Thread Binding",
+        collaboration_config={
+            "thread_workstations": [
+                {
+                    "id": shared_thread,
+                    "name": "Scanned Desktop Thread",
+                    "status": "active",
+                    "ai_provider_id": "codex",
+                    "metadata": {"source": "runner_thread_scan"},
+                },
+                {
+                    "id": "qa-seat",
+                    "name": "QA Seat",
+                    "status": "active",
+                    "ai_provider_id": "codex",
+                    "source_workstation_id": shared_thread,
+                    "metadata": {"source_workstation_id": shared_thread},
+                },
+                {
+                    "id": "backend-seat",
+                    "name": "Backend Seat",
+                    "status": "active",
+                    "ai_provider_id": "codex",
+                },
+            ],
+        },
+    )
+    project_id = project["id"]
+    add_project_member(client, project_id, owner_token, owner_user_id, role="owner", is_owner=True)
+
+    response = client.patch(
+        f"/api/collaboration/projects/{project_id}/thread-workstations/backend-seat",
+        headers=auth_headers(owner_token),
+        json={
+            "source_workstation_id": shared_thread,
+            "bound_thread_id": shared_thread,
+            "target_thread_id": shared_thread,
+            "metadata": {"source_workstation_id": shared_thread},
+        },
+    )
+    assert response.status_code == 409, response.text
+    assert response.json()["error"]["code"] == "THREAD_BINDING_CONFLICT"
+
+
 def test_thread_workstation_occupancy_accepts_db_row_id_from_workbench() -> None:
     """The workbench renders row_id, so write actions must accept that id too."""
     owner_token, owner_user_id = issue_session_token(client)
