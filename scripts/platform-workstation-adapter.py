@@ -864,11 +864,40 @@ def _normalize_workstation_output_base(output_dir: Path, *, project_id: str) -> 
 
 
 def _codex_bin_path() -> str:
+    explicit = os.environ.get("CODEX_BIN") or os.environ.get("CODEX_EXE") or ""
+    if explicit:
+        candidate = Path(explicit).expanduser()
+        if candidate.exists():
+            return str(candidate)
     local_app_data = os.environ.get("LOCALAPPDATA") or ""
     if local_app_data:
         candidate = Path(local_app_data) / "OpenAI" / "Codex" / "bin" / "codex.exe"
         if candidate.exists():
             return str(candidate)
+    import shutil
+
+    for name in ("codex.exe", "codex.cmd", "codex"):
+        found = shutil.which(name)
+        if found:
+            return found
+    user_profile = os.environ.get("USERPROFILE") or ""
+    if user_profile:
+        npm_candidate = Path(user_profile) / "AppData" / "Roaming" / "npm" / "codex.cmd"
+        if npm_candidate.exists():
+            return str(npm_candidate)
+    program_files = os.environ.get("ProgramFiles") or r"C:\Program Files"
+    windows_apps = Path(program_files) / "WindowsApps"
+    if windows_apps.exists():
+        try:
+            candidates = sorted(
+                windows_apps.glob("OpenAI.Codex_*_x64__*/app/resources/codex.exe"),
+                key=lambda item: item.stat().st_mtime,
+                reverse=True,
+            )
+            if candidates:
+                return str(candidates[0])
+        except OSError:
+            pass
     return "codex"
 
 
