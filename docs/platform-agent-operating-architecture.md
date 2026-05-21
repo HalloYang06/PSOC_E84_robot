@@ -407,6 +407,8 @@ Codex 有两种投递通道，不能混用：
 - `codex_desktop_ui`：默认可见通道。用户要求“桌面版能实时看到”时必须优先使用，完整过程在绑定电脑的 Codex Desktop 线程里发生，平台只同步最小回执、最终结果和阻塞原因。
 - `codex_app_server`：显式后台通道。它可以用于 Linux/VS Code 插件/无界面或用户明确允许的后台执行，但仍必须由绑定的真实电脑 runner 执行。云端 API 服务器默认不能代替目标电脑启动 app-server，否则会把 Windows/Linux 派单抢到错误机器上；只有运维显式设置 `AI_COLLAB_ENABLE_SERVER_CODEX_APP_SERVER_AUTOSTART=1` 时，API 服务器才允许本机自启动。
 
+桌面可见派单的启动链必须保持在目标电脑上：NPC 工作台点击“启动”时，云端只创建目标电脑 runner 队列项；如果该 NPC 的通道是 `codex_desktop_ui`，runner 队列项必须是“在这台电脑上把指定平台消息送入绑定桌面线程”的专用动作，由目标电脑 runner 调用本机适配器完成投递。不能退化为普通 runner 最小回执后就声称已进入桌面线程，也不能由云端 API/Web 服务器代跑桌面投递。
+
 线程绑定唯一性：
 
 - 真实线程不是 NPC。扫描出来的 Codex/Claude/插件/CLI 线程只是执行资源，正式 NPC 坐席才是员工。

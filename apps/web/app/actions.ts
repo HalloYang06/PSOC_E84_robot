@@ -8691,18 +8691,41 @@ export async function 启动Npc单次线程处理(projectId: string, workstation
     }
     const deliveryLabel = text(adapterConfig.delivery_label, "");
     const deliveryWarning = text(adapterConfig.delivery_warning, "");
+    const deliveryMode = text(adapterConfig.delivery_mode, "");
     const desktopVisible = Boolean(adapterConfig.desktop_visible);
+    const shouldUseDesktopRunnerDelivery =
+      providerId === "codex" && (deliveryMode === "codex_desktop_ui" || (desktopVisible && deliveryLabel.includes("桌面")));
 
     try {
+      const runnerBody = shouldUseDesktopRunnerDelivery
+        ? JSON.stringify(
+            {
+              kind: "codex.desktop.dispatch",
+              project_id: projectId,
+              workstation_id: recipientId,
+              message_id: messageId,
+              provider_id: providerId,
+              title: sourceTitle || `NPC 派工：${seatName}`,
+            },
+            null,
+            2,
+          )
+        : [
+            `目标 NPC：${seatName}`,
+            `目标工位：${recipientId}`,
+            messageId ? `平台消息：${messageId}` : "",
+            sourceBody || "请处理这条平台派工，并回写最小回执和最终结果。",
+          ].filter(Boolean).join("\n\n");
       const runnerCommand = await postJson(`/api/collaboration/projects/${projectId}/runner-commands`, {
         title: sourceTitle ? `NPC 派工：${sourceTitle}` : `NPC 派工：${seatName}`,
-        body: [
-          `目标 NPC：${seatName}`,
-          `目标工位：${recipientId}`,
-          messageId ? `平台消息：${messageId}` : "",
-          sourceBody || "请处理这条平台派工，并回写最小回执和最终结果。",
-        ].filter(Boolean).join("\n\n"),
+        body: runnerBody,
         workstation_id: recipientId,
+        metadata: {
+          source_message_id: messageId,
+          target_workstation_id: recipientId,
+          delivery_mode: shouldUseDesktopRunnerDelivery ? "codex_desktop_ui" : deliveryMode || null,
+          desktop_visible_capability: desktopVisible,
+        },
       });
       const runnerData =
         runnerCommand && typeof runnerCommand === "object" && "data" in runnerCommand
@@ -8718,8 +8741,10 @@ export async function 启动Npc单次线程处理(projectId: string, workstation
           text(runnerData?.recipient_id, "") ? `执行电脑 Runner：${text(runnerData?.recipient_id, "")}` : "",
           text(runnerData?.id, "") ? `队列消息：${text(runnerData?.id, "")}` : "",
           messageId ? `派单消息：${messageId}` : "",
-          desktopVisible
-            ? "目标电脑报告桌面线程可见；Runner 接单后会继续同步过程回执。"
+          shouldUseDesktopRunnerDelivery
+            ? "目标电脑报告桌面线程可见；Runner 会在这台电脑上把派单送进绑定桌面线程。"
+            : desktopVisible
+              ? "目标电脑报告桌面线程可见；Runner 接单后会继续同步过程回执。"
             : deliveryWarning || "目标电脑接单后会回写最小回执；如桌面线程未连接，平台会显示待收口状态。",
         ].filter(Boolean).join("\n"),
         sender_type: "agent",
@@ -8731,7 +8756,8 @@ export async function 启动Npc单次线程处理(projectId: string, workstation
           source_message_id: messageId,
           runner_command_id: text(runnerData?.id, "") || null,
           runner_id: text(runnerData?.recipient_id, "") || null,
-          delivery_label: "执行电脑队列",
+          delivery_label: shouldUseDesktopRunnerDelivery ? "桌面线程可见" : "执行电脑队列",
+          delivery_mode: shouldUseDesktopRunnerDelivery ? "codex_desktop_ui" : deliveryMode || null,
           desktop_visible_capability: desktopVisible,
         },
       });
@@ -8740,10 +8766,10 @@ export async function 启动Npc单次线程处理(projectId: string, workstation
         launched: true,
         providerId,
         seatName,
-        deliveryLabel: "执行电脑队列",
+        deliveryLabel: shouldUseDesktopRunnerDelivery ? "桌面线程可见" : "执行电脑队列",
         deliveryWarning,
         desktopVisible,
-        launcher: "runner-command",
+        launcher: shouldUseDesktopRunnerDelivery ? "runner-desktop-dispatch" : "runner-command",
         stdoutPath: null,
         stderrPath: null,
         error: null,

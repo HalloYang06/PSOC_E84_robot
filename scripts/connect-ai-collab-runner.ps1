@@ -311,6 +311,82 @@ function Invoke-RunnerInboxPoll {
           }
         }
       }
+    } elseif ($payloadKind -eq "codex.desktop.dispatch" -and -not [string]::IsNullOrWhiteSpace($WebBase) -and -not [string]::IsNullOrWhiteSpace($ProjectId) -and -not [string]::IsNullOrWhiteSpace($RunnerDir)) {
+      try {
+        $targetWorkstationId = [string]$payload.workstation_id
+        $sourceMessageId = [string]$payload.message_id
+        $targetProvider = [string]$payload.provider_id
+        if ([string]::IsNullOrWhiteSpace($targetProvider)) {
+          $targetProvider = "codex"
+        }
+        if ([string]::IsNullOrWhiteSpace($targetWorkstationId) -or [string]::IsNullOrWhiteSpace($sourceMessageId)) {
+          throw "Desktop dispatch payload is missing workstation_id or message_id."
+        }
+        $adapterScript = Download-RunnerScript -WebBase $WebBase -ScriptName "platform-workstation-adapter.py" -RunnerDir $RunnerDir
+        [void](Download-RunnerScript -WebBase $WebBase -ScriptName "platform-provider-executor.py" -RunnerDir $RunnerDir)
+        $adapterArgs = @(
+          "--api-base", $ApiBase,
+          "--project-id", $ProjectId,
+          "--workstation-id", $targetWorkstationId,
+          "--runner-id", $RunnerId,
+          "--provider", $targetProvider,
+          "--auto-ack",
+          "--execute-provider-cli",
+          "--ignore-automation-switch",
+          "--limit", "1",
+          "--message-id", $sourceMessageId,
+          "--output-dir", (Join-Path $RunnerDir "inbox")
+        )
+        $adapterOutput = & python $adapterScript @adapterArgs 2>&1
+        $adapterText = ($adapterOutput | Out-String).Trim()
+        if ($LASTEXITCODE -ne 0) {
+          throw $adapterText
+        }
+        $desktopDelivered = $false
+        $desktopConfirmed = $false
+        try {
+          $adapterJson = $adapterText | ConvertFrom-Json
+          $executions = @($adapterJson.executions).Count
+          $receipts = @($adapterJson.receipts).Count
+          $desktopDelivered = ($executions -gt 0) -or ($receipts -gt 0)
+          foreach ($execution in @($adapterJson.executions)) {
+            if ($execution.desktop_delivery_confirmed -eq $true) {
+              $desktopConfirmed = $true
+            }
+          }
+        } catch {
+          $desktopDelivered = -not [string]::IsNullOrWhiteSpace($adapterText)
+        }
+        if ($desktopConfirmed) {
+          $note = "Runner $RunnerName delivered this dispatch into the bound Codex Desktop thread and confirmed the thread received it."
+        } elseif ($desktopDelivered) {
+          $note = "Runner $RunnerName started Codex Desktop delivery on this computer. The platform is waiting for the desktop thread confirmation or final reply."
+        } else {
+          $note = "Runner $RunnerName ran desktop delivery, but no delivery evidence was returned yet. The platform will keep the item visible for retry."
+        }
+        $captureResult = [ordered]@{
+          result_status = "completed"
+          note = $note
+          result = @{
+            ok = $true
+            kind = "codex.desktop.dispatch"
+            workstation_id = $targetWorkstationId
+            message_id = $sourceMessageId
+            desktop_delivery_confirmed = $desktopConfirmed
+          }
+        }
+      } catch {
+        $note = "Runner $RunnerName tried to deliver into Codex Desktop, but it failed: $($_.Exception.Message)"
+        $captureResult = [ordered]@{
+          result_status = "failed"
+          note = $note
+          result = @{
+            ok = $false
+            kind = "codex.desktop.dispatch"
+            error = $_.Exception.Message
+          }
+        }
+      }
     }
     $ackBody = @{ note = $note } | ConvertTo-Json -Depth 4
     $completeMetadata = @{}
@@ -327,8 +403,12 @@ function Invoke-RunnerInboxPoll {
       }
     } elseif ($captureResult) {
       $capturePayload = if ($captureResult.result) { $captureResult.result } else { @{} }
+      $captureKind = [string]$capturePayload.kind
+      if ([string]::IsNullOrWhiteSpace($captureKind)) {
+        $captureKind = "robotics.capture"
+      }
       $completeMetadata = @{
-        runner_capability = "robotics.capture"
+        runner_capability = $captureKind
         runner_result = $capturePayload
       }
     }
