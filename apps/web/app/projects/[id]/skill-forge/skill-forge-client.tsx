@@ -809,17 +809,15 @@ export function SkillForgeClient({
                           工位配置 · Skill / 知识库 / Git
                         </small>
                       </div>
-                      <a
+                      <button
+                        type="button"
                         className={workbenchStyles.openBtn}
-                        href={forgeHref(projectId, openIds.includes(stationKey) ? openIds.filter((id) => id !== stationKey) : [...openIds, stationKey])}
-                        onClick={(event) => {
-                          event.preventDefault();
-                          toggleResource(stationKey);
-                        }}
+                        onClick={() => toggleResource(stationKey)}
                         title={openIds.includes(stationKey) ? "关闭瓷砖" : "打开瓷砖"}
+                        aria-label={`${openIds.includes(stationKey) ? "关闭" : "打开"} ${nameOf(station, `工位 ${stationIndex + 1}`)} 配置瓷砖`}
                       >
                         {openIds.includes(stationKey) ? "✕" : "+"}
-                      </a>
+                      </button>
                     </li>
                     {stationSeats.map((seat) => {
                       const key = resourceKey(seat);
@@ -833,17 +831,15 @@ export function SkillForgeClient({
                               NPC 配置 · {parentName || "未归属工位"}
                             </small>
                           </div>
-                          <a
+                          <button
+                            type="button"
                             className={workbenchStyles.openBtn}
-                            href={forgeHref(projectId, openIds.includes(key) ? openIds.filter((id) => id !== key) : [...openIds, key])}
-                            onClick={(event) => {
-                              event.preventDefault();
-                              toggleResource(key);
-                            }}
+                            onClick={() => toggleResource(key)}
                             title={openIds.includes(key) ? "关闭瓷砖" : "打开瓷砖"}
+                            aria-label={`${openIds.includes(key) ? "关闭" : "打开"} ${seat.name} 配置瓷砖`}
                           >
                             {openIds.includes(key) ? "✕" : "+"}
-                          </a>
+                          </button>
                         </li>
                       );
                     })}
@@ -869,17 +865,15 @@ export function SkillForgeClient({
                             NPC 配置 · 待分配工位
                           </small>
                         </div>
-                        <a
+                        <button
+                          type="button"
                           className={workbenchStyles.openBtn}
-                          href={forgeHref(projectId, openIds.includes(key) ? openIds.filter((id) => id !== key) : [...openIds, key])}
-                          onClick={(event) => {
-                            event.preventDefault();
-                            toggleResource(key);
-                          }}
+                          onClick={() => toggleResource(key)}
                           title={openIds.includes(key) ? "关闭瓷砖" : "打开瓷砖"}
+                          aria-label={`${openIds.includes(key) ? "关闭" : "打开"} ${seat.name} 配置瓷砖`}
                         >
                           {openIds.includes(key) ? "✕" : "+"}
-                        </a>
+                        </button>
                       </li>
                     );
                   })}
