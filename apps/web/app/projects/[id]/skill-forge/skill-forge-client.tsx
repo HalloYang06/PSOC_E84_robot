@@ -107,10 +107,10 @@ function skillSourceLabel(value: AnyRecord) {
   const meta = metadataOf(value);
   const source = text(value.source ?? value.category ?? meta.imported_from, "项目 Skill");
   if (/platform|baseline|role/i.test(source)) return "平台基础";
-  if (/npc|agent/i.test(source)) return "NPC 沉淀";
-  if (/human|custom/i.test(source)) return "用户创建";
-  if (/github|repo/i.test(source)) return "GitHub 导入";
-  if (/local/i.test(source)) return "本地导入";
+  if (/npc|agent/i.test(source)) return "NPC 自己创建";
+  if (/local/i.test(source)) return "用户导入本地 Skill";
+  if (/github|repo/i.test(source)) return "用户导入 GitHub 路径";
+  if (/human|custom/i.test(source)) return "用户手动创建";
   return source;
 }
 
@@ -235,9 +235,11 @@ function docPathOf(doc: AnyRecord) {
 function docSourceLabel(value: AnyRecord) {
   const metadata = value.extra_data && typeof value.extra_data === "object" ? value.extra_data : {};
   const source = text(metadata.source ?? value.source ?? value.scope, "知识库");
-  if (/npc|agent/i.test(source)) return "NPC 沉淀";
-  if (/human|custom/i.test(source)) return "用户创建";
-  if (/github|repo/i.test(source)) return "GitHub 导入";
+  if (/npc|agent/i.test(source)) return "NPC 自己创建";
+  if (/local/i.test(source)) return "用户导入本地知识库";
+  if (/github|repo/i.test(source)) return "用户导入 GitHub 路径";
+  if (/human|custom/i.test(source)) return "用户手动创建";
+  if (/workstation|station/i.test(source)) return "工位继承";
   return source;
 }
 
@@ -432,7 +434,7 @@ function ForgeTile({
             <article className={`${styles.editorCard} ${styles.wideCard}`}>
               <span>当前 NPC Skill</span>
               <strong>{assignedSkills.length ? `${resource.name} 已装配 ${assignedSkills.length} 个 Skill` : `${resource.name} 还没有可运行 Skill`}</strong>
-              <p>这里先显示该 NPC 当前会带进上岗包的 Skill。NPC 自己写的、用户创建的、本地导入的、GitHub 导入的都必须有来源和仓库路径；平台基础能力随上岗包生成。</p>
+              <p>这里先显示该 NPC 当前会带进上岗包的 Skill。来源必须写清楚：NPC 自己创建、用户手动创建、用户导入本地 Skill、用户导入 GitHub 路径；平台基础能力随上岗包生成。</p>
               {deposits ? <small>NPC 默认写入：{deposits.skill}</small> : null}
             </article>
           ) : null}
@@ -480,7 +482,7 @@ function ForgeTile({
           {resource.kind === "seat" ? (
             <article className={`${styles.editorCard} ${styles.wideCard}`}>
               <span>给这个 NPC 添加 Skill</span>
-              <strong>用户创建 / 本地导入 / GitHub 导入</strong>
+              <strong>用户手动创建 / 用户导入本地 Skill / 用户导入 GitHub 路径</strong>
               <div className={styles.actionColumns}>
                 <form className={styles.stackForm} action={创建项目Skill.bind(null, projectId)}>
                   <input type="hidden" name="return_to" value={`/projects/${projectId}/skill-forge?resources=${encodeURIComponent(resourceKey(resource))}`} />
@@ -490,7 +492,7 @@ function ForgeTile({
                   <label>显示名称<input name="label" placeholder="串口调试助手" /></label>
                   <label>GitHub 仓库路径<input name="repo_relative_path" placeholder="skills/custom/my-debug-helper/SKILL.md" /></label>
                   <label>说明<textarea name="note" rows={3} placeholder="这个 Skill 让 NPC 学会什么、什么时候使用。" /></label>
-                  <button type="submit">用户创建并装配</button>
+                  <button type="submit">用户手动创建并装配</button>
                 </form>
                 <form className={styles.stackForm} action={创建项目Skill.bind(null, projectId)}>
                   <input type="hidden" name="return_to" value={`/projects/${projectId}/skill-forge?resources=${encodeURIComponent(resourceKey(resource))}`} />
@@ -500,7 +502,7 @@ function ForgeTile({
                   <label>显示名称<input name="label" placeholder="从本机导入的 Skill" /></label>
                   <label>同步后的 GitHub 路径<input name="repo_relative_path" placeholder="skills/imported/local-skill-name/SKILL.md" /></label>
                   <label>说明<textarea name="note" rows={3} placeholder="本地 Skill 必须同步到 GitHub 后才作为跨电脑事实源。" /></label>
-                  <button type="submit">登记本地导入 Skill</button>
+                  <button type="submit">登记用户导入本地 Skill</button>
                 </form>
                 <form className={styles.stackForm} action={导入Github项目Skill.bind(null, projectId)}>
                   <input type="hidden" name="return_to" value={`/projects/${projectId}/skill-forge?resources=${encodeURIComponent(resourceKey(resource))}`} />
@@ -509,7 +511,7 @@ function ForgeTile({
                   <label>GitHub 地址<input name="github_url" placeholder="https://github.com/owner/repo/tree/main/skills" /></label>
                   <label>目录或文件路径<input name="github_path" placeholder="skills/my-skill/SKILL.md" /></label>
                   <label>分支<input name="github_branch" placeholder="main" /></label>
-                  <button type="submit">从 GitHub 导入到仓库</button>
+                  <button type="submit">从 GitHub 路径导入并装配</button>
                 </form>
               </div>
               {availableSkills.length ? (
