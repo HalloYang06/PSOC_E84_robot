@@ -1592,6 +1592,26 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
     };
   }, [apiBaseUrl]);
 
+  async function writeClipboardText(value: string) {
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return;
+    }
+    if (typeof document === "undefined") throw new Error("剪贴板不可用");
+    const ta = document.createElement("textarea");
+    ta.value = value;
+    ta.style.position = "fixed";
+    ta.style.left = "-9999px";
+    ta.style.top = "0";
+    ta.setAttribute("readonly", "readonly");
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    const copied = document.execCommand("copy");
+    document.body.removeChild(ta);
+    if (!copied) throw new Error("浏览器没有允许复制");
+  }
+
   async function copyAiHandoffPrompt() {
     if (copyState.kind === "loading") return;
     setCopyState({ kind: "loading" });
@@ -1599,7 +1619,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
       const data = await fetchProjectClaudeContext(project.id);
       const prompt = String(data?.prompt ?? "").trim();
       if (!prompt) throw new Error("提示词为空");
-      await navigator.clipboard.writeText(prompt);
+      await writeClipboardText(prompt);
       setCopyState({ kind: "ok", message: "提示词已复制到剪贴板，粘贴到当前使用的 AI 开发工具即可继续。" });
       setTimeout(() => setCopyState({ kind: "idle" }), 4000);
     } catch (error) {
@@ -1616,7 +1636,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
       return;
     }
     try {
-      await navigator.clipboard.writeText(String(repoUrl));
+      await writeClipboardText(String(repoUrl));
       setCopyState({ kind: "ok", message: `仓库地址已复制：${repoUrl}` });
       setTimeout(() => setCopyState({ kind: "idle" }), 3500);
     } catch (error) {
@@ -1628,20 +1648,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
   async function copyTextToClipboard(value: string, okMessage: string) {
     if (!value) return;
     try {
-      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(value);
-      } else if (typeof document !== "undefined") {
-        const ta = document.createElement("textarea");
-        ta.value = value;
-        ta.style.position = "fixed";
-        ta.style.opacity = "0";
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand("copy");
-        document.body.removeChild(ta);
-      } else {
-        throw new Error("剪贴板不可用");
-      }
+      await writeClipboardText(value);
       setCopyState({ kind: "ok", message: okMessage });
       setTimeout(() => setCopyState({ kind: "idle" }), 3000);
     } catch (error) {
@@ -1653,20 +1660,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
   async function copyWatcherCommand(workstationId: string) {
     const command = buildWatcherCommand(project.id, workstationId);
     try {
-      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(command);
-      } else if (typeof document !== "undefined") {
-        const ta = document.createElement("textarea");
-        ta.value = command;
-        ta.style.position = "fixed";
-        ta.style.opacity = "0";
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand("copy");
-        document.body.removeChild(ta);
-      } else {
-        throw new Error("剪贴板不可用");
-      }
+      await writeClipboardText(command);
       setWatcherCopyState({ kind: "ok", message: `已复制：粘贴到新 PowerShell 终端即可起 watcher（线程 ${workstationId}）` });
       setTimeout(() => setWatcherCopyState({ kind: "idle" }), 4000);
     } catch (error) {
@@ -3033,7 +3027,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                   const data = await fetchNpcHandoffContext(project.id, targetId);
                   const prompt = String(data?.prompt ?? "").trim();
                   if (!prompt) throw new Error("接手 prompt 为空");
-                  await navigator.clipboard.writeText(prompt);
+                  await writeClipboardText(prompt);
                   setHandoffPreview({
                     npcName: focusedNpcSeat?.name || "NPC",
                     prompt,
