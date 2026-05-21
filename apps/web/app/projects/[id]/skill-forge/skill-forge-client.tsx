@@ -438,7 +438,11 @@ function ForgeTile({
           ) : null}
           {(resource.kind === "seat" ? assignedSkills : orderedSkills).map((skill, index) => {
             const builtIn = isBuiltInSkill(skill);
-            const repoPath = skillRepoPathOf(skill) || (deposits && /npc/i.test(skillSourceLabel(skill)) ? `${deposits.skill}SKILL.md` : "");
+            const repoPath =
+              skillRepoPathOf(skill) ||
+              text(skill.doc_path, "") ||
+              (builtIn ? "apps/web/lib/platform-skills.ts" : "") ||
+              (deposits && /npc/i.test(skillSourceLabel(skill)) ? `${deposits.skill}SKILL.md` : "");
             const githubHref = externalSkillHref(skill) || githubBlobHref(projectRepo, repoPath);
             return (
             <article key={text(skill.id ?? skill.name, `skill-${index}`)} className={assignedSkillIds.has(skillIdOf(skill)) || builtIn ? styles.boundCard : undefined}>
