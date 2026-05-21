@@ -2747,6 +2747,56 @@
   color: #ffd2d2;
 }
 
+.manualCopyPanel {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 232, 112, 0.34);
+  background: rgba(36, 29, 7, 0.72);
+  color: #fff6c6;
+}
+
+.manualCopyPanel > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.manualCopyPanel strong {
+  color: #fff6c6;
+  font-size: 13px;
+}
+
+.manualCopyPanel button {
+  min-height: 26px;
+  border: 1px solid rgba(255, 232, 112, 0.4);
+  border-radius: 8px;
+  background: rgba(255, 232, 112, 0.1);
+  color: #fff6c6;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.manualCopyPanel textarea {
+  width: 100%;
+  min-height: 110px;
+  border: 1px solid rgba(255, 232, 112, 0.28);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.38);
+  color: #f4ffff;
+  font: 12px/1.5 "Consolas", "Courier New", monospace;
+  padding: 9px 10px;
+  resize: vertical;
+}
+
+.manualCopyPanel small {
+  color: rgba(255, 246, 198, 0.72);
+  font-size: 11px;
+}
+
 .serviceHealthBar {
   display: grid;
   grid-template-columns: minmax(190px, 0.8fr) minmax(0, 1.6fr);

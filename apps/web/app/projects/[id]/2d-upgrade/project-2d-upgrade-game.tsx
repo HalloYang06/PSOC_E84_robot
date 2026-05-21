@@ -1534,6 +1534,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
   const [webBaseUrl, setWebBaseUrl] = useState("http://127.0.0.1:3000");
   const [sceneVisible, setSceneVisible] = useState(false);
   const [copyState, setCopyState] = useState<{ kind: "idle" | "loading" | "ok" | "err"; message?: string }>({ kind: "idle" });
+  const [manualCopy, setManualCopy] = useState<{ label: string; value: string } | null>(null);
   const [watcherCopyState, setWatcherCopyState] = useState<{ kind: "idle" | "ok" | "err"; message?: string }>({ kind: "idle" });
   const [serviceHealth, setServiceHealth] = useState<ServiceHealthState>({
     status: "checking",
@@ -1612,6 +1613,16 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
     if (!copied) throw new Error("浏览器没有允许复制");
   }
 
+  function showManualCopy(
+    label: string,
+    value: string,
+    setter: (state: { kind: "idle" | "ok" | "err"; message?: string }) => void = setCopyState,
+  ) {
+    setManualCopy({ label, value });
+    setter({ kind: "ok", message: `${label} 已展开，请在文本框里手动复制。` });
+    setTimeout(() => setter({ kind: "idle" }), 5000);
+  }
+
   async function copyAiHandoffPrompt() {
     if (copyState.kind === "loading") return;
     setCopyState({ kind: "loading" });
@@ -1619,8 +1630,13 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
       const data = await fetchProjectClaudeContext(project.id);
       const prompt = String(data?.prompt ?? "").trim();
       if (!prompt) throw new Error("提示词为空");
-      await writeClipboardText(prompt);
-      setCopyState({ kind: "ok", message: "提示词已复制到剪贴板，粘贴到当前使用的 AI 开发工具即可继续。" });
+      try {
+        await writeClipboardText(prompt);
+        setManualCopy(null);
+        setCopyState({ kind: "ok", message: "提示词已复制到剪贴板，粘贴到当前使用的 AI 开发工具即可继续。" });
+      } catch {
+        showManualCopy("AI 接入提示词", prompt);
+      }
       setTimeout(() => setCopyState({ kind: "idle" }), 4000);
     } catch (error) {
       setCopyState({ kind: "err", message: `复制失败：${error instanceof Error ? error.message : "未知错误"}` });
@@ -1636,8 +1652,13 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
       return;
     }
     try {
-      await writeClipboardText(String(repoUrl));
-      setCopyState({ kind: "ok", message: `仓库地址已复制：${repoUrl}` });
+      try {
+        await writeClipboardText(String(repoUrl));
+        setManualCopy(null);
+        setCopyState({ kind: "ok", message: `仓库地址已复制：${repoUrl}` });
+      } catch {
+        showManualCopy("仓库地址", String(repoUrl));
+      }
       setTimeout(() => setCopyState({ kind: "idle" }), 3500);
     } catch (error) {
       setCopyState({ kind: "err", message: "复制失败" });
@@ -1648,8 +1669,13 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
   async function copyTextToClipboard(value: string, okMessage: string) {
     if (!value) return;
     try {
-      await writeClipboardText(value);
-      setCopyState({ kind: "ok", message: okMessage });
+      try {
+        await writeClipboardText(value);
+        setManualCopy(null);
+        setCopyState({ kind: "ok", message: okMessage });
+      } catch {
+        showManualCopy("待复制内容", value);
+      }
       setTimeout(() => setCopyState({ kind: "idle" }), 3000);
     } catch (error) {
       setCopyState({ kind: "err", message: `复制失败：${error instanceof Error ? error.message : "未知错误"}` });
@@ -1660,8 +1686,13 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
   async function copyWatcherCommand(workstationId: string) {
     const command = buildWatcherCommand(project.id, workstationId);
     try {
-      await writeClipboardText(command);
-      setWatcherCopyState({ kind: "ok", message: `已复制：粘贴到新 PowerShell 终端即可起 watcher（线程 ${workstationId}）` });
+      try {
+        await writeClipboardText(command);
+        setManualCopy(null);
+        setWatcherCopyState({ kind: "ok", message: `已复制：粘贴到新 PowerShell 终端即可起 watcher（线程 ${workstationId}）` });
+      } catch {
+        showManualCopy("持续接单命令", command, setWatcherCopyState);
+      }
       setTimeout(() => setWatcherCopyState({ kind: "idle" }), 4000);
     } catch (error) {
       setWatcherCopyState({ kind: "err", message: `复制失败：${error instanceof Error ? error.message : "未知错误"}` });
@@ -3027,7 +3058,14 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                   const data = await fetchNpcHandoffContext(project.id, targetId);
                   const prompt = String(data?.prompt ?? "").trim();
                   if (!prompt) throw new Error("接手 prompt 为空");
-                  await writeClipboardText(prompt);
+                  let copiedToClipboard = true;
+                  try {
+                    await writeClipboardText(prompt);
+                    setManualCopy(null);
+                  } catch {
+                    copiedToClipboard = false;
+                    setManualCopy({ label: `${focusedNpcSeat?.name || "NPC"} 接手提示词`, value: prompt });
+                  }
                   setHandoffPreview({
                     npcName: focusedNpcSeat?.name || "NPC",
                     prompt,
@@ -3036,8 +3074,8 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                   setCopyState({
                     kind: "ok",
                     message: recordedId
-                      ? `已复制并登记接手记录（Handoff ${recordedId.slice(0, 8)}…），下面预览即剪贴板内容。`
-                      : `已复制 ${focusedNpcSeat?.name || "NPC"} 的接手 prompt，下面预览即剪贴板内容。`,
+                      ? `${copiedToClipboard ? "已复制" : "已展开"}并登记接手记录（Handoff ${recordedId.slice(0, 8)}…），下面预览即接手内容。`
+                      : `${copiedToClipboard ? "已复制" : "已展开"} ${focusedNpcSeat?.name || "NPC"} 的接手 prompt，下面预览即接手内容。`,
                   });
                   setTimeout(() => setCopyState({ kind: "idle" }), 5000);
                 } catch (e) {
@@ -4235,6 +4273,22 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             <div className={`${styles.cockpitToast} ${copyState.kind === "err" ? styles.cockpitToastErr : styles.cockpitToastOk}`}>
               {copyState.message}
             </div>
+          ) : null}
+          {manualCopy ? (
+            <section className={styles.manualCopyPanel} aria-label={`${manualCopy.label} 手动复制`}>
+              <div>
+                <strong>{manualCopy.label}</strong>
+                <button type="button" onClick={() => setManualCopy(null)}>收起</button>
+              </div>
+              <textarea
+                readOnly
+                value={manualCopy.value}
+                rows={5}
+                onFocus={(event) => event.currentTarget.select()}
+                aria-label={`${manualCopy.label} 内容`}
+              />
+              <small>如果浏览器禁止自动复制，点进文本框后按 Ctrl+A / Ctrl+C。</small>
+            </section>
           ) : null}
           {teamError ? <div className={`${styles.cockpitToast} ${styles.cockpitToastErr}`}>操作失败：{teamError}</div> : null}
           {!teamError && teamNotice ? <div className={`${styles.cockpitToast} ${styles.cockpitToastOk}`}>{teamNotice}</div> : null}
