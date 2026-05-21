@@ -418,27 +418,28 @@ function ForgeTile({
             <article className={`${styles.editorCard} ${styles.wideCard}`}>
               <span>当前 NPC Skill</span>
               <strong>{assignedSkills.length ? `${resource.name} 已装配 ${assignedSkills.length} 个 Skill` : `${resource.name} 还没有可运行 Skill`}</strong>
-              <p>这里先显示该 NPC 当前会带进上岗包的 Skill。NPC 自己写的、用户创建的、本地导入的、GitHub 导入的都必须有来源和仓库路径。</p>
+              <p>这里先显示该 NPC 当前会带进上岗包的 Skill。NPC 自己写的、用户创建的、本地导入的、GitHub 导入的都必须有来源和仓库路径；平台基础能力随上岗包生成。</p>
               {deposits ? <small>NPC 默认写入：{deposits.skill}</small> : null}
             </article>
           ) : null}
           {(resource.kind === "seat" ? assignedSkills : orderedSkills).map((skill, index) => {
+            const builtIn = isBuiltInSkill(skill);
             const repoPath = skillRepoPathOf(skill) || (deposits && /npc/i.test(skillSourceLabel(skill)) ? `${deposits.skill}SKILL.md` : "");
             const githubHref = externalSkillHref(skill) || githubBlobHref(projectRepo, repoPath);
             return (
-            <article key={text(skill.id ?? skill.name, `skill-${index}`)} className={assignedSkillIds.has(skillIdOf(skill)) || isBuiltInSkill(skill) ? styles.boundCard : undefined}>
+            <article key={text(skill.id ?? skill.name, `skill-${index}`)} className={assignedSkillIds.has(skillIdOf(skill)) || builtIn ? styles.boundCard : undefined}>
               <div className={styles.cardTopline}>
                 <span>{skillSourceLabel(skill)}</span>
-                <small>{isBuiltInSkill(skill) ? "上岗基础" : assignedSkillIds.has(skillIdOf(skill)) ? "已装配" : "仓库可选"}</small>
+                <small>{builtIn ? "上岗基础" : assignedSkillIds.has(skillIdOf(skill)) ? "已装配" : "仓库可选"}</small>
               </div>
               <strong>{skillLabelOf(skill, `Skill ${index + 1}`)}</strong>
               <p>{skillDescriptionOf(skill) || "暂无说明"}</p>
               <div className={styles.repoLine}>
-                <b>仓库位置</b>
-                {repoPath ? <code>{repoPath}</code> : <em>待补仓库路径</em>}
+                <b>{builtIn && !repoPath ? "能力来源" : "仓库位置"}</b>
+                {repoPath ? <code>{repoPath}</code> : <em>{builtIn ? "随 NPC 上岗包生成" : "待补仓库路径"}</em>}
                 {githubHref ? <a href={githubHref} target="_blank" rel="noreferrer">打开 GitHub</a> : null}
               </div>
-              {isBuiltInSkill(skill) ? (
+              {builtIn ? (
                 <small>固定必备</small>
               ) : assignedSkillIds.has(skillIdOf(skill)) ? (
                 <small>已关联</small>
@@ -450,7 +451,7 @@ function ForgeTile({
               ) : (
                 <small>选择 NPC 后添加</small>
               )}
-              {!isBuiltInSkill(skill) ? (
+              {!builtIn ? (
                 <form className={styles.inlineAction} action={删除项目Skill.bind(null, projectId, skillIdOf(skill))}>
                   <input type="hidden" name="return_to" value={`/projects/${projectId}/skill-forge?resources=${encodeURIComponent(resourceKey(resource))}`} />
                   <button type="submit">删除</button>
