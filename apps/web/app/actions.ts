@@ -1,7 +1,7 @@
 ﻿"use server";
 
 import { createHash } from "node:crypto";
-import { closeSync, mkdirSync, openSync, type Dirent } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, type Dirent } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { execFileSync, spawn } from "node:child_process";
@@ -1429,8 +1429,44 @@ function mergeExecutionMetadata(
   return Object.keys(base).length ? base : null;
 }
 
+let cachedWorkspaceRoot: string | null = null;
+
 function workspaceRoot() {
-  return path.resolve(process.cwd(), "..", "..");
+  if (cachedWorkspaceRoot) return cachedWorkspaceRoot;
+  const envRoot = String(process.env.AI_COLLAB_REPO_ROOT ?? process.env.WORKSPACE_ROOT ?? "").trim();
+  if (envRoot) {
+    cachedWorkspaceRoot = path.resolve(envRoot);
+    return cachedWorkspaceRoot;
+  }
+  try {
+    const gitRoot = execFileSync("git", ["rev-parse", "--show-toplevel"], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    if (gitRoot) {
+      cachedWorkspaceRoot = path.resolve(gitRoot);
+      return cachedWorkspaceRoot;
+    }
+  } catch {
+    // Fall through to the filesystem walk below.
+  }
+  let cursor = process.cwd();
+  for (let index = 0; index < 8; index += 1) {
+    if (
+      existsSync(path.join(cursor, "apps"))
+      && existsSync(path.join(cursor, "scripts"))
+      && existsSync(path.join(cursor, "docs", "platform-agent-operating-architecture.md"))
+    ) {
+      cachedWorkspaceRoot = cursor;
+      return cachedWorkspaceRoot;
+    }
+    const parent = path.dirname(cursor);
+    if (parent === cursor) break;
+    cursor = parent;
+  }
+  cachedWorkspaceRoot = path.resolve(process.cwd(), "..", "..");
+  return cachedWorkspaceRoot;
 }
 
 function uniqueStrings(values: Array<string | null | undefined>) {

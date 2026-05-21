@@ -78,6 +78,45 @@ def screenshot(cdp: object, path: Path) -> None:
     path.write_bytes(base64.b64decode(str(shot.get("data") or "")))
 
 
+def click_named_button(cdp: object, label: str) -> bool:
+    state = cdp_eval(
+        cdp,
+        f"""
+        (() => {{
+          const button = Array.from(document.querySelectorAll('button')).find((item) => (item.innerText || '').includes({js(label)}));
+          if (!button) return {{ ok: false, reason: 'missing' }};
+          button.scrollIntoView({{ block: 'center', inline: 'center' }});
+          const rect = button.getBoundingClientRect();
+          return {{ ok: true, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, text: button.innerText || '' }};
+        }})()
+        """,
+    )
+    if not isinstance(state, dict) or not state.get("ok"):
+        return False
+    cdp.send("Input.dispatchMouseEvent", {"type": "mouseMoved", "x": state["x"], "y": state["y"]})
+    cdp.send("Input.dispatchMouseEvent", {"type": "mousePressed", "x": state["x"], "y": state["y"], "button": "left", "clickCount": 1})
+    cdp.send("Input.dispatchMouseEvent", {"type": "mouseReleased", "x": state["x"], "y": state["y"], "button": "left", "clickCount": 1})
+    return True
+
+
+def open_drawer(cdp: object, label: str) -> bool:
+    return bool(
+        cdp_eval(
+            cdp,
+            f"""
+            (() => {{
+              const detail = Array.from(document.querySelectorAll('details')).find((item) => (item.querySelector('summary')?.innerText || '').includes({js(label)}));
+              if (!detail) return false;
+              detail.open = true;
+              detail.dispatchEvent(new Event('toggle', {{ bubbles: true }}));
+              detail.scrollIntoView({{ block: 'center', inline: 'center' }});
+              return true;
+            }})()
+            """,
+        )
+    )
+
+
 def fetch_url(url: str, token: str) -> tuple[int, bytes]:
     headers = {"Accept": "*/*"}
     if token:
@@ -268,22 +307,15 @@ def main() -> int:
         if not isinstance(terminal_state, dict) or int(terminal_state.get("sampleCount") or 0) <= 0:
             report["failures"].append("serial capture did not return non-empty samples")
 
-        dataset_clicked = cdp_eval(
-            cdp,
-            """
-            (() => {
-              const button = Array.from(document.querySelectorAll('button')).find((item) => (item.innerText || '').trim().startsWith('数据标注'));
-              if (!button) return false;
-              button.click();
-              return true;
-            })()
-            """,
-        )
+        dataset_clicked = click_named_button(cdp, "数据标注")
         report["dataset_clicked"] = dataset_clicked
         if not dataset_clicked:
             report["failures"].append("dataset tab button unavailable")
             raise RuntimeError("dataset tab button unavailable")
-        wait_for(cdp, "document.body.innerText.includes('人工确认与导出') && document.body.innerText.includes('导出格式') && document.body.innerText.includes('导出标注数据')", timeout_seconds=20)
+        wait_for(cdp, "Array.from(document.querySelectorAll('button')).some((button) => (button.innerText || '').includes('数据标注') && button.dataset.active === '1')", timeout_seconds=20)
+        wait_for(cdp, "document.body.innerText.includes('采集片段') && document.body.innerText.includes('可用变量') && document.body.innerText.includes('人工确认与导出')", timeout_seconds=20)
+        open_drawer(cdp, "人工确认与导出")
+        wait_for(cdp, "document.body.innerText.includes('导出格式') && document.body.innerText.includes('导出标注数据')", timeout_seconds=20)
         dataset_state = cdp_eval(
             cdp,
             """
@@ -326,13 +358,19 @@ def main() -> int:
         if not export_clicked:
             report["failures"].append("dataset export button unavailable")
         else:
-            wait_for(cdp, "document.readyState === 'complete' && (document.body.innerText.includes('标注数据导出') || document.body.innerText.includes('下载数据') || document.body.innerText.includes('项目清单'))", timeout_seconds=30)
+            wait_for(
+                cdp,
+                "document.readyState === 'complete' && (location.href.includes('team_notice') || document.body.innerText.includes('标注数据导出：') || Array.from(document.querySelectorAll('a')).some((a) => (a.innerText || '').includes('下载数据')))",
+                timeout_seconds=35,
+            )
+            open_drawer(cdp, "标注证据")
+            wait_for(cdp, "Array.from(document.querySelectorAll('a')).some((a) => (a.textContent || '').includes('下载数据'))", timeout_seconds=15)
             screenshot(cdp, output_dir / f"real-serial-dataset-{stamp}.png")
             export_href = cdp_eval(
                 cdp,
                 """
                 (() => {
-                  const link = Array.from(document.querySelectorAll('a')).find((a) => (a.innerText || '').includes('下载数据'));
+                  const link = Array.from(document.querySelectorAll('a')).find((a) => (a.textContent || '').includes('下载数据'));
                   return link ? link.href : '';
                 })()
                 """,
