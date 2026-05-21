@@ -223,6 +223,8 @@ function stripPlatformChatter(body: string, desktopVisible = true): string {
     .replace(/`?\bdispatch_id\s*[:：]\s*[0-9a-f-]{8,}`?/gi, "平台已记录这次派工")
     .replace(/`?\btask_id\s*[:：]\s*[0-9a-f-]{8,}`?/gi, "平台已记录这次任务")
     .replace(/目标\s+NPC\s+已接到平台派单[:：]\s*[0-9a-f-]{8,}/gi, "目标线程已接到平台派单")
+    .replace(/(已收到平台派单[:：])\s*[^。\n]*(?:æ|å|ç|è|é|ï|ã)[^。\n]*/gi, "已收到平台派单，正在等待桌面回执")
+    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, "关联记录")
     .replace(/sender_id/gi, "发送方")
     .replace(/完整输出可查看本地 artifact[:：]?\s*[^\r\n]+/gi, "完整输出已保存为平台证据，可在工作台点“证据/查看回执”预览。")
     .replace(/artifacts[\\/]workstation-inbox[\\/]?/gi, "平台证据目录")
@@ -283,6 +285,8 @@ function userFacingCollabText(value: unknown, fallback = "", desktopVisible = tr
     .replace(/`?\bdispatch_id\s*[:：]\s*[0-9a-f-]{8,}`?/gi, "平台已记录这次派工")
     .replace(/`?\btask_id\s*[:：]\s*[0-9a-f-]{8,}`?/gi, "平台已记录这次任务")
     .replace(/目标\s+NPC\s+已接到平台派单[:：]\s*[0-9a-f-]{8,}/gi, "目标线程已接到平台派单")
+    .replace(/(已收到平台派单[:：])\s*[^。\n]*(?:æ|å|ç|è|é|ï|ã)[^。\n]*/gi, "已收到平台派单，正在等待桌面回执")
+    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, "关联记录")
     .replace(/sender_id/gi, "发送方")
     .replace(/完整输出可查看本地 artifact[:：]?\s*[^\r\n]+/gi, "完整输出已保存为平台证据，可在工作台点“证据/查看回执”预览。")
     .replace(/artifacts[\\/]workstation-inbox[\\/]?/gi, "平台证据目录")
@@ -486,6 +490,7 @@ function seatNameByAuthoritativeRef(
   if (!raw) return fallback;
   const seat = peerByIdentity.get(raw);
   if (seat) return seat.name;
+  if (looksInternalIdentifier(raw)) return fallback;
   return isHistoricalAliasValue(raw) ? "历史标识" : userFacingCollabText(raw, fallback);
 }
 
