@@ -200,8 +200,11 @@ const NOISE_INFIX = [
   "no new messages",
 ];
 
-function stripPlatformChatter(body: string): string {
+function stripPlatformChatter(body: string, desktopVisible = true): string {
   // 隐藏给绑定 Codex/Claude 线程看的平台协议块；用户对话框只保留可读摘要/回执。
+  const threadNoun = threadBindingNoun(desktopVisible);
+  const deliveryTarget = deliveryNoun(desktopVisible);
+  const recordNoun = desktopVisible ? "桌面线程记录" : "执行线程记录";
   const withoutLedger = body.replace(
     /AI_REQUIRED_REQUIREMENT_LEDGER_V1[\s\S]*?AI_REQUIRED_REQUIREMENT_LEDGER_END\s*/g,
     "",
@@ -211,7 +214,7 @@ function stripPlatformChatter(body: string): string {
     .replace(/historical[_\s-]*alias(?:[_\s-]*non[_\s-]*authoritative)?/gi, "历史标识")
     .replace(/历史\s*alias/gi, "历史标识")
     .replace(/current\s+alias/gi, "当前标识")
-    .replace(/source_thread/gi, "来源桌面线程")
+    .replace(/source_thread/gi, `来源${threadNoun}`)
     .replace(/canonical_workstation_id/gi, "正式工位")
     .replace(/requested_workstation_id/gi, "请求工位")
     .replace(/authoritative_([a-z]+_)?seat_id/gi, "正式 NPC")
@@ -223,21 +226,28 @@ function stripPlatformChatter(body: string): string {
     .replace(/sender_id/gi, "发送方")
     .replace(/完整输出可查看本地 artifact[:：]?\s*[^\r\n]+/gi, "完整输出已保存为平台证据，可在工作台点“证据/查看回执”预览。")
     .replace(/artifacts[\\/]workstation-inbox[\\/]?/gi, "平台证据目录")
-    .replace(/\.codex[\\/]sessions[\\/]?/gi, "桌面线程记录")
+    .replace(/\.codex[\\/]sessions[\\/]?/gi, recordNoun)
     .replace(/[A-Za-z]:[\\/][^\s"'`<>),\]]*artifacts[\\/][^\s"'`<>),\]]+\.(?:md|txt|log|json|jsonl|yaml|yml)/gi, "平台证据文件")
     .replace(/artifacts[\\/][^\s"'`<>),\]]+\.(?:md|txt|log|json|jsonl|yaml|yml)/gi, "平台证据文件")
-    .replace(/Codex Desktop UI 投递/g, "桌面线程可见")
-    .replace(/Codex Desktop UI delivery failed:?/gi, "桌面线程暂未确认收到")
+    .replace(/Codex Desktop UI 投递/g, desktopVisible ? "桌面线程可见" : "执行线程可见")
+    .replace(/Codex Desktop UI delivery failed:?/gi, `${deliveryTarget}暂未确认收到`)
     .replace(/Codex app-server/gi, "后台线程")
-    .replace(/session JSONL/gi, "桌面记录")
+    .replace(/session JSONL/gi, recordNoun)
     .replace(/Local prompt file/gi, "本地任务说明")
     .replace(/Provider CLI/gi, "执行通道")
     .replace(/provider cli execution/gi, "执行通道运行")
+    .replace(/\bRunner\s+([A-Za-z0-9._-]+)\s+Runner\s+received platform dispatch:?/gi, "执行电脑 $1 已收到平台派单：")
+    .replace(/\bRunner\s+([A-Za-z0-9._-]+)\s+received platform dispatch:?/gi, "执行电脑 $1 已收到平台派单：")
+    .replace(/The computer connection is reachable;?\s*/gi, "电脑连接可用；")
+    .replace(/enable NPC automation/gi, "可开启 NPC 自动推进")
+    .replace(/or bind a desktop thread before real execution\.?/gi, desktopVisible ? "或先绑定可见桌面线程再执行。" : "或保持执行电脑在线后再执行。")
+    .replace(/执行电脑\s+([A-Za-z0-9._-]+)\s+执行电脑\s+received platform dispatch:?/gi, "执行电脑 $1 已收到平台派单：")
+    .replace(/\brunner\b/gi, "执行电脑")
     .replace(/adapter/gi, "同步")
     .replace(/bridge/gi, "同步")
-    .replace(/codex-session-[0-9a-z-]+/gi, "绑定桌面线程")
-    .replace(/codex-session/gi, "桌面线程")
-    .replace(/线程\s*codex/gi, "桌面线程");
+    .replace(/codex-session-[0-9a-z-]+/gi, `绑定${threadNoun}`)
+    .replace(/codex-session/gi, threadNoun)
+    .replace(/线程\s*codex/gi, threadNoun);
   // 隐藏后端注入的 [路由]/[NPC ...自主发起]/经工位长 X 转交 等元信息行（用户只想看正文）
   const lines = normalizedBody.split(/\r?\n/);
   const filtered = lines.filter((ln) => {
@@ -256,13 +266,15 @@ function stripPlatformChatter(body: string): string {
   return filtered.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
-function userFacingCollabText(value: unknown, fallback = ""): string {
-  const next = stripPlatformChatter(String(value ?? "").trim())
+function userFacingCollabText(value: unknown, fallback = "", desktopVisible = true): string {
+  const threadNoun = threadBindingNoun(desktopVisible);
+  const recordNoun = desktopVisible ? "桌面线程记录" : "执行线程记录";
+  const next = stripPlatformChatter(String(value ?? "").trim(), desktopVisible)
     .replace(/alias_display_non_authoritative/gi, "历史标识展示规则")
     .replace(/historical[_\s-]*alias(?:[_\s-]*non[_\s-]*authoritative)?/gi, "历史标识")
     .replace(/历史\s*alias/gi, "历史标识")
     .replace(/current\s+alias/gi, "当前标识")
-    .replace(/source_thread/gi, "来源桌面线程")
+    .replace(/source_thread/gi, `来源${threadNoun}`)
     .replace(/canonical_workstation_id/gi, "正式工位")
     .replace(/requested_workstation_id/gi, "请求工位")
     .replace(/authoritative_([a-z]+_)?seat_id/gi, "正式 NPC")
@@ -274,23 +286,30 @@ function userFacingCollabText(value: unknown, fallback = ""): string {
     .replace(/sender_id/gi, "发送方")
     .replace(/完整输出可查看本地 artifact[:：]?\s*[^\r\n]+/gi, "完整输出已保存为平台证据，可在工作台点“证据/查看回执”预览。")
     .replace(/artifacts[\\/]workstation-inbox[\\/]?/gi, "平台证据目录")
-    .replace(/\.codex[\\/]sessions[\\/]?/gi, "桌面线程记录")
+    .replace(/\.codex[\\/]sessions[\\/]?/gi, recordNoun)
     .replace(/[A-Za-z]:[\\/][^\s"'`<>),\]]*artifacts[\\/][^\s"'`<>),\]]+\.(?:md|txt|log|json|jsonl|yaml|yml)/gi, "平台证据文件")
     .replace(/artifacts[\\/][^\s"'`<>),\]]+\.(?:md|txt|log|json|jsonl|yaml|yml)/gi, "平台证据文件")
-    .replace(/Codex Desktop UI/gi, "桌面线程")
+    .replace(/Codex Desktop UI/gi, threadNoun)
     .replace(/Codex app-server/gi, "后台线程")
-    .replace(/session JSONL/gi, "桌面记录")
+    .replace(/session JSONL/gi, recordNoun)
     .replace(/Local prompt file/gi, "本地任务说明")
     .replace(/Provider CLI/gi, "执行通道")
     .replace(/provider cli execution/gi, "执行通道运行")
+    .replace(/\bRunner\s+([A-Za-z0-9._-]+)\s+Runner\s+received platform dispatch:?/gi, "执行电脑 $1 已收到平台派单：")
+    .replace(/\bRunner\s+([A-Za-z0-9._-]+)\s+received platform dispatch:?/gi, "执行电脑 $1 已收到平台派单：")
+    .replace(/The computer connection is reachable;?\s*/gi, "电脑连接可用；")
+    .replace(/enable NPC automation/gi, "可开启 NPC 自动推进")
+    .replace(/or bind a desktop thread before real execution\.?/gi, desktopVisible ? "或先绑定可见桌面线程再执行。" : "或保持执行电脑在线后再执行。")
+    .replace(/执行电脑\s+([A-Za-z0-9._-]+)\s+执行电脑\s+received platform dispatch:?/gi, "执行电脑 $1 已收到平台派单：")
+    .replace(/\brunner\b/gi, "执行电脑")
     .replace(/\badapter\b/gi, "同步")
     .replace(/\bbridge\b/gi, "同步")
     .replace(/执行失败[:：]?/g, "待收口")
     .replace(/hard failed/gi, "待收口")
     .replace(/failed/gi, "待收口")
-    .replace(/codex-session-[0-9a-z-]+/gi, "绑定桌面线程")
-    .replace(/codex-session/gi, "桌面线程")
-    .replace(/线程\s*codex/gi, "桌面线程")
+    .replace(/codex-session-[0-9a-z-]+/gi, `绑定${threadNoun}`)
+    .replace(/codex-session/gi, threadNoun)
+    .replace(/线程\s*codex/gi, threadNoun)
     .trim();
   return next || fallback;
 }
@@ -961,12 +980,37 @@ function messageTypeLabel(msg: CollabMessage): string {
   return "协作消息";
 }
 
+function threadBindingLabel(seat: WorkbenchSeat): string {
+  if (seat.desktopVisible) return seat.threadId ? "桌面线程已绑定" : "待绑定桌面线程";
+  return seat.threadId ? "执行线程已绑定" : "待绑定执行线程";
+}
+
+function threadBindingHint(seat: WorkbenchSeat): string {
+  if (seat.desktopVisible) return "桌面线程在主页面 NPC 管理中绑定；这里显示当前协作状态。";
+  return "执行线程在主页面 NPC 管理中绑定；Linux/插件/CLI 场景通过执行电脑队列回写回执。";
+}
+
+function threadBindingNoun(seatOrDesktopVisible: WorkbenchSeat | boolean): string {
+  const desktopVisible = typeof seatOrDesktopVisible === "boolean" ? seatOrDesktopVisible : seatOrDesktopVisible.desktopVisible;
+  return desktopVisible ? "桌面线程" : "执行线程";
+}
+
+function deliveryNoun(seatOrDesktopVisible: WorkbenchSeat | boolean): string {
+  const desktopVisible = typeof seatOrDesktopVisible === "boolean" ? seatOrDesktopVisible : seatOrDesktopVisible.desktopVisible;
+  return desktopVisible ? "桌面线程" : "执行电脑队列";
+}
+
+function processTraceHint(seatOrDesktopVisible: WorkbenchSeat | boolean): string {
+  const desktopVisible = typeof seatOrDesktopVisible === "boolean" ? seatOrDesktopVisible : seatOrDesktopVisible.desktopVisible;
+  return desktopVisible ? "详细过程可在绑定桌面线程里追踪。" : "执行过程以回执形式回到当前 NPC 瓷砖。";
+}
+
 function processSignalLabel(value: string): string {
   const normalized = safeText(value, "").toLowerCase();
   if (!normalized) return "";
   if (normalized === "awaiting_desktop_reply") return "等待桌面回执";
   if (normalized === "desktop_delivery_unconfirmed") return "桌面未确认收到";
-  if (normalized === "delivery_pending_confirmation") return "等待桌面确认";
+  if (normalized === "delivery_pending_confirmation") return "等待送达确认";
   if (normalized === "desktop_final_sync_lag") return "最终回执待同步";
   if (normalized === "desktop_retry_action") return "重新同步中";
   if (looksInternalIdentifier(normalized)) return "关联消息";
@@ -997,7 +1041,7 @@ function messageProcessMeta(
     : role === "self"
       ? seatName
       : senderLabel.replace(/^(同工位|跨工位|本 NPC|同步线程|系统)\s*·?\s*/, "") || senderLabel;
-  const sender = processActorLabel(senderRaw, peerByIdentity, role === "watcher" ? "桌面线程" : "协作者");
+  const sender = processActorLabel(senderRaw, peerByIdentity, role === "watcher" ? "执行线程" : "协作者");
   const targetRaw = safeText(
     metadata.authoritative_target_seat_id
       ?? metadata.intended_target_seat_id
@@ -1301,16 +1345,16 @@ function buildPeerDispatchStatusCard(
   };
 }
 
-function summarizeCollabMessage(msg: CollabMessage): RefinedMessage {
+function summarizeCollabMessage(msg: CollabMessage, desktopVisible = true): RefinedMessage {
   const classified = classifyMessage(msg);
   const structuredCard = getStructuredMessageCard(msg);
   const type = (msg.message_type || "").toLowerCase();
   const status = (msg.status || "").toLowerCase();
   const rawBody = msg.body || "";
-  const cleanBody = stripPlatformChatter(rawBody);
+  const cleanBody = stripPlatformChatter(rawBody, desktopVisible);
   const rawLower = rawBody.toLowerCase();
   const cleanFirst = firstUsefulLine(cleanBody);
-  const title = userFacingCollabText((msg.title || "").trim());
+  const title = userFacingCollabText((msg.title || "").trim(), "", desktopVisible);
   const meta = messageMetadata(msg);
   const isDesktopQuestion = type === "desktop_user_question";
   const isDesktopReceipt = type === "desktop_minimal_receipt";
@@ -1332,9 +1376,11 @@ function summarizeCollabMessage(msg: CollabMessage): RefinedMessage {
     || (msg.sender_type || "").toLowerCase() === "watcher"
     || type.includes("watcher")
     || rawLower.startsWith("watcher");
+  const threadNoun = threadBindingNoun(desktopVisible);
+  const deliveryTarget = deliveryNoun(desktopVisible);
   const statusLabel =
     isDesktopQuestion
-      ? "桌面提问"
+      ? `${threadNoun}提问`
       : isDesktopReceipt
         ? "最小回执"
         : status === "pending_review"
@@ -1356,40 +1402,40 @@ function summarizeCollabMessage(msg: CollabMessage): RefinedMessage {
                       : "协作";
 
   const headline =
-    (isDesktopQuestion ? "桌面提问" : "")
+    (isDesktopQuestion ? `${threadNoun}提问` : "")
     || (isDesktopReceipt ? "最小回执" : "")
     || title
     || (statusLabel === "已接单" ? "目标线程已接单" : "")
     || (statusLabel === "已完成" ? "目标线程已回执" : "")
-    || userFacingCollabText(cleanFirst).slice(0, 96)
+    || userFacingCollabText(cleanFirst, "", desktopVisible).slice(0, 96)
     || "(空消息)";
 
-  let detail = cleanFirst && cleanFirst !== headline ? userFacingCollabText(cleanFirst) : "";
+  let detail = cleanFirst && cleanFirst !== headline ? userFacingCollabText(cleanFirst, "", desktopVisible) : "";
   if (!detail) {
-    if (isDesktopQuestion) detail = cleanFirst || "用户在桌面线程里补充了问题，已同步到平台对话流。";
-    else if (isDesktopReceipt) detail = cleanFirst || "桌面线程已返回最小回执，最终结果仍按任务回执收口。";
-    else if (statusLabel === "派单") detail = "已写入协作消息池，等待平台送达绑定桌面线程。";
-    else if (statusLabel === "已接单") detail = "目标线程已接到指令；若是桌面投递，还需要等待目标线程确认收到。";
-    else if (statusLabel === "处理中") detail = "绑定线程正在推进；平台同步桌面提问、最小回执和最终结果。";
-    else if (statusLabel === "待收口") detail = "桌面线程可能仍在处理；请催办、延长等待，或确认桌面结果后手动收口。";
+    if (isDesktopQuestion) detail = cleanFirst || `用户在${threadNoun}里补充了问题，已同步到平台对话流。`;
+    else if (isDesktopReceipt) detail = cleanFirst || `${threadNoun}已返回最小回执，最终结果仍按任务回执收口。`;
+    else if (statusLabel === "派单") detail = `已写入协作消息池，等待平台送达绑定${deliveryTarget}。`;
+    else if (statusLabel === "已接单") detail = `目标${threadNoun}已接到指令；${processTraceHint(desktopVisible)}`;
+    else if (statusLabel === "处理中") detail = `绑定${threadNoun}正在推进；平台同步提问、最小回执和最终结果。`;
+    else if (statusLabel === "待收口") detail = `${threadNoun}可能仍在处理；请催办、延长等待，或确认结果后手动收口。`;
     else if (statusLabel === "需人审") detail = "需要人类成员查看正文后决定是否放行。";
-    else if (statusLabel === "已完成") detail = "线程已返回最终结果；详细过程仍可在绑定桌面线程里追踪。";
+    else if (statusLabel === "已完成") detail = `${threadNoun}已返回最终结果；${processTraceHint(desktopVisible)}`;
     else if (statusLabel === "异常") detail = "线程同步报告异常，展开可查看收口信息。";
     else detail = "协作事件已记录。";
   }
   const progressState = String(meta.progress_state || "");
   const launchState = String(meta.launch_state || "");
   if (progressState === "awaiting_desktop_reply") {
-    detail = "已确认进入目标桌面线程，正在等待最终回执。";
+    detail = `已确认进入目标${deliveryTarget}，正在等待最终回执。`;
   } else if (progressState === "desktop_delivery_unconfirmed") {
     const retryCount = safeText(meta.desktop_delivery_attempts ?? blockedTaxonomy.desktop_delivery_attempts, "");
     detail = retryCount
-      ? `桌面线程暂未确认收到，平台已自动重试 ${retryCount} 次；可继续重新同步、延长等待或手动收口。`
-      : "桌面线程暂未确认收到，平台会自动重试；可重新同步、延长等待或手动收口。";
+      ? `${threadNoun}暂未确认收到，平台已自动重试 ${retryCount} 次；可继续重新同步、延长等待或手动收口。`
+      : `${threadNoun}暂未确认收到，平台会自动重试；可重新同步、延长等待或手动收口。`;
   } else if (launchState === "delivery_pending_confirmation") {
-    detail = "平台已启动送达流程，正在确认目标桌面线程是否收到这条消息。";
+    detail = `平台已启动送达流程，正在确认目标${deliveryTarget}是否收到这条消息。`;
   }
-  detail = userFacingCollabText(detail);
+  detail = userFacingCollabText(detail, "", desktopVisible);
   if (detail.length > 120) detail = `${detail.slice(0, 120)}...`;
   if (isDesktopSync && desktopLatency) {
     detail = detail ? `${detail} · 同步 ${desktopLatency}` : `同步 ${desktopLatency}`;
@@ -1800,13 +1846,13 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
           data-secondary={!isPrimary ? "1" : undefined}
           onClick={launchMessage}
           disabled={launchingMessageId === message.id}
-          title="让平台把这条派单送到绑定桌面线程并回写结果"
+          title={`让平台把这条派单送到绑定${deliveryNoun(seat)}并回写结果`}
         >
           {launchingMessageId === message.id ? "已提交，刷新中" : isPrimary ? "启动真实处理" : "启动"}
         </button>
         {variant === "inline" ? (
           <small className={styles.realThreadHint}>
-            平台同步最小回执和最终结果；详细过程在绑定桌面线程中可追踪。
+            平台同步最小回执和最终结果；{processTraceHint(seat)}
           </small>
         ) : null}
       </div>
@@ -1826,7 +1872,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
       setSendNote(
         result.launched
           ? `${result.seatName || seat.name} 的单次处理已启动，等待最小回执 / 最终结果。`
-          : `启动失败：${result.error || "请检查绑定线程、Runner 或执行目录。"}`,
+          : `启动失败：${result.error || "请检查绑定线程、执行电脑或项目目录。"}`,
       );
     } catch (error) {
       setSendNote(`启动失败：${error instanceof Error ? error.message : "未知错误"}`);
@@ -2008,7 +2054,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
     ? "免审边界内，NPC 可继续找合适的协作方并等待回执。"
     : canUseDesktopAutomation
       ? "派单会进入队列，由你决定何时启动或开启自动推进。"
-      : "先绑定桌面线程，平台才能显示完整处理过程。";
+      : `先绑定${threadBindingNoun(seat)}，平台才能显示回执和处理状态。`;
   const automationCurrentLabel = pendingCloseoutCount > 0
     ? `待收口 ${pendingCloseoutCount}`
     : activeDispatchCount > 0
@@ -2022,7 +2068,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
       ? "收到回执后可继续下一步"
       : canUseDesktopAutomation
         ? "可开启自动推进"
-        : "去绑定桌面线程";
+        : `去绑定${threadBindingNoun(seat)}`;
   const pendingReviews = useMemo(() => {
     return (messages || [])
       .filter((m) => shouldRenderAsReviewMessage(m))
@@ -2042,7 +2088,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
     cards.push({
       id: "runtime-mode",
       status: automationModeLabel,
-      title: automationEnabled ? "自动继续已开启" : canUseDesktopAutomation ? "当前由人确认推进" : "需要先绑定桌面线程",
+      title: automationEnabled ? "自动继续已开启" : canUseDesktopAutomation ? "当前由人确认推进" : `需要先绑定${threadBindingNoun(seat)}`,
       detail: automationModeHint,
       tone: automationEnabled ? "ok" : canUseDesktopAutomation ? "manual" : "warn",
       action: automationEnabled ? "disable_automation" : canUseDesktopAutomation ? "enable_automation" : undefined,
@@ -2052,7 +2098,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
       cards.push({
         id: "closeout",
         status: `待收口 ${pendingCloseoutCount}`,
-        title: "有桌面过程等待最终收口",
+        title: `${threadBindingNoun(seat)}过程等待最终收口`,
         detail: "在对应消息上可直接催办、延长等待、重新同步或手动收口。",
         tone: "danger",
       });
@@ -2086,6 +2132,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
     latestActiveDispatch,
     pendingCloseoutCount,
     pendingReviews.length,
+    seat,
   ]);
 
   const visible = useMemo(() => {
@@ -2093,7 +2140,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
     const readable = hideNoisy
       ? list.filter((m) => {
       if (shouldRenderAsReviewMessage(m)) return true;
-      const refined = summarizeCollabMessage(m);
+      const refined = summarizeCollabMessage(m, seat.desktopVisible);
       return refined.showByDefault && !refined.noisy;
     })
       : list;
@@ -2161,7 +2208,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
     const compacted = [...passthrough, ...chainOrder.map((key) => chainBest.get(key)).filter((m): m is CollabMessage => Boolean(m))];
     compacted.sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")));
     return compacted;
-  }, [messages, hideNoisy, showFullHistory, activeQueueMessageId]);
+  }, [messages, hideNoisy, showFullHistory, activeQueueMessageId, seat.desktopVisible]);
 
   const peerDispatchCards = useMemo(() => {
     const cards = new Map<string, StructuredMessageCard>();
@@ -2571,7 +2618,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
       `- 同工位通讯录: ${sameWorkstationDirectory}`,
       `- 跨工位入口: ${crossLeadDirectory}`,
       "- 路由规则: 同工位先按职责找最匹配 NPC；跨工位只找目标工位工位长转交。",
-      "- 显示边界: 详细处理过程留在绑定桌面线程；平台只回写最小回执、最终结果、阻塞原因和可追踪索引。",
+      `- 显示边界: ${processTraceHint(seat)}平台只回写最小回执、最终结果、阻塞原因和可追踪索引。`,
       "- 回执格式: Understood / Changed / Validated / Blocked / Next。",
     ].join("\n");
   }
@@ -2845,23 +2892,18 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
       setDraft("");
       if (isBoundaryCard) {
         setSendNote("边界卡已登记，等待人审；审批前不会启动真实处理 ✓");
-      } else if (!isPeer && !automationEnabled) {
-        setSendNote("已派发，平台正在通过内部执行桥送达绑定线程...");
-        const launchResult = await launchNpcOneShotThreadProcessing(projectId, seatApiId, json.data.id);
+      } else {
+        const targetSeatId = isPeer ? targetOpts!.peerId! : seatApiId;
+        setSendNote(isPeer ? `已派给 ${manualTargetName}，正在投递到目标电脑...` : "已派发，正在投递到绑定线程...");
+        const launchResult = await launchNpcOneShotThreadProcessing(projectId, targetSeatId, json.data.id);
         setSendNote(
           launchResult.launched
             ? launchResult.desktopVisible
-              ? "已启动，正在确认桌面线程收到 ✓"
-              : `已进入绑定线程通道；最小回执和最终结果会回到这个对话框`
-            : `已派发，但桌面线程启动失败：${launchResult.error || "请检查绑定线程或桌面同步状态"}`,
+              ? `${launchResult.seatName || manualTargetName} 已收到投递，正在确认桌面线程 ✓`
+              : `${launchResult.seatName || manualTargetName} 已进入执行电脑队列；回执会回到对应 NPC 瓷砖`
+            : `已派发，但投递失败：${launchResult.error || "请检查绑定线程、执行电脑或同步状态"}`,
         );
         if (launchResult.launched) refreshAfterOneShot();
-      } else {
-        setSendNote(
-          isPeer
-            ? `已手动派给 ${manualTargetName} ✓`
-            : (automationEnabled ? "已派发，等待 NPC 自动化拉取 ✓" : "已派发 ✓"),
-        );
       }
       autoScrollRef.current = true;
       await load(limit);
@@ -3119,8 +3161,8 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
             {automationEnabled ? <span className={styles.pillOk}>自动化</span> : null}
           </small>
           <div className={styles.threadBinding} data-busy={occupancyHeldByOther ? "1" : occupancyHeldByMe ? "me" : "0"}>
-            <span className={styles.threadChip} title="桌面线程在主页面 NPC 管理中绑定；这里仅显示当前协作状态">
-              {seat.threadId ? "桌面线程已绑定" : "待在主页面绑定线程"}
+            <span className={styles.threadChip} title={threadBindingHint(seat)}>
+              {threadBindingLabel(seat)}
             </span>
             <span className={`${styles.threadChip} ${styles.occupancyChip}`} title="当前操作占用状态">
               {threadStatusLabel}
@@ -3128,7 +3170,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
             <Link
               href={governanceHref("npc-create")}
               className={styles.threadChip}
-              title="回到主页面 NPC 管理，从扫描到的桌面线程列表里按名称选择"
+              title="回到主页面 NPC 管理，从扫描到的执行线程列表里按名称选择"
             >
               去主页面选择线程
             </Link>
@@ -3147,7 +3189,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
                 桌面待确认
               </span>
             ) : null}
-            {seat.desktopThreadUrl ? (
+            {seat.desktopVisible && seat.desktopThreadUrl ? (
               <a
                 className={`${styles.threadChip} ${styles.desktopThreadChip}`}
                 href={seat.desktopThreadUrl}
@@ -3335,14 +3377,14 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
             <small className={styles.sectionLabel}>线程绑定</small>
             <div className={styles.identityRow}>
               <span className={styles.identityMeta}>
-                {seat.threadId ? "已绑定桌面线程" : "未绑定桌面线程"} · {seat.threadHealth || "未知"}
+                {threadBindingLabel(seat)} · {seat.threadHealth || "未知"}
               </span>
               {seat.desktopVisible ? (
                 <span className={styles.statusPill} title="平台派单会作为普通用户消息进入绑定桌面线程">
                   桌面可见
                 </span>
               ) : null}
-              {seat.desktopThreadUrl ? (
+              {seat.desktopVisible && seat.desktopThreadUrl ? (
                 <a className={styles.iconBtn} href={seat.desktopThreadUrl} title="在桌面版打开这个 NPC 绑定的线程">
                   打开桌面线程
                 </a>
@@ -3356,13 +3398,13 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
               </Link>
             </div>
             <small className={styles.profileTextDim}>
-              线程绑定在主页面 NPC 管理完成：先让平台扫描电脑上的桌面线程，再按线程名字选择。这里不要求用户填写任何编号。
+              线程绑定在主页面 NPC 管理完成：先让平台扫描电脑上的{threadBindingNoun(seat)}，再按线程名字选择。这里不要求用户填写任何编号。
             </small>
           </div>
           <div className={styles.profileRow}>
             <small className={styles.sectionLabel}>
               NPC 自动化
-              <span className={styles.peerHint}>· 平台内部送达绑定线程，并同步桌面过程摘要</span>
+              <span className={styles.peerHint}>· 平台送达绑定线程，并同步处理回执</span>
             </small>
             <div className={styles.automationRow}>
               <button
@@ -3378,13 +3420,13 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
               </button>
               <span className={styles.identityMeta}>
                 {automationEnabled
-                  ? "平台会自动继续当前派单；详细处理过程仍留在桌面线程里。"
+                  ? `平台会自动继续当前派单；${processTraceHint(seat)}`
                   : "关闭时只处理当前这一条；你可先看回执，再决定是否继续。"}
               </span>
             </div>
             {!automationEnabled ? (
               <small className={styles.identityNote}>
-                当前只显示最小回执和最终结果；详细处理过程继续留在桌面线程。
+                当前只显示最小回执和最终结果；{processTraceHint(seat)}
               </small>
             ) : null}
             {automationNote ? <small className={styles.identityNote}>{automationNote}</small> : null}
@@ -3814,10 +3856,10 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
             if (shouldRenderAsReviewMessage(msg)) {
               return renderReviewMessage(msg);
             }
-            const refined = summarizeCollabMessage(msg);
+            const refined = summarizeCollabMessage(msg, seat.desktopVisible);
             const { role, label: roleLabel } = classifyRole(msg, seat.id, peerIds, externalAgentIds);
             const expanded = expandedIds.has(msg.id);
-            const body = userFacingCollabText(refined.cleanBody || refined.rawBody || "", "(空消息)");
+            const body = userFacingCollabText(refined.cleanBody || refined.rawBody || "", "(空消息)", seat.desktopVisible);
             const canExpand = body.length > 0;
             const structuredCard = peerDispatchCards.get(msg.id) || getStructuredMessageCard(msg);
             const skipConversationCollabCard = role === "self"
@@ -4061,7 +4103,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
           <small className={styles.composerHint}>
             {occupancyHeldByOther
               ? `⚠ ${occupancy?.user_name || "他人"} 正在占用，先抢占再发送`
-              : sendNote || (seat.permissionLevel ? `风险级别 ${seat.permissionLevel} · 详细过程在桌面线程中` : "发送后写入协作池；NPC 处理，平台同步最小回执和最终结果")}
+              : sendNote || (seat.permissionLevel ? `风险级别 ${seat.permissionLevel} · ${processTraceHint(seat)}` : "发送后写入协作池；NPC 处理，平台同步最小回执和最终结果")}
           </small>
           <div className={styles.composerActions}>
             <Link href={`/projects/${projectId}/company`} className={styles.linkBtn} title="返回公司运行状态">

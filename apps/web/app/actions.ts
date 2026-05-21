@@ -8749,7 +8749,43 @@ export async function 启动Npc单次线程处理(projectId: string, workstation
         error: null,
       };
     } catch (runnerError) {
-      console.warn("投递执行电脑队列失败，回退到平台单次处理:", runnerError);
+      const runnerErrorMessage = runnerError instanceof Error ? runnerError.message : "目标电脑队列投递失败";
+      console.warn("投递执行电脑队列失败:", runnerError);
+      await postJson("/api/collaboration/messages", {
+        project_id: projectId,
+        agent_id: recipientId,
+        message_type: "agent_ack",
+        title: `执行电脑未接单 / ${seatName}`,
+        body: [
+          `平台没有把这条派工送到 ${seatName} 所在电脑。`,
+          `原因：${runnerErrorMessage}`,
+          messageId ? `派单消息：${messageId}` : "",
+          "请确认这个 NPC 已绑定在线电脑，并且目标电脑的持续接单程序正在运行。",
+        ].filter(Boolean).join("\n"),
+        sender_type: "agent",
+        sender_id: recipientId,
+        recipient_type: "thread_workstation",
+        recipient_id: recipientId,
+        status: "failed",
+        metadata: {
+          source_message_id: messageId,
+          delivery_label: "执行电脑队列",
+          runner_delivery_failed: true,
+        },
+      });
+      revalidateProjectSurfaces(projectId);
+      return {
+        launched: false,
+        providerId,
+        seatName,
+        deliveryLabel: "执行电脑队列",
+        deliveryWarning,
+        desktopVisible,
+        launcher: "runner-command",
+        stdoutPath: null,
+        stderrPath: null,
+        error: runnerErrorMessage,
+      };
     }
 
   const launchResult = launchDetachedWorkstationOneShot({

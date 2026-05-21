@@ -203,7 +203,9 @@ def _latest_runner_claim(db: Session, task_id: str) -> str | None:
 def _project_role_is_privileged(role: str | None, member: ProjectMember | None = None) -> bool:
     if member is not None and member.is_owner:
         return True
-    value = _normalize_role(role)
+    value = " ".join(
+        part for part in (_normalize_role(role), _normalize_role(member.role if member is not None else None)) if part
+    )
     markers = ("owner", "lead", "admin", "maintainer", "manager", "safety", "hardware", "runner", "arch")
     return any(marker in value for marker in markers)
 

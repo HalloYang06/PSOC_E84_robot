@@ -302,6 +302,7 @@ class RunnerRelayMessageRead(BaseModel):
     project_id: str
     task_id: str | None = None
     dispatch_id: str | None = None
+    agent_id: str | None = None
     title: str | None = None
     body: str
     status: str

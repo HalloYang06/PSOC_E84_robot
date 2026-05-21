@@ -67,8 +67,8 @@ function computerDispatchState(node: AnyRecord | undefined) {
 
 function deriveThreadKind(providerId: string, threadId: string) {
   const raw = `${providerId} ${threadId}`.toLowerCase();
-  if (raw.includes("claude")) return "桌面执行线程";
-  if (raw.includes("codex")) return "桌面执行线程";
+  if (raw.includes("claude")) return "执行线程";
+  if (raw.includes("codex")) return "执行线程";
   return providerId ? "执行线程" : "待绑定线程";
 }
 
@@ -76,7 +76,7 @@ function publicProviderLabel(value: string) {
   const raw = `${value || ""}`.trim();
   if (!raw) return "";
   const lower = raw.toLowerCase();
-  if (lower.includes("codex") || lower.includes("claude")) return "桌面线程";
+  if (lower.includes("codex") || lower.includes("claude")) return "执行线程";
   return raw;
 }
 
@@ -84,7 +84,7 @@ function publicThreadKindLabel(value: string, providerId: string, threadId: stri
   const raw = `${value || ""}`.trim();
   const lower = `${raw} ${providerId || ""} ${threadId || ""}`.toLowerCase();
   if (!raw) return deriveThreadKind(providerId, threadId);
-  if (lower.includes("codex") || lower.includes("claude") || lower.includes("session")) return "桌面执行线程";
+  if (lower.includes("codex") || lower.includes("claude") || lower.includes("session")) return "执行线程";
   return raw;
 }
 
@@ -99,14 +99,14 @@ function publicThreadHealthLabel(value: string, automationEnabled: boolean) {
 function publicDeliveryLabel(value: string, deliveryMode: string, desktopDeliveryMode: string) {
   const raw = `${value || ""} ${deliveryMode || ""} ${desktopDeliveryMode || ""}`.toLowerCase();
   if (raw.includes("desktop") || raw.includes("codex_desktop_ui")) return "桌面线程可见";
-  if (raw.includes("app_server") || raw.includes("session")) return "后台线程同步";
+  if (raw.includes("app_server") || raw.includes("session")) return "执行电脑队列";
   return value || "";
 }
 
 function publicDeliveryWarning(value: string, deliveryMode: string) {
   const rawMode = `${deliveryMode || ""}`.toLowerCase();
-  if (rawMode.includes("codex_app_server")) return "平台会通过后台通道同步处理过程；用户仍可在工作台看最小回执。";
-  return value ? "平台会把派单送到绑定桌面线程，完整过程在桌面版可追踪。" : "";
+  if (rawMode.includes("codex_app_server")) return "平台会通过执行电脑接单；用户可在工作台看最小回执和最终结果。";
+  return value ? "平台会把派单送到绑定执行线程；回执会回到当前 NPC 瓷砖。" : "";
 }
 
 function codexDesktopThreadUrl(providerId: string, threadId: string) {
@@ -115,6 +115,34 @@ function codexDesktopThreadUrl(providerId: string, threadId: string) {
   const raw = threadId.trim().replace(/^codex-session-/i, "");
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw)) return "";
   return `codex://threads/${raw.toLowerCase()}`;
+}
+
+function isRunnerThreadScanRecord(item: AnyRecord) {
+  const meta = record(item.metadata);
+  const extra = record(item.extra_data ?? item.extraData);
+  return text(meta.source ?? extra.source ?? item.source, "").toLowerCase() === "runner_thread_scan";
+}
+
+function threadBindingKey(item: AnyRecord) {
+  const meta = record(item.metadata);
+  const extra = record(item.extra_data ?? item.extraData);
+  return firstText(
+    item.source_workstation_id,
+    item.sourceWorkstationId,
+    item.bound_thread_id,
+    item.boundThreadId,
+    item.target_thread_id,
+    item.targetThreadId,
+    meta.source_workstation_id,
+    meta.sourceWorkstationId,
+    meta.bound_thread_id,
+    meta.boundThreadId,
+    meta.target_thread_id,
+    meta.targetThreadId,
+    extra.source_workstation_id,
+    extra.bound_thread_id,
+    extra.target_thread_id,
+  );
 }
 
 function safeProjectReturnPath(projectId: string, value: unknown) {
@@ -209,7 +237,18 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
   const rawWorkstations = asArray<AnyRecord>(
     config.thread_workstations ?? config.threadWorkstations ?? config.workstations,
   );
-  const seatRecords = (liveThreadWorkstations.length ? liveThreadWorkstations : rawWorkstations).filter((item) => isNpcSeatRecord(item));
+  const allSeatCandidates = (liveThreadWorkstations.length ? liveThreadWorkstations : rawWorkstations).filter((item) => isNpcSeatRecord(item));
+  const realSeatThreadKeys = new Set(
+    allSeatCandidates
+      .filter((item) => !isRunnerThreadScanRecord(item))
+      .map(threadBindingKey)
+      .filter(Boolean),
+  );
+  const seatRecords = allSeatCandidates.filter((item) => {
+    if (!isRunnerThreadScanRecord(item)) return true;
+    const key = threadBindingKey(item);
+    return !key || !realSeatThreadKeys.has(key);
+  });
   const adapterConfigs = await Promise.all(
     seatRecords.map(async (seat, index) => {
       const id = text(seat.row_id ?? seat.rowId ?? seat.id ?? seat.config_id, `seat-${index}`);

@@ -96,6 +96,17 @@ export function isNpcSeatType(value: unknown) {
 export function isNpcSeatRecord(value: AnyRecord) {
   const metadata = value.metadata && typeof value.metadata === "object" ? (value.metadata as AnyRecord) : {};
   const extraData = value.extra_data && typeof value.extra_data === "object" ? (value.extra_data as AnyRecord) : {};
+  const source = text(metadata.source ?? extraData.source ?? value.source, "").toLowerCase();
+  const hasNpcProfile = Boolean(
+    text(value.responsibility ?? metadata.responsibility ?? extraData.responsibility, "") ||
+      text(value.permission_level ?? value.permissionLevel ?? metadata.permission_level ?? extraData.permission_level, "") ||
+      text(metadata.npc_identity_key ?? extraData.npc_identity_key, "") ||
+      (metadata.npc_knowledge && typeof metadata.npc_knowledge === "object") ||
+      (extraData.npc_knowledge && typeof extraData.npc_knowledge === "object") ||
+      (metadata.collab_protocol && typeof metadata.collab_protocol === "object") ||
+      (extraData.collab_protocol && typeof extraData.collab_protocol === "object"),
+  );
+  if (source === "runner_thread_scan" && !hasNpcProfile) return false;
   return isNpcSeatType(metadata.seat_type ?? extraData.seat_type ?? value.seat_type);
 }
 

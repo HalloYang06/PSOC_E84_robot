@@ -836,6 +836,10 @@ def _render_executor_command(
         "@SESSION_ID@": _shell_arg(str(session_id or "").strip()),
         "@PROVIDER_EXECUTOR@": _shell_arg(str(provider_executor)),
     }
+    rendered = template
+    for marker, value in replacements.items():
+        rendered = rendered.replace(marker, value)
+    return rendered
 
 
 def _normalize_workstation_output_base(output_dir: Path, *, project_id: str) -> Path:
@@ -857,10 +861,6 @@ def _normalize_workstation_output_base(output_dir: Path, *, project_id: str) -> 
                 return Path(".")
             return Path(*base_parts)
     return raw
-    rendered = template
-    for marker, value in replacements.items():
-        rendered = rendered.replace(marker, value)
-    return rendered
 
 
 def _codex_bin_path() -> str:

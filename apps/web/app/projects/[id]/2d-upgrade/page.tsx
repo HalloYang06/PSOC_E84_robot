@@ -16,6 +16,7 @@ import {
   getUsageData,
 } from "../../../../lib/server-data";
 import { normalizeDevelopmentWorkshopStations } from "../../../../lib/development-workshop";
+import { isNpcSeatRecord } from "../../../../lib/platform-provider";
 import { Project2dUpgradeGame } from "./project-2d-upgrade-game";
 
 export const dynamic = "force-dynamic";
@@ -96,9 +97,36 @@ function stringArray(value: unknown) {
 }
 
 function isNpcSeat(workstation: AnyRecord) {
-  const metadata = metadataOf(workstation);
-  const seatType = text(workstation.seat_type ?? metadata.seat_type, "").toLowerCase();
-  return seatType === "npc" || seatType === "codex";
+  return isNpcSeatRecord(workstation);
+}
+
+function isRunnerThreadScanRecord(item: AnyRecord) {
+  const metadata = metadataOf(item);
+  const extra = item.extra_data && typeof item.extra_data === "object" ? (item.extra_data as AnyRecord) : {};
+  return text(metadata.source ?? extra.source ?? item.source, "").toLowerCase() === "runner_thread_scan";
+}
+
+function threadBindingKey(item: AnyRecord) {
+  const metadata = metadataOf(item);
+  const extra = item.extra_data && typeof item.extra_data === "object" ? (item.extra_data as AnyRecord) : {};
+  return text(
+    item.source_workstation_id ??
+      item.sourceWorkstationId ??
+      item.bound_thread_id ??
+      item.boundThreadId ??
+      item.target_thread_id ??
+      item.targetThreadId ??
+      metadata.source_workstation_id ??
+      metadata.sourceWorkstationId ??
+      metadata.bound_thread_id ??
+      metadata.boundThreadId ??
+      metadata.target_thread_id ??
+      metadata.targetThreadId ??
+      extra.source_workstation_id ??
+      extra.bound_thread_id ??
+      extra.target_thread_id,
+    "",
+  );
 }
 
 async function safeLoad<T>(loader: Promise<T>, fallback: T): Promise<T> {
@@ -232,7 +260,18 @@ export default async function Project2dUpgradePage({
   const activeTasks = tasks.filter((task) => !isDoneStatus(task.status));
   const blockedTasks = tasks.filter((task) => isBlockedStatus(task.status));
   const onlineNodes = nodes.filter((node) => isOnlineStatus(node.runner_effective_status ?? node.runner_status ?? node.status));
-  const npcSeatRows = workstations.filter(isNpcSeat);
+  const npcSeatCandidates = workstations.filter(isNpcSeat);
+  const realNpcThreadKeys = new Set(
+    npcSeatCandidates
+      .filter((item) => !isRunnerThreadScanRecord(item))
+      .map(threadBindingKey)
+      .filter(Boolean),
+  );
+  const npcSeatRows = npcSeatCandidates.filter((item) => {
+    if (!isRunnerThreadScanRecord(item)) return true;
+    const key = threadBindingKey(item);
+    return !key || !realNpcThreadKeys.has(key);
+  });
   const sourceWorkstations = workstations.filter((workstation) => !isNpcSeat(workstation));
   const selectableWorkstations = sourceWorkstations.length ? sourceWorkstations : workstations;
   const sortedMessages = messages

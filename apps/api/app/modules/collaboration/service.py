@@ -198,9 +198,32 @@ def _find_item_index(
     db: Session | None = None,
     project_id: str | None = None,
 ) -> int:
-    wanted = {str(identifier or "").strip()}
+    wanted_primary = {str(identifier or "").strip()}
+    wanted_primary.discard("")
+    wanted = set(wanted_primary)
     wanted.update(_thread_workstation_row_aliases(db, project_id, identifier))
     wanted.discard("")
+    # NPC seats and scanned provider threads temporarily share the
+    # thread_workstations config list. A seat's historical bound thread id can
+    # equal a scanned thread item id, so prefer formal item identity before
+    # considering thread-binding aliases.
+    for index, item in enumerate(items):
+        metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+        extra_data = item.get("extra_data") if isinstance(item.get("extra_data"), dict) else {}
+        formal_candidates = {
+            str(item.get("id") or ""),
+            str(item.get("config_id") or ""),
+            str(item.get("label") or ""),
+            str(item.get("name") or ""),
+            str(item.get("row_id") or ""),
+            str(item.get("agent_id") or ""),
+            str(metadata.get("authoritative_seat_id") or ""),
+            str(metadata.get("authoritative_seat_ref") or ""),
+            str(extra_data.get("authoritative_seat_id") or ""),
+            str(extra_data.get("authoritative_seat_ref") or ""),
+        }
+        if wanted_primary.intersection(formal_candidates):
+            return index
     for index, item in enumerate(items):
         metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
         extra_data = item.get("extra_data") if isinstance(item.get("extra_data"), dict) else {}
@@ -3666,6 +3689,10 @@ def create_runner_command(
     else:
         if task_id:
             _project_task_or_404(db, project_id, task_id)
+        target_workstation: ProjectThreadWorkstation | None = None
+        if payload.workstation_id:
+            target_workstation = _project_workstation(db, project_id, payload.workstation_id)
+            agent_id = target_workstation.config_id or target_workstation.id
         runner = _resolve_runner_command_target(
             db,
             project_id,
@@ -3673,6 +3700,10 @@ def create_runner_command(
             computer_node_id=payload.computer_node_id,
             workstation_id=payload.workstation_id,
         )
+    command_metadata = _metadata_dict(payload.metadata)
+    if agent_id:
+        command_metadata.setdefault("target_workstation_id", agent_id)
+        command_metadata.setdefault("target_seat_id", agent_id)
 
     message = create_message(
         db,
@@ -3688,7 +3719,7 @@ def create_runner_command(
             recipient_type="runner",
             recipient_id=runner.id,
             status="pending",
-            metadata=payload.metadata,
+            metadata=command_metadata or None,
         ),
         dispatch_id=dispatch.id if dispatch is not None else None,
         commit=dispatch is None,
@@ -3734,10 +3765,18 @@ def ack_runner_command(db: Session, runner_id: str, message_id: str, payload: Ru
     )
     ack_message: CollaborationMessage | None = None
     if message.sender_type == "human" and message.sender_id:
+        source_extra = _metadata_dict(message.extra_data)
+        target_workstation_id = str(
+            message.agent_id
+            or source_extra.get("target_workstation_id")
+            or source_extra.get("target_seat_id")
+            or ""
+        ).strip() or None
         ack_message = CollaborationMessage(
             project_id=message.project_id,
             task_id=message.task_id,
             dispatch_id=message.dispatch_id,
+            agent_id=target_workstation_id,
             title=message.title or "Runner acknowledged command",
             body=payload.note or "Runner acknowledged the command and is preparing to execute it.",
             message_type="runner_ack",
@@ -3748,7 +3787,7 @@ def ack_runner_command(db: Session, runner_id: str, message_id: str, payload: Ru
             status="delivered",
             extra_data={
                 "source_message_id": message.id,
-                **_metadata_dict(message.extra_data),
+                **source_extra,
             },
         )
         db.add(ack_message)
@@ -3814,10 +3853,18 @@ def complete_runner_command(db: Session, runner_id: str, message_id: str, payloa
     )
     result_message: CollaborationMessage | None = None
     if message.sender_type == "human" and message.sender_id:
+        source_extra = _metadata_dict(message.extra_data)
+        target_workstation_id = str(
+            message.agent_id
+            or source_extra.get("target_workstation_id")
+            or source_extra.get("target_seat_id")
+            or ""
+        ).strip() or None
         result_message = CollaborationMessage(
             project_id=message.project_id,
             task_id=message.task_id,
             dispatch_id=message.dispatch_id,
+            agent_id=target_workstation_id,
             title=message.title or "Runner execution result",
             body=payload.note or ("Runner completed the command." if payload.result_status == "completed" else "Runner reported a failure while executing the command."),
             message_type="runner_result",
@@ -3830,7 +3877,7 @@ def complete_runner_command(db: Session, runner_id: str, message_id: str, payloa
                 "source_message_id": message.id,
                 "source_message_type": message.message_type,
                 "dispatch_id": message.dispatch_id,
-                **_metadata_dict(message.extra_data),
+                **source_extra,
                 **completion_metadata,
                 **(
                     {

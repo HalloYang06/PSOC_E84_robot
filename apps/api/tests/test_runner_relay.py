@@ -153,6 +153,48 @@ def test_runner_relay_command_round_trip() -> None:
     assert any(item["recipient_type"] == "human" and item["sender_id"] == runner_id for item in result_messages)
 
 
+def test_runner_relay_command_accepts_npc_seat_row_id_target() -> None:
+    owner_token, project_id, runner_id, _ = _setup_runner_project()
+
+    command_response = client.post(
+        f"/api/collaboration/projects/{project_id}/runner-commands",
+        headers=auth_headers(owner_token),
+        json={
+            "workstation_id": "ws-relay",
+            "title": "NPC 对话派工",
+            "body": "请处理绑定 NPC 坐席收到的用户消息，并回写回执。",
+        },
+    )
+    assert command_response.status_code == 200, command_response.text
+    command = command_response.json()["data"]
+    assert command["recipient_type"] == "runner"
+    assert command["recipient_id"] == runner_id
+    assert command["status"] == "pending"
+    assert command["agent_id"] == "ws-relay"
+    assert command["metadata"]["target_workstation_id"] == "ws-relay"
+
+    inbox_response = client.get(f"/api/runners/{runner_id}/inbox", headers={"X-Runner-Id": runner_id})
+    assert inbox_response.status_code == 200
+    inbox = inbox_response.json()["data"]
+    assert any(item["id"] == command["id"] for item in inbox)
+
+    ack_response = client.post(
+        f"/api/runners/{runner_id}/messages/{command['id']}/ack",
+        headers={"X-Runner-Id": runner_id},
+        json={"note": "执行电脑已接到这个 NPC 的派工。"},
+    )
+    assert ack_response.status_code == 200
+    assert ack_response.json()["data"]["receipt"]["agent_id"] == "ws-relay"
+
+    complete_response = client.post(
+        f"/api/runners/{runner_id}/messages/{command['id']}/complete",
+        headers={"X-Runner-Id": runner_id},
+        json={"result_status": "completed", "note": "执行电脑已完成最小回执。"},
+    )
+    assert complete_response.status_code == 200
+    assert complete_response.json()["data"]["receipt"]["agent_id"] == "ws-relay"
+
+
 def test_runner_relay_completion_preserves_structured_metadata() -> None:
     owner_token, project_id, runner_id, task_id = _setup_runner_project()
 
@@ -383,6 +425,41 @@ def test_project_member_can_queue_readonly_robotics_scan_but_not_generic_runner_
     )
     assert generic_response.status_code == 403
     assert generic_response.json()["error"]["code"] == "HUMAN_APPROVAL_REQUIRED"
+
+
+def test_project_maintainer_can_queue_generic_npc_runner_command() -> None:
+    owner_token, project_id, runner_id, _ = _setup_runner_project()
+    maintainer_user_id, maintainer_email = register_user(
+        client,
+        f"relay-maintainer-{uuid4().hex[:8]}@example.com",
+        "Relay Maintainer",
+    )
+    maintainer_token, _ = issue_session_token(client, maintainer_email)
+    add_member_response = client.post(
+        f"/api/projects/{project_id}/members",
+        headers=auth_headers(owner_token),
+        json={
+            "user_id": maintainer_user_id,
+            "role": "maintainer",
+            "status": "active",
+            "is_owner": False,
+        },
+    )
+    assert add_member_response.status_code == 200
+
+    command_response = client.post(
+        f"/api/collaboration/projects/{project_id}/runner-commands",
+        headers=auth_headers(maintainer_token),
+        json={
+            "workstation_id": "ws-relay",
+            "title": "维护者 NPC 派工",
+            "body": "维护者可以把 NPC 派工送到绑定电脑的 Runner 队列。",
+        },
+    )
+    assert command_response.status_code == 200, command_response.text
+    command = command_response.json()["data"]
+    assert command["recipient_id"] == runner_id
+    assert command["status"] == "pending"
 
 
 def test_collaboration_message_read_and_runner_type_require_protected_paths() -> None:
