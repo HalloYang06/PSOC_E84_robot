@@ -4249,13 +4249,13 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
               <span data-status={serviceHealth.status}>
                 {serviceHealth.status === "ok" ? "服务已连接" : serviceHealth.status === "checking" ? "检查中" : "服务异常"}
               </span>
-              <strong>平台连接</strong>
-              <p>前端 {serviceHealth.webUrl || "未知"} · API {serviceHealth.apiSeenUrl || serviceHealth.apiBaseUrl}</p>
+              <strong>平台状态</strong>
+              <p>{serviceHealth.status === "ok" ? "当前页面已连上云端协作服务" : "正在确认平台服务是否可用"}</p>
             </div>
             <dl>
               <div>
-                <dt>API PID</dt>
-                <dd>{serviceHealth.apiPid || "未确认"}</dd>
+                <dt>服务实例</dt>
+                <dd>{serviceHealth.apiPid ? "已确认" : "未确认"}</dd>
               </div>
               <div>
                 <dt>版本</dt>
@@ -4266,18 +4266,19 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                 <dd>{stats.onlineComputerCount}/{stats.computerCount} 台常驻接单</dd>
               </div>
               <div>
-                <dt>本机端口</dt>
+                <dt>本机接入</dt>
                 <dd>
                   {(serviceHealth.localServices || [])
                     .filter((item) => item.listening)
-                    .map((item) => item.port)
-                    .join(" / ") || "未探测"}
+                    .length
+                    ? "已检测"
+                    : "未检测"}
                 </dd>
               </div>
             </dl>
             <small>
               {serviceHealth.status === "ok"
-                ? "页面正在读取当前 API 实例；若 8010/8011 同时在线，优先确认前端配置指向哪个 API。"
+                ? "页面正在读取当前协作服务；如果状态异常，先确认云端和本机接入程序是否在线。"
                 : serviceHealth.message || "等待检测"}
             </small>
           </section>
