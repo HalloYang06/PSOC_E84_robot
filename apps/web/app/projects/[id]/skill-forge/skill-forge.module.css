@@ -11,6 +11,10 @@
   color: inherit;
 }
 
+.forgeMain {
+  padding-right: 0 !important;
+}
+
 .skillGrid {
   min-height: 0;
   flex: 1;

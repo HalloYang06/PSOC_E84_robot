@@ -891,7 +891,7 @@ export function SkillForgeClient({
           </ul>
         </aside>
 
-        <section className={workbenchStyles.main} data-mode={openResources.length > 0 ? "chat" : "setup"}>
+        <section className={`${workbenchStyles.main} ${styles.forgeMain}`} data-mode={openResources.length > 0 ? "chat" : "setup"}>
           {openResources.length ? (
             <div className={workbenchStyles.tileGrid} data-tile-count={openResources.length}>
               {openResources.map((resource) => {
