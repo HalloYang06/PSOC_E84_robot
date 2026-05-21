@@ -770,7 +770,7 @@ export function SkillForgeClient({
           {surfaceNotice ? <span className={workbenchStyles.kpi}>{userMessage(surfaceNotice)}</span> : null}
           <span className={workbenchStyles.kpi}>Skill {skills.length}</span>
           <span className={workbenchStyles.kpi}>草稿 {draftSkills.length}</span>
-          <span className={workbenchStyles.kpi}>绑定 {assignments.length}</span>
+          <span className={workbenchStyles.kpi}>自定义绑定 {assignments.length}</span>
           <span className={workbenchStyles.kpi}>已打开 {openResources.length}</span>
         </div>
       </header>
