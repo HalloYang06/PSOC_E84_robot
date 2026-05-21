@@ -8778,9 +8778,9 @@ export async function 启动Npc单次线程处理(projectId: string, workstation
           text(runnerData?.id, "") ? `队列消息：${text(runnerData?.id, "")}` : "",
           messageId ? `派单消息：${messageId}` : "",
           shouldUseDesktopRunnerDelivery
-            ? "目标电脑报告桌面线程可见；Runner 会在这台电脑上把派单送进绑定桌面线程。"
+            ? "目标电脑已接入；平台正在等待执行电脑把派单送进绑定桌面线程并确认可见。"
             : desktopVisible
-              ? "目标电脑报告桌面线程可见；Runner 接单后会继续同步过程回执。"
+              ? "目标电脑已接入；执行电脑接单后会继续同步过程回执。"
             : deliveryWarning || "目标电脑接单后会回写最小回执；如桌面线程未连接，平台会显示待收口状态。",
         ].filter(Boolean).join("\n"),
         sender_type: "agent",
@@ -8792,7 +8792,7 @@ export async function 启动Npc单次线程处理(projectId: string, workstation
           source_message_id: messageId,
           runner_command_id: text(runnerData?.id, "") || null,
           runner_id: text(runnerData?.recipient_id, "") || null,
-          delivery_label: shouldUseDesktopRunnerDelivery ? "桌面线程可见" : "执行电脑队列",
+          delivery_label: shouldUseDesktopRunnerDelivery ? "等待桌面确认" : "执行电脑队列",
           delivery_mode: shouldUseDesktopRunnerDelivery ? "codex_desktop_ui" : deliveryMode || null,
           desktop_visible_capability: desktopVisible,
         },
@@ -8802,7 +8802,7 @@ export async function 启动Npc单次线程处理(projectId: string, workstation
         launched: true,
         providerId,
         seatName,
-        deliveryLabel: shouldUseDesktopRunnerDelivery ? "桌面线程可见" : "执行电脑队列",
+        deliveryLabel: shouldUseDesktopRunnerDelivery ? "等待桌面确认" : "执行电脑队列",
         deliveryWarning,
         desktopVisible,
         launcher: shouldUseDesktopRunnerDelivery ? "runner-desktop-dispatch" : "runner-command",

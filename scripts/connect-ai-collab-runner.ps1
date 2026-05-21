@@ -344,35 +344,46 @@ function Invoke-RunnerInboxPoll {
         }
         $desktopDelivered = $false
         $desktopConfirmed = $false
+        $desktopUnconfirmed = $false
         try {
           $adapterJson = $adapterText | ConvertFrom-Json
           $executions = @($adapterJson.executions).Count
           $receipts = @($adapterJson.receipts).Count
-          $desktopDelivered = ($executions -gt 0) -or ($receipts -gt 0)
           foreach ($execution in @($adapterJson.executions)) {
             if ($execution.desktop_delivery_confirmed -eq $true) {
               $desktopConfirmed = $true
             }
+            if ($execution.desktop_delivery_unconfirmed -eq $true -or $execution.desktop_delivery_confirmed -eq $false) {
+              $desktopUnconfirmed = $true
+            }
+            if ($execution.ok -eq $true -and $execution.desktop_delivery_confirmed -eq $true) {
+              $desktopDelivered = $true
+            }
+          }
+          if ($desktopConfirmed) {
+            $desktopDelivered = $true
           }
         } catch {
-          $desktopDelivered = -not [string]::IsNullOrWhiteSpace($adapterText)
+          $desktopDelivered = $false
+          $desktopUnconfirmed = -not [string]::IsNullOrWhiteSpace($adapterText)
         }
         if ($desktopConfirmed) {
           $note = "Runner $RunnerName delivered this dispatch into the bound Codex Desktop thread and confirmed the thread received it."
-        } elseif ($desktopDelivered) {
-          $note = "Runner $RunnerName started Codex Desktop delivery on this computer. The platform is waiting for the desktop thread confirmation or final reply."
+        } elseif ($desktopUnconfirmed) {
+          $note = "Runner $RunnerName received this dispatch on the execution computer, but Codex Desktop has not confirmed that the bound thread visibly received it. Keep this item pending and retry desktop sync."
         } else {
           $note = "Runner $RunnerName ran desktop delivery, but no delivery evidence was returned yet. The platform will keep the item visible for retry."
         }
         $captureResult = [ordered]@{
-          result_status = "completed"
+          result_status = if ($desktopConfirmed) { "completed" } else { "failed" }
           note = $note
           result = @{
-            ok = $true
+            ok = $desktopConfirmed
             kind = "codex.desktop.dispatch"
             workstation_id = $targetWorkstationId
             message_id = $sourceMessageId
             desktop_delivery_confirmed = $desktopConfirmed
+            desktop_delivery_unconfirmed = (-not $desktopConfirmed)
           }
         }
       } catch {

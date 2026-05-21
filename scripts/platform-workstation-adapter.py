@@ -2831,6 +2831,11 @@ def main() -> int:
                         "message_id": message_id,
                         "ok": executor_result.get("ok"),
                         "returncode": executor_result.get("returncode"),
+                        "delivery_mode": executor_result.get("delivery_mode"),
+                        "desktop_visible": executor_result.get("desktop_visible"),
+                        "desktop_delivery_confirmed": executor_result.get("desktop_delivery_confirmed"),
+                        "desktop_delivery_unconfirmed": executor_result.get("desktop_delivery_unconfirmed"),
+                        "desktop_delivery_attempts": executor_result.get("desktop_delivery_attempts"),
                         "stdout_preview": str(executor_result.get("stdout") or "")[:500],
                         "stderr_preview": str(executor_result.get("stderr") or "")[:500],
                     }

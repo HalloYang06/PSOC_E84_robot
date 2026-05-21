@@ -238,6 +238,10 @@ function stripPlatformChatter(body: string, desktopVisible = true): string {
     .replace(/Local prompt file/gi, "本地任务说明")
     .replace(/Provider CLI/gi, "执行通道")
     .replace(/provider cli execution/gi, "执行通道运行")
+    .replace(
+      /\bRunner\s+([A-Za-z0-9._-]+)\s+received this dispatch on the execution computer, but Codex Desktop has not confirmed that the bound thread visibly received it\.[^\n]*/gi,
+      "执行电脑 $1 已收到派单，但桌面线程还没有确认可见；请保持桌面打开后重新同步。",
+    )
     .replace(/\bRunner\s+([A-Za-z0-9._-]+)\s+Runner\s+received platform dispatch:?/gi, "执行电脑 $1 已收到平台派单：")
     .replace(/\bRunner\s+([A-Za-z0-9._-]+)\s+received platform dispatch:?/gi, "执行电脑 $1 已收到平台派单：")
     .replace(/The computer connection is reachable;?\s*/gi, "电脑连接可用；")
@@ -299,6 +303,10 @@ function userFacingCollabText(value: unknown, fallback = "", desktopVisible = tr
     .replace(/Local prompt file/gi, "本地任务说明")
     .replace(/Provider CLI/gi, "执行通道")
     .replace(/provider cli execution/gi, "执行通道运行")
+    .replace(
+      /\bRunner\s+([A-Za-z0-9._-]+)\s+received this dispatch on the execution computer, but Codex Desktop has not confirmed that the bound thread visibly received it\.[^\n]*/gi,
+      "执行电脑 $1 已收到派单，但桌面线程还没有确认可见；请保持桌面打开后重新同步。",
+    )
     .replace(/\bRunner\s+([A-Za-z0-9._-]+)\s+Runner\s+received platform dispatch:?/gi, "执行电脑 $1 已收到平台派单：")
     .replace(/\bRunner\s+([A-Za-z0-9._-]+)\s+received platform dispatch:?/gi, "执行电脑 $1 已收到平台派单：")
     .replace(/The computer connection is reachable;?\s*/gi, "电脑连接可用；")
@@ -2928,7 +2936,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
         setSendNote(
           launchResult.launched
             ? launchResult.desktopVisible
-              ? `${launchResult.seatName || manualTargetName} 已收到投递，正在确认桌面线程 ✓`
+              ? `${launchResult.seatName || manualTargetName} 已进入执行电脑，正在等待桌面线程确认可见`
               : `${launchResult.seatName || manualTargetName} 已进入执行电脑队列；回执会回到对应 NPC 瓷砖`
             : `已派发，但投递失败：${launchResult.error || "请检查绑定线程、执行电脑或同步状态"}`,
         );
