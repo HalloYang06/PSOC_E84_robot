@@ -632,6 +632,118 @@ def test_server_desktop_autostart_can_be_enabled_explicitly(monkeypatch) -> None
     assert launch_mock.call_count == 1
 
 
+def test_codex_app_server_waits_for_bound_runner_by_default() -> None:
+    owner_token, owner_user_id = issue_session_token(client)
+    workstation_id = f"app-server-{uuid4().hex[:8]}"
+    project = create_project(
+        client,
+        owner_token,
+        name_prefix="Codex App Server Runner",
+        collaboration_config={
+            "thread_workstations": [
+                {
+                    "id": workstation_id,
+                    "name": "App Server Seat",
+                    "status": "active",
+                    "ai_provider_id": "codex",
+                    "metadata": {
+                        "automation_enabled": True,
+                        "automation_thread_id": "codex-session-app-server",
+                        "desktop_delivery_mode": "codex_app_server",
+                        "computer_node_id": "wjy-windows",
+                    },
+                }
+            ],
+        },
+    )
+    project_id = project["id"]
+    add_project_member(client, project_id, owner_token, owner_user_id, role="owner", is_owner=True)
+
+    with patch("app.modules.collaboration.service._launch_workstation_autostart") as launch_mock:
+        launch_mock.return_value = {
+            "launched": True,
+            "status": "launched",
+            "pid": 33334,
+            "stdout_path": "app-server.out.log",
+            "stderr_path": "app-server.err.log",
+        }
+        response = client.post(
+            "/api/collaboration/messages",
+            headers=auth_headers(owner_token),
+            json={
+                "project_id": project_id,
+                "message_type": "agent_command",
+                "title": "App-server dispatch should wait for bound runner",
+                "body": "Please reply from the bound computer.",
+                "recipient_type": "thread_workstation",
+                "recipient_id": workstation_id,
+                "status": "queued",
+            },
+        )
+    assert response.status_code == 200, response.text
+    metadata = response.json()["data"]["metadata"]
+    assert metadata["auto_start_requested"] is True
+    assert metadata["auto_start_delivery_mode"] == "codex_app_server"
+    assert metadata["auto_start_launch_status"] == "waiting_for_bound_runner"
+    assert "auto_start_launch_pid" not in metadata
+    assert launch_mock.call_count == 0
+
+
+def test_codex_app_server_server_autostart_can_be_enabled_explicitly(monkeypatch) -> None:
+    monkeypatch.setenv("AI_COLLAB_ENABLE_SERVER_CODEX_APP_SERVER_AUTOSTART", "1")
+    owner_token, owner_user_id = issue_session_token(client)
+    workstation_id = f"app-server-{uuid4().hex[:8]}"
+    project = create_project(
+        client,
+        owner_token,
+        name_prefix="Codex App Server API Autostart",
+        collaboration_config={
+            "thread_workstations": [
+                {
+                    "id": workstation_id,
+                    "name": "App Server Seat",
+                    "status": "active",
+                    "ai_provider_id": "codex",
+                    "metadata": {
+                        "automation_enabled": True,
+                        "automation_thread_id": "codex-session-app-server",
+                        "desktop_delivery_mode": "codex_app_server",
+                    },
+                }
+            ],
+        },
+    )
+    project_id = project["id"]
+    add_project_member(client, project_id, owner_token, owner_user_id, role="owner", is_owner=True)
+
+    with patch("app.modules.collaboration.service._launch_workstation_autostart") as launch_mock:
+        launch_mock.return_value = {
+            "launched": True,
+            "status": "launched",
+            "pid": 33335,
+            "stdout_path": "app-server-api.out.log",
+            "stderr_path": "app-server-api.err.log",
+        }
+        response = client.post(
+            "/api/collaboration/messages",
+            headers=auth_headers(owner_token),
+            json={
+                "project_id": project_id,
+                "message_type": "agent_command",
+                "title": "App-server dispatch may run on API when explicitly enabled",
+                "body": "Please reply from this server.",
+                "recipient_type": "thread_workstation",
+                "recipient_id": workstation_id,
+                "status": "queued",
+            },
+        )
+    assert response.status_code == 200, response.text
+    metadata = response.json()["data"]["metadata"]
+    assert metadata["auto_start_launch_status"] == "launched"
+    assert metadata["auto_start_launch_pid"] == 33335
+    assert launch_mock.call_count == 1
+
+
 def test_review_approve_autostarts_visible_workstation_command() -> None:
     owner_token, owner_user_id = issue_session_token(client)
     project = create_project(

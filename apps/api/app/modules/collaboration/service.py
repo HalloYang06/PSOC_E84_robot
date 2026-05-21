@@ -414,6 +414,22 @@ def _maybe_autostart_workstation_command(
         flag_modified(message, "extra_data")
         db.add(message)
         return
+    if delivery_mode == "codex_app_server" and os.environ.get("AI_COLLAB_ENABLE_SERVER_CODEX_APP_SERVER_AUTOSTART") != "1":
+        metadata.update(
+            {
+                "auto_start_attempted_at": datetime.now(timezone.utc).isoformat(),
+                "auto_start_attempt_count": attempt_count + 1,
+                "auto_start_trigger": trigger,
+                "auto_start_delivery_mode": delivery_mode,
+                "auto_start_launch_status": "waiting_for_bound_runner",
+                "auto_start_last_error": "codex app-server delivery is handled by the bound computer runner, not the API server",
+                "desktop_sync_retry_available": True,
+            }
+        )
+        message.extra_data = metadata
+        flag_modified(message, "extra_data")
+        db.add(message)
+        return
     can_single_shot_launch = automation_enabled or desktop_visible or bool(executor_command)
     if not can_single_shot_launch:
         metadata.update(
