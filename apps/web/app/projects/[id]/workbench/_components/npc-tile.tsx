@@ -238,10 +238,13 @@ function stripPlatformChatter(body: string, desktopVisible = true): string {
     .replace(/Local prompt file/gi, "本地任务说明")
     .replace(/Provider CLI/gi, "执行通道")
     .replace(/provider cli execution/gi, "执行通道运行")
+    .replace(/\bTask dispatch:/gi, "任务派发：")
+    .replace(/\bTask:/gi, "任务：")
     .replace(
       /\bRunner\s+([A-Za-z0-9._-]+)\s+received this dispatch on the execution computer, but Codex Desktop has not confirmed that the bound thread visibly received it\.[^\n]*/gi,
       "执行电脑 $1 已收到派单，但桌面线程还没有确认可见；请保持桌面打开后重新同步。",
     )
+    .replace(/执行电脑\s+([^。\n]{1,80}?)\s+执行电脑\s+received platform dispatch:?/gi, "执行电脑 $1 已收到平台派单：")
     .replace(/\bRunner\s+([A-Za-z0-9._-]+)\s+Runner\s+received platform dispatch:?/gi, "执行电脑 $1 已收到平台派单：")
     .replace(/\bRunner\s+([A-Za-z0-9._-]+)\s+received platform dispatch:?/gi, "执行电脑 $1 已收到平台派单：")
     .replace(/The computer connection is reachable;?\s*/gi, "电脑连接可用；")
@@ -303,10 +306,13 @@ function userFacingCollabText(value: unknown, fallback = "", desktopVisible = tr
     .replace(/Local prompt file/gi, "本地任务说明")
     .replace(/Provider CLI/gi, "执行通道")
     .replace(/provider cli execution/gi, "执行通道运行")
+    .replace(/\bTask dispatch:/gi, "任务派发：")
+    .replace(/\bTask:/gi, "任务：")
     .replace(
       /\bRunner\s+([A-Za-z0-9._-]+)\s+received this dispatch on the execution computer, but Codex Desktop has not confirmed that the bound thread visibly received it\.[^\n]*/gi,
       "执行电脑 $1 已收到派单，但桌面线程还没有确认可见；请保持桌面打开后重新同步。",
     )
+    .replace(/执行电脑\s+([^。\n]{1,80}?)\s+执行电脑\s+received platform dispatch:?/gi, "执行电脑 $1 已收到平台派单：")
     .replace(/\bRunner\s+([A-Za-z0-9._-]+)\s+Runner\s+received platform dispatch:?/gi, "执行电脑 $1 已收到平台派单：")
     .replace(/\bRunner\s+([A-Za-z0-9._-]+)\s+received platform dispatch:?/gi, "执行电脑 $1 已收到平台派单：")
     .replace(/The computer connection is reachable;?\s*/gi, "电脑连接可用；")
