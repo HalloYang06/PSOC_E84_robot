@@ -121,17 +121,31 @@ function skillRepoPathOf(value: AnyRecord) {
     .replace(/^\/+/, "");
 }
 
-function githubBlobHref(projectRepo: string, repoPath: string) {
+function githubRepoPathHref(projectRepo: string, repoPath: string) {
   const normalizedPath = text(repoPath, "").replace(/^\/+/, "");
   if (!normalizedPath) return "";
   const repo = text(projectRepo, "");
   if (!repo || repo === "待绑定 GitHub 仓库") return "";
+  const mode = normalizedPath.endsWith("/") ? "tree" : "blob";
   if (/^https:\/\/github\.com\/[^/]+\/[^/]+/i.test(repo)) {
     const cleanRepo = repo.replace(/\.git$/i, "").replace(/\/+$/, "");
-    return `${cleanRepo}/blob/main/${normalizedPath}`;
+    return `${cleanRepo}/${mode}/main/${normalizedPath}`;
   }
   const ssh = repo.match(/^git@github\.com:([^/]+\/[^/]+?)(?:\.git)?$/i);
-  if (ssh) return `https://github.com/${ssh[1].replace(/\.git$/i, "")}/blob/main/${normalizedPath}`;
+  if (ssh) return `https://github.com/${ssh[1].replace(/\.git$/i, "")}/${mode}/main/${normalizedPath}`;
+  return "";
+}
+
+function githubBlobHref(projectRepo: string, repoPath: string) {
+  return githubRepoPathHref(projectRepo, repoPath);
+}
+
+function githubRepoHref(projectRepo: string) {
+  const repo = text(projectRepo, "");
+  if (!repo || repo === "待绑定 GitHub 仓库") return "";
+  if (/^https:\/\/github\.com\/[^/]+\/[^/]+/i.test(repo)) return repo.replace(/\.git$/i, "").replace(/\/+$/, "");
+  const ssh = repo.match(/^git@github\.com:([^/]+\/[^/]+?)(?:\.git)?$/i);
+  if (ssh) return `https://github.com/${ssh[1].replace(/\.git$/i, "")}`;
   return "";
 }
 
@@ -586,10 +600,21 @@ function ForgeTile({
               <span>NPC 默认写入路径</span>
               <strong>平台从这里索引知识和协作证据</strong>
               <ul>
-                <li><b>知识</b><code>{deposits.knowledge}</code></li>
-                <li><b>Skill</b><code>{deposits.skill}</code></li>
-                <li><b>需求</b><code>{deposits.need}</code></li>
-                <li><b>任务回执</b><code>{deposits.task}</code></li>
+                {[
+                  ["知识", deposits.knowledge],
+                  ["Skill", deposits.skill],
+                  ["需求", deposits.need],
+                  ["任务回执", deposits.task],
+                ].map(([label, path]) => {
+                  const href = githubRepoPathHref(projectRepo, path);
+                  return (
+                    <li key={label}>
+                      <b>{label}</b>
+                      <code>{path}</code>
+                      {href ? <a href={href} target="_blank" rel="noreferrer">打开 GitHub</a> : null}
+                    </li>
+                  );
+                })}
               </ul>
               <p>这些都是 GitHub 仓库相对路径；本地电脑只负责执行和同步。</p>
               <form className={styles.inlineAction} action={索引Npc沉淀.bind(null, projectId, resource.id)}>
@@ -603,7 +628,11 @@ function ForgeTile({
         <section className={styles.skillGrid}>
           <article>
             <span>GitHub 事实源</span>
-            <strong>{projectRepo}</strong>
+            {githubRepoHref(projectRepo) ? (
+              <strong><a href={githubRepoHref(projectRepo)} target="_blank" rel="noreferrer">{projectRepo}</a></strong>
+            ) : (
+              <strong>{projectRepo}</strong>
+            )}
             <p>跨电脑协作只认 GitHub 仓库相对路径、提交、分支、PR 和平台证据；本地目录只是当前电脑工作副本。</p>
           </article>
           {gitMessages.map((message, index) => (

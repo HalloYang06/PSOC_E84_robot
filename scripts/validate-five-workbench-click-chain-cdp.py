@@ -230,6 +230,32 @@ def click_link(cdp: object, text: str, href_fragment: str = "") -> bool:
     return bool(result)
 
 
+def click_element_center(cdp: object, selector: str) -> bool:
+    state = cdp_eval(
+        cdp,
+        f"""
+        (() => {{
+          const el = document.querySelector({js(selector)});
+          if (!el) return {{ ok: false, reason: 'missing' }};
+          el.scrollIntoView({{ block: 'center', inline: 'nearest' }});
+          const rect = el.getBoundingClientRect();
+          return {{
+            ok: true,
+            x: rect.left + rect.width / 2,
+            y: rect.top + rect.height / 2,
+            text: el.textContent || '',
+          }};
+        }})()
+        """,
+    )
+    if not isinstance(state, dict) or not state.get("ok"):
+        return False
+    cdp.send("Input.dispatchMouseEvent", {"type": "mouseMoved", "x": state["x"], "y": state["y"]})
+    cdp.send("Input.dispatchMouseEvent", {"type": "mousePressed", "x": state["x"], "y": state["y"], "button": "left", "clickCount": 1})
+    cdp.send("Input.dispatchMouseEvent", {"type": "mouseReleased", "x": state["x"], "y": state["y"], "button": "left", "clickCount": 1})
+    return True
+
+
 def page_state(cdp: object) -> dict[str, Any]:
     value = cdp_eval(
         cdp,
@@ -343,22 +369,18 @@ def verify_desktop_sync_on_workbench(cdp: object, base_url: str, seats: list[str
     opened = cdp_eval(
         cdp,
         """
-        (async () => {
-          const openButtons = Array.from(document.querySelectorAll('a[title="打开瓷砖"], a[data-workbench-open-tile]'));
+        (() => {
           const visibleComposers = () => Array.from(document.querySelectorAll('textarea')).filter((node) => {
             const placeholder = node.getAttribute('placeholder') || '';
             const visible = !!(node.offsetWidth || node.offsetHeight || node.getClientRects().length);
             return visible && placeholder.includes('发指令');
           }).length;
-          if (visibleComposers() === 0 && openButtons.length) {
-            for (const button of openButtons) {
-              button.scrollIntoView({ block: 'center', inline: 'nearest' });
-              button.click();
-              await new Promise((resolve) => setTimeout(resolve, 250));
-              if (visibleComposers() > 0) break;
-            }
-          }
-          return { ok: visibleComposers() > 0, openButtons: openButtons.length, composers: visibleComposers(), href: location.href };
+          return {
+            ok: visibleComposers() > 0,
+            openButtons: document.querySelectorAll('a[title="打开瓷砖"], a[data-workbench-open-tile]').length,
+            composers: visibleComposers(),
+            href: location.href,
+          };
         })()
         """,
     )
@@ -367,8 +389,8 @@ def verify_desktop_sync_on_workbench(cdp: object, base_url: str, seats: list[str
         """
         (() => {
           const openButtons = Array.from(document.querySelectorAll('a[title="打开瓷砖"], a[data-workbench-open-tile]'));
-          const requested = new Set((new URLSearchParams(location.search).get('seats') || '').split(',').map((item) => item.trim()).filter(Boolean));
           const buttonSeats = openButtons.map((button) => button.getAttribute('data-workbench-open-tile') || '');
+          const requested = new Set((new URLSearchParams(location.search).get('seats') || '').split(',').map((item) => item.trim()).filter(Boolean));
           return {
             openButtons: openButtons.length,
             requestedSeats: Array.from(requested),
@@ -380,6 +402,41 @@ def verify_desktop_sync_on_workbench(cdp: object, base_url: str, seats: list[str
     )
     visible_capacity = visible_capacity if isinstance(visible_capacity, dict) else {}
     expected_tile_count = max(1, min(len(seats), int(visible_capacity.get("openButtons") or 0) or len(seats)))
+    if isinstance(opened, dict) and int(opened.get("composers") or 0) < expected_tile_count and int(opened.get("openButtons") or 0) > 0:
+        for _ in range(expected_tile_count):
+            current = cdp_eval(
+                cdp,
+                """
+                (() => Array.from(document.querySelectorAll('textarea')).filter((node) => {
+                  const placeholder = node.getAttribute('placeholder') || '';
+                  const visible = !!(node.offsetWidth || node.offsetHeight || node.getClientRects().length);
+                  return visible && placeholder.includes('发指令');
+                }).length)()
+                """,
+            )
+            if int(current or 0) >= expected_tile_count:
+                break
+            if not click_element_center(cdp, 'a[title="打开瓷砖"]'):
+                break
+            time.sleep(0.8)
+        opened = cdp_eval(
+            cdp,
+            """
+            (() => {
+              const visibleComposers = () => Array.from(document.querySelectorAll('textarea')).filter((node) => {
+                const placeholder = node.getAttribute('placeholder') || '';
+                const visible = !!(node.offsetWidth || node.offsetHeight || node.getClientRects().length);
+                return visible && placeholder.includes('发指令');
+              }).length;
+              return {
+                ok: visibleComposers() > 0,
+                openButtons: document.querySelectorAll('a[title="打开瓷砖"], a[data-workbench-open-tile]').length,
+                composers: visibleComposers(),
+                href: location.href,
+              };
+            })()
+            """,
+        )
     wait_for(
         cdp,
         """

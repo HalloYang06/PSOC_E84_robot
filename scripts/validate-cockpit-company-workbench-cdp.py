@@ -26,14 +26,14 @@ spec.loader.exec_module(cdp_helpers)
 
 SURFACES = [
     {
-        "key": "cockpit",
-        "path": "cockpit",
-        "markers": ["驾驶舱 / 今日决策", "待我处理", "电脑状态", "下一步建议"],
-    },
-    {
         "key": "company",
         "path": "company",
-        "markers": ["公司层 / 员工表", "工位列表", "NPC 员工表", "审核策略", "组织变更"],
+        "markers": ["公司层 / 运行态势图", "公司沙盘", "组织变更", "电脑健康"],
+    },
+    {
+        "key": "workbench",
+        "path": "workbench",
+        "markers": ["协同工作台", "项目资源索引", "派工验真"],
     },
 ]
 

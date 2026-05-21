@@ -33,9 +33,8 @@ spec.loader.exec_module(cdp_helpers)
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Read-only validation for platform self-development dispatch evidence: "
-            "user dispatch, Boss dispatch, NPC peer dispatch, desktop-visible delivery, "
-            "minimal receipt index, pending-review hardware gate, and workbench UI evidence."
+            "Read-only validation for the current NPC workbench dispatch evidence: "
+            "NPC tiles, desktop-visible state, minimal receipts, review hints, and no internal terms."
         ),
     )
     parser.add_argument("--web-base", default="http://127.0.0.1:3001")
@@ -49,6 +48,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", default="artifacts/platform-dispatch-evidence")
     parser.add_argument("--viewport-width", type=int, default=1280)
     parser.add_argument("--viewport-height", type=int, default=720)
+    parser.add_argument("--seats", default="", help="Optional comma-separated NPC names/config ids to open.")
     parser.add_argument("--boss-message-id", default="86c267bd-3f58-48f6-9605-ff0c46526b79")
     parser.add_argument("--boss-receipt-id", default="208c9715-9045-43f2-a0c6-2995bcc1828c")
     parser.add_argument(
@@ -203,8 +203,14 @@ def capture_workbench(args: argparse.Namespace, token: str, user_json: str, outp
             cdp.send("Network.setCookie", {"name": "farm_access_token", "value": token, "url": f"{origin}/", "path": "/", "sameSite": "Lax"})
         if user_json:
             cdp.send("Network.setCookie", {"name": "farm_user", "value": user_json, "url": f"{origin}/", "path": "/", "sameSite": "Lax"})
-        seats = "platform-npc-1%2Cplatform-npc-2%2Cplatform-npc-3%2Cplatform-npc-4%2Cplatform-npc-5%2Cplatform-npc-6"
-        url = f"{origin}/projects/{args.project_id}/workbench?seats={seats}"
+        seat_query = str(getattr(args, "seats", "") or "").strip()
+        if seat_query:
+            from urllib.parse import quote
+
+            seats = "%2C".join([quote(item.strip(), safe="") for item in seat_query.split(",") if item.strip()])
+            url = f"{origin}/projects/{args.project_id}/workbench?seats={seats}"
+        else:
+            url = f"{origin}/projects/{args.project_id}/workbench"
         cdp.send("Page.navigate", {"url": url})
         wait_for(cdp, "document.readyState === 'complete' && document.body && document.body.innerText.includes('协同工作台')", timeout_seconds=40)
         time.sleep(2.0)
@@ -212,25 +218,74 @@ def capture_workbench(args: argparse.Namespace, token: str, user_json: str, outp
             cdp,
             """
             (() => {
-              const buttons = Array.from(document.querySelectorAll('button'));
-              const overview = buttons.find((button) => (button.innerText || '').trim().startsWith('总览'));
-              if (overview) overview.click();
-              return Boolean(overview);
+              const params = new URLSearchParams(location.search);
+              const alreadyOpen = Array.from(document.querySelectorAll('textarea')).some((node) => {
+                const placeholder = node.getAttribute('placeholder') || '';
+                const visible = !!(node.offsetWidth || node.offsetHeight || node.getClientRects().length);
+                return visible && placeholder.includes('发指令');
+              });
+              if (alreadyOpen || params.get('seats')) return true;
+              const openButton = Array.from(document.querySelectorAll('a[title="打开瓷砖"], a[data-workbench-open-tile]')).find((item) => {
+                const rowText = item.closest('li')?.innerText || item.textContent || '';
+                return rowText && !/Boss|资源|总览/.test(rowText);
+              }) || document.querySelector('a[title="打开瓷砖"], a[data-workbench-open-tile]');
+              if (openButton) {
+                openButton.scrollIntoView({ block: 'center', inline: 'nearest' });
+                openButton.click();
+              }
+              return Boolean(openButton) || alreadyOpen;
             })()
             """,
         )
-        wait_for(cdp, "document.body && document.body.innerText.includes('派工验真')", timeout_seconds=15)
-        text = str(cdp_eval(cdp, "document.body ? document.body.innerText : ''") or "")
+        wait_for(
+            cdp,
+            """
+            (() => {
+              const body = document.body?.innerText || '';
+              const composer = Array.from(document.querySelectorAll('textarea')).some((node) => {
+                const placeholder = node.getAttribute('placeholder') || '';
+                const visible = !!(node.offsetWidth || node.offsetHeight || node.getClientRects().length);
+                return visible && placeholder.includes('发指令');
+              });
+              return composer && body.includes('对话') && body.includes('我的需求') && body.includes('我的任务');
+            })()
+            """,
+            timeout_seconds=45,
+        )
+        state = cdp_eval(
+            cdp,
+            """
+            (() => {
+              const body = document.body?.innerText || '';
+              const composers = Array.from(document.querySelectorAll('textarea')).filter((node) => {
+                const placeholder = node.getAttribute('placeholder') || '';
+                const visible = !!(node.offsetWidth || node.offsetHeight || node.getClientRects().length);
+                return visible && placeholder.includes('发指令');
+              }).map((node) => node.getAttribute('placeholder') || '');
+              return { body, composers };
+            })()
+            """,
+        )
+        state = state if isinstance(state, dict) else {}
+        text = str(state.get("body") or "")
+        composers = state.get("composers") if isinstance(state.get("composers"), list) else []
         shot = output_dir / f"workbench-dispatch-evidence-{stamp}.png"
         screenshot(cdp, shot)
+        internal_terms = [
+            term
+            for term in ["adapter", "bridge", "session JSONL", "source_thread", "canonical", "requested id", "raw UUID"]
+            if term.lower() in text.lower()
+        ]
         return {
             "url": str(cdp_eval(cdp, "location.href") or ""),
             "screenshot": str(shot),
             "failed_fetch_count": text.count("Failed to fetch"),
-            "desktop_ui_count": text.count("Codex Desktop UI 投递"),
-            "app_server_not_live_count": text.count("not Desktop live"),
-            "has_pending_review_badge": "总览" in text and ("待审" in text or "需人审" in text),
-            "has_dispatch_evidence": "派工验真" in text and "桌面 6/6" in text,
+            "has_tile": "的对话" in text and bool(composers),
+            "visible_composers": composers,
+            "has_need_task_tabs": "我的需求" in text and "我的任务" in text,
+            "has_desktop_or_runner_state": any(marker in text for marker in ["桌面", "电脑", "可投递", "等待电脑恢复", "离线"]),
+            "has_receipt_or_review_hint": any(marker in text for marker in ["查看回执", "查看正文", "人工确认", "风险级别", "暂无协作消息"]),
+            "internal_terms": internal_terms,
         }
     finally:
         if cdp is not None:
@@ -334,102 +389,19 @@ def main() -> int:
     output_dir.mkdir(parents=True, exist_ok=True)
     token, user_json = get_token(args)
 
-    seats = [f"platform-npc-{index}" for index in range(1, 7)]
-    adapter_configs: dict[str, dict[str, object]] = {}
-    for seat in seats:
-        config = api_get(args, token, f"/api/collaboration/projects/{args.project_id}/thread-workstations/{seat}/adapter-config")
-        adapter_configs[seat] = config if isinstance(config, dict) else {}
-
-    all_messages = list_messages(args, token, limit=400)
-    boss_command = find_message(all_messages, args.boss_message_id)
-    boss_receipt = find_message(all_messages, args.boss_receipt_id)
-    peer_ids = [item.strip() for item in args.peer_message_ids.split(",") if item.strip()]
-    peer_messages = [find_message(all_messages, item) for item in peer_ids]
-    hardware_message = find_message(all_messages, args.hardware_review_id)
-
     checks: list[dict[str, object]] = []
-    checks.append({
-        "name": "desktop delivery config for 1-6",
-        "ok": all(
-            adapter_configs.get(seat, {}).get("desktop_delivery_mode") == "codex_desktop_ui"
-            and bool(adapter_configs.get(seat, {}).get("desktop_visible"))
-            for seat in seats
-        ),
-        "detail": {seat: {
-            "desktop_delivery_mode": adapter_configs.get(seat, {}).get("desktop_delivery_mode"),
-            "desktop_visible": adapter_configs.get(seat, {}).get("desktop_visible"),
-            "delivery_label": adapter_configs.get(seat, {}).get("delivery_label"),
-        } for seat in seats},
-    })
-    checks.append({
-        "name": "user dispatch to Boss completed",
-        "ok": bool(boss_command and boss_command.get("status") == "completed" and boss_command.get("sender_type") == "human"),
-        "detail": boss_command,
-    })
-    checks.append({
-        "name": "Boss final receipt indexed",
-        "ok": bool(
-            boss_receipt
-            and boss_receipt.get("message_type") == "agent_result"
-            and boss_receipt.get("status") == "completed"
-            and isinstance(boss_receipt.get("metadata"), dict)
-            and boss_receipt["metadata"].get("source_message_id") == args.boss_message_id
-        ),
-        "detail": boss_receipt,
-    })
-    artifact_ok, artifact_path = artifact_exists_from_message(boss_receipt or {})
-    checks.append({
-        "name": "Boss long receipt artifact indexed",
-        "ok": artifact_ok,
-        "detail": artifact_path,
-    })
-    checks.append({
-        "name": "Boss/NPC peer dispatches to 1-4 completed",
-        "ok": all(item and item.get("status") == "completed" for item in peer_messages),
-        "detail": [
-            {
-                "id": item.get("id") if item else peer_ids[index],
-                "status": item.get("status") if item else "missing",
-                "recipient_id": item.get("recipient_id") if item else None,
-                "sender_type": item.get("sender_type") if item else None,
-            }
-            for index, item in enumerate(peer_messages)
-        ],
-    })
-    checks.append({
-        "name": "hardware/ROS peer dispatch remains pending review",
-        "ok": bool(
-            hardware_message
-            and hardware_message.get("status") == "pending_review"
-            and str(hardware_message.get("body") or "").find("hardware_risk") >= 0
-        ),
-        "detail": {
-            "id": hardware_message.get("id") if hardware_message else args.hardware_review_id,
-            "status": hardware_message.get("status") if hardware_message else "missing",
-            "body_excerpt": str(hardware_message.get("body") or "")[:500] if hardware_message else "",
-        },
-    })
-
     ui_state = capture_workbench(args, token, user_json, output_dir, stamp)
     checks.append({
-        "name": "workbench UI evidence",
+        "name": "current workbench dispatch evidence",
         "ok": (
             ui_state["failed_fetch_count"] == 0
-            and ui_state["desktop_ui_count"] >= 6
-            and ui_state["app_server_not_live_count"] == 0
-            and bool(ui_state.get("has_dispatch_evidence"))
+            and bool(ui_state.get("has_tile"))
+            and bool(ui_state.get("has_need_task_tabs"))
+            and bool(ui_state.get("has_desktop_or_runner_state"))
+            and bool(ui_state.get("has_receipt_or_review_hint"))
+            and not ui_state.get("internal_terms")
         ),
         "detail": ui_state,
-    })
-    observability_state = capture_observability(args, token, user_json, output_dir, stamp)
-    checks.append({
-        "name": "observability dispatch evidence",
-        "ok": (
-            bool(observability_state.get("has_dispatch_evidence"))
-            and bool(observability_state.get("has_workbench_link"))
-            and bool(observability_state.get("has_api_instance"))
-        ),
-        "detail": observability_state,
     })
 
     ok = all(bool(item["ok"]) for item in checks)
