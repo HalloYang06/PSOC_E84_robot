@@ -495,6 +495,7 @@ function seatNameByAuthoritativeRef(
 }
 
 function cleanActorFallback(value: string, fallback: string): string {
+  if (looksInternalIdentifier(value)) return fallback;
   const cleaned = userFacingCollabText(value, "").trim();
   if (!cleaned) return fallback;
   if (/^(发起|目标)\s*NPC$/i.test(cleaned)) return fallback;
