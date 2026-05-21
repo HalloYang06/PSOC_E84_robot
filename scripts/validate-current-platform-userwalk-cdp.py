@@ -267,7 +267,7 @@ def main() -> int:
         screenshot(cdp, shot)
         report["screenshots"].append(str(shot))
         report["surfaces"]["skill_forge"] = skill_final
-        assert_page(report, "skill_forge", skill_final, ["Skill 配置", "知识库配置", "Git 管理", "能力来源", "GitHub"])
+        assert_page(report, "skill_forge", skill_final, ["Skill 配置", "知识库配置", "Git 管理", "仓库位置", "GitHub"])
 
         report["verdict"] = "passed" if not report["failures"] else "failed"
         report_path = output_dir / f"current-platform-userwalk-report-{stamp}.json"
