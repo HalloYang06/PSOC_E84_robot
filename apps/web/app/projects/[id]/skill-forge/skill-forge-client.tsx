@@ -705,7 +705,7 @@ export function SkillForgeClient({
   }, [seats, workstations]);
   const knownResourceKeys = new Set(resources.map(resourceKey));
   const seededOpenIds = uniqueIds(initialOpenResourceIds.filter((id) => knownResourceKeys.has(id)));
-  const [openIds, setOpenIds] = useState<string[]>(seededOpenIds.length ? seededOpenIds : resources.slice(0, Math.min(2, resources.length)).map(resourceKey));
+  const [openIds, setOpenIds] = useState<string[]>(seededOpenIds);
   const openResources = uniqueIds(openIds).map((id) => resources.find((resource) => resourceKey(resource) === id)).filter(Boolean) as ForgeResource[];
   const draftSkills = skills.filter((item) => /draft|pending|review/i.test(text(item.draft_status ?? item.draftStatus ?? item.status, "")));
   const npcAuthored = skills.filter((item) => /npc|agent/i.test(text(item.source ?? item.created_by_type ?? item.author_type, "")));
