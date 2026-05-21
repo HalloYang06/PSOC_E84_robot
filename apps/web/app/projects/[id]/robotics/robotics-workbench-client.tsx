@@ -1042,10 +1042,7 @@ export function RoboticsWorkbenchClient({
   const needsLiveRefresh = terminalMessages.some((message) => {
     const type = text(message.message_type ?? message.messageType, "");
     const status = text(message.status, "");
-    return (
-      (type === "runner_command" || type === "runner_ack" || type === "robotics_capture_start")
-      && !["completed", "failed", "cancelled", "done"].includes(status)
-    );
+    return type === "runner_command" && ["pending", "queued", "acked", "in_progress", "running"].includes(status);
   }) || openWindows.some((window) => window.runnerReady && window.statusLabel.includes("采集") || window.statusLabel.includes("排队"));
 
   useEffect(() => {

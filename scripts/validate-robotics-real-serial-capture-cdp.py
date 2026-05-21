@@ -183,6 +183,10 @@ def main() -> int:
         if not isinstance(created, dict) or not created.get("ok"):
             report["failures"].append("create debug window failed")
             raise RuntimeError(f"create failed: {created}")
+        wait_for(cdp, f"document.readyState === 'complete' && document.body.innerText.includes({js(window_name)})", timeout_seconds=30)
+        open_tile = f"{web_base}/projects/{quote(args.project_id, safe='')}/robotics?windows={quote('wjy-windows:serial:COM30', safe='')}"
+        report["open_tile"] = open_tile
+        cdp.send("Page.navigate", {"url": open_tile})
         wait_for(cdp, f"document.readyState === 'complete' && document.body.innerText.includes({js(window_name)}) && document.body.innerText.includes('开始采集')", timeout_seconds=30)
         screenshot(cdp, output_dir / f"real-serial-created-{stamp}.png")
 
@@ -264,18 +268,22 @@ def main() -> int:
         if not isinstance(terminal_state, dict) or int(terminal_state.get("sampleCount") or 0) <= 0:
             report["failures"].append("serial capture did not return non-empty samples")
 
-        cdp_eval(
+        dataset_clicked = cdp_eval(
             cdp,
             """
             (() => {
-              const button = Array.from(document.querySelectorAll('button')).find((item) => (item.innerText || '').includes('数据标注'));
+              const button = Array.from(document.querySelectorAll('button')).find((item) => (item.innerText || '').trim().startsWith('数据标注'));
               if (!button) return false;
               button.click();
               return true;
             })()
             """,
         )
-        wait_for(cdp, "document.body.innerText.includes('采集片段') && document.body.innerText.includes('导出标注数据')", timeout_seconds=20)
+        report["dataset_clicked"] = dataset_clicked
+        if not dataset_clicked:
+            report["failures"].append("dataset tab button unavailable")
+            raise RuntimeError("dataset tab button unavailable")
+        wait_for(cdp, "document.body.innerText.includes('人工确认与导出') && document.body.innerText.includes('导出格式') && document.body.innerText.includes('导出标注数据')", timeout_seconds=20)
         dataset_state = cdp_eval(
             cdp,
             """
@@ -318,7 +326,7 @@ def main() -> int:
         if not export_clicked:
             report["failures"].append("dataset export button unavailable")
         else:
-            wait_for(cdp, "document.readyState === 'complete' && (document.body.innerText.includes('标注数据导出') || document.body.innerText.includes('下载数据'))", timeout_seconds=30)
+            wait_for(cdp, "document.readyState === 'complete' && (document.body.innerText.includes('标注数据导出') || document.body.innerText.includes('下载数据') || document.body.innerText.includes('项目清单'))", timeout_seconds=30)
             screenshot(cdp, output_dir / f"real-serial-dataset-{stamp}.png")
             export_href = cdp_eval(
                 cdp,
