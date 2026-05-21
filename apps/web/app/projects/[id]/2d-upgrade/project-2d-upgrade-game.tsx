@@ -573,9 +573,21 @@ const PANEL_ACTIONS: Record<ModuleTab, PanelAction[]> = {
   ],
 };
 
+function cleanFeedCopy(value: unknown, fallback = "暂无可展示条目") {
+  const raw = String(value ?? "").trim();
+  if (!raw) return fallback;
+  return raw
+    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, "平台记录")
+    .replace(/\bRequirement\b/gi, "需求")
+    .replace(/\bTaskDispatch\b/gi, "派发记录")
+    .replace(/\brunner\s+ack\b/gi, "接单回执")
+    .replace(/\badapter\b/gi, "接入程序")
+    .replace(/\bbridge\b/gi, "同步通道");
+}
+
 function itemTitle(item?: FeedItem) {
   if (!item) return "暂无可展示条目";
-  return item.title || item.name || item.type || item.body || item.id;
+  return cleanFeedCopy(item.title || item.name || item.type || item.body || "", "平台记录");
 }
 
 function clampPercent(value: number, min: number, max: number) {
@@ -584,7 +596,7 @@ function clampPercent(value: number, min: number, max: number) {
 
 function itemBody(item?: FeedItem) {
   if (!item) return "等待平台下一步协作状态。";
-  return item.body || item.status || "暂无详细说明";
+  return cleanFeedCopy(item.body || item.status || "", "暂无详细说明");
 }
 
 function uniqueText(values: unknown[]) {
