@@ -1290,7 +1290,7 @@ function buildConversationCollabCard(
       { label: "对话", status: "当前卡片" },
       { label: "能力", status: skills.length ? `${skills.length} 个` : "已绑定" },
       { label: "知识", status: knowledge.length ? `${knowledge.length} 条` : "项目默认" },
-      { label: "验收", status: isResult ? "final" : "等待" },
+      { label: "验收", status: isResult ? "最终结果" : "等待" },
     ],
   };
 }
