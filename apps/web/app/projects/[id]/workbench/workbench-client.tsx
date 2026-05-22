@@ -1446,6 +1446,7 @@ export function WorkbenchClient({
                             <small className={styles.npcMeta}>
                               <span className={styles.dot} title="占用状态：S5 后接入" />
                               {seat.providerLabel || "未绑定 provider"}
+                              {seat.deliveryLabel ? ` · ${seat.deliveryLabel}` : ""}
                               {seat.automationEnabled ? " · 自动化已开" : ""}
                             </small>
                           </div>
@@ -1898,10 +1899,10 @@ export function WorkbenchClient({
                           data-open={openIds.includes(seat.id) ? "1" : undefined}
                           data-missing={seat.threadId ? undefined : "1"}
                           onClick={() => toggleOpen(seat.id)}
-                          title={`${seat.name} · ${seat.threadKind || "桌面线程"} · ${seat.threadId ? "已绑定" : "未登记真实线程"}`}
+                          title={`${seat.name} · ${seat.deliveryLabel || seat.threadKind || "桌面线程"} · ${seat.threadId ? "已绑定" : "未登记真实线程"}`}
                         >
                           <span>{seat.name}</span>
-                          <small>{seat.threadId ? (seat.threadKind || "桌面线程") : "未登记"}</small>
+                          <small>{seat.threadId ? (seat.deliveryLabel || seat.threadKind || "桌面线程") : "未登记"}</small>
                         </button>
                       ))}
                     </div>
