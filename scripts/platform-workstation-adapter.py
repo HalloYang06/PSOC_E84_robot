@@ -3296,6 +3296,38 @@ def main() -> int:
                                 "平台保持等待，不使用快捷键打断用户。",
                                 flush=True,
                             )
+                        if not desktop_seen:
+                            try:
+                                pending_receipt = _post_workstation_progress(
+                                    base=base,
+                                    project_id=args.project_id,
+                                    workstation_id=args.workstation_id,
+                                    message_id=message_id,
+                                    headers=headers,
+                                    note=(
+                                        "已创建桌面版后台自动化请求，但桌面线程暂未确认接收。"
+                                        "平台会保持待收口，并在过期后自动暂停这次单次请求，避免重复执行。"
+                                    ),
+                                    state="awaiting_desktop_pickup",
+                                    metadata={
+                                        "delivery_mode": "codex_desktop_ui",
+                                        "desktop_visible": True,
+                                        "desktop_delivery_confirmed": False,
+                                        "desktop_delivery_pending": True,
+                                        "desktop_delivery_method": executor_result.get("desktop_delivery_method"),
+                                        "desktop_automation_id": executor_result.get("desktop_automation_id"),
+                                        "desktop_automation_expires_at": executor_result.get(
+                                            "desktop_automation_expires_at"
+                                        ),
+                                        "desktop_thread_url": executor_result.get("desktop_thread_url"),
+                                        "thread_id": executor_result.get("thread_id"),
+                                        "desktop_sync_retry_available": True,
+                                    },
+                                )
+                                receipts.append(pending_receipt)
+                            except Exception as exc:
+                                if args.watch:
+                                    print(f"[桌面自动化] 写入等待接收进度失败：{exc}", flush=True)
                     else:
                         desktop_seen = executor_result.get("desktop_seen")
                     desktop_reply = None
