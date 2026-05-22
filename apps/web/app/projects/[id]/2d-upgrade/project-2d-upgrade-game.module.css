@@ -2015,6 +2015,22 @@
     width: calc(100vw - 20px);
   }
 
+  .statusStrip {
+    left: 10px;
+    right: 10px;
+    bottom: 12px;
+    width: auto;
+  }
+
+  .statusStrip article {
+    min-height: 0;
+    padding: 12px;
+  }
+
+  .statusStrip strong {
+    font-size: 16px;
+  }
+
   .moduleDock {
     top: auto;
     right: 10px;
