@@ -1616,6 +1616,34 @@ def _run_codex_desktop_automation_turn(
     }
 
 
+def _pause_codex_desktop_dispatch_automation(message_id: str | None, *, automation_id: str | None = None) -> bool:
+    resolved_id = str(automation_id or "").strip()
+    if not resolved_id and str(message_id or "").strip():
+        resolved_id = f"{CODEX_DESKTOP_AUTOMATION_PREFIX}-{_safe_automation_slug(str(message_id))}"
+    if not resolved_id:
+        return False
+    automation_path = _codex_automations_root() / resolved_id / "automation.toml"
+    if not automation_path.exists():
+        return False
+    try:
+        contents = automation_path.read_text(encoding="utf-8", errors="replace")
+        if re.search(r'^\s*status\s*=\s*"PAUSED"\s*$', contents, flags=re.MULTILINE):
+            return True
+        if re.search(r'^\s*status\s*=', contents, flags=re.MULTILINE):
+            contents = re.sub(r'^\s*status\s*=.*$', 'status = "PAUSED"', contents, flags=re.MULTILINE)
+        else:
+            contents += '\nstatus = "PAUSED"\n'
+        now_ms = int(time.time() * 1000)
+        if re.search(r"^\s*updated_at\s*=", contents, flags=re.MULTILINE):
+            contents = re.sub(r"^\s*updated_at\s*=.*$", f"updated_at = {now_ms}", contents, flags=re.MULTILINE)
+        else:
+            contents += f"\nupdated_at = {now_ms}\n"
+        automation_path.write_text(contents, encoding="utf-8")
+        return True
+    except Exception:
+        return False
+
+
 def _jsonrpc_send(proc: subprocess.Popen[str], payload: dict[str, Any]) -> None:
     if proc.stdin is None:
         raise RuntimeError("codex app-server stdin is not available")
@@ -1839,6 +1867,41 @@ def run_executor(
             model=model,
         )
     if template == CODEX_DESKTOP_UI_EXECUTOR:
+        desktop_policy = str(os.environ.get("AI_COLLAB_CODEX_DESKTOP_DELIVERY_POLICY") or "interrupt").strip().lower()
+        if desktop_policy not in {"interrupt", "automation", "background"}:
+            desktop_policy = "interrupt"
+        if desktop_policy == "interrupt":
+            ui_result = _run_codex_desktop_ui_turn(
+                prompt_text=prompt_text,
+                session_id=session_id,
+                message_id=message_id,
+                timeout_seconds=timeout_seconds,
+            )
+            ui_note = str(ui_result.get("note") or "").strip()
+            if ui_result.get("ok"):
+                return {
+                    **ui_result,
+                    "desktop_delivery_method": "codex_desktop_interrupt",
+                    "note": ui_note
+                    or (
+                        "已抢占式送入绑定 Codex Desktop 线程；平台会等待桌面线程最终回复。"
+                    ),
+                }
+            return {
+                **ui_result,
+                "ok": False,
+                "recoverable": bool(ui_result.get("recoverable", True)),
+                "desktop_delivery_method": "codex_desktop_interrupt",
+                "note": ui_note
+                or (
+                    "桌面线程抢占式引导未确认成功；平台不能把这次派单冒充为已引导。"
+                    "请在工作台重新同步，或确认桌面线程状态后再发。"
+                ),
+                "delivery_mode": "codex_desktop_ui_required_failed",
+                "desktop_visible": bool(ui_result.get("desktop_visible", False)),
+                "desktop_delivery_confirmed": False,
+            }
+
         automation_result = _run_codex_desktop_automation_turn(
             prompt_text=prompt_text,
             session_id=session_id,
@@ -1847,6 +1910,8 @@ def run_executor(
             workstation_id=workstation_id,
         )
         if automation_result.get("ok"):
+            return automation_result
+        if desktop_policy == "automation":
             return automation_result
 
         app_server_result = _run_codex_app_server_turn(
@@ -2787,6 +2852,7 @@ def main() -> int:
             desktop_seen = _codex_desktop_prompt_seen(session_id=resolved_session_id, message_id=message_id)
             if not desktop_seen:
                 continue
+            _pause_codex_desktop_dispatch_automation(message_id)
             desktop_reply = _find_codex_desktop_reply(session_id=resolved_session_id, message_id=message_id)
             final_note = str((desktop_reply or {}).get("text") or "").strip()
             if not final_note:
@@ -3123,11 +3189,35 @@ def main() -> int:
                     except Exception as exc:
                         if args.watch:
                             print(f"[桌面投递] 写入 progress 失败：{exc}", flush=True)
-                    desktop_reply = _wait_for_codex_desktop_reply(
-                        session_id=resolved_session_id,
-                        message_id=message_id,
-                        timeout_seconds=min(max(resolved_timeout, 1), 1800),
-                    )
+                    desktop_seen = None
+                    if executor_result.get("desktop_delivery_method") == "codex_desktop_automation":
+                        desktop_seen = _wait_for_codex_desktop_prompt_seen(
+                            session_id=resolved_session_id,
+                            message_id=message_id,
+                            timeout_seconds=min(max(resolved_timeout, 1), 90),
+                        )
+                        if desktop_seen:
+                            _pause_codex_desktop_dispatch_automation(
+                                message_id,
+                                automation_id=str(executor_result.get("desktop_automation_id") or ""),
+                            )
+                            if args.watch:
+                                print("[桌面自动化] 已检测到桌面线程接收本次派单，并已暂停单次心跳。", flush=True)
+                        elif args.watch:
+                            print(
+                                "[桌面自动化] 已创建单次心跳，但桌面线程暂未接收；"
+                                "平台保持等待，不使用快捷键打断用户。",
+                                flush=True,
+                            )
+                    else:
+                        desktop_seen = executor_result.get("desktop_seen")
+                    desktop_reply = None
+                    if desktop_seen:
+                        desktop_reply = _wait_for_codex_desktop_reply(
+                            session_id=resolved_session_id,
+                            message_id=message_id,
+                            timeout_seconds=min(max(resolved_timeout, 1), 1800),
+                        )
                     if desktop_reply:
                         final_note = str(desktop_reply.get("text") or "").strip()
                         if args.watch:
@@ -3135,7 +3225,7 @@ def main() -> int:
                                 f"[桌面回执同步] 已读取 Codex Desktop 回复，长度={len(final_note)}",
                                 flush=True,
                             )
-                    elif args.watch:
+                    elif args.watch and desktop_seen:
                         print(
                             "[桌面回执同步] 已完成桌面投递，但等待 Desktop 最终回复超时；"
                             "平台保留 in_progress，稍后可再次运行 adapter 同步。",

@@ -108,15 +108,16 @@ def test_desktop_ui_unconfirmed_stays_recoverable() -> None:
 
     assert result["ok"] is False
     assert result["recoverable"] is True
-    assert result["delivery_mode"] == "codex_desktop_ui"
+    assert result["delivery_mode"] == "codex_desktop_ui_required_failed"
     assert result["desktop_visible"] is True
     assert result["desktop_delivery_confirmed"] is False
     assert result["desktop_delivery_unconfirmed"] is True
-    assert "required_failed" not in str(result)
+    assert result["desktop_delivery_method"] == "codex_desktop_interrupt"
+    assert "required_failed" in str(result)
     assert "session JSONL" not in str(result.get("note") or "")
 
 
-def test_desktop_executor_prefers_desktop_automation_without_foreground_or_app_server() -> None:
+def test_desktop_executor_interrupts_desktop_by_default_without_app_server() -> None:
     adapter = load_adapter()
     with TemporaryDirectory() as tmp:
         command_path = Path(tmp) / "command.md"
@@ -132,24 +133,41 @@ def test_desktop_executor_prefers_desktop_automation_without_foreground_or_app_s
             ),
             encoding="utf-8",
         )
-        calls = {"app_server": 0, "desktop_ui": 0}
+        calls = {"app_server": 0, "desktop_ui": 0, "automation": 0}
         codex_home = Path(tmp) / ".codex"
 
         def fake_app_server_turn(**kwargs):
             calls["app_server"] += 1
-            raise AssertionError("desktop-visible delivery should use Codex Desktop automation before app-server")
+            raise AssertionError("desktop-visible interrupt delivery should not use app-server")
 
         def fake_desktop_turn(**kwargs):
             calls["desktop_ui"] += 1
-            raise AssertionError("foreground desktop delivery should not run when automation delivery succeeds")
+            return {
+                "ok": True,
+                "returncode": 0,
+                "stdout": "sent",
+                "stderr": "",
+                "note": "已把这条平台派单发送到绑定的 Codex Desktop 线程。",
+                "delivery_mode": "codex_desktop_ui",
+                "desktop_visible": True,
+                "desktop_delivery_confirmed": True,
+                "thread_id": kwargs.get("session_id"),
+                "desktop_thread_url": "codex://threads/00000000-0000-0000-0000-000000000000",
+            }
+
+        def fake_automation_turn(**kwargs):
+            calls["automation"] += 1
+            raise AssertionError("interrupt delivery should not use heartbeat automation first")
 
         original_app_server = adapter._run_codex_app_server_turn
         original_desktop = adapter._run_codex_desktop_ui_turn
+        original_automation = adapter._run_codex_desktop_automation_turn
         original_home = os.environ.get("CODEX_HOME")
         try:
             os.environ["CODEX_HOME"] = str(codex_home)
             adapter._run_codex_app_server_turn = fake_app_server_turn
             adapter._run_codex_desktop_ui_turn = fake_desktop_turn
+            adapter._run_codex_desktop_automation_turn = fake_automation_turn
             result = adapter.run_executor(
                 template=adapter.CODEX_DESKTOP_UI_EXECUTOR,
                 command_path=command_path,
@@ -162,12 +180,10 @@ def test_desktop_executor_prefers_desktop_automation_without_foreground_or_app_s
                 cwd=str(ROOT),
                 timeout_seconds=5,
             )
-            automation_path = Path(result["desktop_automation_path"])
-            assert automation_path.exists()
-            automation_contents = automation_path.read_text(encoding="utf-8")
         finally:
             adapter._run_codex_app_server_turn = original_app_server
             adapter._run_codex_desktop_ui_turn = original_desktop
+            adapter._run_codex_desktop_automation_turn = original_automation
             if original_home is None:
                 os.environ.pop("CODEX_HOME", None)
             else:
@@ -177,16 +193,42 @@ def test_desktop_executor_prefers_desktop_automation_without_foreground_or_app_s
     assert result["delivery_mode"] == "codex_desktop_ui"
     assert result["desktop_visible"] is True
     assert result["desktop_delivery_confirmed"] is True
+    assert result["desktop_delivery_method"] == "codex_desktop_interrupt"
+    assert calls == {"app_server": 0, "desktop_ui": 1, "automation": 0}
+
+
+def test_desktop_automation_turn_writes_heartbeat_file() -> None:
+    adapter = load_adapter()
+    with TemporaryDirectory() as tmp:
+        codex_home = Path(tmp) / ".codex"
+        original_home = os.environ.get("CODEX_HOME")
+        try:
+            os.environ["CODEX_HOME"] = str(codex_home)
+            result = adapter._run_codex_desktop_automation_turn(
+                prompt_text="# 平台派单\n\n- message_id: `msg-app-server`\n",
+                session_id="codex-session-00000000-0000-0000-0000-000000000000",
+                message_id="msg-app-server",
+                project_id="proj_ai_collab",
+                workstation_id="platform-npc-2",
+            )
+            automation_path = Path(result["desktop_automation_path"])
+            assert automation_path.exists()
+            automation_contents = automation_path.read_text(encoding="utf-8")
+        finally:
+            if original_home is None:
+                os.environ.pop("CODEX_HOME", None)
+            else:
+                os.environ["CODEX_HOME"] = original_home
+
+    assert result["ok"] is True
     assert result["desktop_delivery_method"] == "codex_desktop_automation"
-    assert "不会抢占用户当前窗口或剪贴板" in result["note"]
     assert 'kind = "heartbeat"' in automation_contents
     assert 'status = "ACTIVE"' in automation_contents
     assert 'target_thread_id = "00000000-0000-0000-0000-000000000000"' in automation_contents
     assert "message_id: `msg-app-server`" in automation_contents
-    assert calls == {"app_server": 0, "desktop_ui": 0}
 
 
-def test_desktop_executor_does_not_sendkeys_when_app_server_fails_by_default() -> None:
+def test_desktop_executor_can_use_non_interrupting_automation_policy() -> None:
     adapter = load_adapter()
     with TemporaryDirectory() as tmp:
         command_path = Path(tmp) / "command.md"
@@ -226,7 +268,9 @@ def test_desktop_executor_does_not_sendkeys_when_app_server_fails_by_default() -
         original_desktop = adapter._run_codex_desktop_ui_turn
         original_automation = adapter._run_codex_desktop_automation_turn
         original_env = os.environ.get("AI_COLLAB_ALLOW_CODEX_UI_SENDKEYS_FALLBACK")
+        original_policy = os.environ.get("AI_COLLAB_CODEX_DESKTOP_DELIVERY_POLICY")
         os.environ.pop("AI_COLLAB_ALLOW_CODEX_UI_SENDKEYS_FALLBACK", None)
+        os.environ["AI_COLLAB_CODEX_DESKTOP_DELIVERY_POLICY"] = "automation"
         try:
             adapter._run_codex_app_server_turn = fake_app_server_turn
             adapter._run_codex_desktop_ui_turn = fake_desktop_turn
@@ -249,14 +293,17 @@ def test_desktop_executor_does_not_sendkeys_when_app_server_fails_by_default() -
             adapter._run_codex_desktop_automation_turn = original_automation
             if original_env is not None:
                 os.environ["AI_COLLAB_ALLOW_CODEX_UI_SENDKEYS_FALLBACK"] = original_env
+            if original_policy is None:
+                os.environ.pop("AI_COLLAB_CODEX_DESKTOP_DELIVERY_POLICY", None)
+            else:
+                os.environ["AI_COLLAB_CODEX_DESKTOP_DELIVERY_POLICY"] = original_policy
 
     assert result["ok"] is False
     assert result["recoverable"] is True
     assert result["desktop_delivery_confirmed"] is False
-    assert result["delivery_mode"] == "codex_app_server"
+    assert result["delivery_mode"] == "codex_desktop_ui"
     assert result["desktop_visible"] is False
-    assert result["desktop_delivery_method"] == "codex_app_server_thread_resume"
-    assert "没有使用剪贴板或快捷键兜底" in result["note"]
+    assert result["desktop_delivery_method"] == "codex_desktop_automation"
     assert calls == {"desktop_ui": 0}
 
 
@@ -396,12 +443,41 @@ def test_desktop_retry_dedupe_key_changes_with_retry_count() -> None:
     assert adapter._desktop_retry_dedupe_key(command) == "msg-retryable:desktop-retry:2"
 
 
+def test_desktop_dispatch_automation_can_be_paused_after_prompt_seen() -> None:
+    adapter = load_adapter()
+    with TemporaryDirectory() as tmp:
+        original_home = os.environ.get("CODEX_HOME")
+        os.environ["CODEX_HOME"] = str(Path(tmp) / ".codex")
+        try:
+            result = adapter._run_codex_desktop_automation_turn(
+                prompt_text="message_id: `msg-pause`\n请只回复 ok。",
+                session_id="codex-session-00000000-0000-0000-0000-000000000000",
+                message_id="msg-pause",
+                project_id="proj_ai_collab",
+                workstation_id="platform-npc-5",
+            )
+            assert result["ok"] is True
+            assert adapter._pause_codex_desktop_dispatch_automation(
+                "msg-pause",
+                automation_id=result["desktop_automation_id"],
+            )
+            contents = Path(result["desktop_automation_path"]).read_text(encoding="utf-8")
+            assert 'status = "PAUSED"' in contents
+            assert 'status = "ACTIVE"' not in contents
+        finally:
+            if original_home is None:
+                os.environ.pop("CODEX_HOME", None)
+            else:
+                os.environ["CODEX_HOME"] = original_home
+
+
 if __name__ == "__main__":
     test_desktop_ui_unconfirmed_stays_recoverable()
-    test_desktop_executor_prefers_desktop_automation_without_foreground_or_app_server()
-    test_desktop_executor_does_not_sendkeys_when_app_server_fails_by_default()
+    test_desktop_executor_interrupts_desktop_by_default_without_app_server()
+    test_desktop_executor_can_use_non_interrupting_automation_policy()
     test_desktop_ui_delivery_exception_stays_recoverable()
     test_desktop_ui_auto_retries_until_prompt_is_confirmed()
     test_desktop_ui_focus_loss_auto_retries_until_prompt_is_confirmed()
     test_desktop_retry_dedupe_key_changes_with_retry_count()
+    test_desktop_dispatch_automation_can_be_paused_after_prompt_seen()
     print("desktop delivery unconfirmed recoverable: ok")
