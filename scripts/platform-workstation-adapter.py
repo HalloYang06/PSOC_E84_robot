@@ -45,6 +45,7 @@ CODEX_APP_SERVER_EXECUTOR = "__codex_app_server_turn__"
 CODEX_DESKTOP_UI_EXECUTOR = "__codex_desktop_ui_turn__"
 CODEX_DESKTOP_UI_LOCK_PATH = Path(tempfile.gettempdir()) / "ai-collab-codex-desktop-ui-delivery.lock"
 CODEX_DESKTOP_UI_MAX_DELIVERY_ATTEMPTS = 8
+CODEX_DESKTOP_AUTOMATION_PREFIX = "ai-collab-dispatch"
 
 
 def _adapter_config_url(base: str, project_id: str, workstation_id: str) -> str:
@@ -909,6 +910,19 @@ def _codex_sessions_root() -> Path:
     return Path(os.environ.get("CODEX_HOME") or (Path.home() / ".codex")) / "sessions"
 
 
+def _codex_automations_root() -> Path:
+    return Path(os.environ.get("CODEX_HOME") or (Path.home() / ".codex")) / "automations"
+
+
+def _toml_escape(value: str) -> str:
+    return value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+
+
+def _safe_automation_slug(value: str, fallback: str = "dispatch") -> str:
+    slug = re.sub(r"[^a-zA-Z0-9_-]+", "-", str(value or "").strip()).strip("-").lower()
+    return slug[:80] or fallback
+
+
 def _find_codex_session_file(session_id: str | None) -> Path | None:
     thread_id = _strip_session_prefix(session_id, "codex")
     if not thread_id:
@@ -1497,6 +1511,111 @@ Try-SendPlatformPrompt -Text $PromptText
     }
 
 
+def _run_codex_desktop_automation_turn(
+    *,
+    prompt_text: str,
+    session_id: str | None,
+    message_id: str,
+    project_id: str,
+    workstation_id: str,
+) -> dict[str, Any]:
+    thread_id = _strip_session_prefix(session_id, "codex")
+    if not thread_id:
+        return {
+            "ok": False,
+            "returncode": None,
+            "stdout": "",
+            "stderr": "Codex Desktop automation delivery requires a bound Codex thread id.",
+            "note": "桌面自动化投递失败：这个 NPC 还没有绑定 Codex 桌面线程。",
+            "delivery_mode": "codex_desktop_ui",
+            "desktop_visible": False,
+            "desktop_delivery_confirmed": False,
+            "desktop_delivery_method": "codex_desktop_automation",
+        }
+
+    automation_id = f"{CODEX_DESKTOP_AUTOMATION_PREFIX}-{_safe_automation_slug(message_id)}"
+    automation_name = f"平台单次派单 {_safe_automation_slug(workstation_id, 'npc')}"
+    automation_dir = _codex_automations_root() / automation_id
+    automation_path = automation_dir / "automation.toml"
+    now_ms = int(time.time() * 1000)
+    created_ms = now_ms
+    if automation_path.exists():
+        try:
+            for line in automation_path.read_text(encoding="utf-8", errors="replace").splitlines():
+                match = re.match(r"created_at\s*=\s*(\d+)", line.strip())
+                if match:
+                    created_ms = int(match.group(1))
+                    break
+        except Exception:
+            created_ms = now_ms
+
+    dispatch_prompt = "\n\n".join(
+        [
+            "这是 AI 协作平台投递到当前绑定线程的一次单次派单。",
+            f"项目: {project_id}",
+            f"NPC/工位: {workstation_id}",
+            f"平台消息: {message_id}",
+            "请只处理这一条派单；处理过程和最终回复保留在这个 Codex Desktop 线程里。",
+            "如果你拥有自动化管理能力，完成最终回复后请把本条单次自动化暂停，避免重复执行。",
+            prompt_text,
+        ]
+    )
+    contents = [
+        "version = 1",
+        f'id = "{_toml_escape(automation_id)}"',
+        'kind = "heartbeat"',
+        f'name = "{_toml_escape(automation_name)}"',
+        f'prompt = "{_toml_escape(dispatch_prompt)}"',
+        'status = "ACTIVE"',
+        'rrule = "FREQ=MINUTELY;INTERVAL=1"',
+        f'target_thread_id = "{_toml_escape(thread_id)}"',
+        f"created_at = {created_ms}",
+        f"updated_at = {now_ms}",
+        "",
+    ]
+    try:
+        automation_dir.mkdir(parents=True, exist_ok=True)
+        automation_path.write_text("\n".join(contents), encoding="utf-8")
+    except Exception as exc:
+        return {
+            "ok": False,
+            "recoverable": True,
+            "returncode": None,
+            "stdout": "",
+            "stderr": str(exc),
+            "note": (
+                "桌面自动化投递暂未写入成功；平台没有使用剪贴板或快捷键，"
+                "因此不会打断用户当前操作。请保持 Codex Desktop 登录后重试。"
+            ),
+            "delivery_mode": "codex_desktop_ui",
+            "desktop_visible": False,
+            "desktop_delivery_confirmed": False,
+            "desktop_delivery_method": "codex_desktop_automation",
+            "thread_id": thread_id,
+        }
+
+    return {
+        "ok": True,
+        "returncode": 0,
+        "stdout": str(automation_path),
+        "stderr": "",
+        "note": (
+            "已通过 Codex Desktop 自动化通道投递单次派单；不会抢占用户当前窗口或剪贴板。"
+            "桌面版会按自动化节奏把这条消息送进绑定线程，平台等待桌面线程最终回复。"
+        ),
+        "delivery_mode": "codex_desktop_ui",
+        "desktop_visible": True,
+        "desktop_delivery_confirmed": True,
+        "desktop_delivery_method": "codex_desktop_automation",
+        "desktop_automation_id": automation_id,
+        "desktop_automation_path": str(automation_path),
+        "desktop_delivery_attempts": 1,
+        "desktop_delivery_auto_retried": False,
+        "thread_id": thread_id,
+        "desktop_thread_url": _codex_desktop_thread_url(thread_id),
+    }
+
+
 def _jsonrpc_send(proc: subprocess.Popen[str], payload: dict[str, Any]) -> None:
     if proc.stdin is None:
         raise RuntimeError("codex app-server stdin is not available")
@@ -1720,6 +1839,16 @@ def run_executor(
             model=model,
         )
     if template == CODEX_DESKTOP_UI_EXECUTOR:
+        automation_result = _run_codex_desktop_automation_turn(
+            prompt_text=prompt_text,
+            session_id=session_id,
+            message_id=message_id,
+            project_id=project_id,
+            workstation_id=workstation_id,
+        )
+        if automation_result.get("ok"):
+            return automation_result
+
         app_server_result = _run_codex_app_server_turn(
             prompt_text=prompt_text,
             session_id=session_id,
@@ -1733,6 +1862,7 @@ def run_executor(
                 "note": "\n".join(
                     part
                     for part in [
+                        str(automation_result.get("note") or "").strip(),
                         "已通过 Codex 后台线程通道恢复绑定线程并完成本轮处理；不会抢占用户当前窗口或剪贴板，但也不会保证 Codex Desktop 当前界面实时显示这条单次派单。",
                         str(app_server_result.get("note") or "").strip(),
                     ]
@@ -1752,6 +1882,7 @@ def run_executor(
                 "note": "\n".join(
                     part
                     for part in [
+                        str(automation_result.get("note") or "").strip(),
                         "Codex 后台线程通道暂未完成投递；为避免打断用户当前桌面操作，平台没有使用剪贴板或快捷键兜底。",
                         str(app_server_result.get("note") or "").strip(),
                         "请保持 Codex 登录并确认该线程可恢复；如果必须让桌面界面立刻可见，需要接入 Codex 桌面自动化通道，而不是后台 app-server。",
@@ -2975,6 +3106,8 @@ def main() -> int:
                                 "desktop_delivery_confirmed": True,
                                 "desktop_delivery_attempts": executor_result.get("desktop_delivery_attempts"),
                                 "desktop_delivery_auto_retried": executor_result.get("desktop_delivery_auto_retried"),
+                                "desktop_delivery_method": executor_result.get("desktop_delivery_method"),
+                                "desktop_automation_id": executor_result.get("desktop_automation_id"),
                                 "desktop_thread_url": executor_result.get("desktop_thread_url"),
                                 "thread_id": executor_result.get("thread_id"),
                                 "session_file": (
