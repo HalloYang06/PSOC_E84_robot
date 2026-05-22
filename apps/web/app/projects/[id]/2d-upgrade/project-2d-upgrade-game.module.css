@@ -3188,3 +3188,17 @@
     overflow-y: auto;
   }
 }
+
+@media (max-width: 760px) {
+  .serviceHealthBar {
+    grid-template-columns: 1fr;
+  }
+
+  .serviceHealthBar dl {
+    grid-template-columns: 1fr;
+  }
+
+  .serviceHealthBar dd {
+    white-space: normal;
+  }
+}
