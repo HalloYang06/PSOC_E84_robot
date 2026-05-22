@@ -712,7 +712,7 @@ export function WorkbenchClient({
     const deliverable = seats.filter(seatCanTakeTask).length;
     const queueable = seats.filter(seatCanQueueTask).length;
     const recoveryQueue = seats.filter(seatNeedsRecoveryQueue).length;
-    const desktopReady = seats.filter((seat) => seat.desktopVisible && seat.deliveryMode === "codex_desktop_ui").length;
+    const desktopReady = seats.filter((seat) => seat.runnerCanDispatch && seat.desktopVisible && seat.deliveryMode === "codex_desktop_ui").length;
     const notLive = seats.filter((seat) => {
       const warning = `${seat.deliveryWarning || ""} ${seat.deliveryLabel || ""} ${seat.desktopBridgeNote || ""}`;
       return /not Desktop live|app-server|adapter/i.test(warning);
@@ -1779,7 +1779,7 @@ export function WorkbenchClient({
                   仅可排队 {dispatchEvidence.recoveryQueue}
                 </span>
                 <span data-ok={dispatchEvidence.desktopReady > 0 ? "1" : undefined}>
-                  桌面后台 {dispatchEvidence.desktopReady}/{seats.length}
+                  桌面可见 {dispatchEvidence.desktopReady}/{seats.length}
                 </span>
                 <span data-ok={dispatchEvidence.completedHumanDispatches > 0 ? "1" : undefined}>
                   用户派工 {dispatchEvidence.completedHumanDispatches}
