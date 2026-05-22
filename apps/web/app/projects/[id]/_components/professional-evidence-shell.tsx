@@ -404,7 +404,7 @@ export function ProfessionalWorkbenchShell({
                     <p>{artifact.detail || artifactDetail(artifact.path)}</p>
                   </article>
                 )
-              )) : <p className={styles.emptyText}>当前任务还没有产出索引，先从 NPC 工作台发起派单或等待最小回执回流。</p>}
+              )) : <p className={styles.emptyText}>当前任务还没有产出索引，先从 NPC 工作台发起派单或等待已收到提醒回流。</p>}
             </div>
           </details>
 

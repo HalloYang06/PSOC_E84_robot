@@ -310,6 +310,7 @@ function stripPlatformChatter(body: string, desktopVisible = true): string {
     .replace(/Local prompt file/gi, "任务说明")
     .replace(/Provider CLI/gi, "执行通道")
     .replace(/provider cli execution/gi, "执行通道运行")
+    .replace(/最小回执/g, "已收到提醒")
     .replace(/\bTask dispatch:/gi, "任务派发：")
     .replace(/\bTask:/gi, "任务：")
     .replace(
@@ -378,6 +379,7 @@ function userFacingCollabText(value: unknown, fallback = "", desktopVisible = tr
     .replace(/Local prompt file/gi, "任务说明")
     .replace(/Provider CLI/gi, "执行通道")
     .replace(/provider cli execution/gi, "执行通道运行")
+    .replace(/最小回执/g, "已收到提醒")
     .replace(/\bTask dispatch:/gi, "任务派发：")
     .replace(/\bTask:/gi, "任务：")
     .replace(
@@ -3799,7 +3801,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
                       <span className={styles.queuePos}>{isLatest ? "最新" : `#${i + 1}`}</span>
                       <div className={styles.queueMeta}>
                         <span className={styles.queueFrom}>{fromLabel}</span>
-                        <span className={styles.queueTitle}>{m.title || (m.body || "").slice(0, 60) || "(无标题)"}</span>
+                        <span className={styles.queueTitle}>{userFacingCollabText(m.title || (m.body || "").slice(0, 60), "(无标题)", seat.desktopVisible)}</span>
                       </div>
                       <div className={styles.queueRight}>
                         <span className={styles.queueStatus} data-status={m.status}>{m.status}</span>
@@ -3836,7 +3838,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
                           ? (it.to_agent || it.target_seat_id ? `→ ${it.to_agent || it.target_seat_id}` : it.trigger_kind || "待路由")
                           : (it.module ? `module: ${it.module}` : it.priority || "—")}
                       </span>
-                      <span className={styles.queueTitle}>{it.title || "(无标题)"}</span>
+                      <span className={styles.queueTitle}>{userFacingCollabText(it.title, "(无标题)", seat.desktopVisible)}</span>
                     </div>
                     <span className={styles.queueStatus} data-status={it.status}>{it.status}</span>
                   </li>
@@ -3905,7 +3907,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
                         ? (r.sender_seat_id ? `← ${receiptCounterparty}` : "(系统)")
                         : (r.recipient_seat_id ? `→ ${receiptCounterparty}` : "(广播)")}
                     </span>
-                    <span className={styles.queueTitle}>{r.title || r.body.slice(0, 60) || "(无标题)"}</span>
+                    <span className={styles.queueTitle}>{userFacingCollabText(r.title || r.body.slice(0, 60), "(无标题)", seat.desktopVisible)}</span>
                   </div>
                   <span className={styles.queueStatus} data-status={r.receipt_kind}>{r.receipt_kind}</span>
                 </li>
