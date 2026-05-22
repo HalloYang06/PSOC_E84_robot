@@ -111,11 +111,11 @@ function skillIdOf(value: AnyRecord) {
 }
 
 function skillLabelOf(value: AnyRecord, fallback = "Skill") {
-  return text(value.label ?? value.name ?? value.title ?? value.skill_id ?? value.id, fallback);
+  return userMessage(value.label ?? value.name ?? value.title ?? value.skill_id ?? value.id, fallback);
 }
 
 function skillDescriptionOf(value: AnyRecord) {
-  return text(value.description ?? value.note ?? value.summary, "");
+  return userMessage(value.description ?? value.note ?? value.summary, "");
 }
 
 function skillSourceLabel(value: AnyRecord) {
