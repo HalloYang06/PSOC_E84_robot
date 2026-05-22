@@ -50,6 +50,17 @@ function userMessage(value: unknown, fallback = "") {
     next = decoded;
   }
   return next
+    .replace(/\bRunner\s+([A-Za-z0-9._-]+)\s+received platform dispatch:?/gi, "执行电脑 $1 已收到平台派单：")
+    .replace(/\bRunner\s+已收到云端派单，正在回写最小回执。/gi, "执行电脑已收到云端派单，正在同步已收到提醒。")
+    .replace(/目标 NPC 已接到平台派单：\s*[0-9a-f-]{16,}/gi, "目标 NPC 已接到平台派单")
+    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, "关联记录")
+    .replace(/处理方式：桌面线程处理中。/gi, "处理方式：桌面后台处理中。")
+    .replace(/工作区：待绑定工作区。/gi, "")
+    .replace(/平台会继续同步最小回执、待收口状态和最终结果。/gi, "平台会继续同步已收到提醒、等待结果状态和最终结果。")
+    .replace(/最小回执/gi, "已收到提醒")
+    .replace(/待收口/gi, "等结果")
+    .replace(/\bfinal\b/gi, "最终结果")
+    .replace(/抢占式引导/gi, "桌面提醒")
     .replace(/\bknowledge\.[a-z_.-]+\b/gi, "能力治理")
     .replace(/\bproject\.[a-z_.-]+\b/gi, "项目治理")
     .replace(/\bseat[_-]?skill[_-]?assignments?\b/gi, "能力绑定")
@@ -644,9 +655,9 @@ function ForgeTile({
           {gitMessages.map((message, index) => (
             <article key={text(message.id, `git-${index}`)}>
               <span>{messageTime(message) || "Git 记录"}</span>
-              <strong>{text(message.title, "Git 事件")}</strong>
-              <p>{text(message.body, "这条 Git 记录已归档到当前资源。").slice(0, 160)}</p>
-              <small>{text(message.status, "已记录")}</small>
+              <strong>{userMessage(message.title, "Git 事件")}</strong>
+              <p>{userMessage(message.body, "这条 Git 记录已归档到当前资源。").slice(0, 160)}</p>
+              <small>{userMessage(message.status, "已记录")}</small>
             </article>
           ))}
           {!gitMessages.length ? (
