@@ -46,6 +46,7 @@ CODEX_DESKTOP_UI_EXECUTOR = "__codex_desktop_ui_turn__"
 CODEX_DESKTOP_UI_LOCK_PATH = Path(tempfile.gettempdir()) / "ai-collab-codex-desktop-ui-delivery.lock"
 CODEX_DESKTOP_UI_MAX_DELIVERY_ATTEMPTS = 8
 CODEX_DESKTOP_AUTOMATION_PREFIX = "ai-collab-dispatch"
+CODEX_DESKTOP_AUTOMATION_TTL_SECONDS = 20 * 60
 
 
 def _adapter_config_url(base: str, project_id: str, workstation_id: str) -> str:
@@ -1539,6 +1540,7 @@ def _run_codex_desktop_automation_turn(
     automation_path = automation_dir / "automation.toml"
     now_ms = int(time.time() * 1000)
     created_ms = now_ms
+    ttl_seconds = _codex_desktop_automation_ttl_seconds()
     if automation_path.exists():
         try:
             for line in automation_path.read_text(encoding="utf-8", errors="replace").splitlines():
@@ -1548,6 +1550,9 @@ def _run_codex_desktop_automation_turn(
                     break
         except Exception:
             created_ms = now_ms
+        if now_ms - created_ms > ttl_seconds * 1000:
+            created_ms = now_ms
+    expires_ms = created_ms + ttl_seconds * 1000
 
     dispatch_prompt = "\n\n".join(
         [
@@ -1557,6 +1562,7 @@ def _run_codex_desktop_automation_turn(
             f"平台消息: {message_id}",
             "请只处理这一条派单；处理过程和最终回复保留在这个 Codex Desktop 线程里。",
             "如果你拥有自动化管理能力，完成最终回复后请把本条单次自动化暂停，避免重复执行。",
+            f"本单次自动化过期时间: {expires_ms} ms；过期后平台 runner 会自动暂停它。",
             prompt_text,
         ]
     )
@@ -1571,6 +1577,10 @@ def _run_codex_desktop_automation_turn(
         f'target_thread_id = "{_toml_escape(thread_id)}"',
         f"created_at = {created_ms}",
         f"updated_at = {now_ms}",
+        f"expires_at = {expires_ms}",
+        f'dispatch_message_id = "{_toml_escape(message_id)}"',
+        f'dispatch_project_id = "{_toml_escape(project_id)}"',
+        f'dispatch_workstation_id = "{_toml_escape(workstation_id)}"',
         "",
     ]
     try:
@@ -1610,11 +1620,43 @@ def _run_codex_desktop_automation_turn(
         "desktop_delivery_method": "codex_desktop_automation",
         "desktop_automation_id": automation_id,
         "desktop_automation_path": str(automation_path),
+        "desktop_automation_expires_at": expires_ms,
         "desktop_delivery_attempts": 1,
         "desktop_delivery_auto_retried": False,
         "thread_id": thread_id,
         "desktop_thread_url": _codex_desktop_thread_url(thread_id),
     }
+
+
+def _codex_desktop_automation_ttl_seconds() -> int:
+    raw = str(os.environ.get("AI_COLLAB_CODEX_DESKTOP_AUTOMATION_TTL_SECONDS") or "").strip()
+    if raw:
+        try:
+            return max(60, min(24 * 60 * 60, int(raw)))
+        except ValueError:
+            pass
+    return CODEX_DESKTOP_AUTOMATION_TTL_SECONDS
+
+
+def _read_toml_int(contents: str, key: str) -> int | None:
+    match = re.search(rf"^\s*{re.escape(key)}\s*=\s*(\d+)\s*$", contents, flags=re.MULTILINE)
+    if not match:
+        return None
+    try:
+        return int(match.group(1))
+    except ValueError:
+        return None
+
+
+def _codex_desktop_dispatch_automation_is_expired(contents: str, *, now_ms: int | None = None) -> bool:
+    now_value = int(time.time() * 1000) if now_ms is None else int(now_ms)
+    expires_at = _read_toml_int(contents, "expires_at")
+    if expires_at is not None:
+        return now_value >= expires_at
+    created_at = _read_toml_int(contents, "created_at")
+    if created_at is None:
+        return False
+    return now_value - created_at >= _codex_desktop_automation_ttl_seconds() * 1000
 
 
 def _pause_codex_desktop_dispatch_automation(message_id: str | None, *, automation_id: str | None = None) -> bool:
@@ -1643,6 +1685,35 @@ def _pause_codex_desktop_dispatch_automation(message_id: str | None, *, automati
         return True
     except Exception:
         return False
+
+
+def _sweep_stale_codex_desktop_dispatch_automations(*, now_ms: int | None = None) -> list[dict[str, Any]]:
+    root = _codex_automations_root()
+    if not root.exists():
+        return []
+    now_value = int(time.time() * 1000) if now_ms is None else int(now_ms)
+    swept: list[dict[str, Any]] = []
+    for automation_dir in root.glob(f"{CODEX_DESKTOP_AUTOMATION_PREFIX}-*"):
+        automation_path = automation_dir / "automation.toml"
+        if not automation_path.exists():
+            continue
+        try:
+            contents = automation_path.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            continue
+        if not re.search(r'^\s*status\s*=\s*"ACTIVE"\s*$', contents, flags=re.MULTILINE):
+            continue
+        if not _codex_desktop_dispatch_automation_is_expired(contents, now_ms=now_value):
+            continue
+        if _pause_codex_desktop_dispatch_automation(None, automation_id=automation_dir.name):
+            swept.append(
+                {
+                    "automation_id": automation_dir.name,
+                    "path": str(automation_path),
+                    "reason": "expired_one_shot_desktop_dispatch",
+                }
+            )
+    return swept
 
 
 def _jsonrpc_send(proc: subprocess.Popen[str], payload: dict[str, Any]) -> None:
@@ -2933,6 +3004,14 @@ def main() -> int:
     def process_one_round() -> dict[str, Any]:
         payload = _json_request("GET", inbox_url, headers=headers)
         commands = payload.get("data") or []
+        swept_automations = []
+        if executor_template == CODEX_DESKTOP_UI_EXECUTOR:
+            swept_automations = _sweep_stale_codex_desktop_dispatch_automations()
+            if args.watch and swept_automations:
+                print(
+                    f"[桌面自动化清理] 已暂停 {len(swept_automations)} 个过期单次后台派单。",
+                    flush=True,
+                )
         desktop_sync_receipts = sync_desktop_followups(commands)
         swept_receipts = sweep_desktop_receipts()
         if args.message_id:
@@ -3313,6 +3392,7 @@ def main() -> int:
             "written": written,
             "receipts": receipts,
             "executions": executions,
+            "swept_desktop_automations": swept_automations,
         }
 
     if args.watch:

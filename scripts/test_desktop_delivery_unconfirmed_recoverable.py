@@ -304,6 +304,8 @@ def test_desktop_automation_turn_writes_heartbeat_file() -> None:
     assert 'kind = "heartbeat"' in automation_contents
     assert 'status = "ACTIVE"' in automation_contents
     assert 'target_thread_id = "00000000-0000-0000-0000-000000000000"' in automation_contents
+    assert "expires_at = " in automation_contents
+    assert 'dispatch_message_id = "msg-app-server"' in automation_contents
     assert "message_id: `msg-app-server`" in automation_contents
 
 
@@ -550,6 +552,81 @@ def test_desktop_dispatch_automation_can_be_paused_after_prompt_seen() -> None:
                 os.environ["CODEX_HOME"] = original_home
 
 
+def test_stale_desktop_dispatch_automation_is_paused() -> None:
+    adapter = load_adapter()
+    with TemporaryDirectory() as tmp:
+        original_home = os.environ.get("CODEX_HOME")
+        original_ttl = os.environ.get("AI_COLLAB_CODEX_DESKTOP_AUTOMATION_TTL_SECONDS")
+        os.environ["CODEX_HOME"] = str(Path(tmp) / ".codex")
+        os.environ["AI_COLLAB_CODEX_DESKTOP_AUTOMATION_TTL_SECONDS"] = "60"
+        try:
+            result = adapter._run_codex_desktop_automation_turn(
+                prompt_text="message_id: `msg-stale`\n请只回复 ok。",
+                session_id="codex-session-00000000-0000-0000-0000-000000000000",
+                message_id="msg-stale",
+                project_id="proj_ai_collab",
+                workstation_id="platform-npc-5",
+            )
+            automation_path = Path(result["desktop_automation_path"])
+            contents = automation_path.read_text(encoding="utf-8")
+            old_created = 1_000_000
+            contents = contents.replace(
+                next(line for line in contents.splitlines() if line.startswith("created_at = ")),
+                f"created_at = {old_created}",
+            )
+            contents = contents.replace(
+                next(line for line in contents.splitlines() if line.startswith("expires_at = ")),
+                f"expires_at = {old_created + 60_000}",
+            )
+            automation_path.write_text(contents, encoding="utf-8")
+
+            swept = adapter._sweep_stale_codex_desktop_dispatch_automations(now_ms=old_created + 61_000)
+            paused_contents = automation_path.read_text(encoding="utf-8")
+        finally:
+            if original_home is None:
+                os.environ.pop("CODEX_HOME", None)
+            else:
+                os.environ["CODEX_HOME"] = original_home
+            if original_ttl is None:
+                os.environ.pop("AI_COLLAB_CODEX_DESKTOP_AUTOMATION_TTL_SECONDS", None)
+            else:
+                os.environ["AI_COLLAB_CODEX_DESKTOP_AUTOMATION_TTL_SECONDS"] = original_ttl
+
+    assert result["ok"] is True
+    assert len(swept) == 1
+    assert swept[0]["automation_id"] == "ai-collab-dispatch-msg-stale"
+    assert 'status = "PAUSED"' in paused_contents
+
+
+def test_fresh_desktop_dispatch_automation_is_not_paused_by_sweep() -> None:
+    adapter = load_adapter()
+    with TemporaryDirectory() as tmp:
+        original_home = os.environ.get("CODEX_HOME")
+        os.environ["CODEX_HOME"] = str(Path(tmp) / ".codex")
+        try:
+            result = adapter._run_codex_desktop_automation_turn(
+                prompt_text="message_id: `msg-fresh`\n请只回复 ok。",
+                session_id="codex-session-00000000-0000-0000-0000-000000000000",
+                message_id="msg-fresh",
+                project_id="proj_ai_collab",
+                workstation_id="platform-npc-5",
+            )
+            automation_path = Path(result["desktop_automation_path"])
+            swept = adapter._sweep_stale_codex_desktop_dispatch_automations(
+                now_ms=int(result["desktop_automation_expires_at"]) - 1
+            )
+            contents = automation_path.read_text(encoding="utf-8")
+        finally:
+            if original_home is None:
+                os.environ.pop("CODEX_HOME", None)
+            else:
+                os.environ["CODEX_HOME"] = original_home
+
+    assert result["ok"] is True
+    assert swept == []
+    assert 'status = "ACTIVE"' in contents
+
+
 if __name__ == "__main__":
     test_desktop_ui_unconfirmed_stays_recoverable()
     test_desktop_executor_defaults_to_automation_without_foreground_or_app_server()
@@ -560,4 +637,6 @@ if __name__ == "__main__":
     test_desktop_ui_focus_loss_auto_retries_until_prompt_is_confirmed()
     test_desktop_retry_dedupe_key_changes_with_retry_count()
     test_desktop_dispatch_automation_can_be_paused_after_prompt_seen()
+    test_stale_desktop_dispatch_automation_is_paused()
+    test_fresh_desktop_dispatch_automation_is_not_paused_by_sweep()
     print("desktop delivery unconfirmed recoverable: ok")
