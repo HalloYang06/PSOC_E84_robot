@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -52,19 +53,41 @@ def test_desktop_ui_unconfirmed_stays_recoverable() -> None:
                 "desktop_thread_url": "codex://threads/00000000-0000-0000-0000-000000000000",
             }
 
+        def fake_app_server_turn(**kwargs):
+            return {
+                "ok": False,
+                "returncode": 1,
+                "stdout": "",
+                "stderr": "app-server unavailable",
+                "note": "Codex app-server delivery failed: app-server unavailable",
+                "delivery_mode": "codex_app_server",
+                "thread_id": kwargs.get("session_id"),
+            }
+
+        original_app_server = adapter._run_codex_app_server_turn
+        original_env = os.environ.get("AI_COLLAB_ALLOW_CODEX_UI_SENDKEYS_FALLBACK")
         adapter._run_codex_desktop_ui_turn = fake_desktop_turn
-        result = adapter.run_executor(
-            template=adapter.CODEX_DESKTOP_UI_EXECUTOR,
-            command_path=command_path,
-            project_id="proj_ai_collab",
-            workstation_id="platform-npc-2",
-            provider="codex",
-            message_id="msg-unconfirmed",
-            model=None,
-            session_id="00000000-0000-0000-0000-000000000000",
-            cwd=str(ROOT),
-            timeout_seconds=5,
-        )
+        adapter._run_codex_app_server_turn = fake_app_server_turn
+        os.environ["AI_COLLAB_ALLOW_CODEX_UI_SENDKEYS_FALLBACK"] = "1"
+        try:
+            result = adapter.run_executor(
+                template=adapter.CODEX_DESKTOP_UI_EXECUTOR,
+                command_path=command_path,
+                project_id="proj_ai_collab",
+                workstation_id="platform-npc-2",
+                provider="codex",
+                message_id="msg-unconfirmed",
+                model=None,
+                session_id="00000000-0000-0000-0000-000000000000",
+                cwd=str(ROOT),
+                timeout_seconds=5,
+            )
+        finally:
+            adapter._run_codex_app_server_turn = original_app_server
+            if original_env is None:
+                os.environ.pop("AI_COLLAB_ALLOW_CODEX_UI_SENDKEYS_FALLBACK", None)
+            else:
+                os.environ["AI_COLLAB_ALLOW_CODEX_UI_SENDKEYS_FALLBACK"] = original_env
 
     assert result["ok"] is False
     assert result["recoverable"] is True
@@ -74,6 +97,126 @@ def test_desktop_ui_unconfirmed_stays_recoverable() -> None:
     assert result["desktop_delivery_unconfirmed"] is True
     assert "required_failed" not in str(result)
     assert "session JSONL" not in str(result.get("note") or "")
+
+
+def test_desktop_executor_prefers_app_server_without_sendkeys() -> None:
+    adapter = load_adapter()
+    with TemporaryDirectory() as tmp:
+        command_path = Path(tmp) / "command.md"
+        command_path.write_text(
+            "\n".join(
+                [
+                    "# 平台派单",
+                    "",
+                    "请继续推进平台自开发。",
+                    "",
+                    "- message_id: `msg-app-server`",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        calls = {"app_server": 0, "desktop_ui": 0}
+
+        def fake_app_server_turn(**kwargs):
+            calls["app_server"] += 1
+            return {
+                "ok": True,
+                "returncode": 0,
+                "stdout": "done",
+                "stderr": "",
+                "note": "最终回复：done",
+                "delivery_mode": "codex_app_server",
+                "thread_id": kwargs.get("session_id"),
+            }
+
+        def fake_desktop_turn(**kwargs):
+            calls["desktop_ui"] += 1
+            raise AssertionError("foreground desktop delivery should not run when app-server succeeds")
+
+        original_app_server = adapter._run_codex_app_server_turn
+        original_desktop = adapter._run_codex_desktop_ui_turn
+        try:
+            adapter._run_codex_app_server_turn = fake_app_server_turn
+            adapter._run_codex_desktop_ui_turn = fake_desktop_turn
+            result = adapter.run_executor(
+                template=adapter.CODEX_DESKTOP_UI_EXECUTOR,
+                command_path=command_path,
+                project_id="proj_ai_collab",
+                workstation_id="platform-npc-2",
+                provider="codex",
+                message_id="msg-app-server",
+                model=None,
+                session_id="codex-session-00000000-0000-0000-0000-000000000000",
+                cwd=str(ROOT),
+                timeout_seconds=5,
+            )
+        finally:
+            adapter._run_codex_app_server_turn = original_app_server
+            adapter._run_codex_desktop_ui_turn = original_desktop
+
+    assert result["ok"] is True
+    assert result["delivery_mode"] == "codex_desktop_ui"
+    assert result["desktop_visible"] is True
+    assert result["desktop_delivery_confirmed"] is True
+    assert result["desktop_delivery_method"] == "codex_app_server_thread_resume"
+    assert "不会抢占用户当前窗口或剪贴板" in result["note"]
+    assert calls == {"app_server": 1, "desktop_ui": 0}
+
+
+def test_desktop_executor_does_not_sendkeys_when_app_server_fails_by_default() -> None:
+    adapter = load_adapter()
+    with TemporaryDirectory() as tmp:
+        command_path = Path(tmp) / "command.md"
+        command_path.write_text("# 平台派单\n\n- message_id: `msg-no-sendkeys`\n", encoding="utf-8")
+        calls = {"desktop_ui": 0}
+
+        def fake_app_server_turn(**kwargs):
+            return {
+                "ok": False,
+                "returncode": 1,
+                "stdout": "",
+                "stderr": "thread resume failed",
+                "note": "Codex app-server delivery failed: thread resume failed",
+                "delivery_mode": "codex_app_server",
+                "thread_id": kwargs.get("session_id"),
+            }
+
+        def fake_desktop_turn(**kwargs):
+            calls["desktop_ui"] += 1
+            raise AssertionError("foreground desktop delivery should be opt-in")
+
+        original_app_server = adapter._run_codex_app_server_turn
+        original_desktop = adapter._run_codex_desktop_ui_turn
+        original_env = os.environ.get("AI_COLLAB_ALLOW_CODEX_UI_SENDKEYS_FALLBACK")
+        os.environ.pop("AI_COLLAB_ALLOW_CODEX_UI_SENDKEYS_FALLBACK", None)
+        try:
+            adapter._run_codex_app_server_turn = fake_app_server_turn
+            adapter._run_codex_desktop_ui_turn = fake_desktop_turn
+            result = adapter.run_executor(
+                template=adapter.CODEX_DESKTOP_UI_EXECUTOR,
+                command_path=command_path,
+                project_id="proj_ai_collab",
+                workstation_id="platform-npc-2",
+                provider="codex",
+                message_id="msg-no-sendkeys",
+                model=None,
+                session_id="codex-session-00000000-0000-0000-0000-000000000000",
+                cwd=str(ROOT),
+                timeout_seconds=5,
+            )
+        finally:
+            adapter._run_codex_app_server_turn = original_app_server
+            adapter._run_codex_desktop_ui_turn = original_desktop
+            if original_env is not None:
+                os.environ["AI_COLLAB_ALLOW_CODEX_UI_SENDKEYS_FALLBACK"] = original_env
+
+    assert result["ok"] is False
+    assert result["recoverable"] is True
+    assert result["desktop_delivery_confirmed"] is False
+    assert result["desktop_delivery_unconfirmed"] is True
+    assert result["desktop_delivery_method"] == "codex_app_server_thread_resume"
+    assert "没有使用剪贴板或快捷键兜底" in result["note"]
+    assert calls == {"desktop_ui": 0}
 
 
 def test_desktop_ui_delivery_exception_stays_recoverable() -> None:
@@ -214,6 +357,8 @@ def test_desktop_retry_dedupe_key_changes_with_retry_count() -> None:
 
 if __name__ == "__main__":
     test_desktop_ui_unconfirmed_stays_recoverable()
+    test_desktop_executor_prefers_app_server_without_sendkeys()
+    test_desktop_executor_does_not_sendkeys_when_app_server_fails_by_default()
     test_desktop_ui_delivery_exception_stays_recoverable()
     test_desktop_ui_auto_retries_until_prompt_is_confirmed()
     test_desktop_ui_focus_loss_auto_retries_until_prompt_is_confirmed()

@@ -1720,6 +1720,50 @@ def run_executor(
             model=model,
         )
     if template == CODEX_DESKTOP_UI_EXECUTOR:
+        app_server_result = _run_codex_app_server_turn(
+            prompt_text=prompt_text,
+            session_id=session_id,
+            cwd=cwd,
+            timeout_seconds=timeout_seconds,
+            model=model,
+        )
+        if app_server_result.get("ok"):
+            return {
+                **app_server_result,
+                "note": "\n".join(
+                    part
+                    for part in [
+                        "已通过 Codex 后台线程通道把这条平台派单送入绑定的桌面线程；不会抢占用户当前窗口或剪贴板。",
+                        str(app_server_result.get("note") or "").strip(),
+                    ]
+                    if part
+                ),
+                "delivery_mode": "codex_desktop_ui",
+                "desktop_visible": True,
+                "desktop_delivery_confirmed": True,
+                "desktop_delivery_method": "codex_app_server_thread_resume",
+            }
+        allow_sendkeys_fallback = os.environ.get("AI_COLLAB_ALLOW_CODEX_UI_SENDKEYS_FALLBACK") == "1"
+        if not allow_sendkeys_fallback:
+            return {
+                **app_server_result,
+                "ok": False,
+                "recoverable": True,
+                "note": "\n".join(
+                    part
+                    for part in [
+                        "Codex 后台线程通道暂未完成投递；为避免打断用户当前桌面操作，平台没有使用剪贴板或快捷键兜底。",
+                        str(app_server_result.get("note") or "").strip(),
+                        "请保持 Codex 桌面版登录并确认该线程可恢复，或在目标电脑显式允许旧的前台投递兜底。",
+                    ]
+                    if part
+                ),
+                "delivery_mode": "codex_desktop_ui",
+                "desktop_visible": True,
+                "desktop_delivery_confirmed": False,
+                "desktop_delivery_unconfirmed": True,
+                "desktop_delivery_method": "codex_app_server_thread_resume",
+            }
         ui_result = _run_codex_desktop_ui_turn(
             prompt_text=prompt_text,
             session_id=session_id,
