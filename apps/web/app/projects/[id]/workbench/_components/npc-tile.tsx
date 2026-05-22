@@ -1125,10 +1125,10 @@ function processTraceHint(seatOrDesktopVisible: WorkbenchSeat | boolean): string
 function processSignalLabel(value: string): string {
   const normalized = safeText(value, "").toLowerCase();
   if (!normalized) return "";
-  if (normalized === "awaiting_desktop_pickup") return "等待桌面接收";
-  if (normalized === "awaiting_desktop_reply") return "等待桌面回执";
-  if (normalized === "desktop_delivery_unconfirmed") return "桌面未确认收到";
-  if (normalized === "delivery_pending_confirmation") return "等待送达确认";
+  if (normalized === "awaiting_desktop_pickup") return "后台接收已登记";
+  if (normalized === "awaiting_desktop_reply") return "桌面已收到，等结果";
+  if (normalized === "desktop_delivery_unconfirmed") return "执行电脑已收到，等桌面确认";
+  if (normalized === "delivery_pending_confirmation") return "执行电脑已收到";
   if (normalized === "desktop_final_sync_lag") return "最终回执待同步";
   if (normalized === "desktop_retry_action") return "重新同步中";
   if (looksInternalIdentifier(normalized)) return "关联消息";
@@ -1544,16 +1544,16 @@ function summarizeCollabMessage(msg: CollabMessage, desktopVisible = true): Refi
   const progressState = String(meta.progress_state || "");
   const launchState = String(meta.launch_state || "");
   if (progressState === "awaiting_desktop_reply") {
-    detail = `已确认进入目标${deliveryTarget}，正在等待最终回执。`;
+    detail = `目标${threadNoun}已确认收到，正在等待最终结果。`;
   } else if (progressState === "awaiting_desktop_pickup") {
-    detail = "已创建桌面版后台自动化请求，正在等待绑定桌面线程接收；不会抢占当前窗口。";
+    detail = `目标电脑已登记桌面后台接收请求，正在等待绑定${threadNoun}确认；不会抢占当前窗口。`;
   } else if (progressState === "desktop_delivery_unconfirmed") {
     const retryCount = safeText(meta.desktop_delivery_attempts ?? blockedTaxonomy.desktop_delivery_attempts, "");
     detail = retryCount
-      ? `${threadNoun}暂未确认收到，平台已自动重试 ${retryCount} 次；可继续重新同步、延长等待或手动收口。`
-      : `${threadNoun}暂未确认收到，平台会自动重试；可重新同步、延长等待或手动收口。`;
+      ? `执行电脑已收到，但${threadNoun}还没确认可见；平台已自动重试 ${retryCount} 次，可继续重新同步、延长等待或手动收口。`
+      : `执行电脑已收到，但${threadNoun}还没确认可见；平台会自动重试，可重新同步、延长等待或手动收口。`;
   } else if (launchState === "delivery_pending_confirmation") {
-    detail = `平台已启动送达流程，正在确认目标${deliveryTarget}是否收到这条消息。`;
+    detail = `执行电脑已收到，正在确认目标${threadNoun}是否已可见。`;
   }
   detail = userFacingCollabText(detail, "", desktopVisible);
   if (detail.length > 120) detail = `${detail.slice(0, 120)}...`;
