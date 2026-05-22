@@ -3383,9 +3383,9 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
             {seat.desktopVisible ? (
               <span
                 className={`${styles.threadChip} ${styles.desktopVisibleChip}`}
-                title="平台派单会作为普通用户消息进入绑定桌面线程，完整处理过程在桌面版显示"
+                title="平台派单会交给目标电脑的桌面版后台自动化；不会抢占当前窗口"
               >
-                桌面可见
+                桌面后台
               </span>
             ) : seat.desktopProcessDetected ? (
               <span
@@ -3586,8 +3586,8 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
                 {threadBindingLabel(seat)} · {seat.threadHealth || "未知"}
               </span>
               {seat.desktopVisible ? (
-                <span className={styles.statusPill} title="平台派单会作为普通用户消息进入绑定桌面线程">
-                  桌面可见
+                <span className={styles.statusPill} title="平台派单会交给目标电脑的桌面版后台自动化；不会抢占当前窗口">
+                  桌面后台
                 </span>
               ) : null}
               {seat.desktopVisible && seat.desktopThreadUrl ? (

@@ -1779,7 +1779,7 @@ export function WorkbenchClient({
                   仅可排队 {dispatchEvidence.recoveryQueue}
                 </span>
                 <span data-ok={dispatchEvidence.desktopReady > 0 ? "1" : undefined}>
-                  桌面可见 {dispatchEvidence.desktopReady}/{seats.length}
+                  桌面后台 {dispatchEvidence.desktopReady}/{seats.length}
                 </span>
                 <span data-ok={dispatchEvidence.completedHumanDispatches > 0 ? "1" : undefined}>
                   用户派工 {dispatchEvidence.completedHumanDispatches}
