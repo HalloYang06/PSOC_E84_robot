@@ -63,7 +63,7 @@ const nativeReadonlyCapabilities = [
 
 const deliveryHints: Record<string, string> = {
   foxglove: "下一步交给机器人现场 3D / TF 只读面板。",
-  robotwebtools: "下一步交给执行电脑只读接入与工作台最小回执。",
+  robotwebtools: "下一步交给执行电脑只读接入与工作台已收到提醒。",
   plotjuggler: "下一步交给数据标注质量检查。",
   "robot-descriptions": "下一步交给模型导入、候选筛选与证据索引。",
   rosbag: "下一步交给图表实验回放或数据标注样本索引。",
@@ -98,7 +98,7 @@ function buildFoxgloveLayout() {
       ],
     },
       runnerTask: "扫描 robot_description、TF、joint_states、map/camera topic，并把可视化布局写入项目证据。",
-    npcPrompt: "请检查 3D 可视化配置是否覆盖模型、TF、joint_states、地图和相机，并用最小回执说明缺失 topic。",
+    npcPrompt: "请检查 3D 可视化配置是否覆盖模型、TF、joint_states、地图和相机，并用已收到提醒说明缺失 topic。",
     approval: "只读，无需人审；若后续触发真实机器人动作，必须走硬件人审。",
   });
 }

@@ -70,6 +70,7 @@ function userFacingEventText(value: unknown, fallback = "") {
       "执行电脑 $1 已收到派单，但桌面后台还没有确认接收；请保持桌面版在线后重新同步。",
     )
     .replace(/平台等待桌面收口/gi, "平台继续等待桌面结果")
+    .replace(/待收口/gi, "等结果")
     .replace(/自动重试桌面同步/gi, "自动重试桌面提醒")
     .replace(/已处于 in_progress 超过/gi, "已持续处理中超过")
     .replace(/已处于 acked 超过/gi, "已停留在已接单状态超过")
@@ -119,7 +120,7 @@ function publicStatusLabel(value: unknown) {
   if (/acked|accepted/.test(raw)) return "已接单";
   if (/delivered/.test(raw)) return "已送达";
   if (/queued/.test(raw)) return "已排队";
-  if (/waiting_closeout|closeout/.test(raw)) return "待收口";
+  if (/waiting_closeout|closeout/.test(raw)) return "等结果";
   if (/running|progress|active|pending/.test(raw)) return "处理中";
   if (/failed|error|blocked|rejected/.test(raw)) return "异常待处理";
   return text(value, "已记录");

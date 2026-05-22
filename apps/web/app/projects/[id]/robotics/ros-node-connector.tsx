@@ -33,7 +33,7 @@ const diagnosticsFeeds = [
 const exportTargets = [
   ["进入数据标注", "传感器样本、manifest、质量检查"],
   ["进入图表实验", "回放、对齐、仿真计划"],
-  ["回 NPC 工作台", "提交最小回执、阻塞、审批需求"],
+  ["回 NPC 工作台", "提交已收到提醒、阻塞、审批需求"],
 ];
 
 function downloadText(fileName: string, content: string) {
@@ -157,7 +157,7 @@ export function RosNodeConnector() {
           <small>证据优先进入数据标注，回放与仿真进入图表实验。</small>
         </article>
         <article>
-          <strong>最小回执</strong>
+          <strong>已收到提醒</strong>
           <span>{packetPreview.receiptRequired.length} 项</span>
           <small>connection_health / topic_inventory / final_status 等必须回流。</small>
         </article>

@@ -2531,9 +2531,9 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         detail: "派单必须指定 NPC/线程。目标关闭自动化时，只执行当前一轮。",
       },
       {
-        label: "3. 最小回执",
+        label: "3. 已收到提醒",
         count: ackMessages.length,
-        detail: "接单后先回最小回执，说明是否已读需求、能否执行、是否需要人审。",
+        detail: "接单后先回已收到提醒，说明是否已读需求、能否执行、是否需要人审。",
       },
       {
         label: "4. 最终回复",
@@ -2547,7 +2547,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         <header>
           <span>AI 协作链路</span>
           <strong>{humanReviewMessages.length ? `${humanReviewMessages.length} 条需人审` : "当前无强制人审提醒"}</strong>
-          <p>这里回答“AI 到底怎么协作”：先读需求，再平台派单，再最小回执，最后只把最终回复收口。</p>
+          <p>这里回答“AI 到底怎么协作”：先读需求，再平台派单，再已收到提醒，最后只把最终回复收口。</p>
         </header>
         <div className={styles.flowSteps}>
           {steps.map((step) => (
@@ -2669,7 +2669,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                 </small>
               </article>
             ) : (
-              <p>当前目标还没有 NPC 对齐消息。登记回退请求后，Boss / 工位长会在工作台收到对齐任务并回最小回执。</p>
+              <p>当前目标还没有 NPC 对齐消息。登记回退请求后，Boss / 工位长会在工作台收到对齐任务并回已收到提醒。</p>
             )}
             {historicalGitRollbackAlignments.length ? (
               <details className={styles.gitAlignmentHistory}>
@@ -3180,7 +3180,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
           </label>
           <label>
             <span>指令正文</span>
-            <textarea name="body" required rows={6} placeholder="写清楚目标、边界、是否只读、预期最小回执和最终回复格式。" />
+            <textarea name="body" required rows={6} placeholder="写清楚目标、边界、是否只读、预期已收到提醒和最终回复格式。" />
           </label>
           <SubmitButton label="发送给目标 NPC/线程" disabled={!collaborationTargets.length} />
         </form>
@@ -3505,7 +3505,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                   <dl>
                     <div><dt>读前置需求</dt><dd>AI 接单前先看需求表，不清楚就请求人工确认。</dd></div>
                     <div><dt>token 边界</dt><dd>未开启 NPC 自动化时只执行当前指令，不连续自循环。</dd></div>
-                    <div><dt>回写</dt><dd>先给最小回执，最终结果只写最终回复池。</dd></div>
+                    <div><dt>回写</dt><dd>先给已收到提醒，最终结果只写最终回复池。</dd></div>
                   </dl>
                 </details>
               </article>
