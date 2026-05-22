@@ -598,12 +598,12 @@ export default async function ProjectDetailPage({
     const runnerOnlineNodeCount = liveNodeResult.data.filter((node) => isRunnerHeartbeating(node)).length;
     const actionHint =
       pendingReviewCount > 0
-        ? `先处理 ${pendingReviewCount} 条跨工位人工审核`
+        ? `先处理 ${pendingReviewCount} 条跨工位人工确认`
         : pendingApprovalCount > 0
-          ? `先处理 ${pendingApprovalCount} 条任务审批`
+          ? `先处理 ${pendingApprovalCount} 条任务确认`
           : runnerOnlineNodeCount === 0
             ? "先接入一台电脑，再派 NPC 干活"
-            : `当前 ${runnerOnlineNodeCount} 台 Runner 心跳正常，可进工作台打开 NPC`;
+            : `当前 ${runnerOnlineNodeCount} 台执行电脑在线，可进工作台打开 NPC`;
     const actionPanel =
       pendingReviewCount > 0 || pendingApprovalCount > 0 ? "company" : runnerOnlineNodeCount === 0 ? "company" : "workbench";
     return (

@@ -89,7 +89,7 @@ export function WorkstationProfileEditor({ apiBaseUrl, projectId, nodeId, seatCh
   if (!open) {
     return (
       <button type="button" className={styles.toggle} onClick={() => setOpen(true)}>
-        ⚙ 工位设置（路径 / 审核 / 知识库）
+        ⚙ 工位设置（路径 / 确认规则 / 知识库）
       </button>
     );
   }
@@ -106,15 +106,15 @@ export function WorkstationProfileEditor({ apiBaseUrl, projectId, nodeId, seatCh
         />
       </div>
       <div className={styles.row}>
-        <label className={styles.label}>工位审核策略</label>
+        <label className={styles.label}>工位确认规则</label>
         <select
           className={styles.input}
           value={reviewPolicy}
           onChange={(e) => setReviewPolicy(e.target.value)}
         >
           <option value="inherit">继承项目（默认）</option>
-          <option value="force">强制人审</option>
-          <option value="skip">免审（信任本工位）</option>
+          <option value="force">强制人工确认</option>
+          <option value="skip">直接派发（信任本工位）</option>
         </select>
       </div>
       <div className={styles.row}>
@@ -142,7 +142,7 @@ export function WorkstationProfileEditor({ apiBaseUrl, projectId, nodeId, seatCh
           value={leadSeatId}
           onChange={(e) => setLeadSeatId(e.target.value)}
         >
-          <option value="">未指定（跨工位消息按默认审核流）</option>
+          <option value="">未指定（跨工位消息按默认确认流）</option>
           {seatChoices.map((s) => (
             <option key={s.id} value={s.id}>
               {s.name}

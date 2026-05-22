@@ -16,7 +16,7 @@ type GameShellProps = {
 
 const PANELS: { key: PanelKey; label: string; title: string; path: (id: string) => string }[] = [
   { key: "workbench", label: "🧑‍💼 工作台", title: "NPC 工作台 · 瓷砖主操作面", path: (id) => `/projects/${id}/workbench` },
-  { key: "company", label: "🏢 公司层", title: "公司运行态势图 · 阻塞、审核和电脑健康", path: (id) => `/projects/${id}/company` },
+  { key: "company", label: "🏢 公司层", title: "公司运行态势图 · 阻塞、待确认和执行电脑状态", path: (id) => `/projects/${id}/company` },
 ];
 
 export function GameShell({ projectId, projectName, gradeChip = null, actionHint = "", actionPanel = "workbench" }: GameShellProps) {

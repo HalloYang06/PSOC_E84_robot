@@ -2376,7 +2376,7 @@ function buildHumanPartyHudEntries(
       stateLabel = "被阻塞";
       stateTone = "blocked";
     } else if (/(审核|review|审批|待确认|待会审|审查)/.test(combinedSyncText)) {
-      stateLabel = "待审核";
+      stateLabel = "待确认";
       stateTone = "review";
     } else if (/(正在|处理中|editing|implement|coding|修复|开发|编写|我先接|跟进|推进)/.test(combinedSyncText)) {
       stateLabel = "处理中";
@@ -2898,9 +2898,9 @@ function buildWorkstationActivitySummary(thread: AnyRecord, collaborationMessage
   const freshness = workstationActivityFreshnessLabel(activityAgeMinutes);
 
   const activityHealthLabel = latestFinalReply
-    ? "已回写最终回复"
+    ? "已同步最终结果"
     : latestAck
-      ? "已回最小回执"
+      ? "已收到提醒"
       : latestProgress
         ? "已有过程信号"
         : "还没回过消息";
@@ -2979,8 +2979,8 @@ function buildWorkstationRecoverySummary(options: {
       code: "awaiting-first-signal-after-command",
       severity: "critical",
       label: "派单后还没回信",
-      summary: "平台已经把任务发到这条线程，但它还没有回过最小回执或最终回复。",
-      nextStep: hasToken ? "先确认目标终端在线，再重跑接入命令；如果仍然没回，轮换工位令牌后重新连接执行通道。" : "先生成工位令牌并运行接入命令，再让线程先回一条最小回执。",
+      summary: "平台已经把任务发到这条线程，但它还没有回过已收到提醒或最终结果。",
+      nextStep: hasToken ? "先确认目标终端在线，再重跑接入命令；如果仍然没回，轮换工位令牌后重新连接执行通道。" : "先生成工位令牌并运行接入命令，再让线程先回一条已收到提醒。",
       needsAttention: true,
       suggestTokenRotation: true,
       suggestSeatCalibration: shouldOfferCalibration,
@@ -3362,16 +3362,16 @@ function buildStarterDrawer(options: {
     id: "inspect-npc",
     title: `找 ${seatName}`,
     detail: focusSeat
-      ? `先看 ${seatName} 的最近任务、最小回执和固定知识库。`
+      ? `先看 ${seatName} 的最近任务、已收到提醒和固定知识库。`
       : "先找一个 NPC，看它当前负责的任务和固定知识库。",
     done: Boolean(focusSeat),
   };
   const stepReadAck: StarterDrawerStep = {
     id: "read-ack",
-    title: "盯最小回执",
+    title: "盯已收到提醒",
     detail: focusSeat?.minimalAck
-      ? `已经有最小回执：${focusSeat.minimalAck}`
-      : "看到“已接单/自动推进中”后，先确认最小回执，不用一上来就追最终答案。",
+      ? `已经有已收到提醒：${focusSeat.minimalAck}`
+      : "看到“已接单/自动推进中”后，先确认已收到提醒，不用一上来就追最终答案。",
     done: Boolean(focusSeat?.minimalAck),
   };
   const stepReadFinal: StarterDrawerStep = {
@@ -4572,7 +4572,7 @@ function buildCooperationProofSummary(
 }
 
 function seatNeedsHumanReview(seat: MapSeatPayload) {
-  return ["等待人工审批", "人工审核中", "审批阻塞", "需要人工确认"].includes(seat.reviewState);
+  return ["等待人工确认", "人工确认中", "确认阻塞", "需要人工确认"].includes(seat.reviewState);
 }
 
 function taskNeedsHumanReview(task: AnyRecord) {
@@ -4596,7 +4596,7 @@ function seatIsAutonomous(seat: MapSeatPayload) {
 
 function seatScreenshotState(seat: MapSeatPayload, hasProtectedDataGap: boolean) {
   if (hasProtectedDataGap) return "截图待恢复协作数据";
-  if (seatNeedsHumanReview(seat)) return "截图含人审状态";
+  if (seatNeedsHumanReview(seat)) return "截图含确认状态";
   if (seat.staleAfterAck) return "截图可证明停在最小回执";
   if (seat.finalReply) return "截图可证明已收口";
   if (seat.minimalAck) return "截图可证明自主推进";
@@ -4610,7 +4610,7 @@ function seatAutonomyChip(seat: MapSeatPayload) {
   if (seat.progressWarningLabel) return seat.progressWarningLabel;
   if (seat.autonomyDecision.includes("重新登录")) return "待恢复协作数据";
   if (seat.autonomyDecision.includes("暂停自动推进")) return "暂停自动推进";
-  if (seat.autonomyDecision.includes("等待人工审核")) return "等待人审结论";
+  if (seat.autonomyDecision.includes("等待人工审核") || seat.autonomyDecision.includes("等待人工确认")) return "等待确认结论";
   if (seat.autonomyDecision.includes("本轮已收口")) return "本轮已收口";
   if (seat.autonomyDecision.includes("已给最小回执")) return "自动推进中";
   if (seat.autonomyDecision.includes("已接单")) return "等待最小回执";
@@ -4786,14 +4786,14 @@ function buildSeatNextStepDecision(
   if (hasProtectedDataGap) {
     return {
       label: "待恢复协作数据",
-      detail: "重新登录后再判断是否继续自动推进，还是转入人工审核。",
+      detail: "重新登录后再判断是否继续自动推进，还是转入人工确认。",
     };
   }
 
   const reviewSeat = seats.find((seat) => seatNeedsHumanReview(seat)) ?? null;
   if (reviewSeat) {
     return {
-      label: "等待人工审核",
+      label: "等待人工确认",
       detail: `${reviewSeat.name} 当前处于 ${reviewSeat.reviewState}，下一步应等待人工结论而不是继续自动推进。`,
     };
   }
@@ -4879,7 +4879,7 @@ function buildSeatAcceptanceSummary(
     return {
       foldSummary: "截图验收链：还没有 NPC 席位",
       title: "还没有可验收的席位链路",
-      body: "先绑定真实 NPC 席位和来源线程，截图验收链才会开始证明谁在自主推进、谁在等待人工审核。",
+      body: "先绑定真实 NPC 席位和来源线程，截图验收链才会开始证明谁在自主推进、谁在等待人工确认。",
       meta: "继续保持农场底座和三主卡可见，这里只收口席位级状态。",
       nextStepLabel: "等待建席位",
       nextStepDetail: "先创建或绑定 NPC 席位，再继续做截图验收和推进判断。",
@@ -4887,12 +4887,12 @@ function buildSeatAcceptanceSummary(
   }
 
   return {
-    foldSummary: `截图验收链：下一步 ${nextStep.label} / 自主推进 ${autonomousSeats} 席 / 停滞 ${stalledSeats} 席 / 等待人审 ${reviewSeats} 席${queuedBridgeCount ? ` / 桥接排队 ${queuedBridgeCount} 条` : ""}${featuredQueuedBridge ? ` / 当前聚焦 ${featuredQueuedBridge.target || "当前线程"}${shortRequirementLabel(featuredQueuedBridge.requirementId) ? ` · ${shortRequirementLabel(featuredQueuedBridge.requirementId)}` : ""}` : ""}${latestSignalAt ? ` / 最新 ${formatEpoch(latestSignalAt)}` : ""}`,
+    foldSummary: `截图验收链：下一步 ${nextStep.label} / 自主推进 ${autonomousSeats} 席 / 停滞 ${stalledSeats} 席 / 等待确认 ${reviewSeats} 席${queuedBridgeCount ? ` / 桥接排队 ${queuedBridgeCount} 条` : ""}${featuredQueuedBridge ? ` / 当前聚焦 ${featuredQueuedBridge.target || "当前线程"}${shortRequirementLabel(featuredQueuedBridge.requirementId) ? ` · ${shortRequirementLabel(featuredQueuedBridge.requirementId)}` : ""}` : ""}${latestSignalAt ? ` / 最新 ${formatEpoch(latestSignalAt)}` : ""}`,
     title: "农场席位状态可直接截图验收",
     body: hasProtectedDataGap
-      ? "当前登录态未授权读取完整协作数据，但席位级链路仍能说明哪些线程拓扑已就位，恢复登录后即可继续验证自主推进和人审状态。"
+      ? "当前登录态未授权读取完整协作数据，但席位级链路仍能说明哪些线程拓扑已就位，恢复登录后即可继续验证自主推进和确认状态。"
       : reviewSeats
-        ? "截图时不用展开日志墙，只要保留农场底座、三主卡和这个折叠区，就能证明哪些席位还在自动推进、哪些已经停在人审。"
+        ? "截图时不用展开日志墙，只要保留农场底座、三主卡和这个折叠区，就能证明哪些席位还在自动推进、哪些已经停在待确认。"
         : queuedBridgeCount
           ? `当前席位链路可以直接在截图里证明谁已接单、谁给过最小回执、谁已经收口；同时还能看到仍有 ${queuedBridgeCount} 条桥接派单在等线程最小回执或宿主镜像回写${featuredQueuedBridge ? `，当前聚焦 ${featuredQueuedBridge.target || "当前线程"}${shortRequirementLabel(featuredQueuedBridge.requirementId) ? ` 的 ${shortRequirementLabel(featuredQueuedBridge.requirementId)}` : ""}` : ""}，不需要把整页变成过程日志。`
           : "当前席位链路可以直接在截图里证明谁已接单、谁给过最小回执、谁已经收口，不需要把整页变成过程日志。",
@@ -5103,7 +5103,7 @@ function guessNpcResponsibility(thread: AnyRecord) {
   if (name.includes("git")) return "Git 协作 / 结果回流";
   if (name.includes("proof")) return "闭环证明 / 稳定性验证";
   if (name.includes("scan")) return "线程扫描 / 线程接单";
-  if (name.includes("review")) return "审核把关 / 风险复查";
+  if (name.includes("review")) return "确认把关 / 风险复查";
   return "线程协作 / 平台推进";
 }
 
@@ -5126,11 +5126,11 @@ function resolveSeatSkillLoadout(seat: AnyRecord, skillLibrary: AnyRecord[]) {
 
 function describeSeatReviewState(tasks: AnyRecord[], hasProtectedDataGap: boolean) {
   if (hasProtectedDataGap) return "协作数据未授权";
-  if (tasks.some((task) => text(task.status, "").toLowerCase() === "waiting_approval")) return "等待人工审批";
-  if (tasks.some((task) => text(task.status, "").toLowerCase() === "reviewing")) return "人工审核中";
-  if (tasks.some((task) => text(task.status, "").toLowerCase() === "blocked")) return "审批阻塞";
+  if (tasks.some((task) => text(task.status, "").toLowerCase() === "waiting_approval")) return "等待人工确认";
+  if (tasks.some((task) => text(task.status, "").toLowerCase() === "reviewing")) return "人工确认中";
+  if (tasks.some((task) => text(task.status, "").toLowerCase() === "blocked")) return "确认阻塞";
   if (tasks.some((task) => Boolean(task.requires_human_approval))) return "需要人工确认";
-  return "无需人审";
+  return "无需确认";
 }
 
 function describeSeatAutonomyDecision(options: {
@@ -5155,12 +5155,12 @@ function describeSeatAutonomyDecision(options: {
     legacyProgressSignal,
     selectionRecovered,
   } = options;
-  if (hasProtectedDataGap) return "重新登录后再判断自动推进还是人工审核";
+  if (hasProtectedDataGap) return "重新登录后再判断自动推进还是人工确认";
   if (relatedTasks.some((task) => text(task.status, "").toLowerCase() === "waiting_approval")) {
-    return "暂停自动推进，等待人工审批";
+    return "暂停自动推进，等待人工确认";
   }
   if (relatedTasks.some((task) => text(task.status, "").toLowerCase() === "reviewing")) {
-    return "等待人工审核结论";
+    return "等待人工确认结论";
   }
   if (latestFinalReply && !activeRequirement) return "本轮已收口，可继续接下一条 requirement";
   if (staleAfterAck) return "最小回执后停滞，建议重新派单或人工接手";
@@ -5298,11 +5298,11 @@ function buildSeatMapPayload(options: {
             : "当前空闲";
     const reviewState = describeSeatReviewState(relatedTasks, hasProtectedDataGap);
     const approvalState =
-      reviewState === "无需人审"
+      reviewState === "无需确认"
         ? "自动推进"
-        : reviewState === "协作数据未授权"
+      : reviewState === "协作数据未授权"
           ? "待恢复协作数据"
-          : "等待人审";
+          : "等待确认";
     const autonomyDecision = describeSeatAutonomyDecision({
       hasProtectedDataGap,
       activeRequirement,
@@ -5386,7 +5386,7 @@ function buildSeatMapPayload(options: {
       name: text(seat.name, `NPC ${index + 1}`),
       role: text(seat.responsibility ?? seat.metadata?.responsibility, "待分配职责"),
       status:
-        reviewState === "等待人工审批" || reviewState === "人工审核中" || reviewState === "审批阻塞"
+        reviewState === "等待人工确认" || reviewState === "人工确认中" || reviewState === "确认阻塞"
           ? "paused"
           : activeRequirement || latestMinimalAck
             ? "active"
@@ -6582,7 +6582,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
     const title =
       seat?.currentRequirement ||
       seat?.recentTasks[0]?.title ||
-      safeDisplayTitle(task?.title ?? message?.title, "待人工审核事项");
+      safeDisplayTitle(task?.title ?? message?.title, "待人工确认事项");
     return {
       title,
       count: humanReviewSeats.length + pendingHumanReviewTasks.length + pendingHumanReviewMessages.length,
@@ -6591,11 +6591,11 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
         display(task?.assignee_id ?? task?.owner_id ?? task?.agent_id, "") ||
         (message ? actorLabel(message, display) : "") ||
         "待确认负责人",
-      state: seat?.reviewState || (message ? "协作指令待人工审核" : describeSeatReviewState(task ? [task] : [], hasProtectedDataGap)),
+      state: seat?.reviewState || (message ? "协作指令待人工确认" : describeSeatReviewState(task ? [task] : [], hasProtectedDataGap)),
       detail: seat
-        ? `${seat.name} 正在等待人工审核：${seat.reviewState}。不要继续自动推进，先给出通过/驳回/补充要求。`
+        ? `${seat.name} 正在等待人工确认：${seat.reviewState}。不要继续自动推进，先给出通过/驳回/补充要求。`
         : task
-          ? `${safeDisplayTitle(task.title, "这条任务")} 需要人工审核。先处理审核，再允许 AI 继续推进。`
+          ? `${safeDisplayTitle(task.title, "这条任务")} 需要人工确认。先处理确认，再允许 AI 继续推进。`
           : `${safeDisplayTitle(message?.title, "这条协作指令")} 已被治理闸口挡住，没有派给远端 AI。请先确认只读/仿真/真实执行边界。`,
     };
   }, [humanReviewSeats, pendingHumanReviewTasks, pendingHumanReviewMessages, hasProtectedDataGap, display]);
@@ -6616,7 +6616,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
   const recommendedAction = hasProtectedDataGap
     ? "重新登录，恢复 requirement、回执和最终回复读取，再继续判断平台下一步。"
     : humanReviewAlert
-      ? `先处理人工审核：${humanReviewAlert.detail}`
+      ? `先处理人工确认：${humanReviewAlert.detail}`
       : runnerQueueBlocker
       ? `先恢复电脑可投递状态：当前 ${currentQueuedCommandCount} 条新指令排队，但 0 台电脑在持续心跳。进入电脑接入管理，复制“自动化心跳 / 持续接单”命令。`
       : runnerQueueAttention
@@ -8010,7 +8010,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
       id: "current-action",
       title: "当前推荐动作",
       body: recommendedAction,
-      meta: `${humanReviewAlert ? `人工审核 ${humanReviewAlert.count} 条 / ${humanReviewAlert.owner}` : "暂无怼脸人审"} / 接单 ${watchReadyNodes.length}/${nodes.length} 台 / 排队 ${queuedCollaborationCommandCount} 条 / 真实线程 ${realThreadCount} 条 / 已发 Codex 指令 ${codexInboxFullFeed.length} 条${featuredProcessFocusLabel ? ` / 当前聚焦 ${featuredProcessFocusLabel}` : ""}${featuredProcessFocusCommand?.queueStartedAtLabel ? ` / 排队起点 ${featuredProcessFocusCommand.queueStartedAtLabel}` : ""}${featuredProcessFocusCommand?.queueAgeLabel ? ` / 已等 ${featuredProcessFocusCommand.queueAgeLabel}` : ""}${featuredProcessFocusCommand?.queueStateLabel ? ` / ${featuredProcessFocusCommand.queueStateLabel}` : ""}`,
+      meta: `${humanReviewAlert ? `人工确认 ${humanReviewAlert.count} 条 / ${humanReviewAlert.owner}` : "暂无待确认事项"} / 接单 ${watchReadyNodes.length}/${nodes.length} 台 / 排队 ${queuedCollaborationCommandCount} 条 / 真实线程 ${realThreadCount} 条 / 已发 Codex 指令 ${codexInboxFullFeed.length} 条${featuredProcessFocusLabel ? ` / 当前聚焦 ${featuredProcessFocusLabel}` : ""}${featuredProcessFocusCommand?.queueStartedAtLabel ? ` / 排队起点 ${featuredProcessFocusCommand.queueStartedAtLabel}` : ""}${featuredProcessFocusCommand?.queueAgeLabel ? ` / 已等 ${featuredProcessFocusCommand.queueAgeLabel}` : ""}${featuredProcessFocusCommand?.queueStateLabel ? ` / ${featuredProcessFocusCommand.queueStateLabel}` : ""}`,
     },
     {
       id: "current-owner",
@@ -8020,7 +8020,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
         : `${currentOwnerFocusLabel}${currentOwnerStatusLabel ? ` · ${currentOwnerStatusLabel}` : ""}${featuredProcessQueuedCount > 1 ? ` · 同线程 ${featuredProcessQueuedCount} 条排队` : ""}${featuredProcessFocusCommand?.queueStartedAtLabel ? ` · 起于 ${featuredProcessFocusCommand.queueStartedAtLabel}` : ""}${featuredProcessFocusCommand?.queueAgeLabel ? ` · 已等 ${featuredProcessFocusCommand.queueAgeLabel}` : ""}${featuredProcessFocusCommand?.queueStateLabel ? ` · ${featuredProcessFocusCommand.queueStateLabel}` : ""}`,
       meta: hasProtectedDataGap
         ? "重新登录后再判断真实负责人。"
-        : `${humanReviewAlert ? `先处理人工审核：${humanReviewAlert.detail}` : attentionOwnerSeat && stalledSeatSummary?.detail ? `${stalledSeatRecoveryAction || `先处理 ${stalledSeatSummary.detail}。`}` : attentionOwnerSeat?.progressWarningLabel === "最小回执偏晚" ? `先继续盯住 ${attentionOwnerSeat.name} 的结果收口，不要把这条链误判成彻底卡死。` : attentionOwnerSeat?.progressWarningLabel === "进度信号待归一" ? `先继续盯住 ${attentionOwnerSeat.name} 的结果收口，再把旧进度信号归一回真正的 progress_ack。` : "优先让当前线程先回最小回执，再收口成最终回复。"}${currentOwnerFocusLabel ? ` / 当前聚焦 ${currentOwnerFocusLabel}${currentOwnerStatusLabel ? ` / ${currentOwnerStatusLabel}` : ""}` : ""}${featuredProcessFocusCommand?.queueStartedAtLabel ? ` / 排队起点 ${featuredProcessFocusCommand.queueStartedAtLabel}` : ""}${featuredProcessFocusCommand?.queueAgeLabel ? ` / 已等 ${featuredProcessFocusCommand.queueAgeLabel}` : ""}${featuredProcessFocusCommand?.queueStateLabel ? ` / ${featuredProcessFocusCommand.queueStateLabel}` : ""}`,
+        : `${humanReviewAlert ? `先处理人工确认：${humanReviewAlert.detail}` : attentionOwnerSeat && stalledSeatSummary?.detail ? `${stalledSeatRecoveryAction || `先处理 ${stalledSeatSummary.detail}。`}` : attentionOwnerSeat?.progressWarningLabel === "最小回执偏晚" ? `先继续盯住 ${attentionOwnerSeat.name} 的结果收口，不要把这条链误判成彻底卡死。` : attentionOwnerSeat?.progressWarningLabel === "进度信号待归一" ? `先继续盯住 ${attentionOwnerSeat.name} 的结果收口，再把旧进度信号归一回真正的 progress_ack。` : "优先让当前线程先回已收到提醒，再收口成最终结果。"}${currentOwnerFocusLabel ? ` / 当前聚焦 ${currentOwnerFocusLabel}${currentOwnerStatusLabel ? ` / ${currentOwnerStatusLabel}` : ""}` : ""}${featuredProcessFocusCommand?.queueStartedAtLabel ? ` / 排队起点 ${featuredProcessFocusCommand.queueStartedAtLabel}` : ""}${featuredProcessFocusCommand?.queueAgeLabel ? ` / 已等 ${featuredProcessFocusCommand.queueAgeLabel}` : ""}${featuredProcessFocusCommand?.queueStateLabel ? ` / ${featuredProcessFocusCommand.queueStateLabel}` : ""}`,
     },
     {
       id: "final-replies",
@@ -8115,7 +8115,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             <p>{display(governance.execution_mode_label, "先预演，再决定是否正式发送。")}</p>
             {governanceNeedsHumanReview ? (
               <p className={styles.microCopy}>
-                治理闸口会拦住直接派发：如果现在点正式发送，平台只会登记人工审核请求，不会把指令送进目标线程 inbox。
+                治理闸口会拦住直接派发：如果现在点正式发送，平台只会登记人工确认请求，不会把指令送进目标线程 inbox。
               </p>
             ) : null}
             <div className={styles.cardGridCompact}>
@@ -8131,7 +8131,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
               </article>
               <article className={styles.card}>
                 <span>执行边界</span>
-                <strong>{governance.requires_human_review ? "需要人审" : "可执行"}</strong>
+                <strong>{governance.requires_human_review ? "需要确认" : "可执行"}</strong>
                 <p>
                   {[
                     governance.readonly_first ? "先只读探针" : "可直接验证",
@@ -8499,8 +8499,8 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
       count: number;
     }[] = [
       { id: "all", label: "全部轮次", detail: "按派工标题聚合", count: receiptRoundItems.length },
-      { id: "open", label: "待收口", detail: "有回执但还没最终回复", count: receiptRoundItems.filter((item) => !item.hasFinal).length },
-      { id: "finals", label: "已收口", detail: "已有最终回复", count: receiptRoundItems.filter((item) => item.hasFinal).length },
+      { id: "open", label: "等结果", detail: "已收到提醒，但还没等到最终结果", count: receiptRoundItems.filter((item) => !item.hasFinal).length },
+      { id: "finals", label: "已收口", detail: "已有最终结果", count: receiptRoundItems.filter((item) => item.hasFinal).length },
       { id: "clean", label: "隐藏验收", detail: "先看真实业务协作", count: receiptRoundItems.filter((item) => !item.isValidationNoise).length },
     ];
     const exchangeFocusActive = Boolean(exchangeFocusLabel && normalizedExchangeFocusRouteKeys.length);
@@ -8665,7 +8665,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                   <article className={styles.card}>
                     <span>安全边界</span>
                     <strong>先看，不自动重派</strong>
-                    <p>旧队列可能是远端电脑断线、线程未绑定、或人审未通过；平台不静默重复消耗 token，也不拿它吓阻新的有效派工。</p>
+                    <p>旧队列可能是远端电脑断线、线程未绑定、或确认未通过；平台不静默重复消耗 token，也不拿它吓阻新的有效派工。</p>
                   </article>
                 </div>
                 <div className={styles.inlineActions}>
@@ -8697,15 +8697,15 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                 data-human-review-alert="true"
               >
                 <div className={styles.exchangeLevelHead}>
-                  <span className={styles.exchangeLevelTag}>人工审核</span>
+                  <span className={styles.exchangeLevelTag}>人工确认</span>
                   <div>
-                    <strong>{`有 ${humanReviewAlert.count} 条事项需要先人审`}</strong>
+                    <strong>{`有 ${humanReviewAlert.count} 条事项需要先确认`}</strong>
                     <p className={styles.microCopy}>{humanReviewAlert.detail}</p>
                   </div>
                 </div>
                 <div className={styles.cardGridCompact}>
                   <article className={styles.card}>
-                    <span>审核对象</span>
+                    <span>确认对象</span>
                     <strong>{humanReviewAlert.title}</strong>
                     <p>{humanReviewAlert.state}</p>
                   </article>
@@ -8720,8 +8720,8 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                     {pendingHumanReviewMessages.slice(0, 3).map((message) => (
                       <article key={text(message.id, text(message.title, "human-review"))} className={styles.card} data-human-review-message={text(message.id, "")}>
                         <span>{`待处理 · ${formatStamp(message.created_at ?? message.updated_at)}`}</span>
-                        <strong>{safeDisplayTitle(message.title, "人工审核请求")}</strong>
-                        <p>{shortText(message.body, "没有审核正文", 180)}</p>
+                        <strong>{safeDisplayTitle(message.title, "人工确认请求")}</strong>
+                        <p>{shortText(message.body, "没有确认说明", 180)}</p>
                         <form action={handleCollaborationHumanReview} className={styles.inlineActions}>
                           <input type="hidden" name="project_id" value={projectId} />
                           <input type="hidden" name="review_message_id" value={text(message.id, "")} />
@@ -8735,7 +8735,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                           <button type="submit" name="decision" value="formal_execute" data-loading-label="正在登记正式执行">
                             通过：正式执行
                           </button>
-                          <button type="submit" name="decision" value="reject" data-loading-label="正在驳回人审请求">
+                          <button type="submit" name="decision" value="reject" data-loading-label="正在驳回确认请求">
                             驳回
                           </button>
                         </form>
@@ -8774,12 +8774,12 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             <details className={styles.exchangeHelpFold} data-ai-collab-contract="true">
               <summary className={styles.exchangeHelpSummary}>
                 <span className={styles.exchangeLevelTag}>AI 协作契约</span>
-                <strong>{`10+ 线程协作按“需求表 -> 派单 -> 回执 -> 审核 -> 最终回复”流转`}</strong>
-                <small>所有 NPC 默认带“AI 必读需求表”固定 Skill；高风险事项先停到人审。</small>
+                <strong>{`10+ 线程协作按“需求表 -> 派单 -> 回执 -> 人工确认 -> 最终回复”流转`}</strong>
+                <small>所有 NPC 默认带“AI 必读需求表”固定 Skill；高风险事项先停到人工确认。</small>
               </summary>
               <p className={styles.microCopy}>
                 开工前先读 docs/ai-requirements/ai-required-requirements-ledger.md，
-                明确提需求者、被提需求者、人工审核边界、一次性/心跳模式和完成后回给谁。
+                明确提需求者、被提需求者、人工确认边界、一次性/心跳模式和完成后回给谁。
               </p>
               <div className={`${styles.exchangeStepStrip} ${styles.exchangeHelpBody}`}>
                 <article>
@@ -8789,7 +8789,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                 </article>
                 <article>
                   <span>审</span>
-                  <strong>人审先停下</strong>
+                  <strong>确认前先停下</strong>
                   <p>高风险或不明确事项直接怼到首页，等待人给结论。</p>
                 </article>
                 <article>
@@ -9033,11 +9033,11 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                     先预演协作指令
                   </button>
                   <button type="submit" disabled={exchangeRequestDisabled} data-loading-label="正在登记协作指令">
-                    {exchangePreviewNeedsHumanReview ? "登记人工审核" : "正式发送到协作池"}
+                    {exchangePreviewNeedsHumanReview ? "登记人工确认" : "正式发送到协作池"}
                   </button>
                 </div>
                 <p className={styles.microCopy}>
-                  先预演后，正式发送按钮才会亮。若治理预演显示需要人审，点击后只会登记审核请求，不会派给远端线程。
+                  先预演后，正式发送按钮才会亮。若治理预演显示需要确认，点击后只会登记确认请求，不会派给远端线程。
                 </p>
               </form>
             ) : null}
@@ -9102,7 +9102,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                     <span>最终目标</span>
                     <textarea
                       name="objective"
-                      placeholder="写清楚最终要交付什么。比如：一个 AI 找资料和提纲，另一个 AI 写成面向小白用户的文章，并列出需要人工审核的点。"
+                      placeholder="写清楚最终要交付什么。比如：一个 AI 找资料和提纲，另一个 AI 写成面向小白用户的文章，并列出需要人工确认的点。"
                       required
                     />
                   </label>
@@ -9422,7 +9422,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             <span className={styles.exchangeLevelTag}>二级</span>
             <div>
               <strong>回执结果区</strong>
-              <p className={styles.microCopy}>按一次派工聚合成一轮：先看有没有最小回执，再看有没有最终回复。原始消息不再直接堆成日志墙。</p>
+              <p className={styles.microCopy}>按一次派工聚合成一轮：先看有没有已收到提醒，再看有没有最终结果。原始消息不再直接堆成日志墙。</p>
             </div>
             <span className={styles.stateBadge}>{`${visibleReceiptRoundItems.length}/${receiptRoundItems.length} 轮`}</span>
           </div>
@@ -9487,12 +9487,12 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                       className={styles.receiptTimelineStep}
                       data-receipt-step-state={round.latestAck ? "done" : "empty"}
                       data-exchange-receipt-item={ackId}
-                      data-exchange-receipt-kind="最小回执"
+                      data-exchange-receipt-kind="已收到提醒"
                       data-exchange-receipt-title={round.title}
                       data-exchange-receipt-type={text(round.latestAck?.message_type, "agent_ack")}
                       data-exchange-receipt-sender={round.senderLabel}
                     >
-                      <span>最小回执</span>
+                      <span>已收到提醒</span>
                       <strong>{round.latestAck ? `状态：${text(round.latestAck.status, "delivered")}` : "等待"}</strong>
                       <p>{round.latestAck ? shortText(round.latestAck.body, "没有正文", 64) : "目标 AI 接单后这里会先亮起。"}</p>
                     </div>
@@ -9500,14 +9500,14 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                       className={styles.receiptTimelineStep}
                       data-receipt-step-state={round.latestFinal ? "done" : "empty"}
                       data-exchange-receipt-item={finalId}
-                      data-exchange-receipt-kind="最终回复"
+                      data-exchange-receipt-kind="最终结果"
                       data-exchange-receipt-title={round.title}
                       data-exchange-receipt-type={text(round.latestFinal?.message_type, "agent_result")}
                       data-exchange-receipt-sender={round.senderLabel}
                     >
-                      <span>最终回复</span>
+                      <span>最终结果</span>
                       <strong>{round.latestFinal ? `状态：${text(round.latestFinal.status, "completed")}` : "等待"}</strong>
-                      <p>{round.latestFinal ? shortText(round.latestFinal.body, "没有正文", 64) : "完成后会进入最终回复池。"}</p>
+                      <p>{round.latestFinal ? shortText(round.latestFinal.body, "没有正文", 64) : "完成后会进入最终结果池。"}</p>
                     </div>
                   </div>
                   <p>{round.bodyPreview}</p>
@@ -9603,8 +9603,8 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                       {item.latestCommandLabel ? (
                         <span className={styles.miniChip}>{item.latestCommandTypeLabel || "最近命令"}</span>
                       ) : null}
-                      {item.latestAckLabel ? <span className={styles.miniChip}>已回最小回执</span> : null}
-                      {item.latestFinalReplyLabel ? <span className={styles.miniChip}>已回写最终回复</span> : null}
+                      {item.latestAckLabel ? <span className={styles.miniChip}>已收到提醒</span> : null}
+                      {item.latestFinalReplyLabel ? <span className={styles.miniChip}>已同步最终结果</span> : null}
                       {item.freshnessLabel ? (
                         <span className={item.stale ? styles.miniChipWarning : styles.miniChip}>{item.freshnessLabel}</span>
                       ) : null}
@@ -9833,7 +9833,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
               ) : (
                 <li>
                   <strong>还没有可截图验收的 NPC 席位</strong>
-                  <p>先把真实线程绑定到 NPC 席位，截图验收链才会开始证明哪些席位在自主推进、哪些在等待人工审核。</p>
+                  <p>先把真实线程绑定到 NPC 席位，截图验收链才会开始证明哪些席位在自主推进、哪些在等待人工确认。</p>
                 </li>
               )}
             </ul>
@@ -9952,8 +9952,8 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                 ))
               ) : (
                 <li>
-                  <strong>当前还没有最终回复</strong>
-                  <p>先接单，再给最小回执，最后把结果收进最终回复池。</p>
+                  <strong>当前还没有最终结果</strong>
+                  <p>先接单，再给已收到提醒，最后把结果收进最终结果池。</p>
                 </li>
               )}
             </ul>
@@ -10103,7 +10103,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
           `工位：${selectedStation.label}`,
           `地图位置：${selectedStation.mapScene} / ${selectedStation.mapLocation}`,
           `后端锚点：${selectedStation.backendAnchor}`,
-          `审批规则：${selectedStation.approvalPolicy}`,
+          `确认规则：${selectedStation.approvalPolicy}`,
           `工位知识库：${selectedStation.knowledgeBase.handoffPath}`,
           `下一步：${selectedStation.nextActions.join("；")}`,
         ].join("\n")
@@ -10254,10 +10254,10 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
               disabled={!workshopTargets.length || !workshopPreviewReady}
               data-loading-label="正在登记工位规划"
              >
-               {workshopPreviewNeedsHumanReview ? "登记人工审核" : "正式发送给 AI"}
+               {workshopPreviewNeedsHumanReview ? "登记人工确认" : "正式发送给 AI"}
              </button>
            </div>
-           <p className={styles.microCopy}>这条是开发工坊主链入口之一。预演通过后再入池；如果涉及硬件/发布/删除等高风险语义，会先进入人工审核。</p>
+           <p className={styles.microCopy}>这条是开发工坊主链入口之一。预演通过后再入池；如果涉及硬件/发布/删除等高风险语义，会先进入人工确认。</p>
         </form>
           );
         })()}
@@ -10281,7 +10281,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             <span className={styles.managerEyebrow}>AI 协作调试台</span>
             <h3>先看 AI 会不会乱跑，再决定要不要开自动化</h3>
             <p>
-              这里面向开发者和用户一起看：每个 NPC 都要带 token 预算、自动轮次上限、停止条件、只读探针和人审边界。
+              这里面向开发者和用户一起看：每个 NPC 都要带 token 预算、自动轮次上限、停止条件、只读探针和确认边界。
               关闭自动化时只跑当前指令，开启自动化后才按这些护栏持续推进。
             </p>
           </div>
@@ -10290,7 +10290,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
         <div className={styles.managerStatGrid}>
           <article><span>受治理 NPC</span><strong>{governedSeats.length}</strong></article>
           <article><span>持续自动化</span><strong>{autonomousSeats.length}</strong></article>
-          <article><span>需人审边界</span><strong>{reviewSeats.length}</strong></article>
+          <article><span>需确认边界</span><strong>{reviewSeats.length}</strong></article>
         </div>
 
         <section className={styles.managerPreviewPanel}>
@@ -10299,11 +10299,11 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
           <div className={styles.managerCardGrid}>
             <article>
               <strong>Token 预算</strong>
-              <p>纯软件默认单条 2500、单轮 8000、日预算 30000；机器人/嵌入式默认更保守，并超预算转人工审核。</p>
+              <p>纯软件默认单条 2500、单轮 8000、日预算 30000；机器人/嵌入式默认更保守，并超预算转人工确认。</p>
             </article>
             <article>
               <strong>跑飞停止</strong>
-              <p>连续没有新进展、需求冲突、预算超限、越过账号/项目隔离、碰到敏感操作，必须停止并写回人审提醒。</p>
+              <p>连续没有新进展、需求冲突、预算超限、越过账号/项目隔离、碰到敏感操作，必须停止并写回人工确认提醒。</p>
             </article>
             <article>
               <strong>效能策略</strong>
@@ -10376,7 +10376,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             <h3>机器人先仿真，纯软件先沙盘验证</h3>
             <p>
               未来这里会接真实仿真器、串口波形、日志回放和 UI 沙盘。现在先把入口和协作边界固定下来：
-              AI 可以提出计划、读取资料、跑只读检查，但真实设备动作必须人审。
+              AI 可以提出计划、读取资料、跑只读检查，但真实设备动作必须人工确认。
             </p>
           </div>
         </section>
@@ -10392,14 +10392,14 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             <strong>开发机器人视角</strong>
             <p>
               默认流程是需求澄清、只读环境探针、仿真或数字孪生、人工确认、再允许串口/烧录/GPIO/电机等真实动作。
-              没有人审前，AI 只能写计划、读日志、生成测试脚本和说明。
+              没有人工确认前，AI 只能写计划、读日志、生成测试脚本和说明。
             </p>
           </article>
           <article>
             <strong>开发纯软件视角</strong>
             <p>
               默认流程是拉 GitHub、确认分支、分配 NPC、预演派单、构建测试、截图验收、最终回复。
-              允许有限自动续推，但删除、回滚、发布、跨账号数据读取仍然要人审。
+              允许有限自动续推，但删除、回滚、发布、跨账号数据读取仍然要人工确认。
             </p>
           </article>
           <article>
@@ -10498,7 +10498,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
           })
           .join("\n")
       : "当前没有待排程任务。";
-    const aiPlanPrompt = `请基于今天的任务和 DDL，给出当日安排：\n${taskBrief}\n\n输出要求：先列优先级，再列上午/下午/晚上安排；标出需要人工审核的步骤；如果 DDL 不合理，请给出调整建议。`;
+    const aiPlanPrompt = `请基于今天的任务和 DDL，给出当日安排：\n${taskBrief}\n\n输出要求：先列优先级，再列上午/下午/晚上安排；标出需要人工确认的步骤；如果 DDL 不合理，请给出调整建议。`;
     const recentScheduleMessages = sortedByUpdatedAt(
       props.collaborationMessages.filter((message) => {
         const haystack = `${text(message.title, "")} ${text(message.body, "")}`.toLowerCase();
@@ -10647,10 +10647,10 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
               disabled={!scheduleTargets.length || !schedulePreviewReady}
               data-loading-label="正在登记 AI 排程"
              >
-               {schedulePreviewNeedsHumanReview ? "登记人工审核" : "正式发送给 AI"}
+               {schedulePreviewNeedsHumanReview ? "登记人工确认" : "正式发送给 AI"}
              </button>
            </div>
-           <p className={styles.microCopy}>日程也走同一套协作协议。预演通过才允许正式入池；高风险安排会先登记人工审核，不直接消耗远端 AI。</p>
+           <p className={styles.microCopy}>日程也走同一套协作协议。预演通过才允许正式入池；高风险安排会先登记人工确认，不直接消耗远端 AI。</p>
         </form>
 
         <div className={styles.listHead}>
@@ -11936,7 +11936,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
               disabled={!recoveryPreviewReady}
               data-loading-label={`正在正式发送 ${display(item.thread.name, item.threadId)} 的最小检查`}
              >
-               {recoveryPreviewNeedsHumanReview ? "登记人工审核" : "正式派最小检查"}
+               {recoveryPreviewNeedsHumanReview ? "登记人工确认" : "正式派最小检查"}
              </button>
           </div>
         </form>
@@ -12666,13 +12666,13 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                         )}
                         {activityProfile.latestAckAt ? (
                           <p className={styles.microCopy}>
-                            最近回执：{activityProfile.latestAckLabel || "最小回执"} / {formatStamp(activityProfile.latestAckAt)}
+                            最近回执：{activityProfile.latestAckLabel || "已收到提醒"} / {formatStamp(activityProfile.latestAckAt)}
                             {activityProfile.latestAckBody ? ` / ${activityProfile.latestAckBody}` : ""}
                           </p>
                         ) : null}
                         {activityProfile.latestFinalReplyAt ? (
                           <p className={styles.microCopy}>
-                            最近最终回复：{activityProfile.latestFinalReplyLabel || "最终回复"} / {formatStamp(activityProfile.latestFinalReplyAt)}
+                            最近最终结果：{activityProfile.latestFinalReplyLabel || "最终结果"} / {formatStamp(activityProfile.latestFinalReplyAt)}
                             {activityProfile.latestFinalReplyBody ? ` / ${activityProfile.latestFinalReplyBody}` : ""}
                           </p>
                         ) : null}
@@ -12780,7 +12780,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
       if (normalized.includes("repository not bound")) return "还没有绑定 Git 仓库";
       if (normalized.includes("local repository is not bound")) return "当前还没有绑定本地仓库镜像";
       if (normalized.includes("blocked branch")) return "还有阻塞分支未处理";
-      if (normalized.includes("high-risk approval")) return "还有高风险审批未完成";
+      if (normalized.includes("high-risk approval")) return "还有高风险确认未完成";
       return raw;
     };
 
@@ -12879,7 +12879,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
         oauth: "OAuth 授权",
         runner_env: "Runner 环境变量",
         ssh_agent: "SSH Agent",
-        manual_review: "人工审批后手动执行",
+        manual_review: "人工确认后手动执行",
       }[githubCredentialSource] ?? "Runner 环境变量";
     const githubCredentialRef = text(githubAccountBinding.credential_ref, "");
     const githubCloneProtocol = ["https", "ssh"].includes(text(githubAccountBinding.default_clone_protocol, "https"))
@@ -12960,7 +12960,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             <article className={styles.card}>
               <span>默认 clone</span>
               <strong>{githubCloneProtocol.toUpperCase()}</strong>
-              <p>{githubPermissionScopes.length ? `权限：${githubPermissionScopes.join(" / ")}` : "建议最小权限：repo read/write，危险操作走人工审批。"}</p>
+              <p>{githubPermissionScopes.length ? `权限：${githubPermissionScopes.join(" / ")}` : "建议最小权限：repo read/write，危险操作走人工确认。"}</p>
             </article>
           </div>
 
@@ -13039,7 +13039,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                   <option value="ssh_agent">SSH Agent</option>
                   <option value="github_app">GitHub App</option>
                   <option value="oauth">OAuth 授权</option>
-                  <option value="manual_review">人工审批后手动执行</option>
+                  <option value="manual_review">人工确认后手动执行</option>
                 </select>
               </label>
               <label className={styles.fieldLabel}>
@@ -13098,7 +13098,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             <span className={styles.stateBadge}>{gitPreflightSummary.total} 条</span>
           </div>
           <p>
-            登记同步或回退后，平台会让每台已接入电脑先做只读预检。这里直接看它有没有接单、缺不缺 Git 或环境变量、是否需要人工审批；这一步不会执行 push、pull、reset。
+            登记同步或回退后，平台会让每台已接入电脑先做只读预检。这里直接看它有没有接单、缺不缺 Git 或环境变量、是否需要人工确认；这一步不会执行 push、pull、reset。
           </p>
           {gitPreflightAttention ? (
             <div
@@ -13133,7 +13133,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             <article className={styles.card}>
               <span>提醒</span>
               <strong>{gitPreflightSummary.warningCount} 条</strong>
-              <p>比如 Runner 没有 GITHUB_TOKEN，或凭据需要人工审批。</p>
+              <p>比如 Runner 没有 GITHUB_TOKEN，或凭据需要人工确认。</p>
             </article>
           </div>
           <ul className={styles.list} data-git-preflight-list="1">
@@ -13177,7 +13177,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             <span className={styles.stateBadge}>{gitRepositoryBound ? "已绑定仓库" : "待绑定仓库"}</span>
           </div>
           <p>
-            同步也改成先预演、再登记。先看这次同步会不会遇到阻塞分支、审批缺口和仓库绑定问题，再决定是否把同步请求交给真实线程继续执行。
+            同步也改成先预演、再登记。先看这次同步会不会遇到阻塞分支、确认缺口和仓库绑定问题，再决定是否把同步请求交给真实线程继续执行。
           </p>
           {gitSyncPreview ? (
             <div className={styles.noticeCard}>
@@ -13202,7 +13202,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                   <p>{`${asNumber(gitSyncPreview?.merge_ready_count) ?? 0} 个可同步 / ${asNumber(gitSyncPreview?.blocked_count) ?? 0} 个阻塞`}</p>
                 </article>
                 <article className={styles.card}>
-                  <span>高风险审批</span>
+                  <span>高风险确认</span>
                   <strong>{`${asNumber(gitSyncPreview?.pending_high_risk_count) ?? 0} 条`}</strong>
                   <p>{syncPreviewReady ? "当前预演允许继续登记" : "建议先按提醒处理后再登记"}</p>
                 </article>
@@ -13383,7 +13383,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                   <p>{`${asNumber(gitRollbackPreview?.merge_ready_count) ?? 0} 个可合并 / ${asNumber(gitRollbackPreview?.blocked_count) ?? 0} 个阻塞`}</p>
                 </article>
                 <article className={styles.card}>
-                  <span>高风险审批</span>
+                  <span>高风险确认</span>
                   <strong>{`${asNumber(gitRollbackPreview?.pending_high_risk_count) ?? 0} 条`}</strong>
                   <p>{rollbackPreviewReady ? "当前预演允许继续登记" : "建议先按提醒处理后再登记"}</p>
                 </article>
@@ -13496,7 +13496,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             </div>
             <p className={styles.microCopy}>
               {gitRepositoryBound
-                ? "先预演后，登记按钮才会亮。预演不会写入活动流；正式登记会给已接入电脑下发只读 Git 预检，但不会直接执行 git reset。真正执行仍要走后续工位和人审。"
+                ? "先预演后，登记按钮才会亮。预演不会写入活动流；正式登记会给已接入电脑下发只读 Git 预检，但不会直接执行 git reset。真正执行仍要走后续工位和人工确认。"
                 : "先在项目管理里补齐 GitHub 地址或本地仓库路径，这里才会变成可用入口。"}
             </p>
           </form>
@@ -13772,15 +13772,15 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
           </div>
           <div className={styles.noticeCard}>
             <strong>最近回执</strong>
-            <p>{activity.latestAckLabel || "暂时还没有最小回执。"}</p>
+            <p>{activity.latestAckLabel || "暂时还没有已收到提醒。"}</p>
             <p className={styles.microCopy}>
               {activity.latestAckAt ? `时间：${formatStamp(activity.latestAckAt)}` : "时间：暂无"}
               {activity.latestAckBody ? ` / ${activity.latestAckBody}` : ""}
             </p>
           </div>
           <div className={styles.noticeCard}>
-            <strong>最近最终回复</strong>
-            <p>{activity.latestFinalReplyLabel || "暂时还没有最终回复。"}</p>
+            <strong>最近最终结果</strong>
+            <p>{activity.latestFinalReplyLabel || "暂时还没有最终结果。"}</p>
             <p className={styles.microCopy}>
               {activity.latestFinalReplyAt ? `时间：${formatStamp(activity.latestFinalReplyAt)}` : "时间：暂无"}
               {activity.latestFinalReplyBody ? ` / ${activity.latestFinalReplyBody}` : ""}
@@ -14527,11 +14527,11 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
               data-npc-dialog-submit={selected.id || "unselected"}
               data-loading-label="正在发送 NPC 指令"
              >
-               {npcDialogPreviewNeedsHumanReview ? "登记人工审核" : "发送给这个 NPC"}
+               {npcDialogPreviewNeedsHumanReview ? "登记人工确认" : "发送给这个 NPC"}
              </button>
            </div>
            <p className={styles.microCopy}>
-             先预演后，正式发送按钮才会亮。需要人审时，平台会先生成审核请求，不会把指令直接送进 NPC 绑定线程。
+              先预演后，正式发送按钮才会亮。需要确认时，平台会先生成确认请求，不会把指令直接送进 NPC 绑定线程。
            </p>
           <p className={styles.microCopy}>
             {selected.automationEnabled
@@ -14545,7 +14545,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
         )}
         <div className={styles.npcDialogHistoryTitle}>
           <span>2. 最近对话</span>
-          <p>这里按时间串起你发给 NPC 的指令、最小回执和最终回复。</p>
+          <p>这里按时间串起你发给 NPC 的指令、已收到提醒和最终结果。</p>
         </div>
         <ul className={styles.drawerConversation}>
           {conversation.length ? (
@@ -14561,7 +14561,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             <li>
               <span>空</span>
               <strong>还没有对话</strong>
-              <p>给这个 NPC 发第一条指令后，最小回执和最终回复也会从这里串起来。</p>
+              <p>给这个 NPC 发第一条指令后，已收到提醒和最终结果也会从这里串起来。</p>
             </li>
           )}
         </ul>
@@ -14701,7 +14701,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             <span className={styles.miniChip}>{selected.protocolDebugSummary}</span>
           </div>
           <p className={styles.microCopy}>
-            关闭自动化时，平台只执行当前指令；开启自动化后才按这里的轮次、预算和人审边界持续推进。
+            关闭自动化时，平台只执行当前指令；开启自动化后才按这里的轮次、预算和确认边界持续推进。
           </p>
         </div>
         <div className={styles.noticeCard} data-npc-profile-skill-summary={selected.id}>
@@ -15405,7 +15405,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
               <input name="next_actions" defaultValue={editingStation?.nextActions.join(", ") ?? ""} placeholder="例如：补齐环境, 绑定 NPC, 跑 build" />
             </label>
             <label className={`${styles.fieldLabel} ${styles.fieldLabelWide}`}>
-              <span>审批边界</span>
+              <span>确认边界</span>
               <textarea name="approval_policy" defaultValue={editingStation?.approvalPolicy ?? ""} placeholder="写清楚哪些动作能自动推进，哪些必须人工确认。" />
             </label>
             <label className={`${styles.fieldLabel} ${styles.fieldLabelWide}`}>

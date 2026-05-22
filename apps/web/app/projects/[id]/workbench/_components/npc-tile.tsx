@@ -226,7 +226,7 @@ const STRUCTURED_MESSAGE_KINDS = new Set<StructuredMessageKind>([
 const STRUCTURED_KIND_LABEL: Record<StructuredMessageKind, string> = {
   boundary: "边界",
   task: "任务",
-  approval: "审核",
+  approval: "确认",
   receipt: "回执",
   "peer-dispatch-status": "协作",
   tool: "工具",
@@ -854,8 +854,8 @@ function boundaryCardMetadataFromText(body: string, sourceName: string, targetNa
     payload_json: {
       card_kind: "boundary",
       title: first || "派单前边界卡",
-      summary: "审批前只允许 NPC 讨论目标、接口、风险和验收；通过后再进入正式执行。",
-      risk_level: "需人审",
+      summary: "确认前只允许 NPC 讨论目标、接口、风险和验收；通过后再进入正式执行。",
+      risk_level: "需确认",
       items: [
         { label: "发起", value: sourceName },
         { label: "目标", value: targetName },
@@ -870,11 +870,11 @@ function boundaryCardMetadataFromText(body: string, sourceName: string, targetNa
             })
           : [
               { label: "允许", value: "讨论接口、验收、风险、依赖" },
-              { label: "禁止", value: "未经审批直接改代码或触碰禁区" },
+              { label: "禁止", value: "未经确认直接改代码或触碰禁区" },
             ]),
       ],
       actions: [
-        { label: "当前", value: "等待人审" },
+        { label: "当前", value: "等待确认" },
         { label: "通过后", value: "再创建正式派单" },
       ],
     },
@@ -1412,7 +1412,7 @@ function buildPeerDispatchStatusCard(
 
   return {
     kind: "peer-dispatch-status",
-    title: safeText(msg.title, "免审协作派单"),
+    title: safeText(msg.title, "直接派发协作派单"),
     summary: `${displaySenderName(msg, peerByIdentity, seatName)} -> ${targetSeatName}`,
     status: currentState,
     riskLevel: "",
@@ -1502,7 +1502,7 @@ function summarizeCollabMessage(msg: CollabMessage, desktopVisible = true): Refi
       : isDesktopReceipt
         ? "已收到提醒"
         : status === "pending_review"
-        ? "需人审"
+        ? "需确认"
         : desktopCloseoutWaiting
           ? "等结果"
           : status === "acked" || type.endsWith("_ack")
@@ -1536,7 +1536,7 @@ function summarizeCollabMessage(msg: CollabMessage, desktopVisible = true): Refi
     else if (statusLabel === "已接单") detail = `目标${threadNoun}已接到指令；${processTraceHint(desktopVisible)}`;
     else if (statusLabel === "处理中") detail = `绑定${threadNoun}正在推进；平台同步提问、已收到提醒和最终结果。`;
     else if (statusLabel === "等结果") detail = `${threadNoun}可能仍在处理；请催办、延长等待，或确认结果后手动收口。`;
-    else if (statusLabel === "需人审") detail = "需要人类成员查看正文后决定是否放行。";
+    else if (statusLabel === "需确认") detail = "需要人类成员查看正文后决定是否放行。";
     else if (statusLabel === "已完成") detail = `${threadNoun}已返回最终结果；${processTraceHint(desktopVisible)}`;
     else if (statusLabel === "异常") detail = "线程同步报告异常，展开可查看收口信息。";
     else detail = "协作事件已记录。";
@@ -1984,7 +1984,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
     setLaunchingMessageId(message.id);
     setSendNote(
       source === "review"
-        ? "已通过审核，正在自动启动目标 NPC 的真实处理..."
+        ? "已通过确认，正在自动启动目标 NPC 的真实处理..."
         : "已提交启动请求，正在等待平台回执刷新...",
     );
     try {
@@ -2171,7 +2171,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
   const latestActiveDispatch = myQueue[0] || null;
   const automationModeLabel = automationEnabled ? "自动继续中" : canUseDesktopAutomation ? "人工确认中" : "待绑定线程";
   const automationModeHint = automationEnabled
-    ? "免审边界内，NPC 可继续找合适的协作方并等待回执。"
+    ? "直接派发边界内，NPC 可继续找合适的协作方并等待回执。"
     : canUseDesktopAutomation
       ? "派单会进入队列，由你决定何时启动或开启自动推进。"
       : `先绑定${threadBindingNoun(seat)}，平台才能显示回执和处理状态。`;
@@ -2519,7 +2519,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
       }
       setPairReviewPolicies(next);
     } catch {
-      // 关系免审只是辅助状态，读取失败不阻断工作台主流程。
+      // 关系直派只是辅助状态，读取失败不阻断工作台主流程。
     }
   }, [projectId]);
 
@@ -2529,7 +2529,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
 
   async function setPairReviewPolicy(upstreamId: string, downstreamId: string, policy: "skip" | "force" | "inherit", note?: string) {
     if (!upstreamId || !downstreamId) {
-      throw new Error("这条关系缺少 NPC 身份，无法设置免审");
+      throw new Error("这条关系缺少 NPC 身份，无法设置直接派发");
     }
     const res = await fetch(apiClientUrl(`/api/collaboration/projects/${encodeURIComponent(projectId)}/review-policy/npc-pairs`), {
       method: "PATCH",
@@ -2567,7 +2567,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
         method: "POST",
         headers: rememberPolicy ? { "Content-Type": "application/json" } : undefined,
         credentials: "include",
-        body: rememberPolicy ? JSON.stringify({ remember_pair_policy: rememberPolicy, reason: "用户在工作台选择通过并下次免审" }) : undefined,
+        body: rememberPolicy ? JSON.stringify({ remember_pair_policy: rememberPolicy, reason: "用户在工作台选择通过并记住直派" }) : undefined,
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -2583,7 +2583,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
         action === "approve"
           ? isBoundaryApproval
             ? "✓ 边界卡已通过；请基于这个边界再发正式派单"
-            : (rememberPolicy ? "✓ 已通过，并记住这对 NPC 下次免审，正在启动处理" : "✓ 已通过，正在启动处理")
+            : (rememberPolicy ? "✓ 已通过，并记住这对 NPC 下次直接派发，正在启动处理" : "✓ 已通过，正在启动处理")
           : "✓ 已打回",
       );
       await load(limit);
@@ -2827,13 +2827,13 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
         seatApiId,
         peerId,
         nextPolicy,
-        nextPolicy === "skip" ? `用户信任 ${seat.name} 到 ${peer.name} 的协作` : `用户关闭 ${seat.name} 到 ${peer.name} 的免审`,
+        nextPolicy === "skip" ? `用户信任 ${seat.name} 到 ${peer.name} 的协作` : `用户关闭 ${seat.name} 到 ${peer.name} 的直接派发`,
       );
-      setReviewNote(nextPolicy === "skip" ? `✓ ${seat.name} → ${peer.name} 已开启免审` : `✓ ${seat.name} → ${peer.name} 已关闭免审`);
+      setReviewNote(nextPolicy === "skip" ? `✓ ${seat.name} → ${peer.name} 已开启直接派发` : `✓ ${seat.name} → ${peer.name} 已关闭直接派发`);
       await load(limit);
       window.dispatchEvent(new CustomEvent("workbench:collab-updated", { detail: { projectId, action: "pair-review-policy" } }));
     } catch (e) {
-      setReviewNote(`免审设置失败：${e instanceof Error ? e.message : "未知错误"}`);
+      setReviewNote(`直接派发设置失败：${e instanceof Error ? e.message : "未知错误"}`);
     } finally {
       setReviewBusyId(null);
       setTimeout(() => setReviewNote(null), 5000);
@@ -2858,9 +2858,9 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
           if (!busy) togglePairReview(peer, nextPolicy);
         }}
         disabled={busy}
-        title={policy === "skip" ? `关闭 ${seat.name} → ${peer.name} 的下次免审` : `信任 ${seat.name} → ${peer.name}，下次不再审核`}
+        title={policy === "skip" ? `关闭 ${seat.name} → ${peer.name} 的下次直接派发` : `信任 ${seat.name} → ${peer.name}，下次可直接派发`}
       >
-        {busy ? "..." : policy === "skip" ? "免审中" : "需审"}
+        {busy ? "..." : policy === "skip" ? "直派中" : "待确认"}
       </button>
     );
   }
@@ -3006,10 +3006,10 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
     const liveDraft = draftRef.current?.value ?? draft;
     const body = liveDraft.trim();
     if (!body) return;
-    const reviewIntent = /^(通过并下次免审|通过免审|批准并免审|同意并免审|通过|批准|同意|放行|打回|拒绝|驳回)(待审|审核|第一条待审|当前待审)?/i.exec(body);
+    const reviewIntent = /^(通过并记住直派|通过直派|批准并直派|同意并直派|通过并下次免审|通过免审|批准并免审|同意并免审|通过|批准|同意|放行|打回|拒绝|驳回)(待确认|第一条待确认|当前待确认|待审|审核|第一条待审|当前待审)?/i.exec(body);
     if (!opts && reviewIntent && pendingReviews.length > 0) {
       const action: "approve" | "reject" = /打回|拒绝|驳回/i.test(reviewIntent[1]) ? "reject" : "approve";
-      const rememberPolicy = action === "approve" && /免审/i.test(reviewIntent[1]) ? "skip" : undefined;
+      const rememberPolicy = action === "approve" && /(免审|直派)/i.test(reviewIntent[1]) ? "skip" : undefined;
       if (draftRef.current) draftRef.current.value = "";
       setDraft("");
       setSendNote(action === "approve" ? (rememberPolicy ? "正在确认第一条待确认事项，并记住这对 NPC 下次直接派发..." : "正在确认第一条待确认事项...") : "正在暂缓第一条待确认事项...");
@@ -3087,7 +3087,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
       if (draftRef.current) draftRef.current.value = "";
       setDraft("");
       if (isBoundaryCard) {
-        setSendNote("边界卡已登记，等待人审；审批前不会启动真实处理 ✓");
+        setSendNote("边界卡已登记，等待确认；确认前不会启动真实处理 ✓");
       } else {
         const targetSeatId = isPeer ? targetOpts!.peerId! : seatApiId;
         if (dispatchReadiness.mode === "blocked") {
@@ -3271,10 +3271,10 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
             </span>
           ) : null}
           {pairPolicy === "skip" && !isHardwareRiskReview ? (
-            <span className={styles.reviewInlineBadge} data-tone="skip">此关系免审中</span>
+            <span className={styles.reviewInlineBadge} data-tone="skip">此关系直派中</span>
           ) : null}
           {pairPolicy === "skip" && isHardwareRiskReview ? (
-            <span className={styles.reviewInlineBadge} data-tone="override">覆盖免审</span>
+            <span className={styles.reviewInlineBadge} data-tone="override">覆盖直派</span>
           ) : null}
           <small className={styles.msgTime}>{formatTime(m.created_at)}</small>
         </div>
@@ -3335,7 +3335,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
               }}
               title="通过这条消息，并让同一对 NPC 下次直接派发"
             >
-              通过并免审
+              通过并记住直派
             </button>
           )}
           <button
@@ -3945,7 +3945,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
             <span className={`${styles.legendDot} ${styles.roleBadge_system}`}>系统</span>
           </small>
         </div>        <div className={styles.streamToolbarRight}>
-          <label className={styles.noiseToggle} title="只显示接单、关键进度、需人审、完成、异常等协作信号">
+          <label className={styles.noiseToggle} title="只显示接单、关键进度、待确认、完成、异常等协作信号">
             <input type="checkbox" checked={hideNoisy} onChange={(e) => setHideNoisy(e.target.checked)} />
             只看摘要
           </label>
@@ -4026,7 +4026,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
                     className={styles.queueActionBtn}
                     onClick={() => toggleAutomation(card.action === "enable_automation")}
                     disabled={automationBusy}
-                    title={card.action === "enable_automation" ? "允许平台在免审边界内自动继续" : "暂停自动继续，改为人工确认"}
+                    title={card.action === "enable_automation" ? "允许平台在直接派发边界内自动继续" : "暂停自动继续，改为人工确认"}
                   >
                     {automationBusy ? "处理中" : card.actionLabel}
                   </button>

@@ -153,9 +153,9 @@ export function BroadcastModal({ apiBaseUrl, projectId, scope, scopeLabel, onClo
                 </div>
                 {preview.requires_human_review ? (
                   <p className={styles.reviewBox}>
-                    🛡 需要人工审核
+                    🛡 需要人工确认
                     {typeof preview.review_force_count === "number" && preview.review_force_count > 0
-                      ? ` · 其中 ${preview.review_force_count} 个 NPC 触发强审策略`
+                      ? ` · 其中 ${preview.review_force_count} 个 NPC 触发高风险确认`
                       : " · 因量级（≥5 NPC 或 ≥1500 字）触发"}
                   </p>
                 ) : null}
@@ -186,7 +186,7 @@ export function BroadcastModal({ apiBaseUrl, projectId, scope, scopeLabel, onClo
                             {t.responsibility ? ` · ${t.responsibility}` : ""}
                             {decision ? (
                               <span className={decision.requires_review ? styles.reviewTagForce : styles.reviewTagSkip}>
-                                {decision.requires_review ? "🛡 强审" : "⚡ 免审"}（{decision.source}）
+                                {decision.requires_review ? "🛡 高风险确认" : "⚡ 直接派发"}（{decision.source}）
                               </span>
                             ) : null}
                           </small>

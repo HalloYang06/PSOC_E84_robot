@@ -128,16 +128,16 @@ function publicStatusLabel(value: unknown) {
 
 function reviewPolicyLabel(value: unknown) {
   const raw = text(value, "inherit").toLowerCase();
-  if (/strict|always|manual|required/.test(raw)) return "强审";
-  if (/trusted|auto|bypass|allow/.test(raw)) return "免审边界";
-  return "继承工位策略";
+  if (/strict|always|manual|required/.test(raw)) return "高风险确认";
+  if (/trusted|auto|bypass|allow/.test(raw)) return "直接派发边界";
+  return "继承工位规则";
 }
 
 function orgEventTypeLabel(value: unknown) {
   const raw = text(value, "").toLowerCase();
   if (/agent_result|runner_result|final|reply|receipt|closeout|minimal/.test(raw)) return "回执";
   if (/agent_command|runner_command|dispatch|delivery/.test(raw)) return "派单事件";
-  if (/review|approval|human_review/.test(raw)) return "审核事件";
+  if (/review|approval|human_review/.test(raw)) return "确认事件";
   if (/requirement|need/.test(raw)) return "协作需求";
   if (/progress|ack|running|queued|waiting|retry|desktop/.test(raw)) return "进度";
   if (/blocked|failed|error|exception/.test(raw)) return "异常";
@@ -204,7 +204,7 @@ function labelProjectReturnPath(value: string) {
 
 function statusTone(label: string) {
   if (/可投递|在线|已完成|已送达/.test(label)) return "healthy";
-  if (/延迟|待审核|强审|待处理|等待|未知/.test(label)) return "review";
+  if (/延迟|待审核|待人工确认|高风险确认|待处理|等待|未知/.test(label)) return "review";
   if (/离线|需重连|阻塞|失败/.test(label)) return "blocked";
   return "idle";
 }
@@ -462,7 +462,7 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
       ? [{
           id: "unassigned",
           name: "未归属员工",
-          description: "这些 NPC 还需要分配到逻辑工位，之后才能稳定继承职责、知识库和审核策略。",
+          description: "这些 NPC 还需要分配到逻辑工位，之后才能稳定继承职责、知识库和确认规则。",
           seats: seatsByWorkstation.get("unassigned") ?? [],
           leadName: "待指定",
         }]
@@ -489,7 +489,7 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
       seat.dispatchState === "状态未知，先检查接入"
       && !["待选择执行通道", "待绑定线程", "待绑定电脑"].includes(seat.dispatchShortLabel),
   ).length;
-  const strictReviewCount = allSeats.filter((seat) => reviewPolicyLabel(seat.reviewPolicy) === "强审").length;
+  const strictReviewCount = allSeats.filter((seat) => reviewPolicyLabel(seat.reviewPolicy) === "高风险确认").length;
   const skillAssignedCount = allSeats.filter((seat) => seat.skillLoadout.length || seat.inheritedSkills.length).length;
   const knowledgeAssignedCount = allSeats.filter((seat) => seat.knowledgeSummary || seat.workstationKnowledgePath).length;
   const nodeDispatchCounts = [...nodeStateMap.values()].reduce(
@@ -530,7 +530,7 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
     nodeStateMap.size
       ? `真实电脑：可投递 ${nodeDispatchCounts.ready} · 仅排队 ${nodeDispatchCounts.queueable} · 需重连 ${nodeDispatchCounts.reconnect} · 待检查 ${nodeDispatchCounts.unknown}`
       : "",
-    strictReviewCount ? `${strictReviewCount} 名 NPC 启用强审策略` : "",
+    strictReviewCount ? `${strictReviewCount} 名 NPC 启用高风险确认` : "",
     skillAssignedCount < allSeats.length ? `${Math.max(allSeats.length - skillAssignedCount, 0)} 名 NPC 待补 Skill` : "",
     knowledgeAssignedCount < allSeats.length ? `${Math.max(allSeats.length - knowledgeAssignedCount, 0)} 名 NPC 待补知识库` : "",
     recentOrgEvents.length ? `${recentOrgEvents.length} 条最近回执需要抽查` : "",
@@ -549,7 +549,7 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
         <div>
           <span>公司层 / 运行态势图</span>
           <h1>{text(project.name, "AI 合作平台")} 公司沙盘</h1>
-          <p>一眼看部门、NPC、任务流、审核风险和电脑状态；组织编辑和证据查看都在当前页抽屉里完成。</p>
+          <p>一眼看部门、NPC、任务流、高风险确认和电脑状态；组织编辑和证据查看都在当前页抽屉里完成。</p>
         </div>
         <section className={styles.statusStrip} aria-label="组织状态">
           <article><span>工位</span><strong>{workstationRows.length}</strong><small>逻辑部门</small></article>
@@ -647,7 +647,7 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
             {!allSeats.length ? (
               <article className={styles.emptyRow}>
                 <strong>还没有 NPC 员工</strong>
-                <p>先在主页面创建 NPC、扫描线程并绑定，再回公司层分配职责和审核策略。</p>
+                <p>先在主页面创建 NPC、扫描线程并绑定，再回公司层分配职责和确认规则。</p>
               </article>
             ) : null}
           </div>
@@ -669,7 +669,7 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
             </article>
           ))}
           {!pendingHumanReviews.length && !recentOrgEvents.length ? (
-            <p className={styles.emptyText}>还没有组织变更事件。创建工位、绑定能力或调整审核策略后会在这里显示摘要。</p>
+            <p className={styles.emptyText}>还没有组织变更事件。创建工位、绑定能力或调整确认规则后会在这里显示摘要。</p>
           ) : null}
         </div>
       </section>

@@ -122,7 +122,7 @@ function humanTaskStatus(value: string) {
   const normalized = text(value, "").toLowerCase();
   if (["completed", "done", "resolved"].includes(normalized)) return "已完成";
   if (["blocked", "failed", "error", "rejected"].includes(normalized)) return "已阻塞";
-  if (["pending_review", "waiting_review", "review"].includes(normalized)) return "待审核";
+  if (["pending_review", "waiting_review", "review"].includes(normalized)) return "待人工确认";
   if (["queued", "active", "running", "in_progress", "accepted"].includes(normalized)) return "处理中";
   if (!normalized || normalized === "message_focus") return "消息焦点";
   return text(value, "处理中");
@@ -325,7 +325,7 @@ export function ProfessionalWorkbenchShell({
             <small>协作记录 {taskView ? "已聚焦" : "等待"}</small>
             <small>执行通道 {currentRunnerId ? "可追踪" : "待确认"}</small>
             <small>{pendingCloseoutCount > 0 ? "结果待回流优先" : hasActionableException ? "异常优先" : "可继续"}</small>
-            <small>权限 只读 / 人审写入</small>
+            <small>权限 只读 / 人工确认后写入</small>
           </section>
           <section className={styles.workbenchCanvas} aria-label="专业工作区">
             {children}

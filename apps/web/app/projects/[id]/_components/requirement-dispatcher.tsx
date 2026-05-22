@@ -107,7 +107,7 @@ export function RequirementDispatcher({ apiBaseUrl, projectId, seats }: Props) {
         }
         setNote(`✓ 需求已创建并派发给 ${seats.find((s) => s.id === targetSeatId)?.name || targetSeatId}`);
       } else {
-        setNote(`✓ 触发式需求已创建：前置需求完成后会以上游 NPC 身份自动派给 ${seats.find((s) => s.id === targetSeatId)?.name || targetSeatId}（跨工位将走人工审批）`);
+        setNote(`✓ 触发式需求已创建：前置需求完成后会以上游 NPC 身份自动派给 ${seats.find((s) => s.id === targetSeatId)?.name || targetSeatId}（跨工位将走人工确认）`);
       }
       setTitle("");
       setBody("");
@@ -169,7 +169,7 @@ export function RequirementDispatcher({ apiBaseUrl, projectId, seats }: Props) {
           onChange={(e) => setTrigger(e.target.value as "manual" | "after_requirement")}
         >
           <option value="manual">手动派发（立即派给目标 NPC）</option>
-          <option value="after_requirement">前置需求完成 → 以上游 NPC 身份自动派（跨工位走人审）</option>
+          <option value="after_requirement">前置需求完成 → 以上游 NPC 身份自动派（跨工位走人工确认）</option>
         </select>
       </div>
       {trigger === "after_requirement" ? (
