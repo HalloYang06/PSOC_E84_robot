@@ -734,7 +734,7 @@ function inferProfessionalViews(msg: CollabMessage, card: StructuredMessageCard 
   }
   if (card?.kind === "model" || card?.kind === "device") add("robotics", "看模型、设备和现场状态");
   if (card?.kind === "boundary" || card?.kind === "approval" || card?.kind === "risk") {
-    add("chart-lab", "看预演、风险和审核条件");
+    add("chart-lab", "看预演、风险和确认条件");
   }
 
   if (/\b(dataset|sample|manifest|episode|rosbag|bag|audio|image|video|label|schema|imu|telemetry)\b/.test(signals)
@@ -1088,7 +1088,7 @@ function messageTypeLabel(msg: CollabMessage): string {
   if (type.includes("progress")) return "过程回执";
   if (type.includes("final") || type.includes("result")) return "最终回执";
   if (type.includes("ack")) return "接单回执";
-  if (type.includes("review")) return "人工审核";
+  if (type.includes("review")) return "人工确认";
   if (type.includes("comment")) return "协作消息";
   return "协作消息";
 }
@@ -1134,11 +1134,11 @@ function processSignalLabel(value: string): string {
 function reviewSourceLabel(value: string): string {
   const normalized = safeText(value, "").toLowerCase();
   if (!normalized) return "";
-  if (normalized === "hardware_risk") return "硬件强审";
-  if (normalized === "cross_workstation") return "跨工位审核";
+  if (normalized === "hardware_risk") return "高风险确认";
+  if (normalized === "cross_workstation") return "跨工位确认";
   if (normalized === "boundary_card") return "边界卡";
-  if (normalized === "human_review") return "人工审核";
-  return userFacingCollabText(normalized.replace(/_/g, " "), "审核策略");
+  if (normalized === "human_review") return "人工确认";
+  return userFacingCollabText(normalized.replace(/_/g, " "), "确认方式");
 }
 
 function messageProcessMeta(
@@ -2265,9 +2265,9 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
     if (pendingReviews.length === 0) {
       cards.push({
         id: "review-context",
-        status: "待审 0",
-        title: "当前没有待审消息",
-        detail: "只有 NPC 明确提出跨工位或高风险需求时，才会在这里出现通过/打回控件；你自己手动派单不需要自审。",
+        status: "待确认 0",
+        title: "当前没有待确认事项",
+        detail: "只有 NPC 明确提出跨工位或高风险需求时，这里才会出现确认通过/暂缓处理控件；你自己手动派单不需要额外确认。",
         tone: "manual",
       });
     }
@@ -3008,7 +3008,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
       const rememberPolicy = action === "approve" && /免审/i.test(reviewIntent[1]) ? "skip" : undefined;
       if (draftRef.current) draftRef.current.value = "";
       setDraft("");
-      setSendNote(action === "approve" ? (rememberPolicy ? "正在通过第一条待审消息，并记住这对 NPC 下次免审..." : "正在通过第一条待审消息...") : "正在打回第一条待审消息...");
+      setSendNote(action === "approve" ? (rememberPolicy ? "正在确认第一条待确认事项，并记住这对 NPC 下次直接派发..." : "正在确认第一条待确认事项...") : "正在暂缓第一条待确认事项...");
       await reviewMessage(pendingReviews[0].id, action, rememberPolicy);
       return;
     }
@@ -3218,7 +3218,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
             <strong>{kind === "needs" ? "暂无待满足需求" : "暂无待办任务"}</strong>
             <p>
               {kind === "needs"
-                ? "NPC 只有明确写入结构化需求后，这里才会出现路由、审核和结果状态。"
+                ? "NPC 只有明确写入结构化需求后，这里才会出现路由、确认和结果状态。"
                 : "用户手动派单或其他 NPC 的需求被路由过来后，这里才会出现任务。"}
             </p>
           </div>
@@ -3250,7 +3250,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
     const isBoundaryReview = isPreDispatchBoundaryMessage(m);
     const upstreamLabel = displayReviewEndpointName(upstream || m.sender_id, peerByIdentity, "未知上游");
     const downstreamLabel = displayReviewEndpointName(downstream || m.recipient_id, peerByIdentity, "未知目标");
-    const reviewReason = reviewSourceLabel(source) || (isCross ? "跨工位审核" : "人工审核");
+    const reviewReason = reviewSourceLabel(source) || (isCross ? "跨工位确认" : "人工确认");
     return (
       <div
         key={`review-${m.id}`}
@@ -3258,7 +3258,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
         data-role="system"
       >
         <div className={styles.msgHead}>
-          <span className={`${styles.roleBadge} ${styles.roleBadge_system}`}>系统 / 审核</span>
+          <span className={`${styles.roleBadge} ${styles.roleBadge_system}`}>系统 / 确认</span>
           <span className={styles.reviewInlineBadge}>待确认</span>
           {isCross ? <span className={styles.reviewInlineBadge} data-tone="cross">跨工位</span> : null}
           {source ? (
@@ -3278,7 +3278,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
           <span title="来源">{upstreamLabel}</span>
           <b aria-hidden>→</b>
           <span title="目标">{downstreamLabel}</span>
-          <em>人工审核 · 待确认</em>
+          <em>人工确认 · 待确认</em>
           <small>{reviewReason}</small>
         </div>
         <p className={styles.msgSummary}>
@@ -3290,7 +3290,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
         {structuredCard ? renderStructuredMessageCard(structuredCard) : null}
         {expanded ? (
           <div className={styles.msgDrawer}>
-            <small className={styles.msgDrawerLabel}>审核正文</small>
+            <small className={styles.msgDrawerLabel}>确认正文</small>
             <pre className={styles.msgFull}>{displayBody}</pre>
           </div>
         ) : (
@@ -3298,7 +3298,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
             type="button"
             className={styles.inlineBtn}
             onClick={() => toggleExpand(m.id)}
-            title="查看审核正文"
+            title="查看确认正文"
           >
             查看正文 · {bodyPreview.slice(0, 58)}{bodyPreview.length > 58 ? "..." : ""}
           </button>
@@ -3484,7 +3484,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
             className={styles.panelTab}
             data-active={activePanelTab === tab ? "1" : undefined}
             onClick={() => setActivePanelTab(tab as NpcPanelTab)}
-            title={tab === "dialog" ? "对话、回执、审核入口" : tab === "needs" ? "这个 NPC 发出的结构化需求" : "这个 NPC 承接的任务"}
+            title={tab === "dialog" ? "对话、回执、确认入口" : tab === "needs" ? "这个 NPC 发出的结构化需求" : "这个 NPC 承接的任务"}
           >
             <span>{label}</span>
             <strong>{count}</strong>
@@ -3665,11 +3665,11 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
                   className={styles.identityInput}
                   value={reviewPolicy}
                   onChange={(e) => setReviewPolicy(e.target.value)}
-                  title="人工审核策略：inherit 跟工位/项目，force 强审，skip 免审"
+                  title="人工确认方式：继承项目设置、必须确认或直接派发"
                 >
-                  <option value="inherit">审核：继承（项目/工位）</option>
-                  <option value="force">审核：强审（必经）</option>
-                  <option value="skip">审核：免审（直接落地）</option>
+                  <option value="inherit">确认：继承（项目/工位）</option>
+                  <option value="force">确认：必须确认</option>
+                  <option value="skip">确认：直接派发</option>
                 </select>
                 <div className={styles.identityActions}>
                   <button type="button" className={styles.iconBtn} onClick={saveIdentity} disabled={savingIdentity}>
@@ -3696,9 +3696,9 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
                   <code className={styles.code}>&lt;{seat.gitUserEmail}&gt;</code>
                 </p>
                 <small className={styles.identityMeta}>
-                  审核：
+                  确认：
                   <span className={styles.reviewBadge} data-policy={seat.reviewPolicy}>
-                    {seat.reviewPolicy === "force" ? "强审" : seat.reviewPolicy === "skip" ? "免审" : "继承"}
+                    {seat.reviewPolicy === "force" ? "必须确认" : seat.reviewPolicy === "skip" ? "直接派发" : "继承"}
                   </span>
                 </small>
                 <button type="button" className={styles.iconBtn} onClick={() => setEditingIdentity(true)}>

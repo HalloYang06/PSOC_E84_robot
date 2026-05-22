@@ -672,8 +672,8 @@ export function WorkbenchClient({
     let nextActionTitle = "继续观察";
     let nextActionDetail = "当前没有必须立刻处理的协作项。";
     if (pendingReview > 0) {
-      nextActionTitle = "先审待审";
-      nextActionDetail = userFacingMessageText(latestPendingReview?.title || latestPendingReview?.body?.slice(0, 72), "打开对应 NPC，对正文做通过或打回。");
+      nextActionTitle = "先看待确认";
+      nextActionDetail = userFacingMessageText(latestPendingReview?.title || latestPendingReview?.body?.slice(0, 72), "打开对应 NPC，确认是否继续交给目标执行者。");
     } else if (setupBlocked > 0) {
       nextActionTitle = "先补线程";
       nextActionDetail = "有任务发到了还没绑定线程的 NPC，先打开上岗包完成绑定。";
@@ -1348,7 +1348,7 @@ export function WorkbenchClient({
           <Link
             href={withReturnTo(`/projects/${projectId}/company`, sourcePath, sourceKey)}
             className={styles.backLink}
-            title="打开公司运行态势图、审核和证据摘要"
+            title="打开公司运行态势图、确认和证据摘要"
           >
             公司层 →
           </Link>
@@ -1710,7 +1710,7 @@ export function WorkbenchClient({
             <summary className={styles.threadOverviewSummary}>
               <span>协作总览</span>
               <small>
-                待审 {operationsSummary.pendingReview}
+                待确认 {operationsSummary.pendingReview}
                 {" / "}
                 进行中 {operationsSummary.active}
                 {" / "}
@@ -1723,7 +1723,7 @@ export function WorkbenchClient({
             </summary>
             <div className={styles.productStatus}>
               <strong>协同工作台 MVP</strong>
-              <span data-hot={operationsSummary.pendingReview > 0 ? "1" : undefined}>待审 {operationsSummary.pendingReview}</span>
+              <span data-hot={operationsSummary.pendingReview > 0 ? "1" : undefined}>待确认 {operationsSummary.pendingReview}</span>
               <span data-hot={operationsSummary.setupBlocked > 0 ? "1" : undefined}>待绑定 {operationsSummary.setupBlocked}</span>
               <span data-hot={operationsSummary.pendingCloseout > 0 ? "1" : undefined}>等结果 {operationsSummary.pendingCloseout}</span>
               <span>进行中 {operationsSummary.active}</span>
@@ -1744,7 +1744,7 @@ export function WorkbenchClient({
                   onClick={openPendingReviews}
                   disabled={pendingReviewSeatIds.length === 0}
                 >
-                  待审
+                  待确认
                 </button>
                 <button
                   type="button"
@@ -1791,18 +1791,18 @@ export function WorkbenchClient({
                   回执 {dispatchEvidence.completedReceipts}
                 </span>
                 <span data-warn={dispatchEvidence.hardwarePending > 0 ? "1" : undefined}>
-                  硬件强审 {dispatchEvidence.hardwarePending}
+                  高风险确认 {dispatchEvidence.hardwarePending}
                 </span>
               </div>
             </div>
             {operationsSummary.pendingReview > 0 ? (
               <div className={styles.pendingReviewJump}>
                 <div>
-                  <strong>有 {operationsSummary.pendingReview} 条协作待审</strong>
-                  <small>审核卡会显示在对应 NPC 对话框内，正文可展开，放行后才进入目标线程队列。</small>
+                  <strong>有 {operationsSummary.pendingReview} 条协作待确认</strong>
+                  <small>确认卡会显示在对应 NPC 对话框内，正文可展开，确认通过后才进入目标线程队列。</small>
                 </div>
                 <button type="button" className={styles.threadOverviewBtn} onClick={openPendingReviews}>
-                  打开待审对话框
+                  打开待确认对话框
                 </button>
               </div>
             ) : null}
@@ -1923,7 +1923,7 @@ export function WorkbenchClient({
               <p>
                 {isCompany
                   ? "公司层只显示每个工位指定的工位长（👑）。在工位卡的「工位长」下拉里选定后会出现在这里。跨工位的消息默认会被路由到对应工位长。"
-                  : "人类成员负责决策、审核和接手；NPC 绑定桌面线程负责执行。同工位协作默认顺滑，跨工位协作走工位长和审核。"}
+                  : "人类成员负责决策、确认和接手；NPC 绑定桌面线程负责执行。同工位协作默认顺滑，跨工位协作走工位长确认。"}
               </p>
             </div>
           ) : null}
