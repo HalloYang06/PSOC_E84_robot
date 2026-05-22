@@ -944,9 +944,9 @@ function withSeatReturnParam(path: string, seatId: string): string {
 
 function humanizeDispatchCardStatus(status: string): string {
   const normalized = safeText(status, "").toLowerCase();
-  if (normalized === "pending_closeout") return "待收口";
-  if (normalized === "finaled") return "已收 final";
-  if (normalized === "acked") return "已收最小回执";
+  if (normalized === "pending_closeout") return "等结果";
+  if (normalized === "finaled") return "已收最终结果";
+  if (normalized === "acked") return "已收提醒";
   if (normalized === "delivered") return "等待目标回执";
   if (normalized === "blocked") return "已阻塞";
   if (normalized === "queued") return "等待发送";
@@ -1080,7 +1080,7 @@ function processActorLabel(value: string, peerByIdentity: Map<string, WorkbenchS
 function messageTypeLabel(msg: CollabMessage): string {
   const type = safeText(msg.message_type, "").toLowerCase();
   if (type === "desktop_user_question") return "桌面提问";
-  if (type === "desktop_minimal_receipt") return "最小回执";
+  if (type === "desktop_minimal_receipt") return "已收到提醒";
   if (type === "requirement_dispatch") return "NPC 派工";
   if (type === "agent_command") return "用户派工";
   if (type.includes("progress")) return "过程回执";
@@ -1274,7 +1274,7 @@ function buildConversationCollabCard(
       { label: "职责", value: roleLabel },
       { label: "能力", value: capabilityLabel },
       { label: "知识", value: knowledgeLabel },
-      { label: "验收", value: goal || routeReason || (isResult ? "看 final 和证据链" : "等待最小回执 / final") },
+      { label: "验收", value: goal || routeReason || (isResult ? "看最终结果和证据链" : "等待已收到提醒 / 最终结果") },
     ],
     metrics: [
       { label: "来源", value: source || (senderType === "agent" ? "NPC 协作" : "用户派工") },
@@ -1395,11 +1395,11 @@ function buildPeerDispatchStatusCard(
   const finalPreview = latestFinal ? firstUsefulLine(stripPlatformChatter(latestFinal.body || "")) : "";
   const nextAction =
     currentState === "pending_closeout"
-      ? "待收口"
+      ? "等结果"
       : currentState === "blocked"
       ? "看阻塞"
       : currentState === "finaled"
-        ? "看 final"
+        ? "看结果"
         : currentState === "acked"
           ? "继续下一步"
           : "看状态";
@@ -1413,13 +1413,13 @@ function buildPeerDispatchStatusCard(
     items: [
       { label: "目标", value: targetSeatName },
       { label: "当前状态", value: humanizeDispatchCardStatus(currentState) },
-      { label: "最小回执", value: latestAck ? "已收到" : "等待中" },
-      { label: "Final", value: latestFinal ? "已同步" : pendingCloseout ? "待收口" : "未收到" },
-      { label: "当前卡点", value: blockedReason || (pendingCloseout ? "等待最终收口" : "无") },
+      { label: "已收到提醒", value: latestAck ? "已收到" : "等待中" },
+      { label: "最终结果", value: latestFinal ? "已同步" : pendingCloseout ? "等结果" : "未收到" },
+      { label: "当前卡点", value: blockedReason || (pendingCloseout ? "等待最终结果" : "无") },
       {
         label: "系统状态",
         value: pendingCloseout
-          ? "待收口"
+          ? "等结果"
           : platformDefect
             ? "需要处理"
             : "正常推进",
@@ -1434,12 +1434,12 @@ function buildPeerDispatchStatusCard(
       {
         label: "看阻塞",
         status: pendingCloseout
-          ? "待收口"
+          ? "等结果"
           : blockedReason
             ? "有"
             : "无",
       },
-      { label: "看 final", status: latestFinal ? "已同步" : pendingCloseout ? "待收口" : "等待" },
+      { label: "看结果", status: latestFinal ? "已同步" : pendingCloseout ? "等结果" : "等待" },
       {
         label: "继续下一步",
         status: pendingCloseout
@@ -1448,7 +1448,7 @@ function buildPeerDispatchStatusCard(
               waitExtensionAvailable ? "延长等待" : "",
               "重新同步",
               manualCloseRequired ? "手动收口" : "",
-            ].filter(Boolean).join(" / ") || "待收口"
+            ].filter(Boolean).join(" / ") || "等结果"
           : currentState === "acked" || currentState === "finaled"
             ? "可继续"
             : "稍后",
@@ -1494,11 +1494,11 @@ function summarizeCollabMessage(msg: CollabMessage, desktopVisible = true): Refi
     isDesktopQuestion
       ? `${threadNoun}提问`
       : isDesktopReceipt
-        ? "最小回执"
+        ? "已收到提醒"
         : status === "pending_review"
         ? "需人审"
         : desktopCloseoutWaiting
-          ? "待收口"
+          ? "等结果"
           : status === "acked" || type.endsWith("_ack")
             ? "已接单"
             : status === "in_progress" || type.includes("progress")
@@ -1515,7 +1515,7 @@ function summarizeCollabMessage(msg: CollabMessage, desktopVisible = true): Refi
 
   const headline =
     (isDesktopQuestion ? `${threadNoun}提问` : "")
-    || (isDesktopReceipt ? "最小回执" : "")
+    || (isDesktopReceipt ? "已收到提醒" : "")
     || title
     || (statusLabel === "已接单" ? "目标线程已接单" : "")
     || (statusLabel === "已完成" ? "目标线程已回执" : "")
@@ -1525,11 +1525,11 @@ function summarizeCollabMessage(msg: CollabMessage, desktopVisible = true): Refi
   let detail = cleanFirst && cleanFirst !== headline ? userFacingCollabText(cleanFirst, "", desktopVisible) : "";
   if (!detail) {
     if (isDesktopQuestion) detail = cleanFirst || `用户在${threadNoun}里补充了问题，已同步到平台对话流。`;
-    else if (isDesktopReceipt) detail = cleanFirst || `${threadNoun}已返回最小回执，最终结果仍按任务回执收口。`;
+    else if (isDesktopReceipt) detail = cleanFirst || `${threadNoun}已返回已收到提醒，最终结果仍按任务回执同步。`;
     else if (statusLabel === "派单") detail = `已写入协作消息池，等待平台送达绑定${deliveryTarget}。`;
     else if (statusLabel === "已接单") detail = `目标${threadNoun}已接到指令；${processTraceHint(desktopVisible)}`;
-    else if (statusLabel === "处理中") detail = `绑定${threadNoun}正在推进；平台同步提问、最小回执和最终结果。`;
-    else if (statusLabel === "待收口") detail = `${threadNoun}可能仍在处理；请催办、延长等待，或确认结果后手动收口。`;
+    else if (statusLabel === "处理中") detail = `绑定${threadNoun}正在推进；平台同步提问、已收到提醒和最终结果。`;
+    else if (statusLabel === "等结果") detail = `${threadNoun}可能仍在处理；请催办、延长等待，或确认结果后手动收口。`;
     else if (statusLabel === "需人审") detail = "需要人类成员查看正文后决定是否放行。";
     else if (statusLabel === "已完成") detail = `${threadNoun}已返回最终结果；${processTraceHint(desktopVisible)}`;
     else if (statusLabel === "异常") detail = "线程同步报告异常，展开可查看收口信息。";
@@ -1966,7 +1966,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
         </button>
         {variant === "inline" ? (
           <small className={styles.realThreadHint}>
-            平台同步最小回执和最终结果；{processTraceHint(seat)}
+            平台同步已收到提醒和最终结果；{processTraceHint(seat)}
           </small>
         ) : null}
       </div>
@@ -1985,7 +1985,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
       const result = await launchNpcOneShotThreadProcessing(projectId, seatApiId, message.id);
       setSendNote(
         result.launched
-          ? `${result.seatName || seat.name} 的单次处理已启动，等待最小回执 / 最终结果。`
+          ? `${result.seatName || seat.name} 的单次处理已启动，等待已收到提醒 / 最终结果。`
           : `启动失败：${result.error || "请检查绑定线程、执行电脑或项目目录。"}`,
       );
     } catch (error) {
@@ -2172,7 +2172,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
   const runnerDispatchLabel = seat.runnerDispatchState || "状态未知，先检查接入";
   const runnerStateDetail = seat.runnerStateDetail
     || (runnerDispatchLabel === "可投递"
-      ? "目标电脑正在持续接单，可以直接派发并等待最小回执。"
+      ? "目标电脑正在持续接单，可以直接派发并等待已收到提醒。"
       : runnerDispatchLabel === "最近在线，可能延迟"
         ? "目标电脑最近在线，但心跳不稳定。可以排队，但要提示可能延迟。"
         : runnerDispatchLabel === "等待电脑恢复"
@@ -2197,7 +2197,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
             ? "申请接手或改派"
             : "先检查接入";
   const automationCurrentLabel = pendingCloseoutCount > 0
-    ? `待收口 ${pendingCloseoutCount}`
+    ? `等结果 ${pendingCloseoutCount}`
     : activeDispatchCount > 0
       ? `等待结果 ${activeDispatchCount}`
       : automationEnabled
@@ -2245,8 +2245,8 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
     if (pendingCloseoutCount > 0) {
       cards.push({
         id: "closeout",
-        status: `待收口 ${pendingCloseoutCount}`,
-        title: `${threadBindingNoun(seat)}过程等待最终收口`,
+        status: `等结果 ${pendingCloseoutCount}`,
+        title: `${threadBindingNoun(seat)}过程等待最终结果`,
         detail: "在对应消息上可直接催办、延长等待、重新同步或手动收口。",
         tone: "danger",
       });
@@ -2789,7 +2789,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
       `- 同工位通讯录: ${sameWorkstationDirectory}`,
       `- 跨工位入口: ${crossLeadDirectory}`,
       "- 路由规则: 同工位先按职责找最匹配 NPC；跨工位只找目标工位工位长转交。",
-      `- 显示边界: ${processTraceHint(seat)}平台只回写最小回执、最终结果、阻塞原因和可追踪索引。`,
+      `- 显示边界: ${processTraceHint(seat)}平台只回写已收到提醒、最终结果、阻塞原因和可追踪索引。`,
       "- 回执格式: Understood / Changed / Validated / Blocked / Next。",
     ].join("\n");
   }
@@ -3632,12 +3632,12 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
             </div>
             {!automationEnabled ? (
               <small className={styles.identityNote}>
-                当前只显示最小回执和最终结果；{processTraceHint(seat)}
+                当前只显示已收到提醒和最终结果；{processTraceHint(seat)}
               </small>
             ) : null}
             {automationNote ? <small className={styles.identityNote}>{automationNote}</small> : null}
             <small className={styles.identityMeta}>
-              绑定线程保持在线后，可继续自动接收、返回最小回执，并在待收口时支持重新同步。
+              绑定线程保持在线后，可继续自动接收、返回已收到提醒，并在等结果时支持重新同步。
             </small>
           </div>
           <div className={styles.profileRow}>
@@ -4072,7 +4072,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
             const canExpand = body.length > 0;
             const structuredCard = peerDispatchCards.get(msg.id) || getStructuredMessageCard(msg);
             const skipConversationCollabCard = role === "self"
-              && (refined.kind === "result" || ["已接单", "处理中", "已完成", "最小回执"].includes(refined.statusLabel));
+              && (refined.kind === "result" || ["已接单", "处理中", "已完成", "已收到提醒"].includes(refined.statusLabel));
             const conversationCollabCard = skipConversationCollabCard ? null : buildConversationCollabCard(msg, peerByIdentity, seat.name);
             const professionalViews = inferProfessionalViews(msg, structuredCard);
             const evidenceArtifacts = extractEvidenceArtifacts(msg);
@@ -4123,8 +4123,8 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
                 {structuredCard ? renderStructuredMessageCard(structuredCard) : null}
                 {conversationCollabCard && (!structuredCard || conversationCollabCard.summary !== structuredCard.summary) ? renderStructuredMessageCard(conversationCollabCard) : null}
                 {desktopCloseout ? (
-                  <div className={styles.closeoutActions} aria-label="桌面待收口操作">
-                    <span>待收口：已收到过程回执，正在等最终收口</span>
+                  <div className={styles.closeoutActions} aria-label="桌面等结果操作">
+                    <span>等结果：已收到过程提醒，正在等最终结果</span>
                     <button
                       type="button"
                       onClick={() => runCloseoutAction(msg, "nudge")}
@@ -4312,7 +4312,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
           <small className={styles.composerHint}>
             {occupancyHeldByOther
               ? `⚠ ${occupancy?.user_name || "他人"} 正在占用，先抢占再发送`
-              : sendNote || (seat.permissionLevel ? `风险级别 ${seat.permissionLevel} · ${processTraceHint(seat)}` : "发送后写入协作池；NPC 处理，平台同步最小回执和最终结果")}
+              : sendNote || (seat.permissionLevel ? `风险级别 ${seat.permissionLevel} · ${processTraceHint(seat)}` : "发送后写入协作池；NPC 处理，平台同步已收到提醒和最终结果")}
           </small>
           <div className={styles.composerActions}>
             <Link href={`/projects/${projectId}/company`} className={styles.linkBtn} title="返回公司运行状态">

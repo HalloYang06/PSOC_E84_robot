@@ -681,8 +681,8 @@ export function WorkbenchClient({
       nextActionTitle = "先收口桌面线程";
       nextActionDetail = userFacingMessageText(latestCloseout?.title || latestCloseout?.body?.slice(0, 72), "桌面线程可能仍在处理，先点催办、重新同步或手动收口。");
     } else if (active > 0) {
-      nextActionTitle = "盯最小回执";
-      nextActionDetail = "先看进行中的 NPC 是否已回最小回执，再决定是否催办或转人工。";
+      nextActionTitle = "盯已收到提醒";
+      nextActionDetail = "先看进行中的 NPC 是否已回已收到提醒，再决定是否催办或转人工。";
     } else if (currentFailed > 0) {
       nextActionTitle = "复查最新异常";
       nextActionDetail = userFacingMessageText(latestFailed?.title || latestFailed?.body?.slice(0, 72), "异常多为历史收口，先打开最新相关 NPC。");
@@ -700,7 +700,7 @@ export function WorkbenchClient({
       currentFailed,
       archivedFailed,
       latestTitle: userFacingMessageText(latest?.title || latest?.body?.slice(0, 48), "暂无协作消息"),
-      latestStatus: latest && messageIsOpenDesktopCloseout(latest, operationalMessages) ? "待收口" : userFacingMessageText(latest?.status || ""),
+      latestStatus: latest && messageIsOpenDesktopCloseout(latest, operationalMessages) ? "等结果" : userFacingMessageText(latest?.status || ""),
       latestFailedTitle: userFacingMessageText(latestFailed?.title || latestFailed?.body?.slice(0, 48)),
       latestCloseoutTitle: userFacingMessageText(latestCloseout?.title || latestCloseout?.body?.slice(0, 48)),
       nextActionTitle,
@@ -1146,7 +1146,7 @@ export function WorkbenchClient({
       "",
       "平台定位：",
       "- 真实处理过程留在绑定桌面线程。",
-      "- 工作台只显示分工摘要、最小回执、审核结果、阻塞和最终结果。",
+      "- 工作台只显示分工摘要、已收到提醒、审核结果、阻塞和最终结果。",
       "",
       "当前可执行：",
       ...(readyTasks.length
@@ -1716,7 +1716,7 @@ export function WorkbenchClient({
                 {" / "}
                 完成 {operationsSummary.done}
                 {" / "}
-                待收口 {operationsSummary.pendingCloseout}
+                等结果 {operationsSummary.pendingCloseout}
                 {" / "}
                 异常 {operationsSummary.failed}
               </small>
@@ -1725,7 +1725,7 @@ export function WorkbenchClient({
               <strong>协同工作台 MVP</strong>
               <span data-hot={operationsSummary.pendingReview > 0 ? "1" : undefined}>待审 {operationsSummary.pendingReview}</span>
               <span data-hot={operationsSummary.setupBlocked > 0 ? "1" : undefined}>待绑定 {operationsSummary.setupBlocked}</span>
-              <span data-hot={operationsSummary.pendingCloseout > 0 ? "1" : undefined}>待收口 {operationsSummary.pendingCloseout}</span>
+              <span data-hot={operationsSummary.pendingCloseout > 0 ? "1" : undefined}>等结果 {operationsSummary.pendingCloseout}</span>
               <span>进行中 {operationsSummary.active}</span>
               <span>完成 {operationsSummary.done}</span>
               <span data-hot={operationsSummary.currentFailed > 0 ? "1" : undefined}>当前异常 {operationsSummary.currentFailed}</span>
@@ -1752,7 +1752,7 @@ export function WorkbenchClient({
                   onClick={openFailedConversations}
                   disabled={failedSeatIds.length === 0}
                 >
-                  待收口 / 异常
+                  等结果 / 异常
                 </button>
               </div>
             </div>
@@ -1762,10 +1762,10 @@ export function WorkbenchClient({
                 <strong>派工验真</strong>
                 <small>
                   {dispatchEvidence.ready
-                    ? "目标电脑持续接单、用户派工和最小回执已进入平台索引"
+                    ? "目标电脑持续接单、用户派工和已收到提醒都已进入平台索引"
                     : dispatchEvidence.recoveryQueue > 0
                       ? `有 ${dispatchEvidence.recoveryQueue} 个目标当前只能排队，继续派工前先确认是否接受延迟。`
-                      : "先恢复目标电脑持续接单，再补齐最小回执索引"}
+                      : "先恢复目标电脑持续接单，再补齐已收到提醒索引"}
                 </small>
               </div>
               <div className={styles.dispatchEvidenceMetrics}>

@@ -65,18 +65,42 @@ function looksInternalIdentifier(value: string) {
 
 function userFacingEventText(value: unknown, fallback = "") {
   const next = text(value, "")
+    .replace(
+      /\bRunner\s+([A-Za-z0-9._-]+)\s+received this dispatch on the execution computer, but Codex Desktop has not confirmed that the bound thread visibly received it\.[^\n]*/gi,
+      "执行电脑 $1 已收到派单，但桌面后台还没有确认接收；请保持桌面版在线后重新同步。",
+    )
+    .replace(/平台等待桌面收口/gi, "平台继续等待桌面结果")
+    .replace(/自动重试桌面同步/gi, "自动重试桌面提醒")
+    .replace(/已处于 in_progress 超过/gi, "已持续处理中超过")
+    .replace(/已处于 acked 超过/gi, "已停留在已接单状态超过")
+    .replace(/仍未拿到 final/gi, "仍未收到最终结果")
+    .replace(/等待桌面 final 回执/gi, "等待桌面最终结果")
+    .replace(/回写最小回执/gi, "同步已收到提醒")
+    .replace(/最小回执/gi, "已收到提醒")
+    .replace(/Runner 收件箱/gi, "执行记录")
+    .replace(/抢占式引导/gi, "桌面提醒")
+    .replace(/\bRunner\s+已收到云端派单，正在回写最小回执。/gi, "执行电脑已收到云端派单，正在同步确认。")
+    .replace(/\bRunner\s+已完成云端派单闭环验收：/gi, "执行电脑已完成派单验收：")
+    .replace(/\bRunner\s+([A-Za-z0-9._-]+)\s+Runner\s+received platform dispatch:?/gi, "执行电脑 $1 已收到平台派单：")
+    .replace(/\bRunner\s+([A-Za-z0-9._-]+)\s+received platform dispatch:?/gi, "执行电脑 $1 已收到平台派单：")
+    .replace(/The computer connection is reachable;?\s*/gi, "电脑连接可用；")
+    .replace(/Codex Desktop UI 投递/gi, "桌面后台可接收")
+    .replace(/Codex Desktop UI delivery failed:?/gi, "桌面线程暂未确认收到：")
+    .replace(/Codex Desktop/gi, "桌面线程")
+    .replace(/bound thread/gi, "绑定线程")
     .replace(/alias_display_non_authoritative/gi, "历史标识展示规则")
     .replace(/historical[_\s-]*alias(?:[_\s-]*non[_\s-]*authoritative)?/gi, "历史标识")
     .replace(/current\s+alias/gi, "当前标识")
-    .replace(/source_thread/gi, "来源线程")
-    .replace(/canonical_workstation_id/gi, "正式工位")
-    .replace(/requested_workstation_id/gi, "请求工位")
-    .replace(/authoritative_([a-z]+_)?seat_id/gi, "正式 NPC")
-    .replace(/authoritative_target_seat_id/gi, "目标 NPC")
-    .replace(/session JSONL/gi, "线程记录")
-    .replace(/local path/gi, "当前电脑工作副本")
+    .replace(/source_thread/gi, "协作记录")
+    .replace(/canonical_workstation_id/gi, "协作记录")
+    .replace(/requested_workstation_id/gi, "协作记录")
+    .replace(/authoritative_([a-z]+_)?seat_id/gi, "协作记录")
+    .replace(/authoritative_target_seat_id/gi, "协作记录")
+    .replace(/session JSONL/gi, "同步记录")
+    .replace(/local path/gi, "当前电脑记录")
     .replace(/\badapter\b/gi, "同步")
     .replace(/\bbridge\b/gi, "同步")
+    .replace(/\brunner\b/gi, "执行电脑")
     .replace(/\bcodex app-server\b/gi, "后台线程")
     .replace(/\bcodex desktop ui\b/gi, "桌面线程")
     .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, "关联记录")
@@ -85,7 +109,7 @@ function userFacingEventText(value: unknown, fallback = "") {
     .replace(/\s{2,}/g, " ")
     .trim();
   if (!next || looksInternalIdentifier(next)) return fallback;
-  if (/^(关联记录|正式 NPC|目标 NPC|来源线程|线程记录)$/.test(next)) return fallback;
+  if (/^(关联记录|协作记录|同步记录)$/.test(next)) return fallback;
   return next;
 }
 
@@ -193,6 +217,7 @@ function summarizeSeatDispatchState(input: {
   if (!input.providerId) {
     return {
       state: "状态未知，先检查接入",
+      canQueue: false,
       shortLabel: "待选择执行通道",
       detail: "先给这个 NPC 选择执行通道，再接入持续接单。",
     };
@@ -200,6 +225,7 @@ function summarizeSeatDispatchState(input: {
   if (!input.computerNodeId) {
     return {
       state: "状态未知，先检查接入",
+      canQueue: false,
       shortLabel: "待绑定电脑",
       detail: "先绑定目标电脑，平台才能把任务落到固定设备。",
     };
@@ -207,6 +233,7 @@ function summarizeSeatDispatchState(input: {
   if (!input.threadId) {
     return {
       state: "状态未知，先检查接入",
+      canQueue: false,
       shortLabel: "待绑定线程",
       detail: "先扫描并绑定桌面线程，避免任务落空或串到别的终端。",
     };
@@ -390,6 +417,7 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
       threadKind,
       threadHealth: publicThreadState(threadHealth, automationEnabled),
       dispatchState,
+      dispatchCanQueue: seatDispatch.canQueue,
       dispatchShortLabel: seatDispatch.shortLabel,
       dispatchDetail: seatDispatch.detail,
       codexLaunchPrompt: text(meta.codex_launch_prompt ?? meta.codexLaunchPrompt, ""),
@@ -440,9 +468,17 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
       : []),
   ];
   const threadReadyCount = allSeats.filter((seat) => seat.dispatchState === "可投递").length;
-  const delayedDispatchCount = allSeats.filter((seat) => seat.dispatchState === "最近在线，可能延迟").length;
-  const recoveryWaitingCount = allSeats.filter((seat) => seat.dispatchState === "等待电脑恢复").length;
+  const queueOnlySeatCount = allSeats.filter(
+    (seat) =>
+      seat.threadId
+      && seat.dispatchCanQueue
+      && ["最近在线，可能延迟", "他人操作中"].includes(seat.dispatchState),
+  ).length;
+  const recoveryDispatchCount = allSeats.filter(
+    (seat) => seat.dispatchState === "等待电脑恢复" || seat.dispatchState === "离线，需重连",
+  ).length;
   const offlineDispatchCount = allSeats.filter((seat) => seat.dispatchState === "离线，需重连").length;
+  const staleDispatchCount = allSeats.filter((seat) => seat.dispatchState === "等待电脑恢复").length;
   const occupiedDispatchCount = allSeats.filter((seat) => seat.dispatchState === "他人操作中").length;
   const missingProviderCount = allSeats.filter((seat) => seat.dispatchShortLabel === "待选择执行通道").length;
   const missingThreadCount = allSeats.filter((seat) => seat.dispatchShortLabel === "待绑定线程").length;
@@ -455,7 +491,23 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
   const strictReviewCount = allSeats.filter((seat) => reviewPolicyLabel(seat.reviewPolicy) === "强审").length;
   const skillAssignedCount = allSeats.filter((seat) => seat.skillLoadout.length || seat.inheritedSkills.length).length;
   const knowledgeAssignedCount = allSeats.filter((seat) => seat.knowledgeSummary || seat.workstationKnowledgePath).length;
-  const readyNodeCount = [...nodeStateMap.values()].filter((node) => publicComputerDispatchState(node) === "可投递").length;
+  const nodeDispatchCounts = [...nodeStateMap.values()].reduce(
+    (summary, node) => {
+      const dispatch = summarizeRunnerDispatchState(node);
+      if (dispatch.canDispatch) {
+        summary.ready += 1;
+      } else if (dispatch.tone === "stale" || dispatch.tone === "offline") {
+        summary.reconnect += 1;
+      } else if (dispatch.canQueue) {
+        summary.queueable += 1;
+      } else {
+        summary.unknown += 1;
+      }
+      return summary;
+    },
+    { ready: 0, queueable: 0, reconnect: 0, unknown: 0 },
+  );
+  const readyNodeCount = nodeDispatchCounts.ready;
 
   const returnToPath = safeProjectReturnPath(params.id, searchParams?.return_to);
 
@@ -464,21 +516,24 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
   const recentOrgEvents = allOrgEvents.slice(0, 6);
   const projectId = String(project.id ?? params.id);
   const selfPath = `/projects/${projectId}/company`;
-  const decisionItems = [
+  const decisionItems = Array.from(new Set([
     pendingHumanReviews.length ? `${pendingHumanReviews.length} 条待人工确认` : "",
-    delayedDispatchCount ? `${delayedDispatchCount} 名 NPC 最近在线，派单可能延迟` : "",
-    recoveryWaitingCount ? `${recoveryWaitingCount} 名 NPC 正等待电脑恢复` : "",
+    queueOnlySeatCount ? `${queueOnlySeatCount} 名 NPC 当前只能先排队` : "",
+    staleDispatchCount ? `${staleDispatchCount} 名 NPC 正等待执行电脑恢复` : "",
     offlineDispatchCount ? `${offlineDispatchCount} 名 NPC 需要重连执行电脑` : "",
-    occupiedDispatchCount ? `${occupiedDispatchCount} 名 NPC 当前由他人操作` : "",
+    occupiedDispatchCount ? `${occupiedDispatchCount} 名 NPC 当前由他人占用，只能先排队` : "",
     missingProviderCount ? `${missingProviderCount} 名 NPC 还没选择执行通道` : "",
     missingThreadCount ? `${missingThreadCount} 名 NPC 还没绑定桌面线程` : "",
     missingComputerCount ? `${missingComputerCount} 名 NPC 还没绑定目标电脑` : "",
     unknownDispatchCount ? `${unknownDispatchCount} 名 NPC 的执行状态仍需检查接入` : "",
+    nodeStateMap.size
+      ? `真实电脑：可投递 ${nodeDispatchCounts.ready} · 仅排队 ${nodeDispatchCounts.queueable} · 需重连 ${nodeDispatchCounts.reconnect} · 待检查 ${nodeDispatchCounts.unknown}`
+      : "",
     strictReviewCount ? `${strictReviewCount} 名 NPC 启用强审策略` : "",
     skillAssignedCount < allSeats.length ? `${Math.max(allSeats.length - skillAssignedCount, 0)} 名 NPC 待补 Skill` : "",
     knowledgeAssignedCount < allSeats.length ? `${Math.max(allSeats.length - knowledgeAssignedCount, 0)} 名 NPC 待补知识库` : "",
     recentOrgEvents.length ? `${recentOrgEvents.length} 条最近回执需要抽查` : "",
-  ].filter(Boolean).slice(0, 5);
+  ].filter(Boolean))).slice(0, 5);
 
   return (
     <main className={styles.shell} data-embedded={searchParams?.embed === "drawer" ? "1" : undefined}>
@@ -493,13 +548,15 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
         <div>
           <span>公司层 / 运行态势图</span>
           <h1>{text(project.name, "AI 合作平台")} 公司沙盘</h1>
-          <p>一眼看部门、NPC、任务流、审核风险和电脑健康；组织编辑和证据查看都在当前页抽屉里完成。</p>
+          <p>一眼看部门、NPC、任务流、审核风险和电脑状态；组织编辑和证据查看都在当前页抽屉里完成。</p>
         </div>
         <section className={styles.statusStrip} aria-label="组织状态">
           <article><span>工位</span><strong>{workstationRows.length}</strong><small>逻辑部门</small></article>
           <article><span>NPC</span><strong>{allSeats.length}</strong><small>员工席位</small></article>
-          <article><span>可接单</span><strong>{threadReadyCount}/{allSeats.length || 0}</strong><small>NPC 状态</small></article>
-          <article><span>电脑健康</span><strong>{readyNodeCount}/{nodeStateMap.size || 0}</strong><small>真实设备</small></article>
+          <article><span>可投递</span><strong>{threadReadyCount}/{allSeats.length || 0}</strong><small>电脑 {readyNodeCount}/{nodeStateMap.size || 0}</small></article>
+          <article><span>仅排队</span><strong>{queueOnlySeatCount}</strong><small>电脑 {nodeDispatchCounts.queueable}</small></article>
+          <article><span>需重连</span><strong>{recoveryDispatchCount}</strong><small>电脑 {nodeDispatchCounts.reconnect}</small></article>
+          <article><span>待检查</span><strong>{unknownDispatchCount}</strong><small>电脑 {nodeDispatchCounts.unknown}</small></article>
         </section>
       </header>
 
@@ -511,7 +568,7 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
               <strong>{decisionItems[0] ?? "公司运行平稳"}</strong>
             </div>
             <div className={styles.decisionChips}>
-              {(decisionItems.length ? decisionItems : ["暂无阻塞", "无待审提醒", "电脑状态正常"]).map((item, index) => (
+              {(decisionItems.length > 1 ? decisionItems.slice(1) : ["暂无需重连", "无待处理提醒", "电脑状态正常"]).map((item, index) => (
                 <span key={`${item}-${index}`}>{item}</span>
               ))}
             </div>
@@ -525,8 +582,19 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
             </div>
             {workstationRows.map((ws, index) => {
               const wsReady = ws.seats.filter((seat) => seat.dispatchState === "可投递").length;
-              const wsBlocked = ws.seats.filter((seat) => statusTone(seat.dispatchState) === "blocked").length;
-              const tone = wsBlocked ? "blocked" : wsReady ? "healthy" : "idle";
+              const wsQueueable = ws.seats.filter(
+                (seat) =>
+                  seat.threadId
+                  && seat.dispatchCanQueue
+                  && ["最近在线，可能延迟", "他人操作中"].includes(seat.dispatchState),
+              ).length;
+              const wsAttention = ws.seats.filter(
+                (seat) =>
+                  seat.dispatchState === "等待电脑恢复"
+                  || seat.dispatchState === "离线，需重连"
+                  || seat.dispatchState === "状态未知，先检查接入",
+              ).length;
+              const tone = wsAttention ? "blocked" : wsReady ? "healthy" : "idle";
               return (
                 <article key={ws.id} className={styles.departmentZone} data-tone={tone} data-active={index === 0 ? "1" : undefined}>
                   <header>
@@ -536,9 +604,9 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
                       <small>负责人：{ws.leadName}</small>
                     </div>
                     <dl>
-                      <div><dt>在线</dt><dd>{wsReady}/{ws.seats.length || 0}</dd></div>
-                      <div><dt>待审</dt><dd>{ws.seats.filter((seat) => reviewPolicyLabel(seat.reviewPolicy) === "强审").length}</dd></div>
-                      <div><dt>阻塞</dt><dd>{wsBlocked}</dd></div>
+                      <div><dt>可投递</dt><dd>{wsReady}</dd></div>
+                      <div><dt>仅排队</dt><dd>{wsQueueable}</dd></div>
+                      <div><dt>待处理</dt><dd>{wsAttention}</dd></div>
                     </dl>
                   </header>
 

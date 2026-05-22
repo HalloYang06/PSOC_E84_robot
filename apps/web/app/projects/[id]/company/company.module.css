@@ -111,7 +111,7 @@
 
 .statusStrip {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
   gap: 8px;
 }
 
@@ -300,7 +300,7 @@
 
 .departmentZone dl {
   display: grid;
-  grid-template-columns: repeat(3, 42px);
+  grid-template-columns: repeat(3, minmax(52px, 1fr));
   gap: 5px;
   margin: 0;
 }
