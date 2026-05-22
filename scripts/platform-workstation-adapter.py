@@ -1733,14 +1733,14 @@ def run_executor(
                 "note": "\n".join(
                     part
                     for part in [
-                        "已通过 Codex 后台线程通道把这条平台派单送入绑定的桌面线程；不会抢占用户当前窗口或剪贴板。",
+                        "已通过 Codex 后台线程通道恢复绑定线程并完成本轮处理；不会抢占用户当前窗口或剪贴板，但也不会保证 Codex Desktop 当前界面实时显示这条单次派单。",
                         str(app_server_result.get("note") or "").strip(),
                     ]
                     if part
                 ),
-                "delivery_mode": "codex_desktop_ui",
-                "desktop_visible": True,
-                "desktop_delivery_confirmed": True,
+                "delivery_mode": "codex_app_server",
+                "desktop_visible": False,
+                "desktop_delivery_confirmed": False,
                 "desktop_delivery_method": "codex_app_server_thread_resume",
             }
         allow_sendkeys_fallback = os.environ.get("AI_COLLAB_ALLOW_CODEX_UI_SENDKEYS_FALLBACK") == "1"
@@ -1754,14 +1754,13 @@ def run_executor(
                     for part in [
                         "Codex 后台线程通道暂未完成投递；为避免打断用户当前桌面操作，平台没有使用剪贴板或快捷键兜底。",
                         str(app_server_result.get("note") or "").strip(),
-                        "请保持 Codex 桌面版登录并确认该线程可恢复，或在目标电脑显式允许旧的前台投递兜底。",
+                        "请保持 Codex 登录并确认该线程可恢复；如果必须让桌面界面立刻可见，需要接入 Codex 桌面自动化通道，而不是后台 app-server。",
                     ]
                     if part
                 ),
-                "delivery_mode": "codex_desktop_ui",
-                "desktop_visible": True,
+                "delivery_mode": "codex_app_server",
+                "desktop_visible": False,
                 "desktop_delivery_confirmed": False,
-                "desktop_delivery_unconfirmed": True,
                 "desktop_delivery_method": "codex_app_server_thread_resume",
             }
         ui_result = _run_codex_desktop_ui_turn(

@@ -99,7 +99,7 @@ def test_desktop_ui_unconfirmed_stays_recoverable() -> None:
     assert "session JSONL" not in str(result.get("note") or "")
 
 
-def test_desktop_executor_prefers_app_server_without_sendkeys() -> None:
+def test_desktop_executor_uses_app_server_without_claiming_desktop_visible() -> None:
     adapter = load_adapter()
     with TemporaryDirectory() as tmp:
         command_path = Path(tmp) / "command.md"
@@ -155,11 +155,12 @@ def test_desktop_executor_prefers_app_server_without_sendkeys() -> None:
             adapter._run_codex_desktop_ui_turn = original_desktop
 
     assert result["ok"] is True
-    assert result["delivery_mode"] == "codex_desktop_ui"
-    assert result["desktop_visible"] is True
-    assert result["desktop_delivery_confirmed"] is True
+    assert result["delivery_mode"] == "codex_app_server"
+    assert result["desktop_visible"] is False
+    assert result["desktop_delivery_confirmed"] is False
     assert result["desktop_delivery_method"] == "codex_app_server_thread_resume"
     assert "不会抢占用户当前窗口或剪贴板" in result["note"]
+    assert "不会保证 Codex Desktop 当前界面实时显示" in result["note"]
     assert calls == {"app_server": 1, "desktop_ui": 0}
 
 
@@ -213,7 +214,8 @@ def test_desktop_executor_does_not_sendkeys_when_app_server_fails_by_default() -
     assert result["ok"] is False
     assert result["recoverable"] is True
     assert result["desktop_delivery_confirmed"] is False
-    assert result["desktop_delivery_unconfirmed"] is True
+    assert result["delivery_mode"] == "codex_app_server"
+    assert result["desktop_visible"] is False
     assert result["desktop_delivery_method"] == "codex_app_server_thread_resume"
     assert "没有使用剪贴板或快捷键兜底" in result["note"]
     assert calls == {"desktop_ui": 0}
@@ -357,7 +359,7 @@ def test_desktop_retry_dedupe_key_changes_with_retry_count() -> None:
 
 if __name__ == "__main__":
     test_desktop_ui_unconfirmed_stays_recoverable()
-    test_desktop_executor_prefers_app_server_without_sendkeys()
+    test_desktop_executor_uses_app_server_without_claiming_desktop_visible()
     test_desktop_executor_does_not_sendkeys_when_app_server_fails_by_default()
     test_desktop_ui_delivery_exception_stays_recoverable()
     test_desktop_ui_auto_retries_until_prompt_is_confirmed()
