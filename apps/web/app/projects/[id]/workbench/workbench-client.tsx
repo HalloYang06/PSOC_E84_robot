@@ -1446,7 +1446,7 @@ export function WorkbenchClient({
                             <small className={styles.npcMeta}>
                               <span className={styles.dot} title="占用状态：S5 后接入" />
                               {seat.providerLabel || "未绑定 provider"}
-                              {seat.deliveryLabel ? ` · ${seat.deliveryLabel}` : ""}
+                              {seat.runnerDispatchState ? ` · ${seat.runnerDispatchState}` : seat.deliveryLabel ? ` · ${seat.deliveryLabel}` : ""}
                               {seat.automationEnabled ? " · 自动化已开" : ""}
                             </small>
                           </div>

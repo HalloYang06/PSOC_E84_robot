@@ -571,7 +571,6 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
       ?? boundThreadMeta.desktopVisible
       ?? boundThreadAdapter.desktop_visible
       ?? boundThreadAdapter.desktopVisible
-      ?? (desktopBridgeConnected && desktopDeliveryMode === "codex_desktop_ui")
       ?? false,
     );
     const desktopBridgeLabel = firstText(

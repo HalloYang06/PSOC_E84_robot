@@ -63,7 +63,27 @@ function looksInternalIdentifier(value: string) {
     || /^agent-[0-9a-f-]+$/i.test(raw);
 }
 
+function summarizeStructuredEvent(value: unknown, eventType: string) {
+  const raw = text(value, "");
+  if (!raw) return "";
+  if (/^\s*[{[]/.test(raw) || /"kind"\s*:/.test(raw) || /"expected_reply"\s*:/.test(raw)) {
+    if (/serial\.usb\.scan|serial_ports|usb_devices/i.test(raw)) {
+      return "执行电脑正在扫描串口和 USB 设备；扫描结果会进入设备数据工作台的真实设备下拉。";
+    }
+    if (/codex\.desktop\.dispatch|desktop_delivery/i.test(raw)) {
+      return "平台已登记桌面后台接收请求；等待目标桌面线程确认可见后同步结果。";
+    }
+    if (/runner_result|agent_result|final/i.test(raw)) {
+      return "执行结果已回到平台记录；可从对应工作台查看证据。";
+    }
+    return `${eventType}已进入项目记录；详细证据在对应工作台查看。`;
+  }
+  return "";
+}
+
 function userFacingEventText(value: unknown, fallback = "") {
+  const structured = summarizeStructuredEvent(value, "组织事件");
+  if (structured) return structured;
   const next = text(value, "")
     .replace(
       /\bRunner\s+([A-Za-z0-9._-]+)\s+received this dispatch on the execution computer, but Codex Desktop has not confirmed that the bound thread visibly received it\.[^\n]*/gi,
@@ -175,6 +195,8 @@ function publicEventTitle(event: AnyRecord) {
 function publicEventDescription(event: AnyRecord) {
   if (isPendingHumanReview(event)) return "需要项目负责人或人工确认后再继续。";
   const eventType = orgEventTypeLabel(event.message_type ?? event.body);
+  const structured = summarizeStructuredEvent(event.body, eventType);
+  if (structured) return structured;
   return userFacingEventText(event.body, `${eventType} · 组织事件已进入项目记录。`);
 }
 
