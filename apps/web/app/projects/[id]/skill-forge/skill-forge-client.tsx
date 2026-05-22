@@ -49,7 +49,11 @@ function userMessage(value: unknown, fallback = "") {
   } catch {
     next = decoded;
   }
+  if (/"kind"\s*:\s*"codex\.desktop\.dispatch"/i.test(next) || /\bcodex\.desktop\.dispatch\b/i.test(next)) {
+    return "目标电脑后台接收请求已登记；平台会等待桌面后台接收和最终结果。";
+  }
   return next
+    .replace(/已把这条派单送进绑定桌面线程；完整处理过程在桌面版继续。平台正在等待桌面线程写出最终回复。/gi, "已创建桌面后台接收请求；不会抢占当前窗口，平台等待最终结果。")
     .replace(/\bRunner\s+([A-Za-z0-9._-]+)\s+received platform dispatch:?/gi, "执行电脑 $1 已收到平台派单：")
     .replace(/\bRunner\s+已收到云端派单，正在回写最小回执。/gi, "执行电脑已收到云端派单，正在同步已收到提醒。")
     .replace(/目标 NPC 已接到平台派单：\s*[0-9a-f-]{16,}/gi, "目标 NPC 已接到平台派单")
