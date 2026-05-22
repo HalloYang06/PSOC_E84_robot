@@ -621,7 +621,7 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
       adapter.delivery_warning,
       adapter.deliveryWarning,
       desktopDeliveryMode === "codex_desktop_ui"
-        ? "平台会打开绑定桌面线程并把派单作为普通用户消息发送；完整处理过程会在桌面版显示。"
+        ? "平台会把派单交给目标电脑的桌面版后台自动化；不会抢占当前窗口，用户打开绑定线程后可查看处理过程。"
         : "",
       meta.delivery_warning,
       meta.deliveryWarning,

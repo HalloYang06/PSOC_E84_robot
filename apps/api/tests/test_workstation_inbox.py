@@ -481,7 +481,7 @@ def test_queued_workstation_command_requests_auto_start_and_retry() -> None:
     assert message["status"] == "queued"
     assert metadata["auto_start_requested"] is True
     assert metadata["auto_start_target_workstation_id"] == workstation_id
-    assert metadata["desktop_delivery_priority"] == "foreground_until_submitted"
+    assert metadata["desktop_delivery_priority"] == "background_until_picked_up"
     assert metadata["desktop_delivery_auto_retry"] is True
     assert metadata["desktop_delivery_recoverable_on_focus_loss"] is True
     assert metadata["desktop_sync_retry_available"] is True

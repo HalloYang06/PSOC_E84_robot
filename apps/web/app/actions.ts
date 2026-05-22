@@ -6437,7 +6437,7 @@ export async function 提交协作消息(formData: FormData) {
       let notice = `已登记协作消息：${payload.title ?? payload.message_type}`;
       if (npcDispatchMode?.mode === "one-shot") {
         notice += npcDispatchMode.launched
-          ? ` / 平台已通过内部执行桥启动 ${platformProviderLabel(npcDispatchMode.providerId)} 单次处理`
+          ? ` / 平台已把 ${platformProviderLabel(npcDispatchMode.providerId)} 单次处理交给目标电脑后台接收`
           : ` / 桌面线程启动失败：${npcDispatchMode.error ?? "请检查绑定线程和桌面同步状态"}`;
       }
       redirect(withQueryValue(returnTo, "team_notice", notice));
@@ -8678,7 +8678,7 @@ export async function 启动Npc真实线程处理(projectId: string, workstation
           ? `平台已按 ${seatName} 的 NPC 自动化设置拉起真实 ${platformProviderLabel(providerId)} 处理器。`
           : `平台已把这一句话派给 ${seatName} 的绑定 ${platformProviderLabel(providerId)} 线程做单次处理，用户不需要手动启动本机桥。`,
         messageId ? `派单消息：${messageId}` : "",
-        launchResult.launched ? "平台内部执行桥：已启动" : `启动失败：${launchResult.error || "未知错误"}`,
+        launchResult.launched ? "目标电脑后台接收：已启动" : `启动失败：${launchResult.error || "未知错误"}`,
         launchResult.stdoutPath ? `stdout：${launchResult.stdoutPath}` : "",
         launchResult.stderrPath ? `stderr：${launchResult.stderrPath}` : "",
         "平台会同步桌面提问、最小回执和最终结果；完整处理过程留在绑定桌面线程中可追踪。",
@@ -9007,7 +9007,7 @@ export async function 启动Npc单次线程处理(projectId: string, workstation
           : "投递状态：平台内部通道处理中；若未连接桌面实时桥，本对话框仍会显示最小回执和最终结果。",
         deliveryWarning,
         messageId ? `派单消息：${messageId}` : "",
-        launchResult.launched ? "平台内部执行桥：已启动" : `启动失败：${launchResult.error || "未知错误"}`,
+        launchResult.launched ? "目标电脑后台接收：已启动" : `启动失败：${launchResult.error || "未知错误"}`,
         launchResult.stdoutPath ? `stdout：${launchResult.stdoutPath}` : "",
         launchResult.stderrPath ? `stderr：${launchResult.stderrPath}` : "",
         "平台会同步桌面提问、最小回执和最终结果；完整处理过程留在绑定桌面线程中可追踪。",

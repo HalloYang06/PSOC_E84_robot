@@ -3511,7 +3511,7 @@ def closeout_workstation_command(
                 "desktop_closeout_waiting": True,
                 "auto_start_launch_status": "retry_requested",
                 "auto_start_retry_requested_at": datetime.now(timezone.utc).isoformat(),
-                "desktop_delivery_priority": "foreground_until_submitted",
+                "desktop_delivery_priority": "background_until_picked_up",
                 "desktop_delivery_auto_retry": True,
                 "desktop_delivery_recoverable_on_focus_loss": True,
             }
@@ -3679,7 +3679,7 @@ def create_message(
         extra_data.setdefault("auto_start_requested", True)
         extra_data.setdefault("auto_start_target_workstation_id", recipient_id)
         extra_data.setdefault("auto_start_requested_at", datetime.now(timezone.utc).isoformat())
-        extra_data.setdefault("desktop_delivery_priority", "foreground_until_submitted")
+        extra_data.setdefault("desktop_delivery_priority", "background_until_picked_up")
         extra_data.setdefault("desktop_delivery_auto_retry", True)
         extra_data.setdefault("desktop_delivery_recoverable_on_focus_loss", True)
         extra_data.setdefault("desktop_sync_retry_available", True)
