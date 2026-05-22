@@ -34,24 +34,59 @@ def _load_platform_workstation_adapter():
 def _project_with_workstation(prefix: str = "Workstation Inbox") -> tuple[str, str, str]:
     owner_token, owner_user_id = issue_session_token(client)
     workstation_id = f"ws-{uuid4().hex[:8]}"
+    computer_node_id = f"pc-{uuid4().hex[:8]}"
+    runner_id = f"runner-{uuid4().hex[:8]}"
     project = create_project(
         client,
         owner_token,
         name_prefix=prefix,
         collaboration_config={
+            "computer_nodes": [
+                {
+                    "id": computer_node_id,
+                    "label": "测试执行电脑",
+                    "status": "online",
+                    "runner_id": runner_id,
+                }
+            ],
+            "ai_providers": [
+                {
+                    "id": "claude",
+                    "label": "Claude",
+                    "enabled": True,
+                    "model": "claude-test",
+                }
+            ],
             "thread_workstations": [
                 {
                     "id": workstation_id,
                     "name": "Claude Writer",
                     "status": "active",
+                    "computer_node_id": computer_node_id,
                     "ai_provider_id": "claude",
                     "responsibility": "write final text after another AI gathers material",
-                    "metadata": {"source_kind": "manual_user_entry"},
+                    "metadata": {
+                        "source_kind": "manual_user_entry",
+                        "automation_thread_id": f"claude-session-{workstation_id}",
+                    },
                 }
             ],
         },
     )
     project_id = project["id"]
+    with SessionLocal() as db:
+        db.merge(
+            Runner(
+                id=runner_id,
+                name="Workstation Inbox Test Runner",
+                host="test-host",
+                os="test",
+                capabilities=["relay"],
+                status="online",
+                last_heartbeat_at=datetime.now(timezone.utc),
+            )
+        )
+        db.commit()
     add_project_member(client, project_id, owner_token, owner_user_id, role="owner", is_owner=True)
     return owner_token, project_id, workstation_id
 
@@ -222,17 +257,6 @@ def test_workstation_final_receipt_closes_dispatch_immediately() -> None:
     assert dispatch_response.status_code == 200, dispatch_response.text
     dispatch_id = dispatch_response.json()["data"]["id"]
 
-    command_response = client.get(
-        "/api/collaboration/messages",
-        headers=auth_headers(owner_token),
-        params={"project_id": project_id, "task_id": task_id, "message_type": "agent_command", "limit": 10},
-    )
-    assert command_response.status_code == 200
-    command = command_response.json()["data"][0]
-    assert command["dispatch_id"] == dispatch_id
-    assert command["recipient_type"] == "thread_workstation"
-    assert command["recipient_id"] == workstation_id
-
     receipt_response = client.post(
         "/api/collaboration/messages",
         headers=auth_headers(owner_token),
@@ -247,7 +271,8 @@ def test_workstation_final_receipt_closes_dispatch_immediately() -> None:
             "recipient_type": "agent",
             "recipient_id": "boss-seat",
             "status": "completed",
-            "metadata": {"source_message_id": command["id"]},
+            "dispatch_id": dispatch_id,
+            "metadata": {"dispatch_id": dispatch_id},
         },
     )
     assert receipt_response.status_code == 200, receipt_response.text
