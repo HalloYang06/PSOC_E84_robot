@@ -2020,15 +2020,18 @@
     right: 10px;
     bottom: 12px;
     width: auto;
+    max-width: none;
   }
 
   .statusStrip article {
     min-height: 0;
     padding: 12px;
+    overflow: hidden;
   }
 
   .statusStrip strong {
     font-size: 16px;
+    white-space: normal;
   }
 
   .moduleDock {
