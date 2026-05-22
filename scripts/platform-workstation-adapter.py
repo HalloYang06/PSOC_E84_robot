@@ -1605,7 +1605,8 @@ def _run_codex_desktop_automation_turn(
         ),
         "delivery_mode": "codex_desktop_ui",
         "desktop_visible": True,
-        "desktop_delivery_confirmed": True,
+        "desktop_delivery_confirmed": False,
+        "desktop_delivery_pending": True,
         "desktop_delivery_method": "codex_desktop_automation",
         "desktop_automation_id": automation_id,
         "desktop_automation_path": str(automation_path),
@@ -1867,9 +1868,9 @@ def run_executor(
             model=model,
         )
     if template == CODEX_DESKTOP_UI_EXECUTOR:
-        desktop_policy = str(os.environ.get("AI_COLLAB_CODEX_DESKTOP_DELIVERY_POLICY") or "interrupt").strip().lower()
+        desktop_policy = str(os.environ.get("AI_COLLAB_CODEX_DESKTOP_DELIVERY_POLICY") or "automation").strip().lower()
         if desktop_policy not in {"interrupt", "automation", "background"}:
-            desktop_policy = "interrupt"
+            desktop_policy = "automation"
         if desktop_policy == "interrupt":
             ui_result = _run_codex_desktop_ui_turn(
                 prompt_text=prompt_text,
@@ -3153,10 +3154,16 @@ def main() -> int:
                     # without pretending delivery itself is completion.
                     final_note = ""
                     result_failed = False
-                    progress_note = (
-                        "已把这条派单送进绑定桌面线程；完整处理过程在桌面版继续。"
-                        "平台正在等待桌面线程写出最终回复。"
-                    )
+                    if executor_result.get("desktop_delivery_method") == "codex_desktop_automation":
+                        progress_note = (
+                            "已创建桌面版后台自动化请求；不会抢占用户当前窗口或剪贴板。"
+                            "平台正在等待绑定桌面线程接收这条派单。"
+                        )
+                    else:
+                        progress_note = (
+                            "已把这条派单送进绑定桌面线程；完整处理过程在桌面版继续。"
+                            "平台正在等待桌面线程写出最终回复。"
+                        )
                     try:
                         progress_receipt = _post_workstation_progress(
                             base=base,
@@ -3169,7 +3176,8 @@ def main() -> int:
                             metadata={
                                 "delivery_mode": "codex_desktop_ui",
                                 "desktop_visible": True,
-                                "desktop_delivery_confirmed": True,
+                                "desktop_delivery_confirmed": bool(executor_result.get("desktop_delivery_confirmed")),
+                                "desktop_delivery_pending": bool(executor_result.get("desktop_delivery_pending")),
                                 "desktop_delivery_attempts": executor_result.get("desktop_delivery_attempts"),
                                 "desktop_delivery_auto_retried": executor_result.get("desktop_delivery_auto_retried"),
                                 "desktop_delivery_method": executor_result.get("desktop_delivery_method"),
