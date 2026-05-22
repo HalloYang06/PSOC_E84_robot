@@ -311,6 +311,8 @@ function stripPlatformChatter(body: string, desktopVisible = true): string {
     .replace(/Provider CLI/gi, "执行通道")
     .replace(/provider cli execution/gi, "执行通道运行")
     .replace(/最小回执/g, "已收到提醒")
+    .replace(/\backed\b/gi, "已接单")
+    .replace(/\bfinal\b/gi, "最终结果")
     .replace(/\bTask dispatch:/gi, "任务派发：")
     .replace(/\bTask:/gi, "任务：")
     .replace(
@@ -380,6 +382,8 @@ function userFacingCollabText(value: unknown, fallback = "", desktopVisible = tr
     .replace(/Provider CLI/gi, "执行通道")
     .replace(/provider cli execution/gi, "执行通道运行")
     .replace(/最小回执/g, "已收到提醒")
+    .replace(/\backed\b/gi, "已接单")
+    .replace(/\bfinal\b/gi, "最终结果")
     .replace(/\bTask dispatch:/gi, "任务派发：")
     .replace(/\bTask:/gi, "任务：")
     .replace(
