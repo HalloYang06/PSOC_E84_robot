@@ -104,6 +104,7 @@ function userFacingEventText(value: unknown, fallback = "") {
     .replace(/\bRunner\s+已完成云端派单闭环验收：/gi, "执行电脑已完成派单验收：")
     .replace(/\bRunner\s+([A-Za-z0-9._-]+)\s+Runner\s+received platform dispatch:?/gi, "执行电脑 $1 已收到平台派单：")
     .replace(/\bRunner\s+([A-Za-z0-9._-]+)\s+received platform dispatch:?/gi, "执行电脑 $1 已收到平台派单：")
+    .replace(/\bRunner\s+([A-Za-z0-9._-]+)\s+runner\s+scanned real device interfaces and synced them back to the platform\.?/gi, "执行电脑 $1 已完成真实设备扫描，并把结果同步到设备数据工作台。")
     .replace(/执行电脑\s+([A-Za-z0-9._-]+)\s+执行电脑\s+scanned real device interfaces and synced them back to the platform\.?/gi, "执行电脑 $1 已完成真实设备扫描，并把结果同步到设备数据工作台。")
     .replace(/\bExecution computer\s+([A-Za-z0-9._-]+)\s+scanned real device interfaces and synced them back to the platform\.?/gi, "执行电脑 $1 已完成真实设备扫描，并把结果同步到设备数据工作台。")
     .replace(/The computer connection is reachable;?\s*/gi, "电脑连接可用；")
