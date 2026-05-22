@@ -157,7 +157,7 @@ function publicThreadHealthLabel(value: string, automationEnabled: boolean) {
 
 function publicDeliveryLabel(value: string, deliveryMode: string, desktopDeliveryMode: string) {
   const raw = `${value || ""} ${deliveryMode || ""} ${desktopDeliveryMode || ""}`.toLowerCase();
-  if (raw.includes("desktop") || raw.includes("codex_desktop_ui")) return "桌面线程可见";
+  if (raw.includes("desktop") || raw.includes("codex_desktop_ui")) return "桌面后台可接收";
   if (raw.includes("app_server") || raw.includes("session")) return "执行电脑队列";
   return value || "";
 }
@@ -165,6 +165,7 @@ function publicDeliveryLabel(value: string, deliveryMode: string, desktopDeliver
 function publicDeliveryWarning(value: string, deliveryMode: string) {
   const rawMode = `${deliveryMode || ""}`.toLowerCase();
   if (rawMode.includes("codex_app_server")) return "平台会通过执行电脑接单；用户可在工作台看最小回执和最终结果。";
+  if (rawMode.includes("codex_desktop_ui")) return "平台会把派单交给目标电脑的桌面版后台自动化；不会抢占当前窗口，用户打开绑定线程后可查看处理过程。";
   return value ? "平台会把派单送到绑定执行线程；回执会回到当前 NPC 瓷砖。" : "";
 }
 
@@ -524,7 +525,7 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
     const deliveryLabel = firstText(
       adapter.delivery_label,
       adapter.deliveryLabel,
-      desktopDeliveryMode === "codex_desktop_ui" ? "桌面线程可见" : "",
+      desktopDeliveryMode === "codex_desktop_ui" ? "桌面后台可接收" : "",
       meta.delivery_label,
       meta.deliveryLabel,
       boundThreadMeta.delivery_label,

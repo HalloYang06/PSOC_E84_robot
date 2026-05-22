@@ -303,7 +303,7 @@ function stripPlatformChatter(body: string, desktopVisible = true): string {
     .replace(/\.codex[\\/]sessions[\\/]?/gi, recordNoun)
     .replace(/[A-Za-z]:[\\/][^\s"'`<>),\]]*artifacts[\\/][^\s"'`<>),\]]+\.(?:md|txt|log|json|jsonl|yaml|yml)/gi, "平台证据文件")
     .replace(/artifacts[\\/][^\s"'`<>),\]]+\.(?:md|txt|log|json|jsonl|yaml|yml)/gi, "平台证据文件")
-    .replace(/Codex Desktop UI 投递/g, desktopVisible ? "桌面线程可见" : "执行线程可见")
+    .replace(/Codex Desktop UI 投递/g, desktopVisible ? "桌面后台可接收" : "执行线程可见")
     .replace(/Codex Desktop UI delivery failed:?/gi, `${deliveryTarget}暂未确认收到`)
     .replace(/Codex app-server/gi, "后台线程")
     .replace(/session JSONL/gi, recordNoun)
@@ -1113,12 +1113,13 @@ function deliveryNoun(seatOrDesktopVisible: WorkbenchSeat | boolean): string {
 
 function processTraceHint(seatOrDesktopVisible: WorkbenchSeat | boolean): string {
   const desktopVisible = typeof seatOrDesktopVisible === "boolean" ? seatOrDesktopVisible : seatOrDesktopVisible.desktopVisible;
-  return desktopVisible ? "详细过程可在绑定桌面线程里追踪。" : "执行过程以回执形式回到当前 NPC 瓷砖。";
+  return desktopVisible ? "不会抢占当前窗口；用户打开绑定桌面线程后可追踪详细过程。" : "执行过程以回执形式回到当前 NPC 瓷砖。";
 }
 
 function processSignalLabel(value: string): string {
   const normalized = safeText(value, "").toLowerCase();
   if (!normalized) return "";
+  if (normalized === "awaiting_desktop_pickup") return "等待桌面接收";
   if (normalized === "awaiting_desktop_reply") return "等待桌面回执";
   if (normalized === "desktop_delivery_unconfirmed") return "桌面未确认收到";
   if (normalized === "delivery_pending_confirmation") return "等待送达确认";
@@ -1538,6 +1539,8 @@ function summarizeCollabMessage(msg: CollabMessage, desktopVisible = true): Refi
   const launchState = String(meta.launch_state || "");
   if (progressState === "awaiting_desktop_reply") {
     detail = `已确认进入目标${deliveryTarget}，正在等待最终回执。`;
+  } else if (progressState === "awaiting_desktop_pickup") {
+    detail = "已创建桌面版后台自动化请求，正在等待绑定桌面线程接收；不会抢占当前窗口。";
   } else if (progressState === "desktop_delivery_unconfirmed") {
     const retryCount = safeText(meta.desktop_delivery_attempts ?? blockedTaxonomy.desktop_delivery_attempts, "");
     detail = retryCount

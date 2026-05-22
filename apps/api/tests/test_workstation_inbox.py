@@ -2736,8 +2736,8 @@ def test_workstation_adapter_config_reports_codex_desktop_ui_bridge() -> None:
     assert data["desktop_delivery_mode"] == "codex_desktop_ui"
     assert data["desktop_visible"] is True
     assert data["desktop_bridge_connected"] is True
-    assert data["delivery_label"] == "桌面线程可见"
-    assert "完整处理过程在桌面版可见" in data["delivery_warning"]
+    assert data["delivery_label"] == "桌面后台可接收"
+    assert "不会抢占当前窗口" in data["delivery_warning"]
 
 
 def test_workstation_adapter_config_inherits_cwd_from_bound_scanned_thread() -> None:
@@ -2846,7 +2846,7 @@ def test_workstation_adapter_config_inherits_desktop_bridge_from_bound_scanned_t
     assert data["desktop_delivery_mode"] == "codex_desktop_ui"
     assert data["desktop_visible"] is True
     assert data["desktop_bridge_connected"] is True
-    assert data["delivery_label"] == "桌面线程可见"
+    assert data["delivery_label"] == "桌面后台可接收"
     assert data["executor_cwd"] == "D:/english_a_agent"
 
 

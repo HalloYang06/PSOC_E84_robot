@@ -1448,9 +1448,9 @@ def _adapter_delivery_state(
             warning = "此 NPC 已显式配置为 Codex app-server 后台处理；桌面版不会显示完整处理过程。仅适合用户明确允许的后台任务。"
         elif desktop_bridge_connected and desktop_delivery_mode == "codex_desktop_ui":
             mode = "codex_desktop_ui"
-            label = "桌面线程可见"
+            label = "桌面后台可接收"
             visible = True
-            warning = "平台会把派单送入绑定桌面线程；完整处理过程在桌面版可见，平台同步最小回执和最终结果。"
+            warning = "平台会把派单交给目标电脑的桌面版后台自动化；不会抢占当前窗口，用户打开绑定线程后可查看处理过程。"
         else:
             mode = "codex_desktop_ui_required"
             label = "等待桌面线程接入"
