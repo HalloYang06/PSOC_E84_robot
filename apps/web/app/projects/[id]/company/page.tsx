@@ -6,6 +6,7 @@ import {
   getProjectComputerNodesState,
   getProjectState,
   getProjectWorkstationsState,
+  getUsageData,
 } from "../../../../lib/server-data";
 import { isNpcSeatRecord, platformProviderIdFromSeat } from "../../../../lib/platform-provider";
 import { runnerStateLabel, summarizeRunnerDispatchState } from "../../../../lib/runner-status";
@@ -35,6 +36,23 @@ function firstText(...values: unknown[]) {
     if (next) return next;
   }
   return "";
+}
+
+function numberValue(value: unknown) {
+  const next = Number(value ?? 0);
+  return Number.isFinite(next) ? next : 0;
+}
+
+function formatTokenCount(value: number) {
+  return new Intl.NumberFormat("zh-CN").format(Math.max(0, Math.round(value)));
+}
+
+function sameLocalDay(value: unknown, now = new Date()) {
+  const date = value ? new Date(String(value)) : null;
+  if (!date || Number.isNaN(date.getTime())) return false;
+  return date.getFullYear() === now.getFullYear()
+    && date.getMonth() === now.getMonth()
+    && date.getDate() === now.getDate();
 }
 
 function deriveThreadKind(providerId: string, threadId: string) {
@@ -295,10 +313,11 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
     );
   }
 
-  const [computerNodesState, projectWorkstationsState, collaborationMessagesState] = await Promise.all([
+  const [computerNodesState, projectWorkstationsState, collaborationMessagesState, usageData] = await Promise.all([
     getProjectComputerNodesState(params.id),
     getProjectWorkstationsState(params.id),
     getCollaborationMessagesState({ projectId: params.id }),
+    getUsageData(),
   ]);
   const liveNodes = asArray<AnyRecord>(computerNodesState.data);
   const projectWorkstations = asArray<AnyRecord>(projectWorkstationsState.data);
@@ -544,10 +563,24 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
 
   const returnToPath = safeProjectReturnPath(params.id, searchParams?.return_to);
 
+  const projectId = String(project.id ?? params.id);
   const allOrgEvents = asArray<AnyRecord>(collaborationMessagesState.data);
   const pendingHumanReviews = allOrgEvents.filter(isPendingHumanReview);
   const recentOrgEvents = allOrgEvents.slice(0, 6);
-  const projectId = String(project.id ?? params.id);
+  const projectUsage = asArray<AnyRecord>(usageData).filter((item) => text(item.project_id ?? item.projectId, "") === projectId);
+  const todayUsage = projectUsage.filter((item) => sameLocalDay(item.created_at ?? item.createdAt));
+  const usageSource = todayUsage.length ? todayUsage : projectUsage;
+  const tokenInputToday = usageSource.reduce((sum, item) => sum + numberValue(item.input_tokens ?? item.inputTokens), 0);
+  const tokenOutputToday = usageSource.reduce((sum, item) => sum + numberValue(item.output_tokens ?? item.outputTokens), 0);
+  const tokenCachedToday = usageSource.reduce((sum, item) => sum + numberValue(item.cached_tokens ?? item.cachedTokens), 0);
+  const tokenTotalToday = tokenInputToday + tokenOutputToday;
+  const tokenBudget = allSeats.reduce((sum, seat) => {
+    const raw = record(seat.metadata).max_tokens_per_task ?? record(seat.metadata).maxTokensPerTask;
+    return sum + numberValue(raw);
+  }, 0) || 1000000;
+  const runningEventCount = allOrgEvents.filter((event) => /running|progress|active|pending|queued|acked|delivered/i.test(text(event.status, ""))).length;
+  const completedEventCount = allOrgEvents.filter((event) => /completed|done|success|resolved/i.test(text(event.status, ""))).length;
+  const taskDetailItems = (pendingHumanReviews.length ? pendingHumanReviews : recentOrgEvents).slice(0, 5);
   const selfPath = `/projects/${projectId}/company`;
   const decisionItems = Array.from(new Set([
     pendingHumanReviews.length ? `${pendingHumanReviews.length} 条待人工确认` : "",
@@ -684,6 +717,55 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
             ) : null}
           </div>
         </section>
+
+        <aside className={styles.sidePane} aria-label="公司经营明细">
+          <section className={styles.tokenPanel}>
+            <header>
+              <strong>今日 Token</strong>
+              <small>{todayUsage.length ? "来自真实用量记录" : projectUsage.length ? "最近记录" : "等待用量回写"}</small>
+            </header>
+            <div className={styles.tokenGrid}>
+              <article>
+                <span>今日消耗</span>
+                <strong>{formatTokenCount(tokenTotalToday)}</strong>
+                <small>/ {formatTokenCount(tokenBudget)}</small>
+                <i style={{ width: `${Math.min(100, tokenBudget ? (tokenTotalToday / tokenBudget) * 100 : 0)}%` }} />
+              </article>
+              <article>
+                <span>缓存节省</span>
+                <strong>{formatTokenCount(tokenCachedToday)}</strong>
+                <small>{tokenCachedToday ? "已复用上下文" : "统计中"}</small>
+                <i style={{ width: `${Math.min(100, tokenTotalToday ? (tokenCachedToday / Math.max(tokenTotalToday, 1)) * 100 : 0)}%` }} />
+              </article>
+            </div>
+          </section>
+
+          <section className={styles.detailPanel}>
+            <header>
+              <span>对话明细</span>
+              <strong>全部</strong>
+            </header>
+            <div className={styles.miniStats}>
+              <article><strong>{runningEventCount}</strong><span>进行中</span></article>
+              <article><strong>{completedEventCount}</strong><span>已完成</span></article>
+              <article><strong>{allOrgEvents.length}</strong><span>总计</span></article>
+            </div>
+            <div className={styles.taskList}>
+              {taskDetailItems.map((event, index) => (
+                <Link
+                  key={text(event.id, `company-detail-${index}`)}
+                  href={`/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=company`}
+                  className={styles.taskItem}
+                >
+                  <strong>{publicEventTitle(event)}</strong>
+                  <span>{publicEventDescription(event)}</span>
+                  <small>{publicStatusLabel(event.status)} ›</small>
+                </Link>
+              ))}
+              {!taskDetailItems.length ? <p className={styles.emptyText}>还没有协作明细。</p> : null}
+            </div>
+          </section>
+        </aside>
 
       </section>
 
