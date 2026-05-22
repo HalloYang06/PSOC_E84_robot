@@ -34,18 +34,43 @@ echo -e "${GREEN}✓ ROS 2环境: $ROS_DISTRO${NC}"
 # 检查CAN接口
 echo ""
 echo "检查CAN接口..."
-if ip link show can0 &> /dev/null; then
-    CAN_STATE=$(ip -details link show can0 | grep -o "state [A-Z]*" | awk '{print $2}')
-    if [ "$CAN_STATE" == "UP" ]; then
-        echo -e "${GREEN}✓ CAN0接口已启动${NC}"
-    else
-        echo -e "${YELLOW}! CAN0接口存在但未启动，正在启动...${NC}"
-        sudo ip link set can0 type can bitrate 500000
-        sudo ip link set can0 up
-        echo -e "${GREEN}✓ CAN0接口已启动${NC}"
+CAN_BITRATE="${CAN_BITRATE:-1000000}"
+CAN_INTERFACE="${CAN_INTERFACE:-}"
+
+if [ -z "$CAN_INTERFACE" ]; then
+    if ip link show can_usb0 &> /dev/null; then
+        CAN_INTERFACE="can_usb0"
+    elif ip link show can0 &> /dev/null; then
+        CAN_INTERFACE="can0"
+    elif systemctl list-unit-files usbcan-slcan.service &> /dev/null; then
+        echo -e "${YELLOW}! 未发现CAN接口，尝试启动USB-CAN SLCAN服务...${NC}"
+        sudo systemctl restart usbcan-slcan.service || true
+        sleep 1
+        if ip link show can_usb0 &> /dev/null; then
+            CAN_INTERFACE="can_usb0"
+        fi
     fi
+fi
+
+if [ -n "$CAN_INTERFACE" ] && ip link show "$CAN_INTERFACE" &> /dev/null; then
+    CAN_STATE=$(ip -details link show "$CAN_INTERFACE" | grep -o "state [A-Z]*" | awk '{print $2}' | head -n 1)
+    if [ "$CAN_STATE" == "UP" ]; then
+        echo -e "${GREEN}✓ ${CAN_INTERFACE}接口已启动${NC}"
+    else
+        echo -e "${YELLOW}! ${CAN_INTERFACE}接口存在但未启动，正在启动...${NC}"
+        if [ "$CAN_INTERFACE" = "can_usb0" ]; then
+            sudo ip link set "$CAN_INTERFACE" up
+        else
+            sudo ip link set "$CAN_INTERFACE" type can bitrate "$CAN_BITRATE"
+            sudo ip link set "$CAN_INTERFACE" up
+        fi
+        echo -e "${GREEN}✓ ${CAN_INTERFACE}接口已启动${NC}"
+    fi
+    echo -e "  CAN接口: ${GREEN}${CAN_INTERFACE}${NC}"
+    echo -e "  CAN波特率: ${GREEN}${CAN_BITRATE}${NC}"
 else
-    echo -e "${YELLOW}! CAN0接口不存在，跳过CAN配置${NC}"
+    echo -e "${YELLOW}! 未发现CAN接口，跳过CAN配置${NC}"
+    echo -e "${YELLOW}  USB-CAN现场默认接口应为 can_usb0，可检查 usbcan-slcan.service${NC}"
 fi
 
 # 显示网络信息
