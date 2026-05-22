@@ -16,7 +16,7 @@ import {
 import { normalizeDevelopmentWorkshopStations } from "../../../../lib/development-workshop";
 import { DEFAULT_PLATFORM_SKILL_LIBRARY } from "../../../../lib/platform-skills";
 import { isNpcSeatRecord, platformProviderIdFromSeat } from "../../../../lib/platform-provider";
-import { runnerStateLabel } from "../../../../lib/runner-status";
+import { summarizeRunnerDispatchState } from "../../../../lib/runner-status";
 import { WorkbenchClient } from "./workbench-client";
 
 export const dynamic = "force-dynamic";
@@ -61,15 +61,74 @@ function firstText(...values: unknown[]) {
   return "";
 }
 
-function computerDispatchState(node: AnyRecord | undefined) {
-  return runnerStateLabel(node);
-}
-
 function deriveThreadKind(providerId: string, threadId: string) {
   const raw = `${providerId} ${threadId}`.toLowerCase();
   if (raw.includes("claude")) return "执行线程";
   if (raw.includes("codex")) return "执行线程";
   return providerId ? "执行线程" : "待绑定线程";
+}
+
+function summarizeSeatDispatchState(input: {
+  providerId: string;
+  computerNodeId: string;
+  threadId: string;
+  nodeState: AnyRecord | undefined;
+}) {
+  if (!input.providerId) {
+    return {
+      state: "状态未知，先检查接入",
+      tone: "unknown" as const,
+      canDispatch: false,
+      canQueue: false,
+      shortLabel: "待选择执行通道",
+      detail: "先给这个 NPC 选择执行通道，再接入持续接单。",
+    };
+  }
+  if (!input.computerNodeId) {
+    return {
+      state: "状态未知，先检查接入",
+      tone: "unknown" as const,
+      canDispatch: false,
+      canQueue: false,
+      shortLabel: "待绑定电脑",
+      detail: "先绑定目标电脑，平台才能把任务落到固定设备。",
+    };
+  }
+  if (!input.threadId) {
+    return {
+      state: "状态未知，先检查接入",
+      tone: "unknown" as const,
+      canDispatch: false,
+      canQueue: false,
+      shortLabel: "待绑定线程",
+      detail: "先扫描并绑定桌面线程，避免任务落空或串到别的终端。",
+    };
+  }
+  return summarizeRunnerDispatchState(input.nodeState);
+}
+
+function summarizeWorkbenchComputerCounts(computers: AnyRecord[]) {
+  return computers.reduce(
+    (summary, node) => {
+      const state = summarizeRunnerDispatchState(node);
+      if (state.canDispatch) {
+        summary.onlineComputers += 1;
+      } else if (state.canQueue) {
+        summary.queueableComputers += 1;
+      } else if (state.tone === "offline") {
+        summary.reconnectComputers += 1;
+      } else {
+        summary.unknownComputers += 1;
+      }
+      return summary;
+    },
+    {
+      onlineComputers: 0,
+      queueableComputers: 0,
+      reconnectComputers: 0,
+      unknownComputers: 0,
+    },
+  );
 }
 
 function publicProviderLabel(value: string) {
@@ -601,6 +660,12 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
       : (computerNodeId ? (leadByNode.get(computerNodeId) ?? "") : "");
     const isLead = !!leadSeatId && identitySet(id, rowId, seat.config_id, seat.name, threadId).has(leadSeatId);
     const nodeState = computerNodeId ? nodeStateMap.get(computerNodeId) : undefined;
+    const seatDispatch = summarizeSeatDispatchState({
+      providerId,
+      computerNodeId,
+      threadId,
+      nodeState,
+    });
     return {
       id,
       rowId,
@@ -612,7 +677,12 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
       computerNodeName: computerNodeId ? nodeMap.get(computerNodeId) ?? computerNodeId : "",
       runnerWatchState: text(nodeState?.runner_watch_state ?? nodeState?.runnerWatchState, ""),
       runnerEffectiveStatus: text(nodeState?.runner_effective_status ?? nodeState?.runnerEffectiveStatus ?? nodeState?.runner_status ?? nodeState?.runnerStatus ?? nodeState?.status, ""),
-      runnerDispatchState: threadId && computerNodeId ? computerDispatchState(nodeState) : "状态未知，先检查接入",
+      runnerDispatchState: seatDispatch.state,
+      runnerStateTone: seatDispatch.tone,
+      runnerStateShortLabel: seatDispatch.shortLabel,
+      runnerStateDetail: seatDispatch.detail,
+      runnerCanDispatch: seatDispatch.canDispatch,
+      runnerCanQueue: seatDispatch.canQueue,
       providerId,
       providerLabel,
       threadId,
@@ -683,6 +753,11 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
   const projectGithubUrl = text(project.github_url, "");
   const projectLocalPath = text(project.local_git_url, "");
   const repoLocalState = localGitState(projectLocalPath);
+  const uniqueNodes = [...configNodes, ...liveNodes].filter((node, index, list) => {
+    const id = text(node.id ?? node.node_id, "");
+    return id && list.findIndex((candidate) => text(candidate.id ?? candidate.node_id, "") === id) === index;
+  });
+  const computerSummary = summarizeWorkbenchComputerCounts(uniqueNodes);
 
   return (
     <WorkbenchClient
@@ -694,15 +769,11 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
       apiBaseUrl={(process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8011").trim().replace(/\/$/, "")}
       seats={seats}
       resourceIndex={{
-        computers: [...configNodes, ...liveNodes].filter((node, index, list) => {
-          const id = text(node.id ?? node.node_id, "");
-          return id && list.findIndex((candidate) => text(candidate.id ?? candidate.node_id, "") === id) === index;
-        }).length,
-        onlineComputers: [...configNodes, ...liveNodes].filter((node, index, list) => {
-          const id = text(node.id ?? node.node_id, "");
-          const unique = id && list.findIndex((candidate) => text(candidate.id ?? candidate.node_id, "") === id) === index;
-          return unique && computerDispatchState(node) === "可投递";
-        }).length,
+        computers: uniqueNodes.length,
+        onlineComputers: computerSummary.onlineComputers,
+        queueableComputers: computerSummary.queueableComputers,
+        reconnectComputers: computerSummary.reconnectComputers,
+        unknownComputers: computerSummary.unknownComputers,
         logicalWorkstations: projectWorkstations.length,
         workshopStations: workshopStations.length,
         skills: skillLibrary.length,

@@ -8,7 +8,7 @@ import {
   getProjectThreadWorkstationsState,
 } from "../../../../lib/server-data";
 import { isNpcSeatRecord } from "../../../../lib/platform-provider";
-import { runnerStateLabel, summarizeRunnerDispatchState } from "../../../../lib/runner-status";
+import { summarizeRunnerDispatchState } from "../../../../lib/runner-status";
 import { RoboticsWorkbenchClient } from "./robotics-workbench-client";
 import styles from "./robotics.module.css";
 
@@ -41,8 +41,8 @@ function publicComputerName(node: AnyRecord, index: number) {
 function publicInterfaceName(value: unknown, fallback: string) {
   const name = text(value, fallback);
   return name
-    .replace(/\badapters?\b/gi, "适配器")
-    .replace(/\bbridges?\b/gi, "桥接器")
+    .replace(/\badapters?\b/gi, "接入通道")
+    .replace(/\bbridges?\b/gi, "同步通道")
     .replace(/\brunners?\b/gi, "接单进程");
 }
 
@@ -116,6 +116,18 @@ type DebugWindow = {
   isUsable: boolean;
 };
 
+type RoboticsRunnerSummary = {
+  readyComputers: number;
+  queueableComputers: number;
+  reconnectComputers: number;
+  unknownComputers: number;
+  scannedInterfaces: number;
+};
+
+function interfaceReadyForWindow(status: string) {
+  return status === "available";
+}
+
 type SavedDebugWindow = {
   resourceId: string;
   name: string;
@@ -155,6 +167,7 @@ function buildDebugWindows(computers: AnyRecord[], seats: AnyRecord[]): DebugWin
       const status = text(item.status, "").toLowerCase();
       const writeCapability = text(item.write_capability ?? item.writeCapability, "review_required").toLowerCase();
       const scannedInterfaceId = text(item.id, `${nodeIndex}-${itemIndex}`);
+      const runnerReadyForWindow = runnerState.canQueue && Boolean(computerNodeId);
       windows.push({
         id: `${computerNodeId || nodeIndex}:${scannedInterfaceId}`,
         runnerInterfaceId: scannedInterfaceId,
@@ -178,11 +191,34 @@ function buildDebugWindows(computers: AnyRecord[], seats: AnyRecord[]): DebugWin
           : writeCapability === "blocked"
             ? "禁止"
             : "需审核",
-        isUsable: Boolean(computerNodeId) && !["scan_tool_needed", "offline"].includes(status),
+        isUsable: runnerReadyForWindow && interfaceReadyForWindow(status),
       });
     });
   });
   return windows;
+}
+
+function summarizeRoboticsRunnerCounts(computers: AnyRecord[]): RoboticsRunnerSummary {
+  return computers.reduce<RoboticsRunnerSummary>((summary, node) => {
+    const state = summarizeRunnerDispatchState(node);
+    if (state.canDispatch) {
+      summary.readyComputers += 1;
+    } else if (state.canQueue) {
+      summary.queueableComputers += 1;
+    } else if (state.tone === "offline") {
+      summary.reconnectComputers += 1;
+    } else {
+      summary.unknownComputers += 1;
+    }
+    summary.scannedInterfaces += scanInterfaces(node).length;
+    return summary;
+  }, {
+    readyComputers: 0,
+    queueableComputers: 0,
+    reconnectComputers: 0,
+    unknownComputers: 0,
+    scannedInterfaces: 0,
+  });
 }
 
 function selectedWindowIds(searchValue: unknown, windows: DebugWindow[]) {
@@ -232,8 +268,7 @@ export default async function ProjectRoboticsPage({
   const windows = buildDebugWindows(computers, npcSeats);
   const config = record(project.collaboration_config);
   const savedWindows = normalizeSavedDebugWindows(config.robotics_debug_windows);
-  const onlineComputers = computers.filter((node) => runnerStateLabel(node) === "可投递").length;
-  const scanned = computers.filter((node) => scanInterfaces(node).length > 0).length;
+  const runnerSummary = summarizeRoboticsRunnerCounts(computers);
   const notice = text(searchParams?.team_notice, "");
   const error = text(searchParams?.team_error, "");
   const initialOpenIds = selectedWindowIds(searchParams?.windows, windows);
@@ -249,9 +284,12 @@ export default async function ProjectRoboticsPage({
       terminalMessages={terminalMessages}
       initialOpenIds={initialOpenIds}
       initialNpcId={initialNpcId}
-      onlineComputers={onlineComputers}
+      readyComputers={runnerSummary.readyComputers}
+      queueableComputers={runnerSummary.queueableComputers}
+      reconnectComputers={runnerSummary.reconnectComputers}
+      unknownComputers={runnerSummary.unknownComputers}
       computerCount={computers.length}
-      scannedCount={scanned}
+      scannedInterfaceCount={runnerSummary.scannedInterfaces}
       notice={notice}
       error={error}
     />

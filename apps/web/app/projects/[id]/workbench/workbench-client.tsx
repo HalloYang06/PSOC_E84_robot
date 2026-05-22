@@ -58,6 +58,9 @@ type WorkbenchMessage = {
 type WorkbenchResourceIndex = {
   computers: number;
   onlineComputers: number;
+  queueableComputers?: number;
+  reconnectComputers?: number;
+  unknownComputers?: number;
   logicalWorkstations: number;
   workshopStations: number;
   skills: number;
@@ -140,6 +143,15 @@ function seatCanTakeTask(seat: WorkbenchSeat): boolean {
   return seat.runnerDispatchState === "可投递";
 }
 
+function seatCanQueueTask(seat: WorkbenchSeat): boolean {
+  if (!seat.threadId) return false;
+  return Boolean(seat.runnerCanQueue);
+}
+
+function seatNeedsRecoveryQueue(seat: WorkbenchSeat): boolean {
+  return seatCanQueueTask(seat) && !seatCanTakeTask(seat);
+}
+
 function userFacingMessageText(value: unknown, fallback = ""): string {
   const next = String(value ?? "")
     .replace(/alias_display_non_authoritative/gi, "历史标识展示规则")
@@ -156,10 +168,17 @@ function userFacingMessageText(value: unknown, fallback = ""): string {
     .replace(/codex-session/gi, "桌面线程")
     .replace(/线程\s*codex/gi, "桌面线程")
     .replace(/session JSONL/gi, "桌面线程记录")
-    .replace(/Provider CLI/gi, "执行程序")
-    .replace(/Local prompt file/gi, "本地提示文件")
+    .replace(/Provider CLI/gi, "执行通道")
+    .replace(/provider cli execution/gi, "执行通道运行")
+    .replace(/Local prompt file/gi, "任务说明")
+    .replace(/local path/gi, "当前电脑工作副本")
     .replace(/adapter/gi, "同步")
     .replace(/bridge/gi, "同步")
+    .replace(/\bcodex app-server\b/gi, "后台线程")
+    .replace(/\bcodex desktop ui\b/gi, "桌面线程")
+    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, "关联记录")
+    .replace(/[A-Za-z]:[\\/][^\s"'`<>),\]]+/g, "当前电脑工作副本")
+    .replace(/\.codex[\\/][^\s"'`<>),\]]+/gi, "桌面线程记录")
     .replace(/执行失败[:：]?/g, "待收口")
     .replace(/hard failed/gi, "待收口")
     .trim();
@@ -455,6 +474,10 @@ export function WorkbenchClient({
   const threadOverview = useMemo(() => {
     const registered = seats.filter((seat) => seat.threadId).length;
     const canTakeTask = seats.filter(seatCanTakeTask).length;
+    const canQueue = seats.filter(seatCanQueueTask).length;
+    const recoveryQueue = seats.filter(seatNeedsRecoveryQueue).length;
+    const reconnecting = seats.filter((seat) => seat.threadId && seat.runnerDispatchState === "离线，需重连").length;
+    const unknown = seats.filter((seat) => seat.threadId && seat.runnerDispatchState === "状态未知，先检查接入").length;
     const automationEnabled = seats.filter((seat) => seat.automationEnabled).length;
     const missing = Math.max(0, seats.length - registered);
     const byWorkspace = new Map<string, { key: string; label: string; seats: WorkbenchSeat[]; registered: number }>();
@@ -469,6 +492,10 @@ export function WorkbenchClient({
     return {
       registered,
       canTakeTask,
+      canQueue,
+      recoveryQueue,
+      reconnecting,
+      unknown,
       automationEnabled,
       missing,
       unboundSeats: seats.filter((seat) => !seat.threadId),
@@ -504,7 +531,9 @@ export function WorkbenchClient({
         value: `${resource.onlineComputers}/${resource.computers}`,
         href: withReturnTo(`/projects/${projectId}/2d-upgrade?panel=computers`, sourcePath, sourceKey),
         warning: resource.computers === 0 || resource.onlineComputers === 0,
-        hint: "执行电脑 / 扫描",
+        hint: typeof resource.queueableComputers === "number"
+          ? `可投递 ${resource.onlineComputers} · 仅排队 ${resource.queueableComputers} · 需检查 ${(resource.reconnectComputers ?? 0) + (resource.unknownComputers ?? 0)}`
+          : "执行电脑接入状态",
       },
       {
         key: "skills",
@@ -681,6 +710,8 @@ export function WorkbenchClient({
 
   const dispatchEvidence = useMemo(() => {
     const deliverable = seats.filter(seatCanTakeTask).length;
+    const queueable = seats.filter(seatCanQueueTask).length;
+    const recoveryQueue = seats.filter(seatNeedsRecoveryQueue).length;
     const desktopReady = seats.filter((seat) => seat.desktopVisible && seat.deliveryMode === "codex_desktop_ui").length;
     const notLive = seats.filter((seat) => {
       const warning = `${seat.deliveryWarning || ""} ${seat.deliveryLabel || ""} ${seat.desktopBridgeNote || ""}`;
@@ -711,6 +742,8 @@ export function WorkbenchClient({
     return {
       ready,
       deliverable,
+      queueable,
+      recoveryQueue,
       desktopReady,
       notLive,
       completedReceipts,
@@ -1726,11 +1759,23 @@ export function WorkbenchClient({
               <div className={styles.dispatchEvidencePulse} aria-hidden="true" />
               <div className={styles.dispatchEvidenceMain}>
                 <strong>派工验真</strong>
-                <small>{dispatchEvidence.ready ? "目标电脑持续接单、用户派工和最小回执已进入平台索引" : "先恢复目标电脑持续接单，再补齐最小回执索引"}</small>
+                <small>
+                  {dispatchEvidence.ready
+                    ? "目标电脑持续接单、用户派工和最小回执已进入平台索引"
+                    : dispatchEvidence.recoveryQueue > 0
+                      ? `有 ${dispatchEvidence.recoveryQueue} 个目标当前只能排队，继续派工前先确认是否接受延迟。`
+                      : "先恢复目标电脑持续接单，再补齐最小回执索引"}
+                </small>
               </div>
               <div className={styles.dispatchEvidenceMetrics}>
                 <span data-ok={dispatchEvidence.deliverable === seats.length ? "1" : undefined}>
                   电脑可投递 {dispatchEvidence.deliverable}/{seats.length}
+                </span>
+                <span data-ok={dispatchEvidence.queueable > 0 ? "1" : undefined} data-warn={dispatchEvidence.recoveryQueue > 0 ? "1" : undefined}>
+                  可排队 {dispatchEvidence.queueable}/{seats.length}
+                </span>
+                <span data-warn={dispatchEvidence.recoveryQueue > 0 ? "1" : undefined}>
+                  仅可排队 {dispatchEvidence.recoveryQueue}
                 </span>
                 <span data-ok={dispatchEvidence.desktopReady > 0 ? "1" : undefined}>
                   桌面可见 {dispatchEvidence.desktopReady}/{seats.length}
@@ -1803,10 +1848,22 @@ export function WorkbenchClient({
               <strong>{isCompany ? "工位长线程总览" : "多线程协作总览"}</strong>
               <span>线程 {threadOverview.registered}/{seats.length}</span>
               <span>电脑可投递 {threadOverview.canTakeTask}</span>
+              <span data-warning={threadOverview.recoveryQueue > 0 ? "1" : undefined}>电脑可排队 {threadOverview.canQueue}</span>
+              <span data-warning={threadOverview.recoveryQueue > 0 ? "1" : undefined}>仅可排队 {threadOverview.recoveryQueue}</span>
+              <span data-warning={threadOverview.reconnecting > 0 ? "1" : undefined}>需重连 {threadOverview.reconnecting}</span>
+              <span data-warning={threadOverview.unknown > 0 ? "1" : undefined}>待检查 {threadOverview.unknown}</span>
               <span data-warning={threadOverview.automationEnabled > 0 ? "1" : undefined}>NPC 自动化 {threadOverview.automationEnabled}</span>
               <span data-warning={threadOverview.missing > 0 ? "1" : undefined}>未登记 {threadOverview.missing}</span>
               <button type="button" className={styles.threadOverviewBtn} onClick={() => openSeatGroup(seats.map((seat) => seat.id))} disabled={seats.length === 0}>
                 打开全部
+              </button>
+              <button
+                type="button"
+                className={styles.threadOverviewBtn}
+                onClick={() => openSeatGroup(seats.filter(seatNeedsRecoveryQueue).map((seat) => seat.id))}
+                disabled={threadOverview.recoveryQueue === 0}
+              >
+                打开待恢复
               </button>
               <button type="button" className={styles.threadOverviewBtn} onClick={() => openSeatGroup(seats.filter((seat) => !seat.threadId).map((seat) => seat.id))} disabled={threadOverview.missing === 0}>
                 打开未登记

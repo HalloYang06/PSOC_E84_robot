@@ -297,7 +297,11 @@ const SCORECARD_FIX_TAB: Record<string, ModuleTab> = {
 function buildWatcherCommand(projectId: string, workstationId: string): string {
   const quote = (value: string) =>
     /^[A-Za-z0-9_\-]+$/.test(value) ? value : `'${value.replace(/'/g, "''")}'`;
-  return `cd D:\\ai合作产品; .\\scripts\\start-thread-watcher.ps1 -ProjectId ${quote(projectId)} -WorkstationId ${quote(workstationId)}`;
+  return [
+    "powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -Command ",
+    `"& { $repo = git rev-parse --show-toplevel; if (-not $repo) { throw '请先在项目仓库终端里运行'; }`,
+    `; Set-Location $repo; .\\scripts\\start-thread-watcher.ps1 -ProjectId ${quote(projectId)} -WorkstationId ${quote(workstationId)} }"`,
+  ].join("");
 }
 
 type ModuleLink = {
@@ -1701,11 +1705,12 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
 
   async function copyWatcherCommand(workstationId: string) {
     const command = buildWatcherCommand(project.id, workstationId);
+    const threadLabel = firstWorkstationLabel || "当前线程";
     try {
       try {
         await writeClipboardText(command);
         setManualCopy(null);
-        setWatcherCopyState({ kind: "ok", message: `已复制：粘贴到新 PowerShell 终端即可起 watcher（线程 ${workstationId}）` });
+        setWatcherCopyState({ kind: "ok", message: `已复制：粘贴到新 PowerShell 终端即可开始持续接单（${threadLabel}）` });
       } catch {
         showManualCopy("持续接单命令", command, setWatcherCopyState);
       }
@@ -1958,6 +1963,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
   const blockedTaskCount = tasks.filter((task) => /blocked|waiting_approval|reviewing|failed|error|needs_changes/i.test(task.status)).length;
   const humanReviewCount = humanReviewMessages.length + blockedTaskCount;
   const firstWorkstation = workstations[0] ?? null;
+  const firstWorkstationLabel = firstWorkstation ? safeThreadName(firstWorkstation, 0) : "";
   const firstNpcSeat = npcSeats[0] ?? null;
   const focusedNpcSeat = npcSeats.find((seat) => seat.id === focusedNpcId) ?? firstNpcSeat ?? null;
   const collaborationTargets = npcSeats.length ? [...npcSeats, ...workstations] : workstations;
@@ -4402,7 +4408,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                   rel="noopener noreferrer"
                   title="docs/user-guides/THREAD_WATCHER_QUICKSTART_2026-05-07.md"
                 >
-                  线程 watcher 上手
+                  线程持续接单上手
                 </a>
                 （每条线程要一个 PS 终端常驻）
               </p>
@@ -4411,9 +4417,9 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                   type="button"
                   className={styles.watcherCopyButton}
                   onClick={() => copyWatcherCommand(firstWorkstation.id)}
-                  title={`复制 ${firstWorkstation.id} 的 start-thread-watcher.ps1 命令`}
+                  title={`复制 ${firstWorkstationLabel || "当前线程"} 的持续接单命令`}
                 >
-                  📋 复制 Watch 命令（{firstWorkstation.id}）
+                  {`📋 复制持续接单命令（${firstWorkstationLabel || "当前线程"}）`}
                 </button>
               ) : null}
               {watcherCopyState.message ? (

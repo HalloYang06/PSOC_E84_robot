@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import json
 from pathlib import Path, PurePosixPath
 
@@ -12,9 +13,11 @@ from app.db.models.approval import Approval
 from app.db.models.audit_log import AuditLog
 from app.db.models.collaboration_message import CollaborationMessage
 from app.db.models.project_collaboration import ProjectAIProvider, ProjectComputerNode, ProjectThreadWorkstation
+from app.db.models.project import Project
 from app.db.models.task import Task
 from app.db.models.task_dispatch import TaskDispatch
 from app.db.models.task_event import TaskEvent
+from app.modules.projects.service import _runner_watch_snapshot, summarize_runner_dispatch_contract
 
 from . import repo
 from .schemas import TaskActionRequest, TaskCreate, TaskDispatchCreate, TaskTransitionCreate, TaskUpdate
@@ -149,6 +152,72 @@ def _append_dispatch_note(existing: str | None, status: str, note: str | None) -
     if update_line in cleaned_existing:
         return cleaned_existing
     return f"{cleaned_existing}\n{update_line}"
+
+
+def _merge_dispatch_notes(*parts: str | None) -> str | None:
+    lines: list[str] = []
+    seen: set[str] = set()
+    for part in parts:
+        cleaned = str(part or "").strip()
+        if not cleaned or cleaned in seen:
+            continue
+        seen.add(cleaned)
+        lines.append(cleaned)
+    return "\n".join(lines) if lines else None
+
+
+def _thread_binding_from_mapping(mapping: object | None) -> str:
+    extra = mapping if isinstance(mapping, dict) else {}
+    for key in (
+        "automation_thread_id",
+        "automationThreadId",
+        "target_thread_id",
+        "thread_id",
+        "session_id",
+        "bound_thread_id",
+        "source_thread_id",
+    ):
+        value = str(extra.get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _workstation_bound_thread_id(db: Session, workstation: ProjectThreadWorkstation) -> str:
+    bound = _thread_binding_from_mapping(getattr(workstation, "extra_data", None))
+    if bound:
+        return bound
+    project = db.get(Project, workstation.project_id)
+    config = project.collaboration_config if project is not None and isinstance(project.collaboration_config, dict) else {}
+    workstations = config.get("thread_workstations") if isinstance(config, dict) else None
+    if not isinstance(workstations, list):
+        return ""
+    identities = {
+        str(workstation.config_id or "").strip(),
+        str(workstation.id or "").strip(),
+        str(workstation.name or "").strip(),
+        str(workstation.agent_id or "").strip(),
+    }
+    identities.discard("")
+    for item in workstations:
+        if not isinstance(item, dict):
+            continue
+        item_identities = {
+            str(item.get("id") or "").strip(),
+            str(item.get("config_id") or "").strip(),
+            str(item.get("name") or "").strip(),
+            str(item.get("agent_id") or "").strip(),
+        }
+        item_identities.discard("")
+        if not identities.intersection(item_identities):
+            continue
+        bound = _thread_binding_from_mapping(item)
+        if bound:
+            return bound
+        bound = _thread_binding_from_mapping(item.get("metadata"))
+        if bound:
+            return bound
+    return ""
 
 
 def _enqueue_workstation_command_for_dispatch(
@@ -1502,6 +1571,112 @@ def list_task_dispatches(db: Session, task_id: str) -> list[TaskDispatch]:
     return list(db.scalars(stmt))
 
 
+def _raise_dispatch_blocked(
+    *,
+    code: str,
+    message: str,
+    workstation: ProjectThreadWorkstation,
+    computer_node: ProjectComputerNode | None,
+    details: dict[str, object] | None = None,
+) -> None:
+    raise AppError(
+        code,
+        message,
+        status_code=409,
+        details={
+            "workstation_id": workstation.config_id,
+            "computer_node_id": workstation.computer_node_id,
+            "runner_id": computer_node.runner_id if computer_node else None,
+            **(details or {}),
+        },
+    )
+
+
+def _ensure_dispatch_target_ready(
+    db: Session,
+    *,
+    workstation: ProjectThreadWorkstation,
+    computer_node: ProjectComputerNode | None,
+    ai_provider: ProjectAIProvider | None,
+) -> dict[str, object]:
+    if not workstation.computer_node_id:
+        _raise_dispatch_blocked(
+            code="TASK_DISPATCH_COMPUTER_UNBOUND",
+            message="目标 NPC 还没有绑定电脑，先完成电脑接入和线程绑定。",
+            workstation=workstation,
+            computer_node=computer_node,
+            details={"blocked_reason": "状态未知，先检查接入", "blocked_reason_code": "computer_node_unbound"},
+        )
+    if computer_node is None:
+        _raise_dispatch_blocked(
+            code="TASK_DISPATCH_COMPUTER_MISSING",
+            message="目标电脑记录不存在，请重新检查绑定关系。",
+            workstation=workstation,
+            computer_node=computer_node,
+            details={"blocked_reason": "状态未知，先检查接入", "blocked_reason_code": "computer_node_missing"},
+        )
+
+    if workstation.ai_provider_id and ai_provider is None:
+        _raise_dispatch_blocked(
+            code="TASK_DISPATCH_PROVIDER_MISSING",
+            message="目标执行通道不存在，请重新配置该 NPC 的执行方式。",
+            workstation=workstation,
+            computer_node=computer_node,
+            details={"blocked_reason": "状态未知，先检查接入", "blocked_reason_code": "provider_missing"},
+        )
+    if ai_provider is not None and not ai_provider.enabled:
+        _raise_dispatch_blocked(
+            code="TASK_DISPATCH_PROVIDER_DISABLED",
+            message="目标执行通道当前已停用，请先恢复后再派发。",
+            workstation=workstation,
+            computer_node=computer_node,
+            details={"blocked_reason": "状态未知，先检查接入", "blocked_reason_code": "provider_disabled"},
+        )
+    if not _workstation_bound_thread_id(db, workstation):
+        _raise_dispatch_blocked(
+            code="TASK_DISPATCH_THREAD_UNBOUND",
+            message="目标 NPC 还没有绑定线程，先完成线程扫描和线程绑定。",
+            workstation=workstation,
+            computer_node=computer_node,
+            details={"blocked_reason": "待绑定线程", "blocked_reason_code": "thread_unbound"},
+        )
+
+    watch = _runner_watch_snapshot(computer_node, now=datetime.now(timezone.utc))
+    dispatch_contract = summarize_runner_dispatch_contract(watch)
+    if dispatch_contract["can_dispatch"]:
+        return dispatch_contract
+
+    if dispatch_contract.get("can_queue") and dispatch_contract.get("blocked_reason_code") == "runner_stale":
+        return dispatch_contract
+
+    reason_code = str(dispatch_contract.get("blocked_reason_code") or "runner_state_unknown")
+    reason_label = str(dispatch_contract.get("blocked_reason") or "状态未知，先检查接入")
+    reason_message = str(dispatch_contract.get("dispatch_detail") or reason_label)
+    error_code = {
+        "runner_unbound": "TASK_DISPATCH_RUNNER_UNBOUND",
+        "runner_missing": "TASK_DISPATCH_RUNNER_MISSING",
+        "runner_not_started": "TASK_DISPATCH_RUNNER_NOT_READY",
+        "runner_stale": "TASK_DISPATCH_RUNNER_STALE",
+        "runner_offline": "TASK_DISPATCH_RUNNER_OFFLINE",
+        "thread_unbound": "TASK_DISPATCH_THREAD_UNBOUND",
+        "runner_state_unknown": "TASK_DISPATCH_RUNNER_UNKNOWN",
+    }.get(reason_code, "TASK_DISPATCH_RUNNER_BLOCKED")
+    _raise_dispatch_blocked(
+        code=error_code,
+        message=reason_message,
+        workstation=workstation,
+        computer_node=computer_node,
+        details={
+            "blocked_reason": reason_label,
+            "blocked_reason_code": reason_code,
+            "runner_watch_state": watch.get("runner_watch_state"),
+            "runner_effective_status": watch.get("runner_effective_status"),
+            "can_dispatch": dispatch_contract.get("can_dispatch"),
+            "can_queue": dispatch_contract.get("can_queue"),
+        },
+    )
+
+
 def dispatch_task(db: Session, task_id: str, payload: TaskDispatchCreate, *, dispatched_by_user_id: str | None = None) -> TaskDispatch:
     task = get_task_or_404(db, task_id)
     workstation = db.scalar(
@@ -1529,12 +1704,29 @@ def dispatch_task(db: Session, task_id: str, payload: TaskDispatchCreate, *, dis
                 ProjectAIProvider.config_id == workstation.ai_provider_id,
             )
         )
+    dispatch_contract = _ensure_dispatch_target_ready(
+        db,
+        workstation=workstation,
+        computer_node=computer_node,
+        ai_provider=ai_provider,
+    )
 
     before = _task_snapshot(task)
     task.assignee_agent_id = workstation.agent_id
     if task.status == "ready":
         task.status = "queued"
     db.add(task)
+
+    dispatch_status = payload.status
+    if not dispatch_contract.get("can_dispatch"):
+        dispatch_status = "queued"
+    dispatch_notes = payload.notes
+    if dispatch_status == "queued":
+        dispatch_notes = _merge_dispatch_notes(
+            payload.notes,
+            str(dispatch_contract.get("blocked_reason") or "").strip(),
+            str(dispatch_contract.get("dispatch_detail") or "").strip(),
+        )
 
     dispatch = TaskDispatch(
         task_id=task.id,
@@ -1545,8 +1737,8 @@ def dispatch_task(db: Session, task_id: str, payload: TaskDispatchCreate, *, dis
         computer_node_id=workstation.computer_node_id,
         ai_provider_id=workstation.ai_provider_id,
         runner_id=computer_node.runner_id if computer_node else None,
-        status=payload.status,
-        notes=payload.notes,
+        status=dispatch_status,
+        notes=dispatch_notes,
         dispatched_by_user_id=dispatched_by_user_id,
     )
     db.add(dispatch)
@@ -1566,6 +1758,11 @@ def dispatch_task(db: Session, task_id: str, payload: TaskDispatchCreate, *, dis
             "ai_provider_id": dispatch.ai_provider_id,
             "runner_id": dispatch.runner_id,
             "provider_enabled": ai_provider.enabled if ai_provider else None,
+            "dispatch_state": dispatch_contract.get("dispatch_state"),
+            "can_dispatch": dispatch_contract.get("can_dispatch"),
+            "can_queue": dispatch_contract.get("can_queue"),
+            "blocked_reason": dispatch_contract.get("blocked_reason"),
+            "blocked_reason_code": dispatch_contract.get("blocked_reason_code"),
             "status": dispatch.status,
         },
         actor_type="human",

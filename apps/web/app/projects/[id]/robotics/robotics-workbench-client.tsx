@@ -59,9 +59,12 @@ type RoboticsWorkbenchClientProps = {
   terminalMessages: AnyRecord[];
   initialOpenIds: string[];
   initialNpcId: string;
-  onlineComputers: number;
+  readyComputers: number;
+  queueableComputers: number;
+  reconnectComputers: number;
+  unknownComputers: number;
   computerCount: number;
-  scannedCount: number;
+  scannedInterfaceCount: number;
   notice?: string;
   error?: string;
 };
@@ -110,6 +113,87 @@ function seatName(seat: AnyRecord, fallback: string) {
   return userFacingTerminalText(seat.name ?? seat.label ?? seat.display_name ?? fallback);
 }
 
+function findSeatRecord(seats: AnyRecord[], value: string) {
+  const target = text(value, "");
+  if (!target) return undefined;
+  return seats.find((seat) => seatId(seat, "") === target || seatName(seat, "") === target);
+}
+
+function seatProviderId(seat: AnyRecord | undefined) {
+  if (!seat) return "";
+  return text(
+    seat.provider_id
+      ?? seat.providerId
+      ?? seat.adapter_provider
+      ?? seat.adapterProvider
+      ?? seat.thread_provider
+      ?? seat.threadProvider,
+    "",
+  );
+}
+
+function seatComputerNodeId(seat: AnyRecord | undefined) {
+  if (!seat) return "";
+  return text(
+    seat.computer_node_id
+      ?? seat.computerNodeId
+      ?? seat.bound_computer_node_id
+      ?? seat.boundComputerNodeId
+      ?? seat.workstation_computer_node_id
+      ?? seat.workstationComputerNodeId,
+    "",
+  );
+}
+
+function seatThreadId(seat: AnyRecord | undefined) {
+  if (!seat) return "";
+  return text(
+    seat.source_thread_id
+      ?? seat.sourceThreadId
+      ?? seat.thread_id
+      ?? seat.threadId
+      ?? seat.bound_thread_id
+      ?? seat.boundThreadId,
+    "",
+  );
+}
+
+function summarizeNpcSeatDispatchState(seat: AnyRecord | undefined) {
+  if (!seat) {
+    return {
+      ready: false,
+      state: "先选择协助 NPC",
+      detail: "先绑定负责这个调试窗口的 NPC，再发起预标注、图表分析或代操作审核。",
+    };
+  }
+  if (!seatProviderId(seat)) {
+    return {
+      ready: false,
+      state: "待选择执行通道",
+      detail: "这个 NPC 还没选择执行通道，先去 NPC 工作台补齐接单方式。",
+    };
+  }
+  if (!seatComputerNodeId(seat)) {
+    return {
+      ready: false,
+      state: "待绑定电脑",
+      detail: "这个 NPC 还没绑定目标电脑，协作请求暂时无法落到固定设备。",
+    };
+  }
+  if (!seatThreadId(seat)) {
+    return {
+      ready: false,
+      state: "待绑定线程",
+      detail: "这个 NPC 还没绑定桌面线程，先扫描并绑定线程再继续协作请求。",
+    };
+  }
+  return {
+    ready: true,
+    state: "协助 NPC 已就绪",
+    detail: "这个 NPC 已具备执行通道、电脑和线程绑定，可以承接当前调试窗口的协作请求。",
+  };
+}
+
 function commandText(message: AnyRecord) {
   const extra = record(message.extra_data ?? message.metadata);
   const fromMeta = text(extra.terminal_command, "");
@@ -132,14 +216,14 @@ function userFacingTerminalText(value: unknown) {
   return text(value, "")
     .replace(/\bRunner\b/g, "接单窗口")
     .replace(/\brunner\b/g, "接单窗口")
-    .replace(/\badapters?\b/gi, "适配器")
-    .replace(/\bbridges?\b/gi, "桥接器")
-    .replace(/\bsession JSONL\b/gi, "会话记录")
-    .replace(/\blocal path\b/gi, "当前电脑路径")
+    .replace(/\badapters?\b/gi, "接入通道")
+    .replace(/\bbridges?\b/gi, "同步通道")
+    .replace(/\bsession JSONL\b/gi, "线程记录")
+    .replace(/\blocal path\b/gi, "当前电脑工作副本")
     .replace(/\bsource_thread\b/gi, "来源线程")
-    .replace(/\bcanonical\b/gi, "标准")
-    .replace(/\brequested id\b/gi, "请求编号")
-    .replace(/\braw UUID\b/gi, "原始编号");
+    .replace(/\bcanonical\b/gi, "正式记录")
+    .replace(/\brequested id\b/gi, "平台编号")
+    .replace(/\braw UUID\b/gi, "记录编号");
 }
 
 function roboticsCaptureAckLine(value: unknown) {
@@ -551,10 +635,12 @@ function DebugTile({
   const [activeTab, setActiveTab] = useState<TileTab>("terminal");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [boundNpcId, setBoundNpcId] = useState(initialNpcId);
-  const selectedNpcRecord = npcSeats.find((seat) => seatId(seat, "") === boundNpcId);
+  const selectedNpcRecord = findSeatRecord(npcSeats, boundNpcId);
   const boundNpcLabel = selectedNpcRecord ? seatName(selectedNpcRecord, boundNpcId) : "";
   const effectiveBoundNpcId = text(boundNpcId, tile.boundNpc);
   const effectiveBoundNpcLabel = boundNpcLabel || tile.boundNpc || "";
+  const effectiveNpcSeat = findSeatRecord(npcSeats, effectiveBoundNpcId || effectiveBoundNpcLabel);
+  const npcDispatchState = summarizeNpcSeatDispatchState(effectiveNpcSeat);
   const returnTo = windowsHref(projectId, openIds, boundNpcId);
   const segments = captureSegments(tile, terminalMessages);
   const variables = segmentVariables(segments);
@@ -615,6 +701,7 @@ function DebugTile({
         <strong>{tile.runnerCanDispatch ? "可立即提交" : tile.runnerCanQueue ? "可排队，等电脑恢复" : "先重连执行电脑"}</strong>
         <span>{tile.runnerHint}</span>
         {!tile.runnerCanDispatch ? <em>保持目标电脑接单窗口在线后自动恢复</em> : null}
+        {effectiveBoundNpcId && !npcDispatchState.ready ? <em>{npcDispatchState.detail}</em> : null}
       </section>
       {settingsOpen ? (
         <form action={更新机器人调试窗口.bind(null, projectId)} className={styles.settingsPanel} aria-label={`${tile.name} 设置`}>
@@ -662,7 +749,7 @@ function DebugTile({
             <input name="channels" defaultValue={channels} />
           </label>
           <button type="submit">保存设置</button>
-          <p>{tile.runnerHint}</p>
+          <p>{effectiveBoundNpcId ? npcDispatchState.detail : tile.runnerHint}</p>
         </form>
       ) : null}
       {activeTab === "terminal" ? (
@@ -733,8 +820,18 @@ function DebugTile({
             <input type="hidden" name="bound_npc_label" value={effectiveBoundNpcLabel} />
             <span>NPC 代操作待审</span>
             <input name="command" placeholder="只有 NPC/AI 想替你操作时才填这里，例如 send 123#0102" />
-            <button type="submit" disabled={!tile.runnerReady || !effectiveBoundNpcId} title={effectiveBoundNpcId ? submitTitle(tile) : "先选择负责这个调试窗口的 NPC"}>
-              {tile.runnerReady ? "提交审核" : "需重连"}
+            <button
+              type="submit"
+              disabled={!tile.runnerReady || !effectiveBoundNpcId || !npcDispatchState.ready}
+              title={
+                !effectiveBoundNpcId
+                  ? "先选择负责这个调试窗口的 NPC"
+                  : !npcDispatchState.ready
+                    ? npcDispatchState.detail
+                    : submitTitle(tile)
+              }
+            >
+              {!effectiveBoundNpcId ? "选择 NPC" : !npcDispatchState.ready ? "先补协作接入" : tile.runnerReady ? "提交审核" : "需重连"}
             </button>
           </form>
         </>
@@ -767,7 +864,7 @@ function DebugTile({
             <details className={styles.workbenchDrawer} open>
               <summary>
                 <span>NPC 预标注</span>
-                <strong>{effectiveBoundNpcLabel || "选择 NPC 后可用"}</strong>
+                <strong>{effectiveBoundNpcLabel ? npcDispatchState.state : "选择 NPC 后可用"}</strong>
               </summary>
               <form action={创建机器人数据预标注请求.bind(null, projectId)} className={styles.dataActionPanel}>
                 <HiddenTileFields tile={tile} returnTo={returnTo} boundNpcId={effectiveBoundNpcId} boundNpcLabel={effectiveBoundNpcLabel} />
@@ -796,7 +893,13 @@ function DebugTile({
                   <span>标注目标</span>
                   <textarea name="label_goal" rows={3} placeholder="例如：找出任意变量的异常区间、状态切换、缺失样本或需要人工复核的时间段" />
                 </label>
-                <button type="submit" disabled={!segments.length || !effectiveBoundNpcId}>生成预标注建议</button>
+                <button
+                  type="submit"
+                  disabled={!segments.length || !effectiveBoundNpcId || !npcDispatchState.ready}
+                  title={effectiveBoundNpcId ? npcDispatchState.detail : "先选择负责这个调试窗口的 NPC"}
+                >
+                  生成预标注建议
+                </button>
               </form>
             </details>
             <details className={styles.workbenchDrawer}>
@@ -963,7 +1066,7 @@ function DebugTile({
             <details className={styles.workbenchDrawer}>
               <summary>
                 <span>NPC 分析建议</span>
-                <strong>{effectiveBoundNpcLabel || "选择 NPC 后可用"}</strong>
+                <strong>{effectiveBoundNpcLabel ? npcDispatchState.state : "选择 NPC 后可用"}</strong>
               </summary>
               <form action={创建机器人调参建议请求.bind(null, projectId)} className={styles.dataActionPanel}>
                 <HiddenTileFields tile={tile} returnTo={returnTo} boundNpcId={effectiveBoundNpcId} boundNpcLabel={effectiveBoundNpcLabel} />
@@ -1002,7 +1105,13 @@ function DebugTile({
                   <span>现象描述</span>
                   <textarea name="symptoms" rows={3} placeholder="例如：某段数据突然跳变、周期性波动、状态切换后延迟、阈值附近反复抖动" />
                 </label>
-                <button type="submit" disabled={!segments.length || !effectiveBoundNpcId}>请求 NPC 分析建议</button>
+                <button
+                  type="submit"
+                  disabled={!segments.length || !effectiveBoundNpcId || !npcDispatchState.ready}
+                  title={effectiveBoundNpcId ? npcDispatchState.detail : "先选择负责这个调试窗口的 NPC"}
+                >
+                  请求 NPC 分析建议
+                </button>
               </form>
             </details>
           </aside>
@@ -1021,9 +1130,12 @@ export function RoboticsWorkbenchClient({
   terminalMessages,
   initialOpenIds,
   initialNpcId,
-  onlineComputers,
+  readyComputers,
+  queueableComputers,
+  reconnectComputers,
+  unknownComputers,
   computerCount,
-  scannedCount,
+  scannedInterfaceCount,
   notice = "",
   error = "",
 }: RoboticsWorkbenchClientProps) {
@@ -1099,8 +1211,10 @@ export function RoboticsWorkbenchClient({
           </div>
         </div>
         <div className={workbenchStyles.topbarRight}>
-          <span className={workbenchStyles.kpi}>执行电脑 {onlineComputers}/{computerCount}</span>
-          <span className={workbenchStyles.kpi}>已扫描 {scannedCount}</span>
+          <span className={workbenchStyles.kpi}>可投递电脑 {readyComputers}/{computerCount}</span>
+          <span className={workbenchStyles.kpi}>可排队电脑 {queueableComputers}</span>
+          <span className={workbenchStyles.kpi}>需重连 {reconnectComputers + unknownComputers}</span>
+          <span className={workbenchStyles.kpi}>真实接口 {scannedInterfaceCount}</span>
           <span className={workbenchStyles.kpi}>窗口 {openWindows.length}/{configuredWindows.length}</span>
         </div>
       </header>
@@ -1141,7 +1255,7 @@ export function RoboticsWorkbenchClient({
                 <span>绑定真实设备</span>
                 <select name="resource_id" aria-label="绑定真实设备">
                   {usableWindows.map((resource) => (
-                    <option key={resource.id} value={resource.id}>{resource.name} · {resource.computerLabel}</option>
+                    <option key={resource.id} value={resource.id}>{resource.name} · {resource.computerLabel} · {resource.computerState}</option>
                   ))}
                 </select>
               </label>
@@ -1174,7 +1288,11 @@ export function RoboticsWorkbenchClient({
                 </select>
               </label>
               <button type="submit" disabled={!usableWindows.length}>创建并打开</button>
-              <small>{usableWindows.length ? `${usableWindows.length} 个真实设备可绑定` : "先扫描或接入电脑后再创建窗口"}</small>
+              <small>
+                {usableWindows.length
+                  ? `${usableWindows.length} 个真实设备已满足“可读取 + 电脑可排队”`
+                  : `先让目标电脑进入“可投递”或“可排队”，并确认已扫描到可读取接口后再创建窗口。当前可投递 ${readyComputers} 台，可排队 ${queueableComputers} 台，需重连 ${reconnectComputers + unknownComputers} 台。`}
+              </small>
             </form>
           </div>
           <ul className={workbenchStyles.groupList}>
@@ -1192,31 +1310,27 @@ export function RoboticsWorkbenchClient({
                         <strong className={workbenchStyles.npcName}>{window.name}</strong>
                         <small className={workbenchStyles.npcMeta}>
                           <span className={window.statusLabel === "可读取" ? workbenchStyles.dotOnline : workbenchStyles.dot} />
-                          {window.computerLabel} · {window.statusLabel}
+                          {window.computerLabel} · {window.computerState} · {window.statusLabel}
                         </small>
                       </div>
-                      {window.isUsable ? (
-                        <span className={styles.windowRowActions}>
-                          <a
-                            className={workbenchStyles.openBtn}
-                            href={windowsHref(projectId, isOpen ? openIds.filter((id) => id !== window.id) : [...openIds, window.id], defaultNpcId)}
-                            aria-label={`${isOpen ? "关闭" : "打开"} ${window.name}`}
-                            onClick={(event) => {
-                              event.preventDefault();
-                              toggleWindow(window.id);
-                            }}
-                          >
-                            {isOpen ? "✕" : "+"}
-                          </a>
-                          <form action={删除机器人调试窗口.bind(null, projectId)} onSubmit={() => previewDeleteWindow(window.id)}>
-                            <input type="hidden" name="return_to" value={`/projects/${projectId}/robotics`} />
-                            <input type="hidden" name="resource_id" value={window.id} />
-                            <button type="submit" aria-label={`删除 ${window.name}`}>删</button>
-                          </form>
-                        </span>
-                      ) : (
-                        <span className={styles.openBtnDisabled}>!</span>
-                      )}
+                      <span className={styles.windowRowActions}>
+                        <a
+                          className={workbenchStyles.openBtn}
+                          href={windowsHref(projectId, isOpen ? openIds.filter((id) => id !== window.id) : [...openIds, window.id], defaultNpcId)}
+                          aria-label={`${isOpen ? "关闭" : "打开"} ${window.name}`}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            toggleWindow(window.id);
+                          }}
+                        >
+                          {isOpen ? "✕" : "+"}
+                        </a>
+                        <form action={删除机器人调试窗口.bind(null, projectId)} onSubmit={() => previewDeleteWindow(window.id)}>
+                          <input type="hidden" name="return_to" value={`/projects/${projectId}/robotics`} />
+                          <input type="hidden" name="resource_id" value={window.id} />
+                          <button type="submit" aria-label={`删除 ${window.name}`}>删</button>
+                        </form>
+                      </span>
                     </li>
                   );
                 })}

@@ -20,6 +20,11 @@ export type WorkbenchSeat = {
   runnerWatchState?: string;
   runnerEffectiveStatus?: string;
   runnerDispatchState?: string;
+  runnerStateTone?: "ready" | "recent" | "stale" | "offline" | "unknown" | "occupied";
+  runnerStateShortLabel?: string;
+  runnerStateDetail?: string;
+  runnerCanDispatch?: boolean;
+  runnerCanQueue?: boolean;
   providerId: string;
   providerLabel: string;
   threadId: string;
@@ -54,6 +59,73 @@ export type WorkbenchSeat = {
 
 function seatIdentityList(seat: Pick<WorkbenchSeat, "id" | "rowId" | "configId" | "threadId" | "name">): string[] {
   return [seat.id, seat.rowId, seat.configId, seat.threadId, seat.name].filter((value): value is string => !!value);
+}
+
+function runnerStateToneForCard(
+  tone: WorkbenchSeat["runnerStateTone"],
+): "ok" | "manual" | "warn" | "danger" {
+  if (tone === "ready") return "ok";
+  if (tone === "recent" || tone === "occupied") return "manual";
+  if (tone === "stale") return "warn";
+  return "danger";
+}
+
+type DispatchReadiness = {
+  mode: "ready" | "queue" | "blocked";
+  actionLabel: string;
+  stateLabel: string;
+  note: string;
+};
+
+function dispatchReadinessForSeat(seat: WorkbenchSeat): DispatchReadiness {
+  const stateLabel = seat.runnerDispatchState || "状态未知，先检查接入";
+  const detail = seat.runnerStateDetail || "";
+  if (!seat.providerId) {
+    return {
+      mode: "blocked",
+      actionLabel: "先选通道",
+      stateLabel: "待选择执行通道",
+      note: "先给这个 NPC 选择执行通道，再继续派单。",
+    };
+  }
+  if (!seat.computerNodeId) {
+    return {
+      mode: "blocked",
+      actionLabel: "先绑电脑",
+      stateLabel: "待绑定电脑",
+      note: "先绑定目标电脑，平台才能把任务落到固定设备。",
+    };
+  }
+  if (!seat.threadId) {
+    return {
+      mode: "blocked",
+      actionLabel: "先绑线程",
+      stateLabel: "待绑定线程",
+      note: "先扫描并绑定桌面线程，再启动真实处理。",
+    };
+  }
+  if (seat.runnerCanDispatch) {
+    return {
+      mode: "ready",
+      actionLabel: "派单",
+      stateLabel,
+      note: detail || "目标电脑正在持续接单，可以直接启动真实处理。",
+    };
+  }
+  if (seat.runnerCanQueue) {
+    return {
+      mode: "queue",
+      actionLabel: "排队",
+      stateLabel,
+      note: detail || "目标电脑最近在线或等待恢复，任务会排队但不会假装已执行。",
+    };
+  }
+  return {
+    mode: "blocked",
+    actionLabel: "先接入",
+    stateLabel,
+    note: detail || "先检查执行通道、目标电脑和桌面线程绑定，再继续派单。",
+  };
 }
 
 type NpcTileProps = {
@@ -553,6 +625,21 @@ function displayReviewEndpointName(
   const raw = safeText(value, "");
   if (!raw) return fallback;
   return seatNameByAuthoritativeRef(raw, peerByIdentity, fallback);
+}
+
+function displayReceiptEndpointName(
+  value: unknown,
+  peerByIdentity: Map<string, WorkbenchSeat>,
+  currentSeatName: string,
+  fallback: string,
+): string {
+  const raw = safeText(value, "");
+  if (!raw) return fallback;
+  const seat = peerByIdentity.get(raw) ?? peerByIdentity.get(raw.toLowerCase());
+  if (seat?.name) return seat.name;
+  if (looksInternalIdentifier(raw) || isHistoricalAliasValue(raw)) return fallback;
+  if (raw === currentSeatName) return currentSeatName;
+  return userFacingCollabText(raw, fallback);
 }
 
 function normalizeStructuredKind(value: unknown): StructuredMessageKind | null {
@@ -2079,6 +2166,33 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
     : canUseDesktopAutomation
       ? "派单会进入队列，由你决定何时启动或开启自动推进。"
       : `先绑定${threadBindingNoun(seat)}，平台才能显示回执和处理状态。`;
+  const runnerDispatchLabel = seat.runnerDispatchState || "状态未知，先检查接入";
+  const runnerStateDetail = seat.runnerStateDetail
+    || (runnerDispatchLabel === "可投递"
+      ? "目标电脑正在持续接单，可以直接派发并等待最小回执。"
+      : runnerDispatchLabel === "最近在线，可能延迟"
+        ? "目标电脑最近在线，但心跳不稳定。可以排队，但要提示可能延迟。"
+        : runnerDispatchLabel === "等待电脑恢复"
+          ? "持续接单心跳已过期，先让目标电脑重新运行持续接单命令。"
+          : runnerDispatchLabel === "离线，需重连"
+            ? "目标电脑离线或执行程序不可用，请重新接入或改派。"
+            : runnerDispatchLabel === "他人操作中"
+              ? "当前电脑或线程正被其他操作者占用，可以申请接手或改派。"
+              : "平台暂时不能确认这台电脑是否能接单，先检查电脑接入和线程绑定。");
+  const runnerDispatchTitle = seat.computerNodeName
+    ? `${seat.computerNodeName} · ${runnerDispatchLabel}`
+    : `执行电脑 · ${runnerDispatchLabel}`;
+  const runnerDispatchNext = runnerDispatchLabel === "可投递"
+    ? "可以继续派发"
+    : runnerDispatchLabel === "最近在线，可能延迟"
+      ? "允许排队，注意延迟"
+      : runnerDispatchLabel === "等待电脑恢复"
+        ? "先恢复持续接单"
+        : runnerDispatchLabel === "离线，需重连"
+          ? "先重连或改派"
+          : runnerDispatchLabel === "他人操作中"
+            ? "申请接手或改派"
+            : "先检查接入";
   const automationCurrentLabel = pendingCloseoutCount > 0
     ? `待收口 ${pendingCloseoutCount}`
     : activeDispatchCount > 0
@@ -2118,6 +2232,13 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
       action: automationEnabled ? "disable_automation" : canUseDesktopAutomation ? "enable_automation" : undefined,
       actionLabel: automationEnabled ? "暂停自动继续" : canUseDesktopAutomation ? "开启自动继续" : undefined,
     });
+    cards.push({
+      id: "runner-state",
+      status: runnerDispatchLabel,
+      title: runnerDispatchTitle,
+      detail: runnerStateDetail,
+      tone: runnerStateToneForCard(seat.runnerStateTone),
+    });
     if (pendingCloseoutCount > 0) {
       cards.push({
         id: "closeout",
@@ -2132,8 +2253,8 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
         id: "active-dispatch",
         status: automationCurrentLabel,
         title: userFacingCollabText(latestActiveDispatch.title || "当前派单"),
-        detail: automationNextLabel,
-        tone: pendingCloseoutCount > 0 ? "danger" : "manual",
+        detail: pendingCloseoutCount > 0 ? automationNextLabel : `${automationNextLabel} · ${runnerDispatchNext}`,
+        tone: pendingCloseoutCount > 0 ? "danger" : seat.runnerCanDispatch ? "manual" : runnerStateToneForCard(seat.runnerStateTone),
       });
     }
     if (pendingReviews.length === 0) {
@@ -2156,6 +2277,10 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
     latestActiveDispatch,
     pendingCloseoutCount,
     pendingReviews.length,
+    runnerDispatchLabel,
+    runnerDispatchNext,
+    runnerDispatchTitle,
+    runnerStateDetail,
     seat,
   ]);
 
@@ -2673,6 +2798,13 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
       setTimeout(() => setSendNote(null), 4000);
       return;
     }
+    const targetSeat = [...teammates, ...crossLeads].find((candidate) => seatIdentityList(candidate).includes(peerId));
+    const readiness = targetSeat ? dispatchReadinessForSeat(targetSeat) : null;
+    if (readiness?.mode === "blocked") {
+      setSendNote(`${peerName} 当前${readiness.stateLabel}。${readiness.note}`);
+      setTimeout(() => setSendNote(null), 5000);
+      return;
+    }
     sendCommand({ peerId, peerName });
   }
 
@@ -2732,13 +2864,23 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
   function renderPeerDirectoryCard(peer: WorkbenchSeat, mode: "same" | "cross") {
     const peerId = peer.rowId || peer.id;
     const isCross = mode === "cross";
-    const dispatchLabel = peerDispatchLabel(mode, dispatchingPeerId === peerId);
+    const readiness = dispatchReadinessForSeat(peer);
+    const dispatchLabel = dispatchingPeerId === peerId
+      ? "派发中..."
+      : readiness.mode === "queue"
+        ? (isCross ? "排队给工位长" : "排队")
+        : readiness.mode === "blocked"
+          ? readiness.actionLabel
+          : peerDispatchLabel(mode, false);
     const emptyHint = isCross
       ? `先在底部 textarea 写内容，再点「派给工位长 ${peer.name}」`
       : `先在底部 textarea 写内容，再点「派单 ${peer.name}」`;
     const title = isCross
       ? `用户手动把任务派给 ${peer.name}（${peer.computerNodeName || peer.workstationName || "目标工位"} 工位长）`
       : `用户手动把任务派给 ${peer.name}`;
+    const dispatchTitle = readiness.mode === "ready"
+      ? title
+      : `${title}。${peer.name} 当前${readiness.stateLabel}；${readiness.note}`;
     return (
       <div key={peer.id} className={styles.peerChip} data-lead={peer.isLead ? "1" : "0"} data-cross={isCross ? "1" : "0"}>
         <button
@@ -2780,7 +2922,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
               e.preventDefault();
             }}
             disabled={sending || occupancyHeldByOther}
-            title={title}
+            title={dispatchTitle}
           >
             {dispatchLabel}
           </button>
@@ -2893,6 +3035,8 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
     const targetSeat = targetOpts?.peerId
       ? [...teammates, ...crossLeads].find((candidate) => seatIdentityList(candidate).includes(targetOpts.peerId!))
       : null;
+    const executionSeat = targetSeat ?? seat;
+    const dispatchReadiness = dispatchReadinessForSeat(executionSeat);
     const isCrossWorkstation = Boolean(
       targetSeat && seatGroupKeyLocal(targetSeat) && seatGroupKeyLocal(seat) && seatGroupKeyLocal(targetSeat) !== seatGroupKeyLocal(seat),
     );
@@ -2937,16 +3081,32 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
         setSendNote("边界卡已登记，等待人审；审批前不会启动真实处理 ✓");
       } else {
         const targetSeatId = isPeer ? targetOpts!.peerId! : seatApiId;
-        setSendNote(isPeer ? `已派给 ${manualTargetName}，正在投递到目标电脑...` : "已派发，正在投递到绑定线程...");
-        const launchResult = await launchNpcOneShotThreadProcessing(projectId, targetSeatId, json.data.id);
-        setSendNote(
-          launchResult.launched
-            ? launchResult.desktopVisible
-              ? `${launchResult.seatName || manualTargetName} 已进入执行电脑，正在等待桌面线程确认可见`
-              : `${launchResult.seatName || manualTargetName} 已进入执行电脑队列；回执会回到对应 NPC 瓷砖`
-            : `已派发，但投递失败：${launchResult.error || "请检查绑定线程、执行电脑或同步状态"}`,
-        );
-        if (launchResult.launched) refreshAfterOneShot();
+        if (dispatchReadiness.mode === "blocked") {
+          setSendNote(
+            isPeer
+              ? `已记录给 ${manualTargetName}，但当前不能启动真实处理：${dispatchReadiness.note}`
+              : `已记录到 ${seat.name}，但当前不能启动真实处理：${dispatchReadiness.note}`,
+          );
+        } else {
+          setSendNote(
+            dispatchReadiness.mode === "queue"
+              ? (isPeer
+                ? `已派给 ${manualTargetName}，当前按“${dispatchReadiness.stateLabel}”排队等待恢复...`
+                : `已记录到 ${seat.name}，当前按“${dispatchReadiness.stateLabel}”排队等待恢复...`)
+              : (isPeer ? `已派给 ${manualTargetName}，正在投递到目标电脑...` : "已派发，正在投递到绑定线程..."),
+          );
+          const launchResult = await launchNpcOneShotThreadProcessing(projectId, targetSeatId, json.data.id);
+          setSendNote(
+            launchResult.launched
+              ? dispatchReadiness.mode === "queue"
+                ? `${launchResult.seatName || manualTargetName} 已进入恢复队列；等目标电脑恢复后会继续处理`
+                : launchResult.desktopVisible
+                  ? `${launchResult.seatName || manualTargetName} 已进入执行电脑，正在等待桌面线程确认可见`
+                  : `${launchResult.seatName || manualTargetName} 已进入执行电脑队列；回执会回到对应 NPC 瓷砖`
+              : `已派发，但投递失败：${launchResult.error || "请检查绑定线程、执行电脑或同步状态"}`,
+          );
+          if (launchResult.launched) refreshAfterOneShot();
+        }
       }
       autoScrollRef.current = true;
       await load(limit);
@@ -3728,6 +3888,9 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
           <ul className={styles.queueList}>
             {receipts.slice(0, 6).map((r) => {
               const kindLabel = ({ ack: "已接", progress: "进度", done: "完成", reject: "拒绝" } as const)[r.receipt_kind];
+              const receiptCounterparty = receiptDirection === "incoming"
+                ? displayReceiptEndpointName(r.sender_seat_id, peerByIdentity, seat.name, "协作者")
+                : displayReceiptEndpointName(r.recipient_seat_id, peerByIdentity, seat.name, "目标方");
               return (
                 <li key={r.id} className={styles.queueItem} data-from={r.cross_workstation ? "external" : "peer"}>
                   <span className={styles.queuePos}>{kindLabel}</span>
@@ -3736,8 +3899,8 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
                       {r.cross_workstation ? "跨工位" : "同工位"}
                       {" · "}
                       {receiptDirection === "incoming"
-                        ? (r.sender_seat_id ? `← ${r.sender_seat_id.slice(0, 8)}` : "(系统)")
-                        : (r.recipient_seat_id ? `→ ${r.recipient_seat_id.slice(0, 8)}` : "(广播)")}
+                        ? (r.sender_seat_id ? `← ${receiptCounterparty}` : "(系统)")
+                        : (r.recipient_seat_id ? `→ ${receiptCounterparty}` : "(广播)")}
                     </span>
                     <span className={styles.queueTitle}>{r.title || r.body.slice(0, 60) || "(无标题)"}</span>
                   </div>

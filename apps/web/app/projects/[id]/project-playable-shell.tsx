@@ -2694,7 +2694,7 @@ const MACHINE_ROOM_ACTIVITY_STALE_MINUTES = 24 * 60;
 
 function queueStateLabel(minutes: number | null) {
   if (minutes === null) return null;
-  if (minutes >= 120) return "桥接滞留";
+  if (minutes >= 120) return "回执停滞";
   if (minutes >= 45) return "排队已久";
   return "刚入队列";
 }
@@ -2732,7 +2732,7 @@ function buildProjectSurfacePath(basePath: string, nextParams: Record<string, st
 
 function shortRequirementLabel(requirementId: string | null | undefined) {
   const normalized = text(requirementId, "");
-  return normalized ? `Requirement ${normalized.slice(0, 8)}` : "";
+  return normalized ? "协作事项" : "";
 }
 
 function focusAnchorLabel(target: string | null | undefined, requirementId: string | null | undefined) {
@@ -3301,8 +3301,8 @@ function seatSignalAt(seat: MapSeatPayload) {
 
 function seatBridgePriorityScore(seat: MapSeatPayload) {
   const issue = seatBridgeIssueLabel(seat);
-  if (issue === "缺 heartbeat") return 4;
-  if (issue?.startsWith("心跳 ")) return 3;
+  if (issue === "缺持续心跳") return 4;
+  if (issue?.startsWith("持续心跳 ")) return 3;
   if (issue === "等待首次回写") return 2;
   if (issue === "本地状态未更新") return 1;
   return 0;
@@ -3403,7 +3403,7 @@ function buildStarterDrawer(options: {
         {
           id: "login",
           title: "恢复受保护数据",
-          detail: "重新登录后，最小回执、最终回复和 requirement 才会一起回来。",
+          detail: "重新登录后，最小回执、最终回复和协作事项才会一起回来。",
           done: false,
         },
         stepInspectNpc,
@@ -3795,7 +3795,7 @@ function buildModeEntries(options: {
       state: threeDDevModeDefinition?.state ?? "后续接入",
       detail:
         threeDDevModeDefinition?.detail ??
-        "未来切到 Unity 或自研 3D 世界时，继续复用当前 requirement / ack / final reply 协作内核。",
+        "未来切到 Unity 或自研 3D 世界时，继续复用当前协作事项 / 最小回执 / 最终回复协作内核。",
       active: false,
       readinessLabel: "先保留方向，不切走当前 2D 主线",
       readinessDetail: "3D 开发者模式的价值在于替换世界载体，不是现在就重写现有平台协作流程。",
@@ -4059,7 +4059,7 @@ function buildRecommendedAction(
   focusedQueuedCount = 0,
 ) {
   if (focusedCodexCommand?.isQueued) {
-    return `${focusAnchorLabel(focusedCodexCommand.target, focusedCodexCommand.requirementId)} 仍在平台队列中${focusedQueuedCount > 1 ? `，同线程共 ${focusedQueuedCount} 条排队` : ""}${focusedCodexCommand.queueStartedAtLabel ? `，排队起点 ${focusedCodexCommand.queueStartedAtLabel}` : ""}${focusedCodexCommand.queueAgeLabel ? `，已等待 ${focusedCodexCommand.queueAgeLabel}` : ""}${focusedCodexCommand.queueStateLabel ? `，当前判断为 ${focusedCodexCommand.queueStateLabel}` : ""}，优先等待线程最小回执和宿主桥接回写。`;
+    return `${focusAnchorLabel(focusedCodexCommand.target, focusedCodexCommand.requirementId)} 仍在平台队列中${focusedQueuedCount > 1 ? `，同线程共 ${focusedQueuedCount} 条排队` : ""}${focusedCodexCommand.queueStartedAtLabel ? `，排队起点 ${focusedCodexCommand.queueStartedAtLabel}` : ""}${focusedCodexCommand.queueAgeLabel ? `，已等待 ${focusedCodexCommand.queueAgeLabel}` : ""}${focusedCodexCommand.queueStateLabel ? `，当前判断为 ${focusedCodexCommand.queueStateLabel}` : ""}，优先等待线程最小回执和桌面状态回写。`;
   }
 
   const latestDispatchTask = selectLatestDispatchTask(tasks);
@@ -4180,7 +4180,7 @@ function bridgeStatusLabel(status: unknown) {
   if (normalized === "accepted") return "已接单";
   if (["queued", "open", "waiting_response"].includes(normalized)) return "队列中";
   if (normalized === "routed") return "已路由";
-  return "已桥接";
+  return "已送达";
 }
 
 function isQueuedBridgeStatus(status: unknown) {
@@ -4209,8 +4209,8 @@ function buildCodexInboxFeed(commands: AnyRecord[], resolveDisplay: DisplayResol
       const summaryLine = bodyLines[0] ?? "";
       const inlineBody = (isQuestionMarkHeavy(summaryLine) || /\?{4,}|�{2,}/.test(summaryLine))
         ? requirementId
-          ? `Requirement ${requirementId.slice(0, 8)} 已派发，请在线程中查看详情。`
-          : "平台已向该线程派发 requirement，请在 Codex 收件箱查看详情。"
+          ? "协作事项已派发，请在线程中查看详情。"
+          : "平台已向该线程派发协作事项，请在 Codex 收件箱查看详情。"
         : summaryLine;
       const issuer = isQuestionMarkHeavy(item.issuer) ? "平台自治推进" : text(item.issuer, "平台自治推进");
       const metaParts = [
@@ -4218,10 +4218,10 @@ function buildCodexInboxFeed(commands: AnyRecord[], resolveDisplay: DisplayResol
         formatStamp(item.createdAt ?? item.created_at),
         providerLabel ? `Provider ${providerLabel}` : "",
         computerNodeLabel ? `电脑 ${computerNodeLabel}` : "",
-        requirementId ? `Requirement ${requirementId.slice(0, 8)}` : "",
+        requirementId ? "协作事项" : "",
       ].filter(Boolean);
       const rawTitle = text(item.title, "");
-      const titleFallback = requirementId ? `Requirement ${requirementId.slice(0, 8)}` : "平台新指令";
+      const titleFallback = requirementId ? "协作事项" : "平台新指令";
       return {
         id: text(item.id ?? item.sourceMessageId, `codex-inbox-${index + 1}`),
         title: safeDisplayTitle(rawTitle, titleFallback),
@@ -4468,13 +4468,13 @@ function buildCooperationProofFeed(
             : protectedDataHidden
               ? `${displayTitle} 已锁定真实线程 ${target}，但当前登录态未授权读取后续过程信号。`
             : inbox
-              ? shortText(inbox.body, "平台已把这条 requirement 发到真实 Codex 线程。", 108)
+              ? shortText(inbox.body, "平台已把这条协作事项发到真实 Codex 线程。", 108)
               : dispatchMessage
                 ? shortText(dispatchMessage.body, "平台派单消息已写入协作流。", 108)
               : `${displayTitle} 已指向真实线程 ${target}。`,
         meta: [
           target ? `目标 ${target}` : "",
-          requirementId ? `Requirement ${requirementId.slice(0, 8)}` : "",
+          requirementId ? "协作事项" : "",
           evidenceLabel,
           contextLabel ? `上下文 ${contextLabel}` : "",
           protectedDataHidden ? "受保护数据未授权" : "",
@@ -4483,7 +4483,7 @@ function buildCooperationProofFeed(
           .filter(Boolean)
           .join(" / "),
         requirementId,
-        dispatchLabel: inbox ? "平台派单已桥接" : dispatchMessage ? "派单消息已写入" : "目标线程已锁定",
+        dispatchLabel: inbox ? "平台派单已送达" : dispatchMessage ? "派单消息已写入" : "目标线程已锁定",
         progressLabel: progressMessage
           ? `${actorLabel(progressMessage, resolveDisplay)} 已回`
           : hasFinalReply
@@ -4542,7 +4542,7 @@ function buildCooperationProofSummary(
       title: "还没有真线程协作证明",
       body: hasProtectedDataGap
         ? "当前登录态拿不到全部受保护协作数据，本地 Codex inbox 里也还没出现新的项目派单。"
-        : "平台下一次把 requirement 发到真实 Codex 线程后，这里会按派单、过程信号和最终回复三段收口显示。",
+        : "平台下一次把协作事项发到真实 Codex 线程后，这里会按派单、过程信号和最终回复三段收口显示。",
       meta: "保持农场底座和三主卡不变，这里只放折叠后的闭环证据。",
     };
   }
@@ -4563,10 +4563,10 @@ function buildCooperationProofSummary(
     body: hasProtectedDataGap
       ? featured.hasVisibleDispatch
         ? `当前登录态拿不到全部受保护协作数据，但本地 Codex inbox 仍能证明平台已经把工作发往 ${featured.target || "Codex 线程"}。`
-        : `当前登录态拿不到全部受保护协作数据，目前至少能确认 requirement 已锁定到 ${featured.target || "Codex 线程"}，但派单过程还没有完全露出。`
+        : `当前登录态拿不到全部受保护协作数据，目前至少能确认协作事项已锁定到 ${featured.target || "Codex 线程"}，但派单过程还没有完全露出。`
       : featured.hasVisibleDispatch
         ? `${featured.title} 现在能在一个折叠区里看到派单、过程信号和最终回复的进度，不需要把首屏变成日志墙。`
-        : `${featured.title} 目前先证明 requirement 已锁定到真实线程 ${featured.target || "Codex 线程"}，后续派单和线程回执会继续在这里累积。`,
+        : `${featured.title} 目前先证明协作事项已锁定到真实线程 ${featured.target || "Codex 线程"}，后续派单和线程回执会继续在这里累积。`,
     meta: `${proofFeed.length} 条真线程链路 / 派单可见 ${dispatchedCount} 条 / 仅锁定目标 ${routeLockedCount} 条 / 已动 ${movedCount} 条 / 已收口 ${finalizedCount} 条${protectedCount ? ` / 未授权 ${protectedCount} 条` : ""}${configFallbackCount ? ` / 配置回填 ${configFallbackCount} 条` : ""}`,
   };
 }
@@ -4631,9 +4631,9 @@ function seatBridgeIssueLabel(seat: MapSeatPayload) {
     }
     return null;
   }
-  if (!seat.consumerScriptExists) return "缺 consumer";
-  if (seat.heartbeatMissing || !seat.heartbeatAutomationId) return "缺 heartbeat";
-  if (seat.heartbeatStatus && seat.heartbeatStatus !== "ACTIVE") return `心跳 ${seat.heartbeatStatus}`;
+  if (!seat.consumerScriptExists) return "缺结果回写";
+  if (seat.heartbeatMissing || !seat.heartbeatAutomationId) return "缺持续心跳";
+  if (seat.heartbeatStatus && seat.heartbeatStatus !== "ACTIVE") return `持续心跳 ${seat.heartbeatStatus}`;
   const needsFreshConsumerState = Boolean(seat.currentRequirement || (seat.minimalAck && !seat.finalReply) || seat.staleAfterAck);
   if (!seat.consumerStateExists) return needsFreshConsumerState ? "等待首次回写" : null;
   if (seat.consumerStateStale) return needsFreshConsumerState ? "本地状态未更新" : null;
@@ -4682,20 +4682,20 @@ function stalledSeatRecoveryHint(seat: MapSeatPayload) {
   if (issue === "自动化已关闭") {
     return `${seatName} 当前是单次执行模式。只会在你发新指令时跑这一轮，不会持续自动消耗 token。`;
   }
-  if (issue === "缺 heartbeat") {
-    return `先给 ${seatName} 补 heartbeat 或重新校准自治桥，再让线程继续吃单。`;
+  if (issue === "缺持续心跳") {
+    return `先恢复 ${seatName} 的持续心跳，再让这条协作重新开始接单。`;
   }
-  if (issue?.startsWith("心跳 ")) {
-    return `先把 ${seatName} 的 heartbeat 恢复为 ACTIVE，再观察这条 requirement 能否继续推进。`;
+  if (issue?.startsWith("持续心跳 ")) {
+    return `先把 ${seatName} 的持续心跳恢复正常，再观察这条协作事项能否继续推进。`;
   }
-  if (issue === "缺 consumer") {
-    return `先给 ${seatName} 补 consumer wrapper，再恢复自治桥。`;
+  if (issue === "缺结果回写") {
+    return `先补上 ${seatName} 的结果回写程序，再恢复持续协作。`;
   }
   if (issue === "等待首次回写") {
-    return `先让 ${seatName} 跑一轮本地 consumer，确认首次最小回执能写回平台。`;
+    return `先让 ${seatName} 跑完一轮本地回写，确认首次最小回执能回到平台。`;
   }
   if (issue === "本地状态未更新") {
-    return `先唤醒 ${seatName} 所在线程或重跑本地 consumer，让本地 state 追上平台派单。`;
+    return `先唤醒 ${seatName} 所在线程或重跑本地回写，让本地状态追上平台派单。`;
   }
   if (issue === "缺 Claude 登记") {
     return `先把 ${seatName} 当前绑定的 Claude 会话登记到平台 seat registry，再继续派单。`;
@@ -4707,9 +4707,9 @@ function stalledSeatRecoveryHint(seat: MapSeatPayload) {
     return `平台已经登记 ${seatName} 的 Claude 会话，但当前环境阻止自动唤醒。先在本机手动打开或唤醒 Claude，再回来重新检测。`;
   }
   if (issue === "Claude 会话过旧" || issue === "Claude 会话空闲") {
-    return `先唤醒 ${seatName} 当前的 Claude 会话或重新登记最新会话，再继续推进这条 requirement。`;
+    return `先唤醒 ${seatName} 当前的 Claude 会话或重新登记最新会话，再继续推进这条协作事项。`;
   }
-  return `先重新派单、补最小回执检查，必要时再转人工接手 ${seatName} 当前 requirement。`;
+  return `先重新派单、补最小回执检查，必要时再转人工接手 ${seatName} 当前协作事项。`;
 }
 
 function seatNextStepHint(seat: MapSeatPayload | null | undefined) {
@@ -4718,10 +4718,10 @@ function seatNextStepHint(seat: MapSeatPayload | null | undefined) {
     return stalledSeatRecoveryHint(seat);
   }
   if (seat.progressWarningLabel === "最小回执偏晚" && seat.minimalAck && !seat.finalReply) {
-    return `继续盯住 ${seat.name || "当前 NPC"} 当前 requirement 的结果收口。线程已经恢复推进，但这条最小回执偏晚，暂时不该误判成彻底卡死。`;
+    return `继续盯住 ${seat.name || "当前 NPC"} 当前协作事项的结果收口。线程已经恢复推进，但这条最小回执偏晚，暂时不该误判成彻底卡死。`;
   }
   if (seat.progressWarningLabel === "进度信号待归一" && seat.minimalAck && !seat.finalReply) {
-    return `继续盯住 ${seat.name || "当前 NPC"} 当前 requirement 的结果收口，同时把 live API 的旧进度信号归一回真正的 progress_ack。`;
+    return `继续盯住 ${seat.name || "当前 NPC"} 当前协作事项的结果收口，同时把 live API 的旧进度信号归一回真正的 progress_ack。`;
   }
   if (seat.provisioningState !== "ready" && seat.provisioningNeeds.length) {
     return `先把 ${seat.name || "当前 NPC"} 的开箱缺口补齐：${seat.provisioningNeeds.join(" / ")}。`;
@@ -4737,7 +4737,7 @@ function seatBridgeChip(seat: MapSeatPayload) {
   const issue = seatBridgeIssueLabel(seat);
   if (!seat.automationEnabled) return issue ?? "单次执行";
   if (!seat.supportsLocalAutonomyBridge) return issue ?? seat.autonomyBridgeLabel ?? `${seat.providerLabel} 已绑定`;
-  return issue ?? "自治桥健康";
+  return issue ?? "协作链路正常";
 }
 
 function claudeSeatActionLabel(seat: MapSeatPayload) {
@@ -4834,17 +4834,17 @@ function buildSeatNextStepDecision(
   const queuedCommand = pickFeaturedQueuedInboxItem(codexInboxFeed);
   if (queuedCommand) {
     const requirementLabel = queuedCommand.requirementId
-      ? `Requirement ${queuedCommand.requirementId.slice(0, 8)}`
+      ? "协作事项"
       : "一条平台派单";
     return {
-      label: "等待桥接回写",
-      detail: `${queuedCommand.target || "当前线程"} 的 ${requirementLabel} 仍在平台队列中${queuedCommand.queueStartedAtLabel ? `（排队起点 ${queuedCommand.queueStartedAtLabel}）` : ""}${queuedCommand.queueAgeLabel ? `，已等待 ${queuedCommand.queueAgeLabel}` : ""}${queuedCommand.queueStateLabel ? `，当前判断为 ${queuedCommand.queueStateLabel}` : ""}，下一步更适合等待线程最小回执或宿主桥接镜像回写。`,
+      label: "等待状态回写",
+      detail: `${queuedCommand.target || "当前线程"} 的 ${requirementLabel} 仍在平台队列中${queuedCommand.queueStartedAtLabel ? `（排队起点 ${queuedCommand.queueStartedAtLabel}）` : ""}${queuedCommand.queueAgeLabel ? `，已等待 ${queuedCommand.queueAgeLabel}` : ""}${queuedCommand.queueStateLabel ? `，当前判断为 ${queuedCommand.queueStateLabel}` : ""}，下一步更适合等待线程最小回执或桌面状态回写。`,
     };
   }
 
   return {
     label: "等待新派单",
-    detail: "当前没有新的 NPC2 派单信号，下一步应等待平台把新 requirement 发到真实线程。",
+    detail: "当前没有新的 NPC2 派单信号，下一步应等待平台把新协作事项发到真实线程。",
   };
 }
 
@@ -4944,10 +4944,10 @@ function buildProcessVisibility(
         ? `${uniqueTargets.slice(0, 2).join("、")} 等 ${uniqueTargets.length} 条线程`
         : uniqueTargets[0] ?? "其他 Codex 线程";
     return {
-      foldSummary: `协作脉搏：平台队列 ${queuedCount} 条 / 已桥接 ${codexInboxFeed.length} 条${featuredFocusLabel ? ` / 当前聚焦 ${featuredFocusLabel}` : ""} · 最新 ${formatEpoch(latestCommand.createdAt)}`,
+      foldSummary: `协作脉搏：平台队列 ${queuedCount} 条 / 已送达 ${codexInboxFeed.length} 条${featuredFocusLabel ? ` / 当前聚焦 ${featuredFocusLabel}` : ""} · 最新 ${formatEpoch(latestCommand.createdAt)}`,
       title: queuedCount ? "平台已有排队中的 Codex 工作" : "平台正在给其他 Codex 线程派单",
       body: queuedCount
-        ? `最近 bridged 指令已发给 ${targetSummary}${featuredQueuedCommand && featuredQueuedCommand !== latestCommand ? `，当前截图聚焦 ${featuredQueuedCommand.target || "当前线程"}${shortRequirementLabel(featuredQueuedCommand.requirementId) ? ` 的 ${shortRequirementLabel(featuredQueuedCommand.requirementId)}` : ""}` : ""}${oldestQueuedCommand?.queueAgeLabel ? `，其中最久一条已等待 ${oldestQueuedCommand.queueAgeLabel}` : ""}${oldestQueuedCommand?.queueStateLabel ? `，当前判断为 ${oldestQueuedCommand.queueStateLabel}` : ""}，当前更该等线程最小回执或宿主桥接回写，而不是继续把首屏堆成日志墙。`
+        ? `最近协作指令已发给 ${targetSummary}${featuredQueuedCommand && featuredQueuedCommand !== latestCommand ? `，当前截图聚焦 ${featuredQueuedCommand.target || "当前线程"}${shortRequirementLabel(featuredQueuedCommand.requirementId) ? ` 的 ${shortRequirementLabel(featuredQueuedCommand.requirementId)}` : ""}` : ""}${oldestQueuedCommand?.queueAgeLabel ? `，其中最久一条已等待 ${oldestQueuedCommand.queueAgeLabel}` : ""}${oldestQueuedCommand?.queueStateLabel ? `，当前判断为 ${oldestQueuedCommand.queueStateLabel}` : ""}，当前更该等线程最小回执或桌面状态回写，而不是继续把首屏堆成日志墙。`
         : `最近指令已发给 ${targetSummary}${featuredCommand && featuredCommand !== latestCommand ? `，当前截图聚焦 ${featuredCommand.target || "当前线程"}${shortRequirementLabel(featuredCommand.requirementId) ? ` 的 ${shortRequirementLabel(featuredCommand.requirementId)}` : ""}` : ""}，这些线程不用你手动逐个催，平台会继续等最小回执和最终回复。`,
       meta: `当前负责人 ${ownerLabel} / 活跃线程 ${activeSourceThreadCount} 条 / 平台队列 ${queuedCount} 条${featuredQueuedCommand ? ` / 当前聚焦 ${featuredQueuedCommand.target || "当前线程"}${shortRequirementLabel(featuredQueuedCommand.requirementId) ? ` · ${shortRequirementLabel(featuredQueuedCommand.requirementId)}` : ""}` : featuredCommand ? ` / 当前聚焦 ${featuredCommand.target || "当前线程"}${shortRequirementLabel(featuredCommand.requirementId) ? ` · ${shortRequirementLabel(featuredCommand.requirementId)}` : ""}` : ""}${oldestQueuedCommand?.queueStartedAtLabel ? ` / 最早排队 ${oldestQueuedCommand.queueStartedAtLabel}` : ""}${oldestQueuedCommand?.queueAgeLabel ? ` / 已等 ${oldestQueuedCommand.queueAgeLabel}` : ""}${oldestQueuedCommand?.queueStateLabel ? ` / 队列判断 ${oldestQueuedCommand.queueStateLabel}` : ""} / 最近指令 ${latestCommand.title}`,
     };
@@ -5436,7 +5436,7 @@ function buildSeatMapPayload(options: {
         autonomyStatus?.bridgeHealthLabel ?? autonomyStatus?.autonomyLabel,
         supportsBridge
           ? sourceThreadId
-            ? "缺 consumer"
+            ? "缺结果回写"
             : "待绑定 Codex 线程"
           : sourceThreadId
             ? `${providerLabel} 已绑定`
@@ -6624,11 +6624,11 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
       : gitPreflightAttention?.summary
       ? gitPreflightAttention.summary
       : stalledSeatSummary?.detail
-      ? `优先处理 ${stalledSeatSummary.detail}。${stalledSeatRecoveryAction || "先把这些停滞链路重新推起来，再继续发新的 requirement。"}`
+      ? `优先处理 ${stalledSeatSummary.detail}。${stalledSeatRecoveryAction || "先把这些停滞链路重新推起来，再继续发新的协作事项。"}`
       : starterSeat?.minimalAck && !starterSeat?.finalReply && starterSeatProgressWarning === "最小回执偏晚"
-        ? `继续盯住 ${starterSeatLabel} 当前 requirement 的结果收口。它已经重新对齐 live 线程，但最小回执偏晚，暂时不该再误判成彻底卡死。`
+        ? `继续盯住 ${starterSeatLabel} 当前协作事项的结果收口。它已经重新对齐 live 线程，但最小回执偏晚，暂时不该再误判成彻底卡死。`
       : starterSeat?.minimalAck && !starterSeat?.finalReply && starterSeatProgressWarning === "进度信号待归一"
-        ? `继续盯住 ${starterSeatLabel} 当前 requirement 的结果收口，同时把 live API 的旧进度信号语义归一回真正的 progress_ack。`
+        ? `继续盯住 ${starterSeatLabel} 当前协作事项的结果收口，同时把 live API 的旧进度信号语义归一回真正的 progress_ack。`
       : buildRecommendedAction(
           props.requirements,
           requirementMessageMap,
@@ -9481,7 +9481,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                     <div className={styles.receiptTimelineStep} data-receipt-step-state={round.commandMessage ? "done" : "empty"}>
                       <span>派工</span>
                       <strong>{round.commandMessage ? "已登记" : "未匹配到派工"}</strong>
-                      <p>{round.commandMessage ? shortText(round.commandMessage.body, "没有正文", 64) : "可能是旧 requirement 或外部回写结果。"}</p>
+                      <p>{round.commandMessage ? shortText(round.commandMessage.body, "没有正文", 64) : "可能是旧协作事项或外部回写结果。"}</p>
                     </div>
                     <div
                       className={styles.receiptTimelineStep}
@@ -9677,7 +9677,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
               {featuredCooperationProof ? (
                 <div className={styles.chipRow}>
                   {featuredCooperationProof.requirementId ? (
-                    <span className={styles.miniChip}>{`当前聚焦 ${featuredCooperationProof.requirementId.slice(0, 8)}`}</span>
+                    <span className={styles.miniChip}>当前聚焦协作事项</span>
                   ) : null}
                   <span className={styles.miniChip}>{featuredCooperationProof.progressLabel}</span>
                 </div>
@@ -9689,7 +9689,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
               <strong>真线程闭环证明</strong>
               <span className={styles.stateBadge}>
                 {featuredCooperationProof?.requirementId
-                  ? `${cooperationProofFeed.length} 条 / ${featuredCooperationProof.requirementId.slice(0, 8)}`
+                  ? `${cooperationProofFeed.length} 条 / 协作事项`
                   : `${cooperationProofFeed.length} 条`}
               </span>
             </div>
@@ -9714,12 +9714,12 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                           目标线程：{item.target}
                           {item.providerLabel ? ` / Provider ${item.providerLabel}` : ""}
                           {item.computerNodeLabel ? ` / 电脑 ${item.computerNodeLabel}` : ""}
-                          {item.requirementId ? ` / Requirement ${item.requirementId.slice(0, 8)}` : ""}
+                          {item.requirementId ? " / 协作事项" : ""}
                         </p>
                         <div className={styles.chipRow}>
                           {featuredCooperationProofId === item.id ? (
                             <span className={styles.miniChip}>
-                              {item.requirementId ? `当前聚焦 ${item.requirementId.slice(0, 8)}` : "当前聚焦"}
+                              {item.requirementId ? "当前聚焦协作事项" : "当前聚焦"}
                             </span>
                           ) : null}
                           <span className={styles.miniChip}>{item.dispatchLabel}</span>
@@ -9767,7 +9767,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
               ) : (
                 <li>
                   <strong>还没有可展示的闭环证明</strong>
-                  <p>平台一旦把 requirement 派往真实 Codex 线程，这里就会开始按派单、过程信号和最终回复三段累积证据。</p>
+                  <p>平台一旦把协作事项派往真实 Codex 线程，这里就会开始按派单、过程信号和最终回复三段累积证据。</p>
                 </li>
               )}
             </ul>
@@ -9783,7 +9783,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
               <div className={styles.chipRow}>
                 <span className={styles.miniChip}>{`下一步 ${seatAcceptanceSummary.nextStepLabel}`}</span>
                 {featuredQueuedCodexCommand?.requirementId ? (
-                  <span className={styles.miniChip}>{`当前聚焦 ${featuredQueuedCodexCommand.requirementId.slice(0, 8)}`}</span>
+                  <span className={styles.miniChip}>当前聚焦协作事项</span>
                 ) : null}
               </div>
               <p>{seatAcceptanceSummary.nextStepDetail}</p>
@@ -9794,7 +9794,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
               <strong>农场截图验收链</strong>
               <span className={styles.stateBadge}>
                 {featuredQueuedCodexCommand?.requirementId
-                  ? `${mapSeatPayload.length} 席 / ${featuredQueuedCodexCommand.requirementId.slice(0, 8)}`
+                  ? `${mapSeatPayload.length} 席 / 协作事项`
                   : `${mapSeatPayload.length} 席`}
               </span>
             </div>
@@ -9806,7 +9806,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                     <p>
                       来源线程：{display(seat.sourceThreadId, seat.sourceThreadId || "未绑定")}
                       {seat.nodeName ? ` / 电脑 ${seat.nodeName}` : ""}
-                      {seat.currentRequirement ? ` / 当前 requirement ${seat.currentRequirement}` : ""}
+                      {seat.currentRequirement ? ` / 当前协作事项 ${seat.currentRequirement}` : ""}
                     </p>
                     <div className={styles.chipRow}>
                       <span className={styles.miniChip}>{seat.approvalState}</span>
@@ -9849,7 +9849,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
               {featuredProcessFocusCommand ? (
                 <div className={styles.chipRow}>
                   {featuredProcessFocusCommand.requirementId ? (
-                    <span className={styles.miniChip}>{`当前聚焦 ${featuredProcessFocusCommand.requirementId.slice(0, 8)}`}</span>
+                    <span className={styles.miniChip}>当前聚焦协作事项</span>
                   ) : null}
                   <span className={styles.miniChip}>{featuredProcessFocusCommand.statusLabel}</span>
                   {featuredProcessFocusCommand.queueStateLabel ? (
@@ -9864,13 +9864,13 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
               <strong>平台已发往 Codex 的指令</strong>
               <span className={styles.stateBadge}>
                 {featuredVisibleCodexCommand?.requirementId
-                  ? `${codexInboxFullFeed.length} 条 / ${featuredVisibleCodexCommand.requirementId.slice(0, 8)}`
+                  ? `${codexInboxFullFeed.length} 条 / 协作事项`
                   : `${codexInboxFullFeed.length} 条`}
               </span>
             </div>
             {featuredVisibleCodexCommand ? (
               <p className={styles.microCopy}>
-                {`当前截图聚焦 ${featuredVisibleCodexCommand.target || "当前线程"}${featuredVisibleCodexCommand.requirementId ? ` / Requirement ${featuredVisibleCodexCommand.requirementId.slice(0, 8)}` : ""}；如果多条 bridged 指令共享同一时间戳，会优先把这条证据放在前面，但平台队列统计仍按全部 bridged 指令计算。`}
+                {`当前截图聚焦 ${featuredVisibleCodexCommand.target || "当前线程"}${featuredVisibleCodexCommand.requirementId ? " / 协作事项" : ""}；如果多条协作指令共享同一时间戳，会优先把这条证据放在前面，但平台队列统计仍按全部协作指令计算。`}
               </p>
             ) : null}
             <ul className={styles.list}>
@@ -9890,7 +9890,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                     <div className={styles.chipRow}>
                       {featuredVisibleCodexCommandId === item.id ? (
                         <span className={styles.miniChip}>
-                          {item.requirementId ? `当前聚焦 ${item.requirementId.slice(0, 8)}` : "当前聚焦"}
+                          {item.requirementId ? "当前聚焦协作事项" : "当前聚焦"}
                         </span>
                       ) : null}
                       <span className={styles.miniChip}>{item.queueLabel}</span>
@@ -9915,14 +9915,14 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                 ))
               ) : (
                 <li>
-                  <strong>平台还没发往 Codex 指令</strong>
-                  <p>下一次自治推进把 requirement 派给 codex-session 线程后，这里会立刻出现你能看到的线程指令。</p>
+                  <strong>平台还没发出新的协作指令</strong>
+                  <p>下一次自治推进把协作事项发给目标线程后，这里会立刻出现你能看到的线程指令。</p>
                 </li>
               )}
             </ul>
             {codexInboxFullFeed.length > codexInboxFeed.length ? (
               <p className={styles.microCopy}>
-                {`首屏只展示最新 ${codexInboxFeed.length} 条，但证明面统计仍按全部 ${codexInboxFullFeed.length} 条 bridged 指令计算${featuredVisibleCodexCommand ? `；当前聚焦 ${featuredVisibleCodexCommand.target || "当前线程"}${shortRequirementLabel(featuredVisibleCodexCommand.requirementId) ? ` · ${shortRequirementLabel(featuredVisibleCodexCommand.requirementId)}` : ""}` : ""}。`}
+                {`首屏只展示最新 ${codexInboxFeed.length} 条，但证明面统计仍按全部 ${codexInboxFullFeed.length} 条协作指令计算${featuredVisibleCodexCommand ? `；当前聚焦 ${featuredVisibleCodexCommand.target || "当前线程"}${shortRequirementLabel(featuredVisibleCodexCommand.requirementId) ? ` · ${shortRequirementLabel(featuredVisibleCodexCommand.requirementId)}` : ""}` : ""}。`}
               </p>
             ) : null}
 
@@ -11283,14 +11283,14 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
           <p className={styles.microCopy}>
             在要接入的那台电脑上运行即可；如果已经 clone 仓库，建议在那台电脑自己的仓库根目录运行。
             {workspaceHint
-              ? ` 当前登记路径：${workspaceHint}`
-              : " 未填写工作区路径时，平台只扫描本机 AI 会话，不会把服务器当前目录当成远端项目路径。"}
+              ? " 已登记工作区；建议仍在那台电脑自己的仓库根目录执行。"
+              : " 未填写工作区时，平台只扫描本机 AI 会话，不会把服务器当前目录当成远端项目目录。"}
           </p>
           <p className={styles.microCopy}>
             {reconnectMode
               ? "如果执行程序掉线、心跳超时，直接在那台电脑原来的终端重新运行“自动化心跳 / 持续接单”命令；不需要重新建电脑，也不需要重新绑定线程。"
               : visiblePairingToken
-              ? "推荐先复制“一键接入”命令：它只下载接入器、注册执行程序、自动扫描 Codex / Claude 线程，跑完就退出；不会默认进入持续自动化。"
+              ? "推荐先复制“一键接入”命令：它只下载接入程序、注册执行程序、自动扫描 Codex / Claude 线程，跑完就退出；不会默认进入持续自动化。"
               : needsRunner
                 ? "这台电脑还没接入执行程序。先重新生成配对令牌，这里就会立刻出现第 1 条接入命令。"
                 : needsThreadSync
@@ -11958,12 +11958,12 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
           >
             <strong>{`当前聚焦：${display(focusedMachineRoomItem.thread.name, focusedMachineRoomItem.threadId)}`}</strong>
             <p>
-              {focusedMachineRoomItem.isSeatBackedWorkstation ? "这是一个 seat-backed NPC 工位。" : "这是一个真实线程执行位。"}
+              {focusedMachineRoomItem.isSeatBackedWorkstation ? "这是一个已绑定到 NPC 的执行位。" : "这是一个真实线程执行位。"}
               {` 当前状态：${focusedMachineRoomItem.recoveryProfile.label} / ${focusedMachineRoomItem.activityProfile.activityHealthLabel}。`}
             </p>
             <div className={styles.chipRow}>
               <span className={styles.miniChip}>
-                {focusedMachineRoomItem.isSeatBackedWorkstation ? "seat-backed 工位" : "真实线程"}
+                {focusedMachineRoomItem.isSeatBackedWorkstation ? "NPC 执行位" : "真实线程"}
               </span>
               {focusedMachineRoomItem.activityProfile.latestCommandAt ? (
                 <span className={styles.miniChip}>
@@ -12024,7 +12024,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                 <span className={styles.miniChip}>{`电脑 ${historicalMachineRoomFocus.proof.computerNodeLabel}`}</span>
               ) : null}
               {historicalMachineRoomFocus.proof?.requirementId ? (
-                <span className={styles.miniChip}>{`Requirement ${historicalMachineRoomFocus.proof.requirementId.slice(0, 8)}`}</span>
+                <span className={styles.miniChip}>协作事项</span>
               ) : null}
               {historicalMachineRoomFocus.message?.updated_at || historicalMachineRoomFocus.message?.created_at ? (
                 <span className={styles.miniChip}>
@@ -12062,7 +12062,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
           <article className={styles.card}>
             <span>活跃执行位</span>
             <strong>{machineRoomVisibleWorkstations.length}</strong>
-            <p>{`${activeSourceThreads.length} 条真实线程 + ${seatBackedMachineRoomWorkstations.length} 个 seat-backed NPC 工位`}</p>
+            <p>{`${activeSourceThreads.length} 条真实线程 + ${seatBackedMachineRoomWorkstations.length} 个 NPC 执行位`}</p>
           </article>
           <article className={styles.card}>
             <span>最近目标</span>
@@ -12179,8 +12179,8 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                       {canCalibrateCodex ? (
                         <form action={校准Codex席位自治桥.bind(null, projectId, item.boundSeatId)} data-machine-thread-recovery-calibrate={threadId}>
                           <input type="hidden" name="return_to" value={machineRoomReturnPath} />
-                          <button type="submit" className={styles.ghostButton} data-loading-label={`正在校准 ${display(item.thread.name, threadId)} Codex 自治桥`}>
-                            校准 Codex 自治桥
+                          <button type="submit" className={styles.ghostButton} data-loading-label={`正在校准 ${display(item.thread.name, threadId)} Codex 协作链路`}>
+                            校准 Codex 协作链路
                           </button>
                         </form>
                       ) : null}
@@ -12222,13 +12222,13 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
           <strong>给常驻接单的电脑发一条最小命令</strong>
           <p className={styles.microCopy}>
             目标电脑要先保持“自动化心跳 / 持续接单”窗口运行才能接到单。没有可选电脑时，这里不会把任务假装派出去；先到“电脑接入”复制持续接单命令，在目标电脑终端运行并等状态变成常驻接单。
-            线程级 watcher（每条线程一个终端）见{" "}
+            分线程持续接单说明见{" "}
             <a
               href="https://github.com/wenjunyong666/ai-/blob/main/docs/user-guides/THREAD_WATCHER_QUICKSTART_2026-05-07.md"
               target="_blank"
               rel="noopener noreferrer"
             >
-              线程 watcher 上手
+              分线程持续接单上手
             </a>
             。
           </p>
@@ -12271,7 +12271,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
           <div className={styles.skillManagerGrid}>
             <label className={styles.fieldLabel}>
               <span>线程 ID</span>
-              <input name="id" placeholder="例如：codex-session-main 或 claude-session-xxx" required />
+              <input name="id" placeholder="例如：主策划线程 或 写作协作线程" required />
             </label>
             <label className={styles.fieldLabel}>
               <span>线程名称</span>
@@ -12443,7 +12443,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                             <span className={styles.miniChip}>超时来源 {executionSourceLabel(item.executorTimeoutSource)}</span>
                           </div>
                           <p className={styles.microCopy}>
-                            当前生效：{item.executorCommand ? "已配置执行命令" : "未配置执行命令"} / cwd {item.executorCwd ?? "跟随电脑目录"} / timeout {formatExecutionTimeout(item.executorTimeoutSeconds)}
+                            当前生效：{item.executorCommand ? "已配置执行命令" : "未配置执行命令"} / 当前电脑仓库目录 {item.executorCwd ?? "跟随当前电脑工作副本"} / 超时 {formatExecutionTimeout(item.executorTimeoutSeconds)}
                           </p>
                           <form
                             action={updateCollaborationWorkstationExecution.bind(null, projectId, threadId)}
@@ -12554,7 +12554,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
               return (
                 <li key={threadId} className={styles.featureCard} data-machine-thread-card={threadId}>
                   <strong>{display(thread.name, threadId)}</strong>
-                  <p>{`${item.isSeatBackedWorkstation ? "执行位" : "线程"} ID：${threadId}`}</p>
+                          <p>{item.isSeatBackedWorkstation ? "已登记为 NPC 执行位" : "已登记为真实线程入口"}</p>
                   <p className={styles.microCopy}>
                     提供方：{providerLabel}
                     {` / ${item.isSeatBackedWorkstation ? "执行位类型：NPC 工位" : "执行位类型：真实线程"}`}
@@ -12562,7 +12562,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                     {` / 模型：${text(thread.model ?? thread.metadata?.model, "未记录")}`}
                   </p>
                   <div className={styles.chipRow}>
-                    <span className={styles.miniChip}>{item.isSeatBackedWorkstation ? "seat-backed 工位" : "真实线程"}</span>
+                            <span className={styles.miniChip}>{item.isSeatBackedWorkstation ? "NPC 执行位" : "真实线程"}</span>
                     <span className={styles.miniChip}>{boundSeat ? `已绑定 ${text(boundSeat.name, "NPC")}` : "未绑定 NPC"}</span>
                     <span className={styles.miniChip}>{suggestedName}</span>
                     <span className={styles.miniChip}>{suggestedRole}</span>
@@ -12570,7 +12570,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                     <span className={styles.miniChip}>
                       {canQuickCreate
                         ? supportsLocalCodexAutonomyBridge(providerId)
-                          ? "创建后自动接通自治桥"
+                          ? "创建后自动接通持续协作"
                           : `创建后按 ${providerLabel} 协议协作`
                         : providerId === "claude"
                           ? "先切目录再绑定"
@@ -12630,7 +12630,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                   ) : null}
                   {threadBootstrapHint ? <p className={styles.microCopy}>{threadBootstrapHint}</p> : null}
                   <details className={styles.adapterCommandCard} open={index === 0}>
-                    <summary>本机/其他电脑接入命令</summary>
+                      <summary>Windows / Linux 接入命令</summary>
                     <p className={styles.microCopy}>
                       在对应电脑上运行。若这条线程需要直接改代码，再进入那台电脑自己的 Git 仓库目录；平台只要求 projectId、workstationId 和统一消息格式一致。
                     </p>
@@ -12641,16 +12641,16 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                     ) : null}
                     <pre className={styles.commandBlock} data-adapter-command={threadId}><code>{adapterCommand}</code></pre>
                     <p className={styles.microCopy}>
-                      Linux / macOS 电脑使用下面这条 bash 命令接入平台工位消息通道。
+                        Linux / macOS 电脑使用下面这条 bash 命令接入平台协作通道。
                     </p>
                     <pre className={styles.commandBlock} data-adapter-linux-command={threadId}><code>{adapterBashCommand}</code></pre>
                       <p className={styles.microCopy}>
-                        这条命令会先下载最新版接入器，再读取平台里的提供方模板和工位覆盖；如果只是临时单机调试，再追加：<code>{executorHint}</code>
+                        这条命令会先下载最新版接入程序，再读取平台里的提供方模板和工位覆盖；如果只是临时单机调试，再追加：<code>{executorHint}</code>
                       </p>
                     {executionProfile ? (
                       <>
                         <p className={styles.microCopy}>
-                          当前平台配置：{executionProfile.executorCommand ? "已配置执行命令" : "未配置执行命令"} / cwd {executionProfile.executorCwd ?? "跟随电脑 git_root/workspace_root"} / timeout {formatExecutionTimeout(executionProfile.executorTimeoutSeconds)}
+                          当前平台配置：{executionProfile.executorCommand ? "已配置执行命令" : "未配置执行命令"} / 当前电脑仓库目录 {executionProfile.executorCwd ?? "跟随当前电脑工作副本"} / 超时 {formatExecutionTimeout(executionProfile.executorTimeoutSeconds)}
                         </p>
                         <p className={styles.microCopy}>
                           令牌状态：{executionProfile.tokenAvailable ? "已签发" : "未签发"}
@@ -13701,7 +13701,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
           <div className={styles.noticeCard}>
             <strong>链路元信息</strong>
             <p>{`目标线程：${proofItem.target}`}</p>
-            {proofItem.requirementId ? <p>{`Requirement：${proofItem.requirementId.slice(0, 8)}`}</p> : null}
+            {proofItem.requirementId ? <p>协作事项：已关联</p> : null}
             {proofItem.providerLabel ? <p>{`Provider：${proofItem.providerLabel}`}</p> : null}
             {proofItem.computerNodeLabel ? <p>{`电脑：${proofItem.computerNodeLabel}`}</p> : null}
             <p className={styles.microCopy}>{proofItem.meta}</p>
@@ -14392,7 +14392,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
               <span className={styles.checkItemText}>
                 <strong>开启持续自动化</strong>
                 <small>关闭时：只执行你刚发送的这一条指令。</small>
-                <small>开启时：会持续保持自治桥或会话，token 消耗也会更高。</small>
+                <small>开启时：会持续保持协作链路或会话，token 消耗也会更高。</small>
               </span>
             </label>
             <input type="hidden" name="automation_enabled" value="false" />
@@ -14671,7 +14671,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
               <span className={styles.checkItemText}>
                 <strong>开启持续自动化</strong>
                 <small>关闭时：这个 NPC 只会执行当前发送的这一条指令。</small>
-                <small>开启时：平台会继续维护自治桥或会话，适合持续派工。</small>
+                <small>开启时：平台会继续维护协作链路或会话，适合持续派工。</small>
               </span>
             </label>
             <input type="hidden" name="automation_enabled" value="false" />

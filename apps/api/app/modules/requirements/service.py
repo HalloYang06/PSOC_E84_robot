@@ -1,17 +1,21 @@
 ﻿from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.common.errors import AppError
 from app.db.models.collaboration_message import CollaborationMessage
-from app.db.models.project_collaboration import ProjectThreadWorkstation
+from app.db.models.project_collaboration import ProjectAIProvider, ProjectComputerNode, ProjectThreadWorkstation
+from app.db.models.project import Project
 from app.db.models.requirement import Requirement, RequirementMessage
 from app.db.models.task import Task
 from app.modules.audit.service import create_audit_log
 from app.modules.collaboration.schemas import CollaborationMessageCreate
 from app.modules.collaboration.service import create_message as create_collaboration_message
+from app.modules.projects.service import _runner_watch_snapshot, summarize_runner_dispatch_contract
 
 from . import repo
 from .schemas import (
@@ -666,6 +670,153 @@ def _list_project_seats(db: Session, project_id: str) -> list[ProjectThreadWorks
     )
 
 
+def _thread_binding_from_mapping(mapping: object | None) -> str:
+    extra = mapping if isinstance(mapping, dict) else {}
+    for key in (
+        "automation_thread_id",
+        "automationThreadId",
+        "target_thread_id",
+        "thread_id",
+        "session_id",
+        "bound_thread_id",
+        "source_thread_id",
+    ):
+        value = str(extra.get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _seat_bound_thread_id(db: Session, seat: ProjectThreadWorkstation) -> str:
+    bound = _thread_binding_from_mapping(getattr(seat, "extra_data", None))
+    if bound:
+        return bound
+    project = db.get(Project, seat.project_id)
+    config = project.collaboration_config if project is not None and isinstance(project.collaboration_config, dict) else {}
+    workstations = config.get("thread_workstations") if isinstance(config, dict) else None
+    if not isinstance(workstations, list):
+        return ""
+    identities = {
+        str(seat.config_id or "").strip(),
+        str(seat.id or "").strip(),
+        str(seat.name or "").strip(),
+        str(seat.agent_id or "").strip(),
+    }
+    identities.discard("")
+    for item in workstations:
+        if not isinstance(item, dict):
+            continue
+        item_identities = {
+            str(item.get("id") or "").strip(),
+            str(item.get("config_id") or "").strip(),
+            str(item.get("name") or "").strip(),
+            str(item.get("agent_id") or "").strip(),
+        }
+        item_identities.discard("")
+        if not identities.intersection(item_identities):
+            continue
+        bound = _thread_binding_from_mapping(item)
+        if bound:
+            return bound
+        bound = _thread_binding_from_mapping(item.get("metadata"))
+        if bound:
+            return bound
+    return ""
+
+
+def _seat_dispatch_contract(db: Session, seat: ProjectThreadWorkstation) -> dict[str, object]:
+    if not seat.computer_node_id:
+        return {
+            "dispatch_state": "unknown",
+            "can_dispatch": False,
+            "can_queue": False,
+            "blocked_reason": "状态未知，先检查接入",
+            "blocked_reason_code": "computer_node_unbound",
+            "dispatch_detail": "该 NPC 还没有绑定电脑，先完成电脑接入和线程绑定。",
+        }
+
+    computer_node = db.scalar(
+        select(ProjectComputerNode).where(
+            ProjectComputerNode.project_id == seat.project_id,
+            ProjectComputerNode.config_id == seat.computer_node_id,
+        )
+    )
+    if computer_node is None:
+        return {
+            "dispatch_state": "unknown",
+            "can_dispatch": False,
+            "can_queue": False,
+            "blocked_reason": "状态未知，先检查接入",
+            "blocked_reason_code": "computer_node_missing",
+            "dispatch_detail": "绑定的电脑记录不存在，请重新检查接入关系。",
+        }
+
+    if seat.ai_provider_id:
+        ai_provider = db.scalar(
+            select(ProjectAIProvider).where(
+                ProjectAIProvider.project_id == seat.project_id,
+                ProjectAIProvider.config_id == seat.ai_provider_id,
+            )
+        )
+        if ai_provider is None:
+            return {
+                "dispatch_state": "unknown",
+                "can_dispatch": False,
+                "can_queue": False,
+                "blocked_reason": "状态未知，先检查接入",
+                "blocked_reason_code": "provider_missing",
+                "dispatch_detail": "该 NPC 缺少执行通道配置，请先补齐执行方式。",
+            }
+        if not ai_provider.enabled:
+            return {
+                "dispatch_state": "unknown",
+                "can_dispatch": False,
+                "can_queue": False,
+                "blocked_reason": "状态未知，先检查接入",
+                "blocked_reason_code": "provider_disabled",
+                "dispatch_detail": "该 NPC 的执行通道已停用，请先恢复后再协作。",
+            }
+
+    if not _seat_bound_thread_id(db, seat):
+        return {
+            "dispatch_state": "unknown",
+            "can_dispatch": False,
+            "can_queue": False,
+            "blocked_reason": "待绑定线程",
+            "blocked_reason_code": "thread_unbound",
+            "dispatch_detail": "该 NPC 还没有绑定线程，先完成线程扫描和线程绑定。",
+        }
+
+    watch = _runner_watch_snapshot(computer_node, now=datetime.now(timezone.utc))
+    return summarize_runner_dispatch_contract(watch)
+
+
+def _seat_blocked_route_reason(seat: ProjectThreadWorkstation | None, dispatch_contract: dict[str, object] | None) -> str | None:
+    if seat is None or not dispatch_contract:
+        return None
+    if dispatch_contract.get("can_dispatch") or dispatch_contract.get("can_queue"):
+        return None
+    blocked_reason = str(dispatch_contract.get("blocked_reason") or "").strip()
+    if not blocked_reason:
+        return None
+    detail = str(dispatch_contract.get("dispatch_detail") or "").strip()
+    if detail and detail != blocked_reason:
+        return f"{_seat_display_name(seat)} 当前{blocked_reason}：{detail}"
+    return f"{_seat_display_name(seat)} 当前{blocked_reason}"
+
+
+def _seat_queue_route_note(seat: ProjectThreadWorkstation | None, dispatch_contract: dict[str, object] | None) -> str | None:
+    if seat is None or not dispatch_contract or not dispatch_contract.get("can_queue"):
+        return None
+    blocked_reason = str(dispatch_contract.get("blocked_reason") or "").strip()
+    detail = str(dispatch_contract.get("dispatch_detail") or "").strip()
+    if detail and detail != blocked_reason:
+        return f"{_seat_display_name(seat)} 当前{blocked_reason}：{detail}"
+    if blocked_reason:
+        return f"{_seat_display_name(seat)} 当前{blocked_reason}，可以先排队，等电脑恢复后继续接单。"
+    return f"{_seat_display_name(seat)} 当前可先排队，等电脑恢复后继续接单。"
+
+
 def _choose_need_target(
     db: Session,
     *,
@@ -678,22 +829,32 @@ def _choose_need_target(
     suggested = _resolve_seat(db, project_id, suggested_assignee)
     alternatives: list[dict[str, object]] = []
     for seat in seats:
+        dispatch_contract = _seat_dispatch_contract(db, seat)
+        can_dispatch = bool(dispatch_contract.get("can_dispatch"))
+        can_queue = bool(dispatch_contract.get("can_queue"))
         matched = _seat_can_accept_capability(seat, required_capability)
         score = 0
         reasons: list[str] = []
+        include_candidate = matched or suggested is not None and seat.id == suggested.id
         if suggested is not None and seat.id == suggested.id:
             score += 100
             reasons.append("用户/NPC 指定")
         if _seat_workstation_key(seat) == _seat_workstation_key(requester):
             score += 20
             reasons.append("同工位")
+            include_candidate = True
         if matched:
             score += 50
             reasons.append("能力匹配")
-        if str(seat.status or "").strip().lower() in {"online", "idle", "ready", "active"}:
+        if can_dispatch:
             score += 5
             reasons.append("状态可用")
-        if score > 0:
+        elif can_queue:
+            score += 3
+            reasons.append("等待恢复时可排队")
+        elif dispatch_contract.get("blocked_reason"):
+            reasons.append(str(dispatch_contract.get("blocked_reason")))
+        if include_candidate or score > 0:
             alternatives.append(
                 {
                     "seat_id": seat.id,
@@ -702,14 +863,36 @@ def _choose_need_target(
                     "workstation_id": seat.workstation_id,
                     "score": score,
                     "reasons": reasons or ["候选"],
+                    "dispatch_state": dispatch_contract.get("dispatch_state"),
+                    "can_dispatch": can_dispatch,
+                    "can_queue": can_queue,
+                    "blocked_reason": dispatch_contract.get("blocked_reason"),
+                    "blocked_reason_code": dispatch_contract.get("blocked_reason_code"),
+                    "dispatch_detail": dispatch_contract.get("dispatch_detail"),
                 }
             )
     alternatives.sort(key=lambda item: int(item.get("score") or 0), reverse=True)
     if suggested is not None:
-        return suggested, alternatives, None
+        dispatch_contract = _seat_dispatch_contract(db, suggested)
+        return suggested, alternatives, _seat_blocked_route_reason(suggested, dispatch_contract)
     if alternatives:
-        target_id = str(alternatives[0].get("seat_id") or "")
-        return _resolve_seat(db, project_id, target_id), alternatives, None
+        dispatchable = next((item for item in alternatives if item.get("can_dispatch")), None)
+        queueable = next((item for item in alternatives if item.get("can_queue")), None)
+        target_item = dispatchable or queueable or alternatives[0]
+        target = _resolve_seat(db, project_id, str(target_item.get("seat_id") or ""))
+        if dispatchable is not None:
+            return target, alternatives, None
+        if queueable is not None:
+            return target, alternatives, None
+        return target, alternatives, _seat_blocked_route_reason(
+            target,
+            {
+                "can_dispatch": target_item.get("can_dispatch"),
+                "can_queue": target_item.get("can_queue"),
+                "blocked_reason": target_item.get("blocked_reason"),
+                "dispatch_detail": target_item.get("dispatch_detail"),
+            },
+        )
     return None, alternatives, "没有找到匹配该能力的 NPC，请先在员工表补职责/skill，或手动指定承接 NPC"
 
 
@@ -735,6 +918,8 @@ def preview_need_route(db: Session, requirement_id: str, target_seat_id: str | N
         required_capability=required_capability or requirement.title,
         suggested_assignee=target_seat_id or requirement.target_seat_id or requirement.to_agent,
     )
+    target_dispatch_contract = _seat_dispatch_contract(db, target) if target is not None else None
+    queue_note = _seat_queue_route_note(target, target_dispatch_contract)
     risk_review, risk_reason = _needs_human_review_for_risk(risk_level, _need_text_for_risk(requirement))
     review = {"requires_review": False, "source": "none", "policy": "auto"}
     if target is not None:
@@ -753,18 +938,21 @@ def preview_need_route(db: Session, requirement_id: str, target_seat_id: str | N
         "alternatives": alternatives,
         "requires_review": requires_review,
         "review_reason": review_reason,
-        "route_risk": "high" if risk_review else "review" if requires_review else "low",
+        "route_risk": "blocked" if blocked_reason else "high" if risk_review else "review" if requires_review else "low",
         "will_create_tasks": []
-        if target is None
+        if target is None or blocked_reason
         else [
             {
                 "title": requirement.title,
                 "assignee_seat_id": target.id,
                 "assignee_seat_ref": target.config_id,
                 "source_need_id": requirement.id,
+                "dispatch_state": target_dispatch_contract.get("dispatch_state") if target_dispatch_contract else None,
+                "can_queue": bool(target_dispatch_contract.get("can_queue")) if target_dispatch_contract else False,
             }
         ],
         "blocked_reason": blocked_reason,
+        "queue_note": None if blocked_reason else queue_note,
         "review_policy": review,
     }
 

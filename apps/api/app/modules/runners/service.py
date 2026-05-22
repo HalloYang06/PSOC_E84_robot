@@ -16,7 +16,12 @@ from app.db.models.runner import Runner
 from app.db.models.task import Task
 from app.db.models.task_dispatch import TaskDispatch
 from app.db.models.task_event import TaskEvent
-from app.modules.projects.service import RUNNER_WATCH_FRESH_SECONDS, _runner_watch_snapshot, sync_project_collaboration_inventory
+from app.modules.projects.service import (
+    RUNNER_WATCH_FRESH_SECONDS,
+    _runner_watch_snapshot,
+    summarize_runner_dispatch_contract,
+    sync_project_collaboration_inventory,
+)
 from app.modules.tasks import repo as task_repo
 from app.modules.tasks.schemas import TaskTransitionCreate
 from app.modules.tasks.service import record_task_log, record_task_result, transition_task_status
@@ -37,6 +42,7 @@ def _runner_binding_rows(db: Session, runner_id: str) -> list[dict[str, object]]
     now = datetime.now(timezone.utc)
     for node, project_name, develop_branch, default_branch in db.execute(stmt).all():
         watch = _runner_watch_snapshot(node, now=now)
+        dispatch_contract = summarize_runner_dispatch_contract(watch)
         bindings.append(
             {
                 "project_id": node.project_id,
@@ -50,6 +56,7 @@ def _runner_binding_rows(db: Session, runner_id: str) -> list[dict[str, object]]
                 "computer_node_os": node.os,
                 "sort_order": node.sort_order,
                 **watch,
+                **dispatch_contract,
             }
         )
     return bindings
@@ -245,6 +252,14 @@ def serialize_runner_for_read(db: Session, runner):
     active_tasks = _runner_active_tasks(db, runner.id)
     recent_events = _runner_recent_events(db, runner.id)
     recent_errors = _runner_recent_errors(db, runner.id)
+    dispatch_contract = summarize_runner_dispatch_contract(primary_binding) if primary_binding else {
+        "dispatch_state": "unknown",
+        "can_dispatch": False,
+        "can_queue": False,
+        "blocked_reason": "状态未知，先检查接入",
+        "blocked_reason_code": "runner_unbound",
+        "dispatch_detail": "当前 runner 还没有绑定项目电脑。",
+    }
     return {
         "id": runner.id,
         "name": runner.name,
@@ -259,6 +274,7 @@ def serialize_runner_for_read(db: Session, runner):
         "node_kind": "computer_node" if bindings else "runner",
         "bound_project_count": len({str(binding["project_id"]) for binding in bindings}),
         "computer_node_bindings": bindings,
+        **dispatch_contract,
         "agent_count": len(agents),
         "current_task": _serialize_task_summary(active_tasks[0] if active_tasks else None),
         "recent_errors": recent_errors,

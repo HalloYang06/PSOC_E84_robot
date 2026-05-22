@@ -94,6 +94,67 @@ def _runner_watch_snapshot(row: ProjectComputerNode, *, now: datetime) -> dict[s
     }
 
 
+def summarize_runner_dispatch_contract(watch: dict[str, object | None] | None) -> dict[str, object]:
+    snapshot = watch or {}
+    watch_state = str(snapshot.get("runner_watch_state") or "").strip().lower()
+    effective_status = str(snapshot.get("runner_effective_status") or "").strip().lower()
+    detail = str(snapshot.get("runner_watch_detail") or "").strip()
+
+    if watch_state == "watching" or effective_status in {"online", "ready", "active"}:
+        return {
+            "dispatch_state": "online",
+            "can_dispatch": True,
+            "can_queue": True,
+            "blocked_reason": None,
+            "blocked_reason_code": None,
+            "dispatch_detail": detail or "执行程序正在持续心跳，可以领取平台任务。",
+        }
+
+    if watch_state == "stale" or effective_status == "stale":
+        return {
+            "dispatch_state": "stale",
+            "can_dispatch": False,
+            "can_queue": True,
+            "blocked_reason": "等待电脑恢复",
+            "blocked_reason_code": "runner_stale",
+            "dispatch_detail": detail or "执行程序心跳已超时，请重新运行持续接单命令。",
+        }
+
+    if watch_state in {"runner_offline", "runner_missing", "unbound"} or effective_status in {"offline", "failed", "error"}:
+        reason_code = {
+            "unbound": "runner_unbound",
+            "runner_missing": "runner_missing",
+            "runner_offline": "runner_offline",
+        }.get(watch_state, "runner_offline")
+        return {
+            "dispatch_state": "offline",
+            "can_dispatch": False,
+            "can_queue": False,
+            "blocked_reason": "离线，需重连",
+            "blocked_reason_code": reason_code,
+            "dispatch_detail": detail or "目标电脑离线或执行程序不可用，请重新接入或改派。",
+        }
+
+    if watch_state == "not_started":
+        return {
+            "dispatch_state": "unknown",
+            "can_dispatch": False,
+            "can_queue": False,
+            "blocked_reason": "状态未知，先检查接入",
+            "blocked_reason_code": "runner_not_started",
+            "dispatch_detail": detail or "执行程序已注册，但还没有持续心跳。",
+        }
+
+    return {
+        "dispatch_state": "unknown",
+        "can_dispatch": False,
+        "can_queue": False,
+        "blocked_reason": "状态未知，先检查接入",
+        "blocked_reason_code": "runner_state_unknown",
+        "dispatch_detail": detail or "平台不能确认这台电脑是否能接单，先检查接入和线程扫描。",
+    }
+
+
 def _store_inventory_rows(
     db: Session,
     model,
@@ -238,6 +299,7 @@ def _build_collaboration_config_from_inventory(project: Project) -> dict[str, ob
         read_paths = metadata.pop("read_paths", None)
         write_paths = metadata.pop("write_paths", None)
         runner_watch = _runner_watch_snapshot(row, now=now)
+        dispatch_contract = summarize_runner_dispatch_contract(runner_watch)
         computer_nodes.append(
             {
                 "id": row.config_id,
@@ -246,6 +308,7 @@ def _build_collaboration_config_from_inventory(project: Project) -> dict[str, ob
                 "status": row.status,
                 "runner_id": row.runner_id,
                 **runner_watch,
+                **dispatch_contract,
                 "connection_kind": connection_kind,
                 "workspace_root": workspace_root,
                 "git_root": git_root,

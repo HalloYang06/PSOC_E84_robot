@@ -8,7 +8,7 @@ import {
   getProjectWorkstationsState,
 } from "../../../../lib/server-data";
 import { isNpcSeatRecord, platformProviderIdFromSeat } from "../../../../lib/platform-provider";
-import { runnerStateLabel } from "../../../../lib/runner-status";
+import { runnerStateLabel, summarizeRunnerDispatchState } from "../../../../lib/runner-status";
 import styles from "./company.module.css";
 
 export const dynamic = "force-dynamic";
@@ -56,12 +56,48 @@ function publicComputerDispatchState(node: AnyRecord | undefined) {
   return runnerStateLabel(node);
 }
 
+function looksInternalIdentifier(value: string) {
+  const raw = text(value, "");
+  return /^platform-npc-\d+$/i.test(raw)
+    || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw)
+    || /^agent-[0-9a-f-]+$/i.test(raw);
+}
+
+function userFacingEventText(value: unknown, fallback = "") {
+  const next = text(value, "")
+    .replace(/alias_display_non_authoritative/gi, "历史标识展示规则")
+    .replace(/historical[_\s-]*alias(?:[_\s-]*non[_\s-]*authoritative)?/gi, "历史标识")
+    .replace(/current\s+alias/gi, "当前标识")
+    .replace(/source_thread/gi, "来源线程")
+    .replace(/canonical_workstation_id/gi, "正式工位")
+    .replace(/requested_workstation_id/gi, "请求工位")
+    .replace(/authoritative_([a-z]+_)?seat_id/gi, "正式 NPC")
+    .replace(/authoritative_target_seat_id/gi, "目标 NPC")
+    .replace(/session JSONL/gi, "线程记录")
+    .replace(/local path/gi, "当前电脑工作副本")
+    .replace(/\badapter\b/gi, "同步")
+    .replace(/\bbridge\b/gi, "同步")
+    .replace(/\bcodex app-server\b/gi, "后台线程")
+    .replace(/\bcodex desktop ui\b/gi, "桌面线程")
+    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, "关联记录")
+    .replace(/[A-Za-z]:[\\/][^\s"'`<>),\]]+/g, "当前电脑工作副本")
+    .replace(/\.codex[\\/][^\s"'`<>),\]]+/gi, "线程记录")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  if (!next || looksInternalIdentifier(next)) return fallback;
+  if (/^(关联记录|正式 NPC|目标 NPC|来源线程|线程记录)$/.test(next)) return fallback;
+  return next;
+}
+
 function publicStatusLabel(value: unknown) {
   const raw = text(value, "").toLowerCase();
   if (/completed|done|success|resolved/.test(raw)) return "已完成";
-  if (/delivered|acked|accepted|queued/.test(raw)) return "已送达";
+  if (/acked|accepted/.test(raw)) return "已接单";
+  if (/delivered/.test(raw)) return "已送达";
+  if (/queued/.test(raw)) return "已排队";
+  if (/waiting_closeout|closeout/.test(raw)) return "待收口";
   if (/running|progress|active|pending/.test(raw)) return "处理中";
-  if (/failed|error|blocked|rejected/.test(raw)) return "待处理";
+  if (/failed|error|blocked|rejected/.test(raw)) return "异常待处理";
   return text(value, "已记录");
 }
 
@@ -74,14 +110,13 @@ function reviewPolicyLabel(value: unknown) {
 
 function orgEventTypeLabel(value: unknown) {
   const raw = text(value, "").toLowerCase();
-  if (/agent_result|final|reply|receipt/.test(raw)) return "回执";
-  if (/agent_command|runner_command|dispatch/.test(raw)) return "派单事件";
-  if (/runner_command|dispatch/.test(raw)) return "派单事件";
-  if (/review|approval/.test(raw)) return "审核事件";
-  if (/desktop|question/.test(raw)) return "桌面消息";
+  if (/agent_result|runner_result|final|reply|receipt|closeout|minimal/.test(raw)) return "回执";
+  if (/agent_command|runner_command|dispatch|delivery/.test(raw)) return "派单事件";
+  if (/review|approval|human_review/.test(raw)) return "审核事件";
   if (/requirement|need/.test(raw)) return "协作需求";
-  if (/progress|ack|running/.test(raw)) return "进度";
-  return text(value, "组织事件");
+  if (/progress|ack|running|queued|waiting|retry|desktop/.test(raw)) return "进度";
+  if (/blocked|failed|error|exception/.test(raw)) return "异常";
+  return "组织事件";
 }
 
 function messageMeta(value: AnyRecord) {
@@ -101,6 +136,20 @@ function reviewSourceLabel(value: AnyRecord) {
   const meta = messageMeta(value);
   if (text(meta.schema, "") === "skill_forge_review_v1") return "能力工坊待确认";
   return "待人工确认";
+}
+
+function publicEventTitle(event: AnyRecord) {
+  const eventType = orgEventTypeLabel(event.message_type ?? event.body);
+  if (isPendingHumanReview(event)) {
+    return userFacingEventText(event.title, "协作请求待人工确认");
+  }
+  return userFacingEventText(event.title, `${eventType}已进入项目记录`);
+}
+
+function publicEventDescription(event: AnyRecord) {
+  if (isPendingHumanReview(event)) return "需要项目负责人或人工确认后再继续。";
+  const eventType = orgEventTypeLabel(event.message_type ?? event.body);
+  return userFacingEventText(event.body, `${eventType} · 组织事件已进入项目记录。`);
 }
 
 function knowledgeLabel(seat: { knowledgeSummary: string; workstationKnowledgePath: string }) {
@@ -133,6 +182,36 @@ function statusTone(label: string) {
   if (/延迟|待审核|强审|待处理|等待|未知/.test(label)) return "review";
   if (/离线|需重连|阻塞|失败/.test(label)) return "blocked";
   return "idle";
+}
+
+function summarizeSeatDispatchState(input: {
+  providerId: string;
+  computerNodeId: string;
+  threadId: string;
+  nodeState: AnyRecord | undefined;
+}) {
+  if (!input.providerId) {
+    return {
+      state: "状态未知，先检查接入",
+      shortLabel: "待选择执行通道",
+      detail: "先给这个 NPC 选择执行通道，再接入持续接单。",
+    };
+  }
+  if (!input.computerNodeId) {
+    return {
+      state: "状态未知，先检查接入",
+      shortLabel: "待绑定电脑",
+      detail: "先绑定目标电脑，平台才能把任务落到固定设备。",
+    };
+  }
+  if (!input.threadId) {
+    return {
+      state: "状态未知，先检查接入",
+      shortLabel: "待绑定线程",
+      detail: "先扫描并绑定桌面线程，避免任务落空或串到别的终端。",
+    };
+  }
+  return summarizeRunnerDispatchState(input.nodeState);
 }
 
 export default async function CompanyPage({ params, searchParams }: { params: { id: string }; searchParams?: { embed?: string; return_to?: string; from?: string } }) {
@@ -280,8 +359,14 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
       adapter.status,
       automationEnabled ? "watcher ready" : "待接入",
     );
-    const computerState = computerNodeId ? publicComputerDispatchState(nodeStateMap.get(computerNodeId)) : "状态未知，先检查接入";
-    const dispatchState = threadId && computerNodeId ? computerState : "状态未知，先检查接入";
+    const nodeState = computerNodeId ? nodeStateMap.get(computerNodeId) : undefined;
+    const seatDispatch = summarizeSeatDispatchState({
+      providerId,
+      computerNodeId,
+      threadId,
+      nodeState,
+    });
+    const dispatchState = seatDispatch.state;
     const gitUserName = text(meta.git_user_name ?? meta.gitUserName, name);
     const gitUserEmail = text(
       meta.git_user_email ?? meta.gitUserEmail,
@@ -303,8 +388,10 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
       providerLabel,
       threadId,
       threadKind,
-      threadHealth,
+      threadHealth: publicThreadState(threadHealth, automationEnabled),
       dispatchState,
+      dispatchShortLabel: seatDispatch.shortLabel,
+      dispatchDetail: seatDispatch.detail,
       codexLaunchPrompt: text(meta.codex_launch_prompt ?? meta.codexLaunchPrompt, ""),
       metadata: meta,
       responsibility,
@@ -353,7 +440,18 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
       : []),
   ];
   const threadReadyCount = allSeats.filter((seat) => seat.dispatchState === "可投递").length;
-  const waitingComputerCount = allSeats.filter((seat) => /等待|离线|重连|未知/.test(seat.dispatchState)).length;
+  const delayedDispatchCount = allSeats.filter((seat) => seat.dispatchState === "最近在线，可能延迟").length;
+  const recoveryWaitingCount = allSeats.filter((seat) => seat.dispatchState === "等待电脑恢复").length;
+  const offlineDispatchCount = allSeats.filter((seat) => seat.dispatchState === "离线，需重连").length;
+  const occupiedDispatchCount = allSeats.filter((seat) => seat.dispatchState === "他人操作中").length;
+  const missingProviderCount = allSeats.filter((seat) => seat.dispatchShortLabel === "待选择执行通道").length;
+  const missingThreadCount = allSeats.filter((seat) => seat.dispatchShortLabel === "待绑定线程").length;
+  const missingComputerCount = allSeats.filter((seat) => seat.dispatchShortLabel === "待绑定电脑").length;
+  const unknownDispatchCount = allSeats.filter(
+    (seat) =>
+      seat.dispatchState === "状态未知，先检查接入"
+      && !["待选择执行通道", "待绑定线程", "待绑定电脑"].includes(seat.dispatchShortLabel),
+  ).length;
   const strictReviewCount = allSeats.filter((seat) => reviewPolicyLabel(seat.reviewPolicy) === "强审").length;
   const skillAssignedCount = allSeats.filter((seat) => seat.skillLoadout.length || seat.inheritedSkills.length).length;
   const knowledgeAssignedCount = allSeats.filter((seat) => seat.knowledgeSummary || seat.workstationKnowledgePath).length;
@@ -368,7 +466,14 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
   const selfPath = `/projects/${projectId}/company`;
   const decisionItems = [
     pendingHumanReviews.length ? `${pendingHumanReviews.length} 条待人工确认` : "",
-    waitingComputerCount ? `有 ${waitingComputerCount} 名 NPC 等待电脑恢复` : "",
+    delayedDispatchCount ? `${delayedDispatchCount} 名 NPC 最近在线，派单可能延迟` : "",
+    recoveryWaitingCount ? `${recoveryWaitingCount} 名 NPC 正等待电脑恢复` : "",
+    offlineDispatchCount ? `${offlineDispatchCount} 名 NPC 需要重连执行电脑` : "",
+    occupiedDispatchCount ? `${occupiedDispatchCount} 名 NPC 当前由他人操作` : "",
+    missingProviderCount ? `${missingProviderCount} 名 NPC 还没选择执行通道` : "",
+    missingThreadCount ? `${missingThreadCount} 名 NPC 还没绑定桌面线程` : "",
+    missingComputerCount ? `${missingComputerCount} 名 NPC 还没绑定目标电脑` : "",
+    unknownDispatchCount ? `${unknownDispatchCount} 名 NPC 的执行状态仍需检查接入` : "",
     strictReviewCount ? `${strictReviewCount} 名 NPC 启用强审策略` : "",
     skillAssignedCount < allSeats.length ? `${Math.max(allSeats.length - skillAssignedCount, 0)} 名 NPC 待补 Skill` : "",
     knowledgeAssignedCount < allSeats.length ? `${Math.max(allSeats.length - knowledgeAssignedCount, 0)} 名 NPC 待补知识库` : "",
@@ -444,11 +549,11 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
                         href={`/projects/${projectId}/workbench?seat_id=${encodeURIComponent(seat.id)}&return_to=${encodeURIComponent(selfPath)}&from=company`}
                         className={styles.seatNode}
                         data-tone={statusTone(seat.dispatchState)}
-                        title={`打开 ${seat.name} 的 NPC 工作台`}
+                        title={`打开 ${seat.name} 的 NPC 工作台：${seat.dispatchDetail}`}
                       >
                         <span className={styles.avatar}>{seat.name.slice(0, 2).toUpperCase()}</span>
                         <strong>{seat.name}</strong>
-                        <small>{seat.isLead ? "工位长" : reviewPolicyLabel(seat.reviewPolicy)}</small>
+                        <small>{seat.dispatchShortLabel} · {seat.threadHealth}</small>
                         <em>{seat.dispatchState}</em>
                       </Link>
                     )) : (
@@ -490,8 +595,8 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
           {(pendingHumanReviews.length ? pendingHumanReviews.slice(0, 6) : recentOrgEvents).map((event, index) => (
             <article key={text(event.id, `event-${index}`)}>
               <span>{isPendingHumanReview(event) ? reviewSourceLabel(event) : publicStatusLabel(event.status)}</span>
-              <strong>{text(event.title, "协作事件")}</strong>
-              <p>{isPendingHumanReview(event) ? "需要项目负责人或人工确认后再继续。" : `${orgEventTypeLabel(event.message_type ?? event.body)} · 组织事件已进入项目记录。`}</p>
+              <strong>{publicEventTitle(event)}</strong>
+              <p>{publicEventDescription(event)}</p>
             </article>
           ))}
           {!pendingHumanReviews.length && !recentOrgEvents.length ? (

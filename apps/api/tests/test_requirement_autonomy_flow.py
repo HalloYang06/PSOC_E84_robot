@@ -1,11 +1,15 @@
 ﻿from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+from uuid import uuid4
+
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.db.models.collaboration_message import CollaborationMessage
 from app.db.models.requirement import Requirement, RequirementMessage
+from app.db.models.runner import Runner
 from app.db.session import SessionLocal
 from app.main import app
 from app.modules.requirements import service as requirement_service_module
@@ -59,11 +63,292 @@ def _create_workstation(token: str, project_id: str) -> dict[str, object]:
             "agent_id": "agent-ui",
             "computer_node_id": "pc-1",
             "ai_provider_id": "codex",
+            "metadata": {"automation_thread_id": "codex-session-frontend-seat"},
             "status": "active",
         },
     )
     assert workstation_response.status_code == 200
     return workstation_response.json()["data"]
+
+
+def test_structured_need_preview_surfaces_unbound_dispatch_target() -> None:
+    owner_token, _ = issue_session_token(client)
+    project = create_project(client, owner_token, name_prefix="Need Preview Unbound")
+    project_id = project["id"]
+
+    config_response = client.patch(
+        f"/api/projects/{project_id}",
+        headers=auth_headers(owner_token),
+        json={
+            "collaboration_config": {
+                "computer_nodes": [
+                    {
+                        "id": "pc-requester",
+                        "label": "Requester PC",
+                        "status": "online",
+                    },
+                    {
+                        "id": "pc-target",
+                        "label": "Target PC",
+                        "status": "online",
+                    },
+                ],
+                "thread_workstations": [
+                    {
+                        "id": "ws-requester",
+                        "name": "需求发起 NPC",
+                        "agent_id": "agent-requester",
+                        "computer_node_id": "pc-requester",
+                        "metadata": {"automation_thread_id": "codex-session-ws-requester"},
+                        "status": "idle",
+                        "notes": "负责提出前端协作需求",
+                    },
+                    {
+                        "id": "ws-target",
+                        "name": "前端承接 NPC",
+                        "agent_id": "agent-target",
+                        "computer_node_id": "pc-target",
+                        "metadata": {"automation_thread_id": "codex-session-ws-target"},
+                        "status": "idle",
+                        "notes": "react 前端 ui 页面实现",
+                    },
+                ],
+            }
+        },
+    )
+    assert config_response.status_code == 200
+
+    structured_need = client.post(
+        "/api/requirements/structured-need",
+        headers=auth_headers(owner_token),
+        json={
+            "project_id": project_id,
+            "requester_seat_id": "ws-requester",
+            "title": "补齐前端工作台状态",
+            "why_needed": "当前 NPC 需要前端同事补齐工作台状态提醒。",
+            "required_capability": "react 前端 ui",
+            "expected_output": "给出工作台状态更新与说明",
+            "input_context": "需要体现 runner 未接入时不能误导为可派发。",
+            "risk_level": "low",
+            "priority": "P1",
+            "acceptance_criteria": ["预览阶段明确提示未接入", "不要生成假任务"],
+            "auto_route": True,
+        },
+    )
+    assert structured_need.status_code == 200, structured_need.text
+    payload = structured_need.json()["data"]
+    preview = payload["route_preview"]
+    assert payload["route_result"] is None
+    assert preview["recommended_assignee_ref"] == "ws-target"
+    assert "离线，需重连" in preview["blocked_reason"]
+    assert preview["route_risk"] == "blocked"
+    assert preview["will_create_tasks"] == []
+    assert preview["alternatives"][0]["blocked_reason_code"] == "runner_unbound"
+    assert preview["alternatives"][0]["can_dispatch"] is False
+
+
+def test_need_route_to_task_queues_stale_runner_target_until_recovery() -> None:
+    owner_token, _ = issue_session_token(client)
+    runner_id = f"runner-need-stale-{uuid4().hex[:8]}"
+    register_response = client.post(
+        "/api/runners/register",
+        json={
+            "runner_id": runner_id,
+            "runner_name": "Need Stale Runner",
+            "capabilities": ["relay", "shell"],
+            "hardware_access": False,
+        },
+    )
+    assert register_response.status_code == 200
+
+    with SessionLocal() as db:
+        runner = db.get(Runner, runner_id)
+        assert runner is not None
+        runner.status = "online"
+        runner.last_heartbeat_at = datetime.now(timezone.utc) - timedelta(minutes=10)
+        db.add(runner)
+        db.commit()
+
+    project = create_project(client, owner_token, name_prefix="Need Preview Stale")
+    project_id = project["id"]
+    config_response = client.patch(
+        f"/api/projects/{project_id}",
+        headers=auth_headers(owner_token),
+        json={
+            "collaboration_config": {
+                "computer_nodes": [
+                    {
+                        "id": "pc-requester",
+                        "label": "Requester PC",
+                        "status": "online",
+                    },
+                    {
+                        "id": "pc-stale",
+                        "label": "Stale PC",
+                        "status": "online",
+                        "runner_id": runner_id,
+                    },
+                ],
+                "thread_workstations": [
+                    {
+                        "id": "ws-requester",
+                        "name": "需求发起 NPC",
+                        "agent_id": "agent-requester",
+                        "computer_node_id": "pc-requester",
+                        "metadata": {"automation_thread_id": "codex-session-ws-requester-stale"},
+                        "status": "idle",
+                        "notes": "负责提出平台协作需求",
+                    },
+                    {
+                        "id": "ws-stale",
+                        "name": "离线承接 NPC",
+                        "agent_id": "agent-stale",
+                        "computer_node_id": "pc-stale",
+                        "metadata": {"automation_thread_id": "codex-session-ws-stale"},
+                        "status": "idle",
+                        "notes": "python 自动化脚本与平台收口",
+                    },
+                ],
+            }
+        },
+    )
+    assert config_response.status_code == 200
+
+    structured_need = client.post(
+        "/api/requirements/structured-need",
+        headers=auth_headers(owner_token),
+        json={
+            "project_id": project_id,
+            "requester_seat_id": "ws-requester",
+            "title": "补齐平台自动化收口",
+            "why_needed": "需要另一名 NPC 继续处理自动化收口。",
+            "required_capability": "python 自动化脚本",
+            "expected_output": "返回可验证的收口结果",
+            "input_context": "若目标 runner 心跳过期，应明确等待恢复。",
+            "risk_level": "low",
+            "priority": "P1",
+            "acceptance_criteria": ["明确提示等待电脑恢复", "阻止继续 route-to-task"],
+        },
+    )
+    assert structured_need.status_code == 200, structured_need.text
+    requirement_id = payload = structured_need.json()["data"]["requirement"]["id"]
+
+    preview_response = client.get(
+        f"/api/requirements/{requirement_id}/route-preview",
+        headers=auth_headers(owner_token),
+    )
+    assert preview_response.status_code == 200, preview_response.text
+    preview = preview_response.json()["data"]
+    assert preview["recommended_assignee_ref"] == "ws-stale"
+    assert preview["blocked_reason"] is None
+    assert "等待电脑恢复" in preview["queue_note"]
+    assert preview["alternatives"][0]["blocked_reason_code"] == "runner_stale"
+    assert preview["alternatives"][0]["can_queue"] is True
+    assert preview["will_create_tasks"][0]["assignee_seat_ref"] == "ws-stale"
+    assert preview["will_create_tasks"][0]["can_queue"] is True
+
+    route_response = client.post(
+        f"/api/requirements/{requirement_id}/route-to-task",
+        headers=auth_headers(owner_token),
+        json={"target_seat_id": "ws-stale", "approved": True, "auto_dispatch": True},
+    )
+    assert route_response.status_code == 200, route_response.text
+    payload = route_response.json()["data"]
+    assert payload["task"]["status"] == "queued"
+    assert payload["dispatch"]["status"] == "queued"
+    assert payload["dispatch"]["runner_id"] == runner_id
+
+    with SessionLocal() as db:
+        routed_requirement = db.get(Requirement, requirement_id)
+        assert routed_requirement is not None
+        assert routed_requirement.status == "routed"
+
+
+def test_structured_need_preview_surfaces_unbound_thread_target() -> None:
+    owner_token, _ = issue_session_token(client)
+    runner_id = f"runner-need-threadless-{uuid4().hex[:8]}"
+    register_response = client.post(
+        "/api/runners/register",
+        json={
+            "runner_id": runner_id,
+            "runner_name": "Need Threadless Runner",
+            "capabilities": ["relay", "shell"],
+            "hardware_access": False,
+        },
+    )
+    assert register_response.status_code == 200
+
+    project = create_project(client, owner_token, name_prefix="Need Preview Threadless")
+    project_id = project["id"]
+    config_response = client.patch(
+        f"/api/projects/{project_id}",
+        headers=auth_headers(owner_token),
+        json={
+            "collaboration_config": {
+                "computer_nodes": [
+                    {
+                        "id": "pc-requester",
+                        "label": "Requester PC",
+                        "status": "online",
+                    },
+                    {
+                        "id": "pc-target",
+                        "label": "Target PC",
+                        "status": "online",
+                        "runner_id": runner_id,
+                    },
+                ],
+                "thread_workstations": [
+                    {
+                        "id": "ws-requester",
+                        "name": "需求发起 NPC",
+                        "agent_id": "agent-requester",
+                        "computer_node_id": "pc-requester",
+                        "metadata": {"automation_thread_id": "codex-session-ws-requester-threadless"},
+                        "status": "idle",
+                        "notes": "负责提出前端协作需求",
+                    },
+                    {
+                        "id": "ws-target",
+                        "name": "前端承接 NPC",
+                        "agent_id": "agent-target",
+                        "computer_node_id": "pc-target",
+                        "status": "idle",
+                        "notes": "react 前端 ui 页面实现",
+                    },
+                ],
+            }
+        },
+    )
+    assert config_response.status_code == 200
+
+    structured_need = client.post(
+        "/api/requirements/structured-need",
+        headers=auth_headers(owner_token),
+        json={
+            "project_id": project_id,
+            "requester_seat_id": "ws-requester",
+            "title": "补齐前端工作台线程绑定提示",
+            "why_needed": "当前 NPC 需要前端同事补齐未绑线程的阻塞提醒。",
+            "required_capability": "react 前端 ui",
+            "expected_output": "给出线程绑定前不可继续派工的说明",
+            "input_context": "目标电脑已接入，但 seat 还没有绑定真实线程。",
+            "risk_level": "low",
+            "priority": "P1",
+            "acceptance_criteria": ["预览阶段明确提示待绑定线程", "不要生成假任务"],
+            "auto_route": True,
+        },
+    )
+    assert structured_need.status_code == 200, structured_need.text
+    payload = structured_need.json()["data"]
+    preview = payload["route_preview"]
+    assert payload["route_result"] is None
+    assert preview["recommended_assignee_ref"] == "ws-target"
+    assert "待绑定线程" in preview["blocked_reason"]
+    assert preview["route_risk"] == "blocked"
+    assert preview["will_create_tasks"] == []
+    assert preview["alternatives"][0]["blocked_reason_code"] == "thread_unbound"
+    assert preview["alternatives"][0]["can_dispatch"] is False
 
 
 def test_requirement_dispatch_and_final_reply_form_minimal_autonomy_loop() -> None:
@@ -1189,14 +1474,15 @@ def test_runner_completion_backfills_requirement_final_reply_and_follow_up() -> 
                     }
                 ],
                 "thread_workstations": [
-                    {
-                        "id": "ws-bridge",
-                        "name": "Requirement Bridge Seat",
-                        "agent_id": "agent-ui",
-                        "computer_node_id": "pc-bridge",
-                        "ai_provider_id": "codex",
-                        "status": "idle",
-                    }
+                        {
+                                "id": "ws-bridge",
+                                "name": "Requirement Bridge Seat",
+                                "agent_id": "agent-ui",
+                                "computer_node_id": "pc-bridge",
+                                "ai_provider_id": "codex",
+                                "metadata": {"automation_thread_id": "codex-session-ws-bridge"},
+                                "status": "idle",
+                            }
                 ],
             }
         },
@@ -1379,14 +1665,15 @@ def test_runner_completion_only_advances_the_active_requirement_for_a_shared_tas
                     }
                 ],
                 "thread_workstations": [
-                    {
-                        "id": "ws-active",
-                        "name": "Requirement Active Seat",
-                        "agent_id": "agent-ui",
-                        "computer_node_id": "pc-active",
-                        "ai_provider_id": "codex",
-                        "status": "idle",
-                    }
+                        {
+                                "id": "ws-active",
+                                "name": "Requirement Active Seat",
+                                "agent_id": "agent-ui",
+                                "computer_node_id": "pc-active",
+                                "ai_provider_id": "codex",
+                                "metadata": {"automation_thread_id": "codex-session-ws-active"},
+                                "status": "idle",
+                            }
                 ],
             }
         },

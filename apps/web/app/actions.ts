@@ -55,6 +55,7 @@ import {
   seatTypeForProvider,
   supportsLocalCodexAutonomyBridge,
 } from "../lib/platform-provider";
+import { summarizeRunnerDispatchState } from "../lib/runner-status";
 import {
   DEFAULT_PLATFORM_SKILL_LIBRARY,
   RESERVED_PLATFORM_SKILL_IDS,
@@ -73,6 +74,12 @@ function rethrowRedirectError(error: unknown) {
   if (isRedirectError(error)) {
     throw error;
   }
+}
+
+function objectRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
 function getAuthHeaders() {
@@ -95,14 +102,21 @@ async function postJson(path: string, body: Record<string, unknown>) {
   if (!res.ok) {
     let errorCode = `HTTP_${res.status}`;
     let errorMessage = `HTTP ${res.status}`;
+    let errorDetails: unknown;
     try {
       const payload = await res.json();
       errorCode = payload?.error?.code ?? errorCode;
       errorMessage = payload?.error?.message ?? errorMessage;
+      errorDetails = payload?.error?.details;
     } catch {}
-    const error = new Error(errorMessage) as Error & { status?: number; code?: string };
+    const error = new Error(errorMessage) as Error & {
+      status?: number;
+      code?: string;
+      details?: unknown;
+    };
     error.status = res.status;
     error.code = errorCode;
+    error.details = errorDetails;
     throw error;
   }
   return res.json();
@@ -117,14 +131,21 @@ async function getJson(path: string) {
   if (!res.ok) {
     let errorCode = `HTTP_${res.status}`;
     let errorMessage = `HTTP ${res.status}`;
+    let errorDetails: unknown;
     try {
       const payload = await res.json();
       errorCode = payload?.error?.code ?? errorCode;
       errorMessage = payload?.error?.message ?? errorMessage;
+      errorDetails = payload?.error?.details;
     } catch {}
-    const error = new Error(errorMessage) as Error & { status?: number; code?: string };
+    const error = new Error(errorMessage) as Error & {
+      status?: number;
+      code?: string;
+      details?: unknown;
+    };
     error.status = res.status;
     error.code = errorCode;
+    error.details = errorDetails;
     throw error;
   }
   return res.json();
@@ -8729,9 +8750,30 @@ export async function 启动Npc单次线程处理(projectId: string, workstation
     const deliveryWarning = text(adapterConfig.delivery_warning, "");
     const deliveryMode = text(adapterConfig.delivery_mode, "");
     const desktopVisible = Boolean(adapterConfig.desktop_visible);
+    const computerNodeId = text(
+      seat.computer_node_id ?? seat.computerNodeId ?? metadata.computer_node_id ?? metadata.computerNodeId,
+      "",
+    );
     const shouldUseDesktopRunnerDelivery =
       providerId === "codex" && (deliveryMode === "codex_desktop_ui" || (desktopVisible && deliveryLabel.includes("桌面")));
-
+    let runnerSummary = summarizeRunnerDispatchState(null);
+    if (computerNodeId) {
+      try {
+        const computerNodesResult = await getJson(`/api/projects/${projectId}/computer-nodes`);
+        const computerNodes = asArray<Record<string, unknown>>(computerNodesResult?.data ?? computerNodesResult);
+        const computerNode =
+          computerNodes.find((item) => text(item.id ?? item.node_id, "") === computerNodeId)
+          ?? null;
+        runnerSummary = summarizeRunnerDispatchState(computerNode);
+      } catch {
+        runnerSummary = summarizeRunnerDispatchState(null);
+      }
+    }
+    const queuesForRecovery = runnerSummary.canQueue && !runnerSummary.canDispatch;
+    const runnerDeliveryLabel = queuesForRecovery ? "恢复队列" : "执行电脑队列";
+    const runnerDeliveryTitle = queuesForRecovery
+      ? `已记录到恢复队列 / ${seatName}`
+      : `已投递到执行电脑 / ${seatName}`;
     try {
       const runnerBody = shouldUseDesktopRunnerDelivery
         ? JSON.stringify(
@@ -8767,34 +8809,47 @@ export async function 启动Npc单次线程处理(projectId: string, workstation
         runnerCommand && typeof runnerCommand === "object" && "data" in runnerCommand
           ? ((runnerCommand as Record<string, unknown>).data as Record<string, unknown>)
           : (runnerCommand as Record<string, unknown>);
+      const runnerDeliveryBody = queuesForRecovery
+        ? [
+            `平台已记录这条派工，等待 ${seatName} 所在电脑恢复后继续处理。`,
+            text(runnerData?.recipient_id, "") ? `执行电脑 Runner：${text(runnerData?.recipient_id, "")}` : "",
+            text(runnerData?.id, "") ? `队列消息：${text(runnerData?.id, "")}` : "",
+            messageId ? `派单消息：${messageId}` : "",
+            runnerSummary.detail || "目标电脑最近在线但尚未恢复持续接单，平台不会把这条派工误报成已执行。",
+          ].filter(Boolean).join("\n")
+        : [
+            `平台已把这条派工送到 ${seatName} 所在电脑的 Runner 队列。`,
+            text(runnerData?.recipient_id, "") ? `执行电脑 Runner：${text(runnerData?.recipient_id, "")}` : "",
+            text(runnerData?.id, "") ? `队列消息：${text(runnerData?.id, "")}` : "",
+            messageId ? `派单消息：${messageId}` : "",
+            shouldUseDesktopRunnerDelivery
+              ? "目标电脑已接入；平台正在等待执行电脑把派单送进绑定桌面线程并确认可见。"
+              : desktopVisible
+                ? "目标电脑已接入；执行电脑接单后会继续同步过程回执。"
+                : deliveryWarning || "目标电脑接单后会回写最小回执；如桌面线程未连接，平台会显示待收口状态。",
+          ].filter(Boolean).join("\n");
       await postJson("/api/collaboration/messages", {
         project_id: projectId,
         agent_id: recipientId,
         message_type: "agent_ack",
-        title: `已投递到执行电脑 / ${seatName}`,
-        body: [
-          `平台已把这条派工送到 ${seatName} 所在电脑的 Runner 队列。`,
-          text(runnerData?.recipient_id, "") ? `执行电脑 Runner：${text(runnerData?.recipient_id, "")}` : "",
-          text(runnerData?.id, "") ? `队列消息：${text(runnerData?.id, "")}` : "",
-          messageId ? `派单消息：${messageId}` : "",
-          shouldUseDesktopRunnerDelivery
-            ? "目标电脑已接入；平台正在等待执行电脑把派单送进绑定桌面线程并确认可见。"
-            : desktopVisible
-              ? "目标电脑已接入；执行电脑接单后会继续同步过程回执。"
-            : deliveryWarning || "目标电脑接单后会回写最小回执；如桌面线程未连接，平台会显示待收口状态。",
-        ].filter(Boolean).join("\n"),
+        title: runnerDeliveryTitle,
+        body: runnerDeliveryBody,
         sender_type: "agent",
         sender_id: recipientId,
         recipient_type: "thread_workstation",
         recipient_id: recipientId,
-        status: "in_progress",
+        status: queuesForRecovery ? "queued" : "in_progress",
         metadata: {
           source_message_id: messageId,
           runner_command_id: text(runnerData?.id, "") || null,
           runner_id: text(runnerData?.recipient_id, "") || null,
-          delivery_label: shouldUseDesktopRunnerDelivery ? "等待桌面确认" : "执行电脑队列",
+          delivery_label: shouldUseDesktopRunnerDelivery ? "等待桌面确认" : runnerDeliveryLabel,
           delivery_mode: shouldUseDesktopRunnerDelivery ? "codex_desktop_ui" : deliveryMode || null,
           desktop_visible_capability: desktopVisible,
+          runner_dispatch_state: runnerSummary.state,
+          runner_dispatch_detail: runnerSummary.detail,
+          runner_can_queue: runnerSummary.canQueue,
+          runner_can_dispatch: runnerSummary.canDispatch,
         },
       });
       revalidateProjectSurfaces(projectId);
@@ -8802,7 +8857,7 @@ export async function 启动Npc单次线程处理(projectId: string, workstation
         launched: true,
         providerId,
         seatName,
-        deliveryLabel: shouldUseDesktopRunnerDelivery ? "等待桌面确认" : "执行电脑队列",
+        deliveryLabel: shouldUseDesktopRunnerDelivery ? "等待桌面确认" : runnerDeliveryLabel,
         deliveryWarning,
         desktopVisible,
         launcher: shouldUseDesktopRunnerDelivery ? "runner-desktop-dispatch" : "runner-command",
@@ -8812,17 +8867,89 @@ export async function 启动Npc单次线程处理(projectId: string, workstation
       };
     } catch (runnerError) {
       const runnerErrorMessage = runnerError instanceof Error ? runnerError.message : "目标电脑队列投递失败";
+      const runnerErrorDetails =
+        runnerError instanceof Error
+          ? objectRecord((runnerError as Error & { details?: unknown }).details)
+          : {};
+      const blockedReasonLabel = text(runnerErrorDetails.blocked_reason, "");
+      const blockedReasonCode = text(runnerErrorDetails.blocked_reason_code, "");
+      const blockedReasonDetail = blockedReasonLabel
+        ? `${blockedReasonLabel}：${runnerErrorMessage}`
+        : runnerErrorMessage;
+      if (booleanFromUnknown(runnerErrorDetails.can_queue, false)) {
+        const queuedLabel = blockedReasonLabel || "等待电脑恢复";
+        await postJson("/api/collaboration/messages", {
+          project_id: projectId,
+          agent_id: recipientId,
+          message_type: "agent_ack",
+          title: `已记录到恢复队列 / ${seatName}`,
+          body: [
+            `平台已记录这条派工，等待 ${seatName} 所在电脑恢复后继续处理。`,
+            `当前状态：${queuedLabel}`,
+            `原因：${blockedReasonDetail}`,
+            messageId ? `派单消息：${messageId}` : "",
+            "恢复前不会误报成已执行；可在目标电脑恢复后继续，或改派到其他在线电脑。",
+          ].filter(Boolean).join("\n"),
+          sender_type: "agent",
+          sender_id: recipientId,
+          recipient_type: "thread_workstation",
+          recipient_id: recipientId,
+          status: "queued",
+          metadata: {
+            source_message_id: messageId,
+            delivery_label: "恢复队列",
+            runner_delivery_failed: false,
+            blocked_reason_code: blockedReasonCode || null,
+            blocked_reason_label: queuedLabel,
+            blocked_taxonomy: {
+              blocked_reason_code: blockedReasonCode || "runner_recovery_queue",
+              blocked_reason_label: queuedLabel,
+              runner_delivery_failed: false,
+              can_queue: true,
+              can_dispatch: false,
+            },
+          },
+        });
+        revalidateProjectSurfaces(projectId);
+        return {
+          launched: true,
+          providerId,
+          seatName,
+          deliveryLabel: "恢复队列",
+          deliveryWarning,
+          desktopVisible,
+          launcher: "runner-command",
+          stdoutPath: null,
+          stderrPath: null,
+          error: null,
+        };
+      }
+      const blockedRecoveryHint =
+        blockedReasonCode === "runner_stale"
+          ? "这台电脑最近在线，但持续接单心跳已过期。请回到目标电脑重新运行持续接单命令。"
+          : blockedReasonCode === "runner_unbound"
+            ? "这个 NPC 还没有接入可用执行程序。先在目标电脑完成持续接单接入，再重新派发。"
+            : blockedReasonCode === "runner_offline" || blockedReasonCode === "runner_missing"
+              ? "目标电脑当前离线或执行程序不可用。请先重连目标电脑，或改派到其他在线电脑。"
+              : blockedReasonCode === "runner_not_started"
+                ? "目标电脑还没有开始持续心跳。请先运行持续接单命令，再重新派发。"
+                : blockedReasonCode === "computer_node_unbound"
+                  ? "这个 NPC 还没有绑定电脑。请先完成电脑接入和线程绑定。"
+                  : blockedReasonCode === "provider_disabled" || blockedReasonCode === "provider_missing"
+                    ? "目标执行通道当前不可用。请先恢复执行通道配置，再重新派发。"
+                    : "请确认这个 NPC 已绑定在线电脑，并且目标电脑的持续接单程序正在运行。";
       console.warn("投递执行电脑队列失败:", runnerError);
       await postJson("/api/collaboration/messages", {
         project_id: projectId,
         agent_id: recipientId,
         message_type: "agent_ack",
-        title: `执行电脑未接单 / ${seatName}`,
+        title: `${blockedReasonLabel || "执行电脑未接单"} / ${seatName}`,
         body: [
           `平台没有把这条派工送到 ${seatName} 所在电脑。`,
-          `原因：${runnerErrorMessage}`,
+          `当前状态：${blockedReasonLabel || "状态未知，先检查接入"}`,
+          `原因：${blockedReasonDetail}`,
           messageId ? `派单消息：${messageId}` : "",
-          "请确认这个 NPC 已绑定在线电脑，并且目标电脑的持续接单程序正在运行。",
+          blockedRecoveryHint,
         ].filter(Boolean).join("\n"),
         sender_type: "agent",
         sender_id: recipientId,
@@ -8833,6 +8960,15 @@ export async function 启动Npc单次线程处理(projectId: string, workstation
           source_message_id: messageId,
           delivery_label: "执行电脑队列",
           runner_delivery_failed: true,
+          blocked_reason_code: blockedReasonCode || null,
+          blocked_reason_label: blockedReasonLabel || null,
+          blocked_taxonomy: {
+            blocked_reason_code: blockedReasonCode || "runner_delivery_failed",
+            blocked_reason_label: blockedReasonLabel || "状态未知，先检查接入",
+            runner_delivery_failed: true,
+            can_queue: runnerErrorDetails.can_queue ?? null,
+            can_dispatch: runnerErrorDetails.can_dispatch ?? null,
+          },
         },
       });
       revalidateProjectSurfaces(projectId);
@@ -8846,7 +8982,7 @@ export async function 启动Npc单次线程处理(projectId: string, workstation
         launcher: "runner-command",
         stdoutPath: null,
         stderrPath: null,
-        error: runnerErrorMessage,
+        error: blockedReasonDetail,
       };
     }
 
