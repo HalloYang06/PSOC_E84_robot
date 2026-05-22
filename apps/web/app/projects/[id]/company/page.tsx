@@ -78,6 +78,12 @@ function summarizeStructuredEvent(value: unknown, eventType: string) {
     }
     return `${eventType}已进入项目记录；详细证据在对应工作台查看。`;
   }
+  if (/scanned real device interfaces and synced them back to the platform/i.test(raw)) {
+    const node = raw.match(/(?:Runner|执行电脑|Execution computer)\s+([A-Za-z0-9._-]+)/i)?.[1];
+    return node
+      ? `执行电脑 ${node} 已完成真实设备扫描，并把结果同步到设备数据工作台。`
+      : "执行电脑已完成真实设备扫描，并把结果同步到设备数据工作台。";
+  }
   return "";
 }
 
