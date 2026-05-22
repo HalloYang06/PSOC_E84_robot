@@ -46,6 +46,17 @@ function publicInterfaceName(value: unknown, fallback: string) {
     .replace(/\brunners?\b/gi, "接单进程");
 }
 
+function publicTransportName(kind: string, value: unknown) {
+  const raw = text(value, "").toLowerCase();
+  if (raw.includes("win32") && raw.includes("com")) return "Windows 串口";
+  if (raw.includes("serial")) return "串口";
+  if (raw.includes("socketcan") || raw === "can") return "CAN";
+  if (raw.includes("usb")) return "USB";
+  if (raw.includes("spi")) return "SPI-CAN";
+  if (raw.includes("ros")) return "ROS";
+  return `${kindLabel(kind)} 接口`;
+}
+
 function nodeScan(node: AnyRecord): AnyRecord {
   const direct = node.device_interface_scan;
   if (direct && typeof direct === "object") return direct as AnyRecord;
@@ -183,7 +194,7 @@ function buildDebugWindows(computers: AnyRecord[], seats: AnyRecord[]): DebugWin
         runnerCanDispatch: runnerState.canDispatch && Boolean(computerNodeId),
         runnerCanQueue: runnerState.canQueue && Boolean(computerNodeId),
         runnerHint: runnerState.detail,
-        transport: text(item.transport, "只读"),
+        transport: publicTransportName(kind, item.transport),
         boundNpc: seatNames[itemIndex % Math.max(1, seatNames.length)] ?? "",
         readCapability: item.read_capability !== false && item.readCapability !== false,
         writeCapabilityLabel: writeCapability === "direct"

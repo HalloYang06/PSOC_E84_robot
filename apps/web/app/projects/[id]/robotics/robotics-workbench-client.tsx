@@ -110,7 +110,16 @@ function seatId(seat: AnyRecord, fallback: string) {
 }
 
 function seatName(seat: AnyRecord, fallback: string) {
-  return userFacingTerminalText(seat.name ?? seat.label ?? seat.display_name ?? fallback);
+  return publicNpcLabel(seat.name ?? seat.label ?? seat.display_name ?? fallback);
+}
+
+function publicNpcLabel(value: unknown) {
+  const raw = userFacingTerminalText(value);
+  const platformMatch = raw.match(/^platform-npc-(\d+)$/i);
+  if (platformMatch) return `${platformMatch[1]}号 NPC`;
+  const npcMatch = raw.match(/^npc[-_\s]*(\d+)$/i);
+  if (npcMatch) return `${npcMatch[1]}号 NPC`;
+  return raw;
 }
 
 function findSeatRecord(seats: AnyRecord[], value: string) {
@@ -220,10 +229,11 @@ function userFacingTerminalText(value: unknown) {
     .replace(/\bbridges?\b/gi, "同步通道")
     .replace(/\bsession JSONL\b/gi, "线程记录")
     .replace(/\blocal path\b/gi, "当前电脑工作副本")
-    .replace(/\bsource_thread\b/gi, "来源线程")
-    .replace(/\bcanonical\b/gi, "正式记录")
-    .replace(/\brequested id\b/gi, "平台编号")
-    .replace(/\braw UUID\b/gi, "记录编号");
+    .replace(/\bsource_thread\b/gi, "协作记录")
+    .replace(/\bcanonical\b/gi, "协作记录")
+    .replace(/\brequested id\b/gi, "协作记录")
+    .replace(/\braw UUID\b/gi, "协作记录")
+    .replace(/最小回执/g, "已收到提醒");
 }
 
 function roboticsCaptureAckLine(value: unknown) {
@@ -542,7 +552,7 @@ function terminalLines(tile: DebugWindow, boundNpcLabel: string) {
     `状态=${tile.statusLabel}  模式=用户终端`,
     `接单=${dispatchMode}  电脑状态=${tile.computerState}`,
     `读取=${tile.readCapability ? "可用" : "不可用"}  写入=${tile.writeCapabilityLabel}`,
-    `协助NPC=${boundNpcLabel || tile.boundNpc || "未绑定，创建或设置时选择 NPC"}`,
+    `协助NPC=${publicNpcLabel(boundNpcLabel || tile.boundNpc) || "未绑定，创建或设置时选择 NPC"}`,
   ];
   if (tile.kind === "can") {
     lines.push(`filter=none  bitrate=待确认  sample=${sampleHz}Hz`);
@@ -572,9 +582,9 @@ function submitLabel(tile: DebugWindow) {
 }
 
 function submitTitle(tile: DebugWindow) {
-  if (tile.runnerCanDispatch) return "目标电脑正在持续接单，会排队并等待最小回执";
+  if (tile.runnerCanDispatch) return "目标电脑正在持续接单，会排队并等待已收到提醒";
   if (tile.runnerCanQueue) return "目标电脑最近在线或等待恢复，命令会排队但不会假装已执行";
-  return tile.runnerHint;
+  return userFacingTerminalText(tile.runnerHint);
 }
 
 function windowsHref(projectId: string, openIds: string[], npcId = "") {
@@ -638,7 +648,7 @@ function DebugTile({
   const selectedNpcRecord = findSeatRecord(npcSeats, boundNpcId);
   const boundNpcLabel = selectedNpcRecord ? seatName(selectedNpcRecord, boundNpcId) : "";
   const effectiveBoundNpcId = text(boundNpcId, tile.boundNpc);
-  const effectiveBoundNpcLabel = boundNpcLabel || tile.boundNpc || "";
+  const effectiveBoundNpcLabel = publicNpcLabel(boundNpcLabel || tile.boundNpc || "");
   const effectiveNpcSeat = findSeatRecord(npcSeats, effectiveBoundNpcId || effectiveBoundNpcLabel);
   const npcDispatchState = summarizeNpcSeatDispatchState(effectiveNpcSeat);
   const returnTo = windowsHref(projectId, openIds, boundNpcId);
@@ -699,7 +709,7 @@ function DebugTile({
       </nav>
       <section className={styles.runnerGate} data-tone={tile.runnerTone}>
         <strong>{tile.runnerCanDispatch ? "可立即提交" : tile.runnerCanQueue ? "可排队，等电脑恢复" : "先重连执行电脑"}</strong>
-        <span>{tile.runnerHint}</span>
+        <span>{userFacingTerminalText(tile.runnerHint)}</span>
         {!tile.runnerCanDispatch ? <em>保持目标电脑接单窗口在线后自动恢复</em> : null}
         {effectiveBoundNpcId && !npcDispatchState.ready ? <em>{npcDispatchState.detail}</em> : null}
       </section>

@@ -94,7 +94,7 @@ function userStatus(value: unknown, fallback = "等待") {
   if (/completed|complete|done|resolved|passed|success|ready|ok|can_continue/.test(normalized)) return "可继续";
   if (/running|active|in_progress|accepted|queued|pending/.test(normalized)) return "处理中";
   if (/review|approval|human/.test(normalized)) return "需人工确认";
-  if (/pending_closeout|closeout/.test(normalized)) return "待收口";
+  if (/pending_closeout|closeout/.test(normalized)) return "等结果";
   if (/blocked|failed|failure|error|rejected|timeout/.test(normalized)) return "异常";
   if (/offline|stale|disconnect/.test(normalized)) return "离线";
   if (/online|connected|live/.test(normalized)) return "在线";
@@ -324,7 +324,7 @@ export function ProfessionalWorkbenchShell({
             <small>执行电脑 {currentRunnerId ? "已分配" : "待分配"}</small>
             <small>协作记录 {taskView ? "已聚焦" : "等待"}</small>
             <small>执行通道 {currentRunnerId ? "可追踪" : "待确认"}</small>
-            <small>{pendingCloseoutCount > 0 ? "待收口优先" : hasActionableException ? "异常优先" : "可继续"}</small>
+            <small>{pendingCloseoutCount > 0 ? "结果待回流优先" : hasActionableException ? "异常优先" : "可继续"}</small>
             <small>权限 只读 / 人审写入</small>
           </section>
           <section className={styles.workbenchCanvas} aria-label="专业工作区">
@@ -422,7 +422,7 @@ export function ProfessionalWorkbenchShell({
               <Link href={`/projects/${projectId}/observability?from=${pageKey}`} className={styles.drawerItem}>
                 <span>记录索引</span>
                 <strong>查看观测台</strong>
-                <p>回执、异常入口、待收口和执行电脑状态都在同一条记录里查看。</p>
+                <p>回执、异常入口、结果回流和执行电脑状态都在同一条记录里查看。</p>
                 <small>查看观测台</small>
               </Link>
             </div>

@@ -158,9 +158,9 @@ function userFacingMessageText(value: unknown, fallback = ""): string {
     .replace(/historical[_\s-]*alias(?:[_\s-]*non[_\s-]*authoritative)?/gi, "历史标识")
     .replace(/历史\s*alias/gi, "历史标识")
     .replace(/current\s+alias/gi, "当前标识")
-    .replace(/source_thread/gi, "来源桌面线程")
-    .replace(/canonical_workstation_id/gi, "正式工位")
-    .replace(/requested_workstation_id/gi, "请求工位")
+    .replace(/source_thread/gi, "协作记录")
+    .replace(/canonical_workstation_id/gi, "协作记录")
+    .replace(/requested_workstation_id/gi, "协作记录")
     .replace(/authoritative_([a-z]+_)?seat_id/gi, "正式 NPC")
     .replace(/authoritative_target_seat_id/gi, "目标 NPC")
     .replace(/sender_id/gi, "发送方")
@@ -171,7 +171,7 @@ function userFacingMessageText(value: unknown, fallback = ""): string {
     .replace(/Provider CLI/gi, "执行通道")
     .replace(/provider cli execution/gi, "执行通道运行")
     .replace(/Local prompt file/gi, "任务说明")
-    .replace(/local path/gi, "当前电脑工作副本")
+    .replace(/local path/gi, "平台附件")
     .replace(/adapter/gi, "同步")
     .replace(/bridge/gi, "同步")
     .replace(/\bcodex app-server\b/gi, "后台线程")
@@ -179,8 +179,8 @@ function userFacingMessageText(value: unknown, fallback = ""): string {
     .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, "关联记录")
     .replace(/[A-Za-z]:[\\/][^\s"'`<>),\]]+/g, "当前电脑工作副本")
     .replace(/\.codex[\\/][^\s"'`<>),\]]+/gi, "桌面线程记录")
-    .replace(/执行失败[:：]?/g, "待收口")
-    .replace(/hard failed/gi, "待收口")
+    .replace(/执行失败[:：]?/g, "需要处理")
+    .replace(/hard failed/gi, "需要处理")
     .trim();
   return next || fallback;
 }
