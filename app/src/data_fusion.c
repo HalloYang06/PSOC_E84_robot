@@ -50,5 +50,5 @@ bool data_fusion_get_snapshot(const data_fusion_t *fusion, fusion_snapshot_t *sn
     }
 
     *snapshot = fusion->snapshot;
-    return (snapshot->emg_valid != 0U) && (snapshot->hr_valid != 0U);
+    return (snapshot->emg_valid != 0U) || (snapshot->hr_valid != 0U);
 }

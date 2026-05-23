@@ -1,0 +1,18 @@
+# Build outputs
+build/
+cmake-build-*/
+cmake-build-stm32/
+
+# Keil generated outputs
+MDK-ARM/SenorsCollect/
+MDK-ARM/*.lst
+MDK-ARM/*.uvguix.*
+
+*.o
+*.a
+*.axf
+*.map
+*.bin
+*.hex
+*.elf
+*.d

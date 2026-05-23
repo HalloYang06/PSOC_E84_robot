@@ -1,6 +1,13 @@
 #include "can_transport.h"
 
+#include <stdio.h>
 #include <string.h>
+
+#include "usart.h"
+
+#ifndef CAN_TRANSPORT_DEBUG_UART
+#define CAN_TRANSPORT_DEBUG_UART 0
+#endif
 
 enum
 {
@@ -32,6 +39,85 @@ static can_command_handler_t s_handler;
 static void *s_handler_user;
 static can_tx_slot_t s_tx_slots[CAN_TX_QUEUE_CAP];
 static can_ack_cache_t s_ack_cache;
+
+#if CAN_TRANSPORT_DEBUG_UART
+static void can_uart_debug_init_fail(const char *stage, const CAN_HandleTypeDef *hcan)
+{
+    char line[128];
+    int len;
+
+    if ((stage == 0) || (hcan == 0) || (hcan->Instance == 0))
+    {
+        return;
+    }
+
+    len = snprintf(line,
+                   sizeof(line),
+                   "CAN INIT %s FAIL state=%u err=0x%08lX MSR=0x%08lX ESR=0x%08lX\r\n",
+                   stage,
+                   (unsigned int)hcan->State,
+                   (unsigned long)hcan->ErrorCode,
+                   (unsigned long)hcan->Instance->MSR,
+                   (unsigned long)hcan->Instance->ESR);
+    if (len <= 0)
+    {
+        return;
+    }
+    if ((size_t)len >= sizeof(line))
+    {
+        len = (int)sizeof(line) - 1;
+    }
+
+    (void)HAL_UART_Transmit(&huart1, (uint8_t *)line, (uint16_t)len, 100U);
+}
+
+static void can_uart_debug_rx_frame(const CAN_RxHeaderTypeDef *rx_header, const uint8_t *data, uint8_t matched)
+{
+    char line[128];
+    int len;
+    uint8_t i;
+
+    if ((rx_header == 0) || (data == 0))
+    {
+        return;
+    }
+
+    len = snprintf(line,
+                   sizeof(line),
+                   "CAN RX id=%03lX ide=%u rtr=%u dlc=%u match=%u data=",
+                   (unsigned long)(rx_header->StdId & 0x7FFU),
+                   (unsigned int)rx_header->IDE,
+                   (unsigned int)rx_header->RTR,
+                   (unsigned int)rx_header->DLC,
+                   (unsigned int)matched);
+    if (len < 0)
+    {
+        return;
+    }
+
+    for (i = 0U; (i < rx_header->DLC) && (i < 8U); ++i)
+    {
+        int wrote = snprintf(line + len, sizeof(line) - (size_t)len, "%02X%s", data[i], (i + 1U < rx_header->DLC) ? " " : "");
+        if (wrote < 0)
+        {
+            return;
+        }
+        len += wrote;
+        if ((size_t)len >= sizeof(line))
+        {
+            break;
+        }
+    }
+
+    if ((size_t)len < sizeof(line) - 3U)
+    {
+        line[len++] = '\r';
+        line[len++] = '\n';
+        line[len] = '\0';
+        (void)HAL_UART_Transmit(&huart1, (uint8_t *)line, (uint16_t)len, 20U);
+    }
+}
+#endif
 
 static int32_t can_low_level_send(const can_message_t *message)
 {
@@ -171,7 +257,7 @@ int32_t can_transport_init(CAN_HandleTypeDef *hcan)
     filter.FilterBank = 0U;
     filter.FilterMode = CAN_FILTERMODE_IDMASK;
     filter.FilterScale = CAN_FILTERSCALE_32BIT;
-    /* 仅放行 0x7C0 标准数据帧，电机高频流量在硬件层丢弃。 */
+    /* Accept only the F103 control standard data frame. */
     filter.FilterIdHigh = (uint16_t)(F103_CAN_ID_CTRL_RX << 5U);
     filter.FilterIdLow = 0U;
     filter.FilterMaskIdHigh = (uint16_t)(0x7FFU << 5U);
@@ -182,14 +268,29 @@ int32_t can_transport_init(CAN_HandleTypeDef *hcan)
 
     if (HAL_CAN_ConfigFilter(s_hcan, &filter) != HAL_OK)
     {
+#if CAN_TRANSPORT_DEBUG_UART
+        can_uart_debug_init_fail("FILTER", s_hcan);
+#endif
         return -1;
     }
     if (HAL_CAN_Start(s_hcan) != HAL_OK)
     {
+#if CAN_TRANSPORT_DEBUG_UART
+        can_uart_debug_init_fail("START", s_hcan);
+#endif
         return -1;
     }
-    if (HAL_CAN_ActivateNotification(s_hcan, CAN_IT_RX_FIFO0_MSG_PENDING) != HAL_OK)
+    if (HAL_CAN_ActivateNotification(s_hcan,
+                                      CAN_IT_RX_FIFO0_MSG_PENDING |
+                                      CAN_IT_ERROR |
+                                      CAN_IT_ERROR_WARNING |
+                                      CAN_IT_ERROR_PASSIVE |
+                                      CAN_IT_BUSOFF |
+                                      CAN_IT_LAST_ERROR_CODE) != HAL_OK)
     {
+#if CAN_TRANSPORT_DEBUG_UART
+        can_uart_debug_init_fail("NOTIFY", s_hcan);
+#endif
         return -1;
     }
     return 0;
@@ -260,6 +361,9 @@ void can_transport_poll_rx(void)
         {
             message.dlc = 8U;
         }
+#if CAN_TRANSPORT_DEBUG_UART
+        can_uart_debug_rx_frame(&rx_header, message.data, (uint8_t)(message.id == F103_CAN_ID_CTRL_RX));
+#endif
         (void)can_rx_dispatch(&message);
     }
 }

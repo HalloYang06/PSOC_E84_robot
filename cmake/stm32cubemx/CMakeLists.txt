@@ -15,6 +15,9 @@ set(MX_Include_Dirs
     ${CMAKE_SOURCE_DIR}/Drivers/STM32F1xx_HAL_Driver/Inc/Legacy
     ${CMAKE_SOURCE_DIR}/Drivers/CMSIS/Device/ST/STM32F1xx/Include
     ${CMAKE_SOURCE_DIR}/Drivers/CMSIS/Include
+		${CMAKE_SOURCE_DIR}/app/include
+		${CMAKE_SOURCE_DIR}/BSP
+
 )
 
 # STM32CubeMX generated application sources
@@ -33,6 +36,16 @@ set(MX_Application_Src
     ${CMAKE_SOURCE_DIR}/Core/Src/sysmem.c
     ${CMAKE_SOURCE_DIR}/Core/Src/syscalls.c
     ${CMAKE_SOURCE_DIR}/startup_stm32f103xb.s
+		${CMAKE_SOURCE_DIR}/BSP/bsp_MuElec.c
+		${CMAKE_SOURCE_DIR}/BSP/bsp_MAX30100.c
+		${CMAKE_SOURCE_DIR}/app/src/app_service.c
+		${CMAKE_SOURCE_DIR}/app/src/can_proto.c
+		${CMAKE_SOURCE_DIR}/app/src/can_transport.c
+		${CMAKE_SOURCE_DIR}/app//src/event_queue.c
+		${CMAKE_SOURCE_DIR}/app/src/filter_chain.c
+		${CMAKE_SOURCE_DIR}/app/src/sensor_factory.c
+		${CMAKE_SOURCE_DIR}/app/src/data_fusion.c
+		${CMAKE_SOURCE_DIR}/app/src/node_cfg.c
 )
 
 # STM32 HAL/LL Drivers

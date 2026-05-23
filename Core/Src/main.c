@@ -102,9 +102,15 @@ int main(void)
   MX_USART1_UART_Init();
   MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
+  {
+    static const uint8_t boot_msg[] = "BOOT USART1 OK\r\n";
+    (void)HAL_UART_Transmit(&huart1, (uint8_t *)boot_msg, (uint16_t)(sizeof(boot_msg) - 1U), 100U);
+  }
   /* 应用服务负责事件调度与业务流水线初始化。 */
   if (app_service_init() != 0)
   {
+    static const uint8_t fail_msg[] = "APP INIT FAIL\r\n";
+    (void)HAL_UART_Transmit(&huart1, (uint8_t *)fail_msg, (uint16_t)(sizeof(fail_msg) - 1U), 100U);
     Error_Handler();
   }
 
@@ -138,7 +144,6 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_LSI|RCC_OSCILLATORTYPE_HSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
   RCC_OscInitStruct.HSEPredivValue = RCC_HSE_PREDIV_DIV1;
-  RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.LSIState = RCC_LSI_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;

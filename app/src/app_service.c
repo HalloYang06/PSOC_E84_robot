@@ -1,18 +1,23 @@
 #include "app_service.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #include "adc.h"
-#include "bsp_MAX30100.h"
 #include "can.h"
 #include "event_queue.h"
 #include "filter_chain.h"
 #include "sensor_factory.h"
+#include "usart.h"
 
 #include "can_proto.h"
 #include "can_transport.h"
 #include "data_fusion.h"
 #include "node_cfg.h"
+
+#ifndef APP_CAN_DEBUG_UART
+#define APP_CAN_DEBUG_UART 0
+#endif
 
 typedef struct
 {
@@ -40,6 +45,24 @@ typedef struct
 } app_runtime_t;
 
 static app_runtime_t s_app;
+
+#if APP_CAN_DEBUG_UART
+static void app_uart_debug_init_step(const char *msg)
+{
+    size_t len;
+
+    if (msg == 0)
+    {
+        return;
+    }
+
+    len = strlen(msg);
+    if (len > 0U)
+    {
+        (void)HAL_UART_Transmit(&huart1, (uint8_t *)msg, (uint16_t)len, 100U);
+    }
+}
+#endif
 
 static void app_push_event_from_isr(event_id_t id, uint32_t arg0, uint32_t arg1)
 {
@@ -144,10 +167,103 @@ static bool app_handle_can_command(const can_proto_command_t *command,
     }
 }
 
+#if APP_CAN_DEBUG_UART
+static void app_uart_debug_telemetry(const can_message_t *message, int32_t can_rc)
+{
+    char line[96];
+    uint16_t emg_raw;
+    int16_t emg_filtered;
+    int len;
+
+    if (message == 0)
+    {
+        return;
+    }
+
+    emg_raw = (uint16_t)((uint16_t)message->data[0] | ((uint16_t)message->data[1] << 8U));
+    emg_filtered = (int16_t)((uint16_t)message->data[2] | ((uint16_t)message->data[3] << 8U));
+
+    len = snprintf(line,
+                   sizeof(line),
+                   "EMG raw=%u filt=%d flags=%02X can_rc=%ld q=%u err=%u\r\n",
+                   (unsigned int)emg_raw,
+                   (int)emg_filtered,
+                   (unsigned int)message->data[7],
+                   (long)can_rc,
+                   (unsigned int)can_transport_queue_fill(),
+                   (unsigned int)(s_app.error_count + can_transport_error_count()));
+    if (len <= 0)
+    {
+        return;
+    }
+    if ((size_t)len >= sizeof(line))
+    {
+        len = (int)sizeof(line) - 1;
+    }
+
+    (void)HAL_UART_Transmit(&huart1, (uint8_t *)line, (uint16_t)len, 2U);
+}
+
+static void app_uart_debug_can_rx_pending(void)
+{
+    char line[48];
+    int len;
+
+    len = snprintf(line,
+                   sizeof(line),
+                   "CAN RX pending q=%u err=%u\r\n",
+                   (unsigned int)can_transport_queue_fill(),
+                   (unsigned int)(s_app.error_count + can_transport_error_count()));
+    if (len <= 0)
+    {
+        return;
+    }
+    if ((size_t)len >= sizeof(line))
+    {
+        len = (int)sizeof(line) - 1;
+    }
+
+    (void)HAL_UART_Transmit(&huart1, (uint8_t *)line, (uint16_t)len, 2U);
+}
+
+static void app_uart_debug_can_error(uint32_t error_code, uint32_t packed)
+{
+    char line[128];
+    int len;
+    HAL_CAN_StateTypeDef state;
+    uint32_t esr;
+
+    state = (HAL_CAN_StateTypeDef)((packed >> 24U) & 0xFFU);
+    esr = packed & 0x00FFFFFFU;
+
+    len = snprintf(line,
+                   sizeof(line),
+                   "CAN ERR code=0x%08lX state=%u esr=0x%08lX BOFF=%u EPV=%u EWG=%u LEC=0x%lX\r\n",
+                   (unsigned long)error_code,
+                   (unsigned int)state,
+                   (unsigned long)esr,
+                   (unsigned int)((esr & CAN_ESR_BOFF) != 0U),
+                   (unsigned int)((esr & CAN_ESR_EPVF) != 0U),
+                   (unsigned int)((esr & CAN_ESR_EWGF) != 0U),
+                   (unsigned long)(esr & CAN_ESR_LEC));
+    if (len <= 0)
+    {
+        return;
+    }
+    if ((size_t)len >= sizeof(line))
+    {
+        len = (int)sizeof(line) - 1;
+    }
+
+    (void)HAL_UART_Transmit(&huart1, (uint8_t *)line, (uint16_t)len, 20U);
+}
+#endif
+
 static void app_send_telemetry(void)
 {
     fusion_snapshot_t snapshot;
     can_message_t message;
+    int32_t can_rc;
 
     if (s_app.cfg.stream_enabled == false)
     {
@@ -160,10 +276,14 @@ static void app_send_telemetry(void)
 
     if (can_proto_encode_sensor(&snapshot, &message) == 0)
     {
-        if (can_tx_submit(&message, CAN_TX_PRIO_NORMAL) != 0)
+        can_rc = can_tx_submit(&message, CAN_TX_PRIO_NORMAL);
+        if (can_rc != 0)
         {
             s_app.error_count++;
         }
+#if APP_CAN_DEBUG_UART
+        app_uart_debug_telemetry(&message, can_rc);
+#endif
     }
 }
 
@@ -210,7 +330,7 @@ static void app_handle_event(const event_t *event)
             s_app.last_hb_ms = s_app.ms_now;
             app_send_health();
         }
-        if ((s_app.ms_now - s_app.last_hr_poll_ms) >= period_hr_poll_ms)
+        if ((s_app.hr_sensor != 0) && ((s_app.ms_now - s_app.last_hr_poll_ms) >= period_hr_poll_ms))
         {
             s_app.last_hr_poll_ms = s_app.ms_now;
             /* INT 丢失时仍通过轮询兜底，避免心率链路静默失效。 */
@@ -236,7 +356,12 @@ static void app_handle_event(const event_t *event)
 
     case EVENT_HR_INT:
     case EVENT_HR_POLL:
-        rc = ((s_app.hr_sensor != 0) ? s_app.hr_sensor->read(s_app.hr_sensor, &raw) : -1);
+        if (s_app.hr_sensor == 0)
+        {
+            break;
+        }
+
+        rc = s_app.hr_sensor->read(s_app.hr_sensor, &raw);
         if (rc == 0)
         {
             filtered = filter_chain_process(&s_app.hr_filter_chain, (float)raw);
@@ -250,7 +375,17 @@ static void app_handle_event(const event_t *event)
         break;
 
     case EVENT_CAN_RX_PENDING:
+#if APP_CAN_DEBUG_UART
+        app_uart_debug_can_rx_pending();
+#endif
         can_transport_poll_rx();
+        break;
+
+    case EVENT_CAN_ERROR:
+#if APP_CAN_DEBUG_UART
+        app_uart_debug_can_error(event->arg0, event->arg1);
+#endif
+        s_app.error_count++;
         break;
 
     case EVENT_FAULT:
@@ -266,8 +401,7 @@ static void app_handle_event(const event_t *event)
 int32_t app_service_init(void)
 {
     sensor_cfg_t emg_cfg;
-    sensor_cfg_t hr_cfg;
-
+    can_message_t boot_can;
     (void)memset(&s_app, 0, sizeof(s_app));
     event_queue_init(&s_app.queue);
     node_cfg_load_default(&s_app.cfg);
@@ -291,29 +425,47 @@ int32_t app_service_init(void)
     emg_cfg.sample_rate_hz = s_app.cfg.emg_rate_hz;
     emg_cfg.channel_or_addr = 0U;
     s_app.emg_sensor = sensor_factory_create(SENSOR_TYPE_EMG, &emg_cfg);
-    if ((s_app.emg_sensor == 0) || (s_app.emg_sensor->start(s_app.emg_sensor) != 0))
+    if (s_app.emg_sensor == 0)
     {
+#if APP_CAN_DEBUG_UART
+        app_uart_debug_init_step("APP INIT: EMG CREATE FAIL\r\n");
+#endif
+        s_app.state = NODE_STATE_FAULT;
+        return -1;
+    }
+    if (s_app.emg_sensor->start(s_app.emg_sensor) != 0)
+    {
+#if APP_CAN_DEBUG_UART
+        app_uart_debug_init_step("APP INIT: EMG START FAIL\r\n");
+#endif
         s_app.state = NODE_STATE_FAULT;
         return -1;
     }
 
-    hr_cfg.sample_rate_hz = s_app.cfg.hr_rate_hz;
-    hr_cfg.channel_or_addr = MAX30100_I2C_ADDR_7BIT;
-    s_app.hr_sensor = sensor_factory_create(SENSOR_TYPE_HEART_RATE, &hr_cfg);
-    if ((s_app.hr_sensor == 0) || (s_app.hr_sensor->start(s_app.hr_sensor) != 0))
-    {
-        s_app.state = NODE_STATE_FAULT;
-        return -1;
-    }
+    s_app.hr_sensor = 0;
 
     if (can_transport_init(&hcan) != 0)
     {
+#if APP_CAN_DEBUG_UART
+        app_uart_debug_init_step("APP INIT: CAN INIT FAIL\r\n");
+#endif
         s_app.state = NODE_STATE_FAULT;
         return -1;
     }
     can_transport_register_command_handler(app_handle_can_command, &s_app);
 
+    if (can_proto_encode_health(s_app.state, s_app.error_count, can_transport_queue_fill(), &boot_can) == 0)
+    {
+        (void)can_tx_submit(&boot_can, CAN_TX_PRIO_HIGH);
+        can_transport_process(0U);
+        HAL_Delay(5U);
+        can_transport_poll_rx();
+    }
+
     s_app.state = NODE_STATE_RUN;
+#if APP_CAN_DEBUG_UART
+    app_uart_debug_init_step("APP INIT OK\r\n");
+#endif
     return 0;
 }
 
@@ -373,5 +525,19 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan_cb)
     if ((hcan_cb != 0) && (hcan_cb->Instance == CAN1))
     {
         app_push_event_from_isr(EVENT_CAN_RX_PENDING, 0U, 0U);
+    }
+}
+
+void HAL_CAN_ErrorCallback(CAN_HandleTypeDef *hcan_cb)
+{
+    if ((hcan_cb != 0) && (hcan_cb->Instance == CAN1))
+    {
+        event_t event;
+
+        event.id = EVENT_CAN_ERROR;
+        event.arg0 = HAL_CAN_GetError(hcan_cb);
+        event.arg1 = (((uint32_t)hcan_cb->State & 0xFFU) << 24U) |
+                     (hcan_cb->Instance->ESR & 0x00FFFFFFU);
+        (void)event_queue_push_from_isr(&s_app.queue, &event);
     }
 }

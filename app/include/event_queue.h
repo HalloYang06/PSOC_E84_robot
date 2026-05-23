@@ -12,6 +12,7 @@ typedef enum
     EVENT_HR_INT,
     EVENT_HR_POLL,
     EVENT_CAN_RX_PENDING,
+    EVENT_CAN_ERROR,
     EVENT_CAN_TX_RETRY,
     EVENT_FAULT
 } event_id_t;

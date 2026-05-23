@@ -13,5 +13,5 @@ void node_cfg_load_default(node_cfg_t *cfg)
     cfg->node_id = 0x03U;
     cfg->host_id = 0x01U;
     cfg->protocol_version = 1U;
-    cfg->stream_enabled = true;
+    cfg->stream_enabled = false;
 }
