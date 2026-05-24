@@ -195,14 +195,26 @@
   - 提供 C 参考解析函数：`read_i16_le()`、`decode_0x320()`、`validate_0x320()`、`handle_can_0x320()`。
   - 明确 M33 串口日志最少要打印 `RX 320`、`cmd/joint_id/deg_x10/target_deg/target_rad/rpm/torque_ma`、`decision/reason/safety_state`。
   - 明确进入真实 `0x320` 单帧对照前需要用户烧录 M33 日志固件；烧录前 NanoPi 保持 `enable_target_tx=false`。
+- 用户烧录 M33 logging-only 固件后完成 NanoPi 侧 `0x320` 单帧发送：
+  - 用户确认电机驱动电源断开。
+  - 先复测 heartbeat，`0x321 seq=3` 收到 `0x322`：
+    - `RX STD 0x00000322 [8] A5 03 07 00 62 8A 00 00`
+  - `can0` 为 `UP`、`LOWER_UP`、`ERROR-ACTIVE`、1Mbps，错误计数器 `tx 0 rx 0`。
+  - 临时运行 bridge：`enable_target_tx:=true`。
+  - 发布单关节轨迹 `shoulder_lift_joint=0.1 rad`。
+  - NanoPi 日志显示：
+    - `TX 320 0300390005000000`
+  - `candump can0,320:7FF` 捕获：
+    - `can0  320   [8]  03 00 39 00 05 00 00 00`
+  - 本轮只完成 NanoPi/CAN 侧单帧发送确认；M33 串口日志待用户反馈。
 
 ## 进行中
 
 - 下一步准备明确 `0x320` payload 与 M33 固件日志对照方法：
   - 协议 V1 已写入 `docs/PSOC_CAN_PROTOCOL_V1.md`。
   - M33 日志固件参考已写入 `docs/M33_0X320_LOGGER_GUIDE.md`。
-  - 需要你确认或烧录 M33 侧日志/解析固件。
-  - NanoPi 侧默认 dry-run，不发合法 `0x320` 运动目标，直到 M33 侧能明确打印收到的关节号、目标值、限幅结果和拒绝原因。
+  - NanoPi 侧已发出单帧 `0x320`，等待用户提供 M33 串口日志。
+  - 需要确认 M33 日志字段与 NanoPi 解码结果一致，并且 `decision` 仍为 logging-only reject。
 
 ## 待确认
 
@@ -220,10 +232,10 @@
 
 严格按“一次只做一个能测试的小目标”推进：
 
-1. 明确 M33 固件当前是否已经解析 `0x320`，以及是否能打印关节号、角度、速度、扭矩/电流和安全裁决。
-2. 如果需要烧录 M33 日志固件，由用户执行烧录。
-3. NanoPi 只发送一条不接人、不带运动执行的受限 `0x320` 目标帧给 M33 日志观察。
-4. 对照 ROS 输入、CAN payload 和 M33 日志一致后，再考虑下一步低能量台架测试。
+1. 用户查看 M33 串口日志，确认是否出现 `RX 320 dlc=8 data=0300390005000000`。
+2. 对照 M33 打印的 `joint_id/deg_x10/rpm/torque_ma` 是否为 `0/57/5/0`。
+3. 确认 M33 打印 `decision=reject reason=logging_only_no_motor_output` 或等价安全拒绝原因。
+4. 对照通过后，再设计下一步：M33 继续不驱动电机，只增加更完整的 safety reason/status 上报。
 
 ## 更新规则
 

@@ -568,6 +568,32 @@ ros2 run rehab_arm_psoc_bridge encode_psoc_cmd.py shoulder_lift_joint 0.1
 
 - 已完成 M33 logging-only 参考指南，尚未烧录 M33。
 
+### 发送真实 0x320 单帧时必须同时看 NanoPi TX 和 M33 串口
+
+现象：
+
+- 用户已烧录 M33 logging-only 固件，并确认电机驱动电源断开。
+- NanoPi 临时打开 `enable_target_tx:=true` 发单帧 `0x320`。
+
+NanoPi 侧已验证：
+
+```text
+TX 320 0300390005000000
+can0  320   [8]  03 00 39 00 05 00 00 00
+```
+
+技巧：
+
+- 这只能证明 NanoPi 和 CAN 总线发出了 `0x320`，不能证明 M33 正确解析。
+- 下一步必须看 M33 串口日志是否包含 `RX 320 dlc=8 data=0300390005000000`。
+- 如果 M33 没有日志，优先查 M33 CAN filter、标准帧/扩展帧配置、DLC、CAN RX 回调是否被调用。
+- 如果 M33 字段不一致，优先查 little-endian、字段偏移和单位缩放。
+
+状态：
+
+- NanoPi/CAN 侧单帧发送已通过。
+- M33 串口日志待用户反馈。
+
 ### SSH 远端 bash 里后台任务会影响 source 环境
 
 现象：

@@ -337,6 +337,35 @@ torque_ma: 0
 
 M33 侧日志固件应打印同等字段，用于和 NanoPi dry-run payload 对照。
 
+### 4.3 `0x320` 单帧日志对照记录
+
+前提：
+
+- 电机驱动电源断开。
+- 外骨骼不穿在人身上。
+- M33 已烧录 logging-only 固件。
+- M33 不把 `0x320` 连接到电机执行层。
+
+NanoPi 已验证发出的单帧：
+
+```text
+TX 320 0300390005000000
+can0  320   [8]  03 00 39 00 05 00 00 00
+```
+
+M33 串口应看到：
+
+```text
+RX 320 dlc=8 data=0300390005000000
+cmd=0x03 joint_id=0 joint=shoulder_lift_joint deg_x10=57 target_deg=5.7 target_rad=0.09948 rpm=5 torque_ma=0
+decision=reject reason=logging_only_no_motor_output
+safety_state=limited
+```
+
+如果 M33 没有打印 `RX 320`，先检查 M33 CAN filter 是否接收标准帧 `0x320`。
+
+如果 M33 打印字段和 NanoPi 不一致，先停止测试，检查端序、DLC、字段偏移和单位。
+
 ## 5. 当前真实 CAN ID
 
 | ID | 协议/用途 | 说明 |
