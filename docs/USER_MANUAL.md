@@ -283,6 +283,35 @@ DRY-RUN 320 joint=shoulder_lift_joint data=0300390005000000
 - 如需烧录 M33 固件，由用户执行烧录。
 - 只有满足以上条件后，才允许临时设置 `-p enable_target_tx:=true` 做单帧日志对照测试。
 
+### 4.2 `0x320` Payload 解码工具
+
+协议规格见：[PSOC_CAN_PROTOCOL_V1.md](PSOC_CAN_PROTOCOL_V1.md)。
+
+只解码 payload，不访问 CAN，不会让电机运动：
+
+```bash
+cd /home/pi/rehab_arm_ros2_ws
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+ros2 run rehab_arm_psoc_bridge decode_psoc_cmd.py 0300390005000000
+```
+
+已验证输出：
+
+```text
+can_id: 0x320
+cmd: 0x03
+joint_id: 0
+joint_name: shoulder_lift_joint
+deg_x10: 57
+target_deg: 5.70000
+target_rad: 0.09948
+rpm: 5
+torque_ma: 0
+```
+
+M33 侧日志固件应打印同等字段，用于和 NanoPi dry-run payload 对照。
+
 ## 5. 当前真实 CAN ID
 
 | ID | 协议/用途 | 说明 |

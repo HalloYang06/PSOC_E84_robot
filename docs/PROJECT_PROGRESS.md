@@ -11,6 +11,7 @@
 - 新手搭建教程草稿：[REHAB_ARM_ROS2_SIM_FRAMEWORK_GUIDE.md](REHAB_ARM_ROS2_SIM_FRAMEWORK_GUIDE.md)
 - 踩坑与技巧记录：[TROUBLESHOOTING_AND_LESSONS.md](TROUBLESHOOTING_AND_LESSONS.md)
 - 当前 ROS2 工作区：`rehab_arm_ros2_ws/`
+- PSoC CAN 协议 V1：[PSOC_CAN_PROTOCOL_V1.md](PSOC_CAN_PROTOCOL_V1.md)
 
 ## 架构状态
 
@@ -173,10 +174,20 @@
     - `DRY-RUN 320 joint=shoulder_lift_joint data=0300390005000000`
   - `candump can0,320:7FF` 为空，确认默认 dry-run 没有发送 `0x320`。
   - 日志只出现一个 shoulder 目标，没有再为其他未命令关节生成 dry-run 目标。
+- 固化 PSoC CAN 协议 V1 和对照工具：
+  - 新增 `docs/PSOC_CAN_PROTOCOL_V1.md`，记录 `0x320/0x321/0x322` 字段、单位、端序、关节编号和 M33 日志要求。
+  - 新增 `rehab_arm_psoc_bridge/decode_psoc_cmd.py`，用于解码 `0x320` payload，不访问 CAN。
+  - `CMakeLists.txt` 安装 `decode_psoc_cmd.py`，可通过 `ros2 run rehab_arm_psoc_bridge decode_psoc_cmd.py ...` 调用。
+- 已验证：
+  - 本地 `python -m py_compile rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/decode_psoc_cmd.py` 通过。
+  - 本地 `python .../decode_psoc_cmd.py 0300390005000000` 输出 `joint_id=0`、`target_deg=5.7`、`target_rad=0.09948`、`rpm=5`、`torque_ma=0`。
+  - NanoPi `colcon build --symlink-install --packages-select rehab_arm_psoc_bridge` 通过。
+  - NanoPi `ros2 run rehab_arm_psoc_bridge decode_psoc_cmd.py 0300390005000000` 输出同样字段。
 
 ## 进行中
 
 - 下一步准备明确 `0x320` payload 与 M33 固件日志对照方法：
+  - 协议 V1 已写入 `docs/PSOC_CAN_PROTOCOL_V1.md`。
   - 需要你确认或烧录 M33 侧日志/解析固件。
   - NanoPi 侧默认 dry-run，不发合法 `0x320` 运动目标，直到 M33 侧能明确打印收到的关节号、目标值、限幅结果和拒绝原因。
 

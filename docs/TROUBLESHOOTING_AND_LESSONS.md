@@ -498,6 +498,44 @@ DRY-RUN 320 joint=shoulder_lift_joint data=0300390005000000
 - 已在 NanoPi 上验证 dry-run：合法单关节轨迹只生成一个 shoulder dry-run 目标，没有发送 `0x320`。
 - 同时修正了单关节轨迹会给未命令关节生成目标的问题。
 
+### 对照 M33 日志前先用解码工具统一 payload 理解
+
+现象：
+
+- NanoPi dry-run 会打印 `DRY-RUN 320 ... data=0300390005000000`。
+- M33 侧后续也需要解析同一组 bytes。
+- 如果双方对端序、单位、缩放或关节编号理解不一致，可能出现日志看似正常但目标值错误。
+
+解决：
+
+- 新增协议文档 `docs/PSOC_CAN_PROTOCOL_V1.md`。
+- 新增解码工具：
+
+```bash
+ros2 run rehab_arm_psoc_bridge decode_psoc_cmd.py 0300390005000000
+```
+
+已验证输出：
+
+```text
+joint_id: 0
+joint_name: shoulder_lift_joint
+deg_x10: 57
+target_deg: 5.70000
+target_rad: 0.09948
+rpm: 5
+torque_ma: 0
+```
+
+技巧：
+
+- M33 串口日志应按同样字段打印，逐项对照。
+- 对照通过前不要打开 `enable_target_tx:=true`。
+
+状态：
+
+- 本地和 NanoPi 均已验证解码工具。
+
 ### SSH 远端 bash 里后台任务会影响 source 环境
 
 现象：
