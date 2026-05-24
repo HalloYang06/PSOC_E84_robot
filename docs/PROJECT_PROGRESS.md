@@ -12,6 +12,7 @@
 - 踩坑与技巧记录：[TROUBLESHOOTING_AND_LESSONS.md](TROUBLESHOOTING_AND_LESSONS.md)
 - 当前 ROS2 工作区：`rehab_arm_ros2_ws/`
 - PSoC CAN 协议 V1：[PSOC_CAN_PROTOCOL_V1.md](PSOC_CAN_PROTOCOL_V1.md)
+- M33 `0x320` 日志固件指南：[M33_0X320_LOGGER_GUIDE.md](M33_0X320_LOGGER_GUIDE.md)
 
 ## 架构状态
 
@@ -188,11 +189,18 @@
   - NanoPi `colcon build --symlink-install --packages-select rehab_arm_psoc_bridge` 通过。
   - NanoPi `ros2 run rehab_arm_psoc_bridge encode_psoc_cmd.py shoulder_lift_joint 0.1` 输出 payload `0300390005000000`。
   - NanoPi `ros2 run rehab_arm_psoc_bridge decode_psoc_cmd.py 0300390005000000` 输出同样字段。
+- 准备 M33 `0x320` 日志固件参考：
+  - 新增 `docs/M33_0X320_LOGGER_GUIDE.md`。
+  - 文档定义 M33 收到 `0x320` 后当前阶段只解析、打印、记录安全裁决，不驱动电机。
+  - 提供 C 参考解析函数：`read_i16_le()`、`decode_0x320()`、`validate_0x320()`、`handle_can_0x320()`。
+  - 明确 M33 串口日志最少要打印 `RX 320`、`cmd/joint_id/deg_x10/target_deg/target_rad/rpm/torque_ma`、`decision/reason/safety_state`。
+  - 明确进入真实 `0x320` 单帧对照前需要用户烧录 M33 日志固件；烧录前 NanoPi 保持 `enable_target_tx=false`。
 
 ## 进行中
 
 - 下一步准备明确 `0x320` payload 与 M33 固件日志对照方法：
   - 协议 V1 已写入 `docs/PSOC_CAN_PROTOCOL_V1.md`。
+  - M33 日志固件参考已写入 `docs/M33_0X320_LOGGER_GUIDE.md`。
   - 需要你确认或烧录 M33 侧日志/解析固件。
   - NanoPi 侧默认 dry-run，不发合法 `0x320` 运动目标，直到 M33 侧能明确打印收到的关节号、目标值、限幅结果和拒绝原因。
 

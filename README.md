@@ -15,6 +15,7 @@ docs/USER_MANUAL.md
 docs/PROJECT_PROGRESS.md
 docs/TROUBLESHOOTING_AND_LESSONS.md
 docs/PSOC_CAN_PROTOCOL_V1.md
+docs/M33_0X320_LOGGER_GUIDE.md
 ```
 
 ## 0. 最高优先级：人身安全

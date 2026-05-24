@@ -544,6 +544,30 @@ ros2 run rehab_arm_psoc_bridge encode_psoc_cmd.py shoulder_lift_joint 0.1
 - 输出 payload `0300390005000000`，再用解码工具能反查为同一目标。
 - 超限输入会被编码工具拒绝，不输出 payload。
 
+### M33 日志固件第一版必须 logging-only
+
+现象：
+
+- 下一步需要 M33 侧接收真实 `0x320`，但系统是穿戴设备，不能因为“只是对照协议”就让电机动。
+
+解决：
+
+- 新增 `docs/M33_0X320_LOGGER_GUIDE.md`。
+- M33 当前阶段收到 `0x320` 后只做：
+  - 解析 payload。
+  - 打印字段。
+  - 打印 `decision/reason/safety_state`。
+- 默认 `decision=reject`，`reason=logging_only_no_motor_output`。
+
+技巧：
+
+- 在 M33 日志、限幅、安全状态机全部可观察前，不要让 M33 把 `0x320` 连接到电机执行层。
+- 需要烧录时由用户烧录；烧录前 NanoPi 保持 `enable_target_tx=false`。
+
+状态：
+
+- 已完成 M33 logging-only 参考指南，尚未烧录 M33。
+
 ### SSH 远端 bash 里后台任务会影响 source 环境
 
 现象：

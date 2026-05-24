@@ -102,6 +102,8 @@ DRY-RUN 320 joint=shoulder_lift_joint data=0300390005000000
 
 ## M33 日志要求
 
+M33 侧实现参考见：[M33_0X320_LOGGER_GUIDE.md](M33_0X320_LOGGER_GUIDE.md)。
+
 烧录或运行 M33 侧对照固件时，收到 `0x320` 后至少打印：
 
 ```text

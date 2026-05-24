@@ -283,6 +283,8 @@ DRY-RUN 320 joint=shoulder_lift_joint data=0300390005000000
 - 如需烧录 M33 固件，由用户执行烧录。
 - 只有满足以上条件后，才允许临时设置 `-p enable_target_tx:=true` 做单帧日志对照测试。
 
+M33 日志固件参考：[M33_0X320_LOGGER_GUIDE.md](M33_0X320_LOGGER_GUIDE.md)。
+
 ### 4.2 `0x320` Payload 编码/解码工具
 
 协议规格见：[PSOC_CAN_PROTOCOL_V1.md](PSOC_CAN_PROTOCOL_V1.md)。
