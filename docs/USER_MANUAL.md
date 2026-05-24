@@ -150,11 +150,25 @@ ip -details -statistics link show can0
 
 如果没有 `0x322`：
 
+- 先检查电池电量。已出现过因电池没电导致 NanoPi 能打印 `TX 321`，但 PSoC/M33 不 ACK、不回复 `0x322` 的情况。
 - 不要发布真实 `JointTrajectory` 到 bridge。
 - 检查 PSoC/M33 是否上电。
 - 检查 CANH/CANL、共地、终端电阻。
 - 检查 M33 固件是否实现 `0x321 -> 0x322`。
 - 检查 PSoC CAN 波特率是否为 1Mbps。
+
+电池充电或更换后，按下面顺序复测：
+
+```bash
+ip -details -statistics link show can0
+~/nanopi_can_master.py heartbeat --iface can0 --seq 1 --wait 1
+```
+
+通过标准：
+
+- `can0` 仍为 `UP`、`ERROR-ACTIVE`、1Mbps。
+- 能收到 M33 `0x322` 状态回复，或至少看到 TX packets 正常增长且不再持续 dropped/errors。
+- 通过前不要让 bridge 接收真实运动轨迹。
 
 ## 5. 当前真实 CAN ID
 

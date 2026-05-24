@@ -375,6 +375,56 @@ TX 321 04
 
 - 已实现并在 NanoPi 上验证 `/rehab_arm/safety_state` 能输出 limited。
 
+### PSoC/M33 没有 ACK/0x322 时先确认电池电量
+
+现象：
+
+- NanoPi bridge 或调试脚本能尝试发送 heartbeat：
+
+```text
+TX 321 01
+```
+
+- `nanopi_can_master.py heartbeat --iface can0 --seq 1 --wait 1` 没有收到 `0x322`。
+- `can0` 仍是 `ERROR-ACTIVE`，但 TX packets 不增长，TX dropped/errors 增加。
+
+环境：
+
+- NanoPi `can0`
+- 1Mbps classic CAN
+- PSoC/M33 作为正式控制主站和 heartbeat/status 回复方
+
+排查：
+
+- ROS2 bridge 已能启动并调用 SocketCAN 发送。
+- `can0` 已经 UP，说明 NanoPi 侧 CAN 接口存在。
+- 没有 `0x322`，且 TX packets 不增长，说明总线层没有成功 ACK。
+
+根因：
+
+- 用户现场确认：电池没电，导致 PSoC/M33 或相关 CAN 节点未正常在线/供电不足，因此无法 ACK NanoPi heartbeat，也无法回复 `0x322`。
+
+解决：
+
+- 先给电池充电或更换电池。
+- 确认 PSoC/M33、CAN 收发器和电机侧节点都正常上电。
+- 再复测：
+
+```bash
+ip -details -statistics link show can0
+~/nanopi_can_master.py heartbeat --iface can0 --seq 1 --wait 1
+```
+
+技巧：
+
+- CAN “发不出去/没有 ACK” 不一定是协议错，电源是第一检查项。
+- 看到 `TX 321` 只能说明应用层尝试发送；看到 `0x322`、TX packets 增长或独立 CAN 工具观察到帧，才算总线层验证通过。
+
+状态：
+
+- 根因已确认：电池没电。
+- 待电池恢复后复测 `0x321 -> 0x322`。
+
 ### SSH 远端 bash 里后台任务会影响 source 环境
 
 现象：

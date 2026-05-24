@@ -118,12 +118,16 @@
   - 给 `rehab_arm_psoc_bridge` 增加 `status_timeout_sec` 参数和 PSoC status timeout 诊断。
   - 验证 bridge 无轨迹运行时会发布 `/rehab_arm/safety_state`：
     - `{"state":"limited","detail":"no PSoC status after 4 heartbeats","source":"psoc_bridge"}`
+- 现场确认 M33/PSoC heartbeat 无回复的硬件根因：
+  - 现象是 NanoPi 能打印 `TX 321`，但未收到 `0x322`，并且 `can0` TX packets 不增长、TX dropped/errors 增加。
+  - 用户现场确认原因是电池没电，导致目标控制板/总线节点未正常在线或无法 ACK。
+  - 结论：这次不是 ROS2 bridge 代码问题，也不是 `0x321/0x322` 协议定义问题；先恢复供电再复测。
 
 ## 进行中
 
-- 下一步准备排查 M33 heartbeat 回复链路：
-  - 现在软件诊断已经能明确报告 no PSoC status。
-  - 下一步需要硬件/固件侧确认 M33/PSoC 是否上电、固件是否运行、CAN 收发器是否接入同一总线并 ACK。
+- 下一步准备在电池充电或更换后复测 M33 heartbeat 回复链路：
+  - 软件诊断已经能明确报告 no PSoC status。
+  - 先确认 PSoC/M33 和 CAN 收发器供电恢复，再复测 `0x321 -> 0x322`。
 
 ## 待确认
 
@@ -141,8 +145,8 @@
 
 严格按“一次只做一个能测试的小目标”推进：
 
-1. 检查 PSoC/M33 板卡供电、共地、CANH/CANL、终端电阻、收发器 standby/enable。
-2. 确认 M33 固件是否已经实现并运行 `0x321 -> 0x322` heartbeat/status 任务。
+1. 给电池充电或更换电池，确认 PSoC/M33、CAN 收发器和电机侧节点正常上电。
+2. 检查共地、CANH/CANL、终端电阻、收发器 standby/enable。
 3. 用 `nanopi_can_master.py heartbeat --iface can0 --seq 1 --wait 1` 复测。
 4. 只有看到 `0x322` 或 TX packets 正常增长后，再继续 bridge 状态解析和轨迹下发。
 
