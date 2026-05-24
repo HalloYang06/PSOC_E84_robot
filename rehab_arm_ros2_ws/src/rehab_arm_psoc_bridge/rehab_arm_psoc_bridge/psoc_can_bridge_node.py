@@ -108,11 +108,13 @@ class PsocCanBridgeNode(Node):
         self.declare_parameter('send_rate_hz', 50.0)
         self.declare_parameter('default_rpm', 5)
         self.declare_parameter('log_heartbeat', False)
+        self.declare_parameter('status_timeout_sec', 2.5)
 
         self.iface = str(self.get_parameter('interface').value)
         self.send_rate_hz = float(self.get_parameter('send_rate_hz').value)
         self.default_rpm = int(self.get_parameter('default_rpm').value)
         self.log_heartbeat = bool(self.get_parameter('log_heartbeat').value)
+        self.status_timeout_sec = float(self.get_parameter('status_timeout_sec').value)
 
         self.sock = socket.socket(socket.PF_CAN, socket.SOCK_RAW, socket.CAN_RAW)
         self.sock.bind((self.iface,))
@@ -124,6 +126,10 @@ class PsocCanBridgeNode(Node):
         self.pending_points: list[TrajectoryPointRuntime] = []
         self.pending_lock = threading.Lock()
         self.heartbeat_seq = 0
+        self.heartbeat_tx_count = 0
+        self.status_rx_count = 0
+        self.last_status_time: float | None = None
+        self.last_safety_state = ''
 
         self.joint_pub = self.create_publisher(JointState, '/joint_states', 20)
         self.safety_pub = self.create_publisher(String, '/rehab_arm/safety_state', 10)
@@ -137,6 +143,7 @@ class PsocCanBridgeNode(Node):
 
         self.send_timer = self.create_timer(1.0 / self.send_rate_hz, self.on_send_timer)
         self.heartbeat_timer = self.create_timer(1.0, self.on_heartbeat_timer)
+        self.diagnostic_timer = self.create_timer(1.0, self.on_diagnostic_timer)
         self.rx_thread = threading.Thread(target=self.rx_loop, daemon=True)
         self.rx_thread.start()
         self.publish_safety('ok', 'bridge started')
@@ -197,10 +204,23 @@ class PsocCanBridgeNode(Node):
 
     def on_heartbeat_timer(self) -> None:
         self.heartbeat_seq = (self.heartbeat_seq + 1) & CMD_HEARTBEAT_SEQ_MASK
+        self.heartbeat_tx_count += 1
         self.send_frame(
             CanFrame(NANOPI_HEARTBEAT_ID, bytes([self.heartbeat_seq]), False),
             log=self.log_heartbeat,
         )
+
+    def on_diagnostic_timer(self) -> None:
+        if self.last_status_time is not None:
+            age = time.monotonic() - self.last_status_time
+            if age <= self.status_timeout_sec:
+                return
+            detail = f'no PSoC status for {age:.1f}s after {self.status_rx_count} status frames'
+        elif self.heartbeat_tx_count > 0:
+            detail = f'no PSoC status after {self.heartbeat_tx_count} heartbeats'
+        else:
+            return
+        self.publish_safety('limited', detail)
 
     def send_frame(self, frame: CanFrame, log: bool = True) -> None:
         with self.sock_lock:
@@ -230,6 +250,8 @@ class PsocCanBridgeNode(Node):
             self.handle_f103_health(frame)
 
     def handle_psoc_status(self, frame: CanFrame) -> None:
+        self.last_status_time = time.monotonic()
+        self.status_rx_count += 1
         payload = {
             'state': 'ok',
             'source': 'psoc',
@@ -277,6 +299,10 @@ class PsocCanBridgeNode(Node):
         self.joint_pub.publish(msg)
 
     def publish_safety(self, state: str, detail: str) -> None:
+        state_key = f'{state}:{detail}'
+        if state_key == self.last_safety_state:
+            return
+        self.last_safety_state = state_key
         payload = {'state': state, 'detail': detail, 'source': 'psoc_bridge'}
         self.safety_pub.publish(String(data=json.dumps(payload, separators=(',', ':'))))
 

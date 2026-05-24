@@ -126,6 +126,17 @@ timeout 4 ros2 run rehab_arm_psoc_bridge psoc_can_bridge_node.py --ros-args -p l
 - 应用层能打印 `TX 321 01`，说明节点尝试发送 NanoPi heartbeat。
 - 但还没有看到 M33 `0x322` 回复。
 - 如果 `TX packets` 不增加而 `TX dropped/errors` 增加，说明总线层 ACK 未成功。
+- bridge 会在没有收到 PSoC status 时发布 limited safety 状态：
+
+```bash
+ros2 topic echo --once /rehab_arm/safety_state
+```
+
+当前 M33 未回复时的示例：
+
+```json
+{"state":"limited","detail":"no PSoC status after 4 heartbeats","source":"psoc_bridge"}
+```
 
 下一步验证：
 
@@ -136,6 +147,14 @@ ip -details -statistics link show can0
 ```
 
 只有看到 `0x322` 回复，或 TX packets 正常增长后，才继续 bridge 状态解析和轨迹下发。
+
+如果没有 `0x322`：
+
+- 不要发布真实 `JointTrajectory` 到 bridge。
+- 检查 PSoC/M33 是否上电。
+- 检查 CANH/CANL、共地、终端电阻。
+- 检查 M33 固件是否实现 `0x321 -> 0x322`。
+- 检查 PSoC CAN 波特率是否为 1Mbps。
 
 ## 5. 当前真实 CAN ID
 
@@ -167,4 +186,3 @@ git push origin feature/rehab-arm-ros2-architecture
 ```
 
 不要提交与本次任务无关的用户改动。
-

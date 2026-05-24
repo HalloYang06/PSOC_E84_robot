@@ -330,6 +330,51 @@ ip -details -statistics link show can0
 - bridge 应用层启动和 heartbeat 尝试已通过。
 - M33 回复/总线 ACK 未通过，下一步排查 PSoC/M33 在线状态和 CAN ACK。
 
+### M33 heartbeat 未回复时要让 ROS 明确暴露 limited 状态
+
+现象：
+
+- `rehab_arm_psoc_bridge` 能打印 heartbeat：
+
+```text
+TX 321 01
+TX 321 02
+TX 321 03
+TX 321 04
+```
+
+- 但没有 `0x322` 回复。
+- `nanopi_can_master.py heartbeat --iface can0 --seq 7 --wait 1` 也只看到 TX，没有 RX。
+- `can0` TX packets 不增加，TX errors/dropped 增加。
+
+根因：
+
+- 当前 M33/PSoC heartbeat/status 链路未通，可能是硬件未在线、固件未运行 heartbeat 任务、波特率/接线/ACK 问题。
+- 软件如果只打印 TX，操作者容易误以为 bridge 正常。
+
+解决：
+
+- 在 `rehab_arm_psoc_bridge` 增加：
+  - `status_timeout_sec` 参数，默认 `2.5`
+  - `heartbeat_tx_count`
+  - `status_rx_count`
+  - `last_status_time`
+  - 诊断定时器
+- 当发出 heartbeat 但没有收到 `0x322` 时，发布：
+
+```json
+{"state":"limited","detail":"no PSoC status after 4 heartbeats","source":"psoc_bridge"}
+```
+
+技巧：
+
+- bridge 的健康状态不能只看进程是否启动。
+- PSoC/M33 未回复时，ROS safety topic 必须显式表达 limited/fault，方便 App、工作站和数据记录系统发现问题。
+
+状态：
+
+- 已实现并在 NanoPi 上验证 `/rehab_arm/safety_state` 能输出 limited。
+
 ### SSH 远端 bash 里后台任务会影响 source 环境
 
 现象：
