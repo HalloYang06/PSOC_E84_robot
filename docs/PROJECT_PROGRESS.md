@@ -80,6 +80,10 @@
 - 新增 Codex closeout skill：
   - `rehab-arm-task-closeout`
   - 后续每个小任务完成后要更新进度、踩坑、使用手册，并提交推送到 GitHub 当前 feature 分支。
+- GitHub 分支上传：
+  - 已提交 `78cb2547 Add rehab arm ROS2 architecture baseline`。
+  - 已推送到 `origin/feature/rehab-arm-ros2-architecture`。
+  - GitHub PR 地址提示：`https://github.com/ChillAmnesiac/Medical-Rehabilitation-Manipulator/pull/new/feature/rehab-arm-ros2-architecture`
 - 完成 `rehab_arm_sim_mujoco` 第一轮 NanoPi 冒烟测试：
   - 同步 `mujoco_sim_node.py` 到 NanoPi。
   - 只重建 `rehab_arm_sim_mujoco`。
