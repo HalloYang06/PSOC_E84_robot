@@ -1,0 +1,20 @@
+joint_names:
+  - shoulder_lift_joint
+  - elbow_lift_joint
+  - shoulder_abduction_joint
+  - upper_arm_rotation_joint
+  - forearm_rotation_joint
+
+limits:
+  shoulder_lift_joint: {min: -0.70, max: 1.40, velocity: 0.60}
+  elbow_lift_joint: {min: 0.00, max: 1.80, velocity: 0.70}
+  shoulder_abduction_joint: {min: -0.45, max: 0.80, velocity: 0.40}
+  upper_arm_rotation_joint: {min: -1.20, max: 1.20, velocity: 0.70}
+  forearm_rotation_joint: {min: -1.20, max: 1.20, velocity: 0.70}
+
+psoc_joint_ids:
+  shoulder_lift_joint: 0
+  elbow_lift_joint: 1
+  shoulder_abduction_joint: 2
+  upper_arm_rotation_joint: 3
+  forearm_rotation_joint: 4
