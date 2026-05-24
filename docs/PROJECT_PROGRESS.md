@@ -126,12 +126,20 @@
   - 在 `README.md`、`docs/REHAB_ARM_SYSTEM_ARCHITECTURE.md`、`docs/USER_MANUAL.md`、`docs/REHAB_ARM_ROS2_SIM_FRAMEWORK_GUIDE.md` 中前置安全原则。
   - 明确康复外骨骼是穿戴在人身上的设备，安全优先级高于演示效果、控制精度、AI 能力和开发速度。
   - 明确默认不动、异常即停、M33 最终裁决、急停本地有效、仿真先行、人在设备内禁止调试直控。
+- 电池恢复后完成 M33 heartbeat/status 链路复测：
+  - `can0` 为 `UP`、`LOWER_UP`、`ERROR-ACTIVE`、1Mbps，错误计数器当前 `tx 0 rx 0`。
+  - `/home/pi/nanopi_can_master.py heartbeat --iface can0 --seq 1 --wait 1` 成功发出 `STD 0x321 [1] 01`。
+  - 收到 M33 回复 `STD 0x322 [8] A5 01 07 00 48 EA 6D 00`。
+  - TX packets 从 0 增长到 1，确认总线层 ACK/发送成功。
+  - `rehab_arm_psoc_bridge` 非运动测试成功发布 `/rehab_arm/safety_state`：
+    - `{"state":"ok","source":"psoc","id_hex":"0x322","data":"A504070079F86E00","marker":165,"seq":4,"motors":7,"error_code":0}`
+  - 本轮没有发布真实 `JointTrajectory`，没有做电机运动测试。
 
 ## 进行中
 
-- 下一步准备在电池充电或更换后复测 M33 heartbeat 回复链路：
-  - 软件诊断已经能明确报告 no PSoC status。
-  - 先确认 PSoC/M33 和 CAN 收发器供电恢复，再复测 `0x321 -> 0x322`。
+- 下一步准备完善 NanoPi PSoC bridge 的正式轨迹下发安全门控：
+  - 在没有 M33 `ok` 状态、关节映射未确认或轨迹字段不合规时，bridge 应拒绝发送 `0x320`。
+  - 先做软件单元/非运动测试，再考虑台架低能量测试。
 
 ## 待确认
 
@@ -149,10 +157,10 @@
 
 严格按“一次只做一个能测试的小目标”推进：
 
-1. 给电池充电或更换电池，确认 PSoC/M33、CAN 收发器和电机侧节点正常上电。
-2. 检查共地、CANH/CANL、终端电阻、收发器 standby/enable。
-3. 用 `nanopi_can_master.py heartbeat --iface can0 --seq 1 --wait 1` 复测。
-4. 只有看到 `0x322` 或 TX packets 正常增长后，再继续 bridge 状态解析和轨迹下发。
+1. 明确 `0x320` payload 字段、单位、缩放、关节编号和限幅策略。
+2. 给 `rehab_arm_psoc_bridge` 增加发送 `0x320` 前的安全门控和轨迹合法性检查。
+3. 用仿真/非运动测试验证：M33 未 `ok` 时拒绝轨迹，M33 `ok` 时只发送受限测试帧。
+4. 再与 M33 固件日志对照，确认收到的关节目标与 ROS 输入一致。
 
 ## 更新规则
 

@@ -190,6 +190,36 @@ ip -details -statistics link show can0
 - 能收到 M33 `0x322` 状态回复，或至少看到 TX packets 正常增长且不再持续 dropped/errors。
 - 通过前不要让 bridge 接收真实运动轨迹。
 
+已验证通过的示例：
+
+```text
+TX STD 0x00000321 [1] 01
+RX STD 0x00000322 [8] A5 01 07 00 48 EA 6D 00
+```
+
+ROS bridge 非运动验证：
+
+```bash
+cd /home/pi/rehab_arm_ros2_ws
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+ros2 run rehab_arm_psoc_bridge psoc_can_bridge_node.py --ros-args -p log_heartbeat:=true
+```
+
+另开终端查看：
+
+```bash
+ros2 topic echo --once /rehab_arm/safety_state
+```
+
+已验证通过的示例：
+
+```json
+{"state":"ok","source":"psoc","id_hex":"0x322","data":"A504070079F86E00","marker":165,"seq":4,"motors":7,"error_code":0}
+```
+
+注意：这个验证只说明 heartbeat/status 链路已经通，不等于允许直接带人运动。真实轨迹下发还需要确认 `0x320` payload、关节映射、限幅策略和急停测试。
+
 ## 5. 当前真实 CAN ID
 
 | ID | 协议/用途 | 说明 |

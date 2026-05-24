@@ -422,8 +422,14 @@ ip -details -statistics link show can0
 
 状态：
 
-- 根因已确认：电池没电。
-- 待电池恢复后复测 `0x321 -> 0x322`。
+- 已确认并复测通过。
+- 电池恢复后，`nanopi_can_master.py heartbeat --iface can0 --seq 1 --wait 1` 能收到：
+
+```text
+RX STD 0x00000322 [8] A5 01 07 00 48 EA 6D 00
+```
+
+- ROS `rehab_arm_psoc_bridge` 也能发布 PSoC 来源的 `ok` safety state，说明这次无回复确实是供电问题，不是 ROS bridge 协议问题。
 
 ### SSH 远端 bash 里后台任务会影响 source 环境
 
@@ -466,6 +472,8 @@ kill $pid 2>/dev/null || true
 
 - SSH 远端一行命令里混用 `&&`、`;`、`&` 时要特别小心。
 - 后台运行 ROS 节点时，用 `( ... ) &` 包住节点命令，避免把环境 setup 链路也放进后台。
+- 从 Windows PowerShell 通过 SSH 管道发送多行 bash 脚本时，注意去掉 CRLF 里的 `\r`；否则远端可能出现路径后带 `$'\r'` 或临时脚本找不到的问题。
+- 不要在 source ROS setup 前开启 `set -u`；`/opt/ros/jazzy/setup.bash` 可能访问未定义环境变量。
 
 状态：
 
