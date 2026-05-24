@@ -207,6 +207,14 @@
   - `candump can0,320:7FF` 捕获：
     - `can0  320   [8]  03 00 39 00 05 00 00 00`
   - 本轮只完成 NanoPi/CAN 侧单帧发送确认；M33 串口日志待用户反馈。
+- 尝试从 NanoPi 查看 M33 串口日志：
+  - NanoPi 未发现 `/dev/ttyUSB*`、`/dev/ttyACM*` 或 `/dev/serial/by-id/*`。
+  - 未发现 `minicom/picocom/screen` 等串口查看进程。
+  - 结论：M33 串口日志当前不在 NanoPi 上，应该在用户烧录/调试用电脑或调试器连接的串口上查看。
+  - 复测 CAN heartbeat 正常：
+    - `TX STD 0x00000321 [1] 04`
+    - `RX STD 0x00000322 [8] A5 04 07 00 F6 E7 04 00`
+  - 当前 `can0` 仍为 `UP`、`LOWER_UP`、`ERROR-ACTIVE`、1Mbps，错误计数器 `tx 0 rx 0`。
 
 ## 进行中
 
@@ -233,9 +241,10 @@
 严格按“一次只做一个能测试的小目标”推进：
 
 1. 用户查看 M33 串口日志，确认是否出现 `RX 320 dlc=8 data=0300390005000000`。
-2. 对照 M33 打印的 `joint_id/deg_x10/rpm/torque_ma` 是否为 `0/57/5/0`。
-3. 确认 M33 打印 `decision=reject reason=logging_only_no_motor_output` 或等价安全拒绝原因。
-4. 对照通过后，再设计下一步：M33 继续不驱动电机，只增加更完整的 safety reason/status 上报。
+2. 如果用户希望我直接查看，需要把 M33 串口接到 NanoPi，或提供烧录/调试电脑上的远程访问。
+3. 对照 M33 打印的 `joint_id/deg_x10/rpm/torque_ma` 是否为 `0/57/5/0`。
+4. 确认 M33 打印 `decision=reject reason=logging_only_no_motor_output` 或等价安全拒绝原因。
+5. 对照通过后，再设计下一步：M33 继续不驱动电机，只增加更完整的 safety reason/status 上报。
 
 ## 更新规则
 

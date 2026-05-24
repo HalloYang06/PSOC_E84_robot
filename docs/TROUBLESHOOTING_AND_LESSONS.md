@@ -594,6 +594,33 @@ can0  320   [8]  03 00 39 00 05 00 00 00
 - NanoPi/CAN 侧单帧发送已通过。
 - M33 串口日志待用户反馈。
 
+### NanoPi 看不到 M33 串口时不要误判为 M33 没日志
+
+现象：
+
+- 用户让 NanoPi 侧查看 M33 日志。
+- NanoPi 上没有 `/dev/ttyUSB*`、`/dev/ttyACM*`、`/dev/serial/by-id/*`。
+- 也没有正在运行的 `minicom/picocom/screen` 串口查看进程。
+
+结论：
+
+- M33 串口没有接到 NanoPi，不能从 NanoPi 直接查看。
+- 串口日志大概率在用户烧录/调试用电脑或调试器连接的串口上。
+
+同时确认：
+
+```text
+TX STD 0x00000321 [1] 04
+RX STD 0x00000322 [8] A5 04 07 00 F6 E7 04 00
+```
+
+- `can0` 为 `ERROR-ACTIVE`，错误计数器 `tx 0 rx 0`，说明 CAN 链路仍然正常。
+
+技巧：
+
+- “看不到串口日志”要先分清是 M33 没打印，还是串口根本没接到当前主机。
+- 如果要让 NanoPi 查看 M33 日志，需要把 M33 UART/USB-CDC 接到 NanoPi，或者提供调试电脑远程访问。
+
 ### SSH 远端 bash 里后台任务会影响 source 环境
 
 现象：
