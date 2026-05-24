@@ -4,11 +4,31 @@
 
 ## 当前安全边界
 
+- 这是穿戴在人身上的康复外骨骼设备；任何命令、算法或调试动作都必须以人身安全为最高优先级。
+- 安全状态不明确时默认不动：不要用“可能没事”作为继续测试的理由。
 - 正式运动链路：`JointTrajectory -> NanoPi -> M33 -> 电机`。
+- M33 是最终安全责任方，必须负责限位、限速、急停、掉线保护、供电异常处理和电机故障处理。
 - NanoPi 直发 CANSimple/私有扩展帧只用于调试，不进入正式 bringup。
 - 当前不要发布真实运动轨迹到 `rehab_arm_psoc_bridge`，除非 M33 heartbeat/status 链路已经确认。
+- `/rehab_arm/safety_state` 不是 `ok` 时，不要发布真实运动轨迹。
+- 人穿戴设备时，禁止使用 `nanopi_can_master.py` 直控电机。
 - App 实时近端控制走 BLE 到英飞凌；HTTP 到 NanoPi/OpenClaw 只做高层 AI、报告和远程服务。
 - 旧规划 CAN ID 不作为当前依据。
+
+## 真机测试前安全检查
+
+每次真机测试前，先确认：
+
+- 电池电量充足，PSoC/M33、CAN 收发器、电机侧节点供电稳定。
+- 硬件急停可触发，触发后电机不会继续输出。
+- 机械限位、软件限位、关节方向、关节 ID 映射已经确认。
+- `can0` 为 `UP`、`ERROR-ACTIVE`、1Mbps，无持续 error-passive 或 bus-off。
+- 能收到 M33 `0x322` heartbeat/status。
+- `/rehab_arm/safety_state` 为 `ok`。
+- 本次轨迹已经在仿真中跑过，并且没有超限、突变或方向错误。
+- 现场有人能立即断电或按下急停。
+
+任一项不满足，都只允许做不运动诊断，不允许让设备带人运动。
 
 ## 1. NanoPi ROS2 工作区
 

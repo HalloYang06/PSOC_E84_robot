@@ -122,6 +122,10 @@
   - 现象是 NanoPi 能打印 `TX 321`，但未收到 `0x322`，并且 `can0` TX packets 不增长、TX dropped/errors 增加。
   - 用户现场确认原因是电池没电，导致目标控制板/总线节点未正常在线或无法 ACK。
   - 结论：这次不是 ROS2 bridge 代码问题，也不是 `0x321/0x322` 协议定义问题；先恢复供电再复测。
+- 强化人身安全架构边界：
+  - 在 `README.md`、`docs/REHAB_ARM_SYSTEM_ARCHITECTURE.md`、`docs/USER_MANUAL.md`、`docs/REHAB_ARM_ROS2_SIM_FRAMEWORK_GUIDE.md` 中前置安全原则。
+  - 明确康复外骨骼是穿戴在人身上的设备，安全优先级高于演示效果、控制精度、AI 能力和开发速度。
+  - 明确默认不动、异常即停、M33 最终裁决、急停本地有效、仿真先行、人在设备内禁止调试直控。
 
 ## 进行中
 
