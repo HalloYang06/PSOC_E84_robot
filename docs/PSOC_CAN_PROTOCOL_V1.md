@@ -123,6 +123,29 @@ M33 还应该打印：
 
 ## NanoPi 对照命令
 
+生成 payload，不访问 CAN：
+
+```bash
+cd /home/pi/rehab_arm_ros2_ws
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+ros2 run rehab_arm_psoc_bridge encode_psoc_cmd.py shoulder_lift_joint 0.1
+```
+
+预期输出包含：
+
+```text
+can_id: 0x320
+joint_name: shoulder_lift_joint
+joint_id: 0
+position_rad: 0.10000
+target_deg: 5.72958
+deg_x10: 57
+rpm: 5
+torque_ma: 0
+payload: 0300390005000000
+```
+
 只解码 payload，不访问 CAN：
 
 ```bash

@@ -535,6 +535,14 @@ torque_ma: 0
 状态：
 
 - 本地和 NanoPi 均已验证解码工具。
+- 也已新增并验证编码工具：
+
+```bash
+ros2 run rehab_arm_psoc_bridge encode_psoc_cmd.py shoulder_lift_joint 0.1
+```
+
+- 输出 payload `0300390005000000`，再用解码工具能反查为同一目标。
+- 超限输入会被编码工具拒绝，不输出 payload。
 
 ### SSH 远端 bash 里后台任务会影响 source 环境
 

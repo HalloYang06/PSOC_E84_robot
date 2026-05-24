@@ -283,9 +283,32 @@ DRY-RUN 320 joint=shoulder_lift_joint data=0300390005000000
 - 如需烧录 M33 固件，由用户执行烧录。
 - 只有满足以上条件后，才允许临时设置 `-p enable_target_tx:=true` 做单帧日志对照测试。
 
-### 4.2 `0x320` Payload 解码工具
+### 4.2 `0x320` Payload 编码/解码工具
 
 协议规格见：[PSOC_CAN_PROTOCOL_V1.md](PSOC_CAN_PROTOCOL_V1.md)。
+
+生成 payload，不访问 CAN，不会让电机运动：
+
+```bash
+cd /home/pi/rehab_arm_ros2_ws
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+ros2 run rehab_arm_psoc_bridge encode_psoc_cmd.py shoulder_lift_joint 0.1
+```
+
+已验证输出：
+
+```text
+can_id: 0x320
+joint_name: shoulder_lift_joint
+joint_id: 0
+position_rad: 0.10000
+target_deg: 5.72958
+deg_x10: 57
+rpm: 5
+torque_ma: 0
+payload: 0300390005000000
+```
 
 只解码 payload，不访问 CAN，不会让电机运动：
 

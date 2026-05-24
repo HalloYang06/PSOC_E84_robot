@@ -177,11 +177,16 @@
 - 固化 PSoC CAN 协议 V1 和对照工具：
   - 新增 `docs/PSOC_CAN_PROTOCOL_V1.md`，记录 `0x320/0x321/0x322` 字段、单位、端序、关节编号和 M33 日志要求。
   - 新增 `rehab_arm_psoc_bridge/decode_psoc_cmd.py`，用于解码 `0x320` payload，不访问 CAN。
-  - `CMakeLists.txt` 安装 `decode_psoc_cmd.py`，可通过 `ros2 run rehab_arm_psoc_bridge decode_psoc_cmd.py ...` 调用。
+  - 新增 `rehab_arm_psoc_bridge/encode_psoc_cmd.py`，用于从关节名和目标角度生成 `0x320` payload，不访问 CAN。
+  - `CMakeLists.txt` 安装 `encode_psoc_cmd.py` 和 `decode_psoc_cmd.py`，可通过 `ros2 run rehab_arm_psoc_bridge ...` 调用。
 - 已验证：
   - 本地 `python -m py_compile rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/decode_psoc_cmd.py` 通过。
+  - 本地 `python -m py_compile rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/encode_psoc_cmd.py` 通过。
+  - 本地 `python .../encode_psoc_cmd.py shoulder_lift_joint 0.1` 输出 payload `0300390005000000`。
+  - 本地超限输入 `shoulder_lift_joint 99.0` 会被拒绝，不输出 payload。
   - 本地 `python .../decode_psoc_cmd.py 0300390005000000` 输出 `joint_id=0`、`target_deg=5.7`、`target_rad=0.09948`、`rpm=5`、`torque_ma=0`。
   - NanoPi `colcon build --symlink-install --packages-select rehab_arm_psoc_bridge` 通过。
+  - NanoPi `ros2 run rehab_arm_psoc_bridge encode_psoc_cmd.py shoulder_lift_joint 0.1` 输出 payload `0300390005000000`。
   - NanoPi `ros2 run rehab_arm_psoc_bridge decode_psoc_cmd.py 0300390005000000` 输出同样字段。
 
 ## 进行中
