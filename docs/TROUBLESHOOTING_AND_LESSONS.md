@@ -592,7 +592,51 @@ can0  320   [8]  03 00 39 00 05 00 00 00
 状态：
 
 - NanoPi/CAN 侧单帧发送已通过。
-- M33 串口日志待用户反馈。
+- 已从本机 Windows `KitProg3 USB-UART (COM26)` 读取到 M33 日志：
+
+```text
+[control] ros cmd direct apply failed, cmd=3 joint=0 ret=-22
+```
+
+- 说明 M33 收到了 `cmd=3 joint=0`，但当前固件不是 logging-only 对照格式，而且可能进入了 direct apply 路径。
+- 已停止继续发送 `0x320`，等待 M33 固件改为 logging-only。
+
+### M33 出现 direct apply 日志时必须停止 0x320 测试
+
+现象：
+
+```text
+[control] ros cmd direct apply failed, cmd=3 joint=0 ret=-22
+```
+
+环境：
+
+- 电机驱动电源已断开。
+- NanoPi 单帧发送 `0x320 data=0300390005000000`。
+- M33 串口通过本机 Windows `COM26` 读取，115200 baud。
+
+判断：
+
+- `cmd=3 joint=0` 说明 M33 已经收到并识别了部分字段。
+- `direct apply failed` 说明 M33 当前代码路径可能尝试把 ROS/CAN 命令交给控制应用层。
+- 这不符合当前 logging-only 阶段要求。
+
+处理：
+
+- 不再继续发 `0x320`。
+- 电机驱动继续断电。
+- M33 固件应改为收到 `0x320` 后只打印字段和安全拒绝：
+
+```text
+RX 320 dlc=8 data=0300390005000000
+cmd=0x03 joint_id=0 joint=shoulder_lift_joint deg_x10=57 target_deg=5.7 target_rad=0.09948 rpm=5 torque_ma=0
+decision=reject reason=logging_only_no_motor_output
+safety_state=limited
+```
+
+状态：
+
+- 阻塞在 M33 固件 logging-only 修改和重新烧录。
 
 ### NanoPi 看不到 M33 串口时不要误判为 M33 没日志
 

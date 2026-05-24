@@ -366,6 +366,14 @@ safety_state=limited
 
 如果 M33 打印字段和 NanoPi 不一致，先停止测试，检查端序、DLC、字段偏移和单位。
 
+当前已观察到的阻塞日志：
+
+```text
+[control] ros cmd direct apply failed, cmd=3 joint=0 ret=-22
+```
+
+这说明 M33 收到了 `cmd=3 joint=0`，但固件可能进入了 direct apply 控制应用路径。当前阶段不允许继续这样测试；必须先把 M33 固件改成 logging-only，不驱动、不 direct apply，只打印字段和安全拒绝原因。
+
 ## 5. 当前真实 CAN ID
 
 | ID | 协议/用途 | 说明 |

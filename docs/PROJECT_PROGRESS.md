@@ -215,6 +215,17 @@
     - `TX STD 0x00000321 [1] 04`
     - `RX STD 0x00000322 [8] A5 04 07 00 F6 E7 04 00`
   - 当前 `can0` 仍为 `UP`、`LOWER_UP`、`ERROR-ACTIVE`、1Mbps，错误计数器 `tx 0 rx 0`。
+- 从本机 Windows `KitProg3 USB-UART (COM26)` 读取到 M33 串口日志：
+  - 打开 COM26，115200 baud，DTR/RTS 关闭。
+  - 再次由 NanoPi 发送单帧 `0x320`：`0300390005000000`。
+  - M33 串口输出：
+    - `[control] ros cmd direct apply failed, cmd=3 joint=0 ret=-22`
+  - 结论：M33 已收到 `0x320`，但当前固件日志不是 logging-only 对照格式，而且字样显示可能进入了 `direct apply` 控制应用路径。
+  - 已立即停止继续发送 `0x320`；电机驱动继续保持断电。
+  - 单帧后复测 heartbeat 正常：
+    - `TX STD 0x00000321 [1] 05`
+    - `RX STD 0x00000322 [8] A5 05 07 00 FC FA 07 00`
+  - 当前 `can0` 仍为 `ERROR-ACTIVE`，错误计数器 `tx 0 rx 0`。
 
 ## 进行中
 
@@ -240,11 +251,11 @@
 
 严格按“一次只做一个能测试的小目标”推进：
 
-1. 用户查看 M33 串口日志，确认是否出现 `RX 320 dlc=8 data=0300390005000000`。
-2. 如果用户希望我直接查看，需要把 M33 串口接到 NanoPi，或提供烧录/调试电脑上的远程访问。
-3. 对照 M33 打印的 `joint_id/deg_x10/rpm/torque_ma` 是否为 `0/57/5/0`。
-4. 确认 M33 打印 `decision=reject reason=logging_only_no_motor_output` 或等价安全拒绝原因。
-5. 对照通过后，再设计下一步：M33 继续不驱动电机，只增加更完整的 safety reason/status 上报。
+1. 修改 M33 固件：`0x320` 当前阶段必须进入 logging-only 路径，不得进入 direct apply/电机控制路径。
+2. M33 日志必须打印 `RX 320 dlc=8 data=0300390005000000` 和完整字段：`cmd/joint_id/deg_x10/target_deg/target_rad/rpm/torque_ma`。
+3. M33 必须打印 `decision=reject reason=logging_only_no_motor_output safety_state=limited` 或等价安全拒绝。
+4. 用户重新烧录 M33 logging-only 固件后，再由 NanoPi 发送单帧复测。
+5. 对照通过前不要给电机驱动上电，不要继续做运动测试。
 
 ## 更新规则
 
