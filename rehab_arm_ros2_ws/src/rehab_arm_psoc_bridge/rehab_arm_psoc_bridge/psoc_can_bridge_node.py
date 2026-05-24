@@ -109,12 +109,22 @@ class PsocCanBridgeNode(Node):
         self.declare_parameter('default_rpm', 5)
         self.declare_parameter('log_heartbeat', False)
         self.declare_parameter('status_timeout_sec', 2.5)
+        self.declare_parameter('require_psoc_ok_for_trajectory', True)
+        self.declare_parameter('reject_out_of_limit_trajectory', True)
+        self.declare_parameter('max_trajectory_points', 100)
 
         self.iface = str(self.get_parameter('interface').value)
         self.send_rate_hz = float(self.get_parameter('send_rate_hz').value)
         self.default_rpm = int(self.get_parameter('default_rpm').value)
         self.log_heartbeat = bool(self.get_parameter('log_heartbeat').value)
         self.status_timeout_sec = float(self.get_parameter('status_timeout_sec').value)
+        self.require_psoc_ok_for_trajectory = bool(
+            self.get_parameter('require_psoc_ok_for_trajectory').value
+        )
+        self.reject_out_of_limit_trajectory = bool(
+            self.get_parameter('reject_out_of_limit_trajectory').value
+        )
+        self.max_trajectory_points = int(self.get_parameter('max_trajectory_points').value)
 
         self.sock = socket.socket(socket.PF_CAN, socket.SOCK_RAW, socket.CAN_RAW)
         self.sock.bind((self.iface,))
@@ -129,6 +139,8 @@ class PsocCanBridgeNode(Node):
         self.heartbeat_tx_count = 0
         self.status_rx_count = 0
         self.last_status_time: float | None = None
+        self.last_psoc_status_ok = False
+        self.last_psoc_error_code: int | None = None
         self.last_safety_state = ''
 
         self.joint_pub = self.create_publisher(JointState, '/joint_states', 20)
@@ -146,7 +158,7 @@ class PsocCanBridgeNode(Node):
         self.diagnostic_timer = self.create_timer(1.0, self.on_diagnostic_timer)
         self.rx_thread = threading.Thread(target=self.rx_loop, daemon=True)
         self.rx_thread.start()
-        self.publish_safety('ok', 'bridge started')
+        self.publish_safety('limited', 'bridge started, waiting for PSoC status')
         self.get_logger().info(f'PSoC CAN bridge ready on {self.iface}')
 
     def destroy_node(self):
@@ -158,22 +170,56 @@ class PsocCanBridgeNode(Node):
         super().destroy_node()
 
     def on_trajectory(self, msg: JointTrajectory) -> None:
+        gate_ok, gate_detail = self.trajectory_gate_state()
+        if not gate_ok:
+            with self.pending_lock:
+                self.pending_points = []
+            self.publish_safety('limited', f'rejected trajectory: {gate_detail}')
+            return
+
         name_to_src = {name: i for i, name in enumerate(msg.joint_names)}
         known_names = [name for name in JOINT_NAMES if name in name_to_src]
         if not known_names:
             self.publish_safety('limited', 'trajectory has no known joints')
             return
+        if not msg.points:
+            self.publish_safety('limited', 'trajectory has no points')
+            return
+        if len(msg.points) > self.max_trajectory_points:
+            self.publish_safety(
+                'limited',
+                f'trajectory has {len(msg.points)} points, max is {self.max_trajectory_points}',
+            )
+            return
 
         now = time.monotonic()
         points: list[TrajectoryPointRuntime] = []
         last_due = now
-        for point in msg.points:
+        for point_i, point in enumerate(msg.points):
             positions = dict(self.current_positions)
             for name in known_names:
                 src_i = name_to_src[name]
                 if src_i < len(point.positions):
+                    raw_position = float(point.positions[src_i])
+                    if not math.isfinite(raw_position):
+                        self.publish_safety(
+                            'limited',
+                            f'trajectory point {point_i} joint {name} is not finite',
+                        )
+                        return
                     low, high = LIMITS[name]
-                    positions[name] = clamp(float(point.positions[src_i]), low, high)
+                    if raw_position < low or raw_position > high:
+                        if self.reject_out_of_limit_trajectory:
+                            self.publish_safety(
+                                'limited',
+                                (
+                                    f'trajectory point {point_i} joint {name} '
+                                    f'{raw_position:.3f} outside [{low:.3f}, {high:.3f}]'
+                                ),
+                            )
+                            return
+                        raw_position = clamp(raw_position, low, high)
+                    positions[name] = raw_position
             offset = point.time_from_start.sec + point.time_from_start.nanosec / 1e9
             due = now + max(offset, 0.02)
             if due <= last_due:
@@ -193,6 +239,13 @@ class PsocCanBridgeNode(Node):
                 point = self.pending_points.pop(0)
 
         if point is None:
+            return
+
+        gate_ok, gate_detail = self.trajectory_gate_state()
+        if not gate_ok:
+            with self.pending_lock:
+                self.pending_points = []
+            self.publish_safety('limited', f'stopped trajectory send: {gate_detail}')
             return
 
         self.current_positions.update(point.positions)
@@ -216,11 +269,26 @@ class PsocCanBridgeNode(Node):
             if age <= self.status_timeout_sec:
                 return
             detail = f'no PSoC status for {age:.1f}s after {self.status_rx_count} status frames'
+            self.last_psoc_status_ok = False
         elif self.heartbeat_tx_count > 0:
             detail = f'no PSoC status after {self.heartbeat_tx_count} heartbeats'
         else:
             return
         self.publish_safety('limited', detail)
+
+    def trajectory_gate_state(self) -> tuple[bool, str]:
+        if not self.require_psoc_ok_for_trajectory:
+            return True, 'PSoC ok gate disabled'
+        if self.last_status_time is None:
+            return False, 'no PSoC status received'
+        age = time.monotonic() - self.last_status_time
+        if age > self.status_timeout_sec:
+            return False, f'PSoC status stale for {age:.1f}s'
+        if not self.last_psoc_status_ok:
+            if self.last_psoc_error_code is None:
+                return False, 'PSoC status is not ok'
+            return False, f'PSoC error_code={self.last_psoc_error_code}'
+        return True, 'PSoC status ok'
 
     def send_frame(self, frame: CanFrame, log: bool = True) -> None:
         with self.sock_lock:
@@ -252,19 +320,31 @@ class PsocCanBridgeNode(Node):
     def handle_psoc_status(self, frame: CanFrame) -> None:
         self.last_status_time = time.monotonic()
         self.status_rx_count += 1
+        error_code = None
+        marker_ok = True
         payload = {
             'state': 'ok',
             'source': 'psoc',
             'id_hex': '0x322',
             'data': frame.data.hex().upper(),
         }
-        if len(frame.data) >= 4:
+        if len(frame.data) < 4:
+            payload['state'] = 'fault'
+            payload['detail'] = 'PSoC status too short'
+        else:
             payload['marker'] = frame.data[0]
             payload['seq'] = frame.data[1]
             payload['motors'] = frame.data[2]
-            payload['error_code'] = frame.data[3]
-            if frame.data[3] != 0:
+            error_code = frame.data[3]
+            marker_ok = frame.data[0] == 0xA5
+            payload['error_code'] = error_code
+            if not marker_ok:
                 payload['state'] = 'fault'
+                payload['detail'] = 'invalid PSoC status marker'
+            elif error_code != 0:
+                payload['state'] = 'fault'
+        self.last_psoc_error_code = error_code
+        self.last_psoc_status_ok = payload['state'] == 'ok'
         self.safety_pub.publish(String(data=json.dumps(payload, separators=(',', ':'))))
 
     def handle_f103_sensor(self, frame: CanFrame) -> None:
@@ -303,6 +383,10 @@ class PsocCanBridgeNode(Node):
         if state_key == self.last_safety_state:
             return
         self.last_safety_state = state_key
+        if state == 'ok':
+            self.get_logger().info(f'safety ok: {detail}')
+        else:
+            self.get_logger().warn(f'safety {state}: {detail}')
         payload = {'state': state, 'detail': detail, 'source': 'psoc_bridge'}
         self.safety_pub.publish(String(data=json.dumps(payload, separators=(',', ':'))))
 

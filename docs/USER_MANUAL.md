@@ -220,6 +220,43 @@ ros2 topic echo --once /rehab_arm/safety_state
 
 注意：这个验证只说明 heartbeat/status 链路已经通，不等于允许直接带人运动。真实轨迹下发还需要确认 `0x320` payload、关节映射、限幅策略和急停测试。
 
+### 4.1 Bridge 轨迹安全门控
+
+`rehab_arm_psoc_bridge` 现在默认启用轨迹安全门控：
+
+| 参数 | 默认值 | 作用 |
+|---|---:|---|
+| `require_psoc_ok_for_trajectory` | `true` | 只有收到新鲜的 M33 `0x322 ok` 才允许接收/发送轨迹 |
+| `reject_out_of_limit_trajectory` | `true` | 轨迹点超出软件关节限位时拒绝轨迹 |
+| `max_trajectory_points` | `100` | 限制一次轨迹消息的最大点数 |
+| `status_timeout_sec` | `2.5` | 超过该时间未收到 PSoC status，认为状态过期 |
+
+安全行为：
+
+- bridge 启动时先发布 `limited: bridge started, waiting for PSoC status`。
+- 没有 M33 `0x322 ok` 时，收到 `/arm_controller/joint_trajectory` 会拒绝，不发 `0x320`。
+- 正在发送轨迹时，如果 PSoC 状态过期或变成 fault，会清空剩余轨迹并停止发送。
+- 轨迹含未知关节、空点、非有限数值、超限点或过多点时，会拒绝并发布 `limited`。
+
+已验证的无状态拒绝测试：
+
+```text
+safety limited: rejected trajectory: no PSoC status received
+```
+
+同时监听：
+
+```bash
+candump can0,320:7FF
+```
+
+通过标准：
+
+- 拒绝轨迹时 `candump can0,320:7FF` 没有任何 `0x320` 帧。
+- 这只验证软件门控，不代表可以做真实运动。
+
+注意：电池低电量时可能再次没有 `0x322`。此时不要反复发布轨迹，先恢复供电。
+
 ## 5. 当前真实 CAN ID
 
 | ID | 协议/用途 | 说明 |

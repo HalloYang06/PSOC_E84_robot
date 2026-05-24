@@ -430,6 +430,37 @@ RX STD 0x00000322 [8] A5 01 07 00 48 EA 6D 00
 ```
 
 - ROS `rehab_arm_psoc_bridge` 也能发布 PSoC 来源的 `ok` safety state，说明这次无回复确实是供电问题，不是 ROS bridge 协议问题。
+- 后续 bridge 安全门控测试中再次出现没电：正常 `status_timeout_sec` 下 bridge 持续 `no PSoC status after N heartbeats`，用户确认又没电了。低电量时停止测试，先恢复供电。
+
+### Bridge 门控拒绝轨迹时要同时看日志和 candump
+
+现象：
+
+- 测试 `rehab_arm_psoc_bridge` 轨迹安全门控时，发布了 `/arm_controller/joint_trajectory`。
+- PSoC/M33 无新鲜 `0x322 ok` 状态。
+
+验证：
+
+- bridge 日志出现：
+
+```text
+safety limited: rejected trajectory: no PSoC status received
+```
+
+- 同时 `candump can0,320:7FF` 没有任何输出。
+
+结论：
+
+- 这表示 bridge 在不安全状态下拒绝轨迹，并且没有发送 `0x320`，符合穿戴设备“默认不动”的要求。
+
+技巧：
+
+- 只看 ROS topic 可能受发现时序影响；关键安全测试要同时看节点日志和 CAN 原始帧。
+- 拒绝轨迹时的验收标准不是“有 limited 日志”一个条件，还要确认总线上没有 `0x320`。
+
+状态：
+
+- 已在 NanoPi 非运动条件下验证通过。
 
 ### SSH 远端 bash 里后台任务会影响 source 环境
 

@@ -134,12 +134,27 @@
   - `rehab_arm_psoc_bridge` 非运动测试成功发布 `/rehab_arm/safety_state`：
     - `{"state":"ok","source":"psoc","id_hex":"0x322","data":"A504070079F86E00","marker":165,"seq":4,"motors":7,"error_code":0}`
   - 本轮没有发布真实 `JointTrajectory`，没有做电机运动测试。
+- 完成 `rehab_arm_psoc_bridge` 轨迹下发安全门控第一版：
+  - 新增 `require_psoc_ok_for_trajectory`，默认 `true`，没有新鲜 M33 `0x322 ok` 时拒绝轨迹。
+  - 新增 `reject_out_of_limit_trajectory`，默认 `true`，轨迹点超出软件关节限位时拒绝而不是静默夹紧。
+  - 新增 `max_trajectory_points`，默认 `100`，避免一次塞入过长轨迹。
+  - 启动时 safety state 从 `ok` 改为 `limited: bridge started, waiting for PSoC status`。
+  - 发送轨迹点前会再次检查 M33 状态；若中途掉线或状态过期，会清空剩余轨迹并停止发送。
+  - `0x322` 状态解析增加 marker `0xA5` 校验和过短帧 fault 处理。
+  - `publish_safety()` 增加日志输出，便于远程测试时不用完全依赖 topic echo。
+- 已验证：
+  - 本地 `python -m py_compile rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/psoc_can_bridge_node.py` 通过。
+  - NanoPi `colcon build --symlink-install --packages-select rehab_arm_psoc_bridge` 通过。
+  - 非运动门控测试通过：发布一条 `JointTrajectory`，在无新鲜 PSoC status 条件下日志输出 `rejected trajectory: no PSoC status received`。
+  - 同时 `candump can0,320:7FF` 为空，确认门控拒绝时没有发送 `0x320` 轨迹帧。
+- 未完成：
+  - 准备做正常 PSoC `ok` 条件下的 bridge 非运动复测时，用户确认又没电了；因此未继续发 `0x320`，也未做任何电机运动测试。
 
 ## 进行中
 
-- 下一步准备完善 NanoPi PSoC bridge 的正式轨迹下发安全门控：
-  - 在没有 M33 `ok` 状态、关节映射未确认或轨迹字段不合规时，bridge 应拒绝发送 `0x320`。
-  - 先做软件单元/非运动测试，再考虑台架低能量测试。
+- 下一步准备在电池稳定后复测 PSoC `ok` 条件下的 bridge 行为：
+  - 先只看安全状态和日志。
+  - 再决定是否允许发一条受限 `0x320` 测试帧给 M33 固件日志观察，不接人、不做实际运动。
 
 ## 待确认
 
@@ -157,10 +172,10 @@
 
 严格按“一次只做一个能测试的小目标”推进：
 
-1. 明确 `0x320` payload 字段、单位、缩放、关节编号和限幅策略。
-2. 给 `rehab_arm_psoc_bridge` 增加发送 `0x320` 前的安全门控和轨迹合法性检查。
-3. 用仿真/非运动测试验证：M33 未 `ok` 时拒绝轨迹，M33 `ok` 时只发送受限测试帧。
-4. 再与 M33 固件日志对照，确认收到的关节目标与 ROS 输入一致。
+1. 先给电池充电，确认 PSoC/M33 供电稳定，不要在低电量时继续桥接测试。
+2. 复测 `0x321 -> 0x322` 和 `/rehab_arm/safety_state` 是否恢复 `ok`。
+3. 用正常 `status_timeout_sec` 运行 bridge，确认 PSoC `ok` 时门控不会误报 limited。
+4. 明确 `0x320` payload 字段、单位、缩放、关节编号和限幅策略后，再与 M33 固件日志对照测试受限目标帧。
 
 ## 更新规则
 
