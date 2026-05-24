@@ -149,12 +149,22 @@
   - 同时 `candump can0,320:7FF` 为空，确认门控拒绝时没有发送 `0x320` 轨迹帧。
 - 未完成：
   - 准备做正常 PSoC `ok` 条件下的 bridge 非运动复测时，用户确认又没电了；因此未继续发 `0x320`，也未做任何电机运动测试。
+- 电池再次恢复后完成 `rehab_arm_psoc_bridge` 门控复测：
+  - `can0` 为 `UP`、`LOWER_UP`、`ERROR-ACTIVE`、1Mbps，错误计数器 `tx 0 rx 0`。
+  - `/home/pi/nanopi_can_master.py heartbeat --iface can0 --seq 2 --wait 1` 成功收到：
+    - `RX STD 0x00000322 [8] A5 02 07 00 17 98 79 00`
+  - 新 bridge 在正常 `status_timeout_sec=2.5` 下能收到 PSoC `ok`：
+    - `{"state":"ok","source":"psoc","id_hex":"0x322","data":"A504070009F07900","marker":165,"seq":4,"motors":7,"error_code":0}`
+  - PSoC 在线时发布超限轨迹 `shoulder_lift_joint=99.0 rad`，bridge 拒绝：
+    - `trajectory point 0 joint shoulder_lift_joint 99.000 outside [-0.700, 1.400]`
+  - 同时 `candump can0,320:7FF` 为空，确认超限拒绝时没有发送 `0x320`。
+  - 本轮仍没有发布合法真实运动轨迹，没有做电机运动测试。
 
 ## 进行中
 
-- 下一步准备在电池稳定后复测 PSoC `ok` 条件下的 bridge 行为：
-  - 先只看安全状态和日志。
-  - 再决定是否允许发一条受限 `0x320` 测试帧给 M33 固件日志观察，不接人、不做实际运动。
+- 下一步准备明确 `0x320` payload 与 M33 固件日志对照方法：
+  - 需要你确认或烧录 M33 侧日志/解析固件。
+  - NanoPi 侧先不发合法 `0x320` 运动目标，直到 M33 侧能明确打印收到的关节号、目标值、限幅结果和拒绝原因。
 
 ## 待确认
 
@@ -172,10 +182,10 @@
 
 严格按“一次只做一个能测试的小目标”推进：
 
-1. 先给电池充电，确认 PSoC/M33 供电稳定，不要在低电量时继续桥接测试。
-2. 复测 `0x321 -> 0x322` 和 `/rehab_arm/safety_state` 是否恢复 `ok`。
-3. 用正常 `status_timeout_sec` 运行 bridge，确认 PSoC `ok` 时门控不会误报 limited。
-4. 明确 `0x320` payload 字段、单位、缩放、关节编号和限幅策略后，再与 M33 固件日志对照测试受限目标帧。
+1. 明确 M33 固件当前是否已经解析 `0x320`，以及是否能打印关节号、角度、速度、扭矩/电流和安全裁决。
+2. 如果需要烧录 M33 日志固件，由用户执行烧录。
+3. NanoPi 只发送一条不接人、不带运动执行的受限 `0x320` 目标帧给 M33 日志观察。
+4. 对照 ROS 输入、CAN payload 和 M33 日志一致后，再考虑下一步低能量台架测试。
 
 ## 更新规则
 

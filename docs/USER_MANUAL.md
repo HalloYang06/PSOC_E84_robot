@@ -244,6 +244,12 @@ ros2 topic echo --once /rehab_arm/safety_state
 safety limited: rejected trajectory: no PSoC status received
 ```
 
+已验证的 PSoC 在线但轨迹超限拒绝测试：
+
+```text
+safety limited: trajectory point 0 joint shoulder_lift_joint 99.000 outside [-0.700, 1.400]
+```
+
 同时监听：
 
 ```bash
@@ -256,6 +262,13 @@ candump can0,320:7FF
 - 这只验证软件门控，不代表可以做真实运动。
 
 注意：电池低电量时可能再次没有 `0x322`。此时不要反复发布轨迹，先恢复供电。
+
+下一阶段如果要测试合法 `0x320`，必须先满足：
+
+- M33 固件能打印或记录收到的 `0x320` 关节号、目标角度、速度、扭矩/电流字段。
+- M33 固件能打印限幅结果、拒绝原因和最终 safety state。
+- 不接人，不允许电机执行实际运动，只对照 NanoPi CAN payload 和 M33 日志。
+- 如需烧录 M33 固件，由用户执行烧录。
 
 ## 5. 当前真实 CAN ID
 

@@ -461,6 +461,13 @@ safety limited: rejected trajectory: no PSoC status received
 状态：
 
 - 已在 NanoPi 非运动条件下验证通过。
+- 电池恢复后又验证了一种 PSoC 在线但轨迹超限的情况：
+
+```text
+safety limited: trajectory point 0 joint shoulder_lift_joint 99.000 outside [-0.700, 1.400]
+```
+
+- 同时 `candump can0,320:7FF` 为空，说明超限拒绝发生在发送 `0x320` 之前。
 
 ### SSH 远端 bash 里后台任务会影响 source 环境
 
