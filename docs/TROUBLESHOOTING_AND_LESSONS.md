@@ -469,6 +469,35 @@ safety limited: trajectory point 0 joint shoulder_lift_joint 99.000 outside [-0.
 
 - 同时 `candump can0,320:7FF` 为空，说明超限拒绝发生在发送 `0x320` 之前。
 
+### 合法轨迹默认也要 dry-run，不要默认发送 0x320
+
+现象：
+
+- PSoC/M33 已经回复 `0x322 ok`。
+- 轨迹也在软件限位内。
+- 但 M33 侧 `0x320` 解析、日志、限幅和拒绝原因还没有完成对照。
+
+解决：
+
+- `rehab_arm_psoc_bridge` 增加 `enable_target_tx`，默认 `false`。
+- 默认情况下合法轨迹只打印：
+
+```text
+DRY-RUN 320 joint=shoulder_lift_joint data=0300390005000000
+```
+
+- `candump can0,320:7FF` 应为空。
+
+技巧：
+
+- 对穿戴设备，合法轨迹也不等于可以发到控制主站；必须先有 M33 侧日志和安全裁决可观察。
+- 只有在 M33 日志固件准备好、用户确认烧录并允许后，才临时打开 `enable_target_tx:=true`。
+
+状态：
+
+- 已在 NanoPi 上验证 dry-run：合法单关节轨迹只生成一个 shoulder dry-run 目标，没有发送 `0x320`。
+- 同时修正了单关节轨迹会给未命令关节生成目标的问题。
+
 ### SSH 远端 bash 里后台任务会影响 source 环境
 
 现象：

@@ -230,6 +230,7 @@ ros2 topic echo --once /rehab_arm/safety_state
 | `reject_out_of_limit_trajectory` | `true` | 轨迹点超出软件关节限位时拒绝轨迹 |
 | `max_trajectory_points` | `100` | 限制一次轨迹消息的最大点数 |
 | `status_timeout_sec` | `2.5` | 超过该时间未收到 PSoC status，认为状态过期 |
+| `enable_target_tx` | `false` | 是否真的发送 `0x320` 目标帧；默认只 dry-run 打日志 |
 
 安全行为：
 
@@ -237,6 +238,8 @@ ros2 topic echo --once /rehab_arm/safety_state
 - 没有 M33 `0x322 ok` 时，收到 `/arm_controller/joint_trajectory` 会拒绝，不发 `0x320`。
 - 正在发送轨迹时，如果 PSoC 状态过期或变成 fault，会清空剩余轨迹并停止发送。
 - 轨迹含未知关节、空点、非有限数值、超限点或过多点时，会拒绝并发布 `limited`。
+- 默认 `enable_target_tx=false` 时，合法轨迹也不会真的发 `0x320`，只打印 `DRY-RUN 320 ...`。
+- bridge 只会为 `JointTrajectory.joint_names` 中明确出现的关节生成目标帧，不会自动给未命令关节补发目标。
 
 已验证的无状态拒绝测试：
 
@@ -261,6 +264,15 @@ candump can0,320:7FF
 - 拒绝轨迹时 `candump can0,320:7FF` 没有任何 `0x320` 帧。
 - 这只验证软件门控，不代表可以做真实运动。
 
+已验证的合法轨迹 dry-run 测试：
+
+```text
+safety ok: accepted 1 trajectory points
+DRY-RUN 320 joint=shoulder_lift_joint data=0300390005000000
+```
+
+同时 `candump can0,320:7FF` 为空。这个测试说明：PSoC 在线、轨迹合法时，默认仍不会真正发送 `0x320`。
+
 注意：电池低电量时可能再次没有 `0x322`。此时不要反复发布轨迹，先恢复供电。
 
 下一阶段如果要测试合法 `0x320`，必须先满足：
@@ -269,6 +281,7 @@ candump can0,320:7FF
 - M33 固件能打印限幅结果、拒绝原因和最终 safety state。
 - 不接人，不允许电机执行实际运动，只对照 NanoPi CAN payload 和 M33 日志。
 - 如需烧录 M33 固件，由用户执行烧录。
+- 只有满足以上条件后，才允许临时设置 `-p enable_target_tx:=true` 做单帧日志对照测试。
 
 ## 5. 当前真实 CAN ID
 

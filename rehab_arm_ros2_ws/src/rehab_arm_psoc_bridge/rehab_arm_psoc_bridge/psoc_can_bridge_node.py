@@ -70,6 +70,7 @@ class CanFrame:
 class TrajectoryPointRuntime:
     due_time: float
     positions: dict[str, float]
+    joint_names: list[str]
 
 
 def clamp(value: float, low: float, high: float) -> float:
@@ -112,6 +113,7 @@ class PsocCanBridgeNode(Node):
         self.declare_parameter('require_psoc_ok_for_trajectory', True)
         self.declare_parameter('reject_out_of_limit_trajectory', True)
         self.declare_parameter('max_trajectory_points', 100)
+        self.declare_parameter('enable_target_tx', False)
 
         self.iface = str(self.get_parameter('interface').value)
         self.send_rate_hz = float(self.get_parameter('send_rate_hz').value)
@@ -125,6 +127,7 @@ class PsocCanBridgeNode(Node):
             self.get_parameter('reject_out_of_limit_trajectory').value
         )
         self.max_trajectory_points = int(self.get_parameter('max_trajectory_points').value)
+        self.enable_target_tx = bool(self.get_parameter('enable_target_tx').value)
 
         self.sock = socket.socket(socket.PF_CAN, socket.SOCK_RAW, socket.CAN_RAW)
         self.sock.bind((self.iface,))
@@ -142,6 +145,8 @@ class PsocCanBridgeNode(Node):
         self.last_psoc_status_ok = False
         self.last_psoc_error_code: int | None = None
         self.last_safety_state = ''
+        self.target_tx_count = 0
+        self.target_dry_run_count = 0
 
         self.joint_pub = self.create_publisher(JointState, '/joint_states', 20)
         self.safety_pub = self.create_publisher(String, '/rehab_arm/safety_state', 10)
@@ -159,7 +164,9 @@ class PsocCanBridgeNode(Node):
         self.rx_thread = threading.Thread(target=self.rx_loop, daemon=True)
         self.rx_thread.start()
         self.publish_safety('limited', 'bridge started, waiting for PSoC status')
-        self.get_logger().info(f'PSoC CAN bridge ready on {self.iface}')
+        self.get_logger().info(
+            f'PSoC CAN bridge ready on {self.iface}; enable_target_tx={self.enable_target_tx}'
+        )
 
     def destroy_node(self):
         self.running = False
@@ -224,7 +231,7 @@ class PsocCanBridgeNode(Node):
             due = now + max(offset, 0.02)
             if due <= last_due:
                 due = last_due + 0.02
-            points.append(TrajectoryPointRuntime(due, positions))
+            points.append(TrajectoryPointRuntime(due, positions, list(known_names)))
             last_due = due
 
         with self.pending_lock:
@@ -248,12 +255,15 @@ class PsocCanBridgeNode(Node):
             self.publish_safety('limited', f'stopped trajectory send: {gate_detail}')
             return
 
-        self.current_positions.update(point.positions)
-        for name in JOINT_NAMES:
+        sent_any = False
+        for name in point.joint_names:
             joint_id = JOINT_IDS[name]
-            self.send_frame(target_frame(joint_id, self.current_positions[name], self.default_rpm, 0))
+            frame = target_frame(joint_id, point.positions[name], self.default_rpm, 0)
+            sent_any = self.emit_target_frame(name, frame) or sent_any
             time.sleep(0.002)
-        self.publish_joint_state()
+        if sent_any:
+            self.current_positions.update(point.positions)
+            self.publish_joint_state()
 
     def on_heartbeat_timer(self) -> None:
         self.heartbeat_seq = (self.heartbeat_seq + 1) & CMD_HEARTBEAT_SEQ_MASK
@@ -295,6 +305,17 @@ class PsocCanBridgeNode(Node):
             self.sock.send(pack_frame(frame))
         if log:
             self.get_logger().info(f'TX {frame.can_id:03X} {frame.data.hex().upper()}')
+
+    def emit_target_frame(self, joint_name: str, frame: CanFrame) -> bool:
+        if not self.enable_target_tx:
+            self.target_dry_run_count += 1
+            self.get_logger().info(
+                f'DRY-RUN {frame.can_id:03X} joint={joint_name} data={frame.data.hex().upper()}'
+            )
+            return False
+        self.target_tx_count += 1
+        self.send_frame(frame)
+        return True
 
     def rx_loop(self) -> None:
         while self.running:

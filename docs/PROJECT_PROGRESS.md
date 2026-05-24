@@ -159,12 +159,26 @@
     - `trajectory point 0 joint shoulder_lift_joint 99.000 outside [-0.700, 1.400]`
   - 同时 `candump can0,320:7FF` 为空，确认超限拒绝时没有发送 `0x320`。
   - 本轮仍没有发布合法真实运动轨迹，没有做电机运动测试。
+- 完成 `rehab_arm_psoc_bridge` 默认 dry-run 保护：
+  - 新增 `enable_target_tx` 参数，默认 `false`。
+  - 默认情况下，即使 M33 为 `ok` 且轨迹合法，bridge 也只打印 `DRY-RUN 320 ...`，不向 SocketCAN 发送 `0x320`。
+  - 后续只有在 M33 日志固件已准备好、且需要对照 payload 时，才可显式设置 `enable_target_tx:=true`。
+- 修正单关节轨迹会生成所有关节目标的问题：
+  - `TrajectoryPointRuntime` 增加 `joint_names`。
+  - bridge 现在只为当前 `JointTrajectory.joint_names` 中明确出现的关节生成目标帧。
+- 已验证：
+  - 本地 `python -m py_compile rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/psoc_can_bridge_node.py` 通过。
+  - NanoPi `colcon build --symlink-install --packages-select rehab_arm_psoc_bridge` 通过。
+  - PSoC `ok` 条件下发布合法 `shoulder_lift_joint=0.1 rad` 轨迹，bridge 输出：
+    - `DRY-RUN 320 joint=shoulder_lift_joint data=0300390005000000`
+  - `candump can0,320:7FF` 为空，确认默认 dry-run 没有发送 `0x320`。
+  - 日志只出现一个 shoulder 目标，没有再为其他未命令关节生成 dry-run 目标。
 
 ## 进行中
 
 - 下一步准备明确 `0x320` payload 与 M33 固件日志对照方法：
   - 需要你确认或烧录 M33 侧日志/解析固件。
-  - NanoPi 侧先不发合法 `0x320` 运动目标，直到 M33 侧能明确打印收到的关节号、目标值、限幅结果和拒绝原因。
+  - NanoPi 侧默认 dry-run，不发合法 `0x320` 运动目标，直到 M33 侧能明确打印收到的关节号、目标值、限幅结果和拒绝原因。
 
 ## 待确认
 
