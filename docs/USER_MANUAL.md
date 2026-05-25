@@ -1336,6 +1336,28 @@ ros2 run rehab_arm_psoc_bridge build_manifest.py /home/pi/rehab_arm_logs \
 - `quality_report.ok=false` 时，平台必须显示 blocking reason，不能把它当成合格训练数据。
 - 质量报告仍然只是数据质量门，不是电机上电或运动许可。
 
+上传到云端后检查质量门：
+
+```bash
+ros2 run rehab_arm_psoc_bridge sync_upload.py /home/pi/rehab_arm_logs/manifest_with_quality.json \
+  --base-url http://106.55.62.122:8011/api/rehab-arm/v1 \
+  --execute
+```
+
+在开发电脑上检查云端 dashboard：
+
+```powershell
+$data = Invoke-RestMethod -Uri 'http://106.55.62.122:8011/api/rehab-arm/v1/devices/dashboard'
+$data.data.devices | Select-Object device_id, robot_id, latest_upload_status
+```
+
+通过标准：
+
+- 对应设备出现在 `devices` 中。
+- `data_quality.annotation_ready=true` 表示该 session 可进入标注/导出。
+- `data_quality.latest_session.quality_report_ok=true`。
+- `data_quality.control_boundary=data_quality_only_not_motion_permission`，表示这仍然不是运动许可。
+
 服务器同步 API 草案见：[SERVER_SYNC_API_DRAFT.md](SERVER_SYNC_API_DRAFT.md)。
 
 ## 6. 当前真实 CAN ID

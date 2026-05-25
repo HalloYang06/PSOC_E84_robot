@@ -849,3 +849,13 @@
 - Not validated: no NanoPi, CAN, M33/M55, camera, motor, or cloud upload test in this slice.
 - Safety: quality reports remain data-quality gates only; they do not grant motion permission or bypass M33.
 - Next step: generate a real sim `manifest_with_quality.json`, sync to platform test server/cloud, and confirm the device data workbench shows annotation readiness from the uploaded quality report.
+
+### 2026-05-25 - Cloud quality manifest sync smoke
+
+- Completed: generated an offline sample JSONL session and `manifest_with_quality.json` on the Windows development machine.
+- Completed: uploaded the sample through `sync_upload.py --execute` to `http://106.55.62.122:8011/api/rehab-arm/v1`.
+- Validated: upload result `ok=true`, `completed_count=4`, and cloud accepted session `quality_demo`.
+- Validated: cloud dashboard for `nanopi-quality-demo` reports `data_quality.annotation_ready=true`, `quality_report_ok=true`, and `control_boundary=data_quality_only_not_motion_permission`.
+- Not validated: no NanoPi hardware, CAN, M33/M55, camera, motor power, or real patient/device data was used.
+- Safety: the cloud sync stayed on the non-realtime data path only.
+- Next step: surface the same quality gate clearly in the platform device data workbench UI.
