@@ -657,6 +657,40 @@ ros2 run rehab_arm_psoc_bridge encode_psoc_cmd.py shoulder_lift_joint 0.1
 - 本地 M33 已完成第一版结构化改造并编译通过，等待烧录后复测。
 - 用户烧录后已完成非运动复测：合法 `0x320` 单帧得到 `safety_state=logging_only decision=reject reason=logging_only_no_motor_output` 和 `final action=no_motor_output logging_only=1`，说明安全评估已经脱离纯打印并形成结构化结果。
 
+### 拒绝用例要绕过 NanoPi bridge 才能测到 M33 本体
+
+现象：
+
+- ROS bridge 默认会拒绝超限轨迹，不会把危险 `0x320` 发到 CAN。
+- 这对正式系统是正确的，但如果要验证 M33 安全状态机是否真的能拒绝危险帧，就不能只用 ROS topic 测。
+
+解决：
+
+- 在 M33 logging-only、驱动断开、不穿戴条件下，用 NanoPi raw SocketCAN 直接发送单帧 `0x320`。
+- 每个用例同时记录：
+  - `candump can0,320:7FF,321:7FF,322:7FF`
+  - M33 `COM26` 串口
+  - `ip -details -statistics link show can0`
+
+已验证：
+
+```text
+0300840305000000 -> reason=target_out_of_limit
+0309390005000000 -> reason=unknown_joint
+0300390005000100 -> reason=torque_out_of_limit
+heartbeat age 3211ms + 0300390005000000 -> reason=heartbeat_timeout
+```
+
+技巧：
+
+- 正式路径里 NanoPi bridge 和 M33 都要有安全门；测试 M33 本体时需要有意识地绕过 NanoPi 门控，但必须保持 M33 `logging_only`。
+- 每个危险用例都要确认最终还有 `final action=no_motor_output logging_only=1`。
+- heartbeat 超时用例要先停止 bridge，避免 bridge 持续发 `0x321` 把 M33 heartbeat 刷新掉。
+
+状态：
+
+- 第一轮拒绝矩阵已通过，未给电机驱动上电，未做运动测试。
+
 ### 发送真实 0x320 单帧时必须同时看 NanoPi TX 和 M33 串口
 
 现象：

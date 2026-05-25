@@ -471,15 +471,32 @@
     - `final action=no_motor_output logging_only=1`
   - 复查 `can0` 仍为 `ERROR-ACTIVE`，`bus-errors/error-pass/bus-off` 均为 0。
   - 本轮没有给电机驱动上电，没有做运动测试。
+- 完成 M33 状态机拒绝用例矩阵第一轮验证：
+  - 本轮绕过 ROS bridge 的前置限位，使用 NanoPi raw SocketCAN 直接发送 `0x320` 单帧，以验证 M33 自己的安全状态机。
+  - 测试前后 `can0` 均为 `UP/LOWER_UP/ERROR-ACTIVE`，classic CAN `1Mbps`，`berr-counter tx 0 rx 0`。
+  - 每个危险用例前先发送 `0x321` heartbeat 并收到 V2 `0x322 limited/logging_only`；heartbeat 超时用例等待 3.2 秒后再发 `0x320`。
+  - 超限 position：
+    - TX `0300840305000000`，含 `joint_id=0`、`deg_x10=900`，超过 `[-401,802]`。
+    - M33：`safety_state=limited decision=reject reason=target_out_of_limit`。
+  - 未知 joint：
+    - TX `0309390005000000`，含 `joint_id=9`。
+    - M33：`safety_state=limited decision=reject reason=unknown_joint`。
+  - 非零 torque/current：
+    - TX `0300390005000100`，含 `torque_ma=1`，超过当前 `max_torque_ma=0`。
+    - M33：`safety_state=limited decision=reject reason=torque_out_of_limit`。
+  - heartbeat 超时：
+    - 等待后 TX `0300390005000000`。
+    - M33：`safety_state=limited decision=reject reason=heartbeat_timeout`，`heartbeat_age_ms=3211`，超过 `2500`。
+  - 四个用例最终都打印 `final action=no_motor_output logging_only=1`。
+  - 本轮没有给电机驱动上电，没有做运动测试。
 
 ## 进行中
 
-- 下一步设计并验证 M33 状态机拒绝用例：
-  - 超限 position。
-  - 未知 joint_id。
-  - 非零 torque/current。
-  - heartbeat 超时。
-  - 每次只发一帧，仍保持 `final action=no_motor_output`。
+- 下一步继续补 M33 状态机边界用例：
+  - 速度超限 `velocity_out_of_limit`。
+  - unsupported command。
+  - 多错误优先级确认，例如 heartbeat 超时同时 position 超限时优先返回 `heartbeat_timeout`。
+  - 仍只发单帧，仍保持 `final action=no_motor_output`。
 
 ## 待确认
 
@@ -497,10 +514,10 @@
 
 严格按“一次只做一个能测试的小目标”推进：
 
-1. 增加或使用工具生成超限/未知关节/非零 torque 的 `0x320` 测试帧。
-2. 每次只发一帧，并同时记录 bridge、`candump`、M33 串口三处日志。
+1. 增加速度超限、unsupported command、多错误优先级的单帧测试。
+2. 每次只发一帧，并同时记录 `candump`、M33 串口和 `can0` 状态。
 3. 验证 M33 均能打印明确拒绝原因，最终仍 `decision=reject` 和 `final action=no_motor_output`。
-4. 增加 heartbeat 超时拒绝测试：停发 `0x321` 超过 2500ms 后再发 `0x320`。
+4. 如拒绝矩阵完整通过，再设计如何把状态机结果映射到 `0x322` detail_code，而不是只在串口可见。
 
 ## 更新规则
 

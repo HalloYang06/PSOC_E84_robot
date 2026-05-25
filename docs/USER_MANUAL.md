@@ -746,6 +746,24 @@ audit target_in_limit=1 rpm_in_limit=1 torque_in_limit=1 max_rpm=30 max_torque_m
 final action=no_motor_output logging_only=1
 ```
 
+M33 状态机拒绝用例第一轮已验证：
+
+| 用例 | `0x320` payload | 预期/实测 M33 reason |
+|---|---|---|
+| 超限 position | `0300840305000000` | `target_out_of_limit` |
+| 未知 joint_id | `0309390005000000` | `unknown_joint` |
+| 非零 torque/current | `0300390005000100` | `torque_out_of_limit` |
+| heartbeat 超时 | 等待超过 2500ms 后发 `0300390005000000` | `heartbeat_timeout` |
+
+每个用例最终都必须看到：
+
+```text
+decision=reject
+final action=no_motor_output logging_only=1
+```
+
+注意：这些危险用例是为了验证 M33 自己的安全状态机，使用 raw SocketCAN 直接发 `0x320`，不会经过 ROS bridge 的前置限位。只能在电机驱动断开、外骨骼不穿戴、M33 logging-only 的条件下执行。
+
 ## 5. 当前真实 CAN ID
 
 | ID | 协议/用途 | 说明 |
