@@ -1012,7 +1012,26 @@ ros2 run rehab_arm_psoc_bridge sync_dry_run.py /home/pi/rehab_arm_logs/manifest.
 - 输出计划请求，不发真实 HTTP。
 - `ok=false` 的 session 只出现在 `skipped_sessions`，不会生成文件上传请求。
 
-服务器同步 API 仍是草案，见：[SERVER_SYNC_API_DRAFT.md](SERVER_SYNC_API_DRAFT.md)。当前阶段只做本地记录和 manifest，不做真实上传。
+安全上传入口：
+
+```bash
+# 默认安全模式：只打印计划，不发 HTTP
+ros2 run rehab_arm_psoc_bridge sync_upload.py /home/pi/rehab_arm_logs/manifest.json \
+  --base-url http://server.example/api/rehab-arm/v1
+
+# 只有确认服务器 endpoint 后才使用；会真实发 HTTP
+ros2 run rehab_arm_psoc_bridge sync_upload.py /home/pi/rehab_arm_logs/manifest.json \
+  --base-url http://server.example/api/rehab-arm/v1 \
+  --execute
+```
+
+安全要求：
+
+- 未确认服务器前不要加 `--execute`。
+- 上传链路只同步数据，不进入 M33 控制闭环。
+- 服务器同步失败不能影响本地急停、限位、heartbeat 或安全状态机。
+
+服务器同步 API 仍是草案，见：[SERVER_SYNC_API_DRAFT.md](SERVER_SYNC_API_DRAFT.md)。当前阶段已具备安全默认的上传入口，但真实上传要等服务器 endpoint 确认。
 
 ## 6. 当前真实 CAN ID
 

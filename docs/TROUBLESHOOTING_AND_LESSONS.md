@@ -1674,7 +1674,8 @@ AttributeError: handle cannot be modified after node creation
 
 - 第一版服务器同步只接收 manifest 和 JSONL 文件。
 - 不下发 CAN、电流、力矩、速度、裸角度或 M33 override。
-- 真正上传代码要等服务器 endpoint 确认后再做；下一步只能做 dry-run uploader。
+- 上传入口默认必须是 dry-run，只有显式 `--execute` 才能联网。
+- 真正使用 `--execute` 要等服务器 endpoint 确认后再做。
 
 ### 哈希测试不要依赖文本换行
 

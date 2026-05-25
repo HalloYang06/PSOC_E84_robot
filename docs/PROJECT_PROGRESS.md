@@ -642,11 +642,16 @@
   - 本地测试通过：36 tests passed。
   - NanoPi 测试通过：26 tests passed；`colcon build` passed；`ros2 pkg executables` 能看到 `sync_dry_run.py`。
   - NanoPi 实测 dry-run 输出 4 个计划请求：设备注册、manifest、文件上传、sync-status。
+- 新增服务器同步 upload 入口：
+  - `sync_upload.py` 默认等同 dry-run，不加 `--execute` 不联网。
+  - `--execute` 才按 API 草案发送 JSON 和 multipart HTTP 请求。
+  - 本地测试通过：40 tests passed。
+  - NanoPi 测试通过：30 tests passed；`colcon build` passed；`ros2 pkg executables` 能看到 `sync_upload.py`。
 
 ## 进行中
 
 - 下一步继续按框架补数据链路：
-  - 后续补最小服务器端接收/保存骨架或 HTTP 客户端真实上传开关。
+  - 后续补最小服务器端接收/保存骨架。
   - 不进入真实电机控制。
   - 不给电机驱动上电，不做运动测试。
 
@@ -668,7 +673,7 @@
 
 1. 保持电机驱动断开，确认 `can0` 为 `ERROR-ACTIVE`。
 2. raw SocketCAN 先测 `0x321 -> 0x322` heartbeat。
-3. 设计服务器端最小数据接收接口或先做 uploader 的 `--execute` 禁用默认保护。
+3. 设计服务器端最小数据接收接口，并用本地假服务器测试 `--execute`。
 4. 保持服务器同步非实时，不放进控制闭环。
 5. 仍保持 logging-only，不进入真实电机控制路径。
 

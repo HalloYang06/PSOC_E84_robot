@@ -19,6 +19,7 @@ setup(
             'check_recording = rehab_arm_psoc_bridge.check_recording:main',
             'build_manifest = rehab_arm_psoc_bridge.build_manifest:main',
             'sync_dry_run = rehab_arm_psoc_bridge.sync_dry_run:main',
+            'sync_upload = rehab_arm_psoc_bridge.sync_upload:main',
         ],
     },
 )
