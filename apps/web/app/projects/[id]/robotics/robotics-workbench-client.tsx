@@ -66,6 +66,7 @@ type RoboticsWorkbenchClientProps = {
   unknownComputers: number;
   computerCount: number;
   scannedInterfaceCount: number;
+  deviceQualityDevices: AnyRecord[];
   notice?: string;
   error?: string;
 };
@@ -103,6 +104,68 @@ function ArtifactPathActions({ projectId, artifactPath, label = "下载" }: { pr
         {label}
       </a>
     </span>
+  );
+}
+
+function qualitySession(device: AnyRecord) {
+  return record(record(device.data_quality).latest_session);
+}
+
+function qualityReady(device: AnyRecord) {
+  return record(device.data_quality).annotation_ready === true;
+}
+
+function qualityStatusText(device: AnyRecord) {
+  if (qualityReady(device)) return "可标注";
+  const reasons = record(device.data_quality).blocking_reasons;
+  if (Array.isArray(reasons) && reasons.length) return "需补数据";
+  return "等待数据";
+}
+
+function qualityDetailLine(device: AnyRecord) {
+  const session = qualitySession(device);
+  const criteria = record(session.quality_criteria);
+  const reasons = Array.isArray(record(device.data_quality).blocking_reasons)
+    ? (record(device.data_quality).blocking_reasons as unknown[]).map((item) => text(item)).filter(Boolean)
+    : [];
+  if (reasons.length) return `阻塞：${reasons.slice(0, 2).join("；")}`;
+  if (qualityReady(device)) {
+    return `session ${text(session.session_id, "-")} 已通过：运动关节 ${text(session.moving_joint_count, "0")}，motor 条目 ${text(session.motor_entry_count_min, "0")}~${text(session.motor_entry_count_max, "0")}，阈值 ${text(criteria.min_moving_joints, "0")} 个运动关节。`;
+  }
+  return "上传 manifest_with_quality 后，这里会显示质量门和标注入口状态。";
+}
+
+function DeviceQualityStrip({ devices }: { devices: AnyRecord[] }) {
+  const visibleDevices = devices.slice(0, 4);
+  const readyCount = devices.filter(qualityReady).length;
+  return (
+    <section className={styles.qualityStrip} aria-label="设备数据质量状态">
+      <div className={styles.qualityStripHead}>
+        <div>
+          <span>数据质量门</span>
+          <strong>{devices.length ? `${readyCount}/${devices.length} 台设备可进入标注` : "等待设备上传数据"}</strong>
+        </div>
+        <small>只读数据资产状态，不代表允许运动，也不下发 CAN 或电机命令。</small>
+      </div>
+      <div className={styles.qualityCards}>
+        {visibleDevices.length ? visibleDevices.map((device) => {
+          const session = qualitySession(device);
+          return (
+            <article key={text(device.device_id, text(session.session_id, "device"))} data-ready={qualityReady(device) ? "true" : "false"}>
+              <span>{qualityStatusText(device)}</span>
+              <strong>{text(device.robot_id, "未命名设备")}</strong>
+              <p>{text(device.device_id, "-")} · {qualityDetailLine(device)}</p>
+            </article>
+          );
+        }) : (
+          <article data-ready="false">
+            <span>等待数据</span>
+            <strong>还没有可评估的采集 session</strong>
+            <p>先从设备侧上传带 quality_report 的 manifest，再进入标注和导出。</p>
+          </article>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -1180,6 +1243,7 @@ export function RoboticsWorkbenchClient({
   unknownComputers,
   computerCount,
   scannedInterfaceCount,
+  deviceQualityDevices,
   notice = "",
   error = "",
 }: RoboticsWorkbenchClientProps) {
@@ -1386,6 +1450,7 @@ export function RoboticsWorkbenchClient({
         <section className={workbenchStyles.main} data-mode={openWindows.length > 0 ? "chat" : "setup"}>
           {notice ? <div className={styles.inlineNotice} data-tone="success">{notice}</div> : null}
           {error ? <div className={styles.inlineNotice} data-tone="danger">{error}</div> : null}
+          <DeviceQualityStrip devices={deviceQualityDevices} />
           {openWindows.length ? (
             <div className={workbenchStyles.tileGrid} data-tile-count={openWindows.length}>
               {openWindows.map((window) => (

@@ -75,6 +75,15 @@ The device data workbench should show:
 The workbench should not expose internal words such as adapter, bridge, raw UUID,
 session JSONL, or local path in normal user-facing copy.
 
+The first-screen workbench status strip should show the latest data-quality
+gate before users open a debug tile:
+
+- how many devices are ready for annotation;
+- which device/session passed or is blocked;
+- moving joint count, motor entry count, and quality criteria when available;
+- a visible boundary that this is read-only data readiness, not motion
+  permission or a hardware command path.
+
 ## Validation Notes
 
 Cloud smoke validation on 2026-05-25:

@@ -144,6 +144,89 @@
   font-weight: 900;
 }
 
+.qualityStrip {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(142, 240, 199, 0.18);
+  border-radius: 8px;
+  background: rgba(6, 18, 22, 0.78);
+}
+
+.qualityStripHead {
+  min-width: 0;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.qualityStripHead div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.qualityStripHead span,
+.qualityCards span {
+  color: #8ef0c7;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.qualityStripHead strong {
+  color: #eefcf7;
+  font-size: 17px;
+  line-height: 1.25;
+}
+
+.qualityStripHead small {
+  max-width: 360px;
+  color: rgba(238, 252, 247, 0.62);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.qualityCards {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  background: rgba(142, 240, 199, 0.12);
+}
+
+.qualityCards article {
+  min-width: 0;
+  min-height: 92px;
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  padding: 10px;
+  border-top: 3px solid #f1d06b;
+  background: #0b191b;
+}
+
+.qualityCards article[data-ready="true"] {
+  border-top-color: #78e6aa;
+}
+
+.qualityCards article strong,
+.qualityCards article p {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.qualityCards article strong {
+  color: #eefcf7;
+  font-size: 13px;
+}
+
+.qualityCards article p {
+  margin: 0;
+  color: rgba(238, 252, 247, 0.68);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 .firstLookStrip {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2045,6 +2128,7 @@
 @media (max-width: 980px) {
   .firstLookStrip,
   .firstScreenBody,
+  .qualityCards,
   .capabilityMatrix,
   .commandDeck,
   .telemetryGrid,

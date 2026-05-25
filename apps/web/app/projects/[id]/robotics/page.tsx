@@ -7,6 +7,7 @@ import {
   getProjectState,
   getProjectThreadWorkstationsState,
 } from "../../../../lib/server-data";
+import { getApiBaseUrl } from "../../../../lib/config";
 import { isNpcSeatRecord } from "../../../../lib/platform-provider";
 import { summarizeRunnerDispatchState } from "../../../../lib/runner-status";
 import { RoboticsWorkbenchClient } from "./robotics-workbench-client";
@@ -134,6 +135,20 @@ type RoboticsRunnerSummary = {
   unknownComputers: number;
   scannedInterfaces: number;
 };
+
+async function getDeviceQualityDevices(): Promise<AnyRecord[]> {
+  try {
+    const response = await fetch(new URL("/api/rehab-arm/v1/devices/dashboard", getApiBaseUrl()).toString(), {
+      cache: "no-store",
+    });
+    if (!response.ok) return [];
+    const payload = await response.json();
+    const data = record(payload).data;
+    return asArray<AnyRecord>(record(data).devices);
+  } catch {
+    return [];
+  }
+}
 
 function interfaceReadyForWindow(status: string) {
   return status === "available";
@@ -264,9 +279,10 @@ export default async function ProjectRoboticsPage({
     );
   }
 
-  const [computersState, seatsState] = await Promise.all([
+  const [computersState, seatsState, deviceQualityDevices] = await Promise.all([
     getProjectComputerNodesState(projectId),
     getProjectThreadWorkstationsState(projectId),
+    getDeviceQualityDevices(),
   ]);
   const messagesState = await getCollaborationMessagesState({
     projectId,
@@ -301,6 +317,7 @@ export default async function ProjectRoboticsPage({
       unknownComputers={runnerSummary.unknownComputers}
       computerCount={computers.length}
       scannedInterfaceCount={runnerSummary.scannedInterfaces}
+      deviceQualityDevices={deviceQualityDevices}
       notice={notice}
       error={error}
     />
