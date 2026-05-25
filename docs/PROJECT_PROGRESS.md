@@ -647,11 +647,16 @@
   - `--execute` 才按 API 草案发送 JSON 和 multipart HTTP 请求。
   - 本地测试通过：40 tests passed。
   - NanoPi 测试通过：30 tests passed；`colcon build` passed；`ros2 pkg executables` 能看到 `sync_upload.py`。
+- 新增本地同步测试服务器：
+  - `sync_test_server.py` 接收 POST，保存 request log 和原始 body。
+  - 本地测试通过：41 tests passed。
+  - NanoPi 测试通过：31 tests passed；`colcon build` passed；`ros2 pkg executables` 能看到 `sync_test_server.py`。
+  - NanoPi 命令行实测 `sync_upload.py --execute` 对本地假服务器完成 4 个 POST。
 
 ## 进行中
 
 - 下一步继续按框架补数据链路：
-  - 后续补最小服务器端接收/保存骨架。
+  - 后续把总服务器仓库的接收接口和当前 API 草案对齐。
   - 不进入真实电机控制。
   - 不给电机驱动上电，不做运动测试。
 
@@ -673,7 +678,7 @@
 
 1. 保持电机驱动断开，确认 `can0` 为 `ERROR-ACTIVE`。
 2. raw SocketCAN 先测 `0x321 -> 0x322` heartbeat。
-3. 设计服务器端最小数据接收接口，并用本地假服务器测试 `--execute`。
+3. 对接总服务器仓库的最小接收接口。
 4. 保持服务器同步非实时，不放进控制闭环。
 5. 仍保持 logging-only，不进入真实电机控制路径。
 

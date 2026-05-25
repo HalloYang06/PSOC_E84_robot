@@ -17,6 +17,7 @@ install(PROGRAMS
   rehab_arm_psoc_bridge/build_manifest.py
   rehab_arm_psoc_bridge/sync_dry_run.py
   rehab_arm_psoc_bridge/sync_upload.py
+  rehab_arm_psoc_bridge/sync_test_server.py
   rehab_arm_psoc_bridge/decode_psoc_cmd.py
   rehab_arm_psoc_bridge/encode_psoc_cmd.py
   DESTINATION lib/${PROJECT_NAME}

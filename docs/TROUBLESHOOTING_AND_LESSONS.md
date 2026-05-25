@@ -1677,6 +1677,36 @@ AttributeError: handle cannot be modified after node creation
 - 上传入口默认必须是 dry-run，只有显式 `--execute` 才能联网。
 - 真正使用 `--execute` 要等服务器 endpoint 确认后再做。
 
+### `urlopen` 超时参数必须用关键字
+
+现象：
+
+- 本地假服务器收到第 1 个 POST，但 `sync_upload.py --execute` 结果失败。
+- 错误为 `message_body should be a bytes-like object or an iterable, got <class 'float'>`。
+
+根因：
+
+- `urllib.request.urlopen(req, timeout_sec)` 的第二个位置参数是 `data`，不是 timeout。
+
+解决：
+
+- 使用 `urllib.request.urlopen(req, timeout=timeout_sec)`。
+
+状态：
+
+- 已修复，Windows 和 NanoPi 均完成 4 个 POST 闭环。
+
+### PowerShell 传远程 bash 脚本要小心 CRLF
+
+现象：
+
+- 通过 PowerShell here-string 传脚本到 NanoPi 后，`tail` 报路径带 `$'\r'`。
+
+技巧：
+
+- 复杂远程验证优先用远程 Python 读文件或确保脚本转换为 LF。
+- 生成 JSON/manifest 时优先用远程 Python `json.dumps()`，不要手写多层转义。
+
 ### 哈希测试不要依赖文本换行
 
 现象：

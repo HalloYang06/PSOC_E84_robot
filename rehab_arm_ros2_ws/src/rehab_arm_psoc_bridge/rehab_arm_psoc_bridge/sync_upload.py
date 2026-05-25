@@ -76,7 +76,7 @@ def execute_sync_plan(
     timeout_sec: float = 10.0,
     opener: OpenUrl | None = None,
 ) -> dict[str, object]:
-    open_url = opener or request.urlopen
+    open_url = opener
     results: list[dict[str, object]] = []
     for index, item in enumerate(plan.get('requests', []), start=1):
         if not isinstance(item, dict):
@@ -84,7 +84,10 @@ def execute_sync_plan(
             continue
         http_request = make_http_request(item)
         try:
-            response = open_url(http_request, timeout_sec)
+            if open_url is None:
+                response = request.urlopen(http_request, timeout=timeout_sec)
+            else:
+                response = open_url(http_request, timeout_sec)
             status = int(getattr(response, 'status', getattr(response, 'code', 0)))
             body = response.read().decode('utf-8', errors='replace')
             results.append({

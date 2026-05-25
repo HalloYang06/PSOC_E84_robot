@@ -1031,6 +1031,29 @@ ros2 run rehab_arm_psoc_bridge sync_upload.py /home/pi/rehab_arm_logs/manifest.j
 - 上传链路只同步数据，不进入 M33 控制闭环。
 - 服务器同步失败不能影响本地急停、限位、heartbeat 或安全状态机。
 
+本地假服务器验证：
+
+```bash
+ros2 run rehab_arm_psoc_bridge sync_test_server.py \
+  --host 127.0.0.1 \
+  --port 8765 \
+  --storage-dir /tmp/rehab_arm_sync_server
+```
+
+另开终端执行：
+
+```bash
+ros2 run rehab_arm_psoc_bridge sync_upload.py /home/pi/rehab_arm_logs/manifest.json \
+  --base-url http://127.0.0.1:8765/api/rehab-arm/v1 \
+  --execute
+```
+
+通过标准：
+
+- `sync_upload.py` 输出 `schema_version=rehab_arm_sync_execute_result_v1` 和 `ok=true`。
+- `/tmp/rehab_arm_sync_server/request_log.jsonl` 有 4 条 POST 记录。
+- 第 3 条路径应为 `/api/rehab-arm/v1/sessions/<session_id>/files`，`content_type` 为 `multipart/form-data`。
+
 服务器同步 API 仍是草案，见：[SERVER_SYNC_API_DRAFT.md](SERVER_SYNC_API_DRAFT.md)。当前阶段已具备安全默认的上传入口，但真实上传要等服务器 endpoint 确认。
 
 ## 6. 当前真实 CAN ID
