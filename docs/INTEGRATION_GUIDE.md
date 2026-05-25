@@ -81,6 +81,18 @@ ros2 run rehab_arm_psoc_bridge summarize_recording.py /path/to/session.jsonl --p
 | `safety_states` | 安全状态分布。 |
 | `motion_allowed_counts` | `motion_allowed` 统计。 |
 
+质量门检查：
+
+```bash
+ros2 run rehab_arm_psoc_bridge validate_recording_quality.py /path/to/session.jsonl \
+  --min-joint-messages 100 \
+  --min-moving-joints 5 \
+  --require-motor-state \
+  --min-motor-entry-count 5
+```
+
+输出 `rehab_arm_recording_quality_v1`，包含 `ok/errors/warnings/criteria/schema_check/summary`。总控台、标注工具或 CI 可以先看 `ok`，再读取 `errors` 给操作者。当前 logging-only/离线采集阶段默认不允许 `motion_allowed=true`。
+
 ### Manifest
 
 普通 manifest：
@@ -163,9 +175,10 @@ timeout -s INT 12s ros2 launch rehab_arm_bringup sim_data_collection.launch.py \
 验收顺序：
 
 1. `check_recording.py` 返回 `ok=true`。
-2. `summarize_recording.py` 中 `moving_joint_count=5`。
-3. `motor_entry_count_min=5` 且 `motor_entry_count_max=5`。
-4. 导出 CSV 后，`joint_states.csv` 和 `motor_states.csv` 均有数据行。
+2. `validate_recording_quality.py --min-moving-joints 5 --require-motor-state --min-motor-entry-count 5` 返回 `ok=true`。
+3. `summarize_recording.py` 中 `moving_joint_count=5`。
+4. `motor_entry_count_min=5` 且 `motor_entry_count_max=5`。
+5. 导出 CSV 后，`joint_states.csv` 和 `motor_states.csv` 均有数据行。
 
 ## 6. 真机对接边界
 
@@ -191,6 +204,7 @@ timeout -s INT 12s ros2 launch rehab_arm_bringup sim_data_collection.launch.py \
 - recorder 可写出 JSONL。
 - `check_recording.py` 可检查基础 topic。
 - `summarize_recording.py` 可总结数据质量。
+- `validate_recording_quality.py` 可做离线 PASS/FAIL 质量门。
 - `build_manifest.py --include-summary` 可生成带 summary 的 manifest。
 - `sync_dry_run.py` 和本地 `sync_test_server.py` 已验证能保留 summary 字段。
 - `export_recording_csv.py` 可导出 `joint_states.csv` 和 `motor_states.csv`。

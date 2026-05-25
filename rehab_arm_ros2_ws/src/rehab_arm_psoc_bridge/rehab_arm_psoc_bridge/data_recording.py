@@ -316,6 +316,78 @@ def summarize_jsonl_records(records: list[dict[str, object]]) -> dict[str, objec
     }
 
 
+def build_recording_quality_report(
+    records: list[dict[str, object]],
+    min_joint_messages: int = 1,
+    min_moving_joints: int = 0,
+    require_motor_state: bool = False,
+    min_motor_entry_count: int = 0,
+    allow_motion_allowed_true: bool = False,
+) -> dict[str, object]:
+    schema_check = validate_jsonl_records(records)
+    summary = summarize_jsonl_records(records)
+    errors: list[str] = list(schema_check.get('errors', []))
+    warnings: list[str] = []
+
+    topic_counts = summary.get('topic_counts', {})
+    if not isinstance(topic_counts, dict):
+        topic_counts = {}
+    joint_message_count = int(topic_counts.get('/joint_states', 0) or 0)
+    motor_message_count = int(topic_counts.get('/rehab_arm/motor_state', 0) or 0)
+    moving_joint_count = int(summary.get('moving_joint_count', 0) or 0)
+    motor_entry_count_min = int(summary.get('motor_entry_count_min', 0) or 0)
+
+    if joint_message_count < min_joint_messages:
+        errors.append(
+            f'joint state message count {joint_message_count} below required {min_joint_messages}'
+        )
+    if moving_joint_count < min_moving_joints:
+        errors.append(
+            f'moving joint count {moving_joint_count} below required {min_moving_joints}'
+        )
+    if require_motor_state and motor_message_count == 0:
+        errors.append('missing required /rehab_arm/motor_state messages')
+    if min_motor_entry_count > 0:
+        if motor_message_count == 0:
+            errors.append(
+                f'motor entry count 0 below required {min_motor_entry_count}; no motor_state messages'
+            )
+        elif motor_entry_count_min < min_motor_entry_count:
+            errors.append(
+                f'motor entry count min {motor_entry_count_min} below required {min_motor_entry_count}'
+            )
+
+    motion_allowed_counts = summary.get('motion_allowed_counts', {})
+    if not isinstance(motion_allowed_counts, dict):
+        motion_allowed_counts = {}
+    motion_allowed_true = int(motion_allowed_counts.get('true', 0) or 0)
+    if motion_allowed_true > 0 and not allow_motion_allowed_true:
+        errors.append(
+            f'motion_allowed true appeared {motion_allowed_true} times; current offline/logging checks expect false'
+        )
+
+    if joint_message_count > 0 and moving_joint_count == 0:
+        warnings.append('joint_states were recorded but no joint moved more than 0.01 rad')
+    if not require_motor_state and motor_message_count == 0:
+        warnings.append('/rehab_arm/motor_state is absent; this may be fine for early raw recorder checks')
+
+    return {
+        'schema_version': 'rehab_arm_recording_quality_v1',
+        'ok': not errors,
+        'errors': errors,
+        'warnings': warnings,
+        'criteria': {
+            'min_joint_messages': min_joint_messages,
+            'min_moving_joints': min_moving_joints,
+            'require_motor_state': require_motor_state,
+            'min_motor_entry_count': min_motor_entry_count,
+            'allow_motion_allowed_true': allow_motion_allowed_true,
+        },
+        'schema_check': schema_check,
+        'summary': summary,
+    }
+
+
 JOINT_STATE_CSV_FIELDS = [
     'ts_unix',
     'stamp_sec',

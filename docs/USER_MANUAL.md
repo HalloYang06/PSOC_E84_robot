@@ -1118,6 +1118,27 @@ ros2 run rehab_arm_psoc_bridge summarize_recording.py \
 - 动态 demo session 中 `moving_joint_count` 应为 `5`。
 - `topic_counts` 应包含 `/joint_states`、`/rehab_arm/motor_state`、`/rehab_arm/safety_state`、`/rehab_arm/sensor_state`。
 
+离线数据质量门：
+
+```bash
+ros2 run rehab_arm_psoc_bridge validate_recording_quality.py \
+  /tmp/rehab_sim_collection/sim_demo_motion.jsonl \
+  --min-joint-messages 100 \
+  --min-moving-joints 5 \
+  --require-motor-state \
+  --min-motor-entry-count 5 \
+  --pretty
+```
+
+通过标准：
+
+- 输出 `schema_version=rehab_arm_recording_quality_v1`。
+- `ok=true`。
+- `errors=[]`。
+- 当前 logging-only/仿真采集阶段不应出现 `motion_allowed=true`。
+
+如果只是短时间 recorder 冒烟测试，可以降低阈值；如果是动态 demo 采集，应要求 `moving_joint_count=5` 和 `motor_entry_count_min>=5`。
+
 导出 CSV：
 
 ```bash

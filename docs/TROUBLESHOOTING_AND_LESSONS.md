@@ -1851,18 +1851,21 @@ RuntimeError: Unable to convert call argument '0' to Python object
 
 - `check_recording.py` 回答“基础 topic 是否齐全”。
 - `summarize_recording.py` 回答“这段数据质量如何”，例如 topic 频率、关节运动范围、motor_state 条目数、安全状态分布。
+- `validate_recording_quality.py` 回答“这段数据能不能进入下一步流程”，例如 CI、标注、回放或上传前验收。
 
 技巧：
 
 - 动态 demo 采集后应同时跑两个工具。
 - `check_recording.py ok=true` 但 `moving_joint_count=0`，说明采到了数据但没有运动变化。
 - `motor_entry_count_min/max` 可帮助总控台快速发现 motor_state 是否缺条目。
+- 当前 logging-only/离线采集阶段，质量门默认不允许 `motion_allowed=true`；如果后续真机阶段真的进入可运动状态，必须显式传 `--allow-motion-allowed-true`，并先确认 M33 安全语义已经完成。
 
 状态：
 
 - 本地已新增摘要工具并通过单元测试。
 - NanoPi 已构建通过。
 - NanoPi 复测时发现 `/tmp/rehab_sim_collection/sim_demo_motion.jsonl` 因重启消失；重新采集后摘要工具验证通过，`moving_joint_count=5`。
+- 本地已新增质量门工具并通过单元测试；硬件全断电时只做离线验证，不做 NanoPi/CAN 复测。
 
 ### manifest summary 默认不要破坏旧同步格式
 

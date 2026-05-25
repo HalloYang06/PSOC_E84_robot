@@ -764,12 +764,19 @@
   - 汇总 ROS2 topic、CAN ID、JSONL、manifest、summary、CSV、仿真采集流程、真机安全边界和当前已验证能力。
   - 明确服务器/VLA/App 只对接任务、状态和数据资产，不直接发 CAN 或底层电机命令。
   - 用户准备断电离开，后续切换到离线开发模式。
+- 新增 JSONL 数据质量门工具：
+  - 新增 `validate_recording_quality.py` 和 `build_recording_quality_report()`。
+  - 可检查基础 topic、`/joint_states` 数量、运动关节数、`/rehab_arm/motor_state` 是否存在、每帧 motor 条目数和 `motion_allowed=true` 是否出现。
+  - 默认不允许 `motion_allowed=true`，适配当前 logging-only/离线采集阶段。
+  - 本地验证通过：`rehab_arm_psoc_bridge` 56 tests passed；`py_compile` 通过。
+  - 本轮硬件全断电，未做 NanoPi、CAN、M33/M55 或电机测试。
 
 ## 进行中
 
 - 下一步继续按框架补数据链路：
   - 总服务器归入 AI 合作平台工程，不搬到本仓库。
   - 本仓库只保留 NanoPi 数据采集、manifest、dry-run/upload 客户端和本地假服务器验证工具。
+  - 离线阶段新增数据质量门和仿真主机使用流程，先服务仿真、标注、回放和后续 CI。
   - 后续先确认 USB/UVC 或深度摄像头枚举，再跑 `camera_keyframe_node.py` 采集真实图像。
   - 用户已准备断电，下一阶段先做离线开发：补文档、测试、数据工具和仿真主机流程，不依赖 NanoPi 在线。
   - 真机方向后续补 M33 电机状态到 `/rehab_arm/motor_state` 的映射。
@@ -794,7 +801,7 @@
 
 1. 保持电机驱动断开，确认 `can0` 为 `ERROR-ACTIVE`。
 2. raw SocketCAN 先测 `0x321 -> 0x322` heartbeat。
-3. 离线补齐仿真主机环境搭建和数据标注/回放流程，不依赖硬件上电。
+3. 离线补齐仿真主机环境搭建、数据质量检查、标注/回放流程，不依赖硬件上电。
 4. 保持服务器同步为非实时外部接口，不放进控制闭环。
 5. 仍保持 logging-only，不进入真实电机控制路径。
 

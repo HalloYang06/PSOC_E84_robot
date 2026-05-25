@@ -25,6 +25,7 @@ from rehab_arm_psoc_bridge.data_recording import (
     write_jsonl_record,
     sanitize_identifier,
     build_recording_manifest,
+    build_recording_quality_report,
     build_sync_dry_run_plan,
     file_sha256,
     summarize_jsonl_records,
@@ -293,6 +294,76 @@ class DataRecordingTests(unittest.TestCase):
         self.assertEqual(summary['motor_entry_count_max'], 1)
         self.assertEqual(summary['safety_states']['ok'], 1)
         self.assertEqual(summary['motion_allowed_counts']['false'], 1)
+
+    def test_build_recording_quality_report_passes_dynamic_session(self) -> None:
+        records = [
+            make_session_metadata('s1', 'nanopi', 'arm', 'dev', 'simulation_data_collection', now=1.0),
+            make_payload_record(
+                '/joint_states',
+                make_joint_state_payload(['j0', 'j1'], [0.0, 0.0], [0.0, 0.0], [0.0, 0.0], 1, 0),
+                now=2.0,
+            ),
+            make_payload_record(
+                '/joint_states',
+                make_joint_state_payload(['j0', 'j1'], [0.5, 0.2], [0.0, 0.0], [0.0, 0.0], 2, 0),
+                now=3.0,
+            ),
+            make_payload_record(
+                '/rehab_arm/motor_state',
+                make_motor_state_payload(
+                    [
+                        {'joint_name': 'j0', 'position': 0.5},
+                        {'joint_name': 'j1', 'position': 0.2},
+                    ],
+                    robot_id='arm',
+                    device_id='nanopi',
+                    now=3.0,
+                ),
+                now=3.0,
+            ),
+            make_payload_record('/rehab_arm/safety_state', {'state': 'ok', 'motion_allowed': False}, now=4.0),
+            make_payload_record('/rehab_arm/sensor_state', {'source': 'sim'}, now=5.0),
+        ]
+
+        report = build_recording_quality_report(
+            records,
+            min_joint_messages=2,
+            min_moving_joints=2,
+            require_motor_state=True,
+            min_motor_entry_count=2,
+        )
+
+        self.assertIs(report['ok'], True)
+        self.assertEqual(report['schema_version'], 'rehab_arm_recording_quality_v1')
+        self.assertEqual(report['summary']['moving_joint_count'], 2)
+        self.assertEqual(report['summary']['motor_entry_count_min'], 2)
+
+    def test_build_recording_quality_report_fails_strict_thresholds(self) -> None:
+        records = [
+            make_session_metadata('s1', 'nanopi', 'arm', 'dev', 'logging_only', now=1.0),
+            make_payload_record(
+                '/joint_states',
+                make_joint_state_payload(['j0'], [0.0], [0.0], [0.0], 1, 0),
+                now=2.0,
+            ),
+            make_payload_record('/rehab_arm/safety_state', {'state': 'ok', 'motion_allowed': True}, now=3.0),
+            make_payload_record('/rehab_arm/sensor_state', {'source': 'sim'}, now=4.0),
+        ]
+
+        report = build_recording_quality_report(
+            records,
+            min_joint_messages=2,
+            min_moving_joints=1,
+            require_motor_state=True,
+            min_motor_entry_count=1,
+        )
+
+        self.assertIs(report['ok'], False)
+        joined_errors = '\n'.join(report['errors'])
+        self.assertIn('joint state message count 1 below required 2', joined_errors)
+        self.assertIn('moving joint count 0 below required 1', joined_errors)
+        self.assertIn('missing required /rehab_arm/motor_state messages', joined_errors)
+        self.assertIn('motion_allowed true appeared 1 times', joined_errors)
 
     def test_make_csv_rows_for_joint_and_motor_states(self) -> None:
         records = [
