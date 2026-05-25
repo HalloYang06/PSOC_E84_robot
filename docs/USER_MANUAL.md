@@ -1118,6 +1118,23 @@ ros2 run rehab_arm_psoc_bridge summarize_recording.py \
 - 动态 demo session 中 `moving_joint_count` 应为 `5`。
 - `topic_counts` 应包含 `/joint_states`、`/rehab_arm/motor_state`、`/rehab_arm/safety_state`、`/rehab_arm/sensor_state`。
 
+导出 CSV：
+
+```bash
+ros2 run rehab_arm_psoc_bridge export_recording_csv.py \
+  /tmp/rehab_sim_collection/sim_demo_motion.jsonl \
+  --output-dir /tmp/rehab_sim_collection/sim_demo_motion_csv
+```
+
+输出：
+
+- `joint_states.csv`
+- `motor_states.csv`
+
+这些 CSV 只用于离线检查、画曲线、标注和模型训练前处理，不是控制命令。
+
+对接字段说明见：[INTEGRATION_GUIDE.md](INTEGRATION_GUIDE.md)。
+
 `/rehab_arm/camera_keyframe` payload 示例：
 
 ```json

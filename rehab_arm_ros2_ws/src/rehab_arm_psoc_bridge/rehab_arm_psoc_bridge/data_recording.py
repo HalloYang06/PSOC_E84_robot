@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import hashlib
 import time
+import csv
 from pathlib import Path
 from typing import Iterable, TextIO
 
@@ -313,6 +314,120 @@ def summarize_jsonl_records(records: list[dict[str, object]]) -> dict[str, objec
         'safety_states': dict(sorted(safety_states.items())),
         'motion_allowed_counts': motion_allowed_counts,
     }
+
+
+JOINT_STATE_CSV_FIELDS = [
+    'ts_unix',
+    'stamp_sec',
+    'stamp_nanosec',
+    'joint_name',
+    'position',
+    'velocity',
+    'effort',
+]
+MOTOR_STATE_CSV_FIELDS = [
+    'ts_unix',
+    'robot_id',
+    'device_id',
+    'source',
+    'joint_name',
+    'motor_id',
+    'protocol',
+    'position',
+    'velocity',
+    'effort',
+    'current',
+    'torque',
+    'temperature',
+    'voltage',
+    'enabled',
+    'fault',
+    'error_code',
+    'raw_can_id',
+]
+
+
+def make_joint_state_csv_rows(records: list[dict[str, object]]) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for record in records:
+        if record.get('record_type') != 'topic_message' or record.get('topic') != '/joint_states':
+            continue
+        payload = record.get('payload')
+        if not isinstance(payload, dict):
+            continue
+        names = payload.get('name', [])
+        positions = payload.get('position', [])
+        velocities = payload.get('velocity', [])
+        efforts = payload.get('effort', [])
+        stamp = payload.get('stamp', {})
+        if not isinstance(names, list):
+            continue
+        if not isinstance(positions, list):
+            positions = []
+        if not isinstance(velocities, list):
+            velocities = []
+        if not isinstance(efforts, list):
+            efforts = []
+        if not isinstance(stamp, dict):
+            stamp = {}
+        for index, name in enumerate(names):
+            rows.append({
+                'ts_unix': record.get('ts_unix'),
+                'stamp_sec': stamp.get('sec'),
+                'stamp_nanosec': stamp.get('nanosec'),
+                'joint_name': name,
+                'position': positions[index] if index < len(positions) else '',
+                'velocity': velocities[index] if index < len(velocities) else '',
+                'effort': efforts[index] if index < len(efforts) else '',
+            })
+    return rows
+
+
+def make_motor_state_csv_rows(records: list[dict[str, object]]) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for record in records:
+        if record.get('record_type') != 'topic_message' or record.get('topic') != '/rehab_arm/motor_state':
+            continue
+        payload = record.get('payload')
+        if not isinstance(payload, dict):
+            continue
+        motors = payload.get('motors', [])
+        if not isinstance(motors, list):
+            continue
+        for motor in motors:
+            if not isinstance(motor, dict):
+                continue
+            rows.append({
+                'ts_unix': record.get('ts_unix'),
+                'robot_id': payload.get('robot_id'),
+                'device_id': payload.get('device_id'),
+                'source': payload.get('source'),
+                'joint_name': motor.get('joint_name'),
+                'motor_id': motor.get('motor_id'),
+                'protocol': motor.get('protocol'),
+                'position': motor.get('position'),
+                'velocity': motor.get('velocity'),
+                'effort': motor.get('effort'),
+                'current': motor.get('current'),
+                'torque': motor.get('torque'),
+                'temperature': motor.get('temperature'),
+                'voltage': motor.get('voltage'),
+                'enabled': motor.get('enabled'),
+                'fault': motor.get('fault'),
+                'error_code': motor.get('error_code'),
+                'raw_can_id': motor.get('raw_can_id'),
+            })
+    return rows
+
+
+def write_csv_rows(path: str | Path, rows: list[dict[str, object]], fieldnames: list[str]) -> None:
+    target = Path(path).expanduser()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open('w', encoding='utf-8', newline='') as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames, extrasaction='ignore')
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(row)
 
 
 def build_recording_manifest(log_dir: str | Path, include_summary: bool = False) -> dict[str, object]:

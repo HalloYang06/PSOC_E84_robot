@@ -750,6 +750,20 @@
   - 假服务器收到 4 个 POST：devices/register、sessions/manifest、sessions/sim_demo_motion/files、sessions/sim_demo_motion/sync-status。
   - 服务端保存的 `/sessions/manifest` body 中保留 summary：`summary_schema=rehab_arm_recording_summary_v1`，`moving_joint_count=5`，`motor_entry_count_min/max=5`。
   - 本轮只连本机假服务器，没有上传真实服务器、没有发 CAN、没有发送 `0x320`、没有做电机运动测试。
+- 新增 JSONL 到 CSV 离线导出工具：
+  - 新增 `export_recording_csv.py`。
+  - 可从 recorder JSONL 导出 `joint_states.csv` 和 `motor_states.csv`，用于本地画曲线、标注、训练前检查和 Excel/pandas/MATLAB 对接。
+  - CSV 为长表格式，每行一个关节或电机遥测样本。
+  - 本地测试通过：`rehab_arm_psoc_bridge` 54 tests passed。
+  - NanoPi 构建通过：`rehab_arm_psoc_bridge`。
+  - NanoPi 测试通过：44 tests passed。
+  - NanoPi 动态 session 导出验证通过：`joint_state_row_count=4275`，`motor_state_row_count=4275`。
+  - 本轮没有发 CAN、没有发送 `0x320`、没有做电机运动测试。
+- 新增对接文档：
+  - 新增 `docs/INTEGRATION_GUIDE.md`。
+  - 汇总 ROS2 topic、CAN ID、JSONL、manifest、summary、CSV、仿真采集流程、真机安全边界和当前已验证能力。
+  - 明确服务器/VLA/App 只对接任务、状态和数据资产，不直接发 CAN 或底层电机命令。
+  - 用户准备断电离开，后续切换到离线开发模式。
 
 ## 进行中
 
@@ -757,7 +771,7 @@
   - 总服务器归入 AI 合作平台工程，不搬到本仓库。
   - 本仓库只保留 NanoPi 数据采集、manifest、dry-run/upload 客户端和本地假服务器验证工具。
   - 后续先确认 USB/UVC 或深度摄像头枚举，再跑 `camera_keyframe_node.py` 采集真实图像。
-  - 下一步可把这套数据质量 summary 字段整理成给 AI 合作平台/总控台开发者的接口提示，方便页面展示。
+  - 用户已准备断电，下一阶段先做离线开发：补文档、测试、数据工具和仿真主机流程，不依赖 NanoPi 在线。
   - 真机方向后续补 M33 电机状态到 `/rehab_arm/motor_state` 的映射。
   - 不进入真实电机控制。
   - 不给电机驱动上电，不做运动测试。
@@ -780,7 +794,7 @@
 
 1. 保持电机驱动断开，确认 `can0` 为 `ERROR-ACTIVE`。
 2. raw SocketCAN 先测 `0x321 -> 0x322` heartbeat。
-3. 整理总控台需要展示的设备数据字段和 summary 字段说明。
+3. 离线补齐仿真主机环境搭建和数据标注/回放流程，不依赖硬件上电。
 4. 保持服务器同步为非实时外部接口，不放进控制闭环。
 5. 仍保持 logging-only，不进入真实电机控制路径。
 

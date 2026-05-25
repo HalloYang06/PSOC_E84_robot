@@ -1833,6 +1833,18 @@ RuntimeError: Unable to convert call argument '0' to Python object
 
 - NanoPi 已验证 5 个关节均有运动 span，且 `check_recording.py ok=true`。
 
+### CSV 导出用于离线分析，不是控制链路
+
+规则：
+
+- `export_recording_csv.py` 从 JSONL 导出 `joint_states.csv` 和 `motor_states.csv`。
+- CSV 是给标注、画曲线、训练前检查、Excel/pandas/MATLAB 用的离线数据格式。
+- CSV 不应被任何节点当成实时控制输入直接下发到 M33 或电机。
+
+状态：
+
+- 本地和 NanoPi 已验证 CSV 导出。
+
 ### 数据摘要工具和完整性检查职责不同
 
 规则：

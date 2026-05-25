@@ -28,6 +28,10 @@ from rehab_arm_psoc_bridge.data_recording import (
     build_sync_dry_run_plan,
     file_sha256,
     summarize_jsonl_records,
+    make_joint_state_csv_rows,
+    make_motor_state_csv_rows,
+    write_csv_rows,
+    JOINT_STATE_CSV_FIELDS,
 )
 
 
@@ -289,6 +293,50 @@ class DataRecordingTests(unittest.TestCase):
         self.assertEqual(summary['motor_entry_count_max'], 1)
         self.assertEqual(summary['safety_states']['ok'], 1)
         self.assertEqual(summary['motion_allowed_counts']['false'], 1)
+
+    def test_make_csv_rows_for_joint_and_motor_states(self) -> None:
+        records = [
+            make_payload_record(
+                '/joint_states',
+                make_joint_state_payload(['j0'], [0.5], [0.1], [0.2], 2, 3),
+                now=10.0,
+            ),
+            make_payload_record(
+                '/rehab_arm/motor_state',
+                make_motor_state_payload(
+                    [{'joint_name': 'j0', 'motor_id': 4, 'protocol': 'sim', 'position': 0.5}],
+                    robot_id='arm',
+                    device_id='nanopi',
+                    now=10.0,
+                    source='sim_bridge',
+                ),
+                now=10.0,
+            ),
+        ]
+
+        joint_rows = make_joint_state_csv_rows(records)
+        motor_rows = make_motor_state_csv_rows(records)
+
+        self.assertEqual(joint_rows[0]['joint_name'], 'j0')
+        self.assertEqual(joint_rows[0]['position'], 0.5)
+        self.assertEqual(joint_rows[0]['stamp_sec'], 2)
+        self.assertEqual(motor_rows[0]['joint_name'], 'j0')
+        self.assertEqual(motor_rows[0]['motor_id'], 4)
+        self.assertEqual(motor_rows[0]['source'], 'sim_bridge')
+
+    def test_write_csv_rows(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / 'joint_states.csv'
+            write_csv_rows(
+                path,
+                [{'ts_unix': 1.0, 'joint_name': 'j0', 'position': 0.5}],
+                JOINT_STATE_CSV_FIELDS,
+            )
+
+            text = path.read_text(encoding='utf-8')
+
+        self.assertIn('ts_unix,stamp_sec,stamp_nanosec,joint_name,position,velocity,effort', text)
+        self.assertIn('1.0,,,j0,0.5,,', text)
 
     def test_file_sha256(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
