@@ -10,10 +10,18 @@ from typing import Callable
 from urllib import request
 
 try:
+    from rehab_arm_psoc_bridge.check_server_quality_gate import (
+        build_quality_gate_check,
+        load_server_dashboard,
+    )
     from rehab_arm_psoc_bridge.data_recording import build_sync_dry_run_plan
     from rehab_arm_psoc_bridge.sync_dry_run import DEFAULT_BASE_URL, load_manifest
 except ModuleNotFoundError:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from rehab_arm_psoc_bridge.check_server_quality_gate import (
+        build_quality_gate_check,
+        load_server_dashboard,
+    )
     from rehab_arm_psoc_bridge.data_recording import build_sync_dry_run_plan
     from rehab_arm_psoc_bridge.sync_dry_run import DEFAULT_BASE_URL, load_manifest
 
@@ -115,6 +123,53 @@ def execute_sync_plan(
     }
 
 
+def manifest_device_ids(manifest: dict[str, object]) -> list[str]:
+    seen: set[str] = set()
+    device_ids: list[str] = []
+    sessions = manifest.get('sessions', [])
+    if not isinstance(sessions, list):
+        return device_ids
+    for session in sessions:
+        if not isinstance(session, dict) or session.get('ok') is not True:
+            continue
+        device_id = str(session.get('device_id') or '').strip()
+        if device_id and device_id not in seen:
+            seen.add(device_id)
+            device_ids.append(device_id)
+    return device_ids
+
+
+def attach_quality_gate_checks(
+    result: dict[str, object],
+    manifest: dict[str, object],
+    base_url: str,
+    timeout_sec: float = 10.0,
+    require_annotation_ready: bool = True,
+    opener: OpenUrl | None = None,
+) -> dict[str, object]:
+    device_ids = manifest_device_ids(manifest)
+    dashboard = load_server_dashboard(base_url, timeout_sec=timeout_sec, opener=opener)
+    checks: list[dict[str, object]] = []
+    if dashboard.get('schema_version') == 'server_quality_gate_check_v1' and dashboard.get('ok') is False:
+        checks.append(dashboard)
+    else:
+        checks = [
+            build_quality_gate_check(
+                dashboard,
+                device_id,
+                require_annotation_ready=require_annotation_ready,
+            )
+            for device_id in device_ids
+        ]
+    next_result = dict(result)
+    next_result['quality_gate_checks'] = checks
+    next_result['quality_gate_checked_device_count'] = len(device_ids)
+    next_result['quality_gate_required_annotation_ready'] = require_annotation_ready
+    if checks and not all(check.get('ok') is True for check in checks):
+        next_result['ok'] = False
+    return next_result
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description='Preview or execute server sync for rehab arm manifest data.',
@@ -131,6 +186,16 @@ def main() -> int:
         help='Actually send HTTP requests. Omit this flag for safe dry-run output.',
     )
     parser.add_argument('--timeout-sec', type=float, default=10.0, help='HTTP timeout in seconds')
+    parser.add_argument(
+        '--check-quality-gate',
+        action='store_true',
+        help='After upload, query the server dashboard and check each uploaded device data quality gate.',
+    )
+    parser.add_argument(
+        '--allow-quality-not-ready',
+        action='store_true',
+        help='With --check-quality-gate, do not fail when annotation_ready=false.',
+    )
     args = parser.parse_args()
 
     manifest = load_manifest(args.manifest_path)
@@ -140,6 +205,14 @@ def main() -> int:
         return 0
 
     result = execute_sync_plan(plan, timeout_sec=args.timeout_sec)
+    if args.check_quality_gate:
+        result = attach_quality_gate_checks(
+            result,
+            manifest,
+            args.base_url,
+            timeout_sec=args.timeout_sec,
+            require_annotation_ready=not args.allow_quality_not_ready,
+        )
     print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
     return 0 if result['ok'] else 2
 

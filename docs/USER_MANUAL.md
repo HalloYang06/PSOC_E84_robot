@@ -1341,7 +1341,8 @@ ros2 run rehab_arm_psoc_bridge build_manifest.py /home/pi/rehab_arm_logs \
 ```bash
 ros2 run rehab_arm_psoc_bridge sync_upload.py /home/pi/rehab_arm_logs/manifest_with_quality.json \
   --base-url http://106.55.62.122:8011/api/rehab-arm/v1 \
-  --execute
+  --execute \
+  --check-quality-gate
 ```
 
 在开发电脑上检查云端 dashboard：
@@ -1373,6 +1374,13 @@ ros2 run rehab_arm_psoc_bridge check_server_quality_gate nanopi-m5 \
 - `annotation_ready=true` 表示可以进入平台标注/导出流程。
 - `safety_note` 会明确说明这只是数据就绪，不是运动许可。
 - 如果 `ok=false`，先看 `errors` 和 `blocking_reasons`，不要把该 session 用作训练数据。
+
+推荐现场使用方式：
+
+- 第一次接服务器时先不加 `--execute`，只看 dry-run 请求计划。
+- 确认 endpoint 正确后再加 `--execute --check-quality-gate`。
+- 如果上传成功但质量门失败，说明服务器收到了数据，但这段数据还不适合标注/训练。
+- `--allow-quality-not-ready` 只用于排查服务器是否收到设备，不应用作训练数据验收标准。
 
 服务器同步 API 草案见：[SERVER_SYNC_API_DRAFT.md](SERVER_SYNC_API_DRAFT.md)。
 

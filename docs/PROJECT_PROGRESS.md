@@ -870,3 +870,14 @@
 - Not validated: no NanoPi build, M33/M55 firmware, CAN, motor power, or real camera data in this slice.
 - Safety: this tool performs read-only HTTP GET checks only; it does not upload files or control hardware.
 - Next step: run the same quality gate check from NanoPi after a real simulation/logging session upload.
+
+### 2026-05-26 - Sync upload can auto-check server quality gate
+
+- Completed: `sync_upload.py --execute` can now add `--check-quality-gate` to query server dashboard after upload.
+- Completed: the upload result includes `quality_gate_checks`, checked device count, quality criteria, blocking reasons, and safety note.
+- Completed: added `--allow-quality-not-ready` for diagnostics when the user only wants to confirm the server received the device.
+- Validated: targeted `test_sync_upload.py` passed 6 tests.
+- Validated: full `rehab_arm_psoc_bridge` test suite passed 62 tests.
+- Validated: cloud smoke upload with `--check-quality-gate` returned `ok=true` and `annotation_ready=true` for `nanopi-quality-demo`.
+- Safety: quality-gate check is a post-upload read-only HTTP GET. It does not send CAN, motor commands, or M33 overrides.
+- Next step: when NanoPi is available, build the package there and run the same command after a real sim/log session upload.
