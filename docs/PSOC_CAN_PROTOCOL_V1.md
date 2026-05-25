@@ -115,6 +115,18 @@ detail=logging_only_no_motor_output
 heartbeat_age_ms=300
 ```
 
+当前 M33 本地补丁的 immediate heartbeat reply 使用 `heartbeat_age_100ms=0`，所以烧录后预期形如：
+
+```text
+0x322 [8] A5 <seq> 07 00 01 01 0A 00
+```
+
+例如 `A5 22 07 00 01 01 0A 00` 应解析为：
+
+```json
+{"protocol_version":2,"state":"limited","control_mode":"logging_only","detail":"logging_only_no_motor_output","heartbeat_age_ms":0}
+```
+
 ## `0x320` Joint Target Command
 
 当前 NanoPi dry-run 编码格式：

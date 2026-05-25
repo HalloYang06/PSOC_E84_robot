@@ -530,6 +530,41 @@ V2 logging-only 示例：
 - bridge 在旧 M33 V1 帧下仍兼容，`/rehab_arm/safety_state` 包含 `protocol_version:1`。
 - 本阶段只验证 heartbeat/status，不需要发布 `JointTrajectory`，不需要发送 `0x320`。
 
+当前本地 M33 工程已完成 V2 status 补丁并编译通过，等待用户烧录：
+
+```text
+D:\RT-ThreadStudio\workspace\yiliao_m33\Debug\rtthread.bin
+D:\RT-ThreadStudio\workspace\yiliao_m33\Debug\rtthread.hex
+```
+
+烧录后第一轮只测 heartbeat/status：
+
+```bash
+cd /home/pi/rehab_arm_ros2_ws
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+ros2 run rehab_arm_psoc_bridge psoc_can_bridge_node.py --ros-args -p log_heartbeat:=true
+```
+
+另开终端查看：
+
+```bash
+ros2 topic echo --once /rehab_arm/safety_state std_msgs/msg/String
+```
+
+通过标准：
+
+- 不发布 `/arm_controller/joint_trajectory`。
+- 不发送 `0x320`。
+- `candump` 或 bridge 日志能看到 heartbeat/status 链路仍通。
+- `/rehab_arm/safety_state` 包含：
+
+```json
+{"protocol_version":2,"state":"limited","control_mode":"logging_only","detail":"logging_only_no_motor_output"}
+```
+
+- `can0` 保持 `ERROR-ACTIVE`，没有 `bus-off` 或 `error-passive`。
+
 如果本机或 NanoPi 上有旧 bridge 进程，先清理再测：
 
 ```bash

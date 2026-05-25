@@ -333,13 +333,35 @@
     - 清理旧 bridge 进程后重新启动 bridge，旧 M33 `0x322` 被解析为 V1 legacy，topic 输出包含 `protocol_version:1`。
     - 本轮没有发布轨迹，没有发送真实 `0x320`，没有做电机运动测试。
   - 复查 `can0` 仍为 `UP/LOWER_UP/ERROR-ACTIVE`，`bus-errors/error-pass/bus-off` 均为 0。
+- 完成 M33 `0x322` V2 logging-only 状态上报补丁并本地编译：
+  - 本地工程：`D:\RT-ThreadStudio\workspace\yiliao_m33`。
+  - 修改 `applications/control/control_layer_cfg.h`，新增与 NanoPi `psoc_status.py` 对齐的 `0x322` V2 enum：
+    - `CONTROL_STATUS_SAFETY_LIMITED = 1`
+    - `CONTROL_STATUS_MODE_LOGGING_ONLY = 1`
+    - `CONTROL_STATUS_DETAIL_LOGGING_ONLY = 10`
+  - 修改 `applications/control/control_layer.c` 的 `ctrl_handle_nanopi_heartbeat()`：
+    - `0x322` byte0..3 保持 `A5 seq motors error_code`。
+    - logging-only 模式下 byte4..7 改为 `01 01 0A 00`。
+    - 预期回复形如 `A5 <seq> 07 00 01 01 0A 00`。
+  - 本地编译命令通过：
+    - `$env:Path='D:\RT-ThreadStudio\repo\Extract\ToolChain_Support_Packages\ARM\GNU_Tools_for_ARM_Embedded_Processors\13.3\bin;' + $env:Path; mingw32-make -C Debug all -j2`
+  - 编译产物已更新：
+    - `D:\RT-ThreadStudio\workspace\yiliao_m33\Debug\rtthread.bin`
+    - `D:\RT-ThreadStudio\workspace\yiliao_m33\Debug\rtthread.hex`
+  - 本地用 NanoPi bridge 解析器验证示例 payload `A522070001010A00`：
+    - `protocol_version=2`
+    - `state=limited`
+    - `control_mode=logging_only`
+    - `detail=logging_only_no_motor_output`
+  - 编译仍保留既有工程告警：`rtthread.elf has a LOAD segment with RWX permissions`，以及 post-build 中 `arm-none-eabi-objcopy: interleave must be positive` 被 makefile 标记为 ignored；本次修改没有导致编译失败。
+  - 尚未烧录本轮 M33 V2 status 固件，等待用户烧录后只测 `0x321 -> 0x322`，不发 `0x320`。
 
 ## 进行中
 
-- 下一步准备在 M33 侧实现 `0x322` V2 状态上报，但仍保持 `0x320` logging-only：
+- 下一步等待用户烧录 M33 `0x322` V2 status 固件：
   - 仍保持 `CONTROL_ROS_COMMAND_LOGGING_ONLY=1U`。
-  - 先让 M33 将当前 logging-only 状态上报为 `safety_state=limited`、`control_mode=logging_only`、`detail=logging_only_no_motor_output`。
-  - 在真实电机运动前，只验证 NanoPi `/rehab_arm/safety_state` 能看到 V2 字段。
+  - 烧录后只验证 heartbeat/status。
+  - 不发 `0x320`，不给电机驱动上电，不做运动测试。
 
 ## 待确认
 
@@ -357,11 +379,11 @@
 
 严格按“一次只做一个能测试的小目标”推进：
 
-1. 修改 M33 heartbeat/status 回复，让 `0x322` 按 V2 上报 logging-only limited 状态。
-2. 用户烧录后，NanoPi 只测 heartbeat/status，不发 `0x320`。
+1. 用户烧录 M33 V2 status 固件。
+2. NanoPi 只测 heartbeat/status，不发 `0x320`。
 3. 确认 `/rehab_arm/safety_state` 包含 `protocol_version=2`、`state=limited`、`control_mode=logging_only`。
-4. 再设计 M33 `0x320` 正式安全接收状态机，但默认仍不输出电机控制。
-5. 先用日志/模拟状态验证限位、超时、急停拒绝，不给电机驱动上电。
+4. 复查 `can0` 仍为 `ERROR-ACTIVE`，无 bus-off/error-passive。
+5. 再设计 M33 `0x320` 正式安全接收状态机，但默认仍不输出电机控制。
 6. 离线继续推进：可继续给 bridge 的安全门控补单元测试，不依赖硬件。
 
 ## 更新规则
