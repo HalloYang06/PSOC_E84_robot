@@ -1,6 +1,6 @@
 # Cloud Deployment Runner P0 Checklist
 
-Last verified: 2026-05-17
+Last verified: 2026-05-25
 
 ## Cloud Services
 
@@ -15,6 +15,29 @@ Restart on the Ubuntu server:
 cd ~/apps/ai-collab
 RESTART=1 scripts/start-cloud-prod.sh
 ```
+
+## Cloud Sync Routine
+
+GitHub push is only the source-control step. A change is not live on the cloud platform until the Ubuntu server has pulled the branch, rebuilt the web app if needed, restarted services, and passed the public alignment check.
+
+Use this routine for each cloud-facing slice:
+
+```powershell
+# 1. Development machine: commit and push the intended branch.
+git push origin ai/game-loop-core
+
+# 2. Ubuntu server: update the deployed checkout.
+ssh -i .codex-cloud-ssh\tencent_lighthouse_ed25519 `
+  -o UserKnownHostsFile=.codex-cloud-ssh\known_hosts `
+  ubuntu@106.55.62.122 "cd ~/apps/ai-collab && git pull --ff-only origin ai/game-loop-core && npm install && npm run build:web && RESTART=1 scripts/start-cloud-prod.sh"
+
+# 3. Development machine: verify Web/API fingerprint and public proxy.
+python scripts/check_web_api_alignment.py --web-base http://106.55.62.122:3001 --api-base http://106.55.62.122:8011 --project-id fe9bd342-f5ef-4afe-9c73-e7caa2ed17dd
+```
+
+If `git pull --ff-only` is blocked by cloud-local tracked edits, save them first with a named stash instead of overwriting them. Do not stash databases, SSH keys, runtime archives, or other local secret/runtime files. After deployment, record the stash name in the handoff if it still exists.
+
+For frontend changes, follow the user-view QA rule after deployment: open the real cloud page, verify the entry point as a user, capture a screenshot when the browser tool is available, and confirm there is no horizontal overflow or hidden dangerous action.
 
 Expected health checks:
 
@@ -82,9 +105,9 @@ Known reports:
 
 Latest deployed fingerprint:
 
-- `deployment.build_sha`: `c21747744f65`
+- `deployment.build_sha`: `5f970a881aa7`
 - `deployment.build_ref`: `ai/game-loop-core`
-- `deployment.build_time`: `2026-05-17T09:45:49Z`
+- `deployment.build_time`: `2026-05-25T15:33:52Z`
 
 Validated paths:
 
