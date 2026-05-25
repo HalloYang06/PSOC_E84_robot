@@ -630,11 +630,15 @@
   - 默认文件名为 `<robot_id>__<device_id>__YYYYmmddTHHMMSSZ.jsonl`。
   - metadata 包含 `schema_version`、`source`、`sync_status=local_only`。
   - 本地测试通过：32 tests passed；NanoPi build passed。
+- 新增本地 manifest 工具：
+  - 扫描 JSONL 并输出 `rehab_arm_manifest_v1` 清单。
+  - 本地测试通过：33 tests passed；NanoPi build passed。
+  - NanoPi 实测可标记不完整 session 为 `ok=false`。
 
 ## 进行中
 
 - 下一步继续按框架补数据链路：
-  - 增加服务器同步前的本地清单 manifest。
+  - 后续再接服务器同步 API，当前只保留本地清单。
   - 不进入真实电机控制。
   - 不给电机驱动上电，不做运动测试。
 
@@ -656,7 +660,7 @@
 
 1. 保持电机驱动断开，确认 `can0` 为 `ERROR-ACTIVE`。
 2. raw SocketCAN 先测 `0x321 -> 0x322` heartbeat。
-3. 扫描本地 JSONL，生成待同步文件清单。
+3. 明确服务器同步 API 草案。
 4. 保持服务器同步非实时，不放进控制闭环。
 5. 仍保持 logging-only，不进入真实电机控制路径。
 

@@ -22,6 +22,7 @@ from rehab_arm_psoc_bridge.data_recording import (
     validate_jsonl_records,
     write_jsonl_record,
     sanitize_identifier,
+    build_recording_manifest,
 )
 
 
@@ -144,6 +145,29 @@ class DataRecordingTests(unittest.TestCase):
 
         self.assertIs(summary['ok'], False)
         self.assertIn('/rehab_arm/safety_state', summary['missing_topics'])
+
+    def test_build_recording_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / 's1.jsonl'
+            records = [
+                make_session_metadata('s1', 'nanopi', 'arm', 'dev', 'logging_only', now=1.0),
+                make_payload_record('/joint_states', {}, now=2.0),
+                make_payload_record('/rehab_arm/safety_state', {}, now=3.0),
+                make_payload_record('/rehab_arm/sensor_state', {}, now=4.0),
+            ]
+            with path.open('w', encoding='utf-8') as handle:
+                for record in records:
+                    write_jsonl_record(handle, record)
+
+            manifest = build_recording_manifest(tmpdir)
+
+        self.assertEqual(manifest['schema_version'], 'rehab_arm_manifest_v1')
+        self.assertEqual(manifest['session_count'], 1)
+        session = manifest['sessions'][0]
+        self.assertIs(session['ok'], True)
+        self.assertEqual(session['session_id'], 's1')
+        self.assertEqual(session['sync_status'], 'local_only')
+        self.assertIn('/joint_states', session['topics'])
 
     def test_session_log_path_sanitizes_session_id(self) -> None:
         path = session_log_path('logs', 'session 1/unsafe')

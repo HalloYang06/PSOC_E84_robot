@@ -17,6 +17,7 @@ setup(
             'psoc_can_bridge_node = rehab_arm_psoc_bridge.psoc_can_bridge_node:main',
             'data_recorder_node = rehab_arm_psoc_bridge.data_recorder_node:main',
             'check_recording = rehab_arm_psoc_bridge.check_recording:main',
+            'build_manifest = rehab_arm_psoc_bridge.build_manifest:main',
         ],
     },
 )

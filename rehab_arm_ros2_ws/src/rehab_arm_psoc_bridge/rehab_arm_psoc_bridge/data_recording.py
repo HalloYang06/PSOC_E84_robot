@@ -141,3 +141,47 @@ def validate_jsonl_records(
         'missing_topics': missing_topics,
         'errors': errors,
     }
+
+
+def build_recording_manifest(log_dir: str | Path) -> dict[str, object]:
+    base = Path(log_dir).expanduser()
+    sessions: list[dict[str, object]] = []
+    for path in sorted(base.glob('*.jsonl')):
+        entry: dict[str, object] = {
+            'path': str(path),
+            'file_name': path.name,
+            'size_bytes': path.stat().st_size,
+            'sync_status': 'local_only',
+        }
+        try:
+            records = load_jsonl_records(path)
+            summary = validate_jsonl_records(records)
+            metadata = next(
+                (record for record in records if record.get('record_type') == 'session_metadata'),
+                {},
+            )
+            entry.update({
+                'ok': summary['ok'],
+                'session_id': metadata.get('session_id'),
+                'device_id': metadata.get('device_id'),
+                'robot_id': metadata.get('robot_id'),
+                'software_version': metadata.get('software_version'),
+                'mode': metadata.get('mode'),
+                'schema_version': metadata.get('schema_version'),
+                'record_count': summary['record_count'],
+                'topics': summary['topics'],
+                'missing_topics': summary['missing_topics'],
+                'errors': summary['errors'],
+            })
+        except Exception as exc:
+            entry.update({
+                'ok': False,
+                'errors': [str(exc)],
+            })
+        sessions.append(entry)
+    return {
+        'schema_version': 'rehab_arm_manifest_v1',
+        'log_dir': str(base),
+        'session_count': len(sessions),
+        'sessions': sessions,
+    }

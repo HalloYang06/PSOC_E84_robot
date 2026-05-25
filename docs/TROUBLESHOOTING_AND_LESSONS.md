@@ -1657,6 +1657,17 @@ AttributeError: handle cannot be modified after node creation
 - metadata 里保留同样的 `session_id`，并带 `schema_version`、`source`、`sync_status`。
 - 服务器同步前只需要扫描文件名和第一行 metadata，就能建立索引。
 
+### manifest 的 `ok=false` 不一定是程序错
+
+现象：
+
+- 对只含 `session_metadata` 的短验证文件运行 `build_manifest.py`，输出 `ok=false`。
+
+判断：
+
+- 这是正确行为；该文件缺少 `/joint_states`、`/rehab_arm/safety_state`、`/rehab_arm/sensor_state`。
+- manifest 用于同步前筛选，缺数据的 session 不应进入标注/同步流程。
+
 ### 进度和踩坑要分开
 
 规则：

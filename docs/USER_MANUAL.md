@@ -990,6 +990,15 @@ ros2 run rehab_arm_psoc_bridge check_recording.py /home/pi/rehab_arm_logs/test_s
 {"ok":true,"missing_topics":[]}
 ```
 
+生成本地待同步清单：
+
+```bash
+ros2 run rehab_arm_psoc_bridge build_manifest.py /home/pi/rehab_arm_logs \
+  --output /home/pi/rehab_arm_logs/manifest.json
+```
+
+这个清单只扫描本地文件，不上传服务器。`ok=false` 表示该 JSONL 缺少必需 topic 或 metadata，不适合进入标注/同步流程。
+
 ## 6. 当前真实 CAN ID
 
 | ID | 协议/用途 | 说明 |
