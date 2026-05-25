@@ -623,11 +623,14 @@
   - 校验 `session_metadata` 和必需 topic。
   - 本地测试通过：30 tests passed；NanoPi build passed。
   - NanoPi 实测完整文件 PASS，不完整文件 FAIL。
+- 新增数据采集 launch：
+  - `data_collection.launch.py` 启动 `data_recorder_node.py`。
+  - NanoPi build passed；10 秒短运行可写出 `session_metadata`。
 
 ## 进行中
 
 - 下一步继续按框架补数据链路：
-  - 给 recorder/checker 增加更清楚的服务器同步准备字段或文件命名规范。
+  - 给数据文件命名和服务器同步字段做最小规范。
   - 不进入真实电机控制。
   - 不给电机驱动上电，不做运动测试。
 

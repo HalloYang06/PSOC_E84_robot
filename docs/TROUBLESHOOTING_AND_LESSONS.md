@@ -1637,6 +1637,18 @@ AttributeError: handle cannot be modified after node creation
 
 - NanoPi 已验证完整 JSONL 返回 `ok=true`。
 
+### launch 短运行验证不要太短
+
+现象：
+
+- `timeout 3s ros2 launch ... data_collection.launch.py` 只看到进程启动，未稳定写出 JSONL。
+- 改成 `timeout 10s` 后正常写出 `session_metadata`。
+
+技巧：
+
+- launch 会先启动 launch service，再启动节点；短验证至少给 10 秒。
+- 验证 recorder 时优先检查 JSONL 第一行，而不是只看 launch 进程启动。
+
 ### 进度和踩坑要分开
 
 规则：

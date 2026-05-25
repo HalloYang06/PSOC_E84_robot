@@ -912,6 +912,24 @@ D:\RT-ThreadStudio\workspace\yiliao_m33\Debug\rtthread.bin
 
 NanoPi 可以先记录安全和传感 topic，作为后续服务器同步、标注、仿真回放的数据源：
 
+推荐用 launch 启动：
+
+```bash
+cd /home/pi/rehab_arm_ros2_ws
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+ros2 launch rehab_arm_psoc_bridge data_collection.launch.py \
+  output_dir:=/home/pi/rehab_arm_logs \
+  session_id:=test_session \
+  device_id:=nanopi-m5 \
+  robot_id:=rehab-arm-alpha \
+  software_version:=dev \
+  mode:=logging_only \
+  flush_every:=1
+```
+
+也可以直接启动节点：
+
 ```bash
 cd /home/pi/rehab_arm_ros2_ws
 source /opt/ros/jazzy/setup.bash
