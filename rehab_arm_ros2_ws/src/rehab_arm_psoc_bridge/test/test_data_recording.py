@@ -256,6 +256,54 @@ class DataRecordingTests(unittest.TestCase):
         self.assertEqual(session['summary']['moving_joint_count'], 1)
         self.assertEqual(session['summary']['topic_counts']['/joint_states'], 2)
 
+    def test_build_recording_manifest_can_include_quality_report(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / 's1.jsonl'
+            records = [
+                make_session_metadata('s1', 'nanopi', 'arm', 'dev', 'simulation_data_collection', now=1.0),
+                make_payload_record(
+                    '/joint_states',
+                    make_joint_state_payload(['j0'], [0.0], [0.0], [0.0], 1, 0),
+                    now=2.0,
+                ),
+                make_payload_record(
+                    '/joint_states',
+                    make_joint_state_payload(['j0'], [0.5], [0.0], [0.0], 2, 0),
+                    now=3.0,
+                ),
+                make_payload_record(
+                    '/rehab_arm/motor_state',
+                    make_motor_state_payload(
+                        [{'joint_name': 'j0', 'position': 0.5}],
+                        robot_id='arm',
+                        device_id='nanopi',
+                        now=3.0,
+                    ),
+                    now=3.0,
+                ),
+                make_payload_record('/rehab_arm/safety_state', {'state': 'ok', 'motion_allowed': False}, now=4.0),
+                make_payload_record('/rehab_arm/sensor_state', {'source': 'sim'}, now=5.0),
+            ]
+            with path.open('w', encoding='utf-8') as handle:
+                for record in records:
+                    write_jsonl_record(handle, record)
+
+            manifest = build_recording_manifest(
+                tmpdir,
+                include_quality_report=True,
+                min_joint_messages=2,
+                min_moving_joints=1,
+                require_motor_state=True,
+                min_motor_entry_count=1,
+            )
+
+        session = manifest['sessions'][0]
+        self.assertIn('quality_report', session)
+        self.assertEqual(session['quality_report']['schema_version'], 'rehab_arm_recording_quality_v1')
+        self.assertIs(session['quality_report']['ok'], True)
+        self.assertEqual(session['quality_report']['criteria']['min_moving_joints'], 1)
+        self.assertEqual(session['quality_report']['summary']['moving_joint_count'], 1)
+
     def test_summarize_jsonl_records(self) -> None:
         records = [
             make_session_metadata('s1', 'nanopi', 'arm', 'dev', 'simulation_data_collection', now=1.0),

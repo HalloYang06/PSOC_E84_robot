@@ -1316,6 +1316,26 @@ ros2 run rehab_arm_psoc_bridge sync_upload.py /home/pi/rehab_arm_logs/manifest.j
 - 推荐上传 `manifest_with_summary.json`。平台会把 summary 映射为通用设备数据质量索引，用于标注、导出和图表实验入口。
 - 平台质量索引不是运动许可；即使平台显示数据质量通过，也不能绕过 M33 安全状态机。
 
+带质量门报告的 manifest：
+
+```bash
+ros2 run rehab_arm_psoc_bridge build_manifest.py /home/pi/rehab_arm_logs \
+  --include-summary \
+  --include-quality-report \
+  --min-joint-messages 50 \
+  --min-moving-joints 5 \
+  --require-motor-state \
+  --min-motor-entry-count 5 \
+  --output /home/pi/rehab_arm_logs/manifest_with_quality.json
+```
+
+通过标准：
+
+- 每个有效 session 包含 `quality_report.schema_version=rehab_arm_recording_quality_v1`。
+- `quality_report.ok=true` 时，平台可把该 session 作为可标注/可导出的数据资产。
+- `quality_report.ok=false` 时，平台必须显示 blocking reason，不能把它当成合格训练数据。
+- 质量报告仍然只是数据质量门，不是电机上电或运动许可。
+
 服务器同步 API 草案见：[SERVER_SYNC_API_DRAFT.md](SERVER_SYNC_API_DRAFT.md)。
 
 ## 6. 当前真实 CAN ID

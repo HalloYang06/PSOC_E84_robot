@@ -502,7 +502,16 @@ def write_csv_rows(path: str | Path, rows: list[dict[str, object]], fieldnames: 
             writer.writerow(row)
 
 
-def build_recording_manifest(log_dir: str | Path, include_summary: bool = False) -> dict[str, object]:
+def build_recording_manifest(
+    log_dir: str | Path,
+    include_summary: bool = False,
+    include_quality_report: bool = False,
+    min_joint_messages: int = 1,
+    min_moving_joints: int = 0,
+    require_motor_state: bool = False,
+    min_motor_entry_count: int = 0,
+    allow_motion_allowed_true: bool = False,
+) -> dict[str, object]:
     base = Path(log_dir).expanduser()
     sessions: list[dict[str, object]] = []
     for path in sorted(base.glob('*.jsonl')):
@@ -534,6 +543,15 @@ def build_recording_manifest(log_dir: str | Path, include_summary: bool = False)
             })
             if include_summary:
                 entry['summary'] = summarize_jsonl_records(records)
+            if include_quality_report:
+                entry['quality_report'] = build_recording_quality_report(
+                    records,
+                    min_joint_messages=min_joint_messages,
+                    min_moving_joints=min_moving_joints,
+                    require_motor_state=require_motor_state,
+                    min_motor_entry_count=min_motor_entry_count,
+                    allow_motion_allowed_true=allow_motion_allowed_true,
+                )
         except Exception as exc:
             entry.update({
                 'ok': False,

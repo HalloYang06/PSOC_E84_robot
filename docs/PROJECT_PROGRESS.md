@@ -839,3 +839,13 @@
 - 新踩的坑和可复用技巧要补到 `docs/TROUBLESHOOTING_AND_LESSONS.md`。
 - 新增或变化的使用命令、测试流程、验收标准要补到 `docs/USER_MANUAL.md`。
 - 每个小任务完成后提交并推送到 `origin/feature/rehab-arm-ros2-architecture`。
+
+### 2026-05-25 - Manifest quality report handoff to platform
+
+- Completed: added optional `quality_report` embedding to `build_recording_manifest()` and `build_manifest.py` via `--include-quality-report` plus quality criteria flags.
+- Completed: platform API can read `quality_report` from manifest sessions and use `quality_report.ok=false` as an annotation/export blocking reason.
+- Validated: Windows rehab-arm unit test `python -m unittest rehab_arm_ros2_ws\src\rehab_arm_psoc_bridge\test\test_data_recording.py -v` passed 27 tests.
+- Validated: platform API test `python -m pytest apps\api\tests\test_rehab_arm_sync.py -q` passed 4 tests.
+- Not validated: no NanoPi, CAN, M33/M55, camera, motor, or cloud upload test in this slice.
+- Safety: quality reports remain data-quality gates only; they do not grant motion permission or bypass M33.
+- Next step: generate a real sim `manifest_with_quality.json`, sync to platform test server/cloud, and confirm the device data workbench shows annotation readiness from the uploaded quality report.
