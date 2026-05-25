@@ -782,6 +782,59 @@ ip -details -statistics link show can0
 
 - 已记录。本次 `0x320` 对照本身不受影响，CAN 和 M33 串口日志均已验证。
 
+### Windows 的 Meta 虚拟网卡会误导 NanoPi 连通性判断
+
+现象：
+
+- 用户烧录 M33 后准备复测 NanoPi/M33 链路。
+- `ssh pi@192.168.2.66` 一开始超时，后续出现 `kex_exchange_identification: Connection closed by remote host`。
+- `Test-NetConnection 192.168.2.66 -Port 22` 显示 `TcpTestSucceeded=True`，但详情里源地址是：
+
+```text
+InterfaceAlias : Meta
+SourceAddress  : 198.18.0.1
+NextHop        : 198.18.0.2
+```
+
+排查：
+
+- 本机真实局域网地址是 `192.168.2.9` 和 `192.168.2.10`。
+- 强制从无线源地址测试：
+
+```powershell
+ssh -b 192.168.2.9 -o ConnectTimeout=8 pi@192.168.2.66 "hostname"
+ping -S 192.168.2.9 -n 1 192.168.2.66
+```
+
+- 结果真实无线源地址到 `192.168.2.66` 超时，ARP 中也没有 `192.168.2.66`。
+
+根因：
+
+- Windows 路由把未绑定源地址的连接送进了 `Meta/198.18.0.x` 虚拟网卡或代理路径。
+- 这个路径上的端口连通性不能证明 NanoPi 在真实 `192.168.2.0/24` 局域网在线。
+
+解决：
+
+- 验证 NanoPi 时优先强制源地址或明确真实网卡：
+
+```powershell
+ssh -b 192.168.2.9 pi@192.168.2.66 "hostname"
+ping -S 192.168.2.9 -n 3 192.168.2.66
+arp -a 192.168.2.66
+```
+
+- 只有真实 `192.168.2.x` 源地址能 SSH 到 NanoPi，才继续 `can0`、heartbeat 和 `0x320` 测试。
+
+技巧：
+
+- `Test-NetConnection` 通过时一定看 `InterfaceAlias` 和 `SourceAddress`。
+- 不要把 `198.18.0.x` 代理/虚拟网卡结果当作 NanoPi 局域网已恢复。
+- 网络路径不确定时，不发 CAN，不做硬件测试。
+
+状态：
+
+- 已记录。当前 M33 已烧录，但 NanoPi 真实局域网 SSH 未恢复，因此未发送 `0x321/0x320`。
+
 ### ROS bridge 验证前要清理旧进程
 
 现象：

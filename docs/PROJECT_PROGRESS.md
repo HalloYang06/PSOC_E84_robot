@@ -392,12 +392,20 @@
     - `D:\RT-ThreadStudio\workspace\yiliao_m33\Debug\rtthread.hex`
   - 编译仍保留既有工程告警：`rtthread.elf has a LOAD segment with RWX permissions`，以及 post-build 中 `arm-none-eabi-objcopy: interleave must be positive` 被 makefile 标记为 ignored；本次修改没有导致编译失败。
   - 尚未烧录本轮 M33 安全审核日志固件，等待用户烧录后只做单帧日志对照。
+- 用户烧录 M33 安全审核日志固件后，开始做烧录后验证但被 NanoPi 网络阻塞：
+  - Windows 本机能看到 M33 串口 `COM26 KitProg3 USB-UART`。
+  - `ssh pi@192.168.2.66` 初始超时，后续不绑定源地址时连接被 `Meta` 虚拟网卡路由到 `198.18.0.1`，不能作为真实 NanoPi 连通性依据。
+  - 强制从真实无线源地址 `192.168.2.9` 连接 `192.168.2.66` 仍超时。
+  - `ping -S 192.168.2.9 192.168.2.66` 超时，ARP 中没有 `192.168.2.66`。
+  - 当前没有登录 NanoPi，没有拉起/检查 `can0`，没有发送 `0x321`、没有发送 `0x320`、没有做任何电机运动测试。
+  - 结论：M33 已烧录，但烧录后 CAN/ROS 验证需等 NanoPi 真实局域网 SSH 恢复后继续。
 
 ## 进行中
 
-- 下一步等待用户烧录 M33 `0x320` 安全审核日志固件：
-  - 仍保持 `CONTROL_ROS_COMMAND_LOGGING_ONLY=1U`。
-  - 烧录后只做 heartbeat/status 和一帧 `0x320` 日志对照。
+- 下一步恢复 NanoPi 真实局域网 SSH：
+  - 确认 NanoPi 是否仍为 `192.168.2.66`，或是否拿到新的 DHCP 地址。
+  - SSH 恢复后先检查 `can0`，再只做 `0x321 -> 0x322` V2 status。
+  - V2 status 仍为 `limited/logging_only` 后，才发一帧合法 `0x320` 做 M33 审核日志对照。
   - 不给电机驱动上电，不做运动测试。
 
 ## 待确认
@@ -417,11 +425,12 @@
 严格按“一次只做一个能测试的小目标”推进：
 
 1. 用户烧录 M33 安全审核日志固件。
-2. NanoPi 先验证 V2 status 仍为 `limited/logging_only`。
-3. NanoPi 临时打开 `enable_target_tx:=true` 只发一次合法单帧 `shoulder_lift_joint=0.1 rad`。
-4. 查看 COM26 M33 串口，确认日志包含 heartbeat、joint、limit、rpm、torque 审核字段，且最终仍 `reject`。
-5. 如合法帧通过日志对照，再设计超限帧、未知关节帧、heartbeat 超时帧的拒绝日志测试。
-6. 离线继续推进：可继续给 bridge 的安全门控补单元测试，不依赖硬件。
+2. 恢复 NanoPi 真实局域网 SSH，不使用 `Meta/198.18.0.x` 虚拟网卡结果作为通过依据。
+3. NanoPi 先验证 V2 status 仍为 `limited/logging_only`。
+4. NanoPi 临时打开 `enable_target_tx:=true` 只发一次合法单帧 `shoulder_lift_joint=0.1 rad`。
+5. 查看 COM26 M33 串口，确认日志包含 heartbeat、joint、limit、rpm、torque 审核字段，且最终仍 `reject`。
+6. 如合法帧通过日志对照，再设计超限帧、未知关节帧、heartbeat 超时帧的拒绝日志测试。
+7. 离线继续推进：可继续给 bridge 的安全门控补单元测试，不依赖硬件。
 
 ## 更新规则
 
