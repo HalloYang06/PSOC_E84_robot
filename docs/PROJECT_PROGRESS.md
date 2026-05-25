@@ -226,6 +226,12 @@
     - `TX STD 0x00000321 [1] 05`
     - `RX STD 0x00000322 [8] A5 05 07 00 FC FA 07 00`
   - 当前 `can0` 仍为 `ERROR-ACTIVE`，错误计数器 `tx 0 rx 0`。
+- 无现场硬件条件下补充 `0x320` 协议工具离线测试：
+  - 新增 `rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/test/test_psoc_payload_tools.py`。
+  - 覆盖 `encode_psoc_cmd.py` 和 `decode_psoc_cmd.py` 的合法编码、解码、round-trip、超限拒绝、非有限数拒绝、未知关节拒绝、payload 长度错误和 unknown joint 可见性。
+  - 本地验证命令：
+    - `python -m unittest discover -s rehab_arm_ros2_ws\src\rehab_arm_psoc_bridge\test -v`
+  - 结果：10 tests passed。
 
 ## 进行中
 
@@ -256,6 +262,7 @@
 3. M33 必须打印 `decision=reject reason=logging_only_no_motor_output safety_state=limited` 或等价安全拒绝。
 4. 用户重新烧录 M33 logging-only 固件后，再由 NanoPi 发送单帧复测。
 5. 对照通过前不要给电机驱动上电，不要继续做运动测试。
+6. 离线继续推进：可继续给 bridge 的安全门控补单元测试，不依赖硬件。
 
 ## 更新规则
 

@@ -638,6 +638,27 @@ safety_state=limited
 
 - 阻塞在 M33 固件 logging-only 修改和重新烧录。
 
+### 没硬件时也要守住协议回归测试
+
+场景：
+
+- 用户不在现场，不能给硬件上电。
+- 仍然可以推进不会触碰 CAN/电机的协议工具质量。
+
+做法：
+
+- 新增离线单元测试：
+
+```bash
+python -m unittest discover -s rehab_arm_ros2_ws\src\rehab_arm_psoc_bridge\test -v
+```
+
+- 覆盖 `encode_psoc_cmd.py` 和 `decode_psoc_cmd.py`。
+
+状态：
+
+- 已验证 10 个测试全部通过。
+
 ### NanoPi 看不到 M33 串口时不要误判为 M33 没日志
 
 现象：

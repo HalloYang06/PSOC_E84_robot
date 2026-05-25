@@ -374,6 +374,20 @@ safety_state=limited
 
 这说明 M33 收到了 `cmd=3 joint=0`，但固件可能进入了 direct apply 控制应用路径。当前阶段不允许继续这样测试；必须先把 M33 固件改成 logging-only，不驱动、不 direct apply，只打印字段和安全拒绝原因。
 
+### 4.4 离线协议工具测试
+
+没有硬件、不能上电时，也可以先跑 `0x320` 编码/解码工具回归测试：
+
+```bash
+cd D:\RT-ThreadStudio\workspace\_nanopi_rosnode_usbcan
+python -m unittest discover -s rehab_arm_ros2_ws\src\rehab_arm_psoc_bridge\test -v
+```
+
+通过标准：
+
+- 10 个测试全部 `ok`。
+- 覆盖合法编码、解码、负角度截断、超限拒绝、非有限数拒绝、未知关节拒绝、payload 长度错误和 unknown joint 可见性。
+
 ## 5. 当前真实 CAN ID
 
 | ID | 协议/用途 | 说明 |
