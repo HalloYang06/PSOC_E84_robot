@@ -19,6 +19,7 @@ import {
 } from "../../../actions";
 import tileStyles from "../workbench/_components/npc-tile.module.css";
 import workbenchStyles from "../workbench/workbench.module.css";
+import { ModelImportInspector } from "./model-import-inspector";
 import styles from "./robotics.module.css";
 
 type AnyRecord = Record<string, any>;
@@ -48,7 +49,7 @@ type DebugWindow = {
   isUsable: boolean;
 };
 
-type TileTab = "terminal" | "dataset" | "chart";
+type TileTab = "terminal" | "dataset" | "chart" | "model";
 
 type RoboticsWorkbenchClientProps = {
   projectId: string;
@@ -686,13 +687,16 @@ function DebugTile({
           ["terminal", "终端"],
           ["dataset", "数据标注"],
           ["chart", "图表实验"],
+          ["model", "模型预览"],
         ].map(([tab, label]) => {
           const count =
             tab === "terminal"
               ? terminalEventLines(tile, terminalMessages).length
               : tab === "dataset"
                 ? segments.length + datasetEvents.length
-                : segments.length + chartEvents.length;
+                : tab === "chart"
+                  ? segments.length + chartEvents.length
+                  : 1;
           return (
             <button
               key={tab}
@@ -988,7 +992,7 @@ function DebugTile({
             </details>
           </aside>
         </section>
-      ) : (
+      ) : activeTab === "chart" ? (
         <section className={styles.dataWorkbenchPane} aria-label={`${tile.name} 图表实验`}>
           <article className={`${styles.dataActionPanel} ${styles.dataFocusPanel}`}>
             <span>图表证据</span>
@@ -1123,6 +1127,36 @@ function DebugTile({
                   请求 NPC 分析建议
                 </button>
               </form>
+            </details>
+          </aside>
+        </section>
+      ) : (
+        <section className={styles.modelWorkbenchPane} aria-label={`${tile.name} 模型预览`}>
+          <article className={`${styles.dataActionPanel} ${styles.dataFocusPanel}`}>
+            <span>模型预览</span>
+            <strong>导入 URDF 后在浏览器里只读查看结构</strong>
+            <p>这里用于检查 link、joint、limit 和模型姿态，后续接入 joint_states 回放。它不发送 ROS publish、service、action，也不下发任何硬件动作。</p>
+            <ModelImportInspector />
+          </article>
+          <aside className={styles.dataDrawerRail} aria-label="模型预览说明">
+            <details className={styles.workbenchDrawer} open>
+              <summary>
+                <span>推荐流程</span>
+                <strong>URDF 到结构检查再到回放</strong>
+              </summary>
+              <article className={styles.dataActionPanel}>
+                <p>第一步导入 URDF 或 GLB，确认关节数量、父子 link 和 limit。第二步导出 manifest，作为项目模型证据。第三步再把采集片段里的 joint_states 对齐到同名关节。</p>
+                <p>如果 URDF 引用外部 mesh，平台第一版先显示结构和可解析的几何体；大型 mesh 后续交给模型资产索引，不直接塞进普通消息。</p>
+              </article>
+            </details>
+            <details className={styles.workbenchDrawer}>
+              <summary>
+                <span>安全边界</span>
+                <strong>只读显示</strong>
+              </summary>
+              <article className={styles.dataActionPanel}>
+                <p>模型预览不是仿真控制器，不生成电机目标，不绕过本地控制器安全状态机。真实机器人运动仍必须经过本机规划、NanoPi 桥接和底层安全裁决。</p>
+              </article>
             </details>
           </aside>
         </section>
@@ -1371,6 +1405,13 @@ export function RoboticsWorkbenchClient({
             <div className={workbenchStyles.placeholder}>
               <strong>{configuredWindows.length ? "点击左栏调试窗口的 + 号打开瓷砖" : "先创建一个调试窗口"}</strong>
               <p>{configuredWindows.length ? "每个调试瓷砖都有自己的大终端、数据标注和图表实验，不会在页面之间来回跳。" : "从左栏创建窗口：命名、选择串口/CAN/USB 等类型，再绑定真实扫描设备和参数。"}</p>
+              {!configuredWindows.length ? (
+                <div className={styles.emptyModelPreview}>
+                  <strong>也可以先导入 URDF 看模型</strong>
+                  <p>模型预览不依赖真实设备在线，适合先检查 link、joint、limit，再等执行电脑恢复后接入采集和回放。</p>
+                  <ModelImportInspector />
+                </div>
+              ) : null}
               <form action={请求串口USB扫描.bind(null, projectId)} className={styles.emptyScanForm}>
                 <input type="hidden" name="return_to" value={`/projects/${projectId}/robotics`} />
                 <input type="hidden" name="computer_node_id" value="all" />

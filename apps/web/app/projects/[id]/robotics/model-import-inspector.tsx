@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import styles from "./robotics.module.css";
 
 type ModelInfo = {
@@ -19,6 +19,9 @@ type JointDetail = {
   type: string;
   parent: string;
   child: string;
+  lower?: string;
+  upper?: string;
+  axis?: string;
 };
 
 const emptyInfo: ModelInfo = {
@@ -39,11 +42,14 @@ function countUrdfJoints(text: string) {
   const joints = Array.from(doc.getElementsByTagName("joint"));
   const links = Array.from(doc.getElementsByTagName("link"));
   const jointDetails = joints.map((joint, index) => ({
-    name: joint.getAttribute("name") || `joint_${index + 1}`,
-    type: joint.getAttribute("type") || "unknown",
-    parent: joint.getElementsByTagName("parent")[0]?.getAttribute("link") || "-",
-    child: joint.getElementsByTagName("child")[0]?.getAttribute("link") || "-",
-  }));
+      name: joint.getAttribute("name") || `joint_${index + 1}`,
+      type: joint.getAttribute("type") || "unknown",
+      parent: joint.getElementsByTagName("parent")[0]?.getAttribute("link") || "-",
+      child: joint.getElementsByTagName("child")[0]?.getAttribute("link") || "-",
+      lower: joint.getElementsByTagName("limit")[0]?.getAttribute("lower") || "",
+      upper: joint.getElementsByTagName("limit")[0]?.getAttribute("upper") || "",
+      axis: joint.getElementsByTagName("axis")[0]?.getAttribute("xyz") || "",
+    }));
   const movable = joints.filter((joint) => {
     const type = joint.getAttribute("type")?.toLowerCase();
     return type && !["fixed", "floating"].includes(type);
@@ -59,6 +65,106 @@ function countUrdfJoints(text: string) {
     linkCount: links.length,
     warnings,
   };
+}
+
+function UrdfPreview({ urdfText, fileName }: { urdfText: string; fileName: string }) {
+  const mountRef = useRef<HTMLDivElement | null>(null);
+  const [viewerState, setViewerState] = useState("等待导入 URDF");
+
+  useEffect(() => {
+    const mount = mountRef.current;
+    if (!mount || !urdfText) {
+      setViewerState(urdfText ? "等待预览容器" : "等待导入 URDF");
+      return;
+    }
+
+    let disposed = false;
+    let cleanup = () => {};
+
+    async function renderUrdf() {
+      try {
+        setViewerState("正在加载 three.js / urdf-loader");
+        const THREE = await import("three");
+        const { default: URDFLoader } = await import("urdf-loader");
+        if (disposed || !mountRef.current) return;
+
+        const width = Math.max(320, mount.clientWidth || 640);
+        const height = Math.max(260, mount.clientHeight || 320);
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x07110f);
+
+        const camera = new THREE.PerspectiveCamera(42, width / height, 0.01, 100);
+        camera.position.set(1.25, -1.7, 1.15);
+        camera.lookAt(0.22, 0, 0.22);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+        renderer.setSize(width, height);
+        renderer.domElement.setAttribute("aria-label", `${fileName} URDF 预览`);
+        mount.replaceChildren(renderer.domElement);
+
+        scene.add(new THREE.HemisphereLight(0xeefcf7, 0x17312a, 2.4));
+        const keyLight = new THREE.DirectionalLight(0xf1d06b, 1.2);
+        keyLight.position.set(1.4, -1.8, 2.4);
+        scene.add(keyLight);
+
+        const grid = new THREE.GridHelper(1.4, 14, 0x3f7769, 0x183a32);
+        grid.rotation.x = Math.PI / 2;
+        scene.add(grid);
+
+        const loader = new URDFLoader();
+        loader.packages = "";
+        loader.loadMeshCb = (_url, _manager, done) => {
+          done(new THREE.Group(), new Error("external mesh is not loaded in browser preview"));
+        };
+        const robot = loader.parse(urdfText);
+        robot.rotation.x = -Math.PI / 2;
+        robot.traverse((object) => {
+          const mesh = object as any;
+          if (mesh.isMesh && mesh.material) {
+            mesh.material = new THREE.MeshStandardMaterial({
+              color: 0x8ef0c7,
+              roughness: 0.68,
+              metalness: 0.08,
+            });
+          }
+        });
+        scene.add(robot);
+
+        let frame = 0;
+        const animate = () => {
+          if (disposed) return;
+          frame = window.requestAnimationFrame(animate);
+          robot.rotation.z += 0.003;
+          renderer.render(scene, camera);
+        };
+        animate();
+        setViewerState("URDF 已渲染为只读模型预览");
+
+        cleanup = () => {
+          window.cancelAnimationFrame(frame);
+          renderer.dispose();
+          scene.clear();
+          if (mount.contains(renderer.domElement)) mount.removeChild(renderer.domElement);
+        };
+      } catch {
+        setViewerState("3D 预览失败，仍可使用下方结构解析结果");
+      }
+    }
+
+    void renderUrdf();
+    return () => {
+      disposed = true;
+      cleanup();
+    };
+  }, [fileName, urdfText]);
+
+  return (
+    <div className={styles.urdfPreviewShell}>
+      <div ref={mountRef} className={styles.urdfPreviewCanvas} />
+      <p>{viewerState}</p>
+    </div>
+  );
 }
 
 function parseGlbJson(buffer: ArrayBuffer) {
@@ -119,6 +225,7 @@ function downloadManifest(info: ModelInfo) {
 export function ModelImportInspector() {
   const [info, setInfo] = useState<ModelInfo>(emptyInfo);
   const [error, setError] = useState("");
+  const [urdfText, setUrdfText] = useState("");
 
   function handleFileSelection(file: File | undefined) {
     if (file) void inspect(file);
@@ -129,10 +236,13 @@ export function ModelImportInspector() {
     const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
     try {
       if (["urdf", "xml"].includes(ext)) {
-        const result = countUrdfJoints(await file.text());
+        const text = await file.text();
+        const result = countUrdfJoints(text);
+        setUrdfText(text);
         setInfo({ fileName: file.name, format: "URDF", source: "已解析 link / joint / parent-child", ...result });
         return;
       }
+      setUrdfText("");
       if (ext === "gltf") {
         const result = countGltfJoints(JSON.parse(await file.text()));
         setInfo({ fileName: file.name, format: "GLTF", source: "已解析 skin/node", ...result });
@@ -155,6 +265,7 @@ export function ModelImportInspector() {
         warnings: ["当前浏览器只做轻量解析，STL/mesh 细节交给执行电脑插件。"],
       });
     } catch {
+      setUrdfText("");
       setError("模型解析失败，请检查文件格式。");
     }
   }
@@ -180,8 +291,10 @@ export function ModelImportInspector() {
           }}
         />
       </label>
+      <UrdfPreview urdfText={urdfText} fileName={info.fileName} />
       <dl>
         <div><dt>格式</dt><dd>{info.format}</dd></div>
+        <div><dt>link</dt><dd>{info.linkCount}</dd></div>
         <div><dt>总关节</dt><dd>{info.joints}</dd></div>
         <div><dt>可动</dt><dd>{info.movableJoints}</dd></div>
       </dl>
@@ -196,6 +309,8 @@ export function ModelImportInspector() {
             <strong>{joint.name}</strong>
             <span>{joint.type}</span>
             <small>{joint.parent} {"->"} {joint.child}</small>
+            {joint.lower || joint.upper ? <small>limit {joint.lower || "-∞"} ~ {joint.upper || "+∞"}</small> : null}
+            {joint.axis ? <small>axis {joint.axis}</small> : null}
           </article>
         )) : <p>导入 URDF/GLTF 后显示关节明细。</p>}
       </div>
