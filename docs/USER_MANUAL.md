@@ -600,6 +600,13 @@ D:\RT-ThreadStudio\workspace\yiliao_m33\Debug\rtthread.bin
 D:\RT-ThreadStudio\workspace\yiliao_m33\Debug\rtthread.hex
 ```
 
+当前最新版已经把原来的“日志里顺手判断”改成 M33 内部结构化安全评估：
+
+- `ctrl_assess_ros_command_safety()` 负责判断 heartbeat、joint、position、rpm、torque。
+- `control_ros_safety_assessment_t` 保存状态、裁决、拒绝原因和检查结果。
+- `ctrl_log_ros_command_only()` 只打印安全评估结果。
+- `CONTROL_ROS_COMMAND_LOGGING_ONLY=1U` 时，最终仍强制 `no_motor_output`。
+
 烧录前确认：
 
 - `CONTROL_ROS_COMMAND_LOGGING_ONLY=1U`。
@@ -661,9 +668,10 @@ M33 串口 `COM26`、`115200 baud`、DTR/RTS 关闭，应看到类似日志：
 ```text
 RX 320 dlc=8 data=0300390005000000
 cmd=0x03 name=set_target joint_id=0 deg_x10=57 target_mrad=99 rpm=5 torque_ma=0
-audit mode=logging_only heartbeat_ok=1 heartbeat_age_ms=... heartbeat_timeout_ms=2500 joint_known=1 limit_01deg=[-401,802]
+safety_state=logging_only decision=reject reason=logging_only_no_motor_output
+audit heartbeat_ok=1 heartbeat_age_ms=... heartbeat_timeout_ms=2500 joint_known=1 limit_01deg=[-401,802]
 audit target_in_limit=1 rpm_in_limit=1 torque_in_limit=1 max_rpm=30 max_torque_ma=0
-decision=reject reason=logging_only_no_motor_output final_reason=logging_only_no_motor_output safety_state=limited
+final action=no_motor_output logging_only=1
 ```
 
 通过标准：
@@ -672,6 +680,7 @@ decision=reject reason=logging_only_no_motor_output final_reason=logging_only_no
 - `candump can0,320:7FF` 能看到同一 payload。
 - M33 串口能看到 heartbeat、joint、limit、rpm、torque 审核字段。
 - M33 最终仍 `decision=reject`。
+- M33 最终仍 `final action=no_motor_output logging_only=1`。
 - 不出现 `ros cmd direct apply failed`。
 - `can0` 复查仍为 `ERROR-ACTIVE`，无 `error-passive` 或 `bus-off`。
 - 本阶段仍不允许电机运动。

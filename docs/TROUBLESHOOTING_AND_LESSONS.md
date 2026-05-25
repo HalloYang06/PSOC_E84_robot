@@ -623,6 +623,39 @@ ros2 run rehab_arm_psoc_bridge encode_psoc_cmd.py shoulder_lift_joint 0.1
 
 - 已完成 M33 logging-only 参考指南，尚未烧录 M33。
 
+### M33 安全判断不能长期藏在打印函数里
+
+现象：
+
+- M33 第一版 logging-only 固件能打印 heartbeat、joint、limit、rpm、torque 检查结果。
+- 但这些判断最初集中在 `ctrl_log_ros_command_only()` 中，容易让人误解成“靠打印做安全”。
+
+根因：
+
+- 第一阶段为了确认 M33 是否正确解析 `0x320`，先把所有字段和判断都打印出来。
+- 这适合做 bring-up 对照，但不适合成为正式安全状态机。
+
+解决：
+
+- 在 M33 `applications/control/control_layer.c` 中新增结构化安全评估：
+  - `control_ros_safety_assessment_t`
+  - `ctrl_assess_ros_command_safety()`
+  - `CONTROL_ROS_SAFETY_*`
+  - `CONTROL_ROS_DECISION_*`
+  - `CONTROL_ROS_REJECT_*`
+- 让安全判断先生成 `state/decision/reason`，日志函数只输出这个结果。
+- 当前仍保持 `CONTROL_ROS_COMMAND_LOGGING_ONLY=1U`，所以合法帧也会 `decision=reject`，最终 `no_motor_output`。
+
+技巧：
+
+- bring-up 阶段可以多打印，但安全判断必须能脱离打印函数独立存在。
+- 后续真实控制路径只能消费结构化 `assessment`，不能重新写一套散乱判断。
+- 每次新增安全条件，要先进 `ctrl_assess_ros_command_safety()`，再考虑日志和状态上报。
+
+状态：
+
+- 本地 M33 已完成第一版结构化改造并编译通过，等待烧录后复测。
+
 ### 发送真实 0x320 单帧时必须同时看 NanoPi TX 和 M33 串口
 
 现象：

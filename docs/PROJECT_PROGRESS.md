@@ -425,15 +425,36 @@
     - `decision=reject reason=logging_only_no_motor_output final_reason=logging_only_no_motor_output safety_state=limited`
   - 复查 `can0` 仍为 `ERROR-ACTIVE`，`bus-errors/error-pass/bus-off` 均为 0。
   - 本轮没有给电机驱动上电，没有做运动测试。
+- 完成 M33 ROS 命令安全状态机第一版结构化改造并本地编译：
+  - 本地工程：`D:\RT-ThreadStudio\workspace\yiliao_m33`。
+  - 修改 `applications/control/control_layer.c`。
+  - 新增内部状态/裁决/拒绝原因枚举：
+    - `CONTROL_ROS_SAFETY_BOOT/LOGGING_ONLY/READY/RUNNING/LIMITED/EMERGENCY_STOP/FAULT`
+    - `CONTROL_ROS_DECISION_REJECT/ACCEPT`
+    - `CONTROL_ROS_REJECT_LOGGING_ONLY/HEARTBEAT_TIMEOUT/UNKNOWN_JOINT/POSITION_LIMIT/SPEED_LIMIT/TORQUE_LIMIT/UNSUPPORTED_CMD`
+  - 新增 `control_ros_safety_assessment_t`，统一保存 heartbeat、joint、position、rpm、torque 检查结果。
+  - 新增 `ctrl_assess_ros_command_safety()`，把原来散在日志里的检查收束成结构化安全评估。
+  - `ctrl_log_ros_command_only()` 现在只打印评估结果，不再承担安全判断本身。
+  - 当前仍保持 `CONTROL_ROS_COMMAND_LOGGING_ONLY=1U`，因此即使合法目标也会得到 `decision=reject` 和 `reason=logging_only_no_motor_output`，不会进入电机控制路径。
+  - 新预期日志格式包含：
+    - `safety_state=logging_only decision=reject reason=logging_only_no_motor_output`
+    - `audit heartbeat_ok=... joint_known=... limit_01deg=[...]`
+    - `audit target_in_limit=... rpm_in_limit=... torque_in_limit=...`
+    - `final action=no_motor_output logging_only=1`
+  - 本地编译命令通过：
+    - `$env:Path='D:\RT-ThreadStudio\repo\Extract\ToolChain_Support_Packages\ARM\GNU_Tools_for_ARM_Embedded_Processors\13.3\bin;' + $env:Path; mingw32-make -C Debug all -j2`
+  - 编译产物已更新：
+    - `D:\RT-ThreadStudio\workspace\yiliao_m33\Debug\rtthread.bin`
+    - `D:\RT-ThreadStudio\workspace\yiliao_m33\Debug\rtthread.hex`
+  - 编译仍保留既有工程告警：`rtthread.elf has a LOAD segment with RWX permissions`，以及 post-build 中 `arm-none-eabi-objcopy: interleave must be positive` 被 makefile 标记为 ignored；本次修改没有导致编译失败。
+  - 尚未烧录本轮安全状态机结构化固件，等待用户烧录后只做 heartbeat/status 和一帧 `0x320` 日志对照。
 
 ## 进行中
 
-- 下一步设计 M33 logging-only 的拒绝用例矩阵：
-  - 超限目标帧。
-  - 未知 joint_id 帧。
-  - heartbeat 超时后再发 `0x320`。
-  - 非零 torque/current 请求。
-  - 仍不让 M33 输出电机控制，不给电机驱动上电。
+- 下一步等待用户烧录 M33 安全状态机结构化固件：
+  - 先验证 `0x321 -> 0x322` 仍为 V2 `limited/logging_only`。
+  - 再只发一帧合法 `0x320`，确认 M33 输出新的 `safety_state/decision/reason/final action` 格式。
+  - 不给电机驱动上电，不做运动测试。
 
 ## 待确认
 
@@ -451,11 +472,12 @@
 
 严格按“一次只做一个能测试的小目标”推进：
 
-1. 增加或使用工具生成超限/未知关节/非零 torque 的 `0x320` 测试帧。
-2. 每次只发一帧，并同时记录 bridge、`candump`、M33 串口三处日志。
-3. 验证 M33 均能打印明确拒绝原因，最终仍 `decision=reject`。
-4. 增加 heartbeat 超时拒绝测试：停发 `0x321` 超过 2500ms 后再发 `0x320`。
-5. 离线继续推进：可给 bridge 的 `require_psoc_ok_for_trajectory=false` 审计模式补文档或测试保护。
+1. 用户烧录 M33 安全状态机结构化固件。
+2. NanoPi 只测 heartbeat/status 和一帧合法 `0x320` 日志对照。
+3. 如果新日志格式通过，再增加或使用工具生成超限/未知关节/非零 torque 的 `0x320` 测试帧。
+4. 每次只发一帧，并同时记录 bridge、`candump`、M33 串口三处日志。
+5. 验证 M33 均能打印明确拒绝原因，最终仍 `decision=reject`。
+6. 增加 heartbeat 超时拒绝测试：停发 `0x321` 超过 2500ms 后再发 `0x320`。
 
 ## 更新规则
 
