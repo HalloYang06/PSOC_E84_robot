@@ -92,8 +92,8 @@ Detail code enum:
 |---:|---|---|
 | `0` | `none` | 无额外原因 |
 | `1` | `heartbeat_timeout` | NanoPi heartbeat 超时 |
-| `2` | `invalid_command` | `0x320` 命令或 DLC 无效 |
-| `3` | `invalid_joint` | 关节号不存在或未映射 |
+| `2` | `unsupported_command` | 当前状态机不支持该 `0x320` 命令 |
+| `3` | `unknown_joint` | 关节号不存在或未映射 |
 | `4` | `target_out_of_limit` | 目标角度超出 M33 最终限位 |
 | `5` | `velocity_out_of_limit` | 速度超限 |
 | `6` | `torque_out_of_limit` | 扭矩/电流超限 |
@@ -101,6 +101,8 @@ Detail code enum:
 | `8` | `power_fault` | 供电异常 |
 | `9` | `motor_fault` | 电机/驱动故障 |
 | `10` | `logging_only_no_motor_output` | logging-only 阶段拒绝输出 |
+
+当前 M33 logging-only 固件会把最近一次 ROS safety assessment 的首要拒绝原因放到 byte6 `detail_code`。例如，收到超限 `0x320` 后，下一次 `0x321 -> 0x322` 的 byte6 应为 `4`，NanoPi ROS 会解析为 `target_out_of_limit`。
 
 示例：
 

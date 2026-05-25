@@ -778,6 +778,40 @@ M33 状态机拒绝用例第二轮已验证：
 - heartbeat 正常时，再按 unknown joint、position、velocity、torque 等安全条件拒绝。
 - 即使多个条件同时失败，也只输出一个首要 `reason`，其他检查项仍在 audit 字段中可见。
 
+### 4.7 `0x322` detail_code 动态拒绝原因
+
+当前 M33 detail_code 固件目标：
+
+- M33 串口仍打印结构化状态机日志。
+- M33 会把最近一次 ROS safety assessment 的首要拒绝原因放进下一次 `0x322` byte6。
+- NanoPi ROS `/rehab_arm/safety_state` 可以看到具体 `detail`，不再只能看 COM26 串口。
+
+当前 detail_code 映射：
+
+| code | detail |
+|---:|---|
+| `1` | `heartbeat_timeout` |
+| `2` | `unsupported_command` |
+| `3` | `unknown_joint` |
+| `4` | `target_out_of_limit` |
+| `5` | `velocity_out_of_limit` |
+| `6` | `torque_out_of_limit` |
+| `10` | `logging_only_no_motor_output` |
+
+烧录 M33 后的最小非运动验证：
+
+1. 先只发 `0x321` heartbeat，初始应看到 `detail=logging_only_no_motor_output`。
+2. raw SocketCAN 发一帧超限 `0x320`，例如 `0300840305000000`。
+3. 再发 `0x321` heartbeat。
+4. 新的 `0x322` 应该带 `byte6=04`，NanoPi ROS 应解析为 `detail=target_out_of_limit`。
+
+通过标准：
+
+- M33 串口 reason 是 `target_out_of_limit`。
+- `candump` 看到 `0x322` byte6 为 `04`。
+- `/rehab_arm/safety_state` JSON 里 `detail_code=4`，`detail=target_out_of_limit`。
+- 仍然不出现任何电机输出，M33 仍处于 logging-only。
+
 ## 5. 当前真实 CAN ID
 
 | ID | 协议/用途 | 说明 |

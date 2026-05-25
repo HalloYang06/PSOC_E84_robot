@@ -695,6 +695,31 @@ heartbeat age 3211ms + 030084031f000100 -> reason=heartbeat_timeout
 
 - 第一轮和第二轮拒绝矩阵已通过，未给电机驱动上电，未做运动测试。
 
+### 安全拒绝原因不能只留在串口里
+
+现象：
+
+- M33 串口能看到 `reason=target_out_of_limit` 等具体拒绝原因。
+- 但 NanoPi/ROS 只看 `/rehab_arm/safety_state` 时，如果 `0x322` byte6 固定为 `logging_only_no_motor_output`，上层系统无法知道最近一次真正拒绝原因。
+
+解决：
+
+- M33 保存最近一次 ROS safety assessment 的 detail_code。
+- `0x322` V2 byte6 使用最近一次 detail，而不是固定 `10`。
+- NanoPi `psoc_status.py` 更新 detail 名称，与 M33 reason 对齐：
+  - `2 -> unsupported_command`
+  - `3 -> unknown_joint`
+
+技巧：
+
+- 串口适合 bring-up，但 ROS/App/服务器要依赖结构化状态。
+- 每次新增 M33 reason，都要同步更新 `psoc_status.py`、协议文档和单元测试。
+- detail_code 只表示首要拒绝原因；其他失败项可以继续留在 audit 日志或未来扩展状态帧里。
+
+状态：
+
+- M33 已本地实现并编译通过，NanoPi parser 单元测试 17 个通过，等待用户烧录后做非运动验证。
+
 ### 发送真实 0x320 单帧时必须同时看 NanoPi TX 和 M33 串口
 
 现象：

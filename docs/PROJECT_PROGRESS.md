@@ -504,13 +504,46 @@
     - 日志显示 `target_in_limit=0 rpm_in_limit=0 torque_in_limit=0`，但首要拒绝原因仍优先为 heartbeat。
   - 三个用例最终都打印 `final action=no_motor_output logging_only=1`。
   - 本轮没有给电机驱动上电，没有做运动测试。
+- 完成 M33 safety reason -> `0x322 detail_code` 第一版实现并本地编译：
+  - M33 本地工程：`D:\RT-ThreadStudio\workspace\yiliao_m33`。
+  - 修改 `applications/control/control_layer_cfg.h`：
+    - 新增 `CONTROL_STATUS_DETAIL_HEARTBEAT_TIMEOUT=1`
+    - 新增 `CONTROL_STATUS_DETAIL_UNSUPPORTED_COMMAND=2`
+    - 新增 `CONTROL_STATUS_DETAIL_UNKNOWN_JOINT=3`
+    - 新增 `CONTROL_STATUS_DETAIL_TARGET_OUT_OF_LIMIT=4`
+    - 新增 `CONTROL_STATUS_DETAIL_VELOCITY_OUT_OF_LIMIT=5`
+    - 新增 `CONTROL_STATUS_DETAIL_TORQUE_OUT_OF_LIMIT=6`
+    - 保留 `CONTROL_STATUS_DETAIL_LOGGING_ONLY=10`
+  - 修改 `applications/control/control_layer.c`：
+    - 新增最近一次 ROS safety assessment detail 记录。
+    - `ctrl_ros_reject_reason_detail_code()` 将 M33 `reason` 映射成 `0x322` byte6。
+    - `ctrl_handle_nanopi_heartbeat()` 在 logging-only 模式下不再固定发送 `detail=10`，而是发送最近一次安全评估 detail。
+  - M33 本地编译通过，产物已更新：
+    - `D:\RT-ThreadStudio\workspace\yiliao_m33\Debug\rtthread.bin`
+    - `D:\RT-ThreadStudio\workspace\yiliao_m33\Debug\rtthread.hex`
+  - 编译仍保留既有工程告警：`CANFD0_IRQ_cfg defined but not used`、`rtthread.elf has a LOAD segment with RWX permissions`，以及 post-build 中 `arm-none-eabi-objcopy: interleave must be positive` 被 makefile 标记为 ignored；本次修改没有导致编译失败。
+- 完成 NanoPi ROS parser 对新 detail_code 的解析：
+  - 修改 `rehab_arm_psoc_bridge/psoc_status.py`：
+    - code `2` 解析为 `unsupported_command`
+    - code `3` 解析为 `unknown_joint`
+  - 修改 `test_psoc_status.py`，新增 `test_status_v2_reject_reason_detail_codes`，覆盖 code `1..6`。
+  - 更新 `docs/PSOC_CAN_PROTOCOL_V1.md`，说明 M33 会把最近一次 ROS safety assessment 的首要拒绝原因放入 `0x322` byte6。
+  - 本地测试通过：
+    - `python -m unittest discover -s rehab_arm_ros2_ws\src\rehab_arm_psoc_bridge\test -v`
+    - 17 tests passed。
+  - NanoPi 同步并验证：
+    - 同步 `psoc_status.py` 和 `test_psoc_status.py` 到 `/home/pi/rehab_arm_ros2_ws`。
+    - `python3 -m unittest discover -s src/rehab_arm_psoc_bridge/test -v`
+    - 7 tests passed。
+  - 尚未烧录本轮 M33 detail_code 固件，尚未在 NanoPi 真机上验证 `0x322` detail 动态变化。
 
 ## 进行中
 
-- 下一步把 M33 状态机 reason 映射到 `0x322 detail_code`：
-  - 当前具体拒绝原因只能从 M33 串口看到。
-  - 需要让 NanoPi/ROS `/rehab_arm/safety_state` 也能看到最近一次拒绝原因。
-  - 仍保持 `CONTROL_ROS_COMMAND_LOGGING_ONLY=1U`，不输出电机控制。
+- 下一步等待用户烧录 M33 detail_code 固件：
+  - 先验证初始 `0x321 -> 0x322` 仍为 V2 `limited/logging_only`。
+  - 再发一帧超限 `0x320`，随后发 heartbeat，确认 `0x322` byte6/detail 变成 `target_out_of_limit`。
+  - 同步更新 NanoPi 工作区并运行 `psoc_status` 单元测试。
+  - 不给电机驱动上电，不做运动测试。
 
 ## 待确认
 
@@ -528,11 +561,11 @@
 
 严格按“一次只做一个能测试的小目标”推进：
 
-1. 在 M33 中保存最近一次 ROS safety assessment 的 reason/detail。
-2. 扩展 `0x322` V2 detail_code，表示 `logging_only`、`heartbeat_timeout`、`unknown_joint`、`target_out_of_limit`、`velocity_out_of_limit`、`torque_out_of_limit`、`unsupported_command`。
-3. 更新 NanoPi `psoc_status.py` 解析 detail_code。
-4. 本地单元测试覆盖新 detail_code。
-5. 编译 M33，用户烧录后只测 `0x321 -> 0x322` 和一帧拒绝用例，不做运动测试。
+1. 用户烧录 M33 detail_code 固件。
+2. 同步 NanoPi `psoc_status.py` 和测试文件，重建/测试 `rehab_arm_psoc_bridge`。
+3. NanoPi 先只测 heartbeat/status。
+4. raw SocketCAN 发一帧 `target_out_of_limit`，再发 heartbeat，确认 ROS `/rehab_arm/safety_state` 能看到 `detail=target_out_of_limit`。
+5. 通过后再抽样验证 `heartbeat_timeout` 或 `torque_out_of_limit` 的 detail_code。
 
 ## 更新规则
 

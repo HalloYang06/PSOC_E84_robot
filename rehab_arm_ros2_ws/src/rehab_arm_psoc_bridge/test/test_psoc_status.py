@@ -46,6 +46,25 @@ class PsocStatusTests(unittest.TestCase):
         self.assertEqual(status['state'], 'fault')
         self.assertEqual(status['detail'], 'error_code=9')
 
+    def test_status_v2_reject_reason_detail_codes(self) -> None:
+        expected = {
+            1: 'heartbeat_timeout',
+            2: 'unsupported_command',
+            3: 'unknown_joint',
+            4: 'target_out_of_limit',
+            5: 'velocity_out_of_limit',
+            6: 'torque_out_of_limit',
+        }
+
+        for code, detail in expected.items():
+            with self.subTest(code=code):
+                status = parse_psoc_status_payload(bytes([0xA5, 5, 7, 0, 1, 1, code, 0]))
+                self.assertEqual(status['protocol_version'], 2)
+                self.assertEqual(status['state'], 'limited')
+                self.assertEqual(status['control_mode'], 'logging_only')
+                self.assertEqual(status['detail_code'], code)
+                self.assertEqual(status['detail'], detail)
+
     def test_bad_marker_is_fault(self) -> None:
         status = parse_psoc_status_payload(bytes.fromhex('AA0107005E9D0000'))
 

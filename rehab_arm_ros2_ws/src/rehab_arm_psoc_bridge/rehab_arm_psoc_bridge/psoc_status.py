@@ -22,8 +22,8 @@ CONTROL_MODE_NAMES = {
 DETAIL_CODE_NAMES = {
     0: 'none',
     1: 'heartbeat_timeout',
-    2: 'invalid_command',
-    3: 'invalid_joint',
+    2: 'unsupported_command',
+    3: 'unknown_joint',
     4: 'target_out_of_limit',
     5: 'velocity_out_of_limit',
     6: 'torque_out_of_limit',
