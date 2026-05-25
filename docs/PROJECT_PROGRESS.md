@@ -626,11 +626,15 @@
 - 新增数据采集 launch：
   - `data_collection.launch.py` 启动 `data_recorder_node.py`。
   - NanoPi build passed；10 秒短运行可写出 `session_metadata`。
+- 规范数据文件命名和同步字段：
+  - 默认文件名为 `<robot_id>__<device_id>__YYYYmmddTHHMMSSZ.jsonl`。
+  - metadata 包含 `schema_version`、`source`、`sync_status=local_only`。
+  - 本地测试通过：32 tests passed；NanoPi build passed。
 
 ## 进行中
 
 - 下一步继续按框架补数据链路：
-  - 给数据文件命名和服务器同步字段做最小规范。
+  - 增加服务器同步前的本地清单 manifest。
   - 不进入真实电机控制。
   - 不给电机驱动上电，不做运动测试。
 
@@ -652,8 +656,8 @@
 
 1. 保持电机驱动断开，确认 `can0` 为 `ERROR-ACTIVE`。
 2. raw SocketCAN 先测 `0x321 -> 0x322` heartbeat。
-3. 确定服务器同步需要的最小字段。
-4. 保持 JSONL 本地优先，不把服务器放进实时闭环。
+3. 扫描本地 JSONL，生成待同步文件清单。
+4. 保持服务器同步非实时，不放进控制闭环。
 5. 仍保持 logging-only，不进入真实电机控制路径。
 
 ## 更新规则

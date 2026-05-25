@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from rehab_arm_psoc_bridge.data_recording import (
     make_joint_state_payload,
+    make_default_session_id,
     make_jsonl_record,
     make_payload_record,
     make_session_metadata,
@@ -20,6 +21,7 @@ from rehab_arm_psoc_bridge.data_recording import (
     session_log_path,
     validate_jsonl_records,
     write_jsonl_record,
+    sanitize_identifier,
 )
 
 
@@ -34,6 +36,15 @@ class DataRecordingTests(unittest.TestCase):
         payload = parse_message_payload('not-json')
 
         self.assertEqual(payload, {'raw': 'not-json'})
+
+    def test_sanitize_identifier(self) -> None:
+        self.assertEqual(sanitize_identifier(' rehab arm/alpha '), 'rehab_arm_alpha')
+        self.assertEqual(sanitize_identifier(''), 'unknown')
+
+    def test_make_default_session_id(self) -> None:
+        session_id = make_default_session_id('rehab arm', 'nanopi/m5', now=0)
+
+        self.assertEqual(session_id, 'rehab_arm__nanopi_m5__19700101T000000Z')
 
     def test_make_jsonl_record(self) -> None:
         record = make_jsonl_record('/rehab_arm/safety_state', '{"state":"ok"}', now=123.5)
@@ -78,12 +89,15 @@ class DataRecordingTests(unittest.TestCase):
         )
 
         self.assertEqual(record['record_type'], 'session_metadata')
+        self.assertEqual(record['schema_version'], 'rehab_arm_jsonl_v1')
         self.assertEqual(record['ts_unix'], 10.0)
         self.assertEqual(record['session_id'], 's1')
         self.assertEqual(record['device_id'], 'nanopi-m5')
         self.assertEqual(record['robot_id'], 'rehab-arm-alpha')
         self.assertEqual(record['software_version'], 'abc123')
         self.assertEqual(record['mode'], 'logging_only')
+        self.assertEqual(record['source'], 'nanopi_ros_recorder')
+        self.assertEqual(record['sync_status'], 'local_only')
         self.assertIn('/joint_states', record['topics'])
         self.assertIn('/rehab_arm/safety_state', record['topics'])
         self.assertIs(record['motion_allowed_expected'], False)

@@ -951,10 +951,16 @@ ros2 run rehab_arm_psoc_bridge data_recorder_node.py \
 /home/pi/rehab_arm_logs/test_session.jsonl
 ```
 
+如果不传 `session_id`，recorder 自动生成：
+
+```text
+<robot_id>__<device_id>__YYYYmmddTHHMMSSZ.jsonl
+```
+
 每行是一条 JSON：
 
 ```json
-{"record_type":"session_metadata","ts_unix":123.0,"session_id":"test_session","device_id":"nanopi-m5","robot_id":"rehab-arm-alpha","software_version":"dev","recorder_version":"0.1.0","mode":"logging_only","topics":["/rehab_arm/safety_state","/rehab_arm/sensor_state"],"motion_allowed_expected":false}
+{"record_type":"session_metadata","schema_version":"rehab_arm_jsonl_v1","ts_unix":123.0,"session_id":"test_session","device_id":"nanopi-m5","robot_id":"rehab-arm-alpha","software_version":"dev","recorder_version":"0.1.0","mode":"logging_only","source":"nanopi_ros_recorder","sync_status":"local_only","topics":["/joint_states","/rehab_arm/safety_state","/rehab_arm/sensor_state"],"motion_allowed_expected":false}
 {"record_type":"topic_message","ts_unix":124.0,"topic":"/rehab_arm/safety_state","payload":{"state":"limited","motion_allowed":false}}
 ```
 

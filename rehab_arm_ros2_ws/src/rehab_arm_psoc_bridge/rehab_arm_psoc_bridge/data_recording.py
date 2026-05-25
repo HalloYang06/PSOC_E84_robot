@@ -7,6 +7,7 @@ from typing import Iterable, TextIO
 
 
 RECORDER_VERSION = '0.1.0'
+JSONL_SCHEMA_VERSION = 'rehab_arm_jsonl_v1'
 DEFAULT_RECORDED_TOPICS = [
     '/joint_states',
     '/rehab_arm/safety_state',
@@ -19,6 +20,16 @@ def parse_message_payload(text: str) -> object:
         return json.loads(text)
     except json.JSONDecodeError:
         return {'raw': text}
+
+
+def sanitize_identifier(value: str) -> str:
+    cleaned = ''.join(ch if ch.isalnum() or ch in ('-', '_') else '_' for ch in value.strip())
+    return cleaned or 'unknown'
+
+
+def make_default_session_id(robot_id: str, device_id: str, now: float | None = None) -> str:
+    timestamp = time.strftime('%Y%m%dT%H%M%SZ', time.gmtime(time.time() if now is None else now))
+    return f'{sanitize_identifier(robot_id)}__{sanitize_identifier(device_id)}__{timestamp}'
 
 
 def make_jsonl_record(topic: str, text: str, now: float | None = None) -> dict[str, object]:
@@ -64,6 +75,7 @@ def make_session_metadata(
 ) -> dict[str, object]:
     return {
         'record_type': 'session_metadata',
+        'schema_version': JSONL_SCHEMA_VERSION,
         'ts_unix': time.time() if now is None else now,
         'session_id': session_id,
         'device_id': device_id,
@@ -71,6 +83,8 @@ def make_session_metadata(
         'software_version': software_version,
         'recorder_version': RECORDER_VERSION,
         'mode': mode,
+        'source': 'nanopi_ros_recorder',
+        'sync_status': 'local_only',
         'topics': list(DEFAULT_RECORDED_TOPICS),
         'motion_allowed_expected': False,
     }
@@ -82,8 +96,7 @@ def write_jsonl_record(handle: TextIO, record: dict[str, object]) -> None:
 
 
 def session_log_path(output_dir: str, session_id: str) -> Path:
-    safe_session = ''.join(ch if ch.isalnum() or ch in ('-', '_') else '_' for ch in session_id)
-    return Path(output_dir).expanduser() / f'{safe_session}.jsonl'
+    return Path(output_dir).expanduser() / f'{sanitize_identifier(session_id)}.jsonl'
 
 
 def load_jsonl_records(path: str | Path) -> list[dict[str, object]]:

@@ -1649,6 +1649,14 @@ AttributeError: handle cannot be modified after node creation
 - launch 会先启动 launch service，再启动节点；短验证至少给 10 秒。
 - 验证 recorder 时优先检查 JSONL 第一行，而不是只看 launch 进程启动。
 
+### 数据文件名要让服务器不用猜
+
+规则：
+
+- 默认 session 文件名使用 `<robot_id>__<device_id>__YYYYmmddTHHMMSSZ.jsonl`。
+- metadata 里保留同样的 `session_id`，并带 `schema_version`、`source`、`sync_status`。
+- 服务器同步前只需要扫描文件名和第一行 metadata，就能建立索引。
+
 ### 进度和踩坑要分开
 
 规则：

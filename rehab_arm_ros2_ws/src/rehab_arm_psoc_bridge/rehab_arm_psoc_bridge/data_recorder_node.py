@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import time
-
 import rclpy
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
@@ -11,6 +9,7 @@ from std_msgs.msg import String
 
 from rehab_arm_psoc_bridge.data_recording import (
     make_joint_state_payload,
+    make_default_session_id,
     make_jsonl_record,
     make_payload_record,
     make_session_metadata,
@@ -32,10 +31,10 @@ class RehabArmDataRecorder(Node):
 
         output_dir = str(self.get_parameter('output_dir').value)
         session_id = str(self.get_parameter('session_id').value)
-        if not session_id:
-            session_id = time.strftime('rehab_arm_%Y%m%d_%H%M%S')
         device_id = str(self.get_parameter('device_id').value)
         robot_id = str(self.get_parameter('robot_id').value)
+        if not session_id:
+            session_id = make_default_session_id(robot_id, device_id)
         software_version = str(self.get_parameter('software_version').value)
         mode = str(self.get_parameter('mode').value)
         self.flush_every = max(1, int(self.get_parameter('flush_every').value))
