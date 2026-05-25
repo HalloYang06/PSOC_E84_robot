@@ -970,6 +970,11 @@ ros2 run rehab_arm_psoc_bridge data_recorder_node.py \
 - `/rehab_arm/safety_state`
 - `/rehab_arm/sensor_state`
 
+可选记录：
+
+- `/rehab_arm/motor_state`
+- `/rehab_arm/camera_keyframe`
+
 当前阶段 `motion_allowed` 应保持 `false`，数据记录不代表允许真实运动。
 
 `/joint_states` 记录示例：
@@ -977,6 +982,20 @@ ros2 run rehab_arm_psoc_bridge data_recorder_node.py \
 ```json
 {"record_type":"topic_message","topic":"/joint_states","payload":{"stamp":{"sec":12,"nanosec":34},"name":["shoulder_lift_joint"],"position":[0.1],"velocity":[0.2],"effort":[0.3]}}
 ```
+
+`/rehab_arm/motor_state` payload 示例：
+
+```json
+{"schema_version":"rehab_arm_motor_state_v1","robot_id":"rehab-arm-alpha","device_id":"nanopi-m5","source":"nanopi_ros","motors":[{"motor_id":4,"joint_name":"shoulder_lift_joint","protocol":"private_mit","position":0.1,"velocity":0.0,"current":0.3,"temperature":35.0,"fault":false}],"control_boundary":"telemetry_only_not_motor_command"}
+```
+
+`/rehab_arm/camera_keyframe` payload 示例：
+
+```json
+{"schema_version":"rehab_arm_camera_keyframe_v1","robot_id":"rehab-arm-alpha","device_id":"nanopi-m5","source":"nanopi_camera","camera_id":"front_rgb","image_path":"/home/pi/frames/f1.jpg","image_format":"jpg","width":640,"height":480,"sha256":"abc123","scene_summary":"cup visible","detection_summary":{"objects":["cup"]},"control_boundary":"perception_data_only_not_motor_command"}
+```
+
+这两个 topic 只是总控台和标注链路的遥测/感知数据，不是运动命令。
 
 检查 JSONL 文件是否包含基础数据：
 

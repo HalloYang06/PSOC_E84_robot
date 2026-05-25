@@ -14,6 +14,10 @@ DEFAULT_RECORDED_TOPICS = [
     '/rehab_arm/safety_state',
     '/rehab_arm/sensor_state',
 ]
+OPTIONAL_RECORDED_TOPICS = [
+    '/rehab_arm/motor_state',
+    '/rehab_arm/camera_keyframe',
+]
 
 
 def parse_message_payload(text: str) -> object:
@@ -66,6 +70,56 @@ def make_joint_state_payload(
     }
 
 
+def make_motor_state_payload(
+    motors: list[dict[str, object]],
+    robot_id: str,
+    device_id: str,
+    now: float | None = None,
+    source: str = 'nanopi_ros',
+) -> dict[str, object]:
+    return {
+        'schema_version': 'rehab_arm_motor_state_v1',
+        'ts_unix': time.time() if now is None else now,
+        'robot_id': robot_id,
+        'device_id': device_id,
+        'source': source,
+        'motors': [dict(motor) for motor in motors],
+        'control_boundary': 'telemetry_only_not_motor_command',
+    }
+
+
+def make_camera_keyframe_payload(
+    camera_id: str,
+    image_path: str,
+    sha256: str,
+    robot_id: str,
+    device_id: str,
+    width: int | None = None,
+    height: int | None = None,
+    image_format: str = 'jpg',
+    now: float | None = None,
+    source: str = 'nanopi_camera',
+    scene_summary: str = '',
+    detection_summary: dict[str, object] | None = None,
+) -> dict[str, object]:
+    return {
+        'schema_version': 'rehab_arm_camera_keyframe_v1',
+        'ts_unix': time.time() if now is None else now,
+        'robot_id': robot_id,
+        'device_id': device_id,
+        'source': source,
+        'camera_id': camera_id,
+        'image_path': image_path,
+        'image_format': image_format,
+        'width': width,
+        'height': height,
+        'sha256': sha256,
+        'scene_summary': scene_summary,
+        'detection_summary': detection_summary or {},
+        'control_boundary': 'perception_data_only_not_motor_command',
+    }
+
+
 def make_session_metadata(
     session_id: str,
     device_id: str,
@@ -87,6 +141,7 @@ def make_session_metadata(
         'source': 'nanopi_ros_recorder',
         'sync_status': 'local_only',
         'topics': list(DEFAULT_RECORDED_TOPICS),
+        'optional_topics': list(OPTIONAL_RECORDED_TOPICS),
         'motion_allowed_expected': False,
     }
 

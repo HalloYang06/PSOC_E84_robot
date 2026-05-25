@@ -57,6 +57,8 @@ class RehabArmDataRecorder(Node):
 
         self.create_subscription(String, '/rehab_arm/safety_state', self.on_safety_state, 20)
         self.create_subscription(String, '/rehab_arm/sensor_state', self.on_sensor_state, 50)
+        self.create_subscription(String, '/rehab_arm/motor_state', self.on_motor_state, 50)
+        self.create_subscription(String, '/rehab_arm/camera_keyframe', self.on_camera_keyframe, 10)
         self.create_subscription(JointState, '/joint_states', self.on_joint_states, 50)
         self.get_logger().info(f'recording rehab arm data to {self.path}')
 
@@ -71,6 +73,12 @@ class RehabArmDataRecorder(Node):
 
     def on_sensor_state(self, msg: String) -> None:
         self.record('/rehab_arm/sensor_state', msg.data)
+
+    def on_motor_state(self, msg: String) -> None:
+        self.record('/rehab_arm/motor_state', msg.data)
+
+    def on_camera_keyframe(self, msg: String) -> None:
+        self.record('/rehab_arm/camera_keyframe', msg.data)
 
     def on_joint_states(self, msg: JointState) -> None:
         payload = make_joint_state_payload(

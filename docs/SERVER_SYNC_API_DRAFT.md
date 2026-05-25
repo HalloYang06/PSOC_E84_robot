@@ -167,6 +167,67 @@ Request:
 }
 ```
 
+### 5. Future Motor State Upload
+
+第一版先由 JSONL session 记录 `/rehab_arm/motor_state`，后续平台总控台可增加独立接口：
+
+```http
+POST /api/rehab-arm/v1/devices/{device_id}/motor-state
+Content-Type: application/json
+```
+
+Payload 使用 `rehab_arm_motor_state_v1`：
+
+```json
+{
+  "schema_version": "rehab_arm_motor_state_v1",
+  "robot_id": "rehab-arm-alpha",
+  "device_id": "nanopi-m5",
+  "source": "nanopi_ros",
+  "motors": [
+    {
+      "motor_id": 4,
+      "joint_name": "shoulder_lift_joint",
+      "protocol": "private_mit",
+      "position": 0.1,
+      "velocity": 0.0,
+      "current": 0.3,
+      "temperature": 35.0,
+      "fault": false
+    }
+  ],
+  "control_boundary": "telemetry_only_not_motor_command"
+}
+```
+
+### 6. Future Camera Keyframe Upload
+
+第一版先由 JSONL session 记录 `/rehab_arm/camera_keyframe`，后续平台总控台可增加独立接口：
+
+```http
+POST /api/rehab-arm/v1/devices/{device_id}/camera/keyframes
+Content-Type: multipart/form-data
+```
+
+Metadata 使用 `rehab_arm_camera_keyframe_v1`：
+
+```json
+{
+  "schema_version": "rehab_arm_camera_keyframe_v1",
+  "robot_id": "rehab-arm-alpha",
+  "device_id": "nanopi-m5",
+  "source": "nanopi_camera",
+  "camera_id": "front_rgb",
+  "image_format": "jpg",
+  "width": 640,
+  "height": 480,
+  "sha256": "abc123",
+  "scene_summary": "cup visible",
+  "detection_summary": {"objects": ["cup"]},
+  "control_boundary": "perception_data_only_not_motor_command"
+}
+```
+
 ## Server To NanoPi Boundary
 
 Allowed server outputs:

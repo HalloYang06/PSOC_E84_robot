@@ -657,13 +657,19 @@
   - AI 平台提交：`e5eef01e Add rehab arm sync ingestion API`。
   - 云端 API：`http://106.55.62.122:8011/api/rehab-arm/v1`。
   - 云端验证：`sync_upload.py --execute` 完成 4 个 POST，服务器落盘 `apps/api/tmp/rehab_arm_sync/events.jsonl`。
+- 新增总控台预备数据 topic：
+  - `data_recorder_node.py` 可选记录 `/rehab_arm/motor_state` 和 `/rehab_arm/camera_keyframe`。
+  - `data_recording.py` 新增 `rehab_arm_motor_state_v1` 和 `rehab_arm_camera_keyframe_v1` payload helper。
+  - 本地测试通过：43 tests passed。
+  - NanoPi 测试通过：33 tests passed；`colcon build` passed。
+  - NanoPi 实测 JSONL 能写入 motor_state 和 camera_keyframe。
 
 ## 进行中
 
 - 下一步继续按框架补数据链路：
   - 总服务器归入 AI 合作平台工程，不搬到本仓库。
   - 本仓库只保留 NanoPi 数据采集、manifest、dry-run/upload 客户端和本地假服务器验证工具。
-  - 后续回到 ROS2/仿真/数据标注本地链路。
+  - 后续继续补 NanoPi 摄像头关键帧采集脚本或 M33 电机状态映射。
   - 不进入真实电机控制。
   - 不给电机驱动上电，不做运动测试。
 
@@ -685,7 +691,7 @@
 
 1. 保持电机驱动断开，确认 `can0` 为 `ERROR-ACTIVE`。
 2. raw SocketCAN 先测 `0x321 -> 0x322` heartbeat。
-3. 回到本地 ROS2/仿真/数据标注链路，补下一块最小可测功能。
+3. 补 NanoPi 摄像头关键帧采集或 M33 电机状态到 `/rehab_arm/motor_state` 的映射。
 4. 保持服务器同步为非实时外部接口，不放进控制闭环。
 5. 仍保持 logging-only，不进入真实电机控制路径。
 

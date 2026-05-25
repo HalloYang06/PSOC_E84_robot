@@ -12,6 +12,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from rehab_arm_psoc_bridge.data_recording import (
     make_joint_state_payload,
+    make_motor_state_payload,
+    make_camera_keyframe_payload,
     make_default_session_id,
     make_jsonl_record,
     make_payload_record,
@@ -103,7 +105,53 @@ class DataRecordingTests(unittest.TestCase):
         self.assertEqual(record['sync_status'], 'local_only')
         self.assertIn('/joint_states', record['topics'])
         self.assertIn('/rehab_arm/safety_state', record['topics'])
+        self.assertIn('/rehab_arm/motor_state', record['optional_topics'])
+        self.assertIn('/rehab_arm/camera_keyframe', record['optional_topics'])
         self.assertIs(record['motion_allowed_expected'], False)
+
+    def test_make_motor_state_payload(self) -> None:
+        payload = make_motor_state_payload(
+            motors=[
+                {
+                    'motor_id': 4,
+                    'joint_name': 'shoulder_lift_joint',
+                    'protocol': 'private_mit',
+                    'position': 0.1,
+                    'velocity': 0.2,
+                    'current': 0.3,
+                    'temperature': 35.0,
+                    'fault': False,
+                },
+            ],
+            robot_id='rehab-arm-alpha',
+            device_id='nanopi-m5',
+            now=12.5,
+        )
+
+        self.assertEqual(payload['schema_version'], 'rehab_arm_motor_state_v1')
+        self.assertEqual(payload['ts_unix'], 12.5)
+        self.assertEqual(payload['motors'][0]['motor_id'], 4)
+        self.assertEqual(payload['control_boundary'], 'telemetry_only_not_motor_command')
+
+    def test_make_camera_keyframe_payload(self) -> None:
+        payload = make_camera_keyframe_payload(
+            camera_id='front_rgb',
+            image_path='/home/pi/frames/f1.jpg',
+            sha256='abc123',
+            robot_id='rehab-arm-alpha',
+            device_id='nanopi-m5',
+            width=640,
+            height=480,
+            now=13.5,
+            scene_summary='cup visible',
+            detection_summary={'objects': ['cup']},
+        )
+
+        self.assertEqual(payload['schema_version'], 'rehab_arm_camera_keyframe_v1')
+        self.assertEqual(payload['camera_id'], 'front_rgb')
+        self.assertEqual(payload['width'], 640)
+        self.assertEqual(payload['detection_summary'], {'objects': ['cup']})
+        self.assertEqual(payload['control_boundary'], 'perception_data_only_not_motor_command')
 
     def test_write_jsonl_record(self) -> None:
         handle = io.StringIO()
