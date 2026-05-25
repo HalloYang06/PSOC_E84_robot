@@ -1511,6 +1511,40 @@ detail_code=1 detail=heartbeat_timeout
 
 - NanoPi parser 和 bridge 本地 safety payload 已输出 `motion_allowed`。
 
+### ROS2 Python 节点要确认可执行位
+
+现象：
+
+- `colcon build` 通过，安装目录里也有 `data_recorder_node.py` 链接。
+- 但 `ros2 pkg executables rehab_arm_psoc_bridge` 一开始没有显示新节点。
+
+原因：
+
+- 新增 Python 节点文件没有执行位。
+
+解决：
+
+```bash
+chmod +x rehab_arm_psoc_bridge/data_recorder_node.py
+```
+
+并在 Git 中保留执行位。
+
+状态：
+
+- NanoPi 已验证 `ros2 pkg executables rehab_arm_psoc_bridge` 能看到 `data_recorder_node.py`。
+
+### Windows 远程发布 ROS JSON 时引号容易被 PowerShell 解析坏
+
+现象：
+
+- 从 Windows PowerShell 里通过 `ssh` 执行 `ros2 topic pub`，消息内嵌 JSON 时出现 `ParserError`。
+
+技巧：
+
+- 这类测试优先写成 NanoPi 本地脚本，或先测试 helper/节点注册。
+- 不要把复杂 JSON、PowerShell、SSH、ROS YAML 四层引号揉在一个命令里。
+
 ### 进度和踩坑要分开
 
 规则：

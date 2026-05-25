@@ -607,11 +607,15 @@
   - PSoC/M33 status 和 bridge 本地 safety 都输出 `motion_allowed`。
   - 当前 logging-only 和 bridge 本地状态均为 `motion_allowed=false`。
   - 本地测试通过：19 tests passed；NanoPi 测试通过：9 tests passed。
+- 新增 NanoPi 最小数据记录节点：
+  - 记录 `/rehab_arm/safety_state` 和 `/rehab_arm/sensor_state` 到 JSONL。
+  - 本地测试通过：24 tests passed；NanoPi 测试通过：14 tests passed；NanoPi build passed。
+  - `ros2 pkg executables rehab_arm_psoc_bridge` 已能看到 `data_recorder_node.py`。
 
 ## 进行中
 
-- 下一步继续按框架补 NanoPi 侧数据记录接口：
-  - 先记录 `/rehab_arm/safety_state` 和 `/rehab_arm/sensor_state`。
+- 下一步继续按框架补数据链路：
+  - 增加记录文件 session 元数据，方便后续服务器同步和标注。
   - 不进入真实电机控制。
   - 不给电机驱动上电，不做运动测试。
 
@@ -633,8 +637,8 @@
 
 1. 保持电机驱动断开，确认 `can0` 为 `ERROR-ACTIVE`。
 2. raw SocketCAN 先测 `0x321 -> 0x322` heartbeat。
-3. 新增最小数据记录节点或脚本，先落盘 JSONL。
-4. 用假消息或当前 M33 `0x322` 验证文件内容。
+3. 给 JSONL session 增加设备、软件版本、数据来源说明。
+4. 用假消息验证文件内容。
 5. 仍保持 logging-only，不进入真实电机控制路径。
 
 ## 更新规则

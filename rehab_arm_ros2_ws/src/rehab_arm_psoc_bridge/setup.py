@@ -15,6 +15,7 @@ setup(
     entry_points={
         'console_scripts': [
             'psoc_can_bridge_node = rehab_arm_psoc_bridge.psoc_can_bridge_node:main',
+            'data_recorder_node = rehab_arm_psoc_bridge.data_recorder_node:main',
         ],
     },
 )

@@ -12,6 +12,7 @@ ament_python_install_package(${PROJECT_NAME})
 
 install(PROGRAMS
   rehab_arm_psoc_bridge/psoc_can_bridge_node.py
+  rehab_arm_psoc_bridge/data_recorder_node.py
   rehab_arm_psoc_bridge/decode_psoc_cmd.py
   rehab_arm_psoc_bridge/encode_psoc_cmd.py
   DESTINATION lib/${PROJECT_NAME}

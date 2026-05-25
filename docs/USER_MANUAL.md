@@ -908,7 +908,41 @@ PARSED detail_code=1 detail=heartbeat_timeout
 D:\RT-ThreadStudio\workspace\yiliao_m33\Debug\rtthread.bin
 ```
 
-## 5. 当前真实 CAN ID
+## 5. 数据记录
+
+NanoPi 可以先记录安全和传感 topic，作为后续服务器同步、标注、仿真回放的数据源：
+
+```bash
+cd /home/pi/rehab_arm_ros2_ws
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+ros2 run rehab_arm_psoc_bridge data_recorder_node.py \
+  --ros-args \
+  -p output_dir:=/home/pi/rehab_arm_logs \
+  -p session_id:=test_session \
+  -p flush_every:=1
+```
+
+记录文件：
+
+```text
+/home/pi/rehab_arm_logs/test_session.jsonl
+```
+
+每行是一条 JSON：
+
+```json
+{"ts_unix":123.0,"topic":"/rehab_arm/safety_state","payload":{"state":"limited","motion_allowed":false}}
+```
+
+第一版只记录：
+
+- `/rehab_arm/safety_state`
+- `/rehab_arm/sensor_state`
+
+当前阶段 `motion_allowed` 应保持 `false`，数据记录不代表允许真实运动。
+
+## 6. 当前真实 CAN ID
 
 | ID | 协议/用途 | 说明 |
 |---|---|---|
@@ -920,7 +954,7 @@ D:\RT-ThreadStudio\workspace\yiliao_m33\Debug\rtthread.bin
 | `0x7C2` | C8T6 -> M33 | 传感数据 |
 | `0x7C3` | C8T6 -> M33 | 健康状态 |
 
-## 6. 文档与 Git 维护
+## 7. 文档与 Git 维护
 
 每次完成任务后同步更新：
 
