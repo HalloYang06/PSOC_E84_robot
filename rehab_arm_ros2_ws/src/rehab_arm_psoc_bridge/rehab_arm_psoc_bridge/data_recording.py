@@ -6,6 +6,9 @@ from pathlib import Path
 from typing import TextIO
 
 
+RECORDER_VERSION = '0.1.0'
+
+
 def parse_message_payload(text: str) -> object:
     try:
         return json.loads(text)
@@ -15,9 +18,35 @@ def parse_message_payload(text: str) -> object:
 
 def make_jsonl_record(topic: str, text: str, now: float | None = None) -> dict[str, object]:
     return {
+        'record_type': 'topic_message',
         'ts_unix': time.time() if now is None else now,
         'topic': topic,
         'payload': parse_message_payload(text),
+    }
+
+
+def make_session_metadata(
+    session_id: str,
+    device_id: str,
+    robot_id: str,
+    software_version: str,
+    mode: str,
+    now: float | None = None,
+) -> dict[str, object]:
+    return {
+        'record_type': 'session_metadata',
+        'ts_unix': time.time() if now is None else now,
+        'session_id': session_id,
+        'device_id': device_id,
+        'robot_id': robot_id,
+        'software_version': software_version,
+        'recorder_version': RECORDER_VERSION,
+        'mode': mode,
+        'topics': [
+            '/rehab_arm/safety_state',
+            '/rehab_arm/sensor_state',
+        ],
+        'motion_allowed_expected': False,
     }
 
 

@@ -1545,6 +1545,23 @@ chmod +x rehab_arm_psoc_bridge/data_recorder_node.py
 - 这类测试优先写成 NanoPi 本地脚本，或先测试 helper/节点注册。
 - 不要把复杂 JSON、PowerShell、SSH、ROS YAML 四层引号揉在一个命令里。
 
+### NanoPi 端口通不等于 SSH 命令可执行
+
+现象：
+
+- `Test-NetConnection 192.168.2.66 -Port 22` 显示 `TcpTestSucceeded=True`。
+- 但 `ssh pi@192.168.2.66 "echo online"` 超时。
+
+判断：
+
+- 这说明网络端口可达，但 SSH 登录/会话建立卡住。
+- 不要在这种状态下继续判定 ROS、CAN 或 colcon 失败。
+
+状态：
+
+- 本次 metadata 数据记录改动已完成本地测试。
+- NanoPi 同步验证暂缓，等 SSH 命令能正常返回后再做。
+
 ### 进度和踩坑要分开
 
 规则：

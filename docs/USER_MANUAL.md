@@ -920,6 +920,10 @@ ros2 run rehab_arm_psoc_bridge data_recorder_node.py \
   --ros-args \
   -p output_dir:=/home/pi/rehab_arm_logs \
   -p session_id:=test_session \
+  -p device_id:=nanopi-m5 \
+  -p robot_id:=rehab-arm-alpha \
+  -p software_version:=dev \
+  -p mode:=logging_only \
   -p flush_every:=1
 ```
 
@@ -932,7 +936,8 @@ ros2 run rehab_arm_psoc_bridge data_recorder_node.py \
 每行是一条 JSON：
 
 ```json
-{"ts_unix":123.0,"topic":"/rehab_arm/safety_state","payload":{"state":"limited","motion_allowed":false}}
+{"record_type":"session_metadata","ts_unix":123.0,"session_id":"test_session","device_id":"nanopi-m5","robot_id":"rehab-arm-alpha","software_version":"dev","recorder_version":"0.1.0","mode":"logging_only","topics":["/rehab_arm/safety_state","/rehab_arm/sensor_state"],"motion_allowed_expected":false}
+{"record_type":"topic_message","ts_unix":124.0,"topic":"/rehab_arm/safety_state","payload":{"state":"limited","motion_allowed":false}}
 ```
 
 第一版只记录：

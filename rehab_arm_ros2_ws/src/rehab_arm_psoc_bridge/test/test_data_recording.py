@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from rehab_arm_psoc_bridge.data_recording import (
     make_jsonl_record,
+    make_session_metadata,
     parse_message_payload,
     session_log_path,
     write_jsonl_record,
@@ -32,9 +33,30 @@ class DataRecordingTests(unittest.TestCase):
     def test_make_jsonl_record(self) -> None:
         record = make_jsonl_record('/rehab_arm/safety_state', '{"state":"ok"}', now=123.5)
 
+        self.assertEqual(record['record_type'], 'topic_message')
         self.assertEqual(record['ts_unix'], 123.5)
         self.assertEqual(record['topic'], '/rehab_arm/safety_state')
         self.assertEqual(record['payload'], {'state': 'ok'})
+
+    def test_make_session_metadata(self) -> None:
+        record = make_session_metadata(
+            session_id='s1',
+            device_id='nanopi-m5',
+            robot_id='rehab-arm-alpha',
+            software_version='abc123',
+            mode='logging_only',
+            now=10.0,
+        )
+
+        self.assertEqual(record['record_type'], 'session_metadata')
+        self.assertEqual(record['ts_unix'], 10.0)
+        self.assertEqual(record['session_id'], 's1')
+        self.assertEqual(record['device_id'], 'nanopi-m5')
+        self.assertEqual(record['robot_id'], 'rehab-arm-alpha')
+        self.assertEqual(record['software_version'], 'abc123')
+        self.assertEqual(record['mode'], 'logging_only')
+        self.assertIn('/rehab_arm/safety_state', record['topics'])
+        self.assertIs(record['motion_allowed_expected'], False)
 
     def test_write_jsonl_record(self) -> None:
         handle = io.StringIO()
