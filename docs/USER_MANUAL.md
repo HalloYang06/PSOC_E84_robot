@@ -565,6 +565,19 @@ ros2 topic echo --once /rehab_arm/safety_state std_msgs/msg/String
 
 - `can0` 保持 `ERROR-ACTIVE`，没有 `bus-off` 或 `error-passive`。
 
+烧录后已验证通过的 V2 status 记录：
+
+```text
+raw heartbeat:
+TX 321 01
+RX 322 [8] a501070001010a00
+
+ROS /rehab_arm/safety_state:
+{"source":"psoc","id_hex":"0x322","data":"A503070001010A00","marker":165,"seq":3,"motors":7,"error_code":0,"protocol_version":2,"state":"limited","safety_code":1,"control_mode":"logging_only","control_mode_code":1,"detail_code":10,"detail":"logging_only_no_motor_output","heartbeat_age_ms":0}
+```
+
+这表示 M33 当前明确告诉 NanoPi：系统在线，但处于 `logging_only` 安全受限状态。此状态下不要把它当成可运动状态。
+
 如果本机或 NanoPi 上有旧 bridge 进程，先清理再测：
 
 ```bash

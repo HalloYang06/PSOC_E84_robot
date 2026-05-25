@@ -355,13 +355,27 @@
     - `detail=logging_only_no_motor_output`
   - 编译仍保留既有工程告警：`rtthread.elf has a LOAD segment with RWX permissions`，以及 post-build 中 `arm-none-eabi-objcopy: interleave must be positive` 被 makefile 标记为 ignored；本次修改没有导致编译失败。
   - 尚未烧录本轮 M33 V2 status 固件，等待用户烧录后只测 `0x321 -> 0x322`，不发 `0x320`。
+- 用户烧录 M33 V2 status 固件后完成 NanoPi heartbeat/status 验证：
+  - `can0` 为 `UP/LOWER_UP/ERROR-ACTIVE`，1Mbps，`berr-counter tx 0 rx 0`。
+  - 原始 SocketCAN 连续发送 `0x321` seq 1/2/3，均收到 V2 `0x322`：
+    - `RX 322 [8] a501070001010a00`
+    - `RX 322 [8] a502070001010a00`
+    - `RX 322 [8] a503070001010a00`
+  - 运行 `rehab_arm_psoc_bridge`，未发布任何轨迹，未发送 `0x320`。
+  - `candump can0,321:7FF,322:7FF` 旁路确认 bridge heartbeat 触发 V2 status：
+    - `can0  321   [1]  01`
+    - `can0  322   [8]  A5 01 07 00 01 01 0A 00`
+  - `/rehab_arm/safety_state` 完整 JSON：
+    - `{"source":"psoc","id_hex":"0x322","data":"A503070001010A00","marker":165,"seq":3,"motors":7,"error_code":0,"protocol_version":2,"state":"limited","safety_code":1,"control_mode":"logging_only","control_mode_code":1,"detail_code":10,"detail":"logging_only_no_motor_output","heartbeat_age_ms":0}`
+  - 复查 `can0` 仍为 `ERROR-ACTIVE`，`bus-errors/error-pass/bus-off` 均为 0。
+  - 本轮没有发布 `JointTrajectory`，没有发送真实 `0x320`，没有给电机驱动上电，没有做运动测试。
 
 ## 进行中
 
-- 下一步等待用户烧录 M33 `0x322` V2 status 固件：
+- 下一步进入 M33 正式安全接收状态机设计，但默认仍不输出电机控制：
   - 仍保持 `CONTROL_ROS_COMMAND_LOGGING_ONLY=1U`。
-  - 烧录后只验证 heartbeat/status。
-  - 不发 `0x320`，不给电机驱动上电，不做运动测试。
+  - 先设计并记录 `0x320` 的 M33 侧安全审核流程：模式、急停、heartbeat 超时、关节映射、限位、速度/电流限制。
+  - 先做日志/模拟执行，不给电机驱动上电，不做运动测试。
 
 ## 待确认
 
@@ -379,11 +393,11 @@
 
 严格按“一次只做一个能测试的小目标”推进：
 
-1. 用户烧录 M33 V2 status 固件。
-2. NanoPi 只测 heartbeat/status，不发 `0x320`。
-3. 确认 `/rehab_arm/safety_state` 包含 `protocol_version=2`、`state=limited`、`control_mode=logging_only`。
-4. 复查 `can0` 仍为 `ERROR-ACTIVE`，无 bus-off/error-passive。
-5. 再设计 M33 `0x320` 正式安全接收状态机，但默认仍不输出电机控制。
+1. 在文档中写清 M33 `0x320` 安全接收状态机。
+2. M33 先实现安全审核日志：收到目标后打印 accept/reject、reason、限幅结果、当前模式和 heartbeat age。
+3. 默认仍保持 logging-only，不输出电机控制。
+4. 用户烧录后只做 `0x320` 单帧日志对照，不给电机驱动上电。
+5. 只有限位、超时、急停、模式拒绝都验证过后，才讨论下一阶段。
 6. 离线继续推进：可继续给 bridge 的安全门控补单元测试，不依赖硬件。
 
 ## 更新规则

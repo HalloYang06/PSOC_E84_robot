@@ -847,6 +847,36 @@ ros2 topic echo --once /rehab_arm/safety_state std_msgs/msg/String
 
 - 已记录。后续 bridge topic 验证优先显式指定 `std_msgs/msg/String`。
 
+### V2 status limited 是安全通过，不是可运动
+
+现象：
+
+- M33 V2 status 固件烧录后，NanoPi 能收到：
+
+```text
+RX 322 [8] a501070001010a00
+```
+
+- ROS `/rehab_arm/safety_state` 输出：
+
+```json
+{"protocol_version":2,"state":"limited","control_mode":"logging_only","detail":"logging_only_no_motor_output"}
+```
+
+判断：
+
+- 这说明 M33 在线、heartbeat/status 链路正常、V2 parser 正常。
+- 但 `state=limited` 和 `control_mode=logging_only` 明确表示当前不是可运动状态。
+
+处理：
+
+- 当前阶段只允许继续做日志、安全状态机和单帧对照。
+- 不要因为 heartbeat/status 通过就给电机驱动上电或发布运动轨迹。
+
+状态：
+
+- 已验证并记录。下一步继续设计 M33 `0x320` 安全审核日志，默认仍不输出电机控制。
+
 ### 没硬件时也要守住协议回归测试
 
 场景：
