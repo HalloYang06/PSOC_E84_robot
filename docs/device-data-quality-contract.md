@@ -74,3 +74,19 @@ The device data workbench should show:
 
 The workbench should not expose internal words such as adapter, bridge, raw UUID,
 session JSONL, or local path in normal user-facing copy.
+
+## Validation Notes
+
+Cloud smoke validation on 2026-05-25:
+
+- uploaded an offline sample manifest with `quality_report` through
+  `/api/rehab-arm/v1`;
+- cloud dashboard returned `annotation_ready=true` for device
+  `nanopi-quality-demo`;
+- latest session returned `quality_report_ok=true` and preserved the source
+  quality criteria;
+- returned `control_boundary=data_quality_only_not_motion_permission`.
+
+This validates the data-readiness path only. It does not validate camera
+streaming, VLA planning, ROS execution, CAN writes, M33 control, or any real
+hardware motion path.
