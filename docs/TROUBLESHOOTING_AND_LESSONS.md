@@ -1849,7 +1849,33 @@ RuntimeError: Unable to convert call argument '0' to Python object
 状态：
 
 - 本地已新增摘要工具并通过单元测试。
-- NanoPi 已构建通过，运行验证待 SSH 恢复后补做。
+- NanoPi 已构建通过。
+- NanoPi 复测时发现 `/tmp/rehab_sim_collection/sim_demo_motion.jsonl` 因重启消失；重新采集后摘要工具验证通过，`moving_joint_count=5`。
+
+### `/tmp` 里的验证文件可能在重启后消失
+
+现象：
+
+- NanoPi 在线且负载正常。
+- 但运行摘要工具时报：
+
+```text
+No such file or directory: /tmp/rehab_sim_collection/sim_demo_motion.jsonl
+```
+
+根因：
+
+- `/tmp` 是临时目录，设备重启或清理后验证文件可能消失。
+
+技巧：
+
+- 临时验证可以继续用 `/tmp`。
+- 需要跨重启保留的数据应写到 `/home/pi/rehab_arm_logs` 或明确的持久目录。
+- 复测摘要工具时，如果文件不存在，先重新跑一次 `sim_data_collection.launch.py` 生成 JSONL。
+
+状态：
+
+- 已记录。本次重新生成 `sim_demo_motion.jsonl` 后摘要验证通过。
 
 ### 数据文件名要让服务器不用猜
 
