@@ -942,10 +942,17 @@ ros2 run rehab_arm_psoc_bridge data_recorder_node.py \
 
 第一版只记录：
 
+- `/joint_states`
 - `/rehab_arm/safety_state`
 - `/rehab_arm/sensor_state`
 
 当前阶段 `motion_allowed` 应保持 `false`，数据记录不代表允许真实运动。
+
+`/joint_states` 记录示例：
+
+```json
+{"record_type":"topic_message","topic":"/joint_states","payload":{"stamp":{"sec":12,"nanosec":34},"name":["shoulder_lift_joint"],"position":[0.1],"velocity":[0.2],"effort":[0.3]}}
+```
 
 ## 6. 当前真实 CAN ID
 

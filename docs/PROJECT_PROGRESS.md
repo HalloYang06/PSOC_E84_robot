@@ -615,11 +615,15 @@
   - JSONL 第一行写入设备、机器人、软件版本、运行模式和数据源 topic。
   - 本地测试通过：25 tests passed；NanoPi build passed。
   - NanoPi 实测 JSONL 第一行为 `record_type=session_metadata`。
+- 数据记录新增 `/joint_states`：
+  - JSONL 记录 `name/position/velocity/effort/stamp`。
+  - 本地测试通过：27 tests passed；NanoPi build passed。
+  - NanoPi 实测 JSONL 包含 `/joint_states` topic message。
 
 ## 进行中
 
 - 下一步继续按框架补数据链路：
-  - 让 recorder 同时记录 `/joint_states`，形成安全、传感、关节状态三类基础数据。
+  - 增加 recorder 的最小回放/检查工具，验证 JSONL 文件结构。
   - 不进入真实电机控制。
   - 不给电机驱动上电，不做运动测试。
 
@@ -641,8 +645,8 @@
 
 1. 保持电机驱动断开，确认 `can0` 为 `ERROR-ACTIVE`。
 2. raw SocketCAN 先测 `0x321 -> 0x322` heartbeat。
-3. 增加 `/joint_states` JSONL 记录。
-4. 用假消息验证 JSONL 文件包含 safety/sensor/joint 三类 topic。
+3. 增加 JSONL 文件检查工具。
+4. 用当前测试文件验证 metadata 和 topic_message 结构。
 5. 仍保持 logging-only，不进入真实电机控制路径。
 
 ## 更新规则

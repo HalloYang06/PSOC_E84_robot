@@ -17,11 +17,35 @@ def parse_message_payload(text: str) -> object:
 
 
 def make_jsonl_record(topic: str, text: str, now: float | None = None) -> dict[str, object]:
+    return make_payload_record(topic, parse_message_payload(text), now)
+
+
+def make_payload_record(topic: str, payload: object, now: float | None = None) -> dict[str, object]:
     return {
         'record_type': 'topic_message',
         'ts_unix': time.time() if now is None else now,
         'topic': topic,
-        'payload': parse_message_payload(text),
+        'payload': payload,
+    }
+
+
+def make_joint_state_payload(
+    names: list[str],
+    positions: list[float],
+    velocities: list[float],
+    efforts: list[float],
+    stamp_sec: int,
+    stamp_nanosec: int,
+) -> dict[str, object]:
+    return {
+        'stamp': {
+            'sec': stamp_sec,
+            'nanosec': stamp_nanosec,
+        },
+        'name': list(names),
+        'position': list(positions),
+        'velocity': list(velocities),
+        'effort': list(efforts),
     }
 
 
@@ -43,6 +67,7 @@ def make_session_metadata(
         'recorder_version': RECORDER_VERSION,
         'mode': mode,
         'topics': [
+            '/joint_states',
             '/rehab_arm/safety_state',
             '/rehab_arm/sensor_state',
         ],

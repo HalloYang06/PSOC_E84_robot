@@ -6,10 +6,13 @@ import time
 import rclpy
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
+from sensor_msgs.msg import JointState
 from std_msgs.msg import String
 
 from rehab_arm_psoc_bridge.data_recording import (
+    make_joint_state_payload,
     make_jsonl_record,
+    make_payload_record,
     make_session_metadata,
     session_log_path,
     write_jsonl_record,
@@ -55,6 +58,7 @@ class RehabArmDataRecorder(Node):
 
         self.create_subscription(String, '/rehab_arm/safety_state', self.on_safety_state, 20)
         self.create_subscription(String, '/rehab_arm/sensor_state', self.on_sensor_state, 50)
+        self.create_subscription(JointState, '/joint_states', self.on_joint_states, 50)
         self.get_logger().info(f'recording rehab arm data to {self.path}')
 
     def destroy_node(self):
@@ -69,8 +73,23 @@ class RehabArmDataRecorder(Node):
     def on_sensor_state(self, msg: String) -> None:
         self.record('/rehab_arm/sensor_state', msg.data)
 
+    def on_joint_states(self, msg: JointState) -> None:
+        payload = make_joint_state_payload(
+            names=list(msg.name),
+            positions=list(msg.position),
+            velocities=list(msg.velocity),
+            efforts=list(msg.effort),
+            stamp_sec=msg.header.stamp.sec,
+            stamp_nanosec=msg.header.stamp.nanosec,
+        )
+        write_jsonl_record(self.log_handle, make_payload_record('/joint_states', payload))
+        self.flush_if_needed()
+
     def record(self, topic: str, text: str) -> None:
         write_jsonl_record(self.log_handle, make_jsonl_record(topic, text))
+        self.flush_if_needed()
+
+    def flush_if_needed(self) -> None:
         self.write_count += 1
         if self.write_count % self.flush_every == 0:
             self.log_handle.flush()

@@ -1602,6 +1602,21 @@ AttributeError: handle cannot be modified after node creation
 
 - 已修复，短运行退出不再打印 traceback。
 
+### recorder 的数据闭环至少要验证一条真实 topic
+
+现象：
+
+- 单元测试和 `colcon build` 通过，不代表 ROS topic 已能落盘。
+
+技巧：
+
+- 启动 `data_recorder_node.py` 后发布一条假 `/joint_states`。
+- 检查 JSONL 同时包含 `session_metadata` 和 `/joint_states` 的 `topic_message`。
+
+状态：
+
+- NanoPi 已验证 `/joint_states` 可记录 `name/position/velocity/effort/stamp`。
+
 ### 进度和踩坑要分开
 
 规则：
