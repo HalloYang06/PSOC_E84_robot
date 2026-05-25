@@ -489,14 +489,28 @@
     - M33：`safety_state=limited decision=reject reason=heartbeat_timeout`，`heartbeat_age_ms=3211`，超过 `2500`。
   - 四个用例最终都打印 `final action=no_motor_output logging_only=1`。
   - 本轮没有给电机驱动上电，没有做运动测试。
+- 完成 M33 状态机拒绝用例矩阵第二轮验证：
+  - 本轮继续绕过 ROS bridge，使用 NanoPi raw SocketCAN 单帧测试 M33 本体状态机。
+  - 测试前后 `can0` 均为 `UP/LOWER_UP/ERROR-ACTIVE`，classic CAN `1Mbps`，`berr-counter tx 0 rx 0`。
+  - 速度超限：
+    - TX `030039001f000000`，含 `rpm=31`，超过当前 `max_rpm=30`。
+    - M33：`safety_state=limited decision=reject reason=velocity_out_of_limit`。
+  - unsupported command：
+    - TX `0100`，即 `cmd=enable`，当前安全状态机只允许审计 `set_target`。
+    - M33：`safety_state=limited decision=reject reason=unsupported_command`。
+  - 多错误优先级：
+    - 停发 heartbeat 等待 3.2 秒后，TX `030084031f000100`，同时包含 heartbeat 超时、position 超限、velocity 超限、torque 超限。
+    - M33：`safety_state=limited decision=reject reason=heartbeat_timeout`。
+    - 日志显示 `target_in_limit=0 rpm_in_limit=0 torque_in_limit=0`，但首要拒绝原因仍优先为 heartbeat。
+  - 三个用例最终都打印 `final action=no_motor_output logging_only=1`。
+  - 本轮没有给电机驱动上电，没有做运动测试。
 
 ## 进行中
 
-- 下一步继续补 M33 状态机边界用例：
-  - 速度超限 `velocity_out_of_limit`。
-  - unsupported command。
-  - 多错误优先级确认，例如 heartbeat 超时同时 position 超限时优先返回 `heartbeat_timeout`。
-  - 仍只发单帧，仍保持 `final action=no_motor_output`。
+- 下一步把 M33 状态机 reason 映射到 `0x322 detail_code`：
+  - 当前具体拒绝原因只能从 M33 串口看到。
+  - 需要让 NanoPi/ROS `/rehab_arm/safety_state` 也能看到最近一次拒绝原因。
+  - 仍保持 `CONTROL_ROS_COMMAND_LOGGING_ONLY=1U`，不输出电机控制。
 
 ## 待确认
 
@@ -514,10 +528,11 @@
 
 严格按“一次只做一个能测试的小目标”推进：
 
-1. 增加速度超限、unsupported command、多错误优先级的单帧测试。
-2. 每次只发一帧，并同时记录 `candump`、M33 串口和 `can0` 状态。
-3. 验证 M33 均能打印明确拒绝原因，最终仍 `decision=reject` 和 `final action=no_motor_output`。
-4. 如拒绝矩阵完整通过，再设计如何把状态机结果映射到 `0x322` detail_code，而不是只在串口可见。
+1. 在 M33 中保存最近一次 ROS safety assessment 的 reason/detail。
+2. 扩展 `0x322` V2 detail_code，表示 `logging_only`、`heartbeat_timeout`、`unknown_joint`、`target_out_of_limit`、`velocity_out_of_limit`、`torque_out_of_limit`、`unsupported_command`。
+3. 更新 NanoPi `psoc_status.py` 解析 detail_code。
+4. 本地单元测试覆盖新 detail_code。
+5. 编译 M33，用户烧录后只测 `0x321 -> 0x322` 和一帧拒绝用例，不做运动测试。
 
 ## 更新规则
 

@@ -764,6 +764,20 @@ final action=no_motor_output logging_only=1
 
 注意：这些危险用例是为了验证 M33 自己的安全状态机，使用 raw SocketCAN 直接发 `0x320`，不会经过 ROS bridge 的前置限位。只能在电机驱动断开、外骨骼不穿戴、M33 logging-only 的条件下执行。
 
+M33 状态机拒绝用例第二轮已验证：
+
+| 用例 | `0x320` payload | 预期/实测 M33 reason |
+|---|---|---|
+| 速度超限 | `030039001f000000` | `velocity_out_of_limit` |
+| unsupported command | `0100` | `unsupported_command` |
+| heartbeat 超时 + 多个限位同时失败 | 等待超过 2500ms 后发 `030084031f000100` | `heartbeat_timeout` |
+
+多错误优先级当前规则：
+
+- heartbeat 超时优先级最高。
+- heartbeat 正常时，再按 unknown joint、position、velocity、torque 等安全条件拒绝。
+- 即使多个条件同时失败，也只输出一个首要 `reason`，其他检查项仍在 audit 字段中可见。
+
 ## 5. 当前真实 CAN ID
 
 | ID | 协议/用途 | 说明 |

@@ -679,6 +679,9 @@ ros2 run rehab_arm_psoc_bridge encode_psoc_cmd.py shoulder_lift_joint 0.1
 0309390005000000 -> reason=unknown_joint
 0300390005000100 -> reason=torque_out_of_limit
 heartbeat age 3211ms + 0300390005000000 -> reason=heartbeat_timeout
+030039001f000000 -> reason=velocity_out_of_limit
+0100 -> reason=unsupported_command
+heartbeat age 3211ms + 030084031f000100 -> reason=heartbeat_timeout
 ```
 
 技巧：
@@ -686,10 +689,11 @@ heartbeat age 3211ms + 0300390005000000 -> reason=heartbeat_timeout
 - 正式路径里 NanoPi bridge 和 M33 都要有安全门；测试 M33 本体时需要有意识地绕过 NanoPi 门控，但必须保持 M33 `logging_only`。
 - 每个危险用例都要确认最终还有 `final action=no_motor_output logging_only=1`。
 - heartbeat 超时用例要先停止 bridge，避免 bridge 持续发 `0x321` 把 M33 heartbeat 刷新掉。
+- 多错误优先级要单独测：当 heartbeat 超时和多个限位同时失败时，当前首要 reason 应该是 `heartbeat_timeout`。
 
 状态：
 
-- 第一轮拒绝矩阵已通过，未给电机驱动上电，未做运动测试。
+- 第一轮和第二轮拒绝矩阵已通过，未给电机驱动上电，未做运动测试。
 
 ### 发送真实 0x320 单帧时必须同时看 NanoPi TX 和 M33 串口
 
