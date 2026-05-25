@@ -169,6 +169,46 @@ function DeviceQualityStrip({ devices }: { devices: AnyRecord[] }) {
   );
 }
 
+function SimulationReadinessStrip() {
+  const steps = [
+    {
+      state: "先检查",
+      title: "模型可导入",
+      detail: "导入 URDF/结构文件，确认关节、父子关系和 limit，再进入仿真或回放。",
+    },
+    {
+      state: "再运行",
+      title: "仿真环境自检",
+      detail: "在设备侧或仿真主机运行环境自检，区分 ROS、MuJoCo、模型文件和采集工具问题。",
+    },
+    {
+      state: "最后采集",
+      title: "数据闭环可标注",
+      detail: "采集 joint state、传感、图像和质量报告，通过数据质量门后再进入标注和训练。",
+    },
+  ];
+  return (
+    <section className={styles.simReadinessStrip} aria-label="仿真与采集准备度">
+      <div className={styles.simReadinessHead}>
+        <div>
+          <span>仿真准备度</span>
+          <strong>先让模型、仿真、采集都能被检查</strong>
+        </div>
+        <small>这是只读研发流程提示，不是运动许可，也不会触发真实设备动作。</small>
+      </div>
+      <div className={styles.simReadinessCards}>
+        {steps.map((step) => (
+          <article key={step.title}>
+            <span>{step.state}</span>
+            <strong>{step.title}</strong>
+            <p>{step.detail}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function seatId(seat: AnyRecord, fallback: string) {
   return text(seat.id ?? seat.config_id ?? seat.configId ?? seat.row_id ?? seat.name, fallback);
 }
@@ -1451,6 +1491,7 @@ export function RoboticsWorkbenchClient({
           {notice ? <div className={styles.inlineNotice} data-tone="success">{notice}</div> : null}
           {error ? <div className={styles.inlineNotice} data-tone="danger">{error}</div> : null}
           <DeviceQualityStrip devices={deviceQualityDevices} />
+          <SimulationReadinessStrip />
           {openWindows.length ? (
             <div className={workbenchStyles.tileGrid} data-tile-count={openWindows.length}>
               {openWindows.map((window) => (

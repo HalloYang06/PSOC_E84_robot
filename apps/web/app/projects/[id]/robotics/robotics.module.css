@@ -227,6 +227,85 @@
   line-height: 1.45;
 }
 
+.simReadinessStrip {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(241, 208, 107, 0.22);
+  border-radius: 8px;
+  background: rgba(9, 18, 22, 0.7);
+}
+
+.simReadinessHead {
+  min-width: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.simReadinessHead div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.simReadinessHead span,
+.simReadinessCards span {
+  color: #f1d06b;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.simReadinessHead strong {
+  color: #eefcf7;
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+.simReadinessHead small {
+  max-width: 360px;
+  color: rgba(238, 252, 247, 0.62);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.simReadinessCards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  background: rgba(241, 208, 107, 0.14);
+}
+
+.simReadinessCards article {
+  min-width: 0;
+  min-height: 88px;
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  padding: 10px;
+  border-top: 3px solid rgba(241, 208, 107, 0.66);
+  background: #0b191b;
+}
+
+.simReadinessCards strong,
+.simReadinessCards p {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.simReadinessCards strong {
+  color: #eefcf7;
+  font-size: 13px;
+}
+
+.simReadinessCards p {
+  margin: 0;
+  color: rgba(238, 252, 247, 0.68);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 .firstLookStrip {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2129,6 +2208,7 @@
   .firstLookStrip,
   .firstScreenBody,
   .qualityCards,
+  .simReadinessCards,
   .capabilityMatrix,
   .commandDeck,
   .telemetryGrid,
@@ -2153,6 +2233,12 @@
 
   .deviceDebugIde {
     max-height: none;
+  }
+
+  .qualityStripHead,
+  .simReadinessHead {
+    display: grid;
+    align-items: start;
   }
 
   .debugCenterPane,

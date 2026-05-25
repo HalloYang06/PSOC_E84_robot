@@ -84,6 +84,23 @@ gate before users open a debug tile:
 - a visible boundary that this is read-only data readiness, not motion
   permission or a hardware command path.
 
+The first screen may also show a generic simulation-readiness strip. This strip
+is a workflow guide for model import, simulation environment checks, and capture
+quality gates. It must stay read-only and must not imply that a simulator,
+server, or browser UI can authorize real hardware motion.
+
+For ROS/MuJoCo-style robot adapters, a device-side self-check report may use a
+schema such as `rehab_arm_sim_env_check_v1` with:
+
+- Python/OS runtime summary;
+- ROS client library availability;
+- optional simulator package availability;
+- model/URDF path checks;
+- data collection and upload tool availability;
+- joint/topic contract summary;
+- safety note confirming that no CAN, motor, or local controller command was
+  sent.
+
 ## Validation Notes
 
 Cloud smoke validation on 2026-05-25:

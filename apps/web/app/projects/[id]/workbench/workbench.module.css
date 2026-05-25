@@ -1583,6 +1583,7 @@
   .sidebar {
     width: 100%;
     max-height: 46vh;
+    overflow: auto;
     border-right: 0;
     border-bottom: 1px solid rgba(88, 240, 255, 0.18);
   }
