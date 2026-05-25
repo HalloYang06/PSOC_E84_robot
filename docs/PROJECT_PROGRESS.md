@@ -619,11 +619,15 @@
   - JSONL 记录 `name/position/velocity/effort/stamp`。
   - 本地测试通过：27 tests passed；NanoPi build passed。
   - NanoPi 实测 JSONL 包含 `/joint_states` topic message。
+- 新增 JSONL 检查工具：
+  - 校验 `session_metadata` 和必需 topic。
+  - 本地测试通过：30 tests passed；NanoPi build passed。
+  - NanoPi 实测完整文件 PASS，不完整文件 FAIL。
 
 ## 进行中
 
 - 下一步继续按框架补数据链路：
-  - 增加 recorder 的最小回放/检查工具，验证 JSONL 文件结构。
+  - 给 recorder/checker 增加更清楚的服务器同步准备字段或文件命名规范。
   - 不进入真实电机控制。
   - 不给电机驱动上电，不做运动测试。
 
@@ -645,8 +649,8 @@
 
 1. 保持电机驱动断开，确认 `can0` 为 `ERROR-ACTIVE`。
 2. raw SocketCAN 先测 `0x321 -> 0x322` heartbeat。
-3. 增加 JSONL 文件检查工具。
-4. 用当前测试文件验证 metadata 和 topic_message 结构。
+3. 确定服务器同步需要的最小字段。
+4. 保持 JSONL 本地优先，不把服务器放进实时闭环。
 5. 仍保持 logging-only，不进入真实电机控制路径。
 
 ## 更新规则

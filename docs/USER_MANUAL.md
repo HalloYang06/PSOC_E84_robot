@@ -954,6 +954,18 @@ ros2 run rehab_arm_psoc_bridge data_recorder_node.py \
 {"record_type":"topic_message","topic":"/joint_states","payload":{"stamp":{"sec":12,"nanosec":34},"name":["shoulder_lift_joint"],"position":[0.1],"velocity":[0.2],"effort":[0.3]}}
 ```
 
+检查 JSONL 文件是否包含基础数据：
+
+```bash
+ros2 run rehab_arm_psoc_bridge check_recording.py /home/pi/rehab_arm_logs/test_session.jsonl
+```
+
+通过时输出里应有：
+
+```json
+{"ok":true,"missing_topics":[]}
+```
+
 ## 6. 当前真实 CAN ID
 
 | ID | 协议/用途 | 说明 |

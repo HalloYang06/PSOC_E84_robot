@@ -1617,6 +1617,26 @@ AttributeError: handle cannot be modified after node creation
 
 - NanoPi 已验证 `/joint_states` 可记录 `name/position/velocity/effort/stamp`。
 
+### JSONL checker 要同时测 PASS 和 FAIL
+
+现象：
+
+- `/tmp/joint_recorder_verify.jsonl` 只有 `session_metadata` 和 `/joint_states`。
+- checker 返回 FAIL，缺少 `/rehab_arm/safety_state` 和 `/rehab_arm/sensor_state`。
+
+结论：
+
+- 这是正确行为；单关节测试文件不是完整 session。
+
+技巧：
+
+- checker 验证时至少准备一份完整 JSONL，包含三类 topic。
+- 生成测试 JSONL 时用 `json.dumps()`，不要手写多层 SSH/PowerShell JSON 转义。
+
+状态：
+
+- NanoPi 已验证完整 JSONL 返回 `ok=true`。
+
 ### 进度和踩坑要分开
 
 规则：

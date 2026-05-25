@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -14,8 +15,10 @@ from rehab_arm_psoc_bridge.data_recording import (
     make_jsonl_record,
     make_payload_record,
     make_session_metadata,
+    load_jsonl_records,
     parse_message_payload,
     session_log_path,
+    validate_jsonl_records,
     write_jsonl_record,
 )
 
@@ -92,6 +95,41 @@ class DataRecordingTests(unittest.TestCase):
         lines = handle.getvalue().splitlines()
         self.assertEqual(len(lines), 1)
         self.assertEqual(json.loads(lines[0])['payload'], {'a': 1})
+
+    def test_load_jsonl_records(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / 'session.jsonl'
+            path.write_text('{"record_type":"session_metadata"}\n{"record_type":"topic_message"}\n')
+
+            records = load_jsonl_records(path)
+
+        self.assertEqual(len(records), 2)
+        self.assertEqual(records[0]['record_type'], 'session_metadata')
+
+    def test_validate_jsonl_records_ok(self) -> None:
+        records = [
+            make_session_metadata('s1', 'nanopi', 'arm', 'dev', 'logging_only', now=1.0),
+            make_payload_record('/joint_states', {}, now=2.0),
+            make_payload_record('/rehab_arm/safety_state', {}, now=3.0),
+            make_payload_record('/rehab_arm/sensor_state', {}, now=4.0),
+        ]
+
+        summary = validate_jsonl_records(records)
+
+        self.assertIs(summary['ok'], True)
+        self.assertEqual(summary['metadata_count'], 1)
+        self.assertEqual(summary['missing_topics'], [])
+
+    def test_validate_jsonl_records_reports_missing_topic(self) -> None:
+        records = [
+            make_session_metadata('s1', 'nanopi', 'arm', 'dev', 'logging_only', now=1.0),
+            make_payload_record('/joint_states', {}, now=2.0),
+        ]
+
+        summary = validate_jsonl_records(records)
+
+        self.assertIs(summary['ok'], False)
+        self.assertIn('/rehab_arm/safety_state', summary['missing_topics'])
 
     def test_session_log_path_sanitizes_session_id(self) -> None:
         path = session_log_path('logs', 'session 1/unsafe')
