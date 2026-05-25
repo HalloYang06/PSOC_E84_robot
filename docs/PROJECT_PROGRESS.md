@@ -652,11 +652,18 @@
   - 本地测试通过：41 tests passed。
   - NanoPi 测试通过：31 tests passed；`colcon build` passed；`ros2 pkg executables` 能看到 `sync_test_server.py`。
   - NanoPi 命令行实测 `sync_upload.py --execute` 对本地假服务器完成 4 个 POST。
+- 初步打通 AI 合作平台云端同步：
+  - AI 合作平台本地工程：`D:\ai合作产品`。
+  - AI 平台提交：`e5eef01e Add rehab arm sync ingestion API`。
+  - 云端 API：`http://106.55.62.122:8011/api/rehab-arm/v1`。
+  - 云端验证：`sync_upload.py --execute` 完成 4 个 POST，服务器落盘 `apps/api/tmp/rehab_arm_sync/events.jsonl`。
 
 ## 进行中
 
 - 下一步继续按框架补数据链路：
-  - 后续把总服务器仓库的接收接口和当前 API 草案对齐。
+  - 总服务器归入 AI 合作平台工程，不搬到本仓库。
+  - 本仓库只保留 NanoPi 数据采集、manifest、dry-run/upload 客户端和本地假服务器验证工具。
+  - 后续回到 ROS2/仿真/数据标注本地链路。
   - 不进入真实电机控制。
   - 不给电机驱动上电，不做运动测试。
 
@@ -670,7 +677,7 @@
   - IPC
   - RT-Thread message queue
   - 其他方式
-- 总服务器 `wenjunyong666/ai-` 的 `ai` 分支访问方式和 API 形态。
+- AI 合作平台侧的正式数据资产、标注和权限模型。
 
 ## 下一步
 
@@ -678,8 +685,8 @@
 
 1. 保持电机驱动断开，确认 `can0` 为 `ERROR-ACTIVE`。
 2. raw SocketCAN 先测 `0x321 -> 0x322` heartbeat。
-3. 对接总服务器仓库的最小接收接口。
-4. 保持服务器同步非实时，不放进控制闭环。
+3. 回到本地 ROS2/仿真/数据标注链路，补下一块最小可测功能。
+4. 保持服务器同步为非实时外部接口，不放进控制闭环。
 5. 仍保持 logging-only，不进入真实电机控制路径。
 
 ## 更新规则

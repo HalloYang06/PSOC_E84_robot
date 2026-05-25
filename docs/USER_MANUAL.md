@@ -1054,7 +1054,22 @@ ros2 run rehab_arm_psoc_bridge sync_upload.py /home/pi/rehab_arm_logs/manifest.j
 - `/tmp/rehab_arm_sync_server/request_log.jsonl` 有 4 条 POST 记录。
 - 第 3 条路径应为 `/api/rehab-arm/v1/sessions/<session_id>/files`，`content_type` 为 `multipart/form-data`。
 
-服务器同步 API 仍是草案，见：[SERVER_SYNC_API_DRAFT.md](SERVER_SYNC_API_DRAFT.md)。当前阶段已具备安全默认的上传入口，但真实上传要等服务器 endpoint 确认。
+AI 合作平台云端接口：
+
+```bash
+ros2 run rehab_arm_psoc_bridge sync_upload.py /home/pi/rehab_arm_logs/manifest.json \
+  --base-url http://106.55.62.122:8011/api/rehab-arm/v1 \
+  --execute
+```
+
+当前状态：
+
+- 该云端接口已初步打通，只用于非实时数据上传。
+- 云端工程在 `D:\ai合作产品`，不要搬到本仓库。
+- 本仓库只保留 NanoPi 上传客户端和本地假服务器验证工具。
+- 真机安全、急停、限位和 M33 控制不依赖云端。
+
+服务器同步 API 草案见：[SERVER_SYNC_API_DRAFT.md](SERVER_SYNC_API_DRAFT.md)。
 
 ## 6. 当前真实 CAN ID
 
