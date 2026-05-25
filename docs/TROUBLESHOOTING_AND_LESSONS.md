@@ -1707,6 +1707,29 @@ AttributeError: handle cannot be modified after node creation
 - 复杂远程验证优先用远程 Python 读文件或确保脚本转换为 LF。
 - 生成 JSON/manifest 时优先用远程 Python `json.dumps()`，不要手写多层转义。
 
+### USB 摄像头先看 `lsusb`，不要只看 `/dev/video*`
+
+现象：
+
+- NanoPi 有很多 `/dev/video*`，但 `ffmpeg -f v4l2 -i /dev/video0` 报 `No such device`。
+- `/dev/video22`、`/dev/video31` 能列格式，但 ffmpeg 报 `Not a video capture device`。
+- `lsusb` 只看到 Linux root hub，没有看到 UVC 摄像头设备。
+
+判断：
+
+- 当前没有真正枚举出 USB 摄像头。
+- 很多 `/dev/video*` 是 Rockchip ISP/MIPI/编码器管线节点，不等于 USB 摄像头可采集节点。
+
+技巧：
+
+- USB 摄像头优先看 `lsusb` 是否出现摄像头设备，再看 `v4l2-ctl --list-devices`。
+- UVC 摄像头通常会显示 `uvcvideo` 相关设备，且 `/dev/videoX` 可被 ffmpeg 打开。
+- 深度摄像头后续要同时确认 RGB、Depth、IR 节点和 SDK 支持，不要只验证 RGB。
+
+当前状态：
+
+- 已新增 `camera_keyframe_node.py`，等待摄像头正确枚举后复测。
+
 ### 哈希测试不要依赖文本换行
 
 现象：

@@ -997,6 +997,39 @@ ros2 run rehab_arm_psoc_bridge data_recorder_node.py \
 
 这两个 topic 只是总控台和标注链路的遥测/感知数据，不是运动命令。
 
+摄像头关键帧采集：
+
+```bash
+cd /home/pi/rehab_arm_ros2_ws
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+
+ros2 run rehab_arm_psoc_bridge camera_keyframe_node.py \
+  --ros-args \
+  -p device:=/dev/video0 \
+  -p output_dir:=/home/pi/rehab_arm_frames \
+  -p camera_id:=front_rgb \
+  -p robot_id:=rehab-arm-alpha \
+  -p device_id:=nanopi-m5 \
+  -p width:=640 \
+  -p height:=480 \
+  -p input_format:=mjpeg \
+  -p publish_once:=true
+```
+
+通过标准：
+
+- `/home/pi/rehab_arm_frames` 下生成 `.jpg` 文件。
+- 节点发布 `/rehab_arm/camera_keyframe`。
+- recorder 开启时，JSONL 中出现 `/rehab_arm/camera_keyframe`。
+
+当前实测注意：
+
+- 当前 NanoPi `lsusb` 只看到 USB root hub，没有看到 USB 摄像头。
+- `/dev/video0` 当前报 `No such device`。
+- `/dev/video22`/`/dev/video31` 是 Rockchip ISP 管线，ffmpeg 报 `Not a video capture device`。
+- 重新插 USB/UVC 摄像头或更换深度摄像头后，先跑 `lsusb` 和 `v4l2-ctl --list-devices`。
+
 检查 JSONL 文件是否包含基础数据：
 
 ```bash

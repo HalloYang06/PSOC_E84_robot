@@ -663,13 +663,20 @@
   - 本地测试通过：43 tests passed。
   - NanoPi 测试通过：33 tests passed；`colcon build` passed。
   - NanoPi 实测 JSONL 能写入 motor_state 和 camera_keyframe。
+- 新增 NanoPi 摄像头关键帧节点：
+  - `camera_keyframe_node.py` 使用 `ffmpeg` 从 V4L2 设备抓取并压缩 JPEG。
+  - 发布 `/rehab_arm/camera_keyframe`，供 recorder、总控台和 VLA 数据链路使用。
+  - 本地测试通过：45 tests passed。
+  - NanoPi 测试通过：35 tests passed；`colcon build` passed；`ros2 pkg executables` 能看到 `camera_keyframe_node.py`。
+  - 当前硬件未采到图：`lsusb` 只看到 root hub；`/dev/video0` 报 `No such device`；`/dev/video22` 报 `Not a video capture device`。
 
 ## 进行中
 
 - 下一步继续按框架补数据链路：
   - 总服务器归入 AI 合作平台工程，不搬到本仓库。
   - 本仓库只保留 NanoPi 数据采集、manifest、dry-run/upload 客户端和本地假服务器验证工具。
-  - 后续继续补 NanoPi 摄像头关键帧采集脚本或 M33 电机状态映射。
+  - 后续先确认 USB/UVC 或深度摄像头枚举，再跑 `camera_keyframe_node.py` 采集真实图像。
+  - 也可以继续补 M33 电机状态到 `/rehab_arm/motor_state` 的映射。
   - 不进入真实电机控制。
   - 不给电机驱动上电，不做运动测试。
 
@@ -691,7 +698,7 @@
 
 1. 保持电机驱动断开，确认 `can0` 为 `ERROR-ACTIVE`。
 2. raw SocketCAN 先测 `0x321 -> 0x322` heartbeat。
-3. 补 NanoPi 摄像头关键帧采集或 M33 电机状态到 `/rehab_arm/motor_state` 的映射。
+3. 重新确认摄像头枚举，或补 M33 电机状态到 `/rehab_arm/motor_state` 的映射。
 4. 保持服务器同步为非实时外部接口，不放进控制闭环。
 5. 仍保持 logging-only，不进入真实电机控制路径。
 
