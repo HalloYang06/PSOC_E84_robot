@@ -1852,6 +1852,24 @@ RuntimeError: Unable to convert call argument '0' to Python object
 - NanoPi 已构建通过。
 - NanoPi 复测时发现 `/tmp/rehab_sim_collection/sim_demo_motion.jsonl` 因重启消失；重新采集后摘要工具验证通过，`moving_joint_count=5`。
 
+### manifest summary 默认不要破坏旧同步格式
+
+规则：
+
+- `build_manifest.py` 默认仍生成旧 manifest 字段，避免影响已有 `sync_dry_run.py` 和 `sync_upload.py`。
+- 只有显式加 `--include-summary` 时，才把每个 session 的 `summary` 嵌入 manifest。
+
+技巧：
+
+- 给总控台、标注或人工检查用 `manifest_with_summary.json`。
+- 给已经上线的旧同步流程时，可以继续用普通 `manifest.json`。
+- 后续如果服务器确认支持 summary，再把上传示例切换到带 summary manifest。
+
+状态：
+
+- 本地和 NanoPi 已验证 `--include-summary`。
+- 旧默认 manifest 单测仍确认不含 `summary` 字段。
+
 ### `/tmp` 里的验证文件可能在重启后消失
 
 现象：

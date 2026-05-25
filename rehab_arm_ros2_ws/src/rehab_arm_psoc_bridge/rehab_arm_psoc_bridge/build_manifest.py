@@ -21,9 +21,14 @@ def main() -> int:
         default='',
         help='Optional path to write the manifest JSON. Prints to stdout when omitted.',
     )
+    parser.add_argument(
+        '--include-summary',
+        action='store_true',
+        help='Embed per-session recording summaries for dashboards and review tools.',
+    )
     args = parser.parse_args()
 
-    manifest = build_recording_manifest(args.log_dir)
+    manifest = build_recording_manifest(args.log_dir, include_summary=args.include_summary)
     text = json.dumps(manifest, ensure_ascii=False, indent=2)
     if args.output:
         Path(args.output).expanduser().write_text(text + '\n', encoding='utf-8')

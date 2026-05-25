@@ -219,6 +219,37 @@ class DataRecordingTests(unittest.TestCase):
         self.assertEqual(session['session_id'], 's1')
         self.assertEqual(session['sync_status'], 'local_only')
         self.assertIn('/joint_states', session['topics'])
+        self.assertNotIn('summary', session)
+
+    def test_build_recording_manifest_can_include_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / 's1.jsonl'
+            records = [
+                make_session_metadata('s1', 'nanopi', 'arm', 'dev', 'simulation_data_collection', now=1.0),
+                make_payload_record(
+                    '/joint_states',
+                    make_joint_state_payload(['j0'], [0.0], [0.0], [0.0], 1, 0),
+                    now=2.0,
+                ),
+                make_payload_record(
+                    '/joint_states',
+                    make_joint_state_payload(['j0'], [0.5], [0.0], [0.0], 2, 0),
+                    now=3.0,
+                ),
+                make_payload_record('/rehab_arm/safety_state', {'state': 'ok'}, now=4.0),
+                make_payload_record('/rehab_arm/sensor_state', {'source': 'sim'}, now=5.0),
+            ]
+            with path.open('w', encoding='utf-8') as handle:
+                for record in records:
+                    write_jsonl_record(handle, record)
+
+            manifest = build_recording_manifest(tmpdir, include_summary=True)
+
+        session = manifest['sessions'][0]
+        self.assertIn('summary', session)
+        self.assertEqual(session['summary']['schema_version'], 'rehab_arm_recording_summary_v1')
+        self.assertEqual(session['summary']['moving_joint_count'], 1)
+        self.assertEqual(session['summary']['topic_counts']['/joint_states'], 2)
 
     def test_summarize_jsonl_records(self) -> None:
         records = [

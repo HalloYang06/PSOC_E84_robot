@@ -727,6 +727,15 @@
   - NanoPi 摘要结果包含四个 topic：`/joint_states`、`/rehab_arm/motor_state`、`/rehab_arm/safety_state`、`/rehab_arm/sensor_state`。
   - 5 个关节 span：elbow lift `1.05`、forearm rotation `0.55`、shoulder abduction `0.28`、shoulder lift `0.55`、upper arm rotation `0.60`。
   - 本轮没有发 CAN、没有发送 `0x320`、没有做电机运动测试。
+- manifest 可选集成 session summary：
+  - `build_recording_manifest()` 新增 `include_summary` 参数，默认 `false`，保持旧 manifest 格式兼容。
+  - `build_manifest.py` 新增 `--include-summary` 参数。
+  - 本地测试通过：`rehab_arm_psoc_bridge` 51 tests passed。
+  - NanoPi 构建通过：`rehab_arm_psoc_bridge`。
+  - NanoPi 单测通过：41 tests passed。
+  - NanoPi 命令验证通过：`build_manifest.py /tmp/rehab_sim_collection --include-summary --output ...`。
+  - 生成 manifest 中 `sim_demo_motion` session 包含 summary：`moving_joint_count=5`，`motor_entry_count_min/max=5`。
+  - 本轮没有发 CAN、没有发送 `0x320`、没有做电机运动测试。
 
 ## 进行中
 
@@ -734,7 +743,7 @@
   - 总服务器归入 AI 合作平台工程，不搬到本仓库。
   - 本仓库只保留 NanoPi 数据采集、manifest、dry-run/upload 客户端和本地假服务器验证工具。
   - 后续先确认 USB/UVC 或深度摄像头枚举，再跑 `camera_keyframe_node.py` 采集真实图像。
-  - 下一步可把摘要结果写入 manifest 或旁路 `.summary.json`，为总控台和标注页面提供快速索引。
+  - 下一步可让 `sync_dry_run.py` 和 `sync_upload.py` 文档示例优先使用带 summary 的 manifest，为总控台和标注页面提供快速索引。
   - 真机方向后续补 M33 电机状态到 `/rehab_arm/motor_state` 的映射。
   - 不进入真实电机控制。
   - 不给电机驱动上电，不做运动测试。
@@ -757,7 +766,7 @@
 
 1. 保持电机驱动断开，确认 `can0` 为 `ERROR-ACTIVE`。
 2. raw SocketCAN 先测 `0x321 -> 0x322` heartbeat。
-3. 增加 summary 文件导出或 manifest 集成，方便服务器/总控台读取数据质量摘要。
+3. 让同步流程使用带 summary 的 manifest 示例，并确认 dry-run/upload 仍兼容。
 4. 保持服务器同步为非实时外部接口，不放进控制闭环。
 5. 仍保持 logging-only，不进入真实电机控制路径。
 

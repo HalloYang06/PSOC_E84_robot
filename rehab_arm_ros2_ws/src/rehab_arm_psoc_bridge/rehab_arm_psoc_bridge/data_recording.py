@@ -315,7 +315,7 @@ def summarize_jsonl_records(records: list[dict[str, object]]) -> dict[str, objec
     }
 
 
-def build_recording_manifest(log_dir: str | Path) -> dict[str, object]:
+def build_recording_manifest(log_dir: str | Path, include_summary: bool = False) -> dict[str, object]:
     base = Path(log_dir).expanduser()
     sessions: list[dict[str, object]] = []
     for path in sorted(base.glob('*.jsonl')):
@@ -345,6 +345,8 @@ def build_recording_manifest(log_dir: str | Path) -> dict[str, object]:
                 'missing_topics': summary['missing_topics'],
                 'errors': summary['errors'],
             })
+            if include_summary:
+                entry['summary'] = summarize_jsonl_records(records)
         except Exception as exc:
             entry.update({
                 'ok': False,

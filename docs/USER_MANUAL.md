@@ -1180,6 +1180,16 @@ ros2 run rehab_arm_psoc_bridge build_manifest.py /home/pi/rehab_arm_logs \
 
 这个清单只扫描本地文件，不上传服务器。`ok=false` 表示该 JSONL 缺少必需 topic 或 metadata，不适合进入标注/同步流程。
 
+生成带 session 摘要的清单：
+
+```bash
+ros2 run rehab_arm_psoc_bridge build_manifest.py /home/pi/rehab_arm_logs \
+  --include-summary \
+  --output /home/pi/rehab_arm_logs/manifest_with_summary.json
+```
+
+带 summary 的 manifest 会在每个 session 里嵌入 `rehab_arm_recording_summary_v1`，方便总控台先显示 topic 数量、关节运动范围、motor_state 条目数和 safety 状态分布。默认不加 `--include-summary` 时仍保持旧格式。
+
 预览服务器同步计划：
 
 ```bash
