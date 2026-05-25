@@ -4,6 +4,7 @@ from __future__ import annotations
 import time
 
 import rclpy
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from std_msgs.msg import String
 
@@ -39,9 +40,9 @@ class RehabArmDataRecorder(Node):
 
         self.path = session_log_path(output_dir, session_id)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.handle = self.path.open('a', encoding='utf-8')
+        self.log_handle = self.path.open('a', encoding='utf-8')
         write_jsonl_record(
-            self.handle,
+            self.log_handle,
             make_session_metadata(
                 session_id=session_id,
                 device_id=device_id,
@@ -50,16 +51,16 @@ class RehabArmDataRecorder(Node):
                 mode=mode,
             ),
         )
-        self.handle.flush()
+        self.log_handle.flush()
 
         self.create_subscription(String, '/rehab_arm/safety_state', self.on_safety_state, 20)
         self.create_subscription(String, '/rehab_arm/sensor_state', self.on_sensor_state, 50)
         self.get_logger().info(f'recording rehab arm data to {self.path}')
 
     def destroy_node(self):
-        if hasattr(self, 'handle') and not self.handle.closed:
-            self.handle.flush()
-            self.handle.close()
+        if hasattr(self, 'log_handle') and not self.log_handle.closed:
+            self.log_handle.flush()
+            self.log_handle.close()
         super().destroy_node()
 
     def on_safety_state(self, msg: String) -> None:
@@ -69,10 +70,10 @@ class RehabArmDataRecorder(Node):
         self.record('/rehab_arm/sensor_state', msg.data)
 
     def record(self, topic: str, text: str) -> None:
-        write_jsonl_record(self.handle, make_jsonl_record(topic, text))
+        write_jsonl_record(self.log_handle, make_jsonl_record(topic, text))
         self.write_count += 1
         if self.write_count % self.flush_every == 0:
-            self.handle.flush()
+            self.log_handle.flush()
 
 
 def main(args=None):
@@ -80,7 +81,7 @@ def main(args=None):
     node = RehabArmDataRecorder()
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
         node.destroy_node()

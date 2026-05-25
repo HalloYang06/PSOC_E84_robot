@@ -613,13 +613,13 @@
   - `ros2 pkg executables rehab_arm_psoc_bridge` 已能看到 `data_recorder_node.py`。
 - 数据记录新增 session metadata：
   - JSONL 第一行写入设备、机器人、软件版本、运行模式和数据源 topic。
-  - 本地测试通过：25 tests passed。
-  - NanoPi SSH 当前握手超时，未完成板端同步验证。
+  - 本地测试通过：25 tests passed；NanoPi build passed。
+  - NanoPi 实测 JSONL 第一行为 `record_type=session_metadata`。
 
 ## 进行中
 
 - 下一步继续按框架补数据链路：
-  - NanoPi 在线后同步并验证 metadata 版本的数据记录节点。
+  - 让 recorder 同时记录 `/joint_states`，形成安全、传感、关节状态三类基础数据。
   - 不进入真实电机控制。
   - 不给电机驱动上电，不做运动测试。
 
@@ -641,8 +641,8 @@
 
 1. 保持电机驱动断开，确认 `can0` 为 `ERROR-ACTIVE`。
 2. raw SocketCAN 先测 `0x321 -> 0x322` heartbeat。
-3. NanoPi 在线后重跑同步、单元测试和 `colcon build`。
-4. 用假消息验证 JSONL 文件第一行为 `session_metadata`。
+3. 增加 `/joint_states` JSONL 记录。
+4. 用假消息验证 JSONL 文件包含 safety/sensor/joint 三类 topic。
 5. 仍保持 logging-only，不进入真实电机控制路径。
 
 ## 更新规则

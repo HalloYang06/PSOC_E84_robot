@@ -1562,6 +1562,46 @@ chmod +x rehab_arm_psoc_bridge/data_recorder_node.py
 - 本次 metadata 数据记录改动已完成本地测试。
 - NanoPi 同步验证暂缓，等 SSH 命令能正常返回后再做。
 
+补充：
+
+- 后续 NanoPi SSH 恢复后，metadata recorder 已同步、构建并验证通过。
+
+### ROS2 节点不要用 `self.handle` 做普通成员名
+
+现象：
+
+- `data_recorder_node.py` 启动时报错：
+
+```text
+AttributeError: handle cannot be modified after node creation
+```
+
+原因：
+
+- `rclpy.node.Node` 已经有只读属性 `handle`。
+
+解决：
+
+- 文件句柄成员改名为 `self.log_handle`。
+
+状态：
+
+- 已修复，NanoPi 上 `data_recorder_node.py` 可写出 `session_metadata`。
+
+### `timeout` 停 ROS2 节点时要处理 `ExternalShutdownException`
+
+现象：
+
+- 用 `timeout 3s ros2 run ... data_recorder_node.py` 做短验证时，数据已写入，但退出留下 traceback。
+
+解决：
+
+- `main()` 同时捕获 `KeyboardInterrupt` 和 `ExternalShutdownException`。
+
+状态：
+
+- 已修复，短运行退出不再打印 traceback。
+
 ### 进度和踩坑要分开
 
 规则：
