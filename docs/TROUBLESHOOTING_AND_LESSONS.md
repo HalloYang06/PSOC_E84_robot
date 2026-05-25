@@ -1416,6 +1416,48 @@ detail_code=6 detail=torque_out_of_limit
 - 本轮未查看 COM26 实时串口，结论基于 NanoPi 收到的 M33 `0x322` 回包和 `can0` 健康状态。
 - 电机驱动未上电，未做运动测试。
 
+### heartbeat 超时优先级必须能通过 `0x322` 看见
+
+现象：
+
+- M33 收到普通目标前，如果 NanoPi heartbeat 已超过超时窗口，应该优先拒绝为 `heartbeat_timeout`。
+- 这类问题不能只靠串口看，因为后续 App、服务器和 ROS 侧也需要知道为什么被拒绝。
+
+验证：
+
+- 先发一次 heartbeat，确认链路在线：
+
+```text
+TX heartbeat_91 321 [1] 91
+RX 322 [8] a591070001010600
+```
+
+- 等待 `3.2s`，超过当前 M33 `2500ms` heartbeat timeout。
+- 发送一个普通目标：
+
+```text
+TX 320 [8] 0300390005000000
+```
+
+- 再发 heartbeat，下一帧 `0x322` 返回：
+
+```text
+RX 322 [8] a592070001010100
+detail_code=1 detail=heartbeat_timeout
+```
+
+技巧：
+
+- heartbeat timeout 用例要刻意停止 heartbeat，不要让后台 ROS bridge 或其他脚本持续发送 `0x321`。
+- 测试前后都要看 `ip -details -statistics link show can0`，确认不是 bus-off、error-passive 或电池/ACK 问题造成的假失败。
+- 超时拒绝通过后，仍应恢复正常 heartbeat 再继续下一项测试。
+
+状态：
+
+- 已验证通过。
+- `can0` 复查为 `UP/LOWER_UP/ERROR-ACTIVE`，`berr-counter tx 0 rx 0`。
+- 未给电机驱动上电，未做运动测试。
+
 ### 进度和踩坑要分开
 
 规则：

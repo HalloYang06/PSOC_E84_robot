@@ -861,6 +861,26 @@ PARSED detail_code=6 detail=torque_out_of_limit
 - 新的 torque 超限帧被 M33 识别后，下一帧 `0x322` byte6 从 `04` 更新为 `06`。
 - 这仍然只是安全审计链路验证，不代表可以让电机上电运动。
 
+第三个抽样验证：`heartbeat_timeout`：
+
+```text
+TX heartbeat_91 321 [1] 91
+RX 322 [8] a591070001010600
+PARSED detail_code=6 detail=torque_out_of_limit
+
+WAIT 3.2s to exceed M33 heartbeat timeout
+TX after_timeout_normal_target 320 [8] 0300390005000000
+TX heartbeat_92 321 [1] 92
+RX 322 [8] a592070001010100
+PARSED detail_code=1 detail=heartbeat_timeout
+```
+
+这个结果说明：
+
+- M33 的 heartbeat 超时检查优先级高于普通目标命令审核。
+- 超时后即使命令本身看起来在限位内，M33 也会拒绝，并把 `detail_code=1` 回传给 NanoPi。
+- 验证时故意停止 heartbeat 超过 `2.5s`，测试结束后要重新确认 `can0` 仍为 `ERROR-ACTIVE` 且错误计数为 0。
+
 如果烧录后没有任何 `0x322`：
 
 - 先不要继续发 `0x320`。

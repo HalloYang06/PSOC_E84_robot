@@ -573,11 +573,26 @@
     - NanoPi parser 解析为 `detail_code=6`、`detail=torque_out_of_limit`。
   - `can0` 复查为 `UP/LOWER_UP/ERROR-ACTIVE`，`berr-counter tx 0 rx 0`，`bus-off/error-pass` 均为 0。
   - 本轮只验证 NanoPi/M33 CAN 状态回报；未查看 COM26 实时串口，未给电机驱动上电，未做运动测试。
+- 完成第三个 `0x322 detail_code` 抽样验证：`heartbeat_timeout`。
+  - 发送前 heartbeat：
+    - `TX heartbeat_91 321 [1] 91`
+    - `RX 322 [8] a591070001010600`
+    - NanoPi parser 解析为 `detail_code=6`、`detail=torque_out_of_limit`，说明 M33 仍保留上一条拒绝原因。
+  - 等待 `3.2s` 超过 M33 heartbeat 超时窗口后，发送普通目标 `0x320`：
+    - `TX after_timeout_normal_target 320 [8] 0300390005000000`
+  - 下一次 heartbeat：
+    - `TX heartbeat_92 321 [1] 92`
+    - `RX 322 [8] a592070001010100`
+    - NanoPi parser 解析为 `detail_code=1`、`detail=heartbeat_timeout`。
+  - 这证明 heartbeat 超时会覆盖普通目标的安全评估结果，并通过 `0x322` 回传到 NanoPi。
+  - `can0` 复查为 `UP/LOWER_UP/ERROR-ACTIVE`，`berr-counter tx 0 rx 0`，`bus-off/error-pass` 均为 0。
+  - 本轮只验证 NanoPi/M33 CAN 状态回报；未查看 COM26 实时串口，未给电机驱动上电，未做运动测试。
 
 ## 进行中
 
-- 下一步抽样验证 `heartbeat_timeout` 的 `0x322 detail_code`：
-  - 仍然只做 raw SocketCAN + M33 logging-only 验证。
+- 下一步整理 `0x322 detail_code` 的清除/保持语义，决定是否增加“最近一次拒绝原因清零”机制：
+  - 当前 M33 设计会保留最近一次 ROS safety assessment detail，直到下一条 assessment 覆盖。
+  - 若 App/服务器需要区分“当前实时状态”和“最近一次拒绝原因”，后续应拆成两个字段或增加清除规则。
   - 不给电机驱动上电，不做运动测试。
 
 ## 待确认
@@ -598,9 +613,9 @@
 
 1. 保持电机驱动断开，确认 `can0` 为 `ERROR-ACTIVE`。
 2. raw SocketCAN 先测 `0x321 -> 0x322` heartbeat。
-3. 等待超过 M33 heartbeat 超时时间后发一个普通目标帧，验证 `heartbeat_timeout` 优先级。
-4. 再发 heartbeat，确认下一帧 `0x322` byte6 与 NanoPi parser 的 `detail` 一致。
-5. COM26 串口必须继续看到 `decision=reject` 和 `final action=no_motor_output logging_only=1`。
+3. 在文档和协议中明确 `detail_code` 当前表示“最近一次拒绝原因”，不是自动清零的实时 fault 字段。
+4. 评估是否需要 M33 新增 `last_detail` 与 `current_state` 分离。
+5. 若需要代码变更，先本地编译通过，再请用户烧录；仍保持 logging-only。
 
 ## 更新规则
 
