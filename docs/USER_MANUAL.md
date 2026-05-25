@@ -591,6 +591,91 @@ kill <pid>
 ros2 topic echo --once /rehab_arm/safety_state std_msgs/msg/String
 ```
 
+### 4.6 M33 `0x320` 安全审核日志固件复测
+
+当前 M33 本地工程已补充 `0x320` logging-only 安全审核日志，编译产物在：
+
+```text
+D:\RT-ThreadStudio\workspace\yiliao_m33\Debug\rtthread.bin
+D:\RT-ThreadStudio\workspace\yiliao_m33\Debug\rtthread.hex
+```
+
+烧录前确认：
+
+- `CONTROL_ROS_COMMAND_LOGGING_ONLY=1U`。
+- 电机驱动电源断开。
+- 外骨骼不穿在人身上。
+- 只做 heartbeat/status 和单帧日志对照，不做运动测试。
+
+烧录后第一步只测 V2 status：
+
+```bash
+python3 - <<'PY'
+import socket, struct, time, select
+s=socket.socket(socket.AF_CAN, socket.SOCK_RAW, socket.CAN_RAW)
+s.bind(("can0",))
+s.setblocking(False)
+fmt="=IB3x8s"
+for seq in range(1,4):
+    s.send(struct.pack(fmt, 0x321, 1, bytes([seq]).ljust(8,b"\\x00")))
+    print(f"TX 321 {seq:02x}")
+    end=time.time()+0.7
+    while time.time()<end:
+        r,_,_=select.select([s],[],[],0.05)
+        if r:
+            can_id, dlc, payload=struct.unpack(fmt, s.recv(16))
+            print(f"RX {can_id:03X} [{dlc}] {payload[:dlc].hex()}")
+            break
+s.close()
+PY
+```
+
+通过标准：
+
+```text
+RX 322 [8] a5<seq>070001010a00
+```
+
+这表示 M33 在线，但仍处于 `limited/logging_only`，不是可运动状态。
+
+第二步只发一帧合法 `0x320` 对照：
+
+```bash
+cd /home/pi/rehab_arm_ros2_ws
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+ros2 run rehab_arm_psoc_bridge psoc_can_bridge_node.py --ros-args -p enable_target_tx:=true
+```
+
+另开终端：
+
+```bash
+cd /home/pi/rehab_arm_ros2_ws
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+ros2 topic pub --once /arm_controller/joint_trajectory trajectory_msgs/msg/JointTrajectory "{joint_names: [shoulder_lift_joint], points: [{positions: [0.1], time_from_start: {sec: 1, nanosec: 0}}]}"
+```
+
+M33 串口 `COM26`、`115200 baud`、DTR/RTS 关闭，应看到类似日志：
+
+```text
+RX 320 dlc=8 data=0300390005000000
+cmd=0x03 name=set_target joint_id=0 deg_x10=57 target_mrad=99 rpm=5 torque_ma=0
+audit mode=logging_only heartbeat_ok=1 heartbeat_age_ms=... heartbeat_timeout_ms=2500 joint_known=1 limit_01deg=[-401,802]
+audit target_in_limit=1 rpm_in_limit=1 torque_in_limit=1 max_rpm=30 max_torque_ma=0
+decision=reject reason=logging_only_no_motor_output final_reason=logging_only_no_motor_output safety_state=limited
+```
+
+通过标准：
+
+- NanoPi bridge 打印 `TX 320 0300390005000000`。
+- `candump can0,320:7FF` 能看到同一 payload。
+- M33 串口能看到 heartbeat、joint、limit、rpm、torque 审核字段。
+- M33 最终仍 `decision=reject`。
+- 不出现 `ros cmd direct apply failed`。
+- `can0` 复查仍为 `ERROR-ACTIVE`，无 `error-passive` 或 `bus-off`。
+- 本阶段仍不允许电机运动。
+
 ## 5. 当前真实 CAN ID
 
 | ID | 协议/用途 | 说明 |

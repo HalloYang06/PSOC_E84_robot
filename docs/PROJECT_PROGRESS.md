@@ -369,13 +369,36 @@
     - `{"source":"psoc","id_hex":"0x322","data":"A503070001010A00","marker":165,"seq":3,"motors":7,"error_code":0,"protocol_version":2,"state":"limited","safety_code":1,"control_mode":"logging_only","control_mode_code":1,"detail_code":10,"detail":"logging_only_no_motor_output","heartbeat_age_ms":0}`
   - 复查 `can0` 仍为 `ERROR-ACTIVE`，`bus-errors/error-pass/bus-off` 均为 0。
   - 本轮没有发布 `JointTrajectory`，没有发送真实 `0x320`，没有给电机驱动上电，没有做运动测试。
+- 完成 M33 `0x320` logging-only 安全审核日志补丁并本地编译：
+  - 本地工程：`D:\RT-ThreadStudio\workspace\yiliao_m33`。
+  - 修改 `applications/control/control_layer_cfg.h`：
+    - 新增 ROS 5 关节 0-based 审核限位，单位 `0.1 deg`，与 NanoPi bridge 当前软件限位对齐。
+    - 新增 `CONTROL_ROS_MAX_TARGET_RPM=30`。
+    - 新增 `CONTROL_ROS_MAX_TARGET_TORQUE_MA=0`。
+    - 新增 `CONTROL_ROS_HEARTBEAT_TIMEOUT_MS=2500`。
+  - 修改 `applications/control/control_layer.c`：
+    - 记录最近一次 NanoPi heartbeat tick。
+    - `0x320` logging-only 日志新增 `heartbeat_ok`、`heartbeat_age_ms`、`joint_known`、`limit_01deg`。
+    - 新增 `target_in_limit`、`rpm_in_limit`、`torque_in_limit` 审核结果。
+    - `decision` 仍固定为 `reject`，`final_reason=logging_only_no_motor_output`，不会进入电机控制路径。
+  - 预期合法单帧 `0300390005000000` 的 M33 串口日志会包含：
+    - `audit mode=logging_only heartbeat_ok=1 ... joint_known=1 limit_01deg=[-401,802]`
+    - `audit target_in_limit=1 rpm_in_limit=1 torque_in_limit=1 max_rpm=30 max_torque_ma=0`
+    - `decision=reject reason=logging_only_no_motor_output final_reason=logging_only_no_motor_output safety_state=limited`
+  - 本地编译命令通过：
+    - `$env:Path='D:\RT-ThreadStudio\repo\Extract\ToolChain_Support_Packages\ARM\GNU_Tools_for_ARM_Embedded_Processors\13.3\bin;' + $env:Path; mingw32-make -C Debug all -j2`
+  - 编译产物已更新：
+    - `D:\RT-ThreadStudio\workspace\yiliao_m33\Debug\rtthread.bin`
+    - `D:\RT-ThreadStudio\workspace\yiliao_m33\Debug\rtthread.hex`
+  - 编译仍保留既有工程告警：`rtthread.elf has a LOAD segment with RWX permissions`，以及 post-build 中 `arm-none-eabi-objcopy: interleave must be positive` 被 makefile 标记为 ignored；本次修改没有导致编译失败。
+  - 尚未烧录本轮 M33 安全审核日志固件，等待用户烧录后只做单帧日志对照。
 
 ## 进行中
 
-- 下一步进入 M33 正式安全接收状态机设计，但默认仍不输出电机控制：
+- 下一步等待用户烧录 M33 `0x320` 安全审核日志固件：
   - 仍保持 `CONTROL_ROS_COMMAND_LOGGING_ONLY=1U`。
-  - 先设计并记录 `0x320` 的 M33 侧安全审核流程：模式、急停、heartbeat 超时、关节映射、限位、速度/电流限制。
-  - 先做日志/模拟执行，不给电机驱动上电，不做运动测试。
+  - 烧录后只做 heartbeat/status 和一帧 `0x320` 日志对照。
+  - 不给电机驱动上电，不做运动测试。
 
 ## 待确认
 
@@ -393,11 +416,11 @@
 
 严格按“一次只做一个能测试的小目标”推进：
 
-1. 在文档中写清 M33 `0x320` 安全接收状态机。
-2. M33 先实现安全审核日志：收到目标后打印 accept/reject、reason、限幅结果、当前模式和 heartbeat age。
-3. 默认仍保持 logging-only，不输出电机控制。
-4. 用户烧录后只做 `0x320` 单帧日志对照，不给电机驱动上电。
-5. 只有限位、超时、急停、模式拒绝都验证过后，才讨论下一阶段。
+1. 用户烧录 M33 安全审核日志固件。
+2. NanoPi 先验证 V2 status 仍为 `limited/logging_only`。
+3. NanoPi 临时打开 `enable_target_tx:=true` 只发一次合法单帧 `shoulder_lift_joint=0.1 rad`。
+4. 查看 COM26 M33 串口，确认日志包含 heartbeat、joint、limit、rpm、torque 审核字段，且最终仍 `reject`。
+5. 如合法帧通过日志对照，再设计超限帧、未知关节帧、heartbeat 超时帧的拒绝日志测试。
 6. 离线继续推进：可继续给 bridge 的安全门控补单元测试，不依赖硬件。
 
 ## 更新规则
