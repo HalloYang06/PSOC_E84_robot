@@ -1668,6 +1668,14 @@ AttributeError: handle cannot be modified after node creation
 - 这是正确行为；该文件缺少 `/joint_states`、`/rehab_arm/safety_state`、`/rehab_arm/sensor_state`。
 - manifest 用于同步前筛选，缺数据的 session 不应进入标注/同步流程。
 
+### 服务器同步先做 API 草案，不直接上传
+
+规则：
+
+- 第一版服务器同步只接收 manifest 和 JSONL 文件。
+- 不下发 CAN、电流、力矩、速度、裸角度或 M33 override。
+- 真正上传代码要等服务器 endpoint 确认后再做；下一步只能做 dry-run uploader。
+
 ### 进度和踩坑要分开
 
 规则：

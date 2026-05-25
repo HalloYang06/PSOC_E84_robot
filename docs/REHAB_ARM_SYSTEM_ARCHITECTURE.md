@@ -665,6 +665,7 @@ VLA -> 总服务器:
 第一版上传策略：
 
 - 主上传网关选 NanoPi。NanoPi 同时靠近 CAN、ROS2、仿真主机和本地日志，适合做缓存、压缩、补传和 session 对齐。
+- NanoPi 数据同步 API 草案见：[SERVER_SYNC_API_DRAFT.md](SERVER_SYNC_API_DRAFT.md)。
 - 摄像头链路由 NanoPi 采集。第一版优先上传低频关键帧、压缩图和目标/遮挡物摘要，不建议把高码率视频放进控制必经链路。
 - 高频数据先本地落盘，再按 session 上传索引和文件，避免把服务器接口做成实时闭环依赖。
 - M55 如果通过 WiFi 直连服务器，上传语音文本、音频摘要、低频模型摘要、OpenClaw 服务状态或诊断信息。

@@ -634,11 +634,14 @@
   - 扫描 JSONL 并输出 `rehab_arm_manifest_v1` 清单。
   - 本地测试通过：33 tests passed；NanoPi build passed。
   - NanoPi 实测可标记不完整 session 为 `ok=false`。
+- 新增服务器同步 API 草案：
+  - 文档：`docs/SERVER_SYNC_API_DRAFT.md`。
+  - 只定义非实时 manifest/JSONL 上传边界。
 
 ## 进行中
 
 - 下一步继续按框架补数据链路：
-  - 后续再接服务器同步 API，当前只保留本地清单。
+  - 后续做 dry-run uploader，只打印请求，不真实上传。
   - 不进入真实电机控制。
   - 不给电机驱动上电，不做运动测试。
 
@@ -660,7 +663,7 @@
 
 1. 保持电机驱动断开，确认 `can0` 为 `ERROR-ACTIVE`。
 2. raw SocketCAN 先测 `0x321 -> 0x322` heartbeat。
-3. 明确服务器同步 API 草案。
+3. 增加 dry-run uploader。
 4. 保持服务器同步非实时，不放进控制闭环。
 5. 仍保持 logging-only，不进入真实电机控制路径。
 

@@ -999,6 +999,8 @@ ros2 run rehab_arm_psoc_bridge build_manifest.py /home/pi/rehab_arm_logs \
 
 这个清单只扫描本地文件，不上传服务器。`ok=false` 表示该 JSONL 缺少必需 topic 或 metadata，不适合进入标注/同步流程。
 
+服务器同步 API 仍是草案，见：[SERVER_SYNC_API_DRAFT.md](SERVER_SYNC_API_DRAFT.md)。当前阶段只做本地记录和 manifest，不做真实上传。
+
 ## 6. 当前真实 CAN ID
 
 | ID | 协议/用途 | 说明 |
