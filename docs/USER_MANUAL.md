@@ -581,10 +581,17 @@ ROS /rehab_arm/safety_state:
 
 App、服务器、VLA 和仿真主机读取 `/rehab_arm/safety_state` 时的优先级：
 
-1. 先看 `state`：只有 `ok` 才可能进入运动候选状态。
-2. 再看 `control_mode`：只有后续明确实现的 `armed/active` 才可能对应真实运动控制。
-3. 再看 `detail_semantics`：当前 `detail` 是 `last_safety_assessment`，用于解释最近一次拒绝或评估原因。
-4. 不要只因为 `detail=none` 或 `detail=logging_only_no_motor_output` 就判断系统可运动。
+1. 先看 `motion_allowed`：`false` 时任何上层都不能请求真实运动。
+2. 再看 `state`：只有 `ok` 才可能进入运动候选状态。
+3. 再看 `control_mode`：只有后续明确实现的 `armed/active` 才可能对应真实运动控制。
+4. 再看 `detail_semantics`：当前 `detail` 是 `last_safety_assessment`，用于解释最近一次拒绝或评估原因。
+5. 不要只因为 `detail=none` 或 `detail=logging_only_no_motor_output` 就判断系统可运动。
+
+当前阶段的期望是：
+
+```json
+{"motion_allowed":false}
+```
 
 如果本机或 NanoPi 上有旧 bridge 进程，先清理再测：
 

@@ -59,6 +59,7 @@ def parse_psoc_status_payload(data: bytes) -> dict[str, object]:
         payload.update({
             'state': 'fault',
             'detail': 'PSoC status too short',
+            'motion_allowed': False,
         })
         return payload
 
@@ -79,6 +80,7 @@ def parse_psoc_status_payload(data: bytes) -> dict[str, object]:
         payload.update({
             'state': 'fault',
             'detail': 'invalid PSoC status marker',
+            'motion_allowed': False,
         })
         return payload
 
@@ -104,6 +106,7 @@ def parse_psoc_status_payload(data: bytes) -> dict[str, object]:
             'last_assessment_detail_code': detail_code,
             'last_assessment_detail': detail,
             'heartbeat_age_ms': heartbeat_age_100ms * 100,
+            'motion_allowed': state == 'ok' and mode_code in (3, 4),
         })
         return payload
 
@@ -111,5 +114,6 @@ def parse_psoc_status_payload(data: bytes) -> dict[str, object]:
         'protocol_version': 1,
         'state': 'fault' if error_code != 0 else 'ok',
         'status_data': data[4:].hex().upper(),
+        'motion_allowed': False,
     })
     return payload

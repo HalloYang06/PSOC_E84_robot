@@ -114,6 +114,8 @@ Detail code enum:
   - `detail_semantics: "last_safety_assessment"`
   - `last_assessment_detail_code`
   - `last_assessment_detail`
+- NanoPi parser 同时输出 `motion_allowed`，供 App/服务器/仿真主机快速判断是否允许进入运动候选状态。
+- 当前 logging-only 阶段 `motion_allowed` 必须为 `false`。
 - 后续如果需要同时表达“当前实时 detail”和“最近一次拒绝原因”，应新增协议字段或 V3 扩展，不要改变 V2 byte6 的既有含义。
 
 示例：

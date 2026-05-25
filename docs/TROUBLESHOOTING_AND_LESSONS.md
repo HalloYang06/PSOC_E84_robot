@@ -1495,6 +1495,22 @@ detail_code=1 detail=heartbeat_timeout
 - 本地 17 个测试通过，NanoPi 7 个 parser 测试通过。
 - 真实 `0x322` 已解析出 `detail_semantics=last_safety_assessment`。
 
+### 上层先看 `motion_allowed`
+
+现象：
+
+- App、服务器、VLA、仿真主机如果各自组合 `state/control_mode/detail`，容易判断不一致。
+
+规则：
+
+- `/rehab_arm/safety_state.motion_allowed=false` 时，任何上层都不能请求真实运动。
+- 当前 logging-only 阶段必须一直是 `false`。
+- 后续即使 `motion_allowed=true`，M33 仍然是最终安全裁决方。
+
+状态：
+
+- NanoPi parser 和 bridge 本地 safety payload 已输出 `motion_allowed`。
+
 ### 进度和踩坑要分开
 
 规则：

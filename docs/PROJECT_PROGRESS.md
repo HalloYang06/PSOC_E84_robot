@@ -603,12 +603,16 @@
     - `python3 -m unittest discover -s src/rehab_arm_psoc_bridge/test -v`
     - 7 tests passed。
     - 真实 `0x322` 解析包含 `detail_semantics=last_safety_assessment`、`last_assessment_detail=heartbeat_timeout`。
+- 统一 `/rehab_arm/safety_state` 上层消费字段：
+  - PSoC/M33 status 和 bridge 本地 safety 都输出 `motion_allowed`。
+  - 当前 logging-only 和 bridge 本地状态均为 `motion_allowed=false`。
+  - 本地测试通过：19 tests passed；NanoPi 测试通过：9 tests passed。
 
 ## 进行中
 
-- 下一步把 ROS `/rehab_arm/safety_state` 的示例和 App/服务器消费建议补齐：
-  - App/服务器展示 `detail` 时应标注为最近一次评估原因。
-  - 当前可运动判断必须看 `state` 和 `control_mode`，不能只看 `detail`。
+- 下一步继续按框架补 NanoPi 侧数据记录接口：
+  - 先记录 `/rehab_arm/safety_state` 和 `/rehab_arm/sensor_state`。
+  - 不进入真实电机控制。
   - 不给电机驱动上电，不做运动测试。
 
 ## 待确认
@@ -629,8 +633,8 @@
 
 1. 保持电机驱动断开，确认 `can0` 为 `ERROR-ACTIVE`。
 2. raw SocketCAN 先测 `0x321 -> 0x322` heartbeat。
-3. 更新使用手册中的 `/rehab_arm/safety_state` JSON 示例，加入 `detail_semantics` 和 `last_assessment_detail`。
-4. 明确 App、服务器、VLA、仿真主机消费 safety state 的字段优先级。
+3. 新增最小数据记录节点或脚本，先落盘 JSONL。
+4. 用假消息或当前 M33 `0x322` 验证文件内容。
 5. 仍保持 logging-only，不进入真实电机控制路径。
 
 ## 更新规则

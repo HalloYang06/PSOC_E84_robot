@@ -19,6 +19,7 @@ from std_msgs.msg import String
 from trajectory_msgs.msg import JointTrajectory
 
 from rehab_arm_psoc_bridge.psoc_status import parse_psoc_status_payload
+from rehab_arm_psoc_bridge.safety_state import bridge_safety_payload
 
 
 CAN_FRAME_FMT = '=IB3x8s'
@@ -389,7 +390,7 @@ class PsocCanBridgeNode(Node):
             self.get_logger().info(f'safety ok: {detail}')
         else:
             self.get_logger().warn(f'safety {state}: {detail}')
-        payload = {'state': state, 'detail': detail, 'source': 'psoc_bridge'}
+        payload = bridge_safety_payload(state, detail)
         self.safety_pub.publish(String(data=json.dumps(payload, separators=(',', ':'))))
 
 
