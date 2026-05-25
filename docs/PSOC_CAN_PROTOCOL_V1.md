@@ -63,7 +63,7 @@ NanoPi bridge 解析规则：
 | 3 | `error_code` | `uint8` | `0` 表示无硬错误；非 0 强制 ROS 侧进入 `fault` |
 | 4 | `safety_state` | `uint8` | 见 safety state enum |
 | 5 | `control_mode` | `uint8` | 见 control mode enum |
-| 6 | `detail_code` | `uint8` | 限幅、拒绝、急停、故障原因 |
+| 6 | `detail_code` | `uint8` | 最近一次安全评估详情，当前 M33 logging-only 固件不会自动清零 |
 | 7 | `heartbeat_age_100ms` | `uint8` | M33 看到的 NanoPi heartbeat 年龄，单位 100ms，饱和到 255 |
 
 Safety state enum:
@@ -103,6 +103,18 @@ Detail code enum:
 | `10` | `logging_only_no_motor_output` | logging-only 阶段拒绝输出 |
 
 当前 M33 logging-only 固件会把最近一次 ROS safety assessment 的首要拒绝原因放到 byte6 `detail_code`。例如，收到超限 `0x320` 后，下一次 `0x321 -> 0x322` 的 byte6 应为 `4`，NanoPi ROS 会解析为 `target_out_of_limit`。
+
+语义约定：
+
+- `safety_state` 表示当前总体安全状态，例如 `ok/limited/emergency_stop/fault`。
+- `detail_code` 当前表示 `last_safety_assessment`，也就是最近一次安全评估详情。
+- `detail_code` 不会因为下一次普通 heartbeat 自动恢复为 `0` 或 `10`；它会保留到下一次 ROS safety assessment 覆盖。
+- App、服务器、日志系统展示时，应把 `detail_code/detail` 标注为“最近一次拒绝/评估原因”，不要单独当成实时 fault。
+- NanoPi parser 为了兼容旧代码仍输出 `detail_code/detail`，同时会额外输出：
+  - `detail_semantics: "last_safety_assessment"`
+  - `last_assessment_detail_code`
+  - `last_assessment_detail`
+- 后续如果需要同时表达“当前实时 detail”和“最近一次拒绝原因”，应新增协议字段或 V3 扩展，不要改变 V2 byte6 的既有含义。
 
 示例：
 

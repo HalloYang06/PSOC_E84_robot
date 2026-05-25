@@ -100,6 +100,9 @@ def parse_psoc_status_payload(data: bytes) -> dict[str, object]:
             'control_mode_code': mode_code,
             'detail_code': detail_code,
             'detail': detail,
+            'detail_semantics': 'last_safety_assessment',
+            'last_assessment_detail_code': detail_code,
+            'last_assessment_detail': detail,
             'heartbeat_age_ms': heartbeat_age_100ms * 100,
         })
         return payload

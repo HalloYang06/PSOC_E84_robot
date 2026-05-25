@@ -1458,6 +1458,43 @@ detail_code=1 detail=heartbeat_timeout
 - `can0` 复查为 `UP/LOWER_UP/ERROR-ACTIVE`，`berr-counter tx 0 rx 0`。
 - 未给电机驱动上电，未做运动测试。
 
+### App/服务器不要把 `detail_code` 当成实时 fault
+
+现象：
+
+- `0x322 detail_code` 当前会保留最近一次 ROS safety assessment 的结果。
+- 如果 App 或服务器只看 `detail=heartbeat_timeout`，可能误以为当前还在持续超时；如果只看 `detail=none`，也可能误以为可以运动。
+
+正确边界：
+
+- `state` 是当前总体安全状态。
+- `control_mode` 是当前控制模式。
+- `detail/detail_code` 当前语义是 `last_safety_assessment`。
+- 可运动判断必须至少同时满足后续定义的 `state=ok`、`control_mode=armed/active`、M33 已解除 logging-only、急停/限位/供电均通过。
+
+解决：
+
+- NanoPi parser 保留旧字段，同时新增：
+
+```json
+{
+  "detail_semantics": "last_safety_assessment",
+  "last_assessment_detail_code": 1,
+  "last_assessment_detail": "heartbeat_timeout"
+}
+```
+
+技巧：
+
+- UI 展示可以写成“最近一次拒绝原因：heartbeat_timeout”，不要写成“当前故障：heartbeat_timeout”。
+- 服务器保存数据时同时存 `state/control_mode/detail_semantics/detail`，方便后续标注和追溯。
+
+状态：
+
+- 已在 NanoPi parser 和协议文档中明确。
+- 本地 17 个测试通过，NanoPi 7 个 parser 测试通过。
+- 真实 `0x322` 已解析出 `detail_semantics=last_safety_assessment`。
+
 ### 进度和踩坑要分开
 
 规则：

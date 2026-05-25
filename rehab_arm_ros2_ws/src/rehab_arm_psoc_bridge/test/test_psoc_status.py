@@ -29,6 +29,9 @@ class PsocStatusTests(unittest.TestCase):
         self.assertEqual(status['state'], 'limited')
         self.assertEqual(status['control_mode'], 'logging_only')
         self.assertEqual(status['detail'], 'logging_only_no_motor_output')
+        self.assertEqual(status['detail_semantics'], 'last_safety_assessment')
+        self.assertEqual(status['last_assessment_detail_code'], 10)
+        self.assertEqual(status['last_assessment_detail'], 'logging_only_no_motor_output')
         self.assertEqual(status['heartbeat_age_ms'], 300)
 
     def test_status_v2_emergency_stop(self) -> None:
@@ -64,6 +67,9 @@ class PsocStatusTests(unittest.TestCase):
                 self.assertEqual(status['control_mode'], 'logging_only')
                 self.assertEqual(status['detail_code'], code)
                 self.assertEqual(status['detail'], detail)
+                self.assertEqual(status['detail_semantics'], 'last_safety_assessment')
+                self.assertEqual(status['last_assessment_detail_code'], code)
+                self.assertEqual(status['last_assessment_detail'], detail)
 
     def test_bad_marker_is_fault(self) -> None:
         status = parse_psoc_status_payload(bytes.fromhex('AA0107005E9D0000'))

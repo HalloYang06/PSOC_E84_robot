@@ -587,12 +587,28 @@
   - 这证明 heartbeat 超时会覆盖普通目标的安全评估结果，并通过 `0x322` 回传到 NanoPi。
   - `can0` 复查为 `UP/LOWER_UP/ERROR-ACTIVE`，`berr-counter tx 0 rx 0`，`bus-off/error-pass` 均为 0。
   - 本轮只验证 NanoPi/M33 CAN 状态回报；未查看 COM26 实时串口，未给电机驱动上电，未做运动测试。
+- 明确 `0x322 detail_code` 的协议语义，并增强 NanoPi parser 输出：
+  - 更新 `rehab_arm_psoc_bridge/psoc_status.py`：
+    - 保留兼容字段 `detail_code` 和 `detail`。
+    - 新增 `detail_semantics="last_safety_assessment"`。
+    - 新增 `last_assessment_detail_code`。
+    - 新增 `last_assessment_detail`。
+  - 更新 `test_psoc_status.py`，覆盖新增字段。
+  - 更新 `docs/PSOC_CAN_PROTOCOL_V1.md`，明确 V2 byte6 当前表示“最近一次安全评估详情”，不会随普通 heartbeat 自动清零。
+  - 本地测试通过：
+    - `python -m unittest discover -s rehab_arm_ros2_ws\src\rehab_arm_psoc_bridge\test -v`
+    - 17 tests passed。
+  - NanoPi 同步并验证：
+    - 同步 `psoc_status.py` 和 `test_psoc_status.py` 到 `/home/pi/rehab_arm_ros2_ws`。
+    - `python3 -m unittest discover -s src/rehab_arm_psoc_bridge/test -v`
+    - 7 tests passed。
+    - 真实 `0x322` 解析包含 `detail_semantics=last_safety_assessment`、`last_assessment_detail=heartbeat_timeout`。
 
 ## 进行中
 
-- 下一步整理 `0x322 detail_code` 的清除/保持语义，决定是否增加“最近一次拒绝原因清零”机制：
-  - 当前 M33 设计会保留最近一次 ROS safety assessment detail，直到下一条 assessment 覆盖。
-  - 若 App/服务器需要区分“当前实时状态”和“最近一次拒绝原因”，后续应拆成两个字段或增加清除规则。
+- 下一步把 ROS `/rehab_arm/safety_state` 的示例和 App/服务器消费建议补齐：
+  - App/服务器展示 `detail` 时应标注为最近一次评估原因。
+  - 当前可运动判断必须看 `state` 和 `control_mode`，不能只看 `detail`。
   - 不给电机驱动上电，不做运动测试。
 
 ## 待确认
@@ -613,9 +629,9 @@
 
 1. 保持电机驱动断开，确认 `can0` 为 `ERROR-ACTIVE`。
 2. raw SocketCAN 先测 `0x321 -> 0x322` heartbeat。
-3. 在文档和协议中明确 `detail_code` 当前表示“最近一次拒绝原因”，不是自动清零的实时 fault 字段。
-4. 评估是否需要 M33 新增 `last_detail` 与 `current_state` 分离。
-5. 若需要代码变更，先本地编译通过，再请用户烧录；仍保持 logging-only。
+3. 更新使用手册中的 `/rehab_arm/safety_state` JSON 示例，加入 `detail_semantics` 和 `last_assessment_detail`。
+4. 明确 App、服务器、VLA、仿真主机消费 safety state 的字段优先级。
+5. 仍保持 logging-only，不进入真实电机控制路径。
 
 ## 更新规则
 

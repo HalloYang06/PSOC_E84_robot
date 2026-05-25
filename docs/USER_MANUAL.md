@@ -512,6 +512,7 @@ python3 -m unittest discover -s src/rehab_arm_psoc_bridge/test -v
 
 - V1 legacy：当前 M33 已验证格式，例如 `A5 03 07 00 A1 34 09 00`。
 - V2 扩展：后续 M33 将 byte4..7 解释为 `safety_state/control_mode/detail_code/heartbeat_age_100ms`。
+- V2 中 `detail_code/detail` 当前表示最近一次安全评估详情，不是会随普通 heartbeat 自动清零的实时 fault 字段。
 
 V2 logging-only 示例：
 
@@ -522,7 +523,7 @@ V2 logging-only 示例：
 解析后 ROS `/rehab_arm/safety_state` 应包含：
 
 ```json
-{"protocol_version":2,"state":"limited","control_mode":"logging_only","detail":"logging_only_no_motor_output","heartbeat_age_ms":300}
+{"protocol_version":2,"state":"limited","control_mode":"logging_only","detail":"logging_only_no_motor_output","detail_semantics":"last_safety_assessment","last_assessment_detail":"logging_only_no_motor_output","heartbeat_age_ms":300}
 ```
 
 当前已验证：
@@ -577,6 +578,13 @@ ROS /rehab_arm/safety_state:
 ```
 
 这表示 M33 当前明确告诉 NanoPi：系统在线，但处于 `logging_only` 安全受限状态。此状态下不要把它当成可运动状态。
+
+App、服务器、VLA 和仿真主机读取 `/rehab_arm/safety_state` 时的优先级：
+
+1. 先看 `state`：只有 `ok` 才可能进入运动候选状态。
+2. 再看 `control_mode`：只有后续明确实现的 `armed/active` 才可能对应真实运动控制。
+3. 再看 `detail_semantics`：当前 `detail` 是 `last_safety_assessment`，用于解释最近一次拒绝或评估原因。
+4. 不要只因为 `detail=none` 或 `detail=logging_only_no_motor_output` 就判断系统可运动。
 
 如果本机或 NanoPi 上有旧 bridge 进程，先清理再测：
 
