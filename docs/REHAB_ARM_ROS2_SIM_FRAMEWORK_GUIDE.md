@@ -48,6 +48,25 @@ ROS2 可以理解成机器人系统里的“消息总线 + 工程组织方式”
 /openclaw/app_response            NanoPi/OpenClaw 返回给 App 的高层响应
 ```
 
+### 仿真电脑接入前先做环境自检
+
+后续换到另一台 Linux 主机做仿真时，不要一上来就跑复杂 launch。先构建 `rehab_arm_sim_mujoco`，再运行：
+
+```bash
+ros2 run rehab_arm_sim_mujoco check_sim_env --pretty
+```
+
+这个命令检查：
+
+- ROS2 Python 依赖 `rclpy` 是否可用。
+- MuJoCo Python 包是否可用；缺少 MuJoCo 时会标成 `ready_with_fallback_sim`，说明还只能跑一阶 fallback 仿真。
+- `rehab_arm_description/urdf/rehab_arm.urdf` 是否存在。
+- `sim.launch.py` 和 `sim_data_collection.launch.py` 是否存在。
+- 数据采集、manifest、服务器上传客户端模块是否可导入。
+- 当前标准 5 关节名字是否齐全。
+
+这个命令是只读检查，不打开 CAN，不发 `0x320/0x321`，不命令 M33 或电机。它的作用是先确认“仿真和数据采集环境是否能启动”，不是确认真机可以运动。
+
 ## 2. 总体数据流
 
 ```mermaid

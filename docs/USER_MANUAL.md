@@ -109,6 +109,30 @@ colcon build --symlink-install --packages-select rehab_arm_sim_mujoco
 source install/setup.bash
 ```
 
+先做仿真环境自检：
+
+```bash
+ros2 run rehab_arm_sim_mujoco check_sim_env --pretty
+```
+
+通过标准：
+
+- 输出 `schema_version=rehab_arm_sim_env_check_v1`。
+- `ok=true`。
+- `readiness=ready_with_mujoco` 或 `readiness=ready_with_fallback_sim`。
+- `joint_contract.count=5`。
+- `checks.urdf.ok=true`。
+- `checks.sim_data_collection_launch.ok=true`。
+- `safety_note` 明确该命令不打开 CAN、不发 `0x320/0x321`、不命令 M33 或电机。
+
+如果要强制确认真实 MuJoCo Python 包已安装，而不是使用 fallback 仿真：
+
+```bash
+ros2 run rehab_arm_sim_mujoco check_sim_env --pretty --strict-mujoco
+```
+
+`--strict-mujoco` 失败时，说明 ROS2 框架可能还能用 fallback 跑通数据链路，但这台 Linux 仿真机还没有准备好真实 MuJoCo 动力学仿真。
+
 启动：
 
 ```bash

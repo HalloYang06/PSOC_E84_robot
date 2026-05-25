@@ -12,6 +12,7 @@ ament_python_install_package(${PROJECT_NAME})
 
 install(PROGRAMS
   rehab_arm_sim_mujoco/mujoco_sim_node.py
+  rehab_arm_sim_mujoco/check_sim_env.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

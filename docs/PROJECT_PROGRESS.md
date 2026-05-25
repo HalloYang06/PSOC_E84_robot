@@ -881,3 +881,15 @@
 - Validated: cloud smoke upload with `--check-quality-gate` returned `ok=true` and `annotation_ready=true` for `nanopi-quality-demo`.
 - Safety: quality-gate check is a post-upload read-only HTTP GET. It does not send CAN, motor commands, or M33 overrides.
 - Next step: when NanoPi is available, build the package there and run the same command after a real sim/log session upload.
+
+### 2026-05-26 - Simulation environment self-check
+
+- Completed: added `rehab_arm_sim_mujoco/check_sim_env.py` and registered the `check_sim_env` ROS2 console script.
+- Completed: the tool checks `rclpy`, optional MuJoCo, URDF presence, sim launch files, data collection tools, and the 5-joint contract.
+- Completed: updated user manual, simulation framework guide, and troubleshooting notes with the new command.
+- Validated: `python -m py_compile rehab_arm_ros2_ws\src\rehab_arm_sim_mujoco\rehab_arm_sim_mujoco\check_sim_env.py` passed.
+- Validated: `python -m unittest discover -s rehab_arm_ros2_ws\src\rehab_arm_sim_mujoco\test -v` passed 3 tests.
+- Validated: Windows CLI self-check reports `ok=false/readiness=not_ready` because `rclpy` is not installed, while URDF, launch files, and data tools are found; this is expected on the non-ROS development machine.
+- Not validated: no Linux simulation host, NanoPi build, MuJoCo install, CAN, M33/M55, camera, motor power, or real hardware in this slice.
+- Safety: this check is read-only and explicitly does not open CAN, send `0x320/0x321`, or command M33/motors.
+- Next step: add the platform-side simulation readiness surface or data asset entry that consumes these environment/status reports without turning them into motion permission.

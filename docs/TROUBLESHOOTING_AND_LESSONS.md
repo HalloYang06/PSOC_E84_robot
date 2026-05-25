@@ -2025,3 +2025,21 @@ No such file or directory: /tmp/rehab_sim_collection/sim_demo_motion.jsonl
 
 - 进度文档回答“现在做到哪里”。
 - 踩坑文档回答“以后遇到同类问题怎么少走弯路”。
+
+### 仿真电脑不要直接从复杂 launch 开始排错
+
+现象：
+
+- 新 Linux 仿真主机刚搭好时，直接运行 MuJoCo/采集 launch 可能同时暴露 ROS2、MuJoCo、URDF、Python 包路径和数据工具多个问题。
+
+技巧：
+
+- 先运行 `ros2 run rehab_arm_sim_mujoco check_sim_env --pretty`。
+- 如果 `readiness=ready_with_fallback_sim`，说明 ROS2 数据链路可先跑通，但真实 MuJoCo Python 包还没装好。
+- 如果 `ok=false`，先看 `errors`，逐项修 ROS2 包、URDF 路径或采集工具导入。
+- 在 Windows 开发机上看到 `rclpy is required but not available` 是正常现象，说明这台机器不是 ROS2 仿真运行环境；真正仿真主机应在 Linux + ROS2 环境下通过。
+- 只有这个自检通过后，再运行 `sim.launch.py` 或 `sim_data_collection.launch.py`。
+
+状态：
+
+- 已新增自检工具；它只读环境，不访问 CAN，不命令 M33 或电机。
