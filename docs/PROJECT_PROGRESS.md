@@ -560,11 +560,23 @@
     - M33 日志最终仍为 `final action=no_motor_output logging_only=1`。
   - `can0` 复查为 `UP/LOWER_UP/ERROR-ACTIVE`，`berr-counter tx 0 rx 0`。
   - 本轮没有给电机驱动上电，没有做运动测试。
+- 完成第二个 `0x322 detail_code` 抽样验证：`torque_out_of_limit`。
+  - 发送前 heartbeat：
+    - `TX heartbeat_81 321 [1] 81`
+    - `RX 322 [8] a581070001010400`
+    - NanoPi parser 解析为 `detail_code=4`、`detail=target_out_of_limit`，说明 M33 仍保留上一条拒绝原因。
+  - 发送 torque 超限 `0x320`：
+    - `TX torque_out_of_limit 320 [8] 0300390005000100`
+  - 下一次 heartbeat：
+    - `TX heartbeat_82 321 [1] 82`
+    - `RX 322 [8] a582070001010600`
+    - NanoPi parser 解析为 `detail_code=6`、`detail=torque_out_of_limit`。
+  - `can0` 复查为 `UP/LOWER_UP/ERROR-ACTIVE`，`berr-counter tx 0 rx 0`，`bus-off/error-pass` 均为 0。
+  - 本轮只验证 NanoPi/M33 CAN 状态回报；未查看 COM26 实时串口，未给电机驱动上电，未做运动测试。
 
 ## 进行中
 
-- 下一步抽样验证另一个 `0x322 detail_code`：
-  - 优先选 `torque_out_of_limit` 或 `heartbeat_timeout`。
+- 下一步抽样验证 `heartbeat_timeout` 的 `0x322 detail_code`：
   - 仍然只做 raw SocketCAN + M33 logging-only 验证。
   - 不给电机驱动上电，不做运动测试。
 
@@ -586,7 +598,7 @@
 
 1. 保持电机驱动断开，确认 `can0` 为 `ERROR-ACTIVE`。
 2. raw SocketCAN 先测 `0x321 -> 0x322` heartbeat。
-3. 发一个新的安全拒绝用例，例如 `torque_out_of_limit`。
+3. 等待超过 M33 heartbeat 超时时间后发一个普通目标帧，验证 `heartbeat_timeout` 优先级。
 4. 再发 heartbeat，确认下一帧 `0x322` byte6 与 NanoPi parser 的 `detail` 一致。
 5. COM26 串口必须继续看到 `decision=reject` 和 `final action=no_motor_output logging_only=1`。
 

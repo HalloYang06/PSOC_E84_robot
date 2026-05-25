@@ -842,6 +842,25 @@ safety_state=limited decision=reject reason=target_out_of_limit
 final action=no_motor_output logging_only=1
 ```
 
+第二个抽样验证：`torque_out_of_limit`：
+
+```text
+TX heartbeat_81 321 [1] 81
+RX 322 [8] a581070001010400
+PARSED detail_code=4 detail=target_out_of_limit
+
+TX torque_out_of_limit 320 [8] 0300390005000100
+TX heartbeat_82 321 [1] 82
+RX 322 [8] a582070001010600
+PARSED detail_code=6 detail=torque_out_of_limit
+```
+
+这个结果说明：
+
+- M33 会保留最近一次拒绝原因，直到下一次 ROS safety assessment 覆盖它。
+- 新的 torque 超限帧被 M33 识别后，下一帧 `0x322` byte6 从 `04` 更新为 `06`。
+- 这仍然只是安全审计链路验证，不代表可以让电机上电运动。
+
 如果烧录后没有任何 `0x322`：
 
 - 先不要继续发 `0x320`。

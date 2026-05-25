@@ -1377,6 +1377,45 @@ final action=no_motor_output logging_only=1
 - `can0` 复查为 `UP/LOWER_UP/ERROR-ACTIVE`，`berr-counter tx 0 rx 0`。
 - 未给电机驱动上电，未做运动测试。
 
+### `0x322 detail_code` 会保留最近一次拒绝原因
+
+现象：
+
+- 完成 `target_out_of_limit` 验证后，再发一次普通 heartbeat，`0x322` 仍返回：
+
+```text
+RX 322 [8] a581070001010400
+detail_code=4 detail=target_out_of_limit
+```
+
+- 这不是新错误，而是 M33 当前设计会保留最近一次 ROS safety assessment 的 detail。
+
+验证：
+
+- 发送 torque 超限帧：
+
+```text
+TX 320 [8] 0300390005000100
+```
+
+- 下一次 heartbeat 返回：
+
+```text
+RX 322 [8] a582070001010600
+detail_code=6 detail=torque_out_of_limit
+```
+
+技巧：
+
+- 判断 detail 是否“动态更新”，要看新危险帧之后 byte6 是否被覆盖，而不是要求每次 heartbeat 自动清零。
+- 如果未来希望安全状态更像实时状态机，可以再设计一条明确的“清除最近拒绝原因/恢复默认 detail”规则；当前阶段先保留最近一次拒绝原因，便于追踪最后一个安全拒绝。
+
+状态：
+
+- `torque_out_of_limit` 抽样验证已通过。
+- 本轮未查看 COM26 实时串口，结论基于 NanoPi 收到的 M33 `0x322` 回包和 `can0` 健康状态。
+- 电机驱动未上电，未做运动测试。
+
 ### 进度和踩坑要分开
 
 规则：
