@@ -989,6 +989,37 @@ ros2 run rehab_arm_psoc_bridge data_recorder_node.py \
 {"schema_version":"rehab_arm_motor_state_v1","robot_id":"rehab-arm-alpha","device_id":"nanopi-m5","source":"nanopi_ros","motors":[{"motor_id":4,"joint_name":"shoulder_lift_joint","protocol":"private_mit","position":0.1,"velocity":0.0,"current":0.3,"temperature":35.0,"fault":false}],"control_boundary":"telemetry_only_not_motor_command"}
 ```
 
+仿真或离线测试时，可以把 `/joint_states` 转成 `/rehab_arm/motor_state`，供 recorder、总控台和后续标注链路先使用：
+
+```bash
+cd /home/pi/rehab_arm_ros2_ws
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+ros2 run rehab_arm_psoc_bridge joint_state_motor_state_node.py
+```
+
+另开终端发布一条假关节状态：
+
+```bash
+ros2 topic pub --once /joint_states sensor_msgs/msg/JointState \
+  '{name: ["shoulder_lift_joint"], position: [0.1], velocity: [0.2], effort: [0.3]}'
+```
+
+查看输出：
+
+```bash
+ros2 topic echo --once /rehab_arm/motor_state std_msgs/msg/String
+```
+
+通过标准：
+
+- 输出 JSON 的 `schema_version` 是 `rehab_arm_motor_state_v1`。
+- `motors[0].joint_name` 是 `shoulder_lift_joint`。
+- `position/velocity/effort` 与 `/joint_states` 输入一致。
+- `control_boundary` 是 `telemetry_only_not_motor_command`。
+
+注意：这个节点只做遥测转换，不发 CAN，不控制电机。真实电机状态后续仍应来自 M33 上报。
+
 `/rehab_arm/camera_keyframe` payload 示例：
 
 ```json

@@ -669,6 +669,15 @@
   - 本地测试通过：45 tests passed。
   - NanoPi 测试通过：35 tests passed；`colcon build` passed；`ros2 pkg executables` 能看到 `camera_keyframe_node.py`。
   - 当前硬件未采到图：`lsusb` 只看到 root hub；`/dev/video0` 报 `No such device`；`/dev/video22` 报 `Not a video capture device`。
+- 新增 `/joint_states -> /rehab_arm/motor_state` 仿真遥测桥：
+  - 新增 `joint_state_motor_state_node.py`。
+  - `data_recording.py` 新增 `make_motor_entries_from_joint_state()`。
+  - 作用是让 MuJoCo/假关节状态先生成总控台可消费的 motor table 数据，不控制电机。
+  - 支持可选 `joint_motor_map` JSON 参数，把关节名映射到已知 `motor_id`、协议和原始 CAN 信息。
+  - 本地测试通过：49 tests passed。
+  - NanoPi 测试通过：39 tests passed；`colcon build --symlink-install --packages-select rehab_arm_psoc_bridge` 通过。
+  - NanoPi ROS 冒烟测试通过：发布假 `/joint_states` 后，`/rehab_arm/motor_state` 输出 `rehab_arm_motor_state_v1` JSON。
+  - 本轮没有发 CAN、没有发送 `0x320`、没有做电机运动测试。
 
 ## 进行中
 
@@ -676,7 +685,8 @@
   - 总服务器归入 AI 合作平台工程，不搬到本仓库。
   - 本仓库只保留 NanoPi 数据采集、manifest、dry-run/upload 客户端和本地假服务器验证工具。
   - 后续先确认 USB/UVC 或深度摄像头枚举，再跑 `camera_keyframe_node.py` 采集真实图像。
-  - 也可以继续补 M33 电机状态到 `/rehab_arm/motor_state` 的映射。
+  - 下一步可补数据采集 launch：仿真节点 + joint_state_motor_state_node + recorder 一起启动。
+  - 真机方向继续补 M33 电机状态到 `/rehab_arm/motor_state` 的映射。
   - 不进入真实电机控制。
   - 不给电机驱动上电，不做运动测试。
 
@@ -698,7 +708,7 @@
 
 1. 保持电机驱动断开，确认 `can0` 为 `ERROR-ACTIVE`。
 2. raw SocketCAN 先测 `0x321 -> 0x322` heartbeat。
-3. 重新确认摄像头枚举，或补 M33 电机状态到 `/rehab_arm/motor_state` 的映射。
+3. 增加仿真数据采集 launch，或补 M33 电机状态到 `/rehab_arm/motor_state` 的映射。
 4. 保持服务器同步为非实时外部接口，不放进控制闭环。
 5. 仍保持 logging-only，不进入真实电机控制路径。
 

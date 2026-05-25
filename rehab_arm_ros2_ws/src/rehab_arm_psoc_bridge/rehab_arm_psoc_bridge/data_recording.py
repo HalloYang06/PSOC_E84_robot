@@ -88,6 +88,37 @@ def make_motor_state_payload(
     }
 
 
+def make_motor_entries_from_joint_state(
+    names: list[str],
+    positions: list[float],
+    velocities: list[float],
+    efforts: list[float],
+    joint_motor_map: dict[str, dict[str, object]] | None = None,
+) -> list[dict[str, object]]:
+    mapping = joint_motor_map or {}
+    motors: list[dict[str, object]] = []
+    for index, joint_name in enumerate(names):
+        mapped = dict(mapping.get(joint_name, {}))
+        motors.append({
+            'motor_id': mapped.get('motor_id'),
+            'joint_name': joint_name,
+            'protocol': mapped.get('protocol', 'simulated_joint_state'),
+            'position': positions[index] if index < len(positions) else None,
+            'velocity': velocities[index] if index < len(velocities) else None,
+            'effort': efforts[index] if index < len(efforts) else None,
+            'current': mapped.get('current'),
+            'torque': mapped.get('torque'),
+            'temperature': mapped.get('temperature'),
+            'voltage': mapped.get('voltage'),
+            'enabled': mapped.get('enabled'),
+            'fault': mapped.get('fault', False),
+            'error_code': mapped.get('error_code'),
+            'raw_can_id': mapped.get('raw_can_id'),
+            'source_index': index,
+        })
+    return motors
+
+
 def make_camera_keyframe_payload(
     camera_id: str,
     image_path: str,

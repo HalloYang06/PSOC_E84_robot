@@ -1617,6 +1617,29 @@ AttributeError: handle cannot be modified after node creation
 
 - NanoPi 已验证 `/joint_states` 可记录 `name/position/velocity/effort/stamp`。
 
+### 仿真 motor_state 是遥测桥，不是控制器
+
+现象：
+
+- 总控台和数据记录需要 `/rehab_arm/motor_state`。
+- 但没有真机电机状态或不能上电时，容易卡在硬件链路上。
+
+解决：
+
+- 使用 `joint_state_motor_state_node.py` 把 `/joint_states` 转成 `/rehab_arm/motor_state`。
+- 这适合仿真、离线标注、总控台表格联调和 recorder 测试。
+
+技巧：
+
+- 这个节点的 `control_boundary` 是 `telemetry_only_not_motor_command`。
+- 它不发 CAN、不下发 `0x320`、不代表电机真实在线。
+- 真机版本仍要以后用 M33 汇总的电机反馈来发布 `/rehab_arm/motor_state`。
+
+状态：
+
+- 本地和 NanoPi 单测通过。
+- NanoPi ROS 冒烟测试已确认假 `/joint_states` 能生成 `/rehab_arm/motor_state`。
+
 ### JSONL checker 要同时测 PASS 和 FAIL
 
 现象：
