@@ -704,6 +704,17 @@
   - `/rehab_arm/motor_state` 示例 payload 为 `rehab_arm_motor_state_v1`，`motor_count=5`。
   - 修复 ROS2 SIGINT 退出时的 shutdown race 日志：最终 `TRACEBACK_COUNT=0`。
   - 本轮没有发 CAN、没有发送 `0x320`、没有做电机运动测试。
+- 完成仿真 demo 轨迹数据采集：
+  - `sim_data_collection.launch.py` 新增 `enable_demo_trajectory` 参数，默认 `false`。
+  - 开启后启动 `rehab_arm_control/demo_trajectory_node.py`，发布一条标准 `/arm_controller/joint_trajectory`。
+  - `rehab_arm_bringup/package.xml` 增加 `rehab_arm_control` 运行依赖。
+  - `demo_trajectory_node.py` 增强 SIGINT 退出保护。
+  - 本地验证通过：bringup 2 tests passed；`rehab_arm_psoc_bridge` 49 tests passed。
+  - NanoPi 构建通过：`rehab_arm_control`、`rehab_arm_bringup`。
+  - NanoPi 动态采集通过：`DEMO_PUBLISHED=1`，`check_recording.py ok=true`，`TRACEBACK_COUNT=0`。
+  - JSONL topic 计数示例：`/joint_states=899`、`/rehab_arm/motor_state=898`、`/rehab_arm/safety_state=10`、`/rehab_arm/sensor_state=898`。
+  - 5 个关节均记录到运动变化：shoulder lift span `0.55`、elbow lift span `1.05`、shoulder abduction span `0.28`、upper arm rotation span `0.60`、forearm rotation span `0.55`。
+  - 本轮仍是纯仿真采集，没有发 CAN、没有发送 `0x320`、没有做电机运动测试。
 
 ## 进行中
 
@@ -711,7 +722,7 @@
   - 总服务器归入 AI 合作平台工程，不搬到本仓库。
   - 本仓库只保留 NanoPi 数据采集、manifest、dry-run/upload 客户端和本地假服务器验证工具。
   - 后续先确认 USB/UVC 或深度摄像头枚举，再跑 `camera_keyframe_node.py` 采集真实图像。
-  - 下一步可补仿真轨迹采集 launch：启动仿真采集后发布 demo `JointTrajectory`，让 JSONL 记录一段真实变化的多关节轨迹。
+  - 下一步可补 JSONL 回放/摘要工具：读取一次采集 session，输出关节范围、topic 频率和安全状态摘要，方便后续标注与总控台检查。
   - 真机方向后续补 M33 电机状态到 `/rehab_arm/motor_state` 的映射。
   - 不进入真实电机控制。
   - 不给电机驱动上电，不做运动测试。
@@ -734,7 +745,7 @@
 
 1. 保持电机驱动断开，确认 `can0` 为 `ERROR-ACTIVE`。
 2. raw SocketCAN 先测 `0x321 -> 0x322` heartbeat。
-3. 增加仿真 demo 轨迹采集，确认 JSONL 能记录运动前后关节变化。
+3. 增加 JSONL session 摘要/回放检查工具，方便验证采集数据质量。
 4. 保持服务器同步为非实时外部接口，不放进控制闭环。
 5. 仍保持 logging-only，不进入真实电机控制路径。
 

@@ -1076,6 +1076,25 @@ timeout -s INT 8s ros2 launch rehab_arm_bringup sim_data_collection.launch.py \
 - `motor_state` 中 `motor_count=5`。
 - launch 退出时不再出现 Python traceback。
 
+采集一段 demo 运动轨迹：
+
+```bash
+timeout -s INT 12s ros2 launch rehab_arm_bringup sim_data_collection.launch.py \
+  output_dir:=/tmp/rehab_sim_collection \
+  session_id:=sim_demo_motion \
+  device_id:=nanopi-sim-motion \
+  software_version:=dev-motion \
+  flush_every:=1 \
+  enable_demo_trajectory:=true
+```
+
+通过标准：
+
+- launch 日志出现 `Published multi-joint demo JointTrajectory`。
+- `check_recording.py /tmp/rehab_sim_collection/sim_demo_motion.jsonl` 返回 `ok=true`。
+- JSONL 中 5 个关节的 `position` 都有明显 min/max 变化。
+- 这个流程只驱动仿真节点，不发 CAN，不发送 `0x320`。
+
 `/rehab_arm/camera_keyframe` payload 示例：
 
 ```json

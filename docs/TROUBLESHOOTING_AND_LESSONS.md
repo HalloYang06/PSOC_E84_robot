@@ -1815,6 +1815,24 @@ RuntimeError: Unable to convert call argument '0' to Python object
 - 已修复并在 NanoPi 复测：`TRACEBACK_COUNT=0`。
 - `check_recording.py` 同时返回 `ok=true`。
 
+### 动态采集要验证关节范围，不只看 topic 存在
+
+现象：
+
+- `check_recording.py ok=true` 只能证明基础 topic 齐全。
+- 如果 demo 轨迹没有发布，或者仿真没有接到 `/arm_controller/joint_trajectory`，JSONL 仍可能只是静止数据。
+
+技巧：
+
+- 动态采集时同时检查：
+  - launch 日志是否出现 `Published multi-joint demo JointTrajectory`。
+  - 每个关节的 `position` min/max span 是否大于一个小阈值。
+  - `/rehab_arm/motor_state` 数量是否和 `/joint_states` 基本同步。
+
+状态：
+
+- NanoPi 已验证 5 个关节均有运动 span，且 `check_recording.py ok=true`。
+
 ### 数据文件名要让服务器不用猜
 
 规则：

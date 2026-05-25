@@ -11,6 +11,7 @@
 
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
+  <exec_depend>rehab_arm_control</exec_depend>
   <exec_depend>rehab_arm_psoc_bridge</exec_depend>
   <exec_depend>rehab_arm_sim_mujoco</exec_depend>
 
