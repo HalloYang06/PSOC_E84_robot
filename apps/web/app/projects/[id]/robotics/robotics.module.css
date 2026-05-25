@@ -153,10 +153,17 @@
   background: rgba(6, 18, 22, 0.78);
 }
 
+.qualityStrip em {
+  color: rgba(238, 252, 247, 0.54);
+  font-size: 11px;
+  font-style: normal;
+  line-height: 1.45;
+}
+
 .qualityStripHead {
   min-width: 0;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
@@ -181,7 +188,7 @@
 }
 
 .qualityStripHead small {
-  max-width: 360px;
+  max-width: 520px;
   color: rgba(238, 252, 247, 0.62);
   font-size: 11px;
   line-height: 1.45;
@@ -239,7 +246,7 @@
 .simReadinessHead {
   min-width: 0;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
@@ -264,10 +271,62 @@
 }
 
 .simReadinessHead small {
-  max-width: 360px;
+  max-width: 520px;
   color: rgba(238, 252, 247, 0.62);
   font-size: 11px;
   line-height: 1.45;
+}
+
+.compactDrawer {
+  min-width: 0;
+}
+
+.compactDrawer > summary,
+.setupDrawer > summary,
+.nestedSettings > summary,
+.modelDrawer > summary {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 9px;
+  border: 1px solid rgba(157, 234, 207, 0.14);
+  border-radius: 7px;
+  background: rgba(157, 234, 207, 0.055);
+  color: rgba(238, 252, 247, 0.82);
+  cursor: pointer;
+  font-size: 11.5px;
+  font-weight: 900;
+  list-style: none;
+}
+
+.compactDrawer > summary::-webkit-details-marker,
+.setupDrawer > summary::-webkit-details-marker,
+.nestedSettings > summary::-webkit-details-marker,
+.modelDrawer > summary::-webkit-details-marker {
+  display: none;
+}
+
+.compactDrawer > summary::after,
+.setupDrawer > summary::after,
+.nestedSettings > summary::after,
+.modelDrawer > summary::after {
+  content: "+";
+  color: #8ef0c7;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.compactDrawer[open] > summary::after,
+.setupDrawer[open] > summary::after,
+.nestedSettings[open] > summary::after,
+.modelDrawer[open] > summary::after {
+  content: "-";
+}
+
+.compactDrawer[open] > summary {
+  margin-bottom: 8px;
 }
 
 .simReadinessCards {
@@ -2241,6 +2300,15 @@
     align-items: start;
   }
 
+  .nextActionPanel {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .quickActionGrid {
+    justify-content: flex-start;
+  }
+
   .debugCenterPane,
   .debugMainGrid {
     overflow: visible;
@@ -3208,13 +3276,23 @@
   display: grid;
 }
 
+.setupDrawer {
+  min-width: 0;
+}
+
+.setupDrawer[open] > summary,
+.nestedSettings[open] > summary,
+.modelDrawer[open] > summary {
+  margin-bottom: 7px;
+}
+
 .windowCreateForm {
   display: grid;
   gap: 7px;
-  padding: 9px;
-  border: 1px solid rgba(88, 240, 255, 0.18);
-  border-radius: 8px;
-  background: rgba(88, 240, 255, 0.055);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .windowCreateForm strong {
@@ -3278,6 +3356,117 @@
 
 .createFullField {
   grid-column: 1 / -1;
+}
+
+.nestedSettings {
+  display: grid;
+  gap: 7px;
+}
+
+.nestedSettings[open] {
+  padding: 7px;
+  border: 1px solid rgba(88, 240, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(1, 8, 12, 0.34);
+}
+
+.overviewPage {
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  padding: 12px;
+  overflow: auto;
+}
+
+.nextActionPanel,
+.modelDrawer {
+  min-width: 0;
+  border: 1px solid rgba(88, 240, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(2, 14, 22, 0.68);
+}
+
+.nextActionPanel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 12px;
+}
+
+.nextActionPanel div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.nextActionPanel span,
+.modelDrawer span {
+  color: #8ef0c7;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.nextActionPanel strong {
+  color: #eefcf7;
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+.nextActionPanel p {
+  max-width: 720px;
+  margin: 0;
+  color: rgba(238, 252, 247, 0.64);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.quickActionGrid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.quickActionGrid form {
+  display: contents;
+}
+
+.quickActionGrid button,
+.quickActionGrid a,
+.quickActionGrid span {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  border: 1px solid rgba(120, 230, 170, 0.36);
+  border-radius: 7px;
+  background: rgba(120, 230, 170, 0.12);
+  color: #dffff0;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 900;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.quickActionGrid span {
+  border-color: rgba(167, 219, 255, 0.14);
+  background: rgba(167, 219, 255, 0.05);
+  color: rgba(220, 240, 255, 0.48);
+}
+
+.quickActionGrid button:disabled {
+  cursor: not-allowed;
+  border-color: rgba(167, 219, 255, 0.16);
+  background: rgba(167, 219, 255, 0.05);
+  color: rgba(220, 240, 255, 0.38);
+}
+
+.modelDrawer {
+  padding: 10px;
 }
 
 .windowRowActions {
@@ -4394,5 +4583,14 @@ button.threadChip:hover {
   .dataDrawerRail,
   .dataFocusPanel {
     overflow: visible;
+  }
+
+  .nextActionPanel {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .quickActionGrid {
+    justify-content: flex-start;
   }
 }

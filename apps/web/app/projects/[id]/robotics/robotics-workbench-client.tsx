@@ -138,33 +138,40 @@ function qualityDetailLine(device: AnyRecord) {
 function DeviceQualityStrip({ devices }: { devices: AnyRecord[] }) {
   const visibleDevices = devices.slice(0, 4);
   const readyCount = devices.filter(qualityReady).length;
+  const headline = devices.length ? `${readyCount}/${devices.length} 台设备可标注` : "等待设备上传数据";
+  const latestReady = devices.find(qualityReady) ?? devices[0];
+  const latestLine = latestReady ? qualityDetailLine(latestReady) : "上传质量报告后显示最近一次采集结果。";
   return (
     <section className={styles.qualityStrip} aria-label="设备数据质量状态">
       <div className={styles.qualityStripHead}>
         <div>
           <span>数据质量门</span>
-          <strong>{devices.length ? `${readyCount}/${devices.length} 台设备可进入标注` : "等待设备上传数据"}</strong>
+          <strong>{headline}</strong>
         </div>
-        <small>只读数据资产状态，不代表允许运动，也不下发 CAN 或电机命令。</small>
+        <small>{latestLine}</small>
       </div>
-      <div className={styles.qualityCards}>
-        {visibleDevices.length ? visibleDevices.map((device) => {
-          const session = qualitySession(device);
-          return (
-            <article key={text(device.device_id, text(session.session_id, "device"))} data-ready={qualityReady(device) ? "true" : "false"}>
-              <span>{qualityStatusText(device)}</span>
-              <strong>{text(device.robot_id, "未命名设备")}</strong>
-              <p>{text(device.device_id, "-")} · {qualityDetailLine(device)}</p>
+      <details className={styles.compactDrawer}>
+        <summary>查看设备详情</summary>
+        <div className={styles.qualityCards}>
+          {visibleDevices.length ? visibleDevices.map((device) => {
+            const session = qualitySession(device);
+            return (
+              <article key={text(device.device_id, text(session.session_id, "device"))} data-ready={qualityReady(device) ? "true" : "false"}>
+                <span>{qualityStatusText(device)}</span>
+                <strong>{text(device.robot_id, "未命名设备")}</strong>
+                <p>{text(device.device_id, "-")} · {qualityDetailLine(device)}</p>
+              </article>
+            );
+          }) : (
+            <article data-ready="false">
+              <span>等待数据</span>
+              <strong>还没有可评估的采集 session</strong>
+              <p>先从设备侧上传带 quality_report 的 manifest，再进入标注和导出。</p>
             </article>
-          );
-        }) : (
-          <article data-ready="false">
-            <span>等待数据</span>
-            <strong>还没有可评估的采集 session</strong>
-            <p>先从设备侧上传带 quality_report 的 manifest，再进入标注和导出。</p>
-          </article>
-        )}
-      </div>
+          )}
+        </div>
+      </details>
+      <em>只读数据状态，不代表允许运动，也不下发 CAN 或电机命令。</em>
     </section>
   );
 }
@@ -196,15 +203,18 @@ function SimulationReadinessStrip() {
         </div>
         <small>这是只读研发流程提示，不是运动许可，也不会触发真实设备动作。</small>
       </div>
-      <div className={styles.simReadinessCards}>
-        {steps.map((step) => (
-          <article key={step.title}>
-            <span>{step.state}</span>
-            <strong>{step.title}</strong>
-            <p>{step.detail}</p>
-          </article>
-        ))}
-      </div>
+      <details className={styles.compactDrawer}>
+        <summary>查看推荐流程</summary>
+        <div className={styles.simReadinessCards}>
+          {steps.map((step) => (
+            <article key={step.title}>
+              <span>{step.state}</span>
+              <strong>{step.title}</strong>
+              <p>{step.detail}</p>
+            </article>
+          ))}
+        </div>
+      </details>
     </section>
   );
 }
@@ -1385,63 +1395,68 @@ export function RoboticsWorkbenchClient({
               <input type="hidden" name="computer_node_id" value="all" />
               <button type="submit" disabled={!computerCount}>扫描真实接口</button>
             </form>
-            <form action={创建机器人调试窗口.bind(null, projectId)} onSubmit={previewCreateWindow} className={styles.windowCreateForm}>
-              <input type="hidden" name="return_to" value={`/projects/${projectId}/robotics`} />
-              <strong>创建调试窗口</strong>
-              <input name="window_name" placeholder="窗口名，例如 产线传感器串口" />
-              <label className={styles.createFullField}>
-                <span>窗口类型</span>
-                <select name="window_type" defaultValue="serial" aria-label="窗口类型">
-                  <option value="serial">串口</option>
-                  <option value="can">CAN</option>
-                  <option value="usb">USB</option>
-                  <option value="spi-can">SPI-CAN</option>
-                  <option value="ros">ROS</option>
-                </select>
-              </label>
-              <label className={styles.createFullField}>
-                <span>绑定真实设备</span>
-                <select name="resource_id" aria-label="绑定真实设备">
-                  {usableWindows.map((resource) => (
-                    <option key={resource.id} value={resource.id}>{resource.name} · {resource.computerLabel} · {resource.computerState}</option>
-                  ))}
-                </select>
-              </label>
-              <div className={styles.createParamGrid}>
-                <label>
-                  <span>波特率</span>
-                  <select name="baud_rate" defaultValue="115200" aria-label="波特率">
-                    {["9600", "19200", "38400", "57600", "115200", "230400", "460800", "921600", "1000000", "2000000"].map((rate) => (
-                      <option key={rate} value={rate}>{rate}</option>
+            <details className={styles.setupDrawer}>
+              <summary>创建调试窗口</summary>
+              <form action={创建机器人调试窗口.bind(null, projectId)} onSubmit={previewCreateWindow} className={styles.windowCreateForm}>
+                <input type="hidden" name="return_to" value={`/projects/${projectId}/robotics`} />
+                <input name="window_name" placeholder="窗口名，例如 产线传感器串口" />
+                <label className={styles.createFullField}>
+                  <span>窗口类型</span>
+                  <select name="window_type" defaultValue="serial" aria-label="窗口类型">
+                    <option value="serial">串口</option>
+                    <option value="can">CAN</option>
+                    <option value="usb">USB</option>
+                    <option value="spi-can">SPI-CAN</option>
+                    <option value="ros">ROS</option>
+                  </select>
+                </label>
+                <label className={styles.createFullField}>
+                  <span>绑定真实设备</span>
+                  <select name="resource_id" aria-label="绑定真实设备">
+                    {usableWindows.map((resource) => (
+                      <option key={resource.id} value={resource.id}>{resource.name} · {resource.computerLabel} · {resource.computerState}</option>
                     ))}
                   </select>
                 </label>
-                <label>
-                  <span>采样频率</span>
-                  <input name="sample_hz" defaultValue="100" aria-label="采样频率" />
-                </label>
-              </div>
-              <label className={styles.createFullField}>
-                <span>采集通道</span>
-                <input name="channels" defaultValue="time,signal.value,status.code,event.count" aria-label="采集通道" />
-              </label>
-              <label className={styles.createFullField}>
-                <span>协助 NPC</span>
-                <select name="bound_npc" aria-label="协助 NPC" defaultValue={defaultNpcId} onChange={(event) => setDefaultNpcId(event.target.value)}>
-                  <option value="">不绑定 NPC</option>
-                  {npcSeats.map((seat, index) => {
-                    const name = seatName(seat, `NPC ${index + 1}`);
-                    return <option key={seatId(seat, name)} value={seatId(seat, name)}>{name}</option>;
-                  })}
-                </select>
-              </label>
-              <button type="submit" disabled={!usableWindows.length}>创建并打开</button>
-              <small>
-                {usableWindows.length
-                  ? `${usableWindows.length} 个真实设备已满足“可读取 + 电脑可排队”`
-                  : `先让目标电脑进入“可投递”或“可排队”，并确认已扫描到可读取接口后再创建窗口。当前可投递 ${readyComputers} 台，可排队 ${queueableComputers} 台，需重连 ${reconnectComputers + unknownComputers} 台。`}
-              </small>
-            </form>
+                <details className={styles.nestedSettings}>
+                  <summary>参数和 NPC</summary>
+                  <div className={styles.createParamGrid}>
+                    <label>
+                      <span>波特率</span>
+                      <select name="baud_rate" defaultValue="115200" aria-label="波特率">
+                        {["9600", "19200", "38400", "57600", "115200", "230400", "460800", "921600", "1000000", "2000000"].map((rate) => (
+                          <option key={rate} value={rate}>{rate}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      <span>采样频率</span>
+                      <input name="sample_hz" defaultValue="100" aria-label="采样频率" />
+                    </label>
+                  </div>
+                  <label className={styles.createFullField}>
+                    <span>采集通道</span>
+                    <input name="channels" defaultValue="time,signal.value,status.code,event.count" aria-label="采集通道" />
+                  </label>
+                  <label className={styles.createFullField}>
+                    <span>协助 NPC</span>
+                    <select name="bound_npc" aria-label="协助 NPC" defaultValue={defaultNpcId} onChange={(event) => setDefaultNpcId(event.target.value)}>
+                      <option value="">不绑定 NPC</option>
+                      {npcSeats.map((seat, index) => {
+                        const name = seatName(seat, `NPC ${index + 1}`);
+                        return <option key={seatId(seat, name)} value={seatId(seat, name)}>{name}</option>;
+                      })}
+                    </select>
+                  </label>
+                </details>
+                <button type="submit" disabled={!usableWindows.length}>创建并打开</button>
+                <small>
+                  {usableWindows.length
+                    ? `${usableWindows.length} 个真实设备可绑定`
+                    : "先扫描并让目标电脑可排队。"}
+                </small>
+              </form>
+            </details>
           </div>
           <ul className={workbenchStyles.groupList}>
             <li className={workbenchStyles.group}>
@@ -1490,8 +1505,6 @@ export function RoboticsWorkbenchClient({
         <section className={workbenchStyles.main} data-mode={openWindows.length > 0 ? "chat" : "setup"}>
           {notice ? <div className={styles.inlineNotice} data-tone="success">{notice}</div> : null}
           {error ? <div className={styles.inlineNotice} data-tone="danger">{error}</div> : null}
-          <DeviceQualityStrip devices={deviceQualityDevices} />
-          <SimulationReadinessStrip />
           {openWindows.length ? (
             <div className={workbenchStyles.tileGrid} data-tile-count={openWindows.length}>
               {openWindows.map((window) => (
@@ -1508,22 +1521,37 @@ export function RoboticsWorkbenchClient({
               ))}
             </div>
           ) : (
-            <div className={workbenchStyles.placeholder}>
-              <strong>{configuredWindows.length ? "点击左栏调试窗口的 + 号打开瓷砖" : "先创建一个调试窗口"}</strong>
-              <p>{configuredWindows.length ? "每个调试瓷砖都有自己的大终端、数据标注和图表实验，不会在页面之间来回跳。" : "从左栏创建窗口：命名、选择串口/CAN/USB 等类型，再绑定真实扫描设备和参数。"}</p>
-              {!configuredWindows.length ? (
+            <div className={styles.overviewPage}>
+              <DeviceQualityStrip devices={deviceQualityDevices} />
+              <SimulationReadinessStrip />
+              <section className={styles.nextActionPanel} aria-label="下一步操作">
+                <div>
+                  <span>下一步</span>
+                  <strong>{configuredWindows.length ? "打开一个窗口开始采集或标注" : "先扫描设备，再创建窗口"}</strong>
+                  <p>{configuredWindows.length ? "左栏只做索引；打开窗口后再进入终端、数据标注、图表实验或模型预览。" : "常用入口在这里，创建时只填必要项，参数和 NPC 可以在抽屉里展开。"}</p>
+                </div>
+                <div className={styles.quickActionGrid}>
+                  <form action={请求串口USB扫描.bind(null, projectId)}>
+                    <input type="hidden" name="return_to" value={`/projects/${projectId}/robotics`} />
+                    <input type="hidden" name="computer_node_id" value="all" />
+                    <button type="submit" disabled={!computerCount}>扫描接口</button>
+                  </form>
+                  <a href="#model-preview">导入模型</a>
+                  {configuredWindows[0] ? (
+                    <a href={windowsHref(projectId, [configuredWindows[0].id], defaultNpcId)}>打开最近窗口</a>
+                  ) : (
+                    <span>创建后打开窗口</span>
+                  )}
+                </div>
+              </section>
+              <details id="model-preview" className={styles.modelDrawer}>
+                <summary>模型预览</summary>
                 <div className={styles.emptyModelPreview}>
-                  <strong>也可以先导入 URDF 看模型</strong>
-                  <p>模型预览不依赖真实设备在线，适合先检查 link、joint、limit，再等执行电脑恢复后接入采集和回放。</p>
+                  <strong>导入 URDF 看结构</strong>
+                  <p>只检查 link、joint 和 limit；不发 ROS、不控制设备。</p>
                   <ModelImportInspector />
                 </div>
-              ) : null}
-              <form action={请求串口USB扫描.bind(null, projectId)} className={styles.emptyScanForm}>
-                <input type="hidden" name="return_to" value={`/projects/${projectId}/robotics`} />
-                <input type="hidden" name="computer_node_id" value="all" />
-                <button type="submit" disabled={!computerCount}>扫描真实接口</button>
-                <span>{computerCount ? "扫描结果只进入创建窗口的设备下拉，不会直接铺到左栏。" : "先在主页面接入至少一台电脑。"}</span>
-              </form>
+              </details>
             </div>
           )}
         </section>
