@@ -1193,7 +1193,7 @@ ros2 run rehab_arm_psoc_bridge build_manifest.py /home/pi/rehab_arm_logs \
 预览服务器同步计划：
 
 ```bash
-ros2 run rehab_arm_psoc_bridge sync_dry_run.py /home/pi/rehab_arm_logs/manifest.json \
+ros2 run rehab_arm_psoc_bridge sync_dry_run.py /home/pi/rehab_arm_logs/manifest_with_summary.json \
   --base-url http://server.example/api/rehab-arm/v1
 ```
 
@@ -1202,16 +1202,17 @@ ros2 run rehab_arm_psoc_bridge sync_dry_run.py /home/pi/rehab_arm_logs/manifest.
 - 输出 `schema_version=rehab_arm_sync_dry_run_v1`。
 - 输出计划请求，不发真实 HTTP。
 - `ok=false` 的 session 只出现在 `skipped_sessions`，不会生成文件上传请求。
+- 如果输入的是 `manifest_with_summary.json`，`/sessions/manifest` 计划请求中应保留每个 session 的 `summary` 字段。
 
 安全上传入口：
 
 ```bash
 # 默认安全模式：只打印计划，不发 HTTP
-ros2 run rehab_arm_psoc_bridge sync_upload.py /home/pi/rehab_arm_logs/manifest.json \
+ros2 run rehab_arm_psoc_bridge sync_upload.py /home/pi/rehab_arm_logs/manifest_with_summary.json \
   --base-url http://server.example/api/rehab-arm/v1
 
 # 只有确认服务器 endpoint 后才使用；会真实发 HTTP
-ros2 run rehab_arm_psoc_bridge sync_upload.py /home/pi/rehab_arm_logs/manifest.json \
+ros2 run rehab_arm_psoc_bridge sync_upload.py /home/pi/rehab_arm_logs/manifest_with_summary.json \
   --base-url http://server.example/api/rehab-arm/v1 \
   --execute
 ```

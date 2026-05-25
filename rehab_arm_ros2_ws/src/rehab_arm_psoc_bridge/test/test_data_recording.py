@@ -333,6 +333,43 @@ class DataRecordingTests(unittest.TestCase):
         self.assertIn('http://server.local/api/sessions/s1/files', urls)
         self.assertIn('http://server.local/api/sessions/s1/sync-status', urls)
 
+    def test_build_sync_dry_run_plan_preserves_manifest_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / 's1.jsonl'
+            path.write_text('{"record_type":"session_metadata"}\n', encoding='utf-8')
+            manifest = {
+                'schema_version': 'rehab_arm_manifest_v1',
+                'sessions': [
+                    {
+                        'ok': True,
+                        'path': str(path),
+                        'file_name': 's1.jsonl',
+                        'session_id': 's1',
+                        'device_id': 'nanopi-m5',
+                        'robot_id': 'rehab-arm-alpha',
+                        'software_version': 'dev',
+                        'record_count': 1,
+                        'summary': {
+                            'schema_version': 'rehab_arm_recording_summary_v1',
+                            'moving_joint_count': 5,
+                        },
+                    },
+                ],
+            }
+
+            plan = build_sync_dry_run_plan(manifest, 'http://server.local/api')
+
+        manifest_request = next(
+            request for request in plan['requests']
+            if request['url'] == 'http://server.local/api/sessions/manifest'
+        )
+        posted_manifest = manifest_request['json']['manifest']
+        self.assertEqual(
+            posted_manifest['sessions'][0]['summary']['schema_version'],
+            'rehab_arm_recording_summary_v1',
+        )
+        self.assertEqual(posted_manifest['sessions'][0]['summary']['moving_joint_count'], 5)
+
     def test_build_sync_dry_run_plan_skips_incomplete_sessions(self) -> None:
         manifest = {
             'schema_version': 'rehab_arm_manifest_v1',

@@ -1869,6 +1869,7 @@ RuntimeError: Unable to convert call argument '0' to Python object
 
 - 本地和 NanoPi 已验证 `--include-summary`。
 - 旧默认 manifest 单测仍确认不含 `summary` 字段。
+- `sync_dry_run.py` 已验证会把 manifest 中的 `summary` 原样放进 `/sessions/manifest` 计划请求。
 
 ### `/tmp` 里的验证文件可能在重启后消失
 
