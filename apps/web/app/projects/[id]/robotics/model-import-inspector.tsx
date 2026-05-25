@@ -86,10 +86,11 @@ function UrdfPreview({ urdfText, fileName }: { urdfText: string; fileName: strin
         setViewerState("正在加载 three.js / urdf-loader");
         const THREE = await import("three");
         const { default: URDFLoader } = await import("urdf-loader");
-        if (disposed || !mountRef.current) return;
+        const previewMount = mountRef.current;
+        if (disposed || !previewMount) return;
 
-        const width = Math.max(320, mount.clientWidth || 640);
-        const height = Math.max(260, mount.clientHeight || 320);
+        const width = Math.max(320, previewMount.clientWidth || 640);
+        const height = Math.max(260, previewMount.clientHeight || 320);
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x07110f);
 
@@ -101,7 +102,7 @@ function UrdfPreview({ urdfText, fileName }: { urdfText: string; fileName: strin
         renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
         renderer.setSize(width, height);
         renderer.domElement.setAttribute("aria-label", `${fileName} URDF 预览`);
-        mount.replaceChildren(renderer.domElement);
+        previewMount.replaceChildren(renderer.domElement);
 
         scene.add(new THREE.HemisphereLight(0xeefcf7, 0x17312a, 2.4));
         const keyLight = new THREE.DirectionalLight(0xf1d06b, 1.2);
@@ -145,7 +146,7 @@ function UrdfPreview({ urdfText, fileName }: { urdfText: string; fileName: strin
           window.cancelAnimationFrame(frame);
           renderer.dispose();
           scene.clear();
-          if (mount.contains(renderer.domElement)) mount.removeChild(renderer.domElement);
+          if (previewMount.contains(renderer.domElement)) previewMount.removeChild(renderer.domElement);
         };
       } catch {
         setViewerState("3D 预览失败，仍可使用下方结构解析结果");
