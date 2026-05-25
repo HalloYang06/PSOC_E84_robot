@@ -24,9 +24,20 @@ backend. It answers:
 - which adapter produced the source data.
 
 The rehabilitation arm sync endpoint currently produces this generic index from
-`manifest_with_summary` uploads. It may include `adapter: "rehab_arm_sync_v1"`
-for traceability, but UI copy should say "device data quality" instead of
-"rehab arm quality".
+manifest uploads. A session may include:
+
+- `summary`: stream counts, moving joint count, motor entry counts, and safety
+  state statistics;
+- `quality_report`: the upstream data quality gate result, including `ok`,
+  `errors`, `warnings`, and `criteria`.
+
+When `quality_report` is present, the platform treats `quality_report.ok=false`
+as a blocking condition for annotation/export readiness and surfaces its errors
+as blocking reasons. When only `summary` is present, the platform derives a best
+effort quality index from the summary.
+
+The index may include `adapter: "rehab_arm_sync_v1"` for traceability, but UI
+copy should say "device data quality" instead of "rehab arm quality".
 
 ## Safety Boundary
 
@@ -63,4 +74,3 @@ The device data workbench should show:
 
 The workbench should not expose internal words such as adapter, bridge, raw UUID,
 session JSONL, or local path in normal user-facing copy.
-

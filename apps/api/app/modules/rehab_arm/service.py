@@ -160,7 +160,10 @@ def _manifest_sessions(manifest_record: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _session_quality(session: dict[str, Any]) -> dict[str, Any]:
+    quality_report = session.get("quality_report") if isinstance(session.get("quality_report"), dict) else {}
     summary = session.get("summary") if isinstance(session.get("summary"), dict) else {}
+    if not summary and isinstance(quality_report.get("summary"), dict):
+        summary = quality_report["summary"]
     topic_counts = summary.get("topic_counts") if isinstance(summary.get("topic_counts"), dict) else {}
     motion_allowed_counts = summary.get("motion_allowed_counts") if isinstance(summary.get("motion_allowed_counts"), dict) else {}
     moving_joint_count = int(summary.get("moving_joint_count") or 0)
@@ -169,10 +172,15 @@ def _session_quality(session: dict[str, Any]) -> dict[str, Any]:
     motion_allowed_true = int(motion_allowed_counts.get("true") or 0)
     errors: list[str] = []
     warnings: list[str] = []
+    quality_report_ok = quality_report.get("ok")
     if session.get("ok") is not True:
         errors.extend([str(item) for item in session.get("errors", []) if item])
         if not errors:
             errors.append("session manifest marked not ok")
+    if quality_report and quality_report_ok is not True:
+        errors.extend([str(item) for item in quality_report.get("errors", []) if item])
+        if not errors:
+            errors.append("quality report marked not ok")
     if not summary:
         warnings.append("session has no summary; label/export can start after data quality summary is uploaded")
     if summary and not topic_counts:
@@ -196,6 +204,9 @@ def _session_quality(session: dict[str, Any]) -> dict[str, Any]:
         "topic_counts": topic_counts,
         "motion_allowed_true_count": motion_allowed_true,
         "summary_schema": summary.get("schema_version") or "",
+        "quality_report_schema": quality_report.get("schema_version") or "",
+        "quality_report_ok": quality_report_ok,
+        "quality_criteria": quality_report.get("criteria") if isinstance(quality_report.get("criteria"), dict) else {},
         "source_schema": session.get("schema_version") or "",
     }
 

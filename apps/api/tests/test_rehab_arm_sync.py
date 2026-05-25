@@ -55,6 +55,19 @@ def test_rehab_arm_sync_endpoints_store_non_realtime_data(tmp_path, monkeypatch)
                             "motor_entry_count_max": 5,
                             "motion_allowed_counts": {"true": 0, "false": 3, "missing": 0},
                         },
+                        "quality_report": {
+                            "schema_version": "rehab_arm_recording_quality_v1",
+                            "ok": True,
+                            "errors": [],
+                            "warnings": [],
+                            "criteria": {
+                                "min_joint_messages": 2,
+                                "min_moving_joints": 5,
+                                "require_motor_state": True,
+                                "min_motor_entry_count": 5,
+                                "allow_motion_allowed_true": False,
+                            },
+                        },
                     }
                 ],
             }
@@ -93,8 +106,66 @@ def test_rehab_arm_sync_endpoints_store_non_realtime_data(tmp_path, monkeypatch)
     assert quality["annotation_ready"] is True
     assert quality["annotatable_session_count"] == 1
     assert quality["latest_session"]["moving_joint_count"] == 5
+    assert quality["latest_session"]["quality_report_schema"] == "rehab_arm_recording_quality_v1"
+    assert quality["latest_session"]["quality_report_ok"] is True
+    assert quality["latest_session"]["quality_criteria"]["min_moving_joints"] == 5
     assert quality["control_boundary"] == "data_quality_only_not_motion_permission"
     assert quality["adapter"] == "rehab_arm_sync_v1"
+    get_settings.cache_clear()
+
+
+def test_rehab_arm_manifest_quality_report_can_gate_annotation(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
+    get_settings.cache_clear()
+
+    response = client.post(
+        "/api/rehab-arm/v1/sessions/manifest",
+        json={
+            "manifest": {
+                "schema_version": "rehab_arm_manifest_v1",
+                "sessions": [
+                    {
+                        "ok": True,
+                        "session_id": "static-check",
+                        "device_id": "nanopi-m5",
+                        "robot_id": "rehab-arm-alpha",
+                        "file_name": "static-check.jsonl",
+                        "record_count": 4,
+                        "quality_report": {
+                            "schema_version": "rehab_arm_recording_quality_v1",
+                            "ok": False,
+                            "errors": ["moving joint count 0 below required 1"],
+                            "warnings": [],
+                            "criteria": {
+                                "min_joint_messages": 2,
+                                "min_moving_joints": 1,
+                                "require_motor_state": False,
+                                "min_motor_entry_count": 0,
+                                "allow_motion_allowed_true": False,
+                            },
+                            "summary": {
+                                "schema_version": "rehab_arm_recording_summary_v1",
+                                "topic_counts": {"/joint_states": 2, "/rehab_arm/safety_state": 1, "/rehab_arm/sensor_state": 1},
+                                "moving_joint_count": 0,
+                                "motor_entry_count_min": 0,
+                                "motor_entry_count_max": 0,
+                                "motion_allowed_counts": {"true": 0, "false": 1, "missing": 0},
+                            },
+                        },
+                    }
+                ],
+            }
+        },
+    )
+    assert response.status_code == 200
+
+    dashboard = client.get("/api/rehab-arm/v1/devices/dashboard")
+    quality = dashboard.json()["data"]["devices"][0]["data_quality"]
+    assert quality["annotation_ready"] is False
+    assert quality["annotatable_session_count"] == 0
+    assert quality["latest_session"]["quality_report_ok"] is False
+    assert quality["latest_session"]["moving_joint_count"] == 0
+    assert quality["blocking_reasons"] == ["moving joint count 0 below required 1"]
     get_settings.cache_clear()
 
 
