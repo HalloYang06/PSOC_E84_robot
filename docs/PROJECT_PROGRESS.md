@@ -279,14 +279,24 @@
   - 监听 `0x320` 的日志只有 `sniff 0x320 start/done`，未捕获真实 `0x320`。
   - 复测后 `can0` 仍为 `ERROR-ACTIVE`，`bus-errors/error-pass/bus-off` 均为 0。
   - 本轮没有发送真实 `0x320`，没有做任何电机运动测试。
+- 完成 M33 `0x320` logging-only 安全补丁本地实现和编译：
+  - 本地工程：`D:\RT-ThreadStudio\workspace\yiliao_m33`。
+  - 修改 `applications/control/control_layer_cfg.h`，新增 `CONTROL_ROS_COMMAND_LOGGING_ONLY`，默认 `1U`。
+  - 修改 `applications/control/control_layer.c`，让 M33 收到并解析 `0x320` 后只记录 `s_last_ros_cmd`、打印 payload/字段、安全拒绝结果，然后立即返回。
+  - logging-only 模式下不再调用 `ctrl_enqueue_ros_command()`，不再调用 `ctrl_apply_ros_command()`，因此不应再出现 `[control] ros cmd direct apply failed...`。
+  - 日志格式目标：
+    - `RX 320 dlc=8 data=0300390005000000`
+    - `cmd=0x03 name=set_target joint_id=0 deg_x10=57 target_mrad=99 rpm=5 torque_ma=0`
+    - `decision=reject reason=logging_only_no_motor_output safety_state=limited`
+  - 本地编译命令通过：
+    - `$env:Path='D:\RT-ThreadStudio\repo\Extract\ToolChain_Support_Packages\ARM\GNU_Tools_for_ARM_Embedded_Processors\13.3\bin;' + $env:Path; mingw32-make -C Debug all -j2`
+  - 编译产物已生成在 M33 工程 `Debug/` 下：`rtthread.elf`、`rtthread.bin`、`rtthread.hex`。
+  - 编译仍保留工程既有告警：`rtthread.elf has a LOAD segment with RWX permissions`，以及 post-build 中 `arm-none-eabi-objcopy: interleave must be positive` 被 makefile 标记为 ignored；本次新增代码没有导致编译失败。
 
 ## 进行中
 
-- 下一步准备明确 `0x320` payload 与 M33 固件日志对照方法：
-  - 协议 V1 已写入 `docs/PSOC_CAN_PROTOCOL_V1.md`。
-  - M33 日志固件参考已写入 `docs/M33_0X320_LOGGER_GUIDE.md`。
-  - NanoPi 侧已发出单帧 `0x320`，等待用户提供 M33 串口日志。
-  - 需要确认 M33 日志字段与 NanoPi 解码结果一致，并且 `decision` 仍为 logging-only reject。
+- 下一步等待用户烧录本地 M33 logging-only 固件。
+- 烧录后只做单帧 `0x320` 日志对照，不给电机上电，不做运动测试。
 
 ## 待确认
 
@@ -305,9 +315,9 @@
 严格按“一次只做一个能测试的小目标”推进：
 
 1. 修改 M33 固件：`0x320` 当前阶段必须进入 logging-only 路径，不得进入 direct apply/电机控制路径。
-2. M33 日志必须打印 `RX 320 dlc=8 data=0300390005000000` 和完整字段：`cmd/joint_id/deg_x10/target_deg/target_rad/rpm/torque_ma`。
-3. M33 必须打印 `decision=reject reason=logging_only_no_motor_output safety_state=limited` 或等价安全拒绝。
-4. 用户重新烧录 M33 logging-only 固件后，再由 NanoPi 发送单帧复测。
+2. 用户重新烧录 M33 logging-only 固件后，再由 NanoPi 发送单帧复测。
+3. M33 日志必须打印 `RX 320 dlc=8 data=0300390005000000` 和完整字段。
+4. M33 必须打印 `decision=reject reason=logging_only_no_motor_output safety_state=limited` 或等价安全拒绝。
 5. 对照通过前不要给电机驱动上电，不要继续做运动测试。
 6. 离线继续推进：可继续给 bridge 的安全门控补单元测试，不依赖硬件。
 

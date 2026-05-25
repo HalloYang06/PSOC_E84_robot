@@ -687,6 +687,54 @@ safety_state=limited
 
 - 阻塞在 M33 固件 logging-only 修改和重新烧录。
 
+### M33 logging-only 改完后必须本地编译通过再让用户烧录
+
+现象：
+
+- 需要把 M33 `0x320` 从 direct apply 路径切到 logging-only。
+- 直接在命令行运行 `mingw32-make -C Debug all -j2` 时最初找不到 `arm-none-eabi-gcc`。
+
+环境：
+
+- Windows 本机工程：`D:\RT-ThreadStudio\workspace\yiliao_m33`
+- RT-Thread Studio 自带 ARM GCC。
+
+排查：
+
+- 本机找到了可用编译器：
+
+```text
+D:\RT-ThreadStudio\repo\Extract\ToolChain_Support_Packages\ARM\GNU_Tools_for_ARM_Embedded_Processors\13.3\bin\arm-none-eabi-gcc.exe
+```
+
+解决：
+
+- 只在当前 PowerShell 会话临时加 PATH，不改系统环境：
+
+```powershell
+$env:Path='D:\RT-ThreadStudio\repo\Extract\ToolChain_Support_Packages\ARM\GNU_Tools_for_ARM_Embedded_Processors\13.3\bin;' + $env:Path
+mingw32-make -C Debug all -j2
+```
+
+- 编译通过后才允许进入“请用户烧录”阶段。
+
+技巧：
+
+- 不要让用户烧录未经本地编译验证的固件。
+- logging-only 模式下 `0x320` 必须在解析后立即返回，不能进入 `ctrl_apply_ros_command()` 或任何电机控制路径。
+- 短帧日志打印应先把 payload 补零到 8 字节，避免串口日志读到旧数据。
+
+状态：
+
+- M33 本地编译已通过。
+- 本次新增的安全补丁目标日志为：
+
+```text
+RX 320 dlc=8 data=0300390005000000
+cmd=0x03 name=set_target joint_id=0 deg_x10=57 target_mrad=99 rpm=5 torque_ma=0
+decision=reject reason=logging_only_no_motor_output safety_state=limited
+```
+
 ### 没硬件时也要守住协议回归测试
 
 场景：

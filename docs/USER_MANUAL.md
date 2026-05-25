@@ -426,6 +426,43 @@ safety_state=limited
 
 这说明 M33 收到了 `cmd=3 joint=0`，但固件可能进入了 direct apply 控制应用路径。当前阶段不允许继续这样测试；必须先把 M33 固件改成 logging-only，不驱动、不 direct apply，只打印字段和安全拒绝原因。
 
+当前本地 M33 工程已经完成 logging-only 补丁并编译通过：
+
+```text
+D:\RT-ThreadStudio\workspace\yiliao_m33
+```
+
+关键安全开关：
+
+```c
+#define CONTROL_ROS_COMMAND_LOGGING_ONLY   1U
+```
+
+本地编译命令：
+
+```powershell
+cd D:\RT-ThreadStudio\workspace\yiliao_m33
+$env:Path='D:\RT-ThreadStudio\repo\Extract\ToolChain_Support_Packages\ARM\GNU_Tools_for_ARM_Embedded_Processors\13.3\bin;' + $env:Path
+mingw32-make -C Debug all -j2
+```
+
+编译产物：
+
+```text
+D:\RT-ThreadStudio\workspace\yiliao_m33\Debug\rtthread.elf
+D:\RT-ThreadStudio\workspace\yiliao_m33\Debug\rtthread.bin
+D:\RT-ThreadStudio\workspace\yiliao_m33\Debug\rtthread.hex
+```
+
+烧录后复测要求：
+
+- 电机驱动仍然断开。
+- 不穿戴在人身上。
+- NanoPi 先只测 `0x321 -> 0x322` heartbeat/status。
+- 再临时启动 bridge：`enable_target_tx:=true`。
+- 只发布一次 `shoulder_lift_joint=0.1 rad` 的单关节轨迹。
+- M33 串口必须看到 logging-only reject 日志，而不是 `ros cmd direct apply failed`。
+
 ### 4.4 离线协议工具测试
 
 没有硬件、不能上电时，也可以先跑 `0x320` 编码/解码工具回归测试：
