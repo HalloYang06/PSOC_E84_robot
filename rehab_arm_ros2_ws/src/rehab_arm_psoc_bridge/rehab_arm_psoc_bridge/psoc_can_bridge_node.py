@@ -18,6 +18,8 @@ from sensor_msgs.msg import JointState
 from std_msgs.msg import String
 from trajectory_msgs.msg import JointTrajectory
 
+from rehab_arm_psoc_bridge.psoc_status import parse_psoc_status_payload
+
 
 CAN_FRAME_FMT = '=IB3x8s'
 CAN_FRAME_SIZE = struct.calcsize(CAN_FRAME_FMT)
@@ -341,30 +343,9 @@ class PsocCanBridgeNode(Node):
     def handle_psoc_status(self, frame: CanFrame) -> None:
         self.last_status_time = time.monotonic()
         self.status_rx_count += 1
-        error_code = None
-        marker_ok = True
-        payload = {
-            'state': 'ok',
-            'source': 'psoc',
-            'id_hex': '0x322',
-            'data': frame.data.hex().upper(),
-        }
-        if len(frame.data) < 4:
-            payload['state'] = 'fault'
-            payload['detail'] = 'PSoC status too short'
-        else:
-            payload['marker'] = frame.data[0]
-            payload['seq'] = frame.data[1]
-            payload['motors'] = frame.data[2]
-            error_code = frame.data[3]
-            marker_ok = frame.data[0] == 0xA5
-            payload['error_code'] = error_code
-            if not marker_ok:
-                payload['state'] = 'fault'
-                payload['detail'] = 'invalid PSoC status marker'
-            elif error_code != 0:
-                payload['state'] = 'fault'
-        self.last_psoc_error_code = error_code
+        payload = parse_psoc_status_payload(frame.data)
+        error_code = payload.get('error_code')
+        self.last_psoc_error_code = error_code if isinstance(error_code, int) else None
         self.last_psoc_status_ok = payload['state'] == 'ok'
         self.safety_pub.publish(String(data=json.dumps(payload, separators=(',', ':'))))
 

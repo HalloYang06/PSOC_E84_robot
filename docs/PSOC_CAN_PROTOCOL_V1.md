@@ -51,6 +51,70 @@ NanoPi bridge 解析规则：
 - `error_code != 0` -> `fault`
 - 其他情况 -> `ok`
 
+### `0x322` V2 扩展状态草案
+
+为后续 M33 安全状态机预留以下 V2 格式。当前 M33 已烧录的 logging-only 固件仍可继续使用上面的 V1 legacy 格式；NanoPi bridge 会先判断 byte4..6 是否像 V2 枚举，如果不像，则按 V1 兼容解析。
+
+| Byte | 字段 | 类型 | 说明 |
+|---:|---|---|---|
+| 0 | `marker` | `uint8` | 固定 `0xA5` |
+| 1 | `seq` | `uint8` | 对应 heartbeat/status 序号 |
+| 2 | `motors` | `uint8` | M33 管理的电机/节点数量或摘要 |
+| 3 | `error_code` | `uint8` | `0` 表示无硬错误；非 0 强制 ROS 侧进入 `fault` |
+| 4 | `safety_state` | `uint8` | 见 safety state enum |
+| 5 | `control_mode` | `uint8` | 见 control mode enum |
+| 6 | `detail_code` | `uint8` | 限幅、拒绝、急停、故障原因 |
+| 7 | `heartbeat_age_100ms` | `uint8` | M33 看到的 NanoPi heartbeat 年龄，单位 100ms，饱和到 255 |
+
+Safety state enum:
+
+| 值 | 名称 | ROS `/rehab_arm/safety_state.state` |
+|---:|---|---|
+| `0` | `ok` | `ok` |
+| `1` | `limited` | `limited` |
+| `2` | `emergency_stop` | `emergency_stop` |
+| `3` | `fault` | `fault` |
+
+Control mode enum:
+
+| 值 | 名称 | 说明 |
+|---:|---|---|
+| `0` | `boot` | M33 刚启动或初始化中 |
+| `1` | `logging_only` | 只解析/打印/拒绝 `0x320`，不输出电机控制 |
+| `2` | `standby` | 待机，可收状态，不执行运动 |
+| `3` | `armed` | 已通过安全准备，但未执行轨迹 |
+| `4` | `active` | 正在执行经过安全审核的轨迹 |
+| `5` | `emergency_stop` | 急停保持 |
+
+Detail code enum:
+
+| 值 | 名称 | 说明 |
+|---:|---|---|
+| `0` | `none` | 无额外原因 |
+| `1` | `heartbeat_timeout` | NanoPi heartbeat 超时 |
+| `2` | `invalid_command` | `0x320` 命令或 DLC 无效 |
+| `3` | `invalid_joint` | 关节号不存在或未映射 |
+| `4` | `target_out_of_limit` | 目标角度超出 M33 最终限位 |
+| `5` | `velocity_out_of_limit` | 速度超限 |
+| `6` | `torque_out_of_limit` | 扭矩/电流超限 |
+| `7` | `emergency_stop` | 急停触发 |
+| `8` | `power_fault` | 供电异常 |
+| `9` | `motor_fault` | 电机/驱动故障 |
+| `10` | `logging_only_no_motor_output` | logging-only 阶段拒绝输出 |
+
+示例：
+
+```text
+V2 logging-only limited:
+0x322 [8] A5 02 07 00 01 01 0A 03
+
+解析:
+state=limited
+control_mode=logging_only
+detail=logging_only_no_motor_output
+heartbeat_age_ms=300
+```
+
 ## `0x320` Joint Target Command
 
 当前 NanoPi dry-run 编码格式：

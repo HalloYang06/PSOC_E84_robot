@@ -484,7 +484,7 @@ decision=reject reason=logging_only_no_motor_output safety_state=limited
 
 ### 4.4 离线协议工具测试
 
-没有硬件、不能上电时，也可以先跑 `0x320` 编码/解码工具回归测试：
+没有硬件、不能上电时，也可以先跑 `0x320` 编码/解码和 `0x322` 状态解析工具回归测试：
 
 ```bash
 cd D:\RT-ThreadStudio\workspace\_nanopi_rosnode_usbcan
@@ -493,8 +493,55 @@ python -m unittest discover -s rehab_arm_ros2_ws\src\rehab_arm_psoc_bridge\test 
 
 通过标准：
 
-- 10 个测试全部 `ok`。
+- 16 个测试全部 `ok`。
 - 覆盖合法编码、解码、负角度截断、超限拒绝、非有限数拒绝、未知关节拒绝、payload 长度错误和 unknown joint 可见性。
+- 覆盖 `0x322` V1 legacy 兼容、V2 limited/logging-only、emergency_stop、error_code 强制 fault、坏 marker 和短帧。
+
+NanoPi 上也可以跑 `0x322` 状态解析测试：
+
+```bash
+cd /home/pi/rehab_arm_ros2_ws
+python3 -m unittest discover -s src/rehab_arm_psoc_bridge/test -v
+```
+
+### 4.5 `0x322` V2 状态解析
+
+协议字段见：[PSOC_CAN_PROTOCOL_V1.md](PSOC_CAN_PROTOCOL_V1.md)。
+
+当前 NanoPi bridge 已支持两种 `0x322`：
+
+- V1 legacy：当前 M33 已验证格式，例如 `A5 03 07 00 A1 34 09 00`。
+- V2 扩展：后续 M33 将 byte4..7 解释为 `safety_state/control_mode/detail_code/heartbeat_age_100ms`。
+
+V2 logging-only 示例：
+
+```text
+0x322 [8] A5 02 07 00 01 01 0A 03
+```
+
+解析后 ROS `/rehab_arm/safety_state` 应包含：
+
+```json
+{"protocol_version":2,"state":"limited","control_mode":"logging_only","detail":"logging_only_no_motor_output","heartbeat_age_ms":300}
+```
+
+当前已验证：
+
+- bridge 在旧 M33 V1 帧下仍兼容，`/rehab_arm/safety_state` 包含 `protocol_version:1`。
+- 本阶段只验证 heartbeat/status，不需要发布 `JointTrajectory`，不需要发送 `0x320`。
+
+如果本机或 NanoPi 上有旧 bridge 进程，先清理再测：
+
+```bash
+pgrep -af 'psoc_can_bridge_node|rehab_arm_psoc_bridge'
+kill <pid>
+```
+
+如果 `ros2 topic echo` 启动太早提示不能判断类型，可以显式指定消息类型：
+
+```bash
+ros2 topic echo --once /rehab_arm/safety_state std_msgs/msg/String
+```
 
 ## 5. 当前真实 CAN ID
 

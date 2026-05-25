@@ -782,6 +782,71 @@ ip -details -statistics link show can0
 
 - 已记录。本次 `0x320` 对照本身不受影响，CAN 和 M33 串口日志均已验证。
 
+### ROS bridge 验证前要清理旧进程
+
+现象：
+
+- 已同步并重建新版 `rehab_arm_psoc_bridge`。
+- `ros2 topic echo /rehab_arm/safety_state` 仍看到旧格式 JSON，没有 `protocol_version` 字段。
+
+排查：
+
+- NanoPi 上还有旧 bridge 进程：
+
+```bash
+pgrep -af 'psoc_can_bridge_node|rehab_arm_psoc_bridge'
+```
+
+根因：
+
+- CAN raw socket 和 ROS topic 都可能同时存在多个 bridge 进程。
+- 旧进程继续发布 `/rehab_arm/safety_state`，会让测试看起来像新版没有生效。
+
+解决：
+
+```bash
+kill <旧 bridge pid>
+colcon build --symlink-install --packages-select rehab_arm_psoc_bridge
+```
+
+技巧：
+
+- 每次验证 bridge 行为前先 `pgrep`。
+- 如果怀疑是旧进程，清理后再看 `candump`、bridge 日志和 ROS topic。
+
+状态：
+
+- 已记录。本次清理旧进程后，NanoPi 能看到新版 `0x322` parser 输出 `protocol_version:1`。
+
+### `ros2 topic echo` 太早启动时显式指定消息类型
+
+现象：
+
+```text
+WARNING: topic [/rehab_arm/safety_state] does not appear to be published yet
+Could not determine the type for the passed topic
+```
+
+环境：
+
+- 远程脚本里先启动 `ros2 topic echo --once`，再启动短时 bridge。
+- topic 发布器还没完成发现，echo 无法推断消息类型。
+
+解决：
+
+```bash
+ros2 topic echo --once /rehab_arm/safety_state std_msgs/msg/String
+```
+
+技巧：
+
+- 短时自动化测试里显式指定 ROS message type，比等待 topic discovery 更稳定。
+- 如果 topic 本身是 JSON 字符串，抓到一条后再看里面的 `state/protocol_version/detail`。
+
+状态：
+
+- 已记录。后续 bridge topic 验证优先显式指定 `std_msgs/msg/String`。
+
 ### 没硬件时也要守住协议回归测试
 
 场景：

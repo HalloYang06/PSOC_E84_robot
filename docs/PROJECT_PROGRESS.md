@@ -313,13 +313,33 @@
   - 没有再出现 `[control] ros cmd direct apply failed...`。
   - 复测 `can0` 仍为 `ERROR-ACTIVE`，`bus-errors/error-pass/bus-off` 均为 0；再次发送 `0x321 seq=9` 收到 `0x322`。
   - 本轮只验证 ROS/NanoPi/CAN/M33 接收和安全拒绝链路，没有给电机驱动上电，没有做运动测试。
+- 完成 NanoPi bridge `0x322` V2 安全状态解析第一版：
+  - 新增 `rehab_arm_psoc_bridge/psoc_status.py`，把 M33 status payload 解析拆成纯 Python 函数。
+  - 新增 `test/test_psoc_status.py`，覆盖 V1 legacy 兼容、V2 limited/logging-only、emergency_stop、error_code 强制 fault、坏 marker、短帧。
+  - 更新 `psoc_can_bridge_node.py`，`handle_psoc_status()` 统一调用 `parse_psoc_status_payload()`。
+  - 更新 `docs/PSOC_CAN_PROTOCOL_V1.md`，定义 `0x322` V2 扩展字节：
+    - byte4 `safety_state`
+    - byte5 `control_mode`
+    - byte6 `detail_code`
+    - byte7 `heartbeat_age_100ms`
+  - 本地验证：
+    - `python -m unittest discover -s rehab_arm_ros2_ws\src\rehab_arm_psoc_bridge\test -v`
+    - 16 tests passed。
+    - `python -m py_compile ...psoc_status.py ...psoc_can_bridge_node.py` 通过。
+  - NanoPi 验证：
+    - 同步 `psoc_status.py`、`psoc_can_bridge_node.py`、`test_psoc_status.py` 到 `/home/pi/rehab_arm_ros2_ws`。
+    - `colcon build --symlink-install --packages-select rehab_arm_psoc_bridge` 通过。
+    - `python3 -m unittest discover -s src/rehab_arm_psoc_bridge/test -v` 在 NanoPi 上 6 tests passed。
+    - 清理旧 bridge 进程后重新启动 bridge，旧 M33 `0x322` 被解析为 V1 legacy，topic 输出包含 `protocol_version:1`。
+    - 本轮没有发布轨迹，没有发送真实 `0x320`，没有做电机运动测试。
+  - 复查 `can0` 仍为 `UP/LOWER_UP/ERROR-ACTIVE`，`bus-errors/error-pass/bus-off` 均为 0。
 
 ## 进行中
 
-- 下一步准备把 `0x320` 从单帧日志对照推进到 M33 侧正式安全接收状态机设计：
+- 下一步准备在 M33 侧实现 `0x322` V2 状态上报，但仍保持 `0x320` logging-only：
   - 仍保持 `CONTROL_ROS_COMMAND_LOGGING_ONLY=1U`。
-  - 先定义 M33 对 `set_target` 的限位、限速、急停、heartbeat 超时和错误码上报。
-  - 在真实电机运动前，先做 M33 内部状态机日志/模拟执行测试。
+  - 先让 M33 将当前 logging-only 状态上报为 `safety_state=limited`、`control_mode=logging_only`、`detail=logging_only_no_motor_output`。
+  - 在真实电机运动前，只验证 NanoPi `/rehab_arm/safety_state` 能看到 V2 字段。
 
 ## 待确认
 
@@ -337,11 +357,11 @@
 
 严格按“一次只做一个能测试的小目标”推进：
 
-1. 设计 M33 `0x320` 正式安全接收状态机，但默认仍不输出电机控制。
-2. 定义 `0x322` 详细状态字段：模式、急停、错误码、限幅/拒绝原因、heartbeat age。
-3. 给 NanoPi bridge 增加对更详细 `0x322` 的解析和 `/rehab_arm/safety_state` 映射。
-4. 先用日志/模拟状态验证限位、超时、急停拒绝，不给电机驱动上电。
-5. 只有 M33 安全状态机和急停策略验证通过后，才讨论极低速、空载、单关节运动测试。
+1. 修改 M33 heartbeat/status 回复，让 `0x322` 按 V2 上报 logging-only limited 状态。
+2. 用户烧录后，NanoPi 只测 heartbeat/status，不发 `0x320`。
+3. 确认 `/rehab_arm/safety_state` 包含 `protocol_version=2`、`state=limited`、`control_mode=logging_only`。
+4. 再设计 M33 `0x320` 正式安全接收状态机，但默认仍不输出电机控制。
+5. 先用日志/模拟状态验证限位、超时、急停拒绝，不给电机驱动上电。
 6. 离线继续推进：可继续给 bridge 的安全门控补单元测试，不依赖硬件。
 
 ## 更新规则
