@@ -859,3 +859,14 @@
 - Not validated: no NanoPi hardware, CAN, M33/M55, camera, motor power, or real patient/device data was used.
 - Safety: the cloud sync stayed on the non-realtime data path only.
 - Next step: surface the same quality gate clearly in the platform device data workbench UI.
+
+### 2026-05-26 - Server quality gate check tool
+
+- Completed: added `check_server_quality_gate.py` and registered the ROS2 console script.
+- Completed: the tool checks `/devices/dashboard` for a device, reports `annotation_ready`, `quality_report_ok`, motor/joint counts, blocking reasons, and data-only safety boundary.
+- Validated: new unit tests passed.
+- Validated: `python -m unittest discover -s rehab_arm_ros2_ws\src\rehab_arm_psoc_bridge\test -v` passed 60 tests.
+- Validated: command-line check against cloud device `nanopi-quality-demo` returned `ok=true`, `annotation_ready=true`, and `control_boundary=data_quality_only_not_motion_permission`.
+- Not validated: no NanoPi build, M33/M55 firmware, CAN, motor power, or real camera data in this slice.
+- Safety: this tool performs read-only HTTP GET checks only; it does not upload files or control hardware.
+- Next step: run the same quality gate check from NanoPi after a real simulation/logging session upload.

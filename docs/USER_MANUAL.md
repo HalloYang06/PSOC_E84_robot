@@ -1358,6 +1358,22 @@ $data.data.devices | Select-Object device_id, robot_id, latest_upload_status
 - `data_quality.latest_session.quality_report_ok=true`。
 - `data_quality.control_boundary=data_quality_only_not_motion_permission`，表示这仍然不是运动许可。
 
+也可以用命令行工具直接检查某台设备：
+
+```bash
+ros2 run rehab_arm_psoc_bridge check_server_quality_gate nanopi-m5 \
+  --base-url http://106.55.62.122:8011/api/rehab-arm/v1 \
+  --pretty
+```
+
+通过标准：
+
+- 输出 `schema_version=server_quality_gate_check_v1`。
+- `ok=true` 表示服务器已收到该设备的合格质量门数据。
+- `annotation_ready=true` 表示可以进入平台标注/导出流程。
+- `safety_note` 会明确说明这只是数据就绪，不是运动许可。
+- 如果 `ok=false`，先看 `errors` 和 `blocking_reasons`，不要把该 session 用作训练数据。
+
 服务器同步 API 草案见：[SERVER_SYNC_API_DRAFT.md](SERVER_SYNC_API_DRAFT.md)。
 
 ## 6. 当前真实 CAN ID

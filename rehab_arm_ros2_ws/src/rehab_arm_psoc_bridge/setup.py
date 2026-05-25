@@ -25,6 +25,7 @@ setup(
             'build_manifest = rehab_arm_psoc_bridge.build_manifest:main',
             'sync_dry_run = rehab_arm_psoc_bridge.sync_dry_run:main',
             'sync_upload = rehab_arm_psoc_bridge.sync_upload:main',
+            'check_server_quality_gate = rehab_arm_psoc_bridge.check_server_quality_gate:main',
             'sync_test_server = rehab_arm_psoc_bridge.sync_test_server:main',
         ],
     },
