@@ -678,6 +678,16 @@
   - NanoPi 测试通过：39 tests passed；`colcon build --symlink-install --packages-select rehab_arm_psoc_bridge` 通过。
   - NanoPi ROS 冒烟测试通过：发布假 `/joint_states` 后，`/rehab_arm/motor_state` 输出 `rehab_arm_motor_state_v1` JSON。
   - 本轮没有发 CAN、没有发送 `0x320`、没有做电机运动测试。
+- 新增仿真数据采集 bringup 包和 launch：
+  - 新增 `rehab_arm_bringup` ROS2 包。
+  - 新增 `sim_data_collection.launch.py`，一次启动 MuJoCo/fallback 仿真、`joint_state_motor_state_node.py` 和 `data_recorder_node.py`。
+  - 用途是先在仿真环境采集 `/joint_states`、`/rehab_arm/safety_state`、`/rehab_arm/sensor_state` 和 `/rehab_arm/motor_state`，给后续总控台、标注、回放和 VLA 数据准备统一格式。
+  - 修正仿真节点：无轨迹输入时也每 1 秒发布一次 `/rehab_arm/safety_state`，避免 recorder 完整性检查缺 safety topic。
+  - 本地 `python -m py_compile` 通过；本地 `rehab_arm_psoc_bridge` 49 tests passed。
+  - NanoPi `colcon build --symlink-install --packages-select rehab_arm_bringup` 通过。
+  - NanoPi 首轮短跑发现 JSONL 包含 `/joint_states`、`/rehab_arm/motor_state`、`/rehab_arm/sensor_state`，但缺 `/rehab_arm/safety_state`；已在本地修复仿真节点周期发布 safety。
+  - 修复后重新同步并构建 NanoPi 时 SSH 再次超时；未继续加压硬件，待 NanoPi 稳定后复测。
+  - 本轮没有发 CAN、没有发送 `0x320`、没有做电机运动测试。
 
 ## 进行中
 
@@ -685,8 +695,9 @@
   - 总服务器归入 AI 合作平台工程，不搬到本仓库。
   - 本仓库只保留 NanoPi 数据采集、manifest、dry-run/upload 客户端和本地假服务器验证工具。
   - 后续先确认 USB/UVC 或深度摄像头枚举，再跑 `camera_keyframe_node.py` 采集真实图像。
-  - 下一步可补数据采集 launch：仿真节点 + joint_state_motor_state_node + recorder 一起启动。
-  - 真机方向继续补 M33 电机状态到 `/rehab_arm/motor_state` 的映射。
+  - 下一步先等 NanoPi SSH 恢复，清理可能残留的 colcon/launch/recording 进程，再重建 `rehab_arm_sim_mujoco` 和 `rehab_arm_bringup`。
+  - 用更稳的后台启动方式复测 `sim_data_collection.launch.py`，确认 checker `ok=true` 且 JSONL 包含 `/rehab_arm/motor_state`。
+  - 真机方向后续补 M33 电机状态到 `/rehab_arm/motor_state` 的映射。
   - 不进入真实电机控制。
   - 不给电机驱动上电，不做运动测试。
 
@@ -708,7 +719,7 @@
 
 1. 保持电机驱动断开，确认 `can0` 为 `ERROR-ACTIVE`。
 2. raw SocketCAN 先测 `0x321 -> 0x322` heartbeat。
-3. 增加仿真数据采集 launch，或补 M33 电机状态到 `/rehab_arm/motor_state` 的映射。
+3. 复测 `sim_data_collection.launch.py` 生成完整 JSONL，并确认包含 `/rehab_arm/motor_state`。
 4. 保持服务器同步为非实时外部接口，不放进控制闭环。
 5. 仍保持 logging-only，不进入真实电机控制路径。
 

@@ -51,6 +51,9 @@ class MujocoSimNode(Node):
         self.velocities = [0.0] * len(JOINT_NAMES)
         self.segments: list[TrajectorySegment] = []
         self.last_time = self.get_clock().now().nanoseconds / 1e9
+        self.safety_state = 'ok'
+        self.safety_detail = 'simulation ready'
+        self.next_safety_publish_time = self.last_time
 
         self.joint_pub = self.create_publisher(JointState, '/joint_states', 20)
         self.safety_pub = self.create_publisher(String, '/rehab_arm/safety_state', 10)
@@ -122,6 +125,9 @@ class MujocoSimNode(Node):
         self.velocities = [(pos - old) / dt for pos, old in zip(self.positions, previous)]
         self.publish_joint_state()
         self.publish_sensor_state()
+        if now >= self.next_safety_publish_time:
+            self.publish_safety(self.safety_state, self.safety_detail)
+            self.next_safety_publish_time = now + 1.0
 
     def publish_joint_state(self) -> None:
         msg = JointState()
@@ -133,6 +139,8 @@ class MujocoSimNode(Node):
         self.joint_pub.publish(msg)
 
     def publish_safety(self, state: str, detail: str) -> None:
+        self.safety_state = state
+        self.safety_detail = detail
         payload = {'state': state, 'detail': detail, 'source': 'sim'}
         self.safety_pub.publish(String(data=json.dumps(payload, separators=(',', ':'))))
 

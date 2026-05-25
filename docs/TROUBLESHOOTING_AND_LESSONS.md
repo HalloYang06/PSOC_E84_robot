@@ -1672,6 +1672,57 @@ AttributeError: handle cannot be modified after node creation
 - launch 会先启动 launch service，再启动节点；短验证至少给 10 秒。
 - 验证 recorder 时优先检查 JSONL 第一行，而不是只看 launch 进程启动。
 
+### `timeout ros2 launch` 可能不会让远程 SSH 干净返回
+
+现象：
+
+- NanoPi 上 `colcon build --packages-select rehab_arm_bringup` 通过。
+- 通过 SSH 执行 `timeout 10 ros2 launch rehab_arm_bringup sim_data_collection.launch.py ...` 后，本地 SSH 命令没有按预期返回。
+- 随后短时间内新的 SSH 命令也超时。
+
+判断：
+
+- 这不像代码编译错误，更像 launch 子进程、ROS daemon 或远程会话没有被 `timeout` 干净回收。
+- 在板子刚恢复上电或发热明显时，不应反复启动高频仿真/记录进程。
+
+技巧：
+
+- 远程验证 launch 时优先用后台启动、显式记录 PID、再显式 shutdown/kill 的脚本。
+- 如果 SSH 已经卡住，先等板子恢复或现场重启，不要继续压测。
+- 这类卡住不代表可以进入真机 CAN 控制；本轮仍然不发 `0x320`。
+
+状态：
+
+- 已记录。`sim_data_collection.launch.py` 已通过本地语法检查和 NanoPi 构建，但短跑 JSONL 完整性验证待 SSH 恢复后继续。
+
+### 仿真也要周期性发布 safety_state
+
+现象：
+
+- `sim_data_collection.launch.py` 首轮短跑能写出 JSONL。
+- JSONL 包含 `/joint_states`、`/rehab_arm/motor_state`、`/rehab_arm/sensor_state`。
+- `check_recording.py` 失败，提示缺少 `/rehab_arm/safety_state`。
+
+根因：
+
+- 仿真节点原本只在收到轨迹时发布 safety。
+- 离线采集 launch 启动后如果不发布轨迹，recorder 永远收不到 safety topic。
+
+解决：
+
+- `mujoco_sim_node.py` 增加默认 `safety_state=ok`、`safety_detail=simulation ready`。
+- 在 timer 中每 1 秒周期发布一次 `/rehab_arm/safety_state`。
+
+技巧：
+
+- 仿真和真机都应持续发布安全状态；上层不应靠“没消息”猜系统是否安全。
+- 数据采集完整性检查能及时暴露这类系统接口缺口。
+
+状态：
+
+- 本地已修复并通过语法检查。
+- NanoPi 复测被 SSH 超时阻塞，待板子稳定后继续。
+
 ### 数据文件名要让服务器不用猜
 
 规则：

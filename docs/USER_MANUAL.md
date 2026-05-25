@@ -1020,6 +1020,44 @@ ros2 topic echo --once /rehab_arm/motor_state std_msgs/msg/String
 
 注意：这个节点只做遥测转换，不发 CAN，不控制电机。真实电机状态后续仍应来自 M33 上报。
 
+仿真数据采集一键启动：
+
+```bash
+cd /home/pi/rehab_arm_ros2_ws
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+ros2 launch rehab_arm_bringup sim_data_collection.launch.py \
+  output_dir:=/home/pi/rehab_arm_logs \
+  session_id:=sim_session \
+  device_id:=sim-workstation \
+  robot_id:=rehab-arm-alpha \
+  software_version:=dev \
+  flush_every:=1
+```
+
+这个 launch 会启动：
+
+- `rehab_arm_sim_mujoco/mujoco_sim_node.py`
+- `rehab_arm_psoc_bridge/joint_state_motor_state_node.py`
+- `rehab_arm_psoc_bridge/data_recorder_node.py`
+
+检查记录结果：
+
+```bash
+ros2 run rehab_arm_psoc_bridge check_recording.py /home/pi/rehab_arm_logs/sim_session.jsonl
+grep '/rehab_arm/motor_state' /home/pi/rehab_arm_logs/sim_session.jsonl | head
+```
+
+通过标准：
+
+- checker 输出 `ok=true`。
+- JSONL 包含 `/joint_states`。
+- JSONL 包含 `/rehab_arm/safety_state`。
+- JSONL 包含 `/rehab_arm/sensor_state`。
+- JSONL 包含 `/rehab_arm/motor_state`。
+
+如果用 `timeout ros2 launch ...` 做短验证后 SSH 卡住，先不要继续加压板子；等 SSH 恢复后清理可能残留的 launch 或节点进程，再复测。
+
 `/rehab_arm/camera_keyframe` payload 示例：
 
 ```json
