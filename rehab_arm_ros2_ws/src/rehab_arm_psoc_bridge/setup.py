@@ -18,6 +18,7 @@ setup(
             'data_recorder_node = rehab_arm_psoc_bridge.data_recorder_node:main',
             'check_recording = rehab_arm_psoc_bridge.check_recording:main',
             'build_manifest = rehab_arm_psoc_bridge.build_manifest:main',
+            'sync_dry_run = rehab_arm_psoc_bridge.sync_dry_run:main',
         ],
     },
 )

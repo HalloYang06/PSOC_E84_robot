@@ -999,6 +999,19 @@ ros2 run rehab_arm_psoc_bridge build_manifest.py /home/pi/rehab_arm_logs \
 
 这个清单只扫描本地文件，不上传服务器。`ok=false` 表示该 JSONL 缺少必需 topic 或 metadata，不适合进入标注/同步流程。
 
+预览服务器同步计划：
+
+```bash
+ros2 run rehab_arm_psoc_bridge sync_dry_run.py /home/pi/rehab_arm_logs/manifest.json \
+  --base-url http://server.example/api/rehab-arm/v1
+```
+
+通过标准：
+
+- 输出 `schema_version=rehab_arm_sync_dry_run_v1`。
+- 输出计划请求，不发真实 HTTP。
+- `ok=false` 的 session 只出现在 `skipped_sessions`，不会生成文件上传请求。
+
 服务器同步 API 仍是草案，见：[SERVER_SYNC_API_DRAFT.md](SERVER_SYNC_API_DRAFT.md)。当前阶段只做本地记录和 manifest，不做真实上传。
 
 ## 6. 当前真实 CAN ID

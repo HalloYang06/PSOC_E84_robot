@@ -637,11 +637,16 @@
 - 新增服务器同步 API 草案：
   - 文档：`docs/SERVER_SYNC_API_DRAFT.md`。
   - 只定义非实时 manifest/JSONL 上传边界。
+- 新增服务器同步 dry-run 工具：
+  - `sync_dry_run.py` 读取 `rehab_arm_manifest_v1`，只打印计划请求，不联网。
+  - 本地测试通过：36 tests passed。
+  - NanoPi 测试通过：26 tests passed；`colcon build` passed；`ros2 pkg executables` 能看到 `sync_dry_run.py`。
+  - NanoPi 实测 dry-run 输出 4 个计划请求：设备注册、manifest、文件上传、sync-status。
 
 ## 进行中
 
 - 下一步继续按框架补数据链路：
-  - 后续做 dry-run uploader，只打印请求，不真实上传。
+  - 后续补最小服务器端接收/保存骨架或 HTTP 客户端真实上传开关。
   - 不进入真实电机控制。
   - 不给电机驱动上电，不做运动测试。
 
@@ -663,7 +668,7 @@
 
 1. 保持电机驱动断开，确认 `can0` 为 `ERROR-ACTIVE`。
 2. raw SocketCAN 先测 `0x321 -> 0x322` heartbeat。
-3. 增加 dry-run uploader。
+3. 设计服务器端最小数据接收接口或先做 uploader 的 `--execute` 禁用默认保护。
 4. 保持服务器同步非实时，不放进控制闭环。
 5. 仍保持 logging-only，不进入真实电机控制路径。
 

@@ -23,6 +23,8 @@ from rehab_arm_psoc_bridge.data_recording import (
     write_jsonl_record,
     sanitize_identifier,
     build_recording_manifest,
+    build_sync_dry_run_plan,
+    file_sha256,
 )
 
 
@@ -168,6 +170,68 @@ class DataRecordingTests(unittest.TestCase):
         self.assertEqual(session['session_id'], 's1')
         self.assertEqual(session['sync_status'], 'local_only')
         self.assertIn('/joint_states', session['topics'])
+
+    def test_file_sha256(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / 'payload.txt'
+            path.write_bytes(b'rehab-arm\n')
+
+            digest = file_sha256(path)
+
+        self.assertEqual(
+            digest,
+            'a7ec0bad4217df635954642dea88bb1b7df2ba42c6a93607a2c95290986c8be6',
+        )
+
+    def test_build_sync_dry_run_plan(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / 's1.jsonl'
+            path.write_text('{"record_type":"session_metadata"}\n', encoding='utf-8')
+            manifest = {
+                'schema_version': 'rehab_arm_manifest_v1',
+                'sessions': [
+                    {
+                        'ok': True,
+                        'path': str(path),
+                        'file_name': 's1.jsonl',
+                        'session_id': 's1',
+                        'device_id': 'nanopi-m5',
+                        'robot_id': 'rehab-arm-alpha',
+                        'software_version': 'dev',
+                        'record_count': 1,
+                    },
+                ],
+            }
+
+            plan = build_sync_dry_run_plan(manifest, 'http://server.local/api/')
+
+        self.assertEqual(plan['schema_version'], 'rehab_arm_sync_dry_run_v1')
+        self.assertEqual(plan['base_url'], 'http://server.local/api')
+        self.assertEqual(plan['request_count'], 4)
+        urls = [request['url'] for request in plan['requests']]
+        self.assertIn('http://server.local/api/devices/register', urls)
+        self.assertIn('http://server.local/api/sessions/manifest', urls)
+        self.assertIn('http://server.local/api/sessions/s1/files', urls)
+        self.assertIn('http://server.local/api/sessions/s1/sync-status', urls)
+
+    def test_build_sync_dry_run_plan_skips_incomplete_sessions(self) -> None:
+        manifest = {
+            'schema_version': 'rehab_arm_manifest_v1',
+            'sessions': [
+                {
+                    'ok': False,
+                    'file_name': 'bad.jsonl',
+                    'session_id': 'bad',
+                    'errors': ['missing session_metadata'],
+                },
+            ],
+        }
+
+        plan = build_sync_dry_run_plan(manifest, 'http://server.local/api')
+
+        self.assertEqual(plan['request_count'], 1)
+        self.assertEqual(plan['requests'][0]['url'], 'http://server.local/api/sessions/manifest')
+        self.assertEqual(plan['skipped_sessions'][0]['file_name'], 'bad.jsonl')
 
     def test_session_log_path_sanitizes_session_id(self) -> None:
         path = session_log_path('logs', 'session 1/unsafe')

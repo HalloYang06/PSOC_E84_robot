@@ -1676,6 +1676,25 @@ AttributeError: handle cannot be modified after node creation
 - 不下发 CAN、电流、力矩、速度、裸角度或 M33 override。
 - 真正上传代码要等服务器 endpoint 确认后再做；下一步只能做 dry-run uploader。
 
+### 哈希测试不要依赖文本换行
+
+现象：
+
+- `file_sha256()` 单测在 Windows 通过，但同步到 NanoPi 后失败。
+- Windows `write_text('...\n')` 可能写成 CRLF，Linux 写成 LF，导致同一测试的 SHA256 不同。
+
+解决：
+
+- 哈希测试使用 `write_bytes(b'...')` 固定文件内容。
+
+技巧：
+
+- 跨 Windows/Linux 验证二进制摘要、协议 payload、CAN frame bytes 时，不要用文本模式生成测试输入。
+
+状态：
+
+- 已修复，Windows 本地和 NanoPi 单测均通过。
+
 ### 进度和踩坑要分开
 
 规则：

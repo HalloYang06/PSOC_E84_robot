@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import time
 from pathlib import Path
 from typing import Iterable, TextIO
@@ -184,4 +185,91 @@ def build_recording_manifest(log_dir: str | Path) -> dict[str, object]:
         'log_dir': str(base),
         'session_count': len(sessions),
         'sessions': sessions,
+    }
+
+
+def file_sha256(path: str | Path) -> str:
+    digest = hashlib.sha256()
+    with Path(path).expanduser().open('rb') as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b''):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def build_sync_dry_run_plan(manifest: dict[str, object], base_url: str) -> dict[str, object]:
+    base = base_url.rstrip('/')
+    sessions = [
+        session for session in manifest.get('sessions', [])
+        if isinstance(session, dict) and session.get('ok') is True
+    ]
+    devices: dict[tuple[str, str], dict[str, object]] = {}
+    for session in sessions:
+        device_id = str(session.get('device_id') or 'unknown')
+        robot_id = str(session.get('robot_id') or 'unknown')
+        devices[(device_id, robot_id)] = {
+            'device_id': device_id,
+            'robot_id': robot_id,
+            'device_type': 'nanopi',
+            'software_version': session.get('software_version') or 'unknown',
+            'capabilities': ['ros2_bridge', 'jsonl_recorder', 'manifest_builder'],
+        }
+
+    requests: list[dict[str, object]] = []
+    for device in devices.values():
+        requests.append({
+            'method': 'POST',
+            'url': f'{base}/devices/register',
+            'json': device,
+        })
+
+    requests.append({
+        'method': 'POST',
+        'url': f'{base}/sessions/manifest',
+        'json': {
+            'manifest': manifest,
+        },
+    })
+
+    for session in sessions:
+        path = Path(str(session.get('path')))
+        session_id = str(session.get('session_id'))
+        requests.append({
+            'method': 'POST',
+            'url': f'{base}/sessions/{session_id}/files',
+            'multipart': {
+                'device_id': session.get('device_id'),
+                'robot_id': session.get('robot_id'),
+                'file_name': session.get('file_name'),
+                'sha256': file_sha256(path),
+                'file_path': str(path),
+            },
+        })
+        requests.append({
+            'method': 'POST',
+            'url': f'{base}/sessions/{session_id}/sync-status',
+            'json': {
+                'device_id': session.get('device_id'),
+                'sync_status': 'dry_run_ready',
+                'file_name': session.get('file_name'),
+                'record_count': session.get('record_count'),
+            },
+        })
+
+    skipped = [
+        session for session in manifest.get('sessions', [])
+        if isinstance(session, dict) and session.get('ok') is not True
+    ]
+    return {
+        'schema_version': 'rehab_arm_sync_dry_run_v1',
+        'base_url': base,
+        'request_count': len(requests),
+        'requests': requests,
+        'skipped_sessions': [
+            {
+                'file_name': session.get('file_name'),
+                'session_id': session.get('session_id'),
+                'errors': session.get('errors', []),
+            }
+            for session in skipped
+        ],
     }
