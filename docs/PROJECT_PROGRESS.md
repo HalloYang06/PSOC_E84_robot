@@ -51,6 +51,15 @@
 
 ### 2026-05-25
 
+- 对接平台 URDF 模型预览：
+  - 明确 `rehab_arm_ros2_ws/src/rehab_arm_description/urdf/rehab_arm.urdf` 可直接导入平台 `模型预览` tab。
+  - 当前 URDF 使用内置 `box/cylinder` 几何体，无外部 mesh 依赖，适合浏览器 three.js + urdf-loader 第一版预览。
+  - 记录后续带 mesh/xacro 的处理边界：先展开 URDF，处理 `package://` 路径，保持 joint 名称和 `/joint_states` 一致。
+  - 仍明确模型预览只读，不代表运动许可。
+- 文档更新：
+  - `docs/INTEGRATION_GUIDE.md` 新增 URDF 与平台模型预览对接说明。
+  - `docs/USER_MANUAL.md` 新增平台导入 URDF 的用户操作步骤和通过标准。
+
 - 对接 AI 合作平台的通用设备数据质量索引：
   - `manifest_with_summary.json` 上传后，平台侧映射为 `device_recording_quality_index_v1`。
   - 该索引只用于标注、导出、图表实验和数据资产审查，不代表运动许可。

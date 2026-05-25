@@ -23,6 +23,30 @@
 | `/rehab_arm/camera_keyframe` | `std_msgs/msg/String` JSON | NanoPi camera keyframe 节点 | recorder、总控台、VLA 数据链路 | 摄像头关键帧元数据，不是控制命令。 |
 | `/vla/task_goal` | `std_msgs/msg/String` JSON | App/服务器/VLA | 任务规划器 | 高层任务目标，不直接控制电机。 |
 
+## 2.1 URDF 与平台模型预览
+
+当前模型文件：
+
+```text
+rehab_arm_ros2_ws/src/rehab_arm_description/urdf/rehab_arm.urdf
+```
+
+该文件当前只使用 URDF 内置几何体 `box/cylinder`，没有依赖外部 mesh，因此可以先直接导入 AI 合作平台的设备数据工作台 `模型预览` tab 做浏览器只读预览。
+
+平台侧第一版用途：
+
+- 解析 link、joint、parent/child 和 joint limit。
+- 用 three.js + urdf-loader 尝试直接渲染 URDF。
+- 后续把采集片段中的 `/joint_states` 按同名 joint 做回放。
+- 只作为模型检查、数据标注和证据查看入口，不作为仿真控制器。
+
+导入规则：
+
+- 推荐先导入展开后的 `.urdf`，不要直接导入 `.xacro`。
+- 如果后续 URDF 引用 `package://.../meshes/...`，需要把 mesh 资产打包并提供路径映射。
+- joint 名称必须和 `/joint_states.name` 一致，否则平台只能显示结构，不能自动回放采集数据。
+- 平台显示模型不代表允许真机运动，真实运动仍走 `JointTrajectory -> NanoPi -> M33 -> 电机` 和 M33 安全裁决。
+
 ## 3. CAN 对接接口
 
 | CAN ID | 方向 | 当前用途 |

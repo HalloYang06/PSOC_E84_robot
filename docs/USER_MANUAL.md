@@ -1330,6 +1330,38 @@ ros2 run rehab_arm_psoc_bridge sync_upload.py /home/pi/rehab_arm_logs/manifest.j
 | `0x7C2` | C8T6 -> M33 | 传感数据 |
 | `0x7C3` | C8T6 -> M33 | 健康状态 |
 
+## 6.1 在平台里预览 URDF
+
+本仓库当前可直接预览的 URDF：
+
+```bash
+rehab_arm_ros2_ws/src/rehab_arm_description/urdf/rehab_arm.urdf
+```
+
+平台操作路径：
+
+1. 打开 AI 合作平台的项目页面。
+2. 进入 `设备数据工作台`。
+3. 创建或打开一个调试窗口。
+4. 切到 `模型预览`。
+5. 选择 `rehab_arm.urdf`。
+6. 检查 link 数、joint 数、可动 joint、parent/child 和 joint limit。
+7. 如需留证据，点击导出模型 manifest。
+
+通过标准：
+
+- 页面显示 `URDF` 格式。
+- link 数为 6。
+- joint 数为 5。
+- 可动 joint 数为 5。
+- joint 名称包含 `shoulder_lift_joint`、`shoulder_abduction_joint`、`upper_arm_rotation_joint`、`elbow_lift_joint`、`forearm_rotation_joint`。
+
+注意：
+
+- 模型预览只读，不发 CAN，不发 ROS 控制，不代表允许真机运动。
+- 后续如果换成带 mesh 的 URDF，要一起处理 `package://` mesh 路径映射。
+- 后续如果使用 xacro，需要先在 ROS 侧展开成 URDF 再给平台。
+
 ## 7. 文档与 Git 维护
 
 每次完成任务后同步更新：
