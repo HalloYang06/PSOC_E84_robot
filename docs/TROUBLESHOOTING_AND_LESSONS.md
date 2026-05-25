@@ -719,6 +719,48 @@ heartbeat age 3211ms + 030084031f000100 -> reason=heartbeat_timeout
 状态：
 
 - M33 已本地实现并编译通过，NanoPi parser 单元测试 17 个通过，等待用户烧录后做非运动验证。
+- 用户烧录后第一次非运动验证未通过：NanoPi `can0` 正常，能发 `0x321/0x320`，但无 `0x322`，COM26 也无输出。当前判断为 M33 应用未在线或烧录后未正常启动，尚未验证 detail_code 动态变化。
+
+### 烧录后无 0x322 且串口静默，先怀疑应用没启动
+
+现象：
+
+```text
+TX 321 01
+NO RX
+TX 321 02
+NO RX
+TX 321 03
+NO RX
+```
+
+同时：
+
+- `candump` 能看到 NanoPi 发出的 `0x321` 和 `0x320`。
+- `can0` 仍为 `ERROR-ACTIVE`，错误计数为 0。
+- Windows `COM26` 打开成功，但没有启动日志，发送换行也没有 shell/日志响应。
+
+判断：
+
+- 这不是 NanoPi parser 问题，因为没有任何 `0x322` 到达。
+- 这也不是 ROS topic 问题，因为 raw SocketCAN heartbeat 都没有回复。
+- 当前优先怀疑 M33 应用未运行、烧录后未复位到应用、烧录了错误镜像，或 M33 控制板供电/复位状态异常。
+
+处理：
+
+1. 现场按一下 M33 reset，或给 M33 控制板断电重上电。
+2. 重测 raw heartbeat，只看 `0x321 -> 0x322`，不要发 `0x320`。
+3. 如果仍无 `0x322`，重新烧录最新产物，优先使用：
+
+```text
+D:\RT-ThreadStudio\workspace\yiliao_m33\Debug\rtthread.bin
+```
+
+4. 烧录后确认串口有启动日志或 heartbeat 有 `0x322`，再继续 detail_code 验证。
+
+状态：
+
+- 已记录。本轮未给电机驱动上电，未做运动测试。
 
 ### 发送真实 0x320 单帧时必须同时看 NanoPi TX 和 M33 串口
 

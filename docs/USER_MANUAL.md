@@ -812,6 +812,18 @@ M33 状态机拒绝用例第二轮已验证：
 - `/rehab_arm/safety_state` JSON 里 `detail_code=4`，`detail=target_out_of_limit`。
 - 仍然不出现任何电机输出，M33 仍处于 logging-only。
 
+如果烧录后没有任何 `0x322`：
+
+- 先不要继续发 `0x320`。
+- 检查 M33 是否已复位并运行应用。
+- 检查 COM26 是否有启动日志或 shell 响应。
+- 按 M33 reset 或给控制板断电重上电后，先只测 heartbeat。
+- 仍不通时重新烧录最新 `rtthread.bin`：
+
+```text
+D:\RT-ThreadStudio\workspace\yiliao_m33\Debug\rtthread.bin
+```
+
 ## 5. 当前真实 CAN ID
 
 | ID | 协议/用途 | 说明 |
