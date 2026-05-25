@@ -448,13 +448,38 @@
     - `D:\RT-ThreadStudio\workspace\yiliao_m33\Debug\rtthread.hex`
   - 编译仍保留既有工程告警：`rtthread.elf has a LOAD segment with RWX permissions`，以及 post-build 中 `arm-none-eabi-objcopy: interleave must be positive` 被 makefile 标记为 ignored；本次修改没有导致编译失败。
   - 尚未烧录本轮安全状态机结构化固件，等待用户烧录后只做 heartbeat/status 和一帧 `0x320` 日志对照。
+- 用户烧录 M33 安全状态机结构化固件后完成非运动复测：
+  - NanoPi `can0` 仍为 `UP/LOWER_UP/ERROR-ACTIVE`，classic CAN `1Mbps`，`berr-counter tx 0 rx 0`。
+  - 原始 SocketCAN 发送 `0x321` seq 1/2/3，均收到 M33 V2 `0x322`：
+    - `a501070001010a00`
+    - `a502070001010a00`
+    - `a503070001010a00`
+  - 临时运行 bridge：
+    - `enable_target_tx:=true`
+    - `require_psoc_ok_for_trajectory:=false`
+    - 说明：只为验证 M33 logging-only 状态机单帧审计，正式运动配置禁止这样绕过 NanoPi `ok` gate。
+  - 发布一次合法单关节轨迹 `shoulder_lift_joint=0.1 rad`。
+  - bridge 日志：
+    - `safety ok: accepted 1 trajectory points`
+    - `TX 320 0300390005000000`
+  - `candump can0,320:7FF` 捕获：
+    - `can0  320   [8]  03 00 39 00 05 00 00 00`
+  - M33 `COM26` 串口日志已出现结构化状态机格式：
+    - `safety_state=logging_only decision=reject reason=logging_only_no_motor_output`
+    - `audit heartbeat_ok=1 heartbeat_age_ms=141 heartbeat_timeout_ms=2500 joint_known=1 limit_01deg=[-401,802]`
+    - `audit target_in_limit=1 rpm_in_limit=1 torque_in_limit=1 max_rpm=30 max_torque_ma=0`
+    - `final action=no_motor_output logging_only=1`
+  - 复查 `can0` 仍为 `ERROR-ACTIVE`，`bus-errors/error-pass/bus-off` 均为 0。
+  - 本轮没有给电机驱动上电，没有做运动测试。
 
 ## 进行中
 
-- 下一步等待用户烧录 M33 安全状态机结构化固件：
-  - 先验证 `0x321 -> 0x322` 仍为 V2 `limited/logging_only`。
-  - 再只发一帧合法 `0x320`，确认 M33 输出新的 `safety_state/decision/reason/final action` 格式。
-  - 不给电机驱动上电，不做运动测试。
+- 下一步设计并验证 M33 状态机拒绝用例：
+  - 超限 position。
+  - 未知 joint_id。
+  - 非零 torque/current。
+  - heartbeat 超时。
+  - 每次只发一帧，仍保持 `final action=no_motor_output`。
 
 ## 待确认
 
@@ -472,12 +497,10 @@
 
 严格按“一次只做一个能测试的小目标”推进：
 
-1. 用户烧录 M33 安全状态机结构化固件。
-2. NanoPi 只测 heartbeat/status 和一帧合法 `0x320` 日志对照。
-3. 如果新日志格式通过，再增加或使用工具生成超限/未知关节/非零 torque 的 `0x320` 测试帧。
-4. 每次只发一帧，并同时记录 bridge、`candump`、M33 串口三处日志。
-5. 验证 M33 均能打印明确拒绝原因，最终仍 `decision=reject`。
-6. 增加 heartbeat 超时拒绝测试：停发 `0x321` 超过 2500ms 后再发 `0x320`。
+1. 增加或使用工具生成超限/未知关节/非零 torque 的 `0x320` 测试帧。
+2. 每次只发一帧，并同时记录 bridge、`candump`、M33 串口三处日志。
+3. 验证 M33 均能打印明确拒绝原因，最终仍 `decision=reject` 和 `final action=no_motor_output`。
+4. 增加 heartbeat 超时拒绝测试：停发 `0x321` 超过 2500ms 后再发 `0x320`。
 
 ## 更新规则
 

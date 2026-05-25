@@ -655,6 +655,7 @@ ros2 run rehab_arm_psoc_bridge encode_psoc_cmd.py shoulder_lift_joint 0.1
 状态：
 
 - 本地 M33 已完成第一版结构化改造并编译通过，等待烧录后复测。
+- 用户烧录后已完成非运动复测：合法 `0x320` 单帧得到 `safety_state=logging_only decision=reject reason=logging_only_no_motor_output` 和 `final action=no_motor_output logging_only=1`，说明安全评估已经脱离纯打印并形成结构化结果。
 
 ### 发送真实 0x320 单帧时必须同时看 NanoPi TX 和 M33 串口
 
