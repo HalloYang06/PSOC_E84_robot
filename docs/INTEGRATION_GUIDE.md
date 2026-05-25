@@ -115,6 +115,9 @@ ros2 run rehab_arm_psoc_bridge build_manifest.py /home/pi/rehab_arm_logs \
 - 标注工具、总控台、数据浏览页面优先读取 `manifest_with_summary.json`。
 - 旧同步流程或只需要上传文件索引时，可以继续读取普通 `manifest.json`。
 - `summary` 字段是数据质量索引，不是控制指令。
+- 上传到 AI 合作平台后，平台侧会把该 summary 转成通用 `device_recording_quality_index_v1`。
+- 平台质量索引只判断数据是否适合标注、导出和图表分析，不代表允许真机运动。
+- 康复机械臂只是平台设备数据工作台的第一个适配来源；平台 UI 不应写死为医疗或机械臂专用。
 
 ### CSV 导出
 

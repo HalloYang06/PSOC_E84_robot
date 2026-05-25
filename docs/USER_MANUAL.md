@@ -1313,6 +1313,8 @@ ros2 run rehab_arm_psoc_bridge sync_upload.py /home/pi/rehab_arm_logs/manifest.j
 - 云端工程在 `D:\ai合作产品`，不要搬到本仓库。
 - 本仓库只保留 NanoPi 上传客户端和本地假服务器验证工具。
 - 真机安全、急停、限位和 M33 控制不依赖云端。
+- 推荐上传 `manifest_with_summary.json`。平台会把 summary 映射为通用设备数据质量索引，用于标注、导出和图表实验入口。
+- 平台质量索引不是运动许可；即使平台显示数据质量通过，也不能绕过 M33 安全状态机。
 
 服务器同步 API 草案见：[SERVER_SYNC_API_DRAFT.md](SERVER_SYNC_API_DRAFT.md)。
 

@@ -49,6 +49,19 @@
 
 ## 已完成
 
+### 2026-05-25
+
+- 对接 AI 合作平台的通用设备数据质量索引：
+  - `manifest_with_summary.json` 上传后，平台侧映射为 `device_recording_quality_index_v1`。
+  - 该索引只用于标注、导出、图表实验和数据资产审查，不代表运动许可。
+  - 康复机械臂保持为平台设备数据工作台的一个适配来源，平台核心不写死为医疗或机械臂专用。
+- 文档更新：
+  - `docs/INTEGRATION_GUIDE.md` 补充平台质量索引边界。
+  - `docs/USER_MANUAL.md` 补充上传 `manifest_with_summary.json` 的推荐流程和安全说明。
+- 验证：
+  - 平台后端 `python -m pytest tests/test_rehab_arm_sync.py -q` 通过，3 tests passed。
+  - 本轮只更新文档和平台后端接口说明，没有运行硬件、CAN、NanoPi 或电机测试。
+
 ### 2026-05-24
 
 - 新建分支 `feature/rehab-arm-ros2-architecture`。
