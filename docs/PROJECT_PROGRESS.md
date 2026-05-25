@@ -253,6 +253,10 @@
 - 已验证：
   - 本地打开 `docs/assets/system_data_flow.png`，确认图片非空、可读。
   - 本次只更新架构文档和图片，没有运行硬件、ROS、CAN 或电机测试。
+- 根据用户偏好的白板式数据流图风格，重绘 `docs/assets/system_data_flow.png`：
+  - 改为白底、轻边框、细曲线、少色彩的系统关系图。
+  - 同步更新 `docs/assets/system_data_flow.mmd`，保持图片源说明与新版布局一致。
+  - 已验证本地打开图片，确认没有空白或底部裁切。
 
 ## 进行中
 
