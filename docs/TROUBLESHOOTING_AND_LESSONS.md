@@ -1723,6 +1723,24 @@ AttributeError: handle cannot be modified after node creation
 - 本地已修复并通过语法检查。
 - NanoPi 复测被 SSH 超时阻塞，待板子稳定后继续。
 
+### NanoPi 不在线时先补本地静态保护
+
+现象：
+
+- NanoPi SSH 返回 `connect to host 192.168.2.66 port 22: Connection timed out`。
+- 不能继续做远端 `colcon build` 或 ROS launch 验证。
+
+技巧：
+
+- 不在线时不要反复压测板子。
+- 可以先补不依赖 ROS 安装的本地静态测试，检查 package metadata、launch 文件关键节点和参数是否存在。
+- 这不能替代 NanoPi 真 ROS launch，但能防止启动入口被后续提交无意改坏。
+
+状态：
+
+- 已为 `rehab_arm_bringup` 新增本地静态测试。
+- 本地 bringup 2 tests passed；NanoPi 复测仍待恢复。
+
 ### 数据文件名要让服务器不用猜
 
 规则：

@@ -688,6 +688,11 @@
   - NanoPi 首轮短跑发现 JSONL 包含 `/joint_states`、`/rehab_arm/motor_state`、`/rehab_arm/sensor_state`，但缺 `/rehab_arm/safety_state`；已在本地修复仿真节点周期发布 safety。
   - 修复后重新同步并构建 NanoPi 时 SSH 再次超时；未继续加压硬件，待 NanoPi 稳定后复测。
   - 本轮没有发 CAN、没有发送 `0x320`、没有做电机运动测试。
+- 补充 `rehab_arm_bringup` 本地静态测试：
+  - 新增 `test_sim_data_collection_launch.py`。
+  - 覆盖 `package.xml` 包名和依赖，以及 `sim_data_collection.launch.py` 是否包含仿真节点、motor_state 遥测桥和 recorder。
+  - 本地验证通过：bringup 2 tests passed；`rehab_arm_psoc_bridge` 49 tests passed。
+  - NanoPi 当前仍 SSH 超时，未做远端复测。
 
 ## 进行中
 
