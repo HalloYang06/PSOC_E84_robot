@@ -463,6 +463,25 @@ D:\RT-ThreadStudio\workspace\yiliao_m33\Debug\rtthread.hex
 - 只发布一次 `shoulder_lift_joint=0.1 rad` 的单关节轨迹。
 - M33 串口必须看到 logging-only reject 日志，而不是 `ros cmd direct apply failed`。
 
+烧录后已验证通过的记录：
+
+```text
+bridge: TX 320 0300390005000000
+candump: can0  320   [8]  03 00 39 00 05 00 00 00
+M33:
+RX 320 dlc=8 data=0300390005000000
+cmd=0x03 name=set_target joint_id=0 deg_x10=57 target_mrad=99 rpm=5 torque_ma=0
+decision=reject reason=logging_only_no_motor_output safety_state=limited
+```
+
+通过标准：
+
+- NanoPi bridge、`candump`、M33 串口三处 payload 一致。
+- M33 明确 `decision=reject`。
+- 不出现 `ros cmd direct apply failed`。
+- `can0` 复查仍为 `ERROR-ACTIVE`，没有 `error-passive` 或 `bus-off`。
+- 本阶段仍不允许电机运动。
+
 ### 4.4 离线协议工具测试
 
 没有硬件、不能上电时，也可以先跑 `0x320` 编码/解码工具回归测试：

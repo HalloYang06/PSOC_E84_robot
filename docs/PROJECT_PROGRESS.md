@@ -292,11 +292,34 @@
     - `$env:Path='D:\RT-ThreadStudio\repo\Extract\ToolChain_Support_Packages\ARM\GNU_Tools_for_ARM_Embedded_Processors\13.3\bin;' + $env:Path; mingw32-make -C Debug all -j2`
   - 编译产物已生成在 M33 工程 `Debug/` 下：`rtthread.elf`、`rtthread.bin`、`rtthread.hex`。
   - 编译仍保留工程既有告警：`rtthread.elf has a LOAD segment with RWX permissions`，以及 post-build 中 `arm-none-eabi-objcopy: interleave must be positive` 被 makefile 标记为 ignored；本次新增代码没有导致编译失败。
+- 用户烧录 M33 logging-only 固件后完成 ROS bridge 单帧 `0x320` 安全对照：
+  - 先验证 `can0`：`UP/LOWER_UP/ERROR-ACTIVE`，1Mbps，`berr-counter tx 0 rx 0`。
+  - 先发 3 次 NanoPi heartbeat `0x321`，均收到 M33 `0x322`：
+    - `RX 322 [8] a50107005e9d0000`
+    - `RX 322 [8] a5020700699d0000`
+    - `RX 322 [8] a50307006a9d0000`
+  - 开启 Windows 本机 `COM26`，115200 baud，DTR/RTS 关闭，监听 M33 串口。
+  - 临时运行 ROS bridge：`enable_target_tx:=true`。
+  - 发布一次合法单关节轨迹：`shoulder_lift_joint=0.1 rad`。
+  - bridge 日志：
+    - `safety ok: accepted 1 trajectory points`
+    - `TX 320 0300390005000000`
+  - `candump can0,320:7FF` 捕获：
+    - `can0  320   [8]  03 00 39 00 05 00 00 00`
+  - M33 串口日志符合 logging-only 预期：
+    - `RX 320 dlc=8 data=0300390005000000`
+    - `cmd=0x03 name=set_target joint_id=0 deg_x10=57 target_mrad=99 rpm=5 torque_ma=0`
+    - `decision=reject reason=logging_only_no_motor_output safety_state=limited`
+  - 没有再出现 `[control] ros cmd direct apply failed...`。
+  - 复测 `can0` 仍为 `ERROR-ACTIVE`，`bus-errors/error-pass/bus-off` 均为 0；再次发送 `0x321 seq=9` 收到 `0x322`。
+  - 本轮只验证 ROS/NanoPi/CAN/M33 接收和安全拒绝链路，没有给电机驱动上电，没有做运动测试。
 
 ## 进行中
 
-- 下一步等待用户烧录本地 M33 logging-only 固件。
-- 烧录后只做单帧 `0x320` 日志对照，不给电机上电，不做运动测试。
+- 下一步准备把 `0x320` 从单帧日志对照推进到 M33 侧正式安全接收状态机设计：
+  - 仍保持 `CONTROL_ROS_COMMAND_LOGGING_ONLY=1U`。
+  - 先定义 M33 对 `set_target` 的限位、限速、急停、heartbeat 超时和错误码上报。
+  - 在真实电机运动前，先做 M33 内部状态机日志/模拟执行测试。
 
 ## 待确认
 
@@ -314,11 +337,11 @@
 
 严格按“一次只做一个能测试的小目标”推进：
 
-1. 修改 M33 固件：`0x320` 当前阶段必须进入 logging-only 路径，不得进入 direct apply/电机控制路径。
-2. 用户重新烧录 M33 logging-only 固件后，再由 NanoPi 发送单帧复测。
-3. M33 日志必须打印 `RX 320 dlc=8 data=0300390005000000` 和完整字段。
-4. M33 必须打印 `decision=reject reason=logging_only_no_motor_output safety_state=limited` 或等价安全拒绝。
-5. 对照通过前不要给电机驱动上电，不要继续做运动测试。
+1. 设计 M33 `0x320` 正式安全接收状态机，但默认仍不输出电机控制。
+2. 定义 `0x322` 详细状态字段：模式、急停、错误码、限幅/拒绝原因、heartbeat age。
+3. 给 NanoPi bridge 增加对更详细 `0x322` 的解析和 `/rehab_arm/safety_state` 映射。
+4. 先用日志/模拟状态验证限位、超时、急停拒绝，不给电机驱动上电。
+5. 只有 M33 安全状态机和急停策略验证通过后，才讨论极低速、空载、单关节运动测试。
 6. 离线继续推进：可继续给 bridge 的安全门控补单元测试，不依赖硬件。
 
 ## 更新规则

@@ -685,7 +685,18 @@ safety_state=limited
 
 状态：
 
-- 阻塞在 M33 固件 logging-only 修改和重新烧录。
+- 已修复并复测通过。
+- 用户烧录 M33 logging-only 固件后，再次通过 ROS bridge 发送同一个单帧 `0x320`。
+- M33 串口输出：
+
+```text
+RX 320 dlc=8 data=0300390005000000
+cmd=0x03 name=set_target joint_id=0 deg_x10=57 target_mrad=99 rpm=5 torque_ma=0
+decision=reject reason=logging_only_no_motor_output safety_state=limited
+```
+
+- 未再出现 `ros cmd direct apply failed`。
+- 本轮未给电机驱动上电，未做运动测试。
 
 ### M33 logging-only 改完后必须本地编译通过再让用户烧录
 
@@ -727,6 +738,7 @@ mingw32-make -C Debug all -j2
 状态：
 
 - M33 本地编译已通过。
+- 用户已烧录并完成单帧对照验证。
 - 本次新增的安全补丁目标日志为：
 
 ```text
@@ -734,6 +746,41 @@ RX 320 dlc=8 data=0300390005000000
 cmd=0x03 name=set_target joint_id=0 deg_x10=57 target_mrad=99 rpm=5 torque_ma=0
 decision=reject reason=logging_only_no_motor_output safety_state=limited
 ```
+
+### Windows 到 NanoPi 远程脚本要注意 CRLF
+
+现象：
+
+- 从 Windows PowerShell 用 here-string 通过 SSH 发送多行 bash 脚本到 NanoPi。
+- 脚本末尾执行 `ip -details -statistics link show can0` 时，远端报：
+
+```text
+Device "can0\r" does not exist.
+```
+
+根因：
+
+- Windows CRLF 换行里的 `\r` 被带到了 bash 参数中，`can0` 变成了 `can0\r`。
+
+解决：
+
+- 硬件/CAN 关键命令复查时，用单独 SSH 命令或先去掉 CRLF。
+- 本次单独复查：
+
+```bash
+ip -details -statistics link show can0
+```
+
+确认 `can0` 为 `UP/LOWER_UP/ERROR-ACTIVE`，`bus-errors/error-pass/bus-off` 均为 0。
+
+技巧：
+
+- Windows 远程发多行 shell 脚本时，失败信息里如果出现奇怪的路径或设备名，要怀疑隐藏的 `\r`。
+- 对安全验收相关的最后状态，尽量单独再查一次，避免被脚本换行问题污染结论。
+
+状态：
+
+- 已记录。本次 `0x320` 对照本身不受影响，CAN 和 M33 串口日志均已验证。
 
 ### 没硬件时也要守住协议回归测试
 
