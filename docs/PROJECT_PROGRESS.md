@@ -715,6 +715,15 @@
   - JSONL topic 计数示例：`/joint_states=899`、`/rehab_arm/motor_state=898`、`/rehab_arm/safety_state=10`、`/rehab_arm/sensor_state=898`。
   - 5 个关节均记录到运动变化：shoulder lift span `0.55`、elbow lift span `1.05`、shoulder abduction span `0.28`、upper arm rotation span `0.60`、forearm rotation span `0.55`。
   - 本轮仍是纯仿真采集，没有发 CAN、没有发送 `0x320`、没有做电机运动测试。
+- 新增 JSONL session 摘要工具：
+  - 新增 `summarize_recording.py`。
+  - `data_recording.py` 新增 `summarize_jsonl_records()`，输出 topic 计数、topic 频率、关节 position min/max/span、moving joint count、motor entry count、safety state 和 `motion_allowed` 统计。
+  - `setup.py` 和 `CMakeLists.txt` 注册 `summarize_recording` 入口。
+  - 本地测试通过：`rehab_arm_psoc_bridge` 50 tests passed。
+  - 本地命令行验证通过：临时 JSONL 输出 `rehab_arm_recording_summary_v1`，`moving_joint_count=1`。
+  - NanoPi 已同步并构建 `rehab_arm_psoc_bridge` 通过。
+  - NanoPi 运行摘要工具验证未完成：构建后 SSH 再次超时，待设备稳定后复测 `/tmp/rehab_sim_collection/sim_demo_motion.jsonl`。
+  - 本轮没有发 CAN、没有发送 `0x320`、没有做电机运动测试。
 
 ## 进行中
 
@@ -722,7 +731,7 @@
   - 总服务器归入 AI 合作平台工程，不搬到本仓库。
   - 本仓库只保留 NanoPi 数据采集、manifest、dry-run/upload 客户端和本地假服务器验证工具。
   - 后续先确认 USB/UVC 或深度摄像头枚举，再跑 `camera_keyframe_node.py` 采集真实图像。
-  - 下一步可补 JSONL 回放/摘要工具：读取一次采集 session，输出关节范围、topic 频率和安全状态摘要，方便后续标注与总控台检查。
+  - 下一步先等 NanoPi SSH 恢复，运行 `summarize_recording.py` 复测上一次动态采集 JSONL。
   - 真机方向后续补 M33 电机状态到 `/rehab_arm/motor_state` 的映射。
   - 不进入真实电机控制。
   - 不给电机驱动上电，不做运动测试。
@@ -745,7 +754,7 @@
 
 1. 保持电机驱动断开，确认 `can0` 为 `ERROR-ACTIVE`。
 2. raw SocketCAN 先测 `0x321 -> 0x322` heartbeat。
-3. 增加 JSONL session 摘要/回放检查工具，方便验证采集数据质量。
+3. 在 NanoPi 上复测 `summarize_recording.py`，确认能总结动态采集 session。
 4. 保持服务器同步为非实时外部接口，不放进控制闭环。
 5. 仍保持 logging-only，不进入真实电机控制路径。
 

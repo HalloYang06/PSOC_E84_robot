@@ -1833,6 +1833,24 @@ RuntimeError: Unable to convert call argument '0' to Python object
 
 - NanoPi 已验证 5 个关节均有运动 span，且 `check_recording.py ok=true`。
 
+### 数据摘要工具和完整性检查职责不同
+
+规则：
+
+- `check_recording.py` 回答“基础 topic 是否齐全”。
+- `summarize_recording.py` 回答“这段数据质量如何”，例如 topic 频率、关节运动范围、motor_state 条目数、安全状态分布。
+
+技巧：
+
+- 动态 demo 采集后应同时跑两个工具。
+- `check_recording.py ok=true` 但 `moving_joint_count=0`，说明采到了数据但没有运动变化。
+- `motor_entry_count_min/max` 可帮助总控台快速发现 motor_state 是否缺条目。
+
+状态：
+
+- 本地已新增摘要工具并通过单元测试。
+- NanoPi 已构建通过，运行验证待 SSH 恢复后补做。
+
 ### 数据文件名要让服务器不用猜
 
 规则：

@@ -1095,6 +1095,29 @@ timeout -s INT 12s ros2 launch rehab_arm_bringup sim_data_collection.launch.py \
 - JSONL 中 5 个关节的 `position` 都有明显 min/max 变化。
 - 这个流程只驱动仿真节点，不发 CAN，不发送 `0x320`。
 
+生成 session 摘要：
+
+```bash
+ros2 run rehab_arm_psoc_bridge summarize_recording.py \
+  /tmp/rehab_sim_collection/sim_demo_motion.jsonl \
+  --pretty
+```
+
+摘要会输出：
+
+- `topic_counts`：每个 topic 的消息数。
+- `topic_rates_hz`：按记录时间估算的 topic 频率。
+- `joint_position_ranges`：每个关节的 min/max/span。
+- `moving_joint_count`：span 大于 `0.01 rad` 的关节数。
+- `motor_entry_count_min/max`：每条 motor_state 中的电机条目数量范围。
+- `safety_states` 和 `motion_allowed_counts`。
+
+通过标准：
+
+- `schema_version` 是 `rehab_arm_recording_summary_v1`。
+- 动态 demo session 中 `moving_joint_count` 应为 `5`。
+- `topic_counts` 应包含 `/joint_states`、`/rehab_arm/motor_state`、`/rehab_arm/safety_state`、`/rehab_arm/sensor_state`。
+
 `/rehab_arm/camera_keyframe` payload 示例：
 
 ```json

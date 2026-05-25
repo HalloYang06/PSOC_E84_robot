@@ -27,6 +27,7 @@ from rehab_arm_psoc_bridge.data_recording import (
     build_recording_manifest,
     build_sync_dry_run_plan,
     file_sha256,
+    summarize_jsonl_records,
 )
 
 
@@ -218,6 +219,45 @@ class DataRecordingTests(unittest.TestCase):
         self.assertEqual(session['session_id'], 's1')
         self.assertEqual(session['sync_status'], 'local_only')
         self.assertIn('/joint_states', session['topics'])
+
+    def test_summarize_jsonl_records(self) -> None:
+        records = [
+            make_session_metadata('s1', 'nanopi', 'arm', 'dev', 'simulation_data_collection', now=1.0),
+            make_payload_record(
+                '/joint_states',
+                make_joint_state_payload(['j0'], [0.0], [0.0], [0.0], 1, 0),
+                now=2.0,
+            ),
+            make_payload_record(
+                '/joint_states',
+                make_joint_state_payload(['j0'], [0.5], [0.0], [0.0], 2, 0),
+                now=3.0,
+            ),
+            make_payload_record(
+                '/rehab_arm/motor_state',
+                make_motor_state_payload(
+                    [{'joint_name': 'j0', 'position': 0.5}],
+                    robot_id='arm',
+                    device_id='nanopi',
+                    now=3.0,
+                ),
+                now=3.0,
+            ),
+            make_payload_record('/rehab_arm/safety_state', {'state': 'ok', 'motion_allowed': False}, now=4.0),
+            make_payload_record('/rehab_arm/sensor_state', {'source': 'sim'}, now=5.0),
+        ]
+
+        summary = summarize_jsonl_records(records)
+
+        self.assertEqual(summary['schema_version'], 'rehab_arm_recording_summary_v1')
+        self.assertEqual(summary['topic_counts']['/joint_states'], 2)
+        self.assertEqual(summary['joint_position_ranges']['j0']['min'], 0.0)
+        self.assertEqual(summary['joint_position_ranges']['j0']['max'], 0.5)
+        self.assertEqual(summary['moving_joint_count'], 1)
+        self.assertEqual(summary['motor_entry_count_min'], 1)
+        self.assertEqual(summary['motor_entry_count_max'], 1)
+        self.assertEqual(summary['safety_states']['ok'], 1)
+        self.assertEqual(summary['motion_allowed_counts']['false'], 1)
 
     def test_file_sha256(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

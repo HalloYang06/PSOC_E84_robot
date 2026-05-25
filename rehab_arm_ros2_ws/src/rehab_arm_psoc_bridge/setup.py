@@ -19,6 +19,7 @@ setup(
             'camera_keyframe_node = rehab_arm_psoc_bridge.camera_keyframe_node:main',
             'joint_state_motor_state_node = rehab_arm_psoc_bridge.joint_state_motor_state_node:main',
             'check_recording = rehab_arm_psoc_bridge.check_recording:main',
+            'summarize_recording = rehab_arm_psoc_bridge.summarize_recording:main',
             'build_manifest = rehab_arm_psoc_bridge.build_manifest:main',
             'sync_dry_run = rehab_arm_psoc_bridge.sync_dry_run:main',
             'sync_upload = rehab_arm_psoc_bridge.sync_upload:main',

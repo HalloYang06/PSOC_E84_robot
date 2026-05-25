@@ -230,6 +230,91 @@ def validate_jsonl_records(
     }
 
 
+def _update_numeric_range(ranges: dict[str, dict[str, float]], name: str, value: object) -> None:
+    if not isinstance(value, (int, float)):
+        return
+    numeric = float(value)
+    current = ranges.setdefault(name, {'min': numeric, 'max': numeric, 'span': 0.0})
+    current['min'] = min(current['min'], numeric)
+    current['max'] = max(current['max'], numeric)
+    current['span'] = current['max'] - current['min']
+
+
+def summarize_jsonl_records(records: list[dict[str, object]]) -> dict[str, object]:
+    topic_counts: dict[str, int] = {}
+    topic_first_ts: dict[str, float] = {}
+    topic_last_ts: dict[str, float] = {}
+    joint_ranges: dict[str, dict[str, float]] = {}
+    motor_ranges: dict[str, dict[str, float]] = {}
+    safety_states: dict[str, int] = {}
+    motion_allowed_counts = {'true': 0, 'false': 0, 'missing': 0}
+    motor_entry_counts: list[int] = []
+    metadata = next(
+        (record for record in records if record.get('record_type') == 'session_metadata'),
+        {},
+    )
+
+    for record in records:
+        if record.get('record_type') != 'topic_message':
+            continue
+        topic = record.get('topic')
+        if not isinstance(topic, str):
+            continue
+        topic_counts[topic] = topic_counts.get(topic, 0) + 1
+        ts_unix = record.get('ts_unix')
+        if isinstance(ts_unix, (int, float)):
+            ts = float(ts_unix)
+            topic_first_ts[topic] = min(topic_first_ts.get(topic, ts), ts)
+            topic_last_ts[topic] = max(topic_last_ts.get(topic, ts), ts)
+
+        payload = record.get('payload')
+        if topic == '/joint_states' and isinstance(payload, dict):
+            names = payload.get('name', [])
+            positions = payload.get('position', [])
+            if isinstance(names, list) and isinstance(positions, list):
+                for name, position in zip(names, positions):
+                    _update_numeric_range(joint_ranges, str(name), position)
+        elif topic == '/rehab_arm/motor_state' and isinstance(payload, dict):
+            motors = payload.get('motors', [])
+            if isinstance(motors, list):
+                motor_entry_counts.append(len(motors))
+                for motor in motors:
+                    if not isinstance(motor, dict):
+                        continue
+                    key = str(motor.get('joint_name') or motor.get('motor_id') or 'unknown')
+                    _update_numeric_range(motor_ranges, key, motor.get('position'))
+        elif topic == '/rehab_arm/safety_state' and isinstance(payload, dict):
+            state = str(payload.get('state', 'unknown'))
+            safety_states[state] = safety_states.get(state, 0) + 1
+            motion_allowed = payload.get('motion_allowed')
+            if motion_allowed is True:
+                motion_allowed_counts['true'] += 1
+            elif motion_allowed is False:
+                motion_allowed_counts['false'] += 1
+            else:
+                motion_allowed_counts['missing'] += 1
+
+    topic_rates_hz: dict[str, float] = {}
+    for topic, count in topic_counts.items():
+        duration = topic_last_ts.get(topic, 0.0) - topic_first_ts.get(topic, 0.0)
+        topic_rates_hz[topic] = count / duration if count > 1 and duration > 0.0 else 0.0
+
+    return {
+        'schema_version': 'rehab_arm_recording_summary_v1',
+        'record_count': len(records),
+        'metadata': dict(metadata) if isinstance(metadata, dict) else {},
+        'topic_counts': dict(sorted(topic_counts.items())),
+        'topic_rates_hz': dict(sorted(topic_rates_hz.items())),
+        'joint_position_ranges': dict(sorted(joint_ranges.items())),
+        'moving_joint_count': sum(1 for item in joint_ranges.values() if item['span'] > 0.01),
+        'motor_position_ranges': dict(sorted(motor_ranges.items())),
+        'motor_entry_count_min': min(motor_entry_counts) if motor_entry_counts else 0,
+        'motor_entry_count_max': max(motor_entry_counts) if motor_entry_counts else 0,
+        'safety_states': dict(sorted(safety_states.items())),
+        'motion_allowed_counts': motion_allowed_counts,
+    }
+
+
 def build_recording_manifest(log_dir: str | Path) -> dict[str, object]:
     base = Path(log_dir).expanduser()
     sessions: list[dict[str, object]] = []
