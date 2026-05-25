@@ -1,0 +1,518 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useMemo, useRef, useState } from "react";
+import styles from "./rehab-arm-control.module.css";
+
+export type AnyRecord = Record<string, any>;
+
+export type DashboardDevice = {
+  device_id: string;
+  robot_id: string;
+  online_state: string;
+  last_upload_ts_unix: number | null;
+  safety_state: string;
+  motion_allowed: boolean;
+  current_session: string;
+  latest_upload_status: string;
+  latest_error: string;
+  camera_keyframe?: AnyRecord;
+  motor_state?: AnyRecord;
+  sensor_state?: AnyRecord;
+  safety?: AnyRecord;
+  sync_status?: AnyRecord;
+  manifest?: AnyRecord;
+  data_quality?: AnyRecord;
+};
+
+export type Dashboard = {
+  sync_role: string;
+  safety_boundary: {
+    server_may_send: string[];
+    server_must_not_send: string[];
+    m33_final_authority: boolean;
+  };
+  devices: DashboardDevice[];
+  recent_events: AnyRecord[];
+};
+
+type Props = {
+  apiBaseUrl: string;
+  dashboard: Dashboard;
+  projectId: string;
+  projectName: string;
+};
+
+function text(value: unknown, fallback = "") {
+  const next = String(value ?? "").trim();
+  return next || fallback;
+}
+
+function asArray<T>(value: unknown): T[] {
+  return Array.isArray(value) ? (value as T[]) : [];
+}
+
+function payloadOf(value: unknown): AnyRecord {
+  if (!value || typeof value !== "object") return {};
+  const record = value as AnyRecord;
+  return record.payload && typeof record.payload === "object" ? record.payload as AnyRecord : {};
+}
+
+function record(value: unknown): AnyRecord {
+  return value && typeof value === "object" ? value as AnyRecord : {};
+}
+
+function formatTime(value: unknown) {
+  const ts = Number(value);
+  if (!Number.isFinite(ts) || ts <= 0) return "无记录";
+  return new Date(ts * 1000).toLocaleString("zh-CN", { hour12: false });
+}
+
+function stateLabel(value: unknown) {
+  switch (text(value, "ok")) {
+    case "limited":
+      return "limited";
+    case "emergency_stop":
+      return "emergency_stop";
+    case "fault":
+      return "fault";
+    default:
+      return "ok";
+  }
+}
+
+function stateText(value: unknown) {
+  switch (stateLabel(value)) {
+    case "limited":
+      return "受限";
+    case "emergency_stop":
+      return "急停";
+    case "fault":
+      return "故障";
+    default:
+      return "正常";
+  }
+}
+
+function eventTitle(event: AnyRecord) {
+  const type = text(event.record_type, "event");
+  if (type === "motor_state") return "电机状态上传";
+  if (type === "sensor_state") return "传感器状态上传";
+  if (type === "safety_state") return "安全状态上传";
+  if (type === "camera_keyframe") return "摄像头关键帧";
+  if (type === "sync_status") return "session 同步状态";
+  if (type === "manifest") return "manifest 上传";
+  if (type === "device_registration") return "设备注册";
+  return type;
+}
+
+function boolText(value: unknown) {
+  return value ? "是" : "否";
+}
+
+function numberText(value: unknown, unit = "") {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "-";
+  return `${Number.isInteger(number) ? number : number.toFixed(3)}${unit}`;
+}
+
+function keyframeSrc(imageUrl: string, apiBaseUrl: string) {
+  if (!imageUrl) return "";
+  if (imageUrl.startsWith("/api/")) return `/api/proxy/${imageUrl.slice("/api/".length)}`;
+  if (imageUrl.startsWith("/")) return imageUrl;
+  return new URL(imageUrl, apiBaseUrl).toString();
+}
+
+function qualityReadyText(value: unknown) {
+  return value ? "可标注" : "待补数据";
+}
+
+const ARM_MODEL_JSON = {
+  links: [
+    { name: "base", length: 0.22, radius: 0.08, color: 0x75f7dd },
+    { name: "shoulder", length: 0.42, radius: 0.045, color: 0x8ef0c7 },
+    { name: "upper_arm", length: 0.46, radius: 0.04, color: 0xf1d06b },
+    { name: "forearm", length: 0.38, radius: 0.035, color: 0x58f0ff },
+    { name: "wrist", length: 0.18, radius: 0.03, color: 0xffa6b5 },
+  ],
+  joints: [
+    "shoulder_lift_joint",
+    "shoulder_abduction_joint",
+    "upper_arm_rotation_joint",
+    "elbow_lift_joint",
+    "forearm_rotation_joint",
+  ],
+};
+
+function jointPositionsFromMotors(motors: AnyRecord[]) {
+  const byName = new Map(motors.map((motor) => [text(motor.joint_name), Number(motor.position)]));
+  return ARM_MODEL_JSON.joints.map((name, index) => {
+    const value = byName.get(name);
+    if (Number.isFinite(value)) return Number(value);
+    return [0.42, -0.18, 0.24, 0.72, -0.32][index] ?? 0;
+  });
+}
+
+function Arm3DOverview({ motors, safetyState }: { motors: AnyRecord[]; safetyState: string }) {
+  const mountRef = useRef<HTMLDivElement | null>(null);
+  const positions = useMemo(() => jointPositionsFromMotors(motors), [motors]);
+
+  useEffect(() => {
+    const mount = mountRef.current;
+    if (!mount) return;
+    let disposed = false;
+    let cleanup = () => {};
+
+    async function renderArm() {
+      const THREE = await import("three");
+      if (disposed || !mountRef.current) return;
+      const target = mountRef.current;
+      const width = Math.max(360, target.clientWidth || 720);
+      const height = Math.max(320, target.clientHeight || 420);
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x020a0d);
+
+      const camera = new THREE.PerspectiveCamera(42, width / height, 0.01, 100);
+      camera.position.set(1.15, -1.45, 0.9);
+      camera.lookAt(0.26, 0.08, 0.24);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.setSize(width, height);
+      renderer.domElement.setAttribute("aria-label", "机械臂 Three.js 总览");
+      target.replaceChildren(renderer.domElement);
+
+      scene.add(new THREE.HemisphereLight(0xecffff, 0x0a272f, 2.2));
+      const keyLight = new THREE.DirectionalLight(0xffffff, 1.2);
+      keyLight.position.set(1.4, -1.8, 2.2);
+      scene.add(keyLight);
+      const fillLight = new THREE.DirectionalLight(0x75f7dd, 0.7);
+      fillLight.position.set(-1.2, 1.1, 1.4);
+      scene.add(fillLight);
+
+      const grid = new THREE.GridHelper(1.5, 12, 0x214a48, 0x10272b);
+      scene.add(grid);
+      const baseMat = new THREE.MeshStandardMaterial({ color: 0x1b3a3c, roughness: 0.62, metalness: 0.12 });
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, 0.08, 40), baseMat);
+      base.position.y = 0.04;
+      scene.add(base);
+
+      const group = new THREE.Group();
+      group.position.y = 0.1;
+      scene.add(group);
+
+      const jointMaterial = new THREE.MeshStandardMaterial({
+        color: safetyState === "ok" ? 0x78e6aa : safetyState === "fault" ? 0xff705e : 0xffd166,
+        roughness: 0.44,
+        metalness: 0.18,
+      });
+      let cursor = new THREE.Vector3(0, 0, 0);
+      let yaw = positions[1] || 0;
+      let pitch = positions[0] || 0.3;
+      ARM_MODEL_JSON.links.slice(1).forEach((link, index) => {
+        const length = link.length;
+        if (index === 2) pitch -= positions[3] || 0.4;
+        if (index === 3) yaw += positions[4] || 0;
+        const dir = new THREE.Vector3(
+          Math.cos(pitch) * Math.cos(yaw),
+          Math.sin(pitch),
+          Math.cos(pitch) * Math.sin(yaw),
+        ).normalize();
+        const mid = cursor.clone().add(dir.clone().multiplyScalar(length / 2));
+        const geometry = new THREE.CylinderGeometry(link.radius, link.radius, length, 24);
+        const material = new THREE.MeshStandardMaterial({ color: link.color, roughness: 0.58, metalness: 0.1 });
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.position.copy(mid);
+        mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+        group.add(mesh);
+        const joint = new THREE.Mesh(new THREE.SphereGeometry(link.radius * 1.65, 24, 16), jointMaterial);
+        joint.position.copy(cursor);
+        group.add(joint);
+        cursor = cursor.add(dir.multiplyScalar(length));
+      });
+      const end = new THREE.Mesh(new THREE.SphereGeometry(0.045, 24, 16), jointMaterial);
+      end.position.copy(cursor);
+      group.add(end);
+
+      let frame = 0;
+      const animate = () => {
+        if (disposed) return;
+        frame = window.requestAnimationFrame(animate);
+        group.rotation.y += 0.0022;
+        renderer.render(scene, camera);
+      };
+      animate();
+
+      const resize = () => {
+        if (!mountRef.current) return;
+        const nextWidth = Math.max(320, mountRef.current.clientWidth || width);
+        const nextHeight = Math.max(300, mountRef.current.clientHeight || height);
+        camera.aspect = nextWidth / nextHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(nextWidth, nextHeight);
+      };
+      window.addEventListener("resize", resize);
+      cleanup = () => {
+        window.removeEventListener("resize", resize);
+        window.cancelAnimationFrame(frame);
+        renderer.dispose();
+        scene.clear();
+        if (target.contains(renderer.domElement)) target.removeChild(renderer.domElement);
+      };
+    }
+
+    void renderArm();
+    return () => {
+      disposed = true;
+      cleanup();
+    };
+  }, [positions, safetyState]);
+
+  return (
+    <section className={styles.armOverviewPanel} aria-label="机械臂 3D 总览">
+      <div className={styles.panelHead}>
+        <div>
+          <span>Three.js 机械臂</span>
+          <strong>5 关节结构预览</strong>
+        </div>
+        <small>{ARM_MODEL_JSON.joints.length} joints · JSON model</small>
+      </div>
+      <div ref={mountRef} className={styles.armCanvas} />
+      <div className={styles.armLegend}>
+        {ARM_MODEL_JSON.joints.map((name, index) => (
+          <span key={name}>{name}: {numberText(positions[index], " rad")}</span>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projectName }: Props) {
+  const devices = useMemo(() => dashboard.devices.length ? dashboard.devices : [], [dashboard.devices]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState(devices[0]?.device_id ?? "");
+  const selected = useMemo(
+    () => devices.find((device) => device.device_id === selectedDeviceId) ?? devices[0] ?? null,
+    [devices, selectedDeviceId],
+  );
+  const keyframe = selected?.camera_keyframe ?? {};
+  const keyframePayload = payloadOf(keyframe);
+  const motorPayload = payloadOf(selected?.motor_state);
+  const sensorPayload = payloadOf(selected?.sensor_state);
+  const safetyPayload = payloadOf(selected?.safety);
+  const dataQuality = selected?.data_quality ?? {};
+  const motors = asArray<AnyRecord>(motorPayload.motors);
+  const imageUrl = text(keyframe.image_url, "");
+  const absoluteImageUrl = keyframeSrc(imageUrl, apiBaseUrl);
+  const motionAllowed = Boolean(safetyPayload.motion_allowed ?? selected?.motion_allowed);
+  const currentSafetyState = safetyPayload.state ?? selected?.safety_state;
+  const qualityReady = Boolean(dataQuality.annotation_ready);
+
+  return (
+    <main className={styles.shell}>
+      <header className={styles.topbar}>
+        <div className={styles.topbarLeft}>
+          <Link href={`/projects/${projectId}`} className={styles.backLink}>← 主页面</Link>
+          <Link href={`/projects/${projectId}/robotics`} className={styles.backLink} prefetch={false}>设备数据工作台</Link>
+          <div className={styles.title}>
+            <strong>{projectName}</strong>
+            <small>设备状态总览 · 只读遥测 / 数据资产 / 高层任务草案</small>
+          </div>
+        </div>
+        <div className={styles.topbarRight}>
+          <span className={styles.kpi}>设备 {devices.length}</span>
+          <span className={styles.kpi}>在线 {devices.filter((device) => device.online_state === "online").length}</span>
+          <span className={styles.kpi}>M33 裁决 {dashboard.safety_boundary.m33_final_authority ? "开启" : "未声明"}</span>
+          <Link href={`/projects/${projectId}/rehab-arm-control`} className={styles.refreshLink}>刷新状态</Link>
+        </div>
+      </header>
+
+      <div className={styles.body}>
+        <aside className={styles.sidebar}>
+          <div className={styles.sidebarHeader}>
+            <input className={styles.search} readOnly value="设备索引" aria-label="设备索引" />
+            <p className={styles.searchHint}>选择设备后查看最新状态。这里不提供真实运动控制。</p>
+          </div>
+          <ul className={styles.deviceList} aria-label="康复机械臂设备列表">
+            {devices.map((device) => {
+              const active = selected?.device_id === device.device_id;
+              return (
+                <li key={device.device_id}>
+                  <button
+                    type="button"
+                    className={`${styles.deviceRow} ${active ? styles.deviceRowActive : ""}`}
+                    data-state={stateLabel(device.safety_state)}
+                    onClick={() => setSelectedDeviceId(device.device_id)}
+                  >
+                    <span className={styles.dot} data-online={device.online_state} />
+                    <span className={styles.deviceMain}>
+                      <strong>{device.robot_id || "未命名机器人"}</strong>
+                      <small>{device.device_id}</small>
+                    </span>
+                    <span className={styles.deviceState}>{stateText(device.safety_state)}</span>
+                    <small className={styles.deviceTime}>最近上传：{formatTime(device.last_upload_ts_unix)}</small>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </aside>
+
+        <section className={styles.workspace}>
+          <div className={styles.workbenchHeader}>
+            <div>
+              <span>当前设备</span>
+              <h1>{selected?.robot_id || "等待设备接入"}</h1>
+              <p>{selected?.device_id || "NanoPi 注册后会出现在左侧设备索引中"}</p>
+            </div>
+            <div className={styles.compactStats}>
+              <article data-tone={selected?.online_state === "online" ? "ok" : "idle"}>
+                <span>在线</span>
+                <strong>{selected?.online_state === "online" ? "在线" : "离线"}</strong>
+              </article>
+              <article data-tone={stateLabel(currentSafetyState)}>
+                <span>安全</span>
+                <strong>{stateText(currentSafetyState)}</strong>
+              </article>
+              <article data-tone={motionAllowed ? "ok" : "limited"}>
+                <span>M33 允许运动</span>
+                <strong>{motionAllowed ? "允许" : "不允许"}</strong>
+              </article>
+              <article data-tone={qualityReady ? "ok" : "idle"}>
+                <span>数据</span>
+                <strong>{qualityReadyText(qualityReady)}</strong>
+              </article>
+            </div>
+          </div>
+
+          <section className={styles.boundaryBar}>
+            <strong>只读总览</strong>
+            <p>服务器和网页只展示状态、图像、质量门和高层任务草案；不发 CAN、电流、力矩、速度、角度或 M33 覆盖。</p>
+          </section>
+
+          <div className={styles.summaryGrid}>
+            <article>
+              <span>session</span>
+              <strong>{selected?.current_session || "无 session"}</strong>
+              <p>{selected?.latest_upload_status || "等待上传"}</p>
+            </article>
+            <article data-ready={qualityReady ? "true" : "false"}>
+              <span>数据质量</span>
+              <strong>{qualityReadyText(qualityReady)}</strong>
+              <p>{qualityReady ? "可进入标注和导出。" : asArray<string>(dataQuality.blocking_reasons).join("；") || "等待 manifest_with_summary。"}</p>
+            </article>
+            <article>
+              <span>传感器</span>
+              <strong>{text(sensorPayload.source, "等待载荷")}</strong>
+              <p>EMG、心率、IMU、疲劳评分和意图输出作为非实时数据资产展示。</p>
+            </article>
+          </div>
+
+          <div className={styles.primaryGrid}>
+            <Arm3DOverview motors={motors} safetyState={stateLabel(currentSafetyState)} />
+
+            <aside className={styles.sideStack}>
+              <section className={styles.safetyPanel} data-state={stateLabel(currentSafetyState)}>
+                <span>安全状态</span>
+                <strong>{stateText(currentSafetyState)}</strong>
+                <p>急停：{boolText(safetyPayload.emergency_stop)}；M33 模式：{text(safetyPayload.m33_mode, "unknown")}；心跳：{text(safetyPayload.heartbeat_age_ms, "-")} ms。</p>
+              </section>
+              <section className={styles.taskPanel}>
+                <span>下一步</span>
+                <strong>{qualityReady ? "进入标注" : "先补齐数据"}</strong>
+                <p>{qualityReady ? "用设备数据工作台做标注、导出和图表分析。" : "先让 NanoPi 上传完整 session、motor_state 和质量报告。"}</p>
+                <Link
+                  href={`/projects/${projectId}/robotics?tab=dataset&source=rehab-arm-control&device=${encodeURIComponent(selected?.device_id ?? "")}`}
+                  prefetch={false}
+                >
+                  打开数据工作台
+                </Link>
+              </section>
+            </aside>
+          </div>
+
+          <details className={styles.drawerPanel}>
+            <summary>摄像头关键帧</summary>
+            <section className={styles.cameraPanel}>
+              <div className={styles.panelHead}>
+                <div>
+                  <span>摄像头关键帧</span>
+                  <strong>{text(keyframePayload.camera_id, "等待关键帧")}</strong>
+                </div>
+                <small>{formatTime(keyframePayload.frame_ts_unix ?? keyframe.ts_unix)}</small>
+              </div>
+              {absoluteImageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={absoluteImageUrl} alt="最新摄像头关键帧" className={styles.keyframe} />
+              ) : (
+                <div className={styles.emptyCamera}>
+                  <strong>暂无图片</strong>
+                  <p>NanoPi 上传低频 jpg/png/webp 关键帧后会显示在这里。</p>
+                </div>
+              )}
+              <div className={styles.summaryGrid}>
+                <article>
+                  <span>检测摘要</span>
+                  <p>{text(keyframePayload.detection_summary, "暂无目标检测摘要")}</p>
+                </article>
+                <article>
+                  <span>场景摘要</span>
+                  <p>{text(keyframePayload.scene_summary, "暂无场景摘要")}</p>
+                </article>
+                <article>
+                  <span>VLA 上下文</span>
+                  <p>{text(keyframePayload.vla_context, "预留高层任务上下文；不展示底层 CAN 或电机指令。")}</p>
+                </article>
+              </div>
+            </section>
+          </details>
+
+          <details className={styles.drawerPanel}>
+            <summary>电机状态表 · {motors.length} 个电机</summary>
+            <div className={styles.motorTable}>
+              <div className={styles.tableHeader}>
+                <span>电机</span><span>关节</span><span>位置</span><span>速度</span><span>电流</span><span>力矩</span><span>温度</span><span>错误</span><span>状态</span>
+              </div>
+              {motors.map((motor, index) => (
+                <div key={`${text(motor.motor_id, "motor")}-${index}`} className={styles.tableRow} data-fault={motor.fault ? "true" : "false"}>
+                  <span>{text(motor.motor_id, "-")}</span>
+                  <span>{text(motor.joint_name, "-")}</span>
+                  <span>{numberText(motor.position)}</span>
+                  <span>{numberText(motor.velocity)}</span>
+                  <span>{numberText(motor.current, " A")}</span>
+                  <span>{numberText(motor.torque, " Nm")}</span>
+                  <span>{numberText(motor.temperature, " C")}</span>
+                  <span>{text(motor.error_code, "-")}</span>
+                  <span>{motor.enabled ? "使能" : "未使能"} / {motor.fault ? "故障" : "正常"}</span>
+                </div>
+              ))}
+              {!motors.length ? <p className={styles.emptyTable}>暂无电机状态上传。</p> : null}
+            </div>
+          </details>
+
+          <details className={styles.drawerPanel}>
+            <summary>设备档案和事件日志</summary>
+            <div className={styles.detailGrid}>
+              <section className={styles.identityPanel}>
+                <span>设备档案</span>
+                <dl>
+                  <div><dt>设备 ID</dt><dd>{selected?.device_id ?? "-"}</dd></div>
+                  <div><dt>机器人 ID</dt><dd>{selected?.robot_id ?? "-"}</dd></div>
+                  <div><dt>当前 session</dt><dd>{selected?.current_session || "无"}</dd></div>
+                  <div><dt>上传状态</dt><dd>{selected?.latest_upload_status ?? "无记录"}</dd></div>
+                  <div><dt>最近告警</dt><dd>{selected?.latest_error || "无"}</dd></div>
+                </dl>
+              </section>
+              <section className={styles.eventLog}>
+                <span>事件日志</span>
+                {dashboard.recent_events.slice(0, 6).map((event, index) => (
+                  <p key={`${text(event.record_type, "event")}-${index}`}>{eventTitle(event)} · {text(event.device_id, "-")} · {formatTime(event.ts_unix)}</p>
+                ))}
+                {!dashboard.recent_events.length ? <p>暂无上传事件。</p> : null}
+              </section>
+            </div>
+          </details>
+        </section>
+      </div>
+    </main>
+  );
+}
