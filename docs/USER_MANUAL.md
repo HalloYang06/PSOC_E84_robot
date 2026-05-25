@@ -676,6 +676,40 @@ decision=reject reason=logging_only_no_motor_output final_reason=logging_only_no
 - `can0` 复查仍为 `ERROR-ACTIVE`，无 `error-passive` 或 `bus-off`。
 - 本阶段仍不允许电机运动。
 
+已验证通过的记录：
+
+```text
+raw heartbeat:
+TX 321 01
+RX 322 [8] a501070001010a00
+TX 321 02
+RX 322 [8] a502070001010a00
+TX 321 03
+RX 322 [8] a503070001010a00
+
+bridge:
+safety ok: accepted 1 trajectory points
+TX 320 0300390005000000
+
+candump:
+can0  320   [8]  03 00 39 00 05 00 00 00
+
+M33 COM26:
+RX 320 dlc=8 data=0300390005000000
+cmd=0x03 name=set_target joint_id=0 deg_x10=57 target_mrad=99 rpm=5 torque_ma=0
+audit mode=logging_only heartbeat_ok=1 heartbeat_age_ms=141 heartbeat_timeout_ms=2500 joint_known=1 limit_01deg=[-401,802]
+audit target_in_limit=1 rpm_in_limit=1 torque_in_limit=1 max_rpm=30 max_torque_ma=0
+decision=reject reason=logging_only_no_motor_output final_reason=logging_only_no_motor_output safety_state=limited
+```
+
+注意：这次为了审计 logging-only 固件，bridge 临时使用了：
+
+```bash
+-p enable_target_tx:=true -p require_psoc_ok_for_trajectory:=false
+```
+
+原因是 M33 当前故意上报 `limited/logging_only`，默认 bridge 会拒绝轨迹。这个参数组合只能用于单帧审计，不允许作为正式运动配置。
+
 ## 5. 当前真实 CAN ID
 
 | ID | 协议/用途 | 说明 |

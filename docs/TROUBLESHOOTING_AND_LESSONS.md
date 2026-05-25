@@ -480,6 +480,12 @@ berr-counter tx 0 rx 0
 
 - ROS `rehab_arm_psoc_bridge` 也能发布 PSoC 来源的 `ok` safety state，说明这次无回复确实是供电问题，不是 ROS bridge 协议问题。
 - 后续 bridge 安全门控测试中再次出现没电：正常 `status_timeout_sec` 下 bridge 持续 `no PSoC status after N heartbeats`，用户确认又没电了。低电量时停止测试，先恢复供电。
+- 2026-05-25 用户烧录 M33 后，NanoPi `192.168.2.66` 真实局域网不可达；后续用户确认原因是忘记给设备上电。上电后 NanoPi SSH 恢复，`can0` 可拉起并收到 M33 V2 `0x322`。
+
+技巧补充：
+
+- 烧录完成不等于系统已上电运行；烧录后测试前先确认 NanoPi、M33、CAN 收发器三者都已上电。
+- 如果 M33 串口在 Windows 上可见，但 NanoPi 不在线，说明“调试器/烧录器在线”和“整机控制链路在线”不是一回事。
 
 ### Bridge 门控拒绝轨迹时要同时看日志和 candump
 
@@ -929,6 +935,17 @@ RX 322 [8] a501070001010a00
 状态：
 
 - 已验证并记录。下一步继续设计 M33 `0x320` 安全审核日志，默认仍不输出电机控制。
+
+补充：
+
+- M33 上报 `limited/logging_only` 时，NanoPi bridge 默认会拒绝轨迹，这是正确安全行为。
+- 如需做 M33 logging-only 审计单帧测试，才可以临时使用：
+
+```bash
+-p enable_target_tx:=true -p require_psoc_ok_for_trajectory:=false
+```
+
+- 这个参数组合只能用于电机驱动断开、外骨骼不穿戴、M33 固定拒绝输出的单帧审计；不能作为正式运动 bringup 配置。
 
 ### ROS 关节编号和 M33/电机编号不要混用
 

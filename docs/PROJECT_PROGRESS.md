@@ -399,14 +399,41 @@
   - `ping -S 192.168.2.9 192.168.2.66` 超时，ARP 中没有 `192.168.2.66`。
   - 当前没有登录 NanoPi，没有拉起/检查 `can0`，没有发送 `0x321`、没有发送 `0x320`、没有做任何电机运动测试。
   - 结论：M33 已烧录，但烧录后 CAN/ROS 验证需等 NanoPi 真实局域网 SSH 恢复后继续。
+- NanoPi 上电后完成 M33 `0x320` 安全审核日志固件验证：
+  - NanoPi 重新可通过真实局域网 SSH 登录，hostname 为 `NanoPi-M5`。
+  - 初始 `can0` 为 `DOWN/STOPPED`；使用 `sudo` 配置 classic CAN `1Mbps` 并拉起。
+  - `can0` 进入 `UP/LOWER_UP/ERROR-ACTIVE`，`berr-counter tx 0 rx 0`。
+  - 原始 SocketCAN 发送 `0x321` seq 1/2/3，均收到 M33 V2 `0x322`：
+    - `a501070001010a00`
+    - `a502070001010a00`
+    - `a503070001010a00`
+  - 临时运行 bridge：
+    - `enable_target_tx:=true`
+    - `require_psoc_ok_for_trajectory:=false`
+    - 说明：M33 当前故意上报 `limited/logging_only`，因此只为单帧审计临时绕过 NanoPi 的 `ok` gate；M33 仍是最终拒绝方。
+  - 发布一次合法单关节轨迹 `shoulder_lift_joint=0.1 rad`。
+  - bridge 日志：
+    - `safety ok: accepted 1 trajectory points`
+    - `TX 320 0300390005000000`
+  - `candump can0,320:7FF` 捕获：
+    - `can0  320   [8]  03 00 39 00 05 00 00 00`
+  - M33 `COM26` 串口日志：
+    - `RX 320 dlc=8 data=0300390005000000`
+    - `cmd=0x03 name=set_target joint_id=0 deg_x10=57 target_mrad=99 rpm=5 torque_ma=0`
+    - `audit mode=logging_only heartbeat_ok=1 heartbeat_age_ms=141 heartbeat_timeout_ms=2500 joint_known=1 limit_01deg=[-401,802]`
+    - `audit target_in_limit=1 rpm_in_limit=1 torque_in_limit=1 max_rpm=30 max_torque_ma=0`
+    - `decision=reject reason=logging_only_no_motor_output final_reason=logging_only_no_motor_output safety_state=limited`
+  - 复查 `can0` 仍为 `ERROR-ACTIVE`，`bus-errors/error-pass/bus-off` 均为 0。
+  - 本轮没有给电机驱动上电，没有做运动测试。
 
 ## 进行中
 
-- 下一步恢复 NanoPi 真实局域网 SSH：
-  - 确认 NanoPi 是否仍为 `192.168.2.66`，或是否拿到新的 DHCP 地址。
-  - SSH 恢复后先检查 `can0`，再只做 `0x321 -> 0x322` V2 status。
-  - V2 status 仍为 `limited/logging_only` 后，才发一帧合法 `0x320` 做 M33 审核日志对照。
-  - 不给电机驱动上电，不做运动测试。
+- 下一步设计 M33 logging-only 的拒绝用例矩阵：
+  - 超限目标帧。
+  - 未知 joint_id 帧。
+  - heartbeat 超时后再发 `0x320`。
+  - 非零 torque/current 请求。
+  - 仍不让 M33 输出电机控制，不给电机驱动上电。
 
 ## 待确认
 
@@ -424,13 +451,11 @@
 
 严格按“一次只做一个能测试的小目标”推进：
 
-1. 用户烧录 M33 安全审核日志固件。
-2. 恢复 NanoPi 真实局域网 SSH，不使用 `Meta/198.18.0.x` 虚拟网卡结果作为通过依据。
-3. NanoPi 先验证 V2 status 仍为 `limited/logging_only`。
-4. NanoPi 临时打开 `enable_target_tx:=true` 只发一次合法单帧 `shoulder_lift_joint=0.1 rad`。
-5. 查看 COM26 M33 串口，确认日志包含 heartbeat、joint、limit、rpm、torque 审核字段，且最终仍 `reject`。
-6. 如合法帧通过日志对照，再设计超限帧、未知关节帧、heartbeat 超时帧的拒绝日志测试。
-7. 离线继续推进：可继续给 bridge 的安全门控补单元测试，不依赖硬件。
+1. 增加或使用工具生成超限/未知关节/非零 torque 的 `0x320` 测试帧。
+2. 每次只发一帧，并同时记录 bridge、`candump`、M33 串口三处日志。
+3. 验证 M33 均能打印明确拒绝原因，最终仍 `decision=reject`。
+4. 增加 heartbeat 超时拒绝测试：停发 `0x321` 超过 2500ms 后再发 `0x320`。
+5. 离线继续推进：可给 bridge 的 `require_psoc_ok_for_trajectory=false` 审计模式补文档或测试保护。
 
 ## 更新规则
 
