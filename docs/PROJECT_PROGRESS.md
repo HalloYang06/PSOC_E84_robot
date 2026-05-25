@@ -693,6 +693,17 @@
   - 覆盖 `package.xml` 包名和依赖，以及 `sim_data_collection.launch.py` 是否包含仿真节点、motor_state 遥测桥和 recorder。
   - 本地验证通过：bringup 2 tests passed；`rehab_arm_psoc_bridge` 49 tests passed。
   - NanoPi 当前仍 SSH 超时，未做远端复测。
+- NanoPi 恢复后完成 `sim_data_collection.launch.py` 数据闭环复测：
+  - NanoPi 重新在线，hostname `NanoPi-M5`，无残留 colcon/launch/ROS 节点进程。
+  - 同步最新 `mujoco_sim_node.py`、`data_recorder_node.py`、`joint_state_motor_state_node.py` 和 `rehab_arm_bringup` 文件。
+  - NanoPi 构建通过：`rehab_arm_sim_mujoco`、`rehab_arm_psoc_bridge`、`rehab_arm_bringup`。
+  - NanoPi 单测通过：bringup 2 tests passed；`rehab_arm_psoc_bridge` 39 tests passed。
+  - `timeout -s INT 8s ros2 launch rehab_arm_bringup sim_data_collection.launch.py ...` 生成完整 JSONL。
+  - `check_recording.py` 输出 `ok=true`，topics 包含 `/joint_states`、`/rehab_arm/motor_state`、`/rehab_arm/safety_state`、`/rehab_arm/sensor_state`。
+  - topic 计数示例：`/joint_states=500`、`/rehab_arm/motor_state=500`、`/rehab_arm/safety_state=5`、`/rehab_arm/sensor_state=500`。
+  - `/rehab_arm/motor_state` 示例 payload 为 `rehab_arm_motor_state_v1`，`motor_count=5`。
+  - 修复 ROS2 SIGINT 退出时的 shutdown race 日志：最终 `TRACEBACK_COUNT=0`。
+  - 本轮没有发 CAN、没有发送 `0x320`、没有做电机运动测试。
 
 ## 进行中
 
@@ -700,8 +711,7 @@
   - 总服务器归入 AI 合作平台工程，不搬到本仓库。
   - 本仓库只保留 NanoPi 数据采集、manifest、dry-run/upload 客户端和本地假服务器验证工具。
   - 后续先确认 USB/UVC 或深度摄像头枚举，再跑 `camera_keyframe_node.py` 采集真实图像。
-  - 下一步先等 NanoPi SSH 恢复，清理可能残留的 colcon/launch/recording 进程，再重建 `rehab_arm_sim_mujoco` 和 `rehab_arm_bringup`。
-  - 用更稳的后台启动方式复测 `sim_data_collection.launch.py`，确认 checker `ok=true` 且 JSONL 包含 `/rehab_arm/motor_state`。
+  - 下一步可补仿真轨迹采集 launch：启动仿真采集后发布 demo `JointTrajectory`，让 JSONL 记录一段真实变化的多关节轨迹。
   - 真机方向后续补 M33 电机状态到 `/rehab_arm/motor_state` 的映射。
   - 不进入真实电机控制。
   - 不给电机驱动上电，不做运动测试。
@@ -724,7 +734,7 @@
 
 1. 保持电机驱动断开，确认 `can0` 为 `ERROR-ACTIVE`。
 2. raw SocketCAN 先测 `0x321 -> 0x322` heartbeat。
-3. 复测 `sim_data_collection.launch.py` 生成完整 JSONL，并确认包含 `/rehab_arm/motor_state`。
+3. 增加仿真 demo 轨迹采集，确认 JSONL 能记录运动前后关节变化。
 4. 保持服务器同步为非实时外部接口，不放进控制闭环。
 5. 仍保持 logging-only，不进入真实电机控制路径。
 

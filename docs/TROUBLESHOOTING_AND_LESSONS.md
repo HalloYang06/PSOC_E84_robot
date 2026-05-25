@@ -1741,6 +1741,80 @@ AttributeError: handle cannot be modified after node creation
 - 已为 `rehab_arm_bringup` 新增本地静态测试。
 - 本地 bringup 2 tests passed；NanoPi 复测仍待恢复。
 
+### PowerShell 会提前解析远端 `$(...)`
+
+现象：
+
+- 从 Windows PowerShell 里执行 SSH 远端命令：
+
+```powershell
+ssh pi@192.168.2.66 "kill -INT $(cat /tmp/sim_data_collection_launch.pid)"
+```
+
+- PowerShell 把 `$(cat ...)` 当成本地表达式执行，报错路径类似：
+
+```text
+Cannot find path 'D:\tmp\sim_data_collection_launch.pid'
+```
+
+解决：
+
+- 用 PowerShell 单引号包住远端命令，或避免在远端命令里直接写 `$()`。
+
+技巧：
+
+- Windows -> SSH -> bash 有两层 shell；凡是 `$()`、引号和 JSON 混在一起时，优先拆成更简单的远端命令。
+
+状态：
+
+- 已记录。本次 launch 验证改用更简单的 `timeout -s INT`。
+
+### `pkill -f` 可能杀掉当前 SSH 命令
+
+现象：
+
+- 远端命令里先执行：
+
+```bash
+pkill -f 'ros2 launch rehab_arm_bringup sim_data_collection.launch.py'
+```
+
+- 但同一条 SSH 命令后面也包含这个字符串，`pkill -f` 可能匹配并杀掉当前 shell，导致命令无输出退出。
+
+解决：
+
+- 先用 `pgrep -af` 查看残留 PID，再显式 `kill <pid>`。
+- 或把清理命令和启动命令拆成两次 SSH，不要让待匹配字符串出现在当前命令行里。
+
+状态：
+
+- 已记录。本次残留节点按 PID 清理后继续验证。
+
+### ROS2 订阅节点 SIGINT 时可能出现 shutdown race
+
+现象：
+
+- `timeout -s INT ros2 launch ...` 停止仿真采集时，`data_recorder_node.py` 和 `joint_state_motor_state_node.py` 偶发 traceback：
+
+```text
+RuntimeError: Unable to convert call argument '0' to Python object
+```
+
+判断：
+
+- 这是 ROS2 Jazzy/rclpy 在 SIGINT 时，订阅 executor 正在取消息的退出竞争。
+- 数据文件已经写出并且 checker 可通过，但日志污染会误导后续测试。
+
+解决：
+
+- 在两个订阅节点的 `main()` 中只抑制这个已知 shutdown runtime error。
+- 不吞普通运行时错误。
+
+状态：
+
+- 已修复并在 NanoPi 复测：`TRACEBACK_COUNT=0`。
+- `check_recording.py` 同时返回 `ok=true`。
+
 ### 数据文件名要让服务器不用猜
 
 规则：

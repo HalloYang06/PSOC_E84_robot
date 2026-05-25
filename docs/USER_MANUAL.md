@@ -1058,6 +1058,24 @@ grep '/rehab_arm/motor_state' /home/pi/rehab_arm_logs/sim_session.jsonl | head
 
 如果用 `timeout ros2 launch ...` 做短验证后 SSH 卡住，先不要继续加压板子；等 SSH 恢复后清理可能残留的 launch 或节点进程，再复测。
 
+当前已验证的短采集命令：
+
+```bash
+timeout -s INT 8s ros2 launch rehab_arm_bringup sim_data_collection.launch.py \
+  output_dir:=/tmp/rehab_sim_collection \
+  session_id:=sim_launch_clean \
+  device_id:=nanopi-sim-smoke \
+  software_version:=dev-smoke \
+  flush_every:=1
+```
+
+已验证通过的结果：
+
+- `check_recording.py` 返回 `ok=true`。
+- `/rehab_arm/motor_state` 数量与 `/joint_states` 同步增长。
+- `motor_state` 中 `motor_count=5`。
+- launch 退出时不再出现 Python traceback。
+
 `/rehab_arm/camera_keyframe` payload 示例：
 
 ```json

@@ -22,6 +22,10 @@ from rehab_arm_psoc_bridge.data_recording import (
 )
 
 
+def is_shutdown_runtime_error(exc: RuntimeError) -> bool:
+    return 'Unable to convert call argument' in str(exc)
+
+
 def parse_joint_motor_map(text: str) -> dict[str, dict[str, object]]:
     if not text.strip():
         return {}
@@ -81,10 +85,19 @@ def main(args=None):
         rclpy.spin(node)
     except (KeyboardInterrupt, ExternalShutdownException):
         pass
+    except RuntimeError as exc:
+        if not is_shutdown_runtime_error(exc):
+            raise
     finally:
-        node.destroy_node()
+        try:
+            node.destroy_node()
+        except KeyboardInterrupt:
+            pass
         if rclpy.ok():
-            rclpy.shutdown()
+            try:
+                rclpy.shutdown()
+            except KeyboardInterrupt:
+                pass
 
 
 if __name__ == '__main__':
