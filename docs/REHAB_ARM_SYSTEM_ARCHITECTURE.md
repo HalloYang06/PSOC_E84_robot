@@ -57,49 +57,66 @@
 
 ## 3. 总体数据流
 
+数据流图片：[`assets/system_data_flow.png`](assets/system_data_flow.png)
+
 ```mermaid
 flowchart LR
-  App["App\nBLE: 近端训练控制和状态显示\nHTTP: OpenClaw 高层 AI"]
-  Server["总服务器/未来总控台\n开发工具服务器\n设备/数据/模型/实验/远程协作"]
-  OpenClaw["NanoPi/OpenClaw HTTP 服务\nAI 对话/报告/训练建议"]
-  VLA["VLA/任务规划器\n输入: 视觉/语言/目标\n输出: task_goal"]
-  Workstation["Linux 工作站 ROS2\nURDF/MuJoCo/RViz/Planner/Data"]
-  NanoPi["NanoPi ROS2\ntrajectory bridge/status aggregator"]
-  M33["PSoC M33\n实时控制/安全/电机主站"]
-  M55["PSoC M55\nEMG/疲劳/意图/辅助建议"]
-  C8T6["C8T6 传感节点\nEMG/心率/IMU"]
+  App["App\nBLE 实时近端交互\nHTTP 高层 AI/报告"]
+  Server["总服务器/未来总控台\n设备/数据/模型/实验/远程协作"]
+  VLA["VLA/任务规划器\n语言+视觉+状态+历史数据"]
+  Workstation["Linux 仿真主机\nURDF/MuJoCo/RViz\n规划/采集/标注"]
+  NanoPi["NanoPi ROS2\nM33 CAN Bridge\n状态聚合/上传网关"]
+  M33["PSoC M33\n实时控制/安全裁决\n电机主站/BLE"]
+  M55["PSoC M55\nWiFi/语音/OpenClaw\n板端小模型"]
+  C8T6["C8T6 传感节点\nEMG/心率/IMU/健康"]
   Motor["电机和驱动\n编码器/电流/温度/故障"]
 
-  App -->|"BLE: mode/start/stop/params/annotation"| M33
-  M33 -->|"BLE: safety/sensor/progress/status"| App
+  Motor -->|"CAN 电机反馈/故障/状态"| M33
+  C8T6 -->|"CAN 0x7C2 传感\nCAN 0x7C3 健康"| M33
 
-  App -->|"HTTP: AI request/report request"| OpenClaw
-  OpenClaw -->|"HTTP: AI response/report"| App
-  App -->|"HTTPS: account/session/report sync"| Server
-  Server -->|"HTTPS: config/task/report"| App
-  OpenClaw -->|"logs/reports/AI traces"| Server
-  Workstation -->|"simulation data/rosbag/labels"| Server
-  Server -->|"datasets/models/config"| Workstation
-  NanoPi -->|"device status/log summary"| Server
-  Server -->|"fleet config/remote debug request"| NanoPi
-  OpenClaw -->|"optional task request"| VLA
+  M33 -->|"传感特征/电机状态/训练上下文"| M55
+  M55 -->|"意图/疲劳/辅助等级/异常建议"| M33
 
-  VLA -->|"task_goal"| Workstation
-  Workstation -->|"/arm_controller/joint_trajectory"| NanoPi
-  Workstation -->|"/joint_states in simulation"| Workstation
+  App -->|"BLE: start/pause/stop/急停/参数/标注"| M33
+  M33 -->|"BLE: 安全/传感/电机/模型/告警"| App
 
-  NanoPi -->|"CAN 0x320 trajectory target"| M33
-  NanoPi -->|"CAN 0x321 heartbeat"| M33
-  M33 -->|"CAN 0x322 status"| NanoPi
-  NanoPi -->|"/joint_states / safety / sensor"| Workstation
+  M33 -->|"CAN 0x322 状态汇总"| NanoPi
+  NanoPi -->|"CAN 0x321 heartbeat\nCAN 0x320 轨迹目标"| M33
 
-  C8T6 -->|"CAN 0x7C2 sensor"| M33
-  C8T6 -->|"CAN 0x7C3 health"| M33
-  M33 -->|"features/history"| M55
-  M55 -->|"intent/fatigue/assist suggestion"| M33
-  M33 -->|"safe motor command"| Motor
-  Motor -->|"feedback/fault"| M33
+  NanoPi -->|"ROS2: joint/safety/sensor/model state"| Workstation
+  Workstation -->|"ROS2: JointTrajectory 仿真/规划结果"| NanoPi
+
+  NanoPi -->|"主上传链路: session 全量数据"| Server
+  Workstation -->|"仿真数据/rosbag/标注/评估"| Server
+  App -->|"非实时账号/报告/标注同步"| Server
+  M55 -.->|"可选 WiFi: 语音/OpenClaw/模型摘要"| Server
+
+  Server -->|"数据集/模型版本/任务上下文"| VLA
+  Workstation -->|"视觉/仿真状态/机器人状态"| VLA
+  App -->|"用户目标/语音或文本意图"| VLA
+  VLA -->|"task_goal，不输出 CAN/底层命令"| Workstation
+
+  M33 -->|"安全裁决后的底层命令"| Motor
 ```
+
+第一版推荐主链路：
+
+```text
+电机/C8T6 -> M33 -> NanoPi -> Linux 仿真主机/总服务器
+Linux 仿真主机/VLA -> NanoPi -> M33 -> 电机
+M33 -> M55 小模型 -> M33 安全审核
+M33 -> BLE -> App
+```
+
+关键修正：
+
+- 电机状态和 C8T6 传感数据先进入 M33，M33 是实时安全边界和数据可信入口。
+- M55 从 M33 获得电机、传感和训练上下文，运行小模型后只输出预测或建议，再回到 M33 做安全审核。
+- 如果模型结果需要给 NanoPi、仿真主机或服务器，第一版建议由 M33 汇总到 NanoPi，再由 NanoPi 上传和发布 ROS topic。
+- App 通过 BLE 获得近端全量状态，包括传感、电机、安全和小模型结果；App 的 HTTP 链路只面向 NanoPi/OpenClaw 高层服务。
+- 全量数据上传总服务器的主链路选择 NanoPi，因为 NanoPi 能同时汇聚 CAN/ROS/仿真/日志并可做本地缓存。
+- M55 可保留 WiFi 到服务器的可选链路，用于语音、OpenClaw、模型摘要或诊断，但第一版不承担全量数据上传主链路。
+- VLA 的输入来自服务器历史数据、仿真主机视觉/仿真状态、App 用户目标、NanoPi 上传的机器人状态和标注；输出只能是 `task_goal` 或规划约束，不能直接发 CAN 或底层电机命令。
 
 ## 4. 各模块职责
 
@@ -274,7 +291,8 @@ HTTP 从 NanoPi/OpenClaw 输出到 App：
 - 电机底层控制命令：位置、速度、电流或力矩，具体取决于电机驱动协议。
 - NanoPi CAN `0x322`：M33 状态回复。
 - App BLE 状态流：安全状态、训练进度、传感摘要、告警。
-- 给 M55 的传感特征、历史动作、训练上下文。
+- 给 M55 的传感特征、原始/预处理传感窗口、电机状态、历史动作、训练上下文。
+- 给 NanoPi 的汇总状态：关节角、速度、电流/力矩摘要、故障、安全状态、传感摘要、M55 模型结果摘要。
 
 必须实现的安全逻辑：
 
@@ -291,6 +309,7 @@ HTTP 从 NanoPi/OpenClaw 输出到 App：
 - M33 是最终电机控制和安全责任方。
 - 无论命令来自 NanoPi、App 还是 M55，最后都必须经过 M33 安全状态机。
 - M33 必须能在 NanoPi、App 或 M55 掉线时独立进入安全状态。
+- M33 对外发布的数据可以是汇总或限速后的状态流，但底层电机控制权限不能外放给 App、NanoPi、M55、VLA 或服务器。
 
 ### 4.6 英飞凌 M55
 
@@ -311,12 +330,14 @@ HTTP 从 NanoPi/OpenClaw 输出到 App：
 - 短时未来动作趋势。
 - 辅助等级建议：例如 `assist_level 0~5`。
 - 异常检测结果：EMG 异常、动作不协调、疑似疲劳过高。
+- 可选 WiFi/语音/OpenClaw 摘要：语音识别状态、唤醒事件、OpenClaw 高层服务摘要、模型版本和诊断信息。
 
 边界：
 
 - M55 不直接控制电机。
 - M55 不直接绕过 M33 输出底层控制量。
 - M55 的输出是建议或预测，必须交给 M33 审核。
+- M55 到服务器的 WiFi 链路只作为可选辅助链路；第一版全量数据记录和上传以 NanoPi 为主。
 
 ### 4.7 C8T6 传感节点
 
@@ -606,13 +627,26 @@ App -> 总服务器:
 
 NanoPi -> 总服务器:
   设备在线状态、日志摘要、OpenClaw 交互摘要、运行版本
+  M33 汇总后的电机状态、传感状态、安全状态、M55 模型结果
+  session 元数据、数据文件索引、断网缓存后的补传记录
 
 Linux 工作站 -> 总服务器:
   仿真结果、rosbag 索引、标注文件、模型评估结果
 
+M55 -> 总服务器, 可选:
+  语音/OpenClaw/模型摘要、模型版本、诊断信息
+  不作为第一版全量数据上传主链路
+
 总服务器 -> 工作站/NanoPi/App:
   非实时配置、数据集索引、模型版本、远程调试任务、报告查询结果
 ```
+
+第一版上传策略：
+
+- 主上传网关选 NanoPi。NanoPi 同时靠近 CAN、ROS2、仿真主机和本地日志，适合做缓存、压缩、补传和 session 对齐。
+- 高频数据先本地落盘，再按 session 上传索引和文件，避免把服务器接口做成实时闭环依赖。
+- M55 如果通过 WiFi 直连服务器，只上传低频模型摘要、语音/OpenClaw 服务状态或诊断信息。
+- 总服务器下发的模型、配置或任务必须经过 NanoPi/工作站/App 的正常链路，最终真机运动仍由 M33 审核。
 
 不允许总服务器直接做的事情：
 

@@ -233,6 +233,27 @@
     - `python -m unittest discover -s rehab_arm_ros2_ws\src\rehab_arm_psoc_bridge\test -v`
   - 结果：10 tests passed。
 
+### 2026-05-25
+
+- 更新 M33/M55/NanoPi/仿真主机/总服务器/VLA 的数据流架构：
+  - 电机反馈和 C8T6 传感数据先进入 M33。
+  - M33 将电机状态、传感特征和训练上下文给 M55。
+  - M55 只输出意图、疲劳、辅助等级和异常建议，必须回到 M33 审核。
+  - NanoPi 作为第一版全量数据主上传网关，汇总电机、传感、安全、模型结果和 session 数据后上传总服务器。
+  - M55 WiFi 只作为可选低频摘要/语音/OpenClaw/诊断链路，不作为全量数据主链路。
+  - VLA 数据来源明确为服务器历史数据、仿真主机视觉/状态、App 用户目标和 NanoPi 汇总机器人状态；VLA 只输出 `task_goal` 或规划约束。
+- 新增数据流图文件：
+  - `docs/assets/system_data_flow.mmd`
+  - `docs/assets/system_data_flow.png`
+- 更新文档：
+  - `README.md`
+  - `docs/REHAB_ARM_SYSTEM_ARCHITECTURE.md`
+  - `docs/USER_MANUAL.md`
+  - `docs/TROUBLESHOOTING_AND_LESSONS.md`
+- 已验证：
+  - 本地打开 `docs/assets/system_data_flow.png`，确认图片非空、可读。
+  - 本次只更新架构文档和图片，没有运行硬件、ROS、CAN 或电机测试。
+
 ## 进行中
 
 - 下一步准备明确 `0x320` payload 与 M33 固件日志对照方法：

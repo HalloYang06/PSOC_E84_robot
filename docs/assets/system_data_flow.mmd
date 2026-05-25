@@ -1,0 +1,51 @@
+flowchart LR
+  subgraph HumanSide["人机交互"]
+    App["App\nBLE 实时近端交互\nHTTP 高层 AI/报告"]
+  end
+
+  subgraph EdgeMCU["英飞凌 PSoC Edge E84"]
+    M33["M33\n实时控制/安全裁决\n电机主站/BLE"]
+    M55["M55\nWiFi/语音/OpenClaw\n板端小模型"]
+  end
+
+  subgraph RobotBody["传感与执行"]
+    Motors["电机/驱动器\n角度/速度/电流/温度/故障"]
+    C8T6["C8T6 传感节点\nEMG/心率/IMU/健康状态"]
+  end
+
+  subgraph RobotLinux["机器人 Linux 边缘层"]
+    NanoPi["NanoPi ROS2\nM33 CAN Bridge\n状态聚合/上传网关"]
+  end
+
+  subgraph SimAndAI["仿真与高层智能"]
+    Workstation["Linux 仿真主机\nURDF/MuJoCo/RViz\n规划/采集/标注"]
+    Server["总服务器/未来总控台\n设备/数据/模型/实验/远程协作"]
+    VLA["VLA/任务规划器\n语言+视觉+状态+历史数据\n输出 task_goal"]
+  end
+
+  Motors -->|"CAN 电机反馈\nheartbeat/fault/state"| M33
+  C8T6 -->|"CAN 0x7C2 传感数据\nCAN 0x7C3 健康状态"| M33
+
+  M33 -->|"传感特征/电机状态/训练上下文"| M55
+  M55 -->|"意图/疲劳/辅助等级/异常建议"| M33
+
+  App -->|"BLE: start/pause/stop/急停请求\n模式/参数/标注"| M33
+  M33 -->|"BLE: 全量近端状态\n安全/传感/电机/模型/告警"| App
+
+  M33 -->|"CAN 0x322 状态汇总\n传感/电机/安全/模型摘要"| NanoPi
+  NanoPi -->|"CAN 0x321 heartbeat\nCAN 0x320 轨迹目标"| M33
+
+  NanoPi -->|"ROS2: /joint_states\n/safety_state /sensor_state\n/model_state"| Workstation
+  Workstation -->|"ROS2: JointTrajectory\n仿真/规划结果"| NanoPi
+
+  NanoPi -->|"主上传链路: session 数据\n电机+传感+安全+模型+日志"| Server
+  Workstation -->|"仿真数据/rosbag/标注/评估"| Server
+  App -->|"非实时账号/报告/标注同步"| Server
+  M55 -.->|"可选 WiFi: 语音/OpenClaw/模型摘要\n不作为第一版全量上传主链路"| Server
+
+  Server -->|"数据集/模型版本/任务上下文"| VLA
+  Workstation -->|"视觉/仿真状态/机器人状态"| VLA
+  App -->|"用户目标/语音或文本意图"| VLA
+  VLA -->|"task_goal: 拿取/移动/训练目标\n不输出 CAN/力矩/速度底层命令"| Workstation
+
+  M33 -->|"安全裁决后的底层命令"| Motors

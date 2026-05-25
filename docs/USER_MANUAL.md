@@ -15,6 +15,14 @@
 - App 实时近端控制走 BLE 到英飞凌；HTTP 到 NanoPi/OpenClaw 只做高层 AI、报告和远程服务。
 - 旧规划 CAN ID 不作为当前依据。
 
+当前总体数据流图见：[system_data_flow.png](assets/system_data_flow.png)。
+
+第一版数据上传约定：
+
+- 全量电机、传感、安全、模型结果和 session 数据，优先由 NanoPi 汇总后上传总服务器。
+- M55 的 WiFi 链路可以上传语音、OpenClaw 或模型摘要，但不作为第一版全量数据主链路。
+- VLA 只消费服务器历史数据、仿真主机视觉/状态、App 用户目标和 NanoPi 汇总的机器人状态，只输出 `task_goal` 或规划约束。
+
 ## 真机测试前安全检查
 
 每次真机测试前，先确认：
