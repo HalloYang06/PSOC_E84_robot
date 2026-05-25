@@ -1246,6 +1246,21 @@ ros2 run rehab_arm_psoc_bridge sync_upload.py /home/pi/rehab_arm_logs/manifest.j
 - `/tmp/rehab_arm_sync_server/request_log.jsonl` 有 4 条 POST 记录。
 - 第 3 条路径应为 `/api/rehab-arm/v1/sessions/<session_id>/files`，`content_type` 为 `multipart/form-data`。
 
+带 summary manifest 的本地假服务器验证：
+
+```bash
+ros2 run rehab_arm_psoc_bridge sync_upload.py /home/pi/rehab_arm_logs/manifest_with_summary.json \
+  --base-url http://127.0.0.1:8765/api/rehab-arm/v1 \
+  --execute
+```
+
+通过标准：
+
+- 上传结果 `ok=true`。
+- 假服务器收到 4 个 POST。
+- 第 2 条 `/sessions/manifest` 的 JSON body 中保留 `summary.schema_version=rehab_arm_recording_summary_v1`。
+- 动态 demo session 中 `summary.moving_joint_count=5`。
+
 AI 合作平台云端接口：
 
 ```bash

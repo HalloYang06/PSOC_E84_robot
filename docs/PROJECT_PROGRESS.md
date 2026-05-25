@@ -743,6 +743,13 @@
   - NanoPi 命令验证通过：`sync_dry_run.py /tmp/rehab_sim_collection/manifest_with_summary.json` 输出 `rehab_arm_sync_dry_run_v1`。
   - dry-run 仍为 4 个计划请求，`/sessions/manifest` 请求内保留 `rehab_arm_recording_summary_v1`，`moving_joint_count=5`，`motor_entry_count_min/max=5`。
   - 本轮没有真实联网、没有上传服务器、没有发 CAN、没有发送 `0x320`、没有做电机运动测试。
+- 本地假服务器验证带 summary manifest 的 `sync_upload.py --execute`：
+  - NanoPi 启动 `sync_test_server.py`，绑定 `127.0.0.1:8765`，保存请求到 `/tmp/rehab_arm_sync_server_summary`。
+  - 对 `manifest_with_summary.json` 执行 `sync_upload.py --execute`，目标为本机假服务器。
+  - 上传结果 `ok=true`，`completed_count=4`，`request_count=4`。
+  - 假服务器收到 4 个 POST：devices/register、sessions/manifest、sessions/sim_demo_motion/files、sessions/sim_demo_motion/sync-status。
+  - 服务端保存的 `/sessions/manifest` body 中保留 summary：`summary_schema=rehab_arm_recording_summary_v1`，`moving_joint_count=5`，`motor_entry_count_min/max=5`。
+  - 本轮只连本机假服务器，没有上传真实服务器、没有发 CAN、没有发送 `0x320`、没有做电机运动测试。
 
 ## 进行中
 
@@ -750,7 +757,7 @@
   - 总服务器归入 AI 合作平台工程，不搬到本仓库。
   - 本仓库只保留 NanoPi 数据采集、manifest、dry-run/upload 客户端和本地假服务器验证工具。
   - 后续先确认 USB/UVC 或深度摄像头枚举，再跑 `camera_keyframe_node.py` 采集真实图像。
-  - 下一步可用本地 `sync_test_server.py` 对带 summary 的 manifest 做一次完整 upload dry-run execute 到假服务器，确认服务器接收到的 manifest body 带 summary。
+  - 下一步可把这套数据质量 summary 字段整理成给 AI 合作平台/总控台开发者的接口提示，方便页面展示。
   - 真机方向后续补 M33 电机状态到 `/rehab_arm/motor_state` 的映射。
   - 不进入真实电机控制。
   - 不给电机驱动上电，不做运动测试。
@@ -773,7 +780,7 @@
 
 1. 保持电机驱动断开，确认 `can0` 为 `ERROR-ACTIVE`。
 2. raw SocketCAN 先测 `0x321 -> 0x322` heartbeat。
-3. 用本地假服务器验证带 summary manifest 的 `sync_upload.py --execute`。
+3. 整理总控台需要展示的设备数据字段和 summary 字段说明。
 4. 保持服务器同步为非实时外部接口，不放进控制闭环。
 5. 仍保持 logging-only，不进入真实电机控制路径。
 

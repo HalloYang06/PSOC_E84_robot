@@ -1953,6 +1953,7 @@ No such file or directory: /tmp/rehab_sim_collection/sim_demo_motion.jsonl
 
 - 复杂远程验证优先用远程 Python 读文件或确保脚本转换为 LF。
 - 生成 JSON/manifest 时优先用远程 Python `json.dumps()`，不要手写多层转义。
+- 远程 Python 片段里尽量少写包含嵌套引号的 f-string；`format()` 更不容易被 Windows PowerShell、SSH 和 bash 多层引号干扰。
 
 ### USB 摄像头先看 `lsusb`，不要只看 `/dev/video*`
 
