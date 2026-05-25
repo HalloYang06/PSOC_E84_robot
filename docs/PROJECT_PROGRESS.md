@@ -263,6 +263,22 @@
   - VLA 固定走服务器链路，用服务器汇聚视觉、语音、机器人状态和历史上下文。
   - VLA 支持复杂任务分解，例如“先移开遮挡物，再拿目标物品”。
   - 服务器下发到 NanoPi 的是分段任务或训练配置，不是底层 CAN/电机命令。
+- 设备重新上电后完成 NanoPi/M33 非运动复测：
+  - `192.168.2.66` 可 ping 通，NanoPi hostname 为 `wen`。
+  - 初始 `can0` 存在但为 `DOWN/STOPPED`。
+  - 使用 `sudo` 将 `can0` 配置为 classic CAN `1Mbps` 并拉起。
+  - `can0` 进入 `UP/LOWER_UP/ERROR-ACTIVE`，错误计数器 `tx 0 rx 0`。
+  - 手动发送 3 次 NanoPi heartbeat `0x321`，均收到 M33 `0x322`：
+    - `RX 322 [8] a501070050300200`
+    - `RX 322 [8] a502070017330200`
+    - `RX 322 [8] a5030700de350200`
+  - 运行 `rehab_arm_psoc_bridge` 默认 dry-run：`enable_target_tx:=false`。
+  - 发布合法单关节轨迹 `shoulder_lift_joint=0.1 rad`，bridge 输出：
+    - `safety ok: accepted 1 trajectory points`
+    - `DRY-RUN 320 joint=shoulder_lift_joint data=0300390005000000`
+  - 监听 `0x320` 的日志只有 `sniff 0x320 start/done`，未捕获真实 `0x320`。
+  - 复测后 `can0` 仍为 `ERROR-ACTIVE`，`bus-errors/error-pass/bus-off` 均为 0。
+  - 本轮没有发送真实 `0x320`，没有做任何电机运动测试。
 
 ## 进行中
 

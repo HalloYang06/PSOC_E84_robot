@@ -40,6 +40,48 @@
 
 任一项不满足，都只允许做不运动诊断，不允许让设备带人运动。
 
+## 上电后最小非运动复测
+
+设备重新上电后，先只做下面的非运动检查：
+
+```bash
+sudo ip link set can0 down 2>/dev/null || true
+sudo ip link set can0 type can bitrate 1000000
+sudo ip link set can0 up
+ip -details link show can0
+```
+
+通过标准：
+
+- `can0` 是 `UP/LOWER_UP`。
+- CAN 状态是 `ERROR-ACTIVE`。
+- bitrate 是 `1000000`。
+- `berr-counter tx 0 rx 0`。
+
+然后只测 heartbeat：
+
+```bash
+# 只发 0x321 heartbeat，等待 M33 0x322；不要发 0x320
+python3 - <<'PY'
+import socket, struct, time, select
+s=socket.socket(socket.AF_CAN, socket.SOCK_RAW, socket.CAN_RAW)
+s.bind(("can0",))
+s.setblocking(False)
+fmt="=IB3x8s"
+for seq in range(1,4):
+    s.send(struct.pack(fmt, 0x321, 1, bytes([seq]).ljust(8,b"\\x00")))
+    print(f"TX 321 {seq:02x}")
+    end=time.time()+0.5
+    while time.time()<end:
+        r,_,_=select.select([s],[],[],0.05)
+        if r:
+            can_id, dlc, payload=struct.unpack(fmt, s.recv(16))
+            print(f"RX {can_id:03X} [{dlc}] {payload[:dlc].hex()}")
+PY
+```
+
+看到 `RX 322 ...` 才说明 M33 heartbeat/status 链路恢复。
+
 ## 1. NanoPi ROS2 工作区
 
 NanoPi 上当前工作区：

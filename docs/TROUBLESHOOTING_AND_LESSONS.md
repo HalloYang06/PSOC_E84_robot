@@ -428,6 +428,55 @@ ip -details -statistics link show can0
 ```text
 RX STD 0x00000322 [8] A5 01 07 00 48 EA 6D 00
 ```
+- 2026-05-25 设备重新上电后再次复测：
+  - `can0` 拉起到 `UP/LOWER_UP/ERROR-ACTIVE/1Mbps`。
+  - 手动发送 `0x321` seq 1/2/3，均收到 `0x322`。
+  - `can0` 错误计数器 `tx 0 rx 0`，`bus-off/error-pass` 均为 0。
+
+### 上电后 can0 可能存在但仍是 DOWN/STOPPED
+
+现象：
+
+- NanoPi 上能看到 `can0`，但它还不能收发：
+
+```text
+can0: <NOARP,ECHO>
+state DOWN
+can state STOPPED
+```
+
+环境：
+
+- NanoPi M5
+- MCP2518FD / `mcp251xfd`
+- classic CAN 1Mbps
+
+处理：
+
+```bash
+sudo ip link set can0 down 2>/dev/null || true
+sudo ip link set can0 type can bitrate 1000000
+sudo ip link set can0 up
+ip -details link show can0
+```
+
+通过标准：
+
+```text
+can0: <NOARP,UP,LOWER_UP,ECHO>
+can state ERROR-ACTIVE
+bitrate 1000000
+berr-counter tx 0 rx 0
+```
+
+技巧：
+
+- “设备存在”不等于“总线已工作”；每次上电后先确认 `UP/LOWER_UP/ERROR-ACTIVE`。
+- `ERROR-ACTIVE` 且错误计数为 0 后，再做 heartbeat，不要直接发轨迹。
+
+状态：
+
+- 2026-05-25 已验证。
 
 - ROS `rehab_arm_psoc_bridge` 也能发布 PSoC 来源的 `ok` safety state，说明这次无回复确实是供电问题，不是 ROS bridge 协议问题。
 - 后续 bridge 安全门控测试中再次出现没电：正常 `status_timeout_sec` 下 bridge 持续 `no PSoC status after N heartbeats`，用户确认又没电了。低电量时停止测试，先恢复供电。
