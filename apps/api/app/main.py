@@ -53,6 +53,7 @@ from app.modules.claude_bridge.router import router as claude_bridge_router
 from app.modules.qualification.router import router as qualification_router
 from app.modules.realtime.router import router as realtime_router
 from app.modules.receipts.router import router as receipts_router
+from app.modules.rehab_arm.router import router as rehab_arm_router
 
 _log = logging.getLogger(__name__)
 
@@ -282,3 +283,4 @@ app.include_router(realtime_router)
 app.include_router(workstations_router)
 app.include_router(seats_router)
 app.include_router(receipts_router)
+app.include_router(rehab_arm_router)

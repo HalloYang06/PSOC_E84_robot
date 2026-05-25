@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     database_auto_create: bool = False
     database_auto_seed: bool = False
     runner_registration_token: str = ""
+    rehab_arm_sync_storage_dir: str = "tmp/rehab_arm_sync"
 
     auth_provider: str = "legacy"
 
