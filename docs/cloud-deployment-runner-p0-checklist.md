@@ -103,7 +103,7 @@ Known reports:
 - `artifacts/cloud-runner-isolation/cloud-runner-workstation-isolation-report-20260517-174707.json`
 - `artifacts/computer-thread-visibility-http-report-20260517-174707.json`
 
-Latest deployed fingerprint:
+Most recent recorded alignment sample:
 
 - `deployment.build_sha`: `5f970a881aa7`
 - `deployment.build_ref`: `ai/game-loop-core`
