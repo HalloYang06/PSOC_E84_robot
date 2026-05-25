@@ -2,29 +2,33 @@ flowchart LR
   Motors["电机/驱动器"]
   C8T6["C8T6 传感节点\nEMG/心率/IMU等"]
   M33["Infineon M33\n实时控制 + 安全裁决"]
-  M55["Infineon M55\n板端小模型/WiFi/语音/OpenClaw"]
+  M55["Infineon M55\n语音采集/板端小模型/WiFi/OpenClaw"]
   App["手机 App"]
-  NanoPi["NanoPi\nROS2 主控/桥接/数据汇聚"]
-  VLA["VLA 高层智能体"]
-  Server["总服务器/总控台\n数据集/标注/训练/VLA/远程管理"]
+  Camera["NanoPi 摄像头\nRGB/深度/关键帧"]
+  NanoPi["NanoPi\nROS2 主控/桥接/数据汇聚/摄像头采集"]
+  VLA["VLA 高层智能体\n复杂任务理解/任务分解"]
+  Server["总服务器/总控台\n数据集/标注/训练/VLA 路由/远程管理"]
   Workstation["Linux 仿真主机\nMuJoCo/RViz/运动规划"]
 
   Motors -->|"CAN\n电机状态/心跳/故障/角度/速度/电流"| M33
   C8T6 -->|"CAN 0x7C2/0x7C3"| M33
 
   M33 -->|"电机状态 + 传感器数据 + 安全状态"| M55
-  M55 -->|"意图预测/疲劳度/风险评分/辅助等级建议"| M33
+  M55 -->|"语音指令/意图预测/疲劳度/风险评分/辅助等级建议"| M33
 
   App -->|"BLE:\n用户确认/模式切换/急停/参数设置"| M33
   M33 -->|"BLE:\n状态/传感器/模型结果/告警"| App
 
+  Camera -->|"图像/目标关键帧/环境状态"| NanoPi
   NanoPi -->|"轨迹片段\nCAN: 轨迹目标/心跳"| M33
   M33 -->|"CAN:\n状态汇总/轨迹目标确认/心跳"| NanoPi
 
-  NanoPi -->|"数据上传"| Server
+  M55 -->|"语音文本/音频摘要/模型结果"| Server
+  NanoPi -->|"摄像头关键帧 + 机器人状态 + 数据上传"| Server
   NanoPi <-->|"ROS2/DDS 或\nWebSocket/MQTT"| Workstation
 
-  VLA -->|"任务目标:\n拿杯子/移动到目标/训练动作"| NanoPi
-  Server -->|"任务下发/训练配置/日志查询/任务"| NanoPi
+  Server -->|"视觉/语音/机器人状态/历史上下文"| VLA
+  VLA -->|"复杂任务计划:\n先移开遮挡物 -> 再拿目标物品"| Server
+  Server -->|"分段任务/训练配置/日志查询/任务下发"| NanoPi
   Server -->|"高层任务/模型更新/标注任务"| Workstation
   Workstation -->|"JointTrajectory\n仿真结果/轨迹"| NanoPi

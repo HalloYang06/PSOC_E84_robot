@@ -80,38 +80,42 @@ docs/M33_0X320_LOGGER_GUIDE.md
 flowchart LR
   App["App\nBLE 实时近端交互\nHTTP 高层 AI/报告"]
   Server["总服务器/未来总控台\n设备/数据/模型/实验/远程协作"]
-  VLA["VLA/任务规划器\n语言+视觉+状态+历史数据"]
+  VLA["VLA/任务规划器\n复杂任务理解/任务分解"]
   Workstation["Linux 仿真主机\nURDF/MuJoCo/RViz/规划/标注"]
-  NanoPi["NanoPi ROS2\nM33 CAN Bridge\n状态聚合/上传网关"]
+  NanoPi["NanoPi ROS2\nM33 CAN Bridge\n状态聚合/摄像头采集/上传网关"]
   M33["PSoC M33\n实时控制/安全裁决\n电机主站/BLE"]
-  M55["PSoC M55\nWiFi/语音/OpenClaw\n板端小模型"]
+  M55["PSoC M55\n语音采集/WiFi/OpenClaw\n板端小模型"]
   C8T6["C8T6 传感节点\nEMG/心率/IMU"]
   Motor["电机和驱动\n编码器/电流/温度/故障"]
+  Camera["NanoPi 摄像头\nRGB/深度/关键帧"]
 
   Motor -->|"CAN 电机反馈/故障/状态"| M33
   C8T6 -->|"CAN 0x7C2/0x7C3 传感和健康"| M33
 
   M33 -->|"传感特征/电机状态/训练上下文"| M55
-  M55 -->|"意图/疲劳/辅助等级/异常建议"| M33
+  M55 -->|"语音指令/意图/疲劳/辅助等级/异常建议"| M33
 
   App -->|"BLE: start/pause/stop/急停/参数/标注"| M33
   M33 -->|"BLE: 安全/传感/电机/模型/告警"| App
 
+  Camera -->|"图像/目标关键帧/环境状态"| NanoPi
   M33 -->|"CAN 0x322 状态汇总"| NanoPi
   NanoPi -->|"CAN 0x321 heartbeat\nCAN 0x320 轨迹目标"| M33
 
   NanoPi -->|"ROS2: joint/safety/sensor/model state"| Workstation
   Workstation -->|"ROS2: JointTrajectory 仿真/规划结果"| NanoPi
 
-  NanoPi -->|"主上传链路: session 全量数据"| Server
+  M55 -->|"语音文本/音频摘要/模型结果"| Server
+  NanoPi -->|"摄像头关键帧 + 机器人状态 + session 数据"| Server
   Workstation -->|"仿真数据/rosbag/标注/评估"| Server
   App -->|"非实时账号/报告/标注同步"| Server
   M55 -.->|"可选 WiFi: 语音/OpenClaw/模型摘要"| Server
 
-  Server -->|"数据集/模型版本/任务上下文"| VLA
-  Workstation -->|"视觉/仿真状态/机器人状态"| VLA
-  App -->|"用户目标/语音或文本意图"| VLA
-  VLA -->|"task_goal，不输出 CAN/底层命令"| Workstation
+  Server -->|"视觉/语音/机器人状态/历史上下文"| VLA
+  VLA -->|"复杂任务计划: 先移开遮挡物 -> 再拿目标物品"| Server
+  Server -->|"分段任务/训练配置/任务下发"| NanoPi
+  Server -->|"高层任务/模型更新/标注任务"| Workstation
+  Workstation -->|"JointTrajectory 仿真结果/轨迹"| NanoPi
 
   M33 -->|"安全裁决后的底层命令"| Motor
 ```
@@ -120,9 +124,11 @@ flowchart LR
 
 - 电机反馈和 C8T6 传感数据先进入 M33，M33 再分发给 M55、NanoPi 和 App。
 - M55 跑板端小模型，输出意图、疲劳、辅助等级和异常建议；这些结果必须回到 M33 审核，不能直接控制电机。
-- 全量数据第一版建议由 NanoPi 统一上传总服务器；M55 的 WiFi 可作为语音/OpenClaw/模型摘要的可选链路，不作为全量数据主链路。
+- NanoPi 负责采集摄像头数据，上传关键帧、目标检测结果、机器人状态和 session 数据到总服务器。
+- M55/英飞凌负责语音采集和板端小模型，语音文本、音频摘要和模型结果可以上传服务器，实时安全仍回到 M33。
 - NanoPi 获得 M33 汇总的电机、传感、安全和模型状态后，同步给仿真主机，用于数字孪生、数据采集和轨迹规划。
-- VLA 的数据来自服务器历史数据、仿真主机视觉/状态、App 用户目标和 NanoPi 上传的机器人状态；VLA 只输出 `task_goal`，不直接发 CAN。
+- VLA 固定走服务器链路，输入来自 NanoPi 摄像头、M55 语音、机器人状态、历史数据和标注；输出复杂任务计划，例如“先移开遮挡物，再拿目标物品”。
+- VLA/服务器只能下发高层任务或分段任务，不能直接发 CAN 或底层电机命令；NanoPi/仿真主机生成轨迹后仍由 M33 安全裁决。
 
 ## 4. 当前真实 CAN ID 和协议
 
