@@ -543,13 +543,29 @@
   - Windows `COM26` 无 M33 串口输出，发送换行也无 shell/日志响应。
   - 结论：本轮尚未验证 `0x322` detail 动态变化；当前阻塞是 M33 应用未运行、未复位到应用、烧录镜像/启动配置不对，或板子相关供电/复位状态异常。
   - 本轮没有给电机驱动上电，没有做运动测试。
+- M33 恢复在线后完成 `0x322 detail_code` 动态变化非运动验证：
+  - 初始 heartbeat：
+    - `TX heartbeat_71 321 [1] 71`
+    - `RX 322 [8] a571070001010a00`
+    - NanoPi parser 解析为 `detail_code=10`、`detail=logging_only_no_motor_output`。
+  - 发送超限 `0x320`：
+    - `TX target_out_of_limit 320 [8] 0300840305000000`
+  - 下一次 heartbeat：
+    - `TX heartbeat_72 321 [1] 72`
+    - `RX 322 [8] a572070001010400`
+    - NanoPi parser 解析为 `detail_code=4`、`detail=target_out_of_limit`。
+  - `candump` 与 M33 `COM26` 串口日志一致：
+    - `can0  322   [8]  A5 72 07 00 01 01 04 00`
+    - M33 日志包含 `safety_state=limited decision=reject reason=target_out_of_limit`。
+    - M33 日志最终仍为 `final action=no_motor_output logging_only=1`。
+  - `can0` 复查为 `UP/LOWER_UP/ERROR-ACTIVE`，`berr-counter tx 0 rx 0`。
+  - 本轮没有给电机驱动上电，没有做运动测试。
 
 ## 进行中
 
-- 下一步恢复 M33 应用在线：
-  - 用户现场先按 M33 reset 或给 M33 控制板断电重上电。
-  - 仍不通时，重新烧录最新 `D:\RT-ThreadStudio\workspace\yiliao_m33\Debug\rtthread.bin`，确认烧录后程序启动。
-  - 恢复后先只测 `0x321 -> 0x322`，再测 detail_code 动态变化。
+- 下一步抽样验证另一个 `0x322 detail_code`：
+  - 优先选 `torque_out_of_limit` 或 `heartbeat_timeout`。
+  - 仍然只做 raw SocketCAN + M33 logging-only 验证。
   - 不给电机驱动上电，不做运动测试。
 
 ## 待确认
@@ -568,11 +584,11 @@
 
 严格按“一次只做一个能测试的小目标”推进：
 
-1. 用户烧录 M33 detail_code 固件。
-2. 同步 NanoPi `psoc_status.py` 和测试文件，重建/测试 `rehab_arm_psoc_bridge`。
-3. NanoPi 先只测 heartbeat/status。
-4. raw SocketCAN 发一帧 `target_out_of_limit`，再发 heartbeat，确认 ROS `/rehab_arm/safety_state` 能看到 `detail=target_out_of_limit`。
-5. 通过后再抽样验证 `heartbeat_timeout` 或 `torque_out_of_limit` 的 detail_code。
+1. 保持电机驱动断开，确认 `can0` 为 `ERROR-ACTIVE`。
+2. raw SocketCAN 先测 `0x321 -> 0x322` heartbeat。
+3. 发一个新的安全拒绝用例，例如 `torque_out_of_limit`。
+4. 再发 heartbeat，确认下一帧 `0x322` byte6 与 NanoPi parser 的 `detail` 一致。
+5. COM26 串口必须继续看到 `decision=reject` 和 `final action=no_motor_output logging_only=1`。
 
 ## 更新规则
 

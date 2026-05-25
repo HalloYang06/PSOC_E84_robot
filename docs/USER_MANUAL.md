@@ -493,7 +493,7 @@ python -m unittest discover -s rehab_arm_ros2_ws\src\rehab_arm_psoc_bridge\test 
 
 通过标准：
 
-- 16 个测试全部 `ok`。
+- 17 个测试全部 `ok`。
 - 覆盖合法编码、解码、负角度截断、超限拒绝、非有限数拒绝、未知关节拒绝、payload 长度错误和 unknown joint 可见性。
 - 覆盖 `0x322` V1 legacy 兼容、V2 limited/logging-only、emergency_stop、error_code 强制 fault、坏 marker 和短帧。
 
@@ -811,6 +811,36 @@ M33 状态机拒绝用例第二轮已验证：
 - `candump` 看到 `0x322` byte6 为 `04`。
 - `/rehab_arm/safety_state` JSON 里 `detail_code=4`，`detail=target_out_of_limit`。
 - 仍然不出现任何电机输出，M33 仍处于 logging-only。
+
+已验证通过的示例：
+
+```text
+TX heartbeat_71 321 [1] 71
+RX 322 [8] a571070001010a00
+PARSED detail_code=10 detail=logging_only_no_motor_output
+
+TX target_out_of_limit 320 [8] 0300840305000000
+TX heartbeat_72 321 [1] 72
+RX 322 [8] a572070001010400
+PARSED detail_code=4 detail=target_out_of_limit
+```
+
+对应 `candump`：
+
+```text
+can0  321   [1]  71
+can0  322   [8]  A5 71 07 00 01 01 0A 00
+can0  320   [8]  03 00 84 03 05 00 00 00
+can0  321   [1]  72
+can0  322   [8]  A5 72 07 00 01 01 04 00
+```
+
+M33 `COM26` 串口必须同时能看到：
+
+```text
+safety_state=limited decision=reject reason=target_out_of_limit
+final action=no_motor_output logging_only=1
+```
 
 如果烧录后没有任何 `0x322`：
 

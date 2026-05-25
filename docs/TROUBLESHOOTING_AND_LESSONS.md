@@ -1328,6 +1328,55 @@ kill $pid 2>/dev/null || true
 
 ## 文档维护技巧
 
+### `0x322 detail_code` 要用“前后两次 heartbeat”验证
+
+现象：
+
+- M33 的 `0x322` byte6 用来上报最近一次 ROS safety assessment 的首要拒绝原因。
+- 直接发送危险 `0x320` 后不会自动看到状态变化，必须再发一次 `0x321` heartbeat 触发下一帧 `0x322`。
+
+环境：
+
+- NanoPi `can0`，classic CAN 1Mbps。
+- M33 detail_code 固件，`CONTROL_ROS_COMMAND_LOGGING_ONLY=1U`。
+- 电机驱动断开，无运动测试。
+
+验证：
+
+- 初始 heartbeat 返回：
+
+```text
+RX 322 [8] a571070001010a00
+detail_code=10 detail=logging_only_no_motor_output
+```
+
+- 发送超限 `0x320` 后，再发 heartbeat，返回：
+
+```text
+TX 320 [8] 0300840305000000
+RX 322 [8] a572070001010400
+detail_code=4 detail=target_out_of_limit
+```
+
+- M33 `COM26` 同时打印：
+
+```text
+safety_state=limited decision=reject reason=target_out_of_limit
+final action=no_motor_output logging_only=1
+```
+
+技巧：
+
+- 动态 detail 的验收要同时看三处：`candump`、NanoPi parser、M33 串口。
+- `0x322` byte6 从 `0A` 变为 `04`，才说明 M33 已把最近一次拒绝原因带回 NanoPi。
+- 只要 M33 仍是 logging-only，看到 `target_out_of_limit` 也不能理解为可运动状态；它只是更清晰的拒绝原因。
+
+状态：
+
+- 已验证通过。
+- `can0` 复查为 `UP/LOWER_UP/ERROR-ACTIVE`，`berr-counter tx 0 rx 0`。
+- 未给电机驱动上电，未做运动测试。
+
 ### 进度和踩坑要分开
 
 规则：
