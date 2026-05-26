@@ -2819,3 +2819,34 @@ PREARM_MOTORS: required_mask=0x0000007F fresh_mask=0x00000000 ... fresh_ok=0
 状态：
 
 - M33 已修正为审核通过后单次直接应用；已编译 `control_layer.o`，未烧录验证。
+
+### SSH 端口可连但握手被远端关闭时不要继续动电机
+
+现象：
+
+- 烧录 M33 后，Windows 主机尝试 `ssh pi@192.168.2.66`。
+- 一开始连接超时，后续 TCP 能建立，但 SSH 在 banner/key exchange 前被远端关闭或 reset。
+- 典型输出：
+
+```text
+kex_exchange_identification: Connection closed by remote host
+Connection closed by 192.168.2.66 port 22
+kex_exchange_identification: read: Connection reset
+Connection reset by 192.168.2.66 port 22
+```
+
+判断：
+
+- 这不是 ROS 或 CAN 协议问题，首先是 NanoPi 网络/SSH 服务可用性问题。
+- 在不能远程看 `can0`、`candump`、ROS bridge 和 M33 状态日志时，不应发送 `0x320` 或运动轨迹。
+
+排查顺序：
+
+- 现场确认 NanoPi IP 是否仍是 `192.168.2.66`。
+- 在 NanoPi 本机执行 `hostname -I`、`sudo systemctl status ssh`、`sudo systemctl restart ssh`。
+- 如果 SSH 仍被 reset，查看 `sudo journalctl -u ssh -n 80 --no-pager`。
+- SSH 恢复后先运行只读检查：`ip -details link show can0`、短时间 `candump -L can0`、ROS `/rehab_arm/safety_state`。
+
+状态：
+
+- 当前远程验收被 SSH 阻塞；没有发送运动命令。

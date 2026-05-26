@@ -1315,3 +1315,13 @@
 - Not validated: not flashed yet, no NanoPi live CAN check, no `0x320`, and no motor motion in this slice.
 - Safety: this is a development bench mode, not final wearable pre-arm safety. Formal path still requires real estop and final code-configured limits before human-worn motion.
 - Next step: user flashes M33, then run NanoPi live status check and one tiny single-joint ROS trajectory while observing M33 serial logs.
+
+### 2026-05-26 - M33 bench firmware flashed, NanoPi SSH blocked
+
+- Completed: user reported the M33 bench-motion firmware was flashed.
+- Attempted: Windows host tried SSH to `pi@192.168.2.66` for post-flash NanoPi/CAN validation.
+- Observed: initial SSH attempt timed out; later attempts established TCP connection but remote closed/reset during SSH banner exchange.
+- Observed: `Test-Connection 192.168.2.66` timed out, while SSH debug showed `Connection established` followed by `kex_exchange_identification: Connection closed/reset by remote host`.
+- Not validated: could not run `ip -details link show can0`, `candump`, ROS bridge status, `0x322` parse, or any tiny trajectory.
+- Safety: no `0x320` was sent and no motor motion was attempted because M33/NanoPi logs were not observable from this host.
+- Next step: on-site check NanoPi SSH service/network, then rerun live status check before any movement command.
