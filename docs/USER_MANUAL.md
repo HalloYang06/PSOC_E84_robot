@@ -1559,6 +1559,15 @@ ros2 run rehab_arm_sim_mujoco upload_sim_readiness sim_readiness_report.json \
 - 真机运动仍必须走 `JointTrajectory -> NanoPi -> M33 -> 电机`，并由 M33 安全状态机最终裁决。
 - 如果只是做仿真、采集或标注，可以先用这个面板确认 ROS/仿真报告和数据上传是否连通。
 
+面板里还有一个默认收起的 `开发板接入脚本清单`。后续给任意 Linux 开发板写预配置脚本时，至少按这个顺序交付：
+
+1. 注册设备：上传 `device_id`、`robot_id`、主机名、在线状态和能力 `manifest`。
+2. 扫描接口：报告 CAN、串口、USB、摄像头、ROS2 环境和 runner 可执行能力。
+3. 上传只读数据：按项目需要上传 `motor_state`、`sensor_state`、`camera_keyframe`、`simulation_readiness`。
+4. 进入采集/标注：确认安全边界后，再开启数据同步、质量门、标注和图表实验。
+
+这个清单适用于 NanoPi、Jetson、x86 工控机或其他 Linux 开发板；具体机器人项目的控制权限和安全裁决必须另行实现，不能由平台清单代替。
+
 ## 7. 文档与 Git 维护
 
 每次完成任务后同步更新：

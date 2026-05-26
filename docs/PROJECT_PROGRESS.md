@@ -951,3 +951,11 @@
 - Not validated: cloud protected-page screenshot is blocked because the local seed account is not valid on the cloud server.
 - Safety: the panel is status-only and does not send ROS, CAN, M33, motor, or motion commands.
 - Next step: use a real cloud test account to verify the protected robotics page, then continue the next robotics-development thin slice.
+
+### 2026-05-26 - Platform Linux board setup checklist drawer
+
+- Completed: added a collapsed setup checklist to the platform Linux board access panel: register device, scan interfaces, upload read-only data, then enter capture/annotation.
+- Validated: targeted platform eslint passed.
+- Validated: local authenticated browser QA clicked the drawer on desktop and 390px mobile; no horizontal overflow and no old control-console label.
+- Safety: the checklist describes data upload and development workflow only; it is not a motion enable path.
+- Next step: keep moving toward real simulation host onboarding and data collection assets.
