@@ -1476,18 +1476,6 @@ function configuredDebugWindows(resources: DebugWindow[], configs: SavedDebugWin
     .filter(Boolean) as DebugWindow[];
 }
 
-function defaultDebugWindowConfig(resource: DebugWindow, defaultNpcId: string): SavedDebugWindow {
-  return {
-    resourceId: resource.id,
-    name: resource.name,
-    type: resource.kind,
-    baudRate: text(resource.baudRate, "115200"),
-    sampleHz: text(resource.sampleHz, "100"),
-    channels: text(resource.channels, "time,signal.value,status.code,event.count"),
-    boundNpc: text(resource.boundNpc, defaultNpcId),
-  };
-}
-
 function DebugTile({
   projectId,
   tile,
@@ -2190,34 +2178,19 @@ export function RoboticsWorkbenchClient({
     setOpenIds((curr) => curr.includes(id) ? curr.filter((item) => item !== id) : [...curr, id]);
   }
 
-  function openDebugResource(resource: DebugWindow) {
-    const configured = configuredWindows.find((item) => item.id === resource.id);
-    const config = savedWindows.find((item) => item.resourceId === resource.id) ?? defaultDebugWindowConfig(resource, defaultNpcId);
-    if (!configured) {
-      setSavedWindows((current) => [...current.filter((item) => item.resourceId !== resource.id), config]);
-    }
-    setOpenIds((current) => current.includes(resource.id) ? current.filter((item) => item !== resource.id) : [...current, resource.id]);
-  }
-
   function openAllForMode() {
     if (workbenchMode === "boards") {
-      setOpenIds((current) => Array.from(new Set([...current, ...devices.map((device, index) => deviceId(device, index))])));
+      setOpenIds(devices.map((device, index) => deviceId(device, index)));
       return;
     }
-    const nextConfigs = usableWindows.map((resource) => savedWindows.find((item) => item.resourceId === resource.id) ?? defaultDebugWindowConfig(resource, defaultNpcId));
-    setSavedWindows((current) => {
-      const byId = new Map(current.map((item) => [item.resourceId, item]));
-      nextConfigs.forEach((config) => byId.set(config.resourceId, config));
-      return Array.from(byId.values());
-    });
-    setOpenIds((current) => Array.from(new Set([...current, ...usableWindows.map((resource) => resource.id)])));
+    setOpenIds(configuredWindows.map((window) => window.id));
   }
 
   function closeWindow(id: string) {
     setOpenIds((curr) => curr.filter((item) => item !== id));
   }
 
-  const modeItemCount = workbenchMode === "boards" ? devices.length : usableWindows.length;
+  const modeItemCount = workbenchMode === "boards" ? devices.length : configuredWindows.length;
 
   return (
     <main className={`${workbenchStyles.shell} ${styles.roboticsWorkbenchShell}`}>
@@ -2263,9 +2236,73 @@ export function RoboticsWorkbenchClient({
               <input type="hidden" name="return_to" value={`/projects/${projectId}/robotics`} />
               <input type="hidden" name="computer_node_id" value="all" />
               <button type="submit" disabled={!computerCount}>
-                {workbenchMode === "boards" ? "扫描 Linux 开发板" : "扫描串口/CAN/USB 设备"}
+                {workbenchMode === "boards" ? "扫描 Linux 开发板" : "扫描真实接口"}
               </button>
             </form>
+            {workbenchMode === "interfaces" ? (
+              <details className={styles.setupDrawer}>
+                <summary>创建调试窗口</summary>
+                <form action={创建机器人调试窗口.bind(null, projectId)} onSubmit={previewCreateWindow} className={styles.windowCreateForm}>
+                  <input type="hidden" name="return_to" value={`/projects/${projectId}/robotics`} />
+                  <input name="window_name" placeholder="窗口名，例如 产线传感器串口" />
+                  <label className={styles.createFullField}>
+                    <span>窗口类型</span>
+                    <select name="window_type" defaultValue="serial" aria-label="窗口类型">
+                      <option value="serial">串口</option>
+                      <option value="can">CAN</option>
+                      <option value="usb">USB</option>
+                      <option value="spi-can">SPI-CAN</option>
+                      <option value="ros">ROS</option>
+                    </select>
+                  </label>
+                  <label className={styles.createFullField}>
+                    <span>绑定真实设备</span>
+                    <select name="resource_id" aria-label="绑定真实设备">
+                      {usableWindows.map((resource) => (
+                        <option key={resource.id} value={resource.id}>{resource.name} · {resource.computerLabel} · {resource.computerState}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <details className={styles.nestedSettings}>
+                    <summary>参数和 NPC</summary>
+                    <div className={styles.createParamGrid}>
+                      <label>
+                        <span>波特率</span>
+                        <select name="baud_rate" defaultValue="115200" aria-label="波特率">
+                          {["9600", "19200", "38400", "57600", "115200", "230400", "460800", "921600", "1000000", "2000000"].map((rate) => (
+                            <option key={rate} value={rate}>{rate}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        <span>采样频率</span>
+                        <input name="sample_hz" defaultValue="100" aria-label="采样频率" />
+                      </label>
+                    </div>
+                    <label className={styles.createFullField}>
+                      <span>采集通道</span>
+                      <input name="channels" defaultValue="time,signal.value,status.code,event.count" aria-label="采集通道" />
+                    </label>
+                    <label className={styles.createFullField}>
+                      <span>协助 NPC</span>
+                      <select name="bound_npc" aria-label="协助 NPC" defaultValue={defaultNpcId} onChange={(event) => setDefaultNpcId(event.target.value)}>
+                        <option value="">不绑定 NPC</option>
+                        {npcSeats.map((seat, index) => {
+                          const name = seatName(seat, `NPC ${index + 1}`);
+                          return <option key={seatId(seat, name)} value={seatId(seat, name)}>{name}</option>;
+                        })}
+                      </select>
+                    </label>
+                  </details>
+                  <button type="submit" disabled={!usableWindows.length}>创建并打开</button>
+                  <small>
+                    {usableWindows.length
+                      ? `${usableWindows.length} 个真实设备可绑定`
+                      : "先扫描并让目标电脑可排队。"}
+                  </small>
+                </form>
+              </details>
+            ) : null}
           </div>
           <ul className={workbenchStyles.groupList}>
             {workbenchMode === "boards" ? (
@@ -2314,40 +2351,47 @@ export function RoboticsWorkbenchClient({
             ) : (
               <li className={workbenchStyles.group}>
                 <div className={workbenchStyles.groupHeader}>
-                  <span>串口 / CAN / USB 设备</span>
-                  <small>{usableWindows.length} 个</small>
+                  <span>🖥 调试窗口</span>
+                  <small>{configuredWindows.length} 个窗口</small>
                 </div>
                 <ul className={workbenchStyles.npcList}>
-                  {usableWindows.map((resource) => {
-                    const configured = configuredWindows.find((item) => item.id === resource.id);
-                    const isOpen = openIds.includes(resource.id);
+                  {configuredWindows.map((window) => {
+                    const isOpen = openIds.includes(window.id);
                     return (
-                      <li key={resource.id} className={`${workbenchStyles.npcRow} ${isOpen ? workbenchStyles.npcRowOpen : ""}`}>
+                      <li key={window.id} className={`${workbenchStyles.npcRow} ${isOpen ? workbenchStyles.npcRowOpen : ""}`}>
                         <div className={workbenchStyles.npcMain}>
-                          <strong className={workbenchStyles.npcName}>{configured?.name ?? resource.name}</strong>
+                          <strong className={workbenchStyles.npcName}>{window.name}</strong>
                           <small className={workbenchStyles.npcMeta}>
-                            <span className={resource.runnerReady ? workbenchStyles.dotOnline : workbenchStyles.dot} />
-                            {resource.kindLabel} · {resource.transport} · {resource.computerState}
+                            <span className={window.statusLabel === "可读取" ? workbenchStyles.dotOnline : workbenchStyles.dot} />
+                            {window.computerLabel} · {window.computerState} · {window.statusLabel}
                           </small>
                         </div>
                         <span className={styles.windowRowActions}>
-                          <button
-                            type="button"
+                          <a
                             className={workbenchStyles.openBtn}
-                            aria-label={`${isOpen ? "关闭" : "打开"} ${resource.name}`}
-                            onClick={() => openDebugResource(resource)}
+                            href={windowsHref(projectId, isOpen ? openIds.filter((id) => id !== window.id) : [...openIds, window.id], defaultNpcId)}
+                            aria-label={`${isOpen ? "关闭" : "打开"} ${window.name}`}
+                            onClick={(event) => {
+                              event.preventDefault();
+                              toggleWindow(window.id);
+                            }}
                           >
                             {isOpen ? "✕" : "+"}
-                          </button>
+                          </a>
+                          <form action={删除机器人调试窗口.bind(null, projectId)} onSubmit={() => previewDeleteWindow(window.id)}>
+                            <input type="hidden" name="return_to" value={`/projects/${projectId}/robotics`} />
+                            <input type="hidden" name="resource_id" value={window.id} />
+                            <button type="submit" aria-label={`删除 ${window.name}`}>删</button>
+                          </form>
                         </span>
                       </li>
                     );
                   })}
-                  {!usableWindows.length ? (
+                  {!configuredWindows.length ? (
                     <li className={workbenchStyles.npcRow}>
                       <div className={workbenchStyles.npcMain}>
-                        <strong className={workbenchStyles.npcName}>等待扫描真实接口</strong>
-                        <small className={workbenchStyles.npcMeta}>扫描 Linux 开发板上的串口、CAN、USB 或其他设备接口</small>
+                        <strong className={workbenchStyles.npcName}>等待创建调试窗口</strong>
+                        <small className={workbenchStyles.npcMeta}>先扫描真实接口，再用上方“创建调试窗口”绑定设备</small>
                       </div>
                     </li>
                   ) : null}
@@ -2402,16 +2446,16 @@ export function RoboticsWorkbenchClient({
                     <input type="hidden" name="return_to" value={`/projects/${projectId}/robotics`} />
                     <input type="hidden" name="computer_node_id" value="all" />
                     <button type="submit" disabled={!computerCount}>
-                      {workbenchMode === "boards" ? "扫描 Linux 开发板" : "扫描串口/CAN/USB 设备"}
+                      {workbenchMode === "boards" ? "扫描 Linux 开发板" : "扫描接口"}
                     </button>
                   </form>
                   <a href="#model-preview">导入模型</a>
                   {workbenchMode === "boards" && devices[0] ? (
                     <button type="button" onClick={() => setOpenIds([deviceId(devices[0], 0)])}>打开最近开发板</button>
-                  ) : workbenchMode === "interfaces" && usableWindows[0] ? (
-                    <button type="button" onClick={() => openDebugResource(usableWindows[0])}>打开最近接口</button>
+                  ) : workbenchMode === "interfaces" && configuredWindows[0] ? (
+                    <a href={windowsHref(projectId, [configuredWindows[0].id], defaultNpcId)}>打开最近窗口</a>
                   ) : (
-                    <span>等待设备上传</span>
+                    <span>{workbenchMode === "boards" ? "等待设备上传" : "创建后打开窗口"}</span>
                   )}
                 </div>
               </section>
