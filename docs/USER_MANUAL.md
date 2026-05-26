@@ -2219,6 +2219,24 @@ ip -details link show can0
 - 在重新标定前，不要用这个字段做 `55°`、`60°` 等安全停止条件。
 - 正式安全限位应放到 M33，并使用经过标定的关节角来源、外部限位或编码器来源。
 
+推荐标定动作：
+
+```bash
+python3 /home/pi/nanopi_can_master.py private active-report --iface can0 --motor 7 --enable-report --wait 0.1
+python3 /home/pi/nanopi_can_master.py private speed --iface can0 --motor 7 --vel 0.524 --kd 1.0 --wait 0.1
+sleep 3.0
+python3 /home/pi/nanopi_can_master.py private stop --iface can0 --motor 7 --wait 0.2
+python3 /home/pi/nanopi_can_master.py private active-report --iface can0 --motor 7 --wait 0.1
+```
+
+现场记录 3 秒内输出端实际转过的角度或圈数，再用它反推 7号真实输出角速度。不要在映射确认前使用未知反馈字段做自动角度停止。
+
+视频标定建议：
+
+- 在输出端面贴一条明显胶带或画一条白线，避免圆孔对称导致看不清角度。
+- 手机尽量固定俯拍，不要在动作中移动镜头。
+- 拍摄起始静止、运动、停止后三段；停止后保持 1 秒，方便对比起止角度。
+
 ## 6.6 开发阶段直接调试 3号伺泰威
 
 3号当前按 CANSimple node `3` 调试，减速比按 `48:1` 记录。正式路径仍应回到 `JointTrajectory -> NanoPi -> M33 -> 电机`，下面只用于台架排查。
