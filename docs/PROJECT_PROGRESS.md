@@ -1516,3 +1516,14 @@
 - Validated: `git diff --check -- applications/control/control_layer.c applications/control/control_layer_cfg.h` passed in the M33 repo.
 - Failed or unverified: local M33 build was not run because `scons` is not installed on this Windows environment.
 - Next step: user flashes M33, then send a small NanoPi `m33 target --joint 4 --deg 5 --rpm 1` through the formal path.
+
+### 2026-05-26 - Motor7 formal-path 5 degree live trial
+
+- Completed: after user flashed M33 commit `675db4ff`, ran NanoPi formal M33 path for ROS joint4/motor7 with `+5°`, `rpm=1`, then sent `stop`.
+- Validated: `can0` stayed classic CAN 1Mbps, `ERROR-ACTIVE`, tx/rx error counters `0/0`.
+- Validated: heartbeat before and after returned `0x322` with `detail_code=0`.
+- Validated: M33 emitted 7号 frames `0x0300FD07` and `0x01800007`; stop emitted `0x0400FD07`.
+- Validated: M33 aggregate `0x336` changed from motor7 enabled (`flags=0x01`) during target to disabled (`flags=0x00`) after stop.
+- Failed or unverified: physical motion direction and magnitude require user visual confirmation; Codex can only see CAN telemetry.
+- Safety: this proves the formal path can issue motor7 commands in bench mode. It does not prove zero, direction, or physical angle scale are correct.
+- Next step: user confirms whether 7号 visibly moved; if yes, test `-5°`; if direction or magnitude is wrong, adjust M33 direction/scale before increasing angle.
