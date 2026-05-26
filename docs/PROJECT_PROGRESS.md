@@ -1088,8 +1088,9 @@
 - Completed: updated `candump_motor_telemetry.py` to parse `candump -L` hash lines and Lingzu active-report frames from motors 4/5/6/7.
 - Completed: Lingzu active-report now preserves raw fields by default and does not publish engineering units until the exact actuator model for each motor ID is confirmed.
 - Completed: documented that the nearest local M33 Git repo is `D:\RT-ThreadStudio\workspace\yiliao_m33`, which already has logging-only `0x320` safety assessment and `0x322` detail-code reporting.
+- Completed: located local Feishu offline pages for the shoulder/Sitaiwei drive in `D:\电机上位机\肩关节电机资料` and added the confirmed CANSimple commands, object/parameter headings, hardware interfaces, and SDK/control-mode entries to `docs/MOTOR_PROTOCOLS.md`.
 - Validated: targeted `test_candump_motor_telemetry.py` passed 9 tests.
 - Validated: full `rehab_arm_psoc_bridge` unit tests passed 95 tests; `py_compile` passed for `candump_motor_telemetry.py`.
-- Not validated: Feishu Sitaiwei manuals could not be read without login; protocol details beyond observed CANSimple frames remain pending local export or public permission.
+- Not validated: byte-level Sitaiwei command payload layouts still need deeper extraction from the local offline HTML and M33-side verification; online Feishu links still redirect to login in the current shell.
 - Safety: changes are offline log conversion and documentation only; no CAN device is opened, no `0x320/0x321` is sent, no M33 command is issued, and no motor can move.
 - Next step: confirm motor 4/5/6/7 actuator models and joint bindings, then make M33 aggregate official motor telemetry into NanoPi ROS `/rehab_arm/motor_state`.

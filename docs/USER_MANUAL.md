@@ -1597,6 +1597,14 @@ ros2 run rehab_arm_psoc_bridge check_server_quality_gate nanopi-m5 \
 
 更完整的厂家协议、量程来源、未知项和 M33 安全边界见：[MOTOR_PROTOCOLS.md](MOTOR_PROTOCOLS.md)。
 
+伺泰威/肩关节驱动资料当前使用本地离线副本：
+
+```text
+D:\电机上位机\肩关节电机资料
+```
+
+在线飞书链接如果跳到登录页，不影响继续查本地离线页。
+
 ## 6.1 在平台里预览 URDF
 
 本仓库当前可直接预览的 URDF：
