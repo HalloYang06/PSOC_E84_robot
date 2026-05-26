@@ -38,6 +38,7 @@ install(PROGRAMS
   rehab_arm_psoc_bridge/encode_psoc_cmd.py
   rehab_arm_psoc_bridge/validate_patient_profile.py
   rehab_arm_psoc_bridge/export_m33_safety_subset.py
+  rehab_arm_psoc_bridge/review_patient_profile_change.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

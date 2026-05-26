@@ -1958,6 +1958,25 @@ ros2 run rehab_arm_psoc_bridge export_m33_safety_subset.py \
 
 这个命令只是生成给 M33 合同审查用的 JSON，不会通过 CAN 或其他方式下发给 M33。后续真下发前，还需要加签名/版本/时效检查和 M33 端解析验证。
 
+审查 Patient Device Profile 变更：
+
+```bash
+ros2 run rehab_arm_psoc_bridge review_patient_profile_change.py \
+  /home/pi/rehab_arm_profiles/active_profile.json \
+  /home/pi/rehab_arm_profiles/draft_profile.json \
+  --pretty
+```
+
+通过标准：
+
+- 输出 `schema_version=patient_device_profile_change_report_v1`。
+- `ok=true` 表示旧/新 profile 都合法、版本递增、设备/患者一致。
+- `warnings[]` 会列出 ROM 放宽、限速提高、训练模式变化等需要人工审查的项目。
+- `changes[]` 会列出具体字段、旧值、新值和风险等级。
+- `control_boundary=profile_change_review_only_not_motion_permission`。
+
+这个工具不会自动批准 profile，也不会写入 active profile。平台/App 可以用它在用户确认前显示“本次把 shoulder ROM 从 35° 放宽到 40°”“默认限速从 6 提高到 8”等风险提示。
+
 预览服务器同步计划：
 
 ```bash

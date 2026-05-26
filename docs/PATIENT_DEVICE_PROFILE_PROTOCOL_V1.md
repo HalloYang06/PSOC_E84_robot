@@ -354,6 +354,27 @@ App 和平台都可以显示“控制请求已提交”，但只有 M33 回报 `
 | profile version 不一致 | NanoPi/M33 拒绝新运动，进入 `limited/profile_version_mismatch` |
 | 患者未选择 | 禁止开始训练，只允许设备自检 |
 
+### 7.4 Profile 变更审查
+
+平台/App 在把 draft profile 提交审核前，应先运行变更审查：
+
+```bash
+ros2 run rehab_arm_psoc_bridge review_patient_profile_change.py \
+  /path/to/active_profile.json \
+  /path/to/draft_profile.json \
+  --pretty
+```
+
+该工具输出 `patient_device_profile_change_report_v1`，用于提示：
+
+- 新 profile version 没有递增。
+- `robot_id/device_id/patient_id` 和旧 active profile 不一致。
+- 患者 ROM 被放宽。
+- 患者限速被提高。
+- `training_mode` 变化。
+
+这些提示不是自动拒绝所有变更；ROM 放宽和限速提高可能是临床上合理的，但必须在平台/App 上显式展示并经过人工确认。
+
 ## 8. NanoPi/ROS 数据字段
 
 NanoPi 发布和上传的数据必须包含 profile 上下文：

@@ -10,7 +10,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from rehab_arm_psoc_bridge.patient_profile import build_m33_safety_subset, validate_patient_profile  # noqa: E402
+from rehab_arm_psoc_bridge.patient_profile import (  # noqa: E402
+    build_m33_safety_subset,
+    build_patient_profile_change_report,
+    validate_patient_profile,
+)
 
 
 def make_valid_profile() -> dict[str, object]:
@@ -175,6 +179,66 @@ class PatientProfileTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertEqual(payload['schema_version'], 'm33_safety_profile_v1')
         self.assertIs(payload['ok'], True)
+
+    def test_build_patient_profile_change_report_flags_wider_limits(self) -> None:
+        old_profile = make_valid_profile()
+        new_profile = make_valid_profile()
+        new_profile['profile_version'] = 2
+        new_profile['patient_motion']['patient_rom_limits_deg']['shoulder_lift_joint'] = [-20.0, 40.0]
+        new_profile['patient_motion']['patient_velocity_limits_dps']['default'] = 8.0
+        new_profile['patient_motion']['training_mode'] = 'passive_training'
+
+        report = build_patient_profile_change_report(old_profile, new_profile)
+
+        self.assertIs(report['ok'], True)
+        self.assertEqual(report['warning_count'], 4)
+        joined_warnings = '\n'.join(report['warnings'])
+        self.assertIn('widens patient ROM', joined_warnings)
+        self.assertIn('increases patient velocity limit', joined_warnings)
+        self.assertIn('training_mode changed', joined_warnings)
+        self.assertEqual(report['control_boundary'], 'profile_change_review_only_not_motion_permission')
+
+    def test_build_patient_profile_change_report_rejects_wrong_version_or_patient(self) -> None:
+        old_profile = make_valid_profile()
+        new_profile = make_valid_profile()
+        new_profile['profile_version'] = 1
+        new_profile['patient_ref']['patient_id'] = 'patient_002'
+
+        report = build_patient_profile_change_report(old_profile, new_profile)
+
+        self.assertIs(report['ok'], False)
+        joined_errors = '\n'.join(report['errors'])
+        self.assertIn('new profile_version must be greater', joined_errors)
+        self.assertIn('patient_ref.patient_id changed', joined_errors)
+
+    def test_review_patient_profile_change_cli_reports_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            old_path = Path(tmpdir) / 'old_profile.json'
+            new_path = Path(tmpdir) / 'new_profile.json'
+            old_profile = make_valid_profile()
+            new_profile = make_valid_profile()
+            new_profile['profile_version'] = 2
+            new_profile['patient_motion']['patient_rom_limits_deg']['elbow_lift_joint'] = [0.0, 55.0]
+            old_path.write_text(json.dumps(old_profile), encoding='utf-8')
+            new_path.write_text(json.dumps(new_profile), encoding='utf-8')
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).resolve().parents[1] / 'rehab_arm_psoc_bridge' / 'review_patient_profile_change.py'),
+                    str(old_path),
+                    str(new_path),
+                ],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload['schema_version'], 'patient_device_profile_change_report_v1')
+        self.assertEqual(payload['warning_count'], 1)
 
 
 if __name__ == '__main__':

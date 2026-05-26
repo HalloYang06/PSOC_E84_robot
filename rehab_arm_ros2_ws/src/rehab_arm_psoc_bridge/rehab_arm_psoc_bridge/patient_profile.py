@@ -269,3 +269,115 @@ def build_m33_safety_subset(profile: dict[str, object]) -> dict[str, object]:
         'source_profile_schema_version': profile.get('schema_version'),
         'control_boundary': 'm33_safety_subset_dry_run_only_not_sent',
     }
+
+
+def _patient_id(profile: dict[str, object]) -> object:
+    patient_ref = profile.get('patient_ref')
+    if isinstance(patient_ref, dict):
+        return patient_ref.get('patient_id')
+    return None
+
+
+def build_patient_profile_change_report(
+    old_profile: dict[str, object],
+    new_profile: dict[str, object],
+) -> dict[str, object]:
+    errors: list[str] = []
+    warnings: list[str] = []
+    changes: list[dict[str, object]] = []
+
+    old_validation = validate_patient_profile(old_profile)
+    new_validation = validate_patient_profile(new_profile)
+    if old_validation['ok'] is not True:
+        errors.append('old profile is invalid')
+    if new_validation['ok'] is not True:
+        errors.append('new profile is invalid')
+
+    old_version = old_profile.get('profile_version')
+    new_version = new_profile.get('profile_version')
+    if isinstance(old_version, int) and isinstance(new_version, int) and new_version <= old_version:
+        errors.append('new profile_version must be greater than old profile_version')
+
+    for field in ('robot_id', 'device_id'):
+        if old_profile.get(field) != new_profile.get(field):
+            errors.append(f'{field} changed from {old_profile.get(field)!r} to {new_profile.get(field)!r}')
+    if _patient_id(old_profile) != _patient_id(new_profile):
+        errors.append(f'patient_ref.patient_id changed from {_patient_id(old_profile)!r} to {_patient_id(new_profile)!r}')
+
+    old_motion = old_profile.get('patient_motion', {})
+    new_motion = new_profile.get('patient_motion', {})
+    if not isinstance(old_motion, dict):
+        old_motion = {}
+    if not isinstance(new_motion, dict):
+        new_motion = {}
+    old_rom = old_motion.get('patient_rom_limits_deg', {})
+    new_rom = new_motion.get('patient_rom_limits_deg', {})
+    old_velocity = old_motion.get('patient_velocity_limits_dps', {})
+    new_velocity = new_motion.get('patient_velocity_limits_dps', {})
+    if not isinstance(old_rom, dict):
+        old_rom = {}
+    if not isinstance(new_rom, dict):
+        new_rom = {}
+    if not isinstance(old_velocity, dict):
+        old_velocity = {}
+    if not isinstance(new_velocity, dict):
+        new_velocity = {}
+
+    for joint_name in sorted(set(old_rom) | set(new_rom)):
+        old_pair = old_rom.get(joint_name)
+        new_pair = new_rom.get(joint_name)
+        if isinstance(old_pair, list) and len(old_pair) == 2 and isinstance(new_pair, list) and len(new_pair) == 2:
+            old_min, old_max = float(old_pair[0]), float(old_pair[1])
+            new_min, new_max = float(new_pair[0]), float(new_pair[1])
+            if old_min != new_min or old_max != new_max:
+                widened = new_min < old_min or new_max > old_max
+                change = {
+                    'field': f'patient_motion.patient_rom_limits_deg.{joint_name}',
+                    'old': [old_min, old_max],
+                    'new': [new_min, new_max],
+                    'risk': 'requires_clinician_review' if widened else 'narrower_or_shifted',
+                }
+                changes.append(change)
+                if widened:
+                    warnings.append(f'{change["field"]} widens patient ROM')
+
+        old_speed = _resolve_numeric_limit(old_velocity, joint_name)
+        new_speed = _resolve_numeric_limit(new_velocity, joint_name)
+        if _is_number(old_speed) and _is_number(new_speed) and float(old_speed) != float(new_speed):
+            increased = float(new_speed) > float(old_speed)
+            change = {
+                'field': f'patient_motion.patient_velocity_limits_dps.{joint_name}',
+                'old': float(old_speed),
+                'new': float(new_speed),
+                'risk': 'requires_clinician_review' if increased else 'more_restrictive',
+            }
+            changes.append(change)
+            if increased:
+                warnings.append(f'{change["field"]} increases patient velocity limit')
+
+    old_mode = old_motion.get('training_mode')
+    new_mode = new_motion.get('training_mode')
+    if old_mode != new_mode:
+        changes.append({
+            'field': 'patient_motion.training_mode',
+            'old': old_mode,
+            'new': new_mode,
+            'risk': 'requires_operator_review',
+        })
+        warnings.append('patient_motion.training_mode changed')
+
+    return {
+        'schema_version': 'patient_device_profile_change_report_v1',
+        'ok': not errors,
+        'error_count': len(errors),
+        'warning_count': len(warnings),
+        'change_count': len(changes),
+        'errors': errors,
+        'warnings': warnings,
+        'changes': changes,
+        'old_profile_id': old_profile.get('profile_id'),
+        'old_profile_version': old_profile.get('profile_version'),
+        'new_profile_id': new_profile.get('profile_id'),
+        'new_profile_version': new_profile.get('profile_version'),
+        'control_boundary': 'profile_change_review_only_not_motion_permission',
+    }

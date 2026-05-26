@@ -1228,6 +1228,16 @@
 - Safety: dry-run JSON generation only; no M33 write, ROS launch, network upload, CAN access, or motor motion.
 - Next step: after schema review, define the signed/versioned NanoPi-to-M33 profile update frame or management channel.
 
+### 2026-05-27 - Patient profile change review
+
+- Completed: added `build_patient_profile_change_report()` and `review_patient_profile_change.py` to compare an old active profile with a new draft profile.
+- Completed: report rejects non-incremented profile versions and patient/device identity mismatch; warns on ROM widening, velocity increases, and training mode changes.
+- Completed: registered the tool in both `setup.py` console scripts and CMake install programs.
+- Validated: `python -m unittest test_patient_profile.py test_data_recording.py test_m33_ros_contract.py` passed 61 tests.
+- Validated: `python -m py_compile patient_profile.py review_patient_profile_change.py` passed.
+- Safety: offline review only; it does not approve, write, sync, launch ROS, access CAN, command M33, or move motors.
+- Next step: add a profile approval bundle format that includes validation report, change report, reviewer identity, and signature placeholder.
+
 ### 2026-05-26 - NanoPi motor data receive check
 
 - Completed: live NanoPi CAN receive test on `192.168.2.66` with `can0` at classic CAN 1Mbps.
