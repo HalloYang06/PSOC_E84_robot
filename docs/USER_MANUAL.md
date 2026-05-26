@@ -584,6 +584,19 @@ python -m unittest rehab_arm_ros2_ws\src\rehab_arm_psoc_bridge\test\test_psoc_mo
 
 bridge 也会用这些 M33 遥测刷新内部 `current_positions`。这只是让后续轨迹处理知道“当前姿态大概在哪里”，不是运动许可；没有新鲜、允许运动的 `0x322` 状态时，轨迹仍会被拒绝。
 
+离线验证 M33 到 ROS topic 的组合合同：
+
+```bash
+cd ~/nanopi_can_ros_ws/src/rehab_arm_psoc_bridge
+python3 -m unittest test/test_m33_ros_contract.py test/test_psoc_status.py test/test_psoc_motor_status.py test/test_safety_gate.py
+```
+
+通过标准：
+
+- limited/logging-only 的 `0x322` 仍然生成 `/rehab_arm/safety_state`，但 `motion_candidate_allowed=false`。
+- 合法 `0x330~0x337` 只生成 `/rehab_arm/motor_state` 和 `/joint_states` 遥测，不会改变运动许可。
+- 只有 `0x322` V2 同时满足 `state=ok`、`control_mode=armed/active`、`detail=none`、`error_code=0` 时，NanoPi 才把它当成运动候选许可。
+
 当前本地 M33 工程已补好 `0x330~0x337` 上报逻辑，等待用户烧录。烧录后先只验收遥测，不发 `0x320` 运动命令：
 
 ```bash

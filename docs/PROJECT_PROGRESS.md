@@ -51,6 +51,13 @@
 
 ### 2026-05-26
 
+- M33 安全状态和 ROS topic 组合合同：
+  - 新增 `m33_ros_contract.py`，可离线把 M33 `0x322` 安全状态和 `0x330~0x337` 电机遥测组合成 `/rehab_arm/safety_state`、`/rehab_arm/motor_state`、`/joint_states` 记录。
+  - 新增 `test_m33_ros_contract.py`，覆盖 limited/logging-only 有遥测但不允许运动、ok/armed/none 才允许运动候选、坏电机帧不生成假 joint state。
+  - 决策：电机遥测只能更新状态和当前姿态，不能提升运动权限；运动候选许可只来自 M33 `0x322 motion_allowed=true`。
+  - 验证：`python -m unittest test_m33_ros_contract.py test_psoc_status.py test_psoc_motor_status.py test_safety_gate.py`，29 tests passed。
+  - 下一步：把这个合同用于 NanoPi 真 CAN 状态采集验收，再继续接 MuJoCo/数据采集主线。
+
 - 机械臂主线优先，App/平台只预留双监控和双控制边界：
   - 决策：当前阶段先把 `JointTrajectory -> NanoPi -> M33 -> 电机`、安全状态机、限位限速和真实电机反馈打稳；平台患者总览、远程总控台等页面暂缓。
   - App BLE 定位为近端训练交互和安全请求入口，可发开始、暂停、停止、急停请求、模式切换、疼痛/疲劳反馈，但不能直接发 CAN 或绕过 M33。

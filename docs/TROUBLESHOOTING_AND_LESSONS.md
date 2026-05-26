@@ -3627,3 +3627,19 @@ Connection reset by 192.168.2.66 port 22
 - App BLE 优先做近端 start/pause/stop/estop request、模式切换和患者反馈。
 - 平台优先做 profile draft/review、训练计划、数据/标注/模型管理和远程 stop/pause request。
 - 冲突时取更保守状态；只有 M33 回报 `motion_allowed=true`，界面才能显示真实执行中。
+
+### 电机遥测不能提升运动许可
+
+现象：
+
+- `0x330~0x337` 能生成 `/rehab_arm/motor_state` 和 `/joint_states`，平台/仿真/RViz 可以看到机械臂姿态。
+
+判断：
+
+- 遥测新鲜、姿态正常、温度正常，只说明“能看到状态”，不说明“可以动”。
+- NanoPi、App、平台、VLA 都必须以 M33 `0x322 motion_allowed=true` 作为运动候选许可；legacy `state=ok` 和 motor telemetry 都不能替代它。
+
+技巧：
+
+- 离线先跑 `test_m33_ros_contract.py`，确认 limited/logging-only + 合法遥测仍然 `motion_candidate_allowed=false`。
+- 真机联调时先看 `/rehab_arm/safety_state.motion_allowed`，再看 `/joint_states` 是否新鲜。
