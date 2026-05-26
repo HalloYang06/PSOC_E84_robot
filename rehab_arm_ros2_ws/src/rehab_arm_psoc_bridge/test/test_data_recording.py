@@ -545,6 +545,36 @@ class DataRecordingTests(unittest.TestCase):
         self.assertIn('/rehab_arm/motor_state', report['required_topics'])
         self.assertIn('/rehab_arm/motor_state', report['schema_check']['missing_topics'])
 
+    def test_build_recording_quality_report_checks_camera_keyframe_count(self) -> None:
+        records = [
+            make_session_metadata('s1', 'nanopi', 'arm', 'dev', 'perception_data_collection', now=1.0),
+            make_payload_record('/joint_states', {}, now=2.0),
+            make_payload_record('/rehab_arm/safety_state', {'state': 'ok', 'motion_allowed': False}, now=3.0),
+            make_payload_record('/rehab_arm/sensor_state', {'source': 'sim'}, now=4.0),
+            make_payload_record(
+                '/rehab_arm/camera_keyframe',
+                make_camera_keyframe_payload(
+                    camera_id='front_rgb',
+                    image_path='/tmp/frame_001.jpg',
+                    sha256='abc123',
+                    robot_id='arm',
+                    device_id='nanopi',
+                    now=5.0,
+                ),
+                now=5.0,
+            ),
+        ]
+
+        report = build_recording_quality_report(
+            records,
+            topic_profile='perception_vla',
+            min_camera_keyframes=2,
+        )
+
+        self.assertIs(report['ok'], False)
+        self.assertEqual(report['criteria']['min_camera_keyframes'], 2)
+        self.assertIn('camera keyframe count 1 below required 2', '\n'.join(report['errors']))
+
     def test_validate_recording_quality_cli_topic_profile_reports_missing_motor_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / 's1.jsonl'

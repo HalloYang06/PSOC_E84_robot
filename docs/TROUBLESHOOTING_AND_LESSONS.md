@@ -2266,3 +2266,20 @@ No such file or directory: /tmp/rehab_sim_collection/sim_demo_motion.jsonl
 状态：
 
 - 已统一接入 `validate_recording_quality.py`、`build_recording_quality_report()` 和 `build_manifest.py --include-quality-report`。
+
+### 视觉/VLA 数据不能只检查 topic 存在
+
+现象：
+
+- `perception_vla` profile 能确认 JSONL 里至少出现过 `/rehab_arm/camera_keyframe`。
+- 但复杂任务规划、遮挡物处理、后续标注和训练需要足够多的关键帧；只有一帧通常不够。
+
+技巧：
+
+- 离线质量门使用 `--topic-profile perception_vla --min-camera-keyframes N`。
+- `N` 根据采集任务调整；短冒烟测试可以小，正式标注数据要更严格。
+- 该检查只看 JSONL topic 数量，不证明图片文件存在、清晰或深度有效；图片质量和标注质量要另做检查。
+
+状态：
+
+- 已加入 `--min-camera-keyframes`，可用于单文件质量门和 `build_manifest.py --include-quality-report`。

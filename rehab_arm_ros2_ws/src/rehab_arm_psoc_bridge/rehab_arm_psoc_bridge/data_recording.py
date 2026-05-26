@@ -349,6 +349,7 @@ def build_recording_quality_report(
     min_moving_joints: int = 0,
     require_motor_state: bool = False,
     min_motor_entry_count: int = 0,
+    min_camera_keyframes: int = 0,
     allow_motion_allowed_true: bool = False,
     required_topics: Iterable[str] | None = None,
     topic_profile: str | None = None,
@@ -372,6 +373,7 @@ def build_recording_quality_report(
         topic_counts = {}
     joint_message_count = int(topic_counts.get('/joint_states', 0) or 0)
     motor_message_count = int(topic_counts.get('/rehab_arm/motor_state', 0) or 0)
+    camera_keyframe_count = int(topic_counts.get('/rehab_arm/camera_keyframe', 0) or 0)
     moving_joint_count = int(summary.get('moving_joint_count', 0) or 0)
     motor_entry_count_min = int(summary.get('motor_entry_count_min', 0) or 0)
 
@@ -394,6 +396,10 @@ def build_recording_quality_report(
             errors.append(
                 f'motor entry count min {motor_entry_count_min} below required {min_motor_entry_count}'
             )
+    if camera_keyframe_count < min_camera_keyframes:
+        errors.append(
+            f'camera keyframe count {camera_keyframe_count} below required {min_camera_keyframes}'
+        )
 
     motion_allowed_counts = summary.get('motion_allowed_counts', {})
     if not isinstance(motion_allowed_counts, dict):
@@ -422,6 +428,7 @@ def build_recording_quality_report(
             'min_moving_joints': min_moving_joints,
             'require_motor_state': require_motor_state,
             'min_motor_entry_count': min_motor_entry_count,
+            'min_camera_keyframes': min_camera_keyframes,
             'allow_motion_allowed_true': allow_motion_allowed_true,
         },
         'schema_check': schema_check,
@@ -551,6 +558,7 @@ def build_recording_manifest(
     min_moving_joints: int = 0,
     require_motor_state: bool = False,
     min_motor_entry_count: int = 0,
+    min_camera_keyframes: int = 0,
     allow_motion_allowed_true: bool = False,
     required_topics: Iterable[str] | None = None,
     topic_profile: str | None = None,
@@ -593,6 +601,7 @@ def build_recording_manifest(
                     min_moving_joints=min_moving_joints,
                     require_motor_state=require_motor_state,
                     min_motor_entry_count=min_motor_entry_count,
+                    min_camera_keyframes=min_camera_keyframes,
                     allow_motion_allowed_true=allow_motion_allowed_true,
                     required_topics=required_topics,
                     topic_profile=topic_profile,

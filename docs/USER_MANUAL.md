@@ -1223,6 +1223,23 @@ ros2 run rehab_arm_psoc_bridge validate_recording_quality.py \
 
 如果只是短时间 recorder 冒烟测试，可以降低阈值；如果是动态 demo 采集，应要求 `moving_joint_count=5` 和 `motor_entry_count_min>=5`。如果是视觉/VLA 数据，改用 `--topic-profile perception_vla`，并确认 JSONL 里有 `/rehab_arm/camera_keyframe`。
 
+视觉/VLA 关键帧数量检查：
+
+```bash
+ros2 run rehab_arm_psoc_bridge validate_recording_quality.py \
+  /tmp/rehab_sim_collection/perception_session.jsonl \
+  --topic-profile perception_vla \
+  --min-camera-keyframes 10 \
+  --pretty
+```
+
+通过标准：
+
+- `topic_profile=perception_vla`。
+- `criteria.min_camera_keyframes=10`。
+- `/rehab_arm/camera_keyframe` 数量不少于 10。
+- 这个检查只统计 JSONL 中的关键帧消息，不打开摄像头、不读取图片文件、不控制电机。
+
 导出 CSV：
 
 ```bash
@@ -1412,6 +1429,17 @@ ros2 run rehab_arm_psoc_bridge build_manifest.py /home/pi/rehab_arm_logs \
   --require-motor-state \
   --min-motor-entry-count 5 \
   --output /home/pi/rehab_arm_logs/manifest_with_quality.json
+```
+
+如果是视觉/VLA 数据，把 profile 和关键帧阈值换成：
+
+```bash
+ros2 run rehab_arm_psoc_bridge build_manifest.py /home/pi/rehab_arm_logs \
+  --include-summary \
+  --include-quality-report \
+  --topic-profile perception_vla \
+  --min-camera-keyframes 10 \
+  --output /home/pi/rehab_arm_logs/manifest_with_perception_quality.json
 ```
 
 通过标准：

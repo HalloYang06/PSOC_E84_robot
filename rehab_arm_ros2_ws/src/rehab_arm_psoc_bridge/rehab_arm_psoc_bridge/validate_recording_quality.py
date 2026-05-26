@@ -48,6 +48,12 @@ def main() -> int:
         help='Minimum motor entries required in every motor_state message. Default: 0.',
     )
     parser.add_argument(
+        '--min-camera-keyframes',
+        type=int,
+        default=0,
+        help='Minimum /rehab_arm/camera_keyframe messages required. Default: 0.',
+    )
+    parser.add_argument(
         '--allow-motion-allowed-true',
         action='store_true',
         help='Allow safety_state payloads with motion_allowed=true.',
@@ -73,6 +79,8 @@ def main() -> int:
         parser.error('--min-moving-joints must be >= 0')
     if args.min_motor_entry_count < 0:
         parser.error('--min-motor-entry-count must be >= 0')
+    if args.min_camera_keyframes < 0:
+        parser.error('--min-camera-keyframes must be >= 0')
 
     try:
         report = build_recording_quality_report(
@@ -81,6 +89,7 @@ def main() -> int:
             min_moving_joints=args.min_moving_joints,
             require_motor_state=args.require_motor_state,
             min_motor_entry_count=args.min_motor_entry_count,
+            min_camera_keyframes=args.min_camera_keyframes,
             allow_motion_allowed_true=args.allow_motion_allowed_true,
             required_topics=args.required_topics,
             topic_profile=args.topic_profile,

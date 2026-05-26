@@ -1038,3 +1038,10 @@
 - Validated: full `rehab_arm_psoc_bridge` unit tests passed 82 tests; `py_compile` passed for touched scripts.
 - Safety: read-only JSONL validation only; no ROS launch, CAN access, upload, M33 command, or motor motion.
 - Next step: run the same quality gate on the next real NanoPi or MuJoCo capture and surface the result in the platform data page.
+
+### 2026-05-26 - Offline perception quality gate
+
+- Completed: added `--min-camera-keyframes` to JSONL quality reports and manifest quality reports.
+- Validated: full `rehab_arm_psoc_bridge` unit tests passed 83 tests; `py_compile` passed.
+- Safety: offline JSONL counting only; no camera access, CAN access, upload, M33 command, or motor motion.
+- Next step: connect platform data page to display camera keyframe count and missing perception topics.

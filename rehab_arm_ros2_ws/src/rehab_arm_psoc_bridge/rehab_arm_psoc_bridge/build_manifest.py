@@ -35,6 +35,7 @@ def main() -> int:
     parser.add_argument('--min-moving-joints', type=int, default=0)
     parser.add_argument('--require-motor-state', action='store_true')
     parser.add_argument('--min-motor-entry-count', type=int, default=0)
+    parser.add_argument('--min-camera-keyframes', type=int, default=0)
     parser.add_argument('--allow-motion-allowed-true', action='store_true')
     parser.add_argument(
         '--required-topic',
@@ -58,6 +59,7 @@ def main() -> int:
         min_moving_joints=args.min_moving_joints,
         require_motor_state=args.require_motor_state,
         min_motor_entry_count=args.min_motor_entry_count,
+        min_camera_keyframes=args.min_camera_keyframes,
         allow_motion_allowed_true=args.allow_motion_allowed_true,
         required_topics=args.required_topics,
         topic_profile=args.topic_profile,

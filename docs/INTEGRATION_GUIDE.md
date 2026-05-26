@@ -118,6 +118,16 @@ ros2 run rehab_arm_psoc_bridge validate_recording_quality.py /path/to/session.js
 
 输出 `rehab_arm_recording_quality_v1`，包含 `ok/topic_profile/required_topics/errors/warnings/criteria/schema_check/summary`。总控台、标注工具或 CI 可以先看 `ok`，再读取 `errors` 和 `schema_check.missing_topics` 给操作者。当前 logging-only/离线采集阶段默认不允许 `motion_allowed=true`。
 
+视觉/VLA 数据可使用：
+
+```bash
+ros2 run rehab_arm_psoc_bridge validate_recording_quality.py /path/to/session.jsonl \
+  --topic-profile perception_vla \
+  --min-camera-keyframes 10
+```
+
+该检查只统计 JSONL 里的 `/rehab_arm/camera_keyframe` 消息数，不读取图片、不访问摄像头、不控制硬件。
+
 ### Manifest
 
 普通 manifest：
@@ -148,6 +158,8 @@ ros2 run rehab_arm_psoc_bridge build_manifest.py /home/pi/rehab_arm_logs \
   --min-motor-entry-count 5 \
   --output /home/pi/rehab_arm_logs/manifest_with_quality.json
 ```
+
+视觉/VLA manifest 可改用 `--topic-profile perception_vla --min-camera-keyframes 10`。
 
 对接建议：
 
