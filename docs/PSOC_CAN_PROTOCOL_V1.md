@@ -18,6 +18,7 @@
 | `0x320` | NanoPi -> M33 | classic CAN standard 11-bit | 关节目标/轨迹片段 |
 | `0x321` | NanoPi -> M33 | classic CAN standard 11-bit | NanoPi heartbeat |
 | `0x322` | M33 -> NanoPi | classic CAN standard 11-bit | M33 status |
+| `0x330` ~ `0x337` | M33 -> NanoPi | classic CAN standard 11-bit | M33 聚合后的电机/关节遥测草案 |
 
 ## `0x321` NanoPi Heartbeat
 
@@ -144,6 +145,29 @@ heartbeat_age_ms=300
 ```json
 {"protocol_version":2,"state":"limited","control_mode":"logging_only","detail":"logging_only_no_motor_output","heartbeat_age_ms":0}
 ```
+
+## `0x330~0x337` M33 Motor Status Draft
+
+这是 M33 汇总电机状态后发给 NanoPi 的遥测草案，固件尚未正式实现。NanoPi 侧 parser 已按该草案离线测试通过，但它不进入运动许可链路。
+
+Payload V1:
+
+| Byte | 字段 | 类型 | 说明 |
+|---:|---|---|---|
+| 0 | `marker` | `uint8` | 固定 `0xB3` |
+| 1 | `seq` | `uint8` | 状态序号 |
+| 2 | `motor_id` | `uint8` | 当前已知 `3/4/5/6/7` |
+| 3 | `flags` | `uint8` | bit0 enabled, bit1 fault, bit2 limited, bit3 emergency_stop |
+| 4..5 | `position_mrad` | `int16` little-endian | 关节位置，单位 mrad |
+| 6 | `velocity_drad_s` | `int8` | 关节速度，单位 0.1 rad/s |
+| 7 | `temperature_c` | `uint8` | 摄氏度，`0xFF` 表示未知 |
+
+NanoPi 侧映射：
+
+- 只读遥测，不发控制命令。
+- 转为 `/rehab_arm/motor_state` 时标记 `protocol=m33_motor_status_v1`。
+- `0x330` 对应 slot 0，`0x337` 对应 slot 7；slot 到真实关节的最终映射仍需 M33/机械装配确认。
+- 运动是否允许仍以 `0x322` safety/status 和 M33 内部安全状态机为准。
 
 ## `0x320` Joint Target Command
 

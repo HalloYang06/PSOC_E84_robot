@@ -260,7 +260,45 @@ temperature_c = raw_temperature_u16 * 0.1
 - 主动上报要在测试结束后关闭，避免总线长期高频刷帧。
 - 正式路径应由 M33 读取/聚合电机状态，再发给 NanoPi 发布 `/rehab_arm/motor_state`。
 
-## 6. M33 正式数据流预编辑
+## 6. M33 -> NanoPi 正式电机遥测草案
+
+本节是固件待实现的第一版草案，当前 NanoPi 侧已经有离线 parser 和单元测试；M33 还没有按该格式正式上报。它的目的不是控制电机，而是让 NanoPi、仿真主机、平台和数据标注统一读取“经过 M33 安全边界汇总后的电机状态”。
+
+CAN ID 预留：
+
+| CAN ID | 方向 | 帧类型 | 用途 |
+|---|---|---|---|
+| `0x330` ~ `0x337` | M33 -> NanoPi | classic CAN standard 11-bit | 每个关节/电机状态一帧 |
+
+Payload V1，8 bytes：
+
+| Byte | 字段 | 类型 | 单位/说明 |
+|---:|---|---|---|
+| 0 | `marker` | `uint8` | 固定 `0xB3` |
+| 1 | `seq` | `uint8` | M33 状态序号，0-255 循环 |
+| 2 | `motor_id` | `uint8` | 当前实测 `3/4/5/6/7` |
+| 3 | `flags` | `uint8` | bit0 enabled, bit1 fault, bit2 limited, bit3 emergency_stop |
+| 4..5 | `position_mrad` | `int16 little-endian` | 关节位置，单位 mrad |
+| 6 | `velocity_drad_s` | `int8` | 关节速度，单位 0.1 rad/s |
+| 7 | `temperature_c` | `uint8` | 温度摄氏度；`0xFF` 表示未知 |
+
+NanoPi parser 输出：
+
+- `protocol=m33_motor_status_v1`
+- `protocol_status=proposed_firmware_pending`
+- `position = position_mrad / 1000.0`
+- `velocity = velocity_drad_s / 10.0`
+- `temperature = null` when `temperature_c == 0xFF`
+- 只把 `marker == 0xB3` 且长度正确的帧放入 `/rehab_arm/motor_state`
+- `control_boundary=telemetry_only_not_motor_command`
+
+注意：
+
+- 这组帧只表达遥测，不表达运动许可。运动许可仍以 M33 安全状态机和 `0x322` 为准。
+- 这些帧从 M33 发出后，NanoPi 可以把它们映射成 `/joint_states` 和 `/rehab_arm/motor_state`，用于 MuJoCo/RViz 状态同步、数据采集、平台展示和标注。
+- 如果未来关节数量超过 8 个，或需要电流/电压/力矩高精度字段，应新增 V2 多帧或 CAN FD 设计，不要破坏 V1 字段含义。
+
+## 7. M33 正式数据流预编辑
 
 M33 输入：
 
@@ -301,7 +339,7 @@ BOOT -> SELF_TEST -> STANDBY -> READY -> ACTIVE
 4. 在电机断开或空载条件下验证拒绝用例。
 5. 再进入低能量受限动作。
 
-## 7. ROS 正规开发线路
+## 8. ROS 正规开发线路
 
 第一阶段只打通数据和仿真合同：
 

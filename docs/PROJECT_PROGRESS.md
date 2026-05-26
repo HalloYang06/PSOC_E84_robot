@@ -1098,3 +1098,13 @@
 - Not validated: M33/NanoPi control payload table is derived from local implementation and partially from the offline protocol page; it still needs a final vendor-table cross-check before enabling any formal execution path.
 - Safety: changes are offline log conversion and documentation only; no CAN device is opened, no `0x320/0x321` is sent, no M33 command is issued, and no motor can move.
 - Next step: confirm motor 4/5/6/7 actuator models and joint bindings, then make M33 aggregate official motor telemetry into NanoPi ROS `/rehab_arm/motor_state`.
+
+### 2026-05-26 - M33 aggregate motor telemetry parser draft
+
+- Completed: added NanoPi-side `psoc_motor_status.py` parser for proposed M33 official motor telemetry frames `0x330~0x337`.
+- Completed: documented the draft payload in `docs/MOTOR_PROTOCOLS.md`, `docs/PSOC_CAN_PROTOCOL_V1.md`, and `docs/USER_MANUAL.md`.
+- Validated: targeted `test_psoc_motor_status.py` passed 7 tests.
+- Validated: full `rehab_arm_psoc_bridge` unit tests passed 103 tests; `py_compile` passed for `psoc_motor_status.py`.
+- Not validated: M33 firmware has not emitted `0x330~0x337` yet; this is a firmware-pending contract.
+- Safety: parser is telemetry-only, does not open CAN, send `0x320/0x321`, command M33, or move motors. User has allowed 3/7 small motion later, but this increment intentionally stayed offline.
+- Next step: add a read-only ROS bridge path that converts received M33 `0x330~0x337` frames into `/rehab_arm/motor_state`, then test with synthetic frames before hardware.

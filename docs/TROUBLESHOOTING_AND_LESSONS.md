@@ -2427,3 +2427,20 @@ No such file or directory: /tmp/rehab_sim_collection/sim_demo_motion.jsonl
 状态：
 
 - `docs/MOTOR_PROTOCOLS.md` 已补充本地 M33/NanoPi 控制 payload 表。
+
+### M33 汇总遥测要和 safety/status 分开
+
+现象：
+
+- `0x322` 已经承担 M33 总体 safety/status、control mode 和最近拒绝原因。
+- 多个电机的角度、速度、温度、fault 标志无法可靠塞进单个 `0x322` 8 字节帧。
+
+技巧：
+
+- 保留 `0x322` 只表达安全状态和运动许可相关摘要。
+- 为 M33 汇总后的每关节/电机遥测预留独立帧，例如 `0x330~0x337`。
+- NanoPi 侧先写 parser 和单元测试，把字段标记为 `proposed_firmware_pending`，等 M33 固件实现后再接入 ROS topic。
+
+状态：
+
+- NanoPi 侧已新增 `psoc_motor_status.py` 和 7 个离线单元测试。

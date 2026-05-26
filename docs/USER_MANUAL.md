@@ -516,7 +516,7 @@ decision=reject reason=logging_only_no_motor_output safety_state=limited
 
 ### 4.4 离线协议工具测试
 
-没有硬件、不能上电时，也可以先跑 `0x320` 编码/解码和 `0x322` 状态解析工具回归测试：
+没有硬件、不能上电时，也可以先跑 `0x320` 编码/解码、`0x322` 状态解析和 `0x330~0x337` M33 电机遥测草案解析工具回归测试：
 
 ```bash
 cd D:\RT-ThreadStudio\workspace\_nanopi_rosnode_usbcan
@@ -525,9 +525,10 @@ python -m unittest discover -s rehab_arm_ros2_ws\src\rehab_arm_psoc_bridge\test 
 
 通过标准：
 
-- 17 个测试全部 `ok`。
+- 全部测试都显示 `ok`。
 - 覆盖合法编码、解码、负角度截断、超限拒绝、非有限数拒绝、未知关节拒绝、payload 长度错误和 unknown joint 可见性。
 - 覆盖 `0x322` V1 legacy 兼容、V2 limited/logging-only、emergency_stop、error_code 强制 fault、坏 marker 和短帧。
+- 覆盖 `0x330~0x337` M33 电机遥测草案：ID 范围、marker、长度、位置/速度/温度换算、fault/limited/enabled 标志和 motor_state payload 过滤。
 
 NanoPi 上也可以跑 `0x322` 状态解析测试：
 
@@ -535,6 +536,14 @@ NanoPi 上也可以跑 `0x322` 状态解析测试：
 cd /home/pi/rehab_arm_ros2_ws
 python3 -m unittest discover -s src/rehab_arm_psoc_bridge/test -v
 ```
+
+只跑 M33 电机遥测草案解析测试：
+
+```bash
+python -m unittest rehab_arm_ros2_ws\src\rehab_arm_psoc_bridge\test\test_psoc_motor_status.py -v
+```
+
+注意：`0x330~0x337` 当前是 M33 固件待实现的正式遥测草案，只用于 NanoPi/ROS/平台读取电机状态。它不是运动命令，也不能替代 `0x322` 安全状态。
 
 ### 4.5 `0x322` V2 状态解析
 
