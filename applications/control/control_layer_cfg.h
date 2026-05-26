@@ -211,6 +211,10 @@
  * conversion. M33 uses:
  *   motor_target = joint_target * direction * gear_ratio + zero_offset
  *   joint_state  = (motor_state - zero_offset) / (direction * gear_ratio)
+ *
+ * Bench calibration values are allowed only for uninstalled tabletop testing.
+ * A wearable/installed robot must use a persistent mechanical zero or run a
+ * homing routine after power-up before accepting absolute position commands.
  */
 #ifndef CONTROL_MOTOR_JOINT1_CALIBRATED
 #define CONTROL_MOTOR_JOINT1_CALIBRATED    0U
@@ -294,6 +298,38 @@
 
 #ifndef CONTROL_MOTOR_JOINT7_ZERO_OFFSET_RAD
 #define CONTROL_MOTOR_JOINT7_ZERO_OFFSET_RAD (1.0f)
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT1_ZERO_SOURCE
+#define CONTROL_MOTOR_JOINT1_ZERO_SOURCE "unconfigured"
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT2_ZERO_SOURCE
+#define CONTROL_MOTOR_JOINT2_ZERO_SOURCE "unconfigured"
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT3_ZERO_SOURCE
+#define CONTROL_MOTOR_JOINT3_ZERO_SOURCE "bench_volatile_encoder_zero_not_for_installed_robot"
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT4_ZERO_SOURCE
+#define CONTROL_MOTOR_JOINT4_ZERO_SOURCE "unconfigured"
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT5_ZERO_SOURCE
+#define CONTROL_MOTOR_JOINT5_ZERO_SOURCE "unconfigured"
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT6_ZERO_SOURCE
+#define CONTROL_MOTOR_JOINT6_ZERO_SOURCE "unconfigured"
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT7_ZERO_SOURCE
+#define CONTROL_MOTOR_JOINT7_ZERO_SOURCE "bench_temporary_visual_zero_not_for_installed_robot"
+#endif
+
+#ifndef CONTROL_FORMAL_ZERO_POLICY
+#define CONTROL_FORMAL_ZERO_POLICY "bench_only_until_persistent_zero_or_homing_is_implemented"
 #endif
 
 #ifndef CONTROL_CANSIMPLE_POS_REV_PER_RAD

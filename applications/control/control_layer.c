@@ -209,6 +209,17 @@ static const float s_joint_zero_offset_rad_map[7] =
     CONTROL_MOTOR_JOINT7_ZERO_OFFSET_RAD,
 };
 
+static const char *s_joint_zero_source_map[7] =
+{
+    CONTROL_MOTOR_JOINT1_ZERO_SOURCE,
+    CONTROL_MOTOR_JOINT2_ZERO_SOURCE,
+    CONTROL_MOTOR_JOINT3_ZERO_SOURCE,
+    CONTROL_MOTOR_JOINT4_ZERO_SOURCE,
+    CONTROL_MOTOR_JOINT5_ZERO_SOURCE,
+    CONTROL_MOTOR_JOINT6_ZERO_SOURCE,
+    CONTROL_MOTOR_JOINT7_ZERO_SOURCE,
+};
+
 static rt_uint16_t ctrl_u16_from_le(const rt_uint8_t *buf)
 {
     return (rt_uint16_t)((rt_uint16_t)buf[0] | ((rt_uint16_t)buf[1] << 8));
@@ -412,6 +423,16 @@ static float ctrl_motor_zero_offset_by_joint(rt_uint8_t joint_id)
     }
 
     return s_joint_zero_offset_rad_map[joint_id - 1U];
+}
+
+static const char *ctrl_motor_zero_source_by_joint(rt_uint8_t joint_id)
+{
+    if ((joint_id == 0U) || (joint_id > CONTROL_MOTOR_JOINT_COUNT))
+    {
+        return "invalid_joint";
+    }
+
+    return s_joint_zero_source_map[joint_id - 1U];
 }
 
 static float ctrl_joint_to_motor_position(rt_uint8_t joint_id, float joint_pos_rad)
@@ -4433,16 +4454,18 @@ static int cmd_m33_joint_calib(int argc, char **argv)
 
     for (joint = start; joint <= end; joint++)
     {
-        rt_kprintf("JOINT_CALIB: joint=%u motor_id=%u proto=%u calibrated=%u direction_x1000=%d gear_x1000=%d zero_mrad=%d\n",
+        rt_kprintf("JOINT_CALIB: joint=%u motor_id=%u proto=%u calibrated=%u direction_x1000=%d gear_x1000=%d zero_mrad=%d zero_source=%s\n",
                    (unsigned int)joint,
                    (unsigned int)ctrl_motor_id_by_joint(joint),
                    (unsigned int)ctrl_motor_protocol_by_joint(joint),
                    ctrl_motor_joint_is_calibrated(joint) ? 1U : 0U,
                    (int)ctrl_float_to_scaled_i32(ctrl_motor_direction_by_joint(joint), 1000.0f),
                    (int)ctrl_float_to_scaled_i32(ctrl_motor_gear_ratio_by_joint(joint), 1000.0f),
-                   (int)ctrl_float_to_scaled_i32(ctrl_motor_zero_offset_by_joint(joint), 1000.0f));
+                   (int)ctrl_float_to_scaled_i32(ctrl_motor_zero_offset_by_joint(joint), 1000.0f),
+                   ctrl_motor_zero_source_by_joint(joint));
     }
     rt_kprintf("JOINT_CALIB_NOTE: absolute position commands are rejected while calibrated=0\n");
+    rt_kprintf("JOINT_ZERO_POLICY: %s\n", CONTROL_FORMAL_ZERO_POLICY);
 
     return 0;
 }
