@@ -72,6 +72,33 @@ class CheckSimEnvTests(unittest.TestCase):
         self.assertEqual(payload['schema_version'], 'rehab_arm_sim_env_check_v1')
         self.assertIn('checks', payload)
 
+    def test_cli_can_write_report_file(self) -> None:
+        output_path = PACKAGE_DIR / 'test' / '__pycache__' / 'sim_readiness_report.json'
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        if output_path.exists():
+            output_path.unlink()
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(PACKAGE_DIR / 'rehab_arm_sim_mujoco' / 'check_sim_env.py'),
+                '--workspace-root',
+                str(WORKSPACE_ROOT),
+                '--output',
+                str(output_path),
+            ],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+
+        self.assertTrue(output_path.exists())
+        stdout_payload = json.loads(result.stdout)
+        file_payload = json.loads(output_path.read_text(encoding='utf-8'))
+        self.assertEqual(file_payload['schema_version'], 'rehab_arm_sim_env_check_v1')
+        self.assertEqual(file_payload['readiness'], stdout_payload['readiness'])
+
 
 if __name__ == '__main__':
     unittest.main()

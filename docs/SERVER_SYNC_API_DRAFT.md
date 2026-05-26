@@ -228,6 +228,46 @@ Metadata 使用 `rehab_arm_camera_keyframe_v1`：
 }
 ```
 
+### 7. Simulation Readiness Upload
+
+仿真主机可以上传 `check_sim_env --output` 生成的只读环境报告：
+
+```http
+POST /api/rehab-arm/v1/devices/{device_id}/simulation-readiness
+Content-Type: application/json
+```
+
+Request:
+
+```json
+{
+  "robot_id": "rehab-arm-alpha",
+  "device_id": "nanopi-m5",
+  "report": {
+    "schema_version": "rehab_arm_sim_env_check_v1",
+    "ok": true,
+    "readiness": "ready_with_fallback_sim",
+    "joint_contract": {
+      "count": 5,
+      "names": ["shoulder_lift_joint", "elbow_lift_joint"]
+    },
+    "safety_note": "This is a read-only simulation environment check."
+  }
+}
+```
+
+Response:
+
+```json
+{
+  "ok": true,
+  "readiness": "ready_with_fallback_sim",
+  "control_boundary": "simulation_readiness_only_not_motion_permission"
+}
+```
+
+这个接口只用于平台显示仿真准备度，不能作为真机运动许可。
+
 ## Server To NanoPi Boundary
 
 Allowed server outputs:

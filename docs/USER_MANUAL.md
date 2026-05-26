@@ -1452,6 +1452,52 @@ rehab_arm_ros2_ws/src/rehab_arm_description/urdf/rehab_arm.urdf
 - 后续如果换成带 mesh 的 URDF，要一起处理 `package://` mesh 路径映射。
 - 后续如果使用 xacro，需要先在 ROS 侧展开成 URDF 再给平台。
 
+## 6.2 导出仿真环境自检报告
+
+在 Linux 仿真主机或 ROS2 工作区里，先生成平台可读的仿真准备度报告：
+
+```bash
+cd ~/rehab_ws_src/Medical-Rehabilitation-Manipulator/rehab_arm_ros2_ws
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+ros2 run rehab_arm_sim_mujoco check_sim_env --pretty --output sim_readiness_report.json
+```
+
+也可以直接用 Python 脚本测试：
+
+```bash
+python3 src/rehab_arm_sim_mujoco/rehab_arm_sim_mujoco/check_sim_env.py \
+  --workspace-root . \
+  --pretty \
+  --output sim_readiness_report.json
+```
+
+通过标准：
+
+- 生成 `sim_readiness_report.json`。
+- `schema_version` 为 `rehab_arm_sim_env_check_v1`。
+- `readiness=ready_with_mujoco` 表示 MuJoCo 环境可用。
+- `readiness=ready_with_fallback_sim` 表示 ROS2 数据链路可先跑，MuJoCo Python 包后续再补。
+- `ok=false` 时先修 `errors`，不要进入复杂仿真 launch。
+
+上传到平台的草案接口：
+
+```bash
+curl -X POST http://<server>:8011/api/rehab-arm/v1/devices/<device_id>/simulation-readiness \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "robot_id": "rehab-arm-alpha",
+    "device_id": "nanopi-m5",
+    "report": <sim_readiness_report.json 的内容>
+  }'
+```
+
+注意：
+
+- 这个报告只说明仿真/采集环境是否准备好。
+- 它不是运动许可，不代表真机可以上电或运动。
+- 平台只把它显示为数据资产和研发准备度，不会下发 CAN 或电机命令。
+
 ## 7. 文档与 Git 维护
 
 每次完成任务后同步更新：

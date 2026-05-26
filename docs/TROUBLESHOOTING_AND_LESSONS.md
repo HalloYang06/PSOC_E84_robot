@@ -2043,3 +2043,20 @@ No such file or directory: /tmp/rehab_sim_collection/sim_demo_motion.jsonl
 状态：
 
 - 已新增自检工具；它只读环境，不访问 CAN，不命令 M33 或电机。
+
+### 仿真自检报告只能作为平台数据资产
+
+现象：
+
+- 平台需要知道仿真主机是否具备 ROS2、URDF、MuJoCo/fallback 和采集工具，但不能把这种“准备度”误解成真机运动许可。
+
+技巧：
+
+- 用 `check_sim_env --output sim_readiness_report.json` 生成只读报告。
+- 平台接收端只写入 `simulation_readiness` 最新状态和事件日志。
+- UI 文案必须写清楚它是研发准备度，不是 M33 运动许可。
+- 如果 `readiness=ready_with_fallback_sim`，可以先跑 ROS topic/数据采集链路；等 MuJoCo 安装好再跑真实 MuJoCo 仿真。
+
+状态：
+
+- 已在工具和平台接口中保留 `simulation_readiness_only_not_motion_permission` 边界。

@@ -151,10 +151,19 @@ def main(argv: list[str] | None = None) -> int:
         action='store_true',
         help='Fail when the mujoco Python package is missing instead of allowing fallback simulation.',
     )
+    parser.add_argument(
+        '--output',
+        help='Optional path to write the JSON report for platform upload or handoff.',
+    )
     args = parser.parse_args(argv)
 
     report = build_sim_env_report(args.workspace_root, strict_mujoco=args.strict_mujoco)
-    print(json.dumps(report, ensure_ascii=False, indent=2 if args.pretty else None, sort_keys=args.pretty))
+    output = json.dumps(report, ensure_ascii=False, indent=2 if args.pretty else None, sort_keys=args.pretty)
+    if args.output:
+        output_path = Path(args.output).expanduser()
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(output + '\n', encoding='utf-8')
+    print(output)
     return 0 if report['ok'] else 1
 
 

@@ -56,6 +56,14 @@ ROS2 可以理解成机器人系统里的“消息总线 + 工程组织方式”
 ros2 run rehab_arm_sim_mujoco check_sim_env --pretty
 ```
 
+如果要把自检结果交给平台或服务器记录，生成文件：
+
+```bash
+ros2 run rehab_arm_sim_mujoco check_sim_env --pretty --output sim_readiness_report.json
+```
+
+这个 JSON 可以上传到平台的仿真准备度接口，作为“仿真主机已具备哪些能力”的数据资产。它不是 M33 运动许可，也不代表真机可以上电。
+
 这个命令检查：
 
 - ROS2 Python 依赖 `rclpy` 是否可用。

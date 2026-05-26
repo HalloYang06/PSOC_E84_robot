@@ -893,3 +893,16 @@
 - Not validated: no Linux simulation host, NanoPi build, MuJoCo install, CAN, M33/M55, camera, motor power, or real hardware in this slice.
 - Safety: this check is read-only and explicitly does not open CAN, send `0x320/0x321`, or command M33/motors.
 - Next step: add the platform-side simulation readiness surface or data asset entry that consumes these environment/status reports without turning them into motion permission.
+
+### 2026-05-26 - Simulation readiness report handoff to platform
+
+- Completed: `check_sim_env` now supports `--output` to write `sim_readiness_report.json` for platform upload or handoff.
+- Completed: platform API accepts `POST /api/rehab-arm/v1/devices/{device_id}/simulation-readiness` and stores it as latest device telemetry.
+- Completed: platform robot data workbench surfaces uploaded simulation readiness reports in the existing read-only readiness strip.
+- Validated: `python -m unittest rehab_arm_ros2_ws\src\rehab_arm_sim_mujoco\test\test_check_sim_env.py -v` passed 4 tests.
+- Validated: `python -m py_compile rehab_arm_ros2_ws\src\rehab_arm_sim_mujoco\rehab_arm_sim_mujoco\check_sim_env.py` passed.
+- Validated: platform `python -m pytest apps\api\tests\test_rehab_arm_sync.py -q` passed 5 tests.
+- Validated: platform `npm --workspace apps/web exec eslint -- "app/projects/[id]/robotics/robotics-workbench-client.tsx"` passed.
+- Not validated: no Linux simulation host, NanoPi, CAN, M33/M55, camera, motor power, or real MuJoCo runtime in this slice.
+- Safety: simulation readiness is stored with `simulation_readiness_only_not_motion_permission`; it does not grant motion permission or bypass M33.
+- Next step: add a tiny upload helper or documented curl command that posts the generated report to the cloud after a real Linux sim-host self-check.
