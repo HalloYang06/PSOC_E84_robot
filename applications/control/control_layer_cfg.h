@@ -73,6 +73,122 @@
 #define CONTROL_MOTOR_JOINT7_ID            0x07U
 #endif
 
+/* Motor protocol selection:
+ * 0 = private extended-frame protocol used by RS00-like joints.
+ * 1 = CANSimple standard-frame protocol used by ODrive-like joints.
+ */
+#ifndef CONTROL_MOTOR_PROTOCOL_PRIVATE
+#define CONTROL_MOTOR_PROTOCOL_PRIVATE     0U
+#endif
+
+#ifndef CONTROL_MOTOR_PROTOCOL_CANSIMPLE
+#define CONTROL_MOTOR_PROTOCOL_CANSIMPLE   1U
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT1_PROTOCOL
+#define CONTROL_MOTOR_JOINT1_PROTOCOL      CONTROL_MOTOR_PROTOCOL_PRIVATE
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT2_PROTOCOL
+#define CONTROL_MOTOR_JOINT2_PROTOCOL      CONTROL_MOTOR_PROTOCOL_PRIVATE
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT3_PROTOCOL
+#define CONTROL_MOTOR_JOINT3_PROTOCOL      CONTROL_MOTOR_PROTOCOL_CANSIMPLE
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT4_PROTOCOL
+#define CONTROL_MOTOR_JOINT4_PROTOCOL      CONTROL_MOTOR_PROTOCOL_PRIVATE
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT5_PROTOCOL
+#define CONTROL_MOTOR_JOINT5_PROTOCOL      CONTROL_MOTOR_PROTOCOL_PRIVATE
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT6_PROTOCOL
+#define CONTROL_MOTOR_JOINT6_PROTOCOL      CONTROL_MOTOR_PROTOCOL_PRIVATE
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT7_PROTOCOL
+#define CONTROL_MOTOR_JOINT7_PROTOCOL      CONTROL_MOTOR_PROTOCOL_PRIVATE
+#endif
+
+/* Output reduction ratio from joint/output side to motor rotor side.
+ * Joint-layer commands use output-side rad/rad/s; protocol packets use motor-side
+ * rad/rad/s or rev/rev/s where required.
+ */
+#ifndef CONTROL_MOTOR_JOINT1_GEAR_RATIO
+#define CONTROL_MOTOR_JOINT1_GEAR_RATIO    (1.0f)
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT2_GEAR_RATIO
+#define CONTROL_MOTOR_JOINT2_GEAR_RATIO    (1.0f)
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT3_GEAR_RATIO
+#define CONTROL_MOTOR_JOINT3_GEAR_RATIO    (10.0f)
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT4_GEAR_RATIO
+#define CONTROL_MOTOR_JOINT4_GEAR_RATIO    (1.0f)
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT5_GEAR_RATIO
+#define CONTROL_MOTOR_JOINT5_GEAR_RATIO    (1.0f)
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT6_GEAR_RATIO
+#define CONTROL_MOTOR_JOINT6_GEAR_RATIO    (1.0f)
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT7_GEAR_RATIO
+#define CONTROL_MOTOR_JOINT7_GEAR_RATIO    (1.0f)
+#endif
+
+#ifndef CONTROL_CANSIMPLE_POS_REV_PER_RAD
+#define CONTROL_CANSIMPLE_POS_REV_PER_RAD  (0.15915494309189535f)
+#endif
+
+#ifndef CONTROL_CANSIMPLE_VEL_REV_PER_RAD_S
+#define CONTROL_CANSIMPLE_VEL_REV_PER_RAD_S (0.15915494309189535f)
+#endif
+
+#ifndef CONTROL_CANSIMPLE_TORQUE_FF_SCALE
+#define CONTROL_CANSIMPLE_TORQUE_FF_SCALE  (1000.0f)
+#endif
+
+#ifndef CONTROL_CANSIMPLE_VEL_FF_SCALE
+#define CONTROL_CANSIMPLE_VEL_FF_SCALE     (1000.0f)
+#endif
+
+#ifndef CONTROL_CANSIMPLE_CLOSED_LOOP_WAIT_MS
+#define CONTROL_CANSIMPLE_CLOSED_LOOP_WAIT_MS 500U
+#endif
+
+#ifndef CONTROL_CANSIMPLE_MIT_P_MIN_RAD
+#define CONTROL_CANSIMPLE_MIT_P_MIN_RAD    (-12.5f)
+#endif
+
+#ifndef CONTROL_CANSIMPLE_MIT_P_MAX_RAD
+#define CONTROL_CANSIMPLE_MIT_P_MAX_RAD    (12.5f)
+#endif
+
+#ifndef CONTROL_CANSIMPLE_MIT_V_MIN_RAD_S
+#define CONTROL_CANSIMPLE_MIT_V_MIN_RAD_S  (-65.0f)
+#endif
+
+#ifndef CONTROL_CANSIMPLE_MIT_V_MAX_RAD_S
+#define CONTROL_CANSIMPLE_MIT_V_MAX_RAD_S  (65.0f)
+#endif
+
+#ifndef CONTROL_CANSIMPLE_MIT_T_MIN_NM
+#define CONTROL_CANSIMPLE_MIT_T_MIN_NM     (-50.0f)
+#endif
+
+#ifndef CONTROL_CANSIMPLE_MIT_T_MAX_NM
+#define CONTROL_CANSIMPLE_MIT_T_MAX_NM     (50.0f)
+#endif
+
 #ifndef CONTROL_MOTOR_P_MIN_RAD
 #define CONTROL_MOTOR_P_MIN_RAD            (-12.57f)
 #endif
@@ -125,6 +241,22 @@
 #define CONTROL_MOTOR_DEFAULT_SPEED_ACC_RAD_S2 (10.0f)
 #endif
 
+#ifndef CONTROL_MOTOR_PRIVATE_SPEED_USE_MIT
+#define CONTROL_MOTOR_PRIVATE_SPEED_USE_MIT    1U
+#endif
+
+#ifndef CONTROL_MOTOR_PRIVATE_SPEED_MIT_KP
+#define CONTROL_MOTOR_PRIVATE_SPEED_MIT_KP     (0.0f)
+#endif
+
+#ifndef CONTROL_MOTOR_PRIVATE_SPEED_MIT_KD
+#define CONTROL_MOTOR_PRIVATE_SPEED_MIT_KD     CONTROL_MOTOR_DEFAULT_KD
+#endif
+
+#ifndef CONTROL_MOTOR_PRIVATE_SPEED_MIT_TORQUE
+#define CONTROL_MOTOR_PRIVATE_SPEED_MIT_TORQUE (0.0f)
+#endif
+
 #ifndef CONTROL_MOTOR_DEFAULT_POS_ACC_RAD_S2
 #define CONTROL_MOTOR_DEFAULT_POS_ACC_RAD_S2   (10.0f)
 #endif
@@ -144,6 +276,41 @@
 
 #ifndef CONTROL_CAN_ID_M33_STATUS
 #define CONTROL_CAN_ID_M33_STATUS          0x322U
+#endif
+
+/* M33 -> NanoPi official motor telemetry.
+ * Standard classic CAN, one frame per cached joint/motor slot:
+ *   ID     = CONTROL_CAN_ID_M33_MOTOR_STATUS_BASE + slot
+ *   byte0  = marker 0xB3
+ *   byte1  = sequence
+ *   byte2  = motor_id
+ *   byte3  = flags bit0 enabled, bit1 fault, bit2 limited, bit3 emergency_stop
+ *   byte4~5= joint/output position mrad, int16 little-endian
+ *   byte6  = joint/output velocity 0.1 rad/s, int8
+ *   byte7  = temperature C, 0xFF unknown
+ */
+#ifndef CONTROL_CAN_ID_M33_MOTOR_STATUS_BASE
+#define CONTROL_CAN_ID_M33_MOTOR_STATUS_BASE 0x330U
+#endif
+
+#ifndef CONTROL_M33_MOTOR_STATUS_MARKER
+#define CONTROL_M33_MOTOR_STATUS_MARKER    0xB3U
+#endif
+
+#ifndef CONTROL_M33_MOTOR_STATUS_PERIOD_MS
+#define CONTROL_M33_MOTOR_STATUS_PERIOD_MS 100U
+#endif
+
+#ifndef CONTROL_M33_MOTOR_STATUS_FRESH_MS
+#define CONTROL_M33_MOTOR_STATUS_FRESH_MS  1000U
+#endif
+
+#ifndef CONTROL_MOTOR_STATUS_THREAD_STACK_SIZE
+#define CONTROL_MOTOR_STATUS_THREAD_STACK_SIZE 1536
+#endif
+
+#ifndef CONTROL_MOTOR_STATUS_THREAD_PRIORITY
+#define CONTROL_MOTOR_STATUS_THREAD_PRIORITY 20
 #endif
 
 #ifndef CONTROL_ROS_CMD_OP_ENABLE
@@ -168,6 +335,163 @@
 
 #ifndef CONTROL_ROS_CMD_OP_ACTIVE_REPORT
 #define CONTROL_ROS_CMD_OP_ACTIVE_REPORT   0x06U
+#endif
+
+/* Safety bring-up mode for NanoPi ROS/CAN commands.
+ * 1 = log parsed 0x320 commands and reject them before any motor-control path.
+ * 0 = allow commands to enter the ROS command queue/control apply path.
+ *
+ * Keep this enabled until 0x320 payload, joint mapping, limits, and emergency-stop
+ * behavior have been validated with motors disconnected or otherwise made safe.
+ */
+#ifndef CONTROL_ROS_COMMAND_LOGGING_ONLY
+#define CONTROL_ROS_COMMAND_LOGGING_ONLY   1U
+#endif
+
+/* M33 -> NanoPi 0x322 status V2 enums. Keep these values aligned with
+ * rehab_arm_psoc_bridge.psoc_status.
+ */
+#ifndef CONTROL_STATUS_SAFETY_OK
+#define CONTROL_STATUS_SAFETY_OK           0U
+#endif
+
+#ifndef CONTROL_STATUS_SAFETY_LIMITED
+#define CONTROL_STATUS_SAFETY_LIMITED      1U
+#endif
+
+#ifndef CONTROL_STATUS_SAFETY_EMERGENCY_STOP
+#define CONTROL_STATUS_SAFETY_EMERGENCY_STOP 2U
+#endif
+
+#ifndef CONTROL_STATUS_SAFETY_FAULT
+#define CONTROL_STATUS_SAFETY_FAULT        3U
+#endif
+
+#ifndef CONTROL_STATUS_MODE_BOOT
+#define CONTROL_STATUS_MODE_BOOT           0U
+#endif
+
+#ifndef CONTROL_STATUS_MODE_LOGGING_ONLY
+#define CONTROL_STATUS_MODE_LOGGING_ONLY   1U
+#endif
+
+#ifndef CONTROL_STATUS_MODE_STANDBY
+#define CONTROL_STATUS_MODE_STANDBY        2U
+#endif
+
+#ifndef CONTROL_STATUS_MODE_ARMED
+#define CONTROL_STATUS_MODE_ARMED          3U
+#endif
+
+#ifndef CONTROL_STATUS_MODE_ACTIVE
+#define CONTROL_STATUS_MODE_ACTIVE         4U
+#endif
+
+#ifndef CONTROL_STATUS_MODE_EMERGENCY_STOP
+#define CONTROL_STATUS_MODE_EMERGENCY_STOP 5U
+#endif
+
+#ifndef CONTROL_STATUS_DETAIL_NONE
+#define CONTROL_STATUS_DETAIL_NONE         0U
+#endif
+
+#ifndef CONTROL_STATUS_DETAIL_HEARTBEAT_TIMEOUT
+#define CONTROL_STATUS_DETAIL_HEARTBEAT_TIMEOUT 1U
+#endif
+
+#ifndef CONTROL_STATUS_DETAIL_UNSUPPORTED_COMMAND
+#define CONTROL_STATUS_DETAIL_UNSUPPORTED_COMMAND 2U
+#endif
+
+#ifndef CONTROL_STATUS_DETAIL_UNKNOWN_JOINT
+#define CONTROL_STATUS_DETAIL_UNKNOWN_JOINT 3U
+#endif
+
+#ifndef CONTROL_STATUS_DETAIL_TARGET_OUT_OF_LIMIT
+#define CONTROL_STATUS_DETAIL_TARGET_OUT_OF_LIMIT 4U
+#endif
+
+#ifndef CONTROL_STATUS_DETAIL_VELOCITY_OUT_OF_LIMIT
+#define CONTROL_STATUS_DETAIL_VELOCITY_OUT_OF_LIMIT 5U
+#endif
+
+#ifndef CONTROL_STATUS_DETAIL_TORQUE_OUT_OF_LIMIT
+#define CONTROL_STATUS_DETAIL_TORQUE_OUT_OF_LIMIT 6U
+#endif
+
+#ifndef CONTROL_STATUS_DETAIL_EMERGENCY_STOP
+#define CONTROL_STATUS_DETAIL_EMERGENCY_STOP 7U
+#endif
+
+#ifndef CONTROL_STATUS_DETAIL_POWER_FAULT
+#define CONTROL_STATUS_DETAIL_POWER_FAULT  8U
+#endif
+
+#ifndef CONTROL_STATUS_DETAIL_MOTOR_FAULT
+#define CONTROL_STATUS_DETAIL_MOTOR_FAULT  9U
+#endif
+
+#ifndef CONTROL_STATUS_DETAIL_LOGGING_ONLY
+#define CONTROL_STATUS_DETAIL_LOGGING_ONLY 10U
+#endif
+
+/* ROS trajectory joint ids use 0-based indexing. These software audit limits
+ * mirror the NanoPi bridge limits and are expressed in 0.1 degree units.
+ */
+#ifndef CONTROL_ROS_JOINT_COUNT
+#define CONTROL_ROS_JOINT_COUNT            5U
+#endif
+
+#ifndef CONTROL_ROS_JOINT0_MIN_01DEG
+#define CONTROL_ROS_JOINT0_MIN_01DEG       (-401)
+#endif
+
+#ifndef CONTROL_ROS_JOINT0_MAX_01DEG
+#define CONTROL_ROS_JOINT0_MAX_01DEG       802
+#endif
+
+#ifndef CONTROL_ROS_JOINT1_MIN_01DEG
+#define CONTROL_ROS_JOINT1_MIN_01DEG       0
+#endif
+
+#ifndef CONTROL_ROS_JOINT1_MAX_01DEG
+#define CONTROL_ROS_JOINT1_MAX_01DEG       1031
+#endif
+
+#ifndef CONTROL_ROS_JOINT2_MIN_01DEG
+#define CONTROL_ROS_JOINT2_MIN_01DEG       (-257)
+#endif
+
+#ifndef CONTROL_ROS_JOINT2_MAX_01DEG
+#define CONTROL_ROS_JOINT2_MAX_01DEG       458
+#endif
+
+#ifndef CONTROL_ROS_JOINT3_MIN_01DEG
+#define CONTROL_ROS_JOINT3_MIN_01DEG       (-687)
+#endif
+
+#ifndef CONTROL_ROS_JOINT3_MAX_01DEG
+#define CONTROL_ROS_JOINT3_MAX_01DEG       687
+#endif
+
+#ifndef CONTROL_ROS_JOINT4_MIN_01DEG
+#define CONTROL_ROS_JOINT4_MIN_01DEG       (-687)
+#endif
+
+#ifndef CONTROL_ROS_JOINT4_MAX_01DEG
+#define CONTROL_ROS_JOINT4_MAX_01DEG       687
+#endif
+
+#ifndef CONTROL_ROS_MAX_TARGET_RPM
+#define CONTROL_ROS_MAX_TARGET_RPM         30
+#endif
+
+#ifndef CONTROL_ROS_MAX_TARGET_TORQUE_MA
+#define CONTROL_ROS_MAX_TARGET_TORQUE_MA   0
+#endif
+
+#ifndef CONTROL_ROS_HEARTBEAT_TIMEOUT_MS
+#define CONTROL_ROS_HEARTBEAT_TIMEOUT_MS   2500U
 #endif
 
 #ifndef CONTROL_CAN_CLASSIC_ONLY
@@ -197,6 +521,43 @@
 
 #ifndef CONTROL_CAN_ID_SENSOR_CTRL
 #define CONTROL_CAN_ID_SENSOR_CTRL         0x310U
+#endif
+
+/* STM32F103/C8T6 private lightweight protocol (GitHub C8T6 branch) */
+#ifndef CONTROL_CAN_ID_F103_CTRL
+#define CONTROL_CAN_ID_F103_CTRL           0x7C0U
+#endif
+
+#ifndef CONTROL_CAN_ID_F103_ACK
+#define CONTROL_CAN_ID_F103_ACK            0x7C1U
+#endif
+
+#ifndef CONTROL_CAN_ID_F103_SENSOR
+#define CONTROL_CAN_ID_F103_SENSOR         0x7C2U
+#endif
+
+#ifndef CONTROL_CAN_ID_F103_HEALTH
+#define CONTROL_CAN_ID_F103_HEALTH         0x7C3U
+#endif
+
+#ifndef CONTROL_F103_CMD_SET_RATE
+#define CONTROL_F103_CMD_SET_RATE          0x01U
+#endif
+
+#ifndef CONTROL_F103_CMD_START_STREAM
+#define CONTROL_F103_CMD_START_STREAM      0x03U
+#endif
+
+#ifndef CONTROL_F103_CMD_STOP_STREAM
+#define CONTROL_F103_CMD_STOP_STREAM       0x04U
+#endif
+
+#ifndef CONTROL_F103_CMD_GET_STATUS
+#define CONTROL_F103_CMD_GET_STATUS        0x05U
+#endif
+
+#ifndef CONTROL_F103_RATE_TARGET_CAN_TX
+#define CONTROL_F103_RATE_TARGET_CAN_TX    0x02U
 #endif
 
 #ifndef CONTROL_SENSOR_CMD_ENABLE_REPORT
