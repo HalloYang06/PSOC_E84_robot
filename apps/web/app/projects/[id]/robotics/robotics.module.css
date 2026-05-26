@@ -939,6 +939,221 @@
   overflow: hidden;
 }
 
+.deviceTileGrid,
+.deviceTileGrid[data-tile-count="2"],
+.deviceTileGrid[data-tile-count="3"],
+.deviceTileGrid[data-tile-count="4"] {
+  grid-template-columns: 1fr;
+}
+
+.deviceDataPane {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  gap: 10px;
+  overflow: auto;
+}
+
+.deviceDataSummary {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.deviceDataSummary article,
+.nanoPiDataGrid article,
+.cameraPreviewPanel,
+.cameraMetaPanel article,
+.annotationWorkbench article {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  padding: 12px;
+  border: 1px solid rgba(88, 240, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(2, 14, 22, 0.76);
+}
+
+.deviceDataSummary article[data-tone="ok"] {
+  border-color: rgba(120, 230, 170, 0.28);
+  background: rgba(120, 230, 170, 0.08);
+}
+
+.deviceDataSummary article[data-tone="warn"] {
+  border-color: rgba(241, 208, 107, 0.3);
+  background: rgba(241, 208, 107, 0.08);
+}
+
+.deviceDataSummary article[data-tone="idle"] {
+  border-color: rgba(167, 219, 255, 0.12);
+  background: rgba(167, 219, 255, 0.045);
+}
+
+.deviceDataPane span,
+.cameraMetaPanel span {
+  color: #b9fff3;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.deviceDataPane strong {
+  min-width: 0;
+  color: #eaffff;
+  font-size: 14px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.deviceDataPane p {
+  margin: 0;
+  color: rgba(190, 220, 240, 0.72);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.nanoPiDataGrid {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.9fr) minmax(0, 0.75fr);
+  gap: 8px;
+}
+
+.panelHead {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.panelHead div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.panelHead small {
+  max-width: 42%;
+  color: rgba(190, 220, 240, 0.66);
+  font-size: 10.5px;
+  line-height: 1.35;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.deviceMotorTable {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  overflow: auto;
+}
+
+.deviceMotorTable > div {
+  min-width: 680px;
+  display: grid;
+  grid-template-columns: 1.2fr 1.1fr 0.85fr 0.85fr 0.85fr 0.8fr;
+  gap: 6px;
+  align-items: center;
+  padding: 7px 8px;
+  border: 1px solid rgba(88, 240, 255, 0.1);
+  border-radius: 7px;
+  background: rgba(1, 8, 12, 0.42);
+}
+
+.deviceMotorTable > div:first-child {
+  background: rgba(88, 240, 255, 0.08);
+}
+
+.deviceMotorTable > div[data-fault="true"] {
+  border-color: rgba(255, 117, 117, 0.32);
+  background: rgba(255, 117, 117, 0.08);
+}
+
+.deviceMotorTable span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(234, 255, 255, 0.84);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.sensorKeyGrid {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.sensorKeyGrid span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  padding: 7px 8px;
+  border: 1px solid rgba(88, 240, 255, 0.11);
+  border-radius: 7px;
+  background: rgba(1, 8, 12, 0.38);
+  color: rgba(234, 255, 255, 0.82);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.sensorKeyGrid b {
+  color: #b9fff3;
+  font-size: 10.5px;
+}
+
+.cameraWorkbench {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+  gap: 8px;
+}
+
+.cameraPreviewPanel {
+  min-height: 420px;
+}
+
+.cameraPreviewPanel[data-empty="1"] {
+  border-style: dashed;
+}
+
+.cameraKeyframeImage,
+.cameraEmptyFrame {
+  width: 100%;
+  min-height: 340px;
+  border: 1px solid rgba(88, 240, 255, 0.14);
+  border-radius: 8px;
+  background: #061014;
+}
+
+.cameraKeyframeImage {
+  height: min(58vh, 520px);
+  object-fit: contain;
+  display: block;
+}
+
+.cameraEmptyFrame {
+  display: grid;
+  place-content: center;
+  gap: 6px;
+  padding: 20px;
+  text-align: center;
+}
+
+.cameraMetaPanel,
+.annotationWorkbench {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
 .dataWorkbenchPane article,
 .modelWorkbenchPane article,
 .dataActionPanel {
@@ -1895,6 +2110,30 @@
   .modelWorkbenchPane {
     grid-template-columns: 1fr;
     overflow: auto;
+  }
+
+  .deviceDataSummary,
+  .nanoPiDataGrid,
+  .cameraWorkbench {
+    grid-template-columns: 1fr;
+  }
+
+  .panelHead {
+    display: grid;
+  }
+
+  .panelHead small {
+    max-width: none;
+    text-align: left;
+  }
+
+  .cameraPreviewPanel {
+    min-height: 320px;
+  }
+
+  .cameraKeyframeImage,
+  .cameraEmptyFrame {
+    min-height: 260px;
   }
 
   .dataDrawerRail,

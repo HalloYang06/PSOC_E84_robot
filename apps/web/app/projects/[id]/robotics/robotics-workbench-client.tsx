@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { apiClientUrl } from "../../../../lib/api-client-url";
@@ -50,6 +51,7 @@ type DebugWindow = {
 };
 
 type TileTab = "terminal" | "dataset" | "chart" | "model";
+type DeviceTab = "data" | "camera" | "dataset" | "chart" | "model";
 
 type RoboticsWorkbenchClientProps = {
   projectId: string;
@@ -171,6 +173,115 @@ function latestMotorStateLine(device: AnyRecord | undefined, motors: AnyRecord[]
   const ts = Number(record(device.motor_state).ts_unix);
   const when = Number.isFinite(ts) && ts > 0 ? new Date(ts * 1000).toLocaleString("zh-CN", { hour12: false }) : "无时间戳";
   return `${text(device.robot_id, "设备")} · ${text(device.device_id, "-")} · ${motors.length} 个电机 · ${when}`;
+}
+
+function deviceId(device: AnyRecord, index = 0) {
+  return text(device.device_id, `device-${index + 1}`);
+}
+
+function deviceTitle(device: AnyRecord, index = 0) {
+  return text(device.robot_id, text(device.device_id, `机器人设备 ${index + 1}`));
+}
+
+function latestPayload(device: AnyRecord, key: string) {
+  return payloadOf(device[key]);
+}
+
+function latestTime(device: AnyRecord, key: string) {
+  const ts = Number(record(device[key]).ts_unix ?? device.last_upload_ts_unix);
+  if (!Number.isFinite(ts) || ts <= 0) return "无记录";
+  return new Date(ts * 1000).toLocaleString("zh-CN", { hour12: false });
+}
+
+function dataQualityReady(device: AnyRecord) {
+  return record(device.data_quality).annotation_ready === true;
+}
+
+function deviceSafetyText(device: AnyRecord) {
+  const payload = latestPayload(device, "safety");
+  const state = text(payload.state, text(device.safety_state, "unknown"));
+  if (state === "ok") return "安全正常";
+  if (state === "limited") return "受限";
+  if (state === "emergency_stop") return "急停";
+  if (state === "fault") return "故障";
+  return state;
+}
+
+function deviceDataCounts(device: AnyRecord) {
+  const motors = asArray<AnyRecord>(latestPayload(device, "motor_state").motors);
+  const sensor = latestPayload(device, "sensor_state");
+  const camera = latestPayload(device, "camera_keyframe");
+  return {
+    motors: motors.length,
+    sensorFields: Object.keys(sensor).filter((key) => !["schema_version", "device_id", "robot_id"].includes(key)).length,
+    hasCamera: Boolean(text(camera.image_url) || text(camera.camera_id)),
+  };
+}
+
+function keyframeSrc(imageUrl: string) {
+  if (!imageUrl) return "";
+  if (imageUrl.startsWith("/api/")) return `/api/proxy/${imageUrl.slice("/api/".length)}`;
+  return imageUrl;
+}
+
+function cameraImageUrl(device: AnyRecord) {
+  const camera = record(device.camera_keyframe);
+  const payload = latestPayload(device, "camera_keyframe");
+  return text(camera.image_url, text(payload.image_url, ""));
+}
+
+function sensorEntries(device: AnyRecord) {
+  const sensor = latestPayload(device, "sensor_state");
+  return Object.entries(sensor)
+    .filter(([key]) => !["schema_version", "device_id", "robot_id", "source"].includes(key))
+    .slice(0, 16);
+}
+
+function scalarText(value: unknown) {
+  if (value == null || value === "") return "-";
+  if (typeof value === "number") return Number.isFinite(value) ? (Number.isInteger(value) ? String(value) : value.toFixed(3)) : "-";
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "object") return JSON.stringify(value).slice(0, 96);
+  return text(value, "-");
+}
+
+function motorVariableRows(device: AnyRecord) {
+  const motors = asArray<AnyRecord>(latestPayload(device, "motor_state").motors);
+  return motors.flatMap((motor, index) => {
+    const joint = text(motor.joint_name, `motor_${text(motor.motor_id, String(index + 1))}`);
+    return [
+      { name: `${joint}.position`, value: numberText(motor.position, " rad"), source: "motor_state", time: latestTime(device, "motor_state") },
+      { name: `${joint}.velocity`, value: numberText(motor.velocity, " rad/s"), source: "motor_state", time: latestTime(device, "motor_state") },
+      { name: `${joint}.temperature`, value: temperatureOf(motor) == null ? "-" : numberText(temperatureOf(motor), " C"), source: "motor_state", time: latestTime(device, "motor_state") },
+      { name: `${joint}.enabled`, value: motor.enabled == null ? "-" : String(Boolean(motor.enabled)), source: "motor_state", time: latestTime(device, "motor_state") },
+    ];
+  });
+}
+
+function sensorVariableRows(device: AnyRecord) {
+  return sensorEntries(device).map(([key, value]) => ({
+    name: `sensor.${key}`,
+    value: scalarText(value),
+    source: "sensor_state",
+    time: latestTime(device, "sensor_state"),
+  }));
+}
+
+function cameraVariableRows(device: AnyRecord) {
+  const camera = latestPayload(device, "camera_keyframe");
+  const rows = [
+    ["camera.camera_id", camera.camera_id],
+    ["camera.scene_summary", camera.scene_summary],
+    ["camera.detection_summary", camera.detection_summary],
+    ["camera.vla_context", camera.vla_context],
+  ];
+  return rows
+    .filter(([, value]) => text(value, ""))
+    .map(([name, value]) => ({ name: String(name), value: scalarText(value), source: "camera_keyframe", time: latestTime(device, "camera_keyframe") }));
+}
+
+function deviceVariableRows(device: AnyRecord) {
+  return [...motorVariableRows(device), ...sensorVariableRows(device), ...cameraVariableRows(device)];
 }
 
 function MotorState3DViewer({
@@ -374,6 +485,324 @@ function MotorState3DViewer({
         })}
       </div>
     </section>
+  );
+}
+
+function DeviceDataOverview({ device }: { device: AnyRecord }) {
+  const motorPayload = latestPayload(device, "motor_state");
+  const sensorPayload = latestPayload(device, "sensor_state");
+  const safetyPayload = latestPayload(device, "safety");
+  const cameraPayload = latestPayload(device, "camera_keyframe");
+  const simReport = simulationReport(device);
+  const manifest = record(device.manifest);
+  const motors = asArray<AnyRecord>(motorPayload.motors);
+  const quality = record(device.data_quality);
+  const blockingReasons = asArray<string>(quality.blocking_reasons);
+  return (
+    <section className={styles.deviceDataPane} aria-label={`${deviceTitle(device)} NanoPi 采集数据`}>
+      <div className={styles.deviceDataSummary}>
+        <article data-tone={text(device.online_state) === "online" ? "ok" : "idle"}>
+          <span>设备在线</span>
+          <strong>{text(device.online_state) === "online" ? "在线" : "离线"}</strong>
+          <p>最近上传：{latestTime(device, "motor_state")}</p>
+        </article>
+        <article data-tone={text(device.safety_state) === "ok" ? "ok" : "warn"}>
+          <span>M33 安全</span>
+          <strong>{deviceSafetyText(device)}</strong>
+          <p>motion_allowed：{String(Boolean(safetyPayload.motion_allowed ?? device.motion_allowed))}</p>
+        </article>
+        <article>
+          <span>电机数据</span>
+          <strong>{motors.length} 个电机</strong>
+          <p>{text(motorPayload.source, "等待 motor_state")}</p>
+        </article>
+        <article data-tone={dataQualityReady(device) ? "ok" : "idle"}>
+          <span>标注质量</span>
+          <strong>{dataQualityReady(device) ? "可标注" : "待补数据"}</strong>
+          <p>{blockingReasons.slice(0, 2).join("；") || text(device.latest_upload_status, "等待 manifest")}</p>
+        </article>
+      </div>
+
+      <div className={styles.nanoPiDataGrid}>
+        <article>
+          <div className={styles.panelHead}>
+            <div>
+              <span>电机 / 关节</span>
+              <strong>{motors.length ? "最近 motor_state" : "等待电机状态"}</strong>
+            </div>
+            <small>{latestTime(device, "motor_state")}</small>
+          </div>
+          {motors.length ? (
+            <div className={styles.deviceMotorTable}>
+              <div><span>电机</span><span>关节</span><span>位置</span><span>速度</span><span>温度</span><span>状态</span></div>
+              {motors.map((motor, index) => (
+                <div key={`${text(motor.motor_id, "motor")}-${index}`} data-fault={motor.fault ? "true" : "false"}>
+                  <span>{text(motor.motor_id, String(index + 1))}</span>
+                  <span>{text(motor.joint_name, "-")}</span>
+                  <span>{numberText(motor.position, " rad")}</span>
+                  <span>{numberText(motor.velocity, " rad/s")}</span>
+                  <span>{temperatureOf(motor) == null ? "-" : numberText(temperatureOf(motor), " C")}</span>
+                  <span>{motor.fault ? "故障" : motor.enabled ? "使能" : "未使能"}</span>
+                </div>
+              ))}
+            </div>
+          ) : <p>等待 NanoPi 上传 `/rehab_arm/motor_state`。当前页只显示数据，不触发真实控制。</p>}
+        </article>
+
+        <article>
+          <div className={styles.panelHead}>
+            <div>
+              <span>传感器 / 模型</span>
+              <strong>{text(sensorPayload.source, "sensor_state")}</strong>
+            </div>
+            <small>{latestTime(device, "sensor_state")}</small>
+          </div>
+          <div className={styles.sensorKeyGrid}>
+            {Object.entries(sensorPayload).filter(([key]) => !["schema_version", "device_id", "robot_id"].includes(key)).slice(0, 12).map(([key, value]) => (
+              <span key={key}><b>{key}</b>{typeof value === "object" ? JSON.stringify(value).slice(0, 80) : text(value, "-")}</span>
+            ))}
+            {!Object.keys(sensorPayload).length ? <p>等待 C8T6/M33/M55 汇总的 EMG、IMU、心率、疲劳度或小模型输出。</p> : null}
+          </div>
+        </article>
+
+        <article>
+          <div className={styles.panelHead}>
+            <div>
+              <span>摄像头 / 仿真</span>
+              <strong>{text(cameraPayload.camera_id, "等待关键帧")}</strong>
+            </div>
+            <small>{latestTime(device, "camera_keyframe")}</small>
+          </div>
+          <p>{text(cameraPayload.scene_summary, text(cameraPayload.detection_summary, "NanoPi 摄像头关键帧上传后，这里显示场景摘要和检测结果。"))}</p>
+          <p>仿真准备度：{text(simReport.readiness, "未上传")}</p>
+          <p>当前 session：{text(device.current_session, text(manifest.session_id, "无 session"))}</p>
+        </article>
+      </div>
+    </section>
+  );
+}
+
+function DeviceDataTile({
+  projectId,
+  device,
+  index,
+  npcSeats,
+  defaultNpcId,
+  onClose,
+}: {
+  projectId: string;
+  device: AnyRecord;
+  index: number;
+  npcSeats: AnyRecord[];
+  defaultNpcId: string;
+  onClose: () => void;
+}) {
+  const [activeTab, setActiveTab] = useState<DeviceTab>("data");
+  const [stateSyncEnabled, setStateSyncEnabled] = useState(false);
+  const [showOpenSourceMesh, setShowOpenSourceMesh] = useState(false);
+  const motors = asArray<AnyRecord>(latestPayload(device, "motor_state").motors);
+  const counts = deviceDataCounts(device);
+  const variables = deviceVariableRows(device);
+  const cameraPayload = latestPayload(device, "camera_keyframe");
+  const cameraSrc = keyframeSrc(cameraImageUrl(device));
+  const assistantSeat = findSeatRecord(npcSeats, defaultNpcId) ?? npcSeats[0];
+  const assistantState = summarizeNpcSeatDispatchState(assistantSeat);
+  const title = deviceTitle(device, index);
+  const id = deviceId(device, index);
+  return (
+    <article className={tileStyles.tile}>
+      <header className={tileStyles.head}>
+        <div className={tileStyles.headLeft}>
+          <strong className={tileStyles.name}>{title}</strong>
+          <small className={tileStyles.subline}>{id} · {deviceSafetyText(device)} · {text(device.online_state, "unknown")}</small>
+        </div>
+        <div className={tileStyles.headActions}>
+          <button type="button" className={tileStyles.closeBtn} onClick={onClose} aria-label={`关闭 ${title}`}>×</button>
+        </div>
+      </header>
+      <div className={tileStyles.threadBinding}>
+        <span className={tileStyles.threadChip}>NanoPi 数据</span>
+        <span className={tileStyles.threadChip}>电机 {counts.motors}</span>
+        <span className={tileStyles.threadChip}>传感字段 {counts.sensorFields}</span>
+        <span className={tileStyles.threadChip}>{counts.hasCamera ? "有摄像头关键帧" : "等待摄像头"}</span>
+      </div>
+      <nav className={tileStyles.panelTabs} aria-label={`${title} 设备数据功能`}>
+        {[
+          ["data", "NanoPi数据", counts.motors + counts.sensorFields],
+          ["camera", "摄像头", counts.hasCamera ? 1 : 0],
+          ["dataset", "数据标注", dataQualityReady(device) ? 1 : 0],
+          ["chart", "图表实验", variables.length],
+          ["model", "模型预览", 1],
+        ].map(([tab, label, count]) => (
+          <button
+            key={tab}
+            type="button"
+            className={tileStyles.panelTab}
+            data-active={activeTab === tab ? "1" : "0"}
+            onClick={() => setActiveTab(tab as DeviceTab)}
+          >
+            <span>{label}</span>
+            <strong>{count}</strong>
+          </button>
+        ))}
+      </nav>
+
+      {activeTab === "data" ? (
+        <DeviceDataOverview device={device} />
+      ) : activeTab === "camera" ? (
+        <section className={styles.deviceDataPane} aria-label={`${title} 摄像头帧采集`}>
+          <div className={styles.cameraWorkbench}>
+            <article className={styles.cameraPreviewPanel} data-empty={cameraSrc ? "0" : "1"}>
+              <div className={styles.panelHead}>
+                <div>
+                  <span>摄像头关键帧</span>
+                  <strong>{text(cameraPayload.camera_id, counts.hasCamera ? "已接收关键帧" : "等待 camera_keyframe")}</strong>
+                </div>
+                <small>{latestTime(device, "camera_keyframe")}</small>
+              </div>
+              {cameraSrc ? (
+                <Image
+                  src={cameraSrc}
+                  alt={`${title} 最新摄像头关键帧`}
+                  width={960}
+                  height={540}
+                  unoptimized
+                  className={styles.cameraKeyframeImage}
+                />
+              ) : (
+                <div className={styles.cameraEmptyFrame}>
+                  <strong>等待 Linux 开发板上传图像</strong>
+                  <p>预配置脚本接入服务器后，设备上传 camera_keyframe，平台会在这里显示最近帧。</p>
+                </div>
+              )}
+            </article>
+            <aside className={styles.cameraMetaPanel}>
+              <article>
+                <span>场景摘要</span>
+                <p>{text(cameraPayload.scene_summary, "暂无场景摘要。")}</p>
+              </article>
+              <article>
+                <span>检测结果</span>
+                <p>{text(cameraPayload.detection_summary, "暂无检测摘要。")}</p>
+              </article>
+              <article>
+                <span>VLA 上下文</span>
+                <p>{text(cameraPayload.vla_context, "预留给高层任务规划；这里不展示也不下发底层电机命令。")}</p>
+              </article>
+            </aside>
+          </div>
+        </section>
+      ) : activeTab === "dataset" ? (
+        <section className={styles.deviceDataPane}>
+          <div className={styles.deviceDataSummary}>
+            <article data-tone={dataQualityReady(device) ? "ok" : "idle"}>
+              <span>标注状态</span>
+              <strong>{dataQualityReady(device) ? "可标注" : "待补数据"}</strong>
+              <p>{qualityDetailLine(device)}</p>
+            </article>
+            <article>
+              <span>数据来源</span>
+              <strong>{text(device.current_session, "最近 session")}</strong>
+              <p>电机、传感器、摄像头和安全状态在同一设备 ID 下汇总，适配任意已接入的 Linux 开发板。</p>
+            </article>
+          </div>
+          <div className={styles.annotationWorkbench}>
+            <article className={styles.dataActionPanel}>
+              <span>可标注变量</span>
+              <strong>{variables.length ? `${variables.length} 个字段` : "等待设备数据"}</strong>
+              <div className={styles.variablePills}>
+                {variables.slice(0, 24).map((item) => <span key={`${item.source}-${item.name}`}>{item.name}</span>)}
+                {!variables.length ? <span>等待 motor_state / sensor_state / camera_keyframe</span> : null}
+              </div>
+            </article>
+            <article className={styles.dataActionPanel}>
+              <span>人工标签</span>
+              <strong>为当前设备片段补充语义</strong>
+              <textarea placeholder="例如：空载抬臂、视觉遮挡、传感器噪声、用户确认动作有效" />
+              <select defaultValue="manifest">
+                <option value="manifest">导出 manifest</option>
+                <option value="jsonl">导出 JSONL</option>
+                <option value="csv">导出 CSV</option>
+              </select>
+              <button type="button" disabled={!variables.length}>等待后端导出动作接入</button>
+            </article>
+            <article className={styles.dataActionPanel}>
+              <span>AI 员工协助</span>
+              <strong>{assistantSeat ? seatName(assistantSeat, "协助 NPC") : "等待配置 NPC"}</strong>
+              <p>{assistantState.detail}</p>
+            </article>
+          </div>
+        </section>
+      ) : activeTab === "chart" ? (
+        <section className={styles.deviceDataPane}>
+          <article className={styles.dataActionPanel}>
+            <span>图表实验</span>
+            <strong>从设备上报数据直接选变量</strong>
+            <p>这里先列出当前值和来源；时间序列缓存接入后，同一批变量会直接进入曲线对比和实验记录。</p>
+          </article>
+          <article className={styles.dataActionPanel}>
+            <span>AI 员工协助</span>
+            <strong>{assistantState.ready ? "可请求曲线分析建议" : assistantState.state}</strong>
+            <p>NPC 仍是平台 AI 员工；它负责解释曲线、建议标注和生成报告，不直接扫描设备或下发真实硬件命令。</p>
+          </article>
+          <div className={styles.deviceMotorTable}>
+            <div><span>变量</span><span>最近值</span><span>来源</span><span>时间</span></div>
+            {variables.slice(0, 18).map((item) => (
+              <div key={`${item.source}-${item.name}`}>
+                <span>{item.name}</span>
+                <span>{item.value}</span>
+                <span>{item.source}</span>
+                <span>{item.time}</span>
+              </div>
+            ))}
+            {!variables.length ? (
+              <div>
+                <span>等待变量</span>
+                <span>-</span>
+                <span>device upload</span>
+                <span>无记录</span>
+              </div>
+            ) : null}
+          </div>
+        </section>
+      ) : (
+        <section className={styles.modelWorkbenchPane} aria-label={`${title} 模型预览`}>
+          <article className={`${styles.dataActionPanel} ${styles.dataFocusPanel}`}>
+            <span>模型与状态预览</span>
+            <strong>用 motor_state 看整体机械臂状态</strong>
+            <p>关节颜色表达温度；这里是只读可视化，不发送 ROS publish、service、action，也不下发任何硬件动作。</p>
+            <div className={styles.syncToolbar} aria-label="状态数据同步控制">
+              <button type="button" onClick={() => setStateSyncEnabled(true)}>开始数据同步</button>
+              <button type="button" onClick={() => setStateSyncEnabled(false)}>关闭数据同步</button>
+              <button type="button" onClick={() => setShowOpenSourceMesh((value) => !value)}>
+                {showOpenSourceMesh ? "隐藏开源 mesh" : "加载开源 mesh"}
+              </button>
+            </div>
+            <MotorState3DViewer
+              motors={motors}
+              sourceLine={latestMotorStateLine(device, motors)}
+              syncEnabled={stateSyncEnabled}
+              showOpenSourceMesh={showOpenSourceMesh}
+            />
+            <ModelImportInspector />
+          </article>
+          <aside className={styles.dataDrawerRail} aria-label="模型预览说明">
+            <details className={styles.workbenchDrawer} open>
+              <summary><span>状态映射</span><strong>{motors.length ? `${motors.length} 个电机` : "等待 motor_state"}</strong></summary>
+              <article className={styles.dataActionPanel}>
+                <p>position 映射姿态，temperature 映射关节颜色。真实运动仍由本地规划、NanoPi、M33 安全状态机负责。</p>
+              </article>
+            </details>
+            <details className={styles.workbenchDrawer}>
+              <summary><span>开源 mesh</span><strong>RobotExpressive.glb / CC0</strong></summary>
+              <article className={styles.dataActionPanel}>
+                <p>开源 mesh 只用于验证 GLB 加载链路，不是正式机械臂 CAD。</p>
+              </article>
+            </details>
+          </aside>
+        </section>
+      )}
+    </article>
   );
 }
 
@@ -1685,18 +2114,26 @@ export function RoboticsWorkbenchClient({
   const [savedWindows, setSavedWindows] = useState<SavedDebugWindow[]>(initialSavedWindows);
   const router = useRouter();
   const configuredWindows = useMemo(() => configuredDebugWindows(windows, savedWindows), [windows, savedWindows]);
-  const [openIds, setOpenIds] = useState<string[]>(() => initialOpenIds.filter((id) => savedWindows.some((item) => item.resourceId === id)));
+  const [openIds, setOpenIds] = useState<string[]>(() => {
+    const knownDeviceIds = new Set(deviceQualityDevices.map((device, index) => deviceId(device, index)));
+    return initialOpenIds.filter((id) => savedWindows.some((item) => item.resourceId === id) || knownDeviceIds.has(id));
+  });
   const usableWindows = useMemo(() => windows.filter((item) => item.isUsable), [windows]);
   const resourceById = useMemo(() => new Map(windows.map((item) => [item.id, item])), [windows]);
   const openWindows = useMemo(
     () => openIds.map((id) => configuredWindows.find((item) => item.id === id)).filter(Boolean) as DebugWindow[],
     [openIds, configuredWindows],
   );
+  const devices = useMemo(() => deviceQualityDevices.filter((device) => deviceId(device)), [deviceQualityDevices]);
+  const openDevices = useMemo(
+    () => openIds.map((id) => devices.find((device, index) => deviceId(device, index) === id)).filter(Boolean) as AnyRecord[],
+    [openIds, devices],
+  );
   const needsLiveRefresh = terminalMessages.some((message) => {
     const type = text(message.message_type ?? message.messageType, "");
     const status = text(message.status, "");
     return type === "runner_command" && ["pending", "queued", "acked", "in_progress", "running"].includes(status);
-  }) || openWindows.some((window) => window.runnerReady && window.statusLabel.includes("采集") || window.statusLabel.includes("排队"));
+  }) || openDevices.length > 0;
 
   useEffect(() => {
     if (!needsLiveRefresh) return;
@@ -1749,15 +2186,14 @@ export function RoboticsWorkbenchClient({
           <Link className={workbenchStyles.backLink} href={`/projects/${projectId}`}>← 主页面</Link>
           <div className={workbenchStyles.title}>
             <strong>{projectName}</strong>
-            <small>{projectName} · 先创建调试窗口，再从真实扫描设备里绑定接口</small>
+            <small>设备数据工作台 · Linux 开发板接入、数据采集、标注、图表和模型预览</small>
           </div>
         </div>
         <div className={workbenchStyles.topbarRight}>
-          <span className={workbenchStyles.kpi}>可投递电脑 {readyComputers}/{computerCount}</span>
-          <span className={workbenchStyles.kpi}>可排队电脑 {queueableComputers}</span>
-          <span className={workbenchStyles.kpi}>需重连 {reconnectComputers + unknownComputers}</span>
-          <span className={workbenchStyles.kpi}>真实接口 {scannedInterfaceCount}</span>
-          <span className={workbenchStyles.kpi}>窗口 {openWindows.length}/{configuredWindows.length}</span>
+          <span className={workbenchStyles.kpi}>机器人设备 {devices.length}</span>
+          <span className={workbenchStyles.kpi}>已打开 {openDevices.length}</span>
+          <span className={workbenchStyles.kpi}>可标注 {devices.filter(dataQualityReady).length}</span>
+          <span className={workbenchStyles.kpi}>Linux 接口 {scannedInterfaceCount}</span>
         </div>
       </header>
 
@@ -1767,141 +2203,79 @@ export function RoboticsWorkbenchClient({
             <input
               type="search"
               className={workbenchStyles.search}
-              placeholder="搜索调试窗口 / 电脑 / NPC"
+              placeholder="搜索机器人设备"
               readOnly
               value="设备数据工作台"
             />
-            <button type="button" className={workbenchStyles.batchBtn} onClick={() => setOpenIds(configuredWindows.map((window) => window.id))}>
-              打开全部 ({configuredWindows.length})
+            <button type="button" className={workbenchStyles.batchBtn} onClick={() => setOpenIds(devices.map((device, index) => deviceId(device, index)))}>
+              打开全部 ({devices.length})
             </button>
             <form action={请求串口USB扫描.bind(null, projectId)} className={styles.scanInlineForm}>
               <input type="hidden" name="return_to" value={`/projects/${projectId}/robotics`} />
               <input type="hidden" name="computer_node_id" value="all" />
-              <button type="submit" disabled={!computerCount}>扫描真实接口</button>
+              <button type="submit" disabled={!computerCount}>扫描 Linux 开发板接口</button>
             </form>
-            <details className={styles.setupDrawer}>
-              <summary>创建调试窗口</summary>
-              <form action={创建机器人调试窗口.bind(null, projectId)} onSubmit={previewCreateWindow} className={styles.windowCreateForm}>
-                <input type="hidden" name="return_to" value={`/projects/${projectId}/robotics`} />
-                <input name="window_name" placeholder="窗口名，例如 产线传感器串口" />
-                <label className={styles.createFullField}>
-                  <span>窗口类型</span>
-                  <select name="window_type" defaultValue="serial" aria-label="窗口类型">
-                    <option value="serial">串口</option>
-                    <option value="can">CAN</option>
-                    <option value="usb">USB</option>
-                    <option value="spi-can">SPI-CAN</option>
-                    <option value="ros">ROS</option>
-                  </select>
-                </label>
-                <label className={styles.createFullField}>
-                  <span>绑定真实设备</span>
-                  <select name="resource_id" aria-label="绑定真实设备">
-                    {usableWindows.map((resource) => (
-                      <option key={resource.id} value={resource.id}>{resource.name} · {resource.computerLabel} · {resource.computerState}</option>
-                    ))}
-                  </select>
-                </label>
-                <details className={styles.nestedSettings}>
-                  <summary>参数和 NPC</summary>
-                  <div className={styles.createParamGrid}>
-                    <label>
-                      <span>波特率</span>
-                      <select name="baud_rate" defaultValue="115200" aria-label="波特率">
-                        {["9600", "19200", "38400", "57600", "115200", "230400", "460800", "921600", "1000000", "2000000"].map((rate) => (
-                          <option key={rate} value={rate}>{rate}</option>
-                        ))}
-                      </select>
-                    </label>
-                    <label>
-                      <span>采样频率</span>
-                      <input name="sample_hz" defaultValue="100" aria-label="采样频率" />
-                    </label>
-                  </div>
-                  <label className={styles.createFullField}>
-                    <span>采集通道</span>
-                    <input name="channels" defaultValue="time,signal.value,status.code,event.count" aria-label="采集通道" />
-                  </label>
-                  <label className={styles.createFullField}>
-                    <span>协助 NPC</span>
-                    <select name="bound_npc" aria-label="协助 NPC" defaultValue={defaultNpcId} onChange={(event) => setDefaultNpcId(event.target.value)}>
-                      <option value="">不绑定 NPC</option>
-                      {npcSeats.map((seat, index) => {
-                        const name = seatName(seat, `NPC ${index + 1}`);
-                        return <option key={seatId(seat, name)} value={seatId(seat, name)}>{name}</option>;
-                      })}
-                    </select>
-                  </label>
-                </details>
-                <button type="submit" disabled={!usableWindows.length}>创建并打开</button>
-                <small>
-                  {usableWindows.length
-                    ? `${usableWindows.length} 个真实设备可绑定`
-                    : "先扫描并让目标电脑可排队。"}
-                </small>
-              </form>
-            </details>
           </div>
           <ul className={workbenchStyles.groupList}>
             <li className={workbenchStyles.group}>
               <div className={workbenchStyles.groupHeader}>
-                <span>🖥 调试窗口</span>
-                <small>{configuredWindows.length} 个窗口</small>
+                <span>机器人设备</span>
+                <small>{devices.length} 台</small>
               </div>
               <ul className={workbenchStyles.npcList}>
-                {configuredWindows.map((window) => {
-                  const isOpen = openIds.includes(window.id);
+                {devices.map((device, index) => {
+                  const id = deviceId(device, index);
+                  const isOpen = openIds.includes(id);
+                  const counts = deviceDataCounts(device);
                   return (
-                    <li key={window.id} className={`${workbenchStyles.npcRow} ${isOpen ? workbenchStyles.npcRowOpen : ""}`}>
+                    <li key={id} className={`${workbenchStyles.npcRow} ${isOpen ? workbenchStyles.npcRowOpen : ""}`}>
                       <div className={workbenchStyles.npcMain}>
-                        <strong className={workbenchStyles.npcName}>{window.name}</strong>
+                        <strong className={workbenchStyles.npcName}>{deviceTitle(device, index)}</strong>
                         <small className={workbenchStyles.npcMeta}>
-                          <span className={window.statusLabel === "可读取" ? workbenchStyles.dotOnline : workbenchStyles.dot} />
-                          {window.computerLabel} · {window.computerState} · {window.statusLabel}
+                          <span className={text(device.online_state) === "online" ? workbenchStyles.dotOnline : workbenchStyles.dot} />
+                          {id} · 电机 {counts.motors} · 传感 {counts.sensorFields} · {deviceSafetyText(device)}
                         </small>
                       </div>
                       <span className={styles.windowRowActions}>
-                        <a
+                        <button
+                          type="button"
                           className={workbenchStyles.openBtn}
-                          href={windowsHref(projectId, isOpen ? openIds.filter((id) => id !== window.id) : [...openIds, window.id], defaultNpcId)}
-                          aria-label={`${isOpen ? "关闭" : "打开"} ${window.name}`}
-                          onClick={(event) => {
-                            event.preventDefault();
-                            toggleWindow(window.id);
-                          }}
+                          aria-label={`${isOpen ? "关闭" : "打开"} ${deviceTitle(device, index)}`}
+                          onClick={() => toggleWindow(id)}
                         >
                           {isOpen ? "✕" : "+"}
-                        </a>
-                        <form action={删除机器人调试窗口.bind(null, projectId)} onSubmit={() => previewDeleteWindow(window.id)}>
-                          <input type="hidden" name="return_to" value={`/projects/${projectId}/robotics`} />
-                          <input type="hidden" name="resource_id" value={window.id} />
-                          <button type="submit" aria-label={`删除 ${window.name}`}>删</button>
-                        </form>
+                        </button>
                       </span>
                     </li>
                   );
                 })}
+                {!devices.length ? (
+                  <li className={workbenchStyles.npcRow}>
+                    <div className={workbenchStyles.npcMain}>
+                      <strong className={workbenchStyles.npcName}>等待 Linux 开发板接入</strong>
+                      <small className={workbenchStyles.npcMeta}>预配置脚本连接服务器并上传设备数据后自动出现</small>
+                    </div>
+                  </li>
+                ) : null}
               </ul>
             </li>
           </ul>
         </aside>
 
-        <section className={workbenchStyles.main} data-mode={openWindows.length > 0 ? "chat" : "setup"}>
+        <section className={workbenchStyles.main} data-mode={openDevices.length > 0 ? "chat" : "setup"}>
           {notice ? <div className={styles.inlineNotice} data-tone="success">{notice}</div> : null}
           {error ? <div className={styles.inlineNotice} data-tone="danger">{error}</div> : null}
-          {openWindows.length ? (
-            <div className={workbenchStyles.tileGrid} data-tile-count={openWindows.length}>
-              {openWindows.map((window) => (
-                <DebugTile
-                  key={window.id}
+          {openDevices.length ? (
+            <div className={`${workbenchStyles.tileGrid} ${styles.deviceTileGrid}`} data-tile-count={openDevices.length}>
+              {openDevices.map((device, index) => (
+                <DeviceDataTile
+                  key={deviceId(device, index)}
                   projectId={projectId}
-                  tile={window}
-                  openIds={openIds}
+                  device={device}
+                  index={index}
                   npcSeats={npcSeats}
-                  terminalMessages={terminalMessages}
-                  deviceQualityDevices={deviceQualityDevices}
-                  initialNpcId={defaultNpcId}
-                  onClose={() => closeWindow(window.id)}
+                  defaultNpcId={defaultNpcId}
+                  onClose={() => closeWindow(deviceId(device, index))}
                 />
               ))}
             </div>
@@ -1912,20 +2286,20 @@ export function RoboticsWorkbenchClient({
               <section className={styles.nextActionPanel} aria-label="下一步操作">
                 <div>
                   <span>下一步</span>
-                  <strong>{configuredWindows.length ? "打开一个窗口开始采集或标注" : "先扫描设备，再创建窗口"}</strong>
-                  <p>{configuredWindows.length ? "左栏只做索引；打开窗口后再进入终端、数据标注、图表实验或模型预览。" : "常用入口在这里，创建时只填必要项，参数和 NPC 可以在抽屉里展开。"}</p>
+                  <strong>{devices.length ? "从左栏打开一台设备" : "先让 Linux 开发板上传设备数据"}</strong>
+                  <p>{devices.length ? "每台设备都有 NanoPi 数据、摄像头、数据标注、图表实验和模型预览标签。" : "预配置脚本连接服务器并上传 motor_state、sensor_state、safety_state、camera_keyframe 后会自动成为左侧设备。"}</p>
                 </div>
                 <div className={styles.quickActionGrid}>
                   <form action={请求串口USB扫描.bind(null, projectId)}>
                     <input type="hidden" name="return_to" value={`/projects/${projectId}/robotics`} />
                     <input type="hidden" name="computer_node_id" value="all" />
-                    <button type="submit" disabled={!computerCount}>扫描接口</button>
+                    <button type="submit" disabled={!computerCount}>扫描 Linux 开发板接口</button>
                   </form>
                   <a href="#model-preview">导入模型</a>
-                  {configuredWindows[0] ? (
-                    <a href={windowsHref(projectId, [configuredWindows[0].id], defaultNpcId)}>打开最近窗口</a>
+                  {devices[0] ? (
+                    <button type="button" onClick={() => setOpenIds([deviceId(devices[0], 0)])}>打开最近设备</button>
                   ) : (
-                    <span>创建后打开窗口</span>
+                    <span>等待设备上传</span>
                   )}
                 </div>
               </section>
