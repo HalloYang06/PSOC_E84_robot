@@ -91,7 +91,7 @@ NanoPi 离线转换：
 | CAN ID | 标准 11-bit ID |
 | ID 分段 | `Bit10~Bit5 = node_id`，`Bit4~Bit0 = cmd_id` |
 | ID 计算 | `can_id = (node_id << 5) + cmd_id` |
-| Data | 固定 8 bytes |
+| Data | classic CAN，最多 8 bytes；很多命令为 8 bytes，部分命令本地 M33 实现使用较短 DLC |
 | 字节序 | 小端 `little-endian` |
 | 浮点 | IEEE754 `float32` |
 
@@ -110,10 +110,29 @@ NanoPi 离线转换：
 注意：
 
 - CANSimple 直接命令不进入正式 launch。
-- 本地离线协议页已确认 CANSimple standard 11-bit CAN、8-byte data frame 方向与当前实现一致。
+- 本地离线协议页已确认 CANSimple standard 11-bit CAN、classic data frame 方向与当前实现一致。
 - byte0..3 axis error 与 byte4 axis state 已在 M33/NanoPi 离线转换中使用。
 - byte5..7 在本地 M33 中曾用于 `flags/temp/life` 调试打印，但与离线协议表参数名还未完全对齐，正式数据集只能 raw-first 保留，不能直接当成可靠温度或安全位。
 - 波特率、控制模式、错误位和限幅字段仍需继续从离线页逐项提取，并在 M33 侧二次验证。
+
+当前本地 M33 / NanoPi 调试工具对 CANSimple 控制帧的 payload 布局如下。正式机器人路径不直接使用这些帧；它们用于 M33 固件内部厂家协议输出、离线核对和台架调试。
+
+| 命令 | CAN ID 计算 | Payload | 单位/缩放 | 安全备注 |
+|---|---|---|---|---|
+| `0x07 Set_Axis_State` | `(node_id << 5) + 0x07` | byte0..3 `uint32 axis_state` | 小端；`1=idle`，`8=closed_loop` | 进入 closed-loop 前必须确认 heartbeat、fault、限位、急停、供电 |
+| `0x0B Set_Controller_Mode` | `(node_id << 5) + 0x0B` | byte0..3 `uint32 control_mode`，byte4..7 `uint32 input_mode` | 小端；本地常量 `1=torque`、`2=velocity`、`3=position`，`input_mode=1 passthrough`、`2 vel_ramp` | 模式切换只能由 M33 安全状态机触发 |
+| `0x0C Set_Input_Pos` | `(node_id << 5) + 0x0C` | byte0..3 `float32 pos_rev`，byte4..5 `int16 vel_ff_scaled`，byte6..7 `int16 torque_ff_scaled` | `pos_rev = pos_rad / 2*pi`；本地 `vel_ff_scaled = vel_rev_s * 1000`，`torque_ff_scaled = torque_nm * 1000` | 必须先过 joint limit、速度/力矩前置限制和轨迹连续性检查 |
+| `0x0D Set_Input_Vel` | `(node_id << 5) + 0x0D` | byte0..3 `float32 vel_rev_s`，byte4..7 `float32 torque_ff_nm` | `vel_rev_s = vel_rad_s / 2*pi` | 只允许低速、受限、可停止的台架调试；正式路径由 M33 限速 |
+| `0x0E Set_Input_Torque` | `(node_id << 5) + 0x0E` | byte0..3 `float32 torque_nm` | 本地 M33 发送 DLC=4；NanoPi 调试脚本也发 4 字节 | 人体穿戴场景默认禁用直接力矩，除非 M33 安全状态机明确允许 |
+| `0x0F Set_Limits` | `(node_id << 5) + 0x0F` | byte0..3 `float32 vel_limit_rev_s`，byte4..7 `float32 current_or_torque_limit` | M33 当前变量名为 `limit_cur`，真实含义需结合厂家配置再确认 | 必须作为 M33 内部二次保护，不可替代机械/软件限位 |
+| `0x18 Clear_Errors` | `(node_id << 5) + 0x18` | 通常 8 字节全 0 | - | 只允许在确认急停/故障原因后执行，不能自动反复清错 |
+
+M33 当前换算常量来源：
+
+- `CONTROL_CANSIMPLE_POS_REV_PER_RAD = 0.15915494309189535`
+- `CONTROL_CANSIMPLE_VEL_REV_PER_RAD_S = 0.15915494309189535`
+- `CONTROL_CANSIMPLE_VEL_FF_SCALE = 1000`
+- `CONTROL_CANSIMPLE_TORQUE_FF_SCALE = 1000`
 
 当前已从协议手册表格/目录确认的 CANSimple 命令包括：
 

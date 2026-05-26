@@ -2407,3 +2407,23 @@ No such file or directory: /tmp/rehab_sim_collection/sim_demo_motion.jsonl
 状态：
 
 - `candump_motor_telemetry.py` 已按 raw-first 方式保留 heartbeat 扩展字节。
+
+### CANSimple 不要把所有命令都假设成 8 字节 DLC
+
+现象：
+
+- 离线协议说明和示例强调 classic CAN 8 字节数据区。
+- 但本地 M33 / NanoPi 调试实现中，`Set_Input_Torque` 只发送 4 字节 `float32 torque_nm`。
+- 若后续固件或测试工具强制所有 CANSimple 命令都是 DLC=8，可能导致与当前可工作的调试路径不一致。
+
+技巧：
+
+- CANSimple 帧应按 `cmd_id` 建立 payload 合同。
+- `Set_Input_Pos` 是 8 字节：`float32 pos_rev + int16 vel_ff_scaled + int16 torque_ff_scaled`。
+- `Set_Input_Vel` 和 `Set_Limits` 是 8 字节双 float。
+- `Set_Input_Torque` 当前按 4 字节 float 记录，正式执行前再做厂家表和现场实测确认。
+- 文档中区分“classic CAN 最多 8 字节”和“某条命令实际 DLC”。
+
+状态：
+
+- `docs/MOTOR_PROTOCOLS.md` 已补充本地 M33/NanoPi 控制 payload 表。
