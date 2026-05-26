@@ -83,31 +83,70 @@ NanoPi 离线转换：
 - `velocity = velocity_turns_per_sec * 2*pi`
 - heartbeat 会补充 `enabled/fault/axis_state/error_code`。
 
+协议页已确认的 CANSimple 帧格式：
+
+| 字段 | 规则 |
+|---|---|
+| CAN ID | 标准 11-bit ID |
+| ID 分段 | `Bit10~Bit5 = node_id`，`Bit4~Bit0 = cmd_id` |
+| ID 计算 | `can_id = (node_id << 5) + cmd_id` |
+| Data | 固定 8 bytes |
+| 字节序 | 小端 `little-endian` |
+| 浮点 | IEEE754 `float32` |
+
+本地协议页给出的 `Set_Input_Pos` 示例：
+
+| 项 | 值 |
+|---|---|
+| `node_id` | `0x05` |
+| `cmd_id` | `0x0C` |
+| CAN ID | `(0x05 << 5) + 0x0C = 0x0AC` |
+| `Input_Pos` | `float32 3.14` -> bytes `C3 F5 48 40` |
+| `Vel_FF` | `1000` -> bytes `E8 03` |
+| `Torque_FF` | `5000` -> bytes `88 13` |
+| Data bytes | `C3 F5 48 40 E8 03 88 13` |
+
 注意：
 
 - CANSimple 直接命令不进入正式 launch。
 - 本地离线协议页已确认 CANSimple standard 11-bit CAN、8-byte data frame 方向与当前实现一致。
 - 波特率、控制模式、错误位和限幅字段仍需继续从离线页逐项提取，并在 M33 侧二次验证。
 
-当前已从协议手册目录/标题确认的 CANSimple 命令包括：
+当前已从协议手册表格/目录确认的 CANSimple 命令包括：
 
-| Command | 名称 |
-|---:|---|
-| `0x01` | `Heartbeat` |
-| `0x04` | `RxSdo` |
-| `0x0A` | `Get_Encoder_Count` |
-| `0x0B` | `Set_Controller_Mode` |
-| `0x0E` | `Set_Input_Torque` |
-| `0x0F` | `Set_Limits` |
-| `0x11` | `Set_Traj_Vel_Limit` |
-| `0x12` | `Set_Traj_Accel_Limits` |
-| `0x13` | `Set_Traj_Inertia` |
-| `0x14` | `Get_Iq` |
-| `0x18` | `Clear_Errors` |
-| `0x1A` | `Set_Pos_Gain` |
-| `0x1B` | `Set_Vel_Gains` |
-| `0x1C` | `Get_Torques` |
-| `0x1F` | `Save_Configuration` |
+| Command | 名称 | 方向 | 参数/说明 |
+|---:|---|---|---|
+| `0x01` | `Heartbeat` | 电机 -> 主机 | `Axis_Error`、`Axis_State`、`Motor_Flag`、`Encoder_Flag`、`Controller_Flag`、`Traj_Done`、`Life` |
+| `0x02` | `Estop` | 主机 -> 电机 | 紧急停止 |
+| `0x03` | `Get_Error` | 电机 -> 主机 | `Error_Type` |
+| `0x04` | `RxSdo` | 电机 -> 主机 | 访问可访问参数 |
+| `0x05` | `TxSdo` | 电机 -> 主机 | 待细化 |
+| `0x06` | `Set_Axis_Node_ID` | 主机 -> 电机 | `Axis_Node_ID` |
+| `0x07` | `Set_Axis_State` | 主机 -> 电机 | `Axis_Requested_State` |
+| `0x08` | `Mit_Control` | 双向 | MIT 控制 |
+| `0x09` | `Get_Encoder_Estimates` | 电机 -> 主机 | `Pos_Estimate`、`Vel_Estimate` |
+| `0x0A` | `Get_Encoder_Count` | 电机 -> 主机 | `Shadow_Count`、`Count_In_Cpr` |
+| `0x0B` | `Set_Controller_Mode` | 主机 -> 电机 | `Control_Mode`、`Input_Mode` |
+| `0x0C` | `Set_Input_Pos` | 主机 -> 电机 | `Input_Pos`、`Vel_FF`、`Torque_FF` |
+| `0x0D` | `Set_Input_Vel` | 主机 -> 电机 | 设定输入速度，字节布局待补 |
+| `0x0E` | `Set_Input_Torque` | 主机 -> 电机 | 设定输入力矩，字节布局待补 |
+| `0x0F` | `Set_Limits` | 主机 -> 电机 | 限幅，字节布局待补 |
+| `0x10` | `Start_Anticogging` | 主机 -> 电机 | 抗齿槽校准，正式路径默认禁用 |
+| `0x11` | `Set_Traj_Vel_Limit` | 主机 -> 电机 | 轨迹速度限制 |
+| `0x12` | `Set_Traj_Accel_Limits` | 主机 -> 电机 | 轨迹加速度限制 |
+| `0x13` | `Set_Traj_Inertia` | 主机 -> 电机 | 轨迹惯量 |
+| `0x14` | `Get_Iq` | 电机 -> 主机 | Q 轴电流 |
+| `0x15` | `Get_Thermistor_Temperature` | 电机 -> 主机 | 温度 |
+| `0x16` | `Reboot` | 主机 -> 电机 | 重启，正式路径禁用 |
+| `0x17` | `Get_Bus_Voltage_Current` | 电机 -> 主机 | 母线电压/电流 |
+| `0x18` | `Clear_Errors` | 主机 -> 电机 | 清除异常，仅允许在安全流程中使用 |
+| `0x19` | `Set_Move_Incremental` | 主机 -> 电机 | 增量移动，正式路径默认禁用 |
+| `0x1A` | `Set_Pos_Gain` | 主机 -> 电机 | 位置增益 |
+| `0x1B` | `Set_Vel_Gains` | 主机 -> 电机 | 速度增益 |
+| `0x1C` | `Get_Torques` | 电机 -> 主机 | 力矩 |
+| `0x1D` | `Get_Powers` | 电机 -> 主机 | 功率 |
+| `0x1E` | `Disable_Can` | 主机 -> 电机 | 关闭 CAN，正式路径禁用 |
+| `0x1F` | `Save_Configuration` | 主机 -> 电机 | 保存配置，正式路径禁用 |
 
 当前已从协议手册目录/标题确认的状态/参数项包括：
 

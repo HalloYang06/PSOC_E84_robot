@@ -1605,6 +1605,17 @@ D:\电机上位机\肩关节电机资料
 
 在线飞书链接如果跳到登录页，不影响继续查本地离线页。
 
+当前已确认的伺泰威 CANSimple 基础规则：
+
+- 使用标准 11-bit CAN ID。
+- `CAN ID = (node_id << 5) + cmd_id`。
+- 数据区固定 8 字节。
+- 多字节数据使用小端。
+- `float32` 按 IEEE754 编码。
+- `node_id=3` 时，heartbeat 是 `0x061`，encoder estimate 是 `0x069`。
+
+正式机器人控制仍然走 `ROS2 JointTrajectory -> NanoPi -> M33 -> 电机`，不要把这些 CANSimple 直接控制帧放进正式 launch。
+
 ## 6.1 在平台里预览 URDF
 
 本仓库当前可直接预览的 URDF：

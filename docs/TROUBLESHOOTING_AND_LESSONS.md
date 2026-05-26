@@ -2387,3 +2387,5 @@ No such file or directory: /tmp/rehab_sim_collection/sim_demo_motion.jsonl
 状态：
 
 - 已找到本地离线页和学习整理，并已把可确认的 CANSimple 命令、对象/参数项、硬件接口和开发入口补入 `docs/MOTOR_PROTOCOLS.md`。
+- 已确认协议页里的核心帧规则：标准 11-bit CAN ID，`can_id = (node_id << 5) + cmd_id`，8 字节小端数据，float32 按 IEEE754 编码。
+- 从飞书离线 HTML 抽取内容时，直接 `grep`/`Select-String` 容易输出整页压缩脚本；更稳的做法是解析 HTML 内的 Feishu block JSON，再按 table 的 `rows_id`、`columns_id`、`cell_set` 还原表格。
