@@ -2294,6 +2294,49 @@ python3 /home/pi/nanopi_can_master.py cansimple idle --iface can0 --node 3 --wai
 
 如果只看到命令帧、没有真实反馈，不要继续加大速度；先确认 node id、闭环状态、错误码、编码器、刹车/使能和驱动供电。
 
+## 6.7 M33 关节标定门
+
+M33 现在把绝对位置控制和标定状态绑定。默认所有关节 `calibrated=0`，即使后续打开 bench motion，ROS `set_target` 和 `motor_pos` 位置控制也会被拒绝，原因是 `joint_uncalibrated`。
+
+查看 M33 当前标定配置：
+
+```text
+m33_joint_calib
+m33_joint_calib 7
+```
+
+预期输出会包含：
+
+```text
+JOINT_CALIB: joint=7 motor_id=7 proto=0 calibrated=0 direction_x1000=1000 gear_x1000=9000 zero_mrad=0
+JOINT_CALIB_NOTE: absolute position commands are rejected while calibrated=0
+```
+
+当 NanoPi/M33 收到某个合法但未标定关节的目标时，M33 应打印类似：
+
+```text
+safety_state=limited decision=reject reason=joint_uncalibrated
+audit ... joint_calibrated=0 ...
+```
+
+NanoPi ROS `/rehab_arm/safety_state` 应解析为：
+
+```text
+detail_code=11
+detail=joint_uncalibrated
+motion_allowed=false
+```
+
+只有完成以下动作后，才允许在 M33 配置里把某个关节的 `CONTROL_MOTOR_JOINTx_CALIBRATED` 改成 `1U`：
+
+- 人不穿戴设备，机械臂固定在台架。
+- 手动摆到机械零位，并记录该姿态对应的 motor-protocol-side `zero_offset_rad`。
+- 用小速度短脉冲确认正方向，设置 `CONTROL_MOTOR_JOINTx_DIRECTION` 为 `1.0f` 或 `-1.0f`。
+- 用 `+5°/-5°`、`+10°/-10°` 验证真实输出角度和方向。
+- 重新确认软件限位、限速、扭矩/电流限制和急停策略。
+
+当前阶段不要把 RobStride 反馈字段直接当输出关节角度。7号已经出现过“软件解码角度看似到 55°，现场实际转动明显更多”的情况，所以必须先做软件零点和实物比例标定。
+
 ## 7. 文档与 Git 维护
 
 每次完成任务后同步更新：

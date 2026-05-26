@@ -88,6 +88,7 @@ class PsocStatusTests(unittest.TestCase):
             4: 'target_out_of_limit',
             5: 'velocity_out_of_limit',
             6: 'torque_out_of_limit',
+            11: 'joint_uncalibrated',
         }
 
         for code, detail in expected.items():

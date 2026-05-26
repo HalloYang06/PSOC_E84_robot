@@ -106,6 +106,7 @@ Detail code enum:
 | `8` | `power_fault` | 供电异常 |
 | `9` | `motor_fault` | 电机/驱动故障 |
 | `10` | `logging_only_no_motor_output` | logging-only 阶段拒绝输出 |
+| `11` | `joint_uncalibrated` | 目标关节未完成软件零点/方向/比例标定，禁止绝对位置输出 |
 
 当前 M33 logging-only 固件会把最近一次 ROS safety assessment 的首要拒绝原因放到 byte6 `detail_code`。例如，收到超限 `0x320` 后，下一次 `0x321 -> 0x322` 的 byte6 应为 `4`，NanoPi ROS 会解析为 `target_out_of_limit`。
 

@@ -31,6 +31,7 @@ DETAIL_CODE_NAMES = {
     8: 'power_fault',
     9: 'motor_fault',
     10: 'logging_only_no_motor_output',
+    11: 'joint_uncalibrated',
 }
 
 

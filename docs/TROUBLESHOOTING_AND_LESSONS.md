@@ -3195,3 +3195,27 @@ Connection reset by 192.168.2.66 port 22
 状态：
 
 - 3号已执行直接 CANSimple温和速度测试并退回 idle；执行/反馈仍未确认。
+
+### 绝对位置控制必须先过软件零点标定门
+
+现象：
+
+- 7号通过 M33 正式路径收到 `30°` 绝对目标后，现场出现剧烈转动。
+- 后续查 RobStride 官方示例，帧 `01800007#855481370F5C3333` 按 EL05 映射约为 `30°` 目标、`0.475 rad/s`、`Kp=30`、`Kd=1`，编码本身不像是把 `30°` 写成几百度。
+
+判断：
+
+- 更可能的问题是机械零位、方向、当前位置参考和真实输出角度比例未标定。
+- 在这种状态下，任何绝对位置闭环都会让电机去追一个软件认为正确、机械上却不一定安全的位置。
+
+技巧：
+
+- 标定前，M33 必须拒绝 ROS `set_target` 和 `motor_pos` 这类绝对位置控制。
+- `m33_joint_calib [joint]` 用来确认 `calibrated/direction/gear/zero_offset`。
+- `0x322 detail_code=11` 表示 `joint_uncalibrated`，NanoPi ROS 必须把它解析为 `motion_allowed=false`。
+- 标定时优先使用低速短脉冲、人工观察和外部标记，先确认方向和比例，再启用小角度位置闭环。
+
+状态：
+
+- 已在 M33 添加默认未标定门；所有关节默认 `calibrated=0`。
+- 后续需要烧录后验证：合法 `0x320 set_target` 应被拒绝为 `joint_uncalibrated`，不应再发出电机位置帧。

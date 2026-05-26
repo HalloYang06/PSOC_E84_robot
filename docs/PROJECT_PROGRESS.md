@@ -1448,3 +1448,16 @@
 - Validated: `python -m unittest rehab_arm_ros2_ws.src.rehab_arm_psoc_bridge.test.test_candump_motor_telemetry` passed, `14` tests.
 - Safety: this is telemetry/data decoding only. It does not enable motion and does not make 7号 feedback angle safe for limit-stop.
 - Next step: add M33-side motor model/limit tables for RS00 and EL05, keeping EL05 raw/limited until official field ranges are confirmed.
+
+### 2026-05-26 - M33 joint calibration gate
+
+- Completed: checked RobStride official GitHub material (`RobStride/SampleProgram`, `RobStride/EDULITE_A3`, `RobStride/Product_Information`) for private protocol ranges and EDULITE joint mapping.
+- Confirmed from official sources: EL05 uses `P=±12.57 rad`, `V=±50 rad/s`, `T=±6 Nm`, reduction `9:1`; RS00 uses `P=±12.57 rad`, `V=±33 rad/s`, `T=±14 Nm`, reduction `10:1`.
+- Completed M33 safety update: added per-joint `CALIBRATED`, `DIRECTION`, and `ZERO_OFFSET_RAD` config macros, all defaulting to uncalibrated.
+- Completed M33 guard: ROS `set_target` and `motor_pos` absolute position control now reject uncalibrated joints with `joint_uncalibrated`; stop commands remain allowed.
+- Completed M33 diagnostic shell command: `m33_joint_calib [joint]` prints calibration gate, direction, gear ratio, and zero offset.
+- Completed NanoPi parser update: `0x322 detail_code=11` decodes as `joint_uncalibrated`.
+- Validated: `python -m pytest rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/test/test_psoc_status.py` passed, `10` tests.
+- Failed or unverified: local M33 compile was not run because `scons` is not installed on this Windows environment.
+- Safety: do not send ROS absolute position targets again until the target joint has a measured software zero, direction, scale, and conservative limits.
+- Next step: flash this M33 safety build, then perform a non-motion test that a legal `0x320 set_target` for joint4/motor7 is rejected as `joint_uncalibrated`.
