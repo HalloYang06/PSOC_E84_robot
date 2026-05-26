@@ -586,6 +586,56 @@ m33_motor_status_once sent=<n> base=0x330 period_ms=100 fresh_ms=1000
 
 `sent=0` 通常说明 M33 还没有收到新鲜电机反馈；先确认 3/7 是否上电、active-report 是否打开、CAN 是否有原始电机帧。
 
+烧录后已经验证过的最小只读链路如下：
+
+```bash
+# 1. 看 M33 是否在线回复状态，不会让电机运动
+rm -f /tmp/m33_probe.log
+timeout 4 candump -L can0,322:7FF,330:7F8 > /tmp/m33_probe.log &
+DUMP_PID=$!
+sleep 0.3
+cansend can0 321#01
+wait "$DUMP_PID" || true
+cat /tmp/m33_probe.log
+
+# 2. 临时打开 7 号灵足主动遥测 5 秒，结束会自动关闭
+cd /home/pi/rehab_arm_ros2_ws
+python3 src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/live_socketcan_motor_snapshot.py \
+  --iface can0 \
+  --duration 5 \
+  --enable-active-report 7 \
+  --pretty
+```
+
+通过标准：
+
+- 第 1 步能看到 `0x322`，例如 `322#A501070001010A00`。
+- 第 2 步能看到 `counts` 里包含 `0x180007FD` 和 `0x336`。
+- `0x336` 的 candump 形如 `336#B3...`，byte0 是 `B3`。
+
+ROS bridge 只读验收：
+
+```bash
+cd /home/pi/rehab_arm_ros2_ws
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+
+ros2 run rehab_arm_psoc_bridge psoc_can_bridge_node.py \
+  --ros-args \
+  -p interface:=can0 \
+  -p enable_target_tx:=false
+```
+
+另开一个 NanoPi 终端，在 7 号 active-report 打开的时间窗口内查看：
+
+```bash
+ros2 topic list -t
+ros2 topic echo --once /rehab_arm/motor_state std_msgs/msg/String
+ros2 topic echo --once /joint_states sensor_msgs/msg/JointState
+```
+
+注意：短时验收时要给 `ros2 topic echo --once` 显式写消息类型，否则 topic 还没出现在 ROS graph 时，CLI 可能无法自动推断类型。
+
 ### 4.5 `0x322` V2 状态解析
 
 协议字段见：[PSOC_CAN_PROTOCOL_V1.md](PSOC_CAN_PROTOCOL_V1.md)。

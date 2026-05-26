@@ -1171,3 +1171,13 @@
 - Not validated: full firmware image was not relinked/flashed in this turn; user will handle flashing.
 - Safety: `CONTROL_ROS_COMMAND_LOGGING_ONLY=1U` remains the safety default. `0x330~0x337` is telemetry-only and motion permission still depends on `0x322` plus M33 safety state.
 - Next step: after user flashes M33, run NanoPi `candump -L can0,330:7F8` and confirm `B3` telemetry frames appear before using ROS bridge `/rehab_arm/motor_state`.
+
+### 2026-05-26 - M33 telemetry burn-after live validation
+
+- Completed: user flashed M33 firmware; NanoPi `can0` was reachable over SSH and stayed `ERROR-ACTIVE`, 1Mbps, tx/rx error counters 0.
+- Validated: NanoPi heartbeat `0x321#01` received M33 status reply `0x322#A501070001010A00`, proving M33 CAN receive/reply is alive after flashing.
+- Validated: with 7号灵足 temporary active-report enabled for 5s, CAN saw `0x180007FD=499/500` and M33 aggregate telemetry `0x336=49/50`.
+- Validated: M33 `0x336` payload used marker `B3`, for example `336#B32B07002B0E0020`.
+- Validated: NanoPi ROS bridge was rebuilt with the latest bridge parser and publishes `/rehab_arm/motor_state`; `/joint_states` was observed once as `m33_status_slot_6` with position about `3.627 rad`.
+- Safety: no `/arm_controller/joint_trajectory` was published, no `0x320` target frame was sent, and `enable_target_tx=False` was used for the bridge check.
+- Next step: clean up NanoPi executable naming/version sync, then add a repeatable read-only launch/test command for live M33 motor telemetry before any formal trajectory test.

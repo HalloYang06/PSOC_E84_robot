@@ -2517,3 +2517,54 @@ No such file or directory: /tmp/rehab_sim_collection/sim_demo_motion.jsonl
 状态：
 
 - M33 侧代码已准备，等待用户烧录后真 CAN 验证。
+
+### 烧录后先看 M33 状态，再看电机缓存
+
+现象：
+
+- 烧录 M33 后，NanoPi `candump -L can0,330:7F8` 一开始可能没有任何 `0x330~0x337`。
+- 但发送 NanoPi heartbeat 后可以收到 `0x322#A501070001010A00`。
+
+根因：
+
+- `0x322` 证明 M33 CAN 通信活着。
+- `0x330~0x337` 还需要 M33 收到新鲜电机反馈缓存；没有电机主动上报时，M33 不会发布旧状态。
+
+技巧：
+
+- 先发无运动 heartbeat：`cansend can0 321#01`，监听 `0x322`。
+- 再短时打开 7号灵足 active-report：`live_socketcan_motor_snapshot.py --iface can0 --duration 5 --enable-active-report 7`。
+- 看到 `0x180007FD` 后，M33 应该开始发对应 slot 的 `0x336#B3...`。
+- 这一步只验证遥测；不要发 `0x320`，不要发布 `/arm_controller/joint_trajectory`。
+
+状态：
+
+- 已验证 7号灵足 active-report 能触发 M33 发布 `0x336#B3...`，约 10Hz。
+
+### `ros2 topic echo --once` 早于 topic 出现时要指定类型
+
+现象：
+
+- bridge 已发布 `/rehab_arm/motor_state`，但命令可能输出：
+
+```text
+WARNING: topic [/rehab_arm/motor_state] does not appear to be published yet
+Could not determine the type for the passed topic
+```
+
+根因：
+
+- `ros2 topic echo --once /topic` 启动瞬间如果 topic 还没有出现在 graph 里，CLI 无法自动推断类型并直接退出。
+
+技巧：
+
+- 对短时硬件验收命令显式写消息类型：
+
+```bash
+ros2 topic echo --once /rehab_arm/motor_state std_msgs/msg/String
+ros2 topic echo --once /joint_states sensor_msgs/msg/JointState
+```
+
+状态：
+
+- 显式类型后已看到 `/rehab_arm/motor_state` JSON 字符串；`/joint_states` 已看到 `m33_status_slot_6`。
