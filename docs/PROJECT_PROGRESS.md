@@ -1061,3 +1061,11 @@
 - Validated: full `rehab_arm_psoc_bridge` unit tests passed 87 tests; `py_compile` passed.
 - Safety: offline manifest transform only; no ROS launch, network upload, CAN access, M33 command, or motor motion.
 - Next step: platform data/annotation page should read the queue and show skipped reasons before training export.
+
+### 2026-05-26 - Offline annotation CSV template
+
+- Completed: added `export_annotation_template.py` to convert `rehab_arm_annotation_queue_v1` into a CSV labeling template.
+- Completed: template includes session identity, annotation status, annotator, notes, and recommended label columns.
+- Validated: full `rehab_arm_psoc_bridge` unit tests passed 89 tests; `py_compile` passed.
+- Safety: offline CSV export only; no ROS launch, network upload, CAN access, M33 command, or motor motion.
+- Next step: add validation for completed annotation CSV before training export.

@@ -24,6 +24,7 @@ setup(
             'export_recording_csv = rehab_arm_psoc_bridge.export_recording_csv:main',
             'build_manifest = rehab_arm_psoc_bridge.build_manifest:main',
             'build_annotation_queue = rehab_arm_psoc_bridge.build_annotation_queue:main',
+            'export_annotation_template = rehab_arm_psoc_bridge.export_annotation_template:main',
             'sync_dry_run = rehab_arm_psoc_bridge.sync_dry_run:main',
             'sync_upload = rehab_arm_psoc_bridge.sync_upload:main',
             'check_server_quality_gate = rehab_arm_psoc_bridge.check_server_quality_gate:main',

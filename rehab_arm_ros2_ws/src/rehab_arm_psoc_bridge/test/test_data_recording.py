@@ -29,6 +29,7 @@ from rehab_arm_psoc_bridge.data_recording import (
     build_recording_manifest,
     build_recording_quality_report,
     build_annotation_queue,
+    make_annotation_template_rows,
     build_sync_dry_run_plan,
     file_sha256,
     summarize_jsonl_records,
@@ -954,6 +955,80 @@ class DataRecordingTests(unittest.TestCase):
         self.assertEqual(queue['ready_count'], 1)
         self.assertEqual(queue['skipped_count'], 1)
         self.assertEqual(queue['items'][0]['recommended_labels'], ['reach_phase'])
+
+    def test_make_annotation_template_rows_from_queue(self) -> None:
+        queue = {
+            'schema_version': 'rehab_arm_annotation_queue_v1',
+            'items': [
+                {
+                    'session_id': 's1',
+                    'file_name': 's1.jsonl',
+                    'path': '/logs/s1.jsonl',
+                    'device_id': 'nanopi',
+                    'robot_id': 'arm',
+                    'topic_profile': 'perception_vla',
+                    'recommended_labels': ['reach_phase', 'object_state'],
+                },
+            ],
+        }
+
+        rows, fields = make_annotation_template_rows(queue)
+
+        self.assertEqual(fields[:7], [
+            'session_id',
+            'file_name',
+            'path',
+            'device_id',
+            'robot_id',
+            'topic_profile',
+            'annotation_status',
+        ])
+        self.assertIn('reach_phase', fields)
+        self.assertIn('object_state', fields)
+        self.assertEqual(rows[0]['session_id'], 's1')
+        self.assertEqual(rows[0]['annotation_status'], 'pending')
+        self.assertEqual(rows[0]['reach_phase'], '')
+
+    def test_export_annotation_template_cli_writes_csv(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            queue_path = Path(tmpdir) / 'annotation_queue.json'
+            csv_path = Path(tmpdir) / 'annotation_template.csv'
+            queue_path.write_text(json.dumps({
+                'schema_version': 'rehab_arm_annotation_queue_v1',
+                'items': [
+                    {
+                        'session_id': 's1',
+                        'file_name': 's1.jsonl',
+                        'path': '/logs/s1.jsonl',
+                        'device_id': 'nanopi',
+                        'robot_id': 'arm',
+                        'topic_profile': 'perception_vla',
+                        'recommended_labels': ['reach_phase'],
+                    },
+                ],
+            }), encoding='utf-8')
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).resolve().parents[1] / 'rehab_arm_psoc_bridge' / 'export_annotation_template.py'),
+                    str(queue_path),
+                    '--output',
+                    str(csv_path),
+                ],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            csv_text = csv_path.read_text(encoding='utf-8')
+
+        self.assertEqual(result.returncode, 0)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload['schema_version'], 'rehab_arm_annotation_template_export_v1')
+        self.assertEqual(payload['row_count'], 1)
+        self.assertIn('session_id,file_name,path,device_id,robot_id,topic_profile,annotation_status', csv_text)
+        self.assertIn('s1,s1.jsonl,/logs/s1.jsonl,nanopi,arm,perception_vla,pending', csv_text)
 
     def test_session_log_path_sanitizes_session_id(self) -> None:
         path = session_log_path('logs', 'session 1/unsafe')

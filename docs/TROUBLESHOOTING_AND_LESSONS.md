@@ -2316,3 +2316,20 @@ No such file or directory: /tmp/rehab_sim_collection/sim_demo_motion.jsonl
 状态：
 
 - 已新增离线 annotation queue 工具；它只转换 manifest，不联网、不控制硬件。
+
+### 标注 CSV 模板不是训练集
+
+现象：
+
+- `export_annotation_template.py` 会生成可填写的 CSV，但刚导出的行默认 `annotation_status=pending`，label 列为空。
+- 如果直接把这个模板当训练集，会把空标签或未审核数据混进模型训练。
+
+技巧：
+
+- CSV 模板只用于人工或平台标注入口。
+- 训练前必须再做一次标注结果校验，确认 `annotation_status`、必填 label、备注和质量门都满足要求。
+- CSV 里的 session 路径和标签仍是离线数据，不应被任何控制节点消费。
+
+状态：
+
+- 已新增 CSV 模板导出；下一步应做 completed annotation CSV 校验。

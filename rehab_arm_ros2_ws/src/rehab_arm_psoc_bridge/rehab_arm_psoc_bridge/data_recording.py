@@ -859,3 +859,55 @@ def build_annotation_queue(
         'skipped_sessions': skipped,
         'control_boundary': 'annotation_queue_only_not_motion_permission',
     }
+
+
+ANNOTATION_TEMPLATE_BASE_FIELDS = [
+    'session_id',
+    'file_name',
+    'path',
+    'device_id',
+    'robot_id',
+    'topic_profile',
+    'annotation_status',
+    'annotator',
+    'notes',
+]
+
+
+def make_annotation_template_rows(
+    queue: dict[str, object],
+) -> tuple[list[dict[str, object]], list[str]]:
+    items = queue.get('items', [])
+    if not isinstance(items, list):
+        items = []
+
+    labels: list[str] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        for label in item.get('recommended_labels', []):
+            label_name = str(label)
+            if label_name and label_name not in labels:
+                labels.append(label_name)
+
+    fields = list(ANNOTATION_TEMPLATE_BASE_FIELDS) + labels
+    rows: list[dict[str, object]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        row: dict[str, object] = {
+            'session_id': item.get('session_id', ''),
+            'file_name': item.get('file_name', ''),
+            'path': item.get('path', ''),
+            'device_id': item.get('device_id', ''),
+            'robot_id': item.get('robot_id', ''),
+            'topic_profile': item.get('topic_profile', ''),
+            'annotation_status': 'pending',
+            'annotator': '',
+            'notes': '',
+        }
+        for label in labels:
+            row[label] = ''
+        rows.append(row)
+
+    return rows, fields

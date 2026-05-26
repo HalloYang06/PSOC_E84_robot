@@ -209,6 +209,15 @@ ros2 run rehab_arm_psoc_bridge build_annotation_queue.py /home/pi/rehab_arm_logs
 - 默认不要让 `quality_report.ok=false` 的 session 进入正式标注和训练集。
 - 该队列不包含运动指令，不能用于 M33、NanoPi 或 CAN 控制。
 
+从 queue 导出 CSV 标注模板：
+
+```bash
+ros2 run rehab_arm_psoc_bridge export_annotation_template.py /home/pi/rehab_arm_logs/annotation_queue.json \
+  --output /home/pi/rehab_arm_logs/annotation_template.csv
+```
+
+CSV 固定基础列为 `session_id/file_name/path/device_id/robot_id/topic_profile/annotation_status/annotator/notes`，后面追加 `recommended_labels`。平台可以直接把这些列映射成标注表单；训练集导出前仍要检查 `annotation_status` 和必填 label 是否完整。
+
 ### CSV 导出
 
 导出 JSONL 为 CSV：

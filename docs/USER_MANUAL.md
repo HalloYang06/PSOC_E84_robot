@@ -1377,6 +1377,29 @@ ros2 run rehab_arm_psoc_bridge build_annotation_queue.py \
 
 这个队列只用于平台、人工标注、训练前筛选和数据浏览。它不会打开 ROS topic，不联网，不读取 CAN，不控制 M33 或电机。
 
+导出 CSV 标注模板：
+
+```bash
+ros2 run rehab_arm_psoc_bridge export_annotation_template.py \
+  /home/pi/rehab_arm_logs/annotation_queue.json \
+  --output /home/pi/rehab_arm_logs/annotation_template.csv
+```
+
+CSV 默认包含：
+
+- `session_id`
+- `file_name`
+- `path`
+- `device_id`
+- `robot_id`
+- `topic_profile`
+- `annotation_status`
+- `annotator`
+- `notes`
+- 队列中的 `recommended_labels`
+
+人工或平台填完后，先保留为标注结果文件；后续再做训练集导出。这个 CSV 仍然只是离线数据，不是 ROS topic、不是 CAN 命令、不是 M33 控制指令。
+
 预览服务器同步计划：
 
 ```bash
