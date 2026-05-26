@@ -1325,3 +1325,35 @@
 - Not validated: could not run `ip -details link show can0`, `candump`, ROS bridge status, `0x322` parse, or any tiny trajectory.
 - Safety: no `0x320` was sent and no motor motion was attempted because M33/NanoPi logs were not observable from this host.
 - Next step: on-site check NanoPi SSH service/network, then rerun live status check before any movement command.
+
+### 2026-05-26 - M33 bench motion live validation for motor3 and motor7
+
+- Completed: NanoPi SSH recovered with password login `pi/pi`.
+- Validated: `can0` was brought up as classic CAN 1Mbps and reported `UP/LOWER_UP/ERROR-ACTIVE` with `tx=0 rx=0`.
+- Validated: after flashing M33 commit `a9310432`, bridge heartbeat `0x321` received M33 status `0x322#A5xx070000030000`, decoded as `ok/armed/detail=none`.
+- Completed: started `rehab_arm_psoc_bridge` with `enable_target_tx=true`.
+- Validated formal path for motor3: published ROS trajectory `shoulder_abduction_joint=0.02 rad`; bridge sent `0x320#03020B0005000000`; M33 emitted CANSimple frames `0x067/0x068`, confirming ROS joint2 -> M33 motor joint3.
+- Completed direct debug pulse for motor7: used `nanopi_can_master.py private speed --motor 7 --vel 0.05 --kd 1.0`, held about 0.3s, then sent private `stop`.
+- Observed: motor7 private active-report and M33 status slot `0x336` changed during motion and returned to stopped telemetry; M33 `0x322` stayed `ok/armed/detail=none`.
+- Safety: motor3 was through the formal ROS->NanoPi->M33 chain; motor7 was direct NanoPi private CAN debug only and must not be treated as the formal control path.
+- Next step: extend the formal M33/ROS mapping so motor7 can be commanded through `0x320` under M33 safety checks instead of direct private CAN.
+
+### 2026-05-26 - Motor3 larger visible ROS/M33 bench motion
+
+- Completed: rejected the user's requested `90°` as it exceeds the current bench safety gate and bridge limits.
+- Completed: sent a larger but still bounded formal ROS trajectory for motor3: `shoulder_abduction_joint=0.75 rad` (about `43°`).
+- Validated: bridge transmitted `0x320#0302AD0105000000`, which decodes as ROS joint2, `429 * 0.1°`, `5 rpm`, `torque_ma=0`.
+- Observed: M33 emitted CANSimple frames `0x067/0x068` after the command, and `0x322` stayed `ok/armed/detail=none`.
+- Safety: did not bypass the configured `±60°` M33 bench gate or the NanoPi bridge joint limit; did not send a `90°` target.
+- Next step: add a formal ROS/M33 mapping for motor7 so visible 7号 motion can also go through `0x320` instead of direct private CAN.
+
+### 2026-05-26 - Motor3 no-motion diagnosis and motor7 obvious pulse
+
+- Observed: user reported the larger motor3 command did not visibly move.
+- Diagnosed: passive and direct checks showed M33 heartbeat/status was healthy, but no real CANSimple heartbeat/feedback from motor3 was observed; M33 `0x332` motor3 telemetry stayed zeroed.
+- Inference: prior `0x067/0x068` frames were command traffic/SocketCAN echo, not proof that motor3 entered closed-loop or executed position.
+- Completed: ran a more visible direct private-CAN pulse on motor7: `--motor 7 --vel 0.30 --kd 1.0`, held about 1s, then sent stop and disabled active-report.
+- Observed: motor7 active report changed from idle `0x180007FD#A545...` to moving `0x188007FD#...` frames, M33 `0x336` slot telemetry changed during motion, then returned to stopped values.
+- Completed: stopped the `enable_target_tx=true` ROS bridge after the live test to avoid unintended later trajectory execution.
+- Safety: motor7 pulse was still direct debug CAN, not formal path. No 90° command was sent.
+- Next step: fix motor3 closed-loop/feedback bring-up separately, and add formal motor7 mapping through M33 before using ROS trajectories for 7号.

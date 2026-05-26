@@ -2850,3 +2850,84 @@ Connection reset by 192.168.2.66 port 22
 状态：
 
 - 当前远程验收被 SSH 阻塞；没有发送运动命令。
+
+### 先证明 0x322 为 ok/armed，再发 0x320
+
+现象：
+
+- M33 开发台架固件刚烧录后，NanoPi bridge 能发 `0x321`，但如果 `0x322` 仍是 `A5xx070001020A00`，NanoPi 会拒绝轨迹。
+- 修正启动 detail 后，`0x322` 变为 `A5xx070000030000`，bridge 才允许 `enable_target_tx=true` 的轨迹下发。
+
+技巧：
+
+- `0x322#A5xx070000030000` 是当前台架开发模式的放行状态：`safety=ok`、`mode=armed`、`detail=none`。
+- 发布轨迹前先抓包确认 `0x321/0x322` 连续稳定，CAN 为 `ERROR-ACTIVE`。
+- 对 3 号伺泰威，当前正规链路是 `shoulder_abduction_joint` -> ROS joint id `2` -> M33 motor joint `3`。
+- 3 号小幅验证帧：`0x320#03020B0005000000`，约等于 joint2 目标 `1.1°`、`5 rpm`、`torque_ma=0`。
+- 更明显但仍在边界内的 3 号验证帧：`0x320#0302AD0105000000`，约等于 joint2 目标 `42.9°`、`5 rpm`、`torque_ma=0`。
+- 用户要求超过当前限位的角度时，不要绕过 M33/bridge 限位；先给出当前可执行上限内的动作，后续再通过代码审查和烧录调整限位。
+
+状态：
+
+- 已实测 motor3 正规链路能从 ROS trajectory 触发 M33 电机输出。
+
+### motor7 当前只能算直接 CAN 调试，不算正式路径
+
+现象：
+
+- 用户允许开发阶段动 7 号。
+- 当前 ROS bridge 只映射 5 个 ROS 关节，M33 对 `0x320` 的 ROS joint id 也只接受 `0..4`，还没有正式映射到 M33 motor joint7。
+
+技巧：
+
+- 如果必须临时验证 7 号，只能明确标为 debug direct CAN：
+  - `nanopi_can_master.py private speed --motor 7 --vel 0.05 --kd 1.0`
+  - 短时间后必须发送 `nanopi_can_master.py private stop --motor 7`
+- 直接 private CAN 绕过 M33 `0x320` 安全审核，不能作为正式机器人开发路径。
+- 打开 7 号 active-report 后要关掉，避免总线一直刷 `0x180007FD`。
+
+状态：
+
+- 已短促验证 motor7 private CAN 指令和反馈；下一步应把 7 号接入正式 `0x320` 映射。
+
+### CANSimple 命令帧出现不等于 3号电机真的动了
+
+现象：
+
+- ROS/M33 给 motor3 发出 `0x320#0302AD0105000000` 后，CAN 上能看到 `0x067/0x068`。
+- 用户现场反馈 3号没有明显运动。
+- 进一步检查时，M33 对 motor3 的 `0x332` 状态帧仍是 `B3 xx 03 00 00 00 00 00`，没有有效位置/速度/温度变化。
+
+判断：
+
+- `0x067/0x068` 很可能只是 M33 发出的 CANSimple 命令或 SocketCAN echo，不是电机已经进入 closed-loop 的证据。
+- 如果没有 CANSimple heartbeat、encoder estimate、error/status 回复或 M33 缓存状态变化，就不能认为 motor3 被真正控制。
+
+技巧：
+
+- 3号调试下一步先证明 motor3 自己在线：
+  - 查 CANSimple heartbeat 或厂家状态帧。
+  - 查 node id 是否仍是 3。
+  - 确认驱动电源、使能状态、错误码和 closed-loop 状态。
+  - 不要靠 `can0` 仍为 `ERROR-ACTIVE` 判断目标电机 ACK，因为总线上其他节点也可能 ACK。
+
+状态：
+
+- 当前 motor3 正规链路已能把命令发到 M33，但 motor3 执行/反馈未打通。
+
+### motor7 直接 CAN pulse 后要恢复安静
+
+现象：
+
+- 为了让动作更明显，motor7 直接 private CAN 速度从 `0.05 rad/s` 提到 `0.30 rad/s`，保持约 1s。
+- active-report 打开后总线会持续出现 `0x180007FD` 或 `0x188007FD`。
+
+技巧：
+
+- 测试后必须发送 `private stop --motor 7`。
+- 测试后关闭 active-report：`private active-report --motor 7` 不带 `--enable-report`。
+- 如果临时启动了 `enable_target_tx=true` 的 ROS bridge，测试结束后停掉，避免后续误发轨迹。
+
+状态：
+
+- 已执行 stop，关闭 7号 active-report，并停止 ROS bridge。
