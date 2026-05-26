@@ -1190,3 +1190,14 @@
 - Validated on NanoPi true CAN: script passed with `0x322#A501070001010A00`, `0x180007FD=499`, `0x336=49`, `/rehab_arm/motor_state` JSON, and `/joint_states` `m33_status_slot_6`.
 - Safety: no trajectory was published and no target frame was observed.
 - Next step: use this acceptance script before every live hardware session, then move to the next formal robot-development slice: M33/NanoPi safety-state gating before controlled trajectory tests.
+
+### 2026-05-26 - NanoPi trajectory gate requires motion_allowed
+
+- Completed: added `safety_gate.py` so NanoPi trajectory acceptance depends on `0x322 motion_allowed=true`, not just `state=ok`.
+- Completed: updated `psoc_can_bridge_node.py` to store the latest parsed `0x322` payload and call the new safety gate before accepting or sending trajectory points.
+- Completed: added unit tests proving legacy V1 `state=ok` still rejects because `motion_allowed=false`, logging-only V2 rejects, and V2 `state=ok/control_mode=armed` accepts.
+- Validated: targeted safety/status tests passed 12 tests.
+- Validated: full `rehab_arm_psoc_bridge` suite passed 130 tests.
+- Validated on NanoPi true CAN: workspace rebuilt, live telemetry acceptance script still passed, and a legal trajectory was rejected with `PSoC motion_allowed is not true`; `candump can0,320:7FF` stayed empty.
+- Safety: this closes a permission gap where old compatible `0x322 ok` could be mistaken as motion permission.
+- Next step: define the next M33 state transition needed for controlled trajectory testing: how M33 moves from `logging_only` to `armed`, and which physical checks must be true before it ever reports `motion_allowed=true`.

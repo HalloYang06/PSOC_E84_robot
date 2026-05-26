@@ -2597,3 +2597,29 @@ set -u
 状态：
 
 - 已在 `scripts/nanopi_live_telemetry_check.sh` 中修复，并在 NanoPi 真 CAN 验收通过。
+
+### 轨迹门控只认 `motion_allowed=true`
+
+现象：
+
+- 旧版 `0x322` V1 可以解析成 `state=ok`。
+- 但 V1 没有明确表达 M33 已经完成上电、自检、急停、限位、控制模式等运动许可检查。
+
+根因：
+
+- 对穿戴式机械臂，`state=ok` 只能说明状态包格式兼容或无错误码，不能等价于“允许运动”。
+- 真正允许运动必须由 M33 在 `0x322` 中显式给出 `motion_allowed=true`。
+
+技巧：
+
+- NanoPi bridge 轨迹门控应使用 `motion_allowed` 作为唯一正向许可。
+- V1 `state=ok`、V2 `logging_only`、`limited`、`fault`、`emergency_stop` 都必须拒绝轨迹。
+- 当前 M33 返回 `state=limited/control_mode=logging_only/detail=logging_only_no_motor_output` 时，发布合法轨迹也应看到：
+
+```text
+safety limited: rejected trajectory: PSoC motion_allowed is not true, protocol_version=2, state=limited, control_mode=logging_only, detail=logging_only_no_motor_output
+```
+
+状态：
+
+- 已加入 `safety_gate.py` 和单元测试；NanoPi 真 CAN 验证拒绝轨迹且 `can0,320:7FF` 无任何目标帧。

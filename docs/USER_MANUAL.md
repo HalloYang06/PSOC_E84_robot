@@ -310,7 +310,7 @@ ros2 topic echo --once /rehab_arm/safety_state
 
 | 参数 | 默认值 | 作用 |
 |---|---:|---|
-| `require_psoc_ok_for_trajectory` | `true` | 只有收到新鲜的 M33 `0x322 ok` 才允许接收/发送轨迹 |
+| `require_psoc_ok_for_trajectory` | `true` | 只有收到新鲜的 M33 `0x322` 且 `motion_allowed=true` 才允许接收/发送轨迹 |
 | `reject_out_of_limit_trajectory` | `true` | 轨迹点超出软件关节限位时拒绝轨迹 |
 | `max_trajectory_points` | `100` | 限制一次轨迹消息的最大点数 |
 | `status_timeout_sec` | `2.5` | 超过该时间未收到 PSoC status，认为状态过期 |
@@ -319,7 +319,8 @@ ros2 topic echo --once /rehab_arm/safety_state
 安全行为：
 
 - bridge 启动时先发布 `limited: bridge started, waiting for PSoC status`。
-- 没有 M33 `0x322 ok` 时，收到 `/arm_controller/joint_trajectory` 会拒绝，不发 `0x320`。
+- 没有 M33 `0x322 motion_allowed=true` 时，收到 `/arm_controller/joint_trajectory` 会拒绝，不发 `0x320`。
+- 旧版 V1 `0x322 state=ok` 只代表状态兼容，不代表运动许可；bridge 仍会拒绝轨迹。
 - 正在发送轨迹时，如果 PSoC 状态过期或变成 fault，会清空剩余轨迹并停止发送。
 - 轨迹含未知关节、空点、非有限数值、超限点或过多点时，会拒绝并发布 `limited`。
 - 默认 `enable_target_tx=false` 时，合法轨迹也不会真的发 `0x320`，只打印 `DRY-RUN 320 ...`。
@@ -329,6 +330,12 @@ ros2 topic echo --once /rehab_arm/safety_state
 
 ```text
 safety limited: rejected trajectory: no PSoC status received
+```
+
+已验证的 M33 logging-only 拒绝测试：
+
+```text
+safety limited: rejected trajectory: PSoC motion_allowed is not true, protocol_version=2, state=limited, control_mode=logging_only, detail=logging_only_no_motor_output
 ```
 
 已验证的 PSoC 在线但轨迹超限拒绝测试：

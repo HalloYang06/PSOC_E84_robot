@@ -24,6 +24,7 @@ from rehab_arm_psoc_bridge.psoc_motor_status import (
     make_current_position_updates_from_m33_motor_state,
     make_joint_state_fields_from_m33_motor_state,
 )
+from rehab_arm_psoc_bridge.safety_gate import psoc_motion_gate_detail
 from rehab_arm_psoc_bridge.psoc_status import parse_psoc_status_payload
 from rehab_arm_psoc_bridge.safety_state import bridge_safety_payload
 
@@ -155,7 +156,8 @@ class PsocCanBridgeNode(Node):
         self.heartbeat_tx_count = 0
         self.status_rx_count = 0
         self.last_status_time: float | None = None
-        self.last_psoc_status_ok = False
+        self.last_psoc_status_payload: dict[str, object] | None = None
+        self.last_psoc_motion_allowed = False
         self.last_psoc_error_code: int | None = None
         self.last_safety_state = ''
         self.target_tx_count = 0
@@ -295,7 +297,7 @@ class PsocCanBridgeNode(Node):
             if age <= self.status_timeout_sec:
                 return
             detail = f'no PSoC status for {age:.1f}s after {self.status_rx_count} status frames'
-            self.last_psoc_status_ok = False
+            self.last_psoc_motion_allowed = False
         elif self.heartbeat_tx_count > 0:
             detail = f'no PSoC status after {self.heartbeat_tx_count} heartbeats'
         else:
@@ -310,11 +312,7 @@ class PsocCanBridgeNode(Node):
         age = time.monotonic() - self.last_status_time
         if age > self.status_timeout_sec:
             return False, f'PSoC status stale for {age:.1f}s'
-        if not self.last_psoc_status_ok:
-            if self.last_psoc_error_code is None:
-                return False, 'PSoC status is not ok'
-            return False, f'PSoC error_code={self.last_psoc_error_code}'
-        return True, 'PSoC status ok'
+        return psoc_motion_gate_detail(self.last_psoc_status_payload)
 
     def send_frame(self, frame: CanFrame, log: bool = True) -> None:
         with self.sock_lock:
@@ -362,7 +360,8 @@ class PsocCanBridgeNode(Node):
         payload = parse_psoc_status_payload(frame.data)
         error_code = payload.get('error_code')
         self.last_psoc_error_code = error_code if isinstance(error_code, int) else None
-        self.last_psoc_status_ok = payload['state'] == 'ok'
+        self.last_psoc_status_payload = payload
+        self.last_psoc_motion_allowed = payload.get('motion_allowed') is True
         self.safety_pub.publish(String(data=json.dumps(payload, separators=(',', ':'))))
 
     def handle_m33_motor_status(self, frame: CanFrame) -> None:
