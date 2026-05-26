@@ -24,6 +24,7 @@ M33 当前配置同步状态：
 
 - M33 工程 `applications/control/control_layer_cfg.h` 已按上表配置型号和减速比。
 - M33 control layer 的 joint/output 单位通过减速比换算到 motor-side 单位后再发厂家协议帧。
+- M33 正规 ROS 入口使用 `0x320` 的 ROS joint id `0..4`，并应映射到当前真实 motor slot `3/4/5/6/7`。厂家电机 ID 7 不等于 `0x320` 的 joint id 7。
 - 该配置只解决单位换算基础，不代表机械零点、方向、软限位、速度限制和力矩/电流限制已经完成临床级确认。
 
 待确认项：

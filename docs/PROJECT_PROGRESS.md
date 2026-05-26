@@ -51,6 +51,19 @@
 
 ### 2026-05-26
 
+- M33 ROS joint 到真实电机映射修正：
+  - 现场验证：通过 M33 路径发送 `0x320#03072C0103000000`，CAN 上能看到命令，但 7 号没有动，`0x180007FD` 和 M33 `0x336` 状态没有变化。
+  - 对照验证：直接 `nanopi_can_master.py private speed --motor 7 --vel 0.30 --kd 1.0` 后，7 号原始反馈从 `CF93...` 变化到 `D7C1...`，M33 `0x336` 也变化，说明 7 号电机和私有协议路径可用。
+  - 根因定位：M33 当前把 ROS joint id 按 `ros_joint + 1` 映射到 motor slot，导致 ROS 5 关节 `0..4` 实际打到 motor slot `1..5`，没有覆盖真实电机 `3..7`。
+  - 已改 M33 本地工程：ROS joint `0..4` 映射为 motor slot `3/4/5/6/7`。后续正规链路测试 7 号应发送 ROS joint id `4`，不是 `7`。
+- 验证：
+  - 本轮真机 CAN：NanoPi `can0` 为 `ERROR-ACTIVE`，M33 `0x322` 在线。
+  - 7 号直驱对照脉冲可动，已 stop 并关闭 active-report。
+  - M33 代码未能在当前 PowerShell 编译，原因仍是 `arm-none-eabi-gcc` 不在 PATH。
+- 下一步：
+  - 用户用 RT-Thread Studio 编译并烧录 M33。
+  - 烧录后发送 `m33 target --joint 4 --deg 30 --rpm 3 --torque-ma 0` 验证 7 号正规路径。
+
 - M33 电机元数据对齐：
   - 更新本地 M33 工程 `applications/control/control_layer_cfg.h`。
   - joint3 配置为伺泰威 CANSimple/ODrive-like，减速比 `48:1`。

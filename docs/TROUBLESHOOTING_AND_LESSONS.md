@@ -114,6 +114,54 @@ candump can0
 
 ## CAN 协议与电机 ID
 
+### 0x320 的 joint id 是 ROS 关节号，不是电机 ID
+
+现象：
+
+- 发送 `0x320#03072C0103000000` 试图让 7 号电机到 `+30°`，现场没有动。
+- CAN 上能看到 M33 在线、`0x320` 已发送、7 号 active-report 存在，但 `0x180007FD` 和 `0x336` 没有随目标变化。
+- 直接用 `nanopi_can_master.py private speed --motor 7 --vel 0.30 --kd 1.0`，7 号能动，原始反馈和 M33 `0x336` 都变化。
+
+环境：
+
+- NanoPi `can0` classic CAN 1Mbps，`ERROR-ACTIVE`
+- M33 正式控制入口：`0x320`
+- 7 号灵足 EL05 私有协议直驱可用
+
+根因：
+
+- `0x320` byte1 表示 ROS trajectory joint id，不是真实电机 ID。
+- M33 旧代码把 ROS joint id 用 `ros_joint + 1` 映射到 motor slot，导致 ROS `0..4` 打到 motor `1..5`，没有覆盖真实 `3..7` 电机组合。
+- 手动发 `joint=7` 会被 M33 当作未知 ROS joint，而不是电机 7。
+
+解决：
+
+- M33 本地工程已改为显式映射：
+
+```text
+ROS joint 0 shoulder_lift_joint      -> motor slot 3
+ROS joint 1 elbow_lift_joint         -> motor slot 4
+ROS joint 2 shoulder_abduction_joint -> motor slot 5
+ROS joint 3 upper_arm_rotation_joint -> motor slot 6
+ROS joint 4 forearm_rotation_joint   -> motor slot 7
+```
+
+- 后续要通过正规链路动 7 号，应发：
+
+```bash
+python3 /home/pi/nanopi_can_master.py m33 target --iface can0 --joint 4 --deg 30 --rpm 3 --torque-ma 0
+```
+
+技巧：
+
+- 调试时要区分三层 ID：ROS joint id、M33 motor slot、厂家 motor/node id。
+- `nanopi_can_master.py private --motor 7` 的 `7` 是厂家电机 ID；`m33 target --joint 4` 的 `4` 是 ROS 关节号。
+- 看到 `0x320` 发出但电机不动时，先查 M33 是否拒绝 unknown joint，再查映射表。
+
+状态：
+
+- M33 源码已修，等待 RT-Thread Studio 编译、烧录和现场复测。
+
 ### 减速比必须在 NanoPi、文档、M33 三处一致
 
 现象：
