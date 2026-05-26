@@ -1235,3 +1235,12 @@
 - Observed: `fresh_mask=0x00000000 fresh_ok=0` at the serial check instant; this is not a failure of the command, it means the required motor feedback freshness condition was not satisfied at that moment.
 - Safety: this validation did not send a trajectory or `0x320`; pre-arm correctly stayed false.
 - Next step: add a more precise pre-arm motor requirement mask for the currently powered motors, then separately connect/confirm physical estop, power, and limits before any `motion_allowed=true` work.
+
+### 2026-05-26 - M33 pre-arm diagnostic mask override
+
+- Completed: `cmd_m33_prearm_check` now accepts an optional one-shot required joint mask, for example `0x40` for the current slot6/`0x336`/motor7 check and `0x44` for slot2+slot6.
+- Completed: the command prints `PREARM_MASK` with the active mask source (`config` or `argv`) and the default compiled mask.
+- Validated: forced ARM GCC compile of `Debug/applications/control/control_layer.o` succeeded.
+- Not validated: not flashed yet; user will flash when ready.
+- Safety: the mask override is diagnostic only. It does not change compile-time defaults, does not persist, and does not enable motion.
+- Next step: after flashing, run `cmd_m33_prearm_check 0x40` immediately after enabling motor7 telemetry to confirm whether slot6 freshness becomes observable.

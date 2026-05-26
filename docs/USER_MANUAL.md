@@ -853,10 +853,22 @@ RX 322 [8] a5<seq>070001010a00
 cmd_m33_prearm_check
 ```
 
+也可以临时指定本次诊断需要检查的电机槽位 mask，不会写入配置：
+
+```text
+cmd_m33_prearm_check 0x40
+cmd_m33_prearm_check 0x44
+```
+
+- `0x40`：只检查 slot6，也就是当前 `0x336` 对应的 7 号灵足槽位。
+- `0x44`：检查 slot2 + slot6，也就是当前 3 号伺泰威和 7 号灵足槽位。
+- 不带参数时使用固件默认 `CONTROL_PREARM_REQUIRED_JOINT_MASK=0x7F`，要求 7 个槽位全部满足。
+
 当前默认应该失败，示例字段如下：
 
 ```text
 PREARM: ready=0 motion_allowed_would_be=0
+PREARM_MASK: required_mask=0x0000007F source=config default_mask=0x0000007F
 PREARM_MODE: logging_only_clear=0 logging_only_compile=1 allow_with_logging_only=0
 PREARM_HEARTBEAT: ok=<0|1> age_ms=<n> timeout_ms=2500
 PREARM_INPUTS: estop_confirmed=0 power_confirmed=0 limits_confirmed=0

@@ -2692,6 +2692,7 @@ PREARM_MOTORS: required_mask=0x0000007F fresh_mask=0x00000000 ... fresh_ok=0
 - 需要验证 motor freshness 时，先让目标电机持续上报，再立刻运行 `cmd_m33_prearm_check`。
 - 当前默认 `CONTROL_PREARM_REQUIRED_JOINT_MASK=0x7F` 要求 7 个槽位都有新鲜反馈；如果现场只上电 7 号，后续应先把 required mask 改成当前测试所需的最小集合。
 - `ready=0` 是安全默认；不要为了让它变 1 而临时跳过急停、供电、限位确认。
+- 新增的 `cmd_m33_prearm_check 0x40` 只用于本次诊断 slot6 freshness；它不修改默认配置，也不代表可运动。
 
 状态：
 
