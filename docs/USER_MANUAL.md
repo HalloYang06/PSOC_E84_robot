@@ -895,6 +895,18 @@ PREARM_MOTORS: required_mask=0x0000007F fresh_mask=0x00000000 fault_mask=0x00000
 
 这表示 M33 在线、heartbeat 新鲜，但仍然没有通过预 armed。当前不要尝试让它运动。
 
+已验证的 7 号诊断 mask 输出：
+
+```text
+cmd_m33_prearm_check 0x40
+PREARM: ready=0 motion_allowed_would_be=0
+PREARM_MASK: required_mask=0x00000040 source=argv default_mask=0x0000007F
+PREARM_HEARTBEAT: ok=1 age_ms=165 timeout_ms=2500
+PREARM_MOTORS: required_mask=0x00000040 fresh_mask=0x00000040 fault_mask=0x00000000 fresh_count=1 fresh_ok=1 fault_free=1
+```
+
+这只证明 slot6/7号 telemetry 在检查瞬间是新鲜的；`ready=0` 仍然是正确结果。
+
 第二步只发一帧合法 `0x320` 对照：
 
 ```bash

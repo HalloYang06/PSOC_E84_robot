@@ -2697,3 +2697,27 @@ PREARM_MOTORS: required_mask=0x0000007F fresh_mask=0x00000000 ... fresh_ok=0
 状态：
 
 - 已记录。下一步应先做“测试用 required mask”而不是开放运动。
+
+### Pre-arm 诊断 mask 要和 active-report 同时测
+
+现象：
+
+- 第一次并发测试 `cmd_m33_prearm_check 0x40` 时，远端命令路径写错，7号 active-report 没有真正打开，结果仍是 `fresh_mask=0`。
+- 修正远端工作目录后，7号 active-report 打开 8 秒，M33 输出 `fresh_mask=0x00000040 fresh_ok=1`。
+
+根因：
+
+- `cmd_m33_prearm_check 0x40` 只改变 required mask，不会主动打开电机上报。
+- 必须在 M33 缓存 freshness 窗口内运行命令。
+
+技巧：
+
+- 正确顺序：
+  1. NanoPi 打开 `live_socketcan_motor_snapshot.py --enable-active-report 7 --duration 8`。
+  2. 在窗口内发一次 `cansend can0 321#xx` 保持 heartbeat 新鲜。
+  3. M33 串口运行 `cmd_m33_prearm_check 0x40`。
+- 看到 `fresh_mask=0x40 fresh_ok=1` 只说明 slot6 telemetry 新鲜，不表示 pre-arm ready。
+
+状态：
+
+- 已验证 slot6 freshness 可观测；`ready` 仍保持 0。

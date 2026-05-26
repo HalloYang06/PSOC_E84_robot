@@ -1244,3 +1244,13 @@
 - Not validated: not flashed yet; user will flash when ready.
 - Safety: the mask override is diagnostic only. It does not change compile-time defaults, does not persist, and does not enable motion.
 - Next step: after flashing, run `cmd_m33_prearm_check 0x40` immediately after enabling motor7 telemetry to confirm whether slot6 freshness becomes observable.
+
+### 2026-05-26 - M33 pre-arm mask burn-after validation
+
+- Completed: user flashed the diagnostic mask override firmware.
+- Validated on NanoPi true CAN: `nanopi_live_telemetry_check.sh` passed; `0x322`, `0x336`, `/rehab_arm/motor_state`, `/joint_states` were present and no `0x320` appeared.
+- Validated on M33 serial COM26: `cmd_m33_prearm_check 0x40` accepted the one-shot mask and printed `PREARM_MASK required_mask=0x00000040 source=argv default_mask=0x0000007F`.
+- Validated: while 7号 telemetry was actively streaming, M33 reported `fresh_mask=0x00000040 fresh_count=1 fresh_ok=1 fault_free=1`.
+- Observed: `PREARM ready=0 motion_allowed_would_be=0` remained correct because logging-only and physical safety inputs are still not cleared.
+- Safety: no trajectory or `0x320` was sent; the mask only changed the diagnostic motor-freshness requirement for one command invocation.
+- Next step: define real physical safety input confirmation sources for estop/power/limits, still without enabling motion.
