@@ -51,6 +51,14 @@
 
 ### 2026-05-26
 
+- NanoPi 真 CAN 只读验收：
+  - NanoPi 在线，`can0` 为 `ERROR-ACTIVE`，1Mbps，tx/rx error counter `0/0`。
+  - 被动抓包 5 秒只看到 M33 `0x332`，说明电机遥测在发；随后只发送一次 heartbeat `0x321#01` 触发 `0x322`，全程没有 `0x320`。
+  - 抓包统计：`0x321=1`、`0x322=1`、`0x332=39`；转换 JSONL 后 `safety_state_count=1`、`m33_motor_status_count=39`、`motor_state_count=39`、`joint_state_count=39`。
+  - 安全发现：`0x322#A501070000030000` 解析为 `state=ok/control_mode=armed/detail=none/motion_allowed=true`，说明当前 M33 固件处在开发台架放行状态，不是 logging-only/limited。
+  - 复查：没有 `psoc_can_bridge/ros2/nanopi_can_master` 进程在跑；再次监听 `0x320` 为空；`can0` 仍 `ERROR-ACTIVE`。
+  - 下一步：不要直接进入轨迹运动；先把 M33 开发台架 armed 状态和正式安全条件区分清楚，必要时让 M33 默认回到 `limited/logging_only` 或增加更明确的 bench/clinical mode 字段。
+
 - candump 真 CAN 离线验收工具补齐安全状态：
   - `candump_motor_telemetry.py` 现在解析 M33 `0x322` 并输出 `/rehab_arm/safety_state` JSONL 记录。
   - summary 新增 `safety_state_count` 和 `motion_allowed_counts`，方便上电后确认状态链路可见且调试阶段没有误报运动许可。

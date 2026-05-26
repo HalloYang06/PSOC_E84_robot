@@ -1385,6 +1385,8 @@ ros2 run rehab_arm_psoc_bridge candump_motor_telemetry \
 
 注意：`candump_motor_telemetry` 是离线日志转换工具，不打开 SocketCAN，不发 CAN，不发送 `0x320/0x321`，不控制 M33 或电机。`/joint_states` 和 `/rehab_arm/motor_state` 只能证明状态可见，不能证明允许运动；运动候选许可仍只看 `/rehab_arm/safety_state.motion_allowed`。闭环刚建立后的 `0x069` 第一次跳变可能包含估计器恢复，不要直接等同于真实机械位移。
 
+如果只读验收里出现 `motion_allowed_counts.true > 0`，先不要发布 `/arm_controller/joint_trajectory`。这通常表示 M33 当前烧录的是开发台架 armed 固件，或者 safety 状态已经被配置为放行。此时必须先确认现场无人穿戴、限位/限速/急停策略符合当前测试目的，并再次抓包确认没有意外 `0x320`，再决定是否进入小角度运动测试。
+
 如果要临时抓 4/5/6/7 的原始周期状态，先由调试工具打开 private active-report，再抓包，测试结束必须关闭 active-report。正式 ROS 路径后续仍要由 M33 聚合并发布 `/rehab_arm/motor_state`，NanoPi 直接打开 private active-report 只用于调试接收链路。
 
 如果 M33 固件还没有真正发送 `0x330~0x337`，可以先用合成遥测帧 smoke 工具验证 NanoPi bridge 和 recorder 链路。
