@@ -1023,6 +1023,7 @@ function AccessCheckPanel({
   openFirstDevice: () => void;
 }) {
   const latestDevice = devices[0];
+  const latestBoard = latestDevice ? boardCapabilities(latestDevice) : null;
   const reports = devices.map(simulationReport).filter((report) => Object.keys(report).length > 0);
   const cameraCount = devices.filter((device) => deviceDataCounts(device).hasCamera).length;
   const busReadyCount = devices.filter(deviceHasBusData).length;
@@ -1110,6 +1111,27 @@ function AccessCheckPanel({
           ))}
         </div>
         <p>平台只索引和展示这些数据；控制命令必须由具体机器人项目自己的安全链路决定。</p>
+      </details>
+      <details className={styles.accessSetupDrawer}>
+        <summary>最近开发板能力清单</summary>
+        <div className={styles.boardManifestGrid}>
+          <article>
+            <span>系统</span>
+            <strong>{latestBoard ? text(latestBoard.platform.hostname, text(latestBoard.manifest.device_id, deviceId(latestDevice))) : "等待开发板"}</strong>
+            <p>{latestBoard ? text(latestBoard.platform.release, "未上传系统版本") : "运行 board_manifest 并上传后显示。"}</p>
+          </article>
+          <article>
+            <span>ROS2</span>
+            <strong>{latestBoard ? ros2CapabilityText(latestBoard.ros2) : "未知"}</strong>
+            <p>用于判断仿真、采集和标注前置环境。</p>
+          </article>
+          <article>
+            <span>CAN/串口/USB/摄像头</span>
+            <strong>{latestBoard ? `${latestBoard.canInterfaces.length}/${latestBoard.serialDevices.length}/${latestBoard.usbDevices.length}/${latestBoard.cameraDevices.length}` : "0/0/0/0"}</strong>
+            <p>{latestBoard ? "按 CAN、串口、USB、摄像头顺序统计。" : "先接入 Linux 开发板能力清单。"}</p>
+          </article>
+        </div>
+        <p>这里只展示只读能力，不能作为运动许可；真实运动仍必须由机器人项目自己的安全链路裁决。</p>
       </details>
     </section>
   );
