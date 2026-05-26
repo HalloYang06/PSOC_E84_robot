@@ -49,6 +49,27 @@
 
 ## 已完成
 
+### 2026-05-26
+
+- M33 电机元数据对齐：
+  - 更新本地 M33 工程 `applications/control/control_layer_cfg.h`。
+  - joint3 配置为伺泰威 CANSimple/ODrive-like，减速比 `48:1`。
+  - joint4/5 配置为灵足 RS00，减速比 `10:1`。
+  - joint6/7 配置为灵足 EL05，减速比 `9:1`。
+  - 只改配置和注释，没有新增运动行为、没有新增周期打印。
+- 验证：
+  - `mingw32-make -j4` 能进入 IDE 生成的 Debug 构建入口，但判断目标已是最新。
+  - 强制重编 `applications/control/control_layer.o` 时失败，原因是当前 PowerShell PATH 找不到 `arm-none-eabi-gcc`，不是代码语法错误输出。
+  - 文本检查确认 M33 配置中的型号和减速比已写入。
+  - 尝试并行运行主仓库单元测试和 `git status` 时本机返回 `Out of memory`，本轮不把单元测试记为通过。
+- 未验证：
+  - 未烧录 M33。
+  - 未做真机运动。
+  - 未验证 joint3 伺泰威真实运动。
+- 下一步：
+  - 让 RT-Thread Studio 或正确 PATH 的 ARM 工具链重编 M33。
+  - 烧录后只做非运动状态检查，再验证 M33 侧 joint/output 到 motor-side 的角度换算和安全限位拒绝逻辑。
+
 ### 2026-05-25
 
 - 对接平台 URDF 模型预览：

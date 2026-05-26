@@ -20,6 +20,12 @@
 | motor 6 | `motor_id=6` | 灵足 / Lingzu EduLite EL05 | 私有扩展帧 | active-report `0x180006FD` | 官方减速比 `9:1`，原始遥测已确认 |
 | motor 7 | `motor_id=7` | 灵足 / Lingzu EduLite EL05 | 私有扩展帧 | active-report `0x180007FD` | 官方减速比 `9:1`，原始遥测已确认 |
 
+M33 当前配置同步状态：
+
+- M33 工程 `applications/control/control_layer_cfg.h` 已按上表配置型号和减速比。
+- M33 control layer 的 joint/output 单位通过减速比换算到 motor-side 单位后再发厂家协议帧。
+- 该配置只解决单位换算基础，不代表机械零点、方向、软限位、速度限制和力矩/电流限制已经完成临床级确认。
+
 待确认项：
 
 - 真实机械关节绑定关系。

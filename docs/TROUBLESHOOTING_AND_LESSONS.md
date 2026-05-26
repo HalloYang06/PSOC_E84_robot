@@ -114,6 +114,72 @@ candump can0
 
 ## CAN 协议与电机 ID
 
+### 减速比必须在 NanoPi、文档、M33 三处一致
+
+现象：
+
+- 7 号电机用直接调试命令跑 3 秒，现场视频和用户目测约 `150°` 输出转动。
+- 这说明现阶段不能把脚本里的速度参数、私有协议 raw 角度字段和真实关节输出角度简单画等号。
+- 进一步检查发现 M33 配置里 joint3 仍是 `10:1`，joint4/5/6/7 仍是 `1:1`，与已确认型号不一致。
+
+环境：
+
+- NanoPi SocketCAN 调试工具：`nanopi_can_master.py`
+- M33 本地工程：`D:\RT-ThreadStudio\workspace\yiliao_m33`
+- 当前确认电机：3 号伺泰威 `48:1`，4/5 灵足 RS00 `10:1`，6/7 灵足 EL05 `9:1`
+
+根因：
+
+- 历史配置默认值没有随着真实电机型号确认同步。
+- 厂家协议 raw 值、转子侧单位、减速后输出侧单位混在一起时，容易造成“看起来角度限位是 60 度，实际转了很多”的风险。
+
+解决：
+
+- M33 `applications/control/control_layer_cfg.h` 已同步减速比：joint3 `48.0f`，joint4/5 `10.0f`，joint6/7 `9.0f`。
+- 文档和 NanoPi 遥测也记录相同型号/减速比。
+- 正式路径必须统一使用 joint/output-side 单位，M33 内部再按减速比转换为 motor-side 单位。
+
+技巧：
+
+- 看到电机“明显转多了”时，先查单位层：输出关节角、转子角、厂家 raw 编码、脚本参数、减速比。
+- 未校准前，不能用单一 raw 反馈字段做停止条件。
+- 调试直控可以证明“能动”，不能证明“正式安全角度映射正确”。
+
+状态：
+
+- 已修正 M33 配置；等待 M33 重新编译、烧录和现场复测。
+
+### Windows 命令行编译 M33 需要 ARM 工具链进 PATH
+
+现象：
+
+- `scons -j4` 提示 `scons` 不是可识别命令。
+- `mingw32-make -j4` 能进入 Debug 构建入口，但目标被判断为最新。
+- 强制重编 `applications/control/control_layer.o` 时调用 `arm-none-eabi-gcc`，随后失败：系统找不到指定的文件。
+
+环境：
+
+- Windows PowerShell
+- RT-Thread Studio 生成的 `Debug/makefile`
+- 本机能找到 `mingw32-make.exe`，但当前 shell PATH 找不到 `arm-none-eabi-gcc`
+
+根因：
+
+- RT-Thread Studio IDE 可能自带/配置了交叉编译器，但当前命令行环境没有继承 ARM GCC 路径。
+
+解决：
+
+- 用 RT-Thread Studio 直接构建，或把 IDE 使用的 `arm-none-eabi-gcc` 所在目录加入 PowerShell PATH 后再运行 `mingw32-make`。
+
+技巧：
+
+- `mingw32-make -j4` 返回 up to date 不等于刚改的头文件已重编。
+- 需要确认时可以强制指定目标：`mingw32-make applications/control/control_layer.o -B`。
+
+状态：
+
+- 未修复；等待本机工具链 PATH 配好或使用 IDE 构建。
+
 ### 不要把旧文档 CAN ID 当成当前真实链路
 
 现象：
