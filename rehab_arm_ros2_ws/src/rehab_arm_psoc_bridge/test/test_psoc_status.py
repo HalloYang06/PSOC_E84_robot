@@ -62,6 +62,24 @@ class PsocStatusTests(unittest.TestCase):
         self.assertEqual(status['detail'], 'none')
         self.assertIs(status['motion_allowed'], True)
 
+    def test_status_v2_ok_active_allows_motion_candidate(self) -> None:
+        status = parse_psoc_status_payload(bytes([0xA5, 4, 7, 0, 0, 4, 0, 0]))
+
+        self.assertEqual(status['protocol_version'], 2)
+        self.assertEqual(status['state'], 'ok')
+        self.assertEqual(status['control_mode'], 'active')
+        self.assertEqual(status['detail'], 'none')
+        self.assertIs(status['motion_allowed'], True)
+
+    def test_status_v2_ok_armed_with_detail_still_rejects_motion(self) -> None:
+        status = parse_psoc_status_payload(bytes([0xA5, 4, 7, 0, 0, 3, 9, 0]))
+
+        self.assertEqual(status['protocol_version'], 2)
+        self.assertEqual(status['state'], 'ok')
+        self.assertEqual(status['control_mode'], 'armed')
+        self.assertEqual(status['detail'], 'motor_fault')
+        self.assertIs(status['motion_allowed'], False)
+
     def test_status_v2_reject_reason_detail_codes(self) -> None:
         expected = {
             1: 'heartbeat_timeout',

@@ -1201,3 +1201,14 @@
 - Validated on NanoPi true CAN: workspace rebuilt, live telemetry acceptance script still passed, and a legal trajectory was rejected with `PSoC motion_allowed is not true`; `candump can0,320:7FF` stayed empty.
 - Safety: this closes a permission gap where old compatible `0x322 ok` could be mistaken as motion permission.
 - Next step: define the next M33 state transition needed for controlled trajectory testing: how M33 moves from `logging_only` to `armed`, and which physical checks must be true before it ever reports `motion_allowed=true`.
+
+### 2026-05-26 - M33 motion_allowed minimum contract
+
+- Completed: tightened NanoPi `0x322` parser so `motion_allowed=true` requires `error_code=0`, `safety_state=ok`, `control_mode=armed/active`, and `detail_code=none`.
+- Completed: documented the same minimum M33 contract in `docs/PSOC_CAN_PROTOCOL_V1.md` and `docs/MOTOR_PROTOCOLS.md`.
+- Completed: added tests that `ok/armed/detail=motor_fault` still rejects, while `ok/armed/detail=none` and `ok/active/detail=none` allow motion candidate status.
+- Validated: targeted `test_psoc_status.py` and `test_safety_gate.py` passed 14 tests.
+- Validated: full `rehab_arm_psoc_bridge` suite passed 132 tests.
+- Validated on NanoPi true CAN: parser update was synced, ROS workspace rebuilt, and `nanopi_live_telemetry_check.sh` passed with `0x322`, `0x336`, `/rehab_arm/motor_state`, `/joint_states`, and no `0x320`.
+- Safety: this does not enable motion; current M33 still reports `limited/logging_only`, so NanoPi continues to reject trajectories.
+- Next step: implement an explicit M33 pre-arm checklist/status source, still reporting `motion_allowed=false` until all physical safety inputs and joint limits are confirmed.

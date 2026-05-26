@@ -2623,3 +2623,27 @@ safety limited: rejected trajectory: PSoC motion_allowed is not true, protocol_v
 状态：
 
 - 已加入 `safety_gate.py` 和单元测试；NanoPi 真 CAN 验证拒绝轨迹且 `can0,320:7FF` 无任何目标帧。
+
+### `state=ok/armed` 仍要看 `detail_code`
+
+现象：
+
+- 如果只用 `state=ok` 和 `control_mode=armed/active` 判断可运动，可能忽略 M33 最近一次安全评估里的拒绝原因。
+
+根因：
+
+- 当前 `0x322` V2 byte6 是 `detail_code`，语义是 `last_safety_assessment`。
+- 如果这个字段还是 `motor_fault`、`target_out_of_limit`、`logging_only_no_motor_output` 等非 `none`，说明 M33 还没有给出干净的运动许可。
+
+技巧：
+
+- NanoPi parser 的 `motion_allowed=true` 最小条件必须是：
+  - `error_code=0`
+  - `state=ok`
+  - `control_mode=armed/active`
+  - `detail_code=none`
+- M33 后续进入 `armed` 前，要先清掉或覆盖最近拒绝原因，并把真实安全检查结果反映到 `detail_code`。
+
+状态：
+
+- 已收紧 parser 并加入测试：`ok/armed/detail=motor_fault` 仍解析为 `motion_allowed=false`。

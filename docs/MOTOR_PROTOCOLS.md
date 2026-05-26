@@ -339,6 +339,18 @@ BOOT -> SELF_TEST -> STANDBY -> READY -> ACTIVE
 4. 在电机断开或空载条件下验证拒绝用例。
 5. 再进入低能量受限动作。
 
+M33 后续允许 `motion_allowed=true` 的最小合同：
+
+- `CONTROL_ROS_COMMAND_LOGGING_ONLY` 已经由人工确认关闭，并且本次固件版本被记录。
+- NanoPi heartbeat 新鲜，未超时。
+- 急停未触发，限位/抱闸/供电/温度状态均正常。
+- 参与运动的关节映射、方向、零点、软硬限位、速度上限和电流/扭矩上限已经现场确认。
+- 所有参与运动的电机反馈新鲜，且没有 motor fault、bus-off、error-passive 或通信丢失。
+- 最近一次 M33 ROS safety assessment 没有拒绝原因，`detail_code=none`。
+- M33 `0x322` 同时满足 `error_code=0`、`safety_state=ok`、`control_mode=armed/active`、`detail_code=none`。
+
+不满足任一条件时，M33 必须保持或回退到 `motion_allowed=false`。
+
 ## 8. ROS 正规开发线路
 
 第一阶段只打通数据和仿真合同：
