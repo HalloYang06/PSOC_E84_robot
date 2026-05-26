@@ -8,12 +8,14 @@ from pathlib import Path
 
 try:
     from rehab_arm_psoc_bridge.data_recording import (
+        RECORDING_TOPIC_PROFILES,
         build_recording_quality_report,
         load_jsonl_records,
     )
 except ModuleNotFoundError:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from rehab_arm_psoc_bridge.data_recording import (
+        RECORDING_TOPIC_PROFILES,
         build_recording_quality_report,
         load_jsonl_records,
     )
@@ -50,6 +52,18 @@ def main() -> int:
         action='store_true',
         help='Allow safety_state payloads with motion_allowed=true.',
     )
+    parser.add_argument(
+        '--required-topic',
+        action='append',
+        dest='required_topics',
+        default=None,
+        help='Topic that must appear at least once. May be repeated.',
+    )
+    parser.add_argument(
+        '--topic-profile',
+        choices=sorted(RECORDING_TOPIC_PROFILES),
+        help='Named topic contract preset for common simulation/hardware/perception quality checks.',
+    )
     parser.add_argument('--pretty', action='store_true', help='Pretty-print JSON output.')
     args = parser.parse_args()
 
@@ -68,6 +82,8 @@ def main() -> int:
             require_motor_state=args.require_motor_state,
             min_motor_entry_count=args.min_motor_entry_count,
             allow_motion_allowed_true=args.allow_motion_allowed_true,
+            required_topics=args.required_topics,
+            topic_profile=args.topic_profile,
         )
     except Exception as exc:
         report = {

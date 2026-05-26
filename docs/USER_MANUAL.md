@@ -1205,6 +1205,7 @@ ros2 run rehab_arm_psoc_bridge summarize_recording.py \
 ```bash
 ros2 run rehab_arm_psoc_bridge validate_recording_quality.py \
   /tmp/rehab_sim_collection/sim_demo_motion.jsonl \
+  --topic-profile hardware_telemetry \
   --min-joint-messages 100 \
   --min-moving-joints 5 \
   --require-motor-state \
@@ -1215,11 +1216,12 @@ ros2 run rehab_arm_psoc_bridge validate_recording_quality.py \
 通过标准：
 
 - 输出 `schema_version=rehab_arm_recording_quality_v1`。
+- 输出 `topic_profile=hardware_telemetry` 和对应 `required_topics`。
 - `ok=true`。
 - `errors=[]`。
 - 当前 logging-only/仿真采集阶段不应出现 `motion_allowed=true`。
 
-如果只是短时间 recorder 冒烟测试，可以降低阈值；如果是动态 demo 采集，应要求 `moving_joint_count=5` 和 `motor_entry_count_min>=5`。
+如果只是短时间 recorder 冒烟测试，可以降低阈值；如果是动态 demo 采集，应要求 `moving_joint_count=5` 和 `motor_entry_count_min>=5`。如果是视觉/VLA 数据，改用 `--topic-profile perception_vla`，并确认 JSONL 里有 `/rehab_arm/camera_keyframe`。
 
 导出 CSV：
 
@@ -1404,6 +1406,7 @@ ros2 run rehab_arm_psoc_bridge sync_upload.py /home/pi/rehab_arm_logs/manifest.j
 ros2 run rehab_arm_psoc_bridge build_manifest.py /home/pi/rehab_arm_logs \
   --include-summary \
   --include-quality-report \
+  --topic-profile hardware_telemetry \
   --min-joint-messages 50 \
   --min-moving-joints 5 \
   --require-motor-state \
@@ -1414,6 +1417,8 @@ ros2 run rehab_arm_psoc_bridge build_manifest.py /home/pi/rehab_arm_logs \
 通过标准：
 
 - 每个有效 session 包含 `quality_report.schema_version=rehab_arm_recording_quality_v1`。
+- `quality_report.topic_profile` 记录本次使用的 profile，例如 `hardware_telemetry`。
+- `quality_report.required_topics` 记录该 profile 要求的 topic。
 - `quality_report.ok=true` 时，平台可把该 session 作为可标注/可导出的数据资产。
 - `quality_report.ok=false` 时，平台必须显示 blocking reason，不能把它当成合格训练数据。
 - 质量报告仍然只是数据质量门，不是电机上电或运动许可。

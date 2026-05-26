@@ -2250,3 +2250,19 @@ No such file or directory: /tmp/rehab_sim_collection/sim_demo_motion.jsonl
 状态：
 
 - `check_recording.py` 已支持 topic profile preset，并有 CLI 单测覆盖缺 `motor_state` 的失败路径。
+
+### 质量门和 manifest 也要使用同一个 topic profile
+
+现象：
+
+- 只在 `check_recording.py` 用 `--topic-profile` 会造成两套口径：topic 齐全性检查知道 `hardware_telemetry`，但质量门或 manifest 里的 `quality_report` 可能仍按默认基础 topic 通过。
+
+技巧：
+
+- `validate_recording_quality.py` 也使用 `--topic-profile hardware_telemetry` 或 `--topic-profile perception_vla`。
+- `build_manifest.py --include-quality-report` 同样带上 `--topic-profile`，让平台直接读取 `quality_report.topic_profile`、`required_topics` 和 `schema_check.missing_topics`。
+- profile 仍只是数据验收口径，不是运动许可；真机运动必须由 M33 安全状态机允许。
+
+状态：
+
+- 已统一接入 `validate_recording_quality.py`、`build_recording_quality_report()` 和 `build_manifest.py --include-quality-report`。

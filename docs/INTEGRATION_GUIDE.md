@@ -109,13 +109,14 @@ ros2 run rehab_arm_psoc_bridge summarize_recording.py /path/to/session.jsonl --p
 
 ```bash
 ros2 run rehab_arm_psoc_bridge validate_recording_quality.py /path/to/session.jsonl \
+  --topic-profile hardware_telemetry \
   --min-joint-messages 100 \
   --min-moving-joints 5 \
   --require-motor-state \
   --min-motor-entry-count 5
 ```
 
-输出 `rehab_arm_recording_quality_v1`，包含 `ok/errors/warnings/criteria/schema_check/summary`。总控台、标注工具或 CI 可以先看 `ok`，再读取 `errors` 给操作者。当前 logging-only/离线采集阶段默认不允许 `motion_allowed=true`。
+输出 `rehab_arm_recording_quality_v1`，包含 `ok/topic_profile/required_topics/errors/warnings/criteria/schema_check/summary`。总控台、标注工具或 CI 可以先看 `ok`，再读取 `errors` 和 `schema_check.missing_topics` 给操作者。当前 logging-only/离线采集阶段默认不允许 `motion_allowed=true`。
 
 ### Manifest
 
@@ -134,9 +135,24 @@ ros2 run rehab_arm_psoc_bridge build_manifest.py /home/pi/rehab_arm_logs \
   --output /home/pi/rehab_arm_logs/manifest_with_summary.json
 ```
 
+带质量门和 topic profile 的 manifest：
+
+```bash
+ros2 run rehab_arm_psoc_bridge build_manifest.py /home/pi/rehab_arm_logs \
+  --include-summary \
+  --include-quality-report \
+  --topic-profile hardware_telemetry \
+  --min-joint-messages 50 \
+  --min-moving-joints 5 \
+  --require-motor-state \
+  --min-motor-entry-count 5 \
+  --output /home/pi/rehab_arm_logs/manifest_with_quality.json
+```
+
 对接建议：
 
 - 标注工具、总控台、数据浏览页面优先读取 `manifest_with_summary.json`。
+- 需要上传前验收时优先读取 `manifest_with_quality.json`，并显示 `quality_report.topic_profile`、`quality_report.required_topics` 和 `quality_report.schema_check.missing_topics`。
 - 旧同步流程或只需要上传文件索引时，可以继续读取普通 `manifest.json`。
 - `summary` 字段是数据质量索引，不是控制指令。
 - 上传到 AI 合作平台后，平台侧会把该 summary 转成通用 `device_recording_quality_index_v1`。

@@ -356,6 +356,64 @@ class DataRecordingTests(unittest.TestCase):
         self.assertEqual(session['quality_report']['criteria']['min_moving_joints'], 1)
         self.assertEqual(session['quality_report']['summary']['moving_joint_count'], 1)
 
+    def test_build_recording_manifest_quality_report_accepts_topic_profile(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / 's1.jsonl'
+            records = [
+                make_session_metadata('s1', 'nanopi', 'arm', 'dev', 'simulation_data_collection', now=1.0),
+                make_payload_record('/joint_states', {}, now=2.0),
+                make_payload_record('/rehab_arm/safety_state', {'motion_allowed': False}, now=3.0),
+                make_payload_record('/rehab_arm/sensor_state', {}, now=4.0),
+            ]
+            with path.open('w', encoding='utf-8') as handle:
+                for record in records:
+                    write_jsonl_record(handle, record)
+
+            manifest = build_recording_manifest(
+                tmpdir,
+                include_quality_report=True,
+                topic_profile='hardware_telemetry',
+            )
+
+        report = manifest['sessions'][0]['quality_report']
+        self.assertIs(report['ok'], False)
+        self.assertEqual(report['topic_profile'], 'hardware_telemetry')
+        self.assertIn('/rehab_arm/motor_state', report['schema_check']['missing_topics'])
+
+    def test_build_manifest_cli_quality_report_accepts_topic_profile(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / 's1.jsonl'
+            records = [
+                make_session_metadata('s1', 'nanopi', 'arm', 'dev', 'simulation_data_collection', now=1.0),
+                make_payload_record('/joint_states', {}, now=2.0),
+                make_payload_record('/rehab_arm/safety_state', {'motion_allowed': False}, now=3.0),
+                make_payload_record('/rehab_arm/sensor_state', {}, now=4.0),
+            ]
+            with path.open('w', encoding='utf-8') as handle:
+                for record in records:
+                    write_jsonl_record(handle, record)
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).resolve().parents[1] / 'rehab_arm_psoc_bridge' / 'build_manifest.py'),
+                    tmpdir,
+                    '--include-quality-report',
+                    '--topic-profile',
+                    'hardware_telemetry',
+                ],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0)
+        manifest = json.loads(result.stdout)
+        report = manifest['sessions'][0]['quality_report']
+        self.assertEqual(report['topic_profile'], 'hardware_telemetry')
+        self.assertIn('/rehab_arm/motor_state', report['schema_check']['missing_topics'])
+
     def test_summarize_jsonl_records(self) -> None:
         records = [
             make_session_metadata('s1', 'nanopi', 'arm', 'dev', 'simulation_data_collection', now=1.0),
@@ -464,6 +522,64 @@ class DataRecordingTests(unittest.TestCase):
         self.assertIn('moving joint count 0 below required 1', joined_errors)
         self.assertIn('missing required /rehab_arm/motor_state messages', joined_errors)
         self.assertIn('motion_allowed true appeared 1 times', joined_errors)
+
+    def test_build_recording_quality_report_applies_topic_profile(self) -> None:
+        records = [
+            make_session_metadata('s1', 'nanopi', 'arm', 'dev', 'simulation_data_collection', now=1.0),
+            make_payload_record(
+                '/joint_states',
+                make_joint_state_payload(['j0'], [0.0], [0.0], [0.0], 1, 0),
+                now=2.0,
+            ),
+            make_payload_record('/rehab_arm/safety_state', {'state': 'ok', 'motion_allowed': False}, now=3.0),
+            make_payload_record('/rehab_arm/sensor_state', {'source': 'sim'}, now=4.0),
+        ]
+
+        report = build_recording_quality_report(
+            records,
+            topic_profile='hardware_telemetry',
+        )
+
+        self.assertIs(report['ok'], False)
+        self.assertEqual(report['topic_profile'], 'hardware_telemetry')
+        self.assertIn('/rehab_arm/motor_state', report['required_topics'])
+        self.assertIn('/rehab_arm/motor_state', report['schema_check']['missing_topics'])
+
+    def test_validate_recording_quality_cli_topic_profile_reports_missing_motor_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / 's1.jsonl'
+            records = [
+                make_session_metadata('s1', 'nanopi', 'arm', 'dev', 'simulation_data_collection', now=1.0),
+                make_payload_record(
+                    '/joint_states',
+                    make_joint_state_payload(['j0'], [0.0], [0.0], [0.0], 1, 0),
+                    now=2.0,
+                ),
+                make_payload_record('/rehab_arm/safety_state', {'state': 'ok', 'motion_allowed': False}, now=3.0),
+                make_payload_record('/rehab_arm/sensor_state', {'source': 'sim'}, now=4.0),
+            ]
+            with path.open('w', encoding='utf-8') as handle:
+                for record in records:
+                    write_jsonl_record(handle, record)
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).resolve().parents[1] / 'rehab_arm_psoc_bridge' / 'validate_recording_quality.py'),
+                    str(path),
+                    '--topic-profile',
+                    'hardware_telemetry',
+                ],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 1)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload['topic_profile'], 'hardware_telemetry')
+        self.assertIn('/rehab_arm/motor_state', payload['schema_check']['missing_topics'])
 
     def test_make_csv_rows_for_joint_and_motor_states(self) -> None:
         records = [

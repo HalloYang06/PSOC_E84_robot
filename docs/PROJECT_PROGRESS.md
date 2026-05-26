@@ -1030,3 +1030,11 @@
 - Validated: CLI smoke on a temporary JSONL returned `topic_profile=hardware_telemetry` and missing `/rehab_arm/motor_state`.
 - Safety: topic profile checks only read local JSONL files; they do not open CAN, start ROS nodes, upload data, command M33, or move motors.
 - Next step: use these presets in the next real NanoPi/MuJoCo data capture before building a manifest for platform sync.
+
+### 2026-05-26 - Recording quality gate topic profiles
+
+- Completed: `validate_recording_quality.py` and `build_manifest.py --include-quality-report` now accept `--topic-profile`.
+- Completed: quality reports include `topic_profile`, `required_topics`, and missing topic details for platform/annotation gating.
+- Validated: full `rehab_arm_psoc_bridge` unit tests passed 82 tests; `py_compile` passed for touched scripts.
+- Safety: read-only JSONL validation only; no ROS launch, CAN access, upload, M33 command, or motor motion.
+- Next step: run the same quality gate on the next real NanoPi or MuJoCo capture and surface the result in the platform data page.

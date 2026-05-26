@@ -350,8 +350,19 @@ def build_recording_quality_report(
     require_motor_state: bool = False,
     min_motor_entry_count: int = 0,
     allow_motion_allowed_true: bool = False,
+    required_topics: Iterable[str] | None = None,
+    topic_profile: str | None = None,
 ) -> dict[str, object]:
-    schema_check = validate_jsonl_records(records)
+    if topic_profile:
+        selected_required_topics = required_topics_for_profile(topic_profile)
+        if required_topics is not None:
+            selected_required_topics.extend(required_topics)
+    elif required_topics is not None:
+        selected_required_topics = list(required_topics)
+    else:
+        selected_required_topics = list(DEFAULT_RECORDED_TOPICS)
+
+    schema_check = validate_jsonl_records(records, selected_required_topics)
     summary = summarize_jsonl_records(records)
     errors: list[str] = list(schema_check.get('errors', []))
     warnings: list[str] = []
@@ -395,12 +406,15 @@ def build_recording_quality_report(
 
     if joint_message_count > 0 and moving_joint_count == 0:
         warnings.append('joint_states were recorded but no joint moved more than 0.01 rad')
-    if not require_motor_state and motor_message_count == 0:
+    motor_state_required_by_topics = '/rehab_arm/motor_state' in selected_required_topics
+    if not require_motor_state and not motor_state_required_by_topics and motor_message_count == 0:
         warnings.append('/rehab_arm/motor_state is absent; this may be fine for early raw recorder checks')
 
     return {
         'schema_version': 'rehab_arm_recording_quality_v1',
         'ok': not errors,
+        'topic_profile': topic_profile,
+        'required_topics': selected_required_topics,
         'errors': errors,
         'warnings': warnings,
         'criteria': {
@@ -538,6 +552,8 @@ def build_recording_manifest(
     require_motor_state: bool = False,
     min_motor_entry_count: int = 0,
     allow_motion_allowed_true: bool = False,
+    required_topics: Iterable[str] | None = None,
+    topic_profile: str | None = None,
 ) -> dict[str, object]:
     base = Path(log_dir).expanduser()
     sessions: list[dict[str, object]] = []
@@ -578,6 +594,8 @@ def build_recording_manifest(
                     require_motor_state=require_motor_state,
                     min_motor_entry_count=min_motor_entry_count,
                     allow_motion_allowed_true=allow_motion_allowed_true,
+                    required_topics=required_topics,
+                    topic_profile=topic_profile,
                 )
         except Exception as exc:
             entry.update({
