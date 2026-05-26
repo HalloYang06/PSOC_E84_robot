@@ -259,6 +259,94 @@
   margin-top: 8px;
 }
 
+.boardManifestDrawer {
+  min-width: 0;
+  margin-top: 10px;
+  border: 1px solid rgba(157, 234, 207, 0.14);
+  border-radius: 8px;
+  background: rgba(11, 25, 27, 0.72);
+}
+
+.boardManifestDrawer > summary {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 10px;
+  color: #eefcf7;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 900;
+  list-style: none;
+}
+
+.boardManifestDrawer > summary::-webkit-details-marker {
+  display: none;
+}
+
+.boardManifestDrawer > summary::after {
+  content: "+";
+  color: #8ef0c7;
+  font-weight: 900;
+}
+
+.boardManifestDrawer[open] > summary {
+  border-bottom: 1px solid rgba(157, 234, 207, 0.12);
+}
+
+.boardManifestDrawer[open] > summary::after {
+  content: "-";
+}
+
+.boardManifestGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  padding: 1px;
+  background: rgba(142, 240, 199, 0.12);
+}
+
+.boardManifestGrid article {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  min-height: 86px;
+  padding: 10px;
+  background: #0b191b;
+}
+
+.boardManifestGrid span {
+  color: #8ef0c7;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.boardManifestGrid strong,
+.boardManifestGrid p,
+.boardManifestDrawer > p {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.boardManifestGrid strong {
+  color: #eefcf7;
+  font-size: 13px;
+}
+
+.boardManifestGrid p,
+.boardManifestDrawer > p {
+  margin: 0;
+  color: rgba(238, 252, 247, 0.66);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.boardManifestDrawer > p {
+  padding: 9px 10px 10px;
+}
+
 .qualityStripHead {
   min-width: 0;
   display: flex;
@@ -2371,6 +2459,10 @@
   }
 
   .accessSetupGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .boardManifestGrid {
     grid-template-columns: 1fr;
   }
 

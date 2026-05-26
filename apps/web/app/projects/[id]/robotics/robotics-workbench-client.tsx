@@ -237,12 +237,29 @@ function boardCapabilities(device: AnyRecord) {
   const manifest = record(latestPayload(device, "board_manifest").manifest);
   const capabilities = record(manifest.capabilities);
   return {
+    manifest,
+    platform: record(manifest.platform),
+    controlBoundary: text(manifest.control_boundary, "未声明"),
     canInterfaces: asArray<AnyRecord>(capabilities.can_interfaces),
     serialDevices: asArray<string>(capabilities.serial_devices),
     cameraDevices: asArray<string>(capabilities.camera_devices),
     usbDevices: asArray<AnyRecord>(capabilities.usb_devices),
     ros2: record(capabilities.ros2),
   };
+}
+
+function ros2CapabilityText(ros2: AnyRecord) {
+  if (ros2.available === true) return text(ros2.version, "已发现 ROS2");
+  if (ros2.available === false) return "未发现";
+  return "未知";
+}
+
+function usbDeviceLabel(device: AnyRecord, index: number) {
+  return text(device.description, text(device.product, text(device.id, `USB ${index + 1}`)));
+}
+
+function canInterfaceLabel(iface: AnyRecord, index: number) {
+  return text(iface.name, `can${index}`);
 }
 
 function keyframeSrc(imageUrl: string) {
@@ -522,6 +539,7 @@ function DeviceDataOverview({ device }: { device: AnyRecord }) {
   const cameraPayload = latestPayload(device, "camera_keyframe");
   const simReport = simulationReport(device);
   const manifest = record(device.manifest);
+  const board = boardCapabilities(device);
   const motors = asArray<AnyRecord>(motorPayload.motors);
   const quality = record(device.data_quality);
   const blockingReasons = asArray<string>(quality.blocking_reasons);
@@ -605,6 +623,43 @@ function DeviceDataOverview({ device }: { device: AnyRecord }) {
           <p>当前 session：{text(device.current_session, text(manifest.session_id, "无 session"))}</p>
         </article>
       </div>
+
+      <details className={styles.boardManifestDrawer}>
+        <summary>开发板能力清单</summary>
+        <div className={styles.boardManifestGrid}>
+          <article>
+            <span>系统</span>
+            <strong>{text(board.platform.hostname, text(board.manifest.device_id, deviceId(device)))}</strong>
+            <p>{text(board.platform.release, "未上传系统版本")}</p>
+          </article>
+          <article>
+            <span>ROS2</span>
+            <strong>{ros2CapabilityText(board.ros2)}</strong>
+            <p>{board.ros2.available === true ? "可继续做仿真/采集自检。" : "后续仿真主机需要先补 ROS2 环境。"}</p>
+          </article>
+          <article>
+            <span>CAN</span>
+            <strong>{board.canInterfaces.length ? `${board.canInterfaces.length} 个接口` : "未发现"}</strong>
+            <p>{board.canInterfaces.slice(0, 3).map(canInterfaceLabel).join(" / ") || "等待板端 manifest 或 motor_state。"}</p>
+          </article>
+          <article>
+            <span>串口</span>
+            <strong>{board.serialDevices.length ? `${board.serialDevices.length} 个设备` : "未发现"}</strong>
+            <p>{board.serialDevices.slice(0, 3).join(" / ") || "扫描开发板后显示 ttyUSB/ttyACM 等设备。"}</p>
+          </article>
+          <article>
+            <span>摄像头</span>
+            <strong>{board.cameraDevices.length ? `${board.cameraDevices.length} 路` : "未发现"}</strong>
+            <p>{board.cameraDevices.slice(0, 3).join(" / ") || "camera_keyframe 可先补最近帧。"}</p>
+          </article>
+          <article>
+            <span>USB</span>
+            <strong>{board.usbDevices.length ? `${board.usbDevices.length} 个设备` : "未发现"}</strong>
+            <p>{board.usbDevices.slice(0, 2).map(usbDeviceLabel).join(" / ") || "用于确认 USB-CAN、相机或传感器适配器。"}</p>
+          </article>
+        </div>
+        <p>边界：{board.controlBoundary}。这里是只读清单，不代表允许运动，不下发 ROS、CAN 或电机命令。</p>
+      </details>
     </section>
   );
 }
