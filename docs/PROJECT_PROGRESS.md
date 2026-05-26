@@ -1108,3 +1108,13 @@
 - Not validated: M33 firmware has not emitted `0x330~0x337` yet; this is a firmware-pending contract.
 - Safety: parser is telemetry-only, does not open CAN, send `0x320/0x321`, command M33, or move motors. User has allowed 3/7 small motion later, but this increment intentionally stayed offline.
 - Next step: add a read-only ROS bridge path that converts received M33 `0x330~0x337` frames into `/rehab_arm/motor_state`, then test with synthetic frames before hardware.
+
+### 2026-05-26 - M33 motor telemetry read-only ROS bridge path
+
+- Completed: `psoc_can_bridge_node.py` now recognizes `0x330~0x337`, aggregates latest valid M33 motor status frames by slot, and publishes `/rehab_arm/motor_state`.
+- Completed: added aggregator tests for latest-per-slot behavior and invalid-frame rejection.
+- Validated: targeted `test_psoc_motor_status.py` passed 9 tests.
+- Validated: full `rehab_arm_psoc_bridge` unit tests passed 105 tests; `py_compile` passed for `psoc_motor_status.py` and `psoc_can_bridge_node.py`.
+- Not validated: no live M33 `0x330~0x337` frames yet; hardware execution was not touched.
+- Safety: bridge path is receive-only telemetry. It does not change `0x320` sending, does not enable `enable_target_tx`, and does not authorize motor motion.
+- Next step: add a synthetic SocketCAN/candump-style smoke command or launch test so NanoPi can verify `/rehab_arm/motor_state` publication before asking M33 firmware to emit real frames.

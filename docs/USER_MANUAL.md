@@ -545,6 +545,14 @@ python -m unittest rehab_arm_ros2_ws\src\rehab_arm_psoc_bridge\test\test_psoc_mo
 
 注意：`0x330~0x337` 当前是 M33 固件待实现的正式遥测草案，只用于 NanoPi/ROS/平台读取电机状态。它不是运动命令，也不能替代 `0x322` 安全状态。
 
+当 M33 后续开始发送合法 `0x330~0x337` 时，现有 `psoc_can_bridge_node.py` 会自动把这些帧聚合发布到：
+
+```text
+/rehab_arm/motor_state
+```
+
+这条 topic 的用途是状态显示、数据采集、标注、平台同步和仿真状态对齐。它不下发运动，不代表系统可以动；是否允许运动仍看 M33 `0x322` safety/status 和 M33 内部安全状态机。
+
 ### 4.5 `0x322` V2 状态解析
 
 协议字段见：[PSOC_CAN_PROTOCOL_V1.md](PSOC_CAN_PROTOCOL_V1.md)。

@@ -166,6 +166,7 @@ NanoPi 侧映射：
 
 - 只读遥测，不发控制命令。
 - 转为 `/rehab_arm/motor_state` 时标记 `protocol=m33_motor_status_v1`。
+- `psoc_can_bridge_node.py` 会在收到合法 `0x330~0x337` 后发布 `/rehab_arm/motor_state` JSON。
 - `0x330` 对应 slot 0，`0x337` 对应 slot 7；slot 到真实关节的最终映射仍需 M33/机械装配确认。
 - 运动是否允许仍以 `0x322` safety/status 和 M33 内部安全状态机为准。
 

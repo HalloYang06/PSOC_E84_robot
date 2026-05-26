@@ -18,6 +18,10 @@ from sensor_msgs.msg import JointState
 from std_msgs.msg import String
 from trajectory_msgs.msg import JointTrajectory
 
+from rehab_arm_psoc_bridge.psoc_motor_status import (
+    M33MotorStatusAggregator,
+    is_m33_motor_status_id,
+)
 from rehab_arm_psoc_bridge.psoc_status import parse_psoc_status_payload
 from rehab_arm_psoc_bridge.safety_state import bridge_safety_payload
 
@@ -117,6 +121,8 @@ class PsocCanBridgeNode(Node):
         self.declare_parameter('reject_out_of_limit_trajectory', True)
         self.declare_parameter('max_trajectory_points', 100)
         self.declare_parameter('enable_target_tx', False)
+        self.declare_parameter('robot_id', 'rehab-arm-alpha')
+        self.declare_parameter('device_id', 'nanopi-m5')
 
         self.iface = str(self.get_parameter('interface').value)
         self.send_rate_hz = float(self.get_parameter('send_rate_hz').value)
@@ -131,6 +137,8 @@ class PsocCanBridgeNode(Node):
         )
         self.max_trajectory_points = int(self.get_parameter('max_trajectory_points').value)
         self.enable_target_tx = bool(self.get_parameter('enable_target_tx').value)
+        self.robot_id = str(self.get_parameter('robot_id').value)
+        self.device_id = str(self.get_parameter('device_id').value)
 
         self.sock = socket.socket(socket.PF_CAN, socket.SOCK_RAW, socket.CAN_RAW)
         self.sock.bind((self.iface,))
@@ -150,10 +158,13 @@ class PsocCanBridgeNode(Node):
         self.last_safety_state = ''
         self.target_tx_count = 0
         self.target_dry_run_count = 0
+        self.motor_status_rx_count = 0
+        self.motor_status_aggregator = M33MotorStatusAggregator(self.robot_id, self.device_id)
 
         self.joint_pub = self.create_publisher(JointState, '/joint_states', 20)
         self.safety_pub = self.create_publisher(String, '/rehab_arm/safety_state', 10)
         self.sensor_pub = self.create_publisher(String, '/rehab_arm/sensor_state', 20)
+        self.motor_pub = self.create_publisher(String, '/rehab_arm/motor_state', 20)
         self.traj_sub = self.create_subscription(
             JointTrajectory,
             '/arm_controller/joint_trajectory',
@@ -336,6 +347,8 @@ class PsocCanBridgeNode(Node):
     def handle_rx(self, frame: CanFrame) -> None:
         if frame.can_id == PSOC_STATUS_ID:
             self.handle_psoc_status(frame)
+        elif is_m33_motor_status_id(frame.can_id):
+            self.handle_m33_motor_status(frame)
         elif frame.can_id == F103_SENSOR_ID:
             self.handle_f103_sensor(frame)
         elif frame.can_id == F103_HEALTH_ID:
@@ -349,6 +362,16 @@ class PsocCanBridgeNode(Node):
         self.last_psoc_error_code = error_code if isinstance(error_code, int) else None
         self.last_psoc_status_ok = payload['state'] == 'ok'
         self.safety_pub.publish(String(data=json.dumps(payload, separators=(',', ':'))))
+
+    def handle_m33_motor_status(self, frame: CanFrame) -> None:
+        payload = self.motor_status_aggregator.accept_frame(frame.can_id, frame.data)
+        if payload is None:
+            self.get_logger().warn(
+                f'ignored invalid M33 motor status {frame.can_id:03X} {frame.data.hex().upper()}'
+            )
+            return
+        self.motor_status_rx_count += 1
+        self.motor_pub.publish(String(data=json.dumps(payload, separators=(',', ':'))))
 
     def handle_f103_sensor(self, frame: CanFrame) -> None:
         payload = {'source': 'f103', 'id_hex': '0x7C2', 'data': frame.data.hex().upper()}

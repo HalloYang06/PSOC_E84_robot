@@ -133,3 +133,37 @@ def make_m33_motor_state_payload(
     payload['frame_count'] = len(frames)
     payload['valid_motor_count'] = len(motors)
     return payload
+
+
+class M33MotorStatusAggregator:
+    def __init__(self, robot_id: str, device_id: str):
+        self.robot_id = robot_id
+        self.device_id = device_id
+        self.latest_by_slot: dict[int, dict[str, object]] = {}
+        self.invalid_frame_count = 0
+        self.valid_frame_count = 0
+
+    def accept_frame(
+        self,
+        can_id: int,
+        data: bytes,
+        now: float | None = None,
+    ) -> dict[str, object] | None:
+        motor = parse_m33_motor_status_frame(can_id, data)
+        if motor.get('valid') is not True:
+            self.invalid_frame_count += 1
+            return None
+
+        slot = motor.get('status_slot')
+        if isinstance(slot, int):
+            self.latest_by_slot[slot] = motor
+        self.valid_frame_count += 1
+        payload = make_m33_motor_state_payload(
+            frames=[self.latest_by_slot[key] for key in sorted(self.latest_by_slot)],
+            robot_id=self.robot_id,
+            device_id=self.device_id,
+            now=now,
+        )
+        payload['aggregator_valid_frame_count'] = self.valid_frame_count
+        payload['aggregator_invalid_frame_count'] = self.invalid_frame_count
+        return payload

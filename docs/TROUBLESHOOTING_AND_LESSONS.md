@@ -2444,3 +2444,4 @@ No such file or directory: /tmp/rehab_sim_collection/sim_demo_motion.jsonl
 状态：
 
 - NanoPi 侧已新增 `psoc_motor_status.py` 和 7 个离线单元测试。
+- `psoc_can_bridge_node.py` 已接入只读发布路径，收到合法 `0x330~0x337` 后发布 `/rehab_arm/motor_state`。

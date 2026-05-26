@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from rehab_arm_psoc_bridge.psoc_motor_status import (  # noqa: E402
     M33_MOTOR_STATUS_MARKER,
+    M33MotorStatusAggregator,
     MOTOR_STATUS_FLAG_ENABLED,
     MOTOR_STATUS_FLAG_FAULT,
     MOTOR_STATUS_FLAG_LIMITED,
@@ -122,6 +123,37 @@ class PsocMotorStatusTests(unittest.TestCase):
         self.assertEqual(payload['frame_count'], 2)
         self.assertEqual(payload['valid_motor_count'], 1)
         self.assertEqual(payload['motors'][0]['motor_id'], 4)
+
+    def test_aggregator_keeps_latest_valid_status_by_slot(self) -> None:
+        aggregator = M33MotorStatusAggregator('rehab-arm-alpha', 'nanopi-m5')
+
+        first = aggregator.accept_frame(
+            0x331,
+            bytes([M33_MOTOR_STATUS_MARKER, 1, 5, MOTOR_STATUS_FLAG_ENABLED, 10, 0, 1, 31]),
+            now=10.0,
+        )
+        second = aggregator.accept_frame(
+            0x330,
+            bytes([M33_MOTOR_STATUS_MARKER, 2, 4, MOTOR_STATUS_FLAG_ENABLED, 20, 0, 2, 32]),
+            now=11.0,
+        )
+
+        self.assertEqual(first['valid_motor_count'], 1)
+        self.assertEqual(second['source'], 'm33_motor_status_v1')
+        self.assertEqual(second['valid_motor_count'], 2)
+        self.assertEqual(second['motors'][0]['status_slot'], 0)
+        self.assertEqual(second['motors'][1]['status_slot'], 1)
+        self.assertEqual(second['aggregator_valid_frame_count'], 2)
+        self.assertEqual(second['aggregator_invalid_frame_count'], 0)
+
+    def test_aggregator_ignores_invalid_status_frames(self) -> None:
+        aggregator = M33MotorStatusAggregator('rehab-arm-alpha', 'nanopi-m5')
+
+        payload = aggregator.accept_frame(0x330, bytes([0, 1, 4, 0, 0, 0, 0, 32]), now=10.0)
+
+        self.assertIsNone(payload)
+        self.assertEqual(aggregator.valid_frame_count, 0)
+        self.assertEqual(aggregator.invalid_frame_count, 1)
 
 
 if __name__ == '__main__':
