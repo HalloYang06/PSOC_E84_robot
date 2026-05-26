@@ -507,7 +507,7 @@
 #endif
 
 #ifndef CONTROL_PREARM_ESTOP_INPUT_SOURCE
-#define CONTROL_PREARM_ESTOP_INPUT_SOURCE "unwired"
+#define CONTROL_PREARM_ESTOP_INPUT_SOURCE "rpi40_pin11_gpio0_rpi_gpio10"
 #endif
 
 #ifndef CONTROL_PREARM_ESTOP_SAFE_NOW
@@ -519,7 +519,7 @@
 #endif
 
 #ifndef CONTROL_PREARM_POWER_INPUT_SOURCE
-#define CONTROL_PREARM_POWER_INPUT_SOURCE "unwired"
+#define CONTROL_PREARM_POWER_INPUT_SOURCE "rpi40_pin13_gpio2_rpi_gpio9"
 #endif
 
 #ifndef CONTROL_PREARM_POWER_SAFE_NOW
@@ -531,7 +531,7 @@
 #endif
 
 #ifndef CONTROL_PREARM_LIMITS_SOURCE
-#define CONTROL_PREARM_LIMITS_SOURCE       "unwired"
+#define CONTROL_PREARM_LIMITS_SOURCE       "software_joint_limits_user_configured"
 #endif
 
 #ifndef CONTROL_PREARM_LIMITS_SAFE_NOW
