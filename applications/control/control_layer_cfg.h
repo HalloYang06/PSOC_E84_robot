@@ -200,6 +200,102 @@
 #define CONTROL_MOTOR_JOINT7_GEAR_RATIO    (9.0f)
 #endif
 
+/* Joint calibration gate.
+ *
+ * Absolute position control is dangerous until each joint has a known software
+ * zero, direction, and verified scale. Keep every joint uncalibrated by default;
+ * enable one joint at a time only after bench calibration proves that small
+ * +/- targets move in the expected physical direction and magnitude.
+ *
+ * Zero offsets are motor-protocol-side radians after direction and gear-ratio
+ * conversion. M33 uses:
+ *   motor_target = joint_target * direction * gear_ratio + zero_offset
+ *   joint_state  = (motor_state - zero_offset) / (direction * gear_ratio)
+ */
+#ifndef CONTROL_MOTOR_JOINT1_CALIBRATED
+#define CONTROL_MOTOR_JOINT1_CALIBRATED    0U
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT2_CALIBRATED
+#define CONTROL_MOTOR_JOINT2_CALIBRATED    0U
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT3_CALIBRATED
+#define CONTROL_MOTOR_JOINT3_CALIBRATED    0U
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT4_CALIBRATED
+#define CONTROL_MOTOR_JOINT4_CALIBRATED    0U
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT5_CALIBRATED
+#define CONTROL_MOTOR_JOINT5_CALIBRATED    0U
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT6_CALIBRATED
+#define CONTROL_MOTOR_JOINT6_CALIBRATED    0U
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT7_CALIBRATED
+#define CONTROL_MOTOR_JOINT7_CALIBRATED    0U
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT1_DIRECTION
+#define CONTROL_MOTOR_JOINT1_DIRECTION     (1.0f)
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT2_DIRECTION
+#define CONTROL_MOTOR_JOINT2_DIRECTION     (1.0f)
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT3_DIRECTION
+#define CONTROL_MOTOR_JOINT3_DIRECTION     (1.0f)
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT4_DIRECTION
+#define CONTROL_MOTOR_JOINT4_DIRECTION     (1.0f)
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT5_DIRECTION
+#define CONTROL_MOTOR_JOINT5_DIRECTION     (1.0f)
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT6_DIRECTION
+#define CONTROL_MOTOR_JOINT6_DIRECTION     (1.0f)
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT7_DIRECTION
+#define CONTROL_MOTOR_JOINT7_DIRECTION     (1.0f)
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT1_ZERO_OFFSET_RAD
+#define CONTROL_MOTOR_JOINT1_ZERO_OFFSET_RAD (0.0f)
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT2_ZERO_OFFSET_RAD
+#define CONTROL_MOTOR_JOINT2_ZERO_OFFSET_RAD (0.0f)
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT3_ZERO_OFFSET_RAD
+#define CONTROL_MOTOR_JOINT3_ZERO_OFFSET_RAD (0.0f)
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT4_ZERO_OFFSET_RAD
+#define CONTROL_MOTOR_JOINT4_ZERO_OFFSET_RAD (0.0f)
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT5_ZERO_OFFSET_RAD
+#define CONTROL_MOTOR_JOINT5_ZERO_OFFSET_RAD (0.0f)
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT6_ZERO_OFFSET_RAD
+#define CONTROL_MOTOR_JOINT6_ZERO_OFFSET_RAD (0.0f)
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT7_ZERO_OFFSET_RAD
+#define CONTROL_MOTOR_JOINT7_ZERO_OFFSET_RAD (0.0f)
+#endif
+
 #ifndef CONTROL_CANSIMPLE_POS_REV_PER_RAD
 #define CONTROL_CANSIMPLE_POS_REV_PER_RAD  (0.15915494309189535f)
 #endif
@@ -501,6 +597,10 @@
 
 #ifndef CONTROL_STATUS_DETAIL_LOGGING_ONLY
 #define CONTROL_STATUS_DETAIL_LOGGING_ONLY 10U
+#endif
+
+#ifndef CONTROL_STATUS_DETAIL_JOINT_UNCALIBRATED
+#define CONTROL_STATUS_DETAIL_JOINT_UNCALIBRATED 11U
 #endif
 
 /* ROS trajectory joint ids use 0-based indexing. These software audit limits

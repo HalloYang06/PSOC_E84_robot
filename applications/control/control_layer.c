@@ -176,6 +176,39 @@ static const float s_joint_gear_ratio_map[7] =
     CONTROL_MOTOR_JOINT7_GEAR_RATIO,
 };
 
+static const rt_uint8_t s_joint_calibrated_map[7] =
+{
+    (rt_uint8_t)CONTROL_MOTOR_JOINT1_CALIBRATED,
+    (rt_uint8_t)CONTROL_MOTOR_JOINT2_CALIBRATED,
+    (rt_uint8_t)CONTROL_MOTOR_JOINT3_CALIBRATED,
+    (rt_uint8_t)CONTROL_MOTOR_JOINT4_CALIBRATED,
+    (rt_uint8_t)CONTROL_MOTOR_JOINT5_CALIBRATED,
+    (rt_uint8_t)CONTROL_MOTOR_JOINT6_CALIBRATED,
+    (rt_uint8_t)CONTROL_MOTOR_JOINT7_CALIBRATED,
+};
+
+static const float s_joint_direction_map[7] =
+{
+    CONTROL_MOTOR_JOINT1_DIRECTION,
+    CONTROL_MOTOR_JOINT2_DIRECTION,
+    CONTROL_MOTOR_JOINT3_DIRECTION,
+    CONTROL_MOTOR_JOINT4_DIRECTION,
+    CONTROL_MOTOR_JOINT5_DIRECTION,
+    CONTROL_MOTOR_JOINT6_DIRECTION,
+    CONTROL_MOTOR_JOINT7_DIRECTION,
+};
+
+static const float s_joint_zero_offset_rad_map[7] =
+{
+    CONTROL_MOTOR_JOINT1_ZERO_OFFSET_RAD,
+    CONTROL_MOTOR_JOINT2_ZERO_OFFSET_RAD,
+    CONTROL_MOTOR_JOINT3_ZERO_OFFSET_RAD,
+    CONTROL_MOTOR_JOINT4_ZERO_OFFSET_RAD,
+    CONTROL_MOTOR_JOINT5_ZERO_OFFSET_RAD,
+    CONTROL_MOTOR_JOINT6_ZERO_OFFSET_RAD,
+    CONTROL_MOTOR_JOINT7_ZERO_OFFSET_RAD,
+};
+
 static rt_uint16_t ctrl_u16_from_le(const rt_uint8_t *buf)
 {
     return (rt_uint16_t)((rt_uint16_t)buf[0] | ((rt_uint16_t)buf[1] << 8));
@@ -348,24 +381,65 @@ static float ctrl_motor_gear_ratio_by_joint(rt_uint8_t joint_id)
     return (ratio > 0.0f) ? ratio : 1.0f;
 }
 
+static rt_bool_t ctrl_motor_joint_is_calibrated(rt_uint8_t joint_id)
+{
+    if ((joint_id == 0U) || (joint_id > CONTROL_MOTOR_JOINT_COUNT))
+    {
+        return RT_FALSE;
+    }
+
+    return (s_joint_calibrated_map[joint_id - 1U] != 0U) ? RT_TRUE : RT_FALSE;
+}
+
+static float ctrl_motor_direction_by_joint(rt_uint8_t joint_id)
+{
+    float direction;
+
+    if ((joint_id == 0U) || (joint_id > CONTROL_MOTOR_JOINT_COUNT))
+    {
+        return 1.0f;
+    }
+
+    direction = s_joint_direction_map[joint_id - 1U];
+    return (direction < 0.0f) ? -1.0f : 1.0f;
+}
+
+static float ctrl_motor_zero_offset_by_joint(rt_uint8_t joint_id)
+{
+    if ((joint_id == 0U) || (joint_id > CONTROL_MOTOR_JOINT_COUNT))
+    {
+        return 0.0f;
+    }
+
+    return s_joint_zero_offset_rad_map[joint_id - 1U];
+}
+
 static float ctrl_joint_to_motor_position(rt_uint8_t joint_id, float joint_pos_rad)
 {
-    return joint_pos_rad * ctrl_motor_gear_ratio_by_joint(joint_id);
+    return (joint_pos_rad *
+            ctrl_motor_direction_by_joint(joint_id) *
+            ctrl_motor_gear_ratio_by_joint(joint_id)) +
+           ctrl_motor_zero_offset_by_joint(joint_id);
 }
 
 static float ctrl_motor_to_joint_position(rt_uint8_t joint_id, float motor_pos_rad)
 {
-    return motor_pos_rad / ctrl_motor_gear_ratio_by_joint(joint_id);
+    return ((motor_pos_rad - ctrl_motor_zero_offset_by_joint(joint_id)) /
+            ctrl_motor_gear_ratio_by_joint(joint_id)) *
+           ctrl_motor_direction_by_joint(joint_id);
 }
 
 static float ctrl_joint_to_motor_velocity(rt_uint8_t joint_id, float joint_vel_rad_s)
 {
-    return joint_vel_rad_s * ctrl_motor_gear_ratio_by_joint(joint_id);
+    return joint_vel_rad_s *
+           ctrl_motor_direction_by_joint(joint_id) *
+           ctrl_motor_gear_ratio_by_joint(joint_id);
 }
 
 static float ctrl_motor_to_joint_velocity(rt_uint8_t joint_id, float motor_vel_rad_s)
 {
-    return motor_vel_rad_s / ctrl_motor_gear_ratio_by_joint(joint_id);
+    return (motor_vel_rad_s / ctrl_motor_gear_ratio_by_joint(joint_id)) *
+           ctrl_motor_direction_by_joint(joint_id);
 }
 
 static rt_bool_t ctrl_motor_id_invalid_for_joint(rt_uint8_t joint_id, rt_uint8_t motor_id)
@@ -1555,6 +1629,7 @@ typedef enum
     CONTROL_ROS_REJECT_POSITION_LIMIT,
     CONTROL_ROS_REJECT_SPEED_LIMIT,
     CONTROL_ROS_REJECT_TORQUE_LIMIT,
+    CONTROL_ROS_REJECT_JOINT_UNCALIBRATED,
     CONTROL_ROS_REJECT_UNSUPPORTED_CMD,
 } control_ros_reject_reason_t;
 
@@ -1571,6 +1646,7 @@ typedef struct
     rt_bool_t target_in_limit;
     rt_bool_t rpm_in_limit;
     rt_bool_t torque_in_limit;
+    rt_bool_t joint_calibrated;
 } control_ros_safety_assessment_t;
 
 typedef struct
@@ -1654,6 +1730,8 @@ static const char *ctrl_ros_reject_reason_name(control_ros_reject_reason_t reaso
         return "velocity_out_of_limit";
     case CONTROL_ROS_REJECT_TORQUE_LIMIT:
         return "torque_out_of_limit";
+    case CONTROL_ROS_REJECT_JOINT_UNCALIBRATED:
+        return "joint_uncalibrated";
     case CONTROL_ROS_REJECT_UNSUPPORTED_CMD:
         return "unsupported_command";
     default:
@@ -1679,6 +1757,8 @@ static rt_uint8_t ctrl_ros_reject_reason_detail_code(control_ros_reject_reason_t
         return CONTROL_STATUS_DETAIL_VELOCITY_OUT_OF_LIMIT;
     case CONTROL_ROS_REJECT_TORQUE_LIMIT:
         return CONTROL_STATUS_DETAIL_TORQUE_OUT_OF_LIMIT;
+    case CONTROL_ROS_REJECT_JOINT_UNCALIBRATED:
+        return CONTROL_STATUS_DETAIL_JOINT_UNCALIBRATED;
     case CONTROL_ROS_REJECT_UNSUPPORTED_CMD:
         return CONTROL_STATUS_DETAIL_UNSUPPORTED_COMMAND;
     default:
@@ -1808,6 +1888,7 @@ static void ctrl_ros_safety_assessment_init(control_ros_safety_assessment_t *ass
     assessment->target_in_limit = RT_TRUE;
     assessment->rpm_in_limit = RT_TRUE;
     assessment->torque_in_limit = RT_TRUE;
+    assessment->joint_calibrated = RT_FALSE;
 }
 
 static control_ros_reject_reason_t ctrl_ros_first_reject_reason(const control_ros_safety_assessment_t *assessment)
@@ -1837,6 +1918,10 @@ static control_ros_reject_reason_t ctrl_ros_first_reject_reason(const control_ro
     {
         return CONTROL_ROS_REJECT_TORQUE_LIMIT;
     }
+    if (!assessment->joint_calibrated)
+    {
+        return CONTROL_ROS_REJECT_JOINT_UNCALIBRATED;
+    }
 
     return CONTROL_ROS_REJECT_NONE;
 }
@@ -1862,6 +1947,11 @@ static void ctrl_assess_ros_command_safety(const control_ros_command_t *cmd,
 
     assessment->joint_known =
         ctrl_ros_joint_limit(cmd->joint_id, &assessment->joint_min_01deg, &assessment->joint_max_01deg);
+    if (assessment->joint_known)
+    {
+        assessment->joint_calibrated =
+            ctrl_motor_joint_is_calibrated(ctrl_ros_joint_to_motor_joint(cmd->joint_id));
+    }
 
     if (cmd->command == CONTROL_ROS_CMD_STOP)
     {
@@ -1979,10 +2069,11 @@ static void ctrl_log_ros_command_only(const struct rt_can_msg *msg, const contro
                assessment.joint_known ? 1U : 0U,
                (int)assessment.joint_min_01deg,
                (int)assessment.joint_max_01deg);
-    rt_kprintf("audit target_in_limit=%u rpm_in_limit=%u torque_in_limit=%u max_rpm=%d max_torque_ma=%d\n",
+    rt_kprintf("audit target_in_limit=%u rpm_in_limit=%u torque_in_limit=%u joint_calibrated=%u max_rpm=%d max_torque_ma=%d\n",
                assessment.target_in_limit ? 1U : 0U,
                assessment.rpm_in_limit ? 1U : 0U,
                assessment.torque_in_limit ? 1U : 0U,
+               assessment.joint_calibrated ? 1U : 0U,
                (int)CONTROL_ROS_MAX_TARGET_RPM,
                (int)CONTROL_ROS_MAX_TARGET_TORQUE_MA);
     rt_kprintf("final action=no_motor_output logging_only=%u\n",
@@ -2039,10 +2130,11 @@ static void ctrl_log_ros_command_assessment(const struct rt_can_msg *msg,
                assessment->joint_known ? 1U : 0U,
                (int)assessment->joint_min_01deg,
                (int)assessment->joint_max_01deg);
-    rt_kprintf("audit target_in_limit=%u rpm_in_limit=%u torque_in_limit=%u max_rpm=%d max_torque_ma=%d bench_motion=%u\n",
+    rt_kprintf("audit target_in_limit=%u rpm_in_limit=%u torque_in_limit=%u joint_calibrated=%u max_rpm=%d max_torque_ma=%d bench_motion=%u\n",
                assessment->target_in_limit ? 1U : 0U,
                assessment->rpm_in_limit ? 1U : 0U,
                assessment->torque_in_limit ? 1U : 0U,
+               assessment->joint_calibrated ? 1U : 0U,
                (int)CONTROL_ROS_MAX_TARGET_RPM,
                (int)CONTROL_ROS_MAX_TARGET_TORQUE_MA,
                (unsigned int)CONTROL_DEVELOPMENT_BENCH_MOTION_ENABLE);
@@ -3067,6 +3159,22 @@ rt_err_t control_motor_position_control(rt_uint8_t joint_id, float pos_rad, floa
 {
     rt_err_t ret;
     control_motor_run_mode_t mode = csp_mode ? CONTROL_MOTOR_RUN_MODE_CSP : CONTROL_MOTOR_RUN_MODE_PP;
+    float motor_pos_rad;
+    float motor_limit_spd;
+
+    if (!ctrl_motor_joint_is_calibrated(joint_id))
+    {
+        rt_kprintf("[control] reject position control: joint=%u uncalibrated\n",
+                   (unsigned int)joint_id);
+        return -RT_EINVAL;
+    }
+
+    motor_pos_rad = ctrl_joint_to_motor_position(joint_id, pos_rad);
+    motor_limit_spd = ctrl_joint_to_motor_velocity(joint_id, limit_spd);
+    if (motor_limit_spd < 0.0f)
+    {
+        motor_limit_spd = -motor_limit_spd;
+    }
 
     if (ctrl_motor_protocol_by_joint(joint_id) == CONTROL_MOTOR_PROTOCOL_CANSIMPLE)
     {
@@ -3087,8 +3195,7 @@ rt_err_t control_motor_position_control(rt_uint8_t joint_id, float pos_rad, floa
         }
 
         rt_thread_mdelay(1);
-        ctrl_float_to_le(ctrl_joint_to_motor_velocity(joint_id, limit_spd) *
-                         CONTROL_CANSIMPLE_VEL_REV_PER_RAD_S,
+        ctrl_float_to_le(motor_limit_spd * CONTROL_CANSIMPLE_VEL_REV_PER_RAD_S,
                          &payload[0]);
         ctrl_float_to_le(0.0f, &payload[4]);
         ret = ctrl_cansimple_send(motor_id, CANSIMPLE_CMD_SET_LIMITS, payload, sizeof(payload));
@@ -3124,7 +3231,7 @@ rt_err_t control_motor_position_control(rt_uint8_t joint_id, float pos_rad, floa
     rt_thread_mdelay(2);
     if (csp_mode)
     {
-        ret = control_motor_write_parameter(joint_id, MOTOR_PARAM_INDEX_LIMIT_SPD, limit_spd, RT_FALSE);
+        ret = control_motor_write_parameter(joint_id, MOTOR_PARAM_INDEX_LIMIT_SPD, motor_limit_spd, RT_FALSE);
         if (ret != RT_EOK)
         {
             return ret;
@@ -3132,7 +3239,7 @@ rt_err_t control_motor_position_control(rt_uint8_t joint_id, float pos_rad, floa
     }
     else
     {
-        ret = control_motor_write_parameter(joint_id, MOTOR_PARAM_INDEX_PP_VEL_MAX, limit_spd, RT_FALSE);
+        ret = control_motor_write_parameter(joint_id, MOTOR_PARAM_INDEX_PP_VEL_MAX, motor_limit_spd, RT_FALSE);
         if (ret != RT_EOK)
         {
             return ret;
@@ -3150,7 +3257,7 @@ rt_err_t control_motor_position_control(rt_uint8_t joint_id, float pos_rad, floa
     }
 
     rt_thread_mdelay(1);
-    return control_motor_write_parameter(joint_id, MOTOR_PARAM_INDEX_LOC_REF, pos_rad, RT_FALSE);
+    return control_motor_write_parameter(joint_id, MOTOR_PARAM_INDEX_LOC_REF, motor_pos_rad, RT_FALSE);
 }
 
 static void ctrl_speed_hold_entry(void *parameter)
@@ -3251,10 +3358,19 @@ rt_err_t control_joint_motor_set_target(rt_uint8_t joint_id,
     /* Compatibility assumption: 1000 mA ~= 1 N.m */
     torque_nm = ((float)target_torque_ma) / 1000.0f;
 
+    if (!ctrl_motor_joint_is_calibrated(joint_id))
+    {
+        rt_kprintf("[control] reject joint target: joint=%u uncalibrated pos_01deg=%d rpm=%d\n",
+                   (unsigned int)joint_id,
+                   (int)target_pos_01deg,
+                   (int)target_vel_rpm);
+        return -RT_EINVAL;
+    }
+
     (void)control_motor_enable(joint_id);
     return control_motor_private_control(joint_id,
-                                         pos_rad,
-                                         vel_rad_s,
+                                         ctrl_joint_to_motor_position(joint_id, pos_rad),
+                                         ctrl_joint_to_motor_velocity(joint_id, vel_rad_s),
                                          CONTROL_MOTOR_DEFAULT_KP,
                                          CONTROL_MOTOR_DEFAULT_KD,
                                          torque_nm);
@@ -4230,6 +4346,42 @@ static int cmd_motor_fb(int argc, char **argv)
     return 0;
 }
 MSH_CMD_EXPORT(cmd_motor_fb, show motor latest feedback);
+
+static int cmd_m33_joint_calib(int argc, char **argv)
+{
+    rt_uint8_t joint;
+    rt_uint8_t start = 1U;
+    rt_uint8_t end = (rt_uint8_t)CONTROL_MOTOR_JOINT_COUNT;
+
+    if (argc >= 2)
+    {
+        joint = (rt_uint8_t)atoi(argv[1]);
+        if ((joint == 0U) || (joint > CONTROL_MOTOR_JOINT_COUNT))
+        {
+            rt_kprintf("usage: m33_joint_calib [joint(1~%u)]\n",
+                       (unsigned int)CONTROL_MOTOR_JOINT_COUNT);
+            return -1;
+        }
+        start = joint;
+        end = joint;
+    }
+
+    for (joint = start; joint <= end; joint++)
+    {
+        rt_kprintf("JOINT_CALIB: joint=%u motor_id=%u proto=%u calibrated=%u direction_x1000=%d gear_x1000=%d zero_mrad=%d\n",
+                   (unsigned int)joint,
+                   (unsigned int)ctrl_motor_id_by_joint(joint),
+                   (unsigned int)ctrl_motor_protocol_by_joint(joint),
+                   ctrl_motor_joint_is_calibrated(joint) ? 1U : 0U,
+                   (int)ctrl_float_to_scaled_i32(ctrl_motor_direction_by_joint(joint), 1000.0f),
+                   (int)ctrl_float_to_scaled_i32(ctrl_motor_gear_ratio_by_joint(joint), 1000.0f),
+                   (int)ctrl_float_to_scaled_i32(ctrl_motor_zero_offset_by_joint(joint), 1000.0f));
+    }
+    rt_kprintf("JOINT_CALIB_NOTE: absolute position commands are rejected while calibrated=0\n");
+
+    return 0;
+}
+MSH_CMD_EXPORT(cmd_m33_joint_calib, show M33 joint calibration gate and offsets);
 
 static int cmd_m33_motor_status_once(int argc, char **argv)
 {
