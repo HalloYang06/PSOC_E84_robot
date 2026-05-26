@@ -1559,6 +1559,12 @@ typedef struct
     rt_bool_t power_safe_now;
     rt_bool_t limits_confirmed;
     rt_bool_t limits_safe_now;
+    rt_bool_t position_limits_confirmed;
+    rt_bool_t position_limits_safe_now;
+    rt_bool_t speed_limits_confirmed;
+    rt_bool_t speed_limits_safe_now;
+    rt_bool_t torque_current_limits_confirmed;
+    rt_bool_t torque_current_limits_safe_now;
     rt_bool_t required_motor_feedback_fresh;
     rt_bool_t required_motor_feedback_fault_free;
     rt_uint32_t heartbeat_age_ms;
@@ -1689,13 +1695,33 @@ static void ctrl_prearm_check_build(control_prearm_check_t *check, rt_uint32_t r
     check->estop_safe_now =
         (CONTROL_PREARM_ESTOP_SAFE_NOW != 0U) ? RT_TRUE : RT_FALSE;
     check->power_input_confirmed =
-        (CONTROL_PREARM_POWER_INPUT_CONFIRMED != 0U) ? RT_TRUE : RT_FALSE;
+        ((CONTROL_PREARM_POWER_CHECK_REQUIRED == 0U) ||
+         (CONTROL_PREARM_POWER_INPUT_CONFIRMED != 0U)) ? RT_TRUE : RT_FALSE;
     check->power_safe_now =
-        (CONTROL_PREARM_POWER_SAFE_NOW != 0U) ? RT_TRUE : RT_FALSE;
+        ((CONTROL_PREARM_POWER_CHECK_REQUIRED == 0U) ||
+         (CONTROL_PREARM_POWER_SAFE_NOW != 0U)) ? RT_TRUE : RT_FALSE;
+    check->position_limits_confirmed =
+        (CONTROL_PREARM_POSITION_LIMITS_CONFIRMED != 0U) ? RT_TRUE : RT_FALSE;
+    check->position_limits_safe_now =
+        (CONTROL_PREARM_POSITION_LIMITS_SAFE_NOW != 0U) ? RT_TRUE : RT_FALSE;
+    check->speed_limits_confirmed =
+        (CONTROL_PREARM_SPEED_LIMITS_CONFIRMED != 0U) ? RT_TRUE : RT_FALSE;
+    check->speed_limits_safe_now =
+        (CONTROL_PREARM_SPEED_LIMITS_SAFE_NOW != 0U) ? RT_TRUE : RT_FALSE;
+    check->torque_current_limits_confirmed =
+        (CONTROL_PREARM_TORQUE_CURRENT_LIMITS_CONFIRMED != 0U) ? RT_TRUE : RT_FALSE;
+    check->torque_current_limits_safe_now =
+        (CONTROL_PREARM_TORQUE_CURRENT_LIMITS_SAFE_NOW != 0U) ? RT_TRUE : RT_FALSE;
     check->limits_confirmed =
-        (CONTROL_PREARM_LIMITS_CONFIRMED != 0U) ? RT_TRUE : RT_FALSE;
+        ((CONTROL_PREARM_LIMITS_CONFIRMED != 0U) &&
+         check->position_limits_confirmed &&
+         check->speed_limits_confirmed &&
+         check->torque_current_limits_confirmed) ? RT_TRUE : RT_FALSE;
     check->limits_safe_now =
-        (CONTROL_PREARM_LIMITS_SAFE_NOW != 0U) ? RT_TRUE : RT_FALSE;
+        ((CONTROL_PREARM_LIMITS_SAFE_NOW != 0U) &&
+         check->position_limits_safe_now &&
+         check->speed_limits_safe_now &&
+         check->torque_current_limits_safe_now) ? RT_TRUE : RT_FALSE;
 
     rt_mutex_take(&s_data_lock, RT_WAITING_FOREVER);
     rt_memcpy(snapshot, s_motor_feedback, sizeof(snapshot));
@@ -4278,6 +4304,13 @@ static int cmd_m33_prearm_check(int argc, char **argv)
                check.power_safe_now ? 1U : 0U,
                CONTROL_PREARM_LIMITS_SOURCE,
                check.limits_safe_now ? 1U : 0U);
+    rt_kprintf("PREARM_CODE_LIMITS: position confirmed=%u safe_now=%u; speed confirmed=%u safe_now=%u; torque_current confirmed=%u safe_now=%u\n",
+               check.position_limits_confirmed ? 1U : 0U,
+               check.position_limits_safe_now ? 1U : 0U,
+               check.speed_limits_confirmed ? 1U : 0U,
+               check.speed_limits_safe_now ? 1U : 0U,
+               check.torque_current_limits_confirmed ? 1U : 0U,
+               check.torque_current_limits_safe_now ? 1U : 0U);
     rt_kprintf("PREARM_MOTORS: required_mask=0x%08lX fresh_mask=0x%08lX fault_mask=0x%08lX fresh_count=%u fresh_ok=%u fault_free=%u\n",
                (unsigned long)check.required_joint_mask,
                (unsigned long)check.fresh_joint_mask,
@@ -4305,9 +4338,13 @@ static int cmd_m33_safety_inputs(int argc, char **argv)
         {
             "power",
             CONTROL_PREARM_POWER_INPUT_SOURCE,
-            (CONTROL_PREARM_POWER_INPUT_CONFIRMED != 0U) ? RT_TRUE : RT_FALSE,
-            (CONTROL_PREARM_POWER_SAFE_NOW != 0U) ? RT_TRUE : RT_FALSE,
-            "motor power and voltage must be monitored and inside safe range"
+            ((CONTROL_PREARM_POWER_CHECK_REQUIRED == 0U) ||
+             (CONTROL_PREARM_POWER_INPUT_CONFIRMED != 0U)) ? RT_TRUE : RT_FALSE,
+            ((CONTROL_PREARM_POWER_CHECK_REQUIRED == 0U) ||
+             (CONTROL_PREARM_POWER_SAFE_NOW != 0U)) ? RT_TRUE : RT_FALSE,
+            (CONTROL_PREARM_POWER_CHECK_REQUIRED != 0U)
+                ? "motor power and voltage must be monitored and inside safe range"
+                : "power OK input is not used in this firmware slice"
         },
         {
             "limits",
