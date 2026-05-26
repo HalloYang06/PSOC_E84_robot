@@ -2406,6 +2406,14 @@ python3 rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/calibr
 
 当前机械臂还没有装机时，7 号可以先用“零点 0、方向默认、限位 ±60°”打通正式 M33 运动链路。这个配置只用于空载台架，不是正式机械零点。
 
+更新：7号 EL05 已通过 official CSP 试验确认，RobStride `loc_ref`/反馈位置在当前台架上对应可见输出侧角度，不需要再除以 `9`。当前台架版本使用：
+
+- `CONTROL_MOTOR_JOINT7_GEAR_RATIO=(1.0f)`
+- `CONTROL_MOTOR_JOINT7_ZERO_OFFSET_RAD=(1.0f)`
+- `CONTROL_MOTOR_JOINT7_CALIBRATED=1U`
+
+因此 ROS joint4 `+5°` 预期就是输出端约 `+5°`。
+
 烧录台架版本 M33 后，直接做极小角度测试。7 号对应 ROS joint4：
 
 ```bash

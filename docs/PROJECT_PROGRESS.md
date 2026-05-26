@@ -1538,3 +1538,12 @@
 - Observed: M33 aggregate `0x336` moved from about `0.554 rad` to about `1.050 rad` after the official CSP flow.
 - Failed or unverified: user has not confirmed visible physical motion for the CSP trial; if no visible motion occurred, feedback/parameter position is not yet proven to match the visible output joint.
 - Next step: read official load-side/mechanical position parameters such as RobStride `0x7019 mechPos`, compare before/after with video/visual output, then correct the meaning of M33 `pos_rad`.
+
+### 2026-05-26 - Motor7 RobStride position scale confirmed
+
+- Completed: repeated official CSP flow from about `3.0 rad` back to `1.0 rad`; user visually confirmed the physical output moved about `114.4°`.
+- Decision: for motor7/EL05, the RobStride `loc_ref` and M33 `0x336 pos_mrad` value match the visible output-side angle in this bench setup. Do not divide this value by the `9:1` gearbox ratio in the M33 ROS joint mapping.
+- Completed M33 config update: set `CONTROL_MOTOR_JOINT7_GEAR_RATIO=(1.0f)` for the formal ROS path.
+- Completed M33 bench zero update: set `CONTROL_MOTOR_JOINT7_ZERO_OFFSET_RAD=(1.0f)` because the last confirmed physical bench position is about `1.0 rad`; ROS joint4 `0°` now maps to that current bench pose.
+- Safety: this is still a temporary bench calibration. Other EL05/RS00 joints are not automatically proven by this single motor7 observation.
+- Next step: user flashes M33, then test formal path `joint4 +5° rpm=1`; expected physical output is about `5°`, not `45°` or `114°`.

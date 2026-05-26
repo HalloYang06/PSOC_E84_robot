@@ -3375,3 +3375,24 @@ Connection reset by 192.168.2.66 port 22
 状态：
 
 - Official CSP CAN flow 已跑通；物理输出映射未完成。
+
+### Motor7 RobStride 位置单位已按输出侧角度处理
+
+现象：
+
+- Official CSP 从约 `3.0 rad` 回到 `1.0 rad`，理论变化 `1.997 rad = 114.4°`。
+- 用户现场确认看到的也是约 `114.4°`，而不是除以 `9` 后的约 `12.7°`。
+
+根因/判断：
+
+- 对 7号 EL05 当前 CAN 参数接口来说，`loc_ref` 和反馈位置已经对应可见输出侧角度。
+- M33 原来把 ROS joint 角度乘以 `gear_ratio=9` 再发给 RobStride，这会把正式路径目标放大。
+
+修正：
+
+- 7号正式 ROS 映射临时改为 `CONTROL_MOTOR_JOINT7_GEAR_RATIO=(1.0f)`。
+- 当前台架零点用 `CONTROL_MOTOR_JOINT7_ZERO_OFFSET_RAD=(1.0f)`，让 ROS joint4 `0°` 对齐最后确认的台架姿态。
+
+状态：
+
+- 待烧录后验证 formal path `joint4 +5°` 是否实际输出约 `5°`。
