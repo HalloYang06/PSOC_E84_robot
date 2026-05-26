@@ -1388,3 +1388,12 @@
 - Inferred: current direct private speed command `5 rpm` produced about `50°/s` output motion, or about `8.33 rpm` at the visible output face, so the command unit/path must be calibrated before it is treated as physical output rpm.
 - Safety: this was a timed low-speed calibration pulse only. It did not rely on the invalidated feedback angle mapping.
 - Next step: repeat with a clear tape/paint mark on the output face and a fixed camera, then derive a first calibration ratio for 7号 output motion.
+
+### 2026-05-26 - RobStride motor model and gear ratio correction
+
+- Completed: user confirmed 4号/5号 are RS00, and 6号/7号 are EL05.
+- Verified from local official RobStride materials: RS00 reduction ratio is `10:1`; EL05 reduction ratio is `9:1`.
+- Corrected: 3号伺泰威 reduction ratio remains `48:1`; user clarified an intermediate `40:1` note was wrong.
+- Completed: updated README, motor protocol documentation, user manual, and troubleshooting notes to stop treating 4/5/6/7 model assignment as unknown.
+- Safety: 3号 has received CANSimple commands but has not been visually confirmed to move; it remains execution-unproven. Official gear ratios do not make the current 7号 feedback angle mapping safe.
+- Next step: update M33/NanoPi motor model tables so RS00 and EL05 use separate decoding/limit policies.

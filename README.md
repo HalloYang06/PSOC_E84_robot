@@ -150,13 +150,13 @@ flowchart LR
 
 | ID | CAN 帧类型 | 协议 | 当前说明 | 机械关节绑定 |
 |---|---|---|---|---|
-| `node_id=3` | 标准帧 11-bit | CANSimple/ODrive 类协议 | 3 号 CANSimple 电机节点；heartbeat 标准帧是 `0x061` | 待现场确认 |
-| `motor_id=4` | 扩展帧 29-bit | 私有扩展帧 MIT 电机协议 | 支持 probe、enable、stop、MIT 控制、读写参数 | 待现场确认 |
-| `motor_id=5` | 扩展帧 29-bit | 私有扩展帧 MIT 电机协议 | 支持 probe、enable、stop、MIT 控制、读写参数 | 待现场确认 |
-| `motor_id=6` | 扩展帧 29-bit | 私有扩展帧 MIT 电机协议 | 支持 probe、enable、stop、MIT 控制、读写参数 | 待现场确认 |
-| `motor_id=7` | 扩展帧 29-bit | 私有扩展帧 MIT 电机协议 | 支持 probe、enable、stop、MIT 控制、读写参数 | 待现场确认 |
+| `node_id=3` | 标准帧 11-bit | CANSimple/ODrive 类协议 | 3 号伺泰威；减速比 `48:1`；heartbeat 标准帧是 `0x061`；目前还没现场看到它真实运动 | 待现场确认 |
+| `motor_id=4` | 扩展帧 29-bit | 灵足 RobStride 私有扩展帧 MIT 协议 | RS00，官方减速比 `10:1`，支持 probe/enable/stop/MIT/读写参数 | 待现场确认 |
+| `motor_id=5` | 扩展帧 29-bit | 灵足 RobStride 私有扩展帧 MIT 协议 | RS00，官方减速比 `10:1`，支持 probe/enable/stop/MIT/读写参数 | 待现场确认 |
+| `motor_id=6` | 扩展帧 29-bit | 灵足 EduLite/EL05 私有扩展帧 MIT 协议 | EL05，官方减速比 `9:1`，支持 probe/enable/stop/MIT/读写参数 | 待现场确认 |
+| `motor_id=7` | 扩展帧 29-bit | 灵足 EduLite/EL05 私有扩展帧 MIT 协议 | EL05，官方减速比 `9:1`，支持 probe/enable/stop/MIT/读写参数 | 待现场确认 |
 
-当前只能确认总线上存在这些协议 ID；还不能把它们直接写死成某个正式关节。后续必须现场确认：
+当前已经确认 4/5/6/7 的型号与减速比；还不能把它们直接写死成某个正式关节。后续必须现场确认：
 
 ```text
 shoulder_lift_joint        -> motor/node ?

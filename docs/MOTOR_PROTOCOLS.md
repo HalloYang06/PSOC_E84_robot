@@ -14,15 +14,14 @@
 
 | 逻辑对象 | 真实 ID | 厂家 | 协议 | 已确认帧 | 当前用途 |
 |---|---:|---|---|---|---|
-| motor 3 | `node_id=3` | 伺泰威 / Sitaiwei | CANSimple/ODrive 类标准帧 | heartbeat `0x061`，encoder estimate `0x069` | 可离线转换为 `/rehab_arm/motor_state` |
-| motor 4 | `motor_id=4` | 灵足 / Lingzu RobStride | 私有扩展帧 | active-report `0x180004FD` | 原始遥测已确认，型号待确认 |
-| motor 5 | `motor_id=5` | 灵足 / Lingzu RobStride | 私有扩展帧 | active-report `0x180005FD` | 原始遥测已确认，型号待确认 |
-| motor 6 | `motor_id=6` | 灵足 / Lingzu RobStride | 私有扩展帧 | active-report `0x180006FD` | 原始遥测已确认，型号待确认 |
-| motor 7 | `motor_id=7` | 灵足 / Lingzu RobStride | 私有扩展帧 | active-report `0x180007FD` | 原始遥测已确认，型号待确认 |
+| motor 3 | `node_id=3` | 伺泰威 / Sitaiwei | CANSimple/ODrive 类标准帧 | heartbeat `0x061`，encoder estimate `0x069` | 减速比 `48:1`；命令已发过，但现场尚未看到真实运动 |
+| motor 4 | `motor_id=4` | 灵足 / Lingzu RobStride RS00 | 私有扩展帧 | active-report `0x180004FD` | 官方减速比 `10:1`，原始遥测已确认 |
+| motor 5 | `motor_id=5` | 灵足 / Lingzu RobStride RS00 | 私有扩展帧 | active-report `0x180005FD` | 官方减速比 `10:1`，原始遥测已确认 |
+| motor 6 | `motor_id=6` | 灵足 / Lingzu EduLite EL05 | 私有扩展帧 | active-report `0x180006FD` | 官方减速比 `9:1`，原始遥测已确认 |
+| motor 7 | `motor_id=7` | 灵足 / Lingzu EduLite EL05 | 私有扩展帧 | active-report `0x180007FD` | 官方减速比 `9:1`，原始遥测已确认 |
 
 待确认项：
 
-- 4/5/6/7 分别是 `RS00/RS01/RS02/RS03/RS04/RS05/RS06/EL05` 中哪一款。
 - 真实机械关节绑定关系。
 - 每个关节的最终软限位、速度限制、力矩/电流限制、抱闸/急停联锁。
 - 伺泰威/肩关节协议的完整字节级控制流程还需要继续从本地离线 HTML 中提取。
@@ -196,6 +195,18 @@ M33 当前换算常量来源：
 - `D:\电机上位机\robstride_ros_sample\src\motor_cfg.cpp`
 - `D:\电机上位机\SampleProgram\RS\Robstride01.cpp`
 - `D:\电机上位机\RobStride_学习整理.md`
+- `D:\电机上位机\Product_Information\灵足时代产品规格介绍 RobStride Product Specification Document 20250626.pdf`
+- `D:\电机上位机\Product_Information\产品资料\RS00\RS00使用说明书260112.pdf`
+- `D:\电机上位机\Product_Information\产品资料\EL05\EL05使用说明书260112.pdf`
+
+当前已确认型号：
+
+| motor ID | 型号 | 官方减速比 | 官方资料依据 | 当前备注 |
+|---:|---|---:|---|---|
+| 4 | RS00 | `10:1` | RS00 使用说明书机械特性、RobStride 产品规格书 | 灵足私有扩展帧 |
+| 5 | RS00 | `10:1` | RS00 使用说明书机械特性、RobStride 产品规格书 | 灵足私有扩展帧 |
+| 6 | EL05 | `9:1` | EL05 使用说明书机械特性 | 灵足私有扩展帧 |
+| 7 | EL05 | `9:1` | EL05 使用说明书机械特性 | 灵足私有扩展帧 |
 
 关键通信类型：
 
@@ -256,7 +267,8 @@ temperature_c = raw_temperature_u16 * 0.1
 
 注意：
 
-- `EL05` 资料在本地产品目录中存在，但当前 ROS2 示例没有给出单独枚举；确认 4/5/6/7 是否为 EL05 后再补量程。
+- `robstride_ros_sample` 当前没有单独 `EL05` 枚举；EL05 的反馈量程和控制量程不能直接套 RS00/RS05/RS06，需要继续从 EL05 用户手册或厂家样例补齐。
+- 7号 `5 rpm / 3s` 实测约 `150°`，说明当前调试脚本的速度命令、反馈位置字段和真实输出轴之间仍存在未标定环节；不能只靠减速比解释或替代实测标定。
 - 主动上报要在测试结束后关闭，避免总线长期高频刷帧。
 - 正式路径应由 M33 读取/聚合电机状态，再发给 NanoPi 发布 `/rehab_arm/motor_state`。
 
