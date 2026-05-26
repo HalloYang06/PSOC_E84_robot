@@ -1208,6 +1208,16 @@
 - Safety: offline manifest transform only; no ROS launch, network upload, CAN access, M33 command, or motor motion.
 - Next step: after the simulation host is ready, use `dataset_index.json` to select replay sessions for RViz/MuJoCo and platform annotation review.
 
+### 2026-05-27 - Patient Device Profile validation gate
+
+- Completed: added `patient_profile.py` and `validate_patient_profile.py` for offline safety validation of the shared App/platform/NanoPi/M33/M55 Patient Device Profile.
+- Completed: first rule set checks identity/version/status, patient ROM inside device limits and `-60°~+60°` envelope, patient velocity limits, training mode, emergency policy, VLA permission/forbidden outputs, and M55 no-direct-motor-control boundary.
+- Completed: registered the tool in both `setup.py` console scripts and CMake install programs.
+- Validated: `python -m unittest test_patient_profile.py test_data_recording.py test_m33_ros_contract.py` passed 55 tests.
+- Validated: `python -m py_compile patient_profile.py validate_patient_profile.py` passed.
+- Safety: offline profile quality gate only; no profile write, ROS launch, network upload, CAN access, M33 command, or motor motion.
+- Next step: add a profile-to-M33-safety-subset dry-run exporter after the profile schema is reviewed.
+
 ### 2026-05-26 - NanoPi motor data receive check
 
 - Completed: live NanoPi CAN receive test on `192.168.2.66` with `can0` at classic CAN 1Mbps.

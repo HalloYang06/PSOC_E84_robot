@@ -36,6 +36,7 @@ install(PROGRAMS
   rehab_arm_psoc_bridge/board_manifest_sync_dry_run.py
   rehab_arm_psoc_bridge/decode_psoc_cmd.py
   rehab_arm_psoc_bridge/encode_psoc_cmd.py
+  rehab_arm_psoc_bridge/validate_patient_profile.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

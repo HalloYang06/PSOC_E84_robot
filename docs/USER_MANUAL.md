@@ -1917,6 +1917,27 @@ ros2 run rehab_arm_psoc_bridge build_dataset_index.py \
 
 这个索引用于平台数据资产、训练前导出、VLA 上下文数据选择和回放审查。它只整理本地 manifest，不上传服务器，不打开 ROS topic，不读取 CAN，不控制 M33 或电机。
 
+校验 Patient Device Profile：
+
+```bash
+ros2 run rehab_arm_psoc_bridge validate_patient_profile.py \
+  /home/pi/rehab_arm_profiles/patient_device_profile.json \
+  --pretty
+```
+
+通过标准：
+
+- 输出 `schema_version=patient_device_profile_validation_v1`。
+- `ok=true`。
+- 患者 ROM 必须在设备绝对限制内，当前第一版默认设备包络为 `-60° ~ +60°`。
+- 患者限速必须大于 `0`，且不能超过第一版默认上限 `30 deg/s`，也不能超过设备绝对限速。
+- `training_mode` 必须是 `passive_training`、`active_assist`、`resistance_training` 或 `memory_mode`。
+- 急停策略必须是 `disable_motor_output`，`fault_latch` 必须为 `true`。
+- VLA 权限只能是 `disabled`、`suggest_only` 或 `plan_only`，并且必须明确禁止 `can_frame`、`torque_command`、`current_command`、`velocity_command`、`raw_motor_position`。
+- M55 不能声明 `direct_motor_control`。
+
+这个校验器是平台/App/NanoPi/M33/M55 共用 profile 进入系统前的安全质量门。它不写 profile，不上传服务器，不打开 ROS topic，不读取 CAN，不控制 M33 或电机。校验失败时，不应把该 profile 设置为 active，也不应下发给 M33。
+
 预览服务器同步计划：
 
 ```bash

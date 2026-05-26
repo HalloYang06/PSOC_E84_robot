@@ -59,6 +59,19 @@ rom_percent = (robot_joint_angle - patient_min) / (patient_max - patient_min)
 
 平台和 App 编辑的是同一份 JSON。NanoPi 拉取完整 profile，M33 只接收安全子集，M55 只接收模型子集。
 
+profile 进入 active 状态、同步到 NanoPi、拆分为 M33/M55 子集或进入数据集前，必须先通过 `validate_patient_profile.py` 离线质量门。第一版校验只做保守安全检查：
+
+- `schema_version=patient_device_profile_v1`。
+- `profile_id/profile_version/profile_status/robot_id/device_id/patient_ref.patient_id` 必须存在。
+- 患者 ROM 必须在设备绝对 joint limits 内，且不能超过第一版默认设备包络 `-60° ~ +60°`。
+- 患者限速必须大于 `0`，不能超过 `30 deg/s`，也不能超过设备绝对限速。
+- `training_mode` 只能是 `passive_training`、`active_assist`、`resistance_training` 或 `memory_mode`。
+- 急停策略必须是 `disable_motor_output`，并且 `fault_latch=true`。
+- VLA 权限只能是 `disabled`、`suggest_only` 或 `plan_only`，并且必须明确禁止 `can_frame`、`torque_command`、`current_command`、`velocity_command`、`raw_motor_position`。
+- M55 模型配置不能包含 `direct_motor_control`。
+
+校验器只输出 `patient_device_profile_validation_v1` 报告，不写 profile，不下发 M33，不发 ROS/CAN，不授予运动许可。
+
 ```json
 {
   "schema_version": "patient_device_profile_v1",
