@@ -1044,6 +1044,38 @@ ros2 topic echo --once /rehab_arm/motor_state std_msgs/msg/String
 
 注意：这个节点只做遥测转换，不发 CAN，不控制电机。真实电机状态后续仍应来自 M33 上报。
 
+如果已经用 `candump -tz can0` 保存了 CANSimple 原始日志，可以离线转换成统一的 `/rehab_arm/motor_state` JSONL，供总控台、标注、曲线分析和后续训练前检查使用：
+
+```bash
+cd /home/pi/rehab_arm_ros2_ws
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+ros2 run rehab_arm_psoc_bridge candump_motor_telemetry \
+  /home/pi/rehab_arm_logs/can_captures/cansimple_node3_tiny_motion_20260525_195020.log \
+  --output /home/pi/rehab_arm_logs/cansimple_node3_tiny_motion.jsonl \
+  --device-id nanopi-m5 \
+  --robot-id rehab-arm-alpha \
+  --session-id cansimple_node3_tiny_motion \
+  --pretty
+```
+
+当前转换器只解析 CANSimple/ODrive 类标准帧遥测：
+
+- `0x061`：`node_id=3` heartbeat，用来补充 enabled、fault、axis_state、error_code。
+- `0x069`：`node_id=3` encoder estimate，按 little-endian float 解码 position/velocity。
+- position 从 turns 转成 rad，velocity 从 turns/s 转成 rad/s。
+
+通过标准：
+
+- 输出 summary 中 `ok=true`。
+- `motor_state_count` 大于 0。
+- JSONL 第一行是 `session_metadata`。
+- 后续记录 topic 为 `/rehab_arm/motor_state`。
+- payload 的 `schema_version` 是 `rehab_arm_motor_state_v1`。
+- `control_boundary` 是 `telemetry_only_not_motor_command`。
+
+注意：`candump_motor_telemetry` 是离线日志转换工具，不打开 SocketCAN，不发 CAN，不发送 `0x320/0x321`，不控制 M33 或电机。闭环刚建立后的 `0x069` 第一次跳变可能包含估计器恢复，不要直接等同于真实机械位移。
+
 仿真数据采集一键启动：
 
 ```bash

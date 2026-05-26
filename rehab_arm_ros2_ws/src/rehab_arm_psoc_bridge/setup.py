@@ -27,6 +27,7 @@ setup(
             'sync_upload = rehab_arm_psoc_bridge.sync_upload:main',
             'check_server_quality_gate = rehab_arm_psoc_bridge.check_server_quality_gate:main',
             'sync_test_server = rehab_arm_psoc_bridge.sync_test_server:main',
+            'candump_motor_telemetry = rehab_arm_psoc_bridge.candump_motor_telemetry:main',
         ],
     },
 )

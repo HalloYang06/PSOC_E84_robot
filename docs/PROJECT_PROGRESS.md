@@ -931,3 +931,12 @@
 - Captured motion log at `/home/pi/rehab_arm_logs/can_captures/cansimple_node3_tiny_motion_20260525_195020.log`.
 - Observed: `0x061` heartbeat near 10Hz and `0x069` encoder estimate near 100Hz.
 - Safety: sent `vel=0` and `idle` after the test; this remains debug-only direct control, not the formal wearable motion path.
+
+### 2026-05-26 - Candump motor telemetry converter
+
+- Completed: added `candump_motor_telemetry` to convert CANSimple `0x061/0x069` candump logs into unified `/rehab_arm/motor_state` JSONL.
+- Completed: registered the ROS2 console script and CMake install entry.
+- Validated: unit tests and `py_compile` passed on Windows.
+- Validated: the real NanoPi node 3 tiny-motion log was converted in a temporary directory, producing 397 motor_state records from 444 raw CAN frames.
+- Safety: converter is offline/log-only; it does not open CAN, send `0x320/0x321`, command M33, or control motors.
+- Next step: build on NanoPi and use this JSONL path for real motor telemetry upload/quality checks after the next safe capture.

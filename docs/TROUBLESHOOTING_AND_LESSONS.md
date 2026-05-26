@@ -2110,3 +2110,21 @@ No such file or directory: /tmp/rehab_sim_collection/sim_demo_motion.jsonl
 状态：
 
 - 已对 CANSimple `node_id=3` 做极小速度测试并保存日志；未触碰 private MIT `motor_id=4`。
+
+### 原始 CAN 日志要转成统一 motor_state JSONL
+
+现象：
+
+- `candump -tz can0` 原始日志适合保留证据，但不方便直接给总控台、标注工具、质量门和训练前分析使用。
+- CANSimple `0x069` 是 turns/turns/s，不能直接当作 ROS 常用 rad/rad/s。
+
+技巧：
+
+- 用 `candump_motor_telemetry` 把 CANSimple `0x061/0x069` 离线转换成 `/rehab_arm/motor_state` JSONL。
+- 转换后保留 `control_boundary=telemetry_only_not_motor_command`，提醒后续工具这只是遥测数据，不是控制许可。
+- 输出文件用临时目录做验证；只有代码、测试和文档进入仓库，不提交真实采集 JSONL 或 demo 数据。
+- 闭环刚建立后的 encoder estimate 跳变可能包含估计器恢复，应在分析报告里单独标注。
+
+状态：
+
+- 已新增离线转换器和单元测试，并用真实 NanoPi tiny-motion candump 日志做过临时目录验证。
