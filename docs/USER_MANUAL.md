@@ -1694,6 +1694,38 @@ ros2 run rehab_arm_psoc_bridge export_recording_csv.py \
 
 这些 CSV 只用于离线检查、画曲线、标注和模型训练前处理，不是控制命令。
 
+生成离线回放计划：
+
+```bash
+ros2 run rehab_arm_psoc_bridge build_replay_plan.py \
+  /tmp/rehab_sim_collection/sim_demo_motion.jsonl \
+  --topic /joint_states \
+  --topic /rehab_arm/motor_state \
+  --output /tmp/rehab_sim_collection/replay_plan.json \
+  --pretty
+```
+
+输出：
+
+- `schema_version=rehab_arm_replay_plan_v1`
+- `duration_sec`：本段数据按记录时间计算的总时长。
+- `events[]`：按 `ts_unix` 排序的 topic 消息。
+- `events[].relative_time_sec`：从本段第一条事件开始的相对时间。
+- `topic_counts`：每个 topic 的事件数量。
+- `control_boundary=replay_plan_only_not_motion_permission`
+
+如果只是想检查时间轴和 topic 数量，不想输出完整 payload：
+
+```bash
+ros2 run rehab_arm_psoc_bridge build_replay_plan.py \
+  /tmp/rehab_sim_collection/sim_demo_motion.jsonl \
+  --topic /joint_states \
+  --no-payload \
+  --pretty
+```
+
+这个 replay plan 对齐 ROS2 `rosbag2` 的基本思想：按 topic 和时间复现实验数据。区别是它仍然是平台/标注/训练友好的 JSON，不直接发布 ROS topic，不控制 M33，不发 CAN。后续接 MuJoCo 时，应先用它验证时间轴和关节状态，再写 ROS publisher 或 rosbag 转换器。
+
 对接字段说明见：[INTEGRATION_GUIDE.md](INTEGRATION_GUIDE.md)。
 
 `/rehab_arm/camera_keyframe` payload 示例：

@@ -343,6 +343,60 @@ def summarize_jsonl_records(records: list[dict[str, object]]) -> dict[str, objec
     }
 
 
+def build_replay_plan(
+    records: list[dict[str, object]],
+    topics: Iterable[str] | None = None,
+    include_payload: bool = True,
+) -> dict[str, object]:
+    selected_topics = set(topics or [])
+    events: list[dict[str, object]] = []
+    first_ts: float | None = None
+    last_ts: float | None = None
+
+    for record in records:
+        if record.get('record_type') != 'topic_message':
+            continue
+        topic = record.get('topic')
+        ts_unix = record.get('ts_unix')
+        if not isinstance(topic, str):
+            continue
+        if selected_topics and topic not in selected_topics:
+            continue
+        if not isinstance(ts_unix, (int, float)):
+            continue
+        ts = float(ts_unix)
+        first_ts = ts if first_ts is None else min(first_ts, ts)
+        last_ts = ts if last_ts is None else max(last_ts, ts)
+        event: dict[str, object] = {
+            'source_ts_unix': ts,
+            'topic': topic,
+        }
+        if include_payload:
+            event['payload'] = record.get('payload')
+        events.append(event)
+
+    events.sort(key=lambda item: (float(item['source_ts_unix']), str(item['topic'])))
+    base_ts = first_ts if first_ts is not None else 0.0
+    for index, event in enumerate(events):
+        event['sequence_index'] = index
+        event['relative_time_sec'] = float(event['source_ts_unix']) - base_ts
+
+    topic_counts: dict[str, int] = {}
+    for event in events:
+        topic = str(event['topic'])
+        topic_counts[topic] = topic_counts.get(topic, 0) + 1
+
+    return {
+        'schema_version': 'rehab_arm_replay_plan_v1',
+        'event_count': len(events),
+        'duration_sec': (last_ts - first_ts) if first_ts is not None and last_ts is not None else 0.0,
+        'topics': sorted(topic_counts),
+        'topic_counts': dict(sorted(topic_counts.items())),
+        'events': events,
+        'control_boundary': 'replay_plan_only_not_motion_permission',
+    }
+
+
 def build_camera_file_check(
     records: list[dict[str, object]],
     camera_base_dir: str | Path | None = None,

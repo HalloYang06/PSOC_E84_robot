@@ -3648,3 +3648,18 @@ Connection reset by 192.168.2.66 port 22
 - `bench_armed` 必须和正式 `armed/active` 分开。台架能动不等于可穿戴；NanoPi parser 默认应让 `bench_armed` 的 `motion_allowed=false`。
 - NanoPi 上 `ros2 run` 的可执行名要以 `ros2 pkg executables rehab_arm_psoc_bridge` 为准；当前现场工作区使用 `psoc_can_bridge_node.py`，不是无后缀的 `psoc_can_bridge_node`。
 - formal clinical 开关默认关闭是安全设计，不是功能缺失。只有 pre-arm ready 才能上报正式 `armed`；如果返回 `prearm_not_ready`，应补安全输入和参数，不要在 NanoPi 侧绕过。
+
+### 离线数据工具测试要在临时目录释放前读取输出
+
+现象：
+
+- `test_build_replay_plan_cli_writes_filtered_plan` 第一次失败，错误为 `FileNotFoundError`，路径位于系统临时目录。
+
+判断：
+
+- CLI 已经写出文件，但测试在 `TemporaryDirectory()` 上下文退出后才读取，临时目录已被清理。
+
+技巧：
+
+- 测试离线导出工具时，要在 `with tempfile.TemporaryDirectory()` 作用域内读取输出文件。
+- 这类错误不代表 JSONL/replay 功能失败，先检查测试生命周期。

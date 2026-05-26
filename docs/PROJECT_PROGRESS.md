@@ -1178,6 +1178,16 @@
 - Safety: offline CSV quality gate only; no ROS launch, network upload, CAN access, M33 command, or motor motion.
 - Next step: build a JSONL replay/inspection path for MuJoCo alignment and platform data review.
 
+### 2026-05-27 - JSONL replay plan baseline
+
+- Completed: added `build_replay_plan.py` and `build_replay_plan()` to convert recorder JSONL into a time-ordered topic replay plan.
+- Completed: replay plan supports topic filtering, optional payload omission, relative timestamps, topic counts, and explicit data-only control boundary.
+- Completed: documented the open-source-aligned route: ROS2 rosbag-style record/replay, ros2_control JointTrajectory boundary, MoveIt-style limits/time parameterization, and hardware abstraction.
+- Validated: `python -m unittest rehab_arm_ros2_ws\src\rehab_arm_psoc_bridge\test\test_data_recording.py` passed 46 tests.
+- Validated: `python -m py_compile data_recording.py build_replay_plan.py` passed.
+- Safety: offline JSON transform only; no ROS launch, network upload, CAN access, M33 command, or motor motion.
+- Next step: use replay plan as the input contract for a MuJoCo/RViz replay adapter or JSONL-to-rosbag/topic publisher.
+
 ### 2026-05-26 - NanoPi motor data receive check
 
 - Completed: live NanoPi CAN receive test on `192.168.2.66` with `can0` at classic CAN 1Mbps.

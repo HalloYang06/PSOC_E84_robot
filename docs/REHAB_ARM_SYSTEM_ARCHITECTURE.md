@@ -58,6 +58,26 @@
   C8T6 传感节点 / 电机驱动 / 编码器 / 限位开关 / 急停硬件
 ```
 
+## 2.1 正规机器人开发路线对齐
+
+本项目按开源机器人常见路线推进：先统一机器人模型、标准 ROS 接口和可复现实验数据，再接硬件桥接和人体安全测试。
+
+参考的公开路线：
+
+- ROS2 标准录制/回放：`rosbag2` 用于按 topic 记录和回放实验数据。项目内 JSONL 是为了平台、标注和训练方便，不替代正式 rosbag；后续应支持 JSONL -> ROS topic/rosbag 转换。参考：[ROS2 rosbag2 tutorials](https://docs.ros.org/en/rolling/Tutorials/Advanced/Recording-A-Bag-From-Your-Own-Node-Py.html)。
+- 标准轨迹控制：真机和仿真都应围绕 `trajectory_msgs/JointTrajectory` 和 `joint_trajectory_controller`，而不是让上层直接发电机私有帧。参考：[ros2_control joint_trajectory_controller](https://control.ros.org/master/doc/ros2_controllers/joint_trajectory_controller/doc/userdoc.html)。
+- 运动规划与限位：MoveIt/主流规划器会围绕 URDF/SRDF、joint limits、速度和加速度约束做规划与时间参数化；本项目的患者 ROM/限速只能收紧这些限制，不能绕过 M33。参考：[MoveIt time parameterization](https://moveit.picknik.ai/main/doc/examples/time_parameterization/time_parameterization_tutorial.html)。
+- 硬件抽象：正式路线应把硬件差异收敛到 NanoPi bridge/M33 control layer 内部，上层保持统一 `/joint_states`、`/arm_controller/joint_trajectory` 和安全状态接口。参考：[ros2_control hardware components](https://control.ros.org/master/doc/ros2_control/hardware_interface/doc/hardware_components_userdoc.html)。
+
+因此当前开发顺序固定为：
+
+1. URDF/MuJoCo 模型和标准 joint 名称。
+2. `/joint_states`、`/rehab_arm/motor_state`、`/rehab_arm/safety_state` 数据采集。
+3. JSONL/rosbag 可复现记录、质量门、离线 replay plan。
+4. 仿真回放和轨迹验证。
+5. NanoPi -> M33 -> 电机的正式安全链路。
+6. 平台/App 只做 profile、训练计划、数据、标注和人工确认入口。
+
 ## 3. 总体数据流
 
 数据流图片：[`assets/system_data_flow.png`](assets/system_data_flow.png)

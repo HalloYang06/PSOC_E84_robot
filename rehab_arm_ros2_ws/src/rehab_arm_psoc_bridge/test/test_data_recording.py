@@ -31,6 +31,7 @@ from rehab_arm_psoc_bridge.data_recording import (
     build_annotation_queue,
     make_annotation_template_rows,
     validate_annotation_rows,
+    build_replay_plan,
     build_sync_dry_run_plan,
     file_sha256,
     summarize_jsonl_records,
@@ -455,6 +456,79 @@ class DataRecordingTests(unittest.TestCase):
         self.assertEqual(summary['motor_entry_count_max'], 1)
         self.assertEqual(summary['safety_states']['ok'], 1)
         self.assertEqual(summary['motion_allowed_counts']['false'], 1)
+
+    def test_build_replay_plan_orders_topic_messages_by_record_time(self) -> None:
+        records = [
+            make_session_metadata('s1', 'nanopi', 'arm', 'dev', 'simulation_data_collection', now=1.0),
+            make_payload_record('/rehab_arm/safety_state', {'state': 'ok'}, now=12.0),
+            make_payload_record('/joint_states', {'name': ['j0'], 'position': [0.1]}, now=10.0),
+            make_payload_record('/rehab_arm/motor_state', {'motors': []}, now=11.5),
+        ]
+
+        plan = build_replay_plan(records)
+
+        self.assertEqual(plan['schema_version'], 'rehab_arm_replay_plan_v1')
+        self.assertEqual(plan['event_count'], 3)
+        self.assertEqual(plan['duration_sec'], 2.0)
+        self.assertEqual(
+            [event['topic'] for event in plan['events']],
+            ['/joint_states', '/rehab_arm/motor_state', '/rehab_arm/safety_state'],
+        )
+        self.assertEqual(plan['events'][0]['relative_time_sec'], 0.0)
+        self.assertEqual(plan['events'][1]['relative_time_sec'], 1.5)
+        self.assertEqual(plan['events'][2]['sequence_index'], 2)
+        self.assertEqual(plan['topic_counts']['/joint_states'], 1)
+        self.assertEqual(plan['control_boundary'], 'replay_plan_only_not_motion_permission')
+
+    def test_build_replay_plan_can_filter_topics_and_omit_payloads(self) -> None:
+        records = [
+            make_payload_record('/joint_states', {'name': ['j0']}, now=10.0),
+            make_payload_record('/rehab_arm/motor_state', {'motors': []}, now=11.0),
+        ]
+
+        plan = build_replay_plan(records, topics=['/joint_states'], include_payload=False)
+
+        self.assertEqual(plan['event_count'], 1)
+        self.assertEqual(plan['topics'], ['/joint_states'])
+        self.assertNotIn('payload', plan['events'][0])
+
+    def test_build_replay_plan_cli_writes_filtered_plan(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / 'session.jsonl'
+            output = Path(tmpdir) / 'replay_plan.json'
+            records = [
+                make_session_metadata('s1', 'nanopi', 'arm', 'dev', 'simulation_data_collection', now=1.0),
+                make_payload_record('/joint_states', {'name': ['j0']}, now=10.0),
+                make_payload_record('/rehab_arm/safety_state', {'state': 'ok'}, now=11.0),
+            ]
+            with path.open('w', encoding='utf-8') as handle:
+                for record in records:
+                    write_jsonl_record(handle, record)
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).resolve().parents[1] / 'rehab_arm_psoc_bridge' / 'build_replay_plan.py'),
+                    str(path),
+                    '--topic',
+                    '/joint_states',
+                    '--no-payload',
+                    '--output',
+                    str(output),
+                ],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            saved = json.loads(output.read_text(encoding='utf-8'))
+
+        self.assertEqual(result.returncode, 0)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload['schema_version'], 'rehab_arm_replay_plan_v1')
+        self.assertEqual(payload['event_count'], 1)
+        self.assertEqual(saved['events'][0]['topic'], '/joint_states')
+        self.assertNotIn('payload', saved['events'][0])
 
     def test_build_recording_quality_report_passes_dynamic_session(self) -> None:
         records = [
