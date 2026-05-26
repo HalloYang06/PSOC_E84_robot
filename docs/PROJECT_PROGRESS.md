@@ -1547,3 +1547,13 @@
 - Completed M33 bench zero update: set `CONTROL_MOTOR_JOINT7_ZERO_OFFSET_RAD=(1.0f)` because the last confirmed physical bench position is about `1.0 rad`; ROS joint4 `0°` now maps to that current bench pose.
 - Safety: this is still a temporary bench calibration. Other EL05/RS00 joints are not automatically proven by this single motor7 observation.
 - Next step: user flashes M33, then test formal path `joint4 +5° rpm=1`; expected physical output is about `5°`, not `45°` or `114°`.
+
+### 2026-05-26 - Motor7 formal-path fixed-scale retest
+
+- Completed: user flashed M33 commit `5b1f14f6`.
+- Completed: ran formal path `m33 target --joint 4 --deg 5 --rpm 1 --torque-ma 0`, waited briefly, then sent `m33 stop --joint 4`.
+- Validated: heartbeat before/after returned `0x322` with `detail_code=0`; can0 stayed `ERROR-ACTIVE`, tx/rx error counters `0/0`.
+- Validated: formal path emitted motor7 enable/control/stop frames: `0x0300FD07`, `0x01800007`, `0x0400FD07`.
+- Observed: M33 `0x336` reported motor7 at `0x03F1 = 1009 mrad`, only about `0.5°` from the temporary `1.0 rad` bench zero, not the expected `+5°`.
+- Failed or unverified: physical motion requires user confirmation; CAN indicates the formal MIT frame was sent, but the final position did not reach `1.087 rad`.
+- Next step: if the user saw no meaningful motion, change M33 formal private control for motor7 from MIT frame control to the official CSP flow (`run_mode=5`, `limit_spd=0x7017`, `loc_ref=0x7016`) that already produced visible 114° movement.
