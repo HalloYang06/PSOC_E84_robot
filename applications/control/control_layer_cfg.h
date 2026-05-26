@@ -512,6 +512,16 @@
 #endif
 #endif
 
+/* Calibration telemetry gate.
+ * Allows NanoPi 0x320 active-report requests to pass through M33 even while
+ * absolute position targets remain blocked. This is telemetry-only: it may ask
+ * a private-protocol motor to publish feedback frames, but it must not enable
+ * torque, position, velocity, zeroing, or mode changes.
+ */
+#ifndef CONTROL_CALIBRATION_ACTIVE_REPORT_ENABLE
+#define CONTROL_CALIBRATION_ACTIVE_REPORT_ENABLE 1U
+#endif
+
 /* M33 -> NanoPi 0x322 status V2 enums. Keep these values aligned with
  * rehab_arm_psoc_bridge.psoc_status.
  */

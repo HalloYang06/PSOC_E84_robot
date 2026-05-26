@@ -462,6 +462,7 @@ static rt_bool_t ctrl_motor_id_invalid_for_joint(rt_uint8_t joint_id, rt_uint8_t
 }
 
 static rt_err_t ctrl_apply_ros_command(const control_ros_command_t *cmd);
+static rt_bool_t ctrl_ros_command_is_calibration_telemetry(const control_ros_command_t *cmd);
 
 static int ctrl_motor_index_by_motor_id(rt_uint8_t motor_id)
 {
@@ -1891,6 +1892,16 @@ static void ctrl_ros_safety_assessment_init(control_ros_safety_assessment_t *ass
     assessment->joint_calibrated = RT_FALSE;
 }
 
+static rt_bool_t ctrl_ros_command_is_calibration_telemetry(const control_ros_command_t *cmd)
+{
+    if (cmd == RT_NULL)
+    {
+        return RT_FALSE;
+    }
+
+    return (cmd->command == CONTROL_ROS_CMD_SET_ACTIVE_REPORT) ? RT_TRUE : RT_FALSE;
+}
+
 static control_ros_reject_reason_t ctrl_ros_first_reject_reason(const control_ros_safety_assessment_t *assessment)
 {
     if (assessment == RT_NULL)
@@ -1966,6 +1977,34 @@ static void ctrl_assess_ros_command_safety(const control_ros_command_t *cmd,
         assessment->reason = CONTROL_ROS_REJECT_NONE;
         assessment->state = CONTROL_ROS_SAFETY_READY;
         assessment->decision = CONTROL_ROS_DECISION_ACCEPT;
+        return;
+    }
+
+    if (ctrl_ros_command_is_calibration_telemetry(cmd))
+    {
+        if (!assessment->heartbeat_ok)
+        {
+            assessment->reason = CONTROL_ROS_REJECT_HEARTBEAT_TIMEOUT;
+            assessment->state = CONTROL_ROS_SAFETY_LIMITED;
+            assessment->decision = CONTROL_ROS_DECISION_REJECT;
+            return;
+        }
+        if (!assessment->joint_known)
+        {
+            assessment->reason = CONTROL_ROS_REJECT_UNKNOWN_JOINT;
+            assessment->state = CONTROL_ROS_SAFETY_LIMITED;
+            assessment->decision = CONTROL_ROS_DECISION_REJECT;
+            return;
+        }
+#if CONTROL_CALIBRATION_ACTIVE_REPORT_ENABLE
+        assessment->reason = CONTROL_ROS_REJECT_NONE;
+        assessment->state = CONTROL_ROS_SAFETY_READY;
+        assessment->decision = CONTROL_ROS_DECISION_ACCEPT;
+#else
+        assessment->reason = CONTROL_ROS_REJECT_UNSUPPORTED_CMD;
+        assessment->state = CONTROL_ROS_SAFETY_LIMITED;
+        assessment->decision = CONTROL_ROS_DECISION_REJECT;
+#endif
         return;
     }
 
@@ -2204,10 +2243,37 @@ static void ctrl_handle_can_message(const struct rt_can_msg *msg)
     if (ctrl_parse_ros_command_can(msg, &ros_cmd))
     {
 #if CONTROL_ROS_COMMAND_LOGGING_ONLY
+        control_ros_safety_assessment_t assessment;
+        rt_err_t ret = -RT_EINVAL;
+
         s_dbg_ros_parsed++;
+        ctrl_assess_ros_command_safety(&ros_cmd, &assessment);
+        s_last_ros_status_detail_code = ctrl_ros_reject_reason_detail_code(assessment.reason);
         rt_mutex_take(&s_data_lock, RT_WAITING_FOREVER);
         s_last_ros_cmd = ros_cmd;
         rt_mutex_release(&s_data_lock);
+
+        if (ctrl_ros_command_is_calibration_telemetry(&ros_cmd) &&
+            (assessment.decision == CONTROL_ROS_DECISION_ACCEPT))
+        {
+            ret = ctrl_apply_ros_command(&ros_cmd);
+            if (ret != RT_EOK)
+            {
+                s_last_ros_status_detail_code = CONTROL_STATUS_DETAIL_MOTOR_FAULT;
+            }
+            else
+            {
+                s_dbg_ros_applied++;
+            }
+            ctrl_log_ros_command_assessment(msg,
+                                            &ros_cmd,
+                                            &assessment,
+                                            (ret == RT_EOK) ?
+                                                "apply_calibration_telemetry_only" :
+                                                "apply_calibration_telemetry_failed");
+            return;
+        }
+
         ctrl_log_ros_command_only(msg, &ros_cmd);
         return;
 #else
@@ -2369,7 +2435,8 @@ static rt_err_t ctrl_apply_ros_command(const control_ros_command_t *cmd)
         return -RT_EINVAL;
 
     case CONTROL_ROS_CMD_SET_ACTIVE_REPORT:
-        return -RT_EINVAL;
+        return control_motor_set_active_report(motor_joint,
+                                               cmd->active_report_enable ? RT_TRUE : RT_FALSE);
 
     default:
         return -RT_EINVAL;
