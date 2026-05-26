@@ -160,7 +160,8 @@ python3 /home/pi/nanopi_can_master.py m33 target --iface can0 --joint 4 --deg 30
 
 状态：
 
-- M33 源码已修，等待 RT-Thread Studio 编译、烧录和现场复测。
+- M33 源码已修并烧录后复测：`0x320#03042C0103000000` 会触发 M33 输出 `0x0300FD07` 和 `0x01800007` 到 motor7。映射问题已基本确认修复。
+- 后续重点转为 motor7 的零点、目标角、MIT 参数和真实输出角标定。
 
 ### 减速比必须在 NanoPi、文档、M33 三处一致
 
