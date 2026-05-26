@@ -184,6 +184,31 @@ ros2 run rehab_arm_psoc_bridge build_manifest.py /home/pi/rehab_arm_logs \
 - 平台质量索引只判断数据是否适合标注、导出和图表分析，不代表允许真机运动。
 - 康复机械臂只是平台设备数据工作台的第一个适配来源；平台 UI 不应写死为医疗或机械臂专用。
 
+### Annotation Queue
+
+从带质量门的 manifest 生成离线标注队列：
+
+```bash
+ros2 run rehab_arm_psoc_bridge build_annotation_queue.py /home/pi/rehab_arm_logs/manifest_with_quality.json \
+  --output /home/pi/rehab_arm_logs/annotation_queue.json
+```
+
+输出 `rehab_arm_annotation_queue_v1`：
+
+| 字段 | 说明 |
+|---|---|
+| `ready_count` | 可进入标注的数据段数量。 |
+| `skipped_count` | 被质量门或 schema 问题拦住的数据段数量。 |
+| `items` | 可标注 session，包含 `session_id`、`device_id`、`robot_id`、`topic_profile`、`summary`、`recommended_labels`。 |
+| `skipped_sessions` | 不可标注 session 及阻塞原因。 |
+| `control_boundary` | 固定为 `annotation_queue_only_not_motion_permission`。 |
+
+平台建议：
+
+- 标注页面只默认展示 `items`，把 `skipped_sessions` 放在质量问题抽屉中。
+- 默认不要让 `quality_report.ok=false` 的 session 进入正式标注和训练集。
+- 该队列不包含运动指令，不能用于 M33、NanoPi 或 CAN 控制。
+
 ### CSV 导出
 
 导出 JSONL 为 CSV：

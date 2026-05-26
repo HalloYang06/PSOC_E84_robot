@@ -1349,6 +1349,34 @@ ros2 run rehab_arm_psoc_bridge build_manifest.py /home/pi/rehab_arm_logs \
 
 带 summary 的 manifest 会在每个 session 里嵌入 `rehab_arm_recording_summary_v1`，方便总控台先显示 topic 数量、关节运动范围、motor_state 条目数和 safety 状态分布。默认不加 `--include-summary` 时仍保持旧格式。
 
+生成标注队列：
+
+```bash
+ros2 run rehab_arm_psoc_bridge build_annotation_queue.py \
+  /home/pi/rehab_arm_logs/manifest_with_quality.json \
+  --output /home/pi/rehab_arm_logs/annotation_queue.json
+```
+
+通过标准：
+
+- 输出 `schema_version=rehab_arm_annotation_queue_v1`。
+- `ready_count` 是可进入标注的数据段数量。
+- `skipped_sessions` 里列出未通过质量门的数据段和原因。
+- 默认只接受 `session.ok=true` 且 `quality_report.ok=true` 的 session。
+
+如果要自定义标注字段，可以重复传入 `--label`：
+
+```bash
+ros2 run rehab_arm_psoc_bridge build_annotation_queue.py \
+  /home/pi/rehab_arm_logs/manifest_with_quality.json \
+  --label reach_phase \
+  --label object_state \
+  --label assistance_quality \
+  --output /home/pi/rehab_arm_logs/annotation_queue.json
+```
+
+这个队列只用于平台、人工标注、训练前筛选和数据浏览。它不会打开 ROS topic，不联网，不读取 CAN，不控制 M33 或电机。
+
 预览服务器同步计划：
 
 ```bash

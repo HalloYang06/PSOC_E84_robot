@@ -28,6 +28,7 @@ from rehab_arm_psoc_bridge.data_recording import (
     sanitize_identifier,
     build_recording_manifest,
     build_recording_quality_report,
+    build_annotation_queue,
     build_sync_dry_run_plan,
     file_sha256,
     summarize_jsonl_records,
@@ -863,6 +864,96 @@ class DataRecordingTests(unittest.TestCase):
         self.assertEqual(plan['request_count'], 1)
         self.assertEqual(plan['requests'][0]['url'], 'http://server.local/api/sessions/manifest')
         self.assertEqual(plan['skipped_sessions'][0]['file_name'], 'bad.jsonl')
+
+    def test_build_annotation_queue_keeps_only_quality_ready_sessions(self) -> None:
+        manifest = {
+            'schema_version': 'rehab_arm_manifest_v1',
+            'sessions': [
+                {
+                    'ok': True,
+                    'path': '/logs/good.jsonl',
+                    'file_name': 'good.jsonl',
+                    'session_id': 'good',
+                    'device_id': 'nanopi',
+                    'robot_id': 'arm',
+                    'topics': ['/joint_states', '/rehab_arm/camera_keyframe'],
+                    'quality_report': {
+                        'ok': True,
+                        'topic_profile': 'perception_vla',
+                        'summary': {'topic_counts': {'/rehab_arm/camera_keyframe': 12}},
+                    },
+                },
+                {
+                    'ok': True,
+                    'file_name': 'bad_quality.jsonl',
+                    'session_id': 'bad_quality',
+                    'quality_report': {
+                        'ok': False,
+                        'errors': ['camera keyframe count 1 below required 10'],
+                    },
+                },
+                {
+                    'ok': False,
+                    'file_name': 'bad_schema.jsonl',
+                    'session_id': 'bad_schema',
+                    'errors': ['missing session_metadata'],
+                },
+            ],
+        }
+
+        queue = build_annotation_queue(manifest)
+
+        self.assertEqual(queue['schema_version'], 'rehab_arm_annotation_queue_v1')
+        self.assertEqual(queue['ready_count'], 1)
+        self.assertEqual(queue['skipped_count'], 2)
+        self.assertEqual(queue['items'][0]['session_id'], 'good')
+        self.assertEqual(queue['items'][0]['topic_profile'], 'perception_vla')
+        self.assertEqual(queue['items'][0]['recommended_labels'], ['task_phase', 'object_state', 'assistance_quality'])
+        self.assertEqual(queue['skipped_sessions'][0]['session_id'], 'bad_quality')
+        self.assertIn('quality_report.ok is false', queue['skipped_sessions'][0]['reasons'])
+
+    def test_build_annotation_queue_cli_outputs_ready_sessions(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manifest_path = Path(tmpdir) / 'manifest_with_quality.json'
+            manifest_path.write_text(json.dumps({
+                'schema_version': 'rehab_arm_manifest_v1',
+                'sessions': [
+                    {
+                        'ok': True,
+                        'file_name': 'good.jsonl',
+                        'session_id': 'good',
+                        'device_id': 'nanopi',
+                        'robot_id': 'arm',
+                        'quality_report': {'ok': True, 'topic_profile': 'hardware_telemetry'},
+                    },
+                    {
+                        'ok': True,
+                        'file_name': 'bad.jsonl',
+                        'session_id': 'bad',
+                        'quality_report': {'ok': False, 'errors': ['missing motor_state']},
+                    },
+                ],
+            }), encoding='utf-8')
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).resolve().parents[1] / 'rehab_arm_psoc_bridge' / 'build_annotation_queue.py'),
+                    str(manifest_path),
+                    '--label',
+                    'reach_phase',
+                ],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0)
+        queue = json.loads(result.stdout)
+        self.assertEqual(queue['ready_count'], 1)
+        self.assertEqual(queue['skipped_count'], 1)
+        self.assertEqual(queue['items'][0]['recommended_labels'], ['reach_phase'])
 
     def test_session_log_path_sanitizes_session_id(self) -> None:
         path = session_log_path('logs', 'session 1/unsafe')

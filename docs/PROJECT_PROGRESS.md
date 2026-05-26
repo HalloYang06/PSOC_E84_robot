@@ -1053,3 +1053,11 @@
 - Validated: full `rehab_arm_psoc_bridge` unit tests passed 85 tests; `py_compile` passed.
 - Safety: optional local file integrity check only; no camera access, CAN access, upload, M33 command, or motor motion.
 - Next step: platform data page should show `camera_file_check` when present and avoid enabling it before image files are synced.
+
+### 2026-05-26 - Offline annotation queue
+
+- Completed: added `build_annotation_queue.py` and `rehab_arm_annotation_queue_v1` for quality-gated labeling worklists.
+- Completed: queue includes ready sessions, skipped sessions, recommended labels, and a data-only control boundary.
+- Validated: full `rehab_arm_psoc_bridge` unit tests passed 87 tests; `py_compile` passed.
+- Safety: offline manifest transform only; no ROS launch, network upload, CAN access, M33 command, or motor motion.
+- Next step: platform data/annotation page should read the queue and show skipped reasons before training export.

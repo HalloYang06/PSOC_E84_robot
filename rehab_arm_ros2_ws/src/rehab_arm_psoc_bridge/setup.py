@@ -23,6 +23,7 @@ setup(
             'validate_recording_quality = rehab_arm_psoc_bridge.validate_recording_quality:main',
             'export_recording_csv = rehab_arm_psoc_bridge.export_recording_csv:main',
             'build_manifest = rehab_arm_psoc_bridge.build_manifest:main',
+            'build_annotation_queue = rehab_arm_psoc_bridge.build_annotation_queue:main',
             'sync_dry_run = rehab_arm_psoc_bridge.sync_dry_run:main',
             'sync_upload = rehab_arm_psoc_bridge.sync_upload:main',
             'check_server_quality_gate = rehab_arm_psoc_bridge.check_server_quality_gate:main',

@@ -2300,3 +2300,19 @@ No such file or directory: /tmp/rehab_sim_collection/sim_demo_motion.jsonl
 状态：
 
 - 已加入可选的本地文件存在和 sha256 检查；默认关闭，避免跨机器路径误报。
+
+### 标注队列必须从质量门之后生成
+
+现象：
+
+- 如果平台或人工直接从普通 `manifest.json` 开始标注，缺 topic、缺 motor_state、缺关键帧或图片 hash 错误的数据也可能混进训练集。
+
+技巧：
+
+- 先生成 `manifest_with_quality.json`。
+- 再运行 `build_annotation_queue.py` 生成 `rehab_arm_annotation_queue_v1`。
+- 平台默认只展示 `items`；把 `skipped_sessions` 作为质量问题提示，不要静默丢弃。
+
+状态：
+
+- 已新增离线 annotation queue 工具；它只转换 manifest，不联网、不控制硬件。
