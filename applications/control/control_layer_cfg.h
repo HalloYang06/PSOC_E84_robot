@@ -337,6 +337,15 @@
 #define CONTROL_ROS_CMD_OP_ACTIVE_REPORT   0x06U
 #endif
 
+/* Development bench motion gate.
+ * 1 = allow very small table-top ROS set_target commands after M33 software
+ *     checks pass. This is for powered bench development only, not wearable use.
+ * 0 = keep NanoPi ROS/CAN commands logging-only.
+ */
+#ifndef CONTROL_DEVELOPMENT_BENCH_MOTION_ENABLE
+#define CONTROL_DEVELOPMENT_BENCH_MOTION_ENABLE 1U
+#endif
+
 /* Safety bring-up mode for NanoPi ROS/CAN commands.
  * 1 = log parsed 0x320 commands and reject them before any motor-control path.
  * 0 = allow commands to enter the ROS command queue/control apply path.
@@ -345,7 +354,11 @@
  * behavior have been validated with motors disconnected or otherwise made safe.
  */
 #ifndef CONTROL_ROS_COMMAND_LOGGING_ONLY
+#if CONTROL_DEVELOPMENT_BENCH_MOTION_ENABLE
+#define CONTROL_ROS_COMMAND_LOGGING_ONLY   0U
+#else
 #define CONTROL_ROS_COMMAND_LOGGING_ONLY   1U
+#endif
 #endif
 
 /* M33 -> NanoPi 0x322 status V2 enums. Keep these values aligned with
@@ -443,47 +456,47 @@
 #endif
 
 #ifndef CONTROL_ROS_JOINT0_MIN_01DEG
-#define CONTROL_ROS_JOINT0_MIN_01DEG       (-401)
+#define CONTROL_ROS_JOINT0_MIN_01DEG       (-600)
 #endif
 
 #ifndef CONTROL_ROS_JOINT0_MAX_01DEG
-#define CONTROL_ROS_JOINT0_MAX_01DEG       802
+#define CONTROL_ROS_JOINT0_MAX_01DEG       600
 #endif
 
 #ifndef CONTROL_ROS_JOINT1_MIN_01DEG
-#define CONTROL_ROS_JOINT1_MIN_01DEG       0
+#define CONTROL_ROS_JOINT1_MIN_01DEG       (-600)
 #endif
 
 #ifndef CONTROL_ROS_JOINT1_MAX_01DEG
-#define CONTROL_ROS_JOINT1_MAX_01DEG       1031
+#define CONTROL_ROS_JOINT1_MAX_01DEG       600
 #endif
 
 #ifndef CONTROL_ROS_JOINT2_MIN_01DEG
-#define CONTROL_ROS_JOINT2_MIN_01DEG       (-257)
+#define CONTROL_ROS_JOINT2_MIN_01DEG       (-600)
 #endif
 
 #ifndef CONTROL_ROS_JOINT2_MAX_01DEG
-#define CONTROL_ROS_JOINT2_MAX_01DEG       458
+#define CONTROL_ROS_JOINT2_MAX_01DEG       600
 #endif
 
 #ifndef CONTROL_ROS_JOINT3_MIN_01DEG
-#define CONTROL_ROS_JOINT3_MIN_01DEG       (-687)
+#define CONTROL_ROS_JOINT3_MIN_01DEG       (-600)
 #endif
 
 #ifndef CONTROL_ROS_JOINT3_MAX_01DEG
-#define CONTROL_ROS_JOINT3_MAX_01DEG       687
+#define CONTROL_ROS_JOINT3_MAX_01DEG       600
 #endif
 
 #ifndef CONTROL_ROS_JOINT4_MIN_01DEG
-#define CONTROL_ROS_JOINT4_MIN_01DEG       (-687)
+#define CONTROL_ROS_JOINT4_MIN_01DEG       (-600)
 #endif
 
 #ifndef CONTROL_ROS_JOINT4_MAX_01DEG
-#define CONTROL_ROS_JOINT4_MAX_01DEG       687
+#define CONTROL_ROS_JOINT4_MAX_01DEG       600
 #endif
 
 #ifndef CONTROL_ROS_MAX_TARGET_RPM
-#define CONTROL_ROS_MAX_TARGET_RPM         30
+#define CONTROL_ROS_MAX_TARGET_RPM         5
 #endif
 
 #ifndef CONTROL_ROS_MAX_TARGET_TORQUE_MA

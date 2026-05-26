@@ -1404,6 +1404,11 @@ static rt_bool_t ctrl_ros_joint_limit(rt_uint8_t joint_id, rt_int16_t *min_01deg
     return RT_TRUE;
 }
 
+static rt_uint8_t ctrl_ros_joint_to_motor_joint(rt_uint8_t ros_joint_id)
+{
+    return (rt_uint8_t)(ros_joint_id + 1U);
+}
+
 static rt_uint32_t ctrl_tick_delta_ms(rt_tick_t newer, rt_tick_t older)
 {
     return (rt_uint32_t)(((newer - older) * 1000U) / RT_TICK_PER_SECOND);
@@ -1839,6 +1844,22 @@ static void ctrl_assess_ros_command_safety(const control_ros_command_t *cmd,
     assessment->joint_known =
         ctrl_ros_joint_limit(cmd->joint_id, &assessment->joint_min_01deg, &assessment->joint_max_01deg);
 
+    if (cmd->command == CONTROL_ROS_CMD_STOP)
+    {
+        if (!assessment->joint_known)
+        {
+            assessment->reason = CONTROL_ROS_REJECT_UNKNOWN_JOINT;
+            assessment->state = CONTROL_ROS_SAFETY_LIMITED;
+            assessment->decision = CONTROL_ROS_DECISION_REJECT;
+            return;
+        }
+
+        assessment->reason = CONTROL_ROS_REJECT_NONE;
+        assessment->state = CONTROL_ROS_SAFETY_READY;
+        assessment->decision = CONTROL_ROS_DECISION_ACCEPT;
+        return;
+    }
+
     if (cmd->command != CONTROL_ROS_CMD_SET_TARGET)
     {
         assessment->target_in_limit = RT_FALSE;
@@ -1890,6 +1911,7 @@ static void ctrl_assess_ros_command_safety(const control_ros_command_t *cmd,
 #endif
 }
 
+#if CONTROL_ROS_COMMAND_LOGGING_ONLY
 static void ctrl_log_ros_command_only(const struct rt_can_msg *msg, const control_ros_command_t *cmd)
 {
     rt_uint8_t data[8] = {0};
@@ -1947,25 +1969,68 @@ static void ctrl_log_ros_command_only(const struct rt_can_msg *msg, const contro
     rt_kprintf("final action=no_motor_output logging_only=%u\n",
                (unsigned int)CONTROL_ROS_COMMAND_LOGGING_ONLY);
 }
-
-#if !CONTROL_ROS_COMMAND_LOGGING_ONLY
-static void ctrl_enqueue_ros_command(const control_ros_command_t *cmd)
-{
-    if (cmd == RT_NULL)
-    {
-        return;
-    }
-
-    if (rt_mq_send(&s_ros_cmd_mq, (void *)cmd, sizeof(*cmd)) != RT_EOK)
-    {
-        s_dbg_ros_queue_fail++;
-        rt_kprintf("[control] ros command queue full, command dropped\n");
-        return;
-    }
-
-    s_dbg_ros_enqueued++;
-}
 #endif
+
+static void ctrl_log_ros_command_assessment(const struct rt_can_msg *msg,
+                                            const control_ros_command_t *cmd,
+                                            const control_ros_safety_assessment_t *assessment,
+                                            const char *final_action)
+{
+    rt_uint8_t data[8] = {0};
+    rt_int32_t target_mrad;
+
+    if ((msg == RT_NULL) || (cmd == RT_NULL) || (assessment == RT_NULL))
+    {
+        return;
+    }
+
+    if (msg->len > 0U)
+    {
+        rt_memcpy(data, msg->data, (msg->len > 8U) ? 8U : msg->len);
+    }
+    target_mrad = ((rt_int32_t)cmd->target_pos_01deg * 1745L) / 1000L;
+
+    rt_kprintf("RX 320 dlc=%u data=%02X%02X%02X%02X%02X%02X%02X%02X\n",
+               (unsigned int)msg->len,
+               (unsigned int)data[0],
+               (unsigned int)data[1],
+               (unsigned int)data[2],
+               (unsigned int)data[3],
+               (unsigned int)data[4],
+               (unsigned int)data[5],
+               (unsigned int)data[6],
+               (unsigned int)data[7]);
+    rt_kprintf("cmd=0x%02X name=%s ros_joint_id=%u motor_joint=%u deg_x10=%d target_mrad=%ld rpm=%d torque_ma=%d\n",
+               (unsigned int)data[0],
+               ctrl_ros_command_name(cmd->command),
+               (unsigned int)cmd->joint_id,
+               (unsigned int)ctrl_ros_joint_to_motor_joint(cmd->joint_id),
+               (int)cmd->target_pos_01deg,
+               (long)target_mrad,
+               (int)cmd->target_vel_rpm,
+               (int)cmd->target_torque_ma);
+    rt_kprintf("safety_state=%s decision=%s reason=%s\n",
+               ctrl_ros_safety_state_name(assessment->state),
+               ctrl_ros_decision_name(assessment->decision),
+               ctrl_ros_reject_reason_name(assessment->reason));
+    rt_kprintf("audit heartbeat_ok=%u heartbeat_age_ms=%lu heartbeat_timeout_ms=%u joint_known=%u limit_01deg=[%d,%d]\n",
+               assessment->heartbeat_ok ? 1U : 0U,
+               (unsigned long)assessment->heartbeat_age_ms,
+               (unsigned int)CONTROL_ROS_HEARTBEAT_TIMEOUT_MS,
+               assessment->joint_known ? 1U : 0U,
+               (int)assessment->joint_min_01deg,
+               (int)assessment->joint_max_01deg);
+    rt_kprintf("audit target_in_limit=%u rpm_in_limit=%u torque_in_limit=%u max_rpm=%d max_torque_ma=%d bench_motion=%u\n",
+               assessment->target_in_limit ? 1U : 0U,
+               assessment->rpm_in_limit ? 1U : 0U,
+               assessment->torque_in_limit ? 1U : 0U,
+               (int)CONTROL_ROS_MAX_TARGET_RPM,
+               (int)CONTROL_ROS_MAX_TARGET_TORQUE_MA,
+               (unsigned int)CONTROL_DEVELOPMENT_BENCH_MOTION_ENABLE);
+    rt_kprintf("final action=%s logging_only=%u\n",
+               (final_action != RT_NULL) ? final_action : "unknown",
+               (unsigned int)CONTROL_ROS_COMMAND_LOGGING_ONLY);
+}
 
 static rt_bool_t ctrl_handle_nanopi_heartbeat(const struct rt_can_msg *msg)
 {
@@ -1986,9 +2051,12 @@ static rt_bool_t ctrl_handle_nanopi_heartbeat(const struct rt_can_msg *msg)
     payload[5] = CONTROL_STATUS_MODE_LOGGING_ONLY;
     payload[6] = s_last_ros_status_detail_code;
 #else
-    payload[4] = CONTROL_STATUS_SAFETY_OK;
-    payload[5] = CONTROL_STATUS_MODE_STANDBY;
-    payload[6] = CONTROL_STATUS_DETAIL_NONE;
+    payload[4] = (s_last_ros_status_detail_code == CONTROL_STATUS_DETAIL_NONE) ?
+                 CONTROL_STATUS_SAFETY_OK : CONTROL_STATUS_SAFETY_LIMITED;
+    payload[5] = ((s_last_ros_status_detail_code == CONTROL_STATUS_DETAIL_NONE) &&
+                  CONTROL_DEVELOPMENT_BENCH_MOTION_ENABLE) ?
+                 CONTROL_STATUS_MODE_ARMED : CONTROL_STATUS_MODE_STANDBY;
+    payload[6] = s_last_ros_status_detail_code;
 #endif
     payload[7] = 0U;
 
@@ -2032,16 +2100,34 @@ static void ctrl_handle_can_message(const struct rt_can_msg *msg)
         ctrl_log_ros_command_only(msg, &ros_cmd);
         return;
 #else
+        control_ros_safety_assessment_t assessment;
         rt_err_t ret;
 
         s_dbg_ros_parsed++;
-        ctrl_enqueue_ros_command(&ros_cmd);
+        ctrl_assess_ros_command_safety(&ros_cmd, &assessment);
+        s_last_ros_status_detail_code = ctrl_ros_reject_reason_detail_code(assessment.reason);
+        if (assessment.decision != CONTROL_ROS_DECISION_ACCEPT)
+        {
+            rt_mutex_take(&s_data_lock, RT_WAITING_FOREVER);
+            s_last_ros_cmd = ros_cmd;
+            rt_mutex_release(&s_data_lock);
+            ctrl_log_ros_command_assessment(msg, &ros_cmd, &assessment, "reject_no_motor_output");
+            return;
+        }
 
         ret = ctrl_apply_ros_command(&ros_cmd);
+        if (ret != RT_EOK)
+        {
+            s_last_ros_status_detail_code = CONTROL_STATUS_DETAIL_MOTOR_FAULT;
+        }
         rt_mutex_take(&s_data_lock, RT_WAITING_FOREVER);
         s_last_ros_cmd = ros_cmd;
         rt_mutex_release(&s_data_lock);
         s_dbg_ros_applied++;
+        ctrl_log_ros_command_assessment(msg,
+                                        &ros_cmd,
+                                        &assessment,
+                                        (ret == RT_EOK) ? "apply_motor_output" : "apply_failed");
         if (ret != RT_EOK)
         {
             rt_kprintf("[control] ros cmd direct apply failed, cmd=%u joint=%u ret=%d\n",
@@ -2141,34 +2227,38 @@ static void ctrl_can_rx_entry(void *parameter)
 
 static rt_err_t ctrl_apply_ros_command(const control_ros_command_t *cmd)
 {
+    rt_uint8_t motor_joint;
+
     if (cmd == RT_NULL)
     {
         return -RT_EINVAL;
     }
 
+    motor_joint = ctrl_ros_joint_to_motor_joint(cmd->joint_id);
+
     switch (cmd->command)
     {
     case CONTROL_ROS_CMD_ENABLE:
-        return control_motor_enable(cmd->joint_id);
+        return -RT_EINVAL;
 
     case CONTROL_ROS_CMD_STOP:
-        return control_motor_stop(cmd->joint_id, cmd->clear_fault ? RT_TRUE : RT_FALSE);
+        return control_motor_stop(motor_joint, cmd->clear_fault ? RT_TRUE : RT_FALSE);
 
     case CONTROL_ROS_CMD_SET_TARGET:
-        return control_joint_motor_set_target(cmd->joint_id,
+        return control_joint_motor_set_target(motor_joint,
                                               cmd->target_pos_01deg,
                                               cmd->target_vel_rpm,
                                               cmd->target_torque_ma,
                                               RT_TRUE);
 
     case CONTROL_ROS_CMD_SET_MODE:
-        return control_motor_set_run_mode(cmd->joint_id, (control_motor_run_mode_t)cmd->mode);
+        return -RT_EINVAL;
 
     case CONTROL_ROS_CMD_SET_ZERO:
-        return control_motor_set_zero(cmd->joint_id);
+        return -RT_EINVAL;
 
     case CONTROL_ROS_CMD_SET_ACTIVE_REPORT:
-        return control_motor_set_active_report(cmd->joint_id, cmd->active_report_enable ? RT_TRUE : RT_FALSE);
+        return -RT_EINVAL;
 
     default:
         return -RT_EINVAL;
