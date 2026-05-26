@@ -960,3 +960,14 @@
 - Validated: cloud platform deploy pulled latest `ai/game-loop-core`, built successfully, and restarted API `8011` plus web `3001`.
 - Safety: the checklist describes data upload and development workflow only; it is not a motion enable path.
 - Next step: keep moving toward real simulation host onboarding and data collection assets.
+
+### 2026-05-26 - Linux board manifest generator
+
+- Completed: added `board_manifest` in `rehab_arm_psoc_bridge` to generate `linux_board_manifest_v1` for NanoPi/Jetson/x86 Linux boards.
+- Completed: the tool reports device identity, platform info, network/CAN interfaces, serial nodes, camera nodes, USB devices, ROS2 availability, recommended streams, and the safety boundary.
+- Validated: `python -m unittest rehab_arm_ros2_ws\src\rehab_arm_psoc_bridge\test\test_board_manifest.py -v` passed 3 tests.
+- Validated: `python -m py_compile rehab_arm_ros2_ws\src\rehab_arm_psoc_bridge\rehab_arm_psoc_bridge\board_manifest.py` passed.
+- Validated: full `rehab_arm_psoc_bridge` unit test suite passed 70 tests.
+- Validated: CLI smoke generated a manifest in the system temp directory and the temp file was removed after inspection.
+- Safety: this is read-only discovery; it does not open CAN, start ROS control, send M33 commands, or move motors.
+- Next step: add a dry-run/upload path for `linux_board_manifest_v1` so the platform can show real board capabilities from any configured Linux board.

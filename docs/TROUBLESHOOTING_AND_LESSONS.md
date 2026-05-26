@@ -2145,3 +2145,21 @@ No such file or directory: /tmp/rehab_sim_collection/sim_demo_motion.jsonl
 状态：
 
 - 平台 robotics 页面已增加只读 `接入检查` 面板，文档已记录安全边界。
+
+### Linux 开发板 manifest 只能做只读发现
+
+现象：
+
+- 开发板接入平台时需要扫描 `can*`、串口、USB、摄像头、ROS2 环境。
+- 如果扫描脚本顺手 bring up CAN、启动 ROS launch 或打开设备流，容易把“接入发现”变成“隐式控制/占用设备”。
+
+技巧：
+
+- `board_manifest` 只读 `/sys/class/net`、`/dev` 和命令可用性。
+- 输出必须保留 `control_boundary=board_discovery_only_not_motion_permission`。
+- 上传前先人工检查 manifest，确认 `device_id`、`robot_id`、接口列表和安全边界正确。
+- 真机运动许可仍只看 M33 安全状态机，不看平台 manifest。
+
+状态：
+
+- 已新增 `board_manifest` 和单元测试；尚未接入平台上传接口。

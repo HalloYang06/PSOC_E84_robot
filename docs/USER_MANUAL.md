@@ -1568,6 +1568,34 @@ ros2 run rehab_arm_sim_mujoco upload_sim_readiness sim_readiness_report.json \
 
 这个清单适用于 NanoPi、Jetson、x86 工控机或其他 Linux 开发板；具体机器人项目的控制权限和安全裁决必须另行实现，不能由平台清单代替。
 
+## 6.4 在 Linux 开发板生成接入 manifest
+
+在 NanoPi 或任意 Linux 开发板上，先构建 ROS2 工作区并 source 环境，然后运行只读自检：
+
+```bash
+cd ~/rehab_ws_src/Medical-Rehabilitation-Manipulator/rehab_arm_ros2_ws
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+ros2 run rehab_arm_psoc_bridge board_manifest \
+  --device-id nanopi-m5 \
+  --robot-id rehab-arm-alpha \
+  --pretty \
+  --output board_manifest.json
+```
+
+它会生成 `linux_board_manifest_v1`，包含：
+
+- 开发板身份：`device_id`、`robot_id`、hostname、系统版本。
+- 接口能力：网卡、`can*`、串口、USB、摄像头、ROS2 是否可用。
+- 推荐数据流：`motor_state`、`sensor_state`、`camera_keyframe`、`simulation_readiness`。
+- 安全边界：`board_discovery_only_not_motion_permission`。
+
+注意：
+
+- 这个命令只读扫描本机，不联网，不启动 CAN，不发 ROS 控制，不控制电机。
+- 生成的 `board_manifest.json` 可以先人工检查；后续再接平台上传工具。
+- 临时生成的 manifest 不要提交进 Git，除非它变成正式测试 fixture。
+
 ## 7. 文档与 Git 维护
 
 每次完成任务后同步更新：
