@@ -25,6 +25,7 @@ install(PROGRAMS
   rehab_arm_psoc_bridge/build_annotation_queue.py
   rehab_arm_psoc_bridge/export_annotation_template.py
   rehab_arm_psoc_bridge/validate_annotations.py
+  rehab_arm_psoc_bridge/build_dataset_index.py
   rehab_arm_psoc_bridge/sync_dry_run.py
   rehab_arm_psoc_bridge/sync_upload.py
   rehab_arm_psoc_bridge/check_server_quality_gate.py

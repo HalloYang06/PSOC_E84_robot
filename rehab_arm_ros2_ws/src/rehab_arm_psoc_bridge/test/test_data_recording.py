@@ -32,6 +32,7 @@ from rehab_arm_psoc_bridge.data_recording import (
     make_annotation_template_rows,
     validate_annotation_rows,
     build_replay_plan,
+    build_dataset_index,
     build_sync_dry_run_plan,
     file_sha256,
     summarize_jsonl_records,
@@ -1185,6 +1186,91 @@ class DataRecordingTests(unittest.TestCase):
         payload = json.loads(result.stdout)
         self.assertIs(payload['ok'], False)
         self.assertEqual(payload['error_count'], 2)
+
+    def test_build_dataset_index_keeps_quality_ready_sessions(self) -> None:
+        manifest = {
+            'schema_version': 'rehab_arm_manifest_v1',
+            'sessions': [
+                {
+                    'ok': True,
+                    'path': '/logs/good.jsonl',
+                    'file_name': 'good.jsonl',
+                    'session_id': 'good',
+                    'device_id': 'nanopi',
+                    'robot_id': 'arm',
+                    'mode': 'simulation_data_collection',
+                    'record_count': 42,
+                    'topics': ['/joint_states', '/rehab_arm/motor_state'],
+                    'quality_report': {
+                        'ok': True,
+                        'topic_profile': 'hardware_telemetry',
+                        'summary': {'moving_joint_count': 5},
+                    },
+                },
+                {
+                    'ok': True,
+                    'file_name': 'bad.jsonl',
+                    'session_id': 'bad',
+                    'quality_report': {
+                        'ok': False,
+                        'errors': ['missing motor_state'],
+                    },
+                },
+            ],
+        }
+
+        index = build_dataset_index(manifest, dataset_id=' rehab arm/demo ', purpose='replay_review')
+
+        self.assertEqual(index['schema_version'], 'rehab_arm_dataset_index_v1')
+        self.assertEqual(index['dataset_id'], 'rehab_arm_demo')
+        self.assertEqual(index['purpose'], 'replay_review')
+        self.assertEqual(index['ready_count'], 1)
+        self.assertEqual(index['skipped_count'], 1)
+        self.assertEqual(index['items'][0]['session_id'], 'good')
+        self.assertEqual(index['items'][0]['jsonl_path'], '/logs/good.jsonl')
+        self.assertEqual(index['items'][0]['topic_profile'], 'hardware_telemetry')
+        self.assertEqual(index['items'][0]['summary']['moving_joint_count'], 5)
+        self.assertEqual(index['items'][0]['control_boundary'], 'dataset_index_only_not_motion_permission')
+        self.assertIn('quality_report.ok is false', index['skipped_sessions'][0]['reasons'])
+
+    def test_build_dataset_index_cli_writes_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manifest_path = Path(tmpdir) / 'manifest_with_quality.json'
+            output_path = Path(tmpdir) / 'dataset_index.json'
+            manifest_path.write_text(json.dumps({
+                'schema_version': 'rehab_arm_manifest_v1',
+                'sessions': [
+                    {
+                        'ok': True,
+                        'path': '/logs/good.jsonl',
+                        'file_name': 'good.jsonl',
+                        'session_id': 'good',
+                        'quality_report': {'ok': True, 'topic_profile': 'hardware_telemetry'},
+                    },
+                ],
+            }), encoding='utf-8')
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).resolve().parents[1] / 'rehab_arm_psoc_bridge' / 'build_dataset_index.py'),
+                    str(manifest_path),
+                    '--dataset-id',
+                    'dataset-1',
+                    '--output',
+                    str(output_path),
+                ],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            payload = json.loads(output_path.read_text(encoding='utf-8'))
+
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(payload['schema_version'], 'rehab_arm_dataset_index_v1')
+        self.assertEqual(payload['dataset_id'], 'dataset-1')
+        self.assertEqual(payload['ready_count'], 1)
 
     def test_session_log_path_sanitizes_session_id(self) -> None:
         path = session_log_path('logs', 'session 1/unsafe')

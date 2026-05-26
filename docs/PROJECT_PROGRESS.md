@@ -1198,6 +1198,16 @@
 - Safety: ROS replay publishes historical telemetry only; it does not subscribe to `JointTrajectory`, open SocketCAN, send `0x320`, command M33, or move motors.
 - Next step: run the replay node on the Linux simulation host with RViz/MuJoCo subscribers and verify joint names/directions against the URDF.
 
+### 2026-05-27 - Offline dataset index
+
+- Completed: added `build_dataset_index.py` and `build_dataset_index()` to turn a quality-gated manifest into a training/replay/platform dataset index.
+- Completed: index includes session identity, JSONL path, topics, topic profile, summaries, quality status, skipped reasons, and a data-only control boundary.
+- Completed: registered the tool in both `setup.py` console scripts and CMake install programs.
+- Validated: `python -m unittest rehab_arm_ros2_ws\src\rehab_arm_psoc_bridge\test\test_data_recording.py` passed 49 tests.
+- Validated: `python -m py_compile data_recording.py build_dataset_index.py` passed.
+- Safety: offline manifest transform only; no ROS launch, network upload, CAN access, M33 command, or motor motion.
+- Next step: after the simulation host is ready, use `dataset_index.json` to select replay sessions for RViz/MuJoCo and platform annotation review.
+
 ### 2026-05-26 - NanoPi motor data receive check
 
 - Completed: live NanoPi CAN receive test on `192.168.2.66` with `can0` at classic CAN 1Mbps.

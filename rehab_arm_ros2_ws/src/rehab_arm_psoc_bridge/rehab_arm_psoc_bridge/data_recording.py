@@ -915,6 +915,75 @@ def build_annotation_queue(
     }
 
 
+def build_dataset_index(
+    manifest: dict[str, object],
+    dataset_id: str,
+    purpose: str = 'training_candidate',
+    require_quality_report: bool = True,
+) -> dict[str, object]:
+    items: list[dict[str, object]] = []
+    skipped: list[dict[str, object]] = []
+    sessions = manifest.get('sessions', [])
+    if not isinstance(sessions, list):
+        sessions = []
+
+    for session in sessions:
+        if not isinstance(session, dict):
+            continue
+        reasons: list[str] = []
+        if session.get('ok') is not True:
+            reasons.extend(str(item) for item in session.get('errors', []) if item)
+            if not reasons:
+                reasons.append('session ok is false')
+
+        quality_report = session.get('quality_report')
+        if require_quality_report:
+            if not isinstance(quality_report, dict):
+                reasons.append('missing quality_report')
+            elif quality_report.get('ok') is not True:
+                reasons.append('quality_report.ok is false')
+                reasons.extend(str(item) for item in quality_report.get('errors', []) if item)
+
+        if reasons:
+            skipped.append({
+                'session_id': session.get('session_id'),
+                'file_name': session.get('file_name'),
+                'reasons': reasons,
+            })
+            continue
+
+        quality = quality_report if isinstance(quality_report, dict) else {}
+        summary = session.get('summary')
+        if not isinstance(summary, dict):
+            summary = quality.get('summary') if isinstance(quality.get('summary'), dict) else {}
+        items.append({
+            'session_id': session.get('session_id'),
+            'file_name': session.get('file_name'),
+            'jsonl_path': session.get('path'),
+            'device_id': session.get('device_id'),
+            'robot_id': session.get('robot_id'),
+            'mode': session.get('mode'),
+            'topics': session.get('topics', []),
+            'topic_profile': quality.get('topic_profile'),
+            'record_count': session.get('record_count'),
+            'summary': summary,
+            'quality_report_ok': quality.get('ok') if isinstance(quality, dict) else None,
+            'control_boundary': 'dataset_index_only_not_motion_permission',
+        })
+
+    return {
+        'schema_version': 'rehab_arm_dataset_index_v1',
+        'dataset_id': sanitize_identifier(dataset_id),
+        'purpose': purpose,
+        'source_schema_version': manifest.get('schema_version'),
+        'ready_count': len(items),
+        'skipped_count': len(skipped),
+        'items': items,
+        'skipped_sessions': skipped,
+        'control_boundary': 'dataset_index_only_not_motion_permission',
+    }
+
+
 ANNOTATION_TEMPLATE_BASE_FIELDS = [
     'session_id',
     'file_name',

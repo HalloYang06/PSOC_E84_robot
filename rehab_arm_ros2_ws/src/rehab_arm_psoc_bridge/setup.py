@@ -28,6 +28,7 @@ setup(
             'build_annotation_queue = rehab_arm_psoc_bridge.build_annotation_queue:main',
             'export_annotation_template = rehab_arm_psoc_bridge.export_annotation_template:main',
             'validate_annotations = rehab_arm_psoc_bridge.validate_annotations:main',
+            'build_dataset_index = rehab_arm_psoc_bridge.build_dataset_index:main',
             'sync_dry_run = rehab_arm_psoc_bridge.sync_dry_run:main',
             'sync_upload = rehab_arm_psoc_bridge.sync_upload:main',
             'check_server_quality_gate = rehab_arm_psoc_bridge.check_server_quality_gate:main',

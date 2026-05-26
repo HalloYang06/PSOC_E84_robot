@@ -1897,6 +1897,26 @@ ros2 run rehab_arm_psoc_bridge validate_annotations.py \
 
 这个校验器是训练前质量门，只判断标注 CSV 是否可进入后续数据集导出。它不会打开 ROS topic，不联网，不读取 CAN，不控制 M33 或电机。
 
+生成数据集索引：
+
+```bash
+ros2 run rehab_arm_psoc_bridge build_dataset_index.py \
+  /home/pi/rehab_arm_logs/manifest_with_quality.json \
+  --dataset-id rehab-arm-bench-001 \
+  --purpose replay_review \
+  --output /home/pi/rehab_arm_logs/dataset_index.json
+```
+
+通过标准：
+
+- 输出 `schema_version=rehab_arm_dataset_index_v1`。
+- `ready_count` 是可进入数据集的数据段数量。
+- `items[]` 包含 `session_id`、`jsonl_path`、`device_id`、`robot_id`、`topics`、`topic_profile`、`summary` 和 `quality_report_ok`。
+- `skipped_sessions[]` 列出缺少质量报告、质量门失败或 session 无效的数据段。
+- `control_boundary=dataset_index_only_not_motion_permission`。
+
+这个索引用于平台数据资产、训练前导出、VLA 上下文数据选择和回放审查。它只整理本地 manifest，不上传服务器，不打开 ROS topic，不读取 CAN，不控制 M33 或电机。
+
 预览服务器同步计划：
 
 ```bash
