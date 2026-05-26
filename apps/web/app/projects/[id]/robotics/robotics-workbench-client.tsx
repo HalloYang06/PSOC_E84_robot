@@ -194,6 +194,19 @@ function latestTime(device: AnyRecord, key: string) {
   return new Date(ts * 1000).toLocaleString("zh-CN", { hour12: false });
 }
 
+function latestDeviceUploadTime(device: AnyRecord) {
+  const timestamps = [
+    Number(device.last_upload_ts_unix),
+    Number(record(device.motor_state).ts_unix),
+    Number(record(device.sensor_state).ts_unix),
+    Number(record(device.camera_keyframe).ts_unix),
+    Number(record(device.safety).ts_unix),
+    Number(record(device.simulation_readiness).ts_unix),
+  ].filter((value) => Number.isFinite(value) && value > 0);
+  const latest = Math.max(0, ...timestamps);
+  return latest > 0 ? new Date(latest * 1000).toLocaleString("zh-CN", { hour12: false }) : "无上传记录";
+}
+
 function dataQualityReady(device: AnyRecord) {
   return record(device.data_quality).annotation_ready === true;
 }
@@ -905,6 +918,109 @@ function DeviceQualityStrip({ devices }: { devices: AnyRecord[] }) {
         </div>
       </details>
       <em>只读数据状态，不代表允许运动，也不下发 CAN 或电机命令。</em>
+    </section>
+  );
+}
+
+function deviceHasBusData(device: AnyRecord) {
+  const manifest = record(device.manifest);
+  const interfaces = asArray<AnyRecord>(manifest.interfaces);
+  const interfaceKinds = interfaces.map((item) => text(item.kind ?? item.type ?? item.transport).toLowerCase());
+  return interfaceKinds.some((kind) => kind.includes("can") || kind.includes("serial") || kind.includes("usb"))
+    || asArray(latestPayload(device, "motor_state").motors).length > 0
+    || Object.keys(latestPayload(device, "sensor_state")).length > 0;
+}
+
+function AccessCheckPanel({
+  devices,
+  computerCount,
+  readyComputers,
+  queueableComputers,
+  scannedInterfaceCount,
+  workbenchMode,
+  projectId,
+  openFirstDevice,
+}: {
+  devices: AnyRecord[];
+  computerCount: number;
+  readyComputers: number;
+  queueableComputers: number;
+  scannedInterfaceCount: number;
+  workbenchMode: DeviceWorkbenchMode;
+  projectId: string;
+  openFirstDevice: () => void;
+}) {
+  const latestDevice = devices[0];
+  const reports = devices.map(simulationReport).filter((report) => Object.keys(report).length > 0);
+  const cameraCount = devices.filter((device) => deviceDataCounts(device).hasCamera).length;
+  const busReadyCount = devices.filter(deviceHasBusData).length;
+  const rosReadyCount = reports.filter((report) => text(report.readiness, "").startsWith("ready_")).length;
+  const checks = [
+    {
+      label: "开发板",
+      value: devices.length ? `${devices.length} 台` : "未接入",
+      detail: latestDevice ? `${deviceTitle(latestDevice)} · ${text(latestDevice.online_state, "unknown")}` : "先运行开发板接入脚本或扫描 runner。",
+      ready: devices.length > 0,
+    },
+    {
+      label: "Runner",
+      value: readyComputers ? `${readyComputers} 可运行` : queueableComputers ? `${queueableComputers} 可排队` : "未就绪",
+      detail: computerCount ? `${computerCount} 台电脑在线记录；扫描到 ${scannedInterfaceCount} 个接口。` : "服务器还没有可用 runner。",
+      ready: readyComputers + queueableComputers > 0,
+    },
+    {
+      label: "ROS/仿真",
+      value: reports.length ? `${rosReadyCount}/${reports.length}` : "无报告",
+      detail: reports.length ? `最近 readiness: ${text(reports[0].readiness, "unknown")}` : "运行仿真环境自检并上传报告后显示。",
+      ready: rosReadyCount > 0,
+    },
+    {
+      label: "摄像头",
+      value: cameraCount ? `${cameraCount} 路` : "无关键帧",
+      detail: cameraCount ? "可进入开发板标签查看最近帧。" : "camera_keyframe 上传后进入 VLA/标注上下文。",
+      ready: cameraCount > 0,
+    },
+    {
+      label: "CAN/串口",
+      value: busReadyCount ? `${busReadyCount} 台有数据` : "无数据",
+      detail: "来自 manifest、motor_state 或 sensor_state，只读检查。",
+      ready: busReadyCount > 0,
+    },
+    {
+      label: "最近上传",
+      value: latestDevice ? latestDeviceUploadTime(latestDevice) : "无记录",
+      detail: latestDevice ? text(deviceId(latestDevice), "device") : "等待设备首次同步。",
+      ready: Boolean(latestDevice),
+    },
+  ];
+  return (
+    <section className={styles.accessCheckPanel} aria-label="Linux 开发板接入检查">
+      <div className={styles.accessCheckHead}>
+        <div>
+          <span>接入检查</span>
+          <strong>{workbenchMode === "boards" ? "先确认数据链路，再开始采集或标注" : "先扫描接口，再创建调试窗口"}</strong>
+          <small>这个面板只读：它帮助判断下一步做什么，不代表允许真机运动。</small>
+        </div>
+        <div className={styles.accessActions}>
+          <form action={请求串口USB扫描.bind(null, projectId)}>
+            <input type="hidden" name="return_to" value={`/projects/${projectId}/robotics`} />
+            <input type="hidden" name="computer_node_id" value="all" />
+            <button type="submit" disabled={!computerCount}>
+              {workbenchMode === "boards" ? "扫描开发板/runner" : "扫描真实接口"}
+            </button>
+          </form>
+          {devices[0] ? <button type="button" onClick={openFirstDevice}>打开最近开发板</button> : <span>等待设备上传</span>}
+        </div>
+      </div>
+      <div className={styles.accessCheckGrid}>
+        {checks.map((item) => (
+          <article key={item.label} data-ready={item.ready ? "true" : "false"}>
+            <span>{item.label}</span>
+            <strong>{item.value}</strong>
+            <p>{item.detail}</p>
+          </article>
+        ))}
+      </div>
     </section>
   );
 }
@@ -2479,6 +2595,16 @@ export function RoboticsWorkbenchClient({
             </div>
           ) : (
             <div className={styles.overviewPage}>
+              <AccessCheckPanel
+                devices={deviceQualityDevices}
+                computerCount={computerCount}
+                readyComputers={readyComputers}
+                queueableComputers={queueableComputers}
+                scannedInterfaceCount={scannedInterfaceCount}
+                workbenchMode={workbenchMode}
+                projectId={projectId}
+                openFirstDevice={() => devices[0] && setOpenIds([deviceId(devices[0], 0)])}
+              />
               <DeviceQualityStrip devices={deviceQualityDevices} />
               <SimulationReadinessStrip devices={deviceQualityDevices} />
               <section className={styles.nextActionPanel} aria-label="下一步操作">
