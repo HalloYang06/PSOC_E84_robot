@@ -3264,7 +3264,7 @@ rt_err_t control_motor_position_control(rt_uint8_t joint_id, float pos_rad, floa
         rt_thread_mdelay(1);
         ctrl_float_to_le(motor_limit_spd * CONTROL_CANSIMPLE_VEL_REV_PER_RAD_S,
                          &payload[0]);
-        ctrl_float_to_le(0.0f, &payload[4]);
+        ctrl_float_to_le(CONTROL_CANSIMPLE_POSITION_LIMIT_CURRENT, &payload[4]);
         ret = ctrl_cansimple_send(motor_id, CANSIMPLE_CMD_SET_LIMITS, payload, sizeof(payload));
         if (ret != RT_EOK)
         {
