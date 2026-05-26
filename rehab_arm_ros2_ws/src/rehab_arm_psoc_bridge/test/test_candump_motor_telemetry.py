@@ -180,13 +180,35 @@ class CandumpMotorTelemetryTests(unittest.TestCase):
 
             records, summary = convert_candump_to_records(source, 'rehab-arm-alpha', 'nanopi-m5', 's1')
 
+        motor_records = [record for record in records if record.get('topic') == '/rehab_arm/motor_state']
         self.assertIs(summary['ok'], True)
         self.assertEqual(summary['m33_motor_status_count'], 2)
         self.assertEqual(summary['motor_state_count'], 2)
-        self.assertEqual(records[1]['payload']['source'], 'candump_m33_motor_status')
-        self.assertEqual(records[1]['payload']['motors'][0]['motor_id'], 3)
-        self.assertEqual(records[1]['payload']['motors'][0]['joint_name'], 'shoulder_lift_joint')
-        self.assertAlmostEqual(records[2]['payload']['motors'][0]['position'], -0.08)
+        self.assertEqual(motor_records[0]['payload']['source'], 'candump_m33_motor_status')
+        self.assertEqual(motor_records[0]['payload']['motors'][0]['motor_id'], 3)
+        self.assertEqual(motor_records[0]['payload']['motors'][0]['joint_name'], 'shoulder_lift_joint')
+        self.assertAlmostEqual(motor_records[1]['payload']['motors'][0]['position'], -0.08)
+
+    def test_convert_candump_includes_joint_states_from_m33_motor_status(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / 'capture.log'
+            source.write_text(
+                candump_line(0.0, '330', bytes([0xB3, 1, 3, 1, 50, 0, 2, 0xFF]))
+                + candump_line(0.1, '331', bytes([0xB3, 2, 7, 1, 0xB0, 0xFF, 0xFF, 34])),
+                encoding='utf-8',
+            )
+
+            records, summary = convert_candump_to_records(source, 'rehab-arm-alpha', 'nanopi-m5', 's1')
+
+        joint_records = [record for record in records if record.get('topic') == '/joint_states']
+        self.assertEqual(summary['joint_state_count'], 2)
+        self.assertEqual(len(joint_records), 2)
+        self.assertEqual(joint_records[0]['payload']['name'], ['shoulder_lift_joint'])
+        self.assertAlmostEqual(joint_records[0]['payload']['position'][0], 0.05)
+        self.assertAlmostEqual(joint_records[0]['payload']['velocity'][0], 0.2)
+        self.assertEqual(joint_records[1]['payload']['name'], ['elbow_lift_joint'])
+        self.assertAlmostEqual(joint_records[1]['payload']['position'][0], -0.08)
+        self.assertAlmostEqual(joint_records[1]['payload']['velocity'][0], -0.1)
 
     def test_cli_writes_output_to_requested_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

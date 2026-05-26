@@ -2468,3 +2468,27 @@ No such file or directory: /tmp/rehab_sim_collection/sim_demo_motion.jsonl
 - `m33_motor_status_smoke.py` 已按 dry-run-first 方式实现并测试。
 - 该工具可写最小 JSONL，并已验证能通过 `hardware_telemetry` 质量门。
 - 使用 `--output-jsonl` 时 stdout 会携带同一份 `quality_report`，平台可以直接读取，不需要另造质量判断规则。
+
+### 真 CAN 采集时先确认哪些电机实际在线
+
+现象：
+
+- NanoPi `can0` 健康，`ERROR-ACTIVE`，1Mbps，tx/rx error counters 为 0。
+- 被动抓包和 live snapshot 能稳定看到 3号伺泰威 `0x061/0x069`。
+- 给 7号灵足临时打开 active-report 后，能稳定看到 `0x180007FD` 约 100Hz。
+- 4/5/6 在本次 session 中无 Get_ID 回复，也无 active-report。
+
+根因：
+
+- 用户确认 4/5/6 已关闭/断电，所以它们没有回复是预期现象，不是解析器或 CAN 总线故障。
+
+技巧：
+
+- 先看 `ip -details link show can0`，确认 `ERROR-ACTIVE` 和 error counter。
+- 再短时抓真实 CAN，按 ID 计数：`0x061/0x069` 对应 3号伺泰威，`0x180007FD` 对应 7号灵足 active-report。
+- 对没有上电的电机，不要继续堆协议修改；先确认电源和驱动在线状态。
+- `live_socketcan_motor_snapshot.py --enable-active-report 7` 只开临时状态上报，结束自动关闭，不是运动命令。
+
+状态：
+
+- 已在 NanoPi 真 CAN 验证 3号和 7号遥测可采集；4/5/6 本轮因关闭不参与判断。

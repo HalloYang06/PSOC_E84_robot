@@ -1072,7 +1072,7 @@ ros2 topic echo --once /rehab_arm/motor_state std_msgs/msg/String
 
 注意：这个节点只做遥测转换，不发 CAN，不控制电机。真实电机状态后续仍应来自 M33 上报。
 
-如果已经用 `candump -tz can0` 或 `candump -L can0` 保存了原始 CAN 日志，可以离线转换成统一的 `/rehab_arm/motor_state` JSONL，供总控台、标注、曲线分析和后续训练前检查使用：
+如果已经用 `candump -tz can0` 或 `candump -L can0` 保存了原始 CAN 日志，可以离线转换成统一 JSONL，供总控台、标注、曲线分析、MuJoCo/RViz 回放和后续训练前检查使用：
 
 ```bash
 cd /home/pi/rehab_arm_ros2_ws
@@ -1089,7 +1089,7 @@ ros2 run rehab_arm_psoc_bridge candump_motor_telemetry \
 
 当前转换器解析三类只读遥测：
 
-- `0x330~0x337`：M33 汇总后的正式电机/关节遥测草案，转换后 source 为 `candump_m33_motor_status`。
+- `0x330~0x337`：M33 汇总后的正式电机/关节遥测草案，转换后 source 为 `candump_m33_motor_status`，并同时生成 `/rehab_arm/motor_state` 和 `/joint_states`。
 - `0x061`：`node_id=3` heartbeat，用来补充 enabled、fault、axis_state、error_code。
 - `0x069`：`node_id=3` encoder estimate，按 little-endian float 解码 position/velocity。
 - position 从 turns 转成 rad，velocity 从 turns/s 转成 rad/s。
@@ -1101,9 +1101,11 @@ ros2 run rehab_arm_psoc_bridge candump_motor_telemetry \
 
 - 输出 summary 中 `ok=true`。
 - `motor_state_count` 大于 0。
+- 如果日志里包含 M33 `0x330~0x337`，`m33_motor_status_count` 和 `joint_state_count` 都应大于 0。
 - JSONL 第一行是 `session_metadata`。
-- 后续记录 topic 为 `/rehab_arm/motor_state`。
-- payload 的 `schema_version` 是 `rehab_arm_motor_state_v1`。
+- 后续记录 topic 至少包含 `/rehab_arm/motor_state`。
+- M33 `0x330~0x337` 记录还会包含 `/joint_states`，用于仿真姿态、RViz、平台 three.js/URDF 预览和标注回放。
+- `/rehab_arm/motor_state` payload 的 `schema_version` 是 `rehab_arm_motor_state_v1`。
 - `control_boundary` 是 `telemetry_only_not_motor_command`。
 
 注意：`candump_motor_telemetry` 是离线日志转换工具，不打开 SocketCAN，不发 CAN，不发送 `0x320/0x321`，不控制 M33 或电机。闭环刚建立后的 `0x069` 第一次跳变可能包含估计器恢复，不要直接等同于真实机械位移。
@@ -1111,6 +1113,32 @@ ros2 run rehab_arm_psoc_bridge candump_motor_telemetry \
 如果要临时抓 4/5/6/7 的原始周期状态，先由调试工具打开 private active-report，再抓包，测试结束必须关闭 active-report。正式 ROS 路径后续仍要由 M33 聚合并发布 `/rehab_arm/motor_state`，NanoPi 直接打开 private active-report 只用于调试接收链路。
 
 如果 M33 固件还没有真正发送 `0x330~0x337`，可以先用合成遥测帧 smoke 工具验证 NanoPi bridge 和 recorder 链路。
+
+如果设备已经上电，并且只想直接从真实 `can0` 看当前电机状态，可以运行短时真 CAN 快照工具。这个工具默认只监听；如果要让灵足电机临时上报状态，显式指定 `--enable-active-report <motor_id>`，工具结束时会自动关闭该 active-report。
+
+```bash
+cd /home/pi/rehab_arm_ros2_ws
+python3 src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/live_socketcan_motor_snapshot.py \
+  --iface can0 \
+  --duration 3 \
+  --enable-active-report 7 \
+  --pretty
+```
+
+通过标准：
+
+- 输出 `schema_version=live_socketcan_motor_snapshot_v1`。
+- `counts` 中能看到当前在线电机的 CAN ID，例如 3 号伺泰威 `0x061/0x069`，7 号灵足 `0x180007FD`。
+- `latest.motor3_encoder.vendor` 为 `Sitaiwei`。
+- `latest.motor7_active_report.vendor` 为 `Lingzu`。
+- `motor_state_compatible_entries` 中只有遥测字段，不包含运动命令。
+- `control_boundary` 是 `telemetry_only_not_motor_command`。
+
+注意：
+
+- 这个工具不发送位置、速度、力矩、`0x320` 或 M33 控制命令。
+- `--enable-active-report` 只用于让指定灵足电机周期上报状态，属于调试遥测开关；正式机器人路径仍然应由 M33 汇总后发布 `/rehab_arm/motor_state`。
+- 如果 4/5/6 被断电或关闭，它们不会回复 Get_ID，也不会出现 active-report，这是预期现象，不要当成解析失败。
 
 先干跑，不发 CAN：
 

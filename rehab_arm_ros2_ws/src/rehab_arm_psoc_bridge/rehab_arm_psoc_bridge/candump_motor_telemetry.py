@@ -14,23 +14,31 @@ try:
     from rehab_arm_psoc_bridge.data_recording import (
         JSONL_SCHEMA_VERSION,
         RECORDER_VERSION,
+        make_joint_state_payload,
         make_payload_record,
         make_motor_state_payload,
         sanitize_identifier,
         write_jsonl_record,
     )
-    from rehab_arm_psoc_bridge.psoc_motor_status import parse_m33_motor_status_frame
+    from rehab_arm_psoc_bridge.psoc_motor_status import (
+        make_joint_state_fields_from_m33_motor_state,
+        parse_m33_motor_status_frame,
+    )
 except ModuleNotFoundError:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from rehab_arm_psoc_bridge.data_recording import (
         JSONL_SCHEMA_VERSION,
         RECORDER_VERSION,
+        make_joint_state_payload,
         make_payload_record,
         make_motor_state_payload,
         sanitize_identifier,
         write_jsonl_record,
     )
-    from rehab_arm_psoc_bridge.psoc_motor_status import parse_m33_motor_status_frame
+    from rehab_arm_psoc_bridge.psoc_motor_status import (
+        make_joint_state_fields_from_m33_motor_state,
+        parse_m33_motor_status_frame,
+    )
 
 
 CANSIMPLE_HEARTBEAT_CMD = 0x001
@@ -274,11 +282,20 @@ def make_raw_can_session_metadata(
         'source': 'candump_motor_telemetry',
         'source_log': source_log,
         'sync_status': 'local_only',
-        'topics': ['/rehab_arm/motor_state'],
+        'topics': ['/rehab_arm/motor_state', '/joint_states'],
         'optional_topics': [],
         'motion_allowed_expected': False,
         'control_boundary': CONTROL_BOUNDARY,
     }
+
+
+def split_stamp(relative_time: float) -> tuple[int, int]:
+    sec = int(relative_time)
+    nanosec = int(round((relative_time - sec) * 1_000_000_000))
+    if nanosec >= 1_000_000_000:
+        sec += 1
+        nanosec -= 1_000_000_000
+    return sec, nanosec
 
 
 def convert_candump_to_records(
@@ -295,6 +312,7 @@ def convert_candump_to_records(
     last_heartbeat_by_node: dict[int, dict[str, object]] = {}
     total_frames = 0
     motor_state_count = 0
+    joint_state_count = 0
     heartbeat_count = 0
     private_active_report_count = 0
     m33_motor_status_count = 0
@@ -326,6 +344,23 @@ def convert_candump_to_records(
                 records.append(make_payload_record('/rehab_arm/motor_state', payload, now=relative_time))
                 motor_state_count += 1
                 m33_motor_status_count += 1
+                joint_fields = make_joint_state_fields_from_m33_motor_state(payload)
+                if joint_fields['name']:
+                    stamp_sec, stamp_nanosec = split_stamp(relative_time)
+                    joint_payload = make_joint_state_payload(
+                        names=joint_fields['name'],
+                        positions=joint_fields['position'],
+                        velocities=joint_fields['velocity'],
+                        efforts=joint_fields['effort'],
+                        stamp_sec=stamp_sec,
+                        stamp_nanosec=stamp_nanosec,
+                    )
+                    joint_payload['session_id'] = sid
+                    joint_payload['relative_time_s'] = relative_time
+                    joint_payload['source'] = 'candump_m33_motor_status'
+                    joint_payload['control_boundary'] = CONTROL_BOUNDARY
+                    records.append(make_payload_record('/joint_states', joint_payload, now=relative_time))
+                    joint_state_count += 1
                 continue
             private_motor = decode_private_active_report(frame)
             if private_motor:
@@ -381,6 +416,7 @@ def convert_candump_to_records(
         'private_active_report_count': private_active_report_count,
         'm33_motor_status_count': m33_motor_status_count,
         'motor_state_count': motor_state_count,
+        'joint_state_count': joint_state_count,
         'ignored_count': ignored_count,
         'first_relative_time_s': first_relative_time,
         'last_relative_time_s': last_relative_time,
