@@ -906,3 +906,10 @@
 - Not validated: no Linux simulation host, NanoPi, CAN, M33/M55, camera, motor power, or real MuJoCo runtime in this slice.
 - Safety: simulation readiness is stored with `simulation_readiness_only_not_motion_permission`; it does not grant motion permission or bypass M33.
 - Next step: add a tiny upload helper or documented curl command that posts the generated report to the cloud after a real Linux sim-host self-check.
+
+### 2026-05-26 - Test artifact hygiene
+
+- Completed: changed the `check_sim_env --output` unit test to write its report into a temporary directory that is deleted after the test.
+- Validated: `python -m unittest rehab_arm_ros2_ws\src\rehab_arm_sim_mujoco\test\test_check_sim_env.py -v` passed 4 tests.
+- Safety: no demo report, screenshot, sample session, or generated readiness JSON is kept in the project tree.
+- Next step: keep future demos and QA screenshots outside committed project files unless they become reusable docs or tests.

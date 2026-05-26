@@ -2060,3 +2060,19 @@ No such file or directory: /tmp/rehab_sim_collection/sim_demo_motion.jsonl
 状态：
 
 - 已在工具和平台接口中保留 `simulation_readiness_only_not_motion_permission` 边界。
+
+### 测试 demo 和临时报告不要污染项目
+
+现象：
+
+- 单元测试如果把 `sim_readiness_report.json`、截图、样例 session 或 demo 输出写进源码目录，后面会越积越乱。
+
+技巧：
+
+- 单元测试使用系统临时目录生成输出，测试结束自动删除。
+- 只有可复用代码、正式测试、正式文档可以提交；临时 demo 数据、QA 截图、一次性报告不要提交。
+- 如果确实需要保留验证证据，优先写进文档摘要，不把生成文件留在仓库里。
+
+状态：
+
+- `check_sim_env --output` 测试已改为 `TemporaryDirectory()`，不会留下测试报告文件。
