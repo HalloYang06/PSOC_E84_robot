@@ -871,6 +871,18 @@ PREARM_NOTE: diagnostic only; this command never changes mode and never enables 
 - `estop_confirmed/power_confirmed/limits_confirmed=0` 表示这些物理安全输入还没有接入并确认。
 - `fresh_mask` 只表示 M33 最近收到哪些电机反馈，不等于可以运动。
 
+已验证的烧录后输出：
+
+```text
+PREARM: ready=0 motion_allowed_would_be=0
+PREARM_MODE: logging_only_clear=0 logging_only_compile=1 allow_with_logging_only=0
+PREARM_HEARTBEAT: ok=1 age_ms=78 timeout_ms=2500
+PREARM_INPUTS: estop_confirmed=0 power_confirmed=0 limits_confirmed=0
+PREARM_MOTORS: required_mask=0x0000007F fresh_mask=0x00000000 fault_mask=0x00000000 fresh_count=0 fresh_ok=0 fault_free=1
+```
+
+这表示 M33 在线、heartbeat 新鲜，但仍然没有通过预 armed。当前不要尝试让它运动。
+
 第二步只发一帧合法 `0x320` 对照：
 
 ```bash

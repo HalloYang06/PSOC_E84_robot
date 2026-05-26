@@ -2670,3 +2670,29 @@ safety limited: rejected trajectory: PSoC motion_allowed is not true, protocol_v
 状态：
 
 - M33 代码已编译通过；等待用户需要时烧录后现场查看。
+
+### Pre-arm `fresh_mask=0` 说明检查瞬间没有满足新鲜反馈
+
+现象：
+
+- 烧录后运行 `cmd_m33_prearm_check` 输出：
+
+```text
+PREARM_MOTORS: required_mask=0x0000007F fresh_mask=0x00000000 ... fresh_ok=0
+```
+
+根因：
+
+- pre-arm 使用 M33 缓存里的新鲜电机反馈判断。
+- 如果运行串口命令时电机没有持续上报，或 active-report 已经关闭并超过 freshness 窗口，`fresh_mask` 就会是 0。
+- 这不表示 CAN 坏；同一次上电已经通过 NanoPi live telemetry check 看到 `0x336`。
+
+技巧：
+
+- 需要验证 motor freshness 时，先让目标电机持续上报，再立刻运行 `cmd_m33_prearm_check`。
+- 当前默认 `CONTROL_PREARM_REQUIRED_JOINT_MASK=0x7F` 要求 7 个槽位都有新鲜反馈；如果现场只上电 7 号，后续应先把 required mask 改成当前测试所需的最小集合。
+- `ready=0` 是安全默认；不要为了让它变 1 而临时跳过急停、供电、限位确认。
+
+状态：
+
+- 已记录。下一步应先做“测试用 required mask”而不是开放运动。

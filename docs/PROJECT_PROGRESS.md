@@ -1222,3 +1222,16 @@
 - Not validated: full firmware image was not relinked/flashed in this turn; user will flash when needed.
 - Safety: the command is diagnostic only. It never changes mode, never sends motor output, and current defaults should report `ready=0`.
 - Next step: after flashing, run `cmd_m33_prearm_check` and use the failing fields as the checklist for real hardware safety inputs and final joint limit confirmation.
+
+### 2026-05-26 - M33 pre-arm checklist burn-after validation
+
+- Completed: user flashed the M33 pre-arm checklist firmware.
+- Validated on NanoPi true CAN: `nanopi_live_telemetry_check.sh` still passed after flashing; `0x322`, `0x336`, `/rehab_arm/motor_state`, and `/joint_states` were observed, and no `0x320` appeared.
+- Validated on M33 serial COM26: `cmd_m33_prearm_check` ran successfully.
+- Observed: `PREARM: ready=0 motion_allowed_would_be=0`.
+- Observed: `PREARM_MODE logging_only_clear=0 logging_only_compile=1`, so firmware still blocks motion output.
+- Observed: heartbeat was fresh, `ok=1 age_ms=78 timeout_ms=2500`.
+- Observed: `estop_confirmed=0 power_confirmed=0 limits_confirmed=0`, as expected because those physical safety inputs are not confirmed yet.
+- Observed: `fresh_mask=0x00000000 fresh_ok=0` at the serial check instant; this is not a failure of the command, it means the required motor feedback freshness condition was not satisfied at that moment.
+- Safety: this validation did not send a trajectory or `0x320`; pre-arm correctly stayed false.
+- Next step: add a more precise pre-arm motor requirement mask for the currently powered motors, then separately connect/confirm physical estop, power, and limits before any `motion_allowed=true` work.
