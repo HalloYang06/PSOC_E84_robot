@@ -922,3 +922,12 @@
 - Validated: `python -m py_compile rehab_arm_ros2_ws\src\rehab_arm_sim_mujoco\rehab_arm_sim_mujoco\upload_sim_readiness.py` passed.
 - Safety: upload result keeps `simulation_readiness_only_not_motion_permission`; it does not send CAN, joint targets, M33 commands, or motor commands.
 - Next step: on the Linux simulation host, generate a real report, dry-run the upload, then execute against the cloud only after the report content is reviewed.
+
+### 2026-05-26 - NanoPi CANSimple node 3 tiny motion capture
+
+- Completed: brought `can0` up at classic CAN 1Mbps; bus stayed `ERROR-ACTIVE` with tx/rx error counters at 0.
+- Completed: captured motor baseline at `/home/pi/rehab_arm_logs/can_captures/motor_can_baseline_20260525_194531.log`.
+- Completed: ran a tiny direct CANSimple node 3 debug motion, avoiding private MIT `motor_id=4`.
+- Captured motion log at `/home/pi/rehab_arm_logs/can_captures/cansimple_node3_tiny_motion_20260525_195020.log`.
+- Observed: `0x061` heartbeat near 10Hz and `0x069` encoder estimate near 100Hz.
+- Safety: sent `vel=0` and `idle` after the test; this remains debug-only direct control, not the formal wearable motion path.

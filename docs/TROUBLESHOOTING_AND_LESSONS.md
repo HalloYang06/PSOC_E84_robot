@@ -2093,3 +2093,20 @@ No such file or directory: /tmp/rehab_sim_collection/sim_demo_motion.jsonl
 状态：
 
 - 已新增 `upload_sim_readiness`，单测使用 fake opener，不连真实服务器，不生成持久 demo 文件。
+
+### CANSimple 闭环后 0x069 可能从全 0 变成有效估计值
+
+现象：
+
+- 电机上电后，`0x069` encoder estimate 一开始可能全 0。
+- 发送 CANSimple closed-loop 后，`0x069` 变成非零 float 数据。
+
+技巧：
+
+- 不要把第一次从 0 跳到非零的 position estimate 全部当成真实运动量；它可能包含控制器进入闭环后的估计值恢复。
+- 做小幅度运动时，必须同时保存 raw CAN log，记录发送的 `0x67/0x6B/0x6D` 和后续 `0x061/0x069`。
+- 调试后立刻发 `vel=0` 和 `idle`，再确认 `can0` 仍是 `ERROR-ACTIVE` 且错误计数为 0。
+
+状态：
+
+- 已对 CANSimple `node_id=3` 做极小速度测试并保存日志；未触碰 private MIT `motor_id=4`。
