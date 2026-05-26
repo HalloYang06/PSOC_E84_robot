@@ -1650,3 +1650,14 @@
 - Validated: NanoPi CAN stayed `ERROR-ACTIVE` and M33 heartbeat `0x321 -> 0x322` still worked.
 - Conclusion: the current blocker is that 3号 Sitaiwei node is not presently responding on the bus; do not continue motion tests until node3 feedback is restored.
 - Next step: check 3号 motor power/enable/CAN connection/protocol state, then re-run a passive `0x061/0x069` capture before sending any more 3号 motion commands.
+
+### 2026-05-26 - Motor3 formal path moved but old zero caused overshoot
+
+- Completed: node3 came back online; passive capture showed `0x061` and `0x069` again.
+- Completed: retried formal `m33 target --joint 0 --deg 5 --rpm 1` with M33 current-limit fix.
+- Validated: M33 emitted CANSimple position path frames with nonzero limit current: `0x06B`, `0x06F` payload ending in `0000A040` (`5.0f`), `0x067`, and `0x06C`.
+- Observed: encoder moved from `0 rev` to about `5.594 rev`, which maps to output about `41.96°`, so the old bench zero was wrong after the driver/encoder reset.
+- Diagnosed: M33 still had `CONTROL_MOTOR_JOINT3_ZERO_OFFSET_RAD=(55.1f)`, but node3 encoder estimate had reset to `0 rev`; formal `+5°` therefore targeted about `9.436 rev` rather than about `0.667 rev`.
+- Completed M33 fix in branch `M33`, commit `abedf348`: reset `CONTROL_MOTOR_JOINT3_ZERO_OFFSET_RAD=(0.0f)` for the current uninstalled bench state.
+- Safety: command ended with M33 stop and direct CANSimple idle; do not test 30° until the new zero-offset firmware is flashed and formal `+5°` is revalidated.
+- Next step: user flashes M33 commit `abedf348`, then retest formal joint0 `+5°`; expected encoder target delta is about `0.6667 rev`, output about `5°`.

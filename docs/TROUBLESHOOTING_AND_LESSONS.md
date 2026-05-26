@@ -3545,3 +3545,26 @@ Connection reset by 192.168.2.66 port 22
 - 先查 3号供电、使能、CANH/CANL、节点 ID、协议模式、是否被上位机切换过通信协议。
 - 恢复标准是先被动看到 `0x061` heartbeat 和 `0x069` encoder estimate。
 - 没有恢复前，不要继续尝试 30°、90°或 formal path 大动作。
+
+### 3号驱动重启后旧 zero_offset 会把小角度放大
+
+现象：
+
+- node3 恢复在线后，formal `+5°` 触发了完整 CANSimple position path。
+- `Set_Limits` 已发非零限流 `5.0f`。
+- 但 `0x069` 从 `0 rev` 到约 `5.594 rev`，折算输出约 `41.96°`。
+
+判断：
+
+- 3号驱动/编码器重启后 `0x069 position_rev` 回到了 `0`。
+- M33 仍保留旧临时零点 `55.1 rad`，导致 formal `+5°` 叠加旧零点后目标约 `9.436 rev`。
+- 这不是 48:1 换算错，而是 bench zero offset 已经过期。
+
+修正：
+
+- M33 commit `abedf348` 将当前未装机台架 3号零点改为 `CONTROL_MOTOR_JOINT3_ZERO_OFFSET_RAD=(0.0f)`。
+
+技巧：
+
+- 伺泰威驱动每次重启/重新归零后，都要重新确认 `0x069 position_rev`，不能沿用上一次的 M33 零点。
+- 大角度前必须先用 formal `+5°` 验证零点和方向。

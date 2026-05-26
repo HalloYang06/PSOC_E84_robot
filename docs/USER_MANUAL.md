@@ -2449,6 +2449,8 @@ python3 /home/pi/nanopi_can_master.py heartbeat --iface can0 --seq 93 --wait 0.3
 
 30° 或更大动作前，先确认能看到 3号 `0x061` heartbeat 和 `0x069` encoder estimate。若只看到 M33 `0x332`，不能当成 3号实时反馈在线。
 
+如果 3号驱动重启后 `0x069 position_rev` 回到 `0`，M33 的台架 `CONTROL_MOTOR_JOINT3_ZERO_OFFSET_RAD` 也要跟着重置。当前 M33 commit `abedf348` 使用 `0.0f` 作为未装机台架零点。若继续使用旧的 `55.1f`，formal `+5°` 会被旧零点放大，实测会接近 `42°` 输出。
+
 3号无反馈时的停止线：
 
 - 被动监听 `can0` 1~3 秒看不到 `0x061/0x069`。
