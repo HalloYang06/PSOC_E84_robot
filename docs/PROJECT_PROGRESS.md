@@ -996,3 +996,14 @@
 - Not validated: no fake board manifest was posted to cloud to avoid demo data pollution.
 - Safety: board manifest upload is data-only; it does not control CAN, ROS actions, M33, or motors.
 - Next step: add an explicit `--execute` upload command for reviewed board manifests, then test from NanoPi when available.
+
+### 2026-05-26 - Linux board manifest explicit upload command
+
+- Completed: added `board_manifest_sync_upload`, which defaults to dry-run output and only sends HTTP requests when `--execute` is provided.
+- Completed: the upload reuses the reviewed two-request plan: `/devices/register` then `/devices/{device_id}/board-manifest`.
+- Completed: exposed `board_manifest_sync_upload` as a ROS2 console script and documented the NanoPi/Linux board usage flow.
+- Validated: targeted `test_board_manifest_sync_upload.py` passed 2 tests, including fake-opener execution and CLI dry-run behavior.
+- Validated: full `rehab_arm_psoc_bridge` unit test suite passed 75 tests.
+- Validated: `py_compile` passed for `board_manifest_sync_upload.py`; CLI smoke without `--execute` printed a two-request dry-run plan from a temporary manifest.
+- Safety: upload is data-only and preserves `board_manifest_sync_only_not_motion_permission`; it does not open CAN, start ROS motion, command M33, or move motors.
+- Next step: test the new command on NanoPi when the board is available, first without `--execute`, then only upload after reviewing the manifest and server URL.

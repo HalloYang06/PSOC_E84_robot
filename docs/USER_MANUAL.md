@@ -1619,6 +1619,28 @@ ros2 run rehab_arm_psoc_bridge board_manifest_sync_dry_run board_manifest.json \
 - 平台现在会分别保存精简注册信息和完整 `linux_board_manifest_v1`。
 - 平台页面会用完整 manifest 辅助判断 CAN、串口、USB、摄像头和 ROS2 能力，但这仍然不是运动许可。
 
+确认无误后，才可以显式执行上传：
+
+```bash
+ros2 run rehab_arm_psoc_bridge board_manifest_sync_upload board_manifest.json \
+  --base-url http://<server>:8011/api/rehab-arm/v1 \
+  --execute
+```
+
+如果不加 `--execute`，`board_manifest_sync_upload` 也只会输出 dry-run 计划，不会联网。上传通过标准：
+
+- 输出 `linux_board_manifest_sync_execute_result_v1`。
+- `ok=true`。
+- `completed_count=2`。
+- 两个请求分别完成 `/devices/register` 和 `/devices/<device_id>/board-manifest`。
+- `control_boundary` 为 `board_manifest_sync_only_not_motion_permission`。
+
+注意：
+
+- 这个上传只同步开发板能力清单，不启动摄像头数据流，不打开 CAN，不控制电机。
+- 如果服务器地址、设备 ID 或机器人 ID 不确定，先只运行不带 `--execute` 的预览命令。
+- 不要把真实机器的 `board_manifest.json` 当作 demo 文件提交进 Git。
+
 ## 7. 文档与 Git 维护
 
 每次完成任务后同步更新：

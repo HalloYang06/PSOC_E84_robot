@@ -30,6 +30,7 @@ setup(
             'candump_motor_telemetry = rehab_arm_psoc_bridge.candump_motor_telemetry:main',
             'board_manifest = rehab_arm_psoc_bridge.board_manifest:main',
             'board_manifest_sync_dry_run = rehab_arm_psoc_bridge.board_manifest_sync_dry_run:main',
+            'board_manifest_sync_upload = rehab_arm_psoc_bridge.board_manifest_sync_upload:main',
         ],
     },
 )

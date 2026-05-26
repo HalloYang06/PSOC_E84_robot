@@ -2198,3 +2198,20 @@ No such file or directory: /tmp/rehab_sim_collection/sim_demo_motion.jsonl
 状态：
 
 - 平台已新增 full board manifest 存储；ROS dry-run 已规划对应请求。
+
+### 开发板 manifest 上传必须显式执行
+
+现象：
+
+- 用户需要把真实 NanoPi/Jetson/x86 开发板能力同步到平台。
+- 如果上传命令默认联网，容易误传错误 `device_id`、`robot_id` 或把测试环境数据写入云端。
+
+技巧：
+
+- `board_manifest_sync_upload` 默认行为仍是 dry-run；不加 `--execute` 只打印计划请求。
+- 真正上传前先人工检查 `linux_board_manifest_v1` 和两条请求 URL。
+- 单元测试用 fake opener 验证 HTTP 请求，不对真实服务器写入 demo 数据。
+
+状态：
+
+- 已新增显式 `--execute` 上传命令；尚未在真实 NanoPi 上执行云端上传。
