@@ -1608,13 +1608,16 @@ ros2 run rehab_arm_psoc_bridge board_manifest_sync_dry_run board_manifest.json \
 - 输出 `linux_board_manifest_sync_dry_run_v1`。
 - `requests[0].url` 指向 `/devices/register`。
 - `requests[0].json.device_type` 为 `linux_board`。
+- `requests[1].url` 指向 `/devices/<device_id>/board-manifest`。
+- `requests[1].json.manifest.schema_version` 为 `linux_board_manifest_v1`。
 - `control_boundary` 为 `board_manifest_sync_plan_only_not_motion_permission`。
 
 注意：
 
 - `board_manifest_sync_dry_run` 只打印请求计划，不联网。
 - 真正上传前必须先人工确认 `device_id`、`robot_id`、`capabilities` 和服务器地址。
-- 当前平台设备注册接口只保存精简能力字段；完整 `linux_board_manifest_v1` 的平台持久化后续再补。
+- 平台现在会分别保存精简注册信息和完整 `linux_board_manifest_v1`。
+- 平台页面会用完整 manifest 辅助判断 CAN、串口、USB、摄像头和 ROS2 能力，但这仍然不是运动许可。
 
 ## 7. 文档与 Git 维护
 

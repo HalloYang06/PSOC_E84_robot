@@ -59,6 +59,15 @@ def build_board_manifest_sync_plan(
             'url': f'{base}/devices/register',
             'json': register_payload,
         },
+        {
+            'method': 'POST',
+            'url': f'{base}/devices/{register_payload["device_id"]}/board-manifest',
+            'json': {
+                'device_id': register_payload['device_id'],
+                'robot_id': register_payload['robot_id'],
+                'manifest': manifest,
+            },
+        },
     ]
     return {
         'schema_version': 'linux_board_manifest_sync_dry_run_v1',

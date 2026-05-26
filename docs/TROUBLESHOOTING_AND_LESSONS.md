@@ -2180,3 +2180,21 @@ No such file or directory: /tmp/rehab_sim_collection/sim_demo_motion.jsonl
 状态：
 
 - 已新增 dry-run 计划工具；真实上传仍未启用。
+
+### 完整 board manifest 要和 session manifest 分开
+
+现象：
+
+- `rehab_arm_manifest_v1` 表示一次数据采集 session 的文件、质量门和同步状态。
+- `linux_board_manifest_v1` 表示一台 Linux 开发板的静态/半静态能力，例如 CAN、串口、摄像头、ROS2。
+- 如果都塞进 `/sessions/manifest`，平台页面会把“板子能力”和“数据采集质量”混在一起。
+
+技巧：
+
+- 平台后端用独立 `/devices/{device_id}/board-manifest` 保存开发板能力。
+- dashboard 同时返回 `manifest` 和 `board_manifest`，前者用于数据质量/标注，后者用于设备接入检查。
+- 前端接入检查可以用 `board_manifest` 判断硬件能力，但不能把它当作实时数据或运动许可。
+
+状态：
+
+- 平台已新增 full board manifest 存储；ROS dry-run 已规划对应请求。

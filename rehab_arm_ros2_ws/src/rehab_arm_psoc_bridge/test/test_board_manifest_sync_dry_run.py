@@ -43,12 +43,15 @@ class BoardManifestSyncDryRunTests(unittest.TestCase):
         }, 'http://server.local/api/rehab-arm/v1/')
 
         self.assertEqual(plan['schema_version'], 'linux_board_manifest_sync_dry_run_v1')
-        self.assertEqual(plan['request_count'], 1)
-        request = plan['requests'][0]
-        self.assertEqual(request['method'], 'POST')
-        self.assertEqual(request['url'], 'http://server.local/api/rehab-arm/v1/devices/register')
-        self.assertEqual(request['json']['device_type'], 'linux_board')
-        self.assertEqual(request['json']['capabilities'], ['linux_board', 'board_manifest', 'can'])
+        self.assertEqual(plan['request_count'], 2)
+        register_request = plan['requests'][0]
+        self.assertEqual(register_request['method'], 'POST')
+        self.assertEqual(register_request['url'], 'http://server.local/api/rehab-arm/v1/devices/register')
+        self.assertEqual(register_request['json']['device_type'], 'linux_board')
+        self.assertEqual(register_request['json']['capabilities'], ['linux_board', 'board_manifest', 'can'])
+        manifest_request = plan['requests'][1]
+        self.assertEqual(manifest_request['url'], 'http://server.local/api/rehab-arm/v1/devices/nanopi-m5/board-manifest')
+        self.assertEqual(manifest_request['json']['manifest']['schema_version'], 'linux_board_manifest_v1')
         self.assertEqual(plan['control_boundary'], 'board_manifest_sync_plan_only_not_motion_permission')
 
     def test_cli_prints_dry_run_plan(self) -> None:
@@ -73,6 +76,7 @@ class BoardManifestSyncDryRunTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 0, completed.stderr)
         plan = json.loads(completed.stdout)
         self.assertEqual(plan['requests'][0]['json']['capabilities'], ['linux_board', 'board_manifest', 'camera'])
+        self.assertEqual(plan['requests'][1]['json']['manifest']['device_id'], 'nanopi-m5')
 
 
 if __name__ == '__main__':

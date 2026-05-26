@@ -981,3 +981,16 @@
 - Validated: CLI smoke generated a temporary board manifest and printed a dry-run `/devices/register` plan, then removed the temp file.
 - Safety: dry-run prints the plan only; it does not open network connections or control hardware.
 - Next step: add backend support for storing the full board manifest, then enable explicit `--execute` upload after review.
+
+### 2026-05-26 - Platform full Linux board manifest storage
+
+- Completed: platform API accepts `POST /api/rehab-arm/v1/devices/{device_id}/board-manifest` with `linux_board_manifest_v1`.
+- Completed: platform dashboard now returns `board_manifest` latest state per device.
+- Completed: platform Linux board page can use `board_manifest` to count camera and CAN/serial/USB readiness before live data streams begin.
+- Completed: ROS dry-run now plans two requests: `/devices/register` and `/devices/{device_id}/board-manifest`.
+- Validated: platform `python -m pytest apps\api\tests\test_rehab_arm_sync.py -q` passed 6 tests.
+- Validated: platform targeted eslint passed for the robotics page.
+- Validated: local authenticated browser QA opened the robotics page on desktop and 390px mobile with no horizontal overflow.
+- Validated: full `rehab_arm_psoc_bridge` unit test suite passed 73 tests.
+- Safety: board manifest upload is data-only; it does not control CAN, ROS actions, M33, or motors.
+- Next step: add an explicit `--execute` upload command for reviewed board manifests, then test from NanoPi when available.
