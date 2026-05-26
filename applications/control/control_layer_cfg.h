@@ -510,6 +510,34 @@
 #define CONTROL_ROS_JOINT_COUNT            5U
 #endif
 
+/* Formal ROS trajectory joint ids are 0-based and map onto the currently
+ * confirmed bench motor slots 3..7:
+ *   0 shoulder_lift_joint      -> motor/joint slot 3 (Sitaiwei)
+ *   1 elbow_lift_joint         -> motor/joint slot 4 (Lingzu RS00)
+ *   2 shoulder_abduction_joint -> motor/joint slot 5 (Lingzu RS00)
+ *   3 upper_arm_rotation_joint -> motor/joint slot 6 (Lingzu EL05)
+ *   4 forearm_rotation_joint   -> motor/joint slot 7 (Lingzu EL05)
+ */
+#ifndef CONTROL_ROS_JOINT0_MOTOR_JOINT
+#define CONTROL_ROS_JOINT0_MOTOR_JOINT     3U
+#endif
+
+#ifndef CONTROL_ROS_JOINT1_MOTOR_JOINT
+#define CONTROL_ROS_JOINT1_MOTOR_JOINT     4U
+#endif
+
+#ifndef CONTROL_ROS_JOINT2_MOTOR_JOINT
+#define CONTROL_ROS_JOINT2_MOTOR_JOINT     5U
+#endif
+
+#ifndef CONTROL_ROS_JOINT3_MOTOR_JOINT
+#define CONTROL_ROS_JOINT3_MOTOR_JOINT     6U
+#endif
+
+#ifndef CONTROL_ROS_JOINT4_MOTOR_JOINT
+#define CONTROL_ROS_JOINT4_MOTOR_JOINT     7U
+#endif
+
 #ifndef CONTROL_ROS_JOINT0_MIN_01DEG
 #define CONTROL_ROS_JOINT0_MIN_01DEG       (-600)
 #endif

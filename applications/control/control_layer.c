@@ -1396,6 +1396,15 @@ static const rt_int16_t s_ros_joint_max_01deg[CONTROL_ROS_JOINT_COUNT] =
     CONTROL_ROS_JOINT4_MAX_01DEG,
 };
 
+static const rt_uint8_t s_ros_joint_motor_joint_map[CONTROL_ROS_JOINT_COUNT] =
+{
+    (rt_uint8_t)CONTROL_ROS_JOINT0_MOTOR_JOINT,
+    (rt_uint8_t)CONTROL_ROS_JOINT1_MOTOR_JOINT,
+    (rt_uint8_t)CONTROL_ROS_JOINT2_MOTOR_JOINT,
+    (rt_uint8_t)CONTROL_ROS_JOINT3_MOTOR_JOINT,
+    (rt_uint8_t)CONTROL_ROS_JOINT4_MOTOR_JOINT,
+};
+
 static rt_bool_t ctrl_ros_joint_limit(rt_uint8_t joint_id, rt_int16_t *min_01deg, rt_int16_t *max_01deg)
 {
     if ((min_01deg == RT_NULL) || (max_01deg == RT_NULL) ||
@@ -1411,7 +1420,12 @@ static rt_bool_t ctrl_ros_joint_limit(rt_uint8_t joint_id, rt_int16_t *min_01deg
 
 static rt_uint8_t ctrl_ros_joint_to_motor_joint(rt_uint8_t ros_joint_id)
 {
-    return (rt_uint8_t)(ros_joint_id + 1U);
+    if (ros_joint_id >= CONTROL_ROS_JOINT_COUNT)
+    {
+        return CONTROL_MOTOR_ID_INVALID;
+    }
+
+    return s_ros_joint_motor_joint_map[ros_joint_id];
 }
 
 static rt_uint32_t ctrl_tick_delta_ms(rt_tick_t newer, rt_tick_t older)
