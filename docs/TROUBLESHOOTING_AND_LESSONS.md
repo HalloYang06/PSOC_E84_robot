@@ -3646,3 +3646,4 @@ Connection reset by 192.168.2.66 port 22
 - 从 candump 离线验收时，也必须先看 `safety_state_count` 和 `motion_allowed_counts`；只有 `motor_state_count/joint_state_count` 不足以证明系统可以进入运动测试。
 - 如果只读 heartbeat 抓包已经出现 `motion_allowed=true`，把它当作“开发台架 armed 状态”处理，不要因为没有发运动命令就忽略这个安全状态；下一步应先区分 bench mode 和正式 clinical mode。
 - `bench_armed` 必须和正式 `armed/active` 分开。台架能动不等于可穿戴；NanoPi parser 默认应让 `bench_armed` 的 `motion_allowed=false`。
+- NanoPi 上 `ros2 run` 的可执行名要以 `ros2 pkg executables rehab_arm_psoc_bridge` 为准；当前现场工作区使用 `psoc_can_bridge_node.py`，不是无后缀的 `psoc_can_bridge_node`。

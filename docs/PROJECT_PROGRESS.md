@@ -51,6 +51,12 @@
 
 ### 2026-05-26
 
+- NanoPi bench_armed parser and live gate validation:
+  - Synced `psoc_status.py` and `test_psoc_status.py` to NanoPi, rebuilt `rehab_arm_psoc_bridge`, and confirmed `0x322#A55B070000060000` parses as `control_mode=bench_armed` with `motion_allowed=false`.
+  - Ran ROS bridge with `enable_target_tx=true` and published a legal one-joint trajectory. Bridge rejected it with `PSoC motion_allowed is not true, protocol_version=2, state=ok, control_mode=bench_armed, detail=none`.
+  - Verified `candump can0,320:7FF` captured `0` lines and `can0` stayed `ERROR-ACTIVE`, tx/rx error counter `0/0`.
+  - Note: this NanoPi workspace currently exposes the executable as `psoc_can_bridge_node.py`; using `psoc_can_bridge_node` prints `No executable found`.
+
 - M33 bench/clinical 安全语义收敛：
   - M33 改为在 `CONTROL_DEVELOPMENT_BENCH_MOTION_ENABLE=1U` 且 detail 为 none 时，上报 `control_mode=bench_armed`，不再伪装成正式 `armed`。
   - NanoPi `psoc_status.py` 增加 `bench_armed` 枚举，但默认仍解析为 `motion_allowed=false`；正式运动候选许可只保留 `armed/active + detail=none + error_code=0`。

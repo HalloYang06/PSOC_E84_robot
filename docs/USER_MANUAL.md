@@ -822,6 +822,14 @@ pgrep -af 'psoc_can_bridge_node|rehab_arm_psoc_bridge'
 kill <pid>
 ```
 
+当前 NanoPi 工作区的 bridge 可执行名可能带 `.py` 后缀。若 `ros2 run rehab_arm_psoc_bridge psoc_can_bridge_node` 提示 `No executable found`，先查：
+
+```bash
+ros2 pkg executables rehab_arm_psoc_bridge
+```
+
+若列表中是 `psoc_can_bridge_node.py`，启动命令也要用这个名字。
+
 如果 `ros2 topic echo` 启动太早提示不能判断类型，可以显式指定消息类型：
 
 ```bash
