@@ -1977,6 +1977,30 @@ ros2 run rehab_arm_psoc_bridge review_patient_profile_change.py \
 
 这个工具不会自动批准 profile，也不会写入 active profile。平台/App 可以用它在用户确认前显示“本次把 shoulder ROM 从 35° 放宽到 40°”“默认限速从 6 提高到 8”等风险提示。
 
+生成 App BLE -> M33 安全包 dry-run：
+
+```bash
+ros2 run rehab_arm_psoc_bridge build_ble_m33_safety_package.py \
+  /home/pi/rehab_arm_profiles/patient_device_profile.json \
+  --approved-by clinician_001 \
+  --approved-at 2026-05-27T10:00:00+08:00 \
+  --expires-at 2026-05-28T10:00:00+08:00 \
+  --output /home/pi/rehab_arm_profiles/ble_m33_safety_package.json \
+  --pretty
+```
+
+通过标准：
+
+- 输出 `schema_version=ble_m33_safety_package_v1`。
+- `transport=app_ble_to_m33`。
+- `ok=true`。
+- `profile_status` 必须已经是 `approved` 或 `active`。
+- `m33_safety_subset.schema_version=m33_safety_profile_v1`。
+- `signature_placeholder` 暂时为空，后续正式 BLE 下发前必须补签名/校验。
+- `control_boundary=ble_package_dry_run_only_not_sent`。
+
+这个命令只生成 App 通过 BLE 发给 M33 的最小安全包草案，不进行蓝牙扫描、连接或写入。M33 正式接收前还需要固件侧校验 profile version、device id、有效期、签名和安全限制。
+
 预览服务器同步计划：
 
 ```bash

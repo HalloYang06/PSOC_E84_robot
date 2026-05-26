@@ -41,6 +41,7 @@ setup(
             'validate_patient_profile = rehab_arm_psoc_bridge.validate_patient_profile:main',
             'export_m33_safety_subset = rehab_arm_psoc_bridge.export_m33_safety_subset:main',
             'review_patient_profile_change = rehab_arm_psoc_bridge.review_patient_profile_change:main',
+            'build_ble_m33_safety_package = rehab_arm_psoc_bridge.build_ble_m33_safety_package:main',
         ],
     },
 )

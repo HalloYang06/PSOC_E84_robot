@@ -1238,6 +1238,16 @@
 - Safety: offline review only; it does not approve, write, sync, launch ROS, access CAN, command M33, or move motors.
 - Next step: add a profile approval bundle format that includes validation report, change report, reviewer identity, and signature placeholder.
 
+### 2026-05-27 - App BLE M33 safety package dry-run
+
+- Completed: added `build_ble_m33_safety_package()` and `build_ble_m33_safety_package.py` for the App BLE -> M33 safety package draft.
+- Completed: package wraps the validated M33 safety subset, approval metadata, expiry timestamp, device/profile identity, transport marker, and signature placeholder.
+- Completed: package is only `ok=true` for `approved` or `active` profiles and required approval/expiry fields.
+- Validated: `python -m unittest test_patient_profile.py test_data_recording.py test_m33_ros_contract.py` passed 64 tests.
+- Validated: `python -m py_compile patient_profile.py build_ble_m33_safety_package.py` passed.
+- Safety: dry-run JSON generation only; no BLE scan/connect/write, no M33 write, no ROS launch, no CAN access, and no motor motion.
+- Next step: define the future BLE characteristic/fragmentation/ack contract before implementing real App-to-M33 writes.
+
 ### 2026-05-26 - NanoPi motor data receive check
 
 - Completed: live NanoPi CAN receive test on `192.168.2.66` with `can0` at classic CAN 1Mbps.

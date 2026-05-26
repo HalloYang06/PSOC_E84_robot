@@ -11,6 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from rehab_arm_psoc_bridge.patient_profile import (  # noqa: E402
+    build_ble_m33_safety_package,
     build_m33_safety_subset,
     build_patient_profile_change_report,
     validate_patient_profile,
@@ -239,6 +240,71 @@ class PatientProfileTests(unittest.TestCase):
         payload = json.loads(result.stdout)
         self.assertEqual(payload['schema_version'], 'patient_device_profile_change_report_v1')
         self.assertEqual(payload['warning_count'], 1)
+
+    def test_build_ble_m33_safety_package_wraps_safety_subset(self) -> None:
+        profile = make_valid_profile()
+
+        package = build_ble_m33_safety_package(
+            profile,
+            package_id='pkg_001',
+            approved_by='clinician_001',
+            approved_at='2026-05-27T10:00:00+08:00',
+            expires_at='2026-05-28T10:00:00+08:00',
+        )
+
+        self.assertIs(package['ok'], True)
+        self.assertEqual(package['schema_version'], 'ble_m33_safety_package_v1')
+        self.assertEqual(package['transport'], 'app_ble_to_m33')
+        self.assertEqual(package['package_id'], 'pkg_001')
+        self.assertEqual(package['approval']['status'], 'approved')
+        self.assertEqual(package['m33_safety_subset']['schema_version'], 'm33_safety_profile_v1')
+        self.assertEqual(package['control_boundary'], 'ble_package_dry_run_only_not_sent')
+
+    def test_build_ble_m33_safety_package_rejects_draft_profile(self) -> None:
+        profile = make_valid_profile()
+        profile['profile_status'] = 'draft'
+
+        package = build_ble_m33_safety_package(
+            profile,
+            approved_by='clinician_001',
+            approved_at='2026-05-27T10:00:00+08:00',
+            expires_at='2026-05-28T10:00:00+08:00',
+        )
+
+        self.assertIs(package['ok'], False)
+        self.assertIsNone(package['m33_safety_subset'])
+        self.assertIn('profile_status must be approved or active', '\n'.join(package['errors']))
+
+    def test_build_ble_m33_safety_package_cli_writes_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            profile_path = Path(tmpdir) / 'patient_device_profile.json'
+            output_path = Path(tmpdir) / 'ble_package.json'
+            profile_path.write_text(json.dumps(make_valid_profile()), encoding='utf-8')
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).resolve().parents[1] / 'rehab_arm_psoc_bridge' / 'build_ble_m33_safety_package.py'),
+                    str(profile_path),
+                    '--approved-by',
+                    'clinician_001',
+                    '--approved-at',
+                    '2026-05-27T10:00:00+08:00',
+                    '--expires-at',
+                    '2026-05-28T10:00:00+08:00',
+                    '--output',
+                    str(output_path),
+                ],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            payload = json.loads(output_path.read_text(encoding='utf-8'))
+
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(payload['schema_version'], 'ble_m33_safety_package_v1')
+        self.assertIs(payload['ok'], True)
 
 
 if __name__ == '__main__':

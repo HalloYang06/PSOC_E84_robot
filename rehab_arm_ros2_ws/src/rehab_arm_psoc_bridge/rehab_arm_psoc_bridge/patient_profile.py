@@ -381,3 +381,48 @@ def build_patient_profile_change_report(
         'new_profile_version': new_profile.get('profile_version'),
         'control_boundary': 'profile_change_review_only_not_motion_permission',
     }
+
+
+def build_ble_m33_safety_package(
+    profile: dict[str, object],
+    package_id: str = '',
+    approved_by: str = '',
+    approved_at: str = '',
+    expires_at: str = '',
+) -> dict[str, object]:
+    subset = build_m33_safety_subset(profile)
+    errors: list[str] = []
+    if subset.get('ok') is not True:
+        errors.extend(str(item) for item in subset.get('errors', []) if item)
+
+    profile_status = profile.get('profile_status')
+    if profile_status not in {'approved', 'active'}:
+        errors.append('profile_status must be approved or active before BLE M33 packaging')
+    if not isinstance(approved_by, str) or not approved_by.strip():
+        errors.append('approved_by is required')
+    if not isinstance(approved_at, str) or not approved_at.strip():
+        errors.append('approved_at is required')
+    if not isinstance(expires_at, str) or not expires_at.strip():
+        errors.append('expires_at is required')
+
+    ok = not errors
+    return {
+        'schema_version': 'ble_m33_safety_package_v1',
+        'ok': ok,
+        'transport': 'app_ble_to_m33',
+        'package_id': package_id or f'{profile.get("profile_id", "unknown")}__v{profile.get("profile_version", "unknown")}',
+        'profile_id': profile.get('profile_id'),
+        'profile_version': profile.get('profile_version'),
+        'device_id': profile.get('device_id'),
+        'machine_calibration_id': subset.get('machine_calibration_id'),
+        'expires_at': expires_at,
+        'm33_safety_subset': subset if ok else None,
+        'approval': {
+            'status': 'approved' if ok else 'invalid',
+            'approved_by': approved_by,
+            'approved_at': approved_at,
+        },
+        'signature_placeholder': '',
+        'errors': errors,
+        'control_boundary': 'ble_package_dry_run_only_not_sent',
+    }

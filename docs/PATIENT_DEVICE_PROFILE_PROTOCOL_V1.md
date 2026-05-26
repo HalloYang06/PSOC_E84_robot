@@ -379,6 +379,19 @@ ros2 run rehab_arm_psoc_bridge review_patient_profile_change.py \
 
 NanoPi 发布和上传的数据必须包含 profile 上下文：
 
+App 的实时 profile 安全参数链路是 BLE 直连 M33，不依赖 NanoPi：
+
+```text
+平台/医生审批 profile
+  -> App 同步 approved/active profile
+  -> App 构造 ble_m33_safety_package_v1
+  -> App BLE 写入 M33
+  -> M33 校验 device_id/profile_version/expires_at/signature/safety limits
+  -> M33 本地安全状态机最终裁决
+```
+
+当前仓库仅提供 `build_ble_m33_safety_package.py` dry-run 工具生成 JSON 草案。它不会进行蓝牙连接，也不会下发 M33。NanoPi 可以读取同一 profile/package 作为 ROS、仿真、数据采集和上传上下文，但不能成为 App BLE 生效的唯一通道。
+
 ```json
 {
   "schema_version": "rehab_arm_runtime_state_v1",
