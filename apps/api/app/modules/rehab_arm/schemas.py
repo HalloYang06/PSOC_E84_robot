@@ -22,6 +22,12 @@ class RehabSyncStatusRequest(BaseModel):
     record_count: int | None = None
 
 
+class RehabSimulationReadinessRequest(BaseModel):
+    robot_id: str = Field(min_length=1)
+    device_id: str = Field(min_length=1)
+    report: dict
+
+
 class RehabMotorSample(BaseModel):
     motor_id: str = Field(min_length=1)
     joint_name: str = ""

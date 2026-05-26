@@ -285,6 +285,21 @@ def record_sync_status(session_id: str, payload: dict[str, Any]) -> dict[str, An
     }
 
 
+def record_simulation_readiness(payload: dict[str, Any]) -> dict[str, Any]:
+    report = payload.get("report") if isinstance(payload.get("report"), dict) else {}
+    record = telemetry_record("simulation_readiness", payload)
+    write_device_latest(record["device_id"], "simulation_readiness", record)
+    return {
+        "ok": True,
+        "device_id": record["device_id"],
+        "robot_id": record["robot_id"],
+        "readiness": report.get("readiness", "unknown"),
+        "report_ok": report.get("ok"),
+        "sync_role": record["sync_role"],
+        "control_boundary": "simulation_readiness_only_not_motion_permission",
+    }
+
+
 def record_motor_state(payload: dict[str, Any]) -> dict[str, Any]:
     record = telemetry_record("motor_state", payload)
     write_device_latest(record["device_id"], "motor_state", record)
@@ -388,11 +403,21 @@ def build_dashboard() -> dict[str, Any]:
         motor_state = _device_latest(device_id, "motor_state") or {}
         sensor_state = _device_latest(device_id, "sensor_state") or {}
         safety_state = _device_latest(device_id, "safety_state") or {}
+        simulation_readiness = _device_latest(device_id, "simulation_readiness") or {}
         camera_keyframe = _device_latest(device_id, "camera_keyframe") or {}
         sync_status = _device_latest(device_id, "sync_status") or {}
         manifest = _device_latest(device_id, "manifest") or {}
         data_quality = build_data_quality_index(manifest)
-        latest_records = [registration, motor_state, sensor_state, safety_state, camera_keyframe, sync_status, manifest]
+        latest_records = [
+            registration,
+            motor_state,
+            sensor_state,
+            safety_state,
+            simulation_readiness,
+            camera_keyframe,
+            sync_status,
+            manifest,
+        ]
         last_upload = max([float(item.get("ts_unix") or 0) for item in latest_records if item] or [0])
         safety_payload = safety_state.get("payload") if isinstance(safety_state.get("payload"), dict) else {}
         register_payload = registration.get("payload") if isinstance(registration.get("payload"), dict) else {}
@@ -414,6 +439,7 @@ def build_dashboard() -> dict[str, Any]:
                 "motor_state": motor_state,
                 "sensor_state": sensor_state,
                 "safety": safety_state,
+                "simulation_readiness": simulation_readiness,
                 "sync_status": sync_status,
                 "manifest": manifest,
             }

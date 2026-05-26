@@ -176,7 +176,20 @@ function DeviceQualityStrip({ devices }: { devices: AnyRecord[] }) {
   );
 }
 
-function SimulationReadinessStrip() {
+function simulationReport(device: AnyRecord) {
+  return record(record(record(device.simulation_readiness).payload).report);
+}
+
+function SimulationReadinessStrip({ devices }: { devices: AnyRecord[] }) {
+  const reports = devices.map(simulationReport).filter((report) => Object.keys(report).length > 0);
+  const readyReports = reports.filter((report) => text(report.readiness, "").startsWith("ready_"));
+  const latest = reports[0] ?? {};
+  const headline = reports.length
+    ? `${readyReports.length}/${reports.length} 份仿真环境报告可用`
+    : "等待仿真主机上传自检报告";
+  const latestLine = reports.length
+    ? `最近状态：${text(latest.readiness, "unknown")}；关节合同 ${text(record(latest.joint_contract).count, "0")} 个。`
+    : "先在 Linux 仿真主机运行 check_sim_env --output，再上传到设备数据链路。";
   const steps = [
     {
       state: "先检查",
@@ -199,9 +212,9 @@ function SimulationReadinessStrip() {
       <div className={styles.simReadinessHead}>
         <div>
           <span>仿真准备度</span>
-          <strong>先让模型、仿真、采集都能被检查</strong>
+          <strong>{headline}</strong>
         </div>
-        <small>这是只读研发流程提示，不是运动许可，也不会触发真实设备动作。</small>
+        <small>{latestLine} 这是只读研发流程提示，不是运动许可，也不会触发真实设备动作。</small>
       </div>
       <details className={styles.compactDrawer}>
         <summary>查看推荐流程</summary>
@@ -211,6 +224,13 @@ function SimulationReadinessStrip() {
               <span>{step.state}</span>
               <strong>{step.title}</strong>
               <p>{step.detail}</p>
+            </article>
+          ))}
+          {reports.slice(0, 3).map((report, index) => (
+            <article key={`${text(report.readiness, "report")}-${index}`}>
+              <span>{text(report.readiness, "unknown")}</span>
+              <strong>{text(report.schema_version, "sim readiness report")}</strong>
+              <p>{text(report.safety_note, "只读仿真环境自检，不进入真实控制链路。")}</p>
             </article>
           ))}
         </div>
@@ -1523,7 +1543,7 @@ export function RoboticsWorkbenchClient({
           ) : (
             <div className={styles.overviewPage}>
               <DeviceQualityStrip devices={deviceQualityDevices} />
-              <SimulationReadinessStrip />
+              <SimulationReadinessStrip devices={deviceQualityDevices} />
               <section className={styles.nextActionPanel} aria-label="下一步操作">
                 <div>
                   <span>下一步</span>

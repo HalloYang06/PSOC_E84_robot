@@ -14,6 +14,7 @@ from .schemas import (
     RehabMotorStateRequest,
     RehabSafetyStateRequest,
     RehabSensorStateRequest,
+    RehabSimulationReadinessRequest,
     RehabSyncStatusRequest,
 )
 from .service import (
@@ -25,6 +26,7 @@ from .service import (
     record_motor_state,
     record_safety_state,
     record_sensor_state,
+    record_simulation_readiness,
     record_session_file,
     record_sync_status,
     sha256_bytes,
@@ -89,6 +91,13 @@ def api_report_sync_status(session_id: str, payload: RehabSyncStatusRequest):
 @router.get("/devices/dashboard")
 def api_rehab_arm_dashboard():
     return ok(build_dashboard())
+
+
+@router.post("/devices/{device_id}/simulation-readiness")
+def api_upload_simulation_readiness(device_id: str, payload: RehabSimulationReadinessRequest):
+    if payload.device_id != device_id:
+        raise HTTPException(status_code=422, detail="payload.device_id must match path device_id")
+    return ok(record_simulation_readiness(payload.model_dump(mode="json")))
 
 
 @router.post("/devices/{device_id}/camera/keyframes")

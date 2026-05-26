@@ -272,3 +272,45 @@ def test_rehab_arm_camera_keyframe_upload_and_latest_file(tmp_path, monkeypatch)
     device = dashboard.json()["data"]["devices"][0]
     assert device["camera_keyframe"]["payload"]["detection_summary"] == "hand and elbow visible"
     get_settings.cache_clear()
+
+
+def test_rehab_arm_simulation_readiness_is_data_only(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
+    get_settings.cache_clear()
+
+    response = client.post(
+        "/api/rehab-arm/v1/devices/nanopi-m5/simulation-readiness",
+        json={
+            "robot_id": "rehab-arm-alpha",
+            "device_id": "nanopi-m5",
+            "report": {
+                "schema_version": "rehab_arm_sim_env_check_v1",
+                "ok": True,
+                "readiness": "ready_with_fallback_sim",
+                "joint_contract": {
+                    "count": 5,
+                    "names": [
+                        "shoulder_lift_joint",
+                        "elbow_lift_joint",
+                        "shoulder_abduction_joint",
+                        "upper_arm_rotation_joint",
+                        "forearm_rotation_joint",
+                    ],
+                },
+                "safety_note": "read-only simulation environment check",
+                "errors": [],
+            },
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert payload["readiness"] == "ready_with_fallback_sim"
+    assert payload["control_boundary"] == "simulation_readiness_only_not_motion_permission"
+
+    dashboard = client.get("/api/rehab-arm/v1/devices/dashboard")
+    device = dashboard.json()["data"]["devices"][0]
+    sim = device["simulation_readiness"]["payload"]["report"]
+    assert sim["schema_version"] == "rehab_arm_sim_env_check_v1"
+    assert sim["joint_contract"]["count"] == 5
+    assert "can_frame" in dashboard.json()["data"]["safety_boundary"]["server_must_not_send"]
+    get_settings.cache_clear()
