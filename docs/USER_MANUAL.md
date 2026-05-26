@@ -121,9 +121,17 @@ ros2 run rehab_arm_sim_mujoco check_sim_env --pretty
 - `ok=true`。
 - `readiness=ready_with_mujoco` 或 `readiness=ready_with_fallback_sim`。
 - `joint_contract.count=5`。
+- `topic_contract.trajectory_command.topic=/arm_controller/joint_trajectory`。
+- `topic_contract.joint_state.topic=/joint_states`。
+- `topic_contract.safety_state.topic=/rehab_arm/safety_state`。
+- `topic_contract.sensor_state.topic=/rehab_arm/sensor_state`。
+- `topic_contract.vla_task_goal.topic=/vla/task_goal`。
+- `topic_contract.control_boundary=simulation_topic_contract_not_motion_permission`。
 - `checks.urdf.ok=true`。
 - `checks.sim_data_collection_launch.ok=true`。
 - `safety_note` 明确该命令不打开 CAN、不发 `0x320/0x321`、不命令 M33 或电机。
+
+这些 `topic_contract` 是仿真主机、NanoPi、平台采集标注和后续 VLA 之间的标准 ROS 接口清单。它只能说明“软件合同应该长什么样”，不能说明 topic 已经实时发布，更不能说明真机允许运动。真机运动仍必须走 M33 安全状态机。
 
 如果要强制确认真实 MuJoCo Python 包已安装，而不是使用 fallback 仿真：
 

@@ -26,6 +26,35 @@ DATA_TOOL_MODULES = [
     'rehab_arm_psoc_bridge.sync_upload',
 ]
 
+TOPIC_CONTRACT = {
+    'trajectory_command': {
+        'topic': '/arm_controller/joint_trajectory',
+        'message_type': 'trajectory_msgs/msg/JointTrajectory',
+        'direction': 'planner_to_sim_or_nanopi',
+    },
+    'joint_state': {
+        'topic': '/joint_states',
+        'message_type': 'sensor_msgs/msg/JointState',
+        'direction': 'sim_or_hardware_to_ros',
+    },
+    'safety_state': {
+        'topic': '/rehab_arm/safety_state',
+        'message_type': 'std_msgs/msg/String',
+        'direction': 'm33_or_sim_safety_to_ros',
+    },
+    'sensor_state': {
+        'topic': '/rehab_arm/sensor_state',
+        'message_type': 'std_msgs/msg/String',
+        'direction': 'sensor_or_model_state_to_ros',
+    },
+    'vla_task_goal': {
+        'topic': '/vla/task_goal',
+        'message_type': 'std_msgs/msg/String',
+        'direction': 'vla_task_planner_to_motion_planner',
+    },
+    'control_boundary': 'simulation_topic_contract_not_motion_permission',
+}
+
 
 def default_import_checker(module_name: str) -> bool:
     return importlib.util.find_spec(module_name) is not None
@@ -134,6 +163,7 @@ def build_sim_env_report(
             'trajectory_topic': '/arm_controller/joint_trajectory',
             'state_topic': '/joint_states',
         },
+        'topic_contract': TOPIC_CONTRACT,
         'safety_note': (
             'This is a read-only simulation environment check. It does not open CAN, '
             'does not send 0x320/0x321 frames, and does not command M33 or motors.'

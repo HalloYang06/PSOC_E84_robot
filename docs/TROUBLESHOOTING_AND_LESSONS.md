@@ -2215,3 +2215,20 @@ No such file or directory: /tmp/rehab_sim_collection/sim_demo_motion.jsonl
 状态：
 
 - 已新增显式 `--execute` 上传命令；尚未在真实 NanoPi 上执行云端上传。
+
+### 仿真 topic 合同不等于 topic 正在运行
+
+现象：
+
+- `check_sim_env` 可以输出 `/arm_controller/joint_trajectory`、`/joint_states`、`/rehab_arm/safety_state` 等标准 topic 合同。
+- 用户可能误以为自检报告里有 topic 名，就代表这些 topic 已经实时发布，甚至可以直接控制真机。
+
+技巧：
+
+- `topic_contract` 只说明仿真主机、NanoPi、平台采集标注和 VLA 后续应遵守的接口名称和消息类型。
+- 判断 topic 是否真的运行，还要用 `ros2 topic list`、`ros2 topic echo --once`、launch 日志和数据采集 JSONL 验证。
+- 真机运动许可仍只来自 M33 安全状态机，不能从仿真报告或平台页面推断。
+
+状态：
+
+- `check_sim_env` 已加入 `topic_contract.control_boundary=simulation_topic_contract_not_motion_permission`。

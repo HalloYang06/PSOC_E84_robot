@@ -1007,3 +1007,14 @@
 - Validated: `py_compile` passed for `board_manifest_sync_upload.py`; CLI smoke without `--execute` printed a two-request dry-run plan from a temporary manifest.
 - Safety: upload is data-only and preserves `board_manifest_sync_only_not_motion_permission`; it does not open CAN, start ROS motion, command M33, or move motors.
 - Next step: test the new command on NanoPi when the board is available, first without `--execute`, then only upload after reviewing the manifest and server URL.
+
+### 2026-05-26 - Simulation environment ROS topic contract
+
+- Completed: extended `check_sim_env` reports with `topic_contract` for `/arm_controller/joint_trajectory`, `/joint_states`, `/rehab_arm/safety_state`, `/rehab_arm/sensor_state`, and `/vla/task_goal`.
+- Completed: documented that this contract is shared by MuJoCo/fallback simulation, NanoPi, platform data collection, annotation, and later VLA planning.
+- Validated: targeted `test_check_sim_env.py` passed 4 tests after first failing on missing `topic_contract`.
+- Validated: full `rehab_arm_sim_mujoco` unit test suite passed 8 tests.
+- Validated: `py_compile` passed for `check_sim_env.py`.
+- Validated: CLI smoke printed `topic_contract.trajectory_command.topic=/arm_controller/joint_trajectory` and `topic_contract.control_boundary=simulation_topic_contract_not_motion_permission`; local Windows process returned nonzero because this shell is not a sourced ROS2 runtime.
+- Safety: `topic_contract` is documentation/report data only and uses `simulation_topic_contract_not_motion_permission`; it does not prove topics are live and does not grant motion permission.
+- Next step: have the platform surface the simulation topic contract in the Linux board/simulation readiness panel, then later run it on the real Linux simulation host.

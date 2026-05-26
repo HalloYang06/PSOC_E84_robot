@@ -33,6 +33,15 @@ class CheckSimEnvTests(unittest.TestCase):
         self.assertEqual(report['schema_version'], 'rehab_arm_sim_env_check_v1')
         self.assertEqual(report['readiness'], 'ready_with_fallback_sim')
         self.assertEqual(report['joint_contract']['count'], 5)
+        self.assertEqual(
+            report['topic_contract']['trajectory_command']['topic'],
+            '/arm_controller/joint_trajectory',
+        )
+        self.assertEqual(report['topic_contract']['joint_state']['topic'], '/joint_states')
+        self.assertEqual(report['topic_contract']['sensor_state']['topic'], '/rehab_arm/sensor_state')
+        self.assertEqual(report['topic_contract']['safety_state']['topic'], '/rehab_arm/safety_state')
+        self.assertEqual(report['topic_contract']['vla_task_goal']['topic'], '/vla/task_goal')
+        self.assertEqual(report['topic_contract']['control_boundary'], 'simulation_topic_contract_not_motion_permission')
         self.assertFalse(report['checks']['mujoco']['ok'])
         self.assertTrue(report['checks']['urdf']['ok'])
         self.assertIn('does not open CAN', report['safety_note'])
