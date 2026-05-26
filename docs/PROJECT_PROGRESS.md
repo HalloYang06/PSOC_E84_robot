@@ -51,6 +51,14 @@
 
 ### 2026-05-26
 
+- M33 零点职责收敛：
+  - 决策：若电机官方协议角度已经是可信输出侧绝对角度，M33 不维护零点标注；机械零点、患者 ROM、限速和训练模式由上位机/平台/App 写入统一 Patient Device Profile。
+  - M33 只接收安全子集，并负责限位、限速、限流、急停、故障和通信超时的最终裁决。
+  - 已撤掉 M33 本轮新增的 RAM session zero 口，诊断日志也不再输出 `zero_source/zero_policy`。
+  - 文档更新：`docs/PATIENT_DEVICE_PROFILE_PROTOCOL_V1.md` 和 `docs/USER_MANUAL.md`。
+  - 验证：M33 代码静态 `git diff --check` 通过；本机无法完整编译 M33，原因是当前 shell 的 SCons/工具链配置不可用。
+  - 下一步：继续把电机绝对角度、限位、限速和患者 profile 的数据流打通，平台患者总览等机械臂功能稳定后再加。
+
 - M33 ROS joint 到真实电机映射修正：
   - 现场验证：通过 M33 路径发送 `0x320#03072C0103000000`，CAN 上能看到命令，但 7 号没有动，`0x180007FD` 和 M33 `0x336` 状态没有变化。
   - 对照验证：直接 `nanopi_can_master.py private speed --motor 7 --vel 0.30 --kd 1.0` 后，7 号原始反馈从 `CF93...` 变化到 `D7C1...`，M33 `0x336` 也变化，说明 7 号电机和私有协议路径可用。

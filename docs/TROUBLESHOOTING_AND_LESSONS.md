@@ -3569,7 +3569,7 @@ Connection reset by 192.168.2.66 port 22
 - 伺泰威驱动每次重启/重新归零后，都要重新确认 `0x069 position_rev`，不能沿用上一次的 M33 零点。
 - 大角度前必须先用 formal `+5°` 验证零点和方向。
 - 这只是台架排故办法；正式机械臂必须做持久化机械零点或上电 homing。
-- `m33_joint_calib` 要看 `zero_source`。如果显示 `bench_*`，它只允许用于未装机台架。
+- 旧版 `m33_joint_calib` 曾打印固件侧零点来源；当前路线已取消这类 M33 零点标注，不再把它作为正式依据。
 
 ### App、平台、M33、M55 不要各写一套患者参数
 
@@ -3589,3 +3589,24 @@ Connection reset by 192.168.2.66 port 22
 - 同一设备同一时间只允许一个 active profile。
 - 每条训练数据都记录 `profile_id/profile_version/session_id/machine_calibration_id/model_version`。
 - VLA 和 M55 都只能输出建议或任务计划，不能直接写底层电机命令。
+
+### M33 不做零点标注源
+
+现象：
+
+- 调试 3号/7号时曾经把临时零点写进 M33，导致驱动重启、台架姿态变化或上位机标注思路变化后，M33 固件里的零点和实际电机绝对角度容易不一致。
+
+判断：
+
+- 如果电机官方协议已经提供可信输出侧绝对角度，M33 不应该再维护一套零点标注。
+- 零点、患者 ROM、训练模式、患者限速和标注元数据应该由上位机/平台/App 的统一 Patient Device Profile 管理。
+- M33 只接收安全子集，做限位、限速、限流、急停、故障和通信超时裁决。
+
+技巧：
+
+- 不要在正式 M33 协议里新增 `session_zero`、`zero_source` 这类第二套零点语义。
+- NanoPi 的 `m33 zero` 不作为正式接口使用；如需台架排故，另建显式 debug 工具，且不得进入正式 bringup。
+
+状态：
+
+- 已撤掉本轮新增的 M33 session zero 入口，并去掉 M33 诊断里的 `zero_source/zero_policy` 输出。

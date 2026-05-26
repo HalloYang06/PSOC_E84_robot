@@ -47,6 +47,8 @@ raw_motor_position -> machine_zero -> robot_joint_angle
 robot_joint_angle + patient_rom_limits -> rom_percent
 ```
 
+如果某类电机官方协议已经直接给出可信输出侧绝对角度，`raw_motor_position` 可以直接作为 `robot_joint_angle` 的来源，`machine_zero` 只作为上位机/平台标注的显示和数据集字段存在，不要求 M33 重新维护一套零点数据库。M33 在这种情况下只执行安全子集中的限位、限速、限流、急停和通信超时裁决。
+
 `rom_percent` 是训练特征，不是新的控制坐标系：
 
 ```text
@@ -429,6 +431,8 @@ bench_runtime_zero
 
 `bench_runtime_zero` 只能用于未装机台架，不允许穿戴训练。
 
+M33 第一版不负责零点标注，也不提供 session zero 作为正式接口。上位机、平台和 App 共同维护机械零点、患者 ROM、患者限速、训练模式和标注元数据；M33 只接收审核后的安全限制子集并做最终裁决。若后续确实需要台架零点排故，应另建显式 debug 工具，不进入正式协议。
+
 ### 11.3 Safety 状态
 
 ```text
@@ -459,4 +463,3 @@ model_suggestion_rejected
 - M55 直接调节 M33 限位。
 - VLA 直接发底层轨迹或 CAN。
 - App/平台直接修改 M33 Flash。
-

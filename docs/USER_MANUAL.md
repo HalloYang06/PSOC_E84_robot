@@ -2404,12 +2404,12 @@ python3 rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/calibr
 
 ### 6.7.3 未装机台架 7 号快速试错
 
-当前机械臂还没有装机时，7 号可以先用“零点 0、方向默认、限位 ±60°”打通正式 M33 运动链路。这个配置只用于空载台架，不是正式机械零点。
+当前机械臂还没有装机时，可以先用电机官方绝对角度、方向默认、限位 ±60° 打通正式 M33 运动链路。这个阶段不在 M33 里做零点标注；零点、患者 ROM、训练模式和限速参数后续由上位机/平台/App 统一 profile 管理。
 
 更新：7号 EL05 已通过 official CSP 试验确认，RobStride `loc_ref`/反馈位置在当前台架上对应可见输出侧角度，不需要再除以 `9`。当前台架版本使用：
 
 - `CONTROL_MOTOR_JOINT4/5/6/7_GEAR_RATIO=(1.0f)`
-- `CONTROL_MOTOR_JOINT7_ZERO_OFFSET_RAD=(1.0f)`
+- `CONTROL_MOTOR_JOINT7_ZERO_OFFSET_RAD=(0.0f)`
 - `CONTROL_MOTOR_JOINT7_CALIBRATED=1U`
 
 M33 正式 `0x320 set_target` 对 4/5/6/7 灵足电机使用官方 CSP 参数流：`run_mode=5`、enable、`limit_spd(0x7017)`、`loc_ref(0x7016)`。因此 ROS joint4 `+5°` 预期就是输出端约 `+5°`。
@@ -2419,11 +2419,12 @@ M33 正式 `0x320 set_target` 对 4/5/6/7 灵足电机使用官方 CSP 参数流
 - `CONTROL_MOTOR_JOINT3_GEAR_RATIO=(48.0f)`
 - `CONTROL_MOTOR_JOINT3_ZERO_OFFSET_RAD=(0.0f)`
 - `CONTROL_MOTOR_JOINT3_CALIBRATED=1U`
-- `CONTROL_MOTOR_JOINT3_ZERO_SOURCE="bench_volatile_encoder_zero_not_for_installed_robot"`
 
 注意：3号这里的 `48.0f` 不是照搬 7号灵足的错误经验。3号当前 formal path 使用 Sitaiwei CANSimple/ODrive-like 协议；该协议的开源/官方参考路线是 ODrive CAN，位置和速度单位是 `rev` / `rev/s`。所以 ROS 关节角要先转换到电机协议侧单位。若后续要让 3号“不乘减速比”地按输出轴角度控制，需要新建 3号 MIT/output-axis RAD 路径，不应直接删掉 CANSimple 的 `gear_ratio`。
 
-当前 `0.0f` 是未装机台架临时零点，只用于这次驱动重启后 `0x069 position_rev=0` 的调试。正式机械臂不能依赖“每次重启归零”：装机后必须把机械臂摆到机械零位，保存该姿态的 motor-protocol-side zero offset，或者实现上电 homing 流程。未完成持久化零点或 homing 前，formal path 应保持拒绝绝对位置命令。
+当前路线调整：如果电机官方协议提供的角度已经是可用绝对角度，就不让 M33 承担零点标注。M33 的主职责是安全裁决、限位、限速、限流、急停和故障保护；机械零点、患者 ROM、患者限速、训练模式等由上位机/平台/App 统一标注并写入 active Patient Device Profile。
+
+M33 不提供 `m33_session_zero`，NanoPi 的 `m33 zero` 也不作为正式接口使用。上位机标注零点后，应把结果同步到平台/App 的 profile 和数据采集元数据；M33 只接收审核后的安全限制子集。
 
 3号对应 ROS joint0。烧录后可先测：
 
