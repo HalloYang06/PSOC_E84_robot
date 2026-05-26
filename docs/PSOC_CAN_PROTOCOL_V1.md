@@ -4,14 +4,14 @@
 
 厂家电机协议、电机 ID、灵足/伺泰威遥测解码和待确认量程见：[MOTOR_PROTOCOLS.md](MOTOR_PROTOCOLS.md)。本文件只描述 NanoPi 和 M33 之间的正式控制/状态边界。
 
-M33 pre-arm 物理安全输入合同见：[M33_SAFETY_INPUT_MAPPING.md](M33_SAFETY_INPUT_MAPPING.md)。`motion_allowed=true` 不只依赖 `0x322` 字段本身，还依赖 M33 内部确认急停、电源/电压和限位均已接入并处于安全状态。
+M33 pre-arm 安全输入合同见：[M33_SAFETY_INPUT_MAPPING.md](M33_SAFETY_INPUT_MAPPING.md)。`motion_allowed=true` 不只依赖 `0x322` 字段本身，还依赖 M33 内部确认急停、软件限位、限速、扭矩/电流限制和当前模式均处于安全状态；电源 OK 当前不作为本阶段输入。
 
 ## 安全边界
 
 - `0x320` 是 NanoPi 到 M33 的关节目标帧，但 NanoPi 默认 dry-run，不发送真实 `0x320`。
 - 只有 M33 能打印接收日志、限幅结果、拒绝原因和 safety state 后，才允许临时打开 `enable_target_tx:=true` 做单帧对照。
-- M33 收到 `0x320` 后也不能直接驱动电机，必须先经过限位、限速、急停、供电、通信时效和当前模式检查。
-- 如果字段无法解析、关节号未知、目标超限、急停触发、heartbeat 超时或电源异常，M33 必须拒绝执行并上报 fault/limited。
+- M33 收到 `0x320` 后也不能绕过安全层直接驱动电机，必须先经过关节号、位置限位、限速、扭矩/电流、急停、通信时效和当前模式检查。
+- 如果字段无法解析、关节号未知、目标超限、急停触发或 heartbeat 超时，M33 必须拒绝执行并上报 fault/limited。
 
 ## CAN IDs
 

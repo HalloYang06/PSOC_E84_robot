@@ -23,6 +23,8 @@ M33 物理安全输入映射合同见：[M33_SAFETY_INPUT_MAPPING.md](M33_SAFETY
 
 M33 pre-arm 现在预留了代码配置型安全检查：位置限位、速度限制、扭矩/电流限制。它们会在串口中以 `PREARM_CODE_LIMITS` 单独显示；默认都是 `confirmed=0 safe_now=0`，等用户后续直接改 M33 代码填入真实限制后再打开。
 
+当前开发台架固件允许临时打开小幅运动链路：`CONTROL_DEVELOPMENT_BENCH_MOTION_ENABLE=1U`。这只用于空载或隔离台架开发，不是穿戴安全模式。该模式下 M33 仍会审核 `0x320`：ROS 关节号必须合法，位置目标必须在 `-60°~+60°`，速度必须在 `-5~+5 rpm`，`torque_ma` 必须为 `0`。ROS joint id 是 `0-based`，M33 会映射到内部 `1-based` 电机关节槽位。
+
 第一版数据上传约定：
 
 - 全量电机、传感、安全、模型结果和 session 数据，优先由 NanoPi 汇总后上传总服务器。
@@ -851,7 +853,7 @@ PY
 RX 322 [8] a5<seq>070001010a00
 ```
 
-这表示 M33 在线，但仍处于 `limited/logging_only`，不是可运动状态。
+旧版 logging-only 固件会表示 M33 在线但不可运动。开发台架固件打开 `CONTROL_DEVELOPMENT_BENCH_MOTION_ENABLE=1U` 后，`0x322` 可临时上报 `ok/armed`，让 NanoPi bridge 放行受限的 `0x320 set_target`；这仍然只代表台架开发许可，不代表人体穿戴许可。
 
 可选：在 M33 shell 查看预 armed 检查表：
 
@@ -887,7 +889,7 @@ PREARM_NOTE: diagnostic only; this command never changes mode and never enables 
 解释：
 
 - `ready=0` 是当前正确结果。
-- `logging_only_clear=0` 表示固件仍处于 logging-only，不允许真实输出。
+- `logging_only_clear=0` 表示固件仍处于 logging-only，不允许真实输出；开发台架固件会把该项清掉，但仍要通过 M33 的小幅运动审核。
 - `estop_confirmed=0` 和 `limits_confirmed=0` 表示急停、代码限速限位还没有接入并确认；`power_confirmed=1` 只是因为本阶段不使用 power OK 输入。
 - `confirmed=0 safe_now=0` 表示该安全输入尚未现场验证，也没有处于可放行状态；即使 source 已经预选，也不能运动。
 - `PREARM_CODE_LIMITS` 表示代码配置型安全限制是否已确认：位置限位、速度限制、扭矩/电流限制必须分别确认。
@@ -934,7 +936,7 @@ PREARM_INPUTS: estop_confirmed=0 power_confirmed=0 limits_confirmed=0
 PREARM_MOTORS: required_mask=0x0000007F fresh_mask=0x00000000 fault_mask=0x00000000 fresh_count=0 fresh_ok=0 fault_free=1
 ```
 
-这表示 M33 在线、heartbeat 新鲜，但仍然没有通过预 armed。当前不要尝试让它运动。
+这表示 M33 在线、heartbeat 新鲜，但旧版正式 pre-arm 仍未通过。开发台架固件可以临时做小幅运动验证；人在设备内时不要使用该模式。
 
 已验证的 7 号诊断 mask 输出：
 

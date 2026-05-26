@@ -2796,3 +2796,26 @@ PREARM_MOTORS: required_mask=0x0000007F fresh_mask=0x00000000 ... fresh_ok=0
 状态：
 
 - M33 已预留 `PREARM_CODE_LIMITS` 输出；等待后续烧录验证。
+
+### 开发台架小幅运动也必须保留 M33 审核
+
+现象：
+
+- 为了尽快打通 `ROS2 JointTrajectory -> NanoPi -> M33 -> motor`，开发阶段需要允许小幅真实运动。
+- 原 logging-only 路径只打印不执行；直接关闭 logging-only 会暴露真实执行路径的问题。
+
+根因：
+
+- M33 之前在非 logging-only 分支里存在“入队一次 + 直接执行一次”的结构，可能导致同一条 `0x320` 被执行两次。
+- NanoPi/ROS 使用 `0-based` joint id，M33 底层电机关节函数使用 `1-based` joint id，关闭 logging-only 前必须显式转换。
+
+技巧：
+
+- 用 `CONTROL_DEVELOPMENT_BENCH_MOTION_ENABLE=1U` 表示台架开发模式，不把它和正式穿戴 pre-arm 混在一起。
+- 台架运动也必须先过 M33 审核：关节号、位置、速度、扭矩/电流、heartbeat。
+- 当前开发限位是 `-60°~+60°`，速度 `-5~+5 rpm`，`torque_ma=0`。
+- 禁止把这种台架模式当作人体穿戴许可；正式模式仍需要急停和最终限速/限位/限流安全确认。
+
+状态：
+
+- M33 已修正为审核通过后单次直接应用；已编译 `control_layer.o`，未烧录验证。

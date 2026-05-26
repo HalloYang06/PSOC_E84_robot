@@ -1,10 +1,10 @@
 # M33 Safety Input Mapping
 
-本文档定义 M33 进入 `armed/active` 之前必须具备的物理安全输入合同。当前阶段只完成诊断合同，真实 GPIO/ADC/CAN 输入源尚未绑定，因此默认必须保持 `ready=0` 和 `motion_allowed=false`。
+本文档定义 M33 进入正式 `armed/active` 之前必须具备的安全输入合同。当前阶段急停只预选 GPIO 诊断源，电源 OK 不接不实现，限速/限位/扭矩电流限制由 M33 代码配置。正式穿戴模式下，未知或未确认状态必须保持 `ready=0` 和 `motion_allowed=false`。
 
 ## 目标
 
-- 把急停、电机电源/电压、关节限位从“口头安全要求”变成 M33 可诊断、可记录、可上传的数据合同。
+- 把急停、软件关节限位、速度限制、扭矩/电流限制从“口头安全要求”变成 M33 可诊断、可记录、可上传的数据合同。
 - 后续接线或改 M33 读取逻辑时，必须先更新本表，再改固件。
 - App、NanoPi、服务器、平台和 VLA 只能读取这些状态，不能绕过 M33。
 
@@ -130,8 +130,8 @@ App、平台、服务器和 NanoPi 日志应按下面方式展示，不要把未
 
 ## 当前验收状态
 
-- `cmd_m33_safety_inputs` 已烧录后验证。
-- `cmd_m33_prearm_check 0x40` 已在 7 号 telemetry 新鲜时验证。
-- 三路物理安全输入仍是 `unwired/confirmed=0/safe_now=0`。
-- `ready=0` 和 `motion_allowed_would_be=0` 是当前正确结果。
-- 没有发布轨迹，没有发送 `0x320`，没有电机运动。
+- `cmd_m33_safety_inputs` 已烧录后验证过旧版安全输入合同。
+- `cmd_m33_prearm_check 0x40` 已在 7 号 telemetry 新鲜时验证过旧版 pre-arm 诊断。
+- 当前安全输入口径已更新：急停 source 预选为 `rpi40_pin11_gpio0_rpi_gpio10`，但仍 `confirmed=0 safe_now=0`；power OK 为 `not_used_no_power_ok_input`，本阶段旁路；limits 为 `software_joint_limits_user_configured`。
+- 位置限位、速度限制、扭矩/电流限制已预留独立 `PREARM_CODE_LIMITS` 字段，正式穿戴模式下必须由用户按真实机械结构确认后再放行。
+- 开发台架小幅运动固件可以临时打开 `CONTROL_DEVELOPMENT_BENCH_MOTION_ENABLE=1U`，但这不是穿戴安全验收；正式模式仍要回到完整 pre-arm 合同。

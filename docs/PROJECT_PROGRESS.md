@@ -1303,3 +1303,15 @@
 - Validated: forced ARM GCC compile of `Debug/applications/control/control_layer.o` succeeded.
 - Safety: defaults still keep pre-arm failing. This does not enable `armed`, `active`, `motion_allowed`, or motor output.
 - Next step: if the user wants, add read-only GPIO raw diagnostic for estop pin 11; user will later edit M33 code values for speed/position/torque-current limits.
+
+### 2026-05-26 - M33 development bench motion gate
+
+- Completed: M33 branch adds `CONTROL_DEVELOPMENT_BENCH_MOTION_ENABLE=1U` for powered bench development only.
+- Completed: development gate changes `0x322` to `ok/armed` so NanoPi can pass limited `0x320 set_target` commands during bench tests.
+- Completed: M33 now audits `0x320` before output: ROS joint id must be valid, target must be within `-60°~+60°`, speed within `-5~+5 rpm`, and `torque_ma=0`.
+- Completed: fixed ROS `0-based` joint id to M33 internal `1-based` motor joint mapping before applying a target.
+- Completed: removed the double-execution path when logging-only is disabled; a valid command is assessed once and applied once.
+- Validated: forced ARM GCC compile of `Debug/applications/control/control_layer.o` succeeded without warnings.
+- Not validated: not flashed yet, no NanoPi live CAN check, no `0x320`, and no motor motion in this slice.
+- Safety: this is a development bench mode, not final wearable pre-arm safety. Formal path still requires real estop and final code-configured limits before human-worn motion.
+- Next step: user flashes M33, then run NanoPi live status check and one tiny single-joint ROS trajectory while observing M33 serial logs.

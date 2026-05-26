@@ -10,9 +10,9 @@
 
 - 默认安全态是“不动”。上电、重启、通信中断、传感异常、轨迹异常、程序异常时，必须进入 `limited`、`fault` 或 `emergency_stop`。
 - M33 是最终安全责任核心。NanoPi、Linux 工作站、App、VLA、OpenClaw、总服务器和 M55 都不能绕过 M33 直接控制电机。
-- 所有外部输入都视为“不可信请求”，包括 ROS `JointTrajectory`、App BLE 命令、VLA 任务目标、M55 模型输出和服务器配置；M33 必须检查限位、限速、力矩/电流、电源、急停、通信时效和当前模式后再决定是否执行。
-- 急停、限位、供电异常、heartbeat timeout、传感器掉线和电机故障必须能在 M33 本地闭环内触发，不依赖 Linux、ROS、网络、App 或云端。
-- M33 pre-arm 的物理安全输入合同见 [M33_SAFETY_INPUT_MAPPING.md](M33_SAFETY_INPUT_MAPPING.md)。急停、电源/电压、限位必须同时满足 `confirmed=1` 和 `safe_now=1`，否则不得进入 `armed/active`。
+- 所有外部输入都视为“不可信请求”，包括 ROS `JointTrajectory`、App BLE 命令、VLA 任务目标、M55 模型输出和服务器配置；M33 必须检查限位、限速、力矩/电流、急停、通信时效和当前模式后再决定是否执行。电源 OK 当前不作为本阶段输入，未来如加入必须先更新安全合同。
+- 急停、软件限位/限速/限流、heartbeat timeout、传感器掉线和电机故障必须能在 M33 本地闭环内触发，不依赖 Linux、ROS、网络、App 或云端。
+- M33 pre-arm 的安全输入合同见 [M33_SAFETY_INPUT_MAPPING.md](M33_SAFETY_INPUT_MAPPING.md)。正式穿戴模式下，急停和代码配置型限位/限速/扭矩电流限制必须同时满足 `confirmed=1` 和 `safe_now=1`，否则不得进入正式 `armed/active`。
 - 人在设备内时，不允许使用 NanoPi 直发 CANSimple/private 电机帧做运动控制；调试直控只能用于离线台架和明确隔离的诊断场景。
 - VLA、M55 和 OpenClaw 只能输出任务目标、预测或辅助建议，不能输出底层电机命令，也不能覆盖 M33 的安全决策。
 - 每个新功能进入真机前必须经过“仿真 -> 空载/不接人台架 -> 低能量受限动作 -> 人体穿戴测试”的分级验证。
