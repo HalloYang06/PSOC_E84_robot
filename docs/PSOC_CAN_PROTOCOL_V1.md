@@ -2,6 +2,8 @@
 
 本文档固定 NanoPi ROS bridge 和英飞凌 M33 之间第一版 CAN 对照协议。当前目标是日志对照和安全审核，不是直接带动电机。
 
+厂家电机协议、电机 ID、灵足/伺泰威遥测解码和待确认量程见：[MOTOR_PROTOCOLS.md](MOTOR_PROTOCOLS.md)。本文件只描述 NanoPi 和 M33 之间的正式控制/状态边界。
+
 ## 安全边界
 
 - `0x320` 是 NanoPi 到 M33 的关节目标帧，但 NanoPi 默认 dry-run，不发送真实 `0x320`。
@@ -214,6 +216,25 @@ M33 还应该打印：
 - 关节号是否存在。
 - 目标是否在 M33 最终限位内。
 - 限幅后的目标值，如果 M33 选择限幅而不是拒绝。
+
+## M33 安全状态机预编辑边界
+
+当前最近的本地 M33 工程为 `D:\RT-ThreadStudio\workspace\yiliao_m33`，最近 Git 提交为 `ce90173a Bring up M33 CAN path ...`。该工程已经具备以下预编辑基础：
+
+- `CONTROL_ROS_COMMAND_LOGGING_ONLY=1U`，默认只解析和审核 `0x320`，不输出电机控制。
+- `ctrl_assess_ros_command_safety()` 对 heartbeat、关节号、目标位置、速度和扭矩做初步审核。
+- `0x322` V2 byte6 会回传最近一次审核的 `detail_code`。
+- M33 串口会打印 `final action=no_motor_output logging_only=1`。
+
+后续进入真实执行前，必须由 M33 工程侧补齐并人工复核：
+
+- 7 轴真实 `joint_id -> motor_id -> 厂家协议 -> 机械关节` 映射。
+- 每个关节的 M33 最终限位、速度限制、加速度限制、力矩/电流限制。
+- 急停输入、抱闸/制动、供电异常、温度异常和电机故障联锁。
+- 电机反馈超时、C8T6 传感超时、NanoPi heartbeat timeout 的降级动作。
+- M55 小模型输出只作为建议输入，不能绕过 M33 安全裁决。
+
+在这些参数未确认前，`logging_only` 不应关闭。
 
 ## NanoPi 对照命令
 

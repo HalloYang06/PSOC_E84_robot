@@ -2351,3 +2351,37 @@ No such file or directory: /tmp/rehab_sim_collection/sim_demo_motion.jsonl
 状态：
 
 - 已确认 NanoPi 能接收 4/5/6/7 周期电机状态；M33 `active-report` 转发路径还未打通。
+
+### 灵足主动上报不要在型号未确认前强行换算工程单位
+
+现象：
+
+- 实测 4/5/6/7 会发 `0x180004FD`、`0x180005FD`、`0x180006FD`、`0x180007FD`。
+- 本地 RobStride 示例里同类 payload 可按位置、速度、扭矩、温度解码，但不同型号的速度/扭矩量程不同。
+
+技巧：
+
+- 默认保留 `raw_position_u16`、`raw_velocity_u16`、`raw_torque_u16`、`raw_temperature_u16` 和原始 CAN 数据。
+- 只有确认 motor ID 对应 `RS00/RS01/RS02/RS03/RS04/RS05/RS06/EL05` 后，才按对应型号量程输出 rad、rad/s、Nm、摄氏度。
+- 数据采集和平台展示可以先显示 raw 值和 `engineering_decode=raw_only_actuator_type_unconfirmed`，不要把未知型号伪装成真实物理量。
+
+状态：
+
+- `candump_motor_telemetry.py` 已按 raw-first 方式处理灵足 active-report。
+
+### 飞书文档链接可能只返回登录页
+
+现象：
+
+- 直接访问用户提供的飞书 docx 链接时，HEAD 返回 404。
+- 加浏览器 UA 后能下载 HTML，但内容是 passport 登录页，不是文档正文。
+
+技巧：
+
+- 不要从登录页推断协议字段。
+- 让文档拥有者把飞书权限改成公开可读，或导出 PDF/Word/Markdown 到本地目录后再解析。
+- 若只拿到在线链接但没有认证，文档内容应标记为未验证。
+
+状态：
+
+- 伺泰威产品/用户/协议手册正文仍未读取；当前只使用实测 CANSimple `0x061/0x069` 作为已确认事实。

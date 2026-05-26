@@ -15,9 +15,11 @@ sys.path.insert(0, str(PACKAGE_DIR))
 
 from rehab_arm_psoc_bridge.candump_motor_telemetry import (  # noqa: E402
     CONTROL_BOUNDARY,
+    decode_lingzu_engineering_values,
     convert_candump_to_records,
     decode_cansimple_encoder_estimate,
     decode_cansimple_heartbeat,
+    decode_private_active_report,
     parse_candump_line,
 )
 
@@ -34,6 +36,13 @@ class CandumpMotorTelemetryTests(unittest.TestCase):
         self.assertEqual(frame['can_id'], 0x069)
         self.assertEqual(frame['dlc'], 8)
         self.assertEqual(frame['data'], b'\x00\x00\x80?\x00\x00\x00@')
+
+    def test_parse_candump_log_hash_line(self) -> None:
+        frame = parse_candump_line('(1779777167.168395) can0 180006FD#BE9B7FFF7FFF0136')
+
+        self.assertEqual(frame['can_id'], 0x180006FD)
+        self.assertEqual(frame['dlc'], 8)
+        self.assertEqual(frame['data'], bytes.fromhex('BE9B7FFF7FFF0136'))
 
     def test_decode_cansimple_heartbeat(self) -> None:
         frame = parse_candump_line(candump_line(0.1, '061', b'\x00\x00\x00\x00\x08\x80\xCE\x00'))
@@ -53,11 +62,51 @@ class CandumpMotorTelemetryTests(unittest.TestCase):
         motor = decode_cansimple_encoder_estimate(frame, heartbeat)
 
         self.assertEqual(motor['motor_id'], 3)
+        self.assertEqual(motor['vendor'], 'Sitaiwei')
         self.assertEqual(motor['protocol'], 'cansimple_encoder_estimate')
         self.assertAlmostEqual(motor['position'], 0.25 * math.tau)
         self.assertAlmostEqual(motor['velocity'], 0.5 * math.tau)
         self.assertEqual(motor['raw_can_id'], '0x069')
         self.assertIs(motor['enabled'], True)
+
+    def test_decode_private_active_report_preserves_raw_fields(self) -> None:
+        frame = parse_candump_line('(1779777167.170439) can0 180004FD#97BA7FCF7FFF0140')
+
+        motor = decode_private_active_report(frame)
+
+        self.assertEqual(motor['motor_id'], 4)
+        self.assertEqual(motor['vendor'], 'Lingzu')
+        self.assertEqual(motor['protocol'], 'lingzu_robstride_private_active_report')
+        self.assertEqual(motor['actuator_type'], 'unknown')
+        self.assertEqual(motor['engineering_decode'], 'raw_only_actuator_type_unconfirmed')
+        self.assertIsNone(motor['position'])
+        self.assertIsNone(motor['velocity'])
+        self.assertIsNone(motor['torque'])
+        self.assertIsNone(motor['temperature'])
+        self.assertEqual(motor['raw_position_u16'], 0x97BA)
+        self.assertEqual(motor['raw_velocity_u16'], 0x7FCF)
+        self.assertEqual(motor['raw_torque_u16'], 0x7FFF)
+        self.assertEqual(motor['temperature_raw'], 0x0140)
+        self.assertEqual(motor['raw_temperature_u16'], 0x0140)
+        self.assertEqual(motor['status_raw'], '0x40')
+        self.assertEqual(motor['raw_can_id'], '0x180004FD')
+
+    def test_decode_lingzu_engineering_values_when_actuator_model_is_known(self) -> None:
+        values = decode_lingzu_engineering_values(
+            4,
+            0x8000,
+            0x7FFF,
+            0x8000,
+            0x0140,
+            actuator_type_by_id={4: 'RS00'},
+        )
+
+        self.assertEqual(values['actuator_type'], 'RS00')
+        self.assertEqual(values['engineering_decode'], 'lingzu_robstride_ros_sample_actuator_mapping')
+        self.assertAlmostEqual(values['position'], 0.0003835069, places=6)
+        self.assertAlmostEqual(values['velocity'], 0.0, places=6)
+        self.assertAlmostEqual(values['torque'], 0.0005188147, places=6)
+        self.assertAlmostEqual(values['temperature'], 32.0)
 
     def test_convert_candump_to_motor_state_jsonl_records(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -80,6 +129,24 @@ class CandumpMotorTelemetryTests(unittest.TestCase):
         self.assertEqual(payload['schema_version'], 'rehab_arm_motor_state_v1')
         self.assertEqual(payload['motors'][0]['motor_id'], 3)
         self.assertEqual(payload['control_boundary'], CONTROL_BOUNDARY)
+
+    def test_convert_candump_includes_private_active_report_records(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / 'capture.log'
+            source.write_text(
+                '(1779777167.168395) can0 180006FD#BE9B7FFF7FFF0136\n'
+                '(1779777167.170439) can0 180004FD#97BA7FCF7FFF0140\n',
+                encoding='utf-8',
+            )
+
+            records, summary = convert_candump_to_records(source, 'rehab-arm-alpha', 'nanopi-m5', 's1')
+
+        self.assertIs(summary['ok'], True)
+        self.assertEqual(summary['private_active_report_count'], 2)
+        self.assertEqual(summary['motor_state_count'], 2)
+        self.assertEqual(records[1]['payload']['source'], 'candump_private_active_report')
+        self.assertEqual(records[1]['payload']['motors'][0]['motor_id'], 6)
+        self.assertEqual(records[1]['payload']['motors'][0]['vendor'], 'Lingzu')
 
     def test_cli_writes_output_to_requested_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

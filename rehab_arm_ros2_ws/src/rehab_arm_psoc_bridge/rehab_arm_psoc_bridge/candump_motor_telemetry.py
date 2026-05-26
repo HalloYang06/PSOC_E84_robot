@@ -33,25 +33,61 @@ except ModuleNotFoundError:
 
 CANSIMPLE_HEARTBEAT_CMD = 0x001
 CANSIMPLE_ENCODER_ESTIMATE_CMD = 0x009
+PRIVATE_ACTIVE_REPORT_TYPE = 0x18
+PRIVATE_MASTER_ID = 0xFD
+LINGZU_POSITION_LIMIT_RAD = 4 * math.pi
+LINGZU_ACTUATOR_LIMITS = {
+    'RS00': {'position': LINGZU_POSITION_LIMIT_RAD, 'velocity': 50.0, 'torque': 17.0},
+    'RS01': {'position': LINGZU_POSITION_LIMIT_RAD, 'velocity': 44.0, 'torque': 17.0},
+    'RS02': {'position': LINGZU_POSITION_LIMIT_RAD, 'velocity': 44.0, 'torque': 17.0},
+    'RS03': {'position': LINGZU_POSITION_LIMIT_RAD, 'velocity': 50.0, 'torque': 60.0},
+    'RS04': {'position': LINGZU_POSITION_LIMIT_RAD, 'velocity': 15.0, 'torque': 120.0},
+    'RS05': {'position': LINGZU_POSITION_LIMIT_RAD, 'velocity': 33.0, 'torque': 17.0},
+    'RS06': {'position': LINGZU_POSITION_LIMIT_RAD, 'velocity': 20.0, 'torque': 36.0},
+}
+LINGZU_ACTUATOR_TYPE_BY_ID: dict[int, str] = {}
+MOTOR_VENDOR_BY_ID = {
+    3: 'Sitaiwei',
+    4: 'Lingzu',
+    5: 'Lingzu',
+    6: 'Lingzu',
+    7: 'Lingzu',
+}
 CONTROL_BOUNDARY = 'telemetry_only_not_motor_command'
 
 CAN_LINE_RE = re.compile(
     r'\((?P<time>[-0-9.]+)\)\s+\S+\s+(?P<id>[0-9A-Fa-f]+)\s+\[(?P<dlc>\d+)\]\s+(?P<data>(?:[0-9A-Fa-f]{2}\s*)*)'
 )
+CAN_HASH_LINE_RE = re.compile(
+    r'\((?P<time>[-0-9.]+)\)\s+\S+\s+(?P<id>[0-9A-Fa-f]+)#(?P<data>[0-9A-Fa-f]*)'
+)
 
 
 def parse_candump_line(line: str) -> dict[str, object] | None:
-    match = CAN_LINE_RE.search(line.strip())
+    text = line.strip()
+    match = CAN_LINE_RE.search(text)
+    if match:
+        data = bytes(int(item, 16) for item in match.group('data').split())
+        dlc = int(match.group('dlc'))
+        if dlc != len(data):
+            return None
+        return {
+            'relative_time_s': float(match.group('time')),
+            'can_id': int(match.group('id'), 16),
+            'dlc': dlc,
+            'data': data,
+        }
+    match = CAN_HASH_LINE_RE.search(text)
     if not match:
         return None
-    data = bytes(int(item, 16) for item in match.group('data').split())
-    dlc = int(match.group('dlc'))
-    if dlc != len(data):
+    data_text = match.group('data')
+    if len(data_text) % 2:
         return None
+    data = bytes.fromhex(data_text)
     return {
         'relative_time_s': float(match.group('time')),
         'can_id': int(match.group('id'), 16),
-        'dlc': dlc,
+        'dlc': len(data),
         'data': data,
     }
 
@@ -93,6 +129,7 @@ def decode_cansimple_encoder_estimate(
     return {
         'motor_id': node_id,
         'joint_name': f'cansimple_node_{node_id}',
+        'vendor': MOTOR_VENDOR_BY_ID.get(node_id),
         'protocol': 'cansimple_encoder_estimate',
         'position': position_turns * math.tau,
         'velocity': velocity_turns_per_sec * math.tau,
@@ -109,6 +146,97 @@ def decode_cansimple_encoder_estimate(
         'axis_state': heartbeat.get('axis_state') if heartbeat else None,
         'raw_can_id': f"0x{int(frame['can_id']):03X}",
         'raw_data': data.hex().upper(),
+    }
+
+
+def lingzu_u16_to_symmetric_float(value: int, limit: float) -> float:
+    return ((float(value) / 32767.0) - 1.0) * limit
+
+
+def decode_lingzu_engineering_values(
+    motor_id: int,
+    position_raw: int,
+    velocity_raw: int,
+    torque_raw: int,
+    temperature_raw: int,
+    actuator_type_by_id: dict[int, str] | None = None,
+) -> dict[str, object]:
+    actuator_type = (actuator_type_by_id or LINGZU_ACTUATOR_TYPE_BY_ID).get(motor_id)
+    values: dict[str, object] = {
+        'actuator_type': actuator_type or 'unknown',
+        'engineering_decode': 'raw_only_actuator_type_unconfirmed',
+        'position': None,
+        'velocity': None,
+        'effort': None,
+        'torque': None,
+        'temperature': None,
+    }
+    if not actuator_type:
+        return values
+    limits = LINGZU_ACTUATOR_LIMITS.get(actuator_type)
+    if not limits:
+        values['engineering_decode'] = 'raw_only_actuator_type_not_in_local_reference'
+        return values
+    values.update(
+        {
+            'engineering_decode': 'lingzu_robstride_ros_sample_actuator_mapping',
+            'position': lingzu_u16_to_symmetric_float(position_raw, limits['position']),
+            'velocity': lingzu_u16_to_symmetric_float(velocity_raw, limits['velocity']),
+            'effort': lingzu_u16_to_symmetric_float(torque_raw, limits['torque']),
+            'torque': lingzu_u16_to_symmetric_float(torque_raw, limits['torque']),
+            'temperature': temperature_raw * 0.1,
+        }
+    )
+    return values
+
+
+def decode_private_active_report(frame: dict[str, object]) -> dict[str, object] | None:
+    can_id = int(frame['can_id'])
+    data = frame['data']
+    if not isinstance(data, bytes) or len(data) != 8:
+        return None
+    if (can_id & 0xFF) != PRIVATE_MASTER_ID:
+        return None
+    if ((can_id >> 24) & 0x1F) != PRIVATE_ACTIVE_REPORT_TYPE:
+        return None
+    motor_id = (can_id >> 8) & 0xFF
+    position_raw = int.from_bytes(data[0:2], 'big', signed=False)
+    velocity_raw = int.from_bytes(data[2:4], 'big', signed=False)
+    torque_raw = int.from_bytes(data[4:6], 'big', signed=False)
+    temperature_raw = int.from_bytes(data[6:8], 'big', signed=False)
+    engineering = decode_lingzu_engineering_values(
+        motor_id,
+        position_raw,
+        velocity_raw,
+        torque_raw,
+        temperature_raw,
+    )
+    return {
+        'motor_id': motor_id,
+        'joint_name': f'private_motor_{motor_id}',
+        'vendor': MOTOR_VENDOR_BY_ID.get(motor_id),
+        'protocol': 'lingzu_robstride_private_active_report',
+        'position': engineering['position'],
+        'velocity': engineering['velocity'],
+        'effort': engineering['effort'],
+        'current': None,
+        'torque': engineering['torque'],
+        'temperature': engineering['temperature'],
+        'voltage': None,
+        'enabled': None,
+        'fault': None,
+        'error_code': None,
+        'actuator_type': engineering['actuator_type'],
+        'engineering_decode': engineering['engineering_decode'],
+        'raw_position_u16': position_raw,
+        'raw_velocity_u16': velocity_raw,
+        'raw_torque_u16': torque_raw,
+        'raw_temperature_u16': temperature_raw,
+        'temperature_raw': temperature_raw,
+        'status_raw': f'0x{data[7]:02X}',
+        'raw_can_id': f'0x{can_id:08X}',
+        'raw_data': data.hex().upper(),
+        'decode_source': 'local D:\\电机上位机 RobStride sample: Communication_Type_MotorRequest/0x18 payload; engineering units require actuator model',
     }
 
 
@@ -154,6 +282,7 @@ def convert_candump_to_records(
     total_frames = 0
     motor_state_count = 0
     heartbeat_count = 0
+    private_active_report_count = 0
     ignored_count = 0
     first_relative_time: float | None = None
     last_relative_time: float | None = None
@@ -168,6 +297,21 @@ def convert_candump_to_records(
             relative_time = float(frame['relative_time_s'])
             first_relative_time = relative_time if first_relative_time is None else first_relative_time
             last_relative_time = relative_time
+            private_motor = decode_private_active_report(frame)
+            if private_motor:
+                payload = make_motor_state_payload(
+                    [private_motor],
+                    robot_id=robot_id,
+                    device_id=device_id,
+                    now=relative_time,
+                    source='candump_private_active_report',
+                )
+                payload['session_id'] = sid
+                payload['relative_time_s'] = relative_time
+                records.append(make_payload_record('/rehab_arm/motor_state', payload, now=relative_time))
+                motor_state_count += 1
+                private_active_report_count += 1
+                continue
             cmd_id = cansimple_cmd_id(int(frame['can_id']))
             node_id = cansimple_node_id(int(frame['can_id']))
             if cmd_id == CANSIMPLE_HEARTBEAT_CMD:
@@ -204,6 +348,7 @@ def convert_candump_to_records(
         'device_id': device_id,
         'total_frames': total_frames,
         'heartbeat_count': heartbeat_count,
+        'private_active_report_count': private_active_report_count,
         'motor_state_count': motor_state_count,
         'ignored_count': ignored_count,
         'first_relative_time_s': first_relative_time,

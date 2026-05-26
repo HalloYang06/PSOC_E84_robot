@@ -1052,7 +1052,7 @@ ros2 topic echo --once /rehab_arm/motor_state std_msgs/msg/String
 
 注意：这个节点只做遥测转换，不发 CAN，不控制电机。真实电机状态后续仍应来自 M33 上报。
 
-如果已经用 `candump -tz can0` 保存了 CANSimple 原始日志，可以离线转换成统一的 `/rehab_arm/motor_state` JSONL，供总控台、标注、曲线分析和后续训练前检查使用：
+如果已经用 `candump -tz can0` 或 `candump -L can0` 保存了原始 CAN 日志，可以离线转换成统一的 `/rehab_arm/motor_state` JSONL，供总控台、标注、曲线分析和后续训练前检查使用：
 
 ```bash
 cd /home/pi/rehab_arm_ros2_ws
@@ -1067,11 +1067,14 @@ ros2 run rehab_arm_psoc_bridge candump_motor_telemetry \
   --pretty
 ```
 
-当前转换器只解析 CANSimple/ODrive 类标准帧遥测：
+当前转换器解析两类只读遥测：
 
 - `0x061`：`node_id=3` heartbeat，用来补充 enabled、fault、axis_state、error_code。
 - `0x069`：`node_id=3` encoder estimate，按 little-endian float 解码 position/velocity。
 - position 从 turns 转成 rad，velocity 从 turns/s 转成 rad/s。
+- `0x180004FD`、`0x180005FD`、`0x180006FD`、`0x180007FD`：私有协议 active-report 状态帧，对应电机 4/5/6/7。
+- 灵足 private active-report 目前默认只保留 `raw_position_u16`、`raw_velocity_u16`、`raw_torque_u16`、`raw_temperature_u16`、`status_raw` 和原始 CAN 数据；在 4/5/6/7 的真实型号确认前，不把它伪装成真实 rad、Nm 或摄氏度。
+- 电机协议总表见：[MOTOR_PROTOCOLS.md](MOTOR_PROTOCOLS.md)。
 
 通过标准：
 
@@ -1083,6 +1086,8 @@ ros2 run rehab_arm_psoc_bridge candump_motor_telemetry \
 - `control_boundary` 是 `telemetry_only_not_motor_command`。
 
 注意：`candump_motor_telemetry` 是离线日志转换工具，不打开 SocketCAN，不发 CAN，不发送 `0x320/0x321`，不控制 M33 或电机。闭环刚建立后的 `0x069` 第一次跳变可能包含估计器恢复，不要直接等同于真实机械位移。
+
+如果要临时抓 4/5/6/7 的原始周期状态，先由调试工具打开 private active-report，再抓包，测试结束必须关闭 active-report。正式 ROS 路径后续仍要由 M33 聚合并发布 `/rehab_arm/motor_state`，NanoPi 直接打开 private active-report 只用于调试接收链路。
 
 仿真数据采集一键启动：
 
@@ -1582,13 +1587,15 @@ ros2 run rehab_arm_psoc_bridge check_server_quality_gate nanopi-m5 \
 
 | ID | 协议/用途 | 说明 |
 |---|---|---|
-| `node_id=3` | CANSimple/ODrive 类协议 | heartbeat 标准帧 `0x061` |
-| `motor_id=4/5/6/7` | 私有扩展帧 MIT 电机协议 | 当前只允许调试使用，机械关节绑定待确认 |
+| `node_id=3` | 伺泰威 CANSimple/ODrive 类协议 | heartbeat 标准帧 `0x061`，encoder estimate `0x069` |
+| `motor_id=4/5/6/7` | 灵足 RobStride 私有扩展帧协议 | active-report `0x180004FD`、`0x180005FD`、`0x180006FD`、`0x180007FD`；当前只允许调试使用，型号和机械关节绑定待确认 |
 | `0x320` | NanoPi -> M33 | 关节目标/轨迹片段 |
 | `0x321` | NanoPi -> M33 | NanoPi heartbeat |
 | `0x322` | M33 -> NanoPi | M33 状态回复 |
 | `0x7C2` | C8T6 -> M33 | 传感数据 |
 | `0x7C3` | C8T6 -> M33 | 健康状态 |
+
+更完整的厂家协议、量程来源、未知项和 M33 安全边界见：[MOTOR_PROTOCOLS.md](MOTOR_PROTOCOLS.md)。
 
 ## 6.1 在平台里预览 URDF
 
