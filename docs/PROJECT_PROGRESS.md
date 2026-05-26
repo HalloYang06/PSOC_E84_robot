@@ -1384,6 +1384,7 @@
 - Completed: ran 7号 direct private-CAN at about `5 rpm` (`0.524 rad/s`) for exactly `3s`, then sent `stop` and disabled active-report.
 - Validated: `can0` stayed `ERROR-ACTIVE`; after stop, quiet check showed no continuing `0x180007FD/0x188007FD` active-report stream.
 - Observed: M33 aggregate `0x336` changed during motion and returned to stopped state after the stop.
-- Observed from user video: the 3s pulse appears to move roughly `140°~160°` at the visible output face, with high uncertainty because of symmetric hole patterns and camera motion.
+- Confirmed by user: the 3s pulse moved roughly `150°` at the visible output face.
+- Inferred: current direct private speed command `5 rpm` produced about `50°/s` output motion, or about `8.33 rpm` at the visible output face, so the command unit/path must be calibrated before it is treated as physical output rpm.
 - Safety: this was a timed low-speed calibration pulse only. It did not rely on the invalidated feedback angle mapping.
 - Next step: repeat with a clear tape/paint mark on the output face and a fixed camera, then derive a first calibration ratio for 7号 output motion.
