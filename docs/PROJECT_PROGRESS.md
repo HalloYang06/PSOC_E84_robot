@@ -1276,3 +1276,12 @@
 - Observed: `PREARM ready=0 motion_allowed_would_be=0` remained correct because logging-only and physical safety inputs still block motion.
 - Safety: no trajectory was published and no `0x320` target frame appeared.
 - Next step: define the real M33 safety-input source mapping plan for estop, motor power/voltage, and joint limits before any armed-mode implementation.
+
+### 2026-05-26 - M33 safety input mapping document
+
+- Completed: added `docs/M33_SAFETY_INPUT_MAPPING.md`.
+- Completed: documented the required `estop`, `power`, and `limits` input sources, `confirmed` conditions, `safe_now` conditions, likely M33 detail codes, and future implementation order.
+- Completed: linked the mapping document from README, architecture, protocol, and user manual.
+- Validated: documentation review only; no firmware, ROS, CAN, NanoPi, or motor command was run.
+- Safety: the document keeps current defaults as `unwired/confirmed=0/safe_now=0`; it does not enable `armed`, `active`, `motion_allowed`, or any motor output.
+- Next step: once the real wiring/pin choices are known, implement read-only M33 raw input diagnostics for one input at a time, starting with emergency stop.

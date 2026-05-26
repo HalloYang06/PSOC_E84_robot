@@ -2745,3 +2745,19 @@ PREARM_MOTORS: required_mask=0x0000007F fresh_mask=0x00000000 ... fresh_ok=0
 
 - 已在 M33 侧加入诊断命令和收紧后的 ready 条件。
 - 用户烧录后已验证：`cmd_m33_safety_inputs` 显示三路安全输入均为 `source=unwired confirmed=0 safe_now=0`，`cmd_m33_prearm_check 0x40` 在 7 号 telemetry 新鲜时仍保持 `ready=0`。
+
+### 安全输入先写映射合同，再接真实输入
+
+现象：
+
+- 急停、电源/电压、限位都非常关键，但当前还没有确认具体 pin、ADC channel、硬限位类型或常开/常闭逻辑。
+
+技巧：
+
+- 先维护 `docs/M33_SAFETY_INPUT_MAPPING.md`，把输入源、确认条件、当前安全条件和失败 detail 写清楚。
+- 真实固件读取要一项一项加，先只读 raw value，再转 `safe_now`，最后才接入 pre-arm。
+- 不要为了推进 `armed` 状态而把 `confirmed` 写死为 1；没有现场验证时必须保持失败。
+
+状态：
+
+- 已新增映射合同文档。下一步等真实接线信息后，先做急停只读诊断。

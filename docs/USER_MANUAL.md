@@ -17,6 +17,8 @@
 
 当前总体数据流图见：[system_data_flow.png](assets/system_data_flow.png)。
 
+M33 物理安全输入映射合同见：[M33_SAFETY_INPUT_MAPPING.md](M33_SAFETY_INPUT_MAPPING.md)。后续接真实急停、电源/电压、限位前，先按该文档确认输入源、`confirmed` 条件和 `safe_now` 条件。
+
 第一版数据上传约定：
 
 - 全量电机、传感、安全、模型结果和 session 数据，优先由 NanoPi 汇总后上传总服务器。

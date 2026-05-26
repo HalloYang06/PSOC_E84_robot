@@ -4,6 +4,8 @@
 
 厂家电机协议、电机 ID、灵足/伺泰威遥测解码和待确认量程见：[MOTOR_PROTOCOLS.md](MOTOR_PROTOCOLS.md)。本文件只描述 NanoPi 和 M33 之间的正式控制/状态边界。
 
+M33 pre-arm 物理安全输入合同见：[M33_SAFETY_INPUT_MAPPING.md](M33_SAFETY_INPUT_MAPPING.md)。`motion_allowed=true` 不只依赖 `0x322` 字段本身，还依赖 M33 内部确认急停、电源/电压和限位均已接入并处于安全状态。
+
 ## 安全边界
 
 - `0x320` 是 NanoPi 到 M33 的关节目标帧，但 NanoPi 默认 dry-run，不发送真实 `0x320`。
