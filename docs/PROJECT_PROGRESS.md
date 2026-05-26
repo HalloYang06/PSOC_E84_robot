@@ -971,3 +971,13 @@
 - Validated: CLI smoke generated a manifest in the system temp directory and the temp file was removed after inspection.
 - Safety: this is read-only discovery; it does not open CAN, start ROS control, send M33 commands, or move motors.
 - Next step: add a dry-run/upload path for `linux_board_manifest_v1` so the platform can show real board capabilities from any configured Linux board.
+
+### 2026-05-26 - Linux board manifest sync dry-run
+
+- Completed: added `board_manifest_sync_dry_run` to convert `linux_board_manifest_v1` into a preview request plan for `/devices/register`.
+- Completed: the plan extracts compatible platform fields: `device_id`, `robot_id`, `device_type=linux_board`, software release, and capability labels.
+- Validated: `python -m unittest rehab_arm_ros2_ws\src\rehab_arm_psoc_bridge\test\test_board_manifest_sync_dry_run.py -v` passed 3 tests.
+- Validated: full `rehab_arm_psoc_bridge` unit test suite passed 73 tests.
+- Validated: CLI smoke generated a temporary board manifest and printed a dry-run `/devices/register` plan, then removed the temp file.
+- Safety: dry-run prints the plan only; it does not open network connections or control hardware.
+- Next step: add backend support for storing the full board manifest, then enable explicit `--execute` upload after review.

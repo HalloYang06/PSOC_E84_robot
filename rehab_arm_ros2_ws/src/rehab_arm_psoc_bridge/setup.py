@@ -29,6 +29,7 @@ setup(
             'sync_test_server = rehab_arm_psoc_bridge.sync_test_server:main',
             'candump_motor_telemetry = rehab_arm_psoc_bridge.candump_motor_telemetry:main',
             'board_manifest = rehab_arm_psoc_bridge.board_manifest:main',
+            'board_manifest_sync_dry_run = rehab_arm_psoc_bridge.board_manifest_sync_dry_run:main',
         ],
     },
 )

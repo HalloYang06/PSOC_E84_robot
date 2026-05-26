@@ -2163,3 +2163,20 @@ No such file or directory: /tmp/rehab_sim_collection/sim_demo_motion.jsonl
 状态：
 
 - 已新增 `board_manifest` 和单元测试；尚未接入平台上传接口。
+
+### 开发板注册先 dry-run 再 execute
+
+现象：
+
+- 平台 `/devices/register` 当前只接收精简字段，不能直接保存完整 `linux_board_manifest_v1`。
+- 如果直接把完整 manifest 作为注册 payload 发送，后端可能忽略额外字段，导致用户误以为完整能力清单已经保存。
+
+技巧：
+
+- 先用 `board_manifest_sync_dry_run` 生成请求计划，确认真正会发的是精简注册字段。
+- 完整 manifest 的平台持久化要单独做后端接口或扩展 schema，不能假装已完成。
+- dry-run 阶段只输出 JSON，不联网；后续加 `--execute` 时必须保留显式开关。
+
+状态：
+
+- 已新增 dry-run 计划工具；真实上传仍未启用。

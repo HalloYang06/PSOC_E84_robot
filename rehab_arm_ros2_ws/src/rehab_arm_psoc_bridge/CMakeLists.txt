@@ -26,6 +26,7 @@ install(PROGRAMS
   rehab_arm_psoc_bridge/sync_test_server.py
   rehab_arm_psoc_bridge/candump_motor_telemetry.py
   rehab_arm_psoc_bridge/board_manifest.py
+  rehab_arm_psoc_bridge/board_manifest_sync_dry_run.py
   rehab_arm_psoc_bridge/decode_psoc_cmd.py
   rehab_arm_psoc_bridge/encode_psoc_cmd.py
   DESTINATION lib/${PROJECT_NAME}

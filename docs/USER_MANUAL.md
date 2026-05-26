@@ -1596,6 +1596,26 @@ ros2 run rehab_arm_psoc_bridge board_manifest \
 - 生成的 `board_manifest.json` 可以先人工检查；后续再接平台上传工具。
 - 临时生成的 manifest 不要提交进 Git，除非它变成正式测试 fixture。
 
+检查要同步到平台的请求计划：
+
+```bash
+ros2 run rehab_arm_psoc_bridge board_manifest_sync_dry_run board_manifest.json \
+  --base-url http://<server>:8011/api/rehab-arm/v1
+```
+
+通过标准：
+
+- 输出 `linux_board_manifest_sync_dry_run_v1`。
+- `requests[0].url` 指向 `/devices/register`。
+- `requests[0].json.device_type` 为 `linux_board`。
+- `control_boundary` 为 `board_manifest_sync_plan_only_not_motion_permission`。
+
+注意：
+
+- `board_manifest_sync_dry_run` 只打印请求计划，不联网。
+- 真正上传前必须先人工确认 `device_id`、`robot_id`、`capabilities` 和服务器地址。
+- 当前平台设备注册接口只保存精简能力字段；完整 `linux_board_manifest_v1` 的平台持久化后续再补。
+
 ## 7. 文档与 Git 维护
 
 每次完成任务后同步更新：
