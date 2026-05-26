@@ -2417,10 +2417,13 @@ M33 正式 `0x320 set_target` 对 4/5/6/7 灵足电机使用官方 CSP 参数流
 3号 Sitaiwei CANSimple 当前台架版本使用：
 
 - `CONTROL_MOTOR_JOINT3_GEAR_RATIO=(48.0f)`
-- `CONTROL_MOTOR_JOINT3_ZERO_OFFSET_RAD=(55.1f)`
+- `CONTROL_MOTOR_JOINT3_ZERO_OFFSET_RAD=(0.0f)`
 - `CONTROL_MOTOR_JOINT3_CALIBRATED=1U`
+- `CONTROL_MOTOR_JOINT3_ZERO_SOURCE="bench_volatile_encoder_zero_not_for_installed_robot"`
 
 注意：3号这里的 `48.0f` 不是照搬 7号灵足的错误经验。3号当前 formal path 使用 Sitaiwei CANSimple/ODrive-like 协议；该协议的开源/官方参考路线是 ODrive CAN，位置和速度单位是 `rev` / `rev/s`。所以 ROS 关节角要先转换到电机协议侧单位。若后续要让 3号“不乘减速比”地按输出轴角度控制，需要新建 3号 MIT/output-axis RAD 路径，不应直接删掉 CANSimple 的 `gear_ratio`。
+
+当前 `0.0f` 是未装机台架临时零点，只用于这次驱动重启后 `0x069 position_rev=0` 的调试。正式机械臂不能依赖“每次重启归零”：装机后必须把机械臂摆到机械零位，保存该姿态的 motor-protocol-side zero offset，或者实现上电 homing 流程。未完成持久化零点或 homing 前，formal path 应保持拒绝绝对位置命令。
 
 3号对应 ROS joint0。烧录后可先测：
 
@@ -2449,7 +2452,7 @@ python3 /home/pi/nanopi_can_master.py heartbeat --iface can0 --seq 93 --wait 0.3
 
 30° 或更大动作前，先确认能看到 3号 `0x061` heartbeat 和 `0x069` encoder estimate。若只看到 M33 `0x332`，不能当成 3号实时反馈在线。
 
-如果 3号驱动重启后 `0x069 position_rev` 回到 `0`，M33 的台架 `CONTROL_MOTOR_JOINT3_ZERO_OFFSET_RAD` 也要跟着重置。当前 M33 commit `abedf348` 使用 `0.0f` 作为未装机台架零点。若继续使用旧的 `55.1f`，formal `+5°` 会被旧零点放大，实测会接近 `42°` 输出。
+如果 3号驱动重启后 `0x069 position_rev` 回到 `0`，M33 的台架 `CONTROL_MOTOR_JOINT3_ZERO_OFFSET_RAD` 也要跟着重置。当前 M33 commit `abedf348` 使用 `0.0f` 作为未装机台架零点。若继续使用旧的 `55.1f`，formal `+5°` 会被旧零点放大，实测会接近 `42°` 输出。这个重置只是台架调试措施，不是正式机器人上电策略。
 
 3号无反馈时的停止线：
 

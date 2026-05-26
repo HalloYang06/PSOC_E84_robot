@@ -1661,3 +1661,11 @@
 - Completed M33 fix in branch `M33`, commit `abedf348`: reset `CONTROL_MOTOR_JOINT3_ZERO_OFFSET_RAD=(0.0f)` for the current uninstalled bench state.
 - Safety: command ended with M33 stop and direct CANSimple idle; do not test 30° until the new zero-offset firmware is flashed and formal `+5°` is revalidated.
 - Next step: user flashes M33 commit `abedf348`, then retest formal joint0 `+5°`; expected encoder target delta is about `0.6667 rev`, output about `5°`.
+
+### 2026-05-26 - Motor zero source made explicit
+
+- Completed M33 diagnostic hardening: `m33_joint_calib` now prints each joint's `zero_source` and a project-wide `JOINT_ZERO_POLICY`.
+- Completed M33 config labels: joint3 zero source is `bench_volatile_encoder_zero_not_for_installed_robot`; joint7 zero source is `bench_temporary_visual_zero_not_for_installed_robot`.
+- Decision: the current joint3 `zero_offset=0.0f` is a bench-only value after the Sitaiwei encoder reset, not a formal robot requirement.
+- Architecture note: installed/wearable operation must use either persisted mechanical zero offsets or an explicit homing routine after power-up; otherwise absolute position control should stay rejected.
+- Next step: flash the new diagnostic build, run `m33_joint_calib 3`, then retest formal joint0 `+5°` only after confirming the zero source is visible in logs.

@@ -3568,3 +3568,5 @@ Connection reset by 192.168.2.66 port 22
 
 - 伺泰威驱动每次重启/重新归零后，都要重新确认 `0x069 position_rev`，不能沿用上一次的 M33 零点。
 - 大角度前必须先用 formal `+5°` 验证零点和方向。
+- 这只是台架排故办法；正式机械臂必须做持久化机械零点或上电 homing。
+- `m33_joint_calib` 要看 `zero_source`。如果显示 `bench_*`，它只允许用于未装机台架。
