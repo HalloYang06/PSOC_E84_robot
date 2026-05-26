@@ -992,5 +992,7 @@
 - Validated: platform targeted eslint passed for the robotics page.
 - Validated: local authenticated browser QA opened the robotics page on desktop and 390px mobile with no horizontal overflow.
 - Validated: full `rehab_arm_psoc_bridge` unit test suite passed 73 tests.
+- Validated: cloud platform deployed `ai/game-loop-core` commit `3f131e66`; web build succeeded and API/web restarted on `8011/3001`.
+- Not validated: no fake board manifest was posted to cloud to avoid demo data pollution.
 - Safety: board manifest upload is data-only; it does not control CAN, ROS actions, M33, or motors.
 - Next step: add an explicit `--execute` upload command for reviewed board manifests, then test from NanoPi when available.
