@@ -1135,3 +1135,13 @@
 - Safety: default mode is dry-run JSON only. `--execute` sends only telemetry IDs `0x330/0x331`, never `0x320`, and does not command M33 or motors.
 - Platform: the generated JSONL is a minimal sample for the platform Linux-board device data page and annotation pipeline; it should remain data-only and not become a command channel.
 - Next step: run this on NanoPi with `vcan0` first, then use it to prove recorder captures `/rehab_arm/motor_state` before asking M33 firmware to emit real telemetry.
+
+### 2026-05-26 - Offline candump support for M33 motor telemetry
+
+- Completed: `candump_motor_telemetry.py` now converts M33 `0x330~0x337` motor status frames into `/rehab_arm/motor_state` JSONL with source `candump_m33_motor_status`.
+- Completed: conversion summary now includes `m33_motor_status_count`.
+- Validated: targeted `test_candump_motor_telemetry.py` passed 11 tests.
+- Validated: full `rehab_arm_psoc_bridge` unit tests passed 118 tests; `py_compile` passed for `candump_motor_telemetry.py`.
+- Safety: offline conversion only; no CAN device is opened, no frames are sent, and no M33 or motor command is issued.
+- Platform: platform/annotation can now consume both live ROS records and offline candump-derived records using the same `/rehab_arm/motor_state` contract.
+- Next step: run a `vcan0` smoke capture through `candump_motor_telemetry.py` on NanoPi and compare it with live `/rehab_arm/motor_state`.

@@ -19,6 +19,7 @@ try:
         sanitize_identifier,
         write_jsonl_record,
     )
+    from rehab_arm_psoc_bridge.psoc_motor_status import parse_m33_motor_status_frame
 except ModuleNotFoundError:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from rehab_arm_psoc_bridge.data_recording import (
@@ -29,6 +30,7 @@ except ModuleNotFoundError:
         sanitize_identifier,
         write_jsonl_record,
     )
+    from rehab_arm_psoc_bridge.psoc_motor_status import parse_m33_motor_status_frame
 
 
 CANSIMPLE_HEARTBEAT_CMD = 0x001
@@ -295,6 +297,7 @@ def convert_candump_to_records(
     motor_state_count = 0
     heartbeat_count = 0
     private_active_report_count = 0
+    m33_motor_status_count = 0
     ignored_count = 0
     first_relative_time: float | None = None
     last_relative_time: float | None = None
@@ -309,6 +312,21 @@ def convert_candump_to_records(
             relative_time = float(frame['relative_time_s'])
             first_relative_time = relative_time if first_relative_time is None else first_relative_time
             last_relative_time = relative_time
+            m33_motor = parse_m33_motor_status_frame(int(frame['can_id']), frame['data'])
+            if m33_motor.get('valid') is True:
+                payload = make_motor_state_payload(
+                    [m33_motor],
+                    robot_id=robot_id,
+                    device_id=device_id,
+                    now=relative_time,
+                    source='candump_m33_motor_status',
+                )
+                payload['session_id'] = sid
+                payload['relative_time_s'] = relative_time
+                records.append(make_payload_record('/rehab_arm/motor_state', payload, now=relative_time))
+                motor_state_count += 1
+                m33_motor_status_count += 1
+                continue
             private_motor = decode_private_active_report(frame)
             if private_motor:
                 payload = make_motor_state_payload(
@@ -361,6 +379,7 @@ def convert_candump_to_records(
         'total_frames': total_frames,
         'heartbeat_count': heartbeat_count,
         'private_active_report_count': private_active_report_count,
+        'm33_motor_status_count': m33_motor_status_count,
         'motor_state_count': motor_state_count,
         'ignored_count': ignored_count,
         'first_relative_time_s': first_relative_time,

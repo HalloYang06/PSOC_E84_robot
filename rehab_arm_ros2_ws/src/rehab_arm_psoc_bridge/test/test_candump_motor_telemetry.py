@@ -169,6 +169,25 @@ class CandumpMotorTelemetryTests(unittest.TestCase):
         self.assertEqual(records[1]['payload']['motors'][0]['motor_id'], 6)
         self.assertEqual(records[1]['payload']['motors'][0]['vendor'], 'Lingzu')
 
+    def test_convert_candump_includes_m33_motor_status_records(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / 'capture.log'
+            source.write_text(
+                candump_line(0.0, '330', bytes([0xB3, 1, 3, 1, 50, 0, 0, 0xFF]))
+                + candump_line(0.1, '331', bytes([0xB3, 2, 7, 1, 0xB0, 0xFF, 1, 34])),
+                encoding='utf-8',
+            )
+
+            records, summary = convert_candump_to_records(source, 'rehab-arm-alpha', 'nanopi-m5', 's1')
+
+        self.assertIs(summary['ok'], True)
+        self.assertEqual(summary['m33_motor_status_count'], 2)
+        self.assertEqual(summary['motor_state_count'], 2)
+        self.assertEqual(records[1]['payload']['source'], 'candump_m33_motor_status')
+        self.assertEqual(records[1]['payload']['motors'][0]['motor_id'], 3)
+        self.assertEqual(records[1]['payload']['motors'][0]['joint_name'], 'shoulder_lift_joint')
+        self.assertAlmostEqual(records[2]['payload']['motors'][0]['position'], -0.08)
+
     def test_cli_writes_output_to_requested_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             source = Path(tmpdir) / 'capture.log'

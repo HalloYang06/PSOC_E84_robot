@@ -2120,7 +2120,7 @@ No such file or directory: /tmp/rehab_sim_collection/sim_demo_motion.jsonl
 
 技巧：
 
-- 用 `candump_motor_telemetry` 把 CANSimple `0x061/0x069` 离线转换成 `/rehab_arm/motor_state` JSONL。
+- 用 `candump_motor_telemetry` 把 CANSimple `0x061/0x069`、M33 `0x330~0x337` 和已确认的灵足 active-report 离线转换成 `/rehab_arm/motor_state` JSONL。
 - 转换后保留 `control_boundary=telemetry_only_not_motor_command`，提醒后续工具这只是遥测数据，不是控制许可。
 - 输出文件用临时目录做验证；只有代码、测试和文档进入仓库，不提交真实采集 JSONL 或 demo 数据。
 - 闭环刚建立后的 encoder estimate 跳变可能包含估计器恢复，应在分析报告里单独标注。

@@ -1087,8 +1087,9 @@ ros2 run rehab_arm_psoc_bridge candump_motor_telemetry \
   --pretty
 ```
 
-当前转换器解析两类只读遥测：
+当前转换器解析三类只读遥测：
 
+- `0x330~0x337`：M33 汇总后的正式电机/关节遥测草案，转换后 source 为 `candump_m33_motor_status`。
 - `0x061`：`node_id=3` heartbeat，用来补充 enabled、fault、axis_state、error_code。
 - `0x069`：`node_id=3` encoder estimate，按 little-endian float 解码 position/velocity。
 - position 从 turns 转成 rad，velocity 从 turns/s 转成 rad/s。
