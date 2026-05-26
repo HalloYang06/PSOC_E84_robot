@@ -39,6 +39,7 @@ setup(
             'board_manifest_sync_dry_run = rehab_arm_psoc_bridge.board_manifest_sync_dry_run:main',
             'board_manifest_sync_upload = rehab_arm_psoc_bridge.board_manifest_sync_upload:main',
             'validate_patient_profile = rehab_arm_psoc_bridge.validate_patient_profile:main',
+            'export_m33_safety_subset = rehab_arm_psoc_bridge.export_m33_safety_subset:main',
         ],
     },
 )

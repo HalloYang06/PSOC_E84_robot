@@ -10,7 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from rehab_arm_psoc_bridge.patient_profile import validate_patient_profile  # noqa: E402
+from rehab_arm_psoc_bridge.patient_profile import build_m33_safety_subset, validate_patient_profile  # noqa: E402
 
 
 def make_valid_profile() -> dict[str, object]:
@@ -23,11 +23,15 @@ def make_valid_profile() -> dict[str, object]:
         'device_id': 'nanopi_m5_001',
         'patient_ref': {'patient_id': 'patient_001'},
         'device_safety': {
+            'machine_calibration_id': 'machine_calib_alpha_001',
+            'requires_homing': True,
             'absolute_joint_limits_deg': {
                 'shoulder_lift_joint': [-60.0, 60.0],
                 'elbow_lift_joint': [-60.0, 60.0],
             },
             'absolute_velocity_limits_dps': {'default': 10.0},
+            'absolute_acceleration_limits_dps2': {'default': 40.0},
+            'absolute_torque_current_limits': {'default_current_a': 5.0},
             'emergency_policy': {
                 'estop_action': 'disable_motor_output',
                 'heartbeat_timeout_ms': 2500,
@@ -40,6 +44,8 @@ def make_valid_profile() -> dict[str, object]:
                 'elbow_lift_joint': [0.0, 50.0],
             },
             'patient_velocity_limits_dps': {'default': 6.0},
+            'patient_acceleration_limits_dps2': {'default': 20.0},
+            'patient_torque_current_limits': {'default': 3.0},
             'training_mode': 'active_assist',
         },
         'model_runtime': {
@@ -116,6 +122,58 @@ class PatientProfileTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0)
         payload = json.loads(result.stdout)
+        self.assertIs(payload['ok'], True)
+
+    def test_build_m33_safety_subset_takes_stricter_limits(self) -> None:
+        profile = make_valid_profile()
+
+        subset = build_m33_safety_subset(profile)
+
+        self.assertIs(subset['ok'], True)
+        self.assertEqual(subset['schema_version'], 'm33_safety_profile_v1')
+        self.assertEqual(subset['profile_id'], 'pdp_test_001')
+        self.assertEqual(subset['machine_calibration_id'], 'machine_calib_alpha_001')
+        self.assertEqual(subset['joint_limits_deg']['shoulder_lift_joint'], [-10.0, 35.0])
+        self.assertEqual(subset['velocity_limits_dps']['shoulder_lift_joint'], 6.0)
+        self.assertEqual(subset['acceleration_limits_dps2']['shoulder_lift_joint'], 20.0)
+        self.assertEqual(subset['torque_current_limits']['shoulder_lift_joint']['current_a'], 3.0)
+        self.assertIs(subset['mode_permission']['active_assist'], True)
+        self.assertIs(subset['mode_permission']['vla_task_execution'], False)
+        self.assertEqual(subset['control_boundary'], 'm33_safety_subset_dry_run_only_not_sent')
+
+    def test_build_m33_safety_subset_rejects_invalid_profile(self) -> None:
+        profile = make_valid_profile()
+        profile['patient_motion']['patient_rom_limits_deg']['shoulder_lift_joint'] = [-90.0, 90.0]
+
+        subset = build_m33_safety_subset(profile)
+
+        self.assertIs(subset['ok'], False)
+        self.assertIn('errors', subset)
+        self.assertEqual(subset['control_boundary'], 'm33_safety_subset_dry_run_only_not_sent')
+
+    def test_export_m33_safety_subset_cli_writes_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / 'patient_device_profile.json'
+            output = Path(tmpdir) / 'm33_safety_profile.json'
+            path.write_text(json.dumps(make_valid_profile()), encoding='utf-8')
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).resolve().parents[1] / 'rehab_arm_psoc_bridge' / 'export_m33_safety_subset.py'),
+                    str(path),
+                    '--output',
+                    str(output),
+                ],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            payload = json.loads(output.read_text(encoding='utf-8'))
+
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(payload['schema_version'], 'm33_safety_profile_v1')
         self.assertIs(payload['ok'], True)
 
 

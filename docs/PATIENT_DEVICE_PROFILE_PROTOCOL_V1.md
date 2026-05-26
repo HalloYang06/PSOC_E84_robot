@@ -257,6 +257,17 @@ effective_current = min(device_absolute_current, patient_current)
 
 如果 profile 缺失、版本过期、校验失败、homing 未完成或 M33 heartbeat 超时，M33 必须拒绝 formal target。
 
+当前仓库提供 `export_m33_safety_subset.py` 作为 dry-run 导出工具，用于平台/App/NanoPi 和固件开发者审查最终会给 M33 的安全子集：
+
+```bash
+ros2 run rehab_arm_psoc_bridge export_m33_safety_subset.py \
+  /path/to/patient_device_profile.json \
+  --output /path/to/m33_safety_profile.json \
+  --pretty
+```
+
+该工具必须先通过 `validate_patient_profile.py`，再输出 `m33_safety_profile_v1`。它只生成 JSON，不下发 M33，不发 CAN，也不授予运动许可。正式下发协议后续必须再加入签名/版本/时效检查和 M33 端解析验证。
+
 ## 6. M55 模型协议
 
 M55 模型只输出建议和状态，不直接控制电机。M55 输出给 M33/App/NanoPi 的统一结构：

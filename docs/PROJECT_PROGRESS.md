@@ -1218,6 +1218,16 @@
 - Safety: offline profile quality gate only; no profile write, ROS launch, network upload, CAN access, M33 command, or motor motion.
 - Next step: add a profile-to-M33-safety-subset dry-run exporter after the profile schema is reviewed.
 
+### 2026-05-27 - M33 safety subset dry-run export
+
+- Completed: added `build_m33_safety_subset()` and `export_m33_safety_subset.py` to derive an M33-facing safety subset from a validated Patient Device Profile.
+- Completed: exported limits take the stricter value between device absolute limits and patient limits; VLA task execution remains false.
+- Completed: registered the tool in both `setup.py` console scripts and CMake install programs.
+- Validated: `python -m unittest test_patient_profile.py test_data_recording.py test_m33_ros_contract.py` passed 58 tests.
+- Validated: `python -m py_compile patient_profile.py export_m33_safety_subset.py` passed.
+- Safety: dry-run JSON generation only; no M33 write, ROS launch, network upload, CAN access, or motor motion.
+- Next step: after schema review, define the signed/versioned NanoPi-to-M33 profile update frame or management channel.
+
 ### 2026-05-26 - NanoPi motor data receive check
 
 - Completed: live NanoPi CAN receive test on `192.168.2.66` with `can0` at classic CAN 1Mbps.

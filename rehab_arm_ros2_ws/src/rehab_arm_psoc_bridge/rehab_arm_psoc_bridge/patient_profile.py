@@ -69,6 +69,18 @@ def _resolve_numeric_limit(limits: dict[str, object], joint_name: str) -> object
     return limits.get('default')
 
 
+def _resolve_pair(limits: dict[str, object], joint_name: str) -> tuple[float, float]:
+    pair = limits[joint_name]
+    return float(pair[0]), float(pair[1])
+
+
+def _resolve_number_or_default(limits: dict[str, object], joint_name: str, fallback: float | None = None) -> float | None:
+    value = _resolve_numeric_limit(limits, joint_name)
+    if _is_number(value):
+        return float(value)
+    return fallback
+
+
 def validate_patient_profile(profile: dict[str, object]) -> dict[str, object]:
     errors: list[str] = []
     warnings: list[str] = []
@@ -174,4 +186,86 @@ def validate_patient_profile(profile: dict[str, object]) -> dict[str, object]:
         'profile_version': profile.get('profile_version'),
         'joint_count': len(joint_names),
         'control_boundary': 'profile_validation_only_not_motion_permission',
+    }
+
+
+def build_m33_safety_subset(profile: dict[str, object]) -> dict[str, object]:
+    validation = validate_patient_profile(profile)
+    if validation['ok'] is not True:
+        return {
+            'schema_version': 'm33_safety_profile_v1',
+            'ok': False,
+            'errors': list(validation['errors']),
+            'profile_id': profile.get('profile_id'),
+            'profile_version': profile.get('profile_version'),
+            'control_boundary': 'm33_safety_subset_dry_run_only_not_sent',
+        }
+
+    device_safety = profile['device_safety']
+    patient_motion = profile['patient_motion']
+    absolute_joint_limits = device_safety['absolute_joint_limits_deg']
+    patient_rom_limits = patient_motion['patient_rom_limits_deg']
+    absolute_velocity_limits = device_safety['absolute_velocity_limits_dps']
+    patient_velocity_limits = patient_motion['patient_velocity_limits_dps']
+    absolute_acceleration_limits = device_safety.get('absolute_acceleration_limits_dps2', {})
+    patient_acceleration_limits = patient_motion.get('patient_acceleration_limits_dps2', {})
+    absolute_current_limits = device_safety.get('absolute_torque_current_limits', {})
+    patient_current_limits = patient_motion.get('patient_torque_current_limits', {})
+
+    joint_limits_deg: dict[str, list[float]] = {}
+    velocity_limits_dps: dict[str, float] = {}
+    acceleration_limits_dps2: dict[str, float] = {}
+    torque_current_limits: dict[str, dict[str, float]] = {}
+    joint_names = sorted(set(absolute_joint_limits) | set(patient_rom_limits))
+
+    for joint_name in joint_names:
+        absolute_min, absolute_max = _resolve_pair(absolute_joint_limits, joint_name)
+        patient_min, patient_max = _resolve_pair(patient_rom_limits, joint_name)
+        joint_limits_deg[joint_name] = [
+            max(absolute_min, patient_min),
+            min(absolute_max, patient_max),
+        ]
+
+        absolute_velocity = _resolve_number_or_default(absolute_velocity_limits, joint_name)
+        patient_velocity = _resolve_number_or_default(patient_velocity_limits, joint_name)
+        if absolute_velocity is not None and patient_velocity is not None:
+            velocity_limits_dps[joint_name] = min(absolute_velocity, patient_velocity)
+
+        absolute_accel = _resolve_number_or_default(absolute_acceleration_limits, joint_name)
+        patient_accel = _resolve_number_or_default(patient_acceleration_limits, joint_name)
+        if absolute_accel is not None and patient_accel is not None:
+            acceleration_limits_dps2[joint_name] = min(absolute_accel, patient_accel)
+
+        absolute_current = _resolve_number_or_default(absolute_current_limits, joint_name)
+        if absolute_current is None:
+            absolute_current = _resolve_number_or_default(absolute_current_limits, 'default_current_a')
+        patient_current = _resolve_number_or_default(patient_current_limits, joint_name, absolute_current)
+        if absolute_current is not None and patient_current is not None:
+            torque_current_limits[joint_name] = {'current_a': min(absolute_current, patient_current)}
+
+    training_mode = str(patient_motion.get('training_mode'))
+    mode_permission = {
+        'passive_training': training_mode == 'passive_training',
+        'active_assist': training_mode == 'active_assist',
+        'resistance_training': training_mode == 'resistance_training',
+        'memory_mode': training_mode == 'memory_mode',
+        'vla_task_execution': False,
+    }
+
+    return {
+        'schema_version': 'm33_safety_profile_v1',
+        'ok': True,
+        'profile_id': profile.get('profile_id'),
+        'profile_version': profile.get('profile_version'),
+        'machine_calibration_id': device_safety.get('machine_calibration_id'),
+        'requires_homing': bool(device_safety.get('requires_homing', True)),
+        'homing_state_required': 'homed',
+        'joint_limits_deg': joint_limits_deg,
+        'velocity_limits_dps': velocity_limits_dps,
+        'acceleration_limits_dps2': acceleration_limits_dps2,
+        'torque_current_limits': torque_current_limits,
+        'mode_permission': mode_permission,
+        'emergency_policy': dict(device_safety.get('emergency_policy', {})),
+        'source_profile_schema_version': profile.get('schema_version'),
+        'control_boundary': 'm33_safety_subset_dry_run_only_not_sent',
     }

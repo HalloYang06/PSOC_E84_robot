@@ -1938,6 +1938,26 @@ ros2 run rehab_arm_psoc_bridge validate_patient_profile.py \
 
 这个校验器是平台/App/NanoPi/M33/M55 共用 profile 进入系统前的安全质量门。它不写 profile，不上传服务器，不打开 ROS topic，不读取 CAN，不控制 M33 或电机。校验失败时，不应把该 profile 设置为 active，也不应下发给 M33。
 
+导出 M33 安全子集 dry-run：
+
+```bash
+ros2 run rehab_arm_psoc_bridge export_m33_safety_subset.py \
+  /home/pi/rehab_arm_profiles/patient_device_profile.json \
+  --output /home/pi/rehab_arm_profiles/m33_safety_profile.json \
+  --pretty
+```
+
+通过标准：
+
+- 输出 `schema_version=m33_safety_profile_v1`。
+- `ok=true`。
+- `joint_limits_deg` 是设备绝对限位和患者 ROM 取更严格后的结果。
+- `velocity_limits_dps`、`acceleration_limits_dps2`、`torque_current_limits` 都取设备限制和患者限制中的更保守值。
+- `mode_permission.vla_task_execution=false`。
+- `control_boundary=m33_safety_subset_dry_run_only_not_sent`。
+
+这个命令只是生成给 M33 合同审查用的 JSON，不会通过 CAN 或其他方式下发给 M33。后续真下发前，还需要加签名/版本/时效检查和 M33 端解析验证。
+
 预览服务器同步计划：
 
 ```bash
