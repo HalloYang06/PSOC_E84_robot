@@ -552,6 +552,53 @@
   line-height: 1.45;
 }
 
+.topicContractTable {
+  display: grid;
+  gap: 1px;
+  background: rgba(241, 208, 107, 0.14);
+}
+
+.topicContractTable > div {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(72px, 0.6fr) minmax(160px, 1.4fr) minmax(150px, 1.1fr) minmax(150px, 1fr);
+  gap: 1px;
+  background: rgba(241, 208, 107, 0.14);
+}
+
+.topicContractTable > div > span,
+.topicContractTable code {
+  min-width: 0;
+  padding: 8px;
+  overflow-wrap: anywhere;
+  background: #0b191b;
+  color: rgba(238, 252, 247, 0.72);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.topicContractTable > div:first-child > span {
+  color: #f1d06b;
+  font-weight: 900;
+}
+
+.topicContractTable code {
+  color: #eafef8;
+  font-family: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+}
+
+.topicContractEmpty,
+.topicContractNote {
+  margin: 0;
+  color: rgba(238, 252, 247, 0.66);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.topicContractNote {
+  margin-top: 8px;
+}
+
 .modelInspector,
 .rosConnector {
   min-width: 0;
@@ -937,6 +984,10 @@
   .qualityCards,
   .simReadinessCards,
   .packetSummary {
+    grid-template-columns: 1fr;
+  }
+
+  .topicContractTable > div {
     grid-template-columns: 1fr;
   }
 

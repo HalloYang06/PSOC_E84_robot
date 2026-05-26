@@ -1141,10 +1141,31 @@ function simulationReport(device: AnyRecord) {
   return record(record(record(device.simulation_readiness).payload).report);
 }
 
+function simulationTopicRows(report: AnyRecord) {
+  const contract = record(report.topic_contract);
+  const entries = [
+    ["轨迹输入", record(contract.trajectory_command)],
+    ["关节状态", record(contract.joint_state)],
+    ["安全状态", record(contract.safety_state)],
+    ["传感器状态", record(contract.sensor_state)],
+    ["VLA 任务", record(contract.vla_task_goal)],
+  ];
+  return entries
+    .map(([label, item]) => ({
+      label: String(label),
+      topic: text(item.topic),
+      messageType: text(item.message_type),
+      direction: text(item.direction),
+    }))
+    .filter((item) => item.topic || item.messageType || item.direction);
+}
+
 function SimulationReadinessStrip({ devices }: { devices: AnyRecord[] }) {
   const reports = devices.map(simulationReport).filter((report) => Object.keys(report).length > 0);
   const readyReports = reports.filter((report) => text(report.readiness, "").startsWith("ready_"));
   const latest = reports[0] ?? {};
+  const topicRows = simulationTopicRows(latest);
+  const topicBoundary = text(record(latest.topic_contract).control_boundary, "simulation_topic_contract_not_motion_permission");
   const headline = reports.length
     ? `${readyReports.length}/${reports.length} 份仿真环境报告可用`
     : "等待仿真主机上传自检报告";
@@ -1195,6 +1216,25 @@ function SimulationReadinessStrip({ devices }: { devices: AnyRecord[] }) {
             </article>
           ))}
         </div>
+      </details>
+      <details className={styles.compactDrawer}>
+        <summary>查看 ROS topic 合同</summary>
+        {topicRows.length ? (
+          <div className={styles.topicContractTable}>
+            <div><span>用途</span><span>Topic</span><span>消息</span><span>方向</span></div>
+            {topicRows.map((row) => (
+              <div key={row.label}>
+                <span>{row.label}</span>
+                <code>{row.topic || "-"}</code>
+                <span>{row.messageType || "-"}</span>
+                <span>{row.direction || "-"}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className={styles.topicContractEmpty}>等待新版 check_sim_env 上传 topic_contract；旧报告仍可判断 readiness，但还不能在平台核对 topic 合同。</p>
+        )}
+        <p className={styles.topicContractNote}>边界：{topicBoundary}。这只是接口清单，不代表 topic 正在运行，也不会下发 ROS、CAN 或电机命令。</p>
       </details>
     </section>
   );
