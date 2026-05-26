@@ -2568,3 +2568,32 @@ ros2 topic echo --once /joint_states sensor_msgs/msg/JointState
 状态：
 
 - 显式类型后已看到 `/rehab_arm/motor_state` JSON 字符串；`/joint_states` 已看到 `m33_status_slot_6`。
+
+### Bash 严格模式加载 ROS setup 时要临时关闭 nounset
+
+现象：
+
+- `nanopi_live_telemetry_check.sh` 使用 `set -euo pipefail` 后，执行 `source /opt/ros/jazzy/setup.bash` 报错：
+
+```text
+AMENT_TRACE_SETUP_FILES: unbound variable
+```
+
+根因：
+
+- ROS setup 脚本内部会读取未定义环境变量；这和 bash `set -u` 冲突。
+
+技巧：
+
+- source ROS 和 workspace setup 前后临时切换：
+
+```bash
+set +u
+source /opt/ros/jazzy/setup.bash
+source /home/pi/rehab_arm_ros2_ws/install/setup.bash
+set -u
+```
+
+状态：
+
+- 已在 `scripts/nanopi_live_telemetry_check.sh` 中修复，并在 NanoPi 真 CAN 验收通过。

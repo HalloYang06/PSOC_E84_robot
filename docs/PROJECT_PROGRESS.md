@@ -1181,3 +1181,12 @@
 - Validated: NanoPi ROS bridge was rebuilt with the latest bridge parser and publishes `/rehab_arm/motor_state`; `/joint_states` was observed once as `m33_status_slot_6` with position about `3.627 rad`.
 - Safety: no `/arm_controller/joint_trajectory` was published, no `0x320` target frame was sent, and `enable_target_tx=False` was used for the bridge check.
 - Next step: clean up NanoPi executable naming/version sync, then add a repeatable read-only launch/test command for live M33 motor telemetry before any formal trajectory test.
+
+### 2026-05-26 - Repeatable NanoPi live telemetry acceptance script
+
+- Completed: added `scripts/nanopi_live_telemetry_check.sh` as the standard read-only post-power-on acceptance check.
+- Completed: the script validates `can0 ERROR-ACTIVE`, sends only NanoPi heartbeat `0x321#01`, expects M33 `0x322`, starts ROS bridge with `enable_target_tx=false`, temporarily enables 7号 telemetry, and checks `/rehab_arm/motor_state` plus `/joint_states`.
+- Completed: the script monitors `can0,320:7FF` during the check and fails if any `0x320` target frame appears.
+- Validated on NanoPi true CAN: script passed with `0x322#A501070001010A00`, `0x180007FD=499`, `0x336=49`, `/rehab_arm/motor_state` JSON, and `/joint_states` `m33_status_slot_6`.
+- Safety: no trajectory was published and no target frame was observed.
+- Next step: use this acceptance script before every live hardware session, then move to the next formal robot-development slice: M33/NanoPi safety-state gating before controlled trajectory tests.

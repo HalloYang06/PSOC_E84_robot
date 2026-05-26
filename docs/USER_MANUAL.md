@@ -636,6 +636,43 @@ ros2 topic echo --once /joint_states sensor_msgs/msg/JointState
 
 注意：短时验收时要给 `ros2 topic echo --once` 显式写消息类型，否则 topic 还没出现在 ROS graph 时，CLI 可能无法自动推断类型。
 
+推荐以后上电后直接运行固定脚本：
+
+```bash
+chmod +x /home/pi/nanopi_live_telemetry_check.sh
+/home/pi/nanopi_live_telemetry_check.sh
+```
+
+如果脚本还没有同步到 NanoPi，先从仓库复制：
+
+```bash
+scp scripts/nanopi_live_telemetry_check.sh pi@192.168.2.66:/home/pi/nanopi_live_telemetry_check.sh
+```
+
+脚本通过时会输出：
+
+```text
+PASS: live telemetry path is valid and read-only.
+```
+
+这个脚本会检查：
+
+- `can0` 是 `ERROR-ACTIVE`。
+- `0x321#01` 能收到 M33 `0x322`。
+- 7 号灵足临时 active-report 能触发 M33 `0x336#B3...`。
+- ROS topic 有 `/rehab_arm/motor_state` 和 `/joint_states`。
+- 验收期间没有任何 `0x320` target frame。
+
+可选环境变量：
+
+```bash
+IFACE=can0 ACTIVE_REPORT_MOTOR=7 SNAPSHOT_SECONDS=5 /home/pi/nanopi_live_telemetry_check.sh
+ACTIVE_REPORT_MOTOR=none /home/pi/nanopi_live_telemetry_check.sh
+BUILD_WORKSPACE=1 /home/pi/nanopi_live_telemetry_check.sh
+```
+
+`ACTIVE_REPORT_MOTOR=none` 适合只想看已有 M33 telemetry 的情况；`BUILD_WORKSPACE=1` 会先重编 `/home/pi/rehab_arm_ros2_ws`。
+
 ### 4.5 `0x322` V2 状态解析
 
 协议字段见：[PSOC_CAN_PROTOCOL_V1.md](PSOC_CAN_PROTOCOL_V1.md)。
