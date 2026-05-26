@@ -30,6 +30,7 @@ from rehab_arm_psoc_bridge.data_recording import (
     build_recording_quality_report,
     build_annotation_queue,
     make_annotation_template_rows,
+    validate_annotation_rows,
     build_sync_dry_run_plan,
     file_sha256,
     summarize_jsonl_records,
@@ -1029,6 +1030,77 @@ class DataRecordingTests(unittest.TestCase):
         self.assertEqual(payload['row_count'], 1)
         self.assertIn('session_id,file_name,path,device_id,robot_id,topic_profile,annotation_status', csv_text)
         self.assertIn('s1,s1.jsonl,/logs/s1.jsonl,nanopi,arm,perception_vla,pending', csv_text)
+
+    def test_validate_annotation_rows_requires_approved_status_and_labels(self) -> None:
+        queue = {
+            'schema_version': 'rehab_arm_annotation_queue_v1',
+            'items': [
+                {'session_id': 's1', 'recommended_labels': ['reach_phase', 'object_state']},
+                {'session_id': 's2', 'recommended_labels': ['reach_phase']},
+            ],
+        }
+        rows = [
+            {
+                'session_id': 's1',
+                'annotation_status': 'approved',
+                'reach_phase': 'reach',
+                'object_state': 'cup_visible',
+            },
+            {
+                'session_id': 's2',
+                'annotation_status': 'pending',
+                'reach_phase': '',
+            },
+            {
+                'session_id': 'ghost',
+                'annotation_status': 'approved',
+                'reach_phase': 'reach',
+            },
+        ]
+
+        report = validate_annotation_rows(rows, queue)
+
+        self.assertIs(report['ok'], False)
+        self.assertEqual(report['approved_count'], 1)
+        self.assertEqual(report['error_count'], 3)
+        joined_errors = '\n'.join(report['errors'])
+        self.assertIn('row 2 session s2 annotation_status pending is not approved', joined_errors)
+        self.assertIn('row 2 session s2 missing required label reach_phase', joined_errors)
+        self.assertIn('row 3 session ghost is not in annotation queue', joined_errors)
+
+    def test_validate_annotations_cli_reports_failed_rows(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            queue_path = Path(tmpdir) / 'annotation_queue.json'
+            csv_path = Path(tmpdir) / 'annotations.csv'
+            queue_path.write_text(json.dumps({
+                'schema_version': 'rehab_arm_annotation_queue_v1',
+                'items': [
+                    {'session_id': 's1', 'recommended_labels': ['reach_phase']},
+                ],
+            }), encoding='utf-8')
+            write_csv_rows(
+                csv_path,
+                [{'session_id': 's1', 'annotation_status': 'pending', 'reach_phase': ''}],
+                ['session_id', 'annotation_status', 'reach_phase'],
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).resolve().parents[1] / 'rehab_arm_psoc_bridge' / 'validate_annotations.py'),
+                    str(queue_path),
+                    str(csv_path),
+                ],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 1)
+        payload = json.loads(result.stdout)
+        self.assertIs(payload['ok'], False)
+        self.assertEqual(payload['error_count'], 2)
 
     def test_session_log_path_sanitizes_session_id(self) -> None:
         path = session_log_path('logs', 'session 1/unsafe')

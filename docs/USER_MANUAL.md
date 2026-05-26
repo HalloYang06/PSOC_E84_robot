@@ -1819,6 +1819,33 @@ CSV 默认包含：
 
 人工或平台填完后，先保留为标注结果文件；后续再做训练集导出。这个 CSV 仍然只是离线数据，不是 ROS topic、不是 CAN 命令、不是 M33 控制指令。
 
+校验已完成的 CSV 标注结果：
+
+```bash
+ros2 run rehab_arm_psoc_bridge validate_annotations.py \
+  /home/pi/rehab_arm_logs/annotation_queue.json \
+  /home/pi/rehab_arm_logs/annotations_completed.csv
+```
+
+通过标准：
+
+- 输出 `schema_version=rehab_arm_annotation_validation_v1`。
+- `ok=true`。
+- 每个 `session_id` 必须来自 `annotation_queue.json`。
+- 每行 `annotation_status` 默认必须是 `approved`。
+- 队列推荐的每个 label 字段都必须填写。
+
+如果平台或人工流程使用别的通过状态，可以显式指定：
+
+```bash
+ros2 run rehab_arm_psoc_bridge validate_annotations.py \
+  /home/pi/rehab_arm_logs/annotation_queue.json \
+  /home/pi/rehab_arm_logs/annotations_completed.csv \
+  --approved-status reviewed
+```
+
+这个校验器是训练前质量门，只判断标注 CSV 是否可进入后续数据集导出。它不会打开 ROS topic，不联网，不读取 CAN，不控制 M33 或电机。
+
 预览服务器同步计划：
 
 ```bash

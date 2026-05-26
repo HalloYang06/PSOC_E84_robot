@@ -911,3 +911,63 @@ def make_annotation_template_rows(
         rows.append(row)
 
     return rows, fields
+
+
+def validate_annotation_rows(
+    rows: list[dict[str, object]],
+    queue: dict[str, object],
+    approved_status: str = 'approved',
+) -> dict[str, object]:
+    queue_items = queue.get('items', [])
+    if not isinstance(queue_items, list):
+        queue_items = []
+
+    required_labels_by_session: dict[str, list[str]] = {}
+    for item in queue_items:
+        if not isinstance(item, dict):
+            continue
+        session_id = str(item.get('session_id') or '')
+        if not session_id:
+            continue
+        labels = [str(label) for label in item.get('recommended_labels', []) if str(label)]
+        required_labels_by_session[session_id] = labels
+
+    errors: list[str] = []
+    approved_count = 0
+    seen_sessions: set[str] = set()
+
+    for index, row in enumerate(rows, start=1):
+        session_id = str(row.get('session_id') or '')
+        if not session_id:
+            errors.append(f'row {index} missing session_id')
+            continue
+        seen_sessions.add(session_id)
+        if session_id not in required_labels_by_session:
+            errors.append(f'row {index} session {session_id} is not in annotation queue')
+            continue
+        status = str(row.get('annotation_status') or '')
+        if status != approved_status:
+            errors.append(
+                f'row {index} session {session_id} annotation_status {status or "<empty>"} is not {approved_status}'
+            )
+        else:
+            approved_count += 1
+        for label in required_labels_by_session[session_id]:
+            value = str(row.get(label) or '').strip()
+            if not value:
+                errors.append(f'row {index} session {session_id} missing required label {label}')
+
+    missing_rows = sorted(set(required_labels_by_session) - seen_sessions)
+    for session_id in missing_rows:
+        errors.append(f'session {session_id} from annotation queue is missing from annotation CSV')
+
+    return {
+        'schema_version': 'rehab_arm_annotation_validation_v1',
+        'ok': not errors,
+        'row_count': len(rows),
+        'queue_item_count': len(required_labels_by_session),
+        'approved_count': approved_count,
+        'error_count': len(errors),
+        'errors': errors,
+        'control_boundary': 'annotation_validation_only_not_motion_permission',
+    }

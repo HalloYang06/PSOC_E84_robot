@@ -1169,6 +1169,15 @@
 - Safety: offline CSV export only; no ROS launch, network upload, CAN access, M33 command, or motor motion.
 - Next step: add validation for completed annotation CSV before training export.
 
+### 2026-05-27 - Offline annotation CSV validation
+
+- Completed: added `validate_annotations.py` and `validate_annotation_rows()` to check completed annotation CSV files against `rehab_arm_annotation_queue_v1`.
+- Completed: validator requires queued `session_id`, approved annotation status, and filled recommended label fields before training export.
+- Completed: registered the tool in both ROS Python entry points and CMake install scripts.
+- Validated: `python -m unittest rehab_arm_ros2_ws\src\rehab_arm_psoc_bridge\test\test_data_recording.py` passed 43 tests.
+- Safety: offline CSV quality gate only; no ROS launch, network upload, CAN access, M33 command, or motor motion.
+- Next step: build a JSONL replay/inspection path for MuJoCo alignment and platform data review.
+
 ### 2026-05-26 - NanoPi motor data receive check
 
 - Completed: live NanoPi CAN receive test on `192.168.2.66` with `can0` at classic CAN 1Mbps.
