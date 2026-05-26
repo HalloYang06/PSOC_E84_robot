@@ -906,6 +906,16 @@ SAFETY_INPUT_NOTE: diagnostic only; defaults are unwired/unconfirmed and must bl
 - 这一步只说明安全输入合同已经能被串口看到，不代表可以运动。
 - 后续接真实急停、电源检测、限位检测时，必须同时证明 `confirmed=1` 和 `safe_now=1`，并且仍要满足 heartbeat、logging mode、motor freshness、fault-free 等条件。
 
+烧录后已验证的新安全输入输出：
+
+```text
+cmd_m33_safety_inputs
+SAFETY_INPUT: name=estop source=unwired confirmed=0 safe_now=0 meaning=emergency stop input must be wired, tested, and released
+SAFETY_INPUT: name=power source=unwired confirmed=0 safe_now=0 meaning=motor power and voltage must be monitored and inside safe range
+SAFETY_INPUT: name=limits source=unwired confirmed=0 safe_now=0 meaning=joint limits must be calibrated before any assisted motion
+SAFETY_INPUT_NOTE: diagnostic only; defaults are unwired/unconfirmed and must block prearm
+```
+
 已验证的烧录后输出：
 
 ```text
@@ -929,6 +939,15 @@ PREARM_MOTORS: required_mask=0x00000040 fresh_mask=0x00000040 fault_mask=0x00000
 ```
 
 这只证明 slot6/7号 telemetry 在检查瞬间是新鲜的；`ready=0` 仍然是正确结果。
+
+新安全输入固件烧录后，7 号 telemetry 新鲜时也已验证：
+
+```text
+PREARM_INPUT_DETAIL: estop source=unwired safe_now=0; power source=unwired safe_now=0; limits source=unwired safe_now=0
+PREARM_MOTORS: required_mask=0x00000040 fresh_mask=0x00000040 fault_mask=0x00000000 fresh_count=1 fresh_ok=1 fault_free=1
+```
+
+这说明电机 freshness 条件可以满足，但物理安全输入仍然正确地阻止 pre-arm。
 
 第二步只发一帧合法 `0x320` 对照：
 

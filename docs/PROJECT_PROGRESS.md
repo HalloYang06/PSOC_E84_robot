@@ -1265,3 +1265,14 @@
 - Not validated: full firmware image was not relinked or flashed in this turn; user will flash when ready.
 - Safety: this is diagnostic-only. It deliberately keeps `ready=0` and does not change `0x322 motion_allowed`.
 - Next step: after flashing, run `cmd_m33_safety_inputs` and `cmd_m33_prearm_check 0x40`; confirm safety inputs are still unwired/unconfirmed before assigning real GPIO or ADC sources.
+
+### 2026-05-26 - M33 safety input contract burn-after validation
+
+- Completed: user flashed the M33 safety-input diagnostic firmware.
+- Validated on NanoPi true CAN: `/home/pi/nanopi_live_telemetry_check.sh` passed with `can0 ERROR-ACTIVE`, `0x322`, `0x336`, `/rehab_arm/motor_state`, `/joint_states`, and no `0x320`.
+- Validated on M33 serial COM26: `cmd_m33_safety_inputs` printed estop, power, and limits as `source=unwired confirmed=0 safe_now=0`.
+- Validated on M33 serial COM26: `cmd_m33_prearm_check 0x40` printed `PREARM_INPUT_DETAIL` with all three safety inputs `safe_now=0`.
+- Validated with 7号 active-report window open: `cmd_m33_prearm_check 0x40` reported `fresh_mask=0x00000040 fresh_count=1 fresh_ok=1 fault_free=1`.
+- Observed: `PREARM ready=0 motion_allowed_would_be=0` remained correct because logging-only and physical safety inputs still block motion.
+- Safety: no trajectory was published and no `0x320` target frame appeared.
+- Next step: define the real M33 safety-input source mapping plan for estop, motor power/voltage, and joint limits before any armed-mode implementation.

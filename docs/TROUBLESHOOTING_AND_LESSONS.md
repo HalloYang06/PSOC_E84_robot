@@ -2743,4 +2743,5 @@ PREARM_MOTORS: required_mask=0x0000007F fresh_mask=0x00000000 ... fresh_ok=0
 
 状态：
 
-- 已在 M33 侧加入诊断命令和收紧后的 ready 条件；等待用户烧录后现场验证。
+- 已在 M33 侧加入诊断命令和收紧后的 ready 条件。
+- 用户烧录后已验证：`cmd_m33_safety_inputs` 显示三路安全输入均为 `source=unwired confirmed=0 safe_now=0`，`cmd_m33_prearm_check 0x40` 在 7 号 telemetry 新鲜时仍保持 `ready=0`。
