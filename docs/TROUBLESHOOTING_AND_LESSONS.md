@@ -3241,3 +3241,26 @@ Connection reset by 192.168.2.66 port 22
 状态：
 
 - 已现场验证：合法 7号目标在未标定状态下被拒绝为 `joint_uncalibrated`，没有下发 7号电机控制帧。
+
+### 标定遥测和运动命令要分开
+
+现象：
+
+- 下一步需要通过 M33 正式链路读取 7号当前位置/原始反馈。
+- 直接使用 ROS 绝对目标不安全，直接 NanoPi private active-report 又绕过 M33 正式链路。
+
+策略：
+
+- 允许 `0x320 active-report` 作为 calibration telemetry 通过 M33。
+- 不允许 `enable/zero/mode/target` 因此一起通过。
+- M33 日志用 `apply_calibration_telemetry_only` 标记这种非运动遥测动作。
+
+技巧：
+
+- 开遥测前先发 heartbeat，避免被 `heartbeat_timeout` 拦截。
+- 采集完必须关闭 active-report，并用短 `candump` 确认没有持续 `180007FD/188007FD`。
+- 过滤 CAN 时要同时确认没有 7号控制帧 `01800007`。
+
+状态：
+
+- 已在 M33 代码中加入遥测例外，待烧录后验证。

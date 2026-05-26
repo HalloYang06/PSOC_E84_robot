@@ -2343,6 +2343,26 @@ python3 /home/pi/nanopi_can_master.py heartbeat --iface can0 --seq 64 --wait 0.8
 
 注意：如果先发 target、heartbeat 已过期，M33 会优先报 `detail_code=1 heartbeat_timeout`。这也是正确的安全拒绝，但它不能证明标定门已经走到。
 
+### 6.7.1 标定遥测开关
+
+M33 允许 NanoPi 通过正式 `0x320` 链路打开/关闭单个关节的 active-report，用于采集当前位置和原始反馈。这个入口是 telemetry-only，不会发 enable、zero、mode、position、velocity 或 torque。
+
+示例，打开 7号对应的 ROS joint4 遥测：
+
+```bash
+python3 /home/pi/nanopi_can_master.py heartbeat --iface can0 --seq 70 --wait 0.3
+python3 /home/pi/nanopi_can_master.py m33 active-report --iface can0 --joint 4 --enable-report --wait 0.2
+timeout 2 candump -L can0 | grep -E '180007FD|188007FD|336|322'
+python3 /home/pi/nanopi_can_master.py m33 active-report --iface can0 --joint 4 --wait 0.2
+```
+
+通过标准：
+
+- M33 日志应显示 `final action=apply_calibration_telemetry_only`。
+- 可以看到 7号 active-report 或 M33 聚合状态 `0x336` 更新。
+- 不应看到 `01800007` 或其他 7号位置/速度/扭矩控制帧。
+- 结束后必须关闭 active-report，并确认总线没有持续刷 `180007FD/188007FD`。
+
 只有完成以下动作后，才允许在 M33 配置里把某个关节的 `CONTROL_MOTOR_JOINTx_CALIBRATED` 改成 `1U`：
 
 - 人不穿戴设备，机械臂固定在台架。

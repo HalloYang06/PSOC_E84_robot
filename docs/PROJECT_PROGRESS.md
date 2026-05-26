@@ -1473,3 +1473,14 @@
 - Validated no formal 7号 motor output in filtered capture: no `01800007`, `0300FD07`, `180007FD`, or `188007FD` frames appeared around the target.
 - Safety: this proved the uncalibrated absolute-position gate is active on the live M33 firmware. Do not enable per-joint `CALIBRATED=1` until zero/direction/scale are measured.
 - Next step: add a calibration-only read/jog workflow for 7号 that does not use absolute position targets.
+
+### 2026-05-26 - M33 calibration telemetry active-report gate
+
+- Completed: added `CONTROL_CALIBRATION_ACTIVE_REPORT_ENABLE` to M33, default `1U`.
+- Completed: M33 safety assessment now treats NanoPi `0x320 active-report` as calibration telemetry, not absolute motion.
+- Completed: even while `CONTROL_ROS_COMMAND_LOGGING_ONLY=1`, accepted `active-report` commands apply through `control_motor_set_active_report()` and log `apply_calibration_telemetry_only`.
+- Preserved: `enable`, `zero`, `mode`, and `target` remain blocked by logging-only / calibration gates; `joint_uncalibrated` still blocks absolute position targets.
+- Validated locally: static grep confirmed the active-report path and `python -m pytest rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/test/test_psoc_status.py` passed, `10` tests.
+- Failed or unverified: local M33 compile was not run because `scons` is not installed on this Windows environment.
+- Safety: active-report is telemetry-only, but it still sends a motor protocol frame; after each test, send `m33 active-report --joint <id>` without `--enable-report` to turn it off.
+- Next step: after flashing, live-test `m33 active-report --joint 4 --enable-report` and confirm 7号 telemetry appears without any 7号 control frame.
