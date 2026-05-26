@@ -2327,6 +2327,22 @@ detail=joint_uncalibrated
 motion_allowed=false
 ```
 
+上电后的非运动验收顺序：
+
+```bash
+python3 /home/pi/nanopi_can_master.py heartbeat --iface can0 --seq 63 --wait 0.3
+python3 /home/pi/nanopi_can_master.py m33 target --iface can0 --joint 4 --deg 5 --rpm 1 --torque-ma 0 --wait 0.15
+python3 /home/pi/nanopi_can_master.py heartbeat --iface can0 --seq 64 --wait 0.8
+```
+
+通过标准：
+
+- 第三条命令收到 `0x322`，byte6 为 `0x0B`。
+- 解析后为 `detail_code=11`、`detail=joint_uncalibrated`。
+- 同时用 `candump` 过滤确认没有对应电机控制帧。例如 7号不应出现 `01800007`、`0300FD07`、`180007FD`、`188007FD`。
+
+注意：如果先发 target、heartbeat 已过期，M33 会优先报 `detail_code=1 heartbeat_timeout`。这也是正确的安全拒绝，但它不能证明标定门已经走到。
+
 只有完成以下动作后，才允许在 M33 配置里把某个关节的 `CONTROL_MOTOR_JOINTx_CALIBRATED` 改成 `1U`：
 
 - 人不穿戴设备，机械臂固定在台架。

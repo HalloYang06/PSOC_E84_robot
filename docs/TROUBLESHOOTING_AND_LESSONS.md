@@ -3219,3 +3219,25 @@ Connection reset by 192.168.2.66 port 22
 
 - 已在 M33 添加默认未标定门；所有关节默认 `calibrated=0`。
 - 后续需要烧录后验证：合法 `0x320 set_target` 应被拒绝为 `joint_uncalibrated`，不应再发出电机位置帧。
+
+### 验证 joint_uncalibrated 前要先刷新 heartbeat
+
+现象：
+
+- 烧录 `daf78140` 后，第一次向 M33 发送合法 `0x320 set_target` 得到 `detail_code=1 heartbeat_timeout`，不是预期的 `joint_uncalibrated`。
+- 随后按 `heartbeat -> target -> heartbeat` 顺序重测，得到 `0x322#A540070001010B00`，即 `detail_code=11 joint_uncalibrated`。
+
+原因：
+
+- M33 的安全评估先检查 NanoPi heartbeat 是否新鲜。
+- 如果 heartbeat 过期，安全机在更早一层拒绝，不会继续走到“关节是否标定”的检查。
+
+技巧：
+
+- 验证某个具体拒绝原因时，先发一帧 `0x321` heartbeat，让 heartbeat 条件通过。
+- 然后立刻发目标帧，再发下一帧 heartbeat 读取 `0x322` byte6。
+- 如果目标是验证 `joint_uncalibrated`，过滤 `candump` 时要确认没有对应电机控制帧，例如 7号没有 `01800007`、`0300FD07`、`180007FD/188007FD`。
+
+状态：
+
+- 已现场验证：合法 7号目标在未标定状态下被拒绝为 `joint_uncalibrated`，没有下发 7号电机控制帧。

@@ -1461,3 +1461,15 @@
 - Failed or unverified: local M33 compile was not run because `scons` is not installed on this Windows environment.
 - Safety: do not send ROS absolute position targets again until the target joint has a measured software zero, direction, scale, and conservative limits.
 - Next step: flash this M33 safety build, then perform a non-motion test that a legal `0x320 set_target` for joint4/motor7 is rejected as `joint_uncalibrated`.
+
+### 2026-05-26 - M33 joint calibration gate live validation
+
+- Completed: user flashed M33 commit `daf78140`.
+- Validated NanoPi SSH and CAN: `192.168.2.66`, `can0` classic CAN 1Mbps, `ERROR-ACTIVE`, tx/rx error counters `0/0`.
+- Validated M33 heartbeat before target: `0x322#A53D070001010A00`, decoded as `limited/logging_only/detail=logging_only_no_motor_output`.
+- First attempt: sent `0x320#0304320001000000` before refreshing heartbeat; M33 rejected with `0x322#A53E070001010100`, `detail_code=1 heartbeat_timeout`.
+- Completed correct-order test: sent heartbeat `0x321#3F`, then legal target `0x320#0304320001000000` for ROS joint4/motor7, then heartbeat `0x321#40`.
+- Validated expected result: M33 replied `0x322#A540070001010B00`, `detail_code=11 joint_uncalibrated`.
+- Validated no formal 7号 motor output in filtered capture: no `01800007`, `0300FD07`, `180007FD`, or `188007FD` frames appeared around the target.
+- Safety: this proved the uncalibrated absolute-position gate is active on the live M33 firmware. Do not enable per-joint `CALIBRATED=1` until zero/direction/scale are measured.
+- Next step: add a calibration-only read/jog workflow for 7号 that does not use absolute position targets.
