@@ -494,6 +494,30 @@
 #define CONTROL_ROS_HEARTBEAT_TIMEOUT_MS   2500U
 #endif
 
+/* Pre-arm checklist for future controlled trajectory tests.
+ * These defaults intentionally keep pre-arm failing until the physical robot
+ * safety inputs and per-joint limits are confirmed on the real mechanism.
+ */
+#ifndef CONTROL_PREARM_REQUIRED_JOINT_MASK
+#define CONTROL_PREARM_REQUIRED_JOINT_MASK 0x7FU
+#endif
+
+#ifndef CONTROL_PREARM_ESTOP_INPUT_CONFIRMED
+#define CONTROL_PREARM_ESTOP_INPUT_CONFIRMED 0U
+#endif
+
+#ifndef CONTROL_PREARM_POWER_INPUT_CONFIRMED
+#define CONTROL_PREARM_POWER_INPUT_CONFIRMED 0U
+#endif
+
+#ifndef CONTROL_PREARM_LIMITS_CONFIRMED
+#define CONTROL_PREARM_LIMITS_CONFIRMED    0U
+#endif
+
+#ifndef CONTROL_PREARM_ALLOW_WITH_LOGGING_ONLY
+#define CONTROL_PREARM_ALLOW_WITH_LOGGING_ONLY 0U
+#endif
+
 #ifndef CONTROL_CAN_CLASSIC_ONLY
 #define CONTROL_CAN_CLASSIC_ONLY           1
 #endif

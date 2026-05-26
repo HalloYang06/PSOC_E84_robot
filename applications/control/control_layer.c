@@ -1549,6 +1549,23 @@ typedef struct
     rt_bool_t torque_in_limit;
 } control_ros_safety_assessment_t;
 
+typedef struct
+{
+    rt_bool_t logging_only_clear;
+    rt_bool_t heartbeat_ok;
+    rt_bool_t estop_input_confirmed;
+    rt_bool_t power_input_confirmed;
+    rt_bool_t limits_confirmed;
+    rt_bool_t required_motor_feedback_fresh;
+    rt_bool_t required_motor_feedback_fault_free;
+    rt_uint32_t heartbeat_age_ms;
+    rt_uint32_t required_joint_mask;
+    rt_uint32_t fresh_joint_mask;
+    rt_uint32_t fault_joint_mask;
+    rt_uint8_t fresh_count;
+    rt_bool_t ready;
+} control_prearm_check_t;
+
 static const char *ctrl_ros_safety_state_name(control_ros_safety_state_t state)
 {
     switch (state)
@@ -1625,6 +1642,82 @@ static rt_uint8_t ctrl_ros_reject_reason_detail_code(control_ros_reject_reason_t
     default:
         return CONTROL_STATUS_DETAIL_UNSUPPORTED_COMMAND;
     }
+}
+
+static void ctrl_prearm_check_build(control_prearm_check_t *check)
+{
+    control_motor_feedback_t snapshot[CONTROL_MOTOR_JOINT_COUNT];
+    rt_tick_t now = rt_tick_get();
+    rt_uint8_t i;
+
+    if (check == RT_NULL)
+    {
+        return;
+    }
+
+    rt_memset(check, 0, sizeof(*check));
+    check->heartbeat_age_ms = 0xFFFFFFFFUL;
+    check->required_joint_mask = (rt_uint32_t)CONTROL_PREARM_REQUIRED_JOINT_MASK;
+
+#if CONTROL_ROS_COMMAND_LOGGING_ONLY && !CONTROL_PREARM_ALLOW_WITH_LOGGING_ONLY
+    check->logging_only_clear = RT_FALSE;
+#else
+    check->logging_only_clear = RT_TRUE;
+#endif
+
+    if (s_has_nanopi_heartbeat)
+    {
+        check->heartbeat_age_ms = ctrl_tick_delta_ms(now, s_last_nanopi_heartbeat_tick);
+        check->heartbeat_ok =
+            (check->heartbeat_age_ms <= CONTROL_ROS_HEARTBEAT_TIMEOUT_MS) ? RT_TRUE : RT_FALSE;
+    }
+
+    check->estop_input_confirmed =
+        (CONTROL_PREARM_ESTOP_INPUT_CONFIRMED != 0U) ? RT_TRUE : RT_FALSE;
+    check->power_input_confirmed =
+        (CONTROL_PREARM_POWER_INPUT_CONFIRMED != 0U) ? RT_TRUE : RT_FALSE;
+    check->limits_confirmed =
+        (CONTROL_PREARM_LIMITS_CONFIRMED != 0U) ? RT_TRUE : RT_FALSE;
+
+    rt_mutex_take(&s_data_lock, RT_WAITING_FOREVER);
+    rt_memcpy(snapshot, s_motor_feedback, sizeof(snapshot));
+    rt_mutex_release(&s_data_lock);
+
+    for (i = 0U; i < CONTROL_MOTOR_JOINT_COUNT; i++)
+    {
+        rt_uint32_t bit = (1UL << i);
+
+        if ((check->required_joint_mask & bit) == 0U)
+        {
+            continue;
+        }
+
+        if (ctrl_motor_feedback_is_fresh(&snapshot[i], now))
+        {
+            check->fresh_joint_mask |= bit;
+            check->fresh_count++;
+        }
+        if (snapshot[i].fault_summary != 0U)
+        {
+            check->fault_joint_mask |= bit;
+        }
+    }
+
+    check->required_motor_feedback_fresh =
+        ((check->fresh_joint_mask & check->required_joint_mask) == check->required_joint_mask)
+            ? RT_TRUE : RT_FALSE;
+    check->required_motor_feedback_fault_free =
+        ((check->fault_joint_mask & check->required_joint_mask) == 0U) ? RT_TRUE : RT_FALSE;
+
+    check->ready =
+        (check->logging_only_clear &&
+         check->heartbeat_ok &&
+         check->estop_input_confirmed &&
+         check->power_input_confirmed &&
+         check->limits_confirmed &&
+         check->required_motor_feedback_fresh &&
+         check->required_motor_feedback_fault_free)
+            ? RT_TRUE : RT_FALSE;
 }
 
 static void ctrl_ros_safety_assessment_init(control_ros_safety_assessment_t *assessment)
@@ -4116,6 +4209,44 @@ static int cmd_control_debug(int argc, char **argv)
     return 0;
 }
 MSH_CMD_EXPORT(cmd_control_debug, show control can rx debug counters);
+
+static int cmd_m33_prearm_check(int argc, char **argv)
+{
+    control_prearm_check_t check;
+
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+
+    ctrl_poll_can_messages();
+    ctrl_prearm_check_build(&check);
+
+    rt_kprintf("PREARM: ready=%u motion_allowed_would_be=%u\n",
+               check.ready ? 1U : 0U,
+               check.ready ? 1U : 0U);
+    rt_kprintf("PREARM_MODE: logging_only_clear=%u logging_only_compile=%u allow_with_logging_only=%u\n",
+               check.logging_only_clear ? 1U : 0U,
+               (unsigned int)CONTROL_ROS_COMMAND_LOGGING_ONLY,
+               (unsigned int)CONTROL_PREARM_ALLOW_WITH_LOGGING_ONLY);
+    rt_kprintf("PREARM_HEARTBEAT: ok=%u age_ms=%lu timeout_ms=%u\n",
+               check.heartbeat_ok ? 1U : 0U,
+               (unsigned long)check.heartbeat_age_ms,
+               (unsigned int)CONTROL_ROS_HEARTBEAT_TIMEOUT_MS);
+    rt_kprintf("PREARM_INPUTS: estop_confirmed=%u power_confirmed=%u limits_confirmed=%u\n",
+               check.estop_input_confirmed ? 1U : 0U,
+               check.power_input_confirmed ? 1U : 0U,
+               check.limits_confirmed ? 1U : 0U);
+    rt_kprintf("PREARM_MOTORS: required_mask=0x%08lX fresh_mask=0x%08lX fault_mask=0x%08lX fresh_count=%u fresh_ok=%u fault_free=%u\n",
+               (unsigned long)check.required_joint_mask,
+               (unsigned long)check.fresh_joint_mask,
+               (unsigned long)check.fault_joint_mask,
+               (unsigned int)check.fresh_count,
+               check.required_motor_feedback_fresh ? 1U : 0U,
+               check.required_motor_feedback_fault_free ? 1U : 0U);
+    rt_kprintf("PREARM_NOTE: diagnostic only; this command never changes mode and never enables motion\n");
+
+    return check.ready ? 0 : -1;
+}
+MSH_CMD_EXPORT(cmd_m33_prearm_check, show diagnostic pre-arm checklist without enabling motion);
 
 /* Deprecated aliases */
 static int cmd_rs00_en(int argc, char **argv)
