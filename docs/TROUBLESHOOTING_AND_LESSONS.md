@@ -2333,3 +2333,21 @@ No such file or directory: /tmp/rehab_sim_collection/sim_demo_motion.jsonl
 状态：
 
 - 已新增 CSV 模板导出；下一步应做 completed annotation CSV 校验。
+
+### 电机数据接收要区分被动上报、查询回复和周期上报开关
+
+现象：
+
+- NanoPi `can0` 正常且 `ERROR-ACTIVE` 时，被动 `candump` 只看到 `0x061` 和 `0x069`，容易误判只有一个电机在线。
+- 实测 `0x061/0x069` 是 CANSimple node 3 的周期状态；私有协议电机 4/5/6/7 不一定默认主动上报。
+
+技巧：
+
+- 先被动抓包确认总线健康，再发非运动 Get_ID probe。4/5/6/7 会用扩展帧 `0x000004FE`、`0x000005FE`、`0x000006FE`、`0x000007FE` 类回复。
+- 需要连续状态时，可以用私有 active-report 打开周期上报，实测 4/5/6/7 分别是 `0x180004FD`、`0x180005FD`、`0x180006FD`、`0x180007FD`，约 100Hz。
+- 测试结束要关闭 active-report，避免总线长期高频刷帧影响后续调试。
+- 正式机器人路径仍应由 M33 聚合/转发并发布 ROS `/rehab_arm/motor_state`；NanoPi 直接私有 active-report 只是调试手段。
+
+状态：
+
+- 已确认 NanoPi 能接收 4/5/6/7 周期电机状态；M33 `active-report` 转发路径还未打通。

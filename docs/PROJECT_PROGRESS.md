@@ -1069,3 +1069,15 @@
 - Validated: full `rehab_arm_psoc_bridge` unit tests passed 89 tests; `py_compile` passed.
 - Safety: offline CSV export only; no ROS launch, network upload, CAN access, M33 command, or motor motion.
 - Next step: add validation for completed annotation CSV before training export.
+
+### 2026-05-26 - NanoPi motor data receive check
+
+- Completed: live NanoPi CAN receive test on `192.168.2.66` with `can0` at classic CAN 1Mbps.
+- Validated: `can0` stayed `ERROR-ACTIVE` with tx/rx error counters 0.
+- Validated: passive capture saw CANSimple node 3 traffic: `0x061` heartbeat and `0x069` encoder/status frames.
+- Validated: M33 heartbeat replied on `0x322` with `A5 01 07 00 01 01 0A 00`.
+- Validated: private Get_ID probes confirmed motor IDs 4, 5, 6, and 7 reply on extended frames.
+- Validated: direct private active-report enabled periodic status for motors 4/5/6/7 as `0x180004FD`, `0x180005FD`, `0x180006FD`, and `0x180007FD` at about 100Hz each.
+- Safety: no motion command was sent; only heartbeat, Get_ID, and active-report receive checks were used. Active-report was disabled again after the capture.
+- Not validated: M33 `active-report` command path did not produce periodic motor status, so formal NanoPi ROS data collection still needs M33 aggregation/forwarding work instead of direct debug control.
+- Next step: update the M33/NanoPi bridge so official motor telemetry comes through the M33 safety boundary and is published to `/rehab_arm/motor_state`.
