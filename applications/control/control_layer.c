@@ -99,7 +99,12 @@ static rt_uint32_t s_dbg_rx_total = 0U;
 static rt_uint32_t s_dbg_rx_heartbeat = 0U;
 static rt_tick_t s_last_nanopi_heartbeat_tick = 0U;
 static rt_bool_t s_has_nanopi_heartbeat = RT_FALSE;
-static rt_uint8_t s_last_ros_status_detail_code = CONTROL_STATUS_DETAIL_LOGGING_ONLY;
+static rt_uint8_t s_last_ros_status_detail_code =
+#if CONTROL_ROS_COMMAND_LOGGING_ONLY
+    CONTROL_STATUS_DETAIL_LOGGING_ONLY;
+#else
+    CONTROL_STATUS_DETAIL_NONE;
+#endif
 static rt_uint32_t s_dbg_rx_f103_ack = 0U;
 static rt_uint32_t s_dbg_rx_f103_sensor = 0U;
 static rt_uint32_t s_dbg_rx_f103_health = 0U;
