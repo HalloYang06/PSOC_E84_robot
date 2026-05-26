@@ -2445,3 +2445,22 @@ No such file or directory: /tmp/rehab_sim_collection/sim_demo_motion.jsonl
 
 - NanoPi 侧已新增 `psoc_motor_status.py` 和 7 个离线单元测试。
 - `psoc_can_bridge_node.py` 已接入只读发布路径，收到合法 `0x330~0x337` 后发布 `/rehab_arm/motor_state`。
+- `m33_motor_status_smoke.py` 可先 dry-run，再用 `--execute` 向 `vcan0` 或明确选择的 CAN 口发送合成遥测帧验证链路。
+
+### 合成遥测 smoke 工具默认必须干跑
+
+现象：
+
+- 为了验证 bridge 是否发布 `/rehab_arm/motor_state`，需要能在 M33 固件未上报 `0x330~0x337` 前制造测试帧。
+- 但直接往真实 `can0` 发测试帧容易和现场调试混淆。
+
+技巧：
+
+- smoke 工具默认只打印 JSON dry-run 计划。
+- 只有显式传 `--execute` 才会打开 SocketCAN。
+- 先用 `vcan0` 验证 ROS bridge 和 recorder，再考虑真实 `can0`。
+- 工具只允许发遥测帧，不发 `0x320` 控制帧。
+
+状态：
+
+- `m33_motor_status_smoke.py` 已按 dry-run-first 方式实现并测试。

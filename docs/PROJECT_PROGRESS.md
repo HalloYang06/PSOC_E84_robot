@@ -1118,3 +1118,13 @@
 - Not validated: no live M33 `0x330~0x337` frames yet; hardware execution was not touched.
 - Safety: bridge path is receive-only telemetry. It does not change `0x320` sending, does not enable `enable_target_tx`, and does not authorize motor motion.
 - Next step: add a synthetic SocketCAN/candump-style smoke command or launch test so NanoPi can verify `/rehab_arm/motor_state` publication before asking M33 firmware to emit real frames.
+
+### 2026-05-26 - Synthetic M33 motor telemetry smoke tool
+
+- Completed: added `m33_motor_status_smoke.py` to dry-run or explicitly send synthetic `0x330~0x337` telemetry frames for motor 3 and motor 7.
+- Completed: documented NanoPi dry-run, optional `--execute`, and `/rehab_arm/motor_state` observation workflow.
+- Validated: targeted `test_m33_motor_status_smoke.py` passed 5 tests.
+- Validated: full `rehab_arm_psoc_bridge` unit tests passed 110 tests; `py_compile` passed for `m33_motor_status_smoke.py`.
+- Not validated: did not run SocketCAN `--execute` on NanoPi or `vcan0` in this Windows shell.
+- Safety: default mode is dry-run JSON only. `--execute` sends only telemetry IDs `0x330/0x331`, never `0x320`, and does not command M33 or motors.
+- Next step: run this on NanoPi with `vcan0` first, then use it to prove recorder captures `/rehab_arm/motor_state` before asking M33 firmware to emit real telemetry.

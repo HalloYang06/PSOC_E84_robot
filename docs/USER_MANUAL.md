@@ -1106,6 +1106,46 @@ ros2 run rehab_arm_psoc_bridge candump_motor_telemetry \
 
 如果要临时抓 4/5/6/7 的原始周期状态，先由调试工具打开 private active-report，再抓包，测试结束必须关闭 active-report。正式 ROS 路径后续仍要由 M33 聚合并发布 `/rehab_arm/motor_state`，NanoPi 直接打开 private active-report 只用于调试接收链路。
 
+如果 M33 固件还没有真正发送 `0x330~0x337`，可以先用合成遥测帧 smoke 工具验证 NanoPi bridge 和 recorder 链路。
+
+先干跑，不发 CAN：
+
+```bash
+cd /home/pi/rehab_arm_ros2_ws
+python3 src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/m33_motor_status_smoke.py \
+  --interface vcan0
+```
+
+通过标准：
+
+- 输出 JSON 中 `execute=false`。
+- `frames` 里有 `0x330` 和 `0x331`。
+- `expected_motor_state_payload.valid_motor_count=2`。
+- `safety_note` 明确不会发送 `0x320`，不会命令 M33，不会授权电机运动。
+
+如果要验证真实 bridge 发布 topic，建议先用 `vcan0`。一个终端启动 bridge：
+
+```bash
+ros2 run rehab_arm_psoc_bridge psoc_can_bridge_node \
+  --ros-args -p interface:=vcan0 -p require_psoc_ok_for_trajectory:=false
+```
+
+另一个终端显式发送合成遥测帧：
+
+```bash
+python3 src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/m33_motor_status_smoke.py \
+  --interface vcan0 \
+  --execute
+```
+
+第三个终端观察输出：
+
+```bash
+ros2 topic echo --once /rehab_arm/motor_state std_msgs/msg/String
+```
+
+注意：`--execute` 只发送 `0x330~0x337` 合成遥测帧，用来测试接收/发布链路。它不发送 `0x320`，不控制电机，也不代表 M33 允许运动。上真实 `can0` 前先确认现场没有把这些测试帧误接入控制逻辑；当前设计中它们只能作为遥测。
+
 仿真数据采集一键启动：
 
 ```bash
