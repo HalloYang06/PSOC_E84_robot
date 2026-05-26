@@ -28,6 +28,12 @@ class RehabSimulationReadinessRequest(BaseModel):
     report: dict
 
 
+class RehabBoardManifestRequest(BaseModel):
+    robot_id: str = Field(min_length=1)
+    device_id: str = Field(min_length=1)
+    manifest: dict
+
+
 class RehabMotorSample(BaseModel):
     motor_id: str = Field(min_length=1)
     joint_name: str = ""

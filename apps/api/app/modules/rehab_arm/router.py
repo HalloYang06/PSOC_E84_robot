@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse
 from app.common.response import ok
 
 from .schemas import (
+    RehabBoardManifestRequest,
     RehabDeviceRegisterRequest,
     RehabManifestUploadRequest,
     RehabMotorStateRequest,
@@ -21,6 +22,7 @@ from .service import (
     build_dashboard,
     latest_keyframe_path,
     record_camera_keyframe,
+    record_board_manifest,
     record_device_registration,
     record_manifest_upload,
     record_motor_state,
@@ -98,6 +100,16 @@ def api_upload_simulation_readiness(device_id: str, payload: RehabSimulationRead
     if payload.device_id != device_id:
         raise HTTPException(status_code=422, detail="payload.device_id must match path device_id")
     return ok(record_simulation_readiness(payload.model_dump(mode="json")))
+
+
+@router.post("/devices/{device_id}/board-manifest")
+def api_upload_board_manifest(device_id: str, payload: RehabBoardManifestRequest):
+    if payload.device_id != device_id:
+        raise HTTPException(status_code=422, detail="payload.device_id must match path device_id")
+    manifest = payload.manifest
+    if manifest.get("schema_version") != "linux_board_manifest_v1":
+        raise HTTPException(status_code=422, detail="manifest.schema_version must be linux_board_manifest_v1")
+    return ok(record_board_manifest(payload.model_dump(mode="json")))
 
 
 @router.post("/devices/{device_id}/camera/keyframes")

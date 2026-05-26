@@ -225,10 +225,23 @@ function deviceDataCounts(device: AnyRecord) {
   const motors = asArray<AnyRecord>(latestPayload(device, "motor_state").motors);
   const sensor = latestPayload(device, "sensor_state");
   const camera = latestPayload(device, "camera_keyframe");
+  const board = boardCapabilities(device);
   return {
     motors: motors.length,
     sensorFields: Object.keys(sensor).filter((key) => !["schema_version", "device_id", "robot_id"].includes(key)).length,
-    hasCamera: Boolean(text(camera.image_url) || text(camera.camera_id)),
+    hasCamera: Boolean(text(camera.image_url) || text(camera.camera_id) || board.cameraDevices.length),
+  };
+}
+
+function boardCapabilities(device: AnyRecord) {
+  const manifest = record(latestPayload(device, "board_manifest").manifest);
+  const capabilities = record(manifest.capabilities);
+  return {
+    canInterfaces: asArray<AnyRecord>(capabilities.can_interfaces),
+    serialDevices: asArray<string>(capabilities.serial_devices),
+    cameraDevices: asArray<string>(capabilities.camera_devices),
+    usbDevices: asArray<AnyRecord>(capabilities.usb_devices),
+    ros2: record(capabilities.ros2),
   };
 }
 
@@ -926,7 +939,11 @@ function deviceHasBusData(device: AnyRecord) {
   const manifest = record(device.manifest);
   const interfaces = asArray<AnyRecord>(manifest.interfaces);
   const interfaceKinds = interfaces.map((item) => text(item.kind ?? item.type ?? item.transport).toLowerCase());
+  const board = boardCapabilities(device);
   return interfaceKinds.some((kind) => kind.includes("can") || kind.includes("serial") || kind.includes("usb"))
+    || board.canInterfaces.length > 0
+    || board.serialDevices.length > 0
+    || board.usbDevices.length > 0
     || asArray(latestPayload(device, "motor_state").motors).length > 0
     || Object.keys(latestPayload(device, "sensor_state")).length > 0;
 }

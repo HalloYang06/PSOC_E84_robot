@@ -300,6 +300,27 @@ def record_simulation_readiness(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def record_board_manifest(payload: dict[str, Any]) -> dict[str, Any]:
+    manifest = payload.get("manifest") if isinstance(payload.get("manifest"), dict) else {}
+    record = telemetry_record("board_manifest", payload)
+    write_device_latest(record["device_id"], "board_manifest", record)
+    capabilities = manifest.get("capabilities") if isinstance(manifest, dict) else {}
+    if not isinstance(capabilities, dict):
+        capabilities = {}
+    return {
+        "ok": True,
+        "device_id": record["device_id"],
+        "robot_id": record["robot_id"],
+        "schema_version": manifest.get("schema_version", "unknown"),
+        "can_interface_count": len(capabilities.get("can_interfaces") or []),
+        "serial_device_count": len(capabilities.get("serial_devices") or []),
+        "camera_device_count": len(capabilities.get("camera_devices") or []),
+        "ros2_available": bool((capabilities.get("ros2") or {}).get("available")) if isinstance(capabilities.get("ros2"), dict) else False,
+        "sync_role": record["sync_role"],
+        "control_boundary": "board_manifest_only_not_motion_permission",
+    }
+
+
 def record_motor_state(payload: dict[str, Any]) -> dict[str, Any]:
     record = telemetry_record("motor_state", payload)
     write_device_latest(record["device_id"], "motor_state", record)
@@ -404,6 +425,7 @@ def build_dashboard() -> dict[str, Any]:
         sensor_state = _device_latest(device_id, "sensor_state") or {}
         safety_state = _device_latest(device_id, "safety_state") or {}
         simulation_readiness = _device_latest(device_id, "simulation_readiness") or {}
+        board_manifest = _device_latest(device_id, "board_manifest") or {}
         camera_keyframe = _device_latest(device_id, "camera_keyframe") or {}
         sync_status = _device_latest(device_id, "sync_status") or {}
         manifest = _device_latest(device_id, "manifest") or {}
@@ -414,6 +436,7 @@ def build_dashboard() -> dict[str, Any]:
             sensor_state,
             safety_state,
             simulation_readiness,
+            board_manifest,
             camera_keyframe,
             sync_status,
             manifest,
@@ -440,6 +463,7 @@ def build_dashboard() -> dict[str, Any]:
                 "sensor_state": sensor_state,
                 "safety": safety_state,
                 "simulation_readiness": simulation_readiness,
+                "board_manifest": board_manifest,
                 "sync_status": sync_status,
                 "manifest": manifest,
             }

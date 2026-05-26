@@ -236,6 +236,49 @@ def test_rehab_arm_motor_safety_and_dashboard_are_non_realtime(tmp_path, monkeyp
     get_settings.cache_clear()
 
 
+def test_rehab_arm_board_manifest_upload_is_data_only(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
+    get_settings.cache_clear()
+
+    response = client.post(
+        "/api/rehab-arm/v1/devices/nanopi-m5/board-manifest",
+        json={
+            "robot_id": "rehab-arm-alpha",
+            "device_id": "nanopi-m5",
+            "manifest": {
+                "schema_version": "linux_board_manifest_v1",
+                "device_id": "nanopi-m5",
+                "robot_id": "rehab-arm-alpha",
+                "hostname": "NanoPi-M5",
+                "capabilities": {
+                    "can_interfaces": [{"name": "can0", "kind": "can", "operstate": "up"}],
+                    "serial_devices": ["/dev/ttyUSB0"],
+                    "camera_devices": ["/dev/video0"],
+                    "usb_devices": [{"kind": "usb", "description": "USB camera"}],
+                    "ros2": {"available": True, "version_text": "ros2 0.32"},
+                },
+                "control_boundary": "board_discovery_only_not_motion_permission",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["schema_version"] == "linux_board_manifest_v1"
+    assert data["can_interface_count"] == 1
+    assert data["serial_device_count"] == 1
+    assert data["camera_device_count"] == 1
+    assert data["ros2_available"] is True
+    assert data["control_boundary"] == "board_manifest_only_not_motion_permission"
+
+    dashboard = client.get("/api/rehab-arm/v1/devices/dashboard")
+    device = dashboard.json()["data"]["devices"][0]
+    board_manifest = device["board_manifest"]
+    assert board_manifest["record_type"] == "board_manifest"
+    assert board_manifest["payload"]["manifest"]["hostname"] == "NanoPi-M5"
+    get_settings.cache_clear()
+
+
 def test_rehab_arm_camera_keyframe_upload_and_latest_file(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
     get_settings.cache_clear()
