@@ -25,7 +25,7 @@
 |---|---|---|---|---|---|
 | `estop` 急停 | `rpi40_pin11_gpio0_rpi_gpio10` | physical pin 11 / CN5 `GPIO0` / net `RPI_GPIO_10` | 常闭急停回路，GPIO 上拉，回路闭合拉低为安全；断线或按下急停变高为不安全 | 真实急停按钮已接入，断线也能触发不安全，按下/释放均验证 | 读到安全电平，急停未触发 | `emergency_stop` |
 | `power` 电机电源/电压 | `not_used_no_power_ok_input` | 不占 40Pin GPIO | 当前不接电源 OK 输入，也不做该项实现；保留字段只为后续需要时扩展 | 当前不作为本阶段任务 | 当前不作为本阶段任务 | `power_fault` |
-| `limits` 关节限位 | `software_joint_limits_user_configured` | 不占 40Pin GPIO | 用户后续在 M33 代码中配置机械零点、关节方向、软限位、速度/电流限制；必要时再另行增加硬限位输入 | 机械零点、方向、软限位、关节映射已由用户在代码中确认 | 当前目标和当前位置均在 M33 最终软件限位内 | `target_out_of_limit` 或 `motor_fault` |
+| `limits` 关节限位/限速/限流 | `software_joint_limits_user_configured` | 不占 40Pin GPIO | 用户后续在 M33 代码中配置机械零点、关节方向、软限位、速度限制、扭矩/电流限制 | 位置限位、速度限制、扭矩/电流限制都已由用户在代码中确认 | 当前目标、速度、扭矩/电流均在 M33 最终限制内 | `target_out_of_limit`、`velocity_out_of_limit` 或 `torque_out_of_limit` |
 
 辅助接线建议：
 
@@ -49,10 +49,11 @@ cmd_m33_prearm_check 0x40
 
 ```text
 SAFETY_INPUT: name=estop source=rpi40_pin11_gpio0_rpi_gpio10 confirmed=0 safe_now=0
-SAFETY_INPUT: name=power source=not_used_no_power_ok_input confirmed=0 safe_now=0
+SAFETY_INPUT: name=power source=not_used_no_power_ok_input confirmed=1 safe_now=1
 SAFETY_INPUT: name=limits source=software_joint_limits_user_configured confirmed=0 safe_now=0
 PREARM: ready=0 motion_allowed_would_be=0
-PREARM_INPUT_DETAIL: estop source=rpi40_pin11_gpio0_rpi_gpio10 safe_now=0; power source=not_used_no_power_ok_input safe_now=0; limits source=software_joint_limits_user_configured safe_now=0
+PREARM_INPUT_DETAIL: estop source=rpi40_pin11_gpio0_rpi_gpio10 safe_now=0; power source=not_used_no_power_ok_input safe_now=1; limits source=software_joint_limits_user_configured safe_now=0
+PREARM_CODE_LIMITS: position confirmed=0 safe_now=0; speed confirmed=0 safe_now=0; torque_current confirmed=0 safe_now=0
 ```
 
 如果 7 号电机 telemetry 新鲜，`cmd_m33_prearm_check 0x40` 可以看到：
@@ -73,8 +74,10 @@ safety_state == ok
 control_mode == armed 或 active
 detail_code == none
 estop.confirmed == 1 && estop.safe_now == 1
-power.confirmed == 1 && power.safe_now == 1
-limits.confirmed == 1 && limits.safe_now == 1
+power check is unused in the current slice
+position_limits.confirmed == 1 && position_limits.safe_now == 1
+speed_limits.confirmed == 1 && speed_limits.safe_now == 1
+torque_current_limits.confirmed == 1 && torque_current_limits.safe_now == 1
 heartbeat fresh
 required motor feedback fresh
 required motor feedback fault_free
@@ -95,7 +98,7 @@ App、平台、服务器和 NanoPi 日志应按下面方式展示，不要把未
 {
   "safety_inputs": {
     "estop": {"source": "rpi40_pin11_gpio0_rpi_gpio10", "confirmed": false, "safe_now": false},
-    "power": {"source": "not_used_no_power_ok_input", "confirmed": false, "safe_now": false},
+    "power": {"source": "not_used_no_power_ok_input", "confirmed": true, "safe_now": true},
     "limits": {"source": "software_joint_limits_user_configured", "confirmed": false, "safe_now": false}
   },
   "motion_allowed": false
@@ -111,15 +114,16 @@ App、平台、服务器和 NanoPi 日志应按下面方式展示，不要把未
 3. 验证断线、触发、恢复、抖动和异常值。
 4. 把 raw value 转成 `safe_now`。
 5. 人工确认后把对应 `confirmed` 改为 1。
-6. 再把该输入接入 `cmd_m33_prearm_check`。
-7. 最后才考虑 `armed` 状态转换。
+6. 用户在 M33 代码中写入位置限位、速度限制、扭矩/电流限制后，分别打开 `CONTROL_PREARM_POSITION_LIMITS_*`、`CONTROL_PREARM_SPEED_LIMITS_*`、`CONTROL_PREARM_TORQUE_CURRENT_LIMITS_*`。
+7. 再把该输入接入 `cmd_m33_prearm_check`。
+8. 最后才考虑 `armed` 状态转换。
 
 ## 未确认项
 
 - 40Pin 排针上的 `RPI_GPIO_10` 在当前固件/板级设备树中的具体 GPIO 控制器编号和初始化方式。
 - 急停按钮是否直接接到所选 GPIO，还是外部安全回路先切断电机电源后再给 M33 一个状态信号。
 - 是否未来需要增加电源/电压策略；当前用户明确先不管电源 OK。
-- 用户最终写入 M33 代码的每关节软件限位、速度限制、电流限制和关节方向。
+- 用户最终写入 M33 代码的每关节软件限位、速度限制、电流/扭矩限制和关节方向。
 - 是否后续另加独立硬限位输入；第一版不占 40Pin GPIO。
 - 真实机械零点、关节方向、软限位、速度限制和电流限制。
 - `0x322` 是否需要扩展安全输入 bitmask，或另开低频状态帧。

@@ -1294,3 +1294,12 @@
 - Validated: documentation-only update; no firmware, CAN, ROS, NanoPi, GPIO, or motor test was run.
 - Safety: the estop GPIO must only receive 3.3V logic. Motor bus voltage, battery voltage, or 5V signals must not be connected directly.
 - Next step: implement M33 read-only raw GPIO diagnostics for estop only, while leaving power OK unused and keeping speed/limits as user-configured code policies.
+
+### 2026-05-26 - M33 code-configured limit checks
+
+- Completed: M33 pre-arm now has separate placeholders for position limits, speed limits, and torque/current limits.
+- Completed: `cmd_m33_prearm_check` prints `PREARM_CODE_LIMITS` with each limit class `confirmed` and `safe_now`.
+- Completed: power OK is explicitly unused for this slice and no longer blocks pre-arm; estop and code-configured limits still default to unconfirmed/unsafe.
+- Validated: forced ARM GCC compile of `Debug/applications/control/control_layer.o` succeeded.
+- Safety: defaults still keep pre-arm failing. This does not enable `armed`, `active`, `motion_allowed`, or motor output.
+- Next step: if the user wants, add read-only GPIO raw diagnostic for estop pin 11; user will later edit M33 code values for speed/position/torque-current limits.

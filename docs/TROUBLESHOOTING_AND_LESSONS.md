@@ -2780,3 +2780,19 @@ PREARM_MOTORS: required_mask=0x0000007F fresh_mask=0x00000000 ... fresh_ok=0
 状态：
 
 - 已记录 estop pin 选择和电气语义；尚未实现或验证 GPIO 读取。
+
+### 限速限位先作为 M33 代码配置项
+
+现象：
+
+- 用户明确限速、限位后续由自己直接改 M33 代码设置，不接 GPIO。
+
+技巧：
+
+- pre-arm 要分别暴露位置限位、速度限制、扭矩/电流限制，不要只用一个模糊的 `limits_confirmed`。
+- 默认必须是 `confirmed=0 safe_now=0`，这样用户还没填真实参数前不会误进入运动许可。
+- 串口看 `PREARM_CODE_LIMITS`，确认三类限制各自状态。
+
+状态：
+
+- M33 已预留 `PREARM_CODE_LIMITS` 输出；等待后续烧录验证。
