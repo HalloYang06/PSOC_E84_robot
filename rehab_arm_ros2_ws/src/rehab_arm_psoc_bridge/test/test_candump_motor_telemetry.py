@@ -215,6 +215,27 @@ class CandumpMotorTelemetryTests(unittest.TestCase):
         self.assertEqual(motor_records[0]['payload']['motors'][0]['joint_name'], 'shoulder_lift_joint')
         self.assertAlmostEqual(motor_records[1]['payload']['motors'][0]['position'], -0.08)
 
+    def test_convert_candump_includes_psoc_safety_state_records(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / 'capture.log'
+            source.write_text(
+                candump_line(0.0, '322', bytes([0xA5, 1, 7, 0, 1, 1, 10, 0]))
+                + candump_line(0.1, '330', bytes([0xB3, 2, 3, 1, 50, 0, 0, 0xFF])),
+                encoding='utf-8',
+            )
+
+            records, summary = convert_candump_to_records(source, 'rehab-arm-alpha', 'nanopi-m5', 's1')
+
+        safety_records = [record for record in records if record.get('topic') == '/rehab_arm/safety_state']
+        self.assertIs(summary['ok'], True)
+        self.assertEqual(summary['safety_state_count'], 1)
+        self.assertEqual(summary['motion_allowed_counts'], {'true': 0, 'false': 1})
+        self.assertEqual(safety_records[0]['payload']['protocol_version'], 2)
+        self.assertEqual(safety_records[0]['payload']['state'], 'limited')
+        self.assertEqual(safety_records[0]['payload']['detail'], 'logging_only_no_motor_output')
+        self.assertIs(safety_records[0]['payload']['motion_allowed'], False)
+        self.assertEqual(safety_records[0]['payload']['session_id'], 's1')
+
     def test_convert_candump_includes_joint_states_from_m33_motor_status(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             source = Path(tmpdir) / 'capture.log'

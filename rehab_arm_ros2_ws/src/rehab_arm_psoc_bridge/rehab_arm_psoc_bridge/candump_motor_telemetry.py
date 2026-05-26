@@ -24,6 +24,7 @@ try:
         make_joint_state_fields_from_m33_motor_state,
         parse_m33_motor_status_frame,
     )
+    from rehab_arm_psoc_bridge.psoc_status import parse_psoc_status_payload
 except ModuleNotFoundError:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from rehab_arm_psoc_bridge.data_recording import (
@@ -39,6 +40,7 @@ except ModuleNotFoundError:
         make_joint_state_fields_from_m33_motor_state,
         parse_m33_motor_status_frame,
     )
+    from rehab_arm_psoc_bridge.psoc_status import parse_psoc_status_payload
 
 
 CANSIMPLE_HEARTBEAT_CMD = 0x001
@@ -83,6 +85,7 @@ MOTOR_VENDOR_BY_ID = {
     7: 'Lingzu',
 }
 CONTROL_BOUNDARY = 'telemetry_only_not_motor_command'
+PSOC_STATUS_ID = 0x322
 
 CAN_LINE_RE = re.compile(
     r'\((?P<time>[-0-9.]+)\)\s+\S+\s+(?P<id>[0-9A-Fa-f]+)\s+\[(?P<dlc>\d+)\]\s+(?P<data>(?:[0-9A-Fa-f]{2}\s*)*)'
@@ -308,7 +311,7 @@ def make_raw_can_session_metadata(
         'source': 'candump_motor_telemetry',
         'source_log': source_log,
         'sync_status': 'local_only',
-        'topics': ['/rehab_arm/motor_state', '/joint_states'],
+        'topics': ['/rehab_arm/safety_state', '/rehab_arm/motor_state', '/joint_states'],
         'optional_topics': [],
         'motion_allowed_expected': False,
         'control_boundary': CONTROL_BOUNDARY,
@@ -339,6 +342,9 @@ def convert_candump_to_records(
     total_frames = 0
     motor_state_count = 0
     joint_state_count = 0
+    safety_state_count = 0
+    motion_allowed_true_count = 0
+    motion_allowed_false_count = 0
     heartbeat_count = 0
     private_active_report_count = 0
     m33_motor_status_count = 0
@@ -356,6 +362,19 @@ def convert_candump_to_records(
             relative_time = float(frame['relative_time_s'])
             first_relative_time = relative_time if first_relative_time is None else first_relative_time
             last_relative_time = relative_time
+            if int(frame['can_id']) == PSOC_STATUS_ID:
+                safety_payload = parse_psoc_status_payload(frame['data'])
+                safety_payload['session_id'] = sid
+                safety_payload['relative_time_s'] = relative_time
+                records.append(
+                    make_payload_record('/rehab_arm/safety_state', safety_payload, now=relative_time)
+                )
+                safety_state_count += 1
+                if safety_payload.get('motion_allowed') is True:
+                    motion_allowed_true_count += 1
+                elif safety_payload.get('motion_allowed') is False:
+                    motion_allowed_false_count += 1
+                continue
             m33_motor = parse_m33_motor_status_frame(int(frame['can_id']), frame['data'])
             if m33_motor.get('valid') is True:
                 payload = make_motor_state_payload(
@@ -432,7 +451,7 @@ def convert_candump_to_records(
 
     summary = {
         'schema_version': 'rehab_arm_candump_motor_telemetry_summary_v1',
-        'ok': motor_state_count > 0,
+        'ok': motor_state_count > 0 or safety_state_count > 0,
         'source_log': str(source),
         'session_id': sid,
         'robot_id': robot_id,
@@ -443,6 +462,11 @@ def convert_candump_to_records(
         'm33_motor_status_count': m33_motor_status_count,
         'motor_state_count': motor_state_count,
         'joint_state_count': joint_state_count,
+        'safety_state_count': safety_state_count,
+        'motion_allowed_counts': {
+            'true': motion_allowed_true_count,
+            'false': motion_allowed_false_count,
+        },
         'ignored_count': ignored_count,
         'first_relative_time_s': first_relative_time,
         'last_relative_time_s': last_relative_time,

@@ -1362,6 +1362,7 @@ ros2 run rehab_arm_psoc_bridge candump_motor_telemetry \
 
 当前转换器解析三类只读遥测：
 
+- `0x322`：M33 安全状态，转换后 topic 为 `/rehab_arm/safety_state`，用于检查 `state/detail/control_mode/motion_allowed`。
 - `0x330~0x337`：M33 汇总后的正式电机/关节遥测草案，转换后 source 为 `candump_m33_motor_status`，并同时生成 `/rehab_arm/motor_state` 和 `/joint_states`。
 - `0x061`：`node_id=3` heartbeat，用来补充 enabled、fault、axis_state、error_code。
 - `0x069`：`node_id=3` encoder estimate，按 little-endian float 解码 position/velocity。
@@ -1374,14 +1375,15 @@ ros2 run rehab_arm_psoc_bridge candump_motor_telemetry \
 
 - 输出 summary 中 `ok=true`。
 - `motor_state_count` 大于 0。
+- 如果日志里包含 M33 `0x322`，`safety_state_count` 应大于 0，并且当前非穿戴/调试阶段 `motion_allowed_counts.true` 应为 0。
 - 如果日志里包含 M33 `0x330~0x337`，`m33_motor_status_count` 和 `joint_state_count` 都应大于 0。
 - JSONL 第一行是 `session_metadata`。
-- 后续记录 topic 至少包含 `/rehab_arm/motor_state`。
+- 后续记录 topic 至少包含 `/rehab_arm/safety_state` 或 `/rehab_arm/motor_state`。
 - M33 `0x330~0x337` 记录还会包含 `/joint_states`，用于仿真姿态、RViz、平台 three.js/URDF 预览和标注回放。
 - `/rehab_arm/motor_state` payload 的 `schema_version` 是 `rehab_arm_motor_state_v1`。
 - `control_boundary` 是 `telemetry_only_not_motor_command`。
 
-注意：`candump_motor_telemetry` 是离线日志转换工具，不打开 SocketCAN，不发 CAN，不发送 `0x320/0x321`，不控制 M33 或电机。闭环刚建立后的 `0x069` 第一次跳变可能包含估计器恢复，不要直接等同于真实机械位移。
+注意：`candump_motor_telemetry` 是离线日志转换工具，不打开 SocketCAN，不发 CAN，不发送 `0x320/0x321`，不控制 M33 或电机。`/joint_states` 和 `/rehab_arm/motor_state` 只能证明状态可见，不能证明允许运动；运动候选许可仍只看 `/rehab_arm/safety_state.motion_allowed`。闭环刚建立后的 `0x069` 第一次跳变可能包含估计器恢复，不要直接等同于真实机械位移。
 
 如果要临时抓 4/5/6/7 的原始周期状态，先由调试工具打开 private active-report，再抓包，测试结束必须关闭 active-report。正式 ROS 路径后续仍要由 M33 聚合并发布 `/rehab_arm/motor_state`，NanoPi 直接打开 private active-report 只用于调试接收链路。
 

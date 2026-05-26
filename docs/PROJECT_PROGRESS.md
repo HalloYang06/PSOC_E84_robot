@@ -51,6 +51,13 @@
 
 ### 2026-05-26
 
+- candump 真 CAN 离线验收工具补齐安全状态：
+  - `candump_motor_telemetry.py` 现在解析 M33 `0x322` 并输出 `/rehab_arm/safety_state` JSONL 记录。
+  - summary 新增 `safety_state_count` 和 `motion_allowed_counts`，方便上电后确认状态链路可见且调试阶段没有误报运动许可。
+  - 保持原有 `0x330~0x337 -> /rehab_arm/motor_state + /joint_states` 行为不变。
+  - 验证：`python -m unittest test_candump_motor_telemetry.py test_m33_ros_contract.py test_data_recording.py`，61 tests passed；`py_compile candump_motor_telemetry.py` 通过。
+  - 下一步：有电时抓一段只读 candump，转换 JSONL 并检查 `safety_state_count > 0`、`motion_allowed_counts.true == 0`、`m33_motor_status_count/joint_state_count > 0`。
+
 - M33 安全状态和 ROS topic 组合合同：
   - 新增 `m33_ros_contract.py`，可离线把 M33 `0x322` 安全状态和 `0x330~0x337` 电机遥测组合成 `/rehab_arm/safety_state`、`/rehab_arm/motor_state`、`/joint_states` 记录。
   - 新增 `test_m33_ros_contract.py`，覆盖 limited/logging-only 有遥测但不允许运动、ok/armed/none 才允许运动候选、坏电机帧不生成假 joint state。
