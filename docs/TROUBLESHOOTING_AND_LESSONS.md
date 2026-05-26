@@ -2721,3 +2721,26 @@ PREARM_MOTORS: required_mask=0x0000007F fresh_mask=0x00000000 ... fresh_ok=0
 状态：
 
 - 已验证 slot6 freshness 可观测；`ready` 仍保持 0。
+
+### Pre-arm 安全输入要区分“已确认”和“当前安全”
+
+现象：
+
+- 急停、供电、限位这些输入还没有接真实 GPIO/ADC。
+- 如果只用 `*_CONFIRMED=1` 表示“这一路做过验证”，后续可能忘记同时检查当前电平/电压/限位状态。
+
+根因：
+
+- 穿戴式设备的安全输入有两个不同问题：这路输入是否已经接线并验证过，以及此刻它是否处于安全状态。
+- 二者不能混成一个布尔值。
+
+技巧：
+
+- M33 pre-arm 需要同时满足 `confirmed=1` 和 `safe_now=1`。
+- 当前默认 `source=unwired`、`confirmed=0`、`safe_now=0`，所以 `ready=0` 是正确结果。
+- `cmd_m33_safety_inputs` 只打印合同，不改变模式，不允许输出。
+- `cmd_m33_prearm_check` 的 `PREARM_INPUT_DETAIL` 用来快速确认哪一路还没有接入或当前不安全。
+
+状态：
+
+- 已在 M33 侧加入诊断命令和收紧后的 ready 条件；等待用户烧录后现场验证。

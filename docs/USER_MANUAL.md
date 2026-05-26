@@ -872,6 +872,7 @@ PREARM_MASK: required_mask=0x0000007F source=config default_mask=0x0000007F
 PREARM_MODE: logging_only_clear=0 logging_only_compile=1 allow_with_logging_only=0
 PREARM_HEARTBEAT: ok=<0|1> age_ms=<n> timeout_ms=2500
 PREARM_INPUTS: estop_confirmed=0 power_confirmed=0 limits_confirmed=0
+PREARM_INPUT_DETAIL: estop source=unwired safe_now=0; power source=unwired safe_now=0; limits source=unwired safe_now=0
 PREARM_MOTORS: required_mask=0x0000007F fresh_mask=<mask> fault_mask=<mask> fresh_count=<n> fresh_ok=<0|1> fault_free=<0|1>
 PREARM_NOTE: diagnostic only; this command never changes mode and never enables motion
 ```
@@ -881,7 +882,29 @@ PREARM_NOTE: diagnostic only; this command never changes mode and never enables 
 - `ready=0` 是当前正确结果。
 - `logging_only_clear=0` 表示固件仍处于 logging-only，不允许真实输出。
 - `estop_confirmed/power_confirmed/limits_confirmed=0` 表示这些物理安全输入还没有接入并确认。
+- `source=unwired safe_now=0` 表示该安全输入当前没有真实硬件来源，也没有处于可放行状态。
 - `fresh_mask` 只表示 M33 最近收到哪些电机反馈，不等于可以运动。
+
+也可以单独查看物理安全输入合同：
+
+```text
+cmd_m33_safety_inputs
+```
+
+当前默认期望输出类似：
+
+```text
+SAFETY_INPUT: name=estop source=unwired confirmed=0 safe_now=0 meaning=emergency stop input must be wired, tested, and released
+SAFETY_INPUT: name=power source=unwired confirmed=0 safe_now=0 meaning=motor power and voltage must be monitored and inside safe range
+SAFETY_INPUT: name=limits source=unwired confirmed=0 safe_now=0 meaning=joint limits must be calibrated before any assisted motion
+SAFETY_INPUT_NOTE: diagnostic only; defaults are unwired/unconfirmed and must block prearm
+```
+
+通过标准：
+
+- `confirmed=0` 和 `safe_now=0` 是当前正确结果。
+- 这一步只说明安全输入合同已经能被串口看到，不代表可以运动。
+- 后续接真实急停、电源检测、限位检测时，必须同时证明 `confirmed=1` 和 `safe_now=1`，并且仍要满足 heartbeat、logging mode、motor freshness、fault-free 等条件。
 
 已验证的烧录后输出：
 

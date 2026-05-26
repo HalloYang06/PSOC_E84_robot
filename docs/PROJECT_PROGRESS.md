@@ -1254,3 +1254,14 @@
 - Observed: `PREARM ready=0 motion_allowed_would_be=0` remained correct because logging-only and physical safety inputs are still not cleared.
 - Safety: no trajectory or `0x320` was sent; the mask only changed the diagnostic motor-freshness requirement for one command invocation.
 - Next step: define real physical safety input confirmation sources for estop/power/limits, still without enabling motion.
+
+### 2026-05-26 - M33 physical safety input contract draft
+
+- Completed: M33 branch `M33` now has explicit pre-arm safety input fields for estop, motor power, and joint limits.
+- Completed: added default sources as `unwired` and default `safe_now=0`, so the firmware cannot pre-arm until both the input source is confirmed and the live safe state is true.
+- Completed: added M33 shell command `cmd_m33_safety_inputs` to print the physical safety input contract without changing mode or enabling output.
+- Completed: `cmd_m33_prearm_check` now prints `PREARM_INPUT_DETAIL` with each input source and current safe state.
+- Validated: forced ARM GCC compile of `Debug/applications/control/control_layer.o` succeeded.
+- Not validated: full firmware image was not relinked or flashed in this turn; user will flash when ready.
+- Safety: this is diagnostic-only. It deliberately keeps `ready=0` and does not change `0x322 motion_allowed`.
+- Next step: after flashing, run `cmd_m33_safety_inputs` and `cmd_m33_prearm_check 0x40`; confirm safety inputs are still unwired/unconfirmed before assigning real GPIO or ADC sources.
