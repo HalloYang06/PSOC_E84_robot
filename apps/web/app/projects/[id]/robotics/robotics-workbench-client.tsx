@@ -52,6 +52,7 @@ type DebugWindow = {
 
 type TileTab = "terminal" | "dataset" | "chart" | "model";
 type DeviceTab = "data" | "camera" | "dataset" | "chart" | "model";
+type DeviceWorkbenchMode = "boards" | "interfaces";
 
 type RoboticsWorkbenchClientProps = {
   projectId: string;
@@ -1475,6 +1476,18 @@ function configuredDebugWindows(resources: DebugWindow[], configs: SavedDebugWin
     .filter(Boolean) as DebugWindow[];
 }
 
+function defaultDebugWindowConfig(resource: DebugWindow, defaultNpcId: string): SavedDebugWindow {
+  return {
+    resourceId: resource.id,
+    name: resource.name,
+    type: resource.kind,
+    baudRate: text(resource.baudRate, "115200"),
+    sampleHz: text(resource.sampleHz, "100"),
+    channels: text(resource.channels, "time,signal.value,status.code,event.count"),
+    boundNpc: text(resource.boundNpc, defaultNpcId),
+  };
+}
+
 function DebugTile({
   projectId,
   tile,
@@ -2112,6 +2125,7 @@ export function RoboticsWorkbenchClient({
 }: RoboticsWorkbenchClientProps) {
   const [defaultNpcId, setDefaultNpcId] = useState(initialNpcId);
   const [savedWindows, setSavedWindows] = useState<SavedDebugWindow[]>(initialSavedWindows);
+  const [workbenchMode, setWorkbenchMode] = useState<DeviceWorkbenchMode>("boards");
   const router = useRouter();
   const configuredWindows = useMemo(() => configuredDebugWindows(windows, savedWindows), [windows, savedWindows]);
   const [openIds, setOpenIds] = useState<string[]>(() => {
@@ -2129,11 +2143,12 @@ export function RoboticsWorkbenchClient({
     () => openIds.map((id) => devices.find((device, index) => deviceId(device, index) === id)).filter(Boolean) as AnyRecord[],
     [openIds, devices],
   );
+  const openCount = openDevices.length + openWindows.length;
   const needsLiveRefresh = terminalMessages.some((message) => {
     const type = text(message.message_type ?? message.messageType, "");
     const status = text(message.status, "");
     return type === "runner_command" && ["pending", "queued", "acked", "in_progress", "running"].includes(status);
-  }) || openDevices.length > 0;
+  }) || openCount > 0;
 
   useEffect(() => {
     if (!needsLiveRefresh) return;
@@ -2175,9 +2190,34 @@ export function RoboticsWorkbenchClient({
     setOpenIds((curr) => curr.includes(id) ? curr.filter((item) => item !== id) : [...curr, id]);
   }
 
+  function openDebugResource(resource: DebugWindow) {
+    const configured = configuredWindows.find((item) => item.id === resource.id);
+    const config = savedWindows.find((item) => item.resourceId === resource.id) ?? defaultDebugWindowConfig(resource, defaultNpcId);
+    if (!configured) {
+      setSavedWindows((current) => [...current.filter((item) => item.resourceId !== resource.id), config]);
+    }
+    setOpenIds((current) => current.includes(resource.id) ? current.filter((item) => item !== resource.id) : [...current, resource.id]);
+  }
+
+  function openAllForMode() {
+    if (workbenchMode === "boards") {
+      setOpenIds((current) => Array.from(new Set([...current, ...devices.map((device, index) => deviceId(device, index))])));
+      return;
+    }
+    const nextConfigs = usableWindows.map((resource) => savedWindows.find((item) => item.resourceId === resource.id) ?? defaultDebugWindowConfig(resource, defaultNpcId));
+    setSavedWindows((current) => {
+      const byId = new Map(current.map((item) => [item.resourceId, item]));
+      nextConfigs.forEach((config) => byId.set(config.resourceId, config));
+      return Array.from(byId.values());
+    });
+    setOpenIds((current) => Array.from(new Set([...current, ...usableWindows.map((resource) => resource.id)])));
+  }
+
   function closeWindow(id: string) {
     setOpenIds((curr) => curr.filter((item) => item !== id));
   }
+
+  const modeItemCount = workbenchMode === "boards" ? devices.length : usableWindows.length;
 
   return (
     <main className={`${workbenchStyles.shell} ${styles.roboticsWorkbenchShell}`}>
@@ -2186,14 +2226,15 @@ export function RoboticsWorkbenchClient({
           <Link className={workbenchStyles.backLink} href={`/projects/${projectId}`}>← 主页面</Link>
           <div className={workbenchStyles.title}>
             <strong>{projectName}</strong>
-            <small>设备数据工作台 · Linux 开发板接入、数据采集、标注、图表和模型预览</small>
+            <small>设备数据工作台 · Linux 开发板、串口/CAN/USB 设备、采集、标注和调试</small>
           </div>
         </div>
         <div className={workbenchStyles.topbarRight}>
-          <span className={workbenchStyles.kpi}>机器人设备 {devices.length}</span>
-          <span className={workbenchStyles.kpi}>已打开 {openDevices.length}</span>
+          <span className={workbenchStyles.kpi}>开发板 {devices.length}</span>
+          <span className={workbenchStyles.kpi}>接口设备 {usableWindows.length}</span>
+          <span className={workbenchStyles.kpi}>已打开 {openCount}</span>
           <span className={workbenchStyles.kpi}>可标注 {devices.filter(dataQualityReady).length}</span>
-          <span className={workbenchStyles.kpi}>Linux 接口 {scannedInterfaceCount}</span>
+          <span className={workbenchStyles.kpi}>扫描接口 {scannedInterfaceCount}</span>
         </div>
       </header>
 
@@ -2203,70 +2244,124 @@ export function RoboticsWorkbenchClient({
             <input
               type="search"
               className={workbenchStyles.search}
-              placeholder="搜索机器人设备"
+              placeholder="搜索开发板或接口设备"
               readOnly
               value="设备数据工作台"
             />
-            <button type="button" className={workbenchStyles.batchBtn} onClick={() => setOpenIds(devices.map((device, index) => deviceId(device, index)))}>
-              打开全部 ({devices.length})
+            <div className={styles.deviceModeSwitch} aria-label="选择设备类型">
+              <button type="button" data-active={workbenchMode === "boards" ? "1" : "0"} onClick={() => setWorkbenchMode("boards")}>
+                Linux 开发板
+              </button>
+              <button type="button" data-active={workbenchMode === "interfaces" ? "1" : "0"} onClick={() => setWorkbenchMode("interfaces")}>
+                串口与设备
+              </button>
+            </div>
+            <button type="button" className={workbenchStyles.batchBtn} onClick={openAllForMode}>
+              打开当前类型 ({modeItemCount})
             </button>
             <form action={请求串口USB扫描.bind(null, projectId)} className={styles.scanInlineForm}>
               <input type="hidden" name="return_to" value={`/projects/${projectId}/robotics`} />
               <input type="hidden" name="computer_node_id" value="all" />
-              <button type="submit" disabled={!computerCount}>扫描 Linux 开发板接口</button>
+              <button type="submit" disabled={!computerCount}>
+                {workbenchMode === "boards" ? "扫描 Linux 开发板" : "扫描串口/CAN/USB 设备"}
+              </button>
             </form>
           </div>
           <ul className={workbenchStyles.groupList}>
-            <li className={workbenchStyles.group}>
-              <div className={workbenchStyles.groupHeader}>
-                <span>机器人设备</span>
-                <small>{devices.length} 台</small>
-              </div>
-              <ul className={workbenchStyles.npcList}>
-                {devices.map((device, index) => {
-                  const id = deviceId(device, index);
-                  const isOpen = openIds.includes(id);
-                  const counts = deviceDataCounts(device);
-                  return (
-                    <li key={id} className={`${workbenchStyles.npcRow} ${isOpen ? workbenchStyles.npcRowOpen : ""}`}>
+            {workbenchMode === "boards" ? (
+              <li className={workbenchStyles.group}>
+                <div className={workbenchStyles.groupHeader}>
+                  <span>Linux 开发板 / NanoPi</span>
+                  <small>{devices.length} 台</small>
+                </div>
+                <ul className={workbenchStyles.npcList}>
+                  {devices.map((device, index) => {
+                    const id = deviceId(device, index);
+                    const isOpen = openIds.includes(id);
+                    const counts = deviceDataCounts(device);
+                    return (
+                      <li key={id} className={`${workbenchStyles.npcRow} ${isOpen ? workbenchStyles.npcRowOpen : ""}`}>
+                        <div className={workbenchStyles.npcMain}>
+                          <strong className={workbenchStyles.npcName}>{deviceTitle(device, index)}</strong>
+                          <small className={workbenchStyles.npcMeta}>
+                            <span className={text(device.online_state) === "online" ? workbenchStyles.dotOnline : workbenchStyles.dot} />
+                            {id} · 电机 {counts.motors} · 传感 {counts.sensorFields} · {deviceSafetyText(device)}
+                          </small>
+                        </div>
+                        <span className={styles.windowRowActions}>
+                          <button
+                            type="button"
+                            className={workbenchStyles.openBtn}
+                            aria-label={`${isOpen ? "关闭" : "打开"} ${deviceTitle(device, index)}`}
+                            onClick={() => toggleWindow(id)}
+                          >
+                            {isOpen ? "✕" : "+"}
+                          </button>
+                        </span>
+                      </li>
+                    );
+                  })}
+                  {!devices.length ? (
+                    <li className={workbenchStyles.npcRow}>
                       <div className={workbenchStyles.npcMain}>
-                        <strong className={workbenchStyles.npcName}>{deviceTitle(device, index)}</strong>
-                        <small className={workbenchStyles.npcMeta}>
-                          <span className={text(device.online_state) === "online" ? workbenchStyles.dotOnline : workbenchStyles.dot} />
-                          {id} · 电机 {counts.motors} · 传感 {counts.sensorFields} · {deviceSafetyText(device)}
-                        </small>
+                        <strong className={workbenchStyles.npcName}>等待 Linux 开发板接入</strong>
+                        <small className={workbenchStyles.npcMeta}>预配置脚本连接服务器并上传设备数据后自动出现</small>
                       </div>
-                      <span className={styles.windowRowActions}>
-                        <button
-                          type="button"
-                          className={workbenchStyles.openBtn}
-                          aria-label={`${isOpen ? "关闭" : "打开"} ${deviceTitle(device, index)}`}
-                          onClick={() => toggleWindow(id)}
-                        >
-                          {isOpen ? "✕" : "+"}
-                        </button>
-                      </span>
                     </li>
-                  );
-                })}
-                {!devices.length ? (
-                  <li className={workbenchStyles.npcRow}>
-                    <div className={workbenchStyles.npcMain}>
-                      <strong className={workbenchStyles.npcName}>等待 Linux 开发板接入</strong>
-                      <small className={workbenchStyles.npcMeta}>预配置脚本连接服务器并上传设备数据后自动出现</small>
-                    </div>
-                  </li>
-                ) : null}
-              </ul>
-            </li>
+                  ) : null}
+                </ul>
+              </li>
+            ) : (
+              <li className={workbenchStyles.group}>
+                <div className={workbenchStyles.groupHeader}>
+                  <span>串口 / CAN / USB 设备</span>
+                  <small>{usableWindows.length} 个</small>
+                </div>
+                <ul className={workbenchStyles.npcList}>
+                  {usableWindows.map((resource) => {
+                    const configured = configuredWindows.find((item) => item.id === resource.id);
+                    const isOpen = openIds.includes(resource.id);
+                    return (
+                      <li key={resource.id} className={`${workbenchStyles.npcRow} ${isOpen ? workbenchStyles.npcRowOpen : ""}`}>
+                        <div className={workbenchStyles.npcMain}>
+                          <strong className={workbenchStyles.npcName}>{configured?.name ?? resource.name}</strong>
+                          <small className={workbenchStyles.npcMeta}>
+                            <span className={resource.runnerReady ? workbenchStyles.dotOnline : workbenchStyles.dot} />
+                            {resource.kindLabel} · {resource.transport} · {resource.computerState}
+                          </small>
+                        </div>
+                        <span className={styles.windowRowActions}>
+                          <button
+                            type="button"
+                            className={workbenchStyles.openBtn}
+                            aria-label={`${isOpen ? "关闭" : "打开"} ${resource.name}`}
+                            onClick={() => openDebugResource(resource)}
+                          >
+                            {isOpen ? "✕" : "+"}
+                          </button>
+                        </span>
+                      </li>
+                    );
+                  })}
+                  {!usableWindows.length ? (
+                    <li className={workbenchStyles.npcRow}>
+                      <div className={workbenchStyles.npcMain}>
+                        <strong className={workbenchStyles.npcName}>等待扫描真实接口</strong>
+                        <small className={workbenchStyles.npcMeta}>扫描 Linux 开发板上的串口、CAN、USB 或其他设备接口</small>
+                      </div>
+                    </li>
+                  ) : null}
+                </ul>
+              </li>
+            )}
           </ul>
         </aside>
 
-        <section className={workbenchStyles.main} data-mode={openDevices.length > 0 ? "chat" : "setup"}>
+        <section className={workbenchStyles.main} data-mode={openCount > 0 ? "chat" : "setup"}>
           {notice ? <div className={styles.inlineNotice} data-tone="success">{notice}</div> : null}
           {error ? <div className={styles.inlineNotice} data-tone="danger">{error}</div> : null}
-          {openDevices.length ? (
-            <div className={`${workbenchStyles.tileGrid} ${styles.deviceTileGrid}`} data-tile-count={openDevices.length}>
+          {openCount ? (
+            <div className={`${workbenchStyles.tileGrid} ${styles.deviceTileGrid}`} data-tile-count={openCount}>
               {openDevices.map((device, index) => (
                 <DeviceDataTile
                   key={deviceId(device, index)}
@@ -2278,6 +2373,19 @@ export function RoboticsWorkbenchClient({
                   onClose={() => closeWindow(deviceId(device, index))}
                 />
               ))}
+              {openWindows.map((tile) => (
+                <DebugTile
+                  key={tile.id}
+                  projectId={projectId}
+                  tile={tile}
+                  openIds={openIds}
+                  npcSeats={npcSeats}
+                  terminalMessages={terminalMessages}
+                  deviceQualityDevices={deviceQualityDevices}
+                  initialNpcId={text(tile.boundNpc, defaultNpcId)}
+                  onClose={() => closeWindow(tile.id)}
+                />
+              ))}
             </div>
           ) : (
             <div className={styles.overviewPage}>
@@ -2286,18 +2394,22 @@ export function RoboticsWorkbenchClient({
               <section className={styles.nextActionPanel} aria-label="下一步操作">
                 <div>
                   <span>下一步</span>
-                  <strong>{devices.length ? "从左栏打开一台设备" : "先让 Linux 开发板上传设备数据"}</strong>
-                  <p>{devices.length ? "每台设备都有 NanoPi 数据、摄像头、数据标注、图表实验和模型预览标签。" : "预配置脚本连接服务器并上传 motor_state、sensor_state、safety_state、camera_keyframe 后会自动成为左侧设备。"}</p>
+                  <strong>{workbenchMode === "boards" ? "打开一台 Linux 开发板" : "打开一个串口/CAN/USB 设备"}</strong>
+                  <p>{workbenchMode === "boards" ? "开发板显示 NanoPi 数据、摄像头、标注、图表和模型预览。" : "接口设备会进入带终端的调试页面，可做串口/CAN/USB 采集、NPC 辅助和图表实验。"}</p>
                 </div>
                 <div className={styles.quickActionGrid}>
                   <form action={请求串口USB扫描.bind(null, projectId)}>
                     <input type="hidden" name="return_to" value={`/projects/${projectId}/robotics`} />
                     <input type="hidden" name="computer_node_id" value="all" />
-                    <button type="submit" disabled={!computerCount}>扫描 Linux 开发板接口</button>
+                    <button type="submit" disabled={!computerCount}>
+                      {workbenchMode === "boards" ? "扫描 Linux 开发板" : "扫描串口/CAN/USB 设备"}
+                    </button>
                   </form>
                   <a href="#model-preview">导入模型</a>
-                  {devices[0] ? (
-                    <button type="button" onClick={() => setOpenIds([deviceId(devices[0], 0)])}>打开最近设备</button>
+                  {workbenchMode === "boards" && devices[0] ? (
+                    <button type="button" onClick={() => setOpenIds([deviceId(devices[0], 0)])}>打开最近开发板</button>
+                  ) : workbenchMode === "interfaces" && usableWindows[0] ? (
+                    <button type="button" onClick={() => openDebugResource(usableWindows[0])}>打开最近接口</button>
                   ) : (
                     <span>等待设备上传</span>
                   )}

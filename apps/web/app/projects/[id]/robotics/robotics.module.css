@@ -929,6 +929,39 @@
   color: rgba(220, 240, 255, 0.38);
 }
 
+.deviceModeSwitch {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid rgba(88, 240, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(1, 8, 12, 0.5);
+}
+
+.deviceModeSwitch button {
+  min-width: 0;
+  min-height: 30px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(220, 240, 255, 0.72);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deviceModeSwitch button[data-active="1"] {
+  border-color: rgba(120, 230, 170, 0.36);
+  background: rgba(120, 230, 170, 0.12);
+  color: #dffff0;
+}
+
 .dataWorkbenchPane,
 .modelWorkbenchPane {
   flex: 1;
