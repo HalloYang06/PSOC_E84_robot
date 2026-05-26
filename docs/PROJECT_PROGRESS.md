@@ -1585,3 +1585,12 @@
 - Validated: heartbeat before/after returned `0x322` with `detail_code=0`; can0 stayed `ERROR-ACTIVE`, tx/rx error counters `0/0`.
 - Observed: stop emitted `0x0400FD07`; post-stop M33 aggregate reported motor7 around `0x043F = 1.087 rad`.
 - Next step: user confirms visible motion was about `5°`; if yes, repeat `-5°`, then test 4/5/6/7 one at a time.
+
+### 2026-05-26 - Motor7 formal CSP 30 degree trial
+
+- Completed: ran formal path `m33 target --joint 4 --deg 30 --rpm 1 --torque-ma 0`, waited about `1.8s`, then sent `m33 stop --joint 4`.
+- Validated: formal path stayed on CSP: `0x1200FD07` count `3`, `0x01800007` count `0`.
+- Validated: `loc_ref` payload `4905C33F` decodes to about `1.5236 rad`, matching temporary zero `1.0 rad + 30°`.
+- Observed: post-stop M33 aggregate reported motor7 around `0x052F = 1.327 rad`, so the motor was moving toward the 30° target but stopped before reaching it due to short wait/low speed.
+- Validated: heartbeat before/after returned `0x322` with `detail_code=0`; can0 stayed `ERROR-ACTIVE`, tx/rx error counters `0/0`.
+- Next step: if the user confirms the observed partial motion is reasonable, repeat with a longer wait or higher rpm to reach the full `30°` target.
