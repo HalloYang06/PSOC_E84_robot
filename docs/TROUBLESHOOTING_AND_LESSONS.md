@@ -3417,3 +3417,25 @@ Connection reset by 192.168.2.66 port 22
 状态：
 
 - 待烧录后验证。
+
+### Motor3 CANSimple 速度参数是电机侧，输出端要按 48:1 看
+
+现象：
+
+- Direct `cansimple vel --node 3 --vel 0.5` 数据通了，但输出端可能不明显。
+- Direct `--vel 8.0` 跑约 `2s` 后，M33 `0x332` 输出角从约 `0.739 rad` 到 `1.147 rad`，变化约 `23.4°`。
+
+判断：
+
+- NanoPi direct CANSimple `--vel` 是电机侧 rad/s，不是输出关节侧 rad/s。
+- 3号保留 48:1 映射是合理的：输出角约等于电机侧角度除以 48。
+
+修正：
+
+- M33 3号台架配置保持 `CONTROL_MOTOR_JOINT3_GEAR_RATIO=(48.0f)`。
+- 当前台架姿态作为临时零点：`CONTROL_MOTOR_JOINT3_ZERO_OFFSET_RAD=(55.1f)`。
+- 放开台架 formal：`CONTROL_MOTOR_JOINT3_CALIBRATED=1U`。
+
+状态：
+
+- 待烧录后验证 formal joint0 小角度控制。

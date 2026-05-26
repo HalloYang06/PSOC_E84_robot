@@ -1594,3 +1594,13 @@
 - Observed: post-stop M33 aggregate reported motor7 around `0x052F = 1.327 rad`, so the motor was moving toward the 30° target but stopped before reaching it due to short wait/low speed.
 - Validated: heartbeat before/after returned `0x322` with `detail_code=0`; can0 stayed `ERROR-ACTIVE`, tx/rx error counters `0/0`.
 - Next step: if the user confirms the observed partial motion is reasonable, repeat with a longer wait or higher rpm to reach the full `30°` target.
+
+### 2026-05-26 - Motor3 CANSimple direct bring-up and bench zero
+
+- Completed: direct-tested 3号 Sitaiwei CANSimple node3 with clear, closed-loop, velocity command, and idle.
+- Validated: CANSimple heartbeat/status traffic was present; `0x061` heartbeat showed closed-loop state during the velocity test and idle after stop.
+- Completed: ran a more visible direct velocity test: motor-side `8 rad/s` for about `2s`, then idle.
+- Observed: M33 aggregate `0x332` moved from about `0.739 rad` to about `1.147 rad`, a change of about `23.4°`, consistent with a 48:1 output mapping.
+- Completed M33 bench config update: set `CONTROL_MOTOR_JOINT3_CALIBRATED=1U` and `CONTROL_MOTOR_JOINT3_ZERO_OFFSET_RAD=(55.1f)` so current bench pose becomes ROS joint0 zero while retaining `48:1`.
+- Safety: this is a temporary bench zero only; it does not validate the installed mechanical zero or final limits.
+- Next step: user flashes M33, then test formal path `m33 target --joint 0 --deg 5 --rpm 1`; expected physical output is about `5°`.

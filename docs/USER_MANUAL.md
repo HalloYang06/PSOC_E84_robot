@@ -2414,6 +2414,20 @@ python3 rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/calibr
 
 M33 正式 `0x320 set_target` 对 4/5/6/7 灵足电机使用官方 CSP 参数流：`run_mode=5`、enable、`limit_spd(0x7017)`、`loc_ref(0x7016)`。因此 ROS joint4 `+5°` 预期就是输出端约 `+5°`。
 
+3号 Sitaiwei CANSimple 当前台架版本使用：
+
+- `CONTROL_MOTOR_JOINT3_GEAR_RATIO=(48.0f)`
+- `CONTROL_MOTOR_JOINT3_ZERO_OFFSET_RAD=(55.1f)`
+- `CONTROL_MOTOR_JOINT3_CALIBRATED=1U`
+
+3号对应 ROS joint0。烧录后可先测：
+
+```bash
+python3 /home/pi/nanopi_can_master.py heartbeat --iface can0 --seq 92 --wait 0.3
+python3 /home/pi/nanopi_can_master.py m33 target --iface can0 --joint 0 --deg 5 --rpm 1 --torque-ma 0 --wait 0.3
+python3 /home/pi/nanopi_can_master.py m33 stop --iface can0 --joint 0 --wait 0.3
+```
+
 烧录台架版本 M33 后，直接做极小角度测试。7 号对应 ROS joint4：
 
 ```bash
