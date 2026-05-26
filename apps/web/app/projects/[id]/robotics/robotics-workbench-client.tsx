@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { apiClientUrl } from "../../../../lib/api-client-url";
 import {
@@ -88,6 +88,293 @@ function text(value: unknown, fallback = "") {
 
 function record(value: unknown): AnyRecord {
   return value && typeof value === "object" ? value as AnyRecord : {};
+}
+
+function asArray<T>(value: unknown): T[] {
+  return Array.isArray(value) ? (value as T[]) : [];
+}
+
+function payloadOf(value: unknown): AnyRecord {
+  const next = record(value);
+  return record(next.payload);
+}
+
+function numberText(value: unknown, unit = "") {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "-";
+  return `${Number.isInteger(number) ? number : number.toFixed(2)}${unit}`;
+}
+
+const OPEN_SOURCE_MESH_URL = "/assets/open-source/robot-expressive/RobotExpressive.glb";
+
+const ARM_STATE_MODEL = {
+  joints: [
+    "shoulder_lift_joint",
+    "shoulder_abduction_joint",
+    "upper_arm_rotation_joint",
+    "elbow_lift_joint",
+    "forearm_rotation_joint",
+  ],
+  links: [
+    { name: "shoulder", length: 0.42, radius: 0.045 },
+    { name: "upper_arm", length: 0.46, radius: 0.04 },
+    { name: "forearm", length: 0.38, radius: 0.035 },
+    { name: "wrist", length: 0.18, radius: 0.03 },
+  ],
+};
+
+function latestMotorStateDevice(devices: AnyRecord[]) {
+  const sorted = devices
+    .filter((device) => asArray(record(payloadOf(device.motor_state)).motors).length > 0)
+    .sort((a, b) => Number(record(a.motor_state).ts_unix ?? 0) - Number(record(b.motor_state).ts_unix ?? 0));
+  return sorted[sorted.length - 1];
+}
+
+function motorsFromDevices(devices: AnyRecord[]) {
+  return asArray<AnyRecord>(payloadOf(latestMotorStateDevice(devices)?.motor_state).motors);
+}
+
+function jointPositionsFromMotors(motors: AnyRecord[]) {
+  const byName = new Map(motors.map((motor) => [text(motor.joint_name), Number(motor.position)]));
+  return ARM_STATE_MODEL.joints.map((name, index) => {
+    const value = byName.get(name);
+    if (Number.isFinite(value)) return Number(value);
+    return [0.24, -0.16, 0.18, 0.58, -0.2][index] ?? 0;
+  });
+}
+
+function motorForJoint(motors: AnyRecord[], jointName: string, index: number) {
+  return motors.find((motor) => text(motor.joint_name) === jointName)
+    ?? motors.find((motor) => Number(motor.motor_id) === index + 1)
+    ?? motors[index]
+    ?? {};
+}
+
+function temperatureOf(motor: AnyRecord) {
+  const direct = Number(motor.temperature);
+  if (Number.isFinite(direct)) return direct;
+  const temp = Number(record(motor.telemetry).temperature);
+  return Number.isFinite(temp) ? temp : null;
+}
+
+function temperatureColor(temp: number | null) {
+  if (temp == null) return 0x6f8d91;
+  if (temp < 38) return 0x65d6ff;
+  if (temp < 50) return 0x75e6a8;
+  if (temp < 65) return 0xf1d06b;
+  if (temp < 78) return 0xff9b5f;
+  return 0xff5f5f;
+}
+
+function latestMotorStateLine(device: AnyRecord | undefined, motors: AnyRecord[]) {
+  if (!device || !motors.length) return "等待设备上传 motor_state；可先加载开源 mesh 验证模型显示。";
+  const ts = Number(record(device.motor_state).ts_unix);
+  const when = Number.isFinite(ts) && ts > 0 ? new Date(ts * 1000).toLocaleString("zh-CN", { hour12: false }) : "无时间戳";
+  return `${text(device.robot_id, "设备")} · ${text(device.device_id, "-")} · ${motors.length} 个电机 · ${when}`;
+}
+
+function MotorState3DViewer({
+  motors,
+  sourceLine,
+  syncEnabled,
+  showOpenSourceMesh,
+}: {
+  motors: AnyRecord[];
+  sourceLine: string;
+  syncEnabled: boolean;
+  showOpenSourceMesh: boolean;
+}) {
+  const mountRef = useRef<HTMLDivElement | null>(null);
+  const positions = useMemo(() => jointPositionsFromMotors(motors), [motors]);
+
+  useEffect(() => {
+    const mount = mountRef.current;
+    if (!mount) return;
+    let disposed = false;
+    let cleanup = () => {};
+
+    async function renderArm() {
+      const THREE = await import("three");
+      const { OrbitControls } = await import("three/examples/jsm/controls/OrbitControls.js");
+      if (disposed || !mountRef.current) return;
+      const target = mountRef.current;
+      const width = Math.max(320, target.clientWidth || 680);
+      const height = Math.max(300, target.clientHeight || 420);
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x061014);
+
+      const camera = new THREE.PerspectiveCamera(42, width / height, 0.01, 100);
+      camera.position.set(1.25, -1.45, 0.9);
+      camera.lookAt(0.25, 0.1, 0.2);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.setSize(width, height);
+      renderer.domElement.setAttribute("aria-label", "motor_state 机械臂状态预览");
+      target.replaceChildren(renderer.domElement);
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.08;
+      controls.enablePan = true;
+      controls.enableZoom = true;
+      controls.minDistance = 0.55;
+      controls.maxDistance = 3.8;
+      controls.target.set(0.24, 0.16, 0.18);
+      controls.update();
+
+      scene.add(new THREE.HemisphereLight(0xecffff, 0x0a272f, 2.1));
+      const keyLight = new THREE.DirectionalLight(0xffffff, 1.35);
+      keyLight.position.set(1.4, -1.8, 2.2);
+      scene.add(keyLight);
+      const fillLight = new THREE.DirectionalLight(0x75f7dd, 0.55);
+      fillLight.position.set(-1.1, 1.1, 1.2);
+      scene.add(fillLight);
+      scene.add(new THREE.GridHelper(1.5, 12, 0x214a48, 0x10272b));
+
+      const base = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.12, 0.14, 0.08, 40),
+        new THREE.MeshStandardMaterial({ color: 0x1b3a3c, roughness: 0.62, metalness: 0.12 }),
+      );
+      base.position.y = 0.04;
+      scene.add(base);
+
+      const group = new THREE.Group();
+      group.position.y = 0.1;
+      scene.add(group);
+
+      let cursor = new THREE.Vector3(0, 0, 0);
+      let yaw = positions[1] || 0;
+      let pitch = positions[0] || 0.28;
+      ARM_STATE_MODEL.links.forEach((link, index) => {
+        if (index === 2) pitch -= positions[3] || 0.38;
+        if (index === 3) yaw += positions[4] || 0;
+        const jointName = ARM_STATE_MODEL.joints[Math.min(index, ARM_STATE_MODEL.joints.length - 1)];
+        const motor = motorForJoint(motors, jointName, index);
+        const temp = temperatureOf(motor);
+        const color = temperatureColor(temp);
+        const dir = new THREE.Vector3(
+          Math.cos(pitch) * Math.cos(yaw),
+          Math.sin(pitch),
+          Math.cos(pitch) * Math.sin(yaw),
+        ).normalize();
+        const mid = cursor.clone().add(dir.clone().multiplyScalar(link.length / 2));
+        const mesh = new THREE.Mesh(
+          new THREE.CylinderGeometry(link.radius, link.radius, link.length, 28),
+          new THREE.MeshStandardMaterial({ color, roughness: 0.54, metalness: 0.12 }),
+        );
+        mesh.position.copy(mid);
+        mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+        group.add(mesh);
+        const joint = new THREE.Mesh(
+          new THREE.SphereGeometry(link.radius * 1.75, 24, 16),
+          new THREE.MeshStandardMaterial({ color, roughness: 0.42, metalness: 0.18 }),
+        );
+        joint.position.copy(cursor);
+        group.add(joint);
+        cursor = cursor.add(dir.multiplyScalar(link.length));
+      });
+      const end = new THREE.Mesh(
+        new THREE.SphereGeometry(0.045, 24, 16),
+        new THREE.MeshStandardMaterial({ color: 0xeaffff, roughness: 0.45, metalness: 0.12 }),
+      );
+      end.position.copy(cursor);
+      group.add(end);
+
+      if (showOpenSourceMesh) {
+        try {
+          const { GLTFLoader } = await import("three/examples/jsm/loaders/GLTFLoader.js");
+          const loader = new GLTFLoader();
+          loader.load(OPEN_SOURCE_MESH_URL, (gltf: any) => {
+            if (disposed) return;
+            const model = gltf.scene;
+            const box = new THREE.Box3().setFromObject(model);
+            const center = box.getCenter(new THREE.Vector3());
+            const size = box.getSize(new THREE.Vector3());
+            const maxDim = Math.max(size.x, size.y, size.z, 1);
+            model.position.sub(center);
+            model.scale.setScalar(0.34 / maxDim);
+            model.position.set(-0.34, 0.14, -0.28);
+            model.traverse((child: any) => {
+              if (child.isMesh) {
+                child.castShadow = true;
+                child.receiveShadow = true;
+              }
+            });
+            scene.add(model);
+          });
+        } catch {}
+      }
+
+      let frame = 0;
+      const animate = () => {
+        if (disposed) return;
+        frame = window.requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+      };
+      animate();
+
+      const resize = () => {
+        if (!mountRef.current) return;
+        const nextWidth = Math.max(320, mountRef.current.clientWidth || width);
+        const nextHeight = Math.max(300, mountRef.current.clientHeight || height);
+        camera.aspect = nextWidth / nextHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(nextWidth, nextHeight);
+      };
+      window.addEventListener("resize", resize);
+      cleanup = () => {
+        window.removeEventListener("resize", resize);
+        window.cancelAnimationFrame(frame);
+        controls.dispose();
+        renderer.dispose();
+        scene.traverse((object: any) => {
+          object.geometry?.dispose?.();
+          if (Array.isArray(object.material)) object.material.forEach((mat: any) => mat.dispose?.());
+          else object.material?.dispose?.();
+        });
+        scene.clear();
+        if (target.contains(renderer.domElement)) target.removeChild(renderer.domElement);
+      };
+    }
+
+    void renderArm();
+    return () => {
+      disposed = true;
+      cleanup();
+    };
+  }, [motors, positions, showOpenSourceMesh]);
+
+  return (
+    <section className={styles.motorStateViewer} aria-label="motor_state 3D 状态预览">
+      <div className={styles.motorStateViewerHead}>
+        <div>
+          <span>{syncEnabled ? "数据同步中" : "显示最近状态"}</span>
+          <strong>motor_state 驱动的机械臂姿态</strong>
+        </div>
+        <small>{sourceLine}</small>
+      </div>
+      <div ref={mountRef} className={styles.motorStateCanvas} data-testid="robotics-motor-state-canvas" />
+      <div className={styles.tempLegend} aria-label="温度颜色图例">
+        <span data-temp="cool">低温</span>
+        <span data-temp="normal">正常</span>
+        <span data-temp="warm">偏热</span>
+        <span data-temp="hot">高温</span>
+      </div>
+      <div className={styles.motorJointLegend}>
+        {ARM_STATE_MODEL.joints.map((joint, index) => {
+          const motor = motorForJoint(motors, joint, index);
+          const temp = temperatureOf(motor);
+          return (
+            <span key={joint}>
+              {joint}: {numberText(positions[index], " rad")} / {temp == null ? "无温度" : numberText(temp, " C")}
+            </span>
+          );
+        })}
+      </div>
+    </section>
+  );
 }
 
 function artifactDownloadHref(projectId: string, artifactPath: string) {
@@ -765,6 +1052,7 @@ function DebugTile({
   openIds,
   npcSeats,
   terminalMessages,
+  deviceQualityDevices,
   initialNpcId,
   onClose,
 }: {
@@ -773,11 +1061,14 @@ function DebugTile({
   openIds: string[];
   npcSeats: AnyRecord[];
   terminalMessages: AnyRecord[];
+  deviceQualityDevices: AnyRecord[];
   initialNpcId: string;
   onClose: () => void;
 }) {
   const [activeTab, setActiveTab] = useState<TileTab>("terminal");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [stateSyncEnabled, setStateSyncEnabled] = useState(false);
+  const [showOpenSourceMesh, setShowOpenSourceMesh] = useState(false);
   const [boundNpcId, setBoundNpcId] = useState(initialNpcId);
   const selectedNpcRecord = findSeatRecord(npcSeats, boundNpcId);
   const boundNpcLabel = selectedNpcRecord ? seatName(selectedNpcRecord, boundNpcId) : "";
@@ -794,6 +1085,8 @@ function DebugTile({
   const sampleHz = text(tile.sampleHz, "100");
   const baudRate = text(tile.baudRate, "115200");
   const channels = text(tile.channels, "time,signal.value,status.code,event.count");
+  const latestMotorDevice = latestMotorStateDevice(deviceQualityDevices);
+  const latestMotors = motorsFromDevices(deviceQualityDevices);
 
   return (
     <article className={tileStyles.tile}>
@@ -1266,12 +1559,74 @@ function DebugTile({
       ) : (
         <section className={styles.modelWorkbenchPane} aria-label={`${tile.name} 模型预览`}>
           <article className={`${styles.dataActionPanel} ${styles.dataFocusPanel}`}>
-            <span>模型预览</span>
-            <strong>导入 URDF 后在浏览器里只读查看结构</strong>
-            <p>这里用于检查 link、joint、limit 和模型姿态，后续接入 joint_states 回放。它不发送 ROS publish、service、action，也不下发任何硬件动作。</p>
+            <span>模型与状态预览</span>
+            <strong>用 motor_state 看整体机械臂状态</strong>
+            <p>这里把服务器最近收到的 motor_state 映射到 3D 结构，关节颜色表示温度。视图只读，不发送 ROS publish、service、action，也不下发任何硬件动作。</p>
+            <div className={styles.syncToolbar} aria-label="状态数据同步控制">
+              <form action={记录机器人采集片段.bind(null, projectId)}>
+                <input type="hidden" name="return_to" value={returnTo} />
+                <input type="hidden" name="computer_node_id" value={tile.computerNodeId} />
+                <input type="hidden" name="interface_id" value={tile.id} />
+                <input type="hidden" name="runner_interface_id" value={tile.runnerInterfaceId || tile.id} />
+                <input type="hidden" name="interface_name" value={tile.name} />
+                <input type="hidden" name="interface_kind" value={tile.kindLabel} />
+                <input type="hidden" name="bound_npc" value={effectiveBoundNpcId} />
+                <input type="hidden" name="bound_npc_label" value={effectiveBoundNpcLabel} />
+                <input type="hidden" name="sample_hz" value="20" />
+                <input type="hidden" name="baud_rate" value={baudRate} />
+                <input type="hidden" name="channels" value="/rehab_arm/motor_state,/joint_states,/rehab_arm/safety_state" />
+                <button
+                  type="submit"
+                  name="capture_mode"
+                  value="start"
+                  disabled={!tile.runnerReady}
+                  onClick={() => setStateSyncEnabled(true)}
+                >
+                  开始数据同步
+                </button>
+                <button
+                  type="submit"
+                  name="capture_mode"
+                  value="stop"
+                  disabled={!tile.runnerReady}
+                  onClick={() => setStateSyncEnabled(false)}
+                >
+                  关闭并生成片段
+                </button>
+              </form>
+              <button type="button" onClick={() => setShowOpenSourceMesh((value) => !value)}>
+                {showOpenSourceMesh ? "隐藏开源 mesh" : "加载开源 mesh"}
+              </button>
+            </div>
+            <MotorState3DViewer
+              motors={latestMotors}
+              sourceLine={latestMotorStateLine(latestMotorDevice, latestMotors)}
+              syncEnabled={stateSyncEnabled}
+              showOpenSourceMesh={showOpenSourceMesh}
+            />
             <ModelImportInspector />
           </article>
           <aside className={styles.dataDrawerRail} aria-label="模型预览说明">
+            <details className={styles.workbenchDrawer} open>
+              <summary>
+                <span>状态映射</span>
+                <strong>{latestMotors.length ? `${latestMotors.length} 个电机` : "等待 motor_state"}</strong>
+              </summary>
+              <article className={styles.dataActionPanel}>
+                {latestMotors.length ? (
+                  <ul className={styles.eventList}>
+                    {latestMotors.slice(0, 8).map((motor, index) => (
+                      <li key={`${text(motor.motor_id, "motor")}-${index}`}>
+                        <b>{text(motor.joint_name, `motor ${text(motor.motor_id, index + 1)}`)}</b>
+                        <small>位置 {numberText(motor.position, " rad")} · 速度 {numberText(motor.velocity, " rad/s")} · 温度 {temperatureOf(motor) == null ? "无" : numberText(temperatureOf(motor), " C")}</small>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p>等待 NanoPi 或服务器同步工具上传 `/rehab_arm/motor_state`。没有数据时只显示默认姿态和开源 mesh 示例。</p>
+                )}
+              </article>
+            </details>
             <details className={styles.workbenchDrawer} open>
               <summary>
                 <span>推荐流程</span>
@@ -1280,6 +1635,15 @@ function DebugTile({
               <article className={styles.dataActionPanel}>
                 <p>第一步导入 URDF 或 GLB，确认关节数量、父子 link 和 limit。第二步导出 manifest，作为项目模型证据。第三步再把采集片段里的 joint_states 对齐到同名关节。</p>
                 <p>如果 URDF 引用外部 mesh，平台第一版先显示结构和可解析的几何体；大型 mesh 后续交给模型资产索引，不直接塞进普通消息。</p>
+              </article>
+            </details>
+            <details className={styles.workbenchDrawer}>
+              <summary>
+                <span>开源 mesh</span>
+                <strong>RobotExpressive.glb / CC0</strong>
+              </summary>
+              <article className={styles.dataActionPanel}>
+                <p>“加载开源 mesh”会载入 Three.js 示例模型 `RobotExpressive.glb`，许可证为 CC0 1.0。它只用于验证 GLB 加载链路，不是本项目的正式机械臂模型。</p>
               </article>
             </details>
             <details className={styles.workbenchDrawer}>
@@ -1535,6 +1899,7 @@ export function RoboticsWorkbenchClient({
                   openIds={openIds}
                   npcSeats={npcSeats}
                   terminalMessages={terminalMessages}
+                  deviceQualityDevices={deviceQualityDevices}
                   initialNpcId={defaultNpcId}
                   onClose={() => closeWindow(window.id)}
                 />

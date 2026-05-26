@@ -1097,6 +1097,141 @@
   color: rgba(220, 240, 255, 0.38);
 }
 
+.syncToolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px;
+  border: 1px solid rgba(120, 230, 170, 0.18);
+  border-radius: 8px;
+  background: rgba(120, 230, 170, 0.06);
+}
+
+.syncToolbar form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.syncToolbar button {
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid rgba(120, 230, 170, 0.42);
+  border-radius: 7px;
+  background: rgba(120, 230, 170, 0.14);
+  color: #dffff0;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.syncToolbar button:disabled {
+  cursor: not-allowed;
+  border-color: rgba(167, 219, 255, 0.16);
+  background: rgba(167, 219, 255, 0.05);
+  color: rgba(220, 240, 255, 0.38);
+}
+
+.motorStateViewer {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(88, 240, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(1, 9, 14, 0.68);
+}
+
+.motorStateViewerHead {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.motorStateViewerHead div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.motorStateViewerHead small {
+  min-width: 120px;
+  max-width: 50%;
+  color: rgba(190, 220, 240, 0.66);
+  font-size: 11px;
+  line-height: 1.35;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.motorStateCanvas {
+  min-height: 340px;
+  border: 1px solid rgba(88, 240, 255, 0.14);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #061014;
+}
+
+.motorStateCanvas canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+  touch-action: none;
+}
+
+.tempLegend,
+.motorJointLegend {
+  min-width: 0;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.tempLegend span,
+.motorJointLegend span {
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 7px;
+  border: 1px solid rgba(88, 240, 255, 0.15);
+  border-radius: 7px;
+  background: rgba(88, 240, 255, 0.06);
+  color: rgba(234, 255, 255, 0.82);
+  font-size: 10.5px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.tempLegend span::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  margin-right: 5px;
+  border-radius: 999px;
+  background: #6f8d91;
+}
+
+.tempLegend span[data-temp="cool"]::before {
+  background: #65d6ff;
+}
+
+.tempLegend span[data-temp="normal"]::before {
+  background: #75e6a8;
+}
+
+.tempLegend span[data-temp="warm"]::before {
+  background: #f1d06b;
+}
+
+.tempLegend span[data-temp="hot"]::before {
+  background: #ff5f5f;
+}
+
 .fieldStack {
   min-width: 0;
   display: grid;
