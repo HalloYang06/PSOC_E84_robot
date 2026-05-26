@@ -3411,8 +3411,7 @@ rt_err_t control_joint_motor_set_target(rt_uint8_t joint_id,
                                         rt_bool_t enable)
 {
     float pos_rad;
-    float vel_rad_s;
-    float torque_nm;
+    float limit_spd_rad_s;
 
     if (!enable)
     {
@@ -3420,10 +3419,15 @@ rt_err_t control_joint_motor_set_target(rt_uint8_t joint_id,
     }
 
     pos_rad = ((float)target_pos_01deg) * 0.1f * RT_PI / 180.0f;
-    vel_rad_s = ((float)target_vel_rpm) * 2.0f * RT_PI / 60.0f;
-
-    /* Compatibility assumption: 1000 mA ~= 1 N.m */
-    torque_nm = ((float)target_torque_ma) / 1000.0f;
+    limit_spd_rad_s = ((float)target_vel_rpm) * 2.0f * RT_PI / 60.0f;
+    if (limit_spd_rad_s < 0.0f)
+    {
+        limit_spd_rad_s = -limit_spd_rad_s;
+    }
+    if (limit_spd_rad_s <= 0.0f)
+    {
+        limit_spd_rad_s = 0.1f;
+    }
 
     if (!ctrl_motor_joint_is_calibrated(joint_id))
     {
@@ -3434,13 +3438,7 @@ rt_err_t control_joint_motor_set_target(rt_uint8_t joint_id,
         return -RT_EINVAL;
     }
 
-    (void)control_motor_enable(joint_id);
-    return control_motor_private_control(joint_id,
-                                         ctrl_joint_to_motor_position(joint_id, pos_rad),
-                                         ctrl_joint_to_motor_velocity(joint_id, vel_rad_s),
-                                         CONTROL_MOTOR_DEFAULT_KP,
-                                         CONTROL_MOTOR_DEFAULT_KD,
-                                         torque_nm);
+    return control_motor_position_control(joint_id, pos_rad, limit_spd_rad_s, RT_TRUE);
 }
 
 rt_err_t control_joint_motor_stop(rt_uint8_t joint_id)
