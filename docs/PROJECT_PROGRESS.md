@@ -1575,3 +1575,13 @@
 - Conclusion: the board was still running firmware without commit `e9a76441`, or the flashed artifact was not built from the latest M33 branch.
 - Safety: no further formal target scaling conclusions should be drawn from this test because it did not exercise the intended CSP path.
 - Next step: rebuild/flash M33 commit `e9a76441`, then repeat and confirm `0x1200FD07` appears for `run_mode`, `limit_spd`, and `loc_ref`.
+
+### 2026-05-26 - Motor7 formal CSP path live validation
+
+- Completed: after flashing the CSP M33 firmware, ran formal path `m33 target --joint 4 --deg 5 --rpm 1 --torque-ma 0`, then `m33 stop --joint 4`.
+- Validated: formal path emitted the expected RobStride CSP parameter writes: `0x1200FD07` count `3` (`run_mode=5`, `limit_spd`, `loc_ref`).
+- Validated: no old MIT control frame appeared: `0x01800007` count `0`.
+- Validated: `loc_ref` payload `8C2B8B3F` decodes to about `1.087 rad`, matching temporary zero `1.0 rad + 5°`.
+- Validated: heartbeat before/after returned `0x322` with `detail_code=0`; can0 stayed `ERROR-ACTIVE`, tx/rx error counters `0/0`.
+- Observed: stop emitted `0x0400FD07`; post-stop M33 aggregate reported motor7 around `0x043F = 1.087 rad`.
+- Next step: user confirms visible motion was about `5°`; if yes, repeat `-5°`, then test 4/5/6/7 one at a time.
