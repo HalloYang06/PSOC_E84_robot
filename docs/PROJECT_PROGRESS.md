@@ -1623,3 +1623,30 @@
 - Diagnosed: M33 formal path `m33 target --joint 0 --deg 5` still produced no 3号 position-control frame because the board returned `0x322 = A5 79 07 00 01 02 0B 00`; detail code `0x0B` means `JOINT_UNCALIBRATED`.
 - Conclusion: 3号 motor/CANSimple path is working; the current blocker is the M33 formal safety calibration gate on the firmware currently running on the board.
 - Next step: flash a M33 build that contains the latest joint3 bench calibration (`CONTROL_MOTOR_JOINT3_CALIBRATED=1U`, zero offset around `55.1 rad`) or deliberately keep the gate closed and continue only direct CANSimple bench tests.
+
+### 2026-05-26 - Motor3 formal gate opened but current limit fix needed
+
+- Completed: after the user flashed the M33 bench firmware, retried formal `m33 target --joint 0 --deg 5 --rpm 1`.
+- Validated: M33 formal safety gate no longer rejected joint0; it emitted CANSimple node3 frames `0x06B` controller mode, `0x06F` limits, `0x067` closed-loop, and `0x06C` position target.
+- Observed: 3号 encoder changed only about `0.00408 rev`, which maps to about `0.03°`, not the intended `5°`.
+- Diagnosed: M33 `control_motor_position_control()` set CANSimple `Set_Limits` second float to `0.0`, so position mode likely had no usable current/torque limit.
+- Completed M33 fix in branch `M33`, commit `ed1cfc49`: added `CONTROL_CANSIMPLE_POSITION_LIMIT_CURRENT=(5.0f)` and used it for CANSimple position `Set_Limits`; feed-forward torque remains `0`.
+- Next step: user flashes M33 commit `ed1cfc49`, then retest formal joint0 `+5°` and only then try formal `+30°`.
+
+### 2026-05-26 - Motor3 direct 30 degree timed attempt had no node feedback
+
+- Completed: tried a direct CANSimple timed velocity pulse intended to approximate output `+30°`: motor-side `1 rev/s` for `4s`, then idle.
+- Safety: command ended with CANSimple idle; `can0` stayed `ERROR-ACTIVE`, tx/rx error counters `0/0`.
+- Observed: during this attempt no `0x061` heartbeat or `0x069` encoder estimate from node3 was captured; only M33 aggregate `0x332` cached status appeared.
+- Failed or unverified: because node3 feedback was absent, this attempt cannot be treated as a successful 30° movement even if a command frame was sent.
+- Next step: before any larger 3号 move, first confirm node3 `0x061/0x069` feedback is visible again, or have the user confirm visible motion while keeping the test as unverified in telemetry.
+
+### 2026-05-26 - Motor3 node3 offline during follow-up probe
+
+- User confirmed the attempted 30° move did not visibly move.
+- Completed: passive-listened on `can0` for `2s`; captured `0` frames.
+- Completed: sent node3 CANSimple probe/control frames `0x063 Get_Error`, `0x078 Clear_Errors`, `0x067 Closed-loop`, then `0x067 Idle`.
+- Observed: after the probe, only M33 aggregate cache frames `0x332` appeared; no node3 `0x061` heartbeat or `0x069` encoder estimate appeared.
+- Validated: NanoPi CAN stayed `ERROR-ACTIVE` and M33 heartbeat `0x321 -> 0x322` still worked.
+- Conclusion: the current blocker is that 3号 Sitaiwei node is not presently responding on the bus; do not continue motion tests until node3 feedback is restored.
+- Next step: check 3号 motor power/enable/CAN connection/protocol state, then re-run a passive `0x061/0x069` capture before sending any more 3号 motion commands.

@@ -3486,3 +3486,62 @@ Connection reset by 192.168.2.66 port 22
 状态：
 
 - 3号 direct CANSimple 已验证；formal M33 仍受当前板端固件 calibration gate 阻挡。
+
+### 3号 formal 发了位置帧但几乎不动时检查 Set_Limits 第二字段
+
+现象：
+
+- 烧录 bench firmware 后，formal `m33 target --joint 0 --deg 5` 不再被 `JOINT_UNCALIBRATED` 拦截。
+- CAN 上能看到 `0x06B`、`0x06F`、`0x067`、`0x06C`。
+- 但 `0x069` 只变化约 `0.00408 rev`，折算输出约 `0.03°`。
+
+判断：
+
+- M33 的 CANSimple position path 原先把 `Set_Limits` 第二个 float 写成 `0.0`。
+- 对伺泰威/ODrive-like 位置模式，这个字段不能作为可用限流长期为 0，否则位置目标可能发出但几乎没有执行能力。
+
+修正：
+
+- M33 commit `ed1cfc49` 增加 `CONTROL_CANSIMPLE_POSITION_LIMIT_CURRENT=(5.0f)`。
+- 位置目标仍发 `Torque_FF=0`，只是 `Set_Limits` 提供非零限流。
+
+状态：
+
+- 待烧录 `ed1cfc49` 后复测 formal joint0。
+
+### 3号大角度前必须先确认 0x061/0x069 在线
+
+现象：
+
+- direct 30° timed velocity attempt 发送了 `clear`、`closed-loop`、`velocity`、`idle` 命令。
+- 该次测试期间没有捕获到 3号 `0x061/0x069`，只看到 M33 `0x332` 缓存状态。
+
+判断：
+
+- 没有 `0x061/0x069` 时不能仅凭 TX 命令帧判断 3号已执行。
+- 先前 direct +5° 成功依赖 `0x069` 明确变化；同样标准也必须用于 30°验证。
+
+技巧：
+
+- 大角度前先被动监听 1~3 秒，确认 node3 heartbeat/encoder 在线。
+- 如果 node3 反馈缺失，先恢复 closed-loop/反馈，再做位置测试；不要把 M33 缓存状态当成电机实时反馈。
+
+### 3号没有 0x061/0x069 时不要继续盲发动作
+
+现象：
+
+- 用户确认 3号 30°尝试没有动。
+- 被动监听 2 秒没有任何 3号帧。
+- 主动发 node3 `Get_Error/Clear/Closed-loop/Idle` 后，只看到 M33 `0x332`，没有 3号 `0x061/0x069`。
+- M33 heartbeat 仍正常，NanoPi `can0` 仍为 `ERROR-ACTIVE`。
+
+判断：
+
+- NanoPi CAN 和 M33 通信是活的，但 3号 Sitaiwei 当前没有作为 CANSimple node3 响应。
+- M33 `0x332` 是聚合/缓存状态，不能替代 3号实时 CANSimple 反馈。
+
+技巧：
+
+- 先查 3号供电、使能、CANH/CANL、节点 ID、协议模式、是否被上位机切换过通信协议。
+- 恢复标准是先被动看到 `0x061` heartbeat 和 `0x069` encoder estimate。
+- 没有恢复前，不要继续尝试 30°、90°或 formal path 大动作。

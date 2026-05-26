@@ -2438,12 +2438,22 @@ python3 /home/pi/nanopi_can_master.py heartbeat --iface can0 --seq 93 --wait 0.3
 
 若 `0x322` 最后几位类似 `... 01 02 0B 00`，其中 detail code `0x0B` 表示 M33 认为该 joint 未标定，正式位置命令已被安全状态机拦截。这时不是 CANSimple 不通，也不是 NanoPi 没发，而是板端 M33 固件没有放开该 joint 的 formal bench calibration gate。
 
+若 formal path 已经能看到 `0x06B/0x06F/0x067/0x06C`，但 3号几乎不动，检查 M33 是否已烧录 `ed1cfc49` 或更新版本。旧版本给 CANSimple `Set_Limits` 第二个 float 写 `0.0`，可能导致位置目标已发送但没有足够执行余量。`ed1cfc49` 改为使用 `CONTROL_CANSIMPLE_POSITION_LIMIT_CURRENT=(5.0f)`。
+
 3号 direct CANSimple +5° 台架验证过的计算方式：
 
 - 先读当前 `0x069` 的 `position_rev`。
 - 目标 `target_rev = current_rev + 5 / 360 * 48`。
 - 本次实测从约 `7.66448 rev` 到 `8.33206 rev`，折算输出约 `5.0069°`。
 - 结束必须发 `Set_Axis_State idle`，并确认 `can0` 仍为 `ERROR-ACTIVE`。
+
+30° 或更大动作前，先确认能看到 3号 `0x061` heartbeat 和 `0x069` encoder estimate。若只看到 M33 `0x332`，不能当成 3号实时反馈在线。
+
+3号无反馈时的停止线：
+
+- 被动监听 `can0` 1~3 秒看不到 `0x061/0x069`。
+- 发 `clear/closed-loop/idle` 后仍然只看到 M33 `0x332`。
+- 这时不要继续发目标角度；先检查 3号供电、CAN 连接、节点 ID、协议模式和电机驱动状态。
 
 烧录台架版本 M33 后，直接做极小角度测试。7 号对应 ROS joint4：
 
