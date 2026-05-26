@@ -167,6 +167,22 @@ def make_joint_state_fields_from_m33_motor_state(
     }
 
 
+def make_current_position_updates_from_m33_motor_state(
+    payload: dict[str, object],
+    known_joint_names: list[str],
+) -> dict[str, float]:
+    known = set(known_joint_names)
+    fields = make_joint_state_fields_from_m33_motor_state(payload)
+    updates: dict[str, float] = {}
+    for index, joint_name in enumerate(fields['name']):
+        if not isinstance(joint_name, str) or joint_name not in known:
+            continue
+        positions = fields['position']
+        if index < len(positions):
+            updates[joint_name] = float(positions[index])
+    return updates
+
+
 class M33MotorStatusAggregator:
     def __init__(self, robot_id: str, device_id: str):
         self.robot_id = robot_id

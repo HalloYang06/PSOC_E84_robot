@@ -14,6 +14,7 @@ from rehab_arm_psoc_bridge.psoc_motor_status import (  # noqa: E402
     MOTOR_STATUS_FLAG_FAULT,
     MOTOR_STATUS_FLAG_LIMITED,
     is_m33_motor_status_id,
+    make_current_position_updates_from_m33_motor_state,
     make_joint_state_fields_from_m33_motor_state,
     make_m33_motor_state_payload,
     parse_m33_motor_status_frame,
@@ -191,6 +192,22 @@ class PsocMotorStatusTests(unittest.TestCase):
         self.assertEqual(fields['name'], ['ok_joint'])
         self.assertEqual(fields['position'], [0.1])
         self.assertEqual(fields['velocity'], [0.0])
+
+    def test_make_current_position_updates_keeps_only_known_joints(self) -> None:
+        payload = {
+            'motors': [
+                {'joint_name': 'shoulder_lift_joint', 'position': 0.2},
+                {'joint_name': 'unknown_joint', 'position': 9.9},
+                {'joint_name': 'elbow_lift_joint'},
+            ]
+        }
+
+        updates = make_current_position_updates_from_m33_motor_state(
+            payload,
+            ['shoulder_lift_joint', 'elbow_lift_joint'],
+        )
+
+        self.assertEqual(updates, {'shoulder_lift_joint': 0.2})
 
 
 if __name__ == '__main__':

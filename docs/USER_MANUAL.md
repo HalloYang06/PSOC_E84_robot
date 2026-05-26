@@ -554,6 +554,8 @@ python -m unittest rehab_arm_ros2_ws\src\rehab_arm_psoc_bridge\test\test_psoc_mo
 
 `/rehab_arm/motor_state` 用于电机状态、温度、故障、平台表格和数据集字段；`/joint_states` 用于 RViz、MuJoCo 状态同步、平台 three.js/URDF 机械臂姿态和标注回放。它们都不下发运动，不代表系统可以动；是否允许运动仍看 M33 `0x322` safety/status 和 M33 内部安全状态机。
 
+bridge 也会用这些 M33 遥测刷新内部 `current_positions`。这只是让后续轨迹处理知道“当前姿态大概在哪里”，不是运动许可；没有新鲜、允许运动的 `0x322` 状态时，轨迹仍会被拒绝。
+
 ### 4.5 `0x322` V2 状态解析
 
 协议字段见：[PSOC_CAN_PROTOCOL_V1.md](PSOC_CAN_PROTOCOL_V1.md)。

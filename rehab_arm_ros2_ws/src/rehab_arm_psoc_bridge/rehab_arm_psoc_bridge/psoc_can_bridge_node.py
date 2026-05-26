@@ -21,6 +21,7 @@ from trajectory_msgs.msg import JointTrajectory
 from rehab_arm_psoc_bridge.psoc_motor_status import (
     M33MotorStatusAggregator,
     is_m33_motor_status_id,
+    make_current_position_updates_from_m33_motor_state,
     make_joint_state_fields_from_m33_motor_state,
 )
 from rehab_arm_psoc_bridge.psoc_status import parse_psoc_status_payload
@@ -373,6 +374,9 @@ class PsocCanBridgeNode(Node):
             return
         self.motor_status_rx_count += 1
         self.motor_pub.publish(String(data=json.dumps(payload, separators=(',', ':'))))
+        self.current_positions.update(
+            make_current_position_updates_from_m33_motor_state(payload, JOINT_NAMES)
+        )
         self.publish_joint_state_from_motor_payload(payload)
 
     def publish_joint_state_from_motor_payload(self, payload: dict[str, object]) -> None:
