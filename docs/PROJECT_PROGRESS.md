@@ -1527,3 +1527,14 @@
 - Failed or unverified: physical motion direction and magnitude require user visual confirmation; Codex can only see CAN telemetry.
 - Safety: this proves the formal path can issue motor7 commands in bench mode. It does not prove zero, direction, or physical angle scale are correct.
 - Next step: user confirms whether 7号 visibly moved; if yes, test `-5°`; if direction or magnitude is wrong, adjust M33 direction/scale before increasing angle.
+
+### 2026-05-26 - Motor7 direct official CSP flow trial
+
+- Completed: user reported the formal-path `+5°` trial caused a fast multi-turn motion, so additional formal-path targets were stopped.
+- Completed: sent direct private-protocol stop frames to motor7; CAN remained `ERROR-ACTIVE`, tx/rx error counters `0/0`.
+- Completed: tested direct MIT-style motor-side targets; CAN feedback changed but user reported no visible physical motion for the small direct target.
+- Completed: tested official RobStride-style CSP sequence on motor7: write `run_mode=5` (`0x7005`), enable, write `limit_spd=0.5` (`0x7017`), write `loc_ref=1.05 rad` (`0x7016`), then stop.
+- Validated: CAN frames were emitted as expected: `0x1200FD07` for parameter writes, `0x0300FD07` enable, `0x0400FD07` stop.
+- Observed: M33 aggregate `0x336` moved from about `0.554 rad` to about `1.050 rad` after the official CSP flow.
+- Failed or unverified: user has not confirmed visible physical motion for the CSP trial; if no visible motion occurred, feedback/parameter position is not yet proven to match the visible output joint.
+- Next step: read official load-side/mechanical position parameters such as RobStride `0x7019 mechPos`, compare before/after with video/visual output, then correct the meaning of M33 `pos_rad`.

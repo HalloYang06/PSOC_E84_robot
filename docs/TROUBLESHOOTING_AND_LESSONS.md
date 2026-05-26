@@ -3352,3 +3352,26 @@ Connection reset by 192.168.2.66 port 22
 状态：
 
 - CAN 链路已现场验证，物理运动效果待用户确认。
+
+### RobStride 参数位置反馈可能不等于可见输出轴运动
+
+现象：
+
+- Direct MIT 和 official CSP flow 都能让 CAN feedback/M33 `0x336` 的位置字段变化。
+- 用户现场反馈 small direct target 没有可见运动。
+- Official CSP flow 后 `0x336` 从约 `0.554 rad` 变化到约 `1.050 rad`，但仍需用户确认可见输出是否真的动了。
+
+判断：
+
+- 这排除了“完全没有发到电机”的问题，因为 enable、parameter write、feedback 都出现了。
+- 当前不能继续把 `0x336 pos_mrad` 当作已经验证的输出关节角。
+
+技巧：
+
+- RobStride 位置模式应优先按官方参数流验证：`run_mode=5`、enable、`limit_spd(0x7017)`、`loc_ref(0x7016)`。
+- 下一步读取 `0x7019 mechPos` 等官方机械/负载端参数，与现场视频标记对齐。
+- 只有当“读数变化”和“可见输出轴变化”一致后，才能把该字段接入 M33 关节状态和安全限位。
+
+状态：
+
+- Official CSP CAN flow 已跑通；物理输出映射未完成。
