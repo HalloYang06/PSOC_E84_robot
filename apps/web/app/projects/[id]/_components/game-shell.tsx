@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import styles from "./game-shell.module.css";
 
-type PanelKey = "workbench" | "company";
+type PanelKey = "workbench" | "robotics" | "skill-forge" | "company";
 
 type GameShellProps = {
   projectId: string;
@@ -15,8 +15,10 @@ type GameShellProps = {
 };
 
 const PANELS: { key: PanelKey; label: string; title: string; path: (id: string) => string }[] = [
-  { key: "workbench", label: "🧑‍💼 工作台", title: "NPC 工作台 · 瓷砖主操作面", path: (id) => `/projects/${id}/workbench` },
-  { key: "company", label: "🏢 公司层", title: "公司运行态势图 · 阻塞、待确认和执行电脑状态", path: (id) => `/projects/${id}/company` },
+  { key: "workbench", label: "NPC 工作台", title: "NPC 工作台 · 瓷砖主操作面", path: (id) => `/projects/${id}/workbench` },
+  { key: "robotics", label: "Linux 开发板", title: "Linux 开发板 · 机器人开发、采集、标注、图表和实验", path: (id) => `/projects/${id}/robotics` },
+  { key: "skill-forge", label: "能力工坊", title: "能力工坊 · Git、能力包、知识库和治理", path: (id) => `/projects/${id}/skill-forge` },
+  { key: "company", label: "公司层", title: "公司运行态势图 · 阻塞、待确认和执行电脑状态", path: (id) => `/projects/${id}/company` },
 ];
 
 export function GameShell({ projectId, projectName, gradeChip = null, actionHint = "", actionPanel = "workbench" }: GameShellProps) {
@@ -70,7 +72,7 @@ export function GameShell({ projectId, projectName, gradeChip = null, actionHint
             title={gameHidden ? "显示游戏画面" : "隐藏游戏画面"}
             onClick={() => setGameHidden((v) => !v)}
           >
-            {gameHidden ? "🎮 显示游戏" : "🙈 隐藏游戏"}
+            {gameHidden ? "显示游戏" : "隐藏游戏"}
           </button>
         </nav>
       </header>

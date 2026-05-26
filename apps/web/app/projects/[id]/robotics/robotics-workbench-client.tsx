@@ -500,7 +500,7 @@ function DeviceDataOverview({ device }: { device: AnyRecord }) {
   const quality = record(device.data_quality);
   const blockingReasons = asArray<string>(quality.blocking_reasons);
   return (
-    <section className={styles.deviceDataPane} aria-label={`${deviceTitle(device)} NanoPi 采集数据`}>
+    <section className={styles.deviceDataPane} aria-label={`${deviceTitle(device)} Linux 开发板采集数据`}>
       <div className={styles.deviceDataSummary}>
         <article data-tone={text(device.online_state) === "online" ? "ok" : "idle"}>
           <span>设备在线</span>
@@ -508,7 +508,7 @@ function DeviceDataOverview({ device }: { device: AnyRecord }) {
           <p>最近上传：{latestTime(device, "motor_state")}</p>
         </article>
         <article data-tone={text(device.safety_state) === "ok" ? "ok" : "warn"}>
-          <span>M33 安全</span>
+          <span>安全状态</span>
           <strong>{deviceSafetyText(device)}</strong>
           <p>motion_allowed：{String(Boolean(safetyPayload.motion_allowed ?? device.motion_allowed))}</p>
         </article>
@@ -547,7 +547,7 @@ function DeviceDataOverview({ device }: { device: AnyRecord }) {
                 </div>
               ))}
             </div>
-          ) : <p>等待 NanoPi 上传 `/rehab_arm/motor_state`。当前页只显示数据，不触发真实控制。</p>}
+          ) : <p>等待 Linux 开发板上传电机或关节状态。当前页只显示数据，不触发真实控制。</p>}
         </article>
 
         <article>
@@ -562,7 +562,7 @@ function DeviceDataOverview({ device }: { device: AnyRecord }) {
             {Object.entries(sensorPayload).filter(([key]) => !["schema_version", "device_id", "robot_id"].includes(key)).slice(0, 12).map(([key, value]) => (
               <span key={key}><b>{key}</b>{typeof value === "object" ? JSON.stringify(value).slice(0, 80) : text(value, "-")}</span>
             ))}
-            {!Object.keys(sensorPayload).length ? <p>等待 C8T6/M33/M55 汇总的 EMG、IMU、心率、疲劳度或小模型输出。</p> : null}
+            {!Object.keys(sensorPayload).length ? <p>等待设备侧上传传感器、IMU、心率、模型输出或其他机器人开发数据。</p> : null}
           </div>
         </article>
 
@@ -574,7 +574,7 @@ function DeviceDataOverview({ device }: { device: AnyRecord }) {
             </div>
             <small>{latestTime(device, "camera_keyframe")}</small>
           </div>
-          <p>{text(cameraPayload.scene_summary, text(cameraPayload.detection_summary, "NanoPi 摄像头关键帧上传后，这里显示场景摘要和检测结果。"))}</p>
+          <p>{text(cameraPayload.scene_summary, text(cameraPayload.detection_summary, "开发板摄像头关键帧上传后，这里显示场景摘要和检测结果。"))}</p>
           <p>仿真准备度：{text(simReport.readiness, "未上传")}</p>
           <p>当前 session：{text(device.current_session, text(manifest.session_id, "无 session"))}</p>
         </article>
@@ -601,13 +601,15 @@ function DeviceDataTile({
   const [activeTab, setActiveTab] = useState<DeviceTab>("data");
   const [stateSyncEnabled, setStateSyncEnabled] = useState(false);
   const [showOpenSourceMesh, setShowOpenSourceMesh] = useState(false);
+  const [selectedNpcId, setSelectedNpcId] = useState(defaultNpcId);
   const motors = asArray<AnyRecord>(latestPayload(device, "motor_state").motors);
   const counts = deviceDataCounts(device);
   const variables = deviceVariableRows(device);
   const cameraPayload = latestPayload(device, "camera_keyframe");
   const cameraSrc = keyframeSrc(cameraImageUrl(device));
-  const assistantSeat = findSeatRecord(npcSeats, defaultNpcId) ?? npcSeats[0];
+  const assistantSeat = findSeatRecord(npcSeats, selectedNpcId) ?? npcSeats[0];
   const assistantState = summarizeNpcSeatDispatchState(assistantSeat);
+  const assistantSkills = npcSkillNames(assistantSeat);
   const title = deviceTitle(device, index);
   const id = deviceId(device, index);
   return (
@@ -622,14 +624,24 @@ function DeviceDataTile({
         </div>
       </header>
       <div className={tileStyles.threadBinding}>
-        <span className={tileStyles.threadChip}>NanoPi 数据</span>
+        <span className={tileStyles.threadChip}>开发板数据</span>
         <span className={tileStyles.threadChip}>电机 {counts.motors}</span>
         <span className={tileStyles.threadChip}>传感字段 {counts.sensorFields}</span>
         <span className={tileStyles.threadChip}>{counts.hasCamera ? "有摄像头关键帧" : "等待摄像头"}</span>
+        <label className={styles.npcIndexSelect}>
+          <span>NPC 资源</span>
+          <select value={selectedNpcId} onChange={(event) => setSelectedNpcId(event.target.value)} aria-label={`${title} 选择协助 NPC`}>
+            <option value="">自动选择</option>
+            {npcSeats.map((seat, seatIndex) => {
+              const name = seatName(seat, `NPC ${seatIndex + 1}`);
+              return <option key={seatId(seat, name)} value={seatId(seat, name)}>{name}</option>;
+            })}
+          </select>
+        </label>
       </div>
       <nav className={tileStyles.panelTabs} aria-label={`${title} 设备数据功能`}>
         {[
-          ["data", "NanoPi数据", counts.motors + counts.sensorFields],
+          ["data", "开发板数据", counts.motors + counts.sensorFields],
           ["camera", "摄像头", counts.hasCamera ? 1 : 0],
           ["dataset", "数据标注", dataQualityReady(device) ? 1 : 0],
           ["chart", "图表实验", variables.length],
@@ -728,9 +740,13 @@ function DeviceDataTile({
               <button type="button" disabled={!variables.length}>等待后端导出动作接入</button>
             </article>
             <article className={styles.dataActionPanel}>
-              <span>AI 员工协助</span>
+              <span>NPC 资源索引</span>
               <strong>{assistantSeat ? seatName(assistantSeat, "协助 NPC") : "等待配置 NPC"}</strong>
               <p>{assistantState.detail}</p>
+              <p>{npcKnowledgeLine(assistantSeat)}</p>
+              <div className={styles.variablePills}>
+                {assistantSkills.length ? assistantSkills.map((skill) => <span key={skill}>{skill}</span>) : <span>等待能力工坊分配 skill</span>}
+              </div>
             </article>
           </div>
         </section>
@@ -742,9 +758,9 @@ function DeviceDataTile({
             <p>这里先列出当前值和来源；时间序列缓存接入后，同一批变量会直接进入曲线对比和实验记录。</p>
           </article>
           <article className={styles.dataActionPanel}>
-            <span>AI 员工协助</span>
+            <span>NPC 资源索引</span>
             <strong>{assistantState.ready ? "可请求曲线分析建议" : assistantState.state}</strong>
-            <p>NPC 仍是平台 AI 员工；它负责解释曲线、建议标注和生成报告，不直接扫描设备或下发真实硬件命令。</p>
+            <p>当前选择：{assistantSeat ? seatName(assistantSeat, "协助 NPC") : "未选择"}。这里只索引 NPC 的线程、知识库和 skill，配置仍回到 NPC 工作台/能力工坊维护。</p>
           </article>
           <div className={styles.deviceMotorTable}>
             <div><span>变量</span><span>最近值</span><span>来源</span><span>时间</span></div>
@@ -791,7 +807,7 @@ function DeviceDataTile({
             <details className={styles.workbenchDrawer} open>
               <summary><span>状态映射</span><strong>{motors.length ? `${motors.length} 个电机` : "等待 motor_state"}</strong></summary>
               <article className={styles.dataActionPanel}>
-                <p>position 映射姿态，temperature 映射关节颜色。真实运动仍由本地规划、NanoPi、M33 安全状态机负责。</p>
+                <p>position 映射姿态，temperature 映射关节颜色。真实运动仍由本地规划、Linux 开发板和底层安全控制器负责。</p>
               </article>
             </details>
             <details className={styles.workbenchDrawer}>
@@ -1015,6 +1031,36 @@ function seatThreadId(seat: AnyRecord | undefined) {
       ?? seat.bound_thread_id
       ?? seat.boundThreadId,
     "",
+  );
+}
+
+function npcSkillNames(seat: AnyRecord | undefined) {
+  if (!seat) return [];
+  const meta = record(seat.metadata);
+  const extra = record(seat.extra_data ?? seat.extraData);
+  const raw = seat.skill_loadout ?? seat.skillLoadout ?? meta.skill_loadout ?? extra.skill_loadout ?? seat.skills ?? meta.skills ?? [];
+  return asArray<unknown>(raw)
+    .map((item) => typeof item === "string" ? item : text(record(item).name ?? record(item).id ?? record(item).label, ""))
+    .filter(Boolean)
+    .slice(0, 6);
+}
+
+function npcKnowledgeLine(seat: AnyRecord | undefined) {
+  if (!seat) return "未选择 NPC";
+  const meta = record(seat.metadata);
+  const extra = record(seat.extra_data ?? seat.extraData);
+  return text(
+    seat.knowledge_summary
+      ?? seat.knowledgeSummary
+      ?? meta.knowledge_summary
+      ?? meta.knowledgeSummary
+      ?? extra.knowledge_summary
+      ?? extra.knowledgeSummary
+      ?? seat.knowledge_path
+      ?? seat.knowledgePath
+      ?? meta.knowledge_path
+      ?? extra.knowledge_path,
+    "未索引知识库摘要",
   );
 }
 
@@ -2053,7 +2099,7 @@ function DebugTile({
                     ))}
                   </ul>
                 ) : (
-                  <p>等待 NanoPi 或服务器同步工具上传 `/rehab_arm/motor_state`。没有数据时只显示默认姿态和开源 mesh 示例。</p>
+                  <p>等待 Linux 开发板或服务器同步工具上传电机/关节状态。没有数据时只显示默认姿态和开源 mesh 示例。</p>
                 )}
               </article>
             </details>
@@ -2082,7 +2128,7 @@ function DebugTile({
                 <strong>只读显示</strong>
               </summary>
               <article className={styles.dataActionPanel}>
-                <p>模型预览不是仿真控制器，不生成电机目标，不绕过本地控制器安全状态机。真实机器人运动仍必须经过本机规划、NanoPi 桥接和底层安全裁决。</p>
+                <p>模型预览不是仿真控制器，不生成电机目标，不绕过本地控制器安全状态机。真实机器人运动仍必须经过本机规划、Linux 开发板桥接和底层安全裁决。</p>
               </article>
             </details>
           </aside>
@@ -2199,7 +2245,7 @@ export function RoboticsWorkbenchClient({
           <Link className={workbenchStyles.backLink} href={`/projects/${projectId}`}>← 主页面</Link>
           <div className={workbenchStyles.title}>
             <strong>{projectName}</strong>
-            <small>设备数据工作台 · Linux 开发板、串口/CAN/USB 设备、采集、标注和调试</small>
+            <small>Linux 开发板 · 通用机器人开发、设备接入、数据采集、标注和调试</small>
           </div>
         </div>
         <div className={workbenchStyles.topbarRight}>
@@ -2219,7 +2265,7 @@ export function RoboticsWorkbenchClient({
               className={workbenchStyles.search}
               placeholder="搜索开发板或接口设备"
               readOnly
-              value="设备数据工作台"
+              value="Linux 开发板"
             />
             <div className={styles.deviceModeSwitch} aria-label="选择设备类型">
               <button type="button" data-active={workbenchMode === "boards" ? "1" : "0"} onClick={() => setWorkbenchMode("boards")}>
@@ -2308,7 +2354,7 @@ export function RoboticsWorkbenchClient({
             {workbenchMode === "boards" ? (
               <li className={workbenchStyles.group}>
                 <div className={workbenchStyles.groupHeader}>
-                  <span>Linux 开发板 / NanoPi</span>
+                  <span>Linux 开发板</span>
                   <small>{devices.length} 台</small>
                 </div>
                 <ul className={workbenchStyles.npcList}>
@@ -2439,7 +2485,7 @@ export function RoboticsWorkbenchClient({
                 <div>
                   <span>下一步</span>
                   <strong>{workbenchMode === "boards" ? "打开一台 Linux 开发板" : "打开一个串口/CAN/USB 设备"}</strong>
-                  <p>{workbenchMode === "boards" ? "开发板显示 NanoPi 数据、摄像头、标注、图表和模型预览。" : "接口设备会进入带终端的调试页面，可做串口/CAN/USB 采集、NPC 辅助和图表实验。"}</p>
+                  <p>{workbenchMode === "boards" ? "开发板显示遥测数据、摄像头、标注、图表和模型预览。" : "接口设备会进入带终端的调试页面，可做串口/CAN/USB 采集、NPC 辅助和图表实验。"}</p>
                 </div>
                 <div className={styles.quickActionGrid}>
                   <form action={请求串口USB扫描.bind(null, projectId)}>

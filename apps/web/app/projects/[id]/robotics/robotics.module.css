@@ -962,6 +962,39 @@
   color: #dffff0;
 }
 
+.npcIndexSelect {
+  min-width: 180px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  padding: 3px 7px;
+  border: 1px solid rgba(88, 240, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(88, 240, 255, 0.06);
+}
+
+.npcIndexSelect span {
+  color: #b9fff3;
+  font-size: 10.5px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.npcIndexSelect select {
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: #eaffff;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.npcIndexSelect select:focus {
+  outline: none;
+}
+
 .dataWorkbenchPane,
 .modelWorkbenchPane {
   flex: 1;
