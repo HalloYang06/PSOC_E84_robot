@@ -1120,6 +1120,24 @@ grep '/rehab_arm/motor_state' /home/pi/rehab_arm_logs/sim_session.jsonl | head
 - JSONL 包含 `/rehab_arm/sensor_state`。
 - JSONL 包含 `/rehab_arm/motor_state`。
 
+也可以用预设 topic 合同，避免每次手写 topic 名：
+
+```bash
+# 仿真/基础采集最小合同：joint_states + safety_state + sensor_state
+ros2 run rehab_arm_psoc_bridge check_recording.py /home/pi/rehab_arm_logs/sim_session.jsonl \
+  --topic-profile simulation_minimum
+
+# 真机/电机遥测合同：基础合同 + motor_state
+ros2 run rehab_arm_psoc_bridge check_recording.py /home/pi/rehab_arm_logs/sim_session.jsonl \
+  --topic-profile hardware_telemetry
+
+# 视觉/VLA 数据合同：基础合同 + camera_keyframe
+ros2 run rehab_arm_psoc_bridge check_recording.py /home/pi/rehab_arm_logs/sim_session.jsonl \
+  --topic-profile perception_vla
+```
+
+这些 preset 只检查“录到的数据 topic 是否齐全”。它们不会启动 ROS 节点，不联网，不读取 CAN，不控制 M33 或电机。`hardware_telemetry` 失败并提示缺 `/rehab_arm/motor_state` 时，说明这段数据还不适合做电机曲线、标注或训练前验收。
+
 如果用 `timeout ros2 launch ...` 做短验证后 SSH 卡住，先不要继续加压板子；等 SSH 恢复后清理可能残留的 launch 或节点进程，再复测。
 
 当前已验证的短采集命令：

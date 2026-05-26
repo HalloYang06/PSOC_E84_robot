@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -22,6 +23,7 @@ from rehab_arm_psoc_bridge.data_recording import (
     parse_message_payload,
     session_log_path,
     validate_jsonl_records,
+    required_topics_for_profile,
     write_jsonl_record,
     sanitize_identifier,
     build_recording_manifest,
@@ -201,6 +203,56 @@ class DataRecordingTests(unittest.TestCase):
 
         self.assertIs(summary['ok'], False)
         self.assertIn('/rehab_arm/safety_state', summary['missing_topics'])
+
+    def test_required_topics_for_profile_returns_robotics_contract_presets(self) -> None:
+        self.assertEqual(
+            required_topics_for_profile('simulation_minimum'),
+            ['/joint_states', '/rehab_arm/safety_state', '/rehab_arm/sensor_state'],
+        )
+        self.assertEqual(
+            required_topics_for_profile('hardware_telemetry'),
+            ['/joint_states', '/rehab_arm/safety_state', '/rehab_arm/sensor_state', '/rehab_arm/motor_state'],
+        )
+        self.assertEqual(
+            required_topics_for_profile('perception_vla'),
+            ['/joint_states', '/rehab_arm/safety_state', '/rehab_arm/sensor_state', '/rehab_arm/camera_keyframe'],
+        )
+
+    def test_required_topics_for_profile_rejects_unknown_profile(self) -> None:
+        with self.assertRaises(ValueError):
+            required_topics_for_profile('unknown')
+
+    def test_check_recording_cli_topic_profile_reports_missing_motor_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / 's1.jsonl'
+            records = [
+                make_session_metadata('s1', 'nanopi', 'arm', 'dev', 'simulation_data_collection', now=1.0),
+                make_payload_record('/joint_states', {}, now=2.0),
+                make_payload_record('/rehab_arm/safety_state', {'motion_allowed': False}, now=3.0),
+                make_payload_record('/rehab_arm/sensor_state', {}, now=4.0),
+            ]
+            with path.open('w', encoding='utf-8') as handle:
+                for record in records:
+                    write_jsonl_record(handle, record)
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).resolve().parents[1] / 'rehab_arm_psoc_bridge' / 'check_recording.py'),
+                    str(path),
+                    '--topic-profile',
+                    'hardware_telemetry',
+                ],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 1)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload['topic_profile'], 'hardware_telemetry')
+        self.assertIn('/rehab_arm/motor_state', payload['missing_topics'])
 
     def test_build_recording_manifest(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

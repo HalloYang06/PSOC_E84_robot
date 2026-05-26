@@ -19,6 +19,33 @@ OPTIONAL_RECORDED_TOPICS = [
     '/rehab_arm/motor_state',
     '/rehab_arm/camera_keyframe',
 ]
+RECORDING_TOPIC_PROFILES = {
+    'simulation_minimum': [
+        '/joint_states',
+        '/rehab_arm/safety_state',
+        '/rehab_arm/sensor_state',
+    ],
+    'hardware_telemetry': [
+        '/joint_states',
+        '/rehab_arm/safety_state',
+        '/rehab_arm/sensor_state',
+        '/rehab_arm/motor_state',
+    ],
+    'perception_vla': [
+        '/joint_states',
+        '/rehab_arm/safety_state',
+        '/rehab_arm/sensor_state',
+        '/rehab_arm/camera_keyframe',
+    ],
+}
+
+
+def required_topics_for_profile(profile: str) -> list[str]:
+    try:
+        return list(RECORDING_TOPIC_PROFILES[profile])
+    except KeyError as exc:
+        choices = ', '.join(sorted(RECORDING_TOPIC_PROFILES))
+        raise ValueError(f'unknown topic profile {profile!r}; expected one of: {choices}') from exc
 
 
 def parse_message_payload(text: str) -> object:

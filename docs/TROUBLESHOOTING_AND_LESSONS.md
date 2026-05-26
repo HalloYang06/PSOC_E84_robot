@@ -2232,3 +2232,21 @@ No such file or directory: /tmp/rehab_sim_collection/sim_demo_motion.jsonl
 状态：
 
 - `check_sim_env` 已加入 `topic_contract.control_boundary=simulation_topic_contract_not_motion_permission`。
+
+### JSONL topic profile 是进入标注前的第一道门
+
+现象：
+
+- `check_recording.py ok=true` 的默认检查只要求基础 topic。
+- 真机电机遥测、视觉/VLA 数据、纯仿真数据对 topic 的要求不同，手动写 `--required-topic` 容易漏项。
+
+技巧：
+
+- 用 `--topic-profile simulation_minimum` 检查基础仿真/采集数据。
+- 用 `--topic-profile hardware_telemetry` 检查电机数据是否包含 `/rehab_arm/motor_state`。
+- 用 `--topic-profile perception_vla` 检查视觉/VLA 数据是否包含 `/rehab_arm/camera_keyframe`。
+- profile 检查只回答“这段 JSONL 是否包含该流程最小 topic 集”，不回答数据质量、运动幅度或安全许可；后面仍要跑 `validate_recording_quality.py` 和 M33 安全链路检查。
+
+状态：
+
+- `check_recording.py` 已支持 topic profile preset，并有 CLI 单测覆盖缺 `motor_state` 的失败路径。

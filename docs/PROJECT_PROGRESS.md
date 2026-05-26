@@ -1018,3 +1018,15 @@
 - Validated: CLI smoke printed `topic_contract.trajectory_command.topic=/arm_controller/joint_trajectory` and `topic_contract.control_boundary=simulation_topic_contract_not_motion_permission`; local Windows process returned nonzero because this shell is not a sourced ROS2 runtime.
 - Safety: `topic_contract` is documentation/report data only and uses `simulation_topic_contract_not_motion_permission`; it does not prove topics are live and does not grant motion permission.
 - Next step: have the platform surface the simulation topic contract in the Linux board/simulation readiness panel, then later run it on the real Linux simulation host.
+
+### 2026-05-26 - Recording topic profile presets
+
+- Completed: added named JSONL topic profile presets for `check_recording.py`: `simulation_minimum`, `hardware_telemetry`, and `perception_vla`.
+- Completed: `hardware_telemetry` requires `/rehab_arm/motor_state`; `perception_vla` requires `/rehab_arm/camera_keyframe`.
+- Completed: documented how to use the profiles before annotation, charting, upload, or training checks.
+- Validated: targeted `test_data_recording.py` passed 30 tests, including CLI failure when `hardware_telemetry` is missing `/rehab_arm/motor_state`.
+- Validated: full `rehab_arm_psoc_bridge` unit test suite passed 78 tests.
+- Validated: `py_compile` passed for `data_recording.py` and `check_recording.py`.
+- Validated: CLI smoke on a temporary JSONL returned `topic_profile=hardware_telemetry` and missing `/rehab_arm/motor_state`.
+- Safety: topic profile checks only read local JSONL files; they do not open CAN, start ROS nodes, upload data, command M33, or move motors.
+- Next step: use these presets in the next real NanoPi/MuJoCo data capture before building a manifest for platform sync.
