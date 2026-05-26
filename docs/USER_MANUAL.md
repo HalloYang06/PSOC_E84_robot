@@ -2402,6 +2402,23 @@ python3 rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/calibr
 
 如果 `ok=false`，先不要继续标定。检查是否没有打开 active-report，或者是否误发了运动控制帧。
 
+### 6.7.3 未装机台架 7 号快速试错
+
+当前机械臂还没有装机时，7 号可以先用“零点 0、方向默认、限位 ±60°”打通正式 M33 运动链路。这个配置只用于空载台架，不是正式机械零点。
+
+烧录台架版本 M33 后，直接做极小角度测试。7 号对应 ROS joint4：
+
+```bash
+python3 /home/pi/nanopi_can_master.py heartbeat --iface can0 --seq 81 --wait 0.3
+python3 /home/pi/nanopi_can_master.py m33 target --iface can0 --joint 4 --deg 5 --rpm 1 --torque-ma 0 --wait 0.3
+```
+
+注意：
+
+- 先 `5°`，确认方向，再 `-5°`，再逐步扩大。
+- 台架临时零点只说明开发时能走通链路，不代表可以穿戴在人身上。
+- 若出现方向反了、幅度不对、速度不对，立刻 stop/断电，回到零点/方向/比例标定。
+
 只有完成以下动作后，才允许在 M33 配置里把某个关节的 `CONTROL_MOTOR_JOINTx_CALIBRATED` 改成 `1U`：
 
 - 人不穿戴设备，机械臂固定在台架。

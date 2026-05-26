@@ -1507,3 +1507,12 @@
 - Validated: local CLI smoke test produced `schema_version=rehab_arm_calibration_observation_v1`, `observation_ok=true`, `no_motion_control_frames=true`.
 - Safety: the tool explicitly marks `safe_to_use_as_motion_proof=false`; this is telemetry observation only, not permission to enable calibrated position control.
 - Next step: use this report during the next live zero/direction capture, then derive a candidate software zero offset before enabling any joint calibration flag.
+
+### 2026-05-26 - M33 direct bench trial for motor7
+
+- Completed: simplified the M33 bench path for the not-installed phase: `CONTROL_DEVELOPMENT_BENCH_MOTION_ENABLE=1U` and `CONTROL_MOTOR_JOINT7_CALIBRATED=1U`.
+- Behavior: 7号 uses zero offset `0`, direction `+1`, gear ratio `9:1`, ROS joint4 limit `±60°`, and existing `CONTROL_ROS_MAX_TARGET_RPM=5`.
+- Safety: this is only for空载台架试错, not wearable approval. Start with `joint4 +5°/-5°`; stop immediately if direction or magnitude is wrong.
+- Validated: `git diff --check -- applications/control/control_layer.c applications/control/control_layer_cfg.h` passed in the M33 repo.
+- Failed or unverified: local M33 build was not run because `scons` is not installed on this Windows environment.
+- Next step: user flashes M33, then send a small NanoPi `m33 target --joint 4 --deg 5 --rpm 1` through the formal path.
