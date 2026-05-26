@@ -12,6 +12,7 @@ from pathlib import Path
 try:
     from rehab_arm_psoc_bridge.data_recording import (
         RECORDER_VERSION,
+        build_recording_quality_report,
         make_joint_state_payload,
         make_payload_record,
         make_session_metadata,
@@ -27,6 +28,7 @@ except ModuleNotFoundError:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from rehab_arm_psoc_bridge.data_recording import (
         RECORDER_VERSION,
+        build_recording_quality_report,
         make_joint_state_payload,
         make_payload_record,
         make_session_metadata,
@@ -229,6 +231,16 @@ def write_smoke_jsonl(
     return path
 
 
+def build_smoke_quality_report(records: list[dict[str, object]]) -> dict[str, object]:
+    return build_recording_quality_report(
+        records,
+        topic_profile='hardware_telemetry',
+        min_joint_messages=1,
+        require_motor_state=True,
+        min_motor_entry_count=2,
+    )
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description='Dry-run or send synthetic M33 0x330~0x337 motor telemetry frames.'
@@ -260,6 +272,12 @@ def main(argv: list[str] | None = None) -> int:
         send_smoke_frames(args.interface, frames, args.gap_sec)
     report = build_smoke_report(frames, args.robot_id, args.device_id, args.execute, args.interface)
     if args.output_jsonl:
+        records = build_smoke_jsonl_records(
+            frames,
+            args.robot_id,
+            args.device_id,
+            args.session_id,
+        )
         output_path = write_smoke_jsonl(
             args.output_jsonl,
             frames,
@@ -268,6 +286,7 @@ def main(argv: list[str] | None = None) -> int:
             args.session_id,
         )
         report['output_jsonl'] = str(output_path)
+        report['quality_report'] = build_smoke_quality_report(records)
     print(json.dumps(report, ensure_ascii=False, separators=(',', ':')))
     return 0
 

@@ -1143,7 +1143,16 @@ python3 src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/validate_recording_quali
 - summary 中 `/rehab_arm/motor_state` 至少 1 条。
 - summary 中 `motor_entry_count_min=2`。
 
-这份 JSONL 后续可以作为平台“Linux 开发板设备数据工作台”的最小合同样本：平台应该能看到 session、topic 数量、电机条目数、motor 3/7 的状态字段和 `control_boundary`。
+`m33_motor_status_smoke.py --output-jsonl` 的 stdout 会同时带一个 `quality_report`。平台“Linux 开发板设备数据工作台”可以先读取这些字段作为最小合同：
+
+- `quality_report.ok`
+- `quality_report.topic_profile`
+- `quality_report.required_topics`
+- `quality_report.summary.topic_counts`
+- `quality_report.summary.motor_entry_count_min`
+- `/rehab_arm/motor_state` payload 中的 motor 3/7 状态字段和 `control_boundary`
+
+这份 JSONL 后续可以作为平台最小样本：平台应该能看到 session、topic 数量、电机条目数、motor 3/7 的状态字段和 `control_boundary`。
 
 如果要验证真实 bridge 发布 topic，建议先用 `vcan0`。一个终端启动 bridge：
 

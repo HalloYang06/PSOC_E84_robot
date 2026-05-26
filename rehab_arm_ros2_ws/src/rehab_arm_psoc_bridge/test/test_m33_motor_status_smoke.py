@@ -16,6 +16,7 @@ from rehab_arm_psoc_bridge.m33_motor_status_smoke import (  # noqa: E402
     build_m33_motor_status_payload,
     build_smoke_jsonl_records,
     build_smoke_frames,
+    build_smoke_quality_report,
     build_smoke_report,
     pack_standard_can_frame,
     write_smoke_jsonl,
@@ -118,6 +119,21 @@ class M33MotorStatusSmokeTests(unittest.TestCase):
         self.assertEqual(report['topic_profile'], 'hardware_telemetry')
         self.assertEqual(report['summary']['motor_entry_count_min'], 2)
 
+    def test_build_smoke_quality_report_uses_platform_hardware_contract(self) -> None:
+        records = build_smoke_jsonl_records(
+            build_smoke_frames(seq=1),
+            'rehab-arm-alpha',
+            'nanopi-m5',
+            's1',
+        )
+
+        report = build_smoke_quality_report(records)
+
+        self.assertIs(report['ok'], True)
+        self.assertEqual(report['topic_profile'], 'hardware_telemetry')
+        self.assertEqual(report['criteria']['min_motor_entry_count'], 2)
+        self.assertIn('/rehab_arm/motor_state', report['required_topics'])
+
     def test_write_smoke_jsonl_outputs_loadable_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             output = Path(tmpdir) / 'smoke.jsonl'
@@ -157,6 +173,8 @@ class M33MotorStatusSmokeTests(unittest.TestCase):
 
         self.assertIs(report['execute'], False)
         self.assertEqual(report['output_jsonl'], str(output))
+        self.assertIs(report['quality_report']['ok'], True)
+        self.assertEqual(report['quality_report']['topic_profile'], 'hardware_telemetry')
         self.assertEqual(records[-1]['topic'], '/rehab_arm/motor_state')
 
 

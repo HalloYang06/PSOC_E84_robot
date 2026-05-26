@@ -2465,3 +2465,4 @@ No such file or directory: /tmp/rehab_sim_collection/sim_demo_motion.jsonl
 
 - `m33_motor_status_smoke.py` 已按 dry-run-first 方式实现并测试。
 - 该工具可写最小 JSONL，并已验证能通过 `hardware_telemetry` 质量门。
+- 使用 `--output-jsonl` 时 stdout 会携带同一份 `quality_report`，平台可以直接读取，不需要另造质量判断规则。

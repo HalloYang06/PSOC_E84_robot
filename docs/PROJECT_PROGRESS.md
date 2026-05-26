@@ -1124,10 +1124,11 @@
 - Completed: added `m33_motor_status_smoke.py` to dry-run or explicitly send synthetic `0x330~0x337` telemetry frames for motor 3 and motor 7.
 - Completed: documented NanoPi dry-run, optional `--execute`, and `/rehab_arm/motor_state` observation workflow.
 - Completed: smoke tool can now write a minimal JSONL session with `/joint_states`, `/rehab_arm/safety_state`, `/rehab_arm/sensor_state`, and `/rehab_arm/motor_state` for platform/data pipeline checks.
+- Completed: smoke tool stdout now includes `quality_report` when `--output-jsonl` is used, so the platform can consume the same `hardware_telemetry` contract as local validation.
 - Validated: targeted `test_m33_motor_status_smoke.py` passed 5 tests.
 - Validated: smoke JSONL passes `hardware_telemetry` quality gate with 2 motor entries.
-- Validated: targeted `test_m33_motor_status_smoke.py` passed 8 tests.
-- Validated: full `rehab_arm_psoc_bridge` unit tests passed 113 tests; `py_compile` passed for `m33_motor_status_smoke.py`.
+- Validated: targeted `test_m33_motor_status_smoke.py` passed 9 tests.
+- Validated: full `rehab_arm_psoc_bridge` unit tests passed 114 tests; `py_compile` passed for `m33_motor_status_smoke.py`.
 - Not validated: did not run SocketCAN `--execute` on NanoPi or `vcan0` in this Windows shell.
 - Safety: default mode is dry-run JSON only. `--execute` sends only telemetry IDs `0x330/0x331`, never `0x320`, and does not command M33 or motors.
 - Platform: the generated JSONL is a minimal sample for the platform Linux-board device data page and annotation pipeline; it should remain data-only and not become a command channel.
