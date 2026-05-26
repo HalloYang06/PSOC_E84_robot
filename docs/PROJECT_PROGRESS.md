@@ -1567,3 +1567,11 @@
 - Validated: `git diff --check -- applications/control/control_layer.c applications/control/control_layer_cfg.h` passed in the M33 repo.
 - Failed or unverified: local M33 build was not run because `scons` is not installed on this Windows environment.
 - Next step: user flashes M33, then test formal joint4 `+5°`; after that test 4/5/6/7 one at a time with small angles.
+
+### 2026-05-26 - Motor7 CSP retest still showed old MIT firmware
+
+- Completed: tested formal path `m33 target --joint 4 --deg 5 --rpm 1` after the CSP code change was pushed.
+- Observed: capture still showed `0x01800007` MIT control and no `0x1200FD07` parameter-write frames.
+- Conclusion: the board was still running firmware without commit `e9a76441`, or the flashed artifact was not built from the latest M33 branch.
+- Safety: no further formal target scaling conclusions should be drawn from this test because it did not exercise the intended CSP path.
+- Next step: rebuild/flash M33 commit `e9a76441`, then repeat and confirm `0x1200FD07` appears for `run_mode`, `limit_spd`, and `loc_ref`.
