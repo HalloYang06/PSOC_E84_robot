@@ -543,7 +543,7 @@ python3 -m unittest discover -s src/rehab_arm_psoc_bridge/test -v
 python -m unittest rehab_arm_ros2_ws\src\rehab_arm_psoc_bridge\test\test_psoc_motor_status.py -v
 ```
 
-注意：`0x330~0x337` 当前是 M33 固件待实现的正式遥测草案，只用于 NanoPi/ROS/平台读取电机状态。它不是运动命令，也不能替代 `0x322` 安全状态。
+注意：`0x330~0x337` 是 M33 固件的正式遥测链路，只用于 NanoPi/ROS/平台读取电机状态。它不是运动命令，也不能替代 `0x322` 安全状态。
 
 当 M33 后续开始发送合法 `0x330~0x337` 时，现有 `psoc_can_bridge_node.py` 会自动把这些帧聚合发布到：
 
@@ -555,6 +555,36 @@ python -m unittest rehab_arm_ros2_ws\src\rehab_arm_psoc_bridge\test\test_psoc_mo
 `/rehab_arm/motor_state` 用于电机状态、温度、故障、平台表格和数据集字段；`/joint_states` 用于 RViz、MuJoCo 状态同步、平台 three.js/URDF 机械臂姿态和标注回放。它们都不下发运动，不代表系统可以动；是否允许运动仍看 M33 `0x322` safety/status 和 M33 内部安全状态机。
 
 bridge 也会用这些 M33 遥测刷新内部 `current_positions`。这只是让后续轨迹处理知道“当前姿态大概在哪里”，不是运动许可；没有新鲜、允许运动的 `0x322` 状态时，轨迹仍会被拒绝。
+
+当前本地 M33 工程已补好 `0x330~0x337` 上报逻辑，等待用户烧录。烧录后先只验收遥测，不发 `0x320` 运动命令：
+
+```bash
+ip -details link show can0
+timeout 5 candump -L can0,330:7F8,061:7FF,069:7FF,180007FD:1FFFFFFF
+```
+
+通过标准：
+
+- `can0` 为 `ERROR-ACTIVE`，tx/rx error counter 为 0。
+- 3 号伺泰威在线时，能看到 `0x061/0x069`。
+- 7 号灵足 active-report 打开时，能看到 `0x180007FD`。
+- M33 聚合遥测生效后，能看到 `0x330~0x337` 中至少一个 ID；当前 3/7 上电场景通常先期待对应 slot 的 `0x332` 或 `0x336`。
+- `0x330~0x337` payload byte0 必须是 `B3`。
+- 整个过程不发布 `/arm_controller/joint_trajectory`，不发送 `0x320`。
+
+如果需要 M33 串口手动触发一次缓存上报，可在 M33 shell 运行：
+
+```text
+cmd_m33_motor_status_once
+```
+
+期望串口输出类似：
+
+```text
+m33_motor_status_once sent=<n> base=0x330 period_ms=100 fresh_ms=1000
+```
+
+`sent=0` 通常说明 M33 还没有收到新鲜电机反馈；先确认 3/7 是否上电、active-report 是否打开、CAN 是否有原始电机帧。
 
 ### 4.5 `0x322` V2 状态解析
 

@@ -1160,3 +1160,14 @@
 - Hardware note: user confirmed motors 4/5/6 are powered off/closed, so missing Get_ID replies and missing active-report for 4/5/6 are expected in this session.
 - Safety: snapshot tool is telemetry-only. It does not send position, velocity, torque, `0x320`, or M33 motion commands. `--enable-active-report` only toggles temporary status reporting and disables it on exit.
 - Next step: make the formal M33 firmware emit `0x330~0x337` for motor 3/7 first, then have NanoPi bridge publish the same data through `/rehab_arm/motor_state` and `/joint_states`.
+
+### 2026-05-26 - M33 official motor telemetry firmware prep
+
+- Completed: local M33 branch `M33` now has `0x330~0x337` cached motor telemetry publishing prepared in `applications/control/control_layer.c`.
+- Completed: added `CONTROL_CAN_ID_M33_MOTOR_STATUS_BASE=0x330`, marker `0xB3`, publish period 100ms, and fresh-feedback window 1000ms in `control_layer_cfg.h`.
+- Completed: M33 publisher reads cached `s_motor_feedback[]` only; it does not enable motors, change active-report, send target, or alter `0x320` execution behavior.
+- Completed: added M33 shell command `cmd_m33_motor_status_once` for manual one-shot telemetry validation after flashing.
+- Validated: forced ARM GCC compile of `Debug/applications/control/control_layer.o` succeeded with RT-Thread Studio toolchain.
+- Not validated: full firmware image was not relinked/flashed in this turn; user will handle flashing.
+- Safety: `CONTROL_ROS_COMMAND_LOGGING_ONLY=1U` remains the safety default. `0x330~0x337` is telemetry-only and motion permission still depends on `0x322` plus M33 safety state.
+- Next step: after user flashes M33, run NanoPi `candump -L can0,330:7F8` and confirm `B3` telemetry frames appear before using ROS bridge `/rehab_arm/motor_state`.

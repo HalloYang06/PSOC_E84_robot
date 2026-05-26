@@ -2494,3 +2494,26 @@ No such file or directory: /tmp/rehab_sim_collection/sim_demo_motion.jsonl
 状态：
 
 - 已在 NanoPi 真 CAN 验证 3号和 7号遥测可采集；4/5/6 本轮因关闭不参与判断。
+
+### M33 `0x330~0x337` 上报依赖新鲜电机反馈缓存
+
+现象：
+
+- M33 固件补了 `0x330~0x337` 发布线程后，NanoPi 不一定立刻看到这些帧。
+- 手动运行 M33 shell `cmd_m33_motor_status_once` 可能输出 `sent=0`。
+
+根因：
+
+- M33 上报线程只读取 `s_motor_feedback[]` 中 1000ms 内更新过的缓存。
+- 如果电机未上电、active-report 没打开、CAN 没收到 `0x061/0x069` 或 `0x180007FD`，M33 不会把旧数据伪装成实时状态。
+
+技巧：
+
+- 先用 NanoPi `candump` 看原始电机帧是否存在。
+- 再看 M33 串口 `cmd_motor_fb <joint>` 或 `cmd_m33_motor_status_once`。
+- `0x330~0x337` byte0 必须是 `B3`；没有 `B3` 不要让 NanoPi parser 当正式 M33 motor status。
+- 这条链路是遥测，不是运动许可；`0x322` safety/status 仍然是正式安全裁决入口。
+
+状态：
+
+- M33 侧代码已准备，等待用户烧录后真 CAN 验证。
