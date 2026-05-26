@@ -2076,3 +2076,20 @@ No such file or directory: /tmp/rehab_sim_collection/sim_demo_motion.jsonl
 状态：
 
 - `check_sim_env --output` 测试已改为 `TemporaryDirectory()`，不会留下测试报告文件。
+
+### 平台上传工具默认必须是 dry-run
+
+现象：
+
+- 仿真主机、NanoPi、服务器之间的工具如果默认联网，容易误把一次测试变成真实上传或真实动作。
+
+技巧：
+
+- `upload_sim_readiness` 默认只打印上传计划。
+- 只有加 `--execute` 才会 POST 到平台。
+- 这类上传只能走数据资产接口，必须保留 `simulation_readiness_only_not_motion_permission` 边界。
+- 上传前先看 dry-run 里的 URL、`device_id`、`robot_id` 和 report 内容。
+
+状态：
+
+- 已新增 `upload_sim_readiness`，单测使用 fake opener，不连真实服务器，不生成持久 demo 文件。

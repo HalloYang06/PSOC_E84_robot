@@ -1480,16 +1480,23 @@ python3 src/rehab_arm_sim_mujoco/rehab_arm_sim_mujoco/check_sim_env.py \
 - `readiness=ready_with_fallback_sim` 表示 ROS2 数据链路可先跑，MuJoCo Python 包后续再补。
 - `ok=false` 时先修 `errors`，不要进入复杂仿真 launch。
 
-上传到平台的草案接口：
+先 dry-run 检查要上传到平台的内容：
 
 ```bash
-curl -X POST http://<server>:8011/api/rehab-arm/v1/devices/<device_id>/simulation-readiness \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "robot_id": "rehab-arm-alpha",
-    "device_id": "nanopi-m5",
-    "report": <sim_readiness_report.json 的内容>
-  }'
+ros2 run rehab_arm_sim_mujoco upload_sim_readiness sim_readiness_report.json \
+  --device-id <device_id> \
+  --robot-id rehab-arm-alpha \
+  --base-url http://<server>:8011/api/rehab-arm/v1
+```
+
+确认 URL、`device_id`、`robot_id` 都正确后，再显式执行上传：
+
+```bash
+ros2 run rehab_arm_sim_mujoco upload_sim_readiness sim_readiness_report.json \
+  --device-id <device_id> \
+  --robot-id rehab-arm-alpha \
+  --base-url http://<server>:8011/api/rehab-arm/v1 \
+  --execute
 ```
 
 注意：
@@ -1497,6 +1504,8 @@ curl -X POST http://<server>:8011/api/rehab-arm/v1/devices/<device_id>/simulatio
 - 这个报告只说明仿真/采集环境是否准备好。
 - 它不是运动许可，不代表真机可以上电或运动。
 - 平台只把它显示为数据资产和研发准备度，不会下发 CAN 或电机命令。
+- 不加 `--execute` 时不会联网，只打印上传计划。
+- 上传完成后可以删除本地 `sim_readiness_report.json`，不要把它提交进 Git。
 
 ## 7. 文档与 Git 维护
 

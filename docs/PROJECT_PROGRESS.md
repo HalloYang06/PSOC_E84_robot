@@ -913,3 +913,12 @@
 - Validated: `python -m unittest rehab_arm_ros2_ws\src\rehab_arm_sim_mujoco\test\test_check_sim_env.py -v` passed 4 tests.
 - Safety: no demo report, screenshot, sample session, or generated readiness JSON is kept in the project tree.
 - Next step: keep future demos and QA screenshots outside committed project files unless they become reusable docs or tests.
+
+### 2026-05-26 - Simulation readiness upload helper
+
+- Completed: added `upload_sim_readiness` to preview or upload `check_sim_env --output` reports to the platform.
+- Completed: default mode is dry-run; `--execute` is required before any HTTP POST.
+- Validated: `python -m unittest rehab_arm_ros2_ws\src\rehab_arm_sim_mujoco\test\test_check_sim_env.py rehab_arm_ros2_ws\src\rehab_arm_sim_mujoco\test\test_upload_sim_readiness.py -v` passed 8 tests.
+- Validated: `python -m py_compile rehab_arm_ros2_ws\src\rehab_arm_sim_mujoco\rehab_arm_sim_mujoco\upload_sim_readiness.py` passed.
+- Safety: upload result keeps `simulation_readiness_only_not_motion_permission`; it does not send CAN, joint targets, M33 commands, or motor commands.
+- Next step: on the Linux simulation host, generate a real report, dry-run the upload, then execute against the cloud only after the report content is reviewed.

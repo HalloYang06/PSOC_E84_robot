@@ -16,6 +16,7 @@ setup(
         'console_scripts': [
             'mujoco_sim_node = rehab_arm_sim_mujoco.mujoco_sim_node:main',
             'check_sim_env = rehab_arm_sim_mujoco.check_sim_env:main',
+            'upload_sim_readiness = rehab_arm_sim_mujoco.upload_sim_readiness:main',
         ],
     },
 )
