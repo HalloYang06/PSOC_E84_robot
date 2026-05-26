@@ -1613,3 +1613,13 @@
 - Confirmed from ODrive CAN protocol docs: `Get_Encoder_Estimates` reports `Pos_Estimate` in `rev` and `Vel_Estimate` in `rev/s`; `Set_Input_Pos` also takes `Input_Pos` in `rev`.
 - Decision: do not copy the RobStride 7号 `gear_ratio=1.0` conclusion onto 3号. For 3号 CANSimple, keep the motor-side unit conversion path until we deliberately switch to Sitaiwei MIT/output-axis RAD protocol.
 - Next step: if 3号 formal CANSimple movement still disagrees with visual output, validate with direct CANSimple `pos`/`vel` captures first; if the user wants no gearbox conversion, implement a separate 3号 MIT-output-axis path instead of deleting the CANSimple ratio.
+
+### 2026-05-26 - Motor3 direct +5 degree CANSimple validation
+
+- Completed: ran a direct CANSimple incremental position test for 3号 from NanoPi, using the ODrive/CANSimple `rev` unit path.
+- Commanded: current encoder was about `7.66448 rev`; target was `8.33114 rev`, equal to motor `+0.66667 rev`, which maps to output `+5°` if the 48:1 gearbox conversion is correct.
+- Validated: encoder estimate moved from about `7.66448 rev` to `8.33206 rev`; measured delta `0.66758 rev`, which maps to output `5.0069°`.
+- Safety: sent CANSimple idle afterward; `can0` remained `ERROR-ACTIVE` with tx/rx error counters `0/0`.
+- Diagnosed: M33 formal path `m33 target --joint 0 --deg 5` still produced no 3号 position-control frame because the board returned `0x322 = A5 79 07 00 01 02 0B 00`; detail code `0x0B` means `JOINT_UNCALIBRATED`.
+- Conclusion: 3号 motor/CANSimple path is working; the current blocker is the M33 formal safety calibration gate on the firmware currently running on the board.
+- Next step: flash a M33 build that contains the latest joint3 bench calibration (`CONTROL_MOTOR_JOINT3_CALIBRATED=1U`, zero offset around `55.1 rad`) or deliberately keep the gate closed and continue only direct CANSimple bench tests.

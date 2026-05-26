@@ -2430,6 +2430,21 @@ python3 /home/pi/nanopi_can_master.py m33 target --iface can0 --joint 0 --deg 5 
 python3 /home/pi/nanopi_can_master.py m33 stop --iface can0 --joint 0 --wait 0.3
 ```
 
+如果 formal path 没有看到 3号动，马上再发 heartbeat：
+
+```bash
+python3 /home/pi/nanopi_can_master.py heartbeat --iface can0 --seq 93 --wait 0.3
+```
+
+若 `0x322` 最后几位类似 `... 01 02 0B 00`，其中 detail code `0x0B` 表示 M33 认为该 joint 未标定，正式位置命令已被安全状态机拦截。这时不是 CANSimple 不通，也不是 NanoPi 没发，而是板端 M33 固件没有放开该 joint 的 formal bench calibration gate。
+
+3号 direct CANSimple +5° 台架验证过的计算方式：
+
+- 先读当前 `0x069` 的 `position_rev`。
+- 目标 `target_rev = current_rev + 5 / 360 * 48`。
+- 本次实测从约 `7.66448 rev` 到 `8.33206 rev`，折算输出约 `5.0069°`。
+- 结束必须发 `Set_Axis_State idle`，并确认 `can0` 仍为 `ERROR-ACTIVE`。
+
 烧录台架版本 M33 后，直接做极小角度测试。7 号对应 ROS joint4：
 
 ```bash

@@ -3462,3 +3462,27 @@ Connection reset by 192.168.2.66 port 22
 状态：
 
 - 已记录源驱动路线：ODrive CAN protocol 与 `odriverobotics/ros_odrive`。
+
+### 3号 direct 能动但 formal 不动时先看 0x322 detail
+
+现象：
+
+- Direct CANSimple 对 3号发送“当前位置 + 输出约 5°”后，`0x069` 从约 `7.66448 rev` 到 `8.33206 rev`，折算输出约 `5.0069°`。
+- 但 `m33 target --joint 0 --deg 5 --rpm 1` 没有触发 M33 发 `0x06C Set_Input_Pos`。
+- 随后的 heartbeat 回复 `0x322 = A5 79 07 00 01 02 0B 00`。
+
+判断：
+
+- byte6/detail code `0x0B` 是 `JOINT_UNCALIBRATED`。
+- 这说明 M33 安全状态机拦截了 formal path，电机没有收到 formal 位置命令。
+- 此时不能继续怀疑 CANSimple 公式本身；direct path 已证明 3号能按 `rev` 单位移动。
+
+技巧：
+
+- formal path 不动时，先发一次 heartbeat，看 `0x322` 的 detail code。
+- 如果 detail 是 `0x0B`，需要烧录包含对应 `CONTROL_MOTOR_JOINTx_CALIBRATED=1U` 的 M33 bench 固件，或继续让 formal path 保持安全关闭。
+- 不要为了绕过这个状态直接把安全门删掉；台架调试可以临时开 gate，但文档里必须标清这是未装机 bench 配置。
+
+状态：
+
+- 3号 direct CANSimple 已验证；formal M33 仍受当前板端固件 calibration gate 阻挡。
