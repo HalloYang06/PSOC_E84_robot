@@ -82,6 +82,7 @@ NanoPi 离线转换：
 - `position = position_turns * 2*pi`
 - `velocity = velocity_turns_per_sec * 2*pi`
 - heartbeat 会补充 `enabled/fault/axis_state/error_code`。
+- heartbeat 的 byte5/byte6/byte7 当前只保留为 `heartbeat_byte5/6/7` raw 字段，并标记 `heartbeat_extension_decode=raw_only_vendor_fields_unconfirmed`。
 
 协议页已确认的 CANSimple 帧格式：
 
@@ -110,6 +111,8 @@ NanoPi 离线转换：
 
 - CANSimple 直接命令不进入正式 launch。
 - 本地离线协议页已确认 CANSimple standard 11-bit CAN、8-byte data frame 方向与当前实现一致。
+- byte0..3 axis error 与 byte4 axis state 已在 M33/NanoPi 离线转换中使用。
+- byte5..7 在本地 M33 中曾用于 `flags/temp/life` 调试打印，但与离线协议表参数名还未完全对齐，正式数据集只能 raw-first 保留，不能直接当成可靠温度或安全位。
 - 波特率、控制模式、错误位和限幅字段仍需继续从离线页逐项提取，并在 M33 侧二次验证。
 
 当前已从协议手册表格/目录确认的 CANSimple 命令包括：

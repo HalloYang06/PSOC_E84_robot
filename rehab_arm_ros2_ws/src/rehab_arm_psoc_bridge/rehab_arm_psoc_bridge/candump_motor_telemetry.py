@@ -106,12 +106,20 @@ def decode_cansimple_heartbeat(frame: dict[str, object]) -> dict[str, object] | 
         return None
     error = int.from_bytes(data[0:4], 'little', signed=False)
     state = data[4]
+    heartbeat_byte5 = data[5] if len(data) >= 6 else None
+    heartbeat_byte6 = data[6] if len(data) >= 7 else None
+    heartbeat_byte7 = data[7] if len(data) >= 8 else None
     return {
         'node_id': cansimple_node_id(int(frame['can_id'])),
+        'axis_error_u32': error,
         'error_code': f'0x{error:08X}',
         'axis_state': state,
         'enabled': state == 8,
         'fault': error != 0,
+        'heartbeat_byte5': heartbeat_byte5,
+        'heartbeat_byte6': heartbeat_byte6,
+        'heartbeat_byte7': heartbeat_byte7,
+        'heartbeat_extension_decode': 'raw_only_vendor_fields_unconfirmed',
         'raw_can_id': f"0x{int(frame['can_id']):03X}",
         'raw_data': data.hex().upper(),
     }
@@ -144,6 +152,10 @@ def decode_cansimple_encoder_estimate(
         'fault': heartbeat.get('fault') if heartbeat else False,
         'error_code': heartbeat.get('error_code') if heartbeat else None,
         'axis_state': heartbeat.get('axis_state') if heartbeat else None,
+        'heartbeat_byte5': heartbeat.get('heartbeat_byte5') if heartbeat else None,
+        'heartbeat_byte6': heartbeat.get('heartbeat_byte6') if heartbeat else None,
+        'heartbeat_byte7': heartbeat.get('heartbeat_byte7') if heartbeat else None,
+        'heartbeat_extension_decode': heartbeat.get('heartbeat_extension_decode') if heartbeat else None,
         'raw_can_id': f"0x{int(frame['can_id']):03X}",
         'raw_data': data.hex().upper(),
     }

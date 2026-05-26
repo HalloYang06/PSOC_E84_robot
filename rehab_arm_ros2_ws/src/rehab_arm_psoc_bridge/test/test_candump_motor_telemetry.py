@@ -53,6 +53,11 @@ class CandumpMotorTelemetryTests(unittest.TestCase):
         self.assertEqual(heartbeat['axis_state'], 8)
         self.assertIs(heartbeat['enabled'], True)
         self.assertIs(heartbeat['fault'], False)
+        self.assertEqual(heartbeat['axis_error_u32'], 0)
+        self.assertEqual(heartbeat['heartbeat_byte5'], 0x80)
+        self.assertEqual(heartbeat['heartbeat_byte6'], 0xCE)
+        self.assertEqual(heartbeat['heartbeat_byte7'], 0x00)
+        self.assertEqual(heartbeat['heartbeat_extension_decode'], 'raw_only_vendor_fields_unconfirmed')
 
     def test_decode_encoder_estimate_converts_turns_to_radians(self) -> None:
         data = struct.pack('<ff', 0.25, 0.5)
@@ -68,6 +73,22 @@ class CandumpMotorTelemetryTests(unittest.TestCase):
         self.assertAlmostEqual(motor['velocity'], 0.5 * math.tau)
         self.assertEqual(motor['raw_can_id'], '0x069')
         self.assertIs(motor['enabled'], True)
+        self.assertEqual(motor['heartbeat_byte5'], None)
+        self.assertEqual(motor['heartbeat_extension_decode'], None)
+
+    def test_encoder_estimate_carries_raw_heartbeat_extension_bytes(self) -> None:
+        data = struct.pack('<ff', 0.25, 0.5)
+        frame = parse_candump_line(candump_line(0.2, '069', data))
+        heartbeat = decode_cansimple_heartbeat(
+            parse_candump_line(candump_line(0.1, '061', b'\x00\x00\x00\x00\x08\x80\xCE\x00'))
+        )
+
+        motor = decode_cansimple_encoder_estimate(frame, heartbeat)
+
+        self.assertEqual(motor['heartbeat_byte5'], 0x80)
+        self.assertEqual(motor['heartbeat_byte6'], 0xCE)
+        self.assertEqual(motor['heartbeat_byte7'], 0x00)
+        self.assertEqual(motor['heartbeat_extension_decode'], 'raw_only_vendor_fields_unconfirmed')
 
     def test_decode_private_active_report_preserves_raw_fields(self) -> None:
         frame = parse_candump_line('(1779777167.170439) can0 180004FD#97BA7FCF7FFF0140')

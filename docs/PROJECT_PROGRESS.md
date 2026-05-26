@@ -1090,7 +1090,8 @@
 - Completed: documented that the nearest local M33 Git repo is `D:\RT-ThreadStudio\workspace\yiliao_m33`, which already has logging-only `0x320` safety assessment and `0x322` detail-code reporting.
 - Completed: located local Feishu offline pages for the shoulder/Sitaiwei drive in `D:\电机上位机\肩关节电机资料` and added the confirmed CANSimple commands, object/parameter headings, hardware interfaces, and SDK/control-mode entries to `docs/MOTOR_PROTOCOLS.md`.
 - Completed: extracted Sitaiwei CANSimple frame rules from the local offline protocol page: standard 11-bit ID, `can_id = (node_id << 5) + cmd_id`, fixed 8-byte little-endian data, IEEE754 float32, and the official `Set_Input_Pos` byte example.
-- Validated: targeted `test_candump_motor_telemetry.py` passed 9 tests.
+- Completed: `candump_motor_telemetry.py` now carries CANSimple heartbeat byte5/byte6/byte7 into motor-state JSONL as raw fields instead of pretending they are confirmed engineering values.
+- Validated: targeted `test_candump_motor_telemetry.py` passed 10 tests.
 - Validated: full `rehab_arm_psoc_bridge` unit tests passed 95 tests; `py_compile` passed for `candump_motor_telemetry.py`.
 - Not validated: byte-level Sitaiwei layouts beyond the extracted `Set_Input_Pos` example still need deeper extraction from the local offline HTML and M33-side verification; online Feishu links still redirect to login in the current shell.
 - Safety: changes are offline log conversion and documentation only; no CAN device is opened, no `0x320/0x321` is sent, no M33 command is issued, and no motor can move.

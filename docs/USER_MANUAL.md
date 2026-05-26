@@ -1613,6 +1613,7 @@ D:\电机上位机\肩关节电机资料
 - 多字节数据使用小端。
 - `float32` 按 IEEE754 编码。
 - `node_id=3` 时，heartbeat 是 `0x061`，encoder estimate 是 `0x069`。
+- `0x061` 的 byte5/byte6/byte7 当前在数据采集中只作为 raw 字段保存，暂时不要当成可靠温度或安全状态。
 
 正式机器人控制仍然走 `ROS2 JointTrajectory -> NanoPi -> M33 -> 电机`，不要把这些 CANSimple 直接控制帧放进正式 launch。
 

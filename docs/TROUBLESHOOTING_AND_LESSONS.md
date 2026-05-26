@@ -2389,3 +2389,21 @@ No such file or directory: /tmp/rehab_sim_collection/sim_demo_motion.jsonl
 - 已找到本地离线页和学习整理，并已把可确认的 CANSimple 命令、对象/参数项、硬件接口和开发入口补入 `docs/MOTOR_PROTOCOLS.md`。
 - 已确认协议页里的核心帧规则：标准 11-bit CAN ID，`can_id = (node_id << 5) + cmd_id`，8 字节小端数据，float32 按 IEEE754 编码。
 - 从飞书离线 HTML 抽取内容时，直接 `grep`/`Select-String` 容易输出整页压缩脚本；更稳的做法是解析 HTML 内的 Feishu block JSON，再按 table 的 `rows_id`、`columns_id`、`cell_set` 还原表格。
+
+### CANSimple heartbeat 扩展字节先 raw-first，不要过早命名
+
+现象：
+
+- 伺泰威 node 3 heartbeat `0x061` 实测 payload 类似 `00 00 00 00 08 80 CE 00`。
+- byte0..3 和 byte4 可明确用于 axis error / axis state。
+- 本地 M33 调试代码曾把 byte5/byte6/byte7 打印为 `flags/temp/life`，但协议表标题写的是 `Motor_Flag/Encoder_Flag/Controller_Flag/Traj_Done/Life`，二者还没完全对齐。
+
+技巧：
+
+- 数据采集可以保留 `heartbeat_byte5/6/7`。
+- 在厂家字节级说明和 M33 现场验证前，不要把 byte6 当成可靠温度，也不要把 byte5 当成完整安全位。
+- 平台和训练数据中标记 `heartbeat_extension_decode=raw_only_vendor_fields_unconfirmed`。
+
+状态：
+
+- `candump_motor_telemetry.py` 已按 raw-first 方式保留 heartbeat 扩展字节。
