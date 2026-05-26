@@ -2205,7 +2205,7 @@ static rt_bool_t ctrl_handle_nanopi_heartbeat(const struct rt_can_msg *msg)
                  CONTROL_STATUS_SAFETY_OK : CONTROL_STATUS_SAFETY_LIMITED;
     payload[5] = ((s_last_ros_status_detail_code == CONTROL_STATUS_DETAIL_NONE) &&
                   CONTROL_DEVELOPMENT_BENCH_MOTION_ENABLE) ?
-                 CONTROL_STATUS_MODE_ARMED : CONTROL_STATUS_MODE_STANDBY;
+                 CONTROL_STATUS_MODE_BENCH_ARMED : CONTROL_STATUS_MODE_STANDBY;
     payload[6] = s_last_ros_status_detail_code;
 #endif
     payload[7] = 0U;
