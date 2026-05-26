@@ -940,3 +940,13 @@
 - Validated: the real NanoPi node 3 tiny-motion log was converted in a temporary directory, producing 397 motor_state records from 444 raw CAN frames.
 - Safety: converter is offline/log-only; it does not open CAN, send `0x320/0x321`, command M33, or control motors.
 - Next step: build on NanoPi and use this JSONL path for real motor telemetry upload/quality checks after the next safe capture.
+
+### 2026-05-26 - Platform Linux board access check panel
+
+- Completed: platform robotics page now has a read-only Linux board access check panel for board presence, runner availability, ROS/simulation report, camera keyframe, CAN/serial data, and last upload time.
+- Completed: kept the platform page generic for Linux boards; it does not hardcode the rehab arm and does not modify NPC workbench resources.
+- Validated: targeted platform eslint passed for `apps/web/app/projects/[id]/robotics/robotics-workbench-client.tsx`.
+- Validated: local authenticated browser QA opened `/projects/proj_rehab_arm/robotics`; desktop and 390px mobile screenshots showed the access check panel, no old control-console label, and no horizontal overflow.
+- Not validated: cloud deploy is still pending in this slice.
+- Safety: the panel is status-only and does not send ROS, CAN, M33, motor, or motion commands.
+- Next step: deploy the platform branch to cloud after this commit if the user wants the live server updated now.
