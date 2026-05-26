@@ -17,6 +17,14 @@ try:
         decode_cansimple_heartbeat,
         decode_private_active_report,
     )
+    from rehab_arm_psoc_bridge.data_recording import (
+        JSONL_SCHEMA_VERSION,
+        RECORDER_VERSION,
+        make_motor_state_payload,
+        make_payload_record,
+        sanitize_identifier,
+        write_jsonl_record,
+    )
 except ModuleNotFoundError:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from rehab_arm_psoc_bridge.candump_motor_telemetry import (
@@ -24,6 +32,14 @@ except ModuleNotFoundError:
         decode_cansimple_encoder_estimate,
         decode_cansimple_heartbeat,
         decode_private_active_report,
+    )
+    from rehab_arm_psoc_bridge.data_recording import (
+        JSONL_SCHEMA_VERSION,
+        RECORDER_VERSION,
+        make_motor_state_payload,
+        make_payload_record,
+        sanitize_identifier,
+        write_jsonl_record,
     )
 
 
@@ -166,6 +182,76 @@ def collect_live_snapshot(
     }
 
 
+def make_snapshot_session_metadata(
+    session_id: str,
+    device_id: str,
+    robot_id: str,
+    now: float | None = None,
+) -> dict[str, object]:
+    return {
+        'record_type': 'session_metadata',
+        'schema_version': JSONL_SCHEMA_VERSION,
+        'ts_unix': time.time() if now is None else now,
+        'session_id': sanitize_identifier(session_id),
+        'device_id': device_id,
+        'robot_id': robot_id,
+        'software_version': 'dev',
+        'recorder_version': RECORDER_VERSION,
+        'mode': 'live_socketcan_motor_snapshot',
+        'source': 'live_socketcan_motor_snapshot',
+        'sync_status': 'local_only',
+        'topics': ['/rehab_arm/motor_state'],
+        'optional_topics': [],
+        'motion_allowed_expected': False,
+        'control_boundary': CONTROL_BOUNDARY,
+    }
+
+
+def build_snapshot_jsonl_records(
+    snapshot: dict[str, object],
+    robot_id: str,
+    device_id: str,
+    session_id: str,
+    now: float | None = None,
+) -> list[dict[str, object]]:
+    ts = time.time() if now is None else now
+    sid = sanitize_identifier(session_id)
+    entries = snapshot.get('motor_state_compatible_entries', [])
+    motors = [dict(item) for item in entries if isinstance(item, dict)]
+    payload = make_motor_state_payload(
+        motors,
+        robot_id=robot_id,
+        device_id=device_id,
+        now=ts,
+        source='live_socketcan_motor_snapshot',
+    )
+    payload['session_id'] = sid
+    payload['motor_count'] = len(motors)
+    payload['frame_counts'] = dict(snapshot.get('counts', {})) if isinstance(snapshot.get('counts'), dict) else {}
+    payload['snapshot_schema_version'] = snapshot.get('schema_version', 'live_socketcan_motor_snapshot_v1')
+    return [
+        make_snapshot_session_metadata(sid, device_id, robot_id, now=ts),
+        make_payload_record('/rehab_arm/motor_state', payload, now=ts),
+    ]
+
+
+def write_snapshot_jsonl(
+    output_path: str | Path,
+    snapshot: dict[str, object],
+    robot_id: str,
+    device_id: str,
+    session_id: str,
+    now: float | None = None,
+) -> Path:
+    path = Path(output_path).expanduser()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    records = build_snapshot_jsonl_records(snapshot, robot_id, device_id, session_id, now=now)
+    with path.open('w', encoding='utf-8') as handle:
+        for record in records:
+            write_jsonl_record(handle, record)
+    return path
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description='Capture a short live SocketCAN motor telemetry snapshot.')
     parser.add_argument('--iface', default='can0', help='SocketCAN interface, default can0')
@@ -179,12 +265,27 @@ def main(argv: list[str] | None = None) -> int:
         help='Temporarily enable private active-report for this motor id, then disable it on exit.',
     )
     parser.add_argument('--pretty', action='store_true', help='Pretty-print JSON')
+    parser.add_argument('--output-jsonl', help='Optional recorder-compatible JSONL output path')
+    parser.add_argument('--device-id', default='nanopi-m5', help='Device id for JSONL output')
+    parser.add_argument('--robot-id', default='rehab-arm-alpha', help='Robot id for JSONL output')
+    parser.add_argument('--session-id', help='Session id for JSONL output. Defaults to live_socketcan_<unix time>.')
     args = parser.parse_args(argv)
 
     if args.duration <= 0:
         parser.error('--duration must be positive')
 
     snapshot = collect_live_snapshot(args.iface, args.duration, args.enable_active_report)
+    if args.output_jsonl:
+        session_id = args.session_id or f'live_socketcan_{int(time.time())}'
+        output_path = write_snapshot_jsonl(
+            args.output_jsonl,
+            snapshot,
+            robot_id=args.robot_id,
+            device_id=args.device_id,
+            session_id=session_id,
+        )
+        snapshot['output_jsonl'] = str(output_path)
+        snapshot['session_id'] = sanitize_identifier(session_id)
     print(json.dumps(snapshot, ensure_ascii=False, indent=2 if args.pretty else None, sort_keys=args.pretty))
     return 0 if snapshot['counts'] else 2
 

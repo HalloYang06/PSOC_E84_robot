@@ -1122,6 +1122,8 @@ python3 src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/live_socketcan_motor_sna
   --iface can0 \
   --duration 3 \
   --enable-active-report 7 \
+  --output-jsonl /home/pi/rehab_arm_logs/live_snapshots/live_3_7.jsonl \
+  --session-id live_3_7_powered \
   --pretty
 ```
 
@@ -1132,6 +1134,7 @@ python3 src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/live_socketcan_motor_sna
 - `latest.motor3_encoder.vendor` 为 `Sitaiwei`。
 - `latest.motor7_active_report.vendor` 为 `Lingzu`。
 - `motor_state_compatible_entries` 中只有遥测字段，不包含运动命令。
+- 如果加了 `--output-jsonl`，会写出 recorder/platform 可读取的 JSONL：第一行 `session_metadata`，第二行 `/rehab_arm/motor_state`。
 - `control_boundary` 是 `telemetry_only_not_motor_command`。
 
 注意：
@@ -1139,6 +1142,7 @@ python3 src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/live_socketcan_motor_sna
 - 这个工具不发送位置、速度、力矩、`0x320` 或 M33 控制命令。
 - `--enable-active-report` 只用于让指定灵足电机周期上报状态，属于调试遥测开关；正式机器人路径仍然应由 M33 汇总后发布 `/rehab_arm/motor_state`。
 - 如果 4/5/6 被断电或关闭，它们不会回复 Get_ID，也不会出现 active-report，这是预期现象，不要当成解析失败。
+- 从 Windows PowerShell 远程执行 SSH 命令时，不要在双引号里直接写远端 `$(date ...)`，否则 PowerShell 可能先在本机解析。需要时间戳文件名时，优先先 SSH 到 NanoPi 后执行，或用固定文件名验证链路。
 
 先干跑，不发 CAN：
 

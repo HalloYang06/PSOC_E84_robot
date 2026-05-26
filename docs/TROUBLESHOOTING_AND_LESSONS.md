@@ -2488,6 +2488,8 @@ No such file or directory: /tmp/rehab_sim_collection/sim_demo_motion.jsonl
 - 再短时抓真实 CAN，按 ID 计数：`0x061/0x069` 对应 3号伺泰威，`0x180007FD` 对应 7号灵足 active-report。
 - 对没有上电的电机，不要继续堆协议修改；先确认电源和驱动在线状态。
 - `live_socketcan_motor_snapshot.py --enable-active-report 7` 只开临时状态上报，结束自动关闭，不是运动命令。
+- 如果加 `--output-jsonl`，可以直接得到 recorder/platform 可读取的两行 JSONL：`session_metadata` 和 `/rehab_arm/motor_state`。
+- 从 Windows PowerShell 远程 SSH 执行时，双引号里的 `$(date -u ...)` 会被 PowerShell 当成本机表达式先解析，可能导致远端文件名丢时间戳。固定文件名或先进入远端 shell 更稳。
 
 状态：
 

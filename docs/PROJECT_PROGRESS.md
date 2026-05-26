@@ -1150,11 +1150,13 @@
 
 - Completed: added `live_socketcan_motor_snapshot.py` as a short SocketCAN telemetry snapshot tool for real `can0`.
 - Completed: tool decodes current 3号伺泰威 CANSimple `0x061/0x069` and 7号灵足 private active-report `0x180007FD` into motor-state-compatible JSON fields.
+- Completed: live snapshot can now write recorder/platform-compatible JSONL containing `session_metadata` and `/rehab_arm/motor_state`.
 - Completed: M33 candump conversion also now emits `/joint_states` from M33 `0x330~0x337` logs for RViz/MuJoCo/platform replay.
 - Validated on NanoPi true CAN: `can0` was `ERROR-ACTIVE`, 1Mbps, tx/rx error counters 0.
 - Validated on NanoPi true CAN: 3s capture saw `0x061=30`, `0x069=300`, `0x180007FD=299`.
 - Validated: motor 3 latest heartbeat had `axis_error=0`, `axis_state=1`; motor 3 encoder position/velocity were 0; motor 7 raw active-report was `A4EE7FFF7FFF0140`.
-- Validated: local targeted `test_live_socketcan_motor_snapshot.py` passed 5 tests; full bridge unit suite passed 124 tests.
+- Validated on NanoPi true CAN: `--output-jsonl` wrote a loadable JSONL with `session_metadata` and `/rehab_arm/motor_state`, `motor_count=2`.
+- Validated: local targeted `test_live_socketcan_motor_snapshot.py` passed 7 tests; full bridge unit suite passed 126 tests.
 - Hardware note: user confirmed motors 4/5/6 are powered off/closed, so missing Get_ID replies and missing active-report for 4/5/6 are expected in this session.
 - Safety: snapshot tool is telemetry-only. It does not send position, velocity, torque, `0x320`, or M33 motion commands. `--enable-active-report` only toggles temporary status reporting and disables it on exit.
 - Next step: make the formal M33 firmware emit `0x330~0x337` for motor 3/7 first, then have NanoPi bridge publish the same data through `/rehab_arm/motor_state` and `/joint_states`.
