@@ -51,6 +51,13 @@
 
 ### 2026-05-26
 
+- M33 formal clinical gate scaffold:
+  - M33 新增 `CONTROL_CLINICAL_MOTION_ENABLE`，默认 `0U`；bench motion 和 clinical motion 不能同时开启，避免台架状态混成正式穿戴状态。
+  - M33 heartbeat `0x322` 现在通过统一状态填充函数处理：bench build 输出 `bench_armed`；clinical build 只有 pre-arm ready 才输出正式 `armed`，否则输出 `prearm_not_ready`。
+  - NanoPi parser 增加 detail code `12 -> prearm_not_ready`。
+  - 验证：NanoPi 侧 `test_psoc_status.py`、`test_safety_gate.py`、`test_m33_ros_contract.py`、`test_candump_motor_telemetry.py` 共 33 tests passed；M33 `git diff --check` 通过。
+  - 未验证：M33 本地 `python -m SCons -j4` 仍失败，原因是工具链路径 `C:\Users\XXYYZZ` 不存在；需要用户在 RT-Thread Studio 里编译烧录。
+
 - NanoPi bench_armed parser and live gate validation:
   - Synced `psoc_status.py` and `test_psoc_status.py` to NanoPi, rebuilt `rehab_arm_psoc_bridge`, and confirmed `0x322#A55B070000060000` parses as `control_mode=bench_armed` with `motion_allowed=false`.
   - Ran ROS bridge with `enable_target_tx=true` and published a legal one-joint trajectory. Bridge rejected it with `PSoC motion_allowed is not true, protocol_version=2, state=ok, control_mode=bench_armed, detail=none`.

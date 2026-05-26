@@ -108,6 +108,7 @@ Detail code enum:
 | `9` | `motor_fault` | 电机/驱动故障 |
 | `10` | `logging_only_no_motor_output` | logging-only 阶段拒绝输出 |
 | `11` | `joint_uncalibrated` | 目标关节未完成软件零点/方向/比例标定，禁止绝对位置输出 |
+| `12` | `prearm_not_ready` | formal clinical pre-arm 条件未通过 |
 
 当前 M33 logging-only 固件会把最近一次 ROS safety assessment 的首要拒绝原因放到 byte6 `detail_code`。例如，收到超限 `0x320` 后，下一次 `0x321 -> 0x322` 的 byte6 应为 `4`，NanoPi ROS 会解析为 `target_out_of_limit`。
 
@@ -129,6 +130,7 @@ Detail code enum:
   - `control_mode == armed` 或 `control_mode == active`
   - `detail_code == none`
 - `control_mode == bench_armed` 只表示开发台架状态可见，NanoPi 默认不得把它当成正式运动许可。
+- formal clinical build 只有在 `CONTROL_CLINICAL_MOTION_ENABLE=1` 且 M33 pre-arm 检查通过时，才允许上报正式 `control_mode=armed`；否则必须保持 `motion_allowed=false` 并可回报 `detail=prearm_not_ready`。
 - 任何历史拒绝原因、急停、fault、limited、logging-only、standby 或 boot 状态都必须让 `motion_allowed=false`。
 - 后续如果需要同时表达“当前实时 detail”和“最近一次拒绝原因”，应新增协议字段或 V3 扩展，不要改变 V2 byte6 的既有含义。
 

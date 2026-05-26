@@ -14,6 +14,7 @@
 - 急停、软件限位/限速/限流、heartbeat timeout、传感器掉线和电机故障必须能在 M33 本地闭环内触发，不依赖 Linux、ROS、网络、App 或云端。
 - M33 pre-arm 的安全输入合同见 [M33_SAFETY_INPUT_MAPPING.md](M33_SAFETY_INPUT_MAPPING.md)。正式穿戴模式下，急停和代码配置型限位/限速/扭矩电流限制必须同时满足 `confirmed=1` 和 `safe_now=1`，否则不得进入正式 `armed/active`。
 - 开发台架固件必须使用 `control_mode=bench_armed` 区分于正式 `armed/active`；App、平台、VLA 和 NanoPi 默认不得把 `bench_armed` 当成人体穿戴运动许可。
+- M33 formal clinical motion 开关默认关闭。只有显式启用 clinical build，并且 pre-arm 对 heartbeat、急停、限位、限速、扭矩/电流限制和必需电机反馈均判定 ready，才允许上报正式 `armed/active`；否则应回报 `prearm_not_ready` 或受限状态。
 - 人在设备内时，不允许使用 NanoPi 直发 CANSimple/private 电机帧做运动控制；调试直控只能用于离线台架和明确隔离的诊断场景。
 - VLA、M55 和 OpenClaw 只能输出任务目标、预测或辅助建议，不能输出底层电机命令，也不能覆盖 M33 的安全决策。
 - 每个新功能进入真机前必须经过“仿真 -> 空载/不接人台架 -> 低能量受限动作 -> 人体穿戴测试”的分级验证。

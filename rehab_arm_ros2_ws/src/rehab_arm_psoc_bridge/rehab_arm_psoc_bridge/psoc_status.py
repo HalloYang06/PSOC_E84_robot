@@ -33,6 +33,7 @@ DETAIL_CODE_NAMES = {
     9: 'motor_fault',
     10: 'logging_only_no_motor_output',
     11: 'joint_uncalibrated',
+    12: 'prearm_not_ready',
 }
 
 
