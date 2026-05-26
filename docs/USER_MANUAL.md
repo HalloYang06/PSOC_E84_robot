@@ -2408,11 +2408,11 @@ python3 rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/calibr
 
 更新：7号 EL05 已通过 official CSP 试验确认，RobStride `loc_ref`/反馈位置在当前台架上对应可见输出侧角度，不需要再除以 `9`。当前台架版本使用：
 
-- `CONTROL_MOTOR_JOINT7_GEAR_RATIO=(1.0f)`
+- `CONTROL_MOTOR_JOINT4/5/6/7_GEAR_RATIO=(1.0f)`
 - `CONTROL_MOTOR_JOINT7_ZERO_OFFSET_RAD=(1.0f)`
 - `CONTROL_MOTOR_JOINT7_CALIBRATED=1U`
 
-因此 ROS joint4 `+5°` 预期就是输出端约 `+5°`。
+M33 正式 `0x320 set_target` 对 4/5/6/7 灵足电机使用官方 CSP 参数流：`run_mode=5`、enable、`limit_spd(0x7017)`、`loc_ref(0x7016)`。因此 ROS joint4 `+5°` 预期就是输出端约 `+5°`。
 
 烧录台架版本 M33 后，直接做极小角度测试。7 号对应 ROS joint4：
 

@@ -1557,3 +1557,13 @@
 - Observed: M33 `0x336` reported motor7 at `0x03F1 = 1009 mrad`, only about `0.5°` from the temporary `1.0 rad` bench zero, not the expected `+5°`.
 - Failed or unverified: physical motion requires user confirmation; CAN indicates the formal MIT frame was sent, but the final position did not reach `1.087 rad`.
 - Next step: if the user saw no meaningful motion, change M33 formal private control for motor7 from MIT frame control to the official CSP flow (`run_mode=5`, `limit_spd=0x7017`, `loc_ref=0x7016`) that already produced visible 114° movement.
+
+### 2026-05-26 - Lingzu formal path switched to CSP
+
+- Completed: changed M33 `control_joint_motor_set_target()` so private-protocol motor targets call `control_motor_position_control(..., csp_mode=true)` instead of sending a MIT control frame.
+- Behavior: formal `0x320 set_target` for Lingzu motors now uses the already-validated RobStride sequence: `run_mode=5`, enable, write `limit_spd(0x7017)`, write `loc_ref(0x7016)`.
+- Completed: set M33 ROS mapping `CONTROL_MOTOR_JOINT4/5/6/7_GEAR_RATIO=(1.0f)` so all four Lingzu motors use RobStride output-side angle units in the formal path.
+- Preserved: motor3 CANSimple path remains separate and is not affected by this private-protocol CSP change.
+- Validated: `git diff --check -- applications/control/control_layer.c applications/control/control_layer_cfg.h` passed in the M33 repo.
+- Failed or unverified: local M33 build was not run because `scons` is not installed on this Windows environment.
+- Next step: user flashes M33, then test formal joint4 `+5°`; after that test 4/5/6/7 one at a time with small angles.

@@ -3396,3 +3396,24 @@ Connection reset by 192.168.2.66 port 22
 状态：
 
 - 待烧录后验证 formal path `joint4 +5°` 是否实际输出约 `5°`。
+
+### Lingzu 正式位置控制优先走 CSP 参数流
+
+现象：
+
+- 7号 official CSP flow 能产生可见约 `114.4°` 输出运动。
+- M33 formal path 之前使用 MIT 控制帧，虽然 CAN 帧发出，但 fixed-scale retest 只到约 `1.009 rad`，没有到 `1.087 rad` 目标。
+
+判断：
+
+- 对 4/5/6/7 灵足 RobStride 电机，正式 `0x320 set_target` 不应继续依赖 MIT frame 作为位置模式。
+- 应使用官方 CSP 参数流：`run_mode=5`、enable、`limit_spd(0x7017)`、`loc_ref(0x7016)`。
+
+修正：
+
+- M33 `control_joint_motor_set_target()` 改为调用 `control_motor_position_control(..., csp_mode=true)`。
+- 4/5/6/7 的 formal ROS 映射比例临时统一为 `1.0f`，按输出侧角度处理。
+
+状态：
+
+- 待烧录后验证。
