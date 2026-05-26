@@ -993,6 +993,12 @@ function AccessCheckPanel({
       ready: Boolean(latestDevice),
     },
   ];
+  const setupSteps = [
+    { label: "1. 注册设备", detail: "上传 device_id、robot_id、主机名、在线状态和能力 manifest。" },
+    { label: "2. 扫描接口", detail: "报告 CAN、串口、USB、摄像头、ROS2 环境和 runner 可执行能力。" },
+    { label: "3. 上传只读数据", detail: "按需上传 motor_state、sensor_state、camera_keyframe、simulation_readiness。" },
+    { label: "4. 进入采集/标注", detail: "确认安全边界后再开启数据同步、质量门、标注和图表实验。" },
+  ];
   return (
     <section className={styles.accessCheckPanel} aria-label="Linux 开发板接入检查">
       <div className={styles.accessCheckHead}>
@@ -1021,6 +1027,18 @@ function AccessCheckPanel({
           </article>
         ))}
       </div>
+      <details className={styles.accessSetupDrawer}>
+        <summary>开发板接入脚本清单</summary>
+        <div className={styles.accessSetupGrid}>
+          {setupSteps.map((step) => (
+            <article key={step.label}>
+              <strong>{step.label}</strong>
+              <p>{step.detail}</p>
+            </article>
+          ))}
+        </div>
+        <p>平台只索引和展示这些数据；控制命令必须由具体机器人项目自己的安全链路决定。</p>
+      </details>
     </section>
   );
 }

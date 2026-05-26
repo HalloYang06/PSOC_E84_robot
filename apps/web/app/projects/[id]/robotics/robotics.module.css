@@ -180,6 +180,85 @@
   line-height: 1.45;
 }
 
+.accessSetupDrawer {
+  min-width: 0;
+}
+
+.accessSetupDrawer > summary {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 9px;
+  border: 1px solid rgba(157, 234, 207, 0.14);
+  border-radius: 7px;
+  background: rgba(157, 234, 207, 0.055);
+  color: rgba(238, 252, 247, 0.82);
+  cursor: pointer;
+  font-size: 11.5px;
+  font-weight: 900;
+  list-style: none;
+}
+
+.accessSetupDrawer > summary::-webkit-details-marker {
+  display: none;
+}
+
+.accessSetupDrawer > summary::after {
+  content: "+";
+  color: #8ef0c7;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.accessSetupDrawer[open] > summary {
+  margin-bottom: 8px;
+}
+
+.accessSetupDrawer[open] > summary::after {
+  content: "-";
+}
+
+.accessSetupGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  background: rgba(142, 240, 199, 0.12);
+}
+
+.accessSetupGrid article {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+  background: #0b191b;
+}
+
+.accessSetupGrid strong,
+.accessSetupGrid p,
+.accessSetupDrawer > p {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.accessSetupGrid strong {
+  color: #eefcf7;
+  font-size: 12px;
+}
+
+.accessSetupGrid p,
+.accessSetupDrawer > p {
+  margin: 0;
+  color: rgba(238, 252, 247, 0.66);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.accessSetupDrawer > p {
+  margin-top: 8px;
+}
+
 .qualityStripHead {
   min-width: 0;
   display: flex;
@@ -766,6 +845,7 @@
 
 @media (max-width: 980px) {
   .accessCheckGrid,
+  .accessSetupGrid,
   .qualityCards,
   .simReadinessCards,
   .packetSummary {
@@ -2287,6 +2367,10 @@
   }
 
   .accessCheckGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .accessSetupGrid {
     grid-template-columns: 1fr;
   }
 
