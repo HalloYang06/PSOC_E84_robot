@@ -35,6 +35,8 @@ python3 /home/pi/nanopi_can_master.py m33 target --iface can0 --joint 4 --deg 30
 
 这条映射需要 M33 重新编译烧录后才生效。烧录前，`--joint 4` 仍可能打到旧映射下的 motor slot 5。
 
+重要：7 号已证明 ROS joint4 能经 M33 打到 motor7，但在零点/方向/绝对位置参考未标定前，`m33 target --joint 4 --deg ...` 这类绝对位置目标可能造成剧烈转动。当前 M33 默认应保持 `CONTROL_DEVELOPMENT_BENCH_MOTION_ENABLE=0U`，不要再次发送 ROS 位置目标到电机。下一步只能做低速短时速度脉冲和反馈记录，用于标定方向、比例和零点。
+
 第一版数据上传约定：
 
 - 全量电机、传感、安全、模型结果和 session 数据，优先由 NanoPi 汇总后上传总服务器。

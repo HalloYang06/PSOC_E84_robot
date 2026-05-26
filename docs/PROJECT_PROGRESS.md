@@ -67,7 +67,9 @@
   - `m33 target --joint 4 --deg 30 --rpm 3 --torque-ma 0` 已发送 `0x320#03042C0103000000`。
   - 全量 CAN 抓包确认 M33 输出到 motor7：`0x0300FD07#0000000000000000` 和 `0x01800007#855481370F5C3333`。
   - 说明 ROS joint4 -> motor slot 7 的映射已生效。
-  - 7 号 active-report/M33 `0x336` 仍需结合现场目测确认真实输出角度；当前下一步是标定 motor7 的目标角、零点和 MIT 位置控制参数。
+  - 用户现场反馈发生剧烈转动。已立即发送 M33 stop、private stop 3/4/5/6/7、关闭 active-report，并将 3 号 CANSimple 置零速/idle。
+  - 安全修正：M33 默认 `CONTROL_DEVELOPMENT_BENCH_MOTION_ENABLE` 改回 `0`，未标定前禁止 ROS `0x320` 位置目标继续输出到电机。
+  - 当前下一步改为离线/低风险标定 motor7 的零点、方向、绝对位置参考和 MIT 位置控制参数，再考虑恢复受控输出。
 
 - M33 电机元数据对齐：
   - 更新本地 M33 工程 `applications/control/control_layer_cfg.h`。
