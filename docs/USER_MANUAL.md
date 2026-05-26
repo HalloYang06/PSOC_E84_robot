@@ -1726,6 +1726,25 @@ ros2 run rehab_arm_psoc_bridge build_replay_plan.py \
 
 这个 replay plan 对齐 ROS2 `rosbag2` 的基本思想：按 topic 和时间复现实验数据。区别是它仍然是平台/标注/训练友好的 JSON，不直接发布 ROS topic，不控制 M33，不发 CAN。后续接 MuJoCo 时，应先用它验证时间轴和关节状态，再写 ROS publisher 或 rosbag 转换器。
 
+在 ROS2 中回放 JSONL：
+
+```bash
+ros2 run rehab_arm_psoc_bridge jsonl_replay_node.py --ros-args \
+  -p recording_path:=/tmp/rehab_sim_collection/sim_demo_motion.jsonl \
+  -p topics:=/joint_states,/rehab_arm/motor_state,/rehab_arm/safety_state,/rehab_arm/sensor_state \
+  -p speed:=1.0 \
+  -p loop:=false
+```
+
+会发布：
+
+- `/joint_states`：标准 `sensor_msgs/msg/JointState`，供 RViz、MuJoCo 状态同步和 three.js/URDF 预览使用。
+- `/rehab_arm/motor_state`：`std_msgs/msg/String` JSON，供平台、电机表格、颜色映射和标注回放使用。
+- `/rehab_arm/safety_state`：`std_msgs/msg/String` JSON，供安全状态回放使用。
+- `/rehab_arm/sensor_state`、`/rehab_arm/camera_keyframe`：如果 JSONL 中存在对应记录，也可以一起回放。
+
+注意：这个节点只是把历史数据重新发布到 ROS topic。它不订阅 `/arm_controller/joint_trajectory`，不连接 SocketCAN，不发送 `0x320`，不控制 M33，也不驱动电机。用于真机之前，先在仿真主机/RViz 中确认 topic、时间轴和关节方向。
+
 对接字段说明见：[INTEGRATION_GUIDE.md](INTEGRATION_GUIDE.md)。
 
 `/rehab_arm/camera_keyframe` payload 示例：

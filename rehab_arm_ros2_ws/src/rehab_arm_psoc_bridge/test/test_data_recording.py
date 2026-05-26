@@ -40,6 +40,7 @@ from rehab_arm_psoc_bridge.data_recording import (
     write_csv_rows,
     JOINT_STATE_CSV_FIELDS,
 )
+from rehab_arm_psoc_bridge.jsonl_replay_node import parse_topic_list, payload_to_json_text
 
 
 class DataRecordingTests(unittest.TestCase):
@@ -529,6 +530,15 @@ class DataRecordingTests(unittest.TestCase):
         self.assertEqual(payload['event_count'], 1)
         self.assertEqual(saved['events'][0]['topic'], '/joint_states')
         self.assertNotIn('payload', saved['events'][0])
+
+    def test_jsonl_replay_helpers_parse_topics_and_payload_text(self) -> None:
+        self.assertIn('/joint_states', parse_topic_list(''))
+        self.assertEqual(parse_topic_list('/joint_states, /rehab_arm/motor_state'), [
+            '/joint_states',
+            '/rehab_arm/motor_state',
+        ])
+        self.assertEqual(payload_to_json_text('already-json'), 'already-json')
+        self.assertEqual(payload_to_json_text({'state': 'ok'}), '{"state":"ok"}')
 
     def test_build_recording_quality_report_passes_dynamic_session(self) -> None:
         records = [

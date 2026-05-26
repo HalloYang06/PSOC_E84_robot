@@ -15,6 +15,7 @@ install(PROGRAMS
   rehab_arm_psoc_bridge/data_recorder_node.py
   rehab_arm_psoc_bridge/camera_keyframe_node.py
   rehab_arm_psoc_bridge/joint_state_motor_state_node.py
+  rehab_arm_psoc_bridge/jsonl_replay_node.py
   rehab_arm_psoc_bridge/check_recording.py
   rehab_arm_psoc_bridge/summarize_recording.py
   rehab_arm_psoc_bridge/build_replay_plan.py

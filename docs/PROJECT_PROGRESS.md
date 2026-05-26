@@ -1188,6 +1188,16 @@
 - Safety: offline JSON transform only; no ROS launch, network upload, CAN access, M33 command, or motor motion.
 - Next step: use replay plan as the input contract for a MuJoCo/RViz replay adapter or JSONL-to-rosbag/topic publisher.
 
+### 2026-05-27 - ROS2 JSONL replay node
+
+- Completed: added `jsonl_replay_node.py` to publish recorded JSONL events back onto ROS topics by relative timestamp.
+- Completed: `/joint_states` replays as standard `sensor_msgs/msg/JointState`; `/rehab_arm/*` telemetry replays as `std_msgs/msg/String` JSON.
+- Completed: registered the node in both `setup.py` console scripts and CMake install programs.
+- Validated: `python -m unittest rehab_arm_ros2_ws\src\rehab_arm_psoc_bridge\test\test_data_recording.py` passed 47 tests.
+- Validated: `python -m py_compile jsonl_replay_node.py data_recording.py` passed.
+- Safety: ROS replay publishes historical telemetry only; it does not subscribe to `JointTrajectory`, open SocketCAN, send `0x320`, command M33, or move motors.
+- Next step: run the replay node on the Linux simulation host with RViz/MuJoCo subscribers and verify joint names/directions against the URDF.
+
 ### 2026-05-26 - NanoPi motor data receive check
 
 - Completed: live NanoPi CAN receive test on `192.168.2.66` with `can0` at classic CAN 1Mbps.

@@ -18,6 +18,7 @@ setup(
             'data_recorder_node = rehab_arm_psoc_bridge.data_recorder_node:main',
             'camera_keyframe_node = rehab_arm_psoc_bridge.camera_keyframe_node:main',
             'joint_state_motor_state_node = rehab_arm_psoc_bridge.joint_state_motor_state_node:main',
+            'jsonl_replay_node = rehab_arm_psoc_bridge.jsonl_replay_node:main',
             'check_recording = rehab_arm_psoc_bridge.check_recording:main',
             'summarize_recording = rehab_arm_psoc_bridge.summarize_recording:main',
             'build_replay_plan = rehab_arm_psoc_bridge.build_replay_plan:main',
