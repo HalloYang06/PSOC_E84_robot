@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -13,9 +14,15 @@ sys.path.insert(0, str(PACKAGE_DIR))
 from rehab_arm_psoc_bridge.m33_motor_status_smoke import (  # noqa: E402
     CONTROL_BOUNDARY,
     build_m33_motor_status_payload,
+    build_smoke_jsonl_records,
     build_smoke_frames,
     build_smoke_report,
     pack_standard_can_frame,
+    write_smoke_jsonl,
+)
+from rehab_arm_psoc_bridge.data_recording import (  # noqa: E402
+    build_recording_quality_report,
+    load_jsonl_records,
 )
 from rehab_arm_psoc_bridge.psoc_motor_status import (  # noqa: E402
     M33_MOTOR_STATUS_MARKER,
@@ -90,6 +97,67 @@ class M33MotorStatusSmokeTests(unittest.TestCase):
         self.assertIs(report['execute'], False)
         self.assertEqual(report['frame_count'], 2)
         self.assertEqual(report['frames'][1]['can_id'], '0x331')
+
+    def test_build_smoke_jsonl_records_pass_hardware_telemetry_quality_gate(self) -> None:
+        records = build_smoke_jsonl_records(
+            build_smoke_frames(seq=1),
+            'rehab-arm-alpha',
+            'nanopi-m5',
+            's1',
+        )
+
+        report = build_recording_quality_report(
+            records,
+            topic_profile='hardware_telemetry',
+            min_joint_messages=1,
+            require_motor_state=True,
+            min_motor_entry_count=2,
+        )
+
+        self.assertIs(report['ok'], True)
+        self.assertEqual(report['topic_profile'], 'hardware_telemetry')
+        self.assertEqual(report['summary']['motor_entry_count_min'], 2)
+
+    def test_write_smoke_jsonl_outputs_loadable_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output = Path(tmpdir) / 'smoke.jsonl'
+
+            path = write_smoke_jsonl(
+                output,
+                build_smoke_frames(seq=2),
+                'rehab-arm-alpha',
+                'nanopi-m5',
+                's2',
+            )
+            records = load_jsonl_records(path)
+
+        self.assertEqual(records[0]['record_type'], 'session_metadata')
+        self.assertEqual(records[-1]['topic'], '/rehab_arm/motor_state')
+        self.assertEqual(records[-1]['payload']['valid_motor_count'], 2)
+
+    def test_cli_can_write_jsonl_without_execute(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output = Path(tmpdir) / 'smoke.jsonl'
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(PACKAGE_DIR / 'rehab_arm_psoc_bridge' / 'm33_motor_status_smoke.py'),
+                    '--output-jsonl',
+                    str(output),
+                ],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            report = json.loads(result.stdout)
+            records = load_jsonl_records(output)
+
+        self.assertIs(report['execute'], False)
+        self.assertEqual(report['output_jsonl'], str(output))
+        self.assertEqual(records[-1]['topic'], '/rehab_arm/motor_state')
 
 
 if __name__ == '__main__':

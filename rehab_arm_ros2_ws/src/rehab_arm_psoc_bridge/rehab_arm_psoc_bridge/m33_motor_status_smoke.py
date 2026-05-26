@@ -10,6 +10,13 @@ import time
 from pathlib import Path
 
 try:
+    from rehab_arm_psoc_bridge.data_recording import (
+        RECORDER_VERSION,
+        make_joint_state_payload,
+        make_payload_record,
+        make_session_metadata,
+        write_jsonl_record,
+    )
     from rehab_arm_psoc_bridge.psoc_motor_status import (
         M33_MOTOR_STATUS_MARKER,
         MOTOR_STATUS_FLAG_ENABLED,
@@ -18,6 +25,13 @@ try:
     )
 except ModuleNotFoundError:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from rehab_arm_psoc_bridge.data_recording import (
+        RECORDER_VERSION,
+        make_joint_state_payload,
+        make_payload_record,
+        make_session_metadata,
+        write_jsonl_record,
+    )
     from rehab_arm_psoc_bridge.psoc_motor_status import (
         M33_MOTOR_STATUS_MARKER,
         MOTOR_STATUS_FLAG_ENABLED,
@@ -141,6 +155,80 @@ def build_smoke_report(
     }
 
 
+def build_smoke_jsonl_records(
+    frames: list[dict[str, object]],
+    robot_id: str,
+    device_id: str,
+    session_id: str,
+    now: float = 0.0,
+) -> list[dict[str, object]]:
+    parsed = [
+        parse_m33_motor_status_frame(int(frame['can_id']), bytes(frame['data']))
+        for frame in frames
+    ]
+    motor_payload = make_m33_motor_state_payload(
+        frames=parsed,
+        robot_id=robot_id,
+        device_id=device_id,
+        now=now + 3.0,
+    )
+    joint_payload = make_joint_state_payload(
+        names=[str(motor.get('joint_name')) for motor in parsed if motor.get('valid') is True],
+        positions=[float(motor.get('position') or 0.0) for motor in parsed if motor.get('valid') is True],
+        velocities=[float(motor.get('velocity') or 0.0) for motor in parsed if motor.get('valid') is True],
+        efforts=[0.0 for motor in parsed if motor.get('valid') is True],
+        stamp_sec=int(now),
+        stamp_nanosec=0,
+    )
+    return [
+        make_session_metadata(
+            session_id=session_id,
+            device_id=device_id,
+            robot_id=robot_id,
+            software_version=f'm33_motor_status_smoke_{RECORDER_VERSION}',
+            mode='synthetic_m33_motor_status_smoke',
+            now=now,
+        ),
+        make_payload_record('/joint_states', joint_payload, now=now + 1.0),
+        make_payload_record(
+            '/rehab_arm/safety_state',
+            {
+                'state': 'limited',
+                'detail': 'synthetic M33 telemetry smoke; no motion permission',
+                'motion_allowed': False,
+                'control_boundary': CONTROL_BOUNDARY,
+            },
+            now=now + 2.0,
+        ),
+        make_payload_record(
+            '/rehab_arm/sensor_state',
+            {
+                'source': 'synthetic_m33_motor_status_smoke',
+                'detail': 'no physical sensor sample in this smoke file',
+                'control_boundary': CONTROL_BOUNDARY,
+            },
+            now=now + 2.5,
+        ),
+        make_payload_record('/rehab_arm/motor_state', motor_payload, now=now + 3.0),
+    ]
+
+
+def write_smoke_jsonl(
+    output_jsonl: str | Path,
+    frames: list[dict[str, object]],
+    robot_id: str,
+    device_id: str,
+    session_id: str,
+) -> Path:
+    path = Path(output_jsonl).expanduser()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    records = build_smoke_jsonl_records(frames, robot_id, device_id, session_id)
+    with path.open('w', encoding='utf-8') as handle:
+        for record in records:
+            write_jsonl_record(handle, record)
+    return path
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description='Dry-run or send synthetic M33 0x330~0x337 motor telemetry frames.'
@@ -148,6 +236,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument('--interface', default='vcan0', help='SocketCAN interface for --execute.')
     parser.add_argument('--robot-id', default='rehab-arm-alpha')
     parser.add_argument('--device-id', default='nanopi-m5')
+    parser.add_argument('--session-id', default='synthetic_m33_motor_status_smoke')
+    parser.add_argument(
+        '--output-jsonl',
+        help='Write a minimal hardware_telemetry JSONL file with synthetic motor_state data.',
+    )
     parser.add_argument('--seq', type=int, default=1)
     parser.add_argument('--gap-sec', type=float, default=0.02)
     parser.add_argument(
@@ -166,6 +259,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.execute:
         send_smoke_frames(args.interface, frames, args.gap_sec)
     report = build_smoke_report(frames, args.robot_id, args.device_id, args.execute, args.interface)
+    if args.output_jsonl:
+        output_path = write_smoke_jsonl(
+            args.output_jsonl,
+            frames,
+            args.robot_id,
+            args.device_id,
+            args.session_id,
+        )
+        report['output_jsonl'] = str(output_path)
     print(json.dumps(report, ensure_ascii=False, separators=(',', ':')))
     return 0
 

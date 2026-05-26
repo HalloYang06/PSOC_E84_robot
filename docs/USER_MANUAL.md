@@ -1123,6 +1123,28 @@ python3 src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/m33_motor_status_smoke.p
 - `expected_motor_state_payload.valid_motor_count=2`。
 - `safety_note` 明确不会发送 `0x320`，不会命令 M33，不会授权电机运动。
 
+也可以生成一份最小 JSONL，用来直接验证数据采集、质量门和后续平台导入：
+
+```bash
+python3 src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/m33_motor_status_smoke.py \
+  --output-jsonl /home/pi/rehab_arm_logs/synthetic_m33_motor_status_smoke.jsonl
+
+python3 src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/validate_recording_quality.py \
+  /home/pi/rehab_arm_logs/synthetic_m33_motor_status_smoke.jsonl \
+  --topic-profile hardware_telemetry \
+  --require-motor-state \
+  --min-motor-entry-count 2
+```
+
+通过标准：
+
+- quality report 的 `ok=true`。
+- `topic_profile=hardware_telemetry`。
+- summary 中 `/rehab_arm/motor_state` 至少 1 条。
+- summary 中 `motor_entry_count_min=2`。
+
+这份 JSONL 后续可以作为平台“Linux 开发板设备数据工作台”的最小合同样本：平台应该能看到 session、topic 数量、电机条目数、motor 3/7 的状态字段和 `control_boundary`。
+
 如果要验证真实 bridge 发布 topic，建议先用 `vcan0`。一个终端启动 bridge：
 
 ```bash
