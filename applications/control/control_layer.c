@@ -1767,6 +1767,41 @@ static rt_uint8_t ctrl_ros_reject_reason_detail_code(control_ros_reject_reason_t
     }
 }
 
+static void ctrl_prearm_check_build(control_prearm_check_t *check, rt_uint32_t required_joint_mask);
+
+static void ctrl_fill_motion_status(rt_uint8_t payload[8])
+{
+    payload[4] = CONTROL_STATUS_SAFETY_LIMITED;
+    payload[5] = CONTROL_STATUS_MODE_STANDBY;
+    payload[6] = s_last_ros_status_detail_code;
+
+    if (s_last_ros_status_detail_code != CONTROL_STATUS_DETAIL_NONE)
+    {
+        return;
+    }
+
+#if CONTROL_DEVELOPMENT_BENCH_MOTION_ENABLE
+    payload[4] = CONTROL_STATUS_SAFETY_OK;
+    payload[5] = CONTROL_STATUS_MODE_BENCH_ARMED;
+#elif CONTROL_CLINICAL_MOTION_ENABLE
+    {
+        control_prearm_check_t check;
+        ctrl_prearm_check_build(&check, (rt_uint32_t)CONTROL_PREARM_REQUIRED_JOINT_MASK);
+        if (check.ready)
+        {
+            payload[4] = CONTROL_STATUS_SAFETY_OK;
+            payload[5] = CONTROL_STATUS_MODE_ARMED;
+        }
+        else
+        {
+            payload[6] = CONTROL_STATUS_DETAIL_PREARM_NOT_READY;
+        }
+    }
+#else
+    payload[6] = CONTROL_STATUS_DETAIL_PREARM_NOT_READY;
+#endif
+}
+
 static void ctrl_prearm_check_build(control_prearm_check_t *check, rt_uint32_t required_joint_mask)
 {
     control_motor_feedback_t snapshot[CONTROL_MOTOR_JOINT_COUNT];
@@ -2196,22 +2231,17 @@ static rt_bool_t ctrl_handle_nanopi_heartbeat(const struct rt_can_msg *msg)
     payload[1] = (msg->len > 0U) ? msg->data[0] : 0U;
     payload[2] = CONTROL_MOTOR_JOINT_COUNT;
     payload[3] = 0U;
+    s_last_nanopi_heartbeat_tick = rt_tick_get();
+    s_has_nanopi_heartbeat = RT_TRUE;
 #if CONTROL_ROS_COMMAND_LOGGING_ONLY
     payload[4] = CONTROL_STATUS_SAFETY_LIMITED;
     payload[5] = CONTROL_STATUS_MODE_LOGGING_ONLY;
     payload[6] = s_last_ros_status_detail_code;
 #else
-    payload[4] = (s_last_ros_status_detail_code == CONTROL_STATUS_DETAIL_NONE) ?
-                 CONTROL_STATUS_SAFETY_OK : CONTROL_STATUS_SAFETY_LIMITED;
-    payload[5] = ((s_last_ros_status_detail_code == CONTROL_STATUS_DETAIL_NONE) &&
-                  CONTROL_DEVELOPMENT_BENCH_MOTION_ENABLE) ?
-                 CONTROL_STATUS_MODE_BENCH_ARMED : CONTROL_STATUS_MODE_STANDBY;
-    payload[6] = s_last_ros_status_detail_code;
+    ctrl_fill_motion_status(payload);
 #endif
     payload[7] = 0U;
 
-    s_last_nanopi_heartbeat_tick = rt_tick_get();
-    s_has_nanopi_heartbeat = RT_TRUE;
     (void)ctrl_can_send(CONTROL_CAN_ID_M33_STATUS, RT_CAN_STDID, payload, sizeof(payload));
     return RT_TRUE;
 }

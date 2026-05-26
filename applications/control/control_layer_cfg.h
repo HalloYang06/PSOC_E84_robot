@@ -505,6 +505,23 @@
 #define CONTROL_DEVELOPMENT_BENCH_MOTION_ENABLE 1U
 #endif
 
+/* Formal wearable/clinical motion gate.
+ * 0 = formal armed/active status is impossible; bench mode must use
+ *     CONTROL_STATUS_MODE_BENCH_ARMED and must not be treated as wearable
+ *     motion permission by NanoPi/App/platform.
+ * 1 = allow formal CONTROL_STATUS_MODE_ARMED only when ctrl_prearm_check_build()
+ *     reports ready. Keep this 0 until real estop, software limits, current
+ *     limits, required motor feedback, and patient/device profile rules are
+ *     configured and verified.
+ */
+#ifndef CONTROL_CLINICAL_MOTION_ENABLE
+#define CONTROL_CLINICAL_MOTION_ENABLE     0U
+#endif
+
+#if CONTROL_DEVELOPMENT_BENCH_MOTION_ENABLE && CONTROL_CLINICAL_MOTION_ENABLE
+#error "Do not enable bench motion and clinical motion in the same M33 build"
+#endif
+
 /* Safety bring-up mode for NanoPi ROS/CAN commands.
  * 1 = log parsed 0x320 commands and reject them before any motor-control path.
  * 0 = allow commands to enter the ROS command queue/control apply path.
@@ -623,6 +640,10 @@
 
 #ifndef CONTROL_STATUS_DETAIL_JOINT_UNCALIBRATED
 #define CONTROL_STATUS_DETAIL_JOINT_UNCALIBRATED 11U
+#endif
+
+#ifndef CONTROL_STATUS_DETAIL_PREARM_NOT_READY
+#define CONTROL_STATUS_DETAIL_PREARM_NOT_READY 12U
 #endif
 
 /* ROS trajectory joint ids use 0-based indexing. These software audit limits
