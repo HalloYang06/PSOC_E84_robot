@@ -19,20 +19,21 @@
 
 ## 输入映射 V1
 
-当前按用户提供的 40Pin RPI 兼容排针图先选普通 GPIO 做急停和电源 OK 诊断输入。避开 I2C、SPI、UART、5V/3.3V 电源脚和 GND 脚。限位不占 GPIO，后续由用户在 M33 代码中按真实机械零点、软限位、编码器/关节映射设置。
+当前按用户提供的 40Pin RPI 兼容排针图只选一个普通 GPIO 做急停诊断输入。避开 I2C、SPI、UART、5V/3.3V 电源脚和 GND 脚。电源 OK 不接、不实现；限速和限位后续由用户在 M33 代码中按真实机械零点、软限位、编码器/关节映射设置。
 
 | 安全输入 | 当前 source | 选定排针 | 推荐电气语义 | confirmed 条件 | safe_now 条件 | 失败时 M33 detail |
 |---|---|---|---|---|---|
 | `estop` 急停 | `rpi40_pin11_gpio0_rpi_gpio10` | physical pin 11 / CN5 `GPIO0` / net `RPI_GPIO_10` | 常闭急停回路，GPIO 上拉，回路闭合拉低为安全；断线或按下急停变高为不安全 | 真实急停按钮已接入，断线也能触发不安全，按下/释放均验证 | 读到安全电平，急停未触发 | `emergency_stop` |
-| `power` 电机电源/电压 | `rpi40_pin13_gpio2_rpi_gpio9` | physical pin 13 / CN5 `GPIO2` / net `RPI_GPIO_9` | 只接隔离后的 `motor_power_ok` 或比较器输出，GPIO 下拉，高电平才表示电源安全；不要把电机母线直接接 GPIO | 电压量程、阈值、采样稳定性和隔离/分压电路已校准 | 电源 OK 信号为高，无欠压/过压/电源故障 | `power_fault` |
+| `power` 电机电源/电压 | `not_used_no_power_ok_input` | 不占 40Pin GPIO | 当前不接电源 OK 输入，也不做该项实现；保留字段只为后续需要时扩展 | 当前不作为本阶段任务 | 当前不作为本阶段任务 | `power_fault` |
 | `limits` 关节限位 | `software_joint_limits_user_configured` | 不占 40Pin GPIO | 用户后续在 M33 代码中配置机械零点、关节方向、软限位、速度/电流限制；必要时再另行增加硬限位输入 | 机械零点、方向、软限位、关节映射已由用户在代码中确认 | 当前目标和当前位置均在 M33 最终软件限位内 | `target_out_of_limit` 或 `motor_fault` |
 
 辅助接线建议：
 
 - 只使用 3.3V 逻辑，GPIO 绝不能直接接 5V 或电机母线电压。
 - `estop` 优先使用常闭链路，让断线也变成不安全。
-- `power` 建议来自隔离比较器、电源管理芯片或安全继电器辅助触点；如果只能测电压，先做隔离/分压/钳位，再进入 GPIO 或 ADC。
-- 急停和电源 OK 引脚只是第一版诊断输入选择；如果板级复用冲突或真实硬件更适合其他 pin，必须先更新本文档再改固件。
+- 电源 OK 当前不接、不实现；如果未来要接真实 ADC/GPIO/CAN 电源状态，必须先更新本文档再改固件。
+- 限速和限位先由用户在 M33 代码中设置。
+- 急停引脚只是第一版诊断输入选择；如果板级复用冲突或真实硬件更适合其他 pin，必须先更新本文档再改固件。
 
 ## M33 串口诊断
 
@@ -48,10 +49,10 @@ cmd_m33_prearm_check 0x40
 
 ```text
 SAFETY_INPUT: name=estop source=rpi40_pin11_gpio0_rpi_gpio10 confirmed=0 safe_now=0
-SAFETY_INPUT: name=power source=rpi40_pin13_gpio2_rpi_gpio9 confirmed=0 safe_now=0
+SAFETY_INPUT: name=power source=not_used_no_power_ok_input confirmed=0 safe_now=0
 SAFETY_INPUT: name=limits source=software_joint_limits_user_configured confirmed=0 safe_now=0
 PREARM: ready=0 motion_allowed_would_be=0
-PREARM_INPUT_DETAIL: estop source=rpi40_pin11_gpio0_rpi_gpio10 safe_now=0; power source=rpi40_pin13_gpio2_rpi_gpio9 safe_now=0; limits source=software_joint_limits_user_configured safe_now=0
+PREARM_INPUT_DETAIL: estop source=rpi40_pin11_gpio0_rpi_gpio10 safe_now=0; power source=not_used_no_power_ok_input safe_now=0; limits source=software_joint_limits_user_configured safe_now=0
 ```
 
 如果 7 号电机 telemetry 新鲜，`cmd_m33_prearm_check 0x40` 可以看到：
@@ -94,7 +95,7 @@ App、平台、服务器和 NanoPi 日志应按下面方式展示，不要把未
 {
   "safety_inputs": {
     "estop": {"source": "rpi40_pin11_gpio0_rpi_gpio10", "confirmed": false, "safe_now": false},
-    "power": {"source": "rpi40_pin13_gpio2_rpi_gpio9", "confirmed": false, "safe_now": false},
+    "power": {"source": "not_used_no_power_ok_input", "confirmed": false, "safe_now": false},
     "limits": {"source": "software_joint_limits_user_configured", "confirmed": false, "safe_now": false}
   },
   "motion_allowed": false
@@ -115,9 +116,9 @@ App、平台、服务器和 NanoPi 日志应按下面方式展示，不要把未
 
 ## 未确认项
 
-- 40Pin 排针上的 `RPI_GPIO_10/RPI_GPIO_9` 在当前固件/板级设备树中的具体 GPIO 控制器编号和初始化方式。
+- 40Pin 排针上的 `RPI_GPIO_10` 在当前固件/板级设备树中的具体 GPIO 控制器编号和初始化方式。
 - 急停按钮是否直接接到所选 GPIO，还是外部安全回路先切断电机电源后再给 M33 一个状态信号。
-- 电机母线电压由隔离 `power_ok` GPIO 表示，还是后续改为 ADC 连续采样。
+- 是否未来需要增加电源/电压策略；当前用户明确先不管电源 OK。
 - 用户最终写入 M33 代码的每关节软件限位、速度限制、电流限制和关节方向。
 - 是否后续另加独立硬限位输入；第一版不占 40Pin GPIO。
 - 真实机械零点、关节方向、软限位、速度限制和电流限制。

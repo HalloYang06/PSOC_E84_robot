@@ -1288,9 +1288,9 @@
 
 ### 2026-05-26 - M33 safety input pin preselection
 
-- Completed: based on the provided 40Pin RPI-compatible header image, preselected physical pin 11 / `GPIO0` / `RPI_GPIO_10` for estop and physical pin 13 / `GPIO2` / `RPI_GPIO_9` for motor power OK.
-- Completed: updated limits to `software_joint_limits_user_configured`; user will set limits in M33 code later, so limits do not use a 40Pin GPIO in this slice.
-- Completed: documented fail-safe electrical semantics: estop uses a normally-closed active-low safe loop; power OK uses a protected high-true logic signal.
+- Completed: based on the provided 40Pin RPI-compatible header image, preselected only physical pin 11 / `GPIO0` / `RPI_GPIO_10` for estop.
+- Completed: updated power to `not_used_no_power_ok_input` and limits to `software_joint_limits_user_configured`; user clarified only estop should use GPIO, while speed limits and joint limits will be changed in M33 code later.
+- Completed: documented fail-safe electrical semantics: estop uses a normally-closed active-low safe loop.
 - Validated: documentation-only update; no firmware, CAN, ROS, NanoPi, GPIO, or motor test was run.
-- Safety: GPIOs must only receive 3.3V logic. Motor bus voltage, battery voltage, or 5V signals must not be connected directly.
-- Next step: implement M33 read-only raw GPIO diagnostics for estop and power OK, while keeping limits as user-configured software limits and keeping `confirmed=0`, `safe_now=0`, and `motion_allowed=false` until live tests pass.
+- Safety: the estop GPIO must only receive 3.3V logic. Motor bus voltage, battery voltage, or 5V signals must not be connected directly.
+- Next step: implement M33 read-only raw GPIO diagnostics for estop only, while leaving power OK unused and keeping speed/limits as user-configured code policies.

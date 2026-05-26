@@ -2766,17 +2766,17 @@ PREARM_MOTORS: required_mask=0x0000007F fresh_mask=0x00000000 ... fresh_ok=0
 
 现象：
 
-- 已从 40Pin RPI 兼容排针中预选 pin 11/13 作为急停、电源 OK 诊断输入。
-- 用户确认限位后续由自己在 M33 代码里设置，不占 40Pin GPIO。
+- 已从 40Pin RPI 兼容排针中预选 pin 11 作为急停诊断输入。
+- 用户确认只有急停需要接 GPIO；电源 OK 不管，限速和限位后续由自己在 M33 代码里设置。
 
 技巧：
 
 - GPIO 只接 3.3V 逻辑，不能直接接电池、电机母线或 5V。
 - 急停优先用常闭链路，断线也应读成不安全。
-- 电源 OK 不要直接测母线；用隔离比较器、电源管理输出或安全继电器辅助触点给 GPIO。
-- 限位先作为 `software_joint_limits_user_configured`，等用户根据真实机械结构写入代码后再确认。
+- 电源 OK 当前标记为 `not_used_no_power_ok_input`，不作为接线或实现任务。
+- 限速和限位先作为 M33 代码配置，等用户根据真实机械结构写入代码后再确认。
 - 选 pin 或写软限位不等于确认安全，固件第一步只能打印 raw value/配置状态，不能让 `confirmed=1` 或 `motion_allowed=true`。
 
 状态：
 
-- 已记录 pin 选择和电气语义；尚未实现或验证 GPIO 读取。
+- 已记录 estop pin 选择和电气语义；尚未实现或验证 GPIO 读取。

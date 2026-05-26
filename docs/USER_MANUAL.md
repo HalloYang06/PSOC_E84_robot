@@ -19,7 +19,7 @@
 
 M33 物理安全输入映射合同见：[M33_SAFETY_INPUT_MAPPING.md](M33_SAFETY_INPUT_MAPPING.md)。后续接真实急停、电源/电压、限位前，先按该文档确认输入源、`confirmed` 条件和 `safe_now` 条件。
 
-当前预选的 40Pin 诊断输入为：急停 physical pin 11 / `GPIO0` / `RPI_GPIO_10`，电源 OK physical pin 13 / `GPIO2` / `RPI_GPIO_9`。这些脚只允许接 3.3V 逻辑；电机母线、电池或 5V 信号不能直接接入。限位不占 40Pin GPIO，后续由用户在 M33 代码中按真实机械零点、软限位、编码器/关节映射设置。
+当前预选的 40Pin 诊断输入只有急停：physical pin 11 / `GPIO0` / `RPI_GPIO_10`。这个脚只允许接 3.3V 逻辑；电机母线、电池或 5V 信号不能直接接入。电源 OK 当前不接、不实现；限速和限位后续由用户在 M33 代码中按真实机械零点、软限位、编码器/关节映射设置。
 
 第一版数据上传约定：
 
@@ -876,7 +876,7 @@ PREARM_MASK: required_mask=0x0000007F source=config default_mask=0x0000007F
 PREARM_MODE: logging_only_clear=0 logging_only_compile=1 allow_with_logging_only=0
 PREARM_HEARTBEAT: ok=<0|1> age_ms=<n> timeout_ms=2500
 PREARM_INPUTS: estop_confirmed=0 power_confirmed=0 limits_confirmed=0
-PREARM_INPUT_DETAIL: estop source=rpi40_pin11_gpio0_rpi_gpio10 safe_now=0; power source=rpi40_pin13_gpio2_rpi_gpio9 safe_now=0; limits source=software_joint_limits_user_configured safe_now=0
+PREARM_INPUT_DETAIL: estop source=rpi40_pin11_gpio0_rpi_gpio10 safe_now=0; power source=not_used_no_power_ok_input safe_now=0; limits source=software_joint_limits_user_configured safe_now=0
 PREARM_MOTORS: required_mask=0x0000007F fresh_mask=<mask> fault_mask=<mask> fresh_count=<n> fresh_ok=<0|1> fault_free=<0|1>
 PREARM_NOTE: diagnostic only; this command never changes mode and never enables motion
 ```
@@ -899,7 +899,7 @@ cmd_m33_safety_inputs
 
 ```text
 SAFETY_INPUT: name=estop source=rpi40_pin11_gpio0_rpi_gpio10 confirmed=0 safe_now=0 meaning=emergency stop input must be wired, tested, and released
-SAFETY_INPUT: name=power source=rpi40_pin13_gpio2_rpi_gpio9 confirmed=0 safe_now=0 meaning=motor power and voltage must be monitored and inside safe range
+SAFETY_INPUT: name=power source=not_used_no_power_ok_input confirmed=0 safe_now=0 meaning=motor power and voltage must be monitored and inside safe range
 SAFETY_INPUT: name=limits source=software_joint_limits_user_configured confirmed=0 safe_now=0 meaning=joint limits must be calibrated before any assisted motion
 SAFETY_INPUT_NOTE: diagnostic only; defaults are unwired/unconfirmed and must block prearm
 ```
@@ -915,7 +915,7 @@ SAFETY_INPUT_NOTE: diagnostic only; defaults are unwired/unconfirmed and must bl
 ```text
 cmd_m33_safety_inputs
 SAFETY_INPUT: name=estop source=rpi40_pin11_gpio0_rpi_gpio10 confirmed=0 safe_now=0 meaning=emergency stop input must be wired, tested, and released
-SAFETY_INPUT: name=power source=rpi40_pin13_gpio2_rpi_gpio9 confirmed=0 safe_now=0 meaning=motor power and voltage must be monitored and inside safe range
+SAFETY_INPUT: name=power source=not_used_no_power_ok_input confirmed=0 safe_now=0 meaning=motor power and voltage must be monitored and inside safe range
 SAFETY_INPUT: name=limits source=software_joint_limits_user_configured confirmed=0 safe_now=0 meaning=joint limits must be calibrated before any assisted motion
 SAFETY_INPUT_NOTE: diagnostic only; defaults are unwired/unconfirmed and must block prearm
 ```
@@ -947,7 +947,7 @@ PREARM_MOTORS: required_mask=0x00000040 fresh_mask=0x00000040 fault_mask=0x00000
 新安全输入固件烧录后，7 号 telemetry 新鲜时也已验证：
 
 ```text
-PREARM_INPUT_DETAIL: estop source=rpi40_pin11_gpio0_rpi_gpio10 safe_now=0; power source=rpi40_pin13_gpio2_rpi_gpio9 safe_now=0; limits source=software_joint_limits_user_configured safe_now=0
+PREARM_INPUT_DETAIL: estop source=rpi40_pin11_gpio0_rpi_gpio10 safe_now=0; power source=not_used_no_power_ok_input safe_now=0; limits source=software_joint_limits_user_configured safe_now=0
 PREARM_MOTORS: required_mask=0x00000040 fresh_mask=0x00000040 fault_mask=0x00000000 fresh_count=1 fresh_ok=1 fault_free=1
 ```
 
