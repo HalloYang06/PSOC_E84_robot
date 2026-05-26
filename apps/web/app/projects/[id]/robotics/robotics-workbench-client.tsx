@@ -1143,7 +1143,7 @@ function simulationReport(device: AnyRecord) {
 
 function simulationTopicRows(report: AnyRecord) {
   const contract = record(report.topic_contract);
-  const entries = [
+  const entries: Array<[string, AnyRecord]> = [
     ["轨迹输入", record(contract.trajectory_command)],
     ["关节状态", record(contract.joint_state)],
     ["安全状态", record(contract.safety_state)],
