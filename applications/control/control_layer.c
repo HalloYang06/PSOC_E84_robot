@@ -1644,7 +1644,7 @@ static rt_uint8_t ctrl_ros_reject_reason_detail_code(control_ros_reject_reason_t
     }
 }
 
-static void ctrl_prearm_check_build(control_prearm_check_t *check)
+static void ctrl_prearm_check_build(control_prearm_check_t *check, rt_uint32_t required_joint_mask)
 {
     control_motor_feedback_t snapshot[CONTROL_MOTOR_JOINT_COUNT];
     rt_tick_t now = rt_tick_get();
@@ -1657,7 +1657,7 @@ static void ctrl_prearm_check_build(control_prearm_check_t *check)
 
     rt_memset(check, 0, sizeof(*check));
     check->heartbeat_age_ms = 0xFFFFFFFFUL;
-    check->required_joint_mask = (rt_uint32_t)CONTROL_PREARM_REQUIRED_JOINT_MASK;
+    check->required_joint_mask = required_joint_mask;
 
 #if CONTROL_ROS_COMMAND_LOGGING_ONLY && !CONTROL_PREARM_ALLOW_WITH_LOGGING_ONLY
     check->logging_only_clear = RT_FALSE;
@@ -4213,16 +4213,31 @@ MSH_CMD_EXPORT(cmd_control_debug, show control can rx debug counters);
 static int cmd_m33_prearm_check(int argc, char **argv)
 {
     control_prearm_check_t check;
+    rt_uint32_t required_joint_mask = (rt_uint32_t)CONTROL_PREARM_REQUIRED_JOINT_MASK;
+    rt_bool_t mask_overridden = RT_FALSE;
 
-    RT_UNUSED(argc);
-    RT_UNUSED(argv);
+    if (argc >= 2)
+    {
+        required_joint_mask = (rt_uint32_t)strtoul(argv[1], RT_NULL, 0);
+        mask_overridden = RT_TRUE;
+    }
+    if (required_joint_mask == 0U)
+    {
+        rt_kprintf("usage: m33_prearm_check [required_joint_mask_hex]\n");
+        rt_kprintf("example: m33_prearm_check 0x40  # slot6 / 0x336 / current motor7 check\n");
+        return -1;
+    }
 
     ctrl_poll_can_messages();
-    ctrl_prearm_check_build(&check);
+    ctrl_prearm_check_build(&check, required_joint_mask);
 
     rt_kprintf("PREARM: ready=%u motion_allowed_would_be=%u\n",
                check.ready ? 1U : 0U,
                check.ready ? 1U : 0U);
+    rt_kprintf("PREARM_MASK: required_mask=0x%08lX source=%s default_mask=0x%08X\n",
+               (unsigned long)check.required_joint_mask,
+               mask_overridden ? "argv" : "config",
+               (unsigned int)CONTROL_PREARM_REQUIRED_JOINT_MASK);
     rt_kprintf("PREARM_MODE: logging_only_clear=%u logging_only_compile=%u allow_with_logging_only=%u\n",
                check.logging_only_clear ? 1U : 0U,
                (unsigned int)CONTROL_ROS_COMMAND_LOGGING_ONLY,
