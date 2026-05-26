@@ -2931,3 +2931,64 @@ Connection reset by 192.168.2.66 port 22
 状态：
 
 - 已执行 stop，关闭 7号 active-report，并停止 ROS bridge。
+
+### 直接电机调试后必须做 quiet check
+
+现象：
+
+- motor7 再次直接 private CAN 测试时，运动阶段能看到 `0x188007FD` 反馈变化，M33 聚合帧 `0x336` 也跟着变化。
+- 如果 active-report 没有关掉，后续总线会持续刷反馈帧，容易误判为正式控制链路仍在运行。
+
+技巧：
+
+- 每次直接调试 7号后按固定顺序收尾：`private stop --motor 7`，再运行 `private active-report --motor 7` 关闭主动上报。
+- 收尾后运行 `timeout 1 candump -L can0 | head -20`，期望没有持续 `0x180007FD/0x188007FD`。
+- 同时查 `ps -ef | grep -E '[p]soc_can_bridge|[r]os2'`，确认没有 `enable_target_tx=true` 的 ROS bridge 遗留。
+- `can0` 需要保持 `ERROR-ACTIVE` 且错误计数为 0；否则下一次动作前先排 CAN 物理层或供电。
+
+状态：
+
+- 已完成一次 motor7 复测并确认 stop 后总线安静。
+
+### motor7 反馈 ID 的电机号不总在同一个字段形态，角度映射不能直接信
+
+现象：
+
+- 7号静止主动上报常见为 `0x180007FD`。
+- 7号运动反馈会出现 `0x188007FD`。
+- 如果只匹配 `data2 == 0x0007`，会漏掉 `0x8007` 这种运动反馈，导致软件以为角度没有变化。
+- 修正 ID 匹配后，软件解出的相对变化约为 `55°`，但用户现场观察到实际转了很多圈。
+
+技巧：
+
+- 解 7号 private feedback 时，扩展帧格式为 `type/data2/data1`。
+- 对 7号反馈应匹配 `(data2 & 0xFF) == 7` 且 `data1 == 0xFD`，不要只匹配完整 `data2 == 0x0007`。
+- 不要把当前脚本里的 `data[0:2] -> -12.57~12.57 rad` 当作输出轴角度或关节角度；它可能是电机内部截断位置、单圈字段、编码器原始映射，或还缺少减速比/多圈累计。
+- 在完成实物标定前，7号角度限位不能依赖这个字段，只能使用人工观察、低速短时、外部编码器/限位、或 M33 中经过验证的角度来源。
+
+状态：
+
+- 7号 private feedback 的 ID 识别规则已验证；角度数值映射已被现场观察推翻，后续必须重新标定。
+
+### 3号 CANSimple 命令发出不等于执行已打通
+
+现象：
+
+- 3号伺泰威减速比为 `48:1`。
+- 直接 CANSimple 测试已发送 clear errors、closed-loop、velocity mode/input velocity、zero velocity、idle。
+- CAN 上能看到命令帧 `0x078`、`0x067`、`0x06B`、`0x06D`，但 M33 聚合状态 `0x332` 仍为零。
+
+判断：
+
+- 当前只能证明 NanoPi 到 CAN 总线的命令发送成功。
+- 仍不能证明 3号驱动已经进入 closed-loop、编码器有效、刹车释放、功率级使能或反馈协议已被 M33 正确解析。
+
+技巧：
+
+- 继续加大速度前，先找 3号真实 heartbeat/status/encoder feedback 帧。
+- 减速比 `48:1` 需要在规划侧处理：输出端角度/速度乘以 48 后才是电机侧命令量。
+- 若以输出端 `5 deg/s` 为目标，电机侧约为 `4.19 rad/s`；这次使用 `4.0 rad/s` 电机侧命令属于温和台架测试。
+
+状态：
+
+- 3号已执行直接 CANSimple温和速度测试并退回 idle；执行/反馈仍未确认。

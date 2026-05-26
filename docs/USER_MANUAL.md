@@ -2179,6 +2179,75 @@ ros2 run rehab_arm_psoc_bridge board_manifest_sync_upload board_manifest.json \
 - 如果服务器地址、设备 ID 或机器人 ID 不确定，先只运行不带 `--execute` 的预览命令。
 - 不要把真实机器的 `board_manifest.json` 当作 demo 文件提交进 Git。
 
+## 6.5 开发阶段直接调试 7号后的收尾检查
+
+正式机器人路径仍然是 `JointTrajectory -> NanoPi -> M33 -> 电机`。下面命令只用于台架开发时验证 7号电机和 CAN 总线是否工作，不能作为正式控制流程。
+
+```bash
+python3 /home/pi/nanopi_can_master.py private active-report --iface can0 --motor 7 --enable-report --wait 0.1
+python3 /home/pi/nanopi_can_master.py private speed --iface can0 --motor 7 --vel 0.30 --kd 1.0 --wait 0.1
+sleep 1.0
+python3 /home/pi/nanopi_can_master.py private stop --iface can0 --motor 7 --wait 0.2
+python3 /home/pi/nanopi_can_master.py private active-report --iface can0 --motor 7 --wait 0.1
+```
+
+收尾验证：
+
+```bash
+timeout 1 candump -L can0 | head -20
+ps -ef | grep -E '[p]soc_can_bridge|[r]os2' || true
+ip -details link show can0
+```
+
+通过标准：
+
+- `candump` 没有持续 `0x180007FD/0x188007FD`，说明 7号主动上报已经关闭。
+- 没有遗留 `psoc_can_bridge` 或 ROS2 运动相关进程。
+- `can0` 仍为 `ERROR-ACTIVE`，错误计数为 0。
+
+失败处理：
+
+- 如果还有持续反馈帧，重新发送 `private stop` 和关闭 active-report。
+- 如果 ROS bridge 还在运行，先停掉再继续任何人工调试。
+- 如果 `can0` 不是 `ERROR-ACTIVE`，不要继续动电机，先排查供电、接线、终端电阻和 MCP2518FD 状态。
+
+7号软件角度停止调试时，必须先读取可信的输出轴角度，再从当前位置累计相对角度。注意运动反馈可能是 `0x188007FD`，解析时应按 `(data2 & 0xFF) == 7` 识别 7号，不要只认静止时常见的 `0x180007FD`。
+
+当前限制：
+
+- 现有脚本中的 `data[0:2] -> -12.57~12.57 rad` 映射已经被现场观察推翻，不能当作 7号输出轴角度。
+- 在重新标定前，不要用这个字段做 `55°`、`60°` 等安全停止条件。
+- 正式安全限位应放到 M33，并使用经过标定的关节角来源、外部限位或编码器来源。
+
+## 6.6 开发阶段直接调试 3号伺泰威
+
+3号当前按 CANSimple node `3` 调试，减速比按 `48:1` 记录。正式路径仍应回到 `JointTrajectory -> NanoPi -> M33 -> 电机`，下面只用于台架排查。
+
+温和速度测试：
+
+```bash
+python3 /home/pi/nanopi_can_master.py cansimple clear --iface can0 --node 3 --wait 0.2
+python3 /home/pi/nanopi_can_master.py cansimple closed-loop --iface can0 --node 3 --wait 0.5
+python3 /home/pi/nanopi_can_master.py cansimple vel --iface can0 --node 3 --vel 4.0 --torque 0.0 --wait 0.2
+sleep 3.0
+python3 /home/pi/nanopi_can_master.py cansimple vel --iface can0 --node 3 --vel 0.0 --torque 0.0 --wait 0.2
+python3 /home/pi/nanopi_can_master.py cansimple idle --iface can0 --node 3 --wait 0.3
+```
+
+减速比换算：
+
+- 输出端角度 `output_rad` 对应电机侧 `motor_rad = output_rad * 48`。
+- 输出端速度 `output_rad_s` 对应电机侧 `motor_rad_s = output_rad_s * 48`。
+- 例如输出端约 `5 deg/s`，电机侧约 `4.19 rad/s`。
+
+通过标准：
+
+- 能看到 3号真实 heartbeat/status/encoder feedback，而不是只有 NanoPi 发出的 `0x067/0x06B/0x06D` 命令帧。
+- M33 的 3号聚合状态不再长期为零。
+- 测试结束后 3号已收到 `vel 0` 和 `idle`。
+
+如果只看到命令帧、没有真实反馈，不要继续加大速度；先确认 node id、闭环状态、错误码、编码器、刹车/使能和驱动供电。
+
 ## 7. 文档与 Git 维护
 
 每次完成任务后同步更新：

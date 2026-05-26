@@ -1357,3 +1357,24 @@
 - Completed: stopped the `enable_target_tx=true` ROS bridge after the live test to avoid unintended later trajectory execution.
 - Safety: motor7 pulse was still direct debug CAN, not formal path. No 90° command was sent.
 - Next step: fix motor3 closed-loop/feedback bring-up separately, and add formal motor7 mapping through M33 before using ROS trajectories for 7号.
+
+### 2026-05-26 - Motor7 repeat live pulse and quiet-state check
+
+- Completed: repeated a direct private-CAN 7号 pulse after user requested another motion test.
+- Validated: NanoPi SSH `pi/pi` worked, no ROS bridge process was running, and `can0` stayed classic CAN 1Mbps `ERROR-ACTIVE` with `tx=0 rx=0`.
+- Completed: sent `active-report`, `private speed --motor 7 --vel 0.30 --kd 1.0`, held about 1s, then sent `private stop` and disabled active-report.
+- Observed: motor7 feedback changed during motion on `0x188007FD`, and M33 aggregate slot `0x336` changed from stopped to moving and back to stopped.
+- Validated: after the stop, a 1s `candump` quiet check saw no remaining active-report traffic and no ROS bridge process was left running.
+- Safety: this remains a direct debug-only validation of motor7. It does not prove the formal `JointTrajectory -> NanoPi -> M33 -> motor7` path yet.
+- Next step: implement formal M33/ROS mapping for motor7 under the same safety audit path instead of using direct private CAN.
+
+### 2026-05-26 - Motor7 feedback mapping invalidated and motor3 direct CANSimple test
+
+- Completed: stopped the prior continuous 7号 direct speed command before starting the bounded test.
+- Attempted: ran a direct private-CAN 7号 software-stop test that reads active feedback, commands about `5 rpm`, and stops when the decoded relative value reaches about `55°`.
+- Invalidated: user observed the motor rotated far more than `55°`; therefore the current private feedback position mapping is not a trusted joint/output angle.
+- Observed: decoded 7号 feedback progressed from `93.77°` to about `148.89°`, but this value must be treated only as a raw protocol-derived field until calibrated.
+- Completed: tested 3号伺泰威 through direct CANSimple with gearbox ratio noted as `48:1`: clear errors, closed-loop, velocity command `4.0 rad/s` motor-side for about 3s, then zero velocity and idle.
+- Observed: 3号 command frames `0x078`, `0x067`, `0x06B`, and `0x06D` were sent, but M33 aggregate `0x332` stayed zeroed, so real motor3 execution/feedback is still unproven.
+- Safety: 7号 and 3号 were both force-stopped after the tests. The attempted 7号 software stop is not acceptable as a safety limit until the angle mapping is calibrated against real motion.
+- Next step: calibrate 7号 feedback-to-output-angle using marked physical rotations or official protocol fields, and decode or obtain real 3号 feedback/heartbeat before increasing commands.
