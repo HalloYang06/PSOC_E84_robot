@@ -73,9 +73,20 @@
 #define CONTROL_MOTOR_JOINT7_ID            0x07U
 #endif
 
-/* Motor protocol selection:
- * 0 = private extended-frame protocol used by RS00-like joints.
- * 1 = CANSimple standard-frame protocol used by ODrive-like joints.
+/* Motor protocol and actuator metadata.
+ *
+ * Current bench mapping:
+ * - joint3: Sitaiwei CANSimple/ODrive-like node 3, external reduction 48:1.
+ * - joint4/5: Lingzu RS00 private extended-frame protocol, official reduction 10:1.
+ * - joint6/7: Lingzu EL05 private extended-frame protocol, official reduction 9:1.
+ *
+ * All joint-layer commands and feedback are output-side units. The control layer
+ * converts joint/output rad and rad/s to motor-side units with the gear ratio
+ * below before emitting protocol frames.
+ *
+ * Protocol values:
+ * 0 = private extended-frame protocol used by Lingzu RS00/EL05 joints.
+ * 1 = CANSimple standard-frame protocol used by Sitaiwei/ODrive-like joint3.
  */
 #ifndef CONTROL_MOTOR_PROTOCOL_PRIVATE
 #define CONTROL_MOTOR_PROTOCOL_PRIVATE     0U
@@ -83,6 +94,22 @@
 
 #ifndef CONTROL_MOTOR_PROTOCOL_CANSIMPLE
 #define CONTROL_MOTOR_PROTOCOL_CANSIMPLE   1U
+#endif
+
+#ifndef CONTROL_MOTOR_MODEL_UNKNOWN
+#define CONTROL_MOTOR_MODEL_UNKNOWN        0U
+#endif
+
+#ifndef CONTROL_MOTOR_MODEL_SITAIWEI
+#define CONTROL_MOTOR_MODEL_SITAIWEI       1U
+#endif
+
+#ifndef CONTROL_MOTOR_MODEL_LINGZU_RS00
+#define CONTROL_MOTOR_MODEL_LINGZU_RS00    2U
+#endif
+
+#ifndef CONTROL_MOTOR_MODEL_LINGZU_EL05
+#define CONTROL_MOTOR_MODEL_LINGZU_EL05    3U
 #endif
 
 #ifndef CONTROL_MOTOR_JOINT1_PROTOCOL
@@ -113,6 +140,34 @@
 #define CONTROL_MOTOR_JOINT7_PROTOCOL      CONTROL_MOTOR_PROTOCOL_PRIVATE
 #endif
 
+#ifndef CONTROL_MOTOR_JOINT1_MODEL
+#define CONTROL_MOTOR_JOINT1_MODEL         CONTROL_MOTOR_MODEL_UNKNOWN
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT2_MODEL
+#define CONTROL_MOTOR_JOINT2_MODEL         CONTROL_MOTOR_MODEL_UNKNOWN
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT3_MODEL
+#define CONTROL_MOTOR_JOINT3_MODEL         CONTROL_MOTOR_MODEL_SITAIWEI
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT4_MODEL
+#define CONTROL_MOTOR_JOINT4_MODEL         CONTROL_MOTOR_MODEL_LINGZU_RS00
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT5_MODEL
+#define CONTROL_MOTOR_JOINT5_MODEL         CONTROL_MOTOR_MODEL_LINGZU_RS00
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT6_MODEL
+#define CONTROL_MOTOR_JOINT6_MODEL         CONTROL_MOTOR_MODEL_LINGZU_EL05
+#endif
+
+#ifndef CONTROL_MOTOR_JOINT7_MODEL
+#define CONTROL_MOTOR_JOINT7_MODEL         CONTROL_MOTOR_MODEL_LINGZU_EL05
+#endif
+
 /* Output reduction ratio from joint/output side to motor rotor side.
  * Joint-layer commands use output-side rad/rad/s; protocol packets use motor-side
  * rad/rad/s or rev/rev/s where required.
@@ -126,23 +181,23 @@
 #endif
 
 #ifndef CONTROL_MOTOR_JOINT3_GEAR_RATIO
-#define CONTROL_MOTOR_JOINT3_GEAR_RATIO    (10.0f)
+#define CONTROL_MOTOR_JOINT3_GEAR_RATIO    (48.0f)
 #endif
 
 #ifndef CONTROL_MOTOR_JOINT4_GEAR_RATIO
-#define CONTROL_MOTOR_JOINT4_GEAR_RATIO    (1.0f)
+#define CONTROL_MOTOR_JOINT4_GEAR_RATIO    (10.0f)
 #endif
 
 #ifndef CONTROL_MOTOR_JOINT5_GEAR_RATIO
-#define CONTROL_MOTOR_JOINT5_GEAR_RATIO    (1.0f)
+#define CONTROL_MOTOR_JOINT5_GEAR_RATIO    (10.0f)
 #endif
 
 #ifndef CONTROL_MOTOR_JOINT6_GEAR_RATIO
-#define CONTROL_MOTOR_JOINT6_GEAR_RATIO    (1.0f)
+#define CONTROL_MOTOR_JOINT6_GEAR_RATIO    (9.0f)
 #endif
 
 #ifndef CONTROL_MOTOR_JOINT7_GEAR_RATIO
-#define CONTROL_MOTOR_JOINT7_GEAR_RATIO    (1.0f)
+#define CONTROL_MOTOR_JOINT7_GEAR_RATIO    (9.0f)
 #endif
 
 #ifndef CONTROL_CANSIMPLE_POS_REV_PER_RAD
