@@ -2720,3 +2720,19 @@ git push origin feature/rehab-arm-ros2-architecture
 - 临时 demo、测试报告、截图、样例上传数据不要留在项目目录里。
 - 自动化测试需要生成文件时，应写入系统临时目录，测试结束自动清理。
 - 只有正式代码、正式测试、正式文档、可复用配置可以进入 Git。
+
+## 8. 多 AI 联调提示词
+
+明天接入仿真主机、C8T6/传感器、平台和 App 时，统一使用：
+
+- [TOMORROW_INTEGRATION_PROMPTS.md](TOMORROW_INTEGRATION_PROMPTS.md)
+
+里面包含：
+
+- 平台开发 AI 提示词。
+- App 开发 AI 提示词。
+- ROS/NanoPi/Linux 主线提示词。
+- 一天联调 checklist。
+- Stop conditions。
+
+联调时优先按文档顺序推进：先 Git 和离线验证，再 NanoPi/CAN/M33/C8T6 数据链路，再平台/App 展示，最后才考虑任何运动测试。

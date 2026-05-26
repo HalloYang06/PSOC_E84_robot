@@ -1248,6 +1248,14 @@
 - Safety: dry-run JSON generation only; no BLE scan/connect/write, no M33 write, no ROS launch, no CAN access, and no motor motion.
 - Next step: define the future BLE characteristic/fragmentation/ack contract before implementing real App-to-M33 writes.
 
+### 2026-05-27 - Next-day multi-AI integration prompts
+
+- Completed: added `docs/TOMORROW_INTEGRATION_PROMPTS.md` with copy-ready prompts for platform AI, App AI, and ROS/NanoPi/Linux integration agent.
+- Completed: documented the shared safety boundaries, one-day bring-up order, data/profile artifacts, stop conditions, and expected reports.
+- Completed: linked the prompt document from `docs/USER_MANUAL.md`.
+- Validated: documentation-only change; no code, ROS launch, network, CAN, BLE, M33 command, or motor motion.
+- Next step: on integration day, start with Git sync and offline validation before hardware motion tests.
+
 ### 2026-05-26 - NanoPi motor data receive check
 
 - Completed: live NanoPi CAN receive test on `192.168.2.66` with `can0` at classic CAN 1Mbps.
