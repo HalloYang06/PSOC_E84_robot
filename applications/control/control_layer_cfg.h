@@ -398,7 +398,7 @@
  * 0 = keep NanoPi ROS/CAN commands logging-only.
  */
 #ifndef CONTROL_DEVELOPMENT_BENCH_MOTION_ENABLE
-#define CONTROL_DEVELOPMENT_BENCH_MOTION_ENABLE 1U
+#define CONTROL_DEVELOPMENT_BENCH_MOTION_ENABLE 0U
 #endif
 
 /* Safety bring-up mode for NanoPi ROS/CAN commands.
