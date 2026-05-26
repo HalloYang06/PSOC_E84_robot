@@ -3610,3 +3610,20 @@ Connection reset by 192.168.2.66 port 22
 状态：
 
 - 已撤掉本轮新增的 M33 session zero 入口，并去掉 M33 诊断里的 `zero_source/zero_policy` 输出。
+
+### App 和平台双控制不是双安全裁决
+
+现象：
+
+- 项目需要 App 蓝牙近端控制，也需要平台/服务器远端监控、数据采集、标注和后续总控台。
+
+判断：
+
+- App 和平台都只能提出控制请求或参数草案，不能各自持有一套独立安全权威。
+- M33 必须是最终安全裁决方；任何远端延迟、断网、平台状态通过，都不能替代本地急停、限位、限速、限流和故障保护。
+
+技巧：
+
+- App BLE 优先做近端 start/pause/stop/estop request、模式切换和患者反馈。
+- 平台优先做 profile draft/review、训练计划、数据/标注/模型管理和远程 stop/pause request。
+- 冲突时取更保守状态；只有 M33 回报 `motion_allowed=true`，界面才能显示真实执行中。

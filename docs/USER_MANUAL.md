@@ -13,6 +13,7 @@
 - `/rehab_arm/safety_state` 不是 `ok` 时，不要发布真实运动轨迹。
 - 人穿戴设备时，禁止使用 `nanopi_can_master.py` 直控电机。
 - App 实时近端控制走 BLE 到英飞凌；HTTP 到 NanoPi/OpenClaw 只做高层 AI、报告和远程服务。
+- App BLE 和平台/服务器可以同时监控、同时提出 pause/stop/profile draft 等请求，但都不能直接控制电机；M33 永远按最保守状态做最终安全裁决。
 - 旧规划 CAN ID 不作为当前依据。
 
 当前总体数据流图见：[system_data_flow.png](assets/system_data_flow.png)。
