@@ -1212,3 +1212,13 @@
 - Validated on NanoPi true CAN: parser update was synced, ROS workspace rebuilt, and `nanopi_live_telemetry_check.sh` passed with `0x322`, `0x336`, `/rehab_arm/motor_state`, `/joint_states`, and no `0x320`.
 - Safety: this does not enable motion; current M33 still reports `limited/logging_only`, so NanoPi continues to reject trajectories.
 - Next step: implement an explicit M33 pre-arm checklist/status source, still reporting `motion_allowed=false` until all physical safety inputs and joint limits are confirmed.
+
+### 2026-05-26 - M33 diagnostic pre-arm checklist
+
+- Completed: M33 branch `M33` now has `cmd_m33_prearm_check`.
+- Completed: the command reports logging-only state, heartbeat freshness, physical input confirmation placeholders, required/fresh/fault motor feedback masks, and a final `ready` flag.
+- Completed: added conservative compile-time defaults: required joint mask `0x7F`, estop/power/limits unconfirmed, and no pre-arm with logging-only.
+- Validated: forced ARM GCC compile of `Debug/applications/control/control_layer.o` succeeded.
+- Not validated: full firmware image was not relinked/flashed in this turn; user will flash when needed.
+- Safety: the command is diagnostic only. It never changes mode, never sends motor output, and current defaults should report `ready=0`.
+- Next step: after flashing, run `cmd_m33_prearm_check` and use the failing fields as the checklist for real hardware safety inputs and final joint limit confirmation.

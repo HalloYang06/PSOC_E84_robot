@@ -2647,3 +2647,26 @@ safety limited: rejected trajectory: PSoC motion_allowed is not true, protocol_v
 状态：
 
 - 已收紧 parser 并加入测试：`ok/armed/detail=motor_fault` 仍解析为 `motion_allowed=false`。
+
+### Pre-arm 检查表默认失败才是安全默认
+
+现象：
+
+- M33 新增 `cmd_m33_prearm_check` 后，当前阶段预期输出 `ready=0`。
+
+根因：
+
+- 当前固件仍然 `CONTROL_ROS_COMMAND_LOGGING_ONLY=1U`。
+- 急停输入、供电输入、最终限位确认都还没有接入真实硬件合同。
+- 并非所有参与运动的电机都有新鲜反馈。
+
+技巧：
+
+- `cmd_m33_prearm_check` 只用于观察，不改变状态。
+- 先看 `PREARM_MODE`，再看 `PREARM_INPUTS`，最后看 `PREARM_MOTORS`。
+- `fresh_mask` 表示 M33 最近收到反馈的关节/电机槽位，不是运动许可。
+- 只有当 M33 未来能稳定给出 `ready=1`，并且 `0x322` 同时满足 `motion_allowed=true` 合同时，NanoPi 才可能进入真实轨迹测试。
+
+状态：
+
+- M33 代码已编译通过；等待用户需要时烧录后现场查看。

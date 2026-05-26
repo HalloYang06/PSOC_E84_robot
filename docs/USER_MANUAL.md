@@ -807,6 +807,7 @@ D:\RT-ThreadStudio\workspace\yiliao_m33\Debug\rtthread.hex
 - `control_ros_safety_assessment_t` 保存状态、裁决、拒绝原因和检查结果。
 - `ctrl_log_ros_command_only()` 只打印安全评估结果。
 - `CONTROL_ROS_COMMAND_LOGGING_ONLY=1U` 时，最终仍强制 `no_motor_output`。
+- `cmd_m33_prearm_check` 会打印预 armed 检查表，但不会改变模式，不会允许运动。
 
 烧录前确认：
 
@@ -845,6 +846,30 @@ RX 322 [8] a5<seq>070001010a00
 ```
 
 这表示 M33 在线，但仍处于 `limited/logging_only`，不是可运动状态。
+
+可选：在 M33 shell 查看预 armed 检查表：
+
+```text
+cmd_m33_prearm_check
+```
+
+当前默认应该失败，示例字段如下：
+
+```text
+PREARM: ready=0 motion_allowed_would_be=0
+PREARM_MODE: logging_only_clear=0 logging_only_compile=1 allow_with_logging_only=0
+PREARM_HEARTBEAT: ok=<0|1> age_ms=<n> timeout_ms=2500
+PREARM_INPUTS: estop_confirmed=0 power_confirmed=0 limits_confirmed=0
+PREARM_MOTORS: required_mask=0x0000007F fresh_mask=<mask> fault_mask=<mask> fresh_count=<n> fresh_ok=<0|1> fault_free=<0|1>
+PREARM_NOTE: diagnostic only; this command never changes mode and never enables motion
+```
+
+解释：
+
+- `ready=0` 是当前正确结果。
+- `logging_only_clear=0` 表示固件仍处于 logging-only，不允许真实输出。
+- `estop_confirmed/power_confirmed/limits_confirmed=0` 表示这些物理安全输入还没有接入并确认。
+- `fresh_mask` 只表示 M33 最近收到哪些电机反馈，不等于可以运动。
 
 第二步只发一帧合法 `0x320` 对照：
 
