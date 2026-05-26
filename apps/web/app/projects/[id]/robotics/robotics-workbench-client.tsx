@@ -1617,7 +1617,7 @@ function DebugTile({
                   <ul className={styles.eventList}>
                     {latestMotors.slice(0, 8).map((motor, index) => (
                       <li key={`${text(motor.motor_id, "motor")}-${index}`}>
-                        <b>{text(motor.joint_name, `motor ${text(motor.motor_id, index + 1)}`)}</b>
+                        <b>{text(motor.joint_name, `motor ${text(motor.motor_id, String(index + 1))}`)}</b>
                         <small>位置 {numberText(motor.position, " rad")} · 速度 {numberText(motor.velocity, " rad/s")} · 温度 {temperatureOf(motor) == null ? "无" : numberText(temperatureOf(motor), " C")}</small>
                       </li>
                     ))}
