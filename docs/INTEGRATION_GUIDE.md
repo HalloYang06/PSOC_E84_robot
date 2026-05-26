@@ -2,6 +2,8 @@
 
 本文档给后续仿真主机、NanoPi、英飞凌 M33/M55、App、数据标注工具和预留总控台开发者使用。它只定义当前已确认的数据接口和安全边界，不要求现在接入服务器实现。
 
+患者、设备、App、平台、NanoPi、M33、M55 和 VLA 共同遵守的 profile 协议见：[PATIENT_DEVICE_PROFILE_PROTOCOL_V1.md](PATIENT_DEVICE_PROFILE_PROTOCOL_V1.md)。后续新增 App、平台或模型字段时，优先更新该协议，不要在各端各自定义一套。
+
 ## 1. 总原则
 
 - 这是穿戴在人身上的康复外骨骼，安全优先级高于演示效果、AI 能力和开发速度。

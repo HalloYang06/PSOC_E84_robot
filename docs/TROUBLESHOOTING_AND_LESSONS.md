@@ -3570,3 +3570,22 @@ Connection reset by 192.168.2.66 port 22
 - 大角度前必须先用 formal `+5°` 验证零点和方向。
 - 这只是台架排故办法；正式机械臂必须做持久化机械零点或上电 homing。
 - `m33_joint_calib` 要看 `zero_source`。如果显示 `bench_*`，它只允许用于未装机台架。
+
+### App、平台、M33、M55 不要各写一套患者参数
+
+现象：
+
+- 医疗康复机械臂需要按不同患者设置 ROM、限速、辅助等级、疼痛/疲劳策略和训练模式。
+- 如果 App、平台、NanoPi、M33 和 M55 各自维护参数，现场会出现版本不一致和安全责任不清。
+
+判断：
+
+- 必须使用同一份 versioned Patient Device Profile。
+- M33 只接收安全子集，M55 只接收模型子集，平台/App 负责编辑同一份源 profile。
+- 第一版不要引入患者相对坐标系；先用机器人坐标系加 patient ROM limit 和 `rom_percent` 训练特征。
+
+技巧：
+
+- 同一设备同一时间只允许一个 active profile。
+- 每条训练数据都记录 `profile_id/profile_version/session_id/machine_calibration_id/model_version`。
+- VLA 和 M55 都只能输出建议或任务计划，不能直接写底层电机命令。

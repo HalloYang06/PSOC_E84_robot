@@ -1669,3 +1669,12 @@
 - Decision: the current joint3 `zero_offset=0.0f` is a bench-only value after the Sitaiwei encoder reset, not a formal robot requirement.
 - Architecture note: installed/wearable operation must use either persisted mechanical zero offsets or an explicit homing routine after power-up; otherwise absolute position control should stay rejected.
 - Next step: flash the new diagnostic build, run `m33_joint_calib 3`, then retest formal joint0 `+5°` only after confirming the zero source is visible in logs.
+
+### 2026-05-26 - Patient device profile protocol baseline
+
+- Completed: added `docs/PATIENT_DEVICE_PROFILE_PROTOCOL_V1.md` as the shared protocol for platform, App, NanoPi, M33, M55, simulation, data collection and VLA.
+- Defined: single active profile rule, role permissions, patient ROM/velocity/acceleration/current limits, training mode, fatigue/pain policy, model runtime settings, VLA permission level, data labeling requirements and synchronization conflict handling.
+- Decision: first stage keeps one robot coordinate system and uses patient-specific ROM limits plus derived `rom_percent`; patient-relative coordinates are deferred to a future V2 only if training/generalization requires them.
+- M33 boundary: receives only a safety subset and must combine device absolute limits with patient limits by taking the stricter value.
+- M55 boundary: publishes `m55_model_result_v1` suggestions only; it cannot directly control motors or loosen M33 limits.
+- App/platform boundary: both edit the same versioned Patient Device Profile; neither may maintain a private independent profile.

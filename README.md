@@ -15,6 +15,7 @@ docs/USER_MANUAL.md
 docs/PROJECT_PROGRESS.md
 docs/TROUBLESHOOTING_AND_LESSONS.md
 docs/PSOC_CAN_PROTOCOL_V1.md
+docs/PATIENT_DEVICE_PROFILE_PROTOCOL_V1.md
 docs/M33_0X320_LOGGER_GUIDE.md
 docs/M33_SAFETY_INPUT_MAPPING.md
 ```
@@ -126,6 +127,7 @@ flowchart LR
 
 - 电机反馈和 C8T6 传感数据先进入 M33，M33 再分发给 M55、NanoPi 和 App。
 - M55 跑板端小模型，输出意图、疲劳、辅助等级和异常建议；这些结果必须回到 M33 审核，不能直接控制电机。
+- 平台、App、NanoPi、M33 和 M55 共用患者/设备运行配置协议，见 [`docs/PATIENT_DEVICE_PROFILE_PROTOCOL_V1.md`](docs/PATIENT_DEVICE_PROFILE_PROTOCOL_V1.md)。同一设备同一时刻只能有一个 active profile；患者 ROM、限速、辅助等级、训练模式、M55 模型阈值和数据标注配置都必须记录版本。
 - NanoPi 负责采集摄像头数据，上传关键帧、目标检测结果、机器人状态和 session 数据到总服务器。
 - M55/英飞凌负责语音采集和板端小模型，语音文本、音频摘要和模型结果可以上传服务器，实时安全仍回到 M33。
 - NanoPi 获得 M33 汇总的电机、传感、安全和模型状态后，同步给仿真主机，用于数字孪生、数据采集和轨迹规划。
