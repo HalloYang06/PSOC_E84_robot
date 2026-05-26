@@ -165,6 +165,7 @@ function Arm3DOverview({ motors, safetyState }: { motors: AnyRecord[]; safetySta
 
     async function renderArm() {
       const THREE = await import("three");
+      const { OrbitControls } = await import("three/examples/jsm/controls/OrbitControls.js");
       if (disposed || !mountRef.current) return;
       const target = mountRef.current;
       const width = Math.max(360, target.clientWidth || 720);
@@ -180,7 +181,20 @@ function Arm3DOverview({ motors, safetyState }: { motors: AnyRecord[]; safetySta
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
       renderer.setSize(width, height);
       renderer.domElement.setAttribute("aria-label", "机械臂 Three.js 总览");
+      renderer.domElement.setAttribute("title", "拖拽旋转视角，滚轮缩放，右键平移");
       target.replaceChildren(renderer.domElement);
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.08;
+      controls.enableRotate = true;
+      controls.enableZoom = true;
+      controls.enablePan = true;
+      controls.minDistance = 0.55;
+      controls.maxDistance = 3.4;
+      controls.maxPolarAngle = Math.PI * 0.92;
+      controls.target.set(0.24, 0.18, 0.18);
+      controls.update();
 
       scene.add(new THREE.HemisphereLight(0xecffff, 0x0a272f, 2.2));
       const keyLight = new THREE.DirectionalLight(0xffffff, 1.2);
@@ -238,7 +252,7 @@ function Arm3DOverview({ motors, safetyState }: { motors: AnyRecord[]; safetySta
       const animate = () => {
         if (disposed) return;
         frame = window.requestAnimationFrame(animate);
-        group.rotation.y += 0.0022;
+        controls.update();
         renderer.render(scene, camera);
       };
       animate();
@@ -255,6 +269,7 @@ function Arm3DOverview({ motors, safetyState }: { motors: AnyRecord[]; safetySta
       cleanup = () => {
         window.removeEventListener("resize", resize);
         window.cancelAnimationFrame(frame);
+        controls.dispose();
         renderer.dispose();
         scene.clear();
         if (target.contains(renderer.domElement)) target.removeChild(renderer.domElement);

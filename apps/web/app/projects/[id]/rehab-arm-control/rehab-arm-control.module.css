@@ -379,12 +379,18 @@
   border: 1px solid rgba(88, 240, 255, 0.16);
   border-radius: 8px;
   background: #02070a;
+  cursor: grab;
+  touch-action: none;
 }
 
 .armCanvas canvas {
   display: block;
   width: 100% !important;
   height: 100% !important;
+}
+
+.armCanvas:active {
+  cursor: grabbing;
 }
 
 .armLegend {
