@@ -575,6 +575,67 @@ class DataRecordingTests(unittest.TestCase):
         self.assertEqual(report['criteria']['min_camera_keyframes'], 2)
         self.assertIn('camera keyframe count 1 below required 2', '\n'.join(report['errors']))
 
+    def test_build_recording_quality_report_checks_camera_files_when_required(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            image_path = Path(tmpdir) / 'frame_001.jpg'
+            image_path.write_bytes(b'valid-frame\n')
+            missing_path = Path(tmpdir) / 'missing.jpg'
+            records = [
+                make_session_metadata('s1', 'nanopi', 'arm', 'dev', 'perception_data_collection', now=1.0),
+                make_payload_record('/joint_states', {}, now=2.0),
+                make_payload_record('/rehab_arm/safety_state', {'state': 'ok', 'motion_allowed': False}, now=3.0),
+                make_payload_record('/rehab_arm/sensor_state', {'source': 'sim'}, now=4.0),
+                make_payload_record(
+                    '/rehab_arm/camera_keyframe',
+                    make_camera_keyframe_payload(
+                        camera_id='front_rgb',
+                        image_path=str(image_path),
+                        sha256=file_sha256(image_path),
+                        robot_id='arm',
+                        device_id='nanopi',
+                        now=5.0,
+                    ),
+                    now=5.0,
+                ),
+                make_payload_record(
+                    '/rehab_arm/camera_keyframe',
+                    make_camera_keyframe_payload(
+                        camera_id='front_rgb',
+                        image_path=str(missing_path),
+                        sha256='not-present',
+                        robot_id='arm',
+                        device_id='nanopi',
+                        now=6.0,
+                    ),
+                    now=6.0,
+                ),
+                make_payload_record(
+                    '/rehab_arm/camera_keyframe',
+                    make_camera_keyframe_payload(
+                        camera_id='front_rgb',
+                        image_path=str(image_path),
+                        sha256='wrong-sha',
+                        robot_id='arm',
+                        device_id='nanopi',
+                        now=7.0,
+                    ),
+                    now=7.0,
+                ),
+            ]
+
+            report = build_recording_quality_report(
+                records,
+                topic_profile='perception_vla',
+                require_camera_files=True,
+            )
+
+        self.assertIs(report['ok'], False)
+        self.assertEqual(report['criteria']['require_camera_files'], True)
+        self.assertEqual(report['camera_file_check']['checked_count'], 3)
+        self.assertEqual(report['camera_file_check']['ok_count'], 1)
+        self.assertEqual(report['camera_file_check']['missing_count'], 1)
+        self.assertEqual(report['camera_file_check']['hash_mismatch_count'], 1)
+
     def test_validate_recording_quality_cli_topic_profile_reports_missing_motor_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / 's1.jsonl'
@@ -610,6 +671,55 @@ class DataRecordingTests(unittest.TestCase):
         payload = json.loads(result.stdout)
         self.assertEqual(payload['topic_profile'], 'hardware_telemetry')
         self.assertIn('/rehab_arm/motor_state', payload['schema_check']['missing_topics'])
+
+    def test_validate_recording_quality_cli_checks_camera_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            image_path = Path(tmpdir) / 'frame_001.jpg'
+            image_path.write_bytes(b'frame\n')
+            path = Path(tmpdir) / 's1.jsonl'
+            records = [
+                make_session_metadata('s1', 'nanopi', 'arm', 'dev', 'perception_data_collection', now=1.0),
+                make_payload_record('/joint_states', {}, now=2.0),
+                make_payload_record('/rehab_arm/safety_state', {'state': 'ok', 'motion_allowed': False}, now=3.0),
+                make_payload_record('/rehab_arm/sensor_state', {'source': 'sim'}, now=4.0),
+                make_payload_record(
+                    '/rehab_arm/camera_keyframe',
+                    make_camera_keyframe_payload(
+                        camera_id='front_rgb',
+                        image_path='frame_001.jpg',
+                        sha256=file_sha256(image_path),
+                        robot_id='arm',
+                        device_id='nanopi',
+                        now=5.0,
+                    ),
+                    now=5.0,
+                ),
+            ]
+            with path.open('w', encoding='utf-8') as handle:
+                for record in records:
+                    write_jsonl_record(handle, record)
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).resolve().parents[1] / 'rehab_arm_psoc_bridge' / 'validate_recording_quality.py'),
+                    str(path),
+                    '--topic-profile',
+                    'perception_vla',
+                    '--min-camera-keyframes',
+                    '1',
+                    '--require-camera-files',
+                ],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload['camera_file_check']['checked_count'], 1)
+        self.assertEqual(payload['camera_file_check']['ok_count'], 1)
 
     def test_make_csv_rows_for_joint_and_motor_states(self) -> None:
         records = [

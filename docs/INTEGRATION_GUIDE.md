@@ -128,6 +128,18 @@ ros2 run rehab_arm_psoc_bridge validate_recording_quality.py /path/to/session.js
 
 该检查只统计 JSONL 里的 `/rehab_arm/camera_keyframe` 消息数，不读取图片、不访问摄像头、不控制硬件。
 
+当 JSONL 和图片文件已经同步到同一台机器时，可以加文件完整性检查：
+
+```bash
+ros2 run rehab_arm_psoc_bridge validate_recording_quality.py /path/to/session.jsonl \
+  --topic-profile perception_vla \
+  --min-camera-keyframes 10 \
+  --require-camera-files \
+  --camera-base-dir /path/to/frame-root
+```
+
+输出会包含 `camera_file_check`，平台可展示 `checked_count/ok_count/missing_count/hash_mismatch_count`。该检查只适合离线数据包完整性验收；如果 `image_path` 仍是 NanoPi 绝对路径而图片还没同步到平台主机，不应启用 `--require-camera-files`。
+
 ### Manifest
 
 普通 manifest：
@@ -159,12 +171,13 @@ ros2 run rehab_arm_psoc_bridge build_manifest.py /home/pi/rehab_arm_logs \
   --output /home/pi/rehab_arm_logs/manifest_with_quality.json
 ```
 
-视觉/VLA manifest 可改用 `--topic-profile perception_vla --min-camera-keyframes 10`。
+视觉/VLA manifest 可改用 `--topic-profile perception_vla --min-camera-keyframes 10`。如果 manifest 生成机器能访问图片文件，再加 `--require-camera-files --camera-base-dir <frame-root>`。
 
 对接建议：
 
 - 标注工具、总控台、数据浏览页面优先读取 `manifest_with_summary.json`。
 - 需要上传前验收时优先读取 `manifest_with_quality.json`，并显示 `quality_report.topic_profile`、`quality_report.required_topics` 和 `quality_report.schema_check.missing_topics`。
+- 视觉/VLA 数据启用文件检查时，显示 `quality_report.camera_file_check` 中的缺失文件和 sha256 mismatch 数量。
 - 旧同步流程或只需要上传文件索引时，可以继续读取普通 `manifest.json`。
 - `summary` 字段是数据质量索引，不是控制指令。
 - 上传到 AI 合作平台后，平台侧会把该 summary 转成通用 `device_recording_quality_index_v1`。

@@ -54,6 +54,16 @@ def main() -> int:
         help='Minimum /rehab_arm/camera_keyframe messages required. Default: 0.',
     )
     parser.add_argument(
+        '--require-camera-files',
+        action='store_true',
+        help='Require camera_keyframe image_path files to exist and match sha256 when available.',
+    )
+    parser.add_argument(
+        '--camera-base-dir',
+        default='',
+        help='Base directory for relative camera_keyframe image_path values.',
+    )
+    parser.add_argument(
         '--allow-motion-allowed-true',
         action='store_true',
         help='Allow safety_state payloads with motion_allowed=true.',
@@ -90,6 +100,8 @@ def main() -> int:
             require_motor_state=args.require_motor_state,
             min_motor_entry_count=args.min_motor_entry_count,
             min_camera_keyframes=args.min_camera_keyframes,
+            require_camera_files=args.require_camera_files,
+            camera_base_dir=args.camera_base_dir or Path(args.path).expanduser().parent,
             allow_motion_allowed_true=args.allow_motion_allowed_true,
             required_topics=args.required_topics,
             topic_profile=args.topic_profile,

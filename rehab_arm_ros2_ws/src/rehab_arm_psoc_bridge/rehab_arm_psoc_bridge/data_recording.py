@@ -343,6 +343,70 @@ def summarize_jsonl_records(records: list[dict[str, object]]) -> dict[str, objec
     }
 
 
+def build_camera_file_check(
+    records: list[dict[str, object]],
+    camera_base_dir: str | Path | None = None,
+) -> dict[str, object]:
+    base_dir = Path(camera_base_dir).expanduser() if camera_base_dir is not None else None
+    checked: list[dict[str, object]] = []
+    missing_count = 0
+    hash_mismatch_count = 0
+    ok_count = 0
+
+    for record in records:
+        if record.get('record_type') != 'topic_message':
+            continue
+        if record.get('topic') != '/rehab_arm/camera_keyframe':
+            continue
+        payload = record.get('payload')
+        if not isinstance(payload, dict):
+            continue
+        image_path = payload.get('image_path')
+        if not isinstance(image_path, str) or not image_path:
+            missing_count += 1
+            checked.append({'image_path': image_path, 'ok': False, 'error': 'missing image_path'})
+            continue
+
+        path = Path(image_path).expanduser()
+        if not path.is_absolute() and base_dir is not None:
+            path = base_dir / path
+        if not path.exists():
+            missing_count += 1
+            checked.append({'image_path': image_path, 'resolved_path': str(path), 'ok': False, 'error': 'file missing'})
+            continue
+
+        expected_sha = payload.get('sha256')
+        actual_sha = file_sha256(path)
+        if isinstance(expected_sha, str) and expected_sha and expected_sha != actual_sha:
+            hash_mismatch_count += 1
+            checked.append({
+                'image_path': image_path,
+                'resolved_path': str(path),
+                'ok': False,
+                'error': 'sha256 mismatch',
+                'expected_sha256': expected_sha,
+                'actual_sha256': actual_sha,
+            })
+            continue
+
+        ok_count += 1
+        checked.append({
+            'image_path': image_path,
+            'resolved_path': str(path),
+            'ok': True,
+            'sha256': actual_sha,
+        })
+
+    return {
+        'schema_version': 'rehab_arm_camera_file_check_v1',
+        'checked_count': len(checked),
+        'ok_count': ok_count,
+        'missing_count': missing_count,
+        'hash_mismatch_count': hash_mismatch_count,
+        'items': checked,
+    }
+
+
 def build_recording_quality_report(
     records: list[dict[str, object]],
     min_joint_messages: int = 1,
@@ -350,6 +414,8 @@ def build_recording_quality_report(
     require_motor_state: bool = False,
     min_motor_entry_count: int = 0,
     min_camera_keyframes: int = 0,
+    require_camera_files: bool = False,
+    camera_base_dir: str | Path | None = None,
     allow_motion_allowed_true: bool = False,
     required_topics: Iterable[str] | None = None,
     topic_profile: str | None = None,
@@ -400,6 +466,14 @@ def build_recording_quality_report(
         errors.append(
             f'camera keyframe count {camera_keyframe_count} below required {min_camera_keyframes}'
         )
+    camera_file_check = build_camera_file_check(records, camera_base_dir) if require_camera_files else None
+    if isinstance(camera_file_check, dict):
+        missing_count = int(camera_file_check.get('missing_count', 0) or 0)
+        hash_mismatch_count = int(camera_file_check.get('hash_mismatch_count', 0) or 0)
+        if missing_count > 0:
+            errors.append(f'camera keyframe file missing count {missing_count}')
+        if hash_mismatch_count > 0:
+            errors.append(f'camera keyframe sha256 mismatch count {hash_mismatch_count}')
 
     motion_allowed_counts = summary.get('motion_allowed_counts', {})
     if not isinstance(motion_allowed_counts, dict):
@@ -429,9 +503,11 @@ def build_recording_quality_report(
             'require_motor_state': require_motor_state,
             'min_motor_entry_count': min_motor_entry_count,
             'min_camera_keyframes': min_camera_keyframes,
+            'require_camera_files': require_camera_files,
             'allow_motion_allowed_true': allow_motion_allowed_true,
         },
         'schema_check': schema_check,
+        'camera_file_check': camera_file_check,
         'summary': summary,
     }
 
@@ -559,11 +635,14 @@ def build_recording_manifest(
     require_motor_state: bool = False,
     min_motor_entry_count: int = 0,
     min_camera_keyframes: int = 0,
+    require_camera_files: bool = False,
+    camera_base_dir: str | Path | None = None,
     allow_motion_allowed_true: bool = False,
     required_topics: Iterable[str] | None = None,
     topic_profile: str | None = None,
 ) -> dict[str, object]:
     base = Path(log_dir).expanduser()
+    resolved_camera_base_dir = base if camera_base_dir is None else camera_base_dir
     sessions: list[dict[str, object]] = []
     for path in sorted(base.glob('*.jsonl')):
         entry: dict[str, object] = {
@@ -602,6 +681,8 @@ def build_recording_manifest(
                     require_motor_state=require_motor_state,
                     min_motor_entry_count=min_motor_entry_count,
                     min_camera_keyframes=min_camera_keyframes,
+                    require_camera_files=require_camera_files,
+                    camera_base_dir=resolved_camera_base_dir,
                     allow_motion_allowed_true=allow_motion_allowed_true,
                     required_topics=required_topics,
                     topic_profile=topic_profile,

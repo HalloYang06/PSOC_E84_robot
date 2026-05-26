@@ -36,6 +36,12 @@ def main() -> int:
     parser.add_argument('--require-motor-state', action='store_true')
     parser.add_argument('--min-motor-entry-count', type=int, default=0)
     parser.add_argument('--min-camera-keyframes', type=int, default=0)
+    parser.add_argument('--require-camera-files', action='store_true')
+    parser.add_argument(
+        '--camera-base-dir',
+        default='',
+        help='Base directory for relative camera_keyframe image_path values. Defaults to log_dir.',
+    )
     parser.add_argument('--allow-motion-allowed-true', action='store_true')
     parser.add_argument(
         '--required-topic',
@@ -60,6 +66,8 @@ def main() -> int:
         require_motor_state=args.require_motor_state,
         min_motor_entry_count=args.min_motor_entry_count,
         min_camera_keyframes=args.min_camera_keyframes,
+        require_camera_files=args.require_camera_files,
+        camera_base_dir=args.camera_base_dir or None,
         allow_motion_allowed_true=args.allow_motion_allowed_true,
         required_topics=args.required_topics,
         topic_profile=args.topic_profile,

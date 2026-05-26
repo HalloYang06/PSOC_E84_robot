@@ -2283,3 +2283,20 @@ No such file or directory: /tmp/rehab_sim_collection/sim_demo_motion.jsonl
 状态：
 
 - 已加入 `--min-camera-keyframes`，可用于单文件质量门和 `build_manifest.py --include-quality-report`。
+
+### 摄像头关键帧文件检查只能在图片已同步后开启
+
+现象：
+
+- JSONL 里的 `image_path` 可能是 NanoPi 本机路径，例如 `/home/pi/rehab_arm_frames/f1.jpg`。
+- 在开发电脑或平台主机上离线检查时，如果图片文件还没同步过来，直接启用文件检查会把所有关键帧报成 missing。
+
+技巧：
+
+- 先用 `--topic-profile perception_vla --min-camera-keyframes N` 检查消息数量。
+- 确认图片文件已同步到本机后，再加 `--require-camera-files --camera-base-dir <frame-root>`。
+- `camera_file_check.hash_mismatch_count>0` 表示 JSONL 中记录的 sha256 和本地文件不一致，不能进入正式标注/训练。
+
+状态：
+
+- 已加入可选的本地文件存在和 sha256 检查；默认关闭，避免跨机器路径误报。

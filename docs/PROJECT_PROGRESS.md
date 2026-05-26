@@ -1045,3 +1045,11 @@
 - Validated: full `rehab_arm_psoc_bridge` unit tests passed 83 tests; `py_compile` passed.
 - Safety: offline JSONL counting only; no camera access, CAN access, upload, M33 command, or motor motion.
 - Next step: connect platform data page to display camera keyframe count and missing perception topics.
+
+### 2026-05-26 - Offline camera file integrity check
+
+- Completed: added optional `--require-camera-files` and `--camera-base-dir` for perception JSONL quality reports.
+- Completed: quality reports now include `camera_file_check` with checked, ok, missing, and sha256 mismatch counts.
+- Validated: full `rehab_arm_psoc_bridge` unit tests passed 85 tests; `py_compile` passed.
+- Safety: optional local file integrity check only; no camera access, CAN access, upload, M33 command, or motor motion.
+- Next step: platform data page should show `camera_file_check` when present and avoid enabling it before image files are synced.

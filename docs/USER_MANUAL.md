@@ -1240,6 +1240,26 @@ ros2 run rehab_arm_psoc_bridge validate_recording_quality.py \
 - `/rehab_arm/camera_keyframe` 数量不少于 10。
 - 这个检查只统计 JSONL 中的关键帧消息，不打开摄像头、不读取图片文件、不控制电机。
 
+如果这段 JSONL 和图片文件已经在同一台电脑上，可以进一步检查图片文件存在和 sha256：
+
+```bash
+ros2 run rehab_arm_psoc_bridge validate_recording_quality.py \
+  /tmp/rehab_sim_collection/perception_session.jsonl \
+  --topic-profile perception_vla \
+  --min-camera-keyframes 10 \
+  --require-camera-files \
+  --camera-base-dir /tmp/rehab_sim_collection \
+  --pretty
+```
+
+通过标准：
+
+- `camera_file_check.checked_count` 等于关键帧数量。
+- `camera_file_check.missing_count=0`。
+- `camera_file_check.hash_mismatch_count=0`。
+
+注意：如果 JSONL 里的 `image_path` 是 NanoPi 上的绝对路径，而你在另一台电脑离线检查，这个文件检查会失败。这种情况下先只检查 topic 和关键帧数量，等图片同步到本地后再加 `--require-camera-files`。
+
 导出 CSV：
 
 ```bash
@@ -1442,11 +1462,19 @@ ros2 run rehab_arm_psoc_bridge build_manifest.py /home/pi/rehab_arm_logs \
   --output /home/pi/rehab_arm_logs/manifest_with_perception_quality.json
 ```
 
+如果 manifest 所在机器能访问图片文件，可以加：
+
+```bash
+  --require-camera-files \
+  --camera-base-dir /home/pi/rehab_arm_logs
+```
+
 通过标准：
 
 - 每个有效 session 包含 `quality_report.schema_version=rehab_arm_recording_quality_v1`。
 - `quality_report.topic_profile` 记录本次使用的 profile，例如 `hardware_telemetry`。
 - `quality_report.required_topics` 记录该 profile 要求的 topic。
+- 视觉数据启用文件检查时，`quality_report.camera_file_check.missing_count=0` 且 `hash_mismatch_count=0`。
 - `quality_report.ok=true` 时，平台可把该 session 作为可标注/可导出的数据资产。
 - `quality_report.ok=false` 时，平台必须显示 blocking reason，不能把它当成合格训练数据。
 - 质量报告仍然只是数据质量门，不是电机上电或运动许可。
