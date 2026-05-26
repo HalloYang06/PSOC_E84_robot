@@ -3013,6 +3013,23 @@ Connection reset by 192.168.2.66 port 22
 
 - 已把 3/4/5/6/7 型号和减速比写入项目文档；下一步在代码中建立 RS00/EL05 分型号表。
 
+### EL05 不要套用 RS00 的工程量程
+
+现象：
+
+- 本地 `robstride_ros_sample` 有 RS00~RS06 的示例量程，但没有单独 EL05 枚举。
+- 6号、7号已经确认是 EL05，且 7号反馈角度映射已被现场观察推翻。
+
+技巧：
+
+- NanoPi 侧可以记录 `actuator_type=EL05` 和 `gear_ratio=9.0`。
+- 在确认 EL05 官方量程/字段前，6/7号 active-report 的 position、velocity、torque 继续保持 `None`，只保留 raw 字段。
+- 4/5号 RS00 可以使用现有 RS00 示例量程做临时工程解码，但正式 M33 侧仍要再次限幅和标定。
+
+状态：
+
+- 已在 `candump_motor_telemetry.py` 中按该策略实现，并用单测覆盖。
+
 ### 3号 CANSimple 命令发出不等于执行已打通
 
 现象：

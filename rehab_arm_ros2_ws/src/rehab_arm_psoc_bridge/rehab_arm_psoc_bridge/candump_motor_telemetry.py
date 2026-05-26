@@ -55,7 +55,26 @@ LINGZU_ACTUATOR_LIMITS = {
     'RS05': {'position': LINGZU_POSITION_LIMIT_RAD, 'velocity': 33.0, 'torque': 17.0},
     'RS06': {'position': LINGZU_POSITION_LIMIT_RAD, 'velocity': 20.0, 'torque': 36.0},
 }
-LINGZU_ACTUATOR_TYPE_BY_ID: dict[int, str] = {}
+LINGZU_ACTUATOR_TYPE_BY_ID: dict[int, str] = {
+    4: 'RS00',
+    5: 'RS00',
+    6: 'EL05',
+    7: 'EL05',
+}
+MOTOR_GEAR_RATIO_BY_ID: dict[int, float] = {
+    3: 48.0,
+    4: 10.0,
+    5: 10.0,
+    6: 9.0,
+    7: 9.0,
+}
+MOTOR_MODEL_SOURCE_BY_ID = {
+    3: 'user_confirmed_sitaiwei_ratio_execution_unproven',
+    4: 'user_confirmed_rs00_official_robstride_docs',
+    5: 'user_confirmed_rs00_official_robstride_docs',
+    6: 'user_confirmed_el05_official_robstride_docs',
+    7: 'user_confirmed_el05_official_robstride_docs',
+}
 MOTOR_VENDOR_BY_ID = {
     3: 'Sitaiwei',
     4: 'Lingzu',
@@ -148,6 +167,9 @@ def decode_cansimple_encoder_estimate(
         'motor_id': node_id,
         'joint_name': f'cansimple_node_{node_id}',
         'vendor': MOTOR_VENDOR_BY_ID.get(node_id),
+        'gear_ratio': MOTOR_GEAR_RATIO_BY_ID.get(node_id),
+        'model_source': MOTOR_MODEL_SOURCE_BY_ID.get(node_id),
+        'execution_status': 'command_sent_but_motion_not_visually_confirmed' if node_id == 3 else None,
         'protocol': 'cansimple_encoder_estimate',
         'position': position_turns * math.tau,
         'velocity': velocity_turns_per_sec * math.tau,
@@ -186,6 +208,8 @@ def decode_lingzu_engineering_values(
     actuator_type = (actuator_type_by_id or LINGZU_ACTUATOR_TYPE_BY_ID).get(motor_id)
     values: dict[str, object] = {
         'actuator_type': actuator_type or 'unknown',
+        'gear_ratio': MOTOR_GEAR_RATIO_BY_ID.get(motor_id),
+        'model_source': MOTOR_MODEL_SOURCE_BY_ID.get(motor_id),
         'engineering_decode': 'raw_only_actuator_type_unconfirmed',
         'position': None,
         'velocity': None,
@@ -197,7 +221,7 @@ def decode_lingzu_engineering_values(
         return values
     limits = LINGZU_ACTUATOR_LIMITS.get(actuator_type)
     if not limits:
-        values['engineering_decode'] = 'raw_only_actuator_type_not_in_local_reference'
+        values['engineering_decode'] = 'raw_only_actuator_type_confirmed_but_limits_not_in_local_reference'
         return values
     values.update(
         {
@@ -238,6 +262,8 @@ def decode_private_active_report(frame: dict[str, object]) -> dict[str, object] 
         'joint_name': f'private_motor_{motor_id}',
         'vendor': MOTOR_VENDOR_BY_ID.get(motor_id),
         'protocol': 'lingzu_robstride_private_active_report',
+        'gear_ratio': engineering['gear_ratio'],
+        'model_source': engineering['model_source'],
         'position': engineering['position'],
         'velocity': engineering['velocity'],
         'effort': engineering['effort'],

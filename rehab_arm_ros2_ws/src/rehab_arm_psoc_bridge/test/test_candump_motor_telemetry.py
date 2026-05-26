@@ -68,6 +68,8 @@ class CandumpMotorTelemetryTests(unittest.TestCase):
 
         self.assertEqual(motor['motor_id'], 3)
         self.assertEqual(motor['vendor'], 'Sitaiwei')
+        self.assertEqual(motor['gear_ratio'], 48.0)
+        self.assertEqual(motor['execution_status'], 'command_sent_but_motion_not_visually_confirmed')
         self.assertEqual(motor['protocol'], 'cansimple_encoder_estimate')
         self.assertAlmostEqual(motor['position'], 0.25 * math.tau)
         self.assertAlmostEqual(motor['velocity'], 0.5 * math.tau)
@@ -90,16 +92,17 @@ class CandumpMotorTelemetryTests(unittest.TestCase):
         self.assertEqual(motor['heartbeat_byte7'], 0x00)
         self.assertEqual(motor['heartbeat_extension_decode'], 'raw_only_vendor_fields_unconfirmed')
 
-    def test_decode_private_active_report_preserves_raw_fields(self) -> None:
-        frame = parse_candump_line('(1779777167.170439) can0 180004FD#97BA7FCF7FFF0140')
+    def test_decode_private_active_report_preserves_raw_fields_for_el05(self) -> None:
+        frame = parse_candump_line('(1779777167.170439) can0 180007FD#97BA7FCF7FFF0140')
 
         motor = decode_private_active_report(frame)
 
-        self.assertEqual(motor['motor_id'], 4)
+        self.assertEqual(motor['motor_id'], 7)
         self.assertEqual(motor['vendor'], 'Lingzu')
         self.assertEqual(motor['protocol'], 'lingzu_robstride_private_active_report')
-        self.assertEqual(motor['actuator_type'], 'unknown')
-        self.assertEqual(motor['engineering_decode'], 'raw_only_actuator_type_unconfirmed')
+        self.assertEqual(motor['actuator_type'], 'EL05')
+        self.assertEqual(motor['gear_ratio'], 9.0)
+        self.assertEqual(motor['engineering_decode'], 'raw_only_actuator_type_confirmed_but_limits_not_in_local_reference')
         self.assertIsNone(motor['position'])
         self.assertIsNone(motor['velocity'])
         self.assertIsNone(motor['torque'])
@@ -110,7 +113,19 @@ class CandumpMotorTelemetryTests(unittest.TestCase):
         self.assertEqual(motor['temperature_raw'], 0x0140)
         self.assertEqual(motor['raw_temperature_u16'], 0x0140)
         self.assertEqual(motor['status_raw'], '0x40')
-        self.assertEqual(motor['raw_can_id'], '0x180004FD')
+        self.assertEqual(motor['raw_can_id'], '0x180007FD')
+
+    def test_decode_private_active_report_decodes_confirmed_rs00_by_default(self) -> None:
+        frame = parse_candump_line('(1779777167.170439) can0 180004FD#80007FFF80000140')
+
+        motor = decode_private_active_report(frame)
+
+        self.assertEqual(motor['motor_id'], 4)
+        self.assertEqual(motor['actuator_type'], 'RS00')
+        self.assertEqual(motor['gear_ratio'], 10.0)
+        self.assertEqual(motor['engineering_decode'], 'lingzu_robstride_ros_sample_actuator_mapping')
+        self.assertAlmostEqual(motor['velocity'], 0.0, places=6)
+        self.assertAlmostEqual(motor['temperature'], 32.0)
 
     def test_decode_lingzu_engineering_values_when_actuator_model_is_known(self) -> None:
         values = decode_lingzu_engineering_values(
@@ -123,11 +138,22 @@ class CandumpMotorTelemetryTests(unittest.TestCase):
         )
 
         self.assertEqual(values['actuator_type'], 'RS00')
+        self.assertEqual(values['gear_ratio'], 10.0)
         self.assertEqual(values['engineering_decode'], 'lingzu_robstride_ros_sample_actuator_mapping')
         self.assertAlmostEqual(values['position'], 0.0003835069, places=6)
         self.assertAlmostEqual(values['velocity'], 0.0, places=6)
         self.assertAlmostEqual(values['torque'], 0.0005188147, places=6)
         self.assertAlmostEqual(values['temperature'], 32.0)
+
+    def test_decode_lingzu_engineering_values_keeps_el05_raw_until_limits_are_confirmed(self) -> None:
+        values = decode_lingzu_engineering_values(7, 0x8000, 0x7FFF, 0x8000, 0x0140)
+
+        self.assertEqual(values['actuator_type'], 'EL05')
+        self.assertEqual(values['gear_ratio'], 9.0)
+        self.assertEqual(values['engineering_decode'], 'raw_only_actuator_type_confirmed_but_limits_not_in_local_reference')
+        self.assertIsNone(values['position'])
+        self.assertIsNone(values['velocity'])
+        self.assertIsNone(values['torque'])
 
     def test_convert_candump_to_motor_state_jsonl_records(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

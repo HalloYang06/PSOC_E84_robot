@@ -1397,3 +1397,13 @@
 - Completed: updated README, motor protocol documentation, user manual, and troubleshooting notes to stop treating 4/5/6/7 model assignment as unknown.
 - Safety: 3号 has received CANSimple commands but has not been visually confirmed to move; it remains execution-unproven. Official gear ratios do not make the current 7号 feedback angle mapping safe.
 - Next step: update M33/NanoPi motor model tables so RS00 and EL05 use separate decoding/limit policies.
+
+### 2026-05-26 - NanoPi motor model table for telemetry decoding
+
+- Completed: updated `candump_motor_telemetry.py` with confirmed model metadata: 3号 `48:1`, 4/5号 RS00 `10:1`, 6/7号 EL05 `9:1`.
+- Completed: 3号 CANSimple telemetry now carries `gear_ratio=48.0` and `execution_status=command_sent_but_motion_not_visually_confirmed`.
+- Completed: 4/5号 RS00 active-report can use the existing local RS00 sample limits for engineering decode.
+- Completed: 6/7号 EL05 active-report keeps raw fields plus confirmed `actuator_type=EL05` and `gear_ratio=9.0`; it does not pretend to know EL05 position/velocity/torque limits yet.
+- Validated: `python -m unittest rehab_arm_ros2_ws.src.rehab_arm_psoc_bridge.test.test_candump_motor_telemetry` passed, `14` tests.
+- Safety: this is telemetry/data decoding only. It does not enable motion and does not make 7号 feedback angle safe for limit-stop.
+- Next step: add M33-side motor model/limit tables for RS00 and EL05, keeping EL05 raw/limited until official field ranges are confirmed.
