@@ -90,6 +90,7 @@ Control mode enum:
 | `3` | `armed` | 已通过安全准备，但未执行轨迹 |
 | `4` | `active` | 正在执行经过安全审核的轨迹 |
 | `5` | `emergency_stop` | 急停保持 |
+| `6` | `bench_armed` | 开发台架放行状态，不是正式穿戴许可 |
 
 Detail code enum:
 
@@ -127,6 +128,7 @@ Detail code enum:
   - `safety_state == ok`
   - `control_mode == armed` 或 `control_mode == active`
   - `detail_code == none`
+- `control_mode == bench_armed` 只表示开发台架状态可见，NanoPi 默认不得把它当成正式运动许可。
 - 任何历史拒绝原因、急停、fault、limited、logging-only、standby 或 boot 状态都必须让 `motion_allowed=false`。
 - 后续如果需要同时表达“当前实时 detail”和“最近一次拒绝原因”，应新增协议字段或 V3 扩展，不要改变 V2 byte6 的既有含义。
 

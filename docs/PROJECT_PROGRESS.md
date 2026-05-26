@@ -51,6 +51,13 @@
 
 ### 2026-05-26
 
+- M33 bench/clinical 安全语义收敛：
+  - M33 改为在 `CONTROL_DEVELOPMENT_BENCH_MOTION_ENABLE=1U` 且 detail 为 none 时，上报 `control_mode=bench_armed`，不再伪装成正式 `armed`。
+  - NanoPi `psoc_status.py` 增加 `bench_armed` 枚举，但默认仍解析为 `motion_allowed=false`；正式运动候选许可只保留 `armed/active + detail=none + error_code=0`。
+  - 验证：NanoPi 侧 `test_psoc_status.py`、`test_safety_gate.py`、`test_m33_ros_contract.py`、`test_candump_motor_telemetry.py` 共 33 tests passed；M33 `git diff --check` 通过。
+  - 未验证：M33 本地 `python -m SCons -j4` 仍失败，原因是 `rtconfig.py` 中工具链路径 `C:\Users\XXYYZZ` 不存在；需要用户用 RT-Thread Studio 或正确工具链编译烧录。
+  - 下一步：烧录后只测 `0x321 -> 0x322`，期望看到 byte5=`0x06`，NanoPi 解析为 `control_mode=bench_armed` 且 `motion_allowed=false`。
+
 - NanoPi 真 CAN 只读验收：
   - NanoPi 在线，`can0` 为 `ERROR-ACTIVE`，1Mbps，tx/rx error counter `0/0`。
   - 被动抓包 5 秒只看到 M33 `0x332`，说明电机遥测在发；随后只发送一次 heartbeat `0x321#01` 触发 `0x322`，全程没有 `0x320`。

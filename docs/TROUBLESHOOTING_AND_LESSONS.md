@@ -3645,3 +3645,4 @@ Connection reset by 192.168.2.66 port 22
 - 真机联调时先看 `/rehab_arm/safety_state.motion_allowed`，再看 `/joint_states` 是否新鲜。
 - 从 candump 离线验收时，也必须先看 `safety_state_count` 和 `motion_allowed_counts`；只有 `motor_state_count/joint_state_count` 不足以证明系统可以进入运动测试。
 - 如果只读 heartbeat 抓包已经出现 `motion_allowed=true`，把它当作“开发台架 armed 状态”处理，不要因为没有发运动命令就忽略这个安全状态；下一步应先区分 bench mode 和正式 clinical mode。
+- `bench_armed` 必须和正式 `armed/active` 分开。台架能动不等于可穿戴；NanoPi parser 默认应让 `bench_armed` 的 `motion_allowed=false`。

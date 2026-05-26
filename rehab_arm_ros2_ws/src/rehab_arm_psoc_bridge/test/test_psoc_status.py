@@ -71,6 +71,15 @@ class PsocStatusTests(unittest.TestCase):
         self.assertEqual(status['detail'], 'none')
         self.assertIs(status['motion_allowed'], True)
 
+    def test_status_v2_bench_armed_is_not_formal_motion_permission(self) -> None:
+        status = parse_psoc_status_payload(bytes([0xA5, 4, 7, 0, 0, 6, 0, 0]))
+
+        self.assertEqual(status['protocol_version'], 2)
+        self.assertEqual(status['state'], 'ok')
+        self.assertEqual(status['control_mode'], 'bench_armed')
+        self.assertEqual(status['detail'], 'none')
+        self.assertIs(status['motion_allowed'], False)
+
     def test_status_v2_ok_armed_with_detail_still_rejects_motion(self) -> None:
         status = parse_psoc_status_payload(bytes([0xA5, 4, 7, 0, 0, 3, 9, 0]))
 

@@ -17,6 +17,7 @@ CONTROL_MODE_NAMES = {
     3: 'armed',
     4: 'active',
     5: 'emergency_stop',
+    6: 'bench_armed',
 }
 
 DETAIL_CODE_NAMES = {
