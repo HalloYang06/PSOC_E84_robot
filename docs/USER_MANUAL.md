@@ -2363,6 +2363,22 @@ python3 /home/pi/nanopi_can_master.py m33 active-report --iface can0 --joint 4 -
 - 不应看到 `01800007` 或其他 7号位置/速度/扭矩控制帧。
 - 结束后必须关闭 active-report，并确认总线没有持续刷 `180007FD/188007FD`。
 
+已验证示例：
+
+```text
+0x320#060401                         # NanoPi -> M33: open joint4/motor7 telemetry
+0x1800FD07#0102030405060100          # M33 -> motor7: enable active-report
+0x180007FD#F8D47FFF7FFF014A          # motor7 -> bus: raw active-report
+0x336#B3xx07005A2E0021               # M33 -> NanoPi: cached aggregate status
+0x320#060400                         # NanoPi -> M33: close joint4/motor7 telemetry
+0x1800FD07#0102030405060000          # M33 -> motor7: disable active-report
+```
+
+注意：
+
+- 关闭后 `0x336` 仍可能继续按 M33 状态周期发布，这是聚合/缓存状态，不等于电机还在主动上报。
+- 关闭是否成功主要看 `0x180007FD/0x188007FD` 是否停止。
+
 只有完成以下动作后，才允许在 M33 配置里把某个关节的 `CONTROL_MOTOR_JOINTx_CALIBRATED` 改成 `1U`：
 
 - 人不穿戴设备，机械臂固定在台架。

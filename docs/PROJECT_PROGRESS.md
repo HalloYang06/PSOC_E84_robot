@@ -1484,3 +1484,16 @@
 - Failed or unverified: local M33 compile was not run because `scons` is not installed on this Windows environment.
 - Safety: active-report is telemetry-only, but it still sends a motor protocol frame; after each test, send `m33 active-report --joint <id>` without `--enable-report` to turn it off.
 - Next step: after flashing, live-test `m33 active-report --joint 4 --enable-report` and confirm 7号 telemetry appears without any 7号 control frame.
+
+### 2026-05-26 - M33 calibration telemetry active-report live validation
+
+- Completed: user flashed M33 commit `9e1573d7`.
+- Validated NanoPi/CAN before and after test: `can0` classic CAN 1Mbps, `ERROR-ACTIVE`, tx/rx error counters `0/0`.
+- Completed: sent heartbeat, then `0x320#060401` (`m33 active-report --joint 4 --enable-report`), then later `0x320#060400` to disable it.
+- Validated M33 formal telemetry path: M33 emitted `0x1800FD07#0102030405060100` to enable 7号 active-report and `0x1800FD07#0102030405060000` to disable it.
+- Validated telemetry arrived: capture included `176` frames of `0x180007FD` and `27` frames of M33 aggregate `0x336`.
+- Validated no 7号 motion-control frames appeared: `01800007=0`, `0300FD07=0`.
+- Validated post-disable: no continued `0x180007FD/0x188007FD` stream; only periodic cached M33 aggregate `0x336` remained.
+- Note: the first SSH wrapper timed out because its timeout was shorter than the remote capture/command window; the capture file was complete and was inspected afterward.
+- Safety: this proves formal M33 calibration telemetry is available without absolute position/velocity/torque commands.
+- Next step: add a bounded calibration-jog command path or use telemetry-only captures to compute software zero/direction before any calibrated position control.
