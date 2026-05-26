@@ -2420,6 +2420,8 @@ M33 正式 `0x320 set_target` 对 4/5/6/7 灵足电机使用官方 CSP 参数流
 - `CONTROL_MOTOR_JOINT3_ZERO_OFFSET_RAD=(55.1f)`
 - `CONTROL_MOTOR_JOINT3_CALIBRATED=1U`
 
+注意：3号这里的 `48.0f` 不是照搬 7号灵足的错误经验。3号当前 formal path 使用 Sitaiwei CANSimple/ODrive-like 协议；该协议的开源/官方参考路线是 ODrive CAN，位置和速度单位是 `rev` / `rev/s`。所以 ROS 关节角要先转换到电机协议侧单位。若后续要让 3号“不乘减速比”地按输出轴角度控制，需要新建 3号 MIT/output-axis RAD 路径，不应直接删掉 CANSimple 的 `gear_ratio`。
+
 3号对应 ROS joint0。烧录后可先测：
 
 ```bash

@@ -121,6 +121,26 @@ NanoPi 离线转换：
 - byte5..7 在本地 M33 中曾用于 `flags/temp/life` 调试打印，但与离线协议表参数名还未完全对齐，正式数据集只能 raw-first 保留，不能直接当成可靠温度或安全位。
 - 波特率、控制模式、错误位和限幅字段仍需继续从离线页逐项提取，并在 M33 侧二次验证。
 
+### 4.1 伺泰威开源驱动和单位结论
+
+本轮按用户要求重新查了伺泰威/SteadyWin 的开源驱动路线，结论如下：
+
+- 本地伺泰威用户手册的开发入口包含 Python SDK、C/C++ SDK、ROS SDK、Arduino SDK 和 odrivetool。
+- 伺泰威手册里的 ROS SDK 路线指向 ODrive CAN/ROS 生态；对应开源仓库是 `odriverobotics/ros_odrive`，仓库说明其 `odrive_node` 是通过 CAN bus 与 ODrive 通信的 ROS2 节点。
+- ODrive 官方 CAN 协议文档明确 `Get_Encoder_Estimates` 的 `Pos_Estimate` 单位是 `rev`，`Vel_Estimate` 单位是 `rev/s`。
+- ODrive 官方 CAN 协议文档也明确 `Set_Input_Pos` 的 `Input_Pos` 单位是 `rev`，`Vel_FF` 默认单位是 `0.001 rev/s`，`Set_Input_Vel` 的 `Input_Vel` 单位是 `rev/s`。
+
+因此，当前 3号伺泰威如果继续走 CANSimple/ODrive-like 协议，M33 内部仍应把 ROS/output-side joint angle 转成 motor-protocol-side `rev/rad` 后再发命令。也就是说：
+
+- 对 RobStride 4/5/6/7，已实测 CSP `loc_ref` 在当前台架上对应输出侧角度，所以 formal path 临时使用 `gear_ratio=1.0`。
+- 对 Sitaiwei 3号，CANSimple `rev/rev_s` 仍是电机协议侧单位，不能照搬 RobStride 的输出侧判断。
+- 如果后续希望 3号“不乘 48”地直接发输出轴角度，应切换到伺泰威 MIT/输出轴 RAD 协议，并重新做 3号 MIT 帧格式、量程、限速、零点和安全状态机验证。
+
+参考源：
+
+- ODrive CAN protocol: `https://docs.odriverobotics.com/v/latest/manual/can-protocol.html`
+- ODrive ROS2 CAN repository: `https://github.com/odriverobotics/ros_odrive`
+
 当前本地 M33 / NanoPi 调试工具对 CANSimple 控制帧的 payload 布局如下。正式机器人路径不直接使用这些帧；它们用于 M33 固件内部厂家协议输出、离线核对和台架调试。
 
 | 命令 | CAN ID 计算 | Payload | 单位/缩放 | 安全备注 |

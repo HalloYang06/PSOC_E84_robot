@@ -1604,3 +1604,12 @@
 - Completed M33 bench config update: set `CONTROL_MOTOR_JOINT3_CALIBRATED=1U` and `CONTROL_MOTOR_JOINT3_ZERO_OFFSET_RAD=(55.1f)` so current bench pose becomes ROS joint0 zero while retaining `48:1`.
 - Safety: this is a temporary bench zero only; it does not validate the installed mechanical zero or final limits.
 - Next step: user flashes M33, then test formal path `m33 target --joint 0 --deg 5 --rpm 1`; expected physical output is about `5°`.
+
+### 2026-05-26 - Motor3 Sitaiwei open-source driver check
+
+- Completed: re-checked the 3号 Sitaiwei/SteadyWin driver route after the user objected to blindly applying `x48`.
+- Found: the local Sitaiwei manual exposes Python/C++/ROS/Arduino SDK routes and points the ROS/CAN path toward the ODrive CAN ecosystem.
+- Found: the relevant open-source ROS2 driver is `odriverobotics/ros_odrive`; it provides CAN-bus ROS2 communication for ODrive-style controllers.
+- Confirmed from ODrive CAN protocol docs: `Get_Encoder_Estimates` reports `Pos_Estimate` in `rev` and `Vel_Estimate` in `rev/s`; `Set_Input_Pos` also takes `Input_Pos` in `rev`.
+- Decision: do not copy the RobStride 7号 `gear_ratio=1.0` conclusion onto 3号. For 3号 CANSimple, keep the motor-side unit conversion path until we deliberately switch to Sitaiwei MIT/output-axis RAD protocol.
+- Next step: if 3号 formal CANSimple movement still disagrees with visual output, validate with direct CANSimple `pos`/`vel` captures first; if the user wants no gearbox conversion, implement a separate 3号 MIT-output-axis path instead of deleting the CANSimple ratio.

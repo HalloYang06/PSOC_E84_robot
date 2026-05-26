@@ -3439,3 +3439,26 @@ Connection reset by 192.168.2.66 port 22
 状态：
 
 - 待烧录后验证 formal joint0 小角度控制。
+
+### 不要把 RobStride 的输出轴单位结论套到伺泰威 CANSimple
+
+现象：
+
+- 7号 RobStride/EL05 经 CSP `loc_ref` 实测后，确认该路径在当前台架上按输出侧角度理解。
+- 3号伺泰威也在做 formal path 标定，用户提醒不要盲目 `x48`。
+
+判断：
+
+- 两类电机协议不能混用结论。
+- RobStride formal CSP 的 `loc_ref` 已被现场观察验证为输出侧角度。
+- 伺泰威 CANSimple/ODrive-like 的 `Set_Input_Pos`、`Get_Encoder_Estimates` 在 ODrive 官方协议里都是 `rev/rev_s` 单位，不是“输出轴度数”接口。
+
+技巧：
+
+- 对 3号，如果继续使用 CANSimple，M33 里保留 `joint -> motor protocol` 的减速比换算。
+- 如果希望 3号像 RobStride CSP 那样直接按输出轴角度发命令，应单独做伺泰威 MIT/output-axis RAD 协议路径，先低速台架验证，再进 formal path。
+- 现场看到幅度不对时，不要直接把 `gear_ratio` 改成 `1.0`；先确认当前命令到底是 CANSimple、MIT 还是 CANOpen。
+
+状态：
+
+- 已记录源驱动路线：ODrive CAN protocol 与 `odriverobotics/ros_odrive`。
