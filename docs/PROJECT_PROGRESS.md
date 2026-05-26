@@ -947,6 +947,7 @@
 - Completed: kept the platform page generic for Linux boards; it does not hardcode the rehab arm and does not modify NPC workbench resources.
 - Validated: targeted platform eslint passed for `apps/web/app/projects/[id]/robotics/robotics-workbench-client.tsx`.
 - Validated: local authenticated browser QA opened `/projects/proj_rehab_arm/robotics`; desktop and 390px mobile screenshots showed the access check panel, no old control-console label, and no horizontal overflow.
-- Not validated: cloud deploy is still pending in this slice.
+- Validated: cloud platform deploy pulled `ai/game-loop-core`, built successfully, and restarted API `8011` plus web `3001`.
+- Not validated: cloud protected-page screenshot is blocked because the local seed account is not valid on the cloud server.
 - Safety: the panel is status-only and does not send ROS, CAN, M33, motor, or motion commands.
-- Next step: deploy the platform branch to cloud after this commit if the user wants the live server updated now.
+- Next step: use a real cloud test account to verify the protected robotics page, then continue the next robotics-development thin slice.
