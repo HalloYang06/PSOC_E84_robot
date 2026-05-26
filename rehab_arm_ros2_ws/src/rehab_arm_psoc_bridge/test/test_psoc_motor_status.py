@@ -14,6 +14,7 @@ from rehab_arm_psoc_bridge.psoc_motor_status import (  # noqa: E402
     MOTOR_STATUS_FLAG_FAULT,
     MOTOR_STATUS_FLAG_LIMITED,
     is_m33_motor_status_id,
+    make_joint_state_fields_from_m33_motor_state,
     make_m33_motor_state_payload,
     parse_m33_motor_status_frame,
 )
@@ -154,6 +155,42 @@ class PsocMotorStatusTests(unittest.TestCase):
         self.assertIsNone(payload)
         self.assertEqual(aggregator.valid_frame_count, 0)
         self.assertEqual(aggregator.invalid_frame_count, 1)
+
+    def test_make_joint_state_fields_from_m33_motor_state(self) -> None:
+        motors = [
+            parse_m33_motor_status_frame(
+                0x330,
+                bytes([M33_MOTOR_STATUS_MARKER, 1, 4, MOTOR_STATUS_FLAG_ENABLED, 20, 0, 2, 32]),
+            ),
+            parse_m33_motor_status_frame(
+                0x331,
+                bytes([M33_MOTOR_STATUS_MARKER, 2, 7, MOTOR_STATUS_FLAG_ENABLED, 0xF0, 0xFF, 0xFF, 33]),
+            ),
+        ]
+        payload = make_m33_motor_state_payload(motors, 'rehab-arm-alpha', 'nanopi-m5', now=10.0)
+
+        fields = make_joint_state_fields_from_m33_motor_state(payload)
+
+        self.assertEqual(fields['name'], ['shoulder_lift_joint', 'elbow_lift_joint'])
+        self.assertEqual(fields['position'], [0.02, -0.016])
+        self.assertEqual(fields['velocity'], [0.2, -0.1])
+        self.assertEqual(fields['effort'], [0.0, 0.0])
+
+    def test_make_joint_state_fields_skips_invalid_entries(self) -> None:
+        fields = make_joint_state_fields_from_m33_motor_state(
+            {
+                'motors': [
+                    {'joint_name': 'ok_joint', 'position': 0.1, 'velocity': None},
+                    {'joint_name': 'missing_position'},
+                    {'position': 0.2},
+                    'not a motor',
+                ]
+            }
+        )
+
+        self.assertEqual(fields['name'], ['ok_joint'])
+        self.assertEqual(fields['position'], [0.1])
+        self.assertEqual(fields['velocity'], [0.0])
 
 
 if __name__ == '__main__':

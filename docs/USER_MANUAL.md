@@ -549,9 +549,10 @@ python -m unittest rehab_arm_ros2_ws\src\rehab_arm_psoc_bridge\test\test_psoc_mo
 
 ```text
 /rehab_arm/motor_state
+/joint_states
 ```
 
-这条 topic 的用途是状态显示、数据采集、标注、平台同步和仿真状态对齐。它不下发运动，不代表系统可以动；是否允许运动仍看 M33 `0x322` safety/status 和 M33 内部安全状态机。
+`/rehab_arm/motor_state` 用于电机状态、温度、故障、平台表格和数据集字段；`/joint_states` 用于 RViz、MuJoCo 状态同步、平台 three.js/URDF 机械臂姿态和标注回放。它们都不下发运动，不代表系统可以动；是否允许运动仍看 M33 `0x322` safety/status 和 M33 内部安全状态机。
 
 ### 4.5 `0x322` V2 状态解析
 
@@ -1173,6 +1174,7 @@ python3 src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/m33_motor_status_smoke.p
 
 ```bash
 ros2 topic echo --once /rehab_arm/motor_state std_msgs/msg/String
+ros2 topic echo --once /joint_states sensor_msgs/msg/JointState
 ```
 
 注意：`--execute` 只发送 `0x330~0x337` 合成遥测帧，用来测试接收/发布链路。它不发送 `0x320`，不控制电机，也不代表 M33 允许运动。上真实 `can0` 前先确认现场没有把这些测试帧误接入控制逻辑；当前设计中它们只能作为遥测。

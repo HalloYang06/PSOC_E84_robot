@@ -135,6 +135,38 @@ def make_m33_motor_state_payload(
     return payload
 
 
+def make_joint_state_fields_from_m33_motor_state(
+    payload: dict[str, object],
+) -> dict[str, list[float] | list[str]]:
+    motors = payload.get('motors', [])
+    if not isinstance(motors, list):
+        return {'name': [], 'position': [], 'velocity': [], 'effort': []}
+
+    names: list[str] = []
+    positions: list[float] = []
+    velocities: list[float] = []
+    efforts: list[float] = []
+    for motor in motors:
+        if not isinstance(motor, dict):
+            continue
+        joint_name = motor.get('joint_name')
+        position = motor.get('position')
+        if not isinstance(joint_name, str) or not isinstance(position, (int, float)):
+            continue
+        velocity = motor.get('velocity')
+        effort = motor.get('effort')
+        names.append(joint_name)
+        positions.append(float(position))
+        velocities.append(float(velocity) if isinstance(velocity, (int, float)) else 0.0)
+        efforts.append(float(effort) if isinstance(effort, (int, float)) else 0.0)
+    return {
+        'name': names,
+        'position': positions,
+        'velocity': velocities,
+        'effort': efforts,
+    }
+
+
 class M33MotorStatusAggregator:
     def __init__(self, robot_id: str, device_id: str):
         self.robot_id = robot_id

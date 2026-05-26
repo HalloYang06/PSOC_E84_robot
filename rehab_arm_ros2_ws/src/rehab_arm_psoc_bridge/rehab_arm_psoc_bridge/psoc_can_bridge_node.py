@@ -21,6 +21,7 @@ from trajectory_msgs.msg import JointTrajectory
 from rehab_arm_psoc_bridge.psoc_motor_status import (
     M33MotorStatusAggregator,
     is_m33_motor_status_id,
+    make_joint_state_fields_from_m33_motor_state,
 )
 from rehab_arm_psoc_bridge.psoc_status import parse_psoc_status_payload
 from rehab_arm_psoc_bridge.safety_state import bridge_safety_payload
@@ -372,6 +373,19 @@ class PsocCanBridgeNode(Node):
             return
         self.motor_status_rx_count += 1
         self.motor_pub.publish(String(data=json.dumps(payload, separators=(',', ':'))))
+        self.publish_joint_state_from_motor_payload(payload)
+
+    def publish_joint_state_from_motor_payload(self, payload: dict[str, object]) -> None:
+        fields = make_joint_state_fields_from_m33_motor_state(payload)
+        if not fields['name']:
+            return
+        msg = JointState()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.name = fields['name']
+        msg.position = fields['position']
+        msg.velocity = fields['velocity']
+        msg.effort = fields['effort']
+        self.joint_pub.publish(msg)
 
     def handle_f103_sensor(self, frame: CanFrame) -> None:
         payload = {'source': 'f103', 'id_hex': '0x7C2', 'data': frame.data.hex().upper()}

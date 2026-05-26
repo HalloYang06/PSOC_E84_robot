@@ -1112,9 +1112,10 @@
 ### 2026-05-26 - M33 motor telemetry read-only ROS bridge path
 
 - Completed: `psoc_can_bridge_node.py` now recognizes `0x330~0x337`, aggregates latest valid M33 motor status frames by slot, and publishes `/rehab_arm/motor_state`.
+- Completed: the same M33 motor telemetry now publishes ROS `/joint_states` for RViz, MuJoCo state sync, platform 3D preview, and annotation replay.
 - Completed: added aggregator tests for latest-per-slot behavior and invalid-frame rejection.
-- Validated: targeted `test_psoc_motor_status.py` passed 9 tests.
-- Validated: full `rehab_arm_psoc_bridge` unit tests passed 105 tests; `py_compile` passed for `psoc_motor_status.py` and `psoc_can_bridge_node.py`.
+- Validated: targeted `test_psoc_motor_status.py` passed 11 tests.
+- Validated: full `rehab_arm_psoc_bridge` unit tests passed 116 tests; `py_compile` passed for `psoc_motor_status.py` and `psoc_can_bridge_node.py`.
 - Not validated: no live M33 `0x330~0x337` frames yet; hardware execution was not touched.
 - Safety: bridge path is receive-only telemetry. It does not change `0x320` sending, does not enable `enable_target_tx`, and does not authorize motor motion.
 - Next step: add a synthetic SocketCAN/candump-style smoke command or launch test so NanoPi can verify `/rehab_arm/motor_state` publication before asking M33 firmware to emit real frames.

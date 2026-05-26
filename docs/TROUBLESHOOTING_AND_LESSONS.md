@@ -2445,6 +2445,7 @@ No such file or directory: /tmp/rehab_sim_collection/sim_demo_motion.jsonl
 
 - NanoPi 侧已新增 `psoc_motor_status.py` 和 7 个离线单元测试。
 - `psoc_can_bridge_node.py` 已接入只读发布路径，收到合法 `0x330~0x337` 后发布 `/rehab_arm/motor_state`。
+- 同一批 `0x330~0x337` 会同步发布 `/joint_states`，用于 RViz、MuJoCo 和平台 3D 预览；仍然只是遥测。
 - `m33_motor_status_smoke.py` 可先 dry-run，再用 `--execute` 向 `vcan0` 或明确选择的 CAN 口发送合成遥测帧验证链路。
 
 ### 合成遥测 smoke 工具默认必须干跑
