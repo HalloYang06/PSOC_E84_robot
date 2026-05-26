@@ -2379,6 +2379,29 @@ python3 /home/pi/nanopi_can_master.py m33 active-report --iface can0 --joint 4 -
 - 关闭后 `0x336` 仍可能继续按 M33 状态周期发布，这是聚合/缓存状态，不等于电机还在主动上报。
 - 关闭是否成功主要看 `0x180007FD/0x188007FD` 是否停止。
 
+### 6.7.2 标定观测报告
+
+把上面的 `candump -L` 输出保存成文件后，可以用报告工具做一次安全检查：
+
+```bash
+calibration_observation /tmp/m33_active_report_gate.candump --motor-id 7 --pretty
+```
+
+如果没有安装 ROS 包，也可以在源码目录运行：
+
+```bash
+python3 rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/calibration_observation.py /tmp/m33_active_report_gate.candump --motor-id 7 --pretty
+```
+
+重点看这些字段：
+
+- `observation_ok=true`：看到了原始电机遥测或 M33 聚合状态。
+- `no_motion_control_frames=true`：没有看到对应电机的位置/速度/扭矩控制帧。
+- `motor_control_frames=0`：没有误发 7号 `01800007` 这类运动控制帧。
+- `safe_to_use_as_motion_proof=false`：这是正确结果，说明报告只证明遥测链路，不证明关节已标定。
+
+如果 `ok=false`，先不要继续标定。检查是否没有打开 active-report，或者是否误发了运动控制帧。
+
 只有完成以下动作后，才允许在 M33 配置里把某个关节的 `CONTROL_MOTOR_JOINTx_CALIBRATED` 改成 `1U`：
 
 - 人不穿戴设备，机械臂固定在台架。

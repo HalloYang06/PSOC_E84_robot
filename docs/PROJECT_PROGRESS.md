@@ -1497,3 +1497,13 @@
 - Note: the first SSH wrapper timed out because its timeout was shorter than the remote capture/command window; the capture file was complete and was inspected afterward.
 - Safety: this proves formal M33 calibration telemetry is available without absolute position/velocity/torque commands.
 - Next step: add a bounded calibration-jog command path or use telemetry-only captures to compute software zero/direction before any calibrated position control.
+
+### 2026-05-26 - Calibration observation report tool
+
+- Completed: added `calibration_observation.py` to summarize candump captures from the M33 active-report calibration path.
+- Completed: the report counts active-report enable/disable frames, raw 7号 telemetry, M33 `0x336` aggregate samples, and any forbidden motion-control frames.
+- Completed: installed command entry as `calibration_observation`.
+- Validated: `python -m pytest rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/test/test_calibration_observation.py rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/test/test_candump_motor_telemetry.py` passed, `17` tests.
+- Validated: local CLI smoke test produced `schema_version=rehab_arm_calibration_observation_v1`, `observation_ok=true`, `no_motion_control_frames=true`.
+- Safety: the tool explicitly marks `safe_to_use_as_motion_proof=false`; this is telemetry observation only, not permission to enable calibrated position control.
+- Next step: use this report during the next live zero/direction capture, then derive a candidate software zero offset before enabling any joint calibration flag.
