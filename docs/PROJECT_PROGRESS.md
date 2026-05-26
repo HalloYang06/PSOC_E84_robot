@@ -957,5 +957,6 @@
 - Completed: added a collapsed setup checklist to the platform Linux board access panel: register device, scan interfaces, upload read-only data, then enter capture/annotation.
 - Validated: targeted platform eslint passed.
 - Validated: local authenticated browser QA clicked the drawer on desktop and 390px mobile; no horizontal overflow and no old control-console label.
+- Validated: cloud platform deploy pulled latest `ai/game-loop-core`, built successfully, and restarted API `8011` plus web `3001`.
 - Safety: the checklist describes data upload and development workflow only; it is not a motion enable path.
 - Next step: keep moving toward real simulation host onboarding and data collection assets.
