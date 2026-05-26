@@ -1,0 +1,11 @@
+RobotExpressive.glb
+
+Source:
+https://github.com/mrdoob/three.js/tree/dev/examples/models/gltf/RobotExpressive
+
+License:
+CC0 1.0 Universal, as documented by the upstream Three.js example model README.
+
+Use in this project:
+Browser-side open-source mesh loading sample for the device data workbench. This is
+not the rehabilitation arm CAD model and is not used for hardware control.
