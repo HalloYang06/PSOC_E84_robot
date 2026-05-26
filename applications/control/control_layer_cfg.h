@@ -519,7 +519,7 @@
 #endif
 
 #ifndef CONTROL_PREARM_POWER_INPUT_SOURCE
-#define CONTROL_PREARM_POWER_INPUT_SOURCE "rpi40_pin13_gpio2_rpi_gpio9"
+#define CONTROL_PREARM_POWER_INPUT_SOURCE "not_used_no_power_ok_input"
 #endif
 
 #ifndef CONTROL_PREARM_POWER_SAFE_NOW
