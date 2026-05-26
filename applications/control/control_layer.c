@@ -1554,8 +1554,11 @@ typedef struct
     rt_bool_t logging_only_clear;
     rt_bool_t heartbeat_ok;
     rt_bool_t estop_input_confirmed;
+    rt_bool_t estop_safe_now;
     rt_bool_t power_input_confirmed;
+    rt_bool_t power_safe_now;
     rt_bool_t limits_confirmed;
+    rt_bool_t limits_safe_now;
     rt_bool_t required_motor_feedback_fresh;
     rt_bool_t required_motor_feedback_fault_free;
     rt_uint32_t heartbeat_age_ms;
@@ -1565,6 +1568,15 @@ typedef struct
     rt_uint8_t fresh_count;
     rt_bool_t ready;
 } control_prearm_check_t;
+
+typedef struct
+{
+    const char *name;
+    const char *source;
+    rt_bool_t confirmed;
+    rt_bool_t safe_now;
+    const char *meaning;
+} control_safety_input_diag_t;
 
 static const char *ctrl_ros_safety_state_name(control_ros_safety_state_t state)
 {
@@ -1674,10 +1686,16 @@ static void ctrl_prearm_check_build(control_prearm_check_t *check, rt_uint32_t r
 
     check->estop_input_confirmed =
         (CONTROL_PREARM_ESTOP_INPUT_CONFIRMED != 0U) ? RT_TRUE : RT_FALSE;
+    check->estop_safe_now =
+        (CONTROL_PREARM_ESTOP_SAFE_NOW != 0U) ? RT_TRUE : RT_FALSE;
     check->power_input_confirmed =
         (CONTROL_PREARM_POWER_INPUT_CONFIRMED != 0U) ? RT_TRUE : RT_FALSE;
+    check->power_safe_now =
+        (CONTROL_PREARM_POWER_SAFE_NOW != 0U) ? RT_TRUE : RT_FALSE;
     check->limits_confirmed =
         (CONTROL_PREARM_LIMITS_CONFIRMED != 0U) ? RT_TRUE : RT_FALSE;
+    check->limits_safe_now =
+        (CONTROL_PREARM_LIMITS_SAFE_NOW != 0U) ? RT_TRUE : RT_FALSE;
 
     rt_mutex_take(&s_data_lock, RT_WAITING_FOREVER);
     rt_memcpy(snapshot, s_motor_feedback, sizeof(snapshot));
@@ -1713,8 +1731,11 @@ static void ctrl_prearm_check_build(control_prearm_check_t *check, rt_uint32_t r
         (check->logging_only_clear &&
          check->heartbeat_ok &&
          check->estop_input_confirmed &&
+         check->estop_safe_now &&
          check->power_input_confirmed &&
+         check->power_safe_now &&
          check->limits_confirmed &&
+         check->limits_safe_now &&
          check->required_motor_feedback_fresh &&
          check->required_motor_feedback_fault_free)
             ? RT_TRUE : RT_FALSE;
@@ -4250,6 +4271,13 @@ static int cmd_m33_prearm_check(int argc, char **argv)
                check.estop_input_confirmed ? 1U : 0U,
                check.power_input_confirmed ? 1U : 0U,
                check.limits_confirmed ? 1U : 0U);
+    rt_kprintf("PREARM_INPUT_DETAIL: estop source=%s safe_now=%u; power source=%s safe_now=%u; limits source=%s safe_now=%u\n",
+               CONTROL_PREARM_ESTOP_INPUT_SOURCE,
+               check.estop_safe_now ? 1U : 0U,
+               CONTROL_PREARM_POWER_INPUT_SOURCE,
+               check.power_safe_now ? 1U : 0U,
+               CONTROL_PREARM_LIMITS_SOURCE,
+               check.limits_safe_now ? 1U : 0U);
     rt_kprintf("PREARM_MOTORS: required_mask=0x%08lX fresh_mask=0x%08lX fault_mask=0x%08lX fresh_count=%u fresh_ok=%u fault_free=%u\n",
                (unsigned long)check.required_joint_mask,
                (unsigned long)check.fresh_joint_mask,
@@ -4262,6 +4290,52 @@ static int cmd_m33_prearm_check(int argc, char **argv)
     return check.ready ? 0 : -1;
 }
 MSH_CMD_EXPORT(cmd_m33_prearm_check, show diagnostic pre-arm checklist without enabling motion);
+
+static int cmd_m33_safety_inputs(int argc, char **argv)
+{
+    const control_safety_input_diag_t inputs[] =
+    {
+        {
+            "estop",
+            CONTROL_PREARM_ESTOP_INPUT_SOURCE,
+            (CONTROL_PREARM_ESTOP_INPUT_CONFIRMED != 0U) ? RT_TRUE : RT_FALSE,
+            (CONTROL_PREARM_ESTOP_SAFE_NOW != 0U) ? RT_TRUE : RT_FALSE,
+            "emergency stop input must be wired, tested, and released"
+        },
+        {
+            "power",
+            CONTROL_PREARM_POWER_INPUT_SOURCE,
+            (CONTROL_PREARM_POWER_INPUT_CONFIRMED != 0U) ? RT_TRUE : RT_FALSE,
+            (CONTROL_PREARM_POWER_SAFE_NOW != 0U) ? RT_TRUE : RT_FALSE,
+            "motor power and voltage must be monitored and inside safe range"
+        },
+        {
+            "limits",
+            CONTROL_PREARM_LIMITS_SOURCE,
+            (CONTROL_PREARM_LIMITS_CONFIRMED != 0U) ? RT_TRUE : RT_FALSE,
+            (CONTROL_PREARM_LIMITS_SAFE_NOW != 0U) ? RT_TRUE : RT_FALSE,
+            "joint limits must be calibrated before any assisted motion"
+        },
+    };
+    rt_uint8_t i;
+
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+
+    for (i = 0U; i < (rt_uint8_t)(sizeof(inputs) / sizeof(inputs[0])); i++)
+    {
+        rt_kprintf("SAFETY_INPUT: name=%s source=%s confirmed=%u safe_now=%u meaning=%s\n",
+                   inputs[i].name,
+                   inputs[i].source,
+                   inputs[i].confirmed ? 1U : 0U,
+                   inputs[i].safe_now ? 1U : 0U,
+                   inputs[i].meaning);
+    }
+    rt_kprintf("SAFETY_INPUT_NOTE: diagnostic only; defaults are unwired/unconfirmed and must block prearm\n");
+
+    return 0;
+}
+MSH_CMD_EXPORT(cmd_m33_safety_inputs, show physical safety input contract without enabling motion);
 
 /* Deprecated aliases */
 static int cmd_rs00_en(int argc, char **argv)
