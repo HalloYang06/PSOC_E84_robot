@@ -1544,26 +1544,27 @@ static rt_uint8_t ctrl_motor_status_flags(const control_motor_feedback_t *fb, rt
 }
 
 static rt_err_t ctrl_publish_motor_status_slot(rt_uint8_t slot,
+                                               rt_uint8_t motor_joint_id,
                                                const control_motor_feedback_t *fb,
                                                rt_bool_t fresh)
 {
     rt_uint8_t payload[8] = {0};
     rt_int16_t position_mrad;
     rt_int8_t velocity_drad_s;
-    rt_uint8_t joint_id;
 
-    if ((fb == RT_NULL) || (slot >= CONTROL_MOTOR_JOINT_COUNT))
+    if ((fb == RT_NULL) ||
+        (slot >= CONTROL_ROS_JOINT_COUNT) ||
+        (motor_joint_id == CONTROL_MOTOR_ID_INVALID))
     {
         return -RT_EINVAL;
     }
 
-    joint_id = (rt_uint8_t)(slot + 1U);
     position_mrad = fresh ? ctrl_float_to_scaled_i16(fb->pos_rad, 1000.0f) : 0;
     velocity_drad_s = fresh ? ctrl_float_to_scaled_i8(fb->vel_rad_s, 10.0f) : 0;
 
     payload[0] = CONTROL_M33_MOTOR_STATUS_MARKER;
     payload[1] = s_motor_status_seq++;
-    payload[2] = (fb->motor_id != 0U) ? fb->motor_id : ctrl_motor_id_by_joint(joint_id);
+    payload[2] = (fb->motor_id != 0U) ? fb->motor_id : ctrl_motor_id_by_joint(motor_joint_id);
     payload[3] = ctrl_motor_status_flags(fb, fresh);
     ctrl_i16_to_le(position_mrad, &payload[4]);
     payload[6] = (rt_uint8_t)velocity_drad_s;
@@ -1582,16 +1583,30 @@ static rt_uint8_t ctrl_publish_cached_motor_status_once(void)
     rt_uint8_t i;
     rt_uint8_t sent = 0U;
     rt_bool_t fresh;
+    rt_uint8_t motor_joint_id;
+    int feedback_index;
 
     rt_mutex_take(&s_data_lock, RT_WAITING_FOREVER);
     rt_memcpy(snapshot, s_motor_feedback, sizeof(snapshot));
     rt_mutex_release(&s_data_lock);
 
-    for (i = 0U; i < CONTROL_MOTOR_JOINT_COUNT; i++)
+    for (i = 0U; i < CONTROL_ROS_JOINT_COUNT; i++)
     {
-        fresh = ctrl_motor_feedback_is_fresh(&snapshot[i], now);
+        motor_joint_id = ctrl_ros_joint_to_motor_joint(i);
+        if ((motor_joint_id == CONTROL_MOTOR_ID_INVALID) ||
+            (motor_joint_id == 0U) ||
+            (motor_joint_id > CONTROL_MOTOR_JOINT_COUNT))
+        {
+            continue;
+        }
 
-        if (ctrl_publish_motor_status_slot(i, &snapshot[i], fresh) == RT_EOK)
+        feedback_index = (int)motor_joint_id - 1;
+        fresh = ctrl_motor_feedback_is_fresh(&snapshot[feedback_index], now);
+
+        if (ctrl_publish_motor_status_slot(i,
+                                           motor_joint_id,
+                                           &snapshot[feedback_index],
+                                           fresh) == RT_EOK)
         {
             sent++;
         }

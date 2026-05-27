@@ -438,11 +438,11 @@
 #endif
 
 /* M33 -> NanoPi official motor telemetry.
- * Standard classic CAN, one frame per cached joint/motor slot:
+ * Standard classic CAN, one frame per formal ROS joint slot:
  *   ID     = CONTROL_CAN_ID_M33_MOTOR_STATUS_BASE + slot
  *   byte0  = marker 0xB3
  *   byte1  = sequence
- *   byte2  = motor_id
+ *   byte2  = physical motor_id from the ROS joint -> motor slot map
  *   byte3  = flags bit0 enabled, bit1 fault, bit2 limited, bit3 emergency_stop,
  *            bit4 stale_or_no_feedback
  *   byte4~5= joint/output position mrad, int16 little-endian
@@ -461,6 +461,10 @@
 #define CONTROL_M33_MOTOR_STATUS_FLAG_STALE 0x10U
 #endif
 
+/* Current formal ROS slots:
+ *   0x330..0x334 => ROS joint 0..4 => motor slot 3/4/5/6/7.
+ * 0x335..0x337 remain accepted by NanoPi as reserved future telemetry IDs.
+ */
 #ifndef CONTROL_M33_MOTOR_STATUS_PERIOD_MS
 #define CONTROL_M33_MOTOR_STATUS_PERIOD_MS 100U
 #endif
