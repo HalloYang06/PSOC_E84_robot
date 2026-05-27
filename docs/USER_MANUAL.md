@@ -2941,9 +2941,31 @@ ros2 run rehab_arm_psoc_bridge build_patient_profile_template.py \
 ```bash
 ros2 run rehab_arm_psoc_bridge validate_patient_profile.py patient_device_profile_template.json --pretty
 ros2 run rehab_arm_psoc_bridge export_m33_safety_subset.py patient_device_profile_template.json --pretty
+ros2 run rehab_arm_psoc_bridge check_patient_profile_release_gate.py patient_device_profile_template.json --target m33 --pretty
 ```
 
-只有审核通过、版本号递增、状态变成 `approved` 或 `active` 后，才允许打包给 App BLE 或 NanoPi/M33 链路。
+注意：模板默认是 `draft`，所以上面的 M33 release gate 应该失败，这是正确现象。只有审核通过、版本号递增、状态变成 `active` 后，`--target m33` 才能通过。
+
+App BLE 包发布前用：
+
+```bash
+ros2 run rehab_arm_psoc_bridge check_patient_profile_release_gate.py patient_device_profile_active.json \
+  --target app_ble \
+  --approved-by clinician_001 \
+  --approved-at 2026-05-27T10:00:00+08:00 \
+  --expires-at 2026-05-28T10:00:00+08:00 \
+  --pretty
+```
+
+NanoPi 只缓存 profile、用于仿真/数据采集上下文时用：
+
+```bash
+ros2 run rehab_arm_psoc_bridge check_patient_profile_release_gate.py patient_device_profile_active.json \
+  --target nanopi_cache \
+  --pretty
+```
+
+只有 release gate `ok=true` 后，才允许进入对应链路。这个闸门仍然只做 JSON 检查，不连接蓝牙、不发 CAN、不下发 M33。
 
 ### 7.3 NanoPi ROS 工作区构建
 

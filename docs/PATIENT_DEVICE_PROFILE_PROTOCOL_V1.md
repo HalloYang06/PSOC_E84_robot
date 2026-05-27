@@ -87,6 +87,22 @@ ros2 run rehab_arm_psoc_bridge build_patient_profile_template.py \
 
 模板默认 `profile_status=draft`、患者 ROM 为每关节 `[-10°, +10°]`、患者限速 `5 deg/s`、急停策略为 `disable_motor_output`。它只是建档起点，不是临床批准，也不会下发 M33 或授予运动权限。
 
+任何 profile 进入 M33、App BLE 或 NanoPi 缓存前，必须先通过发布闸门：
+
+```bash
+ros2 run rehab_arm_psoc_bridge check_patient_profile_release_gate.py \
+  patient_device_profile.json \
+  --target m33 \
+  --pretty
+```
+
+闸门规则：
+
+- `--target m33`：profile 必须 `active`，校验通过，且能导出 `m33_safety_profile_v1`。
+- `--target app_ble`：profile 必须能构造 `ble_m33_safety_package_v1`，并提供 `approved_by/approved_at/expires_at`。
+- `--target nanopi_cache`：profile 必须 `approved` 或 `active`，用于本地缓存、仿真、数据采集上下文。
+- 闸门只输出 `patient_profile_release_gate_v1` 报告，不连接 BLE，不发 ROS/CAN，不写 M33。
+
 ```json
 {
   "schema_version": "patient_device_profile_v1",

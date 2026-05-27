@@ -426,3 +426,65 @@ def build_ble_m33_safety_package(
         'errors': errors,
         'control_boundary': 'ble_package_dry_run_only_not_sent',
     }
+
+
+def build_patient_profile_release_gate(
+    profile: dict[str, object],
+    *,
+    target: str = 'm33',
+    approved_by: str = '',
+    approved_at: str = '',
+    expires_at: str = '',
+) -> dict[str, object]:
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    validation = validate_patient_profile(profile)
+    if validation.get('ok') is not True:
+        errors.append('profile validation failed')
+
+    subset = build_m33_safety_subset(profile)
+    if subset.get('ok') is not True:
+        errors.append('M33 safety subset export failed')
+
+    status = profile.get('profile_status')
+    if target == 'm33':
+        if status != 'active':
+            errors.append('profile_status must be active before M33 sync')
+        package = None
+    elif target == 'app_ble':
+        package = build_ble_m33_safety_package(
+            profile,
+            approved_by=approved_by,
+            approved_at=approved_at,
+            expires_at=expires_at,
+        )
+        if package.get('ok') is not True:
+            errors.append('BLE M33 safety package failed')
+    elif target == 'nanopi_cache':
+        if status not in {'approved', 'active'}:
+            errors.append('profile_status must be approved or active before NanoPi cache')
+        package = None
+    else:
+        errors.append('target must be one of: m33, app_ble, nanopi_cache')
+        package = None
+
+    if validation.get('warning_count', 0):
+        warnings.extend(str(item) for item in validation.get('warnings', []))
+
+    return {
+        'schema_version': 'patient_profile_release_gate_v1',
+        'ok': not errors,
+        'target': target,
+        'profile_id': profile.get('profile_id'),
+        'profile_version': profile.get('profile_version'),
+        'profile_status': status,
+        'error_count': len(errors),
+        'warning_count': len(warnings),
+        'errors': errors,
+        'warnings': warnings,
+        'validation': validation,
+        'm33_safety_subset_ready': subset.get('ok') is True,
+        'ble_package_ready': None if target != 'app_ble' else package.get('ok') is True if isinstance(package, dict) else False,
+        'control_boundary': 'release_gate_only_not_motion_permission',
+    }

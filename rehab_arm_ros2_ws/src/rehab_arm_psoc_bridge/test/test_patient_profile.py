@@ -14,6 +14,7 @@ from rehab_arm_psoc_bridge.patient_profile import (  # noqa: E402
     build_ble_m33_safety_package,
     build_m33_safety_subset,
     build_patient_profile_change_report,
+    build_patient_profile_release_gate,
     validate_patient_profile,
 )
 from rehab_arm_psoc_bridge.build_patient_profile_template import (  # noqa: E402
@@ -349,6 +350,69 @@ class PatientProfileTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertEqual(payload['schema_version'], 'ble_m33_safety_package_v1')
         self.assertIs(payload['ok'], True)
+
+    def test_release_gate_allows_active_profile_to_m33(self) -> None:
+        report = build_patient_profile_release_gate(make_valid_profile(), target='m33')
+
+        self.assertIs(report['ok'], True)
+        self.assertEqual(report['target'], 'm33')
+        self.assertIs(report['m33_safety_subset_ready'], True)
+        self.assertIsNone(report['ble_package_ready'])
+        self.assertEqual(report['control_boundary'], 'release_gate_only_not_motion_permission')
+
+    def test_release_gate_rejects_draft_profile_for_m33(self) -> None:
+        profile = make_valid_profile()
+        profile['profile_status'] = 'draft'
+
+        report = build_patient_profile_release_gate(profile, target='m33')
+
+        self.assertIs(report['ok'], False)
+        self.assertIn('profile_status must be active before M33 sync', '\n'.join(report['errors']))
+
+    def test_release_gate_app_ble_requires_approval_metadata(self) -> None:
+        report = build_patient_profile_release_gate(make_valid_profile(), target='app_ble')
+
+        self.assertIs(report['ok'], False)
+        self.assertIn('BLE M33 safety package failed', '\n'.join(report['errors']))
+        self.assertIs(report['ble_package_ready'], False)
+
+    def test_release_gate_allows_app_ble_with_approval_metadata(self) -> None:
+        report = build_patient_profile_release_gate(
+            make_valid_profile(),
+            target='app_ble',
+            approved_by='clinician_001',
+            approved_at='2026-05-27T10:00:00+08:00',
+            expires_at='2026-05-28T10:00:00+08:00',
+        )
+
+        self.assertIs(report['ok'], True)
+        self.assertIs(report['ble_package_ready'], True)
+
+    def test_release_gate_cli_rejects_draft_profile_for_m33(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            profile = make_valid_profile()
+            profile['profile_status'] = 'draft'
+            path = Path(tmpdir) / 'patient_device_profile.json'
+            path.write_text(json.dumps(profile), encoding='utf-8')
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).resolve().parents[1] / 'rehab_arm_psoc_bridge' / 'check_patient_profile_release_gate.py'),
+                    str(path),
+                    '--target',
+                    'm33',
+                ],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 1)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload['schema_version'], 'patient_profile_release_gate_v1')
+        self.assertIs(payload['ok'], False)
 
 
 if __name__ == '__main__':

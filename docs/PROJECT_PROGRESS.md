@@ -1929,3 +1929,11 @@
 - Validated locally: `test_patient_profile.py` passed 14 tests; CLI `--validate --pretty` emitted a valid template envelope; `py_compile` and `git diff --check` passed.
 - Safety: this is JSON generation/validation only; it does not contact NanoPi, CAN, M33, BLE, App, or platform.
 - Next step: use this template as the platform/App shared starting point, then add profile sync quality gates before any active profile can reach M33.
+
+### 2026-05-27 - Patient profile release gate
+
+- Completed: added `check_patient_profile_release_gate.py` and `build_patient_profile_release_gate()` as the single release check before profile data reaches M33, App BLE, or NanoPi cache.
+- Rules: M33 target requires `profile_status=active`; App BLE target requires approval metadata and a valid BLE safety package; NanoPi cache requires `approved` or `active`.
+- Validated locally: patient profile and motor profile tests passed 23 tests; `py_compile` and `git diff --check` passed.
+- Safety: release gate is JSON-only and never connects BLE, CAN, ROS topics, M33, NanoPi, or motors.
+- Next step: add the same release gate command to the platform/App integration prompts so their agents call it before any sync button or BLE package export.

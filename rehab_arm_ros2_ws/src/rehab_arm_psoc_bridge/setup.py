@@ -40,6 +40,7 @@ setup(
             'board_manifest_sync_upload = rehab_arm_psoc_bridge.board_manifest_sync_upload:main',
             'validate_patient_profile = rehab_arm_psoc_bridge.validate_patient_profile:main',
             'build_patient_profile_template = rehab_arm_psoc_bridge.build_patient_profile_template:main',
+            'check_patient_profile_release_gate = rehab_arm_psoc_bridge.check_patient_profile_release_gate:main',
             'export_m33_safety_subset = rehab_arm_psoc_bridge.export_m33_safety_subset:main',
             'review_patient_profile_change = rehab_arm_psoc_bridge.review_patient_profile_change:main',
             'build_ble_m33_safety_package = rehab_arm_psoc_bridge.build_ble_m33_safety_package:main',
