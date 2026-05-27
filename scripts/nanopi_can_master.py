@@ -64,6 +64,7 @@ MOTOR_T_MAX = 14.0
 
 CANSIMPLE_CMD_HEARTBEAT = 0x01
 CANSIMPLE_CMD_GET_ERROR = 0x03
+CANSIMPLE_CMD_ADDRESS = 0x06
 CANSIMPLE_CMD_SET_AXIS_STATE = 0x07
 CANSIMPLE_CMD_MIT_CONTROL = 0x08
 CANSIMPLE_CMD_SET_CONTROLLER_MODE = 0x0B
@@ -79,6 +80,7 @@ CANSIMPLE_CONTROL_TORQUE = 1
 CANSIMPLE_CONTROL_VELOCITY = 2
 CANSIMPLE_CONTROL_POSITION = 3
 CANSIMPLE_INPUT_PASSTHROUGH = 1
+CANSIMPLE_NODE_BROADCAST = 0x3F
 
 ROS_CMD_ID = 0x320
 NANOPI_HEARTBEAT_ID = 0x321
@@ -389,7 +391,11 @@ def cmd_private(args: argparse.Namespace) -> int:
 def cmd_cansimple(args: argparse.Namespace) -> int:
     sock = with_socket(args)
     try:
-        if args.action == "closed-loop":
+        if args.action == "get-error":
+            send(sock, frame_cansimple(args.node, CANSIMPLE_CMD_GET_ERROR, bytes([args.error_type & 0xFF])))
+        elif args.action == "address":
+            send(sock, frame_cansimple(CANSIMPLE_NODE_BROADCAST, CANSIMPLE_CMD_ADDRESS))
+        elif args.action == "closed-loop":
             send(sock, frame_cansimple(args.node, CANSIMPLE_CMD_SET_AXIS_STATE, u32_le(CANSIMPLE_AXIS_CLOSED_LOOP)))
         elif args.action == "idle":
             send(sock, frame_cansimple(args.node, CANSIMPLE_CMD_SET_AXIS_STATE, u32_le(CANSIMPLE_AXIS_IDLE)))
@@ -510,8 +516,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     cansimple = sub.add_parser("cansimple", help="CANSimple motor/node control, default node 3")
     add_common(cansimple)
-    cansimple.add_argument("action", choices=["closed-loop", "idle", "clear", "vel", "pos", "torque"])
+    cansimple.add_argument("action", choices=["get-error", "address", "closed-loop", "idle", "clear", "vel", "pos", "torque"])
     cansimple.add_argument("--node", type=parse_int, default=3)
+    cansimple.add_argument("--error-type", type=parse_int, default=0, help="CANSimple Get_Error type; 0=active errors")
     cansimple.add_argument("--vel", type=float, default=0.0, help="rad/s")
     cansimple.add_argument("--pos", type=float, default=0.0, help="rad")
     cansimple.add_argument("--torque", type=float, default=0.0)

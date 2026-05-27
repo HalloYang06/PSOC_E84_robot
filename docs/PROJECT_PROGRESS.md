@@ -51,6 +51,14 @@
 
 ### 2026-05-27
 
+- M33 CANSimple 假 fresh 防护：
+  - 给 `scripts/nanopi_can_master.py` 增加 CANSimple 非运动探测动作：`cansimple get-error` 和 `cansimple address`，用于在线探测 3 号而不进入 closed-loop、不发位置/速度/力矩。
+  - NanoPi 已同步脚本并验证 CLI 可用；`get-error` 发出 `0x063#00`，`address` 发出 broadcast `0x7E6#`。
+  - 实测发现：发送 `0x063#00` 后，M33 `0x330` 短暂从 stale 变为 fresh，但抓包没有 3 号真实 `0x061/0x069` 回复；这是 M33 把主机查询帧当作 CANSimple feedback 刷新了 timestamp。
+  - 已修 M33 本地工程：`ctrl_update_motor_feedback_cansimple()` 只有在收到 heartbeat、encoder estimate、MIT feedback、torque feedback 等真实反馈帧时才更新 `s_motor_feedback[idx].timestamp`；主机查询帧/未知 CANSimple 帧不再造成假 fresh。
+  - 验证：主仓库 `scripts/nanopi_can_master.py` `py_compile` 通过；M33 `git diff --check` 通过。
+  - 未验证：M33 需要用户重新烧录后复测；复测标准是发 `cansimple get-error` 后，如果仍没有 `0x061/0x069`，`0x330` 必须保持 `flags bit4=stale`。
+
 - M33 电机遥测常驻槽位上报：
   - 本地 M33 工程 `D:\RT-ThreadStudio\workspace\yiliao_m33` 已把 `0x330~0x336` 上报从“只发新鲜反馈”改为“所有已配置槽位周期上报”。
   - 有新鲜反馈时发布真实位置/速度/温度；没有新鲜反馈时发布 `flags bit4=stale_or_no_feedback`、位置/速度 0、温度 `0xFF`。

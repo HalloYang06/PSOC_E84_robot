@@ -652,6 +652,19 @@ python3 /home/pi/nanopi_can_master.py probe --iface can0 --start 4 --end 7 --wai
 - 至少能看到某个电机的 Get_ID 回复或后续 active-report 原始帧。
 - 如果 4~7 全无回复，但 `can0` 仍是 `ERROR-ACTIVE` 且 M33 `0x322` 正常，优先检查电机侧供电、CAN 支路、终端、共地和节点 ID。
 
+如果要确认 3 号 CANSimple 是否在线，只做非运动查询：
+
+```bash
+python3 /home/pi/nanopi_can_master.py cansimple get-error --iface can0 --node 3 --error-type 0 --wait 0.8
+python3 /home/pi/nanopi_can_master.py cansimple address --iface can0 --wait 0.8
+```
+
+通过标准：
+
+- 能看到 3 号真实 `0x061` heartbeat、`0x069` encoder estimate，或电机对查询的有效回复。
+- 只看到 NanoPi 发出的 `0x063#00` 或 broadcast `0x7E6#`，不能证明 3 号在线。
+- M33 最新固件要求：如果没有真实 `0x061/0x069`，`0x330` 仍应保持 `flags bit4=stale`；主机查询帧不能把它刷新成 fresh。
+
 如果需要 M33 串口手动触发一次缓存上报，可在 M33 shell 运行：
 
 ```text

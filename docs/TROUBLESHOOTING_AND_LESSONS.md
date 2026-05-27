@@ -20,6 +20,41 @@
 
 ## CAN 与硬件
 
+### CANSimple 主机查询帧不能刷新 M33 电机 fresh 时间戳
+
+现象：
+
+- NanoPi 发 `cansimple get-error --node 3` 后，抓包只有主机 TX `0x063#00`，没有 3 号真实 `0x061/0x069`。
+- 但 M33 `0x330` 短暂变成 `flags=0x00`，看起来像 motor3 有新鲜反馈。
+
+环境：
+
+- M33 `ctrl_update_motor_feedback_cansimple()` 会看到标准帧 CANSimple ID。
+- NanoPi SocketCAN/M33 在同一 CAN 总线上，主机发出的查询帧也可能被 M33 接收。
+
+根因：
+
+- 旧逻辑进入 CANSimple 解析后，在 switch 前就设置 `fb.timestamp = rt_tick_get()`。
+- 因此任何属于 node3 的标准帧，只要没有被前面的特殊分支返回，都可能刷新 motor3 timestamp，即使它只是主机发出的查询帧或未知命令。
+
+解决：
+
+- M33 改为只在真实反馈内容有效时刷新 timestamp：
+  - heartbeat `0x061` 且长度足够。
+  - MIT feedback。
+  - encoder estimate `0x069`。
+  - torque feedback。
+- `get-error` 请求、address 请求、未知 CANSimple 命令不更新 `s_motor_feedback[]`。
+
+技巧：
+
+- 验证 fresh 必须同时看原始反馈帧和 M33 聚合帧：没有 `0x061/0x069` 时，`0x330` 不应清 stale。
+- CANSimple 主机命令帧不能作为电机在线证明。
+
+状态：
+
+- M33 本地工程已修，等待烧录后复测。
+
 ### M33 只在有新鲜反馈时发 0x330 会让平台误判“无遥测”
 
 现象：
