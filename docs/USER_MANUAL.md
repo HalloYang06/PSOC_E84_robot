@@ -2673,6 +2673,94 @@ python3 /home/pi/nanopi_can_master.py heartbeat --iface can0 --seq 93 --wait 0.3
 - 发 `clear/closed-loop/idle` 后仍然只看到 M33 `0x332`。
 - 这时不要继续发目标角度；先检查 3号供电、CAN 连接、节点 ID、协议模式和电机驱动状态。
 
+### 6.7.4 上电只读 ROS 遥测检查
+
+设备刚上电、还没接完整 C8T6/传感器时，先做只读检查。这个流程只验证 NanoPi、CAN、M33、ROS bridge 和基础数据记录，不允许发送运动目标。
+
+先确认 NanoPi 在线：
+
+```bash
+ssh pi@192.168.2.66 "hostname; whoami; uptime"
+```
+
+在 NanoPi 上启动 CAN：
+
+```bash
+echo pi | sudo -S ip link set can0 down 2>/dev/null || true
+echo pi | sudo -S ip link set can0 type can bitrate 1000000 restart-ms 100
+echo pi | sudo -S ip link set can0 up
+ip -details link show can0
+```
+
+合格标准：
+
+- `can0` 为 `UP`。
+- `can state ERROR-ACTIVE`。
+- `berr-counter tx 0 rx 0`，或至少没有持续增长。
+
+被动确认总线：
+
+```bash
+timeout 3 candump -L can0
+timeout 3 candump -L can0,7C0:7F0
+```
+
+当前阶段预期：
+
+- 能看到 M33 aggregate `0x332`。
+- 如果 3号在线，能看到 CANSimple `0x061/0x069`。
+- 如果 C8T6 未接入，`0x7C2/0x7C3` 可以暂时为 0；接入 C8T6 后必须重新验证。
+
+启动只读 ROS bridge 和 recorder：
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source /home/pi/rehab_arm_ros2_ws/install/setup.bash
+
+SESSION_ID=poweron-readonly-$(date +%Y%m%d-%H%M%S)
+ros2 run rehab_arm_psoc_bridge psoc_can_bridge_node.py --ros-args \
+  -p interface:=can0 \
+  -p enable_target_tx:=false \
+  -p log_heartbeat:=false
+```
+
+另开一个终端记录数据，`SESSION_ID` 要和上面保持一致：
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source /home/pi/rehab_arm_ros2_ws/install/setup.bash
+
+SESSION_ID=poweron-readonly-YYYYMMDD-HHMMSS
+
+ros2 run rehab_arm_psoc_bridge data_recorder_node.py --ros-args \
+  -p output_dir:=/home/pi/rehab_arm_logs \
+  -p session_id:=$SESSION_ID \
+  -p device_id:=nanopi-m5 \
+  -p robot_id:=rehab-arm-alpha \
+  -p software_version:=live-poweron \
+  -p mode:=poweron_readonly
+```
+
+停止后检查记录：
+
+```bash
+ros2 run rehab_arm_psoc_bridge check_recording.py \
+  /home/pi/rehab_arm_logs/$SESSION_ID.jsonl \
+  --topic-profile poweron_readonly
+```
+
+合格标准：
+
+- 返回 `ok=true`。
+- topics 至少包含 `/joint_states`、`/rehab_arm/safety_state`、`/rehab_arm/motor_state`。
+- `/rehab_arm/safety_state.motion_allowed` 在 `bench_armed` 下仍应为 `false`。
+
+注意：
+
+- 每次采集必须换新的 `SESSION_ID`；重复同名会追加写入旧文件。
+- `poweron_readonly` 通过只说明基础遥测链路可用，不说明可以上人或可以运动。
+- 完整硬件遥测要改用 `hardware_telemetry` profile，并要求 C8T6 `/rehab_arm/sensor_state` 存在。
+
 烧录台架版本 M33 后，直接做极小角度测试。7 号对应 ROS joint4：
 
 ```bash

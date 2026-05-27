@@ -3663,3 +3663,46 @@ Connection reset by 192.168.2.66 port 22
 
 - 测试离线导出工具时，要在 `with tempfile.TemporaryDirectory()` 作用域内读取输出文件。
 - 这类错误不代表 JSONL/replay 功能失败，先检查测试生命周期。
+
+### 上电只读数据采集不要强制要求 C8T6
+
+现象：
+
+- NanoPi 上电后，`can0`、M33 heartbeat、`0x332` 电机聚合状态、`/joint_states`、`/rehab_arm/motor_state` 都正常。
+- 但 `check_recording.py` 默认要求 `/rehab_arm/sensor_state`，在 C8T6 未连接或未发 `0x7C2/0x7C3` 时误判整份记录失败。
+
+判断：
+
+- 上电只读检查的目标是验证 NanoPi、CAN、M33、ROS 状态桥和基础数据记录，不等价于完整硬件遥测验收。
+- C8T6/传感器联调应作为下一层检查，不能阻塞基础电机/M33 状态链路确认。
+
+修正：
+
+- 新增 `poweron_readonly` topic profile，只要求 `/joint_states`、`/rehab_arm/safety_state`、`/rehab_arm/motor_state`。
+- 完整硬件遥测仍使用 `hardware_telemetry`，继续要求 `/rehab_arm/sensor_state`。
+
+技巧：
+
+- 每次真实采集使用新的 `session_id`； recorder 以追加方式写文件，重复 session 会把多次记录混在一起。
+- `bench_armed` 仍按 `motion_allowed=false` 处理；只读采集通过不代表可以运动。
+
+状态：
+
+- NanoPi 真实日志 `/home/pi/rehab_arm_logs/poweron-readonly-20260527-1923.jsonl` 已用 `poweron_readonly` 验证通过。
+
+### NanoPi ROS Jazzy 环境缺 `ament_package`
+
+现象：
+
+- 在 NanoPi 上执行 `colcon build --packages-select rehab_arm_psoc_bridge` 失败。
+- 报错包含 `ModuleNotFoundError: No module named 'ament_package'`，CMake 路径来自 `/opt/ros/jazzy`。
+
+判断：
+
+- 这是 NanoPi ROS/Python 构建环境问题，不是 CAN、M33 或 bridge 业务代码失败。
+- 当前 `ros2 run` 仍可使用已有 install；纯 Python 文件可临时同步到 install 目录验证逻辑，但这不是长期方案。
+
+技巧：
+
+- 先确认 `/opt/ros/jazzy/setup.bash`、`python3 -V`、`python3 -c "import ament_package"`。
+- 修复构建环境后再执行正式 `colcon build`，不要长期依赖手动复制 install 文件。

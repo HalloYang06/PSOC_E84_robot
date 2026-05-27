@@ -1823,3 +1823,15 @@
 - M33 boundary: receives only a safety subset and must combine device absolute limits with patient limits by taking the stricter value.
 - M55 boundary: publishes `m55_model_result_v1` suggestions only; it cannot directly control motors or loosen M33 limits.
 - App/platform boundary: both edit the same versioned Patient Device Profile; neither may maintain a private independent profile.
+
+### 2026-05-27 - NanoPi power-on readonly ROS telemetry
+
+- Completed: powered-on NanoPi check over SSH at `192.168.2.66`; `can0` was brought up as classic CAN 1Mbps and reported `ERROR-ACTIVE` with tx/rx error counters `0/0`.
+- Validated: passive CAN capture saw M33 aggregate `0x332` plus CANSimple node3 `0x061/0x069`; filtered C8T6 range `0x7C0~0x7C3` still produced `0` frames.
+- Validated: M33 heartbeat `0x321 -> 0x322` returned `A5 0C 07 00 00 06 00 00`, parsed as `state=ok`, `control_mode=bench_armed`, `motion_allowed=false`.
+- Completed: ran `psoc_can_bridge_node.py` with `enable_target_tx=false`; ROS published `/rehab_arm/safety_state`, `/rehab_arm/motor_state`, and `/joint_states` without sending motor targets.
+- Completed: recorded a power-on readonly JSONL session on NanoPi at `/home/pi/rehab_arm_logs/poweron-readonly-20260527-1923.jsonl`.
+- Completed: added `poweron_readonly` recording topic profile so C8T6 absence does not fail this specific bring-up check; required topics are `/joint_states`, `/rehab_arm/safety_state`, and `/rehab_arm/motor_state`.
+- Validated: local unit tests for the new profile passed; NanoPi `check_recording.py --topic-profile poweron_readonly` returned `ok=true` for the real log.
+- Failed or unverified: NanoPi `colcon build --packages-select rehab_arm_psoc_bridge` failed because the board's ROS Jazzy Python environment could not import `ament_package`; pure Python files were copied into install as a temporary field update.
+- Next step: repair NanoPi ROS build environment, sync the full latest bridge package, then repeat readonly capture with a fresh session id and C8T6 connected.

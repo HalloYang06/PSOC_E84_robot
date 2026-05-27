@@ -20,6 +20,11 @@ OPTIONAL_RECORDED_TOPICS = [
     '/rehab_arm/camera_keyframe',
 ]
 RECORDING_TOPIC_PROFILES = {
+    'poweron_readonly': [
+        '/joint_states',
+        '/rehab_arm/safety_state',
+        '/rehab_arm/motor_state',
+    ],
     'simulation_minimum': [
         '/joint_states',
         '/rehab_arm/safety_state',
