@@ -1835,3 +1835,13 @@
 - Validated: local unit tests for the new profile passed; NanoPi `check_recording.py --topic-profile poweron_readonly` returned `ok=true` for the real log.
 - Failed or unverified: NanoPi `colcon build --packages-select rehab_arm_psoc_bridge` failed because the board's ROS Jazzy Python environment could not import `ament_package`; pure Python files were copied into install as a temporary field update.
 - Next step: repair NanoPi ROS build environment, sync the full latest bridge package, then repeat readonly capture with a fresh session id and C8T6 connected.
+
+### 2026-05-27 - NanoPi ROS build wrapper fixed
+
+- Completed: updated `rehab_arm_ros2_ws/build_ros2.sh` to add the active ROS distro Python site-packages path to `PYTHONPATH` after sourcing ROS.
+- Completed: updated `scripts/nanopi_live_telemetry_check.sh` with the same ROS Python path handling and cleaner snapshot-disabled output.
+- Validated on NanoPi: `./build_ros2.sh --packages-select rehab_arm_psoc_bridge` now builds successfully without a manual `PYTHONPATH=...` prefix.
+- Validated on NanoPi: `check_recording.py --topic-profile poweron_readonly` returns `ok=true` after the normal build/install flow.
+- Validated on NanoPi: `ACTIVE_REPORT_MOTOR=none ... /home/pi/nanopi_live_telemetry_check.sh` passed; it saw M33 `0x322`, `/rehab_arm/motor_state`, `/joint_states`, and no unexpected `0x320` target frames.
+- Safety: no motion commands or `JointTrajectory` were sent in this task.
+- Next step: when C8T6 is connected, run a fresh live check plus `hardware_telemetry` recording profile and require `/rehab_arm/sensor_state`.

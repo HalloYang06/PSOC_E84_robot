@@ -3705,4 +3705,25 @@ Connection reset by 192.168.2.66 port 22
 技巧：
 
 - 先确认 `/opt/ros/jazzy/setup.bash`、`python3 -V`、`python3 -c "import ament_package"`。
-- 修复构建环境后再执行正式 `colcon build`，不要长期依赖手动复制 install 文件。
+- 如果 `ament_package` 存在于 `/opt/ros/jazzy/lib/python3.12/site-packages`，但构建时仍找不到，先把这个路径补进 `PYTHONPATH`。
+- `rehab_arm_ros2_ws/build_ros2.sh` 已加入自动补路径逻辑，优先用该脚本构建，不要长期依赖手动复制 install 文件。
+
+状态：
+
+- NanoPi 已验证 `./build_ros2.sh --packages-select rehab_arm_psoc_bridge` 可正常完成。
+- `nanopi_live_telemetry_check.sh` 也已加入同样逻辑，现场只读验收脚本可直接使用。
+
+### Windows here-string 远程执行会给参数带入 `\r`
+
+现象：
+
+- 通过 PowerShell here-string 管道到 `ssh ... bash -s` 时，`ros2 run ... --topic-profile poweron_readonly` 报 `invalid choice: 'poweron_readonly\r'`。
+
+判断：
+
+- 这是 Windows CRLF 进入远端命令参数造成的，不是 ROS 参数解析或 profile 名称错误。
+
+技巧：
+
+- 远端多行脚本适合做构建、复制、较长流程；但带枚举参数的最后验收命令，优先用单行 SSH 或在远端脚本内清理 CRLF。
+- 如果看到候选值里明明有同名选项，却提示 `invalid choice`，优先检查参数末尾是否有隐藏 `\r`。

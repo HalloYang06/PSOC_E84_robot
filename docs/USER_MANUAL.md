@@ -2786,6 +2786,41 @@ python3 /home/pi/nanopi_can_master.py m33 target --iface can0 --joint 4 --deg 5 
 
 ## 7. 文档与 Git 维护
 
+### 7.1 NanoPi ROS 工作区构建
+
+NanoPi 上优先使用工作区自带脚本构建 ROS 包：
+
+```bash
+cd /home/pi/rehab_arm_ros2_ws
+./build_ros2.sh --packages-select rehab_arm_psoc_bridge
+```
+
+这个脚本会自动 source `/opt/ros/jazzy/setup.bash` 或 `/opt/ros/humble/setup.bash`，并补齐 ROS Python site-packages 路径，避免 `ModuleNotFoundError: No module named 'ament_package'`。
+
+构建后验证：
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source /home/pi/rehab_arm_ros2_ws/install/setup.bash
+ros2 pkg executables rehab_arm_psoc_bridge
+```
+
+如果要做现场只读验收：
+
+```bash
+ACTIVE_REPORT_MOTOR=none SNAPSHOT_SECONDS=2 ECHO_TIMEOUT_SECONDS=8 BUILD_WORKSPACE=0 \
+  /home/pi/nanopi_live_telemetry_check.sh
+```
+
+合格标准：
+
+- 脚本输出 `PASS: live telemetry path is valid and read-only.`
+- 能看到 M33 `0x322`。
+- 能收到 `/rehab_arm/motor_state` 和 `/joint_states`。
+- `unexpected 0x320 frames` 为空。
+
+### 7.2 文档和 Git 维护
+
 每次完成任务后同步更新：
 
 - [PROJECT_PROGRESS.md](PROJECT_PROGRESS.md)：记录进度、验证、失败、下一步。

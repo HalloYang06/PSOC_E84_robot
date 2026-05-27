@@ -12,5 +12,12 @@ else
   exit 1
 fi
 
+if [ -n "${ROS_DISTRO:-}" ]; then
+  ROS_PYTHON_SITE="/opt/ros/${ROS_DISTRO}/lib/python$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')/site-packages"
+  if [ -d "$ROS_PYTHON_SITE" ]; then
+    export PYTHONPATH="$ROS_PYTHON_SITE:${PYTHONPATH:-}"
+  fi
+fi
+
 set -u
 colcon build --symlink-install "$@"

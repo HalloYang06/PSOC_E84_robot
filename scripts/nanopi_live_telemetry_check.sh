@@ -103,6 +103,13 @@ else
     exit 2
 fi
 
+if [ -n "${ROS_DISTRO:-}" ]; then
+    ROS_PYTHON_SITE="/opt/ros/${ROS_DISTRO}/lib/python$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')/site-packages"
+    if [ -d "$ROS_PYTHON_SITE" ]; then
+        export PYTHONPATH="$ROS_PYTHON_SITE:${PYTHONPATH:-}"
+    fi
+fi
+
 set +u
 # shellcheck disable=SC1091
 source "$WORKSPACE/install/setup.bash"
@@ -152,7 +159,11 @@ cat "$TOPICS_LOG"
 echo "--- bridge log ---"
 tail -80 "$BRIDGE_LOG"
 echo "--- snapshot summary ---"
-cat "$SNAPSHOT_LOG" || true
+if [ -s "$SNAPSHOT_LOG" ]; then
+    cat "$SNAPSHOT_LOG"
+else
+    echo "snapshot disabled or no snapshot output"
+fi
 echo "--- /rehab_arm/motor_state ---"
 cat "$MOTOR_STATE_LOG" || true
 echo "--- /joint_states ---"
