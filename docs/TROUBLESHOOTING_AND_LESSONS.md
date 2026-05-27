@@ -86,6 +86,42 @@
 
 - 已重新烧录验证：`0x330..0x334` 的 byte2 为 `03/04/05/06/07`，`/rehab_arm/motor_state` 关节名和 motor_id 对齐；stale 帧不生成 `/joint_states`。
 
+### M33 槽位 stale 但 active-report 后仍无原始电机帧
+
+现象：
+
+- M33 周期发 `0x330..0x334`，且 motor_id 映射正确。
+- 所有帧 byte3 都是 `0x10`，表示 `stale_or_no_feedback`。
+- 被动抓包没有 3 号 `0x061/0x069`，也没有 7 号 `0x180007FD/0x188007FD`。
+- 通过 M33 `0x320#060401` telemetry-only active-report 打开 joint4/motor7 后仍无 7 号原始反馈。
+- NanoPi 直接 telemetry-only snapshot 打开 motor7 active-report 也无 `0x180007FD`。
+
+环境：
+
+- NanoPi `can0` 正常，`ERROR-ACTIVE`，1Mbps。
+- M33 heartbeat/status 在线，示例：`0x321#2A -> 0x322#A52A070001020100`。
+
+根因判断：
+
+- 这不是 NanoPi parser 问题，也不是 M33 `0x330` 映射问题。
+- 如果 M33 和 NanoPi 都只能看到 M33 自己的聚合 stale 帧，说明电机原始反馈源当前没有出现在 CAN 总线上。
+- 常见原因是电机侧未上电、驱动未在线、CAN 分支/连接/终端问题、或者该电机当前未接受 active-report 请求。
+
+解决：
+
+- 现场先确认电机侧供电和驱动状态。
+- 被动抓包先等 3 号 `0x061/0x069` 或 7 号 `0x180007FD/0x188007FD` 出现，再要求 M33 stale 位清零。
+- 不要用位置/速度目标来“试探”反馈链路；先把原始反馈证明出来。
+
+技巧：
+
+- `0x330..0x334` 存在只说明 M33 发布线程在线；是否有真实电机反馈要看 stale 位和原始电机帧。
+- M33 stale 位不清零时，`/joint_states` 不发布是正确行为，不要为了显示姿态把 stale 0 位姿放进去。
+
+状态：
+
+- 已定位到电机原始反馈未出现；等待现场电机侧供电/在线状态确认。
+
 ### MCP2518FD 驱动加载了，但没有 can0
 
 现象：

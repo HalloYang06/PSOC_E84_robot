@@ -629,6 +629,18 @@ timeout 5 candump -L can0,330:7F8,061:7FF,069:7FF,180007FD:1FFFFFFF
 
 其中 `xx` 是循环序号，`03/04/05/06/07` 是真实 motor_id，`10` 是 stale/no-feedback 标志。此时 `/rehab_arm/motor_state` 应该有 5 个 stale 电机条目，但 `/joint_states` 不应该发布这些 0 位姿。
 
+如果要继续从 stale 进入真实姿态，先证明电机原始反馈存在：
+
+```bash
+timeout 3s candump -L can0 > /tmp/fresh_feedback_probe.candump
+```
+
+通过标准：
+
+- 3 号伺泰威在线时，应能看到 `0x061` heartbeat 和 `0x069` encoder estimate。
+- 7 号灵足打开 active-report 后，应能看到 `0x180007FD` 或运动/状态变化时的 `0x188007FD`。
+- 如果只看到 `0x330~0x334` 且 byte3 一直是 `0x10`，说明 M33 发布线程在线，但电机原始反馈还没有进入总线；此时不要发布轨迹。
+
 如果需要 M33 串口手动触发一次缓存上报，可在 M33 shell 运行：
 
 ```text

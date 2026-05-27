@@ -75,6 +75,14 @@
   - `/joint_states` 未收到 stale 样本，符合“缺新鲜反馈不污染仿真姿态”的设计。
   - 下一步：让 M33/电机侧产生新鲜反馈，期望对应 stale 位清零后 `/joint_states` 开始发布真实姿态，再接仿真主机/RViz/平台显示。
 
+- M33 新鲜电机反馈源检查：
+  - 被动抓包 3 秒只看到 M33 `0x330..0x334` stale 遥测，各 28 条；没有 3 号 `0x061/0x069`，也没有 7 号 `0x180007FD/0x188007FD`。
+  - 通过 M33 telemetry-only active-report 入口发送 `0x320#060401` 打开 ROS joint4/motor7 上报，随后抓包 5 秒仍只看到 `0x330..0x334` stale 帧；关闭命令 `0x320#060400` 已发送。
+  - 通过 NanoPi 直接 telemetry-only snapshot 临时打开 motor7 active-report 5 秒，也没有收到 `0x180007FD`；工具结束后已自动关闭。
+  - M33 heartbeat/status 在线：`0x321#2A -> 0x322#A52A070001020100`。
+  - 结论：当前不是 ROS parser 或 M33 `0x330` 映射问题，而是电机原始反馈源当前未出现在 CAN 总线上；需现场检查电机侧供电、驱动在线状态、CAN 分支/终端、或电机是否接受 active-report。
+  - 安全：本轮没有发送位置、速度、力矩目标；只发送 telemetry-only active-report 开/关和 heartbeat。
+
 ### 2026-05-26
 
 - M33 formal clinical gate scaffold:
