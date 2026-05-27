@@ -301,7 +301,7 @@ temperature_c = raw_temperature_u16 * 0.1
 
 ## 6. M33 -> NanoPi 正式电机遥测草案
 
-本节是固件待实现的第一版草案，当前 NanoPi 侧已经有离线 parser 和单元测试；M33 还没有按该格式正式上报。它的目的不是控制电机，而是让 NanoPi、仿真主机、平台和数据标注统一读取“经过 M33 安全边界汇总后的电机状态”。
+本节是第一版 M33 官方电机遥测合同，NanoPi 侧已有 parser、ROS bridge 和测试；M33 本地工程已经补齐周期上报逻辑，等待用户用 RT-Thread Studio 编译烧录后上电验收。它的目的不是控制电机，而是让 NanoPi、仿真主机、平台和数据标注统一读取“经过 M33 安全边界汇总后的电机状态”。
 
 CAN ID 预留：
 
@@ -316,7 +316,7 @@ Payload V1，8 bytes：
 | 0 | `marker` | `uint8` | 固定 `0xB3` |
 | 1 | `seq` | `uint8` | M33 状态序号，0-255 循环 |
 | 2 | `motor_id` | `uint8` | 当前实测 `3/4/5/6/7` |
-| 3 | `flags` | `uint8` | bit0 enabled, bit1 fault, bit2 limited, bit3 emergency_stop |
+| 3 | `flags` | `uint8` | bit0 enabled, bit1 fault, bit2 limited, bit3 emergency_stop, bit4 stale_or_no_feedback |
 | 4..5 | `position_mrad` | `int16 little-endian` | 关节位置，单位 mrad |
 | 6 | `velocity_drad_s` | `int8` | 关节速度，单位 0.1 rad/s |
 | 7 | `temperature_c` | `uint8` | 温度摄氏度；`0xFF` 表示未知 |
@@ -328,12 +328,15 @@ NanoPi parser 输出：
 - `position = position_mrad / 1000.0`
 - `velocity = velocity_drad_s / 10.0`
 - `temperature = null` when `temperature_c == 0xFF`
+- `stale=true` / `data_fresh=false` when `flags & 0x10`
 - 只把 `marker == 0xB3` 且长度正确的帧放入 `/rehab_arm/motor_state`
+- `stale` 帧仍进入 `/rehab_arm/motor_state`，用于平台显示“该槽位在线但缺少新鲜反馈”；但不会生成 `/joint_states`，避免把 0 rad 假姿态写入仿真/规划。
 - `control_boundary=telemetry_only_not_motor_command`
 
 注意：
 
 - 这组帧只表达遥测，不表达运动许可。运动许可仍以 M33 安全状态机和 `0x322` 为准。
+- M33 应周期发送所有已配置槽位。没有新鲜电机反馈时，仍发送对应 `motor_id`、位置/速度为 0、温度 `0xFF`、`flags bit4=1` 的 stale 帧，便于 NanoPi/平台判断“缺反馈”而不是误判总线完全没数据。
 - 这些帧从 M33 发出后，NanoPi 可以把它们映射成 `/joint_states` 和 `/rehab_arm/motor_state`，用于 MuJoCo/RViz 状态同步、数据采集、平台展示和标注。
 - 如果未来关节数量超过 8 个，或需要电流/电压/力矩高精度字段，应新增 V2 多帧或 CAN FD 设计，不要破坏 V1 字段含义。
 

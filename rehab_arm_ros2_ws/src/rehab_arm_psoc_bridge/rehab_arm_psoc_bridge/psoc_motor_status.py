@@ -15,6 +15,7 @@ MOTOR_STATUS_FLAG_ENABLED = 0x01
 MOTOR_STATUS_FLAG_FAULT = 0x02
 MOTOR_STATUS_FLAG_LIMITED = 0x04
 MOTOR_STATUS_FLAG_EMERGENCY_STOP = 0x08
+MOTOR_STATUS_FLAG_STALE = 0x10
 
 JOINT_NAMES_BY_STATUS_SLOT = {
     0: 'shoulder_lift_joint',
@@ -86,6 +87,7 @@ def parse_m33_motor_status_frame(can_id: int, data: bytes) -> dict[str, object]:
     fault = bool(flags & MOTOR_STATUS_FLAG_FAULT)
     limited = bool(flags & MOTOR_STATUS_FLAG_LIMITED)
     emergency_stop = bool(flags & MOTOR_STATUS_FLAG_EMERGENCY_STOP)
+    stale = bool(flags & MOTOR_STATUS_FLAG_STALE)
     temperature_c = None if temperature_raw == UNKNOWN_TEMPERATURE_U8 else float(temperature_raw)
 
     payload.update({
@@ -107,6 +109,8 @@ def parse_m33_motor_status_frame(can_id: int, data: bytes) -> dict[str, object]:
         'fault': fault,
         'limited': limited,
         'emergency_stop': emergency_stop,
+        'stale': stale,
+        'data_fresh': not stale,
         'status_flags': flags,
         'position_mrad': position_mrad,
         'velocity_drad_s': velocity_drad_s,
@@ -151,6 +155,8 @@ def make_joint_state_fields_from_m33_motor_state(
             continue
         joint_name = motor.get('joint_name')
         position = motor.get('position')
+        if motor.get('stale') is True or motor.get('data_fresh') is False:
+            continue
         if not isinstance(joint_name, str) or not isinstance(position, (int, float)):
             continue
         velocity = motor.get('velocity')

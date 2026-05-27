@@ -573,7 +573,7 @@ python -m unittest rehab_arm_ros2_ws\src\rehab_arm_psoc_bridge\test\test_psoc_mo
 
 注意：`0x330~0x337` 是 M33 固件的正式遥测链路，只用于 NanoPi/ROS/平台读取电机状态。它不是运动命令，也不能替代 `0x322` 安全状态。
 
-当 M33 后续开始发送合法 `0x330~0x337` 时，现有 `psoc_can_bridge_node.py` 会自动把这些帧聚合发布到：
+当 M33 开始发送合法 `0x330~0x337` 时，现有 `psoc_can_bridge_node.py` 会自动把这些帧聚合发布到：
 
 ```text
 /rehab_arm/motor_state
@@ -581,6 +581,8 @@ python -m unittest rehab_arm_ros2_ws\src\rehab_arm_psoc_bridge\test\test_psoc_mo
 ```
 
 `/rehab_arm/motor_state` 用于电机状态、温度、故障、平台表格和数据集字段；`/joint_states` 用于 RViz、MuJoCo 状态同步、平台 three.js/URDF 机械臂姿态和标注回放。它们都不下发运动，不代表系统可以动；是否允许运动仍看 M33 `0x322` safety/status 和 M33 内部安全状态机。
+
+M33 遥测帧 `flags bit4=1` 表示 `stale_or_no_feedback`。这种帧说明 M33 的槽位上报线程还活着，但该电机没有新鲜反馈；NanoPi 会把它保留在 `/rehab_arm/motor_state` 里给平台显示缺数据，但不会把它写进 `/joint_states`，避免把 0 rad 假姿态喂给仿真、规划或 three.js 预览。
 
 bridge 也会用这些 M33 遥测刷新内部 `current_positions`。这只是让后续轨迹处理知道“当前姿态大概在哪里”，不是运动许可；没有新鲜、允许运动的 `0x322` 状态时，轨迹仍会被拒绝。
 
@@ -597,7 +599,7 @@ python3 -m unittest test/test_m33_ros_contract.py test/test_psoc_status.py test/
 - 合法 `0x330~0x337` 只生成 `/rehab_arm/motor_state` 和 `/joint_states` 遥测，不会改变运动许可。
 - 只有 `0x322` V2 同时满足 `state=ok`、`control_mode=armed/active`、`detail=none`、`error_code=0` 时，NanoPi 才把它当成运动候选许可。
 
-当前本地 M33 工程已补好 `0x330~0x337` 上报逻辑，等待用户烧录。烧录后先只验收遥测，不发 `0x320` 运动命令：
+当前本地 M33 工程已补好 `0x330~0x337` 周期上报逻辑：有新鲜反馈时发布真实位置/速度/温度；没有新鲜反馈时发布 stale 帧。等待用户用 RT-Thread Studio 编译烧录。烧录后先只验收遥测，不发 `0x320` 运动命令：
 
 ```bash
 ip -details link show can0
@@ -609,8 +611,9 @@ timeout 5 candump -L can0,330:7F8,061:7FF,069:7FF,180007FD:1FFFFFFF
 - `can0` 为 `ERROR-ACTIVE`，tx/rx error counter 为 0。
 - 3 号伺泰威在线时，能看到 `0x061/0x069`。
 - 7 号灵足 active-report 打开时，能看到 `0x180007FD`。
-- M33 聚合遥测生效后，能看到 `0x330~0x337` 中至少一个 ID；当前 3/7 上电场景通常先期待对应 slot 的 `0x332` 或 `0x336`。
+- M33 聚合遥测生效后，能看到 `0x330~0x336` 中的周期帧；当前配置是 7 个槽位，`0x337` 预留。
 - `0x330~0x337` payload byte0 必须是 `B3`。
+- 如果 payload byte3 带 `0x10`，说明该槽位暂时没有新鲜电机反馈；这是可诊断状态，不是运动许可。
 - 整个过程不发布 `/arm_controller/joint_trajectory`，不发送 `0x320`。
 
 如果需要 M33 串口手动触发一次缓存上报，可在 M33 shell 运行：
@@ -625,7 +628,7 @@ cmd_m33_motor_status_once
 m33_motor_status_once sent=<n> base=0x330 period_ms=100 fresh_ms=1000
 ```
 
-`sent=0` 通常说明 M33 还没有收到新鲜电机反馈；先确认 3/7 是否上电、active-report 是否打开、CAN 是否有原始电机帧。
+新版本即使没有新鲜电机反馈也应 `sent>0`，并通过 `flags bit4=1` 表示 stale。如果仍然 `sent=0`，优先检查 M33 是否烧录了新固件、`control_layer_init()` 是否启动、CAN direct send 是否正常。
 
 烧录后已经验证过的最小只读链路如下：
 

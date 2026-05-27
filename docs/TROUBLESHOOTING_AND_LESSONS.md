@@ -20,6 +20,38 @@
 
 ## CAN 与硬件
 
+### M33 只在有新鲜反馈时发 0x330 会让平台误判“无遥测”
+
+现象：
+
+- NanoPi 和仿真主机可以看到 `0x321/0x322`，但 `/rehab_arm/motor_state` 没有样本。
+- 只读 presence report 显示 `valid_m33_motor_status_count=0`，同时 `target_0x320_count=0`。
+
+环境：
+
+- M33 电机状态帧合同：`0x330~0x337`，8 字节，byte0=`0xB3`。
+- 当前 M33 配置 7 个电机槽位，实际周期帧为 `0x330~0x336`，`0x337` 预留。
+
+根因：
+
+- 旧 M33 遥测线程只发布 `CONTROL_M33_MOTOR_STATUS_FRESH_MS` 内有电机反馈的槽位。
+- 如果电机未上电、active-report 未打开、反馈没进缓存，NanoPi 看到的不是“stale 状态”，而是完全没有电机状态帧，平台和仿真主机无法判断是缺反馈还是固件没跑。
+
+解决：
+
+- M33 改为周期发布所有已配置槽位。
+- 没有新鲜反馈时，payload 保留对应 `motor_id`，位置/速度为 0，温度为 `0xFF`，`flags bit4=stale_or_no_feedback`。
+- NanoPi parser 保留 stale 帧到 `/rehab_arm/motor_state`，但不把 stale 帧转成 `/joint_states`。
+
+技巧：
+
+- `/rehab_arm/motor_state` 可以显示“这个槽位缺反馈”；`/joint_states` 只能放真实新鲜姿态。
+- 后续平台 three.js/URDF 预览要优先看 `data_fresh`，不要把 stale 的 0 rad 当真实姿态。
+
+状态：
+
+- 代码和 ROS parser 已更新；M33 需要用户编译烧录后上电只读验证。
+
 ### MCP2518FD 驱动加载了，但没有 can0
 
 现象：

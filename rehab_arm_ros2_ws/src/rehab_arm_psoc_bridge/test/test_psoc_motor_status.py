@@ -13,6 +13,7 @@ from rehab_arm_psoc_bridge.psoc_motor_status import (  # noqa: E402
     MOTOR_STATUS_FLAG_ENABLED,
     MOTOR_STATUS_FLAG_FAULT,
     MOTOR_STATUS_FLAG_LIMITED,
+    MOTOR_STATUS_FLAG_STALE,
     is_m33_motor_status_id,
     make_current_position_updates_from_m33_motor_state,
     make_joint_state_fields_from_m33_motor_state,
@@ -54,7 +55,24 @@ class PsocMotorStatusTests(unittest.TestCase):
         self.assertIs(motor['enabled'], True)
         self.assertIs(motor['limited'], True)
         self.assertIs(motor['fault'], False)
+        self.assertIs(motor['stale'], False)
+        self.assertIs(motor['data_fresh'], True)
         self.assertEqual(motor['raw_can_id'], '0x330')
+
+    def test_parse_stale_slot_keeps_motor_state_but_excludes_joint_state(self) -> None:
+        motor = parse_m33_motor_status_frame(
+            0x333,
+            bytes([M33_MOTOR_STATUS_MARKER, 10, 7, MOTOR_STATUS_FLAG_STALE, 0, 0, 0, 0xFF]),
+        )
+        payload = make_m33_motor_state_payload([motor], 'rehab-arm-alpha', 'nanopi-m5', now=10.0)
+        fields = make_joint_state_fields_from_m33_motor_state(payload)
+
+        self.assertIs(motor['valid'], True)
+        self.assertIs(motor['stale'], True)
+        self.assertIs(motor['data_fresh'], False)
+        self.assertEqual(payload['valid_motor_count'], 1)
+        self.assertEqual(payload['motors'][0]['motor_id'], 7)
+        self.assertEqual(fields['name'], [])
 
     def test_parse_negative_position_and_velocity(self) -> None:
         data = bytes([

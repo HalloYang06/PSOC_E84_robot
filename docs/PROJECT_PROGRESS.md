@@ -49,6 +49,16 @@
 
 ## 已完成
 
+### 2026-05-27
+
+- M33 电机遥测常驻槽位上报：
+  - 本地 M33 工程 `D:\RT-ThreadStudio\workspace\yiliao_m33` 已把 `0x330~0x336` 上报从“只发新鲜反馈”改为“所有已配置槽位周期上报”。
+  - 有新鲜反馈时发布真实位置/速度/温度；没有新鲜反馈时发布 `flags bit4=stale_or_no_feedback`、位置/速度 0、温度 `0xFF`。
+  - NanoPi/ROS parser 新增 `stale`/`data_fresh` 字段；stale 帧保留在 `/rehab_arm/motor_state`，但不生成 `/joint_states`，避免假 0 位姿污染仿真和规划。
+  - 验证：`test_psoc_motor_status.py`、`test_m33_motor_status_smoke.py`、`test_check_m33_motor_status_presence.py` 共 26 tests passed；`py_compile` 通过；主仓库和 M33 工程 `git diff --check` 通过。
+  - 未验证：本机没有 `scons` 命令，M33 固件未在当前 shell 编译；需要用户用 RT-Thread Studio 编译烧录后只读抓包验收。
+  - 下一步：烧录后不发 `0x320`，只抓 `0x330~0x336`，确认周期帧存在、marker 为 `0xB3`、stale 位能区分缺反馈；再启动 NanoPi bridge 看 `/rehab_arm/motor_state`。
+
 ### 2026-05-26
 
 - M33 formal clinical gate scaffold:
