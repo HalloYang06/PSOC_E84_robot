@@ -59,6 +59,14 @@
   - 未验证：本机没有 `scons` 命令，M33 固件未在当前 shell 编译；需要用户用 RT-Thread Studio 编译烧录后只读抓包验收。
   - 下一步：烧录后不发 `0x320`，只抓 `0x330~0x336`，确认周期帧存在、marker 为 `0xB3`、stale 位能区分缺反馈；再启动 NanoPi bridge 看 `/rehab_arm/motor_state`。
 
+- M33 电机遥测烧录后只读验收与映射修正：
+  - 用户烧录后，NanoPi `can0` 为 `UP/LOWER_UP`、`ERROR-ACTIVE`、1Mbps、tx/rx error `0/0`。
+  - 只读抓包 5 秒得到 325 条 M33 电机状态帧，`0x330~0x336` 均为 `B3...10...FF` stale 帧，`target_0x320_count=0`。
+  - presence checker 通过：`valid_m33_motor_status_count=325`，无 invalid 帧，无 `0x320`。
+  - 随后启动只读 bridge 发现 `0x330` payload byte2 为 `1`，说明 M33 仍按内部 motor slot `1..7` 发布，而不是正式 ROS joint `0..4 -> motor 3/4/5/6/7`。
+  - 已修正 M33 本地工程：`0x330..0x334` 现在按 ROS 5 关节槽位发布，byte2 应为 `3/4/5/6/7`；`0x335..0x337` 保留给未来扩展。
+  - 下一步：用户重新烧录后，再做只读抓包，期望 `0x330..0x334` 出现且 byte2 为 `03 04 05 06 07`，然后再验收 `/rehab_arm/motor_state`。
+
 ### 2026-05-26
 
 - M33 formal clinical gate scaffold:

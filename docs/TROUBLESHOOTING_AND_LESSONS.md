@@ -52,6 +52,40 @@
 
 - 代码和 ROS parser 已更新；M33 需要用户编译烧录后上电只读验证。
 
+### 0x330 遥测 ID 必须按 ROS 关节槽位，不要按 M33 内部 motor slot
+
+现象：
+
+- 用户烧录后，M33 已稳定发 `0x330~0x336`，presence checker 通过。
+- 但 `/rehab_arm/motor_state` 中 `0x330` 的 `motor_id=1`、`0x331` 的 `motor_id=2`。
+- 平台/仿真如果直接按 `0x330 -> shoulder_lift_joint` 显示，会把内部旧槽位当成正式关节，导致真实电机和机械臂关节错位。
+
+环境：
+
+- 正式 ROS 机械臂是 5 个关节：ROS joint `0..4`。
+- 当前真实电机是 motor slot `3/4/5/6/7`。
+- NanoPi parser 约定 `0x330..0x334` 对应 ROS joint `0..4`。
+
+根因：
+
+- M33 第一版常驻遥测循环遍历了 `CONTROL_MOTOR_JOINT_COUNT` 内部槽位 `1..7`。
+- 这适合底层调试，但不适合作为正式 ROS/仿真/平台统一状态合同。
+
+解决：
+
+- M33 遥测循环改为遍历 `CONTROL_ROS_JOINT_COUNT`。
+- 每个 status slot 先通过 `ctrl_ros_joint_to_motor_joint()` 映射到真实 motor slot，再读取对应 `s_motor_feedback[motor_joint - 1]`。
+- 新合同：`0x330..0x334` 的 byte2 应为 `3/4/5/6/7`；`0x335..0x337` 预留。
+
+技巧：
+
+- 验收时不要只看 `0x330` 是否存在，还要看 byte2 的 motor_id 是否符合正式 ROS 映射。
+- 如果 `0x330` 是 motor_id `1`，说明跑的是旧映射固件，不能接仿真姿态或平台 three.js。
+
+状态：
+
+- M33 本地工程已修，等待重新烧录验证。
+
 ### MCP2518FD 驱动加载了，但没有 can0
 
 现象：

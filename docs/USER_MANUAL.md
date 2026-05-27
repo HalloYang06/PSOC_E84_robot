@@ -599,7 +599,7 @@ python3 -m unittest test/test_m33_ros_contract.py test/test_psoc_status.py test/
 - 合法 `0x330~0x337` 只生成 `/rehab_arm/motor_state` 和 `/joint_states` 遥测，不会改变运动许可。
 - 只有 `0x322` V2 同时满足 `state=ok`、`control_mode=armed/active`、`detail=none`、`error_code=0` 时，NanoPi 才把它当成运动候选许可。
 
-当前本地 M33 工程已补好 `0x330~0x337` 周期上报逻辑：有新鲜反馈时发布真实位置/速度/温度；没有新鲜反馈时发布 stale 帧。等待用户用 RT-Thread Studio 编译烧录。烧录后先只验收遥测，不发 `0x320` 运动命令：
+当前本地 M33 工程已补好 `0x330~0x334` 周期上报逻辑：这些帧对应 ROS joint `0..4`，再映射到 motor slot `3/4/5/6/7`。有新鲜反馈时发布真实位置/速度/温度；没有新鲜反馈时发布 stale 帧。等待用户用 RT-Thread Studio 编译烧录。烧录后先只验收遥测，不发 `0x320` 运动命令：
 
 ```bash
 ip -details link show can0
@@ -611,7 +611,8 @@ timeout 5 candump -L can0,330:7F8,061:7FF,069:7FF,180007FD:1FFFFFFF
 - `can0` 为 `ERROR-ACTIVE`，tx/rx error counter 为 0。
 - 3 号伺泰威在线时，能看到 `0x061/0x069`。
 - 7 号灵足 active-report 打开时，能看到 `0x180007FD`。
-- M33 聚合遥测生效后，能看到 `0x330~0x336` 中的周期帧；当前配置是 7 个槽位，`0x337` 预留。
+- M33 聚合遥测生效后，能看到 `0x330~0x334` 中的周期帧；`0x335~0x337` 预留。
+- `0x330~0x334` 的 byte2 应分别是当前正式链路真实电机 `3/4/5/6/7`，不能再是内部旧槽位 `1/2/3/4/5`。
 - `0x330~0x337` payload byte0 必须是 `B3`。
 - 如果 payload byte3 带 `0x10`，说明该槽位暂时没有新鲜电机反馈；这是可诊断状态，不是运动许可。
 - 整个过程不发布 `/arm_controller/joint_trajectory`，不发送 `0x320`。

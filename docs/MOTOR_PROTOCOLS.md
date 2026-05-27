@@ -307,7 +307,8 @@ CAN ID 预留：
 
 | CAN ID | 方向 | 帧类型 | 用途 |
 |---|---|---|---|
-| `0x330` ~ `0x337` | M33 -> NanoPi | classic CAN standard 11-bit | 每个关节/电机状态一帧 |
+| `0x330` ~ `0x334` | M33 -> NanoPi | classic CAN standard 11-bit | ROS 5 关节状态，每个关节一帧 |
+| `0x335` ~ `0x337` | M33 -> NanoPi | classic CAN standard 11-bit | 预留未来扩展，NanoPi parser 可接受 |
 
 Payload V1，8 bytes：
 
@@ -315,7 +316,7 @@ Payload V1，8 bytes：
 |---:|---|---|---|
 | 0 | `marker` | `uint8` | 固定 `0xB3` |
 | 1 | `seq` | `uint8` | M33 状态序号，0-255 循环 |
-| 2 | `motor_id` | `uint8` | 当前实测 `3/4/5/6/7` |
+| 2 | `motor_id` | `uint8` | 当前正式 ROS 槽位映射出的真实电机 `3/4/5/6/7` |
 | 3 | `flags` | `uint8` | bit0 enabled, bit1 fault, bit2 limited, bit3 emergency_stop, bit4 stale_or_no_feedback |
 | 4..5 | `position_mrad` | `int16 little-endian` | 关节位置，单位 mrad |
 | 6 | `velocity_drad_s` | `int8` | 关节速度，单位 0.1 rad/s |
@@ -336,7 +337,8 @@ NanoPi parser 输出：
 注意：
 
 - 这组帧只表达遥测，不表达运动许可。运动许可仍以 M33 安全状态机和 `0x322` 为准。
-- M33 应周期发送所有已配置槽位。没有新鲜电机反馈时，仍发送对应 `motor_id`、位置/速度为 0、温度 `0xFF`、`flags bit4=1` 的 stale 帧，便于 NanoPi/平台判断“缺反馈”而不是误判总线完全没数据。
+- M33 应周期发送所有正式 ROS 关节槽位，而不是内部 motor slot `1..7`。当前 `0x330..0x334` 分别对应 ROS joint `0..4`，再映射到 motor slot `3/4/5/6/7`。
+- 没有新鲜电机反馈时，仍发送对应 `motor_id`、位置/速度为 0、温度 `0xFF`、`flags bit4=1` 的 stale 帧，便于 NanoPi/平台判断“缺反馈”而不是误判总线完全没数据。
 - 这些帧从 M33 发出后，NanoPi 可以把它们映射成 `/joint_states` 和 `/rehab_arm/motor_state`，用于 MuJoCo/RViz 状态同步、数据采集、平台展示和标注。
 - 如果未来关节数量超过 8 个，或需要电流/电压/力矩高精度字段，应新增 V2 多帧或 CAN FD 设计，不要破坏 V1 字段含义。
 
