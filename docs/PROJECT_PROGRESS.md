@@ -1920,3 +1920,12 @@
 - Validated locally: motor profile tests and bench motion sequence tests passed; `py_compile` and `git diff --check` passed.
 - Safety: no NanoPi, CAN, M33, or motor motion was used in this step.
 - Next step: sync this shared module to NanoPi and verify dry-run/list only after the board is available; do not execute motion without an on-site human.
+
+### 2026-05-27 - Conservative patient profile template generator
+
+- Completed: added `build_patient_profile_template.py` to generate a draft `patient_device_profile_v1` from the shared motor profile table.
+- Defaults: 5 known joints, patient ROM `[-10, 10] deg`, patient speed `5 deg/s`, passive mode, VLA suggest-only, and emergency action `disable_motor_output`.
+- Completed: installed the tool in the ROS package and added setup entry point `build_patient_profile_template`.
+- Validated locally: `test_patient_profile.py` passed 14 tests; CLI `--validate --pretty` emitted a valid template envelope; `py_compile` and `git diff --check` passed.
+- Safety: this is JSON generation/validation only; it does not contact NanoPi, CAN, M33, BLE, App, or platform.
+- Next step: use this template as the platform/App shared starting point, then add profile sync quality gates before any active profile can reach M33.

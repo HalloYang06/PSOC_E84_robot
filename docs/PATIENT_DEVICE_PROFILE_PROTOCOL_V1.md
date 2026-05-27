@@ -72,6 +72,21 @@ profile 进入 active 状态、同步到 NanoPi、拆分为 M33/M55 子集或进
 
 校验器只输出 `patient_device_profile_validation_v1` 报告，不写 profile，不下发 M33，不发 ROS/CAN，不授予运动许可。
 
+新患者、新设备或平台/App 第一次建档时，先用当前电机配置表生成保守草稿，再由治疗师/工程师在平台或 App 里审核调整：
+
+```bash
+ros2 run rehab_arm_psoc_bridge build_patient_profile_template.py \
+  --profile-id pdp_20260527_0001 \
+  --robot-id rehab_arm_alpha \
+  --device-id nanopi_m5_001 \
+  --patient-id patient_001 \
+  --validate \
+  --pretty \
+  --output patient_device_profile_template.json
+```
+
+模板默认 `profile_status=draft`、患者 ROM 为每关节 `[-10°, +10°]`、患者限速 `5 deg/s`、急停策略为 `disable_motor_output`。它只是建档起点，不是临床批准，也不会下发 M33 或授予运动权限。
+
 ```json
 {
   "schema_version": "patient_device_profile_v1",
@@ -118,7 +133,7 @@ profile 进入 active 状态、同步到 NanoPi、拆分为 M33/M55 子集或进
   "patient_motion": {
     "patient_rom_limits_deg": {
       "shoulder_lift_joint": [-10.0, 35.0],
-      "elbow_lift_joint": [0.0, 70.0],
+      "elbow_lift_joint": [0.0, 50.0],
       "shoulder_abduction_joint": [-5.0, 30.0],
       "upper_arm_rotation_joint": [-20.0, 20.0],
       "forearm_rotation_joint": [-30.0, 30.0]
@@ -179,7 +194,7 @@ profile 进入 active 状态、同步到 NanoPi、拆分为 M33/M55 子集或进
       "vla_policy": {
         "permission_level": "suggest_only",
         "allowed_task_types": ["describe_scene", "suggest_training_task", "plan_complex_task"],
-        "forbidden_outputs": ["can_frame", "torque_command", "raw_motor_position"]
+        "forbidden_outputs": ["can_frame", "torque_command", "current_command", "velocity_command", "raw_motor_position"]
       }
     }
   },

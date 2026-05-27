@@ -16,6 +16,9 @@ from rehab_arm_psoc_bridge.patient_profile import (  # noqa: E402
     build_patient_profile_change_report,
     validate_patient_profile,
 )
+from rehab_arm_psoc_bridge.build_patient_profile_template import (  # noqa: E402
+    build_patient_profile_template,
+)
 
 
 def make_valid_profile() -> dict[str, object]:
@@ -77,6 +80,47 @@ def make_valid_profile() -> dict[str, object]:
 
 
 class PatientProfileTests(unittest.TestCase):
+    def test_build_patient_profile_template_uses_all_known_joints_and_validates(self) -> None:
+        profile = build_patient_profile_template(
+            profile_id='pdp_template_001',
+            robot_id='rehab_arm_alpha',
+            device_id='nanopi_m5_001',
+            patient_id='patient_001',
+        )
+
+        report = validate_patient_profile(profile)
+
+        self.assertIs(report['ok'], True)
+        self.assertEqual(report['joint_count'], 5)
+        self.assertEqual(profile['profile_status'], 'draft')
+        self.assertEqual(profile['patient_motion']['training_mode'], 'passive_training')
+        self.assertEqual(profile['patient_motion']['patient_rom_limits_deg']['forearm_rotation_joint'], [-10.0, 10.0])
+        self.assertIn('current_command', profile['model_runtime']['server_models']['vla_policy']['forbidden_outputs'])
+
+    def test_build_patient_profile_template_cli_can_emit_validation_envelope(self) -> None:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(Path(__file__).resolve().parents[1] / 'rehab_arm_psoc_bridge' / 'build_patient_profile_template.py'),
+                '--profile-id',
+                'pdp_template_cli',
+                '--patient-id',
+                'patient_001',
+                '--validate',
+                '--pretty',
+            ],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload['schema_version'], 'patient_device_profile_template_result_v1')
+        self.assertIs(payload['validation']['ok'], True)
+        self.assertEqual(payload['profile']['profile_id'], 'pdp_template_cli')
+
     def test_valid_profile_passes(self) -> None:
         report = validate_patient_profile(make_valid_profile())
 

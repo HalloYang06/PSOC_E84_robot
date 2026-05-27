@@ -2910,7 +2910,42 @@ ros2 run rehab_arm_psoc_bridge bench_motion_sequence.py --list-motors --pretty
 
 这张表是给 NanoPi ROS、平台、App、M33 安全配置导出共同对齐的基础资料。修改它不等于放开运动权限；放开真实执行前必须完成机械限位、方向、速度、急停和台架小角度验证。
 
-### 7.2 NanoPi ROS 工作区构建
+### 7.2 生成患者/设备安全配置模板
+
+新患者或新设备建档时，先生成保守草稿，再由平台/App/治疗师审核修改：
+
+```bash
+cd /home/pi/rehab_arm_ros2_ws
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+ros2 run rehab_arm_psoc_bridge build_patient_profile_template.py \
+  --profile-id pdp_20260527_0001 \
+  --robot-id rehab_arm_alpha \
+  --device-id nanopi_m5_001 \
+  --patient-id patient_001 \
+  --validate \
+  --pretty \
+  --output patient_device_profile_template.json
+```
+
+模板特点：
+
+- 自动包含当前 5 个已知关节。
+- 默认 `profile_status=draft`，不是 active，也不会下发 M33。
+- 患者 ROM 默认每关节 `[-10°, +10°]`，患者限速默认 `5 deg/s`。
+- 急停策略固定为 `disable_motor_output`，`fault_latch=true`。
+- VLA 只允许建议/规划，不允许输出 CAN、力矩、电流、速度或裸电机位置。
+
+生成后必须继续运行：
+
+```bash
+ros2 run rehab_arm_psoc_bridge validate_patient_profile.py patient_device_profile_template.json --pretty
+ros2 run rehab_arm_psoc_bridge export_m33_safety_subset.py patient_device_profile_template.json --pretty
+```
+
+只有审核通过、版本号递增、状态变成 `approved` 或 `active` 后，才允许打包给 App BLE 或 NanoPi/M33 链路。
+
+### 7.3 NanoPi ROS 工作区构建
 
 NanoPi 上优先使用工作区自带脚本构建 ROS 包：
 
@@ -2943,7 +2978,7 @@ ACTIVE_REPORT_MOTOR=none SNAPSHOT_SECONDS=2 ECHO_TIMEOUT_SECONDS=8 BUILD_WORKSPA
 - 能收到 `/rehab_arm/motor_state` 和 `/joint_states`。
 - `unexpected 0x320 frames` 为空。
 
-### 7.3 Linux 仿真主机接入前自检
+### 7.4 Linux 仿真主机接入前自检
 
 另一台 Linux 主机接入前，先在该主机上运行仿真环境自检：
 
@@ -2963,7 +2998,7 @@ ros2 run rehab_arm_sim_mujoco check_sim_env --pretty --output sim_readiness_repo
 
 如果 `ok=false`，先看 `missing_actions`，它会列出缺的模块和建议命令。这个检查只读，不访问 CAN，不发送 `0x320/0x321`，不会命令 M33 或电机。
 
-### 7.4 文档和 Git 维护
+### 7.5 文档和 Git 维护
 
 每次完成任务后同步更新：
 

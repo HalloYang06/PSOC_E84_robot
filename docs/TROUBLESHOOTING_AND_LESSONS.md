@@ -3811,3 +3811,19 @@ Connection reset by 192.168.2.66 port 22
 
 - 需要同时支持两种入口的工具，可以先尝试包导入，再在 `ModuleNotFoundError` 时回退到同目录导入。
 - 每次重构 ROS Python 工具后，同时跑单元测试和直接脚本 CLI 测试，避免 NanoPi 台架调试时入口坏掉。
+
+### Windows `py_compile` 可能被旧 `__pycache__` 锁住
+
+现象：
+
+- 本地运行 `python -B -m py_compile ...` 时出现：
+  `[WinError 5] 拒绝访问。: '__pycache__\\patient_profile.cpython-311.pyc.<tmp>' -> '__pycache__\\patient_profile.cpython-311.pyc'`
+
+判断：
+
+- 单元测试和 CLI 已通过，问题发生在 pyc 临时文件替换阶段，属于 Windows 本地生成缓存被占用或权限异常，不是 Python 源码语法错误。
+
+技巧：
+
+- 只清理当前包目录内的生成缓存 `rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/__pycache__`，确认路径在仓库内后再删除。
+- 清理后重跑 `python -B -m py_compile ...`；如果通过，按缓存问题记录，不要改业务代码。
