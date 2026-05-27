@@ -2835,7 +2835,27 @@ ACTIVE_REPORT_MOTOR=none SNAPSHOT_SECONDS=2 ECHO_TIMEOUT_SECONDS=8 BUILD_WORKSPA
 - 能收到 `/rehab_arm/motor_state` 和 `/joint_states`。
 - `unexpected 0x320 frames` 为空。
 
-### 7.2 文档和 Git 维护
+### 7.2 Linux 仿真主机接入前自检
+
+另一台 Linux 主机接入前，先在该主机上运行仿真环境自检：
+
+```bash
+cd ~/rehab_ws_src/Medical-Rehabilitation-Manipulator/rehab_arm_ros2_ws
+source /opt/ros/jazzy/setup.bash
+./build_ros2.sh --packages-select rehab_arm_description rehab_arm_psoc_bridge rehab_arm_sim_mujoco
+source install/setup.bash
+ros2 run rehab_arm_sim_mujoco check_sim_env --pretty --output sim_readiness_report.json
+```
+
+看三个字段：
+
+- `ok=true`：必需项齐全。
+- `readiness=ready_with_fallback_sim`：可以先跑简化仿真和数据采集，MuJoCo 还没准备好。
+- `readiness=ready_with_mujoco`：可以进入 MuJoCo 仿真。
+
+如果 `ok=false`，先看 `missing_actions`，它会列出缺的模块和建议命令。这个检查只读，不访问 CAN，不发送 `0x320/0x321`，不会命令 M33 或电机。
+
+### 7.3 文档和 Git 维护
 
 每次完成任务后同步更新：
 

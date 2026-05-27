@@ -73,6 +73,31 @@ ros2 run rehab_arm_sim_mujoco check_sim_env --pretty --output sim_readiness_repo
 - 数据采集、manifest、服务器上传客户端模块是否可导入。
 - 当前标准 5 关节名字是否齐全。
 
+报告里还有两个对新手最有用的字段：
+
+- `missing_actions`：列出当前缺什么、严重程度和推荐安装/修复命令。
+- `next_commands`：给出下一组建议运行命令。
+
+常见结果解释：
+
+```text
+readiness=not_ready
+```
+
+说明缺少必需项，例如还没有 source ROS2 环境、没有 `rclpy`，或没有编译数据工具包。先按 `missing_actions` 修。
+
+```text
+readiness=ready_with_fallback_sim
+```
+
+说明 ROS2、URDF、launch 和数据工具已经够用，可以先跑简化 fallback 仿真和数据采集；MuJoCo Python 包还没装或不可用。
+
+```text
+readiness=ready_with_mujoco
+```
+
+说明 MuJoCo Python 包也可导入，可以进入 MuJoCo 仿真验证。
+
 这个命令是只读检查，不打开 CAN，不发 `0x320/0x321`，不命令 M33 或电机。它的作用是先确认“仿真和数据采集环境是否能启动”，不是确认真机可以运动。
 
 ## 2. 总体数据流

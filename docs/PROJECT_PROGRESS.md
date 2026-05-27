@@ -1856,3 +1856,13 @@
 - Validated on NanoPi: copied the files, ran the new unit test, rebuilt `rehab_arm_psoc_bridge`, and confirmed installed parser import decodes a sample heart rate as `75`.
 - Safety: no CAN motion or C8T6 control command was sent; this was an offline contract/readiness change.
 - Next step: when C8T6 is physically connected, passively capture `0x7C2/0x7C3`, confirm `/rehab_arm/sensor_state`, then run `hardware_telemetry` recording validation.
+
+### 2026-05-27 - Simulation host readiness report made actionable
+
+- Completed: extended `check_sim_env.py` with `missing_actions` and `next_commands`, so a new Linux simulation host report explains what to install or run next.
+- Defined readiness meanings: `not_ready`, `ready_with_fallback_sim`, and `ready_with_mujoco`.
+- Preserved safety boundary: the report remains read-only and does not access CAN, `0x320/0x321`, M33, or motors.
+- Validated: `test_check_sim_env.py` passed 5 tests.
+- Validated: local CLI smoke produced a JSON report with `ok=false` on Windows because `rclpy` is not installed, and correctly listed ROS2/rclpy remediation under `missing_actions`.
+- Docs: updated the ROS2 simulation guide and user manual with the readiness report workflow.
+- Next step: when the Linux simulation host is available, run `ros2 run rehab_arm_sim_mujoco check_sim_env --pretty --output sim_readiness_report.json`, then follow `missing_actions` until readiness is at least `ready_with_fallback_sim`.

@@ -45,6 +45,9 @@ class CheckSimEnvTests(unittest.TestCase):
         self.assertFalse(report['checks']['mujoco']['ok'])
         self.assertTrue(report['checks']['urdf']['ok'])
         self.assertIn('does not open CAN', report['safety_note'])
+        self.assertEqual(report['missing_actions'][0]['id'], 'mujoco')
+        self.assertEqual(report['missing_actions'][0]['severity'], 'optional')
+        self.assertIn('sim_data_collection.launch.py', ' '.join(report['next_commands']))
 
     def test_strict_mujoco_requires_mujoco_import(self) -> None:
         available = {
@@ -63,6 +66,25 @@ class CheckSimEnvTests(unittest.TestCase):
         self.assertFalse(report['ok'])
         self.assertEqual(report['readiness'], 'not_ready')
         self.assertIn('mujoco is required but not available', report['errors'])
+        self.assertEqual(report['missing_actions'][0]['id'], 'mujoco')
+        self.assertEqual(report['missing_actions'][0]['severity'], 'required')
+
+    def test_report_lists_missing_data_tool_actions(self) -> None:
+        available = {'rclpy', 'mujoco'}
+
+        report = build_sim_env_report(
+            WORKSPACE_ROOT,
+            import_checker=lambda module_name: module_name in available,
+        )
+
+        self.assertFalse(report['ok'])
+        data_tool_action = next(
+            action for action in report['missing_actions']
+            if action['id'] == 'data_tools'
+        )
+        self.assertEqual(data_tool_action['severity'], 'required')
+        self.assertIn('rehab_arm_psoc_bridge.data_recording', data_tool_action['missing_modules'])
+        self.assertIn('rehab_arm_psoc_bridge', ' '.join(data_tool_action['commands']))
 
     def test_cli_outputs_json(self) -> None:
         result = subprocess.run(

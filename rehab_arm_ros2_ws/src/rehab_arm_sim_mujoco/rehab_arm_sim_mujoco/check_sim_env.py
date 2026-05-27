@@ -26,6 +26,72 @@ DATA_TOOL_MODULES = [
     'rehab_arm_psoc_bridge.sync_upload',
 ]
 
+REMEDIATION_HINTS = {
+    'rclpy': {
+        'summary': 'ROS2 Python client is missing.',
+        'commands': [
+            'source /opt/ros/jazzy/setup.bash',
+            'sudo apt install -y ros-jazzy-rclpy',
+        ],
+    },
+    'mujoco': {
+        'summary': 'MuJoCo Python package is missing; fallback simulation can still run unless strict mode is enabled.',
+        'commands': [
+            'python3 -m pip install --user mujoco',
+            'python3 -c "import mujoco; print(mujoco.__version__)"',
+        ],
+    },
+    'urdf': {
+        'summary': 'Rehab arm URDF is missing from rehab_arm_description.',
+        'commands': [
+            'git checkout feature/rehab-arm-ros2-architecture',
+            'ls rehab_arm_ros2_ws/src/rehab_arm_description/urdf/rehab_arm.urdf',
+        ],
+    },
+    'sim_launch': {
+        'summary': 'MuJoCo/fallback simulation launch file is missing.',
+        'commands': [
+            'ls rehab_arm_ros2_ws/src/rehab_arm_sim_mujoco/launch/sim.launch.py',
+        ],
+    },
+    'sim_data_collection_launch': {
+        'summary': 'Simulation data collection launch file is missing.',
+        'commands': [
+            'ls rehab_arm_ros2_ws/src/rehab_arm_bringup/launch/sim_data_collection.launch.py',
+        ],
+    },
+    'data_tools': {
+        'summary': 'Data collection/export tools are not importable; build the bridge package.',
+        'commands': [
+            'cd rehab_arm_ros2_ws',
+            './build_ros2.sh --packages-select rehab_arm_psoc_bridge rehab_arm_sim_mujoco',
+            'source install/setup.bash',
+        ],
+    },
+}
+
+NEXT_COMMANDS = {
+    'ready_with_mujoco': [
+        'cd rehab_arm_ros2_ws',
+        './build_ros2.sh --packages-select rehab_arm_description rehab_arm_sim_mujoco rehab_arm_control rehab_arm_bringup',
+        'source install/setup.bash',
+        'ros2 launch rehab_arm_bringup sim_data_collection.launch.py',
+    ],
+    'ready_with_fallback_sim': [
+        'cd rehab_arm_ros2_ws',
+        './build_ros2.sh --packages-select rehab_arm_description rehab_arm_sim_mujoco rehab_arm_control rehab_arm_bringup',
+        'source install/setup.bash',
+        'ros2 launch rehab_arm_bringup sim_data_collection.launch.py',
+        'python3 -m pip install --user mujoco',
+    ],
+    'not_ready': [
+        'cd rehab_arm_ros2_ws',
+        './build_ros2.sh --packages-select rehab_arm_description rehab_arm_psoc_bridge rehab_arm_sim_mujoco',
+        'source install/setup.bash',
+        'ros2 run rehab_arm_sim_mujoco check_sim_env --pretty',
+    ],
+}
+
 TOPIC_CONTRACT = {
     'trajectory_command': {
         'topic': '/arm_controller/joint_trajectory',
@@ -98,6 +164,42 @@ def make_import_check(
     }
 
 
+def build_missing_actions(checks: dict[str, object], strict_mujoco: bool) -> list[dict[str, object]]:
+    actions: list[dict[str, object]] = []
+    for key in ('rclpy', 'mujoco', 'urdf', 'sim_launch', 'sim_data_collection_launch'):
+        item = checks[key]
+        if not isinstance(item, dict) or item.get('ok'):
+            continue
+        if key == 'mujoco' and not strict_mujoco:
+            severity = 'optional'
+        else:
+            severity = 'required'
+        hint = REMEDIATION_HINTS[key]
+        actions.append({
+            'id': key,
+            'severity': severity,
+            'summary': hint['summary'],
+            'commands': hint['commands'],
+        })
+
+    data_tools = checks.get('data_tools', {})
+    if isinstance(data_tools, dict):
+        missing_data_modules = [
+            name for name, item in data_tools.items()
+            if isinstance(item, dict) and not item.get('ok')
+        ]
+        if missing_data_modules:
+            hint = REMEDIATION_HINTS['data_tools']
+            actions.append({
+                'id': 'data_tools',
+                'severity': 'required',
+                'summary': hint['summary'],
+                'missing_modules': missing_data_modules,
+                'commands': hint['commands'],
+            })
+    return actions
+
+
 def build_sim_env_report(
     workspace_root: str | Path | None = None,
     import_checker: Callable[[str], bool] = default_import_checker,
@@ -146,6 +248,8 @@ def build_sim_env_report(
     else:
         readiness = 'ready_with_fallback_sim'
 
+    missing_actions = build_missing_actions(checks, strict_mujoco)
+
     return {
         'schema_version': SCHEMA_VERSION,
         'ok': not errors,
@@ -168,6 +272,8 @@ def build_sim_env_report(
             'This is a read-only simulation environment check. It does not open CAN, '
             'does not send 0x320/0x321 frames, and does not command M33 or motors.'
         ),
+        'missing_actions': missing_actions,
+        'next_commands': NEXT_COMMANDS[readiness],
         'errors': errors,
     }
 
