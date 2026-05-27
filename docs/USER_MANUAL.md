@@ -2673,7 +2673,36 @@ python3 /home/pi/nanopi_can_master.py heartbeat --iface can0 --seq 93 --wait 0.3
 - 发 `clear/closed-loop/idle` 后仍然只看到 M33 `0x332`。
 - 这时不要继续发目标角度；先检查 3号供电、CAN 连接、节点 ID、协议模式和电机驱动状态。
 
-### 6.7.4 上电只读 ROS 遥测检查
+### 6.7.4 运动测试后离线复盘
+
+如果现场已经做过一次正式路径运动测试，先不要急着继续加大角度。把 `candump -L` 日志用离线报告工具复盘：
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source /home/pi/rehab_arm_ros2_ws/install/setup.bash
+
+ros2 run rehab_arm_psoc_bridge motion_test_report.py \
+  /tmp/motor7_joint4_10deg.candump \
+  --motor-id 7 \
+  --joint-id 4 \
+  --pretty
+```
+
+合格标准：
+
+- `ok=true`。
+- `target_command_count >= 1`。
+- `has_expected_csp_sequence=true`，说明看到 `run_mode/limit_spd/loc_ref`。
+- `stop_observed=true`，说明 ROS stop 和电机 stop 帧都出现。
+- `no_legacy_mit_control=true`，说明没有退回旧的 `0x01800007` MIT 控制帧。
+- `m33_motor_status.delta_position_deg` 有合理变化，用来和现场目测角度对照。
+
+注意：
+
+- 这个工具只读日志，不连接 CAN，不发命令，不代表可以继续运动。
+- 如果人不在现场，只允许做这种离线复盘，不要远程继续发动作。
+
+### 6.7.5 上电只读 ROS 遥测检查
 
 设备刚上电、还没接完整 C8T6/传感器时，先做只读检查。这个流程只验证 NanoPi、CAN、M33、ROS bridge 和基础数据记录，不允许发送运动目标。
 

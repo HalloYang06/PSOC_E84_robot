@@ -1878,3 +1878,14 @@
 - Observed: M33 motor7 aggregate `0x336` changed from `position_mrad=-73` to about `174`, about `247 mrad` or `14.1°`; user should visually confirm whether this matches expected bench motion.
 - Safety: sent stop after the move; post-test `can0` remained `ERROR-ACTIVE`, tx/rx error counters `0/0`; M33 heartbeat still returned `state=ok/control_mode=bench_armed/motion_allowed=false`.
 - Next step: if the visible motion direction is correct, repeat with a smaller closed-loop validation sequence `+5°/-5°` and compare M33 `0x336` delta to commanded joint degrees before moving larger angles.
+
+### 2026-05-27 - Motion test report tool for remote/offline review
+
+- Completed: added `motion_test_report.py`, a read-only candump analyzer for formal M33 motion tests.
+- The report checks target `0x320`, stop `0x320`, RobStride CSP parameter writes, private stop frames, absence of legacy MIT control frames, and M33 aggregate position deltas.
+- Completed: added `motion_test_report.py` to the ROS package install list.
+- Validated locally: `test_motion_test_report.py` passed 3 tests; `py_compile` passed.
+- Validated with the real NanoPi log `/tmp/motor7_joint4_10deg.candump`: report returned `ok=true`, `has_expected_csp_sequence=true`, `stop_observed=true`, `no_legacy_mit_control=true`, and `delta_position_deg=14.152`.
+- Validated on NanoPi: synced the latest bridge package, rebuilt `rehab_arm_psoc_bridge`, fixed the new script executable bit, and ran `ros2 run rehab_arm_psoc_bridge motion_test_report.py ...`.
+- Safety: no additional motion was sent after the user said they were not on site; this task only analyzed existing logs.
+- Next step: use this report after every future bench motion before deciding whether to repeat, reverse, or increase commanded angle.

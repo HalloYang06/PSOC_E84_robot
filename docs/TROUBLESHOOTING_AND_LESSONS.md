@@ -3744,3 +3744,21 @@ Connection reset by 192.168.2.66 port 22
 - 简单远程命令可以用 `ssh.exe --% -o BatchMode=yes ...`。
 - 复杂多行远程命令优先用 PowerShell here-string 管道到 `ssh.exe --% ... bash -s`。
 - 如果命令里包含枚举参数，注意上一条 CRLF 问题，必要时用单行 SSH 重跑最后的验证命令。
+
+### NanoPi 半量同步 ROS 包会让 CMake install 失败
+
+现象：
+
+- 只把本地最新 `CMakeLists.txt` 同步到 NanoPi 后，`colcon build` 报：
+  `ament_cmake_symlink_install_programs() can't find ... jsonl_replay_node.py`。
+
+判断：
+
+- NanoPi 源码目录比本地旧，新的安装列表引用了板子上还没有的脚本。
+- 这不是 motion report 或 CMake 语法错误，而是半量同步导致源码和安装列表不一致。
+
+技巧：
+
+- 修改 ROS 包安装列表时，要同步整个 package 源码目录，至少同步 `rehab_arm_psoc_bridge/`、`test/`、`CMakeLists.txt` 和 `setup.py`。
+- 新增 `install(PROGRAMS ...)` 脚本后，确认源文件有可执行位；否则 symlink 存在但 `ros2 run` 会报 `No executable found`。
+- 本地新脚本入 Git 时可用 `git add --chmod=+x <script.py>`。
