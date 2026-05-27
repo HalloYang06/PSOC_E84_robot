@@ -1937,3 +1937,12 @@
 - Validated locally: patient profile and motor profile tests passed 23 tests; `py_compile` and `git diff --check` passed.
 - Safety: release gate is JSON-only and never connects BLE, CAN, ROS topics, M33, NanoPi, or motors.
 - Next step: add the same release gate command to the platform/App integration prompts so their agents call it before any sync button or BLE package export.
+
+### 2026-05-27 - Simulation host and NanoPi ROS2 DDS link
+
+- Completed: logged into simulation host `cal@192.168.2.46`; hostname is `cal-MS-7D90`, ROS distro is Jazzy.
+- Completed: confirmed NanoPi `pi@192.168.2.66` and simulation host can ping each other on `192.168.2.0/24`.
+- Completed: configured both machines with `ROS_DOMAIN_ID=42`, `ROS_LOCALHOST_ONLY=0`, and `ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET` via `~/.rehab_arm_ros2_network`.
+- Validated: simulation host -> NanoPi ROS2 topic test passed using `/chatter`; NanoPi -> simulation host test passed using `/rehab_net_test`.
+- Safety: only ROS2 demo/string topics were used; no bridge launch, CAN, M33 command, trajectory, or motor motion was sent.
+- Next step: install/sync the rehab ROS2 workspace on the simulation host, then verify it can see NanoPi `/joint_states`, `/rehab_arm/safety_state`, and `/rehab_arm/motor_state` with target TX disabled.

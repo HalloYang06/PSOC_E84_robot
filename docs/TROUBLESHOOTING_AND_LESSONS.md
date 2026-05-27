@@ -3827,3 +3827,22 @@ Connection reset by 192.168.2.66 port 22
 
 - 只清理当前包目录内的生成缓存 `rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/__pycache__`，确认路径在仓库内后再删除。
 - 清理后重跑 `python -B -m py_compile ...`；如果通过，按缓存问题记录，不要改业务代码。
+
+### ROS2 Jazzy 跨机器发现需要设置发现范围
+
+现象：
+
+- 仿真主机到 NanoPi 的 `/chatter` 能收到，但 NanoPi 到仿真主机的 `/rehab_net_test` 一开始显示 topic 尚未发布。
+
+判断：
+
+- 两边已经同网段且 ping 通，问题更像 ROS2 DDS discovery 配置，而不是 IP 路由。
+- Jazzy 会提示 `ROS_LOCALHOST_ONLY is deprecated`，并建议使用 `ROS_AUTOMATIC_DISCOVERY_RANGE` 和 `ROS_STATIC_PEERS`。
+
+技巧：
+
+- 两边统一写入：
+  `ROS_DOMAIN_ID=42`、`ROS_LOCALHOST_ONLY=0`、`ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET`。
+- 重新启动 publisher/subscriber 后，NanoPi -> 仿真主机测试通过。
+- 如果 topic 还未被发现，可显式指定类型：
+  `ros2 topic echo /rehab_net_test std_msgs/msg/String --once`。
