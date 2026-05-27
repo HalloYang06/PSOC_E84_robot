@@ -2051,3 +2051,15 @@
 - Live readonly result: `0x330~0x334` were present with correct motor IDs `3/4/5/6/7`, all `240` M33 samples were stale, raw motor feedback count was `0`, `target_0x320_count=0`, and decision was `motor_feedback_source_missing`.
 - Safety: this tool is read-only and does not send CAN, ROS trajectories, BLE commands, or motor commands.
 - Next step: inspect motor-side power/CAN branch/IDs or M33 motor RX path before expecting `/joint_states` or running a trajectory.
+
+### 2026-05-27 - NanoPi one-command feedback readiness script
+
+- Completed: added `scripts/nanopi_motor_feedback_readiness.sh` for现场一键现查.
+- Default mode is read-only: capture `can0`, run `feedback_source_readiness.py`, and save reports under `/tmp/rehab_arm_feedback_readiness`.
+- Optional mode `SEND_M33_HEARTBEAT=1` sends one safe NanoPi heartbeat `0x321#55` during capture to check whether M33 replies.
+- Optional mode `RUN_NON_MOTION_PROBES=1` sends only CANSimple `Get_Error/Address` and Lingzu `Get_ID` query frames, never enable/velocity/position/torque/trajectory commands.
+- Completed: documented the command in `docs/USER_MANUAL.md`.
+- Validated on NanoPi: `bash -n` passed; default passive run completed and saved reports. Current passive 5s capture had `0` parseable frames, so readiness failed as expected and printed result file paths instead of hiding the failure.
+- Validated on NanoPi with `SEND_M33_HEARTBEAT=1 DURATION_SECONDS=3`: `can0` stayed `ERROR-ACTIVE`, but no `0x322`, no `0x330~0x334`, and no raw motor feedback appeared after heartbeat.
+- Safety: the default script path sends no CAN writes; heartbeat and query modes are explicitly separated from default passive evidence.
+- Next step: check whether M33 is powered/running after the latest reset or flash before debugging ROS trajectory or motor protocols.

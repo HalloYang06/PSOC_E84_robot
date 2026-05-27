@@ -3107,6 +3107,34 @@ ros2 run rehab_arm_psoc_bridge feedback_source_readiness.py \
 - `decision=motor_feedback_source_missing`：不要发轨迹，先查电机侧供电、CAN 分支、共地、终端、电机 ID、驱动状态。
 - `target_0x320_count` 必须是 `0`。如果不是 `0`，说明这不是只读采集，不能作为安全 readiness 证据。
 
+也可以直接用 NanoPi 一键脚本，它会保存 can0 状态、candump 和 JSON 报告：
+
+```bash
+/home/pi/nanopi_motor_feedback_readiness.sh
+```
+
+输出文件默认在：
+
+```bash
+/tmp/rehab_arm_feedback_readiness/
+```
+
+如果现场确认只允许做非运动查询，可以临时打开查询探测：
+
+```bash
+RUN_NON_MOTION_PROBES=1 /home/pi/nanopi_motor_feedback_readiness.sh
+```
+
+这个模式只发 CANSimple `Get_Error/Address` 和灵足 `Get_ID` 查询，不发使能、速度、位置、力矩、`0x320` 轨迹目标。若报告里仍然没有 raw feedback，下一步查物理层和电机侧状态，不要继续加 ROS 控制逻辑。
+
+如果纯被动采集 0 帧，但想确认 M33 是否在线，可以只发一次 NanoPi 心跳：
+
+```bash
+SEND_M33_HEARTBEAT=1 /home/pi/nanopi_motor_feedback_readiness.sh
+```
+
+这个模式只发 `0x321#55` 心跳，用来观察 `0x322` 或 `0x330~0x334` 是否回来；它仍然不发 `0x320` 目标，也不控制电机。
+
 ### 7.4 Linux 仿真主机接入前自检
 
 另一台 Linux 主机接入前，先在该主机上运行仿真环境自检：

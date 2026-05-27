@@ -4092,3 +4092,22 @@ Connection reset by 192.168.2.66 port 22
 - 用 `feedback_source_readiness <candump> --pretty` 同时看 raw motor feedback 和 M33 fresh/stale。
 - `raw_motor_feedback_ready=false` 时，不要继续发轨迹或调 ROS parser，先查电机侧供电、共地、CANH/CANL、终端、电机 ID、驱动使能状态。
 - `m33_joint_state_ready=false` 时，仿真主机不要期待 `/joint_states`；这可以避免把 0 rad 或 stale 姿态误当成真实机器人状态。
+- 现场少敲命令时，用 `/home/pi/nanopi_motor_feedback_readiness.sh`；默认纯被动只读，`SEND_M33_HEARTBEAT=1` 只发一次 NanoPi 心跳，`RUN_NON_MOTION_PROBES=1` 才做非运动查询。
+
+### `can0` ERROR-ACTIVE 但 candump 0 帧时不要继续调 ROS
+
+现象：
+
+- `ip -details -statistics link show can0` 显示 `ERROR-ACTIVE`，tx/rx error 都是 `0`。
+- 被动 candump 0 帧。
+- 发送一次 NanoPi heartbeat `0x321#55` 后，仍然没有 M33 `0x322` 或 `0x330~0x334`。
+
+判断：
+
+- NanoPi CAN 控制器本身健康，但总线上当前没有可见响应节点。
+- 这不是 `/joint_states`、DDS、MuJoCo 或平台问题；优先查 M33 是否供电、是否运行到 CAN 任务、是否复位后没有启动、CAN 收发器是否使能。
+
+技巧：
+
+- 先运行 `/home/pi/nanopi_motor_feedback_readiness.sh`，再运行 `SEND_M33_HEARTBEAT=1 /home/pi/nanopi_motor_feedback_readiness.sh`。
+- 如果第二个仍然 0 帧，暂停 ROS 轨迹开发，先恢复 M33 `0x322` 心跳回复。
