@@ -617,6 +617,18 @@ timeout 5 candump -L can0,330:7F8,061:7FF,069:7FF,180007FD:1FFFFFFF
 - 如果 payload byte3 带 `0x10`，说明该槽位暂时没有新鲜电机反馈；这是可诊断状态，不是运动许可。
 - 整个过程不发布 `/arm_controller/joint_trajectory`，不发送 `0x320`。
 
+已验证通过的只读样例：
+
+```text
+0x330#B3xx0310000000FF
+0x331#B3xx0410000000FF
+0x332#B3xx0510000000FF
+0x333#B3xx0610000000FF
+0x334#B3xx0710000000FF
+```
+
+其中 `xx` 是循环序号，`03/04/05/06/07` 是真实 motor_id，`10` 是 stale/no-feedback 标志。此时 `/rehab_arm/motor_state` 应该有 5 个 stale 电机条目，但 `/joint_states` 不应该发布这些 0 位姿。
+
 如果需要 M33 串口手动触发一次缓存上报，可在 M33 shell 运行：
 
 ```text

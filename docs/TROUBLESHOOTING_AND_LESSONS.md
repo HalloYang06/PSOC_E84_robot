@@ -84,7 +84,7 @@
 
 状态：
 
-- M33 本地工程已修，等待重新烧录验证。
+- 已重新烧录验证：`0x330..0x334` 的 byte2 为 `03/04/05/06/07`，`/rehab_arm/motor_state` 关节名和 motor_id 对齐；stale 帧不生成 `/joint_states`。
 
 ### MCP2518FD 驱动加载了，但没有 can0
 

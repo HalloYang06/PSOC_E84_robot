@@ -67,6 +67,14 @@
   - 已修正 M33 本地工程：`0x330..0x334` 现在按 ROS 5 关节槽位发布，byte2 应为 `3/4/5/6/7`；`0x335..0x337` 保留给未来扩展。
   - 下一步：用户重新烧录后，再做只读抓包，期望 `0x330..0x334` 出现且 byte2 为 `03 04 05 06 07`，然后再验收 `/rehab_arm/motor_state`。
 
+- M33 ROS joint 遥测映射重新烧录后验收通过：
+  - 用户烧录 M33 `746e0ad4` 后，NanoPi `can0` 仍为 `ERROR-ACTIVE`，1Mbps，tx/rx error `0/0`。
+  - 只读抓包 3 秒得到 140 条合法 M33 电机遥测帧：`0x330..0x334` 各 28 条，全部 byte0=`B3`，byte3=`0x10` stale/no-feedback，未出现 `0x320`。
+  - 原始帧确认正式映射正确：`0x330` byte2=`03`、`0x331` byte2=`04`、`0x332` byte2=`05`、`0x333` byte2=`06`、`0x334` byte2=`07`。
+  - NanoPi bridge 只读模式验证 `/rehab_arm/motor_state` 输出 5 个电机：`shoulder_lift_joint=3`、`elbow_lift_joint=4`、`shoulder_abduction_joint=5`、`upper_arm_rotation_joint=6`、`forearm_rotation_joint=7`，全部 `stale=true/data_fresh=false`。
+  - `/joint_states` 未收到 stale 样本，符合“缺新鲜反馈不污染仿真姿态”的设计。
+  - 下一步：让 M33/电机侧产生新鲜反馈，期望对应 stale 位清零后 `/joint_states` 开始发布真实姿态，再接仿真主机/RViz/平台显示。
+
 ### 2026-05-26
 
 - M33 formal clinical gate scaffold:
