@@ -122,6 +122,38 @@
 
 - 已定位到电机原始反馈未出现；等待现场电机侧供电/在线状态确认。
 
+### 灵足 4~7 Get_ID 全无回复但 CAN 控制器健康
+
+现象：
+
+- `nanopi_can_master.py probe --motor 7` 发送 `0000FD07#0000000000000000`，无 7 号回复。
+- `probe --start 4 --end 7` 对 4/5/6/7 发送 Get_ID，也无任何电机回复。
+- 抓包中只有 M33 `0x330..0x334` stale 帧和 NanoPi 发出的 probe 帧。
+- `ip -details -statistics link show can0` 仍显示 `ERROR-ACTIVE`，tx/rx error `0/0`，bus-off/error-pass 都为 0。
+
+环境：
+
+- NanoPi MCP2518FD `can0` classic CAN 1Mbps。
+- M33 在线，heartbeat 可回 `0x322`。
+- 灵足 4/5/6/7 按私有扩展帧协议探测。
+
+根因判断：
+
+- 不是 NanoPi SocketCAN 挂了，也不是总线整体 bus-off。
+- M33 能持续发帧、NanoPi 能发 probe，说明主干 CAN 控制器工作。
+- 4~7 全部无回复时，优先怀疑电机侧供电、驱动状态、CAN 支路/接线、终端、节点 ID 或电机侧协议状态。
+
+解决：
+
+- 现场先确认电机驱动板供电和指示灯。
+- 查 4~7 所在 CAN 支路是否真的接入同一总线，CANH/CANL 是否反接，GND 是否共地。
+- 确认终端电阻和线束没有只接到 M33/NanoPi 一段。
+- 在没有看到任一原始电机帧前，不要继续用位置/速度命令试探。
+
+状态：
+
+- 已完成非运动探测；等待现场硬件侧确认。
+
 ### MCP2518FD 驱动加载了，但没有 can0
 
 现象：

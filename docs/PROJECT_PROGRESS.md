@@ -83,6 +83,13 @@
   - 结论：当前不是 ROS parser 或 M33 `0x330` 映射问题，而是电机原始反馈源当前未出现在 CAN 总线上；需现场检查电机侧供电、驱动在线状态、CAN 分支/终端、或电机是否接受 active-report。
   - 安全：本轮没有发送位置、速度、力矩目标；只发送 telemetry-only active-report 开/关和 heartbeat。
 
+- 灵足 4~7 非运动在线探测：
+  - 通过 NanoPi `nanopi_can_master.py probe` 对 motor `7` 单独发送私有协议 Get_ID，抓包只看到 TX `0000FD07#0000000000000000` 和 M33 `0x330..0x334` stale 帧，没有任何 7 号回复。
+  - 对 motor `4..7` 范围发送 Get_ID，现象相同：只有 TX 探测帧和 M33 stale 帧，没有 `0xFE` 类 Get_ID 回复，也没有 `0x18000xFD` active-report。
+  - CAN 控制器仍健康：`ERROR-ACTIVE`，tx/rx error `0/0`，bus-errors/error-pass/bus-off 均为 `0`；M33 heartbeat 仍可回复 `0x322#A52B070001020100`。
+  - 结论：NanoPi/M33/CAN 控制器链路健康，但灵足 4~7 当前整体没有在总线上响应；下一步应现场检查电机侧供电、驱动使能、CAN 支路/接口、终端和节点 ID。
+  - 安全：Get_ID 是非运动探测；本轮没有发送 enable、mode、position、velocity、torque 或 stop 以外的控制命令。
+
 ### 2026-05-26
 
 - M33 formal clinical gate scaffold:

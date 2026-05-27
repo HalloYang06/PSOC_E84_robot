@@ -641,6 +641,17 @@ timeout 3s candump -L can0 > /tmp/fresh_feedback_probe.candump
 - 7 号灵足打开 active-report 后，应能看到 `0x180007FD` 或运动/状态变化时的 `0x188007FD`。
 - 如果只看到 `0x330~0x334` 且 byte3 一直是 `0x10`，说明 M33 发布线程在线，但电机原始反馈还没有进入总线；此时不要发布轨迹。
 
+如果要确认灵足电机节点是否在线，可以只做 Get_ID 非运动探测：
+
+```bash
+python3 /home/pi/nanopi_can_master.py probe --iface can0 --start 4 --end 7 --wait 0.2
+```
+
+通过标准：
+
+- 至少能看到某个电机的 Get_ID 回复或后续 active-report 原始帧。
+- 如果 4~7 全无回复，但 `can0` 仍是 `ERROR-ACTIVE` 且 M33 `0x322` 正常，优先检查电机侧供电、CAN 支路、终端、共地和节点 ID。
+
 如果需要 M33 串口手动触发一次缓存上报，可在 M33 shell 运行：
 
 ```text
