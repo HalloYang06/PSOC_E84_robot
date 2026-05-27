@@ -3846,3 +3846,41 @@ Connection reset by 192.168.2.66 port 22
 - 重新启动 publisher/subscriber 后，NanoPi -> 仿真主机测试通过。
 - 如果 topic 还未被发现，可显式指定类型：
   `ros2 topic echo /rehab_net_test std_msgs/msg/String --once`。
+
+### `ros2 run` 找不到脚本时先查可执行位
+
+现象：
+
+- 仿真主机上 `ros2 run rehab_arm_sim_mujoco check_sim_env --pretty` 报 `No executable found`。
+- `install/rehab_arm_sim_mujoco/lib/rehab_arm_sim_mujoco/check_sim_env.py` 文件存在，但 `ros2 pkg executables rehab_arm_sim_mujoco` 只列出 `mujoco_sim_node.py`。
+
+判断：
+
+- `install(PROGRAMS ...)` 只会把带可执行权限的脚本注册为 ROS2 executable。
+- `check_sim_env.py` 和 `upload_sim_readiness.py` 在 Git 中是 `100644`，所以安装后文件存在但 `ros2 run` 不认。
+
+技巧：
+
+- 用 `git ls-files -s <script.py>` 查模式。
+- 用 `git add --chmod=+x <script.py>` 修正入库权限。
+- 远端临时验证可以 `chmod +x src/.../script.py` 后重建对应包。
+
+### 仿真主机无法直接 fetch GitHub 时可以用 Git bundle 同步
+
+现象：
+
+- 仿真主机仓库 origin 是 `git@github.com:...`，`git fetch` 报无法读取远端仓库。
+- 临时 HTTPS fetch 又报 `gnutls_handshake() failed: The TLS connection was non-properly terminated`。
+
+判断：
+
+- 仿真主机访问 GitHub 的 SSH key 或网络/TLS 环境未配置好，但局域网 SSH/SFTP 可用。
+
+技巧：
+
+- 在本机创建 bundle：
+  `git bundle create %TEMP%/rehab_arm_feature.bundle feature/rehab-arm-ros2-architecture`
+- 用 SFTP 上传到仿真主机 `/tmp/rehab_arm_feature.bundle`。
+- 在仿真主机仓库中：
+  `git fetch /tmp/rehab_arm_feature.bundle feature/rehab-arm-ros2-architecture`
+  然后 checkout/fast-forward 到 `FETCH_HEAD`。

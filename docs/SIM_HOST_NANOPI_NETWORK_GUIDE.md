@@ -49,6 +49,84 @@ ROS2 DDS:
 - Simulation host -> NanoPi passed with `demo_nodes_cpp talker` and NanoPi `ros2 topic echo /chatter --once`.
 - NanoPi -> simulation host passed with NanoPi `ros2 topic pub /rehab_net_test std_msgs/msg/String "{data: from_nanopi}" -r 1` and simulation host `ros2 topic echo /rehab_net_test std_msgs/msg/String --once`.
 
+## Current Workspace Status
+
+The simulation host has the repo at:
+
+```bash
+/home/cal/桌面/Medical-Rehabilitation-Manipulator
+```
+
+Because the simulation host could not fetch from GitHub through either its SSH remote or HTTPS, the current branch was transferred from the Windows workstation as a Git bundle and checked out locally:
+
+```bash
+feature/rehab-arm-ros2-architecture
+```
+
+Current verified commit on the simulation host:
+
+```bash
+0edee779
+```
+
+ROS2 workspace build passed for:
+
+```bash
+./build_ros2.sh --packages-select rehab_arm_description rehab_arm_sim_mujoco rehab_arm_psoc_bridge
+```
+
+`check_sim_env.py` reports:
+
+```text
+ok=true
+readiness=ready_with_fallback_sim
+```
+
+MuJoCo Python is the only missing optional component. The fallback simulator and data tools are ready.
+
+## Current NanoPi Bridge Check
+
+NanoPi `can0` was brought up as classic CAN 1 Mbps:
+
+```text
+can0: UP, LOWER_UP, ERROR-ACTIVE, tx/rx error counters 0/0
+```
+
+The bridge was started with target transmission disabled:
+
+```bash
+ros2 run rehab_arm_psoc_bridge psoc_can_bridge_node.py --ros-args \
+  -p interface:=can0 \
+  -p enable_target_tx:=false
+```
+
+From the simulation host, these topics were visible:
+
+```text
+/arm_controller/joint_trajectory
+/joint_states
+/rehab_arm/motor_state
+/rehab_arm/safety_state
+/rehab_arm/sensor_state
+```
+
+The simulation host received `/rehab_arm/safety_state`.
+
+A 3 second passive candump showed only heartbeat/status frames:
+
+```text
+321#43
+322#A543070000060000
+321#44
+322#A544070000060000
+321#45
+322#A545070000060000
+```
+
+No `0x320` trajectory target frame was observed. No motor control frame was sent by this test.
+
+`/rehab_arm/motor_state` and `/joint_states` did not produce a sample during the short check because the bus only showed `0x321/0x322`; no M33 motor status frame was present in that window.
+
 ## Safety Boundary
 
 These tests only use ROS2 demo/string topics.
@@ -71,7 +149,8 @@ After MuJoCo and the rehab ROS2 workspace are ready on the simulation host:
    - `/rehab_arm/safety_state`
    - `/rehab_arm/motor_state`
    - `/rehab_arm/sensor_state`
-3. Only after safety review, test the shared trajectory interface:
+3. Confirm M33 motor status frames are present so `/rehab_arm/motor_state` and `/joint_states` publish real samples.
+4. Only after safety review, test the shared trajectory interface:
    - simulation/planner publishes `/arm_controller/joint_trajectory`
    - NanoPi bridge receives it
    - `enable_target_tx` remains `false` until explicitly approved.

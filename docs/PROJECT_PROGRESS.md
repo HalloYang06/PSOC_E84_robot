@@ -1946,3 +1946,16 @@
 - Validated: simulation host -> NanoPi ROS2 topic test passed using `/chatter`; NanoPi -> simulation host test passed using `/rehab_net_test`.
 - Safety: only ROS2 demo/string topics were used; no bridge launch, CAN, M33 command, trajectory, or motor motion was sent.
 - Next step: install/sync the rehab ROS2 workspace on the simulation host, then verify it can see NanoPi `/joint_states`, `/rehab_arm/safety_state`, and `/rehab_arm/motor_state` with target TX disabled.
+
+### 2026-05-27 - Simulation host workspace and NanoPi bridge readonly check
+
+- Completed: transferred the current feature branch to simulation host via Git bundle because the host could not fetch from GitHub over SSH or HTTPS.
+- Completed: simulation host is on `feature/rehab-arm-ros2-architecture` at commit `0edee779`.
+- Completed: built `rehab_arm_description`, `rehab_arm_sim_mujoco`, and `rehab_arm_psoc_bridge` on the simulation host.
+- Fixed: `check_sim_env.py` and `upload_sim_readiness.py` needed executable bits for `ros2 run`.
+- Validated: `check_sim_env.py` returned `ok=true`, `readiness=ready_with_fallback_sim`; only optional `mujoco` Python package is missing.
+- Validated: NanoPi `can0` was brought up as classic CAN 1 Mbps, `ERROR-ACTIVE`, tx/rx counters `0/0`; bridge started with `enable_target_tx=false`.
+- Validated from simulation host: ROS topics `/arm_controller/joint_trajectory`, `/joint_states`, `/rehab_arm/motor_state`, `/rehab_arm/safety_state`, and `/rehab_arm/sensor_state` were discoverable; `/rehab_arm/safety_state` produced a sample.
+- Observed: short candump showed only `0x321` heartbeat and `0x322` M33 status; no `0x320` target or motor control frames. `/motor_state` and `/joint_states` had no sample during the short check because no M33 motor status frame appeared.
+- Safety: no trajectory was published and no motor motion command was sent.
+- Next step: make M33 publish motor status frames or enable the expected status source, then verify `/rehab_arm/motor_state` and `/joint_states` from the simulation host before any trajectory test.
