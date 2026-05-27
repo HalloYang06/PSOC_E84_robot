@@ -2063,3 +2063,15 @@
 - Validated on NanoPi with `SEND_M33_HEARTBEAT=1 DURATION_SECONDS=3`: `can0` stayed `ERROR-ACTIVE`, but no `0x322`, no `0x330~0x334`, and no raw motor feedback appeared after heartbeat.
 - Safety: the default script path sends no CAN writes; heartbeat and query modes are explicitly separated from default passive evidence.
 - Next step: check whether M33 is powered/running after the latest reset or flash before debugging ROS trajectory or motor protocols.
+
+### 2026-05-27 - ROS bridge fresh motor feedback trajectory gate
+
+- Completed: `psoc_can_bridge_node.py` now requires recent fresh M33 motor feedback before accepting/sending `JointTrajectory` by default.
+- Added parameter `require_fresh_motor_status_for_trajectory=true` and `motor_status_timeout_sec=1.0`.
+- The existing M33/PSoC `motion_allowed=true` gate remains required; the new gate prevents stale `0x330~0x334` placeholder slots from being treated as known robot posture.
+- Completed: added `fresh_motor_feedback_gate_detail()` in `safety_gate.py` and unit tests.
+- Completed: documented the new bridge behavior and the dry-run override in `docs/USER_MANUAL.md`.
+- Validated locally: safety, motor status, and joint-state tests passed `24 passed`; `py_compile` passed for the changed modules.
+- Validated on NanoPi: synced the changed bridge files, rebuilt `rehab_arm_psoc_bridge`, and `test_safety_gate.py` passed `7 passed`.
+- Safety: this is a stricter default gate; it sends no CAN during tests and makes missing feedback fail closed.
+- Next step: run a dry-run bridge trajectory rejection test once M33 status is visible again.

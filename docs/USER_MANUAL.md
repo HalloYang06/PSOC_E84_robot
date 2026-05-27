@@ -3090,6 +3090,23 @@ ros2 run rehab_arm_psoc_bridge check_m33_motor_status_presence.py \
 
 如果只看到 `0x321/0x322`，说明 NanoPi 和 M33 安全心跳链路是通的，但 M33 当前没有发布电机状态帧；这时不要发布轨迹，先让 M33 固件补齐或打开电机状态上报。
 
+正式 bridge 默认还有两道轨迹闸门：
+
+- `require_psoc_ok_for_trajectory=true`：没有 M33/PSoC `motion_allowed=true`，拒绝 `/arm_controller/joint_trajectory`。
+- `require_fresh_motor_status_for_trajectory=true`：没有 fresh 的 M33 电机反馈，不把 stale 槽位当成真实姿态，拒绝轨迹。
+
+只有台架调试、且确认现场安全时，才允许临时关闭第二个闸门：
+
+```bash
+ros2 run rehab_arm_psoc_bridge psoc_can_bridge_node.py \
+  --ros-args \
+  -p interface:=can0 \
+  -p enable_target_tx:=false \
+  -p require_fresh_motor_status_for_trajectory:=false
+```
+
+注意：`enable_target_tx=false` 仍然是只读/干跑，不会发 `0x320` 目标。正式发目标前必须恢复 fresh 电机反馈闸门，并由 M33 安全状态机最终放行。
+
 如果要现场快速判断“电机真实反馈源有没有回来”，用只读 readiness 工具：
 
 ```bash

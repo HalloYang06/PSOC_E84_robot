@@ -33,3 +33,24 @@ def psoc_motion_gate_detail(status_payload: dict[str, object] | None) -> tuple[b
     if isinstance(error_code, int) and error_code != 0:
         parts.append(f'error_code={error_code}')
     return False, ', '.join(parts)
+
+
+def fresh_motor_feedback_gate_detail(
+    last_fresh_motor_status_age_sec: float | None,
+    timeout_sec: float,
+    fresh_motor_status_count: int,
+) -> tuple[bool, str]:
+    """Return whether NanoPi has recent enough measured joint feedback.
+
+    M33 may publish placeholder/stale motor slots while real motor feedback is
+    missing. NanoPi must not use those stale slots as proof that the robot
+    posture is known before accepting a trajectory.
+    """
+    if fresh_motor_status_count <= 0 or last_fresh_motor_status_age_sec is None:
+        return False, 'no fresh M33 motor feedback received'
+    if last_fresh_motor_status_age_sec > timeout_sec:
+        return (
+            False,
+            f'fresh M33 motor feedback stale for {last_fresh_motor_status_age_sec:.1f}s',
+        )
+    return True, 'fresh M33 motor feedback available'

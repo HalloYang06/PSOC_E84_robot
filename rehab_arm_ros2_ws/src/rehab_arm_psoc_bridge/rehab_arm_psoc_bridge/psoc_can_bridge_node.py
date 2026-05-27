@@ -28,7 +28,10 @@ from rehab_arm_psoc_bridge.psoc_motor_status import (
     make_current_position_updates_from_m33_motor_state,
     make_joint_state_fields_from_m33_motor_state,
 )
-from rehab_arm_psoc_bridge.safety_gate import psoc_motion_gate_detail
+from rehab_arm_psoc_bridge.safety_gate import (
+    fresh_motor_feedback_gate_detail,
+    psoc_motion_gate_detail,
+)
 from rehab_arm_psoc_bridge.psoc_status import parse_psoc_status_payload
 from rehab_arm_psoc_bridge.safety_state import bridge_safety_payload
 
@@ -124,7 +127,9 @@ class PsocCanBridgeNode(Node):
         self.declare_parameter('default_rpm', 5)
         self.declare_parameter('log_heartbeat', False)
         self.declare_parameter('status_timeout_sec', 2.5)
+        self.declare_parameter('motor_status_timeout_sec', 1.0)
         self.declare_parameter('require_psoc_ok_for_trajectory', True)
+        self.declare_parameter('require_fresh_motor_status_for_trajectory', True)
         self.declare_parameter('reject_out_of_limit_trajectory', True)
         self.declare_parameter('max_trajectory_points', 100)
         self.declare_parameter('enable_target_tx', False)
@@ -136,8 +141,14 @@ class PsocCanBridgeNode(Node):
         self.default_rpm = int(self.get_parameter('default_rpm').value)
         self.log_heartbeat = bool(self.get_parameter('log_heartbeat').value)
         self.status_timeout_sec = float(self.get_parameter('status_timeout_sec').value)
+        self.motor_status_timeout_sec = float(
+            self.get_parameter('motor_status_timeout_sec').value
+        )
         self.require_psoc_ok_for_trajectory = bool(
             self.get_parameter('require_psoc_ok_for_trajectory').value
+        )
+        self.require_fresh_motor_status_for_trajectory = bool(
+            self.get_parameter('require_fresh_motor_status_for_trajectory').value
         )
         self.reject_out_of_limit_trajectory = bool(
             self.get_parameter('reject_out_of_limit_trajectory').value
@@ -167,6 +178,8 @@ class PsocCanBridgeNode(Node):
         self.target_tx_count = 0
         self.target_dry_run_count = 0
         self.motor_status_rx_count = 0
+        self.fresh_motor_status_rx_count = 0
+        self.last_fresh_motor_status_time: float | None = None
         self.motor_status_aggregator = M33MotorStatusAggregator(self.robot_id, self.device_id)
 
         self.joint_pub = self.create_publisher(JointState, '/joint_states', 20)
@@ -316,7 +329,21 @@ class PsocCanBridgeNode(Node):
         age = time.monotonic() - self.last_status_time
         if age > self.status_timeout_sec:
             return False, f'PSoC status stale for {age:.1f}s'
-        return psoc_motion_gate_detail(self.last_psoc_status_payload)
+        psoc_ok, psoc_detail = psoc_motion_gate_detail(self.last_psoc_status_payload)
+        if not psoc_ok:
+            return psoc_ok, psoc_detail
+        if not self.require_fresh_motor_status_for_trajectory:
+            return True, 'fresh motor feedback gate disabled'
+        motor_age = (
+            None
+            if self.last_fresh_motor_status_time is None
+            else time.monotonic() - self.last_fresh_motor_status_time
+        )
+        return fresh_motor_feedback_gate_detail(
+            motor_age,
+            self.motor_status_timeout_sec,
+            self.fresh_motor_status_rx_count,
+        )
 
     def send_frame(self, frame: CanFrame, log: bool = True) -> None:
         with self.sock_lock:
@@ -380,12 +407,14 @@ class PsocCanBridgeNode(Node):
         self.current_positions.update(
             make_current_position_updates_from_m33_motor_state(payload, JOINT_NAMES)
         )
-        self.publish_joint_state_from_motor_payload(payload)
+        if self.publish_joint_state_from_motor_payload(payload):
+            self.fresh_motor_status_rx_count += 1
+            self.last_fresh_motor_status_time = time.monotonic()
 
-    def publish_joint_state_from_motor_payload(self, payload: dict[str, object]) -> None:
+    def publish_joint_state_from_motor_payload(self, payload: dict[str, object]) -> bool:
         fields = make_joint_state_fields_from_m33_motor_state(payload)
         if not fields['name']:
-            return
+            return False
         msg = JointState()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.name = fields['name']
@@ -393,6 +422,7 @@ class PsocCanBridgeNode(Node):
         msg.velocity = fields['velocity']
         msg.effort = fields['effort']
         self.joint_pub.publish(msg)
+        return True
 
     def handle_f103_sensor(self, frame: CanFrame) -> None:
         payload = parse_f103_sensor_payload(frame.data)

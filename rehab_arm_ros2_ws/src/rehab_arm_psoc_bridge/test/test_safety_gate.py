@@ -8,7 +8,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from rehab_arm_psoc_bridge.psoc_status import parse_psoc_status_payload
-from rehab_arm_psoc_bridge.safety_gate import psoc_motion_gate_detail
+from rehab_arm_psoc_bridge.safety_gate import (
+    fresh_motor_feedback_gate_detail,
+    psoc_motion_gate_detail,
+)
 
 
 class SafetyGateTests(unittest.TestCase):
@@ -47,6 +50,24 @@ class SafetyGateTests(unittest.TestCase):
 
         self.assertTrue(allowed)
         self.assertEqual(detail, 'PSoC motion_allowed true')
+
+    def test_fresh_motor_feedback_gate_rejects_when_never_seen(self) -> None:
+        allowed, detail = fresh_motor_feedback_gate_detail(None, 1.0, 0)
+
+        self.assertFalse(allowed)
+        self.assertEqual(detail, 'no fresh M33 motor feedback received')
+
+    def test_fresh_motor_feedback_gate_rejects_stale_feedback(self) -> None:
+        allowed, detail = fresh_motor_feedback_gate_detail(1.2, 1.0, 3)
+
+        self.assertFalse(allowed)
+        self.assertEqual(detail, 'fresh M33 motor feedback stale for 1.2s')
+
+    def test_fresh_motor_feedback_gate_accepts_recent_feedback(self) -> None:
+        allowed, detail = fresh_motor_feedback_gate_detail(0.2, 1.0, 3)
+
+        self.assertTrue(allowed)
+        self.assertEqual(detail, 'fresh M33 motor feedback available')
 
 
 if __name__ == '__main__':

@@ -4111,3 +4111,20 @@ Connection reset by 192.168.2.66 port 22
 
 - 先运行 `/home/pi/nanopi_motor_feedback_readiness.sh`，再运行 `SEND_M33_HEARTBEAT=1 /home/pi/nanopi_motor_feedback_readiness.sh`。
 - 如果第二个仍然 0 帧，暂停 ROS 轨迹开发，先恢复 M33 `0x322` 心跳回复。
+
+### stale 电机槽位不能作为轨迹起点
+
+现象：
+
+- M33 可能持续发布 `0x330~0x334`，但 flags 里带 stale。
+- 如果 NanoPi 把 stale 槽位写入 `/joint_states` 或用作 `current_positions`，仿真主机和规划器会以为机器人真实姿态已知。
+
+判断：
+
+- 康复外骨骼不能用“猜的当前位置”开始闭环运动。
+- 正式链路必须先有 M33 `motion_allowed=true`，再有 fresh 电机反馈，才允许轨迹进入 bridge。
+
+技巧：
+
+- `psoc_can_bridge_node.py` 默认启用 `require_fresh_motor_status_for_trajectory=true`。
+- 干跑或台架排查时可以临时关闭 fresh 闸门，但必须同时保持 `enable_target_tx=false`，只验证 ROS 消息流，不发 `0x320`。
