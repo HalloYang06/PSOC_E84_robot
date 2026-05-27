@@ -4073,3 +4073,22 @@ Connection reset by 192.168.2.66 port 22
   `0x321/0x322` 是否存在、`0x330~0x337` 是否存在、只读检查中是否误发 `0x320`。
 - 如果报告 `valid_m33_motor_status_count=0` 且 `target_0x320_count=0`，这是安全的“缺遥测”状态，不是运动链路故障。
 - 先让 M33 固件补齐或打开 `0x330~0x337` 电机状态上报，再继续仿真主机 `/joint_states` 对齐。
+
+### M33 有 stale 电机帧不等于真实电机反馈已回来
+
+现象：
+
+- M33 按 `0x330~0x334` 发布了 5 个电机状态槽位。
+- payload 中 flags 带 `0x10` stale，NanoPi `/rehab_arm/motor_state` 能显示电机条目，但 `/joint_states` 不应该发布这些 stale 姿态。
+- 被动 candump 看不到 3号 CANSimple `0x061/0x069`，也看不到 4~7号灵足 `0x180004FD~0x180007FD` 主动上报。
+
+判断：
+
+- ROS2、NanoPi、M33 状态链路可能是好的；真正缺的是电机侧原始反馈源。
+- stale 帧只能证明 M33 的槽位表和 ROS 映射还活着，不能证明电机供电、CAN 分支、节点 ID 或驱动状态正确。
+
+技巧：
+
+- 用 `feedback_source_readiness <candump> --pretty` 同时看 raw motor feedback 和 M33 fresh/stale。
+- `raw_motor_feedback_ready=false` 时，不要继续发轨迹或调 ROS parser，先查电机侧供电、共地、CANH/CANL、终端、电机 ID、驱动使能状态。
+- `m33_joint_state_ready=false` 时，仿真主机不要期待 `/joint_states`；这可以避免把 0 rad 或 stale 姿态误当成真实机器人状态。

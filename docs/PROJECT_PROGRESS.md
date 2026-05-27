@@ -2040,3 +2040,14 @@
 - Real readonly result for `/tmp/simhost_bridge_readonly.candump`: `0x321=3`, `0x322=3`, `0x320=0`, valid `0x330~0x337=0`, so the current blocker is missing M33 motor telemetry frames rather than ROS2 discovery.
 - Safety: no CAN write, trajectory, M33 command, or motor motion was sent by this checker.
 - Next step: update or configure M33 firmware to emit `0x330~0x337` motor status frames, then rerun this checker before expecting `/motor_state` and `/joint_states` samples on the simulation host.
+
+### 2026-05-27 - Feedback source readiness checker
+
+- Completed: added `feedback_source_readiness.py`, a readonly candump report for现场快速现查.
+- The report separates raw motor feedback sources from ROS-ready M33 telemetry: Sitaiwei CANSimple `0x061/0x069`, Lingzu active reports `0x180004FD~0x180007FD`, M33 `0x330~0x334` stale/fresh status, and unexpected `0x320` target frames.
+- Completed: added the tool to the ROS package entry points and documented the NanoPi command in `docs/USER_MANUAL.md`.
+- Validated locally: feedback readiness, M33 presence, and candump telemetry tests passed `25 passed`; `py_compile` passed.
+- Validated on NanoPi: synced the tool, rebuilt `rehab_arm_psoc_bridge`, confirmed `ros2 run rehab_arm_psoc_bridge feedback_source_readiness.py` is installed, and ran it against `/tmp/feedback_source_readiness.candump`.
+- Live readonly result: `0x330~0x334` were present with correct motor IDs `3/4/5/6/7`, all `240` M33 samples were stale, raw motor feedback count was `0`, `target_0x320_count=0`, and decision was `motor_feedback_source_missing`.
+- Safety: this tool is read-only and does not send CAN, ROS trajectories, BLE commands, or motor commands.
+- Next step: inspect motor-side power/CAN branch/IDs or M33 motor RX path before expecting `/joint_states` or running a trajectory.

@@ -3090,6 +3090,23 @@ ros2 run rehab_arm_psoc_bridge check_m33_motor_status_presence.py \
 
 如果只看到 `0x321/0x322`，说明 NanoPi 和 M33 安全心跳链路是通的，但 M33 当前没有发布电机状态帧；这时不要发布轨迹，先让 M33 固件补齐或打开电机状态上报。
 
+如果要现场快速判断“电机真实反馈源有没有回来”，用只读 readiness 工具：
+
+```bash
+timeout 5s candump -L can0 > /tmp/feedback_source_readiness.candump
+ros2 run rehab_arm_psoc_bridge feedback_source_readiness.py \
+  /tmp/feedback_source_readiness.candump \
+  --pretty
+```
+
+重点看：
+
+- `raw_motor_feedback_ready=true`：CAN 上已经能看到 3号 CANSimple 或 4~7号灵足主动上报。
+- `m33_joint_state_ready=true`：M33 的 `0x330~0x334` 至少有 fresh 样本，仿真主机才可以期待 `/joint_states`。
+- `decision=ready_for_ros_joint_states`：可以继续做 ROS 状态链路验证。
+- `decision=motor_feedback_source_missing`：不要发轨迹，先查电机侧供电、CAN 分支、共地、终端、电机 ID、驱动状态。
+- `target_0x320_count` 必须是 `0`。如果不是 `0`，说明这不是只读采集，不能作为安全 readiness 证据。
+
 ### 7.4 Linux 仿真主机接入前自检
 
 另一台 Linux 主机接入前，先在该主机上运行仿真环境自检：
