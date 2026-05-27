@@ -1008,6 +1008,7 @@ static void ctrl_update_motor_feedback_cansimple(const struct rt_can_msg *msg)
     rt_uint16_t pos_u;
     rt_uint16_t vel_u;
     rt_uint16_t tor_u;
+    rt_bool_t feedback_updated = RT_FALSE;
 
     if ((msg == RT_NULL) || (msg->ide != RT_CAN_STDID) || (msg->len < 1U))
     {
@@ -1084,7 +1085,6 @@ static void ctrl_update_motor_feedback_cansimple(const struct rt_can_msg *msg)
     fb = s_motor_feedback[idx];
     fb.motor_id = node_id;
     fb.protocol = CONTROL_MOTOR_PROTOCOL_TYPE_CANSIMPLE;
-    fb.timestamp = rt_tick_get();
 
     switch (cmd_id)
     {
@@ -1098,6 +1098,7 @@ static void ctrl_update_motor_feedback_cansimple(const struct rt_can_msg *msg)
             {
                 fb.temp_c = (float)((rt_int8_t)msg->data[6]);
             }
+            feedback_updated = RT_TRUE;
         }
         break;
 
@@ -1124,6 +1125,7 @@ static void ctrl_update_motor_feedback_cansimple(const struct rt_can_msg *msg)
                                               CONTROL_CANSIMPLE_MIT_T_MIN_NM,
                                               CONTROL_CANSIMPLE_MIT_T_MAX_NM,
                                               12);
+            feedback_updated = RT_TRUE;
         }
         break;
 
@@ -1135,6 +1137,7 @@ static void ctrl_update_motor_feedback_cansimple(const struct rt_can_msg *msg)
 
             fb.pos_rad = ctrl_motor_to_joint_position((rt_uint8_t)(idx + 1), motor_pos_rad);
             fb.vel_rad_s = ctrl_motor_to_joint_velocity((rt_uint8_t)(idx + 1), motor_vel_rad_s);
+            feedback_updated = RT_TRUE;
         }
         break;
 
@@ -1142,6 +1145,7 @@ static void ctrl_update_motor_feedback_cansimple(const struct rt_can_msg *msg)
         if (msg->len >= 8U)
         {
             fb.torque_nm = ctrl_float_from_le(&msg->data[4]);
+            feedback_updated = RT_TRUE;
         }
         break;
 
@@ -1149,7 +1153,11 @@ static void ctrl_update_motor_feedback_cansimple(const struct rt_can_msg *msg)
         break;
     }
 
-    s_motor_feedback[idx] = fb;
+    if (feedback_updated)
+    {
+        fb.timestamp = rt_tick_get();
+        s_motor_feedback[idx] = fb;
+    }
     rt_mutex_release(&s_data_lock);
 }
 
