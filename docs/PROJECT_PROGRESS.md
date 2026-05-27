@@ -1845,3 +1845,14 @@
 - Validated on NanoPi: `ACTIVE_REPORT_MOTOR=none ... /home/pi/nanopi_live_telemetry_check.sh` passed; it saw M33 `0x322`, `/rehab_arm/motor_state`, `/joint_states`, and no unexpected `0x320` target frames.
 - Safety: no motion commands or `JointTrajectory` were sent in this task.
 - Next step: when C8T6 is connected, run a fresh live check plus `hardware_telemetry` recording profile and require `/rehab_arm/sensor_state`.
+
+### 2026-05-27 - C8T6/F103 sensor JSON contract prepared offline
+
+- Completed: added `f103_sensor_state.py` with parsers for C8T6/F103 `0x7C2` sensor frames and `0x7C3` health frames.
+- Completed: `psoc_can_bridge_node.py` now publishes structured `/rehab_arm/sensor_state` JSON for those frames instead of only raw hex fields.
+- Defined: `0x7C2` outputs `rehab_arm_sensor_state_v1` with EMG raw/filter, heart-rate raw/bpm, validity flags, and `control_boundary=telemetry_only_not_motion_permission`.
+- Defined: `0x7C3` outputs `rehab_arm_sensor_health_v1` with state, error count, queue fill, and the same telemetry-only boundary.
+- Validated locally: `test_f103_sensor_state.py` passed 4 tests; `py_compile` passed for the new parser and bridge node.
+- Validated on NanoPi: copied the files, ran the new unit test, rebuilt `rehab_arm_psoc_bridge`, and confirmed installed parser import decodes a sample heart rate as `75`.
+- Safety: no CAN motion or C8T6 control command was sent; this was an offline contract/readiness change.
+- Next step: when C8T6 is physically connected, passively capture `0x7C2/0x7C3`, confirm `/rehab_arm/sensor_state`, then run `hardware_telemetry` recording validation.

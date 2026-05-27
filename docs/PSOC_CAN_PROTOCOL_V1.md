@@ -184,6 +184,70 @@ NanoPi 侧映射：
 - `0x330` 对应 slot 0，`0x337` 对应 slot 7；slot 到真实关节的最终映射仍需 M33/机械装配确认。
 - 运动是否允许仍以 `0x322` safety/status 和 M33 内部安全状态机为准。
 
+## `0x7C2/0x7C3` F103/C8T6 Sensor State
+
+这是 C8T6/F103 传感节点的第一版 NanoPi 解析合同。当前解析器已在 NanoPi ROS bridge 中实现为 `/rehab_arm/sensor_state` JSON；它只用于数据采集、平台显示、M55/VLA 输入和后续标注，不提供运动许可。
+
+### `0x7C2` Sensor Frame
+
+Payload V1:
+
+| Byte | 字段 | 类型 | 说明 |
+|---:|---|---|---|
+| 0..1 | `emg_raw` | `uint16` little-endian | 肌电原始采样 |
+| 2..3 | `emg_filtered` | `int16` little-endian | 肌电滤波值 |
+| 4..5 | `heart_rate_raw` | `uint16` little-endian | 心率/PPG 原始值 |
+| 6 | `heart_rate_bpm` | `uint8` | 心率 bpm |
+| 7 | `flags` | `uint8` | bit0 EMG 接触有效，bit1 IMU 有效，bit2 心率有效 |
+
+NanoPi 发布示例字段：
+
+```json
+{
+  "schema_version": "rehab_arm_sensor_state_v1",
+  "source": "f103_sensor",
+  "id_hex": "0x7C2",
+  "valid": true,
+  "emg_raw": 4660,
+  "emg_filtered": -42,
+  "heart_rate_raw": 43981,
+  "heart_rate_bpm": 75,
+  "flags_hex": "0x07",
+  "emg_contact": true,
+  "imu_valid": true,
+  "heart_rate_valid": true,
+  "control_boundary": "telemetry_only_not_motion_permission"
+}
+```
+
+### `0x7C3` Health Frame
+
+Payload V1:
+
+| Byte | 字段 | 类型 | 说明 |
+|---:|---|---|---|
+| 0 | `state_code` | `uint8` | `0 boot`, `1 ok`, `2 streaming`, `3 limited`, `4 fault` |
+| 1..2 | `error_count` | `uint16` little-endian | 节点累计错误计数 |
+| 3 | `queue_fill` | `uint8` | 发送/采样队列占用，0-255 |
+
+NanoPi 发布示例字段：
+
+```json
+{
+  "schema_version": "rehab_arm_sensor_health_v1",
+  "source": "f103_health",
+  "id_hex": "0x7C3",
+  "valid": true,
+  "state": "streaming",
+  "error_count": 3,
+  "queue_fill": 128,
+  "queue_fill_percent": 50.2,
+  "control_boundary": "telemetry_only_not_motion_permission"
+}
+```
+
+短帧会保留 `data` 原始 hex，并输出 `valid=false/detail=short_frame`。App、平台、M55、VLA 不得把传感器健康或传感值正常当作运动许可；是否运动仍只看 M33 `0x322 motion_allowed` 和 M33 内部安全状态。
+
 ## `0x320` Joint Target Command
 
 当前 NanoPi dry-run 编码格式：

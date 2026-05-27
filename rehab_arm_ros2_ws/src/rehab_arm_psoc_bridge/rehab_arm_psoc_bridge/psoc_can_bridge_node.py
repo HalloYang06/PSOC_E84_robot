@@ -18,6 +18,10 @@ from sensor_msgs.msg import JointState
 from std_msgs.msg import String
 from trajectory_msgs.msg import JointTrajectory
 
+from rehab_arm_psoc_bridge.f103_sensor_state import (
+    parse_f103_health_payload,
+    parse_f103_sensor_payload,
+)
 from rehab_arm_psoc_bridge.psoc_motor_status import (
     M33MotorStatusAggregator,
     is_m33_motor_status_id,
@@ -391,25 +395,11 @@ class PsocCanBridgeNode(Node):
         self.joint_pub.publish(msg)
 
     def handle_f103_sensor(self, frame: CanFrame) -> None:
-        payload = {'source': 'f103', 'id_hex': '0x7C2', 'data': frame.data.hex().upper()}
-        if len(frame.data) >= 8:
-            payload.update({
-                'emg_raw': int.from_bytes(frame.data[0:2], 'little', signed=False),
-                'emg_filtered': int.from_bytes(frame.data[2:4], 'little', signed=True),
-                'hr_raw': int.from_bytes(frame.data[4:6], 'little', signed=False),
-                'heart_rate': frame.data[6],
-                'flags': frame.data[7],
-            })
+        payload = parse_f103_sensor_payload(frame.data)
         self.sensor_pub.publish(String(data=json.dumps(payload, separators=(',', ':'))))
 
     def handle_f103_health(self, frame: CanFrame) -> None:
-        payload = {'source': 'f103_health', 'id_hex': '0x7C3', 'data': frame.data.hex().upper()}
-        if len(frame.data) >= 4:
-            payload.update({
-                'state': frame.data[0],
-                'error_count': int.from_bytes(frame.data[1:3], 'little'),
-                'queue_fill': frame.data[3],
-            })
+        payload = parse_f103_health_payload(frame.data)
         self.sensor_pub.publish(String(data=json.dumps(payload, separators=(',', ':'))))
 
     def publish_joint_state(self) -> None:

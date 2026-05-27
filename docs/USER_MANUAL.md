@@ -2711,6 +2711,22 @@ timeout 3 candump -L can0,7C0:7F0
 - 如果 3号在线，能看到 CANSimple `0x061/0x069`。
 - 如果 C8T6 未接入，`0x7C2/0x7C3` 可以暂时为 0；接入 C8T6 后必须重新验证。
 
+C8T6/F103 接入后，`0x7C2` 会被 NanoPi bridge 转成 `/rehab_arm/sensor_state` 的 `rehab_arm_sensor_state_v1` JSON：
+
+- `emg_raw`：肌电原始采样。
+- `emg_filtered`：肌电滤波值。
+- `heart_rate_raw`：心率/PPG 原始值。
+- `heart_rate_bpm`：心率 bpm。
+- `flags_hex`、`emg_contact`、`imu_valid`、`heart_rate_valid`：传感有效性。
+
+`0x7C3` 会转成 `rehab_arm_sensor_health_v1` JSON：
+
+- `state`：`boot/ok/streaming/limited/fault/unknown`。
+- `error_count`：传感节点错误计数。
+- `queue_fill_percent`：队列占用百分比。
+
+注意：这些字段只用于数据采集、显示、标注和模型输入，不能作为运动许可。是否允许运动仍只看 M33 `/rehab_arm/safety_state.motion_allowed`。
+
 启动只读 ROS bridge 和 recorder：
 
 ```bash
