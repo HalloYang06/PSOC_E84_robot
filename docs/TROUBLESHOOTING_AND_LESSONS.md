@@ -3727,3 +3727,20 @@ Connection reset by 192.168.2.66 port 22
 
 - 远端多行脚本适合做构建、复制、较长流程；但带枚举参数的最后验收命令，优先用单行 SSH 或在远端脚本内清理 CRLF。
 - 如果看到候选值里明明有同名选项，却提示 `invalid choice`，优先检查参数末尾是否有隐藏 `\r`。
+
+### PowerShell 中 `ssh -o` 可能被误解析
+
+现象：
+
+- 在 PowerShell 里直接运行复杂 `ssh -o BatchMode=yes ...` 命令时，报错类似：
+  `A value that is not valid (BatchMode=yes) was specified for the outputFormat parameter.`
+
+判断：
+
+- PowerShell 把 `-o` 当成自己的参数解析了，命令没有真正发到 NanoPi。
+
+技巧：
+
+- 简单远程命令可以用 `ssh.exe --% -o BatchMode=yes ...`。
+- 复杂多行远程命令优先用 PowerShell here-string 管道到 `ssh.exe --% ... bash -s`。
+- 如果命令里包含枚举参数，注意上一条 CRLF 问题，必要时用单行 SSH 重跑最后的验证命令。

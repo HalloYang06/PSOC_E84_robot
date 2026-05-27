@@ -1866,3 +1866,15 @@
 - Validated: local CLI smoke produced a JSON report with `ok=false` on Windows because `rclpy` is not installed, and correctly listed ROS2/rclpy remediation under `missing_actions`.
 - Docs: updated the ROS2 simulation guide and user manual with the readiness report workflow.
 - Next step: when the Linux simulation host is available, run `ros2 run rehab_arm_sim_mujoco check_sim_env --pretty --output sim_readiness_report.json`, then follow `missing_actions` until readiness is at least `ready_with_fallback_sim`.
+
+### 2026-05-27 - Motor7 formal joint4 10 degree live motion
+
+- Completed: user allowed moving 7号; interpreted as known motor7, not nonexistent motor77.
+- Precheck: NanoPi `can0` was `UP/LOWER_UP`, classic CAN 1Mbps, `ERROR-ACTIVE`, tx/rx error counters `0/0`.
+- Completed: sent formal M33 path command `m33 target --joint 4 --deg 10 --rpm 1 --torque-ma 0`, waited about 3s, then sent `m33 stop --joint 4`.
+- Validated: NanoPi emitted `0x320#0304640001000000` for joint4 target and `0x320#020400` for stop.
+- Validated: M33 emitted RobStride CSP frames for motor7: `0x1200FD07` run_mode `5`, `0x1200FD07` limit speed, `0x1200FD07` `loc_ref`, followed by stop `0x0400FD07`.
+- Validated: no old MIT control frame `0x01800007` appeared in the filtered control-frame summary.
+- Observed: M33 motor7 aggregate `0x336` changed from `position_mrad=-73` to about `174`, about `247 mrad` or `14.1°`; user should visually confirm whether this matches expected bench motion.
+- Safety: sent stop after the move; post-test `can0` remained `ERROR-ACTIVE`, tx/rx error counters `0/0`; M33 heartbeat still returned `state=ok/control_mode=bench_armed/motion_allowed=false`.
+- Next step: if the visible motion direction is correct, repeat with a smaller closed-loop validation sequence `+5°/-5°` and compare M33 `0x336` delta to commanded joint degrees before moving larger angles.
