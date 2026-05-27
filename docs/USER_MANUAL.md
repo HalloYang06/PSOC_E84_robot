@@ -665,6 +665,11 @@ python3 /home/pi/nanopi_can_master.py cansimple address --iface can0 --wait 0.8
 - 只看到 NanoPi 发出的 `0x063#00` 或 broadcast `0x7E6#`，不能证明 3 号在线。
 - M33 最新固件要求：如果没有真实 `0x061/0x069`，`0x330` 仍应保持 `flags bit4=stale`；主机查询帧不能把它刷新成 fresh。
 
+已验证通过的安全现象：
+
+- 发 `0x063#00` 后，如果总线上没有 `0x061/0x069`，`0x330` 仍保持 `B3 xx 03 10 00 00 00 FF`。
+- 这表示 motor3 状态仍是 stale，NanoPi 不应发布对应 `/joint_states`。
+
 如果需要 M33 串口手动触发一次缓存上报，可在 M33 shell 运行：
 
 ```text
