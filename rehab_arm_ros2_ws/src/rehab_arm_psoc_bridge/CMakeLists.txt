@@ -31,6 +31,7 @@ install(PROGRAMS
   rehab_arm_psoc_bridge/check_server_quality_gate.py
   rehab_arm_psoc_bridge/sync_test_server.py
   rehab_arm_psoc_bridge/candump_motor_telemetry.py
+  rehab_arm_psoc_bridge/check_m33_motor_status_presence.py
   rehab_arm_psoc_bridge/calibration_observation.py
   rehab_arm_psoc_bridge/motion_test_report.py
   rehab_arm_psoc_bridge/bench_motion_sequence.py

@@ -129,6 +129,28 @@ No `0x320` trajectory target frame was observed. No motor control frame was sent
 
 `/rehab_arm/motor_state` and `/joint_states` did not produce a sample during the short check because the bus only showed `0x321/0x322`; no M33 motor status frame was present in that window.
 
+Use the dedicated readonly checker to make this condition explicit:
+
+```bash
+ros2 run rehab_arm_psoc_bridge check_m33_motor_status_presence.py \
+  /tmp/simhost_bridge_readonly.candump \
+  --pretty \
+  --output /tmp/simhost_bridge_motor_status_presence.json
+```
+
+Current result:
+
+```text
+ok=false
+heartbeat_0x321_count=3
+psoc_status_0x322_count=3
+target_0x320_count=0
+valid_m33_motor_status_count=0
+missing_expected_m33_motor_status_ids=0x330..0x337
+```
+
+This is a useful safe failure: it proves the bridge/network can see M33 status and that no trajectory target was sent, while also proving M33 motor telemetry is not yet available to the simulation host.
+
 ## Safety Boundary
 
 These tests only use ROS2 demo/string topics.

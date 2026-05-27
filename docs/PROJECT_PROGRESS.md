@@ -1959,3 +1959,13 @@
 - Observed: short candump showed only `0x321` heartbeat and `0x322` M33 status; no `0x320` target or motor control frames. `/motor_state` and `/joint_states` had no sample during the short check because no M33 motor status frame appeared.
 - Safety: no trajectory was published and no motor motion command was sent; the target-disabled bridge process was stopped after validation.
 - Next step: make M33 publish motor status frames or enable the expected status source, then verify `/rehab_arm/motor_state` and `/joint_states` from the simulation host before any trajectory test.
+
+### 2026-05-27 - M33 motor status presence checker
+
+- Completed: added `check_m33_motor_status_presence.py`, a readonly candump checker for expected M33 motor telemetry IDs `0x330~0x337`.
+- The report also counts `0x321` NanoPi heartbeat, `0x322` M33/PSoC status, and rejects unexpected `0x320` target frames during readonly checks.
+- Validated locally: presence checker, candump telemetry, and synthetic M33 status tests passed 28 tests; `py_compile` and `git diff --check` passed.
+- Validated on NanoPi: rebuilt `rehab_arm_psoc_bridge`; the new executable is visible through `ros2 pkg executables`; the new unit test passed.
+- Real readonly result for `/tmp/simhost_bridge_readonly.candump`: `0x321=3`, `0x322=3`, `0x320=0`, valid `0x330~0x337=0`, so the current blocker is missing M33 motor telemetry frames rather than ROS2 discovery.
+- Safety: no CAN write, trajectory, M33 command, or motor motion was sent by this checker.
+- Next step: update or configure M33 firmware to emit `0x330~0x337` motor status frames, then rerun this checker before expecting `/motor_state` and `/joint_states` samples on the simulation host.

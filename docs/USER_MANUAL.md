@@ -3000,6 +3000,23 @@ ACTIVE_REPORT_MOTOR=none SNAPSHOT_SECONDS=2 ECHO_TIMEOUT_SECONDS=8 BUILD_WORKSPA
 - 能收到 `/rehab_arm/motor_state` 和 `/joint_states`。
 - `unexpected 0x320 frames` 为空。
 
+如果仿真主机或 NanoPi 只能看到 `/rehab_arm/safety_state`，但 `/rehab_arm/motor_state`、`/joint_states` 没有样本，先做只读 candump，再检查 M33 电机状态帧是否存在：
+
+```bash
+timeout 3s candump -L can0 > /tmp/readonly_motor_status_check.candump
+ros2 run rehab_arm_psoc_bridge check_m33_motor_status_presence.py \
+  /tmp/readonly_motor_status_check.candump \
+  --pretty
+```
+
+通过标准：
+
+- `valid_m33_motor_status_count > 0`。
+- `target_0x320_count = 0`。
+- `observed_ids` 至少包含 M33 电机状态 ID `0x330~0x337` 中的一个。
+
+如果只看到 `0x321/0x322`，说明 NanoPi 和 M33 安全心跳链路是通的，但 M33 当前没有发布电机状态帧；这时不要发布轨迹，先让 M33 固件补齐或打开电机状态上报。
+
 ### 7.4 Linux 仿真主机接入前自检
 
 另一台 Linux 主机接入前，先在该主机上运行仿真环境自检：

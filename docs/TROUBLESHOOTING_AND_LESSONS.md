@@ -3884,3 +3884,23 @@ Connection reset by 192.168.2.66 port 22
 - 在仿真主机仓库中：
   `git fetch /tmp/rehab_arm_feature.bundle feature/rehab-arm-ros2-architecture`
   然后 checkout/fast-forward 到 `FETCH_HEAD`。
+
+### 仿真主机能看到 topic 但 `/motor_state` 没样本时先查 `0x330~0x337`
+
+现象：
+
+- 仿真主机能发现 `/rehab_arm/motor_state`、`/joint_states`、`/rehab_arm/safety_state` 等 topic。
+- `/rehab_arm/safety_state` 有样本，但 `/rehab_arm/motor_state` 和 `/joint_states` 等不到样本。
+- 只读 candump 只看到 `0x321` 和 `0x322`。
+
+判断：
+
+- ROS2 DDS 已通，NanoPi bridge 已启动，M33 安全状态链路也通。
+- 当前缺的是 M33 电机状态遥测帧；bridge 期望 `0x330~0x337`，8 字节，marker `0xB3`。
+
+技巧：
+
+- 用 `check_m33_motor_status_presence.py <candump> --pretty` 专门判断：
+  `0x321/0x322` 是否存在、`0x330~0x337` 是否存在、只读检查中是否误发 `0x320`。
+- 如果报告 `valid_m33_motor_status_count=0` 且 `target_0x320_count=0`，这是安全的“缺遥测”状态，不是运动链路故障。
+- 先让 M33 固件补齐或打开 `0x330~0x337` 电机状态上报，再继续仿真主机 `/joint_states` 对齐。
