@@ -100,6 +100,8 @@ ros2 run rehab_arm_psoc_bridge psoc_can_bridge_node.py --ros-args \
   -p enable_target_tx:=false
 ```
 
+After the readonly validation, the bridge process was stopped so NanoPi would not keep sending heartbeat frames in the background.
+
 From the simulation host, these topics were visible:
 
 ```text

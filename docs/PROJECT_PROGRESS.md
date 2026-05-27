@@ -1957,5 +1957,5 @@
 - Validated: NanoPi `can0` was brought up as classic CAN 1 Mbps, `ERROR-ACTIVE`, tx/rx counters `0/0`; bridge started with `enable_target_tx=false`.
 - Validated from simulation host: ROS topics `/arm_controller/joint_trajectory`, `/joint_states`, `/rehab_arm/motor_state`, `/rehab_arm/safety_state`, and `/rehab_arm/sensor_state` were discoverable; `/rehab_arm/safety_state` produced a sample.
 - Observed: short candump showed only `0x321` heartbeat and `0x322` M33 status; no `0x320` target or motor control frames. `/motor_state` and `/joint_states` had no sample during the short check because no M33 motor status frame appeared.
-- Safety: no trajectory was published and no motor motion command was sent.
+- Safety: no trajectory was published and no motor motion command was sent; the target-disabled bridge process was stopped after validation.
 - Next step: make M33 publish motor status frames or enable the expected status source, then verify `/rehab_arm/motor_state` and `/joint_states` from the simulation host before any trajectory test.
