@@ -10,18 +10,67 @@ from pathlib import Path
 
 DEFAULT_MASTER = '/home/pi/nanopi_can_master.py'
 CONTROL_BOUNDARY = 'formal_m33_path_requires_onsite_confirmation'
+EXECUTION_ALLOWED_MOTOR_IDS = {3, 7}
+
+MOTOR_PROFILES: dict[int, dict[str, object]] = {
+    3: {
+        'joint_id': 0,
+        'joint_name': 'shoulder_lift_joint',
+        'vendor': 'Sitaiwei',
+        'model': 'CANSimple/ODrive-like',
+        'test_status': 'bench_test_allowed',
+    },
+    4: {
+        'joint_id': 1,
+        'joint_name': 'elbow_lift_joint',
+        'vendor': 'Lingzu',
+        'model': 'RS00',
+        'test_status': 'configured_not_test_allowed_yet',
+    },
+    5: {
+        'joint_id': 2,
+        'joint_name': 'shoulder_abduction_joint',
+        'vendor': 'Lingzu',
+        'model': 'RS00',
+        'test_status': 'configured_not_test_allowed_yet',
+    },
+    6: {
+        'joint_id': 3,
+        'joint_name': 'upper_arm_rotation_joint',
+        'vendor': 'Lingzu',
+        'model': 'EL05',
+        'test_status': 'configured_not_test_allowed_yet',
+    },
+    7: {
+        'joint_id': 4,
+        'joint_name': 'forearm_rotation_joint',
+        'vendor': 'Lingzu',
+        'model': 'EL05',
+        'test_status': 'bench_test_allowed',
+    },
+}
+
+
+def motor_profile(motor_id: int) -> dict[str, object]:
+    try:
+        return dict(MOTOR_PROFILES[motor_id])
+    except KeyError as exc:
+        choices = ', '.join(str(item) for item in sorted(MOTOR_PROFILES))
+        raise ValueError(f'unknown motor_id {motor_id}; expected one of: {choices}') from exc
 
 
 def build_motion_sequence_plan(
     *,
-    joint_id: int,
     motor_id: int,
     degrees: list[float],
     rpm: int,
     hold_sec: float,
     iface: str,
     master_path: str = DEFAULT_MASTER,
+    joint_id: int | None = None,
 ) -> dict[str, object]:
+    profile = motor_profile(motor_id)
+    resolved_joint_id = int(profile['joint_id'] if joint_id is None else joint_id)
     commands: list[dict[str, object]] = []
     commands.append({
         'kind': 'precheck_heartbeat',
@@ -35,7 +84,7 @@ def build_motion_sequence_plan(
             'argv': [
                 'python3', master_path, 'm33', 'target',
                 '--iface', iface,
-                '--joint', str(joint_id),
+                '--joint', str(resolved_joint_id),
                 '--deg', format_float(deg),
                 '--rpm', str(rpm),
                 '--torque-ma', '0',
@@ -53,7 +102,7 @@ def build_motion_sequence_plan(
             'argv': [
                 'python3', master_path, 'm33', 'stop',
                 '--iface', iface,
-                '--joint', str(joint_id),
+                '--joint', str(resolved_joint_id),
                 '--wait', '0.3',
             ],
         })
@@ -64,7 +113,12 @@ def build_motion_sequence_plan(
     return {
         'schema_version': 'rehab_arm_bench_motion_sequence_v1',
         'motor_id': motor_id,
-        'joint_id': joint_id,
+        'joint_id': resolved_joint_id,
+        'motor_profile': profile,
+        'available_motor_profiles': {
+            str(key): value for key, value in sorted(MOTOR_PROFILES.items())
+        },
+        'execution_allowed_motor_ids': sorted(EXECUTION_ALLOWED_MOTOR_IDS),
         'iface': iface,
         'rpm': rpm,
         'hold_sec': hold_sec,
@@ -76,6 +130,7 @@ def build_motion_sequence_plan(
         'safety_notes': [
             'Run only on an unloaded bench with a human on site watching the mechanism.',
             'Do not run while worn by a patient.',
+            'Current execution allowlist is motor 3 and motor 7 only; motors 4/5/6 are configured for planning but not live tests yet.',
             'Use motion_test_report.py on the candump log before increasing angle or speed.',
         ],
     }
@@ -132,8 +187,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description='Generate or execute a guarded bench motion sequence through the formal M33 path.',
     )
-    parser.add_argument('--joint-id', type=int, default=4)
+    parser.add_argument('--joint-id', type=int, help='Override profile joint id. Normally leave unset.')
     parser.add_argument('--motor-id', type=int, default=7)
+    parser.add_argument('--list-motors', action='store_true', help='Print known motor profiles and exit.')
     parser.add_argument('--degrees', type=parse_degrees, default=parse_degrees('5,-5'))
     parser.add_argument('--rpm', type=int, default=1)
     parser.add_argument('--hold-sec', type=float, default=2.0)
@@ -149,19 +205,38 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--output', help='Optional path to write the plan/result JSON.')
     args = parser.parse_args(argv)
 
-    plan = build_motion_sequence_plan(
-        joint_id=args.joint_id,
-        motor_id=args.motor_id,
-        degrees=args.degrees,
-        rpm=args.rpm,
-        hold_sec=args.hold_sec,
-        iface=args.iface,
-        master_path=args.master_path,
-    )
+    if args.list_motors:
+        return emit(
+            {
+                'schema_version': 'rehab_arm_motor_profiles_v1',
+                'profiles': {str(key): value for key, value in sorted(MOTOR_PROFILES.items())},
+                'execution_allowed_motor_ids': sorted(EXECUTION_ALLOWED_MOTOR_IDS),
+            },
+            args.pretty,
+            args.output,
+            returncode=0,
+        )
+
+    try:
+        plan = build_motion_sequence_plan(
+            joint_id=args.joint_id,
+            motor_id=args.motor_id,
+            degrees=args.degrees,
+            rpm=args.rpm,
+            hold_sec=args.hold_sec,
+            iface=args.iface,
+            master_path=args.master_path,
+        )
+    except ValueError as exc:
+        return emit({'ok': False, 'error': str(exc)}, args.pretty, args.output, returncode=2)
     if args.execute:
         if not args.confirm_onsite:
             plan['ok'] = False
             plan['error'] = '--execute requires --confirm-onsite'
+            return emit(plan, args.pretty, args.output, returncode=2)
+        if args.motor_id not in EXECUTION_ALLOWED_MOTOR_IDS:
+            plan['ok'] = False
+            plan['error'] = f'motor {args.motor_id} is not in execution allowlist {sorted(EXECUTION_ALLOWED_MOTOR_IDS)}'
             return emit(plan, args.pretty, args.output, returncode=2)
         plan['execution_results'] = run_motion_sequence(plan)
         plan['ok'] = all(item.get('ok') is True for item in plan['execution_results'])

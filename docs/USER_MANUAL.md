@@ -2704,7 +2704,21 @@ ros2 run rehab_arm_psoc_bridge motion_test_report.py \
 
 ### 6.7.5 台架运动序列工具
 
-需要重复验证 7号电机方向和角度时，先生成计划，不要直接执行：
+需要重复验证电机方向和角度时，先生成计划，不要直接执行。当前统一电机表包含 3/4/5/6/7，但执行白名单只有 3号和 7号：
+
+```bash
+ros2 run rehab_arm_psoc_bridge bench_motion_sequence.py --list-motors --pretty
+```
+
+当前配置：
+
+| motor_id | joint_id | joint name | 电机 | 测试状态 |
+|---:|---:|---|---|---|
+| 3 | 0 | `shoulder_lift_joint` | 伺泰威 CANSimple/ODrive-like | 允许台架测试 |
+| 4 | 1 | `elbow_lift_joint` | 灵足 RS00 | 只配置，不允许执行 |
+| 5 | 2 | `shoulder_abduction_joint` | 灵足 RS00 | 只配置，不允许执行 |
+| 6 | 3 | `upper_arm_rotation_joint` | 灵足 EL05 | 只配置，不允许执行 |
+| 7 | 4 | `forearm_rotation_joint` | 灵足 EL05 | 允许台架测试 |
 
 ```bash
 source /opt/ros/jazzy/setup.bash
@@ -2736,6 +2750,8 @@ ros2 run rehab_arm_psoc_bridge bench_motion_sequence.py \
   --rpm 1 \
   --hold-sec 2
 ```
+
+如果指定 `--motor-id 4/5/6 --execute --confirm-onsite`，工具也会拒绝执行。等 4/5/6 机械安装、限位、方向和风险评估完成后，再显式放开。
 
 执行后必须保存 `candump -L` 日志，再用 `motion_test_report.py` 复盘。人不在现场时不要带 `--execute`。
 

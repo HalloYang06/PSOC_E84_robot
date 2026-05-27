@@ -1900,3 +1900,14 @@
 - Validated on NanoPi: synced the script, ran its unit tests, rebuilt `rehab_arm_psoc_bridge`, and confirmed `ros2 run rehab_arm_psoc_bridge bench_motion_sequence.py --pretty` prints the dry-run plan.
 - Safety: no new motor motion was sent because the user is not on site.
 - Next step: when a human is on site, execute the guarded sequence only with `--execute --confirm-onsite`, capture candump, then validate it with `motion_test_report.py`.
+
+### 2026-05-27 - Unified motor profile table, test only 3 and 7
+
+- Decision: keep one unified motor profile table for all known motors instead of separate ad-hoc tools per motor.
+- Completed: `bench_motion_sequence.py` now defines profiles for motor `3/4/5/6/7` with joint mapping, vendor, model and test status.
+- Current mapping: motor3 -> joint0 Sitaiwei CANSimple/ODrive-like; motor4 -> joint1 Lingzu RS00; motor5 -> joint2 Lingzu RS00; motor6 -> joint3 Lingzu EL05; motor7 -> joint4 Lingzu EL05.
+- Safety: execution allowlist is only motor `3` and motor `7`; motors `4/5/6` can be listed and planned but are rejected if `--execute` is used.
+- Validated locally: `test_bench_motion_sequence.py` passed 6 tests; `--list-motors` prints all profiles; `--motor-id 4 --execute --confirm-onsite` returns an allowlist rejection.
+- Validated on NanoPi: synced the updated tool, ran the 6 tests, rebuilt `rehab_arm_psoc_bridge`, and confirmed `ros2 run ... --list-motors --pretty` lists all five motors with execution allowlist `[3, 7]`.
+- Safety: no motion commands were sent.
+- Next step: when on site, test only motor7 and motor3 using the guarded sequence plus candump report; do not test 4/5/6 until their mechanical limits and risk review are ready.

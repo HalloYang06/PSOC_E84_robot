@@ -3778,3 +3778,20 @@ Connection reset by 192.168.2.66 port 22
 - 远程无人现场时，只允许做 dry-run 计划、日志复盘、数据工具、仿真和文档。
 - `bench_motion_sequence.py` 默认只输出计划；真实执行必须同时带 `--execute --confirm-onsite`。
 - 执行后必须保存 candump，并用 `motion_test_report.py` 检查 target、CSP、stop、无 MIT 旧帧，再决定下一步。
+
+### 电机工具要统一配置，但执行分级放行
+
+现象：
+
+- 如果每个电机各写一套测试命令，后面很容易出现 3号、7号能跑，4/5/6 却映射、限位和文档不同步。
+
+判断：
+
+- 所有电机应该进入同一张 profile 表，包含 `motor_id -> joint_id -> joint_name -> vendor/model -> test_status`。
+- 但统一配置不等于全部允许运动。当前只允许执行 3号和 7号，4/5/6 只能 dry-run 计划。
+
+技巧：
+
+- `bench_motion_sequence.py --list-motors --pretty` 是查看当前权威测试表的入口。
+- 如果误对 4/5/6 加 `--execute --confirm-onsite`，工具应拒绝，并提示不在 allowlist。
+- 要放开 4/5/6，必须先补机械限位、方向、小角度台架验证和风险记录，不要直接改 allowlist。
