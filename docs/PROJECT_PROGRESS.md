@@ -1911,3 +1911,12 @@
 - Validated on NanoPi: synced the updated tool, ran the 6 tests, rebuilt `rehab_arm_psoc_bridge`, and confirmed `ros2 run ... --list-motors --pretty` lists all five motors with execution allowlist `[3, 7]`.
 - Safety: no motion commands were sent.
 - Next step: when on site, test only motor7 and motor3 using the guarded sequence plus candump report; do not test 4/5/6 until their mechanical limits and risk review are ready.
+
+### 2026-05-27 - Shared motor profiles module
+
+- Completed: extracted the known motor table into `motor_profiles.py` so ROS tools, platform sync, App docs, and M33 safety exports can share one source of truth.
+- Completed: `bench_motion_sequence.py --list-motors` now uses the shared payload instead of a private duplicated table.
+- Current table: motor3 Sitaiwei CANSimple gear ratio `48`; motors4/5 Lingzu RS00; motors6/7 Lingzu EL05; execution allowlist remains `[3, 7]`.
+- Validated locally: motor profile tests and bench motion sequence tests passed; `py_compile` and `git diff --check` passed.
+- Safety: no NanoPi, CAN, M33, or motor motion was used in this step.
+- Next step: sync this shared module to NanoPi and verify dry-run/list only after the board is available; do not execute motion without an on-site human.

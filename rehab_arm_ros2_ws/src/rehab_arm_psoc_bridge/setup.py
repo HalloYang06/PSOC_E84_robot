@@ -44,6 +44,7 @@ setup(
             'build_ble_m33_safety_package = rehab_arm_psoc_bridge.build_ble_m33_safety_package:main',
             'motion_test_report = rehab_arm_psoc_bridge.motion_test_report:main',
             'bench_motion_sequence = rehab_arm_psoc_bridge.bench_motion_sequence:main',
+            'motor_profiles = rehab_arm_psoc_bridge.motor_profiles:main',
         ],
     },
 )

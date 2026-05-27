@@ -7,56 +7,23 @@ import subprocess
 import time
 from pathlib import Path
 
+try:
+    from rehab_arm_psoc_bridge.motor_profiles import (
+        EXECUTION_ALLOWED_MOTOR_IDS,
+        MOTOR_PROFILES,
+        motor_profile,
+        motor_profiles_payload,
+    )
+except ModuleNotFoundError:  # Allows direct `python bench_motion_sequence.py` during bench debugging.
+    from motor_profiles import (  # type: ignore[no-redef]
+        EXECUTION_ALLOWED_MOTOR_IDS,
+        MOTOR_PROFILES,
+        motor_profile,
+        motor_profiles_payload,
+    )
 
 DEFAULT_MASTER = '/home/pi/nanopi_can_master.py'
 CONTROL_BOUNDARY = 'formal_m33_path_requires_onsite_confirmation'
-EXECUTION_ALLOWED_MOTOR_IDS = {3, 7}
-
-MOTOR_PROFILES: dict[int, dict[str, object]] = {
-    3: {
-        'joint_id': 0,
-        'joint_name': 'shoulder_lift_joint',
-        'vendor': 'Sitaiwei',
-        'model': 'CANSimple/ODrive-like',
-        'test_status': 'bench_test_allowed',
-    },
-    4: {
-        'joint_id': 1,
-        'joint_name': 'elbow_lift_joint',
-        'vendor': 'Lingzu',
-        'model': 'RS00',
-        'test_status': 'configured_not_test_allowed_yet',
-    },
-    5: {
-        'joint_id': 2,
-        'joint_name': 'shoulder_abduction_joint',
-        'vendor': 'Lingzu',
-        'model': 'RS00',
-        'test_status': 'configured_not_test_allowed_yet',
-    },
-    6: {
-        'joint_id': 3,
-        'joint_name': 'upper_arm_rotation_joint',
-        'vendor': 'Lingzu',
-        'model': 'EL05',
-        'test_status': 'configured_not_test_allowed_yet',
-    },
-    7: {
-        'joint_id': 4,
-        'joint_name': 'forearm_rotation_joint',
-        'vendor': 'Lingzu',
-        'model': 'EL05',
-        'test_status': 'bench_test_allowed',
-    },
-}
-
-
-def motor_profile(motor_id: int) -> dict[str, object]:
-    try:
-        return dict(MOTOR_PROFILES[motor_id])
-    except KeyError as exc:
-        choices = ', '.join(str(item) for item in sorted(MOTOR_PROFILES))
-        raise ValueError(f'unknown motor_id {motor_id}; expected one of: {choices}') from exc
 
 
 def build_motion_sequence_plan(
@@ -207,11 +174,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.list_motors:
         return emit(
-            {
-                'schema_version': 'rehab_arm_motor_profiles_v1',
-                'profiles': {str(key): value for key, value in sorted(MOTOR_PROFILES.items())},
-                'execution_allowed_motor_ids': sorted(EXECUTION_ALLOWED_MOTOR_IDS),
-            },
+            motor_profiles_payload(),
             args.pretty,
             args.output,
             returncode=0,

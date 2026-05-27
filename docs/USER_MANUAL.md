@@ -2884,7 +2884,33 @@ python3 /home/pi/nanopi_can_master.py m33 target --iface can0 --joint 4 --deg 5 
 
 ## 7. 文档与 Git 维护
 
-### 7.1 NanoPi ROS 工作区构建
+### 7.1 查看当前电机配置权威表
+
+当前已知电机身份、关节映射、协议、减速比和测试放行状态统一由 `motor_profiles.py` 输出：
+
+```bash
+cd /home/pi/rehab_arm_ros2_ws
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+ros2 run rehab_arm_psoc_bridge motor_profiles.py --pretty
+```
+
+也可以通过 bench motion 工具查看同一份表：
+
+```bash
+ros2 run rehab_arm_psoc_bridge bench_motion_sequence.py --list-motors --pretty
+```
+
+当前表的关键事实：
+
+- `3`：伺泰威，CANSimple/ODrive-like，减速比按 `48` 记录，映射 `joint0`。
+- `4/5`：灵足 RS00，RobStride CSP，已配置但暂不放行真实执行。
+- `6/7`：灵足 EL05，RobStride CSP，`7` 已台架验证过正式 M33 路径。
+- 当前真实执行 allowlist 只有 `3` 和 `7`；`4/5/6` 只能 dry-run 和规划，不能真实动。
+
+这张表是给 NanoPi ROS、平台、App、M33 安全配置导出共同对齐的基础资料。修改它不等于放开运动权限；放开真实执行前必须完成机械限位、方向、速度、急停和台架小角度验证。
+
+### 7.2 NanoPi ROS 工作区构建
 
 NanoPi 上优先使用工作区自带脚本构建 ROS 包：
 
@@ -2917,7 +2943,7 @@ ACTIVE_REPORT_MOTOR=none SNAPSHOT_SECONDS=2 ECHO_TIMEOUT_SECONDS=8 BUILD_WORKSPA
 - 能收到 `/rehab_arm/motor_state` 和 `/joint_states`。
 - `unexpected 0x320 frames` 为空。
 
-### 7.2 Linux 仿真主机接入前自检
+### 7.3 Linux 仿真主机接入前自检
 
 另一台 Linux 主机接入前，先在该主机上运行仿真环境自检：
 
@@ -2937,7 +2963,7 @@ ros2 run rehab_arm_sim_mujoco check_sim_env --pretty --output sim_readiness_repo
 
 如果 `ok=false`，先看 `missing_actions`，它会列出缺的模块和建议命令。这个检查只读，不访问 CAN，不发送 `0x320/0x321`，不会命令 M33 或电机。
 
-### 7.3 文档和 Git 维护
+### 7.4 文档和 Git 维护
 
 每次完成任务后同步更新：
 

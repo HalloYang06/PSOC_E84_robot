@@ -3795,3 +3795,19 @@ Connection reset by 192.168.2.66 port 22
 - `bench_motion_sequence.py --list-motors --pretty` 是查看当前权威测试表的入口。
 - 如果误对 4/5/6 加 `--execute --confirm-onsite`，工具应拒绝，并提示不在 allowlist。
 - 要放开 4/5/6，必须先补机械限位、方向、小角度台架验证和风险记录，不要直接改 allowlist。
+
+### ROS Python 工具既要支持包导入，也要支持直接脚本运行
+
+现象：
+
+- 把公共代码抽到 `motor_profiles.py` 后，单元测试里的直接命令 `python bench_motion_sequence.py ...` 返回 `1`，但包内导入测试能通过。
+
+判断：
+
+- 直接运行脚本时，`sys.path` 指向脚本所在目录，不一定能解析 `from rehab_arm_psoc_bridge...` 这种包导入。
+- ROS `console_scripts` 和 `ros2 run` 更接近包导入路径，台架调试时直接 `python script.py` 更接近本地脚本路径。
+
+技巧：
+
+- 需要同时支持两种入口的工具，可以先尝试包导入，再在 `ModuleNotFoundError` 时回退到同目录导入。
+- 每次重构 ROS Python 工具后，同时跑单元测试和直接脚本 CLI 测试，避免 NanoPi 台架调试时入口坏掉。
