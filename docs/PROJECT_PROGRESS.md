@@ -74,6 +74,13 @@
   - 再次发送 CANSimple 非运动查询 `0x063#00` 后，`0x330` 48 条全部保持 `flags=0x10`；确认主机查询帧不会造成假 fresh。
   - 下一步仍是现场恢复至少一个真实电机反馈源，再验证对应 M33 stale 位清零和 `/joint_states` 发布。
 
+- M33 ROS 5 关节遥测检查器收敛：
+  - `check_m33_motor_status_presence.py` 从旧的 `0x330~0x337` 全期望，改为正式必需 `0x330~0x334`，并验证 motor_id 映射 `3/4/5/6/7`。
+  - `0x335~0x337` 改为 reserved：出现时仅 warning，不再作为缺失项。
+  - 报告新增 `stale_m33_motor_status_count`、`fresh_m33_motor_status_count`、`motor_ids_by_status_id`、`required_m33_motor_status_mapping`。
+  - 本地验证：`test_check_m33_motor_status_presence.py` 和 `test_psoc_motor_status.py` 共 19 tests passed，`py_compile` 通过。
+  - NanoPi 验证：同步并重建 `rehab_arm_psoc_bridge` 后，用真实 `/tmp/post_flash_readonly_probe.candump` 检查通过：`0x330..0x334` 各 47 条，motor_id `3/4/5/6/7`，stale `235`，fresh `0`，`target_0x320_count=0`；NanoPi 单测 `6 passed`。
+
 - M33 电机遥测常驻槽位上报：
   - 本地 M33 工程 `D:\RT-ThreadStudio\workspace\yiliao_m33` 已把 `0x330~0x336` 上报从“只发新鲜反馈”改为“所有已配置槽位周期上报”。
   - 有新鲜反馈时发布真实位置/速度/温度；没有新鲜反馈时发布 `flags bit4=stale_or_no_feedback`、位置/速度 0、温度 `0xFF`。

@@ -670,6 +670,22 @@ python3 /home/pi/nanopi_can_master.py cansimple address --iface can0 --wait 0.8
 - 发 `0x063#00` 后，如果总线上没有 `0x061/0x069`，`0x330` 仍保持 `B3 xx 03 10 00 00 00 FF`。
 - 这表示 motor3 状态仍是 stale，NanoPi 不应发布对应 `/joint_states`。
 
+正式 5 关节 M33 遥测检查：
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source /home/pi/rehab_arm_ros2_ws/install/setup.bash
+ros2 run rehab_arm_psoc_bridge check_m33_motor_status_presence.py /tmp/post_flash_readonly_probe.candump --pretty
+```
+
+通过标准：
+
+- `ok=true`
+- `m33_motor_status_ids` 只需要包含 `0x330..0x334`
+- `motor_ids_by_status_id` 应为 `0x330:3`、`0x331:4`、`0x332:5`、`0x333:6`、`0x334:7`
+- `target_0x320_count=0`
+- 没有新鲜电机反馈时，`fresh_m33_motor_status_count=0` 且 `stale_m33_motor_status_count>0`
+
 如果需要 M33 串口手动触发一次缓存上报，可在 M33 shell 运行：
 
 ```text

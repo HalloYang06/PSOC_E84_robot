@@ -43,16 +43,66 @@ class CheckM33MotorStatusPresenceTests(unittest.TestCase):
             path.write_text(
                 hash_line(1.0, '321', '43')
                 + hash_line(1.1, '322', 'A543070000060000')
-                + hash_line(1.2, '330', 'B3010301320000FF'),
+                + hash_line(1.2, '330', 'B3010310320000FF')
+                + hash_line(1.3, '331', 'B3020410000000FF')
+                + hash_line(1.4, '332', 'B3030510000000FF')
+                + hash_line(1.5, '333', 'B3040610000000FF')
+                + hash_line(1.6, '334', 'B3050710000000FF'),
                 encoding='utf-8',
             )
 
             report = build_presence_report(path)
 
         self.assertIs(report['ok'], True)
-        self.assertEqual(report['m33_motor_status_count'], 1)
-        self.assertEqual(report['valid_m33_motor_status_count'], 1)
-        self.assertEqual(report['m33_motor_status_ids'], {'0x330': 1})
+        self.assertEqual(report['m33_motor_status_count'], 5)
+        self.assertEqual(report['valid_m33_motor_status_count'], 5)
+        self.assertEqual(report['stale_m33_motor_status_count'], 5)
+        self.assertEqual(report['fresh_m33_motor_status_count'], 0)
+        self.assertEqual(report['m33_motor_status_ids'], {
+            '0x330': 1,
+            '0x331': 1,
+            '0x332': 1,
+            '0x333': 1,
+            '0x334': 1,
+        })
+        self.assertEqual(report['motor_ids_by_status_id']['0x330'], [3])
+        self.assertEqual(report['missing_required_m33_motor_status_ids'], [])
+
+    def test_report_rejects_wrong_ros_joint_motor_mapping(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / 'wrong_mapping.candump'
+            path.write_text(
+                hash_line(1.0, '330', 'B3010110000000FF')
+                + hash_line(1.1, '331', 'B3020210000000FF')
+                + hash_line(1.2, '332', 'B3030310000000FF')
+                + hash_line(1.3, '333', 'B3040410000000FF')
+                + hash_line(1.4, '334', 'B3050510000000FF'),
+                encoding='utf-8',
+            )
+
+            report = build_presence_report(path)
+
+        self.assertIs(report['ok'], False)
+        self.assertIn('0x330 expected motor_id 3, observed 1', report['errors'])
+
+    def test_reserved_ids_are_warning_not_required(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / 'reserved.candump'
+            path.write_text(
+                hash_line(1.0, '330', 'B3010310000000FF')
+                + hash_line(1.1, '331', 'B3020410000000FF')
+                + hash_line(1.2, '332', 'B3030510000000FF')
+                + hash_line(1.3, '333', 'B3040610000000FF')
+                + hash_line(1.4, '334', 'B3050710000000FF')
+                + hash_line(1.5, '335', 'B3060810000000FF'),
+                encoding='utf-8',
+            )
+
+            report = build_presence_report(path)
+
+        self.assertIs(report['ok'], True)
+        self.assertEqual(report['reserved_m33_motor_status_ids_present'], ['0x335'])
+        self.assertIn('reserved M33 telemetry IDs present', '\n'.join(report['warnings']))
 
     def test_report_rejects_unexpected_target_frames(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -21,7 +21,14 @@ except ModuleNotFoundError:
 PSOC_HEARTBEAT_ID = 0x321
 PSOC_STATUS_ID = 0x322
 PSOC_TARGET_ID = 0x320
-EXPECTED_M33_MOTOR_STATUS_IDS = list(range(0x330, 0x338))
+REQUIRED_M33_MOTOR_STATUS_BY_ID = {
+    0x330: 3,
+    0x331: 4,
+    0x332: 5,
+    0x333: 6,
+    0x334: 7,
+}
+RESERVED_M33_MOTOR_STATUS_IDS = list(range(0x335, 0x338))
 
 
 def build_presence_report(path: str | Path) -> dict[str, object]:
@@ -34,9 +41,13 @@ def build_presence_report(path: str | Path) -> dict[str, object]:
     motor_status_count = 0
     valid_motor_status_count = 0
     invalid_motor_status_count = 0
+    stale_motor_status_count = 0
+    fresh_motor_status_count = 0
     observed_ids: dict[str, int] = {}
     motor_status_ids: dict[str, int] = {}
+    motor_ids_by_status_id: dict[str, list[int]] = {}
     invalid_motor_status_samples: list[dict[str, object]] = []
+    mapping_errors: list[str] = []
 
     for line in source.read_text(encoding='utf-8', errors='replace').splitlines():
         if not line.strip():
@@ -61,6 +72,23 @@ def build_presence_report(path: str | Path) -> dict[str, object]:
             parsed = parse_m33_motor_status_frame(can_id, frame['data'])
             if parsed.get('valid') is True:
                 valid_motor_status_count += 1
+                if parsed.get('stale') is True:
+                    stale_motor_status_count += 1
+                else:
+                    fresh_motor_status_count += 1
+                parsed_motor_id = parsed.get('motor_id')
+                if isinstance(parsed_motor_id, int):
+                    values = motor_ids_by_status_id.setdefault(can_id_hex, [])
+                    if parsed_motor_id not in values:
+                        values.append(parsed_motor_id)
+                    expected_motor_id = REQUIRED_M33_MOTOR_STATUS_BY_ID.get(can_id)
+                    if expected_motor_id is not None and parsed_motor_id != expected_motor_id:
+                        message = (
+                            f'{can_id_hex} expected motor_id {expected_motor_id}, '
+                            f'observed {parsed_motor_id}'
+                        )
+                        if message not in mapping_errors:
+                            mapping_errors.append(message)
             else:
                 invalid_motor_status_count += 1
                 if len(invalid_motor_status_samples) < 5:
@@ -70,10 +98,15 @@ def build_presence_report(path: str | Path) -> dict[str, object]:
                         'detail': parsed.get('detail'),
                     })
 
-    missing_expected_ids = [
+    missing_required_ids = [
         f'0x{can_id:03X}'
-        for can_id in EXPECTED_M33_MOTOR_STATUS_IDS
+        for can_id in REQUIRED_M33_MOTOR_STATUS_BY_ID
         if f'0x{can_id:03X}' not in motor_status_ids
+    ]
+    reserved_ids_present = [
+        f'0x{can_id:03X}'
+        for can_id in RESERVED_M33_MOTOR_STATUS_IDS
+        if f'0x{can_id:03X}' in motor_status_ids
     ]
     errors: list[str] = []
     warnings: list[str] = []
@@ -84,11 +117,17 @@ def build_presence_report(path: str | Path) -> dict[str, object]:
     if psoc_status_count == 0:
         warnings.append('0x322 M33/PSoC status was not observed')
     if valid_motor_status_count == 0:
-        errors.append('no valid M33 motor status frames observed on 0x330~0x337')
+        errors.append('no valid M33 motor status frames observed on 0x330~0x334')
+    if missing_required_ids:
+        errors.append(f'missing required M33 ROS joint telemetry IDs: {", ".join(missing_required_ids)}')
+    if mapping_errors:
+        errors.extend(mapping_errors)
     if target_count:
         errors.append('unexpected 0x320 target frames observed during readonly status check')
     if invalid_motor_status_count:
         warnings.append('invalid M33 motor status frames were observed')
+    if reserved_ids_present:
+        warnings.append(f'reserved M33 telemetry IDs present: {", ".join(reserved_ids_present)}')
 
     return {
         'schema_version': 'm33_motor_status_presence_report_v1',
@@ -102,9 +141,20 @@ def build_presence_report(path: str | Path) -> dict[str, object]:
         'm33_motor_status_count': motor_status_count,
         'valid_m33_motor_status_count': valid_motor_status_count,
         'invalid_m33_motor_status_count': invalid_motor_status_count,
+        'stale_m33_motor_status_count': stale_motor_status_count,
+        'fresh_m33_motor_status_count': fresh_motor_status_count,
         'observed_ids': dict(sorted(observed_ids.items())),
         'm33_motor_status_ids': dict(sorted(motor_status_ids.items())),
-        'missing_expected_m33_motor_status_ids': missing_expected_ids,
+        'motor_ids_by_status_id': {
+            key: sorted(value)
+            for key, value in sorted(motor_ids_by_status_id.items())
+        },
+        'required_m33_motor_status_mapping': {
+            f'0x{can_id:03X}': motor_id
+            for can_id, motor_id in REQUIRED_M33_MOTOR_STATUS_BY_ID.items()
+        },
+        'missing_required_m33_motor_status_ids': missing_required_ids,
+        'reserved_m33_motor_status_ids_present': reserved_ids_present,
         'invalid_m33_motor_status_samples': invalid_motor_status_samples,
         'errors': errors,
         'warnings': warnings,
@@ -114,7 +164,7 @@ def build_presence_report(path: str | Path) -> dict[str, object]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description='Check a candump log for readonly M33 0x330~0x337 motor status telemetry.',
+        description='Check a candump log for readonly M33 0x330~0x334 ROS joint motor telemetry.',
     )
     parser.add_argument('candump_path')
     parser.add_argument('--pretty', action='store_true')
