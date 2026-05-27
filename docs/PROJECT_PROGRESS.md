@@ -67,6 +67,13 @@
   - 抓包仍没有 3 号真实 `0x061/0x069`，因此 3 号电机原始反馈当前未在线；M33 正确保持 stale。
   - 安全：本轮没有发送 closed-loop、idle、clear、position、velocity、torque 或 M33 target，只发送非运动查询。
 
+- M33 重新烧录后重复确认：
+  - 用户再次烧录后，NanoPi `can0` 仍为 `ERROR-ACTIVE`，tx/rx error `0/0`。
+  - M33 heartbeat/status 在线：`0x321#2D -> 0x322#A52D070000060000`。
+  - 只读抓包 5 秒只有 `0x330..0x334`，各 47 条，全部 `flags=0x10`，无 `0x061/0x069/0x180007FD` 原始电机反馈。
+  - 再次发送 CANSimple 非运动查询 `0x063#00` 后，`0x330` 48 条全部保持 `flags=0x10`；确认主机查询帧不会造成假 fresh。
+  - 下一步仍是现场恢复至少一个真实电机反馈源，再验证对应 M33 stale 位清零和 `/joint_states` 发布。
+
 - M33 电机遥测常驻槽位上报：
   - 本地 M33 工程 `D:\RT-ThreadStudio\workspace\yiliao_m33` 已把 `0x330~0x336` 上报从“只发新鲜反馈”改为“所有已配置槽位周期上报”。
   - 有新鲜反馈时发布真实位置/速度/温度；没有新鲜反馈时发布 `flags bit4=stale_or_no_feedback`、位置/速度 0、温度 `0xFF`。
