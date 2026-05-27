@@ -443,7 +443,8 @@
  *   byte0  = marker 0xB3
  *   byte1  = sequence
  *   byte2  = motor_id
- *   byte3  = flags bit0 enabled, bit1 fault, bit2 limited, bit3 emergency_stop
+ *   byte3  = flags bit0 enabled, bit1 fault, bit2 limited, bit3 emergency_stop,
+ *            bit4 stale_or_no_feedback
  *   byte4~5= joint/output position mrad, int16 little-endian
  *   byte6  = joint/output velocity 0.1 rad/s, int8
  *   byte7  = temperature C, 0xFF unknown
@@ -454,6 +455,10 @@
 
 #ifndef CONTROL_M33_MOTOR_STATUS_MARKER
 #define CONTROL_M33_MOTOR_STATUS_MARKER    0xB3U
+#endif
+
+#ifndef CONTROL_M33_MOTOR_STATUS_FLAG_STALE
+#define CONTROL_M33_MOTOR_STATUS_FLAG_STALE 0x10U
 #endif
 
 #ifndef CONTROL_M33_MOTOR_STATUS_PERIOD_MS

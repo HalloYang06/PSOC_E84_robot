@@ -1518,7 +1518,7 @@ static rt_bool_t ctrl_motor_feedback_is_fresh(const control_motor_feedback_t *fb
     return (ctrl_tick_delta_ms(now, fb->timestamp) <= CONTROL_M33_MOTOR_STATUS_FRESH_MS) ? RT_TRUE : RT_FALSE;
 }
 
-static rt_uint8_t ctrl_motor_status_flags(const control_motor_feedback_t *fb)
+static rt_uint8_t ctrl_motor_status_flags(const control_motor_feedback_t *fb, rt_bool_t fresh)
 {
     rt_uint8_t flags = 0U;
 
@@ -1527,6 +1527,10 @@ static rt_uint8_t ctrl_motor_status_flags(const control_motor_feedback_t *fb)
         return flags;
     }
 
+    if (!fresh)
+    {
+        flags |= CONTROL_M33_MOTOR_STATUS_FLAG_STALE;
+    }
     if (fb->mode_state != 0U)
     {
         flags |= 0x01U;
@@ -1539,27 +1543,31 @@ static rt_uint8_t ctrl_motor_status_flags(const control_motor_feedback_t *fb)
     return flags;
 }
 
-static rt_err_t ctrl_publish_motor_status_slot(rt_uint8_t slot, const control_motor_feedback_t *fb)
+static rt_err_t ctrl_publish_motor_status_slot(rt_uint8_t slot,
+                                               const control_motor_feedback_t *fb,
+                                               rt_bool_t fresh)
 {
     rt_uint8_t payload[8] = {0};
     rt_int16_t position_mrad;
     rt_int8_t velocity_drad_s;
+    rt_uint8_t joint_id;
 
     if ((fb == RT_NULL) || (slot >= CONTROL_MOTOR_JOINT_COUNT))
     {
         return -RT_EINVAL;
     }
 
-    position_mrad = ctrl_float_to_scaled_i16(fb->pos_rad, 1000.0f);
-    velocity_drad_s = ctrl_float_to_scaled_i8(fb->vel_rad_s, 10.0f);
+    joint_id = (rt_uint8_t)(slot + 1U);
+    position_mrad = fresh ? ctrl_float_to_scaled_i16(fb->pos_rad, 1000.0f) : 0;
+    velocity_drad_s = fresh ? ctrl_float_to_scaled_i8(fb->vel_rad_s, 10.0f) : 0;
 
     payload[0] = CONTROL_M33_MOTOR_STATUS_MARKER;
     payload[1] = s_motor_status_seq++;
-    payload[2] = fb->motor_id;
-    payload[3] = ctrl_motor_status_flags(fb);
+    payload[2] = (fb->motor_id != 0U) ? fb->motor_id : ctrl_motor_id_by_joint(joint_id);
+    payload[3] = ctrl_motor_status_flags(fb, fresh);
     ctrl_i16_to_le(position_mrad, &payload[4]);
     payload[6] = (rt_uint8_t)velocity_drad_s;
-    payload[7] = ctrl_temp_to_u8(fb->temp_c);
+    payload[7] = fresh ? ctrl_temp_to_u8(fb->temp_c) : 0xFFU;
 
     return ctrl_can_send(CONTROL_CAN_ID_M33_MOTOR_STATUS_BASE + slot,
                          RT_CAN_STDID,
@@ -1573,6 +1581,7 @@ static rt_uint8_t ctrl_publish_cached_motor_status_once(void)
     rt_tick_t now = rt_tick_get();
     rt_uint8_t i;
     rt_uint8_t sent = 0U;
+    rt_bool_t fresh;
 
     rt_mutex_take(&s_data_lock, RT_WAITING_FOREVER);
     rt_memcpy(snapshot, s_motor_feedback, sizeof(snapshot));
@@ -1580,11 +1589,9 @@ static rt_uint8_t ctrl_publish_cached_motor_status_once(void)
 
     for (i = 0U; i < CONTROL_MOTOR_JOINT_COUNT; i++)
     {
-        if (!ctrl_motor_feedback_is_fresh(&snapshot[i], now))
-        {
-            continue;
-        }
-        if (ctrl_publish_motor_status_slot(i, &snapshot[i]) == RT_EOK)
+        fresh = ctrl_motor_feedback_is_fresh(&snapshot[i], now);
+
+        if (ctrl_publish_motor_status_slot(i, &snapshot[i], fresh) == RT_EOK)
         {
             sent++;
         }
