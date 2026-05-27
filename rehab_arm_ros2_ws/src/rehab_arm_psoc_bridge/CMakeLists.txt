@@ -33,6 +33,7 @@ install(PROGRAMS
   rehab_arm_psoc_bridge/candump_motor_telemetry.py
   rehab_arm_psoc_bridge/calibration_observation.py
   rehab_arm_psoc_bridge/motion_test_report.py
+  rehab_arm_psoc_bridge/bench_motion_sequence.py
   rehab_arm_psoc_bridge/board_manifest.py
   rehab_arm_psoc_bridge/board_manifest_sync_dry_run.py
   rehab_arm_psoc_bridge/decode_psoc_cmd.py

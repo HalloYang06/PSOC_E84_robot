@@ -3762,3 +3762,19 @@ Connection reset by 192.168.2.66 port 22
 - 修改 ROS 包安装列表时，要同步整个 package 源码目录，至少同步 `rehab_arm_psoc_bridge/`、`test/`、`CMakeLists.txt` 和 `setup.py`。
 - 新增 `install(PROGRAMS ...)` 脚本后，确认源文件有可执行位；否则 symlink 存在但 `ros2 run` 会报 `No executable found`。
 - 本地新脚本入 Git 时可用 `git add --chmod=+x <script.py>`。
+
+### 人不在现场时不要执行台架运动序列
+
+现象：
+
+- 用户允许“动电机没关系”，但同时说明自己不在现场。
+
+判断：
+
+- 医疗康复外骨骼最终要穿在人身上，远程无人看护时不应该继续发真实动作，即使是台架开发阶段。
+
+技巧：
+
+- 远程无人现场时，只允许做 dry-run 计划、日志复盘、数据工具、仿真和文档。
+- `bench_motion_sequence.py` 默认只输出计划；真实执行必须同时带 `--execute --confirm-onsite`。
+- 执行后必须保存 candump，并用 `motion_test_report.py` 检查 target、CSP、stop、无 MIT 旧帧，再决定下一步。

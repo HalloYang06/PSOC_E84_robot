@@ -1889,3 +1889,14 @@
 - Validated on NanoPi: synced the latest bridge package, rebuilt `rehab_arm_psoc_bridge`, fixed the new script executable bit, and ran `ros2 run rehab_arm_psoc_bridge motion_test_report.py ...`.
 - Safety: no additional motion was sent after the user said they were not on site; this task only analyzed existing logs.
 - Next step: use this report after every future bench motion before deciding whether to repeat, reverse, or increase commanded angle.
+
+### 2026-05-27 - Guarded bench motion sequence tool
+
+- Completed: added `bench_motion_sequence.py` to generate a formal M33-path bench motion plan for motor7/joint4.
+- Default sequence is dry-run only: heartbeat, `+5°`, hold, stop, `-5°`, hold, stop, heartbeat.
+- Execution is guarded: `--execute` is rejected unless `--confirm-onsite` is also provided.
+- Completed: added the script to ROS install lists and setup entry points.
+- Validated locally: `test_bench_motion_sequence.py` passed 3 tests; `py_compile` passed; dry-run CLI printed the expected plan and did not access CAN.
+- Validated on NanoPi: synced the script, ran its unit tests, rebuilt `rehab_arm_psoc_bridge`, and confirmed `ros2 run rehab_arm_psoc_bridge bench_motion_sequence.py --pretty` prints the dry-run plan.
+- Safety: no new motor motion was sent because the user is not on site.
+- Next step: when a human is on site, execute the guarded sequence only with `--execute --confirm-onsite`, capture candump, then validate it with `motion_test_report.py`.

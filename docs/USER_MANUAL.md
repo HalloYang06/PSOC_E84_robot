@@ -2702,7 +2702,44 @@ ros2 run rehab_arm_psoc_bridge motion_test_report.py \
 - 这个工具只读日志，不连接 CAN，不发命令，不代表可以继续运动。
 - 如果人不在现场，只允许做这种离线复盘，不要远程继续发动作。
 
-### 6.7.5 上电只读 ROS 遥测检查
+### 6.7.5 台架运动序列工具
+
+需要重复验证 7号电机方向和角度时，先生成计划，不要直接执行：
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source /home/pi/rehab_arm_ros2_ws/install/setup.bash
+
+ros2 run rehab_arm_psoc_bridge bench_motion_sequence.py --pretty
+```
+
+默认计划是：
+
+- heartbeat precheck。
+- joint4 `+5°`，rpm `1`。
+- hold `2s`。
+- stop joint4。
+- joint4 `-5°`，rpm `1`。
+- hold `2s`。
+- stop joint4。
+- heartbeat postcheck。
+
+默认不访问 CAN，不会动电机。
+
+只有人现场盯着台架、设备没有穿戴在人身上、急停/断电手段可用时，才允许执行：
+
+```bash
+ros2 run rehab_arm_psoc_bridge bench_motion_sequence.py \
+  --execute \
+  --confirm-onsite \
+  --degrees 5,-5 \
+  --rpm 1 \
+  --hold-sec 2
+```
+
+执行后必须保存 `candump -L` 日志，再用 `motion_test_report.py` 复盘。人不在现场时不要带 `--execute`。
+
+### 6.7.6 上电只读 ROS 遥测检查
 
 设备刚上电、还没接完整 C8T6/传感器时，先做只读检查。这个流程只验证 NanoPi、CAN、M33、ROS bridge 和基础数据记录，不允许发送运动目标。
 
