@@ -17,10 +17,10 @@ try:
         parse_candump_line,
     )
     from rehab_arm_psoc_bridge.check_m33_motor_status_presence import (
-        PSOC_STATUS_ID,
-        PSOC_TARGET_ID,
-        build_presence_report,
-    )
+    PSOC_STATUS_ID,
+    PSOC_TARGET_ID,
+    build_presence_report,
+)
 except ModuleNotFoundError:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from rehab_arm_psoc_bridge.candump_motor_telemetry import (  # type: ignore[no-redef]
@@ -39,6 +39,7 @@ except ModuleNotFoundError:
     )
 
 
+NANOPI_HEARTBEAT_ID = 0x321
 EXPECTED_CANSIMPLE_NODES = [3]
 EXPECTED_LINGZU_MOTOR_IDS = [4, 5, 6, 7]
 CONTROL_BOUNDARY = 'readonly_feedback_source_check_not_motion_permission'
@@ -80,7 +81,7 @@ def build_feedback_source_readiness_report(path: str | Path) -> dict[str, object
             target_count += 1
         if can_id == PSOC_STATUS_ID:
             psoc_status_count += 1
-        if 0x330 <= can_id <= 0x337:
+        if can_id == NANOPI_HEARTBEAT_ID or can_id == PSOC_STATUS_ID or 0x330 <= can_id <= 0x337:
             continue
 
         cmd_id = cansimple_cmd_id(can_id) if can_id <= 0x7FF else None

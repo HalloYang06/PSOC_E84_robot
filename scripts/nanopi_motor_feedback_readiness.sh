@@ -79,7 +79,7 @@ print_header() {
 run_readonly_capture() {
     echo "--- CAN status ---"
     ip -details -statistics link show "$IFACE" | tee "$CAN_STATUS_LOG"
-    if ! grep -q "can state ERROR-ACTIVE" "$CAN_STATUS_LOG"; then
+    if ! grep -q "state ERROR-ACTIVE" "$CAN_STATUS_LOG"; then
         echo "WARN: $IFACE is not ERROR-ACTIVE; readiness may fail."
     fi
 

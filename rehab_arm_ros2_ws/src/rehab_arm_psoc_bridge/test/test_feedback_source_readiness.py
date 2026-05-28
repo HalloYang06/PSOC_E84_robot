@@ -78,6 +78,20 @@ class FeedbackSourceReadinessTests(unittest.TestCase):
         self.assertTrue(report['safety']['motion_command_observed'])
         self.assertIn('0x320 target frames were observed', report['errors'][0])
 
+    def test_nanopi_heartbeat_is_not_counted_as_cansimple_node_25(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / 'heartbeat.candump'
+            source.write_text(
+                candump_line(0.0, '321', bytes([0x55]))
+                + candump_line(0.1, '322', bytes([0xA5, 1, 7, 0, 0, 3, 0, 0])),
+                encoding='utf-8',
+            )
+
+            report = build_feedback_source_readiness_report(source)
+
+        self.assertEqual(report['raw_sources']['cansimple_heartbeats_by_node'], {})
+        self.assertEqual(report['safety']['psoc_status_0x322_count'], 1)
+
     def test_cli_prints_json(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             source = Path(tmpdir) / 'readonly.candump'

@@ -3152,6 +3152,31 @@ SEND_M33_HEARTBEAT=1 /home/pi/nanopi_motor_feedback_readiness.sh
 
 这个模式只发 `0x321#55` 心跳，用来观察 `0x322` 或 `0x330~0x334` 是否回来；它仍然不发 `0x320` 目标，也不控制电机。
 
+当 readiness 已经通过后，可以做 bridge 干跑轨迹闸门测试：
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source /home/pi/rehab_arm_ros2_ws/install/setup.bash
+
+ros2 run rehab_arm_psoc_bridge psoc_can_bridge_node.py \
+  --ros-args \
+  -p interface:=can0 \
+  -p enable_target_tx:=false
+```
+
+另一个终端发布最小轨迹：
+
+```bash
+ros2 topic pub --once /arm_controller/joint_trajectory trajectory_msgs/msg/JointTrajectory \
+  "{joint_names: ['shoulder_lift_joint'], points: [{positions: [0.0], time_from_start: {sec: 1, nanosec: 0}}]}"
+```
+
+判断：
+
+- 如果 M33 还没有 `motion_allowed=true`，bridge 应拒绝轨迹，并说明原因。
+- `enable_target_tx=false` 时，无论接受还是拒绝，都不能出现 `0x320`。
+- 只有 dry-run 证明 gate、状态、关节反馈都正确后，才讨论真实 `enable_target_tx=true`。
+
 ### 7.4 Linux 仿真主机接入前自检
 
 另一台 Linux 主机接入前，先在该主机上运行仿真环境自检：

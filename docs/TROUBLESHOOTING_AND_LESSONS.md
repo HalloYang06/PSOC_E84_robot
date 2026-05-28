@@ -4128,3 +4128,37 @@ Connection reset by 192.168.2.66 port 22
 
 - `psoc_can_bridge_node.py` 默认启用 `require_fresh_motor_status_for_trajectory=true`。
 - 干跑或台架排查时可以临时关闭 fresh 闸门，但必须同时保持 `enable_target_tx=false`，只验证 ROS 消息流，不发 `0x320`。
+
+### `0x321` 不能按 CANSimple 解析
+
+现象：
+
+- readiness 报告里出现 `cansimple_heartbeats_by_node: {"25": 1}`。
+- 同一份 candump 里实际发送的是 NanoPi heartbeat `0x321`，不是 CANSimple 节点 25。
+
+判断：
+
+- 标准 ID `0x321` 按 CANSimple 拆分会得到 `node=25, cmd=1`，但在本项目中它是 NanoPi->M33 heartbeat。
+- 工具不能只按位域猜协议，必须先排除项目保留 ID。
+
+技巧：
+
+- 在解析 CANSimple 前先排除 `0x320/0x321/0x322` 和 `0x330~0x337`。
+- 现场 readiness 报告里只允许真实 `0x061/0x069` 计入 3号 CANSimple feedback。
+
+### M33 `state=ok` 不等于允许 ROS 轨迹
+
+现象：
+
+- ROS bridge dry-run 能收到 `/joint_states`、`/rehab_arm/motor_state`、`/rehab_arm/safety_state`。
+- 发布最小 `JointTrajectory` 后，bridge 拒绝：`PSoC motion_allowed is not true, protocol_version=2, state=ok, control_mode=bench_armed, detail=none`。
+
+判断：
+
+- 这是正确的 fail-closed 行为。NanoPi 不能用 `state=ok` 代替明确的 `motion_allowed=true`。
+- 下一步应在 M33 安全状态机里定义何时置位 `motion_allowed`，而不是绕过 NanoPi gate。
+
+技巧：
+
+- 用 `enable_target_tx=false` 做 dry-run 轨迹验证，candump 必须保持 `0x320` 为空。
+- 真机运动前必须同时满足 fresh 电机反馈和 M33 `motion_allowed=true`。

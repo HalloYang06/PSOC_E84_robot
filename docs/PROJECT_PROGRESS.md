@@ -2075,3 +2075,15 @@
 - Validated on NanoPi: synced the changed bridge files, rebuilt `rehab_arm_psoc_bridge`, and `test_safety_gate.py` passed `7 passed`.
 - Safety: this is a stricter default gate; it sends no CAN during tests and makes missing feedback fail closed.
 - Next step: run a dry-run bridge trajectory rejection test once M33 status is visible again.
+
+### 2026-05-28 - Live NanoPi/M33 readiness and dry-run trajectory gate
+
+- Completed: brought NanoPi `can0` back up as classic CAN 1 Mbps after it was found `DOWN/STOPPED`.
+- Validated live readiness: passive capture saw `790` frames, raw 3号 CANSimple feedback (`0x061/0x069`), M33 `0x330~0x334`, and `48` fresh M33 motor samples; no `0x320` target frames.
+- Validated with heartbeat: `SEND_M33_HEARTBEAT=1` saw M33 `0x322`, fresh M33 motor status, and no warnings after fixing the readiness parser.
+- Fixed: `feedback_source_readiness.py` no longer misclassifies NanoPi heartbeat `0x321` as CANSimple node `25`.
+- Fixed: `nanopi_motor_feedback_readiness.sh` now accepts `can <BERR-REPORTING> state ERROR-ACTIVE` as healthy.
+- Validated ROS bridge dry-run: `/joint_states`, `/rehab_arm/motor_state`, and `/rehab_arm/safety_state` produced samples with `enable_target_tx=false`; candump saw no `0x320`.
+- Validated trajectory gate: publishing a minimal `JointTrajectory` was rejected because M33 `motion_allowed` was not true (`state=ok`, `control_mode=bench_armed`, `detail=none`); no `0x320` was sent.
+- Safety: no motor movement commands were sent; all trajectory checks kept `enable_target_tx=false`.
+- Next step: update M33/app/platform control path so M33 only sets `motion_allowed=true` after the intended local safety condition is satisfied, then repeat dry-run acceptance before any real `0x320` motion test.
