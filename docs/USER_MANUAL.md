@@ -2875,6 +2875,22 @@ python3 /home/pi/nanopi_can_master.py private active-report --iface can0 --motor
 - 抓包能看到 `0x0400FD06#0100000000000000` stop。
 - 结束后 `can0` 仍为 `ERROR-ACTIVE`，tx/rx error counters 为 `0/0`。
 
+若要先观察 6号左右摆动，但正式 M33 位置目标暂时不动，可以用速度调试近似摆动：
+
+```bash
+python3 /home/pi/nanopi_can_master.py private active-report --iface can0 --motor 6 --enable-report --wait 0
+python3 /home/pi/nanopi_can_master.py private speed --iface can0 --motor 6 --vel 0.5 --kd 1.0 --wait 0
+sleep 3
+python3 /home/pi/nanopi_can_master.py private speed --iface can0 --motor 6 --vel -0.5 --kd 1.0 --wait 0
+sleep 6
+python3 /home/pi/nanopi_can_master.py private speed --iface can0 --motor 6 --vel 0.5 --kd 1.0 --wait 0
+sleep 3
+python3 /home/pi/nanopi_can_master.py private stop --iface can0 --motor 6 --clear-fault --wait 0
+python3 /home/pi/nanopi_can_master.py private active-report --iface can0 --motor 6 --wait 0
+```
+
+这只是台架观察动作，不是严格 `-45°/+45°` 位置控制。正式 `0x320` 位置目标若抓包有命令但 `0x333` 位置不变，说明 M33->motor6 absolute/CSP 位置路径还没打通，不能写成正式通过。
+
 ### 6.7.4 运动测试后离线复盘
 
 如果现场已经做过一次正式路径运动测试，先不要急着继续加大角度。把 `candump -L` 日志用离线报告工具复盘：

@@ -2218,3 +2218,13 @@
 - Validation: filtered candump recorded 127 frames. Motor6 aggregate `0x333` changed from stale to fresh after active-report enable and then changed continuously from `B31006005511001E` through `B3040601B32C041E`; stop frame `0x0400FD06#0100000000000000` appeared at `1779959518.334354`.
 - Final state: after stop, `0x333` settled near `...BC2C...` and later returned to stale/no-feedback frames after active-report disable; `can0` stayed `ERROR-ACTIVE` with tx/rx error counters `0/0`.
 - Safety: only motor6 was commanded, first motor6 run used a moderate `0.5` velocity instead of the faster motor4 value, duration was bounded to 10 seconds, and stop was sent immediately after the window. This remains direct debug control, not the formal robot path.
+
+### 2026-05-28 - Motor6 swing attempt and direct-speed approximate swing
+
+- Reason: user asked to swing between `-45 deg` and `+45 deg`.
+- Formal-path attempt: sent NanoPi -> M33 `0x320` commands for ROS joint3/motor6: active-report enable, stop, `-45 deg`, `+45 deg`, `0 deg`, stop, active-report disable.
+- Formal-path result: command frames were present (`0x320#03033EFE05000000`, `0x320#0303C20105000000`, `0x320#0303000005000000`), but `0x333` stayed essentially fixed at `...0085D4...`; this means the formal M33 absolute position path did not actually move motor6 in this test.
+- Fallback debug test: used direct speed control to approximate a visible swing: `+0.5` for 3 seconds, `-0.5` for 6 seconds, `+0.5` for 3 seconds, then stop and active-report disable.
+- Direct-speed validation: filtered candump recorded 155 frames. `0x333` first increased from around `...85D4...` to `...79D9...`, then reversed down through `...D0.../2F...`, then moved back toward `...D5...`; stop frame `0x0400FD06#0100000000000000` appeared at the end.
+- Final state: after stop, `0x333` settled near `...59D5...` and later returned to stale/no-feedback frames; `can0` stayed `ERROR-ACTIVE` with tx/rx error counters `0/0`.
+- Safety: direct-speed swing was bounded and stopped. Do not treat this as completion of formal `JointTrajectory -> M33 -> motor6 position` control; that path still needs debugging.
