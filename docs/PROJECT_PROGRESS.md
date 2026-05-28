@@ -2269,3 +2269,12 @@
 - Validation: filtered candump recorded current-limit write frame `0x1200FD05#1870000000004040`, 137 total frames, continuous `0x332` motor5 aggregate changes, and stop frame `0x0400FD05#0100000000000000` at `1779960268.227946`.
 - Final state: after stop, `0x332` settled near `...52FC...` and later returned to stale/no-feedback frames; `can0` stayed `ERROR-ACTIVE` with tx/rx error counters `0/0`.
 - Safety: parameters matched the previous 3A tests, duration was bounded to 10 seconds, and stop was sent immediately after the window.
+
+### 2026-05-28 - Motor5 torque/current mode diagnosis
+
+- User observation: motor5 only moved a small angle and then stalled; bench supply at 32V still showed about `0.1A`, so increasing `limit_cur` alone did not make the motor draw current.
+- Completed: non-motion reads after stop confirmed `limit_cur(0x7018)=3.0f`; `limit_spd(0x7017)` read back as `33.0f`; run mode readback showed `0x7005` value `0`.
+- Completed: sent a small MIT torque-feedforward debug test for motor5 with `limit_cur=3.0A`, enable, repeated `torque=-0.2Nm` MIT control frames for about 2 seconds, then stop and active-report disable.
+- Validation: tx log recorded 98 repeated `0x017E2B05#8000800000000000` torque frames, stop frame `0x0400FD05#0100000000000000`, and active-report disable; `can0` stayed `ERROR-ACTIVE` with tx/rx error counters `0/0`.
+- Finding: MIT torque-feedforward and `limit_cur` are not enough to prove true current control. Official RobStride/Lingzu parameter flow uses `run_mode` plus `iq_ref(0x7006)` for current mode, while `limit_cur(0x7018)` is a limit for velocity/position modes.
+- Next step: do not keep increasing `limit_cur` in speed mode. Add a dedicated, bounded current-mode debug command that writes the correct model-specific `run_mode` and ramps `iq_ref(0x7006)` in small steps, with immediate stop/disable and live current feedback decoding.

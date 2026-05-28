@@ -4288,3 +4288,22 @@ Connection reset by 192.168.2.66 port 22
 - 远程真实运动测试优先使用 `--wait 0` 只发送命令。
 - 需要证据时单独启动带过滤器的 `candump -L`，例如只抓 `0x320/0x322/0x331`。
 - 发现卡住后先执行 `pkill -f nanopi_can_master.py || true`，再确认 `ps` 无残留、`can0` 仍 `ERROR-ACTIVE`。
+
+### `limit_cur` 不等于电流命令
+
+现象：
+
+- 5号电机速度模式下写入 `limit_cur(0x7018)=3.0A` 后，电源电流仍约 `0.1A`。
+- 电机只动小角度就卡住，继续提高限流没有明显出力改善。
+
+判断：
+
+- `0x7018 limit_cur` 只是允许的电流上限，不会强制电机输出该电流。
+- MIT `torque` 前馈帧也不等同于厂家官方 current mode；如果没有正确 run mode 或电流参考，电源电流可能仍然上不去。
+- 真正 current-mode 验证应按厂家协议写 `run_mode(0x7005)` 和 `iq_ref(0x7006)`，并确认当前型号的 run mode 编号。
+
+技巧：
+
+- 不要在速度模式里盲目继续加 `limit_cur`。
+- 先补软件工具：读回 `run_mode/limit_cur/limit_spd`，解码 active-report 中的实际电流/力矩。
+- current-mode 阶跃要从很小电流开始，每步 1~2 秒，并准备立即 stop/disable。
