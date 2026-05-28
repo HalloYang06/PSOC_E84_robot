@@ -2949,6 +2949,26 @@ python3 /home/pi/nanopi_can_master.py private active-report --iface can0 --motor
 
 注意：不同灵足/RobStride 型号和固件的 current mode 编号可能不同。写 current mode 前必须以对应型号官方协议手册为准；不要把某个型号的 `run_mode` 数值直接套到所有电机。
 
+当前 5号台架已试过 `run_mode=3`、`iq_ref=-0.5A`、2 秒脉冲：
+
+```bash
+python3 /home/pi/nanopi_can_master.py private active-report --iface can0 --motor 5 --enable-report --wait 0
+python3 /home/pi/nanopi_can_master.py private mode --iface can0 --motor 5 --mode 3 --wait 0
+python3 /home/pi/nanopi_can_master.py private enable --iface can0 --motor 5 --wait 0
+python3 /home/pi/nanopi_can_master.py private write-float --iface can0 --motor 5 --index 0x7006 --value -0.5 --wait 0
+sleep 2
+python3 /home/pi/nanopi_can_master.py private write-float --iface can0 --motor 5 --index 0x7006 --value 0.0 --wait 0
+python3 /home/pi/nanopi_can_master.py private stop --iface can0 --motor 5 --clear-fault --wait 0
+python3 /home/pi/nanopi_can_master.py private active-report --iface can0 --motor 5 --wait 0
+```
+
+通过标准：
+
+- 抓包能看到 `0x1200FD05#0570000003000000`，表示写 `run_mode=3`。
+- 抓包能看到 `0x1200FD05#06700000000000BF`，表示写 `iq_ref=-0.5f`。
+- 结束前必须看到 `0x1200FD05#0670000000000000` 和 stop。
+- `can0` 仍为 `ERROR-ACTIVE`。
+
 ### 6.7.4 运动测试后离线复盘
 
 如果现场已经做过一次正式路径运动测试，先不要急着继续加大角度。把 `candump -L` 日志用离线报告工具复盘：

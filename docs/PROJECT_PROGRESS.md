@@ -2278,3 +2278,12 @@
 - Validation: tx log recorded 98 repeated `0x017E2B05#8000800000000000` torque frames, stop frame `0x0400FD05#0100000000000000`, and active-report disable; `can0` stayed `ERROR-ACTIVE` with tx/rx error counters `0/0`.
 - Finding: MIT torque-feedforward and `limit_cur` are not enough to prove true current control. Official RobStride/Lingzu parameter flow uses `run_mode` plus `iq_ref(0x7006)` for current mode, while `limit_cur(0x7018)` is a limit for velocity/position modes.
 - Next step: do not keep increasing `limit_cur` in speed mode. Add a dedicated, bounded current-mode debug command that writes the correct model-specific `run_mode` and ramps `iq_ref(0x7006)` in small steps, with immediate stop/disable and live current feedback decoding.
+
+### 2026-05-28 - Motor5 official current-mode -0.5A pulse
+
+- Reason: user said `0.2A` would not be enough and wanted torque/current mode instead of speed mode.
+- Completed: used NanoPi direct parameter path for motor5: active-report enable, write `run_mode(0x7005)=3`, enable, write `iq_ref(0x7006)=-0.5A`, hold 2 seconds, write `iq_ref=0.0A`, stop, active-report disable.
+- Validation: filtered candump recorded `0x1200FD05#0570000003000000` (`run_mode=3`), `0x0300FD05#0000000000000000` enable, `0x1200FD05#06700000000000BF` (`iq_ref=-0.5f`), `0x1200FD05#0670000000000000` (`iq_ref=0.0f`), and stop frame `0x0400FD05#0100000000000000`.
+- Feedback: `0x332` changed during the current command window, from about `B30D050014FF001F` through `B394050171FB001F`, then recovered after `iq_ref=0` and stop.
+- Final state: after stop and active-report disable, `0x332` returned to stale/no-feedback frames; `can0` stayed `ERROR-ACTIVE` with tx/rx error counters `0/0`.
+- Safety: current-mode pulse was bounded to 2 seconds, setpoint was explicitly returned to zero before stop, and only motor5 was commanded. User needs to report bench supply current response before increasing current further.
