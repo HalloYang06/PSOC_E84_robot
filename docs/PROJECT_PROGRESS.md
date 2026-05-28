@@ -2313,3 +2313,19 @@
 - Validation: tx log recorded 244 repeated MIT frames `0x017C5705#80007ED600003333`; filtered candump recorded stop frame `0x0400FD05#0100000000000000` and active-report disable.
 - Feedback: `0x332` stayed fresh during the hold, around `...F2FE...`, then returned to stale/no-feedback frames after stop and active-report disable; `can0` stayed `ERROR-ACTIVE` with tx/rx error counters `0/0`.
 - Safety: mixed MIT hold was bounded to 5 seconds and explicitly stopped. Further increases should be paired with mechanical inspection or M33-side bounded assist logic rather than open-ended NanoPi MIT frames.
+
+### 2026-05-28 - Motor5 1Nm MIT velocity plus torque feedforward pulse
+
+- Reason: user clarified that `-0.4Nm` was insufficient and at least `1Nm` is needed.
+- Completed: used NanoPi direct MIT debug path for motor5 with `vel=-0.3 rad/s`, `kp=0`, `kd=1.0`, `torque_ff=-1.0Nm`, held 3 seconds, then stop and active-report disable.
+- Validation: tx log recorded 147 repeated MIT frames `0x0176DB05#80007ED600003333`; filtered candump recorded stop frame `0x0400FD05#0100000000000000` and active-report disable.
+- Feedback: `0x332` stayed fresh during the pulse, around `...F2FE...`, then returned to stale/no-feedback frames after stop and active-report disable; `can0` stayed `ERROR-ACTIVE` with tx/rx error counters `0/0`.
+- Safety: because this jumped from `-0.4Nm` to `-1.0Nm`, duration was bounded to 3 seconds. Wait for user confirmation before extending hold time or increasing torque further.
+
+### 2026-05-28 - Motor5 2Nm MIT velocity plus torque feedforward pulse
+
+- Reason: user reported that `-1.0Nm` was still insufficient and asked for `2Nm`.
+- Completed: used NanoPi direct MIT debug path for motor5 with `vel=-0.3 rad/s`, `kp=0`, `kd=1.0`, `torque_ff=-2.0Nm`, held 2 seconds, then stop and active-report disable.
+- Validation: tx log recorded 98 repeated MIT frames `0x016DB605#80007ED600003333`; filtered candump recorded stop frame `0x0400FD05#0100000000000000` and active-report disable.
+- Feedback: `0x332` stayed fresh during the pulse, around `...26FF...`, then returned to stale/no-feedback frames after stop and active-report disable; `can0` stayed `ERROR-ACTIVE` with tx/rx error counters `0/0`.
+- Safety: because this is already double the previous `-1.0Nm` test, duration was bounded to 2 seconds. If this is still insufficient, next action should be mechanical/load-path inspection and M33-side bounded assist design, not unbounded remote torque escalation.

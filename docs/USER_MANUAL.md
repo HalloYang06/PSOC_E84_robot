@@ -3017,6 +3017,34 @@ duration=5s
 MIT frame=0x017C5705#80007ED600003333
 ```
 
+若需要约 `1Nm` 级别助力，5号已试过：
+
+```text
+motor=5
+vel=-0.3 rad/s
+kp=0
+kd=1.0
+torque_ff=-1.0 Nm
+duration=3s
+MIT frame=0x0176DB05#80007ED600003333
+```
+
+`-1.0Nm` 已明显高于前两档，第一次只保持 3 秒。确认机械空间、温升和电源状态正常后，才允许延长保持时间。
+
+若 `-1.0Nm` 仍不足，5号已试过：
+
+```text
+motor=5
+vel=-0.3 rad/s
+kp=0
+kd=1.0
+torque_ff=-2.0 Nm
+duration=2s
+MIT frame=0x016DB605#80007ED600003333
+```
+
+`-2.0Nm` 已是较大的台架前馈，只保持 2 秒。如果仍然不够，下一步优先查机械卡滞、传动、力臂和电机型号余量，不建议继续远程无限加大 MIT torque。
+
 结束必须发：
 
 ```bash
