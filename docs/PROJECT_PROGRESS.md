@@ -2287,3 +2287,12 @@
 - Feedback: `0x332` changed during the current command window, from about `B30D050014FF001F` through `B394050171FB001F`, then recovered after `iq_ref=0` and stop.
 - Final state: after stop and active-report disable, `0x332` returned to stale/no-feedback frames; `can0` stayed `ERROR-ACTIVE` with tx/rx error counters `0/0`.
 - Safety: current-mode pulse was bounded to 2 seconds, setpoint was explicitly returned to zero before stop, and only motor5 was commanded. User needs to report bench supply current response before increasing current further.
+
+### 2026-05-28 - Motor5 official current-mode -0.7A hold
+
+- Reason: user reported that `0.2A` is not enough and asked to try `0.7A` then hold.
+- Completed: used NanoPi direct parameter path for motor5: active-report enable, write `run_mode(0x7005)=3`, enable, write `iq_ref(0x7006)=-0.7A`, hold 5 seconds, write `iq_ref=0.0A`, stop, active-report disable.
+- Validation: filtered candump recorded `0x1200FD05#0570000003000000` (`run_mode=3`), `0x0300FD05#0000000000000000` enable, `0x1200FD05#06700000333333BF` (`iq_ref=-0.7f`), `0x1200FD05#0670000000000000` (`iq_ref=0.0f`), and stop frame `0x0400FD05#0100000000000000`.
+- Feedback: `0x332` changed during the current command window, from about `B34E05015AFFF41F` through `B343050197F80020`, then recovered after `iq_ref=0` and stop.
+- Final state: after stop and active-report disable, `0x332` returned to stale/no-feedback frames; `can0` stayed `ERROR-ACTIVE` with tx/rx error counters `0/0`.
+- Safety: current-mode hold was bounded to 5 seconds, setpoint was explicitly returned to zero before stop, and only motor5 was commanded. Do not use indefinite current hold over remote SSH.

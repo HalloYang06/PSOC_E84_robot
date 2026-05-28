@@ -2969,6 +2969,25 @@ python3 /home/pi/nanopi_can_master.py private active-report --iface can0 --motor
 - 结束前必须看到 `0x1200FD05#0670000000000000` 和 stop。
 - `can0` 仍为 `ERROR-ACTIVE`。
 
+5号也已试过 `iq_ref=-0.7A`，保持 5 秒：
+
+```bash
+python3 /home/pi/nanopi_can_master.py private active-report --iface can0 --motor 5 --enable-report --wait 0
+python3 /home/pi/nanopi_can_master.py private mode --iface can0 --motor 5 --mode 3 --wait 0
+python3 /home/pi/nanopi_can_master.py private enable --iface can0 --motor 5 --wait 0
+python3 /home/pi/nanopi_can_master.py private write-float --iface can0 --motor 5 --index 0x7006 --value -0.7 --wait 0
+sleep 5
+python3 /home/pi/nanopi_can_master.py private write-float --iface can0 --motor 5 --index 0x7006 --value 0.0 --wait 0
+python3 /home/pi/nanopi_can_master.py private stop --iface can0 --motor 5 --clear-fault --wait 0
+python3 /home/pi/nanopi_can_master.py private active-report --iface can0 --motor 5 --wait 0
+```
+
+通过标准：
+
+- 抓包能看到 `0x1200FD05#06700000333333BF`，表示写 `iq_ref=-0.7f`。
+- 必须在结束前写回 `iq_ref=0.0f`，再 stop。
+- 远程调试禁止无限期 current hold；每次保持都必须有明确秒数和 stop。
+
 ### 6.7.4 运动测试后离线复盘
 
 如果现场已经做过一次正式路径运动测试，先不要急着继续加大角度。把 `candump -L` 日志用离线报告工具复盘：
