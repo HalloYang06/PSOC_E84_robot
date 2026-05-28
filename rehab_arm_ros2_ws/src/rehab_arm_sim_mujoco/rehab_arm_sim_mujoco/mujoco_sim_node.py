@@ -32,7 +32,9 @@ class MujocoSimNode(Node):
     def __init__(self):
         super().__init__('rehab_arm_mujoco_sim')
         self.declare_parameter('rate_hz', 100.0)
+        self.declare_parameter('model_path', '')
         self.rate_hz = float(self.get_parameter('rate_hz').value)
+        self.model_path = str(self.get_parameter('model_path').value or '')
         self.positions = [0.0] * len(JOINT_NAMES)
         self.velocities = [0.0] * len(JOINT_NAMES)
         self.desired_positions = [0.0] * len(JOINT_NAMES)
@@ -55,7 +57,7 @@ class MujocoSimNode(Node):
 
         self.mujoco_backend = None
         try:
-            self.mujoco_backend = RehabArmMujocoBackend()
+            self.mujoco_backend = RehabArmMujocoBackend(model_path=self.model_path)
             self.backend = 'mujoco-model'
         except Exception as exc:
             self.backend = 'fallback-first-order'

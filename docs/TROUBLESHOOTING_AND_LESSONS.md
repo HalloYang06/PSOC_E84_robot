@@ -4252,3 +4252,20 @@ Connection reset by 192.168.2.66 port 22
 - 第一版 `rehab_arm_sim_mujoco.mujoco_backend` 使用 MuJoCo model + `mj_forward`，但关节推进由代码按 `joints.yaml` 同款限速/限位做 kinematic step。
 - 合格标准：节点日志包含 `backend=mujoco-model`，发布 `JointTrajectory` 后 `/joint_states` 到达目标附近，且没有 `Nan, Inf or huge value`。
 - 后续引入真实 actuator 前，必须先写测试或短时验证，确认关节不会越限、不会爆速度。
+
+### MuJoCo 模型要通过 package share 或 `model_path` 替换
+
+现象：
+
+- 如果 MJCF 只写死在 Python 代码里，后续导入真实 URDF/MJCF/mesh 时必须改节点代码，容易污染仿真逻辑。
+
+判断：
+
+- 正规机器人仿真流程应该把模型当资源资产管理，节点只负责加载模型、订阅轨迹、发布状态。
+
+技巧：
+
+- 默认模型文件：`rehab_arm_sim_mujoco/models/rehab_arm_minimal.xml`。
+- 安装后位置：`install/rehab_arm_sim_mujoco/share/rehab_arm_sim_mujoco/models/rehab_arm_minimal.xml`。
+- 临时替换模型：`ros2 run rehab_arm_sim_mujoco mujoco_sim_node.py --ros-args -p model_path:=/absolute/path/to/model.xml`。
+- 如果 `model_path` 指向不存在的文件，后端会退回内置最小模型；正式验证时要确认日志和安装路径，避免误以为加载了真实模型。

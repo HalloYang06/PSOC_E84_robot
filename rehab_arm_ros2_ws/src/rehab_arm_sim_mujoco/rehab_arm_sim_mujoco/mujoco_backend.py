@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from xml.sax.saxutils import escape
 
 
@@ -54,6 +55,25 @@ def clamp_positions(positions: list[float]) -> list[float]:
     return clamped
 
 
+def default_model_path() -> Path:
+    try:
+        from ament_index_python.packages import get_package_share_directory
+
+        return Path(get_package_share_directory('rehab_arm_sim_mujoco')) / 'models' / 'rehab_arm_minimal.xml'
+    except Exception:
+        return Path(__file__).resolve().parents[1] / 'models' / 'rehab_arm_minimal.xml'
+
+
+def load_mjcf_xml(model_path: str | None = None) -> str:
+    if not model_path:
+        path = default_model_path()
+    else:
+        path = Path(model_path).expanduser()
+    if path.exists():
+        return path.read_text(encoding='utf-8')
+    return build_rehab_arm_mjcf()
+
+
 def build_rehab_arm_mjcf() -> str:
     body_xml = ''
     indent = '    '
@@ -96,11 +116,12 @@ def build_rehab_arm_mjcf() -> str:
 
 
 class RehabArmMujocoBackend:
-    def __init__(self, mujoco_module=None):
+    def __init__(self, model_path: str | None = None, mujoco_module=None):
         if mujoco_module is None:
             import mujoco as mujoco_module  # type: ignore[no-redef]
         self.mujoco = mujoco_module
-        self.model = self.mujoco.MjModel.from_xml_string(build_rehab_arm_mjcf())
+        self.model_path = str(model_path or default_model_path())
+        self.model = self.mujoco.MjModel.from_xml_string(load_mjcf_xml(model_path))
         self.data = self.mujoco.MjData(self.model)
         self.joint_qpos_addr = [
             self.model.jnt_qposadr[

@@ -2133,3 +2133,14 @@
 - Validation result: node log contained `backend=mujoco-model`; `/joint_states` reached `[0.3, 0.5, 0.1, 0.2, -0.2]` within tolerance; no MuJoCo `Nan, Inf or huge value` warning was emitted after switching to the kinematic backend.
 - Safety: no NanoPi CAN, M33 command, `0x320`, or motor motion was used.
 - Next step: add a proper MJCF/URDF asset file path and a repeatable sim launch/trajectory demo that records a short dataset for platform annotation.
+
+### 2026-05-28 - MuJoCo model moved to installable asset file
+
+- Completed: added `rehab_arm_sim_mujoco/models/rehab_arm_minimal.xml` as the default MJCF asset instead of relying only on generated XML inside Python code.
+- Completed: installed the `models/` directory into the ROS package share path and added `ament_index_python` so the sim node can find the installed model.
+- Completed: added `model_path` ROS parameter to `mujoco_sim_node.py`; empty value loads the default installed model, explicit path can be used later for real MJCF/URDF-converted models.
+- Validated locally: `python -m unittest discover -s rehab_arm_ros2_ws\src\rehab_arm_sim_mujoco\test -v` passed 15 tests.
+- Validated on simulation host: rebuilt `rehab_arm_sim_mujoco`; confirmed installed model exists at `install/rehab_arm_sim_mujoco/share/rehab_arm_sim_mujoco/models/rehab_arm_minimal.xml`.
+- Validated trajectory path: node started with `backend=mujoco-model`, published a 5-joint trajectory, and `/joint_states` reached `[0.2, 0.4, 0.05, 0.1, -0.1]` within tolerance.
+- Safety: no NanoPi CAN, M33 command, `0x320`, or motor motion was used.
+- Next step: add a repeatable sim launch/demo capture that produces a short dataset for platform annotation and later VLA/model training checks.

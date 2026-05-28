@@ -176,6 +176,22 @@ Rehab arm simulation ready, backend=mujoco-model
 
 如果显示 `fallback-first-order`，说明当前机器没有成功加载 MuJoCo 模型后端；仍可先验证 ROS topic 合同，但不能称为真实 MuJoCo 仿真。
 
+默认 MuJoCo 模型文件安装在：
+
+```bash
+ros2 pkg prefix rehab_arm_sim_mujoco
+# 模型位于 share/rehab_arm_sim_mujoco/models/rehab_arm_minimal.xml
+```
+
+临时指定其他 MJCF 模型：
+
+```bash
+ros2 run rehab_arm_sim_mujoco mujoco_sim_node.py --ros-args \
+  -p model_path:=/absolute/path/to/your_model.xml
+```
+
+真实 URDF/MJCF/mesh 接入后，应优先通过 `model_path` 切换模型，不要直接改节点代码。
+
 验证 topic：
 
 ```bash

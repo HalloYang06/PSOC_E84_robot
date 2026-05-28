@@ -13,6 +13,8 @@ from rehab_arm_sim_mujoco.mujoco_backend import (  # noqa: E402
     JOINT_NAMES,
     build_rehab_arm_mjcf,
     clamp_positions,
+    default_model_path,
+    load_mjcf_xml,
 )
 
 
@@ -43,6 +45,21 @@ class MujocoBackendTests(unittest.TestCase):
         self.assertEqual(positions[0], 1.4)
         self.assertEqual(positions[1], 0.0)
         self.assertEqual(positions[2:], [0.1, 0.2, -0.2])
+
+    def test_default_model_file_is_available_and_matches_joint_contract(self) -> None:
+        model_path = default_model_path()
+        self.assertTrue(model_path.exists(), model_path)
+
+        root = ElementTree.fromstring(load_mjcf_xml(str(model_path)))
+        joint_names = [joint.attrib['name'] for joint in root.findall('.//joint')]
+
+        self.assertEqual(joint_names, JOINT_NAMES)
+
+    def test_empty_model_path_loads_default_model_file(self) -> None:
+        self.assertEqual(load_mjcf_xml(''), default_model_path().read_text(encoding='utf-8'))
+
+    def test_missing_model_path_falls_back_to_generated_model(self) -> None:
+        self.assertEqual(load_mjcf_xml('/path/that/does/not/exist.xml'), build_rehab_arm_mjcf())
 
 
 if __name__ == '__main__':

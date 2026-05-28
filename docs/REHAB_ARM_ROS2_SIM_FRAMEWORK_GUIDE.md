@@ -485,6 +485,19 @@ ros2 run rehab_arm_sim_mujoco mujoco_sim_node.py
 
 日志应包含 `backend=mujoco-model`。如果显示 `fallback-first-order`，说明 ROS topic 合同还能跑，但当前没有进入真实 MuJoCo model 后端。
 
+默认 MJCF 模型文件随 ROS 包安装：
+
+```bash
+install/rehab_arm_sim_mujoco/share/rehab_arm_sim_mujoco/models/rehab_arm_minimal.xml
+```
+
+后续真实模型接入时，优先通过节点参数切换：
+
+```bash
+ros2 run rehab_arm_sim_mujoco mujoco_sim_node.py --ros-args \
+  -p model_path:=/absolute/path/to/real_rehab_arm.xml
+```
+
 ## 5. URDF 模型后续怎么接入
 
 你的机械臂模型准备好以后，优先放到：
