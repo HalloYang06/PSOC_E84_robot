@@ -2988,6 +2988,32 @@ python3 /home/pi/nanopi_can_master.py private active-report --iface can0 --motor
 - 必须在结束前写回 `iq_ref=0.0f`，再 stop。
 - 远程调试禁止无限期 current hold；每次保持都必须有明确秒数和 stop。
 
+如果要“速度 + 助力前馈”混合，不是同时进入官方 speed/current 两个 `run_mode`，而是使用 MIT 控制帧组合 `vel` 和 `torque_ff`。5号已试过台架混合保持：
+
+```text
+motor=5
+vel=-0.3 rad/s
+kp=0
+kd=1.0
+torque_ff=-0.2 Nm
+duration=5s
+```
+
+这个测试对应反复刷新 MIT 帧：
+
+```text
+0x017E2B05#80007ED600003333
+```
+
+结束必须发：
+
+```bash
+python3 /home/pi/nanopi_can_master.py private stop --iface can0 --motor 5 --clear-fault --wait 0
+python3 /home/pi/nanopi_can_master.py private active-report --iface can0 --motor 5 --wait 0
+```
+
+注意：这个模式适合台架验证“速度目标 + 助力前馈”的体感。正式接入康复机械臂时应放到 M33 安全层里实现，必须带超时、限流/限矩、限速、限位和急停门控，不能让 NanoPi 或平台长期裸发 MIT 帧。
+
 ### 6.7.4 运动测试后离线复盘
 
 如果现场已经做过一次正式路径运动测试，先不要急着继续加大角度。把 `candump -L` 日志用离线报告工具复盘：

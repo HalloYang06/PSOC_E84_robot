@@ -2296,3 +2296,12 @@
 - Feedback: `0x332` changed during the current command window, from about `B34E05015AFFF41F` through `B343050197F80020`, then recovered after `iq_ref=0` and stop.
 - Final state: after stop and active-report disable, `0x332` returned to stale/no-feedback frames; `can0` stayed `ERROR-ACTIVE` with tx/rx error counters `0/0`.
 - Safety: current-mode hold was bounded to 5 seconds, setpoint was explicitly returned to zero before stop, and only motor5 was commanded. Do not use indefinite current hold over remote SSH.
+
+### 2026-05-28 - Motor5 MIT velocity plus torque feedforward hold
+
+- Reason: user asked whether velocity and torque can be mixed because pure speed/current mode was not ideal.
+- Clarification: official `run_mode` speed/current modes are mutually exclusive, but MIT control frames can combine velocity target and torque feedforward in one refreshed command stream.
+- Completed: used NanoPi direct MIT debug path for motor5: active-report enable, enable motor, refreshed `vel=-0.3 rad/s`, `kp=0`, `kd=1.0`, `torque_ff=-0.2Nm` for 5 seconds, then stop and active-report disable.
+- Validation: tx log recorded 244 repeated MIT frames `0x017E2B05#80007ED600003333`; filtered candump recorded stop frame `0x0400FD05#0100000000000000` and active-report disable.
+- Feedback: `0x332` stayed fresh during the hold, around `...71FF...`, then returned to stale/no-feedback frames after stop and active-report disable; `can0` stayed `ERROR-ACTIVE` with tx/rx error counters `0/0`.
+- Safety: mixed MIT hold was bounded to 5 seconds and explicitly stopped. This can be used as a bench debug strategy, but formal robot control should implement the same idea inside M33 with timeout, current/torque limits, and emergency-stop gates.
