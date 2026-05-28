@@ -2178,3 +2178,27 @@
 - Final state: active-report was disabled, `0x331` later returned to stale/no-feedback frames, and `can0` remained `ERROR-ACTIVE` with tx/rx error counters `0/0`.
 - Safety: only motor4 was commanded, speed was low, command duration was bounded to 5 seconds, and stop was sent immediately after the window.
 - Next step: wait for user visual confirmation; if motion is confirmed, record direction/sign and then move back to the formal M33 safety path instead of expanding direct debug control.
+
+### 2026-05-28 - Motor4 faster fixed-speed debug run
+
+- Reason: user asked to speed up and lengthen the fixed-speed observation test.
+- Completed: used the same NanoPi direct debug path for motor4: active-report enable, `private speed --motor 4 --vel 0.35 --kd 1.0`, held 8 seconds, then `private stop --motor 4 --clear-fault` and active-report disable.
+- Validation: filtered candump recorded 108 frames. Motor4 aggregate `0x331` changed continuously during the 8-second window, e.g. from `B3270401A1090320` through `B37B0401030F0220`, then stop frame `0x0400FD04#0100000000000000` was observed.
+- Final state: after stop, `0x331` settled near `...040F...` and later returned to stale/no-feedback frames after active-report disable; `can0` stayed `ERROR-ACTIVE` with tx/rx error counters `0/0`.
+- Safety: only motor4 was commanded, duration was bounded, and stop was sent immediately after the window. This remains a direct debug-path test, not the formal robot control path.
+
+### 2026-05-28 - Motor4 reverse fixed-speed debug run
+
+- Reason: user asked to reverse direction, set speed directly to `1`, and run for 10 seconds.
+- Completed: used NanoPi direct debug path for motor4 with negative velocity: active-report enable, `private speed --motor 4 --vel -1.0 --kd 1.0`, held 10 seconds, then `private stop --motor 4 --clear-fault` and active-report disable.
+- Validation: filtered candump recorded 127 frames. Motor4 aggregate `0x331` changed continuously in the opposite direction, e.g. from `B38D04016C0BF720` through `B3400401C6EDF920`, then stop frame `0x0400FD04#0100000000000000` appeared at the end of the command window.
+- Final state: after stop, `0x331` settled near `...70EE...` and later returned to stale/no-feedback frames after active-report disable; `can0` stayed `ERROR-ACTIVE` with tx/rx error counters `0/0`.
+- Safety: only motor4 was commanded, duration was bounded to 10 seconds, and stop was sent immediately after the window. This remains a direct debug-path test, not the formal robot control path.
+
+### 2026-05-28 - Motor4 reverse fixed-speed 5 second repeat
+
+- Reason: user asked to run the same reverse direction again for 5 seconds.
+- Completed: used NanoPi direct debug path for motor4 with `private speed --motor 4 --vel -1.0 --kd 1.0`, held 5 seconds, then `private stop --motor 4 --clear-fault` and active-report disable.
+- Validation: filtered candump recorded 79 frames. Motor4 aggregate `0x331` changed continuously from about `B33E04000FF00020` through `B33D040133E0F820`; stop frame `0x0400FD04#0100000000000000` appeared after the command window.
+- Final state: after stop, `0x331` settled near `...77E1...` and then returned to stale/no-feedback frames after active-report disable; `can0` stayed `ERROR-ACTIVE` with tx/rx error counters `0/0`.
+- Safety: only motor4 was commanded, duration was bounded to 5 seconds, and stop was sent immediately after the window.
