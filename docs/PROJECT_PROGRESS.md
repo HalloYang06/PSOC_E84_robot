@@ -2210,3 +2210,11 @@
 - Validation: filtered candump recorded 223 frames. Motor4 aggregate `0x331` changed continuously from `B38E04000A180021` near motion start through `B35D0401A9DCF821` near stop; stop frame `0x0400FD04#0100000000000000` appeared at `1779959246.062697`.
 - Final state: after stop, `0x331` settled near `...9DDC...` and later returned to stale/no-feedback frames after active-report disable; `can0` stayed `ERROR-ACTIVE` with tx/rx error counters `0/0`.
 - Safety: only motor4 was commanded, duration was bounded to 20 seconds, and stop was sent immediately after the window. This remains direct debug control, not the formal robot path.
+
+### 2026-05-28 - Motor6 fixed-speed 10 second run
+
+- Reason: user asked to rotate motor6 for 10 seconds.
+- Completed: used NanoPi direct debug path for motor6 with `private active-report --motor 6`, `private speed --motor 6 --vel 0.5 --kd 1.0`, held 10 seconds, then `private stop --motor 6 --clear-fault` and active-report disable.
+- Validation: filtered candump recorded 127 frames. Motor6 aggregate `0x333` changed from stale to fresh after active-report enable and then changed continuously from `B31006005511001E` through `B3040601B32C041E`; stop frame `0x0400FD06#0100000000000000` appeared at `1779959518.334354`.
+- Final state: after stop, `0x333` settled near `...BC2C...` and later returned to stale/no-feedback frames after active-report disable; `can0` stayed `ERROR-ACTIVE` with tx/rx error counters `0/0`.
+- Safety: only motor6 was commanded, first motor6 run used a moderate `0.5` velocity instead of the faster motor4 value, duration was bounded to 10 seconds, and stop was sent immediately after the window. This remains direct debug control, not the formal robot path.

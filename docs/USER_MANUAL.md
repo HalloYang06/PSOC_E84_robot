@@ -2859,6 +2859,22 @@ python3 /home/pi/nanopi_can_master.py private active-report --iface can0 --motor
 
 本项目实测：`0x331` 连续变化，stop 帧出现后 `can0` 仍为 `ERROR-ACTIVE`，tx/rx error counters 为 `0/0`。长时间动作只用于空载台架观察，不要带人、不用于正式康复模式。
 
+6号对应 M33 aggregate `0x333`。第一次台架速度观察建议比 4号保守：
+
+```bash
+python3 /home/pi/nanopi_can_master.py private active-report --iface can0 --motor 6 --enable-report --wait 0
+python3 /home/pi/nanopi_can_master.py private speed --iface can0 --motor 6 --vel 0.5 --kd 1.0 --wait 0
+sleep 10
+python3 /home/pi/nanopi_can_master.py private stop --iface can0 --motor 6 --clear-fault --wait 0
+python3 /home/pi/nanopi_can_master.py private active-report --iface can0 --motor 6 --wait 0
+```
+
+通过标准：
+
+- `0x333` 从 stale/no-feedback 变成 fresh 状态并连续变化。
+- 抓包能看到 `0x0400FD06#0100000000000000` stop。
+- 结束后 `can0` 仍为 `ERROR-ACTIVE`，tx/rx error counters 为 `0/0`。
+
 ### 6.7.4 运动测试后离线复盘
 
 如果现场已经做过一次正式路径运动测试，先不要急着继续加大角度。把 `candump -L` 日志用离线报告工具复盘：
