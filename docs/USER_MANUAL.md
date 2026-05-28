@@ -2847,6 +2847,18 @@ tail -n 90 /tmp/motor4_speed_8s_v035.candump
 
 本项目实测：`0x331` 在 8 秒窗口内连续变化，stop 帧出现后总线仍为 `ERROR-ACTIVE`。如果这个动作仍看不见，就不要继续加速度；优先检查 4号电机是否确实上电、机械输出端是否被观察到、方向/传动是否脱开。
 
+若现场确认方向和机械空间都安全，`-1.0 / 20s` 也已作为台架长一点的观察动作跑通：
+
+```bash
+python3 /home/pi/nanopi_can_master.py private active-report --iface can0 --motor 4 --enable-report --wait 0
+python3 /home/pi/nanopi_can_master.py private speed --iface can0 --motor 4 --vel -1.0 --kd 1.0 --wait 0
+sleep 20
+python3 /home/pi/nanopi_can_master.py private stop --iface can0 --motor 4 --clear-fault --wait 0
+python3 /home/pi/nanopi_can_master.py private active-report --iface can0 --motor 4 --wait 0
+```
+
+本项目实测：`0x331` 连续变化，stop 帧出现后 `can0` 仍为 `ERROR-ACTIVE`，tx/rx error counters 为 `0/0`。长时间动作只用于空载台架观察，不要带人、不用于正式康复模式。
+
 ### 6.7.4 运动测试后离线复盘
 
 如果现场已经做过一次正式路径运动测试，先不要急着继续加大角度。把 `candump -L` 日志用离线报告工具复盘：
