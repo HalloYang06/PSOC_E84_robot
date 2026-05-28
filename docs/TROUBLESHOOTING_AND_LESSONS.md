@@ -4214,3 +4214,23 @@ Connection reset by 192.168.2.66 port 22
 
 - 测试前先执行 `pkill -f psoc_can_bridge_node.py || true`。
 - 测试后也要清理 bridge 和 `candump -L can0,320:7FF`，避免后台进程影响下一轮。
+
+### 官方 MuJoCo 远程 SSH/headless 渲染优先用 EGL
+
+现象：
+
+- 仿真主机通过 SSH 运行官方 MuJoCo Python 包时，默认 GLFW 渲染会因为没有图形桌面报 `DISPLAY environment variable is missing`。
+- `osmesa` 只有系统装好 OSMesa 相关库才可用。
+
+判断：
+
+- 这不是 MuJoCo 安装失败，也不应该退回旧 `mujoco-py`。
+- 本项目仿真主机使用官方 `mujoco` Python 包，headless 渲染统一走 `MUJOCO_GL=egl`。
+
+技巧：
+
+- 安装命令：`python3 -m pip install --user --break-system-packages mujoco`。
+- 在仿真主机 `~/.rehab_arm_ros2_network` 里固定：`export MUJOCO_GL=egl`。
+- 验证命令：`ros2 run rehab_arm_sim_mujoco check_sim_env.py --strict-mujoco --pretty`，通过标准是 `readiness=ready_with_mujoco`、`checks.mujoco.ok=true`、`errors=[]`。
+- 当前已在 `cal@192.168.2.46` 验证官方 `mujoco 3.9.0` 可导入、可 `mj_step`，并能用 EGL 渲染非空 RGB 帧。
+- 临时 smoke 脚本如果创建 `mujoco.GLContext`/`mujoco.Renderer` 后不显式关闭，Python 退出时可能打印 EGL 析构 warning；正式仿真/采集代码应显式释放 renderer/context，避免日志误判。

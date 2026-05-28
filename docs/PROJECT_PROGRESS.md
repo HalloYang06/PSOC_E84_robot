@@ -2110,3 +2110,15 @@
 - Cleanup: stopped the temporary NanoPi bridge and candump processes after the test.
 - Safety: no motor movement commands were sent; this was cross-machine ROS dry-run only.
 - Next step: when MuJoCo is ready, replace the manual `ros2 topic pub` with a simulator/planner-generated `JointTrajectory` while keeping NanoPi `enable_target_tx=false`.
+
+### 2026-05-28 - Official MuJoCo configured on simulation host
+
+- Completed: installed the official MuJoCo Python package on simulation host `cal@192.168.2.46` with `python3 -m pip install --user --break-system-packages mujoco`.
+- Installed version: `mujoco 3.9.0`.
+- Completed: configured headless rendering with `export MUJOCO_GL=egl` in `~/.rehab_arm_ros2_network`.
+- Validated official MuJoCo smoke test: imported `mujoco`, loaded an MJCF XML string, created `MjModel/MjData`, ran `mj_step`, and rendered a `64x64x3` RGB frame with nonzero pixel sum using EGL.
+- Validated project strict check: `ros2 run rehab_arm_sim_mujoco check_sim_env.py --strict-mujoco --pretty` returned `ok=true`, `readiness=ready_with_mujoco`, `checks.mujoco.ok=true`, and `errors=[]`.
+- Validated ROS sim node: `ros2 run rehab_arm_sim_mujoco mujoco_sim_node.py` logged `backend=mujoco-python-available` and published 5-joint `/joint_states`.
+- Notes: default GLFW render failed under SSH because `DISPLAY` was missing; OSMesa was not configured, but EGL works and is the chosen headless path.
+- Safety: this task only changed the simulation host Python/user environment; no NanoPi CAN, M33 command, `0x320`, or motor motion was used.
+- Next step: replace the current fallback-first-order sim internals with a real MuJoCo model path while preserving the same `/arm_controller/joint_trajectory` and `/joint_states` ROS contract.

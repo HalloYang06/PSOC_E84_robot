@@ -3238,11 +3238,11 @@ timeout 10s candump -L can0,320:7FF
 另一台 Linux 主机接入前，先在该主机上运行仿真环境自检：
 
 ```bash
-cd ~/rehab_ws_src/Medical-Rehabilitation-Manipulator/rehab_arm_ros2_ws
+cd ~/桌面/Medical-Rehabilitation-Manipulator/rehab_arm_ros2_ws
 source /opt/ros/jazzy/setup.bash
 ./build_ros2.sh --packages-select rehab_arm_description rehab_arm_psoc_bridge rehab_arm_sim_mujoco
 source install/setup.bash
-ros2 run rehab_arm_sim_mujoco check_sim_env --pretty --output sim_readiness_report.json
+ros2 run rehab_arm_sim_mujoco check_sim_env.py --pretty --output sim_readiness_report.json
 ```
 
 看三个字段：
@@ -3252,6 +3252,31 @@ ros2 run rehab_arm_sim_mujoco check_sim_env --pretty --output sim_readiness_repo
 - `readiness=ready_with_mujoco`：可以进入 MuJoCo 仿真。
 
 如果 `ok=false`，先看 `missing_actions`，它会列出缺的模块和建议命令。这个检查只读，不访问 CAN，不发送 `0x320/0x321`，不会命令 M33 或电机。
+
+如果要安装官方 MuJoCo：
+
+```bash
+python3 -m pip install --user --break-system-packages mujoco
+grep -q '^export MUJOCO_GL=' ~/.rehab_arm_ros2_network \
+  && sed -i 's/^export MUJOCO_GL=.*/export MUJOCO_GL=egl/' ~/.rehab_arm_ros2_network \
+  || echo 'export MUJOCO_GL=egl' >> ~/.rehab_arm_ros2_network
+source ~/.rehab_arm_ros2_network
+```
+
+严格验证：
+
+```bash
+ros2 run rehab_arm_sim_mujoco check_sim_env.py --strict-mujoco --pretty \
+  --output /tmp/rehab_mujoco_readiness.json
+```
+
+通过标准：
+
+- `readiness=ready_with_mujoco`
+- `checks.mujoco.ok=true`
+- `errors=[]`
+
+Headless 渲染验证使用 `MUJOCO_GL=egl`。如果默认 GLFW 报 `DISPLAY environment variable is missing`，不要改回 `mujoco-py`；继续使用官方 `mujoco` 包和 EGL。
 
 ### 7.5 文档和 Git 维护
 

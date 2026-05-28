@@ -447,15 +447,43 @@ ros2 topic echo /joint_states
 
 第一阶段代码即使没有 MuJoCo 也会用 fallback 简化动力学跑起来。等 URDF 和数据流稳定后，再装 MuJoCo。
 
+MuJoCo 必须使用官方 Python 包 `mujoco`，不要使用旧的 `mujoco-py`。
+
 ```bash
-python3 -m pip install --user mujoco
+python3 -m pip install --user --break-system-packages mujoco
+echo 'export MUJOCO_GL=egl' >> ~/.rehab_arm_ros2_network
+source ~/.rehab_arm_ros2_network
 python3 - <<'PY'
 import mujoco
 print(mujoco.__version__)
 PY
 ```
 
-如果这一步报 OpenGL 或显卡问题，先不要卡死在这里。先保持 fallback 仿真跑通，后续再补可视化和真实 MuJoCo model。
+仿真主机无显示器时，优先用 `MUJOCO_GL=egl` 做 headless 渲染。`glfw` 默认需要 `DISPLAY`，远程 SSH 下通常会失败；`osmesa` 只有装好 OSMesa 库时才可用。
+
+安装后运行严格检查：
+
+```bash
+cd ~/桌面/Medical-Rehabilitation-Manipulator/rehab_arm_ros2_ws
+source /opt/ros/jazzy/setup.bash
+source ~/.rehab_arm_ros2_network
+source install/setup.bash
+ros2 run rehab_arm_sim_mujoco check_sim_env.py --strict-mujoco --pretty
+```
+
+通过标准：
+
+- `readiness=ready_with_mujoco`
+- `checks.mujoco.ok=true`
+- `errors=[]`
+
+再启动仿真节点：
+
+```bash
+ros2 run rehab_arm_sim_mujoco mujoco_sim_node.py
+```
+
+日志应包含 `backend=mujoco-python-available`。
 
 ## 5. URDF 模型后续怎么接入
 
