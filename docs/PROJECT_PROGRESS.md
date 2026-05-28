@@ -2329,3 +2329,19 @@
 - Validation: tx log recorded 98 repeated MIT frames `0x016DB605#80007ED600003333`; filtered candump recorded stop frame `0x0400FD05#0100000000000000` and active-report disable.
 - Feedback: `0x332` stayed fresh during the pulse, around `...26FF...`, then returned to stale/no-feedback frames after stop and active-report disable; `can0` stayed `ERROR-ACTIVE` with tx/rx error counters `0/0`.
 - Safety: because this is already double the previous `-1.0Nm` test, duration was bounded to 2 seconds. If this is still insufficient, next action should be mechanical/load-path inspection and M33-side bounded assist design, not unbounded remote torque escalation.
+
+### 2026-05-28 - Motor5 5Nm MIT velocity plus torque feedforward pulse
+
+- Reason: user reported that `-2.0Nm` was still insufficient and requested `5Nm`; user also noted official `0.5A` current mode was effective, suggesting MIT torque scale may not map directly to expected output-axis torque.
+- Completed: used NanoPi direct MIT debug path for motor5 with `vel=-0.3 rad/s`, `kp=0`, `kd=1.0`, `torque_ff=-5.0Nm`, held 1 second, then stop and active-report disable.
+- Validation: tx log recorded 49 repeated MIT frames `0x01524905#80007ED600003333`; filtered candump recorded stop frame `0x0400FD05#0100000000000000` and active-report disable.
+- Feedback: `0x332` stayed fresh during the pulse, around `...D9FF...`, then returned to stale/no-feedback frames after stop and active-report disable; `can0` stayed `ERROR-ACTIVE` with tx/rx error counters `0/0`.
+- Safety: duration was bounded to 1 second because this is a large remote MIT torque-feedforward pulse. Wait for user confirmation before any longer hold; prefer official current mode or M33-side bounded assist for further force testing.
+
+### 2026-05-28 - Motor5 5Nm MIT velocity plus torque feedforward 5 second hold
+
+- Reason: user asked to keep the same `-5.0Nm` MIT feedforward for 5 seconds.
+- Completed: used NanoPi direct MIT debug path for motor5 with `vel=-0.3 rad/s`, `kp=0`, `kd=1.0`, `torque_ff=-5.0Nm`, held 5 seconds, then stop and active-report disable.
+- Validation: tx log recorded 244 repeated MIT frames `0x01524905#80007ED600003333`; filtered candump recorded stop frame `0x0400FD05#0100000000000000` and active-report disable.
+- Feedback: `0x332` stayed fresh during the hold, around `...CEFE...`, then returned to stale/no-feedback frames after stop and active-report disable; `can0` stayed `ERROR-ACTIVE` with tx/rx error counters `0/0`.
+- Safety: this was a high MIT torque-feedforward hold, bounded to 5 seconds and explicitly stopped. Do not make this an unbounded NanoPi-side behavior; formal assist must move into M33 with safety limits.
