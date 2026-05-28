@@ -6,28 +6,14 @@ import math
 from dataclasses import dataclass
 
 import rclpy
+from rclpy._rclpy_pybind11 import RCLError
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
 from std_msgs.msg import String
 from trajectory_msgs.msg import JointTrajectory
 
-
-JOINT_NAMES = [
-    'shoulder_lift_joint',
-    'elbow_lift_joint',
-    'shoulder_abduction_joint',
-    'upper_arm_rotation_joint',
-    'forearm_rotation_joint',
-]
-
-LIMITS = {
-    'shoulder_lift_joint': (-0.70, 1.40, 0.60),
-    'elbow_lift_joint': (0.00, 1.80, 0.70),
-    'shoulder_abduction_joint': (-0.45, 0.80, 0.40),
-    'upper_arm_rotation_joint': (-1.20, 1.20, 0.70),
-    'forearm_rotation_joint': (-1.20, 1.20, 0.70),
-}
+from rehab_arm_sim_mujoco.mujoco_backend import JOINT_NAMES, LIMITS, RehabArmMujocoBackend, clamp
 
 
 @dataclass
@@ -49,6 +35,7 @@ class MujocoSimNode(Node):
         self.rate_hz = float(self.get_parameter('rate_hz').value)
         self.positions = [0.0] * len(JOINT_NAMES)
         self.velocities = [0.0] * len(JOINT_NAMES)
+        self.desired_positions = [0.0] * len(JOINT_NAMES)
         self.segments: list[TrajectorySegment] = []
         self.last_time = self.get_clock().now().nanoseconds / 1e9
         self.safety_state = 'ok'
@@ -66,11 +53,13 @@ class MujocoSimNode(Node):
         )
         self.timer = self.create_timer(1.0 / self.rate_hz, self.on_timer)
 
+        self.mujoco_backend = None
         try:
-            import mujoco  # noqa: F401
-            self.backend = 'mujoco-python-available'
-        except Exception:
+            self.mujoco_backend = RehabArmMujocoBackend()
+            self.backend = 'mujoco-model'
+        except Exception as exc:
             self.backend = 'fallback-first-order'
+            self.get_logger().warn(f'MuJoCo model backend unavailable, using fallback: {exc}')
         self.get_logger().info(f'Rehab arm simulation ready, backend={self.backend}')
 
     def on_trajectory(self, msg: JointTrajectory) -> None:
@@ -112,16 +101,20 @@ class MujocoSimNode(Node):
         if self.segments:
             segment = self.segments[0]
             if now >= segment.end_time:
-                self.positions = list(segment.end_positions)
+                self.desired_positions = list(segment.end_positions)
                 self.segments.pop(0)
             else:
                 alpha = (now - segment.start_time) / max(segment.end_time - segment.start_time, 1e-6)
                 alpha = clamp(alpha, 0.0, 1.0)
-                self.positions = [
+                self.desired_positions = [
                     start + (end - start) * alpha
                     for start, end in zip(segment.start_positions, segment.end_positions)
                 ]
 
+        if self.mujoco_backend is not None:
+            self.positions = self.mujoco_backend.step(self.desired_positions, dt)
+        else:
+            self.positions = list(self.desired_positions)
         self.velocities = [(pos - old) / dt for pos, old in zip(self.positions, previous)]
         self.publish_joint_state()
         self.publish_sensor_state()
@@ -163,7 +156,7 @@ def main(args=None):
     node = MujocoSimNode()
     try:
         rclpy.spin(node)
-    except (KeyboardInterrupt, ExternalShutdownException):
+    except (KeyboardInterrupt, ExternalShutdownException, RCLError):
         pass
     finally:
         try:

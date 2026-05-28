@@ -168,6 +168,14 @@ ros2 run rehab_arm_sim_mujoco check_sim_env --pretty --strict-mujoco
 ros2 run rehab_arm_sim_mujoco mujoco_sim_node.py
 ```
 
+官方 MuJoCo 后端启用时，日志应显示：
+
+```text
+Rehab arm simulation ready, backend=mujoco-model
+```
+
+如果显示 `fallback-first-order`，说明当前机器没有成功加载 MuJoCo 模型后端；仍可先验证 ROS topic 合同，但不能称为真实 MuJoCo 仿真。
+
 验证 topic：
 
 ```bash

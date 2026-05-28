@@ -483,7 +483,7 @@ ros2 run rehab_arm_sim_mujoco check_sim_env.py --strict-mujoco --pretty
 ros2 run rehab_arm_sim_mujoco mujoco_sim_node.py
 ```
 
-日志应包含 `backend=mujoco-python-available`。
+日志应包含 `backend=mujoco-model`。如果显示 `fallback-first-order`，说明 ROS topic 合同还能跑，但当前没有进入真实 MuJoCo model 后端。
 
 ## 5. URDF 模型后续怎么接入
 

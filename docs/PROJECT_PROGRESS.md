@@ -2122,3 +2122,14 @@
 - Notes: default GLFW render failed under SSH because `DISPLAY` was missing; OSMesa was not configured, but EGL works and is the chosen headless path.
 - Safety: this task only changed the simulation host Python/user environment; no NanoPi CAN, M33 command, `0x320`, or motor motion was used.
 - Next step: replace the current fallback-first-order sim internals with a real MuJoCo model path while preserving the same `/arm_controller/joint_trajectory` and `/joint_states` ROS contract.
+
+### 2026-05-28 - MuJoCo model backend wired into ROS sim node
+
+- Completed: added `rehab_arm_sim_mujoco.mujoco_backend` with a minimal 5-joint MJCF model, standard joint contract, joint limit clamping, and a MuJoCo-backed kinematic step path.
+- Completed: updated `mujoco_sim_node.py` so MuJoCo availability now uses `backend=mujoco-model`; fallback remains available when MuJoCo cannot load.
+- Safety decision: first real MuJoCo slice uses velocity-limited kinematic stepping inside MuJoCo instead of unconstrained position-actuator dynamics, because the first actuator attempt produced unstable acceleration warnings and out-of-limit joint values.
+- Validated locally: `python -m unittest discover -s rehab_arm_ros2_ws\src\rehab_arm_sim_mujoco\test -v` passed 12 tests.
+- Validated on simulation host: rebuilt `rehab_arm_sim_mujoco`, started `mujoco_sim_node.py`, published a 5-joint `JointTrajectory`, and echoed `/joint_states`.
+- Validation result: node log contained `backend=mujoco-model`; `/joint_states` reached `[0.3, 0.5, 0.1, 0.2, -0.2]` within tolerance; no MuJoCo `Nan, Inf or huge value` warning was emitted after switching to the kinematic backend.
+- Safety: no NanoPi CAN, M33 command, `0x320`, or motor motion was used.
+- Next step: add a proper MJCF/URDF asset file path and a repeatable sim launch/trajectory demo that records a short dataset for platform annotation.

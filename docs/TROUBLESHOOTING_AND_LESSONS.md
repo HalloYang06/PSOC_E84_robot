@@ -4234,3 +4234,21 @@ Connection reset by 192.168.2.66 port 22
 - 验证命令：`ros2 run rehab_arm_sim_mujoco check_sim_env.py --strict-mujoco --pretty`，通过标准是 `readiness=ready_with_mujoco`、`checks.mujoco.ok=true`、`errors=[]`。
 - 当前已在 `cal@192.168.2.46` 验证官方 `mujoco 3.9.0` 可导入、可 `mj_step`，并能用 EGL 渲染非空 RGB 帧。
 - 临时 smoke 脚本如果创建 `mujoco.GLContext`/`mujoco.Renderer` 后不显式关闭，Python 退出时可能打印 EGL 析构 warning；正式仿真/采集代码应显式释放 renderer/context，避免日志误判。
+
+### 第一版 MuJoCo actuator 动力学不稳定时先退到限速运动学
+
+现象：
+
+- 最小 MJCF 使用 MuJoCo position actuator 后，节点日志出现 `Nan, Inf or huge value in QACC`。
+- `/joint_states` 中部分旋转关节冲出配置限位，不能作为康复机械臂仿真基线。
+
+判断：
+
+- 这是仿真模型/执行器参数不成熟，不是 ROS topic 合同问题。
+- 穿戴式康复机械臂主线优先要稳定、可标注、限位一致的数据流；真实执行器动力学可以在 URDF/MJCF、质量、阻尼和 actuator 参数明确后再逐步加。
+
+技巧：
+
+- 第一版 `rehab_arm_sim_mujoco.mujoco_backend` 使用 MuJoCo model + `mj_forward`，但关节推进由代码按 `joints.yaml` 同款限速/限位做 kinematic step。
+- 合格标准：节点日志包含 `backend=mujoco-model`，发布 `JointTrajectory` 后 `/joint_states` 到达目标附近，且没有 `Nan, Inf or huge value`。
+- 后续引入真实 actuator 前，必须先写测试或短时验证，确认关节不会越限、不会爆速度。
