@@ -4325,3 +4325,21 @@ Connection reset by 192.168.2.66 port 22
 - RobStride/Lingzu 台架调试优先使用官方 CSP：`run_mode=5`、`limit_cur(0x7018)`、`limit_spd(0x7017)`、`loc_ref(0x7016)`。
 - `nanopi_can_master.py private csp` 已封装这条调试路径；默认 `--hold` 后自动 stop。
 - 如果需要观察保持目标，必须显式加 `--leave-enabled`，并且只允许非穿戴台架有人值守时使用。
+
+### CSP stop 前先慢速回收
+
+现象：
+
+- CSP 目标动作结束后直接 stop，电机会立刻退出保持/卸力。
+- 对机器人关节调试来说，这种“突然卸力”体感不好，也不利于形成正式运动流程。
+
+判断：
+
+- 更合理的台架动作是：目标位置保持一段时间，然后低速回收到安全位置，最后 stop。
+- 但回收位置不能默认假设为机械零点；不同装配/患者限位下，错误回零本身可能危险。
+
+技巧：
+
+- 使用 `private csp --return-deg <angle> --return-spd <rad_s> --return-hold <seconds>`。
+- 建议先用小角度和低回收速度，例如 `--return-deg 0 --return-spd 0.05 --return-hold 8`。
+- 正式 M33 安全状态机也应采用“受限回收/停止流程”，而不是任何状态下立即卸力。

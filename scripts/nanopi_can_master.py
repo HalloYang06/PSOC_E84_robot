@@ -383,12 +383,19 @@ def cmd_private(args: argparse.Namespace) -> int:
                 target_rad = math.radians(args.target_deg)
             if target_rad is None:
                 raise ValueError("private csp requires --target-rad or --target-deg")
+            return_rad = args.return_rad
+            if args.return_deg is not None:
+                return_rad = math.radians(args.return_deg)
             if args.limit_spd <= 0.0:
                 raise ValueError("--limit-spd must be > 0")
             if args.limit_cur <= 0.0:
                 raise ValueError("--limit-cur must be > 0")
             if args.hold < 0.0:
                 raise ValueError("--hold must be >= 0")
+            if args.return_spd <= 0.0:
+                raise ValueError("--return-spd must be > 0")
+            if args.return_hold < 0.0:
+                raise ValueError("--return-hold must be >= 0")
 
             send(sock, frame_private_active_report(args.motor, True))
             time.sleep(0.01)
@@ -403,6 +410,12 @@ def cmd_private(args: argparse.Namespace) -> int:
             send(sock, frame_private_write_float(args.motor, PARAM_LOC_REF, target_rad))
             if args.hold > 0.0:
                 recv_until(sock, args.hold, None)
+            if return_rad is not None:
+                send(sock, frame_private_write_float(args.motor, PARAM_LIMIT_SPD, abs(args.return_spd)))
+                time.sleep(0.01)
+                send(sock, frame_private_write_float(args.motor, PARAM_LOC_REF, return_rad))
+                if args.return_hold > 0.0:
+                    recv_until(sock, args.return_hold, None)
             if not args.leave_enabled:
                 send(sock, frame_private_stop(args.motor, args.clear_fault))
                 time.sleep(0.01)
@@ -547,6 +560,10 @@ def build_parser() -> argparse.ArgumentParser:
     private.add_argument("--limit-spd", type=float, default=0.2, help="CSP speed limit in rad/s")
     private.add_argument("--limit-cur", type=float, default=0.7, help="CSP current limit in A")
     private.add_argument("--hold", type=float, default=5.0, help="seconds to observe CSP motion before the default stop")
+    private.add_argument("--return-rad", type=float, help="optional CSP retract target in rad before stop")
+    private.add_argument("--return-deg", type=float, help="optional CSP retract target in deg before stop; overrides --return-rad")
+    private.add_argument("--return-spd", type=float, default=0.05, help="CSP retract speed limit in rad/s")
+    private.add_argument("--return-hold", type=float, default=5.0, help="seconds to wait after the optional retract target")
     private.add_argument("--leave-enabled", action="store_true", help="do not stop after CSP command; bench debug only")
     private.add_argument("--enable-report", action="store_true")
     private.add_argument("--wait", type=float, default=0.2)

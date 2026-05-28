@@ -2354,3 +2354,11 @@
 - Deployment: uploaded the updated script to NanoPi `/home/pi/nanopi_can_master.py` and confirmed remote `private --help` shows `csp`.
 - Safety: default behavior stops after `--hold`; `--leave-enabled` is explicit bench-only behavior. Formal robot motion still belongs in M33 with joint limits, speed/current limits, timeout, and emergency-stop gates.
 - Next step: run a small CSP motor5 trial, for example `--target-deg 10 --limit-spd 0.15 --limit-cur 1.0 --hold 6`.
+
+### 2026-05-28 - NanoPi private CSP slow retract before stop
+
+- Reason: user requested that the CSP debug command should not immediately power off/stop at the end of motion; it should slowly retract first, then stop.
+- Completed: extended `nanopi_can_master.py private csp` with optional `--return-rad/--return-deg`, `--return-spd`, and `--return-hold`.
+- Behavior: if a return target is provided, the script writes a slower `limit_spd(0x7017)`, writes the return `loc_ref(0x7016)`, waits for `--return-hold`, then sends stop and disables active-report unless `--leave-enabled` is set.
+- Validation: local Python syntax check passed and CLI help shows the new return parameters.
+- Safety: return motion is explicit; the script will not assume `0°` unless the operator asks for `--return-deg 0`. This avoids unexpected motion toward an unconfirmed zero on a real wearable mechanism.

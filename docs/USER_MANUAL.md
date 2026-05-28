@@ -3113,11 +3113,39 @@ stop
 active-report off
 ```
 
+如果不希望动作结束后立刻卸力，可以先慢速回收到一个安全角度，再 stop。例如先到 `10°`，保持 6 秒，再用 `0.05 rad/s` 慢慢回到 `0°`，等待 8 秒后 stop：
+
+```bash
+python3 /home/pi/nanopi_can_master.py private csp \
+  --iface can0 \
+  --motor 5 \
+  --target-deg 10 \
+  --limit-spd 0.15 \
+  --limit-cur 1.0 \
+  --hold 6 \
+  --return-deg 0 \
+  --return-spd 0.05 \
+  --return-hold 8 \
+  --clear-fault
+```
+
+回收流程会额外发送：
+
+```text
+limit_spd(0x7017)=return_spd
+loc_ref(0x7016)=return_target_rad
+等待 return_hold 秒
+stop
+active-report off
+```
+
 调参建议：
 
 - 速度太快：降低 `--limit-spd`，例如 `0.05~0.15`。
 - 一给阻力就不动：逐步提高 `--limit-cur`，例如 `1.0 -> 1.5 -> 2.0`，每次都观察温升和电源电流。
 - 方向不对：把 `--target-deg 10` 改成 `--target-deg -10`，不要先大角度。
+- 回收太快：降低 `--return-spd`，例如 `0.03~0.05`。
+- 回收没到位就 stop：增大 `--return-hold`，例如 `8~12`。
 - 要观察到位后持续保持：台架空载且有人盯着时才加 `--leave-enabled`；结束必须手动 stop。
 
 手动急停：
