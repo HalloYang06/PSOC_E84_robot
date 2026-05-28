@@ -4307,3 +4307,21 @@ Connection reset by 192.168.2.66 port 22
 - 不要在速度模式里盲目继续加 `limit_cur`。
 - 先补软件工具：读回 `run_mode/limit_cur/limit_spd`，解码 active-report 中的实际电流/力矩。
 - current-mode 阶跃要从很小电流开始，每步 1~2 秒，并准备立即 stop/disable。
+
+### 纯 current mode 不适合做目标运动控制
+
+现象：
+
+- motor5 使用 `run_mode=3`、`iq_ref=-0.5A/-0.7A` 可以动。
+- 空载时速度体感偏快；一给阻力又容易不动。
+
+判断：
+
+- current mode 是固定电流/力矩倾向，不负责目标角度和目标速度。
+- 机器人关节更适合先给目标位置/速度约束，再用驱动内部闭环在电流上限内补偿阻力。
+
+技巧：
+
+- RobStride/Lingzu 台架调试优先使用官方 CSP：`run_mode=5`、`limit_cur(0x7018)`、`limit_spd(0x7017)`、`loc_ref(0x7016)`。
+- `nanopi_can_master.py private csp` 已封装这条调试路径；默认 `--hold` 后自动 stop。
+- 如果需要观察保持目标，必须显式加 `--leave-enabled`，并且只允许非穿戴台架有人值守时使用。

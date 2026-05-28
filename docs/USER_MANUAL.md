@@ -3082,7 +3082,54 @@ python3 /home/pi/nanopi_can_master.py private active-report --iface can0 --motor
 
 注意：这个模式适合台架验证“速度目标 + 助力前馈”的体感。正式接入康复机械臂时应放到 M33 安全层里实现，必须带超时、限流/限矩、限速、限位和急停门控，不能让 NanoPi 或平台长期裸发 MIT 帧。
 
-### 6.7.4 运动测试后离线复盘
+### 6.7.4 灵足/RobStride CSP 目标位置调试
+
+如果目标是“给一个目标角度，电机按限制速度过去；遇到轻微阻力时，在限流内自动补偿力矩”，优先用 CSP 位置模式，而不是纯 current mode。
+
+新版 `nanopi_can_master.py` 已封装：
+
+```bash
+python3 /home/pi/nanopi_can_master.py private csp \
+  --iface can0 \
+  --motor 5 \
+  --target-deg 10 \
+  --limit-spd 0.15 \
+  --limit-cur 1.0 \
+  --hold 6 \
+  --clear-fault
+```
+
+它会依次发送：
+
+```text
+active-report on
+run_mode(0x7005)=5
+enable
+limit_cur(0x7018)=1.0
+limit_spd(0x7017)=0.15
+loc_ref(0x7016)=target_rad
+等待 hold 秒
+stop
+active-report off
+```
+
+调参建议：
+
+- 速度太快：降低 `--limit-spd`，例如 `0.05~0.15`。
+- 一给阻力就不动：逐步提高 `--limit-cur`，例如 `1.0 -> 1.5 -> 2.0`，每次都观察温升和电源电流。
+- 方向不对：把 `--target-deg 10` 改成 `--target-deg -10`，不要先大角度。
+- 要观察到位后持续保持：台架空载且有人盯着时才加 `--leave-enabled`；结束必须手动 stop。
+
+手动急停：
+
+```bash
+python3 /home/pi/nanopi_can_master.py private stop --iface can0 --motor 5 --clear-fault --wait 0
+python3 /home/pi/nanopi_can_master.py private active-report --iface can0 --motor 5 --wait 0
+```
+
+注意：CSP 是目前更接近正式机器人执行器接口的测试方式，但 NanoPi 直控仍然只是调试工具。正式穿戴路径必须是 `ROS JointTrajectory -> NanoPi -> M33 安全状态机 -> 电机`。
+
+### 6.7.5 运动测试后离线复盘
 
 如果现场已经做过一次正式路径运动测试，先不要急着继续加大角度。把 `candump -L` 日志用离线报告工具复盘：
 
@@ -3111,7 +3158,7 @@ ros2 run rehab_arm_psoc_bridge motion_test_report.py \
 - 这个工具只读日志，不连接 CAN，不发命令，不代表可以继续运动。
 - 如果人不在现场，只允许做这种离线复盘，不要远程继续发动作。
 
-### 6.7.5 台架运动序列工具
+### 6.7.6 台架运动序列工具
 
 需要重复验证电机方向和角度时，先生成计划，不要直接执行。当前统一电机表包含 3/4/5/6/7，但执行白名单只有 3号和 7号：
 

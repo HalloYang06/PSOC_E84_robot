@@ -39,6 +39,7 @@ MOTOR_TYPE_PARAM_WRITE = 0x12
 MOTOR_TYPE_ACTIVE_REPORT = 0x18
 
 PARAM_RUN_MODE = 0x7005
+PARAM_IQ_REF = 0x7006
 PARAM_SPD_REF = 0x700A
 PARAM_LOC_REF = 0x7016
 PARAM_LIMIT_SPD = 0x7017
@@ -376,13 +377,44 @@ def cmd_private(args: argparse.Namespace) -> int:
             send(sock, frame_private_enable(args.motor))
             time.sleep(0.01)
             send(sock, frame_private_mit(args.motor, 0.0, args.vel, 0.0, args.kd, 0.0))
+        elif args.action == "csp":
+            target_rad = args.target_rad
+            if args.target_deg is not None:
+                target_rad = math.radians(args.target_deg)
+            if target_rad is None:
+                raise ValueError("private csp requires --target-rad or --target-deg")
+            if args.limit_spd <= 0.0:
+                raise ValueError("--limit-spd must be > 0")
+            if args.limit_cur <= 0.0:
+                raise ValueError("--limit-cur must be > 0")
+            if args.hold < 0.0:
+                raise ValueError("--hold must be >= 0")
+
+            send(sock, frame_private_active_report(args.motor, True))
+            time.sleep(0.01)
+            send(sock, frame_private_mode(args.motor, RUN_MODE_CSP))
+            time.sleep(0.01)
+            send(sock, frame_private_enable(args.motor))
+            time.sleep(0.01)
+            send(sock, frame_private_write_float(args.motor, PARAM_LIMIT_CUR, args.limit_cur))
+            time.sleep(0.01)
+            send(sock, frame_private_write_float(args.motor, PARAM_LIMIT_SPD, abs(args.limit_spd)))
+            time.sleep(0.01)
+            send(sock, frame_private_write_float(args.motor, PARAM_LOC_REF, target_rad))
+            if args.hold > 0.0:
+                recv_until(sock, args.hold, None)
+            if not args.leave_enabled:
+                send(sock, frame_private_stop(args.motor, args.clear_fault))
+                time.sleep(0.01)
+                send(sock, frame_private_active_report(args.motor, False))
         elif args.action == "write-float":
             send(sock, frame_private_write_float(args.motor, args.index, args.value))
         elif args.action == "read":
             send(sock, frame_private_read(args.motor, args.index))
         elif args.action == "active-report":
             send(sock, frame_private_active_report(args.motor, args.enable_report))
-        recv_until(sock, args.wait, None)
+        if args.action != "csp":
+            recv_until(sock, args.wait, None)
     finally:
         sock.close()
     return 0
@@ -499,7 +531,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     private = sub.add_parser("private", help="direct private extended-frame motor control")
     add_common(private)
-    private.add_argument("action", choices=["enable", "stop", "zero", "mode", "mit", "speed", "read", "write-float", "active-report"])
+    private.add_argument("action", choices=["enable", "stop", "zero", "mode", "mit", "speed", "csp", "read", "write-float", "active-report"])
     private.add_argument("--motor", type=parse_int, required=True)
     private.add_argument("--clear-fault", action="store_true")
     private.add_argument("--mode", type=parse_int, default=RUN_MODE_MIT)
@@ -510,6 +542,12 @@ def build_parser() -> argparse.ArgumentParser:
     private.add_argument("--torque", type=float, default=0.0)
     private.add_argument("--index", type=parse_int, default=PARAM_RUN_MODE)
     private.add_argument("--value", type=float, default=0.0)
+    private.add_argument("--target-rad", type=float, help="CSP target position in rad")
+    private.add_argument("--target-deg", type=float, help="CSP target position in deg; overrides --target-rad")
+    private.add_argument("--limit-spd", type=float, default=0.2, help="CSP speed limit in rad/s")
+    private.add_argument("--limit-cur", type=float, default=0.7, help="CSP current limit in A")
+    private.add_argument("--hold", type=float, default=5.0, help="seconds to observe CSP motion before the default stop")
+    private.add_argument("--leave-enabled", action="store_true", help="do not stop after CSP command; bench debug only")
     private.add_argument("--enable-report", action="store_true")
     private.add_argument("--wait", type=float, default=0.2)
     private.set_defaults(func=cmd_private)

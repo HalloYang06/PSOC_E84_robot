@@ -2345,3 +2345,12 @@
 - Validation: tx log recorded 244 repeated MIT frames `0x01524905#80007ED600003333`; filtered candump recorded stop frame `0x0400FD05#0100000000000000` and active-report disable.
 - Feedback: `0x332` stayed fresh during the hold, around `...CEFE...`, then returned to stale/no-feedback frames after stop and active-report disable; `can0` stayed `ERROR-ACTIVE` with tx/rx error counters `0/0`.
 - Safety: this was a high MIT torque-feedforward hold, bounded to 5 seconds and explicitly stopped. Do not make this an unbounded NanoPi-side behavior; formal assist must move into M33 with safety limits.
+
+### 2026-05-28 - NanoPi private CSP position command wrapper
+
+- Reason: user observed pure current mode can move motor5 but feels wrong for robot motion: no target position, speed can feel fast, and light resistance can stall if the current setpoint is too low.
+- Completed: added `nanopi_can_master.py private csp` as a direct debug wrapper for RobStride/Lingzu official CSP flow: active-report on, `run_mode=5`, enable, `limit_cur(0x7018)`, `limit_spd(0x7017)`, `loc_ref(0x7016)`, bounded observe window, then default stop and active-report off.
+- Validation: local Python syntax check passed with `python -m py_compile scripts/nanopi_can_master.py`; CLI help shows `private csp` and the new `--target-rad/--target-deg/--limit-spd/--limit-cur/--hold/--leave-enabled` parameters.
+- Deployment: uploaded the updated script to NanoPi `/home/pi/nanopi_can_master.py` and confirmed remote `private --help` shows `csp`.
+- Safety: default behavior stops after `--hold`; `--leave-enabled` is explicit bench-only behavior. Formal robot motion still belongs in M33 with joint limits, speed/current limits, timeout, and emergency-stop gates.
+- Next step: run a small CSP motor5 trial, for example `--target-deg 10 --limit-spd 0.15 --limit-cur 1.0 --hold 6`.
