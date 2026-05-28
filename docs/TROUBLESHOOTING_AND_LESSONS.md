@@ -4162,3 +4162,22 @@ Connection reset by 192.168.2.66 port 22
 
 - 用 `enable_target_tx=false` 做 dry-run 轨迹验证，candump 必须保持 `0x320` 为空。
 - 真机运动前必须同时满足 fresh 电机反馈和 M33 `motion_allowed=true`。
+
+### 台架 `bench_armed` 只能显式 dry-run 放行
+
+现象：
+
+- M33 返回 `state=ok/control_mode=bench_armed/detail=none`。
+- 默认 NanoPi bridge 仍拒绝轨迹。
+
+判断：
+
+- `bench_armed` 是开发台架状态，不是正式可穿戴状态。
+- 为了继续验证 ROS 轨迹接口，可以显式设置 `allow_bench_motion_for_trajectory=true`，但应先保持 `enable_target_tx=false`。
+
+技巧：
+
+- 台架干跑命令必须同时包含：
+  `-p enable_target_tx:=false -p allow_bench_motion_for_trajectory:=true`。
+- 合格输出是 bridge 日志 `accepted ... trajectory points` 和 `DRY-RUN 320 ...`，同时 candump 中没有真实 `0x320`。
+- 真实运动需要用户明确授权现场安全，不能把 dry-run 参数当成运动许可。

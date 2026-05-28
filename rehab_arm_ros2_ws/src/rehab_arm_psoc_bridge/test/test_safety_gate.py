@@ -51,6 +51,30 @@ class SafetyGateTests(unittest.TestCase):
         self.assertTrue(allowed)
         self.assertEqual(detail, 'PSoC motion_allowed true')
 
+    def test_bench_armed_rejects_by_default(self) -> None:
+        status = parse_psoc_status_payload(bytes([0xA5, 5, 7, 0, 0, 6, 0, 0]))
+
+        allowed, detail = psoc_motion_gate_detail(status)
+
+        self.assertFalse(allowed)
+        self.assertIn('motion_allowed is not true', detail)
+        self.assertIn('control_mode=bench_armed', detail)
+
+    def test_bench_armed_can_be_explicitly_allowed_for_bench(self) -> None:
+        status = parse_psoc_status_payload(bytes([0xA5, 5, 7, 0, 0, 6, 0, 0]))
+
+        allowed, detail = psoc_motion_gate_detail(status, allow_bench_motion=True)
+
+        self.assertTrue(allowed)
+        self.assertEqual(detail, 'bench motion explicitly allowed by NanoPi parameter')
+
+    def test_bench_override_still_rejects_detail_or_error(self) -> None:
+        limited = parse_psoc_status_payload(bytes([0xA5, 5, 7, 0, 0, 6, 4, 0]))
+        fault = parse_psoc_status_payload(bytes([0xA5, 5, 7, 1, 0, 6, 0, 0]))
+
+        self.assertFalse(psoc_motion_gate_detail(limited, allow_bench_motion=True)[0])
+        self.assertFalse(psoc_motion_gate_detail(fault, allow_bench_motion=True)[0])
+
     def test_fresh_motor_feedback_gate_rejects_when_never_seen(self) -> None:
         allowed, detail = fresh_motor_feedback_gate_detail(None, 1.0, 0)
 

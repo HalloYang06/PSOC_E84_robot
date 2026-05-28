@@ -3177,6 +3177,24 @@ ros2 topic pub --once /arm_controller/joint_trajectory trajectory_msgs/msg/Joint
 - `enable_target_tx=false` 时，无论接受还是拒绝，都不能出现 `0x320`。
 - 只有 dry-run 证明 gate、状态、关节反馈都正确后，才讨论真实 `enable_target_tx=true`。
 
+如果当前 M33 返回的是 `state=ok/control_mode=bench_armed/detail=none`，这是台架开发状态，不是正式可穿戴放行。默认 bridge 仍会拒绝它。仅在台架、确认现场安全、且仍然保持干跑时，可以显式打开 bench dry-run：
+
+```bash
+ros2 run rehab_arm_psoc_bridge psoc_can_bridge_node.py \
+  --ros-args \
+  -p interface:=can0 \
+  -p enable_target_tx:=false \
+  -p allow_bench_motion_for_trajectory:=true
+```
+
+合格现象：
+
+- bridge 日志出现 `accepted ... trajectory points`。
+- bridge 日志出现 `DRY-RUN 320 ...`。
+- candump 里仍然没有真实 `0x320`。
+
+这个参数默认是 `false`。正式可穿戴链路不能依赖 `bench_armed`，必须由 M33 安全状态机给出正式 `motion_allowed=true`。
+
 ### 7.4 Linux 仿真主机接入前自检
 
 另一台 Linux 主机接入前，先在该主机上运行仿真环境自检：

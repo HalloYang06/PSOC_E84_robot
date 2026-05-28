@@ -2087,3 +2087,14 @@
 - Validated trajectory gate: publishing a minimal `JointTrajectory` was rejected because M33 `motion_allowed` was not true (`state=ok`, `control_mode=bench_armed`, `detail=none`); no `0x320` was sent.
 - Safety: no motor movement commands were sent; all trajectory checks kept `enable_target_tx=false`.
 - Next step: update M33/app/platform control path so M33 only sets `motion_allowed=true` after the intended local safety condition is satisfied, then repeat dry-run acceptance before any real `0x320` motion test.
+
+### 2026-05-28 - Explicit bench dry-run trajectory override
+
+- Completed: added NanoPi bridge parameter `allow_bench_motion_for_trajectory=false` by default.
+- Behavior: formal `armed/active + motion_allowed=true` remains the normal permission path; `bench_armed` is still rejected unless the new NanoPi parameter is explicitly set.
+- Safety: the bench override only affects NanoPi trajectory acceptance; `enable_target_tx=false` still prevents actual `0x320` frames, and M33 still owns downstream safety if target TX is later enabled.
+- Fixed tests: `psoc_motion_gate_detail()` now covers default bench rejection, explicit bench acceptance, and bench rejection when detail/error is nonzero.
+- Validated locally: `test_safety_gate.py` passed `10 passed`; `py_compile` passed.
+- Validated on NanoPi: rebuilt `rehab_arm_psoc_bridge`; `test_safety_gate.py` passed `10 passed`.
+- Live dry-run validation: with `enable_target_tx=false` and `allow_bench_motion_for_trajectory=true`, publishing a minimal `JointTrajectory` logged `accepted 1 trajectory points` and `DRY-RUN 320 ...`; candump saw no real `0x320`.
+- Next step: do not enable real target TX until the user explicitly requests a motion test and the bench area is confirmed safe.

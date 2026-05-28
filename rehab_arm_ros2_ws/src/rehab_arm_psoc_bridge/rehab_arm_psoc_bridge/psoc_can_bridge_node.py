@@ -129,6 +129,7 @@ class PsocCanBridgeNode(Node):
         self.declare_parameter('status_timeout_sec', 2.5)
         self.declare_parameter('motor_status_timeout_sec', 1.0)
         self.declare_parameter('require_psoc_ok_for_trajectory', True)
+        self.declare_parameter('allow_bench_motion_for_trajectory', False)
         self.declare_parameter('require_fresh_motor_status_for_trajectory', True)
         self.declare_parameter('reject_out_of_limit_trajectory', True)
         self.declare_parameter('max_trajectory_points', 100)
@@ -146,6 +147,9 @@ class PsocCanBridgeNode(Node):
         )
         self.require_psoc_ok_for_trajectory = bool(
             self.get_parameter('require_psoc_ok_for_trajectory').value
+        )
+        self.allow_bench_motion_for_trajectory = bool(
+            self.get_parameter('allow_bench_motion_for_trajectory').value
         )
         self.require_fresh_motor_status_for_trajectory = bool(
             self.get_parameter('require_fresh_motor_status_for_trajectory').value
@@ -329,7 +333,10 @@ class PsocCanBridgeNode(Node):
         age = time.monotonic() - self.last_status_time
         if age > self.status_timeout_sec:
             return False, f'PSoC status stale for {age:.1f}s'
-        psoc_ok, psoc_detail = psoc_motion_gate_detail(self.last_psoc_status_payload)
+        psoc_ok, psoc_detail = psoc_motion_gate_detail(
+            self.last_psoc_status_payload,
+            allow_bench_motion=self.allow_bench_motion_for_trajectory,
+        )
         if not psoc_ok:
             return psoc_ok, psoc_detail
         if not self.require_fresh_motor_status_for_trajectory:

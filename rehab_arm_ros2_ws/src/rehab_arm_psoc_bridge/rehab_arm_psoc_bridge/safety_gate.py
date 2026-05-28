@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 
-def psoc_motion_gate_detail(status_payload: dict[str, object] | None) -> tuple[bool, str]:
+def psoc_motion_gate_detail(
+    status_payload: dict[str, object] | None,
+    allow_bench_motion: bool = False,
+) -> tuple[bool, str]:
     """Return whether NanoPi may accept/send trajectory targets.
 
     M33 is the final safety authority. NanoPi must treat `motion_allowed` as the
@@ -20,6 +23,14 @@ def psoc_motion_gate_detail(status_payload: dict[str, object] | None) -> tuple[b
     control_mode = status_payload.get('control_mode')
     error_code = status_payload.get('error_code')
     protocol_version = status_payload.get('protocol_version')
+    if (
+        allow_bench_motion
+        and state == 'ok'
+        and control_mode == 'bench_armed'
+        and detail in (None, '', 'none')
+        and error_code == 0
+    ):
+        return True, 'bench motion explicitly allowed by NanoPi parameter'
 
     parts = ['PSoC motion_allowed is not true']
     if isinstance(protocol_version, int):
