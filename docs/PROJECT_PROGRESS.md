@@ -2252,3 +2252,20 @@
 - Validation: filtered candump recorded current-limit write frame `0x1200FD05#1870000000004040`, 137 total frames, continuous `0x332` motor5 aggregate changes, and stop frame `0x0400FD05#0100000000000000` at `1779960008.422313`.
 - Final state: after stop, `0x332` settled near `...E9FD...` and later returned to stale/no-feedback frames; `can0` stayed `ERROR-ACTIVE` with tx/rx error counters `0/0`.
 - Safety: current limit was increased modestly to `3.0A` rather than jumping to a high value; only motor5 was commanded, duration was bounded to 10 seconds, and stop was sent immediately after the window.
+
+### 2026-05-28 - Motor5 3A current observation repeat
+
+- Reason: user asked to repeat the test to observe actual current.
+- Completed: repeated the same motor5 direct debug conditions for comparison: active-report enable, `limit_cur(0x7018)=3.0A`, `private speed --motor 5 --vel -0.5 --kd 1.0` for 10 seconds, then stop and active-report disable.
+- Validation: filtered candump recorded current-limit write frame `0x1200FD05#1870000000004040`, 138 total frames, continuous `0x332` motor5 aggregate changes, and stop frame `0x0400FD05#0100000000000000` at `1779960197.182458`.
+- Note: current exact value is not yet decoded from the aggregate frame; next software task should add raw Lingzu feedback/current decoding and expose it to ROS/platform instead of relying on visual/manual current observation.
+- Final state: after stop, `0x332` settled near `...4DFF...` and later returned to stale/no-feedback frames; `can0` stayed `ERROR-ACTIVE` with tx/rx error counters `0/0`.
+- Safety: parameters matched the previous 3A test, duration was bounded to 10 seconds, and stop was sent immediately after the window.
+
+### 2026-05-28 - Motor5 3A current observation second repeat
+
+- Reason: user asked to restart the same observation run.
+- Completed: repeated motor5 direct debug conditions again: active-report enable, `limit_cur(0x7018)=3.0A`, `private speed --motor 5 --vel -0.5 --kd 1.0` for 10 seconds, then stop and active-report disable.
+- Validation: filtered candump recorded current-limit write frame `0x1200FD05#1870000000004040`, 137 total frames, continuous `0x332` motor5 aggregate changes, and stop frame `0x0400FD05#0100000000000000` at `1779960268.227946`.
+- Final state: after stop, `0x332` settled near `...52FC...` and later returned to stale/no-feedback frames; `can0` stayed `ERROR-ACTIVE` with tx/rx error counters `0/0`.
+- Safety: parameters matched the previous 3A tests, duration was bounded to 10 seconds, and stop was sent immediately after the window.

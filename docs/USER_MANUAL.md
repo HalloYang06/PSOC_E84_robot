@@ -2935,6 +2935,8 @@ python3 /home/pi/nanopi_can_master.py private active-report --iface can0 --motor
 - 抓包能看到 `0x0400FD05#0100000000000000` stop。
 - `can0` 仍为 `ERROR-ACTIVE`。
 
+注意：当前 `0x332` 聚合帧可证明 5号状态在变化，但还没有把原始反馈里的实际电流精确解码成工程单位。需要看“具体电流”时，可以先结合现场电流表/电源显示；软件侧下一步要补原始反馈电流解析，并把它发布到 `/rehab_arm/motor_state` 和平台。
+
 ### 6.7.4 运动测试后离线复盘
 
 如果现场已经做过一次正式路径运动测试，先不要急着继续加大角度。把 `candump -L` 日志用离线报告工具复盘：
