@@ -2098,3 +2098,15 @@
 - Validated on NanoPi: rebuilt `rehab_arm_psoc_bridge`; `test_safety_gate.py` passed `10 passed`.
 - Live dry-run validation: with `enable_target_tx=false` and `allow_bench_motion_for_trajectory=true`, publishing a minimal `JointTrajectory` logged `accepted 1 trajectory points` and `DRY-RUN 320 ...`; candump saw no real `0x320`.
 - Next step: do not enable real target TX until the user explicitly requests a motion test and the bench area is confirmed safe.
+
+### 2026-05-28 - Simulation host to NanoPi dry-run ROS trajectory link
+
+- Completed: used simulation host `cal@192.168.2.46` as the upstream ROS publisher and NanoPi `pi@192.168.2.66` as the bridge host.
+- Validated DDS discovery: simulation host saw NanoPi topics `/arm_controller/joint_trajectory`, `/joint_states`, `/rehab_arm/motor_state`, `/rehab_arm/safety_state`, and `/rehab_arm/sensor_state`.
+- Completed: started one clean NanoPi bridge with `enable_target_tx=false` and `allow_bench_motion_for_trajectory=true`.
+- Validated command path: simulation host published a minimal `JointTrajectory`; NanoPi bridge logged `accepted 1 trajectory points` and `DRY-RUN 320 joint=shoulder_lift_joint data=0300000005000000`.
+- Validated safety boundary: candump of `can0,320:7FF` remained empty, so no real `0x320` target was sent.
+- Validated feedback path: simulation host successfully echoed `/joint_states` from NanoPi.
+- Cleanup: stopped the temporary NanoPi bridge and candump processes after the test.
+- Safety: no motor movement commands were sent; this was cross-machine ROS dry-run only.
+- Next step: when MuJoCo is ready, replace the manual `ros2 topic pub` with a simulator/planner-generated `JointTrajectory` while keeping NanoPi `enable_target_tx=false`.

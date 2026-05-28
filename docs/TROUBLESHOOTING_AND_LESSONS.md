@@ -4181,3 +4181,36 @@ Connection reset by 192.168.2.66 port 22
   `-p enable_target_tx:=false -p allow_bench_motion_for_trajectory:=true`。
 - 合格输出是 bridge 日志 `accepted ... trajectory points` 和 `DRY-RUN 320 ...`，同时 candump 中没有真实 `0x320`。
 - 真实运动需要用户明确授权现场安全，不能把 dry-run 参数当成运动许可。
+
+### 仿真主机密码登录不能用 Windows ssh 非交互传密码
+
+现象：
+
+- `ssh cal@192.168.2.46` 在 Windows 非交互命令里返回 `Permission denied (publickey,password)`。
+- 本机没有 `sshpass`、`plink` 或 `Posh-SSH`。
+
+判断：
+
+- Windows 自带 OpenSSH 不适合在自动化脚本里直接传密码。
+- 当前可用方案是 Python `paramiko`，后续更好的方案是在仿真主机配置 SSH key。
+
+技巧：
+
+- 临时自动化可以用 `paramiko.SSHClient().connect(..., password='1')` 跑 ROS 命令。
+- 长期协作应把本机公钥加入 `cal@192.168.2.46:~/.ssh/authorized_keys`，避免每次靠密码。
+
+### 跨机器 ROS dry-run 需要清理旧 bridge
+
+现象：
+
+- NanoPi 上残留多个 `psoc_can_bridge_node.py` 进程。
+- 同一个 `/arm_controller/joint_trajectory` 可能被多个 bridge 订阅，导致日志混乱。
+
+判断：
+
+- 每次跨机器 dry-run 前只能保留一个 NanoPi bridge。
+
+技巧：
+
+- 测试前先执行 `pkill -f psoc_can_bridge_node.py || true`。
+- 测试后也要清理 bridge 和 `candump -L can0,320:7FF`，避免后台进程影响下一轮。

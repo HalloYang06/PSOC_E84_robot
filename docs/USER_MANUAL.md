@@ -3195,6 +3195,44 @@ ros2 run rehab_arm_psoc_bridge psoc_can_bridge_node.py \
 
 这个参数默认是 `false`。正式可穿戴链路不能依赖 `bench_armed`，必须由 M33 安全状态机给出正式 `motion_allowed=true`。
 
+如果要从仿真主机验证到 NanoPi 的 dry-run 轨迹链路：
+
+1. NanoPi 上启动 bridge：
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source ~/.rehab_arm_ros2_network
+source /home/pi/rehab_arm_ros2_ws/install/setup.bash
+
+ros2 run rehab_arm_psoc_bridge psoc_can_bridge_node.py \
+  --ros-args \
+  -p interface:=can0 \
+  -p enable_target_tx:=false \
+  -p allow_bench_motion_for_trajectory:=true
+```
+
+2. 仿真主机上发布轨迹：
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source ~/.rehab_arm_ros2_network
+
+ros2 topic pub --once /arm_controller/joint_trajectory trajectory_msgs/msg/JointTrajectory \
+  "{joint_names: ['shoulder_lift_joint'], points: [{positions: [0.0], time_from_start: {sec: 1, nanosec: 0}}]}"
+```
+
+3. NanoPi 上同时监听 `0x320`：
+
+```bash
+timeout 10s candump -L can0,320:7FF
+```
+
+通过标准：
+
+- NanoPi bridge 日志有 `accepted ... trajectory points` 和 `DRY-RUN 320 ...`。
+- `candump` 没有任何 `0x320`。
+- 仿真主机能 `ros2 topic echo --once /joint_states sensor_msgs/msg/JointState`。
+
 ### 7.4 Linux 仿真主机接入前自检
 
 另一台 Linux 主机接入前，先在该主机上运行仿真环境自检：
