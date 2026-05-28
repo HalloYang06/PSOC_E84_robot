@@ -2891,6 +2891,50 @@ python3 /home/pi/nanopi_can_master.py private active-report --iface can0 --motor
 
 这只是台架观察动作，不是严格 `-45°/+45°` 位置控制。正式 `0x320` 位置目标若抓包有命令但 `0x333` 位置不变，说明 M33->motor6 absolute/CSP 位置路径还没打通，不能写成正式通过。
 
+5号对应 M33 aggregate `0x332`。台架速度观察命令：
+
+```bash
+python3 /home/pi/nanopi_can_master.py private active-report --iface can0 --motor 5 --enable-report --wait 0
+python3 /home/pi/nanopi_can_master.py private speed --iface can0 --motor 5 --vel 0.5 --kd 1.0 --wait 0
+sleep 10
+python3 /home/pi/nanopi_can_master.py private stop --iface can0 --motor 5 --clear-fault --wait 0
+python3 /home/pi/nanopi_can_master.py private active-report --iface can0 --motor 5 --wait 0
+```
+
+通过标准：
+
+- `0x332` 从 stale/no-feedback 变成 fresh 状态并连续变化。
+- 抓包能看到 `0x0400FD05#0100000000000000` stop。
+- 结束后 `can0` 仍为 `ERROR-ACTIVE`，tx/rx error counters 为 `0/0`。
+
+反方向把速度改成负数：
+
+```bash
+python3 /home/pi/nanopi_can_master.py private active-report --iface can0 --motor 5 --enable-report --wait 0
+python3 /home/pi/nanopi_can_master.py private speed --iface can0 --motor 5 --vel -0.5 --kd 1.0 --wait 0
+sleep 10
+python3 /home/pi/nanopi_can_master.py private stop --iface can0 --motor 5 --clear-fault --wait 0
+python3 /home/pi/nanopi_can_master.py private active-report --iface can0 --motor 5 --wait 0
+```
+
+如果 5号力不够，可先把 `limit_cur(0x7018)` 临时提高到 `3.0A` 后复测，不要一次性跳到很大：
+
+```bash
+python3 /home/pi/nanopi_can_master.py private active-report --iface can0 --motor 5 --enable-report --wait 0
+python3 /home/pi/nanopi_can_master.py private write-float --iface can0 --motor 5 --index 0x7018 --value 3.0 --wait 0
+python3 /home/pi/nanopi_can_master.py private speed --iface can0 --motor 5 --vel -0.5 --kd 1.0 --wait 0
+sleep 10
+python3 /home/pi/nanopi_can_master.py private stop --iface can0 --motor 5 --clear-fault --wait 0
+python3 /home/pi/nanopi_can_master.py private active-report --iface can0 --motor 5 --wait 0
+```
+
+通过标准：
+
+- 抓包能看到 `0x1200FD05#1870000000004040`，表示写入 `0x7018 = 3.0f`。
+- `0x332` 持续变化。
+- 抓包能看到 `0x0400FD05#0100000000000000` stop。
+- `can0` 仍为 `ERROR-ACTIVE`。
+
 ### 6.7.4 运动测试后离线复盘
 
 如果现场已经做过一次正式路径运动测试，先不要急着继续加大角度。把 `candump -L` 日志用离线报告工具复盘：

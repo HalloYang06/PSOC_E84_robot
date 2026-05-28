@@ -2228,3 +2228,27 @@
 - Direct-speed validation: filtered candump recorded 155 frames. `0x333` first increased from around `...85D4...` to `...79D9...`, then reversed down through `...D0.../2F...`, then moved back toward `...D5...`; stop frame `0x0400FD06#0100000000000000` appeared at the end.
 - Final state: after stop, `0x333` settled near `...59D5...` and later returned to stale/no-feedback frames; `can0` stayed `ERROR-ACTIVE` with tx/rx error counters `0/0`.
 - Safety: direct-speed swing was bounded and stopped. Do not treat this as completion of formal `JointTrajectory -> M33 -> motor6 position` control; that path still needs debugging.
+
+### 2026-05-28 - Motor5 fixed-speed 10 second run
+
+- Reason: user asked to move motor5 for 10 seconds at speed `0.5`.
+- Completed: used NanoPi direct debug path for motor5 with `private active-report --motor 5`, `private speed --motor 5 --vel 0.5 --kd 1.0`, held 10 seconds, then `private stop --motor 5 --clear-fault` and active-report disable.
+- Validation: filtered candump recorded 126 frames. Motor5 aggregate `0x332` changed from stale to fresh after active-report enable and then changed continuously from `B3CF0500DEFF001D` through `B3BE05015D05021D`; stop frame `0x0400FD05#0100000000000000` appeared at `1779959861.034258`.
+- Final state: after stop, `0x332` settled near `...6405...` and later returned to stale/no-feedback frames after active-report disable; `can0` stayed `ERROR-ACTIVE` with tx/rx error counters `0/0`.
+- Safety: only motor5 was commanded, duration was bounded to 10 seconds, and stop was sent immediately after the window. This remains direct debug control, not the formal robot path.
+
+### 2026-05-28 - Motor5 reverse fixed-speed 10 second run
+
+- Reason: user asked to run motor5 in the opposite direction.
+- Completed: used NanoPi direct debug path for motor5 with `private active-report --motor 5`, `private speed --motor 5 --vel -0.5 --kd 1.0`, held 10 seconds, then `private stop --motor 5 --clear-fault` and active-report disable.
+- Validation: filtered candump recorded 127 frames. Motor5 aggregate `0x332` changed from stale to fresh after active-report enable and then changed in the opposite direction from `B3A5050080FF001D` through `B394050144FD001D`; stop frame `0x0400FD05#0100000000000000` appeared at `1779959924.613948`.
+- Final state: after stop, `0x332` settled near `...64FD...` and later returned to stale/no-feedback frames after active-report disable; `can0` stayed `ERROR-ACTIVE` with tx/rx error counters `0/0`.
+- Safety: only motor5 was commanded, duration was bounded to 10 seconds, and stop was sent immediately after the window. This remains direct debug control, not the formal robot path.
+
+### 2026-05-28 - Motor5 reverse run with 3A current limit
+
+- Reason: user reported insufficient force and asked to increase current limit.
+- Completed: used NanoPi direct debug path for motor5, enabled active-report, wrote RobStride/Lingzu `limit_cur(0x7018)=3.0A`, then repeated `private speed --motor 5 --vel -0.5 --kd 1.0` for 10 seconds, followed by stop and active-report disable.
+- Validation: filtered candump recorded current-limit write frame `0x1200FD05#1870000000004040`, 137 total frames, continuous `0x332` motor5 aggregate changes, and stop frame `0x0400FD05#0100000000000000` at `1779960008.422313`.
+- Final state: after stop, `0x332` settled near `...E9FD...` and later returned to stale/no-feedback frames; `can0` stayed `ERROR-ACTIVE` with tx/rx error counters `0/0`.
+- Safety: current limit was increased modestly to `3.0A` rather than jumping to a high value; only motor5 was commanded, duration was bounded to 10 seconds, and stop was sent immediately after the window.
