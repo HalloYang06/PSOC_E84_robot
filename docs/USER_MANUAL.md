@@ -3005,6 +3005,18 @@ duration=5s
 0x017E2B05#80007ED600003333
 ```
 
+如果 `torque_ff=-0.2Nm` 仍不足，5号已试过同速度下提高到 `torque_ff=-0.4Nm`：
+
+```text
+motor=5
+vel=-0.3 rad/s
+kp=0
+kd=1.0
+torque_ff=-0.4 Nm
+duration=5s
+MIT frame=0x017C5705#80007ED600003333
+```
+
 结束必须发：
 
 ```bash
