@@ -4269,3 +4269,22 @@ Connection reset by 192.168.2.66 port 22
 - 安装后位置：`install/rehab_arm_sim_mujoco/share/rehab_arm_sim_mujoco/models/rehab_arm_minimal.xml`。
 - 临时替换模型：`ros2 run rehab_arm_sim_mujoco mujoco_sim_node.py --ros-args -p model_path:=/absolute/path/to/model.xml`。
 - 如果 `model_path` 指向不存在的文件，后端会退回内置最小模型；正式验证时要确认日志和安装路径，避免误以为加载了真实模型。
+
+### 远程运动测试不要让 CAN 全量日志堵住 SSH
+
+现象：
+
+- NanoPi 远程执行 `nanopi_can_master.py ... --wait 2.2` 时，命令没有正常返回。
+- `ps -ef` 能看到残留的远程 `bash -lc ... m33 target ...` 进程。
+- `can0` 本身仍是 `ERROR-ACTIVE`，不是总线故障。
+
+判断：
+
+- `nanopi_can_master.py` 在 `--wait > 0` 时会打印等待窗口内收到的 CAN 帧；总线周期状态帧较多时，SSH stdout 管道可能被填满，导致远程命令卡住。
+- 这会污染下一轮测试，必须先清掉残留进程，再继续发任何运动命令。
+
+技巧：
+
+- 远程真实运动测试优先使用 `--wait 0` 只发送命令。
+- 需要证据时单独启动带过滤器的 `candump -L`，例如只抓 `0x320/0x322/0x331`。
+- 发现卡住后先执行 `pkill -f nanopi_can_master.py || true`，再确认 `ps` 无残留、`can0` 仍 `ERROR-ACTIVE`。

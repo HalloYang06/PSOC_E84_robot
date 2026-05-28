@@ -2144,3 +2144,37 @@
 - Validated trajectory path: node started with `backend=mujoco-model`, published a 5-joint trajectory, and `/joint_states` reached `[0.2, 0.4, 0.05, 0.1, -0.1]` within tolerance.
 - Safety: no NanoPi CAN, M33 command, `0x320`, or motor motion was used.
 - Next step: add a repeatable sim launch/demo capture that produces a short dataset for platform annotation and later VLA/model training checks.
+
+### 2026-05-28 - Motor4 tiny formal-path motion attempt
+
+- Completed: attempted a small M33 formal-path motor4 test from NanoPi after user requested 4号电机小幅度运动.
+- Initial blockers: Windows `COM26` was busy, so M33 serial shell direct command could not be used; NanoPi `can0` was initially `DOWN/STOPPED`.
+- Fixed live setup: used NanoPi password `pi` with `sudo -S`, brought `can0` up as classic CAN 1Mbps with `berr-reporting on`; final bus state was `ERROR-ACTIVE`, tx/rx error counters `0/0`.
+- Commands sent:
+  - heartbeat `0x321#48`, received `0x322#A548070000060000`.
+  - pre-stop `0x320#020100` for ROS joint1 -> motor4.
+  - tiny target `0x320#0301140001000000` for ROS joint1/motor4, target `+2.0 deg`, `1 rpm`, `0 torque_ma`.
+  - post-stop `0x320#020100`.
+  - heartbeat `0x321#49`, received `0x322#A549070000060000`.
+- Observed CAN: M33 forwarded motor4 stop frame `EXT 0x0400FD04`; motor4 telemetry/status appeared in `0x331`, including fresh data before/after and stale transition during the test window.
+- Unverified: no M33 serial log because `COM26` was locked by another process; no visual confirmation from user yet about physical movement.
+- Safety: test used small absolute target and immediate stop; no ROS bridge was started.
+
+### 2026-05-28 - Motor4 10 degree formal-path retry
+
+- Reason: user reported no visible motion from the previous `+2 deg` motor4 attempt.
+- Completed: retried through the formal NanoPi -> M33 `0x320` path for ROS joint1/motor4 with `+10 deg`, `2 rpm`, `0 torque_ma`, held about 3 seconds, then sent stop.
+- Commands observed on CAN: `0x320#060101` active-report enable, `0x320#020100` pre-stop, `0x320#0301640002000000` target, `0x320#020100` post-stop.
+- Validation: M33 heartbeat returned `0x322#A534070000060000` and `0x322#A535070000060000`; motor4 aggregate status `0x331` changed from stale/no-feedback to fresh status during capture; `can0` stayed `ERROR-ACTIVE` with tx/rx error counters `0/0`.
+- Tooling pitfall found: running `nanopi_can_master.py ... --wait > 0` over SSH can print enough bus traffic to fill the SSH pipe and leave a remote bash process stuck. Use `--wait 0` plus filtered `candump` for live motion tests.
+- Unverified: no M33 serial log because `COM26` remains unavailable; user has not yet confirmed whether 4号 visibly moved.
+- Safety: only motor4 was commanded, no ROS bridge was started, and a post-stop was sent after the target window.
+
+### 2026-05-28 - Motor4 fixed-speed debug run
+
+- Reason: user asked to rotate at fixed speed for 5 seconds after the formal-path position attempt had no visible confirmation.
+- Completed: used NanoPi direct debug path, not the formal ROS/M33 trajectory path: `private active-report --motor 4`, `private speed --motor 4 --vel 0.20 --kd 1.0`, held 5 seconds, then `private stop --motor 4 --clear-fault`.
+- Validation: filtered candump recorded active-report frame `0x1800FD04#0102030405060100`, stop frame `0x0400FD04#0100000000000000`, and continuous motor4 aggregate `0x331` changes from about `B3A70400AA070120` through `B3B00401D9080120`; this shows fresh motor4 telemetry changed during the 5-second speed command.
+- Final state: active-report was disabled, `0x331` later returned to stale/no-feedback frames, and `can0` remained `ERROR-ACTIVE` with tx/rx error counters `0/0`.
+- Safety: only motor4 was commanded, speed was low, command duration was bounded to 5 seconds, and stop was sent immediately after the window.
+- Next step: wait for user visual confirmation; if motion is confirmed, record direction/sign and then move back to the formal M33 safety path instead of expanding direct debug control.

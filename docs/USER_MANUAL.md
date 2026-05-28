@@ -2770,6 +2770,62 @@ python3 /home/pi/nanopi_can_master.py heartbeat --iface can0 --seq 93 --wait 0.3
 - 发 `clear/closed-loop/idle` 后仍然只看到 M33 `0x332`。
 - 这时不要继续发目标角度；先检查 3号供电、CAN 连接、节点 ID、协议模式和电机驱动状态。
 
+4号对应 ROS joint1。若台架无人穿戴、允许小幅运动，可用正式路径做一次 `+10°` 观察测试：
+
+```bash
+rm -f /tmp/motor4_joint1_10deg.candump
+timeout 6 candump -L can0,320:7FF,322:7FF,331:7FF > /tmp/motor4_joint1_10deg.candump &
+CAP=$!
+
+python3 /home/pi/nanopi_can_master.py heartbeat --iface can0 --seq 52 --wait 0
+python3 /home/pi/nanopi_can_master.py m33 active-report --iface can0 --joint 1 --enable-report --wait 0
+python3 /home/pi/nanopi_can_master.py m33 stop --iface can0 --joint 1 --wait 0
+python3 /home/pi/nanopi_can_master.py m33 target --iface can0 --joint 1 --deg 10 --rpm 2 --torque-ma 0 --wait 0
+sleep 3
+python3 /home/pi/nanopi_can_master.py m33 stop --iface can0 --joint 1 --wait 0
+python3 /home/pi/nanopi_can_master.py heartbeat --iface can0 --seq 53 --wait 0
+
+wait $CAP || true
+cat /tmp/motor4_joint1_10deg.candump
+```
+
+通过标准：
+
+- 抓包能看到 `0x320#0301640002000000`。
+- 能看到 M33 `0x322` heartbeat/status。
+- `0x331` 从 stale/no-feedback 变成 fresh 状态，或者至少持续发布 motor4 聚合状态。
+- `ip -details -statistics link show can0` 仍是 `ERROR-ACTIVE`，tx/rx error counter 为 `0/0`。
+
+注意：远程 SSH 测试时不要给 `nanopi_can_master.py` 设置较长 `--wait` 来打印全量 CAN 帧；周期状态帧可能把 SSH 输出管道堵住。运动测试用 `--wait 0`，证据交给带过滤器的 `candump`。
+
+如果需要确认 4号自身驱动和反馈是否正常，而不是验证正式路径，可以做一次低速 5 秒直连调试。它只用于未穿戴台架，不进入正式 launch：
+
+```bash
+rm -f /tmp/motor4_speed_5s.candump
+timeout 8 candump -L \
+  can0,331:7FF,0000FD04:1FFFFFFF,0200FD04:1FFFFFFF,1200FD04:1FFFFFFF,1800FD04:1FFFFFFF,0400FD04:1FFFFFFF \
+  > /tmp/motor4_speed_5s.candump &
+CAP=$!
+
+python3 /home/pi/nanopi_can_master.py private active-report --iface can0 --motor 4 --enable-report --wait 0
+python3 /home/pi/nanopi_can_master.py private speed --iface can0 --motor 4 --vel 0.20 --kd 1.0 --wait 0
+sleep 5
+python3 /home/pi/nanopi_can_master.py private stop --iface can0 --motor 4 --clear-fault --wait 0
+python3 /home/pi/nanopi_can_master.py private active-report --iface can0 --motor 4 --wait 0
+
+wait $CAP || true
+cat /tmp/motor4_speed_5s.candump
+```
+
+通过标准：
+
+- 抓包能看到 `0x1800FD04#0102030405060100` active-report enable。
+- 抓包能看到 `0x0400FD04#0100000000000000` stop。
+- `0x331` 在速度命令期间连续变化，说明 M33 聚合到的 motor4 telemetry 是 fresh 且在动。
+- 结束后 `can0` 仍为 `ERROR-ACTIVE`。
+
+注意：这是 NanoPi 直连电机调试路径，只用于定位电机/协议是否可用。正式机器人控制仍回到 `JointTrajectory -> NanoPi -> M33 safety/control -> motor`。
+
 ### 6.7.4 运动测试后离线复盘
 
 如果现场已经做过一次正式路径运动测试，先不要急着继续加大角度。把 `candump -L` 日志用离线报告工具复盘：
