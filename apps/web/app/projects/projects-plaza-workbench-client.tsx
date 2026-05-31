@@ -113,7 +113,7 @@ export function ProjectsPlazaWorkbench({
 
   const nextAction = highlightedProject
     ? highlightedProject.pendingHumanReviewCount > 0
-      ? `先处理 ${highlightedProject.name} 的 ${highlightedProject.pendingHumanReviewCount} 条人工审核。`
+      ? `先处理 ${highlightedProject.name} 的 ${highlightedProject.pendingHumanReviewCount} 条人工确认。`
       : `进入 ${highlightedProject.name}，继续绑定电脑、NPC 和协作线程。`
     : "先创建一个项目，再邀请成员和接入电脑。";
 
@@ -145,7 +145,7 @@ export function ProjectsPlazaWorkbench({
           <article><strong>{projects.length}</strong><span>项目</span></article>
           <article><strong>{inviteProjects.length}</strong><span>可邀请</span></article>
           <article><strong>{invitations.length}</strong><span>待接受</span></article>
-          <article><strong>{reviewCount}</strong><span>人工审核</span></article>
+          <article><strong>{reviewCount}</strong><span>人工确认</span></article>
         </div>
         <div className={styles.plazaNextAction}>
           <span>当前推荐动作</span>
@@ -194,7 +194,7 @@ export function ProjectsPlazaWorkbench({
                     <p>{project.description || "这个项目还没有填写说明。"}</p>
                     {project.pendingHumanReviewCount > 0 ? (
                       <div className={styles.plazaReviewBadge}>
-                        需要人工审核：{project.pendingHumanReviewTitle || `${project.pendingHumanReviewCount} 条`}
+                        需要人工确认：{project.pendingHumanReviewTitle || `${project.pendingHumanReviewCount} 条`}
                       </div>
                     ) : null}
                     <div className={styles.plazaProjectActions}>

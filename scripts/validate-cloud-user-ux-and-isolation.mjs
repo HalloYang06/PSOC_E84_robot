@@ -27,12 +27,16 @@ const DEFAULT_BANNED_TERMS = [
 function parseArgs(argv) {
   const args = {
     webBase: "http://106.55.62.122:3001",
+    apiBase: "http://106.55.62.122:8011",
     projectId: "fe9bd342-f5ef-4afe-9c73-e7caa2ed17dd",
     compareProjectId: "",
     loginEmail: "3245056131@qq.com",
     loginPassword: "password",
     outsiderEmail: "",
     outsiderPassword: "",
+    ensureOutsiderEmail: "",
+    ensureOutsiderPassword: "password",
+    ensureOutsiderName: "UX Isolation Outsider",
     outputDir: path.join(process.env.USERPROFILE || process.cwd(), ".codex", "automations", "ai-2", "artifacts", "cloud-user-ux-isolation"),
     desktopWidth: 1440,
     desktopHeight: 1000,
@@ -51,6 +55,71 @@ function parseArgs(argv) {
     i += 1;
   }
   return args;
+}
+
+async function requestJson(url, { method = "GET", payload, token } = {}) {
+  const headers = { Accept: "application/json" };
+  const options = { method, headers };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  if (payload !== undefined) {
+    headers["Content-Type"] = "application/json";
+    options.body = JSON.stringify(payload);
+  }
+  const response = await fetch(url, options);
+  const text = await response.text();
+  let body = {};
+  try {
+    body = text ? JSON.parse(text) : {};
+  } catch {
+    body = { raw: text };
+  }
+  if (!response.ok) {
+    const message = body?.error?.message || body?.message || text || `HTTP ${response.status}`;
+    const error = new Error(`${method} ${url} failed: ${message}`);
+    error.status = response.status;
+    error.body = body;
+    throw error;
+  }
+  return body;
+}
+
+async function apiLogin(apiBase, email, password) {
+  const payload = await requestJson(`${apiBase.replace(/\/$/, "")}/api/auth/session`, {
+    method: "POST",
+    payload: { email, password },
+  });
+  const token = payload?.data?.access_token;
+  if (!token) throw new Error(`No access token returned for ${email}`);
+  return payload.data;
+}
+
+async function ensureOutsiderAccount(args) {
+  if (!args.ensureOutsiderEmail) return null;
+  try {
+    await apiLogin(args.apiBase, args.ensureOutsiderEmail, args.ensureOutsiderPassword);
+    return {
+      email: args.ensureOutsiderEmail,
+      password: args.ensureOutsiderPassword,
+      created: false,
+    };
+  } catch (error) {
+    if (error.status && error.status !== 401 && error.status !== 404) throw error;
+  }
+  await requestJson(`${args.apiBase.replace(/\/$/, "")}/api/auth/register`, {
+    method: "POST",
+    payload: {
+      email: args.ensureOutsiderEmail,
+      name: args.ensureOutsiderName,
+      password: args.ensureOutsiderPassword,
+      global_role: "member",
+    },
+  });
+  await apiLogin(args.apiBase, args.ensureOutsiderEmail, args.ensureOutsiderPassword);
+  return {
+    email: args.ensureOutsiderEmail,
+    password: args.ensureOutsiderPassword,
+    created: true,
+  };
 }
 
 async function login(page, webBase, email, password) {
@@ -154,9 +223,20 @@ async function main() {
     results: [],
     issues: [],
     skipped: [],
+    ensuredOutsider: null,
   };
 
   try {
+    const ensuredOutsider = await ensureOutsiderAccount(args);
+    if (ensuredOutsider) {
+      report.ensuredOutsider = {
+        email: ensuredOutsider.email,
+        created: ensuredOutsider.created,
+      };
+      args.outsiderEmail = ensuredOutsider.email;
+      args.outsiderPassword = ensuredOutsider.password;
+    }
+
     await login(page, args.webBase, args.loginEmail, args.loginPassword);
     const paths = [
       ["main-desktop", `/projects/${args.projectId}`],
@@ -212,9 +292,9 @@ async function main() {
       const outsiderProjects = await inspectPage(outsiderPage, "outsider-projects", `${args.webBase}/projects`, outputDir, [
         ...DEFAULT_BANNED_TERMS,
         args.projectId,
-        "AI合作平台",
         "Windows COM30",
         "nanopi-cloud-smoke",
+        "1号 NPC",
       ]);
       report.results.push(outsiderProjects);
       const outsiderProblems = assertPageResult(outsiderProjects);
