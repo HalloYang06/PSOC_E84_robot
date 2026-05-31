@@ -255,6 +255,12 @@ function selectedWindowIds(searchValue: unknown, windows: DebugWindow[]) {
   return ids.filter((id) => known.has(id));
 }
 
+function initialWorkbenchTab(searchValue: unknown) {
+  const tab = text(searchValue, "").toLowerCase();
+  if (["terminal", "dataset", "chart", "model", "data", "camera"].includes(tab)) return tab;
+  return "";
+}
+
 export default async function ProjectRoboticsPage({
   params,
   searchParams,
@@ -300,6 +306,7 @@ export default async function ProjectRoboticsPage({
   const error = text(searchParams?.team_error, "");
   const initialOpenIds = selectedWindowIds(searchParams?.windows, windows);
   const initialNpcId = text(searchParams?.npc, "");
+  const initialTab = initialWorkbenchTab(searchParams?.tab);
 
   return (
     <RoboticsWorkbenchClient
@@ -311,6 +318,7 @@ export default async function ProjectRoboticsPage({
       terminalMessages={terminalMessages}
       initialOpenIds={initialOpenIds}
       initialNpcId={initialNpcId}
+      initialTab={initialTab}
       readyComputers={runnerSummary.readyComputers}
       queueableComputers={runnerSummary.queueableComputers}
       reconnectComputers={runnerSummary.reconnectComputers}

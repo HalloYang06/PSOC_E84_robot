@@ -53,6 +53,7 @@ type DebugWindow = {
 type TileTab = "terminal" | "dataset" | "chart" | "model";
 type DeviceTab = "data" | "camera" | "dataset" | "chart" | "model";
 type DeviceWorkbenchMode = "boards" | "interfaces";
+type InitialRoboticsTab = string;
 
 type RoboticsWorkbenchClientProps = {
   projectId: string;
@@ -63,6 +64,7 @@ type RoboticsWorkbenchClientProps = {
   terminalMessages: AnyRecord[];
   initialOpenIds: string[];
   initialNpcId: string;
+  initialTab: InitialRoboticsTab;
   readyComputers: number;
   queueableComputers: number;
   reconnectComputers: number;
@@ -97,6 +99,16 @@ function asArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
 }
 
+function initialDeviceTab(tab: InitialRoboticsTab): DeviceTab {
+  if (tab === "camera" || tab === "dataset" || tab === "chart" || tab === "model") return tab;
+  return "data";
+}
+
+function initialTileTab(tab: InitialRoboticsTab): TileTab {
+  if (tab === "dataset" || tab === "chart" || tab === "model") return tab;
+  return "terminal";
+}
+
 function payloadOf(value: unknown): AnyRecord {
   const next = record(value);
   return record(next.payload);
@@ -106,6 +118,11 @@ function numberText(value: unknown, unit = "") {
   const number = Number(value);
   if (!Number.isFinite(number)) return "-";
   return `${Number.isInteger(number) ? number : number.toFixed(2)}${unit}`;
+}
+
+function publicDataBatchLabel(value: unknown, fallback = "最近数据批次") {
+  const raw = text(value, fallback);
+  return raw.replace(/^session[\s_-]*/i, "批次 ");
 }
 
 const OPEN_SOURCE_MESH_URL = "/assets/open-source/robot-expressive/RobotExpressive.glb";
@@ -620,7 +637,7 @@ function DeviceDataOverview({ device }: { device: AnyRecord }) {
           </div>
           <p>{text(cameraPayload.scene_summary, text(cameraPayload.detection_summary, "开发板摄像头关键帧上传后，这里显示场景摘要和检测结果。"))}</p>
           <p>仿真准备度：{text(simReport.readiness, "未上传")}</p>
-          <p>当前 session：{text(device.current_session, text(manifest.session_id, "无 session"))}</p>
+          <p>当前数据批次：{publicDataBatchLabel(device.current_session, publicDataBatchLabel(manifest.session_id, "暂无批次"))}</p>
         </article>
       </div>
 
@@ -670,6 +687,7 @@ function DeviceDataTile({
   index,
   npcSeats,
   defaultNpcId,
+  initialTab,
   onClose,
 }: {
   projectId: string;
@@ -677,9 +695,10 @@ function DeviceDataTile({
   index: number;
   npcSeats: AnyRecord[];
   defaultNpcId: string;
+  initialTab: InitialRoboticsTab;
   onClose: () => void;
 }) {
-  const [activeTab, setActiveTab] = useState<DeviceTab>("data");
+  const [activeTab, setActiveTab] = useState<DeviceTab>(() => initialDeviceTab(initialTab));
   const [stateSyncEnabled, setStateSyncEnabled] = useState(false);
   const [showOpenSourceMesh, setShowOpenSourceMesh] = useState(false);
   const [selectedNpcId, setSelectedNpcId] = useState(defaultNpcId);
@@ -796,7 +815,7 @@ function DeviceDataTile({
             </article>
             <article>
               <span>数据来源</span>
-              <strong>{text(device.current_session, "最近 session")}</strong>
+              <strong>{publicDataBatchLabel(device.current_session)}</strong>
               <p>电机、传感器、摄像头和安全状态在同一设备 ID 下汇总，适配任意已接入的 Linux 开发板。</p>
             </article>
           </div>
@@ -944,7 +963,7 @@ function qualityDetailLine(device: AnyRecord) {
     : [];
   if (reasons.length) return `阻塞：${reasons.slice(0, 2).join("；")}`;
   if (qualityReady(device)) {
-    return `session ${text(session.session_id, "-")} 已通过：运动关节 ${text(session.moving_joint_count, "0")}，motor 条目 ${text(session.motor_entry_count_min, "0")}~${text(session.motor_entry_count_max, "0")}，阈值 ${text(criteria.min_moving_joints, "0")} 个运动关节。`;
+    return `数据批次 ${publicDataBatchLabel(session.session_id, "-")} 已通过：运动关节 ${text(session.moving_joint_count, "0")}，motor 条目 ${text(session.motor_entry_count_min, "0")}~${text(session.motor_entry_count_max, "0")}，阈值 ${text(criteria.min_moving_joints, "0")} 个运动关节。`;
   }
   return "上传 manifest_with_quality 后，这里会显示质量门和标注入口状态。";
 }
@@ -979,7 +998,7 @@ function DeviceQualityStrip({ devices }: { devices: AnyRecord[] }) {
           }) : (
             <article data-ready="false">
               <span>等待数据</span>
-              <strong>还没有可评估的采集 session</strong>
+              <strong>还没有可评估的采集批次</strong>
               <p>先从设备侧上传带 quality_report 的 manifest，再进入标注和导出。</p>
             </article>
           )}
@@ -1036,7 +1055,7 @@ function AccessCheckPanel({
       ready: devices.length > 0,
     },
     {
-      label: "Runner",
+      label: "接单窗口",
       value: readyComputers ? `${readyComputers} 可运行` : queueableComputers ? `${queueableComputers} 可排队` : "未就绪",
       detail: computerCount ? `${computerCount} 台电脑在线记录；扫描到 ${scannedInterfaceCount} 个接口。` : "服务器还没有可用 runner。",
       ready: readyComputers + queueableComputers > 0,
@@ -1439,10 +1458,10 @@ function terminalEventLines(tile: DebugWindow, messages: AnyRecord[]) {
     .reverse();
   if (!related.length) {
     if (tile.runnerCanDispatch) {
-      return ["[terminal] 暂无输入输出。用户自己输入会直接排队到执行电脑；NPC 代操作会先显示待审。"];
+      return ["[terminal] 暂无输入输出。用户自己输入会直接排队到执行电脑；NPC 代操作会先显示待确认。"];
     }
     if (tile.runnerCanQueue) {
-      return ["[terminal] 执行电脑暂不可立即接单。用户命令会进入队列，等目标电脑恢复后再处理；NPC 代操作仍需先待审。"];
+      return ["[terminal] 执行电脑暂不可立即接单。用户命令会进入队列，等目标电脑恢复后再处理；NPC 代操作仍需先确认。"];
     }
     return ["[terminal] 执行电脑未处于可排队状态。先重连接单窗口，再提交用户终端命令或 NPC 代操作审核。"];
   }
@@ -1721,19 +1740,19 @@ function terminalLines(tile: DebugWindow, boundNpcLabel: string) {
   ];
   if (tile.kind === "can") {
     lines.push(`filter=none  bitrate=待确认  sample=${sampleHz}Hz`);
-    lines.push("hint: 用户在这里手动发送不需要平台审核；NPC 代发必须先待审。");
+    lines.push("hint: 用户在这里手动发送不需要平台确认；NPC 代发必须先确认。");
   } else if (tile.kind === "spi-can") {
     lines.push("chip=MCP251x  spi-clock=待确认  irq=待确认");
     lines.push("hint: SPI-CAN 只给配置建议，不直接改 overlay / module。");
   } else if (tile.kind === "serial") {
     lines.push(`baud=${baudRate}  parity=none  stop=1`);
-    lines.push("hint: 用户手动输入直接进执行电脑；NPC 代写串口命令必须先待审。");
+    lines.push("hint: 用户手动输入直接进执行电脑；NPC 代写串口命令必须先确认。");
   } else if (tile.kind === "usb") {
     lines.push("mode=enumerate  driver=待确认");
     lines.push("hint: 只读枚举设备，权限或驱动问题进入公司层证据。");
   } else if (tile.kind === "ros") {
     lines.push("topics=readonly  publish=blocked");
-    lines.push("hint: ROS publish/service/action 若由 NPC 代操作，必须先待审。");
+    lines.push("hint: ROS publish/service/action 若由 NPC 代操作，必须先确认。");
   } else {
     lines.push("config=等待扫描快照");
   }
@@ -1798,6 +1817,7 @@ function DebugTile({
   terminalMessages,
   deviceQualityDevices,
   initialNpcId,
+  initialTab,
   onClose,
 }: {
   projectId: string;
@@ -1807,9 +1827,10 @@ function DebugTile({
   terminalMessages: AnyRecord[];
   deviceQualityDevices: AnyRecord[];
   initialNpcId: string;
+  initialTab: InitialRoboticsTab;
   onClose: () => void;
 }) {
-  const [activeTab, setActiveTab] = useState<TileTab>("terminal");
+  const [activeTab, setActiveTab] = useState<TileTab>(() => initialTileTab(initialTab));
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [stateSyncEnabled, setStateSyncEnabled] = useState(false);
   const [showOpenSourceMesh, setShowOpenSourceMesh] = useState(false);
@@ -1952,7 +1973,7 @@ function DebugTile({
             <input type="hidden" name="interface_name" value={tile.name} />
             <input type="hidden" name="interface_kind" value={tile.kindLabel} />
             <span>$</span>
-            <input name="command" placeholder="用户终端：自己输入直接执行；NPC 代操作才待审" />
+            <input name="command" placeholder="用户终端：自己输入直接执行；NPC 代操作需先确认" />
             <select name="bound_npc" aria-label="绑定 NPC" value={boundNpcId} onChange={(event) => setBoundNpcId(event.target.value)}>
               <option value="">不绑定 NPC</option>
               {npcSeats.map((seat, index) => {
@@ -2002,7 +2023,7 @@ function DebugTile({
             <input type="hidden" name="interface_kind" value={tile.kindLabel} />
             <input type="hidden" name="bound_npc" value={effectiveBoundNpcId} />
             <input type="hidden" name="bound_npc_label" value={effectiveBoundNpcLabel} />
-            <span>NPC 代操作待审</span>
+            <span>NPC 代操作待确认</span>
             <input name="command" placeholder="只有 NPC/AI 想替你操作时才填这里，例如 send 123#0102" />
             <button
               type="submit"
@@ -2015,7 +2036,7 @@ function DebugTile({
                     : submitTitle(tile)
               }
             >
-              {!effectiveBoundNpcId ? "选择 NPC" : !npcDispatchState.ready ? "先补协作接入" : tile.runnerReady ? "提交审核" : "需重连"}
+              {!effectiveBoundNpcId ? "选择 NPC" : !npcDispatchState.ready ? "先补协作接入" : tile.runnerReady ? "提交确认" : "需重连"}
             </button>
           </form>
         </>
@@ -2198,7 +2219,7 @@ function DebugTile({
                 ))}
               </ul>
             ) : (
-              <p>NPC 可以基于用户选定的曲线、目标值和现象给分析建议；涉及真实设备写入时仍回到终端待审。</p>
+              <p>NPC 可以基于用户选定的曲线、目标值和现象给分析建议；涉及真实设备写入时仍回到终端待确认。</p>
             )}
           </article>
           <aside className={styles.dataDrawerRail} aria-label="图表实验操作抽屉">
@@ -2415,6 +2436,7 @@ export function RoboticsWorkbenchClient({
   terminalMessages,
   initialOpenIds,
   initialNpcId,
+  initialTab,
   readyComputers,
   queueableComputers,
   reconnectComputers,
@@ -2427,12 +2449,21 @@ export function RoboticsWorkbenchClient({
 }: RoboticsWorkbenchClientProps) {
   const [defaultNpcId, setDefaultNpcId] = useState(initialNpcId);
   const [savedWindows, setSavedWindows] = useState<SavedDebugWindow[]>(initialSavedWindows);
-  const [workbenchMode, setWorkbenchMode] = useState<DeviceWorkbenchMode>("boards");
+  const [workbenchMode, setWorkbenchMode] = useState<DeviceWorkbenchMode>(() => initialTab === "terminal" ? "interfaces" : "boards");
   const router = useRouter();
   const configuredWindows = useMemo(() => configuredDebugWindows(windows, savedWindows), [windows, savedWindows]);
   const [openIds, setOpenIds] = useState<string[]>(() => {
     const knownDeviceIds = new Set(deviceQualityDevices.map((device, index) => deviceId(device, index)));
-    return initialOpenIds.filter((id) => savedWindows.some((item) => item.resourceId === id) || knownDeviceIds.has(id));
+    const requested = initialOpenIds.filter((id) => savedWindows.some((item) => item.resourceId === id) || knownDeviceIds.has(id));
+    if (requested.length) return requested;
+    if (initialTab === "terminal") {
+      const firstSavedWindow = savedWindows.find((item) => item.resourceId);
+      if (firstSavedWindow?.resourceId) return [firstSavedWindow.resourceId];
+    }
+    const firstDeviceId = deviceQualityDevices[0] ? deviceId(deviceQualityDevices[0], 0) : "";
+    if (firstDeviceId) return [firstDeviceId];
+    const firstSavedWindow = savedWindows.find((item) => item.resourceId);
+    return firstSavedWindow?.resourceId ? [firstSavedWindow.resourceId] : [];
   });
   const usableWindows = useMemo(() => windows.filter((item) => item.isUsable), [windows]);
   const resourceById = useMemo(() => new Map(windows.map((item) => [item.id, item])), [windows]);
@@ -2728,6 +2759,7 @@ export function RoboticsWorkbenchClient({
                   index={index}
                   npcSeats={npcSeats}
                   defaultNpcId={defaultNpcId}
+                  initialTab={initialTab}
                   onClose={() => closeWindow(deviceId(device, index))}
                 />
               ))}
@@ -2741,6 +2773,7 @@ export function RoboticsWorkbenchClient({
                   terminalMessages={terminalMessages}
                   deviceQualityDevices={deviceQualityDevices}
                   initialNpcId={text(tile.boundNpc, defaultNpcId)}
+                  initialTab={initialTab}
                   onClose={() => closeWindow(tile.id)}
                 />
               ))}
