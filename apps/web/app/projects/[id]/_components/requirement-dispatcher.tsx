@@ -107,7 +107,7 @@ export function RequirementDispatcher({ apiBaseUrl, projectId, seats }: Props) {
         }
         setNote(`✓ 需求已创建并派发给 ${seats.find((s) => s.id === targetSeatId)?.name || targetSeatId}`);
       } else {
-        setNote(`✓ 触发式需求已创建：前置需求完成后会以上游 NPC 身份自动派给 ${seats.find((s) => s.id === targetSeatId)?.name || targetSeatId}（跨工位将走人工确认）`);
+        setNote(`✓ 协作请求已创建：前置需求完成后会以上游 NPC 身份交给 ${seats.find((s) => s.id === targetSeatId)?.name || targetSeatId}（跨工位将走人工确认）`);
       }
       setTitle("");
       setBody("");
@@ -123,7 +123,7 @@ export function RequirementDispatcher({ apiBaseUrl, projectId, seats }: Props) {
   if (!open) {
     return (
       <button type="button" className={styles.toggle} onClick={() => setOpen(true)}>
-        ＋ 触发式派单（指定 NPC + 触发条件）
+        ＋ 协作请求（指定 NPC + 触发条件）
       </button>
     );
   }
@@ -131,7 +131,7 @@ export function RequirementDispatcher({ apiBaseUrl, projectId, seats }: Props) {
   return (
     <div className={styles.shell}>
       <header className={styles.head}>
-        <strong>📌 触发式派单</strong>
+        <strong>协作请求</strong>
         <button type="button" className={styles.closeBtn} onClick={() => setOpen(false)}>
           收起
         </button>

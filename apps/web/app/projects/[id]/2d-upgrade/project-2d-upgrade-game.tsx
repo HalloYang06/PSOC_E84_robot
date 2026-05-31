@@ -215,6 +215,7 @@ function labelProjectReturnPath(value: string): string {
   if (value.includes("/datasets")) return "返回设备数据工作台";
   if (value.includes("/ai-lab")) return "返回设备数据工作台";
   if (value.includes("/robotics")) return "返回设备数据工作台";
+  if (value.includes("/rehab-arm-control")) return "返回专项设备总控台";
   if (value.includes("/observability")) return "返回公司层";
   if (value.includes("/skill-forge")) return "返回能力工坊";
   if (value.includes("/company")) return "返回公司层";
@@ -364,7 +365,7 @@ const PANEL_ACTIONS: Record<ModuleTab, PanelAction[]> = {
       id: "station-knowledge",
       label: "工位知识库",
       summary: "维护工位共享知识，不替代 NPC 私有知识库。",
-      detail: "后续接入文档、GitHub 路径、硬件约束和人工审核边界。",
+      detail: "后续接入文档、GitHub 路径、硬件约束和人工确认边界。",
       primaryLabel: "打开知识库抽屉",
       safety: "知识库修改需要保存确认。",
     },
@@ -440,7 +441,7 @@ const PANEL_ACTIONS: Record<ModuleTab, PanelAction[]> = {
       id: "npc-dialogue",
       label: "进入 NPC 工作台",
       summary: "和 NPC 对话、查看我的需求和我的任务。",
-      detail: "对话、派单、审核和回执都回到 NPC 工作台瓷砖完成。",
+      detail: "对话、协作请求、人工确认和回执都回到 NPC 工作台瓷砖完成。",
       primaryLabel: "打开 NPC 工作台",
       safety: "发送前显示目标 NPC 和是否自动化。",
     },
@@ -501,7 +502,7 @@ const PANEL_ACTIONS: Record<ModuleTab, PanelAction[]> = {
     {
       id: "dispatch-command",
       label: "协作审计",
-      summary: "查看派单、审核、回执链路，不在主页面直接派单。",
+      summary: "查看协作请求、人工确认、回执链路，不在主页面直接派发。",
       detail: "真实 NPC 对话和启动处理只在 workbench 瓷砖里进行；这里负责索引和治理。",
       primaryLabel: "打开审计抽屉",
       safety: "只读查看，不触发执行。",
@@ -1463,7 +1464,7 @@ function actionConnectivity(moduleTab: ModuleTab, action: PanelAction): ActionCo
   const key = actionKey(moduleTab, action);
   if (REVIEW_ACTIONS.has(key)) {
     return {
-      label: "人工审核",
+      label: "人工确认",
       tone: "review",
       detail: "会把风险怼到当前界面，涉及权限、硬件、回退或跑飞保护时不静默执行。",
     };
@@ -1829,7 +1830,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
 
   // Keyboard shortcuts to escape Unity iframe focus and re-orient on the
   // dashboard. Acceptance feedback flagged that Unity dominated the screen and
-  // there was no fast way to hide it; the cockpit's "隐藏场景" button works but
+  // there was no fast way to hide it; the cockpit's background toggle works but
   // is buried in a toolbar. Esc collapses the cockpit (gives Unity full focus),
   // Alt+U toggles the Unity scene visibility, Alt+T toggles the task board.
   useEffect(() => {
@@ -1925,7 +1926,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         tab: "exchange",
         tone: "review",
         primary: "进入 NPC 瓷砖",
-        description: "主页面只保留审计摘要；正式对话、派单和审核回 NPC 工作台。",
+        description: "主页面只保留协作摘要；正式对话、协作请求和人工确认回 NPC 工作台。",
         farmSource: "NPC 工作台",
       },
       {
@@ -2152,7 +2153,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
     return `/projects/${project.id}/2d-upgrade?${params.toString()}`;
   }
 
-  function surfacePath(surface: "workbench" | "company" | "datasets" | "ai-lab" | "robotics" | "observability" | "skill-forge", tab: ModuleTab = activePanel ?? "exchange", actionId = activeAction?.id) {
+  function surfacePath(surface: "workbench" | "company" | "datasets" | "ai-lab" | "robotics" | "rehab-arm-control" | "observability" | "skill-forge", tab: ModuleTab = activePanel ?? "exchange", actionId = activeAction?.id) {
     const params = new URLSearchParams({
       return_to: returnPath(tab, actionId),
       from: "2d-upgrade",
@@ -2533,7 +2534,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
       {
         label: "3. 已收到提醒",
         count: ackMessages.length,
-        detail: "接单后先回已收到提醒，说明是否已读需求、能否执行、是否需要人审。",
+        detail: "接单后先回已收到提醒，说明是否已读需求、能否执行、是否需要人工确认。",
       },
       {
         label: "4. 最终回复",
@@ -2546,7 +2547,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
       <article className={styles.collabFlowBoard} aria-label="AI 协作链路">
         <header>
           <span>AI 协作链路</span>
-          <strong>{humanReviewMessages.length ? `${humanReviewMessages.length} 条需人审` : "当前无强制人审提醒"}</strong>
+          <strong>{humanReviewMessages.length ? `${humanReviewMessages.length} 条需人工确认` : "当前无强制确认提醒"}</strong>
           <p>这里回答“AI 到底怎么协作”：先读需求，再平台派单，再已收到提醒，最后只把最终回复收口。</p>
         </header>
         <div className={styles.flowSteps}>
@@ -2594,7 +2595,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         <div className={styles.connectivitySummary}>
           <span><b>{readyCount}</b>真实表单</span>
           <span><b>{previewCount}</b>预演登记</span>
-          <span><b>{safeCount}</b>只读/人审</span>
+          <span><b>{safeCount}</b>只读/确认</span>
           <span><b>{pendingCount}</b>待接线</span>
         </div>
         <ul className={styles.connectivityList}>
@@ -2625,7 +2626,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             </div>
             <div>
               <dt>规则</dt>
-              <dd>登记请求不会直接 reset；必须通过人审、执行电脑只读预检和 NPC 对齐回执。</dd>
+              <dd>登记请求不会直接 reset；必须通过人工确认、执行电脑只读预检和 NPC 对齐回执。</dd>
             </div>
             <div>
               <dt>执行电脑</dt>
@@ -2709,7 +2710,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
           </label>
           <label>
             <span>职责说明</span>
-            <textarea name="detail" required rows={3} placeholder="这个工位负责什么、哪些 NPC 可以挂在这里、哪些动作必须人工审核。" />
+            <textarea name="detail" required rows={3} placeholder="这个工位负责什么、哪些 NPC 可以挂在这里、哪些动作必须人工确认。" />
           </label>
           <label>
             <span>总知识库摘要</span>
@@ -2720,9 +2721,9 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             <input name="runner_capabilities" placeholder="例如：git, read-only, unity, serial" />
           </label>
           <label>
-            <span>人工审核策略</span>
+            <span>人工确认策略</span>
             <select name="approval_policy" defaultValue="human_review_for_hardware_and_destructive">
-              <option value="human_review_for_hardware_and_destructive">硬件/删除/发布/回退必须人审</option>
+              <option value="human_review_for_hardware_and_destructive">硬件/删除/发布/回退必须人工确认</option>
               <option value="read_only_auto_allowed">只读可自动推进</option>
               <option value="human_review_required">全部先人工确认</option>
             </select>
@@ -2826,7 +2827,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         <div className={styles.realActionStack} data-unity-real-form={`human-${action.id}`}>
           <article className={styles.realNote}>
             <b>{isRolePanel ? "权限变更必须项目负责人确认" : "协作现场按成员、电脑、线程三层看"}</b>
-            <p>{isRolePanel ? "这里先做可视化权限核对，不提供静默改权。邀请新成员走“邀请协作者”，已有成员改权后续必须加 owner 人审。" : "用户先确认谁在项目里、哪台电脑在线、哪些线程可投递，再决定是否下发协作指令。"}</p>
+            <p>{isRolePanel ? "这里先做可视化权限核对，不提供静默改权。邀请新成员走“邀请协作者”，已有成员改权后续必须由项目负责人确认。" : "用户先确认谁在项目里、哪台电脑在线、哪些线程可投递，再决定是否下发协作指令。"}</p>
           </article>
           <div className={styles.layeredList}>
             {projectMembers.length ? (
@@ -2835,7 +2836,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                   <span>{memberRoleLabel(member)}</span>
                   <b>{itemTitle(member)}</b>
                   <small>{statusLabel(member.status)} / {member.body || "暂无邮箱"}</small>
-                  <p>{isRolePanel ? "可查看角色和状态；涉及权限提升、踢人、跨项目授权时必须 owner 审核。" : "项目成员可进入同一张协作地图；名下电脑和线程仍按项目隔离显示。"}</p>
+                  <p>{isRolePanel ? "可查看角色和状态；涉及权限提升、踢人、跨项目授权时必须项目负责人确认。" : "项目成员可进入同一张协作地图；名下电脑和线程仍按项目隔离显示。"}</p>
                 </article>
               ))
             ) : (
@@ -3208,7 +3209,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             <article className={styles.resultCard} data-token-result-card="computer-pairing">
               <span>配对令牌已生成</span>
               <b>{pairingResult.nodeId}</b>
-              <p>不用刷新页面。把下面命令发到目标电脑运行；如果目标电脑没有仓库文件，也会从平台下载接入脚本。用户自己在目标电脑终端运行不需要审核，后续 NPC 代操作才需要审核。</p>
+              <p>不用刷新页面。把下面命令发到目标电脑运行；如果目标电脑没有仓库文件，也会从平台下载接入脚本。用户自己在目标电脑终端运行不需要确认，后续 NPC 代操作才需要人工确认。</p>
               <code data-token-copy-token="computer-pairing">{pairingResult.token}</code>
               <strong className={styles.commandLabel}>Windows PowerShell 一键接入</strong>
               <textarea readOnly rows={5} value={connectCommand} aria-label="电脑接入命令" data-token-command="computer-pairing" />
@@ -3380,7 +3381,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                       <dl>
                         <div><dt>用户动作</dt><dd>{computerUserHint(computer, workstations)}</dd></div>
                         <div><dt>派单判断</dt><dd>{isRunnerOnlineStatus(computer) ? "可接单；仍需确认线程已绑定到目标 NPC。" : "不可假装成功；新任务只允许排队等待恢复或改派。"}</dd></div>
-                        <div><dt>协作边界</dt><dd>用户自己在终端输入不需要审核；NPC 代操作终端必须先生成待审请求。</dd></div>
+                        <div><dt>协作边界</dt><dd>用户自己在终端输入不需要确认；NPC 代操作终端必须先生成待确认请求。</dd></div>
                       </dl>
                     </details>
                   </article>
@@ -3403,7 +3404,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         <div className={styles.realActionStack} data-unity-real-form="exchange-audit">
           <article className={styles.realNote}>
             <b>NPC 协作现在只做审计和索引</b>
-            <p>为了不让主页面和 NPC 工作台重复，正式对话、审核、启动真实处理都回到 workbench 的 NPC 瓷砖里完成。</p>
+            <p>为了不让主页面和 NPC 工作台重复，正式对话、人工确认、启动真实处理都回到 NPC 工作台瓷砖里完成。</p>
           </article>
           <Link
             href={`/projects/${encodeURIComponent(project.id)}/workbench?return_to=${encodeURIComponent(returnPath("exchange", "dispatch-command"))}`}
@@ -3415,7 +3416,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             {dispatchMessages.length ? (
               dispatchMessages.slice(0, 10).map((message) => (
                 <article key={message.id} className={styles.layeredItem}>
-                  <span>{message.type || "派单"}</span>
+                  <span>{message.type || "协作请求"}</span>
                   <b>{itemTitle(message)}</b>
                   <small>{statusLabel(message.status)} / {message.at || "暂无时间"}</small>
                   <p>{itemBody(message)}</p>
@@ -3424,8 +3425,8 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             ) : (
               <article className={styles.layeredItem}>
                 <span>空状态</span>
-                <b>暂无派单审计</b>
-                <p>去 workbench 给某个 NPC 发消息，平台会把用户指令、NPC 间消息、审核和回执沉淀到这里。</p>
+                <b>暂无协作记录</b>
+                <p>去 NPC 工作台给某个 NPC 发消息，平台会把用户指令、NPC 间消息、人工确认和回执沉淀到这里。</p>
               </article>
             )}
           </div>
@@ -3453,7 +3454,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                     <dl>
                       <div><dt>来源</dt><dd>{message.sourceWorkstationId || message.providerLabel || `项目事件 #${index + 1}`}</dd></div>
                       <div><dt>下一步</dt><dd>若结果可用，回到“当前推荐动作”；若缺材料，写入“必读需求表”。</dd></div>
-                      <div><dt>噪声规则</dt><dd>过程日志不进首页，只保留最终回复、阻塞原因和需要人工审核的动作。</dd></div>
+                      <div><dt>噪声规则</dt><dd>过程日志不进首页，只保留最终回复、阻塞原因和需要人工确认的动作。</dd></div>
                     </dl>
                   </details>
                 </article>
@@ -3655,7 +3656,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             </label>
             <label>
               <span>中文说明</span>
-              <textarea name="note" required rows={6} placeholder="具体说明用途、触发条件、输入输出、截图验证要求、人工审核边界和 token 风险。" />
+              <textarea name="note" required rows={6} placeholder="具体说明用途、触发条件、输入输出、截图验证要求、人工确认边界和 token 风险。" />
             </label>
             <label>
               <span>推荐给哪些职业，逗号分隔</span>
@@ -3706,7 +3707,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                   name="note"
                   required
                   rows={7}
-                  placeholder="写这个 NPC 以后什么时候触发、先读哪些仓库相对路径、执行步骤、需要哪些真实前端验证、哪些动作必须人审。"
+                  placeholder="写这个 NPC 以后什么时候触发、先读哪些仓库相对路径、执行步骤、需要哪些真实前端验证、哪些动作必须人工确认。"
                 />
               </label>
               <label>
@@ -4050,7 +4051,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             <span>重连检查</span>
             <strong>复制持续接单命令 → 保持终端或启用守护 → 回平台确认状态</strong>
             <p>{firstComputer ? runnerReconnectHint(firstComputer, workstations) : "还没有登记电脑。先点右侧“生成配对令牌”，在目标电脑运行 Windows 或 Linux 接入命令。"}</p>
-            <small>用户自己运行终端命令不需要审核；NPC 代操作终端会先进入待审。</small>
+            <small>用户自己运行终端命令不需要确认；NPC 代操作终端会先进入待确认。</small>
           </article>
           <article className={styles.panelCard}>
             <span>电脑列表</span>
@@ -4104,7 +4105,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             <article className={styles.panelCard}>
               <span>协作汇总</span>
               <strong>{stats.messageCount} 条消息 / 最终回复 {finalReplyCount} 条</strong>
-              <p>协作池是审计面，不是执行面；NPC 对话、审核按钮和启动处理统一回 workbench。</p>
+              <p>协作池只做记录，不是执行面；NPC 对话、人工确认和启动处理统一回 NPC 工作台。</p>
             </article>
             <article className={styles.panelCard}>
               <span>最新消息</span>
@@ -4227,7 +4228,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                 onClick={() => setSceneVisible((value) => !value)}
                 title="显示/隐藏工作区背景 (快捷键 Alt+U)"
               >
-                {sceneVisible ? "隐藏场景" : "显示场景"}
+                {sceneVisible ? "隐藏背景" : "显示背景"}
               </button>
               <Link href="/projects" className={styles.cockpitGhost}>项目列表</Link>
               {returnToPath ? (
@@ -4248,6 +4249,13 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                 title="调试终端、数据标注、图表实验都在同一个设备数据工作台"
               >
                 设备数据工作台 →
+              </Link>
+              <Link
+                href={surfacePath("rehab-arm-control")}
+                className={styles.cockpitGhost}
+                title="专项设备的非实时遥测、关键帧和安全状态总控台"
+              >
+                专项设备总控台 →
               </Link>
               <Link
                 href={surfacePath("skill-forge")}
@@ -4279,7 +4287,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                   onClick={() => setScorecardOpen((v) => !v)}
                   title={`${scorecard.summary}（点击展开 6 项指标）`}
                 >
-                  合格性 {scorecard.grade}
+                  运行评分 {scorecard.grade}
                   {scorecard.score !== null ? ` (${scorecard.score})` : ""}
                 </button>
               ) : null}
@@ -4369,7 +4377,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             <article>
               <span>协作工作台</span>
               <strong>多 NPC 同屏协作</strong>
-              <p>只消费主页面资源：Boss 分工、线程绑定、派单、精简回执和人工审核都在这里看执行现场。</p>
+              <p>只消费主页面资源：Boss 分工、线程绑定、协作请求、精简回执和人工确认都在这里看执行现场。</p>
               <div>
                 <Link href={surfacePath("workbench", "exchange", "dispatch-command")}>打开 NPC 工作台</Link>
                 <Link href={surfacePath("company", "exchange", "dispatch-command")}>公司层</Link>
@@ -4381,6 +4389,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
               <p>机器人现场、数据标注和图表实验合成同一个设备数据工作台；每个调试窗口像 NPC 瓷砖一样切换三项能力。</p>
               <div>
                 <Link href={surfacePath("robotics", "machine-room")}>打开设备数据工作台</Link>
+                <Link href={surfacePath("rehab-arm-control", "machine-room")}>专项设备总控台</Link>
                 <Link href={surfacePath("skill-forge", "skills")}>打开能力工坊</Link>
               </div>
             </article>
@@ -4392,9 +4401,9 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
               <p>{latestTask ? statusLabel(latestTask.status) : "可在下方派单或新建"} · 进行中 {stats.activeTaskCount} · 阻塞 {stats.blockedTaskCount}</p>
             </article>
             <article className={`${styles.cockpitMetricCard} ${humanReviewCount > 0 ? styles.cockpitMetricAlert : ""}`}>
-              <span>待人工审核</span>
+              <span>待人工确认</span>
               <strong>{humanReviewCount} 条</strong>
-              <p>{humanReviewCount > 0 ? "需要你点击审批，AI 不会自动放行" : "暂无阻塞，AI 工作流通畅"}</p>
+              <p>{humanReviewCount > 0 ? "需要你点击确认，AI 不会自动放行" : "暂无阻塞，AI 工作流通畅"}</p>
             </article>
             <article className={styles.cockpitMetricCard}>
               <span>AI 线程</span>
@@ -4478,7 +4487,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             <div className={styles.scorecardPanel}>
               <div className={styles.scorecardHeader}>
                 <strong>
-                  合格性 {scorecard.grade}
+                  运行评分 {scorecard.grade}
                   {scorecard.score !== null ? ` (${scorecard.score})` : ""}
                 </strong>
                 <small>{scorecard.summary} · 近 7 天</small>
@@ -4497,7 +4506,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                         <button
                           type="button"
                           className={styles.scorecardFixButton}
-                          onClick={() => openPanel(fixTab, "合格性指标")}
+                          onClick={() => openPanel(fixTab, "运行评分指标")}
                           title={`跳到 ${modules.find((m) => m.tab === fixTab)?.label ?? fixTab} 模块`}
                         >
                           去修复 →
@@ -4526,7 +4535,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         aria-label="平台功能入口"
       >
         <button type="button" className={styles.dockToggle} onClick={() => setDockHidden((value) => !value)}>
-          {dockHidden ? "显示功能" : "隐藏功能"}
+          {dockHidden ? "展开功能区" : "收起功能区"}
         </button>
         <div className={styles.moduleButtonList}>
           {modules.map((item) => (
@@ -4553,7 +4562,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
               <strong>当前项目的协作主线</strong>
             </div>
             <div className={styles.taskBoardHints}>
-              <small>点任务卡 → 复制 Claude prompt / 派给某个 AI 线程 / 进入消息池</small>
+              <small>点任务卡 → 复制 AI 接手提示词 / 派给某个 AI 线程 / 进入消息池</small>
               <button
                 type="button"
                 className={styles.taskBoardToggle}
@@ -4568,7 +4577,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             {[
               { key: "todo", title: "待派", filter: (t: FeedItem) => /todo|ready|new|pending/i.test(t.status), accent: styles.laneTodo },
               { key: "doing", title: "进行中", filter: (t: FeedItem) => /running|in_progress|active|queued/i.test(t.status), accent: styles.laneDoing },
-              { key: "review", title: "待审", filter: (t: FeedItem) => /blocked|waiting_approval|reviewing|failed|error|needs_changes/i.test(t.status), accent: styles.laneReview },
+              { key: "review", title: "待确认", filter: (t: FeedItem) => /blocked|waiting_approval|reviewing|failed|error|needs_changes/i.test(t.status), accent: styles.laneReview },
               { key: "done", title: "已完成", filter: (t: FeedItem) => /done|completed|archived/i.test(t.status), accent: styles.laneDone },
             ].map((lane) => {
               const laneItems = tasks.filter(lane.filter).slice(0, 4);
