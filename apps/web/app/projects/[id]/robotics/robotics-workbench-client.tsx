@@ -2449,7 +2449,11 @@ export function RoboticsWorkbenchClient({
 }: RoboticsWorkbenchClientProps) {
   const [defaultNpcId, setDefaultNpcId] = useState(initialNpcId);
   const [savedWindows, setSavedWindows] = useState<SavedDebugWindow[]>(initialSavedWindows);
-  const [workbenchMode, setWorkbenchMode] = useState<DeviceWorkbenchMode>(() => initialTab === "terminal" ? "interfaces" : "boards");
+  const [workbenchMode, setWorkbenchMode] = useState<DeviceWorkbenchMode>(() => {
+    if (initialTab === "terminal") return "interfaces";
+    if (!initialTab && initialSavedWindows.length) return "interfaces";
+    return "boards";
+  });
   const router = useRouter();
   const configuredWindows = useMemo(() => configuredDebugWindows(windows, savedWindows), [windows, savedWindows]);
   const [openIds, setOpenIds] = useState<string[]>(() => {
@@ -2457,6 +2461,10 @@ export function RoboticsWorkbenchClient({
     const requested = initialOpenIds.filter((id) => savedWindows.some((item) => item.resourceId === id) || knownDeviceIds.has(id));
     if (requested.length) return requested;
     if (initialTab === "terminal") {
+      const firstSavedWindow = savedWindows.find((item) => item.resourceId);
+      if (firstSavedWindow?.resourceId) return [firstSavedWindow.resourceId];
+    }
+    if (!initialTab) {
       const firstSavedWindow = savedWindows.find((item) => item.resourceId);
       if (firstSavedWindow?.resourceId) return [firstSavedWindow.resourceId];
     }
