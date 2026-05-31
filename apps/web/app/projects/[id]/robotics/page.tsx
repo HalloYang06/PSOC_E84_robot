@@ -216,7 +216,7 @@ function buildDebugWindows(computers: AnyRecord[], seats: AnyRecord[]): DebugWin
           ? "可写"
           : writeCapability === "blocked"
             ? "禁止"
-            : "需审核",
+            : "需确认",
         isUsable: runnerReadyForWindow && interfaceReadyForWindow(status),
       });
     });

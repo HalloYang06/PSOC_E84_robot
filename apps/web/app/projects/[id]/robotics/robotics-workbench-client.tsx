@@ -1356,7 +1356,7 @@ function summarizeNpcSeatDispatchState(seat: AnyRecord | undefined) {
     return {
       ready: false,
       state: "先选择协助 NPC",
-      detail: "先绑定负责这个调试窗口的 NPC，再发起预标注、图表分析或代操作审核。",
+      detail: "先绑定负责这个调试窗口的 NPC，再发起预标注、图表分析或代操作确认。",
     };
   }
   if (!seatProviderId(seat)) {
@@ -1463,7 +1463,7 @@ function terminalEventLines(tile: DebugWindow, messages: AnyRecord[]) {
     if (tile.runnerCanQueue) {
       return ["[terminal] 执行电脑暂不可立即接单。用户命令会进入队列，等目标电脑恢复后再处理；NPC 代操作仍需先确认。"];
     }
-    return ["[terminal] 执行电脑未处于可排队状态。先重连接单窗口，再提交用户终端命令或 NPC 代操作审核。"];
+    return ["[terminal] 执行电脑未处于可排队状态。先重连接单窗口，再提交用户终端命令或 NPC 代操作确认。"];
   }
   return related.map((message) => {
     const type = text(message.message_type ?? message.messageType, "event");
