@@ -6154,6 +6154,30 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
     });
     return seatMap;
   }, [codexSeats]);
+  const threadByRouteKey = useMemo(() => {
+    const threadMap = new Map<string, AnyRecord>();
+    allThreadCandidates.forEach((thread) => {
+      threadRouteKeys(thread).forEach((key) => {
+        if (!key) return;
+        threadMap.set(key, thread);
+        threadMap.set(key.toLowerCase(), thread);
+      });
+    });
+    return threadMap;
+  }, [allThreadCandidates]);
+  function formatUserThreadBinding(sourceThreadId: unknown, providerLabel?: unknown, nodeName?: unknown) {
+    const threadId = text(sourceThreadId, "");
+    if (!threadId) return "未绑定线程";
+    const thread = threadByRouteKey.get(threadId) ?? threadByRouteKey.get(threadId.toLowerCase()) ?? null;
+    const threadName = thread
+      ? display(thread.name ?? thread.label, "已绑定扫描线程")
+      : "已绑定扫描线程";
+    const provider = thread ? platformProviderLabelFromThread(thread) : text(providerLabel, "");
+    const node = thread
+      ? display(thread.computer_node ?? thread.computer_node_id, text(nodeName, ""))
+      : text(nodeName, "");
+    return [threadName, provider, node ? `电脑 ${node}` : ""].filter(Boolean).join(" / ");
+  }
   const initialBindThreadId = text(props.initialBindThreadId, "");
   const initialBindThread =
     (activeSourceThreads.find((thread) =>
@@ -9804,8 +9828,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                   <li key={seat.id}>
                     <strong>{seat.name}</strong>
                     <p>
-                      来源线程：{display(seat.sourceThreadId, seat.sourceThreadId || "未绑定")}
-                      {seat.nodeName ? ` / 电脑 ${seat.nodeName}` : ""}
+                      绑定线程：{formatUserThreadBinding(seat.sourceThreadId, seat.providerLabel, seat.nodeName)}
                       {seat.currentRequirement ? ` / 当前协作事项 ${seat.currentRequirement}` : ""}
                     </p>
                     <div className={styles.chipRow}>
@@ -10039,6 +10062,17 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
       seatView?.heartbeatIntervalSeconds ?? seat?.metadata?.automation_heartbeat_seconds,
     );
     const computerNodeId = text(seatView?.computerNodeId ?? seat?.computer_node_id ?? seat?.metadata?.computer_node_id, "");
+    const boundThread = sourceThreadId
+      ? threadByRouteKey.get(sourceThreadId) ?? threadByRouteKey.get(sourceThreadId.toLowerCase()) ?? null
+      : null;
+    const nodeName = text(
+      seatView?.nodeName ??
+        seat?.computer_node ??
+        seat?.metadata?.computer_node ??
+        boundThread?.computer_node ??
+        boundThread?.computer_node_id,
+      "",
+    );
     const model = text(seat?.model ?? seat?.metadata?.model, "gpt-5.4");
     const skillState = seat ? resolveSeatSkillLoadout(seat, skillLibrary) : null;
     const additionalSkillIds = skillState?.additionalSkillIds ?? [];
@@ -10067,6 +10101,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
       automationEnabled,
       heartbeatIntervalSeconds,
       computerNodeId,
+      nodeName,
       model,
       additionalSkillIds,
       loadoutLabels,
@@ -11766,7 +11801,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             <h3>{selected.id ? selected.name : "还没有 NPC"}</h3>
             <p>
               {selected.id
-                ? `${selected.role} / ${selected.providerLabel} / ${selected.sourceThreadId ? `线程 ${selected.sourceThreadId}` : "未绑定线程"} / ${selected.automationEnabled ? "自动化已开" : "单次执行"}`
+                ? `${selected.role} / ${selected.providerLabel} / ${formatUserThreadBinding(selected.sourceThreadId, selected.providerLabel, selected.nodeName)} / ${selected.automationEnabled ? "自动化已开" : "单次执行"}`
                 : "点击左侧 + 添加 NPC，创建后会在地图随机点出现一个可交互精灵。"}
             </p>
           </div>
@@ -14453,7 +14488,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
         <div className={`${styles.drawerSubject} ${styles.npcDialogSubject}`}>
           <strong>{selected.id ? selected.name : "未选择 NPC"}</strong>
           <p>
-            {selected.role} / {npcDialogProviderLabel} / {selected.sourceThreadId ? `线程 ${selected.sourceThreadId}` : "未绑定线程"}
+            {selected.role} / {npcDialogProviderLabel} / {formatUserThreadBinding(selected.sourceThreadId, npcDialogProviderLabel, selected.nodeName)}
           </p>
           <div className={styles.npcDialogModeGrid}>
             <article>
@@ -14464,7 +14499,7 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             <article>
               <span>绑定线程</span>
               <strong>{selected.sourceThreadId ? "已绑定" : "待绑定"}</strong>
-              <p>{selected.sourceThreadId || "先在 NPC 资料里绑定电脑线程"}</p>
+              <p>{selected.sourceThreadId ? formatUserThreadBinding(selected.sourceThreadId, npcDialogProviderLabel, selected.nodeName) : "先在 NPC 资料里绑定电脑线程"}</p>
             </article>
           </div>
           <p className={styles.npcDialogProviderNote}>{npcDialogProviderNote}</p>
@@ -16523,7 +16558,3 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
     </>
   );
 }
-
-
-
-
