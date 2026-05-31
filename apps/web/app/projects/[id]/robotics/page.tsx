@@ -136,7 +136,24 @@ type RoboticsRunnerSummary = {
   scannedInterfaces: number;
 };
 
-async function getDeviceQualityDevices(): Promise<AnyRecord[]> {
+function deviceProjectId(device: AnyRecord) {
+  const manifest = record(device.manifest);
+  const boardManifest = record(device.board_manifest);
+  const registration = record(device.registration);
+  return text(
+    device.project_id
+    ?? device.projectId
+    ?? manifest.project_id
+    ?? manifest.projectId
+    ?? boardManifest.project_id
+    ?? boardManifest.projectId
+    ?? registration.project_id
+    ?? registration.projectId,
+    "",
+  );
+}
+
+async function getDeviceQualityDevices(projectId: string): Promise<AnyRecord[]> {
   try {
     const response = await fetch(new URL("/api/rehab-arm/v1/devices/dashboard", getApiBaseUrl()).toString(), {
       cache: "no-store",
@@ -144,7 +161,7 @@ async function getDeviceQualityDevices(): Promise<AnyRecord[]> {
     if (!response.ok) return [];
     const payload = await response.json();
     const data = record(payload).data;
-    return asArray<AnyRecord>(record(data).devices);
+    return asArray<AnyRecord>(record(data).devices).filter((device) => deviceProjectId(device) === projectId);
   } catch {
     return [];
   }
@@ -288,7 +305,7 @@ export default async function ProjectRoboticsPage({
   const [computersState, seatsState, deviceQualityDevices] = await Promise.all([
     getProjectComputerNodesState(projectId),
     getProjectThreadWorkstationsState(projectId),
-    getDeviceQualityDevices(),
+    getDeviceQualityDevices(projectId),
   ]);
   const messagesState = await getCollaborationMessagesState({
     projectId,
