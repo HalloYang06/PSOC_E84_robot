@@ -1832,40 +1832,49 @@ function submitTitle(tile: DebugWindow) {
 function RecoveryChecklist({
   projectId,
   tile,
+  returnTo,
   npcLabel,
   npcState,
 }: {
   projectId: string;
   tile: DebugWindow;
+  returnTo: string;
   npcLabel: string;
   npcState: ReturnType<typeof summarizeNpcSeatDispatchState>;
 }) {
+  const encodedReturnTo = encodeURIComponent(returnTo);
   const items = [
     {
       key: "computer",
+      step: "1",
       show: !tile.runnerCanDispatch,
       title: tile.runnerCanQueue ? "等待目标电脑恢复" : "重连接单窗口",
       detail: tile.runnerCanQueue
         ? "命令可以排队，但页面不会把它显示成已执行。目标电脑在线后再继续。"
         : userFacingTerminalText(tile.runnerHint) || tile.reconnectHint || "先让目标电脑接入并保持接单窗口在线。",
-      href: `/projects/${projectId}`,
+      href: `/projects/${projectId}?panel=team&tab=computers&return_to=${encodedReturnTo}`,
       action: "检查电脑接入",
+      after: "完成后回到当前调试窗口。",
     },
     {
       key: "npc",
+      step: "2",
       show: Boolean(npcLabel) && !npcState.ready,
-      title: "补齐协助 NPC 接单条件",
+      title: "补齐协助 NPC 线程绑定",
       detail: npcState.detail,
-      href: `/projects/${projectId}/workbench`,
-      action: "打开 NPC 工作台",
+      href: `/projects/${projectId}?panel=team&tab=npc-create&return_to=${encodedReturnTo}`,
+      action: "管理 NPC 线程",
+      after: "绑定完成后再回来发起协作。",
     },
     {
       key: "safety",
+      step: "3",
       show: tile.writeCapabilityLabel !== "可写",
       title: "写入和 NPC 代操作需要确认",
       detail: "只读采集可以直接进入队列；写参数、ROS 写动作、真实运动或 NPC 代发命令必须先走确认。",
-      href: `/projects/${projectId}/company`,
+      href: `/projects/${projectId}/company?return_to=${encodedReturnTo}`,
       action: "查看公司决策",
+      after: "通过确认后再回当前窗口执行。",
     },
   ].filter((item) => item.show);
 
@@ -1880,8 +1889,9 @@ function RecoveryChecklist({
       <div className={styles.recoveryActions}>
         {items.map((item) => (
           <article key={item.key}>
-            <span>{item.title}</span>
+            <span><b>{item.step}</b>{item.title}</span>
             <p>{item.detail}</p>
+            <small>{item.after}</small>
             <Link href={item.href} prefetch={false}>{item.action}</Link>
           </article>
         ))}
@@ -2053,6 +2063,7 @@ function DebugTile({
       <RecoveryChecklist
         projectId={projectId}
         tile={tile}
+        returnTo={returnTo}
         npcLabel={effectiveBoundNpcLabel}
         npcState={npcDispatchState}
       />

@@ -2339,9 +2339,25 @@
 }
 
 .recoveryChecklist span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   color: #fff4ca;
   font-size: 11.5px;
   font-weight: 900;
+}
+
+.recoveryChecklist span b {
+  width: 20px;
+  height: 20px;
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(241, 208, 107, 0.36);
+  background: rgba(241, 208, 107, 0.14);
+  color: #f7e4a5;
+  font-size: 10px;
 }
 
 .recoveryChecklist p {
@@ -2351,6 +2367,12 @@
   font-size: 11px;
   line-height: 1.45;
   overflow-wrap: anywhere;
+}
+
+.recoveryChecklist small {
+  color: rgba(142, 240, 199, 0.7);
+  font-size: 10.5px;
+  line-height: 1.4;
 }
 
 .recoveryChecklist a {

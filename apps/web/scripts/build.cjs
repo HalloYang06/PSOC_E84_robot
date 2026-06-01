@@ -85,6 +85,8 @@ function isRecoverableManifestRace(result) {
     (output.includes("build-manifest.json") ||
       output.includes("font-manifest.json") ||
       output.includes("pages-manifest.json") ||
+      output.includes(".nft.json") ||
+      output.includes("collect-build-traces") ||
       output.includes(".next\\package.json") ||
       output.includes(".next/package.json") ||
       output.includes(".next\\export\\") ||
