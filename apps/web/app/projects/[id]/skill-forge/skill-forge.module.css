@@ -1004,6 +1004,45 @@
   line-height: 1.35;
 }
 
+.depositAuditActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  padding-top: 2px;
+}
+
+.depositAuditActions span {
+  color: rgba(205, 232, 238, 0.7);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.depositAuditActions a {
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid rgba(117, 247, 221, 0.2);
+  border-radius: 999px;
+  background: rgba(117, 247, 221, 0.08);
+  color: #d7fff8;
+  font-size: 10px;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.depositAuditActions a:hover {
+  border-color: rgba(117, 247, 221, 0.5);
+  background: rgba(117, 247, 221, 0.14);
+}
+
+.depositAuditActions small {
+  flex-basis: 100%;
+  color: rgba(205, 232, 238, 0.6);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
 .depositAuditPills {
   display: flex;
   flex-wrap: wrap;

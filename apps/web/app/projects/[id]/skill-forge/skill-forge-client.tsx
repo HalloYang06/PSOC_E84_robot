@@ -944,6 +944,12 @@ function ForgeTile({
                       ))}
                     </div>
                   ) : null}
+                  <div className={styles.depositAuditActions} aria-label="索引后验收入口">
+                    <span>下一步验收</span>
+                    <Link href={`/projects/${projectId}/company`}>看需求流转</Link>
+                    <Link href={`/projects/${projectId}/company`}>看任务回执</Link>
+                    <small>只查看和归档，不会自动派单。</small>
+                  </div>
                 </div>
               ) : null}
               <form className={styles.inlineAction} action={索引Npc沉淀.bind(null, projectId, resource.id)}>
