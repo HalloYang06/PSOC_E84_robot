@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { 索引Npc沉淀 } from "../../../actions";
 import styles from "./company.module.css";
 
 export type OfficeNetworkNode = {
@@ -379,6 +380,10 @@ export function OfficeNetwork({ projectId, nodes, edges }: OfficeNetworkProps) {
             <Link href={selectedEdge.workbenchHref}>打开两端 NPC</Link>
             <Link href={selectedEdge.knowledgeHref}>{selectedEdge.knowledgeClosureCount ? "补充知识" : "沉淀知识"}</Link>
             <Link href={selectedEdge.skillHref}>{selectedEdge.skillClosureCount ? "完善 Skill" : "沉淀 Skill"}</Link>
+            <form action={索引Npc沉淀.bind(null, projectId, selectedEdge.toId)}>
+              <input type="hidden" name="return_to" value={`/projects/${projectId}/company`} />
+              <button type="submit">索引沉淀</button>
+            </form>
           </div>
         </aside>
       ) : null}

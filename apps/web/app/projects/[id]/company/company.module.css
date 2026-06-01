@@ -1312,8 +1312,46 @@
 
 .officeEdgeActions {
   display: grid;
-  grid-template-columns: 1.15fr 1fr 1fr;
+  grid-template-columns: 1.15fr repeat(3, minmax(0, 1fr));
   gap: 6px;
+}
+
+.officeEdgeActions form {
+  min-width: 0;
+}
+
+.officeEdgeActions button {
+  width: 100%;
+  min-height: 30px;
+  border: 1px solid rgba(231, 199, 104, 0.24);
+  border-radius: 8px;
+  background: rgba(231, 199, 104, 0.08);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.surfaceNotice,
+.surfaceError {
+  width: min(1120px, calc(100% - 32px));
+  margin: 0 auto 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.surfaceNotice {
+  border: 1px solid rgba(158, 240, 191, 0.24);
+  background: rgba(158, 240, 191, 0.08);
+  color: var(--mint);
+}
+
+.surfaceError {
+  border: 1px solid rgba(255, 117, 117, 0.28);
+  background: rgba(255, 117, 117, 0.08);
+  color: #ffb8b8;
 }
 
 .emptyOfficeNetwork {

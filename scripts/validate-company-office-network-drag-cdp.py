@@ -349,7 +349,7 @@ def main() -> int:
         if not isinstance(detail, dict) or not detail.get("drawerText") or not detail.get("detailHref"):
             raise RuntimeError(f"Clicking a collaboration line did not open details: {detail}")
         detail_text = str(detail.get("drawerText") or "")
-        for expected_text in ["需求", "产出", "承接任务", "最新回执", "闭环沉淀", "下一步"]:
+        for expected_text in ["需求", "产出", "承接任务", "最新回执", "闭环沉淀", "下一步", "索引沉淀"]:
             if expected_text not in detail_text:
                 raise RuntimeError(f"Collaboration detail is missing {expected_text}: {detail}")
         if "沉淀知识" not in detail_text and "补充知识" not in detail_text:

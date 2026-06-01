@@ -432,7 +432,13 @@ function summarizeSeatDispatchState(input: {
   return summarizeRunnerDispatchState(input.nodeState);
 }
 
-export default async function CompanyPage({ params, searchParams }: { params: { id: string }; searchParams?: { embed?: string; return_to?: string; from?: string } }) {
+export default async function CompanyPage({
+  params,
+  searchParams,
+}: {
+  params: { id: string };
+  searchParams?: { embed?: string; return_to?: string; from?: string; team_notice?: string; team_error?: string };
+}) {
   const auth = await getCurrentAuthState();
   if (!auth.data?.user) {
     const query = new URLSearchParams();
@@ -1250,6 +1256,12 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
         <Link href={`/projects/${projectId}/skill-forge?return_to=${encodeURIComponent(selfPath)}&from=company`}>管理能力工坊</Link>
         {returnToPath ? <Link href={returnToPath}>{labelProjectReturnPath(returnToPath)}</Link> : null}
       </nav>
+      {text(searchParams?.team_notice, "") ? (
+        <div className={styles.surfaceNotice} role="status">{shortPublicText(searchParams?.team_notice, "操作已完成", 120)}</div>
+      ) : null}
+      {text(searchParams?.team_error, "") ? (
+        <div className={styles.surfaceError} role="alert">{shortPublicText(searchParams?.team_error, "操作失败，请稍后再试", 120)}</div>
+      ) : null}
 
       <header className={styles.header}>
         <div>
