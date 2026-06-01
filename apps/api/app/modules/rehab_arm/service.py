@@ -81,11 +81,13 @@ def append_device_event(device_id: str, record: dict[str, Any]) -> None:
 def telemetry_record(record_type: str, payload: dict[str, Any]) -> dict[str, Any]:
     device_id = safe_part(str(payload.get("device_id") or "unknown"))
     robot_id = safe_part(str(payload.get("robot_id") or "unknown"))
+    project_id = str(payload.get("project_id") or payload.get("projectId") or "").strip()
     record = {
         "ts_unix": time.time(),
         "record_type": record_type,
         "device_id": device_id,
         "robot_id": robot_id,
+        "project_id": project_id,
         "sync_role": "non_realtime_telemetry_data_asset_only",
         "safety_boundary": "server_never_sends_can_or_motor_setpoints_m33_final_authority",
         "payload": payload,
@@ -99,11 +101,13 @@ def record_device_registration(payload: dict[str, Any]) -> dict[str, Any]:
     root = storage_root()
     device_id = safe_part(str(payload.get("device_id") or "unknown"))
     robot_id = safe_part(str(payload.get("robot_id") or "unknown"))
+    project_id = str(payload.get("project_id") or payload.get("projectId") or "").strip()
     record = {
         "ts_unix": time.time(),
         "record_type": "device_registration",
         "device_id": device_id,
         "robot_id": robot_id,
+        "project_id": project_id,
         "payload": payload,
     }
     write_json(root / "devices" / f"{robot_id}__{device_id}.json", record)
@@ -324,11 +328,19 @@ def record_board_manifest(payload: dict[str, Any]) -> dict[str, Any]:
 def record_motor_state(payload: dict[str, Any]) -> dict[str, Any]:
     record = telemetry_record("motor_state", payload)
     write_device_latest(record["device_id"], "motor_state", record)
+    joint_state = payload.get("joint_state") or payload.get("joint_states") or {}
+    joint_names: list[Any] = []
+    if isinstance(joint_state, dict):
+        names = joint_state.get("name") or joint_state.get("names") or []
+        joint_names = names if isinstance(names, list) else []
+    elif isinstance(joint_state, list):
+        joint_names = [item.get("name") or item.get("joint_name") for item in joint_state if isinstance(item, dict)]
     return {
         "ok": True,
         "device_id": record["device_id"],
         "robot_id": record["robot_id"],
         "motor_count": len(payload.get("motors") or []),
+        "joint_state_count": len([name for name in joint_names if name]),
         "sync_role": record["sync_role"],
     }
 
@@ -355,6 +367,11 @@ def record_safety_state(payload: dict[str, Any]) -> dict[str, Any]:
         "motion_allowed": payload.get("motion_allowed", False),
         "sync_role": record["sync_role"],
     }
+
+
+def _record_project_id(record: dict[str, Any]) -> str:
+    payload = record.get("payload") if isinstance(record.get("payload"), dict) else {}
+    return str(record.get("project_id") or payload.get("project_id") or payload.get("projectId") or "").strip()
 
 
 def record_camera_keyframe(payload: dict[str, Any], image_bytes: bytes) -> dict[str, Any]:
@@ -448,6 +465,15 @@ def build_dashboard() -> dict[str, Any]:
         devices.append(
             {
                 "device_id": device_id,
+                "project_id": next(
+                    (
+                        project_id
+                        for record in latest_records
+                        for project_id in [_record_project_id(record)]
+                        if record and project_id
+                    ),
+                    "",
+                ),
                 "robot_id": safe_part(str(register_payload.get("robot_id") or safety_state.get("robot_id") or motor_state.get("robot_id") or "unknown")),
                 "online_state": "online" if last_upload and now - last_upload <= 180 else "offline",
                 "last_upload_ts_unix": last_upload or None,

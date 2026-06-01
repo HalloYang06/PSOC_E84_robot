@@ -175,13 +175,14 @@ def test_rehab_arm_motor_safety_and_dashboard_are_non_realtime(tmp_path, monkeyp
 
     client.post(
         "/api/rehab-arm/v1/devices/register",
-        json={"device_id": "nanopi-m5", "robot_id": "rehab-arm-alpha"},
+        json={"device_id": "nanopi-m5", "robot_id": "rehab-arm-alpha", "project_id": "project-rehab"},
     )
     safety = client.post(
         "/api/rehab-arm/v1/devices/nanopi-m5/safety-state",
         json={
             "robot_id": "rehab-arm-alpha",
             "device_id": "nanopi-m5",
+            "project_id": "project-rehab",
             "state": "limited",
             "motion_allowed": False,
             "emergency_stop": False,
@@ -201,6 +202,7 @@ def test_rehab_arm_motor_safety_and_dashboard_are_non_realtime(tmp_path, monkeyp
         json={
             "robot_id": "rehab-arm-alpha",
             "device_id": "nanopi-m5",
+            "project_id": "project-rehab",
             "ts_unix": 1710000000.0,
             "motors": [
                 {
@@ -219,10 +221,17 @@ def test_rehab_arm_motor_safety_and_dashboard_are_non_realtime(tmp_path, monkeyp
                     "raw_can_id": "0x01",
                 }
             ],
+            "joint_state": {
+                "name": ["shoulder_lift_joint", "elbow_lift_joint"],
+                "position": [0.12, 1.2],
+                "velocity": [0.01, 0.1],
+                "effort": [0.2, 0.3],
+            },
         },
     )
     assert motor.status_code == 200
     assert motor.json()["data"]["motor_count"] == 1
+    assert motor.json()["data"]["joint_state_count"] == 2
 
     dashboard = client.get("/api/rehab-arm/v1/devices/dashboard")
     assert dashboard.status_code == 200
@@ -230,9 +239,11 @@ def test_rehab_arm_motor_safety_and_dashboard_are_non_realtime(tmp_path, monkeyp
     assert data["safety_boundary"]["m33_final_authority"] is True
     assert "can_frame" in data["safety_boundary"]["server_must_not_send"]
     assert data["devices"][0]["device_id"] == "nanopi-m5"
+    assert data["devices"][0]["project_id"] == "project-rehab"
     assert data["devices"][0]["safety_state"] == "limited"
     assert data["devices"][0]["motion_allowed"] is False
     assert data["devices"][0]["motor_state"]["payload"]["motors"][0]["joint_name"] == "elbow"
+    assert data["devices"][0]["motor_state"]["payload"]["joint_state"]["name"] == ["shoulder_lift_joint", "elbow_lift_joint"]
     get_settings.cache_clear()
 
 

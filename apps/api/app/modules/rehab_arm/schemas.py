@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 class RehabDeviceRegisterRequest(BaseModel):
     device_id: str = Field(min_length=1)
     robot_id: str = Field(min_length=1)
+    project_id: str = ""
     device_type: str = "nanopi"
     software_version: str = "unknown"
     capabilities: list[str] = Field(default_factory=list)
@@ -25,12 +26,14 @@ class RehabSyncStatusRequest(BaseModel):
 class RehabSimulationReadinessRequest(BaseModel):
     robot_id: str = Field(min_length=1)
     device_id: str = Field(min_length=1)
+    project_id: str = ""
     report: dict
 
 
 class RehabBoardManifestRequest(BaseModel):
     robot_id: str = Field(min_length=1)
     device_id: str = Field(min_length=1)
+    project_id: str = ""
     manifest: dict
 
 
@@ -54,13 +57,18 @@ class RehabMotorSample(BaseModel):
 class RehabMotorStateRequest(BaseModel):
     robot_id: str = Field(min_length=1)
     device_id: str = Field(min_length=1)
+    project_id: str = ""
     ts_unix: float
     motors: list[RehabMotorSample] = Field(default_factory=list)
+    joint_state: dict | list | None = None
+    joint_states: dict | list | None = None
+    source: str = "nanopi"
 
 
 class RehabSensorStateRequest(BaseModel):
     robot_id: str = Field(min_length=1)
     device_id: str = Field(min_length=1)
+    project_id: str = ""
     ts_unix: float | None = None
     emg: dict | list | None = None
     heart_rate: float | None = None
@@ -74,6 +82,7 @@ class RehabSensorStateRequest(BaseModel):
 class RehabSafetyStateRequest(BaseModel):
     robot_id: str = Field(min_length=1)
     device_id: str = Field(min_length=1)
+    project_id: str = ""
     state: str = Field(pattern="^(ok|limited|emergency_stop|fault)$")
     motion_allowed: bool = False
     emergency_stop: bool = False

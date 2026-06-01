@@ -310,8 +310,71 @@ function motorSourceNames(motors: AnyRecord[]) {
   return Array.from(new Set(motors.flatMap((motor, index) => {
     const jointName = text(motor.joint_name ?? motor.jointName, "");
     const motorId = text(motor.motor_id ?? motor.motorId, "");
+    if (text(motor.source_label, "") === "ROS 关节状态") return [jointName].filter(Boolean);
     return [jointName, motorId || `motor_${index + 1}`].filter(Boolean);
   })));
+}
+
+function jointStateSamplesFromPayload(value: unknown) {
+  const payload = record(value);
+  const jointState = payload.joint_state ?? payload.joint_states ?? payload.jointState ?? payload.jointStates;
+  if (Array.isArray(jointState)) {
+    return jointState
+      .map((item, index) => {
+        const row = record(item);
+        const jointName = text(row.name ?? row.joint_name ?? row.jointName, "");
+        if (!jointName) return null;
+        return {
+          motor_id: text(row.source ?? row.id, `joint_state_${index + 1}`),
+          joint_name: jointName,
+          position_rad: Number(row.position_rad ?? row.positionRad ?? row.position),
+          velocity: Number(row.velocity ?? row.velocity_rad_s ?? row.velocityRadS),
+          torque: Number(row.effort ?? row.torque),
+          current: row.current,
+          temperature: row.temperature,
+          enabled: false,
+          fault: false,
+          source_label: "ROS 关节状态",
+        };
+      })
+      .filter(Boolean) as AnyRecord[];
+  }
+  const row = record(jointState);
+  const names = asArray<unknown>(row.name ?? row.names);
+  const positions = asArray<unknown>(row.position ?? row.positions);
+  const velocities = asArray<unknown>(row.velocity ?? row.velocities);
+  const efforts = asArray<unknown>(row.effort ?? row.efforts);
+  return names
+    .map((name, index) => {
+      const jointName = text(name, "");
+      if (!jointName) return null;
+      return {
+        motor_id: `joint_state_${index + 1}`,
+        joint_name: jointName,
+        position_rad: Number(positions[index]),
+        velocity: Number(velocities[index]),
+        torque: Number(efforts[index]),
+        enabled: false,
+        fault: false,
+        source_label: "ROS 关节状态",
+      };
+    })
+    .filter(Boolean) as AnyRecord[];
+}
+
+function poseSamplesFromTelemetry(motorPayload: AnyRecord, sensorPayload: AnyRecord) {
+  const motors: AnyRecord[] = asArray<AnyRecord>(motorPayload.motors).map((motor) => ({ ...motor, source_label: "电机状态" }));
+  const jointStates = [
+    ...jointStateSamplesFromPayload(motorPayload),
+    ...jointStateSamplesFromPayload(sensorPayload),
+  ];
+  const seen = new Set<string>();
+  return [...motors, ...jointStates].filter((sample) => {
+    const key = text(sample.joint_name ?? sample.jointName ?? sample.motor_id ?? sample.motorId, "");
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function keyframeSrc(imageUrl: string, apiBaseUrl: string) {
@@ -323,6 +386,18 @@ function keyframeSrc(imageUrl: string, apiBaseUrl: string) {
 
 function qualityReadyText(value: unknown) {
   return value ? "可标注" : "待补数据";
+}
+
+function publicQualityReason(value: unknown) {
+  const raw = text(value, "");
+  if (!raw) return "";
+  return raw
+    .replace(/waiting for manifest_with_summary upload/gi, "等待设备档案与质量摘要")
+    .replace(/manifest/gi, "设备档案")
+    .replace(/session/gi, "数据批次")
+    .replace(/motor_state/gi, "电机状态")
+    .replace(/joint_state/gi, "关节状态")
+    .replace(/_/g, " ");
 }
 
 const ARM_MODEL_JSON = {
@@ -544,6 +619,10 @@ function Arm3DOverview({ motors, safetyState }: { motors: AnyRecord[]; safetySta
   const urdfJointNames = useMemo(() => urdfJoints.map((joint) => joint.name), [urdfJoints]);
   const jointRows = useMemo(() => movableJoints(urdfJoints).map((joint) => joint.name), [urdfJoints]);
   const sourceNames = useMemo(() => motorSourceNames(motors), [motors]);
+  const sourceLabels = useMemo(
+    () => Array.from(new Set(motors.map((motor) => text(motor.source_label, "电机状态")).filter(Boolean))),
+    [motors],
+  );
   const jointRowsKey = jointRows.join("\u0001");
   const sourceNamesKey = sourceNames.join("\u0001");
   const [calibrations, setCalibrations] = useState<JointCalibration[]>([]);
@@ -580,7 +659,7 @@ function Arm3DOverview({ motors, safetyState }: { motors: AnyRecord[]; safetySta
       saved.forEach((row, jointName) => previous.set(jointName, row));
       return defaultCalibrations(jointRows, sourceNames, previous);
     });
-  }, [jointRowsKey, sourceNamesKey, urdfName]);
+  }, [jointRows, jointRowsKey, sourceNames, sourceNamesKey, urdfName]);
 
   useEffect(() => {
     saveCalibrations(urdfName, calibrations);
@@ -856,13 +935,13 @@ function Arm3DOverview({ motors, safetyState }: { motors: AnyRecord[]; safetySta
             onChange={(event) => handleUrdfFile(event.target.files?.[0] ?? null)}
           />
         </label>
-        <p>支持 URDF zip 包或单个 URDF。页面用电机上报角度驱动同名关节，只读预览，不下发任何运动控制。</p>
+        <p>支持 URDF zip 包或单个 URDF。页面用电机状态或 ROS 关节状态驱动同名关节，只读预览，不下发任何运动控制。</p>
       </div>
       <div ref={mountRef} className={styles.armCanvas} />
       {urdfJoints.length ? (
         <div className={styles.poseStatus}>
           <strong>匹配 {matchedUrdfJoints.length}/{jointRows.length || urdfJoints.length}</strong>
-          <span>同名关节会实时套用电机角度；模型资源已加载 {meshStats.loaded} 个，未加载 {meshStats.missing} 个。</span>
+          <span>{sourceLabels.join(" + ") || "角度状态"} 会实时套用到同名关节；模型资源已加载 {meshStats.loaded} 个，未加载 {meshStats.missing} 个。</span>
         </div>
       ) : null}
       {urdfJoints.length ? (
@@ -872,7 +951,7 @@ function Arm3DOverview({ motors, safetyState }: { motors: AnyRecord[]; safetySta
             <button type="button" onClick={(event) => { event.preventDefault(); resetCalibration(); }}>重置映射</button>
           </summary>
           <div className={styles.mappingHint}>
-            <strong>{sourceNames.length ? `${sourceNames.length} 个电机来源可选` : "等待电机状态上传"}</strong>
+            <strong>{sourceNames.length ? `${sourceNames.length} 个角度来源可选` : "等待角度状态上传"}</strong>
             <span>只影响当前浏览器预览：单位、方向和零点偏移用于把上报角度对齐到 URDF 关节。</span>
           </div>
           <div className={styles.mappingGrid} data-testid="rehab-pose-mapping">
@@ -882,7 +961,7 @@ function Arm3DOverview({ motors, safetyState }: { motors: AnyRecord[]; safetySta
                 <div key={row.jointName} className={styles.mappingRow}>
                   <strong>{row.jointName}</strong>
                   <label>
-                    <span>电机来源</span>
+                    <span>角度来源</span>
                     <select
                       value={row.sourceName}
                       onChange={(event) => updateCalibration(row.jointName, { sourceName: event.target.value })}
@@ -1020,6 +1099,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
   const safetyPayload = payloadOf(selected?.safety);
   const dataQuality = selected?.data_quality ?? {};
   const motors = asArray<AnyRecord>(motorPayload.motors);
+  const poseSamples = useMemo(() => poseSamplesFromTelemetry(motorPayload, sensorPayload), [motorPayload, sensorPayload]);
   const imageUrl = text(keyframe.image_url, "");
   const absoluteImageUrl = keyframeSrc(imageUrl, apiBaseUrl);
   const motionAllowed = Boolean(safetyPayload.motion_allowed ?? selected?.motion_allowed);
@@ -1145,7 +1225,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
             <article data-ready={qualityReady ? "true" : "false"}>
               <span>数据质量</span>
               <strong>{qualityReadyText(qualityReady)}</strong>
-              <p>{qualityReady ? "可进入标注和导出。" : asArray<string>(dataQuality.blocking_reasons).join("；") || "等待设备档案和质量摘要。"}</p>
+              <p>{qualityReady ? "可进入标注和导出。" : asArray<string>(dataQuality.blocking_reasons).map(publicQualityReason).filter(Boolean).join("；") || "等待设备档案和质量摘要。"}</p>
             </article>
             <article>
               <span>传感器</span>
@@ -1155,7 +1235,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
           </div>
 
           <div className={styles.primaryGrid}>
-            <Arm3DOverview motors={motors} safetyState={stateLabel(currentSafetyState)} />
+            <Arm3DOverview motors={poseSamples} safetyState={stateLabel(currentSafetyState)} />
 
             <aside className={styles.sideStack}>
               <section className={styles.safetyPanel} data-state={stateLabel(currentSafetyState)}>
