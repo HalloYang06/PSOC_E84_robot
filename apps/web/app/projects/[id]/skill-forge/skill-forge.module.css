@@ -297,15 +297,25 @@
 
 .assetTitle {
   display: block;
+  flex: 0 0 auto;
   min-width: 0;
+  min-height: 20px;
+  color: var(--forge-text);
+  font-size: 13px;
+  line-height: 1.45;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .assetDescription {
   display: -webkit-box;
+  flex: 0 0 auto;
   min-height: 58px;
   overflow: hidden;
+  color: var(--forge-muted);
+  font-size: 12px;
+  line-height: 1.65;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
 }
