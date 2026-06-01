@@ -614,10 +614,10 @@ function ForgeTile({
         </section>
       ) : activeTab === "knowledge" ? (
         <section className={styles.skillGrid}>
-          <article className={styles.editorCard}>
+          <article className={`${styles.editorCard} ${styles.knowledgeEditorCard}`}>
             <span>新增 / 编辑</span>
             <strong>{resource.name} 的知识条目</strong>
-            <form className={styles.stackForm} action={保存能力工坊知识库.bind(null, projectId)}>
+            <form className={`${styles.stackForm} ${styles.knowledgeForm}`} action={保存能力工坊知识库.bind(null, projectId)}>
               <input type="hidden" name="return_to" value={`/projects/${projectId}/skill-forge?resources=${encodeURIComponent(resourceKey(resource))}`} />
               <input type="hidden" name="scope" value={resource.kind === "seat" ? "npc" : "workstation"} />
               <input type="hidden" name="owner_type" value={resource.kind === "seat" ? "seat" : "workstation"} />
@@ -655,20 +655,22 @@ function ForgeTile({
                 {docPathOf(doc) ? <code>{docPathOf(doc)}</code> : <em>待补仓库路径</em>}
                 {githubBlobHref(projectRepo, docPathOf(doc)) ? <a href={githubBlobHref(projectRepo, docPathOf(doc))} target="_blank" rel="noreferrer">打开 GitHub</a> : null}
               </div>
-              {matchesKnowledge(doc, resource) || boundKnowledgePaths.has(docPathOf(doc)) ? (
-                <small>已绑定</small>
-              ) : resource.kind === "seat" ? (
-                <form className={styles.inlineAction} action={绑定知识库到Npc.bind(null, projectId, resource.seatRowId || resource.id, docKeyOf(doc, index))}>
-                  <input type="hidden" name="return_to" value={`/projects/${projectId}/skill-forge?seat=${encodeURIComponent(resource.id)}`} />
-                  <button type="submit">绑定到此 NPC</button>
+              <div className={styles.cardActions}>
+                {matchesKnowledge(doc, resource) || boundKnowledgePaths.has(docPathOf(doc)) ? (
+                  <small>已绑定</small>
+                ) : resource.kind === "seat" ? (
+                  <form className={styles.inlineAction} action={绑定知识库到Npc.bind(null, projectId, resource.seatRowId || resource.id, docKeyOf(doc, index))}>
+                    <input type="hidden" name="return_to" value={`/projects/${projectId}/skill-forge?seat=${encodeURIComponent(resource.id)}`} />
+                    <button type="submit">绑定到此 NPC</button>
+                  </form>
+                ) : (
+                  <small>选择 NPC 后绑定</small>
+                )}
+                <form className={`${styles.inlineAction} ${styles.dangerAction}`} action={删除能力工坊知识库.bind(null, projectId, docKeyOf(doc, index))}>
+                  <input type="hidden" name="return_to" value={`/projects/${projectId}/skill-forge?resources=${encodeURIComponent(resourceKey(resource))}`} />
+                  <button type="submit">删除索引</button>
                 </form>
-              ) : (
-                <small>选择 NPC 后绑定</small>
-              )}
-              <form className={styles.inlineAction} action={删除能力工坊知识库.bind(null, projectId, docKeyOf(doc, index))}>
-                <input type="hidden" name="return_to" value={`/projects/${projectId}/skill-forge?resources=${encodeURIComponent(resourceKey(resource))}`} />
-                <button type="submit">删除</button>
-              </form>
+              </div>
             </article>
           ))}
           {!documents.length ? (
@@ -679,7 +681,7 @@ function ForgeTile({
             </article>
           ) : null}
           {deposits ? (
-            <article className={styles.depositCard}>
+            <article className={`${styles.depositCard} ${styles.depositWideCard}`}>
               <span>NPC 默认写入路径</span>
               <strong>平台从这里索引知识和协作证据</strong>
               <ul>
