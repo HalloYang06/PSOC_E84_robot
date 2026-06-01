@@ -744,6 +744,88 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
     };
   }).sort((left, right) => right.activityTime - left.activityTime);
   const visibleChains = collaborationChains.slice(0, 4);
+  const seatAliases = new Map<string, Set<string>>();
+  for (const seat of allSeats) {
+    seatAliases.set(
+      seat.id,
+      new Set(
+        [
+          seat.id,
+          seat.threadId,
+          seat.computerNodeId,
+          seat.name,
+          text(record(seat.metadata).config_id, ""),
+          text(record(seat.metadata).seat_id, ""),
+          text(record(seat.metadata).source_workstation_id, ""),
+        ].filter(Boolean),
+      ),
+    );
+  }
+  const seatMatches = (seat: typeof allSeats[number], value: unknown) => {
+    const raw = text(value, "");
+    if (!raw) return false;
+    return seatAliases.get(seat.id)?.has(raw) ?? false;
+  };
+  const seatRelationCards = allSeats.map((seat) => {
+    const sameDepartmentPeers = allSeats.filter(
+      (peer) => peer.id !== seat.id && peer.workstationId && peer.workstationId === seat.workstationId,
+    );
+    const leadPeer = allSeats.find((peer) => peer.id !== seat.id && peer.id === seat.leadSeatId) ?? null;
+    const outgoingNeeds = allNeeds.filter((need) => seatMatches(seat, need.from_agent ?? need.fromAgent ?? need.created_by_id ?? need.createdById));
+    const incomingNeeds = allNeeds.filter((need) =>
+      seatMatches(
+        seat,
+        need.target_seat_id
+          ?? need.targetSeatId
+          ?? need.to_agent
+          ?? need.toAgent,
+      ),
+    );
+    const assignedTasks = allTasks.filter((task) =>
+      seatMatches(
+        seat,
+        task.assignee_seat_id
+          ?? task.assigneeSeatId
+          ?? task.assignee_agent_id
+          ?? task.assigneeAgentId
+          ?? task.assignee,
+      ),
+    );
+    const relationNames = new Set<string>();
+    if (leadPeer) relationNames.add(leadPeer.name);
+    for (const peer of sameDepartmentPeers) relationNames.add(peer.name);
+    for (const need of [...outgoingNeeds, ...incomingNeeds]) {
+      const targetId = text(
+        need.target_seat_id
+          ?? need.targetSeatId
+          ?? need.to_agent
+          ?? need.toAgent
+          ?? need.from_agent
+          ?? need.fromAgent,
+        "",
+      );
+      const name = seatNameById.get(targetId);
+      if (name && name !== seat.name) relationNames.add(name);
+    }
+    const relatedNames = [...relationNames].slice(0, 5);
+    const relationScore = relatedNames.length + outgoingNeeds.length + incomingNeeds.length + assignedTasks.length;
+    const tone = seat.dispatchState === "可投递"
+      ? "healthy"
+      : /等待|未知|延迟|排队/.test(seat.dispatchState)
+        ? "review"
+        : /离线|重连|失败|阻塞/.test(seat.dispatchState)
+          ? "blocked"
+          : "idle";
+    return {
+      seat,
+      relatedNames,
+      outgoingCount: outgoingNeeds.length,
+      incomingCount: incomingNeeds.length,
+      taskCount: assignedTasks.length,
+      relationScore,
+      tone,
+    };
+  }).sort((left, right) => right.relationScore - left.relationScore || left.seat.name.localeCompare(right.seat.name, "zh-CN"));
   const openNeedCount = allNeeds.filter((need) => !/satisfied|completed|done|closed|resolved|archived|cancelled/i.test(text(need.status, ""))).length;
   const activeTaskCount = allTasks.filter((task) => /queued|ready|running|active|in_progress|reviewing|waiting/i.test(text(task.status, ""))).length;
   const waitingReceiptCount = collaborationChains.filter((chain) => chain.receiptStatus === "等待回执").length;
@@ -879,6 +961,54 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
                 <div className={styles.emptyChain}>
                   <strong>还没有结构化协作链路</strong>
                   <p>当 NPC 创建 Need 并路由成任务后，这里会按“需求、承接、投递、回执”展示进度。</p>
+                </div>
+              ) : null}
+            </div>
+          </section>
+
+          <section className={styles.relationPanel} aria-label="NPC 关系网">
+            <header>
+              <div>
+                <span>NPC 关系网</span>
+                <strong>每个员工的协作圈</strong>
+              </div>
+              <small>{seatRelationCards.length ? `${seatRelationCards.length} 个 NPC 节点` : "等待创建 NPC"}</small>
+            </header>
+            <div className={styles.relationGrid}>
+              {seatRelationCards.map((card) => (
+                <Link
+                  key={card.seat.id}
+                  href={`/projects/${projectId}/workbench?seat_id=${encodeURIComponent(card.seat.id)}&return_to=${encodeURIComponent(selfPath)}&from=company`}
+                  className={styles.relationCard}
+                  data-tone={card.tone}
+                >
+                  <div className={styles.relationOrbit} aria-hidden="true">
+                    <span className={styles.relationCore}>{card.seat.name.slice(0, 2).toUpperCase()}</span>
+                    {(card.relatedNames.length ? card.relatedNames : ["待建立", "待协作"]).slice(0, 5).map((name, index) => (
+                      <span
+                        key={`${card.seat.id}-relation-${name}-${index}`}
+                        className={styles.relationSatellite}
+                        data-slot={index + 1}
+                      >
+                        {name.slice(0, 2).toUpperCase()}
+                      </span>
+                    ))}
+                  </div>
+                  <div className={styles.relationMeta}>
+                    <strong>{card.seat.name}</strong>
+                    <span>{card.seat.workstationName || "未归属工位"}</span>
+                    <div>
+                      <em>发出 {card.outgoingCount}</em>
+                      <em>收到 {card.incomingCount}</em>
+                      <em>任务 {card.taskCount}</em>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+              {!seatRelationCards.length ? (
+                <div className={styles.emptyRelation}>
+                  <strong>还没有 NPC 关系网</strong>
+                  <p>创建 NPC 后，公司层会自动按工位、负责人、需求和任务绘制协作圈。</p>
                 </div>
               ) : null}
             </div>
