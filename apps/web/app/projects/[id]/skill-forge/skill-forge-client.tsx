@@ -771,62 +771,62 @@ export function SkillForgeClient({
 
   return (
     <main className={`${workbenchStyles.shell} ${styles.forgeShell}`}>
-      <header className={workbenchStyles.topbar}>
+      <header className={`${workbenchStyles.topbar} ${styles.forgeTopbar}`}>
         <div className={workbenchStyles.topbarLeft}>
-          <Link href={`/projects/${projectId}/2d-upgrade`} className={workbenchStyles.backLink}>← 主页面</Link>
-          {returnTo ? <Link href={returnTo} className={workbenchStyles.backLink}>{returnToLabel || "← 返回来源"}</Link> : null}
-          <div className={workbenchStyles.title}>
+          <Link href={`/projects/${projectId}/2d-upgrade`} className={`${workbenchStyles.backLink} ${styles.forgeBackLink}`}>← 主页面</Link>
+          {returnTo ? <Link href={returnTo} className={`${workbenchStyles.backLink} ${styles.forgeBackLink}`}>{returnToLabel || "← 返回来源"}</Link> : null}
+          <div className={`${workbenchStyles.title} ${styles.forgeTitle}`}>
             <strong>{projectName}</strong>
             <small>能力工坊 · Skill、知识库、Git 治理资产统一整理</small>
           </div>
         </div>
         <div className={workbenchStyles.topbarRight}>
-          {surfaceError ? <span className={workbenchStyles.kpi}>需要处理：{userMessage(surfaceError)}</span> : null}
-          {surfaceNotice ? <span className={workbenchStyles.kpi}>{userMessage(surfaceNotice)}</span> : null}
-          <span className={workbenchStyles.kpi}>Skill {skills.length}</span>
-          <span className={workbenchStyles.kpi}>草稿 {draftSkills.length}</span>
-          <span className={workbenchStyles.kpi}>自定义绑定 {assignments.length}</span>
-          <span className={workbenchStyles.kpi}>已打开 {openResources.length}</span>
+          {surfaceError ? <span className={`${workbenchStyles.kpi} ${styles.forgeKpi}`}>需要处理：{userMessage(surfaceError)}</span> : null}
+          {surfaceNotice ? <span className={`${workbenchStyles.kpi} ${styles.forgeKpi}`}>{userMessage(surfaceNotice)}</span> : null}
+          <span className={`${workbenchStyles.kpi} ${styles.forgeKpi}`}>Skill {skills.length}</span>
+          <span className={`${workbenchStyles.kpi} ${styles.forgeKpi}`}>草稿 {draftSkills.length}</span>
+          <span className={`${workbenchStyles.kpi} ${styles.forgeKpi}`}>自定义绑定 {assignments.length}</span>
+          <span className={`${workbenchStyles.kpi} ${styles.forgeKpi}`}>已打开 {openResources.length}</span>
         </div>
       </header>
 
-      <div className={workbenchStyles.body}>
-        <aside className={workbenchStyles.sidebar}>
-          <div className={workbenchStyles.sidebarHeader}>
+      <div className={`${workbenchStyles.body} ${styles.forgeBody}`}>
+        <aside className={`${workbenchStyles.sidebar} ${styles.forgeSidebar}`}>
+          <div className={`${workbenchStyles.sidebarHeader} ${styles.forgeSidebarHeader}`}>
             <input
               type="search"
-              className={workbenchStyles.search}
+              className={`${workbenchStyles.search} ${styles.forgeSearch}`}
               placeholder="搜索工位 / NPC / Skill"
               readOnly
               value="资源索引：工位 / NPC / 能力"
             />
-            <button type="button" className={workbenchStyles.batchBtn} onClick={() => setOpenIds(resources.map(resourceKey))}>
+            <button type="button" className={`${workbenchStyles.batchBtn} ${styles.forgeBatchBtn}`} onClick={() => setOpenIds(resources.map(resourceKey))}>
               打开全部 ({resources.length})
             </button>
           </div>
-          <ul className={workbenchStyles.groupList} aria-label="工位和 NPC 索引">
+          <ul className={`${workbenchStyles.groupList} ${styles.forgeGroupList}`} aria-label="工位和 NPC 索引">
             {workstations.map((station, stationIndex) => {
               const stationId = idOf(station) || `station-${stationIndex + 1}`;
               const stationKey = `station:${stationId}`;
               const stationSeats = resources.filter((resource) => resource.kind === "seat" && resource.parentId === stationId) as ForgeResource[];
               return (
-                <li key={stationKey} className={workbenchStyles.group}>
-                  <div className={workbenchStyles.groupHeader}>
+                <li key={stationKey} className={`${workbenchStyles.group} ${styles.forgeGroup}`}>
+                  <div className={`${workbenchStyles.groupHeader} ${styles.forgeGroupHeader}`}>
                     <span>🏷 {nameOf(station, `工位 ${stationIndex + 1}`)}</span>
                     <small>{stationSeats.length} 个 NPC</small>
                   </div>
-                  <ul className={workbenchStyles.npcList}>
-                    <li className={`${workbenchStyles.npcRow} ${openIds.includes(stationKey) ? workbenchStyles.npcRowOpen : ""}`}>
+                  <ul className={`${workbenchStyles.npcList} ${styles.forgeNpcList}`}>
+                    <li className={`${workbenchStyles.npcRow} ${styles.forgeNpcRow} ${openIds.includes(stationKey) ? `${workbenchStyles.npcRowOpen} ${styles.forgeNpcRowOpen}` : ""}`}>
                       <div className={workbenchStyles.npcMain}>
-                        <strong className={workbenchStyles.npcName}>{nameOf(station, `工位 ${stationIndex + 1}`)}</strong>
-                        <small className={workbenchStyles.npcMeta}>
-                          <span className={workbenchStyles.dot} />
+                        <strong className={`${workbenchStyles.npcName} ${styles.forgeNpcName}`}>{nameOf(station, `工位 ${stationIndex + 1}`)}</strong>
+                        <small className={`${workbenchStyles.npcMeta} ${styles.forgeNpcMeta}`}>
+                          <span className={`${workbenchStyles.dot} ${styles.forgeDot}`} />
                           工位配置 · Skill / 知识库 / Git
                         </small>
                       </div>
                       <button
                         type="button"
-                        className={workbenchStyles.openBtn}
+                        className={`${workbenchStyles.openBtn} ${styles.forgeOpenBtn}`}
                         onClick={() => toggleResource(stationKey)}
                         title={openIds.includes(stationKey) ? "关闭瓷砖" : "打开瓷砖"}
                         aria-label={`${openIds.includes(stationKey) ? "关闭" : "打开"} ${nameOf(station, `工位 ${stationIndex + 1}`)} 配置瓷砖`}
@@ -838,17 +838,17 @@ export function SkillForgeClient({
                       const key = resourceKey(seat);
                       const parentName = seat.kind === "seat" ? seat.parentName : "";
                       return (
-                        <li key={key} className={`${workbenchStyles.npcRow} ${openIds.includes(key) ? workbenchStyles.npcRowOpen : ""}`}>
+                        <li key={key} className={`${workbenchStyles.npcRow} ${styles.forgeNpcRow} ${openIds.includes(key) ? `${workbenchStyles.npcRowOpen} ${styles.forgeNpcRowOpen}` : ""}`}>
                           <div className={workbenchStyles.npcMain}>
-                            <strong className={workbenchStyles.npcName}>{seat.name}</strong>
-                            <small className={workbenchStyles.npcMeta}>
-                              <span className={workbenchStyles.dot} />
+                            <strong className={`${workbenchStyles.npcName} ${styles.forgeNpcName}`}>{seat.name}</strong>
+                            <small className={`${workbenchStyles.npcMeta} ${styles.forgeNpcMeta}`}>
+                              <span className={`${workbenchStyles.dot} ${styles.forgeDot}`} />
                               NPC 配置 · {parentName || "未归属工位"}
                             </small>
                           </div>
                           <button
                             type="button"
-                            className={workbenchStyles.openBtn}
+                            className={`${workbenchStyles.openBtn} ${styles.forgeOpenBtn}`}
                             onClick={() => toggleResource(key)}
                             title={openIds.includes(key) ? "关闭瓷砖" : "打开瓷砖"}
                             aria-label={`${openIds.includes(key) ? "关闭" : "打开"} ${seat.name} 配置瓷砖`}
@@ -863,26 +863,26 @@ export function SkillForgeClient({
               );
             })}
             {resources.some((resource) => resource.kind === "seat" && !resource.parentId) ? (
-              <li className={workbenchStyles.group}>
-                <div className={workbenchStyles.groupHeader}>
+              <li className={`${workbenchStyles.group} ${styles.forgeGroup}`}>
+                <div className={`${workbenchStyles.groupHeader} ${styles.forgeGroupHeader}`}>
                   <span>未归属 NPC</span>
                   <small>{resources.filter((resource) => resource.kind === "seat" && !resource.parentId).length} 个 NPC</small>
                 </div>
-                <ul className={workbenchStyles.npcList}>
+                <ul className={`${workbenchStyles.npcList} ${styles.forgeNpcList}`}>
                   {resources.filter((resource) => resource.kind === "seat" && !resource.parentId).map((seat) => {
                     const key = resourceKey(seat);
                     return (
-                      <li key={key} className={`${workbenchStyles.npcRow} ${openIds.includes(key) ? workbenchStyles.npcRowOpen : ""}`}>
+                      <li key={key} className={`${workbenchStyles.npcRow} ${styles.forgeNpcRow} ${openIds.includes(key) ? `${workbenchStyles.npcRowOpen} ${styles.forgeNpcRowOpen}` : ""}`}>
                         <div className={workbenchStyles.npcMain}>
-                          <strong className={workbenchStyles.npcName}>{seat.name}</strong>
-                          <small className={workbenchStyles.npcMeta}>
-                            <span className={workbenchStyles.dot} />
+                          <strong className={`${workbenchStyles.npcName} ${styles.forgeNpcName}`}>{seat.name}</strong>
+                          <small className={`${workbenchStyles.npcMeta} ${styles.forgeNpcMeta}`}>
+                            <span className={`${workbenchStyles.dot} ${styles.forgeDot}`} />
                             NPC 配置 · 待分配工位
                           </small>
                         </div>
                         <button
                           type="button"
-                          className={workbenchStyles.openBtn}
+                          className={`${workbenchStyles.openBtn} ${styles.forgeOpenBtn}`}
                           onClick={() => toggleResource(key)}
                           title={openIds.includes(key) ? "关闭瓷砖" : "打开瓷砖"}
                           aria-label={`${openIds.includes(key) ? "关闭" : "打开"} ${seat.name} 配置瓷砖`}
@@ -896,8 +896,8 @@ export function SkillForgeClient({
               </li>
             ) : null}
             {!workstations.length ? (
-              <li className={workbenchStyles.group}>
-                <div className={workbenchStyles.groupHeader}>
+              <li className={`${workbenchStyles.group} ${styles.forgeGroup}`}>
+                <div className={`${workbenchStyles.groupHeader} ${styles.forgeGroupHeader}`}>
                   <span>还没有工位</span>
                   <small>先创建工位和 NPC</small>
                 </div>
@@ -908,7 +908,7 @@ export function SkillForgeClient({
 
         <section className={`${workbenchStyles.main} ${styles.forgeMain}`} data-mode={openResources.length > 0 ? "chat" : "setup"}>
           {openResources.length ? (
-            <div className={workbenchStyles.tileGrid} data-tile-count={openResources.length}>
+            <div className={`${workbenchStyles.tileGrid} ${styles.forgeTileGrid}`} data-tile-count={openResources.length}>
               {openResources.map((resource) => {
                 const key = resourceKey(resource);
                 return (
@@ -930,7 +930,7 @@ export function SkillForgeClient({
               })}
             </div>
           ) : (
-            <div className={workbenchStyles.placeholder}>
+            <div className={`${workbenchStyles.placeholder} ${styles.forgePlaceholder}`}>
               <strong>先从左侧选择一个工位或 NPC</strong>
               <p>打开后只看该对象自己的 Skill、知识库和 Git 治理证据；不会把全部功能一次性堆出来。</p>
             </div>

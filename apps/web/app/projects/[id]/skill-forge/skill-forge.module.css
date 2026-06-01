@@ -33,7 +33,7 @@
   font-family: "LXGW WenKai Screen", "Noto Serif SC", "PingFang SC", "Microsoft YaHei", serif !important;
 }
 
-.forgeShell :global(.topbar) {
+.forgeTopbar {
   min-height: 68px;
   padding: 12px 16px;
   border-bottom: 1px solid var(--forge-line);
@@ -43,38 +43,38 @@
   box-shadow: 0 18px 54px rgba(0, 0, 0, 0.2);
 }
 
-.forgeShell :global(.backLink),
-.forgeShell :global(.kpi),
-.forgeShell :global(.batchBtn) {
+.forgeBackLink,
+.forgeKpi,
+.forgeBatchBtn {
   border-color: rgba(232, 189, 95, 0.26);
   border-radius: 999px;
   background: rgba(255, 247, 225, 0.06);
   color: var(--forge-text);
 }
 
-.forgeShell :global(.backLink:hover),
-.forgeShell :global(.batchBtn:hover) {
+.forgeBackLink:hover,
+.forgeBatchBtn:hover {
   border-color: var(--forge-line-strong);
   background: rgba(232, 189, 95, 0.13);
 }
 
-.forgeShell :global(.title strong) {
+.forgeTitle strong {
   color: var(--forge-text);
   font-size: 17px;
   letter-spacing: -0.02em;
 }
 
-.forgeShell :global(.title small) {
+.forgeTitle small {
   color: var(--forge-muted);
   font-size: 12px;
 }
 
-.forgeShell :global(.body) {
+.forgeBody {
   gap: 12px;
   padding: 12px;
 }
 
-.forgeShell :global(.sidebar) {
+.forgeSidebar {
   width: 312px;
   border: 1px solid var(--forge-line);
   border-radius: 24px;
@@ -87,13 +87,13 @@
   overflow: hidden;
 }
 
-.forgeShell :global(.sidebarHeader) {
+.forgeSidebarHeader {
   gap: 10px;
   padding: 14px;
   border-bottom-color: rgba(232, 189, 95, 0.14);
 }
 
-.forgeShell :global(.search) {
+.forgeSearch {
   min-height: 40px;
   border-color: rgba(232, 189, 95, 0.22);
   border-radius: 16px;
@@ -102,26 +102,26 @@
   font-weight: 800;
 }
 
-.forgeShell :global(.groupList) {
+.forgeGroupList {
   padding: 10px;
 }
 
-.forgeShell :global(.group) {
+.forgeGroup {
   margin-bottom: 12px;
 }
 
-.forgeShell :global(.groupHeader) {
+.forgeGroupHeader {
   padding: 7px 8px;
   color: rgba(232, 189, 95, 0.88);
   letter-spacing: 0.05em;
 }
 
-.forgeShell :global(.npcList) {
+.forgeNpcList {
   display: grid;
   gap: 7px;
 }
 
-.forgeShell :global(.npcRow) {
+.forgeNpcRow {
   min-height: 58px;
   padding: 10px;
   border: 1px solid rgba(232, 189, 95, 0.12);
@@ -131,13 +131,13 @@
   transition: transform 150ms ease, border-color 150ms ease, background 150ms ease, box-shadow 150ms ease;
 }
 
-.forgeShell :global(.npcRow:hover) {
+.forgeNpcRow:hover {
   transform: translateY(-1px);
   border-color: rgba(232, 189, 95, 0.32);
   background: rgba(232, 189, 95, 0.08);
 }
 
-.forgeShell :global(.npcRowOpen) {
+.forgeNpcRowOpen {
   border-color: rgba(167, 223, 154, 0.44);
   background:
     radial-gradient(circle at 0% 50%, rgba(167, 223, 154, 0.16), transparent 42%),
@@ -145,28 +145,28 @@
   box-shadow: inset 0 0 0 1px rgba(167, 223, 154, 0.08);
 }
 
-.forgeShell :global(.npcName) {
+.forgeNpcName {
   color: var(--forge-text);
   font-size: 13px;
 }
 
-.forgeShell :global(.npcMeta) {
+.forgeNpcMeta {
   color: var(--forge-muted);
 }
 
-.forgeShell :global(.dot) {
+.forgeDot {
   background: var(--forge-amber);
   box-shadow: 0 0 12px rgba(232, 189, 95, 0.25);
 }
 
-.forgeShell :global(.openBtn) {
+.forgeOpenBtn {
   border-color: rgba(232, 189, 95, 0.28);
   border-radius: 12px;
   background: rgba(232, 189, 95, 0.1);
   color: var(--forge-text);
 }
 
-.forgeShell :global(.main) {
+.forgeMain {
   padding: 0 !important;
   border: 1px solid var(--forge-line);
   border-radius: 24px;
@@ -179,36 +179,32 @@
   overflow: hidden;
 }
 
-.forgeShell :global(.tileGrid) {
+.forgeTileGrid {
   gap: 12px;
   padding: 12px;
   grid-auto-rows: minmax(calc(100vh - 130px), calc(100vh - 130px));
 }
 
-.forgeShell :global(.tileGrid[data-tile-count="2"]),
-.forgeShell :global(.tileGrid[data-tile-count="3"]),
-.forgeShell :global(.tileGrid[data-tile-count="4"]) {
+.forgeTileGrid[data-tile-count="2"],
+.forgeTileGrid[data-tile-count="3"],
+.forgeTileGrid[data-tile-count="4"] {
   grid-auto-rows: minmax(calc(100vh - 130px), calc(100vh - 130px));
 }
 
-.forgeShell :global(.placeholder) {
+.forgePlaceholder {
   padding: 28px;
   color: var(--forge-muted);
 }
 
-.forgeShell :global(.placeholder strong) {
+.forgePlaceholder strong {
   color: var(--forge-text);
   font-size: 22px;
   letter-spacing: -0.03em;
 }
 
-.forgeShell :global(.placeholder p) {
+.forgePlaceholder p {
   max-width: 560px;
   color: var(--forge-muted);
-}
-
-.forgeMain {
-  padding-right: 0 !important;
 }
 
 .skillGrid {
@@ -472,11 +468,11 @@
 }
 
 @media (max-width: 760px) {
-  .forgeShell :global(.body) {
+  .forgeBody {
     padding: 10px;
   }
 
-  .forgeShell :global(.sidebar) {
+  .forgeSidebar {
     width: auto;
   }
 
