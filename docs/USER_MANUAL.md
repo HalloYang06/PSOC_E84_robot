@@ -3188,21 +3188,23 @@ ros2 run rehab_arm_psoc_bridge motion_test_report.py \
 
 ### 6.7.6 台架运动序列工具
 
-需要重复验证电机方向和角度时，先生成计划，不要直接执行。当前统一电机表包含 3/4/5/6/7，但执行白名单只有 3号和 7号：
+这是早期 5 关节/M33 台架工具，用来生成计划和复盘调试路径；不要把它的旧 `3/4/5/6/7` 示例映射当成当前 `medical_arm.zip` 机械臂事实。当前 6 关节机械臂映射以 [`JOINT_MOTOR_MAPPING_DRAFT.md`](JOINT_MOTOR_MAPPING_DRAFT.md) 为准，且 `motor_id=7` 当前没有装在机械臂上，只是外部调试电机。
+
+需要重复验证电机方向和角度时，先生成计划，不要直接执行：
 
 ```bash
 ros2 run rehab_arm_psoc_bridge bench_motion_sequence.py --list-motors --pretty
 ```
 
-当前配置：
+历史工具当前配置：
 
 | motor_id | joint_id | joint name | 电机 | 测试状态 |
 |---:|---:|---|---|---|
-| 3 | 0 | `shoulder_lift_joint` | 伺泰威 CANSimple/ODrive-like | 允许台架测试 |
-| 4 | 1 | `elbow_lift_joint` | 灵足 RS00 | 只配置，不允许执行 |
-| 5 | 2 | `shoulder_abduction_joint` | 灵足 RS00 | 只配置，不允许执行 |
-| 6 | 3 | `upper_arm_rotation_joint` | 灵足 EL05 | 只配置，不允许执行 |
-| 7 | 4 | `forearm_rotation_joint` | 灵足 EL05 | 允许台架测试 |
+| 3 | 0 | `shoulder_lift_joint` | 伺泰威 CANSimple/ODrive-like | 历史台架配置；当前真实机械臂对应 `jian_hengxiang_joint`，需重新标定 |
+| 4 | 1 | `elbow_lift_joint` | 灵足 RS00 | 历史台架配置；当前真实机械臂对应 `jian_zongxiang_joint`，齿轮比待补 |
+| 5 | 2 | `shoulder_abduction_joint` | 灵足 RS00 | 历史台架配置；当前真实机械臂对应 `zhou_zongxiang_joint` |
+| 6 | 3 | `upper_arm_rotation_joint` | 灵足 EL05 | 历史台架配置；当前真实机械臂对应 `jian_xuanzhuan_joint` |
+| 7 | 4 | `forearm_rotation_joint` | 灵足 EL05 | 外部调试电机，不属于当前机械臂 |
 
 ```bash
 source /opt/ros/jazzy/setup.bash
@@ -3211,7 +3213,7 @@ source /home/pi/rehab_arm_ros2_ws/install/setup.bash
 ros2 run rehab_arm_psoc_bridge bench_motion_sequence.py --pretty
 ```
 
-默认计划是：
+默认计划是历史 joint4 台架计划，不代表当前机械臂腕部或前臂关节：
 
 - heartbeat precheck。
 - joint4 `+5°`，rpm `1`。
@@ -3224,7 +3226,7 @@ ros2 run rehab_arm_psoc_bridge bench_motion_sequence.py --pretty
 
 默认不访问 CAN，不会动电机。
 
-只有人现场盯着台架、设备没有穿戴在人身上、急停/断电手段可用时，才允许执行：
+当前机械臂 6 关节映射、方向、零点和限位未重新接入 M33 协议前，不要用这个工具执行真实机械臂动作。只有人现场盯着独立台架、设备没有穿戴在人身上、急停/断电手段可用时，才允许执行历史外部调试：
 
 ```bash
 ros2 run rehab_arm_psoc_bridge bench_motion_sequence.py \
@@ -3235,7 +3237,7 @@ ros2 run rehab_arm_psoc_bridge bench_motion_sequence.py \
   --hold-sec 2
 ```
 
-如果指定 `--motor-id 4/5/6 --execute --confirm-onsite`，工具也会拒绝执行。等 4/5/6 机械安装、限位、方向和风险评估完成后，再显式放开。
+不要为了当前机械臂映射去放开 7 号；7 号不在机械臂上。等 1/2/3/4/5/6 的机械安装、限位、方向、传动比和风险评估完成后，再设计新的 6 关节台架工具。
 
 执行后必须保存 `candump -L` 日志，再用 `motion_test_report.py` 复盘。人不在现场时不要带 `--execute`。
 

@@ -4343,3 +4343,20 @@ Connection reset by 192.168.2.66 port 22
 - 使用 `private csp --return-deg <angle> --return-spd <rad_s> --return-hold <seconds>`。
 - 建议先用小角度和低回收速度，例如 `--return-deg 0 --return-spd 0.05 --return-hold 8`。
 - 正式 M33 安全状态机也应采用“受限回收/停止流程”，而不是任何状态下立即卸力。
+
+### 不要把外部调试电机 7 号写进机械臂映射
+
+现象：
+
+- 早期文档和台架工具曾把 `motor_id=7` 放进 5 关节示例映射。
+- 当前机械臂实物口径已更新：7 号没有装在机械臂上，只是外部调试电机。
+
+判断：
+
+- MuJoCo、VLA、患者 profile、M33 正式关节映射和服务器状态语义都不能再把 `motor_id=7` 当作机械臂关节。
+- 当前 `medical_arm.zip` 6 关节映射草案应以 `docs/JOINT_MOTOR_MAPPING_DRAFT.md` 为准。
+
+技巧：
+
+- 后续 AI 或脚本如果看到旧的 `forearm_rotation_joint -> motor_id=7`，必须当作历史台架示例，不得迁移到正式机械臂。
+- 真实机械臂腕部是后加 4015 小电机 `motor_id=1/2`，但两个电机分别对应 `wanbu_zongxiang_joint` 或 `wanbu_hengxiang_joint` 还未确认，不能提前写死。

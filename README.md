@@ -50,6 +50,18 @@ docs/M33_SAFETY_INPUT_MAPPING.md
 - App 通过 HTTP 连接 NanoPi/OpenClaw 做高层 AI、报告和远程服务。
 - 总服务器当前是开发工具服务器，后续扩展为总控台，管理设备、数据、模型、实验和远程协作。
 
+## 1.1 当前职责分工基准
+
+| 模块 | 负责什么 | 不负责什么 |
+|---|---|---|
+| M33 | CAN 总线原始传感/电机状态汇总、M55 结果接收、时间戳和安全状态绑定、限位/限速/限流/急停、最终运动裁决、电机控制 | 不做 VLA，不把安全权交给服务器/NanoPi/M55 |
+| M55 | 4 路 EMG/IMU 等小模型推理、意图/疲劳/共收缩/异常建议、语音采集和语音转文字 | 不直接控制电机，不放宽 M33 限位，不直接成为运动许可 |
+| NanoPi | ROS2 主控、M33 CAN bridge、摄像头采集、M55/M33 结果编号语义解析、状态上传服务器、接收服务器/VLA 高层任务并转成可审核轨迹候选 | 不绕过 M33 直控电机，不把 `bench_armed` 当正式穿戴许可 |
+| Linux 仿真主机 | MuJoCo/RViz/运动规划、无线 ROS2 接 NanoPi、仿真验证、轨迹候选生成、rosbag/JSONL 数据和标注 | 不做真机实时安全闭环，不直接发 CAN |
+| 服务器/总控台 | 汇聚语音、摄像头、输出端 joint 状态、电机诊断、M55 小模型结果、profile/限位、历史数据，运行 VLA 和数据/模型管理 | 不做高频实时控制，不直接发 CAN，不绕过 M33 |
+
+注意：因为机械结构包含齿轮、同步轮、减速器、连杆或推杆，`motor_id` 不等于机器人/人体 `joint`。服务器、VLA、仿真和 App 优先使用经过传动比、方向、零点、限位和回差说明换算后的输出端 joint 状态；原始电机轴数据只作为诊断字段保留。
+
 ## 2. 系统分层
 
 ```text
@@ -126,13 +138,14 @@ flowchart LR
 核心修正：
 
 - 电机反馈和 C8T6 传感数据先进入 M33，M33 再分发给 M55、NanoPi 和 App。
-- M55 跑板端小模型，输出意图、疲劳、辅助等级和异常建议；这些结果必须回到 M33 审核，不能直接控制电机。
+- M33 通过 CAN 汇总原始传感和电机状态，把传感窗口、训练上下文和必要状态送到 M55；M55 小模型结果以编号/结果码/置信度回到 M33，再由 M33 经 CAN 发给 NanoPi。
+- NanoPi 按 schema/model version 把 M55 结果编号解析成语义，上传服务器并发布 ROS topic。
 - 平台、App、NanoPi、M33 和 M55 共用患者/设备运行配置协议，见 [`docs/PATIENT_DEVICE_PROFILE_PROTOCOL_V1.md`](docs/PATIENT_DEVICE_PROFILE_PROTOCOL_V1.md)。同一设备同一时刻只能有一个 active profile；患者 ROM、限速、辅助等级、训练模式、M55 模型阈值和数据标注配置都必须记录版本。
-- NanoPi 负责采集摄像头数据，上传关键帧、目标检测结果、机器人状态和 session 数据到总服务器。
-- M55/英飞凌负责语音采集和板端小模型，语音文本、音频摘要和模型结果可以上传服务器，实时安全仍回到 M33。
+- NanoPi 负责采集摄像头数据，上传关键帧、目标检测结果、输出端 joint 状态、电机诊断、温度/速度/故障、限位/profile 摘要、M55 小模型语义结果和 session 数据到总服务器。
+- M55/英飞凌负责语音采集和板端小模型，语音文本、音频摘要、唤醒事件和模型结果可以上传服务器，实时安全仍回到 M33。
 - NanoPi 获得 M33 汇总的电机、传感、安全和模型状态后，同步给仿真主机，用于数字孪生、数据采集和轨迹规划。
-- VLA 固定走服务器链路，输入来自 NanoPi 摄像头、M55 语音、机器人状态、历史数据和标注；输出复杂任务计划，例如“先移开遮挡物，再拿目标物品”。
-- VLA/服务器只能下发高层任务或分段任务，不能直接发 CAN 或底层电机命令；NanoPi/仿真主机生成轨迹后仍由 M33 安全裁决。
+- VLA 固定走服务器链路，输入来自 M55 语音文本、NanoPi 摄像头、输出端 joint 状态、电机温度/速度/故障、M55 小模型结果、active profile 限位、历史数据和标注。
+- VLA/服务器只能下发高层任务、分段目标或可验证的轨迹候选，不能直接发 CAN 或底层电机命令；NanoPi/仿真主机生成轨迹后仍由 M33 安全裁决。
 
 ## 4. 当前真实 CAN ID 和协议
 
@@ -152,20 +165,21 @@ flowchart LR
 
 | ID | CAN 帧类型 | 协议 | 当前说明 | 机械关节绑定 |
 |---|---|---|---|---|
-| `node_id=3` | 标准帧 11-bit | CANSimple/ODrive 类协议 | 3 号伺泰威；减速比 `48:1`；heartbeat 标准帧是 `0x061`；目前还没现场看到它真实运动 | 待现场确认 |
-| `motor_id=4` | 扩展帧 29-bit | 灵足 RobStride 私有扩展帧 MIT 协议 | RS00，官方减速比 `10:1`，支持 probe/enable/stop/MIT/读写参数 | 待现场确认 |
-| `motor_id=5` | 扩展帧 29-bit | 灵足 RobStride 私有扩展帧 MIT 协议 | RS00，官方减速比 `10:1`，支持 probe/enable/stop/MIT/读写参数 | 待现场确认 |
-| `motor_id=6` | 扩展帧 29-bit | 灵足 EduLite/EL05 私有扩展帧 MIT 协议 | EL05，官方减速比 `9:1`，支持 probe/enable/stop/MIT/读写参数 | 待现场确认 |
-| `motor_id=7` | 扩展帧 29-bit | 灵足 EduLite/EL05 私有扩展帧 MIT 协议 | EL05，官方减速比 `9:1`，支持 probe/enable/stop/MIT/读写参数 | 待现场确认 |
+| `motor_id=1` | 待确认 | 4015 小电机 | 后加腕部小电机，协议/反馈帧/减速比待补 | 腕部两轴之一，`wanbu_zongxiang_joint` 或 `wanbu_hengxiang_joint` 待确认 |
+| `motor_id=2` | 待确认 | 4015 小电机 | 后加腕部小电机，协议/反馈帧/减速比待补 | 腕部两轴之一，`wanbu_zongxiang_joint` 或 `wanbu_hengxiang_joint` 待确认 |
+| `node_id=3` | 标准帧 11-bit | CANSimple/ODrive 类协议 | 3 号伺泰威；电机轮:输出轴轮为 `1:2`，输出约为电机角 `0.5`，方向/零点待标定 | `jian_hengxiang_joint` 肩横向 |
+| `motor_id=4` | 扩展帧 29-bit | 灵足 RobStride 私有扩展帧 MIT 协议 | RS00，官方减速比 `10:1`，经若干齿轮联动，最终齿轮比待补 | `jian_zongxiang_joint` 肩纵向 |
+| `motor_id=5` | 扩展帧 29-bit | 灵足 RobStride 私有扩展帧 MIT 协议 | RS00，官方减速比 `10:1`，最终输出比例/方向待标定 | `zhou_zongxiang_joint` 肘纵向 |
+| `motor_id=6` | 扩展帧 29-bit | 灵足 EduLite/EL05 私有扩展帧 MIT 协议 | EL05，官方减速比 `9:1`，最终输出比例/方向待标定 | `jian_xuanzhuan_joint` 肩/上臂旋转 |
+| `motor_id=7` | 扩展帧 29-bit | 灵足 EduLite/EL05 私有扩展帧 MIT 协议 | 外部调试电机，当前没有装在机械臂上 | 不属于当前机械臂，不进入 MuJoCo/VLA 正式映射 |
 
-当前已经确认 4/5/6/7 的型号与减速比；还不能把它们直接写死成某个正式关节。后续必须现场确认：
+当前机械臂 6 关节与电机草案见 [`docs/JOINT_MOTOR_MAPPING_DRAFT.md`](docs/JOINT_MOTOR_MAPPING_DRAFT.md)。后续必须现场补齐：
 
 ```text
-shoulder_lift_joint        -> motor/node ?
-elbow_lift_joint           -> motor/node ?
-shoulder_abduction_joint   -> motor/node ?
-upper_arm_rotation_joint   -> motor/node ?
-forearm_rotation_joint     -> motor/node ?
+wanbu_zongxiang_joint      -> motor_id 1 or 2 ?
+wanbu_hengxiang_joint      -> motor_id 1 or 2 ?
+jian_zongxiang_joint       -> motor_id 4 final gear ratio ?
+all mapped joints          -> direction, zero offset, hard limits, soft limits, backlash
 ```
 
 ### 4.3 CANSimple/ODrive 类协议
@@ -248,7 +262,8 @@ MIT 控制范围：
 
 - `private` 和 `cansimple` 是调试直控协议，不进入正式 ROS bringup。
 - 正式运动必须走 `JointTrajectory -> NanoPi -> M33 -> 电机`。
-- 未确认机械零点和关节绑定前，不允许把 `motor_id=4/5/6/7` 或 `node_id=3` 写死为正式关节。
+- 未确认机械零点、方向、传动比和限位前，不允许把 `motor_id=1/2/4/5/6` 或 `node_id=3` 写死为正式可执行关节。
+- `motor_id=7` 当前没有装在机械臂上，只能作为外部调试电机记录，不能进入机械臂 VLA/MuJoCo/正式控制映射。
 
 ### 4.5 C8T6 传感协议
 

@@ -4,23 +4,51 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-ROS 2 Jazzy workspace for embedded robotics on NanoPi/Raspberry Pi. Implements camera streaming and HTTP API bridge for Android APP integration.
+ROS 2 Jazzy workspace for the Medical Rehabilitation Manipulator / rehab exoskeleton arm. The current project baseline is safety-first wearable robotics: M33 owns realtime safety and motor control, M55 runs local small-model inference and speech-to-text, NanoPi bridges ROS2/CAN/camera/server data, the Linux simulation host runs MuJoCo/RViz/planning over wireless ROS2, and the server/VLA only produces high-level tasks or reviewed trajectory candidates.
 
-**Current Components:**
-- Camera WebSocket client (C++ ROS 2 node) - streams camera frames to remote server
-- HTTP Bridge server (Python ROS 2 node) - REST API for Android APP using OpenClaw protocol
+**Current architecture rule:** M33 is the final safety authority. NanoPi, Linux simulation host, App, server, VLA, OpenClaw, and M55 may propose requests, predictions, or candidates, but must not bypass M33 or directly control motors.
 
-**Planned Components:**
-- CAN interface node for SocketCAN communication (100Hz)
-- WebSocket bridge for VLA (Vision-Language-Action) control systems
+**Current components and roles:**
+- M33/PSoC safety and motor control path via CAN.
+- M55 small-model inference, EMG/IMU feature handling, and speech-to-text summaries.
+- NanoPi ROS2 bridge for M33 CAN status, camera capture, server upload, and reviewed trajectory candidate forwarding.
+- Linux simulation host for MuJoCo/RViz/planning/data capture over wireless ROS2 DDS.
+- Server/VLA for multimodal context fusion and high-level task planning only.
 
 ## Architecture
 
 ```
-Android APP ↔ HTTP Bridge (Python) ↔ ROS 2 Topics
-Camera → Camera Client (C++) → WebSocket → Remote Server
-(Future: CAN Hardware ↔ CAN Node ↔ ROS Topics)
+M33 CAN raw sensor/motor state
+  -> M55 small model and speech-to-text
+  -> M55 result codes/confidence back to M33
+  -> NanoPi parses numbered semantics and uploads camera/state/model summaries
+  -> Server/VLA fuses speech, camera, output-side joint state, motor diagnostics, profile limits, and model results
+  -> VLA emits high-level task / segmented goal / trajectory candidate
+  -> NanoPi or Linux simulation host validates/converts to JointTrajectory
+  -> M33 performs final safety checks and controls motors
 ```
+
+Wireless simulation path:
+
+```text
+Linux simulation host <-> Wi-Fi/LAN ROS2 DDS <-> NanoPi <-> CAN <-> M33
+```
+
+Wireless ROS2 is acceptable for state sync, visualization, MuJoCo/RViz, dry-run, planning, and data capture. It is not acceptable for emergency-stop enforcement, torque/current inner loops, fresh-feedback safety decisions, or high-frequency assist control.
+
+## Mandatory AI Rules
+
+- Read `README.md` and `docs/REHAB_ARM_SYSTEM_ARCHITECTURE.md` before making architecture, ROS, CAN, VLA, simulation, or safety changes.
+- Treat `docs/架构.md` as the Chinese current-architecture entry, not as the old WebSocket/CAN draft.
+- Never revive the old `CAN Node <-> WebSocket <-> server` direct-control idea as the formal path.
+- Never make VLA, server, App, NanoPi, or the Linux simulation host output CAN/current/torque/raw motor commands.
+- VLA output must remain high-level task, segmented goal, or reviewed trajectory candidate.
+- Keep `motor_id`, motor shaft angle, and output-side `joint` state separate; account for gears, timing pulleys, reducers, linkages, zero offsets, direction, limits, and backlash.
+- For the `medical_arm.zip` CAD/URDF line, read `docs/JOINT_MOTOR_MAPPING_DRAFT.md` before changing simulation, VLA, M33, NanoPi, or motor mapping logic. Current mechanical arm facts: `node_id=3 -> jian_hengxiang_joint` through `1:2`, `motor_id=4 -> jian_zongxiang_joint` with unknown gear ratio, `motor_id=6 -> jian_xuanzhuan_joint`, `motor_id=5 -> zhou_zongxiang_joint`, and 4015 `motor_id=1/2` are wrist motors pending axis confirmation.
+- `motor_id=7` is not mounted on the current mechanical arm. Treat it only as an external debug motor/history item; do not include it in MuJoCo, VLA, patient profile, or formal arm joint mapping.
+- Do not treat `bench_armed`, `state=ok`, stale motor telemetry, or model confidence as real motion permission.
+- Real motion requires M33 local safety approval, fresh feedback, conservative limits, dry-run first, and explicit user/on-site safety confirmation.
+- When changing architecture, interfaces, safety boundaries, or workflows, update `docs/PROJECT_PROGRESS.md`; update `docs/TROUBLESHOOTING_AND_LESSONS.md` for durable pitfalls or debugging lessons.
 
 ## Directory Structure
 
@@ -354,9 +382,12 @@ source install/setup.bash
 ## Documentation
 
 - [README.md](README.md) - Project overview and quick start
+- [docs/REHAB_ARM_SYSTEM_ARCHITECTURE.md](docs/REHAB_ARM_SYSTEM_ARCHITECTURE.md) - Current rehab arm system architecture baseline
+- [docs/MUJOCO_URDF_GAP_AND_STEP_GUIDE.md](docs/MUJOCO_URDF_GAP_AND_STEP_GUIDE.md) - MuJoCo/URDF gap list and staged implementation guide
+- [docs/SIM_HOST_NANOPI_NETWORK_GUIDE.md](docs/SIM_HOST_NANOPI_NETWORK_GUIDE.md) - Simulation host to NanoPi wireless ROS2 guide
 - [docs/HTTP_BRIDGE_README.md](docs/HTTP_BRIDGE_README.md) - HTTP API detailed documentation
 - [docs/QUICKSTART.md](docs/QUICKSTART.md) - Quick start guide
-- [docs/架构.md](docs/架构.md) - Architecture documentation (Chinese)
+- [docs/架构.md](docs/架构.md) - Legacy architecture entry that redirects to the current Chinese baseline
 
 ## Language Notes
 

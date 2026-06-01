@@ -163,6 +163,68 @@ They do not:
 - command M33,
 - move motors.
 
+## Wireless Latency Position
+
+The simulation host and NanoPi are connected over Wi-Fi/LAN ROS2 DDS. This is acceptable for:
+
+- MuJoCo/RViz visualization.
+- State monitoring and data recording.
+- Server/VLA context collection.
+- Planning and dry-run trajectory validation.
+- Low-rate task goals and reviewed trajectory candidates.
+
+It is not acceptable for:
+
+- emergency stop enforcement,
+- torque/current/impedance inner loops,
+- motor freshness safety decisions,
+- high-frequency human-assist closed-loop control,
+- any behavior that must stay safe if Wi-Fi drops.
+
+Those responsibilities stay on M33 and the local CAN/electrical safety path.
+
+Expected practical behavior:
+
+- Good LAN/Wi-Fi often gives millisecond to tens-of-milliseconds latency, but jitter and packet loss can spike higher.
+- VLA inference and server round trips are much slower and should be treated as high-level planning, not realtime control.
+- If wireless ROS2 is unstable, the correct response is to slow down, dry-run, record data locally, or stop; never increase authority to compensate.
+
+Recommended latency check:
+
+```bash
+ping -c 50 192.168.2.66
+```
+
+ROS2 one-way discovery/data smoke test:
+
+```bash
+# On simulation host
+source ~/.rehab_arm_ros2_network
+source /opt/ros/jazzy/setup.bash
+ros2 run demo_nodes_cpp talker
+
+# On NanoPi
+source ~/.rehab_arm_ros2_network
+source /opt/ros/jazzy/setup.bash
+ros2 topic echo /chatter --once
+```
+
+Before any trajectory test, keep NanoPi target transmission disabled:
+
+```bash
+ros2 run rehab_arm_psoc_bridge psoc_can_bridge_node.py --ros-args \
+  -p interface:=can0 \
+  -p enable_target_tx:=false
+```
+
+Acceptance for wireless use:
+
+- ROS2 topics are discoverable both ways.
+- `/rehab_arm/safety_state`, `/rehab_arm/motor_state`, and `/joint_states` are visible on the simulation host.
+- Dry-run `JointTrajectory` reaches NanoPi bridge.
+- CAN capture confirms no `0x320` is emitted while `enable_target_tx=false`.
+- Real motion remains blocked unless M33 local safety state and fresh feedback gates pass.
+
 ## Next Integration Step
 
 After MuJoCo and the rehab ROS2 workspace are ready on the simulation host:

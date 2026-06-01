@@ -36,11 +36,13 @@
 
 | ID | 协议 | 当前状态 |
 |---|---|---|
-| `node_id=3` | CANSimple/ODrive 类标准帧协议 | heartbeat 为 `0x061`，机械关节绑定待确认 |
-| `motor_id=4` | 私有扩展帧 MIT 电机协议 | 可作为调试 ID，机械关节绑定待确认 |
-| `motor_id=5` | 私有扩展帧 MIT 电机协议 | 机械关节绑定待确认 |
-| `motor_id=6` | 私有扩展帧 MIT 电机协议 | 机械关节绑定待确认 |
-| `motor_id=7` | 私有扩展帧 MIT 电机协议 | 机械关节绑定待确认 |
+| `motor_id=1` | 4015 小电机，协议待补 | 腕部两轴之一，`wanbu_zongxiang_joint` 或 `wanbu_hengxiang_joint` 待确认 |
+| `motor_id=2` | 4015 小电机，协议待补 | 腕部两轴之一，`wanbu_zongxiang_joint` 或 `wanbu_hengxiang_joint` 待确认 |
+| `node_id=3` | CANSimple/ODrive 类标准帧协议 | `jian_hengxiang_joint` 肩横向，电机轮:输出轴轮 `1:2`，方向/零点待标定 |
+| `motor_id=4` | 私有扩展帧 MIT 电机协议 | `jian_zongxiang_joint` 肩纵向，多级齿轮比待补 |
+| `motor_id=5` | 私有扩展帧 MIT 电机协议 | `zhou_zongxiang_joint` 肘纵向，方向/零点待标定 |
+| `motor_id=6` | 私有扩展帧 MIT 电机协议 | `jian_xuanzhuan_joint` 肩/上臂旋转，方向/零点待标定 |
+| `motor_id=7` | 私有扩展帧 MIT 电机协议 | 外部调试电机，当前没有装在机械臂上，不进入正式机械臂映射 |
 | `0x320` | NanoPi -> M33 | 关节目标/轨迹片段命令 |
 | `0x321` | NanoPi -> M33 | NanoPi heartbeat |
 | `0x322` | M33 -> NanoPi | M33 状态回复 |
@@ -48,6 +50,58 @@
 | `0x7C3` | C8T6 -> M33 | 健康状态 |
 
 ## 已完成
+
+### 2026-06-02
+
+- 完成 `medical_arm.zip` 可视化后关节/电机映射草案更新：
+  - 新增 `docs/JOINT_MOTOR_MAPPING_DRAFT.md`，记录 6 个 URDF 关节、保守 ROM、当前电机对应关系和后续 AI 必须遵守规则。
+  - 已确认：`node_id=3 -> jian_hengxiang_joint`，传动为电机轮:输出轴轮 `1:2`；`motor_id=4 -> jian_zongxiang_joint`，齿轮比待补；`motor_id=6 -> jian_xuanzhuan_joint`；`motor_id=5 -> zhou_zongxiang_joint`；4015 小电机 `motor_id=1/2` 属于腕部两轴但具体对应待确认。
+  - 明确 `motor_id=7` 当前没有装在机械臂上，只作为外部调试电机，不进入 MuJoCo/VLA/正式机械臂映射。
+  - 已修改解压模型 `medical_arm_viewer.urdf` 和 `urdf/medical_arm.urdf`：6 个关节从 `continuous` 改为带保守初始人体/康复 ROM 的 `revolute`。
+  - 同步更新 README、系统架构、MuJoCo 差距教程和 CLAUDE 规则，避免后续 AI 继续按旧 7 号或待绑定表理解。
+  - 未执行硬件测试、ROS 测试或固件编译；当前限位仍是仿真 smoke-test 起步值，正式穿戴前必须补机械硬限位、患者 profile、方向、零点、传动比、速度/力矩/电流限制。
+
+- 新增机械臂主线 AI 交接文档：`docs/ai-handoffs/rehab-arm-mainline-2026-06-02.md`。
+- 交接内容覆盖：安全边界、当前仓库分工、M33/NanoPi/ROS/仿真/平台/App 对接关系、当前电机和 CAN 事实、后续 AI 提示词、近期最小可执行路线。
+- 本次只做文档交接整理，未执行硬件测试、ROS 测试或固件编译。
+
+- 完成 `medical_arm.zip` URDF/MuJoCo/VLA 方案评估，并新增交接文档：`docs/ai-handoffs/mujoco-vla-rehab-arm-plan-2026-06-02.md`。
+- 评估结论：URDF 当前有 7 个 link、6 个 continuous 关节，但缺少关节限位、速度/力矩限制和临床 ROM；`config` 里只列出 2 个 controller joints，不能直接作为正式 MuJoCo/ROS2 控制模型。
+- 决策：MuJoCo 第一阶段应先做 cleaned URDF/Xacro + MJCF，补最终 ROS joint 名称、人体安全 ROM、简化碰撞体、actuator/soft limit/damping，再接 rosbag/replay 和低风险台架验证。
+- 决策：VLA 只能输出高层任务、子目标或安全轨迹候选，不能直接输出 CAN、电流、力矩、速度或绕过 M33；第一版推荐 Octo/小型 diffusion policy 打通数据闭环，后续再做 OpenVLA LoRA/OFT。
+- 验证：已 fetch GitHub 远端确认 `_nanopi_rosnode_usbcan`、`yiliao_m33`、`_m55_ref_repo` 相关分支本地与远端提交对齐；本轮未执行硬件测试、ROS 测试或固件编译。
+
+- 新增 MuJoCo 仿真差距清单和分阶段教程：`docs/MUJOCO_URDF_GAP_AND_STEP_GUIDE.md`。
+- 文档明确当前 URDF 到可用 MuJoCo 模型缺少：最终 ROS joint 名、joint-to-motor mapping、人体 ROM/机械限位、速度/力矩限制、actuator、简化 collision、坐标系/轴向验证和 ROS2 topic 合同。
+- 文档固化当前系统边界：VLA 链路为 `VLA/服务器 -> NanoPi -> M33`；仿真主机通过无线 ROS2/DDS 接 NanoPi；MuJoCo 只做仿真、轨迹验证、数据生产和回放，不能作为真机安全权威。
+- 本次只新增教程文档和进度记录，未执行硬件测试、ROS 测试或固件编译。
+
+- 补充 4 路肌电参与 VLA 和 MuJoCo 仿真的方案到 `docs/MUJOCO_URDF_GAP_AND_STEP_GUIDE.md`。
+- 决策：原始高频 EMG 由 C8T6/M33/M55 本地处理，VLA 只读取 M55 的低频意图、疲劳、共收缩、质量检测和辅助等级建议摘要；M55 输出必须标记为 suggestion-only，不能成为运动许可。
+- 决策：MuJoCo 第一版不模拟真实肌肉电生理，只把 M55 摘要作为人类意图输入，用于 rosbag/JSONL 回放、合成意图测试、VLA grounding 和轨迹候选验证。
+- 本轮未执行硬件测试、ROS 测试、M55 编译或真实 EMG 采集。
+
+- 按当前目标架构补充 `docs/REHAB_ARM_SYSTEM_ARCHITECTURE.md`：
+  - M33 通过 CAN 总线汇总原始传感和电机状态，把传感窗口、训练上下文和必要状态送到 M55。
+  - M55 小模型结果以编号/结果码/置信度回到 M33，再由 M33 经 CAN 发给 NanoPi；NanoPi 按版本表解析语义并上传服务器。
+  - NanoPi 上传摄像头关键帧、输出端 joint 状态、原始电机诊断、温度/速度/故障、active profile 限位摘要、M55 小模型结果和 M55 语音转文字/音频摘要。
+  - 明确因齿轮、同步轮、减速器、连杆或推杆存在，`motor_id` 不等于 `joint`；服务器/VLA/仿真优先使用经过传动比、方向、零点、限位和回差说明换算后的输出端 joint 状态。
+  - VLA 融合语音、摄像头、电机/关节状态、M55 小模型结果和限位上下文后，只能输出高层任务、分段目标或轨迹候选；NanoPi/仿真主机生成轨迹后仍由 M33 做最终安全裁决。
+  - 本轮只更新架构文档，未执行硬件测试、ROS 测试、M55 编译或真实 VLA 推理。
+
+- 同步更新 README、系统架构、MuJoCo 教程和仿真主机网络指南，使职责分工按当前架构统一：
+  - README 新增 M33/M55/NanoPi/Linux 仿真主机/服务器职责分工表。
+  - 系统架构文档新增当前职责分工基准，明确 `motor_id`、电机轴角和输出端 joint 必须分层。
+  - `SIM_HOST_NANOPI_NETWORK_GUIDE.md` 新增无线 ROS2 延迟定位：无线可用于状态同步、仿真、规划、dry-run 和低频任务目标；急停、力矩/电流内环、fresh 判定和高频助力闭环必须留在 M33 本地安全路径。
+  - `MUJOCO_URDF_GAP_AND_STEP_GUIDE.md` 补充无线 ROS2 不承担真机高频安全闭环。
+  - 本轮仍只更新文档，未执行硬件测试、ROS 测试、M55 编译或真实 VLA 推理。
+
+- 同步旧架构入口文档 `docs/架构.md`：
+  - 原文件是早期 `ROS 2 + CAN + WebSocket` 草案，已替换为当前康复外骨骼主线架构入口。
+  - 文档现在指向 `README.md`、`docs/REHAB_ARM_SYSTEM_ARCHITECTURE.md`、`docs/MUJOCO_URDF_GAP_AND_STEP_GUIDE.md`、`docs/SIM_HOST_NANOPI_NETWORK_GUIDE.md` 等权威文档。
+  - 文档明确旧 WebSocket/CAN 草案不能作为当前实现依据，避免服务器或 VLA 被误解为可直接发 CAN。
+  - 新增“后续 AI 必须遵守”规则，要求先读当前权威文档、禁止复活旧直控路径、禁止绕过 M33、禁止混淆 `motor_id` 和输出端 joint。
+  - 更新 `CLAUDE.md` 项目概览、当前架构、无线仿真路径、强制 AI 规则和文档索引，使后续 AI 优先读取当前架构基准。
 
 ### 2026-05-27
 
