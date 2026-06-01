@@ -221,6 +221,18 @@ function publicStateValue(value: unknown, fallback = "未上报") {
   return raw === "unknown" ? fallback : raw;
 }
 
+function publicSourceLabel(value: unknown, fallback = "等待载荷") {
+  const raw = text(value, "");
+  if (!raw) return fallback;
+  return raw
+    .replace(/nanopi_readonly_agent/gi, "只读数据节点")
+    .replace(/readonly_agent/gi, "只读数据节点")
+    .replace(/motor_state/gi, "电机状态")
+    .replace(/joint_state/gi, "关节状态")
+    .replace(/sensor_state/gi, "传感器摘要")
+    .replace(/_/g, " ");
+}
+
 type RoleSignals = {
   onlineDevices: number;
   hasSafety: boolean;
@@ -1232,7 +1244,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
             </article>
             <article>
               <span>传感器</span>
-              <strong>{text(sensorPayload.source, "等待载荷")}</strong>
+              <strong>{publicSourceLabel(sensorPayload.source)}</strong>
               <p>EMG、心率、IMU、疲劳评分和意图输出作为非实时数据资产展示。</p>
             </article>
           </div>
