@@ -4972,18 +4972,21 @@ export async function 索引Npc沉淀(projectId: string, seatId: string, formDat
     if (!seat) throw new Error("没有找到这个 NPC，不能把线程或电脑当作 NPC 索引");
 
     const metadata = readRecord(seat.metadata ?? seat.extra_data ?? seat.extraData);
+    const storedNpcKnowledge = readRecord(metadata.npc_knowledge);
+    const seatNameForPaths = text(seat.name ?? seat.workstation_name, "NPC");
+    const depositSlug = text(storedNpcKnowledge.slug ?? metadata.npc_identity_key, "").replace(/^npc:/, "") || slugifyAscii(seatNameForPaths, "npc");
     const npcKnowledge = buildNpcKnowledgeProfile({
       seatId: text(seat.row_id ?? seat.rowId ?? seat.id ?? seat.config_id, normalizedSeatId),
-      name: text(seat.name ?? seat.workstation_name, "NPC"),
+      name: seatNameForPaths,
       responsibility: text(seat.responsibility ?? metadata.responsibility, ""),
-      knowledgeSlug: text(readRecord(metadata.npc_knowledge).slug ?? metadata.npc_identity_key, "").replace(/^npc:/, "") || null,
-      knowledgeSummary: text(readRecord(metadata.npc_knowledge).summary, "") || null,
-      knowledgeHandoffPath: text(readRecord(metadata.npc_knowledge).handoff_path, "") || null,
-      knowledgeDepositPath: text(readRecord(metadata.npc_knowledge).knowledge_deposit_path, "") || null,
-      skillDepositPath: text(readRecord(metadata.npc_knowledge).skill_deposit_path, "") || null,
-      needDepositPath: text(readRecord(metadata.npc_knowledge).need_deposit_path, "") || null,
-      taskDepositPath: text(readRecord(metadata.npc_knowledge).task_deposit_path, "") || null,
-      knowledgeTags: normalizeUnknownStringList(readRecord(metadata.npc_knowledge).tags),
+      knowledgeSlug: depositSlug,
+      knowledgeSummary: text(storedNpcKnowledge.summary, "") || null,
+      knowledgeHandoffPath: text(storedNpcKnowledge.handoff_path, "") || null,
+      knowledgeDepositPath: text(storedNpcKnowledge.knowledge_deposit_path, "") || null,
+      skillDepositPath: text(storedNpcKnowledge.skill_deposit_path, "") || null,
+      needDepositPath: text(storedNpcKnowledge.need_deposit_path, "") || null,
+      taskDepositPath: text(storedNpcKnowledge.task_deposit_path, "") || null,
+      knowledgeTags: normalizeUnknownStringList(storedNpcKnowledge.tags),
     });
     const seatRecordId = text(seat.row_id ?? seat.rowId ?? seat.id ?? seat.config_id, normalizedSeatId);
     const seatName = text(seat.name ?? seat.workstation_name, "该 NPC");
