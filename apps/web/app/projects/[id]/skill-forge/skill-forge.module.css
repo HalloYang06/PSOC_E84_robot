@@ -655,6 +655,44 @@
   font-weight: 900;
 }
 
+.cardTopline small[data-state],
+.skillRuntimeHint {
+  border: 1px solid rgba(232, 189, 95, 0.22);
+  border-radius: 999px;
+  background: rgba(255, 247, 225, 0.055);
+}
+
+.cardTopline small[data-state] {
+  padding: 3px 8px;
+}
+
+.cardTopline small[data-state="active"] {
+  border-color: rgba(167, 223, 154, 0.46);
+  background: rgba(167, 223, 154, 0.12);
+  color: #c8f6bd;
+}
+
+.cardTopline small[data-state="draft"],
+.cardTopline small[data-state="pending"] {
+  border-color: rgba(255, 209, 102, 0.42);
+  background: rgba(255, 209, 102, 0.1);
+  color: #ffe0a3;
+}
+
+.cardTopline small[data-state="baseline"] {
+  border-color: rgba(143, 214, 255, 0.36);
+  background: rgba(143, 214, 255, 0.1);
+  color: #c5ecff;
+}
+
+.skillRuntimeHint {
+  margin: -2px 0 0;
+  padding: 6px 8px;
+  color: rgba(255, 247, 225, 0.76) !important;
+  font-size: 11px !important;
+  line-height: 1.45 !important;
+}
+
 .skillGrid .assetCard {
   min-height: 260px;
   height: auto;

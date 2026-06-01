@@ -207,6 +207,31 @@ function isBuiltInSkill(value: AnyRecord) {
   return source.startsWith("platform-") || scope === "baseline" || value.required === true;
 }
 
+function assignmentStatusOf(value: AnyRecord | null | undefined) {
+  return text(value?.status ?? value?.state ?? value?.extra_data?.status ?? value?.extraData?.status, "").toLowerCase();
+}
+
+function skillDraftStatusOf(value: AnyRecord) {
+  const meta = metadataOf(value);
+  return text(
+    value.draft_status ??
+      value.draftStatus ??
+      value.status ??
+      meta.draft_status ??
+      meta.draftStatus,
+    "",
+  ).toLowerCase();
+}
+
+function isActiveAssignment(value: AnyRecord | null | undefined) {
+  const status = assignmentStatusOf(value);
+  return !status || status === "active" || status === "enabled";
+}
+
+function isDraftLikeStatus(value: string) {
+  return /draft|pending|review|ready|test|testing/i.test(value);
+}
+
 function roleSkillLoadoutOf(value: AnyRecord) {
   const metadata = value.metadata && typeof value.metadata === "object" ? value.metadata : {};
   const raw = value.skill_loadout ?? value.skillLoadout ?? metadata.skill_loadout ?? metadata.additional_skill_ids;
@@ -416,9 +441,14 @@ function ForgeTile({
 }) {
   const [activeTab, setActiveTab] = useState<ForgeTab>(initialActiveTab);
   const focusedAssignments = assignments.filter((assignment) => matchesAssignment(assignment, resource));
+  const assignmentBySkillId = new Map(focusedAssignments.map((assignment) => [skillIdOf(assignment), assignment]));
   const boundKnowledgePaths = new Set(resource.kind === "seat" && sourceSeat ? knowledgePathsOf(sourceSeat) : []);
   const focusedKnowledge = documents.filter((doc) => matchesKnowledge(doc, resource) || boundKnowledgePaths.has(docPathOf(doc)));
-  const assignedSkillIds = new Set([
+  const activeAssignedSkillIds = new Set([
+    ...focusedAssignments.filter(isActiveAssignment).map(skillIdOf),
+    ...(resource.kind === "seat" && sourceSeat ? roleSkillLoadoutOf(sourceSeat) : []),
+  ].filter(Boolean));
+  const configuredSkillIds = new Set([
     ...focusedAssignments.map(skillIdOf),
     ...(resource.kind === "seat" && sourceSeat ? roleSkillLoadoutOf(sourceSeat) : []),
   ].filter(Boolean));
@@ -426,12 +456,12 @@ function ForgeTile({
     const leftBuiltIn = isBuiltInSkill(left) ? 1 : 0;
     const rightBuiltIn = isBuiltInSkill(right) ? 1 : 0;
     if (leftBuiltIn !== rightBuiltIn) return leftBuiltIn - rightBuiltIn;
-    const leftAssigned = assignedSkillIds.has(skillIdOf(left)) ? 0 : 1;
-    const rightAssigned = assignedSkillIds.has(skillIdOf(right)) ? 0 : 1;
+    const leftAssigned = configuredSkillIds.has(skillIdOf(left)) ? 0 : 1;
+    const rightAssigned = configuredSkillIds.has(skillIdOf(right)) ? 0 : 1;
     if (leftAssigned !== rightAssigned) return leftAssigned - rightAssigned;
     return skillLabelOf(left).localeCompare(skillLabelOf(right), "zh-Hans-CN");
   });
-  const assignedSkills = orderedSkills.filter((skill) => assignedSkillIds.has(skillIdOf(skill)) || isBuiltInSkill(skill));
+  const assignedSkills = orderedSkills.filter((skill) => configuredSkillIds.has(skillIdOf(skill)) || isBuiltInSkill(skill));
   const availableSkills = orderedSkills.filter((skill) => !assignedSkills.includes(skill));
   const recommendedSkillIds = resource.kind === "seat"
     ? recommendRoleSkillIds({
@@ -439,12 +469,20 @@ function ForgeTile({
         threadText: `${text(sourceSeat?.provider_label ?? sourceSeat?.providerLabel ?? sourceSeat?.ai_provider_id, "")} ${text(sourceSeat?.model, "")}`,
         skillLibrary: skills,
         limit: 5,
-      }).filter((skillId) => !assignedSkillIds.has(skillId.toLowerCase()))
+      }).filter((skillId) => !configuredSkillIds.has(skillId.toLowerCase()))
     : [];
   const recommendedSkills = recommendedSkillIds
     .map((skillId) => orderedSkills.find((skill) => skillIdOf(skill) === skillId.toLowerCase()))
     .filter((skill): skill is AnyRecord => Boolean(skill));
-  const roleSkillCount = resource.kind === "seat" && sourceSeat ? roleSkillLoadoutOf(sourceSeat).length : focusedAssignments.length;
+  const roleSkillCount = resource.kind === "seat" ? activeAssignedSkillIds.size : focusedAssignments.filter(isActiveAssignment).length;
+  const pendingSkillCount = resource.kind === "seat"
+    ? assignedSkills.filter((skill) => {
+        const id = skillIdOf(skill);
+        if (isBuiltInSkill(skill) || activeAssignedSkillIds.has(id)) return false;
+        const assignment = assignmentBySkillId.get(id);
+        return isDraftLikeStatus(assignmentStatusOf(assignment)) || isDraftLikeStatus(skillDraftStatusOf(skill));
+      }).length
+    : 0;
   const snapshot = sourceSeat?.metadata?.skill_forge_snapshot ?? sourceSeat?.extra_data?.skill_forge_snapshot ?? null;
   const deposits = resource.kind === "seat" ? npcDepositPaths(sourceSeat, resource) : null;
   const tabLabel = activeTab === "knowledge" ? "知识库配置" : activeTab === "git" ? "Git 管理" : "Skill 配置";
@@ -575,6 +613,7 @@ function ForgeTile({
               </div>
               <div className={styles.closureMetrics}>
                 <span data-state={roleSkillCount > 0 ? "ok" : "gap"}><b>{roleSkillCount}</b><small>运行 Skill</small></span>
+                <span data-state={pendingSkillCount > 0 ? "gap" : "ok"}><b>{pendingSkillCount}</b><small>待启用</small></span>
                 <span data-state={focusedKnowledge.length > 0 ? "ok" : "gap"}><b>{focusedKnowledge.length}</b><small>知识库</small></span>
                 <span data-state={snapshot ? "ok" : "gap"}><b>{snapshot ? "已刷新" : "待刷新"}</b><small>上岗包</small></span>
               </div>
@@ -597,6 +636,29 @@ function ForgeTile({
           ) : null}
           {(resource.kind === "seat" ? assignedSkills : orderedSkills).map((skill, index) => {
             const builtIn = isBuiltInSkill(skill);
+            const skillId = skillIdOf(skill);
+            const assignment = assignmentBySkillId.get(skillId);
+            const activeInRuntime = activeAssignedSkillIds.has(skillId);
+            const draftLike = isDraftLikeStatus(assignmentStatusOf(assignment)) || isDraftLikeStatus(skillDraftStatusOf(skill));
+            const statusLabel = builtIn
+              ? "平台基础"
+              : activeInRuntime
+                ? "已进入上岗包"
+                : draftLike
+                  ? "草稿待确认"
+                  : configuredSkillIds.has(skillId)
+                    ? "待启用"
+                    : "仓库可装配";
+            const statusHint = builtIn
+              ? "固定基础能力，随上岗包生成。"
+              : activeInRuntime
+                ? "会进入下一轮派单和刷新后的 NPC 开工上下文。"
+                : draftLike
+                  ? "只在能力工坊可见，确认前不影响 NPC 当前开工。"
+                  : configuredSkillIds.has(skillId)
+                    ? "已登记但未作为运行能力启用。"
+                    : "添加后才会进入该 NPC 的配置源。";
+            const statusState = builtIn ? "baseline" : activeInRuntime ? "active" : draftLike ? "draft" : configuredSkillIds.has(skillId) ? "pending" : "available";
             const repoPath =
               skillRepoPathOf(skill) ||
               text(skill.doc_path, "") ||
@@ -606,13 +668,14 @@ function ForgeTile({
             return (
             <article
               key={text(skill.id ?? skill.name, `skill-${index}`)}
-              className={`${styles.assetCard} ${assignedSkillIds.has(skillIdOf(skill)) || builtIn ? styles.boundCard : ""}`}
+              className={`${styles.assetCard} ${activeInRuntime || builtIn ? styles.boundCard : ""}`}
             >
               <div className={styles.cardTopline}>
                 <span>{skillSourceLabel(skill)}</span>
-                <small>{builtIn ? "上岗基础" : assignedSkillIds.has(skillIdOf(skill)) ? "已装配" : "仓库可选"}</small>
+                <small data-state={statusState}>{statusLabel}</small>
               </div>
               <strong className={styles.assetTitle}>{skillLabelOf(skill, `Skill ${index + 1}`)}</strong>
+              <p className={styles.skillRuntimeHint}>{statusHint}</p>
               <p className={styles.assetDescription}>{skillDescriptionOf(skill) || "暂无说明"}</p>
               <div className={styles.repoLine}>
                 <b>{builtIn && !repoPath ? "能力来源" : "仓库位置"}</b>
@@ -621,10 +684,12 @@ function ForgeTile({
               </div>
               {builtIn ? (
                 <small>固定必备</small>
-              ) : assignedSkillIds.has(skillIdOf(skill)) ? (
-                <small>已关联</small>
+              ) : activeInRuntime ? (
+                <small>运行中</small>
+              ) : draftLike ? (
+                <small>待确认后启用</small>
               ) : resource.kind === "seat" ? (
-                <form className={styles.inlineAction} action={添加Skill到Npc.bind(null, projectId, resource.seatRowId || resource.id, skillIdOf(skill))}>
+                <form className={styles.inlineAction} action={添加Skill到Npc.bind(null, projectId, resource.seatRowId || resource.id, skillId)}>
                   <input type="hidden" name="return_to" value={`/projects/${projectId}/skill-forge?seat=${encodeURIComponent(resource.id)}`} />
                   <button type="submit">添加到此 NPC</button>
                 </form>
@@ -632,7 +697,7 @@ function ForgeTile({
                 <small>选择 NPC 后添加</small>
               )}
               {!builtIn ? (
-                <form className={styles.inlineAction} action={删除项目Skill.bind(null, projectId, skillIdOf(skill))}>
+                <form className={styles.inlineAction} action={删除项目Skill.bind(null, projectId, skillId)}>
                   <input type="hidden" name="return_to" value={seedReturnPath} />
                   <button type="submit">删除</button>
                 </form>
