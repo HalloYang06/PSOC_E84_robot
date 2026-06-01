@@ -112,7 +112,7 @@
 
 .developerReadiness {
   display: grid;
-  grid-template-columns: minmax(170px, 1.2fr) minmax(240px, 2fr) auto;
+  grid-template-columns: minmax(130px, 1.1fr) minmax(170px, 2fr) auto;
   align-items: center;
   gap: 8px;
   padding: 7px 8px;
@@ -228,7 +228,7 @@
 .developerReadinessAction {
   display: flex;
   justify-content: flex-end;
-  min-width: 96px;
+  min-width: 76px;
 }
 
 .developerPrimaryBtn,
@@ -237,7 +237,7 @@
   align-items: center;
   justify-content: center;
   min-height: 28px;
-  padding: 5px 10px;
+  padding: 5px 8px;
   border-radius: 7px;
   border: 1px solid rgba(167, 255, 237, 0.38);
   background: rgba(167, 255, 237, 0.14);
