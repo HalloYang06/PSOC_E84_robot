@@ -52,6 +52,13 @@
   color: var(--forge-text);
 }
 
+.forgeKpi {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .forgeBackLink:hover,
 .forgeBatchBtn:hover {
   border-color: var(--forge-line-strong);
@@ -196,16 +203,107 @@
   overflow: hidden;
 }
 
+.forgeReceipt {
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  margin: 12px 12px 0;
+  padding: 13px 14px;
+  border: 1px solid rgba(167, 223, 154, 0.34);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(167, 223, 154, 0.18), transparent 34%),
+    linear-gradient(145deg, rgba(20, 42, 24, 0.82), rgba(12, 20, 13, 0.82));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.forgeReceipt[data-state="error"] {
+  border-color: rgba(255, 209, 102, 0.44);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(255, 209, 102, 0.16), transparent 34%),
+    linear-gradient(145deg, rgba(48, 32, 14, 0.82), rgba(18, 16, 10, 0.84));
+}
+
+.forgeReceipt div {
+  min-width: 0;
+}
+
+.forgeReceipt span {
+  display: inline-flex;
+  margin-bottom: 4px;
+  color: var(--forge-amber);
+  font-size: 11px;
+  line-height: 1.35;
+  font-weight: 900;
+}
+
+.forgeReceipt strong {
+  display: block;
+  color: var(--forge-text);
+  font-size: 14px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.forgeReceipt p {
+  margin: 4px 0 0;
+  color: var(--forge-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.receiptActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.receiptActions button,
+.receiptActions a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 6px 10px;
+  border: 1px solid rgba(232, 189, 95, 0.34);
+  border-radius: 999px;
+  background: rgba(232, 189, 95, 0.1);
+  color: var(--forge-text);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 900;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.receiptActions button:hover,
+.receiptActions a:hover {
+  border-color: rgba(232, 189, 95, 0.62);
+  background: rgba(232, 189, 95, 0.16);
+}
+
 .forgeTileGrid {
   gap: 12px;
   padding: 12px;
   grid-auto-rows: minmax(calc(100vh - 130px), calc(100vh - 130px));
 }
 
+.forgeMain[data-has-receipt="1"] .forgeTileGrid {
+  grid-auto-rows: minmax(calc(100vh - 228px), calc(100vh - 228px));
+}
+
 .forgeTileGrid[data-tile-count="2"],
 .forgeTileGrid[data-tile-count="3"],
 .forgeTileGrid[data-tile-count="4"] {
   grid-auto-rows: minmax(calc(100vh - 130px), calc(100vh - 130px));
+}
+
+.forgeMain[data-has-receipt="1"] .forgeTileGrid[data-tile-count="2"],
+.forgeMain[data-has-receipt="1"] .forgeTileGrid[data-tile-count="3"],
+.forgeMain[data-has-receipt="1"] .forgeTileGrid[data-tile-count="4"] {
+  grid-auto-rows: minmax(calc(100vh - 228px), calc(100vh - 228px));
 }
 
 .forgePlaceholder {
@@ -639,6 +737,14 @@
 
   .forgeSidebar {
     width: auto;
+  }
+
+  .forgeReceipt {
+    grid-template-columns: 1fr;
+  }
+
+  .receiptActions {
+    justify-content: flex-start;
   }
 
   .skillGrid,

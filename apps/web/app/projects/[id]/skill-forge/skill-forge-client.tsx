@@ -822,6 +822,8 @@ export function SkillForgeClient({
   const openResources = uniqueIds(openIds).map((id) => resources.find((resource) => resourceKey(resource) === id)).filter(Boolean) as ForgeResource[];
   const draftSkills = skills.filter((item) => /draft|pending|review/i.test(text(item.draft_status ?? item.draftStatus ?? item.status, "")));
   const npcAuthored = skills.filter((item) => /npc|agent/i.test(text(item.source ?? item.created_by_type ?? item.author_type, "")));
+  const receiptMessage = userMessage(surfaceError || surfaceNotice, "");
+  const receiptState = surfaceError ? "error" : surfaceNotice ? "success" : "";
 
   function toggleResource(id: string) {
     setOpenIds((curr) => curr.includes(id) ? curr.filter((item) => item !== id) : uniqueIds([...curr, id]));
@@ -847,8 +849,8 @@ export function SkillForgeClient({
           </div>
         </div>
         <div className={workbenchStyles.topbarRight}>
-          {surfaceError ? <span className={`${workbenchStyles.kpi} ${styles.forgeKpi}`}>需要处理：{userMessage(surfaceError)}</span> : null}
-          {surfaceNotice ? <span className={`${workbenchStyles.kpi} ${styles.forgeKpi}`}>{userMessage(surfaceNotice)}</span> : null}
+          {surfaceError ? <span className={`${workbenchStyles.kpi} ${styles.forgeKpi}`}>需要处理</span> : null}
+          {surfaceNotice ? <span className={`${workbenchStyles.kpi} ${styles.forgeKpi}`}>已记录</span> : null}
           <span className={`${workbenchStyles.kpi} ${styles.forgeKpi}`}>Skill {skills.length}</span>
           <span className={`${workbenchStyles.kpi} ${styles.forgeKpi}`}>草稿 {draftSkills.length}</span>
           <span className={`${workbenchStyles.kpi} ${styles.forgeKpi}`}>自定义绑定 {assignments.length}</span>
@@ -977,7 +979,20 @@ export function SkillForgeClient({
           </ul>
         </aside>
 
-        <section className={`${workbenchStyles.main} ${styles.forgeMain}`} data-mode={openResources.length > 0 ? "chat" : "setup"}>
+        <section className={`${workbenchStyles.main} ${styles.forgeMain}`} data-mode={openResources.length > 0 ? "chat" : "setup"} data-has-receipt={receiptMessage ? "1" : "0"}>
+          {receiptMessage ? (
+            <section className={styles.forgeReceipt} data-state={receiptState} role="status" aria-live="polite">
+              <div>
+                <span>{surfaceError ? "操作需要处理" : "操作回执"}</span>
+                <strong>{receiptMessage}</strong>
+                <p>{surfaceError ? "请按提示补齐信息后重试；平台不会把未完成配置写进 NPC 的运行上下文。" : "配置源已更新，刷新后的上岗包和下一轮派单会读取这份配置；正在执行的任务仍保持原快照。"}</p>
+              </div>
+              <div className={styles.receiptActions}>
+                {!openResources.length ? <button type="button" onClick={openRecommendedResources}>打开推荐资源</button> : null}
+                {returnTo ? <Link href={returnTo}>{returnToLabel || "返回来源"}</Link> : null}
+              </div>
+            </section>
+          ) : null}
           {openResources.length ? (
             <div className={`${workbenchStyles.tileGrid} ${styles.forgeTileGrid}`} data-tile-count={openResources.length}>
               {openResources.map((resource) => {
