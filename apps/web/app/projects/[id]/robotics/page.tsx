@@ -121,6 +121,10 @@ type DebugWindow = {
   runnerCanDispatch: boolean;
   runnerCanQueue: boolean;
   runnerHint: string;
+  heartbeatLabel: string;
+  scanLabel: string;
+  scannedInterfaceLabel: string;
+  reconnectHint: string;
   transport: string;
   boundNpc: string;
   readCapability: boolean;
@@ -195,6 +199,65 @@ function normalizeSavedDebugWindows(value: unknown): SavedDebugWindow[] {
     .filter((item) => item.resourceId);
 }
 
+function ageLabelFromSeconds(value: unknown) {
+  const seconds = Number(value);
+  if (!Number.isFinite(seconds) || seconds < 0) return "";
+  if (seconds < 60) return `${Math.round(seconds)} 秒前`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} 分钟前`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `${hours} 小时前`;
+  return `${Math.round(hours / 24)} 天前`;
+}
+
+function publicTimeLabel(value: unknown) {
+  const raw = text(value, "");
+  if (!raw) return "";
+  const ms = Date.parse(raw);
+  if (!Number.isFinite(ms)) return raw;
+  return new Date(ms).toLocaleString("zh-CN", { hour12: false });
+}
+
+function scanTimeLabel(scan: AnyRecord) {
+  return publicTimeLabel(
+    scan.scanned_at
+      ?? scan.scannedAt
+      ?? scan.updated_at
+      ?? scan.updatedAt
+      ?? scan.created_at
+      ?? scan.createdAt
+      ?? scan.ts
+      ?? scan.timestamp,
+  );
+}
+
+function nodeRecoveryFacts(node: AnyRecord, scan: AnyRecord, interfaceCount: number) {
+  const metadata = record(node.metadata ?? node.extra_data ?? node.extraData);
+  const heartbeatAge = ageLabelFromSeconds(
+    node.runner_heartbeat_age_seconds
+      ?? node.runnerHeartbeatAgeSeconds
+      ?? metadata.runner_heartbeat_age_seconds
+      ?? metadata.runnerHeartbeatAgeSeconds,
+  );
+  const heartbeatAt = publicTimeLabel(
+    node.runner_last_heartbeat_at
+      ?? node.runnerLastHeartbeatAt
+      ?? metadata.runner_last_heartbeat_at
+      ?? metadata.runnerLastHeartbeatAt
+      ?? node.updated_at
+      ?? node.updatedAt,
+  );
+  const scanAt = scanTimeLabel(scan);
+  const reportedCount = Number(scan.interface_count ?? scan.interfaceCount ?? node.device_interface_count ?? node.deviceInterfaceCount);
+  const count = Number.isFinite(reportedCount) && reportedCount >= 0 ? reportedCount : interfaceCount;
+  return {
+    heartbeatLabel: heartbeatAge ? `最近心跳 ${heartbeatAge}` : heartbeatAt ? `最近心跳 ${heartbeatAt}` : "暂无心跳记录",
+    scanLabel: scanAt ? `最近扫描 ${scanAt}` : interfaceCount ? "已有接口扫描记录" : "暂无接口扫描记录",
+    scannedInterfaceLabel: `${count} 个接口`,
+    reconnectHint: "回到主页面检查电脑接入，复制 Windows/Linux 重连命令后保持接单窗口在线。",
+  };
+}
+
 function buildDebugWindows(computers: AnyRecord[], seats: AnyRecord[]): DebugWindow[] {
   const seatNames = seats.map((seat) => seatName(seat, "")).filter(Boolean);
   const windows: DebugWindow[] = [];
@@ -203,7 +266,10 @@ function buildDebugWindows(computers: AnyRecord[], seats: AnyRecord[]): DebugWin
     const runnerState = summarizeRunnerDispatchState(node);
     const computerState = runnerState.state;
     const computerNodeId = text(node.id ?? node.config_id ?? node.configId, "");
-    scanInterfaces(node).forEach((item, itemIndex) => {
+    const scan = nodeScan(node);
+    const interfaces = scanInterfaces(node);
+    const recoveryFacts = nodeRecoveryFacts(node, scan, interfaces.length);
+    interfaces.forEach((item, itemIndex) => {
       const kind = text(item.kind, "unknown").toLowerCase();
       const label = kindLabel(kind);
       const rawName = publicInterfaceName(item.name, `${label} ${itemIndex + 1}`);
@@ -226,6 +292,10 @@ function buildDebugWindows(computers: AnyRecord[], seats: AnyRecord[]): DebugWin
         runnerCanDispatch: runnerState.canDispatch && Boolean(computerNodeId),
         runnerCanQueue: runnerState.canQueue && Boolean(computerNodeId),
         runnerHint: runnerState.detail,
+        heartbeatLabel: recoveryFacts.heartbeatLabel,
+        scanLabel: recoveryFacts.scanLabel,
+        scannedInterfaceLabel: recoveryFacts.scannedInterfaceLabel,
+        reconnectHint: recoveryFacts.reconnectHint,
         transport: publicTransportName(kind, item.transport),
         boundNpc: seatNames[itemIndex % Math.max(1, seatNames.length)] ?? "",
         readCapability: item.read_capability !== false && item.readCapability !== false,

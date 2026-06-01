@@ -40,6 +40,10 @@ type DebugWindow = {
   runnerCanDispatch: boolean;
   runnerCanQueue: boolean;
   runnerHint: string;
+  heartbeatLabel: string;
+  scanLabel: string;
+  scannedInterfaceLabel: string;
+  reconnectHint: string;
   transport: string;
   boundNpc: string;
   baudRate?: string;
@@ -1843,7 +1847,7 @@ function RecoveryChecklist({
       title: tile.runnerCanQueue ? "等待目标电脑恢复" : "重连接单窗口",
       detail: tile.runnerCanQueue
         ? "命令可以排队，但页面不会把它显示成已执行。目标电脑在线后再继续。"
-        : userFacingTerminalText(tile.runnerHint) || "先让目标电脑接入并保持接单窗口在线。",
+        : userFacingTerminalText(tile.runnerHint) || tile.reconnectHint || "先让目标电脑接入并保持接单窗口在线。",
       href: `/projects/${projectId}`,
       action: "检查电脑接入",
     },
@@ -1869,8 +1873,11 @@ function RecoveryChecklist({
 
   return (
     <section className={styles.recoveryChecklist} aria-label={`${tile.name} 下一步恢复清单`}>
-      <strong>下一步怎么恢复</strong>
-      <div>
+      <div className={styles.recoveryHeader}>
+        <strong>下一步怎么恢复</strong>
+        <span>{tile.heartbeatLabel} · {tile.scannedInterfaceLabel} · {tile.scanLabel}</span>
+      </div>
+      <div className={styles.recoveryActions}>
         {items.map((item) => (
           <article key={item.key}>
             <span>{item.title}</span>

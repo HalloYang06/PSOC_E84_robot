@@ -2207,12 +2207,30 @@
     rgba(2, 13, 20, 0.74);
 }
 
-.recoveryChecklist > strong {
+.recoveryHeader {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.recoveryHeader strong {
   color: #f7e4a5;
   font-size: 12px;
 }
 
-.recoveryChecklist > div {
+.recoveryHeader span {
+  min-width: 0;
+  color: rgba(234, 255, 255, 0.64);
+  font-size: 10.5px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recoveryActions {
   min-width: 0;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2624,7 +2642,8 @@
 
   .accessCheckHead,
   .runnerGate,
-  .recoveryChecklist > div {
+  .recoveryHeader,
+  .recoveryActions {
     grid-template-columns: 1fr;
   }
 
