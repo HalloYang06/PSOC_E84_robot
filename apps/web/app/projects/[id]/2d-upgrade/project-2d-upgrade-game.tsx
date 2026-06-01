@@ -3199,7 +3199,72 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
               node,
               pairingResult.token,
               suggestedComputerRunnerId(node),
-              { serverUrl: apiBaseUrl, watch: true, hardwareAccess: true },
+              { serverUrl: apiBaseUrl },
+            );
+          })()
+        : "";
+      const connectBashCommand = pairingResult
+        ? (() => {
+            const node = { id: pairingResult.nodeId, label: pairingResult.nodeId };
+            return buildComputerOneClickConnectBashCommand(
+              webBaseUrl,
+              project.id,
+              node,
+              pairingResult.token,
+              suggestedComputerRunnerId(node),
+              { serverUrl: apiBaseUrl },
+            );
+          })()
+        : "";
+      const watchCommand = pairingResult
+        ? (() => {
+            const node = { id: pairingResult.nodeId, label: pairingResult.nodeId };
+            return buildComputerOneClickConnectCommand(
+              webBaseUrl,
+              project.id,
+              node,
+              pairingResult.token,
+              suggestedComputerRunnerId(node),
+              { serverUrl: apiBaseUrl, watch: true },
+            );
+          })()
+        : "";
+      const watchBashCommand = pairingResult
+        ? (() => {
+            const node = { id: pairingResult.nodeId, label: pairingResult.nodeId };
+            return buildComputerOneClickConnectBashCommand(
+              webBaseUrl,
+              project.id,
+              node,
+              pairingResult.token,
+              suggestedComputerRunnerId(node),
+              { serverUrl: apiBaseUrl, watch: true },
+            );
+          })()
+        : "";
+      const desktopWatchCommand = pairingResult
+        ? (() => {
+            const node = { id: pairingResult.nodeId, label: pairingResult.nodeId };
+            return buildComputerOneClickConnectCommand(
+              webBaseUrl,
+              project.id,
+              node,
+              pairingResult.token,
+              suggestedComputerRunnerId(node),
+              { serverUrl: apiBaseUrl, watch: true, executeProviderCli: true },
+            );
+          })()
+        : "";
+      const desktopWatchBashCommand = pairingResult
+        ? (() => {
+            const node = { id: pairingResult.nodeId, label: pairingResult.nodeId };
+            return buildComputerOneClickConnectBashCommand(
+              webBaseUrl,
+              project.id,
+              node,
+              pairingResult.token,
+              suggestedComputerRunnerId(node),
+              { serverUrl: apiBaseUrl, watch: true, executeProviderCli: true },
             );
           })()
         : "";
@@ -3209,7 +3274,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             <article className={styles.resultCard} data-token-result-card="computer-pairing">
               <span>配对令牌已生成</span>
               <b>{pairingResult.nodeId}</b>
-              <p>不用刷新页面。把下面命令发到目标电脑运行；如果目标电脑没有仓库文件，也会从平台下载接入脚本。用户自己在目标电脑终端运行不需要确认，后续 NPC 代操作才需要人工确认。</p>
+              <p>不用刷新页面。先运行“一键接入”登记电脑并扫描线程；确认接入后，再按需要运行“持续接单”或“后台守护”。用户自己在目标电脑终端运行不需要确认，后续 NPC 代操作才需要人工确认。</p>
               <code data-token-copy-token="computer-pairing">{pairingResult.token}</code>
               <strong className={styles.commandLabel}>Windows PowerShell 一键接入</strong>
               <textarea readOnly rows={5} value={connectCommand} aria-label="电脑接入命令" data-token-command="computer-pairing" />
@@ -3217,17 +3282,25 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
               <textarea
                 readOnly
                 rows={5}
-                value={buildComputerOneClickConnectBashCommand(
-                  webBaseUrl,
-                  project.id,
-                  { id: pairingResult.nodeId, label: pairingResult.nodeId },
-                  pairingResult.token,
-                  suggestedComputerRunnerId({ id: pairingResult.nodeId, label: pairingResult.nodeId }),
-                  { serverUrl: apiBaseUrl, watch: true, hardwareAccess: true },
-                )}
+                value={connectBashCommand}
                 aria-label="Linux 电脑接入命令"
                 data-token-command="computer-pairing-linux"
               />
+              <details className={styles.itemDetails}>
+                <summary>接入成功后要持续接单？</summary>
+                <strong className={styles.commandLabel}>Windows PowerShell 前台持续接单</strong>
+                <textarea readOnly rows={5} value={watchCommand} aria-label="Windows 持续接单命令" data-token-watch-command="computer-pairing" />
+                <strong className={styles.commandLabel}>Linux / macOS Bash 前台持续接单</strong>
+                <textarea readOnly rows={5} value={watchBashCommand} aria-label="Linux 持续接单命令" data-token-linux-watch-command="computer-pairing" />
+              </details>
+              <details className={styles.itemDetails}>
+                <summary>要在 Codex Desktop 里看到派单？</summary>
+                <p>这条命令会允许本机 AI 工具自动处理并回写最终结果；真实硬件、部署、Git 回退仍必须人工确认。</p>
+                <strong className={styles.commandLabel}>Windows 桌面版可见派单</strong>
+                <textarea readOnly rows={5} value={desktopWatchCommand} aria-label="Windows 桌面版可见派单命令" data-token-desktop-watch-command="computer-pairing" />
+                <strong className={styles.commandLabel}>Linux / macOS 桌面版可见派单</strong>
+                <textarea readOnly rows={5} value={desktopWatchBashCommand} aria-label="Linux 桌面版可见派单命令" data-token-linux-desktop-watch-command="computer-pairing" />
+              </details>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                 <button
                   type="button"
@@ -3245,17 +3318,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => copyTextToClipboard(
-                    buildComputerOneClickConnectBashCommand(
-                      webBaseUrl,
-                      project.id,
-                      { id: pairingResult.nodeId, label: pairingResult.nodeId },
-                      pairingResult.token,
-                      suggestedComputerRunnerId({ id: pairingResult.nodeId, label: pairingResult.nodeId }),
-                      { serverUrl: apiBaseUrl, watch: true, hardwareAccess: true },
-                    ),
-                    "Linux 命令已复制，可粘贴到目标电脑 Bash 运行",
-                  )}
+                  onClick={() => copyTextToClipboard(connectBashCommand, "Linux 命令已复制，可粘贴到目标电脑 Bash 运行")}
                   data-token-copy-command-btn="computer-pairing-linux"
                 >
                   复制 Linux 命令
@@ -3348,28 +3411,28 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                       <div className={styles.reconnectCommandGrid}>
                         <label>
                           <span>Windows PowerShell 前台持续接单</span>
-                          <textarea readOnly rows={4} value={watchCommand} aria-label={`${itemTitle(computer)} Windows 持续接单命令`} />
+                          <textarea readOnly rows={4} value={watchCommand} aria-label={`${itemTitle(computer)} Windows 持续接单命令`} data-computer-watch-command={computer.id} />
                           <button type="button" onClick={() => copyTextToClipboard(watchCommand, `${itemTitle(computer)} Windows 持续接单命令已复制`)}>
                             复制 Windows 前台命令
                           </button>
                         </label>
                         <label>
                           <span>Linux / macOS Bash 前台持续接单</span>
-                          <textarea readOnly rows={4} value={watchBashCommand} aria-label={`${itemTitle(computer)} Linux 持续接单命令`} />
+                          <textarea readOnly rows={4} value={watchBashCommand} aria-label={`${itemTitle(computer)} Linux 持续接单命令`} data-computer-watch-linux-command={computer.id} />
                           <button type="button" onClick={() => copyTextToClipboard(watchBashCommand, `${itemTitle(computer)} Linux 持续接单命令已复制`)}>
                             复制 Linux 前台命令
                           </button>
                         </label>
                         <label>
                           <span>Windows 后台守护</span>
-                          <textarea readOnly rows={4} value={serviceCommand} aria-label={`${itemTitle(computer)} Windows 后台守护命令`} />
+                          <textarea readOnly rows={4} value={serviceCommand} aria-label={`${itemTitle(computer)} Windows 后台守护命令`} data-computer-watch-service-command={computer.id} />
                           <button type="button" onClick={() => copyTextToClipboard(serviceCommand, `${itemTitle(computer)} Windows 后台守护命令已复制`)}>
                             复制 Windows 守护命令
                           </button>
                         </label>
                         <label>
                           <span>Linux 后台守护</span>
-                          <textarea readOnly rows={4} value={serviceBashCommand} aria-label={`${itemTitle(computer)} Linux 后台守护命令`} />
+                          <textarea readOnly rows={4} value={serviceBashCommand} aria-label={`${itemTitle(computer)} Linux 后台守护命令`} data-computer-watch-service-linux-command={computer.id} />
                           <button type="button" onClick={() => copyTextToClipboard(serviceBashCommand, `${itemTitle(computer)} Linux 后台守护命令已复制`)}>
                             复制 Linux 守护命令
                           </button>

@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -64,6 +65,18 @@ def request_json(
 def text(value: object, fallback: str = "") -> str:
     raw = str(value or "").strip()
     return raw or fallback
+
+
+def command_search_text(command: object) -> str:
+    raw = text(command)
+    matched = re.search(r"-EncodedCommand\s+([A-Za-z0-9+/=]+)", raw)
+    if not matched:
+        return raw
+    try:
+        decoded = __import__("base64").b64decode(matched.group(1)).decode("utf-16le", errors="replace")
+    except Exception:
+        decoded = ""
+    return f"{raw}\n{decoded}"
 
 
 def cdp_eval(cdp: object, expression: str) -> object:
@@ -145,6 +158,7 @@ def main() -> int:
                 "connection_kind": "remote",
                 "host": "cloud-command-validation",
                 "os": "Windows/Linux",
+                "runner_id": runner_id,
                 "metadata": {"source": "cloud_onboarding_command_validation"},
             },
         )
@@ -196,20 +210,46 @@ def main() -> int:
             cdp.send("Network.setCookie", {"name": "farm_user", "value": user_json, "url": f"{web_base}/", "path": "/", "sameSite": "Lax"})
             url = (
                 f"{web_base}/projects/{quote(args.project_id)}/2d-upgrade?panel=computers&action=pairing-token"
-                f"&computer={quote(node_id)}&pairing_node={quote(node_id)}&pairing_token={quote(pairing_token)}"
+                f"&computer={quote(node_id)}"
+                f"&pairing_node={quote(node_id)}&pairing_token={quote(pairing_token)}"
             )
             cdp.send("Page.navigate", {"url": url})
-            wait_for(
-                cdp,
-                f"""
+            ready_expression = f"""
                 (() => {{
                   return document.readyState === 'complete'
                     && Boolean(document.querySelector(`[data-token-command="computer-pairing"]`))
-                    && Boolean(document.querySelector(`[data-token-command="computer-pairing-linux"]`));
+                    && Boolean(document.querySelector(`[data-token-command="computer-pairing-linux"]`))
+                    && Boolean(document.querySelector(`[data-token-watch-command="computer-pairing"]`))
+                    && Boolean(document.querySelector(`[data-token-desktop-watch-command="computer-pairing"]`));
                 }})()
-                """,
-                timeout_seconds=45,
-            )
+                """
+            try:
+                wait_for(cdp, ready_expression, timeout_seconds=45)
+            except Exception as exc:
+                debug_state = cdp_eval(
+                    cdp,
+                    f"""
+                    (() => {{
+                      const selectors = [
+                        `[data-token-command="computer-pairing"]`,
+                        `[data-token-command="computer-pairing-linux"]`,
+                        `[data-token-watch-command="computer-pairing"]`,
+                        `[data-token-desktop-watch-command="computer-pairing"]`,
+                      ];
+                      return {{
+                        href: location.href,
+                        readyState: document.readyState,
+                        selectors: Object.fromEntries(selectors.map((selector) => [selector, Boolean(document.querySelector(selector))])),
+                        text: document.body ? document.body.innerText.slice(0, 1600) : "",
+                      }};
+                    }})()
+                    """,
+                )
+                debug_path = output_dir / f"cloud-computer-onboarding-commands-debug-{stamp}.json"
+                debug_path.write_text(json.dumps(debug_state, ensure_ascii=False, indent=2), encoding="utf-8")
+                shot = output_dir / f"cloud-computer-onboarding-commands-debug-{stamp}.png"
+                screenshot(cdp, shot)
+                raise RuntimeError(f"Rendered command selectors did not become ready; debug={debug_path}; screenshot={shot}") from exc
             commands = cdp_eval(
                 cdp,
                 f"""
@@ -221,12 +261,10 @@ def main() -> int:
                   return {{
                     oneClickWindows: read(`[data-token-command="computer-pairing"]`),
                     oneClickLinux: read(`[data-token-command="computer-pairing-linux"]`),
-                    watchWindows: read(`[data-token-command="computer-pairing"]`),
-                    watchLinux: read(`[data-token-command="computer-pairing-linux"]`),
-                    watchServiceWindows: '',
-                    watchServiceLinux: '',
-                    tokenWatchWindows: read(`[data-token-command="computer-pairing"]`),
-                    tokenWatchLinux: read(`[data-token-command="computer-pairing-linux"]`),
+                    tokenWatchWindows: read(`[data-token-watch-command="computer-pairing"]`),
+                    tokenWatchLinux: read(`[data-token-linux-watch-command="computer-pairing"]`),
+                    desktopWatchWindows: read(`[data-token-desktop-watch-command="computer-pairing"]`),
+                    desktopWatchLinux: read(`[data-token-linux-desktop-watch-command="computer-pairing"]`),
                     pageText: document.body ? document.body.innerText.slice(0, 3000) : '',
                     href: location.href,
                   }};
@@ -235,6 +273,42 @@ def main() -> int:
             )
             if not isinstance(commands, dict):
                 raise RuntimeError("Could not read rendered commands from page")
+
+            health_url = f"{web_base}/projects/{quote(args.project_id)}/2d-upgrade?panel=computers&action=runner-health&computer={quote(node_id)}"
+            cdp.send("Page.navigate", {"url": health_url})
+            wait_for(
+                cdp,
+                f"""
+                (() => {{
+                  return document.readyState === 'complete'
+                    && Boolean(document.querySelector(`[data-computer-watch-command="{node_id}"]`))
+                    && Boolean(document.querySelector(`[data-computer-watch-service-command="{node_id}"]`));
+                }})()
+                """,
+                timeout_seconds=45,
+            )
+            health_commands = cdp_eval(
+                cdp,
+                f"""
+                (() => {{
+                  const read = (selector) => {{
+                    const el = document.querySelector(selector);
+                    return el ? (el.value || el.innerText || el.textContent || '').trim() : '';
+                  }};
+                  return {{
+                    watchWindows: read(`[data-computer-watch-command="{node_id}"]`),
+                    watchLinux: read(`[data-computer-watch-linux-command="{node_id}"]`),
+                    watchServiceWindows: read(`[data-computer-watch-service-command="{node_id}"]`),
+                    watchServiceLinux: read(`[data-computer-watch-service-linux-command="{node_id}"]`),
+                    healthHref: location.href,
+                    healthText: document.body ? document.body.innerText.slice(0, 3000) : '',
+                  }};
+                }})()
+                """,
+            )
+            if not isinstance(health_commands, dict):
+                raise RuntimeError("Could not read rendered runner health commands from page")
+            commands.update(health_commands)
             report["commands"] = commands
             shot = output_dir / f"cloud-computer-onboarding-commands-{stamp}.png"
             screenshot(cdp, shot)
@@ -258,14 +332,22 @@ def main() -> int:
         checks = {
             "oneClickWindows": ["connect-ai-collab-runner.ps1", expected_web, expected_api, "-Server", "-ProjectId"],
             "oneClickLinux": ["connect-ai-collab-runner.sh", expected_web, expected_api, "--server", "--project-id"],
-            "watchWindows": ["connect-ai-collab-runner.ps1", expected_web, expected_api, "-Watch", "-HardwareAccess"],
-            "watchLinux": ["connect-ai-collab-runner.sh", expected_web, expected_api, "--watch", "--hardware-access"],
             "tokenWatchWindows": ["connect-ai-collab-runner.ps1", expected_web, expected_api, "-Watch"],
             "tokenWatchLinux": ["connect-ai-collab-runner.sh", expected_web, expected_api, "--watch"],
+            "desktopWatchWindows": ["connect-ai-collab-runner.ps1", expected_web, expected_api, "-Watch", "-WatchExecuteProviderCli"],
+            "desktopWatchLinux": ["connect-ai-collab-runner.sh", expected_web, expected_api, "--watch", "--watch-execute-provider-cli"],
+            "watchWindows": ["connect-ai-collab-runner.ps1", expected_web, expected_api, "-Watch", "-SkipCodex", "-SkipClaude"],
+            "watchLinux": ["connect-ai-collab-runner.sh", expected_web, expected_api, "--watch", "--skip-codex", "--skip-claude"],
+            "watchServiceWindows": ["connect-ai-collab-runner.ps1", expected_web, expected_api, "New-ScheduledTaskAction", "Register-ScheduledTask"],
+            "watchServiceLinux": ["connect-ai-collab-runner.sh", expected_web, expected_api, "systemctl --user", "nohup bash -lc"],
         }
         issues: list[str] = []
         for key, needles in checks.items():
-            command = text(report["commands"].get(key) if isinstance(report.get("commands"), dict) else "")
+            raw_command = report["commands"].get(key) if isinstance(report.get("commands"), dict) else ""
+            command = command_search_text(raw_command)
+            if not text(raw_command):
+                issues.append(f"{key} missing rendered command")
+                continue
             if "127.0.0.1" in command or "localhost" in command:
                 issues.append(f"{key} contains local-only host")
             for needle in needles:
@@ -280,9 +362,20 @@ def main() -> int:
             "tokenWatchLinux": "--watch-execute-provider-cli",
         }
         for key, needle in unsafe_watch_tokens.items():
-            command = text(report["commands"].get(key) if isinstance(report.get("commands"), dict) else "")
+            raw_command = report["commands"].get(key) if isinstance(report.get("commands"), dict) else ""
+            command = command_search_text(raw_command)
             if needle in command:
-                issues.append(f"{key} enables provider CLI execution from first pairing card")
+                issues.append(f"{key} enables provider CLI execution from safe watch command")
+        one_click_forbidden = {
+            "oneClickWindows": ["-Watch", "-HardwareAccess", "-WatchExecuteProviderCli"],
+            "oneClickLinux": ["--watch", "--hardware-access", "--watch-execute-provider-cli"],
+        }
+        for key, needles in one_click_forbidden.items():
+            raw_command = report["commands"].get(key) if isinstance(report.get("commands"), dict) else ""
+            command = command_search_text(raw_command)
+            for needle in needles:
+                if needle in command:
+                    issues.append(f"{key} unexpectedly contains {needle}")
         report["issues"] = issues
         report["ok"] = not issues
         report_path = output_dir / f"cloud-computer-onboarding-commands-report-{stamp}.json"
