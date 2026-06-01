@@ -180,7 +180,7 @@ def main() -> int:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime("%Y%m%d-%H%M%S")
-    git_path = f"/projects/{args.project_id}?panel=team&tab=git"
+    git_path = f"/projects/{args.project_id}/2d-upgrade?panel=git&action=diff-preview"
     login_url = f"{web_base}/login?returnTo={quote(git_path, safe='')}"
     git_url = f"{web_base}{git_path}"
     rollback_target = "develop"
@@ -253,7 +253,7 @@ def main() -> int:
 
         wait_for(
             cdp,
-            "document.body && document.body.innerText.includes('可视化 Git 回退') && document.body.innerText.includes('先预演 Git 回退') && document.body.innerText.includes('选择目标版本') && document.body.innerText.includes('只读预演') && document.body.innerText.includes('等待人工确认') && document.body.innerText.includes('不会直接执行 git reset')",
+            "document.body && document.body.innerText.includes('版本治理') && document.body.innerText.includes('登记回退请求') && document.body.innerText.includes('选择目标版本') && document.body.innerText.includes('只读预演') && document.body.innerText.includes('等待人工确认') && document.body.innerText.includes('不会直接执行 git reset')",
             timeout_seconds=45,
         )
         wait_for(cdp, f"location.href.includes({json.dumps(git_url)}) || location.href.includes({json.dumps(git_path)})", timeout_seconds=15)
@@ -277,6 +277,7 @@ def main() -> int:
             marker in current_body
             for marker in (
                 "还没有绑定 GitHub 或本地仓库路径",
+                "尚未绑定仓库地址",
                 "先在项目管理里补齐 GitHub 地址或本地仓库路径",
                 "repository is not bound",
                 "local repository is not bound",
@@ -304,11 +305,11 @@ def main() -> int:
 
         fill_field(cdp, 'input[name="target_ref"]', rollback_target)
         fill_field(cdp, 'textarea[name="notes"]', rollback_note)
-        click_by_text(cdp, "先预演 Git 回退", selector='button[type="submit"], button')
+        click_by_text(cdp, "生成回退预演", selector='button[type="submit"], button')
 
         wait_for(
             cdp,
-            "document.readyState === 'complete' && document.body && document.body.innerText.includes('最近一次回退预演')",
+            "document.readyState === 'complete' && document.body && (document.body.innerText.includes('最近一次回退预演') || document.body.innerText.includes('登记后仍不直接回退') || document.body.innerText.includes('只读预检'))",
             timeout_seconds=45,
         )
         time.sleep(2.0)
@@ -341,7 +342,7 @@ def main() -> int:
 
         matching_activity = None
         if args.commit_request:
-            click_by_text(cdp, "登记 Git 回退请求", selector='button[type="submit"], button')
+            click_by_text(cdp, "登记回退请求", selector='button[type="submit"], button')
             wait_for(cdp, "document.readyState === 'complete'", timeout_seconds=45)
             time.sleep(2.0)
             shot = output_dir / f"git-rollback-05-panel-after-request-{stamp}.png"

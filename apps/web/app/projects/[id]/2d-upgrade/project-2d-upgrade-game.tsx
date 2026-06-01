@@ -2144,6 +2144,39 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
     if (!target) return gitRollbackAlignmentMessages[0] ?? null;
     return gitRollbackAlignmentMessages.find((message) => message.targetRef === target) ?? gitRollbackAlignmentMessages[0] ?? null;
   }, [gitRollbackAlignmentMessages, gitRollbackTargetRef]);
+  const selectedGitRollbackVersion = gitVersionIndex.find((version) => version.ref === gitRollbackTargetRef.trim()) ?? null;
+  const selectedGitRollbackToneLabel = selectedGitRollbackVersion
+    ? ({
+        branch: "稳定主线",
+        task: "任务分支",
+        activity: "协作动态",
+        default: "推荐",
+      }[selectedGitRollbackVersion.tone] ?? "已收录")
+    : "自定义引用";
+  const gitRollbackSafetySteps = [
+    {
+      label: "选择目标版本",
+      detail: selectedGitRollbackVersion
+        ? `${selectedGitRollbackVersion.label} / ${selectedGitRollbackVersion.ref}`
+        : gitRollbackTargetRef.trim() || "还没有选择",
+      active: Boolean(gitRollbackTargetRef.trim()),
+    },
+    {
+      label: "只读预演",
+      detail: "先看影响面，不写活动流",
+      active: Boolean(gitRollbackTargetRef.trim()),
+    },
+    {
+      label: "登记请求",
+      detail: "登记后才进入项目审计",
+      active: Boolean(currentGitRollbackAlignment),
+    },
+    {
+      label: "等待人工确认",
+      detail: gitRunnerPreflightStatus.title,
+      active: gitRunnerPreflightStatus.tone === "ready" || Boolean(currentGitRollbackAlignment),
+    },
+  ];
   const historicalGitRollbackAlignments = useMemo(() => {
     const currentId = currentGitRollbackAlignment?.id;
     return gitRollbackAlignmentMessages.filter((message) => message.id !== currentId).slice(0, 5);
@@ -2628,6 +2661,19 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
           <p>
             先选一个目标做只读预演。知识库和跨电脑协作仍以 GitHub 仓库为准，每台电脑只管理自己的工作目录。
           </p>
+          <div className={styles.gitRollbackSafetyRail} data-git-rollback-safety-rail="1">
+            {gitRollbackSafetySteps.map((step, index) => (
+              <article key={`git-rollback-step-${step.label}`} data-active={step.active ? "1" : undefined}>
+                <span>{index + 1}</span>
+                <b>{step.label}</b>
+                <small>{step.detail}</small>
+              </article>
+            ))}
+          </div>
+          <div className={styles.gitRollbackReadiness}>
+            <b>{gitRollbackTargetRef.trim() ? `当前选择：${selectedGitRollbackToneLabel}` : "先选择目标版本"}</b>
+            <p>不会直接执行 git reset；生成回退预演后，再登记请求，最后等执行电脑只读预检和人工确认。</p>
+          </div>
           <dl>
             <div>
               <dt>仓库</dt>
@@ -2653,7 +2699,17 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                 onClick={() => setGitRollbackTargetRef(version.ref)}
                 title={`选择 ${version.ref} 作为回退预演目标`}
               >
-                <span>{version.source}</span>
+                <div className={styles.gitVersionMetaRow}>
+                  <span>{version.source}</span>
+                  <em>
+                    {{
+                      branch: "稳定主线",
+                      task: "任务分支",
+                      activity: "协作动态",
+                      default: "推荐",
+                    }[version.tone]}
+                  </em>
+                </div>
                 <b>{version.label}</b>
                 <code>{version.ref}</code>
                 <small>{version.detail}</small>
@@ -4025,6 +4081,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                 value={gitRollbackTargetRef}
                 onChange={(event) => setGitRollbackTargetRef(event.target.value)}
               />
+              <small>当前选择：{selectedGitRollbackVersion ? `${selectedGitRollbackToneLabel} / ${selectedGitRollbackVersion.label}` : "自定义引用"}</small>
             </label>
             <label>
               <span>备注</span>
@@ -4055,6 +4112,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                 value={gitRollbackTargetRef}
                 onChange={(event) => setGitRollbackTargetRef(event.target.value)}
               />
+              <small>当前选择：{selectedGitRollbackVersion ? `${selectedGitRollbackToneLabel} / ${selectedGitRollbackVersion.label}` : "自定义引用"}</small>
             </label>
             <label>
               <span>人工确认备注</span>

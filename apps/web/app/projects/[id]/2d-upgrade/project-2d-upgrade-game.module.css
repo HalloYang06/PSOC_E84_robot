@@ -1604,6 +1604,91 @@
   gap: 8px;
 }
 
+.gitRollbackSafetyRail {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.githubImportGuide .gitRollbackSafetyRail {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.gitRollbackSafetyRail article {
+  display: grid;
+  gap: 5px;
+  min-height: 88px;
+  padding: 10px;
+  border: 1px solid rgba(121, 238, 255, 0.18);
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.gitRollbackSafetyRail article[data-active="1"] {
+  border-color: rgba(166, 255, 196, 0.4);
+  background: rgba(21, 96, 56, 0.14);
+}
+
+.gitRollbackSafetyRail span {
+  display: inline-grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border: 1px solid rgba(121, 238, 255, 0.24);
+  color: #b9fff3;
+  font-size: 11px;
+  font-weight: 1000;
+}
+
+.gitRollbackSafetyRail article[data-active="1"] span {
+  border-color: rgba(166, 255, 196, 0.42);
+  color: #d9ffe6;
+}
+
+.gitRollbackSafetyRail small {
+  color: rgba(219, 251, 255, 0.68);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.gitRollbackReadiness {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid rgba(255, 231, 104, 0.3);
+  background: rgba(255, 231, 104, 0.08);
+}
+
+.githubImportGuide .gitRollbackReadiness {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.gitRollbackReadiness p {
+  margin: 0;
+}
+
+.gitVersionMetaRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.githubImportGuide .gitVersionMetaRow {
+  display: flex;
+  grid-template-columns: none;
+}
+
+.gitVersionMetaRow em {
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  border: 1px solid rgba(166, 255, 196, 0.24);
+  color: #d9ffe6;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 1000;
+}
+
 .gitVersionCard {
   display: grid;
   gap: 6px;
@@ -1629,6 +1714,24 @@
   color: rgba(219, 251, 255, 0.72);
   font-size: 11px;
   font-weight: 1000;
+}
+
+.gitVersionMetaRow span {
+  max-width: 100%;
+}
+
+@media (max-width: 980px) {
+  .githubImportGuide .gitRollbackSafetyRail,
+  .gitRollbackSafetyRail {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .githubImportGuide .gitRollbackSafetyRail,
+  .gitRollbackSafetyRail {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .gitVersionCard b {
