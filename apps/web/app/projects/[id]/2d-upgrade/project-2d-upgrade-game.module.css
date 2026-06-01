@@ -1723,6 +1723,122 @@
   overflow-wrap: anywhere;
 }
 
+.gitRollbackVersionProfile {
+  display: grid;
+  gap: 9px;
+  padding: 10px;
+  border: 1px solid rgba(121, 238, 255, 0.2);
+  background:
+    linear-gradient(135deg, rgba(23, 113, 142, 0.12), rgba(0, 0, 0, 0.16)),
+    repeating-linear-gradient(90deg, rgba(121, 238, 255, 0.06) 0 1px, transparent 1px 24px);
+}
+
+.gitRollbackProfileHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.gitRollbackProfileHead b {
+  color: #ffffff;
+  font-size: 13px;
+}
+
+.gitRollbackProfileHead small {
+  color: rgba(219, 251, 255, 0.68);
+  font-size: 11px;
+  line-height: 1.4;
+  text-align: right;
+}
+
+.gitRollbackProfileBars {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.gitRollbackProfileBars span {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 8px;
+  min-width: 0;
+  padding: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(121, 238, 255, 0.16);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.gitRollbackProfileBars span::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--rollback-profile-width);
+  background: rgba(121, 238, 255, 0.12);
+  pointer-events: none;
+}
+
+.gitRollbackProfileBars span[data-active="1"] {
+  border-color: rgba(255, 231, 104, 0.52);
+  box-shadow: 0 0 0 1px rgba(255, 231, 104, 0.12) inset;
+}
+
+.gitRollbackProfileBars span[data-tone="branch"]::before {
+  background: rgba(166, 255, 196, 0.14);
+}
+
+.gitRollbackProfileBars span[data-tone="task"]::before {
+  background: rgba(121, 238, 255, 0.14);
+}
+
+.gitRollbackProfileBars span[data-tone="activity"]::before {
+  background: rgba(255, 231, 104, 0.14);
+}
+
+.gitRollbackProfileBars span[data-tone="default"]::before {
+  background: rgba(210, 178, 255, 0.14);
+}
+
+.gitRollbackProfileBars i,
+.gitRollbackProfileBars b,
+.gitRollbackProfileBars em {
+  position: relative;
+  z-index: 1;
+}
+
+.gitRollbackProfileBars i {
+  grid-column: 1 / -1;
+  width: 100%;
+  height: 3px;
+  background: rgba(219, 251, 255, 0.2);
+}
+
+.gitRollbackProfileBars b {
+  min-width: 0;
+  color: rgba(244, 255, 255, 0.9);
+  font-size: 11px;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gitRollbackProfileBars em {
+  color: #ffffff;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 1000;
+}
+
+.gitRollbackVersionProfile p {
+  margin: 0;
+  color: rgba(219, 251, 255, 0.7);
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .gitVersionMetaRow {
   display: flex;
   align-items: center;

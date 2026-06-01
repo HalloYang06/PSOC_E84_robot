@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useFormStatus } from "react-dom";
 
 import {
@@ -2153,6 +2153,23 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         default: "推荐",
       }[selectedGitRollbackVersion.tone] ?? "已收录")
     : "自定义引用";
+  const gitRollbackVersionToneLabels = {
+    branch: "稳定分支",
+    task: "任务分支",
+    activity: "协作动态",
+    default: "安全快捷项",
+  } as const;
+  const gitRollbackVersionProfile = (["branch", "task", "activity", "default"] as const).map((tone) => {
+    const count = gitVersionIndex.filter((version) => version.tone === tone).length;
+    const active = selectedGitRollbackVersion?.tone === tone;
+    return {
+      tone,
+      label: gitRollbackVersionToneLabels[tone],
+      count,
+      active,
+      width: `${Math.max(12, Math.round((count / Math.max(1, gitVersionIndex.length)) * 100))}%`,
+    };
+  });
   const gitRollbackSafetySteps = [
     {
       label: "选择目标版本",
@@ -2713,6 +2730,31 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                 <small>{card.detail}</small>
               </article>
             ))}
+          </div>
+          <div className={styles.gitRollbackVersionProfile} data-git-rollback-version-profile="1">
+            <div className={styles.gitRollbackProfileHead}>
+              <b>版本分布</b>
+              <small>{gitVersionIndex.length} 个可选目标 · 当前 {selectedGitRollbackToneLabel}</small>
+            </div>
+            <div className={styles.gitRollbackProfileBars} aria-label="Git 回退版本目标分布">
+              {gitRollbackVersionProfile.map((item) => (
+                <span
+                  key={`git-profile-${item.tone}`}
+                  data-tone={item.tone}
+                  data-active={item.active ? "1" : undefined}
+                  style={{ "--rollback-profile-width": item.width } as CSSProperties}
+                >
+                  <i />
+                  <b>{item.label}</b>
+                  <em>{item.count}</em>
+                </span>
+              ))}
+            </div>
+            <p>
+              协作牵引：{currentGitRollbackAlignment ? `已对齐 ${currentGitRollbackAlignment.targetNpc}` : "登记后生成 NPC 对齐任务"}
+              {" · "}
+              执行状态：{gitRunnerPreflightStatus.title}
+            </p>
           </div>
           <dl>
             <div>

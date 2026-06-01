@@ -1045,7 +1045,10 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
   const [liveDashboard, setLiveDashboard] = useState(() => filterDashboardForProject(dashboard, projectId));
   const [pollState, setPollState] = useState<"idle" | "ok" | "error">("idle");
   const [lastLiveUpdate, setLastLiveUpdate] = useState<number | null>(null);
-  const devices = useMemo(() => liveDashboard.devices.length ? liveDashboard.devices : [], [liveDashboard.devices]);
+  const devices = useMemo(
+    () => [...liveDashboard.devices].sort((a, b) => Number(b.last_upload_ts_unix ?? 0) - Number(a.last_upload_ts_unix ?? 0)),
+    [liveDashboard.devices],
+  );
   const [selectedDeviceId, setSelectedDeviceId] = useState(devices[0]?.device_id ?? "");
   const deviceIndexById = useMemo(
     () => new Map(devices.map((device, index) => [device.device_id, index])),
