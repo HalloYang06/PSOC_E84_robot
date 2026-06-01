@@ -1436,6 +1436,39 @@ function userFacingTerminalText(value: unknown) {
     .replace(/最小回执/g, "已收到提醒");
 }
 
+function publicTerminalStatus(status: unknown) {
+  switch (text(status, "open")) {
+    case "completed":
+    case "done":
+    case "success":
+      return "已完成";
+    case "failed":
+    case "error":
+      return "失败";
+    case "running":
+    case "in_progress":
+      return "执行中";
+    case "queued":
+    case "pending":
+      return "已排队";
+    case "acked":
+      return "已接单";
+    case "cancelled":
+      return "已取消";
+    default:
+      return text(status, "已记录");
+  }
+}
+
+function publicTerminalEventPrefix(kind: string, status: unknown) {
+  const label = publicTerminalStatus(status);
+  if (kind === "ack") return "执行电脑回执";
+  if (kind === "result") return `执行结果 · ${label}`;
+  if (kind === "capture") return `采集回执 · ${label}`;
+  if (kind === "review") return `NPC 代操作 · ${label}`;
+  return `事件 · ${label}`;
+}
+
 function roboticsCaptureAckLine(value: unknown) {
   const raw = text(value, "");
   if (!/robotics\.capture|device capture|capture_id|preview_summary/.test(raw)) return "";
@@ -1485,8 +1518,8 @@ function terminalEventLines(tile: DebugWindow, messages: AnyRecord[]) {
     const type = text(message.message_type ?? message.messageType, "event");
     const status = text(message.status, "open");
     const extra = record(message.extra_data ?? message.metadata);
-    if (type === "runner_command") return `$ ${commandText(message)}  # ${status}`;
-    if (type === "runner_ack") return `[ack] ${roboticsCaptureAckLine(message.body) || userFacingTerminalText(message.body) || "执行电脑已接单"}`;
+    if (type === "runner_command") return `$ ${commandText(message)}  # ${publicTerminalStatus(status)}`;
+    if (type === "runner_ack") return `[${publicTerminalEventPrefix("ack", status)}] ${roboticsCaptureAckLine(message.body) || userFacingTerminalText(message.body) || "执行电脑已接单"}`;
     if (type === "runner_result") {
       const result = record(extra.runner_result);
       const captureId = text(result.capture_id ?? extra.capture_id, "");
@@ -1495,19 +1528,19 @@ function terminalEventLines(tile: DebugWindow, messages: AnyRecord[]) {
         const resultStatus = text(result.status, text(result.capture_mode, status));
         const sampleCount = text(result.sample_count, "");
         if (mode === "robotics.capture.start" || text(extra.terminal_mode, "") === "capture_start") {
-          return `[capture:running] 目标电脑已开始后台采集 ${captureId}`;
+          return `[${publicTerminalEventPrefix("capture", "running")}] 目标电脑已开始后台采集`;
         }
         if (sampleCount && sampleCount !== "0") {
-          return `[capture:done] 已收到 ${sampleCount} 个样本`;
+          return `[${publicTerminalEventPrefix("capture", "done")}] 已收到 ${sampleCount} 个样本`;
         }
-        return `[capture:${resultStatus}] ${text(result.error, "执行电脑已返回采集回执")}`;
+        return `[${publicTerminalEventPrefix("capture", resultStatus)}] ${text(result.error, "执行电脑已返回采集回执")}`;
       }
-      return `[result:${status}] ${userFacingTerminalText(message.body) || "执行电脑已返回结果"}`;
+      return `[${publicTerminalEventPrefix("result", status)}] ${userFacingTerminalText(message.body) || "执行电脑已返回结果"}`;
     }
-    if (type === "robotics_capture_start") return `[capture:running] ${text(message.title, "开始采集")}`;
-    if (type === "robotics_capture_segment") return `[capture:ready] ${text(message.title, "采集片段")} 已生成`;
-    if (type === "robotics_terminal_review" || type === "robotics_terminal_npc_request") return `[npc-review:${status}] ${commandText(message)}`;
-    return `[${type}:${status}] ${text(message.title ?? message.body, "终端事件")}`;
+    if (type === "robotics_capture_start") return `[${publicTerminalEventPrefix("capture", "running")}] ${text(message.title, "开始采集")}`;
+    if (type === "robotics_capture_segment") return `[${publicTerminalEventPrefix("capture", "done")}] ${text(message.title, "采集片段")} 已生成`;
+    if (type === "robotics_terminal_review" || type === "robotics_terminal_npc_request") return `[${publicTerminalEventPrefix("review", status)}] ${commandText(message)}`;
+    return `[${publicTerminalEventPrefix("event", status)}] ${text(message.title ?? message.body, "终端事件")}`;
   });
 }
 
@@ -1756,19 +1789,19 @@ function terminalLines(tile: DebugWindow, boundNpcLabel: string) {
   ];
   if (tile.kind === "can") {
     lines.push(`filter=none  bitrate=待确认  sample=${sampleHz}Hz`);
-    lines.push("hint: 用户在这里手动发送不需要平台确认；NPC 代发必须先确认。");
+    lines.push("提示：用户在这里手动发送不需要平台确认；NPC 代发必须先确认。");
   } else if (tile.kind === "spi-can") {
     lines.push("chip=MCP251x  spi-clock=待确认  irq=待确认");
-    lines.push("hint: SPI-CAN 只给配置建议，不直接改 overlay / module。");
+    lines.push("提示：SPI-CAN 只给配置建议，不直接改系统配置。");
   } else if (tile.kind === "serial") {
     lines.push(`baud=${baudRate}  parity=none  stop=1`);
-    lines.push("hint: 用户手动输入直接进执行电脑；NPC 代写串口命令必须先确认。");
+    lines.push("提示：用户手动输入直接进执行电脑；NPC 代写串口命令必须先确认。");
   } else if (tile.kind === "usb") {
     lines.push("mode=enumerate  driver=待确认");
-    lines.push("hint: 只读枚举设备，权限或驱动问题进入公司层证据。");
+    lines.push("提示：只读枚举设备，权限或驱动问题进入公司层证据。");
   } else if (tile.kind === "ros") {
     lines.push("topics=readonly  publish=blocked");
-    lines.push("hint: ROS 写操作若由 NPC 代操作，必须先确认。");
+    lines.push("提示：ROS 写操作若由 NPC 代操作，必须先确认。");
   } else {
     lines.push("config=等待扫描快照");
   }
