@@ -224,9 +224,11 @@ def main() -> int:
             """
             (() => {
               const labels = Array.from(document.querySelectorAll('strong, summary, span')).map((item) => item.textContent || '');
-              return labels.some((text) => text.includes('已导入 medical_arm.zip'))
+              const loaded = labels.some((text) => text.includes('已导入 medical_arm.zip'))
                 && labels.some((text) => text.includes('姿态映射'))
                 && Boolean(document.querySelector('[data-testid="rehab-pose-mapping"]'));
+              const failed = labels.some((text) => text.includes('URDF 未能完整加载'));
+              return loaded || failed;
             })()
             """,
             timeout_seconds=60,
@@ -256,6 +258,15 @@ def main() -> int:
     except Exception as exc:  # noqa: BLE001
         report["verdict"] = "failed"
         report["error"] = str(exc)
+        if cdp:
+            try:
+                state = page_state(cdp)
+                shot = output_dir / f"rehab-arm-urdf-import-failed-{stamp}.png"
+                screenshot(cdp, shot)
+                state["screenshot"] = str(shot)
+                report["pages"].append(state)  # type: ignore[union-attr]
+            except Exception as state_exc:  # noqa: BLE001
+                report["state_error"] = str(state_exc)
         report_path = output_dir / "report.json"
         report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         report["report"] = str(report_path)
