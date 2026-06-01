@@ -346,10 +346,14 @@ function Invoke-RunnerInboxPoll {
         $desktopConfirmed = $false
         $desktopUnconfirmed = $false
         $desktopReplySynced = $false
+        $desktopHandoffCreated = $false
         try {
           $adapterJson = $adapterText | ConvertFrom-Json
           $executions = @($adapterJson.executions).Count
           $receipts = @($adapterJson.receipts).Count
+          if ($executions -gt 0) {
+            $desktopHandoffCreated = $true
+          }
           if ($receipts -gt 0) {
             $desktopReplySynced = $true
           }
@@ -381,12 +385,14 @@ function Invoke-RunnerInboxPoll {
           $note = "Runner $RunnerName delivered this dispatch into the bound Codex Desktop thread and confirmed the thread received it."
         } elseif ($desktopReplySynced) {
           $note = "Runner $RunnerName delivered this dispatch through Codex Desktop automation and the platform synced the desktop reply."
+        } elseif ($desktopHandoffCreated) {
+          $note = "Runner $RunnerName created a non-interrupting Codex Desktop automation handoff. The NPC message will stay visible until the bound desktop thread syncs the final reply."
         } elseif ($desktopUnconfirmed) {
           $note = "Runner $RunnerName received this dispatch on the execution computer, but Codex Desktop has not confirmed that the bound thread visibly received it. Keep this item pending and retry desktop sync."
         } else {
           $note = "Runner $RunnerName ran desktop delivery, but no delivery evidence was returned yet. The platform will keep the item visible for retry."
         }
-        $desktopDispatchOk = $desktopConfirmed -or $desktopReplySynced
+        $desktopDispatchOk = $desktopConfirmed -or $desktopReplySynced -or $desktopHandoffCreated
         $captureResult = [ordered]@{
           result_status = if ($desktopDispatchOk) { "completed" } else { "failed" }
           note = $note
@@ -397,6 +403,7 @@ function Invoke-RunnerInboxPoll {
             message_id = $sourceMessageId
             desktop_delivery_confirmed = $desktopConfirmed
             desktop_reply_synced = $desktopReplySynced
+            desktop_handoff_created = $desktopHandoffCreated
             desktop_delivery_unconfirmed = (-not $desktopConfirmed)
           }
         }
