@@ -137,6 +137,11 @@ function boolText(value: unknown) {
   return value ? "是" : "否";
 }
 
+function publicStateValue(value: unknown, fallback = "未上报") {
+  const raw = text(value, fallback);
+  return raw === "unknown" ? fallback : raw;
+}
+
 function numberText(value: unknown, unit = "") {
   const number = Number(value);
   if (!Number.isFinite(number)) return "-";
@@ -317,7 +322,7 @@ function Arm3DOverview({ motors, safetyState }: { motors: AnyRecord[]; safetySta
           <span>Three.js 机械臂</span>
           <strong>5 关节结构预览</strong>
         </div>
-        <small>{ARM_MODEL_JSON.joints.length} joints · JSON model</small>
+        <small>{ARM_MODEL_JSON.joints.length} 个关节 · 轻量模型</small>
       </div>
       <div ref={mountRef} className={styles.armCanvas} />
       <div className={styles.armLegend}>
@@ -465,7 +470,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
               <section className={styles.safetyPanel} data-state={stateLabel(currentSafetyState)}>
                 <span>安全状态</span>
                 <strong>{stateText(currentSafetyState)}</strong>
-                <p>急停：{boolText(safetyPayload.emergency_stop)}；M33 模式：{text(safetyPayload.m33_mode, "unknown")}；心跳：{text(safetyPayload.heartbeat_age_ms, "-")} ms。</p>
+                <p>急停：{boolText(safetyPayload.emergency_stop)}；M33 模式：{publicStateValue(safetyPayload.m33_mode)}；心跳：{text(safetyPayload.heartbeat_age_ms, "-")} ms。</p>
               </section>
               <section className={styles.taskPanel}>
                 <span>下一步</span>
