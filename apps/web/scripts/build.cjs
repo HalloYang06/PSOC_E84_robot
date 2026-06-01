@@ -53,7 +53,12 @@ function isRecoverableManifestRace(result) {
     return false;
   }
   const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
-  return output.includes("build-manifest.json") && output.includes("ENOENT");
+  return (
+    output.includes("ENOENT") &&
+    (output.includes("build-manifest.json") ||
+      output.includes("_ssgManifest.js") ||
+      output.includes(".next/static/"))
+  );
 }
 
 let result;
