@@ -12,6 +12,7 @@ import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -245,6 +246,8 @@ def run_browser_session(
     web_base: str,
     login_email: str,
     login_password: str,
+    token: str = "",
+    user_json: str = "",
     viewport_width: int,
     viewport_height: int,
     work,
@@ -291,11 +294,24 @@ def run_browser_session(
             },
         )
         flow = BrowserFlow(cdp)
-        flow.navigate(f"{web_base.rstrip('/')}/login")
-        flow.wait_for("document.readyState === 'complete' && !!document.querySelector('form')", timeout=20)
-        flow.fill('input[name="email"], input[type="email"]', login_email)
-        flow.fill('input[name="password"], input[type="password"]', login_password)
-        flow.click_text("进入平台", "button")
+        origin = f"{urlparse(web_base).scheme}://{urlparse(web_base).netloc}"
+        if token:
+            cdp.send(
+                "Network.setCookie",
+                {"name": "farm_access_token", "value": token, "url": f"{origin}/", "path": "/", "sameSite": "Lax"},
+            )
+            if user_json:
+                cdp.send(
+                    "Network.setCookie",
+                    {"name": "farm_user", "value": user_json, "url": f"{origin}/", "path": "/", "sameSite": "Lax"},
+                )
+            flow.navigate(f"{web_base.rstrip('/')}/projects")
+        else:
+            flow.navigate(f"{web_base.rstrip('/')}/login")
+            flow.wait_for("document.readyState === 'complete' && !!document.querySelector('form')", timeout=20)
+            flow.fill('input[name="email"], input[type="email"]', login_email)
+            flow.fill('input[name="password"], input[type="password"]', login_password)
+            flow.click_text("进入项目空间", "button")
         flow.wait_for("location.pathname === '/projects' && !!document.querySelector('main')", timeout=30)
         return work(flow)
     finally:
@@ -342,7 +358,7 @@ def main() -> int:
     outsider_password = "password"
     cleanup_temp_user(outsider_email)
     api_register(args.api_base, outsider_email, outsider_name, outsider_password)
-    api_session(args.api_base, outsider_email, outsider_password)
+    outsider_token, outsider_user = api_session(args.api_base, outsider_email, outsider_password)
 
     screenshots: list[str] = []
     report: dict[str, object] = {
@@ -381,6 +397,8 @@ def main() -> int:
             web_base=args.web_base,
             login_email=args.owner_email,
             login_password=args.owner_password,
+            token=owner_token,
+            user_json=json.dumps(owner_user, ensure_ascii=True),
             viewport_width=args.viewport_width,
             viewport_height=args.viewport_height,
             work=owner_work,
@@ -391,6 +409,8 @@ def main() -> int:
 
         outsider_projects_shot = output_dir / f"account-isolation-02-outsider-projects-{stamp}.png"
         outsider_forbidden_shot = output_dir / f"account-isolation-03-outsider-foreign-project-redirect-{stamp}.png"
+        outsider_robotics_shot = output_dir / f"account-isolation-04-outsider-robotics-{stamp}.png"
+        outsider_rehab_shot = output_dir / f"account-isolation-05-outsider-rehab-arm-{stamp}.png"
 
         def outsider_work(flow: BrowserFlow):
             projects_state = flow.eval(
@@ -410,7 +430,7 @@ def main() -> int:
             flow.screenshot(outsider_projects_shot)
 
             flow.navigate(f"{args.web_base.rstrip('/')}/projects/{resolved_project_id}")
-            flow.wait_for("location.pathname === '/projects' && !!document.querySelector('main')", timeout=30)
+            time.sleep(2.0)
             forbidden_state = flow.eval(
                 f"""
                 (() => {{
@@ -419,23 +439,48 @@ def main() -> int:
                     url: location.href,
                     bodyText: text,
                     hasErrorBanner: text.includes('当前账号没有这个项目的访问权限'),
+                    hasNoPermissionText: text.includes('项目不存在或无权限'),
+                    returnedToProjects: location.pathname === '/projects',
                     hasForeignProjectName: text.includes({js_string(project_name)}),
                   }};
                 }})()
                 """
             )
             flow.screenshot(outsider_forbidden_shot)
-            return {"projects_state": projects_state, "forbidden_state": forbidden_state}
+
+            device_states = {}
+            for slug, shot in [("robotics", outsider_robotics_shot), ("rehab-arm-control", outsider_rehab_shot)]:
+                flow.navigate(f"{args.web_base.rstrip('/')}/projects/{resolved_project_id}/{slug}")
+                time.sleep(2.0)
+                device_states[slug] = flow.eval(
+                    f"""
+                    (() => {{
+                      const text = document.body ? document.body.innerText : '';
+                      return {{
+                        url: location.href,
+                        hasErrorBanner: text.includes('当前账号没有这个项目的访问权限'),
+                        hasNoPermissionText: text.includes('项目不存在或无权限'),
+                        returnedToProjects: location.pathname === '/projects',
+                        hasForeignProjectName: text.includes({js_string(project_name)}),
+                        exposesDeviceWorkbench: text.includes('设备数据工作台') || text.includes('专项总控') || text.includes('只读总览'),
+                      }};
+                    }})()
+                    """
+                )
+                flow.screenshot(shot)
+            return {"projects_state": projects_state, "forbidden_state": forbidden_state, "device_states": device_states}
 
         outsider_state = run_browser_session(
             web_base=args.web_base,
             login_email=outsider_email,
             login_password=outsider_password,
+            token=outsider_token,
+            user_json=json.dumps(outsider_user, ensure_ascii=True),
             viewport_width=args.viewport_width,
             viewport_height=args.viewport_height,
             work=outsider_work,
         )
-        screenshots.extend([str(outsider_projects_shot), str(outsider_forbidden_shot)])
+        screenshots.extend([str(outsider_projects_shot), str(outsider_forbidden_shot), str(outsider_robotics_shot), str(outsider_rehab_shot)])
 
         if not isinstance(outsider_state, dict):
             raise RuntimeError(f"Outsider browser state missing: {outsider_state!r}")
@@ -443,8 +488,24 @@ def main() -> int:
         forbidden_state = outsider_state.get("forbidden_state")
         if not isinstance(projects_state, dict) or projects_state.get("hasForeignProjectName") or projects_state.get("hasForeignProjectLink"):
             raise RuntimeError(f"Outsider /projects still exposed the foreign project: {projects_state}")
-        if not isinstance(forbidden_state, dict) or not forbidden_state.get("hasErrorBanner") or forbidden_state.get("hasForeignProjectName"):
+        forbidden_ok = isinstance(forbidden_state, dict) and (
+            forbidden_state.get("hasErrorBanner")
+            or forbidden_state.get("hasNoPermissionText")
+            or forbidden_state.get("returnedToProjects")
+        )
+        if not forbidden_ok or forbidden_state.get("hasForeignProjectName"):
             raise RuntimeError(f"Outsider direct-open did not redirect cleanly: {forbidden_state}")
+        device_states = outsider_state.get("device_states")
+        if not isinstance(device_states, dict):
+            raise RuntimeError(f"Outsider device workbench isolation state missing: {outsider_state}")
+        for slug, state in device_states.items():
+            if (
+                not isinstance(state, dict)
+                or not (state.get("hasErrorBanner") or state.get("hasNoPermissionText") or state.get("returnedToProjects"))
+                or state.get("hasForeignProjectName")
+                or state.get("exposesDeviceWorkbench")
+            ):
+                raise RuntimeError(f"Outsider direct-open exposed {slug}: {state}")
 
         report["owner_state"] = owner_state
         report["outsider_state"] = outsider_state
