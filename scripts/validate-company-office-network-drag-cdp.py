@@ -179,6 +179,17 @@ def main() -> int:
             """,
         )
         time.sleep(1.0)
+        cdp_eval(
+            cdp,
+            """
+            (() => {
+              const section = document.querySelector('section[aria-label="NPC 办公网"]');
+              section?.scrollIntoView({ block: 'center', inline: 'nearest' });
+              return true;
+            })()
+            """,
+        )
+        time.sleep(0.4)
         before = cdp_eval(
             cdp,
             """
@@ -208,21 +219,41 @@ def main() -> int:
 
         start_x = float(before["node"]["x"])
         start_y = float(before["node"]["y"])
+        drag_vector = cdp_eval(
+            cdp,
+            """
+            (() => {
+              const width = window.innerWidth || document.documentElement.clientWidth || 1440;
+              const height = window.innerHeight || document.documentElement.clientHeight || 900;
+              const node = document.querySelector('section[aria-label="NPC 办公网"] a[href*="seat="]');
+              const rect = node?.getBoundingClientRect();
+              const centerX = rect ? rect.left + rect.width / 2 : width / 2;
+              const centerY = rect ? rect.top + rect.height / 2 : height / 2;
+              return {
+                dx: centerX > width * 0.52 ? -96 : 96,
+                dy: centerY > height * 0.55 ? -44 : 44,
+              };
+            })()
+            """,
+        )
+        drag_dx = float(drag_vector.get("dx", 96) if isinstance(drag_vector, dict) else 96)
+        drag_dy = float(drag_vector.get("dy", 44) if isinstance(drag_vector, dict) else 44)
         cdp.send("Input.dispatchMouseEvent", {"type": "mouseMoved", "x": start_x, "y": start_y, "button": "none"})
         cdp.send("Input.dispatchMouseEvent", {"type": "mousePressed", "x": start_x, "y": start_y, "button": "left", "clickCount": 1})
         for step in range(1, 9):
+            progress = step / 8
             cdp.send(
                 "Input.dispatchMouseEvent",
                 {
                     "type": "mouseMoved",
-                    "x": start_x + step * 14,
-                    "y": start_y + step * 7,
+                    "x": start_x + drag_dx * progress,
+                    "y": start_y + drag_dy * progress,
                     "button": "left",
                     "buttons": 1,
                 },
             )
             time.sleep(0.05)
-        cdp.send("Input.dispatchMouseEvent", {"type": "mouseReleased", "x": start_x + 112, "y": start_y + 56, "button": "left", "clickCount": 1})
+        cdp.send("Input.dispatchMouseEvent", {"type": "mouseReleased", "x": start_x + drag_dx, "y": start_y + drag_dy, "button": "left", "clickCount": 1})
         time.sleep(0.8)
 
         after = cdp_eval(
