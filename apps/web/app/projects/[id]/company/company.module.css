@@ -820,17 +820,15 @@
 
 .officeMap {
   position: relative;
-  min-height: 360px;
+  min-height: 410px;
   overflow: hidden;
   border: 1px solid rgba(231, 199, 104, 0.12);
-  border-radius: 18px;
+  border-radius: 8px;
   background:
     linear-gradient(90deg, rgba(231, 199, 104, 0.045) 1px, transparent 1px),
     linear-gradient(180deg, rgba(158, 240, 191, 0.032) 1px, transparent 1px),
-    radial-gradient(circle at 22% 32%, rgba(158, 240, 191, 0.1), transparent 26%),
-    radial-gradient(circle at 78% 62%, rgba(231, 199, 104, 0.1), transparent 28%),
     rgba(5, 17, 15, 0.78);
-  background-size: 34px 34px, 34px 34px, auto, auto, auto;
+  background-size: 34px 34px, 34px 34px, auto;
 }
 
 .officeSvg {
@@ -846,6 +844,14 @@
   cursor: pointer;
 }
 
+.networkEdgeHit {
+  fill: none;
+  stroke: transparent;
+  stroke-linecap: round;
+  stroke-width: 12px;
+  pointer-events: stroke;
+}
+
 .networkEdge {
   fill: none;
   stroke: rgba(231, 199, 104, 0.42);
@@ -857,7 +863,21 @@
 
 .networkEdgeLink:hover .networkEdge {
   opacity: 1;
-  stroke-width: 4.6px;
+  stroke-width: 3.8px;
+}
+
+.networkEdgeLink[data-kind="relationship"] .networkEdge {
+  opacity: 0.44;
+  stroke-dasharray: 5 5;
+}
+
+.networkEdgeLink[data-kind="relationship"] .networkEdgeLabel {
+  fill: rgba(255, 248, 232, 0.64);
+  font-size: 2.3px;
+}
+
+.networkEdgeLink[data-kind="relationship"]:hover .networkEdge {
+  opacity: 0.82;
 }
 
 .networkEdge[data-tone="healthy"] {
@@ -892,16 +912,15 @@
 
 .officeNode {
   position: absolute;
-  width: 92px;
-  min-height: 76px;
+  width: 96px;
+  min-height: 78px;
   display: grid;
   justify-items: center;
   gap: 3px;
   padding: 8px;
   border: 1px solid rgba(231, 199, 104, 0.18);
-  border-radius: 18px;
+  border-radius: 8px;
   background:
-    radial-gradient(circle at 50% 0%, rgba(255, 248, 232, 0.1), transparent 38%),
     rgba(8, 23, 20, 0.92);
   box-shadow:
     0 14px 28px rgba(0, 0, 0, 0.22),
@@ -913,9 +932,7 @@
 .officeNode:hover {
   transform: translate(-50%, -52%);
   border-color: var(--line-strong);
-  background:
-    radial-gradient(circle at 50% 0%, rgba(255, 248, 232, 0.16), transparent 38%),
-    rgba(12, 31, 27, 0.94);
+  background: rgba(12, 31, 27, 0.94);
 }
 
 .officeNode[data-tone="healthy"] {
@@ -936,7 +953,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 14px;
+  border-radius: 8px;
   border: 1px solid rgba(231, 199, 104, 0.26);
   background:
     radial-gradient(circle at 35% 24%, rgba(255, 255, 255, 0.24), transparent 34%),

@@ -18,6 +18,21 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 type AnyRecord = Record<string, any>;
+type OfficeEdge = {
+  id: string;
+  fromId: string;
+  toId: string;
+  count: number;
+  label: string;
+  needStatus: string;
+  taskStatus: string;
+  receiptStatus: string;
+  activityTime: number;
+  kind: "collaboration" | "relationship";
+  needId?: string;
+  taskId?: string;
+  dispatchId?: string;
+};
 
 function asArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
@@ -728,6 +743,8 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
       taskStatus,
       dispatchStatus,
       receiptStatus,
+      taskId,
+      dispatchId,
       taskCount: linkedTasks.length,
       receiptCount: receiptMessages.length,
       activityTime: latestActivityTime(
@@ -815,17 +832,7 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
     };
   });
   const officeNodeById = new Map(officeNodes.map((node) => [node.id, node]));
-  const officeEdgeMap = new Map<string, {
-    id: string;
-    fromId: string;
-    toId: string;
-    count: number;
-    label: string;
-    needStatus: string;
-    taskStatus: string;
-    receiptStatus: string;
-    activityTime: number;
-  }>();
+  const officeEdgeMap = new Map<string, OfficeEdge>();
   for (const chain of collaborationChains) {
     const fromId = canonicalSeatId(chain.requesterId);
     const toId = canonicalSeatId(chain.targetId);
@@ -843,6 +850,10 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
         taskStatus: chain.taskStatus,
         receiptStatus: chain.receiptStatus,
         activityTime: chain.activityTime,
+        kind: "collaboration",
+        needId: chain.id,
+        taskId: chain.taskId,
+        dispatchId: chain.dispatchId,
       });
     } else {
       existing.count += 1;
@@ -852,6 +863,9 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
         existing.taskStatus = chain.taskStatus;
         existing.receiptStatus = chain.receiptStatus;
         existing.activityTime = chain.activityTime;
+        existing.needId = chain.id;
+        existing.taskId = chain.taskId;
+        existing.dispatchId = chain.dispatchId;
       }
     }
   }
@@ -859,7 +873,7 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
     .filter((edge) => officeNodeById.has(edge.fromId) && officeNodeById.has(edge.toId))
     .sort((left, right) => right.activityTime - left.activityTime);
   const existingOfficeEdgeIds = new Set(explicitOfficeEdges.map((edge) => edge.id));
-  const officeRelationshipEdges: typeof explicitOfficeEdges = [];
+  const officeRelationshipEdges: OfficeEdge[] = [];
   const seatsByOfficeWorkstation = new Map<string, typeof allSeats>();
   for (const seat of allSeats) {
     const key = seat.workstationId || "unassigned";
@@ -881,6 +895,7 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
         taskStatus: "同工位",
         receiptStatus: "等待回执",
         activityTime: 0,
+        kind: "relationship",
       });
     }
   }
@@ -899,9 +914,26 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
       taskStatus: "负责人",
       receiptStatus: "等待回执",
       activityTime: 0,
+      kind: "relationship",
     });
   }
   const officeEdges = [...explicitOfficeEdges, ...officeRelationshipEdges.slice(0, Math.max(0, 14 - explicitOfficeEdges.length))];
+  const selfPath = `/projects/${projectId}/company`;
+  const officeEdgeHref = (edge: OfficeEdge) => {
+    const query = new URLSearchParams({
+      return_to: selfPath,
+      from: "company",
+      seats: `${edge.fromId},${edge.toId}`,
+      focus: "collaboration",
+      collaboration_label: edge.label,
+    });
+    if (edge.kind === "collaboration") query.set("view", "collaboration-detail");
+    if (edge.kind === "relationship") query.set("view", "office-relationship");
+    if (edge.needId) query.set("need_id", edge.needId);
+    if (edge.taskId) query.set("task_id", edge.taskId);
+    if (edge.dispatchId) query.set("dispatch_id", edge.dispatchId);
+    return `/projects/${projectId}/workbench?${query.toString()}`;
+  };
   const seatRelationCards = allSeats.map((seat) => {
     const sameDepartmentPeers = allSeats.filter(
       (peer) => peer.id !== seat.id && peer.workstationId && peer.workstationId === seat.workstationId,
@@ -979,7 +1011,6 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
   const runningEventCount = allOrgEvents.filter((event) => /running|progress|active|pending|queued|acked|delivered/i.test(text(event.status, ""))).length;
   const completedEventCount = allOrgEvents.filter((event) => /completed|done|success|resolved/i.test(text(event.status, ""))).length;
   const taskDetailItems = (pendingHumanReviews.length ? pendingHumanReviews : recentOrgEvents).slice(0, 5);
-  const selfPath = `/projects/${projectId}/company`;
   const decisionItems = Array.from(new Set([
     pendingHumanReviews.length ? `${pendingHumanReviews.length} 条待人工确认` : "",
     queueOnlySeatCount ? `${queueOnlySeatCount} 名 NPC 当前只能先排队` : "",
@@ -1071,17 +1102,28 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
                   const p3y = from.y + dy * 0.68;
                   const p4x = from.x + dx * 0.86;
                   const p4y = from.y + dy * 0.86;
-                  const labelX = from.x + dx * 0.5;
-                  const labelY = from.y + dy * 0.5 - (index % 2 ? 2.8 : -2.8);
-                  const width = Math.min(4.2, 1.4 + edge.count * 0.45);
-                  const href = `/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=company`;
+                  const distance = Math.max(Math.hypot(dx, dy), 1);
+                  const normalX = -dy / distance;
+                  const normalY = dx / distance;
+                  const labelOffset = [-4.2, 0, 4.2, -7, 7][index % 5];
+                  const labelX = from.x + dx * 0.5 + normalX * labelOffset;
+                  const labelY = from.y + dy * 0.5 + normalY * labelOffset;
+                  const width = edge.kind === "relationship"
+                    ? 1.15
+                    : Math.min(3.1, 1.35 + edge.count * 0.32);
+                  const href = officeEdgeHref(edge);
+                  const edgeLabel = edge.kind === "relationship" ? `${edge.label}关系` : `${edge.count > 1 ? `${edge.count}条 ` : ""}${edge.label}`;
                   return (
-                    <a key={edge.id} href={href} className={styles.networkEdgeLink} aria-label={`${from.seat.name} 到 ${to.seat.name}: ${edge.label}`}>
+                    <a key={edge.id} href={href} className={styles.networkEdgeLink} data-kind={edge.kind} aria-label={`${from.seat.name} 到 ${to.seat.name}: ${edgeLabel}`}>
+                      <title>{`${from.seat.name} → ${to.seat.name}：${edgeLabel}`}</title>
+                      <line x1={p1x} y1={p1y} x2={p2x} y2={p2y} className={styles.networkEdgeHit} />
+                      <line x1={p2x} y1={p2y} x2={p3x} y2={p3y} className={styles.networkEdgeHit} />
+                      <line x1={p3x} y1={p3y} x2={p4x} y2={p4y} className={styles.networkEdgeHit} />
                       <line x1={p1x} y1={p1y} x2={p2x} y2={p2y} className={styles.networkEdge} data-tone={chainTone(edge.needStatus)} strokeWidth={width} />
                       <line x1={p2x} y1={p2y} x2={p3x} y2={p3y} className={styles.networkEdge} data-tone={chainTone(edge.taskStatus)} strokeWidth={width} />
                       <line x1={p3x} y1={p3y} x2={p4x} y2={p4y} className={styles.networkEdge} data-tone={chainTone(edge.receiptStatus)} strokeWidth={width} />
                       <text x={labelX} y={labelY} className={styles.networkEdgeLabel}>
-                        {edge.count > 1 ? `${edge.count}条 ` : ""}{edge.label}
+                        {edgeLabel}
                       </text>
                     </a>
                   );
@@ -1091,7 +1133,7 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
                 {officeNodes.map((node) => (
                   <Link
                     key={node.id}
-                    href={`/projects/${projectId}/workbench?seat_id=${encodeURIComponent(node.id)}&return_to=${encodeURIComponent(selfPath)}&from=company`}
+                    href={`/projects/${projectId}/workbench?seat=${encodeURIComponent(node.id)}&return_to=${encodeURIComponent(selfPath)}&from=company`}
                     className={styles.officeNode}
                     data-tone={node.tone}
                     style={{ left: `${node.x}%`, top: `${node.y}%` }}
