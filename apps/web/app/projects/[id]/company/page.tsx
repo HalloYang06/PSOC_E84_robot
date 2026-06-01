@@ -33,6 +33,16 @@ type OfficeEdge = {
   needId?: string;
   taskId?: string;
   dispatchId?: string;
+  summary: string;
+  dispatchStatus: string;
+  taskCount: number;
+  receiptCount: number;
+  latestReceipt: string;
+  activityLabel: string;
+  nextAction: string;
+  workbenchHref?: string;
+  knowledgeHref?: string;
+  skillHref?: string;
 };
 
 function asArray<T>(value: unknown): T[] {
@@ -244,6 +254,22 @@ function shortPublicText(value: unknown, fallback: string, maxLength = 92) {
   const next = userFacingEventText(value, fallback).replace(/\s+/g, " ").trim();
   if (next.length <= maxLength) return next;
   return `${next.slice(0, maxLength - 1)}…`;
+}
+
+function compactActivityLabel(value: number) {
+  if (!value) return "等待开始";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "等待开始";
+  return date.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
+function collaborationNextAction(needStatus: string, taskStatus: string, receiptStatus: string) {
+  if (/确认|审核|review/i.test(needStatus)) return "先处理确认";
+  if (/阻塞|失败|拒绝|blocked|failed|rejected/i.test(`${needStatus} ${taskStatus} ${receiptStatus}`)) return "先处理阻塞";
+  if (/等待回执/.test(receiptStatus)) return "等待承接回执";
+  if (/最终|完成|满足/.test(`${needStatus} ${taskStatus} ${receiptStatus}`)) return "沉淀知识/Skill";
+  if (/待生成|待投递|等待/.test(taskStatus)) return "推进到承接任务";
+  return "查看协作详情";
 }
 
 function reviewPolicyLabel(value: unknown) {
@@ -728,6 +754,22 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
     const taskStatus = primaryTask ? publicTaskStatusLabel(primaryTask.status) : "待生成任务";
     const dispatchStatus = dispatchId ? publicStatusLabel(dispatch.status ?? primaryTask?.status) : "待投递";
     const receiptStatus = publicReceiptLabel(receiptMessages);
+    const latestReceiptMessage = receiptMessages
+      .slice()
+      .sort((left, right) => text(right.created_at ?? right.createdAt, "").localeCompare(text(left.created_at ?? left.createdAt, "")))[0];
+    const activityTime = latestActivityTime(
+      need.last_activity_at,
+      need.lastActivityAt,
+      need.updated_at,
+      need.updatedAt,
+      need.created_at,
+      need.createdAt,
+      primaryTask?.updated_at,
+      primaryTask?.updatedAt,
+      primaryTask?.created_at,
+      primaryTask?.createdAt,
+      ...receiptMessages.map((message) => message.created_at ?? message.createdAt),
+    );
     return {
       id: needId,
       title: shortPublicText(need.title, `协作需求 ${index + 1}`, 54),
@@ -748,19 +790,16 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
       dispatchId,
       taskCount: linkedTasks.length,
       receiptCount: receiptMessages.length,
-      activityTime: latestActivityTime(
-        need.last_activity_at,
-        need.lastActivityAt,
-        need.updated_at,
-        need.updatedAt,
-        need.created_at,
-        need.createdAt,
-        primaryTask?.updated_at,
-        primaryTask?.updatedAt,
-        primaryTask?.created_at,
-        primaryTask?.createdAt,
-        ...receiptMessages.map((message) => message.created_at ?? message.createdAt),
-      ),
+      latestReceipt: latestReceiptMessage
+        ? shortPublicText(
+          latestReceiptMessage.title ?? latestReceiptMessage.body,
+          orgEventTypeLabel(latestReceiptMessage.message_type ?? latestReceiptMessage.messageType),
+          72,
+        )
+        : "还没有协作者回执",
+      activityTime,
+      activityLabel: compactActivityLabel(activityTime),
+      nextAction: collaborationNextAction(needStatus, taskStatus, receiptStatus),
     };
   }).sort((left, right) => right.activityTime - left.activityTime);
   const visibleChains = collaborationChains.slice(0, 4);
@@ -855,6 +894,13 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
         needId: chain.id,
         taskId: chain.taskId,
         dispatchId: chain.dispatchId,
+        summary: chain.summary,
+        dispatchStatus: chain.dispatchStatus,
+        taskCount: chain.taskCount,
+        receiptCount: chain.receiptCount,
+        latestReceipt: chain.latestReceipt,
+        activityLabel: chain.activityLabel,
+        nextAction: chain.nextAction,
       });
     } else {
       existing.count += 1;
@@ -867,6 +913,13 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
         existing.needId = chain.id;
         existing.taskId = chain.taskId;
         existing.dispatchId = chain.dispatchId;
+        existing.summary = chain.summary;
+        existing.dispatchStatus = chain.dispatchStatus;
+        existing.taskCount = chain.taskCount;
+        existing.receiptCount = chain.receiptCount;
+        existing.latestReceipt = chain.latestReceipt;
+        existing.activityLabel = chain.activityLabel;
+        existing.nextAction = chain.nextAction;
       }
     }
   }
@@ -897,6 +950,13 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
         receiptStatus: "等待回执",
         activityTime: 0,
         kind: "relationship",
+        summary: "同工位 NPC 可以互相创建结构化需求；真实协作产生后会替换这条组织关系线。",
+        dispatchStatus: "待投递",
+        taskCount: 0,
+        receiptCount: 0,
+        latestReceipt: "还没有协作回执",
+        activityLabel: "等待协作",
+        nextAction: "发起结构化 Need",
       });
     }
   }
@@ -916,6 +976,13 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
       receiptStatus: "等待回执",
       activityTime: 0,
       kind: "relationship",
+      summary: "负责人关系用于跨工位转交和审核；真实 Need/Task 产生后会显示具体协作链路。",
+      dispatchStatus: "待投递",
+      taskCount: 0,
+      receiptCount: 0,
+      latestReceipt: "还没有协作回执",
+      activityLabel: "等待协作",
+      nextAction: "发起结构化 Need",
     });
   }
   const officeEdges = [...explicitOfficeEdges, ...officeRelationshipEdges.slice(0, Math.max(0, 14 - explicitOfficeEdges.length))];
@@ -934,6 +1001,16 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
     if (edge.taskId) query.set("task_id", edge.taskId);
     if (edge.dispatchId) query.set("dispatch_id", edge.dispatchId);
     return `/projects/${projectId}/workbench?${query.toString()}`;
+  };
+  const officeForgeHref = (seatId: string, panel: "knowledge" | "skills") => {
+    const query = new URLSearchParams({
+      resources: `seat:${seatId}`,
+      return_to: selfPath,
+      from: "company",
+    });
+    if (panel === "knowledge") query.set("tab", "knowledge");
+    if (panel === "skills") query.set("tab", "skills");
+    return `/projects/${projectId}/skill-forge?${query.toString()}`;
   };
   const officeNetworkNodes: OfficeNetworkNode[] = officeNodes.map((node) => ({
     id: node.id,
@@ -957,11 +1034,21 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
     needStatus: edge.needStatus,
     taskStatus: edge.taskStatus,
     receiptStatus: edge.receiptStatus,
+    summary: edge.summary,
+    dispatchStatus: edge.dispatchStatus,
+    taskCount: edge.taskCount,
+    receiptCount: edge.receiptCount,
+    latestReceipt: edge.latestReceipt,
+    activityLabel: edge.activityLabel,
+    nextAction: edge.nextAction,
     needTone: chainTone(edge.needStatus),
     taskTone: chainTone(edge.taskStatus),
     receiptTone: chainTone(edge.receiptStatus),
     kind: edge.kind,
     href: officeEdgeHref(edge),
+    workbenchHref: officeEdgeHref(edge),
+    knowledgeHref: officeForgeHref(edge.toId, "knowledge"),
+    skillHref: officeForgeHref(edge.toId, "skills"),
   }));
   const seatRelationCards = allSeats.map((seat) => {
     const sameDepartmentPeers = allSeats.filter(

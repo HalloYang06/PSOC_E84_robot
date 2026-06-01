@@ -24,14 +24,24 @@ export type OfficeNetworkEdge = {
   toName: string;
   count: number;
   label: string;
+  summary: string;
   needStatus: string;
   taskStatus: string;
+  dispatchStatus: string;
   receiptStatus: string;
+  taskCount: number;
+  receiptCount: number;
+  latestReceipt: string;
+  activityLabel: string;
+  nextAction: string;
   needTone: string;
   taskTone: string;
   receiptTone: string;
   kind: "collaboration" | "relationship";
   href: string;
+  workbenchHref: string;
+  knowledgeHref: string;
+  skillHref: string;
 };
 
 type OfficeNetworkProps = {
@@ -317,12 +327,31 @@ export function OfficeNetwork({ projectId, nodes, edges }: OfficeNetworkProps) {
           </div>
           <strong>{selectedEdgeLabel}</strong>
           <p>{selectedEdge.fromName} → {selectedEdge.toName}</p>
+          <p>{selectedEdge.summary}</p>
           <div className={styles.officeEdgeSteps}>
             <span data-tone={selectedEdge.needTone}>需求：{selectedEdge.needStatus}</span>
             <span data-tone={selectedEdge.taskTone}>承接：{selectedEdge.taskStatus}</span>
             <span data-tone={selectedEdge.receiptTone}>回执：{selectedEdge.receiptStatus}</span>
           </div>
-          <Link href={selectedEdge.href}>打开两端 NPC</Link>
+          <div className={styles.officeEdgeLifecycle}>
+            <span>派发：{selectedEdge.dispatchStatus}</span>
+            <span>任务：{selectedEdge.taskCount}</span>
+            <span>回执：{selectedEdge.receiptCount}</span>
+            <span>最近：{selectedEdge.activityLabel}</span>
+          </div>
+          <div className={styles.officeEdgeReceipt}>
+            <span>最新回执</span>
+            <p>{selectedEdge.latestReceipt}</p>
+          </div>
+          <div className={styles.officeEdgeNext}>
+            <span>下一步</span>
+            <strong>{selectedEdge.nextAction}</strong>
+          </div>
+          <div className={styles.officeEdgeActions}>
+            <Link href={selectedEdge.workbenchHref}>打开两端 NPC</Link>
+            <Link href={selectedEdge.knowledgeHref}>沉淀知识</Link>
+            <Link href={selectedEdge.skillHref}>沉淀 Skill</Link>
+          </div>
         </aside>
       ) : null}
       {!edges.length ? (
