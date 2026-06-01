@@ -1740,6 +1740,11 @@
   gap: 10px;
 }
 
+.githubImportGuide .gitRollbackProfileHead {
+  display: flex;
+  grid-template-columns: none;
+}
+
 .gitRollbackProfileHead b {
   color: #ffffff;
   font-size: 13px;
@@ -1756,6 +1761,11 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
   gap: 7px;
+}
+
+.githubImportGuide .gitRollbackProfileBars {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
 }
 
 .gitRollbackProfileBars span {
