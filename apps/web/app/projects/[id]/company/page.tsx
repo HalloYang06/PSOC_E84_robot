@@ -604,9 +604,10 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
   return (
     <main className={styles.shell} data-embedded={searchParams?.embed === "drawer" ? "1" : undefined}>
       <nav className={styles.topNav} aria-label="公司层导航">
-        <Link href={`/projects/${projectId}`}>主页面</Link>
-        <Link href={`/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=company`}>NPC 工作台</Link>
-        <Link href={`/projects/${projectId}/skill-forge?return_to=${encodeURIComponent(selfPath)}&from=company`}>能力工坊</Link>
+        <span className={styles.navCrumb}>项目公司 / 公司层</span>
+        <Link href={`/projects/${projectId}`}>回到主页面</Link>
+        <Link href={`/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=company`}>进入 NPC 工作台</Link>
+        <Link href={`/projects/${projectId}/skill-forge?return_to=${encodeURIComponent(selfPath)}&from=company`}>管理能力工坊</Link>
         {returnToPath ? <Link href={returnToPath}>{labelProjectReturnPath(returnToPath)}</Link> : null}
       </nav>
 
@@ -614,7 +615,7 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
         <div>
           <span>公司层 / 运行态势图</span>
           <h1>{text(project.name, "AI 合作平台")} 公司沙盘</h1>
-          <p>一眼看部门、NPC、任务流、高风险确认和电脑状态；组织编辑和证据查看都在当前页抽屉里完成。</p>
+          <p>先看阻塞、再看部门、最后进入对应工作台处理；这里不展开长表格，只保留组织运行的关键线索。</p>
         </div>
         <section className={styles.statusStrip} aria-label="组织状态">
           <article><span>工位</span><strong>{workstationRows.length}</strong><small>逻辑部门</small></article>
@@ -742,8 +743,8 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
 
           <section className={styles.detailPanel}>
             <header>
-              <span>对话明细</span>
-              <strong>全部</strong>
+              <span>协作明细</span>
+              <strong>最近记录</strong>
             </header>
             <div className={styles.miniStats}>
               <article><strong>{runningEventCount}</strong><span>进行中</span></article>
