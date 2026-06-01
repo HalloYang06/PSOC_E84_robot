@@ -835,11 +835,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
           </div>
 
           <div className={styles.primaryGrid}>
-            {selected ? (
-              <Arm3DOverview motors={motors} safetyState={stateLabel(currentSafetyState)} />
-            ) : (
-              <ControlStationOnboarding projectId={projectId} />
-            )}
+            <Arm3DOverview motors={motors} safetyState={stateLabel(currentSafetyState)} />
 
             <aside className={styles.sideStack}>
               <section className={styles.safetyPanel} data-state={stateLabel(currentSafetyState)}>
@@ -860,6 +856,8 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
               </section>
             </aside>
           </div>
+
+          {!selected ? <ControlStationOnboarding projectId={projectId} /> : null}
 
           <details className={styles.drawerPanel}>
             <summary>摄像头关键帧</summary>
