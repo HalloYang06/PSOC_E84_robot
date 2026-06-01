@@ -4769,7 +4769,67 @@ export async function 删除能力工坊知识库(projectId: string, documentId:
     await ensureProjectCollaborationAccess(projectId);
     const normalizedId = text(documentId || formData.get("document_id"), "");
     if (!normalizedId) throw new Error("请先选择知识库");
+    const docsResult = await getJson(`/api/knowledge/projects/${projectId}/documents`);
+    const documents = asArray<Record<string, unknown>>(docsResult?.data ?? docsResult);
+    const targetDoc =
+      documents.find((item) =>
+        [
+          item.id,
+          item.repo_relative_path,
+          item.repoRelativePath,
+          item.path,
+          item.title,
+        ].some((candidate) => text(candidate, "") === normalizedId),
+      ) ?? null;
+    const targetPath = repoRelativePath(targetDoc?.repo_relative_path ?? targetDoc?.repoRelativePath ?? targetDoc?.path);
+    const targetTitle = text(targetDoc?.title ?? targetDoc?.name, "");
+    const ownerType = text(targetDoc?.owner_type ?? targetDoc?.ownerType ?? formData.get("owner_type"), "");
+    const ownerId = text(targetDoc?.owner_id ?? targetDoc?.ownerId ?? formData.get("owner_id"), "");
     await deleteJson(`/api/knowledge/projects/${projectId}/documents/${encodeRepoPathForRoute(normalizedId)}`);
+    if (ownerType === "seat" && ownerId && targetPath) {
+      const seatsResult = await getJson(`/api/collaboration/projects/${projectId}/thread-workstations`);
+      const seats = asArray<Record<string, unknown>>(seatsResult?.data ?? seatsResult);
+      const seat =
+        seats.find((item) =>
+          isNpcSeatRecord(item) &&
+          (
+            workstationLookupKeys(item).some((candidate) => candidate === ownerId) ||
+            seatIdentityValues(item).some((candidate) => candidate === ownerId)
+          ),
+        ) ?? null;
+      if (seat) {
+        const seatRecordId = text(seat.row_id ?? seat.rowId ?? seat.id ?? seat.config_id, ownerId);
+        const metadata = readRecord(seat.metadata ?? seat.extra_data ?? seat.extraData);
+        const nextPaths = uniqueStrings([
+          ...normalizeUnknownStringList(seat.knowledge_paths),
+          ...normalizeUnknownStringList(metadata.knowledge_paths),
+        ]).filter((item) => item !== targetPath);
+        const snapshot = readRecord(metadata.knowledge_forge_snapshot);
+        const snapshotMatches =
+          text(snapshot.changed_path, "") === targetPath ||
+          (targetTitle && text(snapshot.changed_title, "") === targetTitle);
+        const storedKnowledge = readRecord(metadata.npc_knowledge);
+        const nextKnowledge =
+          text(storedKnowledge.handoff_path, "") === targetPath
+            ? {
+                ...storedKnowledge,
+                summary: "",
+                handoff_path: "",
+                tags: normalizeUnknownStringList(storedKnowledge.tags).filter((item) => item !== "skill-forge"),
+              }
+            : storedKnowledge;
+        await patchJson(
+          `/api/collaboration/projects/${projectId}/thread-workstations/${encodeURIComponent(seatRecordId)}`,
+          {
+            metadata: mergeSeatMetadata(metadata, {
+              knowledge_paths: nextPaths,
+              npc_knowledge: nextKnowledge,
+              ...(snapshotMatches ? { knowledge_forge_snapshot: null } : {}),
+            }),
+          },
+        );
+      }
+    }
     revalidateProjectSurfaces(projectId);
     redirect(withQueryValue(returnTo, "team_notice", "知识库条目已删除"));
   } catch (error) {
