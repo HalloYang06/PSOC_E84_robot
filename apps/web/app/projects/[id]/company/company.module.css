@@ -123,7 +123,7 @@
   line-height: 1.55;
 }
 
-.focusReview a {
+.focusReview > a {
   min-height: 32px;
   display: inline-flex;
   align-items: center;
@@ -138,9 +138,67 @@
   white-space: nowrap;
 }
 
-.focusReview a:hover {
+.focusReview > a:hover {
   border-color: rgba(158, 240, 191, 0.54);
   background: rgba(158, 240, 191, 0.14);
+}
+
+.focusReviewItems {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.focusReviewItems a,
+.focusReviewItems p {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  padding: 9px;
+  border: 1px solid rgba(231, 199, 104, 0.16);
+  border-radius: 13px;
+  background: rgba(255, 248, 232, 0.045);
+}
+
+.focusReviewItems a {
+  transition: transform 150ms ease, border-color 150ms ease, background 150ms ease;
+}
+
+.focusReviewItems a:hover {
+  transform: translateY(-1px);
+  border-color: rgba(231, 199, 104, 0.38);
+  background: rgba(231, 199, 104, 0.09);
+}
+
+.focusReviewItems a strong {
+  display: block;
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.focusReviewItems a span {
+  overflow: hidden;
+  color: var(--accent);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.focusReviewItems a small {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.focusReviewItems p {
+  grid-column: 1 / -1;
 }
 
 .header {
@@ -1947,6 +2005,7 @@
   .statusStrip,
   .decisionBand,
   .focusReview,
+  .focusReviewItems,
   .sandbox,
   .chainList,
   .relationGrid,

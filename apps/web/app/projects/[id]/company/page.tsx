@@ -430,12 +430,14 @@ function companyFocusReview(value: unknown, queue: unknown) {
   const rawQueue = text(queue, "").toLowerCase();
   if (rawQueue === "tasks") {
     return {
+      queue: "tasks",
       eyebrow: "能力工坊索引验收",
       title: "正在查看刚索引的任务回执",
       detail: "重点抽查承接任务、回执状态和归档材料。这里只查看、验收、归档，不会自动派单。",
     };
   }
   return {
+    queue: "needs",
     eyebrow: "能力工坊索引验收",
     title: "正在查看刚索引的需求流转",
     detail: "重点抽查协作需求是否进入流转、是否需要确认、是否已有承接任务。这里只查看、验收、归档，不会自动派单。",
@@ -1310,6 +1312,41 @@ export default async function CompanyPage({
   const runningEventCount = allOrgEvents.filter((event) => /running|progress|active|pending|queued|acked|delivered/i.test(text(event.status, ""))).length;
   const completedEventCount = allOrgEvents.filter((event) => /completed|done|success|resolved/i.test(text(event.status, ""))).length;
   const taskDetailItems = (pendingHumanReviews.length ? pendingHumanReviews : recentOrgEvents).slice(0, 5);
+  const activeTaskPreviewSource = allTasks
+    .filter((task) => /queued|ready|running|active|in_progress|reviewing|waiting|acked|accepted/i.test(text(task.status, "")))
+    .sort((left, right) => latestActivityTime(right.updated_at, right.updatedAt, right.created_at, right.createdAt) - latestActivityTime(left.updated_at, left.updatedAt, left.created_at, left.createdAt));
+  const taskPreviewSource = (activeTaskPreviewSource.length ? activeTaskPreviewSource : allTasks)
+    .slice(0, 3)
+    .map((task, index) => {
+      const assigneeId = text(
+        task.assignee_seat_id
+          ?? task.assigneeSeatId
+          ?? task.assignee_agent_id
+          ?? task.assigneeAgentId
+          ?? task.assignee,
+        "",
+      );
+      const href = `/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=company${assigneeId ? `&seat_id=${encodeURIComponent(assigneeId)}` : ""}`;
+      return {
+        id: text(task.id ?? task.task_id ?? task.taskId, `task-preview-${index}`),
+        title: shortPublicText(task.title ?? task.name ?? task.summary, `承接任务 ${index + 1}`, 48),
+        meta: `${publicTaskStatusLabel(task.status)} · ${seatNameById.get(assigneeId) ?? "待确认承接方"}`,
+        detail: shortPublicText(task.description ?? task.context_summary ?? task.summary, "查看承接进度、回执状态和归档材料。", 92),
+        href,
+      };
+    });
+  const needPreviewSource = collaborationChains
+    .filter((chain) => !/已满足|已完成|已收起/.test(`${chain.needStatus} ${chain.taskStatus}`))
+    .sort((left, right) => right.activityTime - left.activityTime)
+    .slice(0, 3)
+    .map((chain, index) => ({
+      id: text(chain.id, `need-preview-${index}`),
+      title: chain.detailTitle,
+      meta: `${chain.needStatus} · ${chain.nextAction}`,
+      detail: chain.summary,
+      href: `/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=company${chain.targetId || chain.requesterId ? `&seat_id=${encodeURIComponent(chain.targetId || chain.requesterId)}` : ""}`,
+    }));
+  const focusReviewItems = focusReview?.queue === "tasks" ? taskPreviewSource : needPreviewSource;
   const decisionItems = Array.from(new Set([
     pendingHumanReviews.length ? `${pendingHumanReviews.length} 条待人工确认` : "",
     queueOnlySeatCount ? `${queueOnlySeatCount} 名 NPC 当前只能先排队` : "",
@@ -1353,6 +1390,17 @@ export default async function CompanyPage({
             <span>{focusReview.eyebrow}</span>
             <strong>{focusReview.title}</strong>
             <p>{focusReview.detail}</p>
+            <div className={styles.focusReviewItems} aria-label="本次先看条目">
+              {focusReviewItems.length ? focusReviewItems.map((item) => (
+                <Link key={item.id} href={item.href}>
+                  <strong>{item.title}</strong>
+                  <span>{item.meta}</span>
+                  <small>{item.detail}</small>
+                </Link>
+              )) : (
+                <p>当前没有可验收条目；可以回到能力工坊继续索引 NPC 沉淀，或等待新的协作回执进入公司层。</p>
+              )}
+            </div>
           </div>
           <Link href={`/projects/${projectId}/skill-forge?return_to=${encodeURIComponent(selfPath)}&from=company`}>返回能力工坊</Link>
         </section>
