@@ -2177,6 +2177,36 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
       active: gitRunnerPreflightStatus.tone === "ready" || Boolean(currentGitRollbackAlignment),
     },
   ];
+  const gitRollbackImpactCards = [
+    {
+      label: "代码范围",
+      value: selectedGitRollbackVersion?.ref ?? (gitRollbackTargetRef.trim() || "未选择"),
+      detail: selectedGitRollbackVersion
+        ? `${selectedGitRollbackToneLabel} / ${selectedGitRollbackVersion.source}`
+        : "手填引用会先进入只读预演，不直接执行。",
+      tone: "target",
+    },
+    {
+      label: "仓库来源",
+      value: projectGithubUrl ? "GitHub" : projectLocalGitUrl ? "本地镜像" : "待绑定",
+      detail: projectGithubUrl || projectLocalGitUrl || "先绑定仓库，预演和登记入口才完整可用。",
+      tone: projectGithubUrl || projectLocalGitUrl ? "ready" : "blocked",
+    },
+    {
+      label: "NPC 对齐",
+      value: currentGitRollbackAlignment ? "已有记录" : "待登记后生成",
+      detail: currentGitRollbackAlignment
+        ? `${currentGitRollbackAlignment.targetNpc} / ${currentGitRollbackAlignment.status}`
+        : "Boss、工位长和执行 NPC 会在登记后收到对齐任务。",
+      tone: currentGitRollbackAlignment ? "ready" : "pending",
+    },
+    {
+      label: "执行电脑",
+      value: gitRunnerPreflightStatus.title,
+      detail: gitRunnerPreflightStatus.detail,
+      tone: gitRunnerPreflightStatus.tone === "ready" ? "ready" : "blocked",
+    },
+  ];
   const historicalGitRollbackAlignments = useMemo(() => {
     const currentId = currentGitRollbackAlignment?.id;
     return gitRollbackAlignmentMessages.filter((message) => message.id !== currentId).slice(0, 5);
@@ -2673,6 +2703,16 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
           <div className={styles.gitRollbackReadiness}>
             <b>{gitRollbackTargetRef.trim() ? `当前选择：${selectedGitRollbackToneLabel}` : "先选择目标版本"}</b>
             <p>不会直接执行 git reset；生成回退预演后，再登记请求，最后等执行电脑只读预检和人工确认。</p>
+          </div>
+          <b>影响范围</b>
+          <div className={styles.gitRollbackImpactGrid} data-git-rollback-impact-grid="1">
+            {gitRollbackImpactCards.map((card) => (
+              <article key={`git-rollback-impact-${card.label}`} data-tone={card.tone}>
+                <span>{card.label}</span>
+                <b>{card.value}</b>
+                <small>{card.detail}</small>
+              </article>
+            ))}
           </div>
           <dl>
             <div>

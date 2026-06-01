@@ -253,7 +253,7 @@ def main() -> int:
 
         wait_for(
             cdp,
-            "document.body && document.body.innerText.includes('版本治理') && document.body.innerText.includes('登记回退请求') && document.body.innerText.includes('选择目标版本') && document.body.innerText.includes('只读预演') && document.body.innerText.includes('等待人工确认') && document.body.innerText.includes('不会直接执行 git reset')",
+            "document.body && document.body.innerText.includes('版本治理') && document.body.innerText.includes('登记回退请求') && document.body.innerText.includes('选择目标版本') && document.body.innerText.includes('只读预演') && document.body.innerText.includes('等待人工确认') && document.body.innerText.includes('影响范围') && document.body.innerText.includes('不会直接执行 git reset')",
             timeout_seconds=45,
         )
         wait_for(cdp, f"location.href.includes({json.dumps(git_url)}) || location.href.includes({json.dumps(git_path)})", timeout_seconds=15)
@@ -268,6 +268,10 @@ def main() -> int:
             "只读预演",
             "登记请求",
             "等待人工确认",
+            "影响范围",
+            "代码范围",
+            "NPC 对齐",
+            "执行电脑",
             "不会直接执行 git reset",
         )
         missing_markers = [marker for marker in required_markers if marker not in current_body]

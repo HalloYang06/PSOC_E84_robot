@@ -1666,6 +1666,63 @@
   margin: 0;
 }
 
+.gitRollbackImpactGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.githubImportGuide .gitRollbackImpactGrid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.gitRollbackImpactGrid article {
+  display: grid;
+  gap: 5px;
+  min-height: 96px;
+  padding: 10px;
+  border: 1px solid rgba(121, 238, 255, 0.18);
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.gitRollbackImpactGrid article[data-tone="ready"] {
+  border-color: rgba(166, 255, 196, 0.34);
+  background: rgba(21, 96, 56, 0.12);
+}
+
+.gitRollbackImpactGrid article[data-tone="blocked"] {
+  border-color: rgba(255, 231, 104, 0.34);
+  background: rgba(255, 231, 104, 0.08);
+}
+
+.gitRollbackImpactGrid article[data-tone="target"] {
+  border-color: rgba(121, 238, 255, 0.34);
+  background: rgba(23, 113, 142, 0.16);
+}
+
+.gitRollbackImpactGrid span {
+  width: fit-content;
+  padding: 3px 7px;
+  border: 1px solid rgba(121, 238, 255, 0.22);
+  color: rgba(219, 251, 255, 0.74);
+  font-size: 11px;
+  font-weight: 1000;
+}
+
+.gitRollbackImpactGrid b {
+  color: #ffffff;
+  font-size: 13px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.gitRollbackImpactGrid small {
+  color: rgba(219, 251, 255, 0.68);
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .gitVersionMetaRow {
   display: flex;
   align-items: center;
@@ -1721,6 +1778,8 @@
 }
 
 @media (max-width: 980px) {
+  .githubImportGuide .gitRollbackImpactGrid,
+  .gitRollbackImpactGrid,
   .githubImportGuide .gitRollbackSafetyRail,
   .gitRollbackSafetyRail {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1728,6 +1787,8 @@
 }
 
 @media (max-width: 560px) {
+  .githubImportGuide .gitRollbackImpactGrid,
+  .gitRollbackImpactGrid,
   .githubImportGuide .gitRollbackSafetyRail,
   .gitRollbackSafetyRail {
     grid-template-columns: minmax(0, 1fr);
