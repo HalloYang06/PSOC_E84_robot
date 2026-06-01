@@ -119,7 +119,17 @@ def page_state(cdp: object, kind: str) -> dict[str, object]:
 def validate_page(cdp: object, web_base: str, project_id: str, path: str, kind: str, output_dir: Path, stamp: str, width: int, height: int) -> dict[str, object]:
     set_viewport(cdp, width, height)
     cdp.send("Page.navigate", {"url": f"{web_base}/projects/{quote(project_id, safe='')}/{path}"})
-    wait_for(cdp, "document.readyState === 'complete' && document.body && document.body.innerText.length > 100")
+    time.sleep(2.5)
+    wait_for(
+        cdp,
+        f"""
+        (() => {{
+          const body = document.body?.innerText || '';
+          return location.pathname.endsWith('/{path}')
+            && (body.includes('设备数据工作台') || body.includes('专项总控') || body.includes('只读总览'));
+        }})()
+        """,
+    )
     time.sleep(0.5)
     state = page_state(cdp, kind)
     shot = output_dir / f"{kind}-{width}x{height}-{stamp}.png"
