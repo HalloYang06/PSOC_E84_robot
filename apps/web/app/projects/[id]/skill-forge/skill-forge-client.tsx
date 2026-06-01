@@ -501,9 +501,9 @@ function ForgeTile({
             <p>{seedSummary || "这条协作已经带入当前 NPC，可继续整理成知识或 Skill。"}</p>
           </div>
           <div>
-            {collaborationSeed.needId ? <small>需求 {collaborationSeed.needId}</small> : null}
-            {collaborationSeed.taskId ? <small>任务 {collaborationSeed.taskId}</small> : null}
-            {collaborationSeed.dispatchId ? <small>派发 {collaborationSeed.dispatchId}</small> : null}
+            {collaborationSeed.needId ? <small>已关联需求</small> : null}
+            {collaborationSeed.taskId ? <small>已关联任务</small> : null}
+            {collaborationSeed.dispatchId ? <small>已关联投递回执</small> : null}
           </div>
         </section>
       ) : null}
@@ -1103,3 +1103,4 @@ export function SkillForgeClient({
     </main>
   );
 }
+
