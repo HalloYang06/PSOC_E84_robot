@@ -1433,6 +1433,7 @@ function userFacingTerminalText(value: unknown) {
     .replace(/\bcanonical\b/gi, "协作记录")
     .replace(/\brequested id\b/gi, "协作记录")
     .replace(/\braw UUID\b/gi, "协作记录")
+    .replace(/serial port returned no data in the short capture window/gi, "短时间采集没有读到数据，可延长采集时间或检查设备输出")
     .replace(/最小回执/g, "已收到提醒");
 }
 
@@ -1455,6 +1456,10 @@ function publicTerminalStatus(status: unknown) {
       return "已接单";
     case "cancelled":
       return "已取消";
+    case "short_window_fallback":
+      return "采集窗口无数据";
+    case "timeout":
+      return "等待超时";
     default:
       return text(status, "已记录");
   }
@@ -1533,7 +1538,7 @@ function terminalEventLines(tile: DebugWindow, messages: AnyRecord[]) {
         if (sampleCount && sampleCount !== "0") {
           return `[${publicTerminalEventPrefix("capture", "done")}] 已收到 ${sampleCount} 个样本`;
         }
-        return `[${publicTerminalEventPrefix("capture", resultStatus)}] ${text(result.error, "执行电脑已返回采集回执")}`;
+        return `[${publicTerminalEventPrefix("capture", resultStatus)}] ${userFacingTerminalText(result.error) || "执行电脑已返回采集回执"}`;
       }
       return `[${publicTerminalEventPrefix("result", status)}] ${userFacingTerminalText(message.body) || "执行电脑已返回结果"}`;
     }
