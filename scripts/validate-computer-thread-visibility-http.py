@@ -170,6 +170,7 @@ def main() -> int:
     output_dir.mkdir(parents=True, exist_ok=True)
     runtime_dir = Path(tempfile.mkdtemp(prefix="computer-thread-visibility-http-"))
     computer_id = f"thread-http-{stamp[-6:]}"
+    actual_computer_id = computer_id
     computer_label = f"Thread HTTP {stamp[-6:]}"
     runner_id = f"runner-http-{stamp[-6:]}"
     runner_name = f"Runner HTTP {stamp[-6:]}"
@@ -189,7 +190,7 @@ def main() -> int:
 
     try:
         token, _user = api_login(api_base, args.login_email, args.login_password)
-        request_json(
+        create_node_payload = request_json(
             f"{api_base}/api/collaboration/projects/{project_id}/computer-nodes",
             method="POST",
             headers={"Authorization": f"Bearer {token}"},
@@ -203,9 +204,13 @@ def main() -> int:
                 "metadata": {"source": "thread_visibility_http_validation"},
             },
         )
+        create_node_data = create_node_payload.get("data") if isinstance(create_node_payload, dict) else {}
+        if isinstance(create_node_data, dict):
+            actual_computer_id = str(create_node_data.get("id") or create_node_data.get("config_id") or computer_id).strip() or computer_id
+        report["actual_computer_id"] = actual_computer_id
 
         pairing = request_json(
-            f"{api_base}/api/collaboration/projects/{project_id}/computer-nodes/{computer_id}/pairing-token",
+            f"{api_base}/api/collaboration/projects/{project_id}/computer-nodes/{actual_computer_id}/pairing-token",
             method="POST",
             headers={"Authorization": f"Bearer {token}"},
             payload={},
@@ -215,22 +220,24 @@ def main() -> int:
             raise RuntimeError("Pairing token missing from API response")
         report["pairing_token_tail"] = pairing_token[-8:]
 
-        register_result = onboarding.run_powershell_script(
-            "register-runner.ps1",
-            "-Server",
-            api_base,
-            "-PairingToken",
-            pairing_token,
-            "-ComputerNodeId",
-            computer_id,
-            "-RunnerName",
-            runner_name,
-            "-RunnerId",
-            runner_id,
+        register_payload = request_json(
+            f"{api_base}/api/runners/register",
+            method="POST",
+            headers={"X-Runner-Registration-Token": pairing_token},
+            payload={
+                "runner_id": runner_id,
+                "runner_name": runner_name,
+                "computer_node_id": actual_computer_id,
+                "capabilities": ["codex", "threads"],
+            },
         )
-        if int(register_result.get("returncode", 1)) != 0:
-            raise RuntimeError(f"register-runner failed: {register_result}")
-        report["register_returncode"] = register_result["returncode"]
+        report["register_runner"] = register_payload.get("data") if isinstance(register_payload, dict) else register_payload
+        request_json(
+            f"{api_base}/api/runners/heartbeat",
+            method="POST",
+            headers={"X-Runner-Id": runner_id},
+            payload={"runner_id": runner_id},
+        )
 
         synthetic_threads = [
             {
@@ -247,7 +254,7 @@ def main() -> int:
         ]
         sync_payload = {
             "project_id": project_id,
-            "computer_node_id": computer_id,
+            "computer_node_id": actual_computer_id,
             "workstations": synthetic_threads,
         }
         sync_response = request_runner_json(
@@ -270,7 +277,7 @@ def main() -> int:
             item
             for item in (workstations if isinstance(workstations, list) else [])
             if isinstance(item, dict)
-            and str(item.get("computer_node_id") or item.get("computer_node") or "").strip() == computer_id
+            and str(item.get("computer_node_id") or item.get("computer_node") or "").strip() == actual_computer_id
         ]
         report["api_thread_count"] = len(synced_threads)
 
@@ -342,7 +349,7 @@ def main() -> int:
             report["cleanup_threads"] = cleanup_threads
             try:
                 request_json(
-                    f"{api_base}/api/collaboration/projects/{project_id}/computer-nodes/{computer_id}",
+                    f"{api_base}/api/collaboration/projects/{project_id}/computer-nodes/{actual_computer_id}",
                     method="DELETE",
                     headers={"Authorization": f"Bearer {token}"},
                 )
