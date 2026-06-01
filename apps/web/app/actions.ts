@@ -4944,15 +4944,6 @@ function fileAlreadyIndexed(items: Record<string, unknown>[], repoPath: string) 
   });
 }
 
-function depositAuditItem(kind: string, scanned: number, added: number) {
-  return {
-    kind,
-    scanned,
-    added,
-    skipped: Math.max(0, scanned - added),
-  };
-}
-
 export async function 索引Npc沉淀(projectId: string, seatId: string, formData: FormData) {
   const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "skill-forge");
   try {
@@ -5004,14 +4995,10 @@ export async function 索引Npc沉淀(projectId: string, seatId: string, formDat
     const skillFiles = await safeRepoFileCandidates(npcKnowledge.skill_deposit_path, { maxFiles: 12, fileNames: ["skill.md"] });
     const needFiles = await safeRepoFileCandidates(npcKnowledge.need_deposit_path, { maxFiles: 12, extensions: [".md", ".mdx", ".json"] });
     const taskFiles = await safeRepoFileCandidates(npcKnowledge.task_deposit_path, { maxFiles: 12, extensions: [".md", ".mdx", ".json"] });
-    const [documentsResult, skillsResult, requirementsResult, tasksResult] = await Promise.all([
-      getJson(`/api/knowledge/projects/${projectId}/documents`),
-      getJson(`/api/knowledge/projects/${projectId}/skills`),
+    const [requirementsResult, tasksResult] = await Promise.all([
       getJson(`/api/requirements?project_id=${encodeURIComponent(projectId)}`),
       getJson(`/api/tasks?project_id=${encodeURIComponent(projectId)}&page_size=100`),
     ]);
-    const existingDocuments = asArray<Record<string, unknown>>(documentsResult?.data ?? documentsResult);
-    const existingSkills = asArray<Record<string, unknown>>(skillsResult?.data ?? skillsResult);
     const existingRequirements = asArray<Record<string, unknown>>(requirementsResult?.data ?? requirementsResult);
     const existingTasks = asArray<Record<string, unknown>>(tasksResult?.data ?? tasksResult);
     let knowledgeCount = 0;
@@ -5020,7 +5007,6 @@ export async function 索引Npc沉淀(projectId: string, seatId: string, formDat
     let taskCount = 0;
 
     for (const file of knowledgeFiles) {
-      if (fileAlreadyIndexed(existingDocuments, file.relativePath)) continue;
       await postJson(`/api/knowledge/projects/${projectId}/documents`, {
         title: markdownTitle(file.content, `${seatName} 沉淀知识`),
         repo_relative_path: file.relativePath,
@@ -5043,12 +5029,6 @@ export async function 索引Npc沉淀(projectId: string, seatId: string, formDat
 
     for (const file of skillFiles) {
       const skillId = slugifyAscii(`${npcKnowledge.slug}-${path.basename(path.dirname(file.relativePath))}`, `skill-${skillCount + 1}`);
-      if (
-        fileAlreadyIndexed(existingSkills, file.relativePath) ||
-        existingSkills.some((skill) => text(skill.skill_id ?? skill.skillId ?? skill.id, "").toLowerCase() === skillId)
-      ) {
-        continue;
-      }
       await postJson(`/api/knowledge/projects/${projectId}/skills`, {
         skill_id: skillId,
         label: markdownTitle(file.content, `${seatName} 自造 Skill`),
@@ -5140,41 +5120,11 @@ export async function 索引Npc沉淀(projectId: string, seatId: string, formDat
       taskCount += 1;
     }
 
-    const indexedAt = new Date().toISOString();
-    const auditItems = [
-      depositAuditItem("知识", knowledgeFiles.length, knowledgeCount),
-      depositAuditItem("Skill 草稿", skillFiles.length, skillCount),
-      depositAuditItem("需求", needFiles.length, needCount),
-      depositAuditItem("任务回执", taskFiles.length, taskCount),
-    ];
-    const scannedTotal = auditItems.reduce((sum, item) => sum + item.scanned, 0);
-    const addedTotal = auditItems.reduce((sum, item) => sum + item.added, 0);
-    const skippedTotal = auditItems.reduce((sum, item) => sum + item.skipped, 0);
-    await patchJson(
-      `/api/collaboration/projects/${projectId}/thread-workstations/${encodeURIComponent(seatRecordId)}`,
-      {
-        metadata: mergeSeatMetadata(metadata, {
-          npc_deposit_index_snapshot: {
-            generated_at: indexedAt,
-            scanned_total: scannedTotal,
-            added_total: addedTotal,
-            skipped_total: skippedTotal,
-            items: auditItems,
-            summary: scannedTotal
-              ? `扫描 ${scannedTotal} 个文件，新增 ${addedTotal} 条，跳过 ${skippedTotal} 条已入库记录。`
-              : "默认写入路径暂未发现可索引文件。",
-          },
-        }),
-      },
-    );
-
     revalidateProjectSurfaces(projectId);
     let nextPath = withQueryValue(
       returnTo,
       "team_notice",
-      scannedTotal
-        ? `已扫描 ${scannedTotal} 个沉淀文件：新增 ${addedTotal} 条，跳过 ${skippedTotal} 条已入库记录`
-        : "默认写入路径暂未发现可索引文件",
+      `已索引 ${knowledgeCount} 条知识、${skillCount} 个 Skill 草稿、${needCount} 条需求、${taskCount} 条任务回执`,
     );
     nextPath = withQueryValue(nextPath, "seat", seatRecordId);
     redirect(nextPath);

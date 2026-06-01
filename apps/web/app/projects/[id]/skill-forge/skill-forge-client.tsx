@@ -410,11 +410,6 @@ function snapshotTime(value: unknown) {
   return Number.isNaN(date.getTime()) ? "" : date.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
-function safeCount(value: unknown) {
-  const next = Number(value ?? 0);
-  return Number.isFinite(next) && next > 0 ? Math.round(next) : 0;
-}
-
 function forgeHref(projectId: string, openIds: string[]) {
   const params = new URLSearchParams();
   if (openIds.length) params.set("resources", openIds.join(","));
@@ -522,17 +517,6 @@ function ForgeTile({
       : null,
   ].filter((item): item is { id: string; label: string; owner: string; generatedAt: string; effect: string; source: string; summary: string } => Boolean(item));
   const deposits = resource.kind === "seat" ? npcDepositPaths(sourceSeat, resource) : null;
-  const depositSnapshot = (sourceSeat?.metadata?.npc_deposit_index_snapshot ?? sourceSeat?.extra_data?.npc_deposit_index_snapshot ?? null) as AnyRecord | null;
-  const depositAuditRows = Array.isArray(depositSnapshot?.items)
-    ? (depositSnapshot.items as AnyRecord[]).map((item) => ({
-        kind: text(item.kind, "沉淀"),
-        scanned: safeCount(item.scanned),
-        added: safeCount(item.added),
-        skipped: safeCount(item.skipped),
-      }))
-    : [];
-  const depositAuditTime = snapshotTime(depositSnapshot?.generated_at);
-  const depositAuditSummary = text(depositSnapshot?.summary, "");
   const tabLabel = activeTab === "knowledge" ? "知识库配置" : activeTab === "git" ? "Git 管理" : "Skill 配置";
   const seedTitle = text(collaborationSeed?.title, `${resource.name} 协作沉淀`);
   const seedSummary = [
@@ -917,25 +901,6 @@ function ForgeTile({
                 })}
               </ul>
               <p>这些都是 GitHub 仓库相对路径；本地电脑只负责执行和同步。</p>
-              {depositSnapshot ? (
-                <div className={styles.depositAudit} aria-label="最近一次沉淀索引结果">
-                  <div>
-                    <span>最近索引</span>
-                    <strong>{depositAuditSummary || "已记录本次扫描结果"}</strong>
-                    {depositAuditTime ? <small>{depositAuditTime}</small> : null}
-                  </div>
-                  {depositAuditRows.length ? (
-                    <div className={styles.depositAuditGrid}>
-                      {depositAuditRows.map((item) => (
-                        <span key={item.kind}>
-                          <b>{item.kind}</b>
-                          <small>扫描 {item.scanned} · 新增 {item.added} · 跳过 {item.skipped}</small>
-                        </span>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
               <form className={styles.inlineAction} action={索引Npc沉淀.bind(null, projectId, resource.id)}>
                 <input type="hidden" name="return_to" value={`/projects/${projectId}/skill-forge?resources=${encodeURIComponent(resourceKey(resource))}`} />
                 <button type="submit">索引该 NPC 沉淀</button>
@@ -1019,14 +984,7 @@ function ForgeTile({
             <div>
               <span>NPC 默认写入路径</span>
               <strong>知识 / Skill / 需求 / 任务回执</strong>
-              <p>{depositAuditSummary || `${deposits.knowledge} · ${deposits.skill}`}</p>
-              {depositAuditRows.length ? (
-                <div className={styles.depositAuditPills} aria-label="沉淀索引摘要">
-                  {depositAuditRows.map((item) => (
-                    <span key={`row-${item.kind}`}>{item.kind} 新增 {item.added} / 跳过 {item.skipped}</span>
-                  ))}
-                </div>
-              ) : null}
+              <p>{deposits.knowledge} · {deposits.skill}</p>
             </div>
             <form className={styles.inlineAction} action={索引Npc沉淀.bind(null, projectId, resource.id)}>
               <input type="hidden" name="return_to" value={`/projects/${projectId}/skill-forge?resources=${encodeURIComponent(resourceKey(resource))}`} />

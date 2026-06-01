@@ -938,82 +938,6 @@
   color: var(--forge-text);
 }
 
-.depositAudit {
-  display: grid;
-  gap: 8px;
-  padding: 9px;
-  border: 1px solid rgba(117, 247, 221, 0.18);
-  border-radius: 14px;
-  background:
-    radial-gradient(circle at 0% 0%, rgba(117, 247, 221, 0.1), transparent 38%),
-    rgba(0, 0, 0, 0.14);
-}
-
-.depositAudit > div:first-child {
-  display: grid;
-  gap: 3px;
-}
-
-.depositAudit span {
-  color: var(--forge-amber);
-  font-size: 11px;
-  font-weight: 900;
-}
-
-.depositAudit strong {
-  overflow-wrap: anywhere;
-  color: var(--forge-text);
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-.depositAudit small {
-  color: rgba(205, 232, 238, 0.66);
-  font-size: 10px;
-  font-weight: 800;
-}
-
-.depositAuditGrid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 6px;
-}
-
-.depositAuditGrid span {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-  padding: 7px;
-  border: 1px solid rgba(232, 189, 95, 0.16);
-  border-radius: 12px;
-  background: rgba(255, 247, 225, 0.045);
-}
-
-.depositAuditGrid b,
-.depositAuditGrid small {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.depositAuditPills {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 7px;
-}
-
-.depositAuditPills span {
-  min-width: 0;
-  padding: 4px 7px;
-  border: 1px solid rgba(117, 247, 221, 0.18);
-  border-radius: 999px;
-  background: rgba(117, 247, 221, 0.07);
-  color: rgba(218, 253, 248, 0.82);
-  font-size: 10px;
-  font-weight: 900;
-  overflow-wrap: anywhere;
-}
-
 .inlineAction {
   display: flex;
 }
@@ -1377,10 +1301,6 @@
   .depositCard a {
     grid-column: 2;
     justify-self: start;
-  }
-
-  .depositAuditGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .skillGrid .knowledgeEditorCard {
