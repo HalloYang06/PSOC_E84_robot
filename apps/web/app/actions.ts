@@ -4678,6 +4678,7 @@ export async function 保存能力工坊知识库(projectId: string, formData: F
     const closureNeedId = text(formData.get("closure_need_id"), "");
     const closureTaskId = text(formData.get("closure_task_id"), "");
     const closureDispatchId = text(formData.get("closure_dispatch_id"), "");
+    const savedAt = new Date().toISOString();
     if (!title) throw new Error("请填写知识库标题");
     if (!repoRelativePathValue) throw new Error("请填写仓库相对路径");
 
@@ -4695,13 +4696,64 @@ export async function 保存能力工坊知识库(projectId: string, formData: F
         created_from_message_id: sourceMessageId || null,
         source: authorSeatId ? "npc-authored" : "human-authored",
         updated_from: "skill-forge",
-        updated_at: new Date().toISOString(),
+        updated_at: savedAt,
         closure_source: closureSource || null,
         closure_need_id: closureNeedId || null,
         closure_task_id: closureTaskId || null,
         closure_dispatch_id: closureDispatchId || null,
       },
     });
+
+    if (ownerType === "seat" && ownerId) {
+      const seatsResult = await getJson(`/api/collaboration/projects/${projectId}/thread-workstations`);
+      const seats = asArray<Record<string, unknown>>(seatsResult?.data ?? seatsResult);
+      const seat =
+        seats.find((item) =>
+          isNpcSeatRecord(item) &&
+          (
+            workstationLookupKeys(item).some((candidate) => candidate === ownerId) ||
+            seatIdentityValues(item).some((candidate) => candidate === ownerId)
+          ),
+        ) ?? null;
+      if (seat) {
+        const seatRecordId = text(seat.row_id ?? seat.rowId ?? seat.id ?? seat.config_id, ownerId);
+        const seatName = text(seat.name ?? seat.workstation_name, "该 NPC");
+        const metadata = readRecord(seat.metadata ?? seat.extra_data ?? seat.extraData);
+        const existingPaths = uniqueStrings([
+          ...normalizeUnknownStringList(seat.knowledge_paths),
+          ...normalizeUnknownStringList(metadata.knowledge_paths),
+          repoRelativePathValue,
+        ]);
+        const storedKnowledge = readRecord(metadata.npc_knowledge);
+        await patchJson(
+          `/api/collaboration/projects/${projectId}/thread-workstations/${encodeURIComponent(seatRecordId)}`,
+          {
+            metadata: mergeSeatMetadata(metadata, {
+              knowledge_paths: existingPaths,
+              npc_knowledge: {
+                ...storedKnowledge,
+                summary: summary || text(storedKnowledge.summary, `已保存知识库：${title}`),
+                handoff_path: text(storedKnowledge.handoff_path, repoRelativePathValue),
+                tags: uniqueStrings([
+                  ...normalizeUnknownStringList(storedKnowledge.tags),
+                  ...tags,
+                  "skill-forge",
+                ]),
+              },
+              knowledge_forge_snapshot: {
+                source: "能力工坊",
+                generated_at: savedAt,
+                changed_path: repoRelativePathValue,
+                changed_title: title,
+                affected_seat_name: seatName,
+                effect: "下一轮派单 / 刷新后的上岗包会读取",
+                summary: "能力工坊已更新该 NPC 的知识库配置源；后续新派单和刷新后的上岗包会读取这份知识。",
+              },
+            }),
+          },
+        );
+      }
+    }
     revalidateProjectSurfaces(projectId);
     redirect(withQueryValue(returnTo, "team_notice", closureSource ? `已保存协作知识：${title}，下一步可索引 NPC 沉淀。` : `已保存知识库：${title}`));
   } catch (error) {
