@@ -295,6 +295,15 @@ const SCORECARD_FIX_TAB: Record<string, ModuleTab> = {
   token_spend_7d_yuan: "exchange",
 };
 
+function userFacingRunState(grade?: string) {
+  const normalized = String(grade || "").trim().toUpperCase();
+  if (normalized === "A") return "稳定";
+  if (normalized === "B") return "良好";
+  if (normalized === "C") return "需关注";
+  if (normalized === "D") return "需整理";
+  return "待确认";
+}
+
 function buildWatcherCommand(projectId: string, workstationId: string): string {
   const quote = (value: string) =>
     /^[A-Za-z0-9_\-]+$/.test(value) ? value : `'${value.replace(/'/g, "''")}'`;
@@ -4366,8 +4375,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                   onClick={() => setScorecardOpen((v) => !v)}
                   title={`${scorecard.summary}（点击展开 6 项指标）`}
                 >
-                  运行评分 {scorecard.grade}
-                  {scorecard.score !== null ? ` (${scorecard.score})` : ""}
+                  运行状态 {userFacingRunState(scorecard.grade)}
                 </button>
               ) : null}
               <button
@@ -4566,8 +4574,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             <div className={styles.scorecardPanel}>
               <div className={styles.scorecardHeader}>
                 <strong>
-                  运行评分 {scorecard.grade}
-                  {scorecard.score !== null ? ` (${scorecard.score})` : ""}
+                  运行状态：{userFacingRunState(scorecard.grade)}
                 </strong>
                 <small>{scorecard.summary} · 近 7 天</small>
               </div>
@@ -4585,7 +4592,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                         <button
                           type="button"
                           className={styles.scorecardFixButton}
-                          onClick={() => openPanel(fixTab, "运行评分指标")}
+                          onClick={() => openPanel(fixTab, "运行状态指标")}
                           title={`跳到 ${modules.find((m) => m.tab === fixTab)?.label ?? fixTab} 模块`}
                         >
                           去修复 →

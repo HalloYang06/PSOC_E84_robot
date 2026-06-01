@@ -29,7 +29,7 @@ const capabilityItems = [
   "项目、账号、电脑、线程、NPC 数据互相隔离",
   "Boss NPC 把一句话目标拆成工位、NPC、skill 和验收口",
   "Codex、Claude、Qwen 等线程统一进入协作链路",
-  "人工审核、自动化开关、最终回复池都回到项目内",
+  "人工确认、自动化开关和结果收口都回到项目内",
 ];
 
 function isSafeLocalReturnPath(value: string) {
