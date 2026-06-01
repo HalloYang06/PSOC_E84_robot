@@ -68,6 +68,22 @@ function seatMatchesIdentity(value: AnyRecord, identity: string) {
   return normalized ? seatIdentityValues(value).includes(normalized) : false;
 }
 
+function normalizeResourceParam(value: string, seats: AnyRecord[], workstations: AnyRecord[]) {
+  const raw = text(value, "");
+  if (!raw) return "";
+  const [kind, ...rest] = raw.split(":");
+  const identity = rest.join(":");
+  if (kind === "seat" && identity) {
+    const seat = seats.find((item) => seatMatchesIdentity(item, identity));
+    return seat ? `seat:${idOf(seat)}` : raw;
+  }
+  if (kind === "station" && identity) {
+    const station = workstations.find((item) => idOf(item) === identity);
+    return station ? `station:${idOf(station)}` : raw;
+  }
+  return raw;
+}
+
 function workstationIdOfSeat(value: AnyRecord) {
   const metadata = value.metadata && typeof value.metadata === "object" ? value.metadata : {};
   const extraData = value.extra_data && typeof value.extra_data === "object" ? value.extra_data : {};
@@ -220,7 +236,7 @@ export default async function ProjectSkillForgePage({
       seats={seats}
       workstations={workstations}
       initialOpenResourceIds={[
-        ...resourceIds,
+        ...resourceIds.map((item) => normalizeResourceParam(item, seats, workstations)),
         ...(focusedWorkstationId ? [`station:${focusedWorkstationId}`] : []),
         ...(focusedSeatId ? [`seat:${focusedSeatId}`] : []),
       ]}
