@@ -4334,14 +4334,14 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
               <Link
                 href={surfacePath("robotics")}
                 className={styles.cockpitGhost}
-                title="调试终端、数据标注、图表实验都在同一个设备数据工作台"
+                title="通用设备数据：接口、采集、标注、图表都在同一个设备数据工作台"
               >
                 设备数据工作台 →
               </Link>
               <Link
                 href={surfacePath("rehab-arm-control")}
                 className={styles.cockpitGhost}
-                title="专项设备的非实时遥测、关键帧和安全状态总控台"
+                title="康复机械臂：NanoPi/M33 安全状态、关节、相机和数据质量态势"
               >
                 专项设备总控台 →
               </Link>
@@ -4472,11 +4472,11 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
             </article>
             <article>
               <span>专业工作台</span>
-              <strong>终端 / 数据标注 / 图表实验</strong>
-              <p>机器人现场、数据标注和图表实验合成同一个设备数据工作台；每个调试窗口像 NPC 瓷砖一样切换三项能力。</p>
+              <strong>通用设备数据 + 康复机械臂总控</strong>
+              <p>设备数据工作台处理通用接口、采集、标注和图表；专项设备总控台只看康复机械臂 NanoPi/M33 安全、关节、相机和数据质量态势。</p>
               <div>
                 <Link href={surfacePath("robotics", "machine-room")}>打开设备数据工作台</Link>
-                <Link href={surfacePath("rehab-arm-control", "machine-room")}>专项设备总控台</Link>
+                <Link href={surfacePath("rehab-arm-control", "machine-room")}>打开专项设备总控台</Link>
                 <Link href={surfacePath("skill-forge", "skills")}>打开能力工坊</Link>
               </div>
             </article>

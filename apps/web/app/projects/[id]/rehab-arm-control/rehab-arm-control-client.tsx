@@ -48,6 +48,33 @@ function text(value: unknown, fallback = "") {
   return next || fallback;
 }
 
+function isRawIdentifier(value: unknown) {
+  const raw = text(value, "");
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw)
+    || /^[0-9a-f]{12,}$/i.test(raw);
+}
+
+function publicDeviceName(device: DashboardDevice | null | undefined, index = 0) {
+  const safeIndex = Math.max(0, index);
+  const robotName = text(device?.robot_id, "");
+  if (robotName && !isRawIdentifier(robotName)) return robotName;
+  const deviceName = text(device?.device_id, "");
+  if (deviceName && !isRawIdentifier(deviceName)) return deviceName;
+  return `康复机械臂 ${safeIndex + 1}`;
+}
+
+function publicDeviceCode(device: DashboardDevice | null | undefined, index = 0) {
+  const safeIndex = Math.max(0, index);
+  const raw = text(device?.device_id, "");
+  if (!raw || isRawIdentifier(raw)) return `设备 ${safeIndex + 1}`;
+  return raw;
+}
+
+function publicBatchLabel(value: unknown, fallback = "暂无数据批次") {
+  const raw = text(value, fallback);
+  return raw.replace(/^session[\s_-]*/i, "批次 ");
+}
+
 function asArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
 }
@@ -96,12 +123,12 @@ function stateText(value: unknown) {
 
 function eventTitle(event: AnyRecord) {
   const type = text(event.record_type, "event");
-  if (type === "motor_state") return "电机状态上传";
-  if (type === "sensor_state") return "传感器状态上传";
-  if (type === "safety_state") return "安全状态上传";
+  if (type === "motor_state") return "电机状态更新";
+  if (type === "sensor_state") return "传感器摘要更新";
+  if (type === "safety_state") return "安全状态更新";
   if (type === "camera_keyframe") return "摄像头关键帧";
-  if (type === "sync_status") return "session 同步状态";
-  if (type === "manifest") return "manifest 上传";
+  if (type === "sync_status") return "数据批次同步";
+  if (type === "manifest") return "设备档案上传";
   if (type === "device_registration") return "设备注册";
   return type;
 }
@@ -330,7 +357,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
           <Link href={`/projects/${projectId}/robotics`} className={styles.backLink} prefetch={false}>设备数据工作台</Link>
           <div className={styles.title}>
             <strong>{projectName}</strong>
-            <small>设备状态总览 · 只读遥测 / 数据资产 / 高层任务草案</small>
+            <small>康复机械臂专项总控 · 只读状态 / 安全边界 / 数据质量</small>
           </div>
         </div>
         <div className={styles.topbarRight}>
@@ -350,6 +377,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
           <ul className={styles.deviceList} aria-label="康复机械臂设备列表">
             {devices.map((device) => {
               const active = selected?.device_id === device.device_id;
+              const index = devices.indexOf(device);
               return (
                 <li key={device.device_id}>
                   <button
@@ -360,8 +388,8 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
                   >
                     <span className={styles.dot} data-online={device.online_state} />
                     <span className={styles.deviceMain}>
-                      <strong>{device.robot_id || "未命名机器人"}</strong>
-                      <small>{device.device_id}</small>
+                      <strong>{publicDeviceName(device, index)}</strong>
+                      <small>{publicDeviceCode(device, index)}</small>
                     </span>
                     <span className={styles.deviceState}>{stateText(device.safety_state)}</span>
                     <small className={styles.deviceTime}>最近上传：{formatTime(device.last_upload_ts_unix)}</small>
@@ -369,6 +397,14 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
                 </li>
               );
             })}
+            {!devices.length ? (
+              <li>
+                <div className={styles.emptyDeviceRow}>
+                  <strong>等待 NanoPi 接入</strong>
+                  <small>机械臂设备注册并上传只读状态后，会出现在这里。</small>
+                </div>
+              </li>
+            ) : null}
           </ul>
         </aside>
 
@@ -376,8 +412,8 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
           <div className={styles.workbenchHeader}>
             <div>
               <span>当前设备</span>
-              <h1>{selected?.robot_id || "等待设备接入"}</h1>
-              <p>{selected?.device_id || "NanoPi 注册后会出现在左侧设备索引中"}</p>
+              <h1>{publicDeviceName(selected, devices.findIndex((device) => device.device_id === selected?.device_id))}</h1>
+              <p>{selected ? publicDeviceCode(selected, devices.findIndex((device) => device.device_id === selected.device_id)) : "NanoPi 注册后会出现在左侧设备索引中"}</p>
             </div>
             <div className={styles.compactStats}>
               <article data-tone={selected?.online_state === "online" ? "ok" : "idle"}>
@@ -406,14 +442,14 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
 
           <div className={styles.summaryGrid}>
             <article>
-              <span>session</span>
-              <strong>{selected?.current_session || "无 session"}</strong>
+              <span>数据批次</span>
+              <strong>{publicBatchLabel(selected?.current_session)}</strong>
               <p>{selected?.latest_upload_status || "等待上传"}</p>
             </article>
             <article data-ready={qualityReady ? "true" : "false"}>
               <span>数据质量</span>
               <strong>{qualityReadyText(qualityReady)}</strong>
-              <p>{qualityReady ? "可进入标注和导出。" : asArray<string>(dataQuality.blocking_reasons).join("；") || "等待 manifest_with_summary。"}</p>
+              <p>{qualityReady ? "可进入标注和导出。" : asArray<string>(dataQuality.blocking_reasons).join("；") || "等待设备档案和质量摘要。"}</p>
             </article>
             <article>
               <span>传感器</span>
@@ -434,7 +470,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
               <section className={styles.taskPanel}>
                 <span>下一步</span>
                 <strong>{qualityReady ? "进入标注" : "先补齐数据"}</strong>
-                <p>{qualityReady ? "用设备数据工作台做标注、导出和图表分析。" : "先让 NanoPi 上传完整 session、motor_state 和质量报告。"}</p>
+                <p>{qualityReady ? "用设备数据工作台做标注、导出和图表分析。" : "先让 NanoPi 上传完整数据批次、电机状态和质量报告。"}</p>
                 <Link
                   href={`/projects/${projectId}/robotics?tab=dataset&source=rehab-arm-control&device=${encodeURIComponent(selected?.device_id ?? "")}`}
                   prefetch={false}
@@ -510,9 +546,9 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
               <section className={styles.identityPanel}>
                 <span>设备档案</span>
                 <dl>
-                  <div><dt>设备 ID</dt><dd>{selected?.device_id ?? "-"}</dd></div>
-                  <div><dt>机器人 ID</dt><dd>{selected?.robot_id ?? "-"}</dd></div>
-                  <div><dt>当前 session</dt><dd>{selected?.current_session || "无"}</dd></div>
+                  <div><dt>设备编号</dt><dd>{publicDeviceCode(selected, devices.findIndex((device) => device.device_id === selected?.device_id))}</dd></div>
+                  <div><dt>机器人名称</dt><dd>{publicDeviceName(selected, devices.findIndex((device) => device.device_id === selected?.device_id))}</dd></div>
+                  <div><dt>当前数据批次</dt><dd>{publicBatchLabel(selected?.current_session, "无")}</dd></div>
                   <div><dt>上传状态</dt><dd>{selected?.latest_upload_status ?? "无记录"}</dd></div>
                   <div><dt>最近告警</dt><dd>{selected?.latest_error || "无"}</dd></div>
                 </dl>
@@ -520,7 +556,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
               <section className={styles.eventLog}>
                 <span>事件日志</span>
                 {dashboard.recent_events.slice(0, 6).map((event, index) => (
-                  <p key={`${text(event.record_type, "event")}-${index}`}>{eventTitle(event)} · {text(event.device_id, "-")} · {formatTime(event.ts_unix)}</p>
+                  <p key={`${text(event.record_type, "event")}-${index}`}>{eventTitle(event)} · {publicDeviceCode(devices.find((device) => device.device_id === event.device_id), index)} · {formatTime(event.ts_unix)}</p>
                 ))}
                 {!dashboard.recent_events.length ? <p>暂无上传事件。</p> : null}
               </section>

@@ -55,8 +55,8 @@ function countUrdfJoints(text: string) {
     return type && !["fixed", "floating"].includes(type);
   });
   const warnings = [
-    links.length === 0 ? "没有发现 link，可能不是完整 URDF。" : "",
-    jointDetails.some((joint) => joint.parent === "-" || joint.child === "-") ? "部分 joint 缺 parent/child。" : "",
+    links.length === 0 ? "没有发现结构段，可能不是完整 URDF。" : "",
+    jointDetails.some((joint) => joint.parent === "-" || joint.child === "-") ? "部分关节缺少父子结构。" : "",
   ].filter(Boolean);
   return {
     joints: joints.length,
@@ -240,7 +240,7 @@ export function ModelImportInspector() {
         const text = await file.text();
         const result = countUrdfJoints(text);
         setUrdfText(text);
-        setInfo({ fileName: file.name, format: "URDF", source: "已解析 link / joint / parent-child", ...result });
+        setInfo({ fileName: file.name, format: "URDF", source: "已解析结构段、关节和父子关系", ...result });
         return;
       }
       setUrdfText("");
@@ -301,7 +301,7 @@ export function ModelImportInspector() {
       </dl>
       <div className={styles.modelActions}>
         <button type="button" data-testid="robotics-model-export" disabled={info.fileName === emptyInfo.fileName} onClick={() => downloadManifest(info)}>
-          导出 manifest
+          导出项目清单
         </button>
       </div>
       <div className={styles.jointList}>
@@ -310,7 +310,7 @@ export function ModelImportInspector() {
             <strong>{joint.name}</strong>
             <span>{joint.type}</span>
             <small>{joint.parent} {"->"} {joint.child}</small>
-            {joint.lower || joint.upper ? <small>limit {joint.lower || "-∞"} ~ {joint.upper || "+∞"}</small> : null}
+            {joint.lower || joint.upper ? <small>限制 {joint.lower || "-∞"} ~ {joint.upper || "+∞"}</small> : null}
             {joint.axis ? <small>axis {joint.axis}</small> : null}
           </article>
         )) : <p>导入 URDF/GLTF 后显示关节明细。</p>}

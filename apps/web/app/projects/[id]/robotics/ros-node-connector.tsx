@@ -31,7 +31,7 @@ const diagnosticsFeeds = [
 ];
 
 const exportTargets = [
-  ["进入数据标注", "传感器样本、manifest、质量检查"],
+  ["进入数据标注", "传感器样本、设备清单、质量检查"],
   ["进入图表实验", "回放、对齐、仿真计划"],
   ["回 NPC 工作台", "提交已收到提醒、阻塞、审批需求"],
 ];
@@ -83,7 +83,7 @@ export function RosNodeConnector() {
         manifest: "artifacts/robotics/arm-sensor-manifest.json",
         qualityChecks: ["timestamp_continuity", "topic_presence", "force_spike", "current_overload", "privacy"],
       },
-      runnerTask: `连接 ${readonlyEndpoint}，只读扫描 ${robotId} 的模型、TF、joint_states、电流、力矩/末端力、IMU 和相机 topic；只采集传感器数据，不执行 publish/service/action。`,
+      runnerTask: `连接 ${readonlyEndpoint}，只读扫描 ${robotId} 的模型、坐标树、关节状态、电流、力矩/末端力、IMU 和相机主题；只采集传感器数据，不执行 ROS 写操作。`,
       npcPrompt: missing.length
         ? `ROS 接入缺少 ${missing.join(", ")}。请给出最小修复计划，说明应该在哪台执行电脑或 ROS 主机补齐。`
         : "机械臂 ROS 只读接入 topic 已齐，请确认是否可以进入 3D 可视化、波形监控和设备数据采集。",

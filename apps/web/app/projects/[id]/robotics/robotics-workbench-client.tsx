@@ -91,6 +91,12 @@ function text(value: unknown, fallback = "") {
   return next || fallback;
 }
 
+function isRawIdentifier(value: unknown) {
+  const raw = text(value, "");
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw)
+    || /^[0-9a-f]{12,}$/i.test(raw);
+}
+
 function record(value: unknown): AnyRecord {
   return value && typeof value === "object" ? value as AnyRecord : {};
 }
@@ -187,10 +193,10 @@ function temperatureColor(temp: number | null) {
 }
 
 function latestMotorStateLine(device: AnyRecord | undefined, motors: AnyRecord[]) {
-  if (!device || !motors.length) return "等待设备上传 motor_state；可先加载开源 mesh 验证模型显示。";
+  if (!device || !motors.length) return "等待设备上传电机状态；可先加载开源模型验证显示。";
   const ts = Number(record(device.motor_state).ts_unix);
   const when = Number.isFinite(ts) && ts > 0 ? new Date(ts * 1000).toLocaleString("zh-CN", { hour12: false }) : "无时间戳";
-  return `${text(device.robot_id, "设备")} · ${text(device.device_id, "-")} · ${motors.length} 个电机 · ${when}`;
+  return `${deviceTitle(device)} · ${publicDeviceCode(device)} · ${motors.length} 个电机 · ${when}`;
 }
 
 function deviceId(device: AnyRecord, index = 0) {
@@ -198,7 +204,17 @@ function deviceId(device: AnyRecord, index = 0) {
 }
 
 function deviceTitle(device: AnyRecord, index = 0) {
-  return text(device.robot_id, text(device.device_id, `机器人设备 ${index + 1}`));
+  const robotName = text(device.robot_id, "");
+  if (robotName && !isRawIdentifier(robotName)) return robotName;
+  const code = text(device.device_id, "");
+  if (code && !isRawIdentifier(code)) return code;
+  return `设备 ${index + 1}`;
+}
+
+function publicDeviceCode(device: AnyRecord, index = 0) {
+  const code = text(device.device_id, "");
+  if (code && !isRawIdentifier(code)) return code;
+  return `设备 ${index + 1}`;
 }
 
 function latestPayload(device: AnyRecord, key: string) {
@@ -311,10 +327,10 @@ function motorVariableRows(device: AnyRecord) {
   return motors.flatMap((motor, index) => {
     const joint = text(motor.joint_name, `motor_${text(motor.motor_id, String(index + 1))}`);
     return [
-      { name: `${joint}.position`, value: numberText(motor.position, " rad"), source: "motor_state", time: latestTime(device, "motor_state") },
-      { name: `${joint}.velocity`, value: numberText(motor.velocity, " rad/s"), source: "motor_state", time: latestTime(device, "motor_state") },
-      { name: `${joint}.temperature`, value: temperatureOf(motor) == null ? "-" : numberText(temperatureOf(motor), " C"), source: "motor_state", time: latestTime(device, "motor_state") },
-      { name: `${joint}.enabled`, value: motor.enabled == null ? "-" : String(Boolean(motor.enabled)), source: "motor_state", time: latestTime(device, "motor_state") },
+      { name: `${joint}.position`, value: numberText(motor.position, " rad"), source: "电机状态", time: latestTime(device, "motor_state") },
+      { name: `${joint}.velocity`, value: numberText(motor.velocity, " rad/s"), source: "电机状态", time: latestTime(device, "motor_state") },
+      { name: `${joint}.temperature`, value: temperatureOf(motor) == null ? "-" : numberText(temperatureOf(motor), " C"), source: "电机状态", time: latestTime(device, "motor_state") },
+      { name: `${joint}.enabled`, value: motor.enabled == null ? "-" : String(Boolean(motor.enabled)), source: "电机状态", time: latestTime(device, "motor_state") },
     ];
   });
 }
@@ -323,7 +339,7 @@ function sensorVariableRows(device: AnyRecord) {
   return sensorEntries(device).map(([key, value]) => ({
     name: `sensor.${key}`,
     value: scalarText(value),
-    source: "sensor_state",
+    source: "传感器摘要",
     time: latestTime(device, "sensor_state"),
   }));
 }
@@ -338,7 +354,7 @@ function cameraVariableRows(device: AnyRecord) {
   ];
   return rows
     .filter(([, value]) => text(value, ""))
-    .map(([name, value]) => ({ name: String(name), value: scalarText(value), source: "camera_keyframe", time: latestTime(device, "camera_keyframe") }));
+    .map(([name, value]) => ({ name: String(name), value: scalarText(value), source: "摄像头关键帧", time: latestTime(device, "camera_keyframe") }));
 }
 
 function deviceVariableRows(device: AnyRecord) {
@@ -382,7 +398,7 @@ function MotorState3DViewer({
       const renderer = new THREE.WebGLRenderer({ antialias: true });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
       renderer.setSize(width, height);
-      renderer.domElement.setAttribute("aria-label", "motor_state 机械臂状态预览");
+      renderer.domElement.setAttribute("aria-label", "电机状态 3D 预览");
       target.replaceChildren(renderer.domElement);
 
       const controls = new OrbitControls(camera, renderer.domElement);
@@ -519,11 +535,11 @@ function MotorState3DViewer({
   }, [motors, positions, showOpenSourceMesh]);
 
   return (
-    <section className={styles.motorStateViewer} aria-label="motor_state 3D 状态预览">
+    <section className={styles.motorStateViewer} aria-label="电机状态 3D 预览">
       <div className={styles.motorStateViewerHead}>
         <div>
           <span>{syncEnabled ? "数据同步中" : "显示最近状态"}</span>
-          <strong>motor_state 驱动的机械臂姿态</strong>
+          <strong>电机状态驱动的机器人姿态</strong>
         </div>
         <small>{sourceLine}</small>
       </div>
@@ -571,17 +587,17 @@ function DeviceDataOverview({ device }: { device: AnyRecord }) {
         <article data-tone={text(device.safety_state) === "ok" ? "ok" : "warn"}>
           <span>安全状态</span>
           <strong>{deviceSafetyText(device)}</strong>
-          <p>motion_allowed：{String(Boolean(safetyPayload.motion_allowed ?? device.motion_allowed))}</p>
+          <p>本地安全链路：{Boolean(safetyPayload.motion_allowed ?? device.motion_allowed) ? "允许运动" : "不允许运动"}</p>
         </article>
         <article>
           <span>电机数据</span>
           <strong>{motors.length} 个电机</strong>
-          <p>{text(motorPayload.source, "等待 motor_state")}</p>
+          <p>{text(motorPayload.source, "等待电机状态")}</p>
         </article>
         <article data-tone={dataQualityReady(device) ? "ok" : "idle"}>
           <span>标注质量</span>
           <strong>{dataQualityReady(device) ? "可标注" : "待补数据"}</strong>
-          <p>{blockingReasons.slice(0, 2).join("；") || text(device.latest_upload_status, "等待 manifest")}</p>
+          <p>{blockingReasons.slice(0, 2).join("；") || text(device.latest_upload_status, "等待设备档案")}</p>
         </article>
       </div>
 
@@ -590,7 +606,7 @@ function DeviceDataOverview({ device }: { device: AnyRecord }) {
           <div className={styles.panelHead}>
             <div>
               <span>电机 / 关节</span>
-              <strong>{motors.length ? "最近 motor_state" : "等待电机状态"}</strong>
+              <strong>{motors.length ? "最近电机状态" : "等待电机状态"}</strong>
             </div>
             <small>{latestTime(device, "motor_state")}</small>
           </div>
@@ -657,7 +673,7 @@ function DeviceDataOverview({ device }: { device: AnyRecord }) {
           <article>
             <span>CAN</span>
             <strong>{board.canInterfaces.length ? `${board.canInterfaces.length} 个接口` : "未发现"}</strong>
-            <p>{board.canInterfaces.slice(0, 3).map(canInterfaceLabel).join(" / ") || "等待板端 manifest 或 motor_state。"}</p>
+            <p>{board.canInterfaces.slice(0, 3).map(canInterfaceLabel).join(" / ") || "等待板端设备档案或电机状态。"}</p>
           </article>
           <article>
             <span>串口</span>
@@ -717,7 +733,7 @@ function DeviceDataTile({
       <header className={tileStyles.head}>
         <div className={tileStyles.headLeft}>
           <strong className={tileStyles.name}>{title}</strong>
-          <small className={tileStyles.subline}>{id} · {deviceSafetyText(device)} · {text(device.online_state, "unknown")}</small>
+          <small className={tileStyles.subline}>{publicDeviceCode(device, index)} · {deviceSafetyText(device)} · {text(device.online_state, "unknown")}</small>
         </div>
         <div className={tileStyles.headActions}>
           <button type="button" className={tileStyles.closeBtn} onClick={onClose} aria-label={`关闭 ${title}`}>×</button>
@@ -816,7 +832,7 @@ function DeviceDataTile({
             <article>
               <span>数据来源</span>
               <strong>{publicDataBatchLabel(device.current_session)}</strong>
-              <p>电机、传感器、摄像头和安全状态在同一设备 ID 下汇总，适配任意已接入的 Linux 开发板。</p>
+              <p>电机、传感器、摄像头和安全状态在同一设备编号下汇总，适配任意已接入的 Linux 开发板。</p>
             </article>
           </div>
           <div className={styles.annotationWorkbench}>
@@ -825,7 +841,7 @@ function DeviceDataTile({
               <strong>{variables.length ? `${variables.length} 个字段` : "等待设备数据"}</strong>
               <div className={styles.variablePills}>
                 {variables.slice(0, 24).map((item) => <span key={`${item.source}-${item.name}`}>{item.name}</span>)}
-                {!variables.length ? <span>等待 motor_state / sensor_state / camera_keyframe</span> : null}
+                {!variables.length ? <span>等待电机状态 / 传感器摘要 / 摄像头关键帧</span> : null}
               </div>
             </article>
             <article className={styles.dataActionPanel}>
@@ -833,7 +849,7 @@ function DeviceDataTile({
               <strong>为当前设备片段补充语义</strong>
               <textarea placeholder="例如：空载抬臂、视觉遮挡、传感器噪声、用户确认动作有效" />
               <select defaultValue="manifest">
-                <option value="manifest">导出 manifest</option>
+                <option value="manifest">导出项目清单</option>
                 <option value="jsonl">导出 JSONL</option>
                 <option value="csv">导出 CSV</option>
               </select>
@@ -886,8 +902,8 @@ function DeviceDataTile({
         <section className={styles.modelWorkbenchPane} aria-label={`${title} 模型预览`}>
           <article className={`${styles.dataActionPanel} ${styles.dataFocusPanel}`}>
             <span>模型与状态预览</span>
-            <strong>用 motor_state 看整体机械臂状态</strong>
-            <p>关节颜色表达温度；这里是只读可视化，不发送 ROS publish、service、action，也不下发任何硬件动作。</p>
+            <strong>用电机状态看机器人整体姿态</strong>
+            <p>关节颜色表达温度；这里是只读可视化，不发送 ROS 写操作，也不下发任何硬件动作。</p>
             <div className={styles.syncToolbar} aria-label="状态数据同步控制">
               <button type="button" onClick={() => setStateSyncEnabled(true)}>开始数据同步</button>
               <button type="button" onClick={() => setStateSyncEnabled(false)}>关闭数据同步</button>
@@ -905,7 +921,7 @@ function DeviceDataTile({
           </article>
           <aside className={styles.dataDrawerRail} aria-label="模型预览说明">
             <details className={styles.workbenchDrawer} open>
-              <summary><span>状态映射</span><strong>{motors.length ? `${motors.length} 个电机` : "等待 motor_state"}</strong></summary>
+              <summary><span>状态映射</span><strong>{motors.length ? `${motors.length} 个电机` : "等待电机状态"}</strong></summary>
               <article className={styles.dataActionPanel}>
                 <p>position 映射姿态，temperature 映射关节颜色。真实运动仍由本地规划、Linux 开发板和底层安全控制器负责。</p>
               </article>
@@ -963,9 +979,9 @@ function qualityDetailLine(device: AnyRecord) {
     : [];
   if (reasons.length) return `阻塞：${reasons.slice(0, 2).join("；")}`;
   if (qualityReady(device)) {
-    return `数据批次 ${publicDataBatchLabel(session.session_id, "-")} 已通过：运动关节 ${text(session.moving_joint_count, "0")}，motor 条目 ${text(session.motor_entry_count_min, "0")}~${text(session.motor_entry_count_max, "0")}，阈值 ${text(criteria.min_moving_joints, "0")} 个运动关节。`;
+    return `数据批次 ${publicDataBatchLabel(session.session_id, "-")} 已通过：运动关节 ${text(session.moving_joint_count, "0")}，电机条目 ${text(session.motor_entry_count_min, "0")}~${text(session.motor_entry_count_max, "0")}，阈值 ${text(criteria.min_moving_joints, "0")} 个运动关节。`;
   }
-  return "上传 manifest_with_quality 后，这里会显示质量门和标注入口状态。";
+  return "上传设备质量摘要后，这里会显示质量门和标注入口状态。";
 }
 
 function DeviceQualityStrip({ devices }: { devices: AnyRecord[] }) {
@@ -991,15 +1007,15 @@ function DeviceQualityStrip({ devices }: { devices: AnyRecord[] }) {
             return (
               <article key={text(device.device_id, text(session.session_id, "device"))} data-ready={qualityReady(device) ? "true" : "false"}>
                 <span>{qualityStatusText(device)}</span>
-                <strong>{text(device.robot_id, "未命名设备")}</strong>
-                <p>{text(device.device_id, "-")} · {qualityDetailLine(device)}</p>
+                <strong>{deviceTitle(device)}</strong>
+                <p>{publicDeviceCode(device)} · {qualityDetailLine(device)}</p>
               </article>
             );
           }) : (
             <article data-ready="false">
               <span>等待数据</span>
               <strong>还没有可评估的采集批次</strong>
-              <p>先从设备侧上传带 quality_report 的 manifest，再进入标注和导出。</p>
+              <p>先从设备侧上传质量报告和设备档案，再进入标注和导出。</p>
             </article>
           )}
         </div>
@@ -1075,7 +1091,7 @@ function AccessCheckPanel({
     {
       label: "CAN/串口",
       value: busReadyCount ? `${busReadyCount} 台有数据` : "无数据",
-      detail: "来自 manifest、motor_state 或 sensor_state，只读检查。",
+      detail: "来自设备档案、电机状态或传感器摘要，只读检查。",
       ready: busReadyCount > 0,
     },
     {
@@ -1086,9 +1102,9 @@ function AccessCheckPanel({
     },
   ];
   const setupSteps = [
-    { label: "1. 注册设备", detail: "上传 device_id、robot_id、主机名、在线状态和能力 manifest。" },
+    { label: "1. 注册设备", detail: "上传设备编号、机器人名称、主机名、在线状态和能力档案。" },
     { label: "2. 扫描接口", detail: "报告 CAN、串口、USB、摄像头、ROS2 环境和 runner 可执行能力。" },
-    { label: "3. 上传只读数据", detail: "按需上传 motor_state、sensor_state、camera_keyframe、simulation_readiness。" },
+    { label: "3. 上传只读数据", detail: "按需上传电机状态、传感器摘要、摄像头关键帧和仿真准备度。" },
     { label: "4. 进入采集/标注", detail: "确认安全边界后再开启数据同步、质量门、标注和图表实验。" },
   ];
   return (
@@ -1137,7 +1153,7 @@ function AccessCheckPanel({
           <article>
             <span>系统</span>
             <strong>{latestBoard ? text(latestBoard.platform.hostname, text(latestBoard.manifest.device_id, deviceId(latestDevice))) : "等待开发板"}</strong>
-            <p>{latestBoard ? text(latestBoard.platform.release, "未上传系统版本") : "运行 board_manifest 并上传后显示。"}</p>
+            <p>{latestBoard ? text(latestBoard.platform.release, "未上传系统版本") : "运行开发板扫描并上传后显示。"}</p>
           </article>
           <article>
             <span>ROS2</span>
@@ -1752,7 +1768,7 @@ function terminalLines(tile: DebugWindow, boundNpcLabel: string) {
     lines.push("hint: 只读枚举设备，权限或驱动问题进入公司层证据。");
   } else if (tile.kind === "ros") {
     lines.push("topics=readonly  publish=blocked");
-    lines.push("hint: ROS publish/service/action 若由 NPC 代操作，必须先确认。");
+    lines.push("hint: ROS 写操作若由 NPC 代操作，必须先确认。");
   } else {
     lines.push("config=等待扫描快照");
   }
@@ -2325,8 +2341,8 @@ function DebugTile({
         <section className={styles.modelWorkbenchPane} aria-label={`${tile.name} 模型预览`}>
           <article className={`${styles.dataActionPanel} ${styles.dataFocusPanel}`}>
             <span>模型与状态预览</span>
-            <strong>用 motor_state 看整体机械臂状态</strong>
-            <p>这里把服务器最近收到的 motor_state 映射到 3D 结构，关节颜色表示温度。视图只读，不发送 ROS publish、service、action，也不下发任何硬件动作。</p>
+            <strong>用电机状态看机器人整体姿态</strong>
+            <p>这里把服务器最近收到的电机状态映射到 3D 结构，关节颜色表示温度。视图只读，不发送 ROS 写操作，也不下发任何硬件动作。</p>
             <div className={styles.syncToolbar} aria-label="状态数据同步控制">
               <form action={记录机器人采集片段.bind(null, projectId)}>
                 <input type="hidden" name="return_to" value={returnTo} />
@@ -2375,7 +2391,7 @@ function DebugTile({
             <details className={styles.workbenchDrawer} open>
               <summary>
                 <span>状态映射</span>
-                <strong>{latestMotors.length ? `${latestMotors.length} 个电机` : "等待 motor_state"}</strong>
+                <strong>{latestMotors.length ? `${latestMotors.length} 个电机` : "等待电机状态"}</strong>
               </summary>
               <article className={styles.dataActionPanel}>
                 {latestMotors.length ? (
@@ -2398,7 +2414,7 @@ function DebugTile({
                 <strong>URDF 到结构检查再到回放</strong>
               </summary>
               <article className={styles.dataActionPanel}>
-                <p>第一步导入 URDF 或 GLB，确认关节数量、父子 link 和 limit。第二步导出 manifest，作为项目模型证据。第三步再把采集片段里的 joint_states 对齐到同名关节。</p>
+                <p>第一步导入 URDF 或 GLB，确认关节数量、父子结构和限制。第二步导出项目清单，作为项目模型证据。第三步再把采集片段里的关节状态对齐到同名关节。</p>
                 <p>如果 URDF 引用外部 mesh，平台第一版先显示结构和可解析的几何体；大型 mesh 后续交给模型资产索引，不直接塞进普通消息。</p>
               </article>
             </details>
@@ -2552,7 +2568,7 @@ export function RoboticsWorkbenchClient({
           <Link className={workbenchStyles.backLink} href={`/projects/${projectId}`}>← 主页面</Link>
           <div className={workbenchStyles.title}>
             <strong>{projectName}</strong>
-            <small>Linux 开发板 · 通用机器人开发、设备接入、数据采集、标注和调试</small>
+            <small>通用设备数据工作台 · 终端 / 数据标注 / 图表实验</small>
           </div>
         </div>
         <div className={workbenchStyles.topbarRight}>
@@ -2675,7 +2691,7 @@ export function RoboticsWorkbenchClient({
                           <strong className={workbenchStyles.npcName}>{deviceTitle(device, index)}</strong>
                           <small className={workbenchStyles.npcMeta}>
                             <span className={text(device.online_state) === "online" ? workbenchStyles.dotOnline : workbenchStyles.dot} />
-                            {id} · 电机 {counts.motors} · 传感 {counts.sensorFields} · {deviceSafetyText(device)}
+                            {publicDeviceCode(device, index)} · 电机 {counts.motors} · 传感 {counts.sensorFields} · {deviceSafetyText(device)}
                           </small>
                         </div>
                         <span className={styles.windowRowActions}>

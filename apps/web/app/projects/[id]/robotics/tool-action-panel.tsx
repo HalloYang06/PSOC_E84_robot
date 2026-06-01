@@ -13,7 +13,7 @@ const internalLabels: Record<string, { name: string; detail: string; action: str
   },
   robotwebtools: {
     name: "ROS 只读入口",
-    detail: "生成平台可消费的 ROS 只读策略，默认阻止 publish/service/action。",
+    detail: "生成平台可消费的 ROS 只读策略，默认阻止 ROS 写操作。",
     action: "生成只读策略",
   },
   plotjuggler: {
@@ -116,7 +116,7 @@ function buildReadonlyRosPolicy() {
     },
       runnerTask: "执行电脑只上报 ROS 只读入口、topic 列表和连接健康，不允许浏览器直接写入 ROS。",
     npcPrompt: "请根据 ROS 只读策略检查哪些 topic 可安全订阅，哪些动作必须保持阻断。",
-    approval: "默认只读；publish/service/actionGoal 一律阻断，硬件动作强制人审。",
+    approval: "默认只读；ROS 写操作一律阻断，硬件动作强制人审。",
   });
 }
 
@@ -204,7 +204,7 @@ function buildReviewActionSeed() {
     outputPath: "artifacts/robotics/review-actions.json",
     payload: {
       actions: [
-        { name: "ROS publish/service/action", review: "required", reason: "可能触发真实执行链路" },
+        { name: "ROS 写操作", review: "required", reason: "可能触发真实执行链路" },
         { name: "PID / FOC 参数写入", review: "required", reason: "会改变电机控制器行为" },
         { name: "firmware / 驱动 / 部署", review: "required", reason: "会改变设备或执行电脑状态" },
       ],
