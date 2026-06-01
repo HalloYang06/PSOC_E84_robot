@@ -379,7 +379,7 @@
 .skillGrid .knowledgeEditorCard,
 .skillGrid .depositWideCard {
   grid-column: 1 / -1;
-  min-height: 276px;
+  min-height: 326px;
   height: auto;
   overflow: hidden;
 }
