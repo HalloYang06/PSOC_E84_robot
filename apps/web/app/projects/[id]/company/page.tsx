@@ -845,15 +845,34 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
                 >
                   <div className={styles.chainTitle}>
                     <strong>{chain.title}</strong>
-                    <span>{chain.requesterName} → {chain.targetName}</span>
+                    <span>{chain.needStatus}</span>
                   </div>
-                  <p>{chain.summary}</p>
-                  <ol>
-                    <li data-tone={chainTone(chain.needStatus)}><span>需求</span><strong>{chain.needStatus}</strong></li>
-                    <li data-tone={chainTone(chain.taskStatus)}><span>承接</span><strong>{chain.taskStatus}</strong></li>
-                    <li data-tone={chainTone(chain.dispatchStatus)}><span>投递</span><strong>{chain.dispatchStatus}</strong></li>
-                    <li data-tone={chainTone(chain.receiptStatus)}><span>回执</span><strong>{chain.receiptStatus}</strong></li>
-                  </ol>
+                  <div className={styles.chainFlow} aria-label={`${chain.requesterName} 到 ${chain.targetName} 的协作流`}>
+                    <span className={styles.actorNode} data-tone={chainTone(chain.needStatus)}>
+                      <b>{chain.requesterName.slice(0, 2).toUpperCase()}</b>
+                      <small>{chain.requesterName}</small>
+                    </span>
+                    <span className={styles.flowBeam} data-tone={chainTone(chain.taskStatus)} />
+                    <span className={styles.workNode} data-tone={chainTone(chain.taskStatus)}>
+                      <i />
+                      <small>需求</small>
+                    </span>
+                    <span className={styles.flowBeam} data-tone={chainTone(chain.dispatchStatus)} />
+                    <span className={styles.actorNode} data-tone={chainTone(chain.dispatchStatus)}>
+                      <b>{chain.targetName.slice(0, 2).toUpperCase()}</b>
+                      <small>{chain.targetName}</small>
+                    </span>
+                    <span className={styles.flowBeam} data-tone={chainTone(chain.receiptStatus)} />
+                    <span className={styles.receiptNode} data-tone={chainTone(chain.receiptStatus)}>
+                      <i />
+                      <small>{chain.receiptStatus}</small>
+                    </span>
+                  </div>
+                  <div className={styles.chainBadges}>
+                    <span data-tone={chainTone(chain.taskStatus)}>{chain.taskStatus}</span>
+                    <span data-tone={chainTone(chain.dispatchStatus)}>{chain.dispatchStatus}</span>
+                    <span data-tone={chainTone(chain.receiptStatus)}>{chain.receiptStatus}</span>
+                  </div>
                 </Link>
               ))}
               {!visibleChains.length ? (

@@ -317,8 +317,8 @@
 .emptyChain {
   min-width: 0;
   display: grid;
-  gap: 8px;
-  padding: 10px;
+  gap: 10px;
+  padding: 11px;
   border: 1px solid rgba(231, 199, 104, 0.13);
   border-radius: 16px;
   background: rgba(255, 248, 232, 0.045);
@@ -350,7 +350,11 @@
 
 .chainTitle span {
   flex: 0 1 auto;
-  max-width: 42%;
+  max-width: 38%;
+  padding: 3px 7px;
+  border: 1px solid rgba(231, 199, 104, 0.16);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.12);
   overflow: hidden;
   color: rgba(255, 232, 179, 0.78);
   text-align: right;
@@ -358,7 +362,6 @@
   white-space: nowrap;
 }
 
-.chainItem p,
 .emptyChain p {
   display: -webkit-box;
   min-width: 0;
@@ -371,53 +374,171 @@
   -webkit-box-orient: vertical;
 }
 
-.chainItem ol {
+.chainFlow {
+  min-width: 0;
+  min-height: 76px;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: minmax(54px, 0.8fr) minmax(16px, 0.32fr) minmax(52px, 0.72fr) minmax(16px, 0.32fr) minmax(54px, 0.8fr) minmax(16px, 0.32fr) minmax(52px, 0.72fr);
   gap: 5px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
+  align-items: center;
 }
 
-.chainItem li {
+.actorNode,
+.workNode,
+.receiptNode {
+  position: relative;
   min-width: 0;
   display: grid;
-  gap: 2px;
-  padding: 6px;
-  border: 1px solid rgba(231, 199, 104, 0.11);
-  border-radius: 12px;
-  background: rgba(0, 0, 0, 0.12);
+  justify-items: center;
+  align-content: center;
+  gap: 4px;
+  min-height: 68px;
 }
 
-.chainItem li[data-tone="healthy"] {
-  border-color: rgba(158, 240, 191, 0.3);
-  background: rgba(50, 155, 94, 0.1);
+.actorNode b {
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 15px;
+  border: 1px solid rgba(231, 199, 104, 0.22);
+  background:
+    radial-gradient(circle at 34% 24%, rgba(255, 255, 255, 0.24), transparent 34%),
+    linear-gradient(145deg, rgba(231, 199, 104, 0.2), rgba(158, 240, 191, 0.11));
+  color: #fff2bd;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+  box-shadow: 0 0 18px rgba(231, 199, 104, 0.12);
 }
 
-.chainItem li[data-tone="review"] {
-  border-color: rgba(255, 209, 102, 0.26);
-  background: rgba(255, 209, 102, 0.08);
+.workNode i,
+.receiptNode i {
+  width: 34px;
+  height: 34px;
+  display: block;
+  border: 1px solid rgba(231, 199, 104, 0.24);
+  border-radius: 11px;
+  background:
+    linear-gradient(90deg, rgba(255, 248, 232, 0.2) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(255, 248, 232, 0.16) 1px, transparent 1px),
+    rgba(255, 248, 232, 0.06);
+  background-size: 8px 8px;
+  box-shadow: inset 0 0 0 5px rgba(0, 0, 0, 0.1);
 }
 
-.chainItem li[data-tone="blocked"] {
-  border-color: rgba(255, 117, 117, 0.32);
-  background: rgba(255, 117, 117, 0.08);
+.receiptNode i {
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(158, 240, 191, 0.34), transparent 34%),
+    rgba(255, 248, 232, 0.06);
 }
 
-.chainItem li span {
+.actorNode small,
+.workNode small,
+.receiptNode small {
+  width: 100%;
+  overflow: hidden;
   color: var(--muted);
   font-size: 10px;
+  font-style: normal;
+  line-height: 1.2;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.chainItem li strong {
+.flowBeam {
+  position: relative;
+  height: 2px;
   min-width: 0;
+  border-radius: 999px;
+  background: rgba(231, 199, 104, 0.22);
+  box-shadow: 0 0 12px rgba(231, 199, 104, 0.12);
+}
+
+.flowBeam::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: -2px;
+  width: 8px;
+  height: 8px;
+  border-top: 2px solid currentColor;
+  border-right: 2px solid currentColor;
+  color: rgba(231, 199, 104, 0.6);
+  transform: translateY(-50%) rotate(45deg);
+}
+
+.actorNode[data-tone="healthy"] b,
+.workNode[data-tone="healthy"] i,
+.receiptNode[data-tone="healthy"] i {
+  border-color: rgba(158, 240, 191, 0.42);
+  box-shadow: 0 0 20px rgba(158, 240, 191, 0.14);
+}
+
+.actorNode[data-tone="review"] b,
+.workNode[data-tone="review"] i,
+.receiptNode[data-tone="review"] i {
+  border-color: rgba(255, 209, 102, 0.42);
+  box-shadow: 0 0 20px rgba(255, 209, 102, 0.13);
+}
+
+.actorNode[data-tone="blocked"] b,
+.workNode[data-tone="blocked"] i,
+.receiptNode[data-tone="blocked"] i {
+  border-color: rgba(255, 117, 117, 0.44);
+  box-shadow: 0 0 20px rgba(255, 117, 117, 0.14);
+}
+
+.flowBeam[data-tone="healthy"] {
+  background: linear-gradient(90deg, rgba(158, 240, 191, 0.18), rgba(158, 240, 191, 0.72));
+}
+
+.flowBeam[data-tone="review"] {
+  background: linear-gradient(90deg, rgba(255, 209, 102, 0.15), rgba(255, 209, 102, 0.7));
+}
+
+.flowBeam[data-tone="blocked"] {
+  background: linear-gradient(90deg, rgba(255, 117, 117, 0.14), rgba(255, 117, 117, 0.68));
+}
+
+.chainBadges {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.chainBadges span {
+  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
+  padding: 3px 7px;
+  border: 1px solid rgba(231, 199, 104, 0.13);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.12);
   color: var(--text);
-  font-size: 11px;
+  font-size: 10px;
   line-height: 1.15;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.chainBadges span[data-tone="healthy"] {
+  border-color: rgba(158, 240, 191, 0.26);
+  color: #b9f5cc;
+}
+
+.chainBadges span[data-tone="review"] {
+  border-color: rgba(255, 209, 102, 0.24);
+  color: #ffe8b3;
+}
+
+.chainBadges span[data-tone="blocked"] {
+  border-color: rgba(255, 117, 117, 0.28);
+  color: #ffb8b8;
 }
 
 .emptyChain {
@@ -937,8 +1058,45 @@
     text-align: left;
   }
 
-  .chainItem ol {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .chainFlow {
+    grid-template-columns: 1fr 20px 1fr;
+    grid-template-rows: auto auto auto;
+  }
+
+  .chainFlow .actorNode:nth-of-type(1) {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .chainFlow .flowBeam:nth-of-type(2) {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .chainFlow .workNode {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .chainFlow .flowBeam:nth-of-type(4) {
+    grid-column: 2;
+    grid-row: 2;
+    transform: rotate(90deg);
+  }
+
+  .chainFlow .actorNode:nth-of-type(5) {
+    grid-column: 1;
+    grid-row: 3;
+  }
+
+  .chainFlow .flowBeam:nth-of-type(6) {
+    grid-column: 2;
+    grid-row: 3;
+  }
+
+  .chainFlow .receiptNode {
+    grid-column: 3;
+    grid-row: 3;
   }
 
   .decisionChips {
