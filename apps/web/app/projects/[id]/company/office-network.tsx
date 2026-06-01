@@ -201,6 +201,7 @@ export function OfficeNetwork({ projectId, nodes, edges }: OfficeNetworkProps) {
           const labelY = from.y + dy * 0.5 + normalY * labelOffset;
           const width = edge.kind === "relationship" ? 1.15 : Math.min(3.1, 1.35 + edge.count * 0.32);
           const edgeLabel = edge.kind === "relationship" ? `${edge.label}关系` : `${edge.count > 1 ? `${edge.count}条 ` : ""}${edge.label}`;
+          const openEdge = () => setSelectedEdgeId(edge.id);
           return (
             <g
               key={edge.id}
@@ -222,13 +223,13 @@ export function OfficeNetwork({ projectId, nodes, edges }: OfficeNetworkProps) {
               }}
             >
               <title>{`${from.name} → ${to.name}：${edgeLabel}`}</title>
-              <line x1={p1x} y1={p1y} x2={p2x} y2={p2y} className={styles.networkEdgeHit} />
-              <line x1={p2x} y1={p2y} x2={p3x} y2={p3y} className={styles.networkEdgeHit} />
-              <line x1={p3x} y1={p3y} x2={p4x} y2={p4y} className={styles.networkEdgeHit} />
-              <line x1={p1x} y1={p1y} x2={p2x} y2={p2y} className={styles.networkEdge} data-tone={edge.needTone} strokeWidth={width} />
-              <line x1={p2x} y1={p2y} x2={p3x} y2={p3y} className={styles.networkEdge} data-tone={edge.taskTone} strokeWidth={width} />
-              <line x1={p3x} y1={p3y} x2={p4x} y2={p4y} className={styles.networkEdge} data-tone={edge.receiptTone} strokeWidth={width} />
-              <text x={labelX} y={labelY} className={styles.networkEdgeLabel}>
+              <line x1={p1x} y1={p1y} x2={p2x} y2={p2y} className={styles.networkEdgeHit} onClick={openEdge} />
+              <line x1={p2x} y1={p2y} x2={p3x} y2={p3y} className={styles.networkEdgeHit} onClick={openEdge} />
+              <line x1={p3x} y1={p3y} x2={p4x} y2={p4y} className={styles.networkEdgeHit} onClick={openEdge} />
+              <line x1={p1x} y1={p1y} x2={p2x} y2={p2y} className={styles.networkEdge} data-tone={edge.needTone} strokeWidth={width} onClick={openEdge} />
+              <line x1={p2x} y1={p2y} x2={p3x} y2={p3y} className={styles.networkEdge} data-tone={edge.taskTone} strokeWidth={width} onClick={openEdge} />
+              <line x1={p3x} y1={p3y} x2={p4x} y2={p4y} className={styles.networkEdge} data-tone={edge.receiptTone} strokeWidth={width} onClick={openEdge} />
+              <text x={labelX} y={labelY} className={styles.networkEdgeLabel} onClick={openEdge}>
                 {edgeLabel}
               </text>
             </g>

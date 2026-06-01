@@ -181,7 +181,7 @@ def main() -> int:
             (() => {
               const section = document.querySelector('section[aria-label="NPC 办公网"]');
               const node = section?.querySelector('a[href*="seat="]');
-              const line = section?.querySelector('svg a[data-kind] line[stroke-width]');
+              const line = section?.querySelector('svg [data-kind] line[stroke-width]');
               const root = document.scrollingElement || document.documentElement;
               if (!section || !node || !line) return null;
               const rect = node.getBoundingClientRect();
@@ -227,7 +227,7 @@ def main() -> int:
             (() => {
               const section = document.querySelector('section[aria-label="NPC 办公网"]');
               const node = section?.querySelector('a[href*="seat="]');
-              const line = section?.querySelector('svg a[data-kind] line[stroke-width]');
+              const line = section?.querySelector('svg [data-kind] line[stroke-width]');
               const root = document.scrollingElement || document.documentElement;
               if (!section || !node || !line) return null;
               const rect = node.getBoundingClientRect();
