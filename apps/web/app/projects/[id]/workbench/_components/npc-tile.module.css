@@ -269,6 +269,150 @@
   color: #b8ffd3;
 }
 
+.collaborationHealth {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.15fr) minmax(210px, 2fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(127, 184, 255, 0.18);
+  background: rgba(10, 24, 38, 0.42);
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.collaborationHealth[data-mode="flowing"] {
+  border-color: rgba(127, 184, 255, 0.34);
+  background: rgba(42, 112, 180, 0.1);
+}
+
+.collaborationHealth[data-mode="attention"] {
+  border-color: rgba(255, 232, 109, 0.32);
+  background: rgba(255, 232, 109, 0.075);
+}
+
+.collaborationHealth[data-mode="blocked"] {
+  border-color: rgba(255, 117, 117, 0.28);
+  background: rgba(255, 117, 117, 0.07);
+}
+
+.collaborationHealthMain {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.collaborationHealthMain span {
+  color: rgba(167, 219, 255, 0.68);
+  font-size: 9.5px;
+  line-height: 1.2;
+}
+
+.collaborationHealthMain strong {
+  color: #f4ffff;
+  font-size: 12.5px;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collaborationHealthMain small {
+  color: rgba(224, 242, 255, 0.68);
+  font-size: 10.5px;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collaborationSignals {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 5px;
+  min-width: 0;
+}
+
+.collaborationSignal {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 6px;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(2, 13, 20, 0.24);
+}
+
+.collaborationSignal[data-tone="ok"] {
+  border-color: rgba(120, 230, 170, 0.32);
+  background: rgba(120, 230, 170, 0.09);
+}
+
+.collaborationSignal[data-tone="manual"] {
+  border-color: rgba(127, 184, 255, 0.32);
+  background: rgba(127, 184, 255, 0.09);
+}
+
+.collaborationSignal[data-tone="warn"] {
+  border-color: rgba(255, 232, 109, 0.3);
+  background: rgba(255, 232, 109, 0.08);
+}
+
+.collaborationSignal[data-tone="danger"] {
+  border-color: rgba(255, 117, 117, 0.3);
+  background: rgba(255, 117, 117, 0.08);
+}
+
+.collaborationSignal small {
+  color: rgba(167, 219, 255, 0.62);
+  font-size: 9px;
+  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collaborationSignal b {
+  color: #eaffff;
+  font-size: 10px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collaborationAction {
+  display: flex;
+  justify-content: flex-end;
+  min-width: 82px;
+}
+
+.collaborationPrimaryBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 5px 8px;
+  border-radius: 7px;
+  border: 1px solid rgba(127, 184, 255, 0.36);
+  background: rgba(127, 184, 255, 0.13);
+  color: #d8ecff;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.collaborationPrimaryBtn:hover {
+  background: rgba(127, 184, 255, 0.23);
+  color: #ffffff;
+}
+
 .automationNudge {
   display: flex;
   align-items: center;
@@ -409,6 +553,19 @@
   }
 
   .developerReadinessAction {
+    justify-content: flex-start;
+  }
+
+  .collaborationHealth {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .collaborationSignals {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .collaborationAction {
     justify-content: flex-start;
   }
 
@@ -909,6 +1066,17 @@
 .queueFrom { font-size: 10px; color: rgba(190, 220, 240, 0.75); }
 .queueTitle {
   color: #f4ffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.needTaskItem {
+  grid-template-columns: 36px minmax(0, 1fr) auto auto;
+}
+.needTaskTrace {
+  color: rgba(167, 219, 255, 0.58);
+  font-size: 9.5px;
+  line-height: 1.25;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

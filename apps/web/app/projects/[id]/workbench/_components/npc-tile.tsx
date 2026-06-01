@@ -91,6 +91,20 @@ type DevelopmentReadiness = {
   }>;
 };
 
+type CollaborationHealth = {
+  mode: "flowing" | "attention" | "blocked";
+  title: string;
+  detail: string;
+  nextLabel: string;
+  nextAction: "open_needs" | "open_tasks" | "open_reviews" | "open_skills" | "open_peers";
+  signals: Array<{
+    key: string;
+    label: string;
+    value: string;
+    tone: "ok" | "manual" | "warn" | "danger";
+  }>;
+};
+
 function dispatchReadinessForSeat(seat: WorkbenchSeat): DispatchReadiness {
   const stateLabel = seat.runnerDispatchState || "状态未知，先检查接入";
   const detail = seat.runnerStateDetail || "";
@@ -1757,15 +1771,20 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
     status: string;
     priority?: string;
     module?: string | null;
+    requirement_type?: string | null;
     from_agent?: string | null;
     to_agent?: string | null;
     target_seat_id?: string | null;
     trigger_kind?: string;
     context_summary?: string | null;
+    expected_output?: string | null;
     created_at?: string | null;
     updated_at?: string | null;
+    last_response_at?: string | null;
+    response_count?: number | null;
     branch?: string | null;
     due_at?: string | null;
+    assignee_agent_id?: string | null;
   };
   type SeatQueues = {
     my_needs?: { items: SeatQueueItem[]; count: number };
@@ -2327,6 +2346,126 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
       .slice()
       .sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")));
   }, [messages]);
+  const collaborationHealth = useMemo<CollaborationHealth>(() => {
+    const skillCount = (seat.skillLoadout ?? []).filter(Boolean).length + (seat.inheritedSkills ?? []).filter(Boolean).length;
+    const hasKnowledge = Boolean(seat.workstationKnowledgePath || seat.knowledgeSummary);
+    const inboundPeerCount = myQueue.filter((m) => {
+      const senderType = safeText(m.sender_type, "").toLowerCase();
+      return senderType === "agent" && !seatIdentityIds.has(safeText(m.sender_id, ""));
+    }).length;
+    const completedReceiptCount = (receipts ?? []).filter((receipt) => receipt.receipt_kind === "done").length;
+    const peerRouteCount = teammates.length + crossLeads.length;
+    const signals: CollaborationHealth["signals"] = [
+      {
+        key: "needs",
+        label: "发出的需求",
+        value: `${myNeedCount}`,
+        tone: myNeedCount > 0 ? "manual" : "ok",
+      },
+      {
+        key: "tasks",
+        label: "承接任务",
+        value: `${myTaskCount}`,
+        tone: myTaskCount > 0 ? "manual" : "ok",
+      },
+      {
+        key: "reviews",
+        label: "待确认",
+        value: `${pendingReviews.length}`,
+        tone: pendingReviews.length > 0 ? "warn" : "ok",
+      },
+      {
+        key: "peers",
+        label: "协作入口",
+        value: peerRouteCount > 0 ? `${teammates.length} 同工位 / ${crossLeads.length} 工位长` : "未建立",
+        tone: peerRouteCount > 0 ? "ok" : "warn",
+      },
+      {
+        key: "skills",
+        label: "能力与知识",
+        value: `${skillCount} skill / ${hasKnowledge ? "有知识" : "缺知识"}`,
+        tone: skillCount > 0 && hasKnowledge ? "ok" : skillCount > 0 || hasKnowledge ? "warn" : "danger",
+      },
+      {
+        key: "receipts",
+        label: "完成回执",
+        value: `${completedReceiptCount}`,
+        tone: completedReceiptCount > 0 ? "ok" : "manual",
+      },
+    ];
+
+    if (pendingReviews.length > 0) {
+      return {
+        mode: "attention",
+        title: `有 ${pendingReviews.length} 条协作需要你确认`,
+        detail: "只有结构化 Need、跨工位或高风险协作才会进入确认；通过后才生成承接任务和真实投递。",
+        nextLabel: "处理确认",
+        nextAction: "open_reviews",
+        signals,
+      };
+    }
+    if (skillCount === 0 || !hasKnowledge) {
+      return {
+        mode: "blocked",
+        title: "能力/知识闭环不完整",
+        detail: "NPC 可以先工作，但长期协作会漂移；应在能力工坊补齐 skill、知识库和上岗包来源。",
+        nextLabel: "补能力知识",
+        nextAction: "open_skills",
+        signals,
+      };
+    }
+    if (peerRouteCount === 0) {
+      return {
+        mode: "attention",
+        title: "还没有可见协作入口",
+        detail: "给 NPC 分配逻辑工位和工位长后，同工位互助、跨工位转交才不会变成后台猜测。",
+        nextLabel: "配置伙伴",
+        nextAction: "open_peers",
+        signals,
+      };
+    }
+    if (myNeedCount > 0) {
+      return {
+        mode: "flowing",
+        title: `正在等待 ${myNeedCount} 条需求结果`,
+        detail: "发起方可以在“我的需求”追踪路由、确认、结果和证据，不需要翻对话历史找线索。",
+        nextLabel: "看我的需求",
+        nextAction: "open_needs",
+        signals,
+      };
+    }
+    if (myTaskCount > 0 || inboundPeerCount > 0) {
+      return {
+        mode: "flowing",
+        title: `正在承接 ${Math.max(myTaskCount, inboundPeerCount)} 条协作`,
+        detail: "承接方在“我的任务”和对话回执里处理结果；用户可以看到任务来源和回写状态。",
+        nextLabel: "看我的任务",
+        nextAction: "open_tasks",
+        signals,
+      };
+    }
+    return {
+      mode: "flowing",
+      title: "协作链路空闲可见",
+      detail: "需要别人帮忙时必须创建结构化 Need；普通提到某个 NPC 不会偷偷自动派单。",
+      nextLabel: "查看伙伴",
+      nextAction: "open_peers",
+      signals,
+    };
+  }, [
+    crossLeads.length,
+    myNeedCount,
+    myQueue,
+    myTaskCount,
+    pendingReviews.length,
+    receipts,
+    seat.inheritedSkills,
+    seat.knowledgeSummary,
+    seat.skillLoadout,
+    seat.workstationKnowledgePath,
+    seatIdentityIds,
+    teammates.length,
+  ]);
   const dialogStateCards = useMemo(() => {
     const cards: Array<{
       id: string;
@@ -3297,7 +3436,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
         {activeItems.length > 0 ? (
           <ul className={styles.queueList}>
             {activeItems.slice(0, 10).map((it, i) => (
-              <li key={it.id} className={styles.queueItem} data-from={kind}>
+              <li key={it.id} className={`${styles.queueItem} ${styles.needTaskItem}`} data-from={kind}>
                 <span className={styles.queuePos}>#{i + 1}</span>
                 <div className={styles.queueMeta}>
                   <span className={styles.queueFrom}>
@@ -3306,6 +3445,19 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
                       : (it.module ? `模块 ${it.module}` : it.priority || "待排期")}
                   </span>
                   <span className={styles.queueTitle}>{it.title || "(无标题)"}</span>
+                  <span className={styles.needTaskTrace}>
+                    {kind === "needs"
+                      ? [
+                          it.expected_output ? "有验收产出" : "待补验收产出",
+                          it.response_count ? `回执 ${it.response_count}` : "等回执",
+                          it.last_response_at ? "已更新" : "未更新",
+                        ].join(" · ")
+                      : [
+                          it.assignee_agent_id ? "承接方已记录" : "待确认承接方",
+                          it.branch ? `分支 ${it.branch}` : "待绑定证据",
+                          it.due_at ? "有截止时间" : "无截止时间",
+                        ].join(" · ")}
+                  </span>
                 </div>
                 <span className={styles.queueStatus} data-status={it.status}>{it.status}</span>
                 {canArchiveQueueItem(it) ? (
@@ -3573,6 +3725,45 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
             </Link>
           ) : (
             <span className={styles.developerReadyMark}>{developmentReadiness.primaryLabel}</span>
+          )}
+        </div>
+      </section>
+
+      <section className={styles.collaborationHealth} data-mode={collaborationHealth.mode} aria-label="NPC 协作闭环">
+        <div className={styles.collaborationHealthMain}>
+          <span>NPC 协作闭环</span>
+          <strong>{collaborationHealth.title}</strong>
+          <small>{collaborationHealth.detail}</small>
+        </div>
+        <div className={styles.collaborationSignals} aria-label="协作信号">
+          {collaborationHealth.signals.map((signal) => (
+            <span key={signal.key} className={styles.collaborationSignal} data-tone={signal.tone}>
+              <small>{signal.label}</small>
+              <b>{signal.value}</b>
+            </span>
+          ))}
+        </div>
+        <div className={styles.collaborationAction}>
+          {collaborationHealth.nextAction === "open_needs" ? (
+            <button type="button" className={styles.collaborationPrimaryBtn} onClick={() => setActivePanelTab("needs")}>
+              {collaborationHealth.nextLabel}
+            </button>
+          ) : collaborationHealth.nextAction === "open_tasks" ? (
+            <button type="button" className={styles.collaborationPrimaryBtn} onClick={() => setActivePanelTab("tasks")}>
+              {collaborationHealth.nextLabel}
+            </button>
+          ) : collaborationHealth.nextAction === "open_reviews" ? (
+            <button type="button" className={styles.collaborationPrimaryBtn} onClick={() => setActivePanelTab("dialog")}>
+              {collaborationHealth.nextLabel}
+            </button>
+          ) : collaborationHealth.nextAction === "open_skills" ? (
+            <Link href={governanceHref("skills")} className={styles.collaborationPrimaryBtn}>
+              {collaborationHealth.nextLabel}
+            </Link>
+          ) : (
+            <button type="button" className={styles.collaborationPrimaryBtn} onClick={() => setHeaderCollapsed(false)}>
+              {collaborationHealth.nextLabel}
+            </button>
           )}
         </div>
       </section>
