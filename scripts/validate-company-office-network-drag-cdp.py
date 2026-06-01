@@ -195,12 +195,23 @@ def main() -> int:
             """
             (() => {
               const section = document.querySelector('section[aria-label="NPC 办公网"]');
-              const node = section?.querySelector('[class*="officeNodeLayer"] a[class*="officeNode"][href*="seat="]');
+              const nodes = Array.from(section?.querySelectorAll('[class*="officeNodeLayer"] a[class*="officeNode"][href*="seat="]') || []);
+              const node = nodes
+                .map((item) => {
+                  const rect = item.getBoundingClientRect();
+                  return {
+                    item,
+                    rect,
+                    room: Math.min(rect.left, window.innerWidth - rect.right) + Math.min(rect.top, window.innerHeight - rect.bottom),
+                  };
+                })
+                .sort((left, right) => right.room - left.room)[0]?.item;
               const lines = Array.from(section?.querySelectorAll('svg [data-kind] line[stroke-width]') || []);
               const root = document.scrollingElement || document.documentElement;
               if (!section || !node || lines.length === 0) return null;
               const rect = node.getBoundingClientRect();
               return {
+                href: node.getAttribute('href') || '',
                 node: { left: rect.left, top: rect.top, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
                 lines: lines.map((line) => ({ x1: line.getAttribute('x1'), y1: line.getAttribute('y1'), x2: line.getAttribute('x2'), y2: line.getAttribute('y2') })),
                 overflow: Math.max(0, root.scrollWidth - root.clientWidth),
@@ -225,16 +236,18 @@ def main() -> int:
             (() => {
               const width = window.innerWidth || document.documentElement.clientWidth || 1440;
               const height = window.innerHeight || document.documentElement.clientHeight || 900;
-              const node = document.querySelector('section[aria-label="NPC 办公网"] [class*="officeNodeLayer"] a[class*="officeNode"][href*="seat="]');
+              const href = %s;
+              const node = Array.from(document.querySelectorAll('section[aria-label="NPC 办公网"] [class*="officeNodeLayer"] a[class*="officeNode"][href*="seat="]'))
+                .find((item) => item.getAttribute('href') === href);
               const rect = node?.getBoundingClientRect();
               const centerX = rect ? rect.left + rect.width / 2 : width / 2;
               const centerY = rect ? rect.top + rect.height / 2 : height / 2;
               return {
-                dx: centerX > width * 0.52 ? -96 : 96,
-                dy: centerY > height * 0.55 ? -44 : 44,
+                dx: centerX > width * 0.52 ? -132 : 132,
+                dy: centerY > height * 0.55 ? -62 : 62,
               };
             })()
-            """,
+            """ % json.dumps(before.get("href") or ""),
         )
         drag_dx = float(drag_vector.get("dx", 96) if isinstance(drag_vector, dict) else 96)
         drag_dy = float(drag_vector.get("dy", 44) if isinstance(drag_vector, dict) else 44)
@@ -262,7 +275,9 @@ def main() -> int:
             """
             (() => {
               const section = document.querySelector('section[aria-label="NPC 办公网"]');
-              const node = section?.querySelector('[class*="officeNodeLayer"] a[class*="officeNode"][href*="seat="]');
+              const href = %s;
+              const node = Array.from(section?.querySelectorAll('[class*="officeNodeLayer"] a[class*="officeNode"][href*="seat="]') || [])
+                .find((item) => item.getAttribute('href') === href);
               const lines = Array.from(section?.querySelectorAll('svg [data-kind] line[stroke-width]') || []);
               const root = document.scrollingElement || document.documentElement;
               if (!section || !node || lines.length === 0) return null;
@@ -273,7 +288,7 @@ def main() -> int:
                 overflow: Math.max(0, root.scrollWidth - root.clientWidth),
               };
             })()
-            """,
+            """ % json.dumps(before.get("href") or ""),
         )
         if not isinstance(after, dict):
             raise RuntimeError("Office network disappeared after drag")
@@ -334,9 +349,13 @@ def main() -> int:
         if not isinstance(detail, dict) or not detail.get("drawerText") or not detail.get("detailHref"):
             raise RuntimeError(f"Clicking a collaboration line did not open details: {detail}")
         detail_text = str(detail.get("drawerText") or "")
-        for expected_text in ["需求", "产出", "承接任务", "最新回执", "下一步", "沉淀知识", "沉淀 Skill"]:
+        for expected_text in ["需求", "产出", "承接任务", "最新回执", "闭环沉淀", "下一步"]:
             if expected_text not in detail_text:
                 raise RuntimeError(f"Collaboration detail is missing {expected_text}: {detail}")
+        if "沉淀知识" not in detail_text and "补充知识" not in detail_text:
+            raise RuntimeError(f"Collaboration detail is missing the knowledge closure action: {detail}")
+        if "沉淀 Skill" not in detail_text and "完善 Skill" not in detail_text:
+            raise RuntimeError(f"Collaboration detail is missing the Skill closure action: {detail}")
         if not detail.get("knowledgeHref") or not detail.get("skillHref"):
             raise RuntimeError(f"Knowledge/Skill closure links are not tab-specific: {detail}")
         if int(detail.get("selected") or 0) < 1:

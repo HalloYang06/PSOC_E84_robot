@@ -1252,6 +1252,7 @@
 
 .officeEdgeLifecycle span,
 .officeEdgeReceipt,
+.officeEdgeClosure,
 .officeEdgeNext {
   min-width: 0;
   padding: 7px;
@@ -1267,6 +1268,7 @@
 }
 
 .officeEdgeReceipt,
+.officeEdgeClosure,
 .officeEdgeNext {
   display: grid;
   gap: 4px;
@@ -1274,9 +1276,26 @@
 }
 
 .officeEdgeReceipt span,
+.officeEdgeClosure span,
 .officeEdgeNext span {
   color: var(--accent);
   font-size: 10px;
+}
+
+.officeEdgeClosure[data-active="1"] {
+  border-color: rgba(158, 240, 191, 0.26);
+  background: rgba(158, 240, 191, 0.065);
+}
+
+.officeEdgeClosure strong {
+  color: var(--mint);
+  font-size: 13px;
+}
+
+.officeEdgeClosure p {
+  margin: 0;
+  color: rgba(255, 248, 232, 0.74);
+  font-size: 11px;
 }
 
 .officeEdgeReceipt p {

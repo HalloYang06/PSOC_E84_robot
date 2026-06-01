@@ -4,6 +4,8 @@ import {
   getCurrentAuthState,
   getCollaborationMessagesState,
   getProjectComputerNodesState,
+  getProjectKnowledgeDocumentsState,
+  getProjectSkillsState,
   getProjectState,
   getProjectWorkstationsState,
   getRequirementsState,
@@ -43,6 +45,8 @@ type OfficeEdge = {
   detailTitle: string;
   detailOutput: string;
   latestTaskTitle: string;
+  knowledgeClosureCount: number;
+  skillClosureCount: number;
   workbenchHref?: string;
   knowledgeHref?: string;
   skillHref?: string;
@@ -275,6 +279,34 @@ function collaborationNextAction(needStatus: string, taskStatus: string, receipt
   return "查看协作详情";
 }
 
+function collaborationClosureNextAction(edge: {
+  knowledgeClosureCount: number;
+  skillClosureCount: number;
+  needStatus: string;
+  taskStatus: string;
+  receiptStatus: string;
+}) {
+  if (edge.knowledgeClosureCount || edge.skillClosureCount) return "索引沉淀 / 刷新上岗包";
+  return collaborationNextAction(edge.needStatus, edge.taskStatus, edge.receiptStatus);
+}
+
+function closureMetadata(value: AnyRecord) {
+  return {
+    ...record(value.metadata),
+    ...record(value.extra_data ?? value.extraData),
+  };
+}
+
+function closureMatches(value: AnyRecord, ids: { needId?: string; taskId?: string; dispatchId?: string }) {
+  const meta = closureMetadata(value);
+  if (text(meta.closure_source, "") !== "company_collaboration") return false;
+  return Boolean(
+    (ids.needId && text(meta.closure_need_id, "") === ids.needId)
+      || (ids.taskId && text(meta.closure_task_id, "") === ids.taskId)
+      || (ids.dispatchId && text(meta.closure_dispatch_id, "") === ids.dispatchId),
+  );
+}
+
 function reviewPolicyLabel(value: unknown) {
   const raw = text(value, "inherit").toLowerCase();
   if (/strict|always|manual|required/.test(raw)) return "高风险确认";
@@ -427,6 +459,8 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
     collaborationMessagesState,
     requirementsState,
     tasksState,
+    knowledgeDocumentsState,
+    projectSkillsState,
     usageData,
   ] = await Promise.all([
     getProjectComputerNodesState(params.id),
@@ -434,6 +468,8 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
     getCollaborationMessagesState({ projectId: params.id }),
     getRequirementsState({ projectIds: [params.id] }),
     getTasksDataScopedState({ projectIds: [params.id] }),
+    getProjectKnowledgeDocumentsState(params.id),
+    getProjectSkillsState(params.id),
     getUsageData(),
   ]);
   const liveNodes = asArray<AnyRecord>(computerNodesState.data);
@@ -684,6 +720,8 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
   const allOrgEvents = asArray<AnyRecord>(collaborationMessagesState.data);
   const allNeeds = asArray<AnyRecord>(requirementsState.data);
   const allTasks = asArray<AnyRecord>(tasksState.data);
+  const allKnowledgeDocuments = asArray<AnyRecord>(knowledgeDocumentsState.data);
+  const allProjectSkills = asArray<AnyRecord>(projectSkillsState.data);
   const pendingHumanReviews = allOrgEvents.filter(isPendingHumanReview);
   const recentOrgEvents = allOrgEvents.slice(0, 6);
   const seatNameById = new Map<string, string>();
@@ -757,6 +795,9 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
     const taskStatus = primaryTask ? publicTaskStatusLabel(primaryTask.status) : "待生成任务";
     const dispatchStatus = dispatchId ? publicStatusLabel(dispatch.status ?? primaryTask?.status) : "待投递";
     const receiptStatus = publicReceiptLabel(receiptMessages);
+    const closureIds = { needId, taskId, dispatchId };
+    const knowledgeClosureCount = allKnowledgeDocuments.filter((item) => closureMatches(item, closureIds)).length;
+    const skillClosureCount = allProjectSkills.filter((item) => closureMatches(item, closureIds)).length;
     const latestReceiptMessage = receiptMessages
       .slice()
       .sort((left, right) => text(right.created_at ?? right.createdAt, "").localeCompare(text(left.created_at ?? left.createdAt, "")))[0];
@@ -816,7 +857,9 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
         : "还没有协作者回执",
       activityTime,
       activityLabel: compactActivityLabel(activityTime),
-      nextAction: collaborationNextAction(needStatus, taskStatus, receiptStatus),
+      nextAction: collaborationClosureNextAction({ knowledgeClosureCount, skillClosureCount, needStatus, taskStatus, receiptStatus }),
+      knowledgeClosureCount,
+      skillClosureCount,
     };
   }).sort((left, right) => right.activityTime - left.activityTime);
   const visibleChains = collaborationChains.slice(0, 4);
@@ -921,6 +964,8 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
         detailTitle: chain.detailTitle,
         detailOutput: chain.detailOutput,
         latestTaskTitle: chain.latestTaskTitle,
+        knowledgeClosureCount: chain.knowledgeClosureCount,
+        skillClosureCount: chain.skillClosureCount,
       });
     } else {
       existing.count += 1;
@@ -943,6 +988,8 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
         existing.detailTitle = chain.detailTitle;
         existing.detailOutput = chain.detailOutput;
         existing.latestTaskTitle = chain.latestTaskTitle;
+        existing.knowledgeClosureCount = chain.knowledgeClosureCount;
+        existing.skillClosureCount = chain.skillClosureCount;
       }
     }
   }
@@ -983,6 +1030,8 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
         detailTitle: "同工位协作关系",
         detailOutput: "真实 Need/Task 产生后，这里会展示期望产出和承接任务。",
         latestTaskTitle: "还没有生成承接任务",
+        knowledgeClosureCount: 0,
+        skillClosureCount: 0,
       });
     }
   }
@@ -1012,6 +1061,8 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
       detailTitle: "负责人协作关系",
       detailOutput: "真实 Need/Task 产生后，这里会展示期望产出和承接任务。",
       latestTaskTitle: "还没有生成承接任务",
+      knowledgeClosureCount: 0,
+      skillClosureCount: 0,
     });
   }
   const officeEdges = [...explicitOfficeEdges, ...officeRelationshipEdges.slice(0, Math.max(0, 14 - explicitOfficeEdges.length))];
@@ -1041,6 +1092,9 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
       seed_output: edge.detailOutput,
       seed_receipt: edge.latestReceipt,
     });
+    if (edge.needId) query.set("need_id", edge.needId);
+    if (edge.taskId) query.set("task_id", edge.taskId);
+    if (edge.dispatchId) query.set("dispatch_id", edge.dispatchId);
     if (panel === "knowledge") query.set("tab", "knowledge");
     if (panel === "skills") query.set("tab", "skills");
     return `/projects/${projectId}/skill-forge?${query.toString()}`;
@@ -1077,6 +1131,8 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
     detailTitle: edge.detailTitle,
     detailOutput: edge.detailOutput,
     latestTaskTitle: edge.latestTaskTitle,
+    knowledgeClosureCount: edge.knowledgeClosureCount,
+    skillClosureCount: edge.skillClosureCount,
     needTone: chainTone(edge.needStatus),
     taskTone: chainTone(edge.taskStatus),
     receiptTone: chainTone(edge.receiptStatus),

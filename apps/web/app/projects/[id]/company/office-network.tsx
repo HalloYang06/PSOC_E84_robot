@@ -37,6 +37,8 @@ export type OfficeNetworkEdge = {
   detailTitle: string;
   detailOutput: string;
   latestTaskTitle: string;
+  knowledgeClosureCount: number;
+  skillClosureCount: number;
   needTone: string;
   taskTone: string;
   receiptTone: string;
@@ -364,14 +366,19 @@ export function OfficeNetwork({ projectId, nodes, edges }: OfficeNetworkProps) {
             <span>最新回执</span>
             <p>{selectedEdge.latestReceipt}</p>
           </div>
+          <div className={styles.officeEdgeClosure} data-active={selectedEdge.knowledgeClosureCount || selectedEdge.skillClosureCount ? "1" : undefined}>
+            <span>闭环沉淀</span>
+            <strong>{selectedEdge.knowledgeClosureCount + selectedEdge.skillClosureCount ? "已有可复用沉淀" : "等待沉淀"}</strong>
+            <p>知识 {selectedEdge.knowledgeClosureCount} · Skill {selectedEdge.skillClosureCount}</p>
+          </div>
           <div className={styles.officeEdgeNext}>
             <span>下一步</span>
             <strong>{selectedEdge.nextAction}</strong>
           </div>
           <div className={styles.officeEdgeActions}>
             <Link href={selectedEdge.workbenchHref}>打开两端 NPC</Link>
-            <Link href={selectedEdge.knowledgeHref}>沉淀知识</Link>
-            <Link href={selectedEdge.skillHref}>沉淀 Skill</Link>
+            <Link href={selectedEdge.knowledgeHref}>{selectedEdge.knowledgeClosureCount ? "补充知识" : "沉淀知识"}</Link>
+            <Link href={selectedEdge.skillHref}>{selectedEdge.skillClosureCount ? "完善 Skill" : "沉淀 Skill"}</Link>
           </div>
         </aside>
       ) : null}
