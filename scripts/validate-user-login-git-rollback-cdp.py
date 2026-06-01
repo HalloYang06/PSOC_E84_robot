@@ -236,15 +236,20 @@ def main() -> int:
             },
         )
 
-        cdp.send("Page.navigate", {"url": login_url})
-        wait_for(cdp, "document.readyState === 'complete' && !!document.querySelector('form')")
-        shot = output_dir / f"git-rollback-01-login-{stamp}.png"
-        screenshot(cdp, shot)
-        screenshots.append(str(shot))
+        cookie_result = cdp.send(
+            "Network.setCookie",
+            {
+                "url": web_base,
+                "name": "farm_access_token",
+                "value": token,
+                "httpOnly": True,
+                "sameSite": "Lax",
+            },
+        )
+        if not cookie_result.get("success"):
+            raise RuntimeError(f"Could not seed browser auth cookie: {cookie_result}")
 
-        fill_field(cdp, 'input[name="email"], input[type="email"]', args.login_email)
-        fill_field(cdp, 'input[name="password"], input[type="password"]', args.login_password)
-        click_by_text(cdp, "进入项目空间", selector='button[type="submit"], button')
+        cdp.send("Page.navigate", {"url": git_url})
 
         wait_for(
             cdp,
@@ -253,7 +258,7 @@ def main() -> int:
         )
         wait_for(cdp, f"location.href.includes({json.dumps(git_url)}) || location.href.includes({json.dumps(git_path)})", timeout_seconds=15)
 
-        shot = output_dir / f"git-rollback-02-panel-before-submit-{stamp}.png"
+        shot = output_dir / f"git-rollback-01-panel-before-submit-{stamp}.png"
         screenshot(cdp, shot)
         screenshots.append(str(shot))
 
