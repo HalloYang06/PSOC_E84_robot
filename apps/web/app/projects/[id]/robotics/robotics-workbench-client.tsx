@@ -2927,34 +2927,39 @@ export function RoboticsWorkbenchClient({
           {notice ? <div className={styles.inlineNotice} data-tone="success">{notice}</div> : null}
           {error ? <div className={styles.inlineNotice} data-tone="danger">{error}</div> : null}
           {openCount ? (
-            <div className={`${workbenchStyles.tileGrid} ${styles.deviceTileGrid}`} data-tile-count={openCount}>
-              {openDevices.map((device, index) => (
-                <DeviceDataTile
-                  key={deviceId(device, index)}
-                  projectId={projectId}
-                  device={device}
-                  index={index}
-                  npcSeats={npcSeats}
-                  defaultNpcId={defaultNpcId}
-                  initialTab={initialTab}
-                  onClose={() => closeWindow(deviceId(device, index))}
-                />
-              ))}
-              {openWindows.map((tile) => (
-                <DebugTile
-                  key={tile.id}
-                  projectId={projectId}
-                  tile={tile}
-                  openIds={openIds}
-                  npcSeats={npcSeats}
-                  terminalMessages={terminalMessages}
-                  deviceQualityDevices={deviceQualityDevices}
-                  initialNpcId={text(tile.boundNpc, defaultNpcId)}
-                  initialTab={initialTab}
-                  onClose={() => closeWindow(tile.id)}
-                />
-              ))}
-            </div>
+            <>
+              <div className={styles.openContextGuide}>
+                <WorkbenchSplitGuide projectId={projectId} />
+              </div>
+              <div className={`${workbenchStyles.tileGrid} ${styles.deviceTileGrid}`} data-tile-count={openCount}>
+                {openDevices.map((device, index) => (
+                  <DeviceDataTile
+                    key={deviceId(device, index)}
+                    projectId={projectId}
+                    device={device}
+                    index={index}
+                    npcSeats={npcSeats}
+                    defaultNpcId={defaultNpcId}
+                    initialTab={initialTab}
+                    onClose={() => closeWindow(deviceId(device, index))}
+                  />
+                ))}
+                {openWindows.map((tile) => (
+                  <DebugTile
+                    key={tile.id}
+                    projectId={projectId}
+                    tile={tile}
+                    openIds={openIds}
+                    npcSeats={npcSeats}
+                    terminalMessages={terminalMessages}
+                    deviceQualityDevices={deviceQualityDevices}
+                    initialNpcId={text(tile.boundNpc, defaultNpcId)}
+                    initialTab={initialTab}
+                    onClose={() => closeWindow(tile.id)}
+                  />
+                ))}
+              </div>
+            </>
           ) : (
             <div className={styles.overviewPage}>
               <WorkbenchSplitGuide projectId={projectId} />

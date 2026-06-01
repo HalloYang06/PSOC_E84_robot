@@ -1147,6 +1147,15 @@
   overflow: auto;
 }
 
+.openContextGuide {
+  flex-shrink: 0;
+  padding: 10px 12px 0;
+}
+
+.openContextGuide .splitGuide article {
+  min-height: 118px;
+}
+
 .splitGuide {
   min-width: 0;
   display: grid;
