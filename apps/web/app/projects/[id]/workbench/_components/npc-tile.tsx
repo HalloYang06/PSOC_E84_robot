@@ -3757,7 +3757,10 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
               {collaborationHealth.nextLabel}
             </button>
           ) : collaborationHealth.nextAction === "open_skills" ? (
-            <Link href={governanceHref("skills")} className={styles.collaborationPrimaryBtn}>
+            <Link
+              href={`${governanceHref("skills")}&seat=${encodeURIComponent(seatApiId)}`}
+              className={styles.collaborationPrimaryBtn}
+            >
               {collaborationHealth.nextLabel}
             </Link>
           ) : (

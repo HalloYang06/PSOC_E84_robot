@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { 创建项目Skill, 删除能力工坊知识库, 删除项目Skill, 导入Github项目Skill, 保存能力工坊知识库, 添加Skill到Npc, 索引Npc沉淀, 绑定知识库到Npc } from "../../../actions";
+import { recommendRoleSkillIds } from "../../../../lib/platform-skills";
 import tileStyles from "../workbench/_components/npc-tile.module.css";
 import workbenchStyles from "../workbench/workbench.module.css";
 import styles from "./skill-forge.module.css";
@@ -104,6 +105,21 @@ function nameOf(value: AnyRecord, fallback: string) {
 
 function workstationIdOfSeat(value: AnyRecord) {
   return text(value.workstation_id ?? value.workstationId ?? value.development_station_id ?? value.metadata?.workstation_id, "");
+}
+
+function seatResponsibilityOf(value: AnyRecord | null | undefined) {
+  const metadata = metadataOf(value ?? {});
+  const extraData = value?.extra_data && typeof value.extra_data === "object" ? value.extra_data : {};
+  return text(
+    value?.responsibility ??
+      value?.description ??
+      value?.notes ??
+      metadata.responsibility ??
+      metadata.role ??
+      extraData.responsibility ??
+      extraData.role,
+    "",
+  );
 }
 
 function skillIdOf(value: AnyRecord) {
@@ -397,6 +413,18 @@ function ForgeTile({
   });
   const assignedSkills = orderedSkills.filter((skill) => assignedSkillIds.has(skillIdOf(skill)) || isBuiltInSkill(skill));
   const availableSkills = orderedSkills.filter((skill) => !assignedSkills.includes(skill));
+  const recommendedSkillIds = resource.kind === "seat"
+    ? recommendRoleSkillIds({
+        roleText: `${resource.name} ${resource.parentName || ""} ${seatResponsibilityOf(sourceSeat)}`,
+        threadText: `${text(sourceSeat?.provider_label ?? sourceSeat?.providerLabel ?? sourceSeat?.ai_provider_id, "")} ${text(sourceSeat?.model, "")}`,
+        skillLibrary: skills,
+        limit: 5,
+      }).filter((skillId) => !assignedSkillIds.has(skillId.toLowerCase()))
+    : [];
+  const recommendedSkills = recommendedSkillIds
+    .map((skillId) => orderedSkills.find((skill) => skillIdOf(skill) === skillId.toLowerCase()))
+    .filter((skill): skill is AnyRecord => Boolean(skill));
+  const roleSkillCount = resource.kind === "seat" && sourceSeat ? roleSkillLoadoutOf(sourceSeat).length : focusedAssignments.length;
   const snapshot = sourceSeat?.metadata?.skill_forge_snapshot ?? sourceSeat?.extra_data?.skill_forge_snapshot ?? null;
   const deposits = resource.kind === "seat" ? npcDepositPaths(sourceSeat, resource) : null;
   const tabLabel = activeTab === "knowledge" ? "知识库配置" : activeTab === "git" ? "Git 管理" : "Skill 配置";
@@ -451,6 +479,37 @@ function ForgeTile({
               <strong>{assignedSkills.length ? `${resource.name} 已装配 ${assignedSkills.length} 个 Skill` : `${resource.name} 还没有可运行 Skill`}</strong>
               <p>这里先显示该 NPC 当前会带进上岗包的 Skill。来源必须写清楚：NPC 自己创建、用户手动创建、用户导入本地 Skill、用户导入 GitHub 路径；平台基础能力随上岗包生成。</p>
               {deposits ? <small>NPC 默认写入：{deposits.skill}</small> : null}
+            </article>
+          ) : null}
+          {resource.kind === "seat" ? (
+            <article className={`${styles.closureCard} ${styles.wideCard}`} data-state={roleSkillCount > 0 && focusedKnowledge.length > 0 ? "ok" : "gap"}>
+              <div>
+                <span>NPC 能力闭环体检</span>
+                <strong>{roleSkillCount > 0 && focusedKnowledge.length > 0 ? "上岗包配置源完整" : "上岗包配置源有缺口"}</strong>
+                <p>
+                  Skill 会影响 NeedRouter 推荐和 NPC 开工上下文；知识库负责长期事实源。补齐后，新的派单和刷新后的上岗包会读取这里的配置。
+                </p>
+              </div>
+              <div className={styles.closureMetrics}>
+                <span data-state={roleSkillCount > 0 ? "ok" : "gap"}><b>{roleSkillCount}</b><small>运行 Skill</small></span>
+                <span data-state={focusedKnowledge.length > 0 ? "ok" : "gap"}><b>{focusedKnowledge.length}</b><small>知识库</small></span>
+                <span data-state={snapshot ? "ok" : "gap"}><b>{snapshot ? "已刷新" : "待刷新"}</b><small>上岗包</small></span>
+              </div>
+              {recommendedSkills.length ? (
+                <div className={styles.recommendStrip}>
+                  <span>建议先补</span>
+                  {recommendedSkills.map((skill) => (
+                    <form key={`recommended-${skillIdOf(skill)}`} className={styles.inlineAction} action={添加Skill到Npc.bind(null, projectId, resource.seatRowId || resource.id, skillIdOf(skill))}>
+                      <input type="hidden" name="return_to" value={`/projects/${projectId}/skill-forge?resources=${encodeURIComponent(resourceKey(resource))}`} />
+                      <button type="submit">{skillLabelOf(skill)}</button>
+                    </form>
+                  ))}
+                </div>
+              ) : roleSkillCount === 0 ? (
+                <small>没有命中推荐词；可在下方手动创建或从仓库选择 Skill。</small>
+              ) : (
+                <small>推荐项已装配或当前职责暂不需要额外 Skill。</small>
+              )}
             </article>
           ) : null}
           {(resource.kind === "seat" ? assignedSkills : orderedSkills).map((skill, index) => {
@@ -768,6 +827,10 @@ export function SkillForgeClient({
     setOpenIds((curr) => curr.includes(id) ? curr.filter((item) => item !== id) : uniqueIds([...curr, id]));
   }
 
+  function openRecommendedResources() {
+    setOpenIds(resources.slice(0, 2).map(resourceKey));
+  }
+
   function closeResource(id: string) {
     setOpenIds((curr) => curr.filter((item) => item !== id));
   }
@@ -803,9 +866,14 @@ export function SkillForgeClient({
               readOnly
               value="资源索引：工位 / NPC / 能力"
             />
-            <button type="button" className={`${workbenchStyles.batchBtn} ${styles.forgeBatchBtn}`} onClick={() => setOpenIds(resources.map(resourceKey))}>
-              打开全部 ({resources.length})
-            </button>
+            <div className={styles.forgeQuickActions}>
+              <button type="button" className={`${workbenchStyles.batchBtn} ${styles.forgeBatchBtn}`} onClick={openRecommendedResources}>
+                打开推荐 ({Math.min(resources.length, 2)})
+              </button>
+              <button type="button" className={`${workbenchStyles.batchBtn} ${styles.forgeBatchBtn} ${styles.forgeBatchBtnGhost}`} onClick={() => setOpenIds(resources.map(resourceKey))}>
+                全部 ({resources.length})
+              </button>
+            </div>
           </div>
           <ul className={`${workbenchStyles.groupList} ${styles.forgeGroupList}`} aria-label="工位和 NPC 索引">
             {workstations.map((station, stationIndex) => {

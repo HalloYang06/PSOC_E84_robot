@@ -58,6 +58,23 @@
   background: rgba(232, 189, 95, 0.13);
 }
 
+.forgeQuickActions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.forgeQuickActions .forgeBatchBtn {
+  min-width: 0;
+}
+
+.forgeBatchBtnGhost {
+  padding-inline: 12px;
+  border-color: rgba(232, 189, 95, 0.16);
+  background: rgba(255, 247, 225, 0.035);
+  color: rgba(255, 247, 225, 0.78);
+}
+
 .forgeTitle strong {
   color: var(--forge-text);
   font-size: 17px;
@@ -259,6 +276,80 @@
     rgba(12, 24, 30, 0.68);
 }
 
+.skillGrid .closureCard {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  border-color: rgba(143, 214, 255, 0.28);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(143, 214, 255, 0.13), transparent 30%),
+    rgba(12, 24, 30, 0.58);
+}
+
+.skillGrid .closureCard[data-state="gap"] {
+  border-color: rgba(255, 209, 102, 0.38);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(255, 209, 102, 0.16), transparent 30%),
+    rgba(35, 26, 12, 0.5);
+}
+
+.closureMetrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(82px, 1fr));
+  gap: 8px;
+  min-width: min(100%, 300px);
+}
+
+.closureMetrics span {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 9px;
+  border: 1px solid rgba(232, 189, 95, 0.18);
+  border-radius: 12px;
+  background: rgba(255, 247, 225, 0.055);
+}
+
+.closureMetrics span[data-state="ok"] {
+  border-color: rgba(167, 223, 154, 0.32);
+  background: rgba(167, 223, 154, 0.09);
+}
+
+.closureMetrics span[data-state="gap"] {
+  border-color: rgba(255, 209, 102, 0.32);
+  background: rgba(255, 209, 102, 0.08);
+}
+
+.closureMetrics b {
+  color: var(--forge-text);
+  font-size: 13px;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.closureMetrics small {
+  color: var(--forge-muted);
+  font-size: 10px;
+}
+
+.recommendStrip {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.recommendStrip > span {
+  color: var(--forge-amber);
+  flex: 0 0 auto;
+}
+
 .skillGrid span,
 .materialRows span {
   color: var(--forge-amber);
@@ -293,6 +384,17 @@
 .skillGrid .assetCard {
   min-height: 238px;
   overflow: hidden;
+}
+
+@media (max-width: 980px) {
+  .skillGrid .closureCard {
+    grid-template-columns: 1fr;
+  }
+
+  .closureMetrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    min-width: 0;
+  }
 }
 
 .assetTitle {
