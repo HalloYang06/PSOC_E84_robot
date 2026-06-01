@@ -499,6 +499,73 @@
   overflow: hidden;
 }
 
+.gitGrid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+}
+
+.skillGrid .gitCard {
+  min-height: 168px;
+  overflow: visible;
+}
+
+.skillGrid .gitSourceCard,
+.skillGrid .gitSafetyCard {
+  grid-column: 1 / -1;
+  min-height: 174px;
+}
+
+.skillGrid .gitSourceCard {
+  border-color: rgba(143, 214, 255, 0.3);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(143, 214, 255, 0.15), transparent 32%),
+    linear-gradient(150deg, rgba(17, 34, 36, 0.84), rgba(13, 19, 14, 0.74));
+}
+
+.skillGrid .gitSafetyCard {
+  border-color: rgba(255, 209, 102, 0.42);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(255, 209, 102, 0.16), transparent 32%),
+    linear-gradient(150deg, rgba(41, 30, 13, 0.82), rgba(17, 18, 10, 0.76));
+}
+
+.skillGrid .gitEmptyCard {
+  border-style: dashed;
+}
+
+.gitCard strong,
+.gitCard p,
+.gitCard small {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.gitCard strong a {
+  color: inherit;
+  text-decoration-color: rgba(232, 189, 95, 0.54);
+  text-underline-offset: 3px;
+}
+
+.gitFlowChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: auto;
+}
+
+.gitFlowChips span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 4px 9px;
+  border: 1px solid rgba(232, 189, 95, 0.2);
+  border-radius: 999px;
+  background: rgba(232, 189, 95, 0.08);
+  color: var(--forge-text);
+  font-size: 11px;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
 @media (max-width: 980px) {
   .closureMetrics {
     grid-template-columns: 1fr;
@@ -825,5 +892,15 @@
 
   .skillGrid .depositWideCard {
     min-height: 292px;
+  }
+
+  .skillGrid .gitCard,
+  .skillGrid .gitSourceCard,
+  .skillGrid .gitSafetyCard {
+    min-height: 190px;
+  }
+
+  .gitFlowChips span {
+    white-space: normal;
   }
 }

@@ -710,18 +710,24 @@ function ForgeTile({
           ) : null}
         </section>
       ) : (
-        <section className={styles.skillGrid}>
-          <article>
+        <section className={`${styles.skillGrid} ${styles.gitGrid}`}>
+          <article className={`${styles.gitCard} ${styles.gitSourceCard}`}>
             <span>GitHub 事实源</span>
             {githubRepoHref(projectRepo) ? (
               <strong><a href={githubRepoHref(projectRepo)} target="_blank" rel="noreferrer">{projectRepo}</a></strong>
             ) : (
               <strong>{projectRepo}</strong>
             )}
-            <p>跨电脑协作只认 GitHub 仓库相对路径、提交、分支、PR 和平台证据；本地目录只是当前电脑工作副本。</p>
+            <p>跨电脑协作只认 GitHub 仓库相对路径、提交、分支、PR 和平台证据；当前电脑工作副本只用于执行和同步提示。</p>
+            <div className={styles.gitFlowChips} aria-label="Git 治理流程">
+              <span>先预检</span>
+              <span>收集证据</span>
+              <span>公司层放行</span>
+              <span>执行后回执</span>
+            </div>
           </article>
           {gitMessages.map((message, index) => (
-            <article key={text(message.id, `git-${index}`)}>
+            <article key={text(message.id, `git-${index}`)} className={`${styles.gitCard} ${styles.gitEventCard}`}>
               <span>{messageTime(message) || "Git 记录"}</span>
               <strong>{userMessage(message.title, "Git 事件")}</strong>
               <p>{userMessage(message.body, "这条 Git 记录已归档到当前资源。").slice(0, 160)}</p>
@@ -729,16 +735,16 @@ function ForgeTile({
             </article>
           ))}
           {!gitMessages.length ? (
-            <article>
+            <article className={`${styles.gitCard} ${styles.gitEmptyCard}`}>
               <span>提交筛选</span>
               <strong>{resource.name} 还没有 Git 记录</strong>
               <p>只有该 NPC 发起、承接、审核、提交、预检或受影响的 Git 事件会落到这里；项目总池不会替代 NPC 自己的记录。</p>
             </article>
           ) : null}
-          <article>
+          <article className={`${styles.gitCard} ${styles.gitSafetyCard}`}>
             <span>高风险边界</span>
             <strong>回退必须人审</strong>
-            <p>NPC 可以提交建议和预演，平台先登记请求、收集证据，再由用户放行。</p>
+            <p>回退只登记申请，不直接执行。平台会先收集目标版本、影响范围和证据，再交给公司层人工放行。</p>
           </article>
         </section>
       )}
