@@ -1043,9 +1043,6 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
     });
     if (panel === "knowledge") query.set("tab", "knowledge");
     if (panel === "skills") query.set("tab", "skills");
-    if (edge.needId) query.set("need_id", edge.needId);
-    if (edge.taskId) query.set("task_id", edge.taskId);
-    if (edge.dispatchId) query.set("dispatch_id", edge.dispatchId);
     return `/projects/${projectId}/skill-forge?${query.toString()}`;
   };
   const officeNetworkNodes: OfficeNetworkNode[] = officeNodes.map((node) => ({
