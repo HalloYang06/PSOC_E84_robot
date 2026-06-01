@@ -79,6 +79,70 @@
   background: rgba(231, 199, 104, 0.12);
 }
 
+.focusReview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid rgba(158, 240, 191, 0.28);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 0% 50%, rgba(158, 240, 191, 0.13), transparent 36%),
+    linear-gradient(145deg, rgba(19, 45, 35, 0.9), rgba(7, 19, 17, 0.86));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 18px 44px rgba(0, 0, 0, 0.18);
+}
+
+.focusReview div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.focusReview span {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+}
+
+.focusReview strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1.35;
+}
+
+.focusReview p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.focusReview a {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 11px;
+  border: 1px solid rgba(158, 240, 191, 0.28);
+  border-radius: 999px;
+  background: rgba(158, 240, 191, 0.08);
+  color: var(--mint);
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.focusReview a:hover {
+  border-color: rgba(158, 240, 191, 0.54);
+  background: rgba(158, 240, 191, 0.14);
+}
+
 .header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(380px, 0.82fr);
@@ -1882,6 +1946,7 @@
 
   .statusStrip,
   .decisionBand,
+  .focusReview,
   .sandbox,
   .chainList,
   .relationGrid,

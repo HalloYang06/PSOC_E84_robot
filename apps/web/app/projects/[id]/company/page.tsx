@@ -425,6 +425,23 @@ function labelProjectReturnPath(value: string) {
   return "← 返回来源";
 }
 
+function companyFocusReview(value: unknown, queue: unknown) {
+  if (text(value, "") !== "skill-forge-index") return null;
+  const rawQueue = text(queue, "").toLowerCase();
+  if (rawQueue === "tasks") {
+    return {
+      eyebrow: "能力工坊索引验收",
+      title: "正在查看刚索引的任务回执",
+      detail: "重点抽查承接任务、回执状态和归档材料。这里只查看、验收、归档，不会自动派单。",
+    };
+  }
+  return {
+    eyebrow: "能力工坊索引验收",
+    title: "正在查看刚索引的需求流转",
+    detail: "重点抽查协作需求是否进入流转、是否需要确认、是否已有承接任务。这里只查看、验收、归档，不会自动派单。",
+  };
+}
+
 function statusTone(label: string) {
   if (/可投递|在线|已完成|已送达/.test(label)) return "healthy";
   if (/延迟|待审核|待人工确认|高风险确认|待处理|等待|未知/.test(label)) return "review";
@@ -477,7 +494,7 @@ export default async function CompanyPage({
   searchParams,
 }: {
   params: { id: string };
-  searchParams?: { embed?: string; return_to?: string; from?: string; team_notice?: string; team_error?: string };
+  searchParams?: { embed?: string; return_to?: string; from?: string; team_notice?: string; team_error?: string; focus?: string; queue?: string };
 }) {
   const auth = await getCurrentAuthState();
   if (!auth.data?.user) {
@@ -761,6 +778,7 @@ export default async function CompanyPage({
   const readyNodeCount = nodeDispatchCounts.ready;
 
   const returnToPath = safeProjectReturnPath(params.id, searchParams?.return_to);
+  const focusReview = companyFocusReview(searchParams?.focus, searchParams?.queue);
 
   const projectId = String(project.id ?? params.id);
   const allOrgEvents = asArray<AnyRecord>(collaborationMessagesState.data);
@@ -1328,6 +1346,16 @@ export default async function CompanyPage({
       ) : null}
       {text(searchParams?.team_error, "") ? (
         <div className={styles.surfaceError} role="alert">{shortPublicText(searchParams?.team_error, "操作失败，请稍后再试", 120)}</div>
+      ) : null}
+      {focusReview ? (
+        <section className={styles.focusReview} aria-label="当前验收焦点">
+          <div>
+            <span>{focusReview.eyebrow}</span>
+            <strong>{focusReview.title}</strong>
+            <p>{focusReview.detail}</p>
+          </div>
+          <Link href={`/projects/${projectId}/skill-forge?return_to=${encodeURIComponent(selfPath)}&from=company`}>返回能力工坊</Link>
+        </section>
       ) : null}
 
       <header className={styles.header}>
