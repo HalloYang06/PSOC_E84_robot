@@ -50,6 +50,14 @@ type JointDetail = {
   child: string;
 };
 
+type UrdfPackage = {
+  fileName: string;
+  packageName: string;
+  urdfPath: string;
+  urdfText: string;
+  files: Map<string, ArrayBuffer>;
+};
+
 function text(value: unknown, fallback = "") {
   const next = String(value ?? "").trim();
   return next || fallback;
@@ -334,6 +342,110 @@ function parseUrdfJoints(urdfText: string): JointDetail[] {
   }));
 }
 
+function normalizePackagePath(value: string) {
+  return value.replace(/\\/g, "/").replace(/^\/+/, "");
+}
+
+function zipFileName(flags: number, bytes: Uint8Array) {
+  return new TextDecoder(flags & 0x0800 ? "utf-8" : "utf-8").decode(bytes);
+}
+
+async function inflateRaw(data: Uint8Array) {
+  if (typeof DecompressionStream === "undefined") {
+    throw new Error("zip inflate is not available");
+  }
+  const source = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
+  const stream = new Blob([source]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+  return new Response(stream).arrayBuffer();
+}
+
+async function readZipEntries(buffer: ArrayBuffer) {
+  const bytes = new Uint8Array(buffer);
+  const view = new DataView(buffer);
+  let eocd = -1;
+  for (let offset = bytes.length - 22; offset >= Math.max(0, bytes.length - 66000); offset -= 1) {
+    if (view.getUint32(offset, true) === 0x06054b50) {
+      eocd = offset;
+      break;
+    }
+  }
+  if (eocd < 0) throw new Error("zip end record not found");
+  const entries = view.getUint16(eocd + 10, true);
+  let cursor = view.getUint32(eocd + 16, true);
+  const files = new Map<string, ArrayBuffer>();
+
+  for (let index = 0; index < entries; index += 1) {
+    if (view.getUint32(cursor, true) !== 0x02014b50) throw new Error("invalid zip directory");
+    const flags = view.getUint16(cursor + 8, true);
+    const method = view.getUint16(cursor + 10, true);
+    const compressedSize = view.getUint32(cursor + 20, true);
+    const nameLength = view.getUint16(cursor + 28, true);
+    const extraLength = view.getUint16(cursor + 30, true);
+    const commentLength = view.getUint16(cursor + 32, true);
+    const localOffset = view.getUint32(cursor + 42, true);
+    const name = normalizePackagePath(zipFileName(flags, bytes.slice(cursor + 46, cursor + 46 + nameLength)));
+    cursor += 46 + nameLength + extraLength + commentLength;
+    if (!name || name.endsWith("/")) continue;
+    if (view.getUint32(localOffset, true) !== 0x04034b50) throw new Error("invalid zip local file");
+    const localNameLength = view.getUint16(localOffset + 26, true);
+    const localExtraLength = view.getUint16(localOffset + 28, true);
+    const dataStart = localOffset + 30 + localNameLength + localExtraLength;
+    const compressed = bytes.slice(dataStart, dataStart + compressedSize);
+    if (method === 0) {
+      files.set(name, compressed.slice().buffer);
+    } else if (method === 8) {
+      files.set(name, await inflateRaw(compressed));
+    }
+  }
+  return files;
+}
+
+async function readUrdfPackage(file: File): Promise<UrdfPackage> {
+  if (!file.name.toLowerCase().endsWith(".zip")) {
+    const urdfText = await file.text();
+    return {
+      fileName: file.name,
+      packageName: file.name.replace(/\.[^.]+$/, "") || "robot_model",
+      urdfPath: file.name,
+      urdfText,
+      files: new Map([[file.name, new TextEncoder().encode(urdfText).buffer]]),
+    };
+  }
+
+  const files = await readZipEntries(await file.arrayBuffer());
+  const urdfPaths = Array.from(files.keys()).filter((name) => name.toLowerCase().endsWith(".urdf"));
+  const preferred = urdfPaths.find((name) => /\/urdf\/[^/]+\.urdf$/i.test(name) && !/\.bak|backup/i.test(name))
+    ?? urdfPaths.find((name) => !/\.bak|backup/i.test(name))
+    ?? urdfPaths[0];
+  if (!preferred) throw new Error("zip does not contain urdf");
+  const rootName = preferred.split("/")[0] || file.name.replace(/\.[^.]+$/, "");
+  return {
+    fileName: file.name,
+    packageName: rootName,
+    urdfPath: preferred,
+    urdfText: new TextDecoder("utf-8").decode(files.get(preferred)),
+    files,
+  };
+}
+
+function resolvePackageAsset(packageFiles: Map<string, ArrayBuffer>, packageName: string, rawPath: string) {
+  const normalized = normalizePackagePath(rawPath);
+  const withoutProtocol = normalized.replace(/^package:\/\//, "");
+  const candidates = [
+    withoutProtocol,
+    withoutProtocol.replace(new RegExp(`^${packageName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/`), ""),
+    `${packageName}/${withoutProtocol}`,
+  ].map(normalizePackagePath);
+  for (const candidate of candidates) {
+    const direct = packageFiles.get(candidate);
+    if (direct) return direct;
+    const suffix = candidate.split("/").slice(-2).join("/").toLowerCase();
+    const found = Array.from(packageFiles.entries()).find(([name]) => name.toLowerCase().endsWith(suffix));
+    if (found) return found[1];
+  }
+  return null;
+}
+
 function Arm3DOverview({ motors, safetyState }: { motors: AnyRecord[]; safetyState: string }) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const cleanupRef = useRef<() => void>(() => {});
@@ -343,10 +455,12 @@ function Arm3DOverview({ motors, safetyState }: { motors: AnyRecord[]; safetySta
   const positionsRef = useRef(positions);
   const jointValuesRef = useRef(jointValues);
   const [urdfText, setUrdfText] = useState("");
+  const [urdfPackage, setUrdfPackage] = useState<UrdfPackage | null>(null);
   const placeholderPoseKey = urdfText ? "" : positions.map((position) => position.toFixed(4)).join("|");
   const [urdfName, setUrdfName] = useState("");
   const [urdfState, setUrdfState] = useState<"placeholder" | "loading" | "loaded" | "failed">("placeholder");
   const [urdfJoints, setUrdfJoints] = useState<JointDetail[]>([]);
+  const [meshStats, setMeshStats] = useState({ loaded: 0, missing: 0 });
   const urdfJointNames = useMemo(() => urdfJoints.map((joint) => joint.name), [urdfJoints]);
   const matchedUrdfJoints = useMemo(
     () => urdfJointNames.filter((name) => jointValues.has(name)),
@@ -363,13 +477,17 @@ function Arm3DOverview({ motors, safetyState }: { motors: AnyRecord[]; safetySta
     setUrdfName(file.name);
     setUrdfState("loading");
     setUrdfJoints([]);
-    file.text()
-      .then((content) => {
-        setUrdfJoints(parseUrdfJoints(content));
-        setUrdfText(content);
+    setMeshStats({ loaded: 0, missing: 0 });
+    readUrdfPackage(file)
+      .then((modelPackage) => {
+        setUrdfPackage(modelPackage);
+        setUrdfJoints(parseUrdfJoints(modelPackage.urdfText));
+        setUrdfName(modelPackage.fileName.endsWith(".zip") ? `${modelPackage.fileName} / ${modelPackage.urdfPath}` : modelPackage.fileName);
+        setUrdfText(modelPackage.urdfText);
       })
       .catch(() => {
         setUrdfText("");
+        setUrdfPackage(null);
         setUrdfState("failed");
       });
   }
@@ -485,12 +603,30 @@ function Arm3DOverview({ motors, safetyState }: { motors: AnyRecord[]; safetySta
           return;
         }
         try {
-          const { default: URDFLoader } = await import("urdf-loader");
+          const [{ default: URDFLoader }, { STLLoader }] = await Promise.all([
+            import("urdf-loader"),
+            import("three/examples/jsm/loaders/STLLoader.js"),
+          ]);
           if (disposed) return;
           const loader = new URDFLoader();
           (loader as AnyRecord).packages = "";
           (loader as AnyRecord).loadMeshCb = (_url: string, _manager: unknown, done: (mesh: unknown, err?: Error) => void) => {
-            done(new THREE.Group(), new Error("外部 mesh 未在浏览器本地加载"));
+            const asset = urdfPackage ? resolvePackageAsset(urdfPackage.files, urdfPackage.packageName, _url) : null;
+            if (!asset || !_url.toLowerCase().endsWith(".stl")) {
+              setMeshStats((stats) => ({ ...stats, missing: stats.missing + 1 }));
+              done(new THREE.Group(), new Error("模型资源未包含在导入包内"));
+              return;
+            }
+            try {
+              const geometry = new STLLoader().parse(asset);
+              const material = new THREE.MeshStandardMaterial({ color: 0x8ef0c7, roughness: 0.62, metalness: 0.08 });
+              const mesh = new THREE.Mesh(geometry, material);
+              setMeshStats((stats) => ({ ...stats, loaded: stats.loaded + 1 }));
+              done(mesh);
+            } catch {
+              setMeshStats((stats) => ({ ...stats, missing: stats.missing + 1 }));
+              done(new THREE.Group(), new Error("模型资源解析失败"));
+            }
           };
           const robot = loader.parse(urdfText) as AnyRecord;
           if (disposed) return;
@@ -558,7 +694,7 @@ function Arm3DOverview({ motors, safetyState }: { motors: AnyRecord[]; safetySta
       disposed = true;
       cleanup();
     };
-  }, [placeholderPoseKey, safetyState, urdfText]);
+  }, [placeholderPoseKey, safetyState, urdfPackage, urdfText]);
 
   useEffect(() => {
     const robot = robotRef.current;
@@ -590,21 +726,21 @@ function Arm3DOverview({ motors, safetyState }: { motors: AnyRecord[]; safetySta
       </div>
       <div className={styles.urdfToolbar}>
         <label>
-          <span>导入本机 URDF</span>
+          <span>导入本机模型包</span>
           <input
             type="file"
-            accept=".urdf,.xml"
+            accept=".zip,.urdf,.xml"
             data-testid="rehab-urdf-file"
             onChange={(event) => handleUrdfFile(event.target.files?.[0] ?? null)}
           />
         </label>
-        <p>只读预览：页面用电机上报角度驱动同名关节，不下发任何运动控制。mesh 资源未上传时会自动使用占位模型。</p>
+        <p>支持 URDF zip 包或单个 URDF。页面用电机上报角度驱动同名关节，只读预览，不下发任何运动控制。</p>
       </div>
       <div ref={mountRef} className={styles.armCanvas} />
       {urdfJoints.length ? (
         <div className={styles.poseStatus}>
           <strong>匹配 {matchedUrdfJoints.length}/{urdfJoints.filter((joint) => !["fixed", "floating"].includes(joint.type)).length || urdfJoints.length}</strong>
-          <span>同名关节会实时套用电机角度；未匹配关节保持模型默认姿态。</span>
+          <span>同名关节会实时套用电机角度；模型资源已加载 {meshStats.loaded} 个，未加载 {meshStats.missing} 个。</span>
         </div>
       ) : null}
       <div className={styles.armLegend}>
