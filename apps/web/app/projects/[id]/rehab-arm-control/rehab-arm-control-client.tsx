@@ -90,6 +90,17 @@ function calibrationMapFromJson(value: unknown) {
   }
 }
 
+function modelInfoFromRecord(value: unknown) {
+  const model = record(value);
+  const payload = payloadOf(model);
+  return {
+    modelUrl: text(model.model_url ?? payload.model_url, ""),
+    fileName: text(payload.file_name, "robot_model.zip"),
+    sha256: text(payload.sha256, ""),
+    mappingJson: payload.mapping_json,
+  };
+}
+
 function text(value: unknown, fallback = "") {
   const next = String(value ?? "").trim();
   return next || fallback;
@@ -781,20 +792,31 @@ function Arm3DOverview({
   }
 
   useEffect(() => {
-    const payload = payloadOf(deviceModel);
-    const modelUrl = text(record(deviceModel).model_url ?? payload.model_url, "");
-    const fileName = text(payload.file_name, "robot_model.zip");
-    const restoreKey = `${deviceId}:${modelUrl}:${text(payload.sha256, "")}`;
-    if (!deviceId || !modelUrl || restoredModelRef.current === restoreKey || urdfText) return;
-    restoredModelRef.current = restoreKey;
+    if (!deviceId || urdfText) return;
     setModelSaveState("idle");
     const controller = new AbortController();
     async function restoreModelPackage() {
       try {
+        let { modelUrl, fileName, sha256, mappingJson } = modelInfoFromRecord(deviceModel);
+        if (!modelUrl) {
+          const dashboardResponse = await fetch("/api/proxy/rehab-arm/v1/devices/dashboard", { cache: "no-store", signal: controller.signal });
+          if (dashboardResponse.ok) {
+            const dashboardPayload = await dashboardResponse.json();
+            const device = asArray<AnyRecord>(record(dashboardPayload).data?.devices).find((item) => text(item.device_id, "") === deviceId);
+            const fallback = modelInfoFromRecord(device?.device_model);
+            modelUrl = fallback.modelUrl;
+            fileName = fallback.fileName;
+            sha256 = fallback.sha256;
+            mappingJson = fallback.mappingJson;
+          }
+        }
+        const restoreKey = `${deviceId}:${modelUrl}:${sha256}`;
+        if (!modelUrl || restoredModelRef.current === restoreKey) return;
+        restoredModelRef.current = restoreKey;
         const response = await fetch(keyframeSrc(modelUrl, ""), { cache: "no-store", signal: controller.signal });
         if (!response.ok) throw new Error("model package fetch failed");
         const buffer = await response.arrayBuffer();
-        serverCalibrationsRef.current = calibrationMapFromJson(payload.mapping_json);
+        serverCalibrationsRef.current = calibrationMapFromJson(mappingJson);
         const modelPackage = await readUrdfPackageBuffer(fileName, buffer);
         applyResolvedUrdfPackageRef.current(modelPackage, null);
         setModelSaveState("restored");
