@@ -195,14 +195,14 @@ def main() -> int:
             """
             (() => {
               const section = document.querySelector('section[aria-label="NPC 办公网"]');
-              const node = section?.querySelector('a[href*="seat="]');
-              const line = section?.querySelector('svg [data-kind] line[stroke-width]');
+              const node = section?.querySelector('[class*="officeNodeLayer"] a[class*="officeNode"][href*="seat="]');
+              const lines = Array.from(section?.querySelectorAll('svg [data-kind] line[stroke-width]') || []);
               const root = document.scrollingElement || document.documentElement;
-              if (!section || !node || !line) return null;
+              if (!section || !node || lines.length === 0) return null;
               const rect = node.getBoundingClientRect();
               return {
                 node: { left: rect.left, top: rect.top, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
-                line: { x1: line.getAttribute('x1'), y1: line.getAttribute('y1'), x2: line.getAttribute('x2'), y2: line.getAttribute('y2') },
+                lines: lines.map((line) => ({ x1: line.getAttribute('x1'), y1: line.getAttribute('y1'), x2: line.getAttribute('x2'), y2: line.getAttribute('y2') })),
                 overflow: Math.max(0, root.scrollWidth - root.clientWidth),
               };
             })()
@@ -225,7 +225,7 @@ def main() -> int:
             (() => {
               const width = window.innerWidth || document.documentElement.clientWidth || 1440;
               const height = window.innerHeight || document.documentElement.clientHeight || 900;
-              const node = document.querySelector('section[aria-label="NPC 办公网"] a[href*="seat="]');
+              const node = document.querySelector('section[aria-label="NPC 办公网"] [class*="officeNodeLayer"] a[class*="officeNode"][href*="seat="]');
               const rect = node?.getBoundingClientRect();
               const centerX = rect ? rect.left + rect.width / 2 : width / 2;
               const centerY = rect ? rect.top + rect.height / 2 : height / 2;
@@ -261,14 +261,14 @@ def main() -> int:
             """
             (() => {
               const section = document.querySelector('section[aria-label="NPC 办公网"]');
-              const node = section?.querySelector('a[href*="seat="]');
-              const line = section?.querySelector('svg [data-kind] line[stroke-width]');
+              const node = section?.querySelector('[class*="officeNodeLayer"] a[class*="officeNode"][href*="seat="]');
+              const lines = Array.from(section?.querySelectorAll('svg [data-kind] line[stroke-width]') || []);
               const root = document.scrollingElement || document.documentElement;
-              if (!section || !node || !line) return null;
+              if (!section || !node || lines.length === 0) return null;
               const rect = node.getBoundingClientRect();
               return {
                 node: { left: rect.left, top: rect.top, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
-                line: { x1: line.getAttribute('x1'), y1: line.getAttribute('y1'), x2: line.getAttribute('x2'), y2: line.getAttribute('y2') },
+                lines: lines.map((line) => ({ x1: line.getAttribute('x1'), y1: line.getAttribute('y1'), x2: line.getAttribute('x2'), y2: line.getAttribute('y2') })),
                 overflow: Math.max(0, root.scrollWidth - root.clientWidth),
               };
             })()
@@ -277,11 +277,11 @@ def main() -> int:
         if not isinstance(after, dict):
             raise RuntimeError("Office network disappeared after drag")
         node_moved = abs(float(after["node"]["x"]) - start_x) > 24 or abs(float(after["node"]["y"]) - start_y) > 24
-        line_changed = json.dumps(before.get("line"), sort_keys=True) != json.dumps(after.get("line"), sort_keys=True)
+        line_changed = json.dumps(before.get("lines"), sort_keys=True) != json.dumps(after.get("lines"), sort_keys=True)
         if not node_moved:
             raise RuntimeError(f"NPC node did not move enough: before={before['node']} after={after['node']}")
         if not line_changed:
-            raise RuntimeError(f"Office network line did not follow drag: before={before['line']} after={after['line']}")
+            raise RuntimeError(f"Office network line did not follow drag: before={before.get('lines')} after={after.get('lines')}")
         if int(after.get("overflow") or 0) > 2:
             raise RuntimeError(f"Company page has horizontal overflow after drag: {after['overflow']}")
 
