@@ -253,6 +253,8 @@
 
 .skillGrid .wideCard {
   grid-column: 1 / -1;
+  min-height: 118px;
+  overflow: hidden;
 }
 
 .skillGrid .boundCard {
