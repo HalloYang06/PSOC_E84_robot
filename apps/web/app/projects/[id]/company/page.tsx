@@ -444,6 +444,15 @@ function companyFocusReview(value: unknown, queue: unknown) {
   };
 }
 
+function companyFocusHref(projectId: string, queue: string, itemIndex?: number) {
+  const query = new URLSearchParams({
+    focus: "skill-forge-index",
+    queue,
+  });
+  if (typeof itemIndex === "number" && Number.isFinite(itemIndex)) query.set("item", String(Math.max(0, itemIndex)));
+  return `/projects/${projectId}/company?${query.toString()}`;
+}
+
 function statusTone(label: string) {
   if (/可投递|在线|已完成|已送达/.test(label)) return "healthy";
   if (/延迟|待审核|待人工确认|高风险确认|待处理|等待|未知/.test(label)) return "review";
@@ -496,7 +505,7 @@ export default async function CompanyPage({
   searchParams,
 }: {
   params: { id: string };
-  searchParams?: { embed?: string; return_to?: string; from?: string; team_notice?: string; team_error?: string; focus?: string; queue?: string };
+  searchParams?: { embed?: string; return_to?: string; from?: string; team_notice?: string; team_error?: string; focus?: string; queue?: string; item?: string };
 }) {
   const auth = await getCurrentAuthState();
   if (!auth.data?.user) {
@@ -1332,7 +1341,12 @@ export default async function CompanyPage({
         title: shortPublicText(task.title ?? task.name ?? task.summary, `承接任务 ${index + 1}`, 48),
         meta: `${publicTaskStatusLabel(task.status)} · ${seatNameById.get(assigneeId) ?? "待确认承接方"}`,
         detail: shortPublicText(task.description ?? task.context_summary ?? task.summary, "查看承接进度、回执状态和归档材料。", 92),
-        href,
+        evidence: [
+          `状态：${publicTaskStatusLabel(task.status)}`,
+          `承接方：${seatNameById.get(assigneeId) ?? "待确认承接方"}`,
+          "验收：查看回执、交付说明和归档材料",
+        ],
+        workbenchHref: href,
       };
     });
   const needPreviewSource = collaborationChains
@@ -1344,9 +1358,16 @@ export default async function CompanyPage({
       title: chain.detailTitle,
       meta: `${chain.needStatus} · ${chain.nextAction}`,
       detail: chain.summary,
-      href: `/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=company${chain.targetId || chain.requesterId ? `&seat_id=${encodeURIComponent(chain.targetId || chain.requesterId)}` : ""}`,
+      evidence: [
+        `需求：${chain.needStatus}`,
+        `任务：${chain.taskStatus}`,
+        `回执：${chain.receiptStatus}`,
+      ],
+      workbenchHref: `/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=company${chain.targetId || chain.requesterId ? `&seat_id=${encodeURIComponent(chain.targetId || chain.requesterId)}` : ""}`,
     }));
   const focusReviewItems = focusReview?.queue === "tasks" ? taskPreviewSource : needPreviewSource;
+  const selectedFocusItemIndex = Math.max(0, Math.min(focusReviewItems.length - 1, Number.parseInt(text(searchParams?.item, "-1"), 10)));
+  const selectedFocusItem = Number.isFinite(selectedFocusItemIndex) && selectedFocusItemIndex >= 0 ? focusReviewItems[selectedFocusItemIndex] : null;
   const decisionItems = Array.from(new Set([
     pendingHumanReviews.length ? `${pendingHumanReviews.length} 条待人工确认` : "",
     queueOnlySeatCount ? `${queueOnlySeatCount} 名 NPC 当前只能先排队` : "",
@@ -1391,8 +1412,12 @@ export default async function CompanyPage({
             <strong>{focusReview.title}</strong>
             <p>{focusReview.detail}</p>
             <div className={styles.focusReviewItems} aria-label="本次先看条目">
-              {focusReviewItems.length ? focusReviewItems.map((item) => (
-                <Link key={item.id} href={item.href}>
+              {focusReviewItems.length ? focusReviewItems.map((item, index) => (
+                <Link
+                  key={item.id}
+                  href={companyFocusHref(projectId, focusReview.queue, index)}
+                  data-active={selectedFocusItem?.id === item.id ? "1" : undefined}
+                >
                   <strong>{item.title}</strong>
                   <span>{item.meta}</span>
                   <small>{item.detail}</small>
@@ -1401,6 +1426,19 @@ export default async function CompanyPage({
                 <p>当前没有可验收条目；可以回到能力工坊继续索引 NPC 沉淀，或等待新的协作回执进入公司层。</p>
               )}
             </div>
+            {selectedFocusItem ? (
+              <aside className={styles.focusEvidence} aria-label="验收详情">
+                <span>验收详情</span>
+                <strong>{selectedFocusItem.title}</strong>
+                <p>{selectedFocusItem.detail}</p>
+                <div>
+                  {selectedFocusItem.evidence.map((line) => <small key={line}>{line}</small>)}
+                </div>
+                <Link href={selectedFocusItem.workbenchHref}>打开相关 NPC 工作台</Link>
+              </aside>
+            ) : focusReviewItems.length ? (
+              <p className={styles.focusHint}>点击上方任一条目，可在公司层先看状态、回执和归档线索；不会触发派单。</p>
+            ) : null}
           </div>
           <Link href={`/projects/${projectId}/skill-forge?return_to=${encodeURIComponent(selfPath)}&from=company`}>返回能力工坊</Link>
         </section>
