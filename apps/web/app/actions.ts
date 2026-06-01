@@ -4540,6 +4540,10 @@ export async function 创建项目Skill(projectId: string, formData: FormData) {
     const authorSeatId = text(formData.get("author_seat_id"), "");
     const assignmentSeatId = text(formData.get("assignment_seat_id"), "");
     const createdFromMessageId = text(formData.get("created_from_message_id"), "");
+    const closureSource = text(formData.get("closure_source"), "");
+    const closureNeedId = text(formData.get("closure_need_id"), "");
+    const closureTaskId = text(formData.get("closure_task_id"), "");
+    const closureDispatchId = text(formData.get("closure_dispatch_id"), "");
     const draftStatus = text(formData.get("draft_status"), source === "npc-authored" ? "draft" : "");
     const shouldAssignToAuthor = readBooleanFormField(formData, "assign_to_author", false);
     const shouldAssignToSeat = Boolean(assignmentSeatId) || shouldAssignToAuthor;
@@ -4561,6 +4565,14 @@ export async function 创建项目Skill(projectId: string, formData: FormData) {
               draft_status: draftStatus || "draft",
               skill_creator_version: "openai-skill-creator",
               template: "SKILL.md + optional agents/openai.yaml + references/scripts/assets",
+            }
+          : {}),
+        ...(closureSource
+          ? {
+              closure_source: closureSource,
+              closure_need_id: closureNeedId || null,
+              closure_task_id: closureTaskId || null,
+              closure_dispatch_id: closureDispatchId || null,
             }
           : {}),
       },
@@ -4588,6 +4600,10 @@ export async function 创建项目Skill(projectId: string, formData: FormData) {
         extra_data: {
           author_seat_id: authorSeatId || null,
           draft_status: draftStatus || null,
+          closure_source: closureSource || null,
+          closure_need_id: closureNeedId || null,
+          closure_task_id: closureTaskId || null,
+          closure_dispatch_id: closureDispatchId || null,
         },
       });
     }
@@ -4599,7 +4615,7 @@ export async function 创建项目Skill(projectId: string, formData: FormData) {
       },
     });
     revalidateProjectSurfaces(projectId);
-    redirect(withQueryValue(returnTo, "team_notice", `已新增 Skill：${nextSkill.label}`));
+    redirect(withQueryValue(returnTo, "team_notice", closureSource ? `已生成 Skill 草稿：${nextSkill.label}，可继续索引 NPC 沉淀。` : `已新增 Skill：${nextSkill.label}`));
   } catch (error) {
     rethrowRedirectError(error);
     const message = error instanceof Error ? error.message : "新增项目 Skill 失败";
@@ -4658,6 +4674,10 @@ export async function 保存能力工坊知识库(projectId: string, formData: F
     const tags = parseStringList(formData.get("tags")) ?? [];
     const authorSeatId = text(formData.get("author_seat_id"), "");
     const sourceMessageId = text(formData.get("created_from_message_id"), "");
+    const closureSource = text(formData.get("closure_source"), "");
+    const closureNeedId = text(formData.get("closure_need_id"), "");
+    const closureTaskId = text(formData.get("closure_task_id"), "");
+    const closureDispatchId = text(formData.get("closure_dispatch_id"), "");
     if (!title) throw new Error("请填写知识库标题");
     if (!repoRelativePathValue) throw new Error("请填写仓库相对路径");
 
@@ -4676,10 +4696,14 @@ export async function 保存能力工坊知识库(projectId: string, formData: F
         source: authorSeatId ? "npc-authored" : "human-authored",
         updated_from: "skill-forge",
         updated_at: new Date().toISOString(),
+        closure_source: closureSource || null,
+        closure_need_id: closureNeedId || null,
+        closure_task_id: closureTaskId || null,
+        closure_dispatch_id: closureDispatchId || null,
       },
     });
     revalidateProjectSurfaces(projectId);
-    redirect(withQueryValue(returnTo, "team_notice", `已保存知识库：${title}`));
+    redirect(withQueryValue(returnTo, "team_notice", closureSource ? `已保存协作知识：${title}，下一步可索引 NPC 沉淀。` : `已保存知识库：${title}`));
   } catch (error) {
     rethrowRedirectError(error);
     const message = error instanceof Error ? error.message : "保存知识库失败";

@@ -25,6 +25,9 @@ type CollaborationSeed = {
   needId?: string;
   taskId?: string;
   dispatchId?: string;
+  rawNeedId?: string;
+  rawTaskId?: string;
+  rawDispatchId?: string;
   title?: string;
   summary?: string;
   output?: string;
@@ -522,6 +525,10 @@ function ForgeTile({
               <input type="hidden" name="repo_relative_path" value={seedKnowledgePath} />
               <input type="hidden" name="summary" value={seedSummary || seedTitle} />
               <input type="hidden" name="tags" value="collaboration,closure,npc" />
+              <input type="hidden" name="closure_source" value="company_collaboration" />
+              <input type="hidden" name="closure_need_id" value={text(collaborationSeed.rawNeedId, "")} />
+              <input type="hidden" name="closure_task_id" value={text(collaborationSeed.rawTaskId, "")} />
+              <input type="hidden" name="closure_dispatch_id" value={text(collaborationSeed.rawDispatchId, "")} />
               <button type="submit">一键保存知识</button>
             </form>
             {resource.kind === "seat" ? (
@@ -536,6 +543,10 @@ function ForgeTile({
                 <input type="hidden" name="label" value={seedTitle} />
                 <input type="hidden" name="repo_relative_path" value={seedSkillPath} />
                 <input type="hidden" name="note" value={seedSummary || seedTitle} />
+                <input type="hidden" name="closure_source" value="company_collaboration" />
+                <input type="hidden" name="closure_need_id" value={text(collaborationSeed.rawNeedId, "")} />
+                <input type="hidden" name="closure_task_id" value={text(collaborationSeed.rawTaskId, "")} />
+                <input type="hidden" name="closure_dispatch_id" value={text(collaborationSeed.rawDispatchId, "")} />
                 <button type="submit">生成 Skill 草稿</button>
               </form>
             ) : null}
@@ -637,6 +648,14 @@ function ForgeTile({
                   <input type="hidden" name="return_to" value={`/projects/${projectId}/skill-forge?resources=${encodeURIComponent(resourceKey(resource))}`} />
                   <input type="hidden" name="assignment_seat_id" value={resource.seatRowId || resource.id} />
                   <input type="hidden" name="source" value="custom" />
+                  {collaborationSeed ? (
+                    <>
+                      <input type="hidden" name="closure_source" value="company_collaboration" />
+                      <input type="hidden" name="closure_need_id" value={text(collaborationSeed.rawNeedId, "")} />
+                      <input type="hidden" name="closure_task_id" value={text(collaborationSeed.rawTaskId, "")} />
+                      <input type="hidden" name="closure_dispatch_id" value={text(collaborationSeed.rawDispatchId, "")} />
+                    </>
+                  ) : null}
                   <label>Skill 标识<input name="skill_id" placeholder="my-debug-helper" /></label>
                   <label>显示名称<input name="label" placeholder="串口调试助手" defaultValue={collaborationSeed ? seedTitle : undefined} /></label>
                   <label>GitHub 仓库路径<input name="repo_relative_path" placeholder="skills/custom/my-debug-helper/SKILL.md" /></label>
@@ -695,6 +714,14 @@ function ForgeTile({
               <input type="hidden" name="owner_type" value={resource.kind === "seat" ? "seat" : "workstation"} />
               <input type="hidden" name="owner_id" value={resource.id} />
               {resource.kind === "seat" ? <input type="hidden" name="author_seat_id" value={resource.id} /> : null}
+              {collaborationSeed ? (
+                <>
+                  <input type="hidden" name="closure_source" value="company_collaboration" />
+                  <input type="hidden" name="closure_need_id" value={text(collaborationSeed.rawNeedId, "")} />
+                  <input type="hidden" name="closure_task_id" value={text(collaborationSeed.rawTaskId, "")} />
+                  <input type="hidden" name="closure_dispatch_id" value={text(collaborationSeed.rawDispatchId, "")} />
+                </>
+              ) : null}
               <label>
                 标题
                 <input name="title" placeholder={`${resource.name} 调试经验`} defaultValue={collaborationSeed ? seedTitle : undefined} />

@@ -400,6 +400,8 @@ def main() -> int:
               const summaryInput = document.querySelector('textarea[name="summary"]');
               const oneClickKnowledge = Array.from(seedCard?.querySelectorAll('button') || []).some((button) => button.textContent?.includes('一键保存知识'));
               const skillDraft = Array.from(seedCard?.querySelectorAll('button') || []).some((button) => button.textContent?.includes('生成 Skill 草稿'));
+              const closureSourceInputs = Array.from(seedCard?.querySelectorAll('input[name="closure_source"]') || []).map((input) => input.value);
+              const rawIdVisible = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(seedCard?.textContent || '');
               return {
                 activeKnowledgeTab,
                 seedText: (seedCard?.textContent || '').trim(),
@@ -407,6 +409,8 @@ def main() -> int:
                 hasPrefilledSummary: Boolean(summaryInput?.value),
                 oneClickKnowledge,
                 skillDraft,
+                closureSourceInputs,
+                rawIdVisible,
                 overflow: Math.max(0, (document.scrollingElement || document.documentElement).scrollWidth - document.documentElement.clientWidth),
                 bodyHasSeed: bodyText.includes('来自公司协作线'),
               };
@@ -419,6 +423,10 @@ def main() -> int:
             raise RuntimeError(f"Skill forge deposit form was not prefilled from the collaboration line: {forge}")
         if not forge.get("oneClickKnowledge") or not forge.get("skillDraft"):
             raise RuntimeError(f"Skill forge collaboration seed is missing one-click closure actions: {forge}")
+        if "company_collaboration" not in (forge.get("closureSourceInputs") or []):
+            raise RuntimeError(f"Skill forge one-click actions are not traceable to company collaboration: {forge}")
+        if forge.get("rawIdVisible"):
+            raise RuntimeError(f"Skill forge collaboration seed exposed raw record ids: {forge}")
         if int(forge.get("overflow") or 0) > 2:
             raise RuntimeError(f"Skill forge collaboration seed caused horizontal overflow: {forge}")
         forge_shot = output_dir / f"skill-forge-collaboration-seed-{stamp}.png"
