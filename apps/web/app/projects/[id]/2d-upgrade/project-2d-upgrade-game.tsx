@@ -2734,7 +2734,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
           <div className={styles.gitRollbackVersionProfile} data-git-rollback-version-profile="1">
             <div className={styles.gitRollbackProfileHead}>
               <b>版本分布</b>
-              <small>{gitVersionIndex.length} 个可选目标 · 当前 {selectedGitRollbackToneLabel}</small>
+              <small>当前动作：{action.label} · {gitVersionIndex.length} 个可选目标 · 当前 {selectedGitRollbackToneLabel}</small>
             </div>
             <div className={styles.gitRollbackProfileBars} aria-label="Git 回退版本目标分布">
               {gitRollbackVersionProfile.map((item) => (
