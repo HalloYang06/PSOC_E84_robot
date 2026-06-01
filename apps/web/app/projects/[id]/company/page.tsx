@@ -6,6 +6,8 @@ import {
   getProjectComputerNodesState,
   getProjectState,
   getProjectWorkstationsState,
+  getRequirementsState,
+  getTasksDataScopedState,
   getUsageData,
 } from "../../../../lib/server-data";
 import { isNpcSeatRecord, platformProviderIdFromSeat } from "../../../../lib/platform-provider";
@@ -179,6 +181,55 @@ function publicStatusLabel(value: unknown) {
   return text(value, "已记录");
 }
 
+function publicNeedStatusLabel(value: unknown) {
+  const raw = text(value, "").toLowerCase();
+  if (/satisfied|completed|done|closed|resolved/.test(raw)) return "已满足";
+  if (/routed|queued|ready/.test(raw)) return "已路由";
+  if (/in_progress|running|active|processing/.test(raw)) return "处理中";
+  if (/review|approval|pending_human/.test(raw)) return "待确认";
+  if (/blocked|failed|rejected/.test(raw)) return "受阻";
+  if (/draft/.test(raw)) return "草稿";
+  return "等待协作";
+}
+
+function publicTaskStatusLabel(value: unknown) {
+  const raw = text(value, "").toLowerCase();
+  if (/done|completed|closed|resolved/.test(raw)) return "已完成";
+  if (/running|active|in_progress|processing/.test(raw)) return "处理中";
+  if (/reviewing|waiting_user|waiting_npc/.test(raw)) return "等确认";
+  if (/queued|ready|acked|accepted/.test(raw)) return "已承接";
+  if (/blocked|failed|rejected/.test(raw)) return "受阻";
+  if (/cancelled|archived/.test(raw)) return "已收起";
+  return "待承接";
+}
+
+function publicReceiptLabel(messages: AnyRecord[]) {
+  if (messages.some((message) => /completed|done|delivered|final|resolved/i.test(text(message.status, "") + " " + text(message.message_type ?? message.messageType, "")))) {
+    return "已有最终回执";
+  }
+  if (messages.some((message) => /ack|progress|running|queued|delivered|waiting/i.test(text(message.status, "") + " " + text(message.message_type ?? message.messageType, "")))) {
+    return "已有过程回执";
+  }
+  return "等待回执";
+}
+
+function latestActivityTime(...values: unknown[]) {
+  let latest = 0;
+  for (const value of values) {
+    const raw = text(value, "");
+    if (!raw) continue;
+    const time = new Date(raw).getTime();
+    if (Number.isFinite(time)) latest = Math.max(latest, time);
+  }
+  return latest;
+}
+
+function shortPublicText(value: unknown, fallback: string, maxLength = 92) {
+  const next = userFacingEventText(value, fallback).replace(/\s+/g, " ").trim();
+  if (next.length <= maxLength) return next;
+  return `${next.slice(0, maxLength - 1)}…`;
+}
+
 function reviewPolicyLabel(value: unknown) {
   const raw = text(value, "inherit").toLowerCase();
   if (/strict|always|manual|required/.test(raw)) return "高风险确认";
@@ -264,6 +315,13 @@ function statusTone(label: string) {
   return "idle";
 }
 
+function chainTone(label: string) {
+  if (/已满足|已完成|最终回执/.test(label)) return "healthy";
+  if (/受阻|失败|异常|打回/.test(label)) return "blocked";
+  if (/待确认|等待|草稿|过程/.test(label)) return "review";
+  return "idle";
+}
+
 function summarizeSeatDispatchState(input: {
   providerId: string;
   computerNodeId: string;
@@ -318,10 +376,19 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
     );
   }
 
-  const [computerNodesState, projectWorkstationsState, collaborationMessagesState, usageData] = await Promise.all([
+  const [
+    computerNodesState,
+    projectWorkstationsState,
+    collaborationMessagesState,
+    requirementsState,
+    tasksState,
+    usageData,
+  ] = await Promise.all([
     getProjectComputerNodesState(params.id),
     getProjectWorkstationsState(params.id),
     getCollaborationMessagesState({ projectId: params.id }),
+    getRequirementsState({ projectIds: [params.id] }),
+    getTasksDataScopedState({ projectIds: [params.id] }),
     getUsageData(),
   ]);
   const liveNodes = asArray<AnyRecord>(computerNodesState.data);
@@ -570,8 +637,116 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
 
   const projectId = String(project.id ?? params.id);
   const allOrgEvents = asArray<AnyRecord>(collaborationMessagesState.data);
+  const allNeeds = asArray<AnyRecord>(requirementsState.data);
+  const allTasks = asArray<AnyRecord>(tasksState.data);
   const pendingHumanReviews = allOrgEvents.filter(isPendingHumanReview);
   const recentOrgEvents = allOrgEvents.slice(0, 6);
+  const seatNameById = new Map<string, string>();
+  for (const seat of allSeats) {
+    seatNameById.set(seat.id, seat.name);
+    if (seat.threadId) seatNameById.set(seat.threadId, seat.name);
+    if (seat.computerNodeId) seatNameById.set(seat.computerNodeId, seat.name);
+  }
+  const messagesByRequirement = new Map<string, AnyRecord[]>();
+  const messagesByTask = new Map<string, AnyRecord[]>();
+  const messagesByDispatch = new Map<string, AnyRecord[]>();
+  for (const message of allOrgEvents) {
+    const meta = messageMeta(message);
+    const requirementId = text(
+      message.requirement_id
+        ?? message.requirementId
+        ?? meta.requirement_id
+        ?? meta.requirementId,
+      "",
+    );
+    const taskId = text(message.task_id ?? message.taskId ?? meta.task_id ?? meta.taskId, "");
+    const dispatchId = text(message.dispatch_id ?? message.dispatchId ?? meta.dispatch_id ?? meta.dispatchId, "");
+    if (requirementId) messagesByRequirement.set(requirementId, [...(messagesByRequirement.get(requirementId) ?? []), message]);
+    if (taskId) messagesByTask.set(taskId, [...(messagesByTask.get(taskId) ?? []), message]);
+    if (dispatchId) messagesByDispatch.set(dispatchId, [...(messagesByDispatch.get(dispatchId) ?? []), message]);
+  }
+  const tasksByNeed = new Map<string, AnyRecord[]>();
+  for (const task of allTasks) {
+    const sourceNeedId = text(
+      task.source_need_id
+        ?? task.sourceNeedId
+        ?? task.requirement_id
+        ?? task.requirementId,
+      "",
+    );
+    if (sourceNeedId) tasksByNeed.set(sourceNeedId, [...(tasksByNeed.get(sourceNeedId) ?? []), task]);
+  }
+  const collaborationChains = allNeeds.map((need, index) => {
+    const needId = text(need.id ?? need.requirement_id ?? need.requirementId, `need-${index}`);
+    const linkedTasks = [
+      ...asArray<AnyRecord>(tasksByNeed.get(needId)),
+      ...allTasks.filter((task) => text(task.id ?? task.task_id, "") === text(need.task_id ?? need.taskId, "")),
+    ].filter((task, taskIndex, array) => {
+      const taskId = text(task.id ?? task.task_id, `task-${taskIndex}`);
+      return array.findIndex((candidate) => text(candidate.id ?? candidate.task_id, "") === taskId) === taskIndex;
+    });
+    const primaryTask = linkedTasks[0] ?? null;
+    const dispatch = primaryTask ? record(primaryTask.latest_dispatch ?? primaryTask.latestDispatch) : {};
+    const dispatchId = text(dispatch.id ?? dispatch.dispatch_id ?? dispatch.dispatchId, "");
+    const taskId = primaryTask ? text(primaryTask.id ?? primaryTask.task_id, "") : "";
+    const receiptMessages = [
+      ...asArray<AnyRecord>(messagesByRequirement.get(needId)),
+      ...(taskId ? asArray<AnyRecord>(messagesByTask.get(taskId)) : []),
+      ...(dispatchId ? asArray<AnyRecord>(messagesByDispatch.get(dispatchId)) : []),
+    ].filter((message, messageIndex, array) => array.findIndex((candidate) => text(candidate.id, "") === text(message.id, "")) === messageIndex);
+    const requesterId = text(need.from_agent ?? need.fromAgent ?? need.created_by_id ?? need.createdById, "");
+    const targetId = text(
+      need.target_seat_id
+        ?? need.targetSeatId
+        ?? need.to_agent
+        ?? need.toAgent
+        ?? primaryTask?.assignee_seat_id
+        ?? primaryTask?.assigneeSeatId
+        ?? primaryTask?.assignee_agent_id
+        ?? primaryTask?.assigneeAgentId,
+      "",
+    );
+    const requesterName = seatNameById.get(requesterId) ?? (requesterId ? "发起 NPC" : "项目成员");
+    const targetName = seatNameById.get(targetId) ?? (targetId ? "承接 NPC" : "待推荐");
+    const needStatus = publicNeedStatusLabel(need.status);
+    const taskStatus = primaryTask ? publicTaskStatusLabel(primaryTask.status) : "待生成任务";
+    const dispatchStatus = dispatchId ? publicStatusLabel(dispatch.status ?? primaryTask?.status) : "待投递";
+    const receiptStatus = publicReceiptLabel(receiptMessages);
+    return {
+      id: needId,
+      title: shortPublicText(need.title, `协作需求 ${index + 1}`, 54),
+      summary: shortPublicText(
+        need.context_summary ?? need.contextSummary ?? need.expected_output ?? need.expectedOutput,
+        "这条需求会在路由后进入承接 NPC 的任务队列。",
+        108,
+      ),
+      requesterName,
+      targetName,
+      needStatus,
+      taskStatus,
+      dispatchStatus,
+      receiptStatus,
+      taskCount: linkedTasks.length,
+      receiptCount: receiptMessages.length,
+      activityTime: latestActivityTime(
+        need.last_activity_at,
+        need.lastActivityAt,
+        need.updated_at,
+        need.updatedAt,
+        need.created_at,
+        need.createdAt,
+        primaryTask?.updated_at,
+        primaryTask?.updatedAt,
+        primaryTask?.created_at,
+        primaryTask?.createdAt,
+        ...receiptMessages.map((message) => message.created_at ?? message.createdAt),
+      ),
+    };
+  }).sort((left, right) => right.activityTime - left.activityTime);
+  const visibleChains = collaborationChains.slice(0, 4);
+  const openNeedCount = allNeeds.filter((need) => !/satisfied|completed|done|closed|resolved|archived|cancelled/i.test(text(need.status, ""))).length;
+  const activeTaskCount = allTasks.filter((task) => /queued|ready|running|active|in_progress|reviewing|waiting/i.test(text(task.status, ""))).length;
+  const waitingReceiptCount = collaborationChains.filter((chain) => chain.receiptStatus === "等待回执").length;
   const projectUsage = asArray<AnyRecord>(usageData).filter((item) => text(item.project_id ?? item.projectId, "") === projectId);
   const todayUsage = projectUsage.filter((item) => sameLocalDay(item.created_at ?? item.createdAt));
   const usageSource = todayUsage.length ? todayUsage : projectUsage;
@@ -601,6 +776,9 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
       ? `真实电脑：可投递 ${nodeDispatchCounts.ready} · 仅排队 ${nodeDispatchCounts.queueable} · 需重连 ${nodeDispatchCounts.reconnect} · 待检查 ${nodeDispatchCounts.unknown}`
       : "",
     strictReviewCount ? `${strictReviewCount} 名 NPC 启用高风险确认` : "",
+    openNeedCount ? `${openNeedCount} 条协作需求仍在流转` : "",
+    activeTaskCount ? `${activeTaskCount} 条承接任务正在推进` : "",
+    waitingReceiptCount ? `${waitingReceiptCount} 条协作链路等待回执` : "",
     skillAssignedCount < allSeats.length ? `${Math.max(allSeats.length - skillAssignedCount, 0)} 名 NPC 待补 Skill` : "",
     knowledgeAssignedCount < allSeats.length ? `${Math.max(allSeats.length - knowledgeAssignedCount, 0)} 名 NPC 待补知识库` : "",
     recentOrgEvents.length ? `${recentOrgEvents.length} 条最近回执需要抽查` : "",
@@ -645,6 +823,47 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
               ))}
             </div>
           </div>
+
+          <section className={styles.chainPanel} aria-label="NPC 协作链路">
+            <header>
+              <div>
+                <span>NPC 协作链路</span>
+                <strong>需求到回执</strong>
+              </div>
+              <div className={styles.chainStats}>
+                <article><strong>{openNeedCount}</strong><span>流转需求</span></article>
+                <article><strong>{activeTaskCount}</strong><span>承接任务</span></article>
+                <article><strong>{waitingReceiptCount}</strong><span>等回执</span></article>
+              </div>
+            </header>
+            <div className={styles.chainList}>
+              {visibleChains.map((chain) => (
+                <Link
+                  key={chain.id}
+                  href={`/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=company`}
+                  className={styles.chainItem}
+                >
+                  <div className={styles.chainTitle}>
+                    <strong>{chain.title}</strong>
+                    <span>{chain.requesterName} → {chain.targetName}</span>
+                  </div>
+                  <p>{chain.summary}</p>
+                  <ol>
+                    <li data-tone={chainTone(chain.needStatus)}><span>需求</span><strong>{chain.needStatus}</strong></li>
+                    <li data-tone={chainTone(chain.taskStatus)}><span>承接</span><strong>{chain.taskStatus}</strong></li>
+                    <li data-tone={chainTone(chain.dispatchStatus)}><span>投递</span><strong>{chain.dispatchStatus}</strong></li>
+                    <li data-tone={chainTone(chain.receiptStatus)}><span>回执</span><strong>{chain.receiptStatus}</strong></li>
+                  </ol>
+                </Link>
+              ))}
+              {!visibleChains.length ? (
+                <div className={styles.emptyChain}>
+                  <strong>还没有结构化协作链路</strong>
+                  <p>当 NPC 创建 Need 并路由成任务后，这里会按“需求、承接、投递、回执”展示进度。</p>
+                </div>
+              ) : null}
+            </div>
+          </section>
 
           <div className={styles.sandbox}>
             <div className={styles.flowLayer} aria-hidden="true">

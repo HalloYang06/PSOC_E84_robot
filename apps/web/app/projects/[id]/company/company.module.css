@@ -90,6 +90,7 @@
 .statusStrip article,
 .sandbox,
 .decisionBand,
+.chainPanel,
 .bottomDock,
 .logRows article {
   border: 1px solid var(--line);
@@ -244,6 +245,191 @@
   color: #ffe8b3;
   font-size: 11px;
   font-weight: 800;
+}
+
+.chainPanel {
+  min-height: 166px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+  padding: 14px;
+}
+
+.chainPanel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.chainPanel header span,
+.chainTitle span {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.chainPanel header strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--text);
+  font-size: 16px;
+}
+
+.chainStats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(64px, 1fr));
+  gap: 7px;
+  min-width: min(100%, 260px);
+}
+
+.chainStats article {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 7px;
+  border: 1px solid rgba(231, 199, 104, 0.13);
+  border-radius: 14px;
+  background: rgba(255, 248, 232, 0.045);
+}
+
+.chainStats strong {
+  margin: 0;
+  color: var(--mint);
+  font-size: 17px;
+  line-height: 1;
+}
+
+.chainStats span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.chainList {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.chainItem,
+.emptyChain {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(231, 199, 104, 0.13);
+  border-radius: 16px;
+  background: rgba(255, 248, 232, 0.045);
+  transition: transform 150ms ease, border-color 150ms ease, background 150ms ease;
+}
+
+.chainItem:hover {
+  transform: translateY(-1px);
+  border-color: var(--line-strong);
+  background: rgba(231, 199, 104, 0.09);
+}
+
+.chainTitle {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.chainTitle strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chainTitle span {
+  flex: 0 1 auto;
+  max-width: 42%;
+  overflow: hidden;
+  color: rgba(255, 232, 179, 0.78);
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chainItem p,
+.emptyChain p {
+  display: -webkit-box;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.chainItem ol {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chainItem li {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  padding: 6px;
+  border: 1px solid rgba(231, 199, 104, 0.11);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.chainItem li[data-tone="healthy"] {
+  border-color: rgba(158, 240, 191, 0.3);
+  background: rgba(50, 155, 94, 0.1);
+}
+
+.chainItem li[data-tone="review"] {
+  border-color: rgba(255, 209, 102, 0.26);
+  background: rgba(255, 209, 102, 0.08);
+}
+
+.chainItem li[data-tone="blocked"] {
+  border-color: rgba(255, 117, 117, 0.32);
+  background: rgba(255, 117, 117, 0.08);
+}
+
+.chainItem li span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.chainItem li strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.emptyChain {
+  grid-column: 1 / -1;
+  min-height: 84px;
+  align-content: center;
+  border-style: dashed;
+}
+
+.emptyChain strong {
+  color: var(--text);
+  font-size: 13px;
 }
 
 .sandbox {
@@ -713,6 +899,7 @@
 
   .statusStrip,
   .sandbox,
+  .chainList,
   .logRows {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -730,9 +917,28 @@
   .statusStrip,
   .decisionBand,
   .sandbox,
+  .chainList,
   .departmentZone header,
   .logRows {
     grid-template-columns: 1fr;
+  }
+
+  .chainPanel header,
+  .chainTitle {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .chainStats,
+  .chainTitle span {
+    max-width: none;
+    min-width: 0;
+    width: 100%;
+    text-align: left;
+  }
+
+  .chainItem ol {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .decisionChips {
