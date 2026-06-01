@@ -131,20 +131,28 @@ def record_manifest_upload(payload: dict[str, Any]) -> dict[str, Any]:
         for item in sessions
         if isinstance(item, dict) and item.get("ok") is True and item.get("session_id")
     ]
+    session_device_ids = [
+        safe_part(str(item.get("device_id")))
+        for item in sessions
+        if isinstance(sessions, list) and isinstance(item, dict) and item.get("device_id")
+    ]
+    session_project_ids = [
+        str(item.get("project_id") or item.get("projectId") or "").strip()
+        for item in sessions
+        if isinstance(sessions, list) and isinstance(item, dict) and (item.get("project_id") or item.get("projectId"))
+    ]
     record = {
         "ts_unix": time.time(),
         "record_type": "manifest",
         "session_count": len(sessions) if isinstance(sessions, list) else 0,
         "accepted_sessions": accepted_sessions,
+        "device_id": session_device_ids[0] if len(set(session_device_ids)) == 1 else "",
+        "project_id": session_project_ids[0] if len(set(session_project_ids)) == 1 else "",
         "payload": payload,
     }
     write_json(root / "manifests" / f"{int(record['ts_unix'] * 1000)}.json", record)
     append_jsonl(root / "events.jsonl", record)
-    device_ids = {
-        safe_part(str(item.get("device_id")))
-        for item in sessions
-        if isinstance(sessions, list) and isinstance(item, dict) and item.get("device_id")
-    }
+    device_ids = set(session_device_ids)
     for device_id in device_ids:
         write_device_latest(device_id, "manifest", record)
         append_device_event(device_id, record)

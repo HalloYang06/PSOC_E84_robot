@@ -18,6 +18,7 @@ class RehabManifestUploadRequest(BaseModel):
 
 class RehabSyncStatusRequest(BaseModel):
     device_id: str = Field(min_length=1)
+    project_id: str = ""
     sync_status: str = Field(min_length=1)
     file_name: str = ""
     record_count: int | None = None

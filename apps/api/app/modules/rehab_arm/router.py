@@ -129,6 +129,7 @@ async def api_upload_camera_keyframe(device_id: str, request: Request):
     detection_summary = fields.get("detection_summary", "")
     scene_summary = fields.get("scene_summary", "")
     vla_context = fields.get("vla_context", "")
+    project_id = fields.get("project_id", "") or fields.get("projectId", "")
     if not robot_id or not camera_id or not frame_ts_unix or width <= 0 or height <= 0:
         raise HTTPException(status_code=422, detail="robot_id, camera_id, frame_ts_unix, width, and height are required")
     normalized_format = image_format.strip().lower()
@@ -142,6 +143,7 @@ async def api_upload_camera_keyframe(device_id: str, request: Request):
             {
                 "robot_id": robot_id,
                 "device_id": device_id,
+                "project_id": project_id,
                 "camera_id": camera_id,
                 "frame_ts_unix": frame_ts_unix,
                 "image_format": "jpg" if normalized_format == "jpeg" else normalized_format,

@@ -38,6 +38,7 @@ def test_rehab_arm_sync_endpoints_store_non_realtime_data(tmp_path, monkeypatch)
                     {
                         "ok": True,
                         "session_id": "s1",
+                        "project_id": "project-rehab",
                         "device_id": "nanopi-m5",
                         "robot_id": "rehab-arm-alpha",
                         "file_name": "s1.jsonl",
@@ -90,6 +91,7 @@ def test_rehab_arm_sync_endpoints_store_non_realtime_data(tmp_path, monkeypatch)
         "/api/rehab-arm/v1/sessions/s1/sync-status",
         json={
             "device_id": "nanopi-m5",
+            "project_id": "project-rehab",
             "sync_status": "uploaded",
             "file_name": "s1.jsonl",
             "record_count": 1,
@@ -111,6 +113,9 @@ def test_rehab_arm_sync_endpoints_store_non_realtime_data(tmp_path, monkeypatch)
     assert quality["latest_session"]["quality_criteria"]["min_moving_joints"] == 5
     assert quality["control_boundary"] == "data_quality_only_not_motion_permission"
     assert quality["adapter"] == "rehab_arm_sync_v1"
+    events = dashboard.json()["data"]["recent_events"]
+    assert any(event["record_type"] == "manifest" and event["project_id"] == "project-rehab" for event in events)
+    assert any(event["record_type"] == "sync_status" and event["payload"]["project_id"] == "project-rehab" for event in events)
     get_settings.cache_clear()
 
 
@@ -300,6 +305,7 @@ def test_rehab_arm_camera_keyframe_upload_and_latest_file(tmp_path, monkeypatch)
         "/api/rehab-arm/v1/devices/nanopi-m5/camera/keyframes",
         data={
             "robot_id": "rehab-arm-alpha",
+            "project_id": "project-rehab",
             "camera_id": "front",
             "frame_ts_unix": "1710000001.5",
             "image_format": "png",
@@ -324,6 +330,7 @@ def test_rehab_arm_camera_keyframe_upload_and_latest_file(tmp_path, monkeypatch)
 
     dashboard = client.get("/api/rehab-arm/v1/devices/dashboard")
     device = dashboard.json()["data"]["devices"][0]
+    assert device["camera_keyframe"]["project_id"] == "project-rehab"
     assert device["camera_keyframe"]["payload"]["detection_summary"] == "hand and elbow visible"
     get_settings.cache_clear()
 
