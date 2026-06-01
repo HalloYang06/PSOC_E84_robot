@@ -33,4 +33,5 @@ def test_security_write_schemas_do_not_expose_actor_or_status_fields() -> None:
         "runner_id",
         "computer_node_id",
         "workstation_id",
+        "metadata",
     }

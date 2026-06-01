@@ -54,6 +54,7 @@ def test_task_professional_view_aggregates_dispatch_messages_artifacts_and_audit
                         "agent_id": "agent-pro-view",
                         "computer_node_id": "pc-pro-view",
                         "ai_provider_id": "codex",
+                        "metadata": {"automation_thread_id": "codex-session-ws-pro-view"},
                         "status": "idle",
                     }
                 ],
@@ -292,8 +293,46 @@ def test_scoped_artifact_preview_requires_task_evidence_membership() -> None:
 
 def test_artifact_index_rejects_historical_alias_mismatch_even_when_source_message_id_matches() -> None:
     owner_token, owner_user_id = issue_session_token(client)
+    runner_id = f"runner-artifact-chain-{uuid4().hex[:8]}"
+    runner_register = client.post(
+        "/api/runners/register",
+        json={
+            "runner_id": runner_id,
+            "runner_name": "Artifact Chain Runner",
+            "capabilities": ["relay", "artifact-index"],
+            "hardware_access": False,
+        },
+    )
+    assert runner_register.status_code == 200
     project = create_project(client, owner_token, name_prefix="Authoritative Artifact Chain")
     project_id = project["id"]
+    config_response = client.patch(
+        f"/api/projects/{project_id}",
+        headers=auth_headers(owner_token),
+        json={
+            "collaboration_config": {
+                "computer_nodes": [
+                    {
+                        "id": "pc-artifact-chain",
+                        "label": "证据链电脑",
+                        "status": "online",
+                        "runner_id": runner_id,
+                    }
+                ],
+                "thread_workstations": [
+                    {
+                        "id": "ws-pro-view",
+                        "name": "专业视图工位",
+                        "agent_id": "agent-pro-view",
+                        "computer_node_id": "pc-artifact-chain",
+                        "metadata": {"automation_thread_id": "codex-session-ws-artifact-chain"},
+                        "status": "idle",
+                    }
+                ],
+            }
+        },
+    )
+    assert config_response.status_code == 200
     task = create_task(
         client,
         owner_token,
@@ -308,29 +347,6 @@ def test_artifact_index_rejects_historical_alias_mismatch_even_when_source_messa
         headers=auth_headers(owner_token),
         json={"workstation_id": "ws-pro-view", "notes": "authoritative chain"},
     )
-    if dispatch_response.status_code != 200:
-        config_response = client.patch(
-            f"/api/projects/{project_id}",
-            headers=auth_headers(owner_token),
-            json={
-                "collaboration_config": {
-                    "thread_workstations": [
-                        {
-                            "id": "ws-pro-view",
-                            "name": "专业视图工位",
-                            "agent_id": "agent-pro-view",
-                            "status": "idle",
-                        }
-                    ]
-                }
-            },
-        )
-        assert config_response.status_code == 200
-        dispatch_response = client.post(
-            f"/api/tasks/{task['id']}/dispatch",
-            headers=auth_headers(owner_token),
-            json={"workstation_id": "ws-pro-view", "notes": "authoritative chain"},
-        )
     assert dispatch_response.status_code == 200, dispatch_response.text
     dispatch = dispatch_response.json()["data"]
 
@@ -543,6 +559,7 @@ def test_task_professional_view_summarizes_runner_capability_and_active_auto_ret
                         "agent_id": "agent-auto-retry",
                         "computer_node_id": "pc-auto-retry",
                         "ai_provider_id": "codex",
+                        "metadata": {"automation_thread_id": "codex-session-ws-auto-retry"},
                         "status": "idle",
                     }
                 ],

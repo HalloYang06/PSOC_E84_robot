@@ -50,6 +50,7 @@ def _setup_runner_project() -> tuple[str, str, str, str]:
                         "name": "协作工位",
                         "agent_id": "agent-relay",
                         "computer_node_id": "pc-relay",
+                        "metadata": {"automation_thread_id": "codex-session-ws-relay"},
                         "status": "active",
                     }
                 ],
