@@ -916,6 +916,31 @@
   overflow: visible;
 }
 
+.officeEdgeTapLayer {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.officeEdgeTapTarget {
+  position: absolute;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+  pointer-events: auto;
+  transform-origin: center;
+}
+
+.officeEdgeTapTarget:hover,
+.officeEdgeTapTarget[data-selected="1"] {
+  background: rgba(255, 248, 232, 0.055);
+}
+
 .networkEdgeLink {
   cursor: pointer;
 }
@@ -988,7 +1013,7 @@
 .officeNodeLayer {
   position: absolute;
   inset: 0;
-  z-index: 2;
+  z-index: 3;
   pointer-events: none;
 }
 

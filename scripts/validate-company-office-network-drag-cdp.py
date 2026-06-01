@@ -255,18 +255,12 @@ def main() -> int:
             """
             (() => {
               const section = document.querySelector('section[aria-label="NPC 办公网"]');
-              const link = section?.querySelector('svg [data-kind]');
-              const line = link?.querySelector('line[stroke-width]');
-              const svg = section?.querySelector('svg');
-              if (!link || !line || !svg) return null;
-              const rect = svg.getBoundingClientRect();
-              const x1 = Number(line.getAttribute('x1') || 0);
-              const y1 = Number(line.getAttribute('y1') || 0);
-              const x2 = Number(line.getAttribute('x2') || 0);
-              const y2 = Number(line.getAttribute('y2') || 0);
+              const target = section?.querySelector('button[data-edge-id]');
+              if (!target) return null;
+              const rect = target.getBoundingClientRect();
               return {
-                x: rect.left + ((x1 + x2) / 2 / 100) * rect.width,
-                y: rect.top + ((y1 + y2) / 2 / 100) * rect.height,
+                x: rect.left + rect.width / 2,
+                y: rect.top + rect.height / 2,
               };
             })()
             """,

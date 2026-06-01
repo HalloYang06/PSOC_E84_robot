@@ -236,6 +236,35 @@ export function OfficeNetwork({ projectId, nodes, edges }: OfficeNetworkProps) {
           );
         })}
       </svg>
+      <div className={styles.officeEdgeTapLayer} aria-hidden="true">
+        {filteredEdges.map((edge) => {
+          const from = nodeById.get(edge.fromId);
+          const to = nodeById.get(edge.toId);
+          if (!from || !to) return null;
+          const dx = to.x - from.x;
+          const dy = to.y - from.y;
+          const distance = Math.max(Math.hypot(dx, dy), 1);
+          const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+          const edgeLabel = edge.kind === "relationship" ? `${edge.label}关系` : `${edge.count > 1 ? `${edge.count}条 ` : ""}${edge.label}`;
+          return (
+            <button
+              key={edge.id}
+              type="button"
+              className={styles.officeEdgeTapTarget}
+              data-edge-id={edge.id}
+              data-selected={selectedEdgeId === edge.id ? "1" : undefined}
+              aria-label={`${from.name} 到 ${to.name}: ${edgeLabel}`}
+              onClick={() => setSelectedEdgeId(edge.id)}
+              style={{
+                left: `${from.x + dx * 0.5}%`,
+                top: `${from.y + dy * 0.5}%`,
+                width: `${Math.max(10, distance * 0.72)}%`,
+                transform: `translate(-50%, -50%) rotate(${angle}deg)`,
+              }}
+            />
+          );
+        })}
+      </div>
       <div className={styles.officeNodeLayer}>
         {positionedNodes.map((node) => (
           <Link
