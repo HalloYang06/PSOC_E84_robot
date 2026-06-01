@@ -107,3 +107,44 @@ Verification:
 Remaining UX note:
 
 - The visual flow is now much less text-heavy, but the right-side `协作明细` still lists recent receipts in text form. A later slice should turn that area into a compact evidence drawer launcher or stacked event strip.
+
+## 2026-06-01 Per-NPC Relationship Network
+
+AI identity: Codex GPT-5
+Role: Company-layer NPC relationship visualization maintainer
+
+Completed after user feedback that company layer should show an NPC relationship network:
+
+- Added `NPC 关系网` to the company layer in `apps/web/app/projects/[id]/company/page.tsx`.
+- Every NPC now renders as one relationship card with:
+  - central NPC node
+  - surrounding related NPC nodes
+  - outgoing Need count
+  - incoming Need count
+  - assigned Task count
+- Relationship sources currently use existing platform facts:
+  - same logical workstation
+  - workstation lead
+  - Need requester/target fields
+  - Task assignee fields
+  - thread/computer/seat aliases for compatibility
+- Added responsive orbit-card styling in `apps/web/app/projects/[id]/company/company.module.css`.
+- Deployed through cloud at commit `e74288fca324`.
+
+Verification:
+
+- Local build passed:
+  - `npm --workspace apps/web run build`
+- Cloud build and restart passed:
+  - `npm install`
+  - `npm run build:web`
+  - `RESTART=1 scripts/start-cloud-prod.sh`
+- Cloud alignment passed at `e74288fca324`.
+- User-view QA passed:
+  - report: `D:\ai合作产品\artifacts\company-relation-network-qa\company-relation-network-report-20260601-153121.json`
+  - desktop screenshot: `D:\ai合作产品\artifacts\company-relation-network-qa\company-relation-desktop-20260601-153121.png`
+  - mobile screenshot: `D:\ai合作产品\artifacts\company-relation-network-qa\company-relation-mobile-20260601-153121.png`
+
+Next UX improvement:
+
+- Add click or hover detail for one NPC relation card so the user can focus a single NPC and see direct collaborators, active Need edges, and recent receipts without leaving company layer.
