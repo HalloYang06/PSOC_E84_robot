@@ -544,6 +544,8 @@ function Arm3DOverview({ motors, safetyState }: { motors: AnyRecord[]; safetySta
   const urdfJointNames = useMemo(() => urdfJoints.map((joint) => joint.name), [urdfJoints]);
   const jointRows = useMemo(() => movableJoints(urdfJoints).map((joint) => joint.name), [urdfJoints]);
   const sourceNames = useMemo(() => motorSourceNames(motors), [motors]);
+  const jointRowsKey = jointRows.join("\u0001");
+  const sourceNamesKey = sourceNames.join("\u0001");
   const [calibrations, setCalibrations] = useState<JointCalibration[]>([]);
   const calibratedJointValues = useMemo(() => {
     const values = new Map<string, number>();
@@ -578,7 +580,7 @@ function Arm3DOverview({ motors, safetyState }: { motors: AnyRecord[]; safetySta
       saved.forEach((row, jointName) => previous.set(jointName, row));
       return defaultCalibrations(jointRows, sourceNames, previous);
     });
-  }, [jointRows, sourceNames, urdfName]);
+  }, [jointRowsKey, sourceNamesKey, urdfName]);
 
   useEffect(() => {
     saveCalibrations(urdfName, calibrations);
