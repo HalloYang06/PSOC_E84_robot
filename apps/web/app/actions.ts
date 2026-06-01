@@ -4866,6 +4866,18 @@ export async function 索引Npc沉淀(projectId: string, seatId: string, formDat
     });
     const seatRecordId = text(seat.row_id ?? seat.rowId ?? seat.id ?? seat.config_id, normalizedSeatId);
     const seatName = text(seat.name ?? seat.workstation_name, "该 NPC");
+    const closureSource = text(formData.get("closure_source"), "");
+    const closureNeedId = text(formData.get("closure_need_id"), "");
+    const closureTaskId = text(formData.get("closure_task_id"), "");
+    const closureDispatchId = text(formData.get("closure_dispatch_id"), "");
+    const closureExtraData = closureSource === "company_collaboration" && (closureNeedId || closureTaskId || closureDispatchId)
+      ? {
+          closure_source: closureSource,
+          closure_need_id: closureNeedId || null,
+          closure_task_id: closureTaskId || null,
+          closure_dispatch_id: closureDispatchId || null,
+        }
+      : {};
 
     const knowledgeFiles = await safeRepoFileCandidates(npcKnowledge.knowledge_deposit_path, { maxFiles: 12, extensions: [".md", ".mdx"] });
     const skillFiles = await safeRepoFileCandidates(npcKnowledge.skill_deposit_path, { maxFiles: 12, fileNames: ["skill.md"] });
@@ -4897,6 +4909,7 @@ export async function 索引Npc沉淀(projectId: string, seatId: string, formDat
           source: "npc-authored",
           indexed_from: "npc-deposit-path",
           indexed_at: new Date().toISOString(),
+          ...closureExtraData,
         },
       });
       knowledgeCount += 1;
@@ -4919,6 +4932,7 @@ export async function 索引Npc沉淀(projectId: string, seatId: string, formDat
           source: "npc-authored",
           indexed_from: "npc-deposit-path",
           indexed_at: new Date().toISOString(),
+          ...closureExtraData,
         },
       });
       await postJson(`/api/knowledge/projects/${projectId}/seat-skill-assignments`, {
@@ -4930,6 +4944,7 @@ export async function 索引Npc沉淀(projectId: string, seatId: string, formDat
         extra_data: {
           author_seat_id: seatRecordId,
           indexed_from: "npc-deposit-path",
+          ...closureExtraData,
         },
       });
       skillCount += 1;

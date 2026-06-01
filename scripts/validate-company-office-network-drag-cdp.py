@@ -336,11 +336,14 @@ def main() -> int:
               const detailLink = drawer?.querySelector('a[href*="/workbench"]');
               const knowledgeLink = drawer?.querySelector('a[href*="/skill-forge"][href*="tab=knowledge"]');
               const skillLink = drawer?.querySelector('a[href*="/skill-forge"][href*="tab=skills"]');
+              const indexForm = drawer?.querySelector('form');
+              const closureSource = indexForm?.querySelector('input[name="closure_source"]')?.value || '';
               return {
                 drawerText: (drawer?.textContent || '').trim(),
                 detailHref: detailLink?.getAttribute('href') || '',
                 knowledgeHref: knowledgeLink?.getAttribute('href') || '',
                 skillHref: skillLink?.getAttribute('href') || '',
+                closureSource,
                 selected: section.querySelectorAll('svg [data-selected="1"]').length,
               };
             })()
@@ -358,6 +361,8 @@ def main() -> int:
             raise RuntimeError(f"Collaboration detail is missing the Skill closure action: {detail}")
         if not detail.get("knowledgeHref") or not detail.get("skillHref"):
             raise RuntimeError(f"Knowledge/Skill closure links are not tab-specific: {detail}")
+        if detail.get("closureSource") != "company_collaboration":
+            raise RuntimeError(f"Index action is not tied to company collaboration closure: {detail}")
         if int(detail.get("selected") or 0) < 1:
             raise RuntimeError(f"Clicked line was not visually selected: {detail}")
 

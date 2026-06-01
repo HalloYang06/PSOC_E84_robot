@@ -21,6 +21,9 @@ export type OfficeNetworkEdge = {
   id: string;
   fromId: string;
   toId: string;
+  needId?: string;
+  taskId?: string;
+  dispatchId?: string;
   fromName: string;
   toName: string;
   count: number;
@@ -382,6 +385,10 @@ export function OfficeNetwork({ projectId, nodes, edges }: OfficeNetworkProps) {
             <Link href={selectedEdge.skillHref}>{selectedEdge.skillClosureCount ? "完善 Skill" : "沉淀 Skill"}</Link>
             <form action={索引Npc沉淀.bind(null, projectId, selectedEdge.toId)}>
               <input type="hidden" name="return_to" value={`/projects/${projectId}/company`} />
+              <input type="hidden" name="closure_source" value="company_collaboration" />
+              <input type="hidden" name="closure_need_id" value={selectedEdge.needId ?? ""} />
+              <input type="hidden" name="closure_task_id" value={selectedEdge.taskId ?? ""} />
+              <input type="hidden" name="closure_dispatch_id" value={selectedEdge.dispatchId ?? ""} />
               <button type="submit">索引沉淀</button>
             </form>
           </div>
