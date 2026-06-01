@@ -43,6 +43,13 @@ type Props = {
   projectName: string;
 };
 
+type JointDetail = {
+  name: string;
+  type: string;
+  parent: string;
+  child: string;
+};
+
 function text(value: unknown, fallback = "") {
   const next = String(value ?? "").trim();
   return next || fallback;
@@ -61,6 +68,62 @@ function publicDeviceName(device: DashboardDevice | null | undefined, index = 0)
   const deviceName = text(device?.device_id, "");
   if (deviceName && !isRawIdentifier(deviceName)) return deviceName;
   return `康复机械臂 ${safeIndex + 1}`;
+}
+
+function deviceProjectId(device: AnyRecord) {
+  const manifest = record(device.manifest);
+  const boardManifest = record(device.board_manifest);
+  const registration = record(device.registration);
+  return text(
+    device.project_id
+      ?? device.projectId
+      ?? manifest.project_id
+      ?? manifest.projectId
+      ?? boardManifest.project_id
+      ?? boardManifest.projectId
+      ?? registration.project_id
+      ?? registration.projectId,
+    "",
+  );
+}
+
+function emptyDashboard(): Dashboard {
+  return {
+    sync_role: "cloud_readonly",
+    safety_boundary: {
+      server_may_send: ["只读状态查看", "数据质量检查", "高层任务草案"],
+      server_must_not_send: ["CAN/电机真实控制", "力矩/速度/位置写入", "绕过 M33 安全链路"],
+      m33_final_authority: true,
+    },
+    devices: [],
+    recent_events: [],
+  };
+}
+
+function filterDashboardForProject(value: unknown, projectId: string): Dashboard {
+  const payload = record(value);
+  const data = record(payload.data ?? payload);
+  const baseline = emptyDashboard();
+  const devices = asArray<AnyRecord>(data.devices)
+    .filter((device) => deviceProjectId(device) === projectId) as DashboardDevice[];
+  const deviceIds = new Set(devices.map((device) => text(device.device_id, "")).filter(Boolean));
+  const recentEvents = asArray<AnyRecord>(data.recent_events).filter((event) => {
+    const eventProjectId = text(event.project_id ?? event.projectId, "");
+    if (eventProjectId) return eventProjectId === projectId;
+    const eventDeviceId = text(event.device_id, "");
+    return !eventDeviceId || deviceIds.has(eventDeviceId);
+  });
+
+  return {
+    ...baseline,
+    ...data,
+    safety_boundary: {
+      ...baseline.safety_boundary,
+      ...record(data.safety_boundary),
+    },
+    devices,
+    recent_events: recentEvents,
+  };
 }
 
 function publicDeviceCode(device: DashboardDevice | null | undefined, index = 0) {
@@ -198,6 +261,31 @@ function numberText(value: unknown, unit = "") {
   return `${Number.isInteger(number) ? number : number.toFixed(3)}${unit}`;
 }
 
+function motorPosition(motor: AnyRecord) {
+  const value = Number(
+    motor.position_rad
+      ?? motor.positionRad
+      ?? motor.angle_rad
+      ?? motor.angleRad
+      ?? motor.position
+      ?? motor.angle,
+  );
+  return Number.isFinite(value) ? value : null;
+}
+
+function jointValueMapFromMotors(motors: AnyRecord[]) {
+  const values = new Map<string, number>();
+  motors.forEach((motor) => {
+    const value = motorPosition(motor);
+    if (value === null) return;
+    const jointName = text(motor.joint_name ?? motor.jointName, "");
+    const motorId = text(motor.motor_id ?? motor.motorId, "");
+    if (jointName) values.set(jointName, value);
+    if (motorId) values.set(motorId, value);
+  });
+  return values;
+}
+
 function keyframeSrc(imageUrl: string, apiBaseUrl: string) {
   if (!imageUrl) return "";
   if (imageUrl.startsWith("/api/")) return `/api/proxy/${imageUrl.slice("/api/".length)}`;
@@ -227,7 +315,7 @@ const ARM_MODEL_JSON = {
 };
 
 function jointPositionsFromMotors(motors: AnyRecord[]) {
-  const byName = new Map(motors.map((motor) => [text(motor.joint_name), Number(motor.position)]));
+  const byName = jointValueMapFromMotors(motors);
   return ARM_MODEL_JSON.joints.map((name, index) => {
     const value = byName.get(name);
     if (Number.isFinite(value)) return Number(value);
@@ -235,9 +323,56 @@ function jointPositionsFromMotors(motors: AnyRecord[]) {
   });
 }
 
+function parseUrdfJoints(urdfText: string): JointDetail[] {
+  const doc = new DOMParser().parseFromString(urdfText, "application/xml");
+  if (doc.getElementsByTagName("parsererror")[0]) throw new Error("invalid urdf");
+  return Array.from(doc.getElementsByTagName("joint")).map((joint, index) => ({
+    name: joint.getAttribute("name") || `joint_${index + 1}`,
+    type: joint.getAttribute("type") || "unknown",
+    parent: joint.getElementsByTagName("parent")[0]?.getAttribute("link") || "-",
+    child: joint.getElementsByTagName("child")[0]?.getAttribute("link") || "-",
+  }));
+}
+
 function Arm3DOverview({ motors, safetyState }: { motors: AnyRecord[]; safetyState: string }) {
   const mountRef = useRef<HTMLDivElement | null>(null);
+  const cleanupRef = useRef<() => void>(() => {});
+  const robotRef = useRef<AnyRecord | null>(null);
   const positions = useMemo(() => jointPositionsFromMotors(motors), [motors]);
+  const jointValues = useMemo(() => jointValueMapFromMotors(motors), [motors]);
+  const positionsRef = useRef(positions);
+  const jointValuesRef = useRef(jointValues);
+  const [urdfText, setUrdfText] = useState("");
+  const placeholderPoseKey = urdfText ? "" : positions.map((position) => position.toFixed(4)).join("|");
+  const [urdfName, setUrdfName] = useState("");
+  const [urdfState, setUrdfState] = useState<"placeholder" | "loading" | "loaded" | "failed">("placeholder");
+  const [urdfJoints, setUrdfJoints] = useState<JointDetail[]>([]);
+  const urdfJointNames = useMemo(() => urdfJoints.map((joint) => joint.name), [urdfJoints]);
+  const matchedUrdfJoints = useMemo(
+    () => urdfJointNames.filter((name) => jointValues.has(name)),
+    [jointValues, urdfJointNames],
+  );
+
+  useEffect(() => {
+    positionsRef.current = positions;
+    jointValuesRef.current = jointValues;
+  }, [jointValues, positions]);
+
+  function handleUrdfFile(file: File | null) {
+    if (!file) return;
+    setUrdfName(file.name);
+    setUrdfState("loading");
+    setUrdfJoints([]);
+    file.text()
+      .then((content) => {
+        setUrdfJoints(parseUrdfJoints(content));
+        setUrdfText(content);
+      })
+      .catch(() => {
+        setUrdfText("");
+        setUrdfState("failed");
+      });
+  }
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -252,6 +387,9 @@ function Arm3DOverview({ motors, safetyState }: { motors: AnyRecord[]; safetySta
       const target = mountRef.current;
       const width = Math.max(360, target.clientWidth || 720);
       const height = Math.max(320, target.clientHeight || 420);
+      cleanupRef.current();
+      robotRef.current = null;
+
       const scene = new THREE.Scene();
       scene.background = new THREE.Color(0x020a0d);
 
@@ -293,42 +431,98 @@ function Arm3DOverview({ motors, safetyState }: { motors: AnyRecord[]; safetySta
       base.position.y = 0.04;
       scene.add(base);
 
-      const group = new THREE.Group();
-      group.position.y = 0.1;
-      scene.add(group);
+      function addPlaceholderArm() {
+        const group = new THREE.Group();
+        group.position.y = 0.1;
+        scene.add(group);
+        const jointMaterial = new THREE.MeshStandardMaterial({
+          color: safetyState === "ok" ? 0x78e6aa : safetyState === "fault" ? 0xff705e : 0xffd166,
+          roughness: 0.44,
+          metalness: 0.18,
+        });
+        let cursor = new THREE.Vector3(0, 0, 0);
+        const currentPositions = positionsRef.current;
+        let yaw = currentPositions[1] || 0;
+        let pitch = currentPositions[0] || 0.3;
+        ARM_MODEL_JSON.links.slice(1).forEach((link, index) => {
+          const length = link.length;
+          if (index === 2) pitch -= currentPositions[3] || 0.4;
+          if (index === 3) yaw += currentPositions[4] || 0;
+          const dir = new THREE.Vector3(
+            Math.cos(pitch) * Math.cos(yaw),
+            Math.sin(pitch),
+            Math.cos(pitch) * Math.sin(yaw),
+          ).normalize();
+          const mid = cursor.clone().add(dir.clone().multiplyScalar(length / 2));
+          const geometry = new THREE.CylinderGeometry(link.radius, link.radius, length, 24);
+          const material = new THREE.MeshStandardMaterial({ color: link.color, roughness: 0.58, metalness: 0.1 });
+          const mesh = new THREE.Mesh(geometry, material);
+          mesh.position.copy(mid);
+          mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+          group.add(mesh);
+          const joint = new THREE.Mesh(new THREE.SphereGeometry(link.radius * 1.65, 24, 16), jointMaterial);
+          joint.position.copy(cursor);
+          group.add(joint);
+          cursor = cursor.add(dir.multiplyScalar(length));
+        });
+        const end = new THREE.Mesh(new THREE.SphereGeometry(0.045, 24, 16), jointMaterial);
+        end.position.copy(cursor);
+        group.add(end);
+      }
 
-      const jointMaterial = new THREE.MeshStandardMaterial({
-        color: safetyState === "ok" ? 0x78e6aa : safetyState === "fault" ? 0xff705e : 0xffd166,
-        roughness: 0.44,
-        metalness: 0.18,
-      });
-      let cursor = new THREE.Vector3(0, 0, 0);
-      let yaw = positions[1] || 0;
-      let pitch = positions[0] || 0.3;
-      ARM_MODEL_JSON.links.slice(1).forEach((link, index) => {
-        const length = link.length;
-        if (index === 2) pitch -= positions[3] || 0.4;
-        if (index === 3) yaw += positions[4] || 0;
-        const dir = new THREE.Vector3(
-          Math.cos(pitch) * Math.cos(yaw),
-          Math.sin(pitch),
-          Math.cos(pitch) * Math.sin(yaw),
-        ).normalize();
-        const mid = cursor.clone().add(dir.clone().multiplyScalar(length / 2));
-        const geometry = new THREE.CylinderGeometry(link.radius, link.radius, length, 24);
-        const material = new THREE.MeshStandardMaterial({ color: link.color, roughness: 0.58, metalness: 0.1 });
-        const mesh = new THREE.Mesh(geometry, material);
-        mesh.position.copy(mid);
-        mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
-        group.add(mesh);
-        const joint = new THREE.Mesh(new THREE.SphereGeometry(link.radius * 1.65, 24, 16), jointMaterial);
-        joint.position.copy(cursor);
-        group.add(joint);
-        cursor = cursor.add(dir.multiplyScalar(length));
-      });
-      const end = new THREE.Mesh(new THREE.SphereGeometry(0.045, 24, 16), jointMaterial);
-      end.position.copy(cursor);
-      group.add(end);
+      function applyJointValues(robot: AnyRecord) {
+        jointValuesRef.current.forEach((value, name) => {
+          if (robot.joints?.[name]) {
+            robot.setJointValue?.(name, value);
+          }
+        });
+      }
+
+      async function addUrdfOrPlaceholder() {
+        if (!urdfText) {
+          addPlaceholderArm();
+          setUrdfState("placeholder");
+          return;
+        }
+        try {
+          const { default: URDFLoader } = await import("urdf-loader");
+          if (disposed) return;
+          const loader = new URDFLoader();
+          (loader as AnyRecord).packages = "";
+          (loader as AnyRecord).loadMeshCb = (_url: string, _manager: unknown, done: (mesh: unknown, err?: Error) => void) => {
+            done(new THREE.Group(), new Error("外部 mesh 未在浏览器本地加载"));
+          };
+          const robot = loader.parse(urdfText) as AnyRecord;
+          if (disposed) return;
+          robotRef.current = robot;
+          robot.rotation.x = -Math.PI / 2;
+          robot.traverse?.((child: AnyRecord) => {
+            if (child.isMesh) {
+              child.castShadow = false;
+              child.receiveShadow = false;
+              child.material = new THREE.MeshStandardMaterial({
+                color: 0x8ef0c7,
+                roughness: 0.62,
+                metalness: 0.08,
+              });
+            }
+          });
+          const box = new THREE.Box3().setFromObject(robot as any);
+          const size = box.getSize(new THREE.Vector3());
+          const center = box.getCenter(new THREE.Vector3());
+          const maxDim = Math.max(size.x, size.y, size.z, 0.001);
+          robot.position.sub(center);
+          robot.scale.setScalar(1.1 / maxDim);
+          applyJointValues(robot);
+          scene.add(robot as any);
+          setUrdfState("loaded");
+        } catch {
+          addPlaceholderArm();
+          setUrdfState("failed");
+        }
+      }
+
+      void addUrdfOrPlaceholder();
 
       let frame = 0;
       const animate = () => {
@@ -356,6 +550,7 @@ function Arm3DOverview({ motors, safetyState }: { motors: AnyRecord[]; safetySta
         scene.clear();
         if (target.contains(renderer.domElement)) target.removeChild(renderer.domElement);
       };
+      cleanupRef.current = cleanup;
     }
 
     void renderArm();
@@ -363,21 +558,58 @@ function Arm3DOverview({ motors, safetyState }: { motors: AnyRecord[]; safetySta
       disposed = true;
       cleanup();
     };
-  }, [positions, safetyState]);
+  }, [placeholderPoseKey, safetyState, urdfText]);
+
+  useEffect(() => {
+    const robot = robotRef.current;
+    if (!robot) return;
+    jointValues.forEach((value, name) => {
+      if (robot.joints?.[name]) {
+        robot.setJointValue?.(name, value);
+      }
+    });
+  }, [jointValues, urdfJointNames]);
+
+  const modelStateText =
+    urdfState === "loaded"
+      ? `已导入 ${urdfName || "URDF"}`
+      : urdfState === "loading"
+        ? "正在导入 URDF"
+        : urdfState === "failed"
+          ? "URDF 未能完整加载，已回退占位模型"
+          : "当前是占位模型，可导入 URDF";
 
   return (
     <section className={styles.armOverviewPanel} aria-label="机械臂 3D 总览">
       <div className={styles.panelHead}>
         <div>
-          <span>Three.js 机械臂</span>
-          <strong>5 关节结构预览</strong>
+          <span>URDF / Three.js 机械臂</span>
+          <strong>{modelStateText}</strong>
         </div>
-        <small>{ARM_MODEL_JSON.joints.length} 个关节 · 轻量模型</small>
+        <small>{matchedUrdfJoints.length || positions.length} 个关节正在匹配角度</small>
+      </div>
+      <div className={styles.urdfToolbar}>
+        <label>
+          <span>导入本机 URDF</span>
+          <input
+            type="file"
+            accept=".urdf,.xml"
+            data-testid="rehab-urdf-file"
+            onChange={(event) => handleUrdfFile(event.target.files?.[0] ?? null)}
+          />
+        </label>
+        <p>只读预览：页面用电机上报角度驱动同名关节，不下发任何运动控制。mesh 资源未上传时会自动使用占位模型。</p>
       </div>
       <div ref={mountRef} className={styles.armCanvas} />
+      {urdfJoints.length ? (
+        <div className={styles.poseStatus}>
+          <strong>匹配 {matchedUrdfJoints.length}/{urdfJoints.filter((joint) => !["fixed", "floating"].includes(joint.type)).length || urdfJoints.length}</strong>
+          <span>同名关节会实时套用电机角度；未匹配关节保持模型默认姿态。</span>
+        </div>
+      ) : null}
       <div className={styles.armLegend}>
-        {ARM_MODEL_JSON.joints.map((name, index) => (
-          <span key={name}>{name}: {numberText(positions[index], " rad")}</span>
+        {(urdfJointNames.length ? urdfJointNames : ARM_MODEL_JSON.joints).slice(0, 10).map((name, index) => (
+          <span key={name}>{name}: {numberText(jointValues.get(name) ?? positions[index], " rad")}</span>
         ))}
       </div>
     </section>
@@ -411,7 +643,10 @@ function ControlStationOnboarding({ projectId }: { projectId: string }) {
 }
 
 export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projectName }: Props) {
-  const devices = useMemo(() => dashboard.devices.length ? dashboard.devices : [], [dashboard.devices]);
+  const [liveDashboard, setLiveDashboard] = useState(() => filterDashboardForProject(dashboard, projectId));
+  const [pollState, setPollState] = useState<"idle" | "ok" | "error">("idle");
+  const [lastLiveUpdate, setLastLiveUpdate] = useState<number | null>(null);
+  const devices = useMemo(() => liveDashboard.devices.length ? liveDashboard.devices : [], [liveDashboard.devices]);
   const [selectedDeviceId, setSelectedDeviceId] = useState(devices[0]?.device_id ?? "");
   const deviceIndexById = useMemo(
     () => new Map(devices.map((device, index) => [device.device_id, index])),
@@ -421,6 +656,41 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
     () => devices.find((device) => device.device_id === selectedDeviceId) ?? devices[0] ?? null,
     [devices, selectedDeviceId],
   );
+
+  useEffect(() => {
+    setLiveDashboard(filterDashboardForProject(dashboard, projectId));
+  }, [dashboard, projectId]);
+
+  useEffect(() => {
+    if (selectedDeviceId && devices.some((device) => device.device_id === selectedDeviceId)) return;
+    setSelectedDeviceId(devices[0]?.device_id ?? "");
+  }, [devices, selectedDeviceId]);
+
+  useEffect(() => {
+    let disposed = false;
+
+    async function refreshDashboard() {
+      try {
+        const response = await fetch("/api/proxy/rehab-arm/v1/devices/dashboard", { cache: "no-store" });
+        if (!response.ok) throw new Error("dashboard fetch failed");
+        const payload = await response.json();
+        if (disposed) return;
+        setLiveDashboard(filterDashboardForProject(payload, projectId));
+        setPollState("ok");
+        setLastLiveUpdate(Date.now());
+      } catch {
+        if (!disposed) setPollState("error");
+      }
+    }
+
+    void refreshDashboard();
+    const timer = window.setInterval(refreshDashboard, 4000);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+  }, [projectId]);
+
   const selectedIndex = selected ? deviceIndexById.get(selected.device_id) ?? 0 : 0;
   const roleSignals = useMemo(() => roleSignalsFromDevices(devices), [devices]);
   const keyframe = selected?.camera_keyframe ?? {};
@@ -456,7 +726,10 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
         <div className={styles.topbarRight}>
           <span className={styles.kpi}>设备 {devices.length}</span>
           <span className={styles.kpi}>在线 {roleSignals.onlineDevices}</span>
-          <span className={styles.kpi}>M33 裁决 {dashboard.safety_boundary.m33_final_authority ? "开启" : "未声明"}</span>
+          <span className={styles.kpi}>M33 裁决 {liveDashboard.safety_boundary.m33_final_authority ? "开启" : "未声明"}</span>
+          <span className={styles.kpi}>
+            {pollState === "error" ? "实时刷新异常" : lastLiveUpdate ? `已同步 ${new Date(lastLiveUpdate).toLocaleTimeString("zh-CN", { hour12: false })}` : "准备同步"}
+          </span>
           <Link href={`/projects/${projectId}/rehab-arm-control`} className={styles.refreshLink}>刷新状态</Link>
         </div>
       </header>
@@ -662,10 +935,10 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
               </section>
               <section className={styles.eventLog}>
                 <span>事件日志</span>
-                {dashboard.recent_events.slice(0, 6).map((event, index) => (
+                {liveDashboard.recent_events.slice(0, 6).map((event, index) => (
                   <p key={`${text(event.record_type, "event")}-${index}`}>{eventTitle(event)} · {publicDeviceCode(devices.find((device) => device.device_id === event.device_id), index)} · {formatTime(event.ts_unix)}</p>
                 ))}
-                {!dashboard.recent_events.length ? <p>暂无上传事件。</p> : null}
+                {!liveDashboard.recent_events.length ? <p>暂无上传事件。</p> : null}
               </section>
             </div>
           </details>
