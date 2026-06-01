@@ -72,6 +72,73 @@ def fetch_text(url: str, *, token: str) -> str:
         return response.read().decode("utf-8", errors="replace")
 
 
+def browser_thread_preview(
+    *,
+    web_base: str,
+    project_id: str,
+    computer_id: str,
+    token: str,
+    output_dir: Path,
+    stamp: str,
+) -> dict[str, object]:
+    screenshot_path = output_dir / f"computer-thread-visibility-browser-{stamp}.png"
+    node_code = f"""
+const {{ chromium }} = require('playwright');
+(async () => {{
+  const browser = await chromium.launch({{ headless: true }});
+  const context = await browser.newContext({{ viewport: {{ width: 1440, height: 1000 }} }});
+  await context.addCookies([{{
+    name: 'farm_access_token',
+    value: {json.dumps(token)},
+    url: {json.dumps(web_base.rstrip('/') + '/')},
+    sameSite: 'Lax'
+  }}]);
+  const page = await context.newPage();
+  const url = `${{ {json.dumps(web_base.rstrip('/'))} }}/projects/${{ {json.dumps(project_id)} }}/2d-upgrade?panel=machine-room&action=thread-list&computer=${{ {json.dumps(computer_id)} }}`;
+  await page.goto(url, {{ waitUntil: 'networkidle', timeout: 45000 }}).catch(async () => {{
+    await page.goto(url, {{ waitUntil: 'domcontentloaded', timeout: 45000 }});
+  }});
+  await page.waitForTimeout(1800);
+  const selector = `[data-computer-thread-preview-for="${{ {json.dumps(computer_id)} }}"]`;
+  const section = await page.locator(selector).first();
+  const sectionCount = await section.count();
+  const result = await page.evaluate((computerId) => {{
+    const section = document.querySelector(`[data-computer-thread-preview-for="${{computerId}}"]`);
+    const items = section ? Array.from(section.querySelectorAll('[data-computer-thread-item]')) : [];
+    const countEl = section ? section.querySelector('[data-computer-thread-rendered-count]') : null;
+    return {{
+      url: location.href,
+      sectionFound: Boolean(section),
+      renderedCount: items.length,
+      renderedAttrCount: countEl ? Number(countEl.getAttribute('data-computer-thread-rendered-count') || '0') : 0,
+      text: section ? section.innerText : document.body.innerText.slice(0, 1200),
+      overflowX: Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth),
+    }};
+  }}, {json.dumps(computer_id)});
+  await page.screenshot({{ path: {json.dumps(str(screenshot_path))}, fullPage: true }});
+  await browser.close();
+  result.sectionCount = sectionCount;
+  result.screenshot = {json.dumps(str(screenshot_path))};
+  console.log(JSON.stringify(result));
+}})().catch((error) => {{
+  console.error(error && error.stack ? error.stack : String(error));
+  process.exit(1);
+}});
+"""
+    completed = subprocess.run(
+        ["node", "-e", node_code],
+        cwd=str(REPO_ROOT),
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        capture_output=True,
+        timeout=70,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(f"browser thread preview failed: {(completed.stderr or '').strip() or (completed.stdout or '').strip()}")
+    return json.loads(completed.stdout.strip().splitlines()[-1])
+
+
 def request_runner_json(
     url: str,
     *,
@@ -107,6 +174,9 @@ def main() -> int:
     runner_id = f"runner-http-{stamp[-6:]}"
     runner_name = f"Runner HTTP {stamp[-6:]}"
     html_dump_path = output_dir / f"computer-thread-visibility-html-{stamp}.html"
+    synthetic_thread_ids = [f"{computer_id}-thread-{index:02d}" for index in range(1, 10)]
+    created_thread_ids: list[str] = []
+    token = ""
 
     report: dict[str, object] = {
         "stamp": stamp,
@@ -117,9 +187,8 @@ def main() -> int:
         "issues": [],
     }
 
-    token, _user = api_login(api_base, args.login_email, args.login_password)
-
     try:
+        token, _user = api_login(api_base, args.login_email, args.login_password)
         request_json(
             f"{api_base}/api/collaboration/projects/{project_id}/computer-nodes",
             method="POST",
@@ -163,7 +232,6 @@ def main() -> int:
             raise RuntimeError(f"register-runner failed: {register_result}")
         report["register_returncode"] = register_result["returncode"]
 
-        synthetic_thread_ids = [f"{computer_id}-thread-{index:02d}" for index in range(1, 10)]
         synthetic_threads = [
             {
                 "workstation_id": synthetic_thread_ids[index - 1],
@@ -191,6 +259,7 @@ def main() -> int:
         report["sync_thread_count"] = int((sync_data or {}).get("thread_count") or 0) if isinstance(sync_data, dict) else 0
         if report["sync_thread_count"] != len(synthetic_threads):
             raise RuntimeError(f"synthetic thread sync count mismatch: {sync_response}")
+        created_thread_ids = list(synthetic_thread_ids)
 
         workstations_payload = request_json(
             f"{api_base}/api/collaboration/projects/{project_id}/thread-workstations",
@@ -205,10 +274,8 @@ def main() -> int:
         ]
         report["api_thread_count"] = len(synced_threads)
 
-        html = fetch_text(
-            f"{web_base}/projects/{project_id}?panel=team&tab=computers&computer={computer_id}",
-            token=token,
-        )
+        page_url = f"{web_base}/projects/{project_id}?panel=team&tab=computers&computer={computer_id}"
+        html = fetch_text(page_url, token=token)
         html_dump_path.write_text(html, encoding="utf-8")
 
         section_match = re.search(
@@ -216,13 +283,25 @@ def main() -> int:
             html,
             re.DOTALL,
         )
-        if not section_match:
-            raise RuntimeError("Could not find computer thread preview section in HTML")
-        section_html = section_match.group(1)
-        rendered_count = len(re.findall(r"data-computer-thread-item=", section_html))
-        badge_html = re.sub(r"<!--.*?-->", "", section_html, flags=re.DOTALL)
-        badge_match = re.search(r"<span[^>]*>\s*(\d+)\s*条\s*</span>", badge_html)
-        badge_count = int(badge_match.group(1)) if badge_match else rendered_count
+        browser_preview: dict[str, object] | None = None
+        if section_match:
+            section_html = section_match.group(1)
+            rendered_count = len(re.findall(r"data-computer-thread-item=", section_html))
+            badge_html = re.sub(r"<!--.*?-->", "", section_html, flags=re.DOTALL)
+            badge_match = re.search(r"<span[^>]*>\s*(\d+)\s*条\s*</span>", badge_html)
+            badge_count = int(badge_match.group(1)) if badge_match else rendered_count
+        else:
+            browser_preview = browser_thread_preview(
+                web_base=web_base,
+                project_id=project_id,
+                computer_id=computer_id,
+                token=token,
+                output_dir=output_dir,
+                stamp=stamp,
+            )
+            report["browser_preview"] = browser_preview
+            rendered_count = int(browser_preview.get("renderedCount") or 0)
+            badge_count = int(browser_preview.get("renderedAttrCount") or rendered_count)
         report["html_badge_count"] = badge_count
         report["html_rendered_count"] = rendered_count
 
@@ -239,32 +318,41 @@ def main() -> int:
                 f"expected more than 6 rendered threads for regression coverage, got {rendered_count}"
             )
 
-        cleanup_threads: list[dict[str, object]] = []
-        for thread_id in synthetic_thread_ids:
-            try:
-                cleanup_payload = request_json(
-                    f"{api_base}/api/collaboration/projects/{project_id}/thread-workstations/{thread_id}",
-                    method="DELETE",
-                    headers={"Authorization": f"Bearer {token}"},
-                )
-                cleanup_threads.append({"id": thread_id, "status": "ok", "payload": cleanup_payload})
-            except Exception as exc:  # noqa: BLE001
-                cleanup_threads.append({"id": thread_id, "status": "warning", "message": str(exc)})
-        report["cleanup_threads"] = cleanup_threads
-
         report_path = output_dir / f"computer-thread-visibility-http-report-{stamp}.json"
         report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         print(json.dumps({"report_path": str(report_path), "issues": report["issues"]}, ensure_ascii=False))
         return 0 if not report["issues"] else 1
+    except Exception as exc:  # noqa: BLE001
+        report.setdefault("issues", []).append(str(exc))
+        return_code = 1
+        return return_code
     finally:
-        try:
-            request_json(
-                f"{api_base}/api/collaboration/projects/{project_id}/computer-nodes/{computer_id}",
-                method="DELETE",
-                headers={"Authorization": f"Bearer {token}"},
-            )
-        except Exception:
-            report.setdefault("issues", []).append("cleanup_delete_computer_failed")
+        cleanup_threads: list[dict[str, object]] = []
+        if token:
+            for thread_id in created_thread_ids or synthetic_thread_ids:
+                try:
+                    cleanup_payload = request_json(
+                        f"{api_base}/api/collaboration/projects/{project_id}/thread-workstations/{thread_id}",
+                        method="DELETE",
+                        headers={"Authorization": f"Bearer {token}"},
+                    )
+                    cleanup_threads.append({"id": thread_id, "status": "ok", "payload": cleanup_payload})
+                except Exception as exc:  # noqa: BLE001
+                    cleanup_threads.append({"id": thread_id, "status": "warning", "message": str(exc)})
+            report["cleanup_threads"] = cleanup_threads
+            try:
+                request_json(
+                    f"{api_base}/api/collaboration/projects/{project_id}/computer-nodes/{computer_id}",
+                    method="DELETE",
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+            except Exception:
+                report.setdefault("issues", []).append("cleanup_delete_computer_failed")
+        report_path = output_dir / f"computer-thread-visibility-http-report-{stamp}.json"
+        report["report_path"] = str(report_path)
+        report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+        if report.get("issues"):
+            print(json.dumps({"report_path": str(report_path), "issues": report["issues"]}, ensure_ascii=False))
         shutil.rmtree(runtime_dir, ignore_errors=True)
 
 

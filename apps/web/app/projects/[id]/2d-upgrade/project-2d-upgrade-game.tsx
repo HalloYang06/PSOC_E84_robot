@@ -3850,10 +3850,17 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
               <b>按电脑分组看真实线程，先解决“扫到很多但只显示一部分”</b>
               <p>当前前端最多展示 48 条线程。线程没有电脑归属时会落到“未识别电脑”，方便用户继续绑定或重新扫描。</p>
             </article>
-            <div className={styles.threadGroupList}>
+            <div
+              className={styles.threadGroupList}
+              data-computer-thread-rendered-count={String(visibleGroups.reduce((total, group) => total + group.threads.length, 0))}
+            >
               {visibleGroups.length ? (
                 visibleGroups.map((group) => (
-                  <article key={group.computer.id} className={styles.threadGroup}>
+                  <article
+                    key={group.computer.id}
+                    className={styles.threadGroup}
+                    data-computer-thread-preview-for={group.computer.id}
+                  >
                     <header>
                       <b>{itemTitle(group.computer)}</b>
                       <span>{statusLabel(group.computer.status)} / {group.threads.length} 条线程</span>
@@ -3861,7 +3868,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
                     {group.threads.length ? (
                       <ul>
                         {group.threads.map((thread, threadIndex) => (
-                          <li key={thread.id}>
+                          <li key={thread.id} data-computer-thread-item={thread.id}>
                             <strong>{safeThreadName(thread, threadIndex)}</strong>
                             <small>
                               {thread.type || "thread"} / {statusLabel(thread.status)}

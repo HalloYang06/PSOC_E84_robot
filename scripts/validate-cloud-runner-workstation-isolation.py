@@ -110,6 +110,17 @@ def main() -> int:
 
     token = ""
     command_id = ""
+    created_node_ids: dict[str, str] = {}
+
+    def response_id(payload: dict[str, object], fallback: str) -> str:
+        data = data_of(payload)
+        if isinstance(data, dict):
+            for key in ("id", "config_id", "computer_node_id"):
+                value = text(data.get(key))
+                if value:
+                    return value
+        return fallback
+
     try:
         status, login_payload = request_json(
             api_url(api_base, "/api/auth/session"),
@@ -143,14 +154,18 @@ def main() -> int:
             )
             if status != 200:
                 raise RuntimeError(f"create node {node_id} failed with HTTP {status}: {payload}")
+            actual_node_id = response_id(payload, node_id)
+            created_node_ids[node_id] = actual_node_id
+            if actual_node_id != node_id:
+                step("created_node_id_resolved", "ok", requested_node_id=node_id, actual_node_id=actual_node_id)
 
             token_status, token_payload = request_json(
-                api_url(api_base, f"/api/collaboration/projects/{quote(args.project_id)}/computer-nodes/{quote(node_id)}/pairing-token"),
+                api_url(api_base, f"/api/collaboration/projects/{quote(args.project_id)}/computer-nodes/{quote(actual_node_id)}/pairing-token"),
                 method="POST",
                 token=token,
             )
             if token_status != 200:
-                raise RuntimeError(f"rotate pairing token for {node_id} failed with HTTP {token_status}: {token_payload}")
+                raise RuntimeError(f"rotate pairing token for {actual_node_id} failed with HTTP {token_status}: {token_payload}")
             token_data = data_of(token_payload)
             pairing_token = text(token_data.get("token") if isinstance(token_data, dict) else "")
             if not pairing_token:
@@ -165,7 +180,7 @@ def main() -> int:
                 payload={
                     "runner_id": runner_id,
                     "runner_name": label,
-                    "computer_node_id": node_id,
+                    "computer_node_id": actual_node_id,
                     "capabilities": ["codex", "threads"],
                 },
             )
@@ -180,7 +195,7 @@ def main() -> int:
             if hb_status != 200:
                 raise RuntimeError(f"heartbeat {runner_id} failed with HTTP {hb_status}: {hb_payload}")
             node_status, node_payload = request_json(
-                api_url(api_base, f"/api/collaboration/projects/{quote(args.project_id)}/computer-nodes/{quote(node_id)}"),
+                api_url(api_base, f"/api/collaboration/projects/{quote(args.project_id)}/computer-nodes/{quote(actual_node_id)}"),
                 token=token,
             )
             node_data = data_of(node_payload)
@@ -192,14 +207,14 @@ def main() -> int:
                     api_url(api_base, f"/api/runners/{quote(runner_id)}/bindings"),
                     method="POST",
                     token=token,
-                    payload={"project_id": args.project_id, "computer_node_id": node_id},
+                    payload={"project_id": args.project_id, "computer_node_id": actual_node_id},
                 )
                 if bind_status != 200:
                     raise RuntimeError(
                         f"runner {runner_id} did not bind during registration and explicit bind failed with HTTP {bind_status}: {bind_payload}"
                     )
                 step("explicit_runner_binding_repaired", "ok", node_id=node_id, runner_id=runner_id)
-            step("create_and_register_runner", "ok", node_id=node_id, runner_id=runner_id)
+            step("create_and_register_runner", "ok", node_id=actual_node_id, runner_id=runner_id)
 
         status, ws_payload = request_json(
             api_url(api_base, f"/api/collaboration/projects/{quote(args.project_id)}/thread-workstations"),
@@ -210,7 +225,7 @@ def main() -> int:
                 "name": f"隔离验收 NPC {suffix}",
                 "status": "active",
                 "ai_provider_id": "codex",
-                "computer_node_id": node_a,
+                "computer_node_id": created_node_ids.get(node_a, node_a),
                 "responsibility": "Validate that only the bound runner can consume this inbox.",
                 "metadata": {"validation_kind": "cloud_runner_workstation_isolation"},
             },
@@ -331,8 +346,8 @@ def main() -> int:
         if token and not args.keep_fixtures:
             for path, name in (
                 (f"/api/collaboration/projects/{quote(args.project_id)}/thread-workstations/{quote(workstation_id)}", "cleanup_workstation"),
-                (f"/api/collaboration/projects/{quote(args.project_id)}/computer-nodes/{quote(node_a)}", "cleanup_node_a"),
-                (f"/api/collaboration/projects/{quote(args.project_id)}/computer-nodes/{quote(node_b)}", "cleanup_node_b"),
+                (f"/api/collaboration/projects/{quote(args.project_id)}/computer-nodes/{quote(created_node_ids.get(node_a, node_a))}", "cleanup_node_a"),
+                (f"/api/collaboration/projects/{quote(args.project_id)}/computer-nodes/{quote(created_node_ids.get(node_b, node_b))}", "cleanup_node_b"),
             ):
                 try:
                     status, payload = request_json(api_url(api_base, path), method="DELETE", token=token)
