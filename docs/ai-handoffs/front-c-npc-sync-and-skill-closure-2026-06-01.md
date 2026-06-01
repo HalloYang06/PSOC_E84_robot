@@ -71,3 +71,39 @@ Branch: `ai/game-loop-core`
 - Add a visible NPC-to-NPC collaboration ledger page or drawer that groups by Need -> Task -> Dispatch -> Receipt -> Artifact, so cooperation is auditable outside each NPC tile.
 - Feed Skill/Knowledge closure results into routing quality: when an NPC asks another NPC for help, show why that recipient is recommended based on role skills, knowledge, and recent receipts.
 - Keep all NPC collaboration UI user-facing: avoid adapter, bridge, source_thread, JSONL, raw UUID, or local path language.
+
+## 2026-06-01 Company Layer Visual Collaboration Flow
+
+AI identity: Codex GPT-5
+Role: Company-layer NPC collaboration visibility maintainer
+
+Completed after the initial handoff:
+
+- Added a company-layer `NPC 协作链路` surface in `apps/web/app/projects/[id]/company/page.tsx`.
+- The surface now reads existing Need, Task, Dispatch, and CollaborationMessage data and renders each collaboration as a visual flow instead of a text ledger:
+  - requester NPC node
+  - Need node
+  - assignee NPC node
+  - receipt/status node
+  - colored connector beams for task, dispatch, and receipt states
+- Revised `apps/web/app/projects/[id]/company/company.module.css` so the company layer uses compact visual nodes and state chips instead of long explanatory paragraphs.
+- Deployed through cloud at commit `8bfddc38db77`.
+
+Verification:
+
+- Local build passed:
+  - `npm --workspace apps/web run build`
+- Cloud build and restart passed:
+  - `npm install`
+  - `npm run build:web`
+  - `RESTART=1 scripts/start-cloud-prod.sh`
+- Cloud alignment passed:
+  - `python scripts/check_web_api_alignment.py --web-base http://106.55.62.122:3001 --api-base http://106.55.62.122:8011 --project-id fe9bd342-f5ef-4afe-9c73-e7caa2ed17dd`
+- User-view QA passed:
+  - report: `D:\ai合作产品\artifacts\company-collab-flow-qa\company-collab-flow-report-20260601-151617.json`
+  - desktop screenshot: `D:\ai合作产品\artifacts\company-collab-flow-qa\company-flow-desktop-20260601-151617.png`
+  - mobile screenshot: `D:\ai合作产品\artifacts\company-collab-flow-qa\company-flow-mobile-20260601-151617.png`
+
+Remaining UX note:
+
+- The visual flow is now much less text-heavy, but the right-side `协作明细` still lists recent receipts in text form. A later slice should turn that area into a compact evidence drawer launcher or stacked event strip.
