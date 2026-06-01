@@ -48,6 +48,8 @@ type OfficeEdge = {
   knowledgeClosureCount: number;
   skillClosureCount: number;
   closureActivityLabel: string;
+  runtimePackageLabel: string;
+  runtimePackageActivityLabel: string;
   workbenchHref?: string;
   knowledgeHref?: string;
   skillHref?: string;
@@ -318,6 +320,31 @@ function closureActivityTime(value: AnyRecord) {
     value.created_at,
     value.createdAt,
   );
+}
+
+function runtimePackageSnapshotLabel(value: unknown) {
+  const snapshot = record(value);
+  return firstText(
+    snapshot.changed_skill_label,
+    snapshot.changedSkillLabel,
+    snapshot.changed_skill_id,
+    snapshot.changedSkillId,
+    snapshot.summary,
+    "待刷新",
+  );
+}
+
+function runtimePackageActivityLabel(value: unknown) {
+  const snapshot = record(value);
+  const time = latestActivityTime(
+    snapshot.generated_at,
+    snapshot.generatedAt,
+    snapshot.updated_at,
+    snapshot.updatedAt,
+    snapshot.activated_at,
+    snapshot.activatedAt,
+  );
+  return time ? compactActivityLabel(time) : "等待刷新";
 }
 
 function reviewPolicyLabel(value: unknown) {
@@ -994,6 +1021,8 @@ export default async function CompanyPage({
         knowledgeClosureCount: chain.knowledgeClosureCount,
         skillClosureCount: chain.skillClosureCount,
         closureActivityLabel: chain.closureActivityLabel,
+        runtimePackageLabel: "待刷新",
+        runtimePackageActivityLabel: "等待刷新",
       });
     } else {
       existing.count += 1;
@@ -1062,6 +1091,8 @@ export default async function CompanyPage({
         knowledgeClosureCount: 0,
         skillClosureCount: 0,
         closureActivityLabel: "尚未沉淀",
+        runtimePackageLabel: "待刷新",
+        runtimePackageActivityLabel: "等待刷新",
       });
     }
   }
@@ -1094,6 +1125,8 @@ export default async function CompanyPage({
       knowledgeClosureCount: 0,
       skillClosureCount: 0,
       closureActivityLabel: "尚未沉淀",
+      runtimePackageLabel: "待刷新",
+      runtimePackageActivityLabel: "等待刷新",
     });
   }
   const officeEdges = [...explicitOfficeEdges, ...officeRelationshipEdges.slice(0, Math.max(0, 14 - explicitOfficeEdges.length))];
@@ -1141,42 +1174,47 @@ export default async function CompanyPage({
     tone: node.tone,
     href: `/projects/${projectId}/workbench?seat=${encodeURIComponent(node.id)}&return_to=${encodeURIComponent(selfPath)}&from=company`,
   }));
-  const officeNetworkEdges: OfficeNetworkEdge[] = officeEdges.map((edge) => ({
-    id: edge.id,
-    fromId: edge.fromId,
-    toId: edge.toId,
-    needId: edge.needId,
-    taskId: edge.taskId,
-    dispatchId: edge.dispatchId,
-    fromName: officeNodeById.get(edge.fromId)?.seat.name ?? "发起 NPC",
-    toName: officeNodeById.get(edge.toId)?.seat.name ?? "承接 NPC",
-    count: edge.count,
-    label: edge.label,
-    needStatus: edge.needStatus,
-    taskStatus: edge.taskStatus,
-    receiptStatus: edge.receiptStatus,
-    summary: edge.summary,
-    dispatchStatus: edge.dispatchStatus,
-    taskCount: edge.taskCount,
-    receiptCount: edge.receiptCount,
-    latestReceipt: edge.latestReceipt,
-    activityLabel: edge.activityLabel,
-    nextAction: edge.nextAction,
-    detailTitle: edge.detailTitle,
-    detailOutput: edge.detailOutput,
-    latestTaskTitle: edge.latestTaskTitle,
-    knowledgeClosureCount: edge.knowledgeClosureCount,
-    skillClosureCount: edge.skillClosureCount,
-    closureActivityLabel: edge.closureActivityLabel,
-    needTone: chainTone(edge.needStatus),
-    taskTone: chainTone(edge.taskStatus),
-    receiptTone: chainTone(edge.receiptStatus),
-    kind: edge.kind,
-    href: officeEdgeHref(edge),
-    workbenchHref: officeEdgeHref(edge),
-    knowledgeHref: officeForgeHref(edge, "knowledge"),
-    skillHref: officeForgeHref(edge, "skills"),
-  }));
+  const officeNetworkEdges: OfficeNetworkEdge[] = officeEdges.map((edge) => {
+    const targetSnapshot = record(officeNodeById.get(edge.toId)?.seat.metadata).skill_forge_snapshot;
+    return {
+      id: edge.id,
+      fromId: edge.fromId,
+      toId: edge.toId,
+      needId: edge.needId,
+      taskId: edge.taskId,
+      dispatchId: edge.dispatchId,
+      fromName: officeNodeById.get(edge.fromId)?.seat.name ?? "发起 NPC",
+      toName: officeNodeById.get(edge.toId)?.seat.name ?? "承接 NPC",
+      count: edge.count,
+      label: edge.label,
+      needStatus: edge.needStatus,
+      taskStatus: edge.taskStatus,
+      receiptStatus: edge.receiptStatus,
+      summary: edge.summary,
+      dispatchStatus: edge.dispatchStatus,
+      taskCount: edge.taskCount,
+      receiptCount: edge.receiptCount,
+      latestReceipt: edge.latestReceipt,
+      activityLabel: edge.activityLabel,
+      nextAction: edge.nextAction,
+      detailTitle: edge.detailTitle,
+      detailOutput: edge.detailOutput,
+      latestTaskTitle: edge.latestTaskTitle,
+      knowledgeClosureCount: edge.knowledgeClosureCount,
+      skillClosureCount: edge.skillClosureCount,
+      closureActivityLabel: edge.closureActivityLabel,
+      runtimePackageLabel: runtimePackageSnapshotLabel(targetSnapshot),
+      runtimePackageActivityLabel: runtimePackageActivityLabel(targetSnapshot),
+      needTone: chainTone(edge.needStatus),
+      taskTone: chainTone(edge.taskStatus),
+      receiptTone: chainTone(edge.receiptStatus),
+      kind: edge.kind,
+      href: officeEdgeHref(edge),
+      workbenchHref: officeEdgeHref(edge),
+      knowledgeHref: officeForgeHref(edge, "knowledge"),
+      skillHref: officeForgeHref(edge, "skills"),
+    };
+  });
   const seatRelationCards = allSeats.map((seat) => {
     const sameDepartmentPeers = allSeats.filter(
       (peer) => peer.id !== seat.id && peer.workstationId && peer.workstationId === seat.workstationId,

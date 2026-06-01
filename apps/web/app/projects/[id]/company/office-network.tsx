@@ -44,6 +44,8 @@ export type OfficeNetworkEdge = {
   knowledgeClosureCount: number;
   skillClosureCount: number;
   closureActivityLabel: string;
+  runtimePackageLabel: string;
+  runtimePackageActivityLabel: string;
   needTone: string;
   taskTone: string;
   receiptTone: string;
@@ -375,6 +377,11 @@ export function OfficeNetwork({ projectId, nodes, edges }: OfficeNetworkProps) {
             <span>闭环沉淀</span>
             <strong>{selectedEdge.knowledgeClosureCount + selectedEdge.skillClosureCount ? "已有可复用沉淀" : "等待沉淀"}</strong>
             <p>知识 {selectedEdge.knowledgeClosureCount} · Skill {selectedEdge.skillClosureCount} · 最近 {selectedEdge.closureActivityLabel}</p>
+          </div>
+          <div className={styles.officeEdgeRuntime} data-active={selectedEdge.runtimePackageLabel !== "待刷新" ? "1" : undefined}>
+            <span>上岗包</span>
+            <strong>{selectedEdge.runtimePackageLabel}</strong>
+            <p>最近 {selectedEdge.runtimePackageActivityLabel}</p>
           </div>
           <div className={styles.officeEdgeNext}>
             <span>下一步</span>
