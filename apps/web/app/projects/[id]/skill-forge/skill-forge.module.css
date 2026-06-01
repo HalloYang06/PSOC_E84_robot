@@ -290,8 +290,9 @@
   font-weight: 900;
 }
 
-.assetCard {
+.skillGrid .assetCard {
   min-height: 238px;
+  overflow: hidden;
 }
 
 .assetTitle {
