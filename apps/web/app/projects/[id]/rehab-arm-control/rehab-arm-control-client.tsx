@@ -370,18 +370,21 @@ function calibrationStorageKey(urdfName: string) {
   return `rehab-arm-pose-calibration:${urdfName || "placeholder"}`;
 }
 
-function loadSavedCalibrations(urdfName: string) {
+function loadSavedCalibrations(urdfName: string): Map<string, JointCalibration> {
   if (typeof window === "undefined") return new Map<string, JointCalibration>();
   try {
     const raw = window.localStorage.getItem(calibrationStorageKey(urdfName));
     const rows = JSON.parse(raw || "[]") as JointCalibration[];
-    return new Map(rows.filter((row) => row?.jointName).map((row) => [row.jointName, {
-      jointName: row.jointName,
-      sourceName: text(row.sourceName, ""),
-      unit: row.unit === "deg" ? "deg" : "rad",
-      direction: row.direction === -1 ? -1 : 1,
-      offsetRad: Number.isFinite(Number(row.offsetRad)) ? Number(row.offsetRad) : 0,
-    }]));
+    return new Map(rows.filter((row) => row?.jointName).map((row) => {
+      const normalized: JointCalibration = {
+        jointName: row.jointName,
+        sourceName: text(row.sourceName, ""),
+        unit: row.unit === "deg" ? "deg" : "rad",
+        direction: row.direction === -1 ? -1 : 1,
+        offsetRad: Number.isFinite(Number(row.offsetRad)) ? Number(row.offsetRad) : 0,
+      };
+      return [normalized.jointName, normalized];
+    }));
   } catch {
     return new Map<string, JointCalibration>();
   }
