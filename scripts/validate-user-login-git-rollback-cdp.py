@@ -273,6 +273,7 @@ def main() -> int:
             "NPC 对齐",
             "执行电脑",
             "版本分布",
+            "当前动作",
             "协作牵引",
             "执行状态",
             "不会直接执行 git reset",
@@ -342,6 +343,61 @@ def main() -> int:
         shot = output_dir / f"git-rollback-04-preview-detail-{stamp}.png"
         screenshot(cdp, shot)
         screenshots.append(str(shot))
+
+        cdp.send(
+            "Emulation.setDeviceMetricsOverride",
+            {
+                "width": 390,
+                "height": 844,
+                "deviceScaleFactor": 1,
+                "mobile": True,
+            },
+        )
+        mobile_profile = cdp_eval(
+            cdp,
+            """
+            (() => {
+              const profile = document.querySelector('[data-git-rollback-version-profile]');
+              if (!profile) return { ok: false, reason: 'missing-profile' };
+              profile.scrollIntoView({ block: 'center', inline: 'nearest' });
+              const rect = profile.getBoundingClientRect();
+              return {
+                ok: true,
+                text: profile.innerText || '',
+                rect: {
+                  top: rect.top,
+                  left: rect.left,
+                  width: rect.width,
+                  height: rect.height,
+                  right: rect.right,
+                  bottom: rect.bottom,
+                },
+                pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+                bodyOverflow: document.body.scrollWidth - document.body.clientWidth,
+              };
+            })()
+            """,
+        )
+        if not isinstance(mobile_profile, dict) or not mobile_profile.get("ok"):
+            raise RuntimeError(f"Mobile Git rollback profile was not available: {mobile_profile}")
+        mobile_profile_text = str(mobile_profile.get("text") or "")
+        if "当前动作" not in mobile_profile_text or "版本分布" not in mobile_profile_text:
+            raise RuntimeError(f"Mobile Git rollback profile lost action context: {mobile_profile_text[:400]}")
+        if int(float(mobile_profile.get("pageOverflow") or 0)) > 1 or int(float(mobile_profile.get("bodyOverflow") or 0)) > 1:
+            raise RuntimeError(f"Mobile Git rollback profile has horizontal overflow: {mobile_profile}")
+        time.sleep(1.0)
+        shot = output_dir / f"git-rollback-05-mobile-context-{stamp}.png"
+        screenshot(cdp, shot)
+        screenshots.append(str(shot))
+        cdp.send(
+            "Emulation.setDeviceMetricsOverride",
+            {
+                "width": args.viewport_width,
+                "height": args.viewport_height,
+                "deviceScaleFactor": 1,
+                "mobile": False,
+            },
+        )
 
         after_preview_items = read_rollback_items(api_base, args.project_id, token)
         if len(after_preview_items) != before_rollback_count:
