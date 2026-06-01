@@ -1052,6 +1052,33 @@
   background: rgba(255, 247, 225, 0.045);
 }
 
+.materialRows .snapshotRow[data-state="ready"] {
+  border-color: rgba(167, 223, 154, 0.32);
+  background:
+    radial-gradient(circle at 0% 50%, rgba(167, 223, 154, 0.12), transparent 38%),
+    rgba(255, 247, 225, 0.052);
+}
+
+.snapshotChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 7px;
+}
+
+.snapshotChips span {
+  min-width: 0;
+  min-height: 24px;
+  padding: 4px 8px;
+  border: 1px solid rgba(167, 223, 154, 0.22);
+  border-radius: 999px;
+  background: rgba(167, 223, 154, 0.08);
+  color: rgba(225, 255, 217, 0.86);
+  font-size: 10px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 760px) {
   .forgeTopbar {
     min-height: auto;

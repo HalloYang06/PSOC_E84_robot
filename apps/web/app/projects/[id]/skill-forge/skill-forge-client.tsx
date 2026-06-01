@@ -403,6 +403,13 @@ function messageTime(value: AnyRecord) {
   return Number.isNaN(date.getTime()) ? "" : date.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
+function snapshotTime(value: unknown) {
+  const raw = text(value, "");
+  if (!raw) return "";
+  const date = new Date(raw);
+  return Number.isNaN(date.getTime()) ? "" : date.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
 function forgeHref(projectId: string, openIds: string[]) {
   const params = new URLSearchParams();
   if (openIds.length) params.set("resources", openIds.join(","));
@@ -483,7 +490,11 @@ function ForgeTile({
         return isDraftLikeStatus(assignmentStatusOf(assignment)) || isDraftLikeStatus(skillDraftStatusOf(skill));
       }).length
     : 0;
-  const snapshot = sourceSeat?.metadata?.skill_forge_snapshot ?? sourceSeat?.extra_data?.skill_forge_snapshot ?? null;
+  const snapshot = (sourceSeat?.metadata?.skill_forge_snapshot ?? sourceSeat?.extra_data?.skill_forge_snapshot ?? null) as AnyRecord | null;
+  const snapshotLabel = text(snapshot?.changed_skill_label, text(snapshot?.changed_skill_id, "配置已更新"));
+  const snapshotOwner = text(snapshot?.affected_seat_name ?? snapshot?.seat_name, resource.name);
+  const snapshotGeneratedAt = snapshotTime(snapshot?.generated_at ?? snapshot?.updated_at ?? snapshot?.activated_at);
+  const snapshotEffect = text(snapshot?.effect, "下一轮派单 / 刷新后的上岗包会读取");
   const deposits = resource.kind === "seat" ? npcDepositPaths(sourceSeat, resource) : null;
   const tabLabel = activeTab === "knowledge" ? "知识库配置" : activeTab === "git" ? "Git 管理" : "Skill 配置";
   const seedTitle = text(collaborationSeed?.title, `${resource.name} 协作沉淀`);
@@ -925,11 +936,18 @@ function ForgeTile({
           </div>
           <small>{tabLabel}</small>
         </article>
-        <article>
+        <article className={styles.snapshotRow} data-state={snapshot ? "ready" : "empty"}>
           <div>
             <span>上岗包</span>
-            <strong>{snapshot ? text(snapshot.changed_skill_label, "配置已更新") : "配置源到运行快照"}</strong>
+            <strong>{snapshot ? `${snapshotOwner} · ${snapshotLabel}` : "配置源到运行快照"}</strong>
             <p>{snapshot ? text(snapshot.summary, "能力配置已同步到该 NPC。") : "能力工坊保存配置源；NPC 工作台和执行电脑使用生成后的快照。"}</p>
+            {snapshot ? (
+              <div className={styles.snapshotChips} aria-label="上岗包快照证据">
+                <span>{snapshotGeneratedAt ? `刷新 ${snapshotGeneratedAt}` : "已生成快照"}</span>
+                <span>{snapshotEffect}</span>
+                <span>{text(snapshot.source, "能力工坊")}</span>
+              </div>
+            ) : null}
           </div>
           <small>{snapshot ? "已刷新" : "待生成"}</small>
         </article>

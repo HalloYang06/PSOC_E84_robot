@@ -5043,19 +5043,21 @@ export async function 启用Npc自造Skill(projectId: string, skillId: string, f
       throw new Error("没有在项目 Skill 仓库里找到这个草稿");
     }
     const extra = readRecord(existing.metadata ?? existing.extra_data ?? existing.extraData);
+    const activatedAt = new Date().toISOString();
+    const skillLabel = text(existing.label ?? existing.name, normalizedId);
     const nextSkill = {
       ...existing,
       status: "active",
       metadata: {
         ...extra,
         draft_status: "ready",
-        activated_at: new Date().toISOString(),
+        activated_at: activatedAt,
       },
     };
 
     await postJson(`/api/knowledge/projects/${projectId}/skills`, {
       skill_id: text(existing.id ?? existing.skill_id, normalizedId),
-      label: text(existing.label ?? existing.name, normalizedId),
+      label: skillLabel,
       source: text(existing.source, "npc-authored"),
       category: text(existing.category, "npc-authored"),
       repo_relative_path: text(existing.repo_relative_path ?? extra.repo_relative_path, "") || `skills/${normalizedId}/SKILL.md`,
@@ -5066,6 +5068,7 @@ export async function 启用Npc自造Skill(projectId: string, skillId: string, f
     });
 
     const authorSeatId = text(extra.author_seat_id, "");
+    let activatedSeatId = "";
     if (authorSeatId) {
       await postJson(`/api/knowledge/projects/${projectId}/seat-skill-assignments`, {
         seat_id: authorSeatId,
@@ -5079,6 +5082,49 @@ export async function 启用Npc自造Skill(projectId: string, skillId: string, f
           activated_at: nextSkill.metadata.activated_at,
         },
       });
+
+      const seatsResult = await getJson(`/api/collaboration/projects/${projectId}/thread-workstations`);
+      const seats = asArray<Record<string, unknown>>(seatsResult?.data ?? seatsResult);
+      const seat =
+        seats.find((item) =>
+          isNpcSeatRecord(item) &&
+          (
+            workstationLookupKeys(item).some((candidate) => candidate === authorSeatId) ||
+            seatIdentityValues(item).some((candidate) => candidate === authorSeatId)
+          ),
+        ) ?? null;
+      if (seat) {
+        const seatRecordId = text(seat.row_id ?? seat.rowId ?? seat.id ?? seat.config_id, authorSeatId);
+        const seatName = text(seat.name ?? seat.workstation_name, "该 NPC");
+        const metadata = readRecord(seat.metadata ?? seat.extra_data ?? seat.extraData);
+        const existingLoadout = mergePlatformSkillLoadout(
+          seat.skill_loadout,
+          seat.skillLoadout,
+          metadata.additional_skill_ids,
+          metadata.skill_loadout,
+          normalizedId,
+        );
+        const { roleSkillIds } = splitPlatformSkillLoadout(existingLoadout, skillLibrary);
+        await patchJson(
+          `/api/collaboration/projects/${projectId}/thread-workstations/${encodeURIComponent(seatRecordId)}`,
+          {
+            metadata: mergeSeatMetadata(metadata, {
+              additional_skill_ids: roleSkillIds,
+              skill_loadout: existingLoadout,
+              skill_forge_snapshot: {
+                source: "能力工坊",
+                generated_at: activatedAt,
+                changed_skill_id: normalizedId,
+                changed_skill_label: skillLabel,
+                affected_seat_name: seatName,
+                effect: "下一轮派单 / 刷新后的上岗包会读取",
+                summary: "NPC 自造 Skill 已启用并进入该 NPC 的长期能力配置；后续新派单和刷新后的上岗包会读取这份配置。",
+              },
+            }),
+          },
+        );
+        activatedSeatId = seatRecordId;
+      }
     }
 
     await patchJson(`/api/projects/${projectId}`, {
@@ -5090,7 +5136,9 @@ export async function 启用Npc自造Skill(projectId: string, skillId: string, f
       },
     });
     revalidateProjectSurfaces(projectId);
-    redirect(withQueryValue(returnTo, "team_notice", `已启用 NPC 自造 Skill：${text(existing.label ?? existing.name, normalizedId)}`));
+    let nextPath = withQueryValue(returnTo, "team_notice", `已启用 NPC 自造 Skill：${skillLabel}`);
+    if (activatedSeatId) nextPath = withQueryValue(nextPath, "seat", activatedSeatId);
+    redirect(nextPath);
   } catch (error) {
     rethrowRedirectError(error);
     const message = error instanceof Error ? error.message : "启用 NPC 自造 Skill 失败";
