@@ -77,6 +77,20 @@ type DispatchReadiness = {
   note: string;
 };
 
+type DevelopmentReadiness = {
+  mode: "ready" | "queue" | "blocked";
+  title: string;
+  detail: string;
+  primaryAction: "none" | "bind_thread" | "enable_automation" | "recover_runner";
+  primaryLabel: string;
+  signals: Array<{
+    key: string;
+    label: string;
+    value: string;
+    tone: "ok" | "manual" | "warn" | "danger";
+  }>;
+};
+
 function dispatchReadinessForSeat(seat: WorkbenchSeat): DispatchReadiness {
   const stateLabel = seat.runnerDispatchState || "状态未知，先检查接入";
   const detail = seat.runnerStateDetail || "";
@@ -125,6 +139,93 @@ function dispatchReadinessForSeat(seat: WorkbenchSeat): DispatchReadiness {
     actionLabel: "先接入",
     stateLabel,
     note: detail || "先检查执行通道、目标电脑和桌面线程绑定，再继续派单。",
+  };
+}
+
+function developmentReadinessForSeat(
+  seat: WorkbenchSeat,
+  automationEnabled: boolean,
+  activeDispatchCount: number,
+): DevelopmentReadiness {
+  const dispatch = dispatchReadinessForSeat(seat);
+  const hasThread = Boolean(seat.threadId);
+  const isDesktopDelivery = seat.desktopVisible || seat.desktopProcessDetected || seat.deliveryMode === "codex_desktop_ui";
+  const desktopReady = seat.desktopVisible || (!isDesktopDelivery && Boolean(seat.deliveryLabel));
+  const threadNoun = threadBindingNoun(seat);
+  const computerTone = runnerStateToneForCard(seat.runnerStateTone);
+  const signals: DevelopmentReadiness["signals"] = [
+    {
+      key: "computer",
+      label: "执行电脑",
+      value: seat.runnerDispatchState || "待检查",
+      tone: seat.runnerCanDispatch ? "ok" : seat.runnerCanQueue ? "manual" : computerTone,
+    },
+    {
+      key: "thread",
+      label: threadNoun,
+      value: hasThread ? "已绑定" : "未绑定",
+      tone: hasThread ? "ok" : "danger",
+    },
+    {
+      key: "delivery",
+      label: seat.desktopVisible || isDesktopDelivery ? "桌面后台" : "送达方式",
+      value: seat.desktopVisible
+        ? "可后台接收"
+        : seat.desktopProcessDetected
+          ? "待确认"
+          : seat.deliveryLabel || "待确认",
+      tone: desktopReady ? "ok" : seat.desktopProcessDetected || seat.runnerCanQueue ? "manual" : "warn",
+    },
+    {
+      key: "automation",
+      label: "自动推进",
+      value: automationEnabled ? "已开启" : "单次确认",
+      tone: automationEnabled ? "ok" : hasThread ? "manual" : "warn",
+    },
+  ];
+
+  if (!hasThread || dispatch.mode === "blocked") {
+    return {
+      mode: "blocked",
+      title: !hasThread ? `先绑定${threadNoun}` : "先恢复接入",
+      detail: !hasThread
+        ? `到主页面从扫描结果选择这个 NPC 的${threadNoun}，之后平台才能真实送达。`
+        : dispatch.note,
+      primaryAction: !hasThread ? "bind_thread" : "recover_runner",
+      primaryLabel: !hasThread ? "去绑定线程" : "查看接入",
+      signals,
+    };
+  }
+
+  if (dispatch.mode === "queue") {
+    return {
+      mode: "queue",
+      title: activeDispatchCount > 0 ? `已排队 ${activeDispatchCount} 条` : "可排队，等电脑恢复",
+      detail: "平台会保留派单并等待执行电脑恢复，不会假装完成，也不会抢占用户当前操作。",
+      primaryAction: "recover_runner",
+      primaryLabel: "查看接入",
+      signals,
+    };
+  }
+
+  if (!automationEnabled) {
+    return {
+      mode: "ready",
+      title: activeDispatchCount > 0 ? `正在处理 ${activeDispatchCount} 条` : "可单次派发",
+      detail: "已具备真实送达条件；开启自动推进后，NPC 可在安全边界内连续接收和同步回执。",
+      primaryAction: "enable_automation",
+      primaryLabel: "开启自动推进",
+      signals,
+    };
+  }
+
+  return {
+    mode: "ready",
+    title: activeDispatchCount > 0 ? `开发中 ${activeDispatchCount} 条` : "可以直接开发",
+    detail: "平台会把指令送到绑定线程的后台通道，并把已收到提醒、过程状态和最终结果同步回来。",
+    primaryAction: "none",
+    primaryLabel: "可派发",
+    signals,
   };
 }
 
@@ -2160,6 +2261,10 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
   }, [messages, seatIdentityIds]);
   const activeQueueMessageId = myQueue[0]?.id || null;
   const activeDispatchCount = myQueue.length;
+  const developmentReadiness = useMemo(
+    () => developmentReadinessForSeat(seat, automationEnabled, activeDispatchCount),
+    [activeDispatchCount, automationEnabled, seat],
+  );
   const myNeedItems = seatQueues?.my_needs?.items ?? seatQueues?.requirement_inbox.items ?? [];
   const myTaskItems = seatQueues?.my_tasks?.items ?? seatQueues?.task_todo.items ?? [];
   const myNeedCount = seatQueues?.my_needs?.count ?? seatQueues?.requirement_inbox.count ?? 0;
@@ -3424,6 +3529,53 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
           <button type="button" className={styles.closeBtn} onClick={onClose} title="关闭这个瓷砖">✕</button>
         </div>
       </header>
+
+      <section className={styles.developerReadiness} data-mode={developmentReadiness.mode} aria-label="开发可用性">
+        <div className={styles.developerReadinessMain}>
+          <span>开发可用性</span>
+          <strong>{developmentReadiness.title}</strong>
+          <small>{developmentReadiness.detail}</small>
+        </div>
+        <div className={styles.developerReadinessSignals} aria-label="接单信号">
+          {developmentReadiness.signals.map((signal) => (
+            <span key={signal.key} className={styles.developerSignal} data-tone={signal.tone}>
+              <small>{signal.label}</small>
+              <b>{signal.value}</b>
+            </span>
+          ))}
+        </div>
+        <div className={styles.developerReadinessAction}>
+          {developmentReadiness.primaryAction === "bind_thread" ? (
+            <Link
+              href={`/projects/${projectId}?panel=team&tab=npc-create&focus_seat=${encodeURIComponent(seatApiId)}`}
+              className={styles.developerPrimaryBtn}
+              title="回到主页面 NPC 管理，从扫描到的线程列表中选择"
+            >
+              {developmentReadiness.primaryLabel}
+            </Link>
+          ) : developmentReadiness.primaryAction === "enable_automation" ? (
+            <button
+              type="button"
+              className={styles.developerPrimaryBtn}
+              onClick={() => toggleAutomation(true)}
+              disabled={automationBusy}
+              title="开启此 NPC 的自动接单和回执同步"
+            >
+              {automationBusy ? "处理中" : developmentReadiness.primaryLabel}
+            </button>
+          ) : developmentReadiness.primaryAction === "recover_runner" ? (
+            <Link
+              href={governanceHref("npc-create")}
+              className={styles.developerPrimaryBtn}
+              title="查看电脑接入、线程扫描和绑定状态"
+            >
+              {developmentReadiness.primaryLabel}
+            </Link>
+          ) : (
+            <span className={styles.developerReadyMark}>{developmentReadiness.primaryLabel}</span>
+          )}
+        </div>
+      </section>
 
       <div
         className={`${styles.occupancyBar} ${
