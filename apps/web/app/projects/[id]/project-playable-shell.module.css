@@ -2903,6 +2903,14 @@
   cursor: pointer;
 }
 
+.versionMetaRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
 .versionIndexCard:hover,
 .versionIndexCard[data-active="1"] {
   border-color: rgba(216, 193, 104, 0.62);
@@ -2918,6 +2926,17 @@
   background: rgba(255, 255, 255, 0.08);
   color: rgba(246, 237, 216, 0.72);
   font-size: 11px;
+  font-weight: 800;
+}
+
+.versionBadge {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(125, 171, 98, 0.16);
+  color: rgba(216, 255, 191, 0.9);
+  font-size: 11px;
+  font-style: normal;
   font-weight: 800;
 }
 
@@ -2941,6 +2960,112 @@
   color: rgba(246, 237, 216, 0.68);
   font-size: 11px;
   line-height: 1.45;
+}
+
+.rollbackSafetyRail {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.rollbackSafetyStep {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  min-height: 92px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(246, 237, 216, 0.12);
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.rollbackSafetyStep::after {
+  content: "";
+  position: absolute;
+  top: 23px;
+  right: -10px;
+  width: 10px;
+  height: 1px;
+  background: rgba(246, 237, 216, 0.18);
+}
+
+.rollbackSafetyStep:last-child::after {
+  display: none;
+}
+
+.rollbackSafetyStep[data-active="1"] {
+  border-color: rgba(125, 171, 98, 0.44);
+  background:
+    linear-gradient(180deg, rgba(125, 171, 98, 0.14), rgba(125, 171, 98, 0.04)),
+    rgba(255, 255, 255, 0.05);
+}
+
+.rollbackSafetyStep span {
+  display: inline-grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(246, 237, 216, 0.1);
+  color: rgba(246, 237, 216, 0.8);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.rollbackSafetyStep[data-active="1"] span {
+  background: rgba(125, 171, 98, 0.24);
+  color: #d8ffbf;
+}
+
+.rollbackSafetyStep p {
+  margin: 0;
+}
+
+.rollbackReadinessStrip {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(216, 193, 104, 0.28);
+  background:
+    linear-gradient(90deg, rgba(216, 193, 104, 0.13), rgba(216, 193, 104, 0.03)),
+    rgba(255, 255, 255, 0.04);
+}
+
+.rollbackReadinessStrip[data-state="ready"] {
+  border-color: rgba(125, 171, 98, 0.42);
+  background:
+    linear-gradient(90deg, rgba(125, 171, 98, 0.15), rgba(125, 171, 98, 0.04)),
+    rgba(255, 255, 255, 0.04);
+}
+
+.rollbackReadinessStrip p {
+  margin: 0;
+}
+
+.fieldHint {
+  margin-top: 6px;
+  color: rgba(246, 237, 216, 0.64);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+@media (max-width: 1100px) {
+  .rollbackSafetyRail {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .rollbackSafetyStep::after {
+    display: none;
+  }
+}
+
+@media (max-width: 620px) {
+  .rollbackSafetyRail {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .exchangeGuideGrid {

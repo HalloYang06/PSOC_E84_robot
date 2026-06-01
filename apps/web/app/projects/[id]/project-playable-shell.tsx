@@ -12876,6 +12876,55 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
       syncPreviewDisabled || !Boolean(syncPreviewProvider) || syncPreviewStale || !syncPreviewReady;
     const rollbackRequestDisabled =
       rollbackDisabled || !Boolean(rollbackPreviewTarget) || rollbackPreviewStale || !rollbackPreviewReady;
+    const rollbackSelectedVersion =
+      gitRollbackVersionIndex.find((item) => item.ref === gitRollbackTargetRef.trim()) ?? null;
+    const rollbackVersionToneLabel =
+      {
+        default: "推荐",
+        branch: "稳定主线",
+        task: "任务分支",
+        activity: "历史登记",
+      }[rollbackSelectedVersion?.tone ?? "default"] ?? "自定义";
+    const rollbackReadinessLabel = rollbackDisabled
+      ? "先绑定仓库并选择目标"
+      : rollbackPreviewStale
+        ? "需要重新预演"
+        : rollbackPreviewReady
+          ? "可以登记，仍需人工确认"
+          : rollbackPreviewTarget
+            ? "先处理预演阻塞"
+            : "等待只读预演";
+    const rollbackReadinessDetail = rollbackDisabled
+      ? "回退入口会保持禁用，直到项目有 GitHub 仓库或本地仓库路径，并且目标引用不为空。"
+      : rollbackPreviewStale
+        ? "你已经改了回退目标，旧预演不能继续用于登记。"
+        : rollbackPreviewReady
+          ? "登记后进入项目活动和电脑预检，不会直接执行 git reset。"
+          : rollbackPreviewBlockers[0] || "先做只读预演，平台会告诉你能不能继续登记。";
+    const rollbackSafetySteps = [
+      {
+        label: "选择目标版本",
+        detail: rollbackSelectedVersion
+          ? `${rollbackSelectedVersion.label} / ${rollbackSelectedVersion.ref}`
+          : gitRollbackTargetRef.trim() || "还没有选择",
+        active: Boolean(gitRollbackTargetRef.trim()),
+      },
+      {
+        label: "只读预演",
+        detail: rollbackPreviewTarget ? `已预演 ${rollbackPreviewTarget}` : "不会写活动流",
+        active: Boolean(rollbackPreviewTarget) && !rollbackPreviewStale,
+      },
+      {
+        label: "登记请求",
+        detail: rollbackRequestDisabled ? "等待预演通过" : "按钮已可用",
+        active: !rollbackRequestDisabled,
+      },
+      {
+        label: "等待人工确认",
+        detail: "工位接单后再处理",
+        active: Boolean(rollbackPreviewTarget) && rollbackPreviewReady,
+      },
+    ];
     const boundGithubUrl = text(
       gitExecutionRepository.github_url ?? props.project?.github_url ?? props.project?.githubUrl,
       "",
@@ -13358,8 +13407,25 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
             <span className={styles.stateBadge}>{gitRepositoryBound ? "已绑定仓库" : "待绑定仓库"}</span>
           </div>
           <p>
-            用户先在这里选目标分支或提交引用，填一句原因，先预演，再登记。平台只会把正式登记写进项目活动流，后续再由真实线程或工位按项目约定执行。
+            用户先在这里选目标分支或提交引用，填一句原因，先预演，再登记。平台只会把正式登记写进项目活动流，不会直接执行 git reset，后续再由真实线程或工位按项目约定执行。
           </p>
+          <div className={styles.rollbackSafetyRail} data-git-rollback-safety-rail="1">
+            {rollbackSafetySteps.map((step, index) => (
+              <article
+                key={`rollback-safety-step-${step.label}`}
+                className={styles.rollbackSafetyStep}
+                data-active={step.active ? "1" : undefined}
+              >
+                <span>{index + 1}</span>
+                <strong>{step.label}</strong>
+                <p>{step.detail}</p>
+              </article>
+            ))}
+          </div>
+          <div className={styles.rollbackReadinessStrip} data-state={rollbackRequestDisabled ? "attention" : "ready"}>
+            <strong>{rollbackReadinessLabel}</strong>
+            <p>{rollbackReadinessDetail}</p>
+          </div>
           <div className={styles.versionIndexGrid} data-git-rollback-version-index="1">
             {gitRollbackVersionIndex.length ? (
               gitRollbackVersionIndex.map((version) => (
@@ -13372,7 +13438,17 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                   onClick={() => setGitRollbackTargetRef(version.ref)}
                   title={`选择回退预演目标：${version.ref}`}
                 >
-                  <span>{version.source}</span>
+                  <div className={styles.versionMetaRow}>
+                    <span>{version.source}</span>
+                    <em className={styles.versionBadge}>
+                      {{
+                        default: "推荐",
+                        branch: "稳定主线",
+                        task: "任务分支",
+                        activity: "历史登记",
+                      }[version.tone]}
+                    </em>
+                  </div>
                   <strong>{version.label}</strong>
                   <code>{version.ref}</code>
                   <small>{version.detail}</small>
@@ -13483,6 +13559,9 @@ export function ProjectPlayableShell(props: ProjectPlayableShellProps) {
                   value={gitRollbackTargetRef}
                   onChange={(event) => setGitRollbackTargetRef(event.target.value)}
                 />
+                <small className={styles.fieldHint}>
+                  当前选择：{rollbackSelectedVersion ? `${rollbackVersionToneLabel} / ${rollbackSelectedVersion.label}` : "自定义引用"}
+                </small>
               </label>
               <label className={styles.fieldLabel}>
                 <span>仓库绑定</span>

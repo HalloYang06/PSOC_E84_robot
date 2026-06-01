@@ -244,11 +244,11 @@ def main() -> int:
 
         fill_field(cdp, 'input[name="email"], input[type="email"]', args.login_email)
         fill_field(cdp, 'input[name="password"], input[type="password"]', args.login_password)
-        click_by_text(cdp, "进入平台", selector='button[type="submit"], button, a')
+        click_by_text(cdp, "进入项目空间", selector='button[type="submit"], button')
 
         wait_for(
             cdp,
-            "document.body && document.body.innerText.includes('可视化 Git 回退') && document.body.innerText.includes('先预演 Git 回退')",
+            "document.body && document.body.innerText.includes('可视化 Git 回退') && document.body.innerText.includes('先预演 Git 回退') && document.body.innerText.includes('选择目标版本') && document.body.innerText.includes('只读预演') && document.body.innerText.includes('等待人工确认') && document.body.innerText.includes('不会直接执行 git reset')",
             timeout_seconds=45,
         )
         wait_for(cdp, f"location.href.includes({json.dumps(git_url)}) || location.href.includes({json.dumps(git_path)})", timeout_seconds=15)
@@ -258,6 +258,16 @@ def main() -> int:
         screenshots.append(str(shot))
 
         current_body = body_text(cdp)
+        required_markers = (
+            "选择目标版本",
+            "只读预演",
+            "登记请求",
+            "等待人工确认",
+            "不会直接执行 git reset",
+        )
+        missing_markers = [marker for marker in required_markers if marker not in current_body]
+        if missing_markers:
+            raise RuntimeError(f"Git rollback visual safety markers missing: {missing_markers}")
         repository_unbound = any(
             marker in current_body
             for marker in (
