@@ -592,26 +592,30 @@ async function readZipEntries(buffer: ArrayBuffer) {
 }
 
 async function readUrdfPackage(file: File): Promise<UrdfPackage> {
-  if (!file.name.toLowerCase().endsWith(".zip")) {
-    const urdfText = await file.text();
+  return readUrdfPackageBuffer(file.name, await file.arrayBuffer(), async () => file.text());
+}
+
+async function readUrdfPackageBuffer(fileName: string, buffer: ArrayBuffer, readText?: () => Promise<string>): Promise<UrdfPackage> {
+  if (!fileName.toLowerCase().endsWith(".zip")) {
+    const urdfText = readText ? await readText() : new TextDecoder("utf-8").decode(buffer);
     return {
-      fileName: file.name,
-      packageName: file.name.replace(/\.[^.]+$/, "") || "robot_model",
-      urdfPath: file.name,
+      fileName,
+      packageName: fileName.replace(/\.[^.]+$/, "") || "robot_model",
+      urdfPath: fileName,
       urdfText,
-      files: new Map([[file.name, new TextEncoder().encode(urdfText).buffer]]),
+      files: new Map([[fileName, new TextEncoder().encode(urdfText).buffer]]),
     };
   }
 
-  const files = await readZipEntries(await file.arrayBuffer());
+  const files = await readZipEntries(buffer);
   const urdfPaths = Array.from(files.keys()).filter((name) => name.toLowerCase().endsWith(".urdf"));
   const preferred = urdfPaths.find((name) => /\/urdf\/[^/]+\.urdf$/i.test(name) && !/\.bak|backup/i.test(name))
     ?? urdfPaths.find((name) => !/\.bak|backup/i.test(name))
     ?? urdfPaths[0];
   if (!preferred) throw new Error("zip does not contain urdf");
-  const rootName = preferred.split("/")[0] || file.name.replace(/\.[^.]+$/, "");
+  const rootName = preferred.split("/")[0] || fileName.replace(/\.[^.]+$/, "");
   return {
-    fileName: file.name,
+    fileName,
     packageName: rootName,
     urdfPath: preferred,
     urdfText: new TextDecoder("utf-8").decode(files.get(preferred)),
@@ -669,7 +673,7 @@ function Arm3DOverview({
   const [meshStats, setMeshStats] = useState({ loaded: 0, missing: 0 });
   const restoredModelRef = useRef("");
   const serverCalibrationsRef = useRef(new Map<string, JointCalibration>());
-  const applyUrdfPackageRef = useRef<(file: File, shouldSave: boolean) => void>(() => {});
+  const applyResolvedUrdfPackageRef = useRef<(modelPackage: UrdfPackage, fileForSave: File | null) => void>(() => {});
   const urdfJointNames = useMemo(() => urdfJoints.map((joint) => joint.name), [urdfJoints]);
   const jointRows = useMemo(() => movableJoints(urdfJoints).map((joint) => joint.name), [urdfJoints]);
   const sourceNames = useMemo(() => motorSourceNames(motors), [motors]);
@@ -751,16 +755,7 @@ function Arm3DOverview({
     setUrdfJoints([]);
     setMeshStats({ loaded: 0, missing: 0 });
     readUrdfPackage(file)
-      .then((modelPackage) => {
-        const parsedJoints = parseUrdfJoints(modelPackage.urdfText);
-        const rows = defaultCalibrations(movableJoints(parsedJoints).map((joint) => joint.name), sourceNames, serverCalibrationsRef.current);
-        serverCalibrationsRef.current = new Map(rows.map((row) => [row.jointName, row]));
-        setUrdfPackage(modelPackage);
-        setUrdfJoints(parsedJoints);
-        setUrdfName(modelPackage.fileName.endsWith(".zip") ? `${modelPackage.fileName} / ${modelPackage.urdfPath}` : modelPackage.fileName);
-        setUrdfText(modelPackage.urdfText);
-        if (shouldSave) void saveModelPackage(file, modelPackage, rows);
-      })
+      .then((modelPackage) => applyResolvedUrdfPackage(modelPackage, shouldSave ? file : null))
       .catch(() => {
         setUrdfText("");
         setUrdfPackage(null);
@@ -768,7 +763,17 @@ function Arm3DOverview({
         setModelSaveState("error");
       });
   }
-  applyUrdfPackageRef.current = applyUrdfPackage;
+  function applyResolvedUrdfPackage(modelPackage: UrdfPackage, fileForSave: File | null) {
+    const parsedJoints = parseUrdfJoints(modelPackage.urdfText);
+    const rows = defaultCalibrations(movableJoints(parsedJoints).map((joint) => joint.name), sourceNames, serverCalibrationsRef.current);
+    serverCalibrationsRef.current = new Map(rows.map((row) => [row.jointName, row]));
+    setUrdfPackage(modelPackage);
+    setUrdfJoints(parsedJoints);
+    setUrdfName(modelPackage.fileName.endsWith(".zip") ? `${modelPackage.fileName} / ${modelPackage.urdfPath}` : modelPackage.fileName);
+    setUrdfText(modelPackage.urdfText);
+    if (fileForSave) void saveModelPackage(fileForSave, modelPackage, rows);
+  }
+  applyResolvedUrdfPackageRef.current = applyResolvedUrdfPackage;
 
   function handleUrdfFile(file: File | null) {
     if (!file) return;
@@ -790,8 +795,8 @@ function Arm3DOverview({
         if (!response.ok) throw new Error("model package fetch failed");
         const buffer = await response.arrayBuffer();
         serverCalibrationsRef.current = calibrationMapFromJson(payload.mapping_json);
-        const file = new File([buffer], fileName, { type: fileName.toLowerCase().endsWith(".zip") ? "application/zip" : "application/xml" });
-        applyUrdfPackageRef.current(file, false);
+        const modelPackage = await readUrdfPackageBuffer(fileName, buffer);
+        applyResolvedUrdfPackageRef.current(modelPackage, null);
         setModelSaveState("restored");
       } catch {
         if (!controller.signal.aborted) setModelSaveState("error");
