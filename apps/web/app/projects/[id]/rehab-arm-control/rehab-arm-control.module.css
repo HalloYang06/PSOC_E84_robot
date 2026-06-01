@@ -614,6 +614,112 @@
   white-space: nowrap;
 }
 
+.poseMappingPanel {
+  min-width: 0;
+  border: 1px solid rgba(117, 247, 221, 0.12);
+  border-radius: 8px;
+  background: rgba(1, 8, 13, 0.34);
+}
+
+.poseMappingPanel > summary {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 8px;
+  color: #75f7dd;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 900;
+  list-style: none;
+}
+
+.poseMappingPanel > summary::-webkit-details-marker {
+  display: none;
+}
+
+.poseMappingPanel button {
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 1px solid rgba(117, 247, 221, 0.22);
+  border-radius: 7px;
+  background: rgba(117, 247, 221, 0.08);
+  color: #ecffff;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.mappingHint {
+  min-width: 0;
+  display: flex;
+  gap: 8px;
+  padding: 0 8px 8px;
+  color: rgba(205, 232, 238, 0.7);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.mappingHint strong {
+  color: #ffe5a0;
+  white-space: nowrap;
+}
+
+.mappingGrid {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+  max-height: 220px;
+  overflow: auto;
+  background: rgba(117, 247, 221, 0.1);
+}
+
+.mappingRow {
+  min-width: 780px;
+  display: grid;
+  grid-template-columns: minmax(150px, 1.2fr) repeat(4, minmax(110px, 0.8fr)) minmax(90px, 0.7fr);
+  gap: 1px;
+  align-items: stretch;
+}
+
+.mappingRow > strong,
+.mappingRow > small,
+.mappingRow label {
+  min-width: 0;
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  padding: 7px;
+  background: #061219;
+}
+
+.mappingRow > strong {
+  color: #ecffff;
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mappingRow span,
+.mappingRow > small {
+  color: rgba(205, 232, 238, 0.66);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.mappingRow select,
+.mappingRow input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid rgba(117, 247, 221, 0.16);
+  border-radius: 6px;
+  background: rgba(2, 22, 33, 0.86);
+  color: #ecffff;
+  font-size: 11px;
+}
+
 .armLegend span {
   min-height: 24px;
   display: inline-flex;

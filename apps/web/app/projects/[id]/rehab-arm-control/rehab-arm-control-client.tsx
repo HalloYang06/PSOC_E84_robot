@@ -58,6 +58,14 @@ type UrdfPackage = {
   files: Map<string, ArrayBuffer>;
 };
 
+type JointCalibration = {
+  jointName: string;
+  sourceName: string;
+  unit: "rad" | "deg";
+  direction: 1 | -1;
+  offsetRad: number;
+};
+
 function text(value: unknown, fallback = "") {
   const next = String(value ?? "").trim();
   return next || fallback;
@@ -275,6 +283,10 @@ function motorPosition(motor: AnyRecord) {
       ?? motor.positionRad
       ?? motor.angle_rad
       ?? motor.angleRad
+      ?? motor.position_deg
+      ?? motor.positionDeg
+      ?? motor.angle_deg
+      ?? motor.angleDeg
       ?? motor.position
       ?? motor.angle,
   );
@@ -292,6 +304,14 @@ function jointValueMapFromMotors(motors: AnyRecord[]) {
     if (motorId) values.set(motorId, value);
   });
   return values;
+}
+
+function motorSourceNames(motors: AnyRecord[]) {
+  return Array.from(new Set(motors.flatMap((motor, index) => {
+    const jointName = text(motor.joint_name ?? motor.jointName, "");
+    const motorId = text(motor.motor_id ?? motor.motorId, "");
+    return [jointName, motorId || `motor_${index + 1}`].filter(Boolean);
+  })));
 }
 
 function keyframeSrc(imageUrl: string, apiBaseUrl: string) {
@@ -340,6 +360,63 @@ function parseUrdfJoints(urdfText: string): JointDetail[] {
     parent: joint.getElementsByTagName("parent")[0]?.getAttribute("link") || "-",
     child: joint.getElementsByTagName("child")[0]?.getAttribute("link") || "-",
   }));
+}
+
+function movableJoints(joints: JointDetail[]) {
+  return joints.filter((joint) => !["fixed", "floating"].includes(joint.type));
+}
+
+function calibrationStorageKey(urdfName: string) {
+  return `rehab-arm-pose-calibration:${urdfName || "placeholder"}`;
+}
+
+function loadSavedCalibrations(urdfName: string) {
+  if (typeof window === "undefined") return new Map<string, JointCalibration>();
+  try {
+    const raw = window.localStorage.getItem(calibrationStorageKey(urdfName));
+    const rows = JSON.parse(raw || "[]") as JointCalibration[];
+    return new Map(rows.filter((row) => row?.jointName).map((row) => [row.jointName, {
+      jointName: row.jointName,
+      sourceName: text(row.sourceName, ""),
+      unit: row.unit === "deg" ? "deg" : "rad",
+      direction: row.direction === -1 ? -1 : 1,
+      offsetRad: Number.isFinite(Number(row.offsetRad)) ? Number(row.offsetRad) : 0,
+    }]));
+  } catch {
+    return new Map<string, JointCalibration>();
+  }
+}
+
+function saveCalibrations(urdfName: string, rows: JointCalibration[]) {
+  if (typeof window === "undefined" || !urdfName) return;
+  try {
+    window.localStorage.setItem(calibrationStorageKey(urdfName), JSON.stringify(rows));
+  } catch {
+    // Best effort only: calibration remains active in memory even if browser storage is unavailable.
+  }
+}
+
+function defaultCalibrations(jointNames: string[], sourceNames: string[], previous = new Map<string, JointCalibration>()) {
+  return jointNames.map((jointName) => {
+    const old = previous.get(jointName);
+    if (old) return old;
+    const exact = sourceNames.find((source) => source === jointName) ?? "";
+    const fuzzy = exact || (sourceNames.find((source) => source.toLowerCase().includes(jointName.replace(/_joint$/i, "").toLowerCase())) ?? "");
+    return {
+      jointName,
+      sourceName: fuzzy,
+      unit: "rad" as const,
+      direction: 1 as const,
+      offsetRad: 0,
+    };
+  });
+}
+
+function calibratedJointValue(row: JointCalibration, sourceValues: Map<string, number>) {
+  const rawValue = sourceValues.get(row.sourceName);
+  if (!Number.isFinite(rawValue)) return null;
+  const inRadians = row.unit === "deg" ? Number(rawValue) * Math.PI / 180 : Number(rawValue);
+  return inRadians * row.direction + row.offsetRad;
 }
 
 function normalizePackagePath(value: string) {
@@ -462,15 +539,47 @@ function Arm3DOverview({ motors, safetyState }: { motors: AnyRecord[]; safetySta
   const [urdfJoints, setUrdfJoints] = useState<JointDetail[]>([]);
   const [meshStats, setMeshStats] = useState({ loaded: 0, missing: 0 });
   const urdfJointNames = useMemo(() => urdfJoints.map((joint) => joint.name), [urdfJoints]);
+  const jointRows = useMemo(() => movableJoints(urdfJoints).map((joint) => joint.name), [urdfJoints]);
+  const sourceNames = useMemo(() => motorSourceNames(motors), [motors]);
+  const [calibrations, setCalibrations] = useState<JointCalibration[]>([]);
+  const calibratedJointValues = useMemo(() => {
+    const values = new Map<string, number>();
+    calibrations.forEach((row) => {
+      const value = calibratedJointValue(row, jointValues);
+      if (value !== null) values.set(row.jointName, value);
+    });
+    jointValues.forEach((value, name) => {
+      if (!values.has(name)) values.set(name, value);
+    });
+    return values;
+  }, [calibrations, jointValues]);
   const matchedUrdfJoints = useMemo(
-    () => urdfJointNames.filter((name) => jointValues.has(name)),
-    [jointValues, urdfJointNames],
+    () => (jointRows.length ? jointRows : urdfJointNames).filter((name) => calibratedJointValues.has(name)),
+    [calibratedJointValues, jointRows, urdfJointNames],
   );
 
   useEffect(() => {
     positionsRef.current = positions;
-    jointValuesRef.current = jointValues;
-  }, [jointValues, positions]);
+    jointValuesRef.current = calibratedJointValues;
+  }, [calibratedJointValues, positions]);
+
+  useEffect(() => {
+    if (!jointRows.length) {
+      setCalibrations([]);
+      return;
+    }
+    setCalibrations((current) => {
+      const saved = loadSavedCalibrations(urdfName);
+      const previous = new Map<string, JointCalibration>();
+      current.forEach((row) => previous.set(row.jointName, row));
+      saved.forEach((row, jointName) => previous.set(jointName, row));
+      return defaultCalibrations(jointRows, sourceNames, previous);
+    });
+  }, [jointRows, sourceNames, urdfName]);
+
+  useEffect(() => {
+    saveCalibrations(urdfName, calibrations);
+  }, [calibrations, urdfName]);
 
   function handleUrdfFile(file: File | null) {
     if (!file) return;
@@ -490,6 +599,14 @@ function Arm3DOverview({ motors, safetyState }: { motors: AnyRecord[]; safetySta
         setUrdfPackage(null);
         setUrdfState("failed");
       });
+  }
+
+  function updateCalibration(jointName: string, patch: Partial<JointCalibration>) {
+    setCalibrations((rows) => rows.map((row) => row.jointName === jointName ? { ...row, ...patch } : row));
+  }
+
+  function resetCalibration() {
+    setCalibrations(defaultCalibrations(jointRows, sourceNames));
   }
 
   useEffect(() => {
@@ -699,12 +816,12 @@ function Arm3DOverview({ motors, safetyState }: { motors: AnyRecord[]; safetySta
   useEffect(() => {
     const robot = robotRef.current;
     if (!robot) return;
-    jointValues.forEach((value, name) => {
+    calibratedJointValues.forEach((value, name) => {
       if (robot.joints?.[name]) {
         robot.setJointValue?.(name, value);
       }
     });
-  }, [jointValues, urdfJointNames]);
+  }, [calibratedJointValues, urdfJointNames]);
 
   const modelStateText =
     urdfState === "loaded"
@@ -739,13 +856,75 @@ function Arm3DOverview({ motors, safetyState }: { motors: AnyRecord[]; safetySta
       <div ref={mountRef} className={styles.armCanvas} />
       {urdfJoints.length ? (
         <div className={styles.poseStatus}>
-          <strong>匹配 {matchedUrdfJoints.length}/{urdfJoints.filter((joint) => !["fixed", "floating"].includes(joint.type)).length || urdfJoints.length}</strong>
+          <strong>匹配 {matchedUrdfJoints.length}/{jointRows.length || urdfJoints.length}</strong>
           <span>同名关节会实时套用电机角度；模型资源已加载 {meshStats.loaded} 个，未加载 {meshStats.missing} 个。</span>
         </div>
       ) : null}
+      {urdfJoints.length ? (
+        <details className={styles.poseMappingPanel} open>
+          <summary>
+            <span>姿态映射</span>
+            <button type="button" onClick={(event) => { event.preventDefault(); resetCalibration(); }}>重置映射</button>
+          </summary>
+          <div className={styles.mappingHint}>
+            <strong>{sourceNames.length ? `${sourceNames.length} 个电机来源可选` : "等待电机状态上传"}</strong>
+            <span>只影响当前浏览器预览：单位、方向和零点偏移用于把上报角度对齐到 URDF 关节。</span>
+          </div>
+          <div className={styles.mappingGrid} data-testid="rehab-pose-mapping">
+            {calibrations.map((row) => {
+              const preview = calibratedJointValue(row, jointValues);
+              return (
+                <div key={row.jointName} className={styles.mappingRow}>
+                  <strong>{row.jointName}</strong>
+                  <label>
+                    <span>电机来源</span>
+                    <select
+                      value={row.sourceName}
+                      onChange={(event) => updateCalibration(row.jointName, { sourceName: event.target.value })}
+                    >
+                      <option value="">待匹配</option>
+                      {sourceNames.map((source) => <option key={source} value={source}>{source}</option>)}
+                    </select>
+                  </label>
+                  <label>
+                    <span>单位</span>
+                    <select
+                      value={row.unit}
+                      onChange={(event) => updateCalibration(row.jointName, { unit: event.target.value === "deg" ? "deg" : "rad" })}
+                    >
+                      <option value="rad">弧度</option>
+                      <option value="deg">角度</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>方向</span>
+                    <select
+                      value={String(row.direction)}
+                      onChange={(event) => updateCalibration(row.jointName, { direction: event.target.value === "-1" ? -1 : 1 })}
+                    >
+                      <option value="1">正向</option>
+                      <option value="-1">反向</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>零点偏移 rad</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={Number.isFinite(row.offsetRad) ? row.offsetRad : 0}
+                      onChange={(event) => updateCalibration(row.jointName, { offsetRad: Number(event.target.value) || 0 })}
+                    />
+                  </label>
+                  <small>{preview === null ? "未匹配" : `预览 ${numberText(preview, " rad")}`}</small>
+                </div>
+              );
+            })}
+          </div>
+        </details>
+      ) : null}
       <div className={styles.armLegend}>
         {(urdfJointNames.length ? urdfJointNames : ARM_MODEL_JSON.joints).slice(0, 10).map((name, index) => (
-          <span key={name}>{name}: {numberText(jointValues.get(name) ?? positions[index], " rad")}</span>
+          <span key={name}>{name}: {numberText(calibratedJointValues.get(name) ?? positions[index], " rad")}</span>
         ))}
       </div>
     </section>
