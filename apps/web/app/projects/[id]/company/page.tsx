@@ -722,6 +722,8 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
       ),
       requesterName,
       targetName,
+      requesterId,
+      targetId,
       needStatus,
       taskStatus,
       dispatchStatus,
@@ -766,6 +768,96 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
     if (!raw) return false;
     return seatAliases.get(seat.id)?.has(raw) ?? false;
   };
+  const canonicalSeatId = (value: unknown) => {
+    const raw = text(value, "");
+    if (!raw) return "";
+    for (const seat of allSeats) {
+      if (seatAliases.get(seat.id)?.has(raw)) return seat.id;
+    }
+    return "";
+  };
+  const officeColumnCount = Math.max(2, Math.ceil(Math.sqrt(Math.max(allSeats.length, 1) * 1.25)));
+  const officeRowCount = Math.max(1, Math.ceil(Math.max(allSeats.length, 1) / officeColumnCount));
+  const officeNodes = allSeats.map((seat, index) => {
+    const column = index % officeColumnCount;
+    const row = Math.floor(index / officeColumnCount);
+    const x = 10 + ((column + 0.5) * 80) / officeColumnCount + (row % 2 ? 3 : -2);
+    const y = 12 + ((row + 0.5) * 74) / officeRowCount + (column % 2 ? 4 : -3);
+    const outgoingCount = allNeeds.filter((need) => seatMatches(seat, need.from_agent ?? need.fromAgent ?? need.created_by_id ?? need.createdById)).length;
+    const incomingCount = allNeeds.filter((need) =>
+      seatMatches(
+        seat,
+        need.target_seat_id
+          ?? need.targetSeatId
+          ?? need.to_agent
+          ?? need.toAgent,
+      ),
+    ).length;
+    const taskCount = allTasks.filter((task) =>
+      seatMatches(
+        seat,
+        task.assignee_seat_id
+          ?? task.assigneeSeatId
+          ?? task.assignee_agent_id
+          ?? task.assigneeAgentId
+          ?? task.assignee,
+      ),
+    ).length;
+    return {
+      id: seat.id,
+      seat,
+      x: Math.max(8, Math.min(92, x)),
+      y: Math.max(10, Math.min(88, y)),
+      outgoingCount,
+      incomingCount,
+      taskCount,
+      tone: statusTone(seat.dispatchState),
+    };
+  });
+  const officeNodeById = new Map(officeNodes.map((node) => [node.id, node]));
+  const officeEdgeMap = new Map<string, {
+    id: string;
+    fromId: string;
+    toId: string;
+    count: number;
+    label: string;
+    needStatus: string;
+    taskStatus: string;
+    receiptStatus: string;
+    activityTime: number;
+  }>();
+  for (const chain of collaborationChains) {
+    const fromId = canonicalSeatId(chain.requesterId);
+    const toId = canonicalSeatId(chain.targetId);
+    if (!fromId || !toId || fromId === toId) continue;
+    const key = `${fromId}->${toId}`;
+    const existing = officeEdgeMap.get(key);
+    if (!existing) {
+      officeEdgeMap.set(key, {
+        id: key,
+        fromId,
+        toId,
+        count: 1,
+        label: chain.title,
+        needStatus: chain.needStatus,
+        taskStatus: chain.taskStatus,
+        receiptStatus: chain.receiptStatus,
+        activityTime: chain.activityTime,
+      });
+    } else {
+      existing.count += 1;
+      if (chain.activityTime > existing.activityTime) {
+        existing.label = chain.title;
+        existing.needStatus = chain.needStatus;
+        existing.taskStatus = chain.taskStatus;
+        existing.receiptStatus = chain.receiptStatus;
+        existing.activityTime = chain.activityTime;
+      }
+    }
+  }
+  const officeEdges = [...officeEdgeMap.values()]
+    .filter((edge) => officeNodeById.has(edge.fromId) && officeNodeById.has(edge.toId))
+    .sort((left, right) => right.activityTime - left.activityTime);
   const seatRelationCards = allSeats.map((seat) => {
     const sameDepartmentPeers = allSeats.filter(
       (peer) => peer.id !== seat.id && peer.workstationId && peer.workstationId === seat.workstationId,
@@ -906,109 +998,70 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
             </div>
           </div>
 
-          <section className={styles.chainPanel} aria-label="NPC 协作链路">
+          <section className={styles.officeNetwork} aria-label="NPC 办公网">
             <header>
               <div>
-                <span>NPC 协作链路</span>
-                <strong>需求到回执</strong>
+                <span>NPC 办公网</span>
+                <strong>一张图看谁在和谁协作</strong>
               </div>
-              <div className={styles.chainStats}>
-                <article><strong>{openNeedCount}</strong><span>流转需求</span></article>
-                <article><strong>{activeTaskCount}</strong><span>承接任务</span></article>
-                <article><strong>{waitingReceiptCount}</strong><span>等回执</span></article>
+              <div className={styles.networkLegend}>
+                <span data-tone="review">需求</span>
+                <span data-tone="healthy">承接/完成</span>
+                <span data-tone="blocked">阻塞</span>
+                <span>点击线看详情</span>
               </div>
             </header>
-            <div className={styles.chainList}>
-              {visibleChains.map((chain) => (
-                <Link
-                  key={chain.id}
-                  href={`/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=company`}
-                  className={styles.chainItem}
-                >
-                  <div className={styles.chainTitle}>
-                    <strong>{chain.title}</strong>
-                    <span>{chain.needStatus}</span>
-                  </div>
-                  <div className={styles.chainFlow} aria-label={`${chain.requesterName} 到 ${chain.targetName} 的协作流`}>
-                    <span className={styles.actorNode} data-tone={chainTone(chain.needStatus)}>
-                      <b>{chain.requesterName.slice(0, 2).toUpperCase()}</b>
-                      <small>{chain.requesterName}</small>
-                    </span>
-                    <span className={styles.flowBeam} data-tone={chainTone(chain.taskStatus)} />
-                    <span className={styles.workNode} data-tone={chainTone(chain.taskStatus)}>
-                      <i />
-                      <small>需求</small>
-                    </span>
-                    <span className={styles.flowBeam} data-tone={chainTone(chain.dispatchStatus)} />
-                    <span className={styles.actorNode} data-tone={chainTone(chain.dispatchStatus)}>
-                      <b>{chain.targetName.slice(0, 2).toUpperCase()}</b>
-                      <small>{chain.targetName}</small>
-                    </span>
-                    <span className={styles.flowBeam} data-tone={chainTone(chain.receiptStatus)} />
-                    <span className={styles.receiptNode} data-tone={chainTone(chain.receiptStatus)}>
-                      <i />
-                      <small>{chain.receiptStatus}</small>
-                    </span>
-                  </div>
-                  <div className={styles.chainBadges}>
-                    <span data-tone={chainTone(chain.taskStatus)}>{chain.taskStatus}</span>
-                    <span data-tone={chainTone(chain.dispatchStatus)}>{chain.dispatchStatus}</span>
-                    <span data-tone={chainTone(chain.receiptStatus)}>{chain.receiptStatus}</span>
-                  </div>
-                </Link>
-              ))}
-              {!visibleChains.length ? (
-                <div className={styles.emptyChain}>
-                  <strong>还没有结构化协作链路</strong>
-                  <p>当 NPC 创建 Need 并路由成任务后，这里会按“需求、承接、投递、回执”展示进度。</p>
-                </div>
-              ) : null}
-            </div>
-          </section>
-
-          <section className={styles.relationPanel} aria-label="NPC 关系网">
-            <header>
-              <div>
-                <span>NPC 关系网</span>
-                <strong>每个员工的协作圈</strong>
+            <div className={styles.officeMap}>
+              <svg className={styles.officeSvg} viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="NPC 协作网络线">
+                {officeEdges.map((edge, index) => {
+                  const from = officeNodeById.get(edge.fromId);
+                  const to = officeNodeById.get(edge.toId);
+                  if (!from || !to) return null;
+                  const dx = to.x - from.x;
+                  const dy = to.y - from.y;
+                  const p1x = from.x + dx * 0.16;
+                  const p1y = from.y + dy * 0.16;
+                  const p2x = from.x + dx * 0.42;
+                  const p2y = from.y + dy * 0.42;
+                  const p3x = from.x + dx * 0.68;
+                  const p3y = from.y + dy * 0.68;
+                  const p4x = from.x + dx * 0.86;
+                  const p4y = from.y + dy * 0.86;
+                  const labelX = from.x + dx * 0.5;
+                  const labelY = from.y + dy * 0.5 - (index % 2 ? 2.8 : -2.8);
+                  const width = Math.min(4.2, 1.4 + edge.count * 0.45);
+                  const href = `/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=company`;
+                  return (
+                    <a key={edge.id} href={href} className={styles.networkEdgeLink} aria-label={`${from.seat.name} 到 ${to.seat.name}: ${edge.label}`}>
+                      <line x1={p1x} y1={p1y} x2={p2x} y2={p2y} className={styles.networkEdge} data-tone={chainTone(edge.needStatus)} strokeWidth={width} />
+                      <line x1={p2x} y1={p2y} x2={p3x} y2={p3y} className={styles.networkEdge} data-tone={chainTone(edge.taskStatus)} strokeWidth={width} />
+                      <line x1={p3x} y1={p3y} x2={p4x} y2={p4y} className={styles.networkEdge} data-tone={chainTone(edge.receiptStatus)} strokeWidth={width} />
+                      <text x={labelX} y={labelY} className={styles.networkEdgeLabel}>
+                        {edge.count > 1 ? `${edge.count}条 ` : ""}{edge.label}
+                      </text>
+                    </a>
+                  );
+                })}
+              </svg>
+              <div className={styles.officeNodeLayer}>
+                {officeNodes.map((node) => (
+                  <Link
+                    key={node.id}
+                    href={`/projects/${projectId}/workbench?seat_id=${encodeURIComponent(node.id)}&return_to=${encodeURIComponent(selfPath)}&from=company`}
+                    className={styles.officeNode}
+                    data-tone={node.tone}
+                    style={{ left: `${node.x}%`, top: `${node.y}%` }}
+                  >
+                    <b>{node.seat.name.slice(0, 2).toUpperCase()}</b>
+                    <strong>{node.seat.name}</strong>
+                    <span>{node.outgoingCount}/{node.incomingCount}/{node.taskCount}</span>
+                  </Link>
+                ))}
               </div>
-              <small>{seatRelationCards.length ? `${seatRelationCards.length} 个 NPC 节点` : "等待创建 NPC"}</small>
-            </header>
-            <div className={styles.relationGrid}>
-              {seatRelationCards.map((card) => (
-                <Link
-                  key={card.seat.id}
-                  href={`/projects/${projectId}/workbench?seat_id=${encodeURIComponent(card.seat.id)}&return_to=${encodeURIComponent(selfPath)}&from=company`}
-                  className={styles.relationCard}
-                  data-tone={card.tone}
-                >
-                  <div className={styles.relationOrbit} aria-hidden="true">
-                    <span className={styles.relationCore}>{card.seat.name.slice(0, 2).toUpperCase()}</span>
-                    {(card.relatedNames.length ? card.relatedNames : ["待建立", "待协作"]).slice(0, 5).map((name, index) => (
-                      <span
-                        key={`${card.seat.id}-relation-${name}-${index}`}
-                        className={styles.relationSatellite}
-                        data-slot={index + 1}
-                      >
-                        {name.slice(0, 2).toUpperCase()}
-                      </span>
-                    ))}
-                  </div>
-                  <div className={styles.relationMeta}>
-                    <strong>{card.seat.name}</strong>
-                    <span>{card.seat.workstationName || "未归属工位"}</span>
-                    <div>
-                      <em>发出 {card.outgoingCount}</em>
-                      <em>收到 {card.incomingCount}</em>
-                      <em>任务 {card.taskCount}</em>
-                    </div>
-                  </div>
-                </Link>
-              ))}
-              {!seatRelationCards.length ? (
-                <div className={styles.emptyRelation}>
-                  <strong>还没有 NPC 关系网</strong>
-                  <p>创建 NPC 后，公司层会自动按工位、负责人、需求和任务绘制协作圈。</p>
+              {!officeEdges.length ? (
+                <div className={styles.emptyOfficeNetwork}>
+                  <strong>还没有 NPC 间协作线</strong>
+                  <p>NPC 创建 Need 并路由成 Task 后，这里会出现带颜色分段的协作线。</p>
                 </div>
               ) : null}
             </div>

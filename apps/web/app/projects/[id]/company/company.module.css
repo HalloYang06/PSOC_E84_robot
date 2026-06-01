@@ -92,6 +92,7 @@
 .decisionBand,
 .chainPanel,
 .relationPanel,
+.officeNetwork,
 .bottomDock,
 .logRows article {
   border: 1px solid var(--line);
@@ -754,6 +755,241 @@
   line-height: 1.5;
 }
 
+.officeNetwork {
+  min-height: 430px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+  padding: 14px;
+}
+
+.officeNetwork header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.officeNetwork header span {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.officeNetwork header strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--text);
+  font-size: 17px;
+}
+
+.networkLegend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.networkLegend span {
+  min-height: 25px;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border: 1px solid rgba(231, 199, 104, 0.13);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.14);
+  color: rgba(255, 248, 232, 0.78);
+  font-size: 10px;
+}
+
+.networkLegend span[data-tone="review"] {
+  border-color: rgba(255, 209, 102, 0.28);
+  color: #ffe8b3;
+}
+
+.networkLegend span[data-tone="healthy"] {
+  border-color: rgba(158, 240, 191, 0.28);
+  color: #b9f5cc;
+}
+
+.networkLegend span[data-tone="blocked"] {
+  border-color: rgba(255, 117, 117, 0.3);
+  color: #ffb8b8;
+}
+
+.officeMap {
+  position: relative;
+  min-height: 360px;
+  overflow: hidden;
+  border: 1px solid rgba(231, 199, 104, 0.12);
+  border-radius: 18px;
+  background:
+    linear-gradient(90deg, rgba(231, 199, 104, 0.045) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(158, 240, 191, 0.032) 1px, transparent 1px),
+    radial-gradient(circle at 22% 32%, rgba(158, 240, 191, 0.1), transparent 26%),
+    radial-gradient(circle at 78% 62%, rgba(231, 199, 104, 0.1), transparent 28%),
+    rgba(5, 17, 15, 0.78);
+  background-size: 34px 34px, 34px 34px, auto, auto, auto;
+}
+
+.officeSvg {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.networkEdgeLink {
+  cursor: pointer;
+}
+
+.networkEdge {
+  fill: none;
+  stroke: rgba(231, 199, 104, 0.42);
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.88;
+  transition: opacity 150ms ease, stroke-width 150ms ease;
+}
+
+.networkEdgeLink:hover .networkEdge {
+  opacity: 1;
+  stroke-width: 4.6px;
+}
+
+.networkEdge[data-tone="healthy"] {
+  stroke: rgba(158, 240, 191, 0.78);
+}
+
+.networkEdge[data-tone="review"] {
+  stroke: rgba(255, 209, 102, 0.78);
+}
+
+.networkEdge[data-tone="blocked"] {
+  stroke: rgba(255, 117, 117, 0.82);
+}
+
+.networkEdgeLabel {
+  paint-order: stroke;
+  stroke: rgba(5, 17, 15, 0.9);
+  stroke-width: 3px;
+  fill: rgba(255, 248, 232, 0.9);
+  font-size: 2.6px;
+  font-weight: 900;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  pointer-events: none;
+}
+
+.officeNodeLayer {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+}
+
+.officeNode {
+  position: absolute;
+  width: 92px;
+  min-height: 76px;
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  padding: 8px;
+  border: 1px solid rgba(231, 199, 104, 0.18);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(255, 248, 232, 0.1), transparent 38%),
+    rgba(8, 23, 20, 0.92);
+  box-shadow:
+    0 14px 28px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  transform: translate(-50%, -50%);
+  transition: transform 150ms ease, border-color 150ms ease, background 150ms ease;
+}
+
+.officeNode:hover {
+  transform: translate(-50%, -52%);
+  border-color: var(--line-strong);
+  background:
+    radial-gradient(circle at 50% 0%, rgba(255, 248, 232, 0.16), transparent 38%),
+    rgba(12, 31, 27, 0.94);
+}
+
+.officeNode[data-tone="healthy"] {
+  border-color: rgba(158, 240, 191, 0.34);
+}
+
+.officeNode[data-tone="review"] {
+  border-color: rgba(255, 209, 102, 0.34);
+}
+
+.officeNode[data-tone="blocked"] {
+  border-color: rgba(255, 117, 117, 0.36);
+}
+
+.officeNode b {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  border: 1px solid rgba(231, 199, 104, 0.26);
+  background:
+    radial-gradient(circle at 35% 24%, rgba(255, 255, 255, 0.24), transparent 34%),
+    linear-gradient(145deg, rgba(231, 199, 104, 0.22), rgba(158, 240, 191, 0.12));
+  color: var(--mint);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.officeNode strong,
+.officeNode span {
+  max-width: 100%;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.officeNode strong {
+  color: var(--text);
+  font-size: 11px;
+}
+
+.officeNode span {
+  color: rgba(255, 232, 179, 0.78);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.emptyOfficeNetwork {
+  position: absolute;
+  inset: auto 18px 18px 18px;
+  z-index: 3;
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border: 1px dashed rgba(231, 199, 104, 0.22);
+  border-radius: 14px;
+  background: rgba(5, 17, 15, 0.74);
+}
+
+.emptyOfficeNetwork strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.emptyOfficeNetwork p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 .sandbox {
   position: relative;
   min-height: 0;
@@ -1249,6 +1485,7 @@
 
   .chainPanel header,
   .relationPanel header,
+  .officeNetwork header,
   .chainTitle {
     align-items: stretch;
     flex-direction: column;
@@ -1260,6 +1497,20 @@
     min-width: 0;
     width: 100%;
     text-align: left;
+  }
+
+  .networkLegend {
+    justify-content: flex-start;
+  }
+
+  .officeMap {
+    min-height: 520px;
+  }
+
+  .officeNode {
+    width: 78px;
+    min-height: 70px;
+    padding: 7px;
   }
 
   .relationCard {
