@@ -345,10 +345,14 @@ function Invoke-RunnerInboxPoll {
         $desktopDelivered = $false
         $desktopConfirmed = $false
         $desktopUnconfirmed = $false
+        $desktopReplySynced = $false
         try {
           $adapterJson = $adapterText | ConvertFrom-Json
           $executions = @($adapterJson.executions).Count
           $receipts = @($adapterJson.receipts).Count
+          if ($receipts -gt 0) {
+            $desktopReplySynced = $true
+          }
           foreach ($execution in @($adapterJson.executions)) {
             if ($execution.desktop_delivery_confirmed -eq $true) {
               $desktopConfirmed = $true
@@ -359,8 +363,14 @@ function Invoke-RunnerInboxPoll {
             if ($execution.ok -eq $true -and $execution.desktop_delivery_confirmed -eq $true) {
               $desktopDelivered = $true
             }
+            if ($execution.ok -eq $true -and ($execution.result_status -eq "completed" -or $execution.final_reply_synced -eq $true)) {
+              $desktopReplySynced = $true
+            }
           }
           if ($desktopConfirmed) {
+            $desktopDelivered = $true
+          }
+          if ($desktopReplySynced) {
             $desktopDelivered = $true
           }
         } catch {
@@ -369,20 +379,24 @@ function Invoke-RunnerInboxPoll {
         }
         if ($desktopConfirmed) {
           $note = "Runner $RunnerName delivered this dispatch into the bound Codex Desktop thread and confirmed the thread received it."
+        } elseif ($desktopReplySynced) {
+          $note = "Runner $RunnerName delivered this dispatch through Codex Desktop automation and the platform synced the desktop reply."
         } elseif ($desktopUnconfirmed) {
           $note = "Runner $RunnerName received this dispatch on the execution computer, but Codex Desktop has not confirmed that the bound thread visibly received it. Keep this item pending and retry desktop sync."
         } else {
           $note = "Runner $RunnerName ran desktop delivery, but no delivery evidence was returned yet. The platform will keep the item visible for retry."
         }
+        $desktopDispatchOk = $desktopConfirmed -or $desktopReplySynced
         $captureResult = [ordered]@{
-          result_status = if ($desktopConfirmed) { "completed" } else { "failed" }
+          result_status = if ($desktopDispatchOk) { "completed" } else { "failed" }
           note = $note
           result = @{
-            ok = $desktopConfirmed
+            ok = $desktopDispatchOk
             kind = "codex.desktop.dispatch"
             workstation_id = $targetWorkstationId
             message_id = $sourceMessageId
             desktop_delivery_confirmed = $desktopConfirmed
+            desktop_reply_synced = $desktopReplySynced
             desktop_delivery_unconfirmed = (-not $desktopConfirmed)
           }
         }

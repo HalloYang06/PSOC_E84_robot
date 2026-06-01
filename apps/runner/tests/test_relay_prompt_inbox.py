@@ -155,6 +155,79 @@ def test_robotics_capture_command_short_circuits_before_inbox(tmp_path: Path) ->
     assert manifest.exists()
 
 
+def test_codex_desktop_dispatch_invokes_adapter_before_plain_inbox(tmp_path: Path, monkeypatch: Any) -> None:
+    cfg = _make_cfg(tmp_path)
+    log = LogCollector(cfg.workdir / "logs" / "test.log")
+    client = _FakeClient()
+    captured: dict[str, Any] = {}
+    adapter = tmp_path / "scripts" / "platform-workstation-adapter.py"
+    adapter.parent.mkdir(parents=True)
+    adapter.write_text("# adapter stub\n", encoding="utf-8")
+
+    class _CompletedProcess:
+        returncode = 0
+        stderr = ""
+        stdout = json.dumps(
+            {
+                "executions": [
+                    {
+                        "message_id": "msg-desktop-source",
+                        "ok": True,
+                        "delivery_mode": "codex_desktop_ui",
+                        "desktop_delivery_confirmed": False,
+                        "desktop_delivery_pending": True,
+                        "desktop_delivery_method": "codex_desktop_automation",
+                        "desktop_thread_url": "codex://threads/00000000-0000-0000-0000-000000000000",
+                    }
+                ],
+                "receipts": [{"id": "receipt-1"}],
+            }
+        )
+
+    def fake_run(argv, **kwargs):
+        captured["argv"] = list(argv)
+        captured["env"] = dict(kwargs.get("env") or {})
+        captured["shell"] = kwargs.get("shell")
+        return _CompletedProcess()
+
+    monkeypatch.setattr("runner.main._locate_platform_workstation_adapter", lambda cfg_arg: adapter)
+    monkeypatch.setattr("runner.main.subprocess.run", fake_run)
+
+    body = json.dumps(
+        {
+            "kind": "codex.desktop.dispatch",
+            "project_id": "proj-desktop",
+            "workstation_id": "platform-npc-2",
+            "message_id": "msg-desktop-source",
+            "provider_id": "codex",
+        }
+    )
+    handled = _handle_runner_relay_message({"id": "runner-msg-desktop", "body": body, "status": "pending"}, client, cfg, log)
+
+    assert handled is True
+    assert list((cfg.workdir / "inbox").glob("*.json")) == []
+    assert len(client.acks) == 1
+    assert "without foreground keyboard or clipboard fallback" in (client.acks[0]["note"] or "")
+    assert len(client.completions) == 1
+    completion = client.completions[0]
+    assert completion["result_status"] == "completed"
+    assert "non-interrupting Codex Desktop automation handoff" in (completion["note"] or "")
+    assert completion["metadata"]["runner_capability"] == "codex.desktop.dispatch"
+    result = completion["metadata"]["runner_result"]
+    assert result["desktop_delivery_pending"] is True
+    assert result["desktop_delivery_confirmed"] is False
+    assert result["desktop_delivery_method"] == "codex_desktop_automation"
+
+    argv = captured["argv"]
+    assert str(adapter) in argv
+    assert "--message-id" in argv and argv[argv.index("--message-id") + 1] == "msg-desktop-source"
+    assert "--workstation-id" in argv and argv[argv.index("--workstation-id") + 1] == "platform-npc-2"
+    assert "--execute-provider-cli" in argv
+    assert captured["shell"] is False
+    assert captured["env"]["AI_COLLAB_CODEX_DESKTOP_DELIVERY_POLICY"] == "automation"
+    assert "AI_COLLAB_ALLOW_CODEX_UI_SENDKEYS_FALLBACK" not in captured["env"]
+
+
 def test_robotics_capture_start_runs_background_session_until_stop(tmp_path: Path, monkeypatch: Any) -> None:
     class _FakeSerial:
         def __init__(self, **_: Any) -> None:

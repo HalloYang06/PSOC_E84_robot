@@ -3,6 +3,9 @@ from __future__ import annotations
 import json
 import importlib.util
 import socket
+import os
+import subprocess
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -69,6 +72,227 @@ def _archive_inbox_file(inbox_path: Path, log: LogCollector) -> None:
         inbox_path.replace(target)
     except Exception as exc:
         log.write("warn", f"Failed to archive inbox file {inbox_path}: {exc}")
+
+
+def _locate_platform_workstation_adapter(cfg: RunnerConfig) -> Path | None:
+    workdir_candidate = cfg.workdir / "scripts" / "platform-workstation-adapter.py"
+    if workdir_candidate.is_file():
+        return workdir_candidate
+
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        candidate = parent / "scripts" / "platform-workstation-adapter.py"
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _desktop_dispatch_payload(payload: dict[str, Any] | None) -> dict[str, str] | None:
+    if not isinstance(payload, dict):
+        return None
+    if str(payload.get("kind") or "").strip().lower() != "codex.desktop.dispatch":
+        return None
+    workstation_id = str(payload.get("workstation_id") or "").strip()
+    message_id = str(payload.get("message_id") or "").strip()
+    project_id = str(payload.get("project_id") or "").strip()
+    if not workstation_id or not message_id or not project_id:
+        return None
+    provider_id = str(payload.get("provider_id") or payload.get("provider") or "codex").strip() or "codex"
+    return {
+        "project_id": project_id,
+        "workstation_id": workstation_id,
+        "message_id": message_id,
+        "provider_id": provider_id,
+    }
+
+
+def _run_codex_desktop_dispatch(
+    payload: dict[str, str],
+    *,
+    cfg: RunnerConfig,
+    log: LogCollector,
+) -> dict[str, Any]:
+    adapter = _locate_platform_workstation_adapter(cfg)
+    if adapter is None:
+        note = (
+            "Codex Desktop dispatch requires platform-workstation-adapter.py. "
+            f"Expected it under {cfg.workdir / 'scripts'} or this repository's scripts directory."
+        )
+        log.write("error", note)
+        return {
+            "ok": False,
+            "result_status": "failed",
+            "note": note,
+            "metadata": {
+                "runner_capability": "codex.desktop.dispatch",
+                "runner_result": {
+                    "ok": False,
+                    "kind": "codex.desktop.dispatch",
+                    "error": note,
+                    **payload,
+                },
+            },
+        }
+
+    output_dir = cfg.workdir / "inbox"
+    argv = [
+        sys.executable,
+        str(adapter),
+        "--api-base",
+        cfg.platform_api_url,
+        "--project-id",
+        payload["project_id"],
+        "--workstation-id",
+        payload["workstation_id"],
+        "--runner-id",
+        cfg.runner_id,
+        "--provider",
+        payload["provider_id"],
+        "--auto-ack",
+        "--execute-provider-cli",
+        "--ignore-automation-switch",
+        "--limit",
+        "1",
+        "--message-id",
+        payload["message_id"],
+        "--output-dir",
+        str(output_dir),
+    ]
+    env = dict(os.environ)
+    # The product contract says platform delivery must not steal the user's
+    # current desktop. Default to the Codex heartbeat automation bridge; the
+    # foreground sendkeys path remains explicit opt-in for manual recovery only.
+    env.setdefault("AI_COLLAB_CODEX_DESKTOP_DELIVERY_POLICY", "automation")
+    env.pop("AI_COLLAB_ALLOW_CODEX_UI_SENDKEYS_FALLBACK", None)
+    log.write(
+        "info",
+        "codex.desktop.dispatch invoking adapter "
+        f"message={payload['message_id']} workstation={payload['workstation_id']} adapter={adapter}",
+    )
+    try:
+        completed = subprocess.run(
+            argv,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=cfg.cli_timeout_seconds,
+            shell=False,
+            env=env,
+        )
+    except subprocess.TimeoutExpired:
+        note = (
+            f"Codex Desktop dispatch adapter timed out after {cfg.cli_timeout_seconds}s. "
+            "The platform did not use foreground keyboard or clipboard fallback."
+        )
+        log.write("error", note)
+        return {
+            "ok": False,
+            "result_status": "failed",
+            "note": note,
+            "metadata": {
+                "runner_capability": "codex.desktop.dispatch",
+                "runner_result": {
+                    "ok": False,
+                    "kind": "codex.desktop.dispatch",
+                    "error": "timeout",
+                    **payload,
+                },
+            },
+        }
+
+    stdout = (completed.stdout or "").strip()
+    stderr = (completed.stderr or "").strip()
+    if completed.returncode != 0:
+        note = "Codex Desktop dispatch adapter failed."
+        if stderr:
+            note = f"{note}\n{stderr}"
+        elif stdout:
+            note = f"{note}\n{stdout}"
+        log.write("error", f"codex.desktop.dispatch adapter rc={completed.returncode}")
+        return {
+            "ok": False,
+            "result_status": "failed",
+            "note": note[:3600],
+            "metadata": {
+                "runner_capability": "codex.desktop.dispatch",
+                "runner_result": {
+                    "ok": False,
+                    "kind": "codex.desktop.dispatch",
+                    "returncode": completed.returncode,
+                    "stderr": stderr[:1000],
+                    **payload,
+                },
+            },
+        }
+
+    adapter_json: dict[str, Any] = {}
+    try:
+        parsed = json.loads(stdout) if stdout else {}
+        if isinstance(parsed, dict):
+            adapter_json = parsed
+    except json.JSONDecodeError:
+        adapter_json = {}
+
+    executions = [item for item in adapter_json.get("executions") or [] if isinstance(item, dict)]
+    receipts = [item for item in adapter_json.get("receipts") or [] if isinstance(item, dict)]
+    execution_ok = any(bool(item.get("ok")) for item in executions)
+    desktop_confirmed = any(bool(item.get("desktop_delivery_confirmed")) for item in executions)
+    desktop_pending = any(bool(item.get("desktop_delivery_pending")) for item in executions)
+    desktop_unconfirmed = any(bool(item.get("desktop_delivery_unconfirmed")) for item in executions)
+    desktop_method = next(
+        (str(item.get("desktop_delivery_method") or "").strip() for item in executions if item.get("desktop_delivery_method")),
+        "",
+    )
+    desktop_thread_url = next(
+        (str(item.get("desktop_thread_url") or "").strip() for item in executions if item.get("desktop_thread_url")),
+        "",
+    )
+
+    if execution_ok and desktop_confirmed:
+        note = (
+            f"Runner {cfg.runner_name} delivered the platform dispatch into the bound Codex Desktop thread "
+            "and confirmed the thread received it."
+        )
+    elif execution_ok and desktop_pending:
+        note = (
+            f"Runner {cfg.runner_name} created a non-interrupting Codex Desktop automation handoff. "
+            "The platform is waiting for the bound desktop thread to pick it up and return the final reply."
+        )
+    elif execution_ok:
+        note = (
+            f"Runner {cfg.runner_name} handed the dispatch to the Codex Desktop bridge. "
+            "The NPC message remains open until the desktop thread final reply syncs back."
+        )
+    else:
+        note = (
+            f"Runner {cfg.runner_name} ran the Codex Desktop bridge, but the bound thread has not confirmed pickup. "
+            "The platform kept the workstation message recoverable for retry."
+        )
+
+    runner_result = {
+        "ok": execution_ok,
+        "kind": "codex.desktop.dispatch",
+        "workstation_id": payload["workstation_id"],
+        "message_id": payload["message_id"],
+        "provider_id": payload["provider_id"],
+        "desktop_delivery_confirmed": desktop_confirmed,
+        "desktop_delivery_pending": desktop_pending,
+        "desktop_delivery_unconfirmed": desktop_unconfirmed,
+        "desktop_delivery_method": desktop_method,
+        "desktop_thread_url": desktop_thread_url,
+        "adapter_receipt_count": len(receipts),
+        "adapter_execution_count": len(executions),
+    }
+    return {
+        "ok": execution_ok,
+        "result_status": "completed" if execution_ok else "failed",
+        "note": note,
+        "metadata": {
+            "runner_capability": "codex.desktop.dispatch",
+            "runner_result": runner_result,
+        },
+    }
 
 
 def _handle_task(task: dict[str, Any], ws_mgr: WorkspaceManager, client: PlatformClient, cfg: RunnerConfig) -> None:
@@ -171,6 +395,33 @@ def _handle_runner_relay_message(
             metadata={"runner_result": result.get("result") or {}, "runner_capability": "robotics.capture"},
         )
         log.write("info", f"Handled runner relay {message_id} kind={kind} status={result.get('result_status')}")
+        return True
+
+    desktop_payload = _desktop_dispatch_payload(payload)
+    if desktop_payload is not None:
+        status = str(message.get("status") or "").strip().lower()
+        if status == "pending":
+            client.ack_runner_message(
+                cfg.runner_id,
+                message_id,
+                note=(
+                    f"{cfg.runner_name} accepted the Codex Desktop dispatch and is handing it to "
+                    "the bound desktop thread without foreground keyboard or clipboard fallback."
+                ),
+            )
+        result = _run_codex_desktop_dispatch(desktop_payload, cfg=cfg, log=log)
+        client.complete_runner_message(
+            cfg.runner_id,
+            message_id,
+            result_status=str(result.get("result_status") or "failed"),
+            note=str(result.get("note") or ""),
+            metadata=result.get("metadata") if isinstance(result.get("metadata"), dict) else {},
+        )
+        log.write(
+            "info",
+            f"Handled runner relay {message_id} kind=codex.desktop.dispatch "
+            f"status={result.get('result_status')}",
+        )
         return True
 
     # Fallback: plain text prompt. Drop it into runner workdir/inbox/ so the local
