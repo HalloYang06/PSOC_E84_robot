@@ -97,6 +97,15 @@ function forgeTab(value: unknown): ForgeTab {
   return "skills";
 }
 
+function publicSeedText(value: unknown, maxLength = 180) {
+  const next = text(value, "")
+    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, "关联记录")
+    .replace(/[A-Za-z]:[\\/][^\s"'`<>),\]]+/g, "当前电脑工作副本")
+    .replace(/\s+/g, " ")
+    .trim();
+  return next.length > maxLength ? `${next.slice(0, maxLength - 1)}…` : next;
+}
+
 export default async function ProjectSkillForgePage({
   params,
   searchParams,
@@ -111,6 +120,13 @@ export default async function ProjectSkillForgePage({
     workstation?: string;
     workstation_id?: string;
     tab?: string;
+    need_id?: string;
+    task_id?: string;
+    dispatch_id?: string;
+    seed_title?: string;
+    seed_summary?: string;
+    seed_output?: string;
+    seed_receipt?: string;
     team_notice?: string;
     team_error?: string;
   };
@@ -174,6 +190,16 @@ export default async function ProjectSkillForgePage({
   const focusedSeatWorkstationId = focusedSeat ? workstationIdOfSeat(focusedSeat) : "";
   const focusedWorkstation = workstations.find((station) => idOf(station) === (focusWorkstationId || focusedSeatWorkstationId)) ?? null;
   const focusedWorkstationId = focusedWorkstation ? idOf(focusedWorkstation) : "";
+  const collaborationSeed = {
+    source: text(searchParams?.from, "") === "company" ? "company" : "",
+    needId: publicSeedText(searchParams?.need_id, 80),
+    taskId: publicSeedText(searchParams?.task_id, 80),
+    dispatchId: publicSeedText(searchParams?.dispatch_id, 80),
+    title: publicSeedText(searchParams?.seed_title, 96),
+    summary: publicSeedText(searchParams?.seed_summary, 180),
+    output: publicSeedText(searchParams?.seed_output, 160),
+    receipt: publicSeedText(searchParams?.seed_receipt, 160),
+  };
 
   return (
     <SkillForgeClient
@@ -196,6 +222,7 @@ export default async function ProjectSkillForgePage({
         ...(focusedSeatId ? [`seat:${focusedSeatId}`] : []),
       ]}
       initialActiveTab={forgeTab(searchParams?.tab)}
+      initialCollaborationSeed={collaborationSeed.source && (collaborationSeed.title || collaborationSeed.summary || collaborationSeed.receipt) ? collaborationSeed : null}
     />
   );
 }

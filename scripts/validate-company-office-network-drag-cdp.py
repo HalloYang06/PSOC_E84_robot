@@ -375,10 +375,53 @@ def main() -> int:
         after_shot = output_dir / f"office-network-after-drag-{stamp}.png"
         screenshot(cdp, after_shot)
         report["screenshots"].append(str(after_shot))
+        knowledge_href = str(detail.get("knowledgeHref") or "")
+        knowledge_url = knowledge_href if knowledge_href.startswith("http") else f"{origin}{knowledge_href}"
+        cdp.send("Page.navigate", {"url": knowledge_url})
+        wait_for(
+            cdp,
+            """
+            (() => {
+              const text = document.body?.innerText || '';
+              return text.includes('能力工坊') && text.includes('来自公司协作线');
+            })()
+            """,
+            timeout_seconds=30,
+        )
+        forge = cdp_eval(
+            cdp,
+            """
+            (() => {
+              const bodyText = document.body?.innerText || '';
+              const activeKnowledgeTab = Array.from(document.querySelectorAll('button[data-active="1"]')).some((button) => button.textContent?.includes('知识库配置'));
+              const seedCard = document.querySelector('[aria-label="协作沉淀建议"]');
+              const titleInput = document.querySelector('input[name="title"]');
+              const summaryInput = document.querySelector('textarea[name="summary"]');
+              return {
+                activeKnowledgeTab,
+                seedText: (seedCard?.textContent || '').trim(),
+                hasPrefilledTitle: Boolean(titleInput?.value),
+                hasPrefilledSummary: Boolean(summaryInput?.value),
+                overflow: Math.max(0, (document.scrollingElement || document.documentElement).scrollWidth - document.documentElement.clientWidth),
+                bodyHasSeed: bodyText.includes('来自公司协作线'),
+              };
+            })()
+            """,
+        )
+        if not isinstance(forge, dict) or not forge.get("activeKnowledgeTab") or not forge.get("seedText"):
+            raise RuntimeError(f"Skill forge did not open the collaboration seed in knowledge tab: {forge}")
+        if not forge.get("hasPrefilledTitle") or not forge.get("hasPrefilledSummary"):
+            raise RuntimeError(f"Skill forge deposit form was not prefilled from the collaboration line: {forge}")
+        if int(forge.get("overflow") or 0) > 2:
+            raise RuntimeError(f"Skill forge collaboration seed caused horizontal overflow: {forge}")
+        forge_shot = output_dir / f"skill-forge-collaboration-seed-{stamp}.png"
+        screenshot(cdp, forge_shot)
+        report["screenshots"].append(str(forge_shot))
         report["before"] = before
         report["after"] = after
         report["detail"] = detail
         report["filtered"] = filtered
+        report["forge"] = forge
         report["url"] = url
     finally:
         if cdp:

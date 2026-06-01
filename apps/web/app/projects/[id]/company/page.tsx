@@ -1031,14 +1031,21 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
     if (edge.dispatchId) query.set("dispatch_id", edge.dispatchId);
     return `/projects/${projectId}/workbench?${query.toString()}`;
   };
-  const officeForgeHref = (seatId: string, panel: "knowledge" | "skills") => {
+  const officeForgeHref = (edge: OfficeEdge, panel: "knowledge" | "skills") => {
     const query = new URLSearchParams({
-      resources: `seat:${seatId}`,
+      resources: `seat:${edge.toId}`,
       return_to: selfPath,
       from: "company",
+      seed_title: edge.detailTitle,
+      seed_summary: edge.summary,
+      seed_output: edge.detailOutput,
+      seed_receipt: edge.latestReceipt,
     });
     if (panel === "knowledge") query.set("tab", "knowledge");
     if (panel === "skills") query.set("tab", "skills");
+    if (edge.needId) query.set("need_id", edge.needId);
+    if (edge.taskId) query.set("task_id", edge.taskId);
+    if (edge.dispatchId) query.set("dispatch_id", edge.dispatchId);
     return `/projects/${projectId}/skill-forge?${query.toString()}`;
   };
   const officeNetworkNodes: OfficeNetworkNode[] = officeNodes.map((node) => ({
@@ -1079,8 +1086,8 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
     kind: edge.kind,
     href: officeEdgeHref(edge),
     workbenchHref: officeEdgeHref(edge),
-    knowledgeHref: officeForgeHref(edge.toId, "knowledge"),
-    skillHref: officeForgeHref(edge.toId, "skills"),
+    knowledgeHref: officeForgeHref(edge, "knowledge"),
+    skillHref: officeForgeHref(edge, "skills"),
   }));
   const seatRelationCards = allSeats.map((seat) => {
     const sameDepartmentPeers = allSeats.filter(

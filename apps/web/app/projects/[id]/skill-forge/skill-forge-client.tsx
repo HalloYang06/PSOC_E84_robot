@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { 创建项目Skill, 删除能力工坊知识库, 删除项目Skill, 导入Github项目Skill, 保存能力工坊知识库, 添加Skill到Npc, 索引Npc沉淀, 绑定知识库到Npc } from "../../../actions";
 import { recommendRoleSkillIds } from "../../../../lib/platform-skills";
 import tileStyles from "../workbench/_components/npc-tile.module.css";
@@ -20,6 +20,17 @@ type ForgeResource = {
   parentName?: string;
 };
 
+type CollaborationSeed = {
+  source?: string;
+  needId?: string;
+  taskId?: string;
+  dispatchId?: string;
+  title?: string;
+  summary?: string;
+  output?: string;
+  receipt?: string;
+} | null;
+
 type SkillForgeClientProps = {
   projectId: string;
   projectName: string;
@@ -36,6 +47,7 @@ type SkillForgeClientProps = {
   workstations: AnyRecord[];
   initialOpenResourceIds: string[];
   initialActiveTab?: ForgeTab;
+  initialCollaborationSeed?: CollaborationSeed;
 };
 
 function text(value: unknown, fallback = "") {
@@ -383,6 +395,7 @@ function ForgeTile({
   seats,
   onClose,
   initialActiveTab = "skills",
+  collaborationSeed = null,
 }: {
   projectId: string;
   projectRepo: string;
@@ -396,6 +409,7 @@ function ForgeTile({
   seats: AnyRecord[];
   onClose: () => void;
   initialActiveTab?: ForgeTab;
+  collaborationSeed?: CollaborationSeed;
 }) {
   const [activeTab, setActiveTab] = useState<ForgeTab>(initialActiveTab);
   const focusedAssignments = assignments.filter((assignment) => matchesAssignment(assignment, resource));
@@ -431,6 +445,12 @@ function ForgeTile({
   const snapshot = sourceSeat?.metadata?.skill_forge_snapshot ?? sourceSeat?.extra_data?.skill_forge_snapshot ?? null;
   const deposits = resource.kind === "seat" ? npcDepositPaths(sourceSeat, resource) : null;
   const tabLabel = activeTab === "knowledge" ? "知识库配置" : activeTab === "git" ? "Git 管理" : "Skill 配置";
+  const seedTitle = text(collaborationSeed?.title, `${resource.name} 协作沉淀`);
+  const seedSummary = [
+    collaborationSeed?.summary ? `协作摘要：${collaborationSeed.summary}` : "",
+    collaborationSeed?.output ? `期望产出：${collaborationSeed.output}` : "",
+    collaborationSeed?.receipt ? `最新回执：${collaborationSeed.receipt}` : "",
+  ].filter(Boolean).join("\n");
   const childSeatIds = resource.kind === "station"
     ? seats.filter((seat) => seatParentId(seat) === resource.id).map((seat) => idOf(seat)).filter(Boolean)
     : [];
@@ -473,6 +493,20 @@ function ForgeTile({
         <span className={tileStyles.threadChip}>{resource.parentName || "独立资源"}</span>
         <span className={tileStyles.threadChip}>上岗包快照</span>
       </section>
+      {collaborationSeed ? (
+        <section className={styles.collaborationSeedCard} aria-label="协作沉淀建议">
+          <div>
+            <span>来自公司协作线</span>
+            <strong>{seedTitle}</strong>
+            <p>{seedSummary || "这条协作已经带入当前 NPC，可继续整理成知识或 Skill。"}</p>
+          </div>
+          <div>
+            {collaborationSeed.needId ? <small>需求 {collaborationSeed.needId}</small> : null}
+            {collaborationSeed.taskId ? <small>任务 {collaborationSeed.taskId}</small> : null}
+            {collaborationSeed.dispatchId ? <small>派发 {collaborationSeed.dispatchId}</small> : null}
+          </div>
+        </section>
+      ) : null}
 
       {activeTab === "skills" ? (
         <section className={styles.skillGrid}>
@@ -569,9 +603,9 @@ function ForgeTile({
                   <input type="hidden" name="assignment_seat_id" value={resource.seatRowId || resource.id} />
                   <input type="hidden" name="source" value="custom" />
                   <label>Skill 标识<input name="skill_id" placeholder="my-debug-helper" /></label>
-                  <label>显示名称<input name="label" placeholder="串口调试助手" /></label>
+                  <label>显示名称<input name="label" placeholder="串口调试助手" defaultValue={collaborationSeed ? seedTitle : undefined} /></label>
                   <label>GitHub 仓库路径<input name="repo_relative_path" placeholder="skills/custom/my-debug-helper/SKILL.md" /></label>
-                  <label>说明<textarea name="note" rows={3} placeholder="这个 Skill 让 NPC 学会什么、什么时候使用。" /></label>
+                  <label>说明<textarea name="note" rows={3} placeholder="这个 Skill 让 NPC 学会什么、什么时候使用。" defaultValue={collaborationSeed ? seedSummary : undefined} /></label>
                   <button type="submit">用户手动创建并装配</button>
                 </form>
                 <form className={styles.stackForm} action={创建项目Skill.bind(null, projectId)}>
@@ -628,7 +662,7 @@ function ForgeTile({
               {resource.kind === "seat" ? <input type="hidden" name="author_seat_id" value={resource.id} /> : null}
               <label>
                 标题
-                <input name="title" placeholder={`${resource.name} 调试经验`} />
+                <input name="title" placeholder={`${resource.name} 调试经验`} defaultValue={collaborationSeed ? seedTitle : undefined} />
               </label>
               <label>
                 仓库相对路径
@@ -636,7 +670,7 @@ function ForgeTile({
               </label>
               <label>
                 摘要
-                <textarea name="summary" rows={3} placeholder="这条知识解决什么问题、适合哪个 NPC 使用。" />
+                <textarea name="summary" rows={3} placeholder="这条知识解决什么问题、适合哪个 NPC 使用。" defaultValue={collaborationSeed ? seedSummary : undefined} />
               </label>
               <label>
                 标签
@@ -803,6 +837,7 @@ export function SkillForgeClient({
   workstations,
   initialOpenResourceIds,
   initialActiveTab = "skills",
+  initialCollaborationSeed = null,
 }: SkillForgeClientProps) {
   const resources = useMemo(() => {
     const stationResources = workstations.map((station, index) => {
@@ -836,13 +871,31 @@ export function SkillForgeClient({
   const npcAuthored = skills.filter((item) => /npc|agent/i.test(text(item.source ?? item.created_by_type ?? item.author_type, "")));
   const receiptMessage = userMessage(surfaceError || surfaceNotice, "");
   const receiptState = surfaceError ? "error" : surfaceNotice ? "success" : "";
+  const workspaceRef = useRef<HTMLElement | null>(null);
+
+  function focusWorkspaceOnMobile() {
+    if (typeof window === "undefined" || !window.matchMedia("(max-width: 760px)").matches) return;
+    window.setTimeout(() => {
+      workspaceRef.current?.scrollIntoView({ block: "start", inline: "nearest", behavior: "smooth" });
+    }, 80);
+  }
 
   function toggleResource(id: string) {
-    setOpenIds((curr) => curr.includes(id) ? curr.filter((item) => item !== id) : uniqueIds([...curr, id]));
+    setOpenIds((curr) => {
+      if (curr.includes(id)) return curr.filter((item) => item !== id);
+      focusWorkspaceOnMobile();
+      return uniqueIds([...curr, id]);
+    });
   }
 
   function openRecommendedResources() {
     setOpenIds(resources.slice(0, 2).map(resourceKey));
+    focusWorkspaceOnMobile();
+  }
+
+  function openAllResources() {
+    setOpenIds(resources.map(resourceKey));
+    focusWorkspaceOnMobile();
   }
 
   function closeResource(id: string) {
@@ -884,7 +937,7 @@ export function SkillForgeClient({
               <button type="button" className={`${workbenchStyles.batchBtn} ${styles.forgeBatchBtn}`} onClick={openRecommendedResources}>
                 打开推荐 ({Math.min(resources.length, 2)})
               </button>
-              <button type="button" className={`${workbenchStyles.batchBtn} ${styles.forgeBatchBtn} ${styles.forgeBatchBtnGhost}`} onClick={() => setOpenIds(resources.map(resourceKey))}>
+              <button type="button" className={`${workbenchStyles.batchBtn} ${styles.forgeBatchBtn} ${styles.forgeBatchBtnGhost}`} onClick={openAllResources}>
                 全部 ({resources.length})
               </button>
             </div>
@@ -992,7 +1045,7 @@ export function SkillForgeClient({
           </ul>
         </aside>
 
-        <section className={`${workbenchStyles.main} ${styles.forgeMain}`} data-mode={openResources.length > 0 ? "chat" : "setup"} data-has-receipt={receiptMessage ? "1" : "0"}>
+        <section ref={workspaceRef} className={`${workbenchStyles.main} ${styles.forgeMain}`} data-mode={openResources.length > 0 ? "chat" : "setup"} data-has-receipt={receiptMessage ? "1" : "0"}>
           {receiptMessage ? (
             <section className={styles.forgeReceipt} data-state={receiptState} role="status" aria-live="polite">
               <div>
@@ -1024,6 +1077,7 @@ export function SkillForgeClient({
                     messages={messages}
                     seats={seats}
                     initialActiveTab={initialActiveTab}
+                    collaborationSeed={initialCollaborationSeed}
                     onClose={() => closeResource(key)}
                   />
                 );
