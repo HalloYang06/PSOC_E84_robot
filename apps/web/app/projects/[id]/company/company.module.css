@@ -831,6 +831,82 @@
   background-size: 34px 34px, 34px 34px, auto;
 }
 
+.officeToolbar {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  left: 10px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.officeToolbar > * {
+  pointer-events: auto;
+}
+
+.officeSearch {
+  min-width: 178px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border: 1px solid rgba(231, 199, 104, 0.16);
+  border-radius: 8px;
+  background: rgba(8, 23, 20, 0.88);
+}
+
+.officeSearch span {
+  color: rgba(255, 232, 179, 0.78);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.officeSearch input {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 11px;
+}
+
+.officeSearch input::placeholder {
+  color: rgba(255, 248, 232, 0.42);
+}
+
+.officeFilterGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid rgba(231, 199, 104, 0.14);
+  border-radius: 8px;
+  background: rgba(8, 23, 20, 0.88);
+}
+
+.officeFilterGroup button {
+  min-height: 24px;
+  padding: 3px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(255, 248, 232, 0.68);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.officeFilterGroup button[data-active="1"] {
+  background: rgba(231, 199, 104, 0.14);
+  color: #ffe8b3;
+}
+
 .officeSvg {
   position: absolute;
   inset: 0;
@@ -864,6 +940,11 @@
 .networkEdgeLink:hover .networkEdge {
   opacity: 1;
   stroke-width: 3.8px;
+}
+
+.networkEdgeLink[data-selected="1"] .networkEdge {
+  opacity: 1;
+  stroke-width: 4.2px;
 }
 
 .networkEdgeLink[data-kind="relationship"] .networkEdge {
@@ -942,6 +1023,10 @@
   border-color: rgba(255, 232, 179, 0.72);
 }
 
+.officeNode[data-dimmed="1"] {
+  opacity: 0.34;
+}
+
 .officeNode[data-tone="healthy"] {
   border-color: rgba(158, 240, 191, 0.34);
 }
@@ -991,10 +1076,6 @@
 }
 
 .officeResetBtn {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  z-index: 5;
   min-height: 28px;
   padding: 5px 10px;
   border: 1px solid rgba(231, 199, 104, 0.2);
@@ -1009,6 +1090,102 @@
 .officeResetBtn:hover {
   border-color: rgba(255, 232, 179, 0.46);
   background: rgba(15, 36, 31, 0.94);
+}
+
+.officeEdgeDrawer {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 6;
+  width: min(320px, calc(100% - 24px));
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(231, 199, 104, 0.18);
+  border-radius: 8px;
+  background: rgba(6, 19, 17, 0.94);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
+}
+
+.officeEdgeDrawerTitle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.officeEdgeDrawerTitle span {
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.officeEdgeDrawerTitle button {
+  width: 24px;
+  height: 24px;
+  border: 1px solid rgba(231, 199, 104, 0.16);
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(255, 248, 232, 0.78);
+  cursor: pointer;
+}
+
+.officeEdgeDrawer strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.officeEdgeDrawer p {
+  margin: 0;
+  color: rgba(255, 248, 232, 0.72);
+  font-size: 11px;
+}
+
+.officeEdgeSteps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.officeEdgeSteps span {
+  min-width: 0;
+  padding: 7px;
+  border: 1px solid rgba(231, 199, 104, 0.14);
+  border-radius: 8px;
+  color: rgba(255, 248, 232, 0.78);
+  font-size: 10px;
+  font-weight: 900;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.officeEdgeSteps span[data-tone="healthy"] {
+  border-color: rgba(158, 240, 191, 0.28);
+  color: #b9f5cc;
+}
+
+.officeEdgeSteps span[data-tone="review"] {
+  border-color: rgba(255, 209, 102, 0.28);
+  color: #ffe8b3;
+}
+
+.officeEdgeSteps span[data-tone="blocked"] {
+  border-color: rgba(255, 117, 117, 0.3);
+  color: #ffb8b8;
+}
+
+.officeEdgeDrawer a {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(158, 240, 191, 0.22);
+  border-radius: 8px;
+  background: rgba(158, 240, 191, 0.08);
+  color: var(--mint);
+  font-size: 11px;
+  font-weight: 900;
 }
 
 .emptyOfficeNetwork {
@@ -1552,10 +1729,40 @@
     min-height: 520px;
   }
 
+  .officeToolbar {
+    align-items: stretch;
+    flex-direction: column;
+    right: 8px;
+    left: 8px;
+  }
+
+  .officeSearch {
+    width: 100%;
+  }
+
+  .officeFilterGroup {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .officeFilterGroup button {
+    flex: 1;
+  }
+
   .officeNode {
     width: 78px;
     min-height: 70px;
     padding: 7px;
+  }
+
+  .officeEdgeDrawer {
+    right: 8px;
+    bottom: 8px;
+    width: calc(100% - 16px);
+  }
+
+  .officeEdgeSteps {
+    grid-template-columns: 1fr;
   }
 
   .relationCard {

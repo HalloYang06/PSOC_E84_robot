@@ -250,11 +250,60 @@ def main() -> int:
         if int(after.get("overflow") or 0) > 2:
             raise RuntimeError(f"Company page has horizontal overflow after drag: {after['overflow']}")
 
+        detail = cdp_eval(
+            cdp,
+            """
+            (() => {
+              const section = document.querySelector('section[aria-label="NPC 办公网"]');
+              const link = section?.querySelector('svg a[data-kind]');
+              const line = link?.querySelector('line[stroke-width]');
+              if (!link || !line) return null;
+              const rect = line.getBoundingClientRect();
+              const x = rect.left + rect.width / 2;
+              const y = rect.top + rect.height / 2;
+              link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: x, clientY: y }));
+              const drawer = section.querySelector('[aria-label="协作线详情"]');
+              const detailLink = drawer?.querySelector('a[href*="/workbench"]');
+              return {
+                drawerText: (drawer?.textContent || '').trim(),
+                detailHref: detailLink?.getAttribute('href') || '',
+                selected: section.querySelectorAll('svg a[data-selected="1"]').length,
+              };
+            })()
+            """,
+        )
+        if not isinstance(detail, dict) or not detail.get("drawerText") or not detail.get("detailHref"):
+            raise RuntimeError(f"Clicking a collaboration line did not open details: {detail}")
+        if int(detail.get("selected") or 0) < 1:
+            raise RuntimeError(f"Clicked line was not visually selected: {detail}")
+
+        filtered = cdp_eval(
+            cdp,
+            """
+            (() => {
+              const section = document.querySelector('section[aria-label="NPC 办公网"]');
+              const button = Array.from(section?.querySelectorAll('button') || []).find((item) => item.textContent?.trim() === '真实');
+              button?.click();
+              const edgeCount = section?.querySelectorAll('svg a[data-kind="collaboration"]').length || 0;
+              const dimmedNodes = section?.querySelectorAll('a[data-dimmed="1"]').length || 0;
+              return {
+                edgeCount,
+                dimmedNodes,
+                activeText: button?.getAttribute('data-active') || '',
+              };
+            })()
+            """,
+        )
+        if not isinstance(filtered, dict) or filtered.get("activeText") != "1":
+            raise RuntimeError(f"Office network filter did not activate: {filtered}")
+
         after_shot = output_dir / f"office-network-after-drag-{stamp}.png"
         screenshot(cdp, after_shot)
         report["screenshots"].append(str(after_shot))
         report["before"] = before
         report["after"] = after
+        report["detail"] = detail
+        report["filtered"] = filtered
         report["url"] = url
     finally:
         if cdp:
