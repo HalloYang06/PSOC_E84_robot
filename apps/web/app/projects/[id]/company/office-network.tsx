@@ -202,16 +202,23 @@ export function OfficeNetwork({ projectId, nodes, edges }: OfficeNetworkProps) {
           const width = edge.kind === "relationship" ? 1.15 : Math.min(3.1, 1.35 + edge.count * 0.32);
           const edgeLabel = edge.kind === "relationship" ? `${edge.label}关系` : `${edge.count > 1 ? `${edge.count}条 ` : ""}${edge.label}`;
           return (
-            <a
+            <g
               key={edge.id}
-              href={edge.href}
               className={styles.networkEdgeLink}
               data-kind={edge.kind}
               data-selected={selectedEdgeId === edge.id ? "1" : undefined}
+              role="button"
+              tabIndex={0}
               aria-label={`${from.name} 到 ${to.name}: ${edgeLabel}`}
               onClick={(event) => {
                 event.preventDefault();
                 setSelectedEdgeId(edge.id);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setSelectedEdgeId(edge.id);
+                }
               }}
             >
               <title>{`${from.name} → ${to.name}：${edgeLabel}`}</title>
@@ -224,7 +231,7 @@ export function OfficeNetwork({ projectId, nodes, edges }: OfficeNetworkProps) {
               <text x={labelX} y={labelY} className={styles.networkEdgeLabel}>
                 {edgeLabel}
               </text>
-            </a>
+            </g>
           );
         })}
       </svg>

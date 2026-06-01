@@ -255,7 +255,7 @@ def main() -> int:
             """
             (() => {
               const section = document.querySelector('section[aria-label="NPC 办公网"]');
-              const link = section?.querySelector('svg a[data-kind]');
+              const link = section?.querySelector('svg [data-kind]');
               const line = link?.querySelector('line[stroke-width]');
               const svg = section?.querySelector('svg');
               if (!link || !line || !svg) return null;
@@ -287,7 +287,7 @@ def main() -> int:
               return {
                 drawerText: (drawer?.textContent || '').trim(),
                 detailHref: detailLink?.getAttribute('href') || '',
-                selected: section.querySelectorAll('svg a[data-selected="1"]').length,
+                selected: section.querySelectorAll('svg [data-selected="1"]').length,
               };
             })()
             """,
@@ -304,7 +304,7 @@ def main() -> int:
               const section = document.querySelector('section[aria-label="NPC 办公网"]');
               const button = Array.from(section?.querySelectorAll('button') || []).find((item) => item.textContent?.trim() === '真实');
               button?.click();
-              const edgeCount = section?.querySelectorAll('svg a[data-kind="collaboration"]').length || 0;
+              const edgeCount = section?.querySelectorAll('svg [data-kind="collaboration"]').length || 0;
               const dimmedNodes = section?.querySelectorAll('a[data-dimmed="1"]').length || 0;
               return {
                 edgeCount,
