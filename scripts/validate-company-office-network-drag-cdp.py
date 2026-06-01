@@ -239,7 +239,8 @@ def main() -> int:
         drag_dx = float(drag_vector.get("dx", 96) if isinstance(drag_vector, dict) else 96)
         drag_dy = float(drag_vector.get("dy", 44) if isinstance(drag_vector, dict) else 44)
         cdp.send("Input.dispatchMouseEvent", {"type": "mouseMoved", "x": start_x, "y": start_y, "button": "none"})
-        cdp.send("Input.dispatchMouseEvent", {"type": "mousePressed", "x": start_x, "y": start_y, "button": "left", "clickCount": 1})
+        cdp.send("Input.dispatchMouseEvent", {"type": "mousePressed", "x": start_x, "y": start_y, "button": "left", "buttons": 1, "clickCount": 1})
+        time.sleep(0.08)
         for step in range(1, 9):
             progress = step / 8
             cdp.send(
