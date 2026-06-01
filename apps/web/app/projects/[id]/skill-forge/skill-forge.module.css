@@ -99,6 +99,7 @@
 }
 
 .forgeSidebar {
+  position: relative;
   width: 312px;
   border: 1px solid var(--forge-line);
   border-radius: 24px;
@@ -128,6 +129,10 @@
 
 .forgeGroupList {
   padding: 10px;
+}
+
+.forgeScrollHint {
+  display: none;
 }
 
 .forgeGroup {
@@ -998,8 +1003,12 @@
   }
 
   .forgeSidebar {
+    display: flex;
+    flex-direction: column;
     width: auto;
+    max-height: 44vh;
     border-radius: 20px;
+    overflow: hidden;
   }
 
   .forgeSidebarHeader {
@@ -1025,7 +1034,41 @@
   }
 
   .forgeGroupList {
-    padding: 8px;
+    min-height: 0;
+    padding: 8px 8px 38px;
+    overflow-y: auto;
+    scrollbar-color: rgba(232, 189, 95, 0.42) transparent;
+  }
+
+  .forgeGroupList::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .forgeGroupList::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: rgba(232, 189, 95, 0.38);
+  }
+
+  .forgeScrollHint {
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    display: flex;
+    justify-content: center;
+    min-height: 28px;
+    padding: 6px 10px;
+    border: 1px solid rgba(232, 189, 95, 0.2);
+    border-radius: 999px;
+    background:
+      linear-gradient(180deg, rgba(25, 31, 20, 0.1), rgba(10, 14, 9, 0.92)),
+      rgba(13, 16, 9, 0.88);
+    color: rgba(255, 247, 225, 0.76);
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+    pointer-events: none;
+    box-shadow: 0 -18px 32px rgba(13, 16, 9, 0.68);
   }
 
   .forgeNpcRow {

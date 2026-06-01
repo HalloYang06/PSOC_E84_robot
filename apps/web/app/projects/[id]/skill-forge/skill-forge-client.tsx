@@ -985,6 +985,7 @@ export function SkillForgeClient({
               </li>
             ) : null}
           </ul>
+          <div className={styles.forgeScrollHint} aria-hidden="true">继续下滑查看更多 NPC</div>
         </aside>
 
         <section className={`${workbenchStyles.main} ${styles.forgeMain}`} data-mode={openResources.length > 0 ? "chat" : "setup"} data-has-receipt={receiptMessage ? "1" : "0"}>
