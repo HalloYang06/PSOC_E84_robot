@@ -19,6 +19,7 @@ const ALLOWED_RUNNER_SCRIPTS = new Set([
   "platform-provider-executor.py",
   "scan-device-interfaces.py",
   "run-device-capture-command.py",
+  "nanopi-rehab-arm-readonly-agent.py",
 ]);
 
 function findRunnerScriptPath(filename: string) {
