@@ -346,13 +346,13 @@
   background:
     linear-gradient(150deg, rgba(32, 35, 21, 0.82), rgba(15, 20, 13, 0.72));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  overflow: visible;
+  overflow: hidden;
 }
 
 .skillGrid .wideCard {
   grid-column: 1 / -1;
-  min-height: 118px;
-  overflow: visible;
+  min-height: 152px;
+  overflow: hidden;
 }
 
 .skillGrid .boundCard {
@@ -381,7 +381,7 @@
   grid-column: 1 / -1;
   min-height: 326px;
   height: auto;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .skillGrid .depositWideCard {
@@ -393,7 +393,7 @@
   grid-template-columns: 1fr;
   align-items: stretch;
   gap: 12px;
-  min-height: 176px;
+  min-height: 214px;
   height: auto;
   border-color: rgba(143, 214, 255, 0.28);
   background:
@@ -496,9 +496,9 @@
 }
 
 .skillGrid .assetCard {
-  min-height: 238px;
+  min-height: 260px;
   height: auto;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .gitGrid {
@@ -899,7 +899,20 @@
   .skillGrid .wideCard,
   .skillGrid .closureCard,
   .skillGrid .assetCard {
-    min-height: auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .skillGrid .wideCard {
+    min-height: 178px;
+  }
+
+  .skillGrid .closureCard {
+    min-height: 326px;
+  }
+
+  .skillGrid .assetCard {
+    min-height: 286px;
   }
 
   .skillGrid .gitCard,
