@@ -770,14 +770,14 @@ export function SkillForgeClient({
   }
 
   return (
-    <main className={workbenchStyles.shell}>
+    <main className={`${workbenchStyles.shell} ${styles.forgeShell}`}>
       <header className={workbenchStyles.topbar}>
         <div className={workbenchStyles.topbarLeft}>
           <Link href={`/projects/${projectId}/2d-upgrade`} className={workbenchStyles.backLink}>← 主页面</Link>
           {returnTo ? <Link href={returnTo} className={workbenchStyles.backLink}>{returnToLabel || "← 返回来源"}</Link> : null}
           <div className={workbenchStyles.title}>
             <strong>{projectName}</strong>
-            <small>能力工坊 · 工位 / NPC 独立配置瓷砖</small>
+            <small>能力工坊 · Skill、知识库、Git 治理资产统一整理</small>
           </div>
         </div>
         <div className={workbenchStyles.topbarRight}>
@@ -798,7 +798,7 @@ export function SkillForgeClient({
               className={workbenchStyles.search}
               placeholder="搜索工位 / NPC / Skill"
               readOnly
-              value="能力工坊"
+              value="资源索引：工位 / NPC / 能力"
             />
             <button type="button" className={workbenchStyles.batchBtn} onClick={() => setOpenIds(resources.map(resourceKey))}>
               打开全部 ({resources.length})
@@ -931,8 +931,8 @@ export function SkillForgeClient({
             </div>
           ) : (
             <div className={workbenchStyles.placeholder}>
-              <strong>点击左栏工位或 NPC 的 + 号打开配置瓷砖</strong>
-              <p>每个瓷砖都有自己的 Skill 配置、知识库配置和 Git 管理。</p>
+              <strong>先从左侧选择一个工位或 NPC</strong>
+              <p>打开后只看该对象自己的 Skill、知识库和 Git 治理证据；不会把全部功能一次性堆出来。</p>
             </div>
           )}
         </section>
