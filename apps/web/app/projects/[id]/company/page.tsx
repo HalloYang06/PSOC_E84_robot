@@ -855,9 +855,53 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
       }
     }
   }
-  const officeEdges = [...officeEdgeMap.values()]
+  const explicitOfficeEdges = [...officeEdgeMap.values()]
     .filter((edge) => officeNodeById.has(edge.fromId) && officeNodeById.has(edge.toId))
     .sort((left, right) => right.activityTime - left.activityTime);
+  const existingOfficeEdgeIds = new Set(explicitOfficeEdges.map((edge) => edge.id));
+  const officeRelationshipEdges: typeof explicitOfficeEdges = [];
+  const seatsByOfficeWorkstation = new Map<string, typeof allSeats>();
+  for (const seat of allSeats) {
+    const key = seat.workstationId || "unassigned";
+    seatsByOfficeWorkstation.set(key, [...(seatsByOfficeWorkstation.get(key) ?? []), seat]);
+  }
+  for (const peers of seatsByOfficeWorkstation.values()) {
+    for (let index = 0; index < peers.length - 1; index += 1) {
+      const from = peers[index];
+      const to = peers[index + 1];
+      const id = `${from.id}->${to.id}`;
+      if (existingOfficeEdgeIds.has(id)) continue;
+      officeRelationshipEdges.push({
+        id,
+        fromId: from.id,
+        toId: to.id,
+        count: 1,
+        label: "同工位",
+        needStatus: "等待协作",
+        taskStatus: "同工位",
+        receiptStatus: "等待回执",
+        activityTime: 0,
+      });
+    }
+  }
+  for (const seat of allSeats) {
+    if (!seat.leadSeatId || seat.leadSeatId === seat.id) continue;
+    const id = `${seat.leadSeatId}->${seat.id}`;
+    if (existingOfficeEdgeIds.has(id)) continue;
+    if (!officeNodeById.has(seat.leadSeatId) || !officeNodeById.has(seat.id)) continue;
+    officeRelationshipEdges.push({
+      id,
+      fromId: seat.leadSeatId,
+      toId: seat.id,
+      count: 1,
+      label: "负责人",
+      needStatus: "等待协作",
+      taskStatus: "负责人",
+      receiptStatus: "等待回执",
+      activityTime: 0,
+    });
+  }
+  const officeEdges = [...explicitOfficeEdges, ...officeRelationshipEdges.slice(0, Math.max(0, 14 - explicitOfficeEdges.length))];
   const seatRelationCards = allSeats.map((seat) => {
     const sameDepartmentPeers = allSeats.filter(
       (peer) => peer.id !== seat.id && peer.workstationId && peer.workstationId === seat.workstationId,

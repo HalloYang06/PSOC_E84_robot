@@ -16,6 +16,7 @@ function cleanArtifacts() {
     maxRetries: 5,
     retryDelay: 100,
   });
+  mkdirSync(nextDir, { recursive: true });
 }
 
 mkdirSync(runtimeHome, { recursive: true });
@@ -56,19 +57,24 @@ function isRecoverableManifestRace(result) {
   return (
     output.includes("ENOENT") &&
     (output.includes("build-manifest.json") ||
+      output.includes("pages-manifest.json") ||
+      output.includes(".next\\package.json") ||
+      output.includes(".next/package.json") ||
+      output.includes(".next\\export\\") ||
+      output.includes(".next/export/") ||
       output.includes("_ssgManifest.js") ||
       output.includes(".next/static/"))
   );
 }
 
 let result;
-for (let attempt = 1; attempt <= 2; attempt += 1) {
+for (let attempt = 1; attempt <= 3; attempt += 1) {
   cleanArtifacts();
   result = runNextBuild();
   if (result.status === 0) {
     process.exit(0);
   }
-  if (attempt === 1 && isRecoverableManifestRace(result)) {
+  if (attempt < 3 && isRecoverableManifestRace(result)) {
     console.warn("[web build] Next build failed once; retrying after a clean artifact pass.");
     continue;
   }
