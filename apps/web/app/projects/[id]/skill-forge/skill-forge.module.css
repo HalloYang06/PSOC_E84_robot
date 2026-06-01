@@ -855,12 +855,113 @@
 }
 
 @media (max-width: 760px) {
+  .forgeTopbar {
+    min-height: auto;
+    padding: 10px;
+    display: grid !important;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .forgeTopbar :global([class*="topbarLeft"]),
+  .forgeTopbar :global([class*="topbarRight"]) {
+    min-width: 0;
+  }
+
+  .forgeTopbar :global([class*="topbarLeft"]) {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+  }
+
+  .forgeTopbar :global([class*="topbarRight"]) {
+    display: flex;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    gap: 6px;
+    padding: 1px 0 3px;
+    scrollbar-width: none;
+  }
+
+  .forgeTopbar :global([class*="topbarRight"])::-webkit-scrollbar {
+    display: none;
+  }
+
+  .forgeBackLink {
+    min-height: 28px;
+    padding: 5px 10px;
+    white-space: nowrap;
+  }
+
+  .forgeTitle {
+    min-width: 0;
+  }
+
+  .forgeTitle strong,
+  .forgeTitle small {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .forgeTitle strong {
+    font-size: 16px;
+  }
+
+  .forgeTitle small {
+    font-size: 11px;
+  }
+
+  .forgeKpi {
+    flex: 0 0 auto;
+    max-width: none;
+    min-height: 26px;
+    padding: 4px 9px;
+    font-size: 11px;
+  }
+
   .forgeBody {
     padding: 10px;
   }
 
   .forgeSidebar {
     width: auto;
+    border-radius: 20px;
+  }
+
+  .forgeSidebarHeader {
+    gap: 8px;
+    padding: 12px;
+  }
+
+  .forgeSearch {
+    min-height: 36px;
+    border-radius: 14px;
+    font-size: 12px;
+  }
+
+  .forgeQuickActions {
+    grid-template-columns: minmax(0, 1fr) minmax(68px, auto);
+    gap: 6px;
+  }
+
+  .forgeBatchBtn {
+    min-height: 30px;
+    padding: 5px 9px;
+    font-size: 11px;
+  }
+
+  .forgeGroupList {
+    padding: 8px;
+  }
+
+  .forgeNpcRow {
+    min-height: 54px;
+    padding: 9px 10px;
+    border-radius: 15px;
   }
 
   .forgeReceipt {
