@@ -250,18 +250,38 @@ def main() -> int:
         if int(after.get("overflow") or 0) > 2:
             raise RuntimeError(f"Company page has horizontal overflow after drag: {after['overflow']}")
 
-        detail = cdp_eval(
+        click_target = cdp_eval(
             cdp,
             """
             (() => {
               const section = document.querySelector('section[aria-label="NPC 办公网"]');
               const link = section?.querySelector('svg a[data-kind]');
               const line = link?.querySelector('line[stroke-width]');
-              if (!link || !line) return null;
-              const rect = line.getBoundingClientRect();
-              const x = rect.left + rect.width / 2;
-              const y = rect.top + rect.height / 2;
-              link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: x, clientY: y }));
+              const svg = section?.querySelector('svg');
+              if (!link || !line || !svg) return null;
+              const rect = svg.getBoundingClientRect();
+              const x1 = Number(line.getAttribute('x1') || 0);
+              const y1 = Number(line.getAttribute('y1') || 0);
+              const x2 = Number(line.getAttribute('x2') || 0);
+              const y2 = Number(line.getAttribute('y2') || 0);
+              return {
+                x: rect.left + ((x1 + x2) / 2 / 100) * rect.width,
+                y: rect.top + ((y1 + y2) / 2 / 100) * rect.height,
+              };
+            })()
+            """,
+        )
+        if not isinstance(click_target, dict):
+            raise RuntimeError(f"Could not find an office network line to click: {click_target}")
+        cdp.send("Input.dispatchMouseEvent", {"type": "mouseMoved", "x": float(click_target["x"]), "y": float(click_target["y"]), "button": "none"})
+        cdp.send("Input.dispatchMouseEvent", {"type": "mousePressed", "x": float(click_target["x"]), "y": float(click_target["y"]), "button": "left", "clickCount": 1})
+        cdp.send("Input.dispatchMouseEvent", {"type": "mouseReleased", "x": float(click_target["x"]), "y": float(click_target["y"]), "button": "left", "clickCount": 1})
+        time.sleep(0.5)
+        detail = cdp_eval(
+            cdp,
+            """
+            (() => {
+              const section = document.querySelector('section[aria-label="NPC 办公网"]');
               const drawer = section.querySelector('[aria-label="协作线详情"]');
               const detailLink = drawer?.querySelector('a[href*="/workbench"]');
               return {

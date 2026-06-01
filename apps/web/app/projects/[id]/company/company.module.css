@@ -989,10 +989,12 @@
   position: absolute;
   inset: 0;
   z-index: 2;
+  pointer-events: none;
 }
 
 .officeNode {
   position: absolute;
+  pointer-events: auto;
   width: 96px;
   min-height: 78px;
   display: grid;
