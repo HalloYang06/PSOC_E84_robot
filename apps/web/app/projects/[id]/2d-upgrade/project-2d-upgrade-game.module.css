@@ -2362,6 +2362,45 @@
     width: auto;
   }
 
+  .tertiaryDrawer {
+    position: relative;
+    top: auto;
+    right: auto;
+    bottom: auto;
+    width: auto;
+    max-height: none;
+    margin: 10px;
+    padding: 14px;
+    overflow: visible;
+    clip-path: none;
+    border-radius: 14px;
+  }
+
+  .tertiaryDrawer header {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .tertiaryDrawer header strong {
+    grid-column: auto;
+    font-size: 22px;
+  }
+
+  .tertiaryDrawer header button {
+    grid-column: auto;
+    grid-row: auto;
+    justify-self: start;
+  }
+
+  .drawerActionSwitch,
+  .drawerButtons {
+    grid-template-columns: 1fr;
+  }
+
+  .drawerButtons button {
+    width: 100%;
+  }
+
   .panelGrid {
     grid-template-columns: 1fr;
   }
