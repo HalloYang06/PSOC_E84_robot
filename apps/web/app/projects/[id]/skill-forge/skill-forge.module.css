@@ -308,6 +308,10 @@
 
 .forgePlaceholder {
   align-self: start;
+  justify-content: flex-start;
+  align-items: flex-start;
+  height: auto;
+  width: min(680px, calc(100% - 24px));
   min-height: 260px;
   margin: 12px;
   padding: 26px;
@@ -317,6 +321,7 @@
     radial-gradient(circle at 10% 0%, rgba(232, 189, 95, 0.12), transparent 34%),
     linear-gradient(150deg, rgba(23, 30, 18, 0.82), rgba(10, 15, 10, 0.78));
   color: var(--forge-muted);
+  text-align: left;
 }
 
 .forgePlaceholder strong {
