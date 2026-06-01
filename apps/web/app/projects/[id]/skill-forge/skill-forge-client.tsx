@@ -462,13 +462,16 @@ function ForgeTile({
               (deposits && /npc/i.test(skillSourceLabel(skill)) ? `${deposits.skill}SKILL.md` : "");
             const githubHref = externalSkillHref(skill) || githubBlobHref(projectRepo, repoPath);
             return (
-            <article key={text(skill.id ?? skill.name, `skill-${index}`)} className={assignedSkillIds.has(skillIdOf(skill)) || builtIn ? styles.boundCard : undefined}>
+            <article
+              key={text(skill.id ?? skill.name, `skill-${index}`)}
+              className={`${styles.assetCard} ${assignedSkillIds.has(skillIdOf(skill)) || builtIn ? styles.boundCard : ""}`}
+            >
               <div className={styles.cardTopline}>
                 <span>{skillSourceLabel(skill)}</span>
                 <small>{builtIn ? "上岗基础" : assignedSkillIds.has(skillIdOf(skill)) ? "已装配" : "仓库可选"}</small>
               </div>
-              <strong>{skillLabelOf(skill, `Skill ${index + 1}`)}</strong>
-              <p>{skillDescriptionOf(skill) || "暂无说明"}</p>
+              <strong className={styles.assetTitle}>{skillLabelOf(skill, `Skill ${index + 1}`)}</strong>
+              <p className={styles.assetDescription}>{skillDescriptionOf(skill) || "暂无说明"}</p>
               <div className={styles.repoLine}>
                 <b>{builtIn && !repoPath ? "能力来源" : "仓库位置"}</b>
                 {repoPath ? <code>{repoPath}</code> : <em>{builtIn ? "随 NPC 上岗包生成" : "待补仓库路径"}</em>}

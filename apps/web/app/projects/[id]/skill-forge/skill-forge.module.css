@@ -219,16 +219,19 @@
 }
 
 .skillGrid article {
-  min-height: 116px;
-  display: grid;
-  align-content: start;
-  gap: 8px;
-  padding: 12px;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-content: initial;
+  gap: 10px;
+  padding: 14px;
   border: 1px solid rgba(232, 189, 95, 0.16);
   border-radius: 18px;
   background:
     linear-gradient(150deg, rgba(32, 35, 21, 0.82), rgba(15, 20, 13, 0.72));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  overflow: hidden;
 }
 
 .skillGrid .wideCard {
@@ -260,6 +263,7 @@
 .materialRows span {
   color: var(--forge-amber);
   font-size: 11px;
+  line-height: 1.35;
   font-weight: 900;
 }
 
@@ -267,7 +271,7 @@
 .materialRows strong {
   color: var(--forge-text);
   font-size: 13px;
-  line-height: 1.35;
+  line-height: 1.45;
 }
 
 .skillGrid p,
@@ -275,31 +279,74 @@
   margin: 0;
   color: var(--forge-muted);
   font-size: 12px;
-  line-height: 1.45;
+  line-height: 1.65;
 }
 
 .skillGrid small,
 .materialRows small {
   color: #ffd166;
   font-size: 11px;
+  line-height: 1.35;
   font-weight: 900;
+}
+
+.assetCard {
+  min-height: 238px;
+}
+
+.assetTitle {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.assetDescription {
+  display: -webkit-box;
+  min-height: 58px;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
 }
 
 .cardTopline {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
+  gap: 10px;
   flex-wrap: wrap;
+}
+
+.cardTopline span,
+.cardTopline small {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-height: 22px;
+  padding: 3px 8px;
+  border: 1px solid rgba(232, 189, 95, 0.18);
+  border-radius: 999px;
+  background: rgba(232, 189, 95, 0.08);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cardTopline small {
+  flex-shrink: 0;
+  border-color: rgba(167, 223, 154, 0.24);
+  background: rgba(167, 223, 154, 0.1);
+  color: #d7ffc9;
 }
 
 .repoLine {
   min-width: 0;
+  margin-top: auto;
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 6px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px 8px;
   align-items: start;
-  padding: 8px 10px;
+  padding: 10px;
   border: 1px solid rgba(232, 189, 95, 0.12);
   border-radius: 14px;
   background: rgba(0, 0, 0, 0.2);
@@ -307,30 +354,37 @@
 
 .repoLine b,
 .repoLine em {
+  grid-column: 1 / -1;
   color: rgba(205, 232, 238, 0.64);
   font-size: 10px;
+  line-height: 1.35;
   font-style: normal;
   font-weight: 900;
 }
 
 .repoLine code {
+  grid-column: 1 / -1;
   min-width: 0;
+  max-height: 34px;
+  overflow: hidden;
   overflow-wrap: anywhere;
   word-break: break-word;
   color: var(--forge-text);
   font-family: inherit;
   font-size: 11px;
-  line-height: 1.35;
+  line-height: 1.5;
 }
 
 .repoLine a {
+  grid-column: 1 / -1;
   justify-self: start;
-  padding: 3px 7px;
+  padding: 4px 8px;
   border: 1px solid rgba(232, 189, 95, 0.24);
   border-radius: 999px;
   background: rgba(232, 189, 95, 0.08);
   color: var(--forge-amber);
   font-size: 11px;
+  line-height: 1.25;
   font-weight: 900;
   text-decoration: none;
 }
