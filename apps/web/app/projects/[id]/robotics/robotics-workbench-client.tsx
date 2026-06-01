@@ -1820,6 +1820,64 @@ function submitTitle(tile: DebugWindow) {
   return userFacingTerminalText(tile.runnerHint);
 }
 
+function RecoveryChecklist({
+  projectId,
+  tile,
+  npcLabel,
+  npcState,
+}: {
+  projectId: string;
+  tile: DebugWindow;
+  npcLabel: string;
+  npcState: ReturnType<typeof summarizeNpcSeatDispatchState>;
+}) {
+  const items = [
+    {
+      key: "computer",
+      show: !tile.runnerCanDispatch,
+      title: tile.runnerCanQueue ? "等待目标电脑恢复" : "重连接单窗口",
+      detail: tile.runnerCanQueue
+        ? "命令可以排队，但页面不会把它显示成已执行。目标电脑在线后再继续。"
+        : userFacingTerminalText(tile.runnerHint) || "先让目标电脑接入并保持接单窗口在线。",
+      href: `/projects/${projectId}`,
+      action: "检查电脑接入",
+    },
+    {
+      key: "npc",
+      show: Boolean(npcLabel) && !npcState.ready,
+      title: "补齐协助 NPC 接单条件",
+      detail: npcState.detail,
+      href: `/projects/${projectId}/workbench`,
+      action: "打开 NPC 工作台",
+    },
+    {
+      key: "safety",
+      show: tile.writeCapabilityLabel !== "可写",
+      title: "写入和 NPC 代操作需要确认",
+      detail: "只读采集可以直接进入队列；写参数、ROS 写动作、真实运动或 NPC 代发命令必须先走确认。",
+      href: `/projects/${projectId}/company`,
+      action: "查看公司决策",
+    },
+  ].filter((item) => item.show);
+
+  if (!items.length) return null;
+
+  return (
+    <section className={styles.recoveryChecklist} aria-label={`${tile.name} 下一步恢复清单`}>
+      <strong>下一步怎么恢复</strong>
+      <div>
+        {items.map((item) => (
+          <article key={item.key}>
+            <span>{item.title}</span>
+            <p>{item.detail}</p>
+            <Link href={item.href} prefetch={false}>{item.action}</Link>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function windowsHref(projectId: string, openIds: string[], npcId = "") {
   const params = new URLSearchParams();
   if (openIds.length) params.set("windows", openIds.join(","));
@@ -1957,6 +2015,12 @@ function DebugTile({
         {!tile.runnerCanDispatch ? <em>保持目标电脑接单窗口在线后自动恢复</em> : null}
         {effectiveBoundNpcId && !npcDispatchState.ready ? <em>{npcDispatchState.detail}</em> : null}
       </section>
+      <RecoveryChecklist
+        projectId={projectId}
+        tile={tile}
+        npcLabel={effectiveBoundNpcLabel}
+        npcState={npcDispatchState}
+      />
       {settingsOpen ? (
         <form action={更新机器人调试窗口.bind(null, projectId)} className={styles.settingsPanel} aria-label={`${tile.name} 设置`}>
           <input type="hidden" name="return_to" value={returnTo} />

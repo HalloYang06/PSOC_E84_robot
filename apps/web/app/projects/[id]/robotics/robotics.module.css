@@ -2195,6 +2195,70 @@
   color: rgba(220, 240, 255, 0.68);
 }
 
+.recoveryChecklist {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+  padding: 8px;
+  border: 1px solid rgba(241, 208, 107, 0.22);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(241, 208, 107, 0.08), rgba(2, 13, 20, 0.62)),
+    rgba(2, 13, 20, 0.74);
+}
+
+.recoveryChecklist > strong {
+  color: #f7e4a5;
+  font-size: 12px;
+}
+
+.recoveryChecklist > div {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.recoveryChecklist article {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  padding: 8px;
+  border: 1px solid rgba(241, 208, 107, 0.14);
+  border-radius: 7px;
+  background: rgba(1, 8, 12, 0.42);
+}
+
+.recoveryChecklist span {
+  color: #fff4ca;
+  font-size: 11.5px;
+  font-weight: 900;
+}
+
+.recoveryChecklist p {
+  min-width: 0;
+  margin: 0;
+  color: rgba(234, 255, 255, 0.68);
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.recoveryChecklist a {
+  width: fit-content;
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 8px;
+  border: 1px solid rgba(120, 230, 170, 0.3);
+  border-radius: 7px;
+  background: rgba(120, 230, 170, 0.1);
+  color: #dffff0;
+  font-size: 11px;
+  font-weight: 900;
+  text-decoration: none;
+}
+
 .terminalPane {
   flex: 1 1 auto;
   min-height: 0;
@@ -2559,7 +2623,8 @@
   }
 
   .accessCheckHead,
-  .runnerGate {
+  .runnerGate,
+  .recoveryChecklist > div {
     grid-template-columns: 1fr;
   }
 
