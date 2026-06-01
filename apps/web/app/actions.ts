@@ -4944,12 +4944,13 @@ function fileAlreadyIndexed(items: Record<string, unknown>[], repoPath: string) 
   });
 }
 
-function depositAuditItem(kind: string, scanned: number, added: number) {
+function depositAuditItem(kind: string, scanned: number, added: number, destination = "") {
   return {
     kind,
     scanned,
     added,
     skipped: Math.max(0, scanned - added),
+    destination,
   };
 }
 
@@ -5145,10 +5146,10 @@ export async function 索引Npc沉淀(projectId: string, seatId: string, formDat
 
     const indexedAt = new Date().toISOString();
     const auditItems = [
-      depositAuditItem("知识", knowledgeFiles.length, knowledgeCount),
-      depositAuditItem("Skill 草稿", skillFiles.length, skillCount),
-      depositAuditItem("需求", needFiles.length, needCount),
-      depositAuditItem("任务回执", taskFiles.length, taskCount),
+      depositAuditItem("知识", knowledgeFiles.length, knowledgeCount, "已进入该 NPC 知识库配置"),
+      depositAuditItem("Skill 草稿", skillFiles.length, skillCount, "已进入能力草稿区，确认后才会影响上岗包"),
+      depositAuditItem("需求", needFiles.length, needCount, "已进入当前需求队列，等待路由或人工处理"),
+      depositAuditItem("任务回执", taskFiles.length, taskCount, "已进入任务回执队列，可用于验收和归档"),
     ];
     const scannedTotal = auditItems.reduce((sum, item) => sum + item.scanned, 0);
     const addedTotal = auditItems.reduce((sum, item) => sum + item.added, 0);

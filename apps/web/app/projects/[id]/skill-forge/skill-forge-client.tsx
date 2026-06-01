@@ -415,6 +415,14 @@ function safeCount(value: unknown) {
   return Number.isFinite(next) && next > 0 ? Math.round(next) : 0;
 }
 
+function depositAuditDestination(kind: string) {
+  if (kind === "知识") return "已进入该 NPC 知识库配置";
+  if (kind === "Skill 草稿") return "已进入能力草稿区，确认后才会影响上岗包";
+  if (kind === "需求") return "已进入当前需求队列，等待路由或人工处理";
+  if (kind === "任务回执") return "已进入任务回执队列，可用于验收和归档";
+  return "已同步到当前资源";
+}
+
 function forgeHref(projectId: string, openIds: string[]) {
   const params = new URLSearchParams();
   if (openIds.length) params.set("resources", openIds.join(","));
@@ -529,6 +537,7 @@ function ForgeTile({
         scanned: safeCount(item.scanned),
         added: safeCount(item.added),
         skipped: safeCount(item.skipped),
+        destination: text(item.destination, depositAuditDestination(text(item.kind, "沉淀"))),
       }))
     : [];
   const depositAuditTime = snapshotTime(depositSnapshot?.generated_at);
@@ -930,6 +939,7 @@ function ForgeTile({
                         <span key={item.kind}>
                           <b>{item.kind}</b>
                           <small>扫描 {item.scanned} · 新增 {item.added} · 跳过 {item.skipped}</small>
+                          <em>{item.destination}</em>
                         </span>
                       ))}
                     </div>
@@ -1023,7 +1033,7 @@ function ForgeTile({
               {depositAuditRows.length ? (
                 <div className={styles.depositAuditPills} aria-label="沉淀索引摘要">
                   {depositAuditRows.map((item) => (
-                    <span key={`row-${item.kind}`}>{item.kind} 新增 {item.added} / 跳过 {item.skipped}</span>
+                    <span key={`row-${item.kind}`}>{item.kind} 新增 {item.added} / 跳过 {item.skipped} · {item.destination}</span>
                   ))}
                 </div>
               ) : null}

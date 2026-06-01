@@ -990,9 +990,18 @@
 }
 
 .depositAuditGrid b,
-.depositAuditGrid small {
+.depositAuditGrid small,
+.depositAuditGrid em {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.depositAuditGrid em {
+  color: rgba(205, 232, 238, 0.64);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1.35;
 }
 
 .depositAuditPills {
