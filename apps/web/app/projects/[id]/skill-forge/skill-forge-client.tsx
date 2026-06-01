@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { 创建项目Skill, 删除能力工坊知识库, 删除项目Skill, 导入Github项目Skill, 保存能力工坊知识库, 添加Skill到Npc, 索引Npc沉淀, 绑定知识库到Npc } from "../../../actions";
+import { 创建项目Skill, 删除能力工坊知识库, 删除项目Skill, 启用Npc自造Skill, 导入Github项目Skill, 保存能力工坊知识库, 添加Skill到Npc, 索引Npc沉淀, 绑定知识库到Npc } from "../../../actions";
 import { recommendRoleSkillIds } from "../../../../lib/platform-skills";
 import tileStyles from "../workbench/_components/npc-tile.module.css";
 import workbenchStyles from "../workbench/workbench.module.css";
@@ -687,7 +687,10 @@ function ForgeTile({
               ) : activeInRuntime ? (
                 <small>运行中</small>
               ) : draftLike ? (
-                <small>待确认后启用</small>
+                <form className={styles.inlineAction} action={启用Npc自造Skill.bind(null, projectId, skillId)}>
+                  <input type="hidden" name="return_to" value={seedReturnPath} />
+                  <button type="submit">启用并进入上岗包</button>
+                </form>
               ) : resource.kind === "seat" ? (
                 <form className={styles.inlineAction} action={添加Skill到Npc.bind(null, projectId, resource.seatRowId || resource.id, skillId)}>
                   <input type="hidden" name="return_to" value={`/projects/${projectId}/skill-forge?seat=${encodeURIComponent(resource.id)}`} />
