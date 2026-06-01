@@ -35,6 +35,7 @@ type SkillForgeClientProps = {
   seats: AnyRecord[];
   workstations: AnyRecord[];
   initialOpenResourceIds: string[];
+  initialActiveTab?: ForgeTab;
 };
 
 function text(value: unknown, fallback = "") {
@@ -381,6 +382,7 @@ function ForgeTile({
   messages,
   seats,
   onClose,
+  initialActiveTab = "skills",
 }: {
   projectId: string;
   projectRepo: string;
@@ -393,8 +395,9 @@ function ForgeTile({
   messages: AnyRecord[];
   seats: AnyRecord[];
   onClose: () => void;
+  initialActiveTab?: ForgeTab;
 }) {
-  const [activeTab, setActiveTab] = useState<ForgeTab>("skills");
+  const [activeTab, setActiveTab] = useState<ForgeTab>(initialActiveTab);
   const focusedAssignments = assignments.filter((assignment) => matchesAssignment(assignment, resource));
   const boundKnowledgePaths = new Set(resource.kind === "seat" && sourceSeat ? knowledgePathsOf(sourceSeat) : []);
   const focusedKnowledge = documents.filter((doc) => matchesKnowledge(doc, resource) || boundKnowledgePaths.has(docPathOf(doc)));
@@ -799,6 +802,7 @@ export function SkillForgeClient({
   seats,
   workstations,
   initialOpenResourceIds,
+  initialActiveTab = "skills",
 }: SkillForgeClientProps) {
   const resources = useMemo(() => {
     const stationResources = workstations.map((station, index) => {
@@ -884,6 +888,7 @@ export function SkillForgeClient({
                 全部 ({resources.length})
               </button>
             </div>
+            <div className={styles.forgeScrollHint} aria-hidden="true">继续下滑查看更多 NPC</div>
           </div>
           <ul className={`${workbenchStyles.groupList} ${styles.forgeGroupList}`} aria-label="工位和 NPC 索引">
             {workstations.map((station, stationIndex) => {
@@ -985,7 +990,6 @@ export function SkillForgeClient({
               </li>
             ) : null}
           </ul>
-          <div className={styles.forgeScrollHint} aria-hidden="true">继续下滑查看更多 NPC</div>
         </aside>
 
         <section className={`${workbenchStyles.main} ${styles.forgeMain}`} data-mode={openResources.length > 0 ? "chat" : "setup"} data-has-receipt={receiptMessage ? "1" : "0"}>
@@ -1019,6 +1023,7 @@ export function SkillForgeClient({
                     assignments={assignments}
                     messages={messages}
                     seats={seats}
+                    initialActiveTab={initialActiveTab}
                     onClose={() => closeResource(key)}
                   />
                 );

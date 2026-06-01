@@ -1003,12 +1003,10 @@
   }
 
   .forgeSidebar {
-    display: flex;
-    flex-direction: column;
     width: auto;
-    max-height: 44vh;
+    max-height: none;
     border-radius: 20px;
-    overflow: hidden;
+    overflow: visible;
   }
 
   .forgeSidebarHeader {
@@ -1034,26 +1032,13 @@
   }
 
   .forgeGroupList {
-    min-height: 0;
     padding: 8px;
-    overflow-y: auto;
-    scrollbar-color: rgba(232, 189, 95, 0.42) transparent;
-  }
-
-  .forgeGroupList::-webkit-scrollbar {
-    width: 6px;
-  }
-
-  .forgeGroupList::-webkit-scrollbar-thumb {
-    border-radius: 999px;
-    background: rgba(232, 189, 95, 0.38);
+    overflow: visible;
   }
 
   .forgeScrollHint {
-    flex: 0 0 auto;
     display: flex;
     justify-content: center;
-    margin: 0 8px 8px;
     min-height: 28px;
     padding: 6px 10px;
     border: 1px solid rgba(232, 189, 95, 0.2);
