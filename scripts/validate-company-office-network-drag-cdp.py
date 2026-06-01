@@ -170,7 +170,11 @@ def main() -> int:
             """
             (() => {
               const text = document.body?.innerText || '';
-              return text.includes('NPC 办公网') && document.querySelectorAll('section[aria-label="NPC 办公网"] a[href*="seat="]').length > 0;
+              const section = document.querySelector('section[aria-label="NPC 办公网"]');
+              return text.includes('NPC 办公网')
+                && !!section
+                && section.querySelectorAll('button[data-edge-id]').length > 0
+                && section.querySelectorAll('a[href*="seat="]').length > 0;
             })()
             """,
         )
@@ -255,7 +259,12 @@ def main() -> int:
             """
             (() => {
               const section = document.querySelector('section[aria-label="NPC 办公网"]');
-              const target = section?.querySelector('button[data-edge-id]');
+              const target = Array.from(section?.querySelectorAll('button[data-edge-id]') || []).find((candidate) => {
+                const rect = candidate.getBoundingClientRect();
+                const x = rect.left + rect.width / 2;
+                const y = rect.top + rect.height / 2;
+                return document.elementFromPoint(x, y) === candidate;
+              });
               if (!target) return null;
               const rect = target.getBoundingClientRect();
               return {
@@ -291,13 +300,24 @@ def main() -> int:
         if int(detail.get("selected") or 0) < 1:
             raise RuntimeError(f"Clicked line was not visually selected: {detail}")
 
-        filtered = cdp_eval(
+        cdp_eval(
             cdp,
             """
             (() => {
               const section = document.querySelector('section[aria-label="NPC 办公网"]');
               const button = Array.from(section?.querySelectorAll('button') || []).find((item) => item.textContent?.trim() === '真实');
               button?.click();
+              return Boolean(button);
+            })()
+            """,
+        )
+        time.sleep(0.4)
+        filtered = cdp_eval(
+            cdp,
+            """
+            (() => {
+              const section = document.querySelector('section[aria-label="NPC 办公网"]');
+              const button = Array.from(section?.querySelectorAll('button') || []).find((item) => item.textContent?.trim() === '真实');
               const edgeCount = section?.querySelectorAll('svg [data-kind="collaboration"]').length || 0;
               const dimmedNodes = section?.querySelectorAll('a[data-dimmed="1"]').length || 0;
               return {
