@@ -397,11 +397,15 @@ def main() -> int:
               const seedCard = document.querySelector('[aria-label="协作沉淀建议"]');
               const titleInput = document.querySelector('input[name="title"]');
               const summaryInput = document.querySelector('textarea[name="summary"]');
+              const oneClickKnowledge = Array.from(seedCard?.querySelectorAll('button') || []).some((button) => button.textContent?.includes('一键保存知识'));
+              const skillDraft = Array.from(seedCard?.querySelectorAll('button') || []).some((button) => button.textContent?.includes('生成 Skill 草稿'));
               return {
                 activeKnowledgeTab,
                 seedText: (seedCard?.textContent || '').trim(),
                 hasPrefilledTitle: Boolean(titleInput?.value),
                 hasPrefilledSummary: Boolean(summaryInput?.value),
+                oneClickKnowledge,
+                skillDraft,
                 overflow: Math.max(0, (document.scrollingElement || document.documentElement).scrollWidth - document.documentElement.clientWidth),
                 bodyHasSeed: bodyText.includes('来自公司协作线'),
               };
@@ -412,6 +416,8 @@ def main() -> int:
             raise RuntimeError(f"Skill forge did not open the collaboration seed in knowledge tab: {forge}")
         if not forge.get("hasPrefilledTitle") or not forge.get("hasPrefilledSummary"):
             raise RuntimeError(f"Skill forge deposit form was not prefilled from the collaboration line: {forge}")
+        if not forge.get("oneClickKnowledge") or not forge.get("skillDraft"):
+            raise RuntimeError(f"Skill forge collaboration seed is missing one-click closure actions: {forge}")
         if int(forge.get("overflow") or 0) > 2:
             raise RuntimeError(f"Skill forge collaboration seed caused horizontal overflow: {forge}")
         forge_shot = output_dir / f"skill-forge-collaboration-seed-{stamp}.png"

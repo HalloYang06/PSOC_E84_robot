@@ -451,6 +451,12 @@ function ForgeTile({
     collaborationSeed?.output ? `期望产出：${collaborationSeed.output}` : "",
     collaborationSeed?.receipt ? `最新回执：${collaborationSeed.receipt}` : "",
   ].filter(Boolean).join("\n");
+  const seedSlug = slugifyPathSegment(seedTitle, "collaboration-note");
+  const seedReturnPath = `/projects/${projectId}/skill-forge?resources=${encodeURIComponent(resourceKey(resource))}&tab=${activeTab}`;
+  const seedKnowledgePath = deposits
+    ? `${deposits.knowledge}${seedSlug}.md`
+    : `docs/workstations/${slugifyPathSegment(resource.name || resource.id, "workstation")}/${seedSlug}.md`;
+  const seedSkillPath = deposits ? `${deposits.skill}${seedSlug}/SKILL.md` : `skills/custom/${seedSlug}/SKILL.md`;
   const childSeatIds = resource.kind === "station"
     ? seats.filter((seat) => seatParentId(seat) === resource.id).map((seat) => idOf(seat)).filter(Boolean)
     : [];
@@ -505,6 +511,35 @@ function ForgeTile({
             {collaborationSeed.taskId ? <small>已关联任务</small> : null}
             {collaborationSeed.dispatchId ? <small>已关联投递回执</small> : null}
           </div>
+          <div className={styles.collaborationSeedActions}>
+            <form action={保存能力工坊知识库.bind(null, projectId)}>
+              <input type="hidden" name="return_to" value={`/projects/${projectId}/skill-forge?resources=${encodeURIComponent(resourceKey(resource))}&tab=knowledge`} />
+              <input type="hidden" name="scope" value={resource.kind === "seat" ? "npc" : "workstation"} />
+              <input type="hidden" name="owner_type" value={resource.kind === "seat" ? "seat" : "workstation"} />
+              <input type="hidden" name="owner_id" value={resource.id} />
+              {resource.kind === "seat" ? <input type="hidden" name="author_seat_id" value={resource.id} /> : null}
+              <input type="hidden" name="title" value={seedTitle} />
+              <input type="hidden" name="repo_relative_path" value={seedKnowledgePath} />
+              <input type="hidden" name="summary" value={seedSummary || seedTitle} />
+              <input type="hidden" name="tags" value="collaboration,closure,npc" />
+              <button type="submit">一键保存知识</button>
+            </form>
+            {resource.kind === "seat" ? (
+              <form action={创建项目Skill.bind(null, projectId)}>
+                <input type="hidden" name="return_to" value={`/projects/${projectId}/skill-forge?resources=${encodeURIComponent(resourceKey(resource))}&tab=skills`} />
+                <input type="hidden" name="assignment_seat_id" value={resource.seatRowId || resource.id} />
+                <input type="hidden" name="author_seat_id" value={resource.seatRowId || resource.id} />
+                <input type="hidden" name="source" value="npc-authored" />
+                <input type="hidden" name="category" value="npc-authored" />
+                <input type="hidden" name="draft_status" value="draft" />
+                <input type="hidden" name="skill_id" value={seedSlug} />
+                <input type="hidden" name="label" value={seedTitle} />
+                <input type="hidden" name="repo_relative_path" value={seedSkillPath} />
+                <input type="hidden" name="note" value={seedSummary || seedTitle} />
+                <button type="submit">生成 Skill 草稿</button>
+              </form>
+            ) : null}
+          </div>
         </section>
       ) : null}
 
@@ -537,7 +572,7 @@ function ForgeTile({
                   <span>建议先补</span>
                   {recommendedSkills.map((skill) => (
                     <form key={`recommended-${skillIdOf(skill)}`} className={styles.inlineAction} action={添加Skill到Npc.bind(null, projectId, resource.seatRowId || resource.id, skillIdOf(skill))}>
-                      <input type="hidden" name="return_to" value={`/projects/${projectId}/skill-forge?resources=${encodeURIComponent(resourceKey(resource))}`} />
+                      <input type="hidden" name="return_to" value={seedReturnPath} />
                       <button type="submit">{skillLabelOf(skill)}</button>
                     </form>
                   ))}
@@ -587,7 +622,7 @@ function ForgeTile({
               )}
               {!builtIn ? (
                 <form className={styles.inlineAction} action={删除项目Skill.bind(null, projectId, skillIdOf(skill))}>
-                  <input type="hidden" name="return_to" value={`/projects/${projectId}/skill-forge?resources=${encodeURIComponent(resourceKey(resource))}`} />
+                  <input type="hidden" name="return_to" value={seedReturnPath} />
                   <button type="submit">删除</button>
                 </form>
               ) : null}
@@ -1103,4 +1138,3 @@ export function SkillForgeClient({
     </main>
   );
 }
-
