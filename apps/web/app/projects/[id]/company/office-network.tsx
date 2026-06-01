@@ -34,6 +34,9 @@ export type OfficeNetworkEdge = {
   latestReceipt: string;
   activityLabel: string;
   nextAction: string;
+  detailTitle: string;
+  detailOutput: string;
+  latestTaskTitle: string;
   needTone: string;
   taskTone: string;
   receiptTone: string;
@@ -103,19 +106,29 @@ export function OfficeNetwork({ projectId, nodes, edges }: OfficeNetworkProps) {
 
   const positionedNodes = useMemo(() => nodes.map((node) => nodeById.get(node.id)).filter(Boolean) as Array<OfficeNetworkNode & Point>, [nodeById, nodes]);
   const normalizedQuery = query.trim().toLowerCase();
+  const displayEdges = useMemo(() => {
+    const priority = (edge: OfficeNetworkEdge) => {
+      if (edge.needTone === "blocked" || edge.taskTone === "blocked" || edge.receiptTone === "blocked") return 3;
+      if (edge.kind === "collaboration") return 2;
+      return 1;
+    };
+    return [...edges].sort((left, right) => priority(left) - priority(right));
+  }, [edges]);
   const filteredEdges = useMemo(() => {
-    return edges.filter((edge) => {
+    return displayEdges.filter((edge) => {
       const matchesQuery = !normalizedQuery
         || edge.label.toLowerCase().includes(normalizedQuery)
         || edge.fromName.toLowerCase().includes(normalizedQuery)
-        || edge.toName.toLowerCase().includes(normalizedQuery);
+        || edge.toName.toLowerCase().includes(normalizedQuery)
+        || edge.summary.toLowerCase().includes(normalizedQuery)
+        || edge.latestReceipt.toLowerCase().includes(normalizedQuery);
       if (!matchesQuery) return false;
       if (filter === "collaboration") return edge.kind === "collaboration";
       if (filter === "relationship") return edge.kind === "relationship";
       if (filter === "blocked") return edge.needTone === "blocked" || edge.taskTone === "blocked" || edge.receiptTone === "blocked";
       return true;
     });
-  }, [edges, filter, normalizedQuery]);
+  }, [displayEdges, filter, normalizedQuery]);
   const visibleNodeIds = useMemo(() => {
     if (!normalizedQuery && filter === "all") return new Set(nodes.map((node) => node.id));
     const ids = new Set<string>();
@@ -328,6 +341,14 @@ export function OfficeNetwork({ projectId, nodes, edges }: OfficeNetworkProps) {
           <strong>{selectedEdgeLabel}</strong>
           <p>{selectedEdge.fromName} → {selectedEdge.toName}</p>
           <p>{selectedEdge.summary}</p>
+          <div className={styles.officeEdgeBrief}>
+            <span>需求</span>
+            <strong>{selectedEdge.detailTitle}</strong>
+            <span>产出</span>
+            <p>{selectedEdge.detailOutput}</p>
+            <span>承接任务</span>
+            <p>{selectedEdge.latestTaskTitle}</p>
+          </div>
           <div className={styles.officeEdgeSteps}>
             <span data-tone={selectedEdge.needTone}>需求：{selectedEdge.needStatus}</span>
             <span data-tone={selectedEdge.taskTone}>承接：{selectedEdge.taskStatus}</span>

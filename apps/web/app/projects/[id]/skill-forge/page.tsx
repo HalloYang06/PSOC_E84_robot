@@ -20,6 +20,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 type AnyRecord = Record<string, any>;
+type ForgeTab = "skills" | "knowledge" | "git";
 
 function asArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
@@ -87,6 +88,13 @@ function workstationIdOfSeat(value: AnyRecord) {
 
 function skillKey(value: AnyRecord) {
   return text(value.skill_id ?? value.skillId ?? value.id ?? value.slug, "").toLowerCase();
+}
+
+function forgeTab(value: unknown): ForgeTab {
+  const raw = text(value, "").toLowerCase();
+  if (raw === "knowledge") return "knowledge";
+  if (raw === "git") return "git";
+  return "skills";
 }
 
 export default async function ProjectSkillForgePage({
@@ -187,6 +195,7 @@ export default async function ProjectSkillForgePage({
         ...(focusedWorkstationId ? [`station:${focusedWorkstationId}`] : []),
         ...(focusedSeatId ? [`seat:${focusedSeatId}`] : []),
       ]}
+      initialActiveTab={forgeTab(searchParams?.tab)}
     />
   );
 }

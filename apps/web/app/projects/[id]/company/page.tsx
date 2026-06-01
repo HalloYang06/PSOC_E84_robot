@@ -40,6 +40,9 @@ type OfficeEdge = {
   latestReceipt: string;
   activityLabel: string;
   nextAction: string;
+  detailTitle: string;
+  detailOutput: string;
+  latestTaskTitle: string;
   workbenchHref?: string;
   knowledgeHref?: string;
   skillHref?: string;
@@ -773,11 +776,25 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
     return {
       id: needId,
       title: shortPublicText(need.title, `协作需求 ${index + 1}`, 54),
+      detailTitle: shortPublicText(need.title ?? need.name ?? need.summary, `协作需求 ${index + 1}`, 72),
       summary: shortPublicText(
         need.context_summary ?? need.contextSummary ?? need.expected_output ?? need.expectedOutput,
         "这条需求会在路由后进入承接 NPC 的任务队列。",
         108,
       ),
+      detailOutput: shortPublicText(
+        need.expected_output
+          ?? need.expectedOutput
+          ?? need.acceptance_criteria
+          ?? need.acceptanceCriteria
+          ?? primaryTask?.expected_output
+          ?? primaryTask?.expectedOutput,
+        "等待发起方补齐期望产出；承接 NPC 应在任务回执里说明交付物。",
+        96,
+      ),
+      latestTaskTitle: primaryTask
+        ? shortPublicText(primaryTask.title ?? primaryTask.name ?? primaryTask.summary, "承接任务已生成", 64)
+        : "还没有生成承接任务",
       requesterName,
       targetName,
       requesterId,
@@ -901,6 +918,9 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
         latestReceipt: chain.latestReceipt,
         activityLabel: chain.activityLabel,
         nextAction: chain.nextAction,
+        detailTitle: chain.detailTitle,
+        detailOutput: chain.detailOutput,
+        latestTaskTitle: chain.latestTaskTitle,
       });
     } else {
       existing.count += 1;
@@ -920,6 +940,9 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
         existing.latestReceipt = chain.latestReceipt;
         existing.activityLabel = chain.activityLabel;
         existing.nextAction = chain.nextAction;
+        existing.detailTitle = chain.detailTitle;
+        existing.detailOutput = chain.detailOutput;
+        existing.latestTaskTitle = chain.latestTaskTitle;
       }
     }
   }
@@ -957,6 +980,9 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
         latestReceipt: "还没有协作回执",
         activityLabel: "等待协作",
         nextAction: "发起结构化 Need",
+        detailTitle: "同工位协作关系",
+        detailOutput: "真实 Need/Task 产生后，这里会展示期望产出和承接任务。",
+        latestTaskTitle: "还没有生成承接任务",
       });
     }
   }
@@ -983,6 +1009,9 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
       latestReceipt: "还没有协作回执",
       activityLabel: "等待协作",
       nextAction: "发起结构化 Need",
+      detailTitle: "负责人协作关系",
+      detailOutput: "真实 Need/Task 产生后，这里会展示期望产出和承接任务。",
+      latestTaskTitle: "还没有生成承接任务",
     });
   }
   const officeEdges = [...explicitOfficeEdges, ...officeRelationshipEdges.slice(0, Math.max(0, 14 - explicitOfficeEdges.length))];
@@ -1041,6 +1070,9 @@ export default async function CompanyPage({ params, searchParams }: { params: { 
     latestReceipt: edge.latestReceipt,
     activityLabel: edge.activityLabel,
     nextAction: edge.nextAction,
+    detailTitle: edge.detailTitle,
+    detailOutput: edge.detailOutput,
+    latestTaskTitle: edge.latestTaskTitle,
     needTone: chainTone(edge.needStatus),
     taskTone: chainTone(edge.taskStatus),
     receiptTone: chainTone(edge.receiptStatus),

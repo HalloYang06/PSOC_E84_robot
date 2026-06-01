@@ -287,9 +287,13 @@ def main() -> int:
               const section = document.querySelector('section[aria-label="NPC 办公网"]');
               const drawer = section.querySelector('[aria-label="协作线详情"]');
               const detailLink = drawer?.querySelector('a[href*="/workbench"]');
+              const knowledgeLink = drawer?.querySelector('a[href*="/skill-forge"][href*="tab=knowledge"]');
+              const skillLink = drawer?.querySelector('a[href*="/skill-forge"][href*="tab=skills"]');
               return {
                 drawerText: (drawer?.textContent || '').trim(),
                 detailHref: detailLink?.getAttribute('href') || '',
+                knowledgeHref: knowledgeLink?.getAttribute('href') || '',
+                skillHref: skillLink?.getAttribute('href') || '',
                 selected: section.querySelectorAll('svg [data-selected="1"]').length,
               };
             })()
@@ -297,6 +301,12 @@ def main() -> int:
         )
         if not isinstance(detail, dict) or not detail.get("drawerText") or not detail.get("detailHref"):
             raise RuntimeError(f"Clicking a collaboration line did not open details: {detail}")
+        detail_text = str(detail.get("drawerText") or "")
+        for expected_text in ["需求", "产出", "承接任务", "最新回执", "下一步", "沉淀知识", "沉淀 Skill"]:
+            if expected_text not in detail_text:
+                raise RuntimeError(f"Collaboration detail is missing {expected_text}: {detail}")
+        if not detail.get("knowledgeHref") or not detail.get("skillHref"):
+            raise RuntimeError(f"Knowledge/Skill closure links are not tab-specific: {detail}")
         if int(detail.get("selected") or 0) < 1:
             raise RuntimeError(f"Clicked line was not visually selected: {detail}")
 
