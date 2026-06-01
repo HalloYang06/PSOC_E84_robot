@@ -26,6 +26,18 @@ health_ok() {
   curl -fsS "$url" >/dev/null 2>&1
 }
 
+if [[ ! -d "$ROOT/apps/web/.next" ]]; then
+  echo "FAILED missing web build directory: $ROOT/apps/web/.next" >&2
+  echo "Run npm run build:web before starting the cloud web service." >&2
+  exit 1
+fi
+
+if command -v python3 >/dev/null 2>&1; then
+  python3 scripts/verify_next_build_artifacts.py --next-dir apps/web/.next
+else
+  python scripts/verify_next_build_artifacts.py --next-dir apps/web/.next
+fi
+
 if [[ "$RESTART" == "1" ]]; then
   pkill -f "uvicorn app.main:app.*--port ${API_PORT}" >/dev/null 2>&1 || true
   pkill -f "next start apps/web" >/dev/null 2>&1 || true

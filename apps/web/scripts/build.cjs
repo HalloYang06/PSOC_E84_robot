@@ -1,4 +1,4 @@
-const { mkdirSync, rmSync } = require("fs");
+const { existsSync, mkdirSync, readFileSync, rmSync } = require("fs");
 const { spawnSync } = require("child_process");
 const path = require("path");
 
@@ -46,6 +46,32 @@ function runNextBuild() {
   return result;
 }
 
+function verifyArtifacts() {
+  const nextDir = path.join(workspaceRoot, ".next");
+  const requiredFiles = [
+    "BUILD_ID",
+    "package.json",
+    "build-manifest.json",
+    "prerender-manifest.json",
+    "react-loadable-manifest.json",
+    "required-server-files.json",
+    "routes-manifest.json",
+    "server/middleware-manifest.json",
+  ];
+  const missing = requiredFiles.filter((relativePath) => !existsSync(path.join(nextDir, relativePath)));
+  const hasRouteManifest =
+    existsSync(path.join(nextDir, "server/app-paths-manifest.json")) ||
+    existsSync(path.join(nextDir, "server/pages-manifest.json"));
+  if (!hasRouteManifest) {
+    missing.push("server/app-paths-manifest.json or server/pages-manifest.json");
+  }
+  const buildIdPath = path.join(nextDir, "BUILD_ID");
+  if (existsSync(buildIdPath) && !readFileSync(buildIdPath, "utf8").trim()) {
+    missing.push("BUILD_ID is empty");
+  }
+  return missing;
+}
+
 function isRecoverableManifestRace(result) {
   if (result.error) {
     return false;
@@ -57,6 +83,7 @@ function isRecoverableManifestRace(result) {
   return (
     output.includes("ENOENT") &&
     (output.includes("build-manifest.json") ||
+      output.includes("font-manifest.json") ||
       output.includes("pages-manifest.json") ||
       output.includes(".next\\package.json") ||
       output.includes(".next/package.json") ||
@@ -72,7 +99,18 @@ for (let attempt = 1; attempt <= 3; attempt += 1) {
   cleanArtifacts();
   result = runNextBuild();
   if (result.status === 0) {
-    process.exit(0);
+    const missing = verifyArtifacts();
+    if (missing.length === 0) {
+      process.exit(0);
+    }
+    console.warn(`[web build] Next build completed but artifacts are incomplete: ${missing.join(", ")}`);
+    if (attempt < 3) {
+      console.warn("[web build] Retrying after a clean artifact pass.");
+      result = { status: 1 };
+      continue;
+    }
+    result = { status: 1 };
+    break;
   }
   if (attempt < 3 && isRecoverableManifestRace(result)) {
     console.warn("[web build] Next build failed once; retrying after a clean artifact pass.");
