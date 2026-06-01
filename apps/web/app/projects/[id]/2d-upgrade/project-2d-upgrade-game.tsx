@@ -2906,8 +2906,17 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         <div className={styles.realActionStack} data-unity-real-form="npc-bind-thread">
           <article className={styles.realNote}>
             <b>已有 NPC 可在这里重新绑定真实线程</b>
-            <p>默认只改绑定关系，不会自动派单；是否持续自动化请到 AI 调试里单独开关。</p>
+            <p>先到“电脑接入”运行接入命令并扫描线程，再在这里按线程名称绑定 NPC。默认只改绑定关系，不会自动派单；离线电脑只能等待恢复或改派，不能显示成已成功派单。</p>
+            <p>如果列表里没有目标线程：打开目标电脑上的 Codex / Claude / Qwen，回到“电脑接入 → 扫描线程”刷新，再回来绑定。</p>
           </article>
+          <div className={styles.reconnectChecklist} aria-label="线程绑定三步">
+            <span>绑定前检查</span>
+            <ol>
+              <li><b>电脑已接入</b><small>电脑接入页显示“常驻接单”或至少能看到最近心跳。</small></li>
+              <li><b>线程已扫描</b><small>只选择有名称的扫描线程；不要输入或复制内部编号。</small></li>
+              <li><b>再保存绑定</b><small>绑定后去 NPC 工作台查看“对话 / 我的需求 / 我的任务”。</small></li>
+            </ol>
+          </div>
           {npcSeats.length ? (
             npcSeats.map((seat) => (
               <form key={seat.id} action={updateNpcWorkstationSeat.bind(null, project.id, seat.id)} className={styles.inlineActionForm}>
