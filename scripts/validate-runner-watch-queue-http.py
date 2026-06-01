@@ -89,7 +89,9 @@ def queued_target_identity(message: dict[str, object]) -> tuple[str, str]:
             return "computer", value
     msg_type = text(message.get("message_type")).lower()
     recipient_id = text(message.get("recipient_id"))
-    if msg_type in {"thread_scan_request", "runner_command"}:
+    if msg_type == "thread_scan_request":
+        return "computer", recipient_id
+    if msg_type == "runner_command":
         return "runner", recipient_id
     if msg_type in {"agent_command", "requirement_dispatch"}:
         return "workstation", recipient_id

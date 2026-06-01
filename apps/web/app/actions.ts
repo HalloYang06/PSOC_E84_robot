@@ -8085,7 +8085,7 @@ export async function 请求扫描电脑线程(projectId: string, formData: Form
       },
     });
 
-    await postJson("/api/collaboration/messages", {
+    const scanMessageResult = await postJson("/api/collaboration/messages", {
       project_id: projectId,
       agent_id: "codex",
       message_type: "thread_scan_request",
@@ -8097,6 +8097,9 @@ export async function 请求扫描电脑线程(projectId: string, formData: Form
       recipient_id: nodeId,
       status: "queued",
     });
+    const scanMessageId = String(
+      scanMessageResult?.data?.id ?? scanMessageResult?.id ?? "",
+    ).trim();
 
     if (runnerId) {
       const workspaceResult = await getJson(`/api/runners/${encodeURIComponent(runnerId)}/workspace`);
@@ -8133,6 +8136,11 @@ export async function 请求扫描电脑线程(projectId: string, formData: Form
           },
         },
       });
+      if (scanMessageId) {
+        await patchJson(`/api/collaboration/messages/${encodeURIComponent(scanMessageId)}`, {
+          status: "completed",
+        });
+      }
 
       revalidateProjectSurfaces(projectId);
       redirect(

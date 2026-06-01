@@ -2643,6 +2643,92 @@ def _message_timestamp(value: object) -> datetime | None:
     return None
 
 
+def _parse_datetimeish(value: object) -> datetime | None:
+    if isinstance(value, datetime):
+        return _message_timestamp(value)
+    value_text = str(value or "").strip()
+    if not value_text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value_text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def _repair_completed_thread_scan_requests(db: Session, messages: list[CollaborationMessage]) -> list[CollaborationMessage]:
+    open_scan_requests = [
+        item
+        for item in messages
+        if (item.message_type or "") == "thread_scan_request"
+        and (item.recipient_type or "") == "computer_node"
+        and (item.status or "") in {"queued", "open", "waiting_response", "routed", "pending"}
+        and str(item.project_id or "").strip()
+        and str(item.recipient_id or "").strip()
+    ]
+    if not open_scan_requests:
+        return messages
+
+    project_ids = {str(item.project_id) for item in open_scan_requests if str(item.project_id or "").strip()}
+    node_ids = {str(item.recipient_id) for item in open_scan_requests if str(item.recipient_id or "").strip()}
+    nodes = list(
+        db.scalars(
+            select(ProjectComputerNode).where(
+                ProjectComputerNode.project_id.in_(project_ids),
+                or_(ProjectComputerNode.config_id.in_(node_ids), ProjectComputerNode.id.in_(node_ids)),
+            )
+        )
+    )
+    node_by_key: dict[tuple[str, str], ProjectComputerNode] = {}
+    for node in nodes:
+        for key in (node.config_id, node.id):
+            key_text = str(key or "").strip()
+            if key_text:
+                node_by_key[(str(node.project_id), key_text)] = node
+
+    repaired = False
+    for message in open_scan_requests:
+        node = node_by_key.get((str(message.project_id), str(message.recipient_id)))
+        if node is None:
+            continue
+        extra = _metadata_dict(node.extra_data)
+        scan = extra.get("thread_scan") if isinstance(extra.get("thread_scan"), dict) else {}
+        if str(scan.get("status") or "").strip().lower() != "completed":
+            continue
+        completed_at = _parse_datetimeish(scan.get("completed_at"))
+        requested_at = _parse_datetimeish(scan.get("requested_at"))
+        message_created_at = _message_timestamp(message.created_at)
+        if completed_at is not None and message_created_at is not None and completed_at < message_created_at:
+            continue
+        before_status = message.status
+        message.status = "completed"
+        db.add(message)
+        append_audit_log(
+            db,
+            project_id=message.project_id,
+            actor_type="system",
+            actor_id="thread-scan-status-repair",
+            action="collaboration.thread_scan.completed_repaired",
+            resource_type="collaboration_message",
+            resource_id=message.id,
+            before={"status": before_status},
+            after={
+                "status": "completed",
+                "computer_node_id": node.config_id,
+                "thread_count": scan.get("thread_count"),
+                "requested_at": requested_at.isoformat() if requested_at else None,
+                "completed_at": completed_at.isoformat() if completed_at else None,
+            },
+        )
+        repaired = True
+
+    if repaired:
+        db.commit()
+        for message in messages:
+            db.refresh(message)
+    return messages
+
+
 def _workstation_receipt_authority_metadata(
     message: CollaborationMessage,
     metadata: dict[str, object] | None = None,
@@ -2925,6 +3011,7 @@ def list_messages(
     items = list(db.scalars(stmt.limit(max(1, min(limit, 500)))))
     items = _repair_review_status_consistency(db, items)
     items = _repair_launch_ack_status_consistency(db, items)
+    items = _repair_completed_thread_scan_requests(db, items)
     items = _repair_stale_workstation_command_timeouts(db, items)
     _attach_related_artifact_evidence(db, items)
     if status:
