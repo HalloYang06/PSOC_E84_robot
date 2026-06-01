@@ -1027,6 +1027,15 @@ export function SkillForgeClient({
             <div className={`${workbenchStyles.placeholder} ${styles.forgePlaceholder}`}>
               <strong>先从左侧选择一个工位或 NPC</strong>
               <p>打开后只看该对象自己的 Skill、知识库和 Git 治理证据；不会把全部功能一次性堆出来。</p>
+              <div className={styles.placeholderActions}>
+                <button type="button" onClick={openRecommendedResources}>打开推荐资源</button>
+                <span>或点击左侧任意 “+” 打开单个资源瓷砖</span>
+              </div>
+              <div className={styles.placeholderSteps} aria-label="能力工坊使用步骤">
+                <span>选资源</span>
+                <span>看 Skill / 知识库 / Git</span>
+                <span>保存后进入下一轮上岗包</span>
+              </div>
             </div>
           )}
         </section>

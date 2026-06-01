@@ -307,7 +307,15 @@
 }
 
 .forgePlaceholder {
-  padding: 28px;
+  align-self: start;
+  min-height: 260px;
+  margin: 12px;
+  padding: 26px;
+  border: 1px solid rgba(232, 189, 95, 0.18);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 10% 0%, rgba(232, 189, 95, 0.12), transparent 34%),
+    linear-gradient(150deg, rgba(23, 30, 18, 0.82), rgba(10, 15, 10, 0.78));
   color: var(--forge-muted);
 }
 
@@ -320,6 +328,63 @@
 .forgePlaceholder p {
   max-width: 560px;
   color: var(--forge-muted);
+}
+
+.placeholderActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.placeholderActions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 7px 13px;
+  border: 1px solid rgba(232, 189, 95, 0.42);
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 30% 0%, rgba(232, 189, 95, 0.2), transparent 60%),
+    rgba(232, 189, 95, 0.12);
+  color: var(--forge-text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.placeholderActions button:hover {
+  border-color: rgba(232, 189, 95, 0.68);
+  background: rgba(232, 189, 95, 0.18);
+}
+
+.placeholderActions span {
+  color: rgba(244, 229, 190, 0.72);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.placeholderSteps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.placeholderSteps span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 5px 10px;
+  border: 1px solid rgba(143, 214, 255, 0.2);
+  border-radius: 999px;
+  background: rgba(143, 214, 255, 0.08);
+  color: rgba(236, 255, 255, 0.86);
+  font-size: 11px;
+  font-weight: 900;
 }
 
 .skillGrid {
@@ -962,6 +1027,41 @@
     min-height: 54px;
     padding: 9px 10px;
     border-radius: 15px;
+  }
+
+  .forgePlaceholder {
+    min-height: 216px;
+    margin: 10px;
+    padding: 22px 18px;
+    text-align: left;
+  }
+
+  .forgePlaceholder strong {
+    font-size: 20px;
+  }
+
+  .forgePlaceholder p {
+    max-width: none;
+    margin-top: 8px;
+    font-size: 12px;
+    line-height: 1.7;
+  }
+
+  .placeholderActions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .placeholderActions button {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .placeholderSteps {
+    gap: 6px;
+    margin-top: 12px;
   }
 
   .forgeReceipt {
