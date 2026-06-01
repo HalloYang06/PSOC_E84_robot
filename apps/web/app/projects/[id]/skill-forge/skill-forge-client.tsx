@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { 创建项目Skill, 删除能力工坊知识库, 删除项目Skill, 导入Github项目Skill, 保存能力工坊知识库, 添加Skill到Npc, 索引Npc沉淀, 绑定知识库到Npc } from "../../../actions";
 import { recommendRoleSkillIds } from "../../../../lib/platform-skills";
 import tileStyles from "../workbench/_components/npc-tile.module.css";
@@ -941,6 +941,14 @@ export function SkillForgeClient({
       workspaceRef.current?.scrollIntoView({ block: "start", inline: "nearest", behavior: "smooth" });
     }, 80);
   }
+
+  useEffect(() => {
+    if (seededOpenIds.length <= 0) return;
+    if (typeof window === "undefined" || !window.matchMedia("(max-width: 760px)").matches) return;
+    window.setTimeout(() => {
+      workspaceRef.current?.scrollIntoView({ block: "start", inline: "nearest", behavior: "smooth" });
+    }, 120);
+  }, [seededOpenIds.length]);
 
   function toggleResource(id: string) {
     setOpenIds((curr) => {
