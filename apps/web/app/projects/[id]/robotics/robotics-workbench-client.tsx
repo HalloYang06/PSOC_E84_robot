@@ -628,14 +628,14 @@ function DeviceDataOverview({ device }: { device: AnyRecord }) {
                 </div>
               ))}
             </div>
-          ) : <p>等待 Linux 开发板上传电机或关节状态。当前页只显示数据，不触发真实控制。</p>}
+          ) : <p>等待开发板上传电机或关节状态。当前页只显示数据，不触发真实控制。</p>}
         </article>
 
         <article>
           <div className={styles.panelHead}>
             <div>
               <span>传感器 / 模型</span>
-              <strong>{text(sensorPayload.source, "sensor_state")}</strong>
+              <strong>{text(sensorPayload.source, "等待传感器摘要")}</strong>
             </div>
             <small>{latestTime(device, "sensor_state")}</small>
           </div>
@@ -687,7 +687,7 @@ function DeviceDataOverview({ device }: { device: AnyRecord }) {
           <article>
             <span>摄像头</span>
             <strong>{board.cameraDevices.length ? `${board.cameraDevices.length} 路` : "未发现"}</strong>
-            <p>{board.cameraDevices.slice(0, 3).join(" / ") || "camera_keyframe 可先补最近帧。"}</p>
+            <p>{board.cameraDevices.slice(0, 3).join(" / ") || "可先补最近摄像头关键帧。"}</p>
           </article>
           <article>
             <span>USB</span>
@@ -789,7 +789,7 @@ function DeviceDataTile({
               <div className={styles.panelHead}>
                 <div>
                   <span>摄像头关键帧</span>
-                  <strong>{text(cameraPayload.camera_id, counts.hasCamera ? "已接收关键帧" : "等待 camera_keyframe")}</strong>
+                  <strong>{text(cameraPayload.camera_id, counts.hasCamera ? "已接收关键帧" : "等待摄像头关键帧")}</strong>
                 </div>
                 <small>{latestTime(device, "camera_keyframe")}</small>
               </div>
@@ -805,7 +805,7 @@ function DeviceDataTile({
               ) : (
                 <div className={styles.cameraEmptyFrame}>
                   <strong>等待 Linux 开发板上传图像</strong>
-                  <p>预配置脚本接入服务器后，设备上传 camera_keyframe，平台会在这里显示最近帧。</p>
+                  <p>设备代理接入服务器后，上传摄像头关键帧，平台会在这里显示最近帧。</p>
                 </div>
               )}
             </article>
@@ -852,9 +852,9 @@ function DeviceDataTile({
               <span>人工标签</span>
               <strong>为当前设备片段补充语义</strong>
               <textarea placeholder="例如：空载抬臂、视觉遮挡、传感器噪声、用户确认动作有效" />
-              <select defaultValue="manifest">
+              <select defaultValue="manifest" aria-label="导出格式">
                 <option value="manifest">导出项目清单</option>
-                <option value="jsonl">导出 JSONL</option>
+                <option value="jsonl">导出结构化数据</option>
                 <option value="csv">导出 CSV</option>
               </select>
               <button type="button" disabled={!variables.length}>等待后端导出动作接入</button>
@@ -896,7 +896,7 @@ function DeviceDataTile({
               <div>
                 <span>等待变量</span>
                 <span>-</span>
-                <span>device upload</span>
+                <span>设备上传</span>
                 <span>无记录</span>
               </div>
             ) : null}
@@ -1089,7 +1089,7 @@ function AccessCheckPanel({
     {
       label: "摄像头",
       value: cameraCount ? `${cameraCount} 路` : "无关键帧",
-      detail: cameraCount ? "可进入开发板标签查看最近帧。" : "camera_keyframe 上传后进入 VLA/标注上下文。",
+      detail: cameraCount ? "可进入开发板标签查看最近帧。" : "摄像头关键帧上传后进入 VLA/标注上下文。",
       ready: cameraCount > 0,
     },
     {
@@ -1928,6 +1928,29 @@ function configuredDebugWindows(resources: DebugWindow[], configs: SavedDebugWin
     .filter(Boolean) as DebugWindow[];
 }
 
+function WorkbenchSplitGuide({ projectId }: { projectId: string }) {
+  return (
+    <section className={styles.splitGuide} aria-label="设备数据工作台和专项设备总控台分工">
+      <article>
+        <span>当前页面</span>
+        <strong>设备数据工作台</strong>
+        <p>面向所有项目的通用设备闭环：真实接口扫描、调试窗口、终端、采集片段、数据标注和图表实验都在这里完成。</p>
+        <div>
+          <span>终端</span>
+          <span>数据标注</span>
+          <span>图表实验</span>
+        </div>
+      </article>
+      <article>
+        <span>康复机械臂项目</span>
+        <strong>专项设备总控台</strong>
+        <p>只看 NanoPi、M33/M55、App/现场、相机、安全状态和数据质量态势；不复制采集/标注/图表流程，不发真实运动控制。</p>
+        <Link href={`/projects/${projectId}/rehab-arm-control`} prefetch={false}>打开专项总控</Link>
+      </article>
+    </section>
+  );
+}
+
 function DebugTile({
   projectId,
   tile,
@@ -2235,7 +2258,7 @@ function DebugTile({
             <details className={styles.workbenchDrawer}>
               <summary>
                 <span>人工确认与导出</span>
-                <strong>CSV / JSONL / 清单</strong>
+                <strong>表格 / 结构化数据 / 清单</strong>
               </summary>
               <form action={导出机器人标注数据.bind(null, projectId)} className={styles.dataActionPanel}>
                 <HiddenTileFields tile={tile} returnTo={returnTo} boundNpcId={effectiveBoundNpcId} boundNpcLabel={effectiveBoundNpcLabel} />
@@ -2274,7 +2297,7 @@ function DebugTile({
                   <span>导出格式</span>
                   <select name="export_format" defaultValue="jsonl" aria-label="导出格式">
                     <option value="csv">CSV</option>
-                    <option value="jsonl">JSONL</option>
+                    <option value="jsonl">结构化数据</option>
                     <option value="parquet">Parquet 清单</option>
                     <option value="npz">NPZ 清单</option>
                     <option value="manifest">项目清单</option>
@@ -2592,6 +2615,7 @@ export function RoboticsWorkbenchClient({
     if (!initialTab) {
       const firstSavedWindow = savedWindows.find((item) => item.resourceId);
       if (firstSavedWindow?.resourceId) return [firstSavedWindow.resourceId];
+      return [];
     }
     const firstDeviceId = deviceQualityDevices[0] ? deviceId(deviceQualityDevices[0], 0) : "";
     if (firstDeviceId) return [firstDeviceId];
@@ -2708,11 +2732,11 @@ export function RoboticsWorkbenchClient({
               className={workbenchStyles.search}
               placeholder="搜索开发板或接口设备"
               readOnly
-              value="Linux 开发板"
+              value="设备资源索引"
             />
             <div className={styles.deviceModeSwitch} aria-label="选择设备类型">
               <button type="button" data-active={workbenchMode === "boards" ? "1" : "0"} onClick={() => setWorkbenchMode("boards")}>
-                Linux 开发板
+                开发板数据
               </button>
               <button type="button" data-active={workbenchMode === "interfaces" ? "1" : "0"} onClick={() => setWorkbenchMode("interfaces")}>
                 串口与设备
@@ -2734,7 +2758,7 @@ export function RoboticsWorkbenchClient({
               <input type="hidden" name="return_to" value={`/projects/${projectId}/robotics`} />
               <input type="hidden" name="computer_node_id" value="all" />
               <button type="submit" disabled={!computerCount}>
-                {workbenchMode === "boards" ? "扫描 Linux 开发板" : "扫描真实接口"}
+                {workbenchMode === "boards" ? "刷新开发板数据" : "扫描真实接口"}
               </button>
             </form>
             {workbenchMode === "interfaces" ? (
@@ -2806,7 +2830,7 @@ export function RoboticsWorkbenchClient({
             {workbenchMode === "boards" ? (
               <li className={workbenchStyles.group}>
                 <div className={workbenchStyles.groupHeader}>
-                  <span>Linux 开发板</span>
+                  <span>开发板数据视图</span>
                   <small>{devices.length} 台</small>
                 </div>
                 <ul className={workbenchStyles.npcList}>
@@ -2839,8 +2863,8 @@ export function RoboticsWorkbenchClient({
                   {!devices.length ? (
                     <li className={workbenchStyles.npcRow}>
                       <div className={workbenchStyles.npcMain}>
-                        <strong className={workbenchStyles.npcName}>等待 Linux 开发板接入</strong>
-                        <small className={workbenchStyles.npcMeta}>预配置脚本连接服务器并上传设备数据后自动出现</small>
+                        <strong className={workbenchStyles.npcName}>等待开发板接入</strong>
+                        <small className={workbenchStyles.npcMeta}>设备代理连接服务器并上传只读数据后自动出现</small>
                       </div>
                     </li>
                   ) : null}
@@ -2933,6 +2957,7 @@ export function RoboticsWorkbenchClient({
             </div>
           ) : (
             <div className={styles.overviewPage}>
+              <WorkbenchSplitGuide projectId={projectId} />
               <AccessCheckPanel
                 devices={deviceQualityDevices}
                 computerCount={computerCount}
@@ -2948,17 +2973,18 @@ export function RoboticsWorkbenchClient({
               <section className={styles.nextActionPanel} aria-label="下一步操作">
                 <div>
                   <span>下一步</span>
-                  <strong>{workbenchMode === "boards" ? "打开一台 Linux 开发板" : "打开一个串口/CAN/USB 设备"}</strong>
-                  <p>{workbenchMode === "boards" ? "开发板显示遥测数据、摄像头、标注、图表和模型预览。" : "接口设备会进入带终端的调试页面，可做串口/CAN/USB 采集、NPC 辅助和图表实验。"}</p>
+                  <strong>{workbenchMode === "boards" ? "打开一台开发板数据视图" : "打开一个串口/CAN/USB 设备"}</strong>
+                  <p>{workbenchMode === "boards" ? "开发板数据只作为通用工作台中的一种数据视图；采集、标注、图表仍在这里完成，机械臂态势去专项总控看。" : "接口设备会进入带终端的调试页面，可做串口/CAN/USB 采集、NPC 辅助和图表实验。"}</p>
                 </div>
                 <div className={styles.quickActionGrid}>
                   <form action={请求串口USB扫描.bind(null, projectId)}>
                     <input type="hidden" name="return_to" value={`/projects/${projectId}/robotics`} />
                     <input type="hidden" name="computer_node_id" value="all" />
                     <button type="submit" disabled={!computerCount}>
-                      {workbenchMode === "boards" ? "扫描 Linux 开发板" : "扫描接口"}
+                      {workbenchMode === "boards" ? "刷新开发板数据" : "扫描接口"}
                     </button>
                   </form>
+                  <Link href={`/projects/${projectId}/rehab-arm-control`} prefetch={false}>打开专项总控</Link>
                   <a href="#model-preview">导入模型</a>
                   {workbenchMode === "boards" && devices[0] ? (
                     <button type="button" onClick={() => setOpenIds([deviceId(devices[0], 0)])}>打开最近开发板</button>

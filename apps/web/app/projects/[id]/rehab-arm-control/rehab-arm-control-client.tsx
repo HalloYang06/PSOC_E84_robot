@@ -579,7 +579,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
                 <strong>{qualityReady ? "进入标注" : "先补齐数据"}</strong>
                 <p>{qualityReady ? "用设备数据工作台做标注、导出和图表分析。" : "先让 NanoPi 上传完整数据批次、电机状态和质量报告。"}</p>
                 <Link
-                  href={`/projects/${projectId}/robotics?tab=dataset&source=rehab-arm-control&device=${encodeURIComponent(selected?.device_id ?? "")}`}
+                  href={`/projects/${projectId}/robotics?tab=dataset&device=${encodeURIComponent(selected?.device_id ?? "")}`}
                   prefetch={false}
                 >
                   打开数据工作台

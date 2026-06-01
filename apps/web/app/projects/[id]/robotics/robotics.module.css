@@ -983,7 +983,8 @@
   .accessSetupGrid,
   .qualityCards,
   .simReadinessCards,
-  .packetSummary {
+  .packetSummary,
+  .splitGuide {
     grid-template-columns: 1fr;
   }
 
@@ -1144,6 +1145,87 @@
   gap: 10px;
   padding: 12px;
   overflow: auto;
+}
+
+.splitGuide {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(280px, 0.92fr);
+  gap: 10px;
+}
+
+.splitGuide article {
+  min-width: 0;
+  min-height: 148px;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid rgba(142, 240, 199, 0.18);
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 10% 16%, rgba(142, 240, 199, 0.12), transparent 30%),
+    linear-gradient(135deg, rgba(4, 26, 30, 0.88), rgba(6, 18, 22, 0.82));
+}
+
+.splitGuide article:nth-child(2) {
+  border-color: rgba(241, 208, 107, 0.22);
+  background:
+    radial-gradient(circle at 12% 14%, rgba(241, 208, 107, 0.12), transparent 28%),
+    linear-gradient(135deg, rgba(27, 24, 13, 0.62), rgba(6, 18, 22, 0.86));
+}
+
+.splitGuide > article > span {
+  color: #8ef0c7;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.splitGuide article:nth-child(2) > span {
+  color: #f1d06b;
+}
+
+.splitGuide strong {
+  min-width: 0;
+  color: #eefcf7;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.splitGuide p {
+  max-width: 760px;
+  margin: 0;
+  color: rgba(238, 252, 247, 0.68);
+  font-size: 12px;
+  line-height: 1.52;
+}
+
+.splitGuide div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.splitGuide div span,
+.splitGuide a {
+  width: fit-content;
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 9px;
+  border: 1px solid rgba(120, 230, 170, 0.26);
+  border-radius: 999px;
+  background: rgba(120, 230, 170, 0.09);
+  color: #dffff0;
+  font-size: 11px;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.splitGuide a {
+  border-color: rgba(241, 208, 107, 0.34);
+  background: rgba(241, 208, 107, 0.12);
+  color: #f7e4a5;
 }
 
 .nextActionPanel,
