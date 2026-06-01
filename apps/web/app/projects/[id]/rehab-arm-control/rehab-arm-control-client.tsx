@@ -142,6 +142,56 @@ function publicStateValue(value: unknown, fallback = "未上报") {
   return raw === "unknown" ? fallback : raw;
 }
 
+type RoleSignals = {
+  onlineDevices: number;
+  hasSafety: boolean;
+  hasCamera: boolean;
+  hasSimulation: boolean;
+};
+
+function roleSignalsFromDevices(devices: DashboardDevice[]): RoleSignals {
+  return devices.reduce<RoleSignals>((signals, device) => ({
+    onlineDevices: signals.onlineDevices + (device.online_state === "online" ? 1 : 0),
+    hasSafety: signals.hasSafety || Object.keys(payloadOf(device.safety)).length > 0 || Boolean(text(device.safety_state, "")),
+    hasCamera: signals.hasCamera || Boolean(text(payloadOf(device.camera_keyframe).image_url, "") || text(record(device.camera_keyframe).image_url, "")),
+    hasSimulation: signals.hasSimulation || Object.keys(record((device as AnyRecord).simulation_readiness)).length > 0,
+  }), {
+    onlineDevices: 0,
+    hasSafety: false,
+    hasCamera: false,
+    hasSimulation: false,
+  });
+}
+
+function latestRoleStatus(signals: RoleSignals, kind: "nanopi" | "m33" | "app" | "sim") {
+  if (kind === "nanopi") {
+    return {
+      value: signals.onlineDevices ? `${signals.onlineDevices} 台在线` : "等待接入",
+      detail: signals.onlineDevices ? "已收到开发板或设备节点的只读状态。" : "运行 NanoPi/开发板数据代理后，这里会出现在线设备。",
+      ready: signals.onlineDevices > 0,
+    };
+  }
+  if (kind === "m33") {
+    return {
+      value: signals.hasSafety ? "有安全状态" : "等待安全状态",
+      detail: "M33 是最终安全裁决；网页只显示状态，不解除急停或覆盖裁决。",
+      ready: signals.hasSafety,
+    };
+  }
+  if (kind === "app") {
+    return {
+      value: signals.hasCamera ? "可看现场帧" : "等待现场数据",
+      detail: "App/现场侧负责近场参数与急停；平台只做远程协作和证据。",
+      ready: signals.hasCamera,
+    };
+  }
+  return {
+    value: signals.hasSimulation ? "有仿真报告" : "等待仿真主机",
+    detail: "仿真主机负责 MuJoCo/RViz/路径验证，云端只收状态和证据。",
+    ready: signals.hasSimulation,
+  };
+}
+
 function numberText(value: unknown, unit = "") {
   const number = Number(value);
   if (!Number.isFinite(number)) return "-";
@@ -334,13 +384,45 @@ function Arm3DOverview({ motors, safetyState }: { motors: AnyRecord[]; safetySta
   );
 }
 
+function ControlStationOnboarding({ projectId }: { projectId: string }) {
+  const steps = [
+    { title: "1. NanoPi 上传只读状态", detail: "先接入设备代理，上传在线状态、电机状态、传感器摘要和关键帧。" },
+    { title: "2. M33/M55 上报安全摘要", detail: "显示急停、限位、模式、心跳和模型输出；网页不覆盖安全链路。" },
+    { title: "3. 进入设备数据工作台", detail: "采集、标注、图表实验都回到通用设备数据工作台完成。" },
+  ];
+  return (
+    <section className={styles.onboardingPanel} aria-label="专项设备总控台接入引导">
+      <div className={styles.onboardingCopy}>
+        <span>等待首台设备</span>
+        <strong>这里是康复机械臂只读总控，不是真机遥控器</strong>
+        <p>真实接入前，先按下面三步把 NanoPi、M33/M55、App/现场数据和仿真证据串起来。平台负责看状态、沉淀证据和发起协作，不直接发运动指令。</p>
+        <Link href={`/projects/${projectId}/robotics`} prefetch={false}>去设备数据工作台准备采集窗口</Link>
+      </div>
+      <div className={styles.onboardingSteps}>
+        {steps.map((step) => (
+          <article key={step.title}>
+            <strong>{step.title}</strong>
+            <p>{step.detail}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projectName }: Props) {
   const devices = useMemo(() => dashboard.devices.length ? dashboard.devices : [], [dashboard.devices]);
   const [selectedDeviceId, setSelectedDeviceId] = useState(devices[0]?.device_id ?? "");
+  const deviceIndexById = useMemo(
+    () => new Map(devices.map((device, index) => [device.device_id, index])),
+    [devices],
+  );
   const selected = useMemo(
     () => devices.find((device) => device.device_id === selectedDeviceId) ?? devices[0] ?? null,
     [devices, selectedDeviceId],
   );
+  const selectedIndex = selected ? deviceIndexById.get(selected.device_id) ?? 0 : 0;
+  const roleSignals = useMemo(() => roleSignalsFromDevices(devices), [devices]);
   const keyframe = selected?.camera_keyframe ?? {};
   const keyframePayload = payloadOf(keyframe);
   const motorPayload = payloadOf(selected?.motor_state);
@@ -353,6 +435,12 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
   const motionAllowed = Boolean(safetyPayload.motion_allowed ?? selected?.motion_allowed);
   const currentSafetyState = safetyPayload.state ?? selected?.safety_state;
   const qualityReady = Boolean(dataQuality.annotation_ready);
+  const roleCards = [
+    { key: "nanopi", title: "NanoPi / Linux", subtitle: "本地 ROS 与设备接入节点", ...latestRoleStatus(roleSignals, "nanopi") },
+    { key: "m33", title: "M33 / M55", subtitle: "安全裁决与轻量推理", ...latestRoleStatus(roleSignals, "m33") },
+    { key: "app", title: "App / 现场", subtitle: "近场参数、患者信息、急停", ...latestRoleStatus(roleSignals, "app") },
+    { key: "sim", title: "仿真主机", subtitle: "MuJoCo / RViz / 路径验证", ...latestRoleStatus(roleSignals, "sim") },
+  ];
 
   return (
     <main className={styles.shell}>
@@ -367,7 +455,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
         </div>
         <div className={styles.topbarRight}>
           <span className={styles.kpi}>设备 {devices.length}</span>
-          <span className={styles.kpi}>在线 {devices.filter((device) => device.online_state === "online").length}</span>
+          <span className={styles.kpi}>在线 {roleSignals.onlineDevices}</span>
           <span className={styles.kpi}>M33 裁决 {dashboard.safety_boundary.m33_final_authority ? "开启" : "未声明"}</span>
           <Link href={`/projects/${projectId}/rehab-arm-control`} className={styles.refreshLink}>刷新状态</Link>
         </div>
@@ -380,9 +468,8 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
             <p className={styles.searchHint}>选择设备后查看最新状态。这里不提供真实运动控制。</p>
           </div>
           <ul className={styles.deviceList} aria-label="康复机械臂设备列表">
-            {devices.map((device) => {
+            {devices.map((device, index) => {
               const active = selected?.device_id === device.device_id;
-              const index = devices.indexOf(device);
               return (
                 <li key={device.device_id}>
                   <button
@@ -417,8 +504,8 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
           <div className={styles.workbenchHeader}>
             <div>
               <span>当前设备</span>
-              <h1>{publicDeviceName(selected, devices.findIndex((device) => device.device_id === selected?.device_id))}</h1>
-              <p>{selected ? publicDeviceCode(selected, devices.findIndex((device) => device.device_id === selected.device_id)) : "NanoPi 注册后会出现在左侧设备索引中"}</p>
+              <h1>{publicDeviceName(selected, selectedIndex)}</h1>
+              <p>{selected ? publicDeviceCode(selected, selectedIndex) : "NanoPi 注册后会出现在左侧设备索引中"}</p>
             </div>
             <div className={styles.compactStats}>
               <article data-tone={selected?.online_state === "online" ? "ok" : "idle"}>
@@ -445,6 +532,17 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
             <p>服务器和网页只展示状态、图像、质量门和高层任务草案；不发 CAN、电流、力矩、速度、角度或 M33 覆盖。</p>
           </section>
 
+          <section className={styles.roleGrid} aria-label="康复机械臂四角色状态">
+            {roleCards.map((role) => (
+              <article key={role.key} data-ready={role.ready ? "true" : "false"}>
+                <span>{role.title}</span>
+                <strong>{role.value}</strong>
+                <small>{role.subtitle}</small>
+                <p>{role.detail}</p>
+              </article>
+            ))}
+          </section>
+
           <div className={styles.summaryGrid}>
             <article>
               <span>数据批次</span>
@@ -464,7 +562,11 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
           </div>
 
           <div className={styles.primaryGrid}>
-            <Arm3DOverview motors={motors} safetyState={stateLabel(currentSafetyState)} />
+            {selected ? (
+              <Arm3DOverview motors={motors} safetyState={stateLabel(currentSafetyState)} />
+            ) : (
+              <ControlStationOnboarding projectId={projectId} />
+            )}
 
             <aside className={styles.sideStack}>
               <section className={styles.safetyPanel} data-state={stateLabel(currentSafetyState)}>
@@ -551,8 +653,8 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
               <section className={styles.identityPanel}>
                 <span>设备档案</span>
                 <dl>
-                  <div><dt>设备编号</dt><dd>{publicDeviceCode(selected, devices.findIndex((device) => device.device_id === selected?.device_id))}</dd></div>
-                  <div><dt>机器人名称</dt><dd>{publicDeviceName(selected, devices.findIndex((device) => device.device_id === selected?.device_id))}</dd></div>
+                  <div><dt>设备编号</dt><dd>{publicDeviceCode(selected, selectedIndex)}</dd></div>
+                  <div><dt>机器人名称</dt><dd>{publicDeviceName(selected, selectedIndex)}</dd></div>
                   <div><dt>当前数据批次</dt><dd>{publicBatchLabel(selected?.current_session, "无")}</dd></div>
                   <div><dt>上传状态</dt><dd>{selected?.latest_upload_status ?? "无记录"}</dd></div>
                   <div><dt>最近告警</dt><dd>{selected?.latest_error || "无"}</dd></div>

@@ -2560,6 +2560,17 @@ export function RoboticsWorkbenchClient({
   }
 
   const modeItemCount = workbenchMode === "boards" ? devices.length : configuredWindows.length;
+  const workflowSteps = workbenchMode === "boards"
+    ? [
+      { label: "接入", detail: "NanoPi / Linux 主机上传只读状态" },
+      { label: "查看", detail: "打开开发板数据、相机、模型预览" },
+      { label: "沉淀", detail: "进入标注和图表实验形成证据" },
+    ]
+    : [
+      { label: "扫描", detail: "从真实电脑同步串口/CAN/USB/ROS" },
+      { label: "建窗", detail: "把接口保存成项目调试窗口" },
+      { label: "采集", detail: "在瓷砖里完成终端、标注、图表" },
+    ];
 
   return (
     <main className={`${workbenchStyles.shell} ${styles.roboticsWorkbenchShell}`}>
@@ -2598,6 +2609,15 @@ export function RoboticsWorkbenchClient({
                 串口与设备
               </button>
             </div>
+            <ol className={styles.sidebarWorkflow} aria-label="设备数据工作台操作顺序">
+              {workflowSteps.map((step, index) => (
+                <li key={step.label} data-active={index === 0 ? "1" : "0"}>
+                  <span>{index + 1}</span>
+                  <strong>{step.label}</strong>
+                  <small>{step.detail}</small>
+                </li>
+              ))}
+            </ol>
             <button type="button" className={workbenchStyles.batchBtn} onClick={openAllForMode}>
               打开当前类型 ({modeItemCount})
             </button>
