@@ -47,6 +47,7 @@ type OfficeEdge = {
   latestTaskTitle: string;
   knowledgeClosureCount: number;
   skillClosureCount: number;
+  closureActivityLabel: string;
   workbenchHref?: string;
   knowledgeHref?: string;
   skillHref?: string;
@@ -304,6 +305,18 @@ function closureMatches(value: AnyRecord, ids: { needId?: string; taskId?: strin
     (ids.needId && text(meta.closure_need_id, "") === ids.needId)
       || (ids.taskId && text(meta.closure_task_id, "") === ids.taskId)
       || (ids.dispatchId && text(meta.closure_dispatch_id, "") === ids.dispatchId),
+  );
+}
+
+function closureActivityTime(value: AnyRecord) {
+  const meta = closureMetadata(value);
+  return latestActivityTime(
+    meta.indexed_at,
+    meta.indexedAt,
+    value.updated_at,
+    value.updatedAt,
+    value.created_at,
+    value.createdAt,
   );
 }
 
@@ -802,8 +815,15 @@ export default async function CompanyPage({
     const dispatchStatus = dispatchId ? publicStatusLabel(dispatch.status ?? primaryTask?.status) : "待投递";
     const receiptStatus = publicReceiptLabel(receiptMessages);
     const closureIds = { needId, taskId, dispatchId };
-    const knowledgeClosureCount = allKnowledgeDocuments.filter((item) => closureMatches(item, closureIds)).length;
-    const skillClosureCount = allProjectSkills.filter((item) => closureMatches(item, closureIds)).length;
+    const knowledgeClosureItems = allKnowledgeDocuments.filter((item) => closureMatches(item, closureIds));
+    const skillClosureItems = allProjectSkills.filter((item) => closureMatches(item, closureIds));
+    const closureLatestTime = Math.max(
+      0,
+      ...knowledgeClosureItems.map(closureActivityTime),
+      ...skillClosureItems.map(closureActivityTime),
+    );
+    const knowledgeClosureCount = knowledgeClosureItems.length;
+    const skillClosureCount = skillClosureItems.length;
     const latestReceiptMessage = receiptMessages
       .slice()
       .sort((left, right) => text(right.created_at ?? right.createdAt, "").localeCompare(text(left.created_at ?? left.createdAt, "")))[0];
@@ -866,6 +886,7 @@ export default async function CompanyPage({
       nextAction: collaborationClosureNextAction({ knowledgeClosureCount, skillClosureCount, needStatus, taskStatus, receiptStatus }),
       knowledgeClosureCount,
       skillClosureCount,
+      closureActivityLabel: closureLatestTime ? compactActivityLabel(closureLatestTime) : "尚未沉淀",
     };
   }).sort((left, right) => right.activityTime - left.activityTime);
   const visibleChains = collaborationChains.slice(0, 4);
@@ -972,6 +993,7 @@ export default async function CompanyPage({
         latestTaskTitle: chain.latestTaskTitle,
         knowledgeClosureCount: chain.knowledgeClosureCount,
         skillClosureCount: chain.skillClosureCount,
+        closureActivityLabel: chain.closureActivityLabel,
       });
     } else {
       existing.count += 1;
@@ -996,6 +1018,7 @@ export default async function CompanyPage({
         existing.latestTaskTitle = chain.latestTaskTitle;
         existing.knowledgeClosureCount = chain.knowledgeClosureCount;
         existing.skillClosureCount = chain.skillClosureCount;
+        existing.closureActivityLabel = chain.closureActivityLabel;
       }
     }
   }
@@ -1038,6 +1061,7 @@ export default async function CompanyPage({
         latestTaskTitle: "还没有生成承接任务",
         knowledgeClosureCount: 0,
         skillClosureCount: 0,
+        closureActivityLabel: "尚未沉淀",
       });
     }
   }
@@ -1069,6 +1093,7 @@ export default async function CompanyPage({
       latestTaskTitle: "还没有生成承接任务",
       knowledgeClosureCount: 0,
       skillClosureCount: 0,
+      closureActivityLabel: "尚未沉淀",
     });
   }
   const officeEdges = [...explicitOfficeEdges, ...officeRelationshipEdges.slice(0, Math.max(0, 14 - explicitOfficeEdges.length))];
@@ -1142,6 +1167,7 @@ export default async function CompanyPage({
     latestTaskTitle: edge.latestTaskTitle,
     knowledgeClosureCount: edge.knowledgeClosureCount,
     skillClosureCount: edge.skillClosureCount,
+    closureActivityLabel: edge.closureActivityLabel,
     needTone: chainTone(edge.needStatus),
     taskTone: chainTone(edge.taskStatus),
     receiptTone: chainTone(edge.receiptStatus),
