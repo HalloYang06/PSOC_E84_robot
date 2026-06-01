@@ -23,6 +23,7 @@ export type DashboardDevice = {
   sync_status?: AnyRecord;
   manifest?: AnyRecord;
   data_quality?: AnyRecord;
+  device_model?: AnyRecord;
 };
 
 export type Dashboard = {
@@ -65,6 +66,29 @@ type JointCalibration = {
   direction: 1 | -1;
   offsetRad: number;
 };
+
+function normalizeCalibration(value: unknown): JointCalibration | null {
+  const row = record(value);
+  const jointName = text(row.jointName ?? row.joint_name, "");
+  if (!jointName) return null;
+  return {
+    jointName,
+    sourceName: text(row.sourceName ?? row.source_name, ""),
+    unit: text(row.unit, "rad") === "deg" ? "deg" : "rad",
+    direction: Number(row.direction) === -1 ? -1 : 1,
+    offsetRad: Number(row.offsetRad ?? row.offset_rad) || 0,
+  };
+}
+
+function calibrationMapFromJson(value: unknown) {
+  try {
+    const parsed = typeof value === "string" ? JSON.parse(value) : value;
+    const rows = asArray<unknown>(parsed).map(normalizeCalibration).filter(Boolean) as JointCalibration[];
+    return new Map(rows.map((row) => [row.jointName, row]));
+  } catch {
+    return new Map<string, JointCalibration>();
+  }
+}
 
 function text(value: unknown, fallback = "") {
   const next = String(value ?? "").trim();
@@ -613,7 +637,21 @@ function resolvePackageAsset(packageFiles: Map<string, ArrayBuffer>, packageName
   return null;
 }
 
-function Arm3DOverview({ motors, safetyState }: { motors: AnyRecord[]; safetyState: string }) {
+function Arm3DOverview({
+  deviceId,
+  robotId,
+  projectId,
+  deviceModel,
+  motors,
+  safetyState,
+}: {
+  deviceId: string;
+  robotId: string;
+  projectId: string;
+  deviceModel: AnyRecord;
+  motors: AnyRecord[];
+  safetyState: string;
+}) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const cleanupRef = useRef<() => void>(() => {});
   const robotRef = useRef<AnyRecord | null>(null);
@@ -626,8 +664,12 @@ function Arm3DOverview({ motors, safetyState }: { motors: AnyRecord[]; safetySta
   const placeholderPoseKey = urdfText ? "" : positions.map((position) => position.toFixed(4)).join("|");
   const [urdfName, setUrdfName] = useState("");
   const [urdfState, setUrdfState] = useState<"placeholder" | "loading" | "loaded" | "failed">("placeholder");
+  const [modelSaveState, setModelSaveState] = useState<"idle" | "saving" | "saved" | "error" | "restored">("idle");
   const [urdfJoints, setUrdfJoints] = useState<JointDetail[]>([]);
   const [meshStats, setMeshStats] = useState({ loaded: 0, missing: 0 });
+  const restoredModelRef = useRef("");
+  const serverCalibrationsRef = useRef(new Map<string, JointCalibration>());
+  const applyUrdfPackageRef = useRef<(file: File, shouldSave: boolean) => void>(() => {});
   const urdfJointNames = useMemo(() => urdfJoints.map((joint) => joint.name), [urdfJoints]);
   const jointRows = useMemo(() => movableJoints(urdfJoints).map((joint) => joint.name), [urdfJoints]);
   const sourceNames = useMemo(() => motorSourceNames(motors), [motors]);
@@ -669,6 +711,7 @@ function Arm3DOverview({ motors, safetyState }: { motors: AnyRecord[]; safetySta
       const previous = new Map<string, JointCalibration>();
       current.forEach((row) => previous.set(row.jointName, row));
       saved.forEach((row, jointName) => previous.set(jointName, row));
+      serverCalibrationsRef.current.forEach((row, jointName) => previous.set(jointName, row));
       return defaultCalibrations(jointRows, sourceNames, previous);
     });
   }, [jointRows, jointRowsKey, sourceNames, sourceNamesKey, urdfName]);
@@ -677,25 +720,86 @@ function Arm3DOverview({ motors, safetyState }: { motors: AnyRecord[]; safetySta
     saveCalibrations(urdfName, calibrations);
   }, [calibrations, urdfName]);
 
-  function handleUrdfFile(file: File | null) {
-    if (!file) return;
+  async function saveModelPackage(file: File, modelPackage: UrdfPackage, rows: JointCalibration[]) {
+    if (!deviceId || !robotId || !projectId) return;
+    setModelSaveState("saving");
+    const form = new FormData();
+    form.append("robot_id", robotId);
+    form.append("project_id", projectId);
+    form.append("file_name", file.name);
+    form.append("package_name", modelPackage.packageName);
+    form.append("urdf_path", modelPackage.urdfPath);
+    form.append("joint_count", String(movableJoints(parseUrdfJoints(modelPackage.urdfText)).length));
+    form.append("mesh_count", String(Array.from(modelPackage.files.keys()).filter((name) => /\.(stl|dae|obj|glb|gltf)$/i.test(name)).length));
+    form.append("mapping_json", JSON.stringify(rows));
+    form.append("file", file, file.name);
+    try {
+      const response = await fetch(`/api/proxy/rehab-arm/v1/devices/${encodeURIComponent(deviceId)}/model-package`, {
+        method: "POST",
+        body: form,
+      });
+      if (!response.ok) throw new Error("model package upload failed");
+      setModelSaveState("saved");
+    } catch {
+      setModelSaveState("error");
+    }
+  }
+
+  function applyUrdfPackage(file: File, shouldSave: boolean) {
     setUrdfName(file.name);
     setUrdfState("loading");
     setUrdfJoints([]);
     setMeshStats({ loaded: 0, missing: 0 });
     readUrdfPackage(file)
       .then((modelPackage) => {
+        const parsedJoints = parseUrdfJoints(modelPackage.urdfText);
+        const rows = defaultCalibrations(movableJoints(parsedJoints).map((joint) => joint.name), sourceNames, serverCalibrationsRef.current);
+        serverCalibrationsRef.current = new Map(rows.map((row) => [row.jointName, row]));
         setUrdfPackage(modelPackage);
-        setUrdfJoints(parseUrdfJoints(modelPackage.urdfText));
+        setUrdfJoints(parsedJoints);
         setUrdfName(modelPackage.fileName.endsWith(".zip") ? `${modelPackage.fileName} / ${modelPackage.urdfPath}` : modelPackage.fileName);
         setUrdfText(modelPackage.urdfText);
+        if (shouldSave) void saveModelPackage(file, modelPackage, rows);
       })
       .catch(() => {
         setUrdfText("");
         setUrdfPackage(null);
         setUrdfState("failed");
+        setModelSaveState("error");
       });
   }
+  applyUrdfPackageRef.current = applyUrdfPackage;
+
+  function handleUrdfFile(file: File | null) {
+    if (!file) return;
+    applyUrdfPackage(file, true);
+  }
+
+  useEffect(() => {
+    const payload = payloadOf(deviceModel);
+    const modelUrl = text(record(deviceModel).model_url ?? payload.model_url, "");
+    const fileName = text(payload.file_name, "robot_model.zip");
+    const restoreKey = `${deviceId}:${modelUrl}:${text(payload.sha256, "")}`;
+    if (!deviceId || !modelUrl || restoredModelRef.current === restoreKey || urdfText) return;
+    restoredModelRef.current = restoreKey;
+    setModelSaveState("idle");
+    const controller = new AbortController();
+    async function restoreModelPackage() {
+      try {
+        const response = await fetch(keyframeSrc(modelUrl, ""), { cache: "no-store", signal: controller.signal });
+        if (!response.ok) throw new Error("model package fetch failed");
+        const buffer = await response.arrayBuffer();
+        serverCalibrationsRef.current = calibrationMapFromJson(payload.mapping_json);
+        const file = new File([buffer], fileName, { type: fileName.toLowerCase().endsWith(".zip") ? "application/zip" : "application/xml" });
+        applyUrdfPackageRef.current(file, false);
+        setModelSaveState("restored");
+      } catch {
+        if (!controller.signal.aborted) setModelSaveState("error");
+      }
+    }
+    void restoreModelPackage();
+    return () => controller.abort();
+  }, [deviceId, deviceModel, urdfText]);
 
   function updateCalibration(jointName: string, patch: Partial<JointCalibration>) {
     setCalibrations((rows) => rows.map((row) => row.jointName === jointName ? { ...row, ...patch } : row));
@@ -954,6 +1058,17 @@ function Arm3DOverview({ motors, safetyState }: { motors: AnyRecord[]; safetySta
         <div className={styles.poseStatus}>
           <strong>匹配 {matchedUrdfJoints.length}/{jointRows.length || urdfJoints.length}</strong>
           <span>{sourceLabels.join(" + ") || "角度状态"} 会实时套用到同名关节；模型资源已加载 {meshStats.loaded} 个，未加载 {meshStats.missing} 个。</span>
+          <span>
+            {modelSaveState === "saving"
+              ? "正在保存到当前设备档案"
+              : modelSaveState === "saved"
+                ? "已保存到当前设备档案，刷新后会自动恢复"
+                : modelSaveState === "restored"
+                  ? "已从当前设备档案恢复模型包"
+                  : modelSaveState === "error"
+                    ? "模型档案同步失败，可重新导入"
+                    : "导入后会保存到当前设备档案"}
+          </span>
         </div>
       ) : null}
       {urdfJoints.length ? (
@@ -1250,7 +1365,14 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
           </div>
 
           <div className={styles.primaryGrid}>
-            <Arm3DOverview motors={poseSamples} safetyState={stateLabel(currentSafetyState)} />
+            <Arm3DOverview
+              deviceId={text(selected?.device_id, "")}
+              robotId={text(selected?.robot_id, "")}
+              projectId={projectId}
+              deviceModel={record(selected?.device_model)}
+              motors={poseSamples}
+              safetyState={stateLabel(currentSafetyState)}
+            />
 
             <aside className={styles.sideStack}>
               <section className={styles.safetyPanel} data-state={stateLabel(currentSafetyState)}>

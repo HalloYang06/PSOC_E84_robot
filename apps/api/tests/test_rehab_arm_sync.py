@@ -335,6 +335,46 @@ def test_rehab_arm_camera_keyframe_upload_and_latest_file(tmp_path, monkeypatch)
     get_settings.cache_clear()
 
 
+def test_rehab_arm_device_model_package_is_project_device_profile(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
+    get_settings.cache_clear()
+
+    model_bytes = b"PK\x03\x04fake-urdf-zip"
+    response = client.post(
+        "/api/rehab-arm/v1/devices/nanopi-m5/model-package",
+        data={
+            "robot_id": "rehab-arm-alpha",
+            "project_id": "project-rehab",
+            "file_name": "medical_arm.zip",
+            "package_name": "medical_arm",
+            "urdf_path": "medical_arm/urdf/medical_arm.urdf",
+            "joint_count": "6",
+            "mesh_count": "7",
+            "mapping_json": '[{"jointName":"elbow","sourceName":"elbow","unit":"rad","direction":1,"offsetRad":0}]',
+        },
+        files={"file": ("medical_arm.zip", model_bytes, "application/zip")},
+    )
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert payload["sync_role"] == "non_realtime_telemetry_data_asset_only"
+    assert payload["control_boundary"] == "model_preview_only_not_motion_permission"
+    assert payload["model_url"].endswith("/devices/nanopi-m5/model-package/latest/file")
+
+    latest = client.get("/api/rehab-arm/v1/devices/nanopi-m5/model-package/latest/file")
+    assert latest.status_code == 200
+    assert latest.content == model_bytes
+
+    dashboard = client.get("/api/rehab-arm/v1/devices/dashboard")
+    device = dashboard.json()["data"]["devices"][0]
+    model = device["device_model"]
+    assert device["project_id"] == "project-rehab"
+    assert model["record_type"] == "device_model"
+    assert model["payload"]["urdf_path"] == "medical_arm/urdf/medical_arm.urdf"
+    assert model["payload"]["joint_count"] == 6
+    assert "can_frame" in dashboard.json()["data"]["safety_boundary"]["server_must_not_send"]
+    get_settings.cache_clear()
+
+
 def test_rehab_arm_simulation_readiness_is_data_only(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
     get_settings.cache_clear()

@@ -121,6 +121,8 @@ def page_state(cdp: object) -> dict[str, object]:
             forbidden,
             hasReadonlyBoundary: body.includes('只读预览') && body.includes('不下发任何运动控制') && body.includes('不发 CAN'),
             hasImportedUrdf: body.includes('已导入 medical_arm.zip') && body.includes('medical_arm/urdf/medical_arm.urdf'),
+            hasSavedModel: body.includes('已保存到当前设备档案') || body.includes('已从当前设备档案恢复模型包'),
+            hasRestoredModel: body.includes('已从当前设备档案恢复模型包'),
             hasPoseMapping: body.includes('姿态映射') && mappingRows.length > 0,
             mappingRowCount: mappingRows.length,
             matchLine,
@@ -233,6 +235,29 @@ def main() -> int:
             """,
             timeout_seconds=60,
         )
+        wait_for(
+            cdp,
+            """
+            (() => {
+              const body = document.body?.innerText || '';
+              return body.includes('已保存到当前设备档案') || body.includes('已从当前设备档案恢复模型包');
+            })()
+            """,
+            timeout_seconds=30,
+        )
+        cdp.send("Page.reload", {"ignoreCache": True})
+        wait_for(
+            cdp,
+            """
+            (() => {
+              const body = document.body?.innerText || '';
+              return body.includes('已从当前设备档案恢复模型包')
+                && body.includes('已导入 medical_arm.zip')
+                && body.includes('匹配 6/6');
+            })()
+            """,
+            timeout_seconds=60,
+        )
         time.sleep(1.0)
         state = page_state(cdp)
         shot = output_dir / f"rehab-arm-urdf-import-{args.viewport_width}x{args.viewport_height}-{stamp}.png"
@@ -243,6 +268,8 @@ def main() -> int:
             and state["hasPoseMapping"]
             and state["hasCanvas"]
             and state["hasReadonlyBoundary"]
+            and state["hasSavedModel"]
+            and state["hasRestoredModel"]
             and not state["hasHorizontalOverflow"]
             and not state["forbidden"]
         )

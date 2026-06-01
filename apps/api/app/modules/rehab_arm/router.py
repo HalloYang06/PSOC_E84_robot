@@ -21,8 +21,10 @@ from .schemas import (
 from .service import (
     build_dashboard,
     latest_keyframe_path,
+    latest_model_package_path,
     record_camera_keyframe,
     record_board_manifest,
+    record_device_model_package,
     record_device_registration,
     record_manifest_upload,
     record_motor_state,
@@ -66,6 +68,13 @@ def _parse_multipart_body(content_type: str, body: bytes) -> tuple[dict[str, str
     if not file_bytes:
         raise HTTPException(status_code=422, detail="file field is required")
     return fields, file_bytes
+
+
+def _int_field(fields: dict[str, str], name: str) -> int:
+    try:
+        return int(fields.get(name) or 0)
+    except ValueError:
+        raise HTTPException(status_code=422, detail=f"{name} must be numeric") from None
 
 
 @router.post("/devices/register")
@@ -172,6 +181,49 @@ def api_latest_camera_keyframe_file(device_id: str):
         "webp": "image/webp",
     }.get(suffix, "application/octet-stream")
     return FileResponse(path, media_type=media_type)
+
+
+@router.post("/devices/{device_id}/model-package")
+async def api_upload_device_model_package(device_id: str, request: Request):
+    """Accept a URDF zip/package as a project device model profile for readonly preview."""
+    fields, body = _parse_multipart_body(request.headers.get("content-type", ""), await request.body())
+    robot_id = fields.get("robot_id", "")
+    project_id = fields.get("project_id", "") or fields.get("projectId", "")
+    file_name = fields.get("file_name", "robot_model.zip")
+    if not robot_id or not project_id:
+        raise HTTPException(status_code=422, detail="robot_id and project_id are required")
+    normalized_name = Path(file_name).name
+    if not normalized_name.lower().endswith((".zip", ".urdf", ".xml")):
+        raise HTTPException(status_code=422, detail="model package must be zip, urdf, or xml")
+    if len(body) > 12 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="model package must be 12MB or smaller")
+    return ok(
+        record_device_model_package(
+            {
+                "robot_id": robot_id,
+                "device_id": device_id,
+                "project_id": project_id,
+                "file_name": normalized_name,
+                "package_name": fields.get("package_name", ""),
+                "urdf_path": fields.get("urdf_path", ""),
+                "joint_count": _int_field(fields, "joint_count"),
+                "mesh_count": _int_field(fields, "mesh_count"),
+                "mapping_json": fields.get("mapping_json", "[]"),
+            },
+            normalized_name,
+            body,
+        )
+    )
+
+
+@router.get("/devices/{device_id}/model-package/latest/file")
+def api_latest_device_model_package_file(device_id: str):
+    path = latest_model_package_path(device_id)
+    if path is None:
+        raise HTTPException(status_code=404, detail="latest model package not found")
+    suffix = Path(path).suffix.lower()
+    media_type = "application/zip" if suffix == ".zip" else "application/xml"
+    return FileResponse(path, media_type=media_type, filename=Path(path).name)
 
 
 @router.post("/devices/{device_id}/motor-state")

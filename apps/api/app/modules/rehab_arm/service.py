@@ -333,6 +333,57 @@ def record_board_manifest(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def record_device_model_package(payload: dict[str, Any], file_name: str, file_bytes: bytes) -> dict[str, Any]:
+    device_id = safe_part(str(payload.get("device_id") or "unknown"))
+    robot_id = safe_part(str(payload.get("robot_id") or "unknown"))
+    project_id = str(payload.get("project_id") or payload.get("projectId") or "").strip()
+    package_name = safe_part(str(payload.get("package_name") or file_name or "robot_model"))
+    timestamp_ms = int(time.time() * 1000)
+    digest = sha256_bytes(file_bytes)
+    suffix = Path(file_name).suffix.lower() or ".zip"
+    package_path = storage_root() / "model_packages" / device_id / f"{timestamp_ms}_{package_name}{suffix}"
+    package_path.parent.mkdir(parents=True, exist_ok=True)
+    package_path.write_bytes(file_bytes)
+    record = telemetry_record(
+        "device_model",
+        {
+            **payload,
+            "device_id": device_id,
+            "robot_id": robot_id,
+            "project_id": project_id,
+            "file_name": file_name,
+            "package_name": payload.get("package_name") or package_name,
+            "sha256": digest,
+            "size_bytes": len(file_bytes),
+            "model_url": f"/api/rehab-arm/v1/devices/{device_id}/model-package/latest/file",
+            "control_boundary": "model_preview_only_not_motion_permission",
+        },
+    )
+    record["package_path"] = str(package_path)
+    record["model_url"] = f"/api/rehab-arm/v1/devices/{device_id}/model-package/latest/file"
+    write_device_latest(device_id, "device_model", record)
+    return {
+        "ok": True,
+        "device_id": device_id,
+        "robot_id": robot_id,
+        "project_id": project_id,
+        "file_name": file_name,
+        "sha256": digest,
+        "size_bytes": len(file_bytes),
+        "model_url": record["model_url"],
+        "sync_role": record["sync_role"],
+        "control_boundary": "model_preview_only_not_motion_permission",
+    }
+
+
+def latest_model_package_path(device_id: str) -> Path | None:
+    latest = read_json(device_dir(device_id) / "device_model_latest.json")
+    path = Path(str(latest.get("package_path") or "")) if latest else None
+    if path and path.is_file():
+        return path
+    return None
+
+
 def record_motor_state(payload: dict[str, Any]) -> dict[str, Any]:
     record = telemetry_record("motor_state", payload)
     write_device_latest(record["device_id"], "motor_state", record)
@@ -451,6 +502,7 @@ def build_dashboard() -> dict[str, Any]:
         safety_state = _device_latest(device_id, "safety_state") or {}
         simulation_readiness = _device_latest(device_id, "simulation_readiness") or {}
         board_manifest = _device_latest(device_id, "board_manifest") or {}
+        device_model = _device_latest(device_id, "device_model") or {}
         camera_keyframe = _device_latest(device_id, "camera_keyframe") or {}
         sync_status = _device_latest(device_id, "sync_status") or {}
         manifest = _device_latest(device_id, "manifest") or {}
@@ -465,6 +517,7 @@ def build_dashboard() -> dict[str, Any]:
             camera_keyframe,
             sync_status,
             manifest,
+            device_model,
         ]
         last_upload = max([float(item.get("ts_unix") or 0) for item in latest_records if item] or [0])
         safety_payload = safety_state.get("payload") if isinstance(safety_state.get("payload"), dict) else {}
@@ -498,6 +551,7 @@ def build_dashboard() -> dict[str, Any]:
                 "safety": safety_state,
                 "simulation_readiness": simulation_readiness,
                 "board_manifest": board_manifest,
+                "device_model": device_model,
                 "sync_status": sync_status,
                 "manifest": manifest,
             }
