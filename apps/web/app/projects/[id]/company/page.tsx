@@ -155,6 +155,8 @@ function userFacingEventText(value: unknown, fallback = "") {
     .replace(/\brunner\b/gi, "执行电脑")
     .replace(/\bcodex app-server\b/gi, "后台线程")
     .replace(/\bcodex desktop ui\b/gi, "桌面线程")
+    .replace(/执行电脑\s+([A-Za-z0-9._-]+)\s+执行电脑\s+received this dispatch on the execution computer,?\s*but\s+桌面线程\s+has not confirmed that the\s+绑定线程\s+visibly received it\.?\s*Keep this item pending and retry desktop sync\.?/gi, "执行电脑 $1 已收到派单，正在等待桌面线程确认可见。")
+    .replace(/received this dispatch on the execution computer,?\s*but\s+桌面线程\s+has not confirmed that the\s+绑定线程\s+visibly received it\.?\s*Keep this item pending and retry desktop sync\.?/gi, "已收到派单，正在等待桌面线程确认可见。")
     .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, "关联记录")
     .replace(/[A-Za-z]:[\\/][^\s"'`<>),\]]+/g, "当前电脑工作副本")
     .replace(/\.codex[\\/][^\s"'`<>),\]]+/gi, "线程记录")
