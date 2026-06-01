@@ -20,6 +20,7 @@ const ALLOWED_RUNNER_SCRIPTS = new Set([
   "scan-device-interfaces.py",
   "run-device-capture-command.py",
   "nanopi-rehab-arm-readonly-agent.py",
+  "nanopi-rehab-arm-collect-and-upload.py",
 ]);
 
 function findRunnerScriptPath(filename: string) {
