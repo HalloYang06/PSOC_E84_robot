@@ -490,11 +490,32 @@ function ForgeTile({
         return isDraftLikeStatus(assignmentStatusOf(assignment)) || isDraftLikeStatus(skillDraftStatusOf(skill));
       }).length
     : 0;
-  const snapshot = (sourceSeat?.metadata?.skill_forge_snapshot ?? sourceSeat?.extra_data?.skill_forge_snapshot ?? null) as AnyRecord | null;
-  const snapshotLabel = text(snapshot?.changed_skill_label, text(snapshot?.changed_skill_id, "配置已更新"));
-  const snapshotOwner = text(snapshot?.affected_seat_name ?? snapshot?.seat_name, resource.name);
-  const snapshotGeneratedAt = snapshotTime(snapshot?.generated_at ?? snapshot?.updated_at ?? snapshot?.activated_at);
-  const snapshotEffect = text(snapshot?.effect, "下一轮派单 / 刷新后的上岗包会读取");
+  const skillSnapshot = (sourceSeat?.metadata?.skill_forge_snapshot ?? sourceSeat?.extra_data?.skill_forge_snapshot ?? null) as AnyRecord | null;
+  const knowledgeSnapshot = (sourceSeat?.metadata?.knowledge_forge_snapshot ?? sourceSeat?.extra_data?.knowledge_forge_snapshot ?? null) as AnyRecord | null;
+  const runtimeSnapshots = [
+    skillSnapshot
+      ? {
+          id: "skill",
+          label: text(skillSnapshot.changed_skill_label, text(skillSnapshot.changed_skill_id, "Skill 配置已更新")),
+          owner: text(skillSnapshot.affected_seat_name ?? skillSnapshot.seat_name, resource.name),
+          generatedAt: snapshotTime(skillSnapshot.generated_at ?? skillSnapshot.updated_at ?? skillSnapshot.activated_at),
+          effect: text(skillSnapshot.effect, "下一轮派单 / 刷新后的上岗包会读取"),
+          source: text(skillSnapshot.source, "能力工坊"),
+          summary: text(skillSnapshot.summary, "Skill 配置已同步到该 NPC。"),
+        }
+      : null,
+    knowledgeSnapshot
+      ? {
+          id: "knowledge",
+          label: text(knowledgeSnapshot.changed_title ?? knowledgeSnapshot.changed_path, "知识库配置已更新"),
+          owner: text(knowledgeSnapshot.affected_seat_name ?? knowledgeSnapshot.seat_name, resource.name),
+          generatedAt: snapshotTime(knowledgeSnapshot.generated_at ?? knowledgeSnapshot.updated_at ?? knowledgeSnapshot.activated_at),
+          effect: text(knowledgeSnapshot.effect, "下一轮派单 / 刷新后的上岗包会读取"),
+          source: text(knowledgeSnapshot.source, "能力工坊"),
+          summary: text(knowledgeSnapshot.summary, "知识库配置已同步到该 NPC。"),
+        }
+      : null,
+  ].filter((item): item is { id: string; label: string; owner: string; generatedAt: string; effect: string; source: string; summary: string } => Boolean(item));
   const deposits = resource.kind === "seat" ? npcDepositPaths(sourceSeat, resource) : null;
   const tabLabel = activeTab === "knowledge" ? "知识库配置" : activeTab === "git" ? "Git 管理" : "Skill 配置";
   const seedTitle = text(collaborationSeed?.title, `${resource.name} 协作沉淀`);
@@ -626,7 +647,7 @@ function ForgeTile({
                 <span data-state={roleSkillCount > 0 ? "ok" : "gap"}><b>{roleSkillCount}</b><small>运行 Skill</small></span>
                 <span data-state={pendingSkillCount > 0 ? "gap" : "ok"}><b>{pendingSkillCount}</b><small>待启用</small></span>
                 <span data-state={focusedKnowledge.length > 0 ? "ok" : "gap"}><b>{focusedKnowledge.length}</b><small>知识库</small></span>
-                <span data-state={snapshot ? "ok" : "gap"}><b>{snapshot ? "已刷新" : "待刷新"}</b><small>上岗包</small></span>
+                <span data-state={runtimeSnapshots.length ? "ok" : "gap"}><b>{runtimeSnapshots.length ? "已刷新" : "待刷新"}</b><small>上岗包</small></span>
               </div>
               {recommendedSkills.length ? (
                 <div className={styles.recommendStrip}>
@@ -936,20 +957,27 @@ function ForgeTile({
           </div>
           <small>{tabLabel}</small>
         </article>
-        <article className={styles.snapshotRow} data-state={snapshot ? "ready" : "empty"}>
+        <article className={styles.snapshotRow} data-state={runtimeSnapshots.length ? "ready" : "empty"}>
           <div>
             <span>上岗包</span>
-            <strong>{snapshot ? `${snapshotOwner} · ${snapshotLabel}` : "配置源到运行快照"}</strong>
-            <p>{snapshot ? text(snapshot.summary, "能力配置已同步到该 NPC。") : "能力工坊保存配置源；NPC 工作台和执行电脑使用生成后的快照。"}</p>
-            {snapshot ? (
-              <div className={styles.snapshotChips} aria-label="上岗包快照证据">
-                <span>{snapshotGeneratedAt ? `刷新 ${snapshotGeneratedAt}` : "已生成快照"}</span>
-                <span>{snapshotEffect}</span>
-                <span>{text(snapshot.source, "能力工坊")}</span>
+            <strong>{runtimeSnapshots.length ? `${runtimeSnapshots[0].owner} · ${runtimeSnapshots[0].label}` : "配置源到运行快照"}</strong>
+            <p>{runtimeSnapshots.length ? runtimeSnapshots[0].summary : "能力工坊保存配置源；NPC 工作台和执行电脑使用生成后的快照。"}</p>
+            {runtimeSnapshots.length ? (
+              <div className={styles.snapshotStack} aria-label="上岗包快照证据">
+                {runtimeSnapshots.map((item) => (
+                  <div key={item.id} className={styles.snapshotEvidence}>
+                    <strong>{item.id === "knowledge" ? "知识库" : "Skill"} · {item.label}</strong>
+                    <div className={styles.snapshotChips}>
+                      <span>{item.generatedAt ? `刷新 ${item.generatedAt}` : "已生成快照"}</span>
+                      <span>{item.effect}</span>
+                      <span>{item.source}</span>
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : null}
           </div>
-          <small>{snapshot ? "已刷新" : "待生成"}</small>
+          <small>{runtimeSnapshots.length ? `${runtimeSnapshots.length} 条证据` : "待生成"}</small>
         </article>
         {deposits ? (
           <article>

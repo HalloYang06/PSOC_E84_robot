@@ -1066,6 +1066,28 @@
   margin-top: 7px;
 }
 
+.snapshotStack {
+  display: grid;
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.snapshotEvidence {
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid rgba(167, 223, 154, 0.18);
+  border-radius: 13px;
+  background: rgba(0, 0, 0, 0.14);
+}
+
+.snapshotEvidence strong {
+  display: block;
+  overflow-wrap: anywhere;
+  color: rgba(255, 247, 225, 0.9);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 .snapshotChips span {
   min-width: 0;
   min-height: 24px;
