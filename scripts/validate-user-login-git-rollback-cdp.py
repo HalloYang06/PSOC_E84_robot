@@ -389,6 +389,14 @@ def main() -> int:
         shot = output_dir / f"git-rollback-05-mobile-context-{stamp}.png"
         screenshot(cdp, shot)
         screenshots.append(str(shot))
+        mobile_context_check = {
+            "viewport": {"width": 390, "height": 844},
+            "profile_text": mobile_profile_text[:600],
+            "profile_rect": mobile_profile.get("rect"),
+            "page_overflow": mobile_profile.get("pageOverflow"),
+            "body_overflow": mobile_profile.get("bodyOverflow"),
+            "screenshot": str(shot),
+        }
         cdp.send(
             "Emulation.setDeviceMetricsOverride",
             {
@@ -436,6 +444,7 @@ def main() -> int:
             "page_url_after_submit": cdp_eval(cdp, "location.href"),
             "activity_action": matching_activity.get("action") if isinstance(matching_activity, dict) else None,
             "activity_created_at": matching_activity.get("created_at") if isinstance(matching_activity, dict) else None,
+            "mobile_context_check": mobile_context_check,
             "screenshots": screenshots,
         }
         report_path = output_dir / f"git-rollback-validation-report-{stamp}.json"
