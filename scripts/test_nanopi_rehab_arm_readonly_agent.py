@@ -55,6 +55,10 @@ def test_nanopi_readonly_agent_dry_run_maps_scan_and_joint_state(tmp_path: Path)
         "nanopi-a",
         "--robot-id",
         "arm-a",
+        "--computer-node-id",
+        "nanopi-computer-a",
+        "--runner-id",
+        "runner-nanopi-a",
         "--board-scan-json",
         str(scan_path),
         "--joint-state-json",
@@ -68,6 +72,12 @@ def test_nanopi_readonly_agent_dry_run_maps_scan_and_joint_state(tmp_path: Path)
 
     payloads = output["payloads"]
     assert output["ok"] is True
+    assert payloads["register"]["computer_node_id"] == "nanopi-computer-a"
+    assert payloads["register"]["runner_id"] == "runner-nanopi-a"
+    assert payloads["board_manifest"]["computer_node_id"] == "nanopi-computer-a"
+    assert payloads["board_manifest"]["runner_id"] == "runner-nanopi-a"
+    assert payloads["board_manifest"]["manifest"]["computer_node_id"] == "nanopi-computer-a"
+    assert payloads["board_manifest"]["manifest"]["runner_id"] == "runner-nanopi-a"
     assert payloads["board_manifest"]["manifest"]["hostname"] == "nanopi-m5"
     assert payloads["board_manifest"]["manifest"]["capabilities"]["can_interfaces"][0]["name"] == "can0"
     assert payloads["board_manifest"]["manifest"]["capabilities"]["serial_devices"] == ["/dev/ttyUSB0"]

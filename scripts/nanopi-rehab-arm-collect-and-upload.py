@@ -29,6 +29,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--project-id", required=True)
     parser.add_argument("--device-id", required=True)
     parser.add_argument("--robot-id", default="medical-rehab-arm")
+    parser.add_argument("--computer-node-id", default="", help="Platform computer node that owns this NanoPi/read-only uploader.")
+    parser.add_argument("--runner-id", default="", help="Platform runner id bound to the computer node, if available.")
     parser.add_argument("--output-dir", default="")
     parser.add_argument("--joint-topic", default="/joint_states")
     parser.add_argument("--safety-topic", default="/rehab_arm/safety_state")
@@ -162,6 +164,10 @@ def build_agent_command(args: argparse.Namespace, files: dict[str, Path]) -> lis
         "--robot-id",
         args.robot_id,
     ]
+    if args.computer_node_id:
+        command.extend(["--computer-node-id", args.computer_node_id])
+    if args.runner_id:
+        command.extend(["--runner-id", args.runner_id])
     if "scan" in files:
         command.extend(["--board-scan-json", str(files["scan"])])
     if "joint" in files:

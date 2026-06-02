@@ -31,6 +31,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--project-id", required=True)
     parser.add_argument("--device-id", default="")
     parser.add_argument("--robot-id", default="medical-rehab-arm")
+    parser.add_argument("--computer-node-id", default="", help="Platform computer node that owns this NanoPi/read-only uploader.")
+    parser.add_argument("--runner-id", default="", help="Platform runner id bound to the computer node, if available.")
     parser.add_argument("--board-scan-json", default="", help="Output from scripts/scan-device-interfaces.py --pretty, optional.")
     parser.add_argument("--joint-state-json", default="", help="ROS sensor_msgs/JointState-like JSON, optional.")
     parser.add_argument("--motor-state-json", default="", help="Motor list or object with motors[], optional.")
@@ -225,6 +227,8 @@ def build_board_manifest(args: argparse.Namespace, scan: dict[str, Any]) -> dict
         "schema_version": "linux_board_manifest_v1",
         "device_id": device_id_from_args(args),
         "robot_id": args.robot_id,
+        "computer_node_id": text(args.computer_node_id),
+        "runner_id": text(args.runner_id),
         "hostname": text(scan.get("host"), socket.gethostname()),
         "platform": {"os": text(scan.get("platform"), "Linux"), "role": "NanoPi 只读数据节点"},
         "capabilities": {
@@ -249,6 +253,10 @@ def build_board_manifest(args: argparse.Namespace, scan: dict[str, Any]) -> dict
 def build_payloads(args: argparse.Namespace) -> dict[str, Any]:
     now = time.time()
     device_id = device_id_from_args(args)
+    binding = {
+        "computer_node_id": text(args.computer_node_id),
+        "runner_id": text(args.runner_id),
+    }
     common = {"project_id": args.project_id, "robot_id": args.robot_id, "device_id": device_id}
     scan = as_record(read_json_file(args.board_scan_json, {}))
     joint_state = normalize_joint_state(read_json_file(args.joint_state_json, {}))
@@ -260,11 +268,12 @@ def build_payloads(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "register": {
             **common,
+            **binding,
             "device_type": "nanopi",
             "software_version": "nanopi-readonly-agent-v1",
             "capabilities": ["linux_board_status", "can_readonly", "serial_readonly", "ros2_readonly", "camera_keyframe"],
         },
-        "board_manifest": {**common, "manifest": build_board_manifest(args, scan)},
+        "board_manifest": {**common, **binding, "manifest": build_board_manifest(args, scan)},
         "safety": {
             **common,
             "state": text(safety_raw.get("state"), "limited"),
