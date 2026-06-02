@@ -7164,7 +7164,7 @@ async function postGameCollabCommand(options: {
   autonomyMode: string;
   kind: "start" | "injection";
 }) {
-  await postJson("/api/collaboration/messages", {
+  const messageResult = await postJson("/api/collaboration/messages", {
     project_id: options.projectId,
     agent_id: options.seat.id,
     message_type: "agent_command",
@@ -7180,6 +7180,64 @@ async function postGameCollabCommand(options: {
       game_collab_run_id: options.runId,
       game_collab_kind: options.kind,
       autonomy_mode: options.autonomyMode,
+    },
+  });
+  const messageRecord = objectRecord(messageResult);
+  const messageData = objectRecord(messageRecord.data);
+  const messageId = text(messageData.id ?? messageRecord.id, "");
+  if (!messageId) {
+    throw new Error(`已登记 ${options.seat.name} 平台消息，但消息接口没有返回 ID，不能继续送到桌面线程。`);
+  }
+  await postJson(`/api/collaboration/projects/${options.projectId}/runner-commands`, {
+    title: `NPC 派工：${options.title}`,
+    body: JSON.stringify(
+      {
+        kind: "codex.desktop.dispatch",
+        project_id: options.projectId,
+        workstation_id: options.seat.id,
+        message_id: messageId,
+        provider_id: "codex",
+        title: options.title,
+      },
+      null,
+      2,
+    ),
+    workstation_id: options.seat.id,
+    metadata: {
+      source: "front_c_game_collab",
+      source_message_id: messageId,
+      target_workstation_id: options.seat.id,
+      delivery_mode: "codex_desktop_ui",
+      desktop_delivery_policy: "automation",
+      desktop_delivery_method: "codex_desktop_automation",
+      game_collab_run_id: options.runId,
+      game_collab_kind: options.kind,
+    },
+  });
+  await postJson("/api/collaboration/messages", {
+    project_id: options.projectId,
+    agent_id: options.seat.id,
+    message_type: "agent_ack",
+    title: `等待桌面后台接收 / ${options.seat.name}`,
+    body: [
+      `平台已把 ${options.seat.name} 的小游戏协作指令送入执行电脑队列。`,
+      `派单消息：${messageId}`,
+      "投递方式：Codex 桌面后台自动化，不抢焦点、不点窗口、不用剪贴板。",
+      "下一步状态应该进入等待桌面接收或等待桌面回复；不能把平台 ack 当成桌面已收到。",
+    ].join("\n"),
+    sender_type: "agent",
+    sender_id: options.seat.id,
+    recipient_type: "thread_workstation",
+    recipient_id: options.seat.id,
+    status: "in_progress",
+    metadata: {
+      source: "front_c_game_collab",
+      source_message_id: messageId,
+      delivery_mode: "codex_desktop_ui",
+      desktop_delivery_policy: "automation",
+      progress_state: "awaiting_desktop_pickup",
+      game_collab_run_id: options.runId,
+      game_collab_kind: options.kind,
     },
   });
 }
