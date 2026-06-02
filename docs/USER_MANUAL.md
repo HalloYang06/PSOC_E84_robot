@@ -392,6 +392,35 @@ safety limited: rejected trajectory: no PSoC status received
 safety limited: rejected trajectory: PSoC motion_allowed is not true, protocol_version=2, state=limited, control_mode=logging_only, detail=logging_only_no_motor_output
 ```
 
+当前 2026-06-02 实测的台架状态拒绝测试：
+
+```text
+safety limited: rejected trajectory: PSoC motion_allowed is not true, protocol_version=2, state=ok, control_mode=bench_armed, detail=none
+```
+
+这说明 `bench_armed` 不是正式穿戴运动许可。默认参数下，NanoPi bridge 会拒绝轨迹。
+
+当前 2026-06-02 实测的 fresh feedback 拒绝测试：
+
+```text
+safety limited: rejected trajectory: no fresh M33 motor feedback received
+```
+
+该测试只为了验证门控，临时设置过 `allow_bench_motion_for_trajectory:=true`，但仍保持 `enable_target_tx:=false` 和 `require_fresh_motor_status_for_trajectory:=true`。结果说明：即使台架状态被显式允许，电机未接或反馈全 stale 时，bridge 仍会拒绝轨迹。
+
+同轮抓包结果：
+
+```text
+0x330~0x334: present
+0x321/0x322: present
+0x320: 0
+fresh_m33_motor_status_count: 0
+stale_m33_motor_status_count: 570
+safe_to_expect_joint_states: false
+```
+
+因此当前现场状态下，看不到 `/joint_states` 是正确的安全结果；不要为了让 `/joint_states` 出现而关闭 fresh feedback gate。
+
 已验证的 PSoC 在线但轨迹超限拒绝测试：
 
 ```text

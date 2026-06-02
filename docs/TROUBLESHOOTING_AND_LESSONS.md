@@ -4381,3 +4381,43 @@ Connection reset by 192.168.2.66 port 22
 - 分类不清时按 `offline-demo` 或只读处理。
 - `demo_trajectory_node.py` 不得作为 6 关节主线 planner，不得作为真机正常测试入口。
 - 对真实 NanoPi/M33，先做只读状态，再做 `enable_target_tx=false` dry-run；任何 `0x320` 必须用 candump 单独证明没有发出或经过明确安全审查。
+
+### 有 M33 motor status 不等于可以期待 `/joint_states`
+
+现象：
+
+- NanoPi `can0` 已经是 1Mbps `ERROR-ACTIVE`，能抓到 `0x330~0x334` 周期帧。
+- `check_m33_motor_status_presence.py` 显示 `valid_m33_motor_status_count=570`。
+- 但 `fresh_m33_motor_status_count=0`、`stale_m33_motor_status_count=570`，仿真主机和 NanoPi 都没有稳定 `/joint_states` 样本。
+
+判断：
+
+- 当前电机未接或真实原始电机反馈不存在，M33 发送的是 stale 状态槽位。
+- `psoc_can_bridge_node.py` 会发布 `/rehab_arm/motor_state` 供诊断，但会过滤 stale 数据，不发布 `/joint_states`。
+- 这不是 DDS 或 bridge 故障，而是安全门控正确生效。
+
+技巧：
+
+- 用 `feedback_source_readiness.py <candump>` 看 `safe_to_expect_joint_states`。
+- 当输出 `safe_to_expect_joint_states=false` 时，不要关闭 `require_fresh_motor_status_for_trajectory` 来“凑出”运动链路。
+- 当前正确下一步是接入真实电机反馈或修正 M33 fresh/stale 语义，再观察 `/joint_states`。
+
+### `bench_armed` 和 fresh feedback 是两道不同的门
+
+现象：
+
+- 默认参数下，仿真主机发布一条测试 `JointTrajectory`，NanoPi bridge 拒绝：
+  `PSoC motion_allowed is not true, protocol_version=2, state=ok, control_mode=bench_armed, detail=none`。
+- 临时设置 `allow_bench_motion_for_trajectory:=true` 后，bridge 仍拒绝：
+  `no fresh M33 motor feedback received`。
+- 两轮 candump 都显示 `0x320=0`。
+
+判断：
+
+- `bench_armed` 不是正式穿戴运动许可，默认必须拒绝。
+- 即使为了台架 dry-run 显式允许 `bench_armed`，fresh feedback gate 仍会阻止没有真实反馈的轨迹进入发送队列。
+
+技巧：
+
+- 调试时不要一次关闭多道门。先看是 PSoC/M33 motion gate 拒绝，还是 fresh feedback gate 拒绝。
+- 任何台架参数放宽都必须保持 `enable_target_tx=false`，直到单独安全审查通过。

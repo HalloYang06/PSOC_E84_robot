@@ -87,6 +87,14 @@
   - 决策：`demo_trajectory_node.py`、`vla_task_planner_node.py`、`m33_motor_status_smoke.py`、`nanopi_can_master.py`、fallback backend 均明确为 demo/debug/smoke/bench，不得当作 6 关节主线或真机 readiness。
   - 更新：`rehab_arm_ros2_ws/README.md`、`docs/REHAB_ARM_SYSTEM_ARCHITECTURE.md`、`docs/MUJOCO_NANOPI_INTEGRATION_PREP.md`、`docs/USER_MANUAL.md`，要求后续 AI 先声明任务属于 mainline、shadow-sim、dry-run、bench-debug 或 offline-demo。
 
+- 完成 NanoPi dry-run 安全门测试，不使用 demo 节点。
+  - 工具链：仿真主机直接用 `ros2 topic pub --once /arm_controller/joint_trajectory trajectory_msgs/msg/JointTrajectory ...` 发布单关节测试消息；NanoPi 运行现有 `psoc_can_bridge_node.py`，`enable_target_tx=false`。
+  - 只读状态检查：`check_m33_motor_status_presence.py /tmp/rehab_bridge_readonly.candump --pretty` 显示 `valid_m33_motor_status_count=570`、`fresh_m33_motor_status_count=0`、`stale_m33_motor_status_count=570`、`target_0x320_count=0`。
+  - 反馈源检查：`feedback_source_readiness.py` 输出 `safe_to_expect_joint_states=false`、`decision=motor_feedback_source_missing`，警告 M33 电机状态帧存在但全 stale，且没有真实 Sitaiwei/Lingzu 原始反馈帧。
+  - 第一轮 dry-run：默认 `allow_bench_motion_for_trajectory=false`，延迟发布轨迹后 bridge 拒绝：`PSoC motion_allowed is not true, protocol_version=2, state=ok, control_mode=bench_armed, detail=none`；抓包 `0x320=0`。
+  - 第二轮 dry-run：仅为验证门控临时设 `allow_bench_motion_for_trajectory=true`，仍保持 `enable_target_tx=false` 和 `require_fresh_motor_status_for_trajectory=true`；bridge 拒绝：`no fresh M33 motor feedback received`；抓包 `0x320=0`。
+  - 结论：当前 CAN/M33/NanoPi/ROS2 上行和轨迹订阅链路已通；由于电机未接或反馈未 fresh，`/joint_states` 不应发布，轨迹不应进入 target 队列。这是安全正确的失败。
+
 - 新增机械臂主线 AI 交接文档：`docs/ai-handoffs/rehab-arm-mainline-2026-06-02.md`。
 - 交接内容覆盖：安全边界、当前仓库分工、M33/NanoPi/ROS/仿真/平台/App 对接关系、当前电机和 CAN 事实、后续 AI 提示词、近期最小可执行路线。
 - 本次只做文档交接整理，未执行硬件测试、ROS 测试或固件编译。
