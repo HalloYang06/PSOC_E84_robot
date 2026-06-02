@@ -60,6 +60,8 @@ function seatIdentityValues(value: AnyRecord) {
     value.config_id,
     value.configId,
     value.name,
+    value.label,
+    value.title,
   ].map((item) => text(item, "")).filter(Boolean);
 }
 
