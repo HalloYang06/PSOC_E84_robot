@@ -181,6 +181,15 @@ def list_project_items(api_base: str, token: str, project_id: str) -> dict[str, 
     }
 
 
+def get_seat_queues(api_base: str, token: str, project_id: str, seat_id: str) -> dict[str, object]:
+    return object_data(
+        request_json(
+            f"{api_base.rstrip('/')}/api/collaboration/projects/{quote(project_id)}/thread-workstations/{quote(seat_id)}/queues?limit=100",
+            token=token,
+        ),
+    )
+
+
 def string_list(value: object) -> list[str]:
     if isinstance(value, list):
         return [text(item) for item in value if text(item)]
@@ -295,6 +304,71 @@ def archive_indexed_queue_items(api_base: str, token: str, user: dict[str, objec
         )
         archived["needs"].append(archived_need)  # type: ignore[union-attr]
     return archived
+
+
+def queue_items(queue: dict[str, object], key: str) -> list[dict[str, object]]:
+    section = queue.get(key)
+    if not isinstance(section, dict):
+        return []
+    items = section.get("items")
+    return [item for item in items if isinstance(item, dict)] if isinstance(items, list) else []
+
+
+def validate_index_ownership(
+    *,
+    items: dict[str, list[dict[str, object]]],
+    seat_queue: dict[str, object],
+    seat: dict[str, object],
+) -> dict[str, object]:
+    records = indexed_records(items)
+    queue_seat = seat_queue.get("seat") if isinstance(seat_queue.get("seat"), dict) else {}
+    seat_row_id = text(seat.get("id") or seat.get("row_id") or seat.get("rowId"))
+    seat_config_id = text(seat.get("config_id") or seat.get("configId"))
+    seat_agent_id = text(seat.get("agent_id") or seat.get("agentId"))
+    queue_seat_row_id = text(queue_seat.get("id") or queue_seat.get("row_id") or queue_seat.get("rowId"))
+    queue_seat_config_id = text(queue_seat.get("config_id") or queue_seat.get("configId"))
+    queue_seat_agent_id = text(queue_seat.get("agent_id") or queue_seat.get("agentId"))
+    seat_identities = {
+        value
+        for value in (
+            seat_row_id,
+            seat_config_id,
+            seat_agent_id,
+            queue_seat_row_id,
+            queue_seat_config_id,
+            queue_seat_agent_id,
+        )
+        if value
+    }
+    my_needs = queue_items(seat_queue, "my_needs")
+    requirement_inbox = queue_items(seat_queue, "requirement_inbox")
+    my_tasks = queue_items(seat_queue, "my_tasks")
+    indexed_need_ids = {text(item.get("id")) for item in records["needs"] if text(item.get("id"))}
+    indexed_task_ids = {text(item.get("id")) for item in records["tasks"] if text(item.get("id"))}
+    need_from_agents = {text(item.get("from_agent") or item.get("fromAgent")) for item in records["needs"]}
+    task_assignees = {text(item.get("assignee_agent_id") or item.get("assigneeAgentId")) for item in records["tasks"]}
+    return {
+        "seat_identity": {
+            "row_id": seat_row_id,
+            "config_id": seat_config_id,
+            "agent_id": seat_agent_id,
+            "queue_row_id": queue_seat_row_id,
+            "queue_config_id": queue_seat_config_id,
+            "queue_agent_id": queue_seat_agent_id,
+        },
+        "indexed_need_ids": sorted(indexed_need_ids),
+        "indexed_task_ids": sorted(indexed_task_ids),
+        "need_from_agents": sorted(value for value in need_from_agents if value),
+        "task_assignees": sorted(value for value in task_assignees if value),
+        "my_needs_count": len(my_needs),
+        "my_tasks_count": len(my_tasks),
+        "requirement_inbox_count": len(requirement_inbox),
+        "need_in_my_needs": bool(indexed_need_ids & {text(item.get("id")) for item in my_needs}),
+        "need_not_in_requirement_inbox": not bool(indexed_need_ids & {text(item.get("id")) for item in requirement_inbox}),
+        "need_owner_matches_seat": bool(need_from_agents) and all(owner in seat_identities for owner in need_from_agents if owner),
+        "task_assignee_matches_seat": bool(task_assignees) and all(assignee in seat_identities for assignee in task_assignees if assignee),
+        "done_receipt_not_in_my_open_tasks": not bool(indexed_task_ids & {text(item.get("id")) for item in my_tasks}),
+    }
 
 
 def cdp_eval(cdp: object, expression: str) -> object:
@@ -532,6 +606,11 @@ def main() -> int:
         second_state = run_index_round(cdp, output_dir=output_dir, label="after-second-index")
         second_items = list_project_items(args.api_base, token, project_id)
         second_counts = count_indexed(second_items)
+        ownership_before_archive = validate_index_ownership(
+            items=second_items,
+            seat_queue=get_seat_queues(args.api_base, token, project_id, seat_id),
+            seat=seat,
+        )
         archived_items = archive_indexed_queue_items(args.api_base, token, user, project_id)
         archived_counts = count_indexed(list_project_items(args.api_base, token, project_id))
         company_needs_state = validate_company_archive_hidden(
@@ -573,6 +652,11 @@ def main() -> int:
         and second_counts == first_counts
         and archived_counts == second_counts
         and third_counts == second_counts
+        and ownership_before_archive.get("need_in_my_needs")
+        and ownership_before_archive.get("need_not_in_requirement_inbox")
+        and ownership_before_archive.get("need_owner_matches_seat")
+        and ownership_before_archive.get("task_assignee_matches_seat")
+        and ownership_before_archive.get("done_receipt_not_in_my_open_tasks")
         and "新增 4" in text(first_state.get("auditText"))
         and audit_shows_all_skipped(second_state.get("auditText"))
         and audit_shows_all_skipped(third_state.get("auditText"))
@@ -616,6 +700,7 @@ def main() -> int:
         "initial_state": initial_state,
         "first_state": first_state,
         "second_state": second_state,
+        "ownership_before_archive": ownership_before_archive,
         "archived_items": archived_items,
         "company_after_archive": {
             "needs": company_needs_state,
@@ -649,6 +734,7 @@ def main() -> int:
                 "second_counts": second_counts,
                 "archived_counts": archived_counts,
                 "third_counts": third_counts,
+                "ownership": ownership_before_archive,
             },
             ensure_ascii=False,
         ),
