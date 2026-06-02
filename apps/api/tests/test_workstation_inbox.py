@@ -2736,8 +2736,67 @@ def test_workstation_adapter_config_reports_codex_desktop_ui_bridge() -> None:
     assert data["desktop_delivery_mode"] == "codex_desktop_ui"
     assert data["desktop_visible"] is True
     assert data["desktop_bridge_connected"] is True
-    assert data["delivery_label"] == "桌面后台可接收"
-    assert "不会抢占当前窗口" in data["delivery_warning"]
+    assert data["desktop_execution_confirmed"] is False
+    assert data["delivery_label"] == "桌面线程可接收"
+    assert "还没有收到当前 runner 的执行模式确认" in data["delivery_warning"]
+
+
+def test_workstation_adapter_config_confirms_codex_desktop_execution_from_runner_capability() -> None:
+    owner_token, owner_user_id = issue_session_token(client)
+    workstation_id = f"ws-{uuid4().hex[:8]}"
+    runner_id = f"runner-{uuid4().hex[:8]}"
+    with SessionLocal() as db:
+        db.merge(
+            Runner(
+                id=runner_id,
+                name="Codex execution runner",
+                capabilities=["codex", "threads", "provider_cli_execution", "codex_desktop_automation"],
+                status="online",
+                last_heartbeat_at=datetime.now(timezone.utc),
+            )
+        )
+        db.commit()
+    project = create_project(
+        client,
+        owner_token,
+        name_prefix="Workstation Adapter Codex Desktop Execution",
+        collaboration_config={
+            "computer_nodes": [
+                {"id": "node-codex", "label": "Codex 电脑", "runner_id": runner_id, "git_root": "D:/node/repo"}
+            ],
+            "thread_workstations": [
+                {
+                    "id": workstation_id,
+                    "name": "Codex Boss",
+                    "status": "active",
+                    "computer_node_id": "node-codex",
+                    "ai_provider_id": "codex",
+                    "metadata": {
+                        "automation_thread_id": "codex-session-019e0d07-85d5-7d92-b9da-69cc2e35f451",
+                        "codex_desktop_process_detected": True,
+                        "desktop_bridge_connected": True,
+                        "desktop_bridge_label": "Codex Desktop UI automation",
+                        "desktop_delivery_mode": "codex_desktop_ui",
+                    },
+                }
+            ],
+        },
+    )
+    project_id = project["id"]
+    add_project_member(client, project_id, owner_token, owner_user_id, role="owner", is_owner=True)
+
+    response = client.get(
+        f"/api/collaboration/projects/{project_id}/thread-workstations/{workstation_id}/adapter-config",
+        headers={"X-Workstation-Id": workstation_id},
+    )
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["delivery_mode"] == "codex_desktop_ui"
+    assert data["desktop_visible"] is True
+    assert data["desktop_bridge_connected"] is True
+    assert data["desktop_execution_confirmed"] is True
+    assert data["delivery_label"] == "桌面后台执行已确认"
+    assert "不抢占当前窗口" in data["delivery_warning"]
 
 
 def test_workstation_adapter_config_inherits_cwd_from_bound_scanned_thread() -> None:
@@ -2846,7 +2905,8 @@ def test_workstation_adapter_config_inherits_desktop_bridge_from_bound_scanned_t
     assert data["desktop_delivery_mode"] == "codex_desktop_ui"
     assert data["desktop_visible"] is True
     assert data["desktop_bridge_connected"] is True
-    assert data["delivery_label"] == "桌面后台可接收"
+    assert data["desktop_execution_confirmed"] is False
+    assert data["delivery_label"] == "桌面线程可接收"
     assert data["executor_cwd"] == "D:/english_a_agent"
 
 

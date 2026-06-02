@@ -194,10 +194,14 @@ function Resolve-RestError {
 function Invoke-RunnerHeartbeat {
   param(
     [Parameter(Mandatory = $true)][string]$ApiBase,
-    [Parameter(Mandatory = $true)][string]$RunnerId
+    [Parameter(Mandatory = $true)][string]$RunnerId,
+    [string[]]$Capabilities = @()
   )
   $heartbeatUrl = ($ApiBase.TrimEnd("/")) + "/api/runners/heartbeat"
-  $heartbeatBody = @{ runner_id = $RunnerId } | ConvertTo-Json -Depth 4
+  $heartbeatBody = @{
+    runner_id = $RunnerId
+    capabilities = @($Capabilities)
+  } | ConvertTo-Json -Depth 4
   return Invoke-RestMethod -Method Post -Uri $heartbeatUrl -Headers @{
     "Content-Type" = "application/json"
     "X-Runner-Id" = $RunnerId
@@ -682,6 +686,7 @@ function Start-RunnerWatchLoop {
     [int]$MaxLoops = 0,
     [int]$DeviceScanIntervalSeconds = 60,
     [string]$DeviceDataRepo = "",
+    [string[]]$Capabilities = @(),
     [switch]$DeviceDataGitPush,
     [switch]$HardwareAccess,
     [switch]$ExecuteProviderCli
@@ -705,7 +710,7 @@ function Start-RunnerWatchLoop {
   while ($true) {
     $loop += 1
     try {
-      [void](Invoke-RunnerHeartbeat -ApiBase $ApiBase -RunnerId $RunnerId)
+      [void](Invoke-RunnerHeartbeat -ApiBase $ApiBase -RunnerId $RunnerId -Capabilities $Capabilities)
       $deviceScanResult = $null
       $secondsSinceDeviceScan = ([datetime]::UtcNow - $lastDeviceScanAt).TotalSeconds
       if ($secondsSinceDeviceScan -ge $DeviceScanIntervalSeconds) {
@@ -811,11 +816,16 @@ $runnerDir = Join-Path (Get-Location).Path "ai-collab-runner"
 New-Item -ItemType Directory -Force -Path $runnerDir | Out-Null
 
 $steps = [System.Collections.ArrayList]::new()
+$runnerCapabilities = @("codex", "claude", "qwen", "threads", "filesystem")
+if ($WatchExecuteProviderCli) {
+  $runnerCapabilities += @("provider_cli_execution", "codex_desktop_automation")
+}
+$runnerCapabilities = @($runnerCapabilities | Select-Object -Unique)
 
 $registerBody = @{
   runner_id = $RunnerId
   runner_name = $RunnerName
-  capabilities = @("codex", "claude", "qwen", "threads", "filesystem")
+  capabilities = @($runnerCapabilities)
   hardware_access = [bool]$HardwareAccess
   computer_node_id = $ComputerNodeId
 } | ConvertTo-Json -Depth 6
@@ -849,7 +859,7 @@ try {
       throw "Runner registration failed: pairing token is invalid, and existing runner '$RunnerId' is not bound to project '$ProjectId' / computer '$ComputerNodeId'. Return to the platform, generate a fresh pairing token for this computer, and run the new command."
     }
     try {
-      $heartbeatResponse = Invoke-RunnerHeartbeat -ApiBase $apiBase -RunnerId $RunnerId
+      $heartbeatResponse = Invoke-RunnerHeartbeat -ApiBase $apiBase -RunnerId $RunnerId -Capabilities $runnerCapabilities
       $registerData = if ($heartbeatResponse.data) { $heartbeatResponse.data } else { $heartbeatResponse }
     } catch {
       $heartbeatError = Resolve-RestError $_
@@ -972,6 +982,7 @@ if ($Watch) {
     -MaxLoops $WatchMaxLoops `
     -DeviceScanIntervalSeconds $DeviceScanIntervalSeconds `
     -DeviceDataRepo $DeviceDataRepo `
+    -Capabilities $runnerCapabilities `
     -DeviceDataGitPush:$DeviceDataGitPush `
     -HardwareAccess:$HardwareAccess `
     -ExecuteProviderCli:$WatchExecuteProviderCli

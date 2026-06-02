@@ -27,7 +27,7 @@ from app.modules.tasks.schemas import TaskTransitionCreate
 from app.modules.tasks.service import record_task_log, record_task_result, transition_task_status
 
 from . import repo
-from .schemas import RunnerDeviceInterfaceScanCreate, RunnerRegister
+from .schemas import RunnerDeviceInterfaceScanCreate, RunnerHeartbeat, RunnerRegister
 from .schemas import RunnerThreadWorkstationSyncCreate
 
 
@@ -740,8 +740,8 @@ def register_runner_with_binding(db: Session, payload: RunnerRegister, *, projec
     return get_runner_or_404(db, runner.id)
 
 
-def heartbeat(db: Session, runner_id: str):
-    return repo.heartbeat(db, get_runner_or_404(db, runner_id))
+def heartbeat(db: Session, payload: RunnerHeartbeat):
+    return repo.heartbeat(db, get_runner_or_404(db, payload.runner_id), payload)
 
 
 def mark_stale_runners_offline(db: Session, *, stale_after_seconds: int | None = None) -> dict[str, object]:

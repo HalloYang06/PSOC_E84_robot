@@ -36,6 +36,7 @@ export type WorkbenchSeat = {
   desktopVisible?: boolean;
   desktopProcessDetected?: boolean;
   desktopBridgeConnected?: boolean;
+  desktopExecutionConfirmed?: boolean;
   desktopBridgeLabel?: string;
   desktopBridgeNote?: string;
   desktopThreadUrl?: string;
@@ -164,7 +165,7 @@ function developmentReadinessForSeat(
   const dispatch = dispatchReadinessForSeat(seat);
   const hasThread = Boolean(seat.threadId);
   const isDesktopDelivery = seat.desktopVisible || seat.desktopProcessDetected || seat.deliveryMode === "codex_desktop_ui";
-  const desktopReady = seat.desktopVisible || (!isDesktopDelivery && Boolean(seat.deliveryLabel));
+  const desktopReady = seat.desktopExecutionConfirmed || seat.desktopVisible || (!isDesktopDelivery && Boolean(seat.deliveryLabel));
   const threadNoun = threadBindingNoun(seat);
   const computerTone = runnerStateToneForCard(seat.runnerStateTone);
   const signals: DevelopmentReadiness["signals"] = [
@@ -183,12 +184,14 @@ function developmentReadinessForSeat(
     {
       key: "delivery",
       label: seat.desktopVisible || isDesktopDelivery ? "桌面后台" : "送达方式",
-      value: seat.desktopVisible
-        ? "可后台接收"
-        : seat.desktopProcessDetected
-          ? "待确认"
-          : seat.deliveryLabel || "待确认",
-      tone: desktopReady ? "ok" : seat.desktopProcessDetected || seat.runnerCanQueue ? "manual" : "warn",
+      value: seat.desktopExecutionConfirmed
+        ? "执行已确认"
+        : seat.desktopBridgeConnected || seat.desktopVisible
+          ? "线程可接收"
+          : seat.desktopProcessDetected
+            ? "待执行确认"
+            : seat.deliveryLabel || "待确认",
+      tone: seat.desktopExecutionConfirmed ? "ok" : desktopReady ? "manual" : seat.desktopProcessDetected || seat.runnerCanQueue ? "manual" : "warn",
     },
     {
       key: "automation",

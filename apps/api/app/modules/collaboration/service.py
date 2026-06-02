@@ -1435,6 +1435,17 @@ def _adapter_delivery_state(
     desktop_bridge_label = str(meta.get("desktop_bridge_label") or "").strip() or None
     desktop_bridge_note = str(meta.get("desktop_bridge_note") or meta.get("codex_desktop_bridge_note") or "").strip() or None
     desktop_thread_url = _codex_desktop_thread_url(thread_id) if provider == "codex" else None
+    runner_capabilities = {
+        str(value or "").strip().lower().replace("-", "_")
+        for value in (meta.get("runner_capabilities") if isinstance(meta.get("runner_capabilities"), list) else [])
+        if str(value or "").strip()
+    }
+    desktop_execution_confirmed = bool(
+        meta.get("desktop_execution_confirmed")
+        or meta.get("codex_desktop_execution_confirmed")
+        or "provider_cli_execution" in runner_capabilities
+        or "codex_desktop_automation" in runner_capabilities
+    )
     if provider == "codex" and command:
         mode = "custom"
         label = "自定义执行器"
@@ -1448,9 +1459,12 @@ def _adapter_delivery_state(
             warning = "此 NPC 已显式配置为 Codex app-server 后台处理；桌面版不会显示完整处理过程。仅适合用户明确允许的后台任务。"
         elif desktop_bridge_connected and desktop_delivery_mode == "codex_desktop_ui":
             mode = "codex_desktop_ui"
-            label = "桌面后台可接收"
+            label = "桌面后台执行已确认" if desktop_execution_confirmed else "桌面线程可接收"
             visible = True
-            warning = "平台会把派单交给目标电脑的桌面版后台自动化；不会抢占当前窗口，用户打开绑定线程后可查看处理过程。"
+            if desktop_execution_confirmed:
+                warning = "目标电脑已上报桌面后台执行能力；平台会把派单送到绑定线程，不抢占当前窗口，并同步最终回复。"
+            else:
+                warning = "平台已看到桌面线程通道，但还没有收到当前 runner 的执行模式确认；任务可排队，需确认 runner 以执行模式运行后再判断为真实处理。"
         else:
             mode = "codex_desktop_ui_required"
             label = "等待桌面线程接入"
@@ -1488,6 +1502,7 @@ def _adapter_delivery_state(
         "desktop_bridge_connected": desktop_bridge_connected,
         "desktop_bridge_label": desktop_bridge_label,
         "desktop_bridge_note": desktop_bridge_note,
+        "desktop_execution_confirmed": desktop_execution_confirmed,
         "desktop_thread_url": desktop_thread_url,
         "delivery_warning": warning,
     }
@@ -1638,13 +1653,25 @@ def get_project_workstation_adapter_config(db: Session, project_id: str, worksta
         provider_label = str(provider.get("label") or provider.get("id") or "").strip() or None
     if not provider_label:
         provider_label = str(workstation.get("ai_provider") or workstation.get("ai_provider_id") or "").strip() or None
+    runner_capabilities: list[str] = []
+    if isinstance(computer_node, dict):
+        runner_id = str(computer_node.get("runner_id") or "").strip()
+        if runner_id:
+            runner = db.get(Runner, runner_id)
+            if runner is not None:
+                runner_capabilities = [str(value) for value in (runner.capabilities or []) if str(value).strip()]
 
     delivery_state = _adapter_delivery_state(
         provider_id=provider_id or provider_label,
         executor_command=executor_command,
         automation_thread_id=automation_thread_id_value,
         executor_cwd=executor_cwd,
-        metadata={**provider_metadata, **bound_thread_metadata, **workstation_metadata},
+        metadata={
+            **provider_metadata,
+            **bound_thread_metadata,
+            **workstation_metadata,
+            "runner_capabilities": runner_capabilities,
+        },
     )
 
     return {

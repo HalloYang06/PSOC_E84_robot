@@ -409,6 +409,7 @@ class WorkstationAdapterConfigRead(BaseModel):
     desktop_bridge_connected: bool = False
     desktop_bridge_label: str | None = None
     desktop_bridge_note: str | None = None
+    desktop_execution_confirmed: bool = False
     desktop_thread_url: str | None = None
     delivery_warning: str | None = None
     executor_command: str | None = None

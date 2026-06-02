@@ -268,7 +268,7 @@ def api_register_runner(payload: RunnerRegister, request: Request, db: Session =
 @router.post("/heartbeat")
 def api_runner_heartbeat(payload: RunnerHeartbeat, request: Request, db: Session = Depends(get_db)):
     resolve_runner_principal(db, request, payload.runner_id, action="runner.heartbeat")
-    return ok(RunnerRead.model_validate(serialize_runner_for_read(db, heartbeat(db, payload.runner_id))).model_dump(mode="json"))
+    return ok(RunnerRead.model_validate(serialize_runner_for_read(db, heartbeat(db, payload))).model_dump(mode="json"))
 
 
 @router.get("/{runner_id}")

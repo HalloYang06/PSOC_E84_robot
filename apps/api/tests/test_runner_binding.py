@@ -164,6 +164,33 @@ def test_runner_read_model_reflects_project_computer_node_bindings() -> None:
     assert summary["bound_projects"] >= 1
 
 
+def test_runner_heartbeat_refreshes_current_capabilities() -> None:
+    runner_id = f"runner-{uuid4().hex[:8]}"
+    register_response = client.post(
+        "/api/runners/register",
+        json={
+            "runner_id": runner_id,
+            "runner_name": "Capability Runner",
+            "capabilities": ["codex", "threads"],
+            "hardware_access": False,
+        },
+    )
+    assert register_response.status_code == 200
+
+    heartbeat_response = client.post(
+        "/api/runners/heartbeat",
+        headers={"X-Runner-Id": runner_id},
+        json={
+            "runner_id": runner_id,
+            "capabilities": ["codex", "threads", "provider_cli_execution", "codex_desktop_automation"],
+        },
+    )
+    assert heartbeat_response.status_code == 200
+    data = heartbeat_response.json()["data"]
+    assert "provider_cli_execution" in data["capabilities"]
+    assert "codex_desktop_automation" in data["capabilities"]
+
+
 def test_runner_workspace_surfaces_current_task_and_recent_errors() -> None:
     token, user_id = _issue_session_token()
     runner_id = f"runner-{uuid4().hex[:8]}"

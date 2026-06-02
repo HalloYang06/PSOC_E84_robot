@@ -17,6 +17,7 @@ class RunnerRegister(BaseModel):
 
 class RunnerHeartbeat(BaseModel):
     runner_id: str
+    capabilities: list[str] | None = None
 
 
 class RunnerTaskLogCreate(BaseModel):

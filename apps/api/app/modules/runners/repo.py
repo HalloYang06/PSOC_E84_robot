@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.db.models.runner import Runner
 from app.modules.tasks.service import claim_next_ready_task
 
-from .schemas import RunnerRegister
+from .schemas import RunnerHeartbeat, RunnerRegister
 
 
 def list_runners(db: Session) -> list[Runner]:
@@ -43,9 +43,11 @@ def register_runner(db: Session, payload: RunnerRegister) -> Runner:
     return runner
 
 
-def heartbeat(db: Session, runner: Runner) -> Runner:
+def heartbeat(db: Session, runner: Runner, payload: RunnerHeartbeat | None = None) -> Runner:
     runner.status = "online"
     runner.last_heartbeat_at = datetime.now(timezone.utc)
+    if payload is not None and payload.capabilities is not None:
+        runner.capabilities = payload.capabilities
     db.add(runner)
     db.commit()
     db.refresh(runner)

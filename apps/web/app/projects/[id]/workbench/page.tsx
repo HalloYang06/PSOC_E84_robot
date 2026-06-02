@@ -157,6 +157,8 @@ function publicThreadHealthLabel(value: string, automationEnabled: boolean) {
 
 function publicDeliveryLabel(value: string, deliveryMode: string, desktopDeliveryMode: string) {
   const raw = `${value || ""} ${deliveryMode || ""} ${desktopDeliveryMode || ""}`.toLowerCase();
+  if (`${value || ""}`.includes("执行已确认")) return "桌面后台执行已确认";
+  if (`${value || ""}`.includes("线程可接收")) return "桌面线程可接收";
   if (raw.includes("desktop") || raw.includes("codex_desktop_ui")) return "桌面后台可接收";
   if (raw.includes("app_server") || raw.includes("session")) return "执行电脑队列";
   return value || "";
@@ -562,6 +564,19 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
       ?? boundThreadAdapter.desktopBridgeConnected
       ?? false,
     );
+    const desktopExecutionConfirmed = Boolean(
+      meta.desktop_execution_confirmed
+      ?? meta.desktopExecutionConfirmed
+      ?? meta.codex_desktop_execution_confirmed
+      ?? adapter.desktop_execution_confirmed
+      ?? adapter.desktopExecutionConfirmed
+      ?? boundThreadMeta.desktop_execution_confirmed
+      ?? boundThreadMeta.desktopExecutionConfirmed
+      ?? boundThreadMeta.codex_desktop_execution_confirmed
+      ?? boundThreadAdapter.desktop_execution_confirmed
+      ?? boundThreadAdapter.desktopExecutionConfirmed
+      ?? false,
+    );
     const desktopVisible = Boolean(
       meta.desktop_visible
       ?? meta.desktopVisible
@@ -694,6 +709,7 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
       desktopVisible,
       desktopProcessDetected,
       desktopBridgeConnected,
+      desktopExecutionConfirmed,
       desktopBridgeLabel,
       desktopBridgeNote,
       desktopThreadUrl,
