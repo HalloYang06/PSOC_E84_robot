@@ -111,6 +111,7 @@ def page_state(cdp: object) -> dict[str, object]:
           const body = document.body?.innerText || '';
           const forbidden = Array.from(new Set(body.match(new RegExp({js(FORBIDDEN_RE)}, 'ig')) || []));
           const mappingRows = Array.from(document.querySelectorAll('[data-testid="rehab-pose-mapping"] [class*="mappingRow"]'));
+          const flowRows = Array.from(document.querySelectorAll('[data-testid="rehab-joint-state-flow"] article'));
           const matchLine = Array.from(document.querySelectorAll('[class*="poseStatus"] strong')).map((item) => item.textContent || '').find((text) => text.includes('匹配')) || '';
           const meshLine = Array.from(document.querySelectorAll('[class*="poseStatus"] span')).map((item) => item.textContent || '').find((text) => text.includes('模型资源已加载')) || '';
           const previewLines = Array.from(document.querySelectorAll('[class*="armLegend"] span')).map((item) => item.textContent || '');
@@ -125,7 +126,9 @@ def page_state(cdp: object) -> dict[str, object]:
             hasSavedModel: body.includes('已保存到当前设备档案') || body.includes('已从当前设备档案恢复模型包'),
             hasRestoredModel: body.includes('已从当前设备档案恢复模型包'),
             hasPoseMapping: body.includes('姿态映射') && mappingRows.length > 0,
+            hasJointFlow: body.includes('关节状态流') && flowRows.length >= 6 && body.includes('只用于网页预览和校准核对'),
             mappingRowCount: mappingRows.length,
+            jointFlowRowCount: flowRows.length,
             matchLine,
             meshLine,
             hasRestoredMeshes: meshLine.includes('模型资源已加载 7 个，未加载 0 个'),
@@ -270,6 +273,7 @@ def main() -> int:
         state["ok"] = (
             state["hasImportedUrdf"]
             and state["hasPoseMapping"]
+            and state["hasJointFlow"]
             and state["hasCanvas"]
             and state["hasReadonlyBoundary"]
             and state["hasSavedModel"]

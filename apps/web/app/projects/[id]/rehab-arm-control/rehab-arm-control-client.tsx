@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import flowStyles from "./rehab-arm-joint-flow.module.css";
 import styles from "./rehab-arm-control.module.css";
 
 export type AnyRecord = Record<string, any>;
@@ -65,6 +66,18 @@ type JointCalibration = {
   unit: "rad" | "deg";
   direction: 1 | -1;
   offsetRad: number;
+};
+
+type JointFlowRow = {
+  jointName: string;
+  sourceName: string;
+  sourceLabel: string;
+  rawValue: number | null;
+  calibratedValue: number | null;
+  velocity: number | null;
+  effort: number | null;
+  temperature: number | null;
+  status: "matched" | "waiting" | "fault";
 };
 
 type UrdfVisualMesh = {
@@ -392,6 +405,28 @@ function motorSourceNames(motors: AnyRecord[]) {
   })));
 }
 
+function motorSourceKey(motor: AnyRecord, index = 0) {
+  const jointName = text(motor.joint_name ?? motor.jointName, "");
+  const motorId = text(motor.motor_id ?? motor.motorId, "");
+  if (text(motor.source_label, "") === "ROS 关节状态") return jointName;
+  return jointName || motorId || `motor_${index + 1}`;
+}
+
+function motorBySourceName(motors: AnyRecord[]) {
+  const values = new Map<string, AnyRecord>();
+  motors.forEach((motor, index) => {
+    const keys = [
+      text(motor.joint_name ?? motor.jointName, ""),
+      text(motor.motor_id ?? motor.motorId, ""),
+      motorSourceKey(motor, index),
+    ].filter(Boolean);
+    keys.forEach((key) => {
+      if (!values.has(key)) values.set(key, motor);
+    });
+  });
+  return values;
+}
+
 function jointStateSamplesFromPayload(value: unknown) {
   const payload = record(value);
   const jointState = payload.joint_state ?? payload.joint_states ?? payload.jointState ?? payload.jointStates;
@@ -574,6 +609,39 @@ function calibratedJointValue(row: JointCalibration, sourceValues: Map<string, n
   return inRadians * row.direction + row.offsetRad;
 }
 
+function numericOrNull(value: unknown) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function jointFlowRows(
+  jointNames: string[],
+  calibrations: JointCalibration[],
+  sourceValues: Map<string, number>,
+  sourceMotors: Map<string, AnyRecord>,
+): JointFlowRow[] {
+  const rowsByJoint = new Map(calibrations.map((row) => [row.jointName, row]));
+  return jointNames.map((jointName) => {
+    const row = rowsByJoint.get(jointName);
+    const sourceName = row?.sourceName || "";
+    const motor = sourceName ? sourceMotors.get(sourceName) : undefined;
+    const rawValue = sourceName && sourceValues.has(sourceName) ? Number(sourceValues.get(sourceName)) : null;
+    const calibratedValue = row ? calibratedJointValue(row, sourceValues) : null;
+    const fault = Boolean(motor?.fault ?? motor?.has_fault ?? motor?.hasFault);
+    return {
+      jointName,
+      sourceName,
+      sourceLabel: text(motor?.source_label, sourceName ? "电机状态" : "等待上报"),
+      rawValue,
+      calibratedValue,
+      velocity: numericOrNull(motor?.velocity ?? motor?.velocity_rad_s ?? motor?.velocityRadS),
+      effort: numericOrNull(motor?.torque ?? motor?.effort ?? motor?.current),
+      temperature: numericOrNull(motor?.temperature ?? motor?.temp_c ?? motor?.tempC),
+      status: fault ? "fault" : calibratedValue === null ? "waiting" : "matched",
+    };
+  });
+}
+
 function normalizePackagePath(value: string) {
   return value.replace(/\\/g, "/").replace(/^\/+/, "");
 }
@@ -749,6 +817,7 @@ function Arm3DOverview({
     () => Array.from(new Set(motors.map((motor) => text(motor.source_label, "电机状态")).filter(Boolean))),
     [motors],
   );
+  const sourceMotors = useMemo(() => motorBySourceName(motors), [motors]);
   const jointRowsKey = jointRows.join("\u0001");
   const sourceNamesKey = sourceNames.join("\u0001");
   const [calibrations, setCalibrations] = useState<JointCalibration[]>([]);
@@ -767,6 +836,15 @@ function Arm3DOverview({
     () => (jointRows.length ? jointRows : urdfJointNames).filter((name) => calibratedJointValues.has(name)),
     [calibratedJointValues, jointRows, urdfJointNames],
   );
+  const flowJointNames = useMemo(
+    () => (jointRows.length ? jointRows : urdfJointNames.length ? urdfJointNames : ARM_MODEL_JSON.joints),
+    [jointRows, urdfJointNames],
+  );
+  const flowRows = useMemo(
+    () => jointFlowRows(flowJointNames, calibrations, jointValues, sourceMotors),
+    [calibrations, flowJointNames, jointValues, sourceMotors],
+  );
+  const activeFlowRows = flowRows.filter((row) => row.status === "matched").length;
 
   useEffect(() => {
     positionsRef.current = positions;
@@ -1183,6 +1261,44 @@ function Arm3DOverview({
           </span>
         </div>
       ) : null}
+      <section className={flowStyles.jointFlowPanel} aria-label="关节状态流">
+        <div className={flowStyles.jointFlowHead}>
+          <div>
+            <span>关节状态流</span>
+            <strong>{activeFlowRows}/{flowRows.length} 个关节有实时角度</strong>
+          </div>
+          <small>{sourceNames.length ? `${sourceNames.length} 个只读角度来源` : "等待 NanoPi 或仿真主机上报"}</small>
+        </div>
+        <div className={flowStyles.jointFlowGrid} data-testid="rehab-joint-state-flow">
+          {flowRows.slice(0, 8).map((row) => (
+            <article key={row.jointName} data-state={row.status}>
+              <div>
+                <strong>{row.jointName}</strong>
+                <span>{row.sourceName || "待匹配"} · {row.sourceLabel}</span>
+              </div>
+              <dl>
+                <div>
+                  <dt>原始</dt>
+                  <dd>{row.rawValue === null ? "-" : numberText(row.rawValue, row.sourceName && calibrations.find((item) => item.jointName === row.jointName)?.unit === "deg" ? " deg" : " rad")}</dd>
+                </div>
+                <div>
+                  <dt>套用</dt>
+                  <dd>{row.calibratedValue === null ? "未套用" : numberText(row.calibratedValue, " rad")}</dd>
+                </div>
+                <div>
+                  <dt>速度</dt>
+                  <dd>{row.velocity === null ? "-" : numberText(row.velocity, " rad/s")}</dd>
+                </div>
+                <div>
+                  <dt>温度</dt>
+                  <dd>{row.temperature === null ? "-" : numberText(row.temperature, " ℃")}</dd>
+                </div>
+              </dl>
+            </article>
+          ))}
+        </div>
+        <p className={flowStyles.jointFlowHint}>这些数值只用于网页预览和校准核对，不会写回 NanoPi、M33 或电机驱动。</p>
+      </section>
       {urdfJoints.length ? (
         <details className={styles.poseMappingPanel} open>
           <summary>
