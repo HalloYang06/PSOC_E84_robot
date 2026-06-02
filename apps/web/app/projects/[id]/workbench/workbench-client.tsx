@@ -152,6 +152,14 @@ function seatNeedsRecoveryQueue(seat: WorkbenchSeat): boolean {
   return seatCanQueueTask(seat) && !seatCanTakeTask(seat);
 }
 
+function compactSeatDeliveryState(seat: WorkbenchSeat): string {
+  if (seat.desktopExecutionConfirmed) return "执行已确认";
+  if (seat.desktopBridgeConnected || (seat.desktopVisible && seat.deliveryLabel === "桌面线程可接收")) {
+    return "线程可接收";
+  }
+  return seat.runnerDispatchState || seat.deliveryLabel || "";
+}
+
 function userFacingMessageText(value: unknown, fallback = ""): string {
   const next = String(value ?? "")
     .replace(/alias_display_non_authoritative/gi, "历史标识展示规则")
@@ -1432,6 +1440,7 @@ export function WorkbenchClient({
                     {group.seats.map((seat) => {
                       const isOpen = openIds.includes(seat.id);
                       const isSelected = selectedIds.has(seat.id);
+                      const deliveryState = compactSeatDeliveryState(seat);
                       return (
                         <li key={seat.id} className={`${styles.npcRow} ${isOpen ? styles.npcRowOpen : ""}`}>
                           <label className={styles.checkbox} title="勾选后批量开启">
@@ -1446,7 +1455,7 @@ export function WorkbenchClient({
                             <small className={styles.npcMeta}>
                               <span className={styles.dot} title="占用状态：S5 后接入" />
                               {seat.providerLabel || "未绑定 provider"}
-                              {seat.runnerDispatchState ? ` · ${seat.runnerDispatchState}` : seat.deliveryLabel ? ` · ${seat.deliveryLabel}` : ""}
+                              {deliveryState ? ` · ${deliveryState}` : ""}
                               {seat.automationEnabled ? " · 自动化已开" : ""}
                             </small>
                           </div>
