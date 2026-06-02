@@ -113,6 +113,25 @@ function forgeTab(value: unknown): ForgeTab {
   return "skills";
 }
 
+function skillForgeSelfPath(projectId: string, searchParams?: {
+  return_to?: string;
+  from?: string;
+  resources?: string;
+  tab?: string;
+  focus?: string;
+  queue?: string;
+}) {
+  const query = new URLSearchParams();
+  if (searchParams?.resources) query.set("resources", searchParams.resources);
+  if (searchParams?.tab) query.set("tab", forgeTab(searchParams.tab));
+  if (searchParams?.from) query.set("from", text(searchParams.from, ""));
+  if (searchParams?.focus) query.set("focus", text(searchParams.focus, ""));
+  if (searchParams?.queue) query.set("queue", text(searchParams.queue, ""));
+  if (searchParams?.return_to) query.set("return_to", text(searchParams.return_to, ""));
+  const suffix = query.toString();
+  return `/projects/${projectId}/skill-forge${suffix ? `?${suffix}` : ""}`;
+}
+
 function publicSeedText(value: unknown, maxLength = 180) {
   const next = text(value, "")
     .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, "关联记录")
@@ -136,6 +155,8 @@ export default async function ProjectSkillForgePage({
     workstation?: string;
     workstation_id?: string;
     tab?: string;
+    focus?: string;
+    queue?: string;
     need_id?: string;
     task_id?: string;
     dispatch_id?: string;
@@ -150,7 +171,7 @@ export default async function ProjectSkillForgePage({
   const projectId = params.id;
   const auth = await getCurrentAuthState();
   if (!auth.data?.user) {
-    redirect(`/login?returnTo=${encodeURIComponent(`/projects/${projectId}/skill-forge`)}`);
+    redirect(`/login?returnTo=${encodeURIComponent(skillForgeSelfPath(projectId, searchParams))}`);
   }
 
   const projectState = await getProjectState(projectId);
