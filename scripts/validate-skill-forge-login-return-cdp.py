@@ -188,6 +188,39 @@ def read_page_state(cdp: object) -> dict[str, object]:
     return state
 
 
+def validate_queue_roundtrip(cdp: object, *, queue: str, output_dir: Path, label: str) -> dict[str, object]:
+    link_text = "看任务验收详情" if queue == "tasks" else "看需求验收详情"
+    review_href = click_first_link(cdp, link_text)
+    wait_for(
+        cdp,
+        "location.href.includes('/company') && document.body && document.body.innerText.includes('验收详情')",
+        timeout_seconds=45,
+    )
+    company = read_page_state(cdp)
+    company_shot = output_dir / f"{label}-{queue}-company.png"
+    screenshot(cdp, company_shot)
+    continue_href = click_first_link(cdp, "继续查看索引结果")
+    wait_for(
+        cdp,
+        "location.href.includes('/skill-forge') && document.body && document.body.innerText.includes('最近索引')",
+        timeout_seconds=45,
+    )
+    returned = read_page_state(cdp)
+    returned_shot = output_dir / f"{label}-{queue}-returned.png"
+    screenshot(cdp, returned_shot)
+    return {
+        "queue": queue,
+        "review_href": review_href,
+        "company": company,
+        "continue_href": continue_href,
+        "returned": returned,
+        "screenshots": {
+            "company": str(company_shot),
+            "returned": str(returned_shot),
+        },
+    }
+
+
 def new_cdp() -> tuple[object, subprocess.Popen[bytes], Path]:
     port = cdp_helper.find_free_port()
     profile_dir = Path(tempfile.mkdtemp(prefix="ai-collab-skill-forge-login-cdp-"))
@@ -246,42 +279,51 @@ def validate_viewport(
         fill_field(cdp, 'input[name="email"]', args.login_email)
         fill_field(cdp, 'input[name="password"]', args.login_password)
         click_by_text(cdp, "进入项目空间", selector='button[type="submit"], button')
-        wait_for(cdp, "!location.href.includes('/login') && document.body && document.body.innerText.includes('能力工坊')", timeout_seconds=45)
-        wait_for(cdp, "document.body && document.body.innerText.includes('1号 NPC') && document.body.innerText.includes('最近索引')", timeout_seconds=20)
+        wait_for(
+            cdp,
+            """
+            (() => {
+              const text = document.body ? document.body.innerText || '' : '';
+              return !location.href.includes('/login') && (location.href.includes('/skill-forge') || text.includes('能力工坊'));
+            })()
+            """,
+            timeout_seconds=75,
+        )
+        wait_for(cdp, "document.body && document.body.innerText.includes('1号 NPC') && document.body.innerText.includes('最近索引')", timeout_seconds=45)
         after_login = read_page_state(cdp)
         shot = output_dir / f"{label}-after-login.png"
         screenshot(cdp, shot)
         screenshots["after_login"] = str(shot)
 
-        company = None
-        returned = None
-        need_href = ""
-        continue_href = ""
+        queues: dict[str, dict[str, object]] = {}
         if validate_roundtrip:
-            need_href = click_first_link(cdp, "看需求验收详情")
-            wait_for(cdp, "location.href.includes('/company') && document.body && document.body.innerText.includes('验收详情')", timeout_seconds=45)
-            company = read_page_state(cdp)
-            shot = output_dir / f"{label}-company.png"
-            screenshot(cdp, shot)
-            screenshots["company"] = str(shot)
-            continue_href = click_first_link(cdp, "继续查看索引结果")
-            wait_for(cdp, "location.href.includes('/skill-forge') && document.body && document.body.innerText.includes('最近索引')", timeout_seconds=45)
-            returned = read_page_state(cdp)
-            shot = output_dir / f"{label}-returned.png"
-            screenshot(cdp, shot)
-            screenshots["returned"] = str(shot)
+            for queue in ("needs", "tasks"):
+                if queue != "needs":
+                    cdp.send("Page.navigate", {"url": skill_url})
+                    wait_for(
+                        cdp,
+                        "document.body && document.body.innerText.includes('1号 NPC') && document.body.innerText.includes('最近索引')",
+                        timeout_seconds=30,
+                    )
+                queues[queue] = validate_queue_roundtrip(cdp, queue=queue, output_dir=output_dir, label=label)
+                for shot_key, shot_path in queues[queue]["screenshots"].items():
+                    screenshots[f"{queue}_{shot_key}"] = str(shot_path)
 
         return {
             "label": label,
             "login_url": login_url,
             "skill_url": skill_url,
             "after_login": after_login,
-            "need_href": need_href,
-            "company": company,
-            "continue_href": continue_href,
-            "returned": returned,
+            "queues": queues,
             "screenshots": screenshots,
         }
+    except Exception:
+        if cdp is not None:
+            try:
+                screenshot(cdp, output_dir / f"{label}-failure.png")
+            except Exception:
+                pass
+        raise
     finally:
         if cdp is not None:
             try:
@@ -319,27 +361,47 @@ def main() -> int:
     )
 
     expected_encoded = args.expected_stable_resource.replace(":", "%3A")
+    desktop_queues = desktop.get("queues") if isinstance(desktop.get("queues"), dict) else {}
+    needs = desktop_queues.get("needs") if isinstance(desktop_queues, dict) else None
+    tasks = desktop_queues.get("tasks") if isinstance(desktop_queues, dict) else None
     states = [
         desktop["after_login"],
-        desktop.get("company"),
-        desktop.get("returned"),
+        needs.get("company") if isinstance(needs, dict) else None,
+        needs.get("returned") if isinstance(needs, dict) else None,
+        tasks.get("company") if isinstance(tasks, dict) else None,
+        tasks.get("returned") if isinstance(tasks, dict) else None,
         mobile["after_login"],
     ]
     state_dicts = [state for state in states if isinstance(state, dict)]
+    def queue_ok(queue_state: object, queue_name: str) -> bool:
+        if not isinstance(queue_state, dict):
+            return False
+        company = queue_state.get("company")
+        returned = queue_state.get("returned")
+        return bool(
+            expected_encoded in str(queue_state.get("review_href", ""))
+            and f"queue={queue_name}" in str(queue_state.get("review_href", ""))
+            and isinstance(company, dict)
+            and company.get("hasAcceptanceDetail")
+            and expected_encoded in str(company.get("url", ""))
+            and f"queue={queue_name}" in str(company.get("url", ""))
+            and expected_encoded in str(queue_state.get("continue_href", ""))
+            and f"queue={queue_name}" in str(queue_state.get("continue_href", ""))
+            and isinstance(returned, dict)
+            and returned.get("hasOpenedNpc")
+            and expected_encoded in str(returned.get("url", ""))
+            and f"queue={queue_name}" in str(returned.get("url", ""))
+        )
+
     pass_checks = bool(
         isinstance(desktop["after_login"], dict)
         and "/skill-forge" in str(desktop["after_login"].get("url", ""))
         and f"tab={args.tab}" in str(desktop["after_login"].get("url", ""))
         and desktop["after_login"].get("hasOpenedNpc")
         and desktop["after_login"].get("hasNeedAuditLink")
-        and expected_encoded in str(desktop.get("need_href", ""))
-        and isinstance(desktop.get("company"), dict)
-        and desktop["company"].get("hasAcceptanceDetail")
-        and expected_encoded in str(desktop["company"].get("url", ""))
-        and expected_encoded in str(desktop.get("continue_href", ""))
-        and isinstance(desktop.get("returned"), dict)
-        and desktop["returned"].get("hasOpenedNpc")
-        and expected_encoded in str(desktop["returned"].get("url", ""))
+        and desktop["after_login"].get("hasTaskAuditLink")
+        and queue_ok(needs, "needs")
+        and queue_ok(tasks, "tasks")
         and isinstance(mobile["after_login"], dict)
         and "/skill-forge" in str(mobile["after_login"].get("url", ""))
         and f"tab={args.tab}" in str(mobile["after_login"].get("url", ""))
