@@ -314,6 +314,10 @@ function normalizeAuthReturnPath(value: unknown, fallback = "/projects") {
   return fallback;
 }
 
+function authRedirectTarget(value: string) {
+  return encodeURI(value);
+}
+
 function isSafeLocalReturnPath(value: string) {
   if (!value || !value.startsWith("/")) return false;
   if (value.startsWith("//")) return false;
@@ -6390,7 +6394,7 @@ export async function 注册用户(formData: FormData) {
   revalidatePath("/login");
   revalidatePath("/members");
   revalidatePath("/projects");
-  redirect(returnTo || "/projects");
+  redirect(authRedirectTarget(returnTo || "/projects"));
 }
 
 export async function 登录用户(formData: FormData) {
@@ -6424,7 +6428,7 @@ export async function 登录用户(formData: FormData) {
   revalidatePath("/login");
   revalidatePath("/members");
   revalidatePath("/base");
-  redirect(returnTo || "/projects");
+  redirect(authRedirectTarget(returnTo || "/projects"));
 }
 
 export async function 退出登录(formData?: FormData) {
@@ -6435,7 +6439,7 @@ export async function 退出登录(formData?: FormData) {
   revalidatePath("/");
   revalidatePath("/login");
   revalidatePath("/projects");
-  redirect(returnTo || "/login");
+  redirect(authRedirectTarget(returnTo || "/login"));
 }
 
 export async function 发出邀请(formData: FormData) {
