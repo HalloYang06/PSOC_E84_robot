@@ -157,6 +157,98 @@ function deviceProjectId(device: AnyRecord) {
   );
 }
 
+function deviceBindingComputerId(device: AnyRecord) {
+  const registration = record(device.registration);
+  const boardManifest = record(device.board_manifest);
+  const registrationPayload = record(registration.payload);
+  const boardPayload = record(boardManifest.payload);
+  const manifest = record(boardPayload.manifest);
+  return text(
+    device.computer_node_id
+      ?? device.computerNodeId
+      ?? registrationPayload.computer_node_id
+      ?? registrationPayload.computerNodeId
+      ?? boardPayload.computer_node_id
+      ?? boardPayload.computerNodeId
+      ?? manifest.computer_node_id
+      ?? manifest.computerNodeId,
+    "",
+  );
+}
+
+function normalizedMatchToken(value: unknown) {
+  return text(value, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function deviceMatchTokens(device: AnyRecord) {
+  const registration = record(device.registration);
+  const boardManifest = record(device.board_manifest);
+  const registrationPayload = record(registration.payload);
+  const boardPayload = record(boardManifest.payload);
+  const manifest = record(boardPayload.manifest);
+  return [
+    device.device_id,
+    device.deviceId,
+    device.robot_id,
+    device.robotId,
+    registrationPayload.device_id,
+    registrationPayload.robot_id,
+    boardPayload.device_id,
+    boardPayload.robot_id,
+    manifest.device_id,
+    manifest.robot_id,
+    manifest.hostname,
+  ]
+    .map(normalizedMatchToken)
+    .filter((item) => item.length >= 4);
+}
+
+function computerSearchText(node: AnyRecord) {
+  const metadata = record(node.metadata ?? node.extra_data ?? node.extraData);
+  const scan = nodeScan(node);
+  const values = [
+    node.id,
+    node.config_id,
+    node.configId,
+    node.name,
+    node.label,
+    node.display_name,
+    node.hostname,
+    node.host,
+    metadata.hostname,
+    metadata.host,
+    scan.hostname,
+    scan.host,
+    scan.platform,
+  ];
+  return values.map(normalizedMatchToken).filter(Boolean).join(" ");
+}
+
+function enrichDeviceBindings(devices: AnyRecord[], computers: AnyRecord[]) {
+  const nodeRows = computers
+    .map((node) => ({
+      id: text(node.id ?? node.config_id ?? node.configId, ""),
+      runnerId: text(node.runner_id ?? node.runnerId, ""),
+      searchText: computerSearchText(node),
+    }))
+    .filter((node) => node.id && node.searchText);
+  if (!nodeRows.length) return devices;
+  return devices.map((device) => {
+    if (deviceBindingComputerId(device)) return device;
+    const tokens = deviceMatchTokens(device);
+    const matched = nodeRows.find((node) => tokens.some((token) => node.searchText.includes(token)));
+    if (!matched) return device;
+    return {
+      ...device,
+      computer_node_id: matched.id,
+      runner_id: matched.runnerId,
+    };
+  });
+}
+
 async function getDeviceQualityDevices(projectId: string): Promise<AnyRecord[]> {
   try {
     const url = new URL("/api/rehab-arm/v1/devices/dashboard", getApiBaseUrl());
@@ -393,6 +485,7 @@ export default async function ProjectRoboticsPage({
   const npcSeats = seats.filter((seat) => isNpcSeatRecord(seat));
   const terminalMessages = asArray<AnyRecord>(messagesState.data);
   const windows = buildDebugWindows(computers, npcSeats);
+  const boundDeviceQualityDevices = enrichDeviceBindings(deviceQualityDevices, computers);
   const config = record(project.collaboration_config);
   const savedWindows = normalizeSavedDebugWindows(config.robotics_debug_windows);
   const runnerSummary = summarizeRoboticsRunnerCounts(computers);
@@ -421,7 +514,7 @@ export default async function ProjectRoboticsPage({
       unknownComputers={runnerSummary.unknownComputers}
       computerCount={computers.length}
       scannedInterfaceCount={runnerSummary.scannedInterfaces}
-      deviceQualityDevices={deviceQualityDevices}
+      deviceQualityDevices={boundDeviceQualityDevices}
       notice={notice}
       error={error}
     />
