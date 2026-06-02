@@ -3738,6 +3738,31 @@ export async function 沉淀需求到知识库(requirementId: string) {
   revalidatePath("/context-health");
 }
 
+export async function 归档公司层焦点条目(
+  projectId: string,
+  kind: "needs" | "tasks",
+  itemId: string,
+  formData: FormData,
+) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "company");
+  try {
+    const { currentUser } = await ensureProjectCollaborationAccess(projectId);
+    const actorId = text(currentUser?.id ?? currentUser?.email, "human-chief");
+    const endpoint = kind === "needs" ? "requirements" : "tasks";
+    await postJson(`/api/${endpoint}/${encodeURIComponent(itemId)}/archive`, {
+      actor_type: "human",
+      actor_id: actorId,
+      note: "从公司层索引验收归档；GitHub 证据保留。",
+    });
+    revalidateProjectSurfaces(projectId);
+    redirect(withQueryValue(returnTo, "team_notice", kind === "needs" ? "已归档完成需求，证据仍保留" : "已归档完成任务，证据仍保留"));
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "归档失败，请先确认条目已完成";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
 export async function 通过自主合作待审消息(messageId: string, projectId: string) {
   await postJson(`/api/collaboration/messages/${encodeURIComponent(messageId)}/review/approve`, {});
   revalidatePath(`/projects/${projectId}/cockpit`);

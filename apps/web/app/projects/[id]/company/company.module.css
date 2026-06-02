@@ -261,7 +261,8 @@
   justify-items: end;
 }
 
-.focusEvidenceActions a {
+.focusEvidenceActions a,
+.focusEvidenceActions button {
   min-width: 0;
   min-height: 30px;
   display: inline-flex;
@@ -272,12 +273,32 @@
   border-radius: 999px;
   background: rgba(158, 240, 191, 0.08);
   color: var(--mint);
+  cursor: pointer;
   font-size: 11px;
+  font-family: inherit;
   font-weight: 900;
   white-space: nowrap;
 }
 
-.focusEvidenceActions a:hover {
+.focusEvidenceActions form {
+  min-width: 0;
+  margin: 0;
+}
+
+.focusEvidenceActions button {
+  width: 100%;
+}
+
+.focusEvidenceActions small {
+  max-width: 180px;
+  border-color: rgba(255, 209, 102, 0.16);
+  background: rgba(255, 209, 102, 0.06);
+  color: rgba(255, 232, 179, 0.78);
+  white-space: normal;
+}
+
+.focusEvidenceActions a:hover,
+.focusEvidenceActions button:hover {
   border-color: rgba(158, 240, 191, 0.52);
   background: rgba(158, 240, 191, 0.14);
 }
@@ -2547,6 +2568,10 @@
   .focusEvidenceActions {
     grid-row: auto;
     justify-items: stretch;
+  }
+
+  .focusEvidenceActions small {
+    max-width: none;
   }
 
   .statusStrip,

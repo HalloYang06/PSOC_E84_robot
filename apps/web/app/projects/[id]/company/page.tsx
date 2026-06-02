@@ -3,6 +3,7 @@ import Link from "next/link";
 import {
   发起前端C小游戏协作,
   插入前端C小游戏需求,
+  归档公司层焦点条目,
 } from "../../../actions";
 import {
   getCurrentAuthState,
@@ -241,6 +242,12 @@ function publicTaskStatusLabel(value: unknown) {
   if (/blocked|failed|rejected/.test(raw)) return "受阻";
   if (/cancelled|archived/.test(raw)) return "已收起";
   return "待承接";
+}
+
+function canArchiveFocusQueueItem(kind: "needs" | "tasks", status: unknown) {
+  const raw = text(status, "").toLowerCase();
+  if (kind === "needs") return /satisfied|completed|done|closed|resolved/.test(raw);
+  return /done|completed|closed|resolved/.test(raw);
 }
 
 function publicReceiptLabel(messages: AnyRecord[]) {
@@ -1500,6 +1507,7 @@ export default async function CompanyPage({
   const taskPreviewSource = (activeTaskPreviewSource.length ? activeTaskPreviewSource : allTasks)
     .slice(0, 3)
     .map((task, index) => {
+      const taskId = text(task.id ?? task.task_id ?? task.taskId, `task-preview-${index}`);
       const assigneeId = text(
         task.assignee_seat_id
           ?? task.assigneeSeatId
@@ -1510,7 +1518,7 @@ export default async function CompanyPage({
       );
       const href = `/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=company${assigneeId ? `&seat_id=${encodeURIComponent(assigneeId)}` : ""}`;
       return {
-        id: text(task.id ?? task.task_id ?? task.taskId, `task-preview-${index}`),
+        id: taskId,
         title: shortPublicText(task.title ?? task.name ?? task.summary, `承接任务 ${index + 1}`, 48),
         meta: `${publicTaskStatusLabel(task.status)} · ${seatNameById.get(assigneeId) ?? "待确认承接方"}`,
         detail: shortPublicText(task.description ?? task.context_summary ?? task.summary, "查看承接进度、回执状态和归档材料。", 92),
@@ -1520,10 +1528,12 @@ export default async function CompanyPage({
           "验收：查看回执、交付说明和归档材料",
         ],
         workbenchHref: href,
+        archiveKind: "tasks" as const,
+        archiveId: taskId,
+        canArchive: canArchiveFocusQueueItem("tasks", task.status),
       };
     });
   const needPreviewSource = collaborationChains
-    .filter((chain) => !/已满足|已完成|已收起/.test(`${chain.needStatus} ${chain.taskStatus}`))
     .sort((left, right) => right.activityTime - left.activityTime)
     .slice(0, 3)
     .map((chain, index) => ({
@@ -1537,6 +1547,9 @@ export default async function CompanyPage({
         `回执：${chain.receiptStatus}`,
       ],
       workbenchHref: `/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=company${chain.targetId || chain.requesterId ? `&seat_id=${encodeURIComponent(chain.targetId || chain.requesterId)}` : ""}`,
+      archiveKind: "needs" as const,
+      archiveId: text(chain.id, `need-preview-${index}`),
+      canArchive: canArchiveFocusQueueItem("needs", chain.needStatus),
     }));
   const focusReviewItems = focusReview?.queue === "tasks" ? taskPreviewSource : needPreviewSource;
   const selectedFocusItemIndex = Math.max(0, Math.min(focusReviewItems.length - 1, Number.parseInt(text(searchParams?.item, "-1"), 10)));
@@ -1610,6 +1623,14 @@ export default async function CompanyPage({
                 <nav className={styles.focusEvidenceActions} aria-label="验收后动作">
                   <Link href={selectedFocusItem.workbenchHref}>打开相关 NPC 工作台</Link>
                   <Link href={skillForgeFocusReturnHref(projectId, selfPath, focusReview.queue, focusReturnContext)}>继续查看索引结果</Link>
+                  {selectedFocusItem.canArchive ? (
+                    <form action={归档公司层焦点条目.bind(null, projectId, selectedFocusItem.archiveKind, selectedFocusItem.archiveId)}>
+                      <input type="hidden" name="return_to" value={companyFocusHref(projectId, focusReview.queue, selectedFocusItemIndex, focusReturnContext)} />
+                      <button type="submit">归档当前条目</button>
+                    </form>
+                  ) : (
+                    <small>完成后可归档，当前只查看验收线索</small>
+                  )}
                 </nav>
               </aside>
             ) : focusReviewItems.length ? (
