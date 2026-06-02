@@ -178,6 +178,9 @@ def read_page_state(cdp: object) -> dict[str, object]:
             hasTaskAuditLink: text.includes('看任务验收详情'),
             hasAcceptanceDetail: text.includes('验收详情'),
             hasQueueArchiveAction: text.includes('归档当前条目') || text.includes('完成后可归档'),
+            hasArchivedFocusItem: Array.from(document.querySelectorAll('[aria-label="本次先看条目"] a')).some((item) =>
+              (item.innerText || item.textContent || '').includes('已收起')
+            ),
             forbiddenHits: {json.dumps(FORBIDDEN_TERMS)}.filter((term) => lower.includes(term.toLowerCase())),
             rawUuidHits: Array.from(text.matchAll(/[0-9a-f]{{8}}-[0-9a-f]{{4}}-[0-9a-f]{{4}}-[0-9a-f]{{4}}-[0-9a-f]{{12}}/ig)).map((match) => match[0]).slice(0, 8),
           }};
@@ -385,6 +388,7 @@ def main() -> int:
             and isinstance(company, dict)
             and company.get("hasAcceptanceDetail")
             and company.get("hasQueueArchiveAction")
+            and not company.get("hasArchivedFocusItem")
             and expected_encoded in str(company.get("url", ""))
             and f"queue={queue_name}" in str(company.get("url", ""))
             and expected_encoded in str(queue_state.get("continue_href", ""))

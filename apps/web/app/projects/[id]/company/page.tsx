@@ -229,6 +229,7 @@ function publicNeedStatusLabel(value: unknown) {
   if (/in_progress|running|active|processing/.test(raw)) return "处理中";
   if (/review|approval|pending_human/.test(raw)) return "待确认";
   if (/blocked|failed|rejected/.test(raw)) return "受阻";
+  if (/cancelled|archived/.test(raw)) return "已收起";
   if (/draft/.test(raw)) return "草稿";
   return "等待协作";
 }
@@ -248,6 +249,10 @@ function canArchiveFocusQueueItem(kind: "needs" | "tasks", status: unknown) {
   const raw = text(status, "").toLowerCase();
   if (kind === "needs") return /satisfied|completed|done|closed|resolved/.test(raw);
   return /done|completed|closed|resolved/.test(raw);
+}
+
+function isHiddenFocusQueueItem(status: unknown) {
+  return /archived|cancelled|canceled/.test(text(status, "").toLowerCase());
 }
 
 function publicReceiptLabel(messages: AnyRecord[]) {
@@ -1102,6 +1107,8 @@ export default async function CompanyPage({
       targetName,
       requesterId,
       targetId,
+      needRawStatus: text(need.status, ""),
+      taskRawStatus: primaryTask ? text(primaryTask.status, "") : "",
       needStatus,
       taskStatus,
       dispatchStatus,
@@ -1505,6 +1512,7 @@ export default async function CompanyPage({
     .filter((task) => /queued|ready|running|active|in_progress|reviewing|waiting|acked|accepted/i.test(text(task.status, "")))
     .sort((left, right) => latestActivityTime(right.updated_at, right.updatedAt, right.created_at, right.createdAt) - latestActivityTime(left.updated_at, left.updatedAt, left.created_at, left.createdAt));
   const taskPreviewSource = (activeTaskPreviewSource.length ? activeTaskPreviewSource : allTasks)
+    .filter((task) => !isHiddenFocusQueueItem(task.status))
     .slice(0, 3)
     .map((task, index) => {
       const taskId = text(task.id ?? task.task_id ?? task.taskId, `task-preview-${index}`);
@@ -1534,6 +1542,7 @@ export default async function CompanyPage({
       };
     });
   const needPreviewSource = collaborationChains
+    .filter((chain) => !isHiddenFocusQueueItem(chain.needRawStatus))
     .sort((left, right) => right.activityTime - left.activityTime)
     .slice(0, 3)
     .map((chain, index) => ({
@@ -1549,7 +1558,7 @@ export default async function CompanyPage({
       workbenchHref: `/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=company${chain.targetId || chain.requesterId ? `&seat_id=${encodeURIComponent(chain.targetId || chain.requesterId)}` : ""}`,
       archiveKind: "needs" as const,
       archiveId: text(chain.id, `need-preview-${index}`),
-      canArchive: canArchiveFocusQueueItem("needs", chain.needStatus),
+      canArchive: canArchiveFocusQueueItem("needs", chain.needRawStatus),
     }));
   const focusReviewItems = focusReview?.queue === "tasks" ? taskPreviewSource : needPreviewSource;
   const selectedFocusItemIndex = Math.max(0, Math.min(focusReviewItems.length - 1, Number.parseInt(text(searchParams?.item, "-1"), 10)));
