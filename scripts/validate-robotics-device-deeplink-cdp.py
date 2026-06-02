@@ -134,7 +134,6 @@ def main() -> int:
         f"?tab={quote(args.tab, safe='')}&device={quote(args.device_id, safe='')}"
     )
 
-    token, user_json = cdp_helpers.authenticate(args)
     port = cdp_helpers.find_free_port()
     profile_dir = Path(tempfile.mkdtemp(prefix="robotics-device-deeplink-cdp-"))
     edge_process: subprocess.Popen[bytes] | None = None
@@ -148,6 +147,17 @@ def main() -> int:
     }
 
     try:
+        try:
+            token, user_json = cdp_helpers.authenticate(args)
+        except Exception as auth_exc:  # noqa: BLE001
+            report["verdict"] = "auth_blocked"
+            report["error"] = f"Authentication failed before opening robotics page: {auth_exc}"
+            report_path = output_dir / "report.json"
+            report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+            report["report"] = str(report_path)
+            print(json.dumps(report, ensure_ascii=False, indent=2))
+            return 1
+
         edge_process = subprocess.Popen(
             [
                 str(cdp_helpers.find_edge()),
