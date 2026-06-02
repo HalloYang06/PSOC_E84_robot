@@ -906,6 +906,8 @@ function Arm3DOverview({
     [calibrations, flowJointNames, freshnessNowMs, jointValues, sourceMotors],
   );
   const activeFlowRows = flowRows.filter((row) => row.status === "matched").length;
+  const staleFlowRows = flowRows.filter((row) => row.status === "matched" && row.freshnessState === "stale").length;
+  const isHistoricalPose = activeFlowRows > 0 && staleFlowRows === activeFlowRows;
 
   useEffect(() => {
     const timer = window.setInterval(() => setFreshnessNowMs(Date.now()), 5000);
@@ -1318,10 +1320,25 @@ function Arm3DOverview({
         <div className={flowStyles.jointFlowHead}>
           <div>
             <span>关节状态流</span>
-            <strong>{activeFlowRows}/{flowRows.length} 个关节有实时角度</strong>
+            <strong>{activeFlowRows}/{flowRows.length} 个关节有{isHistoricalPose ? "历史" : "实时"}角度</strong>
           </div>
           <small>{sourceNames.length ? `${sourceNames.length} 个只读角度来源` : "等待 NanoPi 或仿真主机上报"}</small>
         </div>
+        {staleFlowRows ? (
+          <div className={flowStyles.historyNotice} data-state={isHistoricalPose ? "historical" : "mixed"} data-testid="rehab-historical-pose-notice">
+            <div>
+              <strong>{isHistoricalPose ? "历史姿态预览" : "部分角度可能过期"}</strong>
+              <span>
+                {isHistoricalPose
+                  ? "3D 模型正在使用最近一次上传的角度，只适合回看和校准核对。"
+                  : `${staleFlowRows} 个关节长时间未更新，请核对采集状态。`}
+              </span>
+            </div>
+            <Link href={`/projects/${projectId}/robotics?tab=terminal&device=${encodeURIComponent(deviceId)}`} prefetch={false}>
+              打开设备数据工作台采集
+            </Link>
+          </div>
+        ) : null}
         <div className={flowStyles.jointFlowGrid} data-testid="rehab-joint-state-flow">
           {flowRows.slice(0, 8).map((row) => (
             <article key={row.jointName} data-state={row.status}>

@@ -117,6 +117,8 @@ def page_state(cdp: object) -> dict[str, object]:
           const previewLines = Array.from(document.querySelectorAll('[class*="armLegend"] span')).map((item) => item.textContent || '');
           const canvas = document.querySelector('canvas[aria-label="机械臂 Three.js 总览"], [aria-label="机械臂 Three.js 总览"] canvas');
           const hasFreshness = /刚刚更新|秒前|分钟前|未更新|等待上报/.test(body);
+          const hasStaleFreshness = /未更新/.test(body);
+          const historicalNotice = document.querySelector('[data-testid="rehab-historical-pose-notice"]');
           return {{
             href: location.href,
             title: document.title,
@@ -129,6 +131,7 @@ def page_state(cdp: object) -> dict[str, object]:
             hasPoseMapping: body.includes('姿态映射') && mappingRows.length > 0,
             hasJointFlow: body.includes('关节状态流') && flowRows.length >= 6 && body.includes('只用于网页预览和校准核对'),
             hasFreshness,
+            hasHistoricalPoseNotice: !hasStaleFreshness || (Boolean(historicalNotice) && body.includes('历史姿态预览') && body.includes('打开设备数据工作台采集')),
             mappingRowCount: mappingRows.length,
             jointFlowRowCount: flowRows.length,
             matchLine,
@@ -281,6 +284,7 @@ def main() -> int:
             and state["hasSavedModel"]
             and state["hasRestoredModel"]
             and state["hasFreshness"]
+            and state["hasHistoricalPoseNotice"]
             and state["hasRestoredMeshes"]
             and not state["hasHorizontalOverflow"]
             and not state["forbidden"]
