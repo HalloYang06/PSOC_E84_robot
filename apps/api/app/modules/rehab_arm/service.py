@@ -49,21 +49,35 @@ def read_json(path: Path) -> dict[str, Any] | None:
     return None
 
 
-def read_recent_events(limit: int = 24) -> list[dict[str, Any]]:
+def read_recent_events(limit: int = 24, project_id: str | None = None) -> list[dict[str, Any]]:
     path = storage_root() / "events.jsonl"
+    project_filter = (project_id or "").strip()
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
     except OSError:
         return []
-    events: list[dict[str, Any]] = []
-    for line in lines[-max(1, limit) :]:
+    if not project_filter:
+        events: list[dict[str, Any]] = []
+        for line in lines[-max(1, limit) :]:
+            try:
+                value = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(value, dict):
+                events.append(value)
+        return list(reversed(events))
+    events = []
+    for line in reversed(lines):
         try:
             value = json.loads(line)
         except json.JSONDecodeError:
             continue
-        if isinstance(value, dict):
-            events.append(value)
-    return list(reversed(events))
+        if not isinstance(value, dict) or _record_project_id(value) != project_filter:
+            continue
+        events.append(value)
+        if len(events) >= max(1, limit):
+            break
+    return events
 
 
 def device_dir(device_id: str) -> Path:
@@ -482,8 +496,9 @@ def _device_latest(device_id: str, name: str) -> dict[str, Any] | None:
     return read_json(device_dir(device_id) / f"{name}_latest.json")
 
 
-def build_dashboard() -> dict[str, Any]:
+def build_dashboard(project_id: str | None = None) -> dict[str, Any]:
     root = storage_root()
+    project_filter = (project_id or "").strip()
     device_ids: set[str] = set()
     for path in (root / "device_state").glob("*"):
         if path.is_dir():
@@ -519,6 +534,17 @@ def build_dashboard() -> dict[str, Any]:
             manifest,
             device_model,
         ]
+        device_project_id = next(
+            (
+                record_project_id
+                for record in latest_records
+                for record_project_id in [_record_project_id(record)]
+                if record and record_project_id
+            ),
+            "",
+        )
+        if project_filter and device_project_id != project_filter:
+            continue
         last_upload = max([float(item.get("ts_unix") or 0) for item in latest_records if item] or [0])
         safety_payload = safety_state.get("payload") if isinstance(safety_state.get("payload"), dict) else {}
         register_payload = registration.get("payload") if isinstance(registration.get("payload"), dict) else {}
@@ -526,15 +552,7 @@ def build_dashboard() -> dict[str, Any]:
         devices.append(
             {
                 "device_id": device_id,
-                "project_id": next(
-                    (
-                        project_id
-                        for record in latest_records
-                        for project_id in [_record_project_id(record)]
-                        if record and project_id
-                    ),
-                    "",
-                ),
+                "project_id": device_project_id,
                 "robot_id": safe_part(str(register_payload.get("robot_id") or safety_state.get("robot_id") or motor_state.get("robot_id") or "unknown")),
                 "online_state": "online" if last_upload and now - last_upload <= 180 else "offline",
                 "last_upload_ts_unix": last_upload or None,
@@ -564,5 +582,5 @@ def build_dashboard() -> dict[str, Any]:
             "m33_final_authority": True,
         },
         "devices": devices,
-        "recent_events": read_recent_events(32),
+        "recent_events": read_recent_events(32, project_id=project_filter or None),
     }

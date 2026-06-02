@@ -252,6 +252,42 @@ def test_rehab_arm_motor_safety_and_dashboard_are_non_realtime(tmp_path, monkeyp
     get_settings.cache_clear()
 
 
+def test_rehab_arm_dashboard_filters_devices_and_events_by_project(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
+    get_settings.cache_clear()
+
+    for project_id, device_id in [("project-rehab-a", "nanopi-a"), ("project-rehab-b", "nanopi-b")]:
+        register = client.post(
+            "/api/rehab-arm/v1/devices/register",
+            json={"device_id": device_id, "robot_id": "rehab-arm-alpha", "project_id": project_id},
+        )
+        assert register.status_code == 200
+        motor = client.post(
+            f"/api/rehab-arm/v1/devices/{device_id}/motor-state",
+            json={
+                "robot_id": "rehab-arm-alpha",
+                "device_id": device_id,
+                "project_id": project_id,
+                "ts_unix": 1710000000.0,
+                "motors": [{"motor_id": "m1", "joint_name": "elbow", "position": 1.2}],
+            },
+        )
+        assert motor.status_code == 200
+
+    project_a = client.get("/api/rehab-arm/v1/devices/dashboard", params={"project_id": "project-rehab-a"})
+    assert project_a.status_code == 200
+    project_a_data = project_a.json()["data"]
+    assert [item["device_id"] for item in project_a_data["devices"]] == ["nanopi-a"]
+    assert project_a_data["recent_events"]
+    assert all(event.get("project_id") == "project-rehab-a" for event in project_a_data["recent_events"])
+
+    outsider = client.get("/api/rehab-arm/v1/devices/dashboard", params={"project_id": "project-outsider"})
+    assert outsider.status_code == 200
+    assert outsider.json()["data"]["devices"] == []
+    assert outsider.json()["data"]["recent_events"] == []
+    get_settings.cache_clear()
+
+
 def test_rehab_arm_board_manifest_upload_is_data_only(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
     get_settings.cache_clear()

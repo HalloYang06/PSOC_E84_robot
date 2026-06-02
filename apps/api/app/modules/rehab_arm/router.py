@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import re
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 
 from app.common.response import ok
@@ -100,8 +100,8 @@ def api_report_sync_status(session_id: str, payload: RehabSyncStatusRequest):
 
 
 @router.get("/devices/dashboard")
-def api_rehab_arm_dashboard():
-    return ok(build_dashboard())
+def api_rehab_arm_dashboard(project_id: str | None = Query(default=None)):
+    return ok(build_dashboard(project_id=project_id))
 
 
 @router.post("/devices/{device_id}/simulation-readiness")
