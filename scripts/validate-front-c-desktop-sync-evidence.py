@@ -63,6 +63,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--computer-node-id", default="front-c-local-pc")
     parser.add_argument("--output-dir", default=str(REPO_ROOT / "artifacts" / "front-c-sync-qa"))
     parser.add_argument("--skip-browser", action="store_true")
+    parser.add_argument(
+        "--allow-open-seat-commands",
+        action="store_true",
+        help="Do not fail when Front C seat inbox still has queued/acked/in_progress commands.",
+    )
     return parser.parse_args()
 
 
@@ -274,6 +279,15 @@ def main() -> int:
         )
         inbox_data = inbox_payload.get("data") if isinstance(inbox_payload, dict) else []
         inbox = [item for item in inbox_data if isinstance(item, dict)] if isinstance(inbox_data, list) else []
+        open_seat_commands = [
+            item
+            for item in inbox
+            if str(item.get("status") or "").strip().lower() in {"queued", "pending", "acked", "in_progress"}
+        ]
+        if open_seat_commands and not args.allow_open_seat_commands:
+            issues.append(
+                f"{expected['name']} has {len(open_seat_commands)} open seat command(s); desktop sync is not fully closed"
+            )
 
         automation_thread = str(
             adapter.get("automation_thread_id")
@@ -331,6 +345,7 @@ def main() -> int:
                     }
                     for item in inbox[:8]
                 ],
+                "open_seat_command_count": len(open_seat_commands),
                 "queue_keys": sorted(list(queues.keys())) if isinstance(queues, dict) else [],
             }
         )
