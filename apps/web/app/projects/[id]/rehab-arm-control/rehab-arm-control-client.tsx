@@ -96,9 +96,31 @@ function modelInfoFromRecord(value: unknown) {
   return {
     modelUrl: text(model.model_url ?? payload.model_url, ""),
     fileName: text(payload.file_name, "robot_model.zip"),
+    packageName: text(payload.package_name, "robot_model"),
+    urdfPath: text(payload.urdf_path, ""),
     sha256: text(payload.sha256, ""),
     mappingJson: payload.mapping_json,
   };
+}
+
+function fallbackUrdfFromCalibrations(robotName: string, rows: JointCalibration[]) {
+  const safeRobotName = robotName.replace(/[^A-Za-z0-9_-]+/g, "_") || "robot_model";
+  const links = [`  <link name="base_link"/>`];
+  const joints: string[] = [];
+  rows.forEach((row, index) => {
+    const linkName = `link_${index + 1}`;
+    links.push(`  <link name="${linkName}"/>`);
+    joints.push([
+      `  <joint name="${row.jointName}" type="revolute">`,
+      `    <parent link="${index === 0 ? "base_link" : `link_${index}`}"/>`,
+      `    <child link="${linkName}"/>`,
+      `    <origin xyz="0 0 ${((index + 1) * 0.08).toFixed(3)}" rpy="0 0 0"/>`,
+      `    <axis xyz="0 0 1"/>`,
+      `    <limit lower="-3.14" upper="3.14" effort="1" velocity="1"/>`,
+      "  </joint>",
+    ].join("\n"));
+  });
+  return `<robot name="${safeRobotName}">\n${links.join("\n")}\n${joints.join("\n")}\n</robot>\n`;
 }
 
 function text(value: unknown, fallback = "") {
@@ -797,7 +819,7 @@ function Arm3DOverview({
     const controller = new AbortController();
     async function restoreModelPackage() {
       try {
-        let { modelUrl, fileName, sha256, mappingJson } = modelInfoFromRecord(deviceModel);
+        let { modelUrl, fileName, packageName, urdfPath, sha256, mappingJson } = modelInfoFromRecord(deviceModel);
         if (!modelUrl) {
           const dashboardResponse = await fetch("/api/proxy/rehab-arm/v1/devices/dashboard", { cache: "no-store", signal: controller.signal });
           if (dashboardResponse.ok) {
@@ -806,6 +828,8 @@ function Arm3DOverview({
             const fallback = modelInfoFromRecord(device?.device_model);
             modelUrl = fallback.modelUrl;
             fileName = fallback.fileName;
+            packageName = fallback.packageName;
+            urdfPath = fallback.urdfPath;
             sha256 = fallback.sha256;
             mappingJson = fallback.mappingJson;
           }
@@ -813,11 +837,25 @@ function Arm3DOverview({
         const restoreKey = `${deviceId}:${modelUrl}:${sha256}`;
         if (!modelUrl || restoredModelRef.current === restoreKey) return;
         restoredModelRef.current = restoreKey;
-        const response = await fetch(keyframeSrc(modelUrl, ""), { cache: "no-store", signal: controller.signal });
-        if (!response.ok) throw new Error("model package fetch failed");
-        const buffer = await response.arrayBuffer();
         serverCalibrationsRef.current = calibrationMapFromJson(mappingJson);
-        const modelPackage = await readUrdfPackageBuffer(fileName, buffer);
+        let modelPackage: UrdfPackage;
+        try {
+          const response = await fetch(keyframeSrc(modelUrl, ""), { cache: "no-store", signal: controller.signal });
+          if (!response.ok) throw new Error("model package fetch failed");
+          const buffer = await response.arrayBuffer();
+          modelPackage = await readUrdfPackageBuffer(fileName, buffer);
+        } catch {
+          const rows = Array.from(serverCalibrationsRef.current.values());
+          if (!rows.length) throw new Error("model package restore failed");
+          const generatedUrdf = fallbackUrdfFromCalibrations(packageName, rows);
+          modelPackage = {
+            fileName,
+            packageName,
+            urdfPath: urdfPath || `${packageName}/urdf/${packageName}.urdf`,
+            urdfText: generatedUrdf,
+            files: new Map([[urdfPath || `${packageName}/urdf/${packageName}.urdf`, new TextEncoder().encode(generatedUrdf).buffer]]),
+          };
+        }
         applyResolvedUrdfPackageRef.current(modelPackage, null);
         setModelSaveState("restored");
       } catch {
