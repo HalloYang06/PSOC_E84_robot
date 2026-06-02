@@ -1002,12 +1002,12 @@ function Arm3DOverview({
           const loader = new URDFLoader();
           (loader as AnyRecord).packages = (targetPackage: string) => targetPackage;
           (loader as AnyRecord).parseCollision = false;
-          let meshLoadAttempts = 0;
+          let loadedMeshes = 0;
+          let missingMeshes = 0;
           (loader as AnyRecord).loadMeshCb = (_url: string, _manager: unknown, done: (mesh: unknown, err?: Error) => void) => {
-            meshLoadAttempts += 1;
             const asset = urdfPackage ? resolvePackageAsset(urdfPackage.files, urdfPackage.packageName, _url) : null;
             if (!asset || !_url.toLowerCase().endsWith(".stl")) {
-              setMeshStats((stats) => ({ ...stats, missing: stats.missing + 1 }));
+              missingMeshes += 1;
               done(new THREE.Group(), new Error("模型资源未包含在导入包内"));
               return;
             }
@@ -1015,10 +1015,10 @@ function Arm3DOverview({
               const geometry = new STLLoader().parse(asset);
               const material = new THREE.MeshStandardMaterial({ color: 0x8ef0c7, roughness: 0.62, metalness: 0.08 });
               const mesh = new THREE.Mesh(geometry, material);
-              setMeshStats((stats) => ({ ...stats, loaded: stats.loaded + 1 }));
+              loadedMeshes += 1;
               done(mesh);
             } catch {
-              setMeshStats((stats) => ({ ...stats, missing: stats.missing + 1 }));
+              missingMeshes += 1;
               done(new THREE.Group(), new Error("模型资源解析失败"));
             }
           };
@@ -1026,25 +1026,26 @@ function Arm3DOverview({
           if (disposed) return;
           robotRef.current = robot;
           robot.rotation.x = -Math.PI / 2;
-          if (!meshLoadAttempts && urdfPackage) {
+          if (urdfPackage) {
             robot.traverse?.((child: AnyRecord) => {
               if (!child.isURDFVisual || child.children?.length) return;
               const meshPath = urdfVisualMeshPath(child.urdfNode);
               const asset = meshPath ? resolvePackageAsset(urdfPackage.files, urdfPackage.packageName, meshPath) : null;
               if (!asset || !meshPath.toLowerCase().endsWith(".stl")) {
-                setMeshStats((stats) => ({ ...stats, missing: stats.missing + 1 }));
+                missingMeshes += 1;
                 return;
               }
               try {
                 const geometry = new STLLoader().parse(asset);
                 const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: 0x8ef0c7, roughness: 0.62, metalness: 0.08 }));
                 child.add(mesh);
-                setMeshStats((stats) => ({ ...stats, loaded: stats.loaded + 1 }));
+                loadedMeshes += 1;
               } catch {
-                setMeshStats((stats) => ({ ...stats, missing: stats.missing + 1 }));
+                missingMeshes += 1;
               }
             });
           }
+          setMeshStats({ loaded: loadedMeshes, missing: missingMeshes });
           robot.traverse?.((child: AnyRecord) => {
             if (child.isMesh) {
               child.castShadow = false;
