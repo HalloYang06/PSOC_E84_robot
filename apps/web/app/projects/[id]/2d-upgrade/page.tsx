@@ -272,7 +272,7 @@ export default async function Project2dUpgradePage({
     const key = threadBindingKey(item);
     return !key || !realNpcThreadKeys.has(key);
   });
-  const sourceWorkstations = workstations.filter((workstation) => !isNpcSeat(workstation));
+  const sourceWorkstations = workstations.filter((workstation) => !isNpcSeat(workstation) || isRunnerThreadScanRecord(workstation));
   const selectableWorkstations = sourceWorkstations.length ? sourceWorkstations : workstations;
   const sortedMessages = messages
     .slice()
