@@ -23,6 +23,8 @@ def test_rehab_arm_sync_endpoints_store_non_realtime_data(tmp_path, monkeypatch)
             "robot_id": "rehab-arm-alpha",
             "device_type": "nanopi",
             "software_version": "dev",
+            "computer_node_id": "nanopi-computer-1",
+            "runner_id": "nanopi-runner-1",
             "capabilities": ["ros2_bridge", "jsonl_recorder"],
         },
     )
@@ -103,6 +105,9 @@ def test_rehab_arm_sync_endpoints_store_non_realtime_data(tmp_path, monkeypatch)
     event_lines = (tmp_path / "events.jsonl").read_text(encoding="utf-8").splitlines()
     assert len(event_lines) == 4
     dashboard = client.get("/api/rehab-arm/v1/devices/dashboard")
+    device = dashboard.json()["data"]["devices"][0]
+    assert device["computer_node_id"] == "nanopi-computer-1"
+    assert device["runner_id"] == "nanopi-runner-1"
     quality = dashboard.json()["data"]["devices"][0]["data_quality"]
     assert quality["schema_version"] == "device_recording_quality_index_v1"
     assert quality["annotation_ready"] is True
@@ -297,10 +302,14 @@ def test_rehab_arm_board_manifest_upload_is_data_only(tmp_path, monkeypatch) -> 
         json={
             "robot_id": "rehab-arm-alpha",
             "device_id": "nanopi-m5",
+            "project_id": "project-rehab",
+            "computer_node_id": "nanopi-node-from-board",
+            "runner_id": "nanopi-runner-from-board",
             "manifest": {
                 "schema_version": "linux_board_manifest_v1",
                 "device_id": "nanopi-m5",
                 "robot_id": "rehab-arm-alpha",
+                "computer_node_id": "nanopi-node-from-manifest",
                 "hostname": "NanoPi-M5",
                 "capabilities": {
                     "can_interfaces": [{"name": "can0", "kind": "can", "operstate": "up"}],
@@ -325,6 +334,9 @@ def test_rehab_arm_board_manifest_upload_is_data_only(tmp_path, monkeypatch) -> 
 
     dashboard = client.get("/api/rehab-arm/v1/devices/dashboard")
     device = dashboard.json()["data"]["devices"][0]
+    assert device["project_id"] == "project-rehab"
+    assert device["computer_node_id"] == "nanopi-node-from-board"
+    assert device["runner_id"] == "nanopi-runner-from-board"
     board_manifest = device["board_manifest"]
     assert board_manifest["record_type"] == "board_manifest"
     assert board_manifest["payload"]["manifest"]["hostname"] == "NanoPi-M5"

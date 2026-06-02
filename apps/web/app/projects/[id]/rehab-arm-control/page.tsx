@@ -53,7 +53,9 @@ function emptyDashboard(): Dashboard {
 
 async function getRehabArmDashboard(projectId: string): Promise<Dashboard> {
   try {
-    const response = await fetch(new URL("/api/rehab-arm/v1/devices/dashboard", getApiBaseUrl()).toString(), {
+    const url = new URL("/api/rehab-arm/v1/devices/dashboard", getApiBaseUrl());
+    url.searchParams.set("project_id", projectId);
+    const response = await fetch(url.toString(), {
       cache: "no-store",
     });
     if (!response.ok) return emptyDashboard();

@@ -447,6 +447,17 @@ def _record_project_id(record: dict[str, Any]) -> str:
     return str(record.get("project_id") or payload.get("project_id") or payload.get("projectId") or "").strip()
 
 
+def _record_field(record: dict[str, Any], *names: str) -> str:
+    payload = record.get("payload") if isinstance(record.get("payload"), dict) else {}
+    manifest = payload.get("manifest") if isinstance(payload.get("manifest"), dict) else {}
+    for source in (record, payload, manifest):
+        for name in names:
+            value = str(source.get(name) or "").strip()
+            if value:
+                return value
+    return ""
+
+
 def record_camera_keyframe(payload: dict[str, Any], image_bytes: bytes) -> dict[str, Any]:
     device_id = safe_part(str(payload.get("device_id") or "unknown"))
     robot_id = safe_part(str(payload.get("robot_id") or "unknown"))
@@ -549,11 +560,31 @@ def build_dashboard(project_id: str | None = None) -> dict[str, Any]:
         safety_payload = safety_state.get("payload") if isinstance(safety_state.get("payload"), dict) else {}
         register_payload = registration.get("payload") if isinstance(registration.get("payload"), dict) else {}
         sync_payload = sync_status.get("payload") if isinstance(sync_status.get("payload"), dict) else {}
+        computer_node_id = next(
+            (
+                value
+                for record in latest_records
+                for value in [_record_field(record, "computer_node_id", "computerNodeId", "runner_computer_node_id", "runnerComputerNodeId")]
+                if record and value
+            ),
+            "",
+        )
+        runner_id = next(
+            (
+                value
+                for record in latest_records
+                for value in [_record_field(record, "runner_id", "runnerId")]
+                if record and value
+            ),
+            "",
+        )
         devices.append(
             {
                 "device_id": device_id,
                 "project_id": device_project_id,
                 "robot_id": safe_part(str(register_payload.get("robot_id") or safety_state.get("robot_id") or motor_state.get("robot_id") or "unknown")),
+                "computer_node_id": computer_node_id,
+                "runner_id": runner_id,
                 "online_state": "online" if last_upload and now - last_upload <= 180 else "offline",
                 "last_upload_ts_unix": last_upload or None,
                 "safety_state": safety_payload.get("state", "ok" if not safety_state else "fault"),

@@ -7,6 +7,8 @@ class RehabDeviceRegisterRequest(BaseModel):
     device_id: str = Field(min_length=1)
     robot_id: str = Field(min_length=1)
     project_id: str = ""
+    computer_node_id: str = ""
+    runner_id: str = ""
     device_type: str = "nanopi"
     software_version: str = "unknown"
     capabilities: list[str] = Field(default_factory=list)
@@ -35,6 +37,8 @@ class RehabBoardManifestRequest(BaseModel):
     robot_id: str = Field(min_length=1)
     device_id: str = Field(min_length=1)
     project_id: str = ""
+    computer_node_id: str = ""
+    runner_id: str = ""
     manifest: dict
 
 
