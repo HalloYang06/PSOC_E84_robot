@@ -448,23 +448,43 @@ function companyFocusReview(value: unknown, queue: unknown) {
   };
 }
 
-function companyFocusHref(projectId: string, queue: string, itemIndex?: number) {
+function safeForgeTab(value: unknown) {
+  const raw = text(value, "");
+  return raw === "skills" || raw === "knowledge" || raw === "git" ? raw : "knowledge";
+}
+
+function safeForgeResources(value: unknown) {
+  const raw = text(value, "").trim();
+  if (!raw || raw.length > 320) return "";
+  if (/[\r\n\t\\]|:\/\/|[?&#]/.test(raw)) return "";
+  return raw
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => /^(seat|station):[\p{L}\p{N} ._:-]+$/u.test(item))
+    .slice(0, 4)
+    .join(",");
+}
+
+function companyFocusHref(projectId: string, queue: string, itemIndex?: number, context?: { resources?: string; tab?: string }) {
   const query = new URLSearchParams({
     focus: "skill-forge-index",
     queue,
   });
   if (typeof itemIndex === "number" && Number.isFinite(itemIndex)) query.set("item", String(Math.max(0, itemIndex)));
+  if (context?.resources) query.set("resources", context.resources);
+  if (context?.tab) query.set("tab", context.tab);
   return `/projects/${projectId}/company?${query.toString()}`;
 }
 
-function skillForgeFocusReturnHref(projectId: string, selfPath: string, queue: string) {
+function skillForgeFocusReturnHref(projectId: string, selfPath: string, queue: string, context?: { resources?: string; tab?: string }) {
   const query = new URLSearchParams({
-    tab: "knowledge",
+    tab: context?.tab || "knowledge",
     from: "company",
     focus: "skill-forge-index",
     queue,
     return_to: selfPath,
   });
+  if (context?.resources) query.set("resources", context.resources);
   return `/projects/${projectId}/skill-forge?${query.toString()}`;
 }
 
@@ -520,7 +540,7 @@ export default async function CompanyPage({
   searchParams,
 }: {
   params: { id: string };
-  searchParams?: { embed?: string; return_to?: string; from?: string; team_notice?: string; team_error?: string; focus?: string; queue?: string; item?: string };
+  searchParams?: { embed?: string; return_to?: string; from?: string; team_notice?: string; team_error?: string; focus?: string; queue?: string; item?: string; resources?: string; tab?: string };
 }) {
   const auth = await getCurrentAuthState();
   if (!auth.data?.user) {
@@ -805,6 +825,10 @@ export default async function CompanyPage({
 
   const returnToPath = safeProjectReturnPath(params.id, searchParams?.return_to);
   const focusReview = companyFocusReview(searchParams?.focus, searchParams?.queue);
+  const focusReturnContext = {
+    resources: safeForgeResources(searchParams?.resources),
+    tab: safeForgeTab(searchParams?.tab),
+  };
 
   const projectId = String(project.id ?? params.id);
   const allOrgEvents = asArray<AnyRecord>(collaborationMessagesState.data);
@@ -1451,7 +1475,7 @@ export default async function CompanyPage({
               {focusReviewItems.length ? focusReviewItems.map((item, index) => (
                 <Link
                   key={item.id}
-                  href={companyFocusHref(projectId, focusReview.queue, index)}
+                  href={companyFocusHref(projectId, focusReview.queue, index, focusReturnContext)}
                   data-active={selectedFocusItem?.id === item.id ? "1" : undefined}
                 >
                   <strong>{item.title}</strong>
@@ -1472,14 +1496,14 @@ export default async function CompanyPage({
                 </div>
                 <nav className={styles.focusEvidenceActions} aria-label="验收后动作">
                   <Link href={selectedFocusItem.workbenchHref}>打开相关 NPC 工作台</Link>
-                  <Link href={skillForgeFocusReturnHref(projectId, selfPath, focusReview.queue)}>继续查看索引结果</Link>
+                  <Link href={skillForgeFocusReturnHref(projectId, selfPath, focusReview.queue, focusReturnContext)}>继续查看索引结果</Link>
                 </nav>
               </aside>
             ) : focusReviewItems.length ? (
               <p className={styles.focusHint}>点击上方任一条目，可在公司层先看状态、回执和归档线索；不会触发派单。</p>
             ) : null}
           </div>
-          <Link href={skillForgeFocusReturnHref(projectId, selfPath, focusReview.queue)}>继续查看索引结果</Link>
+          <Link href={skillForgeFocusReturnHref(projectId, selfPath, focusReview.queue, focusReturnContext)}>继续查看索引结果</Link>
         </section>
       ) : null}
 

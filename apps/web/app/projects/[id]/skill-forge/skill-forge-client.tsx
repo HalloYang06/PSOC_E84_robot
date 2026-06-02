@@ -423,11 +423,13 @@ function depositAuditDestination(kind: string) {
   return "已同步到当前资源";
 }
 
-function companyQueueReviewHref(projectId: string, queue: "needs" | "tasks") {
+function companyQueueReviewHref(projectId: string, queue: "needs" | "tasks", resource: ForgeResource, tab: ForgeTab) {
   const params = new URLSearchParams({
     focus: "skill-forge-index",
     queue,
     item: "0",
+    resources: resourceKey(resource),
+    tab,
   });
   return `/projects/${projectId}/company?${params.toString()}`;
 }
@@ -955,8 +957,8 @@ function ForgeTile({
                   ) : null}
                   <div className={styles.depositAuditActions} aria-label="索引后验收入口">
                     <span>下一步验收</span>
-                    <Link href={companyQueueReviewHref(projectId, "needs")}>看需求验收详情</Link>
-                    <Link href={companyQueueReviewHref(projectId, "tasks")}>看任务验收详情</Link>
+                    <Link href={companyQueueReviewHref(projectId, "needs", resource, activeTab)}>看需求验收详情</Link>
+                    <Link href={companyQueueReviewHref(projectId, "tasks", resource, activeTab)}>看任务验收详情</Link>
                     <small>打开公司层验收详情，只查看和归档，不会自动派单。</small>
                   </div>
                 </div>
