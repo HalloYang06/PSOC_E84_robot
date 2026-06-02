@@ -565,8 +565,7 @@ def sync_runner_thread_workstations(
         else:
             synced_items.append(merged_item)
 
-    retained_ids = {id(item) for item in synced_items}
-    retained.extend(item for item in synced_items if id(item) not in retained_ids or item not in retained)
+    retained.extend(item for item in synced_items if item not in retained)
     config["thread_workstations"] = retained
     node_scan_items = [
         item
