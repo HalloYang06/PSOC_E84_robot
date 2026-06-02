@@ -69,6 +69,15 @@
   - 验证：`MUJOCO_GL=egl python3 validate_mujoco.py` 通过，输出 `nq=6 nv=6 nu=6 ngeom=15 ncam=2`，并成功渲染 `medical_arm_mujoco_preview.png` 和 `medical_arm_mujoco_preview_close.png`。
   - 未验证：没有接 ROS2/NanoPi；没有真实电机或 M33 控制；collision proxy 仍需按实物进一步调。
 
+- 新增 MuJoCo 接 NanoPi 准备方案：`docs/MUJOCO_NANOPI_INTEGRATION_PREP.md`。
+  - 明确当前不能把新 6 关节 MJCF 直接接入旧 5 关节 M33 bridge，必须先做 joint schema/adapter。
+  - 规划阶段：单机 MuJoCo、`/sim/medical_arm/*` shadow topics、NanoPi 只读状态、dry-run 轨迹、6 关节 schema 对齐、VLA/服务器接入。
+  - 决策：接 NanoPi 初期必须保持 `enable_target_tx=false`；所有轨迹先只产生 DRY-RUN，不允许发 `0x320`。
+  - 更新 `docs/SIM_HOST_NANOPI_NETWORK_GUIDE.md`，增加新 6 关节模型与旧 5 关节 bridge 的冲突说明和文档入口。
+  - 新增 `rehab_arm_description/config/medical_arm_6dof_schema.yaml`，记录 6 个 URDF joint、shadow topics、安全默认值、电机草案映射和 7 号外部调试边界。
+  - 新增 `test_medical_arm_6dof_schema.py`，防止后续误删 6 关节、误开真机目标、或把 7 号放回正式映射。
+  - 验证：`python -m unittest rehab_arm_ros2_ws/src/rehab_arm_description/test/test_medical_arm_6dof_schema.py` 通过，`4 tests OK`。
+
 - 新增机械臂主线 AI 交接文档：`docs/ai-handoffs/rehab-arm-mainline-2026-06-02.md`。
 - 交接内容覆盖：安全边界、当前仓库分工、M33/NanoPi/ROS/仿真/平台/App 对接关系、当前电机和 CAN 事实、后续 AI 提示词、近期最小可执行路线。
 - 本次只做文档交接整理，未执行硬件测试、ROS 测试或固件编译。

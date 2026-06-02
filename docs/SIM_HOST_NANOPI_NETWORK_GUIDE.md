@@ -241,6 +241,14 @@ After MuJoCo and the rehab ROS2 workspace are ready on the simulation host:
    - NanoPi bridge receives it
    - `enable_target_tx` remains `false` until explicitly approved.
 
+Current `medical_arm.zip` note:
+
+- The new MuJoCo model at `/home/cal/medical_arm_mujoco/medical_arm_mujoco.xml` uses 6 URDF joints: `jian_hengxiang_joint`, `jian_zongxiang_joint`, `jian_xuanzhuan_joint`, `zhou_zongxiang_joint`, `wanbu_zongxiang_joint`, `wanbu_hengxiang_joint`.
+- The existing ROS2 bridge code still uses the older 5-joint baseline: `shoulder_lift_joint`, `elbow_lift_joint`, `shoulder_abduction_joint`, `upper_arm_rotation_joint`, `forearm_rotation_joint`.
+- Do not directly publish the new 6-joint MuJoCo trajectory into the old M33 `joint_id=0..4` bridge.
+- First add a 6-joint schema/adapter and run in `/sim/medical_arm/*` shadow topics.
+- Detailed staged plan: [MUJOCO_NANOPI_INTEGRATION_PREP.md](MUJOCO_NANOPI_INTEGRATION_PREP.md).
+
 ## Troubleshooting
 
 If one direction works but the other does not:

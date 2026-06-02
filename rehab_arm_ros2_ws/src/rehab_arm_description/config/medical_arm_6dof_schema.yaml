@@ -1,0 +1,127 @@
+schema_version: medical_arm_6dof_schema_v1
+status: draft_shadow_simulation_only
+authority: m33_final_safety_authority
+
+topics:
+  shadow_joint_states: /sim/medical_arm/joint_states
+  shadow_safety_state: /sim/medical_arm/safety_state
+  shadow_trajectory: /sim/medical_arm/joint_trajectory
+  trajectory_candidate: /sim/medical_arm/trajectory_candidate
+  formal_trajectory: /arm_controller/joint_trajectory
+
+safety:
+  default_enable_target_tx: false
+  allow_direct_motor_command: false
+  allow_vla_can_output: false
+  motor_id_7_in_formal_mapping: false
+
+joints:
+  - index: 0
+    urdf_joint: jian_hengxiang_joint
+    human_dof: shoulder_horizontal_abduction_adduction
+    limit_rad: [-0.7854, 1.5708]
+    velocity_rad_s: 0.35
+    mjcf_actuator: jian_hengxiang_joint_pos
+    motor_ref:
+      kind: node_id
+      id: 3
+      protocol: CANSimple/ODrive-like
+      transmission:
+        type: pulley
+        motor_pulley_to_joint_pulley: "1:2"
+        motor_to_joint_ratio: 0.5
+        direction: null
+        zero_offset_rad: null
+      calibrated: false
+
+  - index: 1
+    urdf_joint: jian_zongxiang_joint
+    human_dof: shoulder_flexion_extension
+    limit_rad: [-0.5236, 1.7453]
+    velocity_rad_s: 0.35
+    mjcf_actuator: jian_zongxiang_joint_pos
+    motor_ref:
+      kind: motor_id
+      id: 4
+      protocol: RobStride_private_extended_frame
+      transmission:
+        type: gears
+        final_ratio: null
+        direction: null
+        zero_offset_rad: null
+      calibrated: false
+
+  - index: 2
+    urdf_joint: jian_xuanzhuan_joint
+    human_dof: upper_arm_axial_rotation
+    limit_rad: [-1.0472, 1.0472]
+    velocity_rad_s: 0.45
+    mjcf_actuator: jian_xuanzhuan_joint_pos
+    motor_ref:
+      kind: motor_id
+      id: 6
+      protocol: RobStride_private_extended_frame
+      transmission:
+        type: unknown
+        final_ratio: null
+        direction: null
+        zero_offset_rad: null
+      calibrated: false
+
+  - index: 3
+    urdf_joint: zhou_zongxiang_joint
+    human_dof: elbow_flexion_extension
+    limit_rad: [0.0, 2.3562]
+    velocity_rad_s: 0.45
+    mjcf_actuator: zhou_zongxiang_joint_pos
+    motor_ref:
+      kind: motor_id
+      id: 5
+      protocol: RobStride_private_extended_frame
+      transmission:
+        type: unknown
+        final_ratio: null
+        direction: null
+        zero_offset_rad: null
+      calibrated: false
+
+  - index: 4
+    urdf_joint: wanbu_zongxiang_joint
+    human_dof: wrist_flexion_extension
+    limit_rad: [-0.7854, 0.7854]
+    velocity_rad_s: 0.60
+    mjcf_actuator: wanbu_zongxiang_joint_pos
+    motor_ref:
+      kind: motor_id
+      id: null
+      candidates: [1, 2]
+      protocol: 4015_unknown
+      transmission:
+        type: unknown
+        final_ratio: null
+        direction: null
+        zero_offset_rad: null
+      calibrated: false
+
+  - index: 5
+    urdf_joint: wanbu_hengxiang_joint
+    human_dof: wrist_radial_ulnar_deviation
+    limit_rad: [-0.3491, 0.5236]
+    velocity_rad_s: 0.60
+    mjcf_actuator: wanbu_hengxiang_joint_pos
+    motor_ref:
+      kind: motor_id
+      id: null
+      candidates: [1, 2]
+      protocol: 4015_unknown
+      transmission:
+        type: unknown
+        final_ratio: null
+        direction: null
+        zero_offset_rad: null
+      calibrated: false
+
+external_debug_motors:
+  - motor_id: 7
+    status: external_debug_only_not_mounted_on_arm
+    allowed_in_formal_mapping: false
