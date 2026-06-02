@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 import time
@@ -63,6 +65,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--computer-node-id", default="front-c-local-pc")
     parser.add_argument("--output-dir", default=str(REPO_ROOT / "artifacts" / "front-c-sync-qa"))
     parser.add_argument("--skip-browser", action="store_true")
+    parser.add_argument(
+        "--skip-local-runner-process",
+        action="store_true",
+        help="Skip local Windows process inspection for the Front C watch runner.",
+    )
     parser.add_argument(
         "--allow-open-seat-commands",
         action="store_true",
@@ -154,6 +161,101 @@ def normalize_metadata(value: object) -> dict[str, object]:
     return value if isinstance(value, dict) else {}
 
 
+def _decode_powershell_command(command_line: str) -> str:
+    lowered = command_line.lower()
+    marker = "-encodedcommand"
+    index = lowered.find(marker)
+    if index < 0:
+        marker = "-enc"
+        index = lowered.find(marker)
+    if index < 0:
+        return ""
+    tail = command_line[index + len(marker) :].strip()
+    if not tail:
+        return ""
+    encoded = tail.split()[0].strip('"').strip("'")
+    try:
+        return base64.b64decode(encoded).decode("utf-16-le", errors="replace")
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def local_runner_process_snapshot(runner_id: str, computer_node_id: str) -> dict[str, object]:
+    if os.name != "nt":
+        return {"checked": False, "reason": "local process inspection is Windows-only"}
+    powershell = (
+        "Get-CimInstance Win32_Process | "
+        "Where-Object { $_.Name -match '^(powershell|pwsh|python)\\.exe$' } | "
+        "Select-Object ProcessId,ParentProcessId,Name,CommandLine | ConvertTo-Json -Depth 3"
+    )
+    completed = subprocess.run(
+        ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", powershell],
+        cwd=str(REPO_ROOT),
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        capture_output=True,
+        timeout=30,
+    )
+    if completed.returncode != 0:
+        return {
+            "checked": False,
+            "reason": (completed.stderr or completed.stdout or "process query failed").strip(),
+        }
+    raw = completed.stdout.strip()
+    if not raw:
+        return {"checked": True, "process_count": 0, "watch_execute_process": None, "adapter_execute_processes": []}
+    parsed = json.loads(raw)
+    processes = parsed if isinstance(parsed, list) else [parsed]
+    process_items: list[dict[str, object]] = [item for item in processes if isinstance(item, dict)]
+    watch_matches: list[dict[str, object]] = []
+    adapter_matches: list[dict[str, object]] = []
+    for item in process_items:
+        command_line = str(item.get("CommandLine") or item.get("commandLine") or "")
+        decoded = _decode_powershell_command(command_line)
+        combined = f"{command_line}\n{decoded}"
+        summary = {
+            "process_id": item.get("ProcessId"),
+            "parent_process_id": item.get("ParentProcessId"),
+            "name": item.get("Name"),
+            "has_runner_id": runner_id in combined,
+            "has_computer_node_id": computer_node_id in combined,
+            "has_watch_execute_provider_cli": "-WatchExecuteProviderCli" in combined,
+            "has_automation_policy": "AI_COLLAB_CODEX_DESKTOP_DELIVERY_POLICY" in combined
+            and "automation" in combined,
+            "has_sendkeys_fallback": "AI_COLLAB_ALLOW_CODEX_UI_SENDKEYS_FALLBACK" in combined
+            and "Remove-Item" not in combined,
+            "has_execute_provider_cli_child": "--execute-provider-cli" in combined,
+        }
+        if "connect-ai-collab-runner" in combined or "-WatchExecuteProviderCli" in combined:
+            watch_matches.append(summary)
+        if "platform-workstation-adapter.py" in combined or "--execute-provider-cli" in combined:
+            adapter_matches.append(summary)
+
+    watch_execute_process = next(
+        (
+            item
+            for item in watch_matches
+            if item.get("has_runner_id")
+            and item.get("has_computer_node_id")
+            and item.get("has_watch_execute_provider_cli")
+            and item.get("has_automation_policy")
+            and not item.get("has_sendkeys_fallback")
+        ),
+        None,
+    )
+    adapter_execute_processes = [
+        item for item in adapter_matches if item.get("has_runner_id") and item.get("has_execute_provider_cli_child")
+    ]
+    return {
+        "checked": True,
+        "process_count": len(process_items),
+        "watch_execute_process": watch_execute_process,
+        "adapter_execute_processes": adapter_execute_processes,
+        "watch_candidates": watch_matches,
+    }
+
+
 def find_seat(items: list[dict[str, object]], seat: dict[str, str]) -> dict[str, object] | None:
     wanted = {
         seat["seat_id"],
@@ -194,6 +296,17 @@ def main() -> int:
         "seats": [],
     }
     issues: list[str] = []
+
+    if not args.skip_local_runner_process:
+        process_snapshot = local_runner_process_snapshot(args.runner_id, args.computer_node_id)
+        report["local_runner_process"] = process_snapshot
+        if process_snapshot.get("checked"):
+            if not process_snapshot.get("watch_execute_process"):
+                issues.append(
+                    "local Front C runner watch process is not confirmed in provider CLI execution mode"
+                )
+        else:
+            issues.append(f"local runner process inspection skipped: {process_snapshot.get('reason')}")
 
     workstations_payload = request_json(
         f"{api_base}/api/collaboration/projects/{args.project_id}/thread-workstations",
