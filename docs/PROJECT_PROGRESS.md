@@ -61,6 +61,14 @@
   - 同步更新 README、系统架构、MuJoCo 差距教程和 CLAUDE 规则，避免后续 AI 继续按旧 7 号或待绑定表理解。
   - 未执行硬件测试、ROS 测试或固件编译；当前限位仍是仿真 smoke-test 起步值，正式穿戴前必须补机械硬限位、患者 profile、方向、零点、传动比、速度/力矩/电流限制。
 
+- 完成远程 MuJoCo 主机第一版可视化 MJCF：
+  - 远程主机：`cal@192.168.2.46`，MuJoCo 目录为 `/home/cal/mujoco`，viewer 可执行文件为 `/home/cal/mujoco/build/bin/simulate`。
+  - 模型目录：`/home/cal/medical_arm_mujoco/`。
+  - 生成文件：`medical_arm_mujoco.xml`、`README_MUJOCO.md`、`joint_motor_mapping.yaml`、`validate_mujoco.py`、`open_mujoco.sh`、两张预览图。
+  - 当前 MJCF 包含材质、地面、灯光、两个相机、6 个 hinge joint、6 个 position actuator、末端 site、关节轴 marker 和简化 collision proxy。
+  - 验证：`MUJOCO_GL=egl python3 validate_mujoco.py` 通过，输出 `nq=6 nv=6 nu=6 ngeom=15 ncam=2`，并成功渲染 `medical_arm_mujoco_preview.png` 和 `medical_arm_mujoco_preview_close.png`。
+  - 未验证：没有接 ROS2/NanoPi；没有真实电机或 M33 控制；collision proxy 仍需按实物进一步调。
+
 - 新增机械臂主线 AI 交接文档：`docs/ai-handoffs/rehab-arm-mainline-2026-06-02.md`。
 - 交接内容覆盖：安全边界、当前仓库分工、M33/NanoPi/ROS/仿真/平台/App 对接关系、当前电机和 CAN 事实、后续 AI 提示词、近期最小可执行路线。
 - 本次只做文档交接整理，未执行硬件测试、ROS 测试或固件编译。

@@ -66,6 +66,54 @@ zhou_zongxiang_joint
 
 ## 2. 距离 MuJoCo 可用模型还差什么
 
+### 2.0 当前远程 MuJoCo 主机状态
+
+2026-06-02 已在远程仿真主机 `cal@192.168.2.46` 上建立当前可视化目录：
+
+```text
+/home/cal/medical_arm_mujoco/
+  medical_arm_mujoco.xml
+  medical_arm_viewer.urdf
+  urdf/medical_arm.urdf
+  meshes/*.STL
+  README_MUJOCO.md
+  joint_motor_mapping.yaml
+  validate_mujoco.py
+  open_mujoco.sh
+  medical_arm_mujoco_preview.png
+  medical_arm_mujoco_preview_close.png
+```
+
+打开方式：
+
+```bash
+cd /home/cal/medical_arm_mujoco
+./open_mujoco.sh
+```
+
+验证方式：
+
+```bash
+cd /home/cal/medical_arm_mujoco
+MUJOCO_GL=egl python3 validate_mujoco.py
+```
+
+已验证：
+
+- Python `mujoco 3.9.0` 能加载 `medical_arm_mujoco.xml`。
+- MuJoCo viewer 3.10 可用路径是 `/home/cal/mujoco/build/bin/simulate`。
+- 当前模型有 `nq=6`、`nv=6`、`nu=6`、`ngeom=15`、`ncam=2`。
+- 6 个关节和 6 个 position actuator 已按 `medical_arm.urdf` 限位生成。
+- 已加入材质、地面、灯光、两个相机、末端 site、关节轴 marker 和简化 collision proxy。
+
+仍需补：
+
+- 真实机械硬限位、患者 profile 和 M33 最终安全限位。
+- `motor_id=1/2` 到腕部两轴的具体对应关系。
+- `motor_id=4` 到 `jian_zongxiang_joint` 的最终齿轮比。
+- 每个电机到输出 joint 的方向、零点、回差和标定版本。
+- collision proxy 需要按真实外形进一步调，不应直接把 STL mesh 当动态碰撞体。
+
 ### 2.1 关节语义
 
 当前缺少：
