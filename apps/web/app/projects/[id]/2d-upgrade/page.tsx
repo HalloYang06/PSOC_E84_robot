@@ -317,6 +317,13 @@ export default async function Project2dUpgradePage({
   });
   const sourceWorkstations = workstationRows.filter((workstation) => !isNpcSeat(workstation) || isRunnerThreadScanRecord(workstation));
   const selectableWorkstations = sourceWorkstations.length ? sourceWorkstations : workstationRows;
+  const focusedComputerId = searchText(searchParams?.computer);
+  const visibleWorkstations = focusedComputerId
+    ? [
+        ...selectableWorkstations.filter((workstation) => text(workstation.computer_node_id ?? metadataOf(workstation).computer_node_id, "") === focusedComputerId),
+        ...selectableWorkstations.filter((workstation) => text(workstation.computer_node_id ?? metadataOf(workstation).computer_node_id, "") !== focusedComputerId),
+      ]
+    : selectableWorkstations;
   const sortedMessages = messages
     .slice()
     .sort((a, b) => {
@@ -436,7 +443,7 @@ export default async function Project2dUpgradePage({
           permissionLevel: member.is_owner ? "owner" : role,
         };
       })}
-      workstations={selectableWorkstations.slice(0, 48).map((workstation, index) => ({
+      workstations={visibleWorkstations.slice(0, 160).map((workstation, index) => ({
         id: text(workstation.id ?? workstation.workstation_id ?? workstation.thread_id, `workstation-${index + 1}`),
         name: text(workstation.name ?? workstation.workstation_name ?? workstation.thread_name, `线程 ${index + 1}`),
         type: text(workstation.ai_provider_id ?? workstation.ai_provider ?? workstation.provider, "thread"),
