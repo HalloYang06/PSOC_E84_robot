@@ -763,9 +763,11 @@ function parseUrdfVisualMeshes(urdfText: string): UrdfVisualMesh[] {
   return Array.from(document.querySelectorAll("robot > link")).flatMap((link) => {
     const linkName = text(link.getAttribute("name"), "");
     if (!linkName) return [];
-    return Array.from(link.querySelectorAll(":scope > visual")).map((visual) => {
-      const origin = visual.querySelector(":scope > origin");
-      const mesh = visual.querySelector(":scope > geometry > mesh");
+    const visualNodes = Array.from(link.children).filter((child) => child.nodeName.toLowerCase() === "visual") as Element[];
+    return visualNodes.map((visual) => {
+      const origin = Array.from(visual.children).find((child) => child.nodeName.toLowerCase() === "origin");
+      const geometry = Array.from(visual.children).find((child) => child.nodeName.toLowerCase() === "geometry");
+      const mesh = geometry ? Array.from(geometry.children).find((child) => child.nodeName.toLowerCase() === "mesh") : undefined;
       return {
         linkName,
         meshPath: text(mesh?.getAttribute("filename"), ""),
