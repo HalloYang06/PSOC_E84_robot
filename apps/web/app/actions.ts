@@ -6422,10 +6422,10 @@ export async function 登录用户(formData: FormData) {
     path: "/",
   });
   revalidatePath("/login");
-    revalidatePath("/members");
-    revalidatePath("/base");
-    redirect(returnTo || "/projects");
-  }
+  revalidatePath("/members");
+  revalidatePath("/base");
+  redirect(returnTo || "/projects");
+}
 
 export async function 退出登录(formData?: FormData) {
   const returnTo = normalizeAuthReturnPath(formData?.get("return_to"), "/login");
