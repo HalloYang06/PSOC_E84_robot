@@ -710,13 +710,15 @@ export default async function ProjectDetailPage({
   const configBase = normalizeConfig(project);
   const scannedWorkstations = workstationsFromNodeScans(liveNodes);
   const baseSeatRecords = configBase.workstations.filter((item: AnyRecord) => isNpcSeatRecord(item));
-  const baseSourceThreadRecords = configBase.workstations.filter((item: AnyRecord) => !isNpcSeatRecord(item));
+  const baseSourceThreadRecords = configBase.workstations.filter(
+    (item: AnyRecord) => !isNpcSeatRecord(item) || isRunnerScannedWorkstation(item),
+  );
   const liveSourceThreadRecords = mergeById(
     mergeById(
-      liveWorkstations.filter((item: AnyRecord) => !isNpcSeatRecord(item)),
-      scannedWorkstations.filter((item: AnyRecord) => !isNpcSeatRecord(item)),
+      liveWorkstations.filter((item: AnyRecord) => !isNpcSeatRecord(item) || isRunnerScannedWorkstation(item)),
+      scannedWorkstations.filter((item: AnyRecord) => !isNpcSeatRecord(item) || isRunnerScannedWorkstation(item)),
     ),
-    localClaudeWorkstations.filter((item: AnyRecord) => !isNpcSeatRecord(item)),
+    localClaudeWorkstations.filter((item: AnyRecord) => !isNpcSeatRecord(item) || isRunnerScannedWorkstation(item)),
   );
   const mergedSourceThreadRecords = mergeById(liveSourceThreadRecords, baseSourceThreadRecords);
   const filteredSeatRecords = baseSeatRecords
