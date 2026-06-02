@@ -112,6 +112,7 @@ def page_state(cdp: object) -> dict[str, object]:
           const forbidden = Array.from(new Set(body.match(new RegExp({js(FORBIDDEN_RE)}, 'ig')) || []));
           const mappingRows = Array.from(document.querySelectorAll('[data-testid="rehab-pose-mapping"] [class*="mappingRow"]'));
           const matchLine = Array.from(document.querySelectorAll('[class*="poseStatus"] strong')).map((item) => item.textContent || '').find((text) => text.includes('匹配')) || '';
+          const meshLine = Array.from(document.querySelectorAll('[class*="poseStatus"] span')).map((item) => item.textContent || '').find((text) => text.includes('模型资源已加载')) || '';
           const previewLines = Array.from(document.querySelectorAll('[class*="armLegend"] span')).map((item) => item.textContent || '');
           const canvas = document.querySelector('canvas[aria-label="机械臂 Three.js 总览"], [aria-label="机械臂 Three.js 总览"] canvas');
           return {{
@@ -126,6 +127,8 @@ def page_state(cdp: object) -> dict[str, object]:
             hasPoseMapping: body.includes('姿态映射') && mappingRows.length > 0,
             mappingRowCount: mappingRows.length,
             matchLine,
+            meshLine,
+            hasRestoredMeshes: meshLine.includes('模型资源已加载 7 个，未加载 0 个'),
             previewLines: previewLines.slice(0, 12),
             hasCanvas: Boolean(canvas),
             bodySample: body.slice(0, 2600),
@@ -253,7 +256,8 @@ def main() -> int:
               const body = document.body?.innerText || '';
               return body.includes('已从当前设备档案恢复模型包')
                 && body.includes('已导入 medical_arm.zip')
-                && body.includes('匹配 6/6');
+                && body.includes('匹配 6/6')
+                && body.includes('模型资源已加载 7 个，未加载 0 个');
             })()
             """,
             timeout_seconds=60,
@@ -270,6 +274,7 @@ def main() -> int:
             and state["hasReadonlyBoundary"]
             and state["hasSavedModel"]
             and state["hasRestoredModel"]
+            and state["hasRestoredMeshes"]
             and not state["hasHorizontalOverflow"]
             and not state["forbidden"]
         )

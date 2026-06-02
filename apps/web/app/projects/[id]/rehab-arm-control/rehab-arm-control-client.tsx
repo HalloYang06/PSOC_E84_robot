@@ -660,6 +660,7 @@ function resolvePackageAsset(packageFiles: Map<string, ArrayBuffer>, packageName
   const normalized = normalizePackagePath(rawPath);
   const withoutProtocol = normalized.replace(/^package:\/\//, "");
   const candidates = [
+    normalized,
     withoutProtocol,
     withoutProtocol.replace(new RegExp(`^${packageName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/`), ""),
     `${packageName}/${withoutProtocol}`,
@@ -672,6 +673,12 @@ function resolvePackageAsset(packageFiles: Map<string, ArrayBuffer>, packageName
     if (found) return found[1];
   }
   return null;
+}
+
+function urdfVisualMeshPath(node: unknown) {
+  if (!node || typeof (node as Element).querySelector !== "function") return "";
+  const mesh = (node as Element).querySelector("geometry mesh");
+  return text(mesh?.getAttribute("filename"), "");
 }
 
 function Arm3DOverview({
@@ -800,6 +807,8 @@ function Arm3DOverview({
     const parsedJoints = parseUrdfJoints(modelPackage.urdfText);
     const rows = defaultCalibrations(movableJoints(parsedJoints).map((joint) => joint.name), sourceNames, serverCalibrationsRef.current);
     serverCalibrationsRef.current = new Map(rows.map((row) => [row.jointName, row]));
+    setMeshStats({ loaded: 0, missing: 0 });
+    setUrdfState("loading");
     setUrdfPackage(modelPackage);
     setUrdfJoints(parsedJoints);
     setUrdfName(modelPackage.fileName.endsWith(".zip") ? `${modelPackage.fileName} / ${modelPackage.urdfPath}` : modelPackage.fileName);
@@ -991,8 +1000,11 @@ function Arm3DOverview({
           ]);
           if (disposed) return;
           const loader = new URDFLoader();
-          (loader as AnyRecord).packages = "";
+          (loader as AnyRecord).packages = (targetPackage: string) => targetPackage;
+          (loader as AnyRecord).parseCollision = false;
+          let meshLoadAttempts = 0;
           (loader as AnyRecord).loadMeshCb = (_url: string, _manager: unknown, done: (mesh: unknown, err?: Error) => void) => {
+            meshLoadAttempts += 1;
             const asset = urdfPackage ? resolvePackageAsset(urdfPackage.files, urdfPackage.packageName, _url) : null;
             if (!asset || !_url.toLowerCase().endsWith(".stl")) {
               setMeshStats((stats) => ({ ...stats, missing: stats.missing + 1 }));
@@ -1014,6 +1026,25 @@ function Arm3DOverview({
           if (disposed) return;
           robotRef.current = robot;
           robot.rotation.x = -Math.PI / 2;
+          if (!meshLoadAttempts && urdfPackage) {
+            robot.traverse?.((child: AnyRecord) => {
+              if (!child.isURDFVisual || child.children?.length) return;
+              const meshPath = urdfVisualMeshPath(child.urdfNode);
+              const asset = meshPath ? resolvePackageAsset(urdfPackage.files, urdfPackage.packageName, meshPath) : null;
+              if (!asset || !meshPath.toLowerCase().endsWith(".stl")) {
+                setMeshStats((stats) => ({ ...stats, missing: stats.missing + 1 }));
+                return;
+              }
+              try {
+                const geometry = new STLLoader().parse(asset);
+                const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: 0x8ef0c7, roughness: 0.62, metalness: 0.08 }));
+                child.add(mesh);
+                setMeshStats((stats) => ({ ...stats, loaded: stats.loaded + 1 }));
+              } catch {
+                setMeshStats((stats) => ({ ...stats, missing: stats.missing + 1 }));
+              }
+            });
+          }
           robot.traverse?.((child: AnyRecord) => {
             if (child.isMesh) {
               child.castShadow = false;
