@@ -84,6 +84,42 @@
   white-space: nowrap;
 }
 
+.jointFlowGrid em {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  overflow: hidden;
+  margin-top: 5px;
+  padding: 2px 6px;
+  border: 1px solid rgba(117, 247, 221, 0.15);
+  border-radius: 999px;
+  color: rgba(205, 232, 238, 0.7);
+  font-size: 9.5px;
+  font-style: normal;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jointFlowGrid em[data-freshness="fresh"] {
+  border-color: rgba(117, 247, 221, 0.28);
+  color: #9dfff0;
+  background: rgba(117, 247, 221, 0.08);
+}
+
+.jointFlowGrid em[data-freshness="recent"] {
+  border-color: rgba(255, 209, 102, 0.22);
+  color: #ffe5a0;
+  background: rgba(255, 209, 102, 0.07);
+}
+
+.jointFlowGrid em[data-freshness="stale"],
+.jointFlowGrid em[data-freshness="waiting"] {
+  border-color: rgba(255, 112, 94, 0.22);
+  color: #ffb4a9;
+  background: rgba(255, 112, 94, 0.06);
+}
+
 .jointFlowGrid dl {
   min-width: 0;
   display: grid;

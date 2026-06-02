@@ -77,6 +77,8 @@ type JointFlowRow = {
   velocity: number | null;
   effort: number | null;
   temperature: number | null;
+  freshnessText: string;
+  freshnessState: "fresh" | "recent" | "stale" | "waiting";
   status: "matched" | "waiting" | "fault";
 };
 
@@ -250,6 +252,37 @@ function formatTime(value: unknown) {
   const ts = Number(value);
   if (!Number.isFinite(ts) || ts <= 0) return "无记录";
   return new Date(ts * 1000).toLocaleString("zh-CN", { hour12: false });
+}
+
+function timestampUnix(value: unknown): number | null {
+  const source = record(value);
+  const nestedPayload = record(source.payload);
+  const candidates = [
+    source.source_ts_unix,
+    source.ts_unix,
+    source.timestamp_unix,
+    source.updated_at_unix,
+    source.frame_ts_unix,
+    nestedPayload.ts_unix,
+    nestedPayload.timestamp_unix,
+    nestedPayload.frame_ts_unix,
+  ];
+  for (const candidate of candidates) {
+    const number = Number(candidate);
+    if (Number.isFinite(number) && number > 0) return number;
+  }
+  return null;
+}
+
+function freshness(tsUnix: number | null, nowMs: number) {
+  if (!tsUnix) return { text: "等待上报", state: "waiting" as const };
+  const ageSeconds = Math.max(0, Math.round((nowMs - tsUnix * 1000) / 1000));
+  if (ageSeconds < 15) return { text: "刚刚更新", state: "fresh" as const };
+  if (ageSeconds < 120) return { text: `${ageSeconds} 秒前`, state: "fresh" as const };
+  const ageMinutes = Math.round(ageSeconds / 60);
+  if (ageMinutes < 10) return { text: `${ageMinutes} 分钟前`, state: "recent" as const };
+  if (ageMinutes < 60) return { text: `${ageMinutes} 分钟未更新`, state: "stale" as const };
+  return { text: `${Math.round(ageMinutes / 60)} 小时未更新`, state: "stale" as const };
 }
 
 function stateLabel(value: unknown) {
@@ -429,6 +462,7 @@ function motorBySourceName(motors: AnyRecord[]) {
 
 function jointStateSamplesFromPayload(value: unknown) {
   const payload = record(value);
+  const sourceTsUnix = timestampUnix(payload);
   const jointState = payload.joint_state ?? payload.joint_states ?? payload.jointState ?? payload.jointStates;
   if (Array.isArray(jointState)) {
     return jointState
@@ -447,6 +481,7 @@ function jointStateSamplesFromPayload(value: unknown) {
           enabled: false,
           fault: false,
           source_label: "ROS 关节状态",
+          source_ts_unix: timestampUnix(row) ?? sourceTsUnix,
         };
       })
       .filter(Boolean) as AnyRecord[];
@@ -469,13 +504,19 @@ function jointStateSamplesFromPayload(value: unknown) {
         enabled: false,
         fault: false,
         source_label: "ROS 关节状态",
+        source_ts_unix: sourceTsUnix,
       };
     })
     .filter(Boolean) as AnyRecord[];
 }
 
 function poseSamplesFromTelemetry(motorPayload: AnyRecord, sensorPayload: AnyRecord) {
-  const motors: AnyRecord[] = asArray<AnyRecord>(motorPayload.motors).map((motor) => ({ ...motor, source_label: "电机状态" }));
+  const motorTsUnix = timestampUnix(motorPayload);
+  const motors: AnyRecord[] = asArray<AnyRecord>(motorPayload.motors).map((motor) => ({
+    ...motor,
+    source_label: "电机状态",
+    source_ts_unix: timestampUnix(motor) ?? motorTsUnix,
+  }));
   const jointStates = [
     ...jointStateSamplesFromPayload(motorPayload),
     ...jointStateSamplesFromPayload(sensorPayload),
@@ -619,6 +660,7 @@ function jointFlowRows(
   calibrations: JointCalibration[],
   sourceValues: Map<string, number>,
   sourceMotors: Map<string, AnyRecord>,
+  nowMs: number,
 ): JointFlowRow[] {
   const rowsByJoint = new Map(calibrations.map((row) => [row.jointName, row]));
   return jointNames.map((jointName) => {
@@ -628,6 +670,7 @@ function jointFlowRows(
     const rawValue = sourceName && sourceValues.has(sourceName) ? Number(sourceValues.get(sourceName)) : null;
     const calibratedValue = row ? calibratedJointValue(row, sourceValues) : null;
     const fault = Boolean(motor?.fault ?? motor?.has_fault ?? motor?.hasFault);
+    const sourceFreshness = freshness(timestampUnix(motor), nowMs);
     return {
       jointName,
       sourceName,
@@ -637,6 +680,8 @@ function jointFlowRows(
       velocity: numericOrNull(motor?.velocity ?? motor?.velocity_rad_s ?? motor?.velocityRadS),
       effort: numericOrNull(motor?.torque ?? motor?.effort ?? motor?.current),
       temperature: numericOrNull(motor?.temperature ?? motor?.temp_c ?? motor?.tempC),
+      freshnessText: sourceFreshness.text,
+      freshnessState: sourceFreshness.state,
       status: fault ? "fault" : calibratedValue === null ? "waiting" : "matched",
     };
   });
@@ -836,6 +881,7 @@ function Arm3DOverview({
   const jointRowsKey = jointRows.join("\u0001");
   const sourceNamesKey = sourceNames.join("\u0001");
   const [calibrations, setCalibrations] = useState<JointCalibration[]>([]);
+  const [freshnessNowMs, setFreshnessNowMs] = useState(() => Date.now());
   const calibratedJointValues = useMemo(() => {
     const values = new Map<string, number>();
     calibrations.forEach((row) => {
@@ -856,10 +902,15 @@ function Arm3DOverview({
     [jointRows, urdfJointNames],
   );
   const flowRows = useMemo(
-    () => jointFlowRows(flowJointNames, calibrations, jointValues, sourceMotors),
-    [calibrations, flowJointNames, jointValues, sourceMotors],
+    () => jointFlowRows(flowJointNames, calibrations, jointValues, sourceMotors, freshnessNowMs),
+    [calibrations, flowJointNames, freshnessNowMs, jointValues, sourceMotors],
   );
   const activeFlowRows = flowRows.filter((row) => row.status === "matched").length;
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setFreshnessNowMs(Date.now()), 5000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     positionsRef.current = positions;
@@ -1277,6 +1328,7 @@ function Arm3DOverview({
               <div>
                 <strong>{row.jointName}</strong>
                 <span>{row.sourceName || "待匹配"} · {row.sourceLabel}</span>
+                <em data-freshness={row.freshnessState}>{row.freshnessText}</em>
               </div>
               <dl>
                 <div>
