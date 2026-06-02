@@ -312,6 +312,63 @@ function cameraImageUrl(device: AnyRecord) {
   return text(camera.image_url, text(payload.image_url, ""));
 }
 
+function deviceExecutionComputerId(device: AnyRecord) {
+  const registration = latestPayload(device, "registration");
+  const board = latestPayload(device, "board_manifest");
+  const candidates = [
+    device.computer_node_id,
+    device.computerNodeId,
+    device.runner_computer_node_id,
+    device.runnerComputerNodeId,
+    registration.computer_node_id,
+    registration.computerNodeId,
+    registration.runner_computer_node_id,
+    registration.runnerComputerNodeId,
+    board.computer_node_id,
+    board.computerNodeId,
+  ];
+  return text(candidates.find((candidate) => text(candidate, "")), "");
+}
+
+function robotStateChannels(device: AnyRecord) {
+  const motorPayload = latestPayload(device, "motor_state");
+  const sensorPayload = latestPayload(device, "sensor_state");
+  const cameraPayload = latestPayload(device, "camera_keyframe");
+  const channels = [
+    "time",
+    ...asArray<AnyRecord>(motorPayload.motors).flatMap((motor, index) => {
+      const joint = text(motor.joint_name, `joint_${index + 1}`);
+      return [`${joint}.position`, `${joint}.velocity`, `${joint}.temperature`];
+    }),
+    ...Object.keys(sensorPayload)
+      .filter((key) => !["schema_version", "device_id", "robot_id", "project_id", "source", "ts_unix"].includes(key))
+      .map((key) => `sensor.${key}`),
+    text(cameraPayload.camera_id, "") ? "camera.keyframe" : "",
+  ].filter(Boolean);
+  return Array.from(new Set(channels)).slice(0, 32);
+}
+
+function modelPackageSummary(device: AnyRecord) {
+  const model = record(device.device_model);
+  const payload = payloadOf(model);
+  const fileName = text(payload.file_name, "");
+  const jointCount = text(payload.joint_count, "");
+  const meshCount = text(payload.mesh_count, "");
+  if (!fileName) return "可在专项总控台导入 URDF 包，导入后这里继续用状态数据预览。";
+  return `${fileName}${jointCount ? ` · ${jointCount} 个关节` : ""}${meshCount ? ` · ${meshCount} 个模型资源` : ""}`;
+}
+
+function publicRobotStateSourceLine(device: AnyRecord) {
+  const motorPayload = latestPayload(device, "motor_state");
+  const sensorPayload = latestPayload(device, "sensor_state");
+  const sources = [
+    text(motorPayload.source, "") ? "电机状态" : "",
+    text(sensorPayload.source, "") ? "传感器摘要" : "",
+    cameraImageUrl(device) ? "摄像头关键帧" : "",
+  ].filter(Boolean);
+  return sources.length ? sources.join(" / ") : "等待开发板上传只读状态";
+}
+
 function sensorEntries(device: AnyRecord) {
   const sensor = latestPayload(device, "sensor_state");
   return Object.entries(sensor)
@@ -733,6 +790,9 @@ function DeviceDataTile({
   const assistantSkills = npcSkillNames(assistantSeat);
   const title = deviceTitle(device, index);
   const id = deviceId(device, index);
+  const stateComputerId = deviceExecutionComputerId(device);
+  const stateChannels = robotStateChannels(device);
+  const stateReturnTo = `/projects/${projectId}/robotics?tab=model&device=${encodeURIComponent(id)}`;
   return (
     <article className={tileStyles.tile}>
       <header className={tileStyles.head}>
@@ -908,14 +968,36 @@ function DeviceDataTile({
           <article className={`${styles.dataActionPanel} ${styles.dataFocusPanel}`}>
             <span>模型与状态预览</span>
             <strong>用电机状态看机器人整体姿态</strong>
-            <p>关节颜色表达温度；这里是只读可视化，不发送 ROS 写操作，也不下发任何硬件动作。</p>
+            <p>关节颜色表达温度；这里是只读可视化，不发送 ROS 写操作，也不下发任何硬件动作。{modelPackageSummary(device)}</p>
             <div className={styles.syncToolbar} aria-label="状态数据同步控制">
-              <button type="button" onClick={() => setStateSyncEnabled(true)}>开始数据同步</button>
+              {stateComputerId ? (
+                <form action={记录机器人采集片段.bind(null, projectId)}>
+                  <input type="hidden" name="return_to" value={stateReturnTo} />
+                  <input type="hidden" name="computer_node_id" value={stateComputerId} />
+                  <input type="hidden" name="interface_id" value={`robot-state:${id}`} />
+                  <input type="hidden" name="runner_interface_id" value="ros:/joint_states" />
+                  <input type="hidden" name="interface_name" value={`${title} 只读状态`} />
+                  <input type="hidden" name="interface_kind" value="ROS 状态" />
+                  <input type="hidden" name="sample_hz" value="10" />
+                  <input type="hidden" name="baud_rate" value="-" />
+                  <input type="hidden" name="channels" value={stateChannels.join(",")} />
+                  <input type="hidden" name="bound_npc" value={selectedNpcId} />
+                  <input type="hidden" name="bound_npc_label" value={assistantSeat ? seatName(assistantSeat, "协助 NPC") : ""} />
+                  <button type="submit" name="capture_mode" value="start" onClick={() => setStateSyncEnabled(true)}>开始只读状态同步</button>
+                </form>
+              ) : (
+                <button type="button" onClick={() => setStateSyncEnabled(true)}>页面跟随最近状态</button>
+              )}
               <button type="button" onClick={() => setStateSyncEnabled(false)}>关闭数据同步</button>
               <button type="button" onClick={() => setShowOpenSourceMesh((value) => !value)}>
                 {showOpenSourceMesh ? "隐藏开源 mesh" : "加载开源 mesh"}
               </button>
             </div>
+            <p data-testid="robotics-robot-state-sync-hint">
+              {stateComputerId
+                ? `只读同步会按 ${stateChannels.length || 1} 个状态字段排队到目标电脑；停止和沉淀片段仍在串口与设备调试窗口完成。`
+                : "当前设备只提供服务器最近状态，还没有绑定可执行电脑；需要持续采集时，切到“串口与设备”创建 ROS 或接口调试窗口。"}
+            </p>
             <MotorState3DViewer
               motors={motors}
               sourceLine={latestMotorStateLine(device, motors)}
@@ -928,7 +1010,11 @@ function DeviceDataTile({
             <details className={styles.workbenchDrawer} open>
               <summary><span>状态映射</span><strong>{motors.length ? `${motors.length} 个电机` : "等待电机状态"}</strong></summary>
               <article className={styles.dataActionPanel}>
-                <p>position 映射姿态，temperature 映射关节颜色。真实运动仍由本地规划、Linux 开发板和底层安全控制器负责。</p>
+                <p>{publicRobotStateSourceLine(device)}。position 映射姿态，temperature 映射关节颜色；真实运动仍由本地规划、Linux 开发板和底层安全控制器负责。</p>
+                <div className={styles.variablePills}>
+                  {stateChannels.slice(0, 18).map((channel) => <span key={channel}>{channel}</span>)}
+                  {!stateChannels.length ? <span>等待电机状态 / 传感器摘要 / 摄像头关键帧</span> : null}
+                </div>
               </article>
             </details>
             <details className={styles.workbenchDrawer}>
