@@ -463,6 +463,28 @@ def test_project_maintainer_can_queue_generic_npc_runner_command() -> None:
     assert command["status"] == "pending"
 
 
+def test_runner_command_rejects_multiple_targets_with_json_validation_error() -> None:
+    owner_token, project_id, _runner_id, _ = _setup_runner_project()
+
+    response = client.post(
+        f"/api/collaboration/projects/{project_id}/runner-commands",
+        headers=auth_headers(owner_token),
+        json={
+            "computer_node_id": "pc-relay",
+            "workstation_id": "ws-relay",
+            "title": "重复目标",
+            "body": "用户或脚本误传两个目标时，API 应返回可读校验错误，不应 500。",
+        },
+    )
+
+    assert response.status_code == 422
+    payload = response.json()
+    assert payload["error"]["code"] == "VALIDATION_ERROR"
+    assert "Exactly one of dispatch_id, runner_id, computer_node_id, workstation_id" in str(
+        payload["error"]["details"]["errors"]
+    )
+
+
 def test_collaboration_message_read_and_runner_type_require_protected_paths() -> None:
     owner_token, project_id, runner_id, task_id = _setup_runner_project()
 

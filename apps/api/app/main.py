@@ -9,6 +9,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
+from fastapi.encoders import jsonable_encoder
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.common.errors import AppError
@@ -219,7 +220,7 @@ async def app_error_handler(_: Request, exc: AppError):
 async def validation_error_handler(_: Request, exc: RequestValidationError):
     return JSONResponse(
         status_code=422,
-        content=err("VALIDATION_ERROR", "请求参数校验失败", details={"errors": exc.errors()}),
+        content=err("VALIDATION_ERROR", "请求参数校验失败", details={"errors": jsonable_encoder(exc.errors())}),
     )
 
 
