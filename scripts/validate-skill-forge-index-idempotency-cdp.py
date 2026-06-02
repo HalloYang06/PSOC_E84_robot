@@ -238,6 +238,65 @@ def count_indexed(items: dict[str, list[dict[str, object]]]) -> dict[str, int]:
     }
 
 
+def indexed_records(items: dict[str, list[dict[str, object]]]) -> dict[str, list[dict[str, object]]]:
+    need_path = FIXTURE_PATHS["need"]
+    task_path = FIXTURE_PATHS["task"]
+    return {
+        "needs": [
+            item
+            for item in items["requirements"]
+            if need_path in string_list(item.get("related_files") or item.get("relatedFiles"))
+            or has_evidence_line(text(item.get("context_summary") or item.get("contextSummary")), need_path)
+        ],
+        "tasks": [
+            item
+            for item in items["tasks"]
+            if normalized_path(item.get("related_issue") or item.get("relatedIssue")).lower() == task_path.lower()
+            or has_evidence_line(text(item.get("description")), task_path)
+        ],
+    }
+
+
+def archive_indexed_queue_items(api_base: str, token: str, user: dict[str, object], project_id: str) -> dict[str, object]:
+    items = list_project_items(api_base, token, project_id)
+    records = indexed_records(items)
+    actor_id = text(user.get("id") or user.get("email"), "qa-human")
+    archived: dict[str, object] = {"needs": [], "tasks": []}
+    for task in records["tasks"]:
+        task_id = text(task.get("id"))
+        if not task_id:
+            continue
+        archived_task = object_data(
+            request_json(
+                f"{api_base.rstrip('/')}/api/tasks/{quote(task_id)}/archive",
+                method="POST",
+                token=token,
+                payload={"actor_type": "human", "actor_id": actor_id, "message": "QA archive indexed task receipt"},
+            ),
+        )
+        archived["tasks"].append(archived_task)  # type: ignore[union-attr]
+    for need in records["needs"]:
+        need_id = text(need.get("id"))
+        if not need_id:
+            continue
+        request_json(
+            f"{api_base.rstrip('/')}/api/requirements/{quote(need_id)}/close",
+            method="POST",
+            token=token,
+            payload={"actor_type": "human", "actor_id": actor_id, "note": "QA close indexed need before archive"},
+        )
+        archived_need = object_data(
+            request_json(
+                f"{api_base.rstrip('/')}/api/requirements/{quote(need_id)}/archive",
+                method="POST",
+                token=token,
+                payload={"actor_type": "human", "actor_id": actor_id, "note": "QA archive indexed need"},
+            ),
+        )
+        archived["needs"].append(archived_need)  # type: ignore[union-attr]
+    return archived
+
+
 def cdp_eval(cdp: object, expression: str) -> object:
     result = cdp.send(
         "Runtime.evaluate",
@@ -386,6 +445,58 @@ def run_index_round(cdp: object, *, output_dir: Path, label: str) -> dict[str, o
     return state
 
 
+def audit_shows_all_skipped(value: object) -> bool:
+    audit_text = text(value)
+    return (
+        "新增 0" in audit_text
+        and (
+            "跳过 4" in audit_text
+            or all(f"{kind} 新增 0 / 跳过 1" in audit_text for kind in ("知识", "Skill 草稿", "需求", "任务回执"))
+        )
+    )
+
+
+def validate_company_archive_hidden(
+    cdp: object,
+    *,
+    web_base: str,
+    project_id: str,
+    queue: str,
+    output_dir: Path,
+) -> dict[str, object]:
+    query = urlencode({"focus": "skill-forge-index", "queue": queue, "item": "0", "tab": "knowledge"})
+    url = f"{web_base.rstrip('/')}/projects/{project_id}/company?{query}"
+    cdp.send("Page.navigate", {"url": url})
+    wait_for(cdp, "document.body && (document.body.innerText.includes('验收详情') || document.body.innerText.includes('当前没有可验收条目'))", timeout_seconds=60)
+    state = cdp_eval(
+        cdp,
+        f"""
+        (() => {{
+          const text = document.body ? document.body.innerText || '' : '';
+          const lower = text.toLowerCase();
+          return {{
+            url: location.href,
+            blank: text.trim().length < 40,
+            hasHorizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1 ||
+              document.body.scrollWidth > document.documentElement.clientWidth + 1,
+            hasEmptyReviewState: text.includes('当前没有可验收条目'),
+            hasNeedTitle: text.includes('QA NPC 结构化需求'),
+            hasTaskTitle: text.includes('QA NPC 任务回执'),
+            hasArchiveAction: text.includes('归档当前条目'),
+            forbiddenHits: {json.dumps(FORBIDDEN_TERMS)}.filter((term) => lower.includes(term.toLowerCase())),
+            rawUuidHits: Array.from(text.matchAll(/[0-9a-f]{{8}}-[0-9a-f]{{4}}-[0-9a-f]{{4}}-[0-9a-f]{{4}}-[0-9a-f]{{12}}/ig)).map((match) => match[0]).slice(0, 8),
+          }};
+        }})()
+        """,
+    )
+    if not isinstance(state, dict):
+        raise RuntimeError("Could not read company archive state")
+    shot = output_dir / f"company-after-archive-{queue}.png"
+    screenshot(cdp, shot)
+    state["screenshot"] = str(shot)
+    return state
+
+
 def main() -> int:
     args = parse_args()
     output_dir = Path(args.output_dir)
@@ -419,7 +530,28 @@ def main() -> int:
         first_state = run_index_round(cdp, output_dir=output_dir, label="after-first-index")
         first_counts = count_indexed(list_project_items(args.api_base, token, project_id))
         second_state = run_index_round(cdp, output_dir=output_dir, label="after-second-index")
-        second_counts = count_indexed(list_project_items(args.api_base, token, project_id))
+        second_items = list_project_items(args.api_base, token, project_id)
+        second_counts = count_indexed(second_items)
+        archived_items = archive_indexed_queue_items(args.api_base, token, user, project_id)
+        archived_counts = count_indexed(list_project_items(args.api_base, token, project_id))
+        company_needs_state = validate_company_archive_hidden(
+            cdp,
+            web_base=args.web_base,
+            project_id=project_id,
+            queue="needs",
+            output_dir=output_dir,
+        )
+        company_tasks_state = validate_company_archive_hidden(
+            cdp,
+            web_base=args.web_base,
+            project_id=project_id,
+            queue="tasks",
+            output_dir=output_dir,
+        )
+        cdp.send("Page.navigate", {"url": url})
+        wait_for(cdp, "document.body && document.body.innerText.includes('索引该 NPC 沉淀')", timeout_seconds=60)
+        third_state = run_index_round(cdp, output_dir=output_dir, label="after-archive-third-index")
+        third_counts = count_indexed(list_project_items(args.api_base, token, project_id))
     finally:
         if cdp is not None:
             try:
@@ -439,21 +571,39 @@ def main() -> int:
     pass_checks = bool(
         first_counts == expected_first
         and second_counts == first_counts
+        and archived_counts == second_counts
+        and third_counts == second_counts
         and "新增 4" in text(first_state.get("auditText"))
-        and "新增 0" in text(second_state.get("auditText"))
-        and "跳过 4" in text(second_state.get("auditText"))
+        and audit_shows_all_skipped(second_state.get("auditText"))
+        and audit_shows_all_skipped(third_state.get("auditText"))
+        and not company_needs_state.get("hasNeedTitle")
+        and not company_tasks_state.get("hasTaskTitle")
+        and company_needs_state.get("hasEmptyReviewState")
+        and company_tasks_state.get("hasEmptyReviewState")
         and not initial_state.get("blank")
         and not first_state.get("blank")
         and not second_state.get("blank")
+        and not third_state.get("blank")
+        and not company_needs_state.get("blank")
+        and not company_tasks_state.get("blank")
         and not initial_state.get("hasHorizontalOverflow")
         and not first_state.get("hasHorizontalOverflow")
         and not second_state.get("hasHorizontalOverflow")
+        and not third_state.get("hasHorizontalOverflow")
+        and not company_needs_state.get("hasHorizontalOverflow")
+        and not company_tasks_state.get("hasHorizontalOverflow")
         and not initial_state.get("forbiddenHits")
         and not first_state.get("forbiddenHits")
         and not second_state.get("forbiddenHits")
+        and not third_state.get("forbiddenHits")
+        and not company_needs_state.get("forbiddenHits")
+        and not company_tasks_state.get("forbiddenHits")
         and not initial_state.get("rawUuidHits")
         and not first_state.get("rawUuidHits")
         and not second_state.get("rawUuidHits")
+        and not third_state.get("rawUuidHits")
+        and not company_needs_state.get("rawUuidHits")
+        and not company_tasks_state.get("rawUuidHits")
     )
     report = {
         "ok": pass_checks,
@@ -466,12 +616,23 @@ def main() -> int:
         "initial_state": initial_state,
         "first_state": first_state,
         "second_state": second_state,
+        "archived_items": archived_items,
+        "company_after_archive": {
+            "needs": company_needs_state,
+            "tasks": company_tasks_state,
+        },
+        "third_state": third_state,
         "first_counts": first_counts,
         "second_counts": second_counts,
+        "archived_counts": archived_counts,
+        "third_counts": third_counts,
         "screenshots": {
             "initial": str(output_dir / "initial-skill-forge.png"),
             "first": first_state.get("screenshot"),
             "second": second_state.get("screenshot"),
+            "company_needs_after_archive": company_needs_state.get("screenshot"),
+            "company_tasks_after_archive": company_tasks_state.get("screenshot"),
+            "third": third_state.get("screenshot"),
         },
     }
     report_path = output_dir / "skill-forge-index-idempotency-report.json"
@@ -486,6 +647,8 @@ def main() -> int:
                 "screenshots": report["screenshots"],
                 "first_counts": first_counts,
                 "second_counts": second_counts,
+                "archived_counts": archived_counts,
+                "third_counts": third_counts,
             },
             ensure_ascii=False,
         ),
