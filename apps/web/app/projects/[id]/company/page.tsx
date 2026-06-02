@@ -1,6 +1,10 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import {
+  发起前端C小游戏协作,
+  插入前端C小游戏需求,
+} from "../../../actions";
+import {
   getCurrentAuthState,
   getCollaborationMessagesState,
   getProjectComputerNodesState,
@@ -799,6 +803,27 @@ export default async function CompanyPage({
   const allProjectSkills = asArray<AnyRecord>(projectSkillsState.data);
   const pendingHumanReviews = allOrgEvents.filter(isPendingHumanReview);
   const recentOrgEvents = allOrgEvents.slice(0, 6);
+  const frontC7Seat = allSeats.find((seat) =>
+    seat.name.replace(/\s+/g, "").includes("前端C7号")
+      || seat.threadId.includes("019e8121-ee19-77d2-b391-200ffbc6dad5"),
+  ) ?? null;
+  const frontC8Seat = allSeats.find((seat) =>
+    seat.name.replace(/\s+/g, "").includes("前端C8号")
+      || seat.threadId.includes("019e8122-6868-7222-9a71-c2eab2483dd7"),
+  ) ?? null;
+  const gameCollabEvents = allOrgEvents.filter((event) => {
+    const meta = messageMeta(event);
+    return text(meta.source, "") === "front_c_game_collab" || text(meta.game_collab_run_id, "");
+  });
+  const gameCollabRunId = text(messageMeta(gameCollabEvents[0] ?? {}).game_collab_run_id, "");
+  const gameCollabMode = text(
+    record(frontC7Seat?.metadata).game_collab_autonomy_mode
+      ?? record(frontC8Seat?.metadata).game_collab_autonomy_mode,
+    "checkpoint",
+  );
+  const gameCollabModeLabel = gameCollabMode === "full" ? "完全自主" : gameCollabMode === "supervised" ? "监督模式" : "检查点模式";
+  const gameCollabReady = Boolean(frontC7Seat && frontC8Seat);
+  const gameCollabActiveCount = gameCollabEvents.filter((event) => /queued|running|active|pending|acked|delivered|waiting/i.test(text(event.status, ""))).length;
   const seatNameById = new Map<string, string>();
   for (const seat of allSeats) {
     seatNameById.set(seat.id, seat.name);
@@ -1473,6 +1498,92 @@ export default async function CompanyPage({
               ))}
             </div>
           </div>
+
+          <section className={styles.gameCollabPanel} aria-label="小游戏双 NPC 协作试运行">
+            <header>
+              <div>
+                <span>小游戏协作台</span>
+                <strong>7号做玩法，8号做联调，用户随时改方向</strong>
+              </div>
+              <div className={styles.gameCollabStatus} data-ready={gameCollabReady ? "1" : undefined}>
+                {gameCollabReady ? "双 NPC 已就绪" : "等待 7/8 号绑定"}
+              </div>
+            </header>
+
+            <div className={styles.gameCollabMap} aria-label="7号和8号协作可视化">
+              <Link
+                href={frontC7Seat ? `/projects/${projectId}/workbench?seat_id=${encodeURIComponent(frontC7Seat.id)}&return_to=${encodeURIComponent(selfPath)}&from=company` : `/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=company`}
+                className={styles.gameNpc}
+                data-state={frontC7Seat?.dispatchState === "可投递" ? "ready" : frontC7Seat ? "queue" : "missing"}
+              >
+                <b>7</b>
+                <strong>{frontC7Seat?.name ?? "前端 C 7号"}</strong>
+                <small>{frontC7Seat ? `${frontC7Seat.dispatchState} · 玩法/UI` : "未找到席位"}</small>
+              </Link>
+              <div className={styles.gameCollabLane} aria-hidden="true">
+                <i data-tone="plan" />
+                <i data-tone="build" />
+                <i data-tone="review" />
+                <span>方案 → 原型 → 联调 → 插入修改</span>
+              </div>
+              <Link
+                href={frontC8Seat ? `/projects/${projectId}/workbench?seat_id=${encodeURIComponent(frontC8Seat.id)}&return_to=${encodeURIComponent(selfPath)}&from=company` : `/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=company`}
+                className={styles.gameNpc}
+                data-state={frontC8Seat?.dispatchState === "可投递" ? "ready" : frontC8Seat ? "queue" : "missing"}
+              >
+                <b>8</b>
+                <strong>{frontC8Seat?.name ?? "前端 C 8号"}</strong>
+                <small>{frontC8Seat ? `${frontC8Seat.dispatchState} · 测试/集成` : "未找到席位"}</small>
+              </Link>
+            </div>
+
+            <div className={styles.gameCollabBody}>
+              <form action={发起前端C小游戏协作.bind(null, projectId)} className={styles.gameCollabForm}>
+                <input type="hidden" name="return_to" value={selfPath} />
+                <label>
+                  <span>小游戏目标</span>
+                  <textarea
+                    name="brief"
+                    defaultValue="做一个可玩 2D 小游戏：玩家移动、收集星星、避开障碍，先做 MVP，再根据用户插入需求调整方向。"
+                  />
+                </label>
+                <div className={styles.autonomyChoices} aria-label="NPC 自主级别">
+                  <label>
+                    <input type="radio" name="autonomy_mode" value="supervised" defaultChecked={gameCollabMode === "supervised"} />
+                    <span>监督模式</span>
+                    <small>每阶段等你确认</small>
+                  </label>
+                  <label>
+                    <input type="radio" name="autonomy_mode" value="checkpoint" defaultChecked={!["supervised", "full"].includes(gameCollabMode)} />
+                    <span>检查点模式</span>
+                    <small>可做 MVP，风险前停</small>
+                  </label>
+                  <label>
+                    <input type="radio" name="autonomy_mode" value="full" defaultChecked={gameCollabMode === "full"} />
+                    <span>完全自主</span>
+                    <small>持续跑，危险动作人审</small>
+                  </label>
+                </div>
+                <button type="submit" disabled={!gameCollabReady}>
+                  {gameCollabReady ? "启动 7/8 协作" : "先绑定 7/8 号"}
+                </button>
+              </form>
+
+              <form action={插入前端C小游戏需求.bind(null, projectId)} className={styles.gameInjectForm}>
+                <input type="hidden" name="return_to" value={selfPath} />
+                <input type="hidden" name="game_collab_run_id" value={gameCollabRunId} />
+                <input type="hidden" name="autonomy_mode" value={gameCollabMode} />
+                <label>
+                  <span>插入新需求</span>
+                  <input name="brief" placeholder="例如：改成限时收集、加一个 boss、移动端也要顺手" />
+                </label>
+                <button type="submit" disabled={!gameCollabReady}>插入到两位 NPC</button>
+                <p>
+                  当前：{gameCollabModeLabel} · 进行中 {gameCollabActiveCount} 条 · 完全自主会持续消耗队列和 token，破坏性操作仍会停下等你确认。
+                </p>
+              </form>
+            </div>
+          </section>
 
           <section className={styles.officeNetwork} aria-label="NPC 办公网">
             <header>

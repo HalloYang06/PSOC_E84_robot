@@ -7042,6 +7042,285 @@ export async function 启动Npc接力协作(formData: FormData) {
   }
 }
 
+type GameCollabSeat = {
+  id: string;
+  name: string;
+  metadata: Record<string, unknown>;
+};
+
+function resolveGameCollabSeatId(seat: Record<string, unknown>) {
+  return (
+    text(seat.row_id ?? seat.rowId ?? seat.id ?? seat.config_id, "") ||
+    text(seat.source_workstation_id ?? readRecord(seat.metadata).source_workstation_id, "")
+  );
+}
+
+function findFrontCGameSeat(seats: Record<string, unknown>[], slot: "7" | "8"): GameCollabSeat | null {
+  const threadHint =
+    slot === "7"
+      ? "019e8121-ee19-77d2-b391-200ffbc6dad5"
+      : "019e8122-6868-7222-9a71-c2eab2483dd7";
+  const matched = seats.find((seat) => {
+    const metadata = readRecord(seat.metadata);
+    const name = text(seat.name ?? seat.workstation_name, "");
+    const haystack = [
+      name,
+      seat.id,
+      seat.row_id,
+      seat.config_id,
+      seat.source_workstation_id,
+      metadata.source_workstation_id,
+      metadata.automation_thread_id,
+      metadata.codex_thread_id,
+    ].map((value) => text(value, "")).join(" ");
+    return haystack.includes(threadHint) || name.replace(/\s+/g, "").includes(`前端C${slot}号`);
+  });
+  if (!matched) return null;
+  const id = resolveGameCollabSeatId(matched);
+  if (!id) return null;
+  return {
+    id,
+    name: text(matched.name ?? matched.workstation_name, `前端 C ${slot}号`),
+    metadata: readRecord(matched.metadata),
+  };
+}
+
+function gameCollabAutonomyCopy(mode: string) {
+  if (mode === "full") {
+    return {
+      label: "完全自主",
+      automationEnabled: true,
+      review: "允许连续规划、实现、联调和自检；删除、reset、发布、部署、跨账号凭据、长期费用扩大必须停下等人确认。",
+      cadence: "完成一个小闭环后继续下一轮，直到用户暂停或明确验收完成。",
+    };
+  }
+  if (mode === "checkpoint") {
+    return {
+      label: "检查点模式",
+      automationEnabled: true,
+      review: "可以连续做只读分析、局部实现和测试；每个可玩版本、风险 Git 操作、部署动作前请回平台请求确认。",
+      cadence: "先做 MVP，再按检查点给用户看可玩变化和下一步建议。",
+    };
+  }
+  return {
+    label: "监督模式",
+    automationEnabled: false,
+    review: "每一阶段只推进一轮，方案、实现、测试、方向调整都要回平台等用户确认。",
+    cadence: "先给计划和最小改动建议，不要私下连续推进。",
+  };
+}
+
+async function updateGameCollabAutonomy(projectId: string, seat: GameCollabSeat, mode: string) {
+  const autonomy = gameCollabAutonomyCopy(mode);
+  await patchJson(`/api/collaboration/projects/${projectId}/thread-workstations/${encodeURIComponent(seat.id)}`, {
+    metadata: {
+      ...seat.metadata,
+      automation_enabled: autonomy.automationEnabled,
+      game_collab_autonomy_mode: mode,
+      game_collab_autonomy_label: autonomy.label,
+      game_collab_updated_at: new Date().toISOString(),
+    },
+  });
+}
+
+function buildGameCollabPrompt(options: {
+  runId: string;
+  brief: string;
+  autonomyMode: string;
+  targetRole: "gameplay" | "qa";
+  partnerName: string;
+  isInjection?: boolean;
+}) {
+  const autonomy = gameCollabAutonomyCopy(options.autonomyMode);
+  const roleLine =
+    options.targetRole === "gameplay"
+      ? "你是 7 号，主负责小游戏玩法、前端交互、可玩原型和用户体验。"
+      : "你是 8 号，主负责集成、测试、验收标准、风险发现和给 7 号提结构化修改需求。";
+  return [
+    `协作项目：小游戏双 NPC 开发 / ${options.runId}`,
+    `用户最新目标：${options.brief}`,
+    `自主级别：${autonomy.label}`,
+    `协作伙伴：${options.partnerName}`,
+    "",
+    roleLine,
+    `自治边界：${autonomy.review}`,
+    `推进节奏：${autonomy.cadence}`,
+    "",
+    options.isInjection
+      ? "这是用户中途插入的新需求。请先判断对当前设计/代码/测试的影响，再给出你负责的调整和需要伙伴配合的 Need。"
+      : "请先给最小可玩方案，再进入实现/测试分工。每轮回复要说明：你做了什么、需要伙伴做什么、用户现在能控制什么。",
+    "NPC 间协作要求：如果需要伙伴处理，不要私下隐藏沟通；请在平台沉淀结构化 Need/Task 线索，回执里写明交付物、风险和下一步。",
+    "用户可控要求：保留暂停、改方向、收窄范围、提高/降低自主级别的空间。遇到破坏性 Git、部署、删除、长期消耗扩大，必须停下请求确认。",
+  ].join("\n");
+}
+
+async function postGameCollabCommand(options: {
+  projectId: string;
+  seat: GameCollabSeat;
+  title: string;
+  body: string;
+  actorId: string;
+  runId: string;
+  autonomyMode: string;
+  kind: "start" | "injection";
+}) {
+  await postJson("/api/collaboration/messages", {
+    project_id: options.projectId,
+    agent_id: options.seat.id,
+    message_type: "agent_command",
+    title: options.title,
+    body: options.body,
+    sender_type: "human",
+    sender_id: options.actorId,
+    recipient_type: "thread_workstation",
+    recipient_id: options.seat.id,
+    status: "queued",
+    metadata: {
+      source: "front_c_game_collab",
+      game_collab_run_id: options.runId,
+      game_collab_kind: options.kind,
+      autonomy_mode: options.autonomyMode,
+    },
+  });
+}
+
+async function createGameCollabNeed(options: {
+  projectId: string;
+  from: GameCollabSeat;
+  to: GameCollabSeat;
+  title: string;
+  context: string;
+  expected: string;
+  runId: string;
+}) {
+  await postJson("/api/requirements", {
+    project_id: options.projectId,
+    title: options.title,
+    requirement_type: "npc_collaboration",
+    module: "game-collab",
+    priority: "high",
+    status: "waiting_response",
+    from_agent: options.from.id,
+    to_agent: options.to.id,
+    context_summary: options.context,
+    expected_output: options.expected,
+    related_files: [],
+    max_response_tokens: 3000,
+    opening_message: `小游戏协作线：${options.runId}`,
+  });
+}
+
+export async function 发起前端C小游戏协作(projectId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "company");
+  try {
+    const { currentUser } = await ensureProjectCollaborationAccess(projectId);
+    const workstationsResult = await getJson(`/api/collaboration/projects/${projectId}/thread-workstations`);
+    const seats = asArray<Record<string, unknown>>(workstationsResult?.data ?? workstationsResult);
+    const seat7 = findFrontCGameSeat(seats, "7");
+    const seat8 = findFrontCGameSeat(seats, "8");
+    if (!seat7 || !seat8) throw new Error("没有找到前端 C 7号 / 8号，请先确认两个 NPC 已绑定。");
+
+    const brief =
+      text(formData.get("brief"), "") ||
+      "做一个可玩 2D 小游戏：玩家移动、收集星星、避开障碍，先做 MVP，再根据用户插入需求调整方向。";
+    const autonomyMode = text(formData.get("autonomy_mode"), "checkpoint");
+    const runId = `game-collab-${Date.now().toString(36)}`;
+    const actorId = text(currentUser?.id ?? currentUser?.email, "human-chief");
+
+    await updateGameCollabAutonomy(projectId, seat7, autonomyMode);
+    await updateGameCollabAutonomy(projectId, seat8, autonomyMode);
+    await postGameCollabCommand({
+      projectId,
+      seat: seat7,
+      title: "小游戏协作启动 / 7号负责玩法原型",
+      body: buildGameCollabPrompt({ runId, brief, autonomyMode, targetRole: "gameplay", partnerName: seat8.name }),
+      actorId,
+      runId,
+      autonomyMode,
+      kind: "start",
+    });
+    await postGameCollabCommand({
+      projectId,
+      seat: seat8,
+      title: "小游戏协作启动 / 8号负责联调验收",
+      body: buildGameCollabPrompt({ runId, brief, autonomyMode, targetRole: "qa", partnerName: seat7.name }),
+      actorId,
+      runId,
+      autonomyMode,
+      kind: "start",
+    });
+    await createGameCollabNeed({
+      projectId,
+      from: seat7,
+      to: seat8,
+      title: "小游戏 MVP 联调与验收",
+      context: "7号先做玩法/UI 原型，8号同步建立验收标准、测试反馈和风险清单。",
+      expected: "输出可玩性反馈、阻塞风险、验收结果，以及需要 7号 修改的具体点。",
+      runId,
+    });
+    await createGameCollabNeed({
+      projectId,
+      from: seat8,
+      to: seat7,
+      title: "小游戏体验修改回路",
+      context: "8号发现问题后，把测试/验收反馈转成 7号 可执行的玩法或 UI 修改。",
+      expected: "7号根据反馈完成调整，并回写用户能体验到的变化。",
+      runId,
+    });
+    revalidateProjectSurfaces(projectId);
+    redirect(withQueryValue(returnTo, "team_notice", `已启动 7号/8号 小游戏协作：${gameCollabAutonomyCopy(autonomyMode).label}`));
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "启动小游戏协作失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
+export async function 插入前端C小游戏需求(projectId: string, formData: FormData) {
+  const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "company");
+  try {
+    const { currentUser } = await ensureProjectCollaborationAccess(projectId);
+    const workstationsResult = await getJson(`/api/collaboration/projects/${projectId}/thread-workstations`);
+    const seats = asArray<Record<string, unknown>>(workstationsResult?.data ?? workstationsResult);
+    const seat7 = findFrontCGameSeat(seats, "7");
+    const seat8 = findFrontCGameSeat(seats, "8");
+    if (!seat7 || !seat8) throw new Error("没有找到前端 C 7号 / 8号，无法插入需求。");
+    const brief = text(formData.get("brief"), "");
+    if (!brief) throw new Error("请先写一句要插入的新需求。");
+    const autonomyMode = text(formData.get("autonomy_mode"), "checkpoint");
+    const runId = text(formData.get("game_collab_run_id"), "") || `game-collab-${Date.now().toString(36)}`;
+    const actorId = text(currentUser?.id ?? currentUser?.email, "human-chief");
+    await updateGameCollabAutonomy(projectId, seat7, autonomyMode);
+    await updateGameCollabAutonomy(projectId, seat8, autonomyMode);
+    await postGameCollabCommand({
+      projectId,
+      seat: seat7,
+      title: "用户插入需求 / 小游戏方向调整",
+      body: buildGameCollabPrompt({ runId, brief, autonomyMode, targetRole: "gameplay", partnerName: seat8.name, isInjection: true }),
+      actorId,
+      runId,
+      autonomyMode,
+      kind: "injection",
+    });
+    await postGameCollabCommand({
+      projectId,
+      seat: seat8,
+      title: "用户插入需求 / 联调验收调整",
+      body: buildGameCollabPrompt({ runId, brief, autonomyMode, targetRole: "qa", partnerName: seat7.name, isInjection: true }),
+      actorId,
+      runId,
+      autonomyMode,
+      kind: "injection",
+    });
+    revalidateProjectSurfaces(projectId);
+    redirect(withQueryValue(returnTo, "team_notice", "已把新需求插入 7号/8号 的协作队列"));
+  } catch (error) {
+    rethrowRedirectError(error);
+    const message = error instanceof Error ? error.message : "插入小游戏需求失败";
+    redirect(withQueryValue(returnTo, "team_error", message));
+  }
+}
+
 export async function 下发Runner命令(projectId: string, formData: FormData) {
   const returnTo = normalizeProjectReturnPath(projectId, formData.get("return_to"), "git");
   const targetMode = String(formData.get("target_mode") ?? "computer_node_id").trim() || "computer_node_id";
