@@ -103,6 +103,10 @@ def validate_panel(cdp: object) -> dict[str, object]:
             .filter((input) => input.checked)
             .map((input) => input.value);
           const buttons = Array.from(panel?.querySelectorAll('button') || []).map((button) => button.textContent?.trim());
+          const threadLinks = Array.from(panel?.querySelectorAll('a[href^="codex://threads/"]') || [])
+            .map((anchor) => anchor.textContent?.trim());
+          const evidenceCards = Array.from(panel?.querySelectorAll('[aria-label="桌面接收证据"] article') || [])
+            .map((card) => card.textContent?.trim() || '');
           const textarea = panel?.querySelector('textarea[name="brief"]');
           const inject = panel?.querySelector('input[name="brief"]');
           const rect = panel?.getBoundingClientRect();
@@ -114,6 +118,10 @@ def validate_panel(cdp: object) -> dict[str, object]:
             hasRisk: text.includes('破坏性操作') && text.includes('token'),
             hasInject: text.includes('插入新需求') && !!inject,
             hasStart: buttons.some((item) => (item || '').includes('启动 7/8 协作')),
+            hasDesktopSync: text.includes('桌面同步') && (text.includes('桌面线程') || text.includes('后台接收')),
+            hasDesktopEvidence: evidenceCards.length >= 2 && evidenceCards.every((item) => item.includes('桌面证据')),
+            hasThreadLinks: threadLinks.some((item) => (item || '').includes('7号线程'))
+              && threadLinks.some((item) => (item || '').includes('8号线程')),
             checked,
             textareaValue: textarea?.value || '',
             overflow: Math.max(0, root.scrollWidth - root.clientWidth),
@@ -191,7 +199,18 @@ def main() -> int:
         screenshot(cdp, mobile_path)
         report["screenshots"].append(str(mobile_path))
 
-        required = ["hasPanel", "hasSeven", "hasEight", "hasAutonomy", "hasRisk", "hasInject", "hasStart"]
+        required = [
+            "hasPanel",
+            "hasSeven",
+            "hasEight",
+            "hasAutonomy",
+            "hasRisk",
+            "hasInject",
+            "hasStart",
+            "hasDesktopSync",
+            "hasDesktopEvidence",
+            "hasThreadLinks",
+        ]
         failures = [
             f"desktop missing {key}" for key in required if not desktop.get(key)
         ] + [

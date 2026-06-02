@@ -376,6 +376,82 @@ function messageMeta(value: AnyRecord) {
   };
 }
 
+function nestedRunnerResult(value: AnyRecord) {
+  const meta = messageMeta(value);
+  return {
+    ...record(meta.runner_result ?? meta.runnerResult),
+    ...record(meta),
+  };
+}
+
+function desktopSyncTone(value: string) {
+  const raw = value.toLowerCase();
+  if (/已完成|已回复|已进入/.test(raw)) return "ready";
+  if (/处理中|已接单|等待结果/.test(raw)) return "running";
+  if (/等待|待接收|未确认/.test(raw)) return "waiting";
+  if (/异常|失败|需/.test(raw)) return "blocked";
+  return "idle";
+}
+
+function desktopSyncSummaryForSeat(seat: { id: string; name: string; threadId: string }, events: AnyRecord[]) {
+  const related = events
+    .filter((event) => {
+      const meta = messageMeta(event);
+      const runner = nestedRunnerResult(event);
+      const haystack = [
+        event.title,
+        event.body,
+        event.recipient_id,
+        event.recipientId,
+        event.workstation_id,
+        event.workstationId,
+        meta.workstation_id,
+        meta.workstationId,
+        meta.recipient_id,
+        meta.recipientId,
+        meta.thread_id,
+        meta.threadId,
+        meta.desktop_thread_url,
+        runner.workstation_id,
+        runner.thread_id,
+        runner.desktop_thread_url,
+      ].map((item) => text(item, "")).join(" ");
+      return haystack.includes(seat.id) || Boolean(seat.threadId && haystack.includes(seat.threadId));
+    })
+    .sort((left, right) => text(right.created_at ?? right.createdAt, "").localeCompare(text(left.created_at ?? left.createdAt, "")));
+  const latest = related[0];
+  const runner = latest ? nestedRunnerResult(latest) : {};
+  const meta = latest ? messageMeta(latest) : {};
+  const status = text(latest?.status, "");
+  const type = text(latest?.message_type ?? latest?.messageType, "");
+  const desktopThreadUrl = firstText(runner.desktop_thread_url, meta.desktop_thread_url, seat.threadId ? `codex://threads/${seat.threadId}` : "");
+  const confirmed = runner.desktop_delivery_confirmed === true || meta.desktop_delivery_confirmed === true;
+  const pending = runner.desktop_delivery_pending === true || meta.desktop_delivery_pending === true;
+  const method = firstText(runner.desktop_delivery_method, meta.desktop_delivery_method);
+  const description = latest ? publicEventDescription(latest) : "";
+  let label = "暂无桌面证据";
+  if (/agent_result|runner_result|final|completed|done/i.test(`${type} ${status}`)) {
+    label = "桌面线程已有结果";
+  } else if (confirmed) {
+    label = "已进入桌面线程";
+  } else if (pending || /awaiting_desktop_pickup/i.test(`${status} ${description}`)) {
+    label = "等待桌面线程接收";
+  } else if (/awaiting_desktop_reply|in_progress|acked|running|active/i.test(`${status} ${description}`)) {
+    label = "桌面处理中";
+  } else if (method === "codex_desktop_automation") {
+    label = "已登记后台接收";
+  } else if (related.length) {
+    label = publicStatusLabel(status);
+  }
+  return {
+    label,
+    tone: desktopSyncTone(label),
+    detail: description || (related.length ? publicEventTitle(latest) : "还没有看到这位 NPC 的桌面线程接收证据。"),
+    eventCount: related.length,
+    desktopThreadUrl,
+  };
+}
+
 function isPendingHumanReview(value: AnyRecord) {
   const type = text(value.message_type ?? value.messageType, "").toLowerCase();
   const status = text(value.status, "").toLowerCase();
@@ -859,6 +935,15 @@ export default async function CompanyPage({
   const gameCollabModeLabel = gameCollabMode === "full" ? "完全自主" : gameCollabMode === "supervised" ? "监督模式" : "检查点模式";
   const gameCollabReady = Boolean(frontC7Seat && frontC8Seat);
   const gameCollabActiveCount = gameCollabEvents.filter((event) => /queued|running|active|pending|acked|delivered|waiting/i.test(text(event.status, ""))).length;
+  const frontC7Desktop = frontC7Seat
+    ? desktopSyncSummaryForSeat(frontC7Seat, allOrgEvents)
+    : { label: "等待绑定", tone: "idle", detail: "还没有找到前端 C 7号席位。", eventCount: 0, desktopThreadUrl: "" };
+  const frontC8Desktop = frontC8Seat
+    ? desktopSyncSummaryForSeat(frontC8Seat, allOrgEvents)
+    : { label: "等待绑定", tone: "idle", detail: "还没有找到前端 C 8号席位。", eventCount: 0, desktopThreadUrl: "" };
+  const gameDesktopLine = [frontC7Desktop, frontC8Desktop]
+    .map((item, index) => `${index === 0 ? "7号" : "8号"}：${item.label}`)
+    .join(" · ");
   const seatNameById = new Map<string, string>();
   for (const seat of allSeats) {
     seatNameById.set(seat.id, seat.name);
@@ -1557,6 +1642,7 @@ export default async function CompanyPage({
                 <b>7</b>
                 <strong>{frontC7Seat?.name ?? "前端 C 7号"}</strong>
                 <small>{frontC7Seat ? `${frontC7Seat.dispatchState} · 玩法/UI` : "未找到席位"}</small>
+                <em data-tone={frontC7Desktop.tone}>{frontC7Desktop.label}</em>
               </Link>
               <div className={styles.gameCollabLane} aria-hidden="true">
                 <i data-tone="plan" />
@@ -1572,7 +1658,30 @@ export default async function CompanyPage({
                 <b>8</b>
                 <strong>{frontC8Seat?.name ?? "前端 C 8号"}</strong>
                 <small>{frontC8Seat ? `${frontC8Seat.dispatchState} · 测试/集成` : "未找到席位"}</small>
+                <em data-tone={frontC8Desktop.tone}>{frontC8Desktop.label}</em>
               </Link>
+            </div>
+
+            <div className={styles.desktopSyncStrip} aria-label="Codex Desktop 同步状态">
+              <strong>桌面同步</strong>
+              <span>{gameDesktopLine}</span>
+              <div>
+                {frontC7Desktop.desktopThreadUrl ? <a href={frontC7Desktop.desktopThreadUrl}>打开 7号线程</a> : <span>7号待绑定</span>}
+                {frontC8Desktop.desktopThreadUrl ? <a href={frontC8Desktop.desktopThreadUrl}>打开 8号线程</a> : <span>8号待绑定</span>}
+              </div>
+            </div>
+
+            <div className={styles.desktopEvidenceGrid} aria-label="桌面接收证据">
+              <article data-tone={frontC7Desktop.tone}>
+                <span>7号桌面证据</span>
+                <strong>{frontC7Desktop.label}</strong>
+                <p>{frontC7Desktop.detail}</p>
+              </article>
+              <article data-tone={frontC8Desktop.tone}>
+                <span>8号桌面证据</span>
+                <strong>{frontC8Desktop.label}</strong>
+                <p>{frontC8Desktop.detail}</p>
+              </article>
             </div>
 
             <div className={styles.gameCollabBody}>
