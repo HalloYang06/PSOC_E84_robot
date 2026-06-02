@@ -4955,6 +4955,7 @@ function fileAlreadyIndexed(items: Record<string, unknown>[], repoPath: string) 
   const normalized = repoRelativePath(repoPath).toLowerCase();
   return items.some((item) => {
     const extra = readRecord(item.extra_data ?? item.extraData ?? item.metadata);
+    const description = text(item.description ?? item.body ?? item.context_summary ?? item.contextSummary, "");
     return [
       item.repo_relative_path,
       item.repoRelativePath,
@@ -4969,8 +4970,19 @@ function fileAlreadyIndexed(items: Record<string, unknown>[], repoPath: string) 
       ...normalizeUnknownStringList(item.relatedFiles),
       ...normalizeUnknownStringList(extra.related_files),
       ...normalizeUnknownStringList(extra.relatedFiles),
-    ].some((candidate) => repoRelativePath(candidate).toLowerCase() === normalized);
+    ].some((candidate) => repoRelativePath(candidate).toLowerCase() === normalized) ||
+      description.split(/\r?\n/).some((line) => {
+        const match = line.match(/(?:证据路径|evidence path|repo path)\s*[:：]\s*(.+)$/i);
+        return match ? repoRelativePath(match[1]).toLowerCase() === normalized : false;
+      });
   });
+}
+
+function shortTaskReference(repoPath: string) {
+  const normalized = repoRelativePath(repoPath);
+  if (normalized.length <= 100) return normalized;
+  const fileName = path.basename(normalized);
+  return fileName.length <= 100 ? fileName : fileName.slice(0, 100);
 }
 
 function depositAuditItem(kind: string, scanned: number, added: number, destination = "") {
@@ -5166,7 +5178,7 @@ export async function 索引Npc沉淀(projectId: string, seatId: string, formDat
         module: markdownField(file.content, ["module", "模块"], "") || "npc-receipt",
         priority: markdownField(file.content, ["priority", "优先级"], "P2").toUpperCase(),
         status: ["draft", "ready", "running", "reviewing", "blocked", "done", "failed", "cancelled"].includes(status) ? status : "done",
-        related_issue: file.relativePath,
+        related_issue: shortTaskReference(file.relativePath),
         assignee_agent_id: text(seat.agent_id, seatRecordId),
         acceptance_criteria: markdownBullets(file.content, ["回执必须引用证据路径和验证结果。"]),
       });
