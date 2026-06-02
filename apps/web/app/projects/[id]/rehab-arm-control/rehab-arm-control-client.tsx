@@ -67,6 +67,14 @@ type JointCalibration = {
   offsetRad: number;
 };
 
+type UrdfVisualMesh = {
+  linkName: string;
+  meshPath: string;
+  xyz: [number, number, number];
+  rpy: [number, number, number];
+  scale: [number, number, number];
+};
+
 function normalizeCalibration(value: unknown): JointCalibration | null {
   const row = record(value);
   const jointName = text(row.jointName ?? row.joint_name, "");
@@ -675,10 +683,30 @@ function resolvePackageAsset(packageFiles: Map<string, ArrayBuffer>, packageName
   return null;
 }
 
-function urdfVisualMeshPath(node: unknown) {
-  if (!node || typeof (node as Element).querySelector !== "function") return "";
-  const mesh = (node as Element).querySelector("geometry mesh");
-  return text(mesh?.getAttribute("filename"), "");
+function numericTuple(value: string | null | undefined, fallback: [number, number, number]): [number, number, number] {
+  const parts = text(value, "").split(/\s+/).map((item) => Number(item));
+  if (parts.length < 3 || parts.some((item) => !Number.isFinite(item))) return fallback;
+  return [parts[0], parts[1], parts[2]];
+}
+
+function parseUrdfVisualMeshes(urdfText: string): UrdfVisualMesh[] {
+  if (typeof DOMParser === "undefined") return [];
+  const document = new DOMParser().parseFromString(urdfText, "text/xml");
+  return Array.from(document.querySelectorAll("robot > link")).flatMap((link) => {
+    const linkName = text(link.getAttribute("name"), "");
+    if (!linkName) return [];
+    return Array.from(link.querySelectorAll(":scope > visual")).map((visual) => {
+      const origin = visual.querySelector(":scope > origin");
+      const mesh = visual.querySelector(":scope > geometry > mesh");
+      return {
+        linkName,
+        meshPath: text(mesh?.getAttribute("filename"), ""),
+        xyz: numericTuple(origin?.getAttribute("xyz"), [0, 0, 0]),
+        rpy: numericTuple(origin?.getAttribute("rpy"), [0, 0, 0]),
+        scale: numericTuple(mesh?.getAttribute("scale"), [1, 1, 1]),
+      };
+    }).filter((item) => item.meshPath);
+  });
 }
 
 function Arm3DOverview({
@@ -1001,44 +1029,31 @@ function Arm3DOverview({
           if (disposed) return;
           const loader = new URDFLoader();
           (loader as AnyRecord).packages = (targetPackage: string) => targetPackage;
+          (loader as AnyRecord).parseVisual = false;
           (loader as AnyRecord).parseCollision = false;
           let loadedMeshes = 0;
           let missingMeshes = 0;
-          (loader as AnyRecord).loadMeshCb = (_url: string, _manager: unknown, done: (mesh: unknown, err?: Error) => void) => {
-            const asset = urdfPackage ? resolvePackageAsset(urdfPackage.files, urdfPackage.packageName, _url) : null;
-            if (!asset || !_url.toLowerCase().endsWith(".stl")) {
-              missingMeshes += 1;
-              done(new THREE.Group(), new Error("模型资源未包含在导入包内"));
-              return;
-            }
-            try {
-              const geometry = new STLLoader().parse(asset);
-              const material = new THREE.MeshStandardMaterial({ color: 0x8ef0c7, roughness: 0.62, metalness: 0.08 });
-              const mesh = new THREE.Mesh(geometry, material);
-              loadedMeshes += 1;
-              done(mesh);
-            } catch {
-              missingMeshes += 1;
-              done(new THREE.Group(), new Error("模型资源解析失败"));
-            }
-          };
           const robot = loader.parse(urdfText) as AnyRecord;
           if (disposed) return;
           robotRef.current = robot;
           robot.rotation.x = -Math.PI / 2;
           if (urdfPackage) {
-            robot.traverse?.((child: AnyRecord) => {
-              if (!child.isURDFVisual || child.children?.length) return;
-              const meshPath = urdfVisualMeshPath(child.urdfNode);
-              const asset = meshPath ? resolvePackageAsset(urdfPackage.files, urdfPackage.packageName, meshPath) : null;
-              if (!asset || !meshPath.toLowerCase().endsWith(".stl")) {
+            parseUrdfVisualMeshes(urdfText).forEach((visual) => {
+              const link = robot.links?.[visual.linkName];
+              const asset = resolvePackageAsset(urdfPackage.files, urdfPackage.packageName, visual.meshPath);
+              if (!link || !asset || !visual.meshPath.toLowerCase().endsWith(".stl")) {
                 missingMeshes += 1;
                 return;
               }
               try {
                 const geometry = new STLLoader().parse(asset);
                 const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: 0x8ef0c7, roughness: 0.62, metalness: 0.08 }));
-                child.add(mesh);
+                const visualGroup = new THREE.Group();
+                visualGroup.position.set(visual.xyz[0], visual.xyz[1], visual.xyz[2]);
+                visualGroup.rotation.set(visual.rpy[0], visual.rpy[1], visual.rpy[2], "ZYX");
+                visualGroup.scale.set(visual.scale[0], visual.scale[1], visual.scale[2]);
+                visualGroup.add(mesh);
+                link.add(visualGroup);
                 loadedMeshes += 1;
               } catch {
                 missingMeshes += 1;
