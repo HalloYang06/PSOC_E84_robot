@@ -966,13 +966,13 @@ function Arm3DOverview({
         }
         const restoreKey = `${deviceId}:${modelUrl}:${sha256}`;
         if (!modelUrl || restoredModelRef.current === restoreKey) return;
-        restoredModelRef.current = restoreKey;
         serverCalibrationsRef.current = calibrationMapFromJson(mappingJson);
         let modelPackage: UrdfPackage;
         const response = await fetch(keyframeSrc(modelUrl, ""), { cache: "no-store", signal: controller.signal });
         if (!response.ok) throw new Error("model package fetch failed");
         const buffer = await response.arrayBuffer();
         modelPackage = await readUrdfPackageBuffer(fileName, buffer);
+        restoredModelRef.current = restoreKey;
         applyResolvedUrdfPackageRef.current(modelPackage, null);
         setModelSaveState("restored");
       } catch {
