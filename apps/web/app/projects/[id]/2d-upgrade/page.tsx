@@ -106,6 +106,41 @@ function isRunnerThreadScanRecord(item: AnyRecord) {
   return text(metadata.source ?? extra.source ?? item.source, "").toLowerCase() === "runner_thread_scan";
 }
 
+function workstationsFromNodeScans(nodes: AnyRecord[]) {
+  const stations: AnyRecord[] = [];
+  for (const node of nodes) {
+    const nodeId = text(node.id ?? node.config_id ?? node.node_id, "");
+    if (!nodeId) continue;
+    const nodeLabel = text(node.label ?? node.name ?? nodeId, nodeId);
+    const metadata = metadataOf(node);
+    const scan = metadata.thread_scan && typeof metadata.thread_scan === "object" ? (metadata.thread_scan as AnyRecord) : {};
+    const threads = Array.isArray(scan.threads) ? scan.threads : [];
+    for (const thread of threads) {
+      const workstationId = text(thread?.workstation_id ?? thread?.id, "");
+      if (!workstationId) continue;
+      const runnerId = text(thread?.runner_id ?? scan.runner_id ?? node.runner_id, "");
+      stations.push({
+        id: workstationId,
+        name: text(thread?.workstation_name ?? thread?.name, workstationId),
+        computer_node_id: nodeId,
+        computer_node: nodeLabel,
+        ai_provider_id: text(thread?.ai_provider_id, "codex"),
+        ai_provider: text(thread?.ai_provider_label ?? thread?.ai_provider, "codex"),
+        status: text(thread?.workstation_status ?? thread?.status, "active"),
+        description: text(thread?.description, "Synced from runner thread scan"),
+        model: text(thread?.model, ""),
+        source_workstation_id: workstationId,
+        metadata: {
+          ...(thread?.metadata && typeof thread.metadata === "object" ? (thread.metadata as AnyRecord) : {}),
+          source: "runner_thread_scan",
+          runner_id: runnerId,
+        },
+      });
+    }
+  }
+  return stations;
+}
+
 function threadBindingKey(item: AnyRecord) {
   const metadata = metadataOf(item);
   const extra = item.extra_data && typeof item.extra_data === "object" ? (item.extra_data as AnyRecord) : {};
@@ -220,6 +255,13 @@ export default async function Project2dUpgradePage({
   const messages = Array.isArray(messageState.data) ? messageState.data : [];
   const nodes = Array.isArray(nodeState.data) ? nodeState.data : [];
   const workstations = Array.isArray(workstationState.data) ? workstationState.data : [];
+  const workstationRows = [
+    ...workstations,
+    ...workstationsFromNodeScans(nodes).filter((scanItem) => {
+      const scanId = text(scanItem.id ?? scanItem.source_workstation_id, "");
+      return scanId && !workstations.some((item) => text(item.id ?? item.source_workstation_id, "") === scanId);
+    }),
+  ];
   const projectWorkstations = Array.isArray(projectWorkstationsState.data) ? projectWorkstationsState.data : [];
   const projectWorkstationNameById = new Map<string, string>();
   for (const ws of projectWorkstations) {
@@ -260,7 +302,7 @@ export default async function Project2dUpgradePage({
   const activeTasks = tasks.filter((task) => !isDoneStatus(task.status));
   const blockedTasks = tasks.filter((task) => isBlockedStatus(task.status));
   const onlineNodes = nodes.filter((node) => isOnlineStatus(node.runner_effective_status ?? node.runner_status ?? node.status));
-  const npcSeatCandidates = workstations.filter(isNpcSeat);
+  const npcSeatCandidates = workstationRows.filter(isNpcSeat);
   const realNpcThreadKeys = new Set(
     npcSeatCandidates
       .filter((item) => !isRunnerThreadScanRecord(item))
@@ -272,8 +314,8 @@ export default async function Project2dUpgradePage({
     const key = threadBindingKey(item);
     return !key || !realNpcThreadKeys.has(key);
   });
-  const sourceWorkstations = workstations.filter((workstation) => !isNpcSeat(workstation) || isRunnerThreadScanRecord(workstation));
-  const selectableWorkstations = sourceWorkstations.length ? sourceWorkstations : workstations;
+  const sourceWorkstations = workstationRows.filter((workstation) => !isNpcSeat(workstation) || isRunnerThreadScanRecord(workstation));
+  const selectableWorkstations = sourceWorkstations.length ? sourceWorkstations : workstationRows;
   const sortedMessages = messages
     .slice()
     .sort((a, b) => {
