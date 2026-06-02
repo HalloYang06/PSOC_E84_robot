@@ -113,7 +113,8 @@ function workstationsFromNodeScans(nodes: AnyRecord[]) {
     if (!nodeId) continue;
     const nodeLabel = text(node.label ?? node.name ?? nodeId, nodeId);
     const metadata = metadataOf(node);
-    const scan = metadata.thread_scan && typeof metadata.thread_scan === "object" ? (metadata.thread_scan as AnyRecord) : {};
+    const scanSource = node.thread_scan ?? node.threadScan ?? metadata.thread_scan ?? metadata.threadScan;
+    const scan = scanSource && typeof scanSource === "object" ? (scanSource as AnyRecord) : {};
     const threads = Array.isArray(scan.threads) ? scan.threads : [];
     for (const thread of threads) {
       const workstationId = text(thread?.workstation_id ?? thread?.id, "");
