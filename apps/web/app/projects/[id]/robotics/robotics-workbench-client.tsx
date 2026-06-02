@@ -69,6 +69,7 @@ type RoboticsWorkbenchClientProps = {
   initialOpenIds: string[];
   initialNpcId: string;
   initialTab: InitialRoboticsTab;
+  initialDeviceId: string;
   readyComputers: number;
   queueableComputers: number;
   reconnectComputers: number;
@@ -2596,6 +2597,7 @@ export function RoboticsWorkbenchClient({
   initialOpenIds,
   initialNpcId,
   initialTab,
+  initialDeviceId,
   readyComputers,
   queueableComputers,
   reconnectComputers,
@@ -2609,6 +2611,7 @@ export function RoboticsWorkbenchClient({
   const [defaultNpcId, setDefaultNpcId] = useState(initialNpcId);
   const [savedWindows, setSavedWindows] = useState<SavedDebugWindow[]>(initialSavedWindows);
   const [workbenchMode, setWorkbenchMode] = useState<DeviceWorkbenchMode>(() => {
+    if (initialDeviceId) return "boards";
     if (initialTab === "terminal") return "interfaces";
     if (!initialTab && initialSavedWindows.length) return "interfaces";
     return "boards";
@@ -2617,7 +2620,9 @@ export function RoboticsWorkbenchClient({
   const configuredWindows = useMemo(() => configuredDebugWindows(windows, savedWindows), [windows, savedWindows]);
   const [openIds, setOpenIds] = useState<string[]>(() => {
     const knownDeviceIds = new Set(deviceQualityDevices.map((device, index) => deviceId(device, index)));
+    const requestedDeviceId = initialDeviceId && knownDeviceIds.has(initialDeviceId) ? initialDeviceId : "";
     const requested = initialOpenIds.filter((id) => savedWindows.some((item) => item.resourceId === id) || knownDeviceIds.has(id));
+    if (requestedDeviceId) return [requestedDeviceId];
     if (requested.length) return requested;
     if (initialTab === "terminal") {
       const firstSavedWindow = savedWindows.find((item) => item.resourceId);
@@ -2645,6 +2650,11 @@ export function RoboticsWorkbenchClient({
     [openIds, devices],
   );
   const openCount = openDevices.length + openWindows.length;
+  const requestedDevice = initialDeviceId ? devices.find((device, index) => deviceId(device, index) === initialDeviceId) : null;
+  const requestedDeviceMissing = Boolean(initialDeviceId && !requestedDevice);
+  const deviceDeepLinkNotice = requestedDevice
+    ? `已从专项总控台打开 ${deviceTitle(requestedDevice)}。先确认只读状态，再从当前瓷砖进入数据标注或图表实验。`
+    : "";
   const needsLiveRefresh = terminalMessages.some((message) => {
     const type = text(message.message_type ?? message.messageType, "");
     const status = text(message.status, "");
@@ -2937,6 +2947,8 @@ export function RoboticsWorkbenchClient({
         <section className={workbenchStyles.main} data-mode={openCount > 0 ? "chat" : "setup"}>
           {notice ? <div className={styles.inlineNotice} data-tone="success">{notice}</div> : null}
           {error ? <div className={styles.inlineNotice} data-tone="danger">{error}</div> : null}
+          {deviceDeepLinkNotice ? <div className={styles.inlineNotice} data-tone="success" data-testid="robotics-device-deeplink-notice">{deviceDeepLinkNotice}</div> : null}
+          {requestedDeviceMissing ? <div className={styles.inlineNotice} data-tone="danger" data-testid="robotics-device-deeplink-missing">没有在当前项目找到这台设备。请确认项目是否正确，或等待设备重新上传。</div> : null}
           {openCount ? (
             <>
               <div className={styles.openContextGuide}>

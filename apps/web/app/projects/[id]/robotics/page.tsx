@@ -159,7 +159,9 @@ function deviceProjectId(device: AnyRecord) {
 
 async function getDeviceQualityDevices(projectId: string): Promise<AnyRecord[]> {
   try {
-    const response = await fetch(new URL("/api/rehab-arm/v1/devices/dashboard", getApiBaseUrl()).toString(), {
+    const url = new URL("/api/rehab-arm/v1/devices/dashboard", getApiBaseUrl());
+    url.searchParams.set("project_id", projectId);
+    const response = await fetch(url.toString(), {
       cache: "no-store",
     });
     if (!response.ok) return [];
@@ -348,12 +350,17 @@ function initialWorkbenchTab(searchValue: unknown) {
   return "";
 }
 
+function initialDeviceId(searchValue: unknown) {
+  const value = text(searchValue, "");
+  return isRawIdentifier(value) ? "" : value;
+}
+
 export default async function ProjectRoboticsPage({
   params,
   searchParams,
 }: {
   params: { id: string };
-  searchParams?: { windows?: string; npc?: string; settings?: string; tab?: string; team_notice?: string; team_error?: string };
+  searchParams?: { windows?: string; npc?: string; settings?: string; tab?: string; device?: string; team_notice?: string; team_error?: string };
 }) {
   const projectId = params.id;
   const auth = await getCurrentAuthState();
@@ -394,6 +401,7 @@ export default async function ProjectRoboticsPage({
   const initialOpenIds = selectedWindowIds(searchParams?.windows, windows);
   const initialNpcId = text(searchParams?.npc, "");
   const initialTab = initialWorkbenchTab(searchParams?.tab);
+  const requestedDeviceId = initialDeviceId(searchParams?.device);
 
   return (
     <RoboticsWorkbenchClient
@@ -406,6 +414,7 @@ export default async function ProjectRoboticsPage({
       initialOpenIds={initialOpenIds}
       initialNpcId={initialNpcId}
       initialTab={initialTab}
+      initialDeviceId={requestedDeviceId}
       readyComputers={runnerSummary.readyComputers}
       queueableComputers={runnerSummary.queueableComputers}
       reconnectComputers={runnerSummary.reconnectComputers}
