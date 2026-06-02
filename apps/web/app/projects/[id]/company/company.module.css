@@ -252,10 +252,17 @@
   font-weight: 900;
 }
 
-.focusEvidence a {
+.focusEvidenceActions {
   grid-column: 2;
   grid-row: 2 / 4;
   align-self: center;
+  display: grid;
+  gap: 6px;
+  justify-items: end;
+}
+
+.focusEvidenceActions a {
+  min-width: 0;
   min-height: 30px;
   display: inline-flex;
   align-items: center;
@@ -268,6 +275,11 @@
   font-size: 11px;
   font-weight: 900;
   white-space: nowrap;
+}
+
+.focusEvidenceActions a:hover {
+  border-color: rgba(158, 240, 191, 0.52);
+  background: rgba(158, 240, 191, 0.14);
 }
 
 .focusHint {
@@ -2374,6 +2386,21 @@
 
   .topNav {
     border-radius: 20px;
+  }
+
+  .focusEvidence {
+    grid-template-columns: 1fr;
+  }
+
+  .focusEvidence strong,
+  .focusEvidence p,
+  .focusEvidenceActions {
+    grid-column: 1;
+  }
+
+  .focusEvidenceActions {
+    grid-row: auto;
+    justify-items: stretch;
   }
 
   .statusStrip,

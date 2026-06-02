@@ -457,6 +457,17 @@ function companyFocusHref(projectId: string, queue: string, itemIndex?: number) 
   return `/projects/${projectId}/company?${query.toString()}`;
 }
 
+function skillForgeFocusReturnHref(projectId: string, selfPath: string, queue: string) {
+  const query = new URLSearchParams({
+    tab: "knowledge",
+    from: "company",
+    focus: "skill-forge-index",
+    queue,
+    return_to: selfPath,
+  });
+  return `/projects/${projectId}/skill-forge?${query.toString()}`;
+}
+
 function statusTone(label: string) {
   if (/可投递|在线|已完成|已送达/.test(label)) return "healthy";
   if (/延迟|待审核|待人工确认|高风险确认|待处理|等待|未知/.test(label)) return "review";
@@ -1459,13 +1470,16 @@ export default async function CompanyPage({
                 <div>
                   {selectedFocusItem.evidence.map((line) => <small key={line}>{line}</small>)}
                 </div>
-                <Link href={selectedFocusItem.workbenchHref}>打开相关 NPC 工作台</Link>
+                <nav className={styles.focusEvidenceActions} aria-label="验收后动作">
+                  <Link href={selectedFocusItem.workbenchHref}>打开相关 NPC 工作台</Link>
+                  <Link href={skillForgeFocusReturnHref(projectId, selfPath, focusReview.queue)}>继续查看索引结果</Link>
+                </nav>
               </aside>
             ) : focusReviewItems.length ? (
               <p className={styles.focusHint}>点击上方任一条目，可在公司层先看状态、回执和归档线索；不会触发派单。</p>
             ) : null}
           </div>
-          <Link href={`/projects/${projectId}/skill-forge?return_to=${encodeURIComponent(selfPath)}&from=company`}>返回能力工坊</Link>
+          <Link href={skillForgeFocusReturnHref(projectId, selfPath, focusReview.queue)}>继续查看索引结果</Link>
         </section>
       ) : null}
 
