@@ -9,6 +9,7 @@
 - 正式运动链路：`JointTrajectory -> NanoPi -> M33 -> 电机`。
 - M33 是最终安全责任方，必须负责限位、限速、急停、掉线保护、供电异常处理和电机故障处理。
 - NanoPi 直发 CANSimple/私有扩展帧只用于调试，不进入正式 bringup。
+- 含有 `demo`、`smoke`、`synthetic`、`bench`、`fallback` 的入口默认不属于主线；只能用于离线、仿真、台架或 dry-run 分类测试。
 - 当前不要发布真实运动轨迹到 `rehab_arm_psoc_bridge`，除非 M33 heartbeat/status 链路已经确认。
 - `/rehab_arm/safety_state` 不是 `ok` 时，不要发布真实运动轨迹。
 - 人穿戴设备时，禁止使用 `nanopi_can_master.py` 直控电机。
@@ -216,6 +217,8 @@ timeout 4 ros2 run rehab_arm_sim_mujoco mujoco_sim_node.py
 
 ## 3. Demo 轨迹使用
 
+本节只适用于 legacy 5 关节仿真冒烟测试。它不是当前 6 关节 `medical_arm.zip` 模型的正式 planner，也不是 NanoPi/M33 真机 workflow。
+
 先启动仿真节点。另开终端：
 
 ```bash
@@ -236,6 +239,12 @@ ros2 topic echo /joint_states
 - demo 节点日志出现 `Published multi-joint demo JointTrajectory`。
 - `/joint_states.position` 不再全是 0。
 - 关节位置随轨迹平滑变化。
+
+禁止事项：
+
+- 不要把 `demo_trajectory_node.py` 接到真实 NanoPi bridge 作为常规测试。
+- 不要用该 demo 证明 6 关节 medical arm 已经和 M33 映射正确。
+- 如果必须用它检查 DDS/bridge topic 合同，必须标记为 `dry-run`，保持 `enable_target_tx=false`，并用 `candump` 证明没有真实 `0x320`。
 
 ## 4. PSoC Bridge 非运动测试
 

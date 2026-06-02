@@ -4360,3 +4360,24 @@ Connection reset by 192.168.2.66 port 22
 
 - 后续 AI 或脚本如果看到旧的 `forearm_rotation_joint -> motor_id=7`，必须当作历史台架示例，不得迁移到正式机械臂。
 - 真实机械臂腕部是后加 4015 小电机 `motor_id=1/2`，但两个电机分别对应 `wanbu_zongxiang_joint` 或 `wanbu_hengxiang_joint` 还未确认，不能提前写死。
+
+### 不要把 demo/smoke/fallback 当主线 readiness
+
+现象：
+
+- 仓库里存在多个带 `demo`、`smoke`、`synthetic`、`bench`、`fallback` 语义的入口。
+- 旧 `demo_trajectory_node.py` 会发布 5 关节 `/arm_controller/joint_trajectory`，早期 README 曾把它放在 Real NanoPi Bridge 后面作为示例。
+- 当前 6 关节 `medical_arm.zip` 模型使用 `jian_hengxiang_joint`、`jian_zongxiang_joint`、`jian_xuanzhuan_joint`、`zhou_zongxiang_joint`、`wanbu_zongxiang_joint`、`wanbu_hengxiang_joint`，与旧 5 关节 bridge 不一致。
+
+判断：
+
+- demo 只证明 topic 或数据工具能跑，不证明 6 关节机械臂、M33 映射、真实限位或 VLA planner 正确。
+- synthetic/smoke telemetry 可以验证 recorder 和 parser，但不能被当成 fresh motor feedback。
+- fallback 仿真可以验证 ROS 节点合同，但不能称为真实 MuJoCo 模型验证。
+
+技巧：
+
+- 每次启动节点前先分类：`mainline`、`shadow-sim`、`dry-run`、`bench-debug`、`offline-demo`。
+- 分类不清时按 `offline-demo` 或只读处理。
+- `demo_trajectory_node.py` 不得作为 6 关节主线 planner，不得作为真机正常测试入口。
+- 对真实 NanoPi/M33，先做只读状态，再做 `enable_target_tx=false` dry-run；任何 `0x320` 必须用 candump 单独证明没有发出或经过明确安全审查。

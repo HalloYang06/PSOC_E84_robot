@@ -92,6 +92,21 @@ wanbu_hengxiang_joint
 - VLA/服务器状态里 `motor_id`、`joint_id`、`urdf_joint` 混用。
 - 7 号外部调试电机被误当成机械臂关节。
 
+## Demo 和主线分类
+
+当前仓库已有一些历史 demo，它们可以保留做冒烟测试，但不能混进正式 6 关节 medical arm 主线：
+
+| 入口 | 分类 | 当前用途 | 禁止事项 |
+|---|---|---|---|
+| `rehab_arm_control/demo_trajectory_node.py` | demo | legacy 5 关节 ROS topic smoke | 不作为 6 关节 planner，不作为真机 workflow |
+| `rehab_arm_control/vla_task_planner_node.py` | placeholder demo | 证明 `/vla/task_goal` 能转 topic | 不代表 VLA 已能控制真机 |
+| `sim_data_collection.launch.py enable_demo_trajectory:=true` | data demo | 仿真/离线采集 | 不接真实 NanoPi 运动链路 |
+| `m33_motor_status_smoke.py` | synthetic smoke | 离线解析和 recorder 测试 | 不当作 fresh motor feedback |
+| `nanopi_can_master.py` | bench/debug | can0、电机协议、现场诊断 | 不进入正式 bringup，不用于穿戴控制 |
+| `fallback-first-order` sim backend | fallback demo | ROS 节点和 topic 合同 | 不等同真实 MuJoCo 模型 |
+
+后续 AI 必须先声明任务属于 `mainline`、`shadow-sim`、`dry-run`、`bench-debug` 还是 `offline-demo`。分类不清时默认按 `offline-demo` 或只读处理。
+
 ## 推荐分阶段接入
 
 ### 阶段 0：单机 MuJoCo 可视化
@@ -311,6 +326,7 @@ timeout 3s candump -L can0,320:7FF,321:7FF,322:7FF
 ## 当前不做的事
 
 - 不把 `medical_arm_mujoco.xml` 的 6 关节直接映射到旧 M33 `joint_id=0..4`。
+- 不把 legacy `demo_trajectory_node.py` 当作 6 关节主线 planner。
 - 不启用 `enable_target_tx=true`。
 - 不把 `motor_id=7` 放回机械臂。
 - 不让 VLA/服务器/NanoPi 直接发裸电机命令。

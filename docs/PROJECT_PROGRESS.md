@@ -78,6 +78,15 @@
   - 新增 `test_medical_arm_6dof_schema.py`，防止后续误删 6 关节、误开真机目标、或把 7 号放回正式映射。
   - 验证：`python -m unittest rehab_arm_ros2_ws/src/rehab_arm_description/test/test_medical_arm_6dof_schema.py` 通过，`4 tests OK`。
 
+- 完成 NanoPi/仿真主机只读链路复查和 demo/mainline 边界收紧。
+  - 远程连接：仿真主机 `cal@192.168.2.46` 可 SSH，NanoPi `pi@192.168.2.66` 可 SSH。
+  - 仿真主机验证：`/home/cal/medical_arm_mujoco/medical_arm_mujoco.xml` 存在，`MUJOCO_GL=egl python3 validate_mujoco.py` 仍通过并渲染预览。
+  - NanoPi 验证：`can0` 从 STOPPED 拉起到 classic CAN 1Mbps `ERROR-ACTIVE`，tx/rx error counters `0/0`。
+  - 被动抓包：5 秒内看到 M33 `0x330~0x334` 周期帧；启动 bridge 后 12 秒抓包统计 `0x330~0x334` 各 114 帧、`0x321` 7 帧、`0x322` 7 帧、`0x320` 0 帧。
+  - ROS2/DDS 验证：仿真主机能从 NanoPi bridge 收到 `/rehab_arm/safety_state` 和 `/rehab_arm/motor_state`；短窗口内 `/joint_states` 无样本，后续要确认 M33 motor status fresh 判定和电机未接场景语义。
+  - 决策：`demo_trajectory_node.py`、`vla_task_planner_node.py`、`m33_motor_status_smoke.py`、`nanopi_can_master.py`、fallback backend 均明确为 demo/debug/smoke/bench，不得当作 6 关节主线或真机 readiness。
+  - 更新：`rehab_arm_ros2_ws/README.md`、`docs/REHAB_ARM_SYSTEM_ARCHITECTURE.md`、`docs/MUJOCO_NANOPI_INTEGRATION_PREP.md`、`docs/USER_MANUAL.md`，要求后续 AI 先声明任务属于 mainline、shadow-sim、dry-run、bench-debug 或 offline-demo。
+
 - 新增机械臂主线 AI 交接文档：`docs/ai-handoffs/rehab-arm-mainline-2026-06-02.md`。
 - 交接内容覆盖：安全边界、当前仓库分工、M33/NanoPi/ROS/仿真/平台/App 对接关系、当前电机和 CAN 事实、后续 AI 提示词、近期最小可执行路线。
 - 本次只做文档交接整理，未执行硬件测试、ROS 测试或固件编译。

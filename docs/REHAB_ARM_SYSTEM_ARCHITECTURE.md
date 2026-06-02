@@ -444,6 +444,37 @@ HTTP 从 NanoPi/OpenClaw 输出到 App：
 
 第一阶段为了快，可以先用 `std_msgs/String` JSON 表达 safety、sensor、task。等字段稳定后，再升级成自定义 ROS msg。
 
+### 5.1 主线和 demo/debug 边界
+
+当前仓库历史上有较多 demo、smoke、bench 和 fallback 工具。后续 AI 和开发者必须先判断入口属于哪一类，再决定是否能接真机。
+
+主线入口定义：
+
+| 类别 | 当前入口 | 可进入正式路径的条件 |
+|---|---|---|
+| 真机状态上行 | `rehab_arm_psoc_bridge/psoc_can_bridge_node.py` 读取 M33 `0x322/0x330~0x337/0x7C2/0x7C3` | 只读状态可以接入；运动目标必须继续受 M33 审核 |
+| 正式轨迹入口 | `/arm_controller/joint_trajectory` | 必须来自已审核 planner/adapter；joint schema、limit、速度、profile 和 M33 状态全部通过 |
+| 6 关节 medical arm schema | `rehab_arm_description/config/medical_arm_6dof_schema.yaml` | 仅作为当前 6 关节映射草案；未完成 M33 6 关节协议前不能直连旧 5 关节 bridge |
+| 仿真主机 shadow | `/sim/medical_arm/*` | 用于 6 关节 MuJoCo、可视化、规划和 dry-run；不得污染真实 `/joint_states` |
+
+demo/debug 入口定义：
+
+| 类别 | 当前入口 | 边界 |
+|---|---|---|
+| 旧 ROS 轨迹 demo | `rehab_arm_control/demo_trajectory_node.py` | 只用于 5 关节 topic smoke test；不是 6 关节 medical arm planner |
+| VLA placeholder | `rehab_arm_control/vla_task_planner_node.py` | 当前仍生成 demo 轨迹；只能证明 topic 合同，不代表 VLA 已可控真机 |
+| 仿真采集 demo 开关 | `sim_data_collection.launch.py enable_demo_trajectory:=true` | 只允许仿真/离线数据采集使用 |
+| synthetic/smoke telemetry | `m33_motor_status_smoke.py` 等 | 只用于离线解析、recorder 和质量门，不是 fresh motor feedback |
+| NanoPi 直发电机工具 | `nanopi_can_master.py`、`private/cansimple/m33 target` 类命令 | 只允许隔离台架/现场诊断；不得进入正式 bringup 或人体穿戴流程 |
+| MuJoCo fallback backend | `fallback-first-order` | 只证明 ROS 节点能跑，不证明真实 MuJoCo 动力学或机械模型正确 |
+
+强制规则：
+
+- 任何包含 `demo`、`smoke`、`synthetic`、`bench`、`fallback` 的入口，默认不属于主线。
+- demo 可以用于演示 topic、生成离线样本、回归测试和文档说明；不能用于证明真机安全可运动。
+- 主线真机验证只允许从只读状态开始，再进入 `enable_target_tx=false` dry-run，最后才按单独安全审查进入真实 `0x320`。
+- 后续 AI 修改代码前必须先说明目标属于主线、shadow 仿真、dry-run、bench-debug 还是离线 demo；分类不清时默认按 demo/只读处理。
+
 ## 6. CAN 接口
 
 当前需要把“正式真机链路”和“现场调试链路”分开：
