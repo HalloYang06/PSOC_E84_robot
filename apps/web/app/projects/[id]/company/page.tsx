@@ -393,6 +393,23 @@ function desktopSyncTone(value: string) {
   return "idle";
 }
 
+function desktopEvidenceRank(value: AnyRecord) {
+  const meta = messageMeta(value);
+  const runner = nestedRunnerResult(value);
+  const status = text(value.status, "").toLowerCase();
+  const type = text(value.message_type ?? value.messageType, "").toLowerCase();
+  const hasThreadUrl = Boolean(firstText(runner.desktop_thread_url, meta.desktop_thread_url));
+  const isTimeoutRepair = meta.timeout_repair === true || record(meta.blocked_taxonomy).exception_kind === "desktop_final_sync_lag";
+  if (/completed|done|resolved/.test(status) && /agent_result|runner_result/.test(type)) return 100;
+  if (runner.desktop_delivery_confirmed === true || meta.desktop_delivery_confirmed === true) return 90;
+  if (hasThreadUrl && /progress|ack|runner/.test(type)) return 80;
+  if (/completed|done|resolved/.test(status)) return 70;
+  if (/in_progress|acked|running|active/.test(status)) return 55;
+  if (isTimeoutRepair) return 25;
+  if (/blocked|failed|error/.test(status)) return 15;
+  return 40;
+}
+
 function desktopSyncSummaryForSeat(seat: { id: string; name: string; threadId: string }, events: AnyRecord[]) {
   const related = events
     .filter((event) => {
@@ -412,13 +429,22 @@ function desktopSyncSummaryForSeat(seat: { id: string; name: string; threadId: s
         meta.thread_id,
         meta.threadId,
         meta.desktop_thread_url,
+        meta.authoritative_seat_id,
+        meta.authoritativeSeatId,
+        meta.authoritative_seat_ref,
+        meta.target_seat_id,
+        record(meta.delegation_context).target_seat_id,
         runner.workstation_id,
         runner.thread_id,
         runner.desktop_thread_url,
       ].map((item) => text(item, "")).join(" ");
       return haystack.includes(seat.id) || Boolean(seat.threadId && haystack.includes(seat.threadId));
     })
-    .sort((left, right) => text(right.created_at ?? right.createdAt, "").localeCompare(text(left.created_at ?? left.createdAt, "")));
+    .sort((left, right) => {
+      const rankDiff = desktopEvidenceRank(right) - desktopEvidenceRank(left);
+      if (rankDiff) return rankDiff;
+      return text(right.created_at ?? right.createdAt, "").localeCompare(text(left.created_at ?? left.createdAt, ""));
+    });
   const latest = related[0];
   const runner = latest ? nestedRunnerResult(latest) : {};
   const meta = latest ? messageMeta(latest) : {};
@@ -430,7 +456,9 @@ function desktopSyncSummaryForSeat(seat: { id: string; name: string; threadId: s
   const method = firstText(runner.desktop_delivery_method, meta.desktop_delivery_method);
   const description = latest ? publicEventDescription(latest) : "";
   let label = "暂无桌面证据";
-  if (/agent_result|runner_result|final|completed|done/i.test(`${type} ${status}`)) {
+  if (/blocked|failed|error/i.test(status)) {
+    label = "同步异常待处理";
+  } else if (/agent_result|runner_result|final|completed|done/i.test(`${type} ${status}`)) {
     label = "桌面线程已有结果";
   } else if (confirmed) {
     label = "已进入桌面线程";
