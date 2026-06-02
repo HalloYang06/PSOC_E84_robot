@@ -660,6 +660,19 @@ async function inflateRaw(data: Uint8Array) {
 }
 
 async function readZipEntries(buffer: ArrayBuffer) {
+  try {
+    const { unzipSync } = await import("fflate");
+    const entries = unzipSync(new Uint8Array(buffer));
+    return new Map(Object.entries(entries)
+      .filter(([name]) => !normalizePackagePath(name).endsWith("/"))
+      .map(([name, bytes]) => {
+        const normalized = normalizePackagePath(name);
+        const copy = bytes.slice();
+        return [normalized, copy.buffer.slice(copy.byteOffset, copy.byteOffset + copy.byteLength) as ArrayBuffer];
+      }));
+  } catch {
+    // Fall back to the small built-in ZIP reader below. It covers the stored/deflated URDF packages used here.
+  }
   const bytes = new Uint8Array(buffer);
   const view = new DataView(buffer);
   let eocd = -1;
@@ -956,23 +969,10 @@ function Arm3DOverview({
         restoredModelRef.current = restoreKey;
         serverCalibrationsRef.current = calibrationMapFromJson(mappingJson);
         let modelPackage: UrdfPackage;
-        try {
-          const response = await fetch(keyframeSrc(modelUrl, ""), { cache: "no-store", signal: controller.signal });
-          if (!response.ok) throw new Error("model package fetch failed");
-          const buffer = await response.arrayBuffer();
-          modelPackage = await readUrdfPackageBuffer(fileName, buffer);
-        } catch {
-          const rows = Array.from(serverCalibrationsRef.current.values());
-          if (!rows.length) throw new Error("model package restore failed");
-          const generatedUrdf = fallbackUrdfFromCalibrations(packageName, rows);
-          modelPackage = {
-            fileName,
-            packageName,
-            urdfPath: urdfPath || `${packageName}/urdf/${packageName}.urdf`,
-            urdfText: generatedUrdf,
-            files: new Map([[urdfPath || `${packageName}/urdf/${packageName}.urdf`, new TextEncoder().encode(generatedUrdf).buffer]]),
-          };
-        }
+        const response = await fetch(keyframeSrc(modelUrl, ""), { cache: "no-store", signal: controller.signal });
+        if (!response.ok) throw new Error("model package fetch failed");
+        const buffer = await response.arrayBuffer();
+        modelPackage = await readUrdfPackageBuffer(fileName, buffer);
         applyResolvedUrdfPackageRef.current(modelPackage, null);
         setModelSaveState("restored");
       } catch {
