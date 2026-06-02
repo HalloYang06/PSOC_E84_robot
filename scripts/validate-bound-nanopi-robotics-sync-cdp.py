@@ -47,6 +47,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", default="artifacts/validation/bound-nanopi-robotics-sync")
     parser.add_argument("--viewport-width", type=int, default=1440)
     parser.add_argument("--viewport-height", type=int, default=980)
+    parser.add_argument("--click-sync", action="store_true", help="Click the readonly sync button from the user view.")
+    parser.add_argument(
+        "--expect-runner-command",
+        action="store_true",
+        help="After clicking sync, assert a safe robotics.capture.start command reaches the bound runner inbox.",
+    )
     return parser.parse_args()
 
 
@@ -63,6 +69,19 @@ def request_json(url: str, *, method: str = "GET", payload: dict[str, object] | 
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         headers["Content-Type"] = "application/json"
     request = Request(url, data=data, headers=headers, method=method)
+    with urlopen(request, timeout=30) as response:
+        return json.loads(response.read().decode("utf-8", errors="replace"))
+
+
+def request_runner_json(url: str, runner_id: str) -> dict[str, object]:
+    request = Request(
+        url,
+        headers={
+            "Accept": "application/json",
+            "X-Runner-Id": runner_id,
+        },
+        method="GET",
+    )
     with urlopen(request, timeout=30) as response:
         return json.loads(response.read().decode("utf-8", errors="replace"))
 
@@ -161,6 +180,54 @@ def wait_for(cdp: object, expression: str, timeout_seconds: float = 45) -> objec
     raise RuntimeError(f"Timed out waiting for {expression[:220]} last={last}")
 
 
+def runner_inbox(api_base: str, runner_id: str) -> list[dict[str, object]]:
+    if not runner_id:
+        return []
+    payload = request_runner_json(
+        f"{api_base.rstrip('/')}/api/runners/{quote(runner_id, safe='')}/inbox?status=all&limit=100",
+        runner_id,
+    )
+    return as_records(payload.get("data"))
+
+
+def parse_command_body(item: dict[str, object]) -> dict[str, object]:
+    try:
+        body = json.loads(text(item.get("body")))
+    except Exception:
+        return {}
+    return body if isinstance(body, dict) else {}
+
+
+def find_new_capture_start_command(
+    items: list[dict[str, object]],
+    *,
+    before_ids: set[str],
+    project_id: str,
+    device_id: str,
+    computer_node_id: str,
+) -> dict[str, object] | None:
+    for item in reversed(items):
+        item_id = text(item.get("id"))
+        if not item_id or item_id in before_ids:
+            continue
+        if text(item.get("message_type") or item.get("messageType")) != "runner_command":
+            continue
+        body = parse_command_body(item)
+        if text(body.get("kind")) != "robotics.capture.start":
+            continue
+        if text(body.get("project_id")) != project_id:
+            continue
+        if text(body.get("computer_node_id")) != computer_node_id:
+            continue
+        interface_id = text(body.get("interface_id"))
+        if device_id not in interface_id and interface_id != "ros:/joint_states":
+            continue
+        if body.get("readonly") is not True:
+            continue
+        return {"message": item, "body": body}
+    return None
+
+
 def screenshot(cdp: object, output: Path) -> None:
     shot = cdp.send("Page.captureScreenshot", {"format": "png", "captureBeyondViewport": False})
     output.write_bytes(base64.b64decode(str(shot.get("data") or "")))
@@ -230,6 +297,15 @@ def main() -> int:
     edge_process: subprocess.Popen[bytes] | None = None
     cdp = None
     try:
+        inbox_before: list[dict[str, object]] = []
+        before_ids: set[str] = set()
+        if args.expect_runner_command:
+            if not binding["runner_id"]:
+                raise RuntimeError("Cannot verify runner command because the selected computer has no bound runner_id.")
+            inbox_before = runner_inbox(api_base, binding["runner_id"])
+            before_ids = {text(item.get("id")) for item in inbox_before if text(item.get("id"))}
+            report["runner_inbox_before_count"] = len(inbox_before)
+
         edge_process = subprocess.Popen(
             [
                 str(cdp_helpers.find_edge()),
@@ -297,6 +373,99 @@ def main() -> int:
         report["pages"].append(state)  # type: ignore[union-attr]
         if not state["ok"]:
             report["failures"].append("bound-nanopi-robotics-sync")  # type: ignore[union-attr]
+
+        if args.click_sync:
+            clicked = cdp_eval(
+                cdp,
+                """
+                (() => {
+                  const controls = Array.from(document.querySelectorAll('button, input[type="submit"]'));
+                  const target = controls.find((node) => {
+                    const text = (node.innerText || node.value || '').trim();
+                    return text.includes('开始只读状态同步');
+                  });
+                  if (!target) return false;
+                  target.scrollIntoView({ block: 'center', inline: 'center' });
+                  target.click();
+                  return true;
+                })()
+                """,
+            )
+            if not clicked:
+                report["failures"].append("click-sync-button-not-found")  # type: ignore[union-attr]
+            else:
+                wait_for(
+                    cdp,
+                    """
+                    (() => {
+                      const body = document.body?.innerText || '';
+                      return body.includes('采集请求已排队到目标电脑')
+                        || body.includes('已排队到目标电脑')
+                        || body.includes('开始只读状态同步');
+                    })()
+                    """,
+                    timeout_seconds=30,
+                )
+                clicked_state = page_state(cdp, args.device_id, binding["computer_node_id"])
+                clicked_shot = output_dir / f"bound-nanopi-robotics-sync-clicked-{args.viewport_width}x{args.viewport_height}-{stamp}.png"
+                screenshot(cdp, clicked_shot)
+                clicked_state["screenshot"] = str(clicked_shot)
+                clicked_state["clickedSync"] = True
+                clicked_state["ok"] = (
+                    clicked_state["hasDevice"]
+                    and clicked_state["hasSyncButton"]
+                    and not clicked_state["hasHorizontalOverflow"]
+                    and not clicked_state["forbidden"]
+                )
+                report["pages"].append(clicked_state)  # type: ignore[union-attr]
+                if not clicked_state["ok"]:
+                    report["failures"].append("bound-nanopi-robotics-sync-after-click")  # type: ignore[union-attr]
+
+        if args.expect_runner_command:
+            found: dict[str, object] | None = None
+            deadline = time.time() + 45
+            latest_inbox: list[dict[str, object]] = []
+            while time.time() < deadline:
+                latest_inbox = runner_inbox(api_base, binding["runner_id"])
+                found = find_new_capture_start_command(
+                    latest_inbox,
+                    before_ids=before_ids,
+                    project_id=args.project_id,
+                    device_id=args.device_id,
+                    computer_node_id=binding["computer_node_id"],
+                )
+                if found:
+                    break
+                time.sleep(1)
+            report["runner_inbox_after_count"] = len(latest_inbox)
+            if not found:
+                report["failures"].append("runner-command-not-enqueued")  # type: ignore[union-attr]
+            else:
+                command_message = found["message"] if isinstance(found.get("message"), dict) else {}
+                command_body = found["body"] if isinstance(found.get("body"), dict) else {}
+                forbidden_command_kinds = {
+                    "can.write",
+                    "serial.write",
+                    "ros.publish",
+                    "ros.service.call",
+                    "ros.action.send",
+                    "robotics.motion.start",
+                    "motor.command",
+                }
+                report["runner_command"] = {
+                    "id": command_message.get("id"),
+                    "runner_id": command_message.get("recipient_id") or command_message.get("recipientId"),
+                    "status": command_message.get("status"),
+                    "title": command_message.get("title"),
+                    "kind": command_body.get("kind"),
+                    "project_id": command_body.get("project_id"),
+                    "computer_node_id": command_body.get("computer_node_id"),
+                    "interface_id": command_body.get("interface_id"),
+                    "readonly": command_body.get("readonly"),
+                    "sample_hz": command_body.get("sample_hz"),
+                }
+                if text(command_body.get("kind")).lower() in forbidden_command_kinds:
+                    report["failures"].append("unsafe-runner-command-kind")  # type: ignore[union-attr]
         report["verdict"] = "passed" if not report["failures"] else "failed"
         report_path = output_dir / "report.json"
         report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
