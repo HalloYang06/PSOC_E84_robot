@@ -1,0 +1,18 @@
+[Unit]
+Description=Rehab Arm Linux sim host medical_arm 6DOF hardware shadow
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cal
+Environment=WORKSPACE=/home/cal/桌面/Medical-Rehabilitation-Manipulator/rehab_arm_ros2_ws
+Environment=ROS_NETWORK_ENV=/home/cal/.rehab_arm_ros2_network
+ExecStart=/usr/local/bin/start_sim_host_medical_arm_shadow.sh
+Restart=on-failure
+RestartSec=3
+KillSignal=SIGINT
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,19 @@
+[Unit]
+Description=Rehab Arm NanoPi read-only M33 CAN to ROS bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Environment=WORKSPACE=/home/pi/rehab_arm_ros2_ws
+Environment=IFACE=can0
+Environment=ROS_NETWORK_ENV=/home/pi/.rehab_arm_ros2_network
+ExecStart=/usr/local/bin/start_nanopi_product_readonly.sh
+Restart=on-failure
+RestartSec=3
+KillSignal=SIGINT
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

@@ -67,7 +67,10 @@
   - 补齐仿真学习基础：`check_sim_env.py` 报告新增 `medical_arm_6dof_contract` 和 `medical_arm_6dof_topic_contract`，明确 6DOF joint 名、MJCF/schema/launch 路径、`/sim/medical_arm/*` topic 合同、当前 7 号 shadow 映射和未接关节占位策略。
   - 新增 `docs/MEDICAL_ARM_MUJOCO_LEARNING_GUIDE.md`：给后续只学习 MuJoCo 仿真的最小路线，覆盖单机 shadow、硬件 shadow、参数修改位置、标定补充顺序和禁止事项。
   - 新增 `docs/M33_NANOPI_MUJOCO_POWERON_TEST_GUIDE.md`：从上电开始按层验证电机/M33、NanoPi CAN、M33 `0x330~0x334`、7 号 EL05 active-report、NanoPi 只读 bridge、仿真主机 MuJoCo 单机 shadow、NanoPi hardware shadow、小幅 7 号台架测试和停止清理。
+  - 新增产品自启动基础：`deploy/scripts/start_nanopi_product_readonly.sh`、`deploy/systemd/rehab-arm-nanopi-readonly.service`、`deploy/scripts/start_sim_host_medical_arm_shadow.sh`、`deploy/systemd/rehab-arm-sim-host-shadow.service` 和 `docs/PRODUCT_AUTOSTART_GUIDE.md`。NanoPi 产品默认自启动只读 bridge，固定 `enable_target_tx=false`；仿真主机 shadow 自启动仅用于研发。
+  - 新增 `test_product_autostart_contract.py`，静态防止产品自启动脚本包含 `enable_target_tx:=true`、`m33 target`、`private speed`、`private csp` 等运动入口。
   - 决策澄清：M33 当前已对上的是 legacy 5 槽位和 7 号外部电机 shadow 链路，不是完整 medical_arm 6DOF 正式 M33 协议；其他正式关节仍需要逐个接电机、标定、补 `joint_map_json`。
+  - 断电后未做任何远端硬件操作；本地 33 项单测通过，`py_compile` 通过；Windows 本机没有 `bash`，shell 脚本 `bash -n` 需后续在 NanoPi/仿真主机 Linux 上复测。
   - 本轮验证：本地 `python -m unittest ...test_medical_arm_shadow_relay_node.py ...test_mujoco_backend.py ...test_medical_arm_6dof_schema.py` 通过 22 项；本地 `py_compile` 通过；远程仿真主机 `./build_ros2.sh --packages-select rehab_arm_sim_mujoco` 和 `test_medical_arm_shadow_relay_node.py` 通过。
   - 测试后已关闭 7 号 active-report 并发送 stop；`0x334` 回到 stale，`can0` 仍为 `ERROR-ACTIVE`。
   - 未完成：还没有把其他 5 个关节接入真实电机反馈；7 号 shadow 仍只是 MuJoCo shadow/demo，不是正式 6 号真机执行；4 号齿轮比例、1/2 号腕部对应关系、各关节零点/方向/限位仍待标定。

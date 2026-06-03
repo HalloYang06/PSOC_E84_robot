@@ -4501,3 +4501,22 @@ Connection reset by 192.168.2.66 port 22
 - 教程和日志里用“7 号外部电机 shadow 已对上”，不要写“6DOF 真机已对上”。
 - 只读/hardware shadow 阶段不能出现 `0x320`；只有单独进入 7 号小幅台架测试时才允许抓到 `0x320`。
 - 上电联调按 `docs/M33_NANOPI_MUJOCO_POWERON_TEST_GUIDE.md` 分层执行，失败时停在当前层，不跨层排错。
+
+### 产品自启动服务只能自动状态上报，不能自动运动
+
+现象：
+
+- 真实产品上电后应自动启动，不应依赖 SSH 手动运行 `ros2 run ...`。
+- 但如果把 `enable_target_tx=true` 写进 systemd，开机后任何上游误发布轨迹都可能变成真实 `0x320`。
+
+判断：
+
+- 上电自启动应先产品化“只读状态服务”和“安全状态发布”，不是产品化“自动运动”。
+- 当前 NanoPi systemd 模板固定 `enable_target_tx=false`，只负责 M33/CAN 到 ROS2 状态上报。
+- 仿真主机 hardware shadow 自启动是研发模式，不是产品必须服务。
+
+技巧：
+
+- 检查产品服务时先看 `journalctl -u rehab-arm-nanopi-readonly.service`，日志必须包含 `enable_target_tx=False`。
+- 自启动验收时同时运行 `candump can0,320:7FF`，普通上电状态下必须没有 `0x320`。
+- 后续要做真实运动授权，应新增单独的运动授权状态机，不要直接改只读 service。
