@@ -127,7 +127,8 @@ external_debug_motors:
     status: external_debug_only_not_mounted_on_arm
     model: EL05
     protocol: RobStride_private_extended_frame
-    mechanical_reduction_ratio: 9.0
+    joint_command_ratio: 1.0
+    drive_internal_reduction_ratio: 9.0
     allowed_in_formal_mapping: false
     allowed_as_temporary_mujoco_shadow_actuator: true
     temporary_shadow_joint: forearm_rotation_joint

@@ -35,13 +35,13 @@
 
 | legacy ROS joint | joint_id | 电机 | 型号/协议 | 与当前 6 关节实物关系 |
 |---|---:|---|---|---|
-| `shoulder_lift_joint` | 0 | `node_id=3` | 伺泰威 CANSimple/ODrive-like，机械减速 `48:1` | 当前真实机械臂草案对应 `jian_hengxiang_joint` |
-| `elbow_lift_joint` | 1 | `motor_id=4` | 灵足 RS00，RobStride CSP，机械减速 `10:1` | 当前真实机械臂草案对应 `jian_zongxiang_joint` |
-| `shoulder_abduction_joint` | 2 | `motor_id=5` | 灵足 RS00，RobStride CSP，机械减速 `10:1` | 当前真实机械臂草案对应 `zhou_zongxiang_joint` |
-| `upper_arm_rotation_joint` | 3 | `motor_id=6` | 灵足 EL05，RobStride CSP，机械减速 `9:1` | 当前真实机械臂草案对应 `jian_xuanzhuan_joint` |
-| `forearm_rotation_joint` | 4 | `motor_id=7` | 灵足 EL05，RobStride CSP，机械减速 `9:1` | 只允许作为外部台架/临时 MuJoCo shadow actuator，不属于当前 6 关节机械臂 |
+| `shoulder_lift_joint` | 0 | `node_id=3` | 伺泰威 CANSimple/ODrive-like，关节目标需要按减速/协议侧单位换算 | 当前真实机械臂草案对应 `jian_hengxiang_joint` |
+| `elbow_lift_joint` | 1 | `motor_id=4` | 灵足 RS00，RobStride CSP，当前关节命令比例 `1.0` | 当前真实机械臂草案对应 `jian_zongxiang_joint` |
+| `shoulder_abduction_joint` | 2 | `motor_id=5` | 灵足 RS00，RobStride CSP，当前关节命令比例 `1.0` | 当前真实机械臂草案对应 `zhou_zongxiang_joint` |
+| `upper_arm_rotation_joint` | 3 | `motor_id=6` | 灵足 EL05，RobStride CSP，当前关节命令比例 `1.0` | 当前真实机械臂草案对应 `jian_xuanzhuan_joint` |
+| `forearm_rotation_joint` | 4 | `motor_id=7` | 灵足 EL05，RobStride CSP，当前关节命令比例 `1.0` | 只允许作为外部台架/临时 MuJoCo shadow actuator，不属于当前 6 关节机械臂 |
 
-`motor_profiles.py` 里的 `gear_ratio` 是历史兼容字段。对 4/5/6/7，`gear_ratio=1.0` 只表示当前 RobStride CSP `loc_ref` 命令路径按 rad 处理，不等于电机机械减速比；真实机械减速要看 `mechanical_reduction_ratio`。后续仿真、标定和 VLA schema 必须优先使用输出端 joint、机械减速、方向和零点四类字段，不得只看单个 `gear_ratio`。
+`motor_profiles.py` 里的 `gear_ratio=1.0` 对 4/5/6/7 是当前正确的 RobStride CSP 关节命令比例，不要再额外乘 RS00/EL05 的内部减速比。RS00/EL05 的 `10:1/9:1` 只作为驱动内部型号资料记录在 `drive_internal_reduction_ratio`，不是 M33 formal path 或 MuJoCo shadow joint 的输出角换算比例。伺泰威 3 号 CANSimple/ODrive-like 路径不同，它使用电机协议侧 rev 单位，才需要按减速/协议比例做换算。
 
 ## 后续必须补齐的参数
 
