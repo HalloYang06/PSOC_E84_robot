@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from rehab_arm_psoc_bridge.data_recording import (
     make_joint_state_payload,
     make_motor_state_payload,
+    make_model_state_payload,
     make_camera_keyframe_payload,
     make_default_session_id,
     make_jsonl_record,
@@ -120,6 +121,7 @@ class DataRecordingTests(unittest.TestCase):
         self.assertIn('/joint_states', record['topics'])
         self.assertIn('/rehab_arm/safety_state', record['topics'])
         self.assertIn('/rehab_arm/motor_state', record['optional_topics'])
+        self.assertIn('/rehab_arm/model_state', record['optional_topics'])
         self.assertIn('/rehab_arm/camera_keyframe', record['optional_topics'])
         self.assertIs(record['motion_allowed_expected'], False)
 
@@ -166,6 +168,27 @@ class DataRecordingTests(unittest.TestCase):
         self.assertEqual(payload['width'], 640)
         self.assertEqual(payload['detection_summary'], {'objects': ['cup']})
         self.assertEqual(payload['control_boundary'], 'perception_data_only_not_motor_command')
+
+    def test_make_model_state_payload(self) -> None:
+        payload = make_model_state_payload(
+            model_results=[
+                {
+                    'model_id': 'm55_emg_intent_v1',
+                    'model_version': '0.1.0',
+                    'result_code': 10,
+                    'label': 'elbow_flexion_intent',
+                    'confidence': 0.82,
+                },
+            ],
+            robot_id='rehab-arm-alpha',
+            device_id='nanopi-m5',
+            now=14.5,
+        )
+
+        self.assertEqual(payload['schema_version'], 'rehab_arm_model_state_v1')
+        self.assertEqual(payload['ts_unix'], 14.5)
+        self.assertEqual(payload['model_results'][0]['result_code'], 10)
+        self.assertEqual(payload['control_boundary'], 'model_suggestion_only_not_motion_permission')
 
     def test_write_jsonl_record(self) -> None:
         handle = io.StringIO()
@@ -225,7 +248,13 @@ class DataRecordingTests(unittest.TestCase):
         )
         self.assertEqual(
             required_topics_for_profile('perception_vla'),
-            ['/joint_states', '/rehab_arm/safety_state', '/rehab_arm/sensor_state', '/rehab_arm/camera_keyframe'],
+            [
+                '/joint_states',
+                '/rehab_arm/safety_state',
+                '/rehab_arm/sensor_state',
+                '/rehab_arm/model_state',
+                '/rehab_arm/camera_keyframe',
+            ],
         )
 
     def test_required_topics_for_profile_rejects_unknown_profile(self) -> None:
@@ -710,6 +739,16 @@ class DataRecordingTests(unittest.TestCase):
                 make_payload_record('/rehab_arm/safety_state', {'state': 'ok', 'motion_allowed': False}, now=3.0),
                 make_payload_record('/rehab_arm/sensor_state', {'source': 'sim'}, now=4.0),
                 make_payload_record(
+                    '/rehab_arm/model_state',
+                    make_model_state_payload(
+                        [{'model_id': 'm55_emg_intent_v1', 'result_code': 0, 'confidence': 0.5}],
+                        robot_id='arm',
+                        device_id='nanopi',
+                        now=4.5,
+                    ),
+                    now=4.5,
+                ),
+                make_payload_record(
                     '/rehab_arm/camera_keyframe',
                     make_camera_keyframe_payload(
                         camera_id='front_rgb',
@@ -806,6 +845,16 @@ class DataRecordingTests(unittest.TestCase):
                 make_payload_record('/joint_states', {}, now=2.0),
                 make_payload_record('/rehab_arm/safety_state', {'state': 'ok', 'motion_allowed': False}, now=3.0),
                 make_payload_record('/rehab_arm/sensor_state', {'source': 'sim'}, now=4.0),
+                make_payload_record(
+                    '/rehab_arm/model_state',
+                    make_model_state_payload(
+                        [{'model_id': 'm55_emg_intent_v1', 'result_code': 0, 'confidence': 0.5}],
+                        robot_id='arm',
+                        device_id='nanopi',
+                        now=4.5,
+                    ),
+                    now=4.5,
+                ),
                 make_payload_record(
                     '/rehab_arm/camera_keyframe',
                     make_camera_keyframe_payload(

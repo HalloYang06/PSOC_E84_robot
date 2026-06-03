@@ -65,6 +65,7 @@ class CheckSimEnvTests(unittest.TestCase):
         )
         self.assertEqual(report['topic_contract']['joint_state']['topic'], '/joint_states')
         self.assertEqual(report['topic_contract']['sensor_state']['topic'], '/rehab_arm/sensor_state')
+        self.assertEqual(report['topic_contract']['model_state']['topic'], '/rehab_arm/model_state')
         self.assertEqual(report['topic_contract']['safety_state']['topic'], '/rehab_arm/safety_state')
         self.assertEqual(report['topic_contract']['vla_task_goal']['topic'], '/vla/task_goal')
         self.assertEqual(report['topic_contract']['control_boundary'], 'simulation_topic_contract_not_motion_permission')

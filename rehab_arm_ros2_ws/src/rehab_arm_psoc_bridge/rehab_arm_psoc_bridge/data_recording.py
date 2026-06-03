@@ -17,6 +17,7 @@ DEFAULT_RECORDED_TOPICS = [
 ]
 OPTIONAL_RECORDED_TOPICS = [
     '/rehab_arm/motor_state',
+    '/rehab_arm/model_state',
     '/rehab_arm/camera_keyframe',
 ]
 RECORDING_TOPIC_PROFILES = {
@@ -40,6 +41,7 @@ RECORDING_TOPIC_PROFILES = {
         '/joint_states',
         '/rehab_arm/safety_state',
         '/rehab_arm/sensor_state',
+        '/rehab_arm/model_state',
         '/rehab_arm/camera_keyframe',
     ],
 }
@@ -181,6 +183,25 @@ def make_camera_keyframe_payload(
         'scene_summary': scene_summary,
         'detection_summary': detection_summary or {},
         'control_boundary': 'perception_data_only_not_motor_command',
+    }
+
+
+def make_model_state_payload(
+    model_results: list[dict[str, object]],
+    robot_id: str,
+    device_id: str,
+    now: float | None = None,
+    source: str = 'm33_m55_bridge',
+    schema_version: str = 'rehab_arm_model_state_v1',
+) -> dict[str, object]:
+    return {
+        'schema_version': schema_version,
+        'ts_unix': time.time() if now is None else now,
+        'robot_id': robot_id,
+        'device_id': device_id,
+        'source': source,
+        'model_results': [dict(result) for result in model_results],
+        'control_boundary': 'model_suggestion_only_not_motion_permission',
     }
 
 

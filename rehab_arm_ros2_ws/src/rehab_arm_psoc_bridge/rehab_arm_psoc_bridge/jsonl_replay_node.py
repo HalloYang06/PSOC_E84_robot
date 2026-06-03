@@ -26,6 +26,7 @@ DEFAULT_REPLAY_TOPICS = [
     '/rehab_arm/motor_state',
     '/rehab_arm/safety_state',
     '/rehab_arm/sensor_state',
+    '/rehab_arm/model_state',
     '/rehab_arm/camera_keyframe',
 ]
 

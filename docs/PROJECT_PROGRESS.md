@@ -58,6 +58,10 @@
   - 明确 M55、M33 BLE 到 App、NanoPi 到服务器、Linux 仿真主机无线 ROS、7号 EL05 都是旁线或研发通道：只能提供状态、意图、建议、shadow、dry-run 或 bench-debug，不能形成新的真机控制闭环。
   - `docs/INTEGRATION_GUIDE.md` 新增“当前主线和旁线对接纪律”，要求新增字段优先落到 `PATIENT_DEVICE_PROFILE_PROTOCOL_V1.md`、`PSOC_CAN_PROTOCOL_V1.md`、`medical_arm_6dof_schema.yaml` 或 ROS2 topic 合同，不允许各端各自定义一套。
   - 新增 `test_system_architecture_contract.py`，静态锁住正式运动链路、M33 最终裁决、M55 旁线、App BLE、NanoPi 到服务器、无线 ROS 和共享合同引用，防止后续 AI 把历史 demo 或旁线改成新主线。
+- M55/服务器/VLA 数据地基继续补齐：
+  - 新增 `docs/M55_MODEL_RESULT_PROTOCOL_V1.md`，定义 `/rehab_arm/model_state`、`rehab_arm_model_state_v1`、第一版 M55 意图/疲劳/语音编号表和 `model_suggestion_only_not_motion_permission` 边界。
+  - `data_recorder_node.py`、`jsonl_replay_node.py` 和 `data_recording.py` 接入 `/rehab_arm/model_state`，让 M55/服务器模型摘要可记录、回放、进入 VLA 数据集；`perception_vla` topic profile 现在要求 `/rehab_arm/model_state` 和 `/rehab_arm/camera_keyframe`。
+  - `docs/INTEGRATION_GUIDE.md`、`docs/SERVER_SYNC_API_DRAFT.md`、`docs/USER_MANUAL.md` 同步拆分 `/rehab_arm/sensor_state` 和 `/rehab_arm/model_state`：前者是传感摘要，后者是模型建议，二者都不是运动许可。
 
 - 产品自启动与 MuJoCo hardware shadow 基础链路完成实测打通：
   - NanoPi `rehab-arm-nanopi-readonly.service` 已安装、`enabled`、`active`，产品上电后自动运行 `psoc_can_bridge_node.py`，参数固定 `enable_target_tx=false`。

@@ -52,6 +52,7 @@ python3 /home/pi/nanopi_can_master.py m33 target --iface can0 --joint 4 --deg 30
 - M55/英飞凌负责语音采集和板端小模型，语音文本、音频摘要、OpenClaw 或模型摘要可以上传服务器。
 - VLA 固定走服务器链路，消费 NanoPi 摄像头数据、M55 语音数据、机器人状态、历史数据和标注。
 - VLA 用于复杂任务理解和任务分解，例如“先移开遮挡物，再拿目标物品”；它只能输出高层任务或分段目标，不能直接发 CAN 或底层电机命令。
+- M55 小模型结果统一走 [M55_MODEL_RESULT_PROTOCOL_V1.md](M55_MODEL_RESULT_PROTOCOL_V1.md) 和 `/rehab_arm/model_state`；该 topic 是模型建议和编号语义，不是运动许可。原始/滤波 EMG、心率、IMU 仍走 `/rehab_arm/sensor_state`。
 
 ## 真机测试前安全检查
 
@@ -1998,7 +1999,7 @@ ros2 run rehab_arm_psoc_bridge validate_recording_quality.py \
 - `errors=[]`。
 - 当前 logging-only/仿真采集阶段不应出现 `motion_allowed=true`。
 
-如果只是短时间 recorder 冒烟测试，可以降低阈值；如果是动态 demo 采集，应要求 `moving_joint_count=5` 和 `motor_entry_count_min>=5`。如果是视觉/VLA 数据，改用 `--topic-profile perception_vla`，并确认 JSONL 里有 `/rehab_arm/camera_keyframe`。
+如果只是短时间 recorder 冒烟测试，可以降低阈值；如果是动态 demo 采集，应要求 `moving_joint_count=5` 和 `motor_entry_count_min>=5`。如果是视觉/VLA 数据，改用 `--topic-profile perception_vla`，并确认 JSONL 里有 `/rehab_arm/model_state` 和 `/rehab_arm/camera_keyframe`。
 
 视觉/VLA 关键帧数量检查：
 
@@ -2013,6 +2014,7 @@ ros2 run rehab_arm_psoc_bridge validate_recording_quality.py \
 通过标准：
 
 - `topic_profile=perception_vla`。
+- `required_topics` 包含 `/rehab_arm/model_state` 和 `/rehab_arm/camera_keyframe`。
 - `criteria.min_camera_keyframes=10`。
 - `/rehab_arm/camera_keyframe` 数量不少于 10。
 - 这个检查只统计 JSONL 中的关键帧消息，不打开摄像头、不读取图片文件、不控制电机。

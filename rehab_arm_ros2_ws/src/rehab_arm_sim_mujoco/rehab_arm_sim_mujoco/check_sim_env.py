@@ -157,7 +157,12 @@ TOPIC_CONTRACT = {
     'sensor_state': {
         'topic': '/rehab_arm/sensor_state',
         'message_type': 'std_msgs/msg/String',
-        'direction': 'sensor_or_model_state_to_ros',
+        'direction': 'sensor_state_to_ros',
+    },
+    'model_state': {
+        'topic': '/rehab_arm/model_state',
+        'message_type': 'std_msgs/msg/String',
+        'direction': 'm55_or_server_model_summary_to_ros',
     },
     'vla_task_goal': {
         'topic': '/vla/task_goal',

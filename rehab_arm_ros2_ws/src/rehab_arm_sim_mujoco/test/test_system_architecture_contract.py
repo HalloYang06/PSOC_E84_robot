@@ -40,6 +40,28 @@ class SystemArchitectureContractTests(unittest.TestCase):
         self.assertIn('PATIENT_DEVICE_PROFILE_PROTOCOL_V1.md', integration)
         self.assertIn('PSOC_CAN_PROTOCOL_V1.md', integration)
         self.assertIn('medical_arm_6dof_schema.yaml', integration)
+        self.assertIn('M55_MODEL_RESULT_PROTOCOL_V1.md', integration)
+        self.assertIn('/rehab_arm/model_state', integration)
+
+    def test_m55_model_result_protocol_is_suggestion_only(self) -> None:
+        protocol = (
+            REPO_ROOT
+            / 'docs'
+            / 'M55_MODEL_RESULT_PROTOCOL_V1.md'
+        ).read_text(encoding='utf-8')
+        server_sync = (
+            REPO_ROOT
+            / 'docs'
+            / 'SERVER_SYNC_API_DRAFT.md'
+        ).read_text(encoding='utf-8')
+
+        self.assertIn('/rehab_arm/model_state', protocol)
+        self.assertIn('rehab_arm_model_state_v1', protocol)
+        self.assertIn('model_suggestion_only_not_motion_permission', protocol)
+        self.assertIn('不得让 M55 的 `result_code` 直接映射成 `0x320`', protocol)
+        self.assertIn('M55_MODEL_RESULT_PROTOCOL_V1.md', server_sync)
+        self.assertIn('/model-state', server_sync)
+        self.assertIn('model_suggestion_only_not_motion_permission', server_sync)
 
 
 if __name__ == '__main__':

@@ -33,6 +33,7 @@ JSONL 第一行必须是：
   "source": "nanopi_ros_recorder",
   "sync_status": "local_only",
   "topics": ["/joint_states", "/rehab_arm/safety_state", "/rehab_arm/sensor_state"],
+  "optional_topics": ["/rehab_arm/motor_state", "/rehab_arm/model_state", "/rehab_arm/camera_keyframe"],
   "motion_allowed_expected": false
 }
 ```
@@ -53,7 +54,8 @@ Manifest 使用 `rehab_arm_manifest_v1`，列出每个 JSONL 文件：
       "device_id": "nanopi-m5",
       "robot_id": "rehab-arm-alpha",
       "schema_version": "rehab_arm_jsonl_v1",
-      "topics": ["/joint_states", "/rehab_arm/safety_state", "/rehab_arm/sensor_state"]
+      "topics": ["/joint_states", "/rehab_arm/safety_state", "/rehab_arm/sensor_state"],
+      "optional_topics": ["/rehab_arm/motor_state", "/rehab_arm/model_state", "/rehab_arm/camera_keyframe"]
     }
   ]
 }
@@ -228,7 +230,40 @@ Metadata 使用 `rehab_arm_camera_keyframe_v1`：
 }
 ```
 
-### 7. Simulation Readiness Upload
+### 7. Future Model State Upload
+
+第一版先由 JSONL session 记录 `/rehab_arm/model_state`。后续平台总控台可增加独立接口：
+
+```http
+POST /api/rehab-arm/v1/devices/{device_id}/model-state
+Content-Type: application/json
+```
+
+Payload 使用 `rehab_arm_model_state_v1`，语义见 [M55_MODEL_RESULT_PROTOCOL_V1.md](M55_MODEL_RESULT_PROTOCOL_V1.md)：
+
+```json
+{
+  "schema_version": "rehab_arm_model_state_v1",
+  "robot_id": "rehab-arm-alpha",
+  "device_id": "nanopi-m5",
+  "source": "m33_m55_bridge",
+  "model_results": [
+    {
+      "model_id": "m55_emg_intent_v1",
+      "model_version": "0.1.0",
+      "result_code": 10,
+      "label": "elbow_flexion_intent",
+      "confidence": 0.82,
+      "fresh": true
+    }
+  ],
+  "control_boundary": "model_suggestion_only_not_motion_permission"
+}
+```
+
+服务器/VLA 可以读取该 payload 作为上下文，但不能把 `result_code` 或 `confidence` 直接转换为 CAN、电流、力矩、速度或裸位置命令。
+
+### 8. Simulation Readiness Upload
 
 仿真主机可以上传 `check_sim_env --output` 生成的只读环境报告：
 

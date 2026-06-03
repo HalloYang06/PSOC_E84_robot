@@ -2556,7 +2556,7 @@ No such file or directory: /tmp/rehab_sim_collection/sim_demo_motion.jsonl
 
 - 用 `--topic-profile simulation_minimum` 检查基础仿真/采集数据。
 - 用 `--topic-profile hardware_telemetry` 检查电机数据是否包含 `/rehab_arm/motor_state`。
-- 用 `--topic-profile perception_vla` 检查视觉/VLA 数据是否包含 `/rehab_arm/camera_keyframe`。
+- 用 `--topic-profile perception_vla` 检查视觉/VLA 数据是否包含 `/rehab_arm/model_state` 和 `/rehab_arm/camera_keyframe`。
 - profile 检查只回答“这段 JSONL 是否包含该流程最小 topic 集”，不回答数据质量、运动幅度或安全许可；后面仍要跑 `validate_recording_quality.py` 和 M33 安全链路检查。
 
 状态：
@@ -2583,7 +2583,7 @@ No such file or directory: /tmp/rehab_sim_collection/sim_demo_motion.jsonl
 
 现象：
 
-- `perception_vla` profile 能确认 JSONL 里至少出现过 `/rehab_arm/camera_keyframe`。
+- `perception_vla` profile 能确认 JSONL 里至少出现过 `/rehab_arm/model_state` 和 `/rehab_arm/camera_keyframe`。
 - 但复杂任务规划、遮挡物处理、后续标注和训练需要足够多的关键帧；只有一帧通常不够。
 
 技巧：
@@ -2591,6 +2591,7 @@ No such file or directory: /tmp/rehab_sim_collection/sim_demo_motion.jsonl
 - 离线质量门使用 `--topic-profile perception_vla --min-camera-keyframes N`。
 - `N` 根据采集任务调整；短冒烟测试可以小，正式标注数据要更严格。
 - 该检查只看 JSONL topic 数量，不证明图片文件存在、清晰或深度有效；图片质量和标注质量要另做检查。
+- 如果新增 `/rehab_arm/model_state` 后旧 perception/VLA 测试失败，先补一条 `rehab_arm_model_state_v1` 样本，而不是降低 topic profile 要求。
 
 状态：
 
