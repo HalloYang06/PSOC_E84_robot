@@ -46,6 +46,14 @@ export type OfficeNetworkEdge = {
   closureActivityLabel: string;
   runtimePackageLabel: string;
   runtimePackageActivityLabel: string;
+  chainItems: Array<{
+    id: string;
+    title: string;
+    taskStatus: string;
+    receiptStatus: string;
+    activityLabel: string;
+    latestReceipt: string;
+  }>;
   needTone: string;
   taskTone: string;
   receiptTone: string;
@@ -167,6 +175,9 @@ export function OfficeNetwork({ projectId, nodes, edges }: OfficeNetworkProps) {
       ? `${selectedEdge.label}关系`
       : `${selectedEdge.count > 1 ? `${selectedEdge.count}条 ` : ""}${selectedEdge.label}`
     : "";
+  const realEdgeCount = edges.filter((edge) => edge.kind === "collaboration").length;
+  const relationshipEdgeCount = edges.filter((edge) => edge.kind === "relationship").length;
+  const blockedEdgeCount = edges.filter((edge) => edge.needTone === "blocked" || edge.taskTone === "blocked" || edge.receiptTone === "blocked").length;
 
   function moveNode(id: string, clientX: number, clientY: number) {
     const rect = mapRef.current?.getBoundingClientRect();
@@ -184,6 +195,12 @@ export function OfficeNetwork({ projectId, nodes, edges }: OfficeNetworkProps) {
 
   return (
     <div className={styles.officeMap} ref={mapRef}>
+      <div className={styles.officeNetworkStats} aria-label="NPC 办公网统计">
+        <span>真实协作 {realEdgeCount}</span>
+        <span>组织关系 {relationshipEdgeCount}</span>
+        <span data-alert={blockedEdgeCount ? "1" : undefined}>阻塞 {blockedEdgeCount}</span>
+        <span>当前显示 {filteredEdges.length}</span>
+      </div>
       <div className={styles.officeToolbar} aria-label="NPC 办公网工具">
         <label className={styles.officeSearch}>
           <span>搜索</span>
@@ -372,6 +389,16 @@ export function OfficeNetwork({ projectId, nodes, edges }: OfficeNetworkProps) {
           <div className={styles.officeEdgeReceipt}>
             <span>最新回执</span>
             <p>{selectedEdge.latestReceipt}</p>
+          </div>
+          <div className={styles.officeEdgeChainList}>
+            <span>这条线上的协作</span>
+            {selectedEdge.chainItems.slice(0, 5).map((item) => (
+              <div key={item.id} className={styles.officeEdgeChainItem}>
+                <strong>{item.title}</strong>
+                <p>{item.taskStatus} · {item.receiptStatus} · {item.activityLabel}</p>
+                <small>{item.latestReceipt}</small>
+              </div>
+            ))}
           </div>
           <div className={styles.officeEdgeClosure} data-active={selectedEdge.knowledgeClosureCount || selectedEdge.skillClosureCount ? "1" : undefined}>
             <span>闭环沉淀</span>

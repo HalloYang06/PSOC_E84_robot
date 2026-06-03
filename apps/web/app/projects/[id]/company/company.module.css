@@ -1518,6 +1518,36 @@
   pointer-events: none;
 }
 
+.officeNetworkStats {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: min(420px, calc(100% - 520px));
+  pointer-events: none;
+}
+
+.officeNetworkStats span {
+  min-height: 25px;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border: 1px solid rgba(158, 240, 191, 0.18);
+  border-radius: 999px;
+  background: rgba(8, 23, 20, 0.84);
+  color: rgba(255, 248, 232, 0.76);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.officeNetworkStats span[data-alert="1"] {
+  border-color: rgba(255, 117, 117, 0.3);
+  color: #ffb8b8;
+}
+
 .officeToolbar > * {
   pointer-events: auto;
 }
@@ -1926,6 +1956,7 @@
 
 .officeEdgeLifecycle span,
 .officeEdgeReceipt,
+.officeEdgeChainList,
 .officeEdgeClosure,
 .officeEdgeRuntime,
 .officeEdgeNext {
@@ -1952,6 +1983,7 @@
 }
 
 .officeEdgeReceipt span,
+.officeEdgeChainList > span,
 .officeEdgeClosure span,
 .officeEdgeRuntime span,
 .officeEdgeNext span {
@@ -1996,6 +2028,45 @@
   color: rgba(255, 248, 232, 0.76);
   font-size: 11px;
   line-height: 1.45;
+}
+
+.officeEdgeChainList {
+  max-height: 150px;
+  overflow: auto;
+}
+
+.officeEdgeChainItem {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  padding: 6px 0 0;
+  border-top: 1px solid rgba(231, 199, 104, 0.09);
+}
+
+.officeEdgeChainItem strong,
+.officeEdgeChainItem p,
+.officeEdgeChainItem small {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.officeEdgeChainItem strong {
+  color: var(--text);
+  font-size: 11px;
+}
+
+.officeEdgeChainItem p {
+  color: rgba(255, 232, 179, 0.74);
+  font-size: 10px;
+}
+
+.officeEdgeChainItem small {
+  color: rgba(255, 248, 232, 0.58);
+  font-size: 10px;
+  font-weight: 800;
 }
 
 .officeEdgeNext strong {
@@ -2626,11 +2697,22 @@
     min-height: 520px;
   }
 
+  .officeNetworkStats {
+    position: relative;
+    top: auto;
+    left: auto;
+    max-width: none;
+    padding: 8px 8px 0;
+  }
+
   .officeToolbar {
+    position: relative;
+    top: auto;
+    right: auto;
+    left: auto;
     align-items: stretch;
     flex-direction: column;
-    right: 8px;
-    left: 8px;
+    padding: 8px;
   }
 
   .officeSearch {

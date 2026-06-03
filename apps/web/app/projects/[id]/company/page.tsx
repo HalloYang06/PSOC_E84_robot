@@ -55,6 +55,14 @@ type OfficeEdge = {
   closureActivityLabel: string;
   runtimePackageLabel: string;
   runtimePackageActivityLabel: string;
+  chainItems: Array<{
+    id: string;
+    title: string;
+    taskStatus: string;
+    receiptStatus: string;
+    activityLabel: string;
+    latestReceipt: string;
+  }>;
   workbenchHref?: string;
   knowledgeHref?: string;
   skillHref?: string;
@@ -1239,9 +1247,34 @@ export default async function CompanyPage({
         closureActivityLabel: chain.closureActivityLabel,
         runtimePackageLabel: "待刷新",
         runtimePackageActivityLabel: "等待刷新",
+        chainItems: [{
+          id: chain.id,
+          title: chain.title,
+          taskStatus: chain.taskStatus,
+          receiptStatus: chain.receiptStatus,
+          activityLabel: chain.activityLabel,
+          latestReceipt: chain.latestReceipt,
+        }],
       });
     } else {
       existing.count += 1;
+      existing.chainItems = [
+        {
+          id: chain.id,
+          title: chain.title,
+          taskStatus: chain.taskStatus,
+          receiptStatus: chain.receiptStatus,
+          activityLabel: chain.activityLabel,
+          latestReceipt: chain.latestReceipt,
+        },
+        ...existing.chainItems.filter((item) => item.id !== chain.id),
+      ]
+        .sort((left, right) => {
+          const leftChain = collaborationChains.find((item) => item.id === left.id);
+          const rightChain = collaborationChains.find((item) => item.id === right.id);
+          return (rightChain?.activityTime ?? 0) - (leftChain?.activityTime ?? 0);
+        })
+        .slice(0, 5);
       if (chain.activityTime > existing.activityTime) {
         existing.label = chain.title;
         existing.needStatus = chain.needStatus;
@@ -1309,6 +1342,14 @@ export default async function CompanyPage({
         closureActivityLabel: "尚未沉淀",
         runtimePackageLabel: "待刷新",
         runtimePackageActivityLabel: "等待刷新",
+        chainItems: [{
+          id,
+          title: "同工位协作关系",
+          taskStatus: "同工位",
+          receiptStatus: "等待回执",
+          activityLabel: "等待协作",
+          latestReceipt: "还没有协作回执",
+        }],
       });
     }
   }
@@ -1343,6 +1384,14 @@ export default async function CompanyPage({
       closureActivityLabel: "尚未沉淀",
       runtimePackageLabel: "待刷新",
       runtimePackageActivityLabel: "等待刷新",
+      chainItems: [{
+        id,
+        title: "负责人协作关系",
+        taskStatus: "负责人",
+        receiptStatus: "等待回执",
+        activityLabel: "等待协作",
+        latestReceipt: "还没有协作回执",
+      }],
     });
   }
   const officeEdges = [...explicitOfficeEdges, ...officeRelationshipEdges.slice(0, Math.max(0, 14 - explicitOfficeEdges.length))];
@@ -1421,6 +1470,7 @@ export default async function CompanyPage({
       closureActivityLabel: edge.closureActivityLabel,
       runtimePackageLabel: runtimePackageSnapshotLabel(targetSnapshot),
       runtimePackageActivityLabel: runtimePackageActivityLabel(targetSnapshot),
+      chainItems: edge.chainItems,
       needTone: chainTone(edge.needStatus),
       taskTone: chainTone(edge.taskStatus),
       receiptTone: chainTone(edge.receiptStatus),
