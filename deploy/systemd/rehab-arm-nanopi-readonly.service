@@ -8,7 +8,13 @@ Type=simple
 User=pi
 Environment=WORKSPACE=/home/pi/rehab_arm_ros2_ws
 Environment=IFACE=can0
+Environment=CAN_BITRATE=1000000
+Environment=CAN_RESTART_MS=100
+Environment=RECOVER_MCP251XFD=1
 Environment=ROS_NETWORK_ENV=/home/pi/.rehab_arm_ros2_network
+Environment=ROS_LOG_DIR=/home/pi/.ros/log
+Environment=SKIP_SOCKETCAN_SETUP=1
+ExecStartPre=+/usr/local/bin/setup_nanopi_can.sh
 ExecStart=/usr/local/bin/start_nanopi_product_readonly.sh
 Restart=on-failure
 RestartSec=3

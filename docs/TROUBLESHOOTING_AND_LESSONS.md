@@ -4520,3 +4520,79 @@ Connection reset by 192.168.2.66 port 22
 - 检查产品服务时先看 `journalctl -u rehab-arm-nanopi-readonly.service`，日志必须包含 `enable_target_tx=False`。
 - 自启动验收时同时运行 `candump can0,320:7FF`，普通上电状态下必须没有 `0x320`。
 - 后续要做真实运动授权，应新增单独的运动授权状态机，不要直接改只读 service。
+
+### NanoPi systemd 应由 root 配 CAN、普通用户跑 ROS2
+
+现象：
+
+- 手动以 `pi` 用户运行 `ros2 run rehab_arm_psoc_bridge psoc_can_bridge_node.py ... enable_target_tx:=false` 可以发布 `/rehab_arm/motor_state` 和 `/joint_states`。
+- 直接让 systemd/root 跑完整 ROS2 bridge 时，容易遇到 ROS2 日志目录、DDS 用户环境或 rclpy logging 相关问题。
+- 把 service 改成 `User=pi` 后，如果启动脚本仍调用普通 `sudo mkdir/chmod/ip link`，又会报 `sudo: a terminal is required to read the password`。
+
+判断：
+
+- SocketCAN 初始化需要 root 权限；ROS2 bridge 更适合使用和手动调试一致的 `pi` 用户环境。
+- 这两个职责应拆开，不要让一个脚本在 systemd 非交互环境里临时 sudo。
+
+解决：
+
+- `rehab-arm-nanopi-readonly.service` 使用 `ExecStartPre=+/usr/local/bin/setup_nanopi_can.sh`，加号表示该预启动步骤以 root 权限运行。
+- service 主进程使用 `User=pi`，并设置 `Environment=SKIP_SOCKETCAN_SETUP=1`。
+- `start_nanopi_product_readonly.sh` 只创建 `/home/pi/.ros/log`，不再用 sudo 创建 ROS 日志目录；所有 root CAN 工作都交给 `setup_nanopi_can.sh`。
+
+技巧：
+
+- 验收先看 `systemctl is-active rehab-arm-nanopi-readonly.service` 和 `journalctl -u rehab-arm-nanopi-readonly.service -n 80 --no-pager`。
+- service 日志里应能看到 ROS bridge 参数 `enable_target_tx:=false`。
+- 再用 `ros2 topic echo --once /rehab_arm/motor_state`、`ros2 topic echo --once /joint_states`、`timeout 2 candump -L can0,320:7FF` 做状态和无运动帧确认。
+
+### MCP2518FD 上电后可能需要重载驱动
+
+现象：
+
+- NanoPi 上电后 `can0` 不存在。
+- `dmesg` 出现 `mcp251xfd spi3.0: Failed to detect MCP2518FD`。
+- 重载驱动后 `can0` 出现，并可配置为 1Mbps `ERROR-ACTIVE`。
+
+判断：
+
+- 这是 SPI/CAN 控制器上电探测层的问题，不是 ROS2、M33 协议或 MuJoCo 问题。
+- 没有 `can0` 时不要继续排 ROS topic 或 VLA。
+
+解决：
+
+```bash
+sudo modprobe -r mcp251xfd
+sudo modprobe mcp251xfd
+sudo ip link set can0 down 2>/dev/null || true
+sudo ip link set can0 type can bitrate 1000000 restart-ms 100 berr-reporting on
+sudo ip link set can0 up
+ip -details -statistics link show can0
+```
+
+当前产品自启动模板已把这段恢复逻辑收敛到 `deploy/scripts/setup_nanopi_can.sh`。
+
+技巧：
+
+- `can0 ERROR-ACTIVE` 且 `berr-counter tx 0 rx 0` 只是控制器健康；还要继续验证 M33 heartbeat 和 fresh motor feedback。
+- 只有看到 `0x321 -> 0x322`、`0x330~0x334`、必要时 7 号 `0x180007FD -> 0x334 fresh`，才说明链路到了 M33/电机反馈层。
+
+### MuJoCo JointState 的数组长度必须跟当前 profile 一致
+
+现象：
+
+- `medical_arm_6dof` shadow 输出 6 个 `name/position/velocity`，但 `effort` 只有 5 个元素。
+
+判断：
+
+- 节点仍用旧 5DOF `JOINT_NAMES` 常量生成 effort，而不是按当前 `self.joint_names`。
+- 这不会发真机运动，但会污染 ROS message 合同，后续记录器、服务器或 VLA 解析可能出错。
+
+解决：
+
+- `mujoco_sim_node.py` 使用 `msg.effort = [0.0] * len(self.joint_names)`。
+- `test_mujoco_backend.py` 增加静态合同，防止回退到旧 5DOF 常量。
+
+技巧：
+
+- 每次新增 profile 时检查 `/sim/medical_arm/joint_states` 的 `name/position/velocity/effort` 长度一致。

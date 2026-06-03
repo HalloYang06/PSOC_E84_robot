@@ -92,6 +92,16 @@ class MujocoBackendTests(unittest.TestCase):
     def test_missing_model_path_falls_back_to_generated_model(self) -> None:
         self.assertEqual(load_mjcf_xml('/path/that/does/not/exist.xml'), build_rehab_arm_mjcf())
 
+    def test_joint_state_effort_uses_active_joint_profile_length(self) -> None:
+        node_source = (
+            PACKAGE_DIR
+            / 'rehab_arm_sim_mujoco'
+            / 'mujoco_sim_node.py'
+        ).read_text(encoding='utf-8')
+
+        self.assertIn('msg.effort = [0.0] * len(self.joint_names)', node_source)
+        self.assertNotIn('msg.effort = [0.0] * len(JOINT_NAMES)', node_source)
+
 
 if __name__ == '__main__':
     unittest.main()

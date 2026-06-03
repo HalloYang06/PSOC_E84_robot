@@ -157,7 +157,7 @@ class MujocoSimNode(Node):
         msg.name = self.joint_names
         msg.position = list(self.positions)
         msg.velocity = list(self.velocities)
-        msg.effort = [0.0] * len(JOINT_NAMES)
+        msg.effort = [0.0] * len(self.joint_names)
         self.joint_pub.publish(msg)
 
     def publish_safety(self, state: str, detail: str) -> None:

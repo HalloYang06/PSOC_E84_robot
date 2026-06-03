@@ -53,6 +53,18 @@
 
 ### 2026-06-03
 
+- 产品自启动与 MuJoCo hardware shadow 基础链路完成实测打通：
+  - NanoPi `rehab-arm-nanopi-readonly.service` 已安装、`enabled`、`active`，产品上电后自动运行 `psoc_can_bridge_node.py`，参数固定 `enable_target_tx=false`。
+  - NanoPi 服务采用 root `ExecStartPre=+/usr/local/bin/setup_nanopi_can.sh` 配置 MCP2518FD/`can0`，随后以 `User=pi` 运行 ROS2 bridge；避免 root ROS2/DDS 环境问题，也避免 `pi` 用户在 systemd 中无交互 sudo。
+  - 现场复测发现 `mcp251xfd spi3.0: Failed to detect MCP2518FD` 时，重载 `mcp251xfd` 可恢复 `can0`；该恢复动作已放入 `setup_nanopi_can.sh`。
+  - NanoPi 实测：`can0` 为 `ERROR-ACTIVE`，M33 heartbeat `0x321 -> 0x322` 正常，`0x330~0x334` 周期状态存在，`/rehab_arm/motor_state`、`/rehab_arm/safety_state`、`/joint_states` 均可读。
+  - 7 号 EL05 外部电机当前作为临时 shadow 源：`0x334 fresh -> /joint_states forearm_rotation_joint=0.048`。
+  - 仿真主机 `rehab-arm-sim-host-shadow.service` 已安装、`enabled`、`active`，自动启动 `medical_arm_6dof_hardware_shadow.launch.py`。
+  - 无线 ROS2 端到端验证通过：仿真主机收到 NanoPi `/joint_states forearm_rotation_joint=0.048`；relay 发布 `/sim/medical_arm/joint_trajectory` 六关节位置 `[0.0, 0.0, 0.048, 0.0, 0.0, 0.0]`；MuJoCo `/sim/medical_arm/joint_states` 同步输出 6 个 joint，`name/position/velocity/effort` 长度均为 6。
+  - 安全复测：NanoPi 只读服务运行期间单独抓 `timeout 2 candump -L can0,320:7FF` 超时无输出，未发现自动 `0x320` 运动帧。
+  - 本地验证：`python -m unittest` 相关 30 项通过；`py_compile` 通过。远程仿真主机构建 `rehab_arm_description rehab_arm_sim_mujoco` 通过。
+  - 当前仍不是完整 medical_arm 6DOF 真机控制：M33 正式 6DOF 协议、其他 5 个真实关节 fresh feedback、方向/零点/传动比/患者限位仍待逐个接入和标定。
+
 - 电池上电后完成基础端到端打通：
   - NanoPi `can0` 恢复为 classic CAN 1Mbps `ERROR-ACTIVE`，`timeout 3 candump -L can0` 可见 M33 `0x330~0x334` 周期帧和 `0x321/0x322` 心跳。
   - M33 heartbeat 通过：`0x321#14 -> 0x322#A514070001020100`，发送后 `can0` 当前错误计数保持 `tx 0 rx 0`。

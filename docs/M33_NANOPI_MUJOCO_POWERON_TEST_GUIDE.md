@@ -12,6 +12,7 @@
 - 已实测对上的是 7 号 EL05 外部调试电机：M33 `0x334` fresh，NanoPi `/joint_states` 发布 `forearm_rotation_joint`，仿真主机 relay 映射到 6DOF MuJoCo `jian_xuanzhuan_joint`。
 - medical_arm 6DOF 正式关节还没有全部接到 M33：`jian_hengxiang_joint`、`jian_zongxiang_joint`、`zhou_zongxiang_joint`、两个腕部关节目前在 hardware shadow 中还是占位角。
 - 7 号不在机械臂上，只能做 `bench-debug + shadow-sim`，不能写进正式医疗臂映射。
+- 2026-06-03 已安装并实测产品/研发自启动：NanoPi `rehab-arm-nanopi-readonly.service` 和仿真主机 `rehab-arm-sim-host-shadow.service` 均为 `enabled/active`。正常上电后优先检查这两个服务；只有服务或话题异常时，再按本文手动分层排错。
 
 ## 0. 设备、路径和安全边界
 
@@ -40,6 +41,46 @@
 5. 准备急停/断电手段。
 
 不要一上电就发目标位置。先做只读检查。
+
+## 1.1 上电后先查自动服务
+
+NanoPi：
+
+```bash
+systemctl is-active rehab-arm-nanopi-readonly.service
+systemctl is-enabled rehab-arm-nanopi-readonly.service
+journalctl -u rehab-arm-nanopi-readonly.service -n 80 --no-pager
+timeout 2 candump -L can0,320:7FF
+```
+
+通过标准：
+
+- service 是 `active` 和 `enabled`。
+- 日志中 bridge 参数为 `enable_target_tx:=false`。
+- `candump can0,320:7FF` 超时无输出。
+
+仿真主机：
+
+```bash
+systemctl is-active rehab-arm-sim-host-shadow.service
+systemctl is-enabled rehab-arm-sim-host-shadow.service
+journalctl -u rehab-arm-sim-host-shadow.service -n 80 --no-pager
+```
+
+通过标准：
+
+- service 是 `active` 和 `enabled`。
+- 日志中出现 `Medical arm shadow relay ready` 和 `joint_profile=medical_arm_6dof`。
+
+如果 NanoPi 上 `can0` 不存在，并且 `dmesg` 出现 `mcp251xfd spi3.0: Failed to detect MCP2518FD`，执行或重启产品服务会调用 `setup_nanopi_can.sh` 自动尝试重载驱动。手动恢复命令：
+
+```bash
+sudo modprobe -r mcp251xfd
+sudo modprobe mcp251xfd
+sudo ip link set can0 down 2>/dev/null || true
+sudo ip link set can0 type can bitrate 1000000 restart-ms 100 berr-reporting on
+sudo ip link set can0 up
+```
 
 ## 2. NanoPi CAN 和 M33 在线检查
 

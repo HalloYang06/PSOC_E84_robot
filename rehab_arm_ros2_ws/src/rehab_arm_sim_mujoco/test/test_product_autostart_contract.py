@@ -21,8 +21,25 @@ class ProductAutostartContractTests(unittest.TestCase):
             / 'scripts'
             / 'start_nanopi_product_readonly.sh'
         ).read_text(encoding='utf-8')
+        setup_script = (
+            REPO_ROOT
+            / 'deploy'
+            / 'scripts'
+            / 'setup_nanopi_can.sh'
+        ).read_text(encoding='utf-8')
 
         self.assertIn('ExecStart=/usr/local/bin/start_nanopi_product_readonly.sh', service)
+        self.assertIn('ExecStartPre=+/usr/local/bin/setup_nanopi_can.sh', service)
+        self.assertIn('Environment=CAN_BITRATE=1000000', service)
+        self.assertIn('Environment=RECOVER_MCP251XFD=1', service)
+        self.assertIn('Environment=ROS_LOG_DIR=/home/pi/.ros/log', service)
+        self.assertIn('Environment=SKIP_SOCKETCAN_SETUP=1', service)
+        self.assertIn('User=pi', service)
+        self.assertIn('export ROS_LOG_DIR', script)
+        self.assertNotIn('$SUDO mkdir -p "$ROS_LOG_DIR"', script)
+        self.assertNotIn('$SUDO chmod 0775 "$ROS_LOG_DIR"', script)
+        self.assertIn('ip link set "$IFACE" type can bitrate "$CAN_BITRATE"', setup_script)
+        self.assertIn('modprobe mcp251xfd', setup_script)
         self.assertIn('-p enable_target_tx:=false', script)
         self.assertNotIn('-p enable_target_tx:=true', script)
         self.assertNotIn('m33 target', script)

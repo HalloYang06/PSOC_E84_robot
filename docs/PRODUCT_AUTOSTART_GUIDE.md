@@ -9,6 +9,14 @@
 | `rehab-arm-nanopi-readonly.service` | NanoPi | 自动启动 M33/CAN 到 ROS2 的只读 bridge | 否，固定 `enable_target_tx=false` |
 | `rehab-arm-sim-host-shadow.service` | Linux 仿真主机 | 研发模式自动启动 MuJoCo 6DOF hardware shadow | 否，只接收 NanoPi `/joint_states` |
 
+2026-06-03 实测基准：
+
+- NanoPi 服务已安装并 `enabled/active`，上电后自动拉起 `can0` 和只读 ROS2 bridge。
+- 仿真主机服务已安装并 `enabled/active`，可自动启动 MuJoCo 6DOF hardware shadow。
+- 当前 hardware shadow 输入为外部 7 号 EL05：`0x334 -> /joint_states forearm_rotation_joint -> jian_xuanzhuan_joint`。
+- `/sim/medical_arm/joint_trajectory` 和 `/sim/medical_arm/joint_states` 均为 6 个 medical arm joint；未接电机的 5 个关节仍是显式占位角。
+- NanoPi 只读服务运行时，`candump can0,320:7FF` 不应出现输出。实测为超时无 `0x320`。
+
 ## 当前产品上电策略
 
 上电后应该按这个安全层级启动：
@@ -28,11 +36,18 @@ enable_target_tx=false
 
 ## NanoPi 安装只读自启动
 
+该 service 使用 `ExecStartPre=+/usr/local/bin/setup_nanopi_can.sh` 以 root 权限拉起 `can0`，随后用 `User=pi` 运行 ROS2 bridge。这样底层 CAN 初始化有权限，ROS2/DDS 仍保持和手动调试一致的用户环境。
+ROS2 日志目录固定为 `/home/pi/.ros/log`，避免 systemd 环境下 `rclpy` 找不到用户日志目录。
+`start_nanopi_product_readonly.sh` 在 `SKIP_SOCKETCAN_SETUP=1` 时不再执行 sudo；所有需要 root 的 CAN 初始化都由 `setup_nanopi_can.sh` 完成。
+
 在 NanoPi 上执行一次：
 
 ```bash
 sudo install -m 0755 deploy/scripts/start_nanopi_product_readonly.sh \
   /usr/local/bin/start_nanopi_product_readonly.sh
+
+sudo install -m 0755 deploy/scripts/setup_nanopi_can.sh \
+  /usr/local/bin/setup_nanopi_can.sh
 
 sudo install -m 0644 deploy/systemd/rehab-arm-nanopi-readonly.service \
   /etc/systemd/system/rehab-arm-nanopi-readonly.service
@@ -53,8 +68,10 @@ journalctl -u rehab-arm-nanopi-readonly.service -n 80 --no-pager
 
 - service 是 `active (running)`。
 - 日志出现 `PSoC CAN bridge ready ... enable_target_tx=False`。
+- 如果上电时 MCP2518FD 没有及时探测到，启动脚本会尝试重载 `mcp251xfd` 并按 1Mbps 拉起 `can0`。
 - `candump can0,320:7FF` 没有任何 `0x320`。
 - `/rehab_arm/motor_state` 有 M33 状态；只有 fresh motor feedback 存在时才会有 `/joint_states`。
+- 以 7 号外部电机做当前 shadow 联调时，`/joint_states` 应包含 `forearm_rotation_joint`，典型位置约 `0.048 rad`；该值不是 6 号正式装机反馈。
 
 如果要停止：
 
@@ -94,6 +111,15 @@ journalctl -u rehab-arm-sim-host-shadow.service -n 80 --no-pager
 ros2 topic echo --once /sim/medical_arm/joint_states sensor_msgs/msg/JointState
 ```
 
+通过标准：
+
+- service 是 `active (running)`。
+- 日志出现 `Medical arm shadow relay ready: /joint_states -> /sim/medical_arm/joint_trajectory`。
+- `/sim/medical_arm/joint_trajectory` 包含 6 个 joint：`jian_hengxiang_joint`、`jian_zongxiang_joint`、`jian_xuanzhuan_joint`、`zhou_zongxiang_joint`、`wanbu_zongxiang_joint`、`wanbu_hengxiang_joint`。
+- 当前只有 `jian_xuanzhuan_joint` 来自外部 7 号 EL05 的 live shadow；其他 joint 是占位角。
+
+仿真主机和 NanoPi 是无线 ROS2 连接。当前只读状态和 MuJoCo shadow 可接受这类延迟；正式闭环控制不能依赖仿真主机无线链路，最终运动闭环仍必须在 NanoPi/M33/驱动本地安全链路内完成。
+
 ## 上电后自动启动不等于自动运动
 
 必须区分：
@@ -121,6 +147,7 @@ ros2 topic echo --once /sim/medical_arm/joint_states sensor_msgs/msg/JointState
 | 文件 | 用途 |
 |---|---|
 | `deploy/scripts/start_nanopi_product_readonly.sh` | NanoPi 产品默认只读启动脚本 |
+| `deploy/scripts/setup_nanopi_can.sh` | NanoPi 开机拉起 MCP2518FD/can0 的 root 预启动脚本 |
 | `deploy/scripts/start_sim_host_medical_arm_shadow.sh` | 仿真主机研发 shadow 启动脚本 |
 | `deploy/systemd/rehab-arm-nanopi-readonly.service` | NanoPi systemd 服务模板 |
 | `deploy/systemd/rehab-arm-sim-host-shadow.service` | 仿真主机 systemd 服务模板 |
