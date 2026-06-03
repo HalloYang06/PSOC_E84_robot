@@ -233,14 +233,35 @@ ros2 launch rehab_arm_sim_mujoco medical_arm_6dof_hardware_shadow.launch.py
 | 节点 | 作用 |
 |---|---|
 | `mujoco_sim_node.py` | 运行 `joint_profile=medical_arm_6dof`，发布 `/sim/medical_arm/joint_states` |
-| `medical_arm_shadow_relay_node.py` | 订阅 NanoPi `/joint_states`，默认把 `forearm_rotation_joint` 映射成 `/sim/medical_arm/joint_trajectory` 的 `jian_xuanzhuan_joint` |
+| `medical_arm_shadow_relay_node.py` | 订阅 NanoPi `/joint_states`，默认发布完整 6 关节 `/sim/medical_arm/joint_trajectory`；其中 `forearm_rotation_joint` 映射到 `jian_xuanzhuan_joint`，未接电机的关节使用占位角 |
 
 当前已验证链路：
 
 ```text
 motor7 EL05 -> M33 0x334 fresh -> NanoPi /joint_states forearm_rotation_joint
--> wireless ROS2 -> sim host relay -> /sim/medical_arm/joint_trajectory jian_xuanzhuan_joint
+-> wireless ROS2 -> sim host relay -> /sim/medical_arm/joint_trajectory full 6DOF
 -> MuJoCo 6DOF shadow -> /sim/medical_arm/joint_states
+```
+
+当前 relay 参数边界：
+
+| 参数 | 当前值 | 后续怎么补 |
+|---|---|---|
+| `joint_map_json` | `{"forearm_rotation_joint":"jian_xuanzhuan_joint"}` | 其他电机接入并能发布真实输出端 joint 后，逐个补 source->target 映射 |
+| `publish_full_target` | `true` | 6DOF 主线保持 true；旧稀疏转发测试才改 false |
+| `target_joint_names_json` | 6 个 medical arm joint | 不随电机 ID 改动，除非 URDF/MJCF joint schema 版本升级 |
+| `placeholder_positions_json` | 全部 `0.0` | 未接关节的仿真保持位；现场标定安全姿态后可改成非零保持角 |
+
+2026-06-03 实测通过样例：
+
+```text
+NanoPi /joint_states:
+  forearm_rotation_joint = 0.049
+
+/sim/medical_arm/joint_trajectory:
+  joint_names = [jian_hengxiang_joint, jian_zongxiang_joint, jian_xuanzhuan_joint,
+                 zhou_zongxiang_joint, wanbu_zongxiang_joint, wanbu_hengxiang_joint]
+  positions = [0.0, 0.0, 0.049, 0.0, 0.0, 0.0]
 ```
 
 ### 阶段 2：NanoPi 只读状态上行

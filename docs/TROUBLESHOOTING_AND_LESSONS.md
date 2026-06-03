@@ -4458,3 +4458,27 @@ Connection reset by 192.168.2.66 port 22
 
 - 调试时不要一次关闭多道门。先看是 PSoC/M33 motion gate 拒绝，还是 fresh feedback gate 拒绝。
 - 任何台架参数放宽都必须保持 `enable_target_tx=false`，直到单独安全审查通过。
+
+### 6DOF MuJoCo shadow 要发布完整关节，但不能伪造硬件在线
+
+现象：
+
+- 只有外部 7 号 EL05 接入时，NanoPi `/joint_states` 当前只发布 legacy `forearm_rotation_joint`。
+- MuJoCo medical_arm 6DOF 模型需要 6 个目标关节：`jian_hengxiang_joint`、`jian_zongxiang_joint`、`jian_xuanzhuan_joint`、`zhou_zongxiang_joint`、`wanbu_zongxiang_joint`、`wanbu_hengxiang_joint`。
+
+判断：
+
+- 为了让 MuJoCo 主线始终看到完整 6 关节 trajectory，relay 可以给未接关节发布明确占位角。
+- 这不是 fresh hardware feedback，不能写成真实电机已接入，也不能绕过 NanoPi/M33 的真机安全门。
+
+解决：
+
+- `medical_arm_shadow_relay_node.py` 默认 `publish_full_target=true`。
+- 当前只把 `forearm_rotation_joint -> jian_xuanzhuan_joint` 作为真实来源映射，其他关节来自 `placeholder_positions_json`。
+- 后续每接入一个真实电机，先让 NanoPi `/joint_states` 发布输出端关节，再把对应 source->target 补进 `joint_map_json`。
+
+技巧：
+
+- 验证主线时看 `/sim/medical_arm/joint_trajectory` 是否包含 6 个 joint，而不是只看某一个关节是否动。
+- 文档和日志必须区分 `mapped live joint` 与 `placeholder joint`。
+- 在有 ROS 环境的机器上，`trajectory.points[0].positions` 可能是 `array('d')`；单测断言时用 `list(...)`，兼容本地 fallback 和真实 ROS message。

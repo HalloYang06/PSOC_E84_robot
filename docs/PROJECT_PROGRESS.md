@@ -62,8 +62,11 @@
   - 仿真主机通过无线 ROS2 看到 NanoPi 真实状态：`cal@192.168.2.46` 可 `ros2 topic echo --once /joint_states`，收到 `forearm_rotation_joint=0.049`。
   - 新增并验证 `medical_arm_shadow_relay_node.py`：默认把 NanoPi legacy `forearm_rotation_joint` 映射到 MuJoCo 6DOF `jian_xuanzhuan_joint`。
   - 新增并验证 `medical_arm_6dof_hardware_shadow.launch.py`：远程启动后 `/sim/medical_arm/joint_states` 输出 6 个真实 medical arm joint，其中 `jian_xuanzhuan_joint=0.049`，证明 `7号外部电机 -> NanoPi/M33 -> ROS -> 无线 -> MuJoCo 6DOF shadow` 基础链路已通。
+  - 继续完善 6 关节 hardware shadow 主线：`medical_arm_shadow_relay_node.py` 默认 `publish_full_target=true`，向 `/sim/medical_arm/joint_trajectory` 发布完整 6 个 medical arm joint；当前只有 `forearm_rotation_joint -> jian_xuanzhuan_joint` 来自 7 号真实反馈，其他 5 个关节使用显式 `placeholder_positions_json` 保持位。
+  - 2026-06-03 远端联调复测通过：NanoPi `/joint_states` 为 `forearm_rotation_joint=0.049`；仿真主机 `/sim/medical_arm/joint_trajectory` 输出 `jian_hengxiang_joint`、`jian_zongxiang_joint`、`jian_xuanzhuan_joint`、`zhou_zongxiang_joint`、`wanbu_zongxiang_joint`、`wanbu_hengxiang_joint`，位置 `[0.0, 0.0, 0.049, 0.0, 0.0, 0.0]`；`/sim/medical_arm/joint_states` 同步为 6 关节状态。
+  - 本轮验证：本地 `python -m unittest ...test_medical_arm_shadow_relay_node.py ...test_mujoco_backend.py ...test_medical_arm_6dof_schema.py` 通过 22 项；本地 `py_compile` 通过；远程仿真主机 `./build_ros2.sh --packages-select rehab_arm_sim_mujoco` 和 `test_medical_arm_shadow_relay_node.py` 通过。
   - 测试后已关闭 7 号 active-report 并发送 stop；`0x334` 回到 stale，`can0` 仍为 `ERROR-ACTIVE`。
-  - 未完成：还没有把 7 号 shadow 作为正式 6 号替代写进真机执行，只是 MuJoCo shadow/demo；4 号齿轮比例、1/2 号腕部对应关系、各关节零点/方向/限位仍待标定。
+  - 未完成：还没有把其他 5 个关节接入真实电机反馈；7 号 shadow 仍只是 MuJoCo shadow/demo，不是正式 6 号真机执行；4 号齿轮比例、1/2 号腕部对应关系、各关节零点/方向/限位仍待标定。
 
 - 搭建 medical_arm 6DOF MuJoCo shadow 基础框架：
   - 新增 `rehab_arm_sim_mujoco/models/medical_arm_6dof.xml`，包含 6 个真实 URDF joint：`jian_hengxiang_joint`、`jian_zongxiang_joint`、`jian_xuanzhuan_joint`、`zhou_zongxiang_joint`、`wanbu_zongxiang_joint`、`wanbu_hengxiang_joint`。

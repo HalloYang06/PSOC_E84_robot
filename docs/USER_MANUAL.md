@@ -376,13 +376,32 @@ ros2 topic echo --once /sim/medical_arm/joint_trajectory trajectory_msgs/msg/Joi
 
 ```text
 /sim/medical_arm/joint_trajectory:
-  joint_names: [jian_xuanzhuan_joint]
-  positions: [与 forearm_rotation_joint 相同]
+  joint_names:
+    [jian_hengxiang_joint, jian_zongxiang_joint, jian_xuanzhuan_joint,
+     zhou_zongxiang_joint, wanbu_zongxiang_joint, wanbu_hengxiang_joint]
+  positions:
+    [0.0, 0.0, 与 forearm_rotation_joint 相同, 0.0, 0.0, 0.0]
 
 /sim/medical_arm/joint_states:
   name 包含 6 个 medical arm joint
   jian_xuanzhuan_joint 位置跟随 7号
+  其他未接电机的关节保持 placeholder_positions_json 里的占位角
 ```
+
+`medical_arm_6dof_hardware_shadow.launch.py` 当前显式配置：
+
+```text
+joint_map_json={"forearm_rotation_joint":"jian_xuanzhuan_joint"}
+publish_full_target=true
+target_joint_names_json=[6 个 medical arm joint]
+placeholder_positions_json=所有关节默认 0.0
+```
+
+后续接入其他电机时，先不要改 MuJoCo 模型；优先改 relay 参数：
+
+- 新电机能在 NanoPi `/joint_states` 发布真实输出端关节名后，把该 source joint 加入 `joint_map_json`。
+- 只想让某个未接关节在仿真里保持一个安全姿态时，改 `placeholder_positions_json`。
+- 旧的只转发已映射关节行为可用 `publish_full_target=false` 恢复，但当前 6DOF 主线默认使用完整 6 关节 trajectory。
 
 小幅测试 7号 formal M33 路径：
 

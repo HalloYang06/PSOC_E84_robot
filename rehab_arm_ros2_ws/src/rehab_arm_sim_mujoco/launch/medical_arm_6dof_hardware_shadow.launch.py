@@ -27,6 +27,16 @@ def generate_launch_description():
                 'source_joint_state_topic': '/joint_states',
                 'target_trajectory_topic': '/sim/medical_arm/joint_trajectory',
                 'joint_map_json': '{"forearm_rotation_joint":"jian_xuanzhuan_joint"}',
+                'publish_full_target': True,
+                'target_joint_names_json': (
+                    '["jian_hengxiang_joint","jian_zongxiang_joint","jian_xuanzhuan_joint",'
+                    '"zhou_zongxiang_joint","wanbu_zongxiang_joint","wanbu_hengxiang_joint"]'
+                ),
+                'placeholder_positions_json': (
+                    '{"jian_hengxiang_joint":0.0,"jian_zongxiang_joint":0.0,'
+                    '"jian_xuanzhuan_joint":0.0,"zhou_zongxiang_joint":0.0,'
+                    '"wanbu_zongxiang_joint":0.0,"wanbu_hengxiang_joint":0.0}'
+                ),
                 'duration_sec': 0.25,
             }],
         ),
