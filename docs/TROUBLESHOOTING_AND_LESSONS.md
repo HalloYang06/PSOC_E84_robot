@@ -4112,6 +4112,15 @@ Connection reset by 192.168.2.66 port 22
 - 先运行 `/home/pi/nanopi_motor_feedback_readiness.sh`，再运行 `SEND_M33_HEARTBEAT=1 /home/pi/nanopi_motor_feedback_readiness.sh`。
 - 如果第二个仍然 0 帧，暂停 ROS 轨迹开发，先恢复 M33 `0x322` 心跳回复。
 
+更新 2026-06-03：
+
+- NanoPi `can0` 可拉起到 `ERROR-ACTIVE`、1Mbps，MCP2518FD `dmesg` 初始化正常。
+- 被动 `candump -L can0` 仍为 0 帧。
+- 发送 M33 heartbeat `0x321` 只有 TX，没有 `0x322`，且 `TX errors/dropped`、`bus-off/re-started` 增加。
+- 发送 7 号 EL05 非运动 stop/clear-fault 也只有 TX，没有 7 号 active-report 或 M33 `0x334`。
+- 判断升级为：NanoPi CAN 控制器工作，但当前总线上没有任何在线节点 ACK/反馈，优先查 M33/电机侧供电、共地、CANH/CANL、终端、线束分支、收发器使能和驱动在线状态。
+- 在恢复至少一个 ACK/反馈节点前，不要继续发 7 号 active-report、位置、速度、力矩或 ROS `0x320`。
+
 ### stale 电机槽位不能作为轨迹起点
 
 现象：

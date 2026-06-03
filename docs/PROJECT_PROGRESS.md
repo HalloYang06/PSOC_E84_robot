@@ -51,6 +51,18 @@
 
 ## 已完成
 
+### 2026-06-03
+
+- 完成 NanoPi CAN 无输出现场非运动诊断：
+  - NanoPi `pi@192.168.2.66` 在线，`can0` 可拉起为 classic CAN 1Mbps `ERROR-ACTIVE`，当前 `berr-counter tx 0 rx 0`。
+  - `timeout 5 candump -L can0` 无任何被动帧。
+  - 只发送 M33 heartbeat：`python3 /home/pi/nanopi_can_master.py heartbeat --iface can0 --seq 1 --wait 1`，只见 `TX STD 0x321`，无 `RX 0x322`。
+  - 重置 `can0` 后再次发送 heartbeat `seq=2`，仍无 M33 回复，`TX errors/dropped` 和 `bus-off/re-started` 继续增加。
+  - 只发送 7 号 EL05 非运动 stop/clear-fault：`private stop --motor 7 --clear-fault`，只见 `TX EXT 0x0400FD07`，无 `0x180007FD/0x188007FD/0x334` 反馈，错误计数继续增加。
+  - `dmesg` 显示 MCP2518FD 初始化正常，但测试期间出现多次 `can0: bus-off, scheduling restart in 100 ms`。
+  - 结论：当前不是 ROS/MuJoCo/VLA 问题，也不是单个协议解析问题；NanoPi CAN 控制器正常，但总线上当前没有 M33 或电机节点 ACK/反馈。下一步需要现场检查 M33/电机侧供电、共地、CANH/CANL、终端电阻、线束分支、M33 CAN 收发器使能和电机驱动在线状态。
+  - 安全：本轮没有发送 `0x320` 目标、位置、速度、力矩或电流命令；仅发送 heartbeat 和 stop/clear-fault。
+
 ### 2026-06-02
 
 - 收紧旧 5 关节台架表、新 6 关节 medical_arm 表和 7 号 EL05 临时用途边界：
