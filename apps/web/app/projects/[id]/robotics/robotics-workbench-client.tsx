@@ -984,18 +984,19 @@ function DeviceDataTile({
                   <input type="hidden" name="bound_npc" value={selectedNpcId} />
                   <input type="hidden" name="bound_npc_label" value={assistantSeat ? seatName(assistantSeat, "协助 NPC") : ""} />
                   <button type="submit" name="capture_mode" value="start" onClick={() => setStateSyncEnabled(true)}>开始只读状态同步</button>
+                  <button type="submit" name="capture_mode" value="stop" onClick={() => setStateSyncEnabled(false)}>关闭并生成片段</button>
                 </form>
               ) : (
                 <button type="button" onClick={() => setStateSyncEnabled(true)}>页面跟随最近状态</button>
               )}
-              <button type="button" onClick={() => setStateSyncEnabled(false)}>关闭数据同步</button>
+              {!stateComputerId ? <button type="button" onClick={() => setStateSyncEnabled(false)}>停止页面跟随</button> : null}
               <button type="button" onClick={() => setShowOpenSourceMesh((value) => !value)}>
                 {showOpenSourceMesh ? "隐藏开源 mesh" : "加载开源 mesh"}
               </button>
             </div>
             <p data-testid="robotics-robot-state-sync-hint">
               {stateComputerId
-                ? `只读同步会按 ${stateChannels.length || 1} 个状态字段排队到目标电脑；停止和沉淀片段仍在串口与设备调试窗口完成。`
+                ? `只读同步会按 ${stateChannels.length || 1} 个状态字段排队到目标电脑；关闭时会生成采集片段，可继续进入数据标注和图表实验。`
                 : "当前设备只提供服务器最近状态，还没有绑定可执行电脑；需要持续采集时，切到“串口与设备”创建 ROS 或接口调试窗口。"}
             </p>
             <MotorState3DViewer

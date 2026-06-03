@@ -53,6 +53,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="After clicking sync, assert a safe robotics.capture.start command reaches the bound runner inbox.",
     )
+    parser.add_argument("--click-stop", action="store_true", help="After starting sync, click the stop-and-segment button.")
+    parser.add_argument(
+        "--expect-stop-command",
+        action="store_true",
+        help="After clicking stop, assert a safe robotics.capture.stop command reaches the bound runner inbox.",
+    )
     return parser.parse_args()
 
 
@@ -198,10 +204,11 @@ def parse_command_body(item: dict[str, object]) -> dict[str, object]:
     return body if isinstance(body, dict) else {}
 
 
-def find_new_capture_start_command(
+def find_new_capture_command(
     items: list[dict[str, object]],
     *,
     before_ids: set[str],
+    kind: str,
     project_id: str,
     device_id: str,
     computer_node_id: str,
@@ -213,7 +220,7 @@ def find_new_capture_start_command(
         if text(item.get("message_type") or item.get("messageType")) != "runner_command":
             continue
         body = parse_command_body(item)
-        if text(body.get("kind")) != "robotics.capture.start":
+        if text(body.get("kind")) != kind:
             continue
         if text(body.get("project_id")) != project_id:
             continue
@@ -226,6 +233,24 @@ def find_new_capture_start_command(
             continue
         return {"message": item, "body": body}
     return None
+
+
+def summarize_runner_command(found: dict[str, object]) -> dict[str, object]:
+    command_message = found["message"] if isinstance(found.get("message"), dict) else {}
+    command_body = found["body"] if isinstance(found.get("body"), dict) else {}
+    return {
+        "id": command_message.get("id"),
+        "runner_id": command_message.get("recipient_id") or command_message.get("recipientId"),
+        "status": command_message.get("status"),
+        "title": command_message.get("title"),
+        "kind": command_body.get("kind"),
+        "project_id": command_body.get("project_id"),
+        "computer_node_id": command_body.get("computer_node_id"),
+        "interface_id": command_body.get("interface_id"),
+        "readonly": command_body.get("readonly"),
+        "sample_hz": command_body.get("sample_hz"),
+        "platform_artifact_path": command_body.get("platform_artifact_path"),
+    }
 
 
 def screenshot(cdp: object, output: Path) -> None:
@@ -299,7 +324,7 @@ def main() -> int:
     try:
         inbox_before: list[dict[str, object]] = []
         before_ids: set[str] = set()
-        if args.expect_runner_command:
+        if args.expect_runner_command or args.expect_stop_command:
             if not binding["runner_id"]:
                 raise RuntimeError("Cannot verify runner command because the selected computer has no bound runner_id.")
             inbox_before = runner_inbox(api_base, binding["runner_id"])
@@ -421,15 +446,17 @@ def main() -> int:
                 if not clicked_state["ok"]:
                     report["failures"].append("bound-nanopi-robotics-sync-after-click")  # type: ignore[union-attr]
 
+        start_command_ids = set(before_ids)
         if args.expect_runner_command:
             found: dict[str, object] | None = None
             deadline = time.time() + 45
             latest_inbox: list[dict[str, object]] = []
             while time.time() < deadline:
                 latest_inbox = runner_inbox(api_base, binding["runner_id"])
-                found = find_new_capture_start_command(
+                found = find_new_capture_command(
                     latest_inbox,
                     before_ids=before_ids,
+                    kind="robotics.capture.start",
                     project_id=args.project_id,
                     device_id=args.device_id,
                     computer_node_id=binding["computer_node_id"],
@@ -441,8 +468,6 @@ def main() -> int:
             if not found:
                 report["failures"].append("runner-command-not-enqueued")  # type: ignore[union-attr]
             else:
-                command_message = found["message"] if isinstance(found.get("message"), dict) else {}
-                command_body = found["body"] if isinstance(found.get("body"), dict) else {}
                 forbidden_command_kinds = {
                     "can.write",
                     "serial.write",
@@ -452,20 +477,86 @@ def main() -> int:
                     "robotics.motion.start",
                     "motor.command",
                 }
-                report["runner_command"] = {
-                    "id": command_message.get("id"),
-                    "runner_id": command_message.get("recipient_id") or command_message.get("recipientId"),
-                    "status": command_message.get("status"),
-                    "title": command_message.get("title"),
-                    "kind": command_body.get("kind"),
-                    "project_id": command_body.get("project_id"),
-                    "computer_node_id": command_body.get("computer_node_id"),
-                    "interface_id": command_body.get("interface_id"),
-                    "readonly": command_body.get("readonly"),
-                    "sample_hz": command_body.get("sample_hz"),
-                }
+                command_body = found["body"] if isinstance(found.get("body"), dict) else {}
+                report["runner_command"] = summarize_runner_command(found)
+                start_command_ids = {text(item.get("id")) for item in latest_inbox if text(item.get("id"))}
                 if text(command_body.get("kind")).lower() in forbidden_command_kinds:
                     report["failures"].append("unsafe-runner-command-kind")  # type: ignore[union-attr]
+
+        if args.click_stop:
+            clicked_stop = cdp_eval(
+                cdp,
+                """
+                (() => {
+                  const controls = Array.from(document.querySelectorAll('button, input[type="submit"]'));
+                  const target = controls.find((node) => {
+                    const text = (node.innerText || node.value || '').trim();
+                    return text.includes('关闭并生成片段') || text.includes('停止并生成片段');
+                  });
+                  if (!target) return false;
+                  target.scrollIntoView({ block: 'center', inline: 'center' });
+                  target.click();
+                  return true;
+                })()
+                """,
+            )
+            if not clicked_stop:
+                report["failures"].append("click-stop-button-not-found")  # type: ignore[union-attr]
+            else:
+                wait_for(
+                    cdp,
+                    """
+                    (() => {
+                      const body = document.body?.innerText || '';
+                      return body.includes('已生成采集片段')
+                        || body.includes('关闭并生成片段')
+                        || body.includes('停止并生成片段');
+                    })()
+                    """,
+                    timeout_seconds=30,
+                )
+                stopped_state = page_state(cdp, args.device_id, binding["computer_node_id"])
+                stopped_shot = output_dir / f"bound-nanopi-robotics-sync-stopped-{args.viewport_width}x{args.viewport_height}-{stamp}.png"
+                screenshot(cdp, stopped_shot)
+                stopped_state["screenshot"] = str(stopped_shot)
+                stopped_state["clickedStop"] = True
+                stopped_state["hasStopSegmentButton"] = "关闭并生成片段" in str(stopped_state.get("bodySample") or "") or "停止并生成片段" in str(stopped_state.get("bodySample") or "")
+                stopped_state["ok"] = (
+                    stopped_state["hasDevice"]
+                    and not stopped_state["hasHorizontalOverflow"]
+                    and not stopped_state["forbidden"]
+                )
+                report["pages"].append(stopped_state)  # type: ignore[union-attr]
+                if not stopped_state["ok"]:
+                    report["failures"].append("bound-nanopi-robotics-sync-after-stop")  # type: ignore[union-attr]
+
+        if args.expect_stop_command:
+            found_stop: dict[str, object] | None = None
+            deadline = time.time() + 45
+            latest_stop_inbox: list[dict[str, object]] = []
+            while time.time() < deadline:
+                latest_stop_inbox = runner_inbox(api_base, binding["runner_id"])
+                found_stop = find_new_capture_command(
+                    latest_stop_inbox,
+                    before_ids=start_command_ids,
+                    kind="robotics.capture.stop",
+                    project_id=args.project_id,
+                    device_id=args.device_id,
+                    computer_node_id=binding["computer_node_id"],
+                )
+                if found_stop:
+                    break
+                time.sleep(1)
+            report["runner_inbox_after_stop_count"] = len(latest_stop_inbox)
+            if not found_stop:
+                report["failures"].append("runner-stop-command-not-enqueued")  # type: ignore[union-attr]
+            else:
+                stop_body = found_stop["body"] if isinstance(found_stop.get("body"), dict) else {}
+                report["runner_stop_command"] = summarize_runner_command(found_stop)
+                if text(stop_body.get("kind")).lower() != "robotics.capture.stop" or stop_body.get("readonly") is not True:
+                    report["failures"].append("unsafe-runner-stop-command")  # type: ignore[union-attr]
+                if not text(stop_body.get("platform_artifact_path")):
+                    report["failures"].append("stop-command-missing-artifact-path")  # type: ignore[union-attr]
         report["verdict"] = "passed" if not report["failures"] else "failed"
         report_path = output_dir / "report.json"
         report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
