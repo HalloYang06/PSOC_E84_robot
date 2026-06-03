@@ -33,6 +33,32 @@ class CheckSimEnvTests(unittest.TestCase):
         self.assertEqual(report['schema_version'], 'rehab_arm_sim_env_check_v1')
         self.assertEqual(report['readiness'], 'ready_with_fallback_sim')
         self.assertEqual(report['joint_contract']['count'], 5)
+        self.assertEqual(report['joint_contract']['profile'], 'legacy_5dof')
+        self.assertEqual(report['medical_arm_6dof_contract']['profile'], 'medical_arm_6dof')
+        self.assertEqual(report['medical_arm_6dof_contract']['count'], 6)
+        self.assertEqual(
+            report['medical_arm_6dof_contract']['names'],
+            [
+                'jian_hengxiang_joint',
+                'jian_zongxiang_joint',
+                'jian_xuanzhuan_joint',
+                'zhou_zongxiang_joint',
+                'wanbu_zongxiang_joint',
+                'wanbu_hengxiang_joint',
+            ],
+        )
+        self.assertEqual(
+            report['medical_arm_6dof_topic_contract']['shadow_trajectory_command']['topic'],
+            '/sim/medical_arm/joint_trajectory',
+        )
+        self.assertEqual(
+            report['medical_arm_6dof_topic_contract']['hardware_shadow_current_mapping'],
+            {'forearm_rotation_joint': 'jian_xuanzhuan_joint'},
+        )
+        self.assertEqual(
+            report['medical_arm_6dof_topic_contract']['unconnected_joint_policy'],
+            'publish_full_6dof_target_with_explicit_placeholder_positions',
+        )
         self.assertEqual(
             report['topic_contract']['trajectory_command']['topic'],
             '/arm_controller/joint_trajectory',
@@ -44,6 +70,10 @@ class CheckSimEnvTests(unittest.TestCase):
         self.assertEqual(report['topic_contract']['control_boundary'], 'simulation_topic_contract_not_motion_permission')
         self.assertFalse(report['checks']['mujoco']['ok'])
         self.assertTrue(report['checks']['urdf']['ok'])
+        self.assertTrue(report['checks']['medical_arm_6dof_mjcf']['ok'])
+        self.assertTrue(report['checks']['medical_arm_6dof_schema']['ok'])
+        self.assertTrue(report['checks']['medical_arm_6dof_shadow_launch']['ok'])
+        self.assertTrue(report['checks']['medical_arm_6dof_hardware_shadow_launch']['ok'])
         self.assertIn('does not open CAN', report['safety_note'])
         self.assertEqual(report['missing_actions'][0]['id'], 'mujoco')
         self.assertEqual(report['missing_actions'][0]['severity'], 'optional')

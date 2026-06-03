@@ -64,6 +64,10 @@
   - 新增并验证 `medical_arm_6dof_hardware_shadow.launch.py`：远程启动后 `/sim/medical_arm/joint_states` 输出 6 个真实 medical arm joint，其中 `jian_xuanzhuan_joint=0.049`，证明 `7号外部电机 -> NanoPi/M33 -> ROS -> 无线 -> MuJoCo 6DOF shadow` 基础链路已通。
   - 继续完善 6 关节 hardware shadow 主线：`medical_arm_shadow_relay_node.py` 默认 `publish_full_target=true`，向 `/sim/medical_arm/joint_trajectory` 发布完整 6 个 medical arm joint；当前只有 `forearm_rotation_joint -> jian_xuanzhuan_joint` 来自 7 号真实反馈，其他 5 个关节使用显式 `placeholder_positions_json` 保持位。
   - 2026-06-03 远端联调复测通过：NanoPi `/joint_states` 为 `forearm_rotation_joint=0.049`；仿真主机 `/sim/medical_arm/joint_trajectory` 输出 `jian_hengxiang_joint`、`jian_zongxiang_joint`、`jian_xuanzhuan_joint`、`zhou_zongxiang_joint`、`wanbu_zongxiang_joint`、`wanbu_hengxiang_joint`，位置 `[0.0, 0.0, 0.049, 0.0, 0.0, 0.0]`；`/sim/medical_arm/joint_states` 同步为 6 关节状态。
+  - 补齐仿真学习基础：`check_sim_env.py` 报告新增 `medical_arm_6dof_contract` 和 `medical_arm_6dof_topic_contract`，明确 6DOF joint 名、MJCF/schema/launch 路径、`/sim/medical_arm/*` topic 合同、当前 7 号 shadow 映射和未接关节占位策略。
+  - 新增 `docs/MEDICAL_ARM_MUJOCO_LEARNING_GUIDE.md`：给后续只学习 MuJoCo 仿真的最小路线，覆盖单机 shadow、硬件 shadow、参数修改位置、标定补充顺序和禁止事项。
+  - 新增 `docs/M33_NANOPI_MUJOCO_POWERON_TEST_GUIDE.md`：从上电开始按层验证电机/M33、NanoPi CAN、M33 `0x330~0x334`、7 号 EL05 active-report、NanoPi 只读 bridge、仿真主机 MuJoCo 单机 shadow、NanoPi hardware shadow、小幅 7 号台架测试和停止清理。
+  - 决策澄清：M33 当前已对上的是 legacy 5 槽位和 7 号外部电机 shadow 链路，不是完整 medical_arm 6DOF 正式 M33 协议；其他正式关节仍需要逐个接电机、标定、补 `joint_map_json`。
   - 本轮验证：本地 `python -m unittest ...test_medical_arm_shadow_relay_node.py ...test_mujoco_backend.py ...test_medical_arm_6dof_schema.py` 通过 22 项；本地 `py_compile` 通过；远程仿真主机 `./build_ros2.sh --packages-select rehab_arm_sim_mujoco` 和 `test_medical_arm_shadow_relay_node.py` 通过。
   - 测试后已关闭 7 号 active-report 并发送 stop；`0x334` 回到 stale，`can0` 仍为 `ERROR-ACTIVE`。
   - 未完成：还没有把其他 5 个关节接入真实电机反馈；7 号 shadow 仍只是 MuJoCo shadow/demo，不是正式 6 号真机执行；4 号齿轮比例、1/2 号腕部对应关系、各关节零点/方向/限位仍待标定。

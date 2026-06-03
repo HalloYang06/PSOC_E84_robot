@@ -4482,3 +4482,22 @@ Connection reset by 192.168.2.66 port 22
 - 验证主线时看 `/sim/medical_arm/joint_trajectory` 是否包含 6 个 joint，而不是只看某一个关节是否动。
 - 文档和日志必须区分 `mapped live joint` 与 `placeholder joint`。
 - 在有 ROS 环境的机器上，`trajectory.points[0].positions` 可能是 `array('d')`；单测断言时用 `list(...)`，兼容本地 fallback 和真实 ROS message。
+
+### M33 对上状态要分 legacy 槽位和 medical_arm 6DOF
+
+现象：
+
+- M33 当前 `0x330~0x334` 是 legacy 5 槽位，ROS joint `0..4` 当前映射到 motor slot `3/4/5/6/7`。
+- medical_arm MuJoCo 是 6 个 joint，走 `/sim/medical_arm/*` shadow topic。
+- 7 号外部 EL05 可以让 `0x334 -> /joint_states forearm_rotation_joint -> jian_xuanzhuan_joint` 链路跑通。
+
+判断：
+
+- 这说明 M33/NanoPi/MuJoCo 的 shadow 数据流已通，但不等于 M33 已经有完整 medical_arm 6DOF 正式协议。
+- 后续每个真实关节必须分别证明：M33 fresh 状态、NanoPi 输出端 joint state、MuJoCo target 映射、方向/零点/传动比、M33 安全限位。
+
+技巧：
+
+- 教程和日志里用“7 号外部电机 shadow 已对上”，不要写“6DOF 真机已对上”。
+- 只读/hardware shadow 阶段不能出现 `0x320`；只有单独进入 7 号小幅台架测试时才允许抓到 `0x320`。
+- 上电联调按 `docs/M33_NANOPI_MUJOCO_POWERON_TEST_GUIDE.md` 分层执行，失败时停在当前层，不跨层排错。
