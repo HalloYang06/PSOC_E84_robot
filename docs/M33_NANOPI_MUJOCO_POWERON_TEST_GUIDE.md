@@ -27,8 +27,35 @@
 
 - 前 7 步全部保持 `enable_target_tx=false`，不向 M33 发送真实 `0x320` 目标。
 - 只允许 7 号外部电机做小幅台架测试；机械臂本体未完成标定前不要发真实运动。
+- 日常地基验收只做到第 8 步 hardware shadow 即可；第 9 步小幅动作是单独的 `bench-debug`，不是每次上电必做项。
 - 人不要穿戴设备做本教程。
 - 每次测试后都执行停止和关闭 active-report。
+
+## 0.1 当前地基验收总表
+
+每次断电再上电后，先按这张表确认基础是否还稳。全部通过后，才继续做 MuJoCo 参数、关节标定或 VLA 上层接入。
+
+| 层级 | 检查命令/话题 | 当前通过标准 | 失败时停在哪里 |
+|---|---|---|---|
+| NanoPi service | `systemctl is-active rehab-arm-nanopi-readonly.service` | `active` | 不排 ROS topic，先看 service/journal |
+| NanoPi 自启 | `systemctl is-enabled rehab-arm-nanopi-readonly.service` | `enabled` | 重新安装/enable service |
+| CAN 控制器 | `ip -details -statistics link show can0` | `ERROR-ACTIVE`、1Mbps、错误计数不持续涨 | 查 MCP2518FD、供电、线束 |
+| M33 在线 | `nanopi_can_master.py heartbeat --iface can0` | 有 `0x322` 回复 | 查 M33 供电、CAN 收发器 |
+| M33 槽位 | `candump can0,330:7FF,...,334:7FF` | 有 `0x330~0x334` 周期帧 | 查 M33 固件状态上报 |
+| 7号 shadow 源 | `candump can0,334:7FF` | `0x334` fresh，非 stale | 查 7号 active-report 和电机供电 |
+| NanoPi ROS | `/joint_states` | 当前有 `forearm_rotation_joint` | 查 bridge 和 fresh gate |
+| 仿真主机 service | `systemctl is-active rehab-arm-sim-host-shadow.service` | `active` | 查仿真主机 ROS 环境 |
+| 无线 ROS | 仿真主机 echo `/joint_states` | 能收到 NanoPi joint state | 查 ROS_DOMAIN_ID/网络 |
+| MuJoCo shadow | `/sim/medical_arm/joint_states` | 6 个 joint，`jian_xuanzhuan_joint` 跟随 | 查 relay 映射和 MuJoCo 节点 |
+| 安全无运动 | `timeout 2 candump -L can0,320:7FF` | 超时无输出 | 立即停服务，查是否误启运动入口 |
+
+当前实测值可以作为 sanity check：
+
+```text
+/joint_states forearm_rotation_joint ~= 0.048 rad
+/sim/medical_arm/joint_trajectory positions ~= [0.0, 0.0, 0.048, 0.0, 0.0, 0.0]
+/sim/medical_arm/joint_states name/position/velocity/effort length = 6
+```
 
 ## 1. 上电顺序
 
@@ -419,9 +446,25 @@ pgrep -af 'medical_arm_6dof_shadow_sim|medical_arm_shadow_relay|mujoco_sim_node.
 
 ## 12. 后续补正式 6DOF 的顺序
 
-1. 先把真实 1/2/3/4/5/6 电机反馈接入 M33，并证明对应 `0x330~0x334` 或后续 6DOF 新状态槽位 fresh。
-2. NanoPi bridge 发布输出端 joint state，不发布电机轴原始角度。
-3. 在 `medical_arm_6dof_schema.yaml` 补方向、零点、传动比、`calibrated=true`。
-4. 在 `medical_arm_6dof_hardware_shadow.launch.py` 补 `joint_map_json`。
-5. 先只看 MuJoCo shadow 跟随。
-6. M33 安全状态机、限位、速度、电流、急停全部通过后，再讨论 `enable_target_tx=true`。
+不要一次把 6 个关节全接上。每次只补一个真实关节，按同一套门槛走完后再补下一个。
+
+1. 明确机械对应：厂家电机 ID、M33 slot、ROS source joint、medical_arm target joint、传动结构、预计方向。
+2. 只开遥测：先证明 M33 能拿到该电机 fresh feedback，不发送目标位置、速度或力矩。
+3. 单独抓包：保存 `candump`，确认有对应 raw motor feedback 和 M33 聚合状态，且没有意外 `0x320`。
+4. NanoPi bridge 发布输出端 joint state：发布的是关节输出端角度，不是电机轴原始角度。
+5. 补 schema：在 `medical_arm_6dof_schema.yaml` 写方向、零点、传动比、限位、`calibrated=false` 初始状态和待确认项。
+6. 补 shadow 映射：在 `medical_arm_6dof_hardware_shadow.launch.py` 的 `joint_map_json` 增加 source->target。
+7. 只看 MuJoCo shadow：确认该关节在 `/sim/medical_arm/joint_states` 方向和幅度合理。
+8. 标定通过后再把 schema 对应字段改成已确认，不要用聊天里的口头结论替代文件。
+9. M33 安全状态机、限位、速度、电流、急停全部通过后，才讨论该关节进入真实运动授权。
+
+当前各关节的下一步：
+
+| medical_arm joint | 当前电机/传动 | 下一步 |
+|---|---|---|
+| `jian_hengxiang_joint` | 3号，1:2 同步轮 | 先接 fresh feedback，确认方向和输出端角度换算 |
+| `jian_zongxiang_joint` | 4号，多级齿轮，比例未知 | 先只做遥测和实物角度标尺，补齿轮比例 |
+| `jian_xuanzhuan_joint` | 正式 6号；当前 7号临时 shadow | 后续把 shadow 源从 7号改回 6号，重新标定 |
+| `zhou_zongxiang_joint` | 5号 | 先接 fresh feedback，再做 MuJoCo shadow 映射 |
+| `wanbu_zongxiang_joint` | 1/2号 4015 小电机之一 | 先确认两个腕部电机分别对应哪个 URDF joint |
+| `wanbu_hengxiang_joint` | 1/2号 4015 小电机之一 | 同上 |

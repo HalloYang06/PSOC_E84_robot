@@ -64,6 +64,7 @@
   - 安全复测：NanoPi 只读服务运行期间单独抓 `timeout 2 candump -L can0,320:7FF` 超时无输出，未发现自动 `0x320` 运动帧。
   - 本地验证：`python -m unittest` 相关 30 项通过；`py_compile` 通过。远程仿真主机构建 `rehab_arm_description rehab_arm_sim_mujoco` 通过。
   - 当前仍不是完整 medical_arm 6DOF 真机控制：M33 正式 6DOF 协议、其他 5 个真实关节 fresh feedback、方向/零点/传动比/患者限位仍待逐个接入和标定。
+  - 教程加固：`docs/M33_NANOPI_MUJOCO_POWERON_TEST_GUIDE.md` 新增“当前地基验收总表”，明确每次上电后从 NanoPi service、CAN、M33、7号 shadow、无线 ROS、MuJoCo 6DOF 到无 `0x320` 的 pass/fail 标准；第 12 节改成逐关节补齐流程，要求每次只补一个真实关节，并把 1/2/3/4/5/6 号当前下一步写清楚。
 
 - 电池上电后完成基础端到端打通：
   - NanoPi `can0` 恢复为 classic CAN 1Mbps `ERROR-ACTIVE`，`timeout 3 candump -L can0` 可见 M33 `0x330~0x334` 周期帧和 `0x321/0x322` 心跳。
