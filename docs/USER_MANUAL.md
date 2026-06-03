@@ -293,6 +293,124 @@ wanbu_hengxiang_joint
 5. 每个关节完成 `+5°/-5°`、`+10°/-10°` 后，再收紧 `MEDICAL_ARM_6DOF_LIMITS` 和患者 profile。
 6. 6号装回或在线后，把 `jian_xuanzhuan_joint` 的 demo/shadow 输入从 7号改回 6号。
 
+### 2.2 用外部 7号 EL05 驱动 6DOF MuJoCo shadow
+
+本流程用于当前基础联调：外部 7号 EL05 不在机械臂上，但可临时代替 6号，驱动 MuJoCo 里的 `jian_xuanzhuan_joint`。这是 `bench-debug + shadow-sim`，不是正式 6DOF 真机执行。
+
+NanoPi 上确认 CAN 和 M33：
+
+```bash
+ip -details -statistics link show can0
+timeout 3 candump -L can0
+python3 /home/pi/nanopi_can_master.py heartbeat --iface can0 --seq 20 --wait 1
+```
+
+合格现象：
+
+```text
+can0 state ERROR-ACTIVE
+0x330~0x334 周期帧存在
+0x321 有 0x322 回复
+```
+
+打开 7号 active-report：
+
+```bash
+python3 /home/pi/nanopi_can_master.py private stop --iface can0 --motor 7 --clear-fault --wait 0.1
+python3 /home/pi/nanopi_can_master.py private active-report --iface can0 --motor 7 --enable-report --wait 0.5
+timeout 2 candump -L can0,180007FD:1FFFFFFF,188007FD:1FFFFFFF,334:7FF
+```
+
+合格现象：
+
+```text
+能看到 0x180007FD
+0x334 flags 从 0x10 stale 变成 0x00 fresh
+```
+
+NanoPi 启动只读 bridge：
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source ~/.rehab_arm_ros2_network
+source /home/pi/rehab_arm_ros2_ws/install/setup.bash
+
+ros2 run rehab_arm_psoc_bridge psoc_can_bridge_node.py --ros-args \
+  -p interface:=can0 \
+  -p enable_target_tx:=false \
+  -p log_heartbeat:=false
+```
+
+另开终端确认：
+
+```bash
+ros2 topic echo --once /joint_states sensor_msgs/msg/JointState
+```
+
+当前 7号在线时应看到：
+
+```text
+name: [forearm_rotation_joint]
+position: [约 0.049 或当前 7号位置]
+```
+
+仿真主机启动 6DOF hardware shadow：
+
+```bash
+cd /home/cal/桌面/Medical-Rehabilitation-Manipulator/rehab_arm_ros2_ws
+source /opt/ros/jazzy/setup.bash
+source ~/.rehab_arm_ros2_network
+source install/setup.bash
+
+ros2 launch rehab_arm_sim_mujoco medical_arm_6dof_hardware_shadow.launch.py
+```
+
+另开终端确认：
+
+```bash
+ros2 topic echo --once /sim/medical_arm/joint_states sensor_msgs/msg/JointState
+ros2 topic echo --once /sim/medical_arm/joint_trajectory trajectory_msgs/msg/JointTrajectory
+```
+
+合格现象：
+
+```text
+/sim/medical_arm/joint_trajectory:
+  joint_names: [jian_xuanzhuan_joint]
+  positions: [与 forearm_rotation_joint 相同]
+
+/sim/medical_arm/joint_states:
+  name 包含 6 个 medical arm joint
+  jian_xuanzhuan_joint 位置跟随 7号
+```
+
+小幅测试 7号 formal M33 路径：
+
+```bash
+python3 /home/pi/nanopi_can_master.py m33 active-report --iface can0 --joint 4 --enable-report --wait 0.1
+python3 /home/pi/nanopi_can_master.py m33 target --iface can0 --joint 4 --deg 2 --rpm 1 --torque-ma 0 --wait 0
+sleep 1.2
+python3 /home/pi/nanopi_can_master.py m33 target --iface can0 --joint 4 --deg -2 --rpm 1 --torque-ma 0 --wait 0
+sleep 1.2
+python3 /home/pi/nanopi_can_master.py m33 stop --iface can0 --joint 4 --clear-fault --wait 0.1
+```
+
+测试结束关闭 active-report：
+
+```bash
+python3 /home/pi/nanopi_can_master.py private active-report --iface can0 --motor 7 --wait 0.1
+python3 /home/pi/nanopi_can_master.py private stop --iface can0 --motor 7 --clear-fault --wait 0.1
+```
+
+当前已验证结果：
+
+```text
+7号 fresh -> /joint_states forearm_rotation_joint
+仿真主机无线收到 /joint_states
+relay 映射 forearm_rotation_joint -> jian_xuanzhuan_joint
+MuJoCo 6DOF shadow 输出 jian_xuanzhuan_joint 同步位置
+```
+
 ## 3. Demo 轨迹使用
 
 本节只适用于 legacy 5 关节仿真冒烟测试。它不是当前 6 关节 `medical_arm.zip` 模型的正式 planner，也不是 NanoPi/M33 真机 workflow。

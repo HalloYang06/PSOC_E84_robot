@@ -53,6 +53,18 @@
 
 ### 2026-06-03
 
+- 电池上电后完成基础端到端打通：
+  - NanoPi `can0` 恢复为 classic CAN 1Mbps `ERROR-ACTIVE`，`timeout 3 candump -L can0` 可见 M33 `0x330~0x334` 周期帧和 `0x321/0x322` 心跳。
+  - M33 heartbeat 通过：`0x321#14 -> 0x322#A514070001020100`，发送后 `can0` 当前错误计数保持 `tx 0 rx 0`。
+  - 7 号 EL05 active-report 通过：可见 `0x180007FD`，M33 `0x334` 从 stale `flags=0x10` 变成 fresh `flags=0x00`，位置示例 `0x015C` 约 `0.348 rad`。
+  - NanoPi ROS bridge 只读通过：`/rehab_arm/motor_state` 有数据，`/joint_states` 发布 `forearm_rotation_joint`，位置示例 `0.348 rad`。
+  - 外部 7 号 formal M33 bench 动作通过：发送 `0x320#0304140001000000` 和 `0x320#0304ECFF01000000`，即 ROS joint4 `+2°/-2°`、`1 rpm`、`0 torque_ma`；抓包 `/tmp/motor7_formal_basic_20260602_222057.candump` 记录 `0x320`、`0x334`、`0x180007FD/0x188007FD`，M33 聚合位置从约 `0.348 rad` 变到约 `0.049 rad`。
+  - 仿真主机通过无线 ROS2 看到 NanoPi 真实状态：`cal@192.168.2.46` 可 `ros2 topic echo --once /joint_states`，收到 `forearm_rotation_joint=0.049`。
+  - 新增并验证 `medical_arm_shadow_relay_node.py`：默认把 NanoPi legacy `forearm_rotation_joint` 映射到 MuJoCo 6DOF `jian_xuanzhuan_joint`。
+  - 新增并验证 `medical_arm_6dof_hardware_shadow.launch.py`：远程启动后 `/sim/medical_arm/joint_states` 输出 6 个真实 medical arm joint，其中 `jian_xuanzhuan_joint=0.049`，证明 `7号外部电机 -> NanoPi/M33 -> ROS -> 无线 -> MuJoCo 6DOF shadow` 基础链路已通。
+  - 测试后已关闭 7 号 active-report 并发送 stop；`0x334` 回到 stale，`can0` 仍为 `ERROR-ACTIVE`。
+  - 未完成：还没有把 7 号 shadow 作为正式 6 号替代写进真机执行，只是 MuJoCo shadow/demo；4 号齿轮比例、1/2 号腕部对应关系、各关节零点/方向/限位仍待标定。
+
 - 搭建 medical_arm 6DOF MuJoCo shadow 基础框架：
   - 新增 `rehab_arm_sim_mujoco/models/medical_arm_6dof.xml`，包含 6 个真实 URDF joint：`jian_hengxiang_joint`、`jian_zongxiang_joint`、`jian_xuanzhuan_joint`、`zhou_zongxiang_joint`、`wanbu_zongxiang_joint`、`wanbu_hengxiang_joint`。
   - `mujoco_backend.py` 新增 `joint_profile=medical_arm_6dof`，保留旧 `legacy_5dof` 默认行为；6DOF profile 有独立 joint 名、限位、速度上限和默认 MJCF。

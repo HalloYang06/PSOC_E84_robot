@@ -222,6 +222,27 @@ ros2 topic echo --once /sim/medical_arm/safety_state
 - 当前为了台架和 shadow，可以用 7 号 EL05 临时代替 6 号：`temporary_shadow_motor_ref.id=7`、`replaces_motor_id=6`。
 - 还原时只改 schema/demo 输入回 6 号；不要把 7 号写进正式 medical arm mapping。
 
+当前已提供硬件 shadow relay：
+
+```bash
+ros2 launch rehab_arm_sim_mujoco medical_arm_6dof_hardware_shadow.launch.py
+```
+
+它启动两个节点：
+
+| 节点 | 作用 |
+|---|---|
+| `mujoco_sim_node.py` | 运行 `joint_profile=medical_arm_6dof`，发布 `/sim/medical_arm/joint_states` |
+| `medical_arm_shadow_relay_node.py` | 订阅 NanoPi `/joint_states`，默认把 `forearm_rotation_joint` 映射成 `/sim/medical_arm/joint_trajectory` 的 `jian_xuanzhuan_joint` |
+
+当前已验证链路：
+
+```text
+motor7 EL05 -> M33 0x334 fresh -> NanoPi /joint_states forearm_rotation_joint
+-> wireless ROS2 -> sim host relay -> /sim/medical_arm/joint_trajectory jian_xuanzhuan_joint
+-> MuJoCo 6DOF shadow -> /sim/medical_arm/joint_states
+```
+
 ### 阶段 2：NanoPi 只读状态上行
 
 目标：MuJoCo 主机能看到 NanoPi/M33 的真实状态，但不发目标。
