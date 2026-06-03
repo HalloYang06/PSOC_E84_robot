@@ -14,6 +14,7 @@ safety:
   allow_direct_motor_command: false
   allow_vla_can_output: false
   motor_id_7_in_formal_mapping: false
+  allow_motor_id_7_as_temporary_mujoco_shadow_actuator: true
 
 joints:
   - index: 0
@@ -124,4 +125,11 @@ joints:
 external_debug_motors:
   - motor_id: 7
     status: external_debug_only_not_mounted_on_arm
+    model: EL05
+    protocol: RobStride_private_extended_frame
+    mechanical_reduction_ratio: 9.0
     allowed_in_formal_mapping: false
+    allowed_as_temporary_mujoco_shadow_actuator: true
+    temporary_shadow_joint: forearm_rotation_joint
+    command_position_semantics: robstride_csp_loc_ref_rad_observed_output_side_on_external_bench_motor
+    notes: 7号可以临时用于 bench-debug/shadow-sim 验证 ROS、M33、NanoPi、MuJoCo 数据流；不得进入 medical_arm 6DOF 正式关节映射、患者 profile 或 VLA 真机决策输出。

@@ -4360,6 +4360,30 @@ Connection reset by 192.168.2.66 port 22
 
 - 后续 AI 或脚本如果看到旧的 `forearm_rotation_joint -> motor_id=7`，必须当作历史台架示例，不得迁移到正式机械臂。
 - 真实机械臂腕部是后加 4015 小电机 `motor_id=1/2`，但两个电机分别对应 `wanbu_zongxiang_joint` 或 `wanbu_hengxiang_joint` 还未确认，不能提前写死。
+- 7 号是 EL05，可以临时作为 MuJoCo shadow/台架 demo actuator 验证数据流；但必须标为 `temporary_mujoco_shadow_and_external_bench_only`。
+
+### `gear_ratio=1.0` 不等于 RobStride 电机没有机械减速
+
+现象：
+
+- `motor_profiles.py` 里 4/5/6/7 曾保留 `gear_ratio=1.0`，容易被误读成 RS00/EL05 机械减速比都是 `1:1`。
+- 文档和官方资料又同时记录 4/5 号 RS00 为 `10:1`，6/7 号 EL05 为 `9:1`，两种说法看起来冲突。
+
+根因：
+
+- 历史 `gear_ratio` 字段混合了两层含义：电机机械减速比，以及当前 RobStride CSP `loc_ref` 命令路径按输出侧 rad 处理的临时工程结论。
+- 7 号 EL05 台架实测只能证明当前外部台架电机的 CSP 命令语义，不能自动证明所有 medical_arm 关节的传动比、方向、零点和输出端角度。
+
+解决：
+
+- `motor_profiles.py` 新增 `mechanical_reduction_ratio`、`command_position_semantics`、`medical_arm_6dof_joint` 和 `mapping_scope`。
+- 4/5 号 RS00 的 `mechanical_reduction_ratio=10.0`；6/7 号 EL05 的 `mechanical_reduction_ratio=9.0`。
+- 7 号标记为 `temporary_mujoco_shadow_and_external_bench_only`，允许做 MuJoCo shadow/demo actuator，不进入 medical_arm 6DOF 正式映射。
+
+技巧：
+
+- 后续看电机表时，真实机械结构先看 `mechanical_reduction_ratio`；厂家命令单位先看 `command_position_semantics`；是否属于当前机械臂先看 `mapping_scope` 和 `medical_arm_6dof_joint`。
+- 不要只用一个 `gear_ratio` 推导 VLA、患者 profile 或 M33 正式执行限位。
 
 ### 不要把 demo/smoke/fallback 当主线 readiness
 

@@ -53,6 +53,13 @@
 
 ### 2026-06-02
 
+- 收紧旧 5 关节台架表、新 6 关节 medical_arm 表和 7 号 EL05 临时用途边界：
+  - 更新 `motor_profiles.py`：保留 legacy `gear_ratio` 兼容字段，同时新增 `mechanical_reduction_ratio`、`command_position_semantics`、`medical_arm_6dof_joint` 和 `mapping_scope`。
+  - 明确 4/5 号是灵足 RS00，机械减速 `10:1`；6/7 号是灵足 EL05，机械减速 `9:1`；7 号是外部台架电机，可作为临时 MuJoCo shadow/demo actuator，但不属于当前 medical_arm 6DOF 正式机械臂。
+  - 更新 `medical_arm_6dof_schema.yaml`：保持 `motor_id_7_in_formal_mapping=false`，新增 `allow_motor_id_7_as_temporary_mujoco_shadow_actuator=true`，并把 7 号标为 `temporary_mujoco_shadow_and_external_bench_only`。
+  - 更新 `docs/JOINT_MOTOR_MAPPING_DRAFT.md`、`docs/MUJOCO_NANOPI_INTEGRATION_PREP.md`、`docs/USER_MANUAL.md`，把 legacy `shoulder_lift_joint..forearm_rotation_joint` 与新 `jian_* / zhou_* / wanbu_*` 映射分开说明。
+  - 决策：后续 AI 和 demo 可以用 7 号 EL05 验证 ROS/NanoPi/M33/MuJoCo 数据流，但 VLA、患者 profile、正式 MJCF 和 M33 medical_arm 执行表不得把 7 号当实物关节。
+
 - 完成 `medical_arm.zip` 可视化后关节/电机映射草案更新：
   - 新增 `docs/JOINT_MOTOR_MAPPING_DRAFT.md`，记录 6 个 URDF 关节、保守 ROM、当前电机对应关系和后续 AI 必须遵守规则。
   - 已确认：`node_id=3 -> jian_hengxiang_joint`，传动为电机轮:输出轴轮 `1:2`；`motor_id=4 -> jian_zongxiang_joint`，齿轮比待补；`motor_id=6 -> jian_xuanzhuan_joint`；`motor_id=5 -> zhou_zongxiang_joint`；4015 小电机 `motor_id=1/2` 属于腕部两轴但具体对应待确认。

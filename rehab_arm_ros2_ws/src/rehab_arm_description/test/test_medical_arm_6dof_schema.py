@@ -38,6 +38,7 @@ class MedicalArm6DofSchemaTests(unittest.TestCase):
         self.assertFalse(payload['safety']['allow_direct_motor_command'])
         self.assertFalse(payload['safety']['allow_vla_can_output'])
         self.assertFalse(payload['safety']['motor_id_7_in_formal_mapping'])
+        self.assertTrue(payload['safety']['allow_motor_id_7_as_temporary_mujoco_shadow_actuator'])
 
     def test_known_motor_mapping_matches_current_draft(self) -> None:
         payload = yaml.safe_load(SCHEMA_PATH.read_text(encoding='utf-8'))
@@ -61,16 +62,14 @@ class MedicalArm6DofSchemaTests(unittest.TestCase):
     def test_motor_7_is_external_debug_only(self) -> None:
         payload = yaml.safe_load(SCHEMA_PATH.read_text(encoding='utf-8'))
 
-        self.assertEqual(
-            payload['external_debug_motors'],
-            [
-                {
-                    'motor_id': 7,
-                    'status': 'external_debug_only_not_mounted_on_arm',
-                    'allowed_in_formal_mapping': False,
-                }
-            ],
-        )
+        external_motor = payload['external_debug_motors'][0]
+        self.assertEqual(external_motor['motor_id'], 7)
+        self.assertEqual(external_motor['status'], 'external_debug_only_not_mounted_on_arm')
+        self.assertEqual(external_motor['model'], 'EL05')
+        self.assertEqual(external_motor['mechanical_reduction_ratio'], 9.0)
+        self.assertFalse(external_motor['allowed_in_formal_mapping'])
+        self.assertTrue(external_motor['allowed_as_temporary_mujoco_shadow_actuator'])
+        self.assertEqual(external_motor['temporary_shadow_joint'], 'forearm_rotation_joint')
 
 
 if __name__ == '__main__':

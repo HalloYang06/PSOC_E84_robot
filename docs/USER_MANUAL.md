@@ -3428,9 +3428,11 @@ ros2 run rehab_arm_psoc_bridge bench_motion_sequence.py --list-motors --pretty
 当前表的关键事实：
 
 - `3`：伺泰威，CANSimple/ODrive-like，减速比按 `48` 记录，映射 `joint0`。
-- `4/5`：灵足 RS00，RobStride CSP，已配置但暂不放行真实执行。
-- `6/7`：灵足 EL05，RobStride CSP，`7` 已台架验证过正式 M33 路径。
+- `4/5`：灵足 RS00，RobStride CSP，机械减速比 `10:1`，已配置但暂不放行真实执行。
+- `6/7`：灵足 EL05，RobStride CSP，机械减速比 `9:1`，`7` 已台架验证过正式 M33 路径。
 - 当前真实执行 allowlist 只有 `3` 和 `7`；`4/5/6` 只能 dry-run 和规划，不能真实动。
+- `7` 是 EL05 外部台架电机，可以作为 legacy `forearm_rotation_joint` 的临时 MuJoCo shadow/demo actuator；它没有装在 medical_arm 6DOF 机械臂上，不得写进 `jian_*`/`zhou_*`/`wanbu_*` 正式关节映射。
+- `gear_ratio` 是历史兼容字段；对 4/5/6/7，真实机械减速看 `mechanical_reduction_ratio`，不要把 RobStride CSP `loc_ref` 的命令语义误认为机械传动比。
 
 这张表是给 NanoPi ROS、平台、App、M33 安全配置导出共同对齐的基础资料。修改它不等于放开运动权限；放开真实执行前必须完成机械限位、方向、速度、急停和台架小角度验证。
 

@@ -29,6 +29,20 @@
 
 注意：`motor_id` 不是 `joint`。M33/NanoPi/服务器/VLA/MuJoCo 必须用输出端 joint 状态作为运动语义，原始电机轴角只作为诊断和标定输入。
 
+## 旧 5 关节台架主线与新 6 关节 medical_arm 的区别
+
+仓库里仍保留早期 ROS/MuJoCo/M33 5 关节台架表，用于 `bench-debug`、`dry-run` 和历史数据工具：
+
+| legacy ROS joint | joint_id | 电机 | 型号/协议 | 与当前 6 关节实物关系 |
+|---|---:|---|---|---|
+| `shoulder_lift_joint` | 0 | `node_id=3` | 伺泰威 CANSimple/ODrive-like，机械减速 `48:1` | 当前真实机械臂草案对应 `jian_hengxiang_joint` |
+| `elbow_lift_joint` | 1 | `motor_id=4` | 灵足 RS00，RobStride CSP，机械减速 `10:1` | 当前真实机械臂草案对应 `jian_zongxiang_joint` |
+| `shoulder_abduction_joint` | 2 | `motor_id=5` | 灵足 RS00，RobStride CSP，机械减速 `10:1` | 当前真实机械臂草案对应 `zhou_zongxiang_joint` |
+| `upper_arm_rotation_joint` | 3 | `motor_id=6` | 灵足 EL05，RobStride CSP，机械减速 `9:1` | 当前真实机械臂草案对应 `jian_xuanzhuan_joint` |
+| `forearm_rotation_joint` | 4 | `motor_id=7` | 灵足 EL05，RobStride CSP，机械减速 `9:1` | 只允许作为外部台架/临时 MuJoCo shadow actuator，不属于当前 6 关节机械臂 |
+
+`motor_profiles.py` 里的 `gear_ratio` 是历史兼容字段。对 4/5/6/7，`gear_ratio=1.0` 只表示当前 RobStride CSP `loc_ref` 命令路径按 rad 处理，不等于电机机械减速比；真实机械减速要看 `mechanical_reduction_ratio`。后续仿真、标定和 VLA schema 必须优先使用输出端 joint、机械减速、方向和零点四类字段，不得只看单个 `gear_ratio`。
+
 ## 后续必须补齐的参数
 
 每个 `motor -> joint` 绑定都要补：
@@ -46,6 +60,7 @@
 ## AI 必须遵守
 
 - 不得把 `motor_id=7` 当作当前机械臂关节。
+- 可以把 `motor_id=7` 临时当作 MuJoCo shadow/台架 demo actuator，用于验证 NanoPi、M33、ROS、MuJoCo 数据流；但必须标记为 `temporary_mujoco_shadow_and_external_bench_only`，不得进入正式 6DOF 映射、患者 profile 或 VLA 真机决策。
 - 不得把 `motor_id=1/2` 直接写死到某个腕部轴，直到现场确认哪个电机对应 `wanbu_zongxiang_joint`、哪个对应 `wanbu_hengxiang_joint`。
 - 不得把 `node_id=3` 的电机轴角直接当 `jian_hengxiang_joint` 输出角；必须经过 `1:2` 传动、方向和零点换算。
 - `motor_id=4` 的齿轮比未知前，只能做仿真/文档草案和极低风险台架规划，不能作为正式运动比例。

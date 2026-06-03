@@ -107,6 +107,21 @@ wanbu_hengxiang_joint
 
 后续 AI 必须先声明任务属于 `mainline`、`shadow-sim`、`dry-run`、`bench-debug` 还是 `offline-demo`。分类不清时默认按 `offline-demo` 或只读处理。
 
+### 7 号 EL05 的临时 shadow 用途
+
+7 号是灵足 EL05，当前没有安装在 medical_arm 6DOF 机械臂上。它可以临时作为 MuJoCo shadow/台架 actuator，用来验证：
+
+- NanoPi `can0`、M33 `0x320/0x330~0x334`、ROS2 topic 和 MuJoCo 可视化之间的数据格式。
+- RobStride CSP 命令路径、active-report、M33 聚合状态和 `/rehab_arm/motor_state` 的联调。
+- demo 工具是否正确区分 `joint_id`、`motor_id`、输出端 joint 和厂家电机型号。
+
+但必须保持以下限制：
+
+- `motor_id=7` 的 schema 标记为 `temporary_mujoco_shadow_and_external_bench_only`。
+- 7 号可以对应 legacy `forearm_rotation_joint` 做 shadow/demo，不得对应 `wanbu_zongxiang_joint` 或 `wanbu_hengxiang_joint`。
+- VLA、患者 profile、medical_arm 6DOF MJCF 正式映射、M33 真实机械臂执行表都不得把 7 号当作当前实物关节。
+- 任何 7 号真实动作仍属于 `bench-debug`，结束必须关闭 active-report 并发送 stop。
+
 ## 推荐分阶段接入
 
 ### 阶段 0：单机 MuJoCo 可视化
