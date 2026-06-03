@@ -306,6 +306,136 @@ def archive_indexed_queue_items(api_base: str, token: str, user: dict[str, objec
     return archived
 
 
+def list_task_dispatches(api_base: str, token: str, task_id: str) -> list[dict[str, object]]:
+    return as_list(
+        request_json(
+            f"{api_base.rstrip('/')}/api/tasks/{quote(task_id)}/dispatches",
+            token=token,
+        ),
+    )
+
+
+def validate_route_preview_readonly(
+    *,
+    api_base: str,
+    token: str,
+    project_id: str,
+    seat: dict[str, object],
+    items_before: dict[str, list[dict[str, object]]],
+) -> dict[str, object]:
+    records = indexed_records(items_before)
+    needs = records["needs"]
+    task_ids = [text(item.get("id")) for item in records["tasks"] if text(item.get("id"))]
+    if len(needs) != 1:
+        return {
+            "ok": False,
+            "reason": f"Expected exactly one indexed Need before route preview, got {len(needs)}",
+            "need_count": len(needs),
+            "task_ids": task_ids,
+        }
+    need_id = text(needs[0].get("id"))
+    if not need_id:
+        return {"ok": False, "reason": "Indexed Need is missing id", "task_ids": task_ids}
+
+    need_before = object_data(
+        request_json(
+            f"{api_base.rstrip('/')}/api/requirements/{quote(need_id)}",
+            token=token,
+        ),
+    )
+    dispatch_counts_before = {
+        task_id: len(list_task_dispatches(api_base, token, task_id))
+        for task_id in task_ids
+    }
+    preview = object_data(
+        request_json(
+            f"{api_base.rstrip('/')}/api/requirements/{quote(need_id)}/route-preview",
+            token=token,
+        ),
+    )
+    need_after = object_data(
+        request_json(
+            f"{api_base.rstrip('/')}/api/requirements/{quote(need_id)}",
+            token=token,
+        ),
+    )
+    items_after = list_project_items(api_base, token, project_id)
+    dispatch_counts_after = {
+        task_id: len(list_task_dispatches(api_base, token, task_id))
+        for task_id in task_ids
+    }
+    before_task_count = len(items_before["tasks"])
+    after_task_count = len(items_after["tasks"])
+    before_task_id = text(need_before.get("task_id") or need_before.get("taskId"))
+    after_task_id = text(need_after.get("task_id") or need_after.get("taskId"))
+    seat_row_id = text(seat.get("id") or seat.get("row_id") or seat.get("rowId"))
+    seat_config_id = text(seat.get("config_id") or seat.get("configId"))
+    seat_agent_id = text(seat.get("agent_id") or seat.get("agentId"))
+    queue = get_seat_queues(api_base, token, project_id, seat_row_id or seat_config_id or seat_agent_id)
+    queue_seat = queue.get("seat") if isinstance(queue.get("seat"), dict) else {}
+    seat_identities = {
+        value
+        for value in (
+            seat_row_id,
+            seat_config_id,
+            seat_agent_id,
+            text(queue_seat.get("id") or queue_seat.get("row_id") or queue_seat.get("rowId")),
+            text(queue_seat.get("config_id") or queue_seat.get("configId")),
+            text(queue_seat.get("agent_id") or queue_seat.get("agentId")),
+        )
+        if value
+    }
+    preview_requester_id = text(preview.get("requester_seat_id") or preview.get("requesterSeatId"))
+    alternatives = preview.get("alternatives")
+    will_create_tasks = preview.get("will_create_tasks") or preview.get("willCreateTasks")
+    blocked_reason = text(preview.get("blocked_reason") or preview.get("blockedReason"))
+    review_reason = text(preview.get("review_reason") or preview.get("reviewReason"))
+    preview_task_items = will_create_tasks if isinstance(will_create_tasks, list) else []
+    planned_source_need_ids = {
+        text(item.get("source_need_id") or item.get("sourceNeedId"))
+        for item in preview_task_items
+        if isinstance(item, dict)
+    }
+    readonly_ok = (
+        before_task_count == after_task_count
+        and not before_task_id
+        and not after_task_id
+        and dispatch_counts_before == dispatch_counts_after
+    )
+    shape_ok = (
+        text(preview.get("need_id") or preview.get("needId")) == need_id
+        and preview_requester_id in seat_identities
+        and isinstance(alternatives, list)
+        and bool(blocked_reason or review_reason)
+        and all(source_id in {"", need_id} for source_id in planned_source_need_ids)
+    )
+    return {
+        "ok": readonly_ok and shape_ok,
+        "readonly_ok": readonly_ok,
+        "shape_ok": shape_ok,
+        "need_id": need_id,
+        "task_ids": task_ids,
+        "before_task_count": before_task_count,
+        "after_task_count": after_task_count,
+        "before_need_task_id": before_task_id or None,
+        "after_need_task_id": after_task_id or None,
+        "seat_identities": sorted(seat_identities),
+        "dispatch_counts_before": dispatch_counts_before,
+        "dispatch_counts_after": dispatch_counts_after,
+        "preview": preview,
+        "checks": {
+            "need_id_matches": text(preview.get("need_id") or preview.get("needId")) == need_id,
+            "requester_matches_seat": preview_requester_id in seat_identities,
+            "alternatives_is_list": isinstance(alternatives, list),
+            "has_user_readable_reason": bool(blocked_reason or review_reason),
+            "preview_tasks_reference_need": all(source_id in {"", need_id} for source_id in planned_source_need_ids),
+            "task_count_unchanged": before_task_count == after_task_count,
+            "need_task_id_unchanged_empty": not before_task_id and not after_task_id,
+            "dispatch_count_unchanged": dispatch_counts_before == dispatch_counts_after,
+        },
+    }
+
+
 def queue_items(queue: dict[str, object], key: str) -> list[dict[str, object]]:
     section = queue.get(key)
     if not isinstance(section, dict):
@@ -611,6 +741,13 @@ def main() -> int:
             seat_queue=get_seat_queues(args.api_base, token, project_id, seat_id),
             seat=seat,
         )
+        route_preview_readonly = validate_route_preview_readonly(
+            api_base=args.api_base,
+            token=token,
+            project_id=project_id,
+            seat=seat,
+            items_before=second_items,
+        )
         archived_items = archive_indexed_queue_items(args.api_base, token, user, project_id)
         archived_counts = count_indexed(list_project_items(args.api_base, token, project_id))
         company_needs_state = validate_company_archive_hidden(
@@ -657,6 +794,7 @@ def main() -> int:
         and ownership_before_archive.get("need_owner_matches_seat")
         and ownership_before_archive.get("task_assignee_matches_seat")
         and ownership_before_archive.get("done_receipt_not_in_my_open_tasks")
+        and route_preview_readonly.get("ok")
         and "新增 4" in text(first_state.get("auditText"))
         and audit_shows_all_skipped(second_state.get("auditText"))
         and audit_shows_all_skipped(third_state.get("auditText"))
@@ -701,6 +839,7 @@ def main() -> int:
         "first_state": first_state,
         "second_state": second_state,
         "ownership_before_archive": ownership_before_archive,
+        "route_preview_readonly": route_preview_readonly,
         "archived_items": archived_items,
         "company_after_archive": {
             "needs": company_needs_state,
@@ -735,6 +874,7 @@ def main() -> int:
                 "archived_counts": archived_counts,
                 "third_counts": third_counts,
                 "ownership": ownership_before_archive,
+                "route_preview_readonly": route_preview_readonly,
             },
             ensure_ascii=False,
         ),
