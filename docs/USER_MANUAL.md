@@ -53,6 +53,8 @@ python3 /home/pi/nanopi_can_master.py m33 target --iface can0 --joint 4 --deg 30
 - VLA 固定走服务器链路，消费 NanoPi 摄像头数据、M55 语音数据、机器人状态、历史数据和标注。
 - VLA 用于复杂任务理解和任务分解，例如“先移开遮挡物，再拿目标物品”；它只能输出高层任务或分段目标，不能直接发 CAN 或底层电机命令。
 - M55 小模型结果统一走 [M55_MODEL_RESULT_PROTOCOL_V1.md](M55_MODEL_RESULT_PROTOCOL_V1.md) 和 `/rehab_arm/model_state`；该 topic 是模型建议和编号语义，不是运动许可。原始/滤波 EMG、心率、IMU 仍走 `/rehab_arm/sensor_state`。
+- M33/M55 跨核通讯和 App BLE 字段边界见 [M33_M55_IPC_BLE_FOUNDATION.md](M33_M55_IPC_BLE_FOUNDATION.md)：M33/M55 已有 `m33_m55_comm`、MTB-IPC queue 和 `.ipc_stream_shared`，App BLE 已有 NUS 风格 RX/TX；后续只补字段，不另造链路。
+- M55 小模型部署按 [M55_MODEL_DEPLOYMENT_GUIDE.md](M55_MODEL_DEPLOYMENT_GUIDE.md)：使用 GitHub `M55` 分支对应的 WiFi 工程，复用 TFLite Micro、`model_manager` 和 `m33_m55_comm`，推理结果回 M33 后再进 NanoPi/服务器。
 
 ## 真机测试前安全检查
 

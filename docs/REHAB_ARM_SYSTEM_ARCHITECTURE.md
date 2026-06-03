@@ -106,7 +106,7 @@ JointTrajectory -> NanoPi -> M33 -> 电机
 | 设备/层 | 固定职责 | 当前落地状态 |
 |---|---|---|
 | M33 | CAN 主站、安全状态机、输出端状态汇总、最终电机控制、BLE 近端状态/请求入口 | 已对上 legacy `0x330~0x334` 和 7号 shadow；完整 6DOF formal 协议待补 |
-| M55 | 板端小模型和语音/EMG 信号处理，输出编号结果给 M33，再由 NanoPi/服务器解析语义 | 架构确定，协议字段和模型版本表待补 |
+| M55 | 板端小模型和语音/EMG 信号处理，输出编号结果给 M33，再由 NanoPi/服务器解析语义 | GitHub `M55` 分支/WiFi 工程为准；M33/M55 通讯复用 MTB-IPC queue + `.ipc_stream_shared`，见 `M33_M55_IPC_BLE_FOUNDATION.md` |
 | NanoPi | ROS2 bridge、SocketCAN、摄像头采集、服务器上传、VLA 任务接收、候选轨迹转发 | 只读 product service 已自启，`enable_target_tx=false` |
 | Linux 仿真主机 | URDF/MJCF/MuJoCo、hardware shadow、规划 dry-run、数据标注和可视化 | MuJoCo 6DOF hardware shadow service 已自启 |
 | 服务器/总控台 | VLA、数据资产、模型版本、实验记录、多设备管理和远程协作 | 本仓库只维护接口边界；服务器实现在平台仓库 |
@@ -127,6 +127,7 @@ mainline / shadow-sim / dry-run / bench-debug / offline-demo / side-channel
 - 用 7号外部电机或 `nanopi_can_master.py` 的，属于 `bench-debug`。
 - 历史 demo、合成数据、fallback 仿真属于 `offline-demo`。
 - M55 语音/EMG、App BLE、服务器同步属于 `side-channel`，它们只能提供状态、意图、标注或建议，不能成为独立运动链路。
+- M33/M55 不能新造跨核通讯，必须复用现有 `m33_m55_comm`、Infineon MTB-IPC queue 和 `.ipc_stream_shared`；M55 小模型部署按 `M55_MODEL_DEPLOYMENT_GUIDE.md`，M33 BLE 到 App 字段按 `M33_M55_IPC_BLE_FOUNDATION.md`。
 
 后续 AI 如果发现旧文档、旧 demo 或旧启动脚本与本节冲突，必须以本节为准，更新旧内容，而不是复制一条新路线。
 
@@ -437,6 +438,8 @@ HTTP 从 NanoPi/OpenClaw 输出到 App：
 ### 4.6 英飞凌 M55
 
 定位：边缘 AI/DSP 推理核。
+
+当前 GitHub 对应关系和通讯地基见 [M33_M55_IPC_BLE_FOUNDATION.md](M33_M55_IPC_BLE_FOUNDATION.md)。M55 小模型部署教程见 [M55_MODEL_DEPLOYMENT_GUIDE.md](M55_MODEL_DEPLOYMENT_GUIDE.md)。M55 主线是 GitHub `M55` 分支对应的 WiFi 工程，不要把无 Git 证据的临时目录或旧 demo 当正式工程。
 
 输入：
 

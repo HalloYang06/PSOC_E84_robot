@@ -63,6 +63,40 @@ class SystemArchitectureContractTests(unittest.TestCase):
         self.assertIn('/model-state', server_sync)
         self.assertIn('model_suggestion_only_not_motion_permission', server_sync)
 
+    def test_m33_m55_ipc_and_ble_foundation_reuses_existing_paths(self) -> None:
+        foundation = (
+            REPO_ROOT
+            / 'docs'
+            / 'M33_M55_IPC_BLE_FOUNDATION.md'
+        ).read_text(encoding='utf-8')
+        deployment = (
+            REPO_ROOT
+            / 'docs'
+            / 'M55_MODEL_DEPLOYMENT_GUIDE.md'
+        ).read_text(encoding='utf-8')
+        architecture = (
+            REPO_ROOT
+            / 'docs'
+            / 'REHAB_ARM_SYSTEM_ARCHITECTURE.md'
+        ).read_text(encoding='utf-8')
+
+        self.assertIn('GitHub `M55` 分支', foundation)
+        self.assertIn('MTB-IPC queue', foundation)
+        self.assertIn('.ipc_stream_shared', foundation)
+        self.assertIn('0x261C0000', foundation)
+        self.assertIn('NUS', foundation)
+        self.assertIn('App 不允许发 CAN', foundation)
+        self.assertIn('不要新建第二套 M33/M55 通讯', foundation)
+
+        self.assertIn('TensorflowLiteMicro-latest', deployment)
+        self.assertIn('model_manager_load_tflm_model', deployment)
+        self.assertIn('MODEL_SLOT_EMG', deployment)
+        self.assertIn('m33_m55_comm_publish', deployment)
+        self.assertIn('model_suggestion_only_not_motion_permission', deployment)
+
+        self.assertIn('M33_M55_IPC_BLE_FOUNDATION.md', architecture)
+        self.assertIn('M55_MODEL_DEPLOYMENT_GUIDE.md', architecture)
+
 
 if __name__ == '__main__':
     unittest.main()

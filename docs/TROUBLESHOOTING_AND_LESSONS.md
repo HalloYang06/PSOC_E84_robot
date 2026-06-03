@@ -20,6 +20,37 @@
 
 ## CAN 与硬件
 
+### 不要只凭 `wifi` 目录名认定 M55 工程
+
+现象：
+
+- 工作区有多个 M55/WiFi/参考目录，例如 `wifi`、`_m55_ref_repo`、`yiliao1_m55`。
+- `wifi` 目录名看起来像 M55 工程，但当前 `git status` 报 `fatal: not a git repository`。
+
+环境：
+
+- 主仓库 `docs/PSoC_README.md` 记录过 `git clone -b M55 git@github.com:ChillAmnesiac/Medical-Rehabilitation-Manipulator.git wifi`。
+- `_m55_ref_repo` 是同一 GitHub 远端的 `M55` 分支，Git 正常，最新提交 `1cd7f69 同步当前M55工程版本`。
+
+根因：
+
+- 本地目录名只能说明历史用途，不能证明当前工程主线；`wifi` 的 `.git` 目录已损坏或不完整。
+
+解决：
+
+- M55 主线判断必须从 GitHub 远端、分支、提交历史和主仓库文档交叉确认。
+- `wifi` 可作为本地 M55 WiFi 工程文件参考；提交历史和正式分支基准以 `_m55_ref_repo` / GitHub `M55` 分支为准。
+- 文档已增加 `M33_M55_IPC_BLE_FOUNDATION.md`，要求后续 AI 不要新造 M33/M55 通讯，也不要把旧参考工程当主线。
+
+技巧：
+
+- 遇到多个固件目录时先跑 `git remote -v`、`git branch --show-current`、`git log -1 --oneline`，再用主仓库文档反查。
+- 如果某目录 Git 损坏，不要在该目录做架构结论；找同远端同分支的有效副本或重新 clone。
+
+状态：
+
+- 已记录为架构约束；本轮未修改 `wifi`、`yiliao_m33` 或 `_m55_ref_repo` 固件文件。
+
 ### CANSimple 主机查询帧不能刷新 M33 电机 fresh 时间戳
 
 现象：

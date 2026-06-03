@@ -423,6 +423,8 @@ App 的实时 profile 安全参数链路是 BLE 直连 M33，不依赖 NanoPi：
 
 当前仓库仅提供 `build_ble_m33_safety_package.py` dry-run 工具生成 JSON 草案。它不会进行蓝牙连接，也不会下发 M33。NanoPi 可以读取同一 profile/package 作为 ROS、仿真、数据采集和上传上下文，但不能成为 App BLE 生效的唯一通道。
 
+M33 BLE 到 App 的当前 NUS 服务、ASCII 命令、状态字段和正式字段扩展边界见 [M33_M55_IPC_BLE_FOUNDATION.md](M33_M55_IPC_BLE_FOUNDATION.md)。App 只能提出请求和标注，不能写底层电机目标。
+
 ```json
 {
   "schema_version": "rehab_arm_runtime_state_v1",

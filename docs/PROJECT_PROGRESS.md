@@ -62,6 +62,12 @@
   - 新增 `docs/M55_MODEL_RESULT_PROTOCOL_V1.md`，定义 `/rehab_arm/model_state`、`rehab_arm_model_state_v1`、第一版 M55 意图/疲劳/语音编号表和 `model_suggestion_only_not_motion_permission` 边界。
   - `data_recorder_node.py`、`jsonl_replay_node.py` 和 `data_recording.py` 接入 `/rehab_arm/model_state`，让 M55/服务器模型摘要可记录、回放、进入 VLA 数据集；`perception_vla` topic profile 现在要求 `/rehab_arm/model_state` 和 `/rehab_arm/camera_keyframe`。
   - `docs/INTEGRATION_GUIDE.md`、`docs/SERVER_SYNC_API_DRAFT.md`、`docs/USER_MANUAL.md` 同步拆分 `/rehab_arm/sensor_state` 和 `/rehab_arm/model_state`：前者是传感摘要，后者是模型建议，二者都不是运动许可。
+- M33/M55 IPC、M33 BLE 到 App、M55 小模型部署地基继续补齐：
+  - 新增 `docs/M33_M55_IPC_BLE_FOUNDATION.md`，从 GitHub 分支和提交历史确认 M55 主线是 `M55` 分支对应的 WiFi 工程；`wifi` 本地目录当前 `.git` 损坏，历史以 `_m55_ref_repo` 为准。
+  - 明确 M33/M55 已有 `m33_m55_comm`：短消息走 Infineon MTB-IPC queue，大块 PCM 走 linker `.ipc_stream_shared`，共享区 `0x261C0000/0x00040000`；后续 EMG/语音/模型结果不能另造跨核通讯。
+  - 明确 M33 BLE 已有 NUS 风格 RX/TX、`OpenClaw-NUS`、`stream:on/off`、`heartbeat`、`stop`、`mode:*` 和 bench `move:*`；正式 App 字段应补 safety/profile/joints/motors/sensors/model/session，但 App 仍只能请求/标注，不能发 CAN 或底层电机目标。
+  - 新增 `docs/M55_MODEL_DEPLOYMENT_GUIDE.md`，小模型部署按 TFLite Micro 官方/现有路径：量化 `.tflite` -> `xxd -i` C array -> `model_manager_load_tflm_model()` -> `m33_m55_comm_publish()` -> M33 -> NanoPi `/rehab_arm/model_state`。
+  - 更新 `M55_MODEL_RESULT_PROTOCOL_V1.md`、`REHAB_ARM_SYSTEM_ARCHITECTURE.md`、`INTEGRATION_GUIDE.md`、`PATIENT_DEVICE_PROFILE_PROTOCOL_V1.md` 和 `USER_MANUAL.md`，锁定后续 AI 复用现有 GitHub 工程、IPC、BLE 和模型部署合同。
 
 - 产品自启动与 MuJoCo hardware shadow 基础链路完成实测打通：
   - NanoPi `rehab-arm-nanopi-readonly.service` 已安装、`enabled`、`active`，产品上电后自动运行 `psoc_can_bridge_node.py`，参数固定 `enable_target_tx=false`。

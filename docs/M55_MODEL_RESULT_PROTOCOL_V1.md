@@ -18,7 +18,14 @@ M55 -> 编号结果/置信度/语音文本 -> M33
 M33 -> NanoPi -> /rehab_arm/model_state -> recorder/server/VLA
 ```
 
-第一版不指定 M33 和 M55 内部 IPC，也不占用新的 CAN ID。固件确定传输帧后，需要在 `PSOC_CAN_PROTOCOL_V1.md` 增加对应帧，并保持本文 JSON 语义不变。
+当前 M33/M55 内部通讯已经有地基，不要另起一套：
+
+- 短消息复用 `applications/common/m33_m55_comm.h/.c` 和 `applications/m33_m55_comm.h/.c` 的 Infineon MTB-IPC queue。
+- 大块 PCM 复用 linker 中的 `.ipc_stream_shared`，当前共享区 `m33_m55_shared = 0x261C0000, size = 0x00040000`。
+- M33/M55 现有消息类型已经包含 `MSG_TYPE_AI_INFERENCE_REQ/RESP`、`MSG_TYPE_SENSOR_STREAM`、`MSG_TYPE_ASR_TEXT`、`MSG_TYPE_VOICE_CONTROL`。
+- 详细地基见 [M33_M55_IPC_BLE_FOUNDATION.md](M33_M55_IPC_BLE_FOUNDATION.md)。
+
+第一版仍不新增 M55 直接 CAN ID。M55 结果必须回到 M33，由 M33 绑定时间戳、安全状态和 profile 版本后，再通过 M33 -> NanoPi 合同进入 `/rehab_arm/model_state`。如果固件后续新增 M33 到 NanoPi 的模型结果 CAN 帧，必须在 `PSOC_CAN_PROTOCOL_V1.md` 增加对应帧，并保持本文 JSON 语义不变。
 
 ## 3. ROS/JSON Payload
 
