@@ -172,6 +172,34 @@ def create_qa_seat(api_base: str, token: str, project_id: str) -> dict[str, obje
     )
 
 
+def create_route_candidate_seat(api_base: str, token: str, project_id: str) -> dict[str, object]:
+    stamp = time.strftime("%Y%m%d%H%M%S", time.gmtime())
+    seat_id = f"qa-skill-forge-route-target-{stamp}"
+    return object_data(
+        request_json(
+            f"{api_base.rstrip('/')}/api/collaboration/projects/{quote(project_id)}/thread-workstations",
+            method="POST",
+            token=token,
+            payload={
+                "id": seat_id,
+                "name": f"QA 平台能力 NPC {stamp}",
+                "agent_id": seat_id,
+                "ai_provider_id": "codex",
+                "responsibility": "平台 QA、能力工坊验收、NeedRouter 路由预览验证",
+                "permission_level": "qa-readonly",
+                "status": "idle",
+                "metadata": {
+                    "seat_type": "codex",
+                    "source": "qa_skill_forge_route_preview",
+                    "responsibility": "平台 QA、能力工坊验收、NeedRouter 路由预览验证",
+                    "accepted_task_types": ["平台 QA", "能力工坊验收"],
+                    "skill_loadout": ["平台 QA"],
+                },
+            },
+        ),
+    )
+
+
 def list_project_items(api_base: str, token: str, project_id: str) -> dict[str, list[dict[str, object]]]:
     return {
         "documents": as_list(request_json(f"{api_base.rstrip('/')}/api/knowledge/projects/{quote(project_id)}/documents", token=token)),
@@ -321,6 +349,7 @@ def validate_route_preview_readonly(
     token: str,
     project_id: str,
     seat: dict[str, object],
+    route_candidate: dict[str, object] | None,
     items_before: dict[str, list[dict[str, object]]],
 ) -> dict[str, object]:
     records = indexed_records(items_before)
@@ -387,9 +416,25 @@ def validate_route_preview_readonly(
     }
     preview_requester_id = text(preview.get("requester_seat_id") or preview.get("requesterSeatId"))
     alternatives = preview.get("alternatives")
+    alternative_items = alternatives if isinstance(alternatives, list) else []
     will_create_tasks = preview.get("will_create_tasks") or preview.get("willCreateTasks")
     blocked_reason = text(preview.get("blocked_reason") or preview.get("blockedReason"))
     review_reason = text(preview.get("review_reason") or preview.get("reviewReason"))
+    candidate_row_id = text((route_candidate or {}).get("id") or (route_candidate or {}).get("row_id") or (route_candidate or {}).get("rowId"))
+    candidate_config_id = text((route_candidate or {}).get("config_id") or (route_candidate or {}).get("configId"))
+    candidate_agent_id = text((route_candidate or {}).get("agent_id") or (route_candidate or {}).get("agentId"))
+    candidate_identities = {value for value in (candidate_row_id, candidate_config_id, candidate_agent_id) if value}
+    recommended_assignee_id = text(preview.get("recommended_assignee_id") or preview.get("recommendedAssigneeId"))
+    recommended_assignee_ref = text(preview.get("recommended_assignee_ref") or preview.get("recommendedAssigneeRef"))
+    alternative_identity_sets = [
+        {
+            text(item.get("seat_id") or item.get("seatId")),
+            text(item.get("seat_ref") or item.get("seatRef")),
+        }
+        for item in alternative_items
+        if isinstance(item, dict)
+    ]
+    matched_candidate_alternative = any(bool(candidate_identities & identities) for identities in alternative_identity_sets)
     preview_task_items = will_create_tasks if isinstance(will_create_tasks, list) else []
     planned_source_need_ids = {
         text(item.get("source_need_id") or item.get("sourceNeedId"))
@@ -408,6 +453,16 @@ def validate_route_preview_readonly(
         and isinstance(alternatives, list)
         and bool(blocked_reason or review_reason)
         and all(source_id in {"", need_id} for source_id in planned_source_need_ids)
+        and (
+            not candidate_identities
+            or (
+                recommended_assignee_id in candidate_identities
+                or recommended_assignee_ref in candidate_identities
+            )
+        )
+        and (not candidate_identities or matched_candidate_alternative)
+        and (not candidate_identities or not preview_task_items)
+        and (not candidate_identities or bool(blocked_reason))
     )
     return {
         "ok": readonly_ok and shape_ok,
@@ -420,6 +475,7 @@ def validate_route_preview_readonly(
         "before_need_task_id": before_task_id or None,
         "after_need_task_id": after_task_id or None,
         "seat_identities": sorted(seat_identities),
+        "candidate_identities": sorted(candidate_identities),
         "dispatch_counts_before": dispatch_counts_before,
         "dispatch_counts_after": dispatch_counts_after,
         "preview": preview,
@@ -429,6 +485,12 @@ def validate_route_preview_readonly(
             "alternatives_is_list": isinstance(alternatives, list),
             "has_user_readable_reason": bool(blocked_reason or review_reason),
             "preview_tasks_reference_need": all(source_id in {"", need_id} for source_id in planned_source_need_ids),
+            "recommended_candidate_matches": not candidate_identities
+            or recommended_assignee_id in candidate_identities
+            or recommended_assignee_ref in candidate_identities,
+            "candidate_present_in_alternatives": not candidate_identities or matched_candidate_alternative,
+            "blocked_candidate_has_no_planned_tasks": not candidate_identities or not preview_task_items,
+            "candidate_blocked_reason_present": not candidate_identities or bool(blocked_reason),
             "task_count_unchanged": before_task_count == after_task_count,
             "need_task_id_unchanged_empty": not before_task_id and not after_task_id,
             "dispatch_count_unchanged": dispatch_counts_before == dispatch_counts_after,
@@ -710,6 +772,7 @@ def main() -> int:
     project = create_project(args.api_base, token)
     project_id = text(project.get("id"))
     seat = create_qa_seat(args.api_base, token, project_id)
+    route_candidate = create_route_candidate_seat(args.api_base, token, project_id)
     seat_id = text(seat.get("id") or seat.get("row_id") or seat.get("config_id"))
     if not project_id or not seat_id:
         raise RuntimeError(f"Could not seed QA project/seat: project={project} seat={seat}")
@@ -746,6 +809,7 @@ def main() -> int:
             token=token,
             project_id=project_id,
             seat=seat,
+            route_candidate=route_candidate,
             items_before=second_items,
         )
         archived_items = archive_indexed_queue_items(args.api_base, token, user, project_id)
@@ -834,6 +898,7 @@ def main() -> int:
         "api_base": args.api_base,
         "project_id": project_id,
         "seat_id": seat_id,
+        "route_candidate": route_candidate,
         "fixture_paths": FIXTURE_PATHS,
         "initial_state": initial_state,
         "first_state": first_state,
@@ -867,6 +932,7 @@ def main() -> int:
                 "ok": pass_checks,
                 "project_id": project_id,
                 "seat_id": seat_id,
+                "route_candidate_id": text(route_candidate.get("id") or route_candidate.get("row_id") or route_candidate.get("rowId")),
                 "report": str(report_path),
                 "screenshots": report["screenshots"],
                 "first_counts": first_counts,
