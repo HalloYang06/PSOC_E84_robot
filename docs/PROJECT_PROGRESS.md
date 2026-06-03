@@ -53,6 +53,18 @@
 
 ### 2026-06-03
 
+- 搭建 medical_arm 6DOF MuJoCo shadow 基础框架：
+  - 新增 `rehab_arm_sim_mujoco/models/medical_arm_6dof.xml`，包含 6 个真实 URDF joint：`jian_hengxiang_joint`、`jian_zongxiang_joint`、`jian_xuanzhuan_joint`、`zhou_zongxiang_joint`、`wanbu_zongxiang_joint`、`wanbu_hengxiang_joint`。
+  - `mujoco_backend.py` 新增 `joint_profile=medical_arm_6dof`，保留旧 `legacy_5dof` 默认行为；6DOF profile 有独立 joint 名、限位、速度上限和默认 MJCF。
+  - `mujoco_sim_node.py` 新增参数化 topic：`joint_state_topic`、`trajectory_topic`、`safety_state_topic`、`sensor_state_topic`；6DOF shadow 默认走 `/sim/medical_arm/*`，不污染真机 `/joint_states` 或 `/arm_controller/joint_trajectory`。
+  - 新增 `medical_arm_6dof_shadow.launch.py`，用于一条命令启动 6DOF shadow 仿真。
+  - 更新 `medical_arm_6dof_schema.yaml`：`jian_xuanzhuan_joint` 正式 motor 仍是 6 号；当前允许 7 号 EL05 作为 `temporary_shadow_motor_ref` 临时代替 6 号，只限 `bench_debug_and_mujoco_shadow_only`。
+  - 远程仿真主机已同步并验证：`cal@192.168.2.46:/home/cal/桌面/Medical-Rehabilitation-Manipulator` 构建 `rehab_arm_sim_mujoco`/`rehab_arm_description` 通过；`ros2 launch rehab_arm_sim_mujoco medical_arm_6dof_shadow.launch.py` 日志显示 `backend=mujoco-model, joint_profile=medical_arm_6dof`。
+  - 远程 ROS topic 验证通过：发布 `/sim/medical_arm/joint_trajectory` 六轴轨迹后，`/sim/medical_arm/joint_states` 输出 6 个真实关节和目标位置。
+  - 远程 viewer 入口已准备：`/home/cal/medical_arm_mujoco/open_medical_arm_6dof_shadow.sh`，模型文件为 `/home/cal/medical_arm_mujoco/medical_arm_6dof_shadow.xml`。
+  - 验证：本地和远程 `test_mujoco_backend.py`、`test_medical_arm_6dof_schema.py` 通过；`mujoco_backend.py`、`mujoco_sim_node.py` `py_compile` 通过。
+  - 未完成：真实质量/惯量、精确 mesh/collision、4 号齿轮比例、1/2 号腕部对应关系、各关节方向/零点/患者限位仍需后续现场逐步标定。
+
 - 完成 NanoPi CAN 无输出现场非运动诊断：
   - NanoPi `pi@192.168.2.66` 在线，`can0` 可拉起为 classic CAN 1Mbps `ERROR-ACTIVE`，当前 `berr-counter tx 0 rx 0`。
   - `timeout 5 candump -L can0` 无任何被动帧。

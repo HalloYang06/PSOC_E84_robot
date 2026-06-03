@@ -13,7 +13,15 @@ from sensor_msgs.msg import JointState
 from std_msgs.msg import String
 from trajectory_msgs.msg import JointTrajectory
 
-from rehab_arm_sim_mujoco.mujoco_backend import JOINT_NAMES, LIMITS, RehabArmMujocoBackend, clamp
+from rehab_arm_sim_mujoco.mujoco_backend import (
+    JOINT_NAMES,
+    LEGACY_5DOF_PROFILE,
+    LIMITS,
+    RehabArmMujocoBackend,
+    clamp,
+    joint_names_for_profile,
+    limits_for_profile,
+)
 
 
 @dataclass
@@ -33,23 +41,35 @@ class MujocoSimNode(Node):
         super().__init__('rehab_arm_mujoco_sim')
         self.declare_parameter('rate_hz', 100.0)
         self.declare_parameter('model_path', '')
+        self.declare_parameter('joint_profile', LEGACY_5DOF_PROFILE)
+        self.declare_parameter('joint_state_topic', '/joint_states')
+        self.declare_parameter('trajectory_topic', '/arm_controller/joint_trajectory')
+        self.declare_parameter('safety_state_topic', '/rehab_arm/safety_state')
+        self.declare_parameter('sensor_state_topic', '/rehab_arm/sensor_state')
         self.rate_hz = float(self.get_parameter('rate_hz').value)
         self.model_path = str(self.get_parameter('model_path').value or '')
-        self.positions = [0.0] * len(JOINT_NAMES)
-        self.velocities = [0.0] * len(JOINT_NAMES)
-        self.desired_positions = [0.0] * len(JOINT_NAMES)
+        self.joint_profile = str(self.get_parameter('joint_profile').value or LEGACY_5DOF_PROFILE)
+        self.joint_names = joint_names_for_profile(self.joint_profile)
+        self.limits = limits_for_profile(self.joint_profile)
+        self.joint_state_topic = str(self.get_parameter('joint_state_topic').value)
+        self.trajectory_topic = str(self.get_parameter('trajectory_topic').value)
+        self.safety_state_topic = str(self.get_parameter('safety_state_topic').value)
+        self.sensor_state_topic = str(self.get_parameter('sensor_state_topic').value)
+        self.positions = [0.0] * len(self.joint_names)
+        self.velocities = [0.0] * len(self.joint_names)
+        self.desired_positions = [0.0] * len(self.joint_names)
         self.segments: list[TrajectorySegment] = []
         self.last_time = self.get_clock().now().nanoseconds / 1e9
         self.safety_state = 'ok'
         self.safety_detail = 'simulation ready'
         self.next_safety_publish_time = self.last_time
 
-        self.joint_pub = self.create_publisher(JointState, '/joint_states', 20)
-        self.safety_pub = self.create_publisher(String, '/rehab_arm/safety_state', 10)
-        self.sensor_pub = self.create_publisher(String, '/rehab_arm/sensor_state', 10)
+        self.joint_pub = self.create_publisher(JointState, self.joint_state_topic, 20)
+        self.safety_pub = self.create_publisher(String, self.safety_state_topic, 10)
+        self.sensor_pub = self.create_publisher(String, self.sensor_state_topic, 10)
         self.traj_sub = self.create_subscription(
             JointTrajectory,
-            '/arm_controller/joint_trajectory',
+            self.trajectory_topic,
             self.on_trajectory,
             10,
         )
@@ -57,15 +77,22 @@ class MujocoSimNode(Node):
 
         self.mujoco_backend = None
         try:
-            self.mujoco_backend = RehabArmMujocoBackend(model_path=self.model_path)
+            self.mujoco_backend = RehabArmMujocoBackend(
+                model_path=self.model_path,
+                joint_profile=self.joint_profile,
+            )
             self.backend = 'mujoco-model'
         except Exception as exc:
             self.backend = 'fallback-first-order'
             self.get_logger().warn(f'MuJoCo model backend unavailable, using fallback: {exc}')
-        self.get_logger().info(f'Rehab arm simulation ready, backend={self.backend}')
+        self.get_logger().info(
+            f'Rehab arm simulation ready, backend={self.backend}, '
+            f'joint_profile={self.joint_profile}, joint_state_topic={self.joint_state_topic}, '
+            f'trajectory_topic={self.trajectory_topic}'
+        )
 
     def on_trajectory(self, msg: JointTrajectory) -> None:
-        name_to_index = {name: i for i, name in enumerate(JOINT_NAMES)}
+        name_to_index = {name: i for i, name in enumerate(self.joint_names)}
         incoming_indices = [name_to_index[name] for name in msg.joint_names if name in name_to_index]
         if not incoming_indices:
             self.get_logger().warn('Received trajectory with no known joints')
@@ -81,7 +108,7 @@ class MujocoSimNode(Node):
             end_positions = list(previous_positions)
             for src_i, dst_i in enumerate(incoming_indices):
                 if src_i < len(point.positions):
-                    low, high, _ = LIMITS[JOINT_NAMES[dst_i]]
+                    low, high, _ = self.limits[self.joint_names[dst_i]]
                     end_positions[dst_i] = clamp(float(point.positions[src_i]), low, high)
             point_time = point.time_from_start.sec + point.time_from_start.nanosec / 1e9
             end_time = now + max(point_time, 0.02)
@@ -127,7 +154,7 @@ class MujocoSimNode(Node):
     def publish_joint_state(self) -> None:
         msg = JointState()
         msg.header.stamp = self.get_clock().now().to_msg()
-        msg.name = JOINT_NAMES
+        msg.name = self.joint_names
         msg.position = list(self.positions)
         msg.velocity = list(self.velocities)
         msg.effort = [0.0] * len(JOINT_NAMES)

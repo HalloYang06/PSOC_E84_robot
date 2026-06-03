@@ -62,12 +62,22 @@ joints:
       kind: motor_id
       id: 6
       protocol: RobStride_private_extended_frame
+      joint_command_ratio: 1.0
       transmission:
         type: unknown
         final_ratio: null
         direction: null
         zero_offset_rad: null
       calibrated: false
+    temporary_shadow_motor_ref:
+      kind: motor_id
+      id: 7
+      model: EL05
+      protocol: RobStride_private_extended_frame
+      joint_command_ratio: 1.0
+      replaces_motor_id: 6
+      scope: bench_debug_and_mujoco_shadow_only
+      restore_rule: 后续 6 号装回或确认在线后，把 shadow/demo 输入改回 motor_id=6，不要把 7 号写入正式 medical_arm 映射。
 
   - index: 3
     urdf_joint: zhou_zongxiang_joint
@@ -132,5 +142,7 @@ external_debug_motors:
     allowed_in_formal_mapping: false
     allowed_as_temporary_mujoco_shadow_actuator: true
     temporary_shadow_joint: forearm_rotation_joint
+    temporary_substitute_for_medical_arm_6dof_joint: jian_xuanzhuan_joint
+    temporary_replaces_motor_id: 6
     command_position_semantics: robstride_csp_loc_ref_rad_observed_output_side_on_external_bench_motor
     notes: 7号可以临时用于 bench-debug/shadow-sim 验证 ROS、M33、NanoPi、MuJoCo 数据流；不得进入 medical_arm 6DOF 正式关节映射、患者 profile 或 VLA 真机决策输出。

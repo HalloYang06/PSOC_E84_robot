@@ -215,6 +215,84 @@ timeout 4 ros2 run rehab_arm_sim_mujoco mujoco_sim_node.py
 
 不应该出现 Python traceback。
 
+### 2.1 medical_arm 6DOF MuJoCo shadow 仿真
+
+本节是当前真实 `medical_arm.zip` 6 关节方向的基础框架。它使用独立 `/sim/medical_arm/*` topic，不会访问 CAN，不会发送 `0x320`，也不会控制 M33 或电机。
+
+启动：
+
+```bash
+cd /home/cal/Medical-Rehabilitation-Manipulator/rehab_arm_ros2_ws
+source /opt/ros/jazzy/setup.bash
+./build_ros2.sh --packages-select rehab_arm_sim_mujoco rehab_arm_description
+source install/setup.bash
+ros2 launch rehab_arm_sim_mujoco medical_arm_6dof_shadow.launch.py
+```
+
+如果你只想直接跑节点：
+
+```bash
+ros2 run rehab_arm_sim_mujoco mujoco_sim_node.py --ros-args \
+  -p joint_profile:=medical_arm_6dof \
+  -p joint_state_topic:=/sim/medical_arm/joint_states \
+  -p trajectory_topic:=/sim/medical_arm/joint_trajectory \
+  -p safety_state_topic:=/sim/medical_arm/safety_state \
+  -p sensor_state_topic:=/sim/medical_arm/sensor_state
+```
+
+发布一条 6DOF 测试轨迹：
+
+```bash
+ros2 topic pub --once /sim/medical_arm/joint_trajectory trajectory_msgs/msg/JointTrajectory \
+  "{joint_names: ['jian_hengxiang_joint','jian_zongxiang_joint','jian_xuanzhuan_joint','zhou_zongxiang_joint','wanbu_zongxiang_joint','wanbu_hengxiang_joint'], points: [{positions: [0.1,0.1,0.05,0.2,0.05,0.02], time_from_start: {sec: 2, nanosec: 0}}]}"
+```
+
+查看：
+
+```bash
+ros2 topic echo --once /sim/medical_arm/joint_states
+ros2 topic echo --once /sim/medical_arm/safety_state
+```
+
+当前 6DOF joint 顺序：
+
+```text
+jian_hengxiang_joint
+jian_zongxiang_joint
+jian_xuanzhuan_joint
+zhou_zongxiang_joint
+wanbu_zongxiang_joint
+wanbu_hengxiang_joint
+```
+
+当前电机/传动草案：
+
+| joint | 当前电机 | 当前规则 | 你后面要补 |
+|---|---|---|---|
+| `jian_hengxiang_joint` | 3号伺泰威 | `1:2` 同步轮，电机端是 1，输出端是 2；伺泰威 CANSimple 需要协议侧换算 | 方向、零点、最终限位 |
+| `jian_zongxiang_joint` | 4号 RS00 | 齿轮减速，具体比例未知；RobStride CSP 关节命令比例先按 `1.0` | 齿轮关系、方向、零点 |
+| `jian_xuanzhuan_joint` | 正式 6号 EL05；当前可用 7号 EL05 临时代替 | RobStride CSP 关节命令比例 `1.0` | 后续把临时 7号改回6号 |
+| `zhou_zongxiang_joint` | 5号 RS00 | RobStride CSP 关节命令比例 `1.0` | 方向、零点、限位 |
+| `wanbu_zongxiang_joint` | 1/2号 4015 之一 | 待确认 | 确认哪个电机对应该轴 |
+| `wanbu_hengxiang_joint` | 1/2号 4015 之一 | 待确认 | 确认哪个电机对应该轴 |
+
+改参数的位置：
+
+| 要改什么 | 文件 |
+|---|---|
+| joint 名、限位、速度上限 | `rehab_arm_sim_mujoco/rehab_arm_sim_mujoco/mujoco_backend.py` 的 `MEDICAL_ARM_6DOF_LIMITS` |
+| MJCF 几何、阻尼、actuator 参数 | `rehab_arm_sim_mujoco/models/medical_arm_6dof.xml` |
+| 电机映射、临时 7号替代 6号、传动草案 | `rehab_arm_description/config/medical_arm_6dof_schema.yaml` |
+
+标定顺序：
+
+1. 只开 MuJoCo shadow，确认 6 个 joint 名和方向看起来合理。
+2. 单独让外部 7号 EL05 做 `+5°/-5°`，记录现场正方向。
+3. 在 schema 里确认 `jian_xuanzhuan_joint.temporary_shadow_motor_ref` 的方向和零点。
+4. 逐个关节做 `+5°/-5°`，只记录方向、零点和比例，不急着扩大角度。
+5. 每个关节完成 `+5°/-5°`、`+10°/-10°` 后，再收紧 `MEDICAL_ARM_6DOF_LIMITS` 和患者 profile。
+6. 6号装回或在线后，把 `jian_xuanzhuan_joint` 的 demo/shadow 输入从 7号改回 6号。
+
 ## 3. Demo 轨迹使用
 
 本节只适用于 legacy 5 关节仿真冒烟测试。它不是当前 6 关节 `medical_arm.zip` 模型的正式 planner，也不是 NanoPi/M33 真机 workflow。

@@ -55,6 +55,17 @@ class MedicalArm6DofSchemaTests(unittest.TestCase):
         )
         self.assertEqual(mapping['jian_zongxiang_joint']['id'], 4)
         self.assertEqual(mapping['jian_xuanzhuan_joint']['id'], 6)
+        xuan_joint = next(
+            joint for joint in payload['joints']
+            if joint['urdf_joint'] == 'jian_xuanzhuan_joint'
+        )
+        self.assertEqual(xuan_joint['motor_ref']['joint_command_ratio'], 1.0)
+        self.assertEqual(xuan_joint['temporary_shadow_motor_ref']['id'], 7)
+        self.assertEqual(xuan_joint['temporary_shadow_motor_ref']['replaces_motor_id'], 6)
+        self.assertEqual(
+            xuan_joint['temporary_shadow_motor_ref']['scope'],
+            'bench_debug_and_mujoco_shadow_only',
+        )
         self.assertEqual(mapping['zhou_zongxiang_joint']['id'], 5)
         self.assertEqual(mapping['wanbu_zongxiang_joint']['candidates'], [1, 2])
         self.assertEqual(mapping['wanbu_hengxiang_joint']['candidates'], [1, 2])
@@ -71,6 +82,8 @@ class MedicalArm6DofSchemaTests(unittest.TestCase):
         self.assertFalse(external_motor['allowed_in_formal_mapping'])
         self.assertTrue(external_motor['allowed_as_temporary_mujoco_shadow_actuator'])
         self.assertEqual(external_motor['temporary_shadow_joint'], 'forearm_rotation_joint')
+        self.assertEqual(external_motor['temporary_substitute_for_medical_arm_6dof_joint'], 'jian_xuanzhuan_joint')
+        self.assertEqual(external_motor['temporary_replaces_motor_id'], 6)
 
 
 if __name__ == '__main__':

@@ -135,6 +135,19 @@ cd /home/cal/medical_arm_mujoco
 ./open_mujoco.sh
 ```
 
+当前仓库 6DOF shadow 模型也已同步到远程主机，可直接打开：
+
+```bash
+cd /home/cal/medical_arm_mujoco
+./open_medical_arm_6dof_shadow.sh
+```
+
+对应文件：
+
+```text
+/home/cal/medical_arm_mujoco/medical_arm_6dof_shadow.xml
+```
+
 验证：
 
 ```bash
@@ -153,6 +166,16 @@ MUJOCO_GL=egl python3 validate_mujoco.py
 
 目标：MuJoCo 主机发布仿真状态，但使用独立命名空间，避免和 NanoPi 真实 `/joint_states` 冲突。
 
+仓库现在提供 6DOF medical arm shadow launch：
+
+```bash
+cd ~/Medical-Rehabilitation-Manipulator/rehab_arm_ros2_ws
+source /opt/ros/jazzy/setup.bash
+./build_ros2.sh --packages-select rehab_arm_sim_mujoco rehab_arm_description
+source install/setup.bash
+ros2 launch rehab_arm_sim_mujoco medical_arm_6dof_shadow.launch.py
+```
+
 建议 topics：
 
 ```text
@@ -170,6 +193,34 @@ MUJOCO_GL=egl python3 validate_mujoco.py
 ```
 
 原因：NanoPi bridge 和真实状态也使用这些公共 topic，早期联调阶段必须避免真假状态混在一起。
+
+发布一条 6DOF shadow 轨迹，不访问 CAN，也不发送 `0x320`：
+
+```bash
+ros2 topic pub --once /sim/medical_arm/joint_trajectory trajectory_msgs/msg/JointTrajectory \
+  "{joint_names: ['jian_hengxiang_joint','jian_zongxiang_joint','jian_xuanzhuan_joint','zhou_zongxiang_joint','wanbu_zongxiang_joint','wanbu_hengxiang_joint'], points: [{positions: [0.1,0.1,0.05,0.2,0.05,0.02], time_from_start: {sec: 2, nanosec: 0}}]}"
+```
+
+观察：
+
+```bash
+ros2 topic echo --once /sim/medical_arm/joint_states
+ros2 topic echo --once /sim/medical_arm/safety_state
+```
+
+当前 6DOF shadow 的参数位置：
+
+| 参数 | 文件 | 当前值/说明 |
+|---|---|---|
+| 6 个 joint 名、ROM、速度上限 | `rehab_arm_sim_mujoco/mujoco_backend.py` | `MEDICAL_ARM_6DOF_*` |
+| MJCF 几何、actuator、阻尼、颜色 | `rehab_arm_sim_mujoco/models/medical_arm_6dof.xml` | 简化模型，后续按实物慢慢调 |
+| 电机到关节草案 | `rehab_arm_description/config/medical_arm_6dof_schema.yaml` | 3号 `1:2` 同步轮；4号齿轮比未知；7号临时代替6号 shadow |
+
+临时替代规则：
+
+- 正式 `jian_xuanzhuan_joint` 仍记录为 `motor_id=6`。
+- 当前为了台架和 shadow，可以用 7 号 EL05 临时代替 6 号：`temporary_shadow_motor_ref.id=7`、`replaces_motor_id=6`。
+- 还原时只改 schema/demo 输入回 6 号；不要把 7 号写进正式 medical arm mapping。
 
 ### 阶段 2：NanoPi 只读状态上行
 
