@@ -13,6 +13,35 @@
 - App 近端实时链路走 BLE 到英飞凌；HTTP/OpenClaw 只做高层服务，不做底层电机闭环。
 - 服务器/VLA 后续只接任务、状态和数据资产，不直接发 CAN，不直接发电机力矩、电流、速度或裸位置命令。
 
+## 1.1 当前主线和旁线对接纪律
+
+本仓库对接只维护一套架构，不为 App、M55、服务器、仿真主机分别另造控制闭环。
+
+主线：
+
+```text
+M33 汇总电机/传感/安全状态 -> NanoPi ROS2/上传 -> 仿真主机/服务器/VLA
+服务器/VLA/仿真只产出高层任务或候选轨迹 -> NanoPi -> M33 安全裁决 -> 电机
+```
+
+旁线：
+
+- M55 只输出小模型编号、置信度、语音文本、音频摘要和建议；编号语义由 NanoPi/服务器按 `model_version/schema_version` 解析。
+- M33 BLE 到 App 只做近端状态、训练请求、急停请求、profile 确认和标注；App 不能直接控制电机。
+- NanoPi 到服务器只上传摄像头、M33 状态、输出端 joint、电机诊断、M55 语义和 session 数据；服务器不能直接写 CAN。
+- Linux 仿真主机通过无线 ROS 接 NanoPi，用于 MuJoCo shadow、dry-run、规划候选和数据工具；不能作为真机硬实时闭环。
+
+所有接口新增字段必须优先落到以下共享合同之一：
+
+| 合同 | 用途 |
+|---|---|
+| `PATIENT_DEVICE_PROFILE_PROTOCOL_V1.md` | 患者 profile、限位、训练计划、App/平台/NanoPi/M33 共用参数 |
+| `PSOC_CAN_PROTOCOL_V1.md` | NanoPi <-> M33 CAN 协议 |
+| `medical_arm_6dof_schema.yaml` | 6DOF joint、motor->joint、传动、零点、限位和 shadow 边界 |
+| 本文 ROS2 topic 表 | NanoPi、仿真主机、服务器、recorder、VLA 共享 topic |
+
+如果某个历史 demo 或旧接口和这些合同冲突，默认按只读/demo 处理，不能升级成主线。
+
 ## 2. ROS2 对接接口
 
 | Topic | Type | 发布方 | 订阅方 | 说明 |

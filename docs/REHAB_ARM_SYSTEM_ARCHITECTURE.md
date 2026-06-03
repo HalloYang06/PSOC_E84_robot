@@ -70,6 +70,66 @@
 
 机械臂包含齿轮、同步轮、减速器、连杆或推杆，所以必须区分 `motor_id`、电机轴角和机器人/人体 `joint`。上层系统默认使用输出端 joint 状态；原始电机数据只作为诊断和标定依据。任何 `motor -> joint` 换算都必须记录传动比、方向、零点、限位、回差/死区和标定版本。
 
+## 2.0.1 整机架构地基合同
+
+后续代码、文档、AI 协作和测试都必须沿着本节主线推进，不要另造一套控制架构。
+
+### 唯一主线
+
+```text
+传感/电机反馈 -> M33 安全汇总 -> NanoPi ROS2/上传网关
+-> Linux 仿真主机 hardware shadow / 服务器 VLA
+-> 候选任务或候选轨迹 -> NanoPi
+-> M33 最终安全裁决 -> 电机
+```
+
+这条主线里，真实运动命令只有一个正式入口：
+
+```text
+JointTrajectory -> NanoPi -> M33 -> 电机
+```
+
+任何新模块只能接在这条主线上，不能新增“服务器直控电机”“App HTTP 直控电机”“M55 直控电机”“仿真主机绕过 NanoPi/M33 控制电机”等旁路。
+
+### 旁线不是控制闭环
+
+| 旁线 | 正确用途 | 禁止事项 |
+|---|---|---|
+| M55 小模型 | EMG/语音/疲劳/共收缩/异常的编号结果、置信度和建议 | 不直接输出电机命令，不改变 M33 限位，不单独授权运动 |
+| M33 BLE 到 App | 近端状态显示、训练 start/pause/stop 请求、急停请求、标注和 profile 确认 | App 不直接发 CAN，不绕过 M33，不把 HTTP 高层任务当实时控制 |
+| NanoPi 到服务器 | 摄像头、M33 状态、输出端 joint、电机诊断、M55 语义、session 数据上传；接收服务器/VLA 高层任务 | NanoPi 不让服务器直接写 `0x320`，不把 VLA 输出当已授权轨迹 |
+| Linux 仿真主机无线 ROS | MuJoCo hardware shadow、dry-run、规划候选、rosbag/标注 | 不承担高频真机安全闭环，不因无线 ROS 可达就发真实运动 |
+| 7号 EL05 外部电机 | bench-debug 和 MuJoCo shadow 临时代替 6号观察链路 | 不进入正式 6DOF 关节映射、患者 profile 或 VLA 真机决策 |
+
+### 五个设备的固定职责
+
+| 设备/层 | 固定职责 | 当前落地状态 |
+|---|---|---|
+| M33 | CAN 主站、安全状态机、输出端状态汇总、最终电机控制、BLE 近端状态/请求入口 | 已对上 legacy `0x330~0x334` 和 7号 shadow；完整 6DOF formal 协议待补 |
+| M55 | 板端小模型和语音/EMG 信号处理，输出编号结果给 M33，再由 NanoPi/服务器解析语义 | 架构确定，协议字段和模型版本表待补 |
+| NanoPi | ROS2 bridge、SocketCAN、摄像头采集、服务器上传、VLA 任务接收、候选轨迹转发 | 只读 product service 已自启，`enable_target_tx=false` |
+| Linux 仿真主机 | URDF/MJCF/MuJoCo、hardware shadow、规划 dry-run、数据标注和可视化 | MuJoCo 6DOF hardware shadow service 已自启 |
+| 服务器/总控台 | VLA、数据资产、模型版本、实验记录、多设备管理和远程协作 | 本仓库只维护接口边界；服务器实现在平台仓库 |
+
+### 后续 AI 必须遵守
+
+每次新增功能或文档时，先声明属于：
+
+```text
+mainline / shadow-sim / dry-run / bench-debug / offline-demo / side-channel
+```
+
+分类规则：
+
+- 能影响真实电机的，只能走 `mainline`，最终必须到 M33 安全裁决。
+- 只看 MuJoCo 或无线 ROS shadow 的，属于 `shadow-sim`。
+- 生成候选轨迹但不发 `0x320` 的，属于 `dry-run`。
+- 用 7号外部电机或 `nanopi_can_master.py` 的，属于 `bench-debug`。
+- 历史 demo、合成数据、fallback 仿真属于 `offline-demo`。
+- M55 语音/EMG、App BLE、服务器同步属于 `side-channel`，它们只能提供状态、意图、标注或建议，不能成为独立运动链路。
+
+后续 AI 如果发现旧文档、旧 demo 或旧启动脚本与本节冲突，必须以本节为准，更新旧内容，而不是复制一条新路线。
+
 ## 2.1 正规机器人开发路线对齐
 
 本项目按开源机器人常见路线推进：先统一机器人模型、标准 ROS 接口和可复现实验数据，再接硬件桥接和人体安全测试。

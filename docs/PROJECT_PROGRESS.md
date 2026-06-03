@@ -53,6 +53,12 @@
 
 ### 2026-06-03
 
+- 整机架构地基收敛到同一条主线：
+  - `docs/REHAB_ARM_SYSTEM_ARCHITECTURE.md` 新增“整机架构地基合同”，明确唯一主线是 `传感/电机反馈 -> M33 -> NanoPi -> 仿真主机/服务器/VLA -> NanoPi -> M33 -> 电机`，正式运动入口只认 `JointTrajectory -> NanoPi -> M33 -> 电机`。
+  - 明确 M55、M33 BLE 到 App、NanoPi 到服务器、Linux 仿真主机无线 ROS、7号 EL05 都是旁线或研发通道：只能提供状态、意图、建议、shadow、dry-run 或 bench-debug，不能形成新的真机控制闭环。
+  - `docs/INTEGRATION_GUIDE.md` 新增“当前主线和旁线对接纪律”，要求新增字段优先落到 `PATIENT_DEVICE_PROFILE_PROTOCOL_V1.md`、`PSOC_CAN_PROTOCOL_V1.md`、`medical_arm_6dof_schema.yaml` 或 ROS2 topic 合同，不允许各端各自定义一套。
+  - 新增 `test_system_architecture_contract.py`，静态锁住正式运动链路、M33 最终裁决、M55 旁线、App BLE、NanoPi 到服务器、无线 ROS 和共享合同引用，防止后续 AI 把历史 demo 或旁线改成新主线。
+
 - 产品自启动与 MuJoCo hardware shadow 基础链路完成实测打通：
   - NanoPi `rehab-arm-nanopi-readonly.service` 已安装、`enabled`、`active`，产品上电后自动运行 `psoc_can_bridge_node.py`，参数固定 `enable_target_tx=false`。
   - NanoPi 服务采用 root `ExecStartPre=+/usr/local/bin/setup_nanopi_can.sh` 配置 MCP2518FD/`can0`，随后以 `User=pi` 运行 ROS2 bridge；避免 root ROS2/DDS 环境问题，也避免 `pi` 用户在 systemd 中无交互 sudo。
