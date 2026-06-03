@@ -59,6 +59,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="After clicking stop, assert a safe robotics.capture.stop command reaches the bound runner inbox.",
     )
+    parser.add_argument(
+        "--verify-segment-tabs",
+        action="store_true",
+        help="After stop, open dataset and chart tabs and assert the generated segment is visible to users.",
+    )
     return parser.parse_args()
 
 
@@ -283,6 +288,32 @@ def page_state(cdp: object, device_id: str, computer_node_id: str) -> dict[str, 
     )
     if not isinstance(state, dict):
         raise RuntimeError(f"invalid page state: {state!r}")
+    return state
+
+
+def segment_tab_state(cdp: object, tab: str) -> dict[str, object]:
+    state = cdp_eval(
+        cdp,
+        f"""
+        (() => {{
+          const body = document.body?.innerText || '';
+          const forbidden = Array.from(new Set(body.match(new RegExp({js(FORBIDDEN_RE)}, 'ig')) || []));
+          return {{
+            href: location.href,
+            tab: {js(tab)},
+            hasSegmentTitle: body.includes('采集片段'),
+            hasSegmentCount: /\\d+\\s*个采集片段|\\d+\\s*个片段可画图|可进入标注/.test(body),
+            hasDownloadAction: body.includes('下载片段'),
+            hasChartPreview: body.includes('片段可画图') || body.includes('预览曲线'),
+            hasHorizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 2,
+            forbidden,
+            bodySample: body.slice(0, 2200),
+          }};
+        }})()
+        """,
+    )
+    if not isinstance(state, dict):
+        raise RuntimeError(f"invalid segment tab state: {state!r}")
     return state
 
 
@@ -557,6 +588,42 @@ def main() -> int:
                     report["failures"].append("unsafe-runner-stop-command")  # type: ignore[union-attr]
                 if not text(stop_body.get("platform_artifact_path")):
                     report["failures"].append("stop-command-missing-artifact-path")  # type: ignore[union-attr]
+
+        if args.verify_segment_tabs:
+            for tab in ("dataset", "chart"):
+                tab_target = (
+                    f"{web_base}/projects/{quote(args.project_id, safe='')}/robotics"
+                    f"?tab={quote(tab, safe='')}&device={quote(args.device_id, safe='')}"
+                )
+                cdp.send("Page.navigate", {"url": tab_target})
+                wait_for(
+                    cdp,
+                    f"""
+                    (() => {{
+                      const body = document.body?.innerText || '';
+                      return location.pathname.endsWith('/robotics')
+                        && location.search.includes('tab={tab}')
+                        && body.includes({js(args.device_id)})
+                        && body.includes('采集片段');
+                    }})()
+                    """,
+                    timeout_seconds=45,
+                )
+                tab_state = segment_tab_state(cdp, tab)
+                tab_shot = output_dir / f"bound-nanopi-robotics-sync-{tab}-{args.viewport_width}x{args.viewport_height}-{stamp}.png"
+                screenshot(cdp, tab_shot)
+                tab_state["screenshot"] = str(tab_shot)
+                tab_state["ok"] = (
+                    tab_state["hasSegmentTitle"]
+                    and tab_state["hasSegmentCount"]
+                    and (tab != "dataset" or tab_state["hasDownloadAction"])
+                    and (tab != "chart" or tab_state["hasChartPreview"])
+                    and not tab_state["hasHorizontalOverflow"]
+                    and not tab_state["forbidden"]
+                )
+                report["pages"].append(tab_state)  # type: ignore[union-attr]
+                if not tab_state["ok"]:
+                    report["failures"].append(f"segment-{tab}-tab-not-ready")  # type: ignore[union-attr]
         report["verdict"] = "passed" if not report["failures"] else "failed"
         report_path = output_dir / "report.json"
         report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")

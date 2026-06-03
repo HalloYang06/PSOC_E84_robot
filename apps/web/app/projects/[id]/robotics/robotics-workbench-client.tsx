@@ -766,6 +766,7 @@ function DeviceDataTile({
   npcSeats,
   defaultNpcId,
   initialTab,
+  terminalMessages,
   onClose,
 }: {
   projectId: string;
@@ -774,6 +775,7 @@ function DeviceDataTile({
   npcSeats: AnyRecord[];
   defaultNpcId: string;
   initialTab: InitialRoboticsTab;
+  terminalMessages: AnyRecord[];
   onClose: () => void;
 }) {
   const [activeTab, setActiveTab] = useState<DeviceTab>(() => initialDeviceTab(initialTab));
@@ -792,7 +794,9 @@ function DeviceDataTile({
   const id = deviceId(device, index);
   const stateComputerId = deviceExecutionComputerId(device);
   const stateChannels = robotStateChannels(device);
+  const stateInterfaceId = `robot-state:${id}`;
   const stateReturnTo = `/projects/${projectId}/robotics?tab=model&device=${encodeURIComponent(id)}`;
+  const stateSegments = captureSegmentsForInterface(stateInterfaceId, terminalMessages);
   return (
     <article className={tileStyles.tile}>
       <header className={tileStyles.head}>
@@ -824,8 +828,8 @@ function DeviceDataTile({
         {[
           ["data", "开发板数据", counts.motors + counts.sensorFields],
           ["camera", "摄像头", counts.hasCamera ? 1 : 0],
-          ["dataset", "数据标注", dataQualityReady(device) ? 1 : 0],
-          ["chart", "图表实验", variables.length],
+          ["dataset", "数据标注", stateSegments.length || (dataQualityReady(device) ? 1 : 0)],
+          ["chart", "图表实验", stateSegments.length || variables.length],
           ["model", "模型预览", 1],
         ].map(([tab, label, count]) => (
           <button
@@ -891,8 +895,8 @@ function DeviceDataTile({
           <div className={styles.deviceDataSummary}>
             <article data-tone={dataQualityReady(device) ? "ok" : "idle"}>
               <span>标注状态</span>
-              <strong>{dataQualityReady(device) ? "可标注" : "待补数据"}</strong>
-              <p>{qualityDetailLine(device)}</p>
+              <strong>{stateSegments.length ? `${stateSegments.length} 个采集片段` : dataQualityReady(device) ? "可标注" : "待补数据"}</strong>
+              <p>{stateSegments.length ? "只读同步停止后生成的片段已经进入当前开发板数据视图，可继续人工补标签或导出。" : qualityDetailLine(device)}</p>
             </article>
             <article>
               <span>数据来源</span>
@@ -901,6 +905,23 @@ function DeviceDataTile({
             </article>
           </div>
           <div className={styles.annotationWorkbench}>
+            <article className={styles.dataActionPanel}>
+              <span>采集片段</span>
+              <strong>{stateSegments.length ? "可进入标注" : "等待只读同步"}</strong>
+              {stateSegments.length ? (
+                <ul className={styles.segmentList}>
+                  {stateSegments.slice(0, 4).map((segment) => (
+                    <li key={segment.id}>
+                      <b>{segment.title}</b>
+                      <small>{segment.sampleHz}Hz · {segment.channels.slice(0, 4).join(" / ")}</small>
+                      {segment.artifactPath ? <ArtifactPathActions projectId={projectId} artifactPath={segment.artifactPath} label="下载片段" /> : null}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p>先在模型预览里开始只读状态同步，再点击“关闭并生成片段”。</p>
+              )}
+            </article>
             <article className={styles.dataActionPanel}>
               <span>可标注变量</span>
               <strong>{variables.length ? `${variables.length} 个字段` : "等待设备数据"}</strong>
@@ -935,8 +956,15 @@ function DeviceDataTile({
         <section className={styles.deviceDataPane}>
           <article className={styles.dataActionPanel}>
             <span>图表实验</span>
-            <strong>从设备上报数据直接选变量</strong>
-            <p>这里先列出当前值和来源；时间序列缓存接入后，同一批变量会直接进入曲线对比和实验记录。</p>
+            <strong>{stateSegments.length ? `${stateSegments.length} 个片段可画图` : "从设备上报数据直接选变量"}</strong>
+            <p>{stateSegments.length ? "只读状态片段已经进入图表实验，可先看预览曲线，再回到标注页补人工语义。" : "这里先列出当前值和来源；时间序列缓存接入后，同一批变量会直接进入曲线对比和实验记录。"}</p>
+            {stateSegments.length ? (
+              <div className={styles.waveformStack}>
+                {stateSegments.slice(0, 2).map((segment) => (
+                  <ChartPreview key={`${segment.id}-device-preview`} segment={segment} targetValue={variables[0]?.name || "position"} />
+                ))}
+              </div>
+            ) : null}
           </article>
           <article className={styles.dataActionPanel}>
             <span>NPC 资源索引</span>
@@ -974,7 +1002,7 @@ function DeviceDataTile({
                 <form action={记录机器人采集片段.bind(null, projectId)}>
                   <input type="hidden" name="return_to" value={stateReturnTo} />
                   <input type="hidden" name="computer_node_id" value={stateComputerId} />
-                  <input type="hidden" name="interface_id" value={`robot-state:${id}`} />
+                  <input type="hidden" name="interface_id" value={stateInterfaceId} />
                   <input type="hidden" name="runner_interface_id" value="ros:/joint_states" />
                   <input type="hidden" name="interface_name" value={`${title} 只读状态`} />
                   <input type="hidden" name="interface_kind" value="ROS 状态" />
@@ -1641,7 +1669,7 @@ function terminalEventLines(tile: DebugWindow, messages: AnyRecord[]) {
   });
 }
 
-function captureSegments(tile: DebugWindow, messages: AnyRecord[]) {
+function captureSegmentsForInterface(interfaceId: string, messages: AnyRecord[]) {
   const runnerResults = new Map<string, AnyRecord>();
   const resultScore = (result: AnyRecord) => {
     const points = record(record(result).preview_points);
@@ -1654,8 +1682,8 @@ function captureSegments(tile: DebugWindow, messages: AnyRecord[]) {
   for (const message of messages) {
     const extra = record(message.extra_data ?? message.metadata);
     if (text(message.message_type ?? message.messageType, "") !== "runner_result") continue;
-    const belongsToTile = text(extra.terminal_interface_id, "") === tile.id
-      || text(extra.source_message_id, "") && messages.some((source) => source.id === extra.source_message_id && text(record(source.extra_data ?? source.metadata).terminal_interface_id, "") === tile.id);
+    const belongsToTile = text(extra.terminal_interface_id, "") === interfaceId
+      || text(extra.source_message_id, "") && messages.some((source) => source.id === extra.source_message_id && text(record(source.extra_data ?? source.metadata).terminal_interface_id, "") === interfaceId);
     if (!belongsToTile) continue;
     const result = record(extra.runner_result);
     const captureId = text(result.capture_id ?? extra.capture_id, "");
@@ -1668,7 +1696,7 @@ function captureSegments(tile: DebugWindow, messages: AnyRecord[]) {
     .filter((message) => {
       const extra = record(message.extra_data ?? message.metadata);
       return text(message.message_type ?? message.messageType, "") === "robotics_capture_segment"
-        && text(extra.terminal_interface_id, "") === tile.id;
+        && text(extra.terminal_interface_id, "") === interfaceId;
     })
     .map((message, index) => {
       const extra = record(message.extra_data ?? message.metadata);
@@ -1684,6 +1712,10 @@ function captureSegments(tile: DebugWindow, messages: AnyRecord[]) {
       };
     })
     .reverse();
+}
+
+function captureSegments(tile: DebugWindow, messages: AnyRecord[]) {
+  return captureSegmentsForInterface(tile.id, messages);
 }
 
 function tileEvents(tile: DebugWindow, messages: AnyRecord[], types: string[]) {
@@ -3051,6 +3083,7 @@ export function RoboticsWorkbenchClient({
                     npcSeats={npcSeats}
                     defaultNpcId={defaultNpcId}
                     initialTab={initialTab}
+                    terminalMessages={terminalMessages}
                     onClose={() => closeWindow(deviceId(device, index))}
                   />
                 ))}
