@@ -1,5 +1,6 @@
 #include "model_input_bridge.h"
 
+#include "motor7_model_runner.h"
 #include "model_result_publisher.h"
 
 #define SNAPSHOT_DETECT_THRESHOLD 0.25f
@@ -16,6 +17,13 @@ static void model_input_bridge_handle_snapshot(const m33_m55_message_t *msg)
     rt_err_t ret;
 
     snapshot = &msg->payload.sensor_snapshot;
+    if (snapshot->source == MODEL_INPUT_SRC_MOTOR_FEEDBACK)
+    {
+        ret = motor7_model_runner_run_snapshot(snapshot);
+        rt_kprintf("[model_input] motor feedback snapshot ret=%d\n", ret);
+        return;
+    }
+
     emg_abs_1 = snapshot->emg_ch1 >= 0.0f ? snapshot->emg_ch1 : -snapshot->emg_ch1;
     emg_abs_2 = snapshot->emg_ch2 >= 0.0f ? snapshot->emg_ch2 : -snapshot->emg_ch2;
     score = emg_abs_1 > emg_abs_2 ? emg_abs_1 : emg_abs_2;
@@ -97,3 +105,20 @@ static void model_input_request_m33_snapshot(int argc, char **argv)
 }
 MSH_CMD_EXPORT(model_input_request_m33_snapshot, Request M33 to publish one test sensor snapshot);
 MSH_CMD_EXPORT_ALIAS(model_input_request_m33_snapshot, req_snap, Request M33 to publish one test sensor snapshot);
+
+static void model_input_request_m33_motor7(int argc, char **argv)
+{
+    m33_m55_message_t msg;
+    rt_err_t ret;
+
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+
+    rt_memset(&msg, 0, sizeof(msg));
+    msg.type = MSG_TYPE_VOICE_CONTROL;
+    msg.payload.voice_control.cmd = VOICE_CTRL_PUBLISH_MOTOR7_SNAPSHOT;
+    ret = m33_m55_comm_publish(&msg);
+    rt_kprintf("model_input_request_m33_motor7 ret=%d\n", ret);
+}
+MSH_CMD_EXPORT(model_input_request_m33_motor7, Request M33 motor7 feedback and run TFLM model);
+MSH_CMD_EXPORT_ALIAS(model_input_request_m33_motor7, req_m7, Request M33 motor7 feedback and run TFLM model);
