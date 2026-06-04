@@ -20,6 +20,7 @@ M33 pre-arm 安全输入合同见：[M33_SAFETY_INPUT_MAPPING.md](M33_SAFETY_INP
 | `0x320` | NanoPi -> M33 | classic CAN standard 11-bit | 关节目标/轨迹片段 |
 | `0x321` | NanoPi -> M33 | classic CAN standard 11-bit | NanoPi heartbeat |
 | `0x322` | M33 -> NanoPi | classic CAN standard 11-bit | M33 status |
+| `0x323` | M33 -> NanoPi | classic CAN standard 11-bit | M55/M33 小模型结果摘要，只是建议 |
 | `0x330` ~ `0x337` | M33 -> NanoPi | classic CAN standard 11-bit | M33 聚合后的电机/关节遥测草案 |
 
 ## `0x321` NanoPi Heartbeat
@@ -158,6 +159,34 @@ heartbeat_age_ms=300
 ```json
 {"protocol_version":2,"state":"limited","control_mode":"logging_only","detail":"logging_only_no_motor_output","heartbeat_age_ms":0}
 ```
+
+## `0x323` M33 Model Status
+
+用途：把 M55 小模型、语音唤醒、后续 EMG 意图/疲劳等级等低频结果，经 M33 统一绑定后送到 NanoPi `/rehab_arm/model_state`。该帧不表达运动许可，不允许直接映射成 `0x320`。
+
+Payload:
+
+| Byte | 字段 | 类型 | 说明 |
+|---:|---|---|---|
+| 0 | `marker` | `uint8` | 固定 `0xB5` |
+| 1 | `seq` | `uint8` | M33 发送序号 |
+| 2 | `model_code` | `uint8` | `1=wake_word`, `2=emg_intent`, `3=fatigue` |
+| 3 | `result_code` | `uint8` | `0=none`, `1=wake_start_request`，后续按模型表扩展 |
+| 4 | `confidence_percent` | `uint8` | 0-100 |
+| 5 | `flags` | `uint8` | bit0 fresh, bit1 detected, bit7 suggestion_only |
+| 6 | `window_10ms` | `uint8` | 推理窗口，单位 10 ms |
+| 7 | `source_detail` | `uint8` | 预留 |
+
+NanoPi 解析后发布：
+
+```text
+/rehab_arm/model_state
+schema_version = rehab_arm_model_state_v1
+control_boundary = model_suggestion_only_not_motion_permission
+source = m33_m55_bridge_can_0x323
+```
+
+当前验证模型是 M55 WiFi 工程已有的 wake-word/voice 小模型路径：`voice_service -> model_result_publisher -> MSG_TYPE_AI_INFERENCE_RESP -> M33 m55_model_bridge -> 0x323`。
 
 ## `0x330~0x337` M33 Motor Status Draft
 

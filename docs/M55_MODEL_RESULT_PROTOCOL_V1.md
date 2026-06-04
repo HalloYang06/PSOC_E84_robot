@@ -25,7 +25,9 @@ M33 -> NanoPi -> /rehab_arm/model_state -> recorder/server/VLA
 - M33/M55 现有消息类型已经包含 `MSG_TYPE_AI_INFERENCE_REQ/RESP`、`MSG_TYPE_SENSOR_STREAM`、`MSG_TYPE_ASR_TEXT`、`MSG_TYPE_VOICE_CONTROL`。
 - 详细地基见 [M33_M55_IPC_BLE_FOUNDATION.md](M33_M55_IPC_BLE_FOUNDATION.md)。
 
-第一版仍不新增 M55 直接 CAN ID。M55 结果必须回到 M33，由 M33 绑定时间戳、安全状态和 profile 版本后，再通过 M33 -> NanoPi 合同进入 `/rehab_arm/model_state`。如果固件后续新增 M33 到 NanoPi 的模型结果 CAN 帧，必须在 `PSOC_CAN_PROTOCOL_V1.md` 增加对应帧，并保持本文 JSON 语义不变。
+第一版不新增 M55 直接 CAN ID。M55 结果必须回到 M33，由 M33 绑定时间戳、安全状态和 profile 版本后，再通过 M33 -> NanoPi 合同进入 `/rehab_arm/model_state`。
+
+当前固件地基使用 `0x323` 作为 M33 -> NanoPi 的模型结果摘要帧，详见 `PSOC_CAN_PROTOCOL_V1.md`。`0x323` 只是模型建议/编号语义，不能直接映射成 `0x320`，也不能放宽 M33 限位或 safety gate。
 
 ## 3. ROS/JSON Payload
 
@@ -83,7 +85,7 @@ Payload:
 
 | 字段 | 说明 |
 |---|---|
-| `model_id` | 例如 `m55_emg_intent_v1`、`m55_fatigue_v1`、`m55_voice_asr_v1` |
+| `model_id` | 例如 `m55_wake_word_v1`、`m55_emg_intent_v1`、`m55_fatigue_v1`、`m55_voice_asr_v1` |
 | `model_version` | 模型版本，必须进入数据集 |
 | `result_code` | 小整数编号，固件、NanoPi、服务器共用 |
 | `label` | NanoPi/服务器按编号表解析出的语义标签 |
@@ -91,6 +93,13 @@ Payload:
 | `fresh` | 是否是当前窗口新鲜结果 |
 
 ## 4. 第一版编号表
+
+### `m55_wake_word_v1`
+
+| `result_code` | `label` | 说明 |
+|---:|---|---|
+| `0` | `none` | 未触发唤醒或置信度不足 |
+| `1` | `wake_start_request` | 唤醒词触发，建议服务器/VLA 开始关注语音上下文 |
 
 ### `m55_emg_intent_v1`
 

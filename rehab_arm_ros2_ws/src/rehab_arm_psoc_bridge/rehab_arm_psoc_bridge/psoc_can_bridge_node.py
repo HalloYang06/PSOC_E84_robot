@@ -22,6 +22,11 @@ from rehab_arm_psoc_bridge.f103_sensor_state import (
     parse_f103_health_payload,
     parse_f103_sensor_payload,
 )
+from rehab_arm_psoc_bridge.data_recording import make_model_state_payload
+from rehab_arm_psoc_bridge.m33_model_status import (
+    M33_MODEL_STATUS_ID,
+    parse_m33_model_status_frame,
+)
 from rehab_arm_psoc_bridge.psoc_motor_status import (
     M33MotorStatusAggregator,
     is_m33_motor_status_id,
@@ -189,6 +194,7 @@ class PsocCanBridgeNode(Node):
         self.joint_pub = self.create_publisher(JointState, '/joint_states', 20)
         self.safety_pub = self.create_publisher(String, '/rehab_arm/safety_state', 10)
         self.sensor_pub = self.create_publisher(String, '/rehab_arm/sensor_state', 20)
+        self.model_pub = self.create_publisher(String, '/rehab_arm/model_state', 20)
         self.motor_pub = self.create_publisher(String, '/rehab_arm/motor_state', 20)
         self.traj_sub = self.create_subscription(
             JointTrajectory,
@@ -385,6 +391,8 @@ class PsocCanBridgeNode(Node):
     def handle_rx(self, frame: CanFrame) -> None:
         if frame.can_id == PSOC_STATUS_ID:
             self.handle_psoc_status(frame)
+        elif frame.can_id == M33_MODEL_STATUS_ID:
+            self.handle_m33_model_status(frame)
         elif is_m33_motor_status_id(frame.can_id):
             self.handle_m33_motor_status(frame)
         elif frame.can_id == F103_SENSOR_ID:
@@ -401,6 +409,37 @@ class PsocCanBridgeNode(Node):
         self.last_psoc_status_payload = payload
         self.last_psoc_motion_allowed = payload.get('motion_allowed') is True
         self.safety_pub.publish(String(data=json.dumps(payload, separators=(',', ':'))))
+
+    def handle_m33_model_status(self, frame: CanFrame) -> None:
+        parsed = parse_m33_model_status_frame(frame.can_id, frame.data)
+        if not parsed.get('valid'):
+            self.get_logger().warn(
+                f'ignored invalid M33 model status {frame.can_id:03X} {frame.data.hex().upper()}'
+            )
+            return
+        model_result = {
+            'model_id': parsed['model_name'],
+            'model_version': 'v1',
+            'model_code': parsed['model_code'],
+            'result_code': parsed['result_code'],
+            'label': parsed['result_name'],
+            'result_name': parsed['result_name'],
+            'confidence': parsed['confidence'],
+            'fresh': parsed['fresh'],
+            'detected': parsed['detected'],
+            'window_ms': parsed['window_ms'],
+            'raw_can_id': parsed['raw_can_id'],
+            'flags': parsed['flags'],
+            'seq': parsed['seq'],
+            'suggestion_only': parsed['suggestion_only'],
+        }
+        payload = make_model_state_payload(
+            [model_result],
+            robot_id=self.robot_id,
+            device_id=self.device_id,
+            source='m33_m55_bridge_can_0x323',
+        )
+        self.model_pub.publish(String(data=json.dumps(payload, separators=(',', ':'))))
 
     def handle_m33_motor_status(self, frame: CanFrame) -> None:
         payload = self.motor_status_aggregator.accept_frame(frame.can_id, frame.data)

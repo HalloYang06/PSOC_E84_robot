@@ -60,6 +60,7 @@ M55 小模型第一版只输出低频结果：
 | `m55_fatigue_v1` | 1-2 Hz | 疲劳等级，M33 可保守降速或暂停。 |
 | `m55_quality_v1` | 1-5 Hz | 电极脱落、饱和、噪声、共收缩异常。 |
 | `m55_voice_asr_v1` | 事件触发 | 语音文本或 start/pause/stop/pain 请求。 |
+| `m55_wake_word_v1` | 事件触发/高置信 | 当前上板验证小模型：M55 wake-word 结果经 `0x323` 到 NanoPi。 |
 
 所有结果都必须带：
 
@@ -84,8 +85,13 @@ model_manager_configure_slot(MODEL_SLOT_EMG, &slot_cfg);
 model_manager_load_tflm_model(MODEL_SLOT_EMG, emg_model_tflite, emg_model_tflite_len);
 ```
 
-6. 推理完成后填 `m33_m55_message_t`，用 `m33_m55_comm_publish()` 发回 M33。
+6. 推理完成后填 `m33_m55_message_t`，用 `m33_m55_comm_publish()` 发回 M33。当前已提供模块化示例：
+   - M55：`applications/model_result_publisher.c` 发布 `MSG_TYPE_AI_INFERENCE_RESP`。
+   - M33：`applications/m33/m55_model_bridge.c` 消费结果并调用 `control_publish_m55_model_result()`。
+   - NanoPi：`m33_model_status.py` 解析 `0x323` 并发布 `/rehab_arm/model_state`。
 7. 烧录顺序仍是 Secure M33 -> M33 -> M55。
+
+本轮代码只准备固件和 NanoPi 地基；真正上板需要你烧录 M33 和 M55 后再验收。
 
 ## 6. 上板验证
 
@@ -98,6 +104,7 @@ model_manager_load_tflm_model(MODEL_SLOT_EMG, emg_model_tflite, emg_model_tflite
 | 语音服务 | `[voice_service] initialized`、`wake detector ready=1` |
 | TFLM | `tflm slot0 ready=...` 或模型 slot info |
 | M33 收到 | M33 消费 `MSG_TYPE_AI_INFERENCE_RESP` 或 `MSG_TYPE_ASR_TEXT` 后输出绑定日志 |
+| CAN 汇总 | NanoPi candump 看到 `0x323#B5...` |
 | NanoPi 收到 | `/rehab_arm/model_state` 出现 `rehab_arm_model_state_v1` JSON |
 
 如果 M55 先启动而 M33 尚未创建 IPC，M55 现有代码会 retry attach。这不是错误；等 M33 ready 后应看到 attach 成功。

@@ -55,6 +55,7 @@ python3 /home/pi/nanopi_can_master.py m33 target --iface can0 --joint 4 --deg 30
 - M55 小模型结果统一走 [M55_MODEL_RESULT_PROTOCOL_V1.md](M55_MODEL_RESULT_PROTOCOL_V1.md) 和 `/rehab_arm/model_state`；该 topic 是模型建议和编号语义，不是运动许可。原始/滤波 EMG、心率、IMU 仍走 `/rehab_arm/sensor_state`。
 - M33/M55 跨核通讯和 App BLE 字段边界见 [M33_M55_IPC_BLE_FOUNDATION.md](M33_M55_IPC_BLE_FOUNDATION.md)：M33/M55 已有 `m33_m55_comm`、MTB-IPC queue 和 `.ipc_stream_shared`，App BLE 已有 NUS 风格 RX/TX；后续只补字段，不另造链路。
 - M55 小模型部署按 [M55_MODEL_DEPLOYMENT_GUIDE.md](M55_MODEL_DEPLOYMENT_GUIDE.md)：使用 GitHub `M55` 分支对应的 WiFi 工程，复用 TFLite Micro、`model_manager` 和 `m33_m55_comm`，推理结果回 M33 后再进 NanoPi/服务器。
+- 当前小模型链路的最小验收是 M55 wake-word 结果经 `MSG_TYPE_AI_INFERENCE_RESP` 到 M33，再由 `0x323` 到 NanoPi，最后在 `/rehab_arm/model_state` 看到 `source=m33_m55_bridge_can_0x323`。这个验收不允许出现新的运动许可，也不允许自动发送 `0x320`。
 
 ## 真机测试前安全检查
 

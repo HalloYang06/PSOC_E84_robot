@@ -49,7 +49,33 @@
 
 状态：
 
-- 已记录为架构约束；本轮未修改 `wifi`、`yiliao_m33` 或 `_m55_ref_repo` 固件文件。
+- 已记录为架构约束；2026-06-04 已同时在 `_m55_ref_repo` 和实际 `wifi` 工程加入 `model_result_publisher.*`，以免 Git 证据仓库和 RT-Thread Studio 打开的 WiFi 工程脱节。
+
+### M33/M55 小模型链路不要堆进 main.c
+
+现象：
+
+- M55 已有 wake-word/voice 小模型，M33 已有 IPC 和 CAN 控制层，但如果直接在 `main.c` 里拼 AI、IPC、CAN 逻辑，后续 EMG、语音、疲劳模型会很快变成不可维护的一坨。
+
+根因：
+
+- M55 小模型结果、M33 安全绑定、NanoPi ROS topic 是三个不同边界；混在入口文件会让后续 AI 分不清 side-channel 和 mainline。
+
+解决：
+
+- M55：用 `applications/model_result_publisher.*` 发布 `MSG_TYPE_AI_INFERENCE_RESP`。
+- M33：用 `applications/m33/m55_model_bridge.*` 消费 IPC 结果，再调用 control layer 的 `control_publish_m55_model_result()`。
+- NanoPi：用 `m33_model_status.py` 解析 `0x323` 并发布 `/rehab_arm/model_state`。
+
+技巧：
+
+- `0x323` 是模型建议帧，marker 为 `0xB5`，flags bit7 必须代表 suggestion_only。
+- `/rehab_arm/model_state.control_boundary` 必须保持 `model_suggestion_only_not_motion_permission`。
+- 没有烧录 M33/M55 前，只能说本地代码地基已补，不能说上板链路已通过。
+
+状态：
+
+- 2026-06-04 已补代码和协议文档；待用户烧录 M33/M55 后，上板抓 `0x323#B5...` 并看 `/rehab_arm/model_state`。
 
 ### CANSimple 主机查询帧不能刷新 M33 电机 fresh 时间戳
 

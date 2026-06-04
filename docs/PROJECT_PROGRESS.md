@@ -16,6 +16,11 @@
 
 ## 架构状态
 
+- 2026-06-04 地基更新：
+  - NanoPi 新增 `m33_model_status.py`，解析 M33 -> NanoPi `0x323` 模型摘要帧，并在 `psoc_can_bridge_node.py` 发布 `/rehab_arm/model_state`。
+  - M33 本地工程新增模块化 `applications/m33/m55_model_bridge.*`，消费 `MSG_TYPE_AI_INFERENCE_RESP`/`MSG_TYPE_ASR_TEXT`；control layer 新增 `control_publish_m55_model_result()`，统一发送 `0x323`。
+  - M55 Git 证据仓库和实际 `wifi` 工程均新增 `applications/model_result_publisher.*`，当前用 wake-word/voice 小模型做最小验证，不把 AI 逻辑堆进 `main.c`。
+  - `0x323`/`/rehab_arm/model_state` 已写入协议和架构文档，固定为 `model_suggestion_only_not_motion_permission`，不改变 `motion_allowed`，不直接映射 `0x320`。
 - 已明确 App 两条链路：
   - `App <-> BLE <-> 英飞凌 M33/M55`：近端训练控制、状态显示、标注、急停请求。
   - `App <-> HTTP <-> NanoPi/OpenClaw`：高层 AI、报告、训练建议和远程服务。
