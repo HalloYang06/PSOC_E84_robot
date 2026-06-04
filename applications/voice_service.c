@@ -3,7 +3,9 @@
 #include "baidu_asr.h"
 #include "baidu_tts.h"
 #include "m33_m55_comm.h"
+#include "model_input_bridge.h"
 #include "model_manager.h"
+#include "model_result_publisher.h"
 #include "wake_word_detector.h"
 #include "websocket_client.h"
 
@@ -540,6 +542,28 @@ static void voice_service_process_audio_buffer(void)
                    (unsigned long)g_service.wake_hit_streak);
     }
 
+    if ((wake_triggered) || (score_permille >= WAKE_LOG_SCORE_MIN))
+    {
+        rt_uint16_t publish_score = 0U;
+        if (score_permille > 1000L)
+        {
+            publish_score = 1000U;
+        }
+        else if (score_permille > 0L)
+        {
+            publish_score = (rt_uint16_t)score_permille;
+        }
+        rt_err_t publish_ret = model_result_publish_wake_word(
+            publish_score,
+            wake_triggered ? RT_TRUE : (detected ? RT_TRUE : RT_FALSE),
+            RT_TRUE,
+            (rt_uint16_t)((len / sizeof(int16_t)) / 16U));
+        if (publish_ret != RT_EOK)
+        {
+            rt_kprintf("[voice_service] model result publish failed %d\n", publish_ret);
+        }
+    }
+
     if (!wake_triggered)
     {
         return;
@@ -688,7 +712,11 @@ static void voice_service_thread_entry(void *parameter)
         {
             switch (msg.type)
             {
+            case MSG_TYPE_SENSOR_SNAPSHOT:
+                model_input_bridge_handle_message(&msg);
+                break;
             case MSG_TYPE_SENSOR_STREAM:
+                model_input_bridge_handle_message(&msg);
                 voice_service_accept_shared_pcm(&msg.payload.sensor_stream);
                 break;
             case MSG_TYPE_AUDIO_DATA:
