@@ -14,6 +14,7 @@
 #include "m33/http_server.h"
 #include "m33/input_buffer.h"
 #include "m33/m55_model_bridge.h"
+#include "m33/m55_model_input_bridge.h"
 #include "m33/openclaw_integration.h"
 #include "m33/safety_system.h"
 #include "m33/sensor_manager.h"
@@ -45,6 +46,17 @@ typedef struct
 } m33_runtime_t;
 
 static m33_runtime_t g_runtime;
+
+static void m33_log_cm55_boot_state(const char *tag)
+{
+    rt_kprintf("[m33] cm55 %s boot_addr=0x%08lx status=%lu ns_vtor=0x%08lx ctl=0x%08lx cmd=0x%08lx\n",
+               tag,
+               (unsigned long)CY_CM55_APP_BOOT_ADDR,
+               (unsigned long)Cy_SysGetCM55Status(MXCM55),
+               (unsigned long)MXCM55->CM55_NS_VECTOR_TABLE_BASE,
+               (unsigned long)MXCM55->CM55_CTL,
+               (unsigned long)MXCM55->CM55_CMD);
+}
 
 static void m33_pcm_capture_callback(const uint8_t *data, uint32_t len)
 {
@@ -361,6 +373,16 @@ static void m33_handle_ipc_command(void)
             rt_kprintf("[m33] ipc stop listen\n");
             m33_stop_pcm_listen();
             break;
+        case VOICE_CTRL_PUBLISH_TEST_SNAPSHOT:
+            rt_kprintf("[m33] ipc publish test snapshot\n");
+            (void)m55_model_input_bridge_publish_snapshot(0.42f,
+                                                          0.08f,
+                                                          76U,
+                                                          98U,
+                                                          0.0f,
+                                                          0.0f,
+                                                          0.0f);
+            break;
         default:
             break;
         }
@@ -471,9 +493,12 @@ int main(void)
 
     rt_kprintf("Hello RT-Thread\r\n");
     rt_kprintf("This core is cortex-m33\n");
+    m33_log_cm55_boot_state("after-board-init");
 
     rt_pin_mode(LED_PIN_B, PIN_MODE_OUTPUT);
     m33_init_framework();
+    rt_thread_mdelay(100);
+    m33_log_cm55_boot_state("after-framework-init");
     control_set_mode(CONTROL_MODE_ACTIVE);
 
     rt_kprintf("[m33] System ready. Waiting for BLE connection...\n");
