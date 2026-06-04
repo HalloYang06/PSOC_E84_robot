@@ -22,7 +22,7 @@
   - M33 `applications/m33/m55_model_input_bridge.*` 新增 `m55_model_input_bridge_publish_motor7_snapshot()`，通过 `control_get_motor_feedback(7)` 获取 7 号外部 EL05 台架电机反馈，再走现有 `MSG_TYPE_SENSOR_SNAPSHOT` 发给 M55。
   - M55 实际 `wifi` 工程和 Git 证据仓库 `_m55_ref_repo` 新增 `applications/motor7_model_runner.*`，`req_m7` 请求 M33 取 7 号反馈后，把位置/速度/力矩/温度编码成 PCM16，调用现有 TFLite Micro wake-word slot 真实推理，再经 `MSG_TYPE_AI_INFERENCE_RESP -> M33 -> 0x323` 出口。
   - 重要边界：当前模型权重仍是现有 wake-word 模型，只用于证明 TFLM runtime 和 M33 电机数据链路，不是训练好的 7 号电机语义模型，也不会直接控制电机。
-  - 验证：本地 M33 `mingw32-make -C D:\RT-ThreadStudio\workspace\yiliao_m33\Debug all -j4` 通过；M55 `mingw32-make -C D:\RT-ThreadStudio\workspace\wifi\Debug all -j4` 通过。尚未烧录本次新镜像，`req_m7` 上板闭环待复测。
+  - 验证：本地 M33 `mingw32-make -C D:\RT-ThreadStudio\workspace\yiliao_m33\Debug all -j4` 通过；M55 `mingw32-make -C D:\RT-ThreadStudio\workspace\wifi\Debug all -j4` 通过。后续已烧录并上板验证 `req_m7` 闭环：7 号反馈进入 M55 TFLM slot，结果经 M33 `0x323` 到 NanoPi `/rehab_arm/model_state`。
 - 2026-06-04 讲解版进度已整理：
   - 新增 [CURRENT_PROJECT_BRIEFING.md](CURRENT_PROJECT_BRIEFING.md)，作为今晚讲解和后续 AI 协作的当前入口。
   - 当前主线统一为 `JointTrajectory -> NanoPi -> M33 -> 电机`；M55、App BLE、服务器/VLA、无线 MuJoCo 都是状态、建议、dry-run 或 shadow，不单独授权运动。
@@ -49,10 +49,11 @@
 - 2026-06-04 全链路只读验收：
   - NanoPi `192.168.2.66` 在线，`can0` 为 1Mbps `ERROR-ACTIVE`，`berr-counter tx 0 rx 0`。
   - NanoPi `candump` 持续收到 M33 `0x322` 和 `0x330~0x334`，C8T6 未上电时 8 秒内没有 `0x7C2/0x7C3`，符合当前硬件状态。
-  - NanoPi 手动只读 bridge 进程在跑，`enable_target_tx=false`；systemd `rehab-arm-nanopi-readonly.service` 当前 inactive，因为 sudo 需要密码不能远程非交互 restart。服务是 enabled，重启 NanoPi 后应自动恢复。
+  - NanoPi 产品只读 bridge 已产品化为 `rehab-arm-nanopi-readonly.service`，当前 `active/enabled`，使用 `enable_target_tx=false`。
   - `ROS_DOMAIN_ID=42` 下可见 `/rehab_arm_psoc_bridge`、`/medical_arm_6dof_shadow_sim`、`/medical_arm_shadow_relay`，以及 `/joint_states`、`/rehab_arm/motor_state`、`/rehab_arm/safety_state`、`/rehab_arm/model_state`、`/sim/medical_arm/joint_states`。
   - `/joint_states` 在 NanoPi 侧约 98 Hz；仿真主机 `192.168.2.46` 能 echo 到 6DOF `jian_hengxiang_joint`、`jian_zongxiang_joint`、`jian_xuanzhuan_joint`、`zhou_zongxiang_joint`、`wanbu_zongxiang_joint`、`wanbu_hengxiang_joint`。
   - 仿真主机 systemd `rehab-arm-sim-host-shadow.service` 为 active/enabled，日志显示 `backend=mujoco-model`，relay 为 `/joint_states -> /sim/medical_arm/joint_trajectory`，`forearm_rotation_joint -> jian_xuanzhuan_joint` 仍是 7号外部 EL05 shadow 过渡映射。
+  - 2026-06-04 脚本化复验已通过：`USE_EXISTING_BRIDGE=1 CHECK_SIM_SHADOW=1 ACTIVE_REPORT_MOTOR=none SNAPSHOT_SECONDS=5 ECHO_TIMEOUT_SECONDS=15 /home/pi/nanopi_live_telemetry_check.sh` 同时验证 CAN、M33 heartbeat、NanoPi ROS、MuJoCo 6DOF shadow 和无 `0x320`。
 - 2026-06-04 地基更新：
   - NanoPi 新增 `m33_model_status.py`，解析 M33 -> NanoPi `0x323` 模型摘要帧，并在 `psoc_can_bridge_node.py` 发布 `/rehab_arm/model_state`。
   - M33 本地工程新增模块化 `applications/m33/m55_model_bridge.*`，消费 `MSG_TYPE_AI_INFERENCE_RESP`/`MSG_TYPE_ASR_TEXT`；control layer 新增 `control_publish_m55_model_result()`，统一发送 `0x323`。

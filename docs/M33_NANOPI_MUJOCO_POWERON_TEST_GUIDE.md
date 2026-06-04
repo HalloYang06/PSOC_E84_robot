@@ -8,8 +8,8 @@
 
 当前结论先写清楚：
 
-- 2026-06-04 上电实测：M33/M55 IPC 和 M55 真实 TFLM `req_m7` 路径已通；NanoPi 只读 ROS2 service 在线；但当前 CAN 物理/ACK 层未通，NanoPi `candump` 看不到 M33 帧，不能进入 MuJoCo hardware shadow 验收。
-- 2026-06-04 后续复测：CAN 物理层已恢复，`0x321 -> 0x322`、`0x330~0x334`、`req_m7 -> 0x323`、NanoPi `/joint_states`、MuJoCo `/sim/medical_arm/joint_states` 均已通过；普通只读状态下仍无 `0x320`。
+- 2026-06-04 最新上电复测：CAN 物理层已恢复，`0x321 -> 0x322`、`0x330~0x334`、`req_m7 -> 0x323`、NanoPi `/joint_states`、MuJoCo `/sim/medical_arm/joint_states` 均已通过；普通只读状态下仍无 `0x320`。
+- 历史上曾出现 CAN 物理/ACK 层未通，NanoPi `candump` 看不到 M33 帧；这个故障已恢复，但以后如果复现，仍按第 2 节停在 CAN 层排查，不要先查 MuJoCo 或 VLA。
 - M33 对上的是 legacy 5 槽位链路：`0x330~0x334` 对应 ROS joint `0..4`，当前应映射到 motor slot `3/4/5/6/7`。
 - 已实测对上的是 7 号 EL05 外部调试电机：M33 `0x334` fresh，NanoPi `/joint_states` 发布 `forearm_rotation_joint`，仿真主机 relay 映射到 6DOF MuJoCo `jian_xuanzhuan_joint`。
 - medical_arm 6DOF 正式关节还没有全部接到 M33：`jian_hengxiang_joint`、`jian_zongxiang_joint`、`zhou_zongxiang_joint`、两个腕部关节目前在 hardware shadow 中还是占位角。
@@ -56,6 +56,17 @@
 ```bash
 SEND_M33_HEARTBEAT=1 RUN_NON_MOTION_PROBES=0 DURATION_SECONDS=6 \
   /home/pi/nanopi_motor_feedback_readiness.sh
+
+USE_EXISTING_BRIDGE=1 CHECK_SIM_SHADOW=1 ACTIVE_REPORT_MOTOR=none \
+  /home/pi/nanopi_live_telemetry_check.sh
+```
+
+推荐实际执行时给 MuJoCo shadow 多一点 discovery 时间：
+
+```bash
+USE_EXISTING_BRIDGE=1 CHECK_SIM_SHADOW=1 ACTIVE_REPORT_MOTOR=none \
+  SNAPSHOT_SECONDS=5 ECHO_TIMEOUT_SECONDS=15 \
+  /home/pi/nanopi_live_telemetry_check.sh
 ```
 
 2026-06-04 通过样例：
@@ -74,9 +85,18 @@ missing_lingzu_motors: [4, 5, 6]
 当前实测值可以作为 sanity check：
 
 ```text
-/joint_states forearm_rotation_joint ~= 0.048 rad
-/sim/medical_arm/joint_trajectory positions ~= [0.0, 0.0, 0.048, 0.0, 0.0, 0.0]
+/joint_states forearm_rotation_joint ~= 1.463 rad
+/sim/medical_arm/joint_states positions ~= [0.0, 0.0, 1.0472, 0.0, 0.0, 0.0]
 /sim/medical_arm/joint_states name/position/velocity/effort length = 6
+```
+
+2026-06-04 脚本化只读验收通过样例：
+
+```text
+PASS: live telemetry path is valid and read-only.
+/joint_states forearm_rotation_joint = 1.463
+/sim/medical_arm/joint_states jian_xuanzhuan_joint = 1.0472
+unexpected 0x320 frames = empty
 ```
 
 ## 1. 上电顺序

@@ -55,7 +55,7 @@ req_m7
 
 状态：
 
-- 2026-06-04 代码已在 M33/M55 本地编译通过，尚未烧录本次新增 `req_m7` 后做上板闭环。
+- 2026-06-04 代码已在 M33/M55 本地编译通过，并已上板验证 `req_m7` 闭环：7 号电机反馈进入 M55 TFLM slot，结果经 M33 `0x323` 到 NanoPi `/rehab_arm/model_state`。
 
 ### 当前串口 shell 在 M55 侧，不能直接调用 M33 FINSH 命令
 
@@ -1569,6 +1569,46 @@ ros2 topic echo --once /rehab_arm/safety_state std_msgs/msg/String
 状态：
 
 - 已记录。后续 bridge topic 验证优先显式指定 `std_msgs/msg/String`。
+- 2026-06-04 `nanopi_live_telemetry_check.sh` 已显式指定 `/rehab_arm/safety_state`、`/rehab_arm/motor_state`、`/joint_states` 和 `/sim/medical_arm/joint_states` 的消息类型。
+
+### `ros2 topic echo --once` 发现 topic 后仍可能错过 MuJoCo shadow 首帧
+
+现象：
+
+- NanoPi `ros2 topic list -t` 已能看到 `/sim/medical_arm/joint_states [sensor_msgs/msg/JointState]`。
+- 单次 `timeout 10 ros2 topic echo --once /sim/medical_arm/joint_states sensor_msgs/msg/JointState` 偶尔只输出 ROS discovery warning，没有拿到消息。
+- 手工重跑或等一会儿后可以 echo 到 6 个 medical arm joint。
+
+环境：
+
+- NanoPi 通过无线 ROS2 接收仿真主机 `rehab-arm-sim-host-shadow.service` 发布的 MuJoCo shadow topic。
+- 产品 NanoPi bridge 复用 `rehab-arm-nanopi-readonly.service`，不另启第二个 bridge。
+
+判断：
+
+- 这是短时自动化脚本里的 discovery/timing 竞态，不等于 MuJoCo 节点必然挂掉。
+- 不能只凭一次 `echo --once` timeout 就判定仿真主机、DDS 网络或 MuJoCo 模型失败。
+
+解决：
+
+- 自动化脚本先等待 topic 出现在 `ros2 topic list`。
+- 对 MuJoCo shadow 采样用多次 `echo --once` 重试，并检查期望 joint 名，例如 `jian_xuanzhuan_joint`。
+- 给无线 ROS2 shadow 检查留更长超时，例如：
+
+```bash
+USE_EXISTING_BRIDGE=1 CHECK_SIM_SHADOW=1 ACTIVE_REPORT_MOTOR=none \
+  SNAPSHOT_SECONDS=5 ECHO_TIMEOUT_SECONDS=15 \
+  /home/pi/nanopi_live_telemetry_check.sh
+```
+
+技巧：
+
+- 自动验收看最终语义：`/sim/medical_arm/joint_states` 里必须有 6 个 medical arm joint，并且 `name/position/velocity/effort` 长度一致。
+- 普通只读验收仍必须同步抓 `can0,320:7FF`，确保没有意外目标帧。
+
+状态：
+
+- 2026-06-04 已修复 `scripts/nanopi_live_telemetry_check.sh`，远端实测 PASS：NanoPi `/joint_states forearm_rotation_joint=1.463`，MuJoCo `/sim/medical_arm/joint_states` 有 6 轴且 `jian_xuanzhuan_joint=1.0472`，`0x320` 抓包为空。
 
 ### V2 status limited 是安全通过，不是可运动
 
