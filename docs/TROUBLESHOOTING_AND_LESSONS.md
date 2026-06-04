@@ -107,7 +107,9 @@
 
 状态：
 
-- 2026-06-04 已上板验证到 CAN：M33/M55 都已启动，NanoPi `candump` 抓到 `0x323#B5...` 连续模型建议帧。随后新版 NanoPi bridge 在 `ROS_DOMAIN_ID=42` 下已发布 `/rehab_arm/model_state`，但本次上电 8 秒内没有新的 `0x323`，所以 echo 等不到样本。下一步是通过串口 `m55_model_selftest` 或重启触发新帧，验证 topic JSON。
+- 2026-06-04 已上板验证到 CAN：M33/M55 都已启动，NanoPi `candump` 抓到 `0x323#B5...` 连续模型建议帧。
+- 早期一次复测中 `/rehab_arm/model_state` publisher 存在但没有新 `0x323` 样本，`echo --once` 等不到数据；这只是“没有新样本”，不是 topic 缺失。
+- 后续已通过 M55 shell `req_snap` 验证完整闭环：`M55 -> M33 request -> M33 sensor snapshot -> M55 model_input_bridge -> M33 0x323 -> NanoPi /rehab_arm/model_state`，ROS JSON 包含 `source=m33_m55_bridge_can_0x323` 和 `control_boundary=model_suggestion_only_not_motion_permission`。
 
 ### ROS2 topic 看不到但进程存在时先查 ROS_DOMAIN_ID
 

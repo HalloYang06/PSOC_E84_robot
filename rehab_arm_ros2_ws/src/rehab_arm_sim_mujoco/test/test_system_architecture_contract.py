@@ -97,6 +97,56 @@ class SystemArchitectureContractTests(unittest.TestCase):
         self.assertIn('M33_M55_IPC_BLE_FOUNDATION.md', architecture)
         self.assertIn('M55_MODEL_DEPLOYMENT_GUIDE.md', architecture)
 
+    def test_current_github_briefing_is_the_public_entrypoint(self) -> None:
+        briefing_path = REPO_ROOT / 'docs' / 'CURRENT_PROJECT_BRIEFING.md'
+        video_frame_path = REPO_ROOT / 'docs' / 'assets' / 'medical_arm_video_frame.png'
+        readme = (REPO_ROOT / 'README.md').read_text(encoding='utf-8')
+        briefing = briefing_path.read_text(encoding='utf-8')
+
+        self.assertTrue(briefing_path.exists(), briefing_path)
+        self.assertTrue(video_frame_path.exists(), video_frame_path)
+        self.assertGreater(video_frame_path.stat().st_size, 100_000)
+
+        self.assertIn('CURRENT_PROJECT_BRIEFING.md', readme)
+        self.assertIn('docs/assets/medical_arm_video_frame.png', readme)
+        self.assertIn('GitHub 仓库导览', briefing)
+        self.assertIn('GitHub 分支', briefing)
+        self.assertIn('feature/rehab-arm-ros2-architecture', briefing)
+        self.assertIn('`M33`', briefing)
+        self.assertIn('`M55`', briefing)
+        self.assertIn('`C8T6`', briefing)
+        self.assertIn('`APP`', briefing)
+        self.assertIn('不是生成图', briefing)
+
+    def test_current_briefing_links_model_files_and_preserves_motion_boundary(self) -> None:
+        briefing = (
+            REPO_ROOT
+            / 'docs'
+            / 'CURRENT_PROJECT_BRIEFING.md'
+        ).read_text(encoding='utf-8')
+        schema = (
+            REPO_ROOT
+            / 'rehab_arm_ros2_ws'
+            / 'src'
+            / 'rehab_arm_description'
+            / 'config'
+            / 'medical_arm_6dof_schema.yaml'
+        ).read_text(encoding='utf-8')
+
+        self.assertIn('rehab_arm_description/urdf/rehab_arm.urdf', briefing)
+        self.assertIn('rehab_arm_sim_mujoco/models/medical_arm_6dof.xml', briefing)
+        self.assertIn('medical_arm_6dof_schema.yaml', briefing)
+        self.assertIn('medical_arm_6dof_hardware_shadow.launch.py', briefing)
+        self.assertIn('JointTrajectory -> NanoPi -> M33 -> 电机', briefing)
+        self.assertIn('M33 -> MSG_TYPE_SENSOR_SNAPSHOT / MSG_TYPE_SENSOR_STREAM -> M55', briefing)
+        self.assertIn('M33 -> CAN 0x323 -> NanoPi -> /rehab_arm/model_state', briefing)
+        self.assertIn('不能说 VLA 已经能安全控制真机', briefing)
+        self.assertIn('7号 EL05 不在机械臂上', briefing)
+
+        self.assertIn('motor_id_7_in_formal_mapping: false', schema)
+        self.assertIn('scope: bench_debug_and_mujoco_shadow_only', schema)
+        self.assertIn('temporary_substitute_for_medical_arm_6dof_joint: jian_xuanzhuan_joint', schema)
+
 
 if __name__ == '__main__':
     unittest.main()

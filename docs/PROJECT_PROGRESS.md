@@ -24,6 +24,8 @@
   - 明确当前能讲的完成项、不能夸大的内容和下一步最小任务，避免把历史 demo、7号外部电机 shadow 或规则阈值模型讲成完整产品能力。
   - 已从用户提供的视频 `c22727ba986a4acdaecf08ba6e6e2065.mp4` 截取真实画面帧到 [assets/medical_arm_video_frame.png](assets/medical_arm_video_frame.png)，用于 GitHub 讲解；不使用手绘/生成图冒充仿真截图。
   - 已从 GitHub 远端核对分支：`feature/rehab-arm-ros2-architecture`、`M33`、`M55`、`C8T6`、`APP` 均有当前证据，讲解稿已按多分支仓库导览重写。
+  - `test_system_architecture_contract.py` 新增 GitHub 讲解入口和模型文件合同测试，锁住 README/讲解稿、真实视频帧、URDF/MJCF/schema 路径、M33->M55->NanoPi 模型链路和 7号外部电机边界。
+  - 验证通过：`python -m unittest rehab_arm_ros2_ws.src.rehab_arm_sim_mujoco.test.test_system_architecture_contract`，以及 `test_mujoco_backend`、`test_motor_profiles` 合计 20 项通过。
 - 2026-06-04 M33 数据进入 M55 小模型闭环已上板验证：
   - M33 工程新增 `applications/m33/m55_model_input_bridge.*`，M55 工程新增 `applications/model_input_bridge.*`，并扩展 `VOICE_CTRL_PUBLISH_TEST_SNAPSHOT` 作为台架自测入口。
   - 当前串口 shell 在 M55 侧，执行 `req_snap` 后，M55 请求 M33 发布测试 sensor snapshot；M33 通过 `MSG_TYPE_SENSOR_SNAPSHOT` 发给 M55；M55 当前规则模型输出结果；M33 经 `0x323` 发给 NanoPi。
