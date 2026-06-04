@@ -125,6 +125,29 @@ NanoPi 应抓到类似：
 can0 323#B50A01012A831400
 ```
 
+验证 7 号外部电机数据进入 M55 真实 TFLM runtime：
+
+1. 先确认 7 号主动上报或 `0x334` 有新鲜反馈。
+2. Windows 串口 `COM26` 打开 M55 shell。
+3. 输入：
+
+```text
+req_m7
+```
+
+期望串口日志：
+
+```text
+model_input_request_m33_motor7 ret=0
+[m33] ipc publish motor7 snapshot
+[m55_input] motor7 snapshot seq=... motor=7 flags=0x...
+[motor7_model] motor=7 flags=0x... pos=... vel=... temp=... score=... detected=... fresh=...
+[motor7_model] publish ret=0
+[m55_model_bridge] ai seq=... can_ret=0
+```
+
+注意：`req_m7` 当前运行的权重仍是现有 wake-word TFLite Micro 模型，只作为真实 TFLM 管线验证；不要把输出解释成正式运动意图，也不要映射到 `0x320`。
+
 如果要验证 NanoPi ROS2 topic：
 
 ```bash

@@ -17,6 +17,12 @@
 
 ## 架构状态
 
+- 2026-06-04 M55 已接入 7 号电机数据的真实 TFLM 管线验证：
+  - M33/M55 共享 `sensor_snapshot_msg_t` 新增 `source/flags/motor_id`，并新增 `MODEL_INPUT_SRC_MOTOR_FEEDBACK` 和 `VOICE_CTRL_PUBLISH_MOTOR7_SNAPSHOT`。
+  - M33 `applications/m33/m55_model_input_bridge.*` 新增 `m55_model_input_bridge_publish_motor7_snapshot()`，通过 `control_get_motor_feedback(7)` 获取 7 号外部 EL05 台架电机反馈，再走现有 `MSG_TYPE_SENSOR_SNAPSHOT` 发给 M55。
+  - M55 实际 `wifi` 工程和 Git 证据仓库 `_m55_ref_repo` 新增 `applications/motor7_model_runner.*`，`req_m7` 请求 M33 取 7 号反馈后，把位置/速度/力矩/温度编码成 PCM16，调用现有 TFLite Micro wake-word slot 真实推理，再经 `MSG_TYPE_AI_INFERENCE_RESP -> M33 -> 0x323` 出口。
+  - 重要边界：当前模型权重仍是现有 wake-word 模型，只用于证明 TFLM runtime 和 M33 电机数据链路，不是训练好的 7 号电机语义模型，也不会直接控制电机。
+  - 验证：本地 M33 `mingw32-make -C D:\RT-ThreadStudio\workspace\yiliao_m33\Debug all -j4` 通过；M55 `mingw32-make -C D:\RT-ThreadStudio\workspace\wifi\Debug all -j4` 通过。尚未烧录本次新镜像，`req_m7` 上板闭环待复测。
 - 2026-06-04 讲解版进度已整理：
   - 新增 [CURRENT_PROJECT_BRIEFING.md](CURRENT_PROJECT_BRIEFING.md)，作为今晚讲解和后续 AI 协作的当前入口。
   - 当前主线统一为 `JointTrajectory -> NanoPi -> M33 -> 电机`；M55、App BLE、服务器/VLA、无线 MuJoCo 都是状态、建议、dry-run 或 shadow，不单独授权运动。

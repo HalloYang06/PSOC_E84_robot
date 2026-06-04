@@ -101,6 +101,8 @@ M33 -> 0x323 -> NanoPi -> /rehab_arm/model_state
 
 当前已上板验证的测试闭环是 M55 shell `req_snap` 请求 M33 发布一帧测试 sensor snapshot；M33 再通过 `MSG_TYPE_SENSOR_SNAPSHOT` 发回 M55，M55 规则模型输出结果后经 `0x323` 到 NanoPi。该测试只证明跨核输入链路和结果出口，不代表真实 EMG 模型已经训练完成。
 
+新增台架验证入口是 M55 shell `req_m7`：M55 请求 M33 读取 7 号外部 EL05 电机反馈，M33 以 `source=MODEL_INPUT_SRC_MOTOR_FEEDBACK` 的 snapshot 发回 M55，M55 的 `motor7_model_runner` 调用现有 TFLite Micro 模型并仍按 `0x323` 出口返回。该入口用于验证真实电机反馈进入 M55 TFLM runtime，不把 7 号电机升级为正式机械臂关节，也不让 M55 控制电机。
+
 ## 4. M33 BLE 到 App 地基
 
 M33 已有 App BLE 服务雏形，当前是 NUS 风格 GATT：

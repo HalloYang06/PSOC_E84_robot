@@ -18,6 +18,8 @@ git clone -b M55 git@github.com:ChillAmnesiac/Medical-Rehabilitation-Manipulator
 | `applications/wake_word_detector.h/.cpp` | 独立 wake word TFLM 推理，MFCC 输入，输出置信度。 |
 | `applications/wake_word_model_data.h` | 已转换成 C array 的模型数据。 |
 | `applications/voice_service.c` | M33 PCM 输入、wake 检测、Baidu ASR/TTS、WebSocket、ASR 文本回 M33。 |
+| `applications/model_input_bridge.c` | 接收 M33 snapshot/stream，分发到规则模型或真实 TFLM runner。 |
+| `applications/motor7_model_runner.c` | 当前 7 号电机台架 TFLM 验证 runner，把电机反馈编码成 PCM16 并运行现有 wake-word slot。 |
 | `applications/m33_m55_comm.h/.c` | M55 侧 MTB-IPC queue 与共享 PCM。 |
 | `packages/TensorflowLiteMicro-latest` | RT-Thread package，包含官方 TFLite Micro、microfrontend、CMSIS-NN 相关源码。 |
 
@@ -51,6 +53,30 @@ git clone -b M55 git@github.com:ChillAmnesiac/Medical-Rehabilitation-Manipulator
 7. NanoPi 发布 `/rehab_arm/model_state`，服务器/VLA 只当上下文，不当运动许可。
 
 输入合同和上板自测见 [M33_M55_MODEL_INPUT_PROTOCOL_V1.md](M33_M55_MODEL_INPUT_PROTOCOL_V1.md)。当前 M55 shell 命令 `req_snap` 会请求 M33 发布一帧测试 snapshot，再由 M55 当前规则模型回传 `0x323`，用于证明 `M33 data -> M55 model -> M33 -> NanoPi` 基础链路。
+
+## 3A. 当前真实 TFLM 管线验证
+
+当前已在 M55 工程接入一个能真实执行的 TFLite Micro 推理路径：
+
+```text
+M55 shell req_m7
+  -> M33 读取 control_get_motor_feedback(7)
+  -> M33 发布 MSG_TYPE_SENSOR_SNAPSHOT(source=MODEL_INPUT_SRC_MOTOR_FEEDBACK)
+  -> M55 motor7_model_runner 编码为 16000 点 PCM16
+  -> model_deployment_load_wake_word()
+  -> model_manager_run_pcm16(MODEL_SLOT_WAKE_WORD)
+  -> model_result_publish_wake_word()
+  -> M33 0x323
+  -> NanoPi /rehab_arm/model_state
+```
+
+这条链路的模型是现有 `wake_word_model_data.h`，因此它只证明 TFLM runtime、内存 arena、输入填充、推理调用和结果出口可用；它不是经过 7 号电机数据训练的语义模型。后续真正部署 motor/EMG 模型时，不要新建跨核通道，只需要：
+
+1. 训练并量化 motor/EMG `.tflite`。
+2. 用 `xxd -i` 转成 `applications/*_model_data.h/.cc`。
+3. 增加或复用 `MODEL_SLOT_EMG`/`MODEL_SLOT_FUSION`。
+4. 在 `model_manager` 增加对应输入类型 runner，例如 float32/int8 feature runner。
+5. 保持结果仍由 `model_result_publisher` 回 M33。
 
 ## 4. 最小模型输出
 
@@ -109,6 +135,7 @@ model_manager_load_tflm_model(MODEL_SLOT_EMG, emg_model_tflite, emg_model_tflite
 | CAN 汇总 | NanoPi candump 看到 `0x323#B5...` |
 | NanoPi 收到 | `/rehab_arm/model_state` 出现 `rehab_arm_model_state_v1` JSON |
 | M33 输入到 M55 | M55 shell 执行 `req_snap` 后看到 `[m33] ipc publish test snapshot`、`[model_input] snapshot ...` 和新的 `0x323` |
+| 7 号电机到 TFLM | M55 shell 执行 `req_m7` 后看到 `[m55_input] motor7 snapshot ...`、`[motor7_model] ... score=...` 和新的 `0x323` |
 
 如果 M55 先启动而 M33 尚未创建 IPC，M55 现有代码会 retry attach。这不是错误；等 M33 ready 后应看到 attach 成功。
 

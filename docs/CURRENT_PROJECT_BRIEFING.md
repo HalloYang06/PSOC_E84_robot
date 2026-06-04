@@ -106,6 +106,17 @@ M33 把结果发成 CAN 0x323
 NanoPi 发布 /rehab_arm/model_state JSON
 ```
 
+新增的真实 TFLM 管线验证：
+
+```text
+M55 shell: req_m7
+M55 请求 M33 读取 7 号外部 EL05 台架电机反馈
+M33 发 source=MODEL_INPUT_SRC_MOTOR_FEEDBACK 的 MSG_TYPE_SENSOR_SNAPSHOT
+M55 用 motor7_model_runner 把位置/速度/力矩/温度编码成 PCM16
+M55 调用现有 TFLite Micro wake-word slot 真实推理
+结果仍经 M33 -> CAN 0x323 -> NanoPi -> /rehab_arm/model_state
+```
+
 已看到的关键结果：
 
 ```text
@@ -114,7 +125,7 @@ ROS JSON: result_code=1, confidence=0.42, detected=true
 control_boundary=model_suggestion_only_not_motion_permission
 ```
 
-这证明的是基础链路，不代表真实 EMG 模型已经训练完成。后续 4 路肌电正式接入时，要把窗口特征、质量标志、关节上下文送到 M55，再替换 `model_input_bridge` 内部推理实现。
+`req_snap` 证明的是基础链路，不代表真实 EMG 模型已经训练完成。`req_m7` 证明的是 M33 电机数据可以进入 M55 并触发真实 TFLM runtime，但当前权重仍是 wake-word 示例模型，不是 7 号电机语义模型。后续 4 路肌电正式接入时，要把窗口特征、质量标志、关节上下文送到 M55，再替换 `model_input_bridge`/`motor7_model_runner` 内部推理实现。
 
 ## 5. MuJoCo 和真机 shadow 当前进度
 

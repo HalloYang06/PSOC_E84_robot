@@ -20,6 +20,43 @@
 
 ## CAN 与硬件
 
+### 7 号电机进 M55 模型先验反馈新鲜度，不要先改模型
+
+现象：
+
+- M55 shell 执行 `req_m7` 后，如果 M33 打印 `motor7 feedback unavailable`，或 M55 日志里 `flags` 没有 fresh bit。
+
+环境：
+
+- 7 号电机是外部 EL05 台架电机，不在机械臂正式关节上。
+- `req_m7` 走现有 `M55 -> M33 voice_control -> M33 sensor_snapshot -> M55 TFLM -> M33 0x323`，不新建链路。
+
+根因：
+
+- M55 模型只能消费 M33 控制层已有的 7 号反馈缓存；如果 CAN、供电、主动上报或 M33 控制层缓存没有数据，M55 侧没有真实输入可跑。
+
+解决：
+
+```bash
+python3 /home/pi/nanopi_can_master.py private active-report --iface can0 --motor 7 --enable-report --wait 0.5
+timeout 3 candump -L can0,334:7FF,180007FD:1FFFFFFF
+```
+
+看到 7 号相关反馈后，再在 M55 shell 执行：
+
+```text
+req_m7
+```
+
+技巧：
+
+- 先看 7 号反馈 freshness，再看 M55 模型日志；不要在没有真实反馈时调整 TFLM arena、模型阈值或 `motor7_model_runner`。
+- 当前 `req_m7` 的模型权重是 wake-word 示例模型，只验证 TFLM runtime 和链路，不代表 motor/EMG 语义已经训练完成。
+
+状态：
+
+- 2026-06-04 代码已在 M33/M55 本地编译通过，尚未烧录本次新增 `req_m7` 后做上板闭环。
+
 ### 当前串口 shell 在 M55 侧，不能直接调用 M33 FINSH 命令
 
 现象：
