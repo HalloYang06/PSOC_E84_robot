@@ -4174,7 +4174,8 @@ git push origin feature/rehab-arm-ros2-architecture
 
 - NanoPi 在线，`rehab-arm-nanopi-readonly.service` 正在运行，参数保持 `enable_target_tx:=false`。
 - M55 `req_m7` 可用：M33 motor7 snapshot 到 M55，M55 真实 TFLM 推理，结果回到 M33。
-- CAN 总线没有完成 ACK/RX：NanoPi `candump` 看不到 M33 帧，M33 串口反复出现 `direct tx pending`。
+- 初次测试时 CAN 总线没有完成 ACK/RX：NanoPi `candump` 看不到 M33 帧，M33 串口反复出现 `direct tx pending`。
+- 后续复测 CAN 已恢复：`candump` 能看到 `0x321 -> 0x322`、`0x330~0x334`、`req_m7` 后的 `0x323#B5...`，NanoPi `/joint_states` 和 MuJoCo `/sim/medical_arm/joint_states` 均有数据。
 
 下一次上电先不要排 MuJoCo/VLA，先做 CAN 物理层：
 
@@ -4186,3 +4187,15 @@ cansend can0 123#1122334455667788
 ```
 
 同时看 M33 串口。如果还是没有任何 RX/ACK，优先查 CANH/CANL、共地、终端电阻、收发器 VCC/VIO/STBY/EN。只有看到 `0x321 -> 0x322` 和 `0x330~0x334` 后，才继续 MuJoCo shadow 和 VLA 上层验证。
+
+恢复后的最小通过样例：
+
+```text
+can0 322#A5...
+can0 334#B3...0700...
+can0 323#B5...
+/joint_states: forearm_rotation_joint ~= 1.463
+/sim/medical_arm/joint_states: jian_xuanzhuan_joint ~= 1.0472
+```
+
+`/rehab_arm/model_state` 是事件型 topic。要先执行 `ros2 topic echo --once /rehab_arm/model_state std_msgs/msg/String`，再在 M55 shell 里执行 `req_m7`，否则可能错过单次 `0x323` 事件。

@@ -2483,6 +2483,16 @@
 - Decision: do not call the full M33-NanoPi-MuJoCo hardware chain complete until CANH/CANL, common ground, termination, and transceiver enable/power are proven with at least one visible frame and ACK.
 - Next step: stop software changes at the CAN boundary and measure/fix the physical CAN segment, then rerun heartbeat `0x321 -> 0x322`, M33 status `0x330~0x334`, and `req_m7 -> 0x323` validation.
 
+### 2026-06-04 - CAN physical layer restored and motor7 M55-to-MuJoCo shadow validated
+
+- Completed: reran powered validation after CAN physical repair. NanoPi `can0` is 1 Mbps `ERROR-ACTIVE` with `berr-counter tx 0 rx 0`, RX packets increasing, and no RX/TX errors.
+- Validated: `candump` now sees M33 heartbeat and telemetry: `0x321 -> 0x322`, periodic `0x330~0x334`, and fresh motor7 slot `0x334#...0700...` rather than stale `...0710...`.
+- Validated: M55 `req_m7` uses real motor7 feedback (`motor=7 flags=0x0003 pos=1462 vel=0 temp=320 fresh=1`), runs the existing TFLM slot, returns `score=509 detected=0`, and M33 publishes the result with `can_ret=0`.
+- Validated: NanoPi `candump` sees model result frame `0x323#B50B010033816400`, and `/rehab_arm/model_state` publishes `rehab_arm_model_state_v1` JSON after the event.
+- Validated: NanoPi ROS `/joint_states` publishes `forearm_rotation_joint` at about `1.463 rad`, and the MuJoCo shadow topic `/sim/medical_arm/joint_states` publishes the 6 medical arm joints with `jian_xuanzhuan_joint=1.0472`.
+- Safety: `rehab-arm-nanopi-readonly.service` is `active/enabled`, still runs with `enable_target_tx=false`, and `timeout 4 candump -L can0,320:7FF` produced no `0x320` target frames.
+- Current status: the read-only/shadow foundation from motor7 -> M33 -> M55 -> M33 -> CAN -> NanoPi -> ROS -> MuJoCo is now validated. It remains a 7号 external EL05 bench/shadow path, not formal 6DOF motion permission.
+
 ### 2026-05-28 - Motor5 reverse run with 3A current limit
 
 - Reason: user reported insufficient force and asked to increase current limit.
