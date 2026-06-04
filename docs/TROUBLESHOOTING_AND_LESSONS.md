@@ -75,7 +75,92 @@
 
 状态：
 
-- 2026-06-04 已补代码和协议文档；待用户烧录 M33/M55 后，上板抓 `0x323#B5...` 并看 `/rehab_arm/model_state`。
+- 2026-06-04 已上板验证到 CAN：M33/M55 都已启动，NanoPi `candump` 抓到 `0x323#B5...` 连续模型建议帧。随后新版 NanoPi bridge 在 `ROS_DOMAIN_ID=42` 下已发布 `/rehab_arm/model_state`，但本次上电 8 秒内没有新的 `0x323`，所以 echo 等不到样本。下一步是通过串口 `m55_model_selftest` 或重启触发新帧，验证 topic JSON。
+
+### ROS2 topic 看不到但进程存在时先查 ROS_DOMAIN_ID
+
+现象：
+
+- NanoPi 上 `ps -ef` 能看到 `psoc_can_bridge_node.py` 正在跑，`candump` 也能看到 `0x322` 和 `0x330~0x334`。
+- 但 `ros2 node list` 只显示空或只显示 `/parameter_events`、`/rosout`，容易误判 bridge 没发布 topic。
+
+根因：
+
+- 当前 NanoPi 和仿真主机通过 `~/.rehab_arm_ros2_network` 使用 `ROS_DOMAIN_ID=42`。
+- 如果新开的 SSH shell 没有 source 这个文件，ROS CLI 默认在 domain 0 查询，自然看不到 domain 42 的节点。
+
+解决：
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source ~/.rehab_arm_ros2_network
+source /home/pi/rehab_arm_ros2_ws/install/setup.bash
+ros2 node list
+ros2 topic list -t
+```
+
+仿真主机同理：
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source ~/.rehab_arm_ros2_network
+source ~/桌面/Medical-Rehabilitation-Manipulator/rehab_arm_ros2_ws/install/setup.bash
+ros2 topic echo --once /joint_states sensor_msgs/msg/JointState
+```
+
+通过标准：
+
+- NanoPi 能看到 `/rehab_arm_psoc_bridge`。
+- 仿真主机和 NanoPi 都能看到 `/medical_arm_6dof_shadow_sim`、`/medical_arm_shadow_relay`。
+- 仿真主机能 echo 到 6DOF `/joint_states`。
+
+技巧：
+
+- 先看运行进程环境：`tr '\0' '\n' < /proc/<pid>/environ | grep ROS_DOMAIN_ID`。
+- 不要因为 domain 查错就重写 launch 或另起 demo。
+
+### PSE84 外部 flash 烧录必须带工程 qspi_config.cfg
+
+现象：
+
+- OpenOCD 使用 `target/infineon/pse84xgxs2.cfg` 和 `PSE84_SMIF.FLM` 时，看起来命令能运行，但写 M33 `0x60340400` 会出现 `no flash bank found for address 0x60340400`，随后 `wrote 0 bytes`。
+- 如果只看 OpenOCD 退出码，容易误以为烧录成功。
+
+环境：
+
+- Windows RT-Thread Studio，PSoC Edge E84 `PSE846GPS2DBZC4A`。
+- OpenOCD: `D:\RT-ThreadStudio\repo\Extract\Debugger_Support_Packages\Infineon\OpenOCD-Infineon\2.0.0\bin\openocd.exe`
+- 工程生成的 QSPI bank 配置：`libs/TARGET_APP_KIT_PSE84_EVAL_EPC2/config/GeneratedSource/qspi_config.cfg`
+
+根因：
+
+- Cat1D OpenOCD 脚本在加载 target cfg 时会 `source [find qspi_config.cfg]`，然后根据 `SMIF_BANKS` 注册 `0x60000000` 外部 flash bank。
+- 命令行没有把工程 `GeneratedSource` 加入 `-s` 搜索路径时，`qspi_config.cfg` 找不到，`cat1d.cm33.smif1_ns` 不会注册。
+
+解决：
+
+```powershell
+& 'D:\RT-ThreadStudio\repo\Extract\Debugger_Support_Packages\Infineon\OpenOCD-Infineon\2.0.0\bin\openocd.exe' `
+  -s 'D:/RT-ThreadStudio/repo/Extract/Debugger_Support_Packages/Infineon/OpenOCD-Infineon/2.0.0/scripts' `
+  -s 'D:/RT-ThreadStudio/repo/Extract/Debugger_Support_Packages/Infineon/OpenOCD-Infineon/2.0.0/flm/cypress/cat1d' `
+  -s 'D:/RT-ThreadStudio/workspace/yiliao_m33/libs/TARGET_APP_KIT_PSE84_EVAL_EPC2/config/GeneratedSource' `
+  -f interface/kitprog3.cfg `
+  -c 'set QSPI_FLASHLOADER D:/RT-ThreadStudio/repo/Extract/Debugger_Support_Packages/Infineon/OpenOCD-Infineon/2.0.0/flm/cypress/cat1d/PSE84_SMIF.FLM' `
+  -f target/infineon/pse84xgxs2.cfg `
+  -c 'transport select swd' `
+  -c 'init; flash banks; shutdown'
+```
+
+通过标准：
+
+- `flash banks` 必须列出 `cat1d.cm33.smif1_ns (cmsis_flash) at 0x60000000`。
+- 真实烧录必须看到非 0 写入量，例如 M33 `wrote 565248 bytes`、M55 `wrote 946176 bytes`。
+
+技巧：
+
+- Windows OpenOCD Tcl 参数优先用正斜杠路径，避免反斜杠转义。
+- M33 SCons 生成的 raw hex 是 `0x08340400` 运行地址；烧到外部 flash 前先用 edgeprotecttools relocation 输出 `0x60340400` 的 `build/rtthread.hex`。
+- `edgeprotecttools run-config` 当前 secure merge 可能因本机缺 `proj_cm33_s_signed.hex` 失败；只要 relocation 已成功输出 `build/rtthread.hex`，在板上已有 secure/extended boot 的情况下可先烧这个 non-secure relocated hex。
 
 ### CANSimple 主机查询帧不能刷新 M33 电机 fresh 时间戳
 

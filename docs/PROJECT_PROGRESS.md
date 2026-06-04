@@ -16,6 +16,20 @@
 
 ## 架构状态
 
+- 2026-06-04 上板地基验证：
+  - M33 已用 OpenOCD + `PSE84_SMIF.FLM` + 工程 `qspi_config.cfg` 路径烧录成功，写入 `build/rtthread.hex` `565248 bytes`。`edgeprotecttools` 的 non-secure relocation 成功输出 `0x60340400` 镜像；secure merge 仍因本机缺少 `proj_cm33_s_signed.hex` 失败，但当前板上已有 secure/extended boot，烧录 non-secure relocated hex 可启动。
+  - M55 实际工程为 `D:\RT-ThreadStudio\workspace\wifi`，已烧录 `Debug/rtthread.hex` `946176 bytes` 和 `wifi_resources/whd_resources_all.bin` `466944 bytes`。
+  - 串口 `COM26` 已看到 M33 和 M55 同时启动：`This core is cortex-m33`、`[m33_m55_comm] ready on CM33`、`This core is cortex-m55`、`[m55] boot self-test publish ret=0`、wake-word/voice service initialized。
+  - NanoPi `candump` 已看到 M33 主状态：`0x322` heartbeat 和周期 `0x330~0x334`。
+  - NanoPi `candump` 已看到 M55 自测结果经 M33 发出的 `0x323`：例如 `323#B500010032810600`、`323#B501010032810600`、`323#B502010032810600`。这证明 `M55 model_result_publisher -> M33 m55_model_bridge -> CAN 0x323` 已打通。
+  - NanoPi 新版只读 bridge 已在 `ROS_DOMAIN_ID=42` 下发布 `/rehab_arm/model_state`。当前本次上电窗口 8 秒内没有新的 `0x323`，所以 `ros2 topic echo --once /rehab_arm/model_state` 等不到样本；这不是 topic 缺失，而是 M55 本轮未周期发新模型帧。
+- 2026-06-04 全链路只读验收：
+  - NanoPi `192.168.2.66` 在线，`can0` 为 1Mbps `ERROR-ACTIVE`，`berr-counter tx 0 rx 0`。
+  - NanoPi `candump` 持续收到 M33 `0x322` 和 `0x330~0x334`，C8T6 未上电时 8 秒内没有 `0x7C2/0x7C3`，符合当前硬件状态。
+  - NanoPi 手动只读 bridge 进程在跑，`enable_target_tx=false`；systemd `rehab-arm-nanopi-readonly.service` 当前 inactive，因为 sudo 需要密码不能远程非交互 restart。服务是 enabled，重启 NanoPi 后应自动恢复。
+  - `ROS_DOMAIN_ID=42` 下可见 `/rehab_arm_psoc_bridge`、`/medical_arm_6dof_shadow_sim`、`/medical_arm_shadow_relay`，以及 `/joint_states`、`/rehab_arm/motor_state`、`/rehab_arm/safety_state`、`/rehab_arm/model_state`、`/sim/medical_arm/joint_states`。
+  - `/joint_states` 在 NanoPi 侧约 98 Hz；仿真主机 `192.168.2.46` 能 echo 到 6DOF `jian_hengxiang_joint`、`jian_zongxiang_joint`、`jian_xuanzhuan_joint`、`zhou_zongxiang_joint`、`wanbu_zongxiang_joint`、`wanbu_hengxiang_joint`。
+  - 仿真主机 systemd `rehab-arm-sim-host-shadow.service` 为 active/enabled，日志显示 `backend=mujoco-model`，relay 为 `/joint_states -> /sim/medical_arm/joint_trajectory`，`forearm_rotation_joint -> jian_xuanzhuan_joint` 仍是 7号外部 EL05 shadow 过渡映射。
 - 2026-06-04 地基更新：
   - NanoPi 新增 `m33_model_status.py`，解析 M33 -> NanoPi `0x323` 模型摘要帧，并在 `psoc_can_bridge_node.py` 发布 `/rehab_arm/model_state`。
   - M33 本地工程新增模块化 `applications/m33/m55_model_bridge.*`，消费 `MSG_TYPE_AI_INFERENCE_RESP`/`MSG_TYPE_ASR_TEXT`；control layer 新增 `control_publish_m55_model_result()`，统一发送 `0x323`。
@@ -55,6 +69,22 @@
 | `0x7C3` | C8T6 -> M33 | 健康状态 |
 
 ## 已完成
+
+### 2026-06-04
+
+- M33/M55 真机烧录与跨核基础链路：
+  - 修正 M55 linker script 兼容当前 GNU ld，M55 `wifi/Debug` makefile 可生成 `rtthread.hex`。
+  - M55 `main.c` 保留串口输出，增加启动期模型结果自测；`model_result_publisher.c` 增加 `m55_model_selftest` shell 命令，后续可在串口手动触发一帧 M55 模型结果。
+  - M33 `m55_model_bridge.c` 增加收到 AI result 后的 CAN 发布日志，便于判断 M33 是否已消费 IPC 队列并发出 `0x323`。
+  - 已烧录 M33/M55 并验证 M55 心跳/语音服务不再卡死。
+- 验证结果：
+  - M33 SCons build 通过。
+  - M55 RT-Thread Studio Debug makefile build 通过；剩余 warning 为 `WakeWordDetector_DumpFeatures` implicit declaration 和未用 `m55_console_detach`，不阻塞启动。
+  - 串口证明 M33 和 M55 均进入 app `main`。
+  - NanoPi CAN 证明 `0x322`、`0x330~0x334` 和 `0x323#B5...` 均可见。
+- 未完成：
+  - `/rehab_arm/model_state` publisher 已验证存在，但当前本次上电没有新的 `0x323` 样本。需要在串口执行或重启触发 M55 `m55_model_selftest` 后，再验证 `0x323 -> /rehab_arm/model_state` 单帧内容。
+  - M33/M55 IPC 目前用 wake-word 自测证明链路；真实 4 路 EMG 小模型、语音转文字语义编号和服务器/VLA 语义解析还要继续按同一合同补。
 
 ### 2026-06-03
 

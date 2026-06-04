@@ -107,8 +107,8 @@ JointTrajectory -> NanoPi -> M33 -> 电机
 |---|---|---|
 | M33 | CAN 主站、安全状态机、输出端状态汇总、最终电机控制、BLE 近端状态/请求入口、M55 结果绑定后发 `0x323` | 已对上 legacy `0x330~0x334` 和 7号 shadow；新增 `m55_model_bridge.*`，完整 6DOF formal 协议待补 |
 | M55 | 板端小模型和语音/EMG 信号处理，输出编号结果给 M33，再由 NanoPi/服务器解析语义 | GitHub `M55` 分支/WiFi 工程为准；新增 `model_result_publisher.*` wake-word 验证路径；M33/M55 通讯复用 MTB-IPC queue + `.ipc_stream_shared` |
-| NanoPi | ROS2 bridge、SocketCAN、摄像头采集、服务器上传、VLA 任务接收、候选轨迹转发、解析 `0x323` 为 `/rehab_arm/model_state` | 只读 product service 已自启，`enable_target_tx=false` |
-| Linux 仿真主机 | URDF/MJCF/MuJoCo、hardware shadow、规划 dry-run、数据标注和可视化 | MuJoCo 6DOF hardware shadow service 已自启 |
+| NanoPi | ROS2 bridge、SocketCAN、摄像头采集、服务器上传、VLA 任务接收、候选轨迹转发、解析 `0x323` 为 `/rehab_arm/model_state` | 只读 bridge 已在 `ROS_DOMAIN_ID=42` 发布 topic，当前手动进程 `enable_target_tx=false`；systemd service enabled 但本次为 inactive，待 sudo/reboot 恢复托管 |
+| Linux 仿真主机 | URDF/MJCF/MuJoCo、hardware shadow、规划 dry-run、数据标注和可视化 | `rehab-arm-sim-host-shadow.service` 已 active/enabled，MuJoCo 6DOF hardware shadow 通过无线 ROS2 收到 NanoPi `/joint_states` |
 | 服务器/总控台 | VLA、数据资产、模型版本、实验记录、多设备管理和远程协作 | 本仓库只维护接口边界；服务器实现在平台仓库 |
 
 ### 后续 AI 必须遵守
@@ -132,6 +132,40 @@ mainline / shadow-sim / dry-run / bench-debug / offline-demo / side-channel
 - `0x323`、`/rehab_arm/model_state`、M55 confidence/result_code 永远只是建议，不得改变 `motion_allowed`，不得绕过 `0x322` safety gate。
 
 后续 AI 如果发现旧文档、旧 demo 或旧启动脚本与本节冲突，必须以本节为准，更新旧内容，而不是复制一条新路线。
+
+### 2.0.2 2026-06-04 上板地基状态
+
+当前上板主链路已经分层打到以下位置：
+
+| 层级 | 状态 | 证据 |
+|---|---|---|
+| M33 固件烧录 | 已通 | OpenOCD + `PSE84_SMIF.FLM` 写入 `D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.hex`，实际写入 `565248 bytes` |
+| M55 WiFi 工程烧录 | 已通 | 写入 `D:/RT-ThreadStudio/workspace/wifi/Debug/rtthread.hex` `946176 bytes`，WiFi resource 写入 `466944 bytes` |
+| M33 启动和 CAN 主状态 | 已通 | 串口有 `This core is cortex-m33`、`[m33_m55_comm] ready on CM33`；NanoPi 可见 `0x322` 和周期 `0x330~0x334` |
+| M55 启动 | 已通 | 串口有 `This core is cortex-m55`、`[m55] boot self-test publish ret=0`、voice/wake-word 初始化日志 |
+| M55 -> M33 -> CAN `0x323` | 已通 | NanoPi `candump` 抓到连续 `323#B500010032810600`、`323#B501010032810600` 等模型建议帧 |
+| NanoPi `/rehab_arm/model_state` | publisher 已通，等待新样本 | `ROS_DOMAIN_ID=42` 下 topic 已发布；本次 8 秒内没有新的 `0x323`，所以 echo 等不到数据 |
+| NanoPi -> Linux 仿真主机无线 ROS2 | 已通 | 两端均 source `~/.rehab_arm_ros2_network`，`ROS_DOMAIN_ID=42`、`ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET`；仿真主机可见 `/rehab_arm_psoc_bridge` 并 echo `/joint_states` |
+| Linux MuJoCo hardware shadow | 已通 | systemd active/enabled，日志显示 `backend=mujoco-model` 和 `/joint_states -> /sim/medical_arm/joint_trajectory` relay |
+| C8T6 传感板 | 未上电，非当前阻塞 | NanoPi 8 秒 candump 未见 `0x7C2/0x7C3`，符合用户说明 |
+
+因此当前可以说“`M33/M55/CAN/NanoPi ROS2/无线 MuJoCo shadow` 的只读地基已打通”。但当前还不能说服务器/VLA 已经稳定收到 M55 模型内容，因为本次上电没有新的 `0x323` 样本进入 `/rehab_arm/model_state`；下一步要触发 M55 selftest 或真实小模型输出并抓一条 topic 样本。
+
+当前 `0x323` 自测帧含义：
+
+```text
+323#B5 ss 01 00 32 81 06 00
+byte0 0xB5: M33 model status marker
+byte1 ss: sequence
+byte2 0x01: wake-word/model code
+byte3 0x00: result none/no direct action
+byte4 0x32: confidence ~= 50%
+byte5 0x81: fresh + suggestion_only
+byte6 0x06: window ~= 60ms
+byte7 0x00: reserved
+```
+
+这仍然只是模型建议。任何 VLA、服务器、NanoPi 或 App 看到该帧后，都只能把它当上下文和标注输入，不能把它转换成真实运动许可。
 
 ## 2.1 正规机器人开发路线对齐
 

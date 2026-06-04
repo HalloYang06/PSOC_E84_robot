@@ -55,7 +55,124 @@ python3 /home/pi/nanopi_can_master.py m33 target --iface can0 --joint 4 --deg 30
 - M55 小模型结果统一走 [M55_MODEL_RESULT_PROTOCOL_V1.md](M55_MODEL_RESULT_PROTOCOL_V1.md) 和 `/rehab_arm/model_state`；该 topic 是模型建议和编号语义，不是运动许可。原始/滤波 EMG、心率、IMU 仍走 `/rehab_arm/sensor_state`。
 - M33/M55 跨核通讯和 App BLE 字段边界见 [M33_M55_IPC_BLE_FOUNDATION.md](M33_M55_IPC_BLE_FOUNDATION.md)：M33/M55 已有 `m33_m55_comm`、MTB-IPC queue 和 `.ipc_stream_shared`，App BLE 已有 NUS 风格 RX/TX；后续只补字段，不另造链路。
 - M55 小模型部署按 [M55_MODEL_DEPLOYMENT_GUIDE.md](M55_MODEL_DEPLOYMENT_GUIDE.md)：使用 GitHub `M55` 分支对应的 WiFi 工程，复用 TFLite Micro、`model_manager` 和 `m33_m55_comm`，推理结果回 M33 后再进 NanoPi/服务器。
-- 当前小模型链路的最小验收是 M55 wake-word 结果经 `MSG_TYPE_AI_INFERENCE_RESP` 到 M33，再由 `0x323` 到 NanoPi，最后在 `/rehab_arm/model_state` 看到 `source=m33_m55_bridge_can_0x323`。这个验收不允许出现新的运动许可，也不允许自动发送 `0x320`。
+- 当前小模型链路的分层验收是：
+  - 第一层，M55 wake-word 结果经 `MSG_TYPE_AI_INFERENCE_RESP` 到 M33，再由 `0x323` 到 NanoPi。2026-06-04 已实测 `candump` 可见 `323#B5...`。
+  - 第二层，NanoPi ROS2 bridge 把 `0x323` 发布成 `/rehab_arm/model_state`，消息里应有 `source=m33_m55_bridge_can_0x323`。当前 topic publisher 已验证存在；本次上电没有新的 `0x323` 样本，所以还需要触发 `m55_model_selftest` 或重启自测后抓一条 JSON 样本。
+  - 这个验收不允许出现新的运动许可，也不允许自动发送 `0x320`。
+
+## M33/M55 烧录和小模型链路复测
+
+当前 PSoC Edge E84 烧录必须使用 RT-Thread Studio 自带 Infineon OpenOCD，并把工程 `qspi_config.cfg` 所在目录加入 `-s`。否则外部 flash bank 不会注册，可能出现 `wrote 0 bytes` 的假成功。
+
+烧录前先确认外部 flash bank：
+
+```powershell
+& 'D:\RT-ThreadStudio\repo\Extract\Debugger_Support_Packages\Infineon\OpenOCD-Infineon\2.0.0\bin\openocd.exe' `
+  -s 'D:/RT-ThreadStudio/repo/Extract/Debugger_Support_Packages/Infineon/OpenOCD-Infineon/2.0.0/scripts' `
+  -s 'D:/RT-ThreadStudio/repo/Extract/Debugger_Support_Packages/Infineon/OpenOCD-Infineon/2.0.0/flm/cypress/cat1d' `
+  -s 'D:/RT-ThreadStudio/workspace/yiliao_m33/libs/TARGET_APP_KIT_PSE84_EVAL_EPC2/config/GeneratedSource' `
+  -f interface/kitprog3.cfg `
+  -c 'set QSPI_FLASHLOADER D:/RT-ThreadStudio/repo/Extract/Debugger_Support_Packages/Infineon/OpenOCD-Infineon/2.0.0/flm/cypress/cat1d/PSE84_SMIF.FLM' `
+  -f target/infineon/pse84xgxs2.cfg `
+  -c 'transport select swd' `
+  -c 'init; flash banks; shutdown'
+```
+
+必须看到：
+
+```text
+cat1d.cm33.smif1_ns ... at 0x60000000
+```
+
+烧录后最小复测：
+
+```bash
+timeout 18 candump -L can0,323:7FF,322:7FF,330:7FF,331:7FF,332:7FF,333:7FF,334:7FF
+```
+
+通过标准：
+
+- `0x322` 每秒左右出现。
+- `0x330~0x334` 周期出现。
+- M55 自测期能看到 `0x323#B5...`，例如 `323#B500010032810600`。
+- `timeout 2 candump -L can0,320:7FF` 没有输出。
+
+如果要验证 NanoPi ROS2 topic：
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source ~/.rehab_arm_ros2_network
+source /home/pi/rehab_arm_ros2_ws/install/setup.bash
+ros2 topic echo --once /rehab_arm/model_state
+```
+
+通过标准：
+
+- topic 类型是 `std_msgs/msg/String`。
+- JSON `schema_version` 是 `rehab_arm_model_state_v1`。
+- `source` 是 `m33_m55_bridge_can_0x323`。
+- `control_boundary` 是 `model_suggestion_only_not_motion_permission`。
+
+注意：如果 `ros2 topic list -t` 能看到 `/rehab_arm/model_state [std_msgs/msg/String]`，但 `echo --once` 超时，说明当前没有新的 `0x323` 样本，不等于 publisher 缺失。先用 `timeout 8 candump -L can0,323:7FF` 看 M55/M33 是否正在发模型帧。
+
+## NanoPi 到 MuJoCo hardware shadow 只读验收
+
+当前主线网络环境固定走：
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source ~/.rehab_arm_ros2_network
+```
+
+两端 `~/.rehab_arm_ros2_network` 至少应包含：
+
+```bash
+export ROS_DOMAIN_ID=42
+export ROS_LOCALHOST_ONLY=0
+export ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET
+```
+
+NanoPi 上验收：
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source ~/.rehab_arm_ros2_network
+source /home/pi/rehab_arm_ros2_ws/install/setup.bash
+
+ros2 node list
+ros2 topic list -t
+timeout 5 ros2 topic hz /joint_states
+timeout 8 candump -L can0,322:7FF,330:7FF,331:7FF,332:7FF,333:7FF,334:7FF
+timeout 3 candump -L can0,320:7FF
+```
+
+通过标准：
+
+- `can0` 是 `ERROR-ACTIVE`，`0x322` 和 `0x330~0x334` 持续出现。
+- `/joint_states` 有频率，本次实测约 98 Hz。
+- 普通只读验收中 `0x320` 没有输出。
+
+仿真主机上验收：
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source ~/.rehab_arm_ros2_network
+source ~/桌面/Medical-Rehabilitation-Manipulator/rehab_arm_ros2_ws/install/setup.bash
+
+systemctl is-active rehab-arm-sim-host-shadow.service
+systemctl is-enabled rehab-arm-sim-host-shadow.service
+ros2 node list
+ros2 topic echo --once /joint_states sensor_msgs/msg/JointState
+ros2 topic echo --once /sim/medical_arm/joint_states sensor_msgs/msg/JointState
+```
+
+通过标准：
+
+- systemd service 是 `active` 和 `enabled`。
+- 能看到 `/rehab_arm_psoc_bridge`、`/medical_arm_6dof_shadow_sim`、`/medical_arm_shadow_relay`。
+- `/joint_states` 和 `/sim/medical_arm/joint_states` 都是 6 个 medical_arm joint：`jian_hengxiang_joint`、`jian_zongxiang_joint`、`jian_xuanzhuan_joint`、`zhou_zongxiang_joint`、`wanbu_zongxiang_joint`、`wanbu_hengxiang_joint`。
+
+C8T6 未上电时，`/rehab_arm/sensor_state` 和 CAN `0x7C2/0x7C3` 没有样本是预期现象，不要因此改 ROS bridge 或 MuJoCo。
 
 ## 真机测试前安全检查
 
