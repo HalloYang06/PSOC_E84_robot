@@ -8,6 +8,7 @@
 
 当前结论先写清楚：
 
+- 2026-06-04 上电实测：M33/M55 IPC 和 M55 真实 TFLM `req_m7` 路径已通；NanoPi 只读 ROS2 service 在线；但当前 CAN 物理/ACK 层未通，NanoPi `candump` 看不到 M33 帧，不能进入 MuJoCo hardware shadow 验收。
 - M33 对上的是 legacy 5 槽位链路：`0x330~0x334` 对应 ROS joint `0..4`，当前应映射到 motor slot `3/4/5/6/7`。
 - 已实测对上的是 7 号 EL05 外部调试电机：M33 `0x334` fresh，NanoPi `/joint_states` 发布 `forearm_rotation_joint`，仿真主机 relay 映射到 6DOF MuJoCo `jian_xuanzhuan_joint`。
 - medical_arm 6DOF 正式关节还没有全部接到 M33：`jian_hengxiang_joint`、`jian_zongxiang_joint`、`zhou_zongxiang_joint`、两个腕部关节目前在 hardware shadow 中还是占位角。
@@ -161,6 +162,21 @@ RX STD 0x322 [...]
 ```
 
 如果没有 `0x322` 或 CAN 变成 `BUS-OFF`，停止，不进入后续步骤。先查电池、M33 供电、共地、CANH/CANL、终端电阻和收发器使能。
+
+2026-06-04 当前失败模式：
+
+```text
+M33 serial: [drv_can] direct tx pending ... psr=0x0000077b txbto=0x00000000
+NanoPi: RX packets 0, TX errors high, candump no 0x322/0x323/0x330~0x334
+```
+
+这时不要继续启动 MuJoCo 或发轨迹。先修 CAN 物理层：
+
+1. 断电测 CANH-CANL 电阻。
+2. 查 M33/NanoPi/7号电机 CANH、CANL、GND 是否同线同地。
+3. 上电测 CAN 收发器 VCC/VIO/STBY/EN。
+4. 用 `cansend can0 123#1122334455667788` 和 M33 串口日志确认至少有 ACK/RX 变化。
+5. 再回到本节重新测 `0x321 -> 0x322`。
 
 ## 3. M33 遥测槽位对齐检查
 

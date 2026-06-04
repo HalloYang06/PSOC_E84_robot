@@ -4673,6 +4673,36 @@ Connection reset by 192.168.2.66 port 22
 - 调试时不要一次关闭多道门。先看是 PSoC/M33 motion gate 拒绝，还是 fresh feedback gate 拒绝。
 - 任何台架参数放宽都必须保持 `enable_target_tx=false`，直到单独安全审查通过。
 
+### M55 TFLM 能跑不等于 CAN 全链路已通
+
+现象：
+
+- 上电后 `req_m7` 可以返回：M33 发 motor7 snapshot，M55 收到 snapshot，真实 TFLM wake slot 加载并推理，M55 结果回到 M33。
+- 同一窗口里 M33 仍打印 `m55_model_bridge ... can_ret=-255`。
+- M33 CAN 日志反复出现 `direct tx pending ... psr=0x0000077b txbto=0x00000000`。
+- NanoPi `can0` 是 1Mbps `ERROR-ACTIVE`，但 `candump` 看不到 `0x322/0x323/0x330~0x334`，RX packets 为 0，TX errors 很高。
+
+判断：
+
+- M33/M55 IPC、M55 小模型部署、M55->M33 结果回传已经过硬件验证。
+- 当前失败边界在 CAN 总线完成发送/ACK 之前，不在 VLA、ROS、MuJoCo 或 TFLM。
+- `txbrp` 长时间 pending 且 `txbto=0`，同时 NanoPi 自己发 `cansend` 也没有任何 RX/ACK，是典型 CAN 物理层或收发器未使能问题。
+
+排查顺序：
+
+- 确认 M33、NanoPi CAN 模块、电机 7/外部节点确实接在同一对 CANH/CANL 上。
+- 确认所有 CAN 节点共地。
+- 断电测 CANH/CANL 之间电阻：两端终端约 60 ohm，单端约 120 ohm，开路或过低都先修硬件。
+- 上电测收发器 VCC/VIO/STBY/EN/TXD/RXD；TXD 有跳变但 CANH/CANL 没有时，优先查收发器供电和 standby/enable。
+- 确认 CANH/CANL 没接反。显性位时 CANH 应上升、CANL 应下降。
+- 修复后先用 `timeout 5 candump -L can0` 看到任意帧，再测 `0x321 -> 0x322`，最后才测 `req_m7 -> 0x323`。
+
+技巧：
+
+- 不要因为 M55 模型输出正常就跳过 CAN 物理层。当前医疗臂主线仍要求 `M55 -> M33 -> CAN -> NanoPi -> ROS` 状态闭环。
+- NanoPi 只读 service 在线只说明 ROS bridge 进程在跑；没有 `candump` 帧时，先查 CAN，不查 MuJoCo。
+- M33 的 `drv_can.c` 已加入 pending buffer 取消和寄存器日志，后续看到 `psr/txbrp/txbto/txbcf` 时要和 NanoPi `ip -details -statistics link show can0` 一起看。
+
 ### 6DOF MuJoCo shadow 要发布完整关节，但不能伪造硬件在线
 
 现象：

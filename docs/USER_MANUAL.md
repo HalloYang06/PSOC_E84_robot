@@ -4167,3 +4167,22 @@ git push origin feature/rehab-arm-ros2-architecture
 - Stop conditions。
 
 联调时优先按文档顺序推进：先 Git 和离线验证，再 NanoPi/CAN/M33/C8T6 数据链路，再平台/App 展示，最后才考虑任何运动测试。
+
+## 9. 2026-06-04 上电测试结论
+
+这次真实硬件测试的结论：
+
+- NanoPi 在线，`rehab-arm-nanopi-readonly.service` 正在运行，参数保持 `enable_target_tx:=false`。
+- M55 `req_m7` 可用：M33 motor7 snapshot 到 M55，M55 真实 TFLM 推理，结果回到 M33。
+- CAN 总线没有完成 ACK/RX：NanoPi `candump` 看不到 M33 帧，M33 串口反复出现 `direct tx pending`。
+
+下一次上电先不要排 MuJoCo/VLA，先做 CAN 物理层：
+
+```bash
+ssh pi@192.168.2.66
+ip -details -statistics link show can0
+timeout 5 candump -L can0
+cansend can0 123#1122334455667788
+```
+
+同时看 M33 串口。如果还是没有任何 RX/ACK，优先查 CANH/CANL、共地、终端电阻、收发器 VCC/VIO/STBY/EN。只有看到 `0x321 -> 0x322` 和 `0x330~0x334` 后，才继续 MuJoCo shadow 和 VLA 上层验证。

@@ -2473,6 +2473,16 @@
 - Final state: after stop, `0x332` settled near `...64FD...` and later returned to stale/no-feedback frames after active-report disable; `can0` stayed `ERROR-ACTIVE` with tx/rx error counters `0/0`.
 - Safety: only motor5 was commanded, duration was bounded to 10 seconds, and stop was sent immediately after the window. This remains direct debug control, not the formal robot path.
 
+### 2026-06-04 - Powered M33/M55/NanoPi motor7 model validation and CAN ACK blocker
+
+- Completed: flashed the rebuilt M33 image after adding CAN TX pending diagnostics and cancellation before direct-send reuse. OpenOCD reported `wrote 700416 bytes` and `verified 698248 bytes`.
+- Validated: NanoPi `192.168.2.66` is online, `can0` exists at classic CAN 1 Mbps, and `rehab-arm-nanopi-readonly.service` is running with `enable_target_tx:=false`.
+- Validated: M55 shell command `req_m7` works on real hardware. M33 published a motor7 snapshot to M55, M55 loaded the existing TFLM wake slot (`model=210476`, `arena=1572864`, `input_bytes=7840`, `output_bytes=8`), ran inference, and published the result back to M33.
+- Finding: the M33/M55 IPC and real M55 model path are alive, but motor7 data is currently stale/zero because fresh CAN motor feedback is not reaching M33.
+- Blocker: M33 CAN egress remains blocked at the bus ACK/physical layer. Serial logs show repeated `direct tx pending ... psr=0x0000077b txbto=0x00000000`; NanoPi `candump` sees no `0x322/0x323/0x330~0x334`, and NanoPi RX packets remain 0 while TX errors are high.
+- Decision: do not call the full M33-NanoPi-MuJoCo hardware chain complete until CANH/CANL, common ground, termination, and transceiver enable/power are proven with at least one visible frame and ACK.
+- Next step: stop software changes at the CAN boundary and measure/fix the physical CAN segment, then rerun heartbeat `0x321 -> 0x322`, M33 status `0x330~0x334`, and `req_m7 -> 0x323` validation.
+
 ### 2026-05-28 - Motor5 reverse run with 3A current limit
 
 - Reason: user reported insufficient force and asked to increase current limit.
