@@ -168,6 +168,37 @@ static rt_uint8_t can_dlc_to_len(rt_uint8_t dlc)
     return can_dlc_to_len_table[(dlc < 16U) ? dlc : 15U];
 }
 
+static void ifx_canfd0_cancel_tx_buffer(struct ifx_can *can, rt_uint8_t tx_index)
+{
+#ifdef BSP_USING_CANFD0
+    rt_uint32_t mask = 1UL << tx_index;
+    rt_uint32_t waited_ms;
+
+    if (can == RT_NULL)
+    {
+        return;
+    }
+
+    if ((CANFD_TXBRP(can->config->can_x, can->config->channel) & mask) == 0U)
+    {
+        return;
+    }
+
+    CANFD_TXBCR(can->config->can_x, can->config->channel) = mask;
+    for (waited_ms = 0U; waited_ms < IFX_CAN_TX_WAIT_MS; waited_ms++)
+    {
+        if ((CANFD_TXBRP(can->config->can_x, can->config->channel) & mask) == 0U)
+        {
+            return;
+        }
+        rt_thread_mdelay(1);
+    }
+#else
+    RT_UNUSED(can);
+    RT_UNUSED(tx_index);
+#endif
+}
+
 static void ifx_canfd0_prepare_hw(void)
 {
 #ifdef BSP_USING_CANFD0
@@ -820,6 +851,7 @@ rt_err_t ifx_can_direct_send(const struct rt_can_msg *msg)
     can->tx_buffer.data_area_f = can->tx_data;
 
     tx_index = g_can_direct_tx_index++ % BSP_CANFD0_TX_BUFFER_COUNT;
+    ifx_canfd0_cancel_tx_buffer(can, tx_index);
     result = Cy_CANFD_UpdateAndTransmitMsgBuffer(can->config->can_x,
                                                  can->config->channel,
                                                  &can->tx_buffer,
@@ -848,7 +880,14 @@ rt_err_t ifx_can_direct_send(const struct rt_can_msg *msg)
         }
     }
 
-    rt_kprintf("[drv_can] direct tx pending box=%u\n", (unsigned int)tx_index);
+    rt_kprintf("[drv_can] direct tx pending box=%u cccr=0x%08lx psr=0x%08lx txbrp=0x%08lx txbto=0x%08lx txbcf=0x%08lx\n",
+               (unsigned int)tx_index,
+               (unsigned long)CANFD_CCCR(can->config->can_x, can->config->channel),
+               (unsigned long)CANFD_PSR(can->config->can_x, can->config->channel),
+               (unsigned long)CANFD_TXBRP(can->config->can_x, can->config->channel),
+               (unsigned long)CANFD_TXBTO(can->config->can_x, can->config->channel),
+               (unsigned long)CANFD_TXBCF(can->config->can_x, can->config->channel));
+    ifx_canfd0_cancel_tx_buffer(can, tx_index);
     return -RT_ETIMEOUT;
 #else
     return -RT_ERROR;
