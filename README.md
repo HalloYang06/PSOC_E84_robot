@@ -5,6 +5,7 @@
 详细审查稿见：
 
 ```text
+docs/CURRENT_PROJECT_BRIEFING.md
 docs/REHAB_ARM_SYSTEM_ARCHITECTURE.md
 ```
 
@@ -19,6 +20,30 @@ docs/PATIENT_DEVICE_PROFILE_PROTOCOL_V1.md
 docs/M33_0X320_LOGGER_GUIDE.md
 docs/M33_SAFETY_INPUT_MAPPING.md
 ```
+
+## 当前讲解入口
+
+今晚讲解项目时，优先使用 [`docs/CURRENT_PROJECT_BRIEFING.md`](docs/CURRENT_PROJECT_BRIEFING.md)。它是当前最新的干净总览，已经把旧 demo、旧草案和过时状态与当前主线分开。
+
+![Medical arm video frame](docs/assets/medical_arm_video_frame.png)
+
+当前能准确表述为：
+
+- `M33/M55/CAN/NanoPi ROS2/无线 MuJoCo shadow` 的基础链路已分层打通。
+- M33 数据进入 M55 小模型、再经 M33 `0x323` 到 NanoPi `/rehab_arm/model_state` 的闭环已通过 `req_snap` 验证。
+- MuJoCo 6DOF hardware shadow 已能跟随 NanoPi 上来的真实/占位 joint 状态。
+- 7号 EL05 仍是外部调试电机，不是正式机械臂关节。
+- 完整 6DOF 真机控制、真实 4 路 EMG 模型和 VLA 真机闭环仍在后续阶段。
+
+GitHub 分支导览：
+
+| 分支 | 用途 |
+|---|---|
+| `feature/rehab-arm-ros2-architecture` | ROS2、NanoPi、MuJoCo、文档主线 |
+| `M33` | M33 固件、安全/电机控制、M55 输入桥 |
+| `M55` | M55 WiFi/语音/小模型工程 |
+| `C8T6` | 传感采集板 |
+| `APP` | Android App、BLE 和界面 |
 
 ## 0. 最高优先级：人身安全
 

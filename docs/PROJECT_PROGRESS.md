@@ -6,6 +6,7 @@
 
 - 当前分支：`feature/rehab-arm-ros2-architecture`
 - 主 README：[README.md](../README.md)
+- 当前讲解稿：[CURRENT_PROJECT_BRIEFING.md](CURRENT_PROJECT_BRIEFING.md)
 - 架构审查稿：[REHAB_ARM_SYSTEM_ARCHITECTURE.md](REHAB_ARM_SYSTEM_ARCHITECTURE.md)
 - 使用手册：[USER_MANUAL.md](USER_MANUAL.md)
 - 新手搭建教程草稿：[REHAB_ARM_ROS2_SIM_FRAMEWORK_GUIDE.md](REHAB_ARM_ROS2_SIM_FRAMEWORK_GUIDE.md)
@@ -16,6 +17,13 @@
 
 ## 架构状态
 
+- 2026-06-04 讲解版进度已整理：
+  - 新增 [CURRENT_PROJECT_BRIEFING.md](CURRENT_PROJECT_BRIEFING.md)，作为今晚讲解和后续 AI 协作的当前入口。
+  - 当前主线统一为 `JointTrajectory -> NanoPi -> M33 -> 电机`；M55、App BLE、服务器/VLA、无线 MuJoCo 都是状态、建议、dry-run 或 shadow，不单独授权运动。
+  - 已把“等待新的 0x323 样本”的旧结论更新为最新状态：`req_snap` 已上板验证 `M33 sensor snapshot -> M55 model_input_bridge -> M33 0x323 -> NanoPi /rehab_arm/model_state`。
+  - 明确当前能讲的完成项、不能夸大的内容和下一步最小任务，避免把历史 demo、7号外部电机 shadow 或规则阈值模型讲成完整产品能力。
+  - 已从用户提供的视频 `c22727ba986a4acdaecf08ba6e6e2065.mp4` 截取真实画面帧到 [assets/medical_arm_video_frame.png](assets/medical_arm_video_frame.png)，用于 GitHub 讲解；不使用手绘/生成图冒充仿真截图。
+  - 已从 GitHub 远端核对分支：`feature/rehab-arm-ros2-architecture`、`M33`、`M55`、`C8T6`、`APP` 均有当前证据，讲解稿已按多分支仓库导览重写。
 - 2026-06-04 M33 数据进入 M55 小模型闭环已上板验证：
   - M33 工程新增 `applications/m33/m55_model_input_bridge.*`，M55 工程新增 `applications/model_input_bridge.*`，并扩展 `VOICE_CTRL_PUBLISH_TEST_SNAPSHOT` 作为台架自测入口。
   - 当前串口 shell 在 M55 侧，执行 `req_snap` 后，M55 请求 M33 发布测试 sensor snapshot；M33 通过 `MSG_TYPE_SENSOR_SNAPSHOT` 发给 M55；M55 当前规则模型输出结果；M33 经 `0x323` 发给 NanoPi。
@@ -29,7 +37,7 @@
   - 串口 `COM26` 已看到 M33 和 M55 同时启动：`This core is cortex-m33`、`[m33_m55_comm] ready on CM33`、`This core is cortex-m55`、`[m55] boot self-test publish ret=0`、wake-word/voice service initialized。
   - NanoPi `candump` 已看到 M33 主状态：`0x322` heartbeat 和周期 `0x330~0x334`。
   - NanoPi `candump` 已看到 M55 自测结果经 M33 发出的 `0x323`：例如 `323#B500010032810600`、`323#B501010032810600`、`323#B502010032810600`。这证明 `M55 model_result_publisher -> M33 m55_model_bridge -> CAN 0x323` 已打通。
-  - NanoPi 新版只读 bridge 已在 `ROS_DOMAIN_ID=42` 下发布 `/rehab_arm/model_state`。当前本次上电窗口 8 秒内没有新的 `0x323`，所以 `ros2 topic echo --once /rehab_arm/model_state` 等不到样本；这不是 topic 缺失，而是 M55 本轮未周期发新模型帧。
+  - NanoPi 新版只读 bridge 已在 `ROS_DOMAIN_ID=42` 下发布 `/rehab_arm/model_state`；后续通过 `req_snap` 已抓到新的 `0x323` 并验证 ROS JSON 样本。
 - 2026-06-04 全链路只读验收：
   - NanoPi `192.168.2.66` 在线，`can0` 为 1Mbps `ERROR-ACTIVE`，`berr-counter tx 0 rx 0`。
   - NanoPi `candump` 持续收到 M33 `0x322` 和 `0x330~0x334`，C8T6 未上电时 8 秒内没有 `0x7C2/0x7C3`，符合当前硬件状态。
@@ -90,7 +98,7 @@
   - 串口证明 M33 和 M55 均进入 app `main`。
   - NanoPi CAN 证明 `0x322`、`0x330~0x334` 和 `0x323#B5...` 均可见。
 - 未完成：
-  - `/rehab_arm/model_state` publisher 已验证存在，但当前本次上电没有新的 `0x323` 样本。需要在串口执行或重启触发 M55 `m55_model_selftest` 后，再验证 `0x323 -> /rehab_arm/model_state` 单帧内容。
+  - `/rehab_arm/model_state` publisher 和 `0x323 -> ROS JSON` 已通过 `req_snap` 验证；下一步不是再证明 topic 存在，而是接入真实 EMG/语音模型输入。
   - M33/M55 IPC 目前用 wake-word 自测证明链路；真实 4 路 EMG 小模型、语音转文字语义编号和服务器/VLA 语义解析还要继续按同一合同补。
 
 ### 2026-06-03

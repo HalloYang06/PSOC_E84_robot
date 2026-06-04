@@ -1,6 +1,6 @@
 # 康复外骨骼机械臂系统架构审查稿
 
-本文档是当前项目的总体架构基准。先用于审查和对齐，不急着一次性实现所有代码。
+本文档是当前项目的总体架构基准。今晚讲解和后续 AI 协作的短版入口见 [CURRENT_PROJECT_BRIEFING.md](CURRENT_PROJECT_BRIEFING.md)。
 
 ## 0. 安全第一原则
 
@@ -144,12 +144,12 @@ mainline / shadow-sim / dry-run / bench-debug / offline-demo / side-channel
 | M33 启动和 CAN 主状态 | 已通 | 串口有 `This core is cortex-m33`、`[m33_m55_comm] ready on CM33`；NanoPi 可见 `0x322` 和周期 `0x330~0x334` |
 | M55 启动 | 已通 | 串口有 `This core is cortex-m55`、`[m55] boot self-test publish ret=0`、voice/wake-word 初始化日志 |
 | M55 -> M33 -> CAN `0x323` | 已通 | NanoPi `candump` 抓到连续 `323#B500010032810600`、`323#B501010032810600` 等模型建议帧 |
-| NanoPi `/rehab_arm/model_state` | publisher 已通，等待新样本 | `ROS_DOMAIN_ID=42` 下 topic 已发布；本次 8 秒内没有新的 `0x323`，所以 echo 等不到数据 |
+| NanoPi `/rehab_arm/model_state` | 已通 | `req_snap` 已验证 `M33 -> M55 -> M33 0x323 -> NanoPi -> /rehab_arm/model_state`，JSON 含 `source=m33_m55_bridge_can_0x323` 和 `control_boundary=model_suggestion_only_not_motion_permission` |
 | NanoPi -> Linux 仿真主机无线 ROS2 | 已通 | 两端均 source `~/.rehab_arm_ros2_network`，`ROS_DOMAIN_ID=42`、`ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET`；仿真主机可见 `/rehab_arm_psoc_bridge` 并 echo `/joint_states` |
 | Linux MuJoCo hardware shadow | 已通 | systemd active/enabled，日志显示 `backend=mujoco-model` 和 `/joint_states -> /sim/medical_arm/joint_trajectory` relay |
 | C8T6 传感板 | 未上电，非当前阻塞 | NanoPi 8 秒 candump 未见 `0x7C2/0x7C3`，符合用户说明 |
 
-因此当前可以说“`M33/M55/CAN/NanoPi ROS2/无线 MuJoCo shadow` 的只读地基已打通”。但当前还不能说服务器/VLA 已经稳定收到 M55 模型内容，因为本次上电没有新的 `0x323` 样本进入 `/rehab_arm/model_state`；下一步要触发 M55 selftest 或真实小模型输出并抓一条 topic 样本。
+因此当前可以说“`M33/M55/CAN/NanoPi ROS2/无线 MuJoCo shadow` 的地基已分层打通”。但当前还不能说 VLA 已经能安全控制真机，也不能说真实 4 路 EMG 模型已完成；下一步是把真实 C8T6/EMG/语音输入接入现有 M33->M55 合同，并继续保持 M55 结果只作为建议。
 
 当前 `0x323` 自测帧含义：
 
