@@ -10,7 +10,7 @@
 
 | GitHub 分支 | 当前用途 | 最新证据 |
 |---|---|---|
-| `feature/rehab-arm-ros2-architecture` | ROS2、NanoPi、MuJoCo、文档和架构主线 | `2c242ef8 Document M33 to M55 model input chain` |
+| `feature/rehab-arm-ros2-architecture` | ROS2、NanoPi、MuJoCo、文档和架构主线 | `5ef548b9 Lock GitHub briefing and model foundation contracts` |
 | `M33` | 英飞凌 M33 固件、安全/电机/M55 输入桥 | `c4d27310 Add M33 model input bridge to M55` |
 | `M55` | 英飞凌 M55 WiFi/语音/小模型工程 | `ea841fab Add M55 model input and result bridge` |
 | `C8T6` | STM32F103C8T6 传感采集板 | `bbcd67bb 更改`，包含 CAN transport、app service、传感侧工程更新 |
