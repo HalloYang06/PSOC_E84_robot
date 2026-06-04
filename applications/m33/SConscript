@@ -22,5 +22,10 @@ CPPPATH = [
     Dir('#/vendor_btstack/abstraction_rtos/include'),
 ]
 
-group = DefineGroup('AppM33', src, depend=[''], CPPPATH=CPPPATH)
+LIBPATH = [
+    Dir('#/vendor_btstack/lib/COMPONENT_CM33/COMPONENT_SOFTFP/TOOLCHAIN_GCC_ARM'),
+]
+LIBS = ['libbtstack.a']
+
+group = DefineGroup('AppM33', src, depend=[''], CPPPATH=CPPPATH, LIBS=LIBS, LIBPATH=LIBPATH)
 Return('group')

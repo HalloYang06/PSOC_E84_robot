@@ -56,7 +56,9 @@ struct ifx_can
 
 int rt_hw_can_init(void);
 rt_err_t ifx_can_direct_init(void);
+rt_err_t ifx_can_direct_reinit_bitrate(rt_uint32_t bitrate);
 rt_err_t ifx_can_direct_send(const struct rt_can_msg *msg);
 rt_ssize_t ifx_can_direct_recv(struct rt_can_msg *msg);
+void ifx_can_direct_set_raw_rx_pause(rt_bool_t pause);
 
 #endif /* __DRV_CAN_H__ */

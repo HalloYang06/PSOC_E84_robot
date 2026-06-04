@@ -1,6 +1,7 @@
 #include <rtthread.h>
 #include <rtdevice.h>
 #include <board.h>
+#include <reent.h>
 
 #include "common/m33_m55_comm.h"
 #include "m33/audio_capture.h"
@@ -12,9 +13,12 @@
 #include "m33/control_manager.h"
 #include "m33/http_server.h"
 #include "m33/input_buffer.h"
+#include "m33/m55_model_bridge.h"
 #include "m33/openclaw_integration.h"
 #include "m33/safety_system.h"
 #include "m33/sensor_manager.h"
+
+__attribute__((weak)) struct _reent _impure_data;
 
 #define LED_PIN_B GET_PIN(16, 5)
 #define FRAME_PERIOD_MS 100
@@ -334,6 +338,7 @@ static void m33_handle_ipc_command(void)
     {
         if (msg.type != MSG_TYPE_VOICE_CONTROL)
         {
+            m55_model_bridge_handle_message(&msg);
             continue;
         }
 
@@ -410,6 +415,7 @@ static void m33_init_framework(void)
 
     rt_kprintf("[m33] init step1 m33_m55_comm\n");
     m33_m55_comm_init();
+    m55_model_bridge_init();
     rt_kprintf("[m33] init step2 bt_board_bridge\n");
     bt_board_bridge_init();
     rt_kprintf("[m33] init step3 app_ble_service_init\n");

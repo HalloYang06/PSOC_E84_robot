@@ -437,6 +437,30 @@
 #define CONTROL_CAN_ID_M33_STATUS          0x322U
 #endif
 
+/* M33 -> NanoPi M55 model result summary.
+ * Standard classic CAN. This is suggestion/context only; it never grants
+ * motion permission and must not be mapped directly into 0x320.
+ */
+#ifndef CONTROL_CAN_ID_M33_MODEL_STATUS
+#define CONTROL_CAN_ID_M33_MODEL_STATUS    0x323U
+#endif
+
+#ifndef CONTROL_M33_MODEL_STATUS_MARKER
+#define CONTROL_M33_MODEL_STATUS_MARKER    0xB5U
+#endif
+
+#ifndef CONTROL_M33_MODEL_STATUS_FLAG_FRESH
+#define CONTROL_M33_MODEL_STATUS_FLAG_FRESH 0x01U
+#endif
+
+#ifndef CONTROL_M33_MODEL_STATUS_FLAG_DETECTED
+#define CONTROL_M33_MODEL_STATUS_FLAG_DETECTED 0x02U
+#endif
+
+#ifndef CONTROL_M33_MODEL_STATUS_FLAG_SUGGESTION_ONLY
+#define CONTROL_M33_MODEL_STATUS_FLAG_SUGGESTION_ONLY 0x80U
+#endif
+
 /* M33 -> NanoPi official motor telemetry.
  * Standard classic CAN, one frame per formal ROS joint slot:
  *   ID     = CONTROL_CAN_ID_M33_MOTOR_STATUS_BASE + slot

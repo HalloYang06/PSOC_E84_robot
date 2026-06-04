@@ -7,6 +7,38 @@
 #include "drv_can.h"
 #include "control_layer.h"
 #include "control_layer_cfg.h"
+#include "sensor.h"
+
+/*
+ * M33 控制层分类说明：
+ *
+ * 1. CAN 传输与分发：
+ *    负责 CAN 设备打开、IFX direct CAN 收发、RX 线程、TX 序号、原始帧分发。
+ * 2. 电机协议层：
+ *    负责 RobStride/灵足私有扩展帧和 CANSimple 标准帧的编码、解码、状态缓存。
+ * 3. ROS/NanoPi 安全桥：
+ *    负责解析 NanoPi 发来的 0x320 命令，审核心跳、限位、限速、力矩、电机反馈新鲜度，
+ *    并发布 0x322 安全状态与 0x330~ 电机状态。
+ * 4. 电机公开 API：
+ *    给 ROS 命令执行路径和 shell 调试命令提供 enable/stop/mode/position/speed 等接口。
+ * 5. 传感器子模块：
+ *    传感器解析、缓存、F103 控制命令已拆到 sensor.c。
+ *    本文件只负责把传感器 CAN 帧转发给 sensor.c，并向 sensor.c 提供 CAN 发送/TX 序号回调。
+ *
+ * 注意：实时运动安全判断暂时仍集中在本文件，后续可以再独立成 safety_state_machine.c。
+ *
+ * 主要函数地图：
+ * - control_layer_init(): 初始化 CAN、传感器模块和后台线程。
+ * - ctrl_handle_can_message(): 所有 CAN RX 帧的总入口。
+ * - ctrl_parse_ros_command_can(): 解析 NanoPi 通过 0x320 下发的命令。
+ * - ctrl_assess_ros_command_safety(): 判断一条 ROS 命令是否允许执行。
+ * - ctrl_apply_ros_command(): 把审核通过的 ROS 命令转换为电机 API 调用。
+ * - ctrl_update_motor_feedback_private(): 解析灵足/RobStride 私有反馈。
+ * - ctrl_update_motor_feedback_cansimple(): 解析 3 号伺泰威 CANSimple 反馈。
+ * - ctrl_publish_cached_motor_status_once(): 周期性把电机状态发布回 NanoPi。
+ * - control_motor_*(): 对 shell 和 ROS 桥暴露的电机控制 API。
+ * - control_sensor_*(): 声明仍在 control_layer.h，实现在 sensor.c。
+ */
 
 #ifndef RT_PI
 #define RT_PI 3.14159265358979323846f
@@ -20,6 +52,12 @@
 #error "CONTROL_MOTOR_JOINT_COUNT must be within [1, 7]."
 #endif
 
+/* RobStride/灵足私有扩展帧 comm_type。
+ * 扩展 ID 格式：
+ *   bits[28:24] comm_type
+ *   bits[23:8]  data2，含 master_id、motor_id、fault、mode 或力矩前馈等。
+ *   bits[7:0]   data1，通常是 motor_id 或 host_id。
+ */
 #define MOTOR_PRIVATE_TYPE_CTRL            0x01U
 #define MOTOR_PRIVATE_TYPE_FEEDBACK        0x02U
 #define MOTOR_PRIVATE_TYPE_ENABLE          0x03U
@@ -31,8 +69,16 @@
 #define MOTOR_PRIVATE_TYPE_ACTIVE_REPORT   0x18U
 #define MOTOR_PRIVATE_GET_ID_REPLY         0xFEU
 #define MOTOR_PRIVATE_BROADCAST_ID         0x7FU
+/* 单次 RX 轮询最多取多少帧，避免一个周期内长时间占住线程。 */
 #define CONTROL_CAN_RX_DRAIN_LIMIT         16U
 
+/* RobStride/灵足参数索引。
+ * 常用路径：
+ * - run_mode(0x7005): MIT/PP/SPEED/CURRENT/CSP 模式。
+ * - loc_ref(0x7016): CSP/位置目标。
+ * - limit_spd(0x7017): 位置模式限速。
+ * - limit_cur(0x7018): 电流/力矩上限，不等于电流命令。
+ */
 #define MOTOR_PARAM_INDEX_RUN_MODE         0x7005U
 #define MOTOR_PARAM_INDEX_SPD_REF          0x700AU
 #define MOTOR_PARAM_INDEX_LOC_REF          0x7016U
@@ -44,6 +90,11 @@
 #define MOTOR_PARAM_INDEX_PP_VEL_MAX       0x7024U
 #define MOTOR_PARAM_INDEX_PP_ACC_SET       0x7025U
 
+/* CANSimple/ODrive-like 命令 ID。
+ * 标准 ID 格式：
+ *   std_id = (node_id << 5) | cmd_id
+ * 当前主要服务 3 号伺泰威路径。
+ */
 #define CANSIMPLE_CMD_HEARTBEAT            0x01U
 #define CANSIMPLE_CMD_GET_ERROR            0x03U
 #define CANSIMPLE_CMD_RX_SDO               0x04U
@@ -63,6 +114,7 @@
 #define CANSIMPLE_CMD_SET_ABSOLUTE_POS     0x19U
 #define CANSIMPLE_CMD_GET_TORQUES          0x1CU
 
+/* CANSimple 轴状态、控制模式、输入模式常量。 */
 #define CANSIMPLE_AXIS_STATE_IDLE          1U
 #define CANSIMPLE_AXIS_STATE_CLOSED_LOOP   8U
 #define CANSIMPLE_CONTROL_MODE_TORQUE      1U
@@ -73,76 +125,121 @@
 #define CANSIMPLE_NODE_ID_BROADCAST        0x3FU
 #define CONTROL_MOTOR_ID_INVALID           0xFFU
 
+/* CAN 运行时对象：设备句柄、RX 线程、ROS 命令队列、电机状态锁。 */
+/* CAN 设备句柄；direct PDL 模式下可能为 RT_NULL，但保留给兼容路径。 */
 static rt_device_t s_can_dev = RT_NULL;
+/* CAN RX 后台线程：轮询/读取 CAN 并调用 ctrl_handle_can_message()。 */
 static rt_thread_t s_can_rx_thread = RT_NULL;
+/* ROS 命令后台线程：队列模式下消费 s_ros_cmd_mq。当前多数路径直接审核执行。 */
 static rt_thread_t s_ros_cmd_thread = RT_NULL;
+/* 电机状态发布线程：周期性发布 0x330~0x336 状态帧给 NanoPi。 */
 static rt_thread_t s_motor_status_thread = RT_NULL;
+/* 非 direct PDL 模式下 CAN RX 中断唤醒信号量。 */
 static struct rt_semaphore s_can_rx_sem;
+/* 控制域共享数据锁：保护 ROS 命令、电机反馈、CANSimple 状态等缓存。 */
 static struct rt_mutex s_data_lock;
+/* ROS 命令队列：保留给异步命令路径。 */
 static struct rt_messagequeue s_ros_cmd_mq;
+/* ROS 命令队列内存池。 */
 static rt_uint8_t s_ros_cmd_pool[CONTROL_ROS_CMD_QUEUE_DEPTH * sizeof(control_ros_command_t)];
 
+/* 控制层是否初始化完成。公共 API 会用它拒绝未初始化调用。 */
 static rt_bool_t s_is_inited = RT_FALSE;
+/* 全局 TX 序号。传感器模块通过 ctrl_next_tx_seq() 共享这个序号。 */
 static rt_uint8_t s_tx_seq = 0U;
+/* 0x330~0x336 电机状态发布序号。 */
 static rt_uint8_t s_motor_status_seq = 0U;
 
-static control_emg_report_t s_emg_report;
-static control_heart_report_t s_heart_report;
-static control_sensor_node_sample_t s_sensor_node_sample;
+/* 控制域缓存：ROS 命令、电机探测、电机参数、电机反馈。传感器缓存已迁移到 sensor.c。 */
+/* 最近一次解析/执行的 ROS 桥命令。 */
 static control_ros_command_t s_last_ros_cmd;
+/* 最近一次私有协议 Get_ID 探测结果。 */
 static control_motor_probe_report_t s_last_motor_probe;
+/* 最近一次私有协议参数读写回复。 */
 static control_motor_param_report_t s_last_motor_param;
+/* 每个关节最近一次电机反馈。数组下标 = joint_id - 1。 */
 static control_motor_feedback_t s_motor_feedback[CONTROL_MOTOR_JOINT_COUNT];
+/* 当前是否正在等待私有协议 Get_ID 回复。 */
 static rt_bool_t s_motor_probe_pending = RT_FALSE;
+/* 当前期望收到 Get_ID 回复的 motor_id。 */
 static rt_uint8_t s_motor_probe_expected_id = 0U;
+/* CAN RX 总计数，不含已被心跳提前返回的计数。 */
 static rt_uint32_t s_dbg_rx_total = 0U;
+/* NanoPi 0x321 心跳计数。 */
 static rt_uint32_t s_dbg_rx_heartbeat = 0U;
+/* 最近一次 NanoPi 心跳 tick。 */
 static rt_tick_t s_last_nanopi_heartbeat_tick = 0U;
+/* 是否已经收到过 NanoPi 心跳。 */
 static rt_bool_t s_has_nanopi_heartbeat = RT_FALSE;
+/* 0x322 状态详情码，记录最近一次 ROS 安全审核结果。 */
 static rt_uint8_t s_last_ros_status_detail_code =
 #if CONTROL_ROS_COMMAND_LOGGING_ONLY
     CONTROL_STATUS_DETAIL_LOGGING_ONLY;
 #else
     CONTROL_STATUS_DETAIL_NONE;
 #endif
+/* F103 ACK/SENSOR/HEALTH 帧计数，用于 control_debug。 */
 static rt_uint32_t s_dbg_rx_f103_ack = 0U;
 static rt_uint32_t s_dbg_rx_f103_sensor = 0U;
 static rt_uint32_t s_dbg_rx_f103_health = 0U;
+/* ROS 0x320 收包、解析、入队、执行、队列失败计数。 */
 static rt_uint32_t s_dbg_rx_ros_id = 0U;
 static rt_uint32_t s_dbg_ros_parsed = 0U;
 static rt_uint32_t s_dbg_ros_enqueued = 0U;
 static rt_uint32_t s_dbg_ros_applied = 0U;
 static rt_uint32_t s_dbg_ros_queue_fail = 0U;
+/* 最近一帧 CAN RX 的原始 ID/IDE/DLC/DATA 快照，用于 control_debug。 */
 static rt_uint32_t s_dbg_last_rx_id = 0U;
 static rt_uint8_t s_dbg_last_rx_ide = 0U;
 static rt_uint8_t s_dbg_last_rx_len = 0U;
 static rt_uint8_t s_dbg_last_rx_data[8];
+/* CANSimple node 缓存：下标是 node_id，当前主要用于 3 号伺泰威。 */
 static rt_bool_t s_cansimple_seen[64];
 static rt_uint8_t s_cansimple_axis_state[64];
 static rt_uint8_t s_cansimple_flags[64];
+/* CANSimple 心跳中的温度字段，单位摄氏度。 */
 static rt_int8_t s_cansimple_temp_c[64];
+/* CANSimple 心跳 life counter。 */
 static rt_uint8_t s_cansimple_life[64];
+/* CANSimple 心跳 active_errors。 */
 static rt_uint32_t s_cansimple_axis_error[64];
+/* 最近一次 CANSimple 心跳 tick。 */
 static rt_tick_t s_cansimple_heartbeat_tick[64];
+/* 是否收到过 Get_Error 回复。 */
 static rt_bool_t s_cansimple_error_seen[64];
+/* 最近一次请求的错误类型。 */
 static rt_uint8_t s_cansimple_error_type[64];
+/* Get_Error 回复长度，4 或 8 字节。 */
 static rt_uint8_t s_cansimple_error_len[64];
+/* Get_Error 回复原始值。 */
 static rt_uint64_t s_cansimple_error_value[64];
+/* 最近一次 Get_Error 回复 tick。 */
 static rt_tick_t s_cansimple_error_tick[64];
 
+/* 调试用速度保持上下文。
+ * 这个结构体只服务 shell 手动调试命令 motor_speed_hold，不进入正式 ROS 控制路径。
+ */
 typedef struct
 {
+    /* 关节编号，1~CONTROL_MOTOR_JOINT_COUNT。 */
     rt_uint8_t joint_id;
+    /* 目标速度，rad/s。 */
     float speed_rad_s;
+    /* 电流限制，单位按电机协议解释。 */
     float limit_cur;
+    /* 总持续时间，ms。 */
     rt_uint32_t duration_ms;
+    /* 刷新周期，ms。 */
     rt_uint32_t period_ms;
+    /* 外部请求停止标志。 */
     volatile rt_bool_t stop_requested;
 } control_speed_hold_ctx_t;
 
 static rt_thread_t s_speed_hold_thread = RT_NULL;
+/* 当前唯一一个速度保持任务的参数。这个功能是调试工具，不支持多任务并发。 */
 static control_speed_hold_ctx_t s_speed_hold_ctx;
 
+/* 关节到电机的配置表：从 control_layer_cfg.h 展开，避免运行时到处直接读宏。 */
 static const rt_uint8_t s_joint_motor_map[7] =
 {
     (rt_uint8_t)CONTROL_MOTOR_JOINT1_ID,
@@ -154,6 +251,7 @@ static const rt_uint8_t s_joint_motor_map[7] =
     (rt_uint8_t)CONTROL_MOTOR_JOINT7_ID,
 };
 
+/* 每个关节对应的底层协议：私有协议或 CANSimple。 */
 static const rt_uint8_t s_joint_protocol_map[7] =
 {
     (rt_uint8_t)CONTROL_MOTOR_JOINT1_PROTOCOL,
@@ -165,6 +263,7 @@ static const rt_uint8_t s_joint_protocol_map[7] =
     (rt_uint8_t)CONTROL_MOTOR_JOINT7_PROTOCOL,
 };
 
+/* 每个关节的减速比/映射比例。CSP 已实测为输出侧角度的关节可配置为 1。 */
 static const float s_joint_gear_ratio_map[7] =
 {
     CONTROL_MOTOR_JOINT1_GEAR_RATIO,
@@ -176,6 +275,7 @@ static const float s_joint_gear_ratio_map[7] =
     CONTROL_MOTOR_JOINT7_GEAR_RATIO,
 };
 
+/* 每个关节是否已完成零点/方向/限位确认。未确认时正式 ROS 目标会被拒绝。 */
 static const rt_uint8_t s_joint_calibrated_map[7] =
 {
     (rt_uint8_t)CONTROL_MOTOR_JOINT1_CALIBRATED,
@@ -187,6 +287,7 @@ static const rt_uint8_t s_joint_calibrated_map[7] =
     (rt_uint8_t)CONTROL_MOTOR_JOINT7_CALIBRATED,
 };
 
+/* 每个关节方向：+1 或 -1，用于 joint<->motor 位置速度转换。 */
 static const float s_joint_direction_map[7] =
 {
     CONTROL_MOTOR_JOINT1_DIRECTION,
@@ -198,6 +299,7 @@ static const float s_joint_direction_map[7] =
     CONTROL_MOTOR_JOINT7_DIRECTION,
 };
 
+/* 每个关节零偏，单位 rad，作用在 motor 坐标系。 */
 static const float s_joint_zero_offset_rad_map[7] =
 {
     CONTROL_MOTOR_JOINT1_ZERO_OFFSET_RAD,
@@ -209,33 +311,39 @@ static const float s_joint_zero_offset_rad_map[7] =
     CONTROL_MOTOR_JOINT7_ZERO_OFFSET_RAD,
 };
 
+/* 字节序、缩放、小数值工具：电机协议和 ROS 命令解析共用。 */
 static rt_uint16_t ctrl_u16_from_le(const rt_uint8_t *buf)
 {
     return (rt_uint16_t)((rt_uint16_t)buf[0] | ((rt_uint16_t)buf[1] << 8));
 }
 
+/* 从小端字节流读取 int16。 */
 static rt_int16_t ctrl_i16_from_le(const rt_uint8_t *buf)
 {
     return (rt_int16_t)ctrl_u16_from_le(buf);
 }
 
+/* 从大端字节流读取 uint16，用于私有协议反馈里的压缩字段。 */
 static rt_uint16_t ctrl_u16_from_be(const rt_uint8_t *buf)
 {
     return (rt_uint16_t)(((rt_uint16_t)buf[0] << 8) | (rt_uint16_t)buf[1]);
 }
 
+/* 把 uint16 写成大端字节流。 */
 static void ctrl_u16_to_be(rt_uint16_t value, rt_uint8_t *buf)
 {
     buf[0] = (rt_uint8_t)((value >> 8) & 0xFFU);
     buf[1] = (rt_uint8_t)(value & 0xFFU);
 }
 
+/* 把 uint16 写成小端字节流。 */
 static void ctrl_u16_to_le(rt_uint16_t value, rt_uint8_t *buf)
 {
     buf[0] = (rt_uint8_t)(value & 0xFFU);
     buf[1] = (rt_uint8_t)((value >> 8) & 0xFFU);
 }
 
+/* 从小端字节流读取 uint32。 */
 static rt_uint32_t ctrl_u32_from_le(const rt_uint8_t *buf)
 {
     return (rt_uint32_t)buf[0] |
@@ -244,6 +352,7 @@ static rt_uint32_t ctrl_u32_from_le(const rt_uint8_t *buf)
            ((rt_uint32_t)buf[3] << 24);
 }
 
+/* 从小端字节流读取 uint64。 */
 static rt_uint64_t ctrl_u64_from_le(const rt_uint8_t *buf)
 {
     rt_uint64_t value = 0U;
@@ -257,6 +366,7 @@ static rt_uint64_t ctrl_u64_from_le(const rt_uint8_t *buf)
     return value;
 }
 
+/* 把 uint32 写成小端字节流。 */
 static void ctrl_u32_to_le(rt_uint32_t value, rt_uint8_t *buf)
 {
     buf[0] = (rt_uint8_t)(value & 0xFFU);
@@ -265,6 +375,7 @@ static void ctrl_u32_to_le(rt_uint32_t value, rt_uint8_t *buf)
     buf[3] = (rt_uint8_t)((value >> 24) & 0xFFU);
 }
 
+/* float 按比例缩放并饱和到 int16。 */
 static rt_int16_t ctrl_float_to_scaled_i16(float value, float scale)
 {
     float scaled_f = value * scale;
@@ -291,6 +402,7 @@ static rt_int16_t ctrl_float_to_scaled_i16(float value, float scale)
     return (rt_int16_t)scaled;
 }
 
+/* float 按比例缩放并饱和到 int8。 */
 static rt_int8_t ctrl_float_to_scaled_i8(float value, float scale)
 {
     float scaled_f = value * scale;
@@ -317,6 +429,7 @@ static rt_int8_t ctrl_float_to_scaled_i8(float value, float scale)
     return (rt_int8_t)scaled;
 }
 
+/* 温度转换为 0~254 的 uint8；越界用 0xFF 表示无效。 */
 static rt_uint8_t ctrl_temp_to_u8(float temp_c)
 {
     if ((temp_c < 0.0f) || (temp_c > 254.0f))
@@ -327,6 +440,7 @@ static rt_uint8_t ctrl_temp_to_u8(float temp_c)
     return (rt_uint8_t)(temp_c + 0.5f);
 }
 
+/* 把 int16 写成小端字节流。 */
 static void ctrl_i16_to_le(rt_int16_t value, rt_uint8_t *buf)
 {
     rt_uint16_t raw = (rt_uint16_t)value;
@@ -335,6 +449,7 @@ static void ctrl_i16_to_le(rt_int16_t value, rt_uint8_t *buf)
     buf[1] = (rt_uint8_t)((raw >> 8) & 0xFFU);
 }
 
+/* 从小端字节流读取 float。 */
 static float ctrl_float_from_le(const rt_uint8_t *buf)
 {
     float value;
@@ -343,11 +458,13 @@ static float ctrl_float_from_le(const rt_uint8_t *buf)
     return value;
 }
 
+/* 把 float 原样写成小端字节流。 */
 static void ctrl_float_to_le(float value, rt_uint8_t *buf)
 {
     rt_memcpy(buf, &value, sizeof(value));
 }
 
+/* 关节/电机映射工具：把 joint_id 转成 motor_id、协议、方向、减速比、零偏。 */
 static rt_uint8_t ctrl_motor_id_by_joint(rt_uint8_t joint_id)
 {
     if ((joint_id == 0U) || (joint_id > CONTROL_MOTOR_JOINT_COUNT))
@@ -358,6 +475,7 @@ static rt_uint8_t ctrl_motor_id_by_joint(rt_uint8_t joint_id)
     return s_joint_motor_map[joint_id - 1U];
 }
 
+/* 查询指定关节使用的协议类型。 */
 static rt_uint8_t ctrl_motor_protocol_by_joint(rt_uint8_t joint_id)
 {
     if ((joint_id == 0U) || (joint_id > CONTROL_MOTOR_JOINT_COUNT))
@@ -368,6 +486,7 @@ static rt_uint8_t ctrl_motor_protocol_by_joint(rt_uint8_t joint_id)
     return s_joint_protocol_map[joint_id - 1U];
 }
 
+/* 查询指定关节的减速比/映射比例，异常配置时兜底为 1。 */
 static float ctrl_motor_gear_ratio_by_joint(rt_uint8_t joint_id)
 {
     float ratio;
@@ -381,6 +500,7 @@ static float ctrl_motor_gear_ratio_by_joint(rt_uint8_t joint_id)
     return (ratio > 0.0f) ? ratio : 1.0f;
 }
 
+/* 判断指定关节是否已标定/确认。 */
 static rt_bool_t ctrl_motor_joint_is_calibrated(rt_uint8_t joint_id)
 {
     if ((joint_id == 0U) || (joint_id > CONTROL_MOTOR_JOINT_COUNT))
@@ -391,6 +511,7 @@ static rt_bool_t ctrl_motor_joint_is_calibrated(rt_uint8_t joint_id)
     return (s_joint_calibrated_map[joint_id - 1U] != 0U) ? RT_TRUE : RT_FALSE;
 }
 
+/* 查询指定关节方向，非负按 +1，负数按 -1。 */
 static float ctrl_motor_direction_by_joint(rt_uint8_t joint_id)
 {
     float direction;
@@ -404,6 +525,7 @@ static float ctrl_motor_direction_by_joint(rt_uint8_t joint_id)
     return (direction < 0.0f) ? -1.0f : 1.0f;
 }
 
+/* 查询指定关节零偏，单位 rad。 */
 static float ctrl_motor_zero_offset_by_joint(rt_uint8_t joint_id)
 {
     if ((joint_id == 0U) || (joint_id > CONTROL_MOTOR_JOINT_COUNT))
@@ -414,6 +536,7 @@ static float ctrl_motor_zero_offset_by_joint(rt_uint8_t joint_id)
     return s_joint_zero_offset_rad_map[joint_id - 1U];
 }
 
+/* 把关节侧位置转换为电机侧位置。 */
 static float ctrl_joint_to_motor_position(rt_uint8_t joint_id, float joint_pos_rad)
 {
     return (joint_pos_rad *
@@ -422,6 +545,7 @@ static float ctrl_joint_to_motor_position(rt_uint8_t joint_id, float joint_pos_r
            ctrl_motor_zero_offset_by_joint(joint_id);
 }
 
+/* 把电机侧位置转换为关节侧位置。 */
 static float ctrl_motor_to_joint_position(rt_uint8_t joint_id, float motor_pos_rad)
 {
     return ((motor_pos_rad - ctrl_motor_zero_offset_by_joint(joint_id)) /
@@ -429,6 +553,7 @@ static float ctrl_motor_to_joint_position(rt_uint8_t joint_id, float motor_pos_r
            ctrl_motor_direction_by_joint(joint_id);
 }
 
+/* 把关节侧速度转换为电机侧速度。 */
 static float ctrl_joint_to_motor_velocity(rt_uint8_t joint_id, float joint_vel_rad_s)
 {
     return joint_vel_rad_s *
@@ -436,12 +561,14 @@ static float ctrl_joint_to_motor_velocity(rt_uint8_t joint_id, float joint_vel_r
            ctrl_motor_gear_ratio_by_joint(joint_id);
 }
 
+/* 把电机侧速度转换为关节侧速度。 */
 static float ctrl_motor_to_joint_velocity(rt_uint8_t joint_id, float motor_vel_rad_s)
 {
     return (motor_vel_rad_s / ctrl_motor_gear_ratio_by_joint(joint_id)) *
            ctrl_motor_direction_by_joint(joint_id);
 }
 
+/* 检查 joint_id 与 motor_id 是否是非法组合。 */
 static rt_bool_t ctrl_motor_id_invalid_for_joint(rt_uint8_t joint_id, rt_uint8_t motor_id)
 {
     rt_uint8_t protocol;
@@ -461,9 +588,12 @@ static rt_bool_t ctrl_motor_id_invalid_for_joint(rt_uint8_t joint_id, rt_uint8_t
     return (motor_id == 0U) ? RT_TRUE : RT_FALSE;
 }
 
+/* 前向声明：执行已解析的 ROS 桥命令，真正调用电机控制 API。 */
 static rt_err_t ctrl_apply_ros_command(const control_ros_command_t *cmd);
+/* 前向声明：判断命令是否属于 logging-only 下允许执行的校准/遥测类命令。 */
 static rt_bool_t ctrl_ros_command_is_calibration_telemetry(const control_ros_command_t *cmd);
 
+/* 根据私有协议 motor_id 找到内部关节数组下标。 */
 static int ctrl_motor_index_by_motor_id(rt_uint8_t motor_id)
 {
     rt_uint8_t i;
@@ -480,6 +610,7 @@ static int ctrl_motor_index_by_motor_id(rt_uint8_t motor_id)
     return -1;
 }
 
+/* 根据 CANSimple node_id 找到内部关节数组下标。 */
 static int ctrl_motor_index_by_cansimple_node(rt_uint8_t node_id)
 {
     rt_uint8_t i;
@@ -496,6 +627,7 @@ static int ctrl_motor_index_by_cansimple_node(rt_uint8_t node_id)
     return -1;
 }
 
+/* 私有协议/CANSimple 定点数转换工具：负责 float 与协议整数范围互转。 */
 static float ctrl_uint_to_float(rt_uint32_t x_int, float x_min, float x_max, int bits)
 {
     const float span = x_max - x_min;
@@ -505,6 +637,7 @@ static float ctrl_uint_to_float(rt_uint32_t x_int, float x_min, float x_max, int
     return ((float)x_int) * span / (float)max_int + offset;
 }
 
+/* 把 float 映射到协议无符号整数范围，并自动夹紧。 */
 static rt_uint32_t ctrl_float_to_uint(float x, float x_min, float x_max, int bits)
 {
     const float span = x_max - x_min;
@@ -535,6 +668,7 @@ static rt_uint32_t ctrl_float_to_uint(float x, float x_min, float x_max, int bit
     return (rt_uint32_t)(normalized + 0.5f);
 }
 
+/* float 按比例缩放到 int32，保留旧版四舍五入规则。 */
 static rt_int32_t ctrl_float_to_scaled_i32(float value, float scale)
 {
     float scaled = value * scale;
@@ -547,6 +681,7 @@ static rt_int32_t ctrl_float_to_scaled_i32(float value, float scale)
     return (rt_int32_t)(scaled - 0.5f);
 }
 
+/* 组 RobStride/灵足私有协议 29 位扩展 ID。 */
 static rt_uint32_t ctrl_motor_private_ext_id(rt_uint8_t comm_type, rt_uint16_t data2, rt_uint8_t data1)
 {
     return (((rt_uint32_t)comm_type & 0x1FU) << 24) |
@@ -554,6 +689,7 @@ static rt_uint32_t ctrl_motor_private_ext_id(rt_uint8_t comm_type, rt_uint16_t d
            ((rt_uint32_t)data1 & 0xFFU);
 }
 
+/* 统一 CAN 发送出口，屏蔽 direct PDL 和 rt_device_write 两种底层路径。 */
 static rt_err_t ctrl_can_send(rt_uint32_t id, rt_uint8_t ide, const rt_uint8_t *data, rt_uint8_t len)
 {
     struct rt_can_msg msg;
@@ -588,11 +724,19 @@ static rt_err_t ctrl_can_send(rt_uint32_t id, rt_uint8_t ide, const rt_uint8_t *
 #endif
 }
 
+/* 共享 TX 序号来源：sensor.c 通过回调使用它，保持旧版 s_tx_seq++ 顺序不变。 */
+static rt_uint8_t ctrl_next_tx_seq(void)
+{
+    return s_tx_seq++;
+}
+
+/* 组 CANSimple 标准帧 ID。 */
 static rt_uint32_t ctrl_cansimple_std_id(rt_uint8_t node_id, rt_uint8_t cmd_id)
 {
     return (((rt_uint32_t)node_id & 0x3FU) << 5) | ((rt_uint32_t)cmd_id & 0x1FU);
 }
 
+/* 发送 CANSimple 标准帧。 */
 static rt_err_t ctrl_cansimple_send(rt_uint8_t node_id, rt_uint8_t cmd_id, const rt_uint8_t *data, rt_uint8_t len)
 {
     if (node_id > 0x3FU)
@@ -603,6 +747,7 @@ static rt_err_t ctrl_cansimple_send(rt_uint8_t node_id, rt_uint8_t cmd_id, const
     return ctrl_can_send(ctrl_cansimple_std_id(node_id, cmd_id), RT_CAN_STDID, data, len);
 }
 
+/* CANSimple 状态缓存工具：主要服务 3 号伺泰威电机路径。 */
 static rt_uint64_t ctrl_u48_from_le(const rt_uint8_t *data)
 {
     rt_uint64_t value = 0U;
@@ -686,6 +831,10 @@ static rt_err_t ctrl_cansimple_request_error(rt_uint8_t node_id, rt_uint8_t erro
     return ctrl_cansimple_send(node_id, CANSIMPLE_CMD_GET_ERROR, payload, 1U);
 }
 
+/* 等待 CANSimple 目标节点进入指定轴状态。
+ * 用途：速度/位置/力矩控制前确认 3 号伺泰威进入 closed-loop。
+ * 注意：超时只打印/返回错误，不在这里直接停机，调用方决定后续动作。
+ */
 static rt_err_t ctrl_cansimple_wait_axis_state(rt_uint8_t node_id,
                                                rt_uint8_t axis_state,
                                                rt_uint32_t timeout_ms)
@@ -721,11 +870,13 @@ static rt_err_t ctrl_cansimple_wait_axis_state(rt_uint8_t node_id,
     return -RT_ETIMEOUT;
 }
 
+/* 广播 CANSimple Address 请求，用于扫描总线上有哪些 CANSimple 节点。 */
 static rt_err_t ctrl_cansimple_request_address(void)
 {
     return ctrl_cansimple_send(CANSIMPLE_NODE_ID_BROADCAST, CANSIMPLE_CMD_ADDRESS, RT_NULL, 0U);
 }
 
+/* 设置 CANSimple 轴状态，例如 IDLE 或 CLOSED_LOOP。 */
 static rt_err_t ctrl_cansimple_set_axis_state(rt_uint8_t node_id, rt_uint32_t axis_state)
 {
     rt_uint8_t payload[4] = {0};
@@ -734,6 +885,7 @@ static rt_err_t ctrl_cansimple_set_axis_state(rt_uint8_t node_id, rt_uint32_t ax
     return ctrl_cansimple_send(node_id, CANSIMPLE_CMD_SET_AXIS_STATE, payload, sizeof(payload));
 }
 
+/* 清除 CANSimple 节点错误。 */
 static rt_err_t ctrl_cansimple_clear_errors(rt_uint8_t node_id)
 {
     rt_uint8_t payload[8] = {0};
@@ -741,6 +893,7 @@ static rt_err_t ctrl_cansimple_clear_errors(rt_uint8_t node_id)
     return ctrl_cansimple_send(node_id, CANSIMPLE_CMD_CLEAR_ERRORS, payload, sizeof(payload));
 }
 
+/* 设置 CANSimple 控制模式和输入模式，例如 velocity + passthrough。 */
 static rt_err_t ctrl_cansimple_set_controller_mode(rt_uint8_t node_id,
                                                    rt_uint32_t control_mode,
                                                    rt_uint32_t input_mode)
@@ -752,6 +905,9 @@ static rt_err_t ctrl_cansimple_set_controller_mode(rt_uint8_t node_id,
     return ctrl_cansimple_send(node_id, CANSIMPLE_CMD_SET_CONTROLLER_MODE, payload, sizeof(payload));
 }
 
+/* 发送 CANSimple 速度输入。
+ * 参数 vel_rad_s 会转换为 rev/s；torque_ff_nm 作为速度模式前馈力矩。
+ */
 static rt_err_t ctrl_cansimple_set_input_vel_node(rt_uint8_t node_id, float vel_rad_s, float torque_ff_nm)
 {
     rt_uint8_t payload[8] = {0};
@@ -764,6 +920,9 @@ static rt_err_t ctrl_cansimple_set_input_vel_node(rt_uint8_t node_id, float vel_
     return ctrl_cansimple_send(node_id, CANSIMPLE_CMD_SET_INPUT_VEL, payload, sizeof(payload));
 }
 
+/* 启动 CANSimple 速度控制完整序列：
+ * 可选清错 -> closed-loop -> velocity/passthrough -> 设置速度/电流限制 -> 写速度目标。
+ */
 static rt_err_t ctrl_cansimple_velocity_start_node(rt_uint8_t node_id,
                                                    float speed_rad_s,
                                                    float limit_cur,
@@ -826,6 +985,9 @@ static rt_err_t ctrl_cansimple_velocity_start_node(rt_uint8_t node_id,
     return ctrl_cansimple_set_input_vel_node(node_id, speed_rad_s, 0.0f);
 }
 
+/* 发送 CANSimple MIT 控制帧。
+ * 这是 CANSimple 协议中的 MIT 命令，不是 RobStride 私有扩展帧 MIT。
+ */
 static rt_err_t ctrl_cansimple_mit_control(rt_uint8_t node_id,
                                            float target_pos_rad,
                                            float target_vel_rad_s,
@@ -873,68 +1035,7 @@ static rt_err_t ctrl_cansimple_mit_control(rt_uint8_t node_id,
     return ctrl_cansimple_send(node_id, CANSIMPLE_CMD_MIT_CONTROL, payload, sizeof(payload));
 }
 
-static void ctrl_update_emg_report(const struct rt_can_msg *msg)
-{
-    control_emg_report_t tmp;
-    float ch1_mv;
-    float ch2_mv;
-    float rms_mv;
-
-    if (msg->len < 8U)
-    {
-        return;
-    }
-
-    rt_memcpy(&ch1_mv, &msg->data[0], sizeof(ch1_mv));
-    rt_memcpy(&ch2_mv, &msg->data[4], sizeof(ch2_mv));
-    if (ch1_mv < 0.0f)
-    {
-        ch1_mv = 0.0f;
-    }
-    if (ch2_mv < 0.0f)
-    {
-        ch2_mv = 0.0f;
-    }
-    rms_mv = (ch1_mv + ch2_mv) * 0.5f;
-
-    tmp.ch1_raw = (rt_uint16_t)ctrl_float_to_scaled_i32(ch1_mv, 1.0f);
-    tmp.ch2_raw = (rt_uint16_t)ctrl_float_to_scaled_i32(ch2_mv, 1.0f);
-    tmp.rms_raw = (rt_uint16_t)ctrl_float_to_scaled_i32(rms_mv, 1.0f);
-    tmp.seq = 0U;
-    tmp.status = 0U;
-    tmp.timestamp = rt_tick_get();
-
-    rt_mutex_take(&s_data_lock, RT_WAITING_FOREVER);
-    s_emg_report = tmp;
-    rt_mutex_release(&s_data_lock);
-}
-
-static void ctrl_update_heart_report(const struct rt_can_msg *msg)
-{
-    control_heart_report_t tmp;
-    rt_uint32_t timestamp_ms;
-
-    if (msg->len < 8U)
-    {
-        return;
-    }
-
-    tmp.bpm = ctrl_u16_from_le(&msg->data[0]);
-    tmp.hrv_ms = ctrl_u16_from_le(&msg->data[2]);
-    timestamp_ms = (rt_uint32_t)msg->data[4] |
-                   ((rt_uint32_t)msg->data[5] << 8) |
-                   ((rt_uint32_t)msg->data[6] << 16) |
-                   ((rt_uint32_t)msg->data[7] << 24);
-    tmp.signal_quality = (tmp.hrv_ms > 0U) ? 100U : 0U;
-    tmp.status = 0U;
-    tmp.timestamp = rt_tick_get();
-    RT_UNUSED(timestamp_ms);
-
-    rt_mutex_take(&s_data_lock, RT_WAITING_FOREVER);
-    s_heart_report = tmp;
-    rt_mutex_release(&s_data_lock);
-}
-
+/* 电机反馈、参数、探测回复解码。传感器帧解码已经拆到 sensor.c。 */
 static void ctrl_update_motor_feedback_private(const struct rt_can_msg *msg)
 {
     rt_uint8_t comm_type;
@@ -1161,97 +1262,6 @@ static void ctrl_update_motor_feedback_cansimple(const struct rt_can_msg *msg)
     rt_mutex_release(&s_data_lock);
 }
 
-static void ctrl_update_f103_sensor_report(const struct rt_can_msg *msg)
-{
-    control_sensor_node_sample_t node;
-    control_emg_report_t emg;
-    control_heart_report_t heart;
-    rt_uint16_t emg_raw;
-    rt_int16_t emg_filt;
-    rt_uint16_t hr_raw;
-    rt_uint8_t hr_filt;
-    rt_uint8_t flags;
-    rt_tick_t now;
-    rt_int32_t emg_filt_abs;
-
-    if ((msg == RT_NULL) || (msg->len < 8U))
-    {
-        return;
-    }
-
-    emg_raw = ctrl_u16_from_le(&msg->data[0]);
-    emg_filt = ctrl_i16_from_le(&msg->data[2]);
-    hr_raw = ctrl_u16_from_le(&msg->data[4]);
-    hr_filt = msg->data[6];
-    flags = msg->data[7];
-    now = rt_tick_get();
-
-    rt_mutex_take(&s_data_lock, RT_WAITING_FOREVER);
-    node = s_sensor_node_sample;
-    node.emg_raw = emg_raw;
-    node.emg_filt = emg_filt;
-    node.hr_raw = hr_raw;
-    node.hr_filt = hr_filt;
-    node.flags = flags;
-    node.sensor_timestamp = now;
-    s_sensor_node_sample = node;
-
-    emg_filt_abs = (emg_filt < 0) ? -(rt_int32_t)emg_filt : (rt_int32_t)emg_filt;
-    emg.ch1_raw = emg_raw;
-    emg.ch2_raw = (rt_uint16_t)((emg_filt_abs > 65535) ? 65535 : emg_filt_abs);
-    emg.rms_raw = emg.ch2_raw;
-    emg.seq = 0U;
-    emg.status = flags;
-    emg.timestamp = now;
-    s_emg_report = emg;
-
-    heart.bpm = hr_filt;
-    heart.hrv_ms = hr_raw;
-    heart.signal_quality = (flags & 0x02U) ? 100U : 0U;
-    heart.status = flags;
-    heart.timestamp = now;
-    s_heart_report = heart;
-    rt_mutex_release(&s_data_lock);
-}
-
-static void ctrl_update_f103_health_report(const struct rt_can_msg *msg)
-{
-    control_sensor_node_sample_t node;
-
-    if ((msg == RT_NULL) || (msg->len < 8U))
-    {
-        return;
-    }
-
-    rt_mutex_take(&s_data_lock, RT_WAITING_FOREVER);
-    node = s_sensor_node_sample;
-    node.node_state = msg->data[0];
-    node.node_err_cnt = ctrl_u16_from_le(&msg->data[1]);
-    node.node_q_fill = msg->data[3];
-    node.health_timestamp = rt_tick_get();
-    s_sensor_node_sample = node;
-    rt_mutex_release(&s_data_lock);
-}
-
-static void ctrl_update_f103_ack_report(const struct rt_can_msg *msg)
-{
-    control_sensor_node_sample_t node;
-
-    if ((msg == RT_NULL) || (msg->len < 3U))
-    {
-        return;
-    }
-
-    rt_mutex_take(&s_data_lock, RT_WAITING_FOREVER);
-    node = s_sensor_node_sample;
-    node.last_ack_cmd = msg->data[0];
-    node.last_ack_seq = msg->data[1];
-    node.last_ack_status = msg->data[2];
-    node.ack_timestamp = rt_tick_get();
-    s_sensor_node_sample = node;
-    rt_mutex_release(&s_data_lock);
-}
-
 static void ctrl_update_motor_param_private(const struct rt_can_msg *msg)
 {
     rt_uint8_t comm_type;
@@ -1371,6 +1381,7 @@ static void ctrl_update_motor_probe_private(const struct rt_can_msg *msg)
                (unsigned long)(probe.unique_id & 0xFFFFFFFFULL));
 }
 
+/* ROS/NanoPi 命令解析与安全审核工具。 */
 static rt_bool_t ctrl_parse_ros_command_can(const struct rt_can_msg *msg, control_ros_command_t *out)
 {
     if ((msg == RT_NULL) || (out == RT_NULL))
@@ -1501,6 +1512,9 @@ static rt_bool_t ctrl_ros_joint_limit(rt_uint8_t joint_id, rt_int16_t *min_01deg
     return RT_TRUE;
 }
 
+/* 将 ROS 关节编号映射到 M33 内部电机关节编号。
+ * 当前两者一致，保留函数是为了后续 URDF/硬件关节顺序不一致时集中修改。
+ */
 static rt_uint8_t ctrl_ros_joint_to_motor_joint(rt_uint8_t ros_joint_id)
 {
     if (ros_joint_id >= CONTROL_ROS_JOINT_COUNT)
@@ -1511,11 +1525,15 @@ static rt_uint8_t ctrl_ros_joint_to_motor_joint(rt_uint8_t ros_joint_id)
     return s_ros_joint_motor_joint_map[ros_joint_id];
 }
 
+/* RT-Thread tick 差值转换为 ms，统一处理后续日志和心跳年龄计算。 */
 static rt_uint32_t ctrl_tick_delta_ms(rt_tick_t newer, rt_tick_t older)
 {
     return (rt_uint32_t)(((newer - older) * 1000U) / RT_TICK_PER_SECOND);
 }
 
+/* 判断电机反馈是否新鲜。
+ * 反馈超过 CONTROL_MOTOR_FEEDBACK_TIMEOUT_MS 会被视为 stale，预使能检查和状态帧会标记。
+ */
 static rt_bool_t ctrl_motor_feedback_is_fresh(const control_motor_feedback_t *fb, rt_tick_t now)
 {
     if ((fb == RT_NULL) || (fb->timestamp == 0U))
@@ -1526,6 +1544,7 @@ static rt_bool_t ctrl_motor_feedback_is_fresh(const control_motor_feedback_t *fb
     return (ctrl_tick_delta_ms(now, fb->timestamp) <= CONTROL_M33_MOTOR_STATUS_FRESH_MS) ? RT_TRUE : RT_FALSE;
 }
 
+/* 把单个电机反馈压缩成状态 flags，供 0x330~0x336 状态帧使用。 */
 static rt_uint8_t ctrl_motor_status_flags(const control_motor_feedback_t *fb, rt_bool_t fresh)
 {
     rt_uint8_t flags = 0U;
@@ -1551,6 +1570,9 @@ static rt_uint8_t ctrl_motor_status_flags(const control_motor_feedback_t *fb, rt
     return flags;
 }
 
+/* 发布一个电机状态槽位。
+ * slot 对应 0x330 + slot，payload 中包含位置/速度/力矩/温度等缩放字段。
+ */
 static rt_err_t ctrl_publish_motor_status_slot(rt_uint8_t slot,
                                                rt_uint8_t motor_joint_id,
                                                const control_motor_feedback_t *fb,
@@ -1584,6 +1606,41 @@ static rt_err_t ctrl_publish_motor_status_slot(rt_uint8_t slot,
                          sizeof(payload));
 }
 
+rt_err_t control_publish_m55_model_result(rt_uint8_t model_code,
+                                          rt_uint8_t result_code,
+                                          rt_uint16_t confidence_permille,
+                                          rt_uint8_t flags,
+                                          rt_uint16_t window_ms)
+{
+    rt_uint8_t payload[8];
+
+    if (confidence_permille > 1000U)
+    {
+        confidence_permille = 1000U;
+    }
+    if (window_ms > 2550U)
+    {
+        window_ms = 2550U;
+    }
+
+    payload[0] = CONTROL_M33_MODEL_STATUS_MARKER;
+    payload[1] = ctrl_next_tx_seq();
+    payload[2] = model_code;
+    payload[3] = result_code;
+    payload[4] = (rt_uint8_t)((confidence_permille + 5U) / 10U);
+    payload[5] = (rt_uint8_t)(flags | CONTROL_M33_MODEL_STATUS_FLAG_SUGGESTION_ONLY);
+    payload[6] = (rt_uint8_t)((window_ms + 5U) / 10U);
+    payload[7] = 0U;
+
+    return ctrl_can_send(CONTROL_CAN_ID_M33_MODEL_STATUS,
+                         RT_CAN_STDID,
+                         payload,
+                         sizeof(payload));
+}
+
+/* 快照当前所有电机反馈并发布一轮状态帧。
+ * 该函数被 ctrl_motor_status_entry() 周期调用，也可由 shell 命令手动触发。
+ */
 static rt_uint8_t ctrl_publish_cached_motor_status_once(void)
 {
     control_motor_feedback_t snapshot[CONTROL_MOTOR_JOINT_COUNT];
@@ -1623,6 +1680,7 @@ static rt_uint8_t ctrl_publish_cached_motor_status_once(void)
     return sent;
 }
 
+/* 电机状态发布线程入口。 */
 static void ctrl_motor_status_entry(void *parameter)
 {
     RT_UNUSED(parameter);
@@ -1634,84 +1692,157 @@ static void ctrl_motor_status_entry(void *parameter)
     }
 }
 
+/* ROS 安全状态。
+ * 这些状态用于 0x322 状态回复和日志，不直接等同于电机驱动器内部状态。
+ */
 typedef enum
 {
+    /* 刚启动或尚未完成初始化。 */
     CONTROL_ROS_SAFETY_BOOT = 0,
+    /* 只记录命令，不允许真实电机输出。 */
     CONTROL_ROS_SAFETY_LOGGING_ONLY,
+    /* 安全输入满足，理论上可以接受动作命令。 */
     CONTROL_ROS_SAFETY_READY,
+    /* 正在执行或刚接受运动命令。 */
     CONTROL_ROS_SAFETY_RUNNING,
+    /* 有限制条件，不能完全按命令执行。 */
     CONTROL_ROS_SAFETY_LIMITED,
+    /* 急停状态。 */
     CONTROL_ROS_SAFETY_EMERGENCY_STOP,
+    /* 故障状态，例如电机反馈异常或命令执行失败。 */
     CONTROL_ROS_SAFETY_FAULT,
 } control_ros_safety_state_t;
 
+/* ROS 命令安全审核决策。 */
 typedef enum
 {
+    /* 拒绝命令，不允许进入电机输出。 */
     CONTROL_ROS_DECISION_REJECT = 0,
+    /* 接受命令，可以继续执行。 */
     CONTROL_ROS_DECISION_ACCEPT,
 } control_ros_decision_t;
 
+/* ROS 命令被拒绝的首要原因。
+ * 审核代码会选择第一个最关键原因，用于状态详情和调试日志。
+ */
 typedef enum
 {
+    /* 无拒绝原因。 */
     CONTROL_ROS_REJECT_NONE = 0,
+    /* 固件编译为 logging-only，不允许真实运动。 */
     CONTROL_ROS_REJECT_LOGGING_ONLY,
+    /* NanoPi 心跳超时。 */
     CONTROL_ROS_REJECT_HEARTBEAT_TIMEOUT,
+    /* joint_id 不在配置范围内。 */
     CONTROL_ROS_REJECT_UNKNOWN_JOINT,
+    /* 目标位置超出软件限位。 */
     CONTROL_ROS_REJECT_POSITION_LIMIT,
+    /* 目标速度超出软件限速。 */
     CONTROL_ROS_REJECT_SPEED_LIMIT,
+    /* 目标力矩/电流超出软件限制。 */
     CONTROL_ROS_REJECT_TORQUE_LIMIT,
+    /* 关节尚未标定或配置未确认。 */
     CONTROL_ROS_REJECT_JOINT_UNCALIBRATED,
+    /* 当前命令类型暂不支持执行。 */
     CONTROL_ROS_REJECT_UNSUPPORTED_CMD,
 } control_ros_reject_reason_t;
 
+/* 单条 ROS 命令的安全审核结果。
+ * 这个结构体只描述“这条命令能不能执行、为什么”，不缓存电机实时状态。
+ */
 typedef struct
 {
+    /* 审核后系统应该对外报告的安全状态。 */
     control_ros_safety_state_t state;
+    /* 接受或拒绝。 */
     control_ros_decision_t decision;
+    /* 拒绝时的首要原因；接受时为 CONTROL_ROS_REJECT_NONE。 */
     control_ros_reject_reason_t reason;
+    /* NanoPi 心跳年龄，ms。 */
     rt_uint32_t heartbeat_age_ms;
+    /* 心跳是否在超时时间内。 */
     rt_bool_t heartbeat_ok;
+    /* joint_id 是否存在于当前配置。 */
     rt_bool_t joint_known;
+    /* 该关节软件最小限位，单位 0.1 deg。 */
     rt_int16_t joint_min_01deg;
+    /* 该关节软件最大限位，单位 0.1 deg。 */
     rt_int16_t joint_max_01deg;
+    /* 目标位置是否在限位内。 */
     rt_bool_t target_in_limit;
+    /* 目标速度/限速是否在限制内。 */
     rt_bool_t rpm_in_limit;
+    /* 目标力矩/电流是否在限制内。 */
     rt_bool_t torque_in_limit;
+    /* 关节是否已标定/配置确认。 */
     rt_bool_t joint_calibrated;
 } control_ros_safety_assessment_t;
 
+/* 预使能检查结果。
+ * shell 命令 m33_prearm_check 使用它做诊断，检查“现在是否具备允许运动的前置条件”。
+ */
 typedef struct
 {
+    /* logging-only 是否已解除，或者配置允许 logging-only 下做特定测试。 */
     rt_bool_t logging_only_clear;
+    /* NanoPi 心跳是否有效。 */
     rt_bool_t heartbeat_ok;
+    /* 急停输入是否已经接线/确认。 */
     rt_bool_t estop_input_confirmed;
+    /* 急停当前是否安全释放。 */
     rt_bool_t estop_safe_now;
+    /* 电源/电压输入是否已经接线/确认。 */
     rt_bool_t power_input_confirmed;
+    /* 电源/电压当前是否安全。 */
     rt_bool_t power_safe_now;
+    /* 限位输入或软件限位配置是否确认。 */
     rt_bool_t limits_confirmed;
+    /* 限位当前是否安全。 */
     rt_bool_t limits_safe_now;
+    /* 位置限位是否确认。 */
     rt_bool_t position_limits_confirmed;
+    /* 当前位置目标限制是否处于安全状态。 */
     rt_bool_t position_limits_safe_now;
+    /* 速度限制是否确认。 */
     rt_bool_t speed_limits_confirmed;
+    /* 速度限制当前是否安全。 */
     rt_bool_t speed_limits_safe_now;
+    /* 力矩/电流限制是否确认。 */
     rt_bool_t torque_current_limits_confirmed;
+    /* 力矩/电流限制当前是否安全。 */
     rt_bool_t torque_current_limits_safe_now;
+    /* 预检要求的电机反馈是否新鲜。 */
     rt_bool_t required_motor_feedback_fresh;
+    /* 预检要求的电机是否无故障。 */
     rt_bool_t required_motor_feedback_fault_free;
+    /* NanoPi 心跳年龄，ms。 */
     rt_uint32_t heartbeat_age_ms;
+    /* 需要检查的关节 bitmask。 */
     rt_uint32_t required_joint_mask;
+    /* 当前反馈新鲜的关节 bitmask。 */
     rt_uint32_t fresh_joint_mask;
+    /* 当前有故障的关节 bitmask。 */
     rt_uint32_t fault_joint_mask;
+    /* 反馈新鲜的关节数量。 */
     rt_uint8_t fresh_count;
+    /* 汇总结果：是否满足预使能条件。 */
     rt_bool_t ready;
 } control_prearm_check_t;
 
+/* 单个安全输入的诊断描述。
+ * shell 命令 m33_safety_inputs 用它打印急停、电源、限位等安全输入的来源和状态。
+ */
 typedef struct
 {
+    /* 输入名称，例如 estop/power/limits。 */
     const char *name;
+    /* 输入来源，例如 GPIO、软件配置或暂未接线。 */
     const char *source;
+    /* 这个输入是否已被工程上确认。 */
     rt_bool_t confirmed;
+    /* 当前读数/配置是否表示安全。 */
     rt_bool_t safe_now;
+    /* 这项输入为什么重要。 */
     const char *meaning;
 } control_safety_input_diag_t;
 
@@ -1797,8 +1928,12 @@ static rt_uint8_t ctrl_ros_reject_reason_detail_code(control_ros_reject_reason_t
     }
 }
 
+/* 前向声明：构建预使能检查结果，供心跳状态和 shell 诊断共用。 */
 static void ctrl_prearm_check_build(control_prearm_check_t *check, rt_uint32_t required_joint_mask);
 
+/* 填充 0x322 心跳回复中的安全状态字节。
+ * payload[4] = safety state，payload[5] = mode，payload[6] = detail code。
+ */
 static void ctrl_fill_motion_status(rt_uint8_t payload[8])
 {
     payload[4] = CONTROL_STATUS_SAFETY_LIMITED;
@@ -1832,6 +1967,10 @@ static void ctrl_fill_motion_status(rt_uint8_t payload[8])
 #endif
 }
 
+/* 构建预使能检查。
+ * 输入 required_joint_mask 指定哪些关节必须有新鲜反馈且无故障。
+ * 输出 check 会被 m33_prearm_check shell 命令打印，不会直接改变电机状态。
+ */
 static void ctrl_prearm_check_build(control_prearm_check_t *check, rt_uint32_t required_joint_mask)
 {
     control_motor_feedback_t snapshot[CONTROL_MOTOR_JOINT_COUNT];
@@ -1937,6 +2076,7 @@ static void ctrl_prearm_check_build(control_prearm_check_t *check, rt_uint32_t r
             ? RT_TRUE : RT_FALSE;
 }
 
+/* 初始化一条 ROS 命令的安全审核结果，默认是拒绝/故障/无心跳。 */
 static void ctrl_ros_safety_assessment_init(control_ros_safety_assessment_t *assessment)
 {
     if (assessment == RT_NULL)
@@ -1957,6 +2097,9 @@ static void ctrl_ros_safety_assessment_init(control_ros_safety_assessment_t *ass
     assessment->joint_calibrated = RT_FALSE;
 }
 
+/* 判断一条 ROS 命令是否属于“校准遥测允许路径”。
+ * logging-only 模式下通常不允许电机输出，但允许某些只影响遥测/状态的命令通过。
+ */
 static rt_bool_t ctrl_ros_command_is_calibration_telemetry(const control_ros_command_t *cmd)
 {
     if (cmd == RT_NULL)
@@ -1967,6 +2110,9 @@ static rt_bool_t ctrl_ros_command_is_calibration_telemetry(const control_ros_com
     return (cmd->command == CONTROL_ROS_CMD_SET_ACTIVE_REPORT) ? RT_TRUE : RT_FALSE;
 }
 
+/* 从安全审核结构中选择首个拒绝原因。
+ * 顺序代表优先级：心跳、关节、位置、速度、力矩、标定。
+ */
 static control_ros_reject_reason_t ctrl_ros_first_reject_reason(const control_ros_safety_assessment_t *assessment)
 {
     if (assessment == RT_NULL)
@@ -2002,6 +2148,9 @@ static control_ros_reject_reason_t ctrl_ros_first_reject_reason(const control_ro
     return CONTROL_ROS_REJECT_NONE;
 }
 
+/* 对一条 NanoPi/ROS 命令做完整安全审核。
+ * 这里只判断是否允许执行，并填写 assessment，不直接发送任何电机命令。
+ */
 static void ctrl_assess_ros_command_safety(const control_ros_command_t *cmd,
                                            control_ros_safety_assessment_t *assessment)
 {
@@ -2125,6 +2274,9 @@ static void ctrl_assess_ros_command_safety(const control_ros_command_t *cmd,
 }
 
 #if CONTROL_ROS_COMMAND_LOGGING_ONLY
+/* logging-only 模式下打印 0x320 命令。
+ * 这个函数明确记录“没有电机输出”，用于早期联调 NanoPi/ROS 链路。
+ */
 static void ctrl_log_ros_command_only(const struct rt_can_msg *msg, const control_ros_command_t *cmd)
 {
     rt_uint8_t data[8] = {0};
@@ -2185,6 +2337,9 @@ static void ctrl_log_ros_command_only(const struct rt_can_msg *msg, const contro
 }
 #endif
 
+/* 打印 ROS 命令安全审核详情。
+ * final_action 用字符串说明最后是拒绝、执行、还是只执行遥测类命令。
+ */
 static void ctrl_log_ros_command_assessment(const struct rt_can_msg *msg,
                                             const control_ros_command_t *cmd,
                                             const control_ros_safety_assessment_t *assessment,
@@ -2247,6 +2402,9 @@ static void ctrl_log_ros_command_assessment(const struct rt_can_msg *msg,
                (unsigned int)CONTROL_ROS_COMMAND_LOGGING_ONLY);
 }
 
+/* 处理 NanoPi 0x321 心跳并回复 0x322。
+ * 心跳是正式 ROS/M33 控制链路的基本前置条件。
+ */
 static rt_bool_t ctrl_handle_nanopi_heartbeat(const struct rt_can_msg *msg)
 {
     rt_uint8_t payload[8] = {0};
@@ -2276,6 +2434,7 @@ static rt_bool_t ctrl_handle_nanopi_heartbeat(const struct rt_can_msg *msg)
     return RT_TRUE;
 }
 
+/* CAN 分发器：把一帧原始 CAN 路由到心跳、ROS 命令、电机或传感器处理函数。 */
 static void ctrl_handle_can_message(const struct rt_can_msg *msg)
 {
     control_ros_command_t ros_cmd;
@@ -2388,26 +2547,26 @@ static void ctrl_handle_can_message(const struct rt_can_msg *msg)
 
     if (msg->id == CONTROL_CAN_ID_EMG_REPORT)
     {
-        ctrl_update_emg_report(msg);
+        control_sensor_update_emg_report(msg);
     }
     else if (msg->id == CONTROL_CAN_ID_HEART_REPORT)
     {
-        ctrl_update_heart_report(msg);
+        control_sensor_update_heart_report(msg);
     }
     else if (msg->id == CONTROL_CAN_ID_F103_SENSOR)
     {
         s_dbg_rx_f103_sensor++;
-        ctrl_update_f103_sensor_report(msg);
+        control_sensor_update_f103_sensor_report(msg);
     }
     else if (msg->id == CONTROL_CAN_ID_F103_HEALTH)
     {
         s_dbg_rx_f103_health++;
-        ctrl_update_f103_health_report(msg);
+        control_sensor_update_f103_health_report(msg);
     }
     else if (msg->id == CONTROL_CAN_ID_F103_ACK)
     {
         s_dbg_rx_f103_ack++;
-        ctrl_update_f103_ack_report(msg);
+        control_sensor_update_f103_ack_report(msg);
     }
 }
 
@@ -2534,6 +2693,7 @@ static void ctrl_ros_cmd_entry(void *parameter)
     }
 }
 
+/* 模块初始化：拉起 CAN、传感器子模块、ROS 队列和后台线程。 */
 int control_layer_init(const char *can_name)
 {
     rt_err_t result;
@@ -2691,6 +2851,25 @@ int control_layer_init(const char *can_name)
 
     rt_kprintf("[control] init step10b motor status thread created\n");
 
+    result = control_sensor_module_init(ctrl_can_send, ctrl_next_tx_seq);
+    if (result != RT_EOK)
+    {
+        rt_thread_delete(s_motor_status_thread);
+        s_motor_status_thread = RT_NULL;
+        rt_thread_delete(s_ros_cmd_thread);
+        s_ros_cmd_thread = RT_NULL;
+        rt_thread_delete(s_can_rx_thread);
+        s_can_rx_thread = RT_NULL;
+        rt_device_close(s_can_dev);
+        rt_mq_detach(&s_ros_cmd_mq);
+        rt_mutex_detach(&s_data_lock);
+        rt_sem_detach(&s_can_rx_sem);
+        s_can_dev = RT_NULL;
+        return result;
+    }
+
+    rt_kprintf("[control] init step10c sensor module ok\n");
+
     s_is_inited = RT_TRUE;
     rt_thread_startup(s_can_rx_thread);
     rt_thread_startup(s_ros_cmd_thread);
@@ -2707,6 +2886,7 @@ int control_layer_init(const char *can_name)
     return RT_EOK;
 }
 
+/* 电机公开 API：供 ROS 命令执行路径和 shell 调试命令调用。 */
 rt_err_t control_motor_enable(rt_uint8_t joint_id)
 {
     rt_uint8_t motor_id;
@@ -2735,6 +2915,10 @@ rt_err_t control_motor_enable(rt_uint8_t joint_id)
     return ctrl_can_send(ext_id, RT_CAN_EXTID, payload, sizeof(payload));
 }
 
+/* 停止电机。
+ * 私有协议：发送 STOP 扩展帧，可选 clear_fault。
+ * CANSimple：速度/力矩置零后切回 IDLE。
+ */
 rt_err_t control_motor_stop(rt_uint8_t joint_id, rt_bool_t clear_fault)
 {
     rt_uint8_t motor_id;
@@ -2780,6 +2964,9 @@ rt_err_t control_motor_stop(rt_uint8_t joint_id, rt_bool_t clear_fault)
     return ctrl_can_send(ext_id, RT_CAN_EXTID, payload, sizeof(payload));
 }
 
+/* 设置当前机械位置为电机零点。
+ * 这是危险调试命令，正式装机后应由上位机/标定流程严格控制。
+ */
 rt_err_t control_motor_set_zero(rt_uint8_t joint_id)
 {
     rt_uint8_t motor_id;
@@ -2811,6 +2998,9 @@ rt_err_t control_motor_set_zero(rt_uint8_t joint_id)
     return ctrl_can_send(ext_id, RT_CAN_EXTID, payload, sizeof(payload));
 }
 
+/* 设置 RobStride/灵足私有协议 run_mode 参数。
+ * CANSimple 电机没有这个私有参数，调用会返回 -RT_EINVAL。
+ */
 rt_err_t control_motor_set_run_mode(rt_uint8_t joint_id, control_motor_run_mode_t mode)
 {
     rt_uint8_t motor_id;
@@ -2857,6 +3047,9 @@ rt_err_t control_motor_set_run_mode(rt_uint8_t joint_id, control_motor_run_mode_
     return ctrl_can_send(ext_id, RT_CAN_EXTID, payload, sizeof(payload));
 }
 
+/* 发送 RobStride/灵足私有 MIT 控制帧。
+ * 会先把关节侧位置/速度转换到电机侧，再按协议范围压缩到 16/12 bit。
+ */
 rt_err_t control_motor_private_control(rt_uint8_t joint_id,
                                        float target_pos_rad,
                                        float target_vel_rad_s,
@@ -2933,6 +3126,9 @@ rt_err_t control_motor_private_control(rt_uint8_t joint_id,
     return ctrl_can_send(ext_id, RT_CAN_EXTID, payload, sizeof(payload));
 }
 
+/* 打开/关闭 RobStride/灵足主动上报。
+ * 主动上报用于让 M33 缓存电机反馈，再转发给 NanoPi/仿真/平台。
+ */
 rt_err_t control_motor_set_active_report(rt_uint8_t joint_id, rt_bool_t enable)
 {
     rt_uint8_t motor_id;
@@ -2963,6 +3159,9 @@ rt_err_t control_motor_set_active_report(rt_uint8_t joint_id, rt_bool_t enable)
     return ctrl_can_send(ext_id, RT_CAN_EXTID, payload, sizeof(payload));
 }
 
+/* 读取指定关节最近一次反馈。
+ * 注意：这里只读缓存，不主动发 CAN 请求；调用者应检查 timestamp 新鲜度。
+ */
 rt_err_t control_get_motor_feedback(rt_uint8_t joint_id, control_motor_feedback_t *out)
 {
     int idx;
@@ -2999,6 +3198,9 @@ rt_err_t control_get_motor_feedback(rt_uint8_t joint_id, control_motor_feedback_
     return RT_EOK;
 }
 
+/* 对底层 motor_id 发送私有协议 Get_ID。
+ * 这个函数不需要 joint_id，用于扫描/确认电机实际 ID。
+ */
 rt_err_t control_motor_probe_id(rt_uint8_t motor_id)
 {
     rt_uint8_t payload[8] = {0};
@@ -3030,6 +3232,7 @@ rt_err_t control_motor_probe_id(rt_uint8_t motor_id)
     return ret;
 }
 
+/* 读取最近一次 Get_ID 探测结果缓存。 */
 rt_err_t control_get_last_motor_probe(control_motor_probe_report_t *out)
 {
     if ((out == RT_NULL) || (!s_is_inited))
@@ -3043,6 +3246,9 @@ rt_err_t control_get_last_motor_probe(control_motor_probe_report_t *out)
     return RT_EOK;
 }
 
+/* 读取 RobStride/灵足私有参数。
+ * 例如 0x7005 run_mode、0x7017 limit_spd、0x7018 limit_cur。
+ */
 rt_err_t control_motor_read_parameter(rt_uint8_t joint_id, rt_uint16_t index)
 {
     rt_uint8_t motor_id;
@@ -3073,6 +3279,9 @@ rt_err_t control_motor_read_parameter(rt_uint8_t joint_id, rt_uint16_t index)
     return ctrl_can_send(ext_id, RT_CAN_EXTID, payload, sizeof(payload));
 }
 
+/* 写 RobStride/灵足私有参数。
+ * mode_value_is_u8=true 时按 run_mode 这类 u8 参数编码，否则按 float 编码。
+ */
 rt_err_t control_motor_write_parameter(rt_uint8_t joint_id, rt_uint16_t index, float value, rt_bool_t mode_value_is_u8)
 {
     rt_uint8_t motor_id;
@@ -3112,6 +3321,7 @@ rt_err_t control_motor_write_parameter(rt_uint8_t joint_id, rt_uint16_t index, f
     return ctrl_can_send(ext_id, RT_CAN_EXTID, payload, sizeof(payload));
 }
 
+/* 读取最近一次参数回复缓存。 */
 rt_err_t control_get_last_motor_param(control_motor_param_report_t *out)
 {
     if ((out == RT_NULL) || (!s_is_inited))
@@ -3125,6 +3335,9 @@ rt_err_t control_get_last_motor_param(control_motor_param_report_t *out)
     return RT_EOK;
 }
 
+/* CANSimple 位置目标接口。
+ * joint_id 会映射到 CANSimple node_id；pos_rad 从关节侧转换到电机侧后再转成 rev。
+ */
 rt_err_t control_motor_cansimple_set_input_pos(rt_uint8_t joint_id,
                                                float pos_rad,
                                                float vel_ff_rad_s,
@@ -3161,6 +3374,7 @@ rt_err_t control_motor_cansimple_set_input_pos(rt_uint8_t joint_id,
     return ctrl_cansimple_send(motor_id, CANSIMPLE_CMD_SET_INPUT_POS, payload, sizeof(payload));
 }
 
+/* CANSimple 速度目标接口。 */
 rt_err_t control_motor_cansimple_set_input_vel(rt_uint8_t joint_id, float vel_rad_s, float torque_ff_nm)
 {
     rt_uint8_t motor_id;
@@ -3182,6 +3396,7 @@ rt_err_t control_motor_cansimple_set_input_vel(rt_uint8_t joint_id, float vel_ra
                                              torque_ff_nm);
 }
 
+/* CANSimple 力矩目标接口。 */
 rt_err_t control_motor_cansimple_set_input_torque(rt_uint8_t joint_id, float torque_nm)
 {
     rt_uint8_t motor_id;
@@ -3203,6 +3418,10 @@ rt_err_t control_motor_cansimple_set_input_torque(rt_uint8_t joint_id, float tor
     return ctrl_cansimple_send(motor_id, CANSIMPLE_CMD_SET_INPUT_TORQUE, payload, 4U);
 }
 
+/* 速度控制统一入口。
+ * 私有协议：写 run_mode=SPEED、limit_cur、spd_ref。
+ * CANSimple：走 closed-loop + velocity/passthrough + limits + input_vel。
+ */
 rt_err_t control_motor_speed_control(rt_uint8_t joint_id, float speed_rad_s, float limit_cur)
 {
     rt_err_t ret;
@@ -3282,6 +3501,10 @@ rt_err_t control_motor_speed_control(rt_uint8_t joint_id, float speed_rad_s, flo
 #endif
 }
 
+/* 位置控制统一入口。
+ * csp_mode=true 时按 RobStride CSP 流程写 run_mode=CSP、limit_spd、loc_ref。
+ * CANSimple 电机则使用 position/passthrough。
+ */
 rt_err_t control_motor_position_control(rt_uint8_t joint_id, float pos_rad, float limit_spd, rt_bool_t csp_mode)
 {
     rt_err_t ret;
@@ -3387,6 +3610,9 @@ rt_err_t control_motor_position_control(rt_uint8_t joint_id, float pos_rad, floa
     return control_motor_write_parameter(joint_id, MOTOR_PARAM_INDEX_LOC_REF, motor_pos_rad, RT_FALSE);
 }
 
+/* 速度保持线程。
+ * 周期刷新速度命令，到时后自动 stop；仅用于台架 shell 调试。
+ */
 static void ctrl_speed_hold_entry(void *parameter)
 {
     control_speed_hold_ctx_t *ctx = (control_speed_hold_ctx_t *)parameter;
@@ -3450,6 +3676,7 @@ done:
     s_speed_hold_thread = RT_NULL;
 }
 
+/* 读取最近一次 ROS 桥命令缓存。 */
 rt_err_t control_get_last_ros_command(control_ros_command_t *out)
 {
     if ((out == RT_NULL) || (!s_is_inited))
@@ -3464,6 +3691,9 @@ rt_err_t control_get_last_ros_command(control_ros_command_t *out)
     return RT_EOK;
 }
 
+/* 兼容旧接口：把 0.1deg/rpm/ma 三个旧字段转换为正式位置控制。
+ * 当前灵足正式路径会落到 CSP 位置控制。
+ */
 rt_err_t control_joint_motor_set_target(rt_uint8_t joint_id,
                                         rt_int16_t target_pos_01deg,
                                         rt_int16_t target_vel_rpm,
@@ -3501,108 +3731,16 @@ rt_err_t control_joint_motor_set_target(rt_uint8_t joint_id,
     return control_motor_position_control(joint_id, pos_rad, limit_spd_rad_s, RT_TRUE);
 }
 
+/* 兼容旧接口：停止关节。 */
 rt_err_t control_joint_motor_stop(rt_uint8_t joint_id)
 {
     return control_motor_stop(joint_id, RT_FALSE);
 }
 
-rt_err_t control_sensor_report_enable(rt_bool_t enable, rt_uint16_t period_ms)
-{
-    rt_uint8_t payload[8] = {0};
-    rt_uint16_t rate_hz;
-    rt_err_t ret;
-
-    if (!s_is_inited)
-    {
-        return -RT_ERROR;
-    }
-
-    if (period_ms == 0U)
-    {
-        period_ms = CONTROL_SENSOR_DEFAULT_PERIOD_MS;
-    }
-
-    rate_hz = (rt_uint16_t)(1000U / period_ms);
-    if (rate_hz == 0U)
-    {
-        rate_hz = 1U;
-    }
-
-    payload[0] = CONTROL_F103_CMD_SET_RATE;
-    payload[1] = s_tx_seq++;
-    payload[2] = CONTROL_F103_RATE_TARGET_CAN_TX;
-    payload[3] = (rt_uint8_t)(rate_hz & 0xFFU);
-    payload[4] = (rt_uint8_t)((rate_hz >> 8) & 0xFFU);
-    ret = ctrl_can_send(CONTROL_CAN_ID_F103_CTRL, RT_CAN_STDID, payload, sizeof(payload));
-    if (ret != RT_EOK)
-    {
-        return ret;
-    }
-
-    rt_memset(payload, 0, sizeof(payload));
-    payload[0] = enable ? CONTROL_F103_CMD_START_STREAM : CONTROL_F103_CMD_STOP_STREAM;
-    payload[1] = s_tx_seq++;
-    ret = ctrl_can_send(CONTROL_CAN_ID_F103_CTRL, RT_CAN_STDID, payload, sizeof(payload));
-    if (ret != RT_EOK)
-    {
-        return ret;
-    }
-
-    rt_memset(payload, 0, sizeof(payload));
-    payload[0] = CONTROL_SENSOR_CMD_ENABLE_REPORT;
-    payload[1] = enable ? 1U : 0U;
-    payload[2] = (rt_uint8_t)(period_ms & 0xFFU);
-    payload[3] = (rt_uint8_t)((period_ms >> 8) & 0xFFU);
-    payload[7] = s_tx_seq++;
-
-    return ctrl_can_send(CONTROL_CAN_ID_SENSOR_CTRL, RT_CAN_STDID, payload, sizeof(payload));
-}
-
-rt_err_t control_get_emg_report(control_emg_report_t *out)
-{
-    if ((out == RT_NULL) || (!s_is_inited))
-    {
-        return -RT_EINVAL;
-    }
-
-    rt_mutex_take(&s_data_lock, RT_WAITING_FOREVER);
-    *out = s_emg_report;
-    rt_mutex_release(&s_data_lock);
-
-    return RT_EOK;
-}
-
-rt_err_t control_get_heart_report(control_heart_report_t *out)
-{
-    if ((out == RT_NULL) || (!s_is_inited))
-    {
-        return -RT_EINVAL;
-    }
-
-    rt_mutex_take(&s_data_lock, RT_WAITING_FOREVER);
-    *out = s_heart_report;
-    rt_mutex_release(&s_data_lock);
-
-    return RT_EOK;
-}
-
-rt_err_t control_get_sensor_node_sample(control_sensor_node_sample_t *out)
-{
-    if ((out == RT_NULL) || (!s_is_inited))
-    {
-        return -RT_EINVAL;
-    }
-
-    rt_mutex_take(&s_data_lock, RT_WAITING_FOREVER);
-    *out = s_sensor_node_sample;
-    rt_mutex_release(&s_data_lock);
-
-    return RT_EOK;
-}
-
 #ifdef RT_USING_FINSH
 #include <finsh.h>
 
+/* 电机、ROS、安全相关 shell 命令。传感器 shell 命令已经迁移到 sensor.c。 */
 static int cmd_motor_fb(int argc, char **argv);
 
 static int cmd_control_init(int argc, char **argv)
@@ -4791,125 +4929,4 @@ static int cmd_rs00_fb(int argc, char **argv)
 }
 MSH_CMD_EXPORT(cmd_rs00_fb, deprecated alias: use motor_fb);
 
-static int cmd_sensor_show(int argc, char **argv)
-{
-    control_emg_report_t emg;
-    control_heart_report_t heart;
-    control_sensor_node_sample_t node;
-
-    RT_UNUSED(argc);
-    RT_UNUSED(argv);
-
-    if (control_get_emg_report(&emg) == RT_EOK)
-    {
-        rt_kprintf("EMG: ch1=%u ch2=%u rms=%u seq=%u status=%u tick=%u\n",
-                   emg.ch1_raw,
-                   emg.ch2_raw,
-                   emg.rms_raw,
-                   emg.seq,
-                   emg.status,
-                   emg.timestamp);
-    }
-
-    if (control_get_heart_report(&heart) == RT_EOK)
-    {
-        rt_kprintf("HR : bpm=%u hrv=%u quality=%u status=%u tick=%u\n",
-                   heart.bpm,
-                   heart.hrv_ms,
-                   heart.signal_quality,
-                   heart.status,
-                   heart.timestamp);
-    }
-
-    if (control_get_sensor_node_sample(&node) == RT_EOK)
-    {
-        rt_kprintf("F103: emg_raw=%u emg_filt=%d hr_raw=%u hr_filt=%u flags=0x%02X sensor_tick=%u\n",
-                   node.emg_raw,
-                   node.emg_filt,
-                   node.hr_raw,
-                   node.hr_filt,
-                   node.flags,
-                   node.sensor_timestamp);
-        rt_kprintf("F103_HEALTH: state=%u err=%u q=%u health_tick=%u last_ack cmd=0x%02X seq=%u status=%u ack_tick=%u\n",
-                   node.node_state,
-                   node.node_err_cnt,
-                   node.node_q_fill,
-                   node.health_timestamp,
-                   node.last_ack_cmd,
-                   node.last_ack_seq,
-                   node.last_ack_status,
-                   node.ack_timestamp);
-    }
-
-    return 0;
-}
-MSH_CMD_EXPORT(cmd_sensor_show, show latest emg and heart reports);
-
-static int cmd_sensor_rate(int argc, char **argv)
-{
-    rt_bool_t en;
-    rt_uint16_t period;
-    rt_err_t ret;
-
-    if (argc < 3)
-    {
-        rt_kprintf("usage: sensor_rate <en(0|1)> <period_ms>\n");
-        return -1;
-    }
-
-    en = (atoi(argv[1]) != 0) ? RT_TRUE : RT_FALSE;
-    period = (rt_uint16_t)atoi(argv[2]);
-
-    ret = control_sensor_report_enable(en, period);
-    rt_kprintf("sensor_rate ret=%d\n", ret);
-    return ret;
-}
-MSH_CMD_EXPORT(cmd_sensor_rate, configure stm32 sensor report period);
-
-static int cmd_f103_ping(int argc, char **argv)
-{
-    rt_uint32_t count = 1U;
-    rt_uint32_t delay_ms = 20U;
-    rt_uint32_t i;
-    rt_uint8_t payload[8] = {0};
-    rt_err_t ret = RT_EOK;
-
-    if (argc >= 2)
-    {
-        count = (rt_uint32_t)atoi(argv[1]);
-    }
-    if (argc >= 3)
-    {
-        delay_ms = (rt_uint32_t)atoi(argv[2]);
-    }
-    if (count == 0U)
-    {
-        count = 1U;
-    }
-
-    for (i = 0U; i < count; i++)
-    {
-        rt_memset(payload, 0, sizeof(payload));
-        payload[0] = CONTROL_F103_CMD_GET_STATUS;
-        payload[1] = s_tx_seq++;
-        ret = ctrl_can_send(CONTROL_CAN_ID_F103_CTRL, RT_CAN_STDID, payload, sizeof(payload));
-        if (ret != RT_EOK)
-        {
-            rt_kprintf("f103_ping send failed i=%lu ret=%d\n", (unsigned long)i, ret);
-            return ret;
-        }
-        if (delay_ms > 0U)
-        {
-            rt_thread_mdelay(delay_ms);
-        }
-    }
-
-    rt_kprintf("f103_ping sent count=%lu delay=%lu ret=%d\n",
-               (unsigned long)count,
-               (unsigned long)delay_ms,
-               ret);
-    return ret;
-}
-MSH_CMD_EXPORT(cmd_f103_ping, send F103 GET_STATUS frames: f103_ping [count] [delay_ms]);
-MSH_CMD_EXPORT_ALIAS(cmd_f103_ping, f103_ping, send F103 GET_STATUS frames: f103_ping [count] [delay_ms]);
 #endif

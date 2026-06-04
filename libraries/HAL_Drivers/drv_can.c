@@ -58,7 +58,65 @@ static struct ifx_can can_obj[sizeof(can_config) / sizeof(can_config[0])] = {0};
 static rt_bool_t g_canfd0_hw_prepared = RT_FALSE;
 static rt_bool_t g_canfd0_mmio_prepared = RT_FALSE;
 static rt_bool_t g_can_direct_ready = RT_FALSE;
+static volatile rt_bool_t g_can_direct_raw_rx_pause = RT_FALSE;
 static rt_uint8_t g_can_direct_tx_index = 0U;
+#ifdef BSP_USING_CANFD0
+static rt_uint32_t g_can_direct_bitrate = 1000000U;
+static cy_stc_canfd_bitrate_t g_can_direct_nominal_bitrate;
+static cy_stc_canfd_bitrate_t g_can_direct_fast_bitrate;
+static cy_stc_canfd_config_t g_can_direct_canfd_config;
+#endif
+
+void ifx_can_direct_set_raw_rx_pause(rt_bool_t pause)
+{
+    g_can_direct_raw_rx_pause = pause ? RT_TRUE : RT_FALSE;
+}
+
+#ifdef BSP_USING_CANFD0
+static rt_uint32_t ifx_can_direct_prescaler_for_bitrate(rt_uint32_t bitrate)
+{
+    switch (bitrate)
+    {
+    case 1000000U:
+        return 0U;
+
+    case 500000U:
+        return 1U;
+
+    case 250000U:
+        return 3U;
+
+    case 125000U:
+        return 7U;
+
+    default:
+        return 0xFFFFFFFFUL;
+    }
+}
+
+static void ifx_can_direct_apply_bitrate_config(rt_uint32_t bitrate)
+{
+    rt_uint32_t prescaler = ifx_can_direct_prescaler_for_bitrate(bitrate);
+
+    if (prescaler == 0xFFFFFFFFUL)
+    {
+        prescaler = 0U;
+        bitrate = 1000000U;
+    }
+
+    g_can_direct_nominal_bitrate = ifx_canfd0_nominal_bitrate;
+    g_can_direct_nominal_bitrate.prescaler = prescaler;
+    g_can_direct_fast_bitrate = ifx_canfd0_fast_bitrate;
+    g_can_direct_fast_bitrate.prescaler = prescaler;
+
+    g_can_direct_canfd_config = ifx_canfd0_default_config;
+    g_can_direct_canfd_config.bitrate = &g_can_direct_nominal_bitrate;
+    g_can_direct_canfd_config.fastBitrate = &g_can_direct_fast_bitrate;
+
+    can_config[CANFD0_INDEX].canfd_config = &g_can_direct_canfd_config;
+    g_can_direct_bitrate = bitrate;
+}
+#endif
 
 static const rt_uint8_t can_dlc_to_len_table[16] =
 {
@@ -610,6 +668,7 @@ rt_err_t ifx_can_direct_init(void)
     cy_en_canfd_status_t result;
     struct ifx_can *can = &can_obj[CANFD0_INDEX];
 
+    ifx_can_direct_apply_bitrate_config(g_can_direct_bitrate);
     can->config = &can_config[CANFD0_INDEX];
 
     ifx_canfd0_prepare_hw();
@@ -637,7 +696,8 @@ rt_err_t ifx_can_direct_init(void)
     g_can_direct_tx_index = 0U;
     g_can_direct_ready = RT_TRUE;
 
-    rt_kprintf("[drv_can] direct ready pclk=%lu nbtp=0x%08lx rxf0s=0x%08lx\n",
+    rt_kprintf("[drv_can] direct ready bitrate=%lu pclk=%lu nbtp=0x%08lx rxf0s=0x%08lx\n",
+               (unsigned long)g_can_direct_bitrate,
                (unsigned long)Cy_SysClk_PeriPclkGetFrequency(PCLK_CANFD0_CLOCK_CAN_EN0,
                                                               CY_SYSCLK_DIV_8_BIT,
                                                               4U),
@@ -645,6 +705,62 @@ rt_err_t ifx_can_direct_init(void)
                (unsigned long)CANFD_RXF0S(can->config->can_x, can->config->channel));
     return RT_EOK;
 #else
+    return -RT_ERROR;
+#endif
+}
+
+rt_err_t ifx_can_direct_reinit_bitrate(rt_uint32_t bitrate)
+{
+#ifdef BSP_USING_CANFD0
+    cy_en_canfd_status_t result;
+    struct ifx_can *can = &can_obj[CANFD0_INDEX];
+
+    if (ifx_can_direct_prescaler_for_bitrate(bitrate) == 0xFFFFFFFFUL)
+    {
+        return -RT_EINVAL;
+    }
+
+    can->config = &can_config[CANFD0_INDEX];
+    g_can_direct_ready = RT_FALSE;
+    (void)Cy_CANFD_DeInit(can->config->can_x, can->config->channel, &can->context);
+    (void)Cy_CANFD_ClearInterrupt(can->config->can_x, can->config->channel, 0xFFFFFFFFUL);
+
+    g_can_direct_bitrate = bitrate;
+    ifx_can_direct_apply_bitrate_config(g_can_direct_bitrate);
+
+    Cy_CANFD_Enable(can->config->can_x, (1UL << can->config->channel));
+    result = Cy_CANFD_Init(can->config->can_x,
+                           can->config->channel,
+                           can->config->canfd_config,
+                           &can->context);
+    if (result != CY_CANFD_SUCCESS)
+    {
+        rt_kprintf("[drv_can] direct bitrate reinit failed bitrate=%lu ret=%d\n",
+                   (unsigned long)bitrate,
+                   result);
+        return -RT_ERROR;
+    }
+
+    Cy_CANFD_SetInterruptMask(can->config->can_x, can->config->channel, 0U);
+    Cy_CANFD_EnableInterruptLine(can->config->can_x, can->config->channel, 0U);
+    NVIC_ClearPendingIRQ(can->config->intrSrc);
+    NVIC_DisableIRQ(can->config->intrSrc);
+    can_apply_mode(can, RT_CAN_MODE_NORMAL);
+
+    can->irq_mask = 0U;
+    can->tx_pending_mask = 0U;
+    g_can_direct_tx_index = 0U;
+    g_can_direct_ready = RT_TRUE;
+
+    rt_kprintf("[drv_can] direct bitrate=%lu pclk=%lu nbtp=0x%08lx\n",
+               (unsigned long)g_can_direct_bitrate,
+               (unsigned long)Cy_SysClk_PeriPclkGetFrequency(PCLK_CANFD0_CLOCK_CAN_EN0,
+                                                              CY_SYSCLK_DIV_8_BIT,
+                                                              4U),
+               (unsigned long)CANFD_NBTP(can->config->can_x, can->config->channel));
+    return RT_EOK;
+#else
+    RT_UNUSED(bitrate);
     return -RT_ERROR;
 #endif
 }
@@ -749,7 +865,7 @@ rt_ssize_t ifx_can_direct_recv(struct rt_can_msg *msg)
     rt_uint8_t dlc;
     rt_uint8_t len;
 
-    if ((msg == RT_NULL) || (!g_can_direct_ready))
+    if ((msg == RT_NULL) || (!g_can_direct_ready) || g_can_direct_raw_rx_pause)
     {
         return -RT_ERROR;
     }

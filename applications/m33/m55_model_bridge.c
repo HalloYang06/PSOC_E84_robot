@@ -1,0 +1,92 @@
+#include "m55_model_bridge.h"
+
+#include "control/control_layer.h"
+#include "control/control_layer_cfg.h"
+
+#define M55_MODEL_CODE_WAKE_WORD 1U
+#define M55_RESULT_CODE_NONE 0U
+#define M55_RESULT_CODE_WAKE_START_REQUEST 1U
+
+typedef struct
+{
+    rt_uint32_t seq;
+    rt_uint8_t model_code;
+    rt_uint8_t result_code;
+    rt_uint16_t confidence_permille;
+    rt_uint8_t flags;
+    rt_uint16_t window_ms;
+    rt_tick_t timestamp;
+} m55_model_bridge_state_t;
+
+static m55_model_bridge_state_t g_m55_model_state;
+
+static rt_uint16_t confidence_to_permille(float confidence)
+{
+    if (confidence <= 0.0f)
+    {
+        return 0U;
+    }
+    if (confidence >= 1.0f)
+    {
+        return 1000U;
+    }
+    return (rt_uint16_t)((confidence * 1000.0f) + 0.5f);
+}
+
+void m55_model_bridge_init(void)
+{
+    rt_memset(&g_m55_model_state, 0, sizeof(g_m55_model_state));
+}
+
+static void m55_model_bridge_handle_ai_result(const m33_m55_message_t *msg)
+{
+    const ai_inference_msg_t *ai;
+    rt_uint8_t flags = CONTROL_M33_MODEL_STATUS_FLAG_FRESH;
+    rt_uint8_t result_code = M55_RESULT_CODE_NONE;
+    rt_uint16_t confidence_permille;
+    rt_uint16_t window_ms;
+
+    ai = &msg->payload.ai_inference;
+    confidence_permille = confidence_to_permille(ai->confidence);
+    window_ms = (rt_uint16_t)(ai->pain_risk * 1000.0f);
+
+    if (ai->motion_class != 0U)
+    {
+        flags |= CONTROL_M33_MODEL_STATUS_FLAG_DETECTED;
+        result_code = M55_RESULT_CODE_WAKE_START_REQUEST;
+    }
+
+    g_m55_model_state.seq = msg->seq;
+    g_m55_model_state.model_code = M55_MODEL_CODE_WAKE_WORD;
+    g_m55_model_state.result_code = result_code;
+    g_m55_model_state.confidence_permille = confidence_permille;
+    g_m55_model_state.flags = flags;
+    g_m55_model_state.window_ms = window_ms;
+    g_m55_model_state.timestamp = rt_tick_get();
+
+    (void)control_publish_m55_model_result(g_m55_model_state.model_code,
+                                           g_m55_model_state.result_code,
+                                           g_m55_model_state.confidence_permille,
+                                           g_m55_model_state.flags,
+                                           g_m55_model_state.window_ms);
+}
+
+void m55_model_bridge_handle_message(const m33_m55_message_t *msg)
+{
+    if (msg == RT_NULL)
+    {
+        return;
+    }
+
+    switch (msg->type)
+    {
+    case MSG_TYPE_AI_INFERENCE_RESP:
+        m55_model_bridge_handle_ai_result(msg);
+        break;
+    case MSG_TYPE_ASR_TEXT:
+        rt_kprintf("[m55_model_bridge] asr text: %.64s\n", msg->payload.text.text);
+        break;
+    default:
+        break;
+    }
+}
