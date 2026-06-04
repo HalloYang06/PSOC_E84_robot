@@ -51,6 +51,26 @@
 | MuJoCo shadow | `/sim/medical_arm/joint_states` | 6 个 joint，`jian_xuanzhuan_joint` 跟随 | 查 relay 映射和 MuJoCo 节点 |
 | 安全无运动 | `timeout 2 candump -L can0,320:7FF` | 超时无输出 | 立即停服务，查是否误启运动入口 |
 
+当前已有脚本化只读验收：
+
+```bash
+SEND_M33_HEARTBEAT=1 RUN_NON_MOTION_PROBES=0 DURATION_SECONDS=6 \
+  /home/pi/nanopi_motor_feedback_readiness.sh
+```
+
+2026-06-04 通过样例：
+
+```text
+ok=true
+raw_motor_feedback_ready=true
+m33_joint_state_ready=true
+target_0x320_count=0
+lingzu_active_reports_by_motor: {"7": 599}
+missing_lingzu_motors: [4, 5, 6]
+```
+
+这个通过只说明当前 7 号外部 EL05 bench/shadow 反馈可用；4/5/6 缺失是当前未接入状态，不是软件失败。
+
 当前实测值可以作为 sanity check：
 
 ```text

@@ -2492,6 +2492,8 @@
 - Validated: NanoPi ROS `/joint_states` publishes `forearm_rotation_joint` at about `1.463 rad`, and the MuJoCo shadow topic `/sim/medical_arm/joint_states` publishes the 6 medical arm joints with `jian_xuanzhuan_joint=1.0472`.
 - Safety: `rehab-arm-nanopi-readonly.service` is `active/enabled`, still runs with `enable_target_tx=false`, and `timeout 4 candump -L can0,320:7FF` produced no `0x320` target frames.
 - Current status: the read-only/shadow foundation from motor7 -> M33 -> M55 -> M33 -> CAN -> NanoPi -> ROS -> MuJoCo is now validated. It remains a 7号 external EL05 bench/shadow path, not formal 6DOF motion permission.
+- Validated: existing NanoPi readiness script `/home/pi/nanopi_motor_feedback_readiness.sh` passed with `ok=true`, `raw_motor_feedback_ready=true`, `m33_joint_state_ready=true`, `safe_to_expect_joint_states=true`, `target_0x320_count=0`, and `psoc_status_0x322_count=7`.
+- Boundary: readiness report saw 599 Lingzu active reports from motor7 and no raw Lingzu feedback from motors 4/5/6 yet. This is expected for the current bench state and must not be presented as full 6DOF hardware feedback.
 
 ### 2026-05-28 - Motor5 reverse run with 3A current limit
 

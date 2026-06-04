@@ -4708,6 +4708,7 @@ Connection reset by 192.168.2.66 port 22
 - 2026-06-04 后续复测已恢复。通过标准是 NanoPi RX packets 增长、TX/RX errors 为 0、`candump` 可见 `0x330~0x334`、`0x321 -> 0x322`、`req_m7` 后可见 `0x323#B5...`。
 - 恢复后继续验证 ROS 层：`/joint_states` 应有 `forearm_rotation_joint`，`/rehab_arm/model_state` 是事件型 topic，必须先启动 `ros2 topic echo --once` 再触发 `req_m7`，否则容易错过单帧事件。
 - MuJoCo shadow 验收看 `/sim/medical_arm/joint_states`，必须是 6 个 medical arm joint；安全验收仍要求 `candump can0,320:7FF` 无输出。
+- 脚本化验收优先用现有 `/home/pi/nanopi_motor_feedback_readiness.sh`。如果它显示 `missing_lingzu_motors: [4,5,6]` 但 `raw_motor_feedback_ready=true`、`m33_joint_state_ready=true`，这表示当前只有 7 号 bench 电机在线，不是 ROS/MuJoCo 故障。
 
 ### 6DOF MuJoCo shadow 要发布完整关节，但不能伪造硬件在线
 
