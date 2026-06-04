@@ -24,6 +24,7 @@ M33 -> NanoPi -> /rehab_arm/model_state -> recorder/server/VLA
 - 大块 PCM 复用 linker 中的 `.ipc_stream_shared`，当前共享区 `m33_m55_shared = 0x261C0000, size = 0x00040000`。
 - M33/M55 现有消息类型已经包含 `MSG_TYPE_AI_INFERENCE_REQ/RESP`、`MSG_TYPE_SENSOR_STREAM`、`MSG_TYPE_ASR_TEXT`、`MSG_TYPE_VOICE_CONTROL`。
 - 详细地基见 [M33_M55_IPC_BLE_FOUNDATION.md](M33_M55_IPC_BLE_FOUNDATION.md)。
+- M33 输入到 M55 的快照/窗口合同见 [M33_M55_MODEL_INPUT_PROTOCOL_V1.md](M33_M55_MODEL_INPUT_PROTOCOL_V1.md)。
 
 第一版不新增 M55 直接 CAN ID。M55 结果必须回到 M33，由 M33 绑定时间戳、安全状态和 profile 版本后，再通过 M33 -> NanoPi 合同进入 `/rehab_arm/model_state`。
 

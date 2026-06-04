@@ -16,6 +16,13 @@
 
 ## 架构状态
 
+- 2026-06-04 M33 数据进入 M55 小模型闭环已上板验证：
+  - M33 工程新增 `applications/m33/m55_model_input_bridge.*`，M55 工程新增 `applications/model_input_bridge.*`，并扩展 `VOICE_CTRL_PUBLISH_TEST_SNAPSHOT` 作为台架自测入口。
+  - 当前串口 shell 在 M55 侧，执行 `req_snap` 后，M55 请求 M33 发布测试 sensor snapshot；M33 通过 `MSG_TYPE_SENSOR_SNAPSHOT` 发给 M55；M55 当前规则模型输出结果；M33 经 `0x323` 发给 NanoPi。
+  - 已烧录 M33 和 M55 最新镜像。M33 OpenOCD 写入 `700416 bytes`、校验 `697544 bytes`；M55 写入 `946176 bytes`、校验 `945000 bytes`。
+  - 串口实测日志包含 `[m33] ipc publish test snapshot`、`[m55_input] snapshot seq=1 emg=(420,80) hr=76 spo2=98 ret=0`、`[model_input] snapshot ... score=420 detected=1`、`[m55_model_bridge] ... result=1 conf=420 ... can_ret=0`。
+  - NanoPi `candump` 已抓到 `can0 323#B50A01012A831400`；ROS `/rehab_arm/model_state` 完整 JSON 已出现 `result_code=1`、`confidence=0.42`、`detected=true`、`suggestion_only=true`、`control_boundary=model_suggestion_only_not_motion_permission`。
+  - 新增输入协议文档 [M33_M55_MODEL_INPUT_PROTOCOL_V1.md](M33_M55_MODEL_INPUT_PROTOCOL_V1.md)，明确后续 4 路 EMG 按 `M33 -> MSG_TYPE_SENSOR_SNAPSHOT/STREAM -> M55 -> MSG_TYPE_AI_INFERENCE_RESP -> M33 -> 0x323 -> NanoPi` 走，不另造链路。
 - 2026-06-04 上板地基验证：
   - M33 已用 OpenOCD + `PSE84_SMIF.FLM` + 工程 `qspi_config.cfg` 路径烧录成功，写入 `build/rtthread.hex` `565248 bytes`。`edgeprotecttools` 的 non-secure relocation 成功输出 `0x60340400` 镜像；secure merge 仍因本机缺少 `proj_cm33_s_signed.hex` 失败，但当前板上已有 secure/extended boot，烧录 non-secure relocated hex 可启动。
   - M55 实际工程为 `D:\RT-ThreadStudio\workspace\wifi`，已烧录 `Debug/rtthread.hex` `946176 bytes` 和 `wifi_resources/whd_resources_all.bin` `466944 bytes`。

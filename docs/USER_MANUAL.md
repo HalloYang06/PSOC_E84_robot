@@ -54,10 +54,12 @@ python3 /home/pi/nanopi_can_master.py m33 target --iface can0 --joint 4 --deg 30
 - VLA 用于复杂任务理解和任务分解，例如“先移开遮挡物，再拿目标物品”；它只能输出高层任务或分段目标，不能直接发 CAN 或底层电机命令。
 - M55 小模型结果统一走 [M55_MODEL_RESULT_PROTOCOL_V1.md](M55_MODEL_RESULT_PROTOCOL_V1.md) 和 `/rehab_arm/model_state`；该 topic 是模型建议和编号语义，不是运动许可。原始/滤波 EMG、心率、IMU 仍走 `/rehab_arm/sensor_state`。
 - M33/M55 跨核通讯和 App BLE 字段边界见 [M33_M55_IPC_BLE_FOUNDATION.md](M33_M55_IPC_BLE_FOUNDATION.md)：M33/M55 已有 `m33_m55_comm`、MTB-IPC queue 和 `.ipc_stream_shared`，App BLE 已有 NUS 风格 RX/TX；后续只补字段，不另造链路。
+- M33 传感器/电机上下文进入 M55 小模型的输入合同见 [M33_M55_MODEL_INPUT_PROTOCOL_V1.md](M33_M55_MODEL_INPUT_PROTOCOL_V1.md)：M33 通过 `MSG_TYPE_SENSOR_SNAPSHOT/STREAM` 发给 M55，M55 推理后仍必须回 M33，再通过 `0x323` 和 `/rehab_arm/model_state` 出口给 NanoPi/服务器。
 - M55 小模型部署按 [M55_MODEL_DEPLOYMENT_GUIDE.md](M55_MODEL_DEPLOYMENT_GUIDE.md)：使用 GitHub `M55` 分支对应的 WiFi 工程，复用 TFLite Micro、`model_manager` 和 `m33_m55_comm`，推理结果回 M33 后再进 NanoPi/服务器。
 - 当前小模型链路的分层验收是：
   - 第一层，M55 wake-word 结果经 `MSG_TYPE_AI_INFERENCE_RESP` 到 M33，再由 `0x323` 到 NanoPi。2026-06-04 已实测 `candump` 可见 `323#B5...`。
-  - 第二层，NanoPi ROS2 bridge 把 `0x323` 发布成 `/rehab_arm/model_state`，消息里应有 `source=m33_m55_bridge_can_0x323`。当前 topic publisher 已验证存在；本次上电没有新的 `0x323` 样本，所以还需要触发 `m55_model_selftest` 或重启自测后抓一条 JSON 样本。
+  - 第二层，NanoPi ROS2 bridge 把 `0x323` 发布成 `/rehab_arm/model_state`，消息里应有 `source=m33_m55_bridge_can_0x323`。2026-06-04 已实测 JSON 样本。
+  - 第三层，M55 shell 执行 `req_snap` 请求 M33 发布一帧测试 snapshot，已实测 `M55 -> M33 request -> M33 -> M55 snapshot -> M55 model -> M33 -> 0x323 -> NanoPi -> /rehab_arm/model_state`。
   - 这个验收不允许出现新的运动许可，也不允许自动发送 `0x320`。
 
 ## M33/M55 烧录和小模型链路复测
@@ -96,6 +98,32 @@ timeout 18 candump -L can0,323:7FF,322:7FF,330:7FF,331:7FF,332:7FF,333:7FF,334:7
 - `0x330~0x334` 周期出现。
 - M55 自测期能看到 `0x323#B5...`，例如 `323#B500010032810600`。
 - `timeout 2 candump -L can0,320:7FF` 没有输出。
+
+验证 M33 数据进入 M55 小模型：
+
+1. Windows 串口 `COM26` 打开 M55 shell。
+2. 输入：
+
+```text
+req_snap
+```
+
+期望串口日志：
+
+```text
+model_input_request_m33_snapshot ret=0
+[m33] ipc publish test snapshot
+[m55_input] snapshot seq=... emg=(420,80) hr=76 spo2=98 ret=0
+[model_input] snapshot seq=... score=420 detected=1
+[model_input] snapshot publish ret=0
+[m55_model_bridge] ai seq=... model=1 result=1 conf=420 flags=0x03 win=200 can_ret=0
+```
+
+NanoPi 应抓到类似：
+
+```text
+can0 323#B50A01012A831400
+```
 
 如果要验证 NanoPi ROS2 topic：
 

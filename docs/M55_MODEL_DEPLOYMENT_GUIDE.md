@@ -50,6 +50,8 @@ git clone -b M55 git@github.com:ChillAmnesiac/Medical-Rehabilitation-Manipulator
 6. M33 绑定安全状态后经 CAN 汇总给 NanoPi。
 7. NanoPi 发布 `/rehab_arm/model_state`，服务器/VLA 只当上下文，不当运动许可。
 
+输入合同和上板自测见 [M33_M55_MODEL_INPUT_PROTOCOL_V1.md](M33_M55_MODEL_INPUT_PROTOCOL_V1.md)。当前 M55 shell 命令 `req_snap` 会请求 M33 发布一帧测试 snapshot，再由 M55 当前规则模型回传 `0x323`，用于证明 `M33 data -> M55 model -> M33 -> NanoPi` 基础链路。
+
 ## 4. 最小模型输出
 
 M55 小模型第一版只输出低频结果：
@@ -106,6 +108,7 @@ model_manager_load_tflm_model(MODEL_SLOT_EMG, emg_model_tflite, emg_model_tflite
 | M33 收到 | M33 消费 `MSG_TYPE_AI_INFERENCE_RESP` 或 `MSG_TYPE_ASR_TEXT` 后输出绑定日志 |
 | CAN 汇总 | NanoPi candump 看到 `0x323#B5...` |
 | NanoPi 收到 | `/rehab_arm/model_state` 出现 `rehab_arm_model_state_v1` JSON |
+| M33 输入到 M55 | M55 shell 执行 `req_snap` 后看到 `[m33] ipc publish test snapshot`、`[model_input] snapshot ...` 和新的 `0x323` |
 
 如果 M55 先启动而 M33 尚未创建 IPC，M55 现有代码会 retry attach。这不是错误；等 M33 ready 后应看到 attach 成功。
 

@@ -20,6 +20,38 @@
 
 ## CAN 与硬件
 
+### 当前串口 shell 在 M55 侧，不能直接调用 M33 FINSH 命令
+
+现象：
+
+- M33 新增 `m55_snap` 命令后，在 `COM26` 输入 `m55_snap` 返回 `command not found`。
+- 同一个串口能正常执行 M55 命令，例如 `mdl_pub`、`req_snap`。
+
+环境：
+
+- PSoC Edge E84 M33/M55 共用 KitProg3 USB-UART `COM26`。
+- M33/M55 都会向串口打印日志，但当前 FINSH shell 由 M55 侧接管。
+
+根因：
+
+- 串口日志能看到 M33 输出，不等于 M33 FINSH shell 可交互。
+- M33 侧测试命令无法直接从当前 shell 调用。
+
+解决：
+
+- 不另开跨核链路，复用现有 `MSG_TYPE_VOICE_CONTROL`。
+- M55 新增 `req_snap` 命令，发送 `VOICE_CTRL_PUBLISH_TEST_SNAPSHOT` 给 M33。
+- M33 收到后调用 `m55_model_input_bridge_publish_snapshot()`，再走正式 `MSG_TYPE_SENSOR_SNAPSHOT` 回 M55。
+
+技巧：
+
+- 验证 M33 数据进入 M55 时，用 `req_snap`，不要用 M33 侧 `m55_snap`。
+- 期望闭环日志是 `model_input_request_m33_snapshot ret=0`、`[m33] ipc publish test snapshot`、`[model_input] snapshot ...` 和新的 `0x323#B5...`。
+
+状态：
+
+- 2026-06-04 已上板验证通过；NanoPi 抓到 `323#B50A01012A831400`，ROS `/rehab_arm/model_state` 出现完整 JSON。
+
 ### 不要只凭 `wifi` 目录名认定 M55 工程
 
 现象：
