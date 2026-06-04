@@ -14,6 +14,7 @@ rt_err_t m55_model_input_bridge_publish_snapshot(float emg_ch1,
                                                  float shoulder_angle,
                                                  float elbow_angle,
                                                  float lateral_position);
+rt_err_t m55_model_input_bridge_publish_motor7_snapshot(void);
 
 #ifdef __cplusplus
 }

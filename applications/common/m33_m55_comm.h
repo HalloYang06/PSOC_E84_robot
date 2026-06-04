@@ -31,7 +31,8 @@ typedef enum
     VOICE_CTRL_STOP_CAPTURE,
     VOICE_CTRL_START_LISTEN,
     VOICE_CTRL_STOP_LISTEN,
-    VOICE_CTRL_PUBLISH_TEST_SNAPSHOT
+    VOICE_CTRL_PUBLISH_TEST_SNAPSHOT,
+    VOICE_CTRL_PUBLISH_MOTOR7_SNAPSHOT
 } voice_control_cmd_t;
 
 typedef enum
@@ -42,7 +43,8 @@ typedef enum
     MODEL_INPUT_SRC_EMG = 3,
     MODEL_INPUT_SRC_HEART_RATE = 4,
     MODEL_INPUT_SRC_SPO2 = 5,
-    MODEL_INPUT_SRC_SENSOR_FUSION = 6
+    MODEL_INPUT_SRC_SENSOR_FUSION = 6,
+    MODEL_INPUT_SRC_MOTOR_FEEDBACK = 7
 } model_input_source_t;
 
 typedef enum
@@ -57,6 +59,10 @@ typedef enum
 
 typedef struct
 {
+    rt_uint16_t source;
+    rt_uint16_t flags;
+    rt_uint16_t motor_id;
+    rt_uint16_t reserved0;
     float emg_ch1;
     float emg_ch2;
     rt_uint16_t heart_rate;

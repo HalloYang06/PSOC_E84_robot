@@ -383,6 +383,10 @@ static void m33_handle_ipc_command(void)
                                                           0.0f,
                                                           0.0f);
             break;
+        case VOICE_CTRL_PUBLISH_MOTOR7_SNAPSHOT:
+            rt_kprintf("[m33] ipc publish motor7 snapshot\n");
+            (void)m55_model_input_bridge_publish_motor7_snapshot();
+            break;
         default:
             break;
         }
