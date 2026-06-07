@@ -7249,8 +7249,8 @@ async function postGameCollabCommand(options: {
       source_message_id: messageId,
       target_workstation_id: options.seat.id,
       delivery_mode: "codex_desktop_ui",
-      desktop_delivery_policy: "automation",
-      desktop_delivery_method: "codex_desktop_automation",
+      desktop_delivery_policy: "background",
+      desktop_delivery_method: "codex_app_server_thread_resume",
       game_collab_run_id: options.runId,
       game_collab_kind: options.kind,
     },
@@ -7263,8 +7263,8 @@ async function postGameCollabCommand(options: {
     body: [
       `平台已把 ${options.seat.name} 的小游戏协作指令送入执行电脑队列。`,
       `派单消息：${messageId}`,
-      "投递方式：Codex 桌面后台自动化，不抢焦点、不点窗口、不用剪贴板。",
-      "下一步状态应该进入等待桌面接收或等待桌面回复；不能把平台 ack 当成桌面已收到。",
+      "投递方式：Codex 后台线程通道优先，不抢焦点、不点窗口、不用剪贴板；不可用时才转入桌面自动化兜底。",
+      "下一步状态应该进入后台线程处理或等待桌面回复；不能把平台 ack 当成桌面已收到。",
     ].join("\n"),
     sender_type: "agent",
     sender_id: options.seat.id,
@@ -7275,7 +7275,7 @@ async function postGameCollabCommand(options: {
       source: "front_c_game_collab",
       source_message_id: messageId,
       delivery_mode: "codex_desktop_ui",
-      desktop_delivery_policy: "automation",
+      desktop_delivery_policy: "background",
       progress_state: "awaiting_desktop_pickup",
       game_collab_run_id: options.runId,
       game_collab_kind: options.kind,
@@ -9350,7 +9350,13 @@ export async function 启动Npc真实线程处理(projectId: string, workstation
   }
 }
 
-export async function 启动Npc单次线程处理(projectId: string, workstationId: string, messageId: string) {
+export async function 启动Npc单次线程处理(
+  projectId: string,
+  workstationId: string,
+  messageId: string,
+  sourceTitleHint?: string,
+  sourceBodyHint?: string,
+) {
   try {
     await ensureProjectCollaborationAccess(projectId);
     const workstationsResult = await getJson(`/api/collaboration/projects/${projectId}/thread-workstations`);
@@ -9370,37 +9376,42 @@ export async function 启动Npc单次线程处理(projectId: string, workstation
         seat.ai_provider_id ?? seat.ai_provider ?? metadata.provider_id ?? metadata.provider_label,
       ) || "codex";
     const recipientId = text(seat.row_id ?? seat.rowId ?? seat.id ?? seat.config_id, "") || workstationId;
-    const messageResult = await getJson(
-      `/api/collaboration/messages?project_id=${encodeURIComponent(projectId)}&limit=200`,
-    );
-    const sourceMessage =
-      asArray<Record<string, unknown>>(messageResult?.data ?? messageResult).find((item) => text(item.id, "") === messageId) ??
-      null;
-    const sourceTitle = text(sourceMessage?.title, "NPC 单次处理");
-    const sourceBody = text(sourceMessage?.body, "");
-    let adapterConfig: Record<string, unknown> = {};
-    try {
-      const configResult = await getJson(
-        `/api/collaboration/projects/${projectId}/thread-workstations/${encodeURIComponent(recipientId)}/adapter-config`,
-      );
-      adapterConfig = (configResult?.data && typeof configResult.data === "object" ? configResult.data : {}) as Record<string, unknown>;
-    } catch {
-      adapterConfig = {};
-    }
-    const deliveryLabel = text(adapterConfig.delivery_label, "");
-    const deliveryWarning = text(adapterConfig.delivery_warning, "");
-    const deliveryMode = text(adapterConfig.delivery_mode, "");
-    const desktopVisible = Boolean(adapterConfig.desktop_visible);
     const computerNodeId = text(
       seat.computer_node_id ?? seat.computerNodeId ?? metadata.computer_node_id ?? metadata.computerNodeId,
       "",
     );
+    let sourceTitle = text(sourceTitleHint, "");
+    let sourceBody = text(sourceBodyHint, "");
+    const messageLookupPromise = sourceTitle && sourceBody
+      ? Promise.resolve(null)
+      : getJson(`/api/collaboration/messages?project_id=${encodeURIComponent(projectId)}&limit=200`).catch(() => null);
+    const adapterConfigPromise = getJson(
+      `/api/collaboration/projects/${projectId}/thread-workstations/${encodeURIComponent(recipientId)}/adapter-config`,
+    ).catch(() => null);
+    const computerNodesPromise = computerNodeId
+      ? getJson(`/api/collaboration/projects/${projectId}/computer-nodes`).catch(() => null)
+      : Promise.resolve(null);
+    const [messageResult, configResult] = await Promise.all([messageLookupPromise, adapterConfigPromise]);
+    if (messageResult) {
+      const sourceMessage =
+        asArray<Record<string, unknown>>(messageResult?.data ?? messageResult).find((item) => text(item.id, "") === messageId) ??
+        null;
+      if (!sourceTitle) sourceTitle = text(sourceMessage?.title, "");
+      if (!sourceBody) sourceBody = text(sourceMessage?.body, "");
+    }
+    sourceTitle = sourceTitle || "NPC 单次处理";
+    let adapterConfig: Record<string, unknown> = {};
+    adapterConfig = (configResult?.data && typeof configResult.data === "object" ? configResult.data : {}) as Record<string, unknown>;
+    const deliveryLabel = text(adapterConfig.delivery_label, "");
+    const deliveryWarning = text(adapterConfig.delivery_warning, "");
+    const deliveryMode = text(adapterConfig.delivery_mode, "");
+    const desktopVisible = Boolean(adapterConfig.desktop_visible);
     const shouldUseDesktopRunnerDelivery =
       providerId === "codex" && (deliveryMode === "codex_desktop_ui" || (desktopVisible && deliveryLabel.includes("桌面")));
     let runnerSummary = summarizeRunnerDispatchState(null);
     if (computerNodeId) {
       try {
-        const computerNodesResult = await getJson(`/api/projects/${projectId}/computer-nodes`);
+        const computerNodesResult = await computerNodesPromise;
         const computerNodes = asArray<Record<string, unknown>>(computerNodesResult?.data ?? computerNodesResult);
         const computerNode =
           computerNodes.find((item) => text(item.id ?? item.node_id, "") === computerNodeId)
@@ -9443,6 +9454,8 @@ export async function 启动Npc单次线程处理(projectId: string, workstation
           source_message_id: messageId,
           target_workstation_id: recipientId,
           delivery_mode: shouldUseDesktopRunnerDelivery ? "codex_desktop_ui" : deliveryMode || null,
+          desktop_delivery_policy: shouldUseDesktopRunnerDelivery ? "background" : null,
+          desktop_delivery_method: shouldUseDesktopRunnerDelivery ? "codex_app_server_thread_resume" : null,
           desktop_visible_capability: desktopVisible,
         },
       });
@@ -9464,7 +9477,7 @@ export async function 启动Npc单次线程处理(projectId: string, workstation
             text(runnerData?.id, "") ? `队列消息：${text(runnerData?.id, "")}` : "",
             messageId ? `派单消息：${messageId}` : "",
             shouldUseDesktopRunnerDelivery
-              ? "目标电脑已接入；平台正在等待执行电脑把派单送进绑定桌面线程并确认可见。"
+              ? "目标电脑已接入；平台会优先用后台线程通道立刻投递，不抢焦点；不可用时才进入桌面自动化兜底。"
               : desktopVisible
                 ? "目标电脑已接入；执行电脑接单后会继续同步过程回执。"
                 : deliveryWarning || "目标电脑接单后会回写最小回执；如桌面线程未连接，平台会显示待收口状态。",
@@ -9484,8 +9497,10 @@ export async function 启动Npc单次线程处理(projectId: string, workstation
           source_message_id: messageId,
           runner_command_id: text(runnerData?.id, "") || null,
           runner_id: text(runnerData?.recipient_id, "") || null,
-          delivery_label: shouldUseDesktopRunnerDelivery ? "等待桌面确认" : runnerDeliveryLabel,
+          delivery_label: shouldUseDesktopRunnerDelivery ? "后台线程优先" : runnerDeliveryLabel,
           delivery_mode: shouldUseDesktopRunnerDelivery ? "codex_desktop_ui" : deliveryMode || null,
+          desktop_delivery_policy: shouldUseDesktopRunnerDelivery ? "background" : null,
+          desktop_delivery_method: shouldUseDesktopRunnerDelivery ? "codex_app_server_thread_resume" : null,
           desktop_visible_capability: desktopVisible,
           runner_dispatch_state: runnerSummary.state,
           runner_dispatch_detail: runnerSummary.detail,
@@ -9498,7 +9513,7 @@ export async function 启动Npc单次线程处理(projectId: string, workstation
         launched: true,
         providerId,
         seatName,
-        deliveryLabel: shouldUseDesktopRunnerDelivery ? "等待桌面确认" : runnerDeliveryLabel,
+        deliveryLabel: shouldUseDesktopRunnerDelivery ? "后台线程优先" : runnerDeliveryLabel,
         deliveryWarning,
         desktopVisible,
         launcher: shouldUseDesktopRunnerDelivery ? "runner-desktop-dispatch" : "runner-command",
