@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT="${AI_COLLAB_ROOT:-$HOME/apps/ai-collab}"
 WEB_PORT="${WEB_PORT:-3001}"
 API_PORT="${API_PORT:-8011}"
+WEB_DIST_DIR="${WEB_DIST_DIR:-${NEXT_DIST_DIR:-.next-prod}}"
 RESTART="${RESTART:-0}"
 
 cd "$ROOT"
@@ -26,16 +27,16 @@ health_ok() {
   curl -fsS "$url" >/dev/null 2>&1
 }
 
-if [[ ! -d "$ROOT/apps/web/.next" ]]; then
-  echo "FAILED missing web build directory: $ROOT/apps/web/.next" >&2
+if [[ ! -d "$ROOT/apps/web/$WEB_DIST_DIR" ]]; then
+  echo "FAILED missing web build directory: $ROOT/apps/web/$WEB_DIST_DIR" >&2
   echo "Run npm run build:web before starting the cloud web service." >&2
   exit 1
 fi
 
 if command -v python3 >/dev/null 2>&1; then
-  python3 scripts/verify_next_build_artifacts.py --next-dir apps/web/.next
+  python3 scripts/verify_next_build_artifacts.py --next-dir "apps/web/$WEB_DIST_DIR"
 else
-  python scripts/verify_next_build_artifacts.py --next-dir apps/web/.next
+  python scripts/verify_next_build_artifacts.py --next-dir "apps/web/$WEB_DIST_DIR"
 fi
 
 if [[ "$RESTART" == "1" ]]; then
@@ -62,7 +63,7 @@ if health_ok "http://127.0.0.1:${WEB_PORT}/api/proxy/health"; then
   echo "Web already running on ${WEB_PORT}"
 else
   # Run Next directly instead of through npm --workspace. On some SSH sessions the npm wrapper exits after Ready.
-  nohup env PORT="$WEB_PORT" node node_modules/next/dist/bin/next start apps/web --hostname 0.0.0.0 \
+  nohup env PORT="$WEB_PORT" NEXT_DIST_DIR="$WEB_DIST_DIR" node node_modules/next/dist/bin/next start apps/web --hostname 0.0.0.0 \
     > "$ROOT/logs-web.txt" 2> "$ROOT/logs-web.err.txt" < /dev/null &
   echo "Web started on ${WEB_PORT}"
 fi
