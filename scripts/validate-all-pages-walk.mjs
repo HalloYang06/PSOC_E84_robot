@@ -41,6 +41,17 @@ async function login() {
   return (await response.json()).data.access_token;
 }
 
+async function readProjectName(token) {
+  const response = await fetch(`${API}/api/projects/${encodeURIComponent(PROJECT)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) return null;
+  const payload = await response.json().catch(() => null);
+  const project = payload?.data ?? payload;
+  const name = typeof project?.name === "string" ? project.name.trim() : "";
+  return name || null;
+}
+
 function summarizeBodyState(markers) {
   return (markersArg) => {
     const body = document.body?.innerText || "";
@@ -80,6 +91,8 @@ function summarizeBodyState(markers) {
 
   log("登录");
   const token = await login();
+  const projectName = await readProjectName(token);
+  const projectShellMarkers = [...(projectName ? [projectName] : []), "NPC 工作台"];
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 1600, height: 1000 }, locale: "zh-CN" });
   await context.addCookies([
@@ -115,14 +128,14 @@ function summarizeBodyState(markers) {
   await checkPage("login-auth-redirect", "/login", ["选择项目"]);
   await checkPage("projects-list", "/projects", ["选择项目", "进入 AI 协作工作台"]);
   await checkPage("mode-choice", "/projects/mode-choice", ["项目"]);
-  await checkPage("project-main", `/projects/${encodeURIComponent(PROJECT)}`, ["智能体协作庄园", "NPC 工作台", "公司层"]);
+  await checkPage("project-main", `/projects/${encodeURIComponent(PROJECT)}`, [...projectShellMarkers, "公司层"]);
   await checkPage("cockpit", `/projects/${encodeURIComponent(PROJECT)}/cockpit`, ["项目驾驶舱", "打开工作台", "设备数据工作台"]);
   const workbenchState = await checkPage("workbench", `/projects/${encodeURIComponent(PROJECT)}/workbench`, ["协同工作台", "Boss NPC 项目生成器"], { fullPage: true });
   note(workbenchState.buttons.some((button) => button.includes("+")), "工作台存在打开 NPC 瓷砖按钮");
   await checkPage("company", `/projects/${encodeURIComponent(PROJECT)}/company`, ["公司沙盘", "运行态势图"], { fullPage: true });
   await checkPage("robotics", `/projects/${encodeURIComponent(PROJECT)}/robotics`, ["设备数据工作台", "创建调试窗口", "绑定真实设备"], { fullPage: true });
   await checkPage("skill-forge", `/projects/${encodeURIComponent(PROJECT)}/skill-forge`, ["能力工坊", "Skill"], { fullPage: true });
-  await checkPage("legacy-2d-upgrade", `/projects/${encodeURIComponent(PROJECT)}/2d-upgrade`, ["智能体协作庄园", "NPC 工作台"]);
+  await checkPage("legacy-2d-upgrade", `/projects/${encodeURIComponent(PROJECT)}/2d-upgrade`, projectShellMarkers);
 
   await context.close();
   await browser.close();
