@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "node ./scripts/dev.cjs",
     "build": "node ./scripts/build.cjs",
-    "start": "next start",
+    "start": "node ./scripts/start.cjs",
     "lint": "next lint"
   },
   "dependencies": {
