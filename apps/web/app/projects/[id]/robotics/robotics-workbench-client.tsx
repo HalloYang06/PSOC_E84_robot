@@ -2731,9 +2731,8 @@ export function RoboticsWorkbenchClient({
   const [savedWindows, setSavedWindows] = useState<SavedDebugWindow[]>(initialSavedWindows);
   const [workbenchMode, setWorkbenchMode] = useState<DeviceWorkbenchMode>(() => {
     if (initialDeviceId) return "boards";
-    if (initialTab === "terminal") return "interfaces";
-    if (!initialTab && initialSavedWindows.length) return "interfaces";
-    return "boards";
+    if (initialTab === "data" || initialTab === "camera") return "boards";
+    return "interfaces";
   });
   const router = useRouter();
   const configuredWindows = useMemo(() => configuredDebugWindows(windows, savedWindows), [windows, savedWindows]);
@@ -2903,7 +2902,7 @@ export function RoboticsWorkbenchClient({
             </form>
             {workbenchMode === "interfaces" ? (
               <details className={styles.setupDrawer}>
-                <summary>创建调试窗口</summary>
+                <summary>创建调试窗口 / 绑定真实设备</summary>
                 <form action={创建机器人调试窗口.bind(null, projectId)} onSubmit={previewCreateWindow} className={styles.windowCreateForm}>
                   <input type="hidden" name="return_to" value={`/projects/${projectId}/robotics`} />
                   <input name="window_name" placeholder="窗口名，例如 产线传感器串口" />

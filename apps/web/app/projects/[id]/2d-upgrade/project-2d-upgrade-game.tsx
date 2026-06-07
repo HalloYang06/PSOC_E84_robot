@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useFormStatus } from "react-dom";
 
 import {
@@ -203,6 +203,286 @@ type RecommendedProjectSkill = {
   recommendedFor: string[];
 };
 
+type MiniGameSnapshot = {
+  score: number;
+  lives: number;
+  remainingStars: number;
+  totalStars: number;
+  status: "playing" | "won" | "lost";
+  notice: string;
+};
+
+const MINI_GAME_INITIAL_STATE: MiniGameSnapshot = {
+  score: 0,
+  lives: 3,
+  remainingStars: 8,
+  totalStars: 8,
+  status: "playing",
+  notice: "收集全部星星，绕开红色障碍。",
+};
+
+function PlayableMiniGame({ projectName }: { projectName: string }) {
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  const gameRef = useRef<any>(null);
+  const [restartToken, setRestartToken] = useState(0);
+  const [snapshot, setSnapshot] = useState<MiniGameSnapshot>(MINI_GAME_INITIAL_STATE);
+
+  useEffect(() => {
+    let disposed = false;
+    let phaserGame: any = null;
+
+    async function mountGame() {
+      if (!hostRef.current) return;
+      const Phaser = await import("phaser");
+      if (disposed || !hostRef.current) return;
+
+      const width = 960;
+      const height = 540;
+      const stars = [
+        { x: 128, y: 116 },
+        { x: 336, y: 88 },
+        { x: 548, y: 126 },
+        { x: 806, y: 96 },
+        { x: 214, y: 396 },
+        { x: 442, y: 318 },
+        { x: 680, y: 398 },
+        { x: 850, y: 308 },
+      ];
+      const obstacles = [
+        { x: 250, y: 170, w: 150, h: 34 },
+        { x: 492, y: 236, w: 44, h: 170 },
+        { x: 702, y: 188, w: 170, h: 38 },
+        { x: 180, y: 304, w: 46, h: 142 },
+        { x: 726, y: 430, w: 220, h: 34 },
+      ];
+
+      class MiniGameScene extends Phaser.Scene {
+        cursors?: Phaser.Types.Input.Keyboard.CursorKeys;
+        keys?: Record<string, Phaser.Input.Keyboard.Key>;
+        player?: Phaser.Types.Physics.Arcade.SpriteWithDynamicBody;
+        starGroup?: Phaser.Physics.Arcade.Group;
+        obstacleGroup?: Phaser.Physics.Arcade.StaticGroup;
+        score = 0;
+        lives = 3;
+        remainingStars = stars.length;
+        status: MiniGameSnapshot["status"] = "playing";
+        lastHitAt = 0;
+        statusText?: Phaser.GameObjects.Text;
+
+        constructor() {
+          super("mini-game");
+        }
+
+        create() {
+          this.physics.world.setBounds(0, 0, width, height);
+          this.createTextures();
+          this.add.rectangle(width / 2, height / 2, width, height, 0x061a21);
+          this.add.grid(width / 2, height / 2, width, height, 48, 48, 0x0d2f35, 0.36, 0x36d6d1, 0.08);
+          this.add.rectangle(width / 2, 48, width - 96, 64, 0x08343b, 0.75).setStrokeStyle(2, 0x62f1ff, 0.26);
+          this.add.text(70, 30, projectName || "2D Star Run", {
+            color: "#eaffff",
+            fontFamily: "Microsoft YaHei, sans-serif",
+            fontSize: "19px",
+            fontStyle: "700",
+          });
+          this.add.text(70, 58, "WASD / 方向键移动，碰到障碍会扣生命", {
+            color: "#9feef1",
+            fontFamily: "Microsoft YaHei, sans-serif",
+            fontSize: "13px",
+          });
+
+          this.obstacleGroup = this.physics.add.staticGroup();
+          obstacles.forEach((item) => {
+            const block = this.add.rectangle(item.x, item.y, item.w, item.h, 0xff5d65, 0.78).setStrokeStyle(2, 0xffc0a8, 0.55);
+            this.obstacleGroup!.add(block);
+          });
+
+          this.starGroup = this.physics.add.group({ allowGravity: false, immovable: true });
+          stars.forEach((item) => {
+            const star = this.physics.add.sprite(item.x, item.y, "star");
+            star.setCircle(14);
+            star.setData("collected", false);
+            this.starGroup!.add(star);
+            this.tweens.add({
+              targets: star,
+              y: item.y - 8,
+              yoyo: true,
+              repeat: -1,
+              duration: 900 + item.x,
+              ease: "Sine.easeInOut",
+            });
+          });
+
+          this.player = this.physics.add.sprite(84, height - 86, "player");
+          this.player.setCollideWorldBounds(true);
+          this.player.setCircle(18);
+          this.player.setDamping(true);
+          this.player.setDrag(0.9);
+          this.cursors = this.input.keyboard?.createCursorKeys();
+          this.keys = this.input.keyboard?.addKeys("W,A,S,D") as Record<string, Phaser.Input.Keyboard.Key>;
+
+          this.physics.add.overlap(this.player, this.starGroup, (_player, star) => this.collectStar(star as Phaser.Physics.Arcade.Sprite));
+          this.physics.add.collider(this.player, this.obstacleGroup, () => this.hitObstacle());
+
+          this.statusText = this.add.text(width / 2, height - 38, "", {
+            color: "#ffe981",
+            fontFamily: "Microsoft YaHei, sans-serif",
+            fontSize: "17px",
+            fontStyle: "700",
+          }).setOrigin(0.5);
+          this.publish("收集全部星星，绕开红色障碍。");
+        }
+
+        update() {
+          if (!this.player || this.status !== "playing") {
+            this.player?.setVelocity(0, 0);
+            return;
+          }
+
+          const speed = 225;
+          const left = this.cursors?.left.isDown || this.keys?.A?.isDown;
+          const right = this.cursors?.right.isDown || this.keys?.D?.isDown;
+          const up = this.cursors?.up.isDown || this.keys?.W?.isDown;
+          const down = this.cursors?.down.isDown || this.keys?.S?.isDown;
+          this.player.setVelocity((left ? -speed : 0) + (right ? speed : 0), (up ? -speed : 0) + (down ? speed : 0));
+          this.player.body.velocity.normalize().scale(speed);
+        }
+
+        createTextures() {
+          const player = this.add.graphics();
+          player.fillStyle(0x53f5cf, 1);
+          player.fillCircle(22, 22, 18);
+          player.lineStyle(3, 0xeaffff, 0.9);
+          player.strokeCircle(22, 22, 18);
+          player.fillStyle(0x06242d, 1);
+          player.fillCircle(16, 18, 3);
+          player.fillCircle(28, 18, 3);
+          player.generateTexture("player", 44, 44);
+          player.destroy();
+
+          const star = this.add.graphics();
+          star.fillStyle(0xffe66d, 1);
+          star.beginPath();
+          for (let i = 0; i < 10; i += 1) {
+            const radius = i % 2 === 0 ? 17 : 7;
+            const angle = -Math.PI / 2 + i * Math.PI / 5;
+            const x = 20 + Math.cos(angle) * radius;
+            const y = 20 + Math.sin(angle) * radius;
+            if (i === 0) star.moveTo(x, y);
+            else star.lineTo(x, y);
+          }
+          star.closePath();
+          star.fillPath();
+          star.lineStyle(2, 0xffffff, 0.75);
+          star.strokePath();
+          star.generateTexture("star", 40, 40);
+          star.destroy();
+        }
+
+        collectStar(star: Phaser.Physics.Arcade.Sprite) {
+          if (this.status !== "playing" || star.getData("collected")) return;
+          star.setData("collected", true);
+          star.disableBody(true, true);
+          this.score += 10;
+          this.remainingStars -= 1;
+          if (this.remainingStars <= 0) {
+            this.status = "won";
+            this.publish("胜利！所有星星已收集。");
+            this.statusText?.setText("胜利！点击 HUD 重开继续验收");
+          } else {
+            this.publish(`已收集一颗星，剩余 ${this.remainingStars} 颗。`);
+          }
+        }
+
+        hitObstacle() {
+          const now = this.time.now;
+          if (!this.player || this.status !== "playing" || now - this.lastHitAt < 900) return;
+          this.lastHitAt = now;
+          this.lives -= 1;
+          this.cameras.main.shake(130, 0.006);
+          this.player.setPosition(84, height - 86);
+          this.player.setVelocity(0, 0);
+          if (this.lives <= 0) {
+            this.status = "lost";
+            this.publish("失败：生命耗尽。");
+            this.statusText?.setText("失败：点击 HUD 重开再试");
+          } else {
+            this.publish(`碰到障碍，剩余 ${this.lives} 条生命。`);
+          }
+        }
+
+        publish(notice: string) {
+          setSnapshot({
+            score: this.score,
+            lives: this.lives,
+            remainingStars: this.remainingStars,
+            totalStars: stars.length,
+            status: this.status,
+            notice,
+          });
+        }
+      }
+
+      phaserGame = new Phaser.Game({
+        type: Phaser.AUTO,
+        parent: hostRef.current,
+        width,
+        height,
+        backgroundColor: "#061a21",
+        scale: {
+          mode: Phaser.Scale.FIT,
+          autoCenter: Phaser.Scale.CENTER_BOTH,
+        },
+        physics: {
+          default: "arcade",
+          arcade: {
+            debug: false,
+          },
+        },
+        scene: MiniGameScene,
+      });
+      gameRef.current = phaserGame;
+    }
+
+    setSnapshot(MINI_GAME_INITIAL_STATE);
+    mountGame();
+
+    return () => {
+      disposed = true;
+      phaserGame?.destroy(true);
+      if (gameRef.current === phaserGame) gameRef.current = null;
+    };
+  }, [projectName, restartToken]);
+
+  return (
+    <section className={styles.playableMiniGame} aria-label="可玩 2D 星星收集小游戏">
+      <div ref={hostRef} className={styles.playableMiniGameCanvas} />
+      <div className={styles.playableMiniGameHud} aria-live="polite">
+        <div>
+          <span>分数</span>
+          <strong>{snapshot.score}</strong>
+        </div>
+        <div>
+          <span>生命</span>
+          <strong>{snapshot.lives}</strong>
+        </div>
+        <div>
+          <span>星星</span>
+          <strong>{snapshot.remainingStars}/{snapshot.totalStars}</strong>
+        </div>
+        <div>
+          <span>状态</span>
+          <strong>{snapshot.status === "won" ? "胜利" : snapshot.status === "lost" ? "失败" : "进行中"}</strong>
+        </div>
+        <p>{snapshot.notice}</p>
+        <button type="button" onClick={() => setRestartToken((value) => value + 1)}>
+          重新开始
+        </button>
+      </div>
+    </section>
+  );
+}
+
 function safeProjectReturnPath(projectId: string, value: string | null | undefined): string {
   const raw = String(value ?? "").trim();
   if (!raw.startsWith(`/projects/${projectId}/`)) return "";
@@ -339,9 +619,6 @@ type ActionConnectivity = {
   tone: "ready" | "readonly" | "preview" | "review" | "pending";
   detail: string;
 };
-
-const UNITY_PUBLIC_PATH = "/unity/education2d";
-const UNITY_SCENE_NAME = "Education2D_Ref_InteriorLab";
 
 function SubmitButton({
   label,
@@ -1562,7 +1839,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
     return node && tk ? { nodeId: node, token: tk } : null;
   }, [searchParams]);
   const [webBaseUrl, setWebBaseUrl] = useState("http://127.0.0.1:3000");
-  const [sceneVisible, setSceneVisible] = useState(false);
+  const [sceneVisible, setSceneVisible] = useState(true);
   const [copyState, setCopyState] = useState<{ kind: "idle" | "loading" | "ok" | "err"; message?: string }>({ kind: "idle" });
   const [manualCopy, setManualCopy] = useState<{ label: string; value: string } | null>(null);
   const [watcherCopyState, setWatcherCopyState] = useState<{ kind: "idle" | "ok" | "err"; message?: string }>({ kind: "idle" });
@@ -1574,7 +1851,6 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
   const [handoffPreview, setHandoffPreview] = useState<{ npcName: string; prompt: string; at: string } | null>(null);
   const [handoffTaskId, setHandoffTaskId] = useState<string>("");
   const [cockpitOpen, setCockpitOpen] = useState(true);
-  const [taskBoardOpen, setTaskBoardOpen] = useState(true);
   const [recommendedSkillSavingId, setRecommendedSkillSavingId] = useState<string | null>(null);
   const [recommendedSkillNotice, setRecommendedSkillNotice] = useState<string | null>(null);
   const [selectedRecommendedSkillId, setSelectedRecommendedSkillId] = useState("");
@@ -1841,7 +2117,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
   // dashboard. Acceptance feedback flagged that Unity dominated the screen and
   // there was no fast way to hide it; the cockpit's background toggle works but
   // is buried in a toolbar. Esc collapses the cockpit (gives Unity full focus),
-  // Alt+U toggles the Unity scene visibility, Alt+T toggles the task board.
+  // and Alt+U toggles the Unity scene visibility.
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       const target = event.target as HTMLElement | null;
@@ -1852,11 +2128,6 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
         setSceneVisible((value) => !value);
         return;
       }
-      if (event.altKey && (event.key === "t" || event.key === "T")) {
-        event.preventDefault();
-        setTaskBoardOpen((value) => !value);
-        return;
-      }
       if (event.key === "Escape" && !event.altKey && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
         setCockpitOpen((value) => !value);
       }
@@ -1864,17 +2135,6 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
-
-  const unitySrc = useMemo(() => {
-    const query = new URLSearchParams({
-      projectId: project.id,
-      serverBaseUrl: apiBaseUrl,
-      entry: "2d-upgrade",
-      scene: UNITY_SCENE_NAME,
-      interactionMode: "click-only",
-    });
-    return `${UNITY_PUBLIC_PATH}/index.html?${query.toString()}`;
-  }, [apiBaseUrl, project.id]);
 
   const modules: ModuleLink[] = useMemo(
     () => [
@@ -2281,7 +2541,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
     );
   }
 
-  function openPanel(tab: ModuleTab, source = "右侧入口") {
+  const openPanel = useCallback((tab: ModuleTab, source = "右侧入口") => {
     setActivePanel(tab);
     setActiveAction(null);
     setLoadingActionId(null);
@@ -2295,7 +2555,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
       url.searchParams.delete("pairing_token");
       window.history.replaceState(null, "", url.toString());
     }
-  }
+  }, [modules]);
 
   function openNpcSeat(seat: FeedItem) {
     const dialogueAction = PANEL_ACTIONS["npc-create"].find((action) => action.id === "npc-dialogue") ?? null;
@@ -2431,7 +2691,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
       window.removeEventListener("popstate", syncFromUrl);
       window.removeEventListener("a-agent-open-panel", handleCustomPanel);
     };
-  }, []);
+  }, [openPanel]);
 
   function renderList(items: FeedItem[], emptyText: string) {
     return (
@@ -2734,7 +2994,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
           <div className={styles.gitRollbackVersionProfile} data-git-rollback-version-profile="1">
             <div className={styles.gitRollbackProfileHead}>
               <b>版本分布</b>
-              <small>当前动作：{action.label} · {gitVersionIndex.length} 个可选目标 · 当前 {selectedGitRollbackToneLabel}</small>
+              <small>{gitVersionIndex.length} 个可选目标 · 当前 {selectedGitRollbackToneLabel}</small>
             </div>
             <div className={styles.gitRollbackProfileBars} aria-label="Git 回退版本目标分布">
               {gitRollbackVersionProfile.map((item) => (
@@ -4387,12 +4647,7 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
       <TeamNoticeToast toast={teamNoticeToast} />
       <main className={styles.shell}>
       {sceneVisible ? (
-        <iframe
-          title="A Agent Education2D Interior Lab"
-          className={styles.unityFrame}
-          src={unitySrc}
-          allow="fullscreen; gamepad; clipboard-read; clipboard-write"
-        />
+        <PlayableMiniGame projectName={project.name} />
       ) : (
         <div className={styles.unitySceneFallback} aria-hidden="true" />
       )}
@@ -4779,64 +5034,6 @@ export function Project2dUpgradeGame(props: Project2dUpgradeGameProps) {
           ))}
         </div>
       </aside>
-
-      {!activePanel && taskBoardOpen ? (
-        <section className={styles.taskBoard} aria-label="任务流水线">
-          <header className={styles.taskBoardHeader}>
-            <div>
-              <span>任务流水线</span>
-              <strong>当前项目的协作主线</strong>
-            </div>
-            <div className={styles.taskBoardHints}>
-              <small>点任务卡 → 复制 AI 接手提示词 / 派给某个 AI 线程 / 进入消息池</small>
-              <button
-                type="button"
-                className={styles.taskBoardToggle}
-                onClick={() => setTaskBoardOpen(false)}
-                title="完全隐藏任务看板（快捷键 Alt+T）"
-              >
-                ✕ 隐藏
-              </button>
-            </div>
-          </header>
-          <div className={styles.taskBoardLanes}>
-            {[
-              { key: "todo", title: "待派", filter: (t: FeedItem) => /todo|ready|new|pending/i.test(t.status), accent: styles.laneTodo },
-              { key: "doing", title: "进行中", filter: (t: FeedItem) => /running|in_progress|active|queued/i.test(t.status), accent: styles.laneDoing },
-              { key: "review", title: "待确认", filter: (t: FeedItem) => /blocked|waiting_approval|reviewing|failed|error|needs_changes/i.test(t.status), accent: styles.laneReview },
-              { key: "done", title: "已完成", filter: (t: FeedItem) => /done|completed|archived/i.test(t.status), accent: styles.laneDone },
-            ].map((lane) => {
-              const laneItems = tasks.filter(lane.filter).slice(0, 4);
-              return (
-                <div key={lane.key} className={`${styles.taskLane} ${lane.accent}`}>
-                  <header><strong>{lane.title}</strong><small>{laneItems.length}</small></header>
-                  {laneItems.length ? (
-                    laneItems.map((task) => (
-                      <article key={task.id} className={styles.taskCard}>
-                        <strong>{itemTitle(task)}</strong>
-                        <small>{statusLabel(task.status)}</small>
-                      </article>
-                    ))
-                  ) : (
-                    <p className={styles.taskLaneEmpty}>—</p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      ) : null}
-
-      {!activePanel && !taskBoardOpen ? (
-        <button
-          type="button"
-          className={styles.taskBoardReopen}
-          onClick={() => setTaskBoardOpen(true)}
-          title="显示任务流水线"
-        >
-          显示任务流水线
-        </button>
-      ) : null}
 
       {activeModule ? (
         <section className={styles.embeddedPanel} aria-label={`${activeModule.label} 功能面板`}>

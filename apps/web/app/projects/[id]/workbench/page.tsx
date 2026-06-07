@@ -157,17 +157,17 @@ function publicThreadHealthLabel(value: string, automationEnabled: boolean) {
 
 function publicDeliveryLabel(value: string, deliveryMode: string, desktopDeliveryMode: string) {
   const raw = `${value || ""} ${deliveryMode || ""} ${desktopDeliveryMode || ""}`.toLowerCase();
+  if (raw.includes("codex_desktop_ui") || raw.includes("desktop")) return "后台线程优先";
+  if (raw.includes("app_server") || raw.includes("session")) return "后台线程同步";
   if (`${value || ""}`.includes("执行已确认")) return "桌面后台执行已确认";
   if (`${value || ""}`.includes("线程可接收")) return "桌面线程可接收";
-  if (raw.includes("desktop") || raw.includes("codex_desktop_ui")) return "桌面后台可接收";
-  if (raw.includes("app_server") || raw.includes("session")) return "执行电脑队列";
   return value || "";
 }
 
 function publicDeliveryWarning(value: string, deliveryMode: string) {
   const rawMode = `${deliveryMode || ""}`.toLowerCase();
   if (rawMode.includes("codex_app_server")) return "平台会通过执行电脑接单；用户可在工作台看执行电脑已收到和最终结果。";
-  if (rawMode.includes("codex_desktop_ui")) return "平台会先把派单交给目标电脑后台接收，再等待桌面线程确认可见；不会抢占当前窗口。";
+  if (rawMode.includes("codex_desktop_ui")) return "平台会优先用后台线程通道立即投递；不可用时才进入桌面自动化兜底，全程不抢占当前窗口。";
   return value ? "平台会把派单送到绑定执行线程；回执会回到当前 NPC 瓷砖。" : "";
 }
 
@@ -287,7 +287,7 @@ export default async function WorkbenchPage({ params, searchParams }: { params: 
     getProjectThreadWorkstationsState(params.id),
     getProjectWorkstationsState(params.id),
     getProjectMembersState(params.id),
-    getCollaborationMessagesState({ projectId: params.id }),
+    getCollaborationMessagesState({ projectId: params.id, limit: 40 }),
     getProjectBossPlansState(params.id, 5),
   ]);
   const liveNodes = asArray<AnyRecord>(computerNodesState.data);

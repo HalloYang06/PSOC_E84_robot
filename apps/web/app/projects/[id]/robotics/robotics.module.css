@@ -2834,3 +2834,1270 @@
     justify-content: flex-start;
   }
 }
+
+/* User-view polish: device data workbench */
+
+.roboticsWorkbenchShell {
+  position: relative;
+  isolation: isolate;
+  background:
+    radial-gradient(circle at 18% 10%, rgba(88, 240, 255, 0.16), transparent 28%),
+    radial-gradient(circle at 82% 0%, rgba(241, 208, 107, 0.12), transparent 24%),
+    linear-gradient(135deg, #031115 0%, #061017 45%, #100f16 100%);
+}
+
+.roboticsWorkbenchShell::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    linear-gradient(rgba(142, 240, 199, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(88, 240, 255, 0.028) 1px, transparent 1px);
+  background-size: 40px 40px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.72), transparent 78%);
+}
+
+.roboticsWorkbenchShell > header {
+  min-height: 64px;
+  padding: 12px 18px;
+  border-bottom: 1px solid rgba(117, 247, 221, 0.2);
+  background:
+    linear-gradient(180deg, rgba(5, 25, 31, 0.94), rgba(3, 13, 19, 0.82)),
+    rgba(2, 13, 20, 0.88);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(14px);
+}
+
+.roboticsWorkbenchShell > header a {
+  min-height: 34px;
+  border-color: rgba(117, 247, 221, 0.34);
+  background: rgba(117, 247, 221, 0.1);
+  font-weight: 900;
+}
+
+.roboticsWorkbenchShell > header strong {
+  color: #f8ffff;
+  font-size: 16px;
+}
+
+.roboticsWorkbenchShell > header small {
+  color: rgba(220, 240, 255, 0.74);
+}
+
+.roboticsWorkbenchShell > header span {
+  border-color: rgba(88, 240, 255, 0.26);
+  background: rgba(88, 240, 255, 0.09);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  color: #d8fbff;
+  font-weight: 900;
+}
+
+.roboticsWorkbenchShell > div > aside {
+  background:
+    linear-gradient(180deg, rgba(6, 23, 28, 0.92), rgba(2, 10, 15, 0.86)),
+    rgba(2, 13, 20, 0.78);
+  border-right-color: rgba(117, 247, 221, 0.18);
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.035);
+}
+
+.roboticsWorkbenchShell > div > section {
+  background:
+    radial-gradient(circle at 54% 0%, rgba(117, 247, 221, 0.08), transparent 32%),
+    linear-gradient(180deg, rgba(1, 8, 13, 0.12), rgba(1, 8, 13, 0.58));
+}
+
+.roboticsWorkbenchShell input,
+.roboticsWorkbenchShell select,
+.roboticsWorkbenchShell textarea {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+
+.roboticsWorkbenchShell button,
+.roboticsWorkbenchShell a {
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.roboticsWorkbenchShell button:not(:disabled):hover,
+.roboticsWorkbenchShell a:hover {
+  transform: translateY(-1px);
+}
+
+.deviceModeSwitch {
+  padding: 5px;
+  border-color: rgba(117, 247, 221, 0.24);
+  background:
+    linear-gradient(180deg, rgba(88, 240, 255, 0.075), rgba(1, 8, 12, 0.62));
+}
+
+.deviceModeSwitch button {
+  min-height: 34px;
+}
+
+.deviceModeSwitch button[data-active="1"] {
+  border-color: rgba(117, 247, 221, 0.56);
+  background:
+    linear-gradient(180deg, rgba(117, 247, 221, 0.18), rgba(117, 247, 221, 0.08));
+  box-shadow: 0 0 0 1px rgba(117, 247, 221, 0.08), 0 8px 18px rgba(28, 215, 190, 0.08);
+}
+
+.sidebarWorkflow li {
+  position: relative;
+  overflow: hidden;
+  border-color: rgba(117, 247, 221, 0.14);
+  background: rgba(7, 24, 28, 0.66);
+}
+
+.sidebarWorkflow li::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 3px;
+  background: rgba(88, 240, 255, 0.2);
+}
+
+.sidebarWorkflow li[data-active="1"] {
+  border-color: rgba(117, 247, 221, 0.36);
+  background:
+    linear-gradient(90deg, rgba(117, 247, 221, 0.13), rgba(7, 24, 28, 0.72));
+}
+
+.sidebarWorkflow li[data-active="1"]::after {
+  background: #75f7dd;
+}
+
+.splitGuide,
+.accessCheckPanel,
+.qualityStrip,
+.simReadinessStrip,
+.nextActionPanel,
+.modelDrawer,
+.boardManifestDrawer,
+.workbenchDrawer,
+.dataActionPanel,
+.deviceDataSummary article,
+.nanoPiDataGrid article,
+.cameraPreviewPanel,
+.cameraMetaPanel article,
+.motorStateViewer,
+.recoveryChecklist,
+.runnerGate,
+.settingsPanel,
+.terminalPane,
+.npcReviewBar,
+.captureBar {
+  border-radius: 8px;
+  box-shadow:
+    0 16px 38px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.splitGuide > article,
+.accessCheckGrid article,
+.qualityCards article,
+.simReadinessCards article,
+.boardManifestGrid article,
+.summaryGrid article,
+.segmentList li,
+.eventList li {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+
+.accessCheckPanel,
+.qualityStrip {
+  background:
+    linear-gradient(135deg, rgba(117, 247, 221, 0.075), rgba(2, 14, 22, 0.82)),
+    rgba(2, 14, 22, 0.82);
+}
+
+.simReadinessStrip {
+  background:
+    linear-gradient(135deg, rgba(241, 208, 107, 0.09), rgba(2, 14, 22, 0.82)),
+    rgba(2, 14, 22, 0.82);
+}
+
+.nextActionPanel {
+  border-color: rgba(117, 247, 221, 0.22);
+  background:
+    linear-gradient(135deg, rgba(88, 240, 255, 0.12), rgba(117, 247, 221, 0.055) 42%, rgba(2, 14, 22, 0.82)),
+    rgba(2, 14, 22, 0.82);
+}
+
+.quickActionGrid button,
+.quickActionGrid a,
+.scanInlineForm button,
+.dataActionPanel button,
+.syncToolbar button,
+.modelActions button,
+.terminalCommandBar button,
+.captureBar button,
+.npcReviewBar button {
+  box-shadow: 0 8px 18px rgba(28, 215, 190, 0.08);
+}
+
+.quickActionGrid button:not(:disabled):hover,
+.quickActionGrid a:hover,
+.scanInlineForm button:not(:disabled):hover,
+.dataActionPanel button:not(:disabled):hover,
+.syncToolbar button:not(:disabled):hover {
+  border-color: rgba(117, 247, 221, 0.66);
+  background: rgba(117, 247, 221, 0.2);
+}
+
+.windowRowActions button {
+  box-shadow: none;
+}
+
+.windowRowActions button:hover {
+  border-color: rgba(255, 139, 111, 0.58);
+  background: rgba(255, 139, 111, 0.14);
+}
+
+.terminalPane {
+  background:
+    linear-gradient(rgba(88, 240, 255, 0.055) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(2, 13, 20, 0.94), rgba(1, 8, 12, 0.96));
+  background-size: 100% 26px, auto;
+}
+
+.motorStateCanvas,
+.urdfPreviewCanvas,
+.cameraKeyframeImage,
+.cameraEmptyFrame {
+  border-color: rgba(88, 240, 255, 0.22);
+  background:
+    radial-gradient(circle at 50% 12%, rgba(117, 247, 221, 0.1), transparent 42%),
+    #040b0f;
+}
+
+@media (max-width: 900px) {
+  .roboticsWorkbenchShell > header {
+    padding: 10px 12px;
+  }
+
+  .splitGuide {
+    grid-template-columns: 1fr;
+  }
+
+  .splitGuide article {
+    min-height: 0;
+  }
+
+  .roboticsWorkbenchShell button:not(:disabled):hover,
+  .roboticsWorkbenchShell a:hover {
+    transform: none;
+  }
+
+  .splitGuide,
+  .nextActionPanel,
+  .accessCheckPanel,
+  .qualityStrip,
+  .simReadinessStrip {
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.14);
+  }
+}
+
+/* User-view polish pass 2: operability details */
+
+.roboticsWorkbenchShell {
+  scrollbar-color: rgba(117, 247, 221, 0.32) rgba(2, 13, 20, 0.42);
+}
+
+.roboticsWorkbenchShell *::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.roboticsWorkbenchShell *::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(117, 247, 221, 0.28);
+}
+
+.roboticsWorkbenchShell *::-webkit-scrollbar-track {
+  background: rgba(2, 13, 20, 0.42);
+}
+
+.roboticsWorkbenchShell button:focus-visible,
+.roboticsWorkbenchShell a:focus-visible,
+.roboticsWorkbenchShell input:focus-visible,
+.roboticsWorkbenchShell select:focus-visible,
+.roboticsWorkbenchShell textarea:focus-visible,
+.compactDrawer > summary:focus-visible,
+.setupDrawer > summary:focus-visible,
+.nestedSettings > summary:focus-visible,
+.modelDrawer > summary:focus-visible,
+.workbenchDrawer > summary:focus-visible {
+  outline: 2px solid rgba(117, 247, 221, 0.72);
+  outline-offset: 2px;
+}
+
+.roboticsWorkbenchShell button:disabled,
+.roboticsWorkbenchShell select:disabled,
+.roboticsWorkbenchShell input:disabled,
+.roboticsWorkbenchShell textarea:disabled {
+  filter: saturate(0.65);
+}
+
+.splitGuide article {
+  position: relative;
+  overflow: hidden;
+}
+
+.splitGuide article::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(117, 247, 221, 0.44), transparent);
+}
+
+.splitGuide article:nth-child(2)::after {
+  background: linear-gradient(90deg, transparent, rgba(241, 208, 107, 0.44), transparent);
+}
+
+.splitGuide > article > span,
+.nextActionPanel span,
+.accessCheckHead span,
+.qualityStripHead span,
+.simReadinessHead span,
+.panelHead span {
+  width: fit-content;
+  min-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 7px;
+  border: 1px solid rgba(117, 247, 221, 0.18);
+  border-radius: 999px;
+  background: rgba(117, 247, 221, 0.06);
+  letter-spacing: 0;
+}
+
+.splitGuide article:nth-child(2) > span,
+.simReadinessHead span {
+  border-color: rgba(241, 208, 107, 0.2);
+  background: rgba(241, 208, 107, 0.075);
+}
+
+.setupDrawer[open] > summary,
+.nestedSettings[open] > summary,
+.modelDrawer[open] > summary,
+.workbenchDrawer[open] > summary,
+.compactDrawer[open] > summary {
+  border-color: rgba(117, 247, 221, 0.3);
+  background: rgba(117, 247, 221, 0.09);
+}
+
+.workbenchDrawer > summary:hover,
+.compactDrawer > summary:hover,
+.setupDrawer > summary:hover,
+.nestedSettings > summary:hover,
+.modelDrawer > summary:hover {
+  border-color: rgba(117, 247, 221, 0.34);
+  background: rgba(117, 247, 221, 0.09);
+}
+
+.windowCreateForm {
+  padding: 8px;
+  border: 1px solid rgba(117, 247, 221, 0.12);
+  border-radius: 8px;
+  background: rgba(1, 8, 12, 0.36);
+}
+
+.windowCreateForm input::placeholder,
+.terminalCommandBar input::placeholder,
+.npcReviewBar input::placeholder,
+.dataActionPanel input::placeholder,
+.dataActionPanel textarea::placeholder {
+  color: rgba(220, 240, 255, 0.44);
+}
+
+.windowCreateForm input:hover,
+.windowCreateForm select:hover,
+.terminalCommandBar input:hover,
+.terminalCommandBar select:hover,
+.captureBar input:hover,
+.captureBar select:hover,
+.npcReviewBar input:hover,
+.dataActionPanel input:hover,
+.dataActionPanel select:hover,
+.dataActionPanel textarea:hover {
+  border-color: rgba(117, 247, 221, 0.38);
+}
+
+.runnerGate {
+  border-left-width: 4px;
+}
+
+.runnerGate[data-tone="ready"] {
+  border-left-color: #78e6aa;
+}
+
+.runnerGate[data-tone="recent"],
+.runnerGate[data-tone="stale"] {
+  border-left-color: #f1d06b;
+}
+
+.runnerGate[data-tone="offline"],
+.runnerGate[data-tone="unknown"] {
+  border-left-color: #ff8b6f;
+}
+
+.recoveryChecklist article:hover,
+.segmentList li:hover,
+.eventList li:hover {
+  border-color: rgba(117, 247, 221, 0.28);
+  background: rgba(117, 247, 221, 0.055);
+}
+
+.terminalCommandBar,
+.npcReviewBar,
+.captureBar {
+  box-shadow:
+    0 -8px 18px rgba(0, 0, 0, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.terminalCommandBar input,
+.npcReviewBar input,
+.captureBar input,
+.captureBar select {
+  min-height: 34px;
+}
+
+.dataActionPanel label,
+.fieldStack {
+  color: rgba(220, 240, 255, 0.72);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.variablePills span,
+.tempLegend span,
+.motorJointLegend span,
+.armLegend span {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+
+.inlineNotice {
+  border-radius: 8px;
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.045);
+}
+
+@media (max-width: 900px) {
+  .roboticsWorkbenchShell > header span {
+    min-height: 26px;
+    padding: 4px 8px;
+  }
+
+  .terminalCommandBar,
+  .npcReviewBar,
+  .captureBar {
+    position: static;
+  }
+
+  .windowCreateForm {
+    padding: 7px;
+  }
+}
+
+/* User-view polish pass 3: control-room affordances */
+
+.roboticsWorkbenchShell > header {
+  position: relative;
+  z-index: 3;
+}
+
+.roboticsWorkbenchShell > header::after {
+  content: "";
+  position: absolute;
+  right: 18px;
+  bottom: -1px;
+  width: min(32vw, 420px);
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(117, 247, 221, 0.62));
+}
+
+.roboticsWorkbenchShell > div > aside {
+  scrollbar-gutter: stable;
+}
+
+.roboticsWorkbenchShell > div > aside input {
+  font-weight: 900;
+}
+
+.openContextGuide {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin: -10px -12px 0;
+  padding: 10px 12px 8px;
+  background:
+    linear-gradient(180deg, rgba(2, 13, 20, 0.96), rgba(2, 13, 20, 0.74) 78%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+.splitGuide strong,
+.nextActionPanel strong,
+.accessCheckHead strong,
+.qualityStripHead strong,
+.simReadinessHead strong {
+  text-wrap: balance;
+}
+
+.splitGuide p,
+.nextActionPanel p,
+.accessCheckGrid p,
+.qualityCards article p,
+.simReadinessCards p,
+.recoveryChecklist p {
+  text-wrap: pretty;
+}
+
+.splitGuide div span,
+.splitGuide a,
+.quickActionGrid button,
+.quickActionGrid a,
+.quickActionGrid span {
+  min-height: 34px;
+}
+
+.quickActionGrid button:first-child,
+.quickActionGrid a:first-of-type {
+  border-color: rgba(117, 247, 221, 0.52);
+  background:
+    linear-gradient(180deg, rgba(117, 247, 221, 0.18), rgba(117, 247, 221, 0.1));
+}
+
+.deviceTileGrid {
+  scroll-padding-top: 12px;
+}
+
+.deviceTileGrid > * {
+  border-color: rgba(88, 240, 255, 0.24);
+  box-shadow:
+    0 20px 48px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.045);
+}
+
+.runnerGate em,
+.inlineNotice,
+.deviceDataSummary article strong,
+.compactDrawer > summary,
+.workbenchDrawer > summary {
+  text-wrap: balance;
+}
+
+.runnerGate em {
+  justify-self: end;
+}
+
+.recoveryChecklist {
+  position: relative;
+}
+
+.recoveryChecklist::before {
+  content: "";
+  position: absolute;
+  inset: -1px auto -1px -1px;
+  width: 4px;
+  border-radius: 8px 0 0 8px;
+  background: linear-gradient(180deg, #ff8b6f, #f1d06b);
+}
+
+.terminalPane {
+  position: relative;
+}
+
+.terminalPane::before {
+  content: "";
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: block;
+  height: 1px;
+  margin: -10px -10px 8px;
+  background: linear-gradient(90deg, transparent, rgba(117, 247, 221, 0.56), transparent);
+}
+
+.terminalPane code:first-of-type {
+  color: #dffff0;
+}
+
+.terminalCommandBar span,
+.npcReviewBar span,
+.captureBar span {
+  text-shadow: 0 0 10px rgba(117, 247, 221, 0.24);
+}
+
+.captureBar {
+  grid-template-columns: 84px 84px minmax(180px, 1fr) auto auto;
+}
+
+.npcReviewBar {
+  border-color: rgba(241, 208, 107, 0.3);
+}
+
+.npcReviewBar span {
+  color: #ffe8a8;
+}
+
+.npcReviewBar button {
+  border-color: rgba(241, 208, 107, 0.38);
+  background: rgba(241, 208, 107, 0.1);
+  color: #ffe8a8;
+}
+
+.modelDrawer > summary,
+.setupDrawer > summary,
+.nestedSettings > summary,
+.compactDrawer > summary {
+  min-height: 36px;
+}
+
+.modelDrawer > summary::after,
+.setupDrawer > summary::after,
+.nestedSettings > summary::after,
+.compactDrawer > summary::after {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(117, 247, 221, 0.18);
+  border-radius: 6px;
+  background: rgba(117, 247, 221, 0.055);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .roboticsWorkbenchShell > header::after,
+  .terminalPane::before {
+    animation: roboticsSoftSweep 4.8s ease-in-out infinite;
+  }
+
+  .runnerGate[data-tone="offline"] em,
+  .runnerGate[data-tone="unknown"] em {
+    animation: roboticsWarningPulse 2.8s ease-in-out infinite;
+  }
+}
+
+@keyframes roboticsSoftSweep {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+
+  50% {
+    opacity: 0.95;
+  }
+}
+
+@keyframes roboticsWarningPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 rgba(255, 139, 111, 0);
+  }
+
+  50% {
+    box-shadow: 0 0 18px rgba(255, 139, 111, 0.18);
+  }
+}
+
+@media (max-width: 900px) {
+  .openContextGuide {
+    position: static;
+    margin: 0;
+    padding: 10px 10px 8px;
+  }
+
+  .captureBar {
+    grid-template-columns: 1fr;
+  }
+
+  .runnerGate em {
+    justify-self: start;
+  }
+
+  .roboticsWorkbenchShell > header::after {
+    right: 12px;
+    width: 46vw;
+  }
+}
+
+/* User-view polish pass 4: finishing ergonomics */
+
+.roboticsWorkbenchShell button,
+.roboticsWorkbenchShell a,
+.compactDrawer > summary,
+.setupDrawer > summary,
+.nestedSettings > summary,
+.modelDrawer > summary,
+.workbenchDrawer > summary {
+  touch-action: manipulation;
+}
+
+.roboticsWorkbenchShell button:not(:disabled):active,
+.roboticsWorkbenchShell a:active {
+  transform: translateY(0);
+  filter: brightness(1.08);
+}
+
+.roboticsWorkbenchShell code,
+.terminalPane code,
+.segmentList code,
+.eventList code {
+  overflow-wrap: anywhere;
+}
+
+.deviceModeSwitch button,
+.quickActionGrid button,
+.quickActionGrid a,
+.scanInlineForm button,
+.dataActionPanel button,
+.syncToolbar button,
+.terminalCommandBar button,
+.captureBar button,
+.npcReviewBar button,
+.windowRowActions button,
+.workbenchDrawer > summary,
+.setupDrawer > summary,
+.modelDrawer > summary {
+  min-height: 36px;
+}
+
+.sidebarWorkflow strong,
+.sidebarWorkflow small,
+.segmentList b,
+.segmentList small,
+.eventList b,
+.eventList small {
+  white-space: normal;
+}
+
+.windowRowActions button {
+  min-width: 36px;
+}
+
+.deviceTileGrid > * {
+  background:
+    linear-gradient(180deg, rgba(3, 25, 32, 0.88), rgba(2, 13, 20, 0.94)),
+    rgba(2, 13, 20, 0.92);
+}
+
+.recoveryHeader {
+  padding-bottom: 2px;
+  border-bottom: 1px solid rgba(241, 208, 107, 0.12);
+}
+
+.recoveryActions article {
+  min-height: 118px;
+}
+
+.terminalCommandBar,
+.captureBar,
+.npcReviewBar {
+  border-radius: 8px;
+}
+
+.terminalCommandBar {
+  grid-template-columns: auto minmax(220px, 1fr) minmax(136px, 168px) auto;
+}
+
+.terminalCommandBar input {
+  font-size: 12px;
+}
+
+.captureBar label,
+.npcReviewBar span {
+  min-width: 0;
+}
+
+.captureBar button,
+.npcReviewBar button,
+.terminalCommandBar button {
+  white-space: nowrap;
+}
+
+.dataFocusPanel {
+  border-color: rgba(117, 247, 221, 0.2);
+}
+
+.workbenchDrawer .dataActionPanel {
+  border-radius: 7px;
+}
+
+.cameraEmptyFrame strong,
+.emptyModelPreview strong {
+  text-wrap: balance;
+}
+
+@media (max-width: 900px) {
+  .roboticsWorkbenchShell > header {
+    gap: 8px;
+  }
+
+  .roboticsWorkbenchShell > header strong {
+    font-size: 15px;
+  }
+
+  .roboticsWorkbenchShell > header small {
+    line-height: 1.25;
+  }
+
+  .deviceModeSwitch button,
+  .quickActionGrid button,
+  .quickActionGrid a,
+  .scanInlineForm button,
+  .dataActionPanel button,
+  .syncToolbar button,
+  .terminalCommandBar button,
+  .captureBar button,
+  .npcReviewBar button {
+    min-height: 38px;
+  }
+
+  .terminalCommandBar {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .terminalCommandBar select,
+  .terminalCommandBar button {
+    width: 100%;
+    grid-column: 1 / -1;
+  }
+
+  .recoveryActions article {
+    min-height: 0;
+  }
+
+  .recoveryHeader {
+    align-items: start;
+  }
+
+  .recoveryHeader span {
+    white-space: normal;
+  }
+}
+
+/* User-view polish pass 5: imported workbench controls and thumb targets */
+
+.roboticsWorkbenchShell :global([class*="batchBtn"]),
+.roboticsWorkbenchShell :global([class*="openBtn"]) {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  line-height: 1.15;
+  white-space: normal;
+}
+
+.roboticsWorkbenchShell > header a {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.roboticsWorkbenchShell input,
+.roboticsWorkbenchShell select,
+.roboticsWorkbenchShell textarea,
+.windowCreateForm input,
+.windowCreateForm select,
+.windowCreateForm button,
+.terminalCommandBar input,
+.terminalCommandBar select,
+.captureBar input,
+.captureBar select,
+.npcReviewBar input,
+.dataActionPanel input,
+.dataActionPanel select,
+.dataActionPanel textarea {
+  min-height: 36px;
+}
+
+.roboticsWorkbenchShell :global([class*="batchBtn"]) {
+  width: 100%;
+  padding-block: 9px;
+}
+
+.roboticsWorkbenchShell :global([class*="openBtn"]) {
+  min-width: 36px;
+  padding-inline: 10px;
+}
+
+.roboticsWorkbenchShell :global([class*="npcRow"]) {
+  align-items: center;
+  gap: 8px;
+}
+
+.roboticsWorkbenchShell :global([class*="npcName"]),
+.roboticsWorkbenchShell :global([class*="npcMeta"]) {
+  overflow-wrap: anywhere;
+}
+
+.deviceTileGrid :global([class*="closeBtn"]),
+.deviceTileGrid :global([class*="panelTab"]) {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.deviceTileGrid :global([class*="closeBtn"]) {
+  min-width: 38px;
+  padding: 0;
+}
+
+.deviceTileGrid :global([class*="panelTab"]) {
+  line-height: 1.15;
+}
+
+.chipButton {
+  min-height: 36px;
+  padding-block: 6px;
+  line-height: 1.15;
+}
+
+.windowRowActions {
+  flex: 0 0 auto;
+}
+
+.windowRowActions button {
+  min-height: 38px;
+  min-width: 38px;
+  padding-inline: 8px;
+  line-height: 1;
+}
+
+.roboticsWorkbenchShell label,
+.roboticsWorkbenchShell summary {
+  min-width: 0;
+}
+
+.splitGuide div span,
+.splitGuide a,
+.openContextGuide a,
+.recoveryActions a {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+}
+
+@media (max-width: 900px) {
+  .roboticsWorkbenchShell :global([class*="batchBtn"]),
+  .roboticsWorkbenchShell :global([class*="openBtn"]),
+  .chipButton,
+  .windowRowActions button,
+  .deviceTileGrid :global([class*="closeBtn"]),
+  .deviceTileGrid :global([class*="panelTab"]),
+  .splitGuide div span,
+  .splitGuide a,
+  .openContextGuide a {
+    min-height: 40px;
+  }
+
+  .roboticsWorkbenchShell input,
+  .roboticsWorkbenchShell select,
+  .roboticsWorkbenchShell textarea {
+    min-height: 38px;
+  }
+
+  .roboticsWorkbenchShell :global([class*="npcRow"]) {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+}
+
+/* User-view polish pass 6: mobile reading rhythm */
+
+.recoveryActions {
+  align-items: stretch;
+}
+
+.recoveryActions article {
+  display: flex;
+  flex-direction: column;
+}
+
+.recoveryActions article a {
+  width: fit-content;
+  margin-top: auto;
+}
+
+.terminalCommandBar,
+.captureBar,
+.npcReviewBar {
+  position: relative;
+}
+
+.terminalCommandBar::before,
+.captureBar::before,
+.npcReviewBar::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 2px;
+  border-radius: 999px;
+  background: rgba(117, 247, 221, 0.34);
+}
+
+.captureBar::before {
+  background: rgba(120, 230, 170, 0.34);
+}
+
+.npcReviewBar::before {
+  background: rgba(241, 208, 107, 0.38);
+}
+
+@media (max-width: 900px) {
+  .roboticsWorkbenchShell > header {
+    align-items: flex-start;
+  }
+
+  .roboticsWorkbenchShell > header span {
+    flex: 0 1 auto;
+  }
+
+  .recoveryHeader {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .recoveryHeader strong,
+  .recoveryHeader span {
+    width: 100%;
+  }
+
+  .recoveryHeader span {
+    justify-content: flex-start;
+    line-height: 1.35;
+  }
+
+  .recoveryActions {
+    gap: 8px;
+  }
+
+  .recoveryActions article {
+    padding: 10px;
+  }
+
+  .terminalPane {
+    max-height: 54vh;
+  }
+
+  .terminalCommandBar,
+  .captureBar,
+  .npcReviewBar {
+    padding-left: 12px;
+  }
+}
+
+/* User-view polish pass 7: text overflow cleanup */
+
+.roboticsWorkbenchShell :global([class*="npcMain"]) {
+  min-width: 0;
+}
+
+.roboticsWorkbenchShell :global([class*="npcMeta"]) {
+  max-width: 100%;
+}
+
+.roboticsWorkbenchShell > div > aside :global([class*="npcMeta"]) {
+  flex-wrap: wrap;
+  white-space: normal;
+  line-height: 1.25;
+}
+
+.terminalPane {
+  overflow-x: hidden;
+}
+
+.terminalPane code,
+.terminalPane pre {
+  max-width: 100%;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 900px) {
+  .roboticsWorkbenchShell :global([class*="npcMeta"]) {
+    flex-wrap: wrap;
+    white-space: normal;
+    line-height: 1.25;
+  }
+
+  .roboticsWorkbenchShell :global([class*="groupList"]) {
+    min-height: 0;
+  }
+}
+
+/* User-view polish pass 8: denser side index scanning */
+
+.roboticsWorkbenchShell > div > aside :global([class*="npcRow"]) {
+  position: relative;
+}
+
+.roboticsWorkbenchShell > div > aside :global([class*="npcRow"])::after {
+  content: "";
+  position: absolute;
+  inset: 7px 0 7px auto;
+  width: 2px;
+  border-radius: 999px;
+  background: rgba(167, 219, 255, 0.16);
+}
+
+.roboticsWorkbenchShell > div > aside :global([class*="npcRowOpen"])::after {
+  background: rgba(117, 247, 221, 0.72);
+  box-shadow: 0 0 12px rgba(117, 247, 221, 0.28);
+}
+
+.roboticsWorkbenchShell > div > aside :global([class*="npcName"]) {
+  line-height: 1.22;
+}
+
+.roboticsWorkbenchShell > div > aside :global([class*="npcMeta"]) {
+  gap: 4px 6px;
+}
+
+.windowRowActions button:first-child {
+  border-color: rgba(117, 247, 221, 0.34);
+  background: rgba(117, 247, 221, 0.1);
+  color: #b9fff3;
+}
+
+.windowRowActions button:first-child:hover {
+  border-color: rgba(117, 247, 221, 0.62);
+  background: rgba(117, 247, 221, 0.18);
+}
+
+.windowRowActions button:last-child {
+  border-color: rgba(255, 139, 111, 0.3);
+  background: rgba(255, 139, 111, 0.08);
+  color: #ffc5bc;
+}
+
+/* User-view polish pass 9: keyboard and disabled-state clarity */
+
+.roboticsWorkbenchShell button:focus-visible,
+.roboticsWorkbenchShell a:focus-visible,
+.roboticsWorkbenchShell input:focus-visible,
+.roboticsWorkbenchShell select:focus-visible,
+.roboticsWorkbenchShell textarea:focus-visible,
+.compactDrawer > summary:focus-visible,
+.setupDrawer > summary:focus-visible,
+.nestedSettings > summary:focus-visible,
+.modelDrawer > summary:focus-visible,
+.workbenchDrawer > summary:focus-visible {
+  outline-color: rgba(134, 255, 236, 0.95);
+  outline-offset: 3px;
+  box-shadow:
+    0 0 0 4px rgba(117, 247, 221, 0.12),
+    0 0 20px rgba(117, 247, 221, 0.16);
+}
+
+.roboticsWorkbenchShell button:disabled {
+  border-color: rgba(167, 219, 255, 0.13);
+  background:
+    repeating-linear-gradient(-45deg, rgba(167, 219, 255, 0.035) 0 6px, transparent 6px 12px),
+    rgba(167, 219, 255, 0.045);
+  color: rgba(220, 240, 255, 0.42);
+  box-shadow: none;
+  opacity: 1;
+}
+
+.runnerGate[data-tone="offline"],
+.runnerGate[data-tone="unknown"] {
+  background:
+    linear-gradient(90deg, rgba(255, 139, 111, 0.12), rgba(255, 139, 111, 0.035)),
+    rgba(2, 14, 22, 0.72);
+}
+
+.npcReviewBar {
+  background:
+    linear-gradient(90deg, rgba(241, 208, 107, 0.12), rgba(241, 208, 107, 0.035)),
+    rgba(2, 14, 22, 0.72);
+}
+
+@media (max-width: 900px) {
+  .roboticsWorkbenchShell button:focus-visible,
+  .roboticsWorkbenchShell a:focus-visible,
+  .roboticsWorkbenchShell input:focus-visible,
+  .roboticsWorkbenchShell select:focus-visible,
+  .roboticsWorkbenchShell textarea:focus-visible {
+    outline-offset: 2px;
+  }
+}
+
+/* User-view polish pass 10: terminal workbench finish */
+
+.deviceTileGrid > * {
+  position: relative;
+  overflow: hidden;
+}
+
+.deviceTileGrid > *::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  background: linear-gradient(90deg, rgba(117, 247, 221, 0.72), rgba(241, 208, 107, 0.34), transparent);
+  opacity: 0.8;
+}
+
+.terminalPane {
+  border-color: rgba(117, 247, 221, 0.26);
+  background:
+    linear-gradient(180deg, rgba(117, 247, 221, 0.045), transparent 58px),
+    linear-gradient(rgba(88, 240, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(1, 10, 14, 0.98), rgba(1, 8, 12, 0.96));
+  background-size: auto, 100% 28px, auto;
+}
+
+.terminalPane code {
+  color: rgba(226, 255, 249, 0.9);
+  line-height: 1.55;
+}
+
+.terminalCommandBar,
+.captureBar,
+.npcReviewBar {
+  border-color: rgba(117, 247, 221, 0.22);
+  background:
+    linear-gradient(180deg, rgba(117, 247, 221, 0.075), rgba(2, 14, 22, 0.78)),
+    rgba(2, 14, 22, 0.82);
+}
+
+.terminalCommandBar input,
+.captureBar input,
+.captureBar select,
+.npcReviewBar input,
+.terminalCommandBar select {
+  border-color: rgba(117, 247, 221, 0.24);
+  background: rgba(1, 12, 17, 0.78);
+}
+
+.captureBar {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    inset 0 -1px 0 rgba(120, 230, 170, 0.12);
+}
+
+.npcReviewBar {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    inset 0 -1px 0 rgba(241, 208, 107, 0.14);
+}
+
+@media (max-width: 900px) {
+  .terminalPane code {
+    line-height: 1.5;
+  }
+
+  .deviceTileGrid > *::before {
+    height: 1px;
+  }
+}

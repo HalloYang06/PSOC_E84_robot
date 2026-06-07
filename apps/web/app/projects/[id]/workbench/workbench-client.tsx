@@ -610,8 +610,9 @@ export function WorkbenchClient({
       }
     };
     const onUpdated = (event: Event) => {
-      const detail = event instanceof CustomEvent ? (event.detail as { projectId?: string } | undefined) : undefined;
+      const detail = event instanceof CustomEvent ? (event.detail as { projectId?: string; action?: string } | undefined) : undefined;
       if (detail?.projectId && detail.projectId !== projectId) return;
+      if (detail?.action === "send" || detail?.action === "send-launch") return;
       refreshMessages();
     };
     window.addEventListener("workbench:collab-updated", onUpdated);
@@ -1316,6 +1317,9 @@ export function WorkbenchClient({
           <Link href={`/projects/${projectId}/2d-upgrade`} className={styles.backLink} title="返回项目主页面">
             ← 主页面
           </Link>
+          <Link href={`/projects/${projectId}/cockpit`} className={styles.backLink} title="返回项目驾驶舱">
+            ← 驾驶舱
+          </Link>
           {returnTo ? (
             <Link href={returnTo} className={styles.backLink} title="回到刚才进入工作台的位置">
               {returnToLabel || "← 返回来源"}
@@ -1459,8 +1463,8 @@ export function WorkbenchClient({
                               {seat.automationEnabled ? " · 自动化已开" : ""}
                             </small>
                           </div>
-                          <Link
-                            href={withOpenSeat(sourcePath, seat.id, openIds)}
+                          <button
+                            type="button"
                             className={styles.openBtn}
                             data-workbench-open-tile={seat.id}
                             onClick={(event) => {
@@ -1470,7 +1474,7 @@ export function WorkbenchClient({
                             title={isOpen ? "关闭瓷砖" : "打开瓷砖"}
                           >
                             {isOpen ? "✕" : "+"}
-                          </Link>
+                          </button>
                         </li>
                       );
                     })}

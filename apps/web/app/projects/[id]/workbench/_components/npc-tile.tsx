@@ -268,6 +268,7 @@ type CollabMessage = {
   sender_id: string | null;
   recipient_type: string | null;
   recipient_id: string | null;
+  agent_id?: string | null;
   status: string;
   created_at?: string | null;
   task_id?: string | null;
@@ -1237,7 +1238,9 @@ function deliveryNoun(seatOrDesktopVisible: WorkbenchSeat | boolean): string {
 
 function processTraceHint(seatOrDesktopVisible: WorkbenchSeat | boolean): string {
   const desktopVisible = typeof seatOrDesktopVisible === "boolean" ? seatOrDesktopVisible : seatOrDesktopVisible.desktopVisible;
-  return desktopVisible ? "不会抢占当前窗口；用户打开绑定桌面线程后可追踪详细过程。" : "执行过程以回执形式回到当前 NPC 瓷砖。";
+  return desktopVisible
+    ? "优先后台投递，不抢占当前窗口；用户打开绑定线程后可追踪详细过程。"
+    : "执行过程以回执形式回到当前 NPC 瓷砖。";
 }
 
 function processSignalLabel(value: string): string {
@@ -1767,6 +1770,10 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
   const draftRef = useRef<HTMLTextAreaElement | null>(null);
   const autoScrollRef = useRef(true);
   const sendInFlightRef = useRef(false);
+  const loadInFlightKeyRef = useRef<string | null>(null);
+  const occupancyRefreshInFlightRef = useRef<Promise<void> | null>(null);
+  const releaseOccupancyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pairPolicyRefreshInFlightRef = useRef<Promise<void> | null>(null);
 
   type SeatQueueItem = {
     id: string;
@@ -1831,17 +1838,24 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
   const occupyUrl = apiClientUrl(`/api/collaboration/projects/${encodeURIComponent(projectId)}/thread-workstations/${encodeURIComponent(seatApiId)}`);
 
   const refreshOccupancy = useCallback(async () => {
-    try {
-      const res = await fetch(`${occupyUrl}/occupancy`, { credentials: "include" });
-      const json = await res.json().catch(() => ({}));
-      if (res.ok) {
-        const occ = (json?.data?.occupancy ?? null) as Occupancy | null;
-        setOccupancy(occ);
-        setOccupancyError(null);
+    if (occupancyRefreshInFlightRef.current) return occupancyRefreshInFlightRef.current;
+    const task = (async () => {
+      try {
+        const res = await fetch(`${occupyUrl}/occupancy`, { credentials: "include" });
+        const json = await res.json().catch(() => ({}));
+        if (res.ok) {
+          const occ = (json?.data?.occupancy ?? null) as Occupancy | null;
+          setOccupancy(occ);
+          setOccupancyError(null);
+        }
+      } catch (e) {
+        setOccupancyError(e instanceof Error ? e.message : "查询占用失败");
+      } finally {
+        occupancyRefreshInFlightRef.current = null;
       }
-    } catch (e) {
-      setOccupancyError(e instanceof Error ? e.message : "查询占用失败");
-    }
+    })();
+    occupancyRefreshInFlightRef.current = task;
+    return task;
   }, [occupyUrl]);
 
   const claimOccupancy = useCallback(
@@ -1900,8 +1914,15 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
   );
 
   // open-tile auto-occupy + close auto-release + 30s heartbeat
+  // Native delegated clicks need the latest draft/readiness values; keep this
+  // listener scoped to those values instead of callback-wrapping the full send flow.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     let cancelled = false;
+    if (releaseOccupancyTimerRef.current) {
+      clearTimeout(releaseOccupancyTimerRef.current);
+      releaseOccupancyTimerRef.current = null;
+    }
     (async () => {
       await refreshOccupancy();
       if (cancelled) return;
@@ -1942,8 +1963,12 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
     return () => {
       cancelled = true;
       clearInterval(heartbeat);
-      // best-effort release on close (only if I held it)
-      releaseOccupancy(true);
+      // Delay release so React dev StrictMode's synthetic remount does not create
+      // an immediate release/re-occupy request burst.
+      releaseOccupancyTimerRef.current = setTimeout(() => {
+        releaseOccupancy(true);
+        releaseOccupancyTimerRef.current = null;
+      }, 300);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seatApiId]);
@@ -2111,7 +2136,7 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
         : "已提交启动请求，正在等待平台回执刷新...",
     );
     try {
-      const result = await launchNpcOneShotThreadProcessing(projectId, seatApiId, message.id);
+      const result = await launchNpcOneShotThreadProcessing(projectId, seatApiId, message.id, message.title || "", message.body || "");
       setSendNote(
         result.launched
           ? `${result.seatName || seat.name} 的单次处理已启动，等待已收到提醒 / 最终结果。`
@@ -2131,6 +2156,9 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
 
   const load = useCallback(
     async (size: number) => {
+      const loadKey = `${projectId}:${seatApiId}:${seatIdentityKey}:${receiptDirection}:${size}`;
+      if (loadInFlightKeyRef.current === loadKey) return;
+      loadInFlightKeyRef.current = loadKey;
       setFetching(true);
       setFetchError(null);
       try {
@@ -2142,42 +2170,35 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
           }
         };
         const identityIds = Array.from(seatIdentityIds);
-        const messageLimit = Math.max(120, size);
+        const identitySet = new Set(identityIds);
+        const messageLimit = Math.min(500, Math.max(160, size * Math.max(1, identityIds.length)));
         const baseWithLimit = apiClientUrl(`/api/collaboration/messages?project_id=${encodeURIComponent(projectId)}&limit=${messageLimit}`);
-        const incomingUrls = identityIds.map(
-          (id) => `${baseWithLimit}&recipient_type=thread_workstation&recipient_id=${encodeURIComponent(id)}`,
-        );
-        const outgoingUrls = identityIds.map((id) => `${baseWithLimit}&sender_id=${encodeURIComponent(id)}`);
-        const agentUrls = identityIds.map((id) => `${baseWithLimit}&agent_id=${encodeURIComponent(id)}`);
         const scopedProject = encodeURIComponent(projectId);
         const queuesUrl = apiClientUrl(`/api/seats/${encodeURIComponent(seatApiId)}/queues?project_id=${scopedProject}&limit=30`);
         const receiptsUrl = apiClientUrl(`/api/receipts/by-seat/${encodeURIComponent(seatApiId)}?project_id=${scopedProject}&direction=${receiptDirection}&limit=30`);
-        const [incomingResponses, outgoingResponses, agentResponses, r3, r4] = await Promise.all([
-          Promise.all(incomingUrls.map((url) => safeFetch(url))),
-          Promise.all(outgoingUrls.map((url) => safeFetch(url))),
-          Promise.all(agentUrls.map((url) => safeFetch(url))),
+        const [messagesResponse, r3, r4] = await Promise.all([
+          safeFetch(baseWithLimit),
           fetch(queuesUrl, { credentials: "include" }).catch(() => null),
           fetch(receiptsUrl, { credentials: "include" }).catch(() => null),
         ]);
-        const liveIncomingResponses = incomingResponses.filter((res): res is Response => Boolean(res));
-        const firstIncomingError = liveIncomingResponses.find((res) => !res.ok);
-        if (!liveIncomingResponses.length) {
+        if (!messagesResponse) {
           throw new Error("主对话暂时无法连接，平台会继续重试。");
         }
-        if (firstIncomingError && liveIncomingResponses.every((res) => !res.ok)) {
-          const json = await firstIncomingError.json().catch(() => ({}));
-          const msg = json?.error?.message ?? json?.message ?? `HTTP ${firstIncomingError.status}`;
+        if (!messagesResponse.ok) {
+          const json = await messagesResponse.json().catch(() => ({}));
+          const msg = json?.error?.message ?? json?.message ?? `HTTP ${messagesResponse.status}`;
           throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
         }
-        const incomingJson = await Promise.all(liveIncomingResponses.map((res) => res.ok ? res.json().catch(() => ({})) : Promise.resolve({})));
-        const outgoingJson = await Promise.all(outgoingResponses.map((res) => res?.ok ? res.json().catch(() => ({})) : Promise.resolve({})));
-        const agentJson = await Promise.all(agentResponses.map((res) => res?.ok ? res.json().catch(() => ({})) : Promise.resolve({})));
-        const incoming = incomingJson.flatMap((json) => (json?.data ?? []) as CollabMessage[]);
-        const outgoing = outgoingJson.flatMap((json) => (json?.data ?? []) as CollabMessage[]);
-        const agentScoped = agentJson.flatMap((json) => (json?.data ?? []) as CollabMessage[]);
+        const messagesJson = await messagesResponse.json().catch(() => ({}));
+        const scopedMessages = ((messagesJson?.data ?? []) as CollabMessage[]).filter((message) => {
+          const recipientMatch = message.recipient_type === "thread_workstation" && Boolean(message.recipient_id && identitySet.has(message.recipient_id));
+          const senderMatch = Boolean(message.sender_id && identitySet.has(message.sender_id));
+          const agentMatch = Boolean(message.agent_id && identitySet.has(message.agent_id));
+          return recipientMatch || senderMatch || agentMatch;
+        });
         const seen = new Set<string>();
         const merged: CollabMessage[] = [];
-        for (const m of [...incoming, ...outgoing, ...agentScoped]) {
+        for (const m of scopedMessages) {
           if (!m.id || seen.has(m.id)) continue;
           seen.add(m.id);
           merged.push(m);
@@ -2201,10 +2222,13 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
       } catch (e) {
         setFetchError(e instanceof Error ? e.message : "加载失败");
       } finally {
+        if (loadInFlightKeyRef.current === loadKey) {
+          loadInFlightKeyRef.current = null;
+        }
         setFetching(false);
       }
     },
-    [apiBaseUrl, projectId, seatApiId, seatIdentityIds, receiptDirection],
+    [projectId, seatApiId, seatIdentityIds, seatIdentityKey, receiptDirection],
   );
 
   const refreshAfterOneShot = useCallback(() => {
@@ -2748,26 +2772,33 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
   const [closeoutBusyId, setCloseoutBusyId] = useState<string | null>(null);
 
   const refreshPairReviewPolicies = useCallback(async () => {
-    try {
-      const res = await fetch(apiClientUrl(`/api/collaboration/projects/${encodeURIComponent(projectId)}/config`), {
-        credentials: "include",
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) return;
-      const cfg = json?.data?.collaboration_config || json?.data || {};
-      const reviewPolicyCfg = cfg?.review_policy || {};
-      const rules = reviewPolicyCfg?.npc_pair_rules || {};
-      const next: Record<string, string> = {};
-      if (rules && typeof rules === "object") {
-        Object.entries(rules).forEach(([key, value]) => {
-          const policy = typeof value === "object" && value ? String((value as { policy?: unknown }).policy || "") : "";
-          if (policy) next[key] = policy;
+    if (pairPolicyRefreshInFlightRef.current) return pairPolicyRefreshInFlightRef.current;
+    const task = (async () => {
+      try {
+        const res = await fetch(apiClientUrl(`/api/collaboration/projects/${encodeURIComponent(projectId)}/config`), {
+          credentials: "include",
         });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) return;
+        const cfg = json?.data?.collaboration_config || json?.data || {};
+        const reviewPolicyCfg = cfg?.review_policy || {};
+        const rules = reviewPolicyCfg?.npc_pair_rules || {};
+        const next: Record<string, string> = {};
+        if (rules && typeof rules === "object") {
+          Object.entries(rules).forEach(([key, value]) => {
+            const policy = typeof value === "object" && value ? String((value as { policy?: unknown }).policy || "") : "";
+            if (policy) next[key] = policy;
+          });
+        }
+        setPairReviewPolicies(next);
+      } catch {
+        // 关系直派只是辅助状态，读取失败不阻断工作台主流程。
+      } finally {
+        pairPolicyRefreshInFlightRef.current = null;
       }
-      setPairReviewPolicies(next);
-    } catch {
-      // 关系直派只是辅助状态，读取失败不阻断工作台主流程。
-    }
+    })();
+    pairPolicyRefreshInFlightRef.current = task;
+    return task;
   }, [projectId]);
 
   useEffect(() => {
@@ -3246,6 +3277,8 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
       root.removeEventListener("click", handleNativeDispatch, true);
       root.removeEventListener("mousedown", handleNativeDispatch, true);
     };
+    // Native delegated clicks need the latest draft/readiness values without callback-wrapping the full send flow.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft, sending, occupancyHeldByOther, reviewBusyId]);
 
   async function sendCommand(opts?: { peerId?: string; peerName?: string }) {
@@ -3333,6 +3366,12 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
       }
       if (draftRef.current) draftRef.current.value = "";
       setDraft("");
+      const createdMessage = json.data as CollabMessage;
+      setMessages((current) => {
+        if (!current) return [createdMessage];
+        if (current.some((item) => item.id === createdMessage.id)) return current;
+        return [createdMessage, ...current];
+      });
       if (isBoundaryCard) {
         setSendNote("边界卡已登记，等待确认；确认前不会启动真实处理 ✓");
       } else {
@@ -3351,22 +3390,33 @@ export function NpcTile({ projectId, apiBaseUrl, seat, teammates, crossLeads = [
                 : `已记录到 ${seat.name}，当前按“${dispatchReadiness.stateLabel}”排队等待恢复...`)
               : (isPeer ? `已派给 ${manualTargetName}，正在投递到目标电脑...` : "已派发，正在投递到绑定线程..."),
           );
-          const launchResult = await launchNpcOneShotThreadProcessing(projectId, targetSeatId, json.data.id);
-          setSendNote(
-            launchResult.launched
-              ? dispatchReadiness.mode === "queue"
-                ? `${launchResult.seatName || manualTargetName} 已进入恢复队列；等目标电脑恢复后会继续处理`
-                : launchResult.desktopVisible
-                  ? `${launchResult.seatName || manualTargetName} 已进入执行电脑，正在等待桌面线程确认可见`
-                  : `${launchResult.seatName || manualTargetName} 已进入执行电脑队列；回执会回到对应 NPC 瓷砖`
-              : `已派发，但投递失败：${launchResult.error || "请检查绑定线程、执行电脑或同步状态"}`,
-          );
-          if (launchResult.launched) refreshAfterOneShot();
+          void launchNpcOneShotThreadProcessing(projectId, targetSeatId, createdMessage.id, createdMessage.title || "", createdMessage.body || "")
+            .then((launchResult) => {
+              setSendNote(
+                launchResult.launched
+                  ? dispatchReadiness.mode === "queue"
+                    ? `${launchResult.seatName || manualTargetName} 已进入恢复队列；等目标电脑恢复后会继续处理`
+                    : launchResult.desktopVisible
+                      ? `${launchResult.seatName || manualTargetName} 已进入执行电脑；后台线程正在处理或等待桌面兜底回执`
+                      : `${launchResult.seatName || manualTargetName} 已进入执行电脑队列；回执会回到对应 NPC 瓷砖`
+                  : `已派发，但投递失败：${launchResult.error || "请检查绑定线程、执行电脑或同步状态"}`,
+              );
+              if (launchResult.launched) refreshAfterOneShot();
+              autoScrollRef.current = true;
+              void load(limit);
+              window.dispatchEvent(new CustomEvent("workbench:collab-updated", { detail: { projectId, messageId: createdMessage.id, action: "send-launch" } }));
+            })
+            .catch((error) => {
+              setSendNote(`已记录消息，但投递失败：${error instanceof Error ? error.message : "未知错误"}`);
+            });
         }
       }
       autoScrollRef.current = true;
-      await load(limit);
-      window.dispatchEvent(new CustomEvent("workbench:collab-updated", { detail: { projectId, messageId: json.data.id, action: "send" } }));
+      window.setTimeout(() => {
+        autoScrollRef.current = true;
+        void load(limit);
+      }, 2500);
+      window.dispatchEvent(new CustomEvent("workbench:collab-updated", { detail: { projectId, messageId: createdMessage.id, action: "send" } }));
     } catch (e) {
       setSendNote(`派发失败：${e instanceof Error ? e.message : "未知错误"}`);
     } finally {
