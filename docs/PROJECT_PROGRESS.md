@@ -17,6 +17,11 @@
 
 ## 架构状态
 
+- 2026-06-08 服务器总控台和 App 协议确定：
+  - 新增 [COMMAND_CENTER_APP_PROTOCOL_V1.md](COMMAND_CENTER_APP_PROTOCOL_V1.md)，固定服务器机械臂总控台和 App 用户端边界：Three.js+URDF+电机/传感器数据渲染、摄像头图像采集、语音采集/API 中转、VLA、接线检测、安全状态检测和急停按钮。
+  - 总控台协议只定义合同，不改平台仓库和 App 代码；平台仓库由另一个 AI 按该协议实现。
+  - 协议明确服务器/VLA/App/M55/MuJoCo 都不能绕过 M33；VLA 只能返回 `vla_plan_candidate_v1`，急停请求必须等待 `estop_ack_v1` 中的 M33 ack，App 禁止底层电机控制。
+  - 更新 [INTEGRATION_GUIDE.md](INTEGRATION_GUIDE.md) 和 [CURRENT_PROJECT_BRIEFING.md](CURRENT_PROJECT_BRIEFING.md) 引用该协议，并新增静态合同测试防止后续 AI 忘记总控台安全边界。
 - 2026-06-08 交接和 M33 固件推送：
   - 新增当前线程交接文档 [current-system-handoff-2026-06-08.md](ai-handoffs/current-system-handoff-2026-06-08.md)，记录主仓库/M33/M55 工作区、NanoPi 和仿真主机 IP、当前服务状态、3/4/5/6 电机到 MuJoCo 的映射、7 号台架边界、验证命令和下一步。
   - M33 固件仓库 `D:\RT-ThreadStudio\workspace\yiliao_m33` 已推送 `M33` 分支最新提交 `192ad049 Stabilize M33 BLE and model bridge telemetry`，包含 BLE 遥测浮点格式规避和 M55 模型结果 `can_ret` 日志。

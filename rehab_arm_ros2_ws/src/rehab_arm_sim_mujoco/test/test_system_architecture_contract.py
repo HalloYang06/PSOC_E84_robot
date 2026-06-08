@@ -147,6 +147,38 @@ class SystemArchitectureContractTests(unittest.TestCase):
         self.assertIn('scope: bench_debug_and_mujoco_shadow_only', schema)
         self.assertIn('temporary_substitute_for_medical_arm_6dof_joint: jian_xuanzhuan_joint', schema)
 
+    def test_command_center_and_app_protocol_preserves_safety_boundary(self) -> None:
+        protocol = (
+            REPO_ROOT
+            / 'docs'
+            / 'COMMAND_CENTER_APP_PROTOCOL_V1.md'
+        ).read_text(encoding='utf-8')
+        integration = (
+            REPO_ROOT
+            / 'docs'
+            / 'INTEGRATION_GUIDE.md'
+        ).read_text(encoding='utf-8')
+        briefing = (
+            REPO_ROOT
+            / 'docs'
+            / 'CURRENT_PROJECT_BRIEFING.md'
+        ).read_text(encoding='utf-8')
+
+        self.assertIn('JointTrajectory -> NanoPi -> M33 -> motor', protocol)
+        self.assertIn('Three.js + URDF', protocol)
+        self.assertIn('camera_keyframe_v1', protocol)
+        self.assertIn('voice_relay_v1', protocol)
+        self.assertIn('vla_plan_candidate_v1', protocol)
+        self.assertIn('wiring_health_v1', protocol)
+        self.assertIn('safety_state_v1', protocol)
+        self.assertIn('estop_request_v1', protocol)
+        self.assertIn('estop_ack_v1', protocol)
+        self.assertIn('not_safe_until_m33_ack', protocol)
+        self.assertIn('App 禁止', protocol)
+        self.assertIn('服务器不得直接发 CAN', protocol)
+        self.assertIn('COMMAND_CENTER_APP_PROTOCOL_V1.md', integration)
+        self.assertIn('COMMAND_CENTER_APP_PROTOCOL_V1.md', briefing)
+
 
 if __name__ == '__main__':
     unittest.main()
