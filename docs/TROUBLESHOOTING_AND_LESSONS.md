@@ -4912,6 +4912,7 @@ ip -details -statistics link show can0
 
 - 2026-06-08 实测：3/4/5/6 电机 CAN 层可见；7 号未见反馈；M33 主线未回 `0x322/0x330~0x334`。
 - 2026-06-08 用户发现此前缺少共地；共地修正后复测仍没有 M33 `0x322/0x330~0x334`，说明共地是必要条件但当前还不是唯一问题。继续查 M33 供电、固件是否运行、CANH/CANL 是否接在同一 bus、M33 CAN 收发器 EN/STBY、终端电阻和接口方向。
+- 2026-06-08 后续复测已恢复 M33 主线：`0x321 -> 0x322` 和 `0x330~0x334` 可见；4/5/6 开 active-report 后分别进入 M33 fresh aggregate slot `0x331/0x332/0x333`，ROS `/joint_states` 发布 4 个 legacy joints。7 号仍 stale。
 
 ### PowerShell 远程 SSH 命令里的 `$变量` 会被本地提前展开
 
