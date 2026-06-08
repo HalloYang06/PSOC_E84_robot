@@ -17,6 +17,11 @@
 
 ## 架构状态
 
+- 2026-06-08 交接和 M33 固件推送：
+  - 新增当前线程交接文档 [current-system-handoff-2026-06-08.md](ai-handoffs/current-system-handoff-2026-06-08.md)，记录主仓库/M33/M55 工作区、NanoPi 和仿真主机 IP、当前服务状态、3/4/5/6 电机到 MuJoCo 的映射、7 号台架边界、验证命令和下一步。
+  - M33 固件仓库 `D:\RT-ThreadStudio\workspace\yiliao_m33` 已推送 `M33` 分支最新提交 `192ad049 Stabilize M33 BLE and model bridge telemetry`，包含 BLE 遥测浮点格式规避和 M55 模型结果 `can_ret` 日志。
+  - M33 编译验证通过：`mingw32-make -C D:\RT-ThreadStudio\workspace\yiliao_m33\Debug all -j4`，输出 `text=580412 data=15512 bss=311269`。
+  - 未把密码写入仓库；未提交 M33 工作区中的 `.settings/projcfg.ini` 时间戳、本地 `.codex_tmp/`、旧 handoff 草稿和工具包。
 - 2026-06-08 MuJoCo hardware shadow 主线映射已从 7 号台架过渡切回装机 3/4/5/6：
   - 更新 `medical_arm_shadow_relay_node.py` 和 `medical_arm_6dof_hardware_shadow.launch.py`，默认映射为 `shoulder_lift_joint -> jian_hengxiang_joint`、`elbow_lift_joint -> jian_zongxiang_joint`、`shoulder_abduction_joint -> zhou_zongxiang_joint`、`upper_arm_rotation_joint -> jian_xuanzhuan_joint`。
   - 7 号 EL05 外部电机不再是 MuJoCo hardware shadow 的默认来源；它只保留为 `bench-debug` 台架电机。
