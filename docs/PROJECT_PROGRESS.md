@@ -2613,3 +2613,16 @@
 - Behavior: if a return target is provided, the script writes a slower `limit_spd(0x7017)`, writes the return `loc_ref(0x7016)`, waits for `--return-hold`, then sends stop and disables active-report unless `--leave-enabled` is set.
 - Validation: local Python syntax check passed and CLI help shows the new return parameters.
 - Safety: return motion is explicit; the script will not assume `0°` unless the operator asks for `--return-deg 0`. This avoids unexpected motion toward an unconfirmed zero on a real wearable mechanism.
+
+### 2026-06-08 - Installed motor 3/4/5/6 CAN-layer bring-up check
+
+- Reason: user reported motors 3/4/5/6 are now installed, motors 1/2 are still unwired, and asked whether each installed motor is connected through NanoPi.
+- Completed: remotely logged into NanoPi `192.168.2.66` and ran non-motion checks only. No `0x320` target frames or position/velocity/torque commands were sent.
+- Recovery: initial NanoPi `can0` was `DOWN/STOPPED` and `rehab-arm-nanopi-readonly.service` was repeatedly failing during CAN setup. Reloaded `mcp251xfd`; `can0` reappeared and service became `active`.
+- Validated CAN controller: final `can0` was 1 Mbps `ERROR-ACTIVE`, `berr-counter tx 0 rx 0`; service stayed `active`.
+- Validated motor 3: CANSimple node 3 traffic was present on `0x061/0x069`; `cansimple get-error --node 3` returned `0x063#0000000000000000`, indicating no active error response.
+- Validated motor 4/5/6 direct CAN layer: enabling active-report produced extended feedback frames. Six-second capture counts were `180004FD=599`, `180005FD=600`, `180006FD=599`.
+- Failed/unverified motor 7: active-report command to motor 7 produced no `0x180007FD`/`0x188007FD` feedback in the same capture window.
+- Mainline blocker: M33 did not reply to NanoPi heartbeat `0x321` with `0x322`, and no M33 aggregate `0x330~0x334` frames were observed. ROS `/rehab_arm/safety_state` reported `limited` with detail `no PSoC status after ... heartbeats`.
+- Cleanup: disabled active-report for motors 4/5/6 after the test; short post-disable extended-frame capture was empty. A `timeout 2 candump -L can0,320:7FF` check produced no output.
+- Current conclusion: motors 3/4/5/6 are visible at the direct CAN motor layer; the formal `M33 -> NanoPi -> ROS -> MuJoCo` mainline is not yet restored because M33 status/aggregate frames are absent.

@@ -4887,3 +4887,48 @@ ip -details -statistics link show can0
 技巧：
 
 - 每次新增 profile 时检查 `/sim/medical_arm/joint_states` 的 `name/position/velocity/effort` 长度一致。
+
+### 电机直连 CAN 可见不等于 M33 主线已通
+
+现象：
+
+- NanoPi `candump` 能看到 3 号 CANSimple `0x061/0x069`。
+- NanoPi 直接发送私有协议 active-report 后，4/5/6 能回 `0x180004FD/0x180005FD/0x180006FD`。
+- 但 NanoPi `heartbeat 0x321` 没有收到 M33 `0x322`，也没有 M33 聚合状态 `0x330~0x334`。
+- ROS `/rehab_arm/safety_state` 显示 `limited`，detail 类似 `no PSoC status after ... heartbeats`。
+
+判断：
+
+- 这说明电机 CAN 物理层和若干电机节点在线，但 M33 当前没有作为主站把状态聚合到 NanoPi。
+- 不能把“电机直连能看到反馈”写成“正式 `M33 -> NanoPi -> ROS -> MuJoCo` 已打通”。
+
+解决：
+
+- 先保留 direct CAN 结果作为电机接线证明。
+- 下一步查 M33 是否上电、M33 CAN 线是否接到同一总线、M33 固件是否运行当前 CAN 聚合任务、M33 收发器 enable/standby 是否正确。
+- 只有同时看到 `0x321 -> 0x322` 和 `0x330~0x334`，才继续期待 `/joint_states`、MuJoCo hardware shadow 或 VLA 使用这些关节。
+
+状态：
+
+- 2026-06-08 实测：3/4/5/6 电机 CAN 层可见；7 号未见反馈；M33 主线未回 `0x322/0x330~0x334`。
+
+### PowerShell 远程 SSH 命令里的 `$变量` 会被本地提前展开
+
+现象：
+
+- 从 Windows PowerShell 执行双引号包裹的 SSH 命令：
+
+```powershell
+ssh pi@192.168.2.66 "for m in 4 5 6 7; do ... $m ...; done"
+```
+
+- 远端实际收到的 `$m/$DUMP/$id` 为空，导致命令变成 `--motor` 空值或 `grep -c " #"`，脚本可能卡住。
+
+解决：
+
+- PowerShell 侧用单引号包裹远端脚本，或显式转义 `$`。
+- 长命令尽量拆成可独立验证的小步骤，不要把后台 `candump`、循环发命令、统计 grep 全塞进一个未验证的远程一行。
+
+状态：
+
+- 2026-06-08 已踩到一次；清理残留进程后改用 PowerShell 单引号重跑，成功完成 4/5/6/7 active-report 检查。
