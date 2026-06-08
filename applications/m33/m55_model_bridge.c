@@ -41,6 +41,7 @@ void m55_model_bridge_init(void)
 static void m55_model_bridge_handle_ai_result(const m33_m55_message_t *msg)
 {
     const ai_inference_msg_t *ai;
+    rt_err_t ret;
     rt_uint8_t flags = CONTROL_M33_MODEL_STATUS_FLAG_FRESH;
     rt_uint8_t result_code = M55_RESULT_CODE_NONE;
     rt_uint16_t confidence_permille;
@@ -64,11 +65,19 @@ static void m55_model_bridge_handle_ai_result(const m33_m55_message_t *msg)
     g_m55_model_state.window_ms = window_ms;
     g_m55_model_state.timestamp = rt_tick_get();
 
-    (void)control_publish_m55_model_result(g_m55_model_state.model_code,
+    ret = control_publish_m55_model_result(g_m55_model_state.model_code,
                                            g_m55_model_state.result_code,
                                            g_m55_model_state.confidence_permille,
                                            g_m55_model_state.flags,
                                            g_m55_model_state.window_ms);
+    rt_kprintf("[m55_model_bridge] ai seq=%lu model=%u result=%u conf=%u flags=0x%02x win=%u can_ret=%d\n",
+               (unsigned long)g_m55_model_state.seq,
+               g_m55_model_state.model_code,
+               g_m55_model_state.result_code,
+               g_m55_model_state.confidence_permille,
+               g_m55_model_state.flags,
+               g_m55_model_state.window_ms,
+               ret);
 }
 
 void m55_model_bridge_handle_message(const m33_m55_message_t *msg)

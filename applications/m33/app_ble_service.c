@@ -13,6 +13,37 @@ static struct
     char last_payload[256];
 } g_app_ble;
 
+static long app_ble_float_to_scaled(float value, float scale)
+{
+    float scaled = value * scale;
+
+    if (scaled >= 0.0f)
+    {
+        return (long)(scaled + 0.5f);
+    }
+    return (long)(scaled - 0.5f);
+}
+
+static void app_ble_decimal_parts(long scaled,
+                                  long scale,
+                                  const char **sign,
+                                  long *whole,
+                                  long *frac)
+{
+    if (scaled < 0)
+    {
+        *sign = "-";
+        scaled = -scaled;
+    }
+    else
+    {
+        *sign = "";
+    }
+
+    *whole = scaled / scale;
+    *frac = scaled % scale;
+}
+
 static control_mode_t app_ble_parse_mode_token(const char *token)
 {
     if (token == RT_NULL)
@@ -182,23 +213,50 @@ rt_err_t app_ble_service_update_telemetry(const sensor_data_t *sensor,
                                           const control_status_t *control,
                                           const safety_monitor_t *safety)
 {
+    const char *sh_sign;
+    const char *el_sign;
+    const char *la_sign;
+    const char *e1_sign;
+    const char *e2_sign;
+    long sh_whole;
+    long sh_frac;
+    long el_whole;
+    long el_frac;
+    long la_whole;
+    long la_frac;
+    long e1_whole;
+    long e1_frac;
+    long e2_whole;
+    long e2_frac;
+
     if (sensor == RT_NULL || control == RT_NULL || safety == RT_NULL)
     {
         return -RT_ERROR;
     }
 
+    app_ble_decimal_parts(app_ble_float_to_scaled(sensor->shoulder_angle, 10.0f),
+                          10L, &sh_sign, &sh_whole, &sh_frac);
+    app_ble_decimal_parts(app_ble_float_to_scaled(sensor->elbow_angle, 10.0f),
+                          10L, &el_sign, &el_whole, &el_frac);
+    app_ble_decimal_parts(app_ble_float_to_scaled(sensor->lateral_position, 10.0f),
+                          10L, &la_sign, &la_whole, &la_frac);
+    app_ble_decimal_parts(app_ble_float_to_scaled(sensor->emg_ch1, 100.0f),
+                          100L, &e1_sign, &e1_whole, &e1_frac);
+    app_ble_decimal_parts(app_ble_float_to_scaled(sensor->emg_ch2, 100.0f),
+                          100L, &e2_sign, &e2_whole, &e2_frac);
+
     rt_mutex_take(&g_app_ble.lock, RT_WAITING_FOREVER);
     rt_snprintf(g_app_ble.last_payload, sizeof(g_app_ble.last_payload),
-                "{\"s\":%d,\"m\":%d,\"sh\":%.1f,\"el\":%.1f,\"la\":%.1f,\"hr\":%u,\"sp\":%u,\"e1\":%.2f,\"e2\":%.2f,\"sf\":%d}\n",
+                "{\"s\":%d,\"m\":%d,\"sh\":%s%ld.%01ld,\"el\":%s%ld.%01ld,\"la\":%s%ld.%01ld,\"hr\":%u,\"sp\":%u,\"e1\":%s%ld.%02ld,\"e2\":%s%ld.%02ld,\"sf\":%d}\n",
                 g_app_ble.runtime.streaming_enabled,
                 control->mode,
-                sensor->shoulder_angle,
-                sensor->elbow_angle,
-                sensor->lateral_position,
+                sh_sign, sh_whole, sh_frac,
+                el_sign, el_whole, el_frac,
+                la_sign, la_whole, la_frac,
                 sensor->heart_rate,
                 sensor->spo2,
-                sensor->emg_ch1,
-                sensor->emg_ch2,
+                e1_sign, e1_whole, e1_frac,
+                e2_sign, e2_whole, e2_frac,
                 safety->safety_state);
     g_app_ble.runtime.uplink_packets++;
     rt_mutex_release(&g_app_ble.lock);
