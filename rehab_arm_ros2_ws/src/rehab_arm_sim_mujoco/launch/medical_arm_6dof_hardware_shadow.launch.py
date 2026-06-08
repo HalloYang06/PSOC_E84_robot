@@ -26,7 +26,12 @@ def generate_launch_description():
             parameters=[{
                 'source_joint_state_topic': '/joint_states',
                 'target_trajectory_topic': '/sim/medical_arm/joint_trajectory',
-                'joint_map_json': '{"forearm_rotation_joint":"jian_xuanzhuan_joint"}',
+                'joint_map_json': (
+                    '{"shoulder_lift_joint":"jian_hengxiang_joint",'
+                    '"elbow_lift_joint":"jian_zongxiang_joint",'
+                    '"shoulder_abduction_joint":"zhou_zongxiang_joint",'
+                    '"upper_arm_rotation_joint":"jian_xuanzhuan_joint"}'
+                ),
                 'publish_full_target': True,
                 'target_joint_names_json': (
                     '["jian_hengxiang_joint","jian_zongxiang_joint","jian_xuanzhuan_joint",'

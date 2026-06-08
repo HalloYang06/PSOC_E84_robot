@@ -20,6 +20,62 @@
 
 ## CAN 与硬件
 
+### MuJoCo hardware shadow 无 3 号输出时先查 relay 映射
+
+现象：
+
+- NanoPi `/joint_states` 已发布 `shoulder_lift_joint`，仿真主机也能通过无线 ROS2 echo 到这个 topic。
+- `rehab-arm-sim-host-shadow.service` active/enabled，`mujoco_sim_node.py` 日志显示 `backend=mujoco-model`。
+- 但 `/sim/medical_arm/joint_trajectory` 或 `/sim/medical_arm/joint_states` 没有反映 3 号装机电机。
+
+环境：
+
+- 3 号伺泰威/CANSimple 已装机，对应 M33 `0x330`、NanoPi legacy `/joint_states shoulder_lift_joint`、MuJoCo `jian_hengxiang_joint`。
+- 旧 hardware shadow 曾用 7 号外部 EL05 的 `forearm_rotation_joint -> jian_xuanzhuan_joint` 作为临时验证映射。
+
+根因：
+
+- relay 启动参数仍是旧映射 `{'forearm_rotation_joint':'jian_xuanzhuan_joint'}`，所以当前 3 号 `shoulder_lift_joint` 被忽略。
+
+解决：
+
+- 主线默认映射改为装机 3/4/5/6：
+
+```text
+shoulder_lift_joint      -> jian_hengxiang_joint
+elbow_lift_joint         -> jian_zongxiang_joint
+shoulder_abduction_joint -> zhou_zongxiang_joint
+upper_arm_rotation_joint -> jian_xuanzhuan_joint
+```
+
+- 同步仿真主机后执行：
+
+```bash
+cd /home/cal/桌面/Medical-Rehabilitation-Manipulator/rehab_arm_ros2_ws
+source /opt/ros/jazzy/setup.bash
+colcon build --packages-select rehab_arm_sim_mujoco --symlink-install
+sudo systemctl restart rehab-arm-sim-host-shadow.service
+```
+
+验证：
+
+```bash
+ros2 topic echo --once /joint_states
+ros2 topic echo --once /sim/medical_arm/joint_trajectory
+ros2 topic echo --once /sim/medical_arm/joint_states
+ros2 topic hz /sim/medical_arm/joint_states
+```
+
+技巧：
+
+- 如果 `/joint_states` 有数据而 `/sim/medical_arm/joint_trajectory` 不动，优先看 `journalctl -u rehab-arm-sim-host-shadow.service` 里的 `joint_map=...`。
+- 7 号外部电机是 bench-debug，不要再把 `forearm_rotation_joint -> jian_xuanzhuan_joint` 作为 hardware shadow 默认主线。
+- 4/5/6 验证时可以临时打开主动遥测，验证完必须关闭，并抓 `0x320` 确认没有运动目标帧。
+
+状态：
+
+- 2026-06-08 已修复并远端验证：3 号常态 fresh 可驱动 `jian_hengxiang_joint`，临时打开 4/5/6 后可驱动 4 个装机关节；MuJoCo `/sim/medical_arm/joint_states` 约 100 Hz 输出，4/5/6 验证后主动遥测已关闭，`0x320` 抓包为空。
+
 ### 7 号电机进 M55 模型先验反馈新鲜度，不要先改模型
 
 现象：

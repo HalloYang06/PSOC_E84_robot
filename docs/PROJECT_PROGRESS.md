@@ -17,6 +17,13 @@
 
 ## 架构状态
 
+- 2026-06-08 MuJoCo hardware shadow 主线映射已从 7 号台架过渡切回装机 3/4/5/6：
+  - 更新 `medical_arm_shadow_relay_node.py` 和 `medical_arm_6dof_hardware_shadow.launch.py`，默认映射为 `shoulder_lift_joint -> jian_hengxiang_joint`、`elbow_lift_joint -> jian_zongxiang_joint`、`shoulder_abduction_joint -> zhou_zongxiang_joint`、`upper_arm_rotation_joint -> jian_xuanzhuan_joint`。
+  - 7 号 EL05 外部电机不再是 MuJoCo hardware shadow 的默认来源；它只保留为 `bench-debug` 台架电机。
+  - 远端仿真主机 `cal@192.168.2.46` 已同步代码、`colcon build --packages-select rehab_arm_sim_mujoco --symlink-install` 通过，并重启 `rehab-arm-sim-host-shadow.service`。
+  - 实测 3 号链路：NanoPi `can0` 为 `ERROR-ACTIVE` 且 `berr-counter tx 0 rx 0`；M33 `0x330#...0301...` fresh；NanoPi `/joint_states` 发布 `shoulder_lift_joint=0.0`；仿真主机收到 `/joint_states` 并发布 `/sim/medical_arm/joint_trajectory` 六关节目标；MuJoCo `/sim/medical_arm/joint_states` 约 100 Hz 输出 6 个 medical arm joint。
+  - 临时打开 4/5/6 主动遥测后，NanoPi `/joint_states` 发布 `shoulder_lift_joint`、`elbow_lift_joint`、`shoulder_abduction_joint`、`upper_arm_rotation_joint`；relay 输出 `[jian_hengxiang, jian_zongxiang, jian_xuanzhuan, zhou_zongxiang, wanbu_zongxiang, wanbu_hengxiang]`，位置示例 `[0.0, 2.563, 4.507, 6.324, 0.0, 0.0]`；MuJoCo 按限位夹到 `[0.0, 1.7453, 1.0472, 2.3562, 0.0, 0.0]`。
+  - 验证后已关闭 4/5/6 主动遥测；短抓包未再见 `0x180004FD/0x180005FD/0x180006FD` 主动上报，M33 `0x331~0x333` 回到 stale，且 `timeout 2 candump -L can0,320:7FF` 无输出。
 - 2026-06-04 M55 已接入 7 号电机数据的真实 TFLM 管线验证：
   - M33/M55 共享 `sensor_snapshot_msg_t` 新增 `source/flags/motor_id`，并新增 `MODEL_INPUT_SRC_MOTOR_FEEDBACK` 和 `VOICE_CTRL_PUBLISH_MOTOR7_SNAPSHOT`。
   - M33 `applications/m33/m55_model_input_bridge.*` 新增 `m55_model_input_bridge_publish_motor7_snapshot()`，通过 `control_get_motor_feedback(7)` 获取 7 号外部 EL05 台架电机反馈，再走现有 `MSG_TYPE_SENSOR_SNAPSHOT` 发给 M55。

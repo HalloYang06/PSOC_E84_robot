@@ -32,9 +32,10 @@ except ModuleNotFoundError:  # Allows unit tests without a sourced ROS environme
 
 
 DEFAULT_JOINT_MAP = {
-    # Temporary bench rule: external motor7 publishes legacy forearm_rotation_joint
-    # and shadows the medical-arm shoulder/upper-arm rotation joint.
-    'forearm_rotation_joint': 'jian_xuanzhuan_joint',
+    'shoulder_lift_joint': 'jian_hengxiang_joint',
+    'elbow_lift_joint': 'jian_zongxiang_joint',
+    'shoulder_abduction_joint': 'zhou_zongxiang_joint',
+    'upper_arm_rotation_joint': 'jian_xuanzhuan_joint',
 }
 
 DEFAULT_TARGET_JOINT_NAMES = [
