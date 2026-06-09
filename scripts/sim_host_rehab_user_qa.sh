@@ -28,13 +28,15 @@ echo "${executables}" | grep -q "${PACKAGE_NAME} build_rehab_session_plan.py"
 echo "${executables}" | grep -q "${PACKAGE_NAME} build_command_center_sync_plan.py"
 echo "${executables}" | grep -q "${PACKAGE_NAME} check_command_center_sync_plan.py"
 echo "${executables}" | grep -q "${PACKAGE_NAME} check_vla_plan_candidate.py"
+echo "${executables}" | grep -q "${PACKAGE_NAME} build_mujoco_dry_run_review_plan.py"
 
 voice_json="$(mktemp)"
 session_json="$(mktemp)"
 sync_json="$(mktemp)"
 sync_quality_json="$(mktemp)"
 vla_candidate_report_json="$(mktemp)"
-trap 'rm -f "${voice_json}" "${session_json}" "${sync_json}" "${sync_quality_json}" "${vla_candidate_report_json}"' EXIT
+mujoco_review_plan_json="$(mktemp)"
+trap 'rm -f "${voice_json}" "${session_json}" "${sync_json}" "${sync_quality_json}" "${vla_candidate_report_json}" "${mujoco_review_plan_json}"' EXIT
 
 ros2 run "${PACKAGE_NAME}" build_voice_pipeline_plan.py \
   --robot-id medical_rehab_arm \
@@ -69,7 +71,14 @@ ros2 run "${PACKAGE_NAME}" check_vla_plan_candidate.py \
   --example \
   | python3 -m json.tool >"${vla_candidate_report_json}"
 
-python3 - "${voice_json}" "${session_json}" "${sync_json}" "${sync_quality_json}" "${vla_candidate_report_json}" <<'PY'
+ros2 run "${PACKAGE_NAME}" build_mujoco_dry_run_review_plan.py \
+  --example \
+  --robot-id medical_rehab_arm \
+  --device-id sim_host \
+  --session-id session_sim_host_qa \
+  | python3 -m json.tool >"${mujoco_review_plan_json}"
+
+python3 - "${voice_json}" "${session_json}" "${sync_json}" "${sync_quality_json}" "${vla_candidate_report_json}" "${mujoco_review_plan_json}" <<'PY'
 import json
 import sys
 
@@ -112,6 +121,15 @@ if vla_report.get('ok') is not True:
     raise SystemExit(f'VLA candidate gate failed: {vla_report}')
 if 'publish_joint_trajectory' not in vla_report.get('forbidden_next_steps', []):
     raise SystemExit('VLA candidate gate must forbid direct JointTrajectory publication')
+
+with open(sys.argv[6], encoding='utf-8') as handle:
+    mujoco_review_plan = json.load(handle)
+if mujoco_review_plan.get('schema_version') != 'mujoco_dry_run_review_plan_v1':
+    raise SystemExit('MuJoCo dry-run review plan schema mismatch')
+if mujoco_review_plan.get('accepted_for_review') is not True:
+    raise SystemExit(f'MuJoCo dry-run review plan rejected safe example: {mujoco_review_plan}')
+if 'publish_joint_trajectory' not in mujoco_review_plan.get('forbidden_next_steps', []):
+    raise SystemExit('MuJoCo dry-run review plan must forbid direct JointTrajectory publication')
 
 print('SIM_HOST_REHAB_USER_QA_OK')
 PY

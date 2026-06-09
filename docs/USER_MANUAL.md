@@ -160,6 +160,35 @@ PYTHONPATH=. python -m rehab_arm_psoc_bridge.check_vla_plan_candidate \
 - `forbidden_next_steps` 必须包含 `publish_joint_trajectory`、`send_can_frame`、`set_motor_current`、`set_motor_torque`、`override_m33_safety`。
 - 候选 JSON 缺少 `mujoco_dry_run_passed/m33_motion_allowed_true/human_confirmation` 任一后置要求，或出现底层电机/CAN 字段时，命令必须失败。
 
+由通过审核的 VLA candidate 生成 MuJoCo dry-run 审核计划：
+
+```bash
+cd rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge
+PYTHONPATH=. python -m rehab_arm_psoc_bridge.build_mujoco_dry_run_review_plan \
+  --candidate vla_plan_candidate.json \
+  --robot-id medical_rehab_arm \
+  --device-id nanopi_dev \
+  --session-id session_dry_run \
+  --pretty
+```
+
+没有候选文件时，可以用内置安全样例：
+
+```bash
+PYTHONPATH=. python -m rehab_arm_psoc_bridge.build_mujoco_dry_run_review_plan \
+  --example \
+  --pretty
+```
+
+通过标准：
+
+- 输出 `schema_version=mujoco_dry_run_review_plan_v1`。
+- `accepted_for_review=true`。
+- `sim_target.command_topic=/sim/medical_arm/trajectory_candidate`。
+- `review_checks` 至少包含 MJCF 加载、joint 名匹配、限位、连续性、可视碰撞/自交检查和 M33 safety 前置条件。
+- `forbidden_next_steps` 必须包含 `publish_joint_trajectory`、`send_can_frame`、`set_motor_current`、`set_motor_torque`、`override_m33_safety`。
+- 该命令只生成审核计划，不发布 ROS topic、不连接 CAN、不改变 M33/M55/NanoPi 状态。
+
 远程仿真主机上做用户视角 dry-run 验收：
 
 ```bash
@@ -171,7 +200,7 @@ git pull
 通过标准：
 
 - `colcon build --packages-select rehab_arm_psoc_bridge --symlink-install` 通过。
-- `ros2 pkg executables rehab_arm_psoc_bridge` 能看到 `build_voice_pipeline_plan.py`、`build_rehab_session_plan.py`、`build_command_center_sync_plan.py`、`check_command_center_sync_plan.py` 和 `check_vla_plan_candidate.py`。
+- `ros2 pkg executables rehab_arm_psoc_bridge` 能看到 `build_voice_pipeline_plan.py`、`build_rehab_session_plan.py`、`build_command_center_sync_plan.py`、`check_command_center_sync_plan.py`、`check_vla_plan_candidate.py` 和 `build_mujoco_dry_run_review_plan.py`。
 - 输出包含 `SIM_HOST_REHAB_USER_QA_OK`。
 - 全程不连接 CAN、不发布真实运动、不改变 M33 状态。
 

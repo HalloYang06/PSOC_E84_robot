@@ -249,11 +249,13 @@ class SystemArchitectureContractTests(unittest.TestCase):
         self.assertIn('build_command_center_sync_plan', setup)
         self.assertIn('check_command_center_sync_plan', setup)
         self.assertIn('check_vla_plan_candidate', setup)
+        self.assertIn('build_mujoco_dry_run_review_plan', setup)
         self.assertIn('build_voice_pipeline_plan.py', cmake)
         self.assertIn('build_rehab_session_plan.py', cmake)
         self.assertIn('build_command_center_sync_plan.py', cmake)
         self.assertIn('check_command_center_sync_plan.py', cmake)
         self.assertIn('check_vla_plan_candidate.py', cmake)
+        self.assertIn('build_mujoco_dry_run_review_plan.py', cmake)
 
     def test_sim_host_user_qa_script_is_readonly_and_reusable(self) -> None:
         script = (
@@ -274,8 +276,10 @@ class SystemArchitectureContractTests(unittest.TestCase):
         self.assertIn('build_command_center_sync_plan.py', script)
         self.assertIn('check_command_center_sync_plan.py', script)
         self.assertIn('check_vla_plan_candidate.py', script)
+        self.assertIn('build_mujoco_dry_run_review_plan.py', script)
         self.assertIn('command_center_sync_quality_report_v1', script)
         self.assertIn('vla_candidate_gate_report_v1', script)
+        self.assertIn('mujoco_dry_run_review_plan_v1', script)
         self.assertIn('SIM_HOST_REHAB_USER_QA_OK', script)
         self.assertIn('sim_host_rehab_user_qa.sh', manual)
         self.assertNotIn('password', script.lower())

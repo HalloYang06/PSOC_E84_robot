@@ -54,6 +54,7 @@ setup(
             'build_command_center_sync_plan = rehab_arm_psoc_bridge.build_command_center_sync_plan:main',
             'check_command_center_sync_plan = rehab_arm_psoc_bridge.check_command_center_sync_plan:main',
             'check_vla_plan_candidate = rehab_arm_psoc_bridge.check_vla_plan_candidate:main',
+            'build_mujoco_dry_run_review_plan = rehab_arm_psoc_bridge.build_mujoco_dry_run_review_plan:main',
         ],
     },
 )

@@ -455,6 +455,21 @@ ros2 run rehab_arm_psoc_bridge check_vla_plan_candidate.py \
 
 即使 candidate gate 通过，允许的下一步也只有 `mujoco_dry_run_review` 和 `operator_review`；仍然不允许直接发布 `JointTrajectory`。
 
+candidate gate 通过后，可生成 MuJoCo dry-run 审核包：
+
+```bash
+ros2 run rehab_arm_psoc_bridge build_mujoco_dry_run_review_plan.py \
+  --candidate vla_plan_candidate.json \
+  --robot-id medical_rehab_arm \
+  --device-id nanopi_dev \
+  --session-id session_dry_run \
+  --pretty
+```
+
+输出 `mujoco_dry_run_review_plan_v1`。该对象只描述仿真审核目标、候选轨迹、必检项和禁止项，仍然不发布 ROS topic。计划里的 `review_checks` 至少应覆盖 MJCF 加载、joint 名称匹配、限位、连续性、碰撞/自交可视检查和 M33 safety 前置条件。
+
+MuJoCo dry-run 的报告也不能授予真实运动许可。即使报告里 `dry_run_passed=true`，下一步仍只能进入 operator review 和正式 M33 gate 准备，不能直接发 CAN 或底层电机目标。
+
 ## 9. Wiring Health Protocol
 
 接线检测不是靠单一状态，而是综合 freshness、心跳、错误计数、温度和协议解析。

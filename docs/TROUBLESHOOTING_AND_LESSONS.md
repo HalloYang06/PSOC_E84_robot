@@ -54,6 +54,33 @@ ros2 run rehab_arm_psoc_bridge check_vla_plan_candidate.py \
 
 - 2026-06-09 已加入 `vla_candidate_gate.py`、CLI、单元测试和仿真主机 QA 脚本入口；本地样例验证通过。
 
+### MuJoCo dry-run 通过也不能授予真实运动许可
+
+现象：
+
+- VLA candidate 通过本地 gate 后，可以生成 MuJoCo dry-run review plan。
+- 后续 MuJoCo 可能报告 `dry_run_passed=true`，但这只能说明仿真审核通过，不等于真机可动。
+
+根因：
+
+- MuJoCo 是仿真环境，无法替代实时 M33 安全状态、fresh motor feedback、急停、电源和现场人工确认。
+- 仿真主机与 NanoPi 还走无线 ROS，延迟/丢包也不适合作为实时安全依据。
+
+解决：
+
+- 使用 `build_mujoco_dry_run_review_plan.py` 只生成审核计划。
+- 未来 MuJoCo 报告必须用 `validate_mujoco_dry_run_review_report()` 或对应 CLI/测试质量门检查。
+- 报告中如果出现 `motion_permission_granted=true`，必须判定失败。
+
+技巧：
+
+- MuJoCo dry-run 通过后的下一步是 `operator_review` 和“准备进入 M33 gate”，不是直接发 `JointTrajectory`。
+- 真机执行前仍要重新检查 M33 `motion_allowed=true`、fresh motor feedback、患者 profile、现场急停和人工确认。
+
+状态：
+
+- 2026-06-09 已加入 `mujoco_dry_run_review.py`、CLI、单元测试和仿真主机 QA 脚本入口；本地样例验证通过。
+
 ### Windows 本地跑 ROS Python 包测试要设置 PYTHONPATH
 
 现象：

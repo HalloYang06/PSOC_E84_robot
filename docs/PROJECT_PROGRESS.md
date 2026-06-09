@@ -17,6 +17,13 @@
 
 ## 架构状态
 
+- 2026-06-09 MuJoCo dry-run 审核计划地基：
+  - `rehab_arm_psoc_bridge` 新增 `mujoco_dry_run_review.py` 和 `build_mujoco_dry_run_review_plan.py`，把已通过 VLA candidate gate 的 `dry_run_joint_trajectory` 转成 `mujoco_dry_run_review_plan_v1`。
+  - review plan 只描述仿真审核目标、candidate、必检项、允许/禁止下一步；不发布 ROS topic、不连接 CAN、不改变 M33/M55/NanoPi 状态。
+  - 必检项固定包含 MJCF 加载、joint 名称匹配、限位、连续性、可视碰撞/自交检查和 M33 safety 前置条件。
+  - 新增 `validate_mujoco_dry_run_review_report()`，未来 MuJoCo 报告必须 `dry_run_passed=true`、所有 checks 通过，且不能设置 `motion_permission_granted=true`。
+  - 更新 [COMMAND_CENTER_APP_PROTOCOL_V1.md](COMMAND_CENTER_APP_PROTOCOL_V1.md)、[USER_MANUAL.md](USER_MANUAL.md) 和 `scripts/sim_host_rehab_user_qa.sh`，远程仿真主机 QA 会生成 MuJoCo dry-run review plan 并确认它仍禁止直接发布 `JointTrajectory`。
+  - 本地验证通过：`test_mujoco_dry_run_review.py`、`test_vla_candidate_gate.py`、`test_system_architecture_contract.py` 共 20 项通过；`build_mujoco_dry_run_review_plan.py --example --pretty` 输出 `accepted_for_review=true`；`python -m compileall rehab_arm_psoc_bridge` 通过。
 - 2026-06-09 VLA candidate 本地审核门：
   - `rehab_arm_psoc_bridge` 新增 `vla_candidate_gate.py` 和 `check_vla_plan_candidate.py`，用于服务器/VLA 返回 `vla_plan_candidate_v1` 后的第一道本地 JSON 审核。
   - 审核门只允许 `candidate.type=dry_run_joint_trajectory`，关节名必须属于 medical_arm 6DOF URDF joint 集合，trajectory point 维度和时间必须合法，且 `requires` 必须包含 `mujoco_dry_run_passed`、`m33_motion_allowed_true`、`human_confirmation`。
