@@ -373,14 +373,34 @@ voice_pipeline_status
 1. `pdm_mic_self_test 3` 能连续读到 frame，`frames>0`，对着麦克风说话时 `peak/avg_abs` 明显变化。
 2. `official_voice_speaker_test 1` 能听到短促 beep，串口打印 `speaker beep ok`。
 3. `local_voice_listen 5` 对着麦克风说话后应打印 `local activity detected`，并调用 `model_result_publish_wake_word(...)` 发布模型建议。
-4. NanoPi 先执行 `ros2 topic echo --once /rehab_arm/model_state std_msgs/msg/String`，再在 M55 shell 执行 `local_voice_listen 5`，确认收到 `rehab_arm_model_state_v1`。
-5. 全程再确认 `timeout 2 candump -L can0,320:7FF` 没有输出。
+4. NanoPi 先设置当前 bench 域并监听模型事件：
 
-当前 `local_voice_listen` 是语音活动检测地基，不是最终 ASR 或正式自定义唤醒词模型。通过后，下一步才迁移官方 `PDM -> AFE -> Voice Assistant -> control_task map_id`，再把 `map_id` 映射到本项目 `MSG_TYPE_AI_INFERENCE_RESP`。
+```bash
+export ROS_DOMAIN_ID=42
+source /opt/ros/jazzy/setup.bash
+source /home/pi/rehab_arm_ros2_ws/install/setup.bash
+ros2 topic echo --once --full-length /rehab_arm/model_state
+```
+
+5. 再在 M55 shell 执行 `local_voice_listen 5`，确认收到 `rehab_arm_model_state_v1`。
+6. 全程再确认 `timeout 2 candump -L can0,320:7FF` 没有输出。
+
+官方 `map_id` 出口验收：
+
+```text
+ov_map 101 900  # wake_start_request
+ov_map 401 880  # voice_start_request
+ov_map 408 850  # voice_pause_request
+ov_map 402 850  # voice_stop_request
+```
+
+`ov_map` 是 `official_voice_map_id` 的短别名，用于避免 COM26 在长命令下丢字符。通过标准是 M33 串口打印 `[m55_model_bridge] ... can_ret=0`，NanoPi `candump -L can0,323:7FF` 能看到 `0x323#B5...`，并且 `/rehab_arm/model_state` 解析出 `m55_wake_word_v1` 或 `m55_voice_asr_v1`。
+
+当前 `local_voice_listen` 是语音活动检测地基，不是最终 ASR 或正式自定义唤醒词模型。官方 `control_task map_id -> MSG_TYPE_AI_INFERENCE_RESP -> 0x323` 出口已经迁移；下一步是把官方 `PDM -> AFE -> Voice Assistant` 持续推理结果真正接到该 adapter，而不是只用 shell 手动注入 `map_id`。
 
 ### 服务器大语言模型 API 中转验收边界
 
-大语言模型 API 放在服务器/平台侧，不能把 API key 放到 NanoPi、M55、App 或浏览器。设备总控台只接收和展示模型建议：
+大语言模型 API 放在服务器/平台侧，不能把 API key 放到 NanoPi、M55、App、浏览器或本地 agent。设备总控台只接收和展示模型建议：
 
 ```text
 M55/NanoPi/App/camera/sensors
@@ -388,6 +408,15 @@ M55/NanoPi/App/camera/sensors
   -> server-side LLM provider
   -> model_relay_response_v1 / voice_relay_v1 / vla_plan_candidate_v1
 ```
+
+当前模型中转接口：
+
+```text
+POST http://106.55.62.122:8011/api/rehab-arm/v1/projects/fd6a55ed-a63c-44b3-b123-96fb3c154966/devices/nanopi-m5/model/relay
+Authorization: Bearer <platform_access_token>
+```
+
+只允许请求 `high_level_task`、`model_state_suggestion`、`dry_run_joint_trajectory_candidate`。如果返回 `provider.external_call_ok=false`，只能显示建议不可用、等待配置或安全过滤，不能本地补生成动作。
 
 平台返回必须保持：
 
