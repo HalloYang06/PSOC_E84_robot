@@ -14,6 +14,7 @@ typedef void (*websocket_message_callback_t)(websocket_message_type_t type,
                                              rt_size_t payload_len);
 
 rt_err_t websocket_client_init(const char *server_url);
+rt_err_t websocket_client_configure(const char *server_url, const char *extra_headers);
 rt_err_t websocket_client_connect(void);
 rt_err_t websocket_client_send_text(const char *message);
 rt_err_t websocket_client_send_binary(const uint8_t *data, rt_size_t len);

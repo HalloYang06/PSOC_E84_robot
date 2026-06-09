@@ -5,6 +5,12 @@ import os
 cwd  = GetCurrentDir()
 path = [cwd]
 src  = Glob('*.c') + Glob('*.cpp')
+src  = [f for f in src if os.path.basename(str(f)) not in [
+    'model_deployment.c',
+    'model_input_bridge.c',
+    'motor7_model_runner.c',
+    'wake_word_detector.cpp',
+]]
 
 group = DefineGroup('Applications', src, depend = [''], CPPPATH = path)
 

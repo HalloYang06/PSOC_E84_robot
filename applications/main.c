@@ -3,12 +3,15 @@
 #include <board.h>
 #include <fal.h>
 #include <finsh.h>
-
+#include <reent.h>
+#include "cy_retarget_io.h"
 #include "whd.h"
 #include "whd_resource_api.h"
 #include "http_server.h"
+#include "model_result_publisher.h"
 #include "openclaw_integration.h"
 #include "voice_service.h"
+#include "xiaozhi_voice_relay.h"
 
 #define LED_PIN_G GET_PIN(16, 6)
 #define M55_AUDIO_SAMPLE_RATE 16000
@@ -16,6 +19,9 @@
 #define M55_AUDIO_BITS_PER_SAMPLE 16
 #define M55_AUDIO_FRAME_BYTES 2048
 #define M55_VOICE_BOOT_DELAY_MS 5000
+#define M55_BOOT_SELF_TEST_RETRY_COUNT 10
+
+__attribute__((weak)) struct _reent _impure_data;
 
 static struct
 {
@@ -25,8 +31,15 @@ static struct
     rt_uint8_t buffer[M55_AUDIO_FRAME_BYTES];
 } g_m55_mic = {0};
 static rt_thread_t g_voice_boot_thread = RT_NULL;
+static rt_thread_t g_boot_self_test_thread = RT_NULL;
 
 extern whd_resource_source_t resource_ops;
+
+static void m55_console_detach(void)
+{
+    cy_retarget_io_deinit();
+    rt_console_set_device("");
+}
 
 static void dump_hex(const char *title, const rt_uint8_t *raw, rt_size_t size)
 {
@@ -314,6 +327,63 @@ static void wake_off(int argc, char **argv)
 }
 MSH_CMD_EXPORT(wake_off, Stop continuous wake listening on M33->CM55);
 
+static void wake_dump_pcm(int argc, char **argv)
+{
+    const char *path = "/latest_wake.pcm";
+    rt_err_t ret;
+
+    if ((argc >= 2) && (argv[1] != RT_NULL) && (argv[1][0] != '\0'))
+    {
+        path = argv[1];
+    }
+
+    ret = voice_service_dump_latest_pcm(path);
+    rt_kprintf("wake_dump_pcm ret=%d path=%s\n", ret, path);
+}
+MSH_CMD_EXPORT(wake_dump_pcm, Save latest CM55 wake PCM to a raw pcm file);
+
+static void xz_url(int argc, char **argv)
+{
+    rt_err_t ret;
+
+    if (argc < 2)
+    {
+        rt_kprintf("xz_url current=%s\n", xiaozhi_voice_relay_get_url());
+        return;
+    }
+
+    ret = xiaozhi_voice_relay_set_url(argv[1]);
+    rt_kprintf("xz_url ret=%d url=%s\n", ret, xiaozhi_voice_relay_get_url());
+}
+MSH_CMD_EXPORT(xz_url, Get or set Xiaozhi websocket URL);
+
+static void xz_token(int argc, char **argv)
+{
+    rt_err_t ret;
+
+    if (argc < 2)
+    {
+        rt_kprintf("xz_token configured=%d\n", xiaozhi_voice_relay_has_token() ? 1 : 0);
+        return;
+    }
+
+    ret = xiaozhi_voice_relay_set_token(argv[1]);
+    rt_kprintf("xz_token ret=%d configured=%d\n", ret, xiaozhi_voice_relay_has_token() ? 1 : 0);
+}
+MSH_CMD_EXPORT(xz_token, Set Xiaozhi platform relay token);
+
+static void xz_reconnect(int argc, char **argv)
+{
+    rt_err_t ret;
+
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+
+    ret = voice_service_reconnect_xiaozhi();
+    rt_kprintf("xz_reconnect ret=%d\n", ret);
+}
+MSH_CMD_EXPORT(xz_reconnect, Reconnect Xiaozhi websocket after URL or token change);
+
 static void voice_boot_thread_entry(void *parameter)
 {
     rt_err_t ret;
@@ -343,14 +413,41 @@ static void voice_boot_thread_entry(void *parameter)
     g_voice_boot_thread = RT_NULL;
 }
 
+static void boot_self_test_thread_entry(void *parameter)
+{
+    int i;
+
+    RT_UNUSED(parameter);
+
+    for (i = 0; i < M55_BOOT_SELF_TEST_RETRY_COUNT; i++)
+    {
+        rt_err_t ret = model_result_publish_boot_self_test();
+        rt_kprintf("[m55] boot self-test publish ret=%d try=%d\n", ret, i + 1);
+        rt_thread_mdelay(1000);
+    }
+
+    g_boot_self_test_thread = RT_NULL;
+}
+
 int main(void)
 {
     rt_err_t ret;
 
     rt_kprintf("Hello RT-Thread\r\n");
-    rt_kprintf("It's cortex-m55\r\n");
+    rt_kprintf("This core is cortex-m55\n");
 
     rt_pin_mode(LED_PIN_G, PIN_MODE_OUTPUT);
+
+    g_boot_self_test_thread = rt_thread_create("m55_self",
+                                               boot_self_test_thread_entry,
+                                               RT_NULL,
+                                               2048,
+                                               15,
+                                               10);
+    if (g_boot_self_test_thread)
+    {
+        rt_thread_startup(g_boot_self_test_thread);
+    }
 
     ret = openclaw_integration_init();
     if (ret != RT_EOK)
@@ -373,11 +470,6 @@ int main(void)
     if (g_voice_boot_thread)
     {
         rt_thread_startup(g_voice_boot_thread);
-        rt_kprintf("[m55] voice boot scheduled\n");
-    }
-    else
-    {
-        rt_kprintf("[m55] voice boot thread create failed\n");
     }
 
     while (1)

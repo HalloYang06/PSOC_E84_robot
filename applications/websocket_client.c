@@ -8,6 +8,7 @@
 
 #define WS_RX_BUFFER_SIZE 2048
 #define WS_TX_BUFFER_SIZE 2048
+#define WS_HEADER_BUFFER_SIZE 512
 
 typedef struct
 {
@@ -16,6 +17,7 @@ typedef struct
     char server_url[128];
     char server_host[64];
     char server_path[64];
+    char extra_headers[WS_HEADER_BUFFER_SIZE];
     int server_port;
     int sock;
     struct rt_mutex send_lock;
@@ -254,6 +256,53 @@ rt_err_t websocket_client_init(const char *server_url)
     return RT_EOK;
 }
 
+rt_err_t websocket_client_configure(const char *server_url, const char *extra_headers)
+{
+    if ((server_url == RT_NULL) || (rt_strlen(server_url) >= sizeof(g_ws.server_url)))
+    {
+        return -RT_EINVAL;
+    }
+
+    if ((extra_headers != RT_NULL) && (rt_strlen(extra_headers) >= sizeof(g_ws.extra_headers)))
+    {
+        return -RT_EINVAL;
+    }
+
+    if (g_ws.connected)
+    {
+        websocket_client_disconnect();
+    }
+
+    if (!g_ws.initialized)
+    {
+        rt_err_t ret = websocket_client_init(server_url);
+        if (ret != RT_EOK)
+        {
+            return ret;
+        }
+        if (extra_headers != RT_NULL)
+        {
+            rt_strncpy(g_ws.extra_headers, extra_headers, sizeof(g_ws.extra_headers) - 1);
+        }
+        return RT_EOK;
+    }
+
+    if (websocket_parse_url(server_url) != RT_EOK)
+    {
+        return -RT_EINVAL;
+    }
+
+    rt_memset(g_ws.server_url, 0, sizeof(g_ws.server_url));
+    rt_strncpy(g_ws.server_url, server_url, sizeof(g_ws.server_url) - 1);
+    rt_memset(g_ws.extra_headers, 0, sizeof(g_ws.extra_headers));
+    if (extra_headers != RT_NULL)
+    {
+        rt_strncpy(g_ws.extra_headers, extra_headers, sizeof(g_ws.extra_headers) - 1);
+    }
+    rt_kprintf("[websocket] configured %s:%d%s\n", g_ws.server_host, g_ws.server_port, g_ws.server_path);
+    return RT_EOK;
+}
+
 rt_err_t websocket_client_connect(void)
 {
     struct hostent *host;
@@ -303,8 +352,10 @@ rt_err_t websocket_client_connect(void)
                 "Connection: Upgrade\r\n"
                 "Sec-WebSocket-Key: c29tZS1vcGVuY2xhdy1rZXk=\r\n"
                 "Sec-WebSocket-Version: 13\r\n"
+                "%s"
                 "\r\n",
-                g_ws.server_path, g_ws.server_host, g_ws.server_port);
+                g_ws.server_path, g_ws.server_host, g_ws.server_port,
+                g_ws.extra_headers);
 
     if (send(g_ws.sock, request, rt_strlen(request), 0) < 0)
     {

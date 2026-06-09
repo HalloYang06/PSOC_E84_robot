@@ -3,25 +3,23 @@
 #include "baidu_asr.h"
 #include "baidu_tts.h"
 #include "m33_m55_comm.h"
-#include "model_input_bridge.h"
-#include "model_manager.h"
 #include "model_result_publisher.h"
-#include "wake_word_detector.h"
 #include "websocket_client.h"
+#include "xiaozhi_voice_relay.h"
+#include "xiaozhi_wake_engine.h"
 
 #include <rtdevice.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#define WS_SERVER_URL                "ws://10.100.191.235:8080"
 #define VOICE_PCM_BUFFER_SIZE        (320000U)
 #define VOICE_JSON_BUFFER_SIZE       (768U)
 #define VOICE_SERVER_AUDIO_CHUNK     (4096U)
-#define WAKE_STREAK_REQUIRED         (2U)
-#define WAKE_TRIGGER_SCORE           (850L)
-#define WAKE_HOLD_SCORE              (700L)
-#define WAKE_COOLDOWN_MS             (5000U)
-#define WAKE_LOG_SCORE_MIN           (700L)
+#define WAKE_SKIP_WINDOWS_AFTER_TRIGGER (3U)
+#define WAKE_GATE_MIN_PEAK           (5500U)
+#define WAKE_GATE_MIN_AVG_ABS        (750U)
+#define WAKE_GATE_MIN_ACTIVE_FRAMES  (28U)
 
 typedef struct
 {
@@ -42,7 +40,9 @@ typedef struct
     rt_uint32_t latest_pcm_seq;
     rt_bool_t latest_pcm_pending;
     rt_uint32_t wake_hit_streak;
+    rt_uint32_t wake_skip_windows;
     rt_tick_t wake_last_trigger_tick;
+    rt_uint32_t xiaozhi_session_id;
 } voice_service_t;
 
 typedef struct
@@ -56,7 +56,6 @@ typedef struct
 } voice_model_result_t;
 
 static voice_service_t g_service;
-static rt_bool_t g_wake_word_ready = RT_FALSE;
 
 static voice_model_result_t voice_service_model_entry(const uint8_t *audio_data, uint32_t len)
 {
@@ -290,23 +289,78 @@ static void voice_service_send_text_to_server(const char *type, const char *text
     websocket_client_send_text(json);
 }
 
-static void voice_service_send_audio_to_server(const uint8_t *audio_data, uint32_t len)
+static rt_err_t voice_service_configure_xiaozhi_socket(void)
+{
+    char headers[512];
+    rt_err_t ret;
+
+    ret = xiaozhi_voice_relay_init();
+    if (ret != RT_EOK)
+    {
+        return ret;
+    }
+
+    ret = xiaozhi_voice_relay_build_headers(headers, sizeof(headers));
+    if (ret != RT_EOK)
+    {
+        rt_kprintf("[voice_service] xiaozhi header build failed: %d\n", ret);
+        return ret;
+    }
+
+    return websocket_client_configure(xiaozhi_voice_relay_get_url(), headers);
+}
+
+static void voice_service_send_xiaozhi_hello(void)
+{
+    char json[VOICE_JSON_BUFFER_SIZE];
+
+    if (!websocket_client_is_connected())
+    {
+        return;
+    }
+
+    if (xiaozhi_voice_relay_build_hello(json, sizeof(json)) == RT_EOK)
+    {
+        websocket_client_send_text(json);
+    }
+}
+
+static void voice_service_send_audio_to_server(const uint8_t *audio_data,
+                                               uint32_t len,
+                                               xiaozhi_wake_source_t wake_source,
+                                               const char *wake_word)
 {
     char json[VOICE_JSON_BUFFER_SIZE];
     uint32_t sent = 0;
     uint32_t chunk_index = 0;
+    uint32_t session_id;
 
     if ((audio_data == RT_NULL) || (len == 0) || !websocket_client_is_connected())
     {
         return;
     }
 
-    rt_snprintf(json, sizeof(json),
-                "{\"type\":\"voice_capture_begin\",\"encoding\":\"pcm_s16le\","
-                "\"sample_rate\":16000,\"channels\":1,\"bits_per_sample\":16,"
-                "\"total_bytes\":%lu}",
-                (unsigned long)len);
-    websocket_client_send_text(json);
+    session_id = ++g_service.xiaozhi_session_id;
+    if (g_service.xiaozhi_session_id == 0U)
+    {
+        session_id = ++g_service.xiaozhi_session_id;
+    }
+
+    if (xiaozhi_voice_relay_build_listen_detect(json,
+                                                sizeof(json),
+                                                session_id,
+                                                wake_word) == RT_EOK)
+    {
+        websocket_client_send_text(json);
+    }
+
+    if (xiaozhi_voice_relay_build_listen_start(json,
+                                               sizeof(json),
+                                               session_id,
+                                               wake_source) == RT_EOK)
+    {
+        websocket_client_send_text(json);
+    }
 
     while (sent < len)
     {
@@ -328,11 +382,14 @@ static void voice_service_send_audio_to_server(const uint8_t *audio_data, uint32
         rt_thread_mdelay(2);
     }
 
-    rt_snprintf(json, sizeof(json),
-                "{\"type\":\"voice_capture_end\",\"total_bytes\":%lu,\"sent_bytes\":%lu,"
-                "\"chunks\":%lu}",
-                (unsigned long)len, (unsigned long)sent, (unsigned long)chunk_index);
-    websocket_client_send_text(json);
+    if (xiaozhi_voice_relay_build_listen_stop(json,
+                                              sizeof(json),
+                                              session_id,
+                                              sent,
+                                              chunk_index) == RT_EOK)
+    {
+        websocket_client_send_text(json);
+    }
 }
 
 static void on_asr_result(const char *text, rt_err_t error)
@@ -362,6 +419,7 @@ static void on_tts_result(const uint8_t *audio_data, uint32_t len, rt_err_t erro
 
 static void voice_service_handle_server_text(const char *message)
 {
+    xiaozhi_response_t xiaozhi_response;
     char type[32];
     char text[256];
     char content[256];
@@ -382,7 +440,35 @@ static void voice_service_handle_server_text(const char *message)
     json_get_string(message, "tts", speak, sizeof(speak));
     json_get_string(message, "speak", speak, sizeof(speak));
 
-    if (text[0] != '\0')
+    if (xiaozhi_voice_relay_parse_response(message, &xiaozhi_response))
+    {
+        if (xiaozhi_response.kind == XIAOZHI_UTTERANCE_VLA_COMMAND)
+        {
+            const char *intent = xiaozhi_response.language_context[0] ?
+                                 xiaozhi_response.language_context :
+                                 xiaozhi_response.transcript;
+            rt_kprintf("[voice_service] vla language intent: %s\n", intent && intent[0] ? intent : "(empty)");
+            if (intent && intent[0])
+            {
+                voice_service_publish_text_to_m33(MSG_TYPE_ASR_TEXT, intent);
+            }
+        }
+        else if (xiaozhi_response.kind == XIAOZHI_UTTERANCE_DAILY_CHAT)
+        {
+            rt_kprintf("[voice_service] daily chat reply\n");
+        }
+
+        if (xiaozhi_response.reply[0] != '\0')
+        {
+            fallback_text = xiaozhi_response.reply;
+        }
+    }
+
+    if (fallback_text)
+    {
+        /* Prefer the normalized Xiaozhi reply parsed above. */
+    }
+    else if (text[0] != '\0')
     {
         fallback_text = text;
     }
@@ -457,12 +543,8 @@ static void voice_service_process_audio_buffer(void)
 {
     rt_uint32_t len;
     voice_model_result_t model_result;
-    float model_score = 0.0f;
-    long score_permille = 0;
-    int detected = 0;
+    xiaozhi_wake_result_t wake_result;
     rt_bool_t wake_triggered = RT_FALSE;
-    rt_tick_t now_tick;
-    rt_tick_t cooldown_ticks;
 
     rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
     len = g_service.audio_received;
@@ -475,87 +557,55 @@ static void voice_service_process_audio_buffer(void)
         return;
     }
 
-    if (g_wake_word_ready)
-    {
-        rt_bool_t wake_detected = WakeWordDetector_Detect(
-            (const int16_t *)g_service.audio_buffer,
-            len / sizeof(int16_t),
-            &model_score);
-        detected = wake_detected ? 1 : 0;
-        score_permille = (long)(model_score * 1000.0f);
-    }
-    else if (model_manager_is_ready(MODEL_SLOT_WAKE_WORD))
-    {
-        rt_err_t infer_err = model_manager_run_pcm16(
-            MODEL_SLOT_WAKE_WORD,
-            (const int16_t *)g_service.audio_buffer,
-            len / sizeof(int16_t),
-            &model_score,
-            &detected);
-
-        if (infer_err == RT_EOK)
-        {
-            score_permille = (long)(model_score * 1000.0f);
-        }
-    }
-
-    if (score_permille >= WAKE_TRIGGER_SCORE)
-    {
-        if (g_service.wake_hit_streak < 255U)
-        {
-            g_service.wake_hit_streak++;
-        }
-    }
-    else if (score_permille < WAKE_HOLD_SCORE)
+    if ((model_result.peak < WAKE_GATE_MIN_PEAK) ||
+        (model_result.avg_abs < WAKE_GATE_MIN_AVG_ABS) ||
+        (model_result.active_frames < WAKE_GATE_MIN_ACTIVE_FRAMES))
     {
         g_service.wake_hit_streak = 0;
+        return;
+    }
+
+    if (g_service.wake_skip_windows > 0U)
+    {
+        g_service.wake_skip_windows--;
+        return;
+    }
+
+    rt_memset(&wake_result, 0, sizeof(wake_result));
+    if (xiaozhi_wake_engine_process_pcm16((const int16_t *)g_service.audio_buffer,
+                                          len / sizeof(int16_t),
+                                          &wake_result) != RT_EOK)
+    {
+        if (wake_result.event == XIAOZHI_WAKE_EVENT_UNAVAILABLE)
+        {
+            return;
+        }
+        rt_kprintf("[voice_service] wake engine error=%d\n", wake_result.error_code);
+        return;
+    }
+
+    if (wake_result.event == XIAOZHI_WAKE_EVENT_DETECTED)
+    {
+        wake_triggered = RT_TRUE;
     }
     else
     {
-        /* Keep the current streak in the gray zone to reduce chatter. */
-    }
-
-    now_tick = rt_tick_get();
-    cooldown_ticks = rt_tick_from_millisecond(WAKE_COOLDOWN_MS);
-    if ((g_service.wake_hit_streak >= WAKE_STREAK_REQUIRED) &&
-        ((g_service.wake_last_trigger_tick == 0) ||
-         ((now_tick - g_service.wake_last_trigger_tick) >= cooldown_ticks)))
-    {
-        wake_triggered = RT_TRUE;
-        g_service.wake_last_trigger_tick = now_tick;
-        g_service.wake_hit_streak = 0;
+        return;
     }
 
     if (wake_triggered)
     {
-        rt_kprintf("[voice_service] wake triggered score=%ld peak=%lu avg=%lu active=%lu/%lu\n",
-                   score_permille,
+        g_service.wake_skip_windows = WAKE_SKIP_WINDOWS_AFTER_TRIGGER;
+        g_service.wake_last_trigger_tick = rt_tick_get();
+        rt_kprintf("[voice_service] wake triggered word=%s peak=%lu avg=%lu active=%lu/%lu\n",
+                   wake_result.wake_word[0] ? wake_result.wake_word : "unknown",
                    (unsigned long)model_result.peak,
                    (unsigned long)model_result.avg_abs,
                    (unsigned long)model_result.active_frames,
                    (unsigned long)model_result.total_frames);
-    }
-    else if (score_permille >= WAKE_LOG_SCORE_MIN)
-    {
-        rt_kprintf("[voice_service] wake pending score=%ld streak=%lu\n",
-                   score_permille,
-                   (unsigned long)g_service.wake_hit_streak);
-    }
-
-    if ((wake_triggered) || (score_permille >= WAKE_LOG_SCORE_MIN))
-    {
-        rt_uint16_t publish_score = 0U;
-        if (score_permille > 1000L)
-        {
-            publish_score = 1000U;
-        }
-        else if (score_permille > 0L)
-        {
-            publish_score = (rt_uint16_t)score_permille;
-        }
         rt_err_t publish_ret = model_result_publish_wake_word(
-            publish_score,
-            wake_triggered ? RT_TRUE : (detected ? RT_TRUE : RT_FALSE),
+            1000U,
+            RT_TRUE,
             RT_TRUE,
             (rt_uint16_t)((len / sizeof(int16_t)) / 16U));
         if (publish_ret != RT_EOK)
@@ -564,14 +614,12 @@ static void voice_service_process_audio_buffer(void)
         }
     }
 
-    if (!wake_triggered)
-    {
-        return;
-    }
-
     if (websocket_client_is_connected())
     {
-        voice_service_send_audio_to_server(g_service.audio_buffer, len);
+        voice_service_send_audio_to_server(g_service.audio_buffer,
+                                           len,
+                                           XIAOZHI_WAKE_SOURCE_M55_LOCAL,
+                                           wake_result.wake_word);
     }
 
     if (g_service.asr_ready)
@@ -704,6 +752,7 @@ static void voice_service_thread_entry(void *parameter)
                 if (websocket_client_connect() == RT_EOK)
                 {
                     rt_kprintf("[voice_service] websocket reconnected\n");
+                    voice_service_send_xiaozhi_hello();
                 }
             }
         }
@@ -713,10 +762,8 @@ static void voice_service_thread_entry(void *parameter)
             switch (msg.type)
             {
             case MSG_TYPE_SENSOR_SNAPSHOT:
-                model_input_bridge_handle_message(&msg);
                 break;
             case MSG_TYPE_SENSOR_STREAM:
-                model_input_bridge_handle_message(&msg);
                 voice_service_accept_shared_pcm(&msg.payload.sensor_stream);
                 break;
             case MSG_TYPE_AUDIO_DATA:
@@ -780,9 +827,6 @@ static void voice_service_detect_thread_entry(void *parameter)
 rt_err_t voice_service_init(const char *baidu_api_key, const char *baidu_secret_key)
 {
     rt_err_t ret;
-    model_slot_info_t runner_info;
-    model_slot_config_t slot_cfg;
-
     if (g_service.initialized)
     {
         return RT_EOK;
@@ -839,7 +883,7 @@ rt_err_t voice_service_init(const char *baidu_api_key, const char *baidu_secret_
     g_service.asr_ready = baidu_asr_is_ready();
     g_service.tts_ready = baidu_tts_is_ready();
 
-    ret = websocket_client_init(WS_SERVER_URL);
+    ret = voice_service_configure_xiaozhi_socket();
     if (ret != RT_EOK)
     {
         rt_kprintf("[voice_service] websocket init failed: %d\n", ret);
@@ -851,31 +895,19 @@ rt_err_t voice_service_init(const char *baidu_api_key, const char *baidu_secret_
     }
 
     websocket_client_set_callback(on_websocket_message);
-    websocket_client_connect();
-
-    ret = model_manager_init();
-    if (ret == RT_EOK)
+    if (websocket_client_connect() == RT_EOK)
     {
-        rt_memset(&slot_cfg, 0, sizeof(slot_cfg));
-        slot_cfg.arena_bytes = 64U * 1024U;
-        slot_cfg.input_kind = MODEL_INPUT_PCM_S16;
-        slot_cfg.sample_rate = 16000U;
-        slot_cfg.channels = 1U;
-        slot_cfg.threshold_permille = 750U;
-        model_manager_configure_slot(MODEL_SLOT_WAKE_WORD, &slot_cfg);
-
-        if (model_manager_get_info(MODEL_SLOT_WAKE_WORD, &runner_info) == RT_EOK)
-        {
-            rt_kprintf("[voice_service] tflm slot0 ready=%d arena=%lu\n",
-                       runner_info.ready ? 1 : 0,
-                       (unsigned long)runner_info.arena_bytes);
-        }
+        voice_service_send_xiaozhi_hello();
     }
 
-    g_wake_word_ready = WakeWordDetector_Init() ? RT_TRUE : RT_FALSE;
     g_service.wake_hit_streak = 0;
+    g_service.wake_skip_windows = 0;
     g_service.wake_last_trigger_tick = 0;
-    rt_kprintf("[voice_service] wake detector ready=%d\n", g_wake_word_ready ? 1 : 0);
+    ret = xiaozhi_wake_engine_init();
+    rt_kprintf("[voice_service] xiaozhi wake backend=%s ready=%d ret=%d\n",
+               xiaozhi_wake_engine_backend_name(),
+               xiaozhi_wake_engine_is_ready() ? 1 : 0,
+               ret);
 
     g_service.initialized = RT_TRUE;
     rt_kprintf("[voice_service] initialized (ASR=%d TTS=%d)\n", g_service.asr_ready, g_service.tts_ready);
@@ -926,6 +958,24 @@ rt_err_t voice_service_stop(void)
     return RT_EOK;
 }
 
+rt_err_t voice_service_reconnect_xiaozhi(void)
+{
+    rt_err_t ret;
+
+    ret = voice_service_configure_xiaozhi_socket();
+    if (ret != RT_EOK)
+    {
+        return ret;
+    }
+
+    ret = websocket_client_connect();
+    if (ret == RT_EOK)
+    {
+        voice_service_send_xiaozhi_hello();
+    }
+    return ret;
+}
+
 rt_err_t voice_service_request_capture_start(void)
 {
     rt_kprintf("[voice_service] request capture start\n");
@@ -948,4 +998,61 @@ rt_err_t voice_service_request_listen_stop(void)
 {
     rt_kprintf("[voice_service] request listen stop\n");
     return voice_service_send_control(VOICE_CTRL_STOP_LISTEN);
+}
+
+rt_err_t voice_service_dump_latest_pcm(const char *path)
+{
+    FILE *fp;
+    rt_uint32_t len;
+    rt_uint8_t *snapshot;
+    size_t written;
+
+    if ((path == RT_NULL) || (*path == '\0'))
+    {
+        return -RT_EINVAL;
+    }
+
+    if (g_service.audio_buffer == RT_NULL)
+    {
+        return -RT_ERROR;
+    }
+
+    rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
+    len = g_service.latest_pcm_len ? g_service.latest_pcm_len : g_service.audio_received;
+    if ((len == 0U) || (len > VOICE_PCM_BUFFER_SIZE))
+    {
+        rt_mutex_release(&g_service.lock);
+        return -RT_ERROR;
+    }
+
+    snapshot = (rt_uint8_t *)rt_malloc(len);
+    if (snapshot == RT_NULL)
+    {
+        rt_mutex_release(&g_service.lock);
+        return -RT_ENOMEM;
+    }
+
+    rt_memcpy(snapshot, g_service.audio_buffer, len);
+    rt_mutex_release(&g_service.lock);
+
+    fp = fopen(path, "wb");
+    if (fp == RT_NULL)
+    {
+        rt_free(snapshot);
+        return -RT_ERROR;
+    }
+
+    written = fwrite(snapshot, 1, len, fp);
+    fclose(fp);
+    rt_free(snapshot);
+
+    if (written != len)
+    {
+        return -RT_ERROR;
+    }
+
+    rt_kprintf("[voice_service] latest pcm saved path=%s bytes=%lu sr=16000 ch=1 bits=16\n",
+               path,
+               (unsigned long)len);
+    return RT_EOK;
 }
