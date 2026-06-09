@@ -17,6 +17,14 @@
 
 ## 架构状态
 
+- 2026-06-09 康复功能、语音和云平台隔离地基：
+  - 新增 [REHAB_FUNCTIONAL_ROADMAP.md](REHAB_FUNCTIONAL_ROADMAP.md)，把康复训练 session、4 路 EMG 预留、语音唤醒/ASR/TTS、MuJoCo dry-run、路径规划、数据/标注/训练和云平台隔离拆成可复用模块。
+  - 新增 [VOICE_WAKE_TTS_PORTABILITY_GUIDE.md](VOICE_WAKE_TTS_PORTABILITY_GUIDE.md)，固定语音链路优先级：Infineon 官方 local voice 示例、TFLite Micro `micro_speech`、开源 `micro-wake-word`，云 ASR/TTS 只做可插拔 API relay。
+  - `rehab_arm_psoc_bridge` 新增 `voice_gateway.py`、`build_voice_pipeline_plan.py`、`rehab_session.py`、`build_rehab_session_plan.py`，均只生成 dry-run JSON 合同，不发 CAN、不发布真实运动。
+  - `m33_model_status.py` 扩展 `m55_voice_asr_v1`、`m55_emg_intent_v1`、`m55_fatigue_v1` 的结果编号解析，为后续 M55 语音和 4 路 EMG 结果进入 `/rehab_arm/model_state` 留接口。
+  - [COMMAND_CENTER_APP_PROTOCOL_V1.md](COMMAND_CENTER_APP_PROTOCOL_V1.md) 新增多账号/多用户/多租户数据隔离要求：`tenant_id/workspace_id/user_id/role/device_id/patient_id/session_id` 必须绑定到设备、患者 profile、训练数据、语音、视频、模型结果和 WebSocket 事件。
+  - 本地只读检查发现 `D:\RT-ThreadStudio\workspace\qiansai` 是早期 PSoC/RT-Thread 工程，不是云端 AI 合作平台；后续接云平台前必须先确认实际平台仓库，不要误改 qiansai。
+  - 验证通过：`test_voice_gateway.py` 4 项、`test_rehab_session.py` 2 项、`test_m33_model_status.py` 3 项。
 - 2026-06-08 服务器总控台和 App 协议确定：
   - 新增 [COMMAND_CENTER_APP_PROTOCOL_V1.md](COMMAND_CENTER_APP_PROTOCOL_V1.md)，固定服务器机械臂总控台和 App 用户端边界：Three.js+URDF+电机/传感器数据渲染、摄像头图像采集、语音采集/API 中转、VLA、接线检测、安全状态检测和急停按钮。
   - 总控台协议只定义合同，不改平台仓库和 App 代码；平台仓库由另一个 AI 按该协议实现。

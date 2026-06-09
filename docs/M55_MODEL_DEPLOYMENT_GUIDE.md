@@ -40,6 +40,8 @@ git clone -b M55 git@github.com:ChillAmnesiac/Medical-Rehabilitation-Manipulator
 
 当前 `packages/TensorflowLiteMicro-latest/docs/user-guide.md` 也采用同一路径：量化 `.tflite` 后用 `xxd -i converted_model.tflite > model_data.cc` 转成 C 数组。后续如果使用 Infineon DeepCraft/官方工具生成模型，也必须落到当前 M55 工程的 TFLM/模型 slot/IPC 出口，不要绕过现有主线。
 
+语音唤醒优先级见 [VOICE_WAKE_TTS_PORTABILITY_GUIDE.md](VOICE_WAKE_TTS_PORTABILITY_GUIDE.md)。原则是先看 Infineon PSOC Edge local voice 官方示例确认音频采集、PDM/I2S、扬声器和 CM33/CM55 工程结构；最小模型 runtime 先参考 TensorFlow Lite Micro `micro_speech`；自定义唤醒词优先评估 OHF/ESPHome `micro-wake-word` 的开源 `.tflite` 模型和训练流程。云 ASR/TTS 只能作为可插拔 API relay，不能成为固件唯一依赖。
+
 ## 3. EMG 小模型建议部署顺序
 
 4 路 EMG 不建议第一天就上复杂 VLA。按以下顺序补：

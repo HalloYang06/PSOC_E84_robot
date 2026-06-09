@@ -49,6 +49,8 @@ setup(
             'motion_test_report = rehab_arm_psoc_bridge.motion_test_report:main',
             'bench_motion_sequence = rehab_arm_psoc_bridge.bench_motion_sequence:main',
             'motor_profiles = rehab_arm_psoc_bridge.motor_profiles:main',
+            'build_voice_pipeline_plan = rehab_arm_psoc_bridge.build_voice_pipeline_plan:main',
+            'build_rehab_session_plan = rehab_arm_psoc_bridge.build_rehab_session_plan:main',
         ],
     },
 )

@@ -41,6 +41,34 @@ WebSocket: /api/rehab-arm/v1/devices/{device_id}/events
 
 REST 用于注册、配置、上传、命令请求和查询快照。WebSocket 用于总控台实时显示。WebSocket 掉线不得影响 M33 本地安全。
 
+## 3.1 多账号和数据隔离
+
+服务器总控台会接入云服务器和 AI 合作平台。平台实现必须把医疗臂数据当作多租户医疗/康复数据处理，不能只按 `device_id` 做全局共享。
+
+所有 REST/WebSocket 请求的认证上下文必须至少能解析出：
+
+```json
+{
+  "tenant_id": "tenant_hospital_or_team",
+  "user_id": "user_operator_or_doctor",
+  "role": "operator|doctor|admin|annotator|viewer",
+  "workspace_id": "workspace_rehab_lab",
+  "allowed_device_ids": ["nanopi-m5"],
+  "allowed_patient_ids": ["patient_..."]
+}
+```
+
+平台必须遵守：
+
+- `tenant_id/workspace_id` 是最外层隔离边界；不同账号、不同团队、不同医院的数据默认不可见。
+- 设备、患者 profile、训练 session、摄像头帧、语音文本/音频摘要、M55 模型结果、MuJoCo 回放和标注数据都必须绑定 `tenant_id`、`workspace_id`、`device_id`，涉及患者时还必须绑定 `patient_id/profile_id`。
+- WebSocket 事件只能推送给有该 `device_id` 权限的连接；不能把一个用户的实时状态广播给全局房间。
+- VLA、ASR、TTS、标注和训练任务只能读取调用者有权限的数据；跨患者/跨设备训练集必须有显式管理员授权和审计记录。
+- 急停请求、pause 请求和 profile 发布必须记录 `tenant_id/user_id/role/request_id`，但执行权仍在 M33。
+- 日志、截图、音频、视频、JSONL 和模型训练样本不能用公开 URL 或无租户前缀对象 key。
+
+本仓库当前只定义合同；实际平台仓库接入前必须先确认平台仓库位置。不要把早期 PSoC/RT-Thread 工程目录当成云平台实现。
+
 所有服务端响应沿用平台统一格式：
 
 ```json
@@ -494,4 +522,3 @@ App BLE 扩展 payload 必须沿用 [M33_M55_IPC_BLE_FOUNDATION.md](M33_M55_IPC_
 2. 再接 profile confirm、疼痛/疲劳标注。
 3. 再做语音上传到服务器。
 4. 不做底层控制 UI；工程调试仍使用 bench-debug 工具和明确的安全流程。
-

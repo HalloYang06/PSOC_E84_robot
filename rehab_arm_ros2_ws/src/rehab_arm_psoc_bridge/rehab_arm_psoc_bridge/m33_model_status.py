@@ -10,12 +10,49 @@ MODEL_NAMES = {
     1: 'm55_wake_word_v1',
     2: 'm55_emg_intent_v1',
     3: 'm55_fatigue_v1',
+    4: 'm55_voice_asr_v1',
 }
 
 RESULT_NAMES = {
     0: 'none',
     1: 'wake_start_request',
 }
+
+RESULT_NAMES_BY_MODEL = {
+    1: {
+        0: 'none',
+        1: 'wake_start_request',
+    },
+    2: {
+        0: 'emg_none',
+        1: 'emg_relax',
+        2: 'emg_flex_intent',
+        3: 'emg_extend_intent',
+        4: 'emg_stop_or_resist',
+        5: 'emg_contact_bad',
+    },
+    3: {
+        0: 'fatigue_none',
+        1: 'fatigue_low',
+        2: 'fatigue_medium',
+        3: 'fatigue_high',
+    },
+    4: {
+        0: 'voice_none',
+        1: 'voice_start_request',
+        2: 'voice_pause_request',
+        3: 'voice_stop_request',
+        4: 'voice_pain_or_discomfort',
+        5: 'voice_free_text',
+    },
+}
+
+
+def result_name_for_model(model_code: int, result_code: int) -> str:
+    names = RESULT_NAMES_BY_MODEL.get(model_code)
+    if names is not None:
+        return names.get(result_code, f'unknown_result_{result_code}')
+    return RESULT_NAMES.get(result_code, f'unknown_result_{result_code}')
 
 
 def parse_m33_model_status_frame(can_id: int, data: bytes) -> dict[str, object]:
@@ -50,7 +87,7 @@ def parse_m33_model_status_frame(can_id: int, data: bytes) -> dict[str, object]:
             'model_code': model_code,
             'model_name': MODEL_NAMES.get(model_code, f'unknown_model_{model_code}'),
             'result_code': result_code,
-            'result_name': RESULT_NAMES.get(result_code, f'unknown_result_{result_code}'),
+            'result_name': result_name_for_model(model_code, result_code),
             'confidence': min(confidence_percent, 100) / 100.0,
             'confidence_percent': min(confidence_percent, 100),
             'flags': flags,

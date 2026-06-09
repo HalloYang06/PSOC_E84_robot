@@ -56,11 +56,36 @@ python3 /home/pi/nanopi_can_master.py m33 target --iface can0 --joint 4 --deg 30
 - M33/M55 跨核通讯和 App BLE 字段边界见 [M33_M55_IPC_BLE_FOUNDATION.md](M33_M55_IPC_BLE_FOUNDATION.md)：M33/M55 已有 `m33_m55_comm`、MTB-IPC queue 和 `.ipc_stream_shared`，App BLE 已有 NUS 风格 RX/TX；后续只补字段，不另造链路。
 - M33 传感器/电机上下文进入 M55 小模型的输入合同见 [M33_M55_MODEL_INPUT_PROTOCOL_V1.md](M33_M55_MODEL_INPUT_PROTOCOL_V1.md)：M33 通过 `MSG_TYPE_SENSOR_SNAPSHOT/STREAM` 发给 M55，M55 推理后仍必须回 M33，再通过 `0x323` 和 `/rehab_arm/model_state` 出口给 NanoPi/服务器。
 - M55 小模型部署按 [M55_MODEL_DEPLOYMENT_GUIDE.md](M55_MODEL_DEPLOYMENT_GUIDE.md)：使用 GitHub `M55` 分支对应的 WiFi 工程，复用 TFLite Micro、`model_manager` 和 `m33_m55_comm`，推理结果回 M33 后再进 NanoPi/服务器。
+- 语音唤醒、ASR API 中转和扬声器播报按 [VOICE_WAKE_TTS_PORTABILITY_GUIDE.md](VOICE_WAKE_TTS_PORTABILITY_GUIDE.md)：优先看 Infineon 官方 local voice 示例和 TFLite Micro `micro_speech`，自定义唤醒词优先评估开源 `micro-wake-word`，不要把 Baidu/OpenAI/其他云厂商写成固件唯一依赖。
+- 康复训练 session、4 路 EMG 预留、路径规划和 MuJoCo dry-run 的模块化路线见 [REHAB_FUNCTIONAL_ROADMAP.md](REHAB_FUNCTIONAL_ROADMAP.md)。
 - 当前小模型链路的分层验收是：
   - 第一层，M55 wake-word 结果经 `MSG_TYPE_AI_INFERENCE_RESP` 到 M33，再由 `0x323` 到 NanoPi。2026-06-04 已实测 `candump` 可见 `323#B5...`。
   - 第二层，NanoPi ROS2 bridge 把 `0x323` 发布成 `/rehab_arm/model_state`，消息里应有 `source=m33_m55_bridge_can_0x323`。2026-06-04 已实测 JSON 样本。
   - 第三层，M55 shell 执行 `req_snap` 请求 M33 发布一帧测试 snapshot，已实测 `M55 -> M33 request -> M33 -> M55 snapshot -> M55 model -> M33 -> 0x323 -> NanoPi -> /rehab_arm/model_state`。
   - 这个验收不允许出现新的运动许可，也不允许自动发送 `0x320`。
+
+生成语音链路 dry-run 合同：
+
+```bash
+cd rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge
+PYTHONPATH=. python -m rehab_arm_psoc_bridge.build_voice_pipeline_plan --pretty \
+  --robot-id medical_rehab_arm \
+  --device-id nanopi_dev \
+  --wake-phrase 小医小医 \
+  --prompt-text 开始训练
+```
+
+生成康复训练 session dry-run 计划：
+
+```bash
+cd rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge
+PYTHONPATH=. python -m rehab_arm_psoc_bridge.build_rehab_session_plan --pretty \
+  --robot-id medical_rehab_arm \
+  --device-id nanopi_dev \
+  --training-mode active_assist
+```
+
+这两个命令只输出 JSON 计划，不连接 CAN，不发布 ROS 运动，不改变 M33 状态。
 
 ## M33/M55 烧录和小模型链路复测
 

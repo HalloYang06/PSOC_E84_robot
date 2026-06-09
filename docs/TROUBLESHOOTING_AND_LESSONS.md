@@ -20,6 +20,31 @@
 
 ## CAN 与硬件
 
+### 不要把 qiansai 当成云端 AI 合作平台
+
+现象：
+
+- 用户提到后续要接“本地 AI 合作平台项目”和云服务器总控台时，工作区里没有明显的前端/服务器平台仓库。
+- `qiansai` 名字像早期项目，但目录内容是 RT-Thread/PSoC 工程、`applications/`、`board/`、`rt-thread/`、`http_server.c` 等嵌入式文件。
+
+根因：
+
+- 本地工作区同时保留了早期 PSoC、M33/M55、语音、模型和医疗臂仓库；目录名不能证明它是云平台。
+
+解决：
+
+- 后续真正接云平台前，先让用户确认平台仓库路径或远端 Git URL。
+- 医疗臂仓库只维护协议合同，例如 `COMMAND_CENTER_APP_PROTOCOL_V1.md` 的 REST/WebSocket、租户隔离、VLA、语音和急停边界。
+
+技巧：
+
+- 平台仓库应有典型 server/frontend 结构，例如 `package.json`、后端服务、数据库 schema、auth/tenant 模块；如果只有 RT-Thread/PSoC 文件，就不要当云平台改。
+- 多账号数据隔离必须提前设计：`tenant_id/workspace_id/user_id/role/device_id/patient_id/session_id` 不能后补成备注字段。
+
+状态：
+
+- 2026-06-09 已记录到总控台协议和路线图；本轮未修改任何平台仓库。
+
 ### MuJoCo hardware shadow 无 3 号输出时先查 relay 映射
 
 现象：
