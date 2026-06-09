@@ -2,8 +2,15 @@
 
 #include <string.h>
 
+#if !defined(XIAOZHI_WAKE_USE_IFX_DEEPCRAFT) && defined(__has_include)
+#if __has_include("ifx_deepcraft/source/ifx_deepcraft_wake_adapter.c")
+#define XIAOZHI_WAKE_USE_IFX_DEEPCRAFT
+#endif
+#endif
+
 #ifdef XIAOZHI_WAKE_USE_IFX_DEEPCRAFT
-#include "voice_assistant.h"
+extern int ifx_deepcraft_wake_init(void);
+extern int ifx_deepcraft_wake_process(int16_t *pcm, int *detected);
 #endif
 
 typedef struct
@@ -35,7 +42,7 @@ rt_err_t xiaozhi_wake_engine_init(void)
     g_wake.initialized = RT_TRUE;
 
 #ifdef XIAOZHI_WAKE_USE_IFX_DEEPCRAFT
-    if (voice_assistant_init(VA_MODE_WW_ONLY) == VA_RSLT_SUCCESS)
+    if (ifx_deepcraft_wake_init() == 0)
     {
         g_wake.ready = RT_TRUE;
         rt_kprintf("[xiaozhi_wake] ready backend=%s\n", xiaozhi_wake_engine_backend_name());
@@ -89,23 +96,21 @@ rt_err_t xiaozhi_wake_engine_process_pcm16(const int16_t *pcm,
 
 #ifdef XIAOZHI_WAKE_USE_IFX_DEEPCRAFT
     {
-        va_event_t event = VA_NO_EVENT;
-        va_data_t data;
-        va_rslt_t ret;
+        int detected = 0;
+        int ret;
         rt_uint32_t offset = 0;
 
-        rt_memset(&data, 0, sizeof(data));
         while (offset + 160U <= sample_count)
         {
-            ret = voice_assistant_process((int16_t *)(pcm + offset), &event, &data);
-            if (ret != VA_RSLT_SUCCESS)
+            ret = ifx_deepcraft_wake_process((int16_t *)(pcm + offset), &detected);
+            if (ret != 0)
             {
                 result->event = XIAOZHI_WAKE_EVENT_ERROR;
                 result->error_code = (int)ret;
                 return -RT_ERROR;
             }
 
-            if (event == VA_EVENT_WW_DETECTED)
+            if (detected)
             {
                 result->event = XIAOZHI_WAKE_EVENT_DETECTED;
                 rt_strncpy(result->wake_word, "Okay Infineon", sizeof(result->wake_word) - 1);

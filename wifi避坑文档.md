@@ -209,6 +209,78 @@ wlan init success
 eth device init ok
 ```
 
+## 9. M55 DEEPCRAFT 唤醒词与外部 RSRAM
+
+### 9.1 M55 唤醒词模型必须放到 secondary/RSRAM
+
+官方 DEEPCRAFT `AM_LSTM` 唤醒模型和工作缓冲较大，不能全部放进 M55 内部 `m55_data_INTERNAL`。如果链接时报：
+
+```text
+rtthread.elf section `.bss' will not fit in region `m55_data_INTERNAL'
+region `m55_data_INTERNAL' overflowed
+```
+
+处理方式：
+
+1. `applications/ifx_deepcraft/SConscript` 中定义 `CY_ML_MODEL_MEM=.cy_socmem_data`。
+2. `Smart_Lights_Demo_config.c` 中的 `am_tensor_arena`、`data_feed_int`、`mtb_ml_input_buffer`、`xIn`、`features`、`output_scores` 都放入 `.cy_socmem_data`。
+3. `board/linker_scripts/link.ld` 已将 `.cy_socmem_data` 映射到 `m55_data_secondary`，即外部/secondary RAM 区。
+
+本次验证的成功构建产物：
+
+```text
+D:\RT-ThreadStudio\workspace\wifi\Debug\rtthread.hex
+text=790760 data=246544 bss=1647468
+```
+
+### 9.2 只保留 WW-only，不要回到旧失败唤醒路径
+
+主线唤醒入口是：
+
+```text
+voice_service -> xiaozhi_wake_engine -> ifx_deepcraft_wake_adapter -> mtb_wwd
+```
+
+不要把 `wake_word_detector.cpp` / `model_deployment.c` 的旧本地测试模型重新接回主线。它们只适合作为旧 demo/调试材料，不是当前小智唤醒词主线。
+
+当前官方示例唤醒词仍是：
+
+```text
+OK Infineon
+```
+
+后续如果要换成“你好小智”，需要重新训练/导出官方 DEEPCRAFT 兼容唤醒词模型，而不是改字符串。
+
+### 9.3 烧录后不要用 M33 串口命令误判 M55
+
+`COM26` 是 KitProg3 USB-UART，但当前 shell 可能属于 M33。烧 M55 后，在该 shell 输入：
+
+```text
+wake_on
+```
+
+如果返回：
+
+```text
+wake_on: command not found.
+```
+
+这只能说明当前交互 shell 不是 M55 shell，不能说明 CM55 没跑。正确确认 CM55 是否运行：
+
+```bat
+cd /d D:\RT-ThreadStudio\repo\Extract\Debugger_Support_Packages\Infineon\OpenOCD-Infineon\2.0.0\bin
+openocd.exe -s ../scripts -s ../flm/cypress/cat1d -f interface/kitprog3.cfg -f target/infineon/pse84xgxs2.cfg -c "init; targets cat1d.cm55; halt; reg pc; reg msp; resume; shutdown"
+```
+
+本次验证结果：
+
+```text
+pc (/32): 0x6059f636
+msp (/32): 0x2003ff88
+```
+
+`pc` 落在 M55 镜像区间 `0x6058xxxx`，说明 CM55 已经从刚烧录的 M55 镜像运行。
+
 本次实际成功日志为：
 
 ```text

@@ -1,0 +1,62 @@
+import os
+from building import *
+
+cwd = GetCurrentDir()
+
+excluded_c = [
+    'mtb_nlu.c',
+    'voice_assistant.c',
+    'U55_NMBmodel.c',
+    'VA_AM_INT8_tflm_model_int8x8.c',
+    'Smart_Lights_Demo_U55_CMDmodel.c',
+]
+
+src = Glob('source/*.c') + Glob('source/va_core/*.c') + Glob('models/*.c') + Glob('models/Smart_Lights_Demo/*.c')
+src = [f for f in src if os.path.basename(str(f)) not in excluded_c]
+src += Glob('source/*.cpp')
+
+path = [
+    cwd,
+    os.path.join(cwd, 'include'),
+    os.path.join(cwd, 'source'),
+    os.path.join(cwd, 'source', 'va_core'),
+    os.path.join(cwd, 'models'),
+    os.path.join(cwd, 'models', 'Smart_Lights_Demo'),
+    os.path.join(cwd, '..', '..', 'libraries', 'components', 'Infineon_cmsis-latest', 'COMPONENT_CMSIS_DSP', 'Include'),
+    os.path.join(cwd, '..', '..', 'libraries', 'components', 'mtb-srf', 'include'),
+    os.path.join(cwd, '..', '..', 'libraries', 'components', 'mtb-srf', 'include', 'COMPONENT_NON_SECURE_DEVICE'),
+    os.path.join(cwd, '..', '..', 'libraries', 'components', 'mtb-srf', 'include', 'COMPONENT_NON_SECURE_DEVICE', 'COMPONENT_MW_MTB_IPC'),
+    os.path.join(cwd, '..', '..', 'libraries', 'components', 'mtb-device-support-pse8xxgp', 'hal', 'include'),
+    os.path.join(cwd, '..', '..', 'libraries', 'components', 'mtb-device-support-pse8xxgp', 'pdl', 'devices', 'include'),
+    os.path.join(cwd, '..', '..', 'libraries', 'components', 'mtb-device-support-pse8xxgp', 'pdl', 'devices', 'include', 'ip'),
+    os.path.join(cwd, '..', '..', 'libraries', 'components', 'mtb-device-support-pse8xxgp', 'pdl', 'drivers', 'include'),
+    os.path.join(cwd, '..', '..', 'libraries', 'components', 'mtb-device-support-pse8xxgp', 'pdl', 'drivers', 'third_party', 'COMPONENT_U55', 'include'),
+    os.path.join(cwd, '..', '..', 'libraries', 'components', 'mtb-device-support-pse8xxgp', 'pdl', 'drivers', 'third_party', 'COMPONENT_U55', 'src'),
+    os.path.join(cwd, '..', '..', 'libraries', 'components', 'abstraction-rtos', 'include'),
+    os.path.join(cwd, '..', '..', 'libraries', 'components', 'abstraction-rtos', 'include', 'COMPONENT_FREERTOS'),
+    os.path.join(cwd, '..', '..', 'libraries', 'components', 'abstraction-rtos'),
+    os.path.join(cwd, '..', '..', 'libraries', 'components', 'async-transfer', 'include'),
+    os.path.join(cwd, '..', '..', 'libraries', 'Common', 'board'),
+    os.path.join(cwd, '..', '..', 'libraries', 'Common', 'board', 'ports', 'fal'),
+    os.path.join(cwd, '..', '..', 'libraries', 'HAL_Drivers'),
+    os.path.join(cwd, '..', '..', 'libs', 'TARGET_APP_KIT_PSE84_EVAL_EPC2'),
+    os.path.join(cwd, '..', '..', 'libs', 'TARGET_APP_KIT_PSE84_EVAL_EPC2', 'config'),
+    os.path.join(cwd, '..', '..', 'libs', 'TARGET_APP_KIT_PSE84_EVAL_EPC2', 'config', 'GeneratedSource'),
+]
+
+defines = [
+    'PROJECT_PREFIX=Smart_Lights_Demo',
+    'ENABLE_IFX_SOD',
+    'ENABLE_IFX_PRE_PROCESS_HPF',
+    'ENABLE_IFX_VA_WWD',
+    'TF_LITE_STATIC_MEMORY',
+    'ETHOSU55',
+    'COMPONENT_U55',
+    'COMPONENT_ML_TFLM',
+    'XIAOZHI_DEEPCRAFT_WW_ONLY',
+    'CY_ML_MODEL_MEM=.cy_socmem_data',
+]
+
+group = DefineGroup('IfxDeepcraftWake', src, depend=[''], CPPPATH=path, CPPDEFINES=defines)
+
+Return('group')

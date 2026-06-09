@@ -3,7 +3,14 @@ from building import *
 import os
 
 cwd  = GetCurrentDir()
-path = [cwd]
+path = [
+    cwd,
+    os.path.join(cwd, 'ifx_deepcraft', 'include'),
+    os.path.join(cwd, 'ifx_deepcraft', 'source'),
+    os.path.join(cwd, 'ifx_deepcraft', 'source', 'va_core'),
+    os.path.join(cwd, 'ifx_deepcraft', 'models'),
+    os.path.join(cwd, 'ifx_deepcraft', 'models', 'Smart_Lights_Demo'),
+]
 src  = Glob('*.c') + Glob('*.cpp')
 src  = [f for f in src if os.path.basename(str(f)) not in [
     'model_deployment.c',
@@ -12,7 +19,20 @@ src  = [f for f in src if os.path.basename(str(f)) not in [
     'wake_word_detector.cpp',
 ]]
 
-group = DefineGroup('Applications', src, depend = [''], CPPPATH = path)
+defines = [
+    'XIAOZHI_WAKE_USE_IFX_DEEPCRAFT',
+    'PROJECT_PREFIX=Smart_Lights_Demo',
+    'ENABLE_IFX_SOD',
+    'ENABLE_IFX_PRE_PROCESS_HPF',
+    'ENABLE_IFX_VA_WWD',
+    'TF_LITE_STATIC_MEMORY',
+    'ETHOSU55',
+    'COMPONENT_U55',
+    'COMPONENT_ML_TFLM',
+    'XIAOZHI_DEEPCRAFT_WW_ONLY',
+]
+
+group = DefineGroup('Applications', src, depend = [''], CPPPATH = path, CPPDEFINES = defines)
 
 list = os.listdir(cwd)
 for item in list:
