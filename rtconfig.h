@@ -463,6 +463,10 @@
 /* Onboard Peripheral Drivers */
 
 #define BSP_USING_USB_TO_UART
+#define BSP_USING_AUDIO
+#define BSP_USING_AUDIO_PLAY
+#define BSP_USING_AUDIO_RECORD
+#define ENABLE_STEREO_INPUT_FEED
 #define BSP_USING_FREERTOS
 /* end of Onboard Peripheral Drivers */
 
