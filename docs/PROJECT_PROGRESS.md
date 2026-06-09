@@ -31,6 +31,11 @@
   - 更新 [COMMAND_CENTER_APP_PROTOCOL_V1.md](COMMAND_CENTER_APP_PROTOCOL_V1.md) 和 [USER_MANUAL.md](USER_MANUAL.md)，补充服务器 A payload、NanoPi 入口命令和通过标准。
   - 新增 [PLATFORM_AI_PROMPT_VLA_LVA_HTTP.md](PLATFORM_AI_PROMPT_VLA_LVA_HTTP.md)，给平台仓库 AI 的复制提示词，要求平台只产出 L/V/A 合同，不生成底层控制。
   - 验证通过：`python -m rehab_arm_psoc_bridge.check_server_action_command --example --queue-item --pretty` 输出 `accepted=true` 且 blocked pipeline 含 `send_can_frame`；`test_server_action_ingress.py`、`test_voice_gateway.py`、`test_command_center_sync.py`、`test_system_architecture_contract.py` 共 30 项通过；`python -m compileall rehab_arm_psoc_bridge` 通过。
+- 2026-06-10 平台 A 到 M33 gate preparation 主线打通：
+  - 新增 `nanopi_action_pipeline.py`、`build_nanopi_action_pipeline_plan.py`、`m33_gate_preparation.py` 和 `build_m33_gate_preparation_package.py`。
+  - 主线现在可从 `server_to_nanopi_high_level_command_v1` 生成 `nanopi_high_level_action_queue_item_v1`，再生成保守 `vla_plan_candidate_v1`、`mujoco_dry_run_review_plan_v1`、`operator_review_request_v1`，最后汇总 operator review、M33 `motion_allowed` 和 fresh motor feedback 为 `m33_gate_preparation_package_v1`。
+  - 边界保持：所有步骤仍是 gate/preparation，不发布 ROS 轨迹、不发 CAN、不设电流/力矩、不覆盖 M33 safety。
+  - 验证通过：action pipeline/MuJoCo/operator/M33 gate 相关 22 项测试通过；`build_nanopi_action_pipeline_plan --example` 和 `build_m33_gate_preparation_package --example --fresh-motor-age-sec 0.2 --fresh-motor-count 4` CLI 样例通过。
 - 2026-06-09 M55 语音/wake 主线改为官方例程优先：
   - 按用户要求重新查看本地 Infineon 官方例程 `D:/RT-ThreadStudio/workspace/_ifx_local_voice`，确认官方 recommended 链路为 `CM55 PDM microphone ISR -> audio_feed_interface -> DEEPCRAFT AFE -> Voice Assistant inferencing_interface -> control_task map_id -> I2S/应用事件`。
   - 更新 [VOICE_WAKE_TTS_PORTABILITY_GUIDE.md](VOICE_WAKE_TTS_PORTABILITY_GUIDE.md)，明确旧 `voice_service/wake_word_detector/wake_on/wake_dump_pcm` 只能作为诊断/过渡，不能再作为正式 wake 主线。

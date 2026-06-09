@@ -478,6 +478,37 @@ python -m rehab_arm_psoc_bridge.check_server_action_command --example --queue-it
 
 失败时只记录错误并退回平台/操作员，不进入 dry-run，不发布 `/arm_controller/joint_trajectory`，不发 CAN。
 
+从服务器 A 一路生成 NanoPi 本地 dry-run pipeline：
+
+```bash
+python -m rehab_arm_psoc_bridge.build_nanopi_action_pipeline_plan \
+  --payload server_action.json \
+  --session-id session_action_pipeline \
+  --pretty
+```
+
+MuJoCo dry-run 报告通过后，生成 operator review 请求：
+
+```bash
+python -m rehab_arm_psoc_bridge.build_nanopi_action_pipeline_plan \
+  --payload server_action.json \
+  --mujoco-report mujoco_report.json \
+  --pretty
+```
+
+操作者审核后，生成 M33 gate preparation 包：
+
+```bash
+python -m rehab_arm_psoc_bridge.build_m33_gate_preparation_package \
+  --operator-review operator_review.json \
+  --psoc-status psoc_status.json \
+  --fresh-motor-age-sec 0.2 \
+  --fresh-motor-count 4 \
+  --pretty
+```
+
+`ready_for_m33_gate=true` 仍然只表示“可以准备进入 M33 gate”，不是直接运动许可。下一步仍必须由正式 NanoPi bridge 和 M33 safety/control 层处理。
+
 ## NanoPi 到 MuJoCo hardware shadow 只读验收
 
 当前主线网络环境固定走：
