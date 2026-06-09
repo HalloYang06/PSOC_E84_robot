@@ -5226,3 +5226,49 @@ ssh pi@192.168.2.66 "for m in 4 5 6 7; do ... $m ...; done"
 状态：
 
 - 2026-06-08 已踩到一次；清理残留进程后改用 PowerShell 单引号重跑，成功完成 4/5/6/7 active-report 检查。
+
+### MSH_CMD_EXPORT 的描述文本不要带逗号或分号
+
+现象：
+
+- M55 `wifi` 工程新增 shell 命令后，第一次 `scons` 编译失败。
+- 失败点出现在 `MSH_CMD_EXPORT(...)` 展开附近，同时 `atol` 未声明。
+
+判断：
+
+- RT-Thread 的 `MSH_CMD_EXPORT(command, desc)` 宏描述参数应保持简单文本；描述里放逗号、分号容易被宏展开解析成异常 token。
+- 命令参数解析使用 `atol` 时必须包含 `<stdlib.h>`。
+
+解决：
+
+- `official_voice_service.c` 添加 `<stdlib.h>`。
+- 把命令描述改成简单英文句子，不在 `MSH_CMD_EXPORT` 的第二个参数里放逗号或分号。
+
+状态：
+
+- 2026-06-09 已修复，`wifi` 工程 `scons -j4` 通过；同步到 GitHub `M55` 分支 commit `3ed3c09`。
+
+### LLM API key 只能放服务器环境变量，不能给 NanoPi/M55/App
+
+现象：
+
+- 设备总控台需要把语音、摄像头、肌电/电机摘要送到大语言模型，但 NanoPi/M55/App 都不应该持有模型 API key。
+
+判断：
+
+- 正确边界是 `NanoPi/App/浏览器 -> 平台 API -> 大模型 provider`。
+- 平台只返回高层建议、模型状态建议、dry-run 轨迹候选；M33 仍是最终安全权限。
+
+解决：
+
+- 平台 `rehab_arm` 模块使用服务端环境变量配置 OpenAI-compatible relay：
+  - `REHAB_ARM_MODEL_RELAY_BASE_URL`
+  - `REHAB_ARM_MODEL_RELAY_MODEL`
+  - `REHAB_ARM_MODEL_RELAY_API_KEY`
+  - `REHAB_ARM_MODEL_RELAY_EXTERNAL_ENABLED=true`
+- API 响应必须保持 `api_key_exposed_to_device=false`。
+- 返回内容若包含 `can_frame`、`motor_current`、`motor_torque`、`raw_motor_position`、`raw_motor_velocity`、`m33_safety_override`、`direct_motor_command` 等字段，必须阻断或降级为安全外壳。
+
+状态：
+
+- 2026-06-09 平台后端测试已覆盖：外部 provider 成功、provider 低层输出被拦截、API key 不回传。

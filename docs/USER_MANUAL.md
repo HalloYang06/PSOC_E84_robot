@@ -334,6 +334,60 @@ ros2 topic echo --once /rehab_arm/model_state
 
 注意：如果 `ros2 topic list -t` 能看到 `/rehab_arm/model_state [std_msgs/msg/String]`，但 `echo --once` 超时，说明当前没有新的 `0x323` 样本，不等于 publisher 缺失。先用 `timeout 8 candump -L can0,323:7FF` 看 M55/M33 是否正在发模型帧。
 
+### M55 本地语音和扬声器最小验收
+
+2026-06-09 起，语音唤醒/播报主线优先按 Infineon official local voice 思路推进。当前 GitHub `M55` 分支已加入 `official_voice_service.c/.h`，先做真实板端 PDM、I2S/speaker、活动检测和 M55->M33 结果出口验证；旧 `wake_word_detector` 只保留作诊断或 fallback。
+
+烧录当前 M55 固件后，Windows 串口 `COM26` 打开 M55 shell，依次执行：
+
+```text
+pdm_mic_self_test 3
+official_voice_speaker_test 1
+official_voice_self_test 3
+local_voice_listen 5
+voice_pipeline_status
+```
+
+期望串口日志：
+
+```text
+[official_voice] PDM test start duration_ms=3000 publish=0
+[official_voice] frames=... peak=... avg_abs=... active=...
+[official_voice] speaker beep ok duration_ms=...
+[official_voice] local activity detected confidence=... publish_ret=0
+[official_voice] status mic_ok=1 speaker_ok=1 ...
+```
+
+验收顺序：
+
+1. `pdm_mic_self_test 3` 能连续读到 frame，`frames>0`，对着麦克风说话时 `peak/avg_abs` 明显变化。
+2. `official_voice_speaker_test 1` 能听到短促 beep，串口打印 `speaker beep ok`。
+3. `local_voice_listen 5` 对着麦克风说话后应打印 `local activity detected`，并调用 `model_result_publish_wake_word(...)` 发布模型建议。
+4. NanoPi 先执行 `ros2 topic echo --once /rehab_arm/model_state std_msgs/msg/String`，再在 M55 shell 执行 `local_voice_listen 5`，确认收到 `rehab_arm_model_state_v1`。
+5. 全程再确认 `timeout 2 candump -L can0,320:7FF` 没有输出。
+
+当前 `local_voice_listen` 是语音活动检测地基，不是最终 ASR 或正式自定义唤醒词模型。通过后，下一步才迁移官方 `PDM -> AFE -> Voice Assistant -> control_task map_id`，再把 `map_id` 映射到本项目 `MSG_TYPE_AI_INFERENCE_RESP`。
+
+### 服务器大语言模型 API 中转验收边界
+
+大语言模型 API 放在服务器/平台侧，不能把 API key 放到 NanoPi、M55、App 或浏览器。设备总控台只接收和展示模型建议：
+
+```text
+M55/NanoPi/App/camera/sensors
+  -> platform rehab-arm command center API
+  -> server-side LLM provider
+  -> model_relay_response_v1 / voice_relay_v1 / vla_plan_candidate_v1
+```
+
+平台返回必须保持：
+
+- `api_key_exposed_to_device=false`
+- `control_boundary=model_relay_only_not_motion_permission`
+- `suggestion.control_boundary=model_suggestion_only_not_motion_permission`
+- `vla_plan_candidate.control_boundary=vla_candidate_only_not_motion_permission`
+
+平台或模型输出不能包含 `can_frame`、`motor_current`、`motor_torque`、`raw_motor_position`、`raw_motor_velocity`、`m33_safety_override`、`direct_motor_command`。如果模型返回这些低层字段，平台必须拦截或降级为安全外壳。真实运动仍然必须经过 MuJoCo dry-run、M33 安全许可和人工确认。
+
 ## NanoPi 到 MuJoCo hardware shadow 只读验收
 
 当前主线网络环境固定走：
