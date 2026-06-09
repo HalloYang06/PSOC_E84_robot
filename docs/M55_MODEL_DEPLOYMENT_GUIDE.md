@@ -108,6 +108,16 @@ control_boundary = model_suggestion_only_not_motion_permission
 1. 打开 GitHub `M55` 分支对应的 `wifi` 工程。
 2. 确认 `packages/TensorflowLiteMicro-latest` 存在。
 3. 确认 `.config` 启用 M55、WiFi、TFLM、C++ 支持和需要的 heap。
+   本地语音/PDM/I2S 验收还必须启用：
+
+```text
+CONFIG_BSP_USING_AUDIO=y
+CONFIG_BSP_USING_AUDIO_PLAY=y
+CONFIG_BSP_USING_AUDIO_RECORD=y
+CONFIG_ENABLE_STEREO_INPUT_FEED=y
+```
+
+   同时确认 `rtconfig.h` 里有 `BSP_USING_AUDIO`、`BSP_USING_AUDIO_PLAY`、`BSP_USING_AUDIO_RECORD` 和 `ENABLE_STEREO_INPUT_FEED`。这个老工程不一定会因为 `.config` 改动自动重生成 `rtconfig.h`；如果 `list device` 没有 `mic0/sound0`，先查这里。
 4. 替换或新增模型 C array，例如 `applications/emg_model_data.h/.cc`。
 5. 在 `voice_service` 或新的 M55 模型任务中调用：
 
@@ -134,6 +144,10 @@ model_manager_load_tflm_model(MODEL_SLOT_EMG, emg_model_tflite, emg_model_tflite
 | M55 启动 | `It's cortex-m55` |
 | IPC | `[m33_m55_comm] ready on CM55` 或 `attached queues on CM55` |
 | 语音服务 | `[voice_service] initialized`、`wake detector ready=1` |
+| 本地音频设备 | `list device` 能看到 `mic0 Sound Device` 和 `sound0 Sound Device` |
+| PDM 自测 | `pdm_mic_self_test 3` 返回 `ret=0`，frames 大于 0 |
+| 扬声器自测 | `official_voice_speaker_test 1` 返回 `ret=0`，串口打印 `speaker beep ok` |
+| 本地语音地基 | `local_voice_listen 5` 打印 `local activity detected`、`publish_ret=0`、`can_ret=0` |
 | TFLM | `tflm slot0 ready=...` 或模型 slot info |
 | M33 收到 | M33 消费 `MSG_TYPE_AI_INFERENCE_RESP` 或 `MSG_TYPE_ASR_TEXT` 后输出绑定日志 |
 | CAN 汇总 | NanoPi candump 看到 `0x323#B5...` |

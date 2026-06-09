@@ -5272,3 +5272,36 @@ ssh pi@192.168.2.66 "for m in 4 5 6 7; do ... $m ...; done"
 状态：
 
 - 2026-06-09 平台后端测试已覆盖：外部 provider 成功、provider 低层输出被拦截、API key 不回传。
+
+### M55 有 PDM/I2S 源码不代表 `mic0/sound0` 已注册
+
+现象：
+
+- M55 烧录新 `official_voice_service` 后，`voice_pipeline_status` 命令存在。
+- 但执行 `pdm_mic_self_test 3` 打印 `[official_voice] mic0 not found`。
+- 执行 `official_voice_speaker_test 1` 打印 `[official_voice] sound0 not found`。
+
+判断：
+
+- `libraries/HAL_Drivers/drv_pdm.c` 和 `drv_i2s.c` 在工程里存在，但 SCons 只有在 `BSP_USING_AUDIO` 打开时才编译它们。
+- 仅有 `RT_USING_AUDIO` 只能启用 RT-Thread audio 框架，不能自动注册板级 `mic0/sound0`。
+- M55 的 `.config` 和 `rtconfig.h` 都要同步；只改 `.config` 时，旧 `rtconfig.h` 会让 SCons 继续跳过驱动。
+
+解决：
+
+- M55 分支打开：
+  - `CONFIG_BSP_USING_AUDIO=y`
+  - `CONFIG_BSP_USING_AUDIO_PLAY=y`
+  - `CONFIG_BSP_USING_AUDIO_RECORD=y`
+  - `CONFIG_ENABLE_STEREO_INPUT_FEED=y`
+- `rtconfig.h` 同步定义：
+  - `BSP_USING_AUDIO`
+  - `BSP_USING_AUDIO_PLAY`
+  - `BSP_USING_AUDIO_RECORD`
+  - `ENABLE_STEREO_INPUT_FEED`
+- 清理旧 `build`、`rt-thread.elf`、`rtthread.hex`、`rtthread.map` 后重编，确认日志里出现 `drv_i2s.o`、`drv_pdm.o`、`drv_es8388.o`。
+- 重新烧录后执行 `list device`，必须看到 `mic0 Sound Device` 和 `sound0 Sound Device`。
+
+状态：
+
+- 2026-06-09 已上板验证：`pdm_mic_self_test 3`、`official_voice_speaker_test 1`、`local_voice_listen 5` 均返回 `ret=0`，并且语音活动结果经 `0x323` 到 NanoPi `/rehab_arm/model_state`。

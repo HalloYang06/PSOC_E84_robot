@@ -2711,3 +2711,17 @@
 - Platform validation: `python -m pytest apps/api/tests/test_rehab_arm_sync.py -q` passed `12 passed`; new coverage includes external provider success, blocked low-level provider output, and no API key returned to device/dashboard.
 - Safety boundary: model relay and M55 voice output remain `model_suggestion_only_not_motion_permission` / `model_relay_only_not_motion_permission`. They may provide high-level rehabilitation intent and dry-run candidates, never CAN frames, motor torque/current, raw motor state, direct motor commands, or M33 safety override.
 - Next smallest hardware task: burn the new M55 firmware, run `pdm_mic_self_test 3`, `official_voice_speaker_test 1`, `local_voice_listen 5`, then verify NanoPi receives the M55 suggestion on `/rehab_arm/model_state`.
+
+### 2026-06-09 - M55 local voice hardware path validated
+
+- Reason: after adding `official_voice_service`, the first burned M55 image exposed the command set but `mic0` and `sound0` were missing.
+- Root cause: M55 `.config` and `rtconfig.h` had `BSP_USING_AUDIO` disabled, so `drv_pdm.c`, `drv_i2s.c`, `drv_es8388.c`, and the mic/codec board ports were not linked.
+- Fix: enabled `BSP_USING_AUDIO`, `BSP_USING_AUDIO_PLAY`, `BSP_USING_AUDIO_RECORD`, and `ENABLE_STEREO_INPUT_FEED` in the M55 branch config, rebuilt, and reburned `D:\RT-ThreadStudio\workspace\wifi\rtthread.hex`.
+- Burn validation: OpenOCD wrote `1,200,128 bytes` and verified `1,195,204 bytes OK` at M55 external flash range `0x60580400...`.
+- Device validation: M55 shell `list device` now lists `mic0 Sound Device` and `sound0 Sound Device`.
+- PDM validation: `pdm_mic_self_test 3` returned `ret=0`, read 599 frames, and reported peak/avg activity.
+- Speaker validation: `official_voice_speaker_test 1` returned `ret=0`; serial printed `[official_voice] speaker beep ok duration_ms=1000`.
+- Local voice validation: `local_voice_listen 5` returned `ret=0`, printed `local activity detected`, `publish_ret=0`, and `[m55_model_bridge] ... can_ret=0`.
+- CAN validation: NanoPi captured `can0 323#B50B010143830300` and later `can0 323#B50D01012A831400` from the voice path; `0x321 -> 0x322` and `0x330~0x334` were also present after reset settled.
+- ROS validation: `/rehab_arm/model_state` received full JSON with `source=m33_m55_bridge_can_0x323`, `model_id=m55_wake_word_v1`, `label=wake_start_request`, `suggestion_only=true`, and `control_boundary=model_suggestion_only_not_motion_permission`.
+- Limitation: this is still an activity-detection/wake-suggestion foundation, not final ASR or custom wake model. The PDM values saturate high in the current setup, so threshold/gain calibration is needed before treating confidence as meaningful.
