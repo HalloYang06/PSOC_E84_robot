@@ -6,6 +6,7 @@
 
 #include "drv_pdm.h"
 #include "model_result_publisher.h"
+#include "official_voice_result_adapter.h"
 
 #define OFFICIAL_VOICE_SAMPLE_RATE_HZ       16000U
 #define OFFICIAL_VOICE_CHANNELS             1U
@@ -447,3 +448,42 @@ static void voice_calibrate(int argc, char **argv)
     }
 }
 MSH_CMD_EXPORT(voice_calibrate, Capture ambient audio and suggest thresholds);
+
+static void publish_official_voice_map_id_from_args(int argc, char **argv, const char *command_name)
+{
+    rt_int32_t map_id = OFFICIAL_VOICE_MAP_OK_INFINEON;
+    rt_uint16_t confidence = 900U;
+    rt_err_t ret;
+
+    if (argc >= 2)
+    {
+        map_id = (rt_int32_t)atol(argv[1]);
+    }
+    if (argc >= 3)
+    {
+        long parsed_confidence = atol(argv[2]);
+        if (parsed_confidence >= 0)
+        {
+            confidence = parsed_confidence > 1000 ? 1000U : (rt_uint16_t)parsed_confidence;
+        }
+    }
+
+    ret = official_voice_publish_map_id(map_id, confidence, 30U);
+    rt_kprintf("%s id=%ld label=%s ret=%d\n",
+               command_name,
+               (long)map_id,
+               official_voice_map_id_label(map_id),
+               ret);
+}
+
+static void official_voice_map_id(int argc, char **argv)
+{
+    publish_official_voice_map_id_from_args(argc, argv, "official_voice_map_id");
+}
+MSH_CMD_EXPORT(official_voice_map_id, Publish official local voice map_id);
+
+static void ov_map(int argc, char **argv)
+{
+    publish_official_voice_map_id_from_args(argc, argv, "ov_map");
+}
+MSH_CMD_EXPORT(ov_map, Short alias: publish official local voice map_id);
