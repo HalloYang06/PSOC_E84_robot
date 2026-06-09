@@ -29,6 +29,7 @@ echo "${executables}" | grep -q "${PACKAGE_NAME} build_command_center_sync_plan.
 echo "${executables}" | grep -q "${PACKAGE_NAME} check_command_center_sync_plan.py"
 echo "${executables}" | grep -q "${PACKAGE_NAME} check_vla_plan_candidate.py"
 echo "${executables}" | grep -q "${PACKAGE_NAME} build_mujoco_dry_run_review_plan.py"
+echo "${executables}" | grep -q "${PACKAGE_NAME} check_operator_review.py"
 
 voice_json="$(mktemp)"
 session_json="$(mktemp)"
@@ -36,7 +37,8 @@ sync_json="$(mktemp)"
 sync_quality_json="$(mktemp)"
 vla_candidate_report_json="$(mktemp)"
 mujoco_review_plan_json="$(mktemp)"
-trap 'rm -f "${voice_json}" "${session_json}" "${sync_json}" "${sync_quality_json}" "${vla_candidate_report_json}" "${mujoco_review_plan_json}"' EXIT
+operator_review_report_json="$(mktemp)"
+trap 'rm -f "${voice_json}" "${session_json}" "${sync_json}" "${sync_quality_json}" "${vla_candidate_report_json}" "${mujoco_review_plan_json}" "${operator_review_report_json}"' EXIT
 
 ros2 run "${PACKAGE_NAME}" build_voice_pipeline_plan.py \
   --robot-id medical_rehab_arm \
@@ -78,7 +80,18 @@ ros2 run "${PACKAGE_NAME}" build_mujoco_dry_run_review_plan.py \
   --session-id session_sim_host_qa \
   | python3 -m json.tool >"${mujoco_review_plan_json}"
 
-python3 - "${voice_json}" "${session_json}" "${sync_json}" "${sync_quality_json}" "${vla_candidate_report_json}" "${mujoco_review_plan_json}" <<'PY'
+ros2 run "${PACKAGE_NAME}" check_operator_review.py \
+  --example \
+  --robot-id medical_rehab_arm \
+  --device-id sim_host \
+  --session-id session_sim_host_qa \
+  --patient-id patient_dry_run \
+  --profile-id profile_sim_host_qa \
+  --reviewer-id sim_operator \
+  --reviewer-role operator \
+  | python3 -m json.tool >"${operator_review_report_json}"
+
+python3 - "${voice_json}" "${session_json}" "${sync_json}" "${sync_quality_json}" "${vla_candidate_report_json}" "${mujoco_review_plan_json}" "${operator_review_report_json}" <<'PY'
 import json
 import sys
 
@@ -130,6 +143,15 @@ if mujoco_review_plan.get('accepted_for_review') is not True:
     raise SystemExit(f'MuJoCo dry-run review plan rejected safe example: {mujoco_review_plan}')
 if 'publish_joint_trajectory' not in mujoco_review_plan.get('forbidden_next_steps', []):
     raise SystemExit('MuJoCo dry-run review plan must forbid direct JointTrajectory publication')
+
+with open(sys.argv[7], encoding='utf-8') as handle:
+    operator_review = json.load(handle)
+if operator_review.get('schema_version') != 'operator_review_quality_report_v1':
+    raise SystemExit('operator review quality report schema mismatch')
+if operator_review.get('ok') is not True:
+    raise SystemExit(f'operator review quality gate failed: {operator_review}')
+if 'send_can_frame' not in operator_review.get('forbidden_next_steps', []):
+    raise SystemExit('operator review must forbid direct CAN frames')
 
 print('SIM_HOST_REHAB_USER_QA_OK')
 PY

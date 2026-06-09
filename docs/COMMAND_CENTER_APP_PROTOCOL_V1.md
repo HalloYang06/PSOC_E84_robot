@@ -470,6 +470,24 @@ ros2 run rehab_arm_psoc_bridge build_mujoco_dry_run_review_plan.py \
 
 MuJoCo dry-run 的报告也不能授予真实运动许可。即使报告里 `dry_run_passed=true`，下一步仍只能进入 operator review 和正式 M33 gate 准备，不能直接发 CAN 或底层电机目标。
 
+操作者/治疗师审核记录使用 `operator_review_record_v1`，本仓库提供质量门：
+
+```bash
+ros2 run rehab_arm_psoc_bridge check_operator_review.py \
+  --review operator_review_record.json \
+  --pretty
+```
+
+审核记录必须绑定 `robot_id/device_id/session_id`，涉及患者时绑定 `patient_id/profile_id`；`reviewer.user_id` 和 `reviewer.role` 必须存在，角色限定为 `operator/doctor/therapist/admin`。审核记录还必须显式确认：
+
+- `patient_profile_confirmed`
+- `mujoco_dry_run_reviewed`
+- `m33_safety_gate_required`
+- `fresh_motor_feedback_required`
+- `estop_available`
+
+`approved_for_m33_gate_preparation=true` 只表示可以准备进入 M33 gate，不是运动许可。服务器、App 或 NanoPi 仍不得因为操作者审核通过就直接发 `JointTrajectory`、CAN、电流或力矩。
+
 ## 9. Wiring Health Protocol
 
 接线检测不是靠单一状态，而是综合 freshness、心跳、错误计数、温度和协议解析。

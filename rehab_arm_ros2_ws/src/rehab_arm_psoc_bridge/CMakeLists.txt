@@ -53,6 +53,7 @@ install(PROGRAMS
   rehab_arm_psoc_bridge/check_command_center_sync_plan.py
   rehab_arm_psoc_bridge/check_vla_plan_candidate.py
   rehab_arm_psoc_bridge/build_mujoco_dry_run_review_plan.py
+  rehab_arm_psoc_bridge/check_operator_review.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

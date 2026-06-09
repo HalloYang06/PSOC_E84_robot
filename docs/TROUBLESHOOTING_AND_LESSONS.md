@@ -81,6 +81,32 @@ ros2 run rehab_arm_psoc_bridge check_vla_plan_candidate.py \
 
 - 2026-06-09 已加入 `mujoco_dry_run_review.py`、CLI、单元测试和仿真主机 QA 脚本入口；本地样例验证通过。
 
+### 操作者审核通过只允许准备进入 M33 gate
+
+现象：
+
+- MuJoCo dry-run 通过后，操作者/治疗师可能在平台上点击“同意”。
+- 如果平台把这个同意直接当作运动命令，仍然会绕过 M33 本地安全状态机。
+
+根因：
+
+- 人工审核是流程记录和责任确认，不是电机控制授权。
+- 真机执行时安全状态、fresh motor feedback、急停、电源和患者状态都必须实时再检查。
+
+解决：
+
+- 使用 `operator_review_record_v1` 记录审核人、角色、患者/session/profile 绑定和五项安全确认。
+- 用 `check_operator_review.py` 校验记录；通过后的 `allowed_next_steps` 只有 `prepare_joint_trajectory_for_m33_gate`。
+
+技巧：
+
+- `approved_for_m33_gate_preparation=true` 不能被平台翻译成 `motion_allowed=true`。
+- App/服务器/NanoPi 仍不得绕过 M33 gate 发 `JointTrajectory`、CAN、电流或力矩。
+
+状态：
+
+- 2026-06-09 已加入 `operator_review.py`、CLI、单元测试和仿真主机 QA 脚本入口；本地样例验证通过。
+
 ### Windows 本地跑 ROS Python 包测试要设置 PYTHONPATH
 
 现象：

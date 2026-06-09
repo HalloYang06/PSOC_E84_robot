@@ -17,6 +17,13 @@
 
 ## 架构状态
 
+- 2026-06-09 Operator review 审核记录质量门：
+  - `rehab_arm_psoc_bridge` 新增 `operator_review.py` 和 `check_operator_review.py`，用于 MuJoCo dry-run 之后记录并校验操作者/治疗师审核。
+  - `operator_review_record_v1` 必须绑定 `robot_id/device_id/session_id`，可绑定 `patient_id/profile_id/source_plan_id/mujoco_report_id`，并要求 `reviewer.user_id` 与 `reviewer.role` 合法。
+  - 审核记录必须包含 `patient_profile_confirmed`、`mujoco_dry_run_reviewed`、`m33_safety_gate_required`、`fresh_motor_feedback_required`、`estop_available` 五项确认。
+  - `approved_for_m33_gate_preparation=true` 只允许进入 `prepare_joint_trajectory_for_m33_gate`，仍禁止绕过 M33 gate 发布轨迹、发 CAN、设电流/力矩或覆盖 M33 安全。
+  - 更新 [COMMAND_CENTER_APP_PROTOCOL_V1.md](COMMAND_CENTER_APP_PROTOCOL_V1.md)、[USER_MANUAL.md](USER_MANUAL.md) 和 `scripts/sim_host_rehab_user_qa.sh`，远程仿真主机 QA 会检查 operator review CLI 和内置样例。
+  - 本地验证通过：`test_operator_review.py`、`test_mujoco_dry_run_review.py`、`test_system_architecture_contract.py` 共 20 项通过；`check_operator_review.py --example --pretty` 输出 `ok=true`；`python -m compileall rehab_arm_psoc_bridge` 通过。
 - 2026-06-09 MuJoCo dry-run 审核计划地基：
   - `rehab_arm_psoc_bridge` 新增 `mujoco_dry_run_review.py` 和 `build_mujoco_dry_run_review_plan.py`，把已通过 VLA candidate gate 的 `dry_run_joint_trajectory` 转成 `mujoco_dry_run_review_plan_v1`。
   - review plan 只描述仿真审核目标、candidate、必检项、允许/禁止下一步；不发布 ROS topic、不连接 CAN、不改变 M33/M55/NanoPi 状态。

@@ -189,6 +189,32 @@ PYTHONPATH=. python -m rehab_arm_psoc_bridge.build_mujoco_dry_run_review_plan \
 - `forbidden_next_steps` 必须包含 `publish_joint_trajectory`、`send_can_frame`、`set_motor_current`、`set_motor_torque`、`override_m33_safety`。
 - 该命令只生成审核计划，不发布 ROS topic、不连接 CAN、不改变 M33/M55/NanoPi 状态。
 
+检查操作者/治疗师审核记录：
+
+```bash
+cd rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge
+PYTHONPATH=. python -m rehab_arm_psoc_bridge.check_operator_review \
+  --review operator_review_record.json \
+  --pretty
+```
+
+没有审核文件时，可以生成内置样例并检查：
+
+```bash
+PYTHONPATH=. python -m rehab_arm_psoc_bridge.check_operator_review \
+  --example \
+  --pretty
+```
+
+通过标准：
+
+- 输出 `schema_version=operator_review_quality_report_v1`。
+- `ok=true`。
+- `reviewer.user_id` 和 `reviewer.role` 有效，角色只能是 `operator/doctor/therapist/admin`。
+- `required_acknowledgements` 包含患者 profile 已确认、MuJoCo dry-run 已审核、M33 safety gate 必需、fresh motor feedback 必需、急停可用。
+- `approved_for_m33_gate_preparation=true` 也只允许进入 M33 gate 准备，不是直接运动许可。
+- `forbidden_next_steps` 必须禁止绕过 M33 gate 发布轨迹、发 CAN、设电流/力矩和覆盖 M33 安全。
+
 远程仿真主机上做用户视角 dry-run 验收：
 
 ```bash
@@ -200,7 +226,7 @@ git pull
 通过标准：
 
 - `colcon build --packages-select rehab_arm_psoc_bridge --symlink-install` 通过。
-- `ros2 pkg executables rehab_arm_psoc_bridge` 能看到 `build_voice_pipeline_plan.py`、`build_rehab_session_plan.py`、`build_command_center_sync_plan.py`、`check_command_center_sync_plan.py`、`check_vla_plan_candidate.py` 和 `build_mujoco_dry_run_review_plan.py`。
+- `ros2 pkg executables rehab_arm_psoc_bridge` 能看到 `build_voice_pipeline_plan.py`、`build_rehab_session_plan.py`、`build_command_center_sync_plan.py`、`check_command_center_sync_plan.py`、`check_vla_plan_candidate.py`、`build_mujoco_dry_run_review_plan.py` 和 `check_operator_review.py`。
 - 输出包含 `SIM_HOST_REHAB_USER_QA_OK`。
 - 全程不连接 CAN、不发布真实运动、不改变 M33 状态。
 
