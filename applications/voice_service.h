@@ -12,5 +12,6 @@ rt_err_t voice_service_request_listen_start(void);
 rt_err_t voice_service_request_listen_stop(void);
 rt_err_t voice_service_dump_latest_pcm(const char *path);
 rt_err_t voice_service_reconnect_xiaozhi(void);
+rt_err_t voice_service_submit_local_pcm(const rt_uint8_t *pcm, rt_uint32_t len);
 
 #endif // VOICE_SERVICE_H

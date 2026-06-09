@@ -110,7 +110,7 @@ rt_weak void rt_hw_board_init()
 #endif
 
     /* set the shell console output device */
-#if defined(RT_USING_CONSOLE) && defined(RT_USING_DEVICE)
+#if defined(RT_USING_CONSOLE) && defined(RT_USING_DEVICE) && !defined(COMPONENT_CM55)
     rt_console_set_device(RT_CONSOLE_DEVICE_NAME);
 #endif
 

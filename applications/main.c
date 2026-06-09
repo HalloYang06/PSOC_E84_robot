@@ -170,6 +170,8 @@ static void m55_mic_thread_entry(void *parameter)
                            (unsigned)frame_count);
                 peak = 0;
             }
+
+            (void)voice_service_submit_local_pcm(g_m55_mic.buffer, (rt_uint32_t)read_len);
         }
         else
         {
@@ -408,6 +410,11 @@ static void voice_boot_thread_entry(void *parameter)
     if (ret != RT_EOK)
     {
         rt_kprintf("Voice service start failed: %d\n", ret);
+    }
+    else
+    {
+        ret = m55_mic_start_internal();
+        rt_kprintf("[m55] local mic autostart ret=%d\n", ret);
     }
 
     g_voice_boot_thread = RT_NULL;

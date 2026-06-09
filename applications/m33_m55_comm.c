@@ -29,7 +29,7 @@ static m33_m55_comm_runtime_t g_comm_runtime;
 static mtb_ipc_t g_ipc_handle _MTB_IPC_DATA_ALIGN;
 static mtb_ipc_queue_t g_tx_queue_handle _MTB_IPC_DATA_ALIGN;
 static mtb_ipc_queue_t g_rx_queue_handle _MTB_IPC_DATA_ALIGN;
-__attribute__((section(".ipc_stream_shared"), aligned(32)))
+__attribute__((section(".cy_shared_socmem"), aligned(32)))
 volatile m33_m55_pcm_shared_t g_m33_m55_pcm_shared;
 
 static const mtb_ipc_config_t g_ipc_config = {

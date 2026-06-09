@@ -25,6 +25,7 @@ typedef struct
 {
     rt_bool_t initialized;
     rt_bool_t running;
+    rt_bool_t wake_listening;
     rt_bool_t asr_ready;
     rt_bool_t tts_ready;
     rt_uint32_t reconnect_tick;
@@ -56,6 +57,30 @@ typedef struct
 } voice_model_result_t;
 
 static voice_service_t g_service;
+
+static rt_err_t voice_service_set_wake_listening(rt_bool_t enable)
+{
+    if (!g_service.initialized)
+    {
+        return -RT_ERROR;
+    }
+
+    rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
+    g_service.wake_listening = enable;
+    if (!enable)
+    {
+        g_service.latest_pcm_pending = RT_FALSE;
+        g_service.wake_hit_streak = 0;
+        g_service.wake_skip_windows = 0;
+    }
+    rt_mutex_release(&g_service.lock);
+
+    rt_kprintf("[voice_service] wake listening=%d backend=%s ready=%d\n",
+               enable ? 1 : 0,
+               xiaozhi_wake_engine_backend_name(),
+               xiaozhi_wake_engine_is_ready() ? 1 : 0);
+    return RT_EOK;
+}
 
 static voice_model_result_t voice_service_model_entry(const uint8_t *audio_data, uint32_t len)
 {
@@ -654,6 +679,11 @@ static void voice_service_accept_shared_pcm(const sensor_stream_msg_t *stream)
         return;
     }
 
+    if (!g_service.wake_listening)
+    {
+        return;
+    }
+
     if (stream->chunk_index != g_m33_m55_pcm_shared.seq)
     {
         rt_kprintf("[voice_service] shared pcm seq mismatch msg=%lu shared=%lu\n",
@@ -688,6 +718,11 @@ static void voice_service_accept_shared_pcm(const sensor_stream_msg_t *stream)
 static void voice_service_accept_audio_chunk(const audio_data_msg_t *chunk)
 {
     if (!chunk)
+    {
+        return;
+    }
+
+    if (!g_service.wake_listening)
     {
         return;
     }
@@ -735,6 +770,47 @@ static rt_err_t voice_service_send_control(voice_control_cmd_t cmd)
     return m33_m55_comm_publish(&msg);
 }
 
+static void voice_service_handle_control(const voice_control_msg_t *control)
+{
+    rt_err_t ret = RT_EOK;
+
+    if (control == RT_NULL)
+    {
+        return;
+    }
+
+    switch ((voice_control_cmd_t)control->cmd)
+    {
+    case VOICE_CTRL_START_LISTEN:
+        ret = voice_service_set_wake_listening(RT_TRUE);
+        break;
+    case VOICE_CTRL_STOP_LISTEN:
+        ret = voice_service_set_wake_listening(RT_FALSE);
+        break;
+    case VOICE_CTRL_START_CAPTURE:
+        rt_kprintf("[voice_service] capture control received; local mic is managed by CM55 main\n");
+        break;
+    case VOICE_CTRL_STOP_CAPTURE:
+        rt_kprintf("[voice_service] capture stop received; local mic remains under CM55 main control\n");
+        break;
+    default:
+        rt_kprintf("[voice_service] unknown voice control cmd=%lu\n", (unsigned long)control->cmd);
+        ret = -RT_EINVAL;
+        break;
+    }
+
+    {
+        m33_m55_message_t ack;
+
+        rt_memset(&ack, 0, sizeof(ack));
+        ack.type = MSG_TYPE_VOICE_CONTROL_ACK;
+        ack.payload.voice_control.cmd = control->cmd;
+        ack.payload.voice_control.arg0 = (rt_uint32_t)ret;
+        ack.payload.voice_control.arg1 = (rt_uint32_t)rt_tick_get();
+        (void)m33_m55_comm_publish(&ack);
+    }
+}
+
 static void voice_service_thread_entry(void *parameter)
 {
     m33_m55_message_t msg;
@@ -771,6 +847,9 @@ static void voice_service_thread_entry(void *parameter)
                 break;
             case MSG_TYPE_TTS_REQUEST:
                 voice_service_handle_server_text(msg.payload.text.text);
+                break;
+            case MSG_TYPE_VOICE_CONTROL:
+                voice_service_handle_control(&msg.payload.voice_control);
                 break;
             default:
                 break;
@@ -974,6 +1053,43 @@ rt_err_t voice_service_reconnect_xiaozhi(void)
         voice_service_send_xiaozhi_hello();
     }
     return ret;
+}
+
+rt_err_t voice_service_submit_local_pcm(const rt_uint8_t *pcm, rt_uint32_t len)
+{
+    if ((pcm == RT_NULL) || (len == 0U))
+    {
+        return -RT_EINVAL;
+    }
+    if (!g_service.initialized || !g_service.running)
+    {
+        return -RT_ERROR;
+    }
+    if (!g_service.wake_listening)
+    {
+        return -RT_EBUSY;
+    }
+    if (len > VOICE_PCM_BUFFER_SIZE)
+    {
+        len = VOICE_PCM_BUFFER_SIZE;
+    }
+
+    rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
+    if ((g_service.audio_buffer == RT_NULL) || (g_service.detect_buffer == RT_NULL))
+    {
+        rt_mutex_release(&g_service.lock);
+        return -RT_ENOMEM;
+    }
+    g_service.audio_expected = len;
+    g_service.audio_received = len;
+    g_service.latest_pcm_len = len;
+    g_service.latest_pcm_seq++;
+    g_service.latest_pcm_pending = RT_TRUE;
+    rt_memcpy(g_service.audio_buffer, pcm, len);
+    rt_mutex_release(&g_service.lock);
+
+    rt_sem_release(&g_service.detect_sem);
+    return RT_EOK;
 }
 
 rt_err_t voice_service_request_capture_start(void)

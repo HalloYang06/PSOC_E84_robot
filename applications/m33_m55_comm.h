@@ -21,7 +21,8 @@ typedef enum
     MSG_TYPE_ASR_TEXT,
     MSG_TYPE_TTS_REQUEST,
     MSG_TYPE_TTS_AUDIO,
-    MSG_TYPE_VOICE_CONTROL
+    MSG_TYPE_VOICE_CONTROL,
+    MSG_TYPE_VOICE_CONTROL_ACK
 } m33_m55_msg_type_t;
 
 typedef enum
