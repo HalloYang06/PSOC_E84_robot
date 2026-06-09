@@ -13,7 +13,8 @@ DEFAULT_WAKE_PHRASE = 'xiao_yi_xiao_yi'
 DEFAULT_AUDIO_FORMAT = 'pcm_s16le'
 DEFAULT_SAMPLE_RATE_HZ = 16000
 DEFAULT_CHANNELS = 1
-DEFAULT_WAKE_MODEL_POLICY = 'official_tflm_micro_speech_or_open_source_micro_wake_word'
+DEFAULT_WAKE_MODEL_POLICY = 'infineon_local_voice_first_then_tflm_or_micro_wake_word'
+INFINEON_LOCAL_VOICE_EXAMPLE = 'Infineon PSOC Edge mains-powered local voice'
 
 
 def stable_capture_id(
@@ -197,18 +198,36 @@ def build_voice_pipeline_plan(
         'device_id': device_id,
         'wake_phrase': wake_phrase,
         'wake_model_policy': DEFAULT_WAKE_MODEL_POLICY,
+        'official_reference': {
+            'name': INFINEON_LOCAL_VOICE_EXAMPLE,
+            'repo': 'https://github.com/Infineon/mtb-example-psoc-edge-mains-powered-local-voice',
+            'local_reference_path': 'D:/RT-ThreadStudio/workspace/_ifx_local_voice',
+            'pipeline': [
+                'CM55 PDM microphone ISR creates 10 ms PCM frames',
+                'audio_feed_interface feeds frames into DEEPCRAFT audio enhancement',
+                'inferencing_interface runs wake word and command recognition',
+                'control_task receives map_id and handles LEDs/I2S/application events',
+            ],
+        },
         'portable_model_sources': [
-            'Infineon PSOC Edge local voice example for board audio/I2S/PDM pipeline',
-            'TensorFlow Lite Micro micro_speech for minimal official wake-word runtime',
-            'OHF/ESPHome micro-wake-word for open-source custom wake-word models',
+            'Infineon PSOC Edge local voice example for board audio/I2S/PDM/VA pipeline',
+            'TensorFlow Lite Micro micro_speech only as a minimal official fallback runtime',
+            'OHF/ESPHome micro-wake-word only as an open-source custom wake-word fallback',
         ],
         'portability_rules': [
             'keep audio capture, feature extraction, model runner, result publisher, and transport separated',
-            'convert selected .tflite model to a C array and load it through model_manager slot APIs',
+            'do not revive the old custom wake route as the main path; keep it as diagnostics only',
+            'port the official CM55 PDM/AFE/inferencing/control-task shape into the current wifi project modules',
+            'convert selected fallback .tflite model to a C array and load it through model_manager slot APIs',
             'publish wake/ASR/TTS results through M33/M55 IPC and /rehab_arm/model_state instead of direct motion',
             'keep cloud ASR/TTS optional; server command center is an API relay, not a real-time controller',
         ],
-        'm55_expected_commands': ['wake_on', 'voice_test', 'wake_dump_pcm', 'wake_off'],
+        'm55_expected_commands': [
+            'official_voice_self_test',
+            'pdm_mic_self_test',
+            'local_voice_listen',
+            'voice_pipeline_status',
+        ],
         'pipeline': [
             {
                 'step': 'm55_capture_raw_pcm',

@@ -17,6 +17,13 @@
 
 ## 架构状态
 
+- 2026-06-09 M55 语音/wake 主线改为官方例程优先：
+  - 按用户要求重新查看本地 Infineon 官方例程 `D:/RT-ThreadStudio/workspace/_ifx_local_voice`，确认官方 recommended 链路为 `CM55 PDM microphone ISR -> audio_feed_interface -> DEEPCRAFT AFE -> Voice Assistant inferencing_interface -> control_task map_id -> I2S/应用事件`。
+  - 更新 [VOICE_WAKE_TTS_PORTABILITY_GUIDE.md](VOICE_WAKE_TTS_PORTABILITY_GUIDE.md)，明确旧 `voice_service/wake_word_detector/wake_on/wake_dump_pcm` 只能作为诊断/过渡，不能再作为正式 wake 主线。
+  - 更新 [M55_MODEL_DEPLOYMENT_GUIDE.md](M55_MODEL_DEPLOYMENT_GUIDE.md)，把旧 `wake_word_detector` 降级为 fallback，并要求 DeepCraft/官方工具输出也必须接入本项目 M55 结果适配层和 M33/M55 IPC。
+  - 更新 `voice_gateway.py` 的 dry-run 合同：`wake_model_policy=infineon_local_voice_first_then_tflm_or_micro_wake_word`，输出官方 repo、本地参考路径、PDM/AFE/VA/control_task 管线和新 M55 预期自测命令。
+  - 验证通过：`test_voice_gateway.py` 4 项通过；`python -m compileall rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge` 通过；`build_voice_pipeline_plan --pretty` 输出包含官方 local voice reference 且仍禁止 `can_frame/motor_current/motor_torque/motion_allowed`。
+  - 未验证：本轮未烧录 M55，也未完成真实“喊唤醒词 -> ASR/LLM -> TTS 扬声器回应”上板闭环。下一步应先在官方例程独立验证 PDM/I2S/VA，再把 PDM frame 统计和 map_id adapter 分模块移植到当前 `wifi` 工程。
 - 2026-06-09 Operator review 审核记录质量门：
   - `rehab_arm_psoc_bridge` 新增 `operator_review.py` 和 `check_operator_review.py`，用于 MuJoCo dry-run 之后记录并校验操作者/治疗师审核。
   - `operator_review_record_v1` 必须绑定 `robot_id/device_id/session_id`，可绑定 `patient_id/profile_id/source_plan_id/mujoco_report_id`，并要求 `reviewer.user_id` 与 `reviewer.role` 合法。

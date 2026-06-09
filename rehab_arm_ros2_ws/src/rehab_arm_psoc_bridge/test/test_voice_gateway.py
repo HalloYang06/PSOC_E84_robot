@@ -51,6 +51,15 @@ class TestVoiceGateway(unittest.TestCase):
         plan = build_voice_pipeline_plan('arm', 'nanopi', now=100.0)
 
         self.assertEqual(plan['schema_version'], 'rehab_arm_voice_pipeline_plan_v1')
+        self.assertEqual(plan['wake_model_policy'], 'infineon_local_voice_first_then_tflm_or_micro_wake_word')
+        self.assertEqual(
+            plan['official_reference']['repo'],
+            'https://github.com/Infineon/mtb-example-psoc-edge-mains-powered-local-voice',
+        )
+        self.assertIn(
+            'do not revive the old custom wake route as the main path; keep it as diagnostics only',
+            plan['portability_rules'],
+        )
         self.assertIn('can_frame', plan['forbidden_outputs'])
         self.assertEqual(plan['control_boundary'], 'voice_pipeline_plan_only_not_motion_permission')
 

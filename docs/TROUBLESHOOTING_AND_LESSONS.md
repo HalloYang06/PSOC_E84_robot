@@ -20,6 +20,34 @@
 
 ## CAN 与硬件
 
+### 旧 wake 代码存在不等于语音唤醒闭环已通
+
+现象：
+
+- M55 `wifi` 工程里有 `voice_service.c`、`wake_word_detector.cpp`、`baidu_asr.c`、`baidu_tts.c` 和 `websocket_client.c`。
+- 但用户现场要求“我喊它能回应我”时，不能据此声称已完成 wake -> ASR/LLM -> TTS speaker 闭环。
+
+排查：
+
+- `baidu_asr.c` 和 `baidu_tts.c` 当前仍是未实现 stub，返回 `-RT_ENOSYS`。
+- 旧 `wake_word_detector` 路线此前被用户明确判定失败。
+- Infineon 官方 local voice 例程提供了更可靠的 CM55 主线：PDM 10 ms frame、AFE、Voice Assistant inferencing、control_task map_id 和 I2S/扬声器路径。
+
+根因：
+
+- 旧工程里有语音相关模块，但缺少官方音频管线迁移、真实 ASR/LLM/TTS provider、以及上板端到端验收。
+- 把存在的模块名当成完成状态，会误导后续联调。
+
+解决：
+
+- 正式语音主线改为官方例程优先：先验证 `_ifx_local_voice`，再分模块移植 PDM/AFE/VA/control_task 结构到 `wifi` 工程。
+- 旧 `voice_service/wake_word_detector` 只保留为 PCM dump、API relay 或 fallback 诊断。
+- 任何语音输出都必须通过 `MSG_TYPE_AI_INFERENCE_RESP -> M33 -> 0x323 -> NanoPi /rehab_arm/model_state` 或 `tts_playback_request_v1`，并保持 `*_not_motion_permission` 边界。
+
+状态：
+
+- 2026-06-09 已更新 `VOICE_WAKE_TTS_PORTABILITY_GUIDE.md`、`M55_MODEL_DEPLOYMENT_GUIDE.md`、`voice_gateway.py` 和测试；尚未上板完成真实唤醒播报闭环。
+
 ### VLA candidate 通过 JSON 审核不等于可以发真机轨迹
 
 现象：

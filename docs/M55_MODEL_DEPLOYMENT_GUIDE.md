@@ -1,6 +1,8 @@
 # M55 Small Model Deployment Guide
 
-本文按当前 GitHub `M55` 分支的 WiFi/AI 工程来部署小模型。不要另起工程，也不要绕开现有 `model_manager`、`wake_word_detector`、`voice_service` 和 `m33_m55_comm`。
+本文按当前 GitHub `M55` 分支的 WiFi/AI 工程来部署小模型。不要另起工程，也不要绕开现有 `model_manager`、`model_result_publisher`、`voice_service` 诊断能力和 `m33_m55_comm`。
+
+语音/wake 主线从 2026-06-09 起按 Infineon 官方 local voice 例程优先迁移：先复用官方 PDM/AFE/Voice Assistant/I2S 结构，再把 map_id 通过本项目结果适配层发回 M33。旧 `wake_word_detector` 只保留为诊断或 fallback，不再作为正式 wake 主线。
 
 ## 1. 当前工程基线
 
@@ -15,9 +17,9 @@ git clone -b M55 git@github.com:ChillAmnesiac/Medical-Rehabilitation-Manipulator
 | 文件 | 状态 |
 |---|---|
 | `applications/model_manager.h/.cpp` | 多 slot TFLite Micro 管理器，slot 包含 wake word、VAD、ASR frontend、IMU、EMG、fusion。 |
-| `applications/wake_word_detector.h/.cpp` | 独立 wake word TFLM 推理，MFCC 输入，输出置信度。 |
+| `applications/wake_word_detector.h/.cpp` | 历史独立 wake word TFLM 推理，MFCC 输入，输出置信度；只作为诊断/fallback。 |
 | `applications/wake_word_model_data.h` | 已转换成 C array 的模型数据。 |
-| `applications/voice_service.c` | M33 PCM 输入、wake 检测、Baidu ASR/TTS、WebSocket、ASR 文本回 M33。 |
+| `applications/voice_service.c` | M33 PCM 输入、PCM dump、API relay 诊断、ASR/TTS 文本和音频收发过渡层。 |
 | `applications/model_input_bridge.c` | 接收 M33 snapshot/stream，分发到规则模型或真实 TFLM runner。 |
 | `applications/motor7_model_runner.c` | 当前 7 号电机台架 TFLM 验证 runner，把电机反馈编码成 PCM16 并运行现有 wake-word slot。 |
 | `applications/m33_m55_comm.h/.c` | M55 侧 MTB-IPC queue 与共享 PCM。 |
@@ -38,9 +40,9 @@ git clone -b M55 git@github.com:ChillAmnesiac/Medical-Rehabilitation-Manipulator
   -> M33 -> NanoPi -> /rehab_arm/model_state
 ```
 
-当前 `packages/TensorflowLiteMicro-latest/docs/user-guide.md` 也采用同一路径：量化 `.tflite` 后用 `xxd -i converted_model.tflite > model_data.cc` 转成 C 数组。后续如果使用 Infineon DeepCraft/官方工具生成模型，也必须落到当前 M55 工程的 TFLM/模型 slot/IPC 出口，不要绕过现有主线。
+当前 `packages/TensorflowLiteMicro-latest/docs/user-guide.md` 也采用同一路径：量化 `.tflite` 后用 `xxd -i converted_model.tflite > model_data.cc` 转成 C 数组。后续如果使用 Infineon DeepCraft/官方工具生成模型，必须落到当前 M55 工程的官方 local voice 适配层、模型结果适配层和 IPC 出口，不要绕过现有主线。
 
-语音唤醒优先级见 [VOICE_WAKE_TTS_PORTABILITY_GUIDE.md](VOICE_WAKE_TTS_PORTABILITY_GUIDE.md)。原则是先看 Infineon PSOC Edge local voice 官方示例确认音频采集、PDM/I2S、扬声器和 CM33/CM55 工程结构；最小模型 runtime 先参考 TensorFlow Lite Micro `micro_speech`；自定义唤醒词优先评估 OHF/ESPHome `micro-wake-word` 的开源 `.tflite` 模型和训练流程。云 ASR/TTS 只能作为可插拔 API relay，不能成为固件唯一依赖。
+语音唤醒优先级见 [VOICE_WAKE_TTS_PORTABILITY_GUIDE.md](VOICE_WAKE_TTS_PORTABILITY_GUIDE.md)。原则是先按 Infineon PSOC Edge local voice 官方示例确认音频采集、PDM/I2S、扬声器、CM33/CM55 工程结构和 `PDM -> AFE -> Voice Assistant -> control_task map_id` 主线；最小模型 runtime 只在官方 Voice Assistant 暂时受阻时参考 TensorFlow Lite Micro `micro_speech`；自定义唤醒词再评估 OHF/ESPHome `micro-wake-word` 的开源 `.tflite` 模型和训练流程。云 ASR/TTS 只能作为可插拔 API relay，不能成为固件唯一依赖。
 
 ## 3. EMG 小模型建议部署顺序
 
