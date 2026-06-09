@@ -50,6 +50,7 @@ install(PROGRAMS
   rehab_arm_psoc_bridge/build_voice_pipeline_plan.py
   rehab_arm_psoc_bridge/build_rehab_session_plan.py
   rehab_arm_psoc_bridge/build_command_center_sync_plan.py
+  rehab_arm_psoc_bridge/check_command_center_sync_plan.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

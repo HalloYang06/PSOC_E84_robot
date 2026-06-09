@@ -100,6 +100,16 @@ ros2 run rehab_arm_psoc_bridge build_command_center_sync_plan.py --pretty \
 
 平台仓库实现时必须把 `auth_context` 当成权限上下文，不能只用 `device_id` 分房间或查数据。这个计划器仍是 dry-run：不发 HTTP、不发 WebSocket、不发 CAN、不产生运动许可。
 
+本仓库同时提供质量门：
+
+```bash
+ros2 run rehab_arm_psoc_bridge check_command_center_sync_plan.py \
+  --plan command_center_sync_plan.json \
+  --pretty
+```
+
+质量门输出 `command_center_sync_quality_report_v1`。平台仓库接入前，应先保证 `ok=true`；否则先修 payload，不要在服务器侧用兼容代码吞掉缺失的租户、权限或安全边界字段。
+
 ## 3.2 多账号和数据隔离
 
 服务器总控台会接入云服务器和 AI 合作平台。平台实现必须把医疗臂数据当作多租户医疗/康复数据处理，不能只按 `device_id` 做全局共享。

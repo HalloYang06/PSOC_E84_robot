@@ -51,6 +51,38 @@ python -m unittest `
 
 - 2026-06-09 已用该方式验证新增 command center sync、voice gateway、rehab session 共 10 项测试通过。
 
+### Windows 本机没有 bash/可用 WSL 时不能验证 shell 脚本语法
+
+现象：
+
+- 在 Windows PowerShell 里执行 `bash -n scripts/sim_host_rehab_user_qa.sh`，返回 `The term 'bash' is not recognized`。
+- 尝试 `wsl bash -lc ...` 时，系统提示需要安装 Linux 发行版，当前没有可用 WSL 环境。
+
+根因：
+
+- 当前 Codex Windows 环境只有 PowerShell、OpenSSH 和 `wsl.exe` 外壳入口，但没有 bash，也没有已安装的 WSL Linux 发行版。
+
+解决：
+
+- 本地先用 Python 单测、CLI 源码运行和 `git diff --check` 验证可覆盖的部分。
+- shell 脚本语法和 ROS 安装入口仍要在 Linux 仿真主机或 NanoPi 上验证。
+
+技巧：
+
+- `scripts/sim_host_rehab_user_qa.sh` 是 Linux/ROS 用户视角 QA，权威验证命令仍是：
+
+```bash
+cd ~/桌面/Medical-Rehabilitation-Manipulator
+git pull
+./scripts/sim_host_rehab_user_qa.sh
+```
+
+- Windows 上不要因为缺 bash 就重写 QA 脚本为 PowerShell；该脚本目标运行环境是 Linux 仿真主机。
+
+状态：
+
+- 2026-06-09 已记录；本轮新增的 command center sync 质量门已通过 Python 单测和 CLI 源码验证，Linux shell 语法留待仿真主机复跑。
+
 ### 不要把 qiansai 当成云端 AI 合作平台
 
 现象：

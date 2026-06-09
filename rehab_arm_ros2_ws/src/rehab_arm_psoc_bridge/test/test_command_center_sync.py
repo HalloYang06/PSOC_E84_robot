@@ -5,6 +5,7 @@ from rehab_arm_psoc_bridge.command_center_sync import (
     make_command_center_context,
     make_minimal_command_center_snapshot,
     make_vla_task_request_payload,
+    validate_command_center_sync_plan,
 )
 
 
@@ -76,6 +77,60 @@ class TestCommandCenterSync(unittest.TestCase):
             self.assertEqual(request['json']['auth_context']['workspace_id'], 'workspace_rehab')
             self.assertEqual(request['control_boundary'], 'planned_http_request_only_not_motion_permission')
             self.assertNotIn('motor_current', request['purpose'])
+
+    def test_quality_gate_accepts_generated_plan(self):
+        plan = build_command_center_sync_plan(
+            robot_id='arm',
+            device_id='nanopi',
+            tenant_id='tenant_a',
+            workspace_id='workspace_rehab',
+            user_id='operator_1',
+            patient_id='patient_1',
+            session_id='session_1',
+            now=100.0,
+        )
+
+        report = validate_command_center_sync_plan(plan)
+
+        self.assertTrue(report['ok'], report['errors'])
+        self.assertEqual(report['schema_version'], 'command_center_sync_quality_report_v1')
+        self.assertEqual(report['control_boundary'], 'quality_gate_only_not_motion_permission')
+
+    def test_quality_gate_rejects_missing_tenant_context(self):
+        plan = build_command_center_sync_plan(
+            robot_id='arm',
+            device_id='nanopi',
+            tenant_id='tenant_a',
+            workspace_id='workspace_rehab',
+            user_id='operator_1',
+            session_id='session_1',
+            now=100.0,
+        )
+        plan['auth_context'].pop('tenant_id')
+
+        report = validate_command_center_sync_plan(plan)
+
+        self.assertFalse(report['ok'])
+        self.assertIn('auth_context.tenant_id is required', report['errors'])
+
+    def test_quality_gate_rejects_motion_boundary_regression(self):
+        plan = build_command_center_sync_plan(
+            robot_id='arm',
+            device_id='nanopi',
+            tenant_id='tenant_a',
+            workspace_id='workspace_rehab',
+            user_id='operator_1',
+            session_id='session_1',
+            now=100.0,
+        )
+        plan['forbidden_outputs'].remove('can_frame')
+        plan['requests'][0]['json']['data'].pop('control_boundary')
+
+        report = validate_command_center_sync_plan(plan)
+
+        self.assertFalse(report['ok'])
+        self.assertIn('forbidden_outputs must include can_frame', report['errors'])
+        self.assertIn('requests[0].json.data.control_boundary is required', report['errors'])
 
 
 if __name__ == '__main__':

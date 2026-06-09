@@ -26,11 +26,13 @@ echo "${executables}"
 echo "${executables}" | grep -q "${PACKAGE_NAME} build_voice_pipeline_plan.py"
 echo "${executables}" | grep -q "${PACKAGE_NAME} build_rehab_session_plan.py"
 echo "${executables}" | grep -q "${PACKAGE_NAME} build_command_center_sync_plan.py"
+echo "${executables}" | grep -q "${PACKAGE_NAME} check_command_center_sync_plan.py"
 
 voice_json="$(mktemp)"
 session_json="$(mktemp)"
 sync_json="$(mktemp)"
-trap 'rm -f "${voice_json}" "${session_json}" "${sync_json}"' EXIT
+sync_quality_json="$(mktemp)"
+trap 'rm -f "${voice_json}" "${session_json}" "${sync_json}" "${sync_quality_json}"' EXIT
 
 ros2 run "${PACKAGE_NAME}" build_voice_pipeline_plan.py \
   --robot-id medical_rehab_arm \
@@ -57,7 +59,11 @@ ros2 run "${PACKAGE_NAME}" build_command_center_sync_plan.py \
   --base-url http://server.example/api/rehab-arm/v1 \
   | python3 -m json.tool >"${sync_json}"
 
-python3 - "${voice_json}" "${session_json}" "${sync_json}" <<'PY'
+ros2 run "${PACKAGE_NAME}" check_command_center_sync_plan.py \
+  --plan "${sync_json}" \
+  | python3 -m json.tool >"${sync_quality_json}"
+
+python3 - "${voice_json}" "${session_json}" "${sync_json}" "${sync_quality_json}" <<'PY'
 import json
 import sys
 
@@ -84,6 +90,13 @@ if sync_plan['auth_context'].get('tenant_id') != 'tenant_rehab_lab':
     raise SystemExit('command center sync plan lost tenant context')
 if 'can_frame' not in sync_plan.get('forbidden_outputs', []):
     raise SystemExit('command center sync plan must explicitly forbid CAN frames')
+
+with open(sys.argv[4], encoding='utf-8') as handle:
+    quality = json.load(handle)
+if quality.get('schema_version') != 'command_center_sync_quality_report_v1':
+    raise SystemExit('command center sync quality report schema mismatch')
+if quality.get('ok') is not True:
+    raise SystemExit(f'command center sync quality gate failed: {quality}')
 
 print('SIM_HOST_REHAB_USER_QA_OK')
 PY

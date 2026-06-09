@@ -11,6 +11,21 @@ COMMAND_CENTER_SYNC_PLAN_SCHEMA_VERSION = 'command_center_sync_plan_v1'
 COMMAND_CENTER_CONTEXT_SCHEMA_VERSION = 'command_center_auth_context_v1'
 DEFAULT_BASE_URL = 'http://server.example/api/rehab-arm/v1'
 DEFAULT_WS_PATH = '/devices/{device_id}/events'
+REQUIRED_AUTH_CONTEXT_FIELDS = (
+    'tenant_id',
+    'workspace_id',
+    'user_id',
+    'role',
+    'allowed_device_ids',
+)
+FORBIDDEN_MOTION_OUTPUTS = (
+    'can_frame',
+    'motor_current',
+    'motor_torque',
+    'raw_motor_position',
+    'raw_motor_velocity',
+    'm33_safety_override',
+)
 
 
 def _compact_base_url(base_url: str) -> str:
@@ -169,12 +184,7 @@ def make_vla_task_request_payload(
             'dry_run_joint_trajectory_candidate',
         ],
         'forbidden_outputs': [
-            'can_frame',
-            'motor_current',
-            'motor_torque',
-            'raw_motor_position',
-            'raw_motor_velocity',
-            'm33_safety_override',
+            *FORBIDDEN_MOTION_OUTPUTS,
         ],
         'control_boundary': 'vla_planning_request_only_not_motion_permission',
     }
@@ -327,13 +337,119 @@ def build_command_center_sync_plan(
             }
         ],
         'forbidden_outputs': [
-            'can_frame',
-            'motor_current',
-            'motor_torque',
-            'raw_motor_position',
-            'raw_motor_velocity',
-            'm33_safety_override',
+            *FORBIDDEN_MOTION_OUTPUTS,
             'motion_allowed_override',
         ],
         'control_boundary': 'server_sync_plan_only_not_motion_permission',
+    }
+
+
+def _path_join(parent: str, child: object) -> str:
+    if parent:
+        return f'{parent}.{child}'
+    return str(child)
+
+
+def _walk_payload(value: object, path: str = ''):
+    if isinstance(value, dict):
+        for key, child in value.items():
+            yield _path_join(path, key), key, child
+            yield from _walk_payload(child, _path_join(path, key))
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            yield _path_join(path, index), index, child
+            yield from _walk_payload(child, _path_join(path, index))
+
+
+def validate_command_center_sync_plan(plan: dict[str, object]) -> dict[str, object]:
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    if plan.get('schema_version') != COMMAND_CENTER_SYNC_PLAN_SCHEMA_VERSION:
+        errors.append('root schema_version must be command_center_sync_plan_v1')
+    if plan.get('control_boundary') != 'server_sync_plan_only_not_motion_permission':
+        errors.append('root control_boundary must be server_sync_plan_only_not_motion_permission')
+
+    auth_context = plan.get('auth_context')
+    if not isinstance(auth_context, dict):
+        errors.append('auth_context must be an object')
+        auth_context = {}
+    for field in REQUIRED_AUTH_CONTEXT_FIELDS:
+        if not auth_context.get(field):
+            errors.append(f'auth_context.{field} is required')
+    allowed_device_ids = auth_context.get('allowed_device_ids')
+    if not isinstance(allowed_device_ids, list) or plan.get('device_id') not in allowed_device_ids:
+        errors.append('auth_context.allowed_device_ids must include root device_id')
+    if auth_context.get('patient_id') and not auth_context.get('allowed_patient_ids'):
+        errors.append('auth_context.allowed_patient_ids is required when patient_id is present')
+
+    forbidden_outputs = plan.get('forbidden_outputs')
+    if not isinstance(forbidden_outputs, list):
+        errors.append('forbidden_outputs must be a list')
+        forbidden_outputs = []
+    for name in (*FORBIDDEN_MOTION_OUTPUTS, 'motion_allowed_override'):
+        if name not in forbidden_outputs:
+            errors.append(f'forbidden_outputs must include {name}')
+
+    requests = plan.get('requests')
+    if not isinstance(requests, list) or not requests:
+        errors.append('requests must be a non-empty list')
+        requests = []
+    for index, request in enumerate(requests):
+        prefix = f'requests[{index}]'
+        if not isinstance(request, dict):
+            errors.append(f'{prefix} must be an object')
+            continue
+        if request.get('control_boundary') != 'planned_http_request_only_not_motion_permission':
+            errors.append(f'{prefix}.control_boundary must be planned_http_request_only_not_motion_permission')
+        if request.get('method') not in ('GET', 'POST', 'PUT', 'PATCH', 'DELETE'):
+            errors.append(f'{prefix}.method is invalid')
+        if not str(request.get('url', '')).startswith(str(plan.get('base_url', ''))):
+            errors.append(f'{prefix}.url must start with base_url')
+        request_json = request.get('json')
+        if not isinstance(request_json, dict):
+            errors.append(f'{prefix}.json must be an object')
+            continue
+        if request_json.get('auth_context') != auth_context:
+            errors.append(f'{prefix}.json.auth_context must match root auth_context')
+        data = request_json.get('data')
+        if not isinstance(data, dict):
+            errors.append(f'{prefix}.json.data must be an object')
+        elif 'control_boundary' not in data:
+            errors.append(f'{prefix}.json.data.control_boundary is required')
+
+    websocket_subscriptions = plan.get('websocket_subscriptions')
+    if not isinstance(websocket_subscriptions, list) or not websocket_subscriptions:
+        errors.append('websocket_subscriptions must be a non-empty list')
+        websocket_subscriptions = []
+    for index, subscription in enumerate(websocket_subscriptions):
+        prefix = f'websocket_subscriptions[{index}]'
+        if not isinstance(subscription, dict):
+            errors.append(f'{prefix} must be an object')
+            continue
+        if subscription.get('auth_context') != auth_context:
+            errors.append(f'{prefix}.auth_context must match root auth_context')
+        if subscription.get('control_boundary') != 'planned_websocket_subscription_only_not_motion_permission':
+            errors.append(f'{prefix}.control_boundary must be planned_websocket_subscription_only_not_motion_permission')
+        if 'events' not in subscription:
+            errors.append(f'{prefix}.events is required')
+
+    forbidden_paths: list[str] = []
+    for path, key, value in _walk_payload(plan):
+        if key in FORBIDDEN_MOTION_OUTPUTS and value not in (False, None):
+            forbidden_paths.append(path)
+    if forbidden_paths:
+        warnings.append(
+            'forbidden motion output names appear as payload keys; verify they are only deny-list metadata: '
+            + ', '.join(forbidden_paths)
+        )
+
+    return {
+        'schema_version': 'command_center_sync_quality_report_v1',
+        'ok': not errors,
+        'error_count': len(errors),
+        'warning_count': len(warnings),
+        'errors': errors,
+        'warnings': warnings,
+        'control_boundary': 'quality_gate_only_not_motion_permission',
     }

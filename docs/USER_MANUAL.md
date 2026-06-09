@@ -113,6 +113,28 @@ PYTHONPATH=. python -m rehab_arm_psoc_bridge.build_command_center_sync_plan --pr
 - `forbidden_outputs` 必须包含 `can_frame`、`motor_current`、`motor_torque`、`m33_safety_override`。
 - 该命令只生成 JSON，不发 HTTP/WebSocket，不发 CAN，不改变 M33/M55/NanoPi 状态。
 
+检查已有总控台请求计划是否符合权限和安全边界：
+
+```bash
+cd rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge
+PYTHONPATH=. python -m rehab_arm_psoc_bridge.check_command_center_sync_plan \
+  --plan command_center_sync_plan.json \
+  --pretty
+```
+
+也可以不传 `--plan`，直接生成一份保守 dry-run 计划并检查：
+
+```bash
+PYTHONPATH=. python -m rehab_arm_psoc_bridge.check_command_center_sync_plan --pretty
+```
+
+通过标准：
+
+- 输出 `schema_version=command_center_sync_quality_report_v1`。
+- `ok=true`、`error_count=0`。
+- `control_boundary=quality_gate_only_not_motion_permission`。
+- 如果缺少租户/工作区/用户/设备权限、缺少请求 payload 的 `control_boundary`，或删掉 `can_frame/motor_current/motor_torque/m33_safety_override` 禁止项，命令必须以非 0 退出。
+
 远程仿真主机上做用户视角 dry-run 验收：
 
 ```bash
@@ -124,7 +146,7 @@ git pull
 通过标准：
 
 - `colcon build --packages-select rehab_arm_psoc_bridge --symlink-install` 通过。
-- `ros2 pkg executables rehab_arm_psoc_bridge` 能看到 `build_voice_pipeline_plan.py`、`build_rehab_session_plan.py` 和 `build_command_center_sync_plan.py`。
+- `ros2 pkg executables rehab_arm_psoc_bridge` 能看到 `build_voice_pipeline_plan.py`、`build_rehab_session_plan.py`、`build_command_center_sync_plan.py` 和 `check_command_center_sync_plan.py`。
 - 输出包含 `SIM_HOST_REHAB_USER_QA_OK`。
 - 全程不连接 CAN、不发布真实运动、不改变 M33 状态。
 

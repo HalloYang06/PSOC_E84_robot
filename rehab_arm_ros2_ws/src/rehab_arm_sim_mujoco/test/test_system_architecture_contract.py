@@ -246,8 +246,12 @@ class SystemArchitectureContractTests(unittest.TestCase):
         self.assertIn('dry_run_joint_trajectory_candidate', roadmap)
         self.assertIn('build_voice_pipeline_plan', setup)
         self.assertIn('build_rehab_session_plan', setup)
+        self.assertIn('build_command_center_sync_plan', setup)
+        self.assertIn('check_command_center_sync_plan', setup)
         self.assertIn('build_voice_pipeline_plan.py', cmake)
         self.assertIn('build_rehab_session_plan.py', cmake)
+        self.assertIn('build_command_center_sync_plan.py', cmake)
+        self.assertIn('check_command_center_sync_plan.py', cmake)
 
     def test_sim_host_user_qa_script_is_readonly_and_reusable(self) -> None:
         script = (
@@ -265,6 +269,9 @@ class SystemArchitectureContractTests(unittest.TestCase):
         self.assertIn('ros2 pkg executables', script)
         self.assertIn('build_voice_pipeline_plan.py', script)
         self.assertIn('build_rehab_session_plan.py', script)
+        self.assertIn('build_command_center_sync_plan.py', script)
+        self.assertIn('check_command_center_sync_plan.py', script)
+        self.assertIn('command_center_sync_quality_report_v1', script)
         self.assertIn('SIM_HOST_REHAB_USER_QA_OK', script)
         self.assertIn('sim_host_rehab_user_qa.sh', manual)
         self.assertNotIn('password', script.lower())
