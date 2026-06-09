@@ -77,6 +77,9 @@ typedef struct
 typedef struct
 {
     rt_uint8_t motion_class;
+    rt_uint8_t model_code;
+    rt_uint8_t result_code;
+    rt_uint8_t result_flags;
     float confidence;
     float fatigue_score;
     float pain_risk;
