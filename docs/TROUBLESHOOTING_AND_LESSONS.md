@@ -50,6 +50,28 @@
 
 - 2026-06-10 已同步到 README、系统架构、总控台协议、服务器同步 API 草案、语音迁移指南和 USER_MANUAL；`test_voice_gateway.py` 与系统架构合同测试通过；真实云端闭环未在本轮验证。
 
+### 平台 VLA A 下发到 NanoPi 也不是轨迹发布许可
+
+现象：
+
+- 平台/VLA 融合 L 和 V 后会产生 A，高层上看像“开始抬手训练”这类动作请求。
+- 如果 NanoPi 直接把 A 转成 `/arm_controller/joint_trajectory` 或 `0x320`，就绕过了 MuJoCo dry-run、operator review 和 M33 safety gate。
+
+解决：
+
+- 机械臂侧新增 `server_to_nanopi_high_level_command_v1` 入口质量门。
+- 入口通过后只生成 `nanopi_high_level_action_queue_item_v1`，下一跳是 `vla_candidate_gate -> mujoco_dry_run_review -> operator_review -> m33_safety_gate_preparation`。
+- CLI：`python -m rehab_arm_psoc_bridge.check_server_action_command --payload server_action.json --queue-item --pretty`。
+
+技巧：
+
+- 平台 AI 只需要按 [PLATFORM_AI_PROMPT_VLA_LVA_HTTP.md](PLATFORM_AI_PROMPT_VLA_LVA_HTTP.md) 产出高层 A payload。
+- 如果 payload 含 `joint_trajectory`、`trajectory_points`、`can_frame`、`motor_current`、`motor_torque`、`motion_permission_granted` 或 `m33_safety_override`，NanoPi 入口必须拒绝。
+
+状态：
+
+- 2026-06-10 已实现 `server_action_ingress.py`、CLI 和测试；这是主线入口地基，不连接 CAN、不发 ROS 轨迹。
+
 ### 旧 wake 代码存在不等于语音唤醒闭环已通
 
 现象：

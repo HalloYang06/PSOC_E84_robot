@@ -25,6 +25,12 @@
   - 验证通过：`test_voice_gateway.py` 和 `test_system_architecture_contract.py` 共 17 项通过；`python -m compileall rehab_arm_psoc_bridge` 通过；`build_voice_pipeline_plan --prompt-text "开始抬手训练"` 输出 `current_kind=vla_command`、`allowed_next_step=server_vla_l_context_over_http`、`transport_boundary=m55_wifi_http_not_can`。
   - 未验证：本轮没有登录云端平台、导入 URDF、生成新 relay token，也没有完成 M55->服务器->NanoPi 的真实云端闭环。
   - 下一步：平台仓库按 `vla_language_context_v1`、`vla_vision_context_v1`、`vla_action_candidate_v1` 实现中转和总控台；M55 固件后续实现 WiFi HTTP client、relay token 配置/轮换、TTS 音频回放和失败降级。
+- 2026-06-10 NanoPi A 高层动作入口地基：
+  - 新增 `server_action_ingress.py` 和 `check_server_action_command.py`，用于接收平台/VLA 生成的 `server_to_nanopi_high_level_command_v1`，先在 NanoPi 侧做主线入口质量门。
+  - 校验通过后只生成 `nanopi_high_level_action_queue_item_v1`，下一跳固定为 `vla_candidate_gate -> mujoco_dry_run_review -> operator_review -> m33_safety_gate_preparation`；禁止直接发布 ROS 轨迹、发 CAN、设电流/力矩或覆盖 M33 安全。
+  - 更新 [COMMAND_CENTER_APP_PROTOCOL_V1.md](COMMAND_CENTER_APP_PROTOCOL_V1.md) 和 [USER_MANUAL.md](USER_MANUAL.md)，补充服务器 A payload、NanoPi 入口命令和通过标准。
+  - 新增 [PLATFORM_AI_PROMPT_VLA_LVA_HTTP.md](PLATFORM_AI_PROMPT_VLA_LVA_HTTP.md)，给平台仓库 AI 的复制提示词，要求平台只产出 L/V/A 合同，不生成底层控制。
+  - 验证通过：`python -m rehab_arm_psoc_bridge.check_server_action_command --example --queue-item --pretty` 输出 `accepted=true` 且 blocked pipeline 含 `send_can_frame`；`test_server_action_ingress.py`、`test_voice_gateway.py`、`test_command_center_sync.py`、`test_system_architecture_contract.py` 共 30 项通过；`python -m compileall rehab_arm_psoc_bridge` 通过。
 - 2026-06-09 M55 语音/wake 主线改为官方例程优先：
   - 按用户要求重新查看本地 Infineon 官方例程 `D:/RT-ThreadStudio/workspace/_ifx_local_voice`，确认官方 recommended 链路为 `CM55 PDM microphone ISR -> audio_feed_interface -> DEEPCRAFT AFE -> Voice Assistant inferencing_interface -> control_task map_id -> I2S/应用事件`。
   - 更新 [VOICE_WAKE_TTS_PORTABILITY_GUIDE.md](VOICE_WAKE_TTS_PORTABILITY_GUIDE.md)，明确旧 `voice_service/wake_word_detector/wake_on/wake_dump_pcm` 只能作为诊断/过渡，不能再作为正式 wake 主线。

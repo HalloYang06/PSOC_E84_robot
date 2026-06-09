@@ -450,6 +450,34 @@ M55 语音 HTTP 请求只允许：
 
 本地 `local_voice_listen`、`ov_map`、`0x323` 和 `/rehab_arm/model_state` 仍可用于验证 M55 本地 wake/command 事件摘要，但它们不是云端小智聊天链路。
 
+### NanoPi 接收服务器 A 高层动作入口
+
+平台/VLA 生成 `A / Action` 后，NanoPi 不能直接发布 ROS 轨迹或发 `0x320`。先把平台 payload 保存为 `server_action.json`，在 NanoPi 或开发机运行：
+
+```bash
+export PYTHONPATH=rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge
+python -m rehab_arm_psoc_bridge.check_server_action_command \
+  --payload server_action.json \
+  --queue-item \
+  --pretty
+```
+
+无平台 payload 时可先看内置安全样例：
+
+```bash
+python -m rehab_arm_psoc_bridge.check_server_action_command --example --queue-item --pretty
+```
+
+通过标准：
+
+- `report.ok=true`
+- `queue_item.schema_version=nanopi_high_level_action_queue_item_v1`
+- `queue_item.accepted=true`
+- `next_pipeline` 只能包含 `vla_candidate_gate`、`mujoco_dry_run_review`、`operator_review`、`m33_safety_gate_preparation`
+- `blocked_pipeline` 必须包含 `publish_joint_trajectory`、`send_can_frame`、`set_motor_current`、`set_motor_torque`
+
+失败时只记录错误并退回平台/操作员，不进入 dry-run，不发布 `/arm_controller/joint_trajectory`，不发 CAN。
+
 ## NanoPi 到 MuJoCo hardware shadow 只读验收
 
 当前主线网络环境固定走：
