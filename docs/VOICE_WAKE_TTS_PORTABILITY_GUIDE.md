@@ -114,7 +114,8 @@ python -m rehab_arm_psoc_bridge.build_voice_pipeline_plan --pretty \
 1. 官方例程独立验收：说 `Okay Infineon` 后串口出现 wake/command map_id，LED/I2S 反馈正常。
 2. 当前 `wifi` 工程 PDM 验收：M55 shell 执行 `pdm_mic_self_test 3`，串口出现 10 ms frame 统计，对麦克风说话时 `peak/avg_abs` 明显变化，无 FIFO overflow。
 3. 当前 `wifi` 工程 I2S/扬声器验收：M55 shell 执行 `official_voice_speaker_test 1`，能听到短促 beep，串口出现 `speaker beep ok`。
-4. 当前 `wifi` 工程 local voice 地基验收：M55 shell 执行 `local_voice_listen 5`，对麦克风说话后串口出现 `local activity detected`，并通过 `model_result_publish_wake_word(...)` 发布 `MSG_TYPE_AI_INFERENCE_RESP`。
-5. M33/NanoPi 出口验收：NanoPi 先执行 `ros2 topic echo --once /rehab_arm/model_state std_msgs/msg/String`，再在 M55 shell 执行 `local_voice_listen 5`，确认 `m55_wake_word_v1` 或后续 `m55_voice_asr_v1`，且 `control_boundary=model_suggestion_only_not_motion_permission`。
-6. 总控台收到 `voice_relay_v1` 后，下发 `tts_playback_request_v1`，确认扬声器播报。
-7. 全程确认没有 `0x320`、没有 direct motor command、没有把语音当运动许可。
+4. 当前 `wifi` 工程阈值校准：M55 shell 执行 `voice_calibrate 2`，按输出的 `suggested: voice_thresholds ...` 设置现场阈值；`voice_thresholds` 可查看当前配置，`voice_pdm_gain` 可查看或调整 PDM gain。
+5. 当前 `wifi` 工程 local voice 地基验收：M55 shell 执行 `local_voice_listen 5`，对麦克风说话后串口出现 `local activity detected`，并通过 `model_result_publish_wake_word(...)` 发布 `MSG_TYPE_AI_INFERENCE_RESP`。
+6. M33/NanoPi 出口验收：NanoPi 先执行 `ros2 topic echo --once /rehab_arm/model_state std_msgs/msg/String`，再在 M55 shell 执行 `local_voice_listen 5`，确认 `m55_wake_word_v1` 或后续 `m55_voice_asr_v1`，且 `control_boundary=model_suggestion_only_not_motion_permission`。
+7. 总控台收到 `voice_relay_v1` 后，下发 `tts_playback_request_v1`，确认扬声器播报。
+8. 全程确认没有 `0x320`、没有 direct motor command、没有把语音当运动许可。

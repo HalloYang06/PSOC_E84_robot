@@ -2725,3 +2725,16 @@
 - CAN validation: NanoPi captured `can0 323#B50B010143830300` and later `can0 323#B50D01012A831400` from the voice path; `0x321 -> 0x322` and `0x330~0x334` were also present after reset settled.
 - ROS validation: `/rehab_arm/model_state` received full JSON with `source=m33_m55_bridge_can_0x323`, `model_id=m55_wake_word_v1`, `label=wake_start_request`, `suggestion_only=true`, and `control_boundary=model_suggestion_only_not_motion_permission`.
 - Limitation: this is still an activity-detection/wake-suggestion foundation, not final ASR or custom wake model. The PDM values saturate high in the current setup, so threshold/gain calibration is needed before treating confidence as meaningful.
+
+### 2026-06-09 - M55 voice calibration commands and full outlet retest
+
+- Reason: the validated local voice path still used fixed thresholds, and current PDM values varied enough that a fixed activity detector could either miss wake activity or trigger on noise.
+- M55 code update: `applications/official_voice_service.c` now has runtime shell commands `voice_thresholds`, `voice_pdm_gain`, and `voice_calibrate`; default control boundary remains suggestion-only through the existing `model_result_publish_wake_word(...)` path.
+- Build validation: `D:\RT-ThreadStudio\workspace\wifi` built successfully with `scons -j4`; output `rt-thread.elf` size was `text=1180896 data=15396 bss=1875472 dec=3071764`.
+- Burn validation: converted `rtthread.hex` to `rtthread_m55.bin`, selected `targets cat1d.cm33`, used `reset init`, wrote explicit address `0x60580400`, and OpenOCD reported `wrote 1200128 bytes` plus `verified 1196292 bytes`.
+- Serial validation: `voice_thresholds` reported defaults `peak=1200 avg_abs=70 streak=3`; `voice_calibrate 2` observed quiet-window `peak=879 avg_abs=357` and suggested `voice_thresholds 1518 555 3`.
+- Audio validation: `pdm_mic_self_test 2` returned `ret=0`; `official_voice_speaker_test 1` returned `ret=0` and printed `speaker beep ok`.
+- Outlet validation: after temporary low threshold `voice_thresholds 300 80 3`, `local_voice_listen 3` printed `local activity detected`, `publish_ret=0`, and `[m55_model_bridge] ... can_ret=0`.
+- CAN/ROS validation: NanoPi captured `can0 323#B50A010108830300`; `/rehab_arm/model_state` received `rehab_arm_model_state_v1` with `model_id=m55_wake_word_v1`, `label=wake_start_request`, `confidence=0.18`, `suggestion_only=true`, and `control_boundary=model_suggestion_only_not_motion_permission`.
+- Cleanup: runtime threshold was set back to the quiet-window suggestion `voice_thresholds 1518 555 3`; this setting is runtime-only and should be recalibrated after reboot or environment changes.
+- Next step: replace activity detection with the official local-voice wake/command model path or a project-specific int8 wake/ASR model, while keeping the same M55->M33->0x323 result boundary.

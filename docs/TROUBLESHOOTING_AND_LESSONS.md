@@ -5305,3 +5305,61 @@ ssh pi@192.168.2.66 "for m in 4 5 6 7; do ... $m ...; done"
 状态：
 
 - 2026-06-09 已上板验证：`pdm_mic_self_test 3`、`official_voice_speaker_test 1`、`local_voice_listen 5` 均返回 `ret=0`，并且语音活动结果经 `0x323` 到 NanoPi `/rehab_arm/model_state`。
+
+### M55 外部 flash 烧录要选 `cat1d.cm33` target 并 halt
+
+现象：
+
+- M55 `rtthread.hex` 起始地址正确为 `0x60580400`，OpenOCD `flash banks` 也列出 `cat1d.cm33.smif1_ns`。
+- 直接执行 `flash write_image erase ... rtthread.hex` 或显式 binary 地址仍打印 `Warn : no flash bank found for address 0x60580400`，随后 `wrote 0 bytes`。
+- 改成 `targets cat1d.cm33` 后能找到 bank，但如果没有 `reset init`，会失败为 `Target not halted` / `failed erasing sectors ...`。
+
+判断：
+
+- PSE84 的 SMIF flash bank 挂在 `cat1d.cm33` 下；即使 `ENABLE_CM55=1` 且 OpenOCD 检测到 CM55，当前 active target 不是 `cat1d.cm33` 时，`flash write_image` 仍可能找不到对应 bank。
+- `0x60580400` 不是 4 KB 对齐地址，OpenOCD 会自动向前 padding 到 `0x60580000`；这是正常提示，不是失败条件。
+
+解决：
+
+```powershell
+$env:PATH='D:\RT-ThreadStudio\platform\env_released\env\tools\gnu_gcc\arm_gcc\mingw\bin;' + $env:PATH
+arm-none-eabi-objcopy -I ihex -O binary D:\RT-ThreadStudio\workspace\wifi\rtthread.hex D:\RT-ThreadStudio\workspace\wifi\rtthread_m55.bin
+
+& 'D:\RT-ThreadStudio\repo\Extract\Debugger_Support_Packages\Infineon\OpenOCD-Infineon\2.0.0\bin\openocd.exe' `
+  -s 'D:/RT-ThreadStudio/repo/Extract/Debugger_Support_Packages/Infineon/OpenOCD-Infineon/2.0.0/scripts' `
+  -s 'D:/RT-ThreadStudio/repo/Extract/Debugger_Support_Packages/Infineon/OpenOCD-Infineon/2.0.0/flm/cypress/cat1d' `
+  -s 'D:/RT-ThreadStudio/workspace/wifi/libs/TARGET_APP_KIT_PSE84_EVAL_EPC2/config/GeneratedSource' `
+  -c 'set QSPI_FLASHLOADER D:/RT-ThreadStudio/repo/Extract/Debugger_Support_Packages/Infineon/OpenOCD-Infineon/2.0.0/flm/cypress/cat1d/PSE84_SMIF.FLM' `
+  -c 'set ENABLE_CM55 1' `
+  -f interface/kitprog3.cfg `
+  -f target/infineon/pse84xgxs2.cfg `
+  -c 'transport select swd' `
+  -c 'init; reset init; targets cat1d.cm33; flash banks; flash write_image erase D:/RT-ThreadStudio/workspace/wifi/rtthread_m55.bin 0x60580400 bin; verify_image D:/RT-ThreadStudio/workspace/wifi/rtthread_m55.bin 0x60580400 bin; reset run; shutdown'
+```
+
+状态：
+
+- 2026-06-09 已用该流程烧录 M55：`wrote 1200128 bytes`，`verified 1196292 bytes`。
+- OpenOCD 退出阶段可能仍打印 KitProg3 acquire 噪声；是否成功以非 0 写入量和 verify 字节数为准。
+
+### M55 voice activity must be calibrated before treating confidence as meaningful
+
+现象：
+
+- 默认阈值 `peak=1200 avg_abs=70 streak=3` 在一次现场测试中没有触发 `local_voice_listen 4`，但降低到 `voice_thresholds 300 80 3` 后能触发并发出 `0x323`。
+- 静音校准窗口 `voice_calibrate 2` 观察到 `peak=879 avg_abs=357`，建议 `voice_thresholds 1518 555 3`。
+
+判断：
+
+- 当前实现是 PDM activity detector，不是最终 wake word/ASR 模型；`confidence` 只表示当前阈值下的活动强度，不代表语义可信度。
+- 用低阈值验证出口可以接受，但不能作为正式唤醒配置留在现场。
+
+解决：
+
+- 每次换环境、换麦克风位置或重启后，先安静执行 `voice_calibrate 2`，按建议执行 `voice_thresholds <peak> <avg_abs> <streak>`。
+- 验证出口时可临时降低阈值触发一次；验证后调回校准值或重启。
+- 下一阶段应迁移官方 local voice 的 wake/command model 或项目自训 int8 模型，仍通过 `M55 -> M33 -> CAN 0x323 -> NanoPi /rehab_arm/model_state` 输出。
+
+状态：
+
+- 2026-06-09 已验证低阈值触发后，M55 串口打印 `publish_ret=0`、`can_ret=0`，NanoPi CAN 抓到 `0x323`，ROS `/rehab_arm/model_state` 收到 `suggestion_only=true` 的 JSON。

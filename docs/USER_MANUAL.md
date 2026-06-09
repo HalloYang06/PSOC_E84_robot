@@ -341,6 +341,9 @@ ros2 topic echo --once /rehab_arm/model_state
 烧录当前 M55 固件后，Windows 串口 `COM26` 打开 M55 shell，依次执行：
 
 ```text
+voice_thresholds
+voice_calibrate 2
+voice_thresholds <suggested_peak> <suggested_avg_abs> 3
 pdm_mic_self_test 3
 official_voice_speaker_test 1
 official_voice_self_test 3
@@ -357,6 +360,13 @@ voice_pipeline_status
 [official_voice] local activity detected confidence=... publish_ret=0
 [official_voice] status mic_ok=1 speaker_ok=1 ...
 ```
+
+校准方法：
+
+1. 保持现场安静，执行 `voice_calibrate 2`，记录输出里的 `suggested: voice_thresholds ...`。
+2. 执行建议命令，例如本次实测静音窗口建议为 `voice_thresholds 1518 555 3`。
+3. 再执行 `pdm_mic_self_test 2`，确认静音时 `active=0`。
+4. 如果只是验证 M55->M33->NanoPi 出口，可以临时降低阈值，例如 `voice_thresholds 300 80 3`，触发一次后要调回校准值或重启。
 
 验收顺序：
 
