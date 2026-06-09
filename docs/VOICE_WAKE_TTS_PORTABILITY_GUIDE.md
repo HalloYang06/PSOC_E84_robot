@@ -109,7 +109,32 @@ python -m rehab_arm_psoc_bridge.build_voice_pipeline_plan --pretty \
 
 所有 payload 都带 `control_boundary`，且只允许作为 VLA 上下文或用户反馈。
 
-## 7. 下一步上板验收
+## 7. 总控台模型中转边界
+
+语音、摄像头、肌电、电机遥测和 M55 小模型结果进入大语言模型/VLA 时，只能走平台模型中转站：
+
+```text
+NanoPi /rehab_arm/model_state + camera/voice/EMG/safety summaries
+  -> AI collaboration platform command-center model relay
+  -> high_level_task / model_state_suggestion / dry_run_joint_trajectory_candidate
+  -> dry-run simulation / operator review / M33 safety gate
+```
+
+固定接口见 [SERVER_SYNC_API_DRAFT.md](SERVER_SYNC_API_DRAFT.md) 的 `Command-Center Model Relay`。本仓库、NanoPi、M55、M33 和 App 都不能保存或请求厂商 API key；API key 只允许在云端平台服务端配置。
+
+模型中转禁止输出和禁止执行：
+
+- `can_frame`
+- `motor_current`
+- `motor_torque`
+- `raw_motor_position`
+- `raw_motor_velocity`
+- `m33_safety_override`
+- `direct_motor_command`
+
+如果平台返回 `provider.external_call_ok=false`，设备端只能显示建议不可用、等待配置或安全过滤，不能本地补生成真实动作。急停确认必须等 `estop_ack_v1` 且 `m33_ack=true`，不能只凭 HTTP 200。
+
+## 8. 下一步上板验收
 
 1. 官方例程独立验收：说 `Okay Infineon` 后串口出现 wake/command map_id，LED/I2S 反馈正常。
 2. 当前 `wifi` 工程 PDM 验收：M55 shell 执行 `pdm_mic_self_test 3`，串口出现 10 ms frame 统计，对麦克风说话时 `peak/avg_abs` 明显变化，无 FIFO overflow。
@@ -119,3 +144,25 @@ python -m rehab_arm_psoc_bridge.build_voice_pipeline_plan --pretty \
 6. M33/NanoPi 出口验收：NanoPi 先执行 `ros2 topic echo --once /rehab_arm/model_state std_msgs/msg/String`，再在 M55 shell 执行 `local_voice_listen 5`，确认 `m55_wake_word_v1` 或后续 `m55_voice_asr_v1`，且 `control_boundary=model_suggestion_only_not_motion_permission`。
 7. 总控台收到 `voice_relay_v1` 后，下发 `tts_playback_request_v1`，确认扬声器播报。
 8. 全程确认没有 `0x320`、没有 direct motor command、没有把语音当运动许可。
+
+## 9. 当前官方 map_id 迁移验收
+
+2026-06-09 已完成第一阶段官方 `map_id` 出口迁移：没有把完整 FreeRTOS/LVGL/music-player demo 复制进主线，而是在 M55 `wifi` 工程中增加 `official_voice_result_adapter.*`，把官方 local voice `map_id` 转成本项目现有的 `MSG_TYPE_AI_INFERENCE_RESP`。
+
+已验证命令：
+
+```text
+ov_map 101 900  -> m55_wake_word_v1 / wake_start_request
+ov_map 401 880  -> m55_voice_asr_v1 / voice_start_request
+ov_map 408 850  -> m55_voice_asr_v1 / voice_pause_request
+ov_map 402 850  -> m55_voice_asr_v1 / voice_stop_request
+```
+
+上板证据：
+
+- M55 shell 有短命令 `ov_map` 和长命令 `official_voice_map_id`。
+- M33 串口打印 `[m55_model_bridge] ... can_ret=0`。
+- NanoPi `candump` 抓到 `0x323#B5...`。
+- ROS_DOMAIN_ID=42 下 `/rehab_arm/model_state` 收到 `model_id=m55_voice_asr_v1`、`result_name=voice_start_request`、`suggestion_only=true`、`control_boundary=model_suggestion_only_not_motion_permission`。
+
+注意：COM26 FINSH 串口在日志较多时会丢字符。现场验收优先用短命令 `ov_map`，每个字符间隔 50 ms 以上；如果置信度数字丢位，只影响本次测试置信度，不改变 `map_id` 语义出口。

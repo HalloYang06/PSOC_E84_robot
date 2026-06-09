@@ -5363,3 +5363,100 @@ arm-none-eabi-objcopy -I ihex -O binary D:\RT-ThreadStudio\workspace\wifi\rtthre
 状态：
 
 - 2026-06-09 已验证低阈值触发后，M55 串口打印 `publish_ret=0`、`can_ret=0`，NanoPi CAN 抓到 `0x323`，ROS `/rehab_arm/model_state` 收到 `suggestion_only=true` 的 JSON。
+
+### M33 non-secure hex must be relocated before external-flash burn
+
+现象：
+
+- M33 build output `Debug/rtthread.hex` starts at `0x08340400`.
+- Burning that address directly to external flash is wrong for this board setup; OpenOCD needs the programmable external-flash alias around `0x60340400`.
+- The existing post-build also prints `arm-none-eabi-objcopy: interleave must be positive`; make ignores it, so a successful build does not prove the hex is relocated.
+
+判断：
+
+- The non-secure runtime alias `0x08340400` must be relocated with EdgeProtectTools region mapping `0x08000000 -> 0x60000000`.
+- Keep a raw hex and a relocated hex separate; do not overwrite the raw build artifact during debugging.
+
+解决：
+
+- Generate raw hex from ELF:
+
+```powershell
+arm-none-eabi-objcopy -O ihex D:\RT-ThreadStudio\workspace\yiliao_m33\Debug\rtthread.elf D:\RT-ThreadStudio\workspace\yiliao_m33\Debug\rtthread_raw.hex
+```
+
+- Run EdgeProtectTools `hex-relocate` into `Debug\rtthread_relocated.hex`.
+- Verify the relocated file starts with `:020000046034...`.
+- Burn `rtthread_relocated.hex`; the 2026-06-09 validation wrote `569344 bytes` and verified `565512 bytes`.
+
+状态：
+
+- 已验证。OpenOCD shutdown 阶段可能仍有 KitProg3 acquire 噪声，成功判据是非 0 write 和 verify 字节数。
+
+### COM26 FINSH shell can drop characters under heavy log output
+
+现象：
+
+- Sending long M55 shell commands like `official_voice_map_id 401 880` through COM26 sometimes arrived as `oficial_voie_map_id 40 880`.
+- The command failed or confidence lost digits, even though M55/M33 firmware was healthy.
+
+判断：
+
+- COM26 carries mixed M33/M55 logs and FINSH input. During boot or frequent logging, pasted commands can lose characters.
+
+解决：
+
+- Prefer short aliases for bench tests. `ov_map <map_id> <confidence>` was added as the short official voice map-id test command.
+- Send characters slowly, at least 50 ms between characters; if confidence is important, re-check serial echo before trusting the numeric value.
+- For ROS/CAN outlet validation, trust the decoded `0x323` payload and `/rehab_arm/model_state` more than the typed command line.
+
+状态：
+
+- 已验证：`ov_map 401 880` produced `0x323#B50A040108830300` and `/rehab_arm/model_state` decoded `m55_voice_asr_v1 / voice_start_request`.
+
+### NanoPi ROS bridge uses ROS_DOMAIN_ID=42 in current bench startup
+
+现象：
+
+- `ros2 topic echo --once /rehab_arm/model_state` with default environment reported that the topic was not published.
+- The bridge process was actually running and publishing, but under `ROS_DOMAIN_ID=42`.
+
+判断：
+
+- The current bench bridge process environment includes `ROS_DOMAIN_ID=42`.
+- Running ROS CLI commands without the same domain will look like an empty graph.
+
+解决：
+
+```bash
+export ROS_DOMAIN_ID=42
+source /opt/ros/jazzy/setup.bash
+source /home/pi/rehab_arm_ros2_ws/install/setup.bash
+ros2 topic list -t | grep /rehab_arm/model_state
+```
+
+状态：
+
+- 已验证：with `ROS_DOMAIN_ID=42`, `/rehab_arm/model_state` exists and decoded official voice map-id frames.
+
+### LLM/VLA calls must go through platform model relay, not direct provider keys
+
+现象：
+
+- The command-center VLA needs voice intent, camera summary, EMG summary, safety state and wiring state to ask a large model for high-level rehab suggestions.
+
+判断：
+
+- Device-side code, App, NanoPi, M55, M33 and AI agents must not request, store or call provider API keys directly.
+- Correct path is platform-scoped relay: `POST /api/rehab-arm/v1/projects/{project_id}/devices/{device_id}/model/relay`.
+
+解决：
+
+- Use project `fd6a55ed-a63c-44b3-b123-96fb3c154966`, device `nanopi-m5`, robot `rehab-arm-alpha`.
+- Only request `high_level_task`, `model_state_suggestion`, and `dry_run_joint_trajectory_candidate`.
+- Forbid `can_frame`, `motor_current`, `motor_torque`, `raw_motor_position`, `raw_motor_velocity`, `m33_safety_override`, and `direct_motor_command`.
+- If `provider.external_call_ok=false`, safely show advice unavailable/config missing/safety filtered; do not generate or execute real motion locally.
+
+状态：
+
+- Boundary documented in `SERVER_SYNC_API_DRAFT.md` and `VOICE_WAKE_TTS_PORTABILITY_GUIDE.md`.

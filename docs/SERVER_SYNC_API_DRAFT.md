@@ -303,6 +303,83 @@ Response:
 
 这个接口只用于平台显示仿真准备度，不能作为真机运动许可。
 
+### 9. Command-Center Model Relay
+
+设备总控台/VLA 只能通过云端平台的模型中转站调用大语言模型，NanoPi、M55、M33、App、浏览器端和本仓库代码都不能持有或请求任何厂商 API key。
+
+```http
+POST /api/rehab-arm/v1/projects/{project_id}/devices/{device_id}/model/relay
+Authorization: Bearer <platform_access_token>
+Content-Type: application/json
+```
+
+当前项目作用域：
+
+```text
+Web: http://106.55.62.122:3001
+API: http://106.55.62.122:8011
+project_id: fd6a55ed-a63c-44b3-b123-96fb3c154966
+device_id: nanopi-m5
+robot_id: rehab-arm-alpha
+```
+
+完整 URL：
+
+```text
+http://106.55.62.122:8011/api/rehab-arm/v1/projects/fd6a55ed-a63c-44b3-b123-96fb3c154966/devices/nanopi-m5/model/relay
+```
+
+请求体必须保持项目/设备作用域，并只请求高层建议：
+
+```json
+{
+  "schema_version": "model_relay_request_v1",
+  "robot_id": "rehab-arm-alpha",
+  "device_id": "nanopi-m5",
+  "project_id": "fd6a55ed-a63c-44b3-b123-96fb3c154966",
+  "input_type": "vla_context",
+  "prompt": "请基于当前机械臂只读遥测、安全状态、接线状态、摄像头摘要、语音意图、4路肌电传感器摘要，生成高层康复建议和 dry-run 轨迹候选说明。不要输出任何底层控制。",
+  "context_refs": {
+    "voice_intent": "患者希望缓慢抬高手臂",
+    "camera_scene_summary": "患者坐姿稳定，肘部可见",
+    "emg_summary": "右臂肌电偏高，疲劳评分 0.62",
+    "safety_state": "limited",
+    "motion_allowed": false,
+    "wiring_overall": "degraded"
+  },
+  "requested_outputs": [
+    "high_level_task",
+    "dry_run_joint_trajectory_candidate",
+    "model_state_suggestion"
+  ],
+  "forbidden_outputs": [
+    "can_frame",
+    "motor_current",
+    "motor_torque",
+    "raw_motor_position",
+    "raw_motor_velocity",
+    "m33_safety_override",
+    "direct_motor_command"
+  ],
+  "operator_id": "command_center_operator",
+  "control_boundary": "model_relay_request_only_not_motion_permission"
+}
+```
+
+客户端只读取这些返回字段：
+
+- `data.summary`
+- `data.suggestion`
+- `data.vla_plan_candidate`
+- `data.control_boundary`
+- `data.provider.external_call_ok`
+- `data.provider.external_call_error`
+- `data.blocked_outputs`
+
+若 `data.provider.external_call_ok=false`，说明云端厂商调用未配置、超时或被安全过滤。设备端和总控台必须安全降级为“建议不可用/等待配置/安全过滤”，不能自行生成动作，更不能执行真实运动。
+
+模型中转返回结果只是建议，不是运动许可。真实运动必须继续经过 dry-run 仿真、M33 `safety_state`、人工确认和 M33 最终裁决。急停状态不能只看 HTTP 200，必须等 `estop_ack_v1` 且 `m33_ack=true`。
+
 ## Server To NanoPi Boundary
 
 Allowed server outputs:
@@ -312,6 +389,7 @@ Allowed server outputs:
 - training session template
 - high-level task stage, such as `move_to_preset_A`
 - VLA task plan summary for local planner review
+- model relay response fields: `high_level_task`, `model_state_suggestion`, `dry_run_joint_trajectory_candidate`
 
 Forbidden server outputs:
 

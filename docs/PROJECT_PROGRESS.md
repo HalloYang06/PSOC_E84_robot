@@ -2738,3 +2738,18 @@
 - CAN/ROS validation: NanoPi captured `can0 323#B50A010108830300`; `/rehab_arm/model_state` received `rehab_arm_model_state_v1` with `model_id=m55_wake_word_v1`, `label=wake_start_request`, `confidence=0.18`, `suggestion_only=true`, and `control_boundary=model_suggestion_only_not_motion_permission`.
 - Cleanup: runtime threshold was set back to the quiet-window suggestion `voice_thresholds 1518 555 3`; this setting is runtime-only and should be recalibrated after reboot or environment changes.
 - Next step: replace activity detection with the official local-voice wake/command model path or a project-specific int8 wake/ASR model, while keeping the same M55->M33->0x323 result boundary.
+
+### 2026-06-09 - Official local voice map_id migrated onto the product M55/M33/NanoPi boundary
+
+- Reason: user asked to migrate the official Infineon local voice path instead of using the old failed wake flow, while preserving the existing M33/M55 IPC and NanoPi model-state architecture.
+- M55 code update: added `official_voice_result_adapter.*` on the M55 branch and `wifi` burn workspace. It maps official local voice `map_id` values into existing `MSG_TYPE_AI_INFERENCE_RESP` results instead of copying the full official FreeRTOS/LVGL/music-player app into the product firmware.
+- M55 result protocol update: `model_result_publisher.*` now publishes generic `model_code/result_code/result_flags/confidence/window_ms`, while `model_result_publish_wake_word(...)` remains compatible for old callers. `result_flags` uses bit0=fresh and bit1=detected.
+- M33 code update: `m55_model_bridge.c` now honors the new `model_code/result_code/result_flags` fields and keeps old `motion_class` behavior only as compatibility fallback.
+- Shell validation: M55 shell exposes long command `official_voice_map_id` and short command `ov_map`. `ov_map 401 880` reached M33 as `model=4 result=1 flags=0x03 can_ret=0`.
+- Build validation: M55 `wifi` built successfully with `scons -j4`, final size `text=1182368 data=15396 bss=1875472 dec=3073236`. M33 built successfully with `mingw32-make -C ...\yiliao_m33\Debug all -j4`, final size `text=549268 data=16244 bss=310529 dec=876041`.
+- Burn validation: M55 external flash `0x60580400` wrote `1200128 bytes` and verified `1197764 bytes`. M33 raw `0x08340400` hex was relocated to `0x60340400`; OpenOCD wrote `569344 bytes` and verified `565512 bytes`.
+- CAN validation: NanoPi captured official voice result frames such as `0x323#B50A040108830300` after `ov_map 401 880`. M33 status `0x322` was also visible after reboot settled.
+- ROS validation: NanoPi bridge in `ROS_DOMAIN_ID=42` published `/rehab_arm/model_state`; one-shot subscriber received `model_id=m55_voice_asr_v1`, `result_name=voice_start_request`, `suggestion_only=true`, and `control_boundary=model_suggestion_only_not_motion_permission`.
+- NanoPi sync: copied the current `m33_model_status.py` parser to NanoPi source and installed site-packages so `model_code=4` resolves to `m55_voice_asr_v1` instead of `unknown_model_4`.
+- Platform boundary update: documented the AI collaboration platform model relay endpoint. LLM/VLA calls must go through `POST /api/rehab-arm/v1/projects/fd6a55ed-a63c-44b3-b123-96fb3c154966/devices/nanopi-m5/model/relay` with Bearer token; no device or agent may request or store provider API keys.
+- Safety: all tested outputs remain model suggestions only. No `0x320`, CAN motor command, motor current/torque, raw motor state, M33 safety override, or direct motor command was produced.
