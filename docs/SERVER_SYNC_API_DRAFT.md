@@ -307,6 +307,14 @@ Response:
 
 设备总控台/VLA 只能通过云端平台的模型中转站调用大语言模型，NanoPi、M55、M33、App、浏览器端和本仓库代码都不能持有或请求任何厂商 API key。
 
+模型中转站在 VLA 架构里固定承接三段：
+
+- **L / Language**：M55 唤醒后通过 WiFi HTTP 把原始语音片段、音频特征或本地 ASR 文本送到服务器，服务器把它转成用户能懂的文本、意图和任务语言。云端聊天/VLA-L 主链路不走 CAN。
+- **V / Vision**：NanoPi 把摄像头关键帧、图像流摘要或视觉检测结果送到服务器，服务器把它转成场景描述、人体/康复状态和环境约束。
+- **A / Action**：服务器/VLA 融合 L、V、输出端 joint 状态、电机诊断、M55 小模型结果、profile/限位和历史数据，生成高层动作意图、分段任务或 dry-run 轨迹候选说明。
+
+M55 直连平台时只能保存平台签发的短期 relay token，不能保存厂商 API key。relay token 只允许通过 HTTP 调用本项目/本设备作用域的 L 部分语音理解接口；过期、撤销或 `provider.external_call_ok=false` 时，M55 必须降级为本地唤醒/提示音/无云端语义理解。
+
 ```http
 POST /api/rehab-arm/v1/projects/{project_id}/devices/{device_id}/model/relay
 Authorization: Bearer <platform_access_token>
@@ -366,6 +374,63 @@ http://106.55.62.122:8011/api/rehab-arm/v1/projects/fd6a55ed-a63c-44b3-b123-96fb
 }
 ```
 
+M55 语音到 VLA 的 L 部分低延迟请求示例：
+
+```http
+POST /api/rehab-arm/v1/projects/{project_id}/devices/{device_id}/model/relay
+Authorization: Bearer <relay_token>
+Content-Type: application/json
+```
+
+```json
+{
+  "schema_version": "model_relay_request_v1",
+  "robot_id": "rehab-arm-alpha",
+  "device_id": "nanopi-m5",
+  "project_id": "fd6a55ed-a63c-44b3-b123-96fb3c154966",
+  "input_type": "vla_language_from_voice",
+  "prompt": "把当前语音输入转换成患者和操作员能理解的中文文本、意图和 VLA language context。不要输出任何底层控制。",
+  "context_refs": {
+    "voice_audio_ref": "m55_http_uploaded_pcm16_16khz_window_or_feature_ref",
+    "local_transcript": "开始抬手训练",
+    "m55_wake_event": "wake_start_request",
+    "safety_state": "limited",
+    "motion_allowed": false
+  },
+  "requested_outputs": [
+    "language_context",
+    "voice_intent",
+    "operator_facing_reply"
+  ],
+  "forbidden_outputs": [
+    "can_frame",
+    "motor_current",
+    "motor_torque",
+    "raw_motor_position",
+    "raw_motor_velocity",
+    "m33_safety_override",
+    "direct_motor_command"
+  ],
+  "control_boundary": "vla_language_relay_only_not_motion_permission"
+}
+```
+
+L 部分返回如果包含“开始/暂停/停止训练”等动作意图，服务器必须先和 V 部分、机器人状态和安全上下文融合，再由 VLA 产生 A 部分。A 部分只能是 `server_to_nanopi_high_level_command_v1` 一类高层请求或 dry-run 候选，下发给 NanoPi 后还要进入 profile、仿真 dry-run、接线/安全状态和 M33 裁决流程；不得把 L 或 A 直接翻译成 `0x320`、CAN 电机帧、力矩、电流或速度命令。
+
+L 部分必须携带分类结果：
+
+```json
+{
+  "utterance_classification": {
+    "kind": "daily_chat 或 vla_command 或 none",
+    "route": "conversation_reply 或 vla_language_context 或 ignore_or_prompt_again",
+    "requires_vla_action": false
+  }
+}
+```
+
+只有 `kind=vla_command` 可以进入 VLA 的 L 上下文。`kind=daily_chat` 只允许返回聊天文本/TTS，不进入 A 部分。
+
 客户端只读取这些返回字段：
 
 - `data.summary`
@@ -388,6 +453,7 @@ Allowed server outputs:
 - config update proposal
 - training session template
 - high-level task stage, such as `move_to_preset_A`
+- L/V/A structured result, such as `language_context`, `vision_context`, `action_intent`, `voice_start_request`, `voice_pause_request`, `voice_stop_request`
 - VLA task plan summary for local planner review
 - model relay response fields: `high_level_task`, `model_state_suggestion`, `dry_run_joint_trajectory_candidate`
 

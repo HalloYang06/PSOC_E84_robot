@@ -398,25 +398,46 @@ ov_map 402 850  # voice_stop_request
 
 当前 `local_voice_listen` 是语音活动检测地基，不是最终 ASR 或正式自定义唤醒词模型。官方 `control_task map_id -> MSG_TYPE_AI_INFERENCE_RESP -> 0x323` 出口已经迁移；下一步是把官方 `PDM -> AFE -> Voice Assistant` 持续推理结果真正接到该 adapter，而不是只用 shell 手动注入 `map_id`。
 
-### 服务器大语言模型 API 中转验收边界
+### M55 HTTP 小智/VLA-L 中转验收边界
 
-大语言模型 API 放在服务器/平台侧，不能把 API key 放到 NanoPi、M55、App、浏览器或本地 agent。设备总控台只接收和展示模型建议：
+大语言模型 API key 放在服务器/平台侧，不能把厂商 API key 放到 NanoPi、M55、App、浏览器或本地 agent。M55 只允许保存平台签发的短期 relay token，并通过 WiFi HTTP 调用服务器模型中转站；云端聊天和 VLA-L 不走 CAN。
 
 ```text
-M55/NanoPi/App/camera/sensors
-  -> platform rehab-arm command center API
-  -> server-side LLM provider
-  -> model_relay_response_v1 / voice_relay_v1 / vla_plan_candidate_v1
+M55 wake/local voice
+  -> M55 WiFi HTTP
+  -> platform rehab-arm model relay
+  -> utterance_classification
+     - daily_chat: TTS reply only
+     - vla_command: VLA L context
+     - none: ask user to repeat
 ```
 
 当前模型中转接口：
 
 ```text
 POST http://106.55.62.122:8011/api/rehab-arm/v1/projects/fd6a55ed-a63c-44b3-b123-96fb3c154966/devices/nanopi-m5/model/relay
-Authorization: Bearer <platform_access_token>
+Authorization: Bearer <relay_token>
 ```
 
-只允许请求 `high_level_task`、`model_state_suggestion`、`dry_run_joint_trajectory_candidate`。如果返回 `provider.external_call_ok=false`，只能显示建议不可用、等待配置或安全过滤，不能本地补生成动作。
+M55 语音 HTTP 请求只允许：
+
+- `input_type=vla_language_from_voice`
+- `requested_outputs=["language_context","voice_intent","operator_facing_reply","utterance_classification"]`
+- `control_boundary=vla_language_http_relay_only_not_motion_permission`
+
+日常聊天通过标准：
+
+- `utterance_classification.kind=daily_chat`
+- `requires_vla_action=false`
+- 返回 `operator_facing_reply` 后只走 TTS/扬声器，不进入 VLA-A。
+
+指令通过标准：
+
+- `utterance_classification.kind=vla_command`
+- 只生成 `vla_language_context_v1`，作为 VLA 的 L 部分。
+- 必须等待 NanoPi 摄像头形成 V、机器人状态/profile/safety 上下文齐全后，服务器/VLA 才能生成 A。
+
+如果返回 `provider.external_call_ok=false`，只能显示建议不可用、等待配置或安全过滤，不能本地补生成动作。
 
 平台返回必须保持：
 
@@ -425,7 +446,9 @@ Authorization: Bearer <platform_access_token>
 - `suggestion.control_boundary=model_suggestion_only_not_motion_permission`
 - `vla_plan_candidate.control_boundary=vla_candidate_only_not_motion_permission`
 
-平台或模型输出不能包含 `can_frame`、`motor_current`、`motor_torque`、`raw_motor_position`、`raw_motor_velocity`、`m33_safety_override`、`direct_motor_command`。如果模型返回这些低层字段，平台必须拦截或降级为安全外壳。真实运动仍然必须经过 MuJoCo dry-run、M33 安全许可和人工确认。
+平台或模型输出不能包含 `can_frame`、`motor_current`、`motor_torque`、`raw_motor_position`、`raw_motor_velocity`、`m33_safety_override`、`direct_motor_command`。如果模型返回这些低层字段，平台必须拦截或降级为安全外壳。真实运动仍然必须经过 VLA-A 候选、MuJoCo dry-run、M33 安全许可和人工确认。
+
+本地 `local_voice_listen`、`ov_map`、`0x323` 和 `/rehab_arm/model_state` 仍可用于验证 M55 本地 wake/command 事件摘要，但它们不是云端小智聊天链路。
 
 ## NanoPi 到 MuJoCo hardware shadow 只读验收
 

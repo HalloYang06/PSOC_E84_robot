@@ -25,7 +25,7 @@ JointTrajectory -> NanoPi -> M33 -> motor
 | Three.js + URDF + 电机/传感器数据渲染 | URDF、`/joint_states`、`/rehab_arm/motor_state`、`/rehab_arm/sensor_state` | `command_center_snapshot_v1`、`robot_render_state_v1` | 只读显示，不产生真机控制 |
 | 摄像头图像采集 | NanoPi camera keyframe/stream | `camera_keyframe_v1`、`camera_stream_offer_v1` | 感知数据，不是控制命令 |
 | 语音采集和 API 中转 | App 麦克风、浏览器麦克风、M55 ASR 摘要 | `voice_capture_v1`、`voice_relay_v1`、`rehab_arm_model_state_v1` | 语音只生成文本/意图，不直接运动 |
-| VLA | 摄像头、语音、joint、电机、profile、M55 model state | `vla_task_request_v1`、`vla_plan_candidate_v1` | 只输出任务/候选轨迹，进入 dry-run |
+| VLA | `L` 来自 M55 原始语音/音频特征/文本，`V` 来自 NanoPi 摄像头，机器人状态来自 joint/电机/profile/M55 model state | `vla_language_context_v1`、`vla_vision_context_v1`、`vla_action_candidate_v1` | `A` 只输出任务/候选轨迹，进入 dry-run |
 | 接线检测 | M33 `0x330~0x337` freshness、C8T6 `0x7C2/0x7C3`、心跳、温度、错误计数 | `wiring_health_v1` | 只报告断线/异常；不能自动补偿控制 |
 | 安全状态检测 | M33 `0x322`、NanoPi bridge `/rehab_arm/safety_state` | `safety_state_v1` | `motion_allowed` 只读展示，M33 最终裁决 |
 | 急停按钮 | 总控台/App 请求，M33 本地执行 | `estop_request_v1`、`estop_ack_v1` | 请求可远程发起，执行必须由 M33 确认 |
@@ -315,7 +315,7 @@ Metadata:
 
 ## 7. Voice Protocol
 
-语音来源可以是 App、浏览器总控台或 M55 ASR。服务器可作为 API 中转，但不得直接控制电机。
+语音来源可以是 App、浏览器总控台或 M55 ASR/音频特征。服务器可作为 API 中转，但不得直接控制电机。当前产品把 M55 语音链路定义为 VLA 的 `L / Language` 输入：M55 唤醒后通过 WiFi HTTP 把原始语音、音频特征或本地 ASR 文本送到服务器，服务器把它转成用户能懂的文本、意图和 VLA language context。这条云端聊天/VLA-L 主链路不走 CAN。
 
 ```http
 POST /api/rehab-arm/v1/devices/{device_id}/voice/captures
@@ -339,15 +339,30 @@ Metadata:
 }
 ```
 
-语音 API 中转结果：
+M55 直连 HTTP 推荐走项目/设备作用域模型中转：
+
+```http
+POST /api/rehab-arm/v1/projects/{project_id}/devices/{device_id}/model/relay
+Authorization: Bearer <relay_token>
+Content-Type: application/json 或 multipart/form-data
+```
+
+HTTP 请求的 `input_type` 固定为 `vla_language_from_voice`。若上传原始音频，用 multipart 的 `metadata` 放 `voice_capture_v1`，`file` 放 PCM/WAV/OPUS；若先在 M55 做了轻量 ASR 或特征提取，可以只发 JSON。
+
+语音 API 中转结果，也就是 VLA 的 L 部分：
 
 ```json
 {
-  "schema_version": "voice_relay_v1",
+  "schema_version": "vla_language_context_v1",
   "transcript": "开始抬手训练",
   "intent": {
     "label": "voice_start_request",
     "confidence": 0.86
+  },
+  "language_context": {
+    "user_facing_text": "患者希望开始抬手训练",
+    "operator_facing_reply": "收到，准备进入抬手训练检查。",
+    "requires_vla_action": true
   },
   "as_model_state": {
     "schema_version": "rehab_arm_model_state_v1",
@@ -363,15 +378,43 @@ Metadata:
     ],
     "control_boundary": "model_suggestion_only_not_motion_permission"
   },
-  "control_boundary": "voice_relay_only_not_motion_permission"
+  "control_boundary": "vla_language_only_not_motion_permission"
 }
 ```
 
 服务器语音结果必须落到 `rehab_arm_model_state_v1` 语义，不能新建另一套语音编号表。
 
+M55 为了降低 L 部分响应延迟，可以用平台签发的短期 relay token 直接调用模型中转站。M55 直连时只允许请求：
+
+- `language_context`
+- `voice_intent`
+- `operator_facing_reply`
+
+M55 直连禁止请求或接收：
+
+- `can_frame`
+- `motor_current`
+- `motor_torque`
+- `raw_motor_position`
+- `raw_motor_velocity`
+- `m33_safety_override`
+- `direct_motor_command`
+
+如果 L 部分识别到“开始训练、暂停、停止、慢一点、抬高手臂”等意图，服务器必须再融合 NanoPi 摄像头形成的 `V / Vision`、机器人状态和安全上下文，由 VLA 产生 `A / Action`。A 部分只能写入 NanoPi 的高层请求队列或 dry-run 候选。NanoPi 必须再结合 active profile、接线检测、安全状态、仿真 dry-run 和 M33 裁决，不能把 L 或 A 直接翻译成电机命令。
+
+分类规则：
+
+- `daily_chat`：闲聊、问候、解释、安抚、普通问答，只返回 `operator_facing_reply`/TTS，不进入 VLA-A。
+- `vla_command`：开始、暂停、停止、疼痛、不舒服、慢一点、抬手、放下、训练模式等康复相关意图，进入 `vla_language_context_v1`，作为 VLA 的 L 部分等待融合 V 和机器人状态。
+- `none`：空文本、低置信度或噪声，提示用户重说，不进入 VLA-A。
+
 ## 8. VLA Protocol
 
-VLA 输入必须是融合后的上下文，不直接消费裸 CAN 控制。
+VLA 输入必须是融合后的上下文，不直接消费裸 CAN 控制。固定拆分为：
+
+- `L / Language`：M55 原始语音、音频特征、本地 transcript 或 App/浏览器语音，进入服务器后转成 `vla_language_context_v1`。
+- `V / Vision`：NanoPi 摄像头关键帧、图像流摘要和检测结果，进入服务器后转成 `vla_vision_context_v1`。
+- `A / Action`：服务器/VLA 融合 L、V、joint、电机、安全、profile 和历史数据后产生 `vla_action_candidate_v1`，再进入 dry-run 和 M33 安全链路。
 
 ```http
 POST /api/rehab-arm/v1/devices/{device_id}/vla/task-requests

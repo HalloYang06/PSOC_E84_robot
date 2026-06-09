@@ -17,6 +17,14 @@
 
 ## 架构状态
 
+- 2026-06-10 VLA L/V/A 架构边界修正：
+  - 按用户最新定义，把云端 API AI 从“语音助手直接产生高层请求”修正为 VLA 三段式：M55 原始语音/音频特征/文本进入服务器形成 `L / Language`，NanoPi 摄像头关键帧/视觉摘要进入服务器形成 `V / Vision`，服务器/VLA 融合 L、V 和机器人状态后产生 `A / Action`。
+  - 更新 [README.md](../README.md)、[REHAB_ARM_SYSTEM_ARCHITECTURE.md](REHAB_ARM_SYSTEM_ARCHITECTURE.md)、[COMMAND_CENTER_APP_PROTOCOL_V1.md](COMMAND_CENTER_APP_PROTOCOL_V1.md)、[SERVER_SYNC_API_DRAFT.md](SERVER_SYNC_API_DRAFT.md) 和 [VOICE_WAKE_TTS_PORTABILITY_GUIDE.md](VOICE_WAKE_TTS_PORTABILITY_GUIDE.md)。
+  - 安全边界保持不变：M55 可以用平台短期 relay token 通过 WiFi HTTP 做低延迟 VLA-L 语音理解，但不能保存厂商 API key；云端聊天/VLA-L 主链路不走 CAN；A 部分也只是高层动作意图、分段任务或 dry-run 候选，不得直接变成 CAN、电流、力矩、速度、原始电机位置或 M33 安全覆盖。
+  - `voice_gateway.py` 新增唤醒后话语分类和 HTTP dry-run 合同：`daily_chat` 只走聊天/TTS，`vla_command` 才进入 `vla_language_context_v1`，`none` 提示重说；新增 `m55_http_voice_relay_request_v1`，固定 `input_type=vla_language_from_voice` 和 `transport_boundary=m55_wifi_http_not_can`。
+  - 验证通过：`test_voice_gateway.py` 和 `test_system_architecture_contract.py` 共 17 项通过；`python -m compileall rehab_arm_psoc_bridge` 通过；`build_voice_pipeline_plan --prompt-text "开始抬手训练"` 输出 `current_kind=vla_command`、`allowed_next_step=server_vla_l_context_over_http`、`transport_boundary=m55_wifi_http_not_can`。
+  - 未验证：本轮没有登录云端平台、导入 URDF、生成新 relay token，也没有完成 M55->服务器->NanoPi 的真实云端闭环。
+  - 下一步：平台仓库按 `vla_language_context_v1`、`vla_vision_context_v1`、`vla_action_candidate_v1` 实现中转和总控台；M55 固件后续实现 WiFi HTTP client、relay token 配置/轮换、TTS 音频回放和失败降级。
 - 2026-06-09 M55 语音/wake 主线改为官方例程优先：
   - 按用户要求重新查看本地 Infineon 官方例程 `D:/RT-ThreadStudio/workspace/_ifx_local_voice`，确认官方 recommended 链路为 `CM55 PDM microphone ISR -> audio_feed_interface -> DEEPCRAFT AFE -> Voice Assistant inferencing_interface -> control_task map_id -> I2S/应用事件`。
   - 更新 [VOICE_WAKE_TTS_PORTABILITY_GUIDE.md](VOICE_WAKE_TTS_PORTABILITY_GUIDE.md)，明确旧 `voice_service/wake_word_detector/wake_on/wake_dump_pcm` 只能作为诊断/过渡，不能再作为正式 wake 主线。

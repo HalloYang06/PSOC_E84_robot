@@ -80,10 +80,10 @@ GitHub 分支导览：
 | 模块 | 负责什么 | 不负责什么 |
 |---|---|---|
 | M33 | CAN 总线原始传感/电机状态汇总、M55 结果接收、时间戳和安全状态绑定、限位/限速/限流/急停、最终运动裁决、电机控制 | 不做 VLA，不把安全权交给服务器/NanoPi/M55 |
-| M55 | 4 路 EMG/IMU 等小模型推理、意图/疲劳/共收缩/异常建议、语音采集和语音转文字 | 不直接控制电机，不放宽 M33 限位，不直接成为运动许可 |
-| NanoPi | ROS2 主控、M33 CAN bridge、摄像头采集、M55/M33 结果编号语义解析、状态上传服务器、接收服务器/VLA 高层任务并转成可审核轨迹候选 | 不绕过 M33 直控电机，不把 `bench_armed` 当正式穿戴许可 |
+| M55 | 4 路 EMG/IMU 等小模型推理、意图/疲劳/共收缩/异常建议、语音采集、唤醒/本地 ASR、可用平台 relay token 通过 WiFi HTTP 把原始语音送服务器形成 VLA 的 `L / Language` | 不直接控制电机，不保存厂商 API key，不用 CAN 跑云端聊天，不放宽 M33 限位，不直接成为运动许可 |
+| NanoPi | ROS2 主控、M33 CAN bridge、摄像头采集并送服务器形成 VLA 的 `V / Vision`、M55/M33 结果编号语义解析、状态上传服务器、接收服务器/VLA 的 `A / Action` 高层任务并转成可审核轨迹候选 | 不绕过 M33 直控电机，不把 `bench_armed` 当正式穿戴许可 |
 | Linux 仿真主机 | MuJoCo/RViz/运动规划、无线 ROS2 接 NanoPi、仿真验证、轨迹候选生成、rosbag/JSONL 数据和标注 | 不做真机实时安全闭环，不直接发 CAN |
-| 服务器/总控台 | 汇聚语音、摄像头、输出端 joint 状态、电机诊断、M55 小模型结果、profile/限位、历史数据，运行 VLA 和数据/模型管理 | 不做高频实时控制，不直接发 CAN，不绕过 M33 |
+| 服务器/总控台 | 将 M55 语音转成 `L`、NanoPi 摄像头转成 `V`，再融合 joint/电机/profile/M55 model state 生成 `A` 高层动作意图、VLA 建议和数据/模型管理 | 不做高频实时控制，不直接发 CAN，不绕过 M33 |
 
 注意：因为机械结构包含齿轮、同步轮、减速器、连杆或推杆，`motor_id` 不等于机器人/人体 `joint`。服务器、VLA、仿真和 App 优先使用经过传动比、方向、零点、限位和回差说明换算后的输出端 joint 状态；原始电机轴数据只作为诊断字段保留。
 
@@ -145,15 +145,15 @@ flowchart LR
   NanoPi -->|"ROS2: joint/safety/sensor/model state"| Workstation
   Workstation -->|"ROS2: JointTrajectory 仿真/规划结果"| NanoPi
 
-  M55 -->|"语音文本/音频摘要/模型结果"| Server
-  NanoPi -->|"摄像头关键帧 + 机器人状态 + session 数据"| Server
+  M55 -->|"L: 原始语音/音频特征/文本/意图\nWiFi HTTP + 平台 relay token"| Server
+  NanoPi -->|"V: 摄像头关键帧/视觉摘要\n机器人状态 + session 数据"| Server
   Workstation -->|"仿真数据/rosbag/标注/评估"| Server
   App -->|"非实时账号/报告/标注同步"| Server
   M55 -.->|"可选 WiFi: 语音/OpenClaw/模型摘要"| Server
 
-  Server -->|"视觉/语音/机器人状态/历史上下文"| VLA
-  VLA -->|"复杂任务计划: 先移开遮挡物 -> 再拿目标物品"| Server
-  Server -->|"分段任务/训练配置/任务下发"| NanoPi
+  Server -->|"L + V + 机器人状态/历史上下文"| VLA
+  VLA -->|"A: 高层动作意图/分段任务/dry-run 候选"| Server
+  Server -->|"A 高层请求/分段任务/训练配置/任务下发"| NanoPi
   Server -->|"高层任务/模型更新/标注任务"| Workstation
   Workstation -->|"JointTrajectory 仿真结果/轨迹"| NanoPi
 
@@ -167,7 +167,10 @@ flowchart LR
 - NanoPi 按 schema/model version 把 M55 结果编号解析成语义，上传服务器并发布 ROS topic。
 - 平台、App、NanoPi、M33 和 M55 共用患者/设备运行配置协议，见 [`docs/PATIENT_DEVICE_PROFILE_PROTOCOL_V1.md`](docs/PATIENT_DEVICE_PROFILE_PROTOCOL_V1.md)。同一设备同一时刻只能有一个 active profile；患者 ROM、限速、辅助等级、训练模式、M55 模型阈值和数据标注配置都必须记录版本。
 - NanoPi 负责采集摄像头数据，上传关键帧、目标检测结果、输出端 joint 状态、电机诊断、温度/速度/故障、限位/profile 摘要、M55 小模型语义结果和 session 数据到总服务器。
-- M55/英飞凌负责语音采集和板端小模型，语音文本、音频摘要、唤醒事件和模型结果可以上传服务器，实时安全仍回到 M33。
+- M55/英飞凌负责语音采集和板端小模型；为了降低 VLA 的 `L / Language` 延迟，M55 可以持有平台签发的短期 relay token，通过 WiFi HTTP 把原始语音、音频特征或本地 transcript 直连模型中转站，不能持有厂商 API key。云端日常聊天和 VLA-L 不走 CAN；`0x323` 只保留给本地模型事件/状态摘要。
+- NanoPi 负责把摄像头关键帧、视觉摘要和机器人状态送到服务器形成 `V / Vision` 和机器人上下文。
+- 服务器先把唤醒后语音分类为 `daily_chat`、`vla_command` 或 `none`。`daily_chat` 只返回文字/TTS；只有 `vla_command` 作为 VLA 的 L 部分继续融合 `V + robot context`。
+- 服务器/VLA 融合 `L + V + robot context` 后产生 `A / Action`：高层动作意图、分段任务或 dry-run 候选。`A` 仍不是真实运动许可，必须进入仿真/profile/安全检查/M33 裁决流程。
 - NanoPi 获得 M33 汇总的电机、传感、安全和模型状态后，同步给仿真主机，用于数字孪生、数据采集和轨迹规划。
 - VLA 固定走服务器链路，输入来自 M55 语音文本、NanoPi 摄像头、输出端 joint 状态、电机温度/速度/故障、M55 小模型结果、active profile 限位、历史数据和标注。
 - VLA/服务器只能下发高层任务、分段目标或可验证的轨迹候选，不能直接发 CAN 或底层电机命令；NanoPi/仿真主机生成轨迹后仍由 M33 安全裁决。

@@ -2,7 +2,10 @@ import unittest
 
 from rehab_arm_psoc_bridge.voice_gateway import (
     build_voice_pipeline_plan,
+    classify_voice_utterance,
+    make_m55_http_voice_relay_request,
     make_tts_playback_request,
+    make_vla_language_context_payload,
     make_voice_capture_payload,
     make_voice_relay_payload,
 )
@@ -39,6 +42,47 @@ class TestVoiceGateway(unittest.TestCase):
         self.assertEqual(result['result_code'], 4)
         self.assertEqual(payload['control_boundary'], 'voice_relay_only_not_motion_permission')
         self.assertEqual(payload['as_model_state']['control_boundary'], 'model_suggestion_only_not_motion_permission')
+        self.assertEqual(payload['vla_language_context']['source'], 'm55_http_voice_to_server_language_relay')
+
+    def test_classifies_daily_chat_without_vla_action(self):
+        classification = classify_voice_utterance('你好，今天可以陪我聊聊天吗')
+
+        self.assertEqual(classification['kind'], 'daily_chat')
+        self.assertEqual(classification['route'], 'conversation_reply')
+        self.assertFalse(classification['requires_vla_action'])
+
+    def test_classifies_rehab_command_as_vla_l(self):
+        capture = make_voice_capture_payload('arm', 'nanopi', now=100.0)
+        payload = make_vla_language_context_payload(
+            capture,
+            transcript='开始抬手训练',
+            confidence=0.91,
+            now=101.0,
+        )
+
+        self.assertEqual(payload['schema_version'], 'vla_language_context_v1')
+        self.assertEqual(payload['utterance_classification']['kind'], 'vla_command')
+        self.assertEqual(payload['allowed_next_step'], 'server_vla_l_context_over_http')
+        self.assertEqual(payload['control_boundary'], 'vla_language_only_not_motion_permission')
+        self.assertIn('direct_motor_command', payload['forbidden_outputs'])
+
+    def test_m55_http_voice_relay_request_is_not_can(self):
+        capture = make_voice_capture_payload(
+            'rehab-arm-alpha',
+            'nanopi-m5',
+            transcript='你好',
+            wake_detected=True,
+            now=100.0,
+        )
+        request = make_m55_http_voice_relay_request(capture, transcript='你好')
+
+        self.assertEqual(request['schema_version'], 'm55_http_voice_relay_request_v1')
+        self.assertEqual(request['method'], 'POST')
+        self.assertIn('/model/relay', request['url'])
+        self.assertEqual(request['transport_boundary'], 'm55_wifi_http_not_can')
+        self.assertEqual(request['body_json']['input_type'], 'vla_language_from_voice')
+        self.assertIn('utterance_classification', request['body_json']['requested_outputs'])
+        self.assertIn('can_frame', request['body_json']['forbidden_outputs'])
 
     def test_tts_request_is_feedback_only(self):
         payload = make_tts_playback_request('arm', 'nanopi', '收到', now=100.0)
@@ -61,6 +105,7 @@ class TestVoiceGateway(unittest.TestCase):
             plan['portability_rules'],
         )
         self.assertIn('can_frame', plan['forbidden_outputs'])
+        self.assertEqual(plan['utterance_routing']['cloud_voice_transport'], 'm55_wifi_http_not_can')
         self.assertEqual(plan['control_boundary'], 'voice_pipeline_plan_only_not_motion_permission')
 
 

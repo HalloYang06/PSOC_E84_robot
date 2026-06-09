@@ -106,10 +106,10 @@ JointTrajectory -> NanoPi -> M33 -> 电机
 | 设备/层 | 固定职责 | 当前落地状态 |
 |---|---|---|
 | M33 | CAN 主站、安全状态机、输出端状态汇总、最终电机控制、BLE 近端状态/请求入口、M55 结果绑定后发 `0x323` | 已对上 legacy `0x330~0x334` 和 7号 shadow；新增 `m55_model_bridge.*`，完整 6DOF formal 协议待补 |
-| M55 | 板端小模型和语音/EMG 信号处理，输出编号结果给 M33，再由 NanoPi/服务器解析语义 | GitHub `M55` 分支/WiFi 工程为准；新增 `model_result_publisher.*` wake-word 验证路径；M33/M55 通讯复用 MTB-IPC queue + `.ipc_stream_shared` |
-| NanoPi | ROS2 bridge、SocketCAN、摄像头采集、服务器上传、VLA 任务接收、候选轨迹转发、解析 `0x323` 为 `/rehab_arm/model_state` | 只读 bridge 已在 `ROS_DOMAIN_ID=42` 发布 topic，当前手动进程 `enable_target_tx=false`；systemd service enabled 但本次为 inactive，待 sudo/reboot 恢复托管 |
+| M55 | 板端小模型和语音/EMG 信号处理，输出编号结果给 M33，再由 NanoPi/服务器解析语义；可持有平台短期 relay token，通过 WiFi HTTP 把原始语音送服务器形成 VLA 的 `L / Language` | GitHub `M55` 分支/WiFi 工程为准；新增 `model_result_publisher.*` wake-word 验证路径；M33/M55 通讯复用 MTB-IPC queue + `.ipc_stream_shared`；不得保存厂商 API key，不用 CAN 跑云端聊天 |
+| NanoPi | ROS2 bridge、SocketCAN、摄像头采集并送服务器形成 VLA 的 `V / Vision`、服务器上传、VLA `A / Action` 任务接收、候选轨迹转发、解析 `0x323` 为 `/rehab_arm/model_state` | 只读 bridge 已在 `ROS_DOMAIN_ID=42` 发布 topic，当前手动进程 `enable_target_tx=false`；systemd service enabled 但本次为 inactive，待 sudo/reboot 恢复托管 |
 | Linux 仿真主机 | URDF/MJCF/MuJoCo、hardware shadow、规划 dry-run、数据标注和可视化 | `rehab-arm-sim-host-shadow.service` 已 active/enabled，MuJoCo 6DOF hardware shadow 通过无线 ROS2 收到 NanoPi `/joint_states` |
-| 服务器/总控台 | VLA、数据资产、模型版本、实验记录、多设备管理和远程协作 | 本仓库只维护接口边界；服务器实现在平台仓库 |
+| 服务器/总控台 | VLA、数据资产、模型版本、实验记录、多设备管理和远程协作；把 M55 语音转成 `L`，把 NanoPi 摄像头转成 `V`，融合机器人状态后生成 `A` | 本仓库只维护接口边界；服务器实现在平台仓库 |
 
 ### 后续 AI 必须遵守
 
@@ -127,6 +127,7 @@ mainline / shadow-sim / dry-run / bench-debug / offline-demo / side-channel
 - 用 7号外部电机或 `nanopi_can_master.py` 的，属于 `bench-debug`。
 - 历史 demo、合成数据、fallback 仿真属于 `offline-demo`。
 - M55 语音/EMG、App BLE、服务器同步属于 `side-channel`，它们只能提供状态、意图、标注或建议，不能成为独立运动链路。
+- M55 直连云端模型中转站也属于 `side-channel`，传输方式是 WiFi HTTP，不走 CAN。它只能把原始语音、音频特征或本地 transcript 变成 VLA 的 `L / Language` 上下文，如 `language_context`、`voice_intent`、`operator_facing_reply`；不能输出 CAN、电流、力矩、速度、原始电机位置或 M33 安全覆盖。
 - M33/M55 不能新造跨核通讯，必须复用现有 `m33_m55_comm`、Infineon MTB-IPC queue 和 `.ipc_stream_shared`；M55 小模型部署按 `M55_MODEL_DEPLOYMENT_GUIDE.md`，M33 BLE 到 App 字段按 `M33_M55_IPC_BLE_FOUNDATION.md`。
 - M33/M55 新代码必须分模块：M55 推理结果发布放 `model_result_publisher.*` 或同类模块，M33 模型桥放 `m55_model_bridge.*` 或同类模块，不把 AI、IPC、CAN 解析堆进 `main.c`。
 - `0x323`、`/rehab_arm/model_state`、M55 confidence/result_code 永远只是建议，不得改变 `motion_allowed`，不得绕过 `0x322` safety gate。
@@ -220,15 +221,15 @@ flowchart LR
   NanoPi -->|"ROS2: joint/safety/sensor/model state"| Workstation
   Workstation -->|"ROS2: JointTrajectory 仿真/规划结果"| NanoPi
 
-  M55 -->|"语音文本/音频摘要/模型结果"| Server
-  NanoPi -->|"摄像头关键帧 + 机器人状态 + session 数据"| Server
+  M55 -->|"L: 原始语音/音频特征/文本/意图\nWiFi HTTP + 平台 relay token"| Server
+  NanoPi -->|"V: 摄像头关键帧/视觉摘要\n机器人状态 + session 数据"| Server
   Workstation -->|"仿真数据/rosbag/标注/评估"| Server
   App -->|"非实时账号/报告/标注同步"| Server
   M55 -.->|"可选 WiFi: 语音/OpenClaw/模型摘要"| Server
 
-  Server -->|"视觉/语音/机器人状态/历史上下文"| VLA
-  VLA -->|"复杂任务计划: 先移开遮挡物 -> 再拿目标物品"| Server
-  Server -->|"分段任务/训练配置/任务下发"| NanoPi
+  Server -->|"L + V + 机器人状态/历史上下文"| VLA
+  VLA -->|"A: 高层动作意图/分段任务/dry-run 候选"| Server
+  Server -->|"A 高层请求/分段任务/训练配置/任务下发"| NanoPi
   Server -->|"高层任务/模型更新/标注任务"| Workstation
   Workstation -->|"JointTrajectory 仿真结果/轨迹"| NanoPi
 
@@ -253,8 +254,10 @@ M33 -> BLE -> App
 - App 通过 BLE 获得近端全量状态，包括传感、电机、安全和小模型结果；App 的 HTTP 链路只面向 NanoPi/OpenClaw 高层服务。
 - NanoPi 负责采集摄像头数据，上传关键帧、目标检测结果、机器人状态和 session 数据到总服务器；NanoPi 也负责上传 M33 汇总后的当前位置、速度、温度、故障、电机状态、传感摘要、M55 小模型语义结果和 active profile 限位摘要。
 - 因为机械结构包含齿轮、同步轮、减速器、连杆或推杆，`motor_id` 不等于人体/机器人 `joint`。服务器、仿真和 VLA 应优先使用经过传动比、方向、零点、限位、回差说明换算后的输出端 joint 状态；原始电机轴数据只能作为诊断字段保留。
-- M55/英飞凌负责语音采集、小模型和语音转文字；语音文本、音频摘要、唤醒事件、模型版本和诊断信息可以上传服务器。语音命令只能作为任务意图来源，不能单独成为真机运动许可。
-- VLA 固定走服务器链路，输入来自 M55 语音文本、NanoPi 摄像头、输出端 joint 状态、电机温度/速度/故障、M55 小模型结果、active profile 限位、历史数据和标注；输出复杂任务计划或运动请求，例如“辅助肘关节缓慢屈曲到 35 度范围内”。
+- M55/英飞凌负责语音采集、小模型和语音转文字；本地唤醒/命令事件和模型摘要可继续通过 M33 `0x323` 给 NanoPi 做状态观察。为了降低 VLA 的 `L / Language` 延迟，M55 云端语音主链路必须通过 WiFi HTTP 用平台短期 relay token 直连模型中转站，只做语音到语言上下文转换，不能保存厂商 API key，也不走 CAN。
+- 服务器收到 M55 HTTP 语音后必须先分类：`daily_chat` 只返回聊天/TTS，`vla_command` 才进入 VLA 的 L 上下文，`none` 提示用户重说。
+- NanoPi 负责把摄像头关键帧、图像流摘要和视觉检测结果送到服务器形成 `V / Vision`，同时上传输出端 joint、电机诊断、安全状态、M55 小模型语义和 profile 限位。
+- VLA 固定走服务器链路，输入是 `L + V + robot context`：M55 语音语言上下文、NanoPi 视觉上下文、输出端 joint 状态、电机温度/速度/故障、M55 小模型结果、active profile 限位、历史数据和标注；输出 `A / Action`，例如高层动作意图、分段任务或“辅助肘关节缓慢屈曲到 35 度范围内”的 dry-run 候选。
 - VLA/服务器只能下发高层任务、分段目标或可验证的轨迹候选，不能直接发 CAN 或底层电机命令；NanoPi/仿真主机生成轨迹后仍必须由 M33 检查限位、限速、力矩/电流、急停、通信时效和电机反馈后再执行。
 - 当前厂家电机协议基准见：[MOTOR_PROTOCOLS.md](MOTOR_PROTOCOLS.md)。已确认 `node_id=3` 为伺泰威 CANSimple，`motor_id=4/5/6/7` 为灵足 RobStride 私有扩展帧；真实型号、机械关节绑定和最终安全限值仍需现场确认后写入 M33。
 

@@ -20,6 +20,36 @@
 
 ## CAN 与硬件
 
+### M55 语音上云不是直接控制链路，而是 VLA 的 L 部分
+
+现象：
+
+- 讨论云端 API AI 时，容易把“M55 语音直连服务器、服务器再下发 NanoPi”理解成 M55 或云端直接产生运动请求。
+- 用户澄清真实框架是：M55 原始语音到服务器形成 VLA 的 `L / Language`，NanoPi 摄像头到服务器形成 `V / Vision`，服务器/VLA 融合后产生 `A / Action` 去完成指令。
+
+根因：
+
+- “语音助手”“聊天”“模型中转”和 “VLA 控制”容易混在一起。
+- 对康复机械臂来说，`A` 如果不经过 dry-run、profile、安全状态和 M33 裁决，就会变成危险的隐性控制旁路。
+
+解决：
+
+- 文档统一改为 L/V/A：M55 只负责低延迟语音到 L；NanoPi 负责摄像头到 V；服务器/VLA 产生 A。
+- A 只能是高层动作意图、分段任务或 dry-run 候选，不是 CAN、电流、力矩、速度、原始电机位置或 M33 安全覆盖。
+- M55 直连平台只能保存短期 relay token，不能保存厂商 API key。
+- M55 云端小智/VLA-L 主链路必须走 WiFi HTTP，不走 CAN；`0x323` 只保留给本地 wake/command 事件、模型摘要和兼容状态观察。
+- 唤醒后先分类：`daily_chat` 只回复/TTS，`vla_command` 才进入 `vla_language_context_v1`，`none` 提示重说。
+
+技巧：
+
+- 后续 AI 或平台实现看到“M55 调服务器”时，先问它是不是 `vla_language_from_voice`；如果返回字段不是 `language_context/voice_intent/operator_facing_reply`，就要重新审查边界。
+- 看到“服务器下发 NanoPi”时，先确认是否是 `vla_action_candidate_v1` 或高层请求队列；如果包含底层电机字段，必须拒绝。
+- 看到“语音上云走 0x323/CAN”时要纠正：那是本地状态出口，不是小智聊天或 VLA-L 主链路。
+
+状态：
+
+- 2026-06-10 已同步到 README、系统架构、总控台协议、服务器同步 API 草案、语音迁移指南和 USER_MANUAL；`test_voice_gateway.py` 与系统架构合同测试通过；真实云端闭环未在本轮验证。
+
 ### 旧 wake 代码存在不等于语音唤醒闭环已通
 
 现象：
