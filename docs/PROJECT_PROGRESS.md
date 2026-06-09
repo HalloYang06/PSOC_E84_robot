@@ -17,6 +17,13 @@
 
 ## 架构状态
 
+- 2026-06-09 VLA candidate 本地审核门：
+  - `rehab_arm_psoc_bridge` 新增 `vla_candidate_gate.py` 和 `check_vla_plan_candidate.py`，用于服务器/VLA 返回 `vla_plan_candidate_v1` 后的第一道本地 JSON 审核。
+  - 审核门只允许 `candidate.type=dry_run_joint_trajectory`，关节名必须属于 medical_arm 6DOF URDF joint 集合，trajectory point 维度和时间必须合法，且 `requires` 必须包含 `mujoco_dry_run_passed`、`m33_motion_allowed_true`、`human_confirmation`。
+  - payload 中如果出现 `can_frame`、`motor_current`、`motor_torque`、`raw_motor_position`、`raw_motor_velocity`、`m33_safety_override`、`direct_motor_command` 等底层字段，审核失败。
+  - 审核通过后的 `allowed_next_steps` 只有 `mujoco_dry_run_review` 和 `operator_review`；`forbidden_next_steps` 明确禁止直接 `publish_joint_trajectory`、发 CAN、设电流/力矩或覆盖 M33 安全。
+  - 更新 [COMMAND_CENTER_APP_PROTOCOL_V1.md](COMMAND_CENTER_APP_PROTOCOL_V1.md)、[USER_MANUAL.md](USER_MANUAL.md) 和 `scripts/sim_host_rehab_user_qa.sh`，远程仿真主机 QA 会检查 `check_vla_plan_candidate.py` 安装入口和内置安全样例。
+  - 本地验证通过：`test_vla_candidate_gate.py`、`test_command_center_sync.py`、`test_system_architecture_contract.py` 共 22 项通过；`check_vla_plan_candidate.py --example --pretty` 输出 `ok=true`；`python -m compileall rehab_arm_psoc_bridge` 通过。
 - 2026-06-09 服务器总控台 dry-run 请求计划器：
   - `rehab_arm_psoc_bridge` 新增 `command_center_sync.py` 和 `build_command_center_sync_plan.py`，把设备注册、总控台 snapshot、voice relay、rehab session plan、VLA task request、WebSocket events 订阅统一生成 `command_center_sync_plan_v1`。
   - 追加 `check_command_center_sync_plan.py` 和 `validate_command_center_sync_plan()`，生成 `command_center_sync_quality_report_v1`，检查租户/工作区/用户/设备/患者权限上下文、每个请求 payload 的 `control_boundary`、WebSocket 订阅边界和禁止的底层运动输出。

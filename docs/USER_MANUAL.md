@@ -135,6 +135,31 @@ PYTHONPATH=. python -m rehab_arm_psoc_bridge.check_command_center_sync_plan --pr
 - `control_boundary=quality_gate_only_not_motion_permission`。
 - 如果缺少租户/工作区/用户/设备权限、缺少请求 payload 的 `control_boundary`，或删掉 `can_frame/motor_current/motor_torque/m33_safety_override` 禁止项，命令必须以非 0 退出。
 
+检查服务器/VLA 返回的候选轨迹是否只能进入 dry-run 审核：
+
+```bash
+cd rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge
+PYTHONPATH=. python -m rehab_arm_psoc_bridge.check_vla_plan_candidate \
+  --candidate vla_plan_candidate.json \
+  --pretty
+```
+
+没有候选文件时，可以生成内置安全样例并检查：
+
+```bash
+PYTHONPATH=. python -m rehab_arm_psoc_bridge.check_vla_plan_candidate \
+  --example \
+  --pretty
+```
+
+通过标准：
+
+- 输出 `schema_version=vla_candidate_gate_report_v1`。
+- `ok=true`。
+- `allowed_next_steps` 只能是 MuJoCo dry-run 和人工审核类步骤。
+- `forbidden_next_steps` 必须包含 `publish_joint_trajectory`、`send_can_frame`、`set_motor_current`、`set_motor_torque`、`override_m33_safety`。
+- 候选 JSON 缺少 `mujoco_dry_run_passed/m33_motion_allowed_true/human_confirmation` 任一后置要求，或出现底层电机/CAN 字段时，命令必须失败。
+
 远程仿真主机上做用户视角 dry-run 验收：
 
 ```bash
@@ -146,7 +171,7 @@ git pull
 通过标准：
 
 - `colcon build --packages-select rehab_arm_psoc_bridge --symlink-install` 通过。
-- `ros2 pkg executables rehab_arm_psoc_bridge` 能看到 `build_voice_pipeline_plan.py`、`build_rehab_session_plan.py`、`build_command_center_sync_plan.py` 和 `check_command_center_sync_plan.py`。
+- `ros2 pkg executables rehab_arm_psoc_bridge` 能看到 `build_voice_pipeline_plan.py`、`build_rehab_session_plan.py`、`build_command_center_sync_plan.py`、`check_command_center_sync_plan.py` 和 `check_vla_plan_candidate.py`。
 - 输出包含 `SIM_HOST_REHAB_USER_QA_OK`。
 - 全程不连接 CAN、不发布真实运动、不改变 M33 状态。
 

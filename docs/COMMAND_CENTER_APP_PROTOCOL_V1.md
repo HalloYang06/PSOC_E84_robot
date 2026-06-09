@@ -436,6 +436,25 @@ Response:
 
 任何 VLA candidate 进入真机前必须转换为正式 ROS `JointTrajectory`，并通过 NanoPi/M33 安全门；服务器返回 `vla_plan_candidate_v1` 本身不允许被当作真机命令。
 
+本仓库提供一个本地 candidate gate，用于服务器/VLA 返回后、MuJoCo dry-run 前的第一道 JSON 审核：
+
+```bash
+ros2 run rehab_arm_psoc_bridge check_vla_plan_candidate.py \
+  --candidate vla_plan_candidate.json \
+  --pretty
+```
+
+该工具只输出 `vla_candidate_gate_report_v1`，不会发布 ROS topic、不会发 CAN、不会改变 M33/M55/NanoPi 状态。通过条件包括：
+
+- `schema_version=vla_plan_candidate_v1`
+- `control_boundary=vla_candidate_only_not_motion_permission`
+- `candidate.type=dry_run_joint_trajectory`
+- 关节名必须属于 medical_arm 6DOF URDF joint 集合
+- `requires` 必须包含 `mujoco_dry_run_passed`、`m33_motion_allowed_true`、`human_confirmation`
+- payload 中不能出现 `can_frame`、`motor_current`、`motor_torque`、`raw_motor_position`、`raw_motor_velocity`、`m33_safety_override`、`direct_motor_command`
+
+即使 candidate gate 通过，允许的下一步也只有 `mujoco_dry_run_review` 和 `operator_review`；仍然不允许直接发布 `JointTrajectory`。
+
 ## 9. Wiring Health Protocol
 
 接线检测不是靠单一状态，而是综合 freshness、心跳、错误计数、温度和协议解析。

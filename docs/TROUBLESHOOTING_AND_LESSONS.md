@@ -20,6 +20,40 @@
 
 ## CAN 与硬件
 
+### VLA candidate 通过 JSON 审核不等于可以发真机轨迹
+
+现象：
+
+- 服务器/VLA 返回 `vla_plan_candidate_v1`，里面可能包含看起来合法的 `dry_run_joint_trajectory`。
+- 如果平台或 NanoPi 直接把它转换成 ROS `JointTrajectory`，会绕过 MuJoCo dry-run、M33 safety gate 和人工确认。
+
+根因：
+
+- VLA candidate 是任务/轨迹建议，不是控制命令。
+- `requires` 中的 `m33_motion_allowed_true` 是“未来进入真机前必须满足的条件”，不是 candidate 自带的运动许可。
+
+解决：
+
+- 服务器/VLA candidate 进入本地前先运行：
+
+```bash
+ros2 run rehab_arm_psoc_bridge check_vla_plan_candidate.py \
+  --candidate vla_plan_candidate.json \
+  --pretty
+```
+
+- 审核通过也只能进入 `mujoco_dry_run_review` 和 `operator_review`。
+- 真实运动仍必须后续转换为正式 ROS `JointTrajectory`，再经过 NanoPi bridge、fresh motor feedback gate 和 M33 `motion_allowed=true`。
+
+技巧：
+
+- `check_vla_plan_candidate.py --example --pretty` 可用于现场演示安全样例。
+- 如果 candidate 中出现 `can_frame/motor_current/motor_torque/raw_motor_position/raw_motor_velocity/m33_safety_override/direct_motor_command`，质量门必须失败。
+
+状态：
+
+- 2026-06-09 已加入 `vla_candidate_gate.py`、CLI、单元测试和仿真主机 QA 脚本入口；本地样例验证通过。
+
 ### Windows 本地跑 ROS Python 包测试要设置 PYTHONPATH
 
 现象：

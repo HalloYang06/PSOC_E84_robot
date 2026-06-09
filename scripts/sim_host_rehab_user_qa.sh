@@ -27,12 +27,14 @@ echo "${executables}" | grep -q "${PACKAGE_NAME} build_voice_pipeline_plan.py"
 echo "${executables}" | grep -q "${PACKAGE_NAME} build_rehab_session_plan.py"
 echo "${executables}" | grep -q "${PACKAGE_NAME} build_command_center_sync_plan.py"
 echo "${executables}" | grep -q "${PACKAGE_NAME} check_command_center_sync_plan.py"
+echo "${executables}" | grep -q "${PACKAGE_NAME} check_vla_plan_candidate.py"
 
 voice_json="$(mktemp)"
 session_json="$(mktemp)"
 sync_json="$(mktemp)"
 sync_quality_json="$(mktemp)"
-trap 'rm -f "${voice_json}" "${session_json}" "${sync_json}" "${sync_quality_json}"' EXIT
+vla_candidate_report_json="$(mktemp)"
+trap 'rm -f "${voice_json}" "${session_json}" "${sync_json}" "${sync_quality_json}" "${vla_candidate_report_json}"' EXIT
 
 ros2 run "${PACKAGE_NAME}" build_voice_pipeline_plan.py \
   --robot-id medical_rehab_arm \
@@ -63,7 +65,11 @@ ros2 run "${PACKAGE_NAME}" check_command_center_sync_plan.py \
   --plan "${sync_json}" \
   | python3 -m json.tool >"${sync_quality_json}"
 
-python3 - "${voice_json}" "${session_json}" "${sync_json}" "${sync_quality_json}" <<'PY'
+ros2 run "${PACKAGE_NAME}" check_vla_plan_candidate.py \
+  --example \
+  | python3 -m json.tool >"${vla_candidate_report_json}"
+
+python3 - "${voice_json}" "${session_json}" "${sync_json}" "${sync_quality_json}" "${vla_candidate_report_json}" <<'PY'
 import json
 import sys
 
@@ -97,6 +103,15 @@ if quality.get('schema_version') != 'command_center_sync_quality_report_v1':
     raise SystemExit('command center sync quality report schema mismatch')
 if quality.get('ok') is not True:
     raise SystemExit(f'command center sync quality gate failed: {quality}')
+
+with open(sys.argv[5], encoding='utf-8') as handle:
+    vla_report = json.load(handle)
+if vla_report.get('schema_version') != 'vla_candidate_gate_report_v1':
+    raise SystemExit('VLA candidate gate report schema mismatch')
+if vla_report.get('ok') is not True:
+    raise SystemExit(f'VLA candidate gate failed: {vla_report}')
+if 'publish_joint_trajectory' not in vla_report.get('forbidden_next_steps', []):
+    raise SystemExit('VLA candidate gate must forbid direct JointTrajectory publication')
 
 print('SIM_HOST_REHAB_USER_QA_OK')
 PY
