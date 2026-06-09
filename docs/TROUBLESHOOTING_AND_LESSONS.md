@@ -64,15 +64,17 @@
 - `CMakeLists.txt` 添加：
   - `rehab_arm_psoc_bridge/build_voice_pipeline_plan.py`
   - `rehab_arm_psoc_bridge/build_rehab_session_plan.py`
+- 脚本本身还必须有 executable bit；否则远程仿真主机可能出现 `colcon build` 通过，但 `ros2 pkg executables rehab_arm_psoc_bridge` 不列出新脚本。
 
 技巧：
 
 - 用户视角 QA 必须覆盖“源码运行”和“ROS 安装后运行”两个入口。
 - 如果本机没有 `colcon`/`ros2`，至少用静态合同测试锁住 `setup.py` 和 `CMakeLists.txt`，再到 NanoPi/ROS 主机做安装验证。
+- 对 `install(PROGRAMS ...)` 的 Python 脚本，新增后执行 `git update-index --chmod=+x path/to/script.py` 并在远程 ROS 主机检查 `ros2 pkg executables`。
 
 状态：
 
-- 2026-06-09 已补 CMake 安装清单，并用静态合同测试锁住。
+- 2026-06-09 已补 CMake 安装清单和脚本 executable bit，并用静态合同测试锁住。
 
 ### MuJoCo hardware shadow 无 3 号输出时先查 relay 映射
 
