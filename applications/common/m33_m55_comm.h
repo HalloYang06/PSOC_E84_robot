@@ -21,7 +21,8 @@ typedef enum
     MSG_TYPE_ASR_TEXT,
     MSG_TYPE_TTS_REQUEST,
     MSG_TYPE_TTS_AUDIO,
-    MSG_TYPE_VOICE_CONTROL
+    MSG_TYPE_VOICE_CONTROL,
+    MSG_TYPE_VOICE_CONTROL_ACK
 } m33_m55_msg_type_t;
 
 typedef enum
@@ -156,6 +157,9 @@ typedef struct
 rt_err_t m33_m55_comm_init(void);
 rt_err_t m33_m55_comm_publish(const m33_m55_message_t *msg);
 rt_err_t m33_m55_comm_consume(m33_m55_message_t *msg);
+rt_bool_t m33_m55_comm_is_ready(void);
+rt_uint32_t m33_m55_comm_rx_count(void);
+rt_uint32_t m33_m55_comm_tx_count(void);
 extern volatile m33_m55_pcm_shared_t g_m33_m55_pcm_shared;
 
 #ifdef __cplusplus

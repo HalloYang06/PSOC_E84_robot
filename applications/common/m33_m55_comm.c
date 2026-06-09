@@ -28,7 +28,7 @@ typedef struct
 } m33_m55_comm_runtime_t;
 
 static m33_m55_comm_runtime_t g_comm_runtime;
-__attribute__((section(".ipc_stream_shared"), aligned(32)))
+__attribute__((section(".cy_shared_socmem"), aligned(32)))
 volatile m33_m55_pcm_shared_t g_m33_m55_pcm_shared;
 
 CY_SECTION_SHAREDMEM static mtb_ipc_shared_t g_m33_m55_shared_data _MTB_IPC_DATA_ALIGN;
@@ -198,4 +198,19 @@ rt_err_t m33_m55_comm_consume(m33_m55_message_t *msg)
 
     result = mtb_ipc_queue_get(&g_comm_runtime.rx_queue, msg, 0);
     return m33_m55_result_to_rt(result);
+}
+
+rt_bool_t m33_m55_comm_is_ready(void)
+{
+    return g_comm_runtime.initialized;
+}
+
+rt_uint32_t m33_m55_comm_rx_count(void)
+{
+    return g_comm_runtime.initialized ? mtb_ipc_queue_count(&g_comm_runtime.rx_queue) : 0U;
+}
+
+rt_uint32_t m33_m55_comm_tx_count(void)
+{
+    return g_comm_runtime.initialized ? mtb_ipc_queue_count(&g_comm_runtime.tx_queue) : 0U;
 }

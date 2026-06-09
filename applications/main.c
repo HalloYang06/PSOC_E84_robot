@@ -13,6 +13,7 @@
 #include "m33/control_manager.h"
 #include "m33/http_server.h"
 #include "m33/input_buffer.h"
+#include "m33/m55_qa_bridge.h"
 #include "m33/m55_model_bridge.h"
 #include "m33/m55_model_input_bridge.h"
 #include "m33/openclaw_integration.h"
@@ -442,6 +443,7 @@ static void m33_init_framework(void)
     rt_kprintf("[m33] init step1 m33_m55_comm\n");
     m33_m55_comm_init();
     m55_model_bridge_init();
+    m55_qa_bridge_init();
     rt_kprintf("[m33] init step2 bt_board_bridge\n");
     bt_board_bridge_init();
     rt_kprintf("[m33] init step3 app_ble_service_init\n");
