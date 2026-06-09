@@ -179,6 +179,76 @@ class SystemArchitectureContractTests(unittest.TestCase):
         self.assertIn('COMMAND_CENTER_APP_PROTOCOL_V1.md', integration)
         self.assertIn('COMMAND_CENTER_APP_PROTOCOL_V1.md', briefing)
 
+    def test_command_center_requires_tenant_isolation(self) -> None:
+        protocol = (
+            REPO_ROOT
+            / 'docs'
+            / 'COMMAND_CENTER_APP_PROTOCOL_V1.md'
+        ).read_text(encoding='utf-8')
+        roadmap = (
+            REPO_ROOT
+            / 'docs'
+            / 'REHAB_FUNCTIONAL_ROADMAP.md'
+        ).read_text(encoding='utf-8')
+        lessons = (
+            REPO_ROOT
+            / 'docs'
+            / 'TROUBLESHOOTING_AND_LESSONS.md'
+        ).read_text(encoding='utf-8')
+
+        for field in (
+            'tenant_id',
+            'workspace_id',
+            'user_id',
+            'role',
+            'device_id',
+            'patient_id',
+        ):
+            self.assertIn(field, protocol)
+            self.assertIn(field, roadmap)
+
+        self.assertIn('WebSocket 事件只能推送给有该 `device_id` 权限的连接', protocol)
+        self.assertIn('不同账号、不同团队、不同患者的数据默认不可见', roadmap)
+        self.assertIn('不要把 qiansai 当成云端 AI 合作平台', lessons)
+
+    def test_voice_and_rehab_session_contracts_are_dry_run_only(self) -> None:
+        voice_guide = (
+            REPO_ROOT
+            / 'docs'
+            / 'VOICE_WAKE_TTS_PORTABILITY_GUIDE.md'
+        ).read_text(encoding='utf-8')
+        roadmap = (
+            REPO_ROOT
+            / 'docs'
+            / 'REHAB_FUNCTIONAL_ROADMAP.md'
+        ).read_text(encoding='utf-8')
+        setup = (
+            REPO_ROOT
+            / 'rehab_arm_ros2_ws'
+            / 'src'
+            / 'rehab_arm_psoc_bridge'
+            / 'setup.py'
+        ).read_text(encoding='utf-8')
+        cmake = (
+            REPO_ROOT
+            / 'rehab_arm_ros2_ws'
+            / 'src'
+            / 'rehab_arm_psoc_bridge'
+            / 'CMakeLists.txt'
+        ).read_text(encoding='utf-8')
+
+        self.assertIn('micro_speech', voice_guide)
+        self.assertIn('micro-wake-word', voice_guide)
+        self.assertIn('M33 m55_model_bridge', voice_guide)
+        self.assertIn('CAN 0x323', voice_guide)
+        self.assertIn('不能输出 `0x320`', voice_guide)
+        self.assertIn('emg_feature_window_v1', roadmap)
+        self.assertIn('dry_run_joint_trajectory_candidate', roadmap)
+        self.assertIn('build_voice_pipeline_plan', setup)
+        self.assertIn('build_rehab_session_plan', setup)
+        self.assertIn('build_voice_pipeline_plan.py', cmake)
+        self.assertIn('build_rehab_session_plan.py', cmake)
+
 
 if __name__ == '__main__':
     unittest.main()

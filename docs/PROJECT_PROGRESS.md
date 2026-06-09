@@ -25,6 +25,12 @@
   - [COMMAND_CENTER_APP_PROTOCOL_V1.md](COMMAND_CENTER_APP_PROTOCOL_V1.md) 新增多账号/多用户/多租户数据隔离要求：`tenant_id/workspace_id/user_id/role/device_id/patient_id/session_id` 必须绑定到设备、患者 profile、训练数据、语音、视频、模型结果和 WebSocket 事件。
   - 本地只读检查发现 `D:\RT-ThreadStudio\workspace\qiansai` 是早期 PSoC/RT-Thread 工程，不是云端 AI 合作平台；后续接云平台前必须先确认实际平台仓库，不要误改 qiansai。
   - 验证通过：`test_voice_gateway.py` 4 项、`test_rehab_session.py` 2 项、`test_m33_model_status.py` 3 项。
+- 2026-06-09 用户视角 QA 和补强：
+  - 从“看文档照着敲”的路径验收 `build_voice_pipeline_plan` 和 `build_rehab_session_plan`，两者均能输出合法 JSON，且只包含 dry-run/建议/候选轨迹边界，不包含真实运动许可。
+  - 补上 `rehab_arm_psoc_bridge/CMakeLists.txt` 安装清单，避免 ROS 包安装后 `ros2 run rehab_arm_psoc_bridge build_voice_pipeline_plan.py` 和 `build_rehab_session_plan.py` 找不到脚本。
+  - `test_system_architecture_contract.py` 新增租户隔离、语音可移植、EMG/session dry-run、CLI 安装入口合同测试，锁住后续 AI 不能删掉这些边界。
+  - 验证通过：`test_voice_gateway.py` 4 项、`test_rehab_session.py` 2 项、`test_m33_model_status.py` 3 项、`test_system_architecture_contract.py` 9 项、`python -m compileall rehab_arm_psoc_bridge`。
+  - 用户视角环境检查：本机 Windows 当前没有 `colcon`/`ros2` 命令，因此未在本机跑 ROS 安装构建；NanoPi `192.168.2.66` 和仿真主机 `192.168.2.46` ping 只读检查均在线。
 - 2026-06-08 服务器总控台和 App 协议确定：
   - 新增 [COMMAND_CENTER_APP_PROTOCOL_V1.md](COMMAND_CENTER_APP_PROTOCOL_V1.md)，固定服务器机械臂总控台和 App 用户端边界：Three.js+URDF+电机/传感器数据渲染、摄像头图像采集、语音采集/API 中转、VLA、接线检测、安全状态检测和急停按钮。
   - 总控台协议只定义合同，不改平台仓库和 App 代码；平台仓库由另一个 AI 按该协议实现。

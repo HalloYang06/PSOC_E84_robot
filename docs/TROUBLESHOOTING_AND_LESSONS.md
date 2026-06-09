@@ -45,6 +45,35 @@
 
 - 2026-06-09 已记录到总控台协议和路线图；本轮未修改任何平台仓库。
 
+### 新增 ROS Python CLI 时要同时更新 setup.py 和 CMakeLists.txt
+
+现象：
+
+- 新增 `build_voice_pipeline_plan.py` 和 `build_rehab_session_plan.py` 后，源码方式 `python -m ...` 可运行。
+- 但用户按 ROS 包安装后的习惯用 `ros2 run rehab_arm_psoc_bridge xxx.py` 时，如果只改 `setup.py` 的 `console_scripts`，CMake 安装清单可能没有把脚本放到 `lib/rehab_arm_psoc_bridge`。
+
+根因：
+
+- 当前 `rehab_arm_psoc_bridge` 是 `ament_cmake_python` 包，既用 `setup.py` 暴露 console scripts，也在 `CMakeLists.txt install(PROGRAMS ...)` 明确安装可执行脚本。新增 CLI 必须两边同时更新。
+
+解决：
+
+- `setup.py` 添加：
+  - `build_voice_pipeline_plan = rehab_arm_psoc_bridge.build_voice_pipeline_plan:main`
+  - `build_rehab_session_plan = rehab_arm_psoc_bridge.build_rehab_session_plan:main`
+- `CMakeLists.txt` 添加：
+  - `rehab_arm_psoc_bridge/build_voice_pipeline_plan.py`
+  - `rehab_arm_psoc_bridge/build_rehab_session_plan.py`
+
+技巧：
+
+- 用户视角 QA 必须覆盖“源码运行”和“ROS 安装后运行”两个入口。
+- 如果本机没有 `colcon`/`ros2`，至少用静态合同测试锁住 `setup.py` 和 `CMakeLists.txt`，再到 NanoPi/ROS 主机做安装验证。
+
+状态：
+
+- 2026-06-09 已补 CMake 安装清单，并用静态合同测试锁住。
+
 ### MuJoCo hardware shadow 无 3 号输出时先查 relay 映射
 
 现象：
