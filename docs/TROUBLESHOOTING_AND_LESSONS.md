@@ -74,7 +74,7 @@
 
 状态：
 
-- 2026-06-09 已补 CMake 安装清单和脚本 executable bit，并用静态合同测试锁住。
+- 2026-06-09 已补 CMake 安装清单和脚本 executable bit，并用静态合同测试锁住；远程仿真主机干净 worktree 已复测 `colcon build`、`ros2 pkg executables` 和两个 `ros2 run` dry-run CLI 通过。
 
 ### MuJoCo hardware shadow 无 3 号输出时先查 relay 映射
 

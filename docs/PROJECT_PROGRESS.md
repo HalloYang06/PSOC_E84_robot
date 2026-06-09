@@ -31,7 +31,8 @@
   - `test_system_architecture_contract.py` 新增租户隔离、语音可移植、EMG/session dry-run、CLI 安装入口合同测试，锁住后续 AI 不能删掉这些边界。
   - 验证通过：`test_voice_gateway.py` 4 项、`test_rehab_session.py` 2 项、`test_m33_model_status.py` 3 项、`test_system_architecture_contract.py` 9 项、`python -m compileall rehab_arm_psoc_bridge`。
   - 用户视角环境检查：本机 Windows 当前没有 `colcon`/`ros2` 命令；NanoPi `192.168.2.66` 和仿真主机 `192.168.2.46` ping 只读检查均在线。
-  - 远程仿真主机用户验收发现新 CLI 缺少可执行位，导致 `colcon build` 通过但 `ros2 pkg executables rehab_arm_psoc_bridge` 看不到 `build_voice_pipeline_plan.py` 和 `build_rehab_session_plan.py`；已把两个脚本设为 executable，后续必须在仿真主机复测 `ros2 run`。
+  - 远程仿真主机用户验收发现新 CLI 缺少可执行位，导致 `colcon build` 通过但 `ros2 pkg executables rehab_arm_psoc_bridge` 看不到 `build_voice_pipeline_plan.py` 和 `build_rehab_session_plan.py`；已把两个脚本设为 executable。
+  - 远程仿真主机 `192.168.2.46` 干净 worktree 复测通过：最新 `234fe414` 下 `colcon build --packages-select rehab_arm_psoc_bridge --symlink-install` 通过，`ros2 pkg executables` 能看到两个新脚本，`ros2 run rehab_arm_psoc_bridge build_voice_pipeline_plan.py` 和 `build_rehab_session_plan.py` 均能输出合法 JSON，并保持 `*_only_not_motion_permission` 边界。
 - 2026-06-08 服务器总控台和 App 协议确定：
   - 新增 [COMMAND_CENTER_APP_PROTOCOL_V1.md](COMMAND_CENTER_APP_PROTOCOL_V1.md)，固定服务器机械臂总控台和 App 用户端边界：Three.js+URDF+电机/传感器数据渲染、摄像头图像采集、语音采集/API 中转、VLA、接线检测、安全状态检测和急停按钮。
   - 总控台协议只定义合同，不改平台仓库和 App 代码；平台仓库由另一个 AI 按该协议实现。
