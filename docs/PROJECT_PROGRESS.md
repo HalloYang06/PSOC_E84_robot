@@ -34,6 +34,7 @@
   - 远程仿真主机用户验收发现新 CLI 缺少可执行位，导致 `colcon build` 通过但 `ros2 pkg executables rehab_arm_psoc_bridge` 看不到 `build_voice_pipeline_plan.py` 和 `build_rehab_session_plan.py`；已把两个脚本设为 executable。
   - 远程仿真主机 `192.168.2.46` 干净 worktree 复测通过：最新 `234fe414` 下 `colcon build --packages-select rehab_arm_psoc_bridge --symlink-install` 通过，`ros2 pkg executables` 能看到两个新脚本，`ros2 run rehab_arm_psoc_bridge build_voice_pipeline_plan.py` 和 `build_rehab_session_plan.py` 均能输出合法 JSON，并保持 `*_only_not_motion_permission` 边界。
   - 新增 `scripts/sim_host_rehab_user_qa.sh`，把远程仿真主机用户验收固化为一条命令：构建 `rehab_arm_psoc_bridge`、检查 ROS executable、运行两个 dry-run CLI、校验 JSON schema 和 control boundary。
+  - 远程仿真主机最新 `4310031c` 干净 worktree 已运行 `./scripts/sim_host_rehab_user_qa.sh` 通过，输出 `SIM_HOST_REHAB_USER_QA_OK`。
 - 2026-06-08 服务器总控台和 App 协议确定：
   - 新增 [COMMAND_CENTER_APP_PROTOCOL_V1.md](COMMAND_CENTER_APP_PROTOCOL_V1.md)，固定服务器机械臂总控台和 App 用户端边界：Three.js+URDF+电机/传感器数据渲染、摄像头图像采集、语音采集/API 中转、VLA、接线检测、安全状态检测和急停按钮。
   - 总控台协议只定义合同，不改平台仓库和 App 代码；平台仓库由另一个 AI 按该协议实现。
