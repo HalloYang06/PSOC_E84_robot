@@ -41,7 +41,66 @@ WebSocket: /api/rehab-arm/v1/devices/{device_id}/events
 
 REST 用于注册、配置、上传、命令请求和查询快照。WebSocket 用于总控台实时显示。WebSocket 掉线不得影响 M33 本地安全。
 
-## 3.1 多账号和数据隔离
+## 3.1 本仓库 dry-run 请求计划器
+
+本仓库提供一个只生成请求计划、不进行网络调用的主线工具，供服务器平台仓库按合同接入：
+
+```bash
+ros2 run rehab_arm_psoc_bridge build_command_center_sync_plan.py --pretty \
+  --robot-id medical_rehab_arm \
+  --device-id nanopi_dev \
+  --tenant-id tenant_rehab_lab \
+  --workspace-id workspace_rehab_lab \
+  --user-id operator_dev \
+  --patient-id patient_dry_run \
+  --session-id session_dry_run \
+  --profile-id profile_dry_run \
+  --base-url http://server.example/api/rehab-arm/v1
+```
+
+输出 `command_center_sync_plan_v1`，其中每个计划请求都采用：
+
+```json
+{
+  "method": "POST",
+  "url": "http://server.example/api/rehab-arm/v1/devices/nanopi_dev/vla/task-requests",
+  "headers": {
+    "Content-Type": "application/json",
+    "X-Rehab-Request-Id": "req_...",
+    "X-Rehab-Tenant-Id": "tenant_rehab_lab",
+    "X-Rehab-Workspace-Id": "workspace_rehab_lab"
+  },
+  "json": {
+    "auth_context": {
+      "schema_version": "command_center_auth_context_v1",
+      "tenant_id": "tenant_rehab_lab",
+      "workspace_id": "workspace_rehab_lab",
+      "user_id": "operator_dev",
+      "role": "operator",
+      "allowed_device_ids": ["nanopi_dev"],
+      "patient_id": "patient_dry_run",
+      "allowed_patient_ids": ["patient_dry_run"],
+      "session_id": "session_dry_run",
+      "control_boundary": "auth_context_only_not_motion_permission"
+    },
+    "data": {}
+  },
+  "control_boundary": "planned_http_request_only_not_motion_permission"
+}
+```
+
+当前计划器生成这些 endpoint 的请求：
+
+- `POST /devices/register`
+- `POST /devices/{device_id}/command-center/snapshot`
+- `POST /devices/{device_id}/voice/relay`
+- `POST /devices/{device_id}/rehab-sessions/plans`
+- `POST /devices/{device_id}/vla/task-requests`
+- WebSocket 订阅 `/devices/{device_id}/events`
+
+平台仓库实现时必须把 `auth_context` 当成权限上下文，不能只用 `device_id` 分房间或查数据。这个计划器仍是 dry-run：不发 HTTP、不发 WebSocket、不发 CAN、不产生运动许可。
+
+## 3.2 多账号和数据隔离
 
 服务器总控台会接入云服务器和 AI 合作平台。平台实现必须把医疗臂数据当作多租户医疗/康复数据处理，不能只按 `device_id` 做全局共享。
 

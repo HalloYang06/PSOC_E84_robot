@@ -17,6 +17,14 @@
 
 ## 架构状态
 
+- 2026-06-09 服务器总控台 dry-run 请求计划器：
+  - `rehab_arm_psoc_bridge` 新增 `command_center_sync.py` 和 `build_command_center_sync_plan.py`，把设备注册、总控台 snapshot、voice relay、rehab session plan、VLA task request、WebSocket events 订阅统一生成 `command_center_sync_plan_v1`。
+  - 计划器显式携带 `tenant_id/workspace_id/user_id/role/device_id/patient_id/session_id`，平台侧必须按这些字段做权限和数据隔离，不能只用 `device_id` 做全局房间。
+  - 所有输出保持 dry-run：只生成 REST/WebSocket 请求计划，不发 HTTP、不发 WebSocket、不发 CAN、不改变 M33/M55/NanoPi 状态。
+  - 更新 [COMMAND_CENTER_APP_PROTOCOL_V1.md](COMMAND_CENTER_APP_PROTOCOL_V1.md) 和 [USER_MANUAL.md](USER_MANUAL.md)，新增运行命令、endpoint 清单、验收标准和 forbidden outputs。
+  - 更新 `scripts/sim_host_rehab_user_qa.sh`，远程仿真主机 QA 会构建 ROS 包、检查新 CLI 安装入口、运行三类 dry-run CLI 并校验 schema/control boundary。
+  - 本地验证通过：设置 `PYTHONPATH=rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge` 后运行 `test_command_center_sync.py`、`test_voice_gateway.py`、`test_rehab_session.py` 共 10 项通过；CLI 源码方式可输出合法 JSON。
+  - 未验证：本轮尚未完成远程仿真主机 `./scripts/sim_host_rehab_user_qa.sh` 复跑；`ssh -o BatchMode=yes cal@192.168.2.46` 返回 `Permission denied (publickey,password)`，当前工具无法非交互输入密码且不把密码写入仓库。下一步在 `192.168.2.46` 拉取最新分支后运行该脚本。
 - 2026-06-09 康复功能、语音和云平台隔离地基：
   - 新增 [REHAB_FUNCTIONAL_ROADMAP.md](REHAB_FUNCTIONAL_ROADMAP.md)，把康复训练 session、4 路 EMG 预留、语音唤醒/ASR/TTS、MuJoCo dry-run、路径规划、数据/标注/训练和云平台隔离拆成可复用模块。
   - 新增 [VOICE_WAKE_TTS_PORTABILITY_GUIDE.md](VOICE_WAKE_TTS_PORTABILITY_GUIDE.md)，固定语音链路优先级：Infineon 官方 local voice 示例、TFLite Micro `micro_speech`、开源 `micro-wake-word`，云 ASR/TTS 只做可插拔 API relay。

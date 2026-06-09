@@ -20,6 +20,37 @@
 
 ## CAN 与硬件
 
+### Windows 本地跑 ROS Python 包测试要设置 PYTHONPATH
+
+现象：
+
+- 在 Windows 仓库根目录直接运行 `python -m unittest rehab_arm_ros2_ws\src\rehab_arm_psoc_bridge\test\test_command_center_sync.py ...`，测试报 `ModuleNotFoundError: No module named 'rehab_arm_psoc_bridge'`。
+- 同一个 CLI 用源码 fallback 路径可以运行并输出 JSON。
+
+根因：
+
+- 本地 Windows 没有通过 `colcon build` 安装 ROS Python 包，也没有 source ROS install 环境。
+- 直接按文件路径运行 unittest 时，Python 不会自动把 `rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge` 加到 import path。
+
+解决：
+
+```powershell
+$env:PYTHONPATH='D:\RT-ThreadStudio\workspace\_nanopi_rosnode_usbcan\rehab_arm_ros2_ws\src\rehab_arm_psoc_bridge'
+python -m unittest `
+  rehab_arm_ros2_ws\src\rehab_arm_psoc_bridge\test\test_command_center_sync.py `
+  rehab_arm_ros2_ws\src\rehab_arm_psoc_bridge\test\test_voice_gateway.py `
+  rehab_arm_ros2_ws\src\rehab_arm_psoc_bridge\test\test_rehab_session.py
+```
+
+技巧：
+
+- Windows 本地用 `PYTHONPATH` 做源码单测；真正用户视角 ROS 安装入口仍要到 NanoPi 或 Linux 仿真主机运行 `colcon build` 和 `ros2 run`。
+- 新增 CLI 必须同时更新 `setup.py`、`CMakeLists.txt install(PROGRAMS ...)` 和 `scripts/sim_host_rehab_user_qa.sh`。
+
+状态：
+
+- 2026-06-09 已用该方式验证新增 command center sync、voice gateway、rehab session 共 10 项测试通过。
+
 ### 不要把 qiansai 当成云端 AI 合作平台
 
 现象：

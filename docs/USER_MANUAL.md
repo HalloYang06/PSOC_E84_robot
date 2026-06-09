@@ -87,6 +87,32 @@ PYTHONPATH=. python -m rehab_arm_psoc_bridge.build_rehab_session_plan --pretty \
 
 这两个命令只输出 JSON 计划，不连接 CAN，不发布 ROS 运动，不改变 M33 状态。
 
+生成服务器机械臂总控台 REST/WebSocket dry-run 请求计划：
+
+```bash
+cd rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge
+PYTHONPATH=. python -m rehab_arm_psoc_bridge.build_command_center_sync_plan --pretty \
+  --robot-id medical_rehab_arm \
+  --device-id nanopi_dev \
+  --tenant-id tenant_rehab_lab \
+  --workspace-id workspace_rehab_lab \
+  --user-id operator_dev \
+  --patient-id patient_dry_run \
+  --session-id session_dry_run \
+  --profile-id profile_dry_run \
+  --training-mode active_assist \
+  --base-url http://server.example/api/rehab-arm/v1
+```
+
+通过标准：
+
+- 输出 `schema_version=command_center_sync_plan_v1`。
+- `auth_context` 包含 `tenant_id/workspace_id/user_id/device_id/patient_id/session_id`。
+- `requests` 包含注册、总控台 snapshot、voice relay、rehab session plan、VLA task request。
+- `websocket_subscriptions` 包含 `/devices/{device_id}/events`。
+- `forbidden_outputs` 必须包含 `can_frame`、`motor_current`、`motor_torque`、`m33_safety_override`。
+- 该命令只生成 JSON，不发 HTTP/WebSocket，不发 CAN，不改变 M33/M55/NanoPi 状态。
+
 远程仿真主机上做用户视角 dry-run 验收：
 
 ```bash
@@ -98,7 +124,7 @@ git pull
 通过标准：
 
 - `colcon build --packages-select rehab_arm_psoc_bridge --symlink-install` 通过。
-- `ros2 pkg executables rehab_arm_psoc_bridge` 能看到 `build_voice_pipeline_plan.py` 和 `build_rehab_session_plan.py`。
+- `ros2 pkg executables rehab_arm_psoc_bridge` 能看到 `build_voice_pipeline_plan.py`、`build_rehab_session_plan.py` 和 `build_command_center_sync_plan.py`。
 - 输出包含 `SIM_HOST_REHAB_USER_QA_OK`。
 - 全程不连接 CAN、不发布真实运动、不改变 M33 状态。
 

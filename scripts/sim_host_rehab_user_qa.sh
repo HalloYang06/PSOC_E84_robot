@@ -25,10 +25,12 @@ executables="$(ros2 pkg executables "${PACKAGE_NAME}" | sort)"
 echo "${executables}"
 echo "${executables}" | grep -q "${PACKAGE_NAME} build_voice_pipeline_plan.py"
 echo "${executables}" | grep -q "${PACKAGE_NAME} build_rehab_session_plan.py"
+echo "${executables}" | grep -q "${PACKAGE_NAME} build_command_center_sync_plan.py"
 
 voice_json="$(mktemp)"
 session_json="$(mktemp)"
-trap 'rm -f "${voice_json}" "${session_json}"' EXIT
+sync_json="$(mktemp)"
+trap 'rm -f "${voice_json}" "${session_json}" "${sync_json}"' EXIT
 
 ros2 run "${PACKAGE_NAME}" build_voice_pipeline_plan.py \
   --robot-id medical_rehab_arm \
@@ -43,13 +45,26 @@ ros2 run "${PACKAGE_NAME}" build_rehab_session_plan.py \
   --training-mode active_assist \
   | python3 -m json.tool >"${session_json}"
 
-python3 - "${voice_json}" "${session_json}" <<'PY'
+ros2 run "${PACKAGE_NAME}" build_command_center_sync_plan.py \
+  --robot-id medical_rehab_arm \
+  --device-id sim_host \
+  --tenant-id tenant_rehab_lab \
+  --workspace-id workspace_rehab_lab \
+  --user-id sim_operator \
+  --patient-id patient_dry_run \
+  --session-id session_sim_host_qa \
+  --profile-id profile_sim_host_qa \
+  --base-url http://server.example/api/rehab-arm/v1 \
+  | python3 -m json.tool >"${sync_json}"
+
+python3 - "${voice_json}" "${session_json}" "${sync_json}" <<'PY'
 import json
 import sys
 
 checks = [
     (sys.argv[1], 'rehab_arm_voice_pipeline_plan_v1', 'voice_pipeline_plan_only_not_motion_permission'),
     (sys.argv[2], 'rehab_session_plan_v1', 'rehab_session_plan_only_not_motion_permission'),
+    (sys.argv[3], 'command_center_sync_plan_v1', 'server_sync_plan_only_not_motion_permission'),
 ]
 
 for path, schema, boundary in checks:
@@ -60,6 +75,15 @@ for path, schema, boundary in checks:
         raise SystemExit(f'{path}: expected schema {schema}')
     if payload.get('control_boundary') != boundary:
         raise SystemExit(f'{path}: expected boundary {boundary}')
+
+with open(sys.argv[3], encoding='utf-8') as handle:
+    sync_plan = json.load(handle)
+if not sync_plan.get('requests'):
+    raise SystemExit('command center sync plan has no planned REST requests')
+if sync_plan['auth_context'].get('tenant_id') != 'tenant_rehab_lab':
+    raise SystemExit('command center sync plan lost tenant context')
+if 'can_frame' not in sync_plan.get('forbidden_outputs', []):
+    raise SystemExit('command center sync plan must explicitly forbid CAN frames')
 
 print('SIM_HOST_REHAB_USER_QA_OK')
 PY
