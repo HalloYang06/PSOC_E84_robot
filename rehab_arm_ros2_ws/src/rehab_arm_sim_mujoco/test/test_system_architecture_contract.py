@@ -249,6 +249,28 @@ class SystemArchitectureContractTests(unittest.TestCase):
         self.assertIn('build_voice_pipeline_plan.py', cmake)
         self.assertIn('build_rehab_session_plan.py', cmake)
 
+    def test_sim_host_user_qa_script_is_readonly_and_reusable(self) -> None:
+        script = (
+            REPO_ROOT
+            / 'scripts'
+            / 'sim_host_rehab_user_qa.sh'
+        ).read_text(encoding='utf-8')
+        manual = (
+            REPO_ROOT
+            / 'docs'
+            / 'USER_MANUAL.md'
+        ).read_text(encoding='utf-8')
+
+        self.assertIn('colcon build --packages-select', script)
+        self.assertIn('ros2 pkg executables', script)
+        self.assertIn('build_voice_pipeline_plan.py', script)
+        self.assertIn('build_rehab_session_plan.py', script)
+        self.assertIn('SIM_HOST_REHAB_USER_QA_OK', script)
+        self.assertIn('sim_host_rehab_user_qa.sh', manual)
+        self.assertNotIn('password', script.lower())
+        self.assertNotIn('candump', script)
+        self.assertNotIn('0x320', script)
+
 
 if __name__ == '__main__':
     unittest.main()

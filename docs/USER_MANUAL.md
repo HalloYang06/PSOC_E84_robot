@@ -87,6 +87,21 @@ PYTHONPATH=. python -m rehab_arm_psoc_bridge.build_rehab_session_plan --pretty \
 
 这两个命令只输出 JSON 计划，不连接 CAN，不发布 ROS 运动，不改变 M33 状态。
 
+远程仿真主机上做用户视角 dry-run 验收：
+
+```bash
+cd ~/桌面/Medical-Rehabilitation-Manipulator
+git pull
+./scripts/sim_host_rehab_user_qa.sh
+```
+
+通过标准：
+
+- `colcon build --packages-select rehab_arm_psoc_bridge --symlink-install` 通过。
+- `ros2 pkg executables rehab_arm_psoc_bridge` 能看到 `build_voice_pipeline_plan.py` 和 `build_rehab_session_plan.py`。
+- 输出包含 `SIM_HOST_REHAB_USER_QA_OK`。
+- 全程不连接 CAN、不发布真实运动、不改变 M33 状态。
+
 ## M33/M55 烧录和小模型链路复测
 
 当前 PSoC Edge E84 烧录必须使用 RT-Thread Studio 自带 Infineon OpenOCD，并把工程 `qspi_config.cfg` 所在目录加入 `-s`。否则外部 flash bank 不会注册，可能出现 `wrote 0 bytes` 的假成功。

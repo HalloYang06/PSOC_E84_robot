@@ -71,10 +71,12 @@
 - 用户视角 QA 必须覆盖“源码运行”和“ROS 安装后运行”两个入口。
 - 如果本机没有 `colcon`/`ros2`，至少用静态合同测试锁住 `setup.py` 和 `CMakeLists.txt`，再到 NanoPi/ROS 主机做安装验证。
 - 对 `install(PROGRAMS ...)` 的 Python 脚本，新增后执行 `git update-index --chmod=+x path/to/script.py` 并在远程 ROS 主机检查 `ros2 pkg executables`。
+- 后续复测优先在仿真主机运行 `./scripts/sim_host_rehab_user_qa.sh`，不要只在 Windows 上跑源码命令。
+- 该脚本不要使用 `set -u`；ROS `/opt/ros/jazzy/setup.bash` 可能读取未定义的 `AMENT_TRACE_SETUP_FILES`，会在 `nounset` 下误失败。
 
 状态：
 
-- 2026-06-09 已补 CMake 安装清单和脚本 executable bit，并用静态合同测试锁住；远程仿真主机干净 worktree 已复测 `colcon build`、`ros2 pkg executables` 和两个 `ros2 run` dry-run CLI 通过。
+- 2026-06-09 已补 CMake 安装清单和脚本 executable bit，并用静态合同测试锁住；远程仿真主机干净 worktree 已复测 `colcon build`、`ros2 pkg executables` 和两个 `ros2 run` dry-run CLI 通过，并新增 `scripts/sim_host_rehab_user_qa.sh` 作为后续固定验收入口。
 
 ### MuJoCo hardware shadow 无 3 号输出时先查 relay 映射
 
