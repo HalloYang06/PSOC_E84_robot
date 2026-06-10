@@ -496,7 +496,7 @@ static rt_bool_t voice_service_feed_xiaozhi_listening(const uint8_t *audio_data,
     return RT_TRUE;
 }
 
-static void voice_service_stop_xiaozhi_listening(void)
+static void voice_service_stop_xiaozhi_listening(rt_bool_t notify_server)
 {
     char json[VOICE_JSON_BUFFER_SIZE];
     rt_uint32_t session_id;
@@ -519,16 +519,18 @@ static void voice_service_stop_xiaozhi_listening(void)
     g_service.xiaozhi_listening_session_id = 0;
     rt_mutex_release(&g_service.lock);
 
-    if (websocket_client_is_connected() &&
+    if (notify_server &&
+        websocket_client_is_connected() &&
         (xiaozhi_voice_relay_build_listen_stop(json, sizeof(json), session_id, bytes, chunks) == RT_EOK))
     {
         websocket_client_send_text(json);
     }
 
-    rt_kprintf("[voice_service] Xiaozhi listening stopped session=%lu bytes=%lu chunks=%lu\n",
+    rt_kprintf("[voice_service] Xiaozhi listening stopped session=%lu bytes=%lu chunks=%lu notify=%d\n",
                (unsigned long)session_id,
                (unsigned long)bytes,
-               (unsigned long)chunks);
+               (unsigned long)chunks,
+               notify_server ? 1 : 0);
 }
 
 static void __attribute__((unused)) on_asr_result(const char *text, rt_err_t error)
@@ -584,7 +586,7 @@ static void voice_service_handle_server_text(const char *message)
 
     if ((rt_strcmp(type, "listen") == 0) && (rt_strcmp(state, "stop") == 0))
     {
-        voice_service_stop_xiaozhi_listening();
+        voice_service_stop_xiaozhi_listening(RT_FALSE);
         return;
     }
 
@@ -643,7 +645,7 @@ static void voice_service_handle_server_text(const char *message)
         return;
     }
 
-    voice_service_stop_xiaozhi_listening();
+    voice_service_stop_xiaozhi_listening(RT_TRUE);
     rt_kprintf("[voice_service] server reply: %s\n", fallback_text);
     voice_service_publish_text_to_m33(MSG_TYPE_TTS_REQUEST, fallback_text);
 

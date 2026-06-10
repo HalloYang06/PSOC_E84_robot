@@ -3,7 +3,7 @@
 #include <string.h>
 #include <stdlib.h>
 
-#define XIAOZHI_DEFAULT_WS_URL "ws://106.55.62.122:8011/api/rehab-arm/v1/projects/" XIAOZHI_PROJECT_ID "/devices/" XIAOZHI_DEVICE_ID "/voice/xiaozhi/ws"
+#define XIAOZHI_DEFAULT_WS_URL "ws://106.55.62.122:8011/api/rehab-arm/v1/projects/" XIAOZHI_PROJECT_ID "/devices/" XIAOZHI_DEVICE_ID "/xiaozhi/ws?robot_id=" XIAOZHI_ROBOT_ID
 #define XIAOZHI_TOKEN_MAX      768
 #define XIAOZHI_URL_MAX        192
 
