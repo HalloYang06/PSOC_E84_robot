@@ -1,5 +1,44 @@
 # Troubleshooting And Lessons
 
+## 2026-06-10 - CM55 DEEPCRAFT Wake Blocked By EthosU Stub
+
+Symptom:
+- `m55qa_status` reported CM55 IPC alive, but DEEPCRAFT wake init failed with `wake_stage=37` and `err=138280962`.
+
+Root cause:
+- `138280962` is `0x083E0002`, matching `MTB_ML_RESULT_ALLOC_ERR`.
+- The current TensorFlow Lite Micro package has `tensorflow/lite/micro/kernels/ethosu.cc` implemented as a stub; `Register_ETHOSU()` returns `nullptr`, so the DEEPCRAFT U55 model cannot allocate/run correctly in this firmware baseline.
+
+Fix:
+- Do not keep debugging DEEPCRAFT as the active product wake path in this baseline.
+- Use the official XiaoZhi Edge Impulse TFLite model as the current CM55 wake backend, with a local lightweight MFCC-like extractor and existing repo TFLM.
+
+Validation:
+- M55 SCons build passes.
+- After OpenOCD burn, COM26 `m55qa_status` shows `wake_stage=20 err=0`, proving the new backend enters inference processing without the EthosU allocation error.
+
+Status:
+- Fixed for bring-up. Acoustic recognition quality still needs live `xiaorui` validation.
+
+## 2026-06-10 - Short PCM Frames Can Starve Wake Inference
+
+Symptom:
+- CM55 voice status showed `frames` increasing but `detected=0`; before the fix, the wake backend stayed at init stage and did not receive enough PCM to infer.
+
+Root cause:
+- `voice_service_submit_local_pcm()` receives local mic data as short 640-byte frames, roughly 20 ms at 16 kHz mono 16-bit.
+- The pre-wake heuristic gate required `WAKE_GATE_MIN_ACTIVE_FRAMES=28`, which is impossible for a single 20 ms frame. The gate returned before calling `xiaozhi_wake_engine_process_pcm16()`, so the wake backend never accumulated its 1 second model window.
+
+Fix:
+- Feed every listening PCM frame to `xiaozhi_wake_engine_process_pcm16()`.
+- Let the wake backend own the rolling 16000-sample model window and inference cadence.
+
+Validation:
+- After rebuild and burn, `m55qa_status` shows `wake_stage=20 err=0` while listening. This means PCM reaches the backend and the backend runs inference.
+
+Reusable trick:
+- For streaming audio, do not apply full-window speech gates to a single short device read. Either aggregate first or let the model backend own the rolling window.
+
 ## 2026-06-10 - CM55 Stuck In `rt_assert_handler`
 
 Symptom:
