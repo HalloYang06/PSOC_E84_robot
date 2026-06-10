@@ -4,14 +4,16 @@
 #include <stdlib.h>
 
 #define XIAOZHI_DEFAULT_WS_URL "ws://106.55.62.122:8011/api/rehab-arm/v1/projects/" XIAOZHI_PROJECT_ID "/devices/" XIAOZHI_DEVICE_ID "/voice/xiaozhi/ws"
-#define XIAOZHI_TOKEN_MAX      256
+#define XIAOZHI_TOKEN_MAX      768
 #define XIAOZHI_URL_MAX        192
 
 typedef struct
 {
     rt_bool_t initialized;
+    rt_bool_t token_update_active;
     char ws_url[XIAOZHI_URL_MAX];
     char token[XIAOZHI_TOKEN_MAX];
+    char token_staging[XIAOZHI_TOKEN_MAX];
 } xiaozhi_voice_relay_t;
 
 static xiaozhi_voice_relay_t g_xiaozhi;
@@ -120,8 +122,69 @@ rt_err_t xiaozhi_voice_relay_set_token(const char *token)
     }
 
     rt_memset(g_xiaozhi.token, 0, sizeof(g_xiaozhi.token));
-    rt_strncpy(g_xiaozhi.token, token, sizeof(g_xiaozhi.token) - 1);
+    rt_memcpy(g_xiaozhi.token, token, rt_strlen(token));
     return RT_EOK;
+}
+
+rt_err_t xiaozhi_voice_relay_token_update_begin(void)
+{
+    xiaozhi_voice_relay_init();
+    rt_memset(g_xiaozhi.token_staging, 0, sizeof(g_xiaozhi.token_staging));
+    g_xiaozhi.token_update_active = RT_TRUE;
+    return RT_EOK;
+}
+
+rt_err_t xiaozhi_voice_relay_token_update_part(const char *chunk)
+{
+    rt_size_t used;
+    rt_size_t add;
+
+    xiaozhi_voice_relay_init();
+    if (!g_xiaozhi.token_update_active)
+    {
+        return -RT_ERROR;
+    }
+
+    if ((chunk == RT_NULL) || (chunk[0] == '\0'))
+    {
+        return -RT_EINVAL;
+    }
+
+    used = rt_strlen(g_xiaozhi.token_staging);
+    add = rt_strlen(chunk);
+    if ((used + add) >= sizeof(g_xiaozhi.token_staging))
+    {
+        return -RT_EFULL;
+    }
+
+    rt_strncpy(g_xiaozhi.token_staging + used,
+               chunk,
+               sizeof(g_xiaozhi.token_staging) - used - 1);
+    return RT_EOK;
+}
+
+rt_err_t xiaozhi_voice_relay_token_update_commit(void)
+{
+    rt_err_t ret;
+
+    xiaozhi_voice_relay_init();
+    if (!g_xiaozhi.token_update_active)
+    {
+        return -RT_ERROR;
+    }
+
+    ret = xiaozhi_voice_relay_set_token(g_xiaozhi.token_staging);
+    rt_memset(g_xiaozhi.token_staging, 0, sizeof(g_xiaozhi.token_staging));
+    g_xiaozhi.token_update_active = RT_FALSE;
+    return ret;
+}
+
+void xiaozhi_voice_relay_token_update_clear(void)
+{
+    xiaozhi_voice_relay_init();
+    rt_memset(g_xiaozhi.token, 0, sizeof(g_xiaozhi.token));
+    rt_memset(g_xiaozhi.token_staging, 0, sizeof(g_xiaozhi.token_staging));
+    g_xiaozhi.token_update_active = RT_FALSE;
 }
 
 rt_err_t xiaozhi_voice_relay_build_headers(char *out, rt_size_t out_len)

@@ -36,6 +36,10 @@ const char *xiaozhi_voice_relay_get_url(void);
 rt_bool_t xiaozhi_voice_relay_has_token(void);
 rt_err_t xiaozhi_voice_relay_set_url(const char *url);
 rt_err_t xiaozhi_voice_relay_set_token(const char *token);
+rt_err_t xiaozhi_voice_relay_token_update_begin(void);
+rt_err_t xiaozhi_voice_relay_token_update_part(const char *chunk);
+rt_err_t xiaozhi_voice_relay_token_update_commit(void);
+void xiaozhi_voice_relay_token_update_clear(void);
 rt_err_t xiaozhi_voice_relay_build_headers(char *out, rt_size_t out_len);
 rt_err_t xiaozhi_voice_relay_build_hello(char *out, rt_size_t out_len);
 rt_err_t xiaozhi_voice_relay_build_listen_detect(char *out, rt_size_t out_len,

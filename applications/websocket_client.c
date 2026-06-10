@@ -8,7 +8,7 @@
 
 #define WS_RX_BUFFER_SIZE 2048
 #define WS_TX_BUFFER_SIZE 2048
-#define WS_HEADER_BUFFER_SIZE 512
+#define WS_HEADER_BUFFER_SIZE 1024
 #define WS_URL_BUFFER_SIZE 192
 #define WS_HOST_BUFFER_SIZE 64
 #define WS_PATH_BUFFER_SIZE 160
@@ -315,7 +315,7 @@ rt_err_t websocket_client_connect(void)
 {
     struct hostent *host;
     struct sockaddr_in server_addr;
-    char request[1024];
+    char request[2048];
     char response[512];
     int ret;
 
@@ -353,17 +353,24 @@ rt_err_t websocket_client_connect(void)
         return -RT_ERROR;
     }
 
-    rt_snprintf(request, sizeof(request),
-                "GET %s HTTP/1.1\r\n"
-                "Host: %s:%d\r\n"
-                "Upgrade: websocket\r\n"
-                "Connection: Upgrade\r\n"
-                "Sec-WebSocket-Key: c29tZS1vcGVuY2xhdy1rZXk=\r\n"
-                "Sec-WebSocket-Version: 13\r\n"
-                "%s"
-                "\r\n",
-                g_ws.server_path, g_ws.server_host, g_ws.server_port,
-                g_ws.extra_headers);
+    ret = rt_snprintf(request, sizeof(request),
+                      "GET %s HTTP/1.1\r\n"
+                      "Host: %s:%d\r\n"
+                      "Upgrade: websocket\r\n"
+                      "Connection: Upgrade\r\n"
+                      "Sec-WebSocket-Key: c29tZS1vcGVuY2xhdy1rZXk=\r\n"
+                      "Sec-WebSocket-Version: 13\r\n"
+                      "%s"
+                      "\r\n",
+                      g_ws.server_path, g_ws.server_host, g_ws.server_port,
+                      g_ws.extra_headers);
+    if ((ret < 0) || ((rt_size_t)ret >= sizeof(request)))
+    {
+        rt_kprintf("[websocket] handshake request too large\n");
+        closesocket(g_ws.sock);
+        g_ws.sock = -1;
+        return -RT_EFULL;
+    }
 
     if (send(g_ws.sock, request, rt_strlen(request), 0) < 0)
     {

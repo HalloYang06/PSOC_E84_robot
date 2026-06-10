@@ -395,6 +395,59 @@ static void xz_token(int argc, char **argv)
 }
 MSH_CMD_EXPORT(xz_token, Set Xiaozhi platform relay token);
 
+static void xz_token_begin(int argc, char **argv)
+{
+    rt_err_t ret;
+
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+
+    ret = xiaozhi_voice_relay_token_update_begin();
+    rt_kprintf("xz_token_begin ret=%d\n", ret);
+}
+MSH_CMD_EXPORT(xz_token_begin, Begin chunked Xiaozhi platform token update);
+
+static void xz_token_part(int argc, char **argv)
+{
+    rt_err_t ret;
+
+    if (argc < 2)
+    {
+        rt_kprintf("usage: xz_token_part <token_chunk_48_to_60_chars>\n");
+        return;
+    }
+
+    ret = xiaozhi_voice_relay_token_update_part(argv[1]);
+    rt_kprintf("xz_token_part ret=%d len=%lu\n",
+               ret,
+               (unsigned long)rt_strlen(argv[1]));
+}
+MSH_CMD_EXPORT(xz_token_part, Append one chunk to Xiaozhi platform token);
+
+static void xz_token_commit(int argc, char **argv)
+{
+    rt_err_t ret;
+
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+
+    ret = xiaozhi_voice_relay_token_update_commit();
+    rt_kprintf("xz_token_commit ret=%d configured=%d\n",
+               ret,
+               xiaozhi_voice_relay_has_token() ? 1 : 0);
+}
+MSH_CMD_EXPORT(xz_token_commit, Commit chunked Xiaozhi platform token);
+
+static void xz_token_clear(int argc, char **argv)
+{
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+
+    xiaozhi_voice_relay_token_update_clear();
+    rt_kprintf("xz_token_clear configured=%d\n", xiaozhi_voice_relay_has_token() ? 1 : 0);
+}
+MSH_CMD_EXPORT(xz_token_clear, Clear Xiaozhi platform token);
+
 static void xz_reconnect(int argc, char **argv)
 {
     rt_err_t ret;

@@ -374,7 +374,7 @@ static void voice_service_send_text_to_server(const char *type, const char *text
 
 static rt_err_t voice_service_configure_xiaozhi_socket(void)
 {
-    char headers[512];
+    char headers[1024];
     rt_err_t ret;
 
     ret = xiaozhi_voice_relay_init();
@@ -954,6 +954,33 @@ static void voice_service_handle_config(const voice_config_msg_t *config)
             ret = voice_service_reconnect_xiaozhi();
         }
         rt_kprintf("[voice_service] config xiaozhi token ret=%d configured=%d\n",
+                   ret,
+                   xiaozhi_voice_relay_has_token() ? 1 : 0);
+        break;
+    case VOICE_CONFIG_XIAOZHI_TOKEN_BEGIN:
+        ret = xiaozhi_voice_relay_token_update_begin();
+        rt_kprintf("[voice_service] config xiaozhi token_begin ret=%d\n", ret);
+        break;
+    case VOICE_CONFIG_XIAOZHI_TOKEN_PART:
+        ret = xiaozhi_voice_relay_token_update_part(config->value);
+        rt_kprintf("[voice_service] config xiaozhi token_part ret=%d len=%lu\n",
+                   ret,
+                   (unsigned long)rt_strlen(config->value));
+        break;
+    case VOICE_CONFIG_XIAOZHI_TOKEN_COMMIT:
+        ret = xiaozhi_voice_relay_token_update_commit();
+        if (ret == RT_EOK)
+        {
+            ret = voice_service_reconnect_xiaozhi();
+        }
+        rt_kprintf("[voice_service] config xiaozhi token_commit ret=%d configured=%d\n",
+                   ret,
+                   xiaozhi_voice_relay_has_token() ? 1 : 0);
+        break;
+    case VOICE_CONFIG_XIAOZHI_TOKEN_CLEAR:
+        xiaozhi_voice_relay_token_update_clear();
+        ret = voice_service_reconnect_xiaozhi();
+        rt_kprintf("[voice_service] config xiaozhi token_clear ret=%d configured=%d\n",
                    ret,
                    xiaozhi_voice_relay_has_token() ? 1 : 0);
         break;
