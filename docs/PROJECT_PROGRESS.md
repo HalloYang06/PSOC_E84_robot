@@ -3,6 +3,25 @@
 ## 2026-06-10
 
 Completed:
+- CM55 LVGL Wi-Fi provisioning now supports direct nearby-network selection on the touchscreen. The panel scans APs, shows a selectable SSID/RSSI/security/channel list, fills the SSID field when a network is tapped, accepts the password on the same page, then saves/connects through the shared Wi-Fi config service.
+- CM55 Wi-Fi scan now uses the RT-Thread WLAN scan-report event callback path and keeps a bounded AP cache (`WIFI_CONFIG_SCAN_MAX_APS=12`) for LVGL/App reuse.
+- Synchronized the updated Wi-Fi service and LVGL panel from the M55 Git reference repo into the actual RT-Thread Studio `wifi` project.
+
+Validated:
+- Built the M55 Git reference repo `_m55_ref_repo` with `scons -j4`: passed, produced `rtthread.hex`, size `text=1173056 data=80860 bss=4534696`.
+- Built the actual M55 RT-Thread Studio `wifi` project with `scons -j4`: passed, produced `rtthread.hex`, size `text=1173056 data=80860 bss=4534700`.
+
+Failed or unverified:
+- Physical LVGL touch selection, Wi-Fi scan visibility, password entry, and live save/connect still need board-side QA after flashing this M55 image.
+- Hidden SSID remains supported through manual SSID entry; it will not appear in the scan list.
+
+Decision:
+- Touchscreen, shell, M33/App IPC, and future BLE/App provisioning must continue to use the shared CM55 Wi-Fi config service. Do not add a second Wi-Fi state machine inside voice/XiaoZhi code.
+
+Next step:
+- Flash the new M55 image, tap `Scan` on the LVGL page, select the target SSID from the list, enter the password, press `Connect`, then verify `saved=1 auto=1 storage=0` and a live netdev/IP through the screen or `m55qa_status`.
+
+Completed:
 - CM55 Wi-Fi configuration was promoted from RAM-only debug commands to a reusable mainline service with local flash persistence at `/flash/rehab_wifi.cfg`.
 - CM55 now supports local shell commands for user-facing provisioning: `m55_wifi_ssid`, `m55_wifi_password`, `m55_wifi_save`, `m55_wifi_connect`, `m55_wifi_auto`, `m55_wifi_forget`, `m55_wifi_status`, `m55_wifi_diag`, and `m55_wifi_scan`.
 - Added a LVGL touchscreen Wi-Fi setup panel in the M55 `wifi` project. The panel shows live WLAN/WHD/netdev state, saved/auto-connect/storage state, and provides SSID/password entry, scan, diag, save, connect, off, and forget actions.

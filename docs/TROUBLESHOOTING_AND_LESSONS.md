@@ -1,5 +1,27 @@
 # Troubleshooting And Lessons
 
+## 2026-06-10 - LVGL Wi-Fi Scan Should Use WLAN Scan Report Events
+
+Symptom:
+- The touchscreen Wi-Fi page needed a selectable nearby-network list, but the obvious synchronous scan helper was not a safe implementation target in this BSP baseline.
+
+Root cause:
+- `rt_wlan_scan_sync()` is declared in the RT-Thread WLAN headers, but this project source does not provide a usable implementation path for the current BSP.
+- The RT-Thread shell `wifi scan` command already uses `RT_WLAN_EVT_SCAN_REPORT` callbacks with `rt_wlan_scan_with_info(RT_NULL)`.
+
+Fix:
+- CM55 Wi-Fi config service now registers a temporary `RT_WLAN_EVT_SCAN_REPORT` handler, starts `rt_wlan_scan_with_info(RT_NULL)` in a background thread, caches up to 12 AP records, and exposes the cache to LVGL through `wifi_config_get_scan_count()` and `wifi_config_get_scan_ap()`.
+- The LVGL panel shows a selectable list and keeps manual SSID entry for hidden networks.
+
+Validation:
+- M55 reference repo and actual RT-Thread Studio `wifi` project both build with `scons -j4`.
+
+Reusable trick:
+- For this BSP, follow the known-working RT-Thread `wifi scan` event-callback pattern instead of assuming every declared WLAN helper is linked and usable.
+
+Status:
+- Built. Physical scan/touch/connect QA still needs the board flashed with the new M55 image.
+
 ## 2026-06-10 - CM55 Wi-Fi Provisioning Must Use One Shared Service
 
 Symptom:

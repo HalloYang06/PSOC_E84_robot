@@ -17,10 +17,18 @@ Touchscreen path after flashing CM55:
    ```text
    rehab_wifi_panel_cmd
    ```
-3. Enter SSID and password.
-4. Keep `Auto connect` checked for product-like boot behavior.
-5. Press `Save` to persist credentials, or press `Connect` to save and connect immediately.
-6. Press `Diag` after a few seconds and verify the screen shows a netdev, WLAN ready/connected state, and `saved:1 auto:1 storage:0`.
+3. Press `Scan`.
+4. Wait up to about five seconds. Nearby networks should appear in the list with SSID, RSSI, security mode, and channel.
+5. Tap the target Wi-Fi network. The SSID field is filled automatically.
+6. Tap the password field and enter the Wi-Fi password on the LVGL keyboard.
+7. Keep `Auto connect` checked for product-like boot behavior.
+8. Press `Connect` to save and connect immediately, or press `Save` if you only want to persist credentials.
+9. Press `Diag` after a few seconds and verify the screen shows a netdev, WLAN ready/connected state, and `saved:1 auto:1 storage:0`.
+
+Touchscreen notes:
+- If the target network is hidden or not listed, manually type the SSID field and continue from the password step.
+- `Scan` refreshes the list automatically for a short period after tapping it. `Diag` also refreshes the cached list/status.
+- The scan list is a convenience UI over the shared CM55 Wi-Fi config service; it does not store platform relay tokens or vendor API keys.
 
 CM55 shell path, if the interactive shell is on CM55:
 ```text
