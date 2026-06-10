@@ -25,5 +25,7 @@ rt_err_t xiaozhi_wake_engine_process_pcm16(const int16_t *pcm,
                                            rt_uint32_t sample_count,
                                            xiaozhi_wake_result_t *result);
 const char *xiaozhi_wake_engine_backend_name(void);
+int xiaozhi_wake_engine_last_error(void);
+int xiaozhi_wake_engine_stage(void);
 
 #endif

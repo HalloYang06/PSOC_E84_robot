@@ -20,6 +20,10 @@
 #define WAKE_GATE_MIN_PEAK           (5500U)
 #define WAKE_GATE_MIN_AVG_ABS        (750U)
 #define WAKE_GATE_MIN_ACTIVE_FRAMES  (28U)
+#define VOICE_STATUS_FLAG_LISTENING  0x01U
+#define VOICE_STATUS_FLAG_WAKE_READY 0x02U
+#define VOICE_STATUS_FLAG_LAST_WAKE  0x04U
+#define VOICE_STATUS_PUBLISH_EVERY_FRAMES 20U
 
 typedef struct
 {
@@ -43,6 +47,14 @@ typedef struct
     rt_uint32_t wake_hit_streak;
     rt_uint32_t wake_skip_windows;
     rt_tick_t wake_last_trigger_tick;
+    rt_uint32_t submitted_frames;
+    rt_uint32_t processed_windows;
+    rt_uint32_t detected_count;
+    rt_uint32_t latest_peak;
+    rt_uint32_t latest_avg_abs;
+    rt_uint32_t latest_active_frames;
+    rt_uint32_t latest_total_frames;
+    rt_int32_t last_error;
     rt_uint32_t xiaozhi_session_id;
 } voice_service_t;
 
@@ -57,6 +69,40 @@ typedef struct
 } voice_model_result_t;
 
 static voice_service_t g_service;
+
+static rt_err_t voice_service_publish_status(void)
+{
+    m33_m55_message_t msg;
+
+    if (!g_service.initialized)
+    {
+        return -RT_ERROR;
+    }
+
+    rt_memset(&msg, 0, sizeof(msg));
+    msg.type = MSG_TYPE_VOICE_STATUS;
+
+    rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
+    msg.payload.voice_status.flags =
+        (g_service.wake_listening ? VOICE_STATUS_FLAG_LISTENING : 0U) |
+        (xiaozhi_wake_engine_is_ready() ? VOICE_STATUS_FLAG_WAKE_READY : 0U) |
+        (g_service.wake_last_trigger_tick != 0U ? VOICE_STATUS_FLAG_LAST_WAKE : 0U);
+    msg.payload.voice_status.submitted_frames = g_service.submitted_frames;
+    msg.payload.voice_status.processed_windows = g_service.processed_windows;
+    msg.payload.voice_status.detected_count = g_service.detected_count;
+    msg.payload.voice_status.latest_pcm_seq = g_service.latest_pcm_seq;
+    msg.payload.voice_status.latest_pcm_len = g_service.latest_pcm_len;
+    msg.payload.voice_status.latest_peak = g_service.latest_peak;
+    msg.payload.voice_status.latest_avg_abs = g_service.latest_avg_abs;
+    msg.payload.voice_status.latest_active_frames = g_service.latest_active_frames;
+    msg.payload.voice_status.latest_total_frames = g_service.latest_total_frames;
+    msg.payload.voice_status.last_wake_tick = (rt_uint32_t)g_service.wake_last_trigger_tick;
+    msg.payload.voice_status.wake_stage = (rt_uint32_t)xiaozhi_wake_engine_stage();
+    msg.payload.voice_status.last_error = g_service.last_error;
+    rt_mutex_release(&g_service.lock);
+
+    return m33_m55_comm_publish(&msg);
+}
 
 static rt_err_t voice_service_set_wake_listening(rt_bool_t enable)
 {
@@ -576,19 +622,13 @@ static void voice_service_process_audio_buffer(void)
     rt_mutex_release(&g_service.lock);
     model_result = voice_service_model_entry(g_service.audio_buffer, len);
 
-    if (!model_result.speech)
-    {
-        g_service.wake_hit_streak = 0;
-        return;
-    }
-
-    if ((model_result.peak < WAKE_GATE_MIN_PEAK) ||
-        (model_result.avg_abs < WAKE_GATE_MIN_AVG_ABS) ||
-        (model_result.active_frames < WAKE_GATE_MIN_ACTIVE_FRAMES))
-    {
-        g_service.wake_hit_streak = 0;
-        return;
-    }
+    rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
+    g_service.processed_windows++;
+    g_service.latest_peak = model_result.peak;
+    g_service.latest_avg_abs = model_result.avg_abs;
+    g_service.latest_active_frames = model_result.active_frames;
+    g_service.latest_total_frames = model_result.total_frames;
+    rt_mutex_release(&g_service.lock);
 
     if (g_service.wake_skip_windows > 0U)
     {
@@ -596,6 +636,11 @@ static void voice_service_process_audio_buffer(void)
         return;
     }
 
+    /*
+     * Local CM55 mic input arrives as short 20 ms PCM frames. The wake backend
+     * owns the 1 second rolling model window, so it must receive every frame;
+     * per-frame speech gates cannot require a full-window active-frame count.
+     */
     rt_memset(&wake_result, 0, sizeof(wake_result));
     if (xiaozhi_wake_engine_process_pcm16((const int16_t *)g_service.audio_buffer,
                                           len / sizeof(int16_t),
@@ -603,9 +648,11 @@ static void voice_service_process_audio_buffer(void)
     {
         if (wake_result.event == XIAOZHI_WAKE_EVENT_UNAVAILABLE)
         {
+            g_service.last_error = -RT_ENOSYS;
             return;
         }
         rt_kprintf("[voice_service] wake engine error=%d\n", wake_result.error_code);
+        g_service.last_error = wake_result.error_code;
         return;
     }
 
@@ -615,6 +662,10 @@ static void voice_service_process_audio_buffer(void)
     }
     else
     {
+        if (!model_result.speech)
+        {
+            g_service.wake_hit_streak = 0;
+        }
         return;
     }
 
@@ -622,6 +673,8 @@ static void voice_service_process_audio_buffer(void)
     {
         g_service.wake_skip_windows = WAKE_SKIP_WINDOWS_AFTER_TRIGGER;
         g_service.wake_last_trigger_tick = rt_tick_get();
+        g_service.detected_count++;
+        g_service.last_error = RT_EOK;
         rt_kprintf("[voice_service] wake triggered word=%s peak=%lu avg=%lu active=%lu/%lu\n",
                    wake_result.wake_word[0] ? wake_result.wake_word : "unknown",
                    (unsigned long)model_result.peak,
@@ -636,7 +689,9 @@ static void voice_service_process_audio_buffer(void)
         if (publish_ret != RT_EOK)
         {
             rt_kprintf("[voice_service] model result publish failed %d\n", publish_ret);
+            g_service.last_error = publish_ret;
         }
+        (void)voice_service_publish_status();
     }
 
     if (websocket_client_is_connected())
@@ -808,6 +863,7 @@ static void voice_service_handle_control(const voice_control_msg_t *control)
         ack.payload.voice_control.arg0 = (rt_uint32_t)ret;
         ack.payload.voice_control.arg1 = (rt_uint32_t)rt_tick_get();
         (void)m33_m55_comm_publish(&ack);
+        (void)voice_service_publish_status();
     }
 }
 
@@ -863,7 +919,6 @@ static void voice_service_thread_entry(void *parameter)
 static void voice_service_detect_thread_entry(void *parameter)
 {
     rt_uint32_t local_len;
-    rt_uint32_t local_seq;
 
     RT_UNUSED(parameter);
 
@@ -887,7 +942,6 @@ static void voice_service_detect_thread_entry(void *parameter)
         }
 
         local_len = g_service.latest_pcm_len;
-        local_seq = g_service.latest_pcm_seq;
         rt_memcpy(g_service.detect_buffer, g_service.audio_buffer, local_len);
         g_service.latest_pcm_pending = RT_FALSE;
         rt_mutex_release(&g_service.lock);
@@ -983,6 +1037,10 @@ rt_err_t voice_service_init(const char *baidu_api_key, const char *baidu_secret_
     g_service.wake_skip_windows = 0;
     g_service.wake_last_trigger_tick = 0;
     ret = xiaozhi_wake_engine_init();
+    if (ret != RT_EOK)
+    {
+        g_service.last_error = xiaozhi_wake_engine_last_error();
+    }
     rt_kprintf("[voice_service] xiaozhi wake backend=%s ready=%d ret=%d\n",
                xiaozhi_wake_engine_backend_name(),
                xiaozhi_wake_engine_is_ready() ? 1 : 0,
@@ -1057,6 +1115,8 @@ rt_err_t voice_service_reconnect_xiaozhi(void)
 
 rt_err_t voice_service_submit_local_pcm(const rt_uint8_t *pcm, rt_uint32_t len)
 {
+    rt_uint32_t submitted_frames;
+
     if ((pcm == RT_NULL) || (len == 0U))
     {
         return -RT_EINVAL;
@@ -1084,11 +1144,17 @@ rt_err_t voice_service_submit_local_pcm(const rt_uint8_t *pcm, rt_uint32_t len)
     g_service.audio_received = len;
     g_service.latest_pcm_len = len;
     g_service.latest_pcm_seq++;
+    g_service.submitted_frames++;
+    submitted_frames = g_service.submitted_frames;
     g_service.latest_pcm_pending = RT_TRUE;
     rt_memcpy(g_service.audio_buffer, pcm, len);
     rt_mutex_release(&g_service.lock);
 
     rt_sem_release(&g_service.detect_sem);
+    if ((submitted_frames % VOICE_STATUS_PUBLISH_EVERY_FRAMES) == 0U)
+    {
+        (void)voice_service_publish_status();
+    }
     return RT_EOK;
 }
 

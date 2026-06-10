@@ -61,3 +61,29 @@ rt_err_t model_result_publish_wake_word(rt_uint16_t confidence_permille,
                                 fresh,
                                 window_ms);
 }
+
+rt_err_t model_result_publish_boot_self_test(void)
+{
+    rt_err_t ret;
+
+    ret = m33_m55_comm_init();
+    if (ret != RT_EOK)
+    {
+        return ret;
+    }
+
+    return model_result_publish_wake_word(501U, RT_FALSE, RT_TRUE, 55U);
+}
+
+static void m55_model_selftest(int argc, char **argv)
+{
+    rt_err_t ret;
+
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+
+    ret = model_result_publish_boot_self_test();
+    rt_kprintf("m55_model_selftest ret=%d\n", ret);
+}
+MSH_CMD_EXPORT(m55_model_selftest, Publish one CM55 model-result test frame to CM33);
+MSH_CMD_EXPORT_ALIAS(m55_model_selftest, mdl_pub, Publish one CM55 model-result test frame to CM33);

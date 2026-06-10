@@ -33,6 +33,7 @@ rt_err_t model_result_publish_wake_word(rt_uint16_t confidence_permille,
                                          rt_bool_t detected,
                                          rt_bool_t fresh,
                                          rt_uint16_t window_ms);
+rt_err_t model_result_publish_boot_self_test(void);
 
 #ifdef __cplusplus
 }
