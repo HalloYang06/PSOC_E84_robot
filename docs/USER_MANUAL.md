@@ -61,6 +61,15 @@ powershell -ExecutionPolicy Bypass -File D:\RT-ThreadStudio\workspace\yiliao_m33
 powershell -ExecutionPolicy Bypass -File D:\RT-ThreadStudio\workspace\yiliao_m33\tools\load_xiaozhi_token.ps1 -PortName COM26 -Clear
 ```
 
+PC-side XiaoZhi cloud smoke test when nobody is near the board microphone:
+```powershell
+powershell -ExecutionPolicy Bypass -File D:\RT-ThreadStudio\workspace\yiliao_m33\tools\xiaozhi_ws_smoke_test.ps1 `
+  -TokenFile D:\RT-ThreadStudio\workspace\token.txt `
+  -Frames 30
+```
+
+This test opens the same platform WebSocket, sends the XiaoZhi `hello`, sends `listen start`, streams 30 synthetic 640-byte PCM frames, then sends `listen stop`. It proves the platform WebSocket/audio contract without relying on local wake-word audio.
+
 Expected output:
 ```text
 [m55qa] ipc_ready=1 tx_pending=0 rx_pending=0 has_model=1
@@ -78,6 +87,7 @@ Notes:
 - `xz_ws=0` means the XiaoZhi WebSocket is not connected.
 - `xz_listening=1` means CM55 is actively streaming the post-wake utterance to the platform.
 - XiaoZhi binary audio frames sent by CM55 are fixed at `640` bytes per frame: `16 kHz * 1 channel * 16 bit * 20 ms`.
+- `latest_pcm_len=320` in `m55qa_status` can still be normal because it is the local mic driver chunk length. The cloud WebSocket frame length is separately reframed to 640 bytes in CM55.
 - A matching platform token should make `xz_token=1`. A successful WebSocket connection should make `xz_ws=1`.
 - The firmware default endpoint already targets `/xiaozhi/ws?robot_id=rehab-arm-alpha`; use `m55qa_xz_url <ws://...>` only when overriding it for diagnostics.
 - `cmd=1004` begins a chunked XiaoZhi platform-token update on CM55.

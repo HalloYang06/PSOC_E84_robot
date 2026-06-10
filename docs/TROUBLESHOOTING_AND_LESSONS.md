@@ -85,7 +85,30 @@ Reusable trick:
 - Keep local audio-driver chunk size separate from cloud protocol frame size. The bridge should reframe audio before sending it over WebSocket.
 
 Status:
-- Built and pushed on M55 branch. Needs burn plus live WebSocket/audio test with a valid scoped token.
+- Built, pushed, and burned to CM55. COM26 confirms M33/M55 IPC and wake status still run. Needs WebSocket/audio test with a valid scoped token.
+
+## 2026-06-10 - Test XiaoZhi Cloud Without Someone Near The Microphone
+
+Symptom:
+- Live wake-word/chat testing cannot always proceed because nobody is physically near the CM55 microphone.
+
+Root cause:
+- Physical wake-word validation depends on local audio, but platform WebSocket compatibility can be tested independently.
+
+Fix:
+- Added `tools/xiaozhi_ws_smoke_test.ps1` to simulate the device-side WebSocket flow from a Windows PC:
+  `hello` -> `listen start` -> synthetic 640-byte PCM binary frames -> `listen stop`.
+
+Validation:
+- The script loads and attempts to connect.
+- HTTP access to `106.55.62.122:8011` is reachable from the PC.
+- Running with a dummy `rehab-relay.v1.fake.fake` token fails before a full XiaoZhi flow, which is expected for invalid auth/test data.
+
+Reusable trick:
+- Split voice bring-up into two tests: PC smoke test for cloud XiaoZhi contract, then physical CM55 wake-word test for local microphone and wake model.
+
+Status:
+- Tooling is ready. A valid scoped relay token is required for a real cloud pass.
 
 ## 2026-06-10 - Long XiaoZhi Tokens Exceed FinSH Command Length
 

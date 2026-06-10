@@ -3,6 +3,7 @@
 ## 2026-06-10
 
 Completed:
+- Added `tools/xiaozhi_ws_smoke_test.ps1`, a PC-side XiaoZhi WebSocket smoke test that simulates the device hello/listen/binary PCM flow without needing a person physically near the CM55 microphone.
 - CM55 XiaoZhi binary audio streaming now accumulates local mic PCM into fixed `640` byte frames before sending to the platform, matching `16 kHz mono PCM S16LE, 20 ms` from the current platform contract. M55 commit: `31df3a3 Align XiaoZhi PCM frame contract`.
 - Added `tools/load_xiaozhi_token.ps1` to load platform scoped XiaoZhi relay tokens over the visible M33 shell without printing token chunks in terminal output.
 - CM55 voice status flags now report XiaoZhi observability bits for `xiaozhi_listening`, `xiaozhi_connected`, and `xiaozhi_has_token`.
@@ -21,6 +22,12 @@ Completed:
 - Increased the M55 WebSocket client path/request buffers so the long rehab-arm platform endpoint is not truncated.
 
 Validated:
+- Burned the latest actual `wifi/rtthread.hex` containing the 640-byte PCM framing update to CM55. OpenOCD reported `wrote 847872 bytes`; the final reset/acquisition step printed a KitProg acquisition warning, but COM26 subsequently proved M33/M55 IPC was alive.
+- COM26 after the latest CM55 burn:
+  - `m55qa_wake_on` returned `voice_ack seq=11 cmd=3 result=0`.
+  - `m55qa_status` showed `ipc_ready=1`, `has_model=1`, `wake_on=1`, `wake_ready=1`, `frames/windows` increasing, and `latest_pcm_len=320` for local mic chunks. Cloud WebSocket framing is now handled separately at 640 bytes per binary frame.
+- HTTP reachability from the Windows PC to the platform is available: `http://106.55.62.122:8011/` returns the uvicorn 404 response, and `http://106.55.62.122:3001/` redirects to `/login`.
+- `tools/xiaozhi_ws_smoke_test.ps1` loads and starts a connection attempt. With a dummy `rehab-relay.v1.fake.fake` token it fails before the XiaoZhi flow, as expected for an invalid token/test.
 - Built M55 `_m55_ref_repo` and actual RT-Thread Studio `wifi` with `scons -j4` after the 640-byte XiaoZhi PCM framing update. Both builds passed; only the existing `m55_console_detach` unused-function warning remains.
 - Ran `tools/load_xiaozhi_token.ps1 -ReconnectOnly` on COM26. It read `m55qa_status`, sent `m55qa_xz_reconnect`, and read status again. Because no matching scoped token is loaded, CM55 still reports `cmd=1003 result=-255`, `xz_token=0`, and `xz_ws=0`, which is expected.
 - Built M55 `_m55_ref_repo`, actual `wifi`, and M33 `yiliao_m33` with `scons -j4` after adding decoded status flags.
@@ -48,7 +55,7 @@ Validated:
   - `m55qa_xz_reconnect` reaches CM55 and returns `voice_ack ... cmd=1003 result=-255`, proving the config command path works while the external platform connection is not yet accepted/reachable.
 
 Failed or unverified:
-- The 640-byte PCM framing update has been built in the actual `wifi` tree but has not yet been burned to CM55 in this pass.
+- End-to-end PC-side XiaoZhi WebSocket smoke testing still needs a valid scoped relay token for `project_id=fd6a55ed-a63c-44b3-b123-96fb3c154966`, `device_id=nanopi-m5`.
 - The previously shared `rehab-relay.v1...` sample token appears scoped to a different project/device than `fd6a55ed-a63c-44b3-b123-96fb3c154966 / nanopi-m5`, so it was not loaded into CM55 for production endpoint testing.
 - `xz_ws=0` and `xz_token=0` remain expected until a valid platform scoped relay token is loaded into CM55.
 - End-to-end spoken XiaoZhi chat from the physical CM55 microphone still needs live validation after loading a valid scoped relay token into CM55.
@@ -61,7 +68,7 @@ Decision:
 - Voice remains HTTP/WebSocket, not CAN. M33 remains safety authority and only receives high-level classified text/status, never direct LLM motor commands.
 
 Next step:
-- Load the scoped relay token through `m55qa_xz_token_begin` / `m55qa_xz_token_part` / `m55qa_xz_token_commit`, run `m55qa_xz_reconnect`, then perform a live wake-word and speech test. Pass criteria: WebSocket connects, CM55 sends hello/listen/audio, cloud recent events show `xiaozhi_ws_input` and `xiaozhi_ws_reply`, and `vla_command` is treated only as VLA language input.
+- First run `tools/xiaozhi_ws_smoke_test.ps1` with a valid scoped relay token to prove the cloud XiaoZhi endpoint accepts hello/listen/640-byte PCM without needing an on-site speaker. Then load the same token into CM55 through `tools/load_xiaozhi_token.ps1`, confirm `xz_token=1` and `xz_ws=1`, and leave live wake-word speech validation for when someone is physically near the board.
 
 Completed:
 - CM55 wake-word mainline switched away from the blocked DEEPCRAFT/U55 path to the official XiaoZhi Edge Impulse TFLite model backend.
