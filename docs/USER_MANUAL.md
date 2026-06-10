@@ -48,6 +48,7 @@ m55qa_status
 Expected output:
 ```text
 [m55qa] ipc_ready=1 tx_pending=0 rx_pending=0 has_model=1
+[m55qa] voice_status ... wake_on=<0_or_1> wake_ready=<0_or_1> wake_hit=<0_or_1> xz_listening=<0_or_1> xz_ws=<0_or_1> xz_token=<0_or_1> ...
 [m55_model_bridge] voice_ack seq=<n> cmd=1004 result=0 ...
 [m55_model_bridge] voice_ack seq=<n> cmd=1005 result=0 ...
 [m55_model_bridge] voice_ack seq=<n> cmd=1006 result=<0_or_network_error> ...
@@ -57,6 +58,9 @@ Expected output:
 ```
 
 Notes:
+- `xz_token=0` means no scoped relay token is loaded on CM55; WebSocket auth is expected to fail.
+- `xz_ws=0` means the XiaoZhi WebSocket is not connected.
+- `xz_listening=1` means CM55 is actively streaming the post-wake utterance to the platform.
 - The firmware default endpoint already targets `/xiaozhi/ws?robot_id=rehab-arm-alpha`; use `m55qa_xz_url <ws://...>` only when overriding it for diagnostics.
 - `cmd=1004` begins a chunked XiaoZhi platform-token update on CM55.
 - `cmd=1005` appends one token chunk; keep each chunk short enough for the embedded shell line, usually 48 to 60 characters.

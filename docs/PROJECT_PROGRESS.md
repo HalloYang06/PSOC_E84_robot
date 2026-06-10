@@ -3,6 +3,8 @@
 ## 2026-06-10
 
 Completed:
+- CM55 voice status flags now report XiaoZhi observability bits for `xiaozhi_listening`, `xiaozhi_connected`, and `xiaozhi_has_token`.
+- M33 `m55qa_status` decodes voice status flags into readable fields: `wake_on`, `wake_ready`, `wake_hit`, `xz_listening`, `xz_ws`, and `xz_token`.
 - CM55 default XiaoZhi WebSocket endpoint was aligned with the current cloud command-center implementation:
   `ws://106.55.62.122:8011/api/rehab-arm/v1/projects/fd6a55ed-a63c-44b3-b123-96fb3c154966/devices/nanopi-m5/xiaozhi/ws?robot_id=rehab-arm-alpha`.
 - CM55 listen-stop handling now distinguishes local stop from server-directed stop. When the platform sends `{"type":"listen","state":"stop"}`, CM55 closes local listening state without echoing another stop back to the server.
@@ -17,6 +19,13 @@ Completed:
 - Increased the M55 WebSocket client path/request buffers so the long rehab-arm platform endpoint is not truncated.
 
 Validated:
+- Built M55 `_m55_ref_repo`, actual `wifi`, and M33 `yiliao_m33` with `scons -j4` after adding decoded status flags.
+- Re-relocated M33 `build/rtthread.hex`; first line is `:02000004603466`.
+- Burned both cores after the status-observability update. OpenOCD reported `wrote 847872 bytes` for CM55 and `wrote 569344 bytes` for M33.
+- COM26 after burn:
+  - `m55qa_wake_on` returns `voice_ack ... cmd=3 result=0`.
+  - `m55qa_status` prints decoded fields, for example `wake_on=1 wake_ready=1 wake_hit=0 xz_listening=0 xz_ws=0 xz_token=0`.
+  - `m55qa_xz_reconnect` returns `voice_ack ... cmd=1003 result=-255` when no scoped relay token is loaded, which is expected.
 - M55 `_m55_ref_repo` and the actual RT-Thread Studio `wifi` working tree both build successfully after the endpoint/listen-stop update.
 - Cloud platform owner reported the current existing medical rehab-arm command center has verified WebSocket 101, hello/listen/audio/reply, 16 kHz mono PCM S16LE binary frame intake, scoped-token auth, and no low-level control field leakage.
 - M55 `_m55_ref_repo` builds successfully with `scons -j4`; synchronized files also build successfully in the actual RT-Thread Studio `wifi` working tree.
@@ -35,6 +44,7 @@ Validated:
   - `m55qa_xz_reconnect` reaches CM55 and returns `voice_ack ... cmd=1003 result=-255`, proving the config command path works while the external platform connection is not yet accepted/reachable.
 
 Failed or unverified:
+- `xz_ws=0` and `xz_token=0` remain expected until a valid platform scoped relay token is loaded into CM55.
 - End-to-end spoken XiaoZhi chat from the physical CM55 microphone still needs live validation after loading a valid scoped relay token into CM55.
 - Current CM55 stream sends verified 16 kHz mono PCM frames. The official sample declares Opus in `hello` and uses an Opus encoder path; migrating Opus should be a separate step after the platform-side PCM path is proven or platform requires Opus.
 - Live wake-word trigger after the latest official-sequence refactor still needs another spoken test; the wake backend itself is ready at `wake_stage=201`.

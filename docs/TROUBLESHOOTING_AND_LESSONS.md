@@ -23,6 +23,28 @@ Reusable trick:
 Status:
 - Device build is aligned. Physical spoken end-to-end validation still requires loading a valid scoped relay token into CM55.
 
+## 2026-06-10 - Decode XiaoZhi Status Before Live Token Testing
+
+Symptom:
+- `m55qa_status` previously printed only a raw `flags=0x...` value, so it was hard to tell whether a failure was wake backend, token, WebSocket, or active audio streaming.
+
+Root cause:
+- CM55 status flags did not expose token/connect/listening state, and M33 did not decode the existing bits.
+
+Fix:
+- Added shared voice status bits for XiaoZhi listening, WebSocket connected, and scoped token loaded.
+- M33 `m55qa_status` now prints `wake_on`, `wake_ready`, `wake_hit`, `xz_listening`, `xz_ws`, and `xz_token`.
+
+Validation:
+- After burning both cores, COM26 showed `wake_on=1 wake_ready=1 wake_hit=0 xz_listening=0 xz_ws=0 xz_token=0`.
+- `m55qa_xz_reconnect` returned ACK `cmd=1003 result=-255` with no scoped relay token loaded, which matches `xz_token=0`.
+
+Reusable trick:
+- Before testing a cloud voice path, expose local token/connect/streaming state in firmware status. Otherwise HTTP/WebSocket failures all look the same.
+
+Status:
+- Fixed. Next live test should first load a scoped token and confirm `xz_token=1`, then reconnect and confirm `xz_ws=1`.
+
 ## 2026-06-10 - Long XiaoZhi Tokens Exceed FinSH Command Length
 
 Symptom:
