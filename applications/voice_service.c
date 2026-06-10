@@ -20,9 +20,6 @@
 #define WAKE_GATE_MIN_PEAK           (5500U)
 #define WAKE_GATE_MIN_AVG_ABS        (750U)
 #define WAKE_GATE_MIN_ACTIVE_FRAMES  (28U)
-#define VOICE_STATUS_FLAG_LISTENING  0x01U
-#define VOICE_STATUS_FLAG_WAKE_READY 0x02U
-#define VOICE_STATUS_FLAG_LAST_WAKE  0x04U
 #define VOICE_STATUS_PUBLISH_EVERY_FRAMES 20U
 
 typedef struct
@@ -88,9 +85,12 @@ static rt_err_t voice_service_publish_status(void)
 
     rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
     msg.payload.voice_status.flags =
-        (g_service.wake_listening ? VOICE_STATUS_FLAG_LISTENING : 0U) |
+        (g_service.wake_listening ? VOICE_STATUS_FLAG_WAKE_LISTENING : 0U) |
         (xiaozhi_wake_engine_is_ready() ? VOICE_STATUS_FLAG_WAKE_READY : 0U) |
-        (g_service.wake_last_trigger_tick != 0U ? VOICE_STATUS_FLAG_LAST_WAKE : 0U);
+        (g_service.wake_last_trigger_tick != 0U ? VOICE_STATUS_FLAG_LAST_WAKE : 0U) |
+        (g_service.xiaozhi_listening_active ? VOICE_STATUS_FLAG_XIAOZHI_LISTENING : 0U) |
+        (websocket_client_is_connected() ? VOICE_STATUS_FLAG_XIAOZHI_CONNECTED : 0U) |
+        (xiaozhi_voice_relay_has_token() ? VOICE_STATUS_FLAG_XIAOZHI_HAS_TOKEN : 0U);
     msg.payload.voice_status.submitted_frames = g_service.submitted_frames;
     msg.payload.voice_status.processed_windows = g_service.processed_windows;
     msg.payload.voice_status.detected_count = g_service.detected_count;

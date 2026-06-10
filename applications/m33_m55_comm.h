@@ -153,6 +153,13 @@ typedef struct
     rt_uint32_t arg1;
 } voice_control_msg_t;
 
+#define VOICE_STATUS_FLAG_WAKE_LISTENING      0x00000001U
+#define VOICE_STATUS_FLAG_WAKE_READY          0x00000002U
+#define VOICE_STATUS_FLAG_LAST_WAKE           0x00000004U
+#define VOICE_STATUS_FLAG_XIAOZHI_LISTENING   0x00000008U
+#define VOICE_STATUS_FLAG_XIAOZHI_CONNECTED   0x00000010U
+#define VOICE_STATUS_FLAG_XIAOZHI_HAS_TOKEN   0x00000020U
+
 typedef struct
 {
     rt_uint32_t key;
