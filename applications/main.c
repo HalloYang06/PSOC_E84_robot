@@ -562,6 +562,50 @@ static void m55_wifi_status(int argc, char **argv)
 }
 MSH_CMD_EXPORT(m55_wifi_status, Print saved CM55 WiFi config and live status);
 
+static void m55_wifi_print_aps(void)
+{
+    rt_int32_t i;
+    rt_int32_t count = wifi_config_get_scan_count();
+
+    rt_kprintf("[wifi_config] cached_ap_count=%ld\n", (long)count);
+    if (count <= 0)
+    {
+        rt_kprintf("[wifi_config] no cached APs; run m55_wifi_scan and wait a few seconds\n");
+        return;
+    }
+
+    for (i = 0; (i < count) && (i < WIFI_CONFIG_SCAN_MAX_APS); i++)
+    {
+        wifi_config_ap_t ap;
+
+        if (wifi_config_get_scan_ap(i, &ap) != RT_EOK)
+        {
+            continue;
+        }
+
+        rt_kprintf("[wifi_config] ap[%ld] ssid=\"%s\" rssi=%ld security=%s channel=%ld bssid=%02x:%02x:%02x:%02x:%02x:%02x\n",
+                   (long)i,
+                   ap.ssid[0] ? ap.ssid : "(hidden)",
+                   (long)ap.rssi,
+                   wifi_config_security_name(ap.security),
+                   (long)ap.channel,
+                   ap.bssid[0],
+                   ap.bssid[1],
+                   ap.bssid[2],
+                   ap.bssid[3],
+                   ap.bssid[4],
+                   ap.bssid[5]);
+    }
+}
+
+static void m55_wifi_aps(int argc, char **argv)
+{
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+    m55_wifi_print_aps();
+}
+MSH_CMD_EXPORT(m55_wifi_aps, Print cached CM55 WiFi scan results);
+
 static void m55_wifi_disconnect(int argc, char **argv)
 {
     RT_UNUSED(argc);
@@ -584,6 +628,8 @@ static void m55_wifi_scan(int argc, char **argv)
     RT_UNUSED(argc);
     RT_UNUSED(argv);
     rt_kprintf("m55_wifi_scan ret=%d\n", wifi_config_scan());
+    rt_kprintf("wait 3-5 seconds, then run m55_wifi_aps or refresh LVGL with Diag\n");
+    m55_wifi_print_aps();
 }
 MSH_CMD_EXPORT(m55_wifi_scan, Start CM55 WiFi scan);
 
