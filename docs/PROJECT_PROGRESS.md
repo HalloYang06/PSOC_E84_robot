@@ -3,6 +3,7 @@
 ## 2026-06-10
 
 Completed:
+- CM55 XiaoZhi binary audio streaming now accumulates local mic PCM into fixed `640` byte frames before sending to the platform, matching `16 kHz mono PCM S16LE, 20 ms` from the current platform contract. M55 commit: `31df3a3 Align XiaoZhi PCM frame contract`.
 - Added `tools/load_xiaozhi_token.ps1` to load platform scoped XiaoZhi relay tokens over the visible M33 shell without printing token chunks in terminal output.
 - CM55 voice status flags now report XiaoZhi observability bits for `xiaozhi_listening`, `xiaozhi_connected`, and `xiaozhi_has_token`.
 - M33 `m55qa_status` decodes voice status flags into readable fields: `wake_on`, `wake_ready`, `wake_hit`, `xz_listening`, `xz_ws`, and `xz_token`.
@@ -20,6 +21,7 @@ Completed:
 - Increased the M55 WebSocket client path/request buffers so the long rehab-arm platform endpoint is not truncated.
 
 Validated:
+- Built M55 `_m55_ref_repo` and actual RT-Thread Studio `wifi` with `scons -j4` after the 640-byte XiaoZhi PCM framing update. Both builds passed; only the existing `m55_console_detach` unused-function warning remains.
 - Ran `tools/load_xiaozhi_token.ps1 -ReconnectOnly` on COM26. It read `m55qa_status`, sent `m55qa_xz_reconnect`, and read status again. Because no matching scoped token is loaded, CM55 still reports `cmd=1003 result=-255`, `xz_token=0`, and `xz_ws=0`, which is expected.
 - Built M55 `_m55_ref_repo`, actual `wifi`, and M33 `yiliao_m33` with `scons -j4` after adding decoded status flags.
 - Re-relocated M33 `build/rtthread.hex`; first line is `:02000004603466`.
@@ -46,6 +48,7 @@ Validated:
   - `m55qa_xz_reconnect` reaches CM55 and returns `voice_ack ... cmd=1003 result=-255`, proving the config command path works while the external platform connection is not yet accepted/reachable.
 
 Failed or unverified:
+- The 640-byte PCM framing update has been built in the actual `wifi` tree but has not yet been burned to CM55 in this pass.
 - The previously shared `rehab-relay.v1...` sample token appears scoped to a different project/device than `fd6a55ed-a63c-44b3-b123-96fb3c154966 / nanopi-m5`, so it was not loaded into CM55 for production endpoint testing.
 - `xz_ws=0` and `xz_token=0` remain expected until a valid platform scoped relay token is loaded into CM55.
 - End-to-end spoken XiaoZhi chat from the physical CM55 microphone still needs live validation after loading a valid scoped relay token into CM55.

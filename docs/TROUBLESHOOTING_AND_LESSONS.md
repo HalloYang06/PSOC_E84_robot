@@ -66,6 +66,27 @@ Reusable trick:
 Status:
 - Tooling is ready. End-to-end chat remains blocked until a correct-scope relay token is generated and loaded.
 
+## 2026-06-10 - XiaoZhi PCM Binary Frames Must Match The Platform Contract
+
+Symptom:
+- M33 status showed local `latest_pcm_len=320` while the platform contract says 16 kHz mono PCM S16LE at 20 ms, which is 640 bytes per WebSocket binary frame.
+
+Root cause:
+- The local mic driver can deliver smaller chunks than the platform's logical XiaoZhi audio frame. Forwarding each local chunk directly can create half-frame binary messages.
+
+Fix:
+- CM55 now accumulates local PCM into `XIAOZHI_AUDIO_FRAME_BYTES=640` before each `websocket_client_send_binary` call.
+- The hello audio parameters and frame byte calculation share constants in `xiaozhi_voice_relay.h`.
+
+Validation:
+- M55 reference repo and actual `wifi` working tree both build with `scons -j4` after the change.
+
+Reusable trick:
+- Keep local audio-driver chunk size separate from cloud protocol frame size. The bridge should reframe audio before sending it over WebSocket.
+
+Status:
+- Built and pushed on M55 branch. Needs burn plus live WebSocket/audio test with a valid scoped token.
+
 ## 2026-06-10 - Long XiaoZhi Tokens Exceed FinSH Command Length
 
 Symptom:

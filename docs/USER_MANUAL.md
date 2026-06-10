@@ -77,6 +77,7 @@ Notes:
 - `xz_token=0` means no scoped relay token is loaded on CM55; WebSocket auth is expected to fail.
 - `xz_ws=0` means the XiaoZhi WebSocket is not connected.
 - `xz_listening=1` means CM55 is actively streaming the post-wake utterance to the platform.
+- XiaoZhi binary audio frames sent by CM55 are fixed at `640` bytes per frame: `16 kHz * 1 channel * 16 bit * 20 ms`.
 - A matching platform token should make `xz_token=1`. A successful WebSocket connection should make `xz_ws=1`.
 - The firmware default endpoint already targets `/xiaozhi/ws?robot_id=rehab-arm-alpha`; use `m55qa_xz_url <ws://...>` only when overriding it for diagnostics.
 - `cmd=1004` begins a chunked XiaoZhi platform-token update on CM55.
