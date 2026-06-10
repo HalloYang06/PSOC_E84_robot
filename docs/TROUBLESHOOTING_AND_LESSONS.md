@@ -1,5 +1,51 @@
 # Troubleshooting And Lessons
 
+## 2026-06-10 - CM55 Wi-Fi Provisioning Must Use One Shared Service
+
+Symptom:
+- Wi-Fi configuration was available through shell commands, but SSID/password were RAM-only and would be lost after reset.
+- Adding LVGL or App provisioning directly on top of WLAN APIs would create several independent Wi-Fi state machines.
+
+Root cause:
+- The first bring-up path was debug-oriented. It did not persist credentials and did not expose save/forget/auto-connect state to M33/App.
+
+Fix:
+- Added a shared CM55 Wi-Fi config service used by local shell, LVGL touchscreen, and M33/CM55 IPC.
+- Saved credentials live at `/flash/rehab_wifi.cfg` and contain only SSID/password/auto-connect state.
+- Added M33 QA commands `m55qa_wifi_save`, `m55qa_wifi_forget`, and `m55qa_wifi_auto <0|1>`.
+- Added status fields so `m55qa_status` prints Wi-Fi `saved`, `auto`, and `storage` state.
+
+Validation:
+- M55 actual `wifi`, M55 Git reference `_m55_ref_repo`, and M33 `yiliao_m33` all build with `scons -j4`.
+
+Reusable trick:
+- Put Wi-Fi provisioning behind one service before adding UI/BLE/App entry points. UI code should not own connection state.
+
+Status:
+- Built. Physical LVGL touch/save/connect and reboot auto-connect still need board-side QA after flashing.
+
+## 2026-06-10 - RT-Thread DFS Build Does Not Always Provide `dfs_posix.h`
+
+Symptom:
+- Adding Wi-Fi config persistence failed to build with:
+  `fatal error: dfs_posix.h: No such file or directory`
+
+Root cause:
+- This BSP enables DFS and newlib stdio, but does not expose a `dfs_posix.h` header at the expected include path.
+
+Fix:
+- Use standard `stdio.h` file APIs (`fopen`, `fgets`, `fprintf`, `remove`) for `/flash/rehab_wifi.cfg`.
+- Keep the code guarded by `RT_USING_DFS` so it degrades cleanly if DFS is disabled.
+
+Validation:
+- Rebuilt the M55 actual `wifi` project and `_m55_ref_repo` successfully after removing the `dfs_posix.h` include.
+
+Reusable trick:
+- On this RT-Thread Studio BSP, check which POSIX headers actually exist before including RT-Thread DFS wrapper headers. If stdio works, prefer it for simple config files.
+
+Status:
+- Fixed.
+
 ## 2026-06-10 - XiaoZhi Endpoint Moved Under The Existing Command Center
 
 Symptom:

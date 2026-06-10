@@ -3,6 +3,32 @@
 ## 2026-06-10
 
 Completed:
+- CM55 Wi-Fi configuration was promoted from RAM-only debug commands to a reusable mainline service with local flash persistence at `/flash/rehab_wifi.cfg`.
+- CM55 now supports local shell commands for user-facing provisioning: `m55_wifi_ssid`, `m55_wifi_password`, `m55_wifi_save`, `m55_wifi_connect`, `m55_wifi_auto`, `m55_wifi_forget`, `m55_wifi_status`, `m55_wifi_diag`, and `m55_wifi_scan`.
+- Added a LVGL touchscreen Wi-Fi setup panel in the M55 `wifi` project. The panel shows live WLAN/WHD/netdev state, saved/auto-connect/storage state, and provides SSID/password entry, scan, diag, save, connect, off, and forget actions.
+- CM55 now attempts saved Wi-Fi auto-connect after boot, without storing platform relay tokens or vendor LLM API keys in the Wi-Fi config file.
+- M33/CM55 IPC added explicit Wi-Fi config keys: `VOICE_CONFIG_WIFI_SAVE`, `VOICE_CONFIG_WIFI_FORGET`, and `VOICE_CONFIG_WIFI_AUTO_CONNECT`.
+- M33 shell bridge added `m55qa_wifi_save`, `m55qa_wifi_forget`, and `m55qa_wifi_auto <0|1>` for the future BLE/App provisioning path.
+- M33 `m55qa_status` now reports Wi-Fi persistence observability: `saved`, `auto`, and `storage`.
+
+Validated:
+- Built the actual M55 RT-Thread Studio `wifi` project with `scons -j4`: passed, produced `rtthread.hex`, size `text=1171040 data=80860 bss=4534060`.
+- Built the M55 Git reference repo `_m55_ref_repo` with `scons -j4`: passed, produced `rtthread.hex`, size `text=1171040 data=80860 bss=4534056`.
+- Built the M33 repo `yiliao_m33` with `scons -j4`: passed, produced `rtthread.hex`, size `text=552844 data=16244 bss=310576`.
+
+Failed or unverified:
+- The LVGL touchscreen provisioning panel has only been build-validated; physical touch coordinate accuracy and save/connect behavior still need board-side QA after flashing.
+- Saved Wi-Fi auto-connect has not yet been live-validated after reboot on the powered board.
+- Existing `strncpy` truncation warnings remain in status-name and bounded credential copies; builds pass and the copies are bounded.
+
+Decision:
+- Wi-Fi provisioning is now a shared CM55 service used by local shell, LVGL, and M33/App IPC. Do not add separate Wi-Fi state machines in voice, BLE, or App code.
+- `/flash/rehab_wifi.cfg` may contain only local Wi-Fi SSID/password and auto-connect state. Platform scoped relay tokens remain in the XiaoZhi token path and vendor API keys must never be stored on the device.
+
+Next step:
+- Flash the new M55 image, use either the touchscreen panel or M33 shell to configure Wi-Fi, then reboot and verify `m55qa_status` shows `saved=1 auto=1 storage=0` and a live netdev/IP after auto-connect.
+
+Completed:
 - Added `tools/xiaozhi_ws_smoke_test.ps1`, a PC-side XiaoZhi WebSocket smoke test that simulates the device hello/listen/binary PCM flow without needing a person physically near the CM55 microphone.
 - CM55 XiaoZhi binary audio streaming now accumulates local mic PCM into fixed `640` byte frames before sending to the platform, matching `16 kHz mono PCM S16LE, 20 ms` from the current platform contract. M55 commit: `31df3a3 Align XiaoZhi PCM frame contract`.
 - Added `tools/load_xiaozhi_token.ps1` to load platform scoped XiaoZhi relay tokens over the visible M33 shell without printing token chunks in terminal output.

@@ -1,5 +1,76 @@
 # User Manual
 
+## CM55 Wi-Fi Provisioning QA
+
+Purpose:
+- Configure CM55 Wi-Fi for XiaoZhi/WebSocket and later platform communication without hardcoding credentials in firmware.
+- Keep user-facing provisioning reusable from three entries: LVGL touchscreen, CM55 shell, and M33/App IPC.
+
+Safety and credential boundary:
+- `/flash/rehab_wifi.cfg` stores only Wi-Fi SSID/password and auto-connect state.
+- Do not store platform scoped relay tokens in the Wi-Fi config file.
+- Do not store vendor LLM API keys on M33, CM55, NanoPi, or in Git.
+
+Touchscreen path after flashing CM55:
+1. Power the Infineon board and wait for the LVGL screen.
+2. Open the `Rehab Arm WiFi Setup` panel if it is not already visible:
+   ```text
+   rehab_wifi_panel_cmd
+   ```
+3. Enter SSID and password.
+4. Keep `Auto connect` checked for product-like boot behavior.
+5. Press `Save` to persist credentials, or press `Connect` to save and connect immediately.
+6. Press `Diag` after a few seconds and verify the screen shows a netdev, WLAN ready/connected state, and `saved:1 auto:1 storage:0`.
+
+CM55 shell path, if the interactive shell is on CM55:
+```text
+m55_wifi_ssid <ssid>
+m55_wifi_password <password>
+m55_wifi_auto 1
+m55_wifi_save
+m55_wifi_connect
+m55_wifi_status
+```
+
+M33 shell path, when the visible shell is M33:
+```text
+m55qa_wifi_ssid <ssid>
+m55qa_wifi_password <password>
+m55qa_wifi_auto 1
+m55qa_wifi_save
+m55qa_wifi_connect
+m55qa_wifi_diag
+m55qa_whd_diag
+m55qa_status
+```
+
+Forget credentials:
+```text
+m55qa_wifi_forget
+```
+or on CM55:
+```text
+m55_wifi_forget
+```
+
+Expected pass criteria:
+- `m55qa_status` prints `ipc_ready=1`.
+- The netdev line eventually shows `saved=1 auto=1 storage=0`.
+- `wlan=1` or `ready=1` appears after connection succeeds.
+- IP/GW/mask/DNS fields are no longer all zero after DHCP succeeds.
+
+If Wi-Fi was previously working but now does not enumerate:
+```text
+m55qa_whd_diag
+m55qa_wifi_diag
+m55qa_wifi_scan
+m55qa_status
+```
+
+Useful interpretation:
+- `whd_stage=5` with a negative result usually means the SDIO/WHD probe path timed out; check reset timing, WLAN power, and WHD resource partitions before changing XiaoZhi logic.
+- `storage` is the result of the last Wi-Fi config file operation. `0` means saved/loaded successfully; negative values mean the `/flash` filesystem or config file was not available.
+
 ## M33/CM55 Voice Foundation QA
 
 Prerequisites:

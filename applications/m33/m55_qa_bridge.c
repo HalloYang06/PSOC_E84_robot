@@ -5,6 +5,18 @@
 
 #include <finsh.h>
 
+static void m55qa_print_ip4(const char *label, rt_uint32_t ip)
+{
+    const rt_uint8_t *bytes = (const rt_uint8_t *)&ip;
+
+    rt_kprintf("%s=%u.%u.%u.%u",
+               label,
+               bytes[0],
+               bytes[1],
+               bytes[2],
+               bytes[3]);
+}
+
 static rt_err_t m55qa_send_voice_control(voice_control_cmd_t cmd)
 {
     m33_m55_message_t msg;
@@ -105,7 +117,7 @@ static void m55qa_status(int argc, char **argv)
                                                          &voice_status_timestamp);
     if (has_voice_status)
     {
-        rt_kprintf("[m55qa] voice_status seq=%lu flags=0x%lx wake_on=%d wake_ready=%d wake_hit=%d xz_listening=%d xz_ws=%d xz_token=%d frames=%lu windows=%lu detected=%lu pcm_seq=%lu len=%lu peak=%lu avg=%lu active=%lu/%lu wake_stage=%lu err=%ld age_ticks=%lu\n",
+        rt_kprintf("[m55qa] voice_status seq=%lu flags=0x%lx wake_on=%d wake_ready=%d wake_hit=%d xz_listening=%d xz_ws=%d xz_token=%d frames=%lu windows=%lu detected=%lu pcm_seq=%lu len=%lu peak=%lu avg=%lu active=%lu/%lu wake_stage=%lu err=%ld xz_stage=%ld xz_errno=%ld heap=%lu/%lu max=%lu probe_posix=%ld/%ld probe_sal=%ld/%ld probe_lwip=%ld/%ld age_ticks=%lu\n",
                    (unsigned long)voice_status_seq,
                    (unsigned long)voice_status.flags,
                    (voice_status.flags & VOICE_STATUS_FLAG_WAKE_LISTENING) ? 1 : 0,
@@ -125,7 +137,42 @@ static void m55qa_status(int argc, char **argv)
                    (unsigned long)voice_status.latest_total_frames,
                    (unsigned long)voice_status.wake_stage,
                    (long)voice_status.last_error,
+                   (long)voice_status.xiaozhi_ws_stage,
+                   (long)voice_status.xiaozhi_ws_errno,
+                   (unsigned long)voice_status.heap_used,
+                   (unsigned long)voice_status.heap_total,
+                   (unsigned long)voice_status.heap_max_used,
+                   (long)voice_status.net_probe_posix_tcp,
+                   (long)voice_status.net_probe_posix_errno,
+                   (long)voice_status.net_probe_sal_tcp,
+                   (long)voice_status.net_probe_sal_errno,
+                   (long)voice_status.net_probe_lwip_tcp,
+                   (long)voice_status.net_probe_lwip_errno,
                    (unsigned long)(rt_tick_get() - voice_status_timestamp));
+        rt_kprintf("[m55qa] netdev name=%s flags=0x%lx wlan=%lu ready=%lu rssi=%ld cloud_tcp=%ld/%ld wifi_diag=%ld scan=%ld whd_stage=%ld whd_result=%ld whd_flags=0x%lx saved=%lu auto=%lu storage=%ld ",
+                   voice_status.netdev_name[0] ? voice_status.netdev_name : "(none)",
+                   (unsigned long)voice_status.netdev_flags,
+                   (unsigned long)voice_status.wlan_connected,
+                   (unsigned long)voice_status.wlan_ready,
+                   (long)voice_status.wlan_rssi,
+                   (long)voice_status.cloud_tcp_result,
+                   (long)voice_status.cloud_tcp_errno,
+                   (long)voice_status.wifi_diag_result,
+                   (long)voice_status.wifi_scan_count,
+                   (long)voice_status.whd_stage,
+                   (long)voice_status.whd_result,
+                   (unsigned long)voice_status.whd_flags,
+                   (unsigned long)voice_status.wifi_saved,
+                   (unsigned long)voice_status.wifi_auto_connect,
+                   (long)voice_status.wifi_storage_result);
+        m55qa_print_ip4("ip", voice_status.netdev_ip);
+        rt_kprintf(" ");
+        m55qa_print_ip4("gw", voice_status.netdev_gw);
+        rt_kprintf(" ");
+        m55qa_print_ip4("mask", voice_status.netdev_mask);
+        rt_kprintf(" ");
+        m55qa_print_ip4("dns0", voice_status.netdev_dns0);
+        rt_kprintf("\n");
     }
 }
 MSH_CMD_EXPORT(m55qa_status, Show CM55 IPC and latest AI/wake state);
@@ -272,3 +319,148 @@ static void m55qa_xz_reconnect(int argc, char **argv)
     rt_kprintf("[m55qa] xz_reconnect ret=%d\n", ret);
 }
 MSH_CMD_EXPORT(m55qa_xz_reconnect, Reconnect CM55 Xiaozhi websocket);
+
+static void m55qa_wifi_ssid(int argc, char **argv)
+{
+    rt_err_t ret;
+
+    if (argc < 2)
+    {
+        rt_kprintf("[m55qa] usage: m55qa_wifi_ssid <ssid>\n");
+        return;
+    }
+
+    ret = m55qa_send_voice_config(VOICE_CONFIG_WIFI_SSID, argv[1]);
+    rt_kprintf("[m55qa] wifi_ssid ret=%d len=%lu\n",
+               ret,
+               (unsigned long)rt_strlen(argv[1]));
+}
+MSH_CMD_EXPORT(m55qa_wifi_ssid, Set CM55 WiFi SSID in RAM);
+
+static void m55qa_wifi_password(int argc, char **argv)
+{
+    rt_err_t ret;
+
+    if (argc < 2)
+    {
+        rt_kprintf("[m55qa] usage: m55qa_wifi_password <password>\n");
+        return;
+    }
+
+    ret = m55qa_send_voice_config(VOICE_CONFIG_WIFI_PASSWORD, argv[1]);
+    rt_kprintf("[m55qa] wifi_password ret=%d len=%lu\n",
+               ret,
+               (unsigned long)rt_strlen(argv[1]));
+}
+MSH_CMD_EXPORT(m55qa_wifi_password, Set CM55 WiFi password in RAM);
+
+static void m55qa_wifi_connect(int argc, char **argv)
+{
+    rt_err_t ret;
+
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+
+    ret = m55qa_send_voice_config(VOICE_CONFIG_WIFI_CONNECT, "");
+    rt_kprintf("[m55qa] wifi_connect ret=%d\n", ret);
+}
+MSH_CMD_EXPORT(m55qa_wifi_connect, Connect CM55 WiFi using staged SSID/password);
+
+static void m55qa_wifi_disconnect(int argc, char **argv)
+{
+    rt_err_t ret;
+
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+
+    ret = m55qa_send_voice_config(VOICE_CONFIG_WIFI_DISCONNECT, "");
+    rt_kprintf("[m55qa] wifi_disconnect ret=%d\n", ret);
+}
+MSH_CMD_EXPORT(m55qa_wifi_disconnect, Disconnect CM55 WiFi);
+
+static void m55qa_wifi_save(int argc, char **argv)
+{
+    rt_err_t ret;
+
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+
+    ret = m55qa_send_voice_config(VOICE_CONFIG_WIFI_SAVE, "");
+    rt_kprintf("[m55qa] wifi_save ret=%d\n", ret);
+}
+MSH_CMD_EXPORT(m55qa_wifi_save, Save CM55 WiFi credentials to local flash);
+
+static void m55qa_wifi_forget(int argc, char **argv)
+{
+    rt_err_t ret;
+
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+
+    ret = m55qa_send_voice_config(VOICE_CONFIG_WIFI_FORGET, "");
+    rt_kprintf("[m55qa] wifi_forget ret=%d\n", ret);
+}
+MSH_CMD_EXPORT(m55qa_wifi_forget, Remove saved CM55 WiFi credentials);
+
+static void m55qa_wifi_auto(int argc, char **argv)
+{
+    rt_err_t ret;
+    const char *value = "1";
+
+    if (argc >= 2)
+    {
+        value = (argv[1][0] == '0') ? "0" : "1";
+    }
+
+    ret = m55qa_send_voice_config(VOICE_CONFIG_WIFI_AUTO_CONNECT, value);
+    rt_kprintf("[m55qa] wifi_auto ret=%d value=%s\n", ret, value);
+}
+MSH_CMD_EXPORT(m55qa_wifi_auto, Enable or disable CM55 saved WiFi auto-connect);
+
+static void m55qa_net_probe(int argc, char **argv)
+{
+    rt_err_t ret;
+
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+
+    ret = m55qa_send_voice_control(VOICE_CTRL_NET_PROBE);
+    rt_kprintf("[m55qa] net_probe ret=%d\n", ret);
+}
+MSH_CMD_EXPORT(m55qa_net_probe, Probe CM55 POSIX/SAL/lwIP socket creation);
+
+static void m55qa_wifi_diag(int argc, char **argv)
+{
+    rt_err_t ret;
+
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+
+    ret = m55qa_send_voice_control(VOICE_CTRL_WIFI_DIAG);
+    rt_kprintf("[m55qa] wifi_diag ret=%d\n", ret);
+}
+MSH_CMD_EXPORT(m55qa_wifi_diag, Refresh CM55 WLAN/netdev diagnostic snapshot);
+
+static void m55qa_wifi_scan(int argc, char **argv)
+{
+    rt_err_t ret;
+
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+
+    ret = m55qa_send_voice_control(VOICE_CTRL_WIFI_SCAN);
+    rt_kprintf("[m55qa] wifi_scan ret=%d\n", ret);
+}
+MSH_CMD_EXPORT(m55qa_wifi_scan, Ask CM55 to scan visible WiFi APs);
+
+static void m55qa_whd_diag(int argc, char **argv)
+{
+    rt_err_t ret;
+
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+
+    ret = m55qa_send_voice_control(VOICE_CTRL_WHD_DIAG);
+    rt_kprintf("[m55qa] whd_diag ret=%d\n", ret);
+}
+MSH_CMD_EXPORT(m55qa_whd_diag, Refresh CM55 WHD init-stage diagnostic snapshot);

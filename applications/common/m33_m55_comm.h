@@ -36,7 +36,14 @@ typedef enum
     VOICE_CONFIG_XIAOZHI_TOKEN_BEGIN,
     VOICE_CONFIG_XIAOZHI_TOKEN_PART,
     VOICE_CONFIG_XIAOZHI_TOKEN_COMMIT,
-    VOICE_CONFIG_XIAOZHI_TOKEN_CLEAR
+    VOICE_CONFIG_XIAOZHI_TOKEN_CLEAR,
+    VOICE_CONFIG_WIFI_SSID,
+    VOICE_CONFIG_WIFI_PASSWORD,
+    VOICE_CONFIG_WIFI_CONNECT,
+    VOICE_CONFIG_WIFI_DISCONNECT,
+    VOICE_CONFIG_WIFI_SAVE,
+    VOICE_CONFIG_WIFI_FORGET,
+    VOICE_CONFIG_WIFI_AUTO_CONNECT
 } voice_config_key_t;
 
 typedef enum
@@ -47,7 +54,11 @@ typedef enum
     VOICE_CTRL_START_LISTEN,
     VOICE_CTRL_STOP_LISTEN,
     VOICE_CTRL_PUBLISH_TEST_SNAPSHOT,
-    VOICE_CTRL_PUBLISH_MOTOR7_SNAPSHOT
+    VOICE_CTRL_PUBLISH_MOTOR7_SNAPSHOT,
+    VOICE_CTRL_NET_PROBE,
+    VOICE_CTRL_WIFI_DIAG,
+    VOICE_CTRL_WIFI_SCAN,
+    VOICE_CTRL_WHD_DIAG
 } voice_control_cmd_t;
 
 typedef enum
@@ -181,6 +192,36 @@ typedef struct
     rt_uint32_t last_wake_tick;
     rt_uint32_t wake_stage;
     rt_int32_t last_error;
+    rt_int32_t xiaozhi_ws_stage;
+    rt_int32_t xiaozhi_ws_errno;
+    rt_uint32_t heap_total;
+    rt_uint32_t heap_used;
+    rt_uint32_t heap_max_used;
+    rt_int32_t net_probe_posix_tcp;
+    rt_int32_t net_probe_posix_errno;
+    rt_int32_t net_probe_sal_tcp;
+    rt_int32_t net_probe_sal_errno;
+    rt_int32_t net_probe_lwip_tcp;
+    rt_int32_t net_probe_lwip_errno;
+    rt_uint32_t netdev_flags;
+    rt_uint32_t netdev_ip;
+    rt_uint32_t netdev_gw;
+    rt_uint32_t netdev_mask;
+    rt_uint32_t netdev_dns0;
+    rt_int32_t cloud_tcp_result;
+    rt_int32_t cloud_tcp_errno;
+    rt_uint32_t wlan_connected;
+    rt_uint32_t wlan_ready;
+    rt_int32_t wlan_rssi;
+    rt_int32_t wifi_diag_result;
+    rt_int32_t wifi_scan_count;
+    rt_int32_t whd_stage;
+    rt_int32_t whd_result;
+    rt_uint32_t whd_flags;
+    rt_uint32_t wifi_saved;
+    rt_uint32_t wifi_auto_connect;
+    rt_int32_t wifi_storage_result;
+    char netdev_name[RT_NAME_MAX];
 } voice_status_msg_t;
 
 typedef struct
