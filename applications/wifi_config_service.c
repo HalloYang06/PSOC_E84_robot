@@ -12,11 +12,15 @@
 
 void whd_wlan_get_diag(int *stage, int *result, rt_uint32_t *flags);
 
+static void wifi_config_scan_thread_entry(void *parameter);
+
 static struct
 {
     struct rt_mutex lock;
     rt_bool_t initialized;
     rt_thread_t auto_thread;
+    rt_thread_t scan_thread;
+    wifi_config_ap_t scan_aps[WIFI_CONFIG_SCAN_MAX_APS];
     wifi_config_snapshot_t snapshot;
 } g_wifi_config;
 
@@ -78,6 +82,92 @@ static void wifi_config_refresh_locked(void)
     g_wifi_config.snapshot.netdev_gw = ip4_addr_get_u32(&netdev->gw);
     g_wifi_config.snapshot.netdev_mask = ip4_addr_get_u32(&netdev->netmask);
     g_wifi_config.snapshot.netdev_dns0 = ip4_addr_get_u32(&netdev->dns_servers[0]);
+}
+
+static rt_bool_t wifi_config_bssid_equal(const rt_uint8_t *lhs, const rt_uint8_t *rhs)
+{
+    return (rt_memcmp(lhs, rhs, sizeof(((wifi_config_ap_t *)0)->bssid)) == 0) ? RT_TRUE : RT_FALSE;
+}
+
+static void wifi_config_cache_ap_locked(const struct rt_wlan_info *info)
+{
+    rt_int32_t i;
+    rt_int32_t target = -1;
+    char ssid[WIFI_CONFIG_SSID_MAX_LEN + 1];
+    rt_uint8_t ssid_len;
+
+    if ((info == RT_NULL) || (info->ssid.len == 0U))
+    {
+        return;
+    }
+
+    ssid_len = info->ssid.len;
+    if (ssid_len > WIFI_CONFIG_SSID_MAX_LEN)
+    {
+        ssid_len = WIFI_CONFIG_SSID_MAX_LEN;
+    }
+
+    rt_memset(ssid, 0, sizeof(ssid));
+    rt_memcpy(ssid, info->ssid.val, ssid_len);
+
+    for (i = 0; i < g_wifi_config.snapshot.scan_count; i++)
+    {
+        if ((rt_strcmp(g_wifi_config.scan_aps[i].ssid, ssid) == 0) &&
+            wifi_config_bssid_equal(g_wifi_config.scan_aps[i].bssid, info->bssid))
+        {
+            target = i;
+            break;
+        }
+    }
+
+    if (target < 0)
+    {
+        if (g_wifi_config.snapshot.scan_count >= WIFI_CONFIG_SCAN_MAX_APS)
+        {
+            target = 0;
+            for (i = 1; i < WIFI_CONFIG_SCAN_MAX_APS; i++)
+            {
+                if (g_wifi_config.scan_aps[i].rssi < g_wifi_config.scan_aps[target].rssi)
+                {
+                    target = i;
+                }
+            }
+
+            if (info->rssi <= g_wifi_config.scan_aps[target].rssi)
+            {
+                return;
+            }
+        }
+        else
+        {
+            target = g_wifi_config.snapshot.scan_count++;
+        }
+    }
+
+    rt_memset(&g_wifi_config.scan_aps[target], 0, sizeof(g_wifi_config.scan_aps[target]));
+    rt_strncpy(g_wifi_config.scan_aps[target].ssid, ssid, sizeof(g_wifi_config.scan_aps[target].ssid) - 1);
+    g_wifi_config.scan_aps[target].rssi = info->rssi;
+    g_wifi_config.scan_aps[target].channel = info->channel;
+    g_wifi_config.scan_aps[target].security = (rt_uint32_t)info->security;
+    rt_memcpy(g_wifi_config.scan_aps[target].bssid, info->bssid, sizeof(g_wifi_config.scan_aps[target].bssid));
+}
+
+static void wifi_config_scan_report_cb(int event, struct rt_wlan_buff *buff, void *parameter)
+{
+    struct rt_wlan_info *info;
+
+    RT_UNUSED(parameter);
+
+    if ((event != RT_WLAN_EVT_SCAN_REPORT) || (buff == RT_NULL) ||
+        (buff->data == RT_NULL) || (buff->len != sizeof(struct rt_wlan_info)))
+    {
+        return;
+    }
+
+    info = (struct rt_wlan_info *)buff->data;
+    rt_mutex_take(&g_wifi_config.lock, RT_WAITING_FOREVER);
+    wifi_config_cache_ap_locked(info);
+    rt_mutex_release(&g_wifi_config.lock);
 }
 
 rt_err_t wifi_config_service_init(void)
@@ -405,24 +495,133 @@ rt_err_t wifi_config_disconnect(void)
 
 rt_err_t wifi_config_scan(void)
 {
-    rt_err_t ret;
-    rt_int32_t count = -2;
+    rt_err_t ret = RT_EOK;
 
     (void)wifi_config_service_init();
-    ret = rt_wlan_scan();
+
+    if (g_wifi_config.scan_thread != RT_NULL)
+    {
+        return -RT_EBUSY;
+    }
+
+    g_wifi_config.scan_thread = rt_thread_create("wifi_scan",
+                                                 wifi_config_scan_thread_entry,
+                                                 RT_NULL,
+                                                 4096,
+                                                 18,
+                                                 10);
+    if (g_wifi_config.scan_thread == RT_NULL)
+    {
+        ret = -RT_ENOMEM;
+    }
+    else
+    {
+        rt_thread_startup(g_wifi_config.scan_thread);
+    }
 
     rt_mutex_take(&g_wifi_config.lock, RT_WAITING_FOREVER);
     g_wifi_config.snapshot.last_result = ret;
-    g_wifi_config.snapshot.scan_count = count;
     wifi_config_refresh_locked();
     rt_mutex_release(&g_wifi_config.lock);
 
-    rt_kprintf("[wifi_config] scan ret=%d count=%ld netdev=%s flags=0x%lx\n",
+    rt_kprintf("[wifi_config] scan start ret=%d count=%ld netdev=%s flags=0x%lx\n",
                ret,
-               (long)count,
+               (long)g_wifi_config.snapshot.scan_count,
                g_wifi_config.snapshot.netdev_name[0] ? g_wifi_config.snapshot.netdev_name : "(none)",
                (unsigned long)g_wifi_config.snapshot.netdev_flags);
     return ret;
+}
+
+static void wifi_config_scan_thread_entry(void *parameter)
+{
+    rt_err_t ret;
+    rt_int32_t count;
+
+    RT_UNUSED(parameter);
+
+    rt_mutex_take(&g_wifi_config.lock, RT_WAITING_FOREVER);
+    rt_memset(g_wifi_config.scan_aps, 0, sizeof(g_wifi_config.scan_aps));
+    g_wifi_config.snapshot.scan_count = 0;
+    rt_mutex_release(&g_wifi_config.lock);
+
+    ret = rt_wlan_register_event_handler(RT_WLAN_EVT_SCAN_REPORT,
+                                         wifi_config_scan_report_cb,
+                                         RT_NULL);
+    if (ret == RT_EOK)
+    {
+        ret = rt_wlan_scan_with_info(RT_NULL);
+        (void)rt_wlan_unregister_event_handler(RT_WLAN_EVT_SCAN_REPORT);
+    }
+
+    rt_mutex_take(&g_wifi_config.lock, RT_WAITING_FOREVER);
+    g_wifi_config.snapshot.last_result = ret;
+    count = g_wifi_config.snapshot.scan_count;
+    wifi_config_refresh_locked();
+    rt_mutex_release(&g_wifi_config.lock);
+
+    rt_kprintf("[wifi_config] scan done ret=%d count=%ld\n", ret, (long)count);
+    g_wifi_config.scan_thread = RT_NULL;
+}
+
+rt_int32_t wifi_config_get_scan_count(void)
+{
+    rt_int32_t count;
+
+    (void)wifi_config_service_init();
+    rt_mutex_take(&g_wifi_config.lock, RT_WAITING_FOREVER);
+    count = g_wifi_config.snapshot.scan_count;
+    rt_mutex_release(&g_wifi_config.lock);
+    return count;
+}
+
+rt_err_t wifi_config_get_scan_ap(rt_int32_t index, wifi_config_ap_t *ap)
+{
+    if (ap == RT_NULL)
+    {
+        return -RT_EINVAL;
+    }
+
+    (void)wifi_config_service_init();
+    rt_mutex_take(&g_wifi_config.lock, RT_WAITING_FOREVER);
+    if ((index < 0) || (index >= g_wifi_config.snapshot.scan_count) ||
+        (index >= WIFI_CONFIG_SCAN_MAX_APS))
+    {
+        rt_mutex_release(&g_wifi_config.lock);
+        return -RT_EINVAL;
+    }
+
+    *ap = g_wifi_config.scan_aps[index];
+    rt_mutex_release(&g_wifi_config.lock);
+    return RT_EOK;
+}
+
+const char *wifi_config_security_name(rt_uint32_t security)
+{
+    switch (security)
+    {
+    case SECURITY_OPEN:
+        return "OPEN";
+    case SECURITY_WEP_PSK:
+        return "WEP";
+    case SECURITY_WEP_SHARED:
+        return "WEP";
+    case SECURITY_WPA_TKIP_PSK:
+        return "WPA";
+    case SECURITY_WPA_AES_PSK:
+        return "WPA";
+    case SECURITY_WPA2_AES_PSK:
+        return "WPA2";
+    case SECURITY_WPA2_TKIP_PSK:
+        return "WPA2";
+    case SECURITY_WPA2_MIXED_PSK:
+        return "WPA2";
+    case SECURITY_WPS_OPEN:
+        return "WPS";
+    case SECURITY_WPS_SECURE:
+        return "WPS";
+    default:
+        return "SEC";
+    }
 }
 
 rt_err_t wifi_config_diag(void)

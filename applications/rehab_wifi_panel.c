@@ -9,10 +9,14 @@
 #include <string.h>
 
 static lv_obj_t *g_status_label;
+static lv_obj_t *g_ap_list;
 static lv_obj_t *g_ssid_textarea;
 static lv_obj_t *g_password_textarea;
 static lv_obj_t *g_auto_checkbox;
 static lv_obj_t *g_keyboard;
+static lv_timer_t *g_scan_refresh_timer;
+
+static void rehab_wifi_panel_refresh_scan_list(void);
 
 static void rehab_wifi_panel_refresh(void)
 {
@@ -43,6 +47,86 @@ static void rehab_wifi_panel_refresh(void)
     lv_label_set_text(g_status_label, status);
 }
 
+static void ap_button_event_cb(lv_event_t *event)
+{
+    rt_int32_t index = (rt_int32_t)(rt_ubase_t)lv_event_get_user_data(event);
+    wifi_config_ap_t ap;
+
+    if ((g_ssid_textarea == RT_NULL) || (wifi_config_get_scan_ap(index, &ap) != RT_EOK))
+    {
+        return;
+    }
+
+    lv_textarea_set_text(g_ssid_textarea, ap.ssid);
+    (void)wifi_config_set_ssid(ap.ssid);
+    rehab_wifi_panel_refresh();
+}
+
+static void rehab_wifi_panel_refresh_scan_list(void)
+{
+    rt_int32_t i;
+    rt_int32_t count;
+    char row[96];
+
+    if (g_ap_list == RT_NULL)
+    {
+        return;
+    }
+
+    lv_obj_clean(g_ap_list);
+    count = wifi_config_get_scan_count();
+    if (count <= 0)
+    {
+        lv_obj_t *button = lv_list_add_button(g_ap_list, LV_SYMBOL_WIFI, "No scanned networks. Tap Scan.");
+        lv_obj_clear_flag(button, LV_OBJ_FLAG_CLICKABLE);
+        return;
+    }
+
+    for (i = 0; (i < count) && (i < WIFI_CONFIG_SCAN_MAX_APS); i++)
+    {
+        wifi_config_ap_t ap;
+        lv_obj_t *button;
+
+        if (wifi_config_get_scan_ap(i, &ap) != RT_EOK)
+        {
+            continue;
+        }
+
+        rt_snprintf(row,
+                    sizeof(row),
+                    "%s  %lddBm  %s  ch%ld",
+                    ap.ssid[0] ? ap.ssid : "(hidden)",
+                    (long)ap.rssi,
+                    wifi_config_security_name(ap.security),
+                    (long)ap.channel);
+        button = lv_list_add_button(g_ap_list, LV_SYMBOL_WIFI, row);
+        lv_obj_add_event_cb(button, ap_button_event_cb, LV_EVENT_CLICKED, (void *)(rt_ubase_t)i);
+    }
+}
+
+static void scan_refresh_timer_cb(lv_timer_t *timer)
+{
+    RT_UNUSED(timer);
+    rehab_wifi_panel_refresh_scan_list();
+    rehab_wifi_panel_refresh();
+}
+
+static void start_scan_refresh_timer(void)
+{
+    if (g_scan_refresh_timer != RT_NULL)
+    {
+        lv_timer_delete(g_scan_refresh_timer);
+        g_scan_refresh_timer = RT_NULL;
+    }
+
+    g_scan_refresh_timer = lv_timer_create(scan_refresh_timer_cb, 500, RT_NULL);
+    if (g_scan_refresh_timer != RT_NULL)
+    {
+        lv_timer_set_repeat_count(g_scan_refresh_timer, 10);
+        lv_timer_set_auto_delete(g_scan_refresh_timer, false);
+    }
+}
+
 static void keyboard_target_event_cb(lv_event_t *event)
 {
     lv_event_code_t code = lv_event_get_code(event);
@@ -64,7 +148,9 @@ static void scan_event_cb(lv_event_t *event)
     RT_UNUSED(event);
     (void)wifi_config_scan();
     (void)wifi_config_whd_diag();
+    rehab_wifi_panel_refresh_scan_list();
     rehab_wifi_panel_refresh();
+    start_scan_refresh_timer();
 }
 
 static void diag_event_cb(lv_event_t *event)
@@ -72,6 +158,7 @@ static void diag_event_cb(lv_event_t *event)
     RT_UNUSED(event);
     (void)wifi_config_diag();
     (void)wifi_config_whd_diag();
+    rehab_wifi_panel_refresh_scan_list();
     rehab_wifi_panel_refresh();
 }
 
@@ -166,7 +253,14 @@ rt_err_t rehab_wifi_panel_create(void)
     lv_obj_set_width(g_status_label, 430);
     lv_obj_set_style_text_color(g_status_label, lv_color_hex(0xD5E8D4), 0);
     lv_obj_set_style_text_font(g_status_label, &lv_font_montserrat_14, 0);
-    lv_obj_align(g_status_label, LV_ALIGN_TOP_LEFT, 24, 52);
+    lv_obj_align(g_status_label, LV_ALIGN_TOP_LEFT, 24, 48);
+
+    g_ap_list = lv_list_create(screen);
+    lv_obj_set_size(g_ap_list, 430, 96);
+    lv_obj_set_style_bg_color(g_ap_list, lv_color_hex(0x182832), 0);
+    lv_obj_set_style_border_color(g_ap_list, lv_color_hex(0x2E5266), 0);
+    lv_obj_set_style_border_width(g_ap_list, 1, 0);
+    lv_obj_align(g_ap_list, LV_ALIGN_TOP_LEFT, 24, 136);
 
     g_ssid_textarea = lv_textarea_create(screen);
     lv_textarea_set_one_line(g_ssid_textarea, true);
@@ -176,7 +270,7 @@ rt_err_t rehab_wifi_panel_create(void)
         lv_textarea_set_text(g_ssid_textarea, snapshot.ssid);
     }
     lv_obj_set_size(g_ssid_textarea, 280, 42);
-    lv_obj_align(g_ssid_textarea, LV_ALIGN_TOP_LEFT, 24, 170);
+    lv_obj_align(g_ssid_textarea, LV_ALIGN_TOP_LEFT, 24, 240);
     lv_obj_add_event_cb(g_ssid_textarea, keyboard_target_event_cb, LV_EVENT_ALL, RT_NULL);
 
     g_password_textarea = lv_textarea_create(screen);
@@ -188,7 +282,7 @@ rt_err_t rehab_wifi_panel_create(void)
         lv_textarea_set_text(g_password_textarea, snapshot.password);
     }
     lv_obj_set_size(g_password_textarea, 280, 42);
-    lv_obj_align(g_password_textarea, LV_ALIGN_TOP_LEFT, 24, 220);
+    lv_obj_align(g_password_textarea, LV_ALIGN_TOP_LEFT, 24, 288);
     lv_obj_add_event_cb(g_password_textarea, keyboard_target_event_cb, LV_EVENT_ALL, RT_NULL);
 
     g_auto_checkbox = lv_checkbox_create(screen);
@@ -198,14 +292,14 @@ rt_err_t rehab_wifi_panel_create(void)
     {
         lv_obj_add_state(g_auto_checkbox, LV_STATE_CHECKED);
     }
-    lv_obj_align(g_auto_checkbox, LV_ALIGN_TOP_LEFT, 318, 177);
+    lv_obj_align(g_auto_checkbox, LV_ALIGN_TOP_LEFT, 318, 247);
 
     row = lv_obj_create(screen);
     lv_obj_remove_style_all(row);
     lv_obj_set_size(row, 430, 50);
     lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
     lv_obj_set_style_pad_column(row, 8, 0);
-    lv_obj_align(row, LV_ALIGN_TOP_LEFT, 24, 272);
+    lv_obj_align(row, LV_ALIGN_TOP_LEFT, 24, 340);
     (void)panel_button(row, "Scan", scan_event_cb);
     (void)panel_button(row, "Diag", diag_event_cb);
     (void)panel_button(row, "Save", save_event_cb);
@@ -216,7 +310,7 @@ rt_err_t rehab_wifi_panel_create(void)
     lv_obj_set_size(row, 430, 50);
     lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
     lv_obj_set_style_pad_column(row, 8, 0);
-    lv_obj_align(row, LV_ALIGN_TOP_LEFT, 24, 326);
+    lv_obj_align(row, LV_ALIGN_TOP_LEFT, 24, 394);
     (void)panel_button(row, "Off", disconnect_event_cb);
     (void)panel_button(row, "Forget", forget_event_cb);
 
@@ -226,6 +320,7 @@ rt_err_t rehab_wifi_panel_create(void)
     lv_obj_add_flag(g_keyboard, LV_OBJ_FLAG_HIDDEN);
 
     (void)wifi_config_whd_diag();
+    rehab_wifi_panel_refresh_scan_list();
     rehab_wifi_panel_refresh();
     return RT_EOK;
 }

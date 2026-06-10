@@ -10,6 +10,16 @@ extern "C" {
 
 #define WIFI_CONFIG_SSID_MAX_LEN      32
 #define WIFI_CONFIG_PASSWORD_MAX_LEN  64
+#define WIFI_CONFIG_SCAN_MAX_APS      12
+
+typedef struct
+{
+    char ssid[WIFI_CONFIG_SSID_MAX_LEN + 1];
+    rt_int16_t rssi;
+    rt_int16_t channel;
+    rt_uint32_t security;
+    rt_uint8_t bssid[6];
+} wifi_config_ap_t;
 
 typedef struct
 {
@@ -45,6 +55,9 @@ rt_err_t wifi_config_start_auto_connect(rt_uint32_t delay_ms);
 rt_err_t wifi_config_connect(void);
 rt_err_t wifi_config_disconnect(void);
 rt_err_t wifi_config_scan(void);
+rt_int32_t wifi_config_get_scan_count(void);
+rt_err_t wifi_config_get_scan_ap(rt_int32_t index, wifi_config_ap_t *ap);
+const char *wifi_config_security_name(rt_uint32_t security);
 rt_err_t wifi_config_diag(void);
 rt_err_t wifi_config_whd_diag(void);
 void wifi_config_get_snapshot(wifi_config_snapshot_t *snapshot);
