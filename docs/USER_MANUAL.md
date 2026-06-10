@@ -29,6 +29,11 @@ Pass criterion:
 M33 shell QA:
 ```text
 m55qa_status
+m55qa_xz_token_begin
+m55qa_xz_token_part <first_48_to_60_char_token_chunk>
+m55qa_xz_token_part <next_48_to_60_char_token_chunk>
+m55qa_xz_token_commit
+m55qa_status
 m55qa_wake_on
 m55qa_status
 m55qa_capture_on
@@ -40,12 +45,19 @@ m55qa_status
 Expected output:
 ```text
 [m55qa] ipc_ready=1 tx_pending=0 rx_pending=0 has_model=1
+[m55_model_bridge] voice_ack seq=<n> cmd=1004 result=0 ...
+[m55_model_bridge] voice_ack seq=<n> cmd=1005 result=0 ...
+[m55_model_bridge] voice_ack seq=<n> cmd=1006 result=<0_or_network_error> ...
 [m55qa] voice_ack seq=<n> cmd=3 result=0 ...
 [m55qa] voice_ack seq=<n> cmd=1 result=0 ...
 [m55qa] voice_ack seq=<n> cmd=4 result=0 ...
 ```
 
 Notes:
+- `cmd=1004` begins a chunked XiaoZhi platform-token update on CM55.
+- `cmd=1005` appends one token chunk; keep each chunk short enough for the embedded shell line, usually 48 to 60 characters.
+- `cmd=1006` commits the staged token and reconnects the XiaoZhi WebSocket. A negative result can still mean the token was committed but the platform endpoint/auth/network is not ready.
+- `m55qa_xz_token_clear` clears the CM55 platform token and should be used after dummy-token tests.
 - `cmd=3` is start wake listening.
 - `cmd=1` is start capture.
 - `cmd=4` is stop wake listening.

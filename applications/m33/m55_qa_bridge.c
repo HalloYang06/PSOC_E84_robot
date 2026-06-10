@@ -202,6 +202,59 @@ static void m55qa_xz_token(int argc, char **argv)
 }
 MSH_CMD_EXPORT(m55qa_xz_token, Set CM55 Xiaozhi platform token);
 
+static void m55qa_xz_token_begin(int argc, char **argv)
+{
+    rt_err_t ret;
+
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+
+    ret = m55qa_send_voice_config(VOICE_CONFIG_XIAOZHI_TOKEN_BEGIN, "");
+    rt_kprintf("[m55qa] xz_token_begin ret=%d\n", ret);
+}
+MSH_CMD_EXPORT(m55qa_xz_token_begin, Begin chunked CM55 Xiaozhi token update);
+
+static void m55qa_xz_token_part(int argc, char **argv)
+{
+    rt_err_t ret;
+
+    if (argc < 2)
+    {
+        rt_kprintf("[m55qa] usage: m55qa_xz_token_part <token_chunk_48_to_60_chars>\n");
+        return;
+    }
+
+    ret = m55qa_send_voice_config(VOICE_CONFIG_XIAOZHI_TOKEN_PART, argv[1]);
+    rt_kprintf("[m55qa] xz_token_part ret=%d len=%lu\n",
+               ret,
+               (unsigned long)rt_strlen(argv[1]));
+}
+MSH_CMD_EXPORT(m55qa_xz_token_part, Append one chunk to CM55 Xiaozhi token);
+
+static void m55qa_xz_token_commit(int argc, char **argv)
+{
+    rt_err_t ret;
+
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+
+    ret = m55qa_send_voice_config(VOICE_CONFIG_XIAOZHI_TOKEN_COMMIT, "");
+    rt_kprintf("[m55qa] xz_token_commit ret=%d\n", ret);
+}
+MSH_CMD_EXPORT(m55qa_xz_token_commit, Commit chunked CM55 Xiaozhi token and reconnect);
+
+static void m55qa_xz_token_clear(int argc, char **argv)
+{
+    rt_err_t ret;
+
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+
+    ret = m55qa_send_voice_config(VOICE_CONFIG_XIAOZHI_TOKEN_CLEAR, "");
+    rt_kprintf("[m55qa] xz_token_clear ret=%d\n", ret);
+}
+MSH_CMD_EXPORT(m55qa_xz_token_clear, Clear CM55 Xiaozhi token);
+
 static void m55qa_xz_reconnect(int argc, char **argv)
 {
     rt_err_t ret;

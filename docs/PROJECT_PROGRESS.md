@@ -3,6 +3,9 @@
 ## 2026-06-10
 
 Completed:
+- Added long XiaoZhi platform-token configuration over the visible M33 shell using chunked commands: `m55qa_xz_token_begin`, `m55qa_xz_token_part`, `m55qa_xz_token_commit`, and `m55qa_xz_token_clear`.
+- Added matching CM55 voice-config IPC keys and CM55-side token staging/commit handling so platform relay tokens longer than the FinSH line limit can be configured without hardcoding secrets in firmware.
+- Increased CM55 XiaoZhi relay token storage to 768 bytes and WebSocket extra-header/handshake buffers to handle long platform-scoped relay tokens.
 - CM55 XiaoZhi flow was realigned to the official `Edgi_Talk_M55_XiaoZhi` sequence: local wake word -> WebSocket connection -> `hello` -> `listen start` -> streaming binary audio frames -> platform `listen stop`/reply.
 - The project-specific platform is now treated as the WebSocket/API endpoint behind the official XiaoZhi client flow, not a separate firmware-side LLM/API-key implementation.
 - Added M33-to-CM55 voice configuration IPC: `MSG_TYPE_VOICE_CONFIG` with URL, token, and reconnect keys.
@@ -11,11 +14,16 @@ Completed:
 - Increased the M55 WebSocket client path/request buffers so the long rehab-arm platform endpoint is not truncated.
 
 Validated:
-- M55 `_m55_ref_repo` builds successfully with `scons -j4`; output `rtthread.hex` was burned to CM55 and OpenOCD reported `wrote 843776 bytes`.
+- M55 `_m55_ref_repo` builds successfully with `scons -j4`; synchronized files also build successfully in the actual RT-Thread Studio `wifi` working tree.
+- Burned the current `wifi/rtthread.hex` to CM55; OpenOCD reported `wrote 847872 bytes`.
 - M33 `yiliao_m33` builds successfully with `scons -j4`; the latest `build/rtthread.hex` was fully relocated from `0x0834..0x083C` to `0x6034..0x603C`.
-- M33 burn used the fully relocated `Debug/rtthread_relocated.hex`; OpenOCD reported `wrote 569344 bytes`.
+- M33 burn used the fully relocated `build/rtthread.hex`; OpenOCD reported `wrote 569344 bytes`.
 - COM26 after burning both cores:
   - M33 shell is alive.
+  - `help` lists `m55qa_xz_token_begin`, `m55qa_xz_token_part`, `m55qa_xz_token_commit`, and `m55qa_xz_token_clear`.
+  - `m55qa_xz_token_begin` and `m55qa_xz_token_part abc123` return CM55 ACKs with `cmd=1004 result=0` and `cmd=1005 result=0`, proving chunked token IPC reaches CM55.
+  - `m55qa_xz_token_commit` returns `cmd=1006 result=-255` with a dummy token because the subsequent WebSocket reconnect fails as expected, proving commit triggers the CM55 reconnect path.
+  - `m55qa_xz_token_clear` reaches CM55 as `cmd=1007`; the temporary dummy token was cleared after validation.
   - `m55qa_wake_on` returns `voice_ack ... cmd=3 result=0`.
   - `m55qa_status` shows `ipc_ready=1`, `flags=0x3`, increasing `frames/windows`, and `wake_stage=201`.
   - `help` lists `m55qa_xz_url`, `m55qa_xz_token`, and `m55qa_xz_reconnect`.

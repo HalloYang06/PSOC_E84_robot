@@ -1,5 +1,58 @@
 # Troubleshooting And Lessons
 
+## 2026-06-10 - Long XiaoZhi Tokens Exceed FinSH Command Length
+
+Symptom:
+- Platform relay tokens can be around 410 characters, while the RT-Thread FinSH command line is only about 80 characters.
+- A single `m55qa_xz_token <token>` paste is truncated before it reaches CM55, so WebSocket auth cannot be configured reliably.
+
+Root cause:
+- The shell line limit is smaller than real platform-scoped relay tokens.
+- The old CM55 token buffer and WebSocket header/request buffers were sized for short test tokens, not production relay credentials.
+
+Fix:
+- Keep `m55qa_xz_token <short_token>` for short debug tokens.
+- Use chunked M33 shell commands for real relay tokens:
+  - `m55qa_xz_token_begin`
+  - repeated `m55qa_xz_token_part <chunk>` with chunks around 48 to 60 characters
+  - `m55qa_xz_token_commit`
+  - `m55qa_xz_token_clear` when clearing stale credentials
+- CM55 now stages token chunks, commits atomically, and then reconnects XiaoZhi WebSocket.
+- CM55 token storage is 768 bytes; WebSocket extra headers are 1024 bytes; the HTTP Upgrade request is 2048 bytes with truncation checks.
+
+Validation:
+- COM26 showed `m55qa_xz_token_begin` -> `voice_ack ... cmd=1004 result=0`.
+- COM26 showed `m55qa_xz_token_part abc123` -> `voice_ack ... cmd=1005 result=0`.
+- COM26 showed `m55qa_xz_token_commit` -> `voice_ack ... cmd=1006 result=-255` with a dummy token, proving the token reached CM55 and commit triggered reconnect.
+- The dummy token was cleared with `m55qa_xz_token_clear`.
+
+Reusable trick:
+- Never paste long platform credentials directly into a small embedded shell command. Add a chunked config protocol and keep secrets out of source control.
+
+Status:
+- Fixed in M33/M55 firmware. End-to-end platform auth still depends on a valid platform token and XiaoZhi-compatible server endpoint.
+
+## 2026-06-10 - OpenOCD Tcl Paths Need Forward Slashes On Windows
+
+Symptom:
+- `flash banks` did not register the external SMIF flash bank, and OpenOCD printed a corrupted path such as `D:RT-ThreadStudio...OpenOCD-Infineon...PSE84_SMIF.FLM`.
+
+Root cause:
+- Passing Windows backslash paths through OpenOCD `-c "set QSPI_FLASHLOADER ..."` lets Tcl treat backslashes as escapes.
+- The SMIF flash-loader path becomes invalid, so `cat1d.cm33.smif1_ns` at `0x60000000` is not created.
+
+Fix:
+- Use forward slashes in OpenOCD command strings, for example:
+  `D:/RT-ThreadStudio/repo/Extract/Debugger_Support_Packages/Infineon/OpenOCD-Infineon/2.0.0/flm/cypress/cat1d/PSE84_SMIF.FLM`.
+- Keep the generated QSPI config directory in the OpenOCD search path.
+
+Validation:
+- `flash banks` showed `cat1d.cm33.smif1_ns (cmsis_flash) at 0x60000000`.
+- Subsequent burns wrote `847872 bytes` for CM55 and `569344 bytes` for M33.
+
+Reusable trick:
+- For OpenOCD on Windows, prefer `/` paths inside all Tcl `-c` snippets even when PowerShell accepts `\` paths.
+
 ## 2026-06-10 - XiaoZhi Flow Should Follow The Official Streaming State Machine
 
 Symptom:
