@@ -1,5 +1,28 @@
 # Troubleshooting And Lessons
 
+## 2026-06-10 - XiaoZhi Endpoint Moved Under The Existing Command Center
+
+Symptom:
+- Device firmware still pointed at the older `/voice/xiaozhi/ws` path while the cloud platform implemented the production XiaoZhi-compatible WebSocket under the existing medical rehab-arm command center.
+
+Root cause:
+- The platform contract was finalized after the first CM55 XiaoZhi bridge was added.
+
+Fix:
+- CM55 default WebSocket URL is now:
+  `ws://106.55.62.122:8011/api/rehab-arm/v1/projects/fd6a55ed-a63c-44b3-b123-96fb3c154966/devices/nanopi-m5/xiaozhi/ws?robot_id=rehab-arm-alpha`
+- CM55 accepts server `listen stop` as a local stop signal without echoing another stop back to the platform.
+
+Validation:
+- M55 reference tree and actual `wifi` working tree both build with `scons -j4`.
+- Platform side reports 101 handshake, hello/listen/audio/reply, scoped-token auth, and safety filtering have been validated.
+
+Reusable trick:
+- Keep the default firmware endpoint aligned with the command-center contract, and reserve `m55qa_xz_url` for temporary diagnostics.
+
+Status:
+- Device build is aligned. Physical spoken end-to-end validation still requires loading a valid scoped relay token into CM55.
+
 ## 2026-06-10 - Long XiaoZhi Tokens Exceed FinSH Command Length
 
 Symptom:

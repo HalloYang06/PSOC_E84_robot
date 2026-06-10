@@ -6,6 +6,9 @@ Prerequisites:
 - Infineon board powered and connected by KitProg/OpenOCD.
 - M33 visible shell on `COM26` at `115200 8N1`.
 - M33 and CM55 firmware burned from the matching `M33` and `M55` branches.
+- Cloud command center XiaoZhi WebSocket endpoint:
+  `ws://106.55.62.122:8011/api/rehab-arm/v1/projects/fd6a55ed-a63c-44b3-b123-96fb3c154966/devices/nanopi-m5/xiaozhi/ws?robot_id=rehab-arm-alpha`
+- A platform-generated scoped relay token for this `project_id/device_id`; do not place vendor LLM API keys on the device.
 
 Build:
 ```powershell
@@ -54,10 +57,12 @@ Expected output:
 ```
 
 Notes:
+- The firmware default endpoint already targets `/xiaozhi/ws?robot_id=rehab-arm-alpha`; use `m55qa_xz_url <ws://...>` only when overriding it for diagnostics.
 - `cmd=1004` begins a chunked XiaoZhi platform-token update on CM55.
 - `cmd=1005` appends one token chunk; keep each chunk short enough for the embedded shell line, usually 48 to 60 characters.
 - `cmd=1006` commits the staged token and reconnects the XiaoZhi WebSocket. A negative result can still mean the token was committed but the platform endpoint/auth/network is not ready.
 - `m55qa_xz_token_clear` clears the CM55 platform token and should be used after dummy-token tests.
+- Platform `daily_chat`, `none`, and `vla_command` replies are not motion permission. A `vla_command` is only the VLA language input and must still pass dry-run, operator review, and M33 safety gating before any motion.
 - `cmd=3` is start wake listening.
 - `cmd=1` is start capture.
 - `cmd=4` is stop wake listening.
