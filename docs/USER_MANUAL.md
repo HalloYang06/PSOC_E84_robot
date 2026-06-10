@@ -75,6 +75,21 @@ m55qa_wifi_scan
 m55qa_status
 ```
 
+CM55 local scan-list fallback when the shell is on CM55:
+```text
+m55_wifi_scan
+# wait 3-5 seconds
+m55_wifi_aps
+```
+
+Expected `m55_wifi_aps` output:
+```text
+[wifi_config] cached_ap_count=<n>
+[wifi_config] ap[0] ssid="<ssid>" rssi=-45 security=WPA2 channel=6 bssid=xx:xx:xx:xx:xx:xx
+```
+
+Use this when the LVGL screen or touch panel is not yet trusted. If `m55_wifi_aps` lists nearby APs but LVGL does not, debug the LVGL list/touch layer. If both show no APs, debug WHD/WLAN scan, antenna, power, or RF environment first.
+
 Useful interpretation:
 - `whd_stage=5` with a negative result usually means the SDIO/WHD probe path timed out; check reset timing, WLAN power, and WHD resource partitions before changing XiaoZhi logic.
 - `storage` is the result of the last Wi-Fi config file operation. `0` means saved/loaded successfully; negative values mean the `/flash` filesystem or config file was not available.

@@ -3,6 +3,20 @@
 ## 2026-06-10
 
 Completed:
+- Added CM55 shell-side Wi-Fi scan observability for cases where LVGL touch/display is not ready on site. `m55_wifi_scan` now starts the asynchronous scan and tells the operator to wait, while `m55_wifi_aps` prints the cached AP list with SSID, RSSI, security, channel, and BSSID.
+- Synchronized the updated M55 `main.c` into the actual RT-Thread Studio `wifi` project.
+
+Validated:
+- Built the M55 Git reference repo `_m55_ref_repo` with `scons -j4`: passed, produced `rtthread.hex`, size `text=1173600 data=80860 bss=4534696`.
+- Built the actual M55 RT-Thread Studio `wifi` project with `scons -j4`: passed, produced `rtthread.hex`, size `text=1173600 data=80860 bss=4534700`.
+
+Failed or unverified:
+- The new `m55_wifi_aps` output is build-validated only; live AP content still needs a flashed board with Wi-Fi powered.
+
+Next step:
+- On site, if LVGL scan UI is unclear, use CM55 shell `m55_wifi_scan`, wait 3-5 seconds, then run `m55_wifi_aps` to confirm the scan service is seeing APs.
+
+Completed:
 - CM55 LVGL Wi-Fi provisioning now supports direct nearby-network selection on the touchscreen. The panel scans APs, shows a selectable SSID/RSSI/security/channel list, fills the SSID field when a network is tapped, accepts the password on the same page, then saves/connects through the shared Wi-Fi config service.
 - CM55 Wi-Fi scan now uses the RT-Thread WLAN scan-report event callback path and keeps a bounded AP cache (`WIFI_CONFIG_SCAN_MAX_APS=12`) for LVGL/App reuse.
 - Synchronized the updated Wi-Fi service and LVGL panel from the M55 Git reference repo into the actual RT-Thread Studio `wifi` project.
