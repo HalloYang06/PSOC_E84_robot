@@ -3,6 +3,38 @@
 ## 2026-06-10
 
 Completed:
+- CM55 XiaoZhi flow was realigned to the official `Edgi_Talk_M55_XiaoZhi` sequence: local wake word -> WebSocket connection -> `hello` -> `listen start` -> streaming binary audio frames -> platform `listen stop`/reply.
+- The project-specific platform is now treated as the WebSocket/API endpoint behind the official XiaoZhi client flow, not a separate firmware-side LLM/API-key implementation.
+- Added M33-to-CM55 voice configuration IPC: `MSG_TYPE_VOICE_CONFIG` with URL, token, and reconnect keys.
+- Added M33 shell bridge commands `m55qa_xz_url`, `m55qa_xz_token`, and `m55qa_xz_reconnect` so the visible M33 shell can configure the CM55 XiaoZhi relay without stealing the CM55 console.
+- Fixed the M33 SCons include path handling so `vendor_btstack` headers resolve under the current RT-Thread Studio Python2/SCons environment.
+- Increased the M55 WebSocket client path/request buffers so the long rehab-arm platform endpoint is not truncated.
+
+Validated:
+- M55 `_m55_ref_repo` builds successfully with `scons -j4`; output `rtthread.hex` was burned to CM55 and OpenOCD reported `wrote 843776 bytes`.
+- M33 `yiliao_m33` builds successfully with `scons -j4`; the latest `build/rtthread.hex` was fully relocated from `0x0834..0x083C` to `0x6034..0x603C`.
+- M33 burn used the fully relocated `Debug/rtthread_relocated.hex`; OpenOCD reported `wrote 569344 bytes`.
+- COM26 after burning both cores:
+  - M33 shell is alive.
+  - `m55qa_wake_on` returns `voice_ack ... cmd=3 result=0`.
+  - `m55qa_status` shows `ipc_ready=1`, `flags=0x3`, increasing `frames/windows`, and `wake_stage=201`.
+  - `help` lists `m55qa_xz_url`, `m55qa_xz_token`, and `m55qa_xz_reconnect`.
+  - `m55qa_xz_reconnect` reaches CM55 and returns `voice_ack ... cmd=1003 result=-255`, proving the config command path works while the external platform connection is not yet accepted/reachable.
+
+Failed or unverified:
+- End-to-end XiaoZhi chat is not complete until the platform implements/accepts the official XiaoZhi WebSocket handshake and messages for this device endpoint.
+- Current CM55 stream sends verified 16 kHz mono PCM frames. The official sample declares Opus in `hello` and uses an Opus encoder path; migrating Opus should be a separate step after the platform-side PCM path is proven or platform requires Opus.
+- Live wake-word trigger after the latest official-sequence refactor still needs another spoken test; the wake backend itself is ready at `wake_stage=201`.
+
+Decision:
+- Keep M55 firmware aligned with official XiaoZhi client state flow. The platform adapts its endpoint, auth, ASR/LLM/classification, and VLA-language routing around that flow.
+- M55 does not hold vendor LLM API keys. It only uses a platform-scoped relay token/configuration.
+- Voice remains HTTP/WebSocket, not CAN. M33 remains safety authority and only receives high-level classified text/status, never direct LLM motor commands.
+
+Next step:
+- Platform side should expose a XiaoZhi-compatible WebSocket endpoint for the rehab-arm device scope, return/track a session, accept 16 kHz mono PCM binary frames for now, perform ASR/chat-vs-command classification, return operator-facing reply/TTS or `listen stop`, and pass command text to the server-side VLA language context.
+
+Completed:
 - CM55 wake-word mainline switched away from the blocked DEEPCRAFT/U55 path to the official XiaoZhi Edge Impulse TFLite model backend.
 - Added `applications/xiaozhi_edge_impulse_wake_backend.cpp` in the M55 reference tree and wired it through `xiaozhi_wake_engine`.
 - Fixed the local CM55 mic wake path so 20 ms PCM frames are continuously fed into the wake backend; the backend owns the 1 second rolling inference window.

@@ -2,6 +2,7 @@ from building import *
 import os
 
 cwd = GetCurrentDir()
+root = os.path.abspath(os.path.join(cwd, '..', '..'))
 src = Glob('*.c') + Glob('*.cpp')
 excluded = {
     'voice_manager.c',
@@ -15,15 +16,15 @@ excluded = {
 src = [item for item in src if os.path.basename(str(item)) not in excluded]
 CPPPATH = [
     cwd,
-    Dir('#/applications/common'),
-    Dir('#/vendor_btstack/btstack/wiced_include'),
-    Dir('#/vendor_btstack/btstack_integration/COMPONENT_HCI-UART/include'),
-    Dir('#/vendor_btstack/btstack_integration/COMPONENT_HCI-UART/common'),
-    Dir('#/vendor_btstack/abstraction_rtos/include'),
+    os.path.join(root, 'applications', 'common'),
+    os.path.join(root, 'vendor_btstack', 'btstack', 'wiced_include'),
+    os.path.join(root, 'vendor_btstack', 'btstack_integration', 'COMPONENT_HCI-UART', 'include'),
+    os.path.join(root, 'vendor_btstack', 'btstack_integration', 'COMPONENT_HCI-UART', 'common'),
+    os.path.join(root, 'vendor_btstack', 'abstraction_rtos', 'include'),
 ]
 
 LIBPATH = [
-    Dir('#/vendor_btstack/lib/COMPONENT_CM33/COMPONENT_SOFTFP/TOOLCHAIN_GCC_ARM'),
+    os.path.join(root, 'vendor_btstack', 'lib', 'COMPONENT_CM33', 'COMPONENT_SOFTFP', 'TOOLCHAIN_GCC_ARM'),
 ]
 LIBS = ['libbtstack.a']
 

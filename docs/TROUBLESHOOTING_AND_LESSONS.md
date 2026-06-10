@@ -1,5 +1,44 @@
 # Troubleshooting And Lessons
 
+## 2026-06-10 - XiaoZhi Flow Should Follow The Official Streaming State Machine
+
+Symptom:
+- A naive wake implementation can detect the wake word and then upload only the wake frame or a fixed-length PCM clip, but this does not match the official XiaoZhi behavior and is brittle for real conversation.
+
+Root cause:
+- The official `Edgi_Talk_M55_XiaoZhi` flow is stateful and streaming: wake callback, reconnect if needed, `hello`, `listen start`, microphone binary audio stream, server-controlled `listen stop`/reply/TTS, then return to wake listening.
+
+Fix:
+- Keep the firmware client aligned to the official state machine.
+- Adapt only endpoint URL, auth headers, platform device scope, and server response parsing for the rehab-arm command center.
+- Do not store LLM vendor API keys in firmware; CM55 uses only platform-scoped relay configuration.
+
+Validation:
+- M55 builds and burns with the official-sequence client path.
+- M33 shell can bridge `m55qa_xz_reconnect` to CM55; CM55 returns an ACK, proving the configuration command path works.
+
+Status:
+- Firmware-side foundation is in place. Platform WebSocket compatibility and live chat response remain to be validated.
+
+## 2026-06-10 - Relocate Every M33 Intel HEX Segment
+
+Symptom:
+- OpenOCD wrote only `65536 bytes` from a freshly relocated M33 hex and printed `no flash bank found for address 0x08350000`.
+
+Root cause:
+- Only the first Intel HEX extended linear address record was changed from `0x0834` to `0x6034`.
+- Later records such as `0x0835`, `0x0836`, ... remained unrelocated, so OpenOCD skipped those runtime-alias addresses.
+
+Fix:
+- Relocate every type-04 extended linear address in the M33 image from `0x0834..0x083C` to `0x6034..0x603C`, recomputing the Intel HEX checksum for each record.
+
+Validation:
+- The corrected relocated file begins with `:02000004603466` and contains subsequent records `6035`, `6036`, etc.
+- OpenOCD then reported `wrote 569344 bytes`, confirming the full M33 image was programmed.
+
+Reusable trick:
+- For PSoC Edge E84 external flash images, trust the OpenOCD `wrote N bytes` count more than command exit code. A suspiciously small write means relocation or flash-bank mapping is still wrong.
+
 ## 2026-06-10 - CM55 DEEPCRAFT Wake Blocked By EthosU Stub
 
 Symptom:

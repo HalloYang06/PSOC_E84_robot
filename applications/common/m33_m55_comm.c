@@ -178,7 +178,8 @@ rt_err_t m33_m55_comm_publish(const m33_m55_message_t *msg)
          (local.payload.sensor_stream.source == MODEL_INPUT_SRC_AUDIO_PCM)) ||
         (local.type == MSG_TYPE_ASR_TEXT) ||
         (local.type == MSG_TYPE_TTS_REQUEST) ||
-        (local.type == MSG_TYPE_VOICE_CONTROL))
+        (local.type == MSG_TYPE_VOICE_CONTROL) ||
+        (local.type == MSG_TYPE_VOICE_CONFIG))
     {
         timeout_ms = 5000;
     }
