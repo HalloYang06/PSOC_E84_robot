@@ -12,18 +12,28 @@ Safety and credential boundary:
 - Do not store vendor LLM API keys on M33, CM55, NanoPi, or in Git.
 
 Touchscreen path after flashing CM55:
-1. Power the Infineon board and wait for the LVGL screen.
-2. Open the `Rehab Arm WiFi Setup` panel if it is not already visible:
+1. Power the Infineon board and wait for the LVGL screen. New M55 builds should start the LVGL thread automatically.
+2. Confirm the boot log contains:
+   ```text
+   [m55] starting LVGL thread
+   [m55] LVGL thread init ret=0
+   ```
+3. If an older image is still flashed or the screen stays blank, try starting the GUI thread manually:
+   ```text
+   thread_init
+   ```
+4. If the LVGL thread is running but the Wi-Fi panel is not visible, open it manually:
    ```text
    rehab_wifi_panel_cmd
    ```
-3. Press `Scan`.
-4. Wait up to about five seconds. Nearby networks should appear in the list with SSID, RSSI, security mode, and channel.
-5. Tap the target Wi-Fi network. The SSID field is filled automatically.
-6. Tap the password field and enter the Wi-Fi password on the LVGL keyboard.
-7. Keep `Auto connect` checked for product-like boot behavior.
-8. Press `Connect` to save and connect immediately, or press `Save` if you only want to persist credentials.
-9. Press `Diag` after a few seconds and verify the screen shows a netdev, WLAN ready/connected state, and `saved:1 auto:1 storage:0`.
+5. If `thread_init` succeeds but the display is still blank, run `lcd_test` to check the LCD driver/hardware separately.
+6. Press `Scan`.
+7. Wait up to about five seconds. Nearby networks should appear in the list with SSID, RSSI, security mode, and channel.
+8. Tap the target Wi-Fi network. The SSID field is filled automatically.
+9. Tap the password field and enter the Wi-Fi password on the LVGL keyboard.
+10. Keep `Auto connect` checked for product-like boot behavior.
+11. Press `Connect` to save and connect immediately, or press `Save` if you only want to persist credentials.
+12. Press `Diag` after a few seconds and verify the screen shows a netdev, WLAN ready/connected state, and `saved:1 auto:1 storage:0`.
 
 Touchscreen notes:
 - If the target network is hidden or not listed, manually type the SSID field and continue from the password step.

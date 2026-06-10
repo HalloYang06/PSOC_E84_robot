@@ -1,5 +1,29 @@
 # Troubleshooting And Lessons
 
+## 2026-06-10 - LVGL Code In Image Does Not Mean The GUI Thread Started
+
+Symptom:
+- CM55 firmware built successfully with `BSP_USING_LVGL`, `rehab_wifi_panel_cmd` existed in the symbol table, but no LVGL screen appeared on boot.
+
+Root cause:
+- The RT-Thread LVGL port had `INIT_ENV_EXPORT(lvgl_thread_init)` commented out.
+- `lvgl_thread_init()` was only exported as the shell command `thread_init`, so the GUI thread did not start automatically.
+
+Fix:
+- CM55 `main()` now calls `lvgl_thread_init()` during boot when `BSP_USING_LVGL` is enabled.
+- `lvgl_thread_init()` now has a duplicate-start guard so manually typing `thread_init` remains safe.
+- The LVGL RT-Thread port now includes `<lvgl.h>` directly to avoid implicit LVGL API declarations.
+
+Validation:
+- M55 reference repo and actual RT-Thread Studio `wifi` project both build with `scons -j4`.
+
+Reusable trick:
+- If LVGL is compiled in but the screen is blank, first type `thread_init` in the shell. If the screen appears, the issue is GUI-thread startup, not the Wi-Fi panel code.
+- If `thread_init` starts but the screen remains blank, run `lcd_test` next to separate display hardware/driver issues from LVGL widget issues.
+
+Status:
+- Built. Physical verification requires flashing the new M55 image and watching for `[m55] LVGL thread init ret=0`.
+
 ## 2026-06-10 - LVGL Wi-Fi Scan Should Use WLAN Scan Report Events
 
 Symptom:

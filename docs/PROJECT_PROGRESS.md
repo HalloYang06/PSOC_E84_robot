@@ -3,6 +3,24 @@
 ## 2026-06-10
 
 Completed:
+- Fixed the CM55 LVGL screen not appearing after boot. The LVGL RT-Thread port existed in the image, but `lvgl_thread_init()` was only exported as the `thread_init` shell command and was not started automatically.
+- CM55 `main()` now starts the LVGL thread at boot when `BSP_USING_LVGL` is enabled.
+- Added a duplicate-start guard inside `lvgl_thread_init()` so manual `thread_init` remains safe as a fallback.
+- Added the missing `<lvgl.h>` include in the LVGL RT-Thread port so LVGL APIs are declared explicitly.
+- Synchronized the fixed LVGL startup code into the actual RT-Thread Studio `wifi` project.
+
+Validated:
+- Built the M55 Git reference repo `_m55_ref_repo` with `scons -j4`: passed, produced `rtthread.hex`, size `text=1173760 data=80860 bss=4534696`.
+- Built the actual M55 RT-Thread Studio `wifi` project with `scons -j4`: passed, produced `rtthread.hex`, size `text=1173760 data=80860 bss=4534700`.
+
+Failed or unverified:
+- Physical screen output after flashing the new image is still unverified.
+- If the old image is still flashed, the temporary field check is to type `thread_init` in the shell; if the LVGL screen appears, the missing auto-start was the root cause.
+
+Next step:
+- Flash the rebuilt M55 image from the actual `wifi` project, confirm boot logs show `[m55] starting LVGL thread` and `[m55] LVGL thread init ret=0`, then verify the Wi-Fi panel appears without typing `thread_init`.
+
+Completed:
 - Added CM55 shell-side Wi-Fi scan observability for cases where LVGL touch/display is not ready on site. `m55_wifi_scan` now starts the asynchronous scan and tells the operator to wait, while `m55_wifi_aps` prints the cached AP list with SSID, RSSI, security, channel, and BSSID.
 - Synchronized the updated M55 `main.c` into the actual RT-Thread Studio `wifi` project.
 
