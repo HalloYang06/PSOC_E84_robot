@@ -50,11 +50,15 @@ static int whd_bsp_init(void)
     /* configure the wl_reg_on pin */
     rt_pin_mode(pin_number, PIN_MODE_OUTPUT);
 
-    /* reset modules */
+    /*
+     * Keep the WLAN module reset timing conservative. Short reset pulses can
+     * leave the SDIO function unenumerated after debugger reset or rapid
+     * firmware reflash even though the same board worked after a cold boot.
+     */
     rt_pin_write(pin_number, PIN_LOW);
-    rt_thread_mdelay(2);
+    rt_thread_mdelay(20);
     rt_pin_write(pin_number, PIN_HIGH);
-    rt_thread_mdelay(10); /* wait for the module to be ready */
+    rt_thread_mdelay(150); /* wait for WL_REG_ON power-up and SDIO ready */
 
     return RT_EOK;
 }

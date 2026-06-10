@@ -232,10 +232,10 @@
 #define RT_LWIP_PBUF_NUM 64
 #define RT_LWIP_RAW_PCB_NUM 4
 #define RT_LWIP_UDP_PCB_NUM 24
-#define RT_LWIP_TCP_PCB_NUM 24
-#define RT_LWIP_TCP_SEG_NUM 512
-#define RT_LWIP_TCP_SND_BUF 65535
-#define RT_LWIP_TCP_WND 65535
+#define RT_LWIP_TCP_PCB_NUM 8
+#define RT_LWIP_TCP_SEG_NUM 64
+#define RT_LWIP_TCP_SND_BUF 8192
+#define RT_LWIP_TCP_WND 8192
 #define RT_LWIP_TCPTHREAD_PRIORITY 10
 #define RT_LWIP_TCPTHREAD_MBOX_SIZE 16
 #define RT_LWIP_TCPTHREAD_STACKSIZE 2048
@@ -321,6 +321,11 @@
 
 /* LVGL: powerful and easy-to-use embedded GUI library */
 
+#define PKG_USING_LVGL
+#define BSP_USING_LVGL
+#define PKG_LVGL_THREAD_STACK_SIZE 24576
+#define PKG_LVGL_THREAD_PRIO 20
+#define PKG_LVGL_DISP_REFR_PERIOD 33
 /* end of LVGL: powerful and easy-to-use embedded GUI library */
 
 /* u8g2: a monochrome graphic library */
@@ -379,6 +384,8 @@
 
 /* touch drivers */
 
+#define RT_USING_TOUCH
+#define RT_TOUCH_PIN_IRQ
 /* end of touch drivers */
 /* end of peripheral libraries and drivers */
 
@@ -489,6 +496,7 @@
 
 /* Board extended module Drivers */
 
+#define BSP_USING_LCD
 #define RT_USING_WIFI_HOST_DRIVER
 
 /* WHD Configuration */

@@ -5,13 +5,20 @@
 #include "m33_m55_comm.h"
 #include "model_result_publisher.h"
 #include "websocket_client.h"
+#include "wifi_config_service.h"
 #include "xiaozhi_voice_relay.h"
 #include "xiaozhi_wake_engine.h"
 
 #include <rtdevice.h>
+#include <netdev_ipaddr.h>
+#include <netdev.h>
+#include <wlan_mgnt.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
+#include <unistd.h>
 
 #define VOICE_PCM_BUFFER_SIZE        (320000U)
 #define VOICE_JSON_BUFFER_SIZE       (768U)
@@ -21,6 +28,20 @@
 #define WAKE_GATE_MIN_AVG_ABS        (750U)
 #define WAKE_GATE_MIN_ACTIVE_FRAMES  (28U)
 #define VOICE_STATUS_PUBLISH_EVERY_FRAMES 20U
+#define VOICE_SERVICE_THREAD_STACK   16384
+#define VOICE_DETECT_THREAD_STACK    16384
+
+int sal_socket(int domain, int type, int protocol);
+int sal_closesocket(int socket);
+int lwip_socket(int domain, int type, int protocol);
+int lwip_connect(int s, const struct sockaddr *name, socklen_t namelen);
+int lwip_close(int s);
+void whd_wlan_get_diag(int *stage, int *result, rt_uint32_t *flags);
+
+#define XIAOZHI_CLOUD_PROBE_IP        "106.55.62.122"
+#define XIAOZHI_CLOUD_PROBE_PORT      8011
+#define VOICE_WIFI_SSID_MAX_LEN       32
+#define VOICE_WIFI_PASSWORD_MAX_LEN   64
 
 typedef struct
 {
@@ -59,6 +80,30 @@ typedef struct
     rt_uint32_t latest_total_frames;
     rt_int32_t last_error;
     rt_uint32_t xiaozhi_session_id;
+    rt_int32_t net_probe_posix_tcp;
+    rt_int32_t net_probe_posix_errno;
+    rt_int32_t net_probe_sal_tcp;
+    rt_int32_t net_probe_sal_errno;
+    rt_int32_t net_probe_lwip_tcp;
+    rt_int32_t net_probe_lwip_errno;
+    rt_uint32_t netdev_flags;
+    rt_uint32_t netdev_ip;
+    rt_uint32_t netdev_gw;
+    rt_uint32_t netdev_mask;
+    rt_uint32_t netdev_dns0;
+    rt_int32_t cloud_tcp_result;
+    rt_int32_t cloud_tcp_errno;
+    rt_uint32_t wlan_connected;
+    rt_uint32_t wlan_ready;
+    rt_int32_t wlan_rssi;
+    rt_int32_t wifi_diag_result;
+    rt_int32_t wifi_scan_count;
+    rt_int32_t whd_stage;
+    rt_int32_t whd_result;
+    rt_uint32_t whd_flags;
+    char netdev_name[RT_NAME_MAX];
+    char wifi_ssid[VOICE_WIFI_SSID_MAX_LEN + 1];
+    char wifi_password[VOICE_WIFI_PASSWORD_MAX_LEN + 1];
 } voice_service_t;
 
 typedef struct
@@ -73,9 +118,49 @@ typedef struct
 
 static voice_service_t g_service;
 
+static void voice_service_refresh_netdev_snapshot_locked(void)
+{
+    struct netdev *netdev = netdev_default;
+
+    g_service.wlan_connected = rt_wlan_is_connected() ? 1U : 0U;
+    g_service.wlan_ready = rt_wlan_is_ready() ? 1U : 0U;
+    g_service.wlan_rssi = rt_wlan_get_rssi();
+
+    if (netdev == RT_NULL)
+    {
+        netdev = netdev_get_first_by_flags(NETDEV_FLAG_UP);
+    }
+    if (netdev == RT_NULL)
+    {
+        netdev = netdev_get_first_by_flags(NETDEV_FLAG_LINK_UP);
+    }
+
+    if (netdev == RT_NULL)
+    {
+        g_service.netdev_flags = 0;
+        g_service.netdev_ip = 0;
+        g_service.netdev_gw = 0;
+        g_service.netdev_mask = 0;
+        g_service.netdev_dns0 = 0;
+        g_service.netdev_name[0] = '\0';
+        return;
+    }
+
+    rt_memset(g_service.netdev_name, 0, sizeof(g_service.netdev_name));
+    rt_strncpy(g_service.netdev_name, netdev->name, sizeof(g_service.netdev_name) - 1);
+    g_service.netdev_flags = netdev->flags;
+    g_service.netdev_ip = ip4_addr_get_u32(&netdev->ip_addr);
+    g_service.netdev_gw = ip4_addr_get_u32(&netdev->gw);
+    g_service.netdev_mask = ip4_addr_get_u32(&netdev->netmask);
+    g_service.netdev_dns0 = ip4_addr_get_u32(&netdev->dns_servers[0]);
+}
+
 static rt_err_t voice_service_publish_status(void)
 {
     m33_m55_message_t msg;
+    rt_size_t heap_total = 0;
+    rt_size_t heap_used = 0;
+    rt_size_t heap_max_used = 0;
 
     if (!g_service.initialized)
     {
@@ -113,6 +198,38 @@ static rt_err_t voice_service_publish_status(void)
             (xiaozhi_wake_engine_last_feature_source() * 1000000 +
              xiaozhi_wake_engine_last_noise_permille() * 1000 +
              xiaozhi_wake_engine_last_confidence_permille()));
+    msg.payload.voice_status.xiaozhi_ws_stage = websocket_client_last_stage();
+    msg.payload.voice_status.xiaozhi_ws_errno = websocket_client_last_errno();
+    rt_memory_info(&heap_total, &heap_used, &heap_max_used);
+    voice_service_refresh_netdev_snapshot_locked();
+    msg.payload.voice_status.heap_total = (rt_uint32_t)heap_total;
+    msg.payload.voice_status.heap_used = (rt_uint32_t)heap_used;
+    msg.payload.voice_status.heap_max_used = (rt_uint32_t)heap_max_used;
+    msg.payload.voice_status.net_probe_posix_tcp = g_service.net_probe_posix_tcp;
+    msg.payload.voice_status.net_probe_posix_errno = g_service.net_probe_posix_errno;
+    msg.payload.voice_status.net_probe_sal_tcp = g_service.net_probe_sal_tcp;
+    msg.payload.voice_status.net_probe_sal_errno = g_service.net_probe_sal_errno;
+    msg.payload.voice_status.net_probe_lwip_tcp = g_service.net_probe_lwip_tcp;
+    msg.payload.voice_status.net_probe_lwip_errno = g_service.net_probe_lwip_errno;
+    msg.payload.voice_status.netdev_flags = g_service.netdev_flags;
+    msg.payload.voice_status.netdev_ip = g_service.netdev_ip;
+    msg.payload.voice_status.netdev_gw = g_service.netdev_gw;
+    msg.payload.voice_status.netdev_mask = g_service.netdev_mask;
+    msg.payload.voice_status.netdev_dns0 = g_service.netdev_dns0;
+    msg.payload.voice_status.cloud_tcp_result = g_service.cloud_tcp_result;
+    msg.payload.voice_status.cloud_tcp_errno = g_service.cloud_tcp_errno;
+    msg.payload.voice_status.wlan_connected = g_service.wlan_connected;
+    msg.payload.voice_status.wlan_ready = g_service.wlan_ready;
+    msg.payload.voice_status.wlan_rssi = g_service.wlan_rssi;
+    msg.payload.voice_status.wifi_diag_result = g_service.wifi_diag_result;
+    msg.payload.voice_status.wifi_scan_count = g_service.wifi_scan_count;
+    msg.payload.voice_status.whd_stage = g_service.whd_stage;
+    msg.payload.voice_status.whd_result = g_service.whd_result;
+    msg.payload.voice_status.whd_flags = g_service.whd_flags;
+    rt_strncpy(msg.payload.voice_status.netdev_name,
+               g_service.netdev_name,
+               sizeof(msg.payload.voice_status.netdev_name) - 1);
+    wifi_config_fill_voice_status(&msg.payload.voice_status);
     rt_mutex_release(&g_service.lock);
 
     return m33_m55_comm_publish(&msg);
@@ -923,6 +1040,151 @@ static rt_err_t voice_service_send_control(voice_control_cmd_t cmd)
     return m33_m55_comm_publish(&msg);
 }
 
+static rt_err_t voice_service_run_net_probe(void)
+{
+    int fd;
+    struct sockaddr_in cloud_addr;
+    rt_int32_t posix_tcp;
+    rt_int32_t posix_errno;
+    rt_int32_t sal_tcp;
+    rt_int32_t sal_errno;
+    rt_int32_t lwip_tcp;
+    rt_int32_t lwip_errno;
+    rt_int32_t cloud_tcp_result = -RT_ERROR;
+    rt_int32_t cloud_tcp_errno = 0;
+
+    errno = 0;
+    fd = socket(AF_INET, SOCK_STREAM, 0);
+    posix_tcp = fd;
+    posix_errno = errno;
+    if (fd >= 0)
+    {
+        closesocket(fd);
+    }
+
+    errno = 0;
+    fd = sal_socket(AF_INET, SOCK_STREAM, 0);
+    sal_tcp = fd;
+    sal_errno = errno;
+    if (fd >= 0)
+    {
+        sal_closesocket(fd);
+    }
+
+    errno = 0;
+    fd = lwip_socket(AF_INET, SOCK_STREAM, 0);
+    lwip_tcp = fd;
+    lwip_errno = errno;
+    if (fd >= 0)
+    {
+        lwip_close(fd);
+    }
+
+    rt_memset(&cloud_addr, 0, sizeof(cloud_addr));
+    cloud_addr.sin_family = AF_INET;
+    cloud_addr.sin_port = htons(XIAOZHI_CLOUD_PROBE_PORT);
+    cloud_addr.sin_addr.s_addr = inet_addr(XIAOZHI_CLOUD_PROBE_IP);
+
+    errno = 0;
+    fd = lwip_socket(AF_INET, SOCK_STREAM, 0);
+    if (fd >= 0)
+    {
+        cloud_tcp_result = lwip_connect(fd, (struct sockaddr *)&cloud_addr, sizeof(cloud_addr));
+        cloud_tcp_errno = errno;
+        lwip_close(fd);
+    }
+    else
+    {
+        cloud_tcp_result = fd;
+        cloud_tcp_errno = errno;
+    }
+
+    rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
+    voice_service_refresh_netdev_snapshot_locked();
+    g_service.net_probe_posix_tcp = posix_tcp;
+    g_service.net_probe_posix_errno = posix_errno;
+    g_service.net_probe_sal_tcp = sal_tcp;
+    g_service.net_probe_sal_errno = sal_errno;
+    g_service.net_probe_lwip_tcp = lwip_tcp;
+    g_service.net_probe_lwip_errno = lwip_errno;
+    g_service.cloud_tcp_result = cloud_tcp_result;
+    g_service.cloud_tcp_errno = cloud_tcp_errno;
+    rt_mutex_release(&g_service.lock);
+
+    rt_kprintf("[voice_service] net_probe posix=%ld errno=%ld sal=%ld errno=%ld lwip=%ld errno=%ld cloud_tcp=%ld errno=%ld net_flags=0x%lx\n",
+               (long)posix_tcp,
+               (long)posix_errno,
+               (long)sal_tcp,
+               (long)sal_errno,
+               (long)lwip_tcp,
+               (long)lwip_errno,
+               (long)cloud_tcp_result,
+               (long)cloud_tcp_errno,
+               (unsigned long)g_service.netdev_flags);
+
+    return (cloud_tcp_result == 0) ? RT_EOK :
+           ((posix_tcp >= 0 || sal_tcp >= 0 || lwip_tcp >= 0) ? -RT_ETIMEOUT : -RT_ERROR);
+}
+
+static rt_err_t voice_service_wifi_set_ssid(const char *ssid)
+{
+    return wifi_config_set_ssid(ssid);
+}
+
+static rt_err_t voice_service_wifi_set_password(const char *password)
+{
+    return wifi_config_set_password(password);
+}
+
+static rt_err_t voice_service_wifi_connect(void)
+{
+    (void)wifi_config_save();
+    return wifi_config_connect();
+}
+
+static rt_err_t voice_service_wifi_disconnect(void)
+{
+    return wifi_config_disconnect();
+}
+
+static rt_err_t voice_service_wifi_save(void)
+{
+    return wifi_config_save();
+}
+
+static rt_err_t voice_service_wifi_forget(void)
+{
+    return wifi_config_forget();
+}
+
+static rt_err_t voice_service_wifi_auto(const char *value)
+{
+    rt_bool_t enable = RT_TRUE;
+
+    if ((value != RT_NULL) && (value[0] == '0'))
+    {
+        enable = RT_FALSE;
+    }
+
+    (void)wifi_config_set_auto_connect(enable);
+    return wifi_config_save();
+}
+
+static rt_err_t voice_service_wifi_diag(void)
+{
+    return wifi_config_diag();
+}
+
+static rt_err_t voice_service_wifi_scan(void)
+{
+    return wifi_config_scan();
+}
+
+static rt_err_t voice_service_whd_diag(void)
+{
+    return wifi_config_whd_diag();
+}
+
 static void voice_service_handle_control(const voice_control_msg_t *control)
 {
     rt_err_t ret = RT_EOK;
@@ -945,6 +1207,18 @@ static void voice_service_handle_control(const voice_control_msg_t *control)
         break;
     case VOICE_CTRL_STOP_CAPTURE:
         rt_kprintf("[voice_service] capture stop received; local mic remains under CM55 main control\n");
+        break;
+    case VOICE_CTRL_NET_PROBE:
+        ret = voice_service_run_net_probe();
+        break;
+    case VOICE_CTRL_WIFI_DIAG:
+        ret = voice_service_wifi_diag();
+        break;
+    case VOICE_CTRL_WIFI_SCAN:
+        ret = voice_service_wifi_scan();
+        break;
+    case VOICE_CTRL_WHD_DIAG:
+        ret = voice_service_whd_diag();
         break;
     default:
         rt_kprintf("[voice_service] unknown voice control cmd=%lu\n", (unsigned long)control->cmd);
@@ -1025,6 +1299,40 @@ static void voice_service_handle_config(const voice_config_msg_t *config)
         ret = voice_service_reconnect_xiaozhi();
         rt_kprintf("[voice_service] config xiaozhi reconnect ret=%d\n", ret);
         break;
+    case VOICE_CONFIG_WIFI_SSID:
+        ret = voice_service_wifi_set_ssid(config->value);
+        rt_kprintf("[voice_service] config wifi ssid ret=%d len=%lu\n",
+                   ret,
+                   (unsigned long)rt_strlen(config->value));
+        break;
+    case VOICE_CONFIG_WIFI_PASSWORD:
+        ret = voice_service_wifi_set_password(config->value);
+        rt_kprintf("[voice_service] config wifi password ret=%d len=%lu\n",
+                   ret,
+                   (unsigned long)rt_strlen(config->value));
+        break;
+    case VOICE_CONFIG_WIFI_CONNECT:
+        ret = voice_service_wifi_connect();
+        rt_kprintf("[voice_service] config wifi connect ret=%d\n", ret);
+        break;
+    case VOICE_CONFIG_WIFI_DISCONNECT:
+        ret = voice_service_wifi_disconnect();
+        rt_kprintf("[voice_service] config wifi disconnect ret=%d\n", ret);
+        break;
+    case VOICE_CONFIG_WIFI_SAVE:
+        ret = voice_service_wifi_save();
+        rt_kprintf("[voice_service] config wifi save ret=%d\n", ret);
+        break;
+    case VOICE_CONFIG_WIFI_FORGET:
+        ret = voice_service_wifi_forget();
+        rt_kprintf("[voice_service] config wifi forget ret=%d\n", ret);
+        break;
+    case VOICE_CONFIG_WIFI_AUTO_CONNECT:
+        ret = voice_service_wifi_auto(config->value);
+        rt_kprintf("[voice_service] config wifi auto ret=%d value=%s\n",
+                   ret,
+                   config->value);
+        break;
     default:
         rt_kprintf("[voice_service] unknown voice config key=%lu\n",
                    (unsigned long)config->key);
@@ -1041,6 +1349,7 @@ static void voice_service_handle_config(const voice_config_msg_t *config)
         ack.payload.voice_control.arg0 = (rt_uint32_t)ret;
         ack.payload.voice_control.arg1 = (rt_uint32_t)rt_tick_get();
         (void)m33_m55_comm_publish(&ack);
+        (void)voice_service_publish_status();
     }
 }
 
@@ -1207,7 +1516,9 @@ rt_err_t voice_service_init(const char *baidu_api_key, const char *baidu_secret_
     }
 
     websocket_client_set_callback(on_websocket_message);
-    if (websocket_client_connect() == RT_EOK)
+    ret = websocket_client_connect();
+    g_service.last_error = ret;
+    if (ret == RT_EOK)
     {
         voice_service_send_xiaozhi_hello();
     }
@@ -1243,13 +1554,23 @@ rt_err_t voice_service_start(void)
     }
 
     g_service.running = RT_TRUE;
-    g_service.thread = rt_thread_create("voice_svc", voice_service_thread_entry, RT_NULL, 32768, 8, 5);
+    g_service.thread = rt_thread_create("voice_svc",
+                                        voice_service_thread_entry,
+                                        RT_NULL,
+                                        VOICE_SERVICE_THREAD_STACK,
+                                        8,
+                                        5);
     if (!g_service.thread)
     {
         g_service.running = RT_FALSE;
         return -RT_ENOMEM;
     }
-    g_service.detect_thread = rt_thread_create("voice_det", voice_service_detect_thread_entry, RT_NULL, 32768, 20, 10);
+    g_service.detect_thread = rt_thread_create("voice_det",
+                                               voice_service_detect_thread_entry,
+                                               RT_NULL,
+                                               VOICE_DETECT_THREAD_STACK,
+                                               20,
+                                               10);
     if (!g_service.detect_thread)
     {
         g_service.running = RT_FALSE;
@@ -1285,6 +1606,7 @@ rt_err_t voice_service_reconnect_xiaozhi(void)
     }
 
     ret = websocket_client_connect();
+    g_service.last_error = ret;
     if (ret == RT_EOK)
     {
         voice_service_send_xiaozhi_hello();

@@ -11,6 +11,7 @@
 #include "model_result_publisher.h"
 #include "openclaw_integration.h"
 #include "voice_service.h"
+#include "wifi_config_service.h"
 #include "xiaozhi_voice_relay.h"
 
 #define LED_PIN_G GET_PIN(16, 6)
@@ -19,6 +20,9 @@
 #define M55_AUDIO_FRAME_BYTES 2048
 #define M55_VOICE_BOOT_DELAY_MS 5000
 #define M55_BOOT_SELF_TEST_RETRY_COUNT 10
+#ifndef M55_ENABLE_LOCAL_HTTP_SERVER
+#define M55_ENABLE_LOCAL_HTTP_SERVER 0
+#endif
 #ifdef ENABLE_STEREO_INPUT_FEED
 #define M55_AUDIO_CHANNELS 2
 #define M55_AUDIO_MONO_FRAME_BYTES (M55_AUDIO_FRAME_BYTES / 2)
@@ -460,6 +464,129 @@ static void xz_reconnect(int argc, char **argv)
 }
 MSH_CMD_EXPORT(xz_reconnect, Reconnect Xiaozhi websocket after URL or token change);
 
+static void m55_wifi_ssid(int argc, char **argv)
+{
+    rt_err_t ret;
+
+    if (argc < 2)
+    {
+        rt_kprintf("usage: m55_wifi_ssid <ssid>\n");
+        return;
+    }
+
+    ret = wifi_config_set_ssid(argv[1]);
+    rt_kprintf("m55_wifi_ssid ret=%d len=%lu\n", ret, (unsigned long)rt_strlen(argv[1]));
+}
+MSH_CMD_EXPORT(m55_wifi_ssid, Set CM55 WiFi SSID in RAM);
+
+static void m55_wifi_password(int argc, char **argv)
+{
+    rt_err_t ret;
+
+    if (argc < 2)
+    {
+        rt_kprintf("usage: m55_wifi_password <password>\n");
+        return;
+    }
+
+    ret = wifi_config_set_password(argv[1]);
+    rt_kprintf("m55_wifi_password ret=%d len=%lu\n", ret, (unsigned long)rt_strlen(argv[1]));
+}
+MSH_CMD_EXPORT(m55_wifi_password, Set CM55 WiFi password in RAM);
+
+static void m55_wifi_connect(int argc, char **argv)
+{
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+    rt_kprintf("m55_wifi_save ret=%d\n", wifi_config_save());
+    rt_kprintf("m55_wifi_connect ret=%d\n", wifi_config_connect());
+}
+MSH_CMD_EXPORT(m55_wifi_connect, Connect CM55 WiFi using staged SSID/password);
+
+static void m55_wifi_save(int argc, char **argv)
+{
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+    rt_kprintf("m55_wifi_save ret=%d\n", wifi_config_save());
+}
+MSH_CMD_EXPORT(m55_wifi_save, Save CM55 WiFi SSID/password to local flash);
+
+static void m55_wifi_forget(int argc, char **argv)
+{
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+    rt_kprintf("m55_wifi_forget ret=%d\n", wifi_config_forget());
+}
+MSH_CMD_EXPORT(m55_wifi_forget, Remove saved CM55 WiFi credentials);
+
+static void m55_wifi_auto(int argc, char **argv)
+{
+    rt_bool_t enable;
+
+    if (argc < 2)
+    {
+        wifi_config_snapshot_t snapshot;
+        wifi_config_get_snapshot(&snapshot);
+        rt_kprintf("usage: m55_wifi_auto <0|1>, current=%lu\n",
+                   (unsigned long)snapshot.auto_connect);
+        return;
+    }
+
+    enable = (argv[1][0] != '0') ? RT_TRUE : RT_FALSE;
+    rt_kprintf("m55_wifi_auto ret=%d\n", wifi_config_set_auto_connect(enable));
+    rt_kprintf("m55_wifi_save ret=%d\n", wifi_config_save());
+}
+MSH_CMD_EXPORT(m55_wifi_auto, Enable or disable saved WiFi auto-connect);
+
+static void m55_wifi_status(int argc, char **argv)
+{
+    wifi_config_snapshot_t snapshot;
+
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+
+    wifi_config_get_snapshot(&snapshot);
+    rt_kprintf("[wifi_config] ssid=%s saved=%lu auto=%lu storage=%ld connected=%lu ready=%lu rssi=%ld netdev=%s flags=0x%lx last=%ld whd=%ld/%ld\n",
+               snapshot.ssid[0] ? snapshot.ssid : "(empty)",
+               (unsigned long)snapshot.saved,
+               (unsigned long)snapshot.auto_connect,
+               (long)snapshot.storage_result,
+               (unsigned long)snapshot.wlan_connected,
+               (unsigned long)snapshot.wlan_ready,
+               (long)snapshot.wlan_rssi,
+               snapshot.netdev_name[0] ? snapshot.netdev_name : "(none)",
+               (unsigned long)snapshot.netdev_flags,
+               (long)snapshot.last_result,
+               (long)snapshot.whd_stage,
+               (long)snapshot.whd_result);
+}
+MSH_CMD_EXPORT(m55_wifi_status, Print saved CM55 WiFi config and live status);
+
+static void m55_wifi_disconnect(int argc, char **argv)
+{
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+    rt_kprintf("m55_wifi_disconnect ret=%d\n", wifi_config_disconnect());
+}
+MSH_CMD_EXPORT(m55_wifi_disconnect, Disconnect CM55 WiFi);
+
+static void m55_wifi_diag(int argc, char **argv)
+{
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+    (void)wifi_config_diag();
+    (void)wifi_config_whd_diag();
+}
+MSH_CMD_EXPORT(m55_wifi_diag, Print CM55 WiFi and WHD diagnostics);
+
+static void m55_wifi_scan(int argc, char **argv)
+{
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+    rt_kprintf("m55_wifi_scan ret=%d\n", wifi_config_scan());
+}
+MSH_CMD_EXPORT(m55_wifi_scan, Start CM55 WiFi scan);
+
 static void voice_boot_thread_entry(void *parameter)
 {
     rt_err_t ret;
@@ -518,6 +645,8 @@ int main(void)
     rt_kprintf("This core is cortex-m55\n");
 
     rt_pin_mode(LED_PIN_G, PIN_MODE_OUTPUT);
+    (void)wifi_config_service_init();
+    (void)wifi_config_start_auto_connect(3500U);
 
     g_boot_self_test_thread = rt_thread_create("m55_self",
                                                boot_self_test_thread_entry,
@@ -536,11 +665,15 @@ int main(void)
         rt_kprintf("OpenClaw integration init failed: %d\n", ret);
     }
 
+#if M55_ENABLE_LOCAL_HTTP_SERVER
     ret = http_server_init();
     if (ret != RT_EOK)
     {
         rt_kprintf("HTTP server init failed: %d\n", ret);
     }
+#else
+    rt_kprintf("M55 local HTTP server disabled; XiaoZhi voice relay uses outbound WebSocket\n");
+#endif
 
     g_voice_boot_thread = rt_thread_create("voice_bt",
                                            voice_boot_thread_entry,

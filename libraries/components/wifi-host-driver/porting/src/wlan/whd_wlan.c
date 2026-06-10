@@ -56,6 +56,9 @@ RT_STATIC_ASSERT(WHD_COUNTRY_CODE_must_be_2_characters_string, (sizeof(WHD_COUNT
 /* WHD interface */
 static whd_driver_t whd_driver;
 static cyhal_sdio_t cyhal_sdio;
+static volatile int g_whd_diag_stage = 0;
+static volatile int g_whd_diag_result = 0;
+static volatile uint32_t g_whd_diag_flags = 0;
 static whd_init_config_t whd_config =
 {
     .thread_priority = CY_WIFI_WHD_THREAD_PRIORITY,
@@ -68,6 +71,58 @@ static whd_init_config_t whd_config =
 };
 extern whd_resource_source_t resource_ops;
 extern struct whd_buffer_funcs whd_buffer_ops;
+
+enum
+{
+    WHD_DIAG_STAGE_BOOT = 1,
+    WHD_DIAG_STAGE_SDIO_PROBE_SEM_CREATED,
+    WHD_DIAG_STAGE_SDIO_INIT_START,
+    WHD_DIAG_STAGE_SDIO_INIT_DONE,
+    WHD_DIAG_STAGE_SDIO_PROBE_WAIT,
+    WHD_DIAG_STAGE_SDIO_PROBE_DONE,
+    WHD_DIAG_STAGE_WHD_INIT,
+    WHD_DIAG_STAGE_SDIO_ATTACH_START,
+    WHD_DIAG_STAGE_SDIO_ATTACH_DONE,
+    WHD_DIAG_STAGE_WAIT_FS_DONE,
+    WHD_DIAG_STAGE_WIFI_ON_START,
+    WHD_DIAG_STAGE_WIFI_ON_DONE,
+    WHD_DIAG_STAGE_DISABLE_PS_DONE,
+    WHD_DIAG_STAGE_ADD_AP_IF_DONE,
+    WHD_DIAG_STAGE_EVENTS_REGISTERED,
+    WHD_DIAG_STAGE_REGISTER_AP_DONE,
+    WHD_DIAG_STAGE_REGISTER_STA_DONE,
+    WHD_DIAG_STAGE_SET_STA_MODE_DONE,
+    WHD_DIAG_STAGE_READY
+};
+
+#define WHD_DIAG_FLAG_HIGH_SPEED      (1UL << 0)
+#define WHD_DIAG_FLAG_1BIT_SDIO       (1UL << 1)
+#define WHD_DIAG_FLAG_STA_IF          (1UL << 2)
+#define WHD_DIAG_FLAG_AP_IF           (1UL << 3)
+#define WHD_DIAG_FLAG_STA_REGISTERED  (1UL << 4)
+#define WHD_DIAG_FLAG_AP_REGISTERED   (1UL << 5)
+
+static void whd_diag_mark(int stage, int result)
+{
+    g_whd_diag_stage = stage;
+    g_whd_diag_result = result;
+}
+
+void whd_wlan_get_diag(int *stage, int *result, uint32_t *flags)
+{
+    if (stage)
+    {
+        *stage = g_whd_diag_stage;
+    }
+    if (result)
+    {
+        *result = g_whd_diag_result;
+    }
+    if (flags)
+    {
+        *flags = g_whd_diag_flags;
+    }
+}
 
 struct whd_scan
 {
@@ -579,35 +634,52 @@ static void whd_init_thread (void *parameter)
 
     wifi_ap.wlan = &wlan_ap;
     wifi_sta.wlan = &wlan_sta;
+    whd_diag_mark(WHD_DIAG_STAGE_BOOT, 0);
 
 
     /* Creates a semaphore to wait probe the sdio card */
     cyhal_sdio.probe = rt_sem_create("sdio probe", 0, RT_IPC_FLAG_PRIO);
     RT_ASSERT(cyhal_sdio.probe != NULL);
+    whd_diag_mark(WHD_DIAG_STAGE_SDIO_PROBE_SEM_CREATED, 0);
 
     /* Register the sdio driver */
+    whd_diag_mark(WHD_DIAG_STAGE_SDIO_INIT_START, 0);
     if (cyhal_sdio_init(&cyhal_sdio) != CYHAL_SDIO_RET_NO_ERRORS)
     {
+        whd_diag_mark(WHD_DIAG_STAGE_SDIO_INIT_START, -1);
         LOG_E("Unable to register SDIO driver to mmcsd!");
         return;
     }
+    whd_diag_mark(WHD_DIAG_STAGE_SDIO_INIT_DONE, 0);
 
     LOG_D("Wait for sdio card registration..");
 
     /* Waiting card registration and delete the semaphore */
-    rt_sem_take(cyhal_sdio.probe, RT_WAITING_FOREVER);
+    whd_diag_mark(WHD_DIAG_STAGE_SDIO_PROBE_WAIT, 0);
+    if (rt_sem_take(cyhal_sdio.probe, rt_tick_from_millisecond(15000)) != RT_EOK)
+    {
+        whd_diag_mark(WHD_DIAG_STAGE_SDIO_PROBE_WAIT, -8);
+        LOG_E("Timed out waiting for sdio card registration!");
+        rt_sem_delete(cyhal_sdio.probe);
+        cyhal_sdio.probe = RT_NULL;
+        return;
+    }
     rt_sem_delete(cyhal_sdio.probe);
+    cyhal_sdio.probe = RT_NULL;
+    whd_diag_mark(WHD_DIAG_STAGE_SDIO_PROBE_DONE, 0);
 
     /* Configure sdio high speed mode and bus width */
     if (cyhal_sdio.card->host->freq_max > 25000000)
     {
         whd_sdio_config.high_speed_sdio_clock = WHD_TRUE;
+        g_whd_diag_flags |= WHD_DIAG_FLAG_HIGH_SPEED;
         LOG_D("SDIO high speed mode enabled.");
     }
 
     if (!(cyhal_sdio.card->host->flags & MMCSD_BUSWIDTH_4))
     {
         whd_sdio_config.sdio_1bit_mode = WHD_TRUE;
+        g_whd_diag_flags |= WHD_DIAG_FLAG_1BIT_SDIO;
         LOG_D("SDIO 1 bit mode enabled.");
     }
 
@@ -618,27 +690,36 @@ static void whd_init_thread (void *parameter)
 #endif /* WPRINT_ENABLE_WHD_INFO */
 
     /* Initialize WiFi host drivers */
+    whd_diag_mark(WHD_DIAG_STAGE_WHD_INIT, 0);
     whd_init(&whd_driver, &whd_config, &resource_ops, &whd_buffer_ops, &netif_if_ops);
 
     /* Attach a bus SDIO */
+    whd_diag_mark(WHD_DIAG_STAGE_SDIO_ATTACH_START, 0);
     if (whd_bus_sdio_attach(whd_driver, &whd_sdio_config, &cyhal_sdio) != WHD_SUCCESS)
     {
+        whd_diag_mark(WHD_DIAG_STAGE_SDIO_ATTACH_START, -1);
         LOG_E("Unable to Attach to the sdio bus!");
         return;
     }
+    whd_diag_mark(WHD_DIAG_STAGE_SDIO_ATTACH_DONE, 0);
 
 #ifdef WHD_RESOURCES_IN_EXTERNAL_STORAGE_FS
     LOG_D("Wait mounting the external storage of file system..");
     extern void whd_wait_fs_mount (void);
     whd_wait_fs_mount();
 #endif
+    whd_diag_mark(WHD_DIAG_STAGE_WAIT_FS_DONE, 0);
 
     /* Switch on Wifi, download firmware and create a primary interface, returns whd_interface_t */
+    whd_diag_mark(WHD_DIAG_STAGE_WIFI_ON_START, 0);
     if (whd_wifi_on(whd_driver, &wifi_sta.whd_itf) != WHD_SUCCESS)
     {
+        whd_diag_mark(WHD_DIAG_STAGE_WIFI_ON_START, -1);
         LOG_E("Unable to start the WiFi module!");
         return;
     }
+    g_whd_diag_flags |= WHD_DIAG_FLAG_STA_IF;
+    whd_diag_mark(WHD_DIAG_STAGE_WIFI_ON_DONE, 0);
 
     /* Bluetooth startup */
     whd_bt_startup();
@@ -655,9 +736,11 @@ static void whd_init_thread (void *parameter)
     /* Disables 802.11 power save mode on specified interface */
     if (whd_wifi_disable_powersave(wifi_sta.whd_itf) != WHD_SUCCESS)
     {
+        whd_diag_mark(WHD_DIAG_STAGE_WIFI_ON_DONE, -2);
         LOG_E("Failed to disable the powersave mode!");
         return;
     }
+    whd_diag_mark(WHD_DIAG_STAGE_DISABLE_PS_DONE, 0);
 
 #ifdef CY_WIFI_DEFAULT_ENABLE_POWERSAVE_MODE
     if (value == PM1_POWERSAVE_MODE)
@@ -688,42 +771,56 @@ static void whd_init_thread (void *parameter)
     /* Creates a secondary interface, returns whd_interface_t */
     if (whd_add_secondary_interface(whd_driver, NULL, &wifi_ap.whd_itf) != WHD_SUCCESS)
     {
+        whd_diag_mark(WHD_DIAG_STAGE_DISABLE_PS_DONE, -3);
         LOG_E("Failed to create a secondary interface!");
         return;
     }
+    g_whd_diag_flags |= WHD_DIAG_FLAG_AP_IF;
+    whd_diag_mark(WHD_DIAG_STAGE_ADD_AP_IF_DONE, 0);
 
     /* Registers a handler to receive whd event callbacks. */
     register_whd_events();
+    whd_diag_mark(WHD_DIAG_STAGE_EVENTS_REGISTERED, 0);
 
     /* Register the wlan device and set its working mode */
 
     /* register wlan device for ap */
     if (rt_wlan_dev_register(&wlan_ap, RT_WLAN_DEVICE_AP_NAME, &ops, 0, &wifi_ap) != RT_EOK)
     {
+        whd_diag_mark(WHD_DIAG_STAGE_EVENTS_REGISTERED, -4);
         LOG_E("Failed to register a wlan_ap device!");
         return;
     }
+    g_whd_diag_flags |= WHD_DIAG_FLAG_AP_REGISTERED;
+    whd_diag_mark(WHD_DIAG_STAGE_REGISTER_AP_DONE, 0);
 
     /* register wlan device for sta */
     if (rt_wlan_dev_register(&wlan_sta, RT_WLAN_DEVICE_STA_NAME, &ops, 0, &wifi_sta) != RT_EOK)
     {
+        whd_diag_mark(WHD_DIAG_STAGE_REGISTER_AP_DONE, -5);
         LOG_E("Failed to register a wlan_sta device!");
         return;
     }
+    g_whd_diag_flags |= WHD_DIAG_FLAG_STA_REGISTERED;
+    whd_diag_mark(WHD_DIAG_STAGE_REGISTER_STA_DONE, 0);
 
     /* Set wlan_sta to STATION mode */
     if (rt_wlan_set_mode(RT_WLAN_DEVICE_STA_NAME, RT_WLAN_STATION) != RT_EOK)
     {
+        whd_diag_mark(WHD_DIAG_STAGE_REGISTER_STA_DONE, -6);
         LOG_E("Failed to set %s to station mode!", RT_WLAN_DEVICE_STA_NAME);
         return;
     }
+    whd_diag_mark(WHD_DIAG_STAGE_SET_STA_MODE_DONE, 0);
 
     /* Set wlan_ap to AP mode */
     if (rt_wlan_set_mode(RT_WLAN_DEVICE_AP_NAME, RT_WLAN_AP) != RT_EOK)
     {
+        whd_diag_mark(WHD_DIAG_STAGE_SET_STA_MODE_DONE, -7);
         LOG_E("Failed to set %s to ap mode!", RT_WLAN_DEVICE_AP_NAME);
         return;
     }
+    whd_diag_mark(WHD_DIAG_STAGE_READY, 0);
 }
 
 static int rt_hw_wifi_init (void)

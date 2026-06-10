@@ -21,5 +21,7 @@ rt_err_t websocket_client_send_binary(const uint8_t *data, rt_size_t len);
 rt_err_t websocket_client_disconnect(void);
 rt_bool_t websocket_client_is_connected(void);
 void websocket_client_set_callback(websocket_message_callback_t callback);
+int websocket_client_last_stage(void);
+int websocket_client_last_errno(void);
 
 #endif

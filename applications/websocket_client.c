@@ -1,10 +1,18 @@
 #include "websocket_client.h"
 
+#include <arpa/inet.h>
 #include <rtdevice.h>
 #include <sys/socket.h>
 #include <netdb.h>
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
+
+int lwip_socket(int domain, int type, int protocol);
+int lwip_connect(int s, const struct sockaddr *name, socklen_t namelen);
+int lwip_close(int s);
+int lwip_send(int s, const void *dataptr, size_t size, int flags);
+int lwip_recv(int s, void *mem, size_t len, int flags);
 
 #define WS_RX_BUFFER_SIZE 2048
 #define WS_TX_BUFFER_SIZE 2048
@@ -12,6 +20,19 @@
 #define WS_URL_BUFFER_SIZE 192
 #define WS_HOST_BUFFER_SIZE 64
 #define WS_PATH_BUFFER_SIZE 160
+#define WS_RECV_THREAD_STACK_SIZE 2048
+
+typedef enum
+{
+    WS_STAGE_IDLE = 0,
+    WS_STAGE_RESOLVE = 10,
+    WS_STAGE_SOCKET = 20,
+    WS_STAGE_CONNECT = 30,
+    WS_STAGE_HANDSHAKE_SEND = 40,
+    WS_STAGE_HANDSHAKE_RECV = 50,
+    WS_STAGE_RECV_THREAD = 60,
+    WS_STAGE_CONNECTED = 70
+} websocket_stage_t;
 
 typedef struct
 {
@@ -23,12 +44,20 @@ typedef struct
     char extra_headers[WS_HEADER_BUFFER_SIZE];
     int server_port;
     int sock;
+    int last_stage;
+    int last_errno;
     struct rt_mutex send_lock;
     rt_thread_t recv_thread;
     websocket_message_callback_t callback;
 } websocket_client_t;
 
 static websocket_client_t g_ws;
+
+static void websocket_set_diag(int stage, int err)
+{
+    g_ws.last_stage = stage;
+    g_ws.last_errno = err;
+}
 
 static rt_err_t websocket_parse_url(const char *server_url)
 {
@@ -123,7 +152,7 @@ static rt_err_t websocket_send_frame(uint8_t opcode, const uint8_t *payload, rt_
     frame_len = header_len + payload_len;
 
     rt_mutex_take(&g_ws.send_lock, RT_WAITING_FOREVER);
-    if (send(g_ws.sock, frame, frame_len, 0) < 0)
+    if (lwip_send(g_ws.sock, frame, frame_len, 0) < 0)
     {
         rt_mutex_release(&g_ws.send_lock);
         return -RT_ERROR;
@@ -163,7 +192,7 @@ static void websocket_recv_thread_entry(void *parameter)
 
     while (g_ws.connected)
     {
-        int received = recv(g_ws.sock, buffer + buffered, sizeof(buffer) - buffered, 0);
+        int received = lwip_recv(g_ws.sock, buffer + buffered, sizeof(buffer) - buffered, 0);
         int offset = 0;
 
         if (received <= 0)
@@ -235,7 +264,7 @@ static void websocket_recv_thread_entry(void *parameter)
 
     if (g_ws.sock >= 0)
     {
-        closesocket(g_ws.sock);
+        lwip_close(g_ws.sock);
         g_ws.sock = -1;
     }
 
@@ -315,6 +344,7 @@ rt_err_t websocket_client_connect(void)
 {
     struct hostent *host;
     struct sockaddr_in server_addr;
+    in_addr_t numeric_addr;
     char request[2048];
     char response[512];
     int ret;
@@ -329,28 +359,52 @@ rt_err_t websocket_client_connect(void)
         return RT_EOK;
     }
 
-    host = gethostbyname(g_ws.server_host);
-    if (!host)
+    rt_kprintf("[websocket] resolving %s:%d\n", g_ws.server_host, g_ws.server_port);
+    websocket_set_diag(WS_STAGE_RESOLVE, 0);
+    numeric_addr = inet_addr(g_ws.server_host);
+    if (numeric_addr != (in_addr_t)-1)
     {
-        return -RT_ERROR;
+        rt_memset(&server_addr, 0, sizeof(server_addr));
+        server_addr.sin_family = AF_INET;
+        server_addr.sin_port = htons(g_ws.server_port);
+        server_addr.sin_addr.s_addr = numeric_addr;
+        rt_kprintf("[websocket] using numeric host %s\n", g_ws.server_host);
+    }
+    else
+    {
+        host = gethostbyname(g_ws.server_host);
+        if (!host)
+        {
+            rt_kprintf("[websocket] resolve failed host=%s\n", g_ws.server_host);
+            websocket_set_diag(WS_STAGE_RESOLVE, -RT_ENOENT);
+            return -RT_ENOENT;
+        }
+
+        rt_memset(&server_addr, 0, sizeof(server_addr));
+        server_addr.sin_family = AF_INET;
+        server_addr.sin_port = htons(g_ws.server_port);
+        server_addr.sin_addr = *((struct in_addr *)host->h_addr);
     }
 
-    g_ws.sock = socket(AF_INET, SOCK_STREAM, 0);
+    websocket_set_diag(WS_STAGE_SOCKET, 0);
+    g_ws.sock = lwip_socket(AF_INET, SOCK_STREAM, 0);
     if (g_ws.sock < 0)
     {
-        return -RT_ERROR;
+        int native_errno = errno;
+        rt_kprintf("[websocket] socket failed errno=%d\n", native_errno);
+        websocket_set_diag(WS_STAGE_SOCKET, native_errno > 0 ? -native_errno : -RT_EIO);
+        return -RT_EIO;
     }
 
-    rt_memset(&server_addr, 0, sizeof(server_addr));
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(g_ws.server_port);
-    server_addr.sin_addr = *((struct in_addr *)host->h_addr);
-
-    if (connect(g_ws.sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0)
+    rt_kprintf("[websocket] connecting %s:%d\n", g_ws.server_host, g_ws.server_port);
+    websocket_set_diag(WS_STAGE_CONNECT, 0);
+    if (lwip_connect(g_ws.sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0)
     {
-        closesocket(g_ws.sock);
+        rt_kprintf("[websocket] connect failed host=%s port=%d\n", g_ws.server_host, g_ws.server_port);
+        lwip_close(g_ws.sock);
         g_ws.sock = -1;
-        return -RT_ERROR;
+        websocket_set_diag(WS_STAGE_CONNECT, -RT_ETIMEOUT);
+        return -RT_ETIMEOUT;
     }
 
     ret = rt_snprintf(request, sizeof(request),
@@ -367,39 +421,48 @@ rt_err_t websocket_client_connect(void)
     if ((ret < 0) || ((rt_size_t)ret >= sizeof(request)))
     {
         rt_kprintf("[websocket] handshake request too large\n");
-        closesocket(g_ws.sock);
+        lwip_close(g_ws.sock);
         g_ws.sock = -1;
+        websocket_set_diag(WS_STAGE_HANDSHAKE_SEND, -RT_EFULL);
         return -RT_EFULL;
     }
 
-    if (send(g_ws.sock, request, rt_strlen(request), 0) < 0)
+    websocket_set_diag(WS_STAGE_HANDSHAKE_SEND, 0);
+    if (lwip_send(g_ws.sock, request, rt_strlen(request), 0) < 0)
     {
-        closesocket(g_ws.sock);
+        rt_kprintf("[websocket] handshake send failed\n");
+        lwip_close(g_ws.sock);
         g_ws.sock = -1;
-        return -RT_ERROR;
+        websocket_set_diag(WS_STAGE_HANDSHAKE_SEND, -RT_EIO);
+        return -RT_EIO;
     }
 
+    websocket_set_diag(WS_STAGE_HANDSHAKE_RECV, 0);
     rt_memset(response, 0, sizeof(response));
-    ret = recv(g_ws.sock, response, sizeof(response) - 1, 0);
+    ret = lwip_recv(g_ws.sock, response, sizeof(response) - 1, 0);
     if ((ret <= 0) || (rt_strstr(response, " 101 ") == RT_NULL))
     {
         rt_kprintf("[websocket] handshake failed: %s\n", response);
-        closesocket(g_ws.sock);
+        lwip_close(g_ws.sock);
         g_ws.sock = -1;
-        return -RT_ERROR;
+        websocket_set_diag(WS_STAGE_HANDSHAKE_RECV, -RT_EPERM);
+        return -RT_EPERM;
     }
 
     g_ws.connected = RT_TRUE;
-    g_ws.recv_thread = rt_thread_create("ws_recv", websocket_recv_thread_entry, RT_NULL, 4096, 12, 10);
+    websocket_set_diag(WS_STAGE_RECV_THREAD, 0);
+    g_ws.recv_thread = rt_thread_create("ws_recv", websocket_recv_thread_entry, RT_NULL, WS_RECV_THREAD_STACK_SIZE, 12, 10);
     if (!g_ws.recv_thread)
     {
-        closesocket(g_ws.sock);
+        lwip_close(g_ws.sock);
         g_ws.sock = -1;
         g_ws.connected = RT_FALSE;
+        websocket_set_diag(WS_STAGE_RECV_THREAD, -RT_ENOMEM);
         return -RT_ENOMEM;
     }
 
     rt_thread_startup(g_ws.recv_thread);
+    websocket_set_diag(WS_STAGE_CONNECTED, RT_EOK);
     rt_kprintf("[websocket] connected\n");
     return RT_EOK;
 }
@@ -436,7 +499,7 @@ rt_err_t websocket_client_disconnect(void)
 
     if (g_ws.sock >= 0)
     {
-        closesocket(g_ws.sock);
+        lwip_close(g_ws.sock);
         g_ws.sock = -1;
     }
 
@@ -451,4 +514,14 @@ rt_bool_t websocket_client_is_connected(void)
 void websocket_client_set_callback(websocket_message_callback_t callback)
 {
     g_ws.callback = callback;
+}
+
+int websocket_client_last_stage(void)
+{
+    return g_ws.last_stage;
+}
+
+int websocket_client_last_errno(void)
+{
+    return g_ws.last_errno;
 }

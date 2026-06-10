@@ -30,6 +30,12 @@ path = [
     os.path.join(cwd, 'ifx_deepcraft', 'models'),
     os.path.join(cwd, 'ifx_deepcraft', 'models', 'Smart_Lights_Demo'),
 ]
+if GetDepend('BSP_USING_LVGL') or GetDepend('PKG_USING_LVGL'):
+    path += [
+        os.path.abspath(os.path.join(cwd, '..', 'libraries', 'components', 'lvgl_9.2.0')),
+        os.path.abspath(os.path.join(cwd, '..', 'libraries', 'components', 'lvgl_9.2.0', 'src')),
+        os.path.abspath(os.path.join(cwd, '..', 'libraries', 'Common', 'board', 'ports', 'lvgl')),
+    ]
 src  = Glob('*.c') + Glob('*.cpp')
 src  = [f for f in src if os.path.basename(str(f)) not in [
     'model_deployment.c',
