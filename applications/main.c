@@ -14,6 +14,10 @@
 #include "wifi_config_service.h"
 #include "xiaozhi_voice_relay.h"
 
+#ifdef BSP_USING_LVGL
+extern int lvgl_thread_init(void);
+#endif
+
 #define LED_PIN_G GET_PIN(16, 6)
 #define M55_AUDIO_SAMPLE_RATE 16000
 #define M55_AUDIO_BITS_PER_SAMPLE 16
@@ -693,6 +697,12 @@ int main(void)
     rt_pin_mode(LED_PIN_G, PIN_MODE_OUTPUT);
     (void)wifi_config_service_init();
     (void)wifi_config_start_auto_connect(3500U);
+
+#ifdef BSP_USING_LVGL
+    rt_kprintf("[m55] starting LVGL thread\n");
+    ret = lvgl_thread_init();
+    rt_kprintf("[m55] LVGL thread init ret=%d\n", ret);
+#endif
 
     g_boot_self_test_thread = rt_thread_create("m55_self",
                                                boot_self_test_thread_entry,

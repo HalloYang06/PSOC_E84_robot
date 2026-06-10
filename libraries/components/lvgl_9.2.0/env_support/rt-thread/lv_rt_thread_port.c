@@ -13,6 +13,7 @@
 
 // #include "squareline/ui/lvgl/lvgl.h"
 #include <rtthread.h>
+#include <lvgl.h>
 #ifdef PKG_USING_CPU_USAGE
     #include "cpu_usage.h"
 #endif /* PKG_USING_CPU_USAGE */
@@ -38,6 +39,7 @@ extern void lv_port_indev_init(void);
 extern void lv_user_gui_init(void);
 
 static struct rt_thread lvgl_thread;
+static rt_bool_t lvgl_thread_started = RT_FALSE;
 
 #ifdef rt_align
     rt_align(RT_ALIGN_SIZE)
@@ -93,6 +95,12 @@ int lvgl_thread_init(void)
 {
     rt_err_t err;
 
+    if (lvgl_thread_started)
+    {
+        LOG_I("LVGL thread already started");
+        return 0;
+    }
+
     err = rt_thread_init(&lvgl_thread, "LVGL", lvgl_thread_entry, RT_NULL,
                          &lvgl_thread_stack[0], sizeof(lvgl_thread_stack), PKG_LVGL_THREAD_PRIO, 10);
     if (err != RT_EOK)
@@ -101,6 +109,7 @@ int lvgl_thread_init(void)
         return -1;
     }
     rt_thread_startup(&lvgl_thread);
+    lvgl_thread_started = RT_TRUE;
 
     return 0;
 }
