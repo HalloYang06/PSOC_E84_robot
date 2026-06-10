@@ -45,6 +45,22 @@ m55qa_wake_off
 m55qa_status
 ```
 
+Optional token loader from Windows PowerShell:
+```powershell
+# Save only the platform scoped relay token into token.txt. Do not save a vendor LLM API key.
+powershell -ExecutionPolicy Bypass -File D:\RT-ThreadStudio\workspace\yiliao_m33\tools\load_xiaozhi_token.ps1 `
+  -PortName COM26 `
+  -TokenFile D:\RT-ThreadStudio\workspace\token.txt
+```
+
+The loader masks token chunks in terminal output. It sends `m55qa_xz_token_begin`, repeated `m55qa_xz_token_part`, `m55qa_xz_token_commit`, then `m55qa_status`.
+
+Quick reconnect or clear without a token file:
+```powershell
+powershell -ExecutionPolicy Bypass -File D:\RT-ThreadStudio\workspace\yiliao_m33\tools\load_xiaozhi_token.ps1 -PortName COM26 -ReconnectOnly
+powershell -ExecutionPolicy Bypass -File D:\RT-ThreadStudio\workspace\yiliao_m33\tools\load_xiaozhi_token.ps1 -PortName COM26 -Clear
+```
+
 Expected output:
 ```text
 [m55qa] ipc_ready=1 tx_pending=0 rx_pending=0 has_model=1
@@ -61,6 +77,7 @@ Notes:
 - `xz_token=0` means no scoped relay token is loaded on CM55; WebSocket auth is expected to fail.
 - `xz_ws=0` means the XiaoZhi WebSocket is not connected.
 - `xz_listening=1` means CM55 is actively streaming the post-wake utterance to the platform.
+- A matching platform token should make `xz_token=1`. A successful WebSocket connection should make `xz_ws=1`.
 - The firmware default endpoint already targets `/xiaozhi/ws?robot_id=rehab-arm-alpha`; use `m55qa_xz_url <ws://...>` only when overriding it for diagnostics.
 - `cmd=1004` begins a chunked XiaoZhi platform-token update on CM55.
 - `cmd=1005` appends one token chunk; keep each chunk short enough for the embedded shell line, usually 48 to 60 characters.

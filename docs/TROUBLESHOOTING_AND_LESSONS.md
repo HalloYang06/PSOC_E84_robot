@@ -45,6 +45,27 @@ Reusable trick:
 Status:
 - Fixed. Next live test should first load a scoped token and confirm `xz_token=1`, then reconnect and confirm `xz_ws=1`.
 
+## 2026-06-10 - Do Not Load Wrong-Scope Relay Tokens
+
+Symptom:
+- A `rehab-relay.v1...` token may look structurally valid but still fail XiaoZhi WebSocket auth.
+
+Root cause:
+- Scoped relay tokens are bound to a specific project/device. The active device contract is `project_id=fd6a55ed-a63c-44b3-b123-96fb3c154966`, `device_id=nanopi-m5`, and `robot_id=rehab-arm-alpha`.
+
+Fix:
+- Use `tools/load_xiaozhi_token.ps1` only with a platform-generated token for the active project/device.
+- The tool rejects non-`rehab-relay.v1.` values so vendor LLM API keys are not accidentally loaded onto CM55.
+
+Validation:
+- `tools/load_xiaozhi_token.ps1 -ReconnectOnly` reached COM26 and confirmed the expected no-token state: `xz_token=0`, `xz_ws=0`, and `cmd=1003 result=-255`.
+
+Reusable trick:
+- Treat `xz_token=1` as "a scoped token is loaded", not proof the token belongs to the current project/device. `xz_ws=1` is the real device-side sign that auth and handshake have passed.
+
+Status:
+- Tooling is ready. End-to-end chat remains blocked until a correct-scope relay token is generated and loaded.
+
 ## 2026-06-10 - Long XiaoZhi Tokens Exceed FinSH Command Length
 
 Symptom:
