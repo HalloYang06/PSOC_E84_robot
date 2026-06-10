@@ -16,6 +16,15 @@ extern int xiaozhi_edge_impulse_wake_process(const int16_t *pcm,
                                              int *confidence_permille);
 extern int xiaozhi_edge_impulse_wake_stage(void);
 extern int xiaozhi_edge_impulse_wake_last_error(void);
+extern int xiaozhi_edge_impulse_wake_last_confidence_permille(void);
+extern int xiaozhi_edge_impulse_wake_last_noise_permille(void);
+extern int xiaozhi_edge_impulse_wake_last_feature_source(void);
+extern int xiaozhi_edge_impulse_wake_last_feature_error(void);
+extern int xiaozhi_edge_impulse_wake_last_alloc_source(void);
+extern int xiaozhi_edge_impulse_wake_last_alloc_size(void);
+extern int xiaozhi_edge_impulse_wake_last_alloc_fail_source(void);
+extern int xiaozhi_edge_impulse_wake_last_alloc_fail_size(void);
+extern int xiaozhi_edge_impulse_wake_alloc_diag(void);
 #endif
 
 #ifdef XIAOZHI_WAKE_USE_IFX_DEEPCRAFT
@@ -105,6 +114,87 @@ int xiaozhi_wake_engine_stage(void)
     return xiaozhi_edge_impulse_wake_stage();
 #elif defined(XIAOZHI_WAKE_USE_IFX_DEEPCRAFT)
     return ifx_deepcraft_wake_stage();
+#else
+    return 0;
+#endif
+}
+
+int xiaozhi_wake_engine_last_confidence_permille(void)
+{
+#ifdef XIAOZHI_WAKE_USE_EDGE_IMPULSE_TFLM
+    return xiaozhi_edge_impulse_wake_last_confidence_permille();
+#else
+    return 0;
+#endif
+}
+
+int xiaozhi_wake_engine_last_noise_permille(void)
+{
+#ifdef XIAOZHI_WAKE_USE_EDGE_IMPULSE_TFLM
+    return xiaozhi_edge_impulse_wake_last_noise_permille();
+#else
+    return 0;
+#endif
+}
+
+int xiaozhi_wake_engine_last_feature_source(void)
+{
+#ifdef XIAOZHI_WAKE_USE_EDGE_IMPULSE_TFLM
+    return xiaozhi_edge_impulse_wake_last_feature_source();
+#else
+    return 0;
+#endif
+}
+
+int xiaozhi_wake_engine_last_feature_error(void)
+{
+#ifdef XIAOZHI_WAKE_USE_EDGE_IMPULSE_TFLM
+    return xiaozhi_edge_impulse_wake_last_feature_error();
+#else
+    return 0;
+#endif
+}
+
+int xiaozhi_wake_engine_last_alloc_source(void)
+{
+#ifdef XIAOZHI_WAKE_USE_EDGE_IMPULSE_TFLM
+    return xiaozhi_edge_impulse_wake_last_alloc_source();
+#else
+    return 0;
+#endif
+}
+
+int xiaozhi_wake_engine_last_alloc_size(void)
+{
+#ifdef XIAOZHI_WAKE_USE_EDGE_IMPULSE_TFLM
+    return xiaozhi_edge_impulse_wake_last_alloc_size();
+#else
+    return 0;
+#endif
+}
+
+int xiaozhi_wake_engine_alloc_diag(void)
+{
+#ifdef XIAOZHI_WAKE_USE_EDGE_IMPULSE_TFLM
+    return xiaozhi_edge_impulse_wake_alloc_diag();
+#else
+    return 0;
+#endif
+}
+
+int xiaozhi_wake_engine_last_alloc_fail_source(void)
+{
+#ifdef XIAOZHI_WAKE_USE_EDGE_IMPULSE_TFLM
+    return xiaozhi_edge_impulse_wake_last_alloc_fail_source();
+#else
+    return 0;
+#endif
+}
+
+int xiaozhi_wake_engine_last_alloc_fail_size(void)
+{
+#ifdef XIAOZHI_WAKE_USE_EDGE_IMPULSE_TFLM
+    return xiaozhi_edge_impulse_wake_last_alloc_fail_size();
 #else
     return 0;
 #endif

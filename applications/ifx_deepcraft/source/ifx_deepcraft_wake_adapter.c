@@ -4,6 +4,8 @@
 
 static mtb_wwd_t g_wwd;
 static int g_ready;
+extern volatile int g_ifx_wwd_debug_stage;
+extern volatile int g_ifx_wwd_debug_detail;
 
 int ifx_deepcraft_wake_init(void)
 {
@@ -46,4 +48,14 @@ int ifx_deepcraft_wake_process(int16_t *pcm, int *detected)
     result = mtb_wwd_process(&g_wwd, pcm, &state);
     *detected = (state == CY_WWD_DETECTED) ? 1 : 0;
     return (int)result;
+}
+
+int ifx_deepcraft_wake_stage(void)
+{
+    return g_ifx_wwd_debug_stage;
+}
+
+int ifx_deepcraft_wake_detail(void)
+{
+    return g_ifx_wwd_debug_detail;
 }

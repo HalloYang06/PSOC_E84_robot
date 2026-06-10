@@ -5,6 +5,11 @@
 
 #include "tflite_learn_333519_3.h"
 
+#include "model-parameters/model_metadata.h"
+#include "edge-impulse-sdk/dsp/numpy.hpp"
+#include "edge-impulse-sdk/classifier/ei_signal_with_range.h"
+#include "edge-impulse-sdk/classifier/ei_run_dsp.h"
+
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
@@ -36,12 +41,99 @@ static size_t g_audio_count;
 static int g_stage;
 static int g_last_error;
 static int g_last_confidence_permille;
+static int g_last_noise_permille;
+static int g_last_feature_source;
+static int g_last_feature_error;
+static int g_last_alloc_source;
+static size_t g_last_alloc_size;
+static int g_last_alloc_fail_source;
+static size_t g_last_alloc_fail_size;
+static uint32_t g_hyperam_alloc_count;
+static uint32_t g_heap_alloc_count;
+static uint32_t g_alloc_fail_count;
+static uint32_t g_inference_count;
 
 static const tflite::Model *g_model;
 static tflite::MicroInterpreter *g_interpreter;
 static TfLiteTensor *g_input;
 static TfLiteTensor *g_output;
 static tflite::MicroErrorReporter g_error_reporter;
+
+void *ei_malloc(size_t size)
+{
+    struct rt_memheap *hyperam = (struct rt_memheap *)rt_object_find("hyperam", RT_Object_Class_MemHeap);
+    void *ptr = RT_NULL;
+
+    g_last_alloc_size = size;
+    g_last_alloc_source = 0;
+
+    if (hyperam != RT_NULL)
+    {
+        ptr = rt_memheap_alloc(hyperam, (rt_size_t)size);
+        if (ptr != RT_NULL)
+        {
+            g_last_alloc_source = 1;
+            g_hyperam_alloc_count++;
+            return ptr;
+        }
+    }
+
+    ptr = rt_malloc((rt_size_t)size);
+    if (ptr != RT_NULL)
+    {
+        g_last_alloc_source = 2;
+        g_heap_alloc_count++;
+    }
+    else
+    {
+        g_last_alloc_source = (hyperam != RT_NULL) ? -2 : -1;
+        g_last_alloc_fail_source = g_last_alloc_source;
+        g_last_alloc_fail_size = size;
+        g_alloc_fail_count++;
+    }
+    return ptr;
+}
+
+void *ei_calloc(size_t nitems, size_t size)
+{
+    size_t bytes = nitems * size;
+    void *ptr;
+
+    if ((size != 0U) && ((bytes / size) != nitems))
+    {
+        return RT_NULL;
+    }
+
+    ptr = ei_malloc(bytes);
+    if (ptr != RT_NULL)
+    {
+        memset(ptr, 0, bytes);
+    }
+    return ptr;
+}
+
+void ei_free(void *ptr)
+{
+    if (ptr != RT_NULL)
+    {
+        rt_free(ptr);
+    }
+}
+
+static int get_audio_signal_data(size_t offset, size_t length, float *out_ptr)
+{
+    if ((g_audio_window == RT_NULL) || (out_ptr == RT_NULL) ||
+        ((offset + length) > XIAOZHI_EI_RAW_SAMPLES))
+    {
+        return -1;
+    }
+
+    for (size_t i = 0; i < length; i++)
+    {
+        out_ptr[i] = (float)g_audio_window[offset + i];
+    }
+    return 0;
+}
 
 static float hz_to_mel(float hz)
 {
@@ -130,36 +222,59 @@ static void compute_mel_energies(const float *power_spectrum, float *mel_energie
     }
 }
 
-static void normalize_features(float *features, int count)
-{
-    float mean = 0.0f;
-    float var = 0.0f;
-
-    for (int i = 0; i < count; i++)
-    {
-        mean += features[i];
-    }
-    mean /= (float)count;
-
-    for (int i = 0; i < count; i++)
-    {
-        float diff = features[i] - mean;
-        var += diff * diff;
-    }
-    var = sqrtf(var / (float)count) + 1.0e-6f;
-
-    for (int i = 0; i < count; i++)
-    {
-        features[i] = (features[i] - mean) / var;
-    }
-}
-
 static int extract_features(const int16_t *pcm, float *features)
 {
+    static ei_dsp_config_mfcc_t mfcc_config = {
+        2,
+        4,
+        1,
+        RT_NULL,
+        0,
+        13,
+        0.02f,
+        0.02f,
+        32,
+        256,
+        101,
+        0,
+        0,
+        0.98f,
+        1
+    };
+    ei::signal_t signal;
+    ei::matrix_t output_matrix(1, XIAOZHI_EI_INPUT_SIZE, features);
+    int ret;
+
     if ((pcm == RT_NULL) || (features == RT_NULL) ||
         (g_frame == RT_NULL) || (g_spectrum == RT_NULL) || (g_mel == RT_NULL))
     {
         return -RT_EINVAL;
+    }
+
+    signal.total_length = XIAOZHI_EI_RAW_SAMPLES;
+    signal.get_data = &get_audio_signal_data;
+    ret = extract_mfcc_features(&signal,
+                                &output_matrix,
+                                &mfcc_config,
+                                (float)XIAOZHI_EI_SAMPLE_RATE);
+    if (ret == 0)
+    {
+        g_last_feature_source = 1;
+        g_last_feature_error = 0;
+        return 0;
+    }
+
+    g_last_feature_source = 2;
+    g_last_feature_error = ret;
+    if ((g_inference_count <= 3U) || ((g_inference_count % 8U) == 0U))
+    {
+        rt_kprintf("[xiaozhi_ei_wake] feature_fallback ret=%d alloc_src=%d alloc_size=%d hyper=%lu heap=%lu fail=%lu\n",
+                   ret,
+                   g_last_alloc_source,
+                   (int)g_last_alloc_size,
+                   (unsigned long)g_hyperam_alloc_count,
+                   (unsigned long)g_heap_alloc_count,
+                   (unsigned long)g_alloc_fail_count);
     }
 
     for (int frame_idx = 0; frame_idx < XIAOZHI_EI_N_FRAMES; frame_idx++)
@@ -190,7 +305,6 @@ static int extract_features(const int16_t *pcm, float *features)
         }
     }
 
-    normalize_features(features, XIAOZHI_EI_INPUT_SIZE);
     return 0;
 }
 
@@ -211,6 +325,7 @@ static int run_inference(int *detected, int *confidence_permille)
     {
         return ret;
     }
+    g_stage = (g_last_feature_source == 1) ? 201 : 202;
 
     if (g_input->type != kTfLiteInt8)
     {
@@ -247,7 +362,24 @@ static int run_inference(int *detected, int *confidence_permille)
     {
         float confidence = ((float)output_i8[1] - (float)g_output->params.zero_point) *
                            g_output->params.scale;
+        float noise = ((float)output_i8[0] - (float)g_output->params.zero_point) *
+                      g_output->params.scale;
+        g_last_noise_permille = (int)(noise * 1000.0f);
         g_last_confidence_permille = (int)(confidence * 1000.0f);
+        g_inference_count++;
+        if ((g_inference_count <= 3U) || ((g_inference_count % 8U) == 0U))
+        {
+            rt_kprintf("[xiaozhi_ei_wake] infer=%lu feature_src=%d feature_ret=%d noise=%d/1000 xiaorui=%d/1000 in_scale=%d in_zero=%d out_scale=%d out_zero=%d\n",
+                       (unsigned long)g_inference_count,
+                       g_last_feature_source,
+                       g_last_feature_error,
+                       g_last_noise_permille,
+                       g_last_confidence_permille,
+                       (int)(g_input->params.scale * 1000000.0f),
+                       g_input->params.zero_point,
+                       (int)(g_output->params.scale * 1000000.0f),
+                       g_output->params.zero_point);
+        }
         if (confidence_permille != RT_NULL)
         {
             *confidence_permille = g_last_confidence_permille;
@@ -266,6 +398,17 @@ extern "C" int xiaozhi_edge_impulse_wake_init(void)
     g_stage = 1;
     g_last_error = 0;
     g_last_confidence_permille = 0;
+    g_last_noise_permille = 0;
+    g_last_feature_source = 0;
+    g_last_feature_error = 0;
+    g_last_alloc_source = 0;
+    g_last_alloc_size = 0;
+    g_last_alloc_fail_source = 0;
+    g_last_alloc_fail_size = 0;
+    g_hyperam_alloc_count = 0;
+    g_heap_alloc_count = 0;
+    g_alloc_fail_count = 0;
+    g_inference_count = 0;
     g_audio_count = 0;
 
     if (g_audio_window == RT_NULL)
@@ -354,6 +497,11 @@ extern "C" int xiaozhi_edge_impulse_wake_init(void)
                g_interpreter->arena_used_bytes(),
                g_input->type,
                g_output->type);
+    rt_kprintf("[xiaozhi_ei_wake] tensor_params input_scale=%d/1e6 input_zero=%d output_scale=%d/1e6 output_zero=%d\n",
+               (int)(g_input->params.scale * 1000000.0f),
+               g_input->params.zero_point,
+               (int)(g_output->params.scale * 1000000.0f),
+               g_output->params.zero_point);
     return 0;
 }
 
@@ -421,4 +569,51 @@ extern "C" int xiaozhi_edge_impulse_wake_stage(void)
 extern "C" int xiaozhi_edge_impulse_wake_last_error(void)
 {
     return g_last_error;
+}
+
+extern "C" int xiaozhi_edge_impulse_wake_last_confidence_permille(void)
+{
+    return g_last_confidence_permille;
+}
+
+extern "C" int xiaozhi_edge_impulse_wake_last_noise_permille(void)
+{
+    return g_last_noise_permille;
+}
+
+extern "C" int xiaozhi_edge_impulse_wake_last_feature_source(void)
+{
+    return g_last_feature_source;
+}
+
+extern "C" int xiaozhi_edge_impulse_wake_last_feature_error(void)
+{
+    return g_last_feature_error;
+}
+
+extern "C" int xiaozhi_edge_impulse_wake_last_alloc_source(void)
+{
+    return g_last_alloc_source;
+}
+
+extern "C" int xiaozhi_edge_impulse_wake_last_alloc_size(void)
+{
+    return (int)g_last_alloc_size;
+}
+
+extern "C" int xiaozhi_edge_impulse_wake_last_alloc_fail_source(void)
+{
+    return g_last_alloc_fail_source;
+}
+
+extern "C" int xiaozhi_edge_impulse_wake_last_alloc_fail_size(void)
+{
+    return (int)g_last_alloc_fail_size;
+}
+
+extern "C" int xiaozhi_edge_impulse_wake_alloc_diag(void)
+{
+    return (int)((g_hyperam_alloc_count & 0xffU) * 10000U +
+                 (g_heap_alloc_count & 0xffU) * 100U +
+                 (g_alloc_fail_count & 0xffU));
 }

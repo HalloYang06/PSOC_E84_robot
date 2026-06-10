@@ -16,22 +16,6 @@ typedef struct
 
 static xiaozhi_voice_relay_t g_xiaozhi;
 
-static const char *wake_source_name(xiaozhi_wake_source_t wake_source)
-{
-    switch (wake_source)
-    {
-    case XIAOZHI_WAKE_SOURCE_M55_LOCAL:
-        return "m55_local_wake";
-    case XIAOZHI_WAKE_SOURCE_APP:
-        return "app";
-    case XIAOZHI_WAKE_SOURCE_SERVER:
-        return "server";
-    case XIAOZHI_WAKE_SOURCE_MANUAL:
-    default:
-        return "manual";
-    }
-}
-
 static void json_get_string(const char *json, const char *key, char *out, rt_size_t out_len)
 {
     char pattern[48];
@@ -177,13 +161,10 @@ rt_err_t xiaozhi_voice_relay_build_hello(char *out, rt_size_t out_len)
     }
 
     n = rt_snprintf(out, out_len,
-                    "{\"type\":\"hello\",\"transport\":\"websocket\",\"version\":1,"
-                    "\"audio_params\":{\"format\":\"pcm_s16le\",\"sample_rate\":16000,\"channels\":1,\"bits_per_sample\":16},"
-                    "\"device\":{\"project_id\":\"%s\",\"device_id\":\"%s\",\"robot_id\":\"%s\",\"role\":\"m55_voice_frontend\"},"
-                    "\"control_boundary\":\"xiaozhi_voice_only_not_motion_permission\"}",
-                    XIAOZHI_PROJECT_ID,
-                    XIAOZHI_DEVICE_ID,
-                    XIAOZHI_ROBOT_ID);
+                    "{\"type\":\"hello\",\"version\":3,"
+                    "\"features\":{\"mcp\":true},"
+                    "\"transport\":\"websocket\","
+                    "\"audio_params\":{\"format\":\"pcm_s16le\",\"sample_rate\":16000,\"channels\":1,\"bits_per_sample\":16,\"frame_duration\":20}}");
     return ((n < 0) || ((rt_size_t)n >= out_len)) ? -RT_EFULL : RT_EOK;
 }
 
@@ -218,15 +199,11 @@ rt_err_t xiaozhi_voice_relay_build_listen_start(char *out, rt_size_t out_len,
         return -RT_EINVAL;
     }
 
+    RT_UNUSED(wake_source);
     n = rt_snprintf(out, out_len,
-                    "{\"type\":\"listen\",\"state\":\"start\",\"session_id\":%lu,"
-                    "\"mode\":\"auto\",\"wake_source\":\"%s\","
-                    "\"input_type\":\"vla_language_from_voice\","
-                    "\"requested_outputs\":[\"operator_facing_reply\",\"utterance_classification\",\"language_context\"],"
-                    "\"forbidden_outputs\":[\"can_frame\",\"motor_current\",\"motor_torque\",\"direct_motor_command\"],"
-                    "\"control_boundary\":\"vla_language_http_relay_only_not_motion_permission\"}",
-                    (unsigned long)session_id,
-                    wake_source_name(wake_source));
+                    "{\"session_id\":\"%lu\",\"type\":\"listen\",\"state\":\"start\","
+                    "\"mode\":\"auto_stop\"}",
+                    (unsigned long)session_id);
     return ((n < 0) || ((rt_size_t)n >= out_len)) ? -RT_EFULL : RT_EOK;
 }
 
@@ -242,12 +219,11 @@ rt_err_t xiaozhi_voice_relay_build_listen_stop(char *out, rt_size_t out_len,
         return -RT_EINVAL;
     }
 
+    RT_UNUSED(total_bytes);
+    RT_UNUSED(chunks);
     n = rt_snprintf(out, out_len,
-                    "{\"type\":\"listen\",\"state\":\"stop\",\"session_id\":%lu,"
-                    "\"total_bytes\":%lu,\"chunks\":%lu}",
-                    (unsigned long)session_id,
-                    (unsigned long)total_bytes,
-                    (unsigned long)chunks);
+                    "{\"session_id\":\"%lu\",\"type\":\"listen\",\"state\":\"stop\"}",
+                    (unsigned long)session_id);
     return ((n < 0) || ((rt_size_t)n >= out_len)) ? -RT_EFULL : RT_EOK;
 }
 

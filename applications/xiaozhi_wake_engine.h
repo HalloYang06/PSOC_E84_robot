@@ -27,5 +27,14 @@ rt_err_t xiaozhi_wake_engine_process_pcm16(const int16_t *pcm,
 const char *xiaozhi_wake_engine_backend_name(void);
 int xiaozhi_wake_engine_last_error(void);
 int xiaozhi_wake_engine_stage(void);
+int xiaozhi_wake_engine_last_confidence_permille(void);
+int xiaozhi_wake_engine_last_noise_permille(void);
+int xiaozhi_wake_engine_last_feature_source(void);
+int xiaozhi_wake_engine_last_feature_error(void);
+int xiaozhi_wake_engine_last_alloc_source(void);
+int xiaozhi_wake_engine_last_alloc_size(void);
+int xiaozhi_wake_engine_last_alloc_fail_source(void);
+int xiaozhi_wake_engine_last_alloc_fail_size(void);
+int xiaozhi_wake_engine_alloc_diag(void);
 
 #endif

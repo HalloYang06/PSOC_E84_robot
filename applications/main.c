@@ -15,11 +15,17 @@
 
 #define LED_PIN_G GET_PIN(16, 6)
 #define M55_AUDIO_SAMPLE_RATE 16000
-#define M55_AUDIO_CHANNELS 1
 #define M55_AUDIO_BITS_PER_SAMPLE 16
 #define M55_AUDIO_FRAME_BYTES 2048
 #define M55_VOICE_BOOT_DELAY_MS 5000
 #define M55_BOOT_SELF_TEST_RETRY_COUNT 10
+#ifdef ENABLE_STEREO_INPUT_FEED
+#define M55_AUDIO_CHANNELS 2
+#define M55_AUDIO_MONO_FRAME_BYTES (M55_AUDIO_FRAME_BYTES / 2)
+#else
+#define M55_AUDIO_CHANNELS 1
+#define M55_AUDIO_MONO_FRAME_BYTES M55_AUDIO_FRAME_BYTES
+#endif
 
 __attribute__((weak)) struct _reent _impure_data;
 
@@ -29,6 +35,7 @@ static struct
     rt_thread_t thread;
     rt_bool_t running;
     rt_uint8_t buffer[M55_AUDIO_FRAME_BYTES];
+    rt_uint8_t mono_buffer[M55_AUDIO_MONO_FRAME_BYTES];
 } g_m55_mic = {0};
 static rt_thread_t g_voice_boot_thread = RT_NULL;
 static rt_thread_t g_boot_self_test_thread = RT_NULL;
@@ -171,7 +178,21 @@ static void m55_mic_thread_entry(void *parameter)
                 peak = 0;
             }
 
+#ifdef ENABLE_STEREO_INPUT_FEED
+            {
+                rt_int16_t *mono_samples = (rt_int16_t *)g_m55_mic.mono_buffer;
+                rt_size_t mono_count = sample_count / 2U;
+
+                for (i = 0; i < mono_count; i++)
+                {
+                    mono_samples[i] = samples[(i * 2U) + 1U];
+                }
+                (void)voice_service_submit_local_pcm(g_m55_mic.mono_buffer,
+                                                     (rt_uint32_t)(mono_count * sizeof(rt_int16_t)));
+            }
+#else
             (void)voice_service_submit_local_pcm(g_m55_mic.buffer, (rt_uint32_t)read_len);
+#endif
         }
         else
         {

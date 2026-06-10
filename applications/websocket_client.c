@@ -9,14 +9,17 @@
 #define WS_RX_BUFFER_SIZE 2048
 #define WS_TX_BUFFER_SIZE 2048
 #define WS_HEADER_BUFFER_SIZE 512
+#define WS_URL_BUFFER_SIZE 192
+#define WS_HOST_BUFFER_SIZE 64
+#define WS_PATH_BUFFER_SIZE 160
 
 typedef struct
 {
     rt_bool_t initialized;
     rt_bool_t connected;
-    char server_url[128];
-    char server_host[64];
-    char server_path[64];
+    char server_url[WS_URL_BUFFER_SIZE];
+    char server_host[WS_HOST_BUFFER_SIZE];
+    char server_path[WS_PATH_BUFFER_SIZE];
     char extra_headers[WS_HEADER_BUFFER_SIZE];
     int server_port;
     int sock;
@@ -42,6 +45,11 @@ static rt_err_t websocket_parse_url(const char *server_url)
     host_start = server_url + 5;
     path_start = strchr(host_start, '/');
     port_start = strchr(host_start, ':');
+
+    if (path_start && (rt_strlen(path_start) >= sizeof(g_ws.server_path)))
+    {
+        return -RT_EINVAL;
+    }
 
     rt_strncpy(g_ws.server_path, path_start ? path_start : "/", sizeof(g_ws.server_path) - 1);
 
@@ -307,7 +315,7 @@ rt_err_t websocket_client_connect(void)
 {
     struct hostent *host;
     struct sockaddr_in server_addr;
-    char request[512];
+    char request[1024];
     char response[512];
     int ret;
 

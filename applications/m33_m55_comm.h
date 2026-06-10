@@ -23,8 +23,17 @@ typedef enum
     MSG_TYPE_TTS_AUDIO,
     MSG_TYPE_VOICE_CONTROL,
     MSG_TYPE_VOICE_CONTROL_ACK,
-    MSG_TYPE_VOICE_STATUS
+    MSG_TYPE_VOICE_STATUS,
+    MSG_TYPE_VOICE_CONFIG
 } m33_m55_msg_type_t;
+
+typedef enum
+{
+    VOICE_CONFIG_NONE = 0,
+    VOICE_CONFIG_XIAOZHI_URL,
+    VOICE_CONFIG_XIAOZHI_TOKEN,
+    VOICE_CONFIG_XIAOZHI_RECONNECT
+} voice_config_key_t;
 
 typedef enum
 {
@@ -142,6 +151,12 @@ typedef struct
 
 typedef struct
 {
+    rt_uint32_t key;
+    char value[256];
+} voice_config_msg_t;
+
+typedef struct
+{
     rt_uint32_t flags;
     rt_uint32_t submitted_frames;
     rt_uint32_t processed_windows;
@@ -170,6 +185,7 @@ typedef struct
         text_msg_t text;
         voice_control_msg_t voice_control;
         voice_status_msg_t voice_status;
+        voice_config_msg_t voice_config;
     } payload;
 } m33_m55_message_t;
 

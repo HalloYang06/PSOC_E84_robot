@@ -65,12 +65,33 @@ if edge_impulse_enabled:
     ei_sdk_rel = os.path.join('edge-impulse-sdk')
     ei_sdk_root = os.path.join(edge_impulse_root, ei_sdk_rel)
     ei_src = [os.path.join(cwd, 'xiaozhi_edge_impulse_wake_backend.cpp')]
+    ei_src += Glob(os.path.join(edge_impulse_root, ei_sdk_rel, 'porting', 'rtthread', '*.cpp'))
+    ei_src += Glob(os.path.join(edge_impulse_root, ei_sdk_rel, 'dsp', '*.cpp'))
+    ei_src += Glob(os.path.join(edge_impulse_root, ei_sdk_rel, 'dsp', 'dct', '*.cpp'))
+    ei_src += Glob(os.path.join(edge_impulse_root, ei_sdk_rel, 'dsp', 'speechpy', '*.cpp'))
+    ei_src += Glob(os.path.join(edge_impulse_root, ei_sdk_rel, 'dsp', 'spectral', '*.cpp'))
+    ei_src += Glob(os.path.join(edge_impulse_root, ei_sdk_rel, 'dsp', 'dsp_engines', '*.cpp'))
+    ei_src += Glob(os.path.join(edge_impulse_root, ei_sdk_rel, 'CMSIS', 'DSP', 'Source', 'TransformFunctions', '*.c'))
+    ei_src += Glob(os.path.join(edge_impulse_root, ei_sdk_rel, 'CMSIS', 'DSP', 'Source', 'CommonTables', '*.c'))
+    ei_src += Glob(os.path.join(edge_impulse_root, ei_sdk_rel, 'CMSIS', 'DSP', 'Source', 'BasicMathFunctions', '*.c'))
+    ei_src += Glob(os.path.join(edge_impulse_root, ei_sdk_rel, 'CMSIS', 'DSP', 'Source', 'FastMathFunctions', '*.c'))
+    ei_src += Glob(os.path.join(edge_impulse_root, ei_sdk_rel, 'CMSIS', 'DSP', 'Source', 'StatisticsFunctions', '*.c'))
+    ei_src += Glob(os.path.join(edge_impulse_root, ei_sdk_rel, 'CMSIS', 'DSP', 'Source', 'SupportFunctions', '*.c'))
+    ei_src += Glob(os.path.join(edge_impulse_root, ei_sdk_rel, 'CMSIS', 'DSP', 'Source', 'MatrixFunctions', '*.c'))
+    ei_src += Glob(os.path.join(edge_impulse_root, ei_sdk_rel, 'CMSIS', 'DSP', 'Source', 'ComplexMathFunctions', '*.c'))
     ei_path = [
         edge_impulse_root,
+        os.path.join(edge_impulse_root, 'model-parameters'),
         os.path.join(edge_impulse_root, 'tflite-model'),
+        os.path.join(ei_sdk_root, 'classifier'),
+        os.path.join(ei_sdk_root, 'dsp'),
+        os.path.join(ei_sdk_root, 'porting'),
+        os.path.join(ei_sdk_root, 'CMSIS', 'Core', 'Include'),
+        os.path.join(ei_sdk_root, 'CMSIS', 'DSP', 'Include'),
+        os.path.join(ei_sdk_root, 'CMSIS', 'DSP', 'PrivateInclude'),
     ]
-    ei_cflags = ''
-    ei_cxxflags = ' -std=c++11 -fno-rtti -fno-exceptions -fno-threadsafe-statics -Wno-sign-compare -Wno-strict-aliasing'
+    ei_cflags = ' -D__RTTHREAD__ -DEI_PORTING_RTTHREAD=1 -DEIDSP_USE_CMSIS_DSP=1 -DEIDSP_LOAD_CMSIS_DSP_SOURCES=1 -DEIDSP_QUANTIZE_FILTERBANK=0 -DARM_MATH_CM55 -DARM_MATH_DSP -DARM_MATH_LOOPUNROLL -DARM_MATH_AUTOVECTORIZE'
+    ei_cxxflags = ei_cflags + ' -std=c++11 -fno-rtti -fno-exceptions -fno-threadsafe-statics -Wno-sign-compare -Wno-strict-aliasing'
     group = group + DefineGroup('XiaoZhiEdgeImpulseWake',
                                 ei_src,
                                 depend=[''],
