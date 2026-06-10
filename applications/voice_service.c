@@ -42,6 +42,8 @@ typedef struct
     rt_uint32_t xiaozhi_listening_bytes;
     rt_uint32_t xiaozhi_listening_chunks;
     rt_uint32_t xiaozhi_listening_session_id;
+    rt_uint8_t xiaozhi_audio_frame[XIAOZHI_AUDIO_FRAME_BYTES];
+    rt_uint32_t xiaozhi_audio_frame_len;
     rt_uint32_t latest_pcm_len;
     rt_uint32_t latest_pcm_seq;
     rt_bool_t latest_pcm_pending;
@@ -444,6 +446,7 @@ static void voice_service_start_xiaozhi_listening(const char *wake_word)
     g_service.xiaozhi_listening_bytes = 0;
     g_service.xiaozhi_listening_chunks = 0;
     g_service.xiaozhi_listening_session_id = session_id;
+    g_service.xiaozhi_audio_frame_len = 0;
     rt_mutex_release(&g_service.lock);
 
     rt_kprintf("[voice_service] Xiaozhi listening started session=%lu word=%s\n",
@@ -454,6 +457,7 @@ static void voice_service_start_xiaozhi_listening(const char *wake_word)
 static rt_bool_t voice_service_feed_xiaozhi_listening(const uint8_t *audio_data, uint32_t len)
 {
     rt_uint32_t session_id;
+    rt_uint32_t offset = 0;
 
     if ((audio_data == RT_NULL) || (len == 0))
     {
@@ -473,24 +477,54 @@ static rt_bool_t voice_service_feed_xiaozhi_listening(const uint8_t *audio_data,
     {
         rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
         g_service.xiaozhi_listening_active = RT_FALSE;
+        g_service.xiaozhi_audio_frame_len = 0;
         rt_mutex_release(&g_service.lock);
         rt_kprintf("[voice_service] Xiaozhi listening stopped: websocket disconnected session=%lu\n",
                    (unsigned long)session_id);
         return RT_TRUE;
     }
 
-    if (websocket_client_send_binary(audio_data, len) == RT_EOK)
+    while (offset < len)
     {
+        rt_uint32_t copy_len;
+        rt_uint8_t frame[XIAOZHI_AUDIO_FRAME_BYTES];
+        rt_bool_t frame_ready = RT_FALSE;
+
         rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
-        g_service.xiaozhi_listening_bytes += len;
-        g_service.xiaozhi_listening_chunks++;
+        copy_len = XIAOZHI_AUDIO_FRAME_BYTES - g_service.xiaozhi_audio_frame_len;
+        if (copy_len > (len - offset))
+        {
+            copy_len = len - offset;
+        }
+        rt_memcpy(g_service.xiaozhi_audio_frame + g_service.xiaozhi_audio_frame_len,
+                  audio_data + offset,
+                  copy_len);
+        g_service.xiaozhi_audio_frame_len += copy_len;
+        offset += copy_len;
+        if (g_service.xiaozhi_audio_frame_len >= XIAOZHI_AUDIO_FRAME_BYTES)
+        {
+            rt_memcpy(frame, g_service.xiaozhi_audio_frame, XIAOZHI_AUDIO_FRAME_BYTES);
+            g_service.xiaozhi_audio_frame_len = 0;
+            frame_ready = RT_TRUE;
+        }
         rt_mutex_release(&g_service.lock);
-    }
-    else
-    {
-        rt_kprintf("[voice_service] Xiaozhi audio send failed session=%lu len=%lu\n",
-                   (unsigned long)session_id,
-                   (unsigned long)len);
+
+        if (frame_ready)
+        {
+            if (websocket_client_send_binary(frame, XIAOZHI_AUDIO_FRAME_BYTES) == RT_EOK)
+            {
+                rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
+                g_service.xiaozhi_listening_bytes += XIAOZHI_AUDIO_FRAME_BYTES;
+                g_service.xiaozhi_listening_chunks++;
+                rt_mutex_release(&g_service.lock);
+            }
+            else
+            {
+                rt_kprintf("[voice_service] Xiaozhi audio send failed session=%lu len=%lu\n",
+                           (unsigned long)session_id,
+                           (unsigned long)XIAOZHI_AUDIO_FRAME_BYTES);
+            }
+        }
     }
 
     return RT_TRUE;
@@ -517,6 +551,7 @@ static void voice_service_stop_xiaozhi_listening(rt_bool_t notify_server)
     g_service.xiaozhi_listening_bytes = 0;
     g_service.xiaozhi_listening_chunks = 0;
     g_service.xiaozhi_listening_session_id = 0;
+    g_service.xiaozhi_audio_frame_len = 0;
     rt_mutex_release(&g_service.lock);
 
     if (notify_server &&

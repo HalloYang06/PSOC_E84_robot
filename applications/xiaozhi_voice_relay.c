@@ -227,7 +227,11 @@ rt_err_t xiaozhi_voice_relay_build_hello(char *out, rt_size_t out_len)
                     "{\"type\":\"hello\",\"version\":3,"
                     "\"features\":{\"mcp\":true},"
                     "\"transport\":\"websocket\","
-                    "\"audio_params\":{\"format\":\"pcm_s16le\",\"sample_rate\":16000,\"channels\":1,\"bits_per_sample\":16,\"frame_duration\":20}}");
+                    "\"audio_params\":{\"format\":\"pcm_s16le\",\"sample_rate\":%u,\"channels\":%u,\"bits_per_sample\":%u,\"frame_duration\":%u}}",
+                    (unsigned)XIAOZHI_AUDIO_SAMPLE_RATE,
+                    (unsigned)XIAOZHI_AUDIO_CHANNELS,
+                    (unsigned)XIAOZHI_AUDIO_BITS_PER_SAMPLE,
+                    (unsigned)XIAOZHI_AUDIO_FRAME_DURATION_MS);
     return ((n < 0) || ((rt_size_t)n >= out_len)) ? -RT_EFULL : RT_EOK;
 }
 
