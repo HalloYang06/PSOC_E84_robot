@@ -209,6 +209,43 @@ wlan init success
 eth device init ok
 ```
 
+## 8.1 2026-06-13 最小 WiFi 扫描 QA 结论
+
+本次在 `wifi` 工程中先关闭/绕开 LVGL、语音、OpenClaw、HTTP 和自动连接，只保留 WiFi 初始化与开机自动扫描 QA。
+
+关键结论：
+
+1. 资源烧录不是当前阻塞点。官方 `Edgi_Talk_M55_WIFI` 和本工程合并资源镜像均已验证资源可用。
+2. `FINSH_THREAD_PRIORITY=20` 时，CM55 shell 会在无有效控制台输入时长期占用调度，导致 WHD FreeRTOS 包装线程得不到运行；将 shell 优先级降到 `30` 后，WHD 线程可以运行。
+3. 不能用 `rt_wlan_is_ready()` 判断是否可以扫描；它更偏向连接 ready 状态。开机扫描前应等 WHD 初始化阶段到 ready，并确认 `wlan0` 已注册。
+4. 当前 porting 层原先的 active scan 后再 passive scan 在本板上不稳定，表现为上层等待 `SCAN_DONE` 超时。临时减枝方案改为 active-only 异步扫描，active 完成即上报 `RT_WLAN_DEV_EVT_SCAN_DONE`。
+
+OpenOCD 内存 QA 成功证据：
+
+```text
+g_m55_wifi_scan_qa.magic        = 0x57465141  // "WFQA"
+g_m55_wifi_scan_qa.phase        = 4
+g_m55_wifi_scan_qa.scan_result  = 0
+g_m55_wifi_scan_qa.scan_count   = 6
+g_whd_scan_diag_start_calls     = 1
+g_whd_scan_diag_start_ret       = 0
+g_whd_scan_diag_callback_calls  = 13
+g_whd_scan_diag_report_calls    = 12
+g_whd_scan_diag_done_calls      = 1
+```
+
+当前临时 QA 入口：
+
+- [main.c](/D:/RT-ThreadStudio/workspace/wifi/applications/main.c): `M55_WIFI_SCAN_QA_ONLY`
+- [whd_wlan.c](/D:/RT-ThreadStudio/workspace/wifi/libraries/components/wifi-host-driver/porting/src/wlan/whd_wlan.c): active-only scan 与 `g_whd_scan_diag_*`
+
+后续重新引入功能时，建议顺序为：
+
+1. 保持 active-only scan，移除 QA-only 后只恢复正常 WiFi 配网服务。
+2. 再恢复保存配置/自动连接。
+3. 再恢复 LVGL 配网界面。
+4. 最后恢复语音、OpenClaw、HTTP/WebSocket 等重负载模块。
+
 ## 9. M55 DEEPCRAFT 唤醒词与外部 RSRAM
 
 ### 9.1 M55 唤醒词模型必须放到 secondary/RSRAM
@@ -320,3 +357,168 @@ ping www.baidu.com
 - `WHD resources = FAL`
 - 使用修正后的 `16` 字节资源头
 - 使用 [whd_resources_all.bin](/D:/RT-ThreadStudio/workspace/wifi_resources/whd_resources_all.bin) 一次性整体烧录
+
+## 11. LVGL 配网页扫描为空的排查顺序
+
+LCD 配网页的目标是让用户不用命令行完成配网；命令行只保留给开发诊断。若点击“扫描”后列表为空，不要直接判断是界面坏了，按下面顺序看：
+
+1. 先确认当前交互 shell 是 M55，不是 M33。M55 启动日志应出现 `This core is cortex-m55`，并且 WiFi 成功时应出现 `WLAN MAC Address`、`WLAN Firmware`、`WLAN CLM`、`wlan init success`。
+2. 在配网页点“诊断”，看 `WHD stage/result`。如果 WHD 没到 ready，先回到资源烧录、SDIO、固件下载问题，不要调 UI。
+3. 看扫描诊断字段：`cb` 是收到的 AP report 数，`done` 是扫描完成事件数，`timeout` 是等待扫描完成超时次数。
+   - `cb=0 done=0 timeout>0`：底层扫描没有完成，优先查 WHD/SDIO/中断/事件。
+   - `cb=0 done>0 timeout=0`：扫描确实完成但没看到 AP，优先确认路由器是 2.4G/5G 可见、距离、信道和国家码。
+   - `cb>0 count=0`：缓存逻辑异常或隐藏 SSID 被过滤。
+4. 新版 `wifi_config_scan()` 已经改为等待 `RT_WLAN_EVT_SCAN_DONE`，AP 回调会在等待期间持续缓存到 LVGL 列表。不要再用“刚点扫描立刻读取 0 个 AP”判断扫描失败。
+
+常用现场命令：
+
+```sh
+m55_wifi_diag
+m55_wifi_scan
+# 等 3-5 秒
+m55_wifi_aps
+m55_wifi_status
+```
+
+## 12. 2026-06-11 LVGL 摄像头 QA 结论
+
+本轮为了在 M55 串口不可用时继续 QA，使用 NanoPi 摄像头直拍英飞凌 LCD：
+
+```sh
+ssh pi@192.168.2.66
+sudo insmod /usr/lib/modules/6.1.141.can-new/kernel/drivers/media/usb/uvc/uvcvideo.ko
+v4l2-ctl -d /dev/video45 -c auto_exposure=1,exposure_time_absolute=90,brightness=-10,contrast=65,backlight_compensation=0,sharpness=7
+ffmpeg -hide_banner -loglevel error -f v4l2 -input_format mjpeg -video_size 1920x1080 -i /dev/video45 -frames:v 1 -y /tmp/ifx_diag_xy.jpg
+```
+
+为了让摄像头可读，LVGL 配网页底部增加黑底白字大号 QA 短码：
+
+```text
+R0 N0 C0 D0 T0
+S1322 E02000002
+X6c Y02
+```
+
+字段含义：
+
+- `R`：`rt_wlan_is_ready()`，当前为 `0`，WiFi 管理层未 ready。
+- `N`：scan running，当前为 `0`，扫描没有启动。
+- `C/D/T`：scan report / scan done / scan timeout 计数，当前全为 `0`，说明不是扫描 API 或 LVGL 列表缓存问题。
+- `S1322`：WHD SDIO BLHS `CHK_BL_INIT` 阶段，主机已写 `SDIO_BLHS_H2D_BL_INIT`。
+- `E02000002`：`WHD_TIMEOUT`。
+- `X6c Y02`：等待 `SDIO_BLHS_D2H_READY` 时，实际读到 D2H `0x6c`，期望位是 `0x02`。
+
+结论：当前“WiFi 扫描不到”不是最终问题，真正卡点是 CYW55513/CYW55500 SDIO bootloader handshake 未给出期望的 `D2H_READY`。下一步优先查：
+
+1. `BLHS_SUPPORT` 是否适用于当前 CYW55513 模组和固件资源组合。
+2. `COMPONENT_55500/COMPONENT_55500A1`、`CYW55513IUBG`、NVRAM、CLM、firmware 是否严格匹配板卡。
+3. `m55_sdio_kick_change()`、SDIO reset/power 时序、BT 共享启动窗口是否让 WiFi bootloader 进入异常状态。
+4. 若仍只能靠摄像头 QA，保留黑底短码，不要改回小字诊断。
+
+## 13. 2026-06-13 官方资料回查与下一轮上电测试
+
+本轮用户明确要求先不要再猜、不要先做 LVGL；板子当前未上电，因此只做官方资料和本地源码对照，不做烧录/复位。
+
+已确认的官方/原始基线：
+
+1. Infineon WHD 官方仓库说明 WHD 是 Infineon WLAN 芯片的嵌入式 Wi-Fi Host Driver，Wi-Fi 6 `55500` 支持 `SDIO`。
+2. Infineon `mtb-example-psoc-edge-wifi-web-server` 官方例程说明 PSOC Edge + AIROC `CYW55513` 可通过 `SoftAP + STA` 并发模式做 Web 配网；这说明后续 LCD/LVGL 配网方向成立，但必须等 WHD 初始化和扫描先跑通。
+3. 本地 BSP `libs/TARGET_APP_KIT_PSE84_EVAL_EPC2/bsp.mk` 明确：
+   - `BSP_COMPONENTS` 包含 `WIFI_INTERFACE_SDIO`、`CYW55513_MOD_PSE84_SOM`。
+   - `MPN_LIST` 包含 `CYW55513IUBG`。
+   - `DEVICE_COMPONENTS` 为 `55500 55500A1 PSE84`。
+   - `DEVICE_CYW55513IUBG_DIE` 为 `55500A1`。
+   - `DEVICE_DEFINES` 为 `BLHS_SUPPORT TRXV5`。
+4. 本地官方 `projects/Edgi_Talk_M55_WIFI` 例程 README 明确该例程用于 M55 上验证 Wi-Fi scanning、connection、iperf，运行路径也是先 `wifi scan` 再 `wifi join`。
+5. 当前工程的 `board/SConscript` 与 `Edgi_Talk_M55_WIFI/board/SConscript` 的关键宏一致，包含 `BLHS_SUPPORT`、`COMPONENT_55500`、`COMPONENT_55500A1`、`COMPONENT_SM`、`TRXV5`。
+6. 当前工程 `rtconfig.h/.config` 与 `Edgi_Talk_M55_WIFI` 的关键配置一致：`RT_SDIO_STACK_SIZE=2048`、`RT_SDIO_THREAD_PRIORITY=0`、`BSP_USING_SDIO0`、`WHD_RESOURCES_IN_EXTERNAL_STORAGE_FAL`、`WHD_USING_CHIP_CYW55500`、`WHD_USING_WIFI6`、`CY_WIFI_WHD_THREAD_STACK_SIZE=5120`。
+
+本轮已回正的实验改动：
+
+1. `WHD/COMPONENT_WIFI6/src/whd_chip_constants.c`
+   - 恢复官方 BSP 的 55500/TRXV5 RAM 常量：
+     - `CHIP_RAM_SIZE = 0xE0000 - 0x20 - 0x1000`
+     - `ATCM_RAM_BASE_ADDRESS = 0x3a0000 + 0x20 + 0x1000`
+   - 原先把 `0x1000` 偏移去掉属于行为改动，且和官方 BSP 不一致。
+2. `WHD/COMPONENT_WIFI6/src/bus_protocols/whd_bus_sdio_protocol.c`
+   - `CHK_BL_INIT` 恢复严格等待 `SDIO_BLHS_D2H_READY`。
+   - 不再接受 `TRXHDR_PARSE_DONE/VALDN_RESULT/VALDN_DONE` 作为 ready 替代；`0x6c` 应作为异常证据保留，而不是越过官方状态机。
+   - 写 reset vector 后恢复官方错误语义：读回失败或值不一致不能强行改成成功。
+3. 诊断埋点仍保留，用于下一次上电后读 `g_whd_diag_*` 判断卡点。
+
+本轮编译验证：
+
+```text
+scons -j4
+text=1278972 data=81488 bss=4534732
+build OK
+```
+
+下一次板子上电后的最小验证顺序：
+
+1. 烧录当前构建和合并后的 WHD 资源：
+   - 使用 `program_with_resources.bat`。
+   - 注意 OpenOCD 退出时可能仍有 KitProg3 acquire 报错，先看是否写入了主程序和资源镜像，不要只看退出码。
+2. 复位后先等 20-30 秒，不要先点 LVGL 扫描。
+3. 用 OpenOCD 读取诊断全局：
+   - `g_whd_diag_extra0 = 0x2001b734`
+   - `g_whd_diag_extra1 = 0x2001b738`
+   - `g_whd_diag_flags  = 0x2001b73c`
+   - `g_whd_diag_result = 0x2001b740`
+   - `g_whd_diag_stage  = 0x2001b744`
+4. 如果仍是 `S1322 E02000002 X6c Y02`：
+   - 说明官方严格 BLHS 下还是等不到 `READY`，优先查 Wi-Fi 芯片 reset/power/SDIO bootloader 入口时序，而不是扫描 API 或 LVGL。
+5. 如果通过 WHD init 并出现 `WLAN MAC Address / WLAN Firmware / WLAN CLM / wlan init success`：
+   - 再运行 `m55_wifi_scan` 或 `wifi scan`。
+   - 等 3-5 秒后运行 `m55_wifi_aps`。
+   - 此时才回到 LVGL 配网页列表刷新和触摸交互。
+
+## 14. 2026-06-13 WiFi + LVGL 触屏配网里程碑
+
+本轮确认 WiFi 扫描与 LVGL 配网页已经从底层阻塞推进到可用交互阶段，是后续“小智连接服务器平台 / OpenClaw 工具调用 / M55 网络服务”的前置里程碑。
+
+已完成：
+
+1. WiFi 扫描链路打通：
+   - `whd_wlan.c` 增加扫描诊断计数。
+   - 现场曾读到 `scan_result=0`、`scan_count=6`，后续 LVGL 场景下也读到 WHD scan callback/report/done 计数增长，说明资源烧录、WHD 初始化和扫描回调已通。
+   - 当前应继续使用 `program_with_resources.bat` 同时烧录主固件和 `whd_resources_all.bin`，不要只烧 `rtthread.hex`。
+2. LVGL 配网页上线：
+   - `applications/rehab_wifi_panel.c` 提供触屏扫描、选择 SSID、输入密码、保存、连接、断开、清除和诊断入口。
+   - 默认隐藏黑底诊断覆盖层，诊断只作为开发按钮打开。
+   - 配网页启动后会自动发起一次扫描，用户不再需要进命令行 `msh` 配网。
+3. 触屏输入体验修复：
+   - 自定义键盘的 `Del` 不再插入字符串 `Del`，而是执行删除。
+   - 避免使用当前字体缺失的 LVGL 图标符号，减少方框字。
+   - 重新压缩顶部状态文案、放大网络列表、整理按钮布局，减少互相覆盖。
+4. 构建脚本补强：
+   - `applications/SConscript` 显式加入 LVGL `env_support/rt-thread` include path。
+   - `libraries/Common/board/SConscript` 显式补齐 LVGL port 编译所需的 `src` 下头文件路径，避免干净 worktree 中出现私有头找不到的问题。
+
+本轮验证：
+
+```text
+D:\RT-ThreadStudio\workspace\wifi
+scons -j4
+build OK
+text=1160736 data=17396 bss=4525076
+
+program_with_resources.bat
+rtthread.hex 写入成功
+whd_resources_all.bin 写入成功
+
+OpenOCD reset run
+reset command issued
+```
+
+注意事项：
+
+- OpenOCD/KitProg3 在写入或 reset 后仍可能打印 `failed to acquire the device`，但只要日志已经显示 `wrote ... rtthread.hex` 和 `wrote ... whd_resources_all.bin`，先不要把它等同于资源未烧录。
+- 临时 M55 Git worktree 全量重建时曾因旧分支缺少 LVGL include path 失败；补齐路径后继续全量重建会卡在长时间 C++/LVGL 编译阶段，本地 `workspace\wifi` 主工作区构建和实机烧录已验证。
+- WiFi 列表滚动曾怀疑会被刷新打回顶部，现场复查确认可以下拉，暂不改刷新逻辑。
+
+下一步：
+
+1. 继续用触屏配网页完成真实路由器连接，确认拿到 IP。
+2. 在 M55 上恢复/验证小智连接服务器平台所需的网络客户端或 HTTP/WebSocket 路径。
+3. WiFi 稳定后再恢复语音、小智唤醒和 OpenClaw/OpenAI 类服务，不要在 WiFi 未连通时同时调多条链路。

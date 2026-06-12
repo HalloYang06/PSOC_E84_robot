@@ -15,11 +15,13 @@
 #include "cy_utils.h"
 #include "drv_touch.h"
 #include "cybsp.h"
+#include <rtthread.h>
 
 /*******************************************************************************
 * Global Variables
 *******************************************************************************/
 lv_indev_t *indev_touchpad;
+static rt_bool_t g_touchpad_ready = RT_FALSE;
 
 /*******************************************************************************
 * Function Name: touchpad_init
@@ -34,14 +36,18 @@ lv_indev_t *indev_touchpad;
 *  void
 *
 *******************************************************************************/
-static void touchpad_init(void)
+static rt_bool_t touchpad_init(void)
 {
     cy_rslt_t result = CY_RSLT_SUCCESS;
 
     if (rt_hw_ST7102_port() != result)
     {
-        CY_ASSERT(0);
+        rt_kprintf("[lvgl_indev] ST7102 touch init failed, LVGL will start without touch\n");
+        return RT_FALSE;
     }
+
+    rt_kprintf("[lvgl_indev] ST7102 touch init ok\n");
+    return RT_TRUE;
 }
 
 
@@ -72,10 +78,20 @@ static void touchpad_init(void)
 *******************************************************************************/
 static void touchpad_read(lv_indev_t *indev_drv, lv_indev_data_t *data)
 {
-    static int touch_x = 0;
-    static int touch_y = 0;
+    static rt_int16_t touch_x = 0;
+    static rt_int16_t touch_y = 0;
     cy_rslt_t result = CY_RSLT_SUCCESS;
+
+    CY_UNUSED_PARAMETER(indev_drv);
     data->state = LV_INDEV_STATE_REL;
+
+    if (!g_touchpad_ready)
+    {
+        data->point.x = touch_x;
+        data->point.y = touch_y;
+        return;
+    }
+
     result = ST7102_get_single_touch(&touch_x, &touch_y);
     if (CY_RSLT_SUCCESS == result)
     {
@@ -103,7 +119,11 @@ static void touchpad_read(lv_indev_t *indev_drv, lv_indev_data_t *data)
 void lv_port_indev_init(void)
 {
     /* Initialize your touchpad if you have. */
-    touchpad_init();
+    g_touchpad_ready = touchpad_init();
+    if (!g_touchpad_ready)
+    {
+        return;
+    }
 
     /* Register a touchpad input device */
     lv_indev_t *indev = lv_indev_create();

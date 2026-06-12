@@ -30,10 +30,12 @@ path = [
     os.path.join(cwd, 'ifx_deepcraft', 'models'),
     os.path.join(cwd, 'ifx_deepcraft', 'models', 'Smart_Lights_Demo'),
 ]
-if GetDepend('BSP_USING_LVGL') or GetDepend('PKG_USING_LVGL'):
+lvgl_enabled = GetDepend('BSP_USING_LVGL') or GetDepend('PKG_USING_LVGL')
+if lvgl_enabled:
     path += [
         os.path.abspath(os.path.join(cwd, '..', 'libraries', 'components', 'lvgl_9.2.0')),
         os.path.abspath(os.path.join(cwd, '..', 'libraries', 'components', 'lvgl_9.2.0', 'src')),
+        os.path.abspath(os.path.join(cwd, '..', 'libraries', 'components', 'lvgl_9.2.0', 'env_support', 'rt-thread')),
         os.path.abspath(os.path.join(cwd, '..', 'libraries', 'Common', 'board', 'ports', 'lvgl')),
     ]
 src  = Glob('*.c') + Glob('*.cpp')
@@ -43,6 +45,11 @@ src  = [f for f in src if os.path.basename(str(f)) not in [
     'motor7_model_runner.c',
     'wake_word_detector.cpp',
 ]]
+if not lvgl_enabled:
+    src = [f for f in src if os.path.basename(str(f)) not in [
+        'rehab_wifi_font.c',
+        'rehab_wifi_panel.c',
+    ]]
 if not edge_impulse_enabled:
     src = [f for f in src if os.path.basename(str(f)) != 'xiaozhi_edge_impulse_wake_backend.cpp']
 else:

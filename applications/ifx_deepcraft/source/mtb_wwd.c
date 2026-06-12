@@ -42,6 +42,10 @@
  ******************************************************************************/
 #include "mtb_wwd.h"
 
+volatile int g_ifx_wwd_debug_stage;
+volatile int g_ifx_wwd_debug_detail;
+volatile int g_ifx_wwd_ethosu_stub_seen;
+
 #include <ctype.h>
 #include <math.h>
 #include <stdlib.h>
@@ -180,15 +184,19 @@ cy_rslt_t mtb_wwd_init(mtb_wwd_t *wwd_obj, mtb_wwd_nlu_config_t *config_obj)
         return error_code;
 
     /* AM NN model target for U55 */
+    g_ifx_wwd_debug_stage = 1;
     error_code = ml_create_model(&mtb_ml_model_obj);
+    g_ifx_wwd_debug_stage = 2;
     if (error_code != MTB_VA_RSLT_SUCCESS)
         return error_code;
 
+    g_ifx_wwd_debug_stage = 3;
     error_code =
         ml_inference_init(&wwd_nlu_buff->am_model_bin,
                           &wwd_nlu_buff->am_model_buffer, mtb_ml_model_obj);
     if (error_code != MTB_VA_RSLT_SUCCESS)
         return error_code;
+    g_ifx_wwd_debug_stage = 4;
 
     /* Step 2: Allocate memory (AMPREDICT persistent memory allocated in
      * previous step) */

@@ -17,6 +17,8 @@
 #include <string.h>
 #include "cy_graphics.h"
 
+extern cy_stc_gfx_context_t *drv_lcd_get_gfx_context(void);
+
 
 /*******************************************************************************
 * Global Variables
@@ -30,6 +32,8 @@ void *frame_buffer1 = &disp_buf1;
 void *frame_buffer2 = &disp_buf2;
 
 cy_stc_gfx_context_t gfx_context;
+static volatile rt_uint32_t g_lvgl_flush_count = 0;
+static volatile rt_int32_t g_lvgl_last_flush_status = -1;
 
 
 /*******************************************************************************
@@ -54,8 +58,15 @@ static void LV_ATTRIBUTE_FAST_MEM disp_flush(lv_display_t *disp_drv, const lv_ar
 {
     CY_UNUSED_PARAMETER(area);
 
-    Cy_GFXSS_Set_FrameBuffer((GFXSS_Type*) GFXSS, (uint32_t*) color_p,
-                             &gfx_context);
+    cy_en_gfx_status_t status;
+
+    status = Cy_GFXSS_Set_FrameBuffer((GFXSS_Type*) GFXSS, (uint32_t*) color_p,
+                                      drv_lcd_get_gfx_context());
+    g_lvgl_last_flush_status = (rt_int32_t)status;
+    if (status == CY_GFX_SUCCESS)
+    {
+        g_lvgl_flush_count++;
+    }
 
     /* Inform the graphics library that you are ready with the flushing */
     lv_display_flush_ready(disp_drv);
@@ -114,7 +125,17 @@ void lv_port_disp_init(void)
 
     // lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_270);
 
-    Cy_GFXSS_Clear_DC_Interrupt((GFXSS_Type*) GFXSS, &gfx_context);
+    Cy_GFXSS_Clear_DC_Interrupt((GFXSS_Type*) GFXSS, drv_lcd_get_gfx_context());
+}
+
+rt_uint32_t lv_port_disp_get_flush_count(void)
+{
+    return g_lvgl_flush_count;
+}
+
+rt_int32_t lv_port_disp_get_last_flush_status(void)
+{
+    return g_lvgl_last_flush_status;
 }
 
 

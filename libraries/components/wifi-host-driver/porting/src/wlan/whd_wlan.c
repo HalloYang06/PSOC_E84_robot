@@ -49,6 +49,8 @@
 #define DBG_LVL           DBG_INFO
 #include "rtdbg.h"
 
+void m55_sdio_kick_change(void);
+
 #ifdef WHD_SET_COUNTRY_FROM_HOST
 RT_STATIC_ASSERT(WHD_COUNTRY_CODE_must_be_2_characters_string, (sizeof(WHD_COUNTRY_CODE) == 3));
 #endif /* WHD_SET_COUNTRY_FROM_HOST */
@@ -59,6 +61,20 @@ static cyhal_sdio_t cyhal_sdio;
 static volatile int g_whd_diag_stage = 0;
 static volatile int g_whd_diag_result = 0;
 static volatile uint32_t g_whd_diag_flags = 0;
+static volatile uint32_t g_whd_diag_extra0 = 0;
+static volatile uint32_t g_whd_diag_extra1 = 0;
+static volatile int g_whd_resource_diag_stage = 0;
+static volatile int g_whd_resource_diag_result = 0;
+static volatile uint32_t g_whd_resource_diag_extra0 = 0;
+static volatile uint32_t g_whd_resource_diag_extra1 = 0;
+volatile uint32_t g_whd_scan_diag_start_calls = 0;
+volatile uint32_t g_whd_scan_diag_start_ret = 0;
+volatile uint32_t g_whd_scan_diag_callback_calls = 0;
+volatile uint32_t g_whd_scan_diag_report_calls = 0;
+volatile uint32_t g_whd_scan_diag_done_calls = 0;
+volatile uint32_t g_whd_scan_diag_last_status = 0;
+volatile uint32_t g_whd_scan_diag_last_ssid_len = 0;
+volatile int32_t g_whd_scan_diag_last_rssi = 0;
 static whd_init_config_t whd_config =
 {
     .thread_priority = CY_WIFI_WHD_THREAD_PRIORITY,
@@ -102,10 +118,36 @@ enum
 #define WHD_DIAG_FLAG_STA_REGISTERED  (1UL << 4)
 #define WHD_DIAG_FLAG_AP_REGISTERED   (1UL << 5)
 
-static void whd_diag_mark(int stage, int result)
+#ifndef WHD_BOOT_DELAY_MS
+#define WHD_BOOT_DELAY_MS             8000U
+#endif
+
+#ifndef WHD_WIFI_ON_RETRY_DELAY_MS
+#define WHD_WIFI_ON_RETRY_DELAY_MS    0U
+#endif
+
+void whd_diag_mark(int stage, int result)
 {
     g_whd_diag_stage = stage;
     g_whd_diag_result = result;
+}
+
+void whd_diag_extra(uint32_t extra0, uint32_t extra1)
+{
+    g_whd_diag_extra0 = extra0;
+    g_whd_diag_extra1 = extra1;
+}
+
+void whd_resource_diag_mark(int stage, int result)
+{
+    g_whd_resource_diag_stage = stage;
+    g_whd_resource_diag_result = result;
+}
+
+void whd_resource_diag_extra(uint32_t extra0, uint32_t extra1)
+{
+    g_whd_resource_diag_extra0 = extra0;
+    g_whd_resource_diag_extra1 = extra1;
 }
 
 void whd_wlan_get_diag(int *stage, int *result, uint32_t *flags)
@@ -122,6 +164,23 @@ void whd_wlan_get_diag(int *stage, int *result, uint32_t *flags)
     {
         *flags = g_whd_diag_flags;
     }
+}
+
+void whd_wlan_get_diag_extra(uint32_t *extra0, uint32_t *extra1)
+{
+    if (extra0)
+    {
+        *extra0 = g_whd_diag_extra0;
+    }
+    if (extra1)
+    {
+        *extra1 = g_whd_diag_extra1;
+    }
+}
+
+int whd_diag_get_stage(void)
+{
+    return g_whd_diag_stage;
 }
 
 struct whd_scan
@@ -173,27 +232,20 @@ static void whd_scan_callback(whd_scan_result_t **result_ptr, void *user_data, w
     struct whd_scan *whd_scan = user_data;
     struct rt_wlan_device *wlan = whd_scan->wlan;
 
+    g_whd_scan_diag_callback_calls++;
+    g_whd_scan_diag_last_status = (uint32_t)status;
+
     /* Check if we don't have a scan result to send to the user */
     if (( result_ptr == NULL ) || ( *result_ptr == NULL ))
     {
         /* Check for scan complete */
         if (status == WHD_SCAN_COMPLETED_SUCCESSFULLY || status == WHD_SCAN_ABORTED)
         {
-            if (whd_scan->whd_scan_type == WHD_SCAN_TYPE_ACTIVE)
-            {
-                /* The active type scan is complete, and the wlan is now signaled to perform a passive type scan */
-                whd_scan->whd_scan_type = WHD_SCAN_TYPE_PASSIVE;
-                memset(&whd_scan->scan_result, 0, sizeof(whd_scan->scan_result));
-                rt_sem_release(whd_scan->active_sem);
-            }
-            else
-            {
-                /* The passive type scanning is complete. The scanning is complete */
-                LOG_D("scan complete!");
-                rt_wlan_dev_indicate_event_handle(wlan, RT_WLAN_DEV_EVT_SCAN_DONE, RT_NULL);
-                rt_sem_delete(whd_scan->active_sem);
-                rt_free(whd_scan);
-            }
+            g_whd_scan_diag_done_calls++;
+            LOG_D("scan complete!");
+            rt_wlan_dev_indicate_event_handle(wlan, RT_WLAN_DEV_EVT_SCAN_DONE, RT_NULL);
+            rt_sem_delete(whd_scan->active_sem);
+            rt_free(whd_scan);
         }
         return;
     }
@@ -233,6 +285,9 @@ static void whd_scan_callback(whd_scan_result_t **result_ptr, void *user_data, w
     buff.len = sizeof(wlan_info);
 
     rt_wlan_dev_indicate_event_handle(wlan, RT_WLAN_DEV_EVT_SCAN_REPORT, &buff);
+    g_whd_scan_diag_report_calls++;
+    g_whd_scan_diag_last_ssid_len = wlan_info.ssid.len;
+    g_whd_scan_diag_last_rssi = wlan_info.rssi;
 
     memset(*result_ptr, 0, sizeof(whd_scan_result_t));
 }
@@ -240,9 +295,9 @@ static void whd_scan_callback(whd_scan_result_t **result_ptr, void *user_data, w
 static rt_err_t drv_wlan_scan(struct rt_wlan_device *wlan, struct rt_scan_info *scan_info)
 {
     struct whd_scan *whd_scan = rt_malloc(sizeof(struct whd_scan));
+    whd_result_t whd_ret;
 
-    /* Let the module scan with the active type first, and then scan the nearby ap with the passive type */
-
+    RT_UNUSED(scan_info);
     RT_ASSERT(whd_scan != NULL);
     whd_scan->wlan = wlan;
     whd_scan->whd_scan_type = WHD_SCAN_TYPE_ACTIVE;
@@ -250,18 +305,19 @@ static rt_err_t drv_wlan_scan(struct rt_wlan_device *wlan, struct rt_scan_info *
     RT_ASSERT(whd_scan->active_sem != NULL);
 
     /* Execute an active type scan */
-    if (whd_wifi_scan(get_drv_wifi(wlan)->whd_itf, whd_scan->whd_scan_type, WHD_BSS_TYPE_ANY,
-                            NULL, NULL, NULL, NULL, whd_scan_callback, &whd_scan->scan_result, whd_scan) != WHD_SUCCESS)
+    g_whd_scan_diag_start_calls++;
+    whd_ret = whd_wifi_scan(get_drv_wifi(wlan)->whd_itf, whd_scan->whd_scan_type, WHD_BSS_TYPE_ANY,
+                            NULL, NULL, NULL, NULL, whd_scan_callback, &whd_scan->scan_result, whd_scan);
+    g_whd_scan_diag_start_ret = (uint32_t)whd_ret;
+    if (whd_ret != WHD_SUCCESS)
     {
-        return RT_EOK;
+        LOG_W("active scan start failed: %ld", (long)whd_ret);
+        rt_sem_delete(whd_scan->active_sem);
+        rt_free(whd_scan);
+        return -RT_ERROR;
     }
 
-    /* Wait until the active scan is complete */
-    rt_sem_take(whd_scan->active_sem, rt_tick_from_millisecond(10000));
-
-    /* Execute an active type scan */
-    return whd_wifi_scan(get_drv_wifi(wlan)->whd_itf, whd_scan->whd_scan_type, WHD_BSS_TYPE_ANY,
-                            NULL, NULL, NULL, NULL, whd_scan_callback, &whd_scan->scan_result, whd_scan);
+    return RT_EOK;
 }
 
 static rt_err_t drv_wlan_join(struct rt_wlan_device *wlan, struct rt_sta_info *sta_info)
@@ -610,6 +666,7 @@ rt_weak void whd_bt_startup (void)
 static void whd_init_thread (void *parameter)
 {
     static struct rt_wlan_device wlan_ap, wlan_sta;
+    whd_result_t whd_ret;
     whd_oob_config_t oob_config =
     {
 #ifndef CYBSP_USING_PIN_NAME
@@ -636,6 +693,16 @@ static void whd_init_thread (void *parameter)
     wifi_sta.wlan = &wlan_sta;
     whd_diag_mark(WHD_DIAG_STAGE_BOOT, 0);
 
+    /*
+     * The CYW55500/CYW55513 combo radio is shared with the CM33 Bluetooth
+     * startup path. Give the BT HCI patch window time to finish before CM55
+     * downloads WiFi firmware through WHD/SDIO.
+     */
+    if (WHD_BOOT_DELAY_MS > 0U)
+    {
+        rt_kprintf("[whd.wlan] boot delay %lu ms before WiFi init\n", (unsigned long)WHD_BOOT_DELAY_MS);
+        rt_thread_mdelay(WHD_BOOT_DELAY_MS);
+    }
 
     /* Creates a semaphore to wait probe the sdio card */
     cyhal_sdio.probe = rt_sem_create("sdio probe", 0, RT_IPC_FLAG_PRIO);
@@ -656,13 +723,9 @@ static void whd_init_thread (void *parameter)
 
     /* Waiting card registration and delete the semaphore */
     whd_diag_mark(WHD_DIAG_STAGE_SDIO_PROBE_WAIT, 0);
-    if (rt_sem_take(cyhal_sdio.probe, rt_tick_from_millisecond(15000)) != RT_EOK)
+    while (rt_sem_take(cyhal_sdio.probe, rt_tick_from_millisecond(500)) != RT_EOK)
     {
-        whd_diag_mark(WHD_DIAG_STAGE_SDIO_PROBE_WAIT, -8);
-        LOG_E("Timed out waiting for sdio card registration!");
-        rt_sem_delete(cyhal_sdio.probe);
-        cyhal_sdio.probe = RT_NULL;
-        return;
+        m55_sdio_kick_change();
     }
     rt_sem_delete(cyhal_sdio.probe);
     cyhal_sdio.probe = RT_NULL;
@@ -712,10 +775,23 @@ static void whd_init_thread (void *parameter)
 
     /* Switch on Wifi, download firmware and create a primary interface, returns whd_interface_t */
     whd_diag_mark(WHD_DIAG_STAGE_WIFI_ON_START, 0);
-    if (whd_wifi_on(whd_driver, &wifi_sta.whd_itf) != WHD_SUCCESS)
+    whd_ret = whd_wifi_on(whd_driver, &wifi_sta.whd_itf);
+    if ((whd_ret != WHD_SUCCESS) && (WHD_WIFI_ON_RETRY_DELAY_MS > 0U))
     {
-        whd_diag_mark(WHD_DIAG_STAGE_WIFI_ON_START, -1);
-        LOG_E("Unable to start the WiFi module!");
+        whd_diag_mark(WHD_DIAG_STAGE_WIFI_ON_START, (int)whd_ret);
+        LOG_W("whd_wifi_on failed ret=0x%08lx, retry after %lu ms",
+              (unsigned long)whd_ret,
+              (unsigned long)WHD_WIFI_ON_RETRY_DELAY_MS);
+        rt_thread_mdelay(WHD_WIFI_ON_RETRY_DELAY_MS);
+        whd_ret = whd_wifi_on(whd_driver, &wifi_sta.whd_itf);
+    }
+    if (whd_ret != WHD_SUCCESS)
+    {
+        if (whd_diag_get_stage() < 1100)
+        {
+            whd_diag_mark(WHD_DIAG_STAGE_WIFI_ON_START, (int)whd_ret);
+        }
+        LOG_E("Unable to start the WiFi module, ret=0x%08lx!", (unsigned long)whd_ret);
         return;
     }
     g_whd_diag_flags |= WHD_DIAG_FLAG_STA_IF;
@@ -826,7 +902,10 @@ static void whd_init_thread (void *parameter)
 static int rt_hw_wifi_init (void)
 {
 #ifdef CY_WIFI_USING_THREAD_INIT
-    rt_thread_startup(rt_thread_create("whd_init", whd_init_thread, NULL, CY_WIFI_INIT_THREAD_STACK_SIZE, 20, 10));
+    rt_thread_startup(rt_thread_create("whd_init", whd_init_thread, NULL,
+                                       CY_WIFI_INIT_THREAD_STACK_SIZE,
+                                       20,
+                                       10));
 #else
     whd_init_thread(NULL);
 #endif

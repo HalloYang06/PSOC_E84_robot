@@ -23,6 +23,9 @@
 #include "mtb_ml.h"
 #include "mtb_wwd_nlu_common.h"
 
+extern volatile int g_ifx_wwd_debug_stage;
+extern volatile int g_ifx_wwd_debug_detail;
+
 /*******************************************************************************
  * Function Name: mtb_ml_create_model
  ********************************************************************************
@@ -86,13 +89,17 @@ uint32_t ml_inference_init(const mtb_ml_model_bin_t *am_model_bin,
         mtb_ml_model_16x8_init(am_model_bin, am_model_buffer, mtb_ml_model_obj);
     if (MTB_ML_RESULT_SUCCESS != result)
     {
+        g_ifx_wwd_debug_detail = (int)result;
         return MTB_VA_RSLT_ML_INIT_ERROR;
     }
+    g_ifx_wwd_debug_stage = 5;
     result = mtb_ml_model_16x8_rnn_reset_all_parameters(mtb_ml_model_obj);
     if (MTB_ML_RESULT_SUCCESS != result)
     {
+        g_ifx_wwd_debug_detail = (int)result;
         return MTB_VA_RSLT_ML_INIT_ERROR;
     }
+    g_ifx_wwd_debug_stage = 6;
     mtb_ml_model_obj->profiling = MTB_ML_PROFILE_DISABLE;
 
     /* Set the priority of NPU interrupt handler */

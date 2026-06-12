@@ -1,6 +1,7 @@
 #include "wake_word_detector.h"
 
 #include "audio_processing.h"
+#define WAKE_WORD_MODEL_DATA_DEFINE
 #include "wake_word_model_data.h"
 
 #include <rtthread.h>
@@ -240,4 +241,32 @@ void WakeWordDetector_GetInfo(void)
            N_FRAMES,
            WAKE_WORD_THRESHOLD,
            wake_word_model_len);
+}
+
+bool WakeWordDetector_DumpFeatures(const char *path)
+{
+    FILE *fp;
+    size_t written;
+
+    if ((path == nullptr) || (*path == '\0') || (g_mfcc_features == nullptr))
+    {
+        return false;
+    }
+
+    fp = fopen(path, "wb");
+    if (fp == nullptr)
+    {
+        return false;
+    }
+
+    written = fwrite(g_mfcc_features, sizeof(float), INPUT_SIZE, fp);
+    fclose(fp);
+
+    if (written != INPUT_SIZE)
+    {
+        return false;
+    }
+
+    printf("[wake_word] feature dump saved path=%s count=%d\n", path, INPUT_SIZE);
+    return true;
 }

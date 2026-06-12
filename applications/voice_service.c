@@ -28,6 +28,18 @@
 #define WAKE_GATE_MIN_AVG_ABS        (750U)
 #define WAKE_GATE_MIN_ACTIVE_FRAMES  (28U)
 #define VOICE_STATUS_PUBLISH_EVERY_FRAMES 20U
+
+#ifdef BSP_USING_LCD
+extern rt_int32_t drv_lcd_get_init_result(void);
+extern rt_int32_t drv_lcd_get_gfx_status(void);
+extern rt_int32_t drv_lcd_get_mipi_status(void);
+extern rt_uint32_t drv_lcd_get_frame_updates(void);
+extern rt_int32_t drv_lcd_get_last_frame_status(void);
+#endif
+#ifdef BSP_USING_LVGL
+extern rt_uint32_t lv_port_disp_get_flush_count(void);
+extern rt_int32_t lv_port_disp_get_last_flush_status(void);
+#endif
 #define VOICE_SERVICE_THREAD_STACK   16384
 #define VOICE_DETECT_THREAD_STACK    16384
 
@@ -226,6 +238,26 @@ static rt_err_t voice_service_publish_status(void)
     msg.payload.voice_status.whd_stage = g_service.whd_stage;
     msg.payload.voice_status.whd_result = g_service.whd_result;
     msg.payload.voice_status.whd_flags = g_service.whd_flags;
+#ifdef BSP_USING_LCD
+    msg.payload.voice_status.lcd_init_result = drv_lcd_get_init_result();
+    msg.payload.voice_status.lcd_gfx_status = drv_lcd_get_gfx_status();
+    msg.payload.voice_status.lcd_mipi_status = drv_lcd_get_mipi_status();
+    msg.payload.voice_status.lcd_frame_updates = drv_lcd_get_frame_updates();
+    msg.payload.voice_status.lcd_last_frame_status = drv_lcd_get_last_frame_status();
+#else
+    msg.payload.voice_status.lcd_init_result = -RT_ENOSYS;
+    msg.payload.voice_status.lcd_gfx_status = -RT_ENOSYS;
+    msg.payload.voice_status.lcd_mipi_status = -RT_ENOSYS;
+    msg.payload.voice_status.lcd_frame_updates = 0U;
+    msg.payload.voice_status.lcd_last_frame_status = -RT_ENOSYS;
+#endif
+#ifdef BSP_USING_LVGL
+    msg.payload.voice_status.lvgl_flush_count = lv_port_disp_get_flush_count();
+    msg.payload.voice_status.lvgl_last_flush_status = lv_port_disp_get_last_flush_status();
+#else
+    msg.payload.voice_status.lvgl_flush_count = 0U;
+    msg.payload.voice_status.lvgl_last_flush_status = -RT_ENOSYS;
+#endif
     rt_strncpy(msg.payload.voice_status.netdev_name,
                g_service.netdev_name,
                sizeof(msg.payload.voice_status.netdev_name) - 1);

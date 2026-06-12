@@ -11,7 +11,8 @@
 
 // MFCC 参数
 #define FFT_SIZE 512
-#define HOP_LENGTH 160
+#define WINDOW_LENGTH 480
+#define HOP_LENGTH 320
 #define N_MEL_FILTERS 40
 
 // 初始化音频处理

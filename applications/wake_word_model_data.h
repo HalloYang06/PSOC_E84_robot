@@ -4,7 +4,12 @@
 #ifndef MODEL_DATA_H
 #define MODEL_DATA_H
 
-const unsigned char g_model[] = {
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#ifdef WAKE_WORD_MODEL_DATA_DEFINE
+extern const unsigned char g_model[] = {
   0x1c, 0x00, 0x00, 0x00, 0x54, 0x46, 0x4c, 0x33, 0x14, 0x00, 0x20, 0x00,
   0x1c, 0x00, 0x18, 0x00, 0x14, 0x00, 0x10, 0x00, 0x0c, 0x00, 0x00, 0x00,
   0x08, 0x00, 0x04, 0x00, 0x14, 0x00, 0x00, 0x00, 0x1c, 0x00, 0x00, 0x00,
@@ -17547,9 +17552,17 @@ const unsigned char g_model[] = {
   0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03,
 };
 
-const unsigned int g_model_len = 210476;
+extern const unsigned int g_model_len = 210476;
+#else
+extern const unsigned char g_model[];
+extern const unsigned int g_model_len;
+#endif
 
 #define wake_word_model g_model
 #define wake_word_model_len g_model_len
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif  // MODEL_DATA_H

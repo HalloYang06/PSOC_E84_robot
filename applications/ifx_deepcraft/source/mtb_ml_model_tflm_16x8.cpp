@@ -149,6 +149,10 @@ static uint8_t var_arena[160 + 20 * TFLM_RESVAR_COUNT] __attribute__ ((aligned (
 extern "C" {
 #endif  // __cplusplus
 
+extern volatile int g_ifx_wwd_debug_stage;
+extern volatile int g_ifx_wwd_debug_detail;
+extern volatile int g_ifx_wwd_ethosu_stub_seen;
+
 /*******************************************************************************
  * Public Functions
 *******************************************************************************/
@@ -169,6 +173,8 @@ cy_rslt_t mtb_ml_model_16x8_init(const mtb_ml_model_bin_t *bin, const mtb_ml_mod
     if (bin == NULL || bin->model_bin == NULL || buffer == NULL || model_object == NULL)
     {
         ret = MTB_ML_RESULT_BAD_ARG;
+        g_ifx_wwd_debug_stage = 31;
+        g_ifx_wwd_debug_detail = ret;
         goto ret_err;
     }
 
@@ -181,6 +187,8 @@ cy_rslt_t mtb_ml_model_16x8_init(const mtb_ml_model_bin_t *bin, const mtb_ml_mod
     if (buffer->tensor_arena_size == 0 || buffer->tensor_arena == NULL)
     {
         ret = MTB_ML_RESULT_BAD_ARG;
+        g_ifx_wwd_debug_stage = 32;
+        g_ifx_wwd_debug_detail = ret;
         goto ret_err;
     }
 
@@ -192,11 +200,14 @@ cy_rslt_t mtb_ml_model_16x8_init(const mtb_ml_model_bin_t *bin, const mtb_ml_mod
     model_object->model_size = bin->model_size;
     model_object->buffer_size = arena_size;
 
+    g_ifx_wwd_debug_stage = 33;
     TFLMClass = new tflite::MTB_TFLM_Class(bin->model_bin, arena_buffer, arena_size, tflite::resolver);
+    g_ifx_wwd_debug_stage = 34;
     model_object->tflm_obj = reinterpret_cast<void *>(TFLMClass);
     if( model_object->tflm_obj == NULL)
     {
         ret = MTB_ML_RESULT_BAD_MODEL;
+        g_ifx_wwd_debug_detail = ret;
         goto ret_err;
     }
 
@@ -204,8 +215,11 @@ cy_rslt_t mtb_ml_model_16x8_init(const mtb_ml_model_bin_t *bin, const mtb_ml_mod
     if (TFLMClass->AllocationStatus() != kTfLiteOk)
     {
         ret = MTB_ML_RESULT_ALLOC_ERR;
+        g_ifx_wwd_debug_stage = g_ifx_wwd_ethosu_stub_seen ? 37 : 35;
+        g_ifx_wwd_debug_detail = ret;
         goto ret_err;
     }
+    g_ifx_wwd_debug_stage = 36;
 
     /* Input parameters */
     model_object->input = TFLMClass->input_ptr();

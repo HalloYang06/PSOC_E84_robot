@@ -24,6 +24,12 @@ extern int lvgl_thread_init(void);
 #define M55_AUDIO_FRAME_BYTES 2048
 #define M55_VOICE_BOOT_DELAY_MS 5000
 #define M55_BOOT_SELF_TEST_RETRY_COUNT 10
+#ifndef M55_WIFI_SCAN_QA_ONLY
+#define M55_WIFI_SCAN_QA_ONLY 0
+#endif
+#ifndef M55_WIFI_LVGL_ONLY
+#define M55_WIFI_LVGL_ONLY 1
+#endif
 #ifndef M55_ENABLE_LOCAL_HTTP_SERVER
 #define M55_ENABLE_LOCAL_HTTP_SERVER 0
 #endif
@@ -48,7 +54,101 @@ static struct
 static rt_thread_t g_voice_boot_thread = RT_NULL;
 static rt_thread_t g_boot_self_test_thread = RT_NULL;
 
+typedef struct
+{
+    rt_uint32_t magic;
+    rt_uint32_t phase;
+    rt_int32_t init_ret;
+    rt_int32_t whd_diag_ret_before;
+    rt_int32_t scan_start_ret;
+    rt_int32_t whd_diag_ret_after;
+    rt_uint32_t wait_loops;
+    wifi_config_snapshot_t snapshot;
+    wifi_config_ap_t aps[WIFI_CONFIG_SCAN_MAX_APS];
+} m55_wifi_scan_qa_t;
+
+volatile m55_wifi_scan_qa_t g_m55_wifi_scan_qa;
+
 extern whd_resource_source_t resource_ops;
+
+static void m55_wifi_scan_qa_capture(void)
+{
+    rt_int32_t i;
+    wifi_config_snapshot_t snapshot;
+
+    wifi_config_get_snapshot(&snapshot);
+    g_m55_wifi_scan_qa.snapshot = snapshot;
+
+    for (i = 0; i < WIFI_CONFIG_SCAN_MAX_APS; i++)
+    {
+        wifi_config_ap_t ap;
+
+        rt_memset(&ap, 0, sizeof(ap));
+        if ((i < snapshot.scan_count) && (wifi_config_get_scan_ap(i, &ap) == RT_EOK))
+        {
+            g_m55_wifi_scan_qa.aps[i] = ap;
+        }
+        else
+        {
+            rt_memset((void *)&g_m55_wifi_scan_qa.aps[i], 0, sizeof(g_m55_wifi_scan_qa.aps[i]));
+        }
+    }
+}
+
+static void m55_wifi_scan_qa_thread_entry(void *parameter)
+{
+    rt_uint32_t i;
+    wifi_config_snapshot_t snapshot;
+
+    RT_UNUSED(parameter);
+
+    rt_memset((void *)&g_m55_wifi_scan_qa, 0, sizeof(g_m55_wifi_scan_qa));
+    g_m55_wifi_scan_qa.magic = 0x57465141U; /* WFQA */
+    g_m55_wifi_scan_qa.phase = 1U;
+
+    g_m55_wifi_scan_qa.init_ret = wifi_config_service_init();
+    g_m55_wifi_scan_qa.phase = 2U;
+    for (i = 0; i < 45U; i++)
+    {
+        rt_thread_mdelay(1000);
+        g_m55_wifi_scan_qa.whd_diag_ret_before = wifi_config_whd_diag();
+        m55_wifi_scan_qa_capture();
+        wifi_config_get_snapshot(&snapshot);
+        if ((snapshot.whd_stage >= 19) && (snapshot.netdev_name[0] != '\0'))
+        {
+            break;
+        }
+    }
+    g_m55_wifi_scan_qa.phase = 3U;
+
+    g_m55_wifi_scan_qa.scan_start_ret = wifi_config_scan();
+    for (i = 0; i < 30U; i++)
+    {
+        rt_thread_mdelay(1000);
+        g_m55_wifi_scan_qa.wait_loops = i + 1U;
+        m55_wifi_scan_qa_capture();
+        if (g_m55_wifi_scan_qa.snapshot.scan_running == 0U &&
+            g_m55_wifi_scan_qa.snapshot.scan_request_count > 0U)
+        {
+            break;
+        }
+    }
+
+    g_m55_wifi_scan_qa.whd_diag_ret_after = wifi_config_whd_diag();
+    m55_wifi_scan_qa_capture();
+    g_m55_wifi_scan_qa.phase = 4U;
+
+    rt_kprintf("[wifi_qa] done init=%ld whd_before=%ld scan_start=%ld scan_result=%ld count=%ld cb=%lu done=%lu timeout=%lu whd_after=%ld\n",
+               (long)g_m55_wifi_scan_qa.init_ret,
+               (long)g_m55_wifi_scan_qa.whd_diag_ret_before,
+               (long)g_m55_wifi_scan_qa.scan_start_ret,
+               (long)g_m55_wifi_scan_qa.snapshot.scan_result,
+               (long)g_m55_wifi_scan_qa.snapshot.scan_count,
+               (unsigned long)g_m55_wifi_scan_qa.snapshot.scan_callback_count,
+               (unsigned long)g_m55_wifi_scan_qa.snapshot.scan_done_count,
+               (unsigned long)g_m55_wifi_scan_qa.snapshot.scan_timeout_count,
+               (long)g_m55_wifi_scan_qa.whd_diag_ret_after);
+}
 
 static void m55_console_detach(void)
 {
@@ -690,19 +790,46 @@ static void boot_self_test_thread_entry(void *parameter)
 int main(void)
 {
     rt_err_t ret;
+#if M55_WIFI_SCAN_QA_ONLY
+    rt_thread_t wifi_qa_thread;
+#endif
 
     rt_kprintf("Hello RT-Thread\r\n");
     rt_kprintf("This core is cortex-m55\n");
 
     rt_pin_mode(LED_PIN_G, PIN_MODE_OUTPUT);
+
+#if M55_WIFI_SCAN_QA_ONLY
+    rt_kprintf("[m55] WiFi scan QA-only mode; LVGL/voice/OpenClaw/HTTP/autoconnect disabled\n");
+    wifi_qa_thread = rt_thread_create("wifi_qa",
+                                      m55_wifi_scan_qa_thread_entry,
+                                      RT_NULL,
+                                      4096,
+                                      28,
+                                      10);
+    if (wifi_qa_thread)
+    {
+        rt_thread_startup(wifi_qa_thread);
+    }
+
+    while (1)
+    {
+        rt_pin_write(LED_PIN_G, PIN_LOW);
+        rt_thread_mdelay(200);
+        rt_pin_write(LED_PIN_G, PIN_HIGH);
+        rt_thread_mdelay(800);
+    }
+#else
     (void)wifi_config_service_init();
-    (void)wifi_config_start_auto_connect(3500U);
 
 #ifdef BSP_USING_LVGL
     rt_kprintf("[m55] starting LVGL thread\n");
     ret = lvgl_thread_init();
     rt_kprintf("[m55] LVGL thread init ret=%d\n", ret);
 #endif
+
+#if !M55_WIFI_LVGL_ONLY
+    (void)wifi_config_start_auto_connect(3500U);
 
     g_boot_self_test_thread = rt_thread_create("m55_self",
                                                boot_self_test_thread_entry,
@@ -741,6 +868,9 @@ int main(void)
     {
         rt_thread_startup(g_voice_boot_thread);
     }
+#else
+    rt_kprintf("[m55] WiFi+LVGL-only mode; voice/OpenClaw/HTTP/autoconnect disabled\n");
+#endif
 
     while (1)
     {
@@ -751,4 +881,5 @@ int main(void)
     }
 
     return 0;
+#endif
 }

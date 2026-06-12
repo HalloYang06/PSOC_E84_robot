@@ -38,7 +38,13 @@ if GetDepend(['BSP_USING_LCD']):
 
 if GetDepend(['BSP_USING_LVGL']):
     src  += Glob('ports/lvgl/*.c')
-    path += [cwd + '/ports/lvgl']
+    lvgl_src = os.path.abspath(os.path.join(cwd, '..', '..', 'components', 'lvgl_9.2.0', 'src'))
+    path += [cwd + '/ports/lvgl', lvgl_src]
+    for root, dirs, files in os.walk(lvgl_src):
+        for name in files:
+            if os.path.splitext(name)[1] in ['.h', '.hpp']:
+                path += [root]
+                break
 
 group = DefineGroup('Common', src, depend = [''], CPPPATH = path)
 
