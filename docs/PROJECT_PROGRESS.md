@@ -295,3 +295,18 @@ Failed or unverified:
 
 Next step:
 - Reconnect WiFi on the device, read the new XiaoZhi state/stage from the LVGL strip, then fix the specific network/WebSocket phase rather than guessing from a generic `连接中`.
+
+## 2026-06-13 - M55 LVGL Chinese Font Coverage Fixed
+
+Completed:
+- Regenerated M55 `applications/rehab_wifi_font.c` from Noto Sans SC with expanded symbols for WiFi provisioning and XiaoZhi status text.
+- Restored the LVGL diagnostic button text from `INFO/HIDE` back to Chinese `诊断/隐藏`.
+- Documented the font coverage lesson in the existing M55 WiFi pitfalls document.
+- Pushed M55 commits `6f869bb Expand LVGL WiFi Chinese font coverage` and `dac1e30 Document LVGL font coverage fix`.
+
+Validated:
+- M55 `python -m SCons -j4` passed after regenerating the font.
+- M55 was flashed with `program_with_resources.bat`; app and resource programming reached 100% before the known trailing KitProg3 acquire error.
+
+Next step:
+- Use the next LCD photo to confirm no square glyphs remain, then continue spacing fixes only for actual overlap points.
