@@ -385,6 +385,27 @@ Remaining gap:
 Reusable trick:
 - Before debugging wake word, ASR, or platform model logic, first compare the exact JSON fields against the official XiaoZhi example. A single mode or audio format mismatch can look like a networking or model failure.
 
+## 2026-06-13 - NanoPi Camera QA SSH Port Open But No Banner
+
+Symptom:
+- Windows host can detect `192.168.2.66:22` as open with `Test-NetConnection`.
+- `ping 192.168.2.66` times out.
+- Paramiko fails with `Error reading SSH protocol banner`.
+- OpenSSH exits with `Connection closed by 192.168.2.66 port 22`.
+- Direct TCP read from port 22 returns an empty byte string instead of an `SSH-2.0...` banner.
+
+Impact:
+- The established NanoPi USB camera QA path for photographing the Infineon LCD cannot be used, even though the host sees the TCP port as open.
+
+Current best hypothesis:
+- The NanoPi is reachable at the TCP layer, but the SSH daemon is not serving a valid SSH session, is immediately closing new connections, or another service/socket is occupying port 22.
+
+Fix/status:
+- Unfixed in this pass. Do not assume NanoPi camera QA is available solely because port 22 is open.
+
+Reusable trick:
+- For camera QA, verify the SSH banner first. A successful `Test-NetConnection` is not enough; require an actual SSH login before planning remote `v4l2-ctl`/`ffmpeg` capture.
+
 ## 2026-06-10 - M33 Hex Relocation
 
 Symptom:

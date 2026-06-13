@@ -257,3 +257,23 @@ Failed or unverified:
 
 Next step:
 - Run a visible user test with microphone input: enable wake listening, speak the official wake phrase, verify CM55 publishes a wake result to M33 and the platform voice relay receives the follow-up utterance.
+
+## 2026-06-13 - M55 LVGL XiaoZhi Status Visibility Burned
+
+Completed:
+- Updated the M55 LVGL WiFi panel so WiFi status stays in a compact two-line label and XiaoZhi WebSocket state is shown in its own `XiaoZhi: <state> S:<stage> E:<errno>` strip.
+- Changed the bottom diagnostic toggle from Chinese text to `INFO/HIDE` to avoid missing glyph boxes on the current `rehab_wifi_font`.
+- Recorded the UI/status lesson in the existing M55 `wifi避坑文档.md`.
+- Synced and pushed the M55 Git branch with commit `42bd8fb Improve LVGL XiaoZhi status visibility`.
+
+Validated:
+- M55 `python -m SCons -j4` passed after the UI change.
+- `program_with_resources.bat` was run after the build; both application and WHD resource programming reached 100% before the familiar trailing KitProg3 acquire error.
+
+Failed or unverified:
+- COM4 still only shows early M33 boot output, so `m55qa_status`/`xz_ws=1` remains unavailable from serial.
+- NanoPi `192.168.2.66` has TCP port 22 open but closes before sending an SSH banner; camera QA could not capture the LCD in this pass.
+- End-to-end spoken XiaoZhi conversation is still unverified on board. The next blocker is proving M55 WebSocket connection status after WiFi reconnect, then validating the PCM/Opus audio boundary.
+
+Next step:
+- After WiFi is reconnected on the flashed UI, use the visible XiaoZhi status strip or platform-side relay logs to prove `S:70`/connected before testing wake word speech.
