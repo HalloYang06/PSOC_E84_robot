@@ -615,3 +615,21 @@ reset command issued
 
 - `python -m SCons -j4` 构建通过。
 - 本轮仅改 UI 显示，不改 WiFi 扫描、连接、自动连接和资源烧录流程。
+
+## 18. 2026-06-13 LVGL 竖屏布局二次压缩与小智阶段显示
+
+现场照片反馈：
+
+- WiFi 列表、输入框、自动连接和两排按钮在 480x640 竖屏上仍然互相挤压。
+- 小智状态只显示“连接中”，不足以判断是 DNS、TCP、WebSocket 握手还是自动线程未启动。
+
+本轮修正：
+
+1. AP 列表高度从 `188` 压到 `136`，SSID/密码输入框从 `46` 压到 `40`，给底部按钮区腾空间。
+2. 6 个主按钮改为 `2 x 3` 紧凑网格，每个按钮 `198 x 42`，避免和“自动连接”复选框互相遮挡。
+3. 小智状态按 WebSocket stage/errno 显示为 `等待启动/解析中/建Socket/TCP连接/握手中/DNS失败/TCP失败/握手失败/已连接` 等更具体状态。
+
+验证：
+
+- `python -m SCons -j4` 构建通过。
+- 已用 `program_with_resources.bat` 烧录，应用和资源 programming 均到 100%；末尾 KitProg3 acquire error 仍为既有现象。
