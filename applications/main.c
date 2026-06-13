@@ -27,6 +27,10 @@ __attribute__((weak)) struct _reent _impure_data;
 #define PCM_CAPTURE_MAX_BYTES (16000U * 2U * 2U)
 #define PCM_LISTEN_NOTIFY_MS 2000U
 
+#ifndef M33_ENABLE_BT_HCI
+#define M33_ENABLE_BT_HCI 0
+#endif
+
 typedef enum
 {
     PCM_MODE_IDLE = 0,
@@ -466,6 +470,7 @@ static void m33_init_framework(void)
     http_server_start();
     rt_kprintf("[m33] init step12 openclaw_integration_init\n");
     openclaw_integration_init();
+#if M33_ENABLE_BT_HCI
     rt_kprintf("[m33] init step13 bt_hci_transport_init\n");
     bt_err = bt_hci_transport_init();
     rt_kprintf("[m33] bt_hci_transport_init ret=%d state=%d\n",
@@ -485,6 +490,9 @@ static void m33_init_framework(void)
                    bt_hci_transport_get_runtime()->state,
                    bt_err);
     }
+#else
+    rt_kprintf("[m33] init step13 bt_hci_transport skipped for M55 WiFi bring-up\n");
+#endif
 }
 
 #ifdef __cplusplus

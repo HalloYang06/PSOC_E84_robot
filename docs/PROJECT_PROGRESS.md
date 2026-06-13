@@ -175,6 +175,64 @@ Decision:
 Next step:
 - With the board powered and mic near the speaker, run `m55qa_wake_on`, speak `xiaorui`, then verify `m55qa_status` increments `detected` and the platform voice relay receives the wake/listen event.
 
+## 2026-06-13 - LVGL WiFi Connected; XiaoZhi Auto-Connect Moved Behind WiFi Readiness
+
+Completed:
+- M55 WiFi/LVGL flow reached a real connected state from the touchscreen UI, without requiring command-line WiFi provisioning.
+- Added a safe XiaoZhi auto-connect policy in the M55 WiFi project: the XiaoZhi voice/WebSocket path now waits until WiFi reports ready and has a non-zero IP for multiple checks before starting wake listening and reconnecting the relay.
+- Updated the M55 voice initialization path so an early XiaoZhi WebSocket failure is treated as a deferred connection instead of aborting voice service setup.
+- Added a local-only `xiaozhi_local_token.h` path in the M55 project and kept it ignored; token length was verified locally without printing the token.
+- Added a planned LVGL status line for XiaoZhi state (`未配置/等待网络/连接中/已连接/重试中`, plus WebSocket stage/errno) so future QA does not depend on M33 shell.
+
+Validated:
+- PC-side XiaoZhi WebSocket smoke test had previously proven the relay token/server/model path accepts hello/listen and returns a chat reply.
+- M55 `scons -j4` builds successfully after the WiFi-first XiaoZhi auto-connect change.
+- `program_with_resources.bat` was run for M55; OpenOCD progress reached 100% for application and resource programming. The familiar trailing KitProg3 acquire error remains non-authoritative after completed write progress.
+- After the M55 burn, the user confirmed WiFi connected again from LVGL.
+
+Failed or unverified:
+- M33 shell on `COM4` currently does not respond to `m55qa_status`; other visible COM ports also did not return MSH output during spot checks.
+- No serial evidence yet for board-side `xz_ws=1` after WiFi connection because M33 shell/log forwarding is unavailable.
+- NanoPi camera QA was not available: the recorded NanoPi IP `192.168.2.66` did not respond to ping from the Windows host.
+- End-to-end spoken XiaoZhi conversation from CM55 mic remains unverified on hardware in this pass.
+
+Decision:
+- WiFi provisioning is the highest priority path. XiaoZhi must never start voice/mic/WebSocket work before WiFi has a stable IP, and reconnect failures must not block LVGL.
+- Keep the platform token out of git and docs. The firmware uses local injection or ignored local headers only.
+
+Next step:
+- Restore a reliable M33 status channel or use platform-side connection logs to prove board-side `xz_ws=1`; then test wake word `xiaorui` -> CM55 audio -> relay reply.
+
+## 2026-06-13 - XiaoZhi Protocol Realigned To Official WebSocket Example
+
+Completed:
+- Rechecked the local official XiaoZhi reference at `D:\RT-ThreadStudio\workspace\_external_refs\xiaozhi-esp32`.
+- Identified the official WebSocket path in `docs/websocket.md`, `main/protocols/websocket_protocol.cc`, and `main/protocols/protocol.cc`.
+- Updated the M55 XiaoZhi relay JSON to match the official example:
+  - `hello.version=1`
+  - `transport=websocket`
+  - `features.mcp=true`
+  - `audio_params.format=opus`
+  - `sample_rate=16000`, `channels=1`, `frame_duration=60`
+  - `listen start mode=auto`
+- Updated `tools/xiaozhi_ws_smoke_test.ps1` to use the same official hello/listen shape and 60 ms frame cadence.
+
+Validated:
+- M55 `scons -j4` builds successfully after the official-protocol JSON change.
+- PC-side smoke test with the local scoped token connected to the relay, received official-style `hello` ACK, received `listen start` ACK, sent 60 ms binary frames, and received a chat/VLA classification reply on `listen stop`.
+
+Failed or unverified:
+- The M55 firmware has not yet been reflashed with this official-protocol build because the board WiFi is currently connected and should not be reset unnecessarily.
+- M55 still does not include a true Opus encoder. The relay accepted the 60 ms binary frame path in PC smoke testing, but full official parity requires either adding an M55 Opus encoder or making the relay's PCM compatibility an explicit documented contract.
+- Board-side `xz_ws=1` remains unverified because M33 shell/COM4 is currently not returning status output.
+
+Decision:
+- XiaoZhi protocol work should follow the official ESP32 reference first. Any rehab relay extensions must be additive and documented, not silently replacing official field names or modes.
+- WiFi remains the gate: XiaoZhi auto-connect starts only after stable WiFi/IP.
+
+Next step:
+- When a reset is acceptable, burn the latest M55 build, reconnect WiFi from LVGL, then verify the screen XiaoZhi status line or platform-side connection logs before attempting wake-word speech.
+
 Completed:
 - M33 mainline now exposes CM55 QA shell commands: `m55qa_status`, `m55qa_wake_on`, `m55qa_wake_off`, `m55qa_capture_on`, `m55qa_capture_off`.
 - M33/CM55 IPC protocol added `MSG_TYPE_VOICE_CONTROL_ACK` so M33 can verify that CM55 actually consumed and handled voice-control commands.

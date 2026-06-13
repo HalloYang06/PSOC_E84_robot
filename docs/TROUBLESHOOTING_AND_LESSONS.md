@@ -355,6 +355,36 @@ Reusable trick:
 - If CM55 appears dead but M33 shell is alive, first check CM55 PC with OpenOCD and run `addr2line`/GDB before changing voice or IPC code.
 - Do not treat `tx_pending=0` alone as full validation; require `MSG_TYPE_VOICE_CONTROL_ACK` for command handling confirmation.
 
+## 2026-06-13 - Do Not Drift From Official XiaoZhi WebSocket Fields
+
+Symptom:
+- The M55 XiaoZhi relay path had drifted into a custom `hello.version=3`, `audio_params.format=pcm_s16le`, `frame_duration=20`, and `listen.mode=auto_stop` shape.
+- This differed from the official XiaoZhi ESP32 WebSocket example and made it unclear whether board-side failures were network issues, protocol incompatibility, or relay-specific behavior.
+
+Official reference:
+- `D:\RT-ThreadStudio\workspace\_external_refs\xiaozhi-esp32\docs\websocket.md`
+- `D:\RT-ThreadStudio\workspace\_external_refs\xiaozhi-esp32\main\protocols\websocket_protocol.cc`
+- `D:\RT-ThreadStudio\workspace\_external_refs\xiaozhi-esp32\main\protocols\protocol.cc`
+
+Fix:
+- Realign M55 and the PC smoke test to official-style WebSocket fields:
+  - `hello.version=1`
+  - `audio_params.format=opus`
+  - `sample_rate=16000`
+  - `channels=1`
+  - `frame_duration=60`
+  - `listen.mode=auto`
+
+Validation:
+- PC smoke test using the scoped relay token received hello ACK, listen ACK, and a chat/VLA reply from the relay with the official-style message shape.
+- M55 builds after the JSON/protocol change.
+
+Remaining gap:
+- M55 still lacks a real Opus encoder. Current relay testing accepted the binary frame path, but full official parity requires adding Opus encoding on M55 or documenting relay PCM compatibility explicitly.
+
+Reusable trick:
+- Before debugging wake word, ASR, or platform model logic, first compare the exact JSON fields against the official XiaoZhi example. A single mode or audio format mismatch can look like a networking or model failure.
+
 ## 2026-06-10 - M33 Hex Relocation
 
 Symptom:

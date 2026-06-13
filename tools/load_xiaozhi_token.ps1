@@ -30,6 +30,11 @@ function Send-ShellCommand {
     Start-Sleep -Milliseconds $DelayMs
     $text = $Port.ReadExisting()
     if ($text.Length -gt 0) {
+        $text = [regex]::Replace(
+            $text,
+            'm55qa_xz_token_part\s+\S+',
+            'm55qa_xz_token_part <masked chunk>'
+        )
         Write-Host $text
     }
 }

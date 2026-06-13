@@ -47,38 +47,37 @@ function Send-BinaryFrame {
     $Socket.SendAsync($segment, [System.Net.WebSockets.WebSocketMessageType]::Binary, $true, [Threading.CancellationToken]::None).GetAwaiter().GetResult()
 }
 
-function Receive-AvailableFrames {
+function Receive-ExpectedFrame {
     param(
         [System.Net.WebSockets.ClientWebSocket]$Socket,
-        [int]$TimeoutMs
+        [int]$TimeoutMs,
+        [string]$Step
     )
 
-    while ($Socket.State -eq [System.Net.WebSockets.WebSocketState]::Open) {
-        $buffer = New-Object byte[] 4096
-        $segment = [System.ArraySegment[byte]]::new($buffer)
-        $cts = [Threading.CancellationTokenSource]::new($TimeoutMs)
-        try {
-            $result = $Socket.ReceiveAsync($segment, $cts.Token).GetAwaiter().GetResult()
-        }
-        catch [System.OperationCanceledException] {
-            break
-        }
-        finally {
-            $cts.Dispose()
-        }
-
-        if ($result.MessageType -eq [System.Net.WebSockets.WebSocketMessageType]::Close) {
-            Write-Host "<< <close>"
-            break
-        }
-
-        $payload = [System.Text.Encoding]::UTF8.GetString($buffer, 0, $result.Count)
-        Write-Host "<< $payload"
-
-        if ($result.EndOfMessage -and $payload.Contains('"type":"chat"')) {
-            continue
-        }
+    if ($Socket.State -ne [System.Net.WebSockets.WebSocketState]::Open) {
+        throw "WebSocket is not open before receiving $Step; state=$($Socket.State)"
     }
+
+    $buffer = New-Object byte[] 4096
+    $segment = [System.ArraySegment[byte]]::new($buffer)
+    $cts = [Threading.CancellationTokenSource]::new($TimeoutMs)
+    try {
+        $result = $Socket.ReceiveAsync($segment, $cts.Token).GetAwaiter().GetResult()
+    }
+    catch {
+        throw "Timed out or failed while receiving $Step; state=$($Socket.State); error=$($_.Exception.Message)"
+    }
+    finally {
+        $cts.Dispose()
+    }
+
+    if ($result.MessageType -eq [System.Net.WebSockets.WebSocketMessageType]::Close) {
+        throw "WebSocket closed while receiving $Step"
+    }
+
+    $payload = [System.Text.Encoding]::UTF8.GetString($buffer, 0, $result.Count)
+    Write-Host "<< $payload"
+    return $payload
 }
 
 function New-PcmFrame {
@@ -88,8 +87,8 @@ function New-PcmFrame {
     )
 
     $sampleRate = 16000
-    $samplesPerFrame = 320
-    $bytes = New-Object byte[] 640
+    $samplesPerFrame = 960
+    $bytes = New-Object byte[] 1920
 
     for ($i = 0; $i -lt $samplesPerFrame; $i++) {
         if ($ToneHz -le 0) {
@@ -107,8 +106,8 @@ function New-PcmFrame {
     return $bytes
 }
 
-$hello = '{"type":"hello","version":3,"features":{"mcp":true},"transport":"websocket","audio_params":{"format":"pcm_s16le","sample_rate":16000,"channels":1,"bits_per_sample":16,"frame_duration":20}}'
-$listenStart = '{"session_id":"' + $SessionId + '","type":"listen","state":"start","mode":"auto_stop"}'
+$hello = '{"type":"hello","version":1,"features":{"mcp":true},"transport":"websocket","audio_params":{"format":"opus","sample_rate":16000,"channels":1,"frame_duration":60}}'
+$listenStart = '{"session_id":"' + $SessionId + '","type":"listen","state":"start","mode":"auto"}'
 $listenStop = '{"session_id":"' + $SessionId + '","type":"listen","state":"stop"}'
 
 $socket = [System.Net.WebSockets.ClientWebSocket]::new()
@@ -116,28 +115,28 @@ $socket.Options.SetRequestHeader("Authorization", "Bearer $token")
 
 try {
     Write-Host "Connecting $Url"
-    $socket.ConnectAsync([Uri]$Url, [Threading.CancellationToken]::None).GetAwaiter().GetResult()
+    $null = $socket.ConnectAsync([Uri]$Url, [Threading.CancellationToken]::None).GetAwaiter().GetResult()
     Write-Host "Connected: $($socket.State)"
 
     Send-TextFrame -Socket $socket -Text $hello
-    Receive-AvailableFrames -Socket $socket -TimeoutMs $ReceiveTimeoutMs
+    $null = Receive-ExpectedFrame -Socket $socket -TimeoutMs $ReceiveTimeoutMs -Step "hello ack"
 
     Send-TextFrame -Socket $socket -Text $listenStart
-    Receive-AvailableFrames -Socket $socket -TimeoutMs $ReceiveTimeoutMs
+    $null = Receive-ExpectedFrame -Socket $socket -TimeoutMs $ReceiveTimeoutMs -Step "listen start ack"
 
     for ($i = 0; $i -lt $Frames; $i++) {
         $frame = New-PcmFrame -FrameIndex $i -ToneHz $ToneHz
         Send-BinaryFrame -Socket $socket -Bytes $frame
-        Start-Sleep -Milliseconds 20
+        Start-Sleep -Milliseconds 60
     }
-    Write-Host ">> <binary pcm frames=$Frames bytes_per_frame=640>"
+    Write-Host ">> <binary frames=$Frames bytes_per_frame=1920 declared_format=opus>"
 
     Send-TextFrame -Socket $socket -Text $listenStop
-    Receive-AvailableFrames -Socket $socket -TimeoutMs ($ReceiveTimeoutMs * 2)
+    $null = Receive-ExpectedFrame -Socket $socket -TimeoutMs ($ReceiveTimeoutMs * 2) -Step "listen stop/chat reply"
 }
 finally {
     if ($socket.State -eq [System.Net.WebSockets.WebSocketState]::Open) {
-        $socket.CloseAsync([System.Net.WebSockets.WebSocketCloseStatus]::NormalClosure, "done", [Threading.CancellationToken]::None).GetAwaiter().GetResult()
+        $socket.Abort()
     }
     $socket.Dispose()
 }

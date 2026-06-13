@@ -117,7 +117,7 @@ static void m55qa_status(int argc, char **argv)
                                                          &voice_status_timestamp);
     if (has_voice_status)
     {
-        rt_kprintf("[m55qa] voice_status seq=%lu flags=0x%lx wake_on=%d wake_ready=%d wake_hit=%d xz_listening=%d xz_ws=%d xz_token=%d frames=%lu windows=%lu detected=%lu pcm_seq=%lu len=%lu peak=%lu avg=%lu active=%lu/%lu wake_stage=%lu err=%ld xz_stage=%ld xz_errno=%ld heap=%lu/%lu max=%lu probe_posix=%ld/%ld probe_sal=%ld/%ld probe_lwip=%ld/%ld age_ticks=%lu\n",
+        rt_kprintf("[m55qa] voice_status seq=%lu flags=0x%lx wake_on=%d wake_ready=%d wake_hit=%d xz_listening=%d xz_ws=%d xz_token=%d token_len=%lu staging_len=%lu frames=%lu windows=%lu detected=%lu pcm_seq=%lu len=%lu peak=%lu avg=%lu active=%lu/%lu wake_stage=%lu err=%ld xz_stage=%ld xz_errno=%ld heap=%lu/%lu max=%lu probe_posix=%ld/%ld probe_sal=%ld/%ld probe_lwip=%ld/%ld age_ticks=%lu\n",
                    (unsigned long)voice_status_seq,
                    (unsigned long)voice_status.flags,
                    (voice_status.flags & VOICE_STATUS_FLAG_WAKE_LISTENING) ? 1 : 0,
@@ -126,6 +126,8 @@ static void m55qa_status(int argc, char **argv)
                    (voice_status.flags & VOICE_STATUS_FLAG_XIAOZHI_LISTENING) ? 1 : 0,
                    (voice_status.flags & VOICE_STATUS_FLAG_XIAOZHI_CONNECTED) ? 1 : 0,
                    (voice_status.flags & VOICE_STATUS_FLAG_XIAOZHI_HAS_TOKEN) ? 1 : 0,
+                   (unsigned long)voice_status.xiaozhi_token_len,
+                   (unsigned long)voice_status.xiaozhi_token_staging_len,
                    (unsigned long)voice_status.submitted_frames,
                    (unsigned long)voice_status.processed_windows,
                    (unsigned long)voice_status.detected_count,
@@ -173,6 +175,14 @@ static void m55qa_status(int argc, char **argv)
         rt_kprintf(" ");
         m55qa_print_ip4("dns0", voice_status.netdev_dns0);
         rt_kprintf("\n");
+        rt_kprintf("[m55qa] display lcd_init=%ld gfx=%ld mipi=%ld lcd_frames=%lu lcd_last=%ld lvgl_flush=%lu lvgl_last=%ld\n",
+                   (long)voice_status.lcd_init_result,
+                   (long)voice_status.lcd_gfx_status,
+                   (long)voice_status.lcd_mipi_status,
+                   (unsigned long)voice_status.lcd_frame_updates,
+                   (long)voice_status.lcd_last_frame_status,
+                   (unsigned long)voice_status.lvgl_flush_count,
+                   (long)voice_status.lvgl_last_flush_status);
     }
 }
 MSH_CMD_EXPORT(m55qa_status, Show CM55 IPC and latest AI/wake state);

@@ -59,6 +59,8 @@ static rt_bool_t g_canfd0_hw_prepared = RT_FALSE;
 static rt_bool_t g_canfd0_mmio_prepared = RT_FALSE;
 static rt_bool_t g_can_direct_ready = RT_FALSE;
 static volatile rt_bool_t g_can_direct_raw_rx_pause = RT_FALSE;
+static volatile rt_bool_t g_can_direct_tx_verbose = RT_FALSE;
+static rt_uint32_t g_can_direct_tx_pending_suppressed = 0;
 static rt_uint8_t g_can_direct_tx_index = 0U;
 #ifdef BSP_USING_CANFD0
 static rt_uint32_t g_can_direct_bitrate = 1000000U;
@@ -71,6 +73,31 @@ void ifx_can_direct_set_raw_rx_pause(rt_bool_t pause)
 {
     g_can_direct_raw_rx_pause = pause ? RT_TRUE : RT_FALSE;
 }
+
+void ifx_can_direct_set_tx_verbose(rt_bool_t verbose)
+{
+    g_can_direct_tx_verbose = verbose ? RT_TRUE : RT_FALSE;
+}
+
+static int cmd_can_tx_log(int argc, char **argv)
+{
+    rt_bool_t verbose;
+
+    if (argc < 2)
+    {
+        rt_kprintf("usage: cmd_can_tx_log <0|1>\n");
+        rt_kprintf("current verbose=%d suppressed=%lu\n",
+                   g_can_direct_tx_verbose ? 1 : 0,
+                   (unsigned long)g_can_direct_tx_pending_suppressed);
+        return 0;
+    }
+
+    verbose = (argv[1][0] != '0') ? RT_TRUE : RT_FALSE;
+    ifx_can_direct_set_tx_verbose(verbose);
+    rt_kprintf("[drv_can] tx verbose=%d\n", verbose ? 1 : 0);
+    return 0;
+}
+MSH_CMD_EXPORT(cmd_can_tx_log, enable verbose CAN TX timeout register logging);
 
 #ifdef BSP_USING_CANFD0
 static rt_uint32_t ifx_can_direct_prescaler_for_bitrate(rt_uint32_t bitrate)
@@ -880,13 +907,20 @@ rt_err_t ifx_can_direct_send(const struct rt_can_msg *msg)
         }
     }
 
-    rt_kprintf("[drv_can] direct tx pending box=%u cccr=0x%08lx psr=0x%08lx txbrp=0x%08lx txbto=0x%08lx txbcf=0x%08lx\n",
-               (unsigned int)tx_index,
-               (unsigned long)CANFD_CCCR(can->config->can_x, can->config->channel),
-               (unsigned long)CANFD_PSR(can->config->can_x, can->config->channel),
-               (unsigned long)CANFD_TXBRP(can->config->can_x, can->config->channel),
-               (unsigned long)CANFD_TXBTO(can->config->can_x, can->config->channel),
-               (unsigned long)CANFD_TXBCF(can->config->can_x, can->config->channel));
+    if (g_can_direct_tx_verbose)
+    {
+        rt_kprintf("[drv_can] direct tx pending box=%u cccr=0x%08lx psr=0x%08lx txbrp=0x%08lx txbto=0x%08lx txbcf=0x%08lx\n",
+                   (unsigned int)tx_index,
+                   (unsigned long)CANFD_CCCR(can->config->can_x, can->config->channel),
+                   (unsigned long)CANFD_PSR(can->config->can_x, can->config->channel),
+                   (unsigned long)CANFD_TXBRP(can->config->can_x, can->config->channel),
+                   (unsigned long)CANFD_TXBTO(can->config->can_x, can->config->channel),
+                   (unsigned long)CANFD_TXBCF(can->config->can_x, can->config->channel));
+    }
+    else
+    {
+        g_can_direct_tx_pending_suppressed++;
+    }
     ifx_canfd0_cancel_tx_buffer(can, tx_index);
     return -RT_ETIMEOUT;
 #else

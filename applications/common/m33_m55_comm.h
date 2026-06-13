@@ -221,6 +221,15 @@ typedef struct
     rt_uint32_t wifi_saved;
     rt_uint32_t wifi_auto_connect;
     rt_int32_t wifi_storage_result;
+    rt_int32_t lcd_init_result;
+    rt_int32_t lcd_gfx_status;
+    rt_int32_t lcd_mipi_status;
+    rt_uint32_t lcd_frame_updates;
+    rt_int32_t lcd_last_frame_status;
+    rt_uint32_t lvgl_flush_count;
+    rt_int32_t lvgl_last_flush_status;
+    rt_uint32_t xiaozhi_token_len;
+    rt_uint32_t xiaozhi_token_staging_len;
     char netdev_name[RT_NAME_MAX];
 } voice_status_msg_t;
 
