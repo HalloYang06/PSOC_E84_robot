@@ -633,3 +633,21 @@ reset command issued
 
 - `python -m SCons -j4` 构建通过。
 - 已用 `program_with_resources.bat` 烧录，应用和资源 programming 均到 100%；末尾 KitProg3 acquire error 仍为既有现象。
+
+## 19. 2026-06-13 补齐 LVGL 配网页中文字库
+
+现场问题：
+
+- “诊断/隐藏”等按钮曾出现方框字，根因是 `rehab_wifi_font.c` 的 symbols 列表缺少 `诊`、`隐`、`藏` 等 glyph。
+- 之前临时用 `INFO/HIDE` 绕开缺字，但这会让中文触屏界面体验变差。
+
+本轮修正：
+
+1. 使用 `lv_font_conv 1.5.3` 从 `C:\Windows\Fonts\Noto Sans SC (TrueType).otf` 重新生成 `applications/rehab_wifi_font.c`。
+2. 扩展 symbols，覆盖配网页和小智状态常用字：`诊断隐藏未配置等待解析建握手接收线程启动选择输入检查扫码二维码启用发送小智` 等。
+3. 将按钮和诊断面板文案恢复为中文：`诊断/隐藏`、`诊断等待刷新`。
+
+验证：
+
+- `python -m SCons -j4` 构建通过。
+- 已用 `program_with_resources.bat` 烧录，应用和资源 programming 均到 100%；末尾 KitProg3 acquire error 仍为既有现象。
