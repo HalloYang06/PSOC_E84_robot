@@ -228,6 +228,8 @@ typedef struct
     rt_int32_t lcd_last_frame_status;
     rt_uint32_t lvgl_flush_count;
     rt_int32_t lvgl_last_flush_status;
+    rt_uint32_t xiaozhi_token_len;
+    rt_uint32_t xiaozhi_token_staging_len;
     char netdev_name[RT_NAME_MAX];
 } voice_status_msg_t;
 

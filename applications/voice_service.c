@@ -128,6 +128,8 @@ typedef struct
     rt_uint32_t zcr_permille;
 } voice_model_result_t;
 
+static void voice_service_stop_xiaozhi_listening(rt_bool_t notify_server);
+
 static voice_service_t g_service;
 
 static void voice_service_refresh_netdev_snapshot_locked(void)
@@ -212,6 +214,8 @@ static rt_err_t voice_service_publish_status(void)
              xiaozhi_wake_engine_last_confidence_permille()));
     msg.payload.voice_status.xiaozhi_ws_stage = websocket_client_last_stage();
     msg.payload.voice_status.xiaozhi_ws_errno = websocket_client_last_errno();
+    msg.payload.voice_status.xiaozhi_token_len = (rt_uint32_t)xiaozhi_voice_relay_token_len();
+    msg.payload.voice_status.xiaozhi_token_staging_len = (rt_uint32_t)xiaozhi_voice_relay_token_staging_len();
     rt_memory_info(&heap_total, &heap_used, &heap_max_used);
     voice_service_refresh_netdev_snapshot_locked();
     msg.payload.voice_status.heap_total = (rt_uint32_t)heap_total;
@@ -289,6 +293,11 @@ static rt_err_t voice_service_set_wake_listening(rt_bool_t enable)
                xiaozhi_wake_engine_backend_name(),
                xiaozhi_wake_engine_is_ready() ? 1 : 0);
     return RT_EOK;
+}
+
+rt_err_t voice_service_set_wake_listening_direct(rt_bool_t enable)
+{
+    return voice_service_set_wake_listening(enable);
 }
 
 static voice_model_result_t voice_service_model_entry(const uint8_t *audio_data, uint32_t len)
@@ -601,6 +610,38 @@ static void voice_service_start_xiaozhi_listening(const char *wake_word)
     rt_kprintf("[voice_service] Xiaozhi listening started session=%lu word=%s\n",
                (unsigned long)session_id,
                (wake_word && wake_word[0]) ? wake_word : "wake_word");
+}
+
+rt_err_t voice_service_start_xiaozhi_talk(void)
+{
+    if (!g_service.initialized || !g_service.running)
+    {
+        return -RT_ERROR;
+    }
+
+    if (!websocket_client_is_connected())
+    {
+        rt_err_t ret = voice_service_reconnect_xiaozhi();
+        if (ret != RT_EOK)
+        {
+            rt_kprintf("[voice_service] Xiaozhi talk reconnect failed: %d\n", ret);
+            return ret;
+        }
+    }
+
+    voice_service_start_xiaozhi_listening("manual");
+    return RT_EOK;
+}
+
+rt_err_t voice_service_stop_xiaozhi_talk(void)
+{
+    if (!g_service.initialized)
+    {
+        return -RT_ERROR;
+    }
+
+    voice_service_stop_xiaozhi_listening(RT_TRUE);
+    return RT_EOK;
 }
 
 static rt_bool_t voice_service_feed_xiaozhi_listening(const uint8_t *audio_data, uint32_t len)
@@ -1171,7 +1212,7 @@ static rt_err_t voice_service_wifi_set_password(const char *password)
 static rt_err_t voice_service_wifi_connect(void)
 {
     (void)wifi_config_save();
-    return wifi_config_connect();
+    return wifi_config_start_auto_connect(10U);
 }
 
 static rt_err_t voice_service_wifi_disconnect(void)
@@ -1235,10 +1276,12 @@ static void voice_service_handle_control(const voice_control_msg_t *control)
         ret = voice_service_set_wake_listening(RT_FALSE);
         break;
     case VOICE_CTRL_START_CAPTURE:
-        rt_kprintf("[voice_service] capture control received; local mic is managed by CM55 main\n");
+        ret = voice_service_start_xiaozhi_talk();
+        rt_kprintf("[voice_service] xiaozhi talk start ret=%d\n", ret);
         break;
     case VOICE_CTRL_STOP_CAPTURE:
-        rt_kprintf("[voice_service] capture stop received; local mic remains under CM55 main control\n");
+        ret = voice_service_stop_xiaozhi_talk();
+        rt_kprintf("[voice_service] xiaozhi talk stop ret=%d\n", ret);
         break;
     case VOICE_CTRL_NET_PROBE:
         ret = voice_service_run_net_probe();
@@ -1393,7 +1436,7 @@ static void voice_service_thread_entry(void *parameter)
 
     while (g_service.running)
     {
-        if (!websocket_client_is_connected())
+        if (!websocket_client_is_connected() && xiaozhi_voice_relay_has_token())
         {
             rt_tick_t now = rt_tick_get();
             if ((g_service.reconnect_tick == 0) || (now - g_service.reconnect_tick > RT_TICK_PER_SECOND * 2))
@@ -1554,6 +1597,10 @@ rt_err_t voice_service_init(const char *baidu_api_key, const char *baidu_secret_
     {
         voice_service_send_xiaozhi_hello();
     }
+    else
+    {
+        rt_kprintf("[voice_service] initial xiaozhi connect deferred: %d\n", ret);
+    }
 
     g_service.wake_hit_streak = 0;
     g_service.wake_skip_windows = 0;
@@ -1658,7 +1705,7 @@ rt_err_t voice_service_submit_local_pcm(const rt_uint8_t *pcm, rt_uint32_t len)
     {
         return -RT_ERROR;
     }
-    if (!g_service.wake_listening)
+    if (!g_service.wake_listening && !g_service.xiaozhi_listening_active)
     {
         return -RT_EBUSY;
     }

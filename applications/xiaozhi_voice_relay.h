@@ -10,7 +10,7 @@
 #define XIAOZHI_AUDIO_SAMPLE_RATE 16000U
 #define XIAOZHI_AUDIO_CHANNELS 1U
 #define XIAOZHI_AUDIO_BITS_PER_SAMPLE 16U
-#define XIAOZHI_AUDIO_FRAME_DURATION_MS 20U
+#define XIAOZHI_AUDIO_FRAME_DURATION_MS 60U
 #define XIAOZHI_AUDIO_FRAME_BYTES \
     ((XIAOZHI_AUDIO_SAMPLE_RATE * XIAOZHI_AUDIO_CHANNELS * (XIAOZHI_AUDIO_BITS_PER_SAMPLE / 8U) * XIAOZHI_AUDIO_FRAME_DURATION_MS) / 1000U)
 
@@ -40,6 +40,8 @@ typedef struct
 rt_err_t xiaozhi_voice_relay_init(void);
 const char *xiaozhi_voice_relay_get_url(void);
 rt_bool_t xiaozhi_voice_relay_has_token(void);
+rt_size_t xiaozhi_voice_relay_token_len(void);
+rt_size_t xiaozhi_voice_relay_token_staging_len(void);
 rt_err_t xiaozhi_voice_relay_set_url(const char *url);
 rt_err_t xiaozhi_voice_relay_set_token(const char *token);
 rt_err_t xiaozhi_voice_relay_token_update_begin(void);

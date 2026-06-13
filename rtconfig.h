@@ -68,7 +68,7 @@
 #define RT_USING_FINSH
 #define FINSH_USING_MSH
 #define FINSH_THREAD_NAME "tshell"
-#define FINSH_THREAD_PRIORITY 30
+#define FINSH_THREAD_PRIORITY 20
 #define FINSH_THREAD_STACK_SIZE 4096
 #define FINSH_USING_HISTORY
 #define FINSH_HISTORY_LINES 5
@@ -114,7 +114,7 @@
 #define RT_SDIO_STACK_SIZE 2048
 #define RT_SDIO_THREAD_PRIORITY 0
 #define RT_MMCSD_STACK_SIZE 2048
-#define RT_MMCSD_THREAD_PREORITY 5
+#define RT_MMCSD_THREAD_PREORITY 22
 #define RT_MMCSD_MAX_PARTITION 16
 #define RT_USING_AUDIO
 #define RT_AUDIO_REPLAY_MP_BLOCK_SIZE 4096
@@ -169,7 +169,7 @@
 
 #define RT_USING_POSIX_FS
 #define RT_USING_POSIX_DEVIO
-/* #undef RT_USING_POSIX_STDIO */
+#define RT_USING_POSIX_STDIO
 #define RT_USING_POSIX_POLL
 #define RT_USING_POSIX_SELECT
 #define RT_USING_POSIX_SOCKET
@@ -324,8 +324,8 @@
 #define PKG_USING_LVGL
 #define BSP_USING_LVGL
 #define USING_LVGL
-#define PKG_LVGL_THREAD_STACK_SIZE 16384
-#define PKG_LVGL_THREAD_PRIO 26
+#define PKG_LVGL_THREAD_STACK_SIZE 24576
+#define PKG_LVGL_THREAD_PRIO 20
 #define PKG_LVGL_DISP_REFR_PERIOD 33
 /* end of LVGL: powerful and easy-to-use embedded GUI library */
 
@@ -483,9 +483,6 @@
 #define BSP_USING_GPIO
 #define BSP_USING_I2C
 #define BSP_USING_HW_I2C0
-#define BSP_USING_SOFT_I2C1
-#define BSP_SOFT_I2C1_SCL_PIN 105
-#define BSP_SOFT_I2C1_SDA_PIN 106
 #define BSP_USING_UART
 #define BSP_USING_UART2
 #define BSP_USING_HYPERAM
@@ -549,8 +546,7 @@
 
 #define WHD_PORTING_HAL
 /* end of Porting options */
-#define WHD_PORTING_BSP
-#define WHD_LOG_LEVEL_ERROR
+#define WHD_LOG_LEVEL_INFO
 #define WPRINT_ENABLE_WHD_INFO
 /* end of Board extended module Drivers */
 /* end of Hardware Drivers Config */

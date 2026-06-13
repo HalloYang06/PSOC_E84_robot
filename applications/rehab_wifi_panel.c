@@ -1,5 +1,7 @@
 #include "rehab_wifi_panel.h"
 #include "wifi_config_service.h"
+#include "websocket_client.h"
+#include "xiaozhi_voice_relay.h"
 
 #ifdef BSP_USING_LVGL
 
@@ -163,6 +165,27 @@ static const char *wifi_hint_text(const wifi_config_snapshot_t *snapshot)
     return "输入密码后连接";
 }
 
+static const char *xiaozhi_state_text(const wifi_config_snapshot_t *snapshot)
+{
+    if (!xiaozhi_voice_relay_has_token())
+    {
+        return "未配置";
+    }
+    if (websocket_client_is_connected())
+    {
+        return "已连接";
+    }
+    if ((snapshot == RT_NULL) || (snapshot->wlan_ready == 0U) || (snapshot->netdev_ip == 0U))
+    {
+        return "等待网络";
+    }
+    if (websocket_client_last_errno() != 0)
+    {
+        return "重试中";
+    }
+    return "连接中";
+}
+
 static void style_plain_panel(lv_obj_t *obj, lv_color_t bg)
 {
     lv_obj_set_style_bg_color(obj, bg, 0);
@@ -175,7 +198,7 @@ static void style_plain_panel(lv_obj_t *obj, lv_color_t bg)
 static void rehab_wifi_panel_refresh(void)
 {
     wifi_config_snapshot_t snapshot;
-    char status[128];
+    char status[192];
     char qa[128];
 
     if (g_status_label == RT_NULL)
@@ -187,10 +210,13 @@ static void rehab_wifi_panel_refresh(void)
     wifi_config_get_snapshot(&snapshot);
     rt_snprintf(status,
                 sizeof(status),
-                "%s  %ld个网络\n%s",
+                "%s  %ld个网络\n%s\n小智:%s s%d e%d",
                 wifi_state_text(&snapshot),
                 (long)snapshot.scan_count,
-                wifi_hint_text(&snapshot));
+                wifi_hint_text(&snapshot),
+                xiaozhi_state_text(&snapshot),
+                websocket_client_last_stage(),
+                websocket_client_last_errno());
     lv_label_set_text(g_status_label, status);
 
     if ((g_qa_big_panel != RT_NULL) && (g_qa_big_label != RT_NULL))
@@ -543,9 +569,25 @@ static void start_auto_qa_timer(void)
 
 static void connect_thread_entry(void *parameter)
 {
+    rt_err_t ret;
+    wifi_config_snapshot_t snapshot;
+
     RT_UNUSED(parameter);
     (void)wifi_config_save();
-    (void)wifi_config_connect();
+    ret = wifi_config_connect();
+    if (ret == RT_EOK)
+    {
+        for (rt_uint32_t i = 0; i < 20U; i++)
+        {
+            wifi_config_get_snapshot(&snapshot);
+            if (snapshot.wlan_ready && snapshot.netdev_ip != 0U)
+            {
+                break;
+            }
+            rt_thread_mdelay(500);
+        }
+        (void)wifi_config_save();
+    }
     (void)wifi_config_whd_diag();
     g_connect_in_progress = RT_FALSE;
     g_connect_thread = RT_NULL;

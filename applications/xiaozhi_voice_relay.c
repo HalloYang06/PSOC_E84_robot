@@ -3,6 +3,12 @@
 #include <string.h>
 #include <stdlib.h>
 
+#if defined(__has_include)
+#if __has_include("xiaozhi_local_token.h")
+#include "xiaozhi_local_token.h"
+#endif
+#endif
+
 #define XIAOZHI_DEFAULT_WS_URL "ws://106.55.62.122:8011/api/rehab-arm/v1/projects/" XIAOZHI_PROJECT_ID "/devices/" XIAOZHI_DEVICE_ID "/xiaozhi/ws?robot_id=" XIAOZHI_ROBOT_ID
 #define XIAOZHI_TOKEN_MAX      768
 #define XIAOZHI_URL_MAX        192
@@ -77,6 +83,13 @@ rt_err_t xiaozhi_voice_relay_init(void)
 
     rt_memset(&g_xiaozhi, 0, sizeof(g_xiaozhi));
     rt_strncpy(g_xiaozhi.ws_url, XIAOZHI_DEFAULT_WS_URL, sizeof(g_xiaozhi.ws_url) - 1);
+#ifdef XIAOZHI_LOCAL_TOKEN
+    if ((rt_strlen(XIAOZHI_LOCAL_TOKEN) > 0U) &&
+        (rt_strlen(XIAOZHI_LOCAL_TOKEN) < sizeof(g_xiaozhi.token)))
+    {
+        rt_strncpy(g_xiaozhi.token, XIAOZHI_LOCAL_TOKEN, sizeof(g_xiaozhi.token) - 1);
+    }
+#endif
     g_xiaozhi.initialized = RT_TRUE;
     return RT_EOK;
 }
@@ -91,6 +104,18 @@ rt_bool_t xiaozhi_voice_relay_has_token(void)
 {
     xiaozhi_voice_relay_init();
     return g_xiaozhi.token[0] != '\0' ? RT_TRUE : RT_FALSE;
+}
+
+rt_size_t xiaozhi_voice_relay_token_len(void)
+{
+    xiaozhi_voice_relay_init();
+    return rt_strlen(g_xiaozhi.token);
+}
+
+rt_size_t xiaozhi_voice_relay_token_staging_len(void)
+{
+    xiaozhi_voice_relay_init();
+    return rt_strlen(g_xiaozhi.token_staging);
 }
 
 rt_err_t xiaozhi_voice_relay_set_url(const char *url)
@@ -224,13 +249,12 @@ rt_err_t xiaozhi_voice_relay_build_hello(char *out, rt_size_t out_len)
     }
 
     n = rt_snprintf(out, out_len,
-                    "{\"type\":\"hello\",\"version\":3,"
+                    "{\"type\":\"hello\",\"version\":1,"
                     "\"features\":{\"mcp\":true},"
                     "\"transport\":\"websocket\","
-                    "\"audio_params\":{\"format\":\"pcm_s16le\",\"sample_rate\":%u,\"channels\":%u,\"bits_per_sample\":%u,\"frame_duration\":%u}}",
+                    "\"audio_params\":{\"format\":\"opus\",\"sample_rate\":%u,\"channels\":%u,\"frame_duration\":%u}}",
                     (unsigned)XIAOZHI_AUDIO_SAMPLE_RATE,
                     (unsigned)XIAOZHI_AUDIO_CHANNELS,
-                    (unsigned)XIAOZHI_AUDIO_BITS_PER_SAMPLE,
                     (unsigned)XIAOZHI_AUDIO_FRAME_DURATION_MS);
     return ((n < 0) || ((rt_size_t)n >= out_len)) ? -RT_EFULL : RT_EOK;
 }
@@ -269,7 +293,7 @@ rt_err_t xiaozhi_voice_relay_build_listen_start(char *out, rt_size_t out_len,
     RT_UNUSED(wake_source);
     n = rt_snprintf(out, out_len,
                     "{\"session_id\":\"%lu\",\"type\":\"listen\",\"state\":\"start\","
-                    "\"mode\":\"auto_stop\"}",
+                    "\"mode\":\"auto\"}",
                     (unsigned long)session_id);
     return ((n < 0) || ((rt_size_t)n >= out_len)) ? -RT_EFULL : RT_EOK;
 }

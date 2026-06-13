@@ -4,13 +4,19 @@
 #include <fal.h>
 #include <finsh.h>
 #include <reent.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <errno.h>
+#include <stdlib.h>
 #include "cy_retarget_io.h"
 #include "whd.h"
 #include "whd_resource_api.h"
 #include "http_server.h"
+#include "m33_m55_comm.h"
 #include "model_result_publisher.h"
 #include "openclaw_integration.h"
 #include "voice_service.h"
+#include "websocket_client.h"
 #include "wifi_config_service.h"
 #include "xiaozhi_voice_relay.h"
 
@@ -24,11 +30,16 @@ extern int lvgl_thread_init(void);
 #define M55_AUDIO_FRAME_BYTES 2048
 #define M55_VOICE_BOOT_DELAY_MS 5000
 #define M55_BOOT_SELF_TEST_RETRY_COUNT 10
+#define M55_XIAOZHI_CLOUD_IP "106.55.62.122"
+#define M55_XIAOZHI_CLOUD_PORT 8011
 #ifndef M55_WIFI_SCAN_QA_ONLY
 #define M55_WIFI_SCAN_QA_ONLY 0
 #endif
 #ifndef M55_WIFI_LVGL_ONLY
 #define M55_WIFI_LVGL_ONLY 1
+#endif
+#ifndef M55_XIAOZHI_AUTO_ENABLE
+#define M55_XIAOZHI_AUTO_ENABLE 1
 #endif
 #ifndef M55_ENABLE_LOCAL_HTTP_SERVER
 #define M55_ENABLE_LOCAL_HTTP_SERVER 0
@@ -53,6 +64,9 @@ static struct
 } g_m55_mic = {0};
 static rt_thread_t g_voice_boot_thread = RT_NULL;
 static rt_thread_t g_boot_self_test_thread = RT_NULL;
+static rt_thread_t g_xiaozhi_bridge_thread = RT_NULL;
+static rt_thread_t g_xiaozhi_auto_thread = RT_NULL;
+static rt_bool_t g_xiaozhi_voice_started = RT_FALSE;
 
 typedef struct
 {
@@ -70,6 +84,11 @@ typedef struct
 volatile m55_wifi_scan_qa_t g_m55_wifi_scan_qa;
 
 extern whd_resource_source_t resource_ops;
+int lwip_socket(int domain, int type, int protocol);
+int lwip_connect(int s, const struct sockaddr *name, socklen_t namelen);
+int lwip_close(int s);
+static rt_err_t m55_voice_start_for_xiaozhi(void);
+static void xiaozhi_bridge_publish_status(void);
 
 static void m55_wifi_scan_qa_capture(void)
 {
@@ -568,6 +587,430 @@ static void xz_reconnect(int argc, char **argv)
 }
 MSH_CMD_EXPORT(xz_reconnect, Reconnect Xiaozhi websocket after URL or token change);
 
+static void xz_status(int argc, char **argv)
+{
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+
+    rt_kprintf("xz_status url=%s\n", xiaozhi_voice_relay_get_url());
+    rt_kprintf("xz_status token=%d connected=%d ws_stage=%d ws_errno=%d\n",
+               xiaozhi_voice_relay_has_token() ? 1 : 0,
+               websocket_client_is_connected() ? 1 : 0,
+               websocket_client_last_stage(),
+               websocket_client_last_errno());
+}
+MSH_CMD_EXPORT(xz_status, Show Xiaozhi websocket status without printing token);
+
+static void xz_tcp_probe(int argc, char **argv)
+{
+    const char *ip = M55_XIAOZHI_CLOUD_IP;
+    int port = M55_XIAOZHI_CLOUD_PORT;
+    int fd;
+    int ret;
+    int native_errno;
+    struct sockaddr_in cloud_addr;
+
+    if (argc >= 2)
+    {
+        ip = argv[1];
+    }
+    if (argc >= 3)
+    {
+        port = atoi(argv[2]);
+    }
+
+    rt_memset(&cloud_addr, 0, sizeof(cloud_addr));
+    cloud_addr.sin_family = AF_INET;
+    cloud_addr.sin_port = htons((uint16_t)port);
+    cloud_addr.sin_addr.s_addr = inet_addr(ip);
+
+    errno = 0;
+    fd = lwip_socket(AF_INET, SOCK_STREAM, 0);
+    native_errno = errno;
+    if (fd < 0)
+    {
+        rt_kprintf("xz_tcp_probe socket fd=%d errno=%d\n", fd, native_errno);
+        return;
+    }
+
+    errno = 0;
+    ret = lwip_connect(fd, (struct sockaddr *)&cloud_addr, sizeof(cloud_addr));
+    native_errno = errno;
+    lwip_close(fd);
+    rt_kprintf("xz_tcp_probe ip=%s port=%d ret=%d errno=%d\n", ip, port, ret, native_errno);
+}
+MSH_CMD_EXPORT(xz_tcp_probe, Probe Xiaozhi cloud TCP port);
+
+static rt_err_t m55_voice_start_for_xiaozhi(void)
+{
+    rt_err_t ret;
+
+    ret = voice_service_init("YOUR_BAIDU_API_KEY", "YOUR_BAIDU_SECRET_KEY");
+    if ((ret != RT_EOK) && (ret != -RT_EBUSY))
+    {
+        rt_kprintf("[m55] voice init ret=%d\n", ret);
+        return ret;
+    }
+
+    ret = voice_service_start();
+    if ((ret != RT_EOK) && (ret != -RT_EBUSY))
+    {
+        rt_kprintf("[m55] voice start ret=%d\n", ret);
+        return ret;
+    }
+
+    return RT_EOK;
+}
+
+static rt_err_t m55_wake_listen_start_for_xiaozhi(void)
+{
+    rt_err_t ret;
+
+    ret = m55_voice_start_for_xiaozhi();
+    if (ret != RT_EOK)
+    {
+        return ret;
+    }
+
+    ret = voice_service_set_wake_listening_direct(RT_TRUE);
+    if (ret != RT_EOK)
+    {
+        return ret;
+    }
+
+    ret = m55_mic_start_internal();
+    if ((ret == RT_EOK) || (ret == -RT_EBUSY))
+    {
+        return RT_EOK;
+    }
+
+    (void)voice_service_set_wake_listening_direct(RT_FALSE);
+    return ret;
+}
+
+static rt_err_t m55_wake_listen_stop_for_xiaozhi(void)
+{
+    rt_err_t ret;
+
+    ret = voice_service_set_wake_listening_direct(RT_FALSE);
+    (void)m55_mic_stop_internal();
+    return ret;
+}
+
+static void xiaozhi_auto_connect_thread_entry(void *parameter)
+{
+    rt_err_t ret;
+    rt_bool_t voice_ready = RT_FALSE;
+    rt_uint32_t wifi_ready_streak = 0U;
+    rt_uint32_t retry_delay = 0U;
+
+    RT_UNUSED(parameter);
+
+    (void)xiaozhi_voice_relay_init();
+    rt_kprintf("[m55_xz_auto] token=%d len=%lu url=%s\n",
+               xiaozhi_voice_relay_has_token() ? 1 : 0,
+               (unsigned long)xiaozhi_voice_relay_token_len(),
+               xiaozhi_voice_relay_get_url());
+
+    for (rt_uint32_t i = 0; i < 300U; i++)
+    {
+        wifi_config_snapshot_t snapshot;
+
+        rt_thread_mdelay(2000);
+
+        if (!xiaozhi_voice_relay_has_token())
+        {
+            continue;
+        }
+
+        (void)wifi_config_diag();
+        wifi_config_get_snapshot(&snapshot);
+        if ((snapshot.wlan_ready == 0U) || (snapshot.netdev_ip == 0U))
+        {
+            wifi_ready_streak = 0U;
+            continue;
+        }
+        if (++wifi_ready_streak < 3U)
+        {
+            continue;
+        }
+        if (retry_delay > 0U)
+        {
+            retry_delay--;
+            continue;
+        }
+
+        if (!voice_ready)
+        {
+            ret = m55_wake_listen_start_for_xiaozhi();
+            if (ret == RT_EOK)
+            {
+                g_xiaozhi_voice_started = RT_TRUE;
+                voice_ready = RT_TRUE;
+                rt_kprintf("[m55_xz_auto] wake listening armed after wifi ready\n");
+            }
+            else
+            {
+                rt_kprintf("[m55_xz_auto] wake listen deferred ret=%d\n", ret);
+                retry_delay = 5U;
+                xiaozhi_bridge_publish_status();
+                continue;
+            }
+        }
+
+        rt_kprintf("[m55_xz_auto] wifi ready ip=0x%08lx, reconnect Xiaozhi\n",
+                   (unsigned long)snapshot.netdev_ip);
+        ret = voice_service_reconnect_xiaozhi();
+        rt_kprintf("[m55_xz_auto] reconnect ret=%d connected=%d stage=%d errno=%d\n",
+                   ret,
+                   websocket_client_is_connected() ? 1 : 0,
+                   websocket_client_last_stage(),
+                   websocket_client_last_errno());
+        xiaozhi_bridge_publish_status();
+        if (ret == RT_EOK)
+        {
+            break;
+        }
+        retry_delay = 5U;
+    }
+
+    g_xiaozhi_auto_thread = RT_NULL;
+}
+
+static void xz_talk_on(int argc, char **argv)
+{
+    rt_err_t ret;
+
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+
+    ret = m55_voice_start_for_xiaozhi();
+    if (ret == RT_EOK)
+    {
+        ret = voice_service_start_xiaozhi_talk();
+    }
+    if (ret == RT_EOK)
+    {
+        ret = m55_mic_start_internal();
+    }
+
+    rt_kprintf("xz_talk_on ret=%d token=%d connected=%d ws_stage=%d ws_errno=%d\n",
+               ret,
+               xiaozhi_voice_relay_has_token() ? 1 : 0,
+               websocket_client_is_connected() ? 1 : 0,
+               websocket_client_last_stage(),
+               websocket_client_last_errno());
+}
+MSH_CMD_EXPORT(xz_talk_on, Start manual Xiaozhi cloud listening from CM55 mic);
+
+static void xz_talk_off(int argc, char **argv)
+{
+    rt_err_t ret;
+
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+
+    ret = voice_service_stop_xiaozhi_talk();
+    (void)m55_mic_stop_internal();
+    rt_kprintf("xz_talk_off ret=%d connected=%d ws_stage=%d ws_errno=%d\n",
+               ret,
+               websocket_client_is_connected() ? 1 : 0,
+               websocket_client_last_stage(),
+               websocket_client_last_errno());
+}
+MSH_CMD_EXPORT(xz_talk_off, Stop manual Xiaozhi cloud listening);
+
+static void xiaozhi_bridge_publish_ack(rt_uint32_t cmd, rt_err_t ret)
+{
+    m33_m55_message_t ack;
+
+    rt_memset(&ack, 0, sizeof(ack));
+    ack.type = MSG_TYPE_VOICE_CONTROL_ACK;
+    ack.payload.voice_control.cmd = cmd;
+    ack.payload.voice_control.arg0 = (rt_uint32_t)ret;
+    ack.payload.voice_control.arg1 = (rt_uint32_t)rt_tick_get();
+    (void)m33_m55_comm_publish(&ack);
+}
+
+static void xiaozhi_bridge_publish_status(void)
+{
+    m33_m55_message_t status;
+
+    rt_memset(&status, 0, sizeof(status));
+    status.type = MSG_TYPE_VOICE_STATUS;
+    status.payload.voice_status.flags =
+        xiaozhi_voice_relay_has_token() ? VOICE_STATUS_FLAG_XIAOZHI_HAS_TOKEN : 0U;
+    wifi_config_fill_voice_status(&status.payload.voice_status);
+    (void)m33_m55_comm_publish(&status);
+}
+
+static rt_err_t xiaozhi_bridge_handle_config(const voice_config_msg_t *config)
+{
+    rt_err_t ret = RT_EOK;
+
+    if (config == RT_NULL)
+    {
+        return -RT_EINVAL;
+    }
+
+    switch ((voice_config_key_t)config->key)
+    {
+    case VOICE_CONFIG_XIAOZHI_URL:
+        ret = xiaozhi_voice_relay_set_url(config->value);
+        break;
+    case VOICE_CONFIG_XIAOZHI_TOKEN:
+        ret = xiaozhi_voice_relay_set_token(config->value);
+        break;
+    case VOICE_CONFIG_XIAOZHI_TOKEN_BEGIN:
+        ret = xiaozhi_voice_relay_token_update_begin();
+        break;
+    case VOICE_CONFIG_XIAOZHI_TOKEN_PART:
+        ret = xiaozhi_voice_relay_token_update_part(config->value);
+        break;
+    case VOICE_CONFIG_XIAOZHI_TOKEN_COMMIT:
+        ret = xiaozhi_voice_relay_token_update_commit();
+        break;
+    case VOICE_CONFIG_XIAOZHI_TOKEN_CLEAR:
+        xiaozhi_voice_relay_token_update_clear();
+        ret = RT_EOK;
+        break;
+    case VOICE_CONFIG_XIAOZHI_RECONNECT:
+        ret = m55_voice_start_for_xiaozhi();
+        if (ret == RT_EOK)
+        {
+            g_xiaozhi_voice_started = RT_TRUE;
+            ret = voice_service_reconnect_xiaozhi();
+        }
+        break;
+    case VOICE_CONFIG_WIFI_SSID:
+        ret = wifi_config_set_ssid(config->value);
+        break;
+    case VOICE_CONFIG_WIFI_PASSWORD:
+        ret = wifi_config_set_password(config->value);
+        break;
+    case VOICE_CONFIG_WIFI_CONNECT:
+        (void)wifi_config_save();
+        ret = wifi_config_start_auto_connect(10U);
+        break;
+    case VOICE_CONFIG_WIFI_DISCONNECT:
+        ret = wifi_config_disconnect();
+        break;
+    case VOICE_CONFIG_WIFI_SAVE:
+        ret = wifi_config_save();
+        break;
+    case VOICE_CONFIG_WIFI_FORGET:
+        ret = wifi_config_forget();
+        break;
+    case VOICE_CONFIG_WIFI_AUTO_CONNECT:
+        ret = wifi_config_set_auto_connect((config->value[0] == '0') ? RT_FALSE : RT_TRUE);
+        if (ret == RT_EOK)
+        {
+            ret = wifi_config_save();
+        }
+        break;
+    default:
+        ret = -RT_EINVAL;
+        break;
+    }
+
+    rt_kprintf("[m55_xz_bridge] config key=%lu ret=%d token=%d\n",
+               (unsigned long)config->key,
+               ret,
+               xiaozhi_voice_relay_has_token() ? 1 : 0);
+    return ret;
+}
+
+static rt_err_t xiaozhi_bridge_handle_control(const voice_control_msg_t *control)
+{
+    rt_err_t ret = RT_EOK;
+
+    if (control == RT_NULL)
+    {
+        return -RT_EINVAL;
+    }
+
+    switch ((voice_control_cmd_t)control->cmd)
+    {
+    case VOICE_CTRL_START_CAPTURE:
+        ret = m55_voice_start_for_xiaozhi();
+        if (ret == RT_EOK)
+        {
+            g_xiaozhi_voice_started = RT_TRUE;
+            ret = voice_service_start_xiaozhi_talk();
+        }
+        break;
+    case VOICE_CTRL_STOP_CAPTURE:
+        ret = voice_service_stop_xiaozhi_talk();
+        break;
+    case VOICE_CTRL_START_LISTEN:
+        ret = m55_wake_listen_start_for_xiaozhi();
+        if (ret == RT_EOK)
+        {
+            g_xiaozhi_voice_started = RT_TRUE;
+        }
+        break;
+    case VOICE_CTRL_STOP_LISTEN:
+        ret = m55_wake_listen_stop_for_xiaozhi();
+        break;
+    case VOICE_CTRL_WIFI_DIAG:
+        ret = wifi_config_diag();
+        break;
+    case VOICE_CTRL_WIFI_SCAN:
+        ret = wifi_config_scan();
+        break;
+    case VOICE_CTRL_WHD_DIAG:
+        ret = wifi_config_whd_diag();
+        break;
+    default:
+        ret = -RT_EINVAL;
+        break;
+    }
+
+    rt_kprintf("[m55_xz_bridge] control cmd=%lu ret=%d\n",
+               (unsigned long)control->cmd,
+               ret);
+    return ret;
+}
+
+static void xiaozhi_bridge_thread_entry(void *parameter)
+{
+    m33_m55_message_t msg;
+
+    RT_UNUSED(parameter);
+
+    (void)m33_m55_comm_init();
+    (void)xiaozhi_voice_relay_init();
+    rt_kprintf("[m55_xz_bridge] ready token=%d url=%s\n",
+               xiaozhi_voice_relay_has_token() ? 1 : 0,
+               xiaozhi_voice_relay_get_url());
+
+    while (!g_xiaozhi_voice_started)
+    {
+        while (m33_m55_comm_consume(&msg) == RT_EOK)
+        {
+            rt_err_t ret = -RT_EINVAL;
+
+            if (msg.type == MSG_TYPE_VOICE_CONFIG)
+            {
+                ret = xiaozhi_bridge_handle_config(&msg.payload.voice_config);
+                xiaozhi_bridge_publish_ack(1000U + msg.payload.voice_config.key, ret);
+                xiaozhi_bridge_publish_status();
+            }
+            else if (msg.type == MSG_TYPE_VOICE_CONTROL)
+            {
+                ret = xiaozhi_bridge_handle_control(&msg.payload.voice_control);
+                xiaozhi_bridge_publish_ack(msg.payload.voice_control.cmd, ret);
+                xiaozhi_bridge_publish_status();
+            }
+        }
+
+        rt_thread_mdelay(50);
+    }
+
+    rt_kprintf("[m55_xz_bridge] handoff to voice_service\n");
+    g_xiaozhi_bridge_thread = RT_NULL;
+}
+
 static void m55_wifi_ssid(int argc, char **argv)
 {
     rt_err_t ret;
@@ -870,6 +1313,30 @@ int main(void)
     }
 #else
     rt_kprintf("[m55] WiFi+LVGL-only mode; voice/OpenClaw/HTTP/autoconnect disabled\n");
+    (void)wifi_config_start_auto_connect(3500U);
+    g_xiaozhi_bridge_thread = rt_thread_create("xz_bridge",
+                                               xiaozhi_bridge_thread_entry,
+                                               RT_NULL,
+                                               4096,
+                                               16,
+                                               10);
+    if (g_xiaozhi_bridge_thread)
+    {
+        rt_thread_startup(g_xiaozhi_bridge_thread);
+    }
+
+#if M55_XIAOZHI_AUTO_ENABLE
+    g_xiaozhi_auto_thread = rt_thread_create("xz_auto",
+                                             xiaozhi_auto_connect_thread_entry,
+                                             RT_NULL,
+                                             6144,
+                                             17,
+                                             10);
+    if (g_xiaozhi_auto_thread)
+    {
+        rt_thread_startup(g_xiaozhi_auto_thread);
+    }
+#endif
 #endif
 
     while (1)

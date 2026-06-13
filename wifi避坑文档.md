@@ -522,3 +522,78 @@ reset command issued
 1. 继续用触屏配网页完成真实路由器连接，确认拿到 IP。
 2. 在 M55 上恢复/验证小智连接服务器平台所需的网络客户端或 HTTP/WebSocket 路径。
 3. WiFi 稳定后再恢复语音、小智唤醒和 OpenClaw/OpenAI 类服务，不要在 WiFi 未连通时同时调多条链路。
+
+## 15. 2026-06-13 WiFi 优先与小智延后连接策略
+
+现场现象：
+
+- WiFi/LVGL 已能完成真实连接，但在加入“小智自动连接”后，配网阶段一度出现连接卡住或用户体验退化。
+- M33 串口 shell 当前不稳定，`m55qa_status` 无法稳定返回，因此不能把 WiFi 配网页依赖在命令行控制链路上。
+
+本轮结论：
+
+1. WiFi 配网优先级最高。M55 启动后不得在 WiFi 未 ready、未拿到 IP 前启动 voice/mic/WebSocket。
+2. 小智连接应是“网络稳定后的后置动作”：
+   - 先等 `wlan_ready != 0` 且 `netdev_ip != 0`。
+   - 连续多次确认 ready 后，再启动 wake listening 和 XiaoZhi WebSocket reconnect。
+   - reconnect 失败只记录并延后重试，不能阻塞 LVGL 配网 UI。
+3. 平台 token 只允许通过本地忽略文件或现场注入使用，不能提交进仓库或文档。
+
+已落地：
+
+- `main.c` 增加 `M55_XIAOZHI_AUTO_ENABLE`，当前策略是启用安全版自动连接，但自动线程先等 WiFi/IP 稳定，再启动小智。
+- `voice_service_init()` 的首次 WebSocket 连接失败改为 deferred，不再导致整个 voice service 初始化失败；后续由 reconnect 路径在网络 ready 后处理。
+- 本轮 M55 `scons -j4` 构建通过，并已用 `program_with_resources.bat` 烧入一次。
+
+后续验证顺序：
+
+1. 复位后先通过 LVGL 连 WiFi，确认屏幕显示已连接。
+2. 等 10-20 秒观察是否有小智连接日志或平台侧连接事件。
+3. 如果 M33 shell 恢复，再用 `m55qa_status` 看 `xz_token=1`、`xz_ws=1`、`wlan=1`、`ip!=0.0.0.0`。
+4. 如果串口仍无响应，不要反复发命令；优先恢复 M33 shell 或用摄像头/平台侧日志做 QA。
+
+## 16. 2026-06-13 对齐官方小智 WebSocket 例程
+
+官方参考：
+
+- 本地官方参考仓库：`D:\RT-ThreadStudio\workspace\_external_refs\xiaozhi-esp32`
+- 关键文件：
+  - `docs/websocket.md`
+  - `main/protocols/websocket_protocol.cc`
+  - `main/protocols/protocol.cc`
+
+官方协议要点：
+
+1. WebSocket 握手 header：
+   - `Authorization: Bearer <token>`
+   - `Protocol-Version: 1`
+   - `Device-Id`
+   - `Client-Id`
+2. 设备 hello：
+   - `type=hello`
+   - `version=1`
+   - `transport=websocket`
+   - `features.mcp=true`
+   - `audio_params.format=opus`
+   - `sample_rate=16000`
+   - `channels=1`
+   - `frame_duration=60`
+3. 听音控制：
+   - `{"type":"listen","state":"start","mode":"auto"}`
+   - stop 使用 `{"type":"listen","state":"stop"}`
+   - wake detect 使用 `{"type":"listen","state":"detect","text":"..."}`。
+
+本轮修正：
+
+- M55 `xiaozhi_voice_relay` 已从自定义 `version=3 + pcm_s16le + 20ms + mode=auto_stop` 改为官方例程形态 `version=1 + opus + 60ms + mode=auto`。
+- PC smoke 脚本 `tools/xiaozhi_ws_smoke_test.ps1` 同步为官方 hello/listen 格式。
+- 已用本地 token 在 PC 端验证官方 hello/listen 可被中转站接受：
+  - `hello` 返回 `transport=websocket`、`audio_params.format=opus`、`frame_duration=60`。
+  - `listen start mode=auto` 返回 ACK。
+  - 发送 60ms 二进制帧并 stop 后，中转站返回 chat/VLA 分类回复。
+
+仍需注意：
+
+- 当前 M55 端还没有真正引入 Opus 编码器；本轮先把协议 JSON 和时序对齐官方例程。
+- 当前中转站对 60ms 二进制帧已能给出回复，但后续要做到完全官方一致，应补 M55 Opus encoder 或让中转站明确兼容 PCM-to-ASR 转码边界。
+- 不要在 WiFi 未 ready 前启动小智；官方协议对齐不能牺牲 LVGL 配网稳定性。
