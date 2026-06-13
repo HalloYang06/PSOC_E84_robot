@@ -168,9 +168,12 @@ static const char *wifi_hint_text(const wifi_config_snapshot_t *snapshot)
 
 static const char *xiaozhi_state_text(const wifi_config_snapshot_t *snapshot)
 {
+    int stage;
+    int err;
+
     if (!xiaozhi_voice_relay_has_token())
     {
-        return "未配置";
+        return "未配置Token";
     }
     if (websocket_client_is_connected())
     {
@@ -180,9 +183,57 @@ static const char *xiaozhi_state_text(const wifi_config_snapshot_t *snapshot)
     {
         return "等待网络";
     }
-    if (websocket_client_last_errno() != 0)
+
+    stage = websocket_client_last_stage();
+    err = websocket_client_last_errno();
+    if (err != 0)
     {
+        if (stage == 10)
+        {
+            return "DNS失败";
+        }
+        if (stage == 20)
+        {
+            return "Socket失败";
+        }
+        if (stage == 30)
+        {
+            return "TCP失败";
+        }
+        if ((stage == 40) || (stage == 50))
+        {
+            return "握手失败";
+        }
+        if (stage == 60)
+        {
+            return "接收线程失败";
+        }
         return "重试中";
+    }
+
+    if (stage == 0)
+    {
+        return "等待启动";
+    }
+    if (stage == 10)
+    {
+        return "解析中";
+    }
+    if (stage == 20)
+    {
+        return "建Socket";
+    }
+    if (stage == 30)
+    {
+        return "TCP连接";
+    }
+    if ((stage == 40) || (stage == 50))
+    {
+        return "握手中";
+    }
+    if (stage == 60)
+    {
+        return "接收启动";
     }
     return "连接中";
 }
@@ -772,7 +823,7 @@ static lv_obj_t *panel_button(lv_obj_t *parent, const char *text, lv_event_cb_t 
     lv_obj_t *button = lv_button_create(parent);
     lv_obj_t *label;
 
-    lv_obj_set_size(button, 124, 46);
+    lv_obj_set_size(button, 198, 42);
     lv_obj_add_event_cb(button, cb, LV_EVENT_CLICKED, RT_NULL);
     lv_obj_set_style_radius(button, 6, 0);
     lv_obj_set_style_bg_color(button, lv_color_hex(0x2563EB), 0);
@@ -829,7 +880,7 @@ rt_err_t rehab_wifi_panel_create(void)
     lv_obj_align(g_xiaozhi_label, LV_ALIGN_TOP_LEFT, 22, 104);
 
     g_ap_list = lv_list_create(screen);
-    lv_obj_set_size(g_ap_list, 430, 188);
+    lv_obj_set_size(g_ap_list, 430, 136);
     style_plain_panel(g_ap_list, lv_color_hex(0xFFFFFF));
     lv_obj_set_style_pad_all(g_ap_list, 6, 0);
     lv_obj_align(g_ap_list, LV_ALIGN_TOP_LEFT, 22, 138);
@@ -841,10 +892,10 @@ rt_err_t rehab_wifi_panel_create(void)
     {
         lv_textarea_set_text(g_ssid_textarea, snapshot.ssid);
     }
-    lv_obj_set_size(g_ssid_textarea, 430, 46);
+    lv_obj_set_size(g_ssid_textarea, 430, 40);
     lv_obj_set_style_text_font(g_ssid_textarea, panel_font(), 0);
     style_plain_panel(g_ssid_textarea, lv_color_hex(0xFFFFFF));
-    lv_obj_align(g_ssid_textarea, LV_ALIGN_TOP_LEFT, 22, 340);
+    lv_obj_align(g_ssid_textarea, LV_ALIGN_TOP_LEFT, 22, 286);
     lv_obj_add_event_cb(g_ssid_textarea, keyboard_target_event_cb, LV_EVENT_FOCUSED, RT_NULL);
     lv_obj_add_event_cb(g_ssid_textarea, keyboard_target_event_cb, LV_EVENT_CLICKED, RT_NULL);
     lv_obj_add_event_cb(g_ssid_textarea, keyboard_target_event_cb, LV_EVENT_READY, RT_NULL);
@@ -859,10 +910,10 @@ rt_err_t rehab_wifi_panel_create(void)
     {
         lv_textarea_set_text(g_password_textarea, snapshot.password);
     }
-    lv_obj_set_size(g_password_textarea, 430, 46);
+    lv_obj_set_size(g_password_textarea, 430, 40);
     lv_obj_set_style_text_font(g_password_textarea, panel_font(), 0);
     style_plain_panel(g_password_textarea, lv_color_hex(0xFFFFFF));
-    lv_obj_align(g_password_textarea, LV_ALIGN_TOP_LEFT, 22, 392);
+    lv_obj_align(g_password_textarea, LV_ALIGN_TOP_LEFT, 22, 332);
     lv_obj_add_event_cb(g_password_textarea, keyboard_target_event_cb, LV_EVENT_FOCUSED, RT_NULL);
     lv_obj_add_event_cb(g_password_textarea, keyboard_target_event_cb, LV_EVENT_CLICKED, RT_NULL);
     lv_obj_add_event_cb(g_password_textarea, keyboard_target_event_cb, LV_EVENT_READY, RT_NULL);
@@ -877,24 +928,18 @@ rt_err_t rehab_wifi_panel_create(void)
     {
         lv_obj_add_state(g_auto_checkbox, LV_STATE_CHECKED);
     }
-    lv_obj_align(g_auto_checkbox, LV_ALIGN_TOP_LEFT, 26, 444);
+    lv_obj_align(g_auto_checkbox, LV_ALIGN_TOP_LEFT, 26, 380);
 
     row = lv_obj_create(screen);
     lv_obj_remove_style_all(row);
-    lv_obj_set_size(row, 430, 50);
-    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
-    lv_obj_set_style_pad_column(row, 14, 0);
-    lv_obj_align(row, LV_ALIGN_TOP_LEFT, 22, 480);
+    lv_obj_set_size(row, 430, 140);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW_WRAP);
+    lv_obj_set_style_pad_column(row, 12, 0);
+    lv_obj_set_style_pad_row(row, 10, 0);
+    lv_obj_align(row, LV_ALIGN_TOP_LEFT, 22, 418);
     (void)panel_button(row, "扫描", scan_event_cb);
     (void)panel_button(row, "连接", connect_event_cb);
     (void)panel_button(row, "保存", save_event_cb);
-
-    row = lv_obj_create(screen);
-    lv_obj_remove_style_all(row);
-    lv_obj_set_size(row, 430, 50);
-    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
-    lv_obj_set_style_pad_column(row, 14, 0);
-    lv_obj_align(row, LV_ALIGN_TOP_LEFT, 22, 536);
     (void)panel_button(row, "清除", forget_event_cb);
     (void)panel_button(row, "断开", disconnect_event_cb);
     diag_button = panel_button(row, g_diag_visible ? "HIDE" : "INFO", diag_event_cb);
@@ -906,7 +951,7 @@ rt_err_t rehab_wifi_panel_create(void)
     style_plain_panel(g_qa_big_panel, lv_color_hex(0xEAF2FF));
     lv_obj_set_style_pad_left(g_qa_big_panel, 8, 0);
     lv_obj_set_style_pad_top(g_qa_big_panel, 8, 0);
-    lv_obj_align(g_qa_big_panel, LV_ALIGN_TOP_LEFT, 22, 592);
+    lv_obj_align(g_qa_big_panel, LV_ALIGN_TOP_LEFT, 22, 572);
 
     g_qa_big_label = lv_label_create(g_qa_big_panel);
     lv_label_set_text(g_qa_big_label, "INFO waiting");
