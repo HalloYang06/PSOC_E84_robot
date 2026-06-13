@@ -11,6 +11,7 @@
 #include <string.h>
 
 static lv_obj_t *g_status_label;
+static lv_obj_t *g_xiaozhi_label;
 static lv_obj_t *g_ap_list;
 static lv_obj_t *g_qa_big_panel;
 static lv_obj_t *g_qa_big_label;
@@ -198,10 +199,11 @@ static void style_plain_panel(lv_obj_t *obj, lv_color_t bg)
 static void rehab_wifi_panel_refresh(void)
 {
     wifi_config_snapshot_t snapshot;
-    char status[192];
+    char status[128];
+    char xiaozhi_status[96];
     char qa[128];
 
-    if (g_status_label == RT_NULL)
+    if ((g_status_label == RT_NULL) || (g_xiaozhi_label == RT_NULL))
     {
         return;
     }
@@ -210,14 +212,18 @@ static void rehab_wifi_panel_refresh(void)
     wifi_config_get_snapshot(&snapshot);
     rt_snprintf(status,
                 sizeof(status),
-                "%s  %ld个网络\n%s\n小智:%s s%d e%d",
+                "%s  %ld个网络\n%s",
                 wifi_state_text(&snapshot),
                 (long)snapshot.scan_count,
-                wifi_hint_text(&snapshot),
+                wifi_hint_text(&snapshot));
+    rt_snprintf(xiaozhi_status,
+                sizeof(xiaozhi_status),
+                "XiaoZhi: %s   S:%d E:%d",
                 xiaozhi_state_text(&snapshot),
                 websocket_client_last_stage(),
                 websocket_client_last_errno());
     lv_label_set_text(g_status_label, status);
+    lv_label_set_text(g_xiaozhi_label, xiaozhi_status);
 
     if ((g_qa_big_panel != RT_NULL) && (g_qa_big_label != RT_NULL))
     {
@@ -809,6 +815,19 @@ rt_err_t rehab_wifi_panel_create(void)
     lv_label_set_long_mode(g_status_label, LV_LABEL_LONG_WRAP);
     lv_obj_align(g_status_label, LV_ALIGN_TOP_LEFT, 22, 54);
 
+    g_xiaozhi_label = lv_label_create(screen);
+    lv_obj_set_width(g_xiaozhi_label, 430);
+    lv_label_set_long_mode(g_xiaozhi_label, LV_LABEL_LONG_CLIP);
+    lv_obj_set_style_bg_color(g_xiaozhi_label, lv_color_hex(0xE0F2FE), 0);
+    lv_obj_set_style_bg_opa(g_xiaozhi_label, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(g_xiaozhi_label, 6, 0);
+    lv_obj_set_style_pad_left(g_xiaozhi_label, 8, 0);
+    lv_obj_set_style_pad_top(g_xiaozhi_label, 4, 0);
+    lv_obj_set_style_pad_bottom(g_xiaozhi_label, 4, 0);
+    lv_obj_set_style_text_color(g_xiaozhi_label, lv_color_hex(0x075985), 0);
+    lv_obj_set_style_text_font(g_xiaozhi_label, panel_font(), 0);
+    lv_obj_align(g_xiaozhi_label, LV_ALIGN_TOP_LEFT, 22, 104);
+
     g_ap_list = lv_list_create(screen);
     lv_obj_set_size(g_ap_list, 430, 188);
     style_plain_panel(g_ap_list, lv_color_hex(0xFFFFFF));
@@ -878,7 +897,7 @@ rt_err_t rehab_wifi_panel_create(void)
     lv_obj_align(row, LV_ALIGN_TOP_LEFT, 22, 536);
     (void)panel_button(row, "清除", forget_event_cb);
     (void)panel_button(row, "断开", disconnect_event_cb);
-    diag_button = panel_button(row, g_diag_visible ? "隐藏" : "诊断", diag_event_cb);
+    diag_button = panel_button(row, g_diag_visible ? "HIDE" : "INFO", diag_event_cb);
     RT_UNUSED(diag_button);
 
     g_qa_big_panel = lv_obj_create(screen);
@@ -890,7 +909,7 @@ rt_err_t rehab_wifi_panel_create(void)
     lv_obj_align(g_qa_big_panel, LV_ALIGN_TOP_LEFT, 22, 592);
 
     g_qa_big_label = lv_label_create(g_qa_big_panel);
-    lv_label_set_text(g_qa_big_label, "诊断等待刷新");
+    lv_label_set_text(g_qa_big_label, "INFO waiting");
     lv_obj_set_width(g_qa_big_label, 410);
     lv_label_set_long_mode(g_qa_big_label, LV_LABEL_LONG_CLIP);
     lv_obj_set_style_text_color(g_qa_big_label, lv_color_hex(0x1E3A8A), 0);
