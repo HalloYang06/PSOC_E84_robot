@@ -277,3 +277,21 @@ Failed or unverified:
 
 Next step:
 - After WiFi is reconnected on the flashed UI, use the visible XiaoZhi status strip or platform-side relay logs to prove `S:70`/connected before testing wake word speech.
+
+## 2026-06-13 - M55 LVGL Layout Retry For Overlap
+
+Completed:
+- Reworked the M55 LVGL WiFi panel after a user photo still showed overlap: AP list shortened, SSID/password fields tightened, and the six main buttons changed to a `2 x 3` grid.
+- XiaoZhi display now maps WebSocket stage/errno into actionable states such as `等待启动`, `TCP连接`, `握手中`, `TCP失败`, and `握手失败` instead of only showing `连接中`.
+- Pushed M55 commits `94b63f2 Tighten LVGL WiFi panel layout` and `41e4a66 Document LVGL layout retry`.
+
+Validated:
+- M55 `python -m SCons -j4` passed.
+- M55 was flashed with `program_with_resources.bat`; app and resource programming reached 100% before the known trailing KitProg3 acquire error.
+
+Failed or unverified:
+- COM4 still only shows early M33 boot output, so serial `m55qa_status` remains unavailable.
+- Need the next screen photo or platform-side logs after WiFi reconnect to determine whether XiaoZhi is stuck at TCP, handshake, or auto-start.
+
+Next step:
+- Reconnect WiFi on the device, read the new XiaoZhi state/stage from the LVGL strip, then fix the specific network/WebSocket phase rather than guessing from a generic `连接中`.
