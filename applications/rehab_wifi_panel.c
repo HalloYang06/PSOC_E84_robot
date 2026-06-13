@@ -915,7 +915,7 @@ rt_err_t rehab_wifi_panel_create(void)
     (void)panel_button(row, "保存", save_event_cb);
     (void)panel_button(row, "清除", forget_event_cb);
     (void)panel_button(row, "断开", disconnect_event_cb);
-    diag_button = panel_button(row, g_diag_visible ? "HIDE" : "INFO", diag_event_cb);
+    diag_button = panel_button(row, g_diag_visible ? "隐藏" : "诊断", diag_event_cb);
     RT_UNUSED(diag_button);
 
     g_qa_big_panel = lv_obj_create(screen);
@@ -927,7 +927,7 @@ rt_err_t rehab_wifi_panel_create(void)
     lv_obj_align(g_qa_big_panel, LV_ALIGN_TOP_LEFT, 22, 574);
 
     g_qa_big_label = lv_label_create(g_qa_big_panel);
-    lv_label_set_text(g_qa_big_label, "INFO waiting");
+    lv_label_set_text(g_qa_big_label, "诊断等待刷新");
     lv_obj_set_width(g_qa_big_label, 410);
     lv_label_set_long_mode(g_qa_big_label, LV_LABEL_LONG_CLIP);
     lv_obj_set_style_text_color(g_qa_big_label, lv_color_hex(0x1E3A8A), 0);
