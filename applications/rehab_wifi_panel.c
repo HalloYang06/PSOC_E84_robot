@@ -141,31 +141,6 @@ static const char *wifi_state_text(const wifi_config_snapshot_t *snapshot)
     return "WiFi未就绪";
 }
 
-static const char *wifi_hint_text(const wifi_config_snapshot_t *snapshot)
-{
-    if (g_connect_in_progress)
-    {
-        return "正在连接路由器";
-    }
-    if (snapshot->wlan_connected)
-    {
-        return "网络已连接";
-    }
-    if (!wifi_scan_available(snapshot))
-    {
-        return "WiFi未就绪";
-    }
-    if (snapshot->ssid[0] == '\0')
-    {
-        return "请选择网络或手动输入";
-    }
-    if (snapshot->last_result != RT_EOK)
-    {
-        return "连接失败请检查密码";
-    }
-    return "输入密码后连接";
-}
-
 static const char *xiaozhi_state_text(const wifi_config_snapshot_t *snapshot)
 {
     int stage;
@@ -263,10 +238,9 @@ static void rehab_wifi_panel_refresh(void)
     wifi_config_get_snapshot(&snapshot);
     rt_snprintf(status,
                 sizeof(status),
-                "%s  %ld个网络\n%s",
+                "%s  %ld个网络",
                 wifi_state_text(&snapshot),
-                (long)snapshot.scan_count,
-                wifi_hint_text(&snapshot));
+                (long)snapshot.scan_count);
     rt_snprintf(xiaozhi_status,
                 sizeof(xiaozhi_status),
                 "XiaoZhi: %s   S:%d E:%d",
@@ -862,8 +836,7 @@ rt_err_t rehab_wifi_panel_create(void)
     lv_obj_set_width(g_status_label, 430);
     lv_obj_set_style_text_color(g_status_label, lv_color_hex(0x1F2937), 0);
     lv_obj_set_style_text_font(g_status_label, panel_font(), 0);
-    lv_obj_set_style_text_line_space(g_status_label, 4, 0);
-    lv_label_set_long_mode(g_status_label, LV_LABEL_LONG_WRAP);
+    lv_label_set_long_mode(g_status_label, LV_LABEL_LONG_CLIP);
     lv_obj_align(g_status_label, LV_ALIGN_TOP_LEFT, 22, 54);
 
     g_xiaozhi_label = lv_label_create(screen);
@@ -877,13 +850,13 @@ rt_err_t rehab_wifi_panel_create(void)
     lv_obj_set_style_pad_bottom(g_xiaozhi_label, 4, 0);
     lv_obj_set_style_text_color(g_xiaozhi_label, lv_color_hex(0x075985), 0);
     lv_obj_set_style_text_font(g_xiaozhi_label, panel_font(), 0);
-    lv_obj_align(g_xiaozhi_label, LV_ALIGN_TOP_LEFT, 22, 104);
+    lv_obj_align(g_xiaozhi_label, LV_ALIGN_TOP_LEFT, 22, 92);
 
     g_ap_list = lv_list_create(screen);
-    lv_obj_set_size(g_ap_list, 430, 136);
+    lv_obj_set_size(g_ap_list, 430, 116);
     style_plain_panel(g_ap_list, lv_color_hex(0xFFFFFF));
     lv_obj_set_style_pad_all(g_ap_list, 6, 0);
-    lv_obj_align(g_ap_list, LV_ALIGN_TOP_LEFT, 22, 138);
+    lv_obj_align(g_ap_list, LV_ALIGN_TOP_LEFT, 22, 132);
 
     g_ssid_textarea = lv_textarea_create(screen);
     lv_textarea_set_one_line(g_ssid_textarea, true);
@@ -895,7 +868,7 @@ rt_err_t rehab_wifi_panel_create(void)
     lv_obj_set_size(g_ssid_textarea, 430, 40);
     lv_obj_set_style_text_font(g_ssid_textarea, panel_font(), 0);
     style_plain_panel(g_ssid_textarea, lv_color_hex(0xFFFFFF));
-    lv_obj_align(g_ssid_textarea, LV_ALIGN_TOP_LEFT, 22, 286);
+    lv_obj_align(g_ssid_textarea, LV_ALIGN_TOP_LEFT, 22, 262);
     lv_obj_add_event_cb(g_ssid_textarea, keyboard_target_event_cb, LV_EVENT_FOCUSED, RT_NULL);
     lv_obj_add_event_cb(g_ssid_textarea, keyboard_target_event_cb, LV_EVENT_CLICKED, RT_NULL);
     lv_obj_add_event_cb(g_ssid_textarea, keyboard_target_event_cb, LV_EVENT_READY, RT_NULL);
@@ -913,7 +886,7 @@ rt_err_t rehab_wifi_panel_create(void)
     lv_obj_set_size(g_password_textarea, 430, 40);
     lv_obj_set_style_text_font(g_password_textarea, panel_font(), 0);
     style_plain_panel(g_password_textarea, lv_color_hex(0xFFFFFF));
-    lv_obj_align(g_password_textarea, LV_ALIGN_TOP_LEFT, 22, 332);
+    lv_obj_align(g_password_textarea, LV_ALIGN_TOP_LEFT, 22, 308);
     lv_obj_add_event_cb(g_password_textarea, keyboard_target_event_cb, LV_EVENT_FOCUSED, RT_NULL);
     lv_obj_add_event_cb(g_password_textarea, keyboard_target_event_cb, LV_EVENT_CLICKED, RT_NULL);
     lv_obj_add_event_cb(g_password_textarea, keyboard_target_event_cb, LV_EVENT_READY, RT_NULL);
@@ -928,7 +901,7 @@ rt_err_t rehab_wifi_panel_create(void)
     {
         lv_obj_add_state(g_auto_checkbox, LV_STATE_CHECKED);
     }
-    lv_obj_align(g_auto_checkbox, LV_ALIGN_TOP_LEFT, 26, 380);
+    lv_obj_align(g_auto_checkbox, LV_ALIGN_TOP_LEFT, 26, 356);
 
     row = lv_obj_create(screen);
     lv_obj_remove_style_all(row);
@@ -936,7 +909,7 @@ rt_err_t rehab_wifi_panel_create(void)
     lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW_WRAP);
     lv_obj_set_style_pad_column(row, 12, 0);
     lv_obj_set_style_pad_row(row, 10, 0);
-    lv_obj_align(row, LV_ALIGN_TOP_LEFT, 22, 418);
+    lv_obj_align(row, LV_ALIGN_TOP_LEFT, 22, 414);
     (void)panel_button(row, "扫描", scan_event_cb);
     (void)panel_button(row, "连接", connect_event_cb);
     (void)panel_button(row, "保存", save_event_cb);
@@ -951,7 +924,7 @@ rt_err_t rehab_wifi_panel_create(void)
     style_plain_panel(g_qa_big_panel, lv_color_hex(0xEAF2FF));
     lv_obj_set_style_pad_left(g_qa_big_panel, 8, 0);
     lv_obj_set_style_pad_top(g_qa_big_panel, 8, 0);
-    lv_obj_align(g_qa_big_panel, LV_ALIGN_TOP_LEFT, 22, 572);
+    lv_obj_align(g_qa_big_panel, LV_ALIGN_TOP_LEFT, 22, 574);
 
     g_qa_big_label = lv_label_create(g_qa_big_panel);
     lv_label_set_text(g_qa_big_label, "INFO waiting");
