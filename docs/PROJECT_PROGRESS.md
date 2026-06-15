@@ -445,3 +445,24 @@ Failed or unverified:
 
 Next step:
 - With someone near the board, speak a clear prompt during `m55qa_capture_on` and verify STT/LLM/TTS on COM4. If speaker audio is still absent after TTS events, debug M33 playback/codec separately.
+
+## 2026-06-15 - M55 LVGL XiaoZhi UI Timeout And Font Fallback Burned
+
+Completed:
+- Updated the active M55 `wifi` firmware so XiaoZhi LVGL status no longer stays indefinitely in `XIAOZHI_UI_THINKING` if the platform does not return TTS/text.
+- Added a 20 s thinking timeout and 30 s speaking timeout in `applications/xiaozhi_ui_state.c`.
+- Connected the custom LVGL WiFi/XiaoZhi font fallback to `lv_font_simsun_16_cjk` so missing fixed UI Chinese glyphs use the enabled CJK fallback instead of boxes.
+- Burned M55 with `program_with_resources.bat`, including the WHD resource image.
+
+Validated:
+- M55 SCons build passed: `text=1407424 data=81508 bss=4528996`.
+- OpenOCD wrote both M55 `rtthread.hex` and `whd_resources_all.bin` to 100%.
+- COM4 `m55qa_status` reached the expected stable state after auto-connect: `wlan=1 ready=1 ip=192.168.3.32`, `saved=1 auto=1`, `xz_ws=1 xz_stage=70 xz_errno=0`, `wake_on=1 wake_ready=1`, and LVGL flush count increased with `lvgl_last=0`.
+
+Failed or unverified:
+- Physical LCD photo confirmation is still needed to prove the remaining Chinese glyphs are visually fixed on the panel.
+- Real wake phrase -> real spoken prompt -> platform STT/LLM/TTS -> speaker reply remains unverified without someone near the board microphone.
+- A transient early boot sample showed `xz_stage=80 xz_errno=-13` and `lvgl_flush=0`; a later sample recovered, so this is not currently treated as a WiFi regression.
+
+Next step:
+- With the board in front of an operator, say `OK Infineon`, speak a short clear question, then verify LCD transitions `在线待唤醒 -> 我在听 -> 正在思考 -> 正在回答/在线待唤醒` and confirm speaker output.

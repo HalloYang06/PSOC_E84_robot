@@ -194,6 +194,8 @@ Notes:
 - `xz_token=0` means no scoped relay token is loaded on CM55; WebSocket auth is expected to fail.
 - `xz_ws=0` means the XiaoZhi WebSocket is not connected.
 - `xz_listening=1` means CM55 is actively streaming the post-wake utterance to the platform.
+- COM4 is the M33 shell on this bench. Use `m55qa_status` to inspect M55 XiaoZhi/LVGL state via IPC; M55-only finsh commands are not expected to be directly callable from COM4.
+- If LCD stays in “正在思考”, wait at least 20 seconds after capture/listen stop. The M55 UI state should now return to `在线待唤醒` with a retry hint when the platform does not reply.
 - XiaoZhi binary audio frames sent by CM55 are currently v3-framed PCM packets: 4-byte v3 header plus 60 ms of 16 kHz mono S16LE PCM (`1924` bytes total).
 - `latest_pcm_len=320` in `m55qa_status` can still be normal because it is the local mic driver chunk length. The cloud WebSocket frame length is separately reframed to 60 ms packets in CM55.
 - A matching platform token should make `xz_token=1`. A successful WebSocket connection should make `xz_ws=1 xz_stage=70 xz_errno=0`.

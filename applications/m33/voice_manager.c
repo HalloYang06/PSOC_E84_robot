@@ -172,8 +172,15 @@ static void voice_manager_thread_entry(void *parameter)
             if (msg.type == MSG_TYPE_TTS_AUDIO)
             {
                 rt_kprintf("[voice_manager] Received TTS audio chunk from M55\n");
-                audio_playback_write(msg.payload.audio_data.data,
-                                     msg.payload.audio_data.chunk_len);
+                if (msg.payload.audio_data.chunk_len == 0U)
+                {
+                    (void)audio_playback_flush();
+                }
+                else
+                {
+                    audio_playback_write(msg.payload.audio_data.data,
+                                         msg.payload.audio_data.chunk_len);
+                }
             }
             else if (msg.type == MSG_TYPE_VOICE_CONTROL)
             {

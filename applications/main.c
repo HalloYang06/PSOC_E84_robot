@@ -5,6 +5,7 @@
 
 #include "common/m33_m55_comm.h"
 #include "m33/audio_capture.h"
+#include "m33/audio_playback.h"
 #include "m33/bt_board_bridge.h"
 #include "m33/app_ble_service.h"
 #include "m33/bt_app_gatt_handler.h"
@@ -353,6 +354,32 @@ static void m33_handle_ipc_command(void)
 
     while (m33_m55_comm_consume(&msg) == RT_EOK)
     {
+        if (msg.type == MSG_TYPE_TTS_AUDIO)
+        {
+            if (audio_playback_init() == RT_EOK)
+            {
+                (void)audio_playback_start();
+            }
+            if (msg.payload.audio_data.chunk_len == 0U)
+            {
+                rt_err_t flush_ret = audio_playback_flush();
+                if (flush_ret != RT_EOK)
+                {
+                    rt_kprintf("[m33] tts audio playback flush failed ret=%d\n", flush_ret);
+                }
+                continue;
+            }
+            rt_err_t ret = audio_playback_write(msg.payload.audio_data.data,
+                                                msg.payload.audio_data.chunk_len);
+            if (ret != RT_EOK)
+            {
+                rt_kprintf("[m33] tts audio playback write failed ret=%d len=%lu\n",
+                           ret,
+                           (unsigned long)msg.payload.audio_data.chunk_len);
+            }
+            continue;
+        }
+
         if (msg.type != MSG_TYPE_VOICE_CONTROL)
         {
             m55_model_bridge_handle_message(&msg);

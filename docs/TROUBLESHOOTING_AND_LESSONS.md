@@ -552,3 +552,26 @@ Update:
 - The board then needed a reset because M55 voice status had gone stale and M33 `tx_pending` increased without fresh ACKs.
 - After reset, M55 IPC and WebSocket recovered and board PCM upstream was again proven by `probe_lwip=386/742664`.
 - If board capture still produces no STT while nobody is near the microphone, treat it as no valid speech input, not as a relay regression.
+
+## 2026-06-15 - XiaoZhi LVGL Stuck Thinking And Missing Chinese Glyphs
+
+Symptoms:
+- LCD XiaoZhi panel can remain on “正在思考” after an utterance if no TTS/text completion arrives.
+- Some Chinese UI text renders as square boxes.
+
+Root cause:
+- `xiaozhi_ui_state` recorded the last phase but did not expire `THINKING` or `SPEAKING` if the platform reply or stop event never arrived.
+- The generated `rehab_wifi_font` only contains a small fixed symbol set and had `.fallback = NULL`, even though `LV_FONT_SIMSUN_16_CJK` is enabled.
+
+Fix:
+- Expire `XIAOZHI_UI_THINKING` after about 20 s into `READY` with “未收到回复，请重试”.
+- Expire `XIAOZHI_UI_SPEAKING` after about 30 s into `READY`.
+- Declare `lv_font_simsun_16_cjk` and assign it as the fallback for `rehab_wifi_font`.
+
+Reusable trick:
+- On this bench COM4 is the M33 shell. M55-only finsh exports are not directly callable there; use `m55qa_status` as the authoritative M55 IPC snapshot.
+- Do not grow the custom LVGL font with every possible model reply. Keep dynamic replies off the small LCD and use a CJK fallback for fixed UI text.
+
+Status:
+- Built and burned on M55 with WiFi resources. Serial QA confirmed WiFi, XiaoZhi WebSocket, wake readiness, and LVGL flush in the stable state.
+- Visual LCD confirmation is still required for the final glyph appearance.

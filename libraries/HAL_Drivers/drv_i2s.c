@@ -13,7 +13,7 @@
 #include <rtdbg.h>
 
 #ifndef M33_SKIP_SOUND0_INIT_FOR_XIAOZHI_QA
-#define M33_SKIP_SOUND0_INIT_FOR_XIAOZHI_QA 1
+#define M33_SKIP_SOUND0_INIT_FOR_XIAOZHI_QA 0
 #endif
 
 typedef enum
@@ -517,10 +517,11 @@ int rt_hw_sound_init(void)
 #endif
 
     tx_buff = (rt_uint8_t *)rt_malloc(TX_FIFO_SIZE);
-
-    rt_memset(tx_buff, 0, TX_FIFO_SIZE);
     if (tx_buff == RT_NULL)
+    {
         return -RT_ENOMEM;
+    }
+    rt_memset(tx_buff, 0, TX_FIFO_SIZE);
     snd_dev.tx_buff = tx_buff;
     /* init default configuration */
     snd_dev.audio_config.samplerate = 16000;
