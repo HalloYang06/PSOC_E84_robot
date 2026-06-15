@@ -575,3 +575,21 @@ Reusable trick:
 Status:
 - Built and burned on M55 with WiFi resources. Serial QA confirmed WiFi, XiaoZhi WebSocket, wake readiness, and LVGL flush in the stable state.
 - Visual LCD confirmation is still required for the final glyph appearance.
+
+## 2026-06-15 - Speaker QA Tone Is Not Representative Of XiaoZhi Voice
+
+Symptom:
+- `audio_playback_tone_cmd` proves `sound0` and I2S writes, but the square-wave tone sounds harsh and does not resemble a XiaoZhi/person voice.
+
+Root cause:
+- The first QA command intentionally generated a simple square wave to make driver failures obvious. It is useful for electrical/software bring-up but poor for user-facing audio evaluation.
+
+Fix:
+- Added `audio_playback_voice_cmd`, an algorithmic voice-like sample with a 64-point sine table, simple harmonic/formant-like mixing, pitch movement, and attack/release envelope.
+- Avoided embedding a large PCM asset in firmware.
+
+Reusable trick:
+- Keep two speaker QA levels: a simple tone for low-level driver verification, and a softer voice-like local sample for human listening checks. Neither replaces real platform TTS validation.
+
+Status:
+- Command built, burned, and ran successfully through `sound0`; physical listening quality still needs onsite confirmation.

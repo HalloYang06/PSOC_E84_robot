@@ -20,6 +20,26 @@ typedef struct {
 
 static audio_playback_t g_playback = {0};
 
+static const int16_t g_sine_64_q15[64] =
+{
+    0, 3212, 6393, 9512, 12539, 15446, 18204, 20787,
+    23170, 25330, 27245, 28898, 30273, 31356, 32137, 32609,
+    32767, 32609, 32137, 31356, 30273, 28898, 27245, 25330,
+    23170, 20787, 18204, 15446, 12539, 9512, 6393, 3212,
+    0, -3212, -6393, -9512, -12539, -15446, -18204, -20787,
+    -23170, -25330, -27245, -28898, -30273, -31356, -32137, -32609,
+    -32767, -32609, -32137, -31356, -30273, -28898, -27245, -25330,
+    -23170, -20787, -18204, -15446, -12539, -9512, -6393, -3212,
+};
+
+typedef struct
+{
+    uint16_t duration_ms;
+    uint16_t f0_start_hz;
+    uint16_t f0_end_hz;
+    uint8_t vowel;
+} audio_voice_segment_t;
+
 static const char *const g_speaker_candidates[] =
 {
     "sound0",
@@ -55,6 +75,45 @@ static rt_device_t audio_playback_find_speaker(const char **name)
         *name = RT_NULL;
     }
     return RT_NULL;
+}
+
+static int16_t audio_sine_u16(uint32_t phase)
+{
+    return g_sine_64_q15[(phase >> 10) & 0x3fU];
+}
+
+static int16_t audio_voice_sample(uint32_t phase, uint8_t vowel, uint32_t env_q15)
+{
+    int32_t s1 = audio_sine_u16(phase);
+    int32_t s2 = audio_sine_u16(phase * 2U);
+    int32_t s3 = audio_sine_u16(phase * 3U);
+    int32_t s4 = audio_sine_u16(phase * 4U);
+    int32_t mixed;
+
+    if (vowel == 0U)
+    {
+        mixed = (s1 * 9 + s2 * 4 + s3 * 2 + s4) / 16;
+    }
+    else if (vowel == 1U)
+    {
+        mixed = (s1 * 6 + s2 * 2 + s3 * 5 + s4 * 2) / 15;
+    }
+    else
+    {
+        mixed = (s1 * 7 + s2 * 5 + s3 + s4 * 3) / 16;
+    }
+
+    mixed = (mixed * (int32_t)env_q15) >> 15;
+    mixed = mixed / 3;
+    if (mixed > 28000)
+    {
+        mixed = 28000;
+    }
+    else if (mixed < -28000)
+    {
+        mixed = -28000;
+    }
+    return (int16_t)mixed;
 }
 
 rt_err_t audio_playback_init(void)
@@ -294,3 +353,84 @@ static void audio_playback_tone_cmd(int argc, char **argv)
     rt_kprintf("[audio_playback] tone done\n");
 }
 MSH_CMD_EXPORT(audio_playback_tone_cmd, Play a local speaker QA tone);
+
+static void audio_playback_voice_cmd(int argc, char **argv)
+{
+    static const audio_voice_segment_t segments[] =
+    {
+        { 520, 125, 150, 0 },
+        { 180, 150, 135, 2 },
+        { 520, 135, 165, 1 },
+        { 160, 165, 145, 2 },
+        { 620, 145, 120, 0 },
+    };
+    int16_t frame[240];
+    uint32_t phase = 0U;
+    uint32_t total_bytes = 0U;
+
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+
+    if (audio_playback_init() != RT_EOK)
+    {
+        rt_kprintf("[audio_playback] voice init failed\n");
+        return;
+    }
+    (void)audio_playback_start();
+
+    rt_kprintf("[audio_playback] voice sample start sr=%d ch=%d bits=%d\n",
+               AUDIO_SAMPLE_RATE,
+               AUDIO_CHANNELS,
+               AUDIO_BITS_PER_SAMPLE);
+
+    for (uint32_t seg = 0; seg < sizeof(segments) / sizeof(segments[0]); seg++)
+    {
+        uint32_t samples = ((uint32_t)segments[seg].duration_ms * AUDIO_SAMPLE_RATE) / 1000U;
+        uint32_t sent = 0U;
+
+        while (sent < samples)
+        {
+            uint32_t chunk_samples = samples - sent;
+            if (chunk_samples > (sizeof(frame) / sizeof(frame[0])))
+            {
+                chunk_samples = sizeof(frame) / sizeof(frame[0]);
+            }
+
+            for (uint32_t i = 0; i < chunk_samples; i++)
+            {
+                uint32_t pos = sent + i;
+                uint32_t f0_hz = segments[seg].f0_start_hz +
+                    (((uint32_t)segments[seg].f0_end_hz - segments[seg].f0_start_hz) * pos) / samples;
+                uint32_t env_q15 = 32767U;
+                uint32_t attack = AUDIO_SAMPLE_RATE / 25U;
+                uint32_t release = AUDIO_SAMPLE_RATE / 18U;
+
+                if (pos < attack)
+                {
+                    env_q15 = (32767U * pos) / attack;
+                }
+                else if ((samples - pos) < release)
+                {
+                    env_q15 = (32767U * (samples - pos)) / release;
+                }
+
+                phase += (f0_hz * 65536U) / AUDIO_SAMPLE_RATE;
+                frame[i] = audio_voice_sample(phase, segments[seg].vowel, env_q15);
+            }
+
+            if (audio_playback_write((const uint8_t *)frame, chunk_samples * sizeof(frame[0])) != RT_EOK)
+            {
+                rt_kprintf("[audio_playback] voice write failed seg=%lu offset=%lu\n",
+                           (unsigned long)seg,
+                           (unsigned long)sent);
+                return;
+            }
+            total_bytes += chunk_samples * sizeof(frame[0]);
+            sent += chunk_samples;
+        }
+    }
+
+    (void)audio_playback_flush();
+    rt_kprintf("[audio_playback] voice sample done bytes=%lu\n", (unsigned long)total_bytes);
+}
+MSH_CMD_EXPORT(audio_playback_voice_cmd, Play a softer voice-like local QA sample);

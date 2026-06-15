@@ -466,3 +466,24 @@ Failed or unverified:
 
 Next step:
 - With the board in front of an operator, say `OK Infineon`, speak a short clear question, then verify LCD transitions `在线待唤醒 -> 我在听 -> 正在思考 -> 正在回答/在线待唤醒` and confirm speaker output.
+
+## 2026-06-15 - Speaker QA Improved From Square Tone To Voice-Like Sample
+
+Completed:
+- Added `audio_playback_voice_cmd` to M33 as a local speaker QA command that generates a short voice-like sample using a small sine lookup table, harmonic mixing, pitch movement, and soft envelope.
+- Kept the sample algorithmic instead of embedding a large WAV/PCM asset, preserving M33 space for future model work.
+- Rebuilt and burned M33 after the change.
+
+Validated:
+- M33 build passed with `text=286892 data=16076 bss=310744`.
+- OpenOCD wrote the M33 image with the required `0x58000000` offset: `wrote 307200 bytes`.
+- `audio_playback_voice_cmd` found `sound0`, initialized at `16000 Hz / mono / 16-bit`, reached `Ready for I2S output`, flushed the tail, and completed `64000` bytes of sample playback.
+- Earlier QA in the same pass confirmed `m55qa_capture_on` returned `result=0`, `xz_listening=1` during capture, then auto-ended to `xz_listening=0` with upstream stats `probe_lwip=134/257816`.
+
+Failed or unverified:
+- The generated local QA sample is voice-like, not real TTS speech with words.
+- Physical listening confirmation is still needed from the user.
+- End-to-end platform TTS audio through speaker still requires a real spoken prompt and server reply.
+
+Next step:
+- Ask the onsite operator to run or listen for `audio_playback_voice_cmd`, then test real XiaoZhi wake and question flow.
