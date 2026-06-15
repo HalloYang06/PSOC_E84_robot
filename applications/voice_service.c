@@ -151,8 +151,23 @@ typedef struct
 
 static void voice_service_stop_xiaozhi_listening(rt_bool_t notify_server);
 static void xiaozhi_feedback_beep(rt_uint32_t duration_ms);
+static const char *voice_service_public_wake_word(const char *wake_word);
+static rt_err_t voice_service_send_control(voice_control_cmd_t cmd);
 
 static voice_service_t g_service;
+
+static const char *voice_service_public_wake_word(const char *wake_word)
+{
+    if ((wake_word == RT_NULL) || (wake_word[0] == '\0') ||
+        (rt_strcmp(wake_word, "xiaorui") == 0) ||
+        (rt_strcmp(wake_word, "Okay Infineon") == 0) ||
+        (rt_strcmp(wake_word, "OK Infineon") == 0))
+    {
+        return "小瑞";
+    }
+
+    return wake_word;
+}
 
 static void xiaozhi_feedback_beep(rt_uint32_t duration_ms)
 {
@@ -617,6 +632,7 @@ static void voice_service_start_xiaozhi_listening(const char *wake_word)
 {
     char json[VOICE_JSON_BUFFER_SIZE];
     char session_id[XIAOZHI_SESSION_ID_MAX_LEN];
+    const char *public_wake_word = voice_service_public_wake_word(wake_word);
 
     if (!websocket_client_is_connected())
     {
@@ -646,6 +662,14 @@ static void voice_service_start_xiaozhi_listening(const char *wake_word)
         rt_strncpy(session_id, XIAOZHI_LOCAL_SESSION_ID, sizeof(session_id) - 1);
     }
 
+    if (xiaozhi_voice_relay_build_listen_detect(json,
+                                                sizeof(json),
+                                                session_id,
+                                                public_wake_word) == RT_EOK)
+    {
+        websocket_client_send_text(json);
+    }
+
     if (xiaozhi_voice_relay_build_listen_start(json,
                                                sizeof(json),
                                                session_id,
@@ -667,11 +691,10 @@ static void voice_service_start_xiaozhi_listening(const char *wake_word)
     g_service.xiaozhi_audio_frame_len = 0;
     rt_mutex_release(&g_service.lock);
 
-    xiaozhi_ui_state_mark_wake(wake_word);
-    xiaozhi_feedback_beep(120U);
+    xiaozhi_ui_state_mark_wake(public_wake_word);
     rt_kprintf("[voice_service] Xiaozhi listening started session=%s word=%s\n",
                session_id,
-               (wake_word && wake_word[0]) ? wake_word : "wake_word");
+               public_wake_word);
 }
 
 rt_err_t voice_service_start_xiaozhi_talk(void)

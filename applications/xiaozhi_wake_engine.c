@@ -274,7 +274,7 @@ rt_err_t xiaozhi_wake_engine_process_pcm16(const int16_t *pcm,
             if (detected)
             {
                 result->event = XIAOZHI_WAKE_EVENT_DETECTED;
-                rt_strncpy(result->wake_word, "Okay Infineon", sizeof(result->wake_word) - 1);
+                rt_strncpy(result->wake_word, "xiaorui", sizeof(result->wake_word) - 1);
                 return RT_EOK;
             }
 

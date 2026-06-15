@@ -871,3 +871,41 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
 
 - COM4 当前是 M33 shell。M55 内部新增的 finsh 命令不会直接出现在 COM4；板端 M55 状态仍以 M33 侧 `m55qa_status` 的 IPC 快照为准。
 - 若复位后短时间看到 `xz_stage=80 xz_errno=-13` 或 `lvgl_flush=0`，先等自动连接/刷新线程恢复，再以第二轮 `m55qa_status` 判断，不要立即回退到 WiFi 扫描问题。
+
+## 27. 2026-06-15 小瑞唤醒与回应语音边界
+
+目标体验：
+
+1. 用户说“小瑞”。
+2. LCD/LVGL 切到“我在听”，开始录音。
+3. 静音/低音量一段时间后自动停止录音，切到“正在思考”。
+4. 平台返回 TTS 音频时，M33 `sound0` 扬声器播放。
+
+本轮修正：
+
+1. M55 唤醒词对外统一为“小瑞”：
+   - Edge Impulse 后端内部仍可返回 `xiaorui`。
+   - Infineon DEEPCRAFT fallback 不再把用户交互显示成 `Okay Infineon`，而是同样映射到“小瑞”。
+2. M55 唤醒后按小智 WebSocket 协议先发送：
+   - `listen.detect`，`text` 为“小瑞”。
+   - 随后 `listen.start`，`mode` 为 `auto`。
+3. 明确撤掉本地算法“人声”作为唤醒回应：
+   - 现场听感反馈为杂音，不能作为用户回应。
+   - `audio_playback_voice_cmd` 只能用于扬声器通路 QA，不能接入正式唤醒回应。
+   - 真正的“我在”或回答音色必须来自小智/平台 TTS 音频，或后续准备经过听感验证的小体积真实提示音资源。
+
+官方依据：
+
+- Espressif 小智组件文档说明小智是双向流式语音/文本组件，支持 WebSocket、MQTT+UDP、OPUS/G.711/PCM，并提供离线唤醒词上报 API。
+- 小智 WebSocket 协议文档说明设备侧 `listen` 消息包含 `detect/start/stop`，`detect` 表示本地唤醒检测触发。
+
+验证结果：
+
+1. M55 构建通过，最新尺寸约 `text=1407424 data=81508 bss=4528996`。
+2. M33 构建通过，最新尺寸约 `text=286892 data=16076 bss=310744`。
+
+待现场验证：
+
+1. 烧录 M55 后，说“小瑞”，确认 LCD/LVGL 进入“我在听”。
+2. 继续问一句清晰问题，确认状态顺序为“在线待唤醒 -> 我在听 -> 正在思考 -> 正在回答/在线待唤醒”。
+3. 若平台 TTS 仍无声，优先看是否收到 `tts start/sentence_start/stop` 和 `MSG_TYPE_TTS_AUDIO`，再查 M33 播放链路。
