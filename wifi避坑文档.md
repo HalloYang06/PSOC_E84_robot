@@ -780,3 +780,94 @@ reset command issued
 - 板端复位后 M55 IPC 恢复，`m55qa_xz_reconnect` 返回 `cmd=1003 result=0`，`xz_ws=1 xz_stage=70`。
 - 板端再次 `capture_on/off` 后可见 `probe_lwip=386/742664`，说明 M55 采集和上行仍正常。
 - 因为现场没人说话，本轮板端无 STT 不能判为失败；需要有人靠近板端麦克风说清晰提示词再验收。
+
+## 25. 2026-06-15 小智交互与 M33 扬声器链路进展
+
+本轮目标：
+
+- 用户说唤醒词后自动开始录音。
+- 录音时 LVGL 显示录音状态，长时间低声/静音后自动停止录音并切到“正在思考”。
+- 回答不再占用 LVGL 大面积文本，优先走扬声器。
+
+本轮修正：
+
+1. M55 `voice_service.c` 增加自动 EOU 判断：
+   - 最短录音约 `900 ms`。
+   - 静音约 `1400 ms` 后自动 `listen stop`。
+   - 最长录音约 `12000 ms` 防止一直录。
+   - 停止后 UI 切到 `XIAOZHI_UI_THINKING`。
+2. LVGL 小智面板改成紧凑状态：
+   - `在线待唤醒`
+   - `我在听`
+   - `正在思考`
+   - `正在回答`
+   - 模型长回复不再默认显示在屏幕上，避免小屏遮挡和动态中文字库继续膨胀。
+3. M33 扬声器方向确认根因：
+   - 之前 `[audio_playback] ERROR: Cannot find sound0 device` 不是平台没回 TTS，而是 M33 `drv_i2s.c` 里 `M33_SKIP_SOUND0_INIT_FOR_XIAOZHI_QA` 默认置 `1`，启动时跳过了官方 `rt_hw_sound_init()`。
+   - 已改为默认 `0`，恢复 `sound0` 注册。
+   - 串口 `audio_playback_probe_cmd` 已验证 `sound0 -> found`。
+4. M33 TTS 播放层改为走 RT-Thread 官方 `sound0` audio device：
+   - 收到 M55 的 `MSG_TYPE_TTS_AUDIO` 后初始化/启动 `audio_playback`。
+   - TTS chunk 当前为 `128 B`，直接写入 `sound0`，不再额外攒二级播放线程缓冲，减少阻塞和 `-RT_EFULL` 风险。
+   - 单次底层写入不超过 `RT_AUDIO_REPLAY_MP_BLOCK_SIZE=4096`。
+
+烧录注意：
+
+- M55 仍使用 `wifi/program_with_resources.bat`，会同时烧 `rtthread.hex` 和 `whd_resources_all.bin`。
+- M33 当前 hex 使用 C-AHB 地址 `0x0834xxxx`，OpenOCD 需要加 `0x58000000` offset 写到 SMIF 物理地址：
+
+```sh
+flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.hex 0x58000000
+```
+
+验证结果：
+
+- M55 构建通过。
+- M33 构建通过，最新尺寸约 `text=280692 data=16076 bss=310744`。
+- M55 烧录时应用写入 `1310720 bytes`，WHD 合并资源写入 `466944 bytes`。
+- M33 最新烧录写入 `299008 bytes`。
+- 复位后 `m55qa_status`：
+  - `saved=1 auto=1 storage=0`
+  - `wlan=1 ready=1 ip=192.168.3.32`
+  - `xz_ws=1 xz_stage=70 xz_errno=0`
+  - `wake_on=1 wake_ready=1`
+- M33 串口：
+  - `audio_playback_probe_cmd` 返回 `sound0 -> found`
+
+剩余风险：
+
+- `sound0` 已注册并可被 `audio_playback` 找到，但真实平台 TTS 语音是否已经从扬声器完整播出，还需要现场说话触发一次 `stt -> llm -> tts` 后听感确认。
+- 官方小智长期路线仍建议补 Opus 编解码；当前为 `pcm_s16le` 兼容路线，优先打通完整闭环。
+
+## 26. 2026-06-15 LVGL 字库与小智“思考中”兜底
+
+现场症状：
+
+1. LCD 小智区域会长时间停在“正在思考”。
+2. 部分中文显示为方框字。
+
+本轮修正：
+
+1. `applications/xiaozhi_ui_state.c` 增加 UI 状态超时兜底：
+   - `XIAOZHI_UI_THINKING` 超过约 `20 s` 未收到平台 TTS/文本回复时，回到 `XIAOZHI_UI_READY`，提示“未收到回复，请重试”。
+   - `XIAOZHI_UI_SPEAKING` 超过约 `30 s` 未收到结束事件时，回到 `XIAOZHI_UI_READY`。
+2. `applications/rehab_wifi_font.c` 将自定义 18px 字体的 `.fallback` 挂到已启用的 `lv_font_simsun_16_cjk`：
+   - 常用 UI 字符仍走小型自定义字体。
+   - 自定义字体没覆盖到的中文优先用系统 CJK fallback，避免继续出现大量方框字。
+   - 这比把所有动态回复都塞进自定义字体更省 M55 空间。
+
+验证结果：
+
+1. M55 构建通过，最新尺寸约 `text=1407424 data=81508 bss=4528996`。
+2. 使用 `program_with_resources.bat` 烧录，应用和 `whd_resources_all.bin` 都写入 100%。
+3. 串口 `m55qa_status` 复测到稳定态：
+   - `saved=1 auto=1`
+   - `wlan=1 ready=1 ip=192.168.3.32`
+   - `xz_ws=1 xz_stage=70 xz_errno=0`
+   - `wake_on=1 wake_ready=1`
+   - `lvgl_flush` 增加且 `lvgl_last=0`
+
+注意：
+
+- COM4 当前是 M33 shell。M55 内部新增的 finsh 命令不会直接出现在 COM4；板端 M55 状态仍以 M33 侧 `m55qa_status` 的 IPC 快照为准。
+- 若复位后短时间看到 `xz_stage=80 xz_errno=-13` 或 `lvgl_flush=0`，先等自动连接/刷新线程恢复，再以第二轮 `m55qa_status` 判断，不要立即回退到 WiFi 扫描问题。

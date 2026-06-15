@@ -2,6 +2,9 @@
 
 #include <string.h>
 
+#define XIAOZHI_UI_THINKING_TIMEOUT_MS 20000U
+#define XIAOZHI_UI_SPEAKING_TIMEOUT_MS 30000U
+
 typedef struct
 {
     rt_bool_t lock_ready;
@@ -57,6 +60,37 @@ static void copy_text(char *dst, rt_size_t dst_size, const char *src)
     }
 }
 
+static void xiaozhi_ui_state_expire_locked(rt_uint32_t now_ms)
+{
+    rt_uint32_t age_ms;
+
+    if (g_xiaozhi_ui.snapshot.updated_ms == 0U)
+    {
+        return;
+    }
+
+    age_ms = now_ms - g_xiaozhi_ui.snapshot.updated_ms;
+    if ((g_xiaozhi_ui.snapshot.phase == XIAOZHI_UI_THINKING) &&
+        (age_ms > XIAOZHI_UI_THINKING_TIMEOUT_MS))
+    {
+        g_xiaozhi_ui.snapshot.phase = XIAOZHI_UI_READY;
+        g_xiaozhi_ui.snapshot.updated_ms = now_ms;
+        g_xiaozhi_ui.snapshot.last_error = -RT_ETIMEOUT;
+        copy_text(g_xiaozhi_ui.snapshot.detail,
+                  sizeof(g_xiaozhi_ui.snapshot.detail),
+                  "未收到回复，请重试");
+    }
+    else if ((g_xiaozhi_ui.snapshot.phase == XIAOZHI_UI_SPEAKING) &&
+             (age_ms > XIAOZHI_UI_SPEAKING_TIMEOUT_MS))
+    {
+        g_xiaozhi_ui.snapshot.phase = XIAOZHI_UI_READY;
+        g_xiaozhi_ui.snapshot.updated_ms = now_ms;
+        copy_text(g_xiaozhi_ui.snapshot.detail,
+                  sizeof(g_xiaozhi_ui.snapshot.detail),
+                  "在线，等待唤醒词");
+    }
+}
+
 void xiaozhi_ui_state_set(xiaozhi_ui_phase_t phase, const char *detail, rt_int32_t err)
 {
     xiaozhi_ui_state_init_once();
@@ -109,6 +143,7 @@ void xiaozhi_ui_state_snapshot(xiaozhi_ui_snapshot_t *snapshot)
     xiaozhi_ui_state_init_once();
 
     rt_mutex_take(&g_xiaozhi_ui.lock, RT_WAITING_FOREVER);
+    xiaozhi_ui_state_expire_locked((rt_uint32_t)rt_tick_get_millisecond());
     *snapshot = g_xiaozhi_ui.snapshot;
     rt_mutex_release(&g_xiaozhi_ui.lock);
 }

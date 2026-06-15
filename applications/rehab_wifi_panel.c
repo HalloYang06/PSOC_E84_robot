@@ -1,6 +1,7 @@
 #include "rehab_wifi_panel.h"
 #include "wifi_config_service.h"
 #include "websocket_client.h"
+#include "voice_service.h"
 #include "xiaozhi_ui_state.h"
 #include "xiaozhi_voice_relay.h"
 
@@ -10,6 +11,9 @@
 #include <finsh.h>
 #include <stdio.h>
 #include <string.h>
+
+extern rt_err_t m55_xiaozhi_talk_start_from_ui(void);
+extern rt_err_t m55_xiaozhi_talk_stop_from_ui(void);
 
 static lv_obj_t *g_status_label;
 static lv_obj_t *g_xiaozhi_panel;
@@ -27,6 +31,7 @@ static lv_obj_t *g_keyboard;
 static lv_obj_t *g_keyboard_target;
 static lv_timer_t *g_scan_refresh_timer;
 static lv_timer_t *g_auto_qa_timer;
+static lv_timer_t *g_xiaozhi_refresh_timer;
 static rt_thread_t g_connect_thread;
 static rt_bool_t g_connect_in_progress;
 static rt_bool_t g_diag_visible;
@@ -37,6 +42,7 @@ LV_FONT_DECLARE(rehab_wifi_font);
 static void rehab_wifi_panel_refresh_scan_list(void);
 static lv_obj_t *panel_button(lv_obj_t *parent, const char *text, lv_event_cb_t cb);
 static void start_scan_refresh_timer(void);
+static void start_xiaozhi_refresh_timer(void);
 static void rehab_wifi_panel_run_qa_scan(const char *source);
 
 static const char *wifi_keyboard_lower_map[] =
@@ -269,14 +275,41 @@ static void rehab_wifi_panel_refresh(void)
              (xiaozhi.phase == XIAOZHI_UI_READY))
     {
         phase_text = xiaozhi_ui_phase_text(xiaozhi.phase);
-        show_spinner = (xiaozhi.phase == XIAOZHI_UI_THINKING) ? RT_TRUE : RT_FALSE;
-        if (xiaozhi.detail[0] != '\0')
+        show_spinner = ((xiaozhi.phase == XIAOZHI_UI_LISTENING) ||
+                        (xiaozhi.phase == XIAOZHI_UI_THINKING) ||
+                        (xiaozhi.phase == XIAOZHI_UI_SPEAKING)) ? RT_TRUE : RT_FALSE;
+        if (xiaozhi.phase == XIAOZHI_UI_LISTENING)
         {
-            rt_snprintf(xiaozhi_detail, sizeof(xiaozhi_detail), "%s", xiaozhi.detail);
+            rt_snprintf(xiaozhi_detail,
+                        sizeof(xiaozhi_detail),
+                        "正在录音，停顿后自动思考  唤醒:%lu 回复:%lu",
+                        (unsigned long)xiaozhi.wake_count,
+                        (unsigned long)xiaozhi.reply_count);
+        }
+        else if (xiaozhi.phase == XIAOZHI_UI_THINKING)
+        {
+            rt_snprintf(xiaozhi_detail, sizeof(xiaozhi_detail), "问题已发送，等待平台模型");
+        }
+        else if (xiaozhi.phase == XIAOZHI_UI_SPEAKING)
+        {
+            rt_snprintf(xiaozhi_detail, sizeof(xiaozhi_detail), "正在通过扬声器回答");
+        }
+        else if (xiaozhi.detail[0] != '\0')
+        {
+            rt_snprintf(xiaozhi_detail,
+                        sizeof(xiaozhi_detail),
+                        "%s  唤醒:%lu 回复:%lu",
+                        xiaozhi.detail,
+                        (unsigned long)xiaozhi.wake_count,
+                        (unsigned long)xiaozhi.reply_count);
         }
         else
         {
-            rt_snprintf(xiaozhi_detail, sizeof(xiaozhi_detail), "说唤醒词后开始聊天");
+            rt_snprintf(xiaozhi_detail,
+                        sizeof(xiaozhi_detail),
+                        "说唤醒词后开始聊天  唤醒:%lu 回复:%lu",
+                        (unsigned long)xiaozhi.wake_count,
+                        (unsigned long)xiaozhi.reply_count);
         }
     }
     else
@@ -284,9 +317,10 @@ static void rehab_wifi_panel_refresh(void)
         phase_text = xiaozhi_state_text(&snapshot);
         rt_snprintf(xiaozhi_detail,
                     sizeof(xiaozhi_detail),
-                    "S:%d E:%d",
+                    "WS:%d/%d %s",
                     websocket_client_last_stage(),
-                    websocket_client_last_errno());
+                    websocket_client_last_errno(),
+                    (xiaozhi.detail[0] != '\0') ? xiaozhi.detail : "等待响应");
     }
 
     rt_snprintf(xiaozhi_status,
@@ -300,14 +334,7 @@ static void rehab_wifi_panel_refresh(void)
     }
     if (g_xiaozhi_reply_label != RT_NULL)
     {
-        if (xiaozhi.last_reply[0] != '\0')
-        {
-            lv_label_set_text(g_xiaozhi_reply_label, xiaozhi.last_reply);
-        }
-        else
-        {
-            lv_label_set_text(g_xiaozhi_reply_label, "说唤醒词，我会回应你");
-        }
+        lv_label_set_text(g_xiaozhi_reply_label, "说唤醒词后直接语音对话");
     }
     if (g_xiaozhi_spinner != RT_NULL)
     {
@@ -447,6 +474,26 @@ static void start_scan_refresh_timer(void)
     {
         lv_timer_set_repeat_count(g_scan_refresh_timer, 50);
         lv_timer_set_auto_delete(g_scan_refresh_timer, false);
+    }
+}
+
+static void xiaozhi_refresh_timer_cb(lv_timer_t *timer)
+{
+    RT_UNUSED(timer);
+    rehab_wifi_panel_refresh();
+}
+
+static void start_xiaozhi_refresh_timer(void)
+{
+    if (g_xiaozhi_refresh_timer != RT_NULL)
+    {
+        return;
+    }
+
+    g_xiaozhi_refresh_timer = lv_timer_create(xiaozhi_refresh_timer_cb, 500, RT_NULL);
+    if (g_xiaozhi_refresh_timer != RT_NULL)
+    {
+        lv_timer_set_auto_delete(g_xiaozhi_refresh_timer, false);
     }
 }
 
@@ -675,7 +722,6 @@ static void connect_thread_entry(void *parameter)
     wifi_config_snapshot_t snapshot;
 
     RT_UNUSED(parameter);
-    (void)wifi_config_save();
     ret = wifi_config_connect();
     if (ret == RT_EOK)
     {
@@ -688,7 +734,6 @@ static void connect_thread_entry(void *parameter)
             }
             rt_thread_mdelay(500);
         }
-        (void)wifi_config_save();
     }
     (void)wifi_config_whd_diag();
     g_connect_in_progress = RT_FALSE;
@@ -787,6 +832,20 @@ static void disconnect_event_cb(lv_event_t *event)
 {
     RT_UNUSED(event);
     (void)wifi_config_disconnect();
+    rehab_wifi_panel_refresh();
+}
+
+static void xiaozhi_talk_event_cb(lv_event_t *event)
+{
+    RT_UNUSED(event);
+    (void)m55_xiaozhi_talk_start_from_ui();
+    rehab_wifi_panel_refresh();
+}
+
+static void xiaozhi_stop_event_cb(lv_event_t *event)
+{
+    RT_UNUSED(event);
+    (void)m55_xiaozhi_talk_stop_from_ui();
     rehab_wifi_panel_refresh();
 }
 
@@ -1011,6 +1070,8 @@ rt_err_t rehab_wifi_panel_create(void)
     (void)panel_button(row, "保存", save_event_cb);
     (void)panel_button(row, "清除", forget_event_cb);
     (void)panel_button(row, "断开", disconnect_event_cb);
+    (void)panel_button(row, "说话", xiaozhi_talk_event_cb);
+    (void)panel_button(row, "停止", xiaozhi_stop_event_cb);
     diag_button = panel_button(row, g_diag_visible ? "隐藏" : "诊断", diag_event_cb);
     RT_UNUSED(diag_button);
 
@@ -1048,6 +1109,7 @@ rt_err_t rehab_wifi_panel_create(void)
 
     rehab_wifi_panel_refresh_scan_list();
     rehab_wifi_panel_refresh();
+    start_xiaozhi_refresh_timer();
     if (wifi_scan_available(&snapshot) && (snapshot.scan_request_count == 0U) && (snapshot.scan_running == 0U))
     {
         (void)wifi_config_scan();
