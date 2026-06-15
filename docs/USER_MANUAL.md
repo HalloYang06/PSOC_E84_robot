@@ -156,6 +156,15 @@ m55qa_wake_off
 m55qa_status
 ```
 
+XiaoZhi audio counters to watch:
+- `xz_cur` = current in-flight audio bytes/chunks being accumulated or sent.
+- `xz_last` = last completed listen window sent to the platform.
+- `xz_fail` = WebSocket binary send failures.
+- `xz_rx` = platform text/binary reply counters.
+- `frame_len` = current partial frame bytes waiting to be sent.
+
+For the current board contract, the CM55 sends raw `pcm_s16le` audio bytes as WebSocket binary frames. Do not expect a local 4-byte binary wrapper in the packet payload when checking the capture path.
+
 Optional token loader from Windows PowerShell:
 ```powershell
 # Save only the platform scoped relay token into token.txt. Do not save a vendor LLM API key.

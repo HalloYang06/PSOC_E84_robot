@@ -117,7 +117,7 @@ static void m55qa_status(int argc, char **argv)
                                                          &voice_status_timestamp);
     if (has_voice_status)
     {
-        rt_kprintf("[m55qa] voice_status seq=%lu flags=0x%lx wake_on=%d wake_ready=%d wake_hit=%d xz_listening=%d xz_ws=%d xz_token=%d token_len=%lu staging_len=%lu frames=%lu windows=%lu detected=%lu pcm_seq=%lu len=%lu peak=%lu avg=%lu active=%lu/%lu wake_stage=%lu err=%ld xz_stage=%ld xz_errno=%ld heap=%lu/%lu max=%lu probe_posix=%ld/%ld probe_sal=%ld/%ld probe_lwip=%ld/%ld age_ticks=%lu\n",
+        rt_kprintf("[m55qa] voice_status seq=%lu flags=0x%lx wake_on=%d wake_ready=%d wake_hit=%d xz_listening=%d xz_ws=%d xz_token=%d token_len=%lu staging_len=%lu frames=%lu windows=%lu detected=%lu pcm_seq=%lu len=%lu peak=%lu avg=%lu active=%lu/%lu wake_stage=%lu err=%ld xz_stage=%ld xz_errno=%ld heap=%lu/%lu max=%lu probe_posix=%ld/%ld probe_sal=%ld/%ld probe_lwip=%ld/%ld xz_cur=%lu/%lu xz_last=%lu/%lu xz_fail=%lu xz_rx=%lu/%lu frame_len=%lu age_ticks=%lu\n",
                    (unsigned long)voice_status_seq,
                    (unsigned long)voice_status.flags,
                    (voice_status.flags & VOICE_STATUS_FLAG_WAKE_LISTENING) ? 1 : 0,
@@ -150,6 +150,14 @@ static void m55qa_status(int argc, char **argv)
                    (long)voice_status.net_probe_sal_errno,
                    (long)voice_status.net_probe_lwip_tcp,
                    (long)voice_status.net_probe_lwip_errno,
+                   (unsigned long)voice_status.xiaozhi_listening_chunks,
+                   (unsigned long)voice_status.xiaozhi_listening_bytes,
+                   (unsigned long)voice_status.xiaozhi_last_sent_chunks,
+                   (unsigned long)voice_status.xiaozhi_last_sent_bytes,
+                   (unsigned long)voice_status.xiaozhi_send_fail_count,
+                   (unsigned long)voice_status.xiaozhi_rx_text_count,
+                   (unsigned long)voice_status.xiaozhi_rx_binary_count,
+                   (unsigned long)voice_status.xiaozhi_audio_frame_len,
                    (unsigned long)(rt_tick_get() - voice_status_timestamp));
         rt_kprintf("[m55qa] netdev name=%s flags=0x%lx wlan=%lu ready=%lu rssi=%ld cloud_tcp=%ld/%ld wifi_diag=%ld scan=%ld whd_stage=%ld whd_result=%ld whd_flags=0x%lx saved=%lu auto=%lu storage=%ld ",
                    voice_status.netdev_name[0] ? voice_status.netdev_name : "(none)",

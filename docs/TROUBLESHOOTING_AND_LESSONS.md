@@ -1,5 +1,27 @@
 # Troubleshooting And Lessons
 
+## 2026-06-15 - XiaoZhi Binary Frames Stayed Silent Because The PCM Path Was Still Wrapped Wrong
+
+Symptom:
+- XiaoZhi stayed in `connecting` / `thinking` with no reliable `listen -> send -> reply` progress.
+- Status counters showed mic activity, but there was no clear evidence that the platform actually received binary audio.
+
+Findings:
+- The M55 WebSocket client already sends binary frames with `OPCODE_BINARY`; adding a fake 4-byte v3 header on top of raw PCM made the send path harder to reason about.
+- The official XiaoZhi WebSocket reference supports binary protocol v1 as raw audio frames, while v2/v3 framing is only needed when both sides explicitly agree on that binary protocol.
+- The current board-side practical path is raw `pcm_s16le` over binary WebSocket frames, with explicit JSON `hello`/`listen` control messages and status counters.
+
+Fix:
+- Remove the extra binary header and send the raw 16 kHz mono PCM bytes directly.
+- Expose `xiaozhi_listening_bytes`, `xiaozhi_listening_chunks`, `xiaozhi_last_sent_bytes`, `xiaozhi_last_sent_chunks`, `xiaozhi_send_fail_count`, `xiaozhi_rx_text_count`, `xiaozhi_rx_binary_count`, and `xiaozhi_audio_frame_len` in `m55qa_status`.
+
+Lesson:
+- When the platform contract already says `pcm_s16le`, do not stack another framing layer unless the server explicitly requires it.
+- Make the audio path observable before tuning wake/EOU thresholds; otherwise every failure looks like the same "still connecting" symptom.
+
+Status:
+- Fixed in the working tree; board QA still needed after the next burn.
+
 ## 2026-06-15 - XiaoZhi Cloud Blocker Is WebSocket Transport, Not Wi-Fi
 
 Symptom:

@@ -3,6 +3,22 @@
 ## 2026-06-15
 
 Completed:
+- Tightened the CM55->XiaoZhi audio path so `voice_service` now sends raw 16 kHz mono PCM frames over WebSocket instead of prefixing a fake binary v3 header. The session counters now expose current/last sent chunks and bytes, send failures, received text/binary counts, and the current partial frame length through `m55qa_status`.
+- Aligned the M33 QA shell bridge with the new observability fields so the operator can see whether XiaoZhi is actually streaming audio or only staying in listening/connecting state.
+- Prevented `VOICE_CTRL_STOP_CAPTURE` from shutting down the CM55 mic path while XiaoZhi listen/capture is still expected to continue, which avoids killing the live stream during control transitions.
+
+Validated:
+- Both `wifi` and `yiliao_m33` rebuilt successfully after the audio/status updates.
+- The M55 reference tree now carries the same `voice_service.c`, `main.c`, and `m33_m55_comm.h` updates as the active `wifi` project.
+
+Failed or unverified:
+- Live board QA for `m55qa_status` counters is still pending after the next burn.
+- End-to-end XiaoZhi speech reply remains dependent on a valid scoped token and a live spoken test at the board.
+
+Next step:
+- Burn the updated M55/M33 images, then run `m55qa_status` around a real wake/listen cycle and confirm `xz_cur/xz_last/xz_fail/xz_rx/frame_len` move as expected.
+
+Completed:
 - Revalidated CM55 Wi-Fi auto-connect on the powered board after repeated M55 flashes. `m55qa_status` consistently reports `saved=1 auto=1 storage=0`, `wlan=1 ready=1`, and IP `192.168.3.32`.
 - Added staged XiaoZhi/WebSocket diagnostics so `m55qa_status` reports token length, WebSocket stage/errno, and reconnect progress separately from Wi-Fi state.
 - Added a CM55 TCP probe path for `106.55.62.122:8011`; board-side TCP reaches the cloud endpoint, so the current blocker is above basic Wi-Fi/routing.

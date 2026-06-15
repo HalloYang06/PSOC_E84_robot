@@ -26,7 +26,6 @@ __attribute__((weak)) struct _reent _impure_data;
 #define LED_PIN_B GET_PIN(16, 5)
 #define FRAME_PERIOD_MS 100
 #define PCM_CAPTURE_MAX_BYTES (16000U * 2U * 2U)
-#define PCM_LISTEN_NOTIFY_MS 2000U
 
 #ifndef M33_ENABLE_BT_HCI
 #define M33_ENABLE_BT_HCI 0
@@ -48,10 +47,11 @@ typedef struct
     rt_uint8_t *pcm_buffer;
     rt_uint32_t pcm_capacity;
     rt_uint32_t pcm_length;
-    rt_tick_t pcm_last_notify_tick;
 } m33_runtime_t;
 
 static m33_runtime_t g_runtime;
+
+static void m33_publish_audio_capture(void);
 
 static void m33_log_cm55_boot_state(const char *tag)
 {
@@ -104,6 +104,11 @@ static void m33_pcm_capture_callback(const uint8_t *data, uint32_t len)
     rt_memcpy(g_runtime.pcm_buffer + g_runtime.pcm_length, data, len);
     g_runtime.pcm_length += len;
 
+    if (g_runtime.pcm_mode == PCM_MODE_LISTEN)
+    {
+        m33_publish_audio_capture();
+        g_runtime.pcm_length = 0;
+    }
 }
 
 static void m33_publish_audio_capture(void)
@@ -230,7 +235,6 @@ static void m33_start_pcm_listen(void)
 
     g_runtime.pcm_mode = PCM_MODE_LISTEN;
     g_runtime.pcm_length = 0;
-    g_runtime.pcm_last_notify_tick = 0;
     if (!audio_capture_is_running())
     {
         if (audio_capture_init() != RT_EOK)
@@ -290,31 +294,6 @@ static void m33_stop_pcm_listen(void)
     g_runtime.pcm_capture_active = RT_FALSE;
     g_runtime.pcm_length = 0;
     rt_kprintf("[m33] pcm listen disarmed\n");
-}
-
-static void m33_maybe_publish_listen_window(void)
-{
-    rt_tick_t now;
-
-    if ((g_runtime.pcm_mode != PCM_MODE_LISTEN) || !g_runtime.pcm_capture_active)
-    {
-        return;
-    }
-
-    if (g_runtime.pcm_length < g_runtime.pcm_capacity)
-    {
-        return;
-    }
-
-    now = rt_tick_get();
-    if ((g_runtime.pcm_last_notify_tick != 0U) &&
-        ((now - g_runtime.pcm_last_notify_tick) < rt_tick_from_millisecond(PCM_LISTEN_NOTIFY_MS)))
-    {
-        return;
-    }
-
-    g_runtime.pcm_last_notify_tick = now;
-    m33_publish_audio_capture();
 }
 
 static void m33_handle_ble_command(void)
@@ -554,7 +533,6 @@ int main(void)
         control_get_status(&control);
         m33_handle_ble_command();
         m33_handle_ipc_command();
-        m33_maybe_publish_listen_window();
         m33_publish_ble_telemetry(&sensor, &control, &g_runtime.safety);
 
         g_runtime.loop_count++;
