@@ -765,3 +765,10 @@ reset command issued
 - 官方小智 ESP32 例程主路径是 Opus 编解码；当前 M55 还没有 Opus encoder，M33 也还没有 Opus decode->speaker 闭环。
 - PC 侧 `ClientWebSocket` 探针证明平台 hello 可以接受并回显 `pcm_s16le`，但这不等于平台 ASR 后端已经处理 PCM。
 - 下一步不要再回头查 WiFi 扫描/密码。应看平台 relay 日志确认 PCM 是否进入 ASR；若没有，就在 relay 侧做 PCM->ASR/Opus 转码，或在 M55/M33 补小型 Opus 编解码。
+
+补充验证：
+
+- 用户不在现场时，现场麦克风可能只有杂音/静音，不能单靠板端无回复判定 PCM 不通。
+- 已用 Windows 语音合成生成清晰的 `16 kHz / mono / 16-bit` WAV，再把 PCM 按 v3 WebSocket 包发送到同一平台。
+- 结果仍然只收到 `listen start/stop`，没有 `stt/llm/tts`。这基本说明当前平台 relay 还没有把 `pcm_s16le` 二进制帧送入 ASR。
+- 继续方向应优先改 relay 侧 PCM ASR/转码，或回到官方 Opus 路线；不要再把时间花在现场杂音、WiFi、LVGL 上。
