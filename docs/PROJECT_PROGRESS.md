@@ -424,3 +424,24 @@ Failed or unverified:
 
 Next step:
 - Inspect platform relay logs for whether PCM frames enter ASR. If the relay logs do not run PCM ASR, add relay-side PCM-to-ASR/transcode support or port a small Opus encoder/decoder path before chasing LVGL or speaker behavior.
+
+## 2026-06-15 - Relay PCM ASR Fixed In PC Probe, Board Upstream Still Requires Real Speech
+
+Completed:
+- Re-ran the PC-side synthetic 16 kHz mono S16LE speech probe after the platform relay was updated.
+- Confirmed the relay now accepts `Protocol-Version: 3` plus `audio_params.format=pcm_s16le` v3 binary frames and returns XiaoZhi events.
+- Reset the Infineon board after the M55 voice status became stale and M33 commands accumulated in `tx_pending`.
+
+Validated:
+- PC probe returned STT text for the synthetic speech: `你好小智，请回答今天网络连接测试成功了吗？`.
+- PC probe then returned `llm`, `chat`, and `tts start/stop`, proving the relay-side PCM ASR and daily-chat path now works.
+- Board reset restored M55 IPC: `m55qa_xz_reconnect` returned `voice_ack ... cmd=1003 result=0`.
+- Board WebSocket reconnected after reset: `xz_ws=1 xz_stage=70 xz_errno=0`.
+- Board capture path still sends upstream PCM: after `m55qa_capture_on/off`, status showed `frames=2317`, `pcm_seq=2317`, and `probe_lwip=386/742664`.
+
+Failed or unverified:
+- No STT/TTS was observed from the board capture, but the user was not physically present and the microphone likely captured only ambient noise.
+- Speaker playback remains unverified until a real spoken prompt or injected board-side audio produces platform TTS audio.
+
+Next step:
+- With someone near the board, speak a clear prompt during `m55qa_capture_on` and verify STT/LLM/TTS on COM4. If speaker audio is still absent after TTS events, debug M33 playback/codec separately.

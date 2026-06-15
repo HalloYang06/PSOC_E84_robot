@@ -546,3 +546,9 @@ Reusable trick:
 - Do not debug WiFi, DHCP, or LVGL when `xz_ws=1` and `probe_lwip` increases during capture. At that point inspect server-side ASR/codec logs or add Opus/PCM transcode support.
 - Treat these as separate gates: WebSocket connected, server hello received, mic frames captured, binary frames sent, server STT returned, TTS audio returned, speaker playback.
 - If nobody is physically near the board, generate a local 16 kHz mono WAV with Windows speech synthesis and send its PCM frames through the WebSocket probe to remove ambient noise from the diagnosis.
+
+Update:
+- After the platform relay was fixed, the same PC synthetic speech PCM probe returned `stt`, `llm`, `chat`, and `tts start/stop`.
+- The board then needed a reset because M55 voice status had gone stale and M33 `tx_pending` increased without fresh ACKs.
+- After reset, M55 IPC and WebSocket recovered and board PCM upstream was again proven by `probe_lwip=386/742664`.
+- If board capture still produces no STT while nobody is near the microphone, treat it as no valid speech input, not as a relay regression.
