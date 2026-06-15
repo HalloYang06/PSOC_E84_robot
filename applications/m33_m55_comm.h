@@ -230,6 +230,14 @@ typedef struct
     rt_int32_t lvgl_last_flush_status;
     rt_uint32_t xiaozhi_token_len;
     rt_uint32_t xiaozhi_token_staging_len;
+    rt_uint32_t xiaozhi_listening_bytes;
+    rt_uint32_t xiaozhi_listening_chunks;
+    rt_uint32_t xiaozhi_last_sent_bytes;
+    rt_uint32_t xiaozhi_last_sent_chunks;
+    rt_uint32_t xiaozhi_send_fail_count;
+    rt_uint32_t xiaozhi_rx_text_count;
+    rt_uint32_t xiaozhi_rx_binary_count;
+    rt_uint32_t xiaozhi_audio_frame_len;
     char netdev_name[RT_NAME_MAX];
 } voice_status_msg_t;
 

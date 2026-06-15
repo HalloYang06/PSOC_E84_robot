@@ -909,3 +909,53 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
 1. 烧录 M55 后，说“小瑞”，确认 LCD/LVGL 进入“我在听”。
 2. 继续问一句清晰问题，确认状态顺序为“在线待唤醒 -> 我在听 -> 正在思考 -> 正在回答/在线待唤醒”。
 3. 若平台 TTS 仍无声，优先看是否收到 `tts start/sentence_start/stop` 和 `MSG_TYPE_TTS_AUDIO`，再查 M33 播放链路。
+
+## 28. 2026-06-15 小智 PCM 二进制帧与状态计数
+
+现场症状：
+
+1. M55 麦克风帧在增长，但小智长时间停在“连接中/正在思考”。
+2. 旧状态只看 `xz_listening/xz_ws`，很难判断到底是没有发音频、发送失败，还是平台没有回包。
+3. 代码曾把 `pcm_s16le` 音频再包一层 4 字节二进制 v3 头，和当前平台 PCM 直传契约不一致。
+
+本轮修正：
+
+1. M55 `voice_service_feed_xiaozhi_listening()` 改为直接发送裸 PCM 二进制帧：
+   - 采样格式仍为 `16 kHz / mono / signed 16-bit`。
+   - 帧长由 `XIAOZHI_AUDIO_FRAME_DURATION_MS=60` 决定，即 `1920 B`。
+   - 不再额外加 `{type,reserved,payload_size}` 4 字节头。
+2. M55->M33 的 `voice_status_msg_t` 新增可观测字段：
+   - `xiaozhi_listening_bytes/chunks`
+   - `xiaozhi_last_sent_bytes/chunks`
+   - `xiaozhi_send_fail_count`
+   - `xiaozhi_rx_text_count`
+   - `xiaozhi_rx_binary_count`
+   - `xiaozhi_audio_frame_len`
+3. M33 `m55qa_status` 新增显示：
+   - `xz_cur=<chunks>/<bytes>`
+   - `xz_last=<chunks>/<bytes>`
+   - `xz_fail=<count>`
+   - `xz_rx=<text>/<binary>`
+   - `frame_len=<bytes>`
+
+官方依据：
+
+- 小智 WebSocket 官方参考协议区分 JSON 控制帧与二进制音频帧。
+- v1 二进制协议就是原始音频帧；v2/v3 才额外带二进制结构头。
+- 当前 M55 未集成 Opus 编解码库，且平台已提供 `pcm_s16le` 兼容入口，因此先走 PCM 裸帧闭环，后续如需官方 Opus 再单独集成编解码器。
+
+验证方式：
+
+1. 烧录 M55 和 M33 后，先确认：
+   - `m55qa_status` 中 `xz_ws=1`
+   - `wake_on=1 wake_ready=1`
+2. 触发小智录音后重复看 `m55qa_status`：
+   - 若 `xz_cur` 或 `xz_last` 增长，说明 M55 已经向平台发送音频。
+   - 若 `xz_fail` 增长，优先查 WebSocket 连接/发送错误。
+   - 若 `xz_rx` 增长但无声音，优先查 M33 `sound0` 播放链路。
+   - 若 `frame_len` 一直增长不到完整帧，优先查麦克风输入帧大小和 EOU 是否过早停止。
+
+注意：
+
+- 不要把官方小智 Opus 默认路线和当前平台 PCM 兼容路线混在一起判断。当前固件声明并发送的是 `pcm_s16le`，不是 Opus。
+- 若未来切换到官方 Opus，必须同时修改 `hello.audio_params.format`、上行编码、下行解码和平台协商，不能只改一个宏。

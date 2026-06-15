@@ -258,6 +258,14 @@ static rt_err_t voice_service_publish_status(void)
     msg.payload.voice_status.xiaozhi_ws_errno = websocket_client_last_errno();
     msg.payload.voice_status.xiaozhi_token_len = (rt_uint32_t)xiaozhi_voice_relay_token_len();
     msg.payload.voice_status.xiaozhi_token_staging_len = (rt_uint32_t)xiaozhi_voice_relay_token_staging_len();
+    msg.payload.voice_status.xiaozhi_listening_bytes = g_service.xiaozhi_listening_bytes;
+    msg.payload.voice_status.xiaozhi_listening_chunks = g_service.xiaozhi_listening_chunks;
+    msg.payload.voice_status.xiaozhi_last_sent_bytes = g_service.xiaozhi_last_sent_bytes;
+    msg.payload.voice_status.xiaozhi_last_sent_chunks = g_service.xiaozhi_last_sent_chunks;
+    msg.payload.voice_status.xiaozhi_send_fail_count = g_service.xiaozhi_send_fail_count;
+    msg.payload.voice_status.xiaozhi_rx_text_count = g_service.xiaozhi_rx_text_count;
+    msg.payload.voice_status.xiaozhi_rx_binary_count = g_service.xiaozhi_rx_binary_count;
+    msg.payload.voice_status.xiaozhi_audio_frame_len = g_service.xiaozhi_audio_frame_len;
     rt_memory_info(&heap_total, &heap_used, &heap_max_used);
     voice_service_refresh_netdev_snapshot_locked();
     msg.payload.voice_status.heap_total = (rt_uint32_t)heap_total;
@@ -788,22 +796,20 @@ static rt_bool_t voice_service_feed_xiaozhi_listening(const uint8_t *audio_data,
 
         if (frame_ready)
         {
-            rt_uint8_t packet[XIAOZHI_BINARY_V3_HEADER_LEN + XIAOZHI_AUDIO_FRAME_BYTES];
             rt_err_t send_ret;
 
-            packet[0] = 0U;
-            packet[1] = 0U;
-            packet[2] = (rt_uint8_t)((XIAOZHI_AUDIO_FRAME_BYTES >> 8) & 0xffU);
-            packet[3] = (rt_uint8_t)(XIAOZHI_AUDIO_FRAME_BYTES & 0xffU);
-            rt_memcpy(packet + XIAOZHI_BINARY_V3_HEADER_LEN, frame, XIAOZHI_AUDIO_FRAME_BYTES);
-
-            send_ret = websocket_client_send_binary(packet, sizeof(packet));
+            send_ret = websocket_client_send_binary(frame, XIAOZHI_AUDIO_FRAME_BYTES);
             if (send_ret == RT_EOK)
             {
                 rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
-                g_service.xiaozhi_listening_bytes += sizeof(packet);
+                g_service.xiaozhi_listening_bytes += XIAOZHI_AUDIO_FRAME_BYTES;
                 g_service.xiaozhi_listening_chunks++;
                 rt_mutex_release(&g_service.lock);
+                rt_kprintf("[voice_service] Xiaozhi audio sent session=%s bytes=%lu chunks=%lu frame_len=%lu\n",
+                           session_id,
+                           (unsigned long)g_service.xiaozhi_listening_bytes,
+                           (unsigned long)g_service.xiaozhi_listening_chunks,
+                           (unsigned long)g_service.xiaozhi_audio_frame_len);
             }
             else
             {
@@ -811,9 +817,10 @@ static rt_bool_t voice_service_feed_xiaozhi_listening(const uint8_t *audio_data,
                 g_service.xiaozhi_send_fail_count++;
                 g_service.last_error = send_ret;
                 rt_mutex_release(&g_service.lock);
-                rt_kprintf("[voice_service] Xiaozhi audio send failed session=%s len=%lu\n",
+                rt_kprintf("[voice_service] Xiaozhi audio send failed session=%s len=%lu fail=%lu\n",
                            session_id,
-                           (unsigned long)XIAOZHI_AUDIO_FRAME_BYTES);
+                           (unsigned long)XIAOZHI_AUDIO_FRAME_BYTES,
+                           (unsigned long)g_service.xiaozhi_send_fail_count);
             }
         }
     }
