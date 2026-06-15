@@ -108,7 +108,7 @@ Useful interpretation:
 
 Prerequisites:
 - Infineon board powered and connected by KitProg/OpenOCD.
-- M33 visible shell on `COM26` at `115200 8N1`.
+- M33 visible shell on the current Windows serial port, usually `COM4` in the latest bench setup, at `115200 8N1`.
 - M33 and CM55 firmware burned from the matching `M33` and `M55` branches.
 - Cloud command center XiaoZhi WebSocket endpoint:
   `ws://106.55.62.122:8011/api/rehab-arm/v1/projects/fd6a55ed-a63c-44b3-b123-96fb3c154966/devices/nanopi-m5/xiaozhi/ws?robot_id=rehab-arm-alpha`
@@ -136,6 +136,8 @@ Pass criterion:
 M33 shell QA:
 ```text
 m55qa_status
+m55qa_xz_reconnect
+m55qa_status
 m55qa_xz_token_begin
 m55qa_xz_token_part <first_48_to_60_char_token_chunk>
 m55qa_xz_token_part <next_48_to_60_char_token_chunk>
@@ -144,6 +146,8 @@ m55qa_status
 m55qa_wake_on
 m55qa_status
 m55qa_capture_on
+m55qa_status
+m55qa_capture_off
 m55qa_status
 m55qa_wake_off
 m55qa_status
@@ -190,9 +194,10 @@ Notes:
 - `xz_token=0` means no scoped relay token is loaded on CM55; WebSocket auth is expected to fail.
 - `xz_ws=0` means the XiaoZhi WebSocket is not connected.
 - `xz_listening=1` means CM55 is actively streaming the post-wake utterance to the platform.
-- XiaoZhi binary audio frames sent by CM55 are fixed at `640` bytes per frame: `16 kHz * 1 channel * 16 bit * 20 ms`.
-- `latest_pcm_len=320` in `m55qa_status` can still be normal because it is the local mic driver chunk length. The cloud WebSocket frame length is separately reframed to 640 bytes in CM55.
-- A matching platform token should make `xz_token=1`. A successful WebSocket connection should make `xz_ws=1`.
+- XiaoZhi binary audio frames sent by CM55 are currently v3-framed PCM packets: 4-byte v3 header plus 60 ms of 16 kHz mono S16LE PCM (`1924` bytes total).
+- `latest_pcm_len=320` in `m55qa_status` can still be normal because it is the local mic driver chunk length. The cloud WebSocket frame length is separately reframed to 60 ms packets in CM55.
+- A matching platform token should make `xz_token=1`. A successful WebSocket connection should make `xz_ws=1 xz_stage=70 xz_errno=0`.
+- During a good capture, `frames`/`pcm_seq` should increase and `probe_lwip=<chunks>/<bytes>` should become nonzero after capture stops. If those pass but no `stt/tts` arrives, debug platform ASR/codec handling rather than WiFi.
 - The firmware default endpoint already targets `/xiaozhi/ws?robot_id=rehab-arm-alpha`; use `m55qa_xz_url <ws://...>` only when overriding it for diagnostics.
 - `cmd=1004` begins a chunked XiaoZhi platform-token update on CM55.
 - `cmd=1005` appends one token chunk; keep each chunk short enough for the embedded shell line, usually 48 to 60 characters.

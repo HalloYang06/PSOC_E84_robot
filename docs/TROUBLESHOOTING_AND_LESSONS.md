@@ -1,5 +1,26 @@
 # Troubleshooting And Lessons
 
+## 2026-06-15 - XiaoZhi Cloud Blocker Is WebSocket Transport, Not Wi-Fi
+
+Symptom:
+- CM55 Wi-Fi auto-connect is stable and `m55qa_status` shows a valid IP/gateway/DNS, but XiaoZhi remains in connecting state.
+- Early diagnostics made it look like `connect()` was hanging forever.
+
+Findings:
+- A dedicated CM55 TCP probe to `106.55.62.122:8011` succeeds, proving basic Wi-Fi association, DHCP, gateway, and outbound TCP are working.
+- A PC-side raw WebSocket Upgrade using the same URL and scoped token returns `HTTP/1.1 101 Switching Protocols`, so the cloud endpoint, token, and path are valid.
+- The CM55 hand-written socket client can send the HTTP Upgrade request, then reaches handshake receive (`xz_stage=50`) and blocks/timeouts in the RT-Thread/lwIP socket receive path.
+- `select()`, `fcntl(O_NONBLOCK)`, `MSG_DONTWAIT`, `SO_RCVTIMEO`, direct `lwip_recv`, and `FIONBIO` did not produce a dependable nonblocking receive on this BSP path.
+
+Lesson:
+- Do not keep debugging this as a Wi-Fi scan/firmware-resource issue once `wlan=1 ready=1 ip=192.168.3.32` and the TCP probe passes.
+- Avoid building the XiaoZhi production transport on the POSIX/SAL socket receive path for this board. Use the bundled lwIP callback WebSocket client (`lwip/apps/websocket_client.h`) or a netconn/raw callback API.
+
+Validation notes:
+- M55 image and WHD resources were flashed together after each iteration.
+- COM4 QA showed Wi-Fi auto-connect remained stable after reset.
+- The scoped relay token must not be printed or committed.
+
 ## 2026-06-10 - LVGL Code In Image Does Not Mean The GUI Thread Started
 
 Symptom:
@@ -418,3 +439,108 @@ Fix:
 
 Status:
 - Fixed workflow, still a manual step until the generated post-build command is corrected.
+
+## 2026-06-13 - LVGL Font Symbols Must Come From Fixed UI Source
+
+Symptom:
+- After adding more XiaoZhi status text, the LCD could still show square glyphs even though a previous font regeneration had added several manually guessed Chinese characters.
+
+Root cause:
+- `lv_font_conv --symbols` only includes the exact glyphs listed. Hand-written symbols lists drift whenever UI text changes.
+
+Fix:
+- Extract the fixed Chinese UI/status characters from M55 source files and regenerate `applications/rehab_wifi_font.c` from that set.
+- Keep the generated include as `#include "lvgl.h"` for the current RT-Thread Studio LVGL include path.
+
+Status:
+- Fixed for fixed UI/status text. Dynamic XiaoZhi model replies can still contain arbitrary Chinese outside the static font.
+
+Reusable trick:
+- Before regenerating a small LVGL C font, scan the actual display source strings and build the symbols list from source, not memory.
+
+## 2026-06-13 - XiaoZhi Speaker Path Is Not Complete Without Opus Decode
+
+Symptom:
+- The screen can show XiaoZhi text/status, but speaker output may still be silent or invalid even when the platform sends audio.
+
+Root cause:
+- Official XiaoZhi WebSocket binary audio is Opus. The current local M33 playback path writes PCM/WAV-like chunks to `sound0`; it does not decode Opus yet.
+- M33 `sound0` initialization had also been skipped by default for earlier M55 QA, so playback code could not find a real speaker device.
+
+Fix:
+- Re-enabled `sound0` initialization by default on M33.
+- Wired M33 main IPC handling for `MSG_TYPE_TTS_AUDIO` to `audio_playback_write()`.
+- Updated `audio_playback` to open/configure `sound0` and call `rt_device_write()`.
+
+Status:
+- PCM/WAV-compatible playback path is compiled and burned after M33 hex relocation.
+- Official Opus decode is still unimplemented and must be added, or the relay must explicitly return PCM/WAV chunks for this board.
+
+Reusable trick:
+- Treat “platform returned audio” and “speaker can play it” as two separate checks: verify codec format first, then verify `sound0` write path.
+
+## 2026-06-13 - Do Not Eagerly Initialize M33 Speaker During XiaoZhi Bring-up
+
+Symptom:
+- After flashing a freshly built M33 image, COM4 produced no boot logs.
+- OpenOCD showed M33 halted in `Handler HardFault` with `pc=0x1400267c`.
+- Flashing an older full M33 image restored COM4 and `m55qa_status`, proving the board, UART, and CM55 IPC were not the primary failure.
+
+Root cause:
+- The current best fix confirmed that eager `audio_playback_init()`/`audio_playback_start()` during M33 framework startup was too risky for this bring-up baseline.
+- The failure looked similar to a bad M33 hex relocation at first, but the post-fix image ran in Non-secure Thread mode, so startup hardware audio init was the actionable cause for this pass.
+
+Fix:
+- Do not initialize `sound0` during `m33_init_framework()`.
+- Attempt speaker playback initialization lazily only when `MSG_TYPE_TTS_AUDIO` arrives.
+- Keep `M33_SKIP_SOUND0_INIT_FOR_XIAOZHI_QA=1` while validating WiFi, WebSocket, ASR, and text/model response.
+
+Validation:
+- M33 built with `python -m SCons -j4`.
+- The rebased M33 hex started with `:02000004603466`.
+- After flashing, OpenOCD showed M33 in Non-secure Thread mode at `pc=0x08365d84`, not HardFault.
+
+Reusable trick:
+- When XiaoZhi network/voice QA depends on M33 shell, keep speaker hardware init out of the boot path. Validate audio output as a later, isolated step after WiFi and WebSocket are proven.
+
+## 2026-06-15 - lwIP ERR_RTE During XiaoZhi WebSocket Connect Means Routing/Netif Context, Not WiFi Scan
+
+Symptoms:
+- M55 WiFi auto-connect is stable after reset.
+- `m55qa_status` shows `saved=1 auto=1`, `wlan=1 ready=1`, and a valid DHCP lease.
+- XiaoZhi still does not connect; serial shows `xz_ws=0 xz_stage=20 xz_errno=-4`.
+- The cloud WebSocket URL/token/path had already been proven valid from PC with HTTP `101 Switching Protocols`.
+
+Root cause / best current hypothesis:
+- `-4` is lwIP `ERR_RTE`.
+- The failure happens while starting `wsock_connect()` / `altcp_connect()`, before hello or audio.
+- This points to lwIP routing/default-netif context or explicit PCB binding, not WiFi scanning or password storage.
+
+Fix / next diagnostic move:
+- Keep the WebSocket client on the official lwIP callback path.
+- Before guessing at higher-level XiaoZhi logic, inspect `netif_default`, `ip_route()`, and the active WiFi netif binding.
+- If needed, bind the WebSocket PCB to the live WiFi interface/local IP before connecting.
+
+Reusable trick:
+- Once WiFi DHCP works but lwIP TCP connect returns `ERR_RTE`, stop chasing SSID/password/UI. The bug is below the app layer, usually in netif selection or route context.
+
+## 2026-06-15 - XiaoZhi Connected But No Reply: Separate Transport From Audio Codec/ASR
+
+Symptoms:
+- Board status shows stable WiFi and a connected XiaoZhi WebSocket: `xz_ws=1 xz_stage=70 xz_errno=0`.
+- Manual capture starts M55 mic successfully and sends many binary frames: examples include `frames=2326 pcm_seq=2326 probe_lwip=387/744588`.
+- After `m55qa_capture_off`, no `stt`, `llm`, `tts`, or binary audio reply is observed; only server hello/listen control text is counted.
+
+Root cause / current best hypothesis:
+- Transport is no longer the blocker. WebSocket, mic capture, M33->M55 command path, and binary upstream have all been proven.
+- The remaining boundary is audio format handling. Official XiaoZhi expects Opus frames, while the current M55 path sends raw `pcm_s16le` wrapped in v3 binary framing.
+- A PC `ClientWebSocket` probe showed the platform can echo `pcm_s16le` in hello, but that does not prove the downstream relay actually performs PCM ASR.
+
+Fix/status:
+- M55 now declares `Protocol-Version: 3`, `hello.version=3`, and `audio_params.format=pcm_s16le` so the protocol matches the current payload instead of claiming Opus.
+- `WSMSG_MAXSIZE` is 4096 so 60 ms PCM packets plus the v3 header are not rejected by the local lwIP WebSocket send path.
+- Status is partially fixed: upstream transport is working, model reply is not yet working.
+
+Reusable trick:
+- Do not debug WiFi, DHCP, or LVGL when `xz_ws=1` and `probe_lwip` increases during capture. At that point inspect server-side ASR/codec logs or add Opus/PCM transcode support.
+- Treat these as separate gates: WebSocket connected, server hello received, mic frames captured, binary frames sent, server STT returned, TTS audio returned, speaker playback.

@@ -1,5 +1,25 @@
 # Project Progress
 
+## 2026-06-15
+
+Completed:
+- Revalidated CM55 Wi-Fi auto-connect on the powered board after repeated M55 flashes. `m55qa_status` consistently reports `saved=1 auto=1 storage=0`, `wlan=1 ready=1`, and IP `192.168.3.32`.
+- Added staged XiaoZhi/WebSocket diagnostics so `m55qa_status` reports token length, WebSocket stage/errno, and reconnect progress separately from Wi-Fi state.
+- Added a CM55 TCP probe path for `106.55.62.122:8011`; board-side TCP reaches the cloud endpoint, so the current blocker is above basic Wi-Fi/routing.
+- PC-side validation with the same endpoint and scoped token returns `HTTP/1.1 101 Switching Protocols`, proving the cloud URL/token/path are valid.
+
+Validated:
+- M55 `wifi` builds with `python -m SCons -j4`.
+- M55 image and WHD resources were flashed together with OpenOCD; application and resource writes reached 100%.
+- Board QA over COM4 confirmed Wi-Fi auto-connect survives reset and the XiaoZhi reconnect no longer freezes the whole board while diagnosing.
+
+Current blocker:
+- The hand-written socket WebSocket client on CM55 reaches handshake receive (`xz_stage=50`) but RT-Thread/lwIP socket `recv` can block despite `O_NONBLOCK`, `MSG_DONTWAIT`, `SO_RCVTIMEO`, and direct `lwip_recv` attempts.
+- Next implementation should move XiaoZhi WebSocket transport to the bundled lwIP callback WebSocket client (`RT_LWIP_USING_WEBSOCKET`, `lwip/apps/websocket_client.h`) or a netconn/raw callback path instead of continuing to patch POSIX/SAL sockets.
+
+Next step:
+- Enable/build the official lwIP WebSocket app sources and wrap `wsock_connect/wsock_write` behind the existing `applications/websocket_client.h` API, then rerun `m55qa_xz_reconnect` and proceed to wake-word audio once `xz_ws=1`.
+
 ## 2026-06-10
 
 Completed:
@@ -310,3 +330,96 @@ Validated:
 
 Next step:
 - Use the next LCD photo to confirm no square glyphs remain, then continue spacing fixes only for actual overlap points.
+
+## 2026-06-13 - XiaoZhi UI State And Source-Extracted Font Coverage
+
+Completed:
+- Added a lightweight M55 XiaoZhi UI state model for visible phases: waiting network, connecting, ready, listening, thinking, speaking, and error.
+- Updated the LVGL WiFi screen with a dedicated XiaoZhi panel that shows status, detail text, last reply text, and a spinner while thinking.
+- M55 voice service now updates UI state on WebSocket hello, wake/listen start, listen stop/thinking, `tts start/stop/sentence_start`, server text replies, and binary audio replies.
+- Regenerated `rehab_wifi_font.c` from the actual fixed UI/status Chinese characters in M55 source files instead of a hand-written guess list.
+- M33 audio playback path now initializes `sound0` by default, receives `MSG_TYPE_TTS_AUDIO` in the main IPC loop, and writes audio chunks to the RT-Thread audio device. This is a PCM/WAV-compatible playback path; official Opus decode remains a separate gap.
+
+Validated:
+- M55 `python -m SCons -j4` passed after the XiaoZhi panel and regenerated font.
+- M55 was flashed with `program_with_resources.bat`; application and WHD resource programming reached 100%.
+- M33 `python -m SCons -j4` passed after enabling `sound0` playback.
+- M33 raw hex first failed to burn at `0x08340400`; after rebasing all type-04 records to `0x6034..`, `build/rtthread_rebased_6034_latest.hex` programmed to 100%.
+
+Failed or unverified:
+- The trailing KitProg3 acquire/reset error still appears after otherwise complete programming.
+- End-to-end wake-word -> platform reply -> speaker audio is not yet field-verified.
+- Official XiaoZhi audio uses Opus binary frames; M55/M33 still need a real Opus encode/decode path or an explicit relay-side PCM compatibility contract.
+
+Next step:
+- Reconnect WiFi, confirm the LVGL XiaoZhi panel reaches online/ready, speak the wake phrase, and verify both screen state transitions and speaker output.
+
+## 2026-06-13 - XiaoZhi Board Runtime Recovery And M33 Audio Deferral
+
+Completed:
+- Recovered the board from a silent COM4 state by flashing a known-good full M33 image, proving M33 shell and M33/CM55 IPC could still run.
+- Found that the latest M33 image entered HardFault after the eager `sound0` playback initialization path was added.
+- Changed M33 startup to avoid initializing speaker playback during framework init. `MSG_TYPE_TTS_AUDIO` now attempts `audio_playback_init()` and `audio_playback_start()` lazily only when TTS audio actually arrives.
+- Restored `M33_SKIP_SOUND0_INIT_FOR_XIAOZHI_QA` to `1` so the current XiaoZhi network/text bring-up is not blocked by the speaker device path.
+
+Validated:
+- M33 `python -m SCons -j4` passed after deferring audio playback, producing `text=273904 data=2640 bss=324181`.
+- Rebased the generated M33 hex to `0x6034..` as `build/rtthread_rebased_6034_now.hex`; first line is `:02000004603466`.
+- Burned M33, M55, and WiFi resources; programming progress reached 100% for all three phases.
+- OpenOCD halt after the fix showed M33 running in Non-secure Thread mode at `pc=0x08365d84` instead of HardFault, and CM55 running at `pc=0x60662928`.
+- M33 shell accepted `m55qa_status` and `m55qa_wifi_connect`; IPC reported `ipc_ready=1 tx_pending=0 rx_pending=0`.
+
+Failed or unverified:
+- WiFi was still not proven reconnected after reset during this pass, so XiaoZhi WebSocket remains at the network prerequisite stage.
+- End-to-end wake word -> relay model -> reply audio is still unverified.
+- Speaker output remains deferred; do not treat it as validated until a PCM TTS chunk reaches M33 and `sound0` is tested separately.
+
+Next step:
+- Restore stable WiFi auto-connect or manually reconnect WiFi, then verify `m55qa_status` shows `wlan/ready/ip` and `xz_ws=1` before testing wake-word speech.
+
+## 2026-06-15 - M55 WiFi Auto-Connect Validated, XiaoZhi WebSocket Still Blocked At lwIP ERR_RTE
+
+Completed:
+- Kept the M55 `wifi` project as the active board firmware project and continued from the WiFi/LVGL XiaoZhi bring-up branch.
+- Replaced the M55 hand-written WebSocket socket/handshake implementation in `D:\RT-ThreadStudio\workspace\wifi\applications\websocket_client.c` with a thin wrapper around the bundled lwIP `wsock_*` callback client.
+- Enabled `RT_LWIP_USING_WEBSOCKET` in the M55 project and compiled the bundled lwIP websocket client sources.
+- Patched the bundled lwIP websocket client so non-TLS `ws://` builds do not force-link `altcp_tls_*`/mbedTLS symbols.
+- Documented the current WebSocket blocker in `D:\RT-ThreadStudio\workspace\wifi\wifi避坑文档.md`.
+
+Validated:
+- M55 `python -m SCons -j4` passed after the wrapper and lwIP websocket changes, producing `rtthread.hex`.
+- Burned M55 firmware and `whd_resources_all.bin` with OpenOCD; both writes reached 100%.
+- Serial QA on COM4 showed WiFi auto-connect is stable after reset: `saved=1 auto=1`, `wlan=1 ready=1`, `ip=192.168.3.32`, `gw=192.168.3.1`, `dns0=192.168.3.1`.
+
+Failed or unverified:
+- XiaoZhi WebSocket is still not connected: `xz_ws=0 xz_stage=20 xz_errno=-4`.
+- `-4` is lwIP `ERR_RTE`, returned during `wsock_connect()` / `altcp_connect()` startup. This is a new, narrower blocker than the earlier hand-written socket receive/handshake hang.
+- Wake word -> model reply -> speaker output remains unverified because WebSocket has not reached connected/hello state.
+- The new official lwIP websocket path currently increases M55 image size substantially; after connectivity is proven, revisit footprint.
+
+Next step:
+- Diagnose lwIP raw/altcp routing on board: inspect `netif_default`, `ip_route()`, local IP binding, and WiFi netif selection around `wsock_connect_addr()`. If needed, explicitly bind the WebSocket PCB to the active WiFi netif/local IP before `altcp_connect()`.
+
+## 2026-06-15 - XiaoZhi WebSocket Connected, PCM Audio Upstream Proven, Reply Still Not Returned
+
+Completed:
+- Continued XiaoZhi bring-up from the M55 `wifi` project after WiFi auto-connect was validated.
+- Unified M55 XiaoZhi WebSocket declaration with the current binary v3 framing: `Protocol-Version: 3`, `hello.version=3`, and `BinaryProtocol3` `[type,reserved,payload_size_be16,payload]`.
+- Changed M55 `XIAOZHI_AUDIO_FORMAT` to `pcm_s16le` so the protocol declaration matches the actual 16 kHz mono S16LE payload currently sent by M55.
+- Synced the validated M55 source changes back into the `_m55_ref_repo` git-managed mirror.
+
+Validated:
+- M55 `python -m SCons -j4` passed after the protocol changes; final size remained `text=1420460 data=81448 bss=4529336`.
+- Burned M55 firmware and `whd_resources_all.bin`; both programming phases reached 100%.
+- COM4 serial QA showed WiFi remains stable after reset: `saved=1 auto=1`, `wlan=1 ready=1`, `ip=192.168.3.32`.
+- COM4 serial QA showed XiaoZhi WebSocket now connects: `xz_ws=1 xz_stage=70 xz_errno=0`.
+- Manual capture QA showed M55 microphone and WebSocket upstream are working: `frames=2326`, `pcm_seq=2326`, `probe_lwip=387/744588`.
+- PC-side `ClientWebSocket` probe showed the platform hello can echo both `audio_params.format=opus` and `pcm_s16le` for protocol version 3.
+
+Failed or unverified:
+- No STT/LLM/TTS text or binary audio reply was observed after board capture stop; `probe_posix=0/2` indicates only handshake/listen control text was received.
+- The board still streams PCM wrapped in v3 binary packets; official XiaoZhi remains Opus-first. It is not yet proven that the platform relay actually performs PCM ASR after accepting `pcm_s16le` in hello.
+- Speaker reply remains unverified because no server TTS audio has reached M33 in this pass.
+
+Next step:
+- Test with clear spoken input while capture is active and, in parallel, inspect platform relay logs for whether PCM frames enter ASR. If the relay logs do not run PCM ASR, add relay-side PCM-to-ASR/transcode support or port a small Opus encoder/decoder path before chasing LVGL or speaker behavior.
