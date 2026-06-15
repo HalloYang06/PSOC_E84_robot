@@ -487,3 +487,21 @@ Failed or unverified:
 
 Next step:
 - Ask the onsite operator to run or listen for `audio_playback_voice_cmd`, then test real XiaoZhi wake and question flow.
+
+## 2026-06-15 - XiaoRui Wake Flow Uses XiaoZhi Listen Detect/Start, Local Fake Voice Rejected
+
+Completed:
+- Updated M55 wake UX so internal wake labels such as `xiaorui` or Infineon fallback labels are exposed to the user/platform as `小瑞`.
+- Updated the M55 XiaoZhi wake flow to send `listen.detect` with text `小瑞`, then `listen.start` in auto mode.
+- Removed the attempted local wake acknowledgement path after onsite feedback that the algorithmic sample sounded like noise and cannot be used as a response voice.
+
+Validated:
+- M55 build passed: `text=1407424 data=81508 bss=4528996`.
+- M33 build passed: `text=286892 data=16076 bss=310744`.
+
+Official alignment:
+- Espressif XiaoZhi documentation describes XiaoZhi as a bidirectional streaming voice/text component with WebSocket/MQTT support, offline wake word reporting, and PCM among supported codecs.
+- XiaoZhi WebSocket documentation defines `listen.detect`, `listen.start`, and `listen.stop`; `detect` is the local wake-word event. The board now follows that sequence for the `小瑞` UX.
+
+Next step:
+- Flash M55, verify saying `小瑞` moves LVGL to listening, then rely on platform TTS audio for any spoken response instead of local synthetic noise.

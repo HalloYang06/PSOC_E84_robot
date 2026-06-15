@@ -593,3 +593,8 @@ Reusable trick:
 
 Status:
 - Command built, burned, and ran successfully through `sound0`; physical listening quality still needs onsite confirmation.
+
+Update:
+- Onsite feedback confirmed the algorithmic sample sounds noisy and must not be used as a user-facing response.
+- Keep `audio_playback_voice_cmd` only as a speaker QA/debug command.
+- Do not wire local generated audio into XiaoZhi wake acknowledgement. For a real “我在” response, use platform/official TTS audio or a separately validated real prompt asset.
