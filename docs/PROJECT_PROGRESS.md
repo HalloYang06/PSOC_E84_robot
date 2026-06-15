@@ -418,8 +418,9 @@ Validated:
 
 Failed or unverified:
 - No STT/LLM/TTS text or binary audio reply was observed after board capture stop; `probe_posix=0/2` indicates only handshake/listen control text was received.
-- The board still streams PCM wrapped in v3 binary packets; official XiaoZhi remains Opus-first. It is not yet proven that the platform relay actually performs PCM ASR after accepting `pcm_s16le` in hello.
+- A PC-side synthetic speech PCM probe also received only `listen start/stop` and no STT/TTS, so platform PCM ASR is currently not proven and likely not wired.
+- The board still streams PCM wrapped in v3 binary packets; official XiaoZhi remains Opus-first.
 - Speaker reply remains unverified because no server TTS audio has reached M33 in this pass.
 
 Next step:
-- Test with clear spoken input while capture is active and, in parallel, inspect platform relay logs for whether PCM frames enter ASR. If the relay logs do not run PCM ASR, add relay-side PCM-to-ASR/transcode support or port a small Opus encoder/decoder path before chasing LVGL or speaker behavior.
+- Inspect platform relay logs for whether PCM frames enter ASR. If the relay logs do not run PCM ASR, add relay-side PCM-to-ASR/transcode support or port a small Opus encoder/decoder path before chasing LVGL or speaker behavior.

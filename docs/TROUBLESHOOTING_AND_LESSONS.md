@@ -530,11 +530,12 @@ Symptoms:
 - Board status shows stable WiFi and a connected XiaoZhi WebSocket: `xz_ws=1 xz_stage=70 xz_errno=0`.
 - Manual capture starts M55 mic successfully and sends many binary frames: examples include `frames=2326 pcm_seq=2326 probe_lwip=387/744588`.
 - After `m55qa_capture_off`, no `stt`, `llm`, `tts`, or binary audio reply is observed; only server hello/listen control text is counted.
+- A PC-side synthetic speech WAV converted to 16 kHz mono S16LE PCM and sent through the same v3 WebSocket path also received only `listen start/stop`, with no STT/TTS within the wait window.
 
 Root cause / current best hypothesis:
 - Transport is no longer the blocker. WebSocket, mic capture, M33->M55 command path, and binary upstream have all been proven.
 - The remaining boundary is audio format handling. Official XiaoZhi expects Opus frames, while the current M55 path sends raw `pcm_s16le` wrapped in v3 binary framing.
-- A PC `ClientWebSocket` probe showed the platform can echo `pcm_s16le` in hello, but that does not prove the downstream relay actually performs PCM ASR.
+- A PC `ClientWebSocket` probe showed the platform can echo `pcm_s16le` in hello, but the synthetic speech probe indicates the downstream relay still may not perform PCM ASR.
 
 Fix/status:
 - M55 now declares `Protocol-Version: 3`, `hello.version=3`, and `audio_params.format=pcm_s16le` so the protocol matches the current payload instead of claiming Opus.
@@ -544,3 +545,4 @@ Fix/status:
 Reusable trick:
 - Do not debug WiFi, DHCP, or LVGL when `xz_ws=1` and `probe_lwip` increases during capture. At that point inspect server-side ASR/codec logs or add Opus/PCM transcode support.
 - Treat these as separate gates: WebSocket connected, server hello received, mic frames captured, binary frames sent, server STT returned, TTS audio returned, speaker playback.
+- If nobody is physically near the board, generate a local 16 kHz mono WAV with Windows speech synthesis and send its PCM frames through the WebSocket probe to remove ambient noise from the diagnosis.
