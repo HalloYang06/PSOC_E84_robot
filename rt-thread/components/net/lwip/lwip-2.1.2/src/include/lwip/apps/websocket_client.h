@@ -45,7 +45,7 @@ extern "C" {
 
 #define WSLEN_SMALL         125     // 125 bytes => 7 bits (not 8), less 1
 #define WSLEN_BIG           32768   // 32K bytes => 16 bits
-#define WSMSG_MAXSIZE       1420    // ~ single packet size after headers
+#define WSMSG_MAXSIZE       4096    // allow 60 ms PCM frames for XiaoZhi relay
 // ip:20/tcp:32/ws:14 --> total:68
 
 #define WSHDRLEN_MIN        2

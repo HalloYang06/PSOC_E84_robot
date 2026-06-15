@@ -6,7 +6,10 @@
 #include <reent.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
+#include <sys/select.h>
+#include <sys/time.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <stdlib.h>
 #include "cy_retarget_io.h"
 #include "whd.h"
@@ -39,7 +42,10 @@ extern int lvgl_thread_init(void);
 #define M55_WIFI_LVGL_ONLY 1
 #endif
 #ifndef M55_XIAOZHI_AUTO_ENABLE
-#define M55_XIAOZHI_AUTO_ENABLE 1
+#define M55_XIAOZHI_AUTO_ENABLE 0
+#endif
+#ifndef M55_WIFI_AUTO_CONNECT_ON_BOOT
+#define M55_WIFI_AUTO_CONNECT_ON_BOOT 1
 #endif
 #ifndef M55_ENABLE_LOCAL_HTTP_SERVER
 #define M55_ENABLE_LOCAL_HTTP_SERVER 0
@@ -66,6 +72,7 @@ static rt_thread_t g_voice_boot_thread = RT_NULL;
 static rt_thread_t g_boot_self_test_thread = RT_NULL;
 static rt_thread_t g_xiaozhi_bridge_thread = RT_NULL;
 static rt_thread_t g_xiaozhi_auto_thread = RT_NULL;
+static rt_thread_t g_wifi_status_thread = RT_NULL;
 static rt_bool_t g_xiaozhi_voice_started = RT_FALSE;
 
 typedef struct
@@ -87,8 +94,24 @@ extern whd_resource_source_t resource_ops;
 int lwip_socket(int domain, int type, int protocol);
 int lwip_connect(int s, const struct sockaddr *name, socklen_t namelen);
 int lwip_close(int s);
+int closesocket(int s);
 static rt_err_t m55_voice_start_for_xiaozhi(void);
 static void xiaozhi_bridge_publish_status(void);
+static void wifi_status_publish_kick(void);
+
+static volatile rt_uint32_t g_xz_bridge_loops;
+static volatile rt_uint32_t g_xz_bridge_consumed;
+static volatile rt_int32_t g_xz_bridge_last_consume_ret;
+static volatile rt_uint32_t g_xz_bridge_last_msg_type;
+static rt_thread_t g_xz_reconnect_thread = RT_NULL;
+static volatile rt_uint32_t g_xz_reconnect_step;
+static volatile rt_int32_t g_xz_reconnect_result;
+static volatile rt_int32_t g_tcp_probe_stage;
+static volatile rt_int32_t g_tcp_probe_errno;
+static volatile rt_int32_t g_tcp_probe_result;
+static volatile rt_int32_t g_tcp_probe_so_error;
+static volatile rt_int32_t g_tcp_probe_select_ret;
+static volatile rt_int32_t g_tcp_probe_fcntl_ret;
 
 static void m55_wifi_scan_qa_capture(void)
 {
@@ -742,16 +765,15 @@ static void xiaozhi_auto_connect_thread_entry(void *parameter)
 
         if (!voice_ready)
         {
-            ret = m55_wake_listen_start_for_xiaozhi();
+            ret = m55_voice_start_for_xiaozhi();
             if (ret == RT_EOK)
             {
-                g_xiaozhi_voice_started = RT_TRUE;
                 voice_ready = RT_TRUE;
-                rt_kprintf("[m55_xz_auto] wake listening armed after wifi ready\n");
+                rt_kprintf("[m55_xz_auto] voice service started after wifi ready\n");
             }
             else
             {
-                rt_kprintf("[m55_xz_auto] wake listen deferred ret=%d\n", ret);
+                rt_kprintf("[m55_xz_auto] voice service deferred ret=%d\n", ret);
                 retry_delay = 5U;
                 xiaozhi_bridge_publish_status();
                 continue;
@@ -769,6 +791,16 @@ static void xiaozhi_auto_connect_thread_entry(void *parameter)
         xiaozhi_bridge_publish_status();
         if (ret == RT_EOK)
         {
+            ret = m55_wake_listen_start_for_xiaozhi();
+            if (ret == RT_EOK)
+            {
+                g_xiaozhi_voice_started = RT_TRUE;
+                rt_kprintf("[m55_xz_auto] wake listening armed after Xiaozhi connected\n");
+            }
+            else
+            {
+                rt_kprintf("[m55_xz_auto] wake listen deferred after connect ret=%d\n", ret);
+            }
             break;
         }
         retry_delay = 5U;
@@ -832,6 +864,132 @@ static void xiaozhi_bridge_publish_ack(rt_uint32_t cmd, rt_err_t ret)
     (void)m33_m55_comm_publish(&ack);
 }
 
+static rt_err_t m55_bridge_run_tcp_probe(void)
+{
+    int fd;
+    int ret;
+    int opt_error = 0;
+    socklen_t opt_len = sizeof(opt_error);
+    fd_set writefds;
+    struct timeval timeout;
+    struct sockaddr_in addr;
+
+    g_tcp_probe_stage = 0;
+    g_tcp_probe_errno = 0;
+    g_tcp_probe_result = -RT_ERROR;
+    g_tcp_probe_so_error = 0;
+    g_tcp_probe_select_ret = 0;
+    g_tcp_probe_fcntl_ret = 0;
+    xiaozhi_bridge_publish_status();
+
+    rt_memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(M55_XIAOZHI_CLOUD_PORT);
+    addr.sin_addr.s_addr = inet_addr(M55_XIAOZHI_CLOUD_IP);
+
+    errno = 0;
+    g_tcp_probe_stage = 10;
+    xiaozhi_bridge_publish_status();
+    fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0)
+    {
+        g_tcp_probe_errno = errno;
+        g_tcp_probe_result = -RT_ERROR;
+        rt_kprintf("[m55_tcp_probe] socket failed fd=%d errno=%d\n", fd, errno);
+        xiaozhi_bridge_publish_status();
+        return -RT_ERROR;
+    }
+
+    errno = 0;
+    g_tcp_probe_stage = 20;
+    xiaozhi_bridge_publish_status();
+    ret = fcntl(fd, F_SETFL, O_NONBLOCK);
+    g_tcp_probe_fcntl_ret = ret;
+    if (ret < 0)
+    {
+        g_tcp_probe_errno = errno;
+        g_tcp_probe_result = -RT_ERROR;
+        rt_kprintf("[m55_tcp_probe] fcntl nonblock failed fd=%d ret=%d errno=%d\n", fd, ret, errno);
+        closesocket(fd);
+        xiaozhi_bridge_publish_status();
+        return -RT_ERROR;
+    }
+
+    errno = 0;
+    g_tcp_probe_stage = 30;
+    xiaozhi_bridge_publish_status();
+    ret = connect(fd, (struct sockaddr *)&addr, sizeof(addr));
+    g_tcp_probe_result = ret;
+    g_tcp_probe_errno = errno;
+    if (ret == 0)
+    {
+        g_tcp_probe_stage = 60;
+        g_tcp_probe_so_error = 0;
+        rt_kprintf("[m55_tcp_probe] connect immediate ok %s:%d fd=%d\n",
+                   M55_XIAOZHI_CLOUD_IP,
+                   M55_XIAOZHI_CLOUD_PORT,
+                   fd);
+        closesocket(fd);
+        xiaozhi_bridge_publish_status();
+        return RT_EOK;
+    }
+
+    if ((errno != EINPROGRESS) && (errno != EWOULDBLOCK) && (errno != EALREADY))
+    {
+        rt_kprintf("[m55_tcp_probe] connect immediate failed ret=%d errno=%d\n", ret, errno);
+        closesocket(fd);
+        xiaozhi_bridge_publish_status();
+        return -RT_ERROR;
+    }
+
+    FD_ZERO(&writefds);
+    FD_SET(fd, &writefds);
+    timeout.tv_sec = 5;
+    timeout.tv_usec = 0;
+
+    errno = 0;
+    g_tcp_probe_stage = 40;
+    xiaozhi_bridge_publish_status();
+    ret = select(fd + 1, RT_NULL, &writefds, RT_NULL, &timeout);
+    g_tcp_probe_select_ret = ret;
+    g_tcp_probe_errno = errno;
+    if (ret <= 0)
+    {
+        g_tcp_probe_result = (ret == 0) ? -RT_ETIMEOUT : -RT_ERROR;
+        rt_kprintf("[m55_tcp_probe] select failed ret=%d errno=%d\n", ret, errno);
+        closesocket(fd);
+        xiaozhi_bridge_publish_status();
+        return (ret == 0) ? -RT_ETIMEOUT : -RT_ERROR;
+    }
+
+    errno = 0;
+    g_tcp_probe_stage = 50;
+    xiaozhi_bridge_publish_status();
+    ret = getsockopt(fd, SOL_SOCKET, SO_ERROR, &opt_error, &opt_len);
+    g_tcp_probe_errno = errno;
+    g_tcp_probe_so_error = opt_error;
+    if ((ret < 0) || (opt_error != 0))
+    {
+        g_tcp_probe_result = (ret < 0) ? -RT_ERROR : -opt_error;
+        rt_kprintf("[m55_tcp_probe] so_error ret=%d errno=%d so_error=%d\n", ret, errno, opt_error);
+        closesocket(fd);
+        xiaozhi_bridge_publish_status();
+        return -RT_ERROR;
+    }
+
+    g_tcp_probe_stage = 60;
+    g_tcp_probe_result = 0;
+    g_tcp_probe_errno = 0;
+    rt_kprintf("[m55_tcp_probe] connect ok %s:%d fd=%d select=%d\n",
+               M55_XIAOZHI_CLOUD_IP,
+               M55_XIAOZHI_CLOUD_PORT,
+               fd,
+               g_tcp_probe_select_ret);
+    closesocket(fd);
+    xiaozhi_bridge_publish_status();
+    return RT_EOK;
+}
+
 static void xiaozhi_bridge_publish_status(void)
 {
     m33_m55_message_t status;
@@ -839,9 +997,130 @@ static void xiaozhi_bridge_publish_status(void)
     rt_memset(&status, 0, sizeof(status));
     status.type = MSG_TYPE_VOICE_STATUS;
     status.payload.voice_status.flags =
-        xiaozhi_voice_relay_has_token() ? VOICE_STATUS_FLAG_XIAOZHI_HAS_TOKEN : 0U;
+        (xiaozhi_voice_relay_has_token() ? VOICE_STATUS_FLAG_XIAOZHI_HAS_TOKEN : 0U) |
+        (websocket_client_is_connected() ? VOICE_STATUS_FLAG_XIAOZHI_CONNECTED : 0U);
     wifi_config_fill_voice_status(&status.payload.voice_status);
+    if (xiaozhi_voice_relay_has_token())
+    {
+        status.payload.voice_status.flags |= VOICE_STATUS_FLAG_XIAOZHI_HAS_TOKEN;
+    }
+    if (websocket_client_is_connected())
+    {
+        status.payload.voice_status.flags |= VOICE_STATUS_FLAG_XIAOZHI_CONNECTED;
+    }
+    status.payload.voice_status.xiaozhi_ws_stage = websocket_client_last_stage();
+    status.payload.voice_status.xiaozhi_ws_errno = websocket_client_last_errno();
+    status.payload.voice_status.xiaozhi_token_len = (rt_uint32_t)xiaozhi_voice_relay_token_len();
+    status.payload.voice_status.xiaozhi_token_staging_len = (rt_uint32_t)xiaozhi_voice_relay_token_staging_len();
+    status.payload.voice_status.net_probe_posix_tcp = g_tcp_probe_stage;
+    status.payload.voice_status.net_probe_posix_errno = g_tcp_probe_errno;
+    status.payload.voice_status.net_probe_sal_tcp = g_tcp_probe_result;
+    status.payload.voice_status.net_probe_sal_errno = g_tcp_probe_so_error;
+    status.payload.voice_status.net_probe_lwip_tcp = (rt_int32_t)g_xz_reconnect_step;
+    status.payload.voice_status.net_probe_lwip_errno = g_xz_reconnect_result;
+    status.payload.voice_status.cloud_tcp_result = g_tcp_probe_select_ret;
+    status.payload.voice_status.cloud_tcp_errno = g_tcp_probe_fcntl_ret;
     (void)m33_m55_comm_publish(&status);
+}
+
+static void xiaozhi_reconnect_thread_entry(void *parameter)
+{
+    rt_err_t ret;
+
+    RT_UNUSED(parameter);
+
+    g_xz_reconnect_step = 10U;
+    g_xz_reconnect_result = 0;
+
+    ret = voice_service_init("YOUR_BAIDU_API_KEY", "YOUR_BAIDU_SECRET_KEY");
+    g_xz_reconnect_result = ret;
+    g_xz_reconnect_step = 11U;
+    if ((ret == RT_EOK) || (ret == -RT_EBUSY))
+    {
+        g_xiaozhi_voice_started = RT_TRUE;
+        g_xz_reconnect_step = 20U;
+        g_xz_reconnect_result = RT_EOK;
+        g_xz_reconnect_step = 21U;
+        if (ret == RT_EOK)
+        {
+            g_xz_reconnect_step = 30U;
+            ret = websocket_client_connect();
+            g_xz_reconnect_result = ret;
+            g_xz_reconnect_step = 31U;
+        }
+        if (ret == RT_EOK)
+        {
+            char hello[768];
+
+            g_xz_reconnect_step = 40U;
+            ret = xiaozhi_voice_relay_build_hello(hello, sizeof(hello));
+            if (ret == RT_EOK)
+            {
+                ret = websocket_client_send_text(hello);
+            }
+            g_xz_reconnect_result = ret;
+            g_xz_reconnect_step = 41U;
+        }
+    }
+
+    g_xz_reconnect_thread = RT_NULL;
+}
+
+static rt_err_t xiaozhi_bridge_start_reconnect_async(void)
+{
+    if (g_xz_reconnect_thread != RT_NULL)
+    {
+        return -RT_EBUSY;
+    }
+
+    wifi_status_publish_kick();
+    g_xz_reconnect_thread = rt_thread_create("xz_reconn",
+                                             xiaozhi_reconnect_thread_entry,
+                                             RT_NULL,
+                                             12288,
+                                             17,
+                                             10);
+    if (g_xz_reconnect_thread == RT_NULL)
+    {
+        return -RT_ENOMEM;
+    }
+
+    rt_thread_startup(g_xz_reconnect_thread);
+    return RT_EOK;
+}
+
+static void wifi_status_publish_thread_entry(void *parameter)
+{
+    RT_UNUSED(parameter);
+
+    for (rt_uint32_t i = 0; i < 45U; i++)
+    {
+        (void)wifi_config_diag();
+        (void)wifi_config_whd_diag();
+        xiaozhi_bridge_publish_status();
+        rt_thread_mdelay(1000);
+    }
+
+    g_wifi_status_thread = RT_NULL;
+}
+
+static void wifi_status_publish_kick(void)
+{
+    if (g_wifi_status_thread != RT_NULL)
+    {
+        return;
+    }
+
+    g_wifi_status_thread = rt_thread_create("wifi_stat",
+                                            wifi_status_publish_thread_entry,
+                                            RT_NULL,
+                                            4096,
+                                            19,
+                                            10);
+    if (g_wifi_status_thread != RT_NULL)
+    {
+        rt_thread_startup(g_wifi_status_thread);
+    }
 }
 
 static rt_err_t xiaozhi_bridge_handle_config(const voice_config_msg_t *config)
@@ -875,12 +1154,7 @@ static rt_err_t xiaozhi_bridge_handle_config(const voice_config_msg_t *config)
         ret = RT_EOK;
         break;
     case VOICE_CONFIG_XIAOZHI_RECONNECT:
-        ret = m55_voice_start_for_xiaozhi();
-        if (ret == RT_EOK)
-        {
-            g_xiaozhi_voice_started = RT_TRUE;
-            ret = voice_service_reconnect_xiaozhi();
-        }
+        ret = xiaozhi_bridge_start_reconnect_async();
         break;
     case VOICE_CONFIG_WIFI_SSID:
         ret = wifi_config_set_ssid(config->value);
@@ -889,17 +1163,19 @@ static rt_err_t xiaozhi_bridge_handle_config(const voice_config_msg_t *config)
         ret = wifi_config_set_password(config->value);
         break;
     case VOICE_CONFIG_WIFI_CONNECT:
-        (void)wifi_config_save();
-        ret = wifi_config_start_auto_connect(10U);
+        ret = wifi_config_connect();
+        wifi_status_publish_kick();
         break;
     case VOICE_CONFIG_WIFI_DISCONNECT:
         ret = wifi_config_disconnect();
+        wifi_status_publish_kick();
         break;
     case VOICE_CONFIG_WIFI_SAVE:
         ret = wifi_config_save();
         break;
     case VOICE_CONFIG_WIFI_FORGET:
         ret = wifi_config_forget();
+        wifi_status_publish_kick();
         break;
     case VOICE_CONFIG_WIFI_AUTO_CONNECT:
         ret = wifi_config_set_auto_connect((config->value[0] == '0') ? RT_FALSE : RT_TRUE);
@@ -937,10 +1213,19 @@ static rt_err_t xiaozhi_bridge_handle_control(const voice_control_msg_t *control
         {
             g_xiaozhi_voice_started = RT_TRUE;
             ret = voice_service_start_xiaozhi_talk();
+            if (ret == RT_EOK)
+            {
+                ret = m55_mic_start_internal();
+                if (ret == -RT_EBUSY)
+                {
+                    ret = RT_EOK;
+                }
+            }
         }
         break;
     case VOICE_CTRL_STOP_CAPTURE:
         ret = voice_service_stop_xiaozhi_talk();
+        (void)m55_mic_stop_internal();
         break;
     case VOICE_CTRL_START_LISTEN:
         ret = m55_wake_listen_start_for_xiaozhi();
@@ -952,11 +1237,15 @@ static rt_err_t xiaozhi_bridge_handle_control(const voice_control_msg_t *control
     case VOICE_CTRL_STOP_LISTEN:
         ret = m55_wake_listen_stop_for_xiaozhi();
         break;
+    case VOICE_CTRL_NET_PROBE:
+        ret = m55_bridge_run_tcp_probe();
+        break;
     case VOICE_CTRL_WIFI_DIAG:
         ret = wifi_config_diag();
         break;
     case VOICE_CTRL_WIFI_SCAN:
         ret = wifi_config_scan();
+        wifi_status_publish_kick();
         break;
     case VOICE_CTRL_WHD_DIAG:
         ret = wifi_config_whd_diag();
@@ -984,12 +1273,17 @@ static void xiaozhi_bridge_thread_entry(void *parameter)
                xiaozhi_voice_relay_has_token() ? 1 : 0,
                xiaozhi_voice_relay_get_url());
 
-    while (!g_xiaozhi_voice_started)
+    while (1)
     {
-        while (m33_m55_comm_consume(&msg) == RT_EOK)
+        rt_err_t consume_ret;
+
+        g_xz_bridge_loops++;
+        while ((consume_ret = m33_m55_comm_consume(&msg)) == RT_EOK)
         {
             rt_err_t ret = -RT_EINVAL;
 
+            g_xz_bridge_consumed++;
+            g_xz_bridge_last_msg_type = msg.type;
             if (msg.type == MSG_TYPE_VOICE_CONFIG)
             {
                 ret = xiaozhi_bridge_handle_config(&msg.payload.voice_config);
@@ -1003,12 +1297,9 @@ static void xiaozhi_bridge_thread_entry(void *parameter)
                 xiaozhi_bridge_publish_status();
             }
         }
-
+        g_xz_bridge_last_consume_ret = consume_ret;
         rt_thread_mdelay(50);
     }
-
-    rt_kprintf("[m55_xz_bridge] handoff to voice_service\n");
-    g_xiaozhi_bridge_thread = RT_NULL;
 }
 
 static void m55_wifi_ssid(int argc, char **argv)
@@ -1045,7 +1336,6 @@ static void m55_wifi_connect(int argc, char **argv)
 {
     RT_UNUSED(argc);
     RT_UNUSED(argv);
-    rt_kprintf("m55_wifi_save ret=%d\n", wifi_config_save());
     rt_kprintf("m55_wifi_connect ret=%d\n", wifi_config_connect());
 }
 MSH_CMD_EXPORT(m55_wifi_connect, Connect CM55 WiFi using staged SSID/password);
@@ -1272,7 +1562,12 @@ int main(void)
 #endif
 
 #if !M55_WIFI_LVGL_ONLY
+#if M55_WIFI_AUTO_CONNECT_ON_BOOT
     (void)wifi_config_start_auto_connect(3500U);
+    wifi_status_publish_kick();
+#else
+    rt_kprintf("[m55] WiFi auto-connect on boot disabled for XiaoZhi QA; use LVGL connect or m55qa_wifi_connect\n");
+#endif
 
     g_boot_self_test_thread = rt_thread_create("m55_self",
                                                boot_self_test_thread_entry,
@@ -1313,7 +1608,12 @@ int main(void)
     }
 #else
     rt_kprintf("[m55] WiFi+LVGL-only mode; voice/OpenClaw/HTTP/autoconnect disabled\n");
+#if M55_WIFI_AUTO_CONNECT_ON_BOOT
     (void)wifi_config_start_auto_connect(3500U);
+    wifi_status_publish_kick();
+#else
+    rt_kprintf("[m55] WiFi auto-connect on boot disabled for XiaoZhi QA; use LVGL connect or m55qa_wifi_connect\n");
+#endif
     g_xiaozhi_bridge_thread = rt_thread_create("xz_bridge",
                                                xiaozhi_bridge_thread_entry,
                                                RT_NULL,

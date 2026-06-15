@@ -230,10 +230,11 @@ rt_err_t xiaozhi_voice_relay_build_headers(char *out, rt_size_t out_len)
 
     n = rt_snprintf(out, out_len,
                     "Authorization: Bearer %s\r\n"
-                    "Protocol-Version: 1\r\n"
+                    "Protocol-Version: %u\r\n"
                     "Device-Id: %s\r\n"
                     "Client-Id: %s\r\n",
                     g_xiaozhi.token,
+                    (unsigned)XIAOZHI_PROTOCOL_VERSION,
                     XIAOZHI_DEVICE_ID,
                     XIAOZHI_ROBOT_ID);
     return ((n < 0) || ((rt_size_t)n >= out_len)) ? -RT_EFULL : RT_EOK;
@@ -249,10 +250,12 @@ rt_err_t xiaozhi_voice_relay_build_hello(char *out, rt_size_t out_len)
     }
 
     n = rt_snprintf(out, out_len,
-                    "{\"type\":\"hello\",\"version\":1,"
+                    "{\"type\":\"hello\",\"version\":%u,"
                     "\"features\":{\"mcp\":true},"
                     "\"transport\":\"websocket\","
-                    "\"audio_params\":{\"format\":\"opus\",\"sample_rate\":%u,\"channels\":%u,\"frame_duration\":%u}}",
+                    "\"audio_params\":{\"format\":\"%s\",\"sample_rate\":%u,\"channels\":%u,\"frame_duration\":%u}}",
+                    (unsigned)XIAOZHI_PROTOCOL_VERSION,
+                    XIAOZHI_AUDIO_FORMAT,
                     (unsigned)XIAOZHI_AUDIO_SAMPLE_RATE,
                     (unsigned)XIAOZHI_AUDIO_CHANNELS,
                     (unsigned)XIAOZHI_AUDIO_FRAME_DURATION_MS);
@@ -260,7 +263,7 @@ rt_err_t xiaozhi_voice_relay_build_hello(char *out, rt_size_t out_len)
 }
 
 rt_err_t xiaozhi_voice_relay_build_listen_detect(char *out, rt_size_t out_len,
-                                                 rt_uint32_t session_id,
+                                                 const char *session_id,
                                                  const char *wake_word)
 {
     int n;
@@ -271,16 +274,16 @@ rt_err_t xiaozhi_voice_relay_build_listen_detect(char *out, rt_size_t out_len,
     }
 
     n = rt_snprintf(out, out_len,
-                    "{\"type\":\"listen\",\"state\":\"detect\",\"session_id\":%lu,"
+                    "{\"session_id\":\"%s\",\"type\":\"listen\",\"state\":\"detect\","
                     "\"text\":\"%s\",\"source\":\"m55_wake_word\","
                     "\"control_boundary\":\"xiaozhi_wake_detect_only_not_motion_permission\"}",
-                    (unsigned long)session_id,
+                    (session_id && session_id[0]) ? session_id : "",
                     (wake_word && wake_word[0]) ? wake_word : "wake_word");
     return ((n < 0) || ((rt_size_t)n >= out_len)) ? -RT_EFULL : RT_EOK;
 }
 
 rt_err_t xiaozhi_voice_relay_build_listen_start(char *out, rt_size_t out_len,
-                                                rt_uint32_t session_id,
+                                                const char *session_id,
                                                 xiaozhi_wake_source_t wake_source)
 {
     int n;
@@ -292,14 +295,14 @@ rt_err_t xiaozhi_voice_relay_build_listen_start(char *out, rt_size_t out_len,
 
     RT_UNUSED(wake_source);
     n = rt_snprintf(out, out_len,
-                    "{\"session_id\":\"%lu\",\"type\":\"listen\",\"state\":\"start\","
+                    "{\"session_id\":\"%s\",\"type\":\"listen\",\"state\":\"start\","
                     "\"mode\":\"auto\"}",
-                    (unsigned long)session_id);
+                    (session_id && session_id[0]) ? session_id : "");
     return ((n < 0) || ((rt_size_t)n >= out_len)) ? -RT_EFULL : RT_EOK;
 }
 
 rt_err_t xiaozhi_voice_relay_build_listen_stop(char *out, rt_size_t out_len,
-                                               rt_uint32_t session_id,
+                                               const char *session_id,
                                                rt_uint32_t total_bytes,
                                                rt_uint32_t chunks)
 {
@@ -313,8 +316,8 @@ rt_err_t xiaozhi_voice_relay_build_listen_stop(char *out, rt_size_t out_len,
     RT_UNUSED(total_bytes);
     RT_UNUSED(chunks);
     n = rt_snprintf(out, out_len,
-                    "{\"session_id\":\"%lu\",\"type\":\"listen\",\"state\":\"stop\"}",
-                    (unsigned long)session_id);
+                    "{\"session_id\":\"%s\",\"type\":\"listen\",\"state\":\"stop\"}",
+                    (session_id && session_id[0]) ? session_id : "");
     return ((n < 0) || ((rt_size_t)n >= out_len)) ? -RT_EFULL : RT_EOK;
 }
 

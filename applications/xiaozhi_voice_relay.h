@@ -7,6 +7,8 @@
 #define XIAOZHI_PROJECT_ID "fd6a55ed-a63c-44b3-b123-96fb3c154966"
 #define XIAOZHI_DEVICE_ID  "nanopi-m5"
 #define XIAOZHI_ROBOT_ID   "rehab-arm-alpha"
+#define XIAOZHI_PROTOCOL_VERSION 3U
+#define XIAOZHI_AUDIO_FORMAT "pcm_s16le"
 #define XIAOZHI_AUDIO_SAMPLE_RATE 16000U
 #define XIAOZHI_AUDIO_CHANNELS 1U
 #define XIAOZHI_AUDIO_BITS_PER_SAMPLE 16U
@@ -51,13 +53,13 @@ void xiaozhi_voice_relay_token_update_clear(void);
 rt_err_t xiaozhi_voice_relay_build_headers(char *out, rt_size_t out_len);
 rt_err_t xiaozhi_voice_relay_build_hello(char *out, rt_size_t out_len);
 rt_err_t xiaozhi_voice_relay_build_listen_detect(char *out, rt_size_t out_len,
-                                                 rt_uint32_t session_id,
+                                                 const char *session_id,
                                                  const char *wake_word);
 rt_err_t xiaozhi_voice_relay_build_listen_start(char *out, rt_size_t out_len,
-                                                rt_uint32_t session_id,
+                                                const char *session_id,
                                                 xiaozhi_wake_source_t wake_source);
 rt_err_t xiaozhi_voice_relay_build_listen_stop(char *out, rt_size_t out_len,
-                                               rt_uint32_t session_id,
+                                               const char *session_id,
                                                rt_uint32_t total_bytes,
                                                rt_uint32_t chunks);
 rt_bool_t xiaozhi_voice_relay_parse_response(const char *json,

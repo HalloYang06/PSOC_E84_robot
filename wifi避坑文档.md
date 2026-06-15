@@ -218,6 +218,28 @@ eth device init ok
 1. 资源烧录不是当前阻塞点。官方 `Edgi_Talk_M55_WIFI` 和本工程合并资源镜像均已验证资源可用。
 2. `FINSH_THREAD_PRIORITY=20` 时，CM55 shell 会在无有效控制台输入时长期占用调度，导致 WHD FreeRTOS 包装线程得不到运行；将 shell 优先级降到 `30` 后，WHD 线程可以运行。
 3. 不能用 `rt_wlan_is_ready()` 判断是否可以扫描；它更偏向连接 ready 状态。开机扫描前应等 WHD 初始化阶段到 ready，并确认 `wlan0` 已注册。
+
+## 8.2 2026-06-15 XiaoZhi WebSocket QA 结论
+
+本轮确认 WiFi 已不是主阻塞点：
+
+- 串口 `m55qa_status` 显示 `saved=1 auto=1`，复位后可自动连回。
+- DHCP 正常，实测 `ip=192.168.3.32 gw=192.168.3.1 dns0=192.168.3.1`。
+- `wlan=1 ready=1 rssi=-56`。
+
+小智 WebSocket 仍未连通：
+
+- 已将 `applications/websocket_client.c` 从手写 POSIX/lwIP socket 握手改为 lwIP 自带 `wsock_*` callback client 的薄适配层。
+- 已打开 `RT_LWIP_USING_WEBSOCKET`，并编入 `src/apps/websocket/websocket_client.c`、`sha-1.c`、`base64-decode.c`。
+- 为避免把 TLS/mbedTLS 拉进 M55，已把 lwIP websocket client 里的 TLS 引用改为 `#if LWIP_ALTCP_TLS` 条件编译；当前平台 URL 是明文 `ws://...:8011`。
+- M55 构建通过，烧录 M55 hex 和 `whd_resources_all.bin` 均到 100%。
+- 串口 QA 仍显示 `xz_ws=0 xz_stage=20 xz_errno=-4`，其中 `-4` 是 lwIP `ERR_RTE`，出现在 `wsock_connect()` / `altcp_connect()` 启动连接阶段。
+
+当前判断：
+
+- 云端 URL/token/path 之前已由 PC raw WebSocket 验证过可返回 `101 Switching Protocols`。
+- 同板 WiFi/DHCP 正常，因此当前 blocker 更像 lwIP raw/altcp 路由或默认 netif 上下文问题，而不是 WiFi 扫描/连接问题。
+- 下一步应优先在 M55 上诊断 `netif_default`、`ip_route()`、`altcp_connect()` 的输入和返回，或在官方 `wsock_connect_addr()` 前显式绑定可用 WiFi netif/local IP。
 4. 当前 porting 层原先的 active scan 后再 passive scan 在本板上不稳定，表现为上层等待 `SCAN_DONE` 超时。临时减枝方案改为 active-only 异步扫描，active 完成即上报 `RT_WLAN_DEV_EVT_SCAN_DONE`。
 
 OpenOCD 内存 QA 成功证据：
@@ -651,3 +673,95 @@ reset command issued
 
 - `python -m SCons -j4` 构建通过。
 - 已用 `program_with_resources.bat` 烧录，应用和资源 programming 均到 100%；末尾 KitProg3 acquire error 仍为既有现象。
+
+## 20. 2026-06-13 按源码实际中文集合补齐 LVGL 字库
+
+现场问题：
+
+- 在继续做小智真实状态面板后，固定 UI 文案新增了 `在线待唤醒/正在思考/正在回答/准备语音回复/说唤醒词，我会回应你` 等中文。
+- 手写 symbols 容易继续漏字，导致同一类“方框字”反复出现。
+
+本轮修正：
+
+1. 从 `applications/rehab_wifi_panel.c`、`applications/xiaozhi_ui_state.c`、`applications/voice_service.c`、`applications/wifi_config_service.c` 自动提取固定 UI/状态文案里的中文字符。
+2. 用提取出的 109 个不同中文字符和标点重新生成 `applications/rehab_wifi_font.c`。
+3. 保留 `#include "lvgl.h"`，避免 `lv_font_conv` 默认生成的 `lvgl/lvgl.h` 路径在当前工程里编译失败。
+
+验证：
+
+- `python -m SCons -j4` 构建通过，固件尺寸约 `text=1227156 data=81428 bss=4528904`。
+- 已用 `program_with_resources.bat` 烧录，M55 应用写入 `1310720 bytes`，WHD 资源写入 `466944 bytes`，两段 programming 均到 100%；末尾 KitProg3 acquire error 仍为既有现象。
+
+边界：
+
+- 这只覆盖固定 UI 文案。小智模型回复是任意中文，不能靠静态小字库完整覆盖所有汉字；后续若要完整显示长中文回复，应考虑外部字库/更大字库/回复摘要显示。官方小智主路径仍应以语音回复为主。
+
+## 21. 2026-06-13 小智动态回复缺字兜底
+
+### 现象
+
+- 固定 UI 文案补齐后，小智平台动态回复仍可能出现方框字。
+- 根因是模型回复不是固定集合，109 个源码抽取字无法覆盖任意聊天文本。
+
+### 当前处理
+
+1. `rehab_wifi_font` 保留源码抽取字库，同时把 `.fallback` 接到 LVGL 已启用的 `lv_font_simsun_16_cjk`。
+2. `xiaozhi_ui_state` 保存动态回复时按 UTF-8 边界截断，避免 160 字节缓冲区切断半个汉字后造成乱码/方框。
+3. 这样固定 UI 优先使用 18px Noto Sans SC，动态回复缺字时尽量回退到内置 CJK 字体。
+
+### 后续取舍
+
+- 如果要“任意中文长回复完全不缺字”，需要外置/完整中文字库或更大的生成字库，flash/text 体积会继续增加。
+- 当前策略优先保证小智状态、短回复、唤醒/思考/回答流程可读，并给后续小模型保留资源。
+
+## 22. 2026-06-13 小智音频协议先按 PCM 兼容
+
+### 现状
+
+- 官方参考例程的 WebSocket 二进制音频是 Opus。
+- 当前 M55/M33 这条链路暂时没有完整 Opus 编解码闭环。
+
+### 当前取舍
+
+1. M55 `hello` 先上报 `pcm_s16le`，不再假装是 Opus。
+2. 这样平台中转站如果按 PCM 处理，就能先把“说话 -> 平台 -> 回答”打通。
+3. 后续如果要严格回官方 Opus，再补完整编解码，而不是继续让协议字段和实际数据打架。
+
+## 23. 2026-06-15 小智连接当前卡在 WebSocket 传输层，不是 WiFi
+
+现场结论：
+
+1. WiFi 自动连接已稳定，复位后 `m55qa_status` 可见 `saved=1 auto=1 storage=0`、`wlan=1 ready=1`、`ip=192.168.3.32`。
+2. CM55 独立 TCP 探针可以连到 `106.55.62.122:8011`，说明 WiFi、DHCP、网关、基础 TCP 都不是当前主因。
+3. PC 侧使用同一个 URL 和 scoped token 做原始 WebSocket Upgrade，可以拿到 `HTTP/1.1 101 Switching Protocols`，说明平台 token、路径和云端服务有效。
+4. CM55 手写 socket WebSocket 客户端已经能走到握手接收阶段，但 `recv` 在当前 RT-Thread/lwIP socket 路径上会阻塞；`select()`、`fcntl(O_NONBLOCK)`、`MSG_DONTWAIT`、`SO_RCVTIMEO`、`FIONBIO`、直调 `lwip_recv` 都不够可靠。
+
+下一步建议：
+
+- 不要继续把小智问题回退到 WiFi 扫描/资源固件方向。
+- 改走 BSP 自带的 lwIP callback WebSocket 客户端：启用 `RT_LWIP_USING_WEBSOCKET`，把 `rt-thread/components/net/lwip/lwip-2.1.2/src/apps/websocket/*.c` 编进来，再用 `lwip/apps/websocket_client.h` 的 `wsock_connect/wsock_write` 包住现有 `applications/websocket_client.h` API。
+- 只有当 `m55qa_status` 显示 `xz_ws=1` 后，再继续唤醒词、PCM/Opus、扬声器回复闭环。
+
+## 24. 2026-06-15 WebSocket 已连通，当前阻塞转为音频格式/ASR
+
+现场结论：
+
+1. M55 编译通过并烧录后，WiFi 自动连接稳定：`saved=1 auto=1`、`wlan=1 ready=1`、`ip=192.168.3.32`。
+2. 小智 WebSocket 已能连上：`xz_ws=1 xz_stage=70 xz_errno=0`。
+3. `m55qa_capture_on` 已能触发 M55 麦克风采集，`m55qa_capture_off` 后可见上行统计，例如 `frames=2326 pcm_seq=2326 probe_lwip=387/744588`。
+4. 目前没有收到 `stt/llm/tts` 或二进制语音回复；`probe_posix=0/2` 只证明收到过握手/控制文本。
+
+本轮修正：
+
+1. M55 WebSocket header 和 hello 已统一为协议 v3：
+   - `Protocol-Version: 3`
+   - `hello.version=3`
+   - binary 使用 `[type=0,reserved=0,payload_size_be16,payload]`
+2. M55 `audio_params.format` 改为 `pcm_s16le`，因为当前真实 payload 是 16 kHz mono S16LE PCM，不再声明成 Opus。
+3. `WSMSG_MAXSIZE` 保持 `4096`，避免 60ms PCM 帧加 v3 头超过原来的 1420 限制。
+
+仍需注意：
+
+- 官方小智 ESP32 例程主路径是 Opus 编解码；当前 M55 还没有 Opus encoder，M33 也还没有 Opus decode->speaker 闭环。
+- PC 侧 `ClientWebSocket` 探针证明平台 hello 可以接受并回显 `pcm_s16le`，但这不等于平台 ASR 后端已经处理 PCM。
+- 下一步不要再回头查 WiFi 扫描/密码。应看平台 relay 日志确认 PCM 是否进入 ASR；若没有，就在 relay 侧做 PCM->ASR/Opus 转码，或在 M55/M33 补小型 Opus 编解码。
