@@ -772,3 +772,11 @@ reset command issued
 - 已用 Windows 语音合成生成清晰的 `16 kHz / mono / 16-bit` WAV，再把 PCM 按 v3 WebSocket 包发送到同一平台。
 - 结果仍然只收到 `listen start/stop`，没有 `stt/llm/tts`。这基本说明当前平台 relay 还没有把 `pcm_s16le` 二进制帧送入 ASR。
 - 继续方向应优先改 relay 侧 PCM ASR/转码，或回到官方 Opus 路线；不要再把时间花在现场杂音、WiFi、LVGL 上。
+
+后续复测：
+
+- relay 更新后，同一个 PC 合成语音 PCM 探针已返回完整链路：`stt -> llm -> chat -> tts start/stop`。
+- 这说明平台侧 `pcm_s16le` 兼容分支已经能进 ASR；后续仍需保留“官方 Opus 是长期主路径”的边界。
+- 板端复位后 M55 IPC 恢复，`m55qa_xz_reconnect` 返回 `cmd=1003 result=0`，`xz_ws=1 xz_stage=70`。
+- 板端再次 `capture_on/off` 后可见 `probe_lwip=386/742664`，说明 M55 采集和上行仍正常。
+- 因为现场没人说话，本轮板端无 STT 不能判为失败；需要有人靠近板端麦克风说清晰提示词再验收。
