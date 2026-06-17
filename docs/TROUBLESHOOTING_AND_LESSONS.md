@@ -5959,3 +5959,19 @@ ros2 topic list -t | grep /rehab_arm/model_state
 状态：
 
 - 已在主索引中补入外部平台仓库条目；无代码行为变更。
+
+### 稳定索引不要记录本机 checkout 状态
+
+现象：
+
+- `docs/AI_PROJECT_STRUCTURE_GITHUB.md` 是给所有后续 AI 使用的稳定入口，但一旦写入 `D:\...` 本机路径、某个目录当前是不是 Git checkout、某个 burn workspace 当前状态，就会把临时环境事实伪装成长期项目结构。
+- 后续 AI 容易把“这台机器今天的 checkout 状态”误读成 GitHub 仓库事实。
+
+解决：
+
+- 稳定索引只保留 GitHub remote、branch、文档入口、责任边界和正式/仿真/调试路线。
+- 本机完整路径、dirty worktree、烧录工作区、临时 checkout 状态放到 `docs/ai-handoffs/` 下的日期化 handoff。
+
+状态：
+
+- 2026-06-17 已把 M55/C8T6/main integration 本机 checkout 表移动到 `docs/ai-handoffs/adjacent-subsystem-checkouts-2026-06-17.md`，主索引只保留稳定 GitHub 分支入口。

@@ -53,6 +53,7 @@ Current XiaoZhi relay state from platform-side work:
 - `docs/AI_PROJECT_STRUCTURE_GITHUB.md` now includes a stable external platform repository section.
 - `docs/PROJECT_PROGRESS.md` records the repository identity and safety-boundary indexing update.
 - `docs/TROUBLESHOOTING_AND_LESSONS.md` records the lesson to verify platform repo path/remote/branch before documenting platform state.
+- Local checkout facts for adjacent subsystems now live in `docs/ai-handoffs/adjacent-subsystem-checkouts-2026-06-17.md` instead of the stable index.
 
 ## Verification
 

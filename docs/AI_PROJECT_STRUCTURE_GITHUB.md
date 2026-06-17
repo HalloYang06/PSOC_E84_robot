@@ -122,16 +122,17 @@ The repository uses branches as subsystem homes.
 | `wake-word-model` | Wake word model reference | M55 voice reference only |
 | `main` | Entry/early material | Not current development mainline |
 
-## 4.1 Verified Local Checkouts For Adjacent Subsystems
+## 4.1 Adjacent Git Branch Homes
 
-These are the local workspaces I have actually checked on this machine. They are listed here only as repository/branch/document-entry facts; live status and test progress belong in `docs/PROJECT_PROGRESS.md`.
+These entries are stable GitHub branch homes. Machine-local checkout paths and temporary build workspaces belong in `docs/ai-handoffs/`, not in this stable index.
 
-| Subsystem | Local path | GitHub remote | Current branch | Relationship to this repo |
-|---|---|---|---|---|
-| Main integration/docs | `D:\RT-ThreadStudio\workspace\_nanopi_rosnode_usbcan` | `https://github.com/ChillAmnesiac/Medical-Rehabilitation-Manipulator.git` | `feature/rehab-arm-ros2-architecture` | Current ROS2/NanoPi/MuJoCo/docs integration workspace and stable index home. |
-| M55 Git-managed firmware | `D:\RT-ThreadStudio\workspace\_m55_ref_repo` | `https://github.com/ChillAmnesiac/Medical-Rehabilitation-Manipulator.git` | `M55` | Formal Git home for M55 WiFi, LVGL, XiaoZhi/voice, model runtime, and M33/M55 result bridge work. |
-| M55 RT-Thread Studio burn workspace | `D:\RT-ThreadStudio\workspace\wifi` | Not a valid Git checkout in the current local state | None | Active build/burn workspace used for M55 hardware iteration and resource flashing. Sync code back to the `M55` branch checkout before committing. |
-| C8T6 firmware | `D:\RT-ThreadStudio\workspace\c8t6_github_C8T6` | `https://github.com/ChillAmnesiac/Medical-Rehabilitation-Manipulator.git` | `C8T6` | Formal Git home for STM32F103C8T6 sensor-node firmware and CAN transport. |
+| Subsystem | GitHub remote | Branch | Relationship to this repo |
+|---|---|---|---|
+| Main integration/docs | `https://github.com/ChillAmnesiac/Medical-Rehabilitation-Manipulator.git` | `feature/rehab-arm-ros2-architecture` | Current ROS2/NanoPi/MuJoCo/docs integration branch and stable index home. |
+| M55 firmware | `https://github.com/ChillAmnesiac/Medical-Rehabilitation-Manipulator.git` | `M55` | Formal Git branch for M55 WiFi, voice/XiaoZhi, model runtime, and M33/M55 result bridge work. |
+| C8T6 firmware | `https://github.com/ChillAmnesiac/Medical-Rehabilitation-Manipulator.git` | `C8T6` | Formal Git branch for STM32F103C8T6 sensor-node firmware and CAN transport. |
+
+For local checkout facts verified on 2026-06-17, see `docs/ai-handoffs/adjacent-subsystem-checkouts-2026-06-17.md`.
 
 ## 4.2 External Platform / Command Center Repository
 
@@ -139,13 +140,14 @@ The current server platform and device command-center work is in a separate AI c
 
 | Item | Verified value |
 |---|---|
-| Local path | `D:\ai-collab-product` |
 | GitHub remote | `https://github.com/wenjunyong666/ai-.git` |
 | Current branch | `ai/game-loop-core` |
 | Relationship to this repo | External AI collaboration platform for command-center UI, model relay, XiaoZhi cloud relay, telemetry display, and VLA context/dry-run integration. It consumes this repo's protocols and safety boundaries; it is not the ROS2/NanoPi/M33 motion mainline. |
 | Platform code entry | `apps/api/app/modules/rehab_arm/` in the platform repo |
 | Platform docs checked | `docs/medical-rehab-arm-platform-development-plan.md`, `docs/rehab-arm-nanopi-vla-mujoco-integration.md` in the platform repo |
 | Safety boundary | Platform/App/M55/VLA outputs are suggestions, language context, training advice, or dry-run candidates only. They must not emit CAN frames, motor current, motor torque, raw motor position/velocity, direct motor commands, or M33 safety overrides. Real execution remains `JointTrajectory -> NanoPi -> M33 -> motor`. |
+
+For the latest verified local platform checkout path, see `docs/ai-handoffs/platform-command-center-relay-2026-06-17.md`.
 
 ## 5. Verified Mainline Routes I Have Checked
 

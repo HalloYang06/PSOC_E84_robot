@@ -3027,3 +3027,12 @@
 - Updated `docs/AI_PROJECT_STRUCTURE_GITHUB.md` with a stable local-checkout table for these confirmed paths and responsibilities.
 - Safety: no M33/NanoPi/Linux mainline conclusions changed. M55/App/platform/C8T6 remain adjacent inputs, displays, or suggestions; real execution remains `JointTrajectory -> NanoPi -> M33 -> motor`.
 - Validation: ran `git status --short --branch`, `git remote -v`, and `git branch --show-current` on the confirmed repos. Documentation-only change; no code behavior changed.
+
+### 2026-06-17 - Stable index slimmed; local checkout facts moved to handoff
+
+- Reason: the stable project index was starting to mix long-lived GitHub branch facts with machine-local checkout state, which makes future agent handoff noisier than it should be.
+- Updated `docs/AI_PROJECT_STRUCTURE_GITHUB.md` so it keeps only stable branch homes and the external platform repository relationship.
+- Moved machine-local checkout facts, including the M55 burn workspace state, into `docs/ai-handoffs/adjacent-subsystem-checkouts-2026-06-17.md`.
+- Kept the platform handoff as the place for verified platform repo local path and current branch details.
+- Safety: no mainline, protocol, or execution boundaries changed.
+- Validation: documentation-only cleanup; no code behavior changed.
