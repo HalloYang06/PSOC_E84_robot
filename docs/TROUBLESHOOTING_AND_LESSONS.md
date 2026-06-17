@@ -6076,3 +6076,45 @@ ros2 topic list -t | grep /rehab_arm/model_state
 状态：
 
 - 2026-06-17 已修复并验证：云端 alignment 返回 `ok=true`，临时项目/设备/token 的 WebSocket QA 收到 `stt`、`llm`、`chat`、`tts start`、大量二进制 TTS 音频帧、`tts stop`、`listen stop`，云端日志无新的 traceback。
+
+### M55 XiaoZhi 收到 TTS 帧但 `pcm_reject` 增长
+
+现象：
+
+- M55 侧 `m55qa_status` 显示网络和 WebSocket 已通：`xz_ws=1`、`xz_token=1`，录音会进入 `xz_listening`。
+- 模型回复后没有正常扬声器输出，状态计数类似 `tts_fwd=0/0`、`tts_fail=1`、`pcm_reject=1`。
+
+根因：
+
+- 当前云端 XiaoZhi TTS 二进制帧实际是 60 ms PCM-like 帧。协议 v1 是 `1920` 字节 payload；协议 v3 是 `00 00 07 80` 头加 `1920` 字节 payload。
+- M55 端原始 PCM 判定要求 `peak > 8`。TTS 的首个 60 ms 帧可能接近静音，导致整个回放链路在第一帧就被当成“不是 raw PCM”拒绝。
+
+解决：
+
+- M55 commit `928ac48` 修改 `applications/voice_service.c`：精确 60 ms PCM 帧或其整数倍允许低幅/静音通过；非标准长度仍保留幅度检查，避免把真正的 Opus/随机二进制直接当 PCM 播放。
+- 如果后续平台真正切到官方 Opus 帧，仍应优先走 `xiaozhi_opus_decoder_decode()`，只有 Opus 解码失败且数据看起来像 PCM 时才走 PCM fallback。
+
+状态：
+
+- 2026-06-18 已提交并推送 M55 分支，且同步到 `D:\RT-ThreadStudio\workspace\wifi` 烧录工作区。尚未完成本机全编/烧录/实机听感 QA。
+
+### M55 本机 SCons 构建可能卡在不完整 ARM GCC
+
+现象：
+
+- `python -m SCons -j4` 使用默认 `rtconfig.py` 会报 `the toolchain path (C:\Users\XXYYZZ) is not exist`。
+- 手动设置 `RTT_EXEC_PATH=D:\arm-gcc\bin` 后能找到 `arm-none-eabi-gcc.exe`/`g++.exe`，但编译失败：`cannot execute 'cc1plus'` 或 `cannot execute 'cc1'`。
+
+根因：
+
+- `rtconfig.py` 里的 GCC 路径仍是占位符。
+- 本机 `D:\arm-gcc` 只发现 `bin`、`include`、`lib`、`arm-none-eabi`，没有 GCC 需要的 `libexec/.../cc1.exe` 和 `cc1plus.exe`，疑似工具链安装不完整或不是 RT-Thread Studio 实际使用的完整路径。
+
+解决：
+
+- 不要把 `D:\arm-gcc\bin` 当作已验证完整 toolchain。优先从 RT-Thread Studio 当前工程环境或完整 GNU Arm Embedded 安装目录读取 `RTT_EXEC_PATH`。
+- 验证命令应能找到 `cc1.exe` 和 `cc1plus.exe`，再运行 `python -m SCons -j4`。
+
+状态：
+
+- 2026-06-18 未解决。M55 代码已推送，但本机 CLI 构建未通过；需要完整工具链或从 RT-Thread Studio 内部构建后再烧录 QA。

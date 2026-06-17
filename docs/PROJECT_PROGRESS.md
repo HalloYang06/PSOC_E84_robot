@@ -3098,3 +3098,14 @@
 - Boundary: this verifies the server platform WebSocket/model/TTS loop and the user-facing event sequence. It still does not prove physical M55 microphone capture, wake-word firmware, speaker playback quality, or official Opus decode on the board.
 - Safety: XiaoZhi/model relay remains speech state, ASR/LLM/TTS feedback, chat/classification, and possible VLA language context only. It does not bypass M33 or issue motor/CAN control.
 - Next step: connect the M55 client to this verified cloud loop with the board's wake-word path (`你好，小瑞`/XiaoRui path), consume `ui_state` for LVGL animation, and verify board speaker playback quality without filling M55 model/runtime resources.
+
+### 2026-06-18 - M55 XiaoZhi TTS PCM frame gate adjusted
+
+- Completed: M55 branch `M55` was pushed with commit `928ac48` (`fix: accept silent xiaozhi tts pcm frames`).
+- Completed: the same `applications/voice_service.c` update was synced into the non-Git burn workspace `D:\RT-ThreadStudio\workspace\wifi\applications\voice_service.c`.
+- Finding: recent M55 serial QA logs showed WiFi and XiaoZhi WebSocket were connected (`xz_ws=1`, `xz_token=1`), but TTS playback counters stayed at `tts_fwd=0/0` with `tts_fail=1` and `pcm_reject=1`. This points to the TTS audio gate rather than WiFi/cloud connectivity.
+- Cloud probe: fresh WebSocket probes against `106.55.62.122:8011` showed the current cloud TTS binary frames are PCM-like 60 ms chunks: protocol v1 returns `1920` byte frames; protocol v3 returns `1924` byte frames with a `00 00 07 80` length header plus `1920` byte payload.
+- Fix: M55 PCM detection now accepts exact 60 ms PCM chunks even when the first frame is near-silent, while keeping the old amplitude sanity check for non-frame-sized data to avoid replaying arbitrary binary as speaker noise.
+- Validation: `_m55_ref_repo` commit pushed to GitHub; file sync to `wifi` verified with `fc.exe` showing no differences.
+- Failed or unverified: local SCons build in `D:\RT-ThreadStudio\workspace\wifi` could not complete because the discovered GCC path `D:\arm-gcc\bin` lacks `cc1.exe`/`cc1plus.exe`; using the default `rtconfig.py` path still points to the placeholder `C:\Users\XXYYZZ`.
+- Next step: rebuild with a complete ARM GCC toolchain or RT-Thread Studio's configured environment, flash M55, then rerun board QA and expect `tts_fwd` to increase and `pcm_reject` to stop increasing when cloud TTS frames arrive.
