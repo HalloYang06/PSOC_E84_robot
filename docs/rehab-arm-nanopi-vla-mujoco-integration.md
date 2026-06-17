@@ -412,6 +412,13 @@ The platform should expose the model and simulation results as evidence. It shou
 
 ## 8. Progress Notes
 
+### 2026-06-17 - XiaoZhi UI State Contract Added
+
+- Completed: the platform XiaoZhi session snapshot now exposes `ui_state` and `last_error` so the front end/LVGL can render `listening`, `wake_detected`, `thinking`, `speaking`, `idle`, and `error` without guessing from the last event type.
+- Completed: `ui_state` is driven by the merged `xiaozhi_session_v1` snapshot, not by a single TTS bookkeeping record.
+- Validation: XiaoZhi-specific backend tests still pass after the state contract update.
+- Boundary: this only improves observability and user feedback; it does not change the official XiaoZhi audio path or any motion authority.
+
 ### 2026-06-17 - Stereo RGB + Pretrained YOLO Framework Added
 
 - Completed: added a `stereo_rgb_yolo_context_v1` perception-only contract for two RGB cameras and pretrained YOLO output.
