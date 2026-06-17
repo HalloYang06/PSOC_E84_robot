@@ -3109,3 +3109,11 @@
 - Validation: `_m55_ref_repo` commit pushed to GitHub; file sync to `wifi` verified with `fc.exe` showing no differences.
 - Failed or unverified: local SCons build in `D:\RT-ThreadStudio\workspace\wifi` could not complete because the discovered GCC path `D:\arm-gcc\bin` lacks `cc1.exe`/`cc1plus.exe`; using the default `rtconfig.py` path still points to the placeholder `C:\Users\XXYYZZ`.
 - Next step: rebuild with a complete ARM GCC toolchain or RT-Thread Studio's configured environment, flash M55, then rerun board QA and expect `tts_fwd` to increase and `pcm_reject` to stop increasing when cloud TTS frames arrive.
+
+### 2026-06-18 - M55 WiFi save path narrowed and burn workspace reflash succeeded
+
+- Completed: the M55 WiFi configuration flow was rechecked in the burn workspace `D:\RT-ThreadStudio\workspace\wifi`; the save path was narrowed away from the FAL branch and kept on the DFS file fallback so `m55qa_wifi_save` no longer hard-locks the board.
+- Completed: WiFi credential state was exercised with SSID `B131` and password `tudao888`; the service path kept returning ACKs instead of freezing at save time.
+- Validation: the workspace was recompiled and re-burned successfully after the save-path adjustment.
+- Boundary: this only stabilizes WiFi persistence and restores the local QA loop. It does not yet prove the full XiaoZhi voice loop or LVGL UI are finished.
+- Next step: use the now-stable WiFi save/autoconnect baseline to keep pushing the XiaoZhi speaker QA, then fold the verified state back into the formal M55 repo and its docs.

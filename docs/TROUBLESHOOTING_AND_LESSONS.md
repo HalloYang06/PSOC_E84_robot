@@ -6098,6 +6098,37 @@ ros2 topic list -t | grep /rehab_arm/model_state
 
 - 2026-06-18 已提交并推送 M55 分支，且同步到 `D:\RT-ThreadStudio\workspace\wifi` 烧录工作区。尚未完成本机全编/烧录/实机听感 QA。
 
+### M55 WiFi 保存先避开 FAL，保存卡死时先走 DFS 文件落盘
+
+现象：
+
+- 在 `m55qa_wifi_ssid` / `m55qa_wifi_password` 能正常回 ACK 的情况下，执行 `m55qa_wifi_save` 仍可能把 shell 卡住，后续串口状态不再稳定。
+- 这类卡死会让人误以为是 WiFi 扫描、连接或密码本身有问题。
+
+环境：
+
+- M55 烧录/QA 工作区：`D:\RT-ThreadStudio\workspace\wifi`
+- 代码来源：`D:\RT-ThreadStudio\workspace\_m55_ref_repo`
+
+根因：
+
+- `wifi_config_service.c` 同时保留了 FAL 持久化和 DFS 文件持久化两条路。
+- 当前板上 FAL 保存链路存在风险，容易把 `m55qa_wifi_save` 挂死在擦写/保存阶段。
+
+解决：
+
+- 临时把保存优先级收窄到 DFS 文件 fallback，先保住 `m55qa_wifi_save` 可返回、可复位、可再连。
+- WiFi 扫描和连接先只验证“能连上、能保存、能自动连”，不要急着把 FAL 当成唯一真相。
+
+技巧：
+
+- 看到“保存会死”时，先把持久化和连接问题拆开，不要继续扩大到 LVGL 或 XiaoZhi。
+- 先让 `m55qa_status` 能稳定读回，再谈后续语音和 UI。
+
+状态：
+
+- 2026-06-18 已作为当前临时解法使用；后续若要恢复 FAL 持久化，必须单独做擦写链路验证。
+
 ### M55 本机 SCons 构建可能卡在不完整 ARM GCC
 
 现象：
