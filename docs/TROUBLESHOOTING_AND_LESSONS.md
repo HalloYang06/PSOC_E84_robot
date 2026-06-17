@@ -6017,3 +6017,19 @@ ros2 topic list -t | grep /rehab_arm/model_state
 状态：
 
 - 2026-06-17 已修正并验证：云端 API/Web proxy health 都报告 `build_sha=9567e960`，alignment check 返回 `ok=true`。
+
+### XiaoZhi UI 也不能从最后一条 event 反推用户状态
+
+现象：
+
+- 后端已经写入 `xiaozhi_session_v1.ui_state`，但 Web/LVGL 如果仍显示最后一条 `event` 或 `kind`，用户会看到“等待连接”“一直思考”之类的误导状态。
+- TTS 记账、listen_stop、reply、disconnect 等事件的到达顺序不等于当前可交互状态。
+
+解决：
+
+- 平台 Web command-center 已改为优先读取 `xiaozhi_session_v1.ui_state` 和 `last_error`；`event`/`kind` 只作为输入输出流细节。
+- LVGL 侧也应按同一 contract 绑定动画：`listening` 显示录音、`wake_detected` 显示唤醒确认、`thinking` 显示思考、`speaking` 显示播报、`idle` 显示待机、`error` 显示错误。
+
+状态：
+
+- 2026-06-17 前端代码已更新，`npm run build:web` 已通过；等待云端部署和真实板端 XiaoZhi WebSocket QA。

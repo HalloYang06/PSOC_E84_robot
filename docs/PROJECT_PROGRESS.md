@@ -3065,3 +3065,13 @@
 - Operational note: the cloud worktree had local dirty files before deployment; they were saved in a recoverable git stash named `codex-cloud-predeploy-2026-06-17` before the fast-forward.
 - Observed but not fixed here: cloud API logs still showed unrelated runner/database errors such as missing `runners` table for some runner endpoints. XiaoZhi deployment health itself passed.
 - Next step: run real XiaoZhi WebSocket QA against the cloud build and board/provider config, then bind LVGL animation and error display to `xiaozhi_session_v1.ui_state` and `last_error`.
+
+### 2026-06-17 - Platform XiaoZhi command-center UI bound to session ui_state
+
+- Completed: platform repo `D:\ai-collab-product`, branch `ai/game-loop-core`, commit `07bcf922` (`feat: bind XiaoZhi panel to UI state`) updated `apps/web/app/projects/[id]/rehab-arm-control/rehab-arm-control-client.tsx` so the XiaoZhi panel uses `xiaozhi_session_v1.ui_state` and `last_error` as the primary user-facing state contract.
+- Completed: added a compact XiaoZhi state row in `apps/web/app/projects/[id]/rehab-arm-control/rehab-arm-control.module.css` for `listening`, `wake_detected`, `thinking`, `speaking`, `idle`, `error`, and offline fallback display.
+- Decision: web command-center and later LVGL UI should bind animations and status text to `ui_state`; raw `event`/`kind` remain stream details only.
+- Boundary: this is platform Web UI observability. It does not prove physical M55 microphone, wake word, speaker playback, or official Opus decode quality on the board.
+- Validation: from `D:\ai-collab-product`, `npm run build:web` passed. Next.js built `/projects/[id]/rehab-arm-control` successfully.
+- Worktree note: the platform target frontend files were already dirty before this pass; this step only intentionally advanced the XiaoZhi `ui_state` display contract in those files.
+- Next step: deploy this platform UI build to cloud and run XiaoZhi WebSocket QA with real board audio/provider config.
