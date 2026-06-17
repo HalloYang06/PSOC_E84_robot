@@ -92,6 +92,26 @@ Additional checks:
 - Mobile 390x900: no horizontal overflow; both Three.js canvases have stable dimensions.
 - Browser console: no application errors; only a Next.js Fast Refresh warning during local CSS editing.
 
+## Display Redesign QA - 2026-06-18
+
+The user reported the command-center frontend still looked poor. The latest pass treats the route as a presentation-grade clinical command center rather than a generic dashboard:
+
+- Dark left device index, compact top status row, V/L/A signal strip, central URDF stage, and right safety/model-relay command tower.
+- The V/L/A strip is now a compact signal track so the URDF stage appears sooner and remains the visual focus.
+- The URDF stage keeps a dark high-contrast canvas; the safety/estop rail stays visible on desktop.
+- Mobile keeps a single-column flow with no horizontal overflow and stable Three.js canvas sizes.
+
+Additional screenshots:
+
+- `docs/screenshots/rehab-arm-redesign-qa/final-desktop-1600.png`
+- `docs/screenshots/rehab-arm-redesign-qa/final-mobile-390.png`
+
+Additional checks:
+
+- Desktop 1600x1000: no horizontal overflow; URDF canvas visible at about 813x600.
+- Mobile 390x900: no horizontal overflow; URDF canvas visible at about 360x380.
+- `npx --workspace apps/web tsc --noEmit` passes.
+
 ## Remaining UX Work
 
 - The cloud/demo project with real device data should be re-QA'd after deploy because local `proj_rehab_arm` has no NanoPi device rows.
