@@ -2999,3 +2999,11 @@
 - README now points to the AI structure and documentation cleanup audit.
 - Cleanup decision: removed only the local untracked duplicate draft `docs/MUJOCO_QUICKSTART_JOINT_TRAJECTORY.md`, because `docs/MUJOCO_MOVE_MOTOR_GUIDE.md` now contains the current validated MuJoCo commands. Existing tracked historical docs were not deleted; they are listed for archive review first.
 - Validation: no code behavior changed in this documentation audit.
+
+### 2026-06-17 - AI project index clarified as stable document map
+
+- Reason: user clarified that `docs/AI_PROJECT_STRUCTURE_GITHUB.md` should be a long-lived total index for future AI agents, not a task/status summary.
+- Updated `docs/AI_PROJECT_STRUCTURE_GITHUB.md` to define its own update policy: change only when repository structure, branch ownership, document map, skill map, or operating rules change.
+- Added stable sections for document update policy, recommended Codex skills, branch ownership, integration-branch structure, subsystem document map, code map, current system boundary, hardware naming rules, and what must not be written into this file.
+- Clarified that live task state belongs in `docs/PROJECT_PROGRESS.md`, reusable pitfalls in `docs/TROUBLESHOOTING_AND_LESSONS.md`, user workflows in `docs/USER_MANUAL.md`, and task handoffs in `docs/ai-handoffs/`.
+- Validation: documentation-only change; no code behavior changed.

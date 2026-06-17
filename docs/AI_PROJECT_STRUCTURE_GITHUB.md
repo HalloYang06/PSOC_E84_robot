@@ -1,304 +1,291 @@
-# AI 接手项目结构总览
+# AI Project Index
 
-本文给后续 AI 或协作者快速接手机械臂项目使用。所有路径都使用 GitHub 分支和仓库内路径，不使用本地电脑路径。
+This document is the stable entry index for AI agents working on the Medical Rehabilitation Manipulator repository.
 
-## 1. 仓库
+It should not be used as a daily progress log. Update it only when the repository structure, branch ownership, document map, or agent operating rules change.
 
-GitHub 仓库：
+Repository:
 
 ```text
 https://github.com/ChillAmnesiac/Medical-Rehabilitation-Manipulator
 ```
 
-当前综合主线分支：
+## 1. How To Use This Index
+
+Every AI agent should start here, then follow the document map for the subsystem it is touching.
+
+Read order for any task:
+
+1. `README.md`
+2. `docs/AI_PROJECT_STRUCTURE_GITHUB.md`
+3. `docs/CURRENT_MAINLINES.md`
+4. The subsystem-specific documents listed below
+5. `docs/PROJECT_PROGRESS.md` for latest state
+6. `docs/TROUBLESHOOTING_AND_LESSONS.md` for known pitfalls
+
+Before changing code or docs, classify the task:
+
+```text
+mainline / shadow-sim / dry-run / bench-debug / offline-demo / side-channel
+```
+
+If the classification is unclear, default to read-only, `shadow-sim`, or `dry-run`.
+
+## 2. Document Update Policy
+
+### Update On Every Relevant Task
+
+These documents are living records and should be updated whenever the task changes their content.
+
+| Path | Update when |
+|---|---|
+| `docs/PROJECT_PROGRESS.md` | Any meaningful task changes state, validates hardware/software, adds docs, changes architecture, or discovers a blocker |
+| `docs/TROUBLESHOOTING_AND_LESSONS.md` | Any debugging, failed command, hardware/CAN/ROS issue, confusing behavior, workaround, or reusable lesson |
+| `docs/USER_MANUAL.md` | User-facing commands, workflows, setup, safety notes, validation steps, or expected outputs change |
+| `docs/CURRENT_MAINLINES.md` | Current mainline boundaries, subsystem responsibilities, or active/inactive branch meaning changes |
+| `docs/MAINLINE_DEVELOPMENT_GUIDE.md` | The recommended development sequence or mainline workflow changes |
+
+### Update Only For Architecture Or Contract Changes
+
+These documents should remain relatively stable.
+
+| Path | Update when |
+|---|---|
+| `docs/REHAB_ARM_SYSTEM_ARCHITECTURE.md` | System architecture, ownership boundary, or safety authority changes |
+| `docs/PSOC_CAN_PROTOCOL_V1.md` | M33/PSoC CAN protocol changes |
+| `docs/MOTOR_PROTOCOLS.md` | Motor protocol, unit, scaling, frame format, or drive semantics change |
+| `docs/M33_SAFETY_INPUT_MAPPING.md` | M33 safety inputs, pre-arm rules, or safe/confirmed semantics change |
+| `docs/M33_M55_IPC_BLE_FOUNDATION.md` | M33/M55 IPC or BLE foundation changes |
+| `docs/M33_M55_MODEL_INPUT_PROTOCOL_V1.md` | M33-to-M55 model input contract changes |
+| `docs/M55_MODEL_RESULT_PROTOCOL_V1.md` | M55 model result format or semantics change |
+| `docs/PATIENT_DEVICE_PROFILE_PROTOCOL_V1.md` | Patient/device profile schema changes |
+| `docs/COMMAND_CENTER_APP_PROTOCOL_V1.md` | App/command-center API contract changes |
+| `docs/SERVER_SYNC_API_DRAFT.md` | Server sync API changes |
+
+### Stable Index Documents
+
+These should rarely change.
+
+| Path | Update when |
+|---|---|
+| `docs/AI_PROJECT_STRUCTURE_GITHUB.md` | Branch map, document index, skill map, or repository organization changes |
+| `docs/DOCUMENTATION_CLEANUP_AUDIT.md` | Documentation cleanup policy or archive/delete recommendations change |
+| `README.md` | Top-level project entry or required reading list changes |
+
+## 3. Useful Skills For AI Agents
+
+Use these skills when available in the Codex environment. If a skill is unavailable, follow the same intent manually.
+
+| Skill | Use for |
+|---|---|
+| `rehab-arm-task-closeout` | End-of-task updates, commit, and push discipline for this project |
+| `rehab-arm-progress-keeper` | Keeping `PROJECT_PROGRESS.md` and `TROUBLESHOOTING_AND_LESSONS.md` current |
+| `embedded-can-debug` | CAN bring-up, no heartbeat, no ACK, motor telemetry, SocketCAN, PSoC, NanoPi, STM32/C8T6 debugging |
+| `stm32-keil-pyocd-motor-debug` | STM32/Keil/pyOCD motor or firmware bench debugging when applicable |
+| `documentation-and-adrs` | Architecture decisions, contract docs, lasting design rationale |
+| `debugging-and-error-recovery` | Systematic root-cause debugging |
+| `test-driven-development` | Code changes that need tests or regression protection |
+| `source-driven-development` | Framework/library changes that should be grounded in official docs |
+| `code-review-and-quality` | Reviewing code or docs before merging |
+| `handoff-path-closeout` / `handoff-path-output` | When explicit handoff paths are required |
+
+Project-specific closeout rule:
+
+```text
+Update durable docs -> run relevant validation -> commit -> push.
+```
+
+Do not rely on chat history as the source of truth.
+
+## 4. Branch Ownership Map
+
+The repository uses branches as subsystem homes.
+
+| Branch | Role | Primary documents |
+|---|---|---|
+| `feature/rehab-arm-ros2-architecture` | ROS2, NanoPi bridge, MuJoCo, docs, protocols, dry-run, profile, main integration | This document, `CURRENT_MAINLINES.md`, `REHAB_ARM_SYSTEM_ARCHITECTURE.md`, `USER_MANUAL.md` |
+| `M33` | Infineon M33 firmware, CAN master, safety state machine, motor control, M33/M55 IPC, BLE near-field entry | `PSOC_CAN_PROTOCOL_V1.md`, `M33_SAFETY_INPUT_MAPPING.md`, `M33_M55_IPC_BLE_FOUNDATION.md` |
+| `M55` | Infineon M55 WiFi, voice/audio, model runtime, model result bridge | `M55_MODEL_DEPLOYMENT_GUIDE.md`, `M55_MODEL_RESULT_PROTOCOL_V1.md`, `VOICE_WAKE_TTS_PORTABILITY_GUIDE.md` |
+| `C8T6` | STM32F103C8T6 sensor node, CAN transport, EMG/IMU/health sensing | `PSOC_CAN_PROTOCOL_V1.md`, `TROUBLESHOOTING_AND_LESSONS.md` |
+| `APP` | Android App, BLE UI, 3D arm view, local patient/operator interaction | `COMMAND_CENTER_APP_PROTOCOL_V1.md`, `APP_CONNECTION_GUIDE.md` |
+| `nanopi-sdk` | NanoPi low-level CAN/system bring-up reference | `NANOPI_CAN_MASTER_USAGE.md`, `PRODUCT_AUTOSTART_GUIDE.md` |
+| `nanopi-rosnode-usbcan` / `NanoPi_ROSNode` | Early NanoPi/ROS side branches | Historical reference only |
+| `ROS_VLA_WebSocket` | Early ROS/VLA/WebSocket branch | Historical reference only |
+| `PCB` | PCB/hardware reference | Hardware reference only |
+| `ai` | Early platform/AI reference | Historical platform reference |
+| `wake-word-model` | Wake word model reference | M55 voice reference only |
+| `main` | Entry/early material | Not current development mainline |
+
+## 5. Repository Structure On The Integration Branch
+
+Branch:
 
 ```text
 feature/rehab-arm-ros2-architecture
 ```
 
-代码不是单一目录承载全部功能，而是同一个 GitHub 仓库按分支拆分子系统。
+Key paths:
 
-## 2. 分支结构
+| Path | Purpose |
+|---|---|
+| `README.md` | Repository entry |
+| `docs/` | Architecture, protocols, progress, troubleshooting, manuals, handoff docs |
+| `docs/assets/` | Images and visual reference assets used by docs |
+| `docs/ai-handoffs/` | Historical handoff documents |
+| `rehab_arm_ros2_ws/` | Main ROS2 workspace |
+| `rehab_arm_ros2_ws/src/rehab_arm_description/` | URDF, robot schema, calibration/config |
+| `rehab_arm_ros2_ws/src/rehab_arm_sim_mujoco/` | MuJoCo simulation, backend, models, launch files |
+| `rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/` | NanoPi/PSoC/M33 ROS2 bridge, parsers, profile tools, dry-run gates |
+| `rehab_arm_ros2_ws/src/rehab_arm_control/` | Trajectory utilities and placeholder planner nodes |
+| `rehab_arm_ros2_ws/src/rehab_arm_bringup/` | Launch/integration entry points |
+| `launch/` | Top-level launch or system integration helpers |
+| `scripts/` | Utility scripts when present |
 
-| 分支 | 职责 | 接手时先看 |
-|---|---|---|
-| `feature/rehab-arm-ros2-architecture` | ROS2、NanoPi bridge、MuJoCo、主线文档、协议、dry-run、profile | `README.md`、`docs/AI_PROJECT_STRUCTURE_GITHUB.md`、`docs/CURRENT_MAINLINES.md` |
-| `M33` | Infineon M33 固件、CAN 主站、安全状态机、电机控制、M33/M55 IPC、BLE 近端入口 | M33 control/safety/CAN/M55 bridge 相关源码和 README |
-| `M55` | Infineon M55 WiFi、语音、音频、小模型、M33/M55 结果桥 | M55 model/voice/audio/WiFi 相关源码和 README |
-| `C8T6` | STM32F103C8T6 传感节点、CAN transport、传感采集 | CAN 协议、传感 app service、HAL/Keil 工程 |
-| `APP` | Android App、BLE 交互、3D 手臂界面、用户端状态显示 | Android app、BLE protocol、UI |
-| `nanopi-sdk` | NanoPi 底层 CAN bring-up 和系统脚本参考 | SocketCAN、MCP2518FD、系统服务脚本 |
-| `nanopi-rosnode-usbcan` / `NanoPi_ROSNode` | 早期 NanoPi/ROS 旁线 | 只作历史参考 |
-| `ROS_VLA_WebSocket` | 早期 ROS/VLA/WebSocket 方向 | 只作历史参考 |
-| `PCB` | PCB/硬件资料 | 硬件参考 |
-| `ai` | 平台/AI 早期资料 | 只作平台方向参考 |
-| `wake-word-model` | 唤醒词模型资料 | 只作 M55 语音参考 |
-| `main` | 入口/早期资料 | 不作为当前开发主线 |
+## 6. Subsystem Document Map
 
-## 3. 当前唯一真机运动主线
+### Project And Architecture
 
-真实运动只能走：
+| Path | Purpose |
+|---|---|
+| `docs/CURRENT_PROJECT_BRIEFING.md` | Human-readable project briefing |
+| `docs/CURRENT_MAINLINES.md` | Current mainlines, side branches, and classification rules |
+| `docs/MAINLINE_DEVELOPMENT_GUIDE.md` | How to continue mainline development |
+| `docs/REHAB_ARM_SYSTEM_ARCHITECTURE.md` | System architecture baseline |
+| `docs/REHAB_FUNCTIONAL_ROADMAP.md` | Functional roadmap |
+| `docs/DOCUMENTATION_CLEANUP_AUDIT.md` | Documentation cleanup and archive plan |
+
+### Progress, Troubleshooting, Handoff
+
+| Path | Purpose |
+|---|---|
+| `docs/PROJECT_PROGRESS.md` | Latest task history and validation state |
+| `docs/TROUBLESHOOTING_AND_LESSONS.md` | Pitfalls, root causes, fixes, reusable lessons |
+| `docs/USER_MANUAL.md` | User-facing workflows and commands |
+| `docs/ai-handoffs/` | Historical handoff notes |
+
+### CAN, M33, M55, C8T6
+
+| Path | Purpose |
+|---|---|
+| `docs/PSOC_CAN_PROTOCOL_V1.md` | PSoC/M33 CAN protocol |
+| `docs/MOTOR_PROTOCOLS.md` | Motor protocol and unit references |
+| `docs/M33_0X320_LOGGER_GUIDE.md` | M33 `0x320` logging/debug guide |
+| `docs/M33_SAFETY_INPUT_MAPPING.md` | M33 physical/code safety inputs |
+| `docs/M33_M55_IPC_BLE_FOUNDATION.md` | M33/M55 IPC and BLE foundation |
+| `docs/M33_M55_MODEL_INPUT_PROTOCOL_V1.md` | M33-to-M55 model input contract |
+| `docs/M55_MODEL_RESULT_PROTOCOL_V1.md` | M55 result output contract |
+| `docs/M55_MODEL_DEPLOYMENT_GUIDE.md` | M55 model deployment |
+| `docs/VOICE_WAKE_TTS_PORTABILITY_GUIDE.md` | Voice/wake/TTS portability |
+
+### NanoPi, ROS2, MuJoCo
+
+| Path | Purpose |
+|---|---|
+| `docs/M33_NANOPI_MUJOCO_POWERON_TEST_GUIDE.md` | Power-on validation from M33/NanoPi to MuJoCo |
+| `docs/MUJOCO_MOVE_MOTOR_GUIDE.md` | MuJoCo-only movement and path-planning smoke tests |
+| `docs/MUJOCO_URDF_GAP_AND_STEP_GUIDE.md` | URDF/MuJoCo gap and next steps |
+| `docs/MUJOCO_NANOPI_INTEGRATION_PREP.md` | Historical MuJoCo/NanoPi integration prep |
+| `docs/MEDICAL_ARM_MUJOCO_LEARNING_GUIDE.md` | Historical MuJoCo learning/reference guide |
+| `docs/SIM_HOST_NANOPI_NETWORK_GUIDE.md` | Sim host and NanoPi ROS2 networking |
+| `docs/PRODUCT_AUTOSTART_GUIDE.md` | Product/research autostart services |
+| `docs/NANOPI_CAN_MASTER_USAGE.md` | NanoPi CAN debug tool usage |
+| `docs/TESTING_GUIDE.md` | Testing guide |
+
+### App, Platform, Server, Profile
+
+| Path | Purpose |
+|---|---|
+| `docs/COMMAND_CENTER_APP_PROTOCOL_V1.md` | Command center and App protocol |
+| `docs/PATIENT_DEVICE_PROFILE_PROTOCOL_V1.md` | Patient/device profile protocol |
+| `docs/APP_CONNECTION_GUIDE.md` | App connection guide |
+| `docs/SERVER_SYNC_API_DRAFT.md` | Server sync API draft |
+| `docs/PLATFORM_AI_PROMPT_VLA_LVA_HTTP.md` | Platform/VLA prompt/API notes |
+| `docs/HTTP_BRIDGE_README.md` | Historical HTTP bridge |
+| `docs/OPENCLAW_BRIDGE_README.md` | Historical OpenClaw bridge |
+
+## 7. Code Map On The Integration Branch
+
+### Robot Description
+
+| Path | Purpose |
+|---|---|
+| `rehab_arm_ros2_ws/src/rehab_arm_description/urdf/rehab_arm.urdf` | Base URDF |
+| `rehab_arm_ros2_ws/src/rehab_arm_description/config/medical_arm_6dof_schema.yaml` | 6DOF joint/motor schema |
+| `rehab_arm_ros2_ws/src/rehab_arm_description/config/medical_arm_6dof_temporary_calibration.yaml` | Temporary engineering-zero calibration table |
+| `rehab_arm_ros2_ws/src/rehab_arm_description/test/test_medical_arm_6dof_schema.py` | Schema tests |
+
+### MuJoCo
+
+| Path | Purpose |
+|---|---|
+| `rehab_arm_ros2_ws/src/rehab_arm_sim_mujoco/models/medical_arm_6dof.xml` | 6DOF MuJoCo model |
+| `rehab_arm_ros2_ws/src/rehab_arm_sim_mujoco/models/rehab_arm_minimal.xml` | Minimal model |
+| `rehab_arm_ros2_ws/src/rehab_arm_sim_mujoco/rehab_arm_sim_mujoco/mujoco_sim_node.py` | ROS2 MuJoCo sim node |
+| `rehab_arm_ros2_ws/src/rehab_arm_sim_mujoco/rehab_arm_sim_mujoco/mujoco_backend.py` | MuJoCo backend |
+| `rehab_arm_ros2_ws/src/rehab_arm_sim_mujoco/rehab_arm_sim_mujoco/medical_arm_shadow_relay_node.py` | Hardware shadow relay |
+| `rehab_arm_ros2_ws/src/rehab_arm_sim_mujoco/launch/medical_arm_6dof_shadow.launch.py` | Pure simulation launch |
+| `rehab_arm_ros2_ws/src/rehab_arm_sim_mujoco/launch/medical_arm_6dof_hardware_shadow.launch.py` | Hardware shadow launch |
+
+### NanoPi / PSoC Bridge
+
+| Path | Purpose |
+|---|---|
+| `rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/psoc_can_bridge_node.py` | ROS2 bridge to M33 CAN |
+| `rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/psoc_status.py` | M33 status parser |
+| `rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/psoc_motor_status.py` | M33 motor aggregate parser |
+| `rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/m33_ros_contract.py` | M33/ROS contract |
+| `rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/m33_model_status.py` | M33/M55 model status parser |
+| `rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/motor_profiles.py` | Motor profile table |
+| `rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/patient_profile.py` | Patient profile validation and M33 subset export |
+
+### Planner, Dry-Run, Review
+
+| Path | Purpose |
+|---|---|
+| `rehab_arm_ros2_ws/src/rehab_arm_control/rehab_arm_control/trajectory_utils.py` | Trajectory helpers |
+| `rehab_arm_ros2_ws/src/rehab_arm_control/rehab_arm_control/vla_task_planner_node.py` | Placeholder VLA task planner |
+| `rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/vla_candidate_gate.py` | VLA candidate gate |
+| `rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/mujoco_dry_run_review.py` | MuJoCo dry-run review plan |
+| `rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/operator_review.py` | Operator/therapist review |
+| `rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/m33_gate_preparation.py` | M33 gate preparation |
+| `rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/server_action_ingress.py` | Server action quality gate |
+
+## 8. Current System Boundary
+
+Formal real-motion path:
 
 ```text
 JointTrajectory -> NanoPi ROS2 bridge -> M33 safety/control -> motor
 ```
 
-禁止新增这些旁路：
+All other subsystems produce context, suggestions, profiles, candidates, displays, or logs. They do not grant motion permission.
 
-- 服务器或 VLA 直接发 CAN。
-- App HTTP 直接控制电机。
-- M55 小模型直接控制电机。
-- Linux 仿真主机绕过 NanoPi/M33 控制电机。
-- NanoPi 调试脚本进入穿戴正式流程。
+Important topic names:
 
-安全执行层统一在 M33。其他层只做规划、请求、dry-run、展示、数据、建议或转发。
-
-## 4. `feature/rehab-arm-ros2-architecture` 结构
-
-### 4.1 文档入口
-
-| 路径 | 作用 |
+| Topic | Meaning |
 |---|---|
-| `README.md` | 当前仓库入口和安全边界 |
-| `docs/AI_PROJECT_STRUCTURE_GITHUB.md` | 本文，给 AI 接手用 |
-| `docs/CURRENT_PROJECT_BRIEFING.md` | 项目讲解稿，适合先读 |
-| `docs/CURRENT_MAINLINES.md` | 当前主线/旁线分类 |
-| `docs/MAINLINE_DEVELOPMENT_GUIDE.md` | 后续怎么开发、怎么补主线 |
-| `docs/REHAB_ARM_SYSTEM_ARCHITECTURE.md` | 总体架构基准 |
-| `docs/USER_MANUAL.md` | 使用、验证和命令手册 |
-| `docs/PROJECT_PROGRESS.md` | 进度记录 |
-| `docs/TROUBLESHOOTING_AND_LESSONS.md` | 排障和踩坑记录 |
+| `/joint_states` | Fresh robot joint state published by NanoPi bridge |
+| `/rehab_arm/motor_state` | Motor state JSON |
+| `/rehab_arm/safety_state` | M33/PSoC safety state JSON |
+| `/rehab_arm/model_state` | M55/M33 model suggestion JSON |
+| `/arm_controller/joint_trajectory` | Formal ROS trajectory input, still subject to M33 |
+| `/sim/medical_arm/joint_trajectory` | MuJoCo shadow trajectory input |
+| `/sim/medical_arm/joint_states` | MuJoCo shadow joint state output |
 
-### 4.2 ROS2 工作区
+## 9. Current Hardware Naming Rules
 
-主工作区：
+Current installed/mainline motor understanding:
 
-```text
-rehab_arm_ros2_ws/
-```
-
-关键包：
-
-| 路径 | 作用 |
+| ID | Meaning |
 |---|---|
-| `rehab_arm_ros2_ws/src/rehab_arm_description/` | URDF、关节 schema、临时标定表 |
-| `rehab_arm_ros2_ws/src/rehab_arm_sim_mujoco/` | MuJoCo 仿真、6DOF 模型、hardware shadow relay |
-| `rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/` | NanoPi ROS2 bridge、PSoC/M33 CAN 解析、profile、dry-run gate |
-| `rehab_arm_ros2_ws/src/rehab_arm_control/` | demo trajectory、VLA task planner placeholder、轨迹工具 |
-| `rehab_arm_ros2_ws/src/rehab_arm_bringup/` | launch 和集成启动 |
+| `node_id=3` | CANSimple motor, current mainline |
+| `motor_id=4` | RS00, current mainline |
+| `motor_id=5` | RS00, current mainline |
+| `motor_id=6` | EL05, current mainline |
+| `motor_id=1/2` | Wrist 4015 candidates, not currently powered in latest context |
+| `motor_id=7` | External debug motor, not current arm mainline |
 
-### 4.3 机器人模型和标定
-
-| 路径 | 作用 |
-|---|---|
-| `rehab_arm_ros2_ws/src/rehab_arm_description/urdf/rehab_arm.urdf` | 基础 URDF |
-| `rehab_arm_ros2_ws/src/rehab_arm_description/config/medical_arm_6dof_schema.yaml` | 6DOF 关节、电机映射、限位草案 |
-| `rehab_arm_ros2_ws/src/rehab_arm_description/config/medical_arm_6dof_temporary_calibration.yaml` | 当前姿态作为工程临时零点的可修改表 |
-| `rehab_arm_ros2_ws/src/rehab_arm_sim_mujoco/models/medical_arm_6dof.xml` | MuJoCo 6DOF 模型 |
-| `rehab_arm_ros2_ws/src/rehab_arm_sim_mujoco/models/rehab_arm_minimal.xml` | 最小仿真模型 |
-
-当前临时策略：
-
-```text
-上电当前位置 = engineering zero
-```
-
-这只用于 planner、MuJoCo dry-run 和小幅相对轨迹。它不是临床零点，不是真实机械零位，不是运动许可。
-
-### 4.4 NanoPi / M33 bridge
-
-| 路径 | 作用 |
-|---|---|
-| `rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/psoc_can_bridge_node.py` | ROS JointTrajectory 到 M33 CAN bridge |
-| `rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/psoc_status.py` | M33 `0x322` 状态解析 |
-| `rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/psoc_motor_status.py` | M33 `0x330~0x334` 电机状态解析 |
-| `rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/m33_ros_contract.py` | M33/ROS 合同 |
-| `rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/m33_model_status.py` | M55/M33 `0x323` 模型结果解析 |
-| `rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/motor_profiles.py` | 电机 profile 表 |
-
-主要 ROS topic：
-
-| Topic | 方向 | 说明 |
-|---|---|---|
-| `/joint_states` | NanoPi -> ROS | 当前 fresh 关节状态 |
-| `/rehab_arm/motor_state` | NanoPi -> ROS | 电机状态 JSON |
-| `/rehab_arm/safety_state` | NanoPi -> ROS | M33 safety/status JSON |
-| `/rehab_arm/model_state` | NanoPi -> ROS | M55/M33 模型建议 JSON |
-| `/arm_controller/joint_trajectory` | Planner -> NanoPi | 正式轨迹入口，必须再经 M33 |
-
-### 4.5 MuJoCo / shadow / dry-run
-
-| 路径 | 作用 |
-|---|---|
-| `rehab_arm_ros2_ws/src/rehab_arm_sim_mujoco/rehab_arm_sim_mujoco/mujoco_sim_node.py` | MuJoCo sim node |
-| `rehab_arm_ros2_ws/src/rehab_arm_sim_mujoco/rehab_arm_sim_mujoco/mujoco_backend.py` | MuJoCo backend |
-| `rehab_arm_ros2_ws/src/rehab_arm_sim_mujoco/rehab_arm_sim_mujoco/medical_arm_shadow_relay_node.py` | `/joint_states` 到 `/sim/...` shadow relay |
-| `rehab_arm_ros2_ws/src/rehab_arm_sim_mujoco/launch/medical_arm_6dof_shadow.launch.py` | 纯 MuJoCo 6DOF launch |
-| `rehab_arm_ros2_ws/src/rehab_arm_sim_mujoco/launch/medical_arm_6dof_hardware_shadow.launch.py` | 硬件 shadow launch |
-
-MuJoCo 话题：
-
-| Topic | 说明 |
-|---|---|
-| `/sim/medical_arm/joint_trajectory` | MuJoCo shadow 输入 |
-| `/sim/medical_arm/joint_states` | MuJoCo shadow 输出 |
-| `/sim/medical_arm/safety_state` | 仿真 safety |
-| `/sim/medical_arm/sensor_state` | 仿真 sensor |
-
-调试时推荐用隔离 topic，例如：
-
-```text
-/codex_path_test/joint_trajectory
-/codex_path_test/joint_states
-```
-
-避免误接真实 `/arm_controller/joint_trajectory`。
-
-### 4.6 Planner / VLA / dry-run gate
-
-| 路径 | 作用 |
-|---|---|
-| `rehab_arm_ros2_ws/src/rehab_arm_control/rehab_arm_control/trajectory_utils.py` | 轨迹工具和 demo 轨迹 |
-| `rehab_arm_ros2_ws/src/rehab_arm_control/rehab_arm_control/vla_task_planner_node.py` | VLA task planner placeholder |
-| `rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/vla_candidate_gate.py` | VLA candidate gate |
-| `rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/mujoco_dry_run_review.py` | MuJoCo dry-run review plan |
-| `rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/operator_review.py` | 人工/治疗师审核 |
-| `rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/m33_gate_preparation.py` | M33 gate 准备包 |
-| `rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/server_action_ingress.py` | 服务器动作入口质量门 |
-
-候选轨迹流程：
-
-```text
-server/VLA high-level request
--> vla_plan_candidate_v1
--> vla_candidate_gate
--> mujoco_dry_run_review
--> operator_review
--> m33_gate_preparation
--> /arm_controller/joint_trajectory
--> M33 final gate
-```
-
-前面的 gate 只是质量门和审核，不是运动许可。
-
-### 4.7 Profile / 患者约束 / App/平台协议
-
-| 路径 | 作用 |
-|---|---|
-| `docs/PATIENT_DEVICE_PROFILE_PROTOCOL_V1.md` | 患者/设备 profile 协议 |
-| `docs/COMMAND_CENTER_APP_PROTOCOL_V1.md` | 总控台/App 协议 |
-| `docs/M33_SAFETY_INPUT_MAPPING.md` | M33 安全输入映射 |
-| `rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/patient_profile.py` | profile 校验和 M33 safety subset |
-| `rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/build_patient_profile_template.py` | profile 模板生成 |
-| `rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/validate_patient_profile.py` | profile 校验 |
-
-Profile 可以收集患者 ROM、速度限制、训练模式和安全子集。M33 仍是最终执行裁决点。
-
-## 5. M33 分支结构说明
-
-分支：
-
-```text
-M33
-```
-
-职责：
-
-- CAN 主站。
-- 电机控制。
-- `0x320` 轨迹/目标接收。
-- `0x321/0x322` heartbeat/status。
-- `0x330~0x334` 电机状态聚合。
-- `0x323` M55 模型结果转发。
-- M33/M55 IPC。
-- BLE 近端状态和请求。
-- 限位、限速、限流、急停、fault、timeout。
-
-后续 AI 切到 `M33` 分支后，应优先找：
-
-```text
-applications/
-```
-
-以及 control、CAN、M55 bridge、BLE、安全状态机相关文件。不要在 M33 里新增 VLA 或平台逻辑；M33 只接受审核后的安全子集和轨迹请求。
-
-## 6. M55 分支结构说明
-
-分支：
-
-```text
-M55
-```
-
-职责：
-
-- 语音/音频采集。
-- 小模型/TFLite Micro。
-- EMG/疲劳/意图建议。
-- M33/M55 IPC。
-- WiFi/服务器 relay。
-- 结果回 M33，再由 M33/NanoPi 发布。
-
-M55 输出永远是建议，不是运动许可。不要让 M55 直接发电机控制。
-
-## 7. C8T6 分支结构说明
-
-分支：
-
-```text
-C8T6
-```
-
-职责：
-
-- STM32F103C8T6 传感板。
-- CAN control/ACK/sensor/health。
-- EMG/IMU/心率等轻量传感。
-
-当前协议边界：
-
-| CAN ID | 方向 | 说明 |
-|---|---|---|
-| `0x7C0` | M33/NanoPi -> C8T6 | 控制 |
-| `0x7C1` | C8T6 -> M33/NanoPi | ACK |
-| `0x7C2` | C8T6 -> M33/NanoPi | sensor |
-| `0x7C3` | C8T6 -> M33/NanoPi | health |
-
-C8T6 是传感节点，不是控制主站。
-
-## 8. APP 分支结构说明
-
-分支：
-
-```text
-APP
-```
-
-职责：
-
-- Android App。
-- BLE 近端交互。
-- 状态显示。
-- 训练 start/pause/stop 请求。
-- 3D 手臂界面。
-- 标注、profile 确认、高层交互。
-
-App 不能直接发 CAN，也不能绕过 M33。
-
-## 9. 当前硬件/电机口径
-
-当前机械臂主线：
-
-| 电机/节点 | 当前角色 |
-|---|---|
-| `node_id=3` | CANSimple，当前主线电机 |
-| `motor_id=4` | RS00，当前主线电机 |
-| `motor_id=5` | RS00，当前主线电机 |
-| `motor_id=6` | EL05，当前主线电机 |
-| `motor_id=1/2` | 腕部 4015 候选，当前未上电/待补 |
-| `motor_id=7` | 外部调试电机，不属于当前机械臂主线 |
-
-当前 6DOF MuJoCo joints：
+Current MuJoCo 6DOF joint names:
 
 ```text
 jian_hengxiang_joint
@@ -309,34 +296,21 @@ wanbu_zongxiang_joint
 wanbu_hengxiang_joint
 ```
 
-## 10. AI 接手顺序
+## 10. What This Document Must Not Become
 
-后续 AI 接手时按这个顺序读：
+Do not turn this file into:
 
-1. `README.md`
-2. `docs/AI_PROJECT_STRUCTURE_GITHUB.md`
-3. `docs/CURRENT_MAINLINES.md`
-4. `docs/MAINLINE_DEVELOPMENT_GUIDE.md`
-5. `docs/REHAB_ARM_SYSTEM_ARCHITECTURE.md`
-6. `docs/PROJECT_PROGRESS.md`
-7. `docs/TROUBLESHOOTING_AND_LESSONS.md`
-8. 当前任务相关分支源码
+- A daily progress log.
+- A troubleshooting dump.
+- A hardware test transcript.
+- A task-specific handoff.
+- A list of every command ever run.
 
-做任何改动前先分类：
+Put those in:
 
-```text
-mainline / shadow-sim / dry-run / bench-debug / offline-demo / side-channel
-```
+- `docs/PROJECT_PROGRESS.md`
+- `docs/TROUBLESHOOTING_AND_LESSONS.md`
+- `docs/USER_MANUAL.md`
+- `docs/ai-handoffs/`
 
-如果分类不清，默认只读或 shadow-sim。
-
-## 11. 后续最重要的 TODO
-
-1. 填完整 `medical_arm_6dof_temporary_calibration.yaml` 的 4/5/6 当前零点、方向和限位。
-2. 接入 1/2 腕部电机，确认协议、ID、方向和限位。
-3. 写 current-state-relative joint-space planner，先只输出 MuJoCo/dry-run candidate。
-4. 修复/监督 Linux shadow service 中 `mujoco_sim_node.py` 退出后的重启问题。
-5. 把正式 `/arm_controller/joint_trajectory` 小幅动作接回 NanoPi -> M33 -> 电机主线。
-6. C8T6 稳定 ACK/传感链路，进入 M33/M55 sensor path。
-7. App/平台只接 profile、状态、审核和高层任务，不接底层控制。
-
+This document is only the stable index and operating map.
