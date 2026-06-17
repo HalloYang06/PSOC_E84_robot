@@ -122,6 +122,20 @@ The repository uses branches as subsystem homes.
 | `wake-word-model` | Wake word model reference | M55 voice reference only |
 | `main` | Entry/early material | Not current development mainline |
 
+## 4.1 External Platform / Command Center Repository
+
+The current server platform and device command-center work is in a separate AI collaboration platform repository, not in the historical `ai` branch of this repository.
+
+| Item | Verified value |
+|---|---|
+| Local path | `D:\ai-collab-product` |
+| GitHub remote | `https://github.com/wenjunyong666/ai-.git` |
+| Current branch | `ai/game-loop-core` |
+| Relationship to this repo | External AI collaboration platform for command-center UI, model relay, XiaoZhi cloud relay, telemetry display, and VLA context/dry-run integration. It consumes this repo's protocols and safety boundaries; it is not the ROS2/NanoPi/M33 motion mainline. |
+| Platform code entry | `apps/api/app/modules/rehab_arm/` in the platform repo |
+| Platform docs checked | `docs/medical-rehab-arm-platform-development-plan.md`, `docs/rehab-arm-nanopi-vla-mujoco-integration.md` in the platform repo |
+| Safety boundary | Platform/App/M55/VLA outputs are suggestions, language context, training advice, or dry-run candidates only. They must not emit CAN frames, motor current, motor torque, raw motor position/velocity, direct motor commands, or M33 safety overrides. Real execution remains `JointTrajectory -> NanoPi -> M33 -> motor`. |
+
 ## 5. Verified Mainline Routes I Have Checked
 
 | Route | Where it lives | What it does | Notes |

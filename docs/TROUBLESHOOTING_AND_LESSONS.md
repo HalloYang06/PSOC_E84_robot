@@ -5937,3 +5937,24 @@ ros2 topic list -t | grep /rehab_arm/model_state
 状态：
 
 - 已删除未跟踪重复草稿 `docs/MUJOCO_QUICKSTART_JOINT_TRAJECTORY.md`；其余文档仅列审计清单，未批量删除。
+
+### 外部平台仓库不要和本仓库历史 `ai` 分支混淆
+
+现象：
+
+- 服务器平台、设备总控台、XiaoZhi relay、model relay 的最新工作不在本仓库历史 `ai` 分支里。
+- 如果只看本仓库分支名，容易把旧 `ai` 分支误当成当前平台主线。
+
+判断：
+
+- 2026-06-17 已核对当前平台仓库为 `D:\ai-collab-product`，远端为 `https://github.com/wenjunyong666/ai-.git`，分支为 `ai/game-loop-core`。
+- 本仓库 `feature/rehab-arm-ros2-architecture` 只记录它和机械臂协议、安全边界、文档入口的关系，不承载平台源码。
+
+解决：
+
+- 写平台相关索引前，先用 `git remote -v` 和 `git branch --show-current` 核对本地路径、远端和分支。
+- `docs/AI_PROJECT_STRUCTURE_GITHUB.md` 只写稳定仓库/分支/文档入口/责任边界，不写平台功能进度日志。
+
+状态：
+
+- 已在主索引中补入外部平台仓库条目；无代码行为变更。

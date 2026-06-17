@@ -3007,3 +3007,12 @@
 - Added stable sections for document update policy, recommended Codex skills, branch ownership, integration-branch structure, subsystem document map, code map, current system boundary, hardware naming rules, and what must not be written into this file.
 - Clarified that live task state belongs in `docs/PROJECT_PROGRESS.md`, reusable pitfalls in `docs/TROUBLESHOOTING_AND_LESSONS.md`, user workflows in `docs/USER_MANUAL.md`, and task handoffs in `docs/ai-handoffs/`.
 - Validation: documentation-only change; no code behavior changed.
+
+### 2026-06-17 - External platform command-center repository indexed
+
+- Reason: user asked the server platform/App/M55/C8T6-adjacent AI work to document only the subsystem facts it has recently verified, without rewriting the confirmed M33/NanoPi/Linux mainline conclusions.
+- Verified platform repo identity: local path `D:\ai-collab-product`, remote `https://github.com/wenjunyong666/ai-.git`, branch `ai/game-loop-core`.
+- Updated `docs/AI_PROJECT_STRUCTURE_GITHUB.md` with a stable external platform/command-center repository section. It records the relationship to this repo, platform code/docs entry points, and the boundary that platform/XiaoZhi/model relay/VLA outputs are suggestion/context/dry-run only.
+- Added `docs/ai-handoffs/platform-command-center-relay-2026-06-17.md` as the current handoff for the platform command-center/model-relay indexing task.
+- Safety: no M33/NanoPi/Linux mainline conclusions changed. Formal real motion remains `JointTrajectory -> NanoPi -> M33 -> motor`; M33 remains final safety authority.
+- Validation: checked both repositories' `git status`, remotes, and current branches. Documentation-only change; no code behavior changed.
