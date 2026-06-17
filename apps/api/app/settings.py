@@ -25,6 +25,22 @@ class Settings(BaseSettings):
     database_auto_seed: bool = False
     runner_registration_token: str = ""
     rehab_arm_sync_storage_dir: str = "tmp/rehab_arm_sync"
+    rehab_arm_model_relay_provider: str = ""
+    rehab_arm_model_relay_base_url: str = ""
+    rehab_arm_model_relay_model: str = ""
+    rehab_arm_model_relay_api_key: str = ""
+    rehab_arm_model_relay_external_enabled: bool = False
+    rehab_arm_xiaozhi_asr_provider: str = ""
+    rehab_arm_xiaozhi_asr_base_url: str = ""
+    rehab_arm_xiaozhi_asr_model: str = ""
+    rehab_arm_xiaozhi_asr_api_key: str = ""
+    rehab_arm_xiaozhi_asr_external_enabled: bool = False
+    rehab_arm_xiaozhi_tts_provider: str = ""
+    rehab_arm_xiaozhi_tts_base_url: str = ""
+    rehab_arm_xiaozhi_tts_model: str = ""
+    rehab_arm_xiaozhi_tts_voice: str = "alloy"
+    rehab_arm_xiaozhi_tts_api_key: str = ""
+    rehab_arm_xiaozhi_tts_external_enabled: bool = False
 
     auth_provider: str = "legacy"
 
