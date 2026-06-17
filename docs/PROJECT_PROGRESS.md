@@ -12,8 +12,194 @@
 - 新手搭建教程草稿：[REHAB_ARM_ROS2_SIM_FRAMEWORK_GUIDE.md](REHAB_ARM_ROS2_SIM_FRAMEWORK_GUIDE.md)
 - 踩坑与技巧记录：[TROUBLESHOOTING_AND_LESSONS.md](TROUBLESHOOTING_AND_LESSONS.md)
 - 当前 ROS2 工作区：`rehab_arm_ros2_ws/`
+- 当前主线清单：[CURRENT_MAINLINES.md](CURRENT_MAINLINES.md)
 - PSoC CAN 协议 V1：[PSOC_CAN_PROTOCOL_V1.md](PSOC_CAN_PROTOCOL_V1.md)
 - M33 `0x320` 日志固件指南：[M33_0X320_LOGGER_GUIDE.md](M33_0X320_LOGGER_GUIDE.md)
+- MuJoCo 动电机指南：[MUJOCO_MOVE_MOTOR_GUIDE.md](MUJOCO_MOVE_MOTOR_GUIDE.md)
+
+## 2026-06-08 全关节历史里程碑
+
+- 进度文档中已存在历史验证：NanoPi `0x321 -> 0x322` 和 `0x330~0x334` 恢复后，临时打开 4/5/6 主动遥测，ROS `/joint_states` 曾发布 4 个 legacy joints，仿真主机 `/sim/medical_arm/joint_states` 曾输出完整 6DOF medical arm joints。
+- 这条里程碑说明“全关节不是从未做过”，而是后续链路、fresh 条件或部署状态可能又退回到了单关节可见。
+- 当前排查重点应视为“已做过、需要复现/恢复”，不是“历史上从未通”。
+
+## 2026-06-17 ROS 图和 MuJoCo shadow 现状复核
+
+- 已远程复核 NanoPi `pi@192.168.3.36` 与仿真主机 `cal@192.168.3.34`。
+- 关键边界确认：当前两台机子的 ROS 图都使用 `ROS_DOMAIN_ID=42`；不带这个环境变量时，外部 shell 会看不到真实 topic，容易误判为“节点没起来”。
+- NanoPi 上 `rehab-arm-nanopi-readonly.service` 仍在运行，启动的是 `/usr/bin/python3 /opt/ros/jazzy/bin/ros2 run rehab_arm_psoc_bridge psoc_can_bridge_node.py ...`，服务内部能看到 `/rehab_arm/safety_state`，且 `0x322` 已恢复可见。
+- 仿真主机上 `rehab-arm-sim-host-shadow.service` 仍在运行，启动脚本为 `/usr/local/bin/start_sim_host_medical_arm_shadow.sh`，其实际 launch 为 `medical_arm_6dof_hardware_shadow.launch.py`。
+- 代码位置再次确认：NanoPi 桥接在 `rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/psoc_can_bridge_node.py`、`joint_state_motor_state_node.py`、`m33_ros_contract.py`、`psoc_motor_status.py`；MuJoCo shadow 在 `rehab_arm_sim_mujoco/launch/medical_arm_6dof_hardware_shadow.launch.py`、`rehab_arm_sim_mujoco/rehab_arm_sim_mujoco/medical_arm_shadow_relay_node.py`、`mujoco_sim_node.py`。
+- 目前 ROS 图里 `/joint_states` 只有 1 个发布者，且 `ros2 topic echo --once /joint_states` 仍只看到 `shoulder_lift_joint`，说明桥接/映射层还没有把全关节状态完整恢复出来。
+- 结论：CAN/M33 主线和 MuJoCo shadow 启动链路已在，但 `/joint_states` 仍需继续查桥接映射或 fresh state 过滤条件，不能把单关节输出当作 3/4/5/6 全通。
+
+## 2026-06-17 当前主线梳理完成
+
+- 已结合 `git log`、`git branch -a -vv`、架构文档和进度文档，把当前主线分清：M33 安全控制、M55 语音/小模型、NanoPi ROS2、Linux 仿真主机、C8T6 传感节点、APP、平台/总控台。
+- 已在 [REHAB_ARM_SYSTEM_ARCHITECTURE.md](REHAB_ARM_SYSTEM_ARCHITECTURE.md) 新增“当前主线清单”，明确哪些是正式主线，哪些只是 `shadow-sim`、`dry-run`、`bench-debug` 或历史支线。
+- 已确认 `feature/rehab-arm-ros2-architecture` 是当前综合主线工作区；`origin/M33`、`origin/M55`、`origin/C8T6`、`origin/APP`、`nanopi-sdk`、`nanopi-rosnode-usbcan` 都有各自职责边界，不能混成一条线。
+- 已确认本轮先不控电机，后续所有排查都必须先写清属于哪条主线，再继续往下做。
+
+## 2026-06-17 stale 不是 ROS 伪造
+
+- 已用远端只读订阅确认 `/rehab_arm/motor_state` 里有 5 个电机条目，分别是 3/4/5/6/7 号槽位。
+- 其中只有 `shoulder_lift_joint` / motor3 是 `fresh=true`；4/5/6/7 都是 `stale=true`、`data_fresh=false`。
+- 再抓 CAN 原始帧确认，`0x331~0x334` 的 flags 字节本身就带 `0x10` stale 位，说明当前“缺新鲜反馈”是总线/状态源真实反映，不是 ROS 桥接层伪造的缺失。
+- 这也解释了为什么 `/joint_states` 只发布 1 个关节：桥接层正确过滤了 stale 槽位，没有把假零位姿灌进 ROS。
+
+## 2026-06-17 4/5/6/7 目前没有自然 fresh 原始反馈
+
+- 远端被动抓包 6 秒，仅能自然看到 3 号 `0x061/0x069` 在刷；没有看到 4/5/6/7 自然刷出的 `0x180004FD~0x180007FD` 原始反馈帧。
+- 这说明当前 4/5/6/7 的 stale 不是桥接层凭空制造，而是原始反馈源本身没有新鲜上报。
+- M33 侧仍会周期发 `0x330~0x334`，但因为缓存里对应槽位没有 fresh 数据，所以 byte3 继续带 `0x10`。
+- 当前最可能的原因是 4/5/6/7 的 active-report 没开、对应电机未上电、或机械/接线导致原始状态链路断了；不是 ROS topic 本身的问题。
+
+## 2026-06-17 M33 代码审计：串口未关，active-report 非开机自动打开
+
+- 只看代码复核 `D:/RT-ThreadStudio/workspace/yiliao_m33`：`rtconfig.h` 仍定义 `RT_USING_CONSOLE`、`RT_CONSOLE_DEVICE_NAME "uart2"`、`RT_USING_MSH`、`RT_USING_FINSH`，所以当前代码层没有把 M33 串口 console/FINSH 总开关关掉。
+- M33 `control_layer_init()` 启动的是 CAN RX 线程、ROS 命令线程和 100ms 周期的 `0x330~0x334` 聚合状态发布线程；未发现初始化阶段自动对 4/5/6/7 发送 active-report enable。
+- `control_motor_set_active_report()` 只在收到 `CONTROL_ROS_CMD_SET_ACTIVE_REPORT` / `0x320` active-report 命令后被调用；`CONTROL_CALIBRATION_ACTIVE_REPORT_ENABLE=1` 仅表示允许这类遥测命令通过安全审核，不表示开机默认打开。
+- `scripts/nanopi_can_master.py` 的 `private active-report` 和 `m33 active-report` 都是显式发命令的调试/遥测入口；历史交接文档也记录了 4/5/6 active-report 测完后关闭，避免持续刷 CAN/日志。
+- 结论：当前 4/5/6/7 stale 更符合“主动上报当前未打开或电机未上电/未接入”这一层问题；不能简单归为整条 CAN 主干不通，也不是串口日志总开关被关导致看不到。
+
+## 2026-06-17 英飞凌板接入后的现场复核
+
+- 已接回英飞凌开发板并从 Windows 识别到 `KitProg3 USB-UART (COM26)`；`COM26 @115200` 是当前可用的 M33 FINSH shell。
+- 只读 shell 复核显示 M33 正常运行：`help`、`cmd_control_debug`、`cmd_m33_prearm_check`、`cmd_cansimple_status` 都能返回。
+- `cmd_control_debug` 显示 `rx_total=1974745`、`hb=9338`，说明 CAN RX 和 NanoPi 心跳链路仍在；`cmd_can_status` 也显示控制器状态正常，`lost=0`。
+- NanoPi 被动抓包新证据显示 `0x7C2/0x7C3` 持续出现，说明 C8T6/F103 传感节点已经上总线并在发传感/健康帧。
+- `cmd_m33_prearm_check` 显示 `fresh_mask=0x00000004`，只有 joint3 当前有 fresh 电机反馈；joint4/5/6/7 仍未进入 fresh。
+- `cmd_motor_fb 4/5/6/7` 都返回空反馈槽位 `id=0 tick=0`，说明 M33 当前根本没有缓存到这几路的新鲜遥测。
+- 当前最强结论：不是 M33 死机，也不是 CAN 控制器完全挂了，而是 4/5/6/7 的原始电机反馈仍没进来。优先怀疑对应电机 active-report 未开启、供电/接线/共地问题，或这些电机当前未上电。
+
+## 2026-06-17 4/5/6/7 active-report 短时遥测验证
+
+- 已按 telemetry-only 方式逐个短时打开并关闭 4/5/6/7 active-report；本轮没有发送 enable、mode、zero、position、speed、torque 或 ROS target。
+- motor4：发送 `0x1800FD04#0102030405060100` 后收到 `0x180004FD` 原始反馈约 146 帧，M33 `0x331` 出现 fresh 样本，最后示例 `0x331#...0400F008001D`。
+- motor5：发送 `0x1800FD05#0102030405060100` 后收到 `0x180005FD` 原始反馈约 145 帧，M33 `0x332` 出现 fresh 样本，最后示例 `0x332#...0500E317001E`。
+- motor6：发送 active-report 开/关命令后，没有收到 `0x180006FD/0x188006FD`，M33 `0x333` 全部仍 stale。
+- motor7：发送 active-report 开/关命令后，没有收到 `0x180007FD/0x188007FD`，M33 `0x334` 全部仍 stale。
+- 收尾验证：再次关闭 4/5/6/7 active-report 后，2 秒 quiet check 没有任何 `0x18000xFD/0x18800xFD` 原始帧持续刷屏；只剩 `0x331~0x334` stale 聚合帧。
+- 结论更新：4/5 号电机当前在线，只是默认 active-report 未开；6/7 号当前仍无原始反馈，优先查 6/7 供电、CAN 分支、节点 ID、驱动状态或协议/接线差异。
+
+## 2026-06-17 6 号插稳后复测恢复
+
+- 用户确认 6 号电机刚才没插稳；重新插稳后短时 active-report 复测通过。
+- motor6 重新打开 active-report 后立即收到 `0x180006FD`，M33 `0x333` 变成 fresh，`cmd_motor_fb 6` 读回 `id=6`、非零位置和 tick。
+- 这说明前一轮 6 号“无响应”属于接触假阴性，不应再记为协议或固件问题。
+- 当前剩余未完全排清的只剩 7 号是否同样存在接触/供电/驱动问题，需要后续再单独查。
+
+## 2026-06-17 全链路电机遥测采集
+
+- 已执行全链路遥测采集：3 号使用自然 CANSimple `0x061/0x069`，4/5/6/7 短时打开 active-report，结束统一关闭并做 quiet check；未发送 enable、mode、zero、position、speed、torque 或 ROS target。
+- CAN 原始计数：`0x061=220`、`0x069=2199`、`0x180004FD=736`、`0x180005FD=733`、`0x180006FD=726`；未看到 `0x180007FD/0x188007FD`。
+- M33 聚合 fresh 计数：`0x330=209`、`0x331=89`、`0x332=89`、`0x333=92`；`0x334` 全程 stale。
+- ROS `/joint_states` 成功发布 4 个关节：`shoulder_lift_joint=0.0`、`elbow_lift_joint=2.288`、`shoulder_abduction_joint=6.115`、`upper_arm_rotation_joint=4.959`。
+- 收尾 quiet check 没有持续 `0x18000xFD/0x18800xFD` 原始 active-report 帧。
+- 结论：当前 3/4/5/6 电机数据可采集并进入 ROS 关节层；7 号仍无原始反馈，需单独查物理连接/供电/驱动/节点 ID。
+
+## 2026-06-17 最新电机配置纠偏：7 号不属于当前实物主线
+
+- 用户现场明确：`motor_id=7` 是外部调试电机，不用纳入当前机械臂电机主线。
+- 当前应按最新实物主线理解：`motor_id=1/2` 是腕部 4015 小电机候选，`node_id=3` 是肩横向 CANSimple，`motor_id=4` 是肩纵向 RS00，`motor_id=5` 是肘纵向 RS00，`motor_id=6` 是肩/上臂旋转 EL05；`motor_id=7` 只保留为外部 bench/shadow 历史通道。
+- 现场复核 M33 `cmd_m33_joint_calib` 仍显示 1~7 个内部 motor joint 槽位，且当前固件 `CONTROL_ROS_JOINT4_MOTOR_JOINT=7` 仍残留 legacy/shadow 映射口径；这不能作为当前实物主线依据。
+- 本轮只读/遥测复核：NanoPi `can0` 为 `ERROR-ACTIVE`，短时打开 1/2/4/5/6/7 active-report 后，raw CAN 看到 `0x061=45`、`0x069=449`、`0x180004FD=450`、`0x180005FD=449`、`0x180006FD=449`；没有看到 `0x180001FD/0x180002FD/0x180007FD`。
+- M33 聚合样本显示 `0x330/0x331/0x332/0x333` 对应 3/4/5/6 fresh，`0x334` 仍是 7 号 stale；由于 7 号外部调试不进入主线，这不再作为当前机械臂主线 blocker。
+- 收尾已向 1/2/4/5/6/7 发送 active-report disable，并做 2 秒 quiet check，未见 `0x180001FD/0x180002FD/0x180004FD/0x180005FD/0x180006FD/0x180007FD` 或 `0x18800xFD` 持续刷帧。
+- 当前真实待补：继续查 1/2 腕部 4015 是否接入、协议/ID/供电/接线；同时不要再把 7 号无反馈描述成当前机械臂 CAN 主线不通。
+
+## 2026-06-17 3/4/5/6 主线读取复核
+
+- 用户确认 `motor_id=1/2` 当前没上电，先预留，不再探测；`motor_id=7` 是外部调试电机，不纳入本轮主线。
+- 按当前主线只验证 3/4/5/6：3 号使用自然 CANSimple `0x061/0x069`，4/5/6 短时打开 active-report，未发送 enable、mode、zero、position、speed、torque 或 ROS target。
+- NanoPi `can0` 状态正常：`ERROR-ACTIVE`、`bitrate 1000000`、错误计数为 0。
+- 采集计数：`0x061=45`、`0x069=450`、`0x180004FD=450`、`0x180005FD=450`、`0x180006FD=449`；未见 4/5/6 的运动反馈 `0x188004FD/0x188005FD/0x188006FD`。
+- M33 聚合三层对应：`0x330` motor3 fresh，`0x331` motor4 fresh，`0x332` motor5 fresh，`0x333` motor6 fresh；`0x334` 是外部 7 号 stale，不作为当前主线 blocker。
+- ROS `/joint_states` 在遥测窗口发布 4 个主线关节：`shoulder_lift_joint=0.0`、`elbow_lift_joint=2.288`、`shoulder_abduction_joint=6.115`、`upper_arm_rotation_joint=4.959`。
+- 收尾已关闭 4/5/6 active-report，并做 2 秒 quiet check，未见 4/5/6 私有反馈持续刷帧。
+- 结论：当前 3/4/5/6 只读数据链路已打通；1/2 等上电后再补，7 号不再进入当前机械臂主线判断。
+
+## 2026-06-17 3 号最小真机动作验证
+
+- 用户确认现场无人穿戴，并明确授权小幅真机动作；本轮只动 3 号 CANSimple 主线电机，不碰 1/2、4/5/6、7 号。
+- 动作前 `cmd_motor3_status` 显示 node3 `state=1`、`error=0x00000000`，M33 `MOTOR[3]` 反馈 `pos_mrad=0`、`vel_mrad_s=0`。
+- 执行命令：`cmd_motor3_speed 0.05 0.5 600 20`，即 0.05 rad/s、0.5 A 限流、600 ms、20 ms refresh；M33 打印 `motor_speed_hold start` 后自动 `speed_hold done`。
+- 收尾命令：`cmd_motor3_stop 1` 返回 `motor3_stop ret=0`。
+- 动作后 `cmd_motor3_status` / `cmd_motor_fb 3` 显示 `pos_mrad=67`、`vel_mrad_s=0`、`fault=0x00`，说明 3 号产生了小幅位移并已停止。
+- 边界：本轮不是穿戴/临床运动验收，只是空载台架小幅动作验证；正式多关节动作前仍需补齐 4/5/6 的标定、限位和安全输入口径。
+
+## 2026-06-17 4/5/6 极小速度动作尝试
+
+- 用户继续要求其他主线电机也动；仍不碰 1/2 和 7 号。
+- 逐个执行 4/5/6，不并发：每个关节先读 `cmd_motor_fb`，再执行 `cmd_motor_speed_hold <joint> 0.02 0.3 500 20`，随后显式 `cmd_motor_stop <joint> 1`，最后再读反馈。
+- 4 号：`motor_speed_hold start joint=4 ... duration=500`，自动 `speed_hold done`，`cmd_motor_stop 4 1` 返回 `ret=0`；位置读数仍约 `pos_mrad=2288`，速度读数短时为 `-31 mrad/s`，`fault=0x00`。
+- 5 号：`motor_speed_hold start joint=5 ... duration=500`，自动 `speed_hold done`，`cmd_motor_stop 5 1` 返回 `ret=0`；位置读数仍约 `pos_mrad=6115`，速度读数短时为 `-36 mrad/s`，`fault=0x00`。
+- 6 号：`motor_speed_hold start joint=6 ... duration=500`，自动 `speed_hold done`，`cmd_motor_stop 6 1` 返回 `ret=0`；位置读数仍约 `pos_mrad=4959`，速度约 `-1 mrad/s`，`fault=0x00`。
+- 结论：4/5/6 的命令链和 stop 链路返回正常，但该极小速度/限流/时长组合没有产生明显位置变化；下一步若要看可见效果，应在现场观察下逐个轻微增加速度、限流或时长，而不是并发或跳到大幅目标。
+
+## 2026-06-17 MuJoCo 控制边界说明
+
+- 已向用户确认：刚才 3/4/5/6 的小幅真机动作不是通过 MuJoCo 控电机，而是通过 M33 串口 shell 的现有调试命令直接走 `M33 -> CAN -> motor`。
+- MuJoCo 当前定位是仿真和 hardware shadow 观察链路；给 `/sim/medical_arm/joint_trajectory` 发 `JointTrajectory` 只会动仿真，不会直接控制真机电机。
+- 新增 [MUJOCO_MOVE_MOTOR_GUIDE.md](MUJOCO_MOVE_MOTOR_GUIDE.md)，单独说明如何在 MuJoCo 中发布小幅单关节和多关节仿真动作，以及如何区分 MuJoCo、NanoPi ROS bridge 和 M33 真机链路。
+
+## 2026-06-17 C8T6/F103 当前状态
+
+- 全链路采集窗口中可见 C8T6/F103 自发帧：`0x7C2=2199`、`0x7C3=22`，说明该节点曾经上总线并能主动发传感/健康帧。
+- 随后同步测试 M33 `f103_ping 5 80` 时，NanoPi 只抓到 M33 发出的 `0x7C0` 共 5 帧，没有看到 `0x7C1` ACK，也没有新的 `0x7C2/0x7C3`。
+- 再执行 `cmd_sensor_rate 1 20` 时，NanoPi 只抓到 `0x7C0#0108023200000000` 与 `0x7C0#0309000000000000`，仍无 `0x7C1` ACK；M33 `CTRL_DBG_F103 ack=0` 且 sensor/health 计数未继续增长。
+- 结论：C8T6/F103 不是协议 ID 写错，代码两边都用 `0x7C0/0x7C1/0x7C2/0x7C3`；当前问题更像 C8T6 节点间歇掉线/未持续接收 `0x7C0`、供电/接线/收发器状态不稳，或当前运行固件只在某阶段主动上报但没有稳定 ACK 控制帧。
+
+## 2026-06-16 C8T6 CAN 总线接入确认
+
+- 已远程登录 NanoPi `pi@192.168.3.36` 并确认 `can0` 正常工作：`UP, LOWER_UP`、`ERROR-ACTIVE`、`bitrate 1000000`、`berr-counter tx 0 rx 0`，启动脚本仍是 `/usr/local/bin/setup_nanopi_can.sh`，服务仍是 `rehab-arm-nanopi-readonly.service`。
+- 先前总线抓包里能稳定看到 NanoPi/M33/Motor 侧流量：`0x321 -> 0x322`、`0x330~0x334`，说明 NanoPi 到 CAN 控制器和当前主干总线是通的。
+- 按 C8T6 协议向 `0x7C0` 发送了安全查询帧 `GET_STATUS` 和 `START_STREAM` 探针，但抓包窗口内没有看到 `0x7C1/0x7C2/0x7C3` 回包。
+- 结论：当前 NanoPi 总线上未观察到 C8T6/F103 节点响应；更像是 C8T6 未上总线、未供电、收发器/共地/终端/使能脚问题，或 C8T6 固件未运行，而不是 NanoPi CAN0 或 bitrate 本身的问题。
+- C8T6 代码已定位到独立仓库 `D:\RT-ThreadStudio\workspace\c8t6_github_C8T6`，分支 `C8T6`，关键文件是 `Core/Src/can.c`、`app/include/can_proto.h`、`app/src/can_transport.c`、`app/src/app_service.c`。
+- 下一步：回到 C8T6 物理接线和烧录状态，优先查 CANH/CANL、GND、收发器 EN/STB、供电与终端电阻，再验证是否能从 C8T6 看到 `0x7C0` 并回 `0x7C1`。
+
+## 2026-06-17 MuJoCo / joint_states 现状
+
+- 已再次远程确认 NanoPi `rehab-arm-nanopi-readonly.service` 在线，`can0` 仍为 `ERROR-ACTIVE`、`bitrate 1000000`。
+- 已从 NanoPi 侧抓到真实 CAN 交通：`0x330/0x331/0x332/0x333/0x334` 连续刷新，且 `0x321 -> 0x322` 心跳/状态存在；这说明总线和 M33 主线仍在。
+- 但 ROS `/joint_states` 当前仍只回 1 个关节 `shoulder_lift_joint=0.0`，没有把 3/4/5/6 四个关节完整暴露出来。
+- 结论：CAN 层已能看到 3/4/5/6 相关实时数据，ROS 关节层仍需继续查桥接映射/发布端配置，不能把单关节数据误当成全关节闭环。
+
+## 2026-06-16 接手盘点结论
+
+- 完成当前工作区和 GitHub 仓库边界核对：工作区根目录 `D:\RT-ThreadStudio\workspace` 不是 Git 仓库，而是多个 checkout 和参考目录；机械臂主 GitHub 仓库是 `https://github.com/ChillAmnesiac/Medical-Rehabilitation-Manipulator.git`。
+- 当前权威主线仍是 `feature/rehab-arm-ros2-architecture`，本地路径 `D:\RT-ThreadStudio\workspace\_nanopi_rosnode_usbcan`；该分支承载 ROS2、NanoPi、MuJoCo、协议、系统架构、进度和交接文档。
+- GitHub 分支按子系统拆分：`M33` 是 Infineon M33 固件和安全/CAN/BLE/M55 IPC；`M55` 是 Infineon M55 Wi-Fi、语音、小模型和 M33/M55 结果桥；`APP` 是 Android App；`C8T6` 是 STM32F103C8T6 传感节点；`nanopi-sdk` 是 NanoPi 底层 CAN bring-up；`NanoPi_ROSNode` 和 `ROS_VLA_WebSocket` 是较早期旁线。
+- 关键代码位置确认：
+  - ROS2/NanoPi/MuJoCo 主线：`_nanopi_rosnode_usbcan\rehab_arm_ros2_ws\src\`
+  - NanoPi PSoC CAN bridge：`rehab_arm_psoc_bridge\rehab_arm_psoc_bridge\psoc_can_bridge_node.py`
+  - CAN/安全解析工具：`psoc_status.py`、`safety_state.py`、`m33_ros_contract.py`、`psoc_motor_status.py`、`m33_model_status.py`
+  - VLA/服务器高层动作入口和 gate：`server_action_ingress.py`、`vla_candidate_gate.py`、`mujoco_dry_run_review.py`、`operator_review.py`、`m33_gate_preparation.py`
+  - MuJoCo shadow：`rehab_arm_sim_mujoco\rehab_arm_sim_mujoco\medical_arm_shadow_relay_node.py`、`mujoco_sim_node.py`、`models\medical_arm_6dof.xml`
+  - 6DOF schema：`rehab_arm_description\config\medical_arm_6dof_schema.yaml`
+  - M33 本地参考：`D:\RT-ThreadStudio\workspace\_ref_m33_repo\applications\m33\`，当前工作固件历史也见 `D:\RT-ThreadStudio\workspace\yiliao_m33`
+  - M55 本地参考：`D:\RT-ThreadStudio\workspace\_m55_ref_repo\applications\`，当前烧录/调试工作区也见 `D:\RT-ThreadStudio\workspace\wifi`
+  - C8T6 远端分支入口：`origin/C8T6`，主要工程文件为 `Core/Src/main.c`、`Core/Src/can.c`、`Core/Src/adc.c`、`Core/Src/i2c.c`、`BSP/bsp_MAX30100.c`、`BSP/bsp_MuElec.c`
+  - App 远端分支入口：`origin/APP`，Android 工程根在 `app/`，但远端包含大量 build 产物，接手时应优先看源码和文档，不要以 generated/intermediates 为修改对象。
+- 本地状态提醒：`_nanopi_rosnode_usbcan` 当前有未提交修改 `launch/system.launch.py` 和未跟踪 `output/`，本次盘点未触碰；`qiansai` 有大量未跟踪早期 RT-Thread 工程文件，不能当当前主线唯一依据。
+- 验证：已通过 HTTPS fetch 更新 `_nanopi_rosnode_usbcan` 的远端分支引用；`qiansai` SSH fetch 因 GitHub SSH 连接关闭失败，未作为本轮 blocker。
+
+## 2026-06-16 MuJoCo 仿真高度调整
+
+- 远程确认 Linux 仿真主机为 `cal@192.168.3.34`，当前仓库路径为 `/home/cal/桌面/Medical-Rehabilitation-Manipulator`，ROS2 workspace 为 `/home/cal/桌面/Medical-Rehabilitation-Manipulator/rehab_arm_ros2_ws`。
+- 确认 ROS2 hardware shadow 由 systemd 服务 `rehab-arm-sim-host-shadow.service` 启动，服务入口为 `/usr/local/bin/start_sim_host_medical_arm_shadow.sh`，实际执行 `ros2 launch rehab_arm_sim_mujoco medical_arm_6dof_hardware_shadow.launch.py`。
+- 当前 ROS2 shadow 子进程为 `mujoco_sim_node.py` 和 `medical_arm_shadow_relay_node.py`；launch 参数仍为 `joint_profile=medical_arm_6dof`、`/joint_states -> /sim/medical_arm/joint_trajectory`，只读 shadow 边界不变。
+- 为避免仿真模型贴近地板，已把 ROS2 MuJoCo 6DOF 和 legacy fallback 的 base 高度从 `z=0.8` 调到 `z=1.15`：
+  - `rehab_arm_ros2_ws/src/rehab_arm_sim_mujoco/models/medical_arm_6dof.xml`
+  - `rehab_arm_ros2_ws/src/rehab_arm_sim_mujoco/models/rehab_arm_minimal.xml`
+  - `rehab_arm_ros2_ws/src/rehab_arm_sim_mujoco/rehab_arm_sim_mujoco/mujoco_backend.py`
+- 远程独立 MuJoCo viewer 入口也已同步：
+  - `/home/cal/medical_arm_mujoco/medical_arm_mujoco.xml`：`base_link` 上移到 `pos="0 0 0.35"`，地板保持 `pos="0 0 -1.02"`。
+  - `/home/cal/medical_arm_mujoco/medical_arm_6dof_shadow.xml`：base 调到 `z=1.15`。
+- 远程已重启 `rehab-arm-sim-host-shadow.service`，状态为 `active`；独立 viewer `/home/cal/mujoco/build/bin/simulate /home/cal/medical_arm_mujoco/medical_arm_mujoco.xml` 已用 Xwayland 授权环境重启，日志显示 MuJoCo 3.10.0 已加载，仍有 EGL/MESA warning 但进程存活。
+- 本地验证：`python -m unittest rehab_arm_ros2_ws/src/rehab_arm_sim_mujoco/test/test_mujoco_backend.py` 通过 10 项；`python -m py_compile .../mujoco_backend.py` 通过。
+- 边界：本轮只调整仿真视觉/几何高度，没有改 ROS topic、joint mapping、M33/NanoPi CAN、限位、真实运动许可或任何电机控制逻辑。
 
 ## 架构状态
 
@@ -2772,3 +2958,44 @@
 - NanoPi sync: copied the current `m33_model_status.py` parser to NanoPi source and installed site-packages so `model_code=4` resolves to `m55_voice_asr_v1` instead of `unknown_model_4`.
 - Platform boundary update: documented the AI collaboration platform model relay endpoint. LLM/VLA calls must go through `POST /api/rehab-arm/v1/projects/fd6a55ed-a63c-44b3-b123-96fb3c154966/devices/nanopi-m5/model/relay` with Bearer token; no device or agent may request or store provider API keys.
 - Safety: all tested outputs remain model suggestions only. No `0x320`, CAN motor command, motor current/torque, raw motor state, M33 safety override, or direct motor command was produced.
+
+### 2026-06-17 - MuJoCo pure-sim motion path validated without real motor control
+
+- Reason: user asked to try MuJoCo motion first and clarify whether MuJoCo is currently controlling real motors.
+- Boundary: MuJoCo remains simulation/shadow only. Real motors still move through `M33 -> CAN -> motor`; this check did not send real motor commands.
+- Remote host: connected to Linux sim host `192.168.3.34` as `cal` using password auth via Paramiko.
+- Observed service state: `rehab-arm-sim-host-shadow.service` was active and launched `medical_arm_6dof_hardware_shadow.launch.py`, but `/sim/medical_arm/joint_states` was not being published at the time of inspection. `journalctl` showed the service's `mujoco_sim_node.py` had later finished cleanly, while `medical_arm_shadow_relay_node.py` was still present.
+- Validated pure-sim path: started a temporary isolated node `codex_mujoco_test_sim` with `/codex_mujoco_test/joint_trajectory` and `/codex_mujoco_test/joint_states`; log showed `backend=mujoco-model`.
+- Motion proof: initial `jian_hengxiang_joint` readback was `0.0`; after publishing a one-second trajectory to `0.2 rad`, `/codex_mujoco_test/joint_states` read back `0.2`; after publishing `0.0`, it read back `0.0`.
+- Documentation: updated `docs/MUJOCO_MOVE_MOTOR_GUIDE.md` with the isolated pure-sim commands and the relay-overwrite warning.
+- Next step: if the product shadow service must publish `/sim/medical_arm/joint_states` continuously, restart or harden `rehab-arm-sim-host-shadow.service` so `mujoco_sim_node.py` is supervised/restarted when it exits.
+
+### 2026-06-17 - MuJoCo-only path planning smoke test before calibration
+
+- Reason: user wanted to try path planning before calibration.
+- Boundary: without calibration, this is only joint-space MuJoCo/dry-run planning, not Cartesian end-effector planning and not real motor execution.
+- Remote test: started isolated `codex_path_test_sim` with `/codex_path_test/joint_trajectory` and `/codex_path_test/joint_states`, leaving the formal `/arm_controller/joint_trajectory` and real NanoPi/M33 path untouched.
+- Candidate path: 6DOF medical-arm joints moved through three points: `[0.05,0.08,0.03,0.10,0.02,0.02]` at 1 s, `[0.10,0.12,0.05,0.16,0.03,-0.02]` at 3 s, then all zeros at 5 s.
+- Validation: log showed `backend=mujoco-model`; mid-run `/codex_path_test/joint_states` read back approximately `[0.090,0.112,0.046,0.148,0.028,-0.012]`; final readback returned all zeros.
+- Documentation: added the exact MuJoCo-only path planning command to `docs/MUJOCO_MOVE_MOTOR_GUIDE.md`.
+- Next step: if real-motion planning is desired before full calibration, keep it as current-state-relative, single-joint or tiny joint-space targets, and require M33 safety/fresh feedback plus onsite confirmation before any formal `/arm_controller/joint_trajectory`.
+
+### 2026-06-17 - Mainline development guide and temporary engineering zero baseline
+
+- Reason: user asked to fill the missing mainline pieces, temporarily use the current pose as zero, and keep safety responsibility unified in Infineon/M33 instead of spreading new safety layers across the stack.
+- Added `docs/MAINLINE_DEVELOPMENT_GUIDE.md` as the step-by-step mainline development entry: current state, missing pieces, temporary zero strategy, MuJoCo dry-run, formal dry-run, and final M33 execution path.
+- Added `rehab_arm_ros2_ws/src/rehab_arm_description/config/medical_arm_6dof_temporary_calibration.yaml`.
+- Temporary baseline: current power-on pose is recorded as engineering zero for planner/MuJoCo/dry-run only. NanoPi `/joint_states` at the time of sampling only exposed `shoulder_lift_joint=0.067 rad`, so only `jian_hengxiang_joint` has an observed numeric baseline; 4/5/6 and wrist 1/2 remain TODO until telemetry/power is available.
+- Boundary: this temporary zero is not clinical zero, not final mechanical zero, and not motion permission. Real execution authority remains M33.
+- Updated doc entry points: `CURRENT_MAINLINES.md`, `REHAB_FUNCTIONAL_ROADMAP.md`, `USER_MANUAL.md`, and `REHAB_ARM_SYSTEM_ARCHITECTURE.md` now point to the new guide/config and state that safety execution is centralized in M33.
+- Validation: parsed the new YAML with Python/PyYAML and compiled `test_medical_arm_6dof_schema.py`; added a unit test asserting the temporary calibration boundary and first observed baseline.
+- Next step: fill 4/5/6 temporary zero values by short active-report telemetry capture, then implement a current-state-relative joint-space planner that consumes the YAML and publishes only MuJoCo/dry-run candidates first.
+
+### 2026-06-17 - GitHub AI handoff and documentation cleanup audit
+
+- Reason: user asked for a project structure document that uses GitHub branch/path references instead of local machine paths, and noted that the repository documentation needs cleanup.
+- Added `docs/AI_PROJECT_STRUCTURE_GITHUB.md` as the AI handoff index: repository URL, active branches, branch responsibilities, ROS2 package map, MuJoCo/dry-run paths, M33/M55/C8T6/App boundaries, current hardware mapping, and AI reading order.
+- Added `docs/DOCUMENTATION_CLEANUP_AUDIT.md` listing required docs, protocol docs, currently useful tutorials, and candidates for archive/merge/delete.
+- README now points to the AI structure and documentation cleanup audit.
+- Cleanup decision: removed only the local untracked duplicate draft `docs/MUJOCO_QUICKSTART_JOINT_TRAJECTORY.md`, because `docs/MUJOCO_MOVE_MOTOR_GUIDE.md` now contains the current validated MuJoCo commands. Existing tracked historical docs were not deleted; they are listed for archive review first.
+- Validation: no code behavior changed in this documentation audit.

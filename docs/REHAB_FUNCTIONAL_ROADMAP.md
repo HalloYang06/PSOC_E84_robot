@@ -76,6 +76,11 @@ patient profile + joint/motor/safety + EMG/voice/VLA intent
   -> M33 safety gate
 ```
 
+当前开发基线见 [MAINLINE_DEVELOPMENT_GUIDE.md](MAINLINE_DEVELOPMENT_GUIDE.md)。未完成正式标定前，先使用
+`medical_arm_6dof_temporary_calibration.yaml` 的“当前姿态 = 工程临时零点”策略，只做小幅 joint-space 候选和 MuJoCo dry-run。
+
+安全职责统一放在 M33：planner、MuJoCo、平台和 App 只生成候选、审核记录或 profile；M33 才是最终执行和拒绝点。
+
 需要逐步补：
 
 1. 真实关节零点、方向、软限位。

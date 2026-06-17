@@ -1,6 +1,8 @@
 # 康复外骨骼机械臂系统架构审查稿
 
 本文档是当前项目的总体架构基准。今晚讲解和后续 AI 协作的短版入口见 [CURRENT_PROJECT_BRIEFING.md](CURRENT_PROJECT_BRIEFING.md)。
+当前主线清单见 [CURRENT_MAINLINES.md](CURRENT_MAINLINES.md)。
+具体开发步骤见 [MAINLINE_DEVELOPMENT_GUIDE.md](MAINLINE_DEVELOPMENT_GUIDE.md)。
 
 ## 0. 安全第一原则
 
@@ -70,6 +72,9 @@
 
 机械臂包含齿轮、同步轮、减速器、连杆或推杆，所以必须区分 `motor_id`、电机轴角和机器人/人体 `joint`。上层系统默认使用输出端 joint 状态；原始电机数据只作为诊断和标定依据。任何 `motor -> joint` 换算都必须记录传动比、方向、零点、限位、回差/死区和标定版本。
 
+当前可以临时使用“上电当前位置 = 工程零点”推进 planner 和 MuJoCo dry-run，配置记录在
+`rehab_arm_ros2_ws/src/rehab_arm_description/config/medical_arm_6dof_temporary_calibration.yaml`。这只是开发基线，不是临床零点或运动许可。
+
 ## 2.0.1 整机架构地基合同
 
 后续代码、文档、AI 协作和测试都必须沿着本节主线推进，不要另造一套控制架构。
@@ -133,6 +138,26 @@ mainline / shadow-sim / dry-run / bench-debug / offline-demo / side-channel
 - `0x323`、`/rehab_arm/model_state`、M55 confidence/result_code 永远只是建议，不得改变 `motion_allowed`，不得绕过 `0x322` safety gate。
 
 后续 AI 如果发现旧文档、旧 demo 或旧启动脚本与本节冲突，必须以本节为准，更新旧内容，而不是复制一条新路线。
+
+### 当前主线清单
+
+下面这些是当前必须持续追踪的主线，不要做一个丢一个：
+
+| 主线 | 当前位置 | 作用 | 备注 |
+|---|---|---|---|
+| M33 安全控制主线 | `D:/RT-ThreadStudio/workspace/yiliao_m33` / `origin/M33` | 最终安全责任、CAN 主站、电机控制、状态汇总 | 真实运动最终只能回到这里裁决 |
+| M55 语音 / 小模型主线 | `D:/RT-ThreadStudio/workspace/wifi` / `origin/M55` | 语音、音频、板端模型结果、M33/M55 IPC | 只输出建议，不直接控制电机 |
+| NanoPi ROS2 主线 | `D:/RT-ThreadStudio/workspace/_nanopi_rosnode_usbcan` | ROS2 bridge、状态汇总、仿真/平台网关 | 当前整合工作区，主线追踪入口 |
+| Linux 仿真主机主线 | `cal@192.168.3.34` / `rehab-arm-sim-host-shadow.service` | MuJoCo hardware shadow、dry-run、6DOF 可视化 | 负责 shadow，不负责真机安全闭环 |
+| C8T6 传感节点主线 | `origin/C8T6` / 独立 STM32 工程 | EMG/IMU/心率/健康类传感 | 当前未在总线上确认在线 |
+| APP 主线 | `origin/APP` | Android App、BLE 近端交互、高层显示 | 不能变成真机直控旁路 |
+| 平台 / 总控台主线 | 平台仓库 | 任务编排、数据资产、模型、实验追踪 | 只做高层任务和管理，不发底层控制 |
+
+历史支线与 bench/debug 入口可以保留，但必须明确标注，不得混入正式主线：
+
+- `7号 EL05`、`nanopi_can_master.py`、`private/cansimple/m33 target` 都是 bench/debug。
+- `ROS_VLA_WebSocket`、旧 wake/demos、历史台架脚本都只能当参考，不得当当前正式控制入口。
+- `shadow-sim` 只负责可视化和 dry-run，不代表真机可动。
 
 ### 2.0.2 2026-06-04 上板地基状态
 

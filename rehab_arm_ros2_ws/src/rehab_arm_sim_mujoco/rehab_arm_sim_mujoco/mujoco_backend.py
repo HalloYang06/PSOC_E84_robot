@@ -184,7 +184,7 @@ def build_rehab_arm_mjcf(joint_profile: str | None = None) -> str:
         '  <worldbody>\n'
         '    <geom name="floor" type="plane" pos="0 0 0" size="1.2 1.2 0.02" rgba="0.82 0.84 0.86 1"/>\n'
         '    <light name="key_light" pos="0.2 -0.8 1.8" dir="0 0 -1"/>\n'
-        '    <body name="base" pos="0 0 0.8">\n'
+        '    <body name="base" pos="0 0 1.15">\n'
         '      <geom type="cylinder" size="0.06 0.04" rgba="0.18 0.20 0.24 1" mass="0.5"/>\n'
         f'{body_xml}'
         '    </body>\n'

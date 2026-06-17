@@ -18,6 +18,8 @@
 - 旧规划 CAN ID 不作为当前依据。
 
 当前总体数据流图见：[system_data_flow.png](assets/system_data_flow.png)。
+当前主线开发步骤见：[MAINLINE_DEVELOPMENT_GUIDE.md](MAINLINE_DEVELOPMENT_GUIDE.md)。临时工程零点表见：
+`rehab_arm_ros2_ws/src/rehab_arm_description/config/medical_arm_6dof_temporary_calibration.yaml`。
 
 M33 物理安全输入映射合同见：[M33_SAFETY_INPUT_MAPPING.md](M33_SAFETY_INPUT_MAPPING.md)。后续接真实急停、电源/电压、限位前，先按该文档确认输入源、`confirmed` 条件和 `safe_now` 条件。
 
@@ -26,6 +28,8 @@ M33 物理安全输入映射合同见：[M33_SAFETY_INPUT_MAPPING.md](M33_SAFETY
 M33 pre-arm 现在预留了代码配置型安全检查：位置限位、速度限制、扭矩/电流限制。它们会在串口中以 `PREARM_CODE_LIMITS` 单独显示；默认都是 `confirmed=0 safe_now=0`，等用户后续直接改 M33 代码填入真实限制后再打开。
 
 当前开发台架固件允许临时打开小幅运动链路：`CONTROL_DEVELOPMENT_BENCH_MOTION_ENABLE=1U`。这只用于空载或隔离台架开发，不是穿戴安全模式。该模式下 M33 仍会审核 `0x320`：ROS 关节号必须合法，位置目标必须在 `-60°~+60°`，速度必须在 `-5~+5 rpm`，`torque_ma` 必须为 `0`。ROS joint id 是 `0-based`，M33 会映射到内部 `1-based` 电机关节槽位。
+
+当前工程阶段可先采用“上电当前位置 = 工程临时零点”开发路径规划。这个零点只用于 MuJoCo/dry-run、小幅相对轨迹和参数记录；不代表临床零点，不代表正式机械零位，也不允许绕过 M33 执行。真实执行前仍由 M33 对限位、限速、限流、急停、fault 和通信状态做最终裁决。
 
 当前 M33 关节命令换算基线：3 号伺泰威 CANSimple/ODrive-like 需要按减速/协议侧 rev 单位换算；4/5 号 RS00 和 6/7 号 EL05 的 RobStride CSP `loc_ref` 路径当前按输出端 joint rad 处理，关节命令比例为 `1.0`，不要再额外乘 `10:1/9:1`。RS00/EL05 的内部减速比只作为型号资料和诊断上下文，不作为当前 formal path 的关节目标倍乘系数。
 

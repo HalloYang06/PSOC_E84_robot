@@ -2,7 +2,7 @@
   <compiler angle="radian"/>
   <option timestep="0.002" gravity="0 0 -9.81"/>
   <worldbody>
-    <body name="base" pos="0 0 0.8">
+    <body name="base" pos="0 0 1.15">
       <geom type="sphere" size="0.04" mass="0.5"/>
         <body name="shoulder_lift_body" pos="0 0 0">
           <joint name="shoulder_lift_joint" type="hinge" axis="0 1 0" range="-0.7 1.4" limited="true" damping="1.0"/>

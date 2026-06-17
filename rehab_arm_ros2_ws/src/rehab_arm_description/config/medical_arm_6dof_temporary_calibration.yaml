@@ -1,0 +1,153 @@
+schema_version: medical_arm_6dof_temporary_calibration_v1
+status: draft_engineering_zero_only
+created_date: 2026-06-17
+authority: m33_final_safety_authority
+
+purpose:
+  summary: 当前姿态先作为工程临时零点，用于 planner、MuJoCo dry-run、数据记录和小幅相对轨迹开发。
+  not_for: 临床零点、最终机械零位、穿戴运动许可、绕过 M33 的直接执行。
+
+baseline:
+  zero_policy: current_power_on_pose_as_engineering_zero
+  observation_time: 2026-06-17
+  source_topics:
+    - /joint_states
+    - /rehab_arm/motor_state
+    - /rehab_arm/safety_state
+  observed_joint_states:
+    shoulder_lift_joint:
+      observed_position_rad: 0.067
+      source: /joint_states
+      note: 2026-06-17 NanoPi 只读采样；作为当前工程零点样例。
+
+temporary_rules:
+  planner_frame: relative_to_engineering_zero
+  allow_cartesian_planning: false
+  allow_large_absolute_targets: false
+  allow_real_execution_without_m33: false
+  final_execution_authority: M33
+
+joints:
+  - medical_arm_joint: jian_hengxiang_joint
+    ros_joint_candidates:
+      - shoulder_lift_joint
+    motor_ref:
+      kind: node_id
+      id: 3
+      protocol: CANSimple
+    observed_zero_position_rad: 0.067
+    zero_source: /joint_states
+    zero_status: observed_current_pose_as_temporary_zero
+    direction_sign: TODO_confirm_plus_or_minus_1
+    joint_to_motor_ratio: TODO_confirm_current_schema_says_motor_to_joint_0_5
+    soft_limit_rad: [-0.20, 0.20]
+    velocity_limit_rad_s: 0.05
+    current_or_torque_limit: TODO_confirm_m33_limit
+    ready_for_mujoco_planning: true
+    ready_for_real_formal_execution: false
+    notes: 3号已小幅动过；正式位置路径前仍要确认方向、零点和限位。
+
+  - medical_arm_joint: jian_zongxiang_joint
+    ros_joint_candidates:
+      - elbow_lift_joint
+    motor_ref:
+      kind: motor_id
+      id: 4
+      protocol: RobStride_CSP
+    observed_zero_position_rad: TODO_open_active_report_and_record_current_position
+    zero_source: TODO
+    zero_status: pending_observation
+    direction_sign: TODO_confirm_plus_or_minus_1
+    joint_to_motor_ratio: 1.0
+    soft_limit_rad: [-0.10, 0.10]
+    velocity_limit_rad_s: 0.03
+    current_or_torque_limit: TODO_confirm_m33_limit
+    ready_for_mujoco_planning: true
+    ready_for_real_formal_execution: false
+    notes: 当前先按小幅相对规划处理；需要打开短时遥测记录当前位置。
+
+  - medical_arm_joint: jian_xuanzhuan_joint
+    ros_joint_candidates:
+      - upper_arm_rotation_joint
+    motor_ref:
+      kind: motor_id
+      id: 6
+      protocol: RobStride_CSP
+    observed_zero_position_rad: TODO_open_active_report_and_record_current_position
+    zero_source: TODO
+    zero_status: pending_observation
+    direction_sign: TODO_confirm_plus_or_minus_1
+    joint_to_motor_ratio: 1.0
+    soft_limit_rad: [-0.10, 0.10]
+    velocity_limit_rad_s: 0.03
+    current_or_torque_limit: TODO_confirm_m33_limit
+    ready_for_mujoco_planning: true
+    ready_for_real_formal_execution: false
+    notes: 6号已恢复反馈；7号外部调试不进入当前正式映射。
+
+  - medical_arm_joint: zhou_zongxiang_joint
+    ros_joint_candidates:
+      - shoulder_abduction_joint
+    motor_ref:
+      kind: motor_id
+      id: 5
+      protocol: RobStride_CSP
+    observed_zero_position_rad: TODO_open_active_report_and_record_current_position
+    zero_source: TODO
+    zero_status: pending_observation
+    direction_sign: TODO_confirm_plus_or_minus_1
+    joint_to_motor_ratio: 1.0
+    soft_limit_rad: [-0.10, 0.10]
+    velocity_limit_rad_s: 0.03
+    current_or_torque_limit: TODO_confirm_m33_limit
+    ready_for_mujoco_planning: true
+    ready_for_real_formal_execution: false
+    notes: 当前只允许 MuJoCo/dry-run 和后续单关节小幅验证。
+
+  - medical_arm_joint: wanbu_zongxiang_joint
+    ros_joint_candidates:
+      - TODO_wrist_flexion_joint_name
+    motor_ref:
+      kind: motor_id
+      id: TODO_1_or_2
+      protocol: TODO_4015
+    observed_zero_position_rad: TODO_after_power_on
+    zero_source: TODO
+    zero_status: not_powered
+    direction_sign: TODO
+    joint_to_motor_ratio: TODO
+    soft_limit_rad: [-0.05, 0.05]
+    velocity_limit_rad_s: 0.02
+    current_or_torque_limit: TODO
+    ready_for_mujoco_planning: true
+    ready_for_real_formal_execution: false
+    notes: 1/2 当前没上电，只做 MuJoCo 占位。
+
+  - medical_arm_joint: wanbu_hengxiang_joint
+    ros_joint_candidates:
+      - TODO_wrist_deviation_joint_name
+    motor_ref:
+      kind: motor_id
+      id: TODO_1_or_2
+      protocol: TODO_4015
+    observed_zero_position_rad: TODO_after_power_on
+    zero_source: TODO
+    zero_status: not_powered
+    direction_sign: TODO
+    joint_to_motor_ratio: TODO
+    soft_limit_rad: [-0.05, 0.05]
+    velocity_limit_rad_s: 0.02
+    current_or_torque_limit: TODO
+    ready_for_mujoco_planning: true
+    ready_for_real_formal_execution: false
+    notes: 1/2 当前没上电，只做 MuJoCo 占位。
+
+handoff_checklist:
+  before_real_motion:
+    - 当前姿态零点已记录。
+    - 正方向已逐关节确认。
+    - M33 限位/限速/限流已确认。
+    - /joint_states 与 M33 聚合状态一致。
+    - MuJoCo dry-run 已通过。
+    - 现场无人穿戴，急停/断电可用。
+

@@ -11,6 +11,11 @@ SCHEMA_PATH = (
     / 'config'
     / 'medical_arm_6dof_schema.yaml'
 )
+TEMP_CALIBRATION_PATH = (
+    Path(__file__).resolve().parents[1]
+    / 'config'
+    / 'medical_arm_6dof_temporary_calibration.yaml'
+)
 
 
 class MedicalArm6DofSchemaTests(unittest.TestCase):
@@ -84,6 +89,34 @@ class MedicalArm6DofSchemaTests(unittest.TestCase):
         self.assertEqual(external_motor['temporary_shadow_joint'], 'forearm_rotation_joint')
         self.assertEqual(external_motor['temporary_substitute_for_medical_arm_6dof_joint'], 'jian_xuanzhuan_joint')
         self.assertEqual(external_motor['temporary_replaces_motor_id'], 6)
+
+    def test_temporary_calibration_records_engineering_zero_boundary(self) -> None:
+        payload = yaml.safe_load(TEMP_CALIBRATION_PATH.read_text(encoding='utf-8'))
+
+        self.assertEqual(payload['schema_version'], 'medical_arm_6dof_temporary_calibration_v1')
+        self.assertEqual(payload['authority'], 'm33_final_safety_authority')
+        self.assertEqual(payload['baseline']['zero_policy'], 'current_power_on_pose_as_engineering_zero')
+        self.assertFalse(payload['temporary_rules']['allow_cartesian_planning'])
+        self.assertFalse(payload['temporary_rules']['allow_large_absolute_targets'])
+        self.assertFalse(payload['temporary_rules']['allow_real_execution_without_m33'])
+        self.assertEqual(payload['temporary_rules']['final_execution_authority'], 'M33')
+
+        joints = payload['joints']
+        self.assertEqual(
+            [joint['medical_arm_joint'] for joint in joints],
+            [
+                'jian_hengxiang_joint',
+                'jian_zongxiang_joint',
+                'jian_xuanzhuan_joint',
+                'zhou_zongxiang_joint',
+                'wanbu_zongxiang_joint',
+                'wanbu_hengxiang_joint',
+            ],
+        )
+        shoulder = joints[0]
+        self.assertEqual(shoulder['motor_ref']['id'], 3)
+        self.assertEqual(shoulder['observed_zero_position_rad'], 0.067)
+        self.assertFalse(shoulder['ready_for_real_formal_execution'])
 
 
 if __name__ == '__main__':
