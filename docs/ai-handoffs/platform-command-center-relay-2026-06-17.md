@@ -109,3 +109,21 @@ The platform repo also has many existing modified and untracked files from platf
 3. When platform API contracts change, update this main repo's protocol docs first or in the same change, without inventing a parallel protocol in the platform.
 4. For user-facing XiaoZhi QA, surface merged session states such as wake/listen/thinking/speaking/error; do not derive the UI from the last TTS event alone.
 5. Deploy the pushed platform branch before judging cloud behavior; cloud alignment earlier still reported build `63858c56272a`, older than the latest platform commits.
+
+## Cloud Deployment Update
+
+2026-06-17:
+
+- Cloud repo path: `~/apps/ai-collab` on `ubuntu@106.55.62.122`.
+- Cloud branch: `ai/game-loop-core`.
+- Cloud code fast-forwarded to `9567e96`.
+- API/Web restarted with `AI_COLLAB_BUILD_SHA=9567e960`.
+- Alignment command passed:
+
+```powershell
+python scripts/check_web_api_alignment.py --web-base http://106.55.62.122:3001 --api-base http://106.55.62.122:8011 --project-id 72a1cb1d-d8a8-422f-8d87-4ed071f71dbe
+```
+
+Result: `ok=true`; direct and proxy health both reported deployment build `9567e960`.
+
+Cloud deployment caveat: local cloud dirty files were stashed as `codex-cloud-predeploy-2026-06-17` before fast-forward. Runner/database errors unrelated to XiaoZhi were seen in API logs and remain separate follow-up work.

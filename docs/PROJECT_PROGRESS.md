@@ -3056,3 +3056,12 @@
 - Validation: from `D:\ai-collab-product\apps\api`, `python -m pytest tests/test_rehab_arm_sync.py -q -k "xiaozhi"` passed with `5 passed`; the broader relay regression `python -m pytest tests/test_rehab_arm_sync.py tests/test_runner_relay.py tests/test_requirement_autonomy_flow.py -q` passed with `55 passed, 33 warnings`.
 - Boundary: this is observability for LVGL/platform feedback only. It still does not validate the physical M55 microphone, wake word, speaker quality, or official Opus decode on hardware.
 - Next step: deploy the platform branch to cloud and run a real XiaoZhi WebSocket QA against the board/provider config, then bind LVGL animation states to `ui_state` instead of inferring from raw event names.
+
+### 2026-06-17 - Platform cloud deployed to XiaoZhi UI state build
+
+- Completed: Tencent Lighthouse platform checkout `~/apps/ai-collab` was fast-forwarded from `63858c5` to `9567e96` on `ai/game-loop-core`.
+- Completed: cloud API and web services were restarted with deployment metadata `AI_COLLAB_BUILD_SHA=9567e960`.
+- Validation: `python scripts/check_web_api_alignment.py --web-base http://106.55.62.122:3001 --api-base http://106.55.62.122:8011 --project-id 72a1cb1d-d8a8-422f-8d87-4ed071f71dbe` returned `ok=true`, with direct and proxy health both reporting build `9567e960`.
+- Operational note: the cloud worktree had local dirty files before deployment; they were saved in a recoverable git stash named `codex-cloud-predeploy-2026-06-17` before the fast-forward.
+- Observed but not fixed here: cloud API logs still showed unrelated runner/database errors such as missing `runners` table for some runner endpoints. XiaoZhi deployment health itself passed.
+- Next step: run real XiaoZhi WebSocket QA against the cloud build and board/provider config, then bind LVGL animation and error display to `xiaozhi_session_v1.ui_state` and `last_error`.

@@ -5998,3 +5998,22 @@ ros2 topic list -t | grep /rehab_arm/model_state
 
 - 2026-06-17 平台后端回归通过：`54 passed, 33 warnings`。该修复只稳定服务器侧状态，不等于已经验证 M55 麦克风、唤醒词、扬声器和官方 Opus 全链路都完成。
 - 2026-06-17 追加验证：XiaoZhi 专项 `5 passed`，平台相关回归 `55 passed, 33 warnings`；最新平台文档提交为 `9567e960`。
+
+### 云端部署健康检查可能被旧 build 环境变量误导
+
+现象：
+
+- 云端仓库已经 `git pull` 到最新提交，但 `/api/health` 仍显示旧的 `deployment.build_sha`。
+
+根因：
+
+- 云端启动脚本会从当前 shell 环境读取 `AI_COLLAB_BUILD_SHA`。如果 shell 里残留旧值，健康接口会继续显示旧 SHA，即使代码已经更新。
+
+解决：
+
+- 重启云端服务时显式传入最新部署元数据，例如 `AI_COLLAB_BUILD_SHA=9567e960 AI_COLLAB_BUILD_REF=ai/game-loop-core RESTART=1 ./scripts/start-cloud-prod.sh`。
+- 部署验收必须同时看 `git rev-parse --short HEAD` 和 `/api/health` 的 `deployment.build_sha`。
+
+状态：
+
+- 2026-06-17 已修正并验证：云端 API/Web proxy health 都报告 `build_sha=9567e960`，alignment check 返回 `ok=true`。
