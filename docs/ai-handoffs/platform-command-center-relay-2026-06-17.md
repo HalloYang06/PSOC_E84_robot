@@ -49,6 +49,8 @@ Current XiaoZhi relay state from platform-side work:
 - TTS downlink work belongs in the platform repo, not in this main ROS2/M33 repository.
 - Platform commit pushed after this handoff started: `ccf7fd33` on `ai/game-loop-core`, message `fix: stabilize rehab XiaoZhi session status`.
 - The pushed platform fix keeps `xiaozhi_session_v1` as a merged session snapshot so TTS bookkeeping no longer erases the voice/listen/reply state needed by LVGL/device QA.
+- Later platform doc commit: `9567e960` on `ai/game-loop-core`, message `feat: surface XiaoZhi ui state for relay feedback`.
+- The current platform-side state contract exposes `xiaozhi_session_v1.ui_state` and `last_error`; LVGL/front-end code should bind user feedback to those fields rather than guessing from the last event type.
 
 ## Changed In This Main Repo
 
@@ -81,6 +83,16 @@ python -m pytest tests/test_rehab_arm_sync.py tests/test_runner_relay.py tests/t
 
 Result: `54 passed, 33 warnings`.
 
+Additional validation after `9567e960`:
+
+```powershell
+cd D:\ai-collab-product\apps\api
+python -m pytest tests/test_rehab_arm_sync.py -q -k "xiaozhi"
+python -m pytest tests/test_rehab_arm_sync.py tests/test_runner_relay.py tests/test_requirement_autonomy_flow.py -q
+```
+
+Results: `5 passed` for XiaoZhi-only, then `55 passed, 33 warnings` for the broader relay regression.
+
 ## Known Dirty Files Not Owned By This Task
 
 In the main repo, these were present before this documentation change and were intentionally not staged:
@@ -96,3 +108,4 @@ The platform repo also has many existing modified and untracked files from platf
 2. Keep official XiaoZhi Opus as the long-term protocol path; document PCM as compatibility/debug if it remains.
 3. When platform API contracts change, update this main repo's protocol docs first or in the same change, without inventing a parallel protocol in the platform.
 4. For user-facing XiaoZhi QA, surface merged session states such as wake/listen/thinking/speaking/error; do not derive the UI from the last TTS event alone.
+5. Deploy the pushed platform branch before judging cloud behavior; cloud alignment earlier still reported build `63858c56272a`, older than the latest platform commits.

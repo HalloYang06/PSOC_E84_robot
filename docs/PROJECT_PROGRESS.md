@@ -3047,3 +3047,12 @@
 - Safety: platform/XiaoZhi/model relay still only produces speech state, ASR/LLM/TTS status, operator-facing replies, VLA language context, and dry-run suggestions. It does not produce CAN frames, motor torque/current, raw motor state, direct motor commands, or M33 safety overrides.
 - Unrelated local state: the platform repo still has many pre-existing dirty/untracked files outside the two committed files; they were intentionally not staged for this step.
 - Next step: continue the real XiaoZhi chain in the platform/M55 path by verifying wake/listen/ASR/LLM/TTS provider configuration and speaker playback, while keeping M55 resource use and official XiaoZhi/Infineon audio path in view.
+
+### 2026-06-17 - Platform XiaoZhi UI state contract documented
+
+- Platform repo updated and pushed: `D:\ai-collab-product`, branch `ai/game-loop-core`, commit `9567e960` (`feat: surface XiaoZhi ui state for relay feedback`).
+- Completed: platform integration docs now record that the merged `xiaozhi_session_v1` snapshot exposes `ui_state` and `last_error` for user-facing feedback.
+- Current available UI states from platform code/tests: `listening`, `wake_detected`, `thinking`, `speaking`, `idle`, `error`, and disconnect/offline handling.
+- Validation: from `D:\ai-collab-product\apps\api`, `python -m pytest tests/test_rehab_arm_sync.py -q -k "xiaozhi"` passed with `5 passed`; the broader relay regression `python -m pytest tests/test_rehab_arm_sync.py tests/test_runner_relay.py tests/test_requirement_autonomy_flow.py -q` passed with `55 passed, 33 warnings`.
+- Boundary: this is observability for LVGL/platform feedback only. It still does not validate the physical M55 microphone, wake word, speaker quality, or official Opus decode on hardware.
+- Next step: deploy the platform branch to cloud and run a real XiaoZhi WebSocket QA against the board/provider config, then bind LVGL animation states to `ui_state` instead of inferring from raw event names.

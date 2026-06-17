@@ -5992,7 +5992,9 @@ ros2 topic list -t | grep /rehab_arm/model_state
 
 - 平台仓库 `D:\ai-collab-product` 已在 commit `ccf7fd33` 修复：`record_xiaozhi_ws_event()` 写入 merged `xiaozhi_session_v1`，保留音频字节数、时长、official audio path、兼容模式、ASR 状态、LLM entry 状态和 TTS provider 状态。
 - 后续 UI/LVGL/设备 QA 应读取 session 快照判断 `listen_start/listen_stop/thinking/speaking/error`，不要只看最后一条 TTS 事件。
+- 2026-06-17 后续平台文档已明确：前端/LVGL 应直接消费 `xiaozhi_session_v1.ui_state` 和 `last_error`，不要再从 `event` 或最后一条 WebSocket 消息推导动画状态。
 
 状态：
 
 - 2026-06-17 平台后端回归通过：`54 passed, 33 warnings`。该修复只稳定服务器侧状态，不等于已经验证 M55 麦克风、唤醒词、扬声器和官方 Opus 全链路都完成。
+- 2026-06-17 追加验证：XiaoZhi 专项 `5 passed`，平台相关回归 `55 passed, 33 warnings`；最新平台文档提交为 `9567e960`。
