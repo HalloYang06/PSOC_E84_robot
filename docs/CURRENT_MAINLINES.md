@@ -6,11 +6,11 @@
 
 当前必须持续追踪的主线有 7 条：
 
-| 主线 | 位置 | 作用 | 备注 |
+| 主线 | GitHub / 运行入口 | 作用 | 备注 |
 |---|---|---|---|
-| M33 安全控制主线 | `D:/RT-ThreadStudio/workspace/yiliao_m33` / `origin/M33` | 最终安全责任、CAN 主站、电机控制、状态汇总 | 真机运动最终裁决点 |
-| M55 语音/小模型主线 | `D:/RT-ThreadStudio/workspace/wifi` / `origin/M55` | 语音、音频、板端模型结果、M33/M55 IPC | 只输出建议，不直控电机 |
-| NanoPi ROS2 主线 | `D:/RT-ThreadStudio/workspace/_nanopi_rosnode_usbcan` | ROS2 bridge、状态汇总、仿真/平台网关 | 当前整合工作区 |
+| M33 安全控制主线 | `origin/M33` | 最终安全责任、CAN 主站、电机控制、状态汇总 | 真机运动最终裁决点 |
+| M55 语音/小模型主线 | `origin/M55` | 语音、音频、板端模型结果、M33/M55 IPC | 只输出建议，不直控电机 |
+| NanoPi ROS2 主线 | `feature/rehab-arm-ros2-architecture` / `rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/` | ROS2 bridge、状态汇总、仿真/平台网关 | 当前整合主线 |
 | Linux 仿真主机主线 | `cal@192.168.3.34` / `rehab-arm-sim-host-shadow.service` | MuJoCo hardware shadow、dry-run、6DOF 可视化 | 不承担真机安全闭环 |
 | C8T6 传感节点主线 | `origin/C8T6` / 独立 STM32 工程 | EMG/IMU/心率/健康类传感 | 目前未确认总线在线 |
 | APP 主线 | `origin/APP` | Android App、BLE 近端交互、高层显示 | 不能成为直控旁路 |
@@ -30,7 +30,20 @@
 
 当前工程阶段允许把“上电当前位置”作为临时工程零点，用于 MuJoCo/dry-run 和小幅相对轨迹开发；这不是临床零点，也不是绕过 M33 的运动许可。
 
-## 3. 支线分类
+## 3. 我已核实的主线路线
+
+| 路线 | 类型 | GitHub 路径 / 入口 | 结论 |
+|---|---|---|---|
+| 正式真机运动 | `mainline` | `/arm_controller/joint_trajectory -> rehab_arm_psoc_bridge -> M33 -> motor` | 这是唯一正式真机运动路线 |
+| NanoPi 到 M33 状态桥 | `mainline` | `rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/psoc_can_bridge_node.py` | 负责 M33 heartbeat/status、motor state 和 trajectory bridge |
+| M33 状态解析 | `mainline` | `rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/psoc_status.py`, `psoc_motor_status.py`, `m33_ros_contract.py` | 负责 `0x322`、`0x330~0x334` 等 ROS 侧解析 |
+| MuJoCo 纯仿真 | `shadow-sim` | `rehab_arm_ros2_ws/src/rehab_arm_sim_mujoco/` | 只能动仿真，不直接控真机 |
+| MuJoCo hardware shadow | `shadow-sim` | `rehab_arm_ros2_ws/src/rehab_arm_sim_mujoco/launch/medical_arm_6dof_hardware_shadow.launch.py` | 用 NanoPi 状态驱动仿真观察 |
+| Linux sim host 服务 | `shadow-sim` | `cal@192.168.3.34` / `rehab-arm-sim-host-shadow.service` | 远程仿真主机入口，不是安全控制器 |
+| 直接 CAN 调试 | `bench-debug` | `nanopi_can_master.py`, `private/cansimple/*` | 只用于 bring-up 和诊断，不能成为正式路径 |
+| 临时工程零点 | `dry-run` | `rehab_arm_ros2_ws/src/rehab_arm_description/config/medical_arm_6dof_temporary_calibration.yaml` | 当前姿态当开发零点，后续必须替换成真实标定 |
+
+## 4. 支线分类
 
 下面这些入口必须明确标成历史支线、bench 或 shadow，不可混入正式主线：
 
@@ -49,14 +62,14 @@
 - `offline-demo`：历史演示或合成数据。
 - `side-channel`：语音、App、平台、状态汇总等辅助链路。
 
-## 4. 现状记号
+## 5. 现状记号
 
 - `feature/rehab-arm-ros2-architecture` 是当前综合主线工作区。
 - `origin/M33`、`origin/M55`、`origin/C8T6`、`origin/APP`、`nanopi-sdk`、`nanopi-rosnode-usbcan` 都各有职责，不能混成一条线。
 - 当前已确认过的历史里程碑包括：M33/M33+NanoPi 主线、MuJoCo 6DOF shadow、以及曾经恢复过的全关节 `/joint_states`。
 - 当前代码审计结论：M33 串口 console/FINSH 仍开；4/5/6/7 active-report 不是开机自动打开，必须通过明确遥测命令短时打开并收尾关闭。
 
-## 5. 维护规则
+## 6. 维护规则
 
 以后新增任何功能或文档，先写清楚它属于哪条线：
 

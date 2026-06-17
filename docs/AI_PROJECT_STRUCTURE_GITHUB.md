@@ -4,6 +4,12 @@ This document is the stable entry index for AI agents working on the Medical Reh
 
 It should not be used as a daily progress log. Update it only when the repository structure, branch ownership, document map, or agent operating rules change.
 
+Scope note:
+
+- This index only expands the routes I have personally checked on the current integration branch and the verified subsystem homes around it.
+- It intentionally names M33, NanoPi, Linux sim host, and the formal/shadow/bench routes first.
+- Unchecked subsystem branches stay ownership-only until their responsible AI verifies them.
+
 Repository:
 
 ```text
@@ -116,7 +122,18 @@ The repository uses branches as subsystem homes.
 | `wake-word-model` | Wake word model reference | M55 voice reference only |
 | `main` | Entry/early material | Not current development mainline |
 
-## 5. Repository Structure On The Integration Branch
+## 5. Verified Mainline Routes I Have Checked
+
+| Route | Where it lives | What it does | Notes |
+|---|---|---|---|
+| M33 safety/control | `origin/M33` | Final safety authority, CAN master, motor control, status aggregation | Real motion must come back here |
+| NanoPi ROS2 bridge | `feature/rehab-arm-ros2-architecture` | ROS2 bridge, state aggregation, trajectory transfer, sim/platform gateway | Current integration workspace |
+| Linux sim host | `cal@192.168.3.34` / `rehab-arm-sim-host-shadow.service` | MuJoCo shadow, dry-run, 6DOF visualization | Simulation and review only |
+| Formal motion path | `JointTrajectory -> NanoPi -> M33 -> motor` | Real motion path | Only accepted real-motion route |
+| Shadow-sim path | `/sim/medical_arm/joint_trajectory -> /sim/medical_arm/joint_states` | MuJoCo-only shadow motion | No real motor control |
+| Bench-debug path | `nanopi_can_master.py`, `private/cansimple/*` | Direct CAN debug and bring-up | Debug only, not formal motion |
+
+## 6. Repository Structure On The Integration Branch
 
 Branch:
 
@@ -141,7 +158,7 @@ Key paths:
 | `launch/` | Top-level launch or system integration helpers |
 | `scripts/` | Utility scripts when present |
 
-## 6. Subsystem Document Map
+## 7. Subsystem Document Map
 
 ### Project And Architecture
 
@@ -203,7 +220,7 @@ Key paths:
 | `docs/HTTP_BRIDGE_README.md` | Historical HTTP bridge |
 | `docs/OPENCLAW_BRIDGE_README.md` | Historical OpenClaw bridge |
 
-## 7. Code Map On The Integration Branch
+## 8. Code Map On The Integration Branch
 
 ### Robot Description
 
@@ -250,7 +267,7 @@ Key paths:
 | `rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/m33_gate_preparation.py` | M33 gate preparation |
 | `rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/server_action_ingress.py` | Server action quality gate |
 
-## 8. Current System Boundary
+## 9. Current System Boundary
 
 Formal real-motion path:
 
@@ -272,7 +289,7 @@ Important topic names:
 | `/sim/medical_arm/joint_trajectory` | MuJoCo shadow trajectory input |
 | `/sim/medical_arm/joint_states` | MuJoCo shadow joint state output |
 
-## 9. Current Hardware Naming Rules
+## 10. Current Hardware Naming Rules
 
 Current installed/mainline motor understanding:
 
@@ -296,7 +313,7 @@ wanbu_zongxiang_joint
 wanbu_hengxiang_joint
 ```
 
-## 10. What This Document Must Not Become
+## 11. What This Document Must Not Become
 
 Do not turn this file into:
 
