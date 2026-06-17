@@ -112,6 +112,28 @@ Additional checks:
 - Mobile 390x900: no horizontal overflow; URDF canvas visible at about 360x380.
 - `npx --workspace apps/web tsc --noEmit` passes.
 
+## Skill Pass - 2026-06-18
+
+The page now follows the same design direction more strictly:
+
+- dark left device rail
+- compact top utility strip
+- compact V/L/A signal track
+- dark URDF stage as the visual anchor
+- lighter human muscle and action-prediction secondary stage
+- right-side safety / XiaoZhi / relay tower kept readable but not dominant
+
+Mobile-specific cleanup:
+
+- the top bar stays in one horizontal strip
+- the V/L/A row uses short labels and does not push the robot stage too far down
+- no horizontal overflow on 390px wide viewports
+
+Screenshots:
+
+- `docs/screenshots/rehab-arm-redesign-qa/skill-pass-desktop-1600.png`
+- `docs/screenshots/rehab-arm-redesign-qa/skill-pass-mobile-390.png`
+
 ## Remaining UX Work
 
 - The cloud/demo project with real device data should be re-QA'd after deploy because local `proj_rehab_arm` has no NanoPi device rows.
