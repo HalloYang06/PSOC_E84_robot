@@ -18,6 +18,14 @@ export type DashboardDevice = {
   latest_upload_status: string;
   latest_error: string;
   camera_keyframe?: AnyRecord;
+  camera_stream_offer?: AnyRecord;
+  command_center_snapshot?: AnyRecord;
+  robot_render_state?: AnyRecord;
+  wiring_health?: AnyRecord;
+  safety_status?: AnyRecord;
+  voice_relay?: AnyRecord;
+  vla_plan_candidate?: AnyRecord;
+  estop_ack?: AnyRecord;
   motor_state?: AnyRecord;
   sensor_state?: AnyRecord;
   safety?: AnyRecord;
@@ -25,6 +33,8 @@ export type DashboardDevice = {
   manifest?: AnyRecord;
   data_quality?: AnyRecord;
   device_model?: AnyRecord;
+  model_relay_response?: AnyRecord;
+  xiaozhi_session?: AnyRecord;
 };
 
 export type Dashboard = {
@@ -68,6 +78,22 @@ type JointCalibration = {
   offsetRad: number;
 };
 
+type RelayProviderPreset = {
+  id: string;
+  label: string;
+  base_url: string;
+  model_hint: string;
+};
+
+type RelayConfig = {
+  provider: string;
+  base_url: string;
+  model: string;
+  external_enabled: boolean;
+  api_key_configured: boolean;
+  presets: RelayProviderPreset[];
+};
+
 type JointFlowRow = {
   jointName: string;
   sourceName: string;
@@ -89,6 +115,25 @@ type UrdfVisualMesh = {
   rpy: [number, number, number];
   scale: [number, number, number];
 };
+
+type RenderJointRow = {
+  name: string;
+  position: number | null;
+  velocity: number | null;
+  fresh: boolean;
+  limitClamped: boolean;
+};
+
+const DEFAULT_RELAY_PRESETS: RelayProviderPreset[] = [
+  { id: "openai", label: "OpenAI", base_url: "https://api.openai.com/v1", model_hint: "gpt-4o-mini / gpt-4.1-mini" },
+  { id: "azure_openai", label: "Azure OpenAI", base_url: "https://YOUR-RESOURCE.openai.azure.com/openai/v1", model_hint: "deployment name" },
+  { id: "deepseek", label: "DeepSeek", base_url: "https://api.deepseek.com/v1", model_hint: "deepseek-chat" },
+  { id: "qwen", label: "通义千问 / DashScope", base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1", model_hint: "qwen-plus" },
+  { id: "moonshot", label: "Moonshot / Kimi", base_url: "https://api.moonshot.cn/v1", model_hint: "moonshot-v1-8k" },
+  { id: "zhipu", label: "智谱 GLM", base_url: "https://open.bigmodel.cn/api/paas/v4", model_hint: "glm-4-flash" },
+  { id: "siliconflow", label: "硅基流动", base_url: "https://api.siliconflow.cn/v1", model_hint: "Qwen/Qwen2.5-7B-Instruct" },
+  { id: "custom", label: "自定义 OpenAI-compatible", base_url: "", model_hint: "model id" },
+];
 
 function normalizeCalibration(value: unknown): JointCalibration | null {
   const row = record(value);
@@ -126,26 +171,6 @@ function modelInfoFromRecord(value: unknown) {
   };
 }
 
-function fallbackUrdfFromCalibrations(robotName: string, rows: JointCalibration[]) {
-  const safeRobotName = robotName.replace(/[^A-Za-z0-9_-]+/g, "_") || "robot_model";
-  const links = [`  <link name="base_link"/>`];
-  const joints: string[] = [];
-  rows.forEach((row, index) => {
-    const linkName = `link_${index + 1}`;
-    links.push(`  <link name="${linkName}"/>`);
-    joints.push([
-      `  <joint name="${row.jointName}" type="revolute">`,
-      `    <parent link="${index === 0 ? "base_link" : `link_${index}`}"/>`,
-      `    <child link="${linkName}"/>`,
-      `    <origin xyz="0 0 ${((index + 1) * 0.08).toFixed(3)}" rpy="0 0 0"/>`,
-      `    <axis xyz="0 0 1"/>`,
-      `    <limit lower="-3.14" upper="3.14" effort="1" velocity="1"/>`,
-      "  </joint>",
-    ].join("\n"));
-  });
-  return `<robot name="${safeRobotName}">\n${links.join("\n")}\n${joints.join("\n")}\n</robot>\n`;
-}
-
 function text(value: unknown, fallback = "") {
   const next = String(value ?? "").trim();
   return next || fallback;
@@ -157,12 +182,20 @@ function isRawIdentifier(value: unknown) {
     || /^[0-9a-f]{12,}$/i.test(raw);
 }
 
+function isPublicPlaceholder(value: unknown) {
+  const raw = text(value, "").toLowerCase();
+  return !raw || raw === "unknown" || raw === "none" || raw === "null";
+}
+
 function publicDeviceName(device: DashboardDevice | null | undefined, index = 0) {
   const safeIndex = Math.max(0, index);
+  const snapshot = payloadOf(device?.command_center_snapshot);
   const robotName = text(device?.robot_id, "");
-  if (robotName && !isRawIdentifier(robotName)) return robotName;
+  if (!isPublicPlaceholder(robotName) && !isRawIdentifier(robotName)) return robotName;
+  const snapshotRobotName = text(snapshot.robot_id, "");
+  if (!isPublicPlaceholder(snapshotRobotName) && !isRawIdentifier(snapshotRobotName)) return snapshotRobotName;
   const deviceName = text(device?.device_id, "");
-  if (deviceName && !isRawIdentifier(deviceName)) return deviceName;
+  if (!isPublicPlaceholder(deviceName) && !isRawIdentifier(deviceName)) return deviceName;
   return `康复机械臂 ${safeIndex + 1}`;
 }
 
@@ -251,7 +284,33 @@ function record(value: unknown): AnyRecord {
 function formatTime(value: unknown) {
   const ts = Number(value);
   if (!Number.isFinite(ts) || ts <= 0) return "无记录";
-  return new Date(ts * 1000).toLocaleString("zh-CN", { hour12: false });
+  const date = new Date(ts * 1000);
+  const parts = new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? "00";
+  return `${part("year")}/${part("month")}/${part("day")} ${part("hour")}:${part("minute")}:${part("second")}`;
+}
+
+function formatClock(value: number | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  const parts = new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? "00";
+  return `${part("hour")}:${part("minute")}:${part("second")}`;
 }
 
 function timestampUnix(value: unknown): number | null {
@@ -276,6 +335,7 @@ function timestampUnix(value: unknown): number | null {
 
 function freshness(tsUnix: number | null, nowMs: number) {
   if (!tsUnix) return { text: "等待上报", state: "waiting" as const };
+  if (nowMs <= 0) return { text: "等待刷新", state: "waiting" as const };
   const ageSeconds = Math.max(0, Math.round((nowMs - tsUnix * 1000) / 1000));
   if (ageSeconds < 15) return { text: "刚刚更新", state: "fresh" as const };
   if (ageSeconds < 120) return { text: `${ageSeconds} 秒前`, state: "fresh" as const };
@@ -317,10 +377,103 @@ function eventTitle(event: AnyRecord) {
   if (type === "sensor_state") return "传感器摘要更新";
   if (type === "safety_state") return "安全状态更新";
   if (type === "camera_keyframe") return "摄像头关键帧";
+  if (type === "xiaozhi_ws_input") return "M55 输入";
+  if (type === "xiaozhi_ws_reply") return "平台回复";
   if (type === "sync_status") return "数据批次同步";
   if (type === "manifest") return "设备档案上传";
   if (type === "device_registration") return "设备注册";
   return type;
+}
+
+function xiaozhiEventLabel(value: unknown) {
+  const raw = text(value, "waiting");
+  if (raw === "hello") return "hello 握手";
+  if (raw === "listen_start") return "开始听取";
+  if (raw === "audio") return "音频帧";
+  if (raw === "reply") return "平台回复";
+  if (raw === "listen_stop") return "停止听取";
+  if (raw === "disconnect") return "连接断开";
+  return raw;
+}
+
+function xiaozhiKindLabel(value: unknown) {
+  const raw = text(value, "");
+  if (raw === "daily_chat") return "日常聊天";
+  if (raw === "vla_command") return "VLA 语言输入";
+  if (raw === "none") return "未分类";
+  return raw || "等待分类";
+}
+
+function xiaozhiUiStateLabel(value: unknown) {
+  switch (text(value, "offline")) {
+    case "listening":
+      return "正在听取";
+    case "wake_detected":
+      return "唤醒已触发";
+    case "thinking":
+      return "正在思考";
+    case "speaking":
+      return "正在播报";
+    case "idle":
+      return "待机";
+    case "error":
+      return "异常";
+    case "offline":
+      return "离线";
+    default:
+      return "未知状态";
+  }
+}
+
+function xiaozhiUiStateTone(value: unknown) {
+  switch (text(value, "offline")) {
+    case "listening":
+      return "ok";
+    case "wake_detected":
+      return "limited";
+    case "thinking":
+      return "limited";
+    case "speaking":
+      return "ok";
+    case "idle":
+      return "idle";
+    case "error":
+      return "fault";
+    default:
+      return "idle";
+  }
+}
+
+function xiaozhiUiStateHint(value: unknown) {
+  switch (text(value, "offline")) {
+    case "listening":
+      return "等待唤醒词和麦克风输入";
+    case "wake_detected":
+      return "已识别唤醒，准备开始录音";
+    case "thinking":
+      return "平台正在整理上下文并请求模型";
+    case "speaking":
+      return "平台正在通过扬声器回复";
+    case "idle":
+      return "没有新语音时进入待机";
+    case "error":
+      return "会话出现错误，检查 last_error";
+    default:
+      return "未建立会话或设备离线";
+  }
+}
+
+function vlaGateLabel(value: unknown) {
+  const gate = record(value);
+  if (gate.participates_in_vla_l === true) return "进入 VLA-L";
+  const route = text(gate.route, "");
+  if (route === "daily_chat_only") return "日常聊天，不进 VLA";
+  if (route === "no_vla_input") return "未进入 VLA";
+  return "等待语言门控";
+}
+
+function xiaozhiDirectionLabel(recordType: unknown) {
+  return text(recordType, "") === "xiaozhi_ws_reply" ? "平台 → M55" : "M55 → 平台";
 }
 
 function boolText(value: unknown) {
@@ -395,9 +548,22 @@ function latestRoleStatus(signals: RoleSignals, kind: "nanopi" | "m33" | "app" |
 }
 
 function numberText(value: unknown, unit = "") {
+  if (value === null || value === undefined || value === "") return "-";
   const number = Number(value);
   if (!Number.isFinite(number)) return "-";
   return `${Number.isInteger(number) ? number : number.toFixed(3)}${unit}`;
+}
+
+function clamp01(value: number) {
+  return Math.max(0, Math.min(1, value));
+}
+
+function firstFiniteNumber(...values: unknown[]) {
+  for (const value of values) {
+    const number = Number(value);
+    if (Number.isFinite(number)) return number;
+  }
+  return null;
 }
 
 function motorPosition(motor: AnyRecord) {
@@ -414,6 +580,233 @@ function motorPosition(motor: AnyRecord) {
       ?? motor.angle,
   );
   return Number.isFinite(value) ? value : null;
+}
+
+function motorTemperature(motor: AnyRecord) {
+  return firstFiniteNumber(motor.temperature, motor.temp_c, motor.tempC, motor.motor_temperature_c, motor.motorTemperatureC);
+}
+
+type MuscleSignalRow = {
+  key: string;
+  label: string;
+  value: number | null;
+  fatigue: number | null;
+  status: "active" | "moderate" | "quiet" | "unknown";
+};
+
+type HumanModelSource = {
+  id: string;
+  label: string;
+  source: string;
+  url: string;
+  license: string;
+  note: string;
+};
+
+type MotionPredictionRow = {
+  key: string;
+  label: string;
+  value: string;
+  detail: string;
+  tone: "active" | "moderate" | "quiet" | "unknown";
+};
+
+const DEFAULT_HUMAN_MODEL_SOURCES: HumanModelSource[] = [
+  {
+    id: "anatom-models-upper-limb",
+    label: "Open upper-limb GLB",
+    source: "juncrose/anatom-models",
+    url: "https://raw.githubusercontent.com/juncrose/anatom-models/main/upper-limb.glb",
+    license: "Project page / public GitHub file",
+    note: "默认 3D 承载位，优先加载这份开源上肢模型。",
+  },
+  {
+    id: "anatomytool-upper-limb",
+    label: "Open3DModel upper limb",
+    source: "AnatomyTOOL / Open3D project",
+    url: "https://anatomytool.org/content/open3dmodel-upper-limb-english-labels",
+    license: "CC BY-SA",
+    note: "适合做分肌肉标签和示意图的开源人体上肢参考。",
+  },
+  {
+    id: "z-anatomy",
+    label: "Z-Anatomy atlas",
+    source: "Z-Anatomy",
+    url: "https://github.com/Z-Anatomy",
+    license: "Open source atlas",
+    note: "更完整的开源解剖图谱备选入口。",
+  },
+];
+
+function normalizedSignalValue(...values: unknown[]) {
+  const raw = firstFiniteNumber(...values);
+  if (raw === null) return null;
+  return clamp01(raw > 1 ? raw / 100 : raw);
+}
+
+function muscleStatus(value: number | null): MuscleSignalRow["status"] {
+  if (value === null) return "unknown";
+  if (value >= 0.68) return "active";
+  if (value >= 0.34) return "moderate";
+  return "quiet";
+}
+
+function humanModelUrlFromSensor(sensorPayload: AnyRecord) {
+  const model = record(sensorPayload.human_model ?? sensorPayload.humanModel ?? sensorPayload.model_outputs?.human_model ?? sensorPayload.modelOutputs?.human_model);
+  return text(
+    model.url
+      ?? model.model_url
+      ?? model.glb_url
+      ?? sensorPayload.human_model_url
+      ?? sensorPayload.humanModelUrl,
+    DEFAULT_HUMAN_MODEL_SOURCES[0].url,
+  );
+}
+
+function humanModelSourceFromSensor(sensorPayload: AnyRecord) {
+  const model = record(sensorPayload.human_model ?? sensorPayload.humanModel ?? sensorPayload.model_outputs?.human_model ?? sensorPayload.modelOutputs?.human_model);
+  return text(
+    model.source
+      ?? model.vendor
+      ?? sensorPayload.human_model_source
+      ?? sensorPayload.humanModelSource,
+    DEFAULT_HUMAN_MODEL_SOURCES[0].source,
+  );
+}
+
+function motionPredictionRowsFromSensor(sensorPayload: AnyRecord): MotionPredictionRow[] {
+  const source = record(
+    sensorPayload.motion_prediction
+      ?? sensorPayload.motionPrediction
+      ?? sensorPayload.action_prediction
+      ?? sensorPayload.actionPrediction
+      ?? sensorPayload.model_outputs
+      ?? sensorPayload.modelOutputs,
+  );
+  const candidates = asArray<AnyRecord>(
+    source.candidates
+      ?? source.top_k
+      ?? source.actions
+      ?? sensorPayload.action_candidates
+      ?? sensorPayload.predicted_actions,
+  );
+  const rows: MotionPredictionRow[] = [];
+  candidates.slice(0, 3).forEach((candidate, index) => {
+    rows.push({
+      key: `candidate_${index + 1}`,
+      label: text(candidate.label ?? candidate.name ?? candidate.action ?? candidate.id, `候选 ${index + 1}`),
+      value: text(candidate.confidence ?? candidate.score ?? candidate.probability, candidate.confidence === 0 ? "0%" : "-"),
+      detail: text(candidate.detail ?? candidate.reason ?? candidate.description ?? candidate.note, text(candidate.phase ?? candidate.intent, "等待动作模型")),
+      tone: muscleStatus(normalizedSignalValue(candidate.confidence ?? candidate.score ?? candidate.probability) ?? null),
+    });
+  });
+  if (rows.length) return rows;
+
+  const intent = record(sensorPayload.intent_prediction ?? sensorPayload.intentPrediction ?? sensorPayload.intent ?? source.intent);
+  const summary = text(
+    source.summary
+      ?? source.recommended_action
+      ?? source.recommendation
+      ?? intent.summary
+      ?? sensorPayload.action_summary
+      ?? sensorPayload.motion_summary,
+    "等待动作预测模型接入",
+  );
+  const interfaceRef = text(
+    source.interface
+      ?? source.input
+      ?? source.schema_version
+      ?? sensorPayload.prediction_interface
+      ?? "sensor_payload.motion_prediction / action_prediction / model_outputs",
+    "sensor_payload.motion_prediction / action_prediction / model_outputs",
+  );
+  return [
+    {
+      key: "summary",
+      label: "动作摘要",
+      value: summary,
+      detail: "输出给平台展示和审阅，不直接变成运动许可。",
+      tone: "moderate",
+    },
+    {
+      key: "interface",
+      label: "接口字段",
+      value: interfaceRef,
+      detail: "后续可从 NanoPi、M55 或云端模型把 top-k 动作建议塞进这个结构。",
+      tone: "quiet",
+    },
+    {
+      key: "inputs",
+      label: "输入映射",
+      value: text(
+        source.inputs
+          ?? source.features
+          ?? sensorPayload.emg_channels
+          ?? sensorPayload.channels
+          ?? "EMG + fatigue + IMU",
+        "EMG + fatigue + IMU",
+      ),
+      detail: "建议字段：channel_id、muscle_name、confidence、top_k、time_window。",
+      tone: "quiet",
+    },
+  ];
+}
+
+function muscleRowsFromSensor(sensorPayload: AnyRecord): MuscleSignalRow[] {
+  const emg = record(sensorPayload.emg ?? sensorPayload.emg_state ?? sensorPayload.muscle_signals ?? sensorPayload.muscleSignal);
+  const fatigue = record(sensorPayload.fatigue ?? sensorPayload.fatigue_state ?? sensorPayload.fatigue_model ?? sensorPayload.fatigueModel);
+  const channels = asArray<AnyRecord>(emg.channels ?? sensorPayload.emg_channels ?? sensorPayload.channels);
+  const byName = new Map<string, AnyRecord>();
+  channels.forEach((channel, index) => {
+    const name = text(channel.name ?? channel.channel ?? channel.location ?? channel.muscle, `ch${index + 1}`).toLowerCase();
+    byName.set(name, channel);
+  });
+
+  function pickChannel(names: string[]) {
+    for (const name of names) {
+      const direct = byName.get(name);
+      if (direct) return direct;
+      const fuzzy = Array.from(byName.entries()).find(([key]) => names.some((candidate) => key.includes(candidate)));
+      if (fuzzy) return fuzzy[1];
+    }
+    return {};
+  }
+
+  const specs = [
+    { key: "deltoid", label: "肩部三角肌", names: ["deltoid", "shoulder", "jian", "ch1"] },
+    { key: "biceps", label: "上臂屈肌", names: ["biceps", "upper_arm", "shangbi", "ch2"] },
+    { key: "forearm", label: "前臂屈伸肌", names: ["forearm", "wrist", "qianbi", "wanbu", "ch3"] },
+    { key: "trapezius", label: "肩颈稳定肌", names: ["trapezius", "neck", "trunk", "jianjing", "ch4"] },
+  ];
+
+  return specs.map((spec, index) => {
+    const channel = pickChannel(spec.names);
+    const value = normalizedSignalValue(
+      channel.activation,
+      channel.value,
+      channel.rms,
+      channel.emg,
+      channel.score,
+      emg[spec.key],
+      emg[`ch${index + 1}`],
+      sensorPayload[spec.key],
+    );
+    const fatigueValue = normalizedSignalValue(
+      channel.fatigue,
+      channel.fatigue_score,
+      fatigue[spec.key],
+      fatigue[`ch${index + 1}`],
+      sensorPayload.fatigue_score,
+      sensorPayload.fatigueScore,
+    );
+    return {
+      key: spec.key,
+      label: spec.label,
+      value,
+      fatigue: fatigueValue,
+      status: muscleStatus(value),
+    };
+  });
 }
 
 function jointValueMapFromMotors(motors: AnyRecord[]) {
@@ -433,7 +826,8 @@ function motorSourceNames(motors: AnyRecord[]) {
   return Array.from(new Set(motors.flatMap((motor, index) => {
     const jointName = text(motor.joint_name ?? motor.jointName, "");
     const motorId = text(motor.motor_id ?? motor.motorId, "");
-    if (text(motor.source_label, "") === "ROS 关节状态") return [jointName].filter(Boolean);
+    const sourceLabel = text(motor.source_label, "");
+    if (sourceLabel === "ROS 关节状态" || sourceLabel === "robot_render_state_v1") return [jointName].filter(Boolean);
     return [jointName, motorId || `motor_${index + 1}`].filter(Boolean);
   })));
 }
@@ -441,7 +835,8 @@ function motorSourceNames(motors: AnyRecord[]) {
 function motorSourceKey(motor: AnyRecord, index = 0) {
   const jointName = text(motor.joint_name ?? motor.jointName, "");
   const motorId = text(motor.motor_id ?? motor.motorId, "");
-  if (text(motor.source_label, "") === "ROS 关节状态") return jointName;
+  const sourceLabel = text(motor.source_label, "");
+  if (sourceLabel === "ROS 关节状态" || sourceLabel === "robot_render_state_v1") return jointName;
   return jointName || motorId || `motor_${index + 1}`;
 }
 
@@ -537,6 +932,24 @@ function keyframeSrc(imageUrl: string, apiBaseUrl: string) {
   return new URL(imageUrl, apiBaseUrl).toString();
 }
 
+function publicApiBaseUrl(apiBaseUrl: string) {
+  if (typeof window === "undefined") return apiBaseUrl.replace(/\/$/, "");
+  try {
+    const configured = new URL(apiBaseUrl);
+    const page = new URL(window.location.href);
+    const configuredHost = configured.hostname.toLowerCase();
+    const pageHost = page.hostname.toLowerCase();
+    if (["127.0.0.1", "localhost", "0.0.0.0"].includes(configuredHost) && !["127.0.0.1", "localhost"].includes(pageHost)) {
+      configured.protocol = page.protocol;
+      configured.hostname = page.hostname;
+      configured.port = "8011";
+    }
+    return configured.toString().replace(/\/$/, "");
+  } catch {
+    return apiBaseUrl.replace(/\/$/, "");
+  }
+}
+
 function qualityReadyText(value: unknown) {
   return value ? "可标注" : "待补数据";
 }
@@ -575,8 +988,55 @@ function jointPositionsFromMotors(motors: AnyRecord[]) {
   return ARM_MODEL_JSON.joints.map((name, index) => {
     const value = byName.get(name);
     if (Number.isFinite(value)) return Number(value);
-    return [0.42, -0.18, 0.24, 0.72, -0.32][index] ?? 0;
+    return null;
   });
+}
+
+function renderJointRowsFromState(value: unknown): RenderJointRow[] {
+  const state = record(value);
+  const names = asArray<unknown>(state.joint_names ?? state.jointNames);
+  const positions = asArray<unknown>(state.positions);
+  const velocities = asArray<unknown>(state.velocities);
+  const fresh = asArray<unknown>(state.fresh);
+  const limitClamped = asArray<unknown>(state.limit_clamped ?? state.limitClamped);
+  return names.map((name, index) => {
+    const isFresh = fresh[index] === true;
+    const position = Number(positions[index]);
+    const velocity = Number(velocities[index]);
+    return {
+      name: text(name, `joint_${index + 1}`),
+      position: isFresh && Number.isFinite(position) ? position : null,
+      velocity: isFresh && Number.isFinite(velocity) ? velocity : null,
+      fresh: isFresh,
+      limitClamped: limitClamped[index] === true,
+    };
+  }).filter((row) => row.name);
+}
+
+function poseSamplesFromRenderState(value: unknown, tsUnix: number | null) {
+  return renderJointRowsFromState(value).map((row, index) => ({
+    motor_id: `robot_render_state_${index + 1}`,
+    joint_name: row.name,
+    position_rad: row.position,
+    velocity: row.velocity,
+    enabled: false,
+    fault: false,
+    limit_clamped: row.limitClamped,
+    render_fresh: row.fresh,
+    source_label: "robot_render_state_v1",
+    source_ts_unix: row.fresh ? tsUnix : null,
+  }));
+}
+
+function renderStateOfDevice(device: DashboardDevice | null | undefined) {
+  const direct = record(device?.robot_render_state);
+  if (Object.keys(direct).length) return direct;
+  const snapshotPayload = payloadOf(device?.command_center_snapshot);
+  return record(snapshotPayload.robot_render_state);
+}
+
+function latestRelayPayload(device: DashboardDevice | null | undefined, key: keyof DashboardDevice) {
+  return payloadOf(device?.[key]);
 }
 
 function parseUrdfJoints(urdfText: string): JointDetail[] {
@@ -595,7 +1055,7 @@ function movableJoints(joints: JointDetail[]) {
 }
 
 function calibrationStorageKey(urdfName: string) {
-  return `rehab-arm-pose-calibration:${urdfName || "placeholder"}`;
+  return `rehab-arm-pose-calibration:${urdfName || "unloaded"}`;
 }
 
 function loadSavedCalibrations(urdfName: string): Map<string, JointCalibration> {
@@ -665,16 +1125,17 @@ function jointFlowRows(
   const rowsByJoint = new Map(calibrations.map((row) => [row.jointName, row]));
   return jointNames.map((jointName) => {
     const row = rowsByJoint.get(jointName);
-    const sourceName = row?.sourceName || "";
+    const directValue = sourceValues.has(jointName) ? Number(sourceValues.get(jointName)) : null;
+    const sourceName = row?.sourceName || (directValue !== null ? jointName : "");
     const motor = sourceName ? sourceMotors.get(sourceName) : undefined;
     const rawValue = sourceName && sourceValues.has(sourceName) ? Number(sourceValues.get(sourceName)) : null;
-    const calibratedValue = row ? calibratedJointValue(row, sourceValues) : null;
+    const calibratedValue = row ? calibratedJointValue(row, sourceValues) : directValue;
     const fault = Boolean(motor?.fault ?? motor?.has_fault ?? motor?.hasFault);
     const sourceFreshness = freshness(timestampUnix(motor), nowMs);
     return {
       jointName,
       sourceName,
-      sourceLabel: text(motor?.source_label, sourceName ? "电机状态" : "等待上报"),
+      sourceLabel: text(motor?.source_label, sourceName ? "只读渲染反馈" : "等待上报"),
       rawValue,
       calibratedValue,
       velocity: numericOrNull(motor?.velocity ?? motor?.velocity_rad_s ?? motor?.velocityRadS),
@@ -843,6 +1304,8 @@ function Arm3DOverview({
   projectId,
   deviceModel,
   motors,
+  robotRenderState,
+  wiringChecks,
   safetyState,
 }: {
   deviceId: string;
@@ -850,20 +1313,29 @@ function Arm3DOverview({
   projectId: string;
   deviceModel: AnyRecord;
   motors: AnyRecord[];
+  robotRenderState: AnyRecord;
+  wiringChecks: AnyRecord[];
   safetyState: string;
 }) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const cleanupRef = useRef<() => void>(() => {});
+  const [focusMode, setFocusMode] = useState(false);
   const robotRef = useRef<AnyRecord | null>(null);
   const positions = useMemo(() => jointPositionsFromMotors(motors), [motors]);
   const jointValues = useMemo(() => jointValueMapFromMotors(motors), [motors]);
   const positionsRef = useRef(positions);
   const jointValuesRef = useRef(jointValues);
+  const sceneDataRef = useRef({
+    badWiringChecks: [] as AnyRecord[],
+    motors: [] as AnyRecord[],
+    renderJointNames: [] as string[],
+    safetyState,
+    sourceMotors: new Map<string, AnyRecord>(),
+  });
   const [urdfText, setUrdfText] = useState("");
   const [urdfPackage, setUrdfPackage] = useState<UrdfPackage | null>(null);
-  const placeholderPoseKey = urdfText ? "" : positions.map((position) => position.toFixed(4)).join("|");
   const [urdfName, setUrdfName] = useState("");
-  const [urdfState, setUrdfState] = useState<"placeholder" | "loading" | "loaded" | "failed">("placeholder");
+  const [urdfState, setUrdfState] = useState<"demo" | "loading" | "loaded" | "failed">("demo");
   const [modelSaveState, setModelSaveState] = useState<"idle" | "saving" | "saved" | "error" | "restored">("idle");
   const [urdfJoints, setUrdfJoints] = useState<JointDetail[]>([]);
   const [meshStats, setMeshStats] = useState({ loaded: 0, missing: 0 });
@@ -878,10 +1350,23 @@ function Arm3DOverview({
     [motors],
   );
   const sourceMotors = useMemo(() => motorBySourceName(motors), [motors]);
+  const renderRows = useMemo(() => renderJointRowsFromState(robotRenderState), [robotRenderState]);
+  const renderJointNames = useMemo(() => renderRows.map((row) => row.name), [renderRows]);
+  const staleRenderRows = renderRows.filter((row) => !row.fresh).length;
+  const clampedRenderRows = renderRows.filter((row) => row.limitClamped).length;
+  const badWiringChecks = useMemo(
+    () => wiringChecks.filter((item) => ["missing", "fault", "stale", "not_wired"].includes(text(item.status, ""))),
+    [wiringChecks],
+  );
+  const averageTemperature = (() => {
+    const values = motors.map(motorTemperature).filter((value): value is number => value !== null);
+    if (!values.length) return null;
+    return values.reduce((sum, value) => sum + value, 0) / values.length;
+  })();
   const jointRowsKey = jointRows.join("\u0001");
   const sourceNamesKey = sourceNames.join("\u0001");
   const [calibrations, setCalibrations] = useState<JointCalibration[]>([]);
-  const [freshnessNowMs, setFreshnessNowMs] = useState(() => Date.now());
+  const [freshnessNowMs, setFreshnessNowMs] = useState(0);
   const calibratedJointValues = useMemo(() => {
     const values = new Map<string, number>();
     calibrations.forEach((row) => {
@@ -898,8 +1383,8 @@ function Arm3DOverview({
     [calibratedJointValues, jointRows, urdfJointNames],
   );
   const flowJointNames = useMemo(
-    () => (jointRows.length ? jointRows : urdfJointNames.length ? urdfJointNames : ARM_MODEL_JSON.joints),
-    [jointRows, urdfJointNames],
+    () => (jointRows.length ? jointRows : renderJointNames.length ? renderJointNames : urdfJointNames.length ? urdfJointNames : ARM_MODEL_JSON.joints),
+    [jointRows, renderJointNames, urdfJointNames],
   );
   const flowRows = useMemo(
     () => jointFlowRows(flowJointNames, calibrations, jointValues, sourceMotors, freshnessNowMs),
@@ -910,6 +1395,7 @@ function Arm3DOverview({
   const isHistoricalPose = activeFlowRows > 0 && staleFlowRows === activeFlowRows;
 
   useEffect(() => {
+    setFreshnessNowMs(Date.now());
     const timer = window.setInterval(() => setFreshnessNowMs(Date.now()), 5000);
     return () => window.clearInterval(timer);
   }, []);
@@ -917,7 +1403,14 @@ function Arm3DOverview({
   useEffect(() => {
     positionsRef.current = positions;
     jointValuesRef.current = calibratedJointValues;
-  }, [calibratedJointValues, positions]);
+    sceneDataRef.current = {
+      badWiringChecks,
+      motors,
+      renderJointNames,
+      safetyState,
+      sourceMotors,
+    };
+  }, [badWiringChecks, calibratedJointValues, motors, positions, renderJointNames, safetyState, sourceMotors]);
 
   useEffect(() => {
     if (!jointRows.length) {
@@ -1063,9 +1556,15 @@ function Arm3DOverview({
       const scene = new THREE.Scene();
       scene.background = new THREE.Color(0x020a0d);
 
-      const camera = new THREE.PerspectiveCamera(42, width / height, 0.01, 100);
-      camera.position.set(1.15, -1.45, 0.9);
-      camera.lookAt(0.26, 0.08, 0.24);
+      const narrowViewport = width <= 520;
+      const cameraTarget = new THREE.Vector3(0.08, 0.0, 0.16);
+      const camera = new THREE.PerspectiveCamera(narrowViewport ? 48 : 34, width / height, 0.01, 100);
+      camera.position.set(
+        narrowViewport ? 2.25 : 1.85,
+        narrowViewport ? -2.7 : -2.25,
+        narrowViewport ? 1.62 : 1.35,
+      );
+      camera.lookAt(cameraTarget);
 
       const renderer = new THREE.WebGLRenderer({ antialias: true });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -1080,10 +1579,10 @@ function Arm3DOverview({
       controls.enableRotate = true;
       controls.enableZoom = true;
       controls.enablePan = true;
-      controls.minDistance = 0.55;
-      controls.maxDistance = 3.4;
+      controls.minDistance = 0.7;
+      controls.maxDistance = 4.2;
       controls.maxPolarAngle = Math.PI * 0.92;
-      controls.target.set(0.24, 0.18, 0.18);
+      controls.target.copy(cameraTarget);
       controls.update();
 
       scene.add(new THREE.HemisphereLight(0xecffff, 0x0a272f, 2.2));
@@ -1096,17 +1595,67 @@ function Arm3DOverview({
 
       const grid = new THREE.GridHelper(1.5, 12, 0x214a48, 0x10272b);
       scene.add(grid);
-      const baseMat = new THREE.MeshStandardMaterial({ color: 0x1b3a3c, roughness: 0.62, metalness: 0.12 });
-      const base = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, 0.08, 40), baseMat);
-      base.position.y = 0.04;
-      scene.add(base);
 
-      function addPlaceholderArm() {
+      function statusForLink(jointName: string, index: number) {
+        const aliases = [jointName, `motor_${index + 1}`, String(index + 1)].filter(Boolean).map((item) => item.toLowerCase());
+        const matched = sceneDataRef.current.badWiringChecks.find((item) => {
+          const haystack = [
+            item.channel,
+            item.joint_name,
+            item.jointName,
+            item.motor_id,
+            item.motorId,
+            item.evidence,
+          ].map((value) => text(value, "").toLowerCase()).join(" ");
+          return aliases.some((alias) => alias && haystack.includes(alias));
+        });
+        return text(matched?.status, "");
+      }
+
+      function temperatureColor(temp: number | null, fallback: number) {
+        if (temp === null) return fallback;
+        if (temp >= 62) return 0xe25a45;
+        if (temp >= 48) return 0xd99b2b;
+        if (temp >= 38) return 0xc7c95a;
+        return 0x42c6b2;
+      }
+
+      function linkMaterial(baseColor: number, jointName: string, index: number, temp: number | null) {
+        const status = statusForLink(jointName, index);
+        if (status === "fault" || status === "missing") {
+          return new THREE.MeshStandardMaterial({ color: 0xa2aab0, roughness: 0.82, metalness: 0.02, transparent: true, opacity: 0.58 });
+        }
+        if (status === "stale" || status === "not_wired") {
+          return new THREE.MeshStandardMaterial({ color: 0xc99a3c, roughness: 0.78, metalness: 0.04, transparent: true, opacity: 0.72 });
+        }
+        return new THREE.MeshStandardMaterial({ color: temperatureColor(temp, baseColor), roughness: 0.58, metalness: 0.1 });
+      }
+
+      function materialForUrdfMesh(child: AnyRecord, index: number) {
+        const names: string[] = [];
+        let cursor: AnyRecord | null = child;
+        while (cursor && names.length < 6) {
+          const name = text(cursor.name, "");
+          if (name) names.push(name);
+          cursor = cursor.parent ?? null;
+        }
+        const jointName =
+          names.find((name) => sceneDataRef.current.sourceMotors.has(name))
+          ?? names.find((name) => sceneDataRef.current.renderJointNames.includes(name))
+          ?? names.find((name) => ARM_MODEL_JSON.joints.includes(name))
+          ?? names[0]
+          ?? `mesh_${index + 1}`;
+        const motor = sceneDataRef.current.sourceMotors.get(jointName) ?? sceneDataRef.current.motors[index] ?? {};
+        return linkMaterial(0x8ef0c7, jointName, index, motorTemperature(motor));
+      }
+
+      function addDemoArmModel() {
         const group = new THREE.Group();
         group.position.y = 0.1;
+        group.scale.setScalar(0.78);
         scene.add(group);
         const jointMaterial = new THREE.MeshStandardMaterial({
-          color: safetyState === "ok" ? 0x78e6aa : safetyState === "fault" ? 0xff705e : 0xffd166,
+          color: sceneDataRef.current.safetyState === "ok" ? 0x78e6aa : sceneDataRef.current.safetyState === "fault" ? 0xff705e : 0xffd166,
           roughness: 0.44,
           metalness: 0.18,
         });
@@ -1115,6 +1664,8 @@ function Arm3DOverview({
         let yaw = currentPositions[1] || 0;
         let pitch = currentPositions[0] || 0.3;
         ARM_MODEL_JSON.links.slice(1).forEach((link, index) => {
+          const jointName = ARM_MODEL_JSON.joints[index] ?? link.name;
+          const motor = sceneDataRef.current.motors[index] ?? sceneDataRef.current.sourceMotors.get(jointName) ?? {};
           const length = link.length;
           if (index === 2) pitch -= currentPositions[3] || 0.4;
           if (index === 3) yaw += currentPositions[4] || 0;
@@ -1124,9 +1675,7 @@ function Arm3DOverview({
             Math.cos(pitch) * Math.sin(yaw),
           ).normalize();
           const mid = cursor.clone().add(dir.clone().multiplyScalar(length / 2));
-          const geometry = new THREE.CylinderGeometry(link.radius, link.radius, length, 24);
-          const material = new THREE.MeshStandardMaterial({ color: link.color, roughness: 0.58, metalness: 0.1 });
-          const mesh = new THREE.Mesh(geometry, material);
+          const mesh = new THREE.Mesh(new THREE.CylinderGeometry(link.radius, link.radius, length, 24), linkMaterial(link.color, jointName, index, motorTemperature(motor)));
           mesh.position.copy(mid);
           mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
           group.add(mesh);
@@ -1150,8 +1699,8 @@ function Arm3DOverview({
 
       async function addUrdfOrPlaceholder() {
         if (!urdfText) {
-          addPlaceholderArm();
-          setUrdfState("placeholder");
+          addDemoArmModel();
+          setUrdfState("demo");
           return;
         }
         try {
@@ -1194,15 +1743,13 @@ function Arm3DOverview({
             });
           }
           setMeshStats({ loaded: loadedMeshes, missing: missingMeshes });
+          let meshIndex = 0;
           robot.traverse?.((child: AnyRecord) => {
             if (child.isMesh) {
               child.castShadow = false;
               child.receiveShadow = false;
-              child.material = new THREE.MeshStandardMaterial({
-                color: 0x8ef0c7,
-                roughness: 0.62,
-                metalness: 0.08,
-              });
+              child.material = materialForUrdfMesh(child, meshIndex);
+              meshIndex += 1;
             }
           });
           const box = new THREE.Box3().setFromObject(robot as any);
@@ -1215,7 +1762,7 @@ function Arm3DOverview({
           scene.add(robot as any);
           setUrdfState("loaded");
         } catch {
-          addPlaceholderArm();
+          addDemoArmModel();
           setUrdfState("failed");
         }
       }
@@ -1256,7 +1803,7 @@ function Arm3DOverview({
       disposed = true;
       cleanup();
     };
-  }, [placeholderPoseKey, safetyState, urdfPackage, urdfText]);
+  }, [urdfPackage, urdfText]);
 
   useEffect(() => {
     const robot = robotRef.current;
@@ -1273,57 +1820,54 @@ function Arm3DOverview({
       ? `已导入 ${urdfName || "URDF"}`
       : urdfState === "loading"
         ? "正在导入 URDF"
-        : urdfState === "failed"
-          ? "URDF 未能完整加载，已回退占位模型"
-          : "当前是占位模型，可导入 URDF";
+      : urdfState === "failed"
+          ? "URDF 未能完整加载，正在显示默认可替换模型"
+          : "默认可替换模型，可导入真实 URDF";
 
   return (
-    <section className={styles.armOverviewPanel} aria-label="机械臂 3D 总览">
+    <section className={styles.armOverviewPanel} data-focus={focusMode ? "true" : "false"} aria-label="机械臂 3D 总览">
       <div className={styles.panelHead}>
         <div>
           <span>URDF / Three.js 机械臂</span>
           <strong>{modelStateText}</strong>
         </div>
-        <small>{matchedUrdfJoints.length || positions.length} 个关节正在匹配角度</small>
-      </div>
-      <div className={styles.urdfToolbar}>
-        <label>
-          <span>导入本机模型包</span>
-          <input
-            type="file"
-            accept=".zip,.urdf,.xml"
-            data-testid="rehab-urdf-file"
-            onChange={(event) => handleUrdfFile(event.target.files?.[0] ?? null)}
-          />
-        </label>
-        <p>支持 URDF zip 包或单个 URDF。页面用电机状态或 ROS 关节状态驱动同名关节，只读预览，不下发任何运动控制。</p>
+        <div className={styles.panelActions}>
+          <small>{renderRows.length || matchedUrdfJoints.length || positions.length} 个关节正在匹配角度</small>
+          <button type="button" onClick={() => setFocusMode((value) => !value)}>
+            {focusMode ? "退出专注" : "展开 3D"}
+          </button>
+        </div>
       </div>
       <div ref={mountRef} className={styles.armCanvas} />
-      {urdfJoints.length ? (
-        <div className={styles.poseStatus}>
-          <strong>匹配 {matchedUrdfJoints.length}/{jointRows.length || urdfJoints.length}</strong>
-          <span>{sourceLabels.join(" + ") || "角度状态"} 会实时套用到同名关节；模型资源已加载 {meshStats.loaded} 个，未加载 {meshStats.missing} 个。</span>
-          <span>
-            {modelSaveState === "saving"
-              ? "正在保存到当前设备档案"
-              : modelSaveState === "saved"
-                ? "已保存到当前设备档案，刷新后会自动恢复"
-                : modelSaveState === "restored"
-                  ? "已从当前设备档案恢复模型包"
-                  : modelSaveState === "error"
-                    ? "模型档案同步失败，可重新导入"
-                    : "导入后会保存到当前设备档案"}
-          </span>
-        </div>
-      ) : null}
-      <section className={flowStyles.jointFlowPanel} aria-label="关节状态流">
-        <div className={flowStyles.jointFlowHead}>
+      <div className={styles.armTelemetryStrip} aria-label="机械臂渲染状态摘要">
+        <article data-state={staleRenderRows ? "stale" : clampedRenderRows ? "clamped" : "fresh"}>
+          <span>渲染反馈</span>
+          <strong>{renderRows.length ? staleRenderRows ? `${staleRenderRows} 个未知` : "关节新鲜" : "等待状态"}</strong>
+          <p>{renderRows.length ? clampedRenderRows ? `${clampedRenderRows} 个限位夹紧/仿真夹紧。` : "fresh=false 不用 0 位姿伪装。": "等待 robot_render_state_v1。"}</p>
+        </article>
+        <article data-state={badWiringChecks.length ? "stale" : averageTemperature !== null && averageTemperature >= 48 ? "clamped" : "fresh"}>
+          <span>接线 / 温度</span>
+          <strong>{badWiringChecks.length ? `${badWiringChecks.length} 路异常` : averageTemperature === null ? "等待温度" : numberText(averageTemperature, " ℃")}</strong>
+          <p>颜色表达温度，link 透明/灰色表达接线异常。</p>
+        </article>
+        <article data-state={urdfJoints.length ? "fresh" : "stale"}>
+          <span>模型匹配</span>
+          <strong>{urdfJoints.length ? `${matchedUrdfJoints.length}/${jointRows.length || urdfJoints.length}` : "可替换模型"}</strong>
+          <p>
+            {urdfJoints.length
+              ? `${sourceLabels.join(" + ") || "角度状态"} 套用到同名关节；mesh ${meshStats.loaded}/${meshStats.loaded + meshStats.missing}。`
+              : "真实设备模型和人体 GLTF/VRM 后续由用户上传接入。"}
+          </p>
+        </article>
+      </div>
+      <details className={flowStyles.jointFlowPanel} aria-label="关节状态流">
+        <summary className={flowStyles.jointFlowHead}>
           <div>
             <span>关节状态流</span>
             <strong>{activeFlowRows}/{flowRows.length} 个关节有{isHistoricalPose ? "历史" : "实时"}角度</strong>
           </div>
           <small>{sourceNames.length ? `${sourceNames.length} 个只读角度来源` : "等待 NanoPi 或仿真主机上报"}</small>
-        </div>
+        </summary>
         {staleFlowRows ? (
           <div className={flowStyles.historyNotice} data-state={isHistoricalPose ? "historical" : "mixed"} data-testid="rehab-historical-pose-notice">
             <div>
@@ -1369,9 +1913,22 @@ function Arm3DOverview({
           ))}
         </div>
         <p className={flowStyles.jointFlowHint}>这些数值只用于网页预览和校准核对，不会写回 NanoPi、M33 或电机驱动。</p>
-      </section>
+      </details>
+      <details className={styles.urdfToolbar}>
+        <summary>模型包 / URDF 导入</summary>
+        <label>
+          <span>导入本机模型包</span>
+          <input
+            type="file"
+            accept=".zip,.urdf,.xml"
+            data-testid="rehab-urdf-file"
+            onChange={(event) => handleUrdfFile(event.target.files?.[0] ?? null)}
+          />
+        </label>
+        <p>支持 URDF zip 包或单个 URDF。页面优先用 robot_render_state_v1 的 joint_names/positions 驱动同名关节，只读预览，不下发任何运动控制。</p>
+      </details>
       {urdfJoints.length ? (
-        <details className={styles.poseMappingPanel} open>
+        <details className={styles.poseMappingPanel}>
           <summary>
             <span>姿态映射</span>
             <button type="button" onClick={(event) => { event.preventDefault(); resetCalibration(); }}>重置映射</button>
@@ -1432,11 +1989,226 @@ function Arm3DOverview({
           </div>
         </details>
       ) : null}
-      <div className={styles.armLegend}>
-        {(urdfJointNames.length ? urdfJointNames : ARM_MODEL_JSON.joints).slice(0, 10).map((name, index) => (
-          <span key={name}>{name}: {numberText(calibratedJointValues.get(name) ?? positions[index], " rad")}</span>
+      <details className={styles.armLegendPanel}>
+        <summary>
+          关节角度概览
+          <small>{(urdfJointNames.length ? urdfJointNames : renderJointNames.length ? renderJointNames : ARM_MODEL_JSON.joints).length} 个关节</small>
+        </summary>
+        <div className={styles.armLegend}>
+          {(urdfJointNames.length ? urdfJointNames : renderJointNames.length ? renderJointNames : ARM_MODEL_JSON.joints).slice(0, 10).map((name, index) => (
+            <span
+              key={name}
+              data-state={renderRows.find((row) => row.name === name)?.fresh === false ? "unknown" : renderRows.find((row) => row.name === name)?.limitClamped ? "clamped" : "fresh"}
+            >
+              {name}: {numberText(calibratedJointValues.get(name) ?? positions[index], " rad")}
+            </span>
+          ))}
+        </div>
+      </details>
+    </section>
+  );
+}
+
+function HumanMuscleOverview({ sensorPayload }: { sensorPayload: AnyRecord }) {
+  const mountRef = useRef<HTMLDivElement | null>(null);
+  const rows = useMemo(() => muscleRowsFromSensor(sensorPayload), [sensorPayload]);
+  const rowsRef = useRef(rows);
+  const activeRows = rows.filter((row) => row.status === "active").length;
+  const averageFatigue = (() => {
+    const values = rows.map((row) => row.fatigue).filter((value): value is number => value !== null);
+    if (!values.length) return null;
+    return values.reduce((sum, value) => sum + value, 0) / values.length;
+  })();
+
+  useEffect(() => {
+    rowsRef.current = rows;
+  }, [rows]);
+
+  useEffect(() => {
+    const mount = mountRef.current;
+    if (!mount) return;
+    let disposed = false;
+    let cleanup = () => {};
+
+    async function renderHuman() {
+      const THREE = await import("three");
+      const { OrbitControls } = await import("three/examples/jsm/controls/OrbitControls.js");
+      if (disposed || !mountRef.current) return;
+      const target = mountRef.current;
+      const width = Math.max(280, target.clientWidth || 420);
+      const height = Math.max(320, target.clientHeight || 420);
+      target.replaceChildren();
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x050807);
+      const camera = new THREE.PerspectiveCamera(36, width / height, 0.01, 100);
+      camera.position.set(0.8, -1.55, 1.08);
+      camera.lookAt(0, 0, 0.35);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.setSize(width, height);
+      renderer.domElement.setAttribute("aria-label", "人体肌电 Three.js 总览");
+      target.appendChild(renderer.domElement);
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.08;
+      controls.enablePan = false;
+      controls.minDistance = 0.85;
+      controls.maxDistance = 2.8;
+      controls.target.set(0, 0, 0.34);
+      controls.update();
+
+      scene.add(new THREE.HemisphereLight(0xf7fff4, 0x13201c, 2.4));
+      const key = new THREE.DirectionalLight(0xffffff, 1.2);
+      key.position.set(0.7, -1.2, 1.8);
+      scene.add(key);
+      const rim = new THREE.DirectionalLight(0x39c6ac, 1);
+      rim.position.set(-1.4, 1.1, 1.1);
+      scene.add(rim);
+
+      const grid = new THREE.GridHelper(1.15, 10, 0x29413a, 0x14231f);
+      grid.position.z = -0.02;
+      scene.add(grid);
+
+      function colorFor(row: MuscleSignalRow) {
+        if (row.value === null) return 0x59625e;
+        if (row.value >= 0.68) return 0xe15c45;
+        if (row.value >= 0.34) return 0xd6a33a;
+        return 0x48c2a7;
+      }
+
+      function material(row: MuscleSignalRow, opacity = 0.82) {
+        return new THREE.MeshStandardMaterial({
+          color: colorFor(row),
+          roughness: 0.62,
+          metalness: 0.04,
+          transparent: true,
+          opacity: row.value === null ? 0.35 : opacity,
+        });
+      }
+
+      const body = new THREE.Group();
+      body.rotation.z = -0.04;
+      scene.add(body);
+
+      const skin = new THREE.MeshStandardMaterial({ color: 0xd9c8b4, roughness: 0.76, metalness: 0.02, transparent: true, opacity: 0.86 });
+      const neutral = new THREE.MeshStandardMaterial({ color: 0x53645f, roughness: 0.82, metalness: 0.02, transparent: true, opacity: 0.55 });
+      const rowByKey = new Map(rowsRef.current.map((row) => [row.key, row]));
+      const unknownRow: MuscleSignalRow = { key: "unknown", label: "未知", value: null, fatigue: null, status: "unknown" };
+
+      const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.18, 0.48, 10, 24), neutral);
+      torso.position.set(0, 0, 0.42);
+      body.add(torso);
+
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.095, 28, 18), skin);
+      head.position.set(0, 0, 0.82);
+      body.add(head);
+
+      const deltoid = rowByKey.get("deltoid") ?? unknownRow;
+      const biceps = rowByKey.get("biceps") ?? unknownRow;
+      const forearm = rowByKey.get("forearm") ?? unknownRow;
+      const trapezius = rowByKey.get("trapezius") ?? unknownRow;
+      [
+        { row: deltoid, x: -0.24, y: 0, z: 0.62, sx: 0.07, sy: 0.045, sz: 0.09 },
+        { row: deltoid, x: 0.24, y: 0, z: 0.62, sx: 0.07, sy: 0.045, sz: 0.09 },
+        { row: trapezius, x: -0.09, y: -0.012, z: 0.69, sx: 0.075, sy: 0.04, sz: 0.055 },
+        { row: trapezius, x: 0.09, y: -0.012, z: 0.69, sx: 0.075, sy: 0.04, sz: 0.055 },
+      ].forEach((part) => {
+        const patch = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 12), material(part.row));
+        patch.scale.set(part.sx, part.sy, part.sz);
+        patch.position.set(part.x, part.y, part.z);
+        body.add(patch);
+      });
+
+      [
+        { row: biceps, x: -0.32, y: 0, z: 0.43, rz: -0.25, length: 0.28, radius: 0.036 },
+        { row: biceps, x: 0.32, y: 0, z: 0.43, rz: 0.25, length: 0.28, radius: 0.036 },
+        { row: forearm, x: -0.44, y: 0, z: 0.23, rz: -0.08, length: 0.26, radius: 0.03 },
+        { row: forearm, x: 0.44, y: 0, z: 0.23, rz: 0.08, length: 0.26, radius: 0.03 },
+      ].forEach((part) => {
+        const limb = new THREE.Mesh(new THREE.CapsuleGeometry(part.radius, part.length, 8, 16), material(part.row));
+        limb.rotation.z = part.rz;
+        limb.position.set(part.x, part.y, part.z);
+        body.add(limb);
+      });
+
+      const fatigue = averageFatigue === null ? null : averageFatigue;
+      const fatigueMat = new THREE.MeshStandardMaterial({
+        color: fatigue === null ? 0x59625e : fatigue >= 0.72 ? 0xe15c45 : fatigue >= 0.42 ? 0xd6a33a : 0x48c2a7,
+        roughness: 0.62,
+        metalness: 0.02,
+        transparent: true,
+        opacity: fatigue === null ? 0.22 : 0.72,
+      });
+      const fatigueRing = new THREE.Mesh(new THREE.TorusGeometry(0.215, 0.006, 8, 72), fatigueMat);
+      fatigueRing.rotation.x = Math.PI / 2;
+      fatigueRing.position.set(0, 0, 0.5);
+      body.add(fatigueRing);
+
+      let frame = 0;
+      const animate = () => {
+        if (disposed) return;
+        frame = window.requestAnimationFrame(animate);
+        body.rotation.y = Math.sin(Date.now() / 3200) * 0.045;
+        controls.update();
+        renderer.render(scene, camera);
+      };
+      animate();
+
+      const resize = () => {
+        if (!mountRef.current) return;
+        const nextWidth = Math.max(260, mountRef.current.clientWidth || width);
+        const nextHeight = Math.max(300, mountRef.current.clientHeight || height);
+        camera.aspect = nextWidth / nextHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(nextWidth, nextHeight);
+      };
+      window.addEventListener("resize", resize);
+      cleanup = () => {
+        window.removeEventListener("resize", resize);
+        window.cancelAnimationFrame(frame);
+        controls.dispose();
+        renderer.dispose();
+        scene.clear();
+        if (target.contains(renderer.domElement)) target.removeChild(renderer.domElement);
+      };
+    }
+
+    void renderHuman();
+    return () => {
+      disposed = true;
+      cleanup();
+    };
+  }, [averageFatigue]);
+
+  return (
+    <section className={styles.humanPanel} aria-label="人体肌电模型">
+      <div className={styles.panelHead}>
+        <div>
+          <span>人体肌电 / Three.js</span>
+          <strong>{activeRows ? `${activeRows} 组肌肉高参与` : "等待肌电小模型"}</strong>
+        </div>
+        <small>{averageFatigue === null ? "疲劳 unknown" : `平均疲劳 ${Math.round(averageFatigue * 100)}%`}</small>
+      </div>
+      <div ref={mountRef} className={styles.humanCanvas} />
+      <div className={styles.muscleGrid} aria-label="肌电通道状态">
+        {rows.map((row) => (
+          <article key={row.key} data-state={row.status}>
+            <span>{row.label}</span>
+            <strong>{row.value === null ? "unknown" : `${Math.round(row.value * 100)}%`}</strong>
+            <p>fatigue {row.fatigue === null ? "unknown" : `${Math.round(row.fatigue * 100)}%`}</p>
+          </article>
         ))}
       </div>
+      <details className={styles.nestedDrawer}>
+        <summary>
+          人体模型替换
+          <small>GLTF / VRM 承载位</small>
+        </summary>
+        <p>当前场景只做可替换的肌电语义预览；后续可接入开源人体 GLTF/VRM，并把肌肉区域映射到同一套 EMG/fatigue 字段。</p>
+      </details>
     </section>
   );
 }
@@ -1471,6 +2243,28 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
   const [liveDashboard, setLiveDashboard] = useState(() => filterDashboardForProject(dashboard, projectId));
   const [pollState, setPollState] = useState<"idle" | "ok" | "error">("idle");
   const [lastLiveUpdate, setLastLiveUpdate] = useState<number | null>(null);
+  const [estopRequestState, setEstopRequestState] = useState<"idle" | "sent" | "accepted" | "pending_m33_ack" | "m33_ack" | "error">("idle");
+  const [relayPrompt, setRelayPrompt] = useState("");
+  const [relayState, setRelayState] = useState<"idle" | "sending" | "ok" | "error">("idle");
+  const [relayError, setRelayError] = useState("");
+  const [lastRelayResponse, setLastRelayResponse] = useState<AnyRecord | null>(null);
+  const [relayConfig, setRelayConfig] = useState<RelayConfig>({
+    provider: "openai",
+    base_url: "https://api.openai.com/v1",
+    model: "",
+    external_enabled: true,
+    api_key_configured: false,
+    presets: DEFAULT_RELAY_PRESETS,
+  });
+  const [relayConfigKey, setRelayConfigKey] = useState("");
+  const [relayConfigState, setRelayConfigState] = useState<"idle" | "loading" | "saving" | "saved" | "error">("idle");
+  const [relayConfigError, setRelayConfigError] = useState("");
+  const [relayExportState, setRelayExportState] = useState<"idle" | "creating" | "created" | "copied" | "error">("idle");
+  const [relayExportError, setRelayExportError] = useState("");
+  const [relayExportToken, setRelayExportToken] = useState("");
+  const [relayExportExpiresAt, setRelayExportExpiresAt] = useState<number | null>(null);
+  const [relayTokenTtlSeconds, setRelayTokenTtlSeconds] = useState(7 * 24 * 60 * 60);
+  const [externalApiBaseUrl, setExternalApiBaseUrl] = useState(() => apiBaseUrl.replace(/\/$/, ""));
   const devices = useMemo(
     () => [...liveDashboard.devices].sort((a, b) => Number(b.last_upload_ts_unix ?? 0) - Number(a.last_upload_ts_unix ?? 0)),
     [liveDashboard.devices],
@@ -1488,6 +2282,10 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
   useEffect(() => {
     setLiveDashboard(filterDashboardForProject(dashboard, projectId));
   }, [dashboard, projectId]);
+
+  useEffect(() => {
+    setExternalApiBaseUrl(publicApiBaseUrl(apiBaseUrl));
+  }, [apiBaseUrl]);
 
   useEffect(() => {
     if (selectedDeviceId && devices.some((device) => device.device_id === selectedDeviceId)) return;
@@ -1519,20 +2317,91 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
     };
   }, [projectId]);
 
+  useEffect(() => {
+    let disposed = false;
+
+    async function loadRelayConfig() {
+      setRelayConfigState("loading");
+      try {
+        const response = await fetch(`/api/proxy/rehab-arm/v1/projects/${encodeURIComponent(projectId)}/model-relay/config`, { cache: "no-store" });
+        if (!response.ok) throw new Error("model relay config fetch failed");
+        const payload = await response.json();
+        const data = record(record(payload).data);
+        if (disposed) return;
+        const presets = asArray<RelayProviderPreset>(data.presets).length ? asArray<RelayProviderPreset>(data.presets) : DEFAULT_RELAY_PRESETS;
+        setRelayConfig({
+          provider: text(data.provider, "openai"),
+          base_url: text(data.base_url, "https://api.openai.com/v1"),
+          model: text(data.model, ""),
+          external_enabled: data.external_enabled !== false,
+          api_key_configured: data.api_key_configured === true,
+          presets,
+        });
+        setRelayConfigState("idle");
+      } catch {
+        if (!disposed) {
+          setRelayConfigState("error");
+          setRelayConfigError("无法读取服务端模型中转配置");
+        }
+      }
+    }
+
+    void loadRelayConfig();
+    return () => {
+      disposed = true;
+    };
+  }, [projectId]);
+
   const selectedIndex = selected ? deviceIndexById.get(selected.device_id) ?? 0 : 0;
   const roleSignals = useMemo(() => roleSignalsFromDevices(devices), [devices]);
   const keyframe = selected?.camera_keyframe ?? {};
   const keyframePayload = payloadOf(keyframe);
+  const cameraStreamOffer = latestRelayPayload(selected, "camera_stream_offer");
+  const robotRenderState = renderStateOfDevice(selected);
+  const renderRows = renderJointRowsFromState(robotRenderState);
+  const staleRenderCount = renderRows.filter((row) => !row.fresh).length;
+  const clampedRenderCount = renderRows.filter((row) => row.limitClamped).length;
+  const wiringHealth = record(selected?.wiring_health);
+  const wiringChecks = asArray<AnyRecord>(wiringHealth.checks);
+  const wiringBadCount = wiringChecks.filter((item) => ["missing", "fault", "stale"].includes(text(item.status, ""))).length;
   const motorPayload = payloadOf(selected?.motor_state);
   const sensorPayload = payloadOf(selected?.sensor_state);
   const safetyPayload = payloadOf(selected?.safety);
+  const safetyStatus = record(selected?.safety_status);
+  const voiceRelay = latestRelayPayload(selected, "voice_relay");
+  const xiaozhiSession = latestRelayPayload(selected, "xiaozhi_session");
+  const vlaCandidate = latestRelayPayload(selected, "vla_plan_candidate");
+  const modelRelayRecord = record(selected?.model_relay_response);
+  const modelRelayPayload = payloadOf(modelRelayRecord);
+  const modelRelayResponse = lastRelayResponse ?? record(modelRelayPayload.relay_response);
+  const modelRelayProvider = record(modelRelayResponse.provider);
+  const modelRelaySuggestion = record(asArray<AnyRecord>(record(modelRelayResponse.suggestion).model_results)[0]);
+  const estopAck = latestRelayPayload(selected, "estop_ack");
   const dataQuality = selected?.data_quality ?? {};
   const motors = asArray<AnyRecord>(motorPayload.motors);
-  const poseSamples = useMemo(() => poseSamplesFromTelemetry(motorPayload, sensorPayload), [motorPayload, sensorPayload]);
+  const xiaozhiEvents = liveDashboard.recent_events
+    .filter((event) => {
+      if (selected?.device_id && text(event.device_id, "") !== selected.device_id) return false;
+      return ["xiaozhi_ws_input", "xiaozhi_ws_reply"].includes(text(event.record_type, ""));
+    })
+    .slice(0, 6);
+  const modelRelayEvents = liveDashboard.recent_events
+    .filter((event) => {
+      if (selected?.device_id && text(event.device_id, "") !== selected.device_id) return false;
+      return ["model_relay_request", "model_relay_response"].includes(text(event.record_type, ""));
+    })
+    .slice(0, 6);
+  const poseSamples = useMemo(
+    () => [
+      ...poseSamplesFromRenderState(robotRenderState, timestampUnix(selected?.command_center_snapshot)),
+      ...poseSamplesFromTelemetry(motorPayload, sensorPayload),
+    ],
+    [motorPayload, robotRenderState, selected?.command_center_snapshot, sensorPayload],
+  );
   const imageUrl = text(keyframe.image_url, "");
   const absoluteImageUrl = keyframeSrc(imageUrl, apiBaseUrl);
-  const motionAllowed = Boolean(safetyPayload.motion_allowed ?? selected?.motion_allowed);
-  const currentSafetyState = safetyPayload.state ?? selected?.safety_state;
+  const motionAllowed = Boolean(safetyStatus.motion_allowed ?? safetyPayload.motion_allowed ?? selected?.motion_allowed);
+  const currentSafetyState = safetyStatus.state ?? safetyPayload.state ?? selected?.safety_state;
   const qualityReady = Boolean(dataQuality.annotation_ready);
   const roleCards = [
     { key: "nanopi", title: "NanoPi / Linux", subtitle: "本地 ROS 与设备接入节点", ...latestRoleStatus(roleSignals, "nanopi") },
@@ -1541,12 +2410,259 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
     { key: "sim", title: "仿真主机", subtitle: "MuJoCo / RViz / 路径验证", ...latestRoleStatus(roleSignals, "sim") },
   ];
 
+  useEffect(() => {
+    if (estopAck.m33_ack === true) {
+      setEstopRequestState("m33_ack");
+    } else if (estopAck.accepted_by_gateway === true) {
+      setEstopRequestState("pending_m33_ack");
+    }
+  }, [estopAck.accepted_by_gateway, estopAck.m33_ack]);
+
+  async function requestEstop() {
+    if (!selected?.device_id) return;
+    setEstopRequestState("sent");
+    try {
+      const requestId = `estop_${Date.now()}`;
+      const response = await fetch(`/api/proxy/rehab-arm/v1/devices/${encodeURIComponent(selected.device_id)}/estop`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          schema_version: "estop_request_v1",
+          request_id: requestId,
+          robot_id: selected.robot_id || "rehab-arm-alpha",
+          device_id: selected.device_id,
+          project_id: projectId,
+          source: "command_center",
+          operator_id: "command_center_operator",
+          reason: "operator_pressed_estop",
+          requested_action: "disable_motor_output",
+          control_boundary: "estop_request_requires_m33_ack",
+        }),
+      });
+      if (!response.ok) throw new Error("estop request failed");
+      const payload = await response.json();
+      const ack = record(record(payload).data);
+      setEstopRequestState(ack.m33_ack ? "m33_ack" : ack.accepted_by_gateway ? "pending_m33_ack" : "accepted");
+    } catch {
+      setEstopRequestState("error");
+    }
+  }
+
+  function updateRelayProvider(providerId: string) {
+    const preset = relayConfig.presets.find((item) => item.id === providerId);
+    setRelayConfig((current) => ({
+      ...current,
+      provider: providerId,
+      base_url: preset?.base_url || current.base_url,
+    }));
+  }
+
+  async function saveRelayConfig() {
+    setRelayConfigState("saving");
+    setRelayConfigError("");
+    try {
+      const response = await fetch(`/api/proxy/rehab-arm/v1/projects/${encodeURIComponent(projectId)}/model-relay/config`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          provider: relayConfig.provider,
+          base_url: relayConfig.base_url,
+          model: relayConfig.model,
+          api_key: relayConfigKey.trim() || undefined,
+          external_enabled: relayConfig.external_enabled,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(text(record(payload).detail ?? record(payload).error?.message, "保存模型厂商失败"));
+      const data = record(record(payload).data);
+      const presets = asArray<RelayProviderPreset>(data.presets).length ? asArray<RelayProviderPreset>(data.presets) : relayConfig.presets;
+      setRelayConfig({
+        provider: text(data.provider, relayConfig.provider),
+        base_url: text(data.base_url, relayConfig.base_url),
+        model: text(data.model, relayConfig.model),
+        external_enabled: data.external_enabled !== false,
+        api_key_configured: data.api_key_configured === true,
+        presets,
+      });
+      setRelayConfigKey("");
+      setRelayConfigState("saved");
+    } catch (error) {
+      setRelayConfigState("error");
+      setRelayConfigError(error instanceof Error ? error.message : "保存模型厂商失败");
+    }
+  }
+
+  async function createRelayInvokeToken() {
+    if (!selected?.device_id || relayExportState === "creating") return;
+    setRelayExportState("creating");
+    setRelayExportError("");
+    try {
+      const response = await fetch(
+        `/api/proxy/rehab-arm/v1/projects/${encodeURIComponent(projectId)}/devices/${encodeURIComponent(selected.device_id)}/model/relay-token`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            ttl_seconds: relayTokenTtlSeconds,
+            label: `relay-${selected.device_id}`,
+          }),
+        },
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(text(record(payload).detail ?? record(payload).error?.message, "生成调用令牌失败"));
+      const data = record(record(payload).data);
+      setRelayExportToken(text(data.token, ""));
+      setRelayExportExpiresAt(Number(data.expires_at_unix || 0) || null);
+      setRelayExportState("created");
+    } catch (error) {
+      setRelayExportState("error");
+      setRelayExportError(error instanceof Error ? error.message : "生成调用令牌失败");
+    }
+  }
+
+  async function copyRelayInvokeToken() {
+    if (!relayExportToken) return;
+    try {
+      await navigator.clipboard.writeText(relayExportToken);
+      setRelayExportState("copied");
+    } catch {
+      setRelayExportState("created");
+    }
+  }
+
+  async function requestModelRelay() {
+    if (!selected?.device_id || relayState === "sending") return;
+    setRelayState("sending");
+    setRelayError("");
+    try {
+      const prompt = relayPrompt.trim() || "请基于当前机械臂只读遥测、安全状态、接线状态、语音/视觉/肌电摘要，生成高层康复建议和 dry-run 候选说明。";
+      const response = await fetch(
+        `/api/proxy/rehab-arm/v1/projects/${encodeURIComponent(projectId)}/devices/${encodeURIComponent(selected.device_id)}/model/relay`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            schema_version: "model_relay_request_v1",
+            robot_id: selected.robot_id || "rehab-arm-alpha",
+            device_id: selected.device_id,
+            project_id: projectId,
+            input_type: "vla_context",
+            prompt,
+            context_refs: {
+              safety_state: stateText(currentSafetyState),
+              motion_allowed: motionAllowed,
+              wiring_overall: text(wiringHealth.overall, "unknown"),
+              stale_joint_count: staleRenderCount,
+              fresh_joint_count: Math.max(0, renderRows.length - staleRenderCount),
+              camera_scene_summary: text(keyframePayload.scene_summary, ""),
+              sensor_source: publicSourceLabel(sensorPayload.source, ""),
+            },
+            requested_outputs: ["high_level_task", "dry_run_joint_trajectory_candidate", "model_state_suggestion"],
+            forbidden_outputs: [
+              "can_frame",
+              "motor_current",
+              "motor_torque",
+              "raw_motor_position",
+              "raw_motor_velocity",
+              "m33_safety_override",
+              "direct_motor_command",
+            ],
+            operator_id: "command_center_operator",
+            control_boundary: "model_relay_request_only_not_motion_permission",
+          }),
+        },
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(text(record(payload).detail ?? record(payload).error?.message, "模型中转请求失败"));
+      const data = record(record(payload).data);
+      setLastRelayResponse(data);
+      setRelayState("ok");
+    } catch (error) {
+      setRelayError(error instanceof Error ? error.message : "模型中转请求失败");
+      setRelayState("error");
+    }
+  }
+
+  const estopLabel =
+    estopRequestState === "sent"
+      ? "请求已发送"
+      : estopRequestState === "accepted"
+        ? "网关已接收"
+        : estopRequestState === "pending_m33_ack"
+          ? "等待 M33 确认"
+          : estopRequestState === "m33_ack"
+            ? "M33 已确认 / 急停生效"
+            : estopRequestState === "error"
+              ? "请求失败"
+              : "可发送请求";
+  const relayInvokeUrl = selected?.device_id
+    ? `${externalApiBaseUrl}/api/rehab-arm/v1/projects/${projectId}/devices/${selected.device_id}/model/relay`
+    : "";
+  const wsBaseUrl = externalApiBaseUrl.replace(/^http:\/\//i, "ws://").replace(/^https:\/\//i, "wss://");
+  const xiaozhiWsUrl = selected?.device_id
+    ? `${wsBaseUrl}/api/rehab-arm/v1/projects/${encodeURIComponent(projectId)}/devices/${encodeURIComponent(selected.device_id)}/xiaozhi/ws?robot_id=${encodeURIComponent(selected.robot_id || "rehab-arm-alpha")}`
+    : "";
+  const xiaozhiLatestReply = xiaozhiEvents.find((event) => text(event.record_type, "") === "xiaozhi_ws_reply");
+  const xiaozhiReplyPayload = payloadOf(xiaozhiLatestReply);
+  const xiaozhiAudioFrames = xiaozhiEvents.filter((event) => text(payloadOf(event).event, "") === "audio_frame").length;
+  const xiaozhiVisibleEvents = xiaozhiEvents.slice(0, 3);
+  const xiaozhiUiState = text(
+    xiaozhiSession.ui_state
+      ?? xiaozhiReplyPayload.ui_state
+      ?? (xiaozhiEvents.length ? "thinking" : (selected ? "offline" : "idle")),
+    "offline",
+  );
+  const languageGate = record(
+    xiaozhiReplyPayload.vla_language_gate
+      ?? xiaozhiSession.vla_language_gate
+      ?? modelRelayResponse.vla_language_gate
+      ?? record(modelRelayResponse.vla_language_context).classification,
+  );
+  const relayBoundaryText = text(modelRelayResponse.control_boundary, "model_relay_only_not_motion_permission");
+  const relayProviderText = modelRelayProvider.configured === true ? "服务端 provider 已配置" : "等待服务端 provider";
+  const relayProviderPreset = relayConfig.presets.find((item) => item.id === relayConfig.provider);
+  const relayCurlExample = selected?.device_id
+    ? [
+      `curl -X POST '${relayInvokeUrl}' \\`,
+      `  -H 'Authorization: Bearer ${relayExportToken || "rehab-relay.v1..."}' \\`,
+      "  -H 'Content-Type: application/json' \\",
+      "  -d '{\"schema_version\":\"model_relay_request_v1\",\"robot_id\":\"rehab-arm-alpha\",\"input_type\":\"vla_context\",\"prompt\":\"请根据当前语音和遥测生成高层康复建议\",\"requested_outputs\":[\"high_level_task\",\"dry_run_joint_trajectory_candidate\"],\"control_boundary\":\"model_relay_request_only_not_motion_permission\"}'",
+    ].join("\n")
+    : "";
+  const xiaozhiHelloExample = [
+    "{\"type\":\"hello\",\"version\":3,\"features\":{\"mcp\":true},\"transport\":\"websocket\",",
+    "\"audio_params\":{\"format\":\"opus\",\"sample_rate\":16000,\"channels\":1,\"frame_duration\":60}}",
+  ].join("");
+  const forbiddenRelayOutputs = [
+    "can_frame",
+    "motor_current",
+    "motor_torque",
+    "raw_motor_position",
+    "raw_motor_velocity",
+    "m33_safety_override",
+    "direct_motor_command",
+  ];
+  const visionSummary = text(
+    keyframePayload.scene_summary ?? keyframePayload.detection_summary ?? keyframePayload.vla_context,
+    absoluteImageUrl ? "已接收摄像头关键帧，等待视觉摘要" : "等待 camera_keyframe_v1",
+  );
+  const languageSummary = text(
+    xiaozhiSession.transcript ?? xiaozhiReplyPayload.transcript ?? voiceRelay.transcript ?? record(voiceRelay.intent).text,
+    xiaozhiSession.event ? xiaozhiEventLabel(xiaozhiSession.event) : "等待 XiaoZhi listen/audio",
+  );
+  const actionCandidate = record(vlaCandidate.candidate);
+  const actionSummary = text(
+    modelRelaySuggestion.detail ?? modelRelayResponse.summary ?? actionCandidate.summary ?? actionCandidate.type,
+    "等待 dry-run 动作候选",
+  );
+
   return (
     <main className={styles.shell}>
       <header className={styles.topbar}>
         <div className={styles.topbarLeft}>
           <Link href={`/projects/${projectId}`} className={styles.backLink}>← 主页面</Link>
           <Link href={`/projects/${projectId}/robotics`} className={styles.backLink} prefetch={false}>设备数据工作台</Link>
+          <Link href={`/projects/${projectId}/model-relay-lab`} className={styles.backLink} prefetch={false}>模型练习场</Link>
           <div className={styles.title}>
             <strong>{projectName}</strong>
             <small>康复机械臂专项总控 · 只读状态 / 安全边界 / 数据质量</small>
@@ -1557,7 +2673,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
           <span className={styles.kpi}>在线 {roleSignals.onlineDevices}</span>
           <span className={styles.kpi}>M33 裁决 {liveDashboard.safety_boundary.m33_final_authority ? "开启" : "未声明"}</span>
           <span className={styles.kpi}>
-            {pollState === "error" ? "实时刷新异常" : lastLiveUpdate ? `已同步 ${new Date(lastLiveUpdate).toLocaleTimeString("zh-CN", { hour12: false })}` : "准备同步"}
+            {pollState === "error" ? "实时刷新异常" : lastLiveUpdate ? `已同步 ${formatClock(lastLiveUpdate)}` : "准备同步"}
           </span>
           <Link href={`/projects/${projectId}/rehab-arm-control`} className={styles.refreshLink}>刷新状态</Link>
         </div>
@@ -1634,22 +2750,349 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
             <p>服务器和网页只展示状态、图像、质量门和高层任务草案；不发 CAN、电流、力矩、速度、角度或 M33 覆盖。</p>
           </section>
 
-          <section className={styles.roleGrid} aria-label="康复机械臂四角色状态">
-            {roleCards.map((role) => (
-              <article key={role.key} data-ready={role.ready ? "true" : "false"}>
-                <span>{role.title}</span>
-                <strong>{role.value}</strong>
-                <small>{role.subtitle}</small>
-                <p>{role.detail}</p>
-              </article>
-            ))}
+          <section className={styles.vlaCommandStrip} aria-label="VLA 感知语言动作链路">
+            <article data-stage="v">
+              <span>V · camera/image</span>
+              <strong>{text(keyframePayload.camera_id, absoluteImageUrl ? "关键帧已接入" : "等待图像")}</strong>
+              <p>{visionSummary}</p>
+              <small>{text(cameraStreamOffer.control_boundary, "camera_preview_only_not_motion_permission")}</small>
+            </article>
+            <article data-stage="l">
+              <span>L · voice/language</span>
+              <strong>{vlaGateLabel(languageGate)}</strong>
+              <p>{languageSummary}</p>
+              <small>{text(xiaozhiSession.control_boundary ?? xiaozhiReplyPayload.control_boundary ?? voiceRelay.control_boundary, "voice_only_not_motion_permission")}</small>
+            </article>
+            <article data-stage="a">
+              <span>A · next action</span>
+              <strong>{text(actionCandidate.type, relayState === "ok" ? "高层建议已生成" : "dry-run 候选")}</strong>
+              <p>{actionSummary}</p>
+              <small>{text(vlaCandidate.control_boundary ?? relayBoundaryText, "vla_candidate_only_not_motion_permission")}</small>
+            </article>
           </section>
+
+          <div className={styles.primaryGrid}>
+            <div className={styles.sceneColumn}>
+              <Arm3DOverview
+                deviceId={text(selected?.device_id, "")}
+                robotId={text(selected?.robot_id, "")}
+                projectId={projectId}
+                deviceModel={record(selected?.device_model)}
+                motors={poseSamples}
+                robotRenderState={robotRenderState}
+                wiringChecks={wiringChecks}
+                safetyState={stateLabel(currentSafetyState)}
+              />
+              <HumanMuscleOverview sensorPayload={sensorPayload} />
+            </div>
+
+            <aside className={styles.sideStack}>
+              <section className={styles.safetyPanel} data-state={stateLabel(currentSafetyState)}>
+                <span>安全状态</span>
+                <strong>{stateText(currentSafetyState)}</strong>
+                <p>motion_allowed 只读：{motionAllowed ? "true" : "false"}；模式：{publicStateValue(safetyStatus.control_mode ?? safetyPayload.control_mode ?? safetyPayload.m33_mode)}；心跳：{text(safetyStatus.heartbeat_age_ms ?? safetyPayload.heartbeat_age_ms, "-")} ms；来源：{publicSourceLabel(safetyStatus.source ?? safetyPayload.source, "M33")}。</p>
+              </section>
+              <section className={styles.xiaozhiPanel}>
+                <div className={styles.panelMiniHeader}>
+                  <span>XiaoZhi / M55 WebSocket</span>
+                  <strong>{xiaozhiUiStateLabel(xiaozhiUiState)}</strong>
+                </div>
+                <div className={styles.xiaozhiStateRow} data-tone={xiaozhiUiStateTone(xiaozhiUiState)}>
+                  <span className={styles.xiaozhiStateBadge}>{xiaozhiUiStateLabel(xiaozhiUiState)}</span>
+                  <p>{xiaozhiUiStateHint(xiaozhiUiState)}</p>
+                </div>
+                <div className={styles.runtimeStrip} aria-label="XiaoZhi 运行摘要">
+                  <article>
+                    <span>分类</span>
+                    <strong>{xiaozhiKindLabel(xiaozhiSession.kind ?? xiaozhiReplyPayload.kind)}</strong>
+                  </article>
+                  <article>
+                    <span>VLA-L</span>
+                    <strong>{vlaGateLabel(languageGate)}</strong>
+                  </article>
+                  <article>
+                    <span>音频</span>
+                    <strong>{numberText(xiaozhiSession.audio_bytes ?? xiaozhiReplyPayload.audio_bytes, " bytes")}</strong>
+                  </article>
+                </div>
+                <div className={styles.xiaozhiEndpoint}>
+                  <small>Endpoint</small>
+                  <code>{xiaozhiWsUrl || "选择设备后生成 ws endpoint"}</code>
+                </div>
+                <div className={styles.xiaozhiSessionMeta} aria-label="XiaoZhi 会话状态">
+                  <span>session</span>
+                  <code>{text(xiaozhiSession.session_id ?? xiaozhiReplyPayload.session_id, "未建立")}</code>
+                  <span>error</span>
+                  <code>{text(xiaozhiSession.last_error ?? xiaozhiReplyPayload.last_error, "无")}</code>
+                </div>
+                <div className={styles.boundaryNote}>
+                  <strong>语音只进 VLA 语言输入</strong>
+                  <p>{text(xiaozhiSession.control_boundary ?? xiaozhiReplyPayload.control_boundary, "xiaozhi_voice_relay_only_not_motion_permission")}</p>
+                </div>
+                <details className={styles.streamDisclosure}>
+                  <summary>
+                    输入输出流
+                    <small>{xiaozhiEvents.length ? `最近 ${xiaozhiEvents.length} 条` : "等待 M55"}</small>
+                  </summary>
+                  <div className={styles.ioStream} aria-label="XiaoZhi 输入输出流">
+                    {xiaozhiVisibleEvents.map((event, index) => {
+                      const eventPayload = payloadOf(event);
+                      const detail = text(
+                        eventPayload.reply ?? eventPayload.transcript ?? eventPayload.language_context ?? eventPayload.event,
+                        xiaozhiEventLabel(eventPayload.event ?? event.record_type),
+                      );
+                      return (
+                        <article key={`${text(event.record_type, "xiaozhi")}-${index}`}>
+                          <div>
+                            <span>{xiaozhiDirectionLabel(event.record_type)}</span>
+                            <strong>{xiaozhiEventLabel(eventPayload.event ?? event.record_type)}</strong>
+                          </div>
+                          <p>{detail}</p>
+                          <small>{formatTime(event.ts_unix)} · {xiaozhiKindLabel(eventPayload.kind)} · {vlaGateLabel(eventPayload.vla_language_gate)} · {text(eventPayload.control_boundary, "只读输入输出")}</small>
+                        </article>
+                      );
+                    })}
+                    {!xiaozhiEvents.length ? (
+                      <p className={styles.emptyStream}>M55 完成 hello、listen 或音频帧后，这里会显示平台收到的输入和返回的 chat / listen stop。</p>
+                    ) : null}
+                  </div>
+                </details>
+              </section>
+              <section className={styles.estopPanel} data-state={estopRequestState}>
+                <span>急停请求</span>
+                <strong>{estopLabel}</strong>
+                <p>只有 estop_ack_v1 且 m33_ack=true 后，界面才显示“急停已执行”。HTTP 成功只代表请求进入本地安全路径。</p>
+                <button type="button" disabled={!selected || estopRequestState === "sent"} onClick={requestEstop}>发起急停请求</button>
+              </section>
+              <section className={styles.relayPanel} data-state={relayState}>
+                <div className={styles.panelMiniHeader}>
+                  <span>模型中转</span>
+                  <strong>{relayState === "sending" ? "请求中" : relayProviderText}</strong>
+                </div>
+                <div className={styles.relayStationGrid} aria-label="模型中转站状态">
+                  <article>
+                    <span>Provider</span>
+                    <strong>{relayProviderPreset?.label || relayConfig.provider}</strong>
+                    <p>{relayConfig.model || "未选择模型"}</p>
+                  </article>
+                  <article>
+                    <span>外部调用</span>
+                    <strong>{relayConfig.external_enabled && relayConfig.api_key_configured ? "启用" : "降级"}</strong>
+                    <p>{relayConfig.api_key_configured ? "密钥仅服务端保存" : "未配置 API key"}</p>
+                  </article>
+                  <article>
+                    <span>设备令牌</span>
+                    <strong>{relayExportToken ? "已生成" : "未生成"}</strong>
+                    <p>{relayExportExpiresAt ? `到期 ${formatTime(relayExportExpiresAt)}` : "用于 NanoPi/M55 调用"}</p>
+                  </article>
+                </div>
+                <div className={styles.boundaryNote}>
+                  <strong>{relayBoundaryText}</strong>
+                  <p>{modelRelayProvider.external_call_ok === true ? "外部模型调用通过安全过滤" : text(modelRelayProvider.external_call_error, "未调用外部模型或安全降级")}</p>
+                </div>
+                <details className={styles.relayConfigPanel} open>
+                  <summary>
+                    调用试验台
+                    <small>{relayState === "ok" ? "最近调用成功" : "高层建议 / dry-run 候选"}</small>
+                  </summary>
+                  <textarea
+                    value={relayPrompt}
+                    onChange={(event) => setRelayPrompt(event.target.value)}
+                    rows={3}
+                    placeholder="输入语音/视觉/肌电摘要后的高层问题；服务端只返回建议和 dry-run 候选。"
+                    aria-label="模型中转提示"
+                  />
+                  <button type="button" disabled={!selected || relayState === "sending"} onClick={requestModelRelay}>
+                    生成高层建议
+                  </button>
+                  {relayError ? <small className={styles.inlineError}>{relayError}</small> : null}
+                  {modelRelaySuggestion.detail || modelRelayResponse.summary ? (
+                    <small className={styles.relayResult}>{text(modelRelaySuggestion.detail, text(modelRelayResponse.summary, ""))}</small>
+                  ) : null}
+                </details>
+                <details className={styles.relayConfigPanel}>
+                  <summary>
+                    接入地址和示例
+                    <small>HTTP / XiaoZhi WS</small>
+                  </summary>
+                  <div className={styles.endpointList}>
+                    <label>
+                      <span>HTTP model relay</span>
+                      <code>{relayInvokeUrl || "选择设备后生成 HTTP endpoint"}</code>
+                    </label>
+                    <label>
+                      <span>XiaoZhi WebSocket</span>
+                      <code>{xiaozhiWsUrl || "选择设备后生成 WebSocket endpoint"}</code>
+                    </label>
+                    <label>
+                      <span>XiaoZhi hello</span>
+                      <code>{xiaozhiHelloExample}</code>
+                    </label>
+                  </div>
+                  <pre className={styles.codeExample}>{relayCurlExample}</pre>
+                </details>
+                <details className={styles.relayConfigPanel}>
+                  <summary>
+                    厂商和密钥
+                    <small>{relayConfig.api_key_configured ? "密钥已在服务器保存" : "未配置密钥"}</small>
+                  </summary>
+                  <label>
+                    <span>厂商</span>
+                    <select value={relayConfig.provider} onChange={(event) => updateRelayProvider(event.target.value)}>
+                      {relayConfig.presets.map((preset) => (
+                        <option key={preset.id} value={preset.id}>{preset.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    <span>Base URL</span>
+                    <input
+                      value={relayConfig.base_url}
+                      onChange={(event) => setRelayConfig((current) => ({ ...current, base_url: event.target.value }))}
+                      placeholder="https://api.example.com/v1"
+                    />
+                  </label>
+                  <label>
+                    <span>模型</span>
+                    <input
+                      value={relayConfig.model}
+                      onChange={(event) => setRelayConfig((current) => ({ ...current, model: event.target.value }))}
+                      placeholder={relayConfig.presets.find((item) => item.id === relayConfig.provider)?.model_hint || "model id"}
+                    />
+                  </label>
+                  <label>
+                    <span>API key</span>
+                    <input
+                      type="password"
+                      value={relayConfigKey}
+                      onChange={(event) => setRelayConfigKey(event.target.value)}
+                      placeholder={relayConfig.api_key_configured ? "留空则继续使用服务器已保存密钥" : "只保存到服务器，不返回浏览器"}
+                      autoComplete="off"
+                    />
+                  </label>
+                  <label className={styles.inlineToggle}>
+                    <input
+                      type="checkbox"
+                      checked={relayConfig.external_enabled}
+                      onChange={(event) => setRelayConfig((current) => ({ ...current, external_enabled: event.target.checked }))}
+                    />
+                    <span>启用外部模型调用</span>
+                  </label>
+                  <button type="button" disabled={relayConfigState === "saving"} onClick={saveRelayConfig}>
+                    {relayConfigState === "saving" ? "保存中" : "保存厂商配置"}
+                  </button>
+                  {relayConfigState === "saved" ? <small className={styles.relayResult}>已保存到服务器环境配置；API key 不会返回给网页或设备。</small> : null}
+                  {relayConfigError ? <small className={styles.inlineError}>{relayConfigError}</small> : null}
+                </details>
+                <details className={styles.relayConfigPanel}>
+                  <summary>
+                    设备调用令牌
+                    <small>{relayExportToken ? "已生成" : "模型中转 / XiaoZhi"}</small>
+                  </summary>
+                  <p className={styles.tokenHint}>给 NanoPi、M55 或另一个 AI 使用的受限令牌；scope 只包含模型中转 invoke 和 XiaoZhi WebSocket，不是网页登录 token，不能改配置或访问项目资料。</p>
+                  <label>
+                    <span>有效期</span>
+                    <select value={relayTokenTtlSeconds} onChange={(event) => setRelayTokenTtlSeconds(Number(event.target.value) || 7 * 24 * 60 * 60)}>
+                      <option value={3600}>1 小时</option>
+                      <option value={24 * 60 * 60}>1 天</option>
+                      <option value={7 * 24 * 60 * 60}>7 天</option>
+                      <option value={30 * 24 * 60 * 60}>30 天</option>
+                    </select>
+                  </label>
+                  <button type="button" disabled={!selected || relayExportState === "creating"} onClick={createRelayInvokeToken}>
+                    {relayExportState === "creating" ? "生成中" : "一键生成调用令牌"}
+                  </button>
+                  {relayExportToken ? (
+                    <div className={styles.tokenBox}>
+                      <label>
+                        <span>Bearer token</span>
+                        <textarea readOnly value={relayExportToken} rows={3} aria-label="模型中转调用令牌" />
+                      </label>
+                      <button type="button" onClick={copyRelayInvokeToken}>{relayExportState === "copied" ? "已复制" : "复制 token"}</button>
+                      <small>
+                        过期：{relayExportExpiresAt ? formatTime(relayExportExpiresAt) : "未知"}；HTTP 调用地址：
+                        <code>{relayInvokeUrl}</code>
+                        XiaoZhi WebSocket：
+                        <code>{xiaozhiWsUrl}</code>
+                      </small>
+                    </div>
+                  ) : null}
+                  {relayExportError ? <small className={styles.inlineError}>{relayExportError}</small> : null}
+                </details>
+                <details className={styles.relayConfigPanel}>
+                  <summary>
+                    安全过滤和审计
+                    <small>{modelRelayEvents.length ? `最近 ${modelRelayEvents.length} 条` : "等待调用"}</small>
+                  </summary>
+                  <div className={styles.forbiddenGrid}>
+                    {forbiddenRelayOutputs.map((item) => <span key={item}>{item}</span>)}
+                  </div>
+                  <div className={styles.ioStream} aria-label="模型中转调用记录">
+                    {modelRelayEvents.map((event, index) => {
+                      const eventPayload = payloadOf(event);
+                      const response = record(eventPayload.relay_response);
+                      return (
+                        <article key={`${text(event.record_type, "relay")}-${index}`}>
+                          <div>
+                            <span>{text(event.record_type, "") === "model_relay_response" ? "平台 → 设备" : "设备 → 平台"}</span>
+                            <strong>{eventTitle(event)}</strong>
+                          </div>
+                          <p>{text(response.summary ?? eventPayload.prompt ?? response.control_boundary, "model relay event")}</p>
+                          <small>{formatTime(event.ts_unix)} · {xiaozhiKindLabel(record(response.classification).type)} · {vlaGateLabel(response.vla_language_gate)} · {text(response.control_boundary ?? eventPayload.control_boundary, "model_relay_only_not_motion_permission")}</small>
+                        </article>
+                      );
+                    })}
+                    {!modelRelayEvents.length ? <p className={styles.emptyStream}>这里会显示模型中转请求、响应和安全降级结果；厂商 API key 不写入日志。</p> : null}
+                  </div>
+                </details>
+              </section>
+              <section className={styles.taskPanel}>
+                <span>VLA / 训练 / 仿真入口</span>
+                <strong>{qualityReady ? "可进入标注训练" : "先补齐 V/L/A 数据"}</strong>
+                <p>V=摄像头关键帧，L=语音语言门控，A=高层 dry-run 候选。训练和 MuJoCo 结果都回到平台做证据，不直接变成真机运动。</p>
+                <div className={styles.pipelineList}>
+                  <article>
+                    <span>1</span>
+                    <p>NanoPi 上传 camera_keyframe_v1、sensor_state、robot_render_state。</p>
+                  </article>
+                  <article>
+                    <span>2</span>
+                    <p>模型中转分类 L：日常聊天不进 VLA，康复指令进入 VLA-L。</p>
+                  </article>
+                  <article>
+                    <span>3</span>
+                    <p>VLA-A 提交 vla_task_request_v1，只生成 dry-run 候选。</p>
+                  </article>
+                  <article>
+                    <span>4</span>
+                    <p>MuJoCo 上传 simulation_readiness，人工审核后才可能进入真机链路。</p>
+                  </article>
+                </div>
+                <div className={styles.taskActions}>
+                  <Link
+                    href={`/projects/${projectId}/robotics?tab=dataset&device=${encodeURIComponent(selected?.device_id ?? "")}`}
+                    prefetch={false}
+                  >
+                    数据/标注
+                  </Link>
+                  <Link href={`/projects/${projectId}/model-relay-lab`} prefetch={false}>
+                    VLA-L 测试
+                  </Link>
+                </div>
+              </section>
+            </aside>
+          </div>
 
           <div className={styles.summaryGrid}>
             <article>
               <span>数据批次</span>
               <strong>{publicBatchLabel(selected?.current_session)}</strong>
               <p>{selected?.latest_upload_status || "等待上传"}</p>
+            </article>
+            <article data-ready={!staleRenderCount ? "true" : "false"}>
+              <span>渲染反馈</span>
+              <strong>{renderRows.length ? `${renderRows.length - staleRenderCount}/${renderRows.length} 新鲜` : "等待 robot_render_state"}</strong>
+              <p>{staleRenderCount ? `${staleRenderCount} 个关节未知，不用 0 位姿代替。` : clampedRenderCount ? `${clampedRenderCount} 个关节为限位夹紧/仿真夹紧。` : "Three.js 只读预览使用上报关节。"}</p>
             </article>
             <article data-ready={qualityReady ? "true" : "false"}>
               <span>数据质量</span>
@@ -1661,37 +3104,31 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
               <strong>{publicSourceLabel(sensorPayload.source)}</strong>
               <p>EMG、心率、IMU、疲劳评分和意图输出作为非实时数据资产展示。</p>
             </article>
+            <article data-ready={!wiringBadCount ? "true" : "false"}>
+              <span>接线检测</span>
+              <strong>{wiringHealth.overall || "unknown"}</strong>
+              <p>{wiringBadCount ? `${wiringBadCount} 路 missing/fault/stale，仅报警，不自动补偿控制。` : "未发现异常通道。"}</p>
+            </article>
+            <article>
+              <span>VLA / 语音</span>
+              <strong>{text(xiaozhiSession.kind, text(record(vlaCandidate.candidate).type, text(record(voiceRelay.intent).label, "等待建议")))}</strong>
+              <p>
+                {text(xiaozhiSession.event, "") ? `XiaoZhi ${text(xiaozhiSession.event)}；${numberText(xiaozhiSession.audio_bytes, " bytes")}。` : ""}
+                {text(xiaozhiSession.control_boundary ?? vlaCandidate.control_boundary ?? voiceRelay.control_boundary, "AI/语音/VLA 输出必须带 control_boundary，不能作为运动许可。")}
+              </p>
+            </article>
           </div>
 
-          <div className={styles.primaryGrid}>
-            <Arm3DOverview
-              deviceId={text(selected?.device_id, "")}
-              robotId={text(selected?.robot_id, "")}
-              projectId={projectId}
-              deviceModel={record(selected?.device_model)}
-              motors={poseSamples}
-              safetyState={stateLabel(currentSafetyState)}
-            />
-
-            <aside className={styles.sideStack}>
-              <section className={styles.safetyPanel} data-state={stateLabel(currentSafetyState)}>
-                <span>安全状态</span>
-                <strong>{stateText(currentSafetyState)}</strong>
-                <p>急停：{boolText(safetyPayload.emergency_stop)}；M33 模式：{publicStateValue(safetyPayload.m33_mode)}；心跳：{text(safetyPayload.heartbeat_age_ms, "-")} ms。</p>
-              </section>
-              <section className={styles.taskPanel}>
-                <span>下一步</span>
-                <strong>{qualityReady ? "进入标注" : "先补齐数据"}</strong>
-                <p>{qualityReady ? "用设备数据工作台做标注、导出和图表分析。" : "先让 NanoPi 上传完整数据批次、电机状态和质量报告。"}</p>
-                <Link
-                  href={`/projects/${projectId}/robotics?tab=dataset&device=${encodeURIComponent(selected?.device_id ?? "")}`}
-                  prefetch={false}
-                >
-                  打开数据工作台
-                </Link>
-              </section>
-            </aside>
-          </div>
+          <section className={styles.roleGrid} aria-label="康复机械臂四角色状态">
+            {roleCards.map((role) => (
+              <article key={role.key} data-ready={role.ready ? "true" : "false"}>
+                <span>{role.title}</span>
+                <strong>{role.value}</strong>
+                <small>{role.subtitle}</small>
+                <p>{role.detail}</p>
+              </article>
+            ))}
+          </section>
 
           {!selected ? <ControlStationOnboarding projectId={projectId} /> : null}
 
@@ -1726,6 +3163,14 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
                 <article>
                   <span>VLA 上下文</span>
                   <p>{text(keyframePayload.vla_context, "预留高层任务上下文；不展示底层 CAN 或电机指令。")}</p>
+                </article>
+                <article>
+                  <span>预览协商</span>
+                  <p>
+                    {text(cameraStreamOffer.transport, "camera_stream_offer_v1 待接入")}；
+                    {text(cameraStreamOffer.max_fps, "15")} fps；
+                    {text(cameraStreamOffer.control_boundary, "camera_preview_only_not_motion_permission")}
+                  </p>
                 </article>
               </div>
             </section>
