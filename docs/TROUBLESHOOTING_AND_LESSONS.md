@@ -6129,7 +6129,7 @@ ros2 topic list -t | grep /rehab_arm/model_state
 
 - 2026-06-18 已作为当前临时解法使用；后续若要恢复 FAL 持久化，必须单独做擦写链路验证。
 
-### M55 本机 SCons 构建可能卡在不完整 ARM GCC
+### M55 本机 SCons 构建要用 RT-Thread Studio 自带 GCC `bin` 路径
 
 现象：
 
@@ -6139,13 +6139,38 @@ ros2 topic list -t | grep /rehab_arm/model_state
 根因：
 
 - `rtconfig.py` 里的 GCC 路径仍是占位符。
-- 本机 `D:\arm-gcc` 只发现 `bin`、`include`、`lib`、`arm-none-eabi`，没有 GCC 需要的 `libexec/.../cc1.exe` 和 `cc1plus.exe`，疑似工具链安装不完整或不是 RT-Thread Studio 实际使用的完整路径。
+- `D:\arm-gcc` 不是这个工程实际使用的 RT-Thread Studio 工具链路径。它可能不完整，也可能只是误用的旁路工具链。
+- RT-Thread Studio 自带完整工具链在 `D:\RT-ThreadStudio\platform\env_released\env\tools\gnu_gcc\arm_gcc\mingw\bin`，其上级目录内能找到 `cc1.exe` 和 `cc1plus.exe`。
 
 解决：
 
-- 不要把 `D:\arm-gcc\bin` 当作已验证完整 toolchain。优先从 RT-Thread Studio 当前工程环境或完整 GNU Arm Embedded 安装目录读取 `RTT_EXEC_PATH`。
-- 验证命令应能找到 `cc1.exe` 和 `cc1plus.exe`，再运行 `python -m SCons -j4`。
+- 不要把 `D:\arm-gcc\bin` 当作已验证路径。
+- 使用：
+
+```powershell
+$env:RTT_EXEC_PATH='D:\RT-ThreadStudio\platform\env_released\env\tools\gnu_gcc\arm_gcc\mingw\bin'
+$env:RTT_ROOT='D:\RT-ThreadStudio\workspace\wifi\rt-thread'
+python -m SCons -j4
+```
+
+- 注意 `RTT_EXEC_PATH` 要指向 `bin` 目录；如果只指到 `...\mingw`，SCons 会报“系统找不到指定的文件”。
 
 状态：
 
-- 2026-06-18 未解决。M55 代码已推送，但本机 CLI 构建未通过；需要完整工具链或从 RT-Thread Studio 内部构建后再烧录 QA。
+- 2026-06-18 已纠正并验证：使用 RT-Thread Studio 自带 `...\mingw\bin` 后，`python -m SCons -j4` 构建通过。
+
+### M55 带资源烧录后 OpenOCD 收尾 acquisition 失败不等于前面没写入
+
+现象：
+
+- `program_with_resources.bat` 的 OpenOCD 日志显示 `rtthread.hex` 和 `whd_resources_all.bin` 都已经完成 erase/program。
+- 随后在 reset/run 或 debug-domain tear-down 阶段出现 `kitprog3: failed to acquire the device`、`Acquisition in Test Mode FAILED`。
+
+判断：
+
+- 该错误出现在两个镜像写入完成之后，不能直接判定为 M55 或 WiFi 资源没有烧进去。
+- 后续应以串口 boot log、`m55qa_status`、WiFi scan/connect/save/autoconnect 验证实际运行状态。
+
+状态：
+
+- 2026-06-18 已观察到该现象；仍需上板串口 QA 确认复位后的运行状态。

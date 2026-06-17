@@ -3115,5 +3115,7 @@
 - Completed: the M55 WiFi configuration flow was rechecked in the burn workspace `D:\RT-ThreadStudio\workspace\wifi`; the save path was narrowed away from the FAL branch and kept on the DFS file fallback so `m55qa_wifi_save` no longer hard-locks the board.
 - Completed: WiFi credential state was exercised with SSID `B131` and password `tudao888`; the service path kept returning ACKs instead of freezing at save time.
 - Validation: the workspace was recompiled and re-burned successfully after the save-path adjustment.
+- Correction: the earlier build failure was a bad path assumption, not a missing toolchain. The working GCC path is `D:\RT-ThreadStudio\platform\env_released\env\tools\gnu_gcc\arm_gcc\mingw\bin`; `python -m SCons -j4` completed successfully with that path.
+- Burn note: `program_with_resources.bat` programmed both `rtthread.hex` and `whd_resources_all.bin` successfully, then OpenOCD reported a post-flash acquisition failure while tearing down the debug session. The flash images were already written before that final debug-domain error.
 - Boundary: this only stabilizes WiFi persistence and restores the local QA loop. It does not yet prove the full XiaoZhi voice loop or LVGL UI are finished.
 - Next step: use the now-stable WiFi save/autoconnect baseline to keep pushing the XiaoZhi speaker QA, then fold the verified state back into the formal M55 repo and its docs.
