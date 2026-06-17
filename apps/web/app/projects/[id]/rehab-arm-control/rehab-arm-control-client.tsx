@@ -2226,8 +2226,8 @@ function ControlStationOnboarding({ projectId }: { projectId: string }) {
     <section className={styles.onboardingPanel} aria-label="专项设备总控台接入引导">
       <div className={styles.onboardingCopy}>
         <span>等待首台设备</span>
-        <strong>这里是康复机械臂只读总控，不是真机遥控器</strong>
-        <p>真实接入前，先按下面三步把 NanoPi、M33/M55、App/现场数据和仿真证据串起来。平台负责看状态、沉淀证据和发起协作，不直接发运动指令。</p>
+        <strong>等待设备接入</strong>
+        <p>NanoPi、M33/M55、App/现场数据和仿真证据接入后，这里会形成完整设备态势。真实运动仍走 M33 安全链路。</p>
         <Link href={`/projects/${projectId}/robotics`} prefetch={false}>去设备数据工作台准备采集窗口</Link>
       </div>
       <div className={styles.onboardingSteps}>
