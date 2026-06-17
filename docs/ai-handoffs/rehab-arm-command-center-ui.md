@@ -77,6 +77,21 @@ Screenshots:
 - `docs/screenshots/rehab-arm-muscle-prediction-qa/desktop-final-1600.png`
 - `docs/screenshots/rehab-arm-muscle-prediction-qa/mobile-final-390.png`
 
+## Follow-up QA - 2026-06-18
+
+User-view QA found that the desktop WanAI-style rebuild could make the URDF/Three.js stage feel clipped: at 1600x1000, the main `primaryGrid` row was constrained to about 76px and relied on nested scrolling. The page now lets the main V/L/A stage expand to its natural height while keeping the right safety/model-relay command tower sticky and independently scrollable.
+
+Additional screenshots:
+
+- `docs/screenshots/rehab-arm-muscle-prediction-qa/desktop-qa-after-layout-fix-1600.png`
+- `docs/screenshots/rehab-arm-muscle-prediction-qa/mobile-qa-after-layout-fix-390.png`
+
+Additional checks:
+
+- Desktop 1600x1000: no horizontal overflow; URDF canvas visible at about 779x620; human model canvas visible at about 777x360.
+- Mobile 390x900: no horizontal overflow; both Three.js canvases have stable dimensions.
+- Browser console: no application errors; only a Next.js Fast Refresh warning during local CSS editing.
+
 ## Remaining UX Work
 
 - The cloud/demo project with real device data should be re-QA'd after deploy because local `proj_rehab_arm` has no NanoPi device rows.
