@@ -3075,3 +3075,14 @@
 - Validation: from `D:\ai-collab-product`, `npm run build:web` passed. Next.js built `/projects/[id]/rehab-arm-control` successfully.
 - Worktree note: the platform target frontend files were already dirty before this pass; this step only intentionally advanced the XiaoZhi `ui_state` display contract in those files.
 - Next step: deploy this platform UI build to cloud and run XiaoZhi WebSocket QA with real board audio/provider config.
+
+### 2026-06-17 - Platform cloud deployed to XiaoZhi UI state panel
+
+- Completed: platform repo commit `e52e81b3` (`fix: ignore published Next type caches during build`) was pushed and deployed to Tencent Lighthouse `~/apps/ai-collab` on branch `ai/game-loop-core`.
+- Completed: cloud Web was rebuilt after clearing stale `apps/web/.next-prod` and `.next-build-staging-*` artifacts, then API/Web were restarted with `AI_COLLAB_BUILD_SHA=e52e81b3`.
+- Fixed deployment pitfall: `apps/web/scripts/build.cjs` now strips generated `.next-*` type includes from `apps/web/tsconfig.json`, and `apps/web/tsconfig.json` no longer permanently includes `.next-prod/types`. This prevents old published Next type caches from breaking later cloud builds.
+- Validation: cloud `npm run build:web` passed; `rehab-arm-control` was included in the route output. API/Web ports `8011` and `3001` both passed local health checks on the server.
+- Validation: `python scripts/check_web_api_alignment.py --web-base http://106.55.62.122:3001 --api-base http://106.55.62.122:8011 --project-id 72a1cb1d-d8a8-422f-8d87-4ed071f71dbe` returned `ok=true`; direct and proxy health both reported `build_sha=e52e81b3`.
+- User-route smoke: public `/projects/72a1cb1d-d8a8-422f-8d87-4ed071f71dbe/rehab-arm-control` loaded the protected route bundle and redirected to `/login?returnTo=...`, which is expected for an unauthenticated request.
+- Cloud worktree note: the only remaining untracked cloud file observed after deployment was `apps/api/ai_collab_server.db`; it was not touched or committed.
+- Next step: run authenticated browser QA on the cloud command center, then continue board-side XiaoZhi WebSocket audio/provider QA.

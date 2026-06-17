@@ -6033,3 +6033,24 @@ ros2 topic list -t | grep /rehab_arm/model_state
 状态：
 
 - 2026-06-17 前端代码已更新，`npm run build:web` 已通过；等待云端部署和真实板端 XiaoZhi WebSocket QA。
+
+### Next 云端构建会被旧 `.next-prod/types` 污染
+
+现象：
+
+- 云端已经 fast-forward 到新提交，但 `npm run build:web` 在类型检查阶段失败。
+- 报错形如 `.next-prod/types/app/projects/[id]/model-relay-lab/page.ts: Cannot find module .../model-relay-lab/page.js`，实际源码并不是本次改动导致的 TypeScript 错误。
+
+根因：
+
+- `apps/web/tsconfig.json` 长期包含 `.next-prod/types/**/*.ts` 或 `.next-dev-*` 这类生成目录。
+- Next 新构建会先做类型检查，旧发布产物里的类型入口还引用已经变化或未部署的页面文件，导致构建被历史缓存污染。
+
+解决：
+
+- 平台仓库 commit `e52e81b3` 修复：`apps/web/scripts/build.cjs` 构建前会清理生成的 `.next-*` include，只保留标准 `.next/types/**/*.ts`；`apps/web/tsconfig.json` 不再固定包含 `.next-prod/types`。
+- 云端部署时如遇同类问题，先清理 `apps/web/.next-prod` 和 `apps/web/.next-build-staging-*`，再运行 `npm run build:web`。
+
+状态：
+
+- 2026-06-17 已在云端验证：清理旧产物后 Web 构建通过，API/Web 重启成功，公网 alignment 返回 `ok=true` 且 `build_sha=e52e81b3`。
