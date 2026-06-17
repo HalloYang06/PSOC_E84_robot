@@ -3086,3 +3086,15 @@
 - User-route smoke: public `/projects/72a1cb1d-d8a8-422f-8d87-4ed071f71dbe/rehab-arm-control` loaded the protected route bundle and redirected to `/login?returnTo=...`, which is expected for an unauthenticated request.
 - Cloud worktree note: the only remaining untracked cloud file observed after deployment was `apps/api/ai_collab_server.db`; it was not touched or committed.
 - Next step: run authenticated browser QA on the cloud command center, then continue board-side XiaoZhi WebSocket audio/provider QA.
+
+### 2026-06-17 - Platform XiaoZhi cloud WebSocket model/TTS loop verified
+
+- Completed: platform repo `D:\ai-collab-product`, branch `ai/game-loop-core`, commit `ad905a13` (`fix: restore rehab model relay settings`) was pushed to `https://github.com/wenjunyong666/ai-.git`.
+- Fixed: `apps/api/app/settings.py` now declares the rehab model relay, XiaoZhi ASR, and XiaoZhi TTS settings fields used by the API service. This fixes the cloud `listen_stop` crash where deployed `Settings` did not expose `rehab_arm_model_relay_api_key`.
+- Deployed: Tencent Lighthouse `~/apps/ai-collab` was fast-forwarded to `ad905a13`; API/Web restarted with `AI_COLLAB_BUILD_SHA=ad905a13` on ports `8011` and `3001`.
+- Validation: platform targeted API regression passed from `D:\ai-collab-product\apps\api`: `python -m pytest tests/test_rehab_arm_sync.py -q -k "xiaozhi or model_relay"` returned `14 passed, 11 deselected`.
+- Validation: cloud alignment check returned `ok=true`; direct and proxy health both reported `build_sha=ad905a13`.
+- Validation: temporary cloud project/device/token WebSocket QA passed through `hello -> listen start -> listen detect -> stt -> llm -> chat -> tts start -> binary TTS audio frames -> tts stop -> listen stop`. The model classified the sample rehab-safety question as `daily_chat` and returned an operator-facing Chinese answer; TTS emitted binary audio frames.
+- Boundary: this verifies the server platform WebSocket/model/TTS loop and the user-facing event sequence. It still does not prove physical M55 microphone capture, wake-word firmware, speaker playback quality, or official Opus decode on the board.
+- Safety: XiaoZhi/model relay remains speech state, ASR/LLM/TTS feedback, chat/classification, and possible VLA language context only. It does not bypass M33 or issue motor/CAN control.
+- Next step: connect the M55 client to this verified cloud loop with the board's wake-word path (`你好，小瑞`/XiaoRui path), consume `ui_state` for LVGL animation, and verify board speaker playback quality without filling M55 model/runtime resources.

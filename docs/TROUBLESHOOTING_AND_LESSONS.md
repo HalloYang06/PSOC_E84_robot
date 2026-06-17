@@ -6054,3 +6054,25 @@ ros2 topic list -t | grep /rehab_arm/model_state
 状态：
 
 - 2026-06-17 已在云端验证：清理旧产物后 Web 构建通过，API/Web 重启成功，公网 alignment 返回 `ok=true` 且 `build_sha=e52e81b3`。
+
+### XiaoZhi WebSocket `listen_stop` 1006 可能是云端 Settings schema 漂移
+
+现象：
+
+- XiaoZhi WebSocket 可以连接并收到 `hello/listen start/listen detect`，但在 `listen stop` 后连接异常关闭，客户端看到类似 `1006`。
+- 云端 API 日志出现 `AttributeError: 'Settings' object has no attribute 'rehab_arm_model_relay_api_key'`，栈位置在 `apps/api/app/modules/rehab_arm/service.py` 的 model relay request 记录逻辑。
+
+根因：
+
+- 云端 `.env` 已经配置了 `REHAB_ARM_MODEL_RELAY_*`、XiaoZhi ASR/TTS provider 字段，但平台代码里的 `Settings` 类没有提交这些字段，导致部署后的服务对象缺属性。
+- 本地工作区可能已经有未提交修复，因此只看本地文件容易误判为“配置没问题”。必须确认对应字段已经进入提交并部署到云端。
+
+解决：
+
+- 平台仓库 `D:\ai-collab-product` commit `ad905a13` 已修复：`apps/api/app/settings.py` 增加 model relay、XiaoZhi ASR、XiaoZhi TTS settings 字段。
+- 部署时显式设置 `AI_COLLAB_BUILD_SHA=ad905a13 AI_COLLAB_BUILD_REF=ai/game-loop-core RESTART=1 ./scripts/start-cloud-prod.sh`，再用 alignment check 验证公网 Web/API 同步。
+- 端到端 QA 时服务端不会主动首发 XiaoZhi `hello`；客户端应先发送 `hello`，再等待服务端 `hello` 回包，然后依次发 `listen start/detect/stop`。
+
+状态：
+
+- 2026-06-17 已修复并验证：云端 alignment 返回 `ok=true`，临时项目/设备/token 的 WebSocket QA 收到 `stt`、`llm`、`chat`、`tts start`、大量二进制 TTS 音频帧、`tts stop`、`listen stop`，云端日志无新的 traceback。
