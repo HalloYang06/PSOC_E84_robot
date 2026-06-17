@@ -33,7 +33,7 @@ function sanitizeTsConfigIncludes() {
   if (!Array.isArray(config.include)) return;
   const nextInclude = config.include.filter((item) => {
     const value = String(item ?? "");
-    return !value.startsWith(".next-build-");
+    return value === ".next/types/**/*.ts" || !value.startsWith(".next-");
   });
   if (nextInclude.length === config.include.length) return;
   config.include = nextInclude;
