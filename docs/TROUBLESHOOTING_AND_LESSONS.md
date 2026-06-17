@@ -5975,3 +5975,24 @@ ros2 topic list -t | grep /rehab_arm/model_state
 状态：
 
 - 2026-06-17 已把 M55/C8T6/main integration 本机 checkout 表移动到 `docs/ai-handoffs/adjacent-subsystem-checkouts-2026-06-17.md`，主索引只保留稳定 GitHub 分支入口。
+
+### XiaoZhi TTS 记账不能覆盖整段会话状态
+
+现象：
+
+- 平台或 LVGL 侧只看到 XiaoZhi 一直处于连接中、思考中或不完整状态。
+- 后端 WebSocket 已经收到录音、ASR/LLM 或 TTS 事件，但最新设备状态可能只剩最后一次 TTS 记账结果。
+
+根因：
+
+- 如果把 `xiaozhi_ws_tts` 事件直接写成最新 `xiaozhi_session`，会覆盖前面累积的 listen/audio/asr/reply 字段。
+- 前端和设备侧需要的是一个合并后的会话快照，而不是最后一个事件类型。
+
+解决：
+
+- 平台仓库 `D:\ai-collab-product` 已在 commit `ccf7fd33` 修复：`record_xiaozhi_ws_event()` 写入 merged `xiaozhi_session_v1`，保留音频字节数、时长、official audio path、兼容模式、ASR 状态、LLM entry 状态和 TTS provider 状态。
+- 后续 UI/LVGL/设备 QA 应读取 session 快照判断 `listen_start/listen_stop/thinking/speaking/error`，不要只看最后一条 TTS 事件。
+
+状态：
+
+- 2026-06-17 平台后端回归通过：`54 passed, 33 warnings`。该修复只稳定服务器侧状态，不等于已经验证 M55 麦克风、唤醒词、扬声器和官方 Opus 全链路都完成。

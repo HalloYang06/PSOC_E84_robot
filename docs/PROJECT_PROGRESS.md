@@ -3036,3 +3036,14 @@
 - Kept the platform handoff as the place for verified platform repo local path and current branch details.
 - Safety: no mainline, protocol, or execution boundaries changed.
 - Validation: documentation-only cleanup; no code behavior changed.
+
+### 2026-06-17 - Platform XiaoZhi session status stabilized
+
+- Reason: the user reported XiaoZhi staying in "connecting/thinking" style states and asked that every major platform/M55 step be recorded in durable docs.
+- Platform repo updated and pushed: `D:\ai-collab-product`, remote `https://github.com/wenjunyong666/ai-.git`, branch `ai/game-loop-core`, commit `ccf7fd33` (`fix: stabilize rehab XiaoZhi session status`).
+- Completed in platform repo: `apps/api/app/modules/rehab_arm/service.py` now preserves a merged `xiaozhi_session_v1` instead of letting the latest TTS bookkeeping event overwrite voice/listen/reply state.
+- Completed in platform docs: `docs/rehab-arm-nanopi-vla-mujoco-integration.md` records the XiaoZhi WebSocket session-state behavior and keeps official Opus as the long-term path; `pcm_s16le` remains debug compatibility only.
+- Validation: from `D:\ai-collab-product\apps\api`, `python -m pytest tests/test_rehab_arm_sync.py tests/test_runner_relay.py tests/test_requirement_autonomy_flow.py -q` passed with `54 passed, 33 warnings`.
+- Safety: platform/XiaoZhi/model relay still only produces speech state, ASR/LLM/TTS status, operator-facing replies, VLA language context, and dry-run suggestions. It does not produce CAN frames, motor torque/current, raw motor state, direct motor commands, or M33 safety overrides.
+- Unrelated local state: the platform repo still has many pre-existing dirty/untracked files outside the two committed files; they were intentionally not staged for this step.
+- Next step: continue the real XiaoZhi chain in the platform/M55 path by verifying wake/listen/ASR/LLM/TTS provider configuration and speaker playback, while keeping M55 resource use and official XiaoZhi/Infineon audio path in view.

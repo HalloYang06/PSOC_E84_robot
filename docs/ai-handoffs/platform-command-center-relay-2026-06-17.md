@@ -47,6 +47,8 @@ Current XiaoZhi relay state from platform-side work:
 - PCM compatibility path has been used for M55 temporary `pcm_s16le` testing.
 - Official Opus path should stay the long-term XiaoZhi mainline; PCM is compatibility/debug unless explicitly documented otherwise.
 - TTS downlink work belongs in the platform repo, not in this main ROS2/M33 repository.
+- Platform commit pushed after this handoff started: `ccf7fd33` on `ai/game-loop-core`, message `fix: stabilize rehab XiaoZhi session status`.
+- The pushed platform fix keeps `xiaozhi_session_v1` as a merged session snapshot so TTS bookkeeping no longer erases the voice/listen/reply state needed by LVGL/device QA.
 
 ## Changed In This Main Repo
 
@@ -70,6 +72,15 @@ git -C D:\ai-collab-product branch --show-current
 
 No code behavior changed in this documentation task.
 
+Additional platform validation after commit `ccf7fd33`:
+
+```powershell
+cd D:\ai-collab-product\apps\api
+python -m pytest tests/test_rehab_arm_sync.py tests/test_runner_relay.py tests/test_requirement_autonomy_flow.py -q
+```
+
+Result: `54 passed, 33 warnings`.
+
 ## Known Dirty Files Not Owned By This Task
 
 In the main repo, these were present before this documentation change and were intentionally not staged:
@@ -84,3 +95,4 @@ The platform repo also has many existing modified and untracked files from platf
 1. Continue XiaoZhi ASR/LLM/TTS relay fixes in `D:\ai-collab-product`, not in this main repo.
 2. Keep official XiaoZhi Opus as the long-term protocol path; document PCM as compatibility/debug if it remains.
 3. When platform API contracts change, update this main repo's protocol docs first or in the same change, without inventing a parallel protocol in the platform.
+4. For user-facing XiaoZhi QA, surface merged session states such as wake/listen/thinking/speaking/error; do not derive the UI from the last TTS event alone.
