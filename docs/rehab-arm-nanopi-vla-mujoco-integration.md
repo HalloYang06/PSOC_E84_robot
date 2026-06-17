@@ -1,6 +1,6 @@
 # Medical Rehab Arm NanoPi / VLA / MuJoCo Integration
 
-Updated: 2026-06-13
+Updated: 2026-06-17
 
 This document describes how NanoPi uploads camera, EMG/model outputs, VLA action candidates, and MuJoCo simulation evidence into the existing AI collaboration platform. It does not redefine the robot-side protocol. The platform remains a relay, evidence, and review surface.
 
@@ -71,6 +71,56 @@ curl -X POST "$API/api/rehab-arm/v1/devices/nanopi-m5/camera/keyframes" \
 ```
 
 Future streaming can use `camera_stream_offer_v1`, but the platform should still treat camera streams as perception display and VLA input, not control.
+
+## 1.1 Two RGB Cameras + Pretrained YOLO First Pass
+
+Use two RGB cameras as a stereo pair when no depth camera is available. Run pretrained YOLO locally on the edge, estimate a coarse target depth, and upload one stereo vision context record.
+
+Endpoint:
+
+```text
+POST /api/rehab-arm/v1/devices/{device_id}/vision/stereo-context
+Content-Type: application/json
+```
+
+Recommended payload:
+
+```json
+{
+  "schema_version": "stereo_rgb_yolo_context_v1",
+  "robot_id": "rehab-arm-alpha",
+  "device_id": "nanopi-m5",
+  "project_id": "fd6a55ed-a63c-44b3-b123-96fb3c154966",
+  "frame_ts_unix": 1781079000.0,
+  "left_camera_id": "left_rgb",
+  "right_camera_id": "right_rgb",
+  "stereo_calibration_id": "bench_calib_001",
+  "baseline_m": 0.08,
+  "image_pair_ref": {
+    "left_image_url": "/api/rehab-arm/v1/devices/nanopi-m5/camera/keyframes/latest/file",
+    "right_image_url": "/api/rehab-arm/v1/devices/nanopi-m5/camera/keyframes/latest/file"
+  },
+  "detections": [
+    {"label": "cup", "confidence": 0.91, "bbox": [120, 88, 184, 170]},
+    {"label": "hand", "confidence": 0.87, "bbox": [212, 96, 264, 176]}
+  ],
+  "target_object": {"label": "cup", "confidence": 0.91},
+  "estimated_depth_m": 0.72,
+  "target_3d_camera_frame": {"x": 0.12, "y": -0.03, "z": 0.72},
+  "scene_summary": "cup on table, hand visible, workspace clear",
+  "vla_context": "two RGB cameras provide approximate depth only; operator must verify before motion",
+  "confidence": 0.91
+}
+```
+
+The platform stores this as perception evidence only and prefers it over single keyframes when building `vla_vision_context`.
+
+Practical notes:
+
+- Treat the stereo depth as approximate, not clinical-grade depth.
+- Keep calibration and disparity logic in the edge script, not the motion controller.
+- Use YOLO only for object detection and coarse target selection.
+- The platform still outputs high-level task intent, not joint trajectories or CAN frames.
 
 ## 2. EMG / Sensor / Muscle Small-Model Output From NanoPi
 
@@ -361,6 +411,14 @@ NanoPi uploads dataset
 The platform should expose the model and simulation results as evidence. It should not become the real-time controller.
 
 ## 8. Progress Notes
+
+### 2026-06-17 - Stereo RGB + Pretrained YOLO Framework Added
+
+- Completed: added a `stereo_rgb_yolo_context_v1` perception-only contract for two RGB cameras and pretrained YOLO output.
+- Completed: the platform now stores `stereo_vision_context` as latest device telemetry and prefers it when building `vla_vision_context`.
+- Completed: model relay now surfaces stereo target label, approximate depth, and image-pair references as high-level vision context only.
+- Validation: backend test coverage added for stereo context upload, dashboard visibility, and model relay preference.
+- Boundary: two RGB cameras are acceptable for the first runnable pass, but depth remains approximate and must not be treated as motion permission.
 
 ### 2026-06-17 - XiaoZhi WebSocket Session State Stabilized
 

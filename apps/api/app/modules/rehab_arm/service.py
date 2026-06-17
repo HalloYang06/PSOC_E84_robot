@@ -965,6 +965,47 @@ def record_camera_stream_offer(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _target_label(target: Any) -> str:
+    if isinstance(target, dict):
+        return _safe_text(target.get("label") or target.get("class_name") or target.get("name"), 120)
+    return _safe_text(target, 120)
+
+
+def _detection_count(detections: Any) -> int:
+    if isinstance(detections, list):
+        return len(detections)
+    if isinstance(detections, dict):
+        items = detections.get("items") or detections.get("detections") or detections.get("objects")
+        return len(items) if isinstance(items, list) else len(detections)
+    return 0
+
+
+def record_stereo_vision_context(payload: dict[str, Any]) -> dict[str, Any]:
+    if payload.get("control_boundary") != "stereo_vision_context_only_not_motion_permission":
+        raise ValueError("stereo vision context must stay perception-only")
+    confidence = payload.get("confidence")
+    if confidence is not None:
+        try:
+            payload["confidence"] = min(1.0, max(0.0, float(confidence)))
+        except (TypeError, ValueError):
+            raise ValueError("confidence must be numeric") from None
+    record = telemetry_record("stereo_vision_context", payload)
+    write_device_latest(record["device_id"], "stereo_vision_context", record)
+    return {
+        "ok": True,
+        "schema_version": "stereo_rgb_yolo_context_v1",
+        "device_id": record["device_id"],
+        "robot_id": record["robot_id"],
+        "project_id": record.get("project_id") or "",
+        "left_camera_id": payload.get("left_camera_id"),
+        "right_camera_id": payload.get("right_camera_id"),
+        "target_label": _target_label(payload.get("target_object")),
+        "detection_count": _detection_count(payload.get("detections")),
+        "estimated_depth_m": payload.get("estimated_depth_m"),
+        "control_boundary": "stereo_vision_context_only_not_motion_permission",
+    }
+
+
 def build_camera_stream_offer(device_id: str) -> dict[str, Any]:
     record = _device_latest(device_id, "camera_stream_offer") or {}
     payload = record.get("payload") if isinstance(record.get("payload"), dict) else {}
@@ -1081,6 +1122,8 @@ def record_xiaozhi_ws_event(payload: dict[str, Any]) -> dict[str, Any]:
                 {
                     "schema_version": "xiaozhi_session_v1",
                     "event": "audio_frame",
+                    "ui_state": "listening",
+                    "last_error": "",
                     "audio_bytes": int(current_payload.get("audio_bytes") or 0),
                     "audio_duration_ms": int(current_payload.get("audio_duration_ms") or 0),
                     "audio_format": current_payload.get("audio_format") or "",
@@ -1090,10 +1133,21 @@ def record_xiaozhi_ws_event(payload: dict[str, Any]) -> dict[str, Any]:
                 }
             )
         elif record_type == "xiaozhi_ws_input" and event in {"listen_start", "listen_detect", "listen_stop", "disconnect"}:
+            if event == "listen_start":
+                ui_state = "listening"
+            elif event == "listen_detect":
+                ui_state = "wake_detected"
+            elif event == "listen_stop":
+                ui_state = "thinking" if (current_payload.get("asr_text") or session_payload.get("asr_text")) else "idle"
+            else:
+                ui_state = "offline"
+            asr_error = current_payload.get("asr_error") or session_payload.get("asr_error") or ""
             session_payload.update(
                 {
                     "schema_version": "xiaozhi_session_v1",
                     "event": event,
+                    "ui_state": ui_state,
+                    "last_error": asr_error if event == "listen_stop" and asr_error and not current_payload.get("asr_text") else "",
                     "audio_bytes": int(current_payload.get("audio_bytes") or session_payload.get("audio_bytes") or 0),
                     "audio_duration_ms": int(current_payload.get("audio_duration_ms") or session_payload.get("audio_duration_ms") or 0),
                     "audio_format": current_payload.get("audio_format") or session_payload.get("audio_format") or "",
@@ -1114,6 +1168,8 @@ def record_xiaozhi_ws_event(payload: dict[str, Any]) -> dict[str, Any]:
                 {
                     "schema_version": "xiaozhi_session_v1",
                     "event": "reply",
+                    "ui_state": "thinking",
+                    "last_error": "",
                     "kind": current_payload.get("kind") or session_payload.get("kind") or "none",
                     "reply": current_payload.get("reply") or session_payload.get("reply") or "",
                     "transcript": current_payload.get("transcript") or session_payload.get("transcript") or "",
@@ -1135,15 +1191,28 @@ def record_xiaozhi_ws_event(payload: dict[str, Any]) -> dict[str, Any]:
         elif record_type == "xiaozhi_ws_tts":
             has_recognized_text = bool(str(session_payload.get("transcript") or session_payload.get("asr_text") or "").strip())
             event_name = "tts" if has_recognized_text else str(session_payload.get("event") or "reply")
+            tts_error = current_payload.get("error") or session_payload.get("error") or ""
+            tts_ok = bool(current_payload.get("ok") or session_payload.get("ok") or False)
+            if tts_ok and int(current_payload.get("audio_bytes") or session_payload.get("audio_bytes") or 0) > 0:
+                ui_state = "speaking"
+                last_error = ""
+            elif tts_error:
+                ui_state = "error"
+                last_error = tts_error
+            else:
+                ui_state = "idle"
+                last_error = ""
             session_payload.update(
                 {
                     "schema_version": "xiaozhi_session_v1",
                     "event": event_name,
-                    "ok": bool(current_payload.get("ok") or session_payload.get("ok") or False),
+                    "ui_state": ui_state,
+                    "ok": tts_ok,
                     "provider_configured": bool(current_payload.get("provider_configured") or session_payload.get("provider_configured") or False),
                     "audio_bytes": int(current_payload.get("audio_bytes") or session_payload.get("audio_bytes") or 0),
                     "audio_format": current_payload.get("audio_format") or session_payload.get("audio_format") or "",
-                    "error": current_payload.get("error") or session_payload.get("error") or "",
+                    "error": tts_error,
+                    "last_error": last_error,
                     "control_boundary": "xiaozhi_voice_relay_only_not_motion_permission",
                 }
             )
@@ -1685,6 +1754,10 @@ def _vla_language_gate(classification: dict[str, Any], payload: dict[str, Any], 
 
 
 def _latest_camera_payload(device_id: str) -> dict[str, Any]:
+    stereo_record = _device_latest(device_id, "stereo_vision_context") or {}
+    stereo_payload = stereo_record.get("payload") if isinstance(stereo_record.get("payload"), dict) else {}
+    if isinstance(stereo_payload, dict) and stereo_payload:
+        return stereo_payload
     record = _device_latest(device_id, "camera_keyframe") or {}
     payload = record.get("payload") if isinstance(record.get("payload"), dict) else {}
     return payload if isinstance(payload, dict) else {}
@@ -1712,6 +1785,24 @@ def _build_vla_language_context(relay_id: str, payload: dict[str, Any], classifi
 
 
 def _build_vla_vision_context(relay_id: str, device_id: str, camera_payload: dict[str, Any]) -> dict[str, Any]:
+    if camera_payload.get("schema_version") == "stereo_rgb_yolo_context_v1":
+        target_label = _target_label(camera_payload.get("target_object")) or "unknown"
+        return {
+            "schema_version": "vla_vision_context_v1",
+            "context_id": f"vision_ctx_{relay_id}",
+            "source": "stereo_rgb_yolo_context_v1",
+            "scene_summary": _safe_text(camera_payload.get("scene_summary") or f"stereo RGB YOLO target: {target_label}", 500),
+            "patient_visibility": _safe_text(camera_payload.get("vla_context") or "unknown", 240),
+            "environment_constraints": "two RGB stereo depth is approximate; operator must verify target pose before motion",
+            "camera_id": f"{camera_payload.get('left_camera_id') or 'left_rgb'}+{camera_payload.get('right_camera_id') or 'right_rgb'}",
+            "target_label": target_label,
+            "estimated_depth_m": camera_payload.get("estimated_depth_m"),
+            "target_3d_camera_frame": camera_payload.get("target_3d_camera_frame"),
+            "detection_count": _detection_count(camera_payload.get("detections")),
+            "confidence": camera_payload.get("confidence"),
+            "image_pair_ref": camera_payload.get("image_pair_ref") or {},
+            "control_boundary": "vla_vision_context_only_not_motion_permission",
+        }
     return {
         "schema_version": "vla_vision_context_v1",
         "context_id": f"vision_ctx_{relay_id}",
@@ -2052,6 +2143,7 @@ def device_project_id(device_id: str) -> str:
         _device_latest(device_id, "board_manifest") or {},
         _device_latest(device_id, "device_model") or {},
         _device_latest(device_id, "model_relay_response") or {},
+        _device_latest(device_id, "stereo_vision_context") or {},
     ]
     return next(
         (
@@ -2099,6 +2191,7 @@ def build_dashboard(project_id: str | None = None) -> dict[str, Any]:
         device_model = _device_latest(device_id, "device_model") or {}
         command_center_snapshot = _device_latest(device_id, "command_center_snapshot") or {}
         camera_stream_offer = _device_latest(device_id, "camera_stream_offer") or {}
+        stereo_vision_context = _device_latest(device_id, "stereo_vision_context") or {}
         voice_relay = _device_latest(device_id, "voice_relay") or {}
         vla_plan_candidate = _device_latest(device_id, "vla_plan_candidate") or {}
         model_relay_response = _device_latest(device_id, "model_relay_response") or {}
@@ -2121,6 +2214,7 @@ def build_dashboard(project_id: str | None = None) -> dict[str, Any]:
             device_model,
             command_center_snapshot,
             camera_stream_offer,
+            stereo_vision_context,
             voice_relay,
             vla_plan_candidate,
             model_relay_response,
@@ -2189,6 +2283,7 @@ def build_dashboard(project_id: str | None = None) -> dict[str, Any]:
                 "command_center_snapshot": command_center_snapshot,
                 "robot_render_state": build_robot_render_state(device_id),
                 "camera_stream_offer": camera_stream_offer,
+                "stereo_vision_context": stereo_vision_context,
                 "wiring_health": build_wiring_health(device_id),
                 "safety_status": safety_status,
                 "voice_relay": voice_relay,
