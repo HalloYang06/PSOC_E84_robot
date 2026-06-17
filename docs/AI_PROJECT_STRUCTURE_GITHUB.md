@@ -122,7 +122,18 @@ The repository uses branches as subsystem homes.
 | `wake-word-model` | Wake word model reference | M55 voice reference only |
 | `main` | Entry/early material | Not current development mainline |
 
-## 4.1 External Platform / Command Center Repository
+## 4.1 Verified Local Checkouts For Adjacent Subsystems
+
+These are the local workspaces I have actually checked on this machine. They are listed here only as repository/branch/document-entry facts; live status and test progress belong in `docs/PROJECT_PROGRESS.md`.
+
+| Subsystem | Local path | GitHub remote | Current branch | Relationship to this repo |
+|---|---|---|---|---|
+| Main integration/docs | `D:\RT-ThreadStudio\workspace\_nanopi_rosnode_usbcan` | `https://github.com/ChillAmnesiac/Medical-Rehabilitation-Manipulator.git` | `feature/rehab-arm-ros2-architecture` | Current ROS2/NanoPi/MuJoCo/docs integration workspace and stable index home. |
+| M55 Git-managed firmware | `D:\RT-ThreadStudio\workspace\_m55_ref_repo` | `https://github.com/ChillAmnesiac/Medical-Rehabilitation-Manipulator.git` | `M55` | Formal Git home for M55 WiFi, LVGL, XiaoZhi/voice, model runtime, and M33/M55 result bridge work. |
+| M55 RT-Thread Studio burn workspace | `D:\RT-ThreadStudio\workspace\wifi` | Not a valid Git checkout in the current local state | None | Active build/burn workspace used for M55 hardware iteration and resource flashing. Sync code back to the `M55` branch checkout before committing. |
+| C8T6 firmware | `D:\RT-ThreadStudio\workspace\c8t6_github_C8T6` | `https://github.com/ChillAmnesiac/Medical-Rehabilitation-Manipulator.git` | `C8T6` | Formal Git home for STM32F103C8T6 sensor-node firmware and CAN transport. |
+
+## 4.2 External Platform / Command Center Repository
 
 The current server platform and device command-center work is in a separate AI collaboration platform repository, not in the historical `ai` branch of this repository.
 

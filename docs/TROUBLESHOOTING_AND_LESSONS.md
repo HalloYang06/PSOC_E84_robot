@@ -662,6 +662,7 @@ req_m7
 
 - 工作区有多个 M55/WiFi/参考目录，例如 `wifi`、`_m55_ref_repo`、`yiliao1_m55`。
 - `wifi` 目录名看起来像 M55 工程，但当前 `git status` 报 `fatal: not a git repository`。
+- 2026-06-17 复核仍是同一结论：`_m55_ref_repo` 是可提交的 `M55` 分支 checkout，`wifi` 只能当 RT-Thread Studio build/burn workspace。
 
 环境：
 
@@ -675,7 +676,7 @@ req_m7
 解决：
 
 - M55 主线判断必须从 GitHub 远端、分支、提交历史和主仓库文档交叉确认。
-- `wifi` 可作为本地 M55 WiFi 工程文件参考；提交历史和正式分支基准以 `_m55_ref_repo` / GitHub `M55` 分支为准。
+- `wifi` 可作为本地 M55 WiFi 工程文件参考、构建和烧录工作区；提交历史和正式分支基准以 `_m55_ref_repo` / GitHub `M55` 分支为准。
 - 文档已增加 `M33_M55_IPC_BLE_FOUNDATION.md`，要求后续 AI 不要新造 M33/M55 通讯，也不要把旧参考工程当主线。
 
 技巧：

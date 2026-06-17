@@ -3016,3 +3016,14 @@
 - Added `docs/ai-handoffs/platform-command-center-relay-2026-06-17.md` as the current handoff for the platform command-center/model-relay indexing task.
 - Safety: no M33/NanoPi/Linux mainline conclusions changed. Formal real motion remains `JointTrajectory -> NanoPi -> M33 -> motor`; M33 remains final safety authority.
 - Validation: checked both repositories' `git status`, remotes, and current branches. Documentation-only change; no code behavior changed.
+
+### 2026-06-17 - M55/C8T6 local checkout ownership clarified
+
+- Reason: user asked this agent to only add the subsystem repository facts it had recently confirmed, not to guess paths for other AIs or rewrite confirmed mainline conclusions.
+- Verified main integration repo: `D:\RT-ThreadStudio\workspace\_nanopi_rosnode_usbcan`, remote `https://github.com/ChillAmnesiac/Medical-Rehabilitation-Manipulator.git`, branch `feature/rehab-arm-ros2-architecture`.
+- Verified M55 Git-managed repo: `D:\RT-ThreadStudio\workspace\_m55_ref_repo`, same GitHub remote, branch `M55`. This is the formal commit source for M55 WiFi/LVGL/XiaoZhi/voice/model-runtime work.
+- Verified M55 burn workspace: `D:\RT-ThreadStudio\workspace\wifi` is not a valid Git checkout in the current local state, so it remains a build/burn workspace only; code changes must be synced back to `_m55_ref_repo` before commit.
+- Verified C8T6 repo: `D:\RT-ThreadStudio\workspace\c8t6_github_C8T6`, same GitHub remote, branch `C8T6`.
+- Updated `docs/AI_PROJECT_STRUCTURE_GITHUB.md` with a stable local-checkout table for these confirmed paths and responsibilities.
+- Safety: no M33/NanoPi/Linux mainline conclusions changed. M55/App/platform/C8T6 remain adjacent inputs, displays, or suggestions; real execution remains `JointTrajectory -> NanoPi -> M33 -> motor`.
+- Validation: ran `git status --short --branch`, `git remote -v`, and `git branch --show-current` on the confirmed repos. Documentation-only change; no code behavior changed.
