@@ -2947,89 +2947,210 @@
 .humanPanel {
   min-width: 0;
   display: grid;
-  grid-template-rows: auto minmax(340px, 1fr) auto auto;
-  gap: 8px;
-  padding: 10px;
-  border: 1px solid rgba(23, 32, 28, 0.14);
-  border-top: 4px solid #257968;
-  border-radius: 8px;
-  background: #fffdf7;
-  box-shadow: 0 18px 42px rgba(23, 32, 28, 0.1);
+  grid-template-rows: auto minmax(360px, 1fr) auto auto;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #e4e8f0;
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at top right, rgba(27, 108, 255, 0.09), transparent 35%),
+    linear-gradient(180deg, #ffffff 0%, #f7f9fc 100%);
+  box-shadow: 0 18px 42px rgba(16, 21, 34, 0.08);
+}
+
+.humanPanelHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.humanPanelHead strong {
+  color: #101522;
+  font-size: 18px;
+  font-weight: 950;
+}
+
+.humanPanelHead span,
+.predictionPanel span {
+  color: #667085;
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0;
+}
+
+.humanPanelHead small {
+  color: #1b6cff;
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.humanModelStage {
+  position: relative;
+  min-height: 360px;
+  overflow: hidden;
+  border: 1px solid #e5e9f2;
+  border-radius: 24px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(242, 246, 252, 0.98)),
+    #fbfcfe;
 }
 
 .humanCanvas {
-  min-height: 340px;
+  min-height: 360px;
   overflow: hidden;
-  border: 1px solid rgba(57, 198, 172, 0.2);
-  border-radius: 7px;
   background:
-    linear-gradient(90deg, rgba(57, 198, 172, 0.08) 1px, transparent 1px),
-    linear-gradient(180deg, rgba(57, 198, 172, 0.08) 1px, transparent 1px),
-    #050807;
-  background-size: 34px 34px, 34px 34px, auto;
+    radial-gradient(circle at 30% 20%, rgba(27, 108, 255, 0.08), transparent 28%),
+    linear-gradient(90deg, rgba(224, 230, 240, 0.55) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(224, 230, 240, 0.55) 1px, transparent 1px),
+    #fbfcfe;
+  background-size: auto, 28px 28px, 28px 28px, auto;
 }
 
-.humanCanvas canvas {
-  display: block;
-  width: 100% !important;
-  height: 100% !important;
+.humanModelFallback {
+  position: absolute;
+  inset: 18px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 10px;
+  padding: 22px;
+  border: 1px dashed rgba(27, 108, 255, 0.22);
+  border-radius: 22px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(244, 248, 255, 0.82)),
+    repeating-linear-gradient(90deg, rgba(27, 108, 255, 0.045) 0 1px, transparent 1px 24px);
+  color: #101522;
+  pointer-events: none;
+  text-align: center;
 }
 
-.muscleGrid {
-  min-width: 0;
+.humanModelFallback strong {
+  max-width: 240px;
+  color: #101522;
+  font-size: 20px;
+  line-height: 1.08;
+  font-weight: 950;
+}
+
+.humanModelFallback span {
+  max-width: 340px;
+  color: #667085;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.humanModelFallback::before {
+  content: "GLB";
+  width: 78px;
+  height: 78px;
+  display: grid;
+  place-items: center;
+  border-radius: 24px;
+  background: #101522;
+  color: #ffffff;
+  font-size: 20px;
+  font-weight: 950;
+  box-shadow: 0 18px 42px rgba(16, 21, 34, 0.16);
+}
+
+.muscleOverlay {
+  position: absolute;
+  inset: auto 14px 14px 14px;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 7px;
+  gap: 8px;
+  pointer-events: none;
 }
 
-.muscleGrid article {
+.muscleOverlay article,
+.predictionGrid article {
   min-width: 0;
   display: grid;
-  gap: 4px;
-  padding: 8px;
-  border: 1px solid rgba(23, 32, 28, 0.12);
-  border-left: 4px solid #59625e;
-  border-radius: 6px;
-  background: #f8f5ec;
+  gap: 5px;
+  padding: 10px 11px;
+  border: 1px solid rgba(16, 21, 34, 0.08);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(8px);
 }
 
-.muscleGrid article[data-state="quiet"] {
-  border-left-color: #48c2a7;
+.muscleOverlay article {
+  box-shadow: 0 10px 24px rgba(16, 21, 34, 0.05);
 }
 
-.muscleGrid article[data-state="moderate"] {
-  border-left-color: #d6a33a;
+.muscleOverlay article[data-state="quiet"],
+.predictionGrid article[data-tone="quiet"] {
+  box-shadow: inset 0 0 0 1px rgba(72, 194, 167, 0.16);
 }
 
-.muscleGrid article[data-state="active"] {
-  border-left-color: #e15c45;
+.muscleOverlay article[data-state="moderate"],
+.predictionGrid article[data-tone="moderate"] {
+  box-shadow: inset 0 0 0 1px rgba(214, 163, 58, 0.2);
 }
 
-.muscleGrid span {
-  color: #257968;
+.muscleOverlay article[data-state="active"],
+.predictionGrid article[data-tone="active"] {
+  box-shadow: inset 0 0 0 1px rgba(225, 92, 69, 0.22);
+}
+
+.muscleOverlay span,
+.predictionGrid span {
+  color: #667085;
   font-size: 10px;
   font-weight: 950;
 }
 
-.muscleGrid strong {
-  color: #111a17;
-  font-size: 14px;
+.muscleOverlay strong,
+.predictionGrid strong {
+  color: #101522;
+  font-size: 15px;
+  font-weight: 950;
 }
 
-.muscleGrid p {
+.muscleOverlay p,
+.predictionGrid p {
   min-width: 0;
   margin: 0;
-  color: #68756f;
+  color: #667085;
   font-size: 10.5px;
+  line-height: 1.45;
   overflow-wrap: anywhere;
+}
+
+.predictionPanel {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid #e4e8f0;
+  border-radius: 20px;
+  background: #ffffff;
+}
+
+.predictionPanel > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.predictionPanel > div:first-child strong {
+  color: #101522;
+  font-size: 16px;
+  font-weight: 950;
+}
+
+.predictionGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
 }
 
 .nestedDrawer {
   min-width: 0;
-  padding: 8px;
-  border: 1px solid rgba(23, 32, 28, 0.12);
-  border-radius: 6px;
-  background: #f8f5ec;
+  padding: 10px;
+  border: 1px solid #e4e8f0;
+  border-radius: 18px;
+  background: #ffffff;
 }
 
 .nestedDrawer > summary {
@@ -3039,8 +3160,8 @@
   justify-content: space-between;
   gap: 8px;
   cursor: pointer;
-  color: #257968;
-  font-size: 11px;
+  color: #101522;
+  font-size: 12px;
   font-weight: 950;
 }
 
@@ -3050,9 +3171,38 @@
 
 .nestedDrawer p {
   margin: 8px 0 0;
-  color: #68756f;
+  color: #667085;
   font-size: 11px;
   line-height: 1.5;
+}
+
+.modelSourceList {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.modelSourceList a {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid #e4e8f0;
+  border-radius: 16px;
+  background: #fbfcfe;
+  color: #101522;
+  text-decoration: none;
+}
+
+.modelSourceList strong {
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.modelSourceList span,
+.modelSourceList small {
+  color: #667085;
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .estopPanel {
@@ -3114,7 +3264,8 @@
     min-height: 320px;
   }
 
-  .muscleGrid {
+  .muscleOverlay,
+  .predictionGrid {
     grid-template-columns: 1fr;
   }
 }

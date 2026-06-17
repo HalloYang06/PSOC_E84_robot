@@ -2012,17 +2012,18 @@ function Arm3DOverview({
 function HumanMuscleOverview({ sensorPayload }: { sensorPayload: AnyRecord }) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const rows = useMemo(() => muscleRowsFromSensor(sensorPayload), [sensorPayload]);
-  const rowsRef = useRef(rows);
+  const motionRows = useMemo(() => motionPredictionRowsFromSensor(sensorPayload), [sensorPayload]);
+  const modelUrl = useMemo(() => humanModelUrlFromSensor(sensorPayload), [sensorPayload]);
+  const modelSource = useMemo(() => humanModelSourceFromSensor(sensorPayload), [sensorPayload]);
   const activeRows = rows.filter((row) => row.status === "active").length;
+  const strongestRow = rows
+    .filter((row) => row.value !== null)
+    .sort((a, b) => Number(b.value) - Number(a.value))[0] ?? null;
   const averageFatigue = (() => {
     const values = rows.map((row) => row.fatigue).filter((value): value is number => value !== null);
     if (!values.length) return null;
     return values.reduce((sum, value) => sum + value, 0) / values.length;
   })();
-
-  useEffect(() => {
-    rowsRef.current = rows;
-  }, [rows]);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -2033,6 +2034,7 @@ function HumanMuscleOverview({ sensorPayload }: { sensorPayload: AnyRecord }) {
     async function renderHuman() {
       const THREE = await import("three");
       const { OrbitControls } = await import("three/examples/jsm/controls/OrbitControls.js");
+      const { GLTFLoader } = await import("three/examples/jsm/loaders/GLTFLoader.js");
       if (disposed || !mountRef.current) return;
       const target = mountRef.current;
       const width = Math.max(280, target.clientWidth || 420);
@@ -2040,118 +2042,91 @@ function HumanMuscleOverview({ sensorPayload }: { sensorPayload: AnyRecord }) {
       target.replaceChildren();
 
       const scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x050807);
-      const camera = new THREE.PerspectiveCamera(36, width / height, 0.01, 100);
-      camera.position.set(0.8, -1.55, 1.08);
-      camera.lookAt(0, 0, 0.35);
+      scene.background = new THREE.Color(0xf8fafc);
+      const camera = new THREE.PerspectiveCamera(35, width / height, 0.01, 100);
+      camera.position.set(0.78, -1.65, 0.98);
+      camera.lookAt(0, 0, 0.36);
 
       const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
       renderer.setSize(width, height);
-      renderer.domElement.setAttribute("aria-label", "人体肌电 Three.js 总览");
+      renderer.domElement.setAttribute("aria-label", "开源上肢肌肉模型 Three.js 总览");
       target.appendChild(renderer.domElement);
 
       const controls = new OrbitControls(camera, renderer.domElement);
       controls.enableDamping = true;
       controls.dampingFactor = 0.08;
-      controls.enablePan = false;
-      controls.minDistance = 0.85;
-      controls.maxDistance = 2.8;
-      controls.target.set(0, 0, 0.34);
+      controls.enablePan = true;
+      controls.minDistance = 0.45;
+      controls.maxDistance = 3.2;
+      controls.target.set(0, 0, 0.36);
       controls.update();
 
-      scene.add(new THREE.HemisphereLight(0xf7fff4, 0x13201c, 2.4));
+      scene.add(new THREE.HemisphereLight(0xffffff, 0xdde5ec, 2.2));
       const key = new THREE.DirectionalLight(0xffffff, 1.2);
       key.position.set(0.7, -1.2, 1.8);
       scene.add(key);
-      const rim = new THREE.DirectionalLight(0x39c6ac, 1);
+      const rim = new THREE.DirectionalLight(0x1b6cff, 0.72);
       rim.position.set(-1.4, 1.1, 1.1);
       scene.add(rim);
 
-      const grid = new THREE.GridHelper(1.15, 10, 0x29413a, 0x14231f);
-      grid.position.z = -0.02;
+      const grid = new THREE.GridHelper(1.18, 8, 0xd6dde8, 0xe7ebf2);
+      grid.position.z = -0.05;
       scene.add(grid);
 
-      function colorFor(row: MuscleSignalRow) {
-        if (row.value === null) return 0x59625e;
-        if (row.value >= 0.68) return 0xe15c45;
-        if (row.value >= 0.34) return 0xd6a33a;
-        return 0x48c2a7;
+      const modelGroup = new THREE.Group();
+      scene.add(modelGroup);
+
+      function normalizeModel(object: any) {
+        const box = new THREE.Box3().setFromObject(object);
+        const size = box.getSize(new THREE.Vector3());
+        const center = box.getCenter(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z, 0.001);
+        object.position.sub(center);
+        object.scale.multiplyScalar(1.18 / maxDim);
+        object.position.z += 0.32;
       }
 
-      function material(row: MuscleSignalRow, opacity = 0.82) {
-        return new THREE.MeshStandardMaterial({
-          color: colorFor(row),
-          roughness: 0.62,
-          metalness: 0.04,
-          transparent: true,
-          opacity: row.value === null ? 0.35 : opacity,
+      function applyOpenModelMaterial(object: any) {
+        let meshIndex = 0;
+        object.traverse?.((child: any) => {
+          if (!child.isMesh) return;
+          const baseHue = meshIndex % 3 === 0 ? 0xd95f4e : meshIndex % 3 === 1 ? 0xc0485f : 0x9b3d58;
+          child.material = new THREE.MeshStandardMaterial({
+            color: baseHue,
+            roughness: 0.64,
+            metalness: 0.02,
+            transparent: true,
+            opacity: 0.92,
+          });
+          meshIndex += 1;
         });
       }
 
-      const body = new THREE.Group();
-      body.rotation.z = -0.04;
-      scene.add(body);
-
-      const skin = new THREE.MeshStandardMaterial({ color: 0xd9c8b4, roughness: 0.76, metalness: 0.02, transparent: true, opacity: 0.86 });
-      const neutral = new THREE.MeshStandardMaterial({ color: 0x53645f, roughness: 0.82, metalness: 0.02, transparent: true, opacity: 0.55 });
-      const rowByKey = new Map(rowsRef.current.map((row) => [row.key, row]));
-      const unknownRow: MuscleSignalRow = { key: "unknown", label: "未知", value: null, fatigue: null, status: "unknown" };
-
-      const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.18, 0.48, 10, 24), neutral);
-      torso.position.set(0, 0, 0.42);
-      body.add(torso);
-
-      const head = new THREE.Mesh(new THREE.SphereGeometry(0.095, 28, 18), skin);
-      head.position.set(0, 0, 0.82);
-      body.add(head);
-
-      const deltoid = rowByKey.get("deltoid") ?? unknownRow;
-      const biceps = rowByKey.get("biceps") ?? unknownRow;
-      const forearm = rowByKey.get("forearm") ?? unknownRow;
-      const trapezius = rowByKey.get("trapezius") ?? unknownRow;
-      [
-        { row: deltoid, x: -0.24, y: 0, z: 0.62, sx: 0.07, sy: 0.045, sz: 0.09 },
-        { row: deltoid, x: 0.24, y: 0, z: 0.62, sx: 0.07, sy: 0.045, sz: 0.09 },
-        { row: trapezius, x: -0.09, y: -0.012, z: 0.69, sx: 0.075, sy: 0.04, sz: 0.055 },
-        { row: trapezius, x: 0.09, y: -0.012, z: 0.69, sx: 0.075, sy: 0.04, sz: 0.055 },
-      ].forEach((part) => {
-        const patch = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 12), material(part.row));
-        patch.scale.set(part.sx, part.sy, part.sz);
-        patch.position.set(part.x, part.y, part.z);
-        body.add(patch);
-      });
-
-      [
-        { row: biceps, x: -0.32, y: 0, z: 0.43, rz: -0.25, length: 0.28, radius: 0.036 },
-        { row: biceps, x: 0.32, y: 0, z: 0.43, rz: 0.25, length: 0.28, radius: 0.036 },
-        { row: forearm, x: -0.44, y: 0, z: 0.23, rz: -0.08, length: 0.26, radius: 0.03 },
-        { row: forearm, x: 0.44, y: 0, z: 0.23, rz: 0.08, length: 0.26, radius: 0.03 },
-      ].forEach((part) => {
-        const limb = new THREE.Mesh(new THREE.CapsuleGeometry(part.radius, part.length, 8, 16), material(part.row));
-        limb.rotation.z = part.rz;
-        limb.position.set(part.x, part.y, part.z);
-        body.add(limb);
-      });
-
-      const fatigue = averageFatigue === null ? null : averageFatigue;
-      const fatigueMat = new THREE.MeshStandardMaterial({
-        color: fatigue === null ? 0x59625e : fatigue >= 0.72 ? 0xe15c45 : fatigue >= 0.42 ? 0xd6a33a : 0x48c2a7,
-        roughness: 0.62,
-        metalness: 0.02,
-        transparent: true,
-        opacity: fatigue === null ? 0.22 : 0.72,
-      });
-      const fatigueRing = new THREE.Mesh(new THREE.TorusGeometry(0.215, 0.006, 8, 72), fatigueMat);
-      fatigueRing.rotation.x = Math.PI / 2;
-      fatigueRing.position.set(0, 0, 0.5);
-      body.add(fatigueRing);
+      const loader = new GLTFLoader();
+      loader.load(
+        modelUrl,
+        (gltf) => {
+          if (disposed) return;
+          const model = gltf.scene;
+          applyOpenModelMaterial(model);
+          normalizeModel(model);
+          modelGroup.add(model);
+        },
+        undefined,
+        () => {
+          const fallback = document.createElement("div");
+          fallback.className = styles.humanModelFallback;
+          fallback.innerHTML = `<strong>等待上肢肌肉 GLB 资产</strong><span>已预留开源模型承载位；把合法 GLB 写入 human_model_url 后，这里会直接渲染。</span>`;
+          target.appendChild(fallback);
+        },
+      );
 
       let frame = 0;
       const animate = () => {
         if (disposed) return;
         frame = window.requestAnimationFrame(animate);
-        body.rotation.y = Math.sin(Date.now() / 3200) * 0.045;
+        modelGroup.rotation.y = Math.sin(Date.now() / 3600) * 0.035;
         controls.update();
         renderer.render(scene, camera);
       };
@@ -2181,33 +2156,61 @@ function HumanMuscleOverview({ sensorPayload }: { sensorPayload: AnyRecord }) {
       disposed = true;
       cleanup();
     };
-  }, [averageFatigue]);
+  }, [modelUrl]);
 
   return (
     <section className={styles.humanPanel} aria-label="人体肌电模型">
-      <div className={styles.panelHead}>
+      <div className={styles.humanPanelHead}>
         <div>
-          <span>人体肌电 / Three.js</span>
-          <strong>{activeRows ? `${activeRows} 组肌肉高参与` : "等待肌电小模型"}</strong>
+          <span>上肢肌肉 / 开源 3D 模型</span>
+          <strong>{strongestRow ? `${strongestRow.label} ${Math.round(Number(strongestRow.value) * 100)}%` : "等待肌电小模型"}</strong>
         </div>
         <small>{averageFatigue === null ? "疲劳 unknown" : `平均疲劳 ${Math.round(averageFatigue * 100)}%`}</small>
       </div>
-      <div ref={mountRef} className={styles.humanCanvas} />
-      <div className={styles.muscleGrid} aria-label="肌电通道状态">
-        {rows.map((row) => (
-          <article key={row.key} data-state={row.status}>
-            <span>{row.label}</span>
-            <strong>{row.value === null ? "unknown" : `${Math.round(row.value * 100)}%`}</strong>
-            <p>fatigue {row.fatigue === null ? "unknown" : `${Math.round(row.fatigue * 100)}%`}</p>
-          </article>
-        ))}
+      <div className={styles.humanModelStage}>
+        <div ref={mountRef} className={styles.humanCanvas} />
+        <div className={styles.muscleOverlay} aria-label="肌电热区状态">
+          {rows.map((row) => (
+            <article key={row.key} data-state={row.status}>
+              <span>{row.label}</span>
+              <strong>{row.value === null ? "unknown" : `${Math.round(row.value * 100)}%`}</strong>
+              <p>fatigue {row.fatigue === null ? "unknown" : `${Math.round(row.fatigue * 100)}%`}</p>
+            </article>
+          ))}
+        </div>
       </div>
+      <section className={styles.predictionPanel} aria-label="动作预测模型输出">
+        <div>
+          <span>动作预测模型接口</span>
+          <strong>{motionRows[0]?.value || "等待预测"}</strong>
+        </div>
+        <div className={styles.predictionGrid}>
+          {motionRows.map((row) => (
+            <article key={row.key} data-tone={row.tone}>
+              <span>{row.label}</span>
+              <strong>{row.value}</strong>
+              <p>{row.detail}</p>
+            </article>
+          ))}
+        </div>
+      </section>
       <details className={styles.nestedDrawer}>
         <summary>
-          人体模型替换
-          <small>GLTF / VRM 承载位</small>
+          开源模型来源和替换
+          <small>{modelSource}</small>
         </summary>
-        <p>当前场景只做可替换的肌电语义预览；后续可接入开源人体 GLTF/VRM，并把肌肉区域映射到同一套 EMG/fatigue 字段。</p>
+        <p>页面不自绘人体。默认尝试加载开源上肢肌肉 GLB；用户可通过 `sensor_state.human_model_url` 或 `human_model.model_url` 替换为自己的合法 GLTF/GLB 资产。</p>
+        <p>动作预测接口优先读取 `motion_prediction.candidates`，其次读取 `action_prediction` / `model_outputs`；每个候选建议带 `label`、`confidence`、`detail`，只用于展示和审阅，不作为运动许可。</p>
+        <p>肌电接口优先读取 `emg.channels`，支持 `channel` / `muscle` / `location` / `activation` / `fatigue` 字段，四块主视图会按肩、上臂、前臂、肩颈稳定肌映射显示。</p>
+        <div className={styles.modelSourceList}>
+          {DEFAULT_HUMAN_MODEL_SOURCES.map((source) => (
+            <a key={source.id} href={source.url} target="_blank" rel="noreferrer">
+              <strong>{source.label}</strong>
+              <span>{source.source} · {source.license}</span>
+              <small>{source.note}</small>
+            </a>
+          ))}
+        </div>
       </details>
     </section>
   );
