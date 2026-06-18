@@ -6180,3 +6180,61 @@ python -m SCons -j4
 状态：
 
 - 2026-06-18 已观察到该现象；仍需上板串口 QA 确认复位后的运行状态。
+
+### M55 XiaoZhi 烧录后 token 会回到编译值，采集前要主动重连
+
+现象：
+
+- WiFi 已经正常，`m55qa_status` 能看到 `saved=1 auto=1 storage=0`、`wlan=1 ready=1`、IP `192.168.3.32`，但 XiaoZhi 连接在烧录或复位后又失败。
+- 烧录后状态可能退回编译进镜像的旧 token，表现为 `token_len=420`、`xz_errno=-403`。
+- 重新写入新 token 后，`m55qa_capture_on` 过去会因为 WebSocket 已断开直接失败或一直停在“小智连接中”。
+
+环境：
+
+- M55 正式仓库：`D:\RT-ThreadStudio\workspace\_m55_ref_repo`，branch `M55`。
+- M55 烧录/QA 工作区：`D:\RT-ThreadStudio\workspace\wifi`。
+- 串口：`COM4 KitProg3 USB-UART @115200`。
+- 云端 WebSocket：`106.55.62.122:8011` 的 rehab-arm XiaoZhi endpoint。
+
+根因：
+
+- M55 烧录会恢复编译进镜像的 XiaoZhi token；如果这个 token 已过期或和云端密钥不匹配，云端会拒绝，板端看到 `-403`。
+- M33 的 `m55qa_* ret=0` 仍然只是命令发送成功，不能当作 M55 业务状态成功；token 分片、commit、reconnect 都要等 M55 ACK。
+- 启动录音前如果 WebSocket 已经掉线，直接进入 listen 会失败；采集入口必须先检查连接并尝试 `voice_service_reconnect_xiaozhi()`。
+
+解决：
+
+- 不要把 token 明文写进聊天或文档。使用本地新 token 文件并通过串口 ACK-paced 分片写入：`m55qa_xz_token_begin`、多次 `m55qa_xz_token_part <48-char chunk>`、`m55qa_xz_token_commit`、`m55qa_xz_reconnect`。
+- 每片都等 M55 ACK，例如 begin `cmd=1004 result=0`、part `cmd=1005 result=0`、commit `cmd=1006 result=0`、reconnect `cmd=1003 result=0`。
+- `D:\RT-ThreadStudio\workspace\wifi\applications\voice_service.c` 已验证采集前重连逻辑；2026-06-18 已同步到正式 M55 repo `applications\voice_service.c`。
+
+状态：
+
+- 2026-06-18 重新写入新 token 后，状态恢复为 `xz_ws=1 xz_token=1 token_len=480 xz_stage=70 xz_errno=0`。
+- `m55qa_capture_on` 已能返回 `cmd=1 result=0`，说明采集入口不再因 stale WebSocket 立刻失败。
+- 仍未完成：采集期间/之后连接仍可能掉到 `xz_ws=0 xz_stage=80 xz_errno=-1`，需要继续查协议版本与音频格式闭环。
+
+### XiaoZhi 官方 Opus 路线和当前 PCM TTS/ASR 兼容路线不能混着假装已闭环
+
+现象：
+
+- 云端能看到板端 `hello`、`listen_start`、`audio_frame`，说明 M55 已经把 XiaoZhi 事件和音频发到了平台。
+- PC 云端探针用协议 v3、文本 transcript、不带音频时，可以完整走到 `stt -> llm -> chat -> tts start -> binary PCM frames -> tts stop`。
+- 真板语音仍不能算完全打通：板端上传的是 Opus/PCM 取决于编译宏，云端当前对真实 Opus ASR 返回 `opus_decode_not_configured`；云端 TTS 仍返回 PCM-like 60 ms 帧。
+
+根因：
+
+- `xiaozhi_voice_relay.h` 当前仍是 `XIAOZHI_PROTOCOL_VERSION 1U`，而代码里已经有 v3 binary header 支持；协议选择和云端/官方路线还没有完全统一。
+- 官方方向是 Opus，但当前云端缺少 Opus ASR decode；同时 TTS 下行如果仍是 PCM，而板端按 Opus 解码，会导致扬声器噪声、无声或回放失败。
+- 只看到 `hello/listen/audio_frame` 不能证明“小智已完成”；还必须看到 ASR、LLM、TTS、扬声器播放和状态动画都闭环。
+
+解决方向：
+
+- 官方优先路线：把板端协议/音频切到官方一致的 v3/Opus，并在云端补齐 Opus ASR decode 与 TTS Opus encode，或明确下行帧格式协商。
+- 快速验收路线：临时使用 `pcm_s16le` 兼容链路，让真实板端语音先走通 ASR/LLM/TTS/扬声器，再回到官方 Opus 优化。
+- 无论走哪条，LVGL 只应显示状态：唤醒、录音、思考、播放、错误；长回答主要走扬声器，不应把大段回答塞进小屏。
+
+状态：
+
+- 2026-06-18 已确认当前还差“协议/音频格式一致性 + ASR/TTS 编解码闭环”，不是 WiFi 扫描问题。
+- 下一步应先选一条音频闭环路线并实机 QA，再回到 LVGL 动画和字库补齐。

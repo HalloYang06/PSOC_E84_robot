@@ -3129,3 +3129,17 @@
 - Board QA: latest `m55qa_status` showed `saved=1 auto=1 storage=0`, `wlan=1 ready=1`, RSSI about `-56`, and IP `192.168.3.32` on SSID `B131`; `m55qa_wifi_ssid B131`, `m55qa_wifi_password tudao888`, and `m55qa_wifi_auto 1` returned successful M55 ACKs.
 - Still unverified: a deliberate reset-after-save QA pass still needs to confirm that the board reconnects from the persisted FAL record without manual WiFi commands.
 - Next step: run reset/autoconnect QA, then move immediately to official local voice mic/speaker self-test before the XiaoZhi wake/listen/TTS loop.
+
+### 2026-06-18 - M55 XiaoZhi board relay state recorded and formal repo sync started
+
+- Completed: confirmed the current blocker is no longer WiFi scan/connect. The latest board status after token reprovision showed `saved=1 auto=1 storage=0`, `wlan=1 ready=1`, IP `192.168.3.32`, `xz_ws=1`, `xz_token=1`, `token_len=480`, `xz_stage=70`, and `xz_errno=0`.
+- Completed: after reflashing M55, the compiled old XiaoZhi token reappeared (`token_len=420`) and cloud rejected it with `xz_errno=-403`; a fresh cloud-generated token was re-provisioned over `COM4` using ACK-paced 48-character chunks and restored WebSocket connectivity.
+- Completed: burn workspace `D:\RT-ThreadStudio\workspace\wifi\applications\voice_service.c` already contained the start-capture fix that reconnects XiaoZhi WebSocket before manual listening. The same fix was synced into the formal M55 repo `D:\RT-ThreadStudio\workspace\_m55_ref_repo\applications\voice_service.c`.
+- Completed: formal M55 repo `applications\wifi_config_service.h` was synced with the existing `wifi_config_service.c` implementation by adding `connect_result` and `connect_ready` to `wifi_config_snapshot_t`; without these fields the formal repo build fails before reaching XiaoZhi QA.
+- Validation: `m55qa_capture_on` returned M55 ACK `cmd=1 result=0` after the reconnect fix, so capture no longer fails immediately from a stale disconnected WebSocket.
+- Validation: cloud event logs proved the board sent XiaoZhi `hello`, `listen_start`, and binary `audio_frame` events. The board is reaching the server; this is not a WiFi resource/scanning failure.
+- Failed or unverified: during or just after capture the board still dropped to `xz_ws=0`, `xz_stage=80`, `xz_errno=-1`; latest board counters still showed `xz_cur=0/0` and `xz_last=0/0`.
+- Failed or unverified: formal M55 repo SCons build was retried after the header sync, but two runs timed out at 120 s and 300 s before returning a final pass/fail. No new compiler error was captured after the missing `connect_result/connect_ready` fix.
+- Current official-alignment gap: `xiaozhi_voice_relay.h` still declares protocol version `1U`; code has protocol v3 binary handling, and Opus branches exist, but the cloud currently returns PCM TTS frames while Opus ASR decode is not yet configured server-side. The full official-style XiaoZhi Opus ASR/TTS path is therefore not closed yet.
+- Safety: XiaoZhi remains voice UI, ASR/LLM/TTS, chat/classification, and possible VLA language context only. It does not bypass M33 or issue motor/CAN control.
+- Next step: choose and implement one testable audio-path closure: either official-forward path by enabling protocol v3 plus server-side Opus decode/encode, or a short-term PCM compatibility path for board voice QA, then rebuild/flash and verify wake/listen/thinking/speaker counters end to end.
