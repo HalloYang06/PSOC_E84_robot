@@ -677,3 +677,77 @@ Validated:
 
 Next step:
 - Update the M55 default XiaoZhi URL to the current `e201...` project path, rebuild, then re-run the board token loader and reconnect path.
+
+## 2026-06-19 - LVGL扫码配网页二维码也已对齐到当前 `e201...` 项目
+
+Completed:
+- Synchronized the LVGL `扫码配网` QR payload in both the active `wifi` burn project and the `_m55_ref_repo` mirror to use `project_id=e201f41c-25a6-46e1-baf8-be6dcb83284c`.
+- Kept the board-side XiaoZhi default WebSocket project id and the UI provisioning QR source consistent, so both point at the same authenticated relay project.
+
+Validated:
+- Source scan confirms `XIAOZHI_PROJECT_ID` is `e201f41c-25a6-46e1-baf8-be6dcb83284c` in both trees.
+- Source scan confirms the QR provisioning link now also uses the same `e201...` project id.
+
+Next step:
+- Rebuild / burn the active M55 image and recheck that LVGL provisioning and XiaoZhi relay both start from the same project scope.
+
+## 2026-06-19 - M55 `e201...`固件已烧录，手动 reconnect 仍需继续收口
+
+Completed:
+- Rebuilt the active M55 `wifi` project with `RTT_EXEC_PATH=D:\RT-ThreadStudio\platform\env_released\env\tools\gnu_gcc\arm_gcc\mingw\bin`.
+- Burned the refreshed `wifi/rtthread.hex` together with `wifi_resources/whd_resources_all.bin`.
+- Updated the PC XiaoZhi smoke script default URL to the current `e201...` project endpoint.
+- Added a first CM55 WebSocket reconnect guard so local `ERR_ABRT` callbacks from an intentional close do not immediately overwrite a new connection as a normal remote disconnect.
+- Added a disconnect completion wait before reconnecting, so reconnect no longer depends only on a fixed delay.
+
+Validated:
+- M55 build passed after the reconnect changes: `text=1504300 data=68804 bss=4541008`.
+- OpenOCD wrote both images: M55 app `1576960` bytes and WHD resources `466944` bytes.
+- After token reload, COM4 `m55qa_status` reached `wlan=1 ready=1 ip=192.168.3.32`, `xz_token=1`, `token_len=442`, `xz_ws=1`, `xz_stage=70`, and `xz_errno=0`.
+- PC-side XiaoZhi WebSocket smoke against the `e201...` endpoint still succeeds and returns STT text, so the platform URL/token path is live.
+
+Failed or unverified:
+- Manual `m55qa_xz_reconnect` is still not stable. One run returned `result=-255` with `xz_stage=80 xz_errno=0`; a later retry returned `result=0` but the final status still fell back to `xz_stage=80 xz_errno=-1`.
+- End-to-end wake word -> user speech -> relay STT/LLM/TTS -> speaker reply is still not validated.
+
+Next step:
+- Capture realtime CM55 `[websocket]` logs around `m55qa_xz_reconnect` and fix the remaining lwIP `wsock_close/wsock_connect` state reuse path instead of changing token, WiFi, or platform settings again.
+
+## 2026-06-19 - M55 reconnect 在线 no-op 修复已验证
+
+Completed:
+- Changed `voice_service_reconnect_xiaozhi()` so an already-connected XiaoZhi WebSocket returns success without closing the socket or sending a duplicate `hello`.
+- Kept the lower-level local-abort disconnect guard and disconnect completion wait in `websocket_client.c` for real close/reconnect paths.
+- Synchronized the same M55 source changes into `_m55_ref_repo` and the active `wifi` burn project.
+
+Validated:
+- M55 build passed after the final reconnect no-op change: `text=1504332 data=68804 bss=4541008`.
+- Burned the active M55 image plus WHD resources successfully.
+- After token reload, COM4 showed `xz_ws=1 xz_token=1 token_len=442 xz_stage=70 xz_errno=0`.
+- Running `m55qa_xz_reconnect` while already connected now returns `cmd=1003 result=0` and keeps the final status online: `xz_ws=1 xz_stage=70 xz_errno=0`.
+
+Remaining:
+- End-to-end real wake phrase -> user speech -> platform response -> speaker playback still needs live audio QA.
+- Token is still loaded through COM4 after flashing; persistent token storage is intentionally not used yet.
+
+Next step:
+- Test the actual XiaoRui wake/listen path with speech input, then verify STT/LLM/TTS counters and speaker output.
+
+## 2026-06-19 - XiaoZhi relay token now persists across power cycles
+
+Completed:
+- Added CM55-side XiaoZhi token persistence in both the active `wifi` burn project and the `_m55_ref_repo` mirror.
+- `xiaozhi_voice_relay_set_token()` now saves the scoped relay token to `/flash/rehab_xiaozhi_token.cfg`.
+- `xiaozhi_voice_relay_init()` now restores the token from `/flash/rehab_xiaozhi_token.cfg` on boot before falling back to the optional compile-time local token.
+- `xiaozhi_voice_relay_token_update_clear()` now clears both RAM state and the persisted token file.
+
+Validated:
+- Rebuilt both M55 trees with `RTT_EXEC_PATH=D:\RT-ThreadStudio\platform\env_released\env\tools\gnu_gcc\arm_gcc\mingw\bin`.
+- Both builds passed after the token persistence change.
+
+Failed or unverified:
+- The new token file path still needs live board verification after a full power cycle.
+- Existing `strncpy` truncation warnings remain for bounded token/session copies and are unchanged by this fix.
+
+Next step:
+- Flash the M55 image, load a fresh scoped token once, power-cycle the board, and confirm `m55qa_status` still shows `xz_token=1` without rerunning the COM4 loader.

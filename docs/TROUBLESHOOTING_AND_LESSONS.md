@@ -736,6 +736,32 @@ Trick:
 Status:
 - Partially fixed: token rewrite works, reconnect still rejected.
 
+## 2026-06-19 - XiaoZhi token must be persisted outside RAM or every power cycle asks for it again
+
+Symptoms:
+- Each fresh power-up lost the CM55 XiaoZhi relay token even after `m55qa_xz_token_begin` -> `m55qa_xz_token_part` -> `m55qa_xz_token_commit` had succeeded.
+- The board then required the COM4 loader again before `m55qa_xz_reconnect` or normal XiaoZhi startup could work.
+
+Environment:
+- Active M55 tree: `D:\RT-ThreadStudio\workspace\wifi`
+- Mirror M55 tree: `D:\RT-ThreadStudio\workspace\_m55_ref_repo`
+- Token file path now used by the firmware: `/flash/rehab_xiaozhi_token.cfg`
+
+Root cause:
+- The relay token previously lived only in `g_xiaozhi.token` RAM and in the temporary shell loader path.
+- WiFi had already been persisted through `/flash/rehab_wifi.cfg`, but XiaoZhi token handling had not yet been given the same treatment.
+
+Fix:
+- Save the token to `/flash/rehab_xiaozhi_token.cfg` on `set` and `commit`.
+- Load the token from the same file during `xiaozhi_voice_relay_init()`.
+- Delete the file when the token is cleared.
+
+Trick:
+- If a board asks for the token after every reset, check whether the value is only being staged in RAM or over a shell loader. A successful commit is not persistence by itself.
+
+Status:
+- Fixed in source; full power-cycle verification is still pending.
+
 ## 2026-06-19 - Port 3001 platform front door is live, but unauthenticated requests only see login
 
 Symptoms:
@@ -841,3 +867,52 @@ Trick:
 
 Status:
 - Found; the next fix is to switch the default board endpoint to the current authenticated project path.
+
+## 2026-06-19 - LVGL provisioning QR and XiaoZhi relay URL must share the same project id
+
+Symptoms:
+- The board-side XiaoZhi relay default had already been updated to `project_id=e201f41c-25a6-46e1-baf8-be6dcb83284c`.
+- The LVGL `扫码配网` QR payload in `rehab_wifi_panel.c` still pointed at the old `fd6a55ed...` project.
+- That left the UI provisioning entry and the cloud relay entry on different project scopes.
+
+Root cause:
+- The QR helper and the XiaoZhi WebSocket helper were edited at different times, so the UI path drifted away from the live relay project.
+
+Fix:
+- Update both the active `wifi` burn project and the `_m55_ref_repo` mirror so the QR payload and the XiaoZhi default endpoint use the same `e201...` project id.
+
+Trick:
+- When relay auth, QR provisioning, and WebSocket connect are all in play, compare the project id in each path before touching tokens again.
+
+Status:
+- Fixed in source; rebuild/burn still needed for hardware verification.
+
+## 2026-06-19 - `m55qa_xz_reconnect` can fail even when WiFi, token, and platform are good
+
+Symptoms:
+- After flashing the corrected `e201...` M55 image and loading the scoped token, `m55qa_status` can show `xz_ws=1 xz_stage=70 xz_errno=0`.
+- Calling `m55qa_xz_reconnect` from COM4 can then drop the state to `xz_ws=0 xz_stage=80`, with either `xz_errno=0` or `xz_errno=-1`.
+- WiFi remains healthy during the failure: `wlan=1 ready=1`, valid IP/gateway/DNS, and `cloud_tcp=0/1`.
+- The same token and endpoint still pass the PC XiaoZhi WebSocket smoke test.
+
+Root cause / current best hypothesis:
+- This is inside the CM55 lwIP WebSocket reconnect state machine, not WiFi, token scope, or cloud model availability.
+- The intentional local close before reconnect can race with `WS_DISCONNECT` callbacks or leave the `wsock_state_t`/PCB lifecycle in a state that makes the immediate next connect fail.
+
+Fix attempted:
+- Added a guard to ignore the next local `ERR_ABRT` disconnect caused by intentional close.
+- Added a disconnect completion wait before reconnecting instead of relying only on a fixed delay.
+
+Status:
+- Partially fixed / still open. Token reload can reach `xz_ws=1`, but explicit `m55qa_xz_reconnect` remains unstable.
+
+Trick:
+- If status shows `xz_token=1`, `token_len=442`, WiFi ready, and PC smoke passes, stop regenerating tokens. The next useful evidence is realtime `[websocket]` logs during the close/connect transition.
+
+Update:
+- The stable fix for the user-facing `m55qa_xz_reconnect` path is to avoid reconnecting at all when `websocket_client_is_connected()` is already true.
+- Do not send a duplicate `hello` on an already-open XiaoZhi WebSocket; one test showed duplicate hello could be followed by `xz_stage=80 xz_errno=-1`.
+- After the no-op change, COM4 validated `m55qa_xz_reconnect` keeps `xz_ws=1 xz_stage=70 xz_errno=0`.
+
+Status:
+- Fixed for the already-connected reconnect command path. Real offline reconnect still uses the lower-level connect path and should be tested separately if the socket is genuinely down.
