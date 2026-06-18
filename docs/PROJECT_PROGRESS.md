@@ -626,3 +626,20 @@ Failed or unverified:
 
 Next step:
 - Obtain the correct platform account or an authenticated session cookie, then reopen `/projects/e201f41c-25a6-46e1-baf8-be6dcb83284c/model-relay-lab` and inspect the real relay entry.
+
+## 2026-06-19 - Correct email login opened the real model-relay-lab relay page
+
+Completed:
+- Logged into the platform with `3245056131@qq.com / 1234`.
+- Opened the `model-relay-lab` page under the `医疗康复机械臂` project.
+- Verified the page exposes both the HTTP relay endpoint and the XiaoZhi WebSocket endpoint.
+- Ran the in-page test call and received a successful model response.
+
+Validated:
+- The project page now shows `Relay Lab`, `API key 可用性测试`, and the expected relay endpoints.
+- The HTTP relay endpoint is `http://106.55.62.122:8011/api/rehab-arm/v1/projects/e201f41c-25a6-46e1-baf8-be6dcb83284c/devices/nanopi-m5/model/relay`.
+- The XiaoZhi WebSocket endpoint is `ws://106.55.62.122:8011/api/rehab-arm/v1/projects/e201f41c-25a6-46e1-baf8-be6dcb83284c/devices/nanopi-m5/xiaozhi/ws?robot_id=rehab-arm-alpha`.
+- The test response returned `qwen / qwen-plus`, confirming the relay chain is live.
+
+Next step:
+- Use this authenticated relay page as the source of truth for the platform model path, then continue back to the board-side XiaoZhi flow with the confirmed project/device endpoints.

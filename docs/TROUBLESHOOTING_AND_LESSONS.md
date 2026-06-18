@@ -779,3 +779,24 @@ Trick:
 
 Status:
 - Unauthenticated; relay inspection from the project page is still blocked until the correct account or session is available.
+
+## 2026-06-19 - `model-relay-lab` is the authenticated relay page, not just a static shell
+
+Symptoms:
+- The login page accepted the correct email account, and the project list exposed a `医疗康复机械臂` project.
+- Opening `/projects/e201f41c-25a6-46e1-baf8-be6dcb83284c/model-relay-lab` showed `Relay Lab`, `API key 可用性测试`, and explicit HTTP/XiaoZhi endpoints.
+- The in-page `测试调用` action returned `qwen / qwen-plus`.
+
+Environment:
+- Authenticated project: `医疗康复机械臂`
+- Relay page: `/projects/e201f41c-25a6-46e1-baf8-be6dcb83284c/model-relay-lab`
+
+Root cause:
+- The earlier confusion came from looking only at the login gate or unauthenticated shell.
+- The real relay page is only visible after the correct account signs in.
+
+Trick:
+- When the login works, go straight to the project-specific relay page and read the endpoint labels there. Do not keep inferring from the front door.
+
+Status:
+- Fixed for this session; the relay page is confirmed live and returns a model answer.
