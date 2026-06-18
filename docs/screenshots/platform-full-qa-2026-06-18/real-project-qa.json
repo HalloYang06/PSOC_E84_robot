@@ -1,0 +1,62 @@
+{
+  "topInfo": {
+    "url": "http://localhost:3000/projects/e201f41c-25a6-46e1-baf8-be6dcb83284c/rehab-arm-control",
+    "text": "← 主页面\n设备数据工作台\n模型练习场\n设备 0\n在线 0\nM33 裁决 开启\n已同步 16:31:52\n刷新状态\n\n选择设备后查看最新状态。这里不提供真实运动控制。\n\n等待 NanoPi 接入\n机械臂设备注册并上传只读状态后，会出现在这里。\n当前设备\n康复机械臂 1\n\nNanoPi 注册后会出现在左侧设备索引中\n\n在线\n离线\n安全\n正常\nM33 允许运动\n不允许\n数据\n待补数据\n只读总览\n\n服务器和网页只展示状态、图像、质量门和高层任务草案；不发 CAN、电流、力矩、速度、角度或 M33 覆盖。\n\nV · camera/image\n等待图像\n\n等待 camera_keyframe_v1\n\nL · voice/language\n等待语言门控\n\n等待 XiaoZhi listen/audio\n\nA · next action\ndry-run 候选\n\n等待 dry-run 动作候选\n\nURDF / Three.js 机械臂\n默认可替换模型，可导入真实 URDF\n5 个关节正在匹配角度\n展开 3D\n渲染反馈\n等待状态\n\n等待 robot_render_state_v1。\n\n接线 / 温度\n等待温度\n\n颜色表达温度，link 透明/灰色表达接线异常。\n\n模型匹配\n可替换模型\n\n真实设备模型和人体 GLTF/VRM 后续由用户上传接入。\n\n关节状态流\n0/5 个关节有实时角度\n等待 NanoPi 或仿真主机上报\n模型包 / URDF 导入\n关节角度概览\n5 个关节\n上肢肌肉 / 开源 3D 模型等待肌电小模型\n疲劳 unknown\n肩部三角肌\nunknown\n\nfatigue unknown\n\n上臂屈肌\nunknown\n\nfatigue unknown\n\n前臂屈伸肌\nunknown\n\nfatigue unknown\n\n肩颈稳定肌\nunknown\n\nfatigue unknown\n\n动作预测模型接口\n等待动作预测模型接入\n动作摘要\n等待动作预测模型接入\n\n输出给平台展示和审阅，不直接变成运动许可。\n\n接口字段\nsensor_payload.motion_prediction / action_prediction / model_outputs\n\n后续可从 NanoPi、M55 或云端模型把 top-k 动作建议塞进这个结构。\n\n输入映射\nEMG + fatigue + IMU\n\n建议字段：channel_id、muscle_name、confidence、top_k、time_window。\n\n开源模型来源和替换\nAnatomyTOOL / Open3DModel upper-limb muscle layers\n安全状态\n正常\n\nmotion_allowed 只读：false；模式：未上报；心跳：- ms；来源：M33。\n\nXiaoZhi / M55 WebSock",
+    "overflowX": false,
+    "canvases": 2
+  },
+  "humanInfo": {
+    "overflowX": false,
+    "canvases": [
+      {
+        "w": 828,
+        "h": 600,
+        "aria": "机械臂 Three.js 总览"
+      },
+      {
+        "w": 802,
+        "h": 460,
+        "aria": "开源上肢肌肉模型 Three.js 总览"
+      }
+    ],
+    "hasNoPermission": false,
+    "hasFallback": false
+  },
+  "events": [
+    {
+      "type": "console",
+      "level": "info",
+      "text": "%cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold"
+    },
+    {
+      "type": "requestfailed",
+      "url": "http://localhost:3000/login",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "type": "console",
+      "level": "info",
+      "text": "%cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold"
+    },
+    {
+      "type": "console",
+      "level": "warning",
+      "text": "[.WebGL-0x3ad4051b2600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+      "type": "console",
+      "level": "warning",
+      "text": "[.WebGL-0x3ad4051b2600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+      "type": "console",
+      "level": "warning",
+      "text": "[.WebGL-0x3ad4051b2600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+      "type": "console",
+      "level": "warning",
+      "text": "[.WebGL-0x3ad4051b2600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+    }
+  ]
+}

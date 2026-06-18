@@ -95,9 +95,15 @@ export default async function RehabArmControlPage({ params }: { params: { id: st
   const projectState = await getProjectState(projectId);
   const project = projectState.data;
   if (!project) {
+    const user = record(auth.data?.user);
+    const userLabel = text(user.name ?? user.email, "当前账号");
     return (
       <main className={styles.emptyPage}>
-        <p>项目不存在或无权限。</p>
+        <strong>无法打开这个设备总控台</strong>
+        <p>
+          当前账号 {userLabel} 没有访问项目 {projectId} 的权限，或这个项目不存在。
+          请从项目列表进入你有权限的“医疗康复机械臂”项目，再打开专项设备总控台。
+        </p>
         <Link href="/projects">返回项目列表</Link>
       </main>
     );

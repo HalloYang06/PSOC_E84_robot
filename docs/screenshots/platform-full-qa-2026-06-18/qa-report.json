@@ -1,0 +1,31 @@
+{
+  "afterLogin": {
+    "url": "http://localhost:3000/projects",
+    "text": "小A工作室 · 项目管理\n\n选择项目，进入 AI 协作工作台。\n\n这里只保留项目、成员和入口选择。真正的开发协作从项目工作台开始，由 Boss NPC 拆解目标并派给各工位 NPC。\n\n退出登录\nA\n\n当前账号\n\n温俊勇\n3245056131@qq.com\n3\n项目\n2\n可邀请\n0\n待接受\n1\n人工确认\n当前推荐动作\n\n先处理 智能体协作庄园 的 1 条人工确认。\n\n项目\n进入项目与模式\n邀请\n添加合作者\n收到\n接受项目邀请\n新建\n创建项目空间\n软件项目\n协作者\n智能体协作庄园\n\n把任务、工位、执行节点和账房连起来的基地内核项目。\n\n需要人工确认：重做基地首页主面板\n进入项目主页面\n软件项目\n项目负责人\nyuespeak\n\n广东英语听说考试训练平台\n\n进入项目主页面\n邀请成员\n软件项目\n项目负责人\n医疗康复机械臂\n\n嵌赛\n\n进入项目主页面\n邀请成员\n建议下一步：进入工作台，让 Boss NPC 把一句话目标拆成可执行分工。"
+  },
+  "rehabInfo": {
+    "url": "http://localhost:3000/projects/proj_rehab_arm/rehab-arm-control",
+    "title": "研发基地庄园",
+    "overflowX": false,
+    "bodyText": "项目不存在或无权限。\n\n返回项目列表",
+    "canvases": [],
+    "humanFallback": false
+  },
+  "mobileInfo": {
+    "overflowX": false,
+    "w": 390,
+    "scrollW": 390
+  },
+  "events": [
+    {
+      "type": "console",
+      "level": "info",
+      "text": "%cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold"
+    },
+    {
+      "type": "console",
+      "level": "info",
+      "text": "%cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold"
+    }
+  ]
+}
