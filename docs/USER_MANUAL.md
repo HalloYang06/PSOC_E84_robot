@@ -162,8 +162,11 @@ XiaoZhi audio counters to watch:
 - `xz_fail` = WebSocket binary send failures.
 - `xz_rx` = platform text/binary reply counters.
 - `frame_len` = current partial frame bytes waiting to be sent.
+- `tts_fwd` = TTS audio chunks/bytes forwarded from CM55 to M33 playback.
+- `tts_fail` = TTS forwarding failures or pending-queue drops.
+- `pcm_reject` = downlink binary packets rejected as non-PCM before speaker playback.
 
-For the current board contract, the CM55 sends raw `pcm_s16le` audio bytes as WebSocket binary frames. Do not expect a local 4-byte binary wrapper in the packet payload when checking the capture path.
+For the current board contract, the CM55 follows the official XiaoZhi path and declares `audio_params.format=opus`. A normal 60 ms upstream frame is an Opus packet, so several seconds of speech should usually total tens of KB rather than hundreds of KB. Do not expect a local 4-byte binary wrapper in protocol version 1.
 
 Optional token loader from Windows PowerShell:
 ```powershell
@@ -188,7 +191,9 @@ powershell -ExecutionPolicy Bypass -File D:\RT-ThreadStudio\workspace\yiliao_m33
   -Frames 30
 ```
 
-This test opens the same platform WebSocket, sends the XiaoZhi `hello`, sends `listen start`, streams 30 synthetic 640-byte PCM frames, then sends `listen stop`. It proves the platform WebSocket/audio contract without relying on local wake-word audio.
+This default test opens the same platform WebSocket, sends the XiaoZhi `hello`, sends `listen start`, streams synthetic 60 ms `pcm_s16le` frames, then sends `listen stop`. It proves the endpoint/token/listen flow without relying on local wake-word audio, but it is not an official Opus payload test.
+
+To run an official Opus PC-side test, provide a length-prefixed Opus packet file and set `-AudioFormat opus -OpusPacketFile <path>`. The script does not encode PCM into Opus by itself.
 
 Expected output:
 ```text
@@ -210,15 +215,17 @@ Notes:
 - `audio_playback_voice_cmd` plays a softer voice-like local sample for speaker listening QA without relying on platform TTS.
 - COM4 is the M33 shell on this bench. Use `m55qa_status` to inspect M55 XiaoZhi/LVGL state via IPC; M55-only finsh commands are not expected to be directly callable from COM4.
 - If LCD stays in “正在思考”, wait at least 20 seconds after capture/listen stop. The M55 UI state should now return to `在线待唤醒` with a retry hint when the platform does not reply.
-- XiaoZhi binary audio frames sent by CM55 are currently v3-framed PCM packets: 4-byte v3 header plus 60 ms of 16 kHz mono S16LE PCM (`1924` bytes total).
-- `latest_pcm_len=320` in `m55qa_status` can still be normal because it is the local mic driver chunk length. The cloud WebSocket frame length is separately reframed to 60 ms packets in CM55.
+- `latest_pcm_len=320` in `m55qa_status` can still be normal because it is the local mic driver chunk length. The cloud WebSocket frame is separately reframed and Opus-encoded to 60 ms packets in CM55.
 - A matching platform token should make `xz_token=1`. A successful WebSocket connection should make `xz_ws=1 xz_stage=70 xz_errno=0`.
 - During a good capture, `frames`/`pcm_seq` should increase and `probe_lwip=<chunks>/<bytes>` should become nonzero after capture stops. If those pass but no `stt/tts` arrives, debug platform ASR/codec handling rather than WiFi.
+- During a good TTS downlink, `xz_rx` binary count should increase, `tts_fwd=<chunks>/<bytes>` should become nonzero, and M33 should log `tts audio rx` / `tts audio write`. If `xz_rx` binary increases but `tts_fwd` stays zero, inspect server audio format and CM55 Opus/PCM classification.
 - The firmware default endpoint already targets `/xiaozhi/ws?robot_id=rehab-arm-alpha`; use `m55qa_xz_url <ws://...>` only when overriding it for diagnostics.
 - `cmd=1004` begins a chunked XiaoZhi platform-token update on CM55.
 - `cmd=1005` appends one token chunk; keep each chunk short enough for the embedded shell line, usually 48 to 60 characters.
 - `cmd=1006` commits the staged token and reconnects the XiaoZhi WebSocket. A negative result can still mean the token was committed but the platform endpoint/auth/network is not ready.
 - `m55qa_xz_token_clear` clears the CM55 platform token and should be used after dummy-token tests.
+- On this bench the safe token refresh flow is to use `tools/load_xiaozhi_token.ps1` from the M33 repo against COM4, not to paste the full token manually into the shell.
+- Current validation note: the loader can write the token and show ACKs, but `m55qa_status` may still stay at `xz_ws=0 xz_errno=-403` if the platform rejects the token.
 - Platform `daily_chat`, `none`, and `vla_command` replies are not motion permission. A `vla_command` is only the VLA language input and must still pass dry-run, operator review, and M33 safety gating before any motion.
 - `cmd=3` is start wake listening.
 - `cmd=1` is start capture.

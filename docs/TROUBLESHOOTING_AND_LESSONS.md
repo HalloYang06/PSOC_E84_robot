@@ -1,5 +1,73 @@
 # Troubleshooting And Lessons
 
+## 2026-06-17 - CM55 XiaoZhi Assert Was Status/IPC Pressure, Not Wi-Fi
+
+Symptom:
+- After XiaoZhi probe or repeated `m55qa_capture_on` / `m55qa_capture_off`, M33 shell stayed alive but `m55qa_status` showed stale `voice_status age_ticks` and new commands accumulated in `tx_pending`.
+- OpenOCD showed CM55 halted in `rt_assert_handler`.
+
+Evidence:
+- One CM55 stack mapped through `addr2line` to `voice_service_publish_status -> voice_service_refresh_netdev_snapshot_locked -> rt_wlan_dev_get_rssi -> WHD ioctl -> rt_mutex/IPC`.
+- A later stack mapped to `voice_service_publish_status -> m33_m55_comm_publish -> mtb_ipc_queue_put`, where the MTB IPC library asserts if a blocking timeout is used from an invalid context.
+
+Root cause:
+- The voice/status hot path was doing too much work: live Wi-Fi driver queries and blocking IPC queue publish from the same control/audio bring-up loop.
+- This looked like "小智没回话" or "Wi-Fi卡住", but the actual failure was CM55 falling into an RT-Thread assert after status/IPC pressure.
+
+Fix:
+- `voice_service_publish_status()` now uses the Wi-Fi config snapshot and no longer calls live WLAN/RSSI queries while publishing status.
+- CM55 `m33_m55_comm_publish()` now calls `mtb_ipc_queue_put(..., 0)` so queue full/invalid timing returns an error instead of asserting the core.
+- TTS binary payload handling remains deferred out of the lwIP WebSocket callback and is drained by the voice service thread.
+
+Validation:
+- After rebuild/burn, repeated `m55qa_capture_on` / `m55qa_capture_off` over COM4 returned ACKs, `tx_pending` returned to 0, and status remained fresh.
+- Wi-Fi auto-connect still recovered after reset with saved credentials and `xz_ws=1`.
+
+Next diagnostic:
+- Re-run a prompt that reliably causes platform binary TTS. Pass criteria are `xz_rx` binary increment, `tts_fwd` increment, M33 `tts audio rx/write`, and audible speaker output.
+
+## 2026-06-17 - CM55 Speaker Init Can Kill The Voice Service Before Mic QA Starts
+
+Symptom:
+- CM55 would boot into an assert instead of staying alive for XiaoZhi status and wake/capture QA.
+- `m55qa_status` could fall back to shallow or stale output, and control commands would stop getting consumed.
+
+Root cause:
+- The M55 `sound0` / I2S init path asserted inside `ifx_i2s_init()` when `Cy_AudioTDM_Init()` failed.
+- That speaker path is not required for the CM55-local XiaoZhi mic-first workflow, but it was still part of the CM55 boot path.
+
+Fix:
+- Remove `drv_i2s.c` from the M55 build for now.
+- Keep CM55 on `mic0` / PDM capture for XiaoZhi uplink audio.
+- Let the M33 side own speaker playback and keep CM55 focused on status, wake, capture, and network control.
+
+Lesson:
+- When a board has separate capture and playback responsibilities, do not let a failing speaker init block microphone bring-up.
+- For this project, CM55 should be the audio input worker, not the whole audio stack.
+
+## 2026-06-16 - Board ASR Is Proven; Remaining Gap Is TTS Downlink/Playback
+
+Symptom:
+- After Wi-Fi and WebSocket were stable, XiaoZhi still looked stuck or silent from the user perspective.
+- Earlier board runs either produced no reply or forwarded garbled bytes as `tts text`.
+
+Findings:
+- The CM55 Wi-Fi/WebSocket path is healthy when `m55qa_status` shows `wlan=1 ready=1`, `xz_ws=1`, `xz_stage=70`, and `xz_errno=0`.
+- Sending raw `pcm_s16le` from M33 via `m33qa_xz_probe` now reaches cloud ASR. Board logs show ASR text on M33 and `xz_last` byte/chunk counters increase.
+- A PC-side control test using the same platform endpoint, scoped token, `Protocol-Version: 3`, `hello.audio_params.format=pcm_s16le`, and raw PCM frames returns the complete cloud sequence: `stt`, `llm`, `chat`, `tts start`, binary PCM TTS frames, `tts stop`.
+- Therefore the current blocker is not Wi-Fi, token, WebSocket connect, or upstream ASR. The remaining gap is board-side TTS downlink classification/forwarding and `sound0` playback validation.
+
+Fixes applied:
+- CM55 no longer prefixes outbound raw PCM with a fake local v3 header.
+- The M33-to-M55 shared PCM route now forwards non-control IPC messages into `voice_service_handle_ipc_message()`.
+- Shared PCM is accepted while XiaoZhi listening is active, not only while wake listening is active.
+- Non-JSON text-opcode WebSocket payloads are no longer published to M33 as `MSG_TYPE_TTS_REQUEST` garbage. PCM-looking payloads are routed as audio instead.
+
+Next diagnostic:
+- Run `m55qa_capture_on`, `m33qa_xz_probe`, then watch for `xz_rx` binary count and M33 `MSG_TYPE_TTS_AUDIO` / `audio_playback_write()` logs.
+- If PC still receives binary TTS but board does not, instrument the CM55 lwIP WebSocket callback around opcode/text/binary classification.
+- If board receives `MSG_TYPE_TTS_AUDIO` but no sound, focus only on M33 `audio_playback` and `sound0`, not cloud or Wi-Fi.
+
 ## 2026-06-15 - XiaoZhi Binary Frames Stayed Silent Because The PCM Path Was Still Wrapped Wrong
 
 Symptom:
@@ -575,6 +643,28 @@ Update:
 - After reset, M55 IPC and WebSocket recovered and board PCM upstream was again proven by `probe_lwip=386/742664`.
 - If board capture still produces no STT while nobody is near the microphone, treat it as no valid speech input, not as a relay regression.
 
+## 2026-06-17 - Do Not Claim Opus While Sending PCM
+
+Symptoms:
+- A PC-side XiaoZhi smoke test connected to the platform and passed `hello`/`listen start`, but the platform returned `opus_decode_not_configured` after binary frames.
+- The test output said `declared_format=opus` while the script actually generated 16 kHz S16LE PCM tone frames.
+
+Root cause:
+- The smoke test's `hello.audio_params.format` was hardcoded to `opus`, but `New-PcmFrame` produced raw PCM. This made a good platform rejection look like a board or server Opus failure.
+
+Fix:
+- `tools/xiaozhi_ws_smoke_test.ps1` now defaults to `AudioFormat=pcm_s16le`.
+- `AudioFormat=opus` requires an explicit length-prefixed Opus packet file; the script does not pretend to encode PCM on the PC.
+- CM55 firmware now enables `XIAOZHI_USE_OFFICIAL_OPUS_AUDIO` and fixes the Opus encoder sample-count check to 960 samples for 60 ms at 16 kHz.
+
+Status:
+- Board-side official Opus uplink is validated by `m55qa_status` examples such as `xz_last=158/28282 xz_fail=0`.
+- The latest probe did not receive binary TTS (`xz_rx=2/0`), so speaker playback remains unverified rather than proven broken.
+
+Reusable trick:
+- Keep the XiaoZhi gates separate: declared audio format, actual binary payload format, WebSocket connection, upstream packet counter, STT text, binary TTS, CM55 `tts_fwd`, and M33 `sound0`.
+- If `xz_last` is around tens of KB for several seconds of speech, it is likely Opus. If it is hundreds of KB, it is likely raw PCM.
+
 ## 2026-06-15 - XiaoZhi LVGL Stuck Thinking And Missing Chinese Glyphs
 
 Symptoms:
@@ -620,3 +710,28 @@ Update:
 - Onsite feedback confirmed the algorithmic sample sounds noisy and must not be used as a user-facing response.
 - Keep `audio_playback_voice_cmd` only as a speaker QA/debug command.
 - Do not wire local generated audio into XiaoZhi wake acknowledgement. For a real “我在” response, use platform/official TTS audio or a separately validated real prompt asset.
+
+## 2026-06-19 - COM4 token reload can succeed while XiaoZhi reconnect still fails
+
+Symptoms:
+- `tools/load_xiaozhi_token.ps1` successfully sent `m55qa_xz_token_begin`, a sequence of `m55qa_xz_token_part` chunks, and `m55qa_xz_token_commit` over COM4.
+- The visible shell returned ACKs for the config bridge path, but `m55qa_xz_reconnect` still ended in `cmd=1003 result=-255`.
+- `m55qa_status` showed the token updated to `token_len=480`, yet `xz_ws` stayed `0` and `xz_errno` remained `-403`.
+
+Environment:
+- Active shell: `COM4` KitProg3 USB-UART.
+- Loader source: `D:\RT-ThreadStudio\workspace\yiliao_m33\tools\load_xiaozhi_token.ps1`.
+- Token source: scoped relay token file beginning with `rehab-relay.v1.`.
+
+Root cause:
+- The token write path was fine; the remaining failure sits on the platform acceptance / authorization side, not on WiFi or the shell transport.
+
+Fix:
+- Treat the current blocker as cloud/token acceptance, not board-side WiFi bring-up.
+- Keep using the chunked loader path because it avoids shell truncation and proves the token reached CM55.
+
+Trick:
+- Check both the ACK chain and the status snapshot. A successful `m55qa_xz_token_commit` does not guarantee `xz_ws=1`; always confirm `m55qa_status` after reconnect.
+
+Status:
+- Partially fixed: token rewrite works, reconnect still rejected.
