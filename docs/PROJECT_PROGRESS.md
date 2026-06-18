@@ -608,3 +608,21 @@ Failed or unverified:
 
 Next step:
 - Use an authenticated session or supplied credentials to enter the project space, then inspect the model-relay-lab tools from inside the platform instead of assuming the 8011 endpoint is the only live path.
+
+## 2026-06-19 - Supplied platform credentials were rejected by the login gate
+
+Completed:
+- Opened the live platform front door at `http://106.55.62.122:3001/login` in the in-app browser.
+- Verified the login form is real and uses email/password fields.
+- Attempted login with the supplied credentials and a best-effort email-style variant.
+
+Validated:
+- The server returned `login?error=INVALID_CREDENTIALS&returnTo=%2Fprojects` on submit.
+- No authenticated project workspace was reached from this session.
+
+Failed or unverified:
+- The provided `3245056131 / 1234` credentials are not accepted by the current platform login gate.
+- `model-relay-lab` tools were not reachable because the session never became authenticated.
+
+Next step:
+- Obtain the correct platform account or an authenticated session cookie, then reopen `/projects/e201f41c-25a6-46e1-baf8-be6dcb83284c/model-relay-lab` and inspect the real relay entry.

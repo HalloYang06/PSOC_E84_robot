@@ -757,3 +757,25 @@ Trick:
 
 Status:
 - Live but not authenticated from this context.
+
+## 2026-06-19 - The platform login page expects a real email/password pair, not the bench account stub
+
+Symptoms:
+- The login page at `http://106.55.62.122:3001/login` rendered correctly and accepted form input.
+- Submitting `3245056131 / 1234` returned `INVALID_CREDENTIALS`.
+- A best-effort `3245056131@qq.com / 1234` retry also stayed on the login page.
+
+Environment:
+- Platform front door: `106.55.62.122:3001`
+- Target project path: `/projects/e201f41c-25a6-46e1-baf8-be6dcb83284c/model-relay-lab`
+
+Root cause:
+- The supplied pair is not a valid login for this platform account system.
+- The page is email-based, so a raw numeric identifier is not enough by itself.
+
+Trick:
+- When a login page uses email fields, do not assume a numeric chat handle is a usable account.
+- Treat `INVALID_CREDENTIALS` as a hard stop and stop guessing after one careful retry.
+
+Status:
+- Unauthenticated; relay inspection from the project page is still blocked until the correct account or session is available.
