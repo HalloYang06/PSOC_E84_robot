@@ -6238,3 +6238,57 @@ python -m SCons -j4
 
 - 2026-06-18 已确认当前还差“协议/音频格式一致性 + ASR/TTS 编解码闭环”，不是 WiFi 扫描问题。
 - 下一步应先选一条音频闭环路线并实机 QA，再回到 LVGL 动画和字库补齐。
+
+### M55 本地构建要显式指定 RT-Thread Studio 的 GCC `...\mingw\bin`
+
+现象：
+
+- 在 `_m55_ref_repo` 里直接跑 `python -m SCons -j4`，会报 `the toolchain path (C:\Users\XXYYZZ) is not exist`。
+- 这个默认路径是 `rtconfig.py` 里的占位符，不是可用工具链。
+
+环境：
+
+- M55 formal repo：`D:\RT-ThreadStudio\workspace\_m55_ref_repo`
+- 正确工具链：`D:\RT-ThreadStudio\platform\env_released\env\tools\gnu_gcc\arm_gcc\mingw\bin`
+
+解决：
+
+```powershell
+$env:RTT_EXEC_PATH='D:\RT-ThreadStudio\platform\env_released\env\tools\gnu_gcc\arm_gcc\mingw\bin'
+$env:RTT_ROOT='D:\RT-ThreadStudio\workspace\wifi\rt-thread'
+python -m SCons -j4
+```
+
+技巧：
+
+- 不要把 `D:\arm-gcc\bin` 当成已验证工具链。
+- 如果构建已经进入 LVGL/TensorflowLiteMicro 等大包编译，说明工具链已经走对了，后面再看是否真正编完。
+
+状态：
+
+- 2026-06-18 已复核：默认路径失败，显式指定 RT-Thread Studio GCC 路径后，构建进入长编阶段但本次会话未等到最终结束。
+
+### M55 XiaoZhi 现在卡在音频闭环，不是 WiFi 扫描
+
+现象：
+
+- 过去一直在查 WiFi 扫描、保存和自动连接，但最新状态里已经有 `saved=1 auto=1 wlan=1 ready=1 ip=...`，XiaoZhi 也能连上云端。
+- 真正没收尾的是 `wake -> listen -> thinking -> speak` 的板端闭环和扬声器输出。
+
+环境：
+
+- M55 formal repo：`D:\RT-ThreadStudio\workspace\_m55_ref_repo`
+- Burn workspace：`D:\RT-ThreadStudio\workspace\wifi`
+
+判断：
+
+- WiFi 不再是当前 blocker。
+- 现在要查的是 protocol / audio format / TTS 播放 / LVGL 状态展示的收口。
+
+技巧：
+
+- 以后看到 `xz_ws=1`、`xz_token=1`、`saved=1`、`ready=1` 时，优先看音频链路，不要再回头反复怀疑扫描。
+
+状态：
+
+- 2026-06-18 已确认：当前主问题是音频闭环和板端 QA，WiFi 已经不是主要障碍。

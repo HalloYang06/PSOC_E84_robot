@@ -3143,3 +3143,14 @@
 - Current official-alignment gap: `xiaozhi_voice_relay.h` still declares protocol version `1U`; code has protocol v3 binary handling, and Opus branches exist, but the cloud currently returns PCM TTS frames while Opus ASR decode is not yet configured server-side. The full official-style XiaoZhi Opus ASR/TTS path is therefore not closed yet.
 - Safety: XiaoZhi remains voice UI, ASR/LLM/TTS, chat/classification, and possible VLA language context only. It does not bypass M33 or issue motor/CAN control.
 - Next step: choose and implement one testable audio-path closure: either official-forward path by enabling protocol v3 plus server-side Opus decode/encode, or a short-term PCM compatibility path for board voice QA, then rebuild/flash and verify wake/listen/thinking/speaker counters end to end.
+
+### 2026-06-18 - M55 XiaoZhi mainline moved to voice-service reconnect + LVGL-safe status path
+
+- Completed: the formal M55 repo `D:\RT-ThreadStudio\workspace\_m55_ref_repo` now carries the XiaoZhi-side reconnect/session work in `applications/voice_service.c`, `applications/main.c`, `applications/websocket_client.c`, `applications/wifi_config_service.c`, `applications/xiaozhi_voice_relay.c`, and `applications/xiaozhi_voice_relay.h`.
+- Completed: the current M55 voice path now starts from CM55 mic0, forces a real XiaoZhi reconnect before manual talk start, publishes status immediately after mic start/stop, and treats the board-side wake/listen path as the owner of the uplink audio session.
+- Completed: WiFi persistence and autoconnect remain stable on the burn workspace baseline; the board-side relay state is no longer blocked by WiFi scan/connect.
+- Validation: a full `python -m SCons -j4` run only succeeds when `RTT_EXEC_PATH` points at the RT-Thread Studio GCC `...\mingw\bin` directory; the default `rtconfig.py` toolchain path is still the placeholder `C:\Users\XXYYZZ`.
+- Validation: the longer build run in this environment progressed through LVGL and TensorflowLiteMicro compilation, which is consistent with a long compile rather than an immediate syntax failure.
+- Failed or unverified: the full M55 build did not finish inside this session timeout, so no fresh flash/boot QA was completed here.
+- Current gap: the official XiaoZhi alignment is still not fully closed on-board because the remaining question is audio-format closure and speaker QA, not WiFi.
+- Next step: finish one hardware QA pass on the flashed M55 board and confirm `wake -> listen -> thinking -> speak` counters advance with real speaker output.
