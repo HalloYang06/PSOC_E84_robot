@@ -2,6 +2,7 @@
 
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 #if defined(__has_include)
 #if __has_include("xiaozhi_local_token.h")
@@ -12,6 +13,8 @@
 #define XIAOZHI_DEFAULT_WS_URL "ws://106.55.62.122:8011/api/rehab-arm/v1/projects/" XIAOZHI_PROJECT_ID "/devices/" XIAOZHI_DEVICE_ID "/xiaozhi/ws?robot_id=" XIAOZHI_ROBOT_ID
 #define XIAOZHI_TOKEN_MAX      768
 #define XIAOZHI_URL_MAX        192
+#define XIAOZHI_TOKEN_FILE_PATH "/flash/rehab_xiaozhi_token.cfg"
+#define XIAOZHI_TOKEN_FILE_MAGIC "rehab_xiaozhi_token_v1"
 
 typedef struct
 {
@@ -23,6 +26,12 @@ typedef struct
 } xiaozhi_voice_relay_t;
 
 static xiaozhi_voice_relay_t g_xiaozhi;
+
+typedef struct
+{
+    char magic[32];
+    char token[XIAOZHI_TOKEN_MAX];
+} xiaozhi_token_file_t;
 
 static void json_get_string(const char *json, const char *key, char *out, rt_size_t out_len)
 {
@@ -74,8 +83,105 @@ static void json_get_string(const char *json, const char *key, char *out, rt_siz
     RT_UNUSED(start);
 }
 
+static rt_bool_t xiaozhi_token_file_is_valid(xiaozhi_token_file_t *record)
+{
+    if (record == RT_NULL)
+    {
+        return RT_FALSE;
+    }
+
+    record->magic[sizeof(record->magic) - 1] = '\0';
+    record->token[sizeof(record->token) - 1] = '\0';
+    if (rt_strcmp(record->magic, XIAOZHI_TOKEN_FILE_MAGIC) != 0)
+    {
+        return RT_FALSE;
+    }
+    if ((record->token[0] == '\0') || (rt_strlen(record->token) >= sizeof(record->token)))
+    {
+        return RT_FALSE;
+    }
+    return RT_TRUE;
+}
+
+static rt_err_t xiaozhi_voice_relay_load_token_file(char *token, rt_size_t token_len)
+{
+    FILE *fp;
+    xiaozhi_token_file_t record;
+    size_t read_len;
+
+    if ((token == RT_NULL) || (token_len == 0U))
+    {
+        return -RT_EINVAL;
+    }
+
+    token[0] = '\0';
+    fp = fopen(XIAOZHI_TOKEN_FILE_PATH, "rb");
+    if (fp == RT_NULL)
+    {
+        return -RT_ERROR;
+    }
+
+    rt_memset(&record, 0, sizeof(record));
+    read_len = fread(&record, 1, sizeof(record), fp);
+    fclose(fp);
+    if (read_len != sizeof(record))
+    {
+        return -RT_ERROR;
+    }
+
+    if (!xiaozhi_token_file_is_valid(&record))
+    {
+        return -RT_ERROR;
+    }
+
+    rt_strncpy(token, record.token, token_len - 1);
+    token[token_len - 1] = '\0';
+    return RT_EOK;
+}
+
+static rt_err_t xiaozhi_voice_relay_save_token_file(const char *token)
+{
+    FILE *fp;
+    xiaozhi_token_file_t record;
+
+    if ((token == RT_NULL) || (token[0] == '\0'))
+    {
+        return -RT_EINVAL;
+    }
+    if (rt_strlen(token) >= sizeof(record.token))
+    {
+        return -RT_EINVAL;
+    }
+
+    rt_memset(&record, 0, sizeof(record));
+    rt_strncpy(record.magic, XIAOZHI_TOKEN_FILE_MAGIC, sizeof(record.magic) - 1);
+    rt_strncpy(record.token, token, sizeof(record.token) - 1);
+
+    fp = fopen(XIAOZHI_TOKEN_FILE_PATH, "wb");
+    if (fp == RT_NULL)
+    {
+        return -RT_ERROR;
+    }
+
+    if (fwrite(&record, 1, sizeof(record), fp) != sizeof(record))
+    {
+        fclose(fp);
+        return -RT_ERROR;
+    }
+
+    fclose(fp);
+    return RT_EOK;
+}
+
+static void xiaozhi_voice_relay_clear_token_file(void)
+{
+    (void)remove(XIAOZHI_TOKEN_FILE_PATH);
+}
+
 rt_err_t xiaozhi_voice_relay_init(void)
 {
+    rt_err_t ret;
+
     if (g_xiaozhi.initialized)
     {
         return RT_EOK;
@@ -83,13 +189,17 @@ rt_err_t xiaozhi_voice_relay_init(void)
 
     rt_memset(&g_xiaozhi, 0, sizeof(g_xiaozhi));
     rt_strncpy(g_xiaozhi.ws_url, XIAOZHI_DEFAULT_WS_URL, sizeof(g_xiaozhi.ws_url) - 1);
-#ifdef XIAOZHI_LOCAL_TOKEN
-    if ((rt_strlen(XIAOZHI_LOCAL_TOKEN) > 0U) &&
-        (rt_strlen(XIAOZHI_LOCAL_TOKEN) < sizeof(g_xiaozhi.token)))
+    ret = xiaozhi_voice_relay_load_token_file(g_xiaozhi.token, sizeof(g_xiaozhi.token));
+    if (ret != RT_EOK)
     {
-        rt_strncpy(g_xiaozhi.token, XIAOZHI_LOCAL_TOKEN, sizeof(g_xiaozhi.token) - 1);
-    }
+#ifdef XIAOZHI_LOCAL_TOKEN
+        if ((rt_strlen(XIAOZHI_LOCAL_TOKEN) > 0U) &&
+            (rt_strlen(XIAOZHI_LOCAL_TOKEN) < sizeof(g_xiaozhi.token)))
+        {
+            rt_strncpy(g_xiaozhi.token, XIAOZHI_LOCAL_TOKEN, sizeof(g_xiaozhi.token) - 1);
+        }
 #endif
+    }
     g_xiaozhi.initialized = RT_TRUE;
     return RT_EOK;
 }
@@ -133,11 +243,14 @@ rt_err_t xiaozhi_voice_relay_set_url(const char *url)
 
 rt_err_t xiaozhi_voice_relay_set_token(const char *token)
 {
+    rt_err_t ret;
+
     xiaozhi_voice_relay_init();
 
     if ((token == RT_NULL) || (token[0] == '\0'))
     {
         g_xiaozhi.token[0] = '\0';
+        xiaozhi_voice_relay_clear_token_file();
         return RT_EOK;
     }
 
@@ -148,7 +261,12 @@ rt_err_t xiaozhi_voice_relay_set_token(const char *token)
 
     rt_memset(g_xiaozhi.token, 0, sizeof(g_xiaozhi.token));
     rt_memcpy(g_xiaozhi.token, token, rt_strlen(token));
-    return RT_EOK;
+    ret = xiaozhi_voice_relay_save_token_file(g_xiaozhi.token);
+    if (ret != RT_EOK)
+    {
+        rt_kprintf("[xiaozhi] token save failed ret=%d path=%s\n", ret, XIAOZHI_TOKEN_FILE_PATH);
+    }
+    return ret;
 }
 
 rt_err_t xiaozhi_voice_relay_token_update_begin(void)
@@ -210,6 +328,7 @@ void xiaozhi_voice_relay_token_update_clear(void)
     rt_memset(g_xiaozhi.token, 0, sizeof(g_xiaozhi.token));
     rt_memset(g_xiaozhi.token_staging, 0, sizeof(g_xiaozhi.token_staging));
     g_xiaozhi.token_update_active = RT_FALSE;
+    xiaozhi_voice_relay_clear_token_file();
 }
 
 rt_err_t xiaozhi_voice_relay_build_headers(char *out, rt_size_t out_len)
@@ -293,11 +412,18 @@ rt_err_t xiaozhi_voice_relay_build_listen_start(char *out, rt_size_t out_len,
         return -RT_EINVAL;
     }
 
-    RT_UNUSED(wake_source);
+    const char *mode = "auto";
+
+    if (wake_source == XIAOZHI_WAKE_SOURCE_MANUAL)
+    {
+        mode = "manual";
+    }
+
     n = rt_snprintf(out, out_len,
                     "{\"session_id\":\"%s\",\"type\":\"listen\",\"state\":\"start\","
-                    "\"mode\":\"auto\"}",
-                    (session_id && session_id[0]) ? session_id : "");
+                    "\"mode\":\"%s\"}",
+                    (session_id && session_id[0]) ? session_id : "",
+                    mode);
     return ((n < 0) || ((rt_size_t)n >= out_len)) ? -RT_EFULL : RT_EOK;
 }
 
