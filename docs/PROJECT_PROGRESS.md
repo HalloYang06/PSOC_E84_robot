@@ -833,3 +833,21 @@ Failed or unverified:
 
 Next step:
 - Stay on the M55 `m55qa_capture_on` path, stop using the M33 probe for mainline audio, and capture the first real relay reply or failure reason from the live XiaoZhi session.
+
+## 2026-06-19 - CM55 XiaoZhi start was self-confirming the hello too early
+
+Completed:
+- Rechecked the live board state before touching the relay again: `xz_ws=1`, `xz_token=1`, `token_len=442`, `wlan=1 ready=1`, `ip=192.168.3.32`.
+- Rebuilt the active M55 tree with `python -m SCons -j4`; `rtthread.hex` was generated successfully.
+- Removed the early self-marking in `voice_service_send_xiaozhi_hello()` so sending the local hello no longer sets `xiaozhi_server_hello_seen`.
+- Tightened `voice_service_start_xiaozhi_talk()` so it waits for the real server hello instead of treating its own outgoing hello as proof that the session is ready.
+
+Validated:
+- The rebuild completed with only pre-existing warnings, mostly `rt_strncpy` truncation warnings and one unused helper warning.
+
+Failed or unverified:
+- The newest build has not yet been reflashed and re-qa'd on COM4.
+- Binary TTS / speaker output is still not proven end-to-end.
+
+Next step:
+- Flash the rebuilt CM55 image, run `m55qa_xz_reconnect`, then `m55qa_capture_on`, and watch for a real incoming server hello before listen starts.

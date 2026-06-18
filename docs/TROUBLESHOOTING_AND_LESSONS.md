@@ -1037,3 +1037,24 @@ Fix / trick:
 
 Status:
 - Understood on the current image; no code change required for the mainline path yet.
+
+## 2026-06-19 - XiaoZhi kept showing "waiting platform" because hello was self-confirmed too early
+
+Symptoms:
+- The board reported `xz_ws=1`, `xz_token=1`, and `token_len=442`, but `m55qa_capture_on` still behaved like the session was not really ready.
+- UI and logs kept lingering at "等待小智会话" / "小智连接中" even though WiFi and token were already healthy.
+
+Root cause:
+- `voice_service_send_xiaozhi_hello()` was marking `xiaozhi_server_hello_seen` immediately after sending the local hello.
+- That blurred the line between "I sent hello" and "the server actually replied hello", so talk start could look ready before the real server handshake arrived.
+
+Fix:
+- Stop self-marking the server hello when sending the local hello.
+- Let `voice_service_handle_server_text()` own the real `hello` confirmation.
+- Make `voice_service_start_xiaozhi_talk()` wait for the actual server hello before entering manual listening.
+
+Reusable trick:
+- When XiaoZhi sits in a waiting state with healthy WiFi/token, check whether the client is confusing its own outbound hello with the platform's inbound hello.
+
+Status:
+- Fixed in source; needs one fresh flash and a real COM4 QA pass to prove the startup flow now advances correctly.
