@@ -800,3 +800,24 @@ Trick:
 
 Status:
 - Fixed for this session; the relay page is confirmed live and returns a model answer.
+
+## 2026-06-19 - A freshly generated relay token can still fail PC WebSocket connect
+
+Symptoms:
+- The authenticated relay page generated a new token and showed the correct project/device scope.
+- The CM55 loader accepted the new token and reported `token_len=442`.
+- The PC smoke test against the relay WebSocket still failed immediately with `无法连接到远程服务器`.
+
+Environment:
+- Token source: authenticated `model-relay-lab` page for `医疗康复机械臂`
+- Board loader: `tools/load_xiaozhi_token.ps1`
+- Smoke test: `tools/xiaozhi_ws_smoke_test.ps1`
+
+Root cause:
+- The token generation page is not enough on its own; the live relay endpoint or client path still needs a successful connect.
+
+Trick:
+- When a fresh token still fails at connect time, separate token issuance from transport reachability before touching the board again.
+
+Status:
+- Unresolved; board-side reconnect and relay transport still need another targeted pass.

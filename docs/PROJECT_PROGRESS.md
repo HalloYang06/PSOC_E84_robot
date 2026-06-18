@@ -643,3 +643,23 @@ Validated:
 
 Next step:
 - Use this authenticated relay page as the source of truth for the platform model path, then continue back to the board-side XiaoZhi flow with the confirmed project/device endpoints.
+
+## 2026-06-19 - Relay page generated a fresh token, but PC WebSocket smoke still failed
+
+Completed:
+- Generated a fresh relay token from the authenticated `model-relay-lab` page.
+- Confirmed the page now shows `token 已生成`, a visible expiry, and the project-scoped HTTP/XiaoZhi endpoints.
+- Reused the current board loader path to load the fresh token into CM55.
+- Ran the PC-side XiaoZhi WebSocket smoke test against the new token.
+
+Validated:
+- The relay page displayed a new token scoped to `project_id=fd6a55ed-a63c-44b3-b123-96fb3c154966` and `device_id=nanopi-m5`.
+- The board loader accepted all chunked token parts and updated `token_len=442` on CM55.
+- The PC smoke test failed at WebSocket connect with `无法连接到远程服务器`.
+
+Failed or unverified:
+- Fresh token generation did not yet produce a successful PC-side WebSocket smoke pass.
+- CM55 reconfigure/reconnect still needs another pass with the new token source of truth.
+
+Next step:
+- Recheck the relay page save/retest flow and the board-side reconnect path against the freshly generated token, then decide whether the remaining blocker is the relay service or the CM55 WebSocket client path.
