@@ -592,3 +592,19 @@ Failed or unverified:
 
 Next step:
 - Recheck the current scoped relay token source and the platform acceptance boundary, then retry `m55qa_xz_reconnect` or a fresh token load once the cloud side is confirmed.
+
+## 2026-06-19 - Platform front door on port 3001 is live, but this shell still lands on login
+
+Completed:
+- Confirmed `http://106.55.62.122:3001/projects/e201f41c-25a6-46e1-baf8-be6dcb83284c/model-relay-lab` returns HTTP 200 and serves the platform front end.
+- Confirmed the page title is `研发基地庄园`, so the AI collaboration platform itself is up.
+
+Validated:
+- The current unauthenticated request is redirected to the login experience for the same `returnTo` path.
+- The reachable front-door path is therefore not the blocker; the missing piece here is session/login state for the project page.
+
+Failed or unverified:
+- No authenticated project-space API or relay action was tested from this shell because the returned page is the login surface.
+
+Next step:
+- Use an authenticated session or supplied credentials to enter the project space, then inspect the model-relay-lab tools from inside the platform instead of assuming the 8011 endpoint is the only live path.

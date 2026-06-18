@@ -226,6 +226,7 @@ Notes:
 - `m55qa_xz_token_clear` clears the CM55 platform token and should be used after dummy-token tests.
 - On this bench the safe token refresh flow is to use `tools/load_xiaozhi_token.ps1` from the M33 repo against COM4, not to paste the full token manually into the shell.
 - Current validation note: the loader can write the token and show ACKs, but `m55qa_status` may still stay at `xz_ws=0 xz_errno=-403` if the platform rejects the token.
+- The platform front door is reachable at `http://106.55.62.122:3001/`, but the project page may still require login before `model-relay-lab` tools are usable.
 - Platform `daily_chat`, `none`, and `vla_command` replies are not motion permission. A `vla_command` is only the VLA language input and must still pass dry-run, operator review, and M33 safety gating before any motion.
 - `cmd=3` is start wake listening.
 - `cmd=1` is start capture.

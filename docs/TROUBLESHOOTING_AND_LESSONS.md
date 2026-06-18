@@ -735,3 +735,25 @@ Trick:
 
 Status:
 - Partially fixed: token rewrite works, reconnect still rejected.
+
+## 2026-06-19 - Port 3001 platform front door is live, but unauthenticated requests only see login
+
+Symptoms:
+- `http://106.55.62.122:3001/projects/e201f41c-25a6-46e1-baf8-be6dcb83284c/model-relay-lab` returns HTTP 200 and serves the platform shell.
+- The same request from this shell lands on the login page rather than the project workspace.
+
+Environment:
+- Front door: `106.55.62.122:3001`
+- Project path: `/projects/e201f41c-25a6-46e1-baf8-be6dcb83284c/model-relay-lab`
+
+Root cause:
+- The platform exists and is reachable, but the current session is not authenticated for the project page.
+
+Fix:
+- Treat `3001` as the active platform entry and login gate, not as evidence that the model-relay-lab workspace is already available in the current shell.
+
+Trick:
+- When a platform page works in the browser but not from a shell, check whether you are seeing the front door or the authenticated project surface.
+
+Status:
+- Live but not authenticated from this context.
