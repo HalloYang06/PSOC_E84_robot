@@ -916,3 +916,124 @@ Update:
 
 Status:
 - Fixed for the already-connected reconnect command path. Real offline reconnect still uses the lower-level connect path and should be tested separately if the socket is genuinely down.
+
+## 2026-06-19 - `/flash` token persistence fails when filesystem storage is unavailable
+
+Symptoms:
+- After loading the scoped XiaoZhi token once, `m55qa_status` showed `xz_token=1 token_len=442`.
+- After reboot/power transition, the user still saw the board ask for token again.
+- COM4 confirmed the failure: `xz_token=0 token_len=0`, while WiFi persisted correctly with `saved=1 auto=1`.
+- The same status line showed `storage=0`, so the filesystem-backed `/flash/rehab_xiaozhi_token.cfg` path was not a reliable persistence layer.
+
+Environment:
+- Active burn tree: `D:\RT-ThreadStudio\workspace\wifi`
+- Git mirror: `D:\RT-ThreadStudio\workspace\_m55_ref_repo`
+- Existing WiFi persistence mechanism: FAL partition `wifi_cfg`
+
+Root cause:
+- XiaoZhi token persistence had been implemented through stdio on `/flash`, but the board's filesystem mount was not available in the observed runtime.
+- WiFi worked because it already used a raw FAL log partition, not because `/flash` was healthy.
+
+Fix:
+- Added a dedicated 4 KB FAL partition `xiaozhi_cfg` at `0x1FE000` and reduced the unused `filesystem` partition by 4 KB.
+- Changed `xiaozhi_voice_relay` to load/save/clear the token from `xiaozhi_cfg` first, with `/flash/rehab_xiaozhi_token.cfg` only as fallback.
+
+Status:
+- Fixed for software reset: after reboot without rerunning the loader, COM4 showed `xz_token=1 token_len=442`.
+- Needs one user-observed full power-cycle confirmation on the final FAL build.
+
+Trick:
+- If `m55qa_status` shows `saved=1 auto=1` for WiFi but `xz_token=0`, compare the storage backend. Do not assume `/flash` works just because WiFi survives reboot.
+
+## 2026-06-19 - XiaoZhi path is past WiFi/token; remaining failure is relay audio/TTS behavior
+
+Symptoms:
+- With WiFi ready and token persisted, `m55qa_status` can reach `xz_ws=1 xz_stage=70 xz_errno=0`.
+- Automatic wake/listen sent Opus packets such as `xz_last=22/3938` or `53/9487`.
+- The relay returned text/control frames only: `xz_rx=<n>/0`, `tts_fwd=0/0`, so M33 speaker had no cloud TTS binary to play.
+- Manual/QA `m55qa_capture_on` is unstable: after protocol alignment and mic restart fixes it can ACK success, but some runs still end with `xz_ws=0 xz_stage=80 xz_errno=-1`.
+
+Root cause / current best hypothesis:
+- This is no longer a WiFi scan, WiFi connect, token scope, or token persistence problem.
+- The remaining issue is in the XiaoZhi listen protocol/server behavior or in the board-side handling of server text/TTS. The platform has not sent binary audio in observed board runs.
+- Manual capture likely differs from the official wake-triggered flow enough for the relay to close or ignore it; the automatic wake path is the more faithful path to continue.
+
+Fix attempted:
+- Enabled official Opus audio mode (`XIAOZHI_USE_OFFICIAL_OPUS_AUDIO`).
+- Changed manual start to send `listen/detect` before `listen/start` and to use wake-style `auto` mode instead of `manual`.
+- Added CM55 capture start/stop stage logs and forced a mic restart before `VOICE_CTRL_START_CAPTURE`.
+
+Status:
+- Partially improved. Token/WiFi/WebSocket baseline is stable; cloud binary TTS is still not validated.
+
+Trick:
+- Use `xz_rx=text/binary`, `tts_fwd=chunks/bytes`, and `xz_last=chunks/bytes` as the main split. If `xz_last` increases but `xz_rx` binary and `tts_fwd` stay zero, stop debugging the speaker first; the platform did not provide playable audio.
+
+## 2026-06-19 - Rebooted board still kept the token, so token was not the blocker
+
+Symptoms:
+- After a fresh power cycle, `m55qa_status` still showed `xz_token=1 token_len=442`, `wlan=1 ready=1`, and `xz_ws=1 xz_stage=70 xz_errno=0`.
+- The PC XiaoZhi smoke test against the same token and relay endpoint succeeded and returned `stt` text.
+- The CM55 capture path still fell back to `xz_ws=0 xz_stage=80 xz_errno=-1` without any `xz_cur/xz_last` growth.
+
+Root cause:
+- The token and relay project are fine. The remaining failure is the board-side audio/listen flow or the relay's handling of that flow.
+
+Trick:
+- If rebooted status still shows `xz_token=1`, stop reloading token and move directly to the audio path. The token is no longer the interesting variable.
+
+Status:
+- Token ruled out on the current board image.
+
+## 2026-06-19 - Reuse An Already-Connected XiaoZhi Socket
+
+Symptoms:
+- The board can report `xz_ws=1` and still sit forever at "等待小智会话" or "小智连接中" after `m55qa_capture_on`.
+
+Root cause / current best hypothesis:
+- `voice_service_start_xiaozhi_talk()` was forcing a disconnect/reconnect cycle even when the websocket was already connected.
+- That makes the healthy session look like a startup failure and hides the real first-frame boundary.
+
+Fix/status:
+- Reuse the existing websocket when it is already connected.
+- Only reconnect if the socket is actually down.
+- Keep the current PCM relay path on `Protocol-Version: 3`.
+
+Reusable trick:
+- When the socket is already online, debug the first `websocket_client_send_binary()` result before changing token, WiFi, or platform settings again.
+
+## 2026-06-19 - Build and QA were being blocked by a fake GCC path, not by WiFi
+
+Symptoms:
+- Rebuilds in the active M55 burn tree needed an explicit local GCC path instead of the old placeholder `C:\Users\XXYYZZ`.
+- WiFi and token status were already stable, but the board still needed a fresh build before the new XiaoZhi session changes could be tested.
+
+Environment:
+- Active burn tree: `D:\RT-ThreadStudio\workspace\wifi`
+- Git mirror: `D:\RT-ThreadStudio\workspace\_m55_ref_repo`
+
+Fix:
+- Pointed `rtconfig.py` at the real local GNU toolchain install and prepended its `bin` directory to `PATH`.
+
+Trick:
+- If the board keeps landing in the same waiting state, check the build toolchain first. A stale compiler path can hide the actual protocol bug behind an old binary.
+
+Status:
+- Fixed in source; rebuild still running when this note was written.
+
+## 2026-06-19 - `m33qa_xz_probe` is a debug-only path and can fill the IPC queue
+
+Symptoms:
+- On the refreshed M55 image, `m55qa_capture_on` now returns `0`, but the old `m33qa_xz_probe` test path starts failing after a few 1920-byte packets with `ret=-28`.
+- COM4 status at the same time still shows `xz_ws=1`, `xz_token=1`, `token_len=442`, and WiFi ready, so the failure is not token or network related.
+
+Root cause:
+- The M33 probe path pushes PCM through the same M33->M55 IPC queue used by the real voice bridge, and that queue is finite.
+- Using it as a mainline audio path can saturate the queue and hide the actual XiaoZhi session behavior.
+
+Fix / trick:
+- Keep `m33qa_xz_probe` as a narrow debug tool only.
+- For XiaoZhi mainline QA, prefer `m55qa_capture_on` on the refreshed M55 path and ignore the old probe once the queue fills.
+
+Status:
+- Understood on the current image; no code change required for the mainline path yet.
