@@ -821,3 +821,23 @@ Trick:
 
 Status:
 - Unresolved; board-side reconnect and relay transport still need another targeted pass.
+
+## 2026-06-19 - The real blocker was an old hardcoded `fd6...` project URL on the board side
+
+Symptoms:
+- The authenticated `model-relay-lab` page for the current session belongs to `project_id=e201f41c-25a6-46e1-baf8-be6dcb83284c`.
+- The M55 source still hardcodes `project_id=fd6a55ed-a63c-44b3-b123-96fb3c154966` in the default XiaoZhi WebSocket URL.
+- PC smoke test only works when pointed at the current `e201...` endpoint.
+
+Environment:
+- Board sources: `wifi/applications/xiaozhi_voice_relay.h`, `_m55_ref_repo/applications/xiaozhi_voice_relay.h`
+- Relay page: `/projects/e201f41c-25a6-46e1-baf8-be6dcb83284c/model-relay-lab`
+
+Root cause:
+- The token and page were correct, but the board's default URL was still aimed at the old project id.
+
+Trick:
+- When relay auth looks inconsistent, compare the project id in the page-generated token with the hardcoded board URL before changing token logic again.
+
+Status:
+- Found; the next fix is to switch the default board endpoint to the current authenticated project path.

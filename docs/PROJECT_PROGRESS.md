@@ -663,3 +663,17 @@ Failed or unverified:
 
 Next step:
 - Recheck the relay page save/retest flow and the board-side reconnect path against the freshly generated token, then decide whether the remaining blocker is the relay service or the CM55 WebSocket client path.
+
+## 2026-06-19 - The board default XiaoZhi endpoint is still on the old project_id
+
+Completed:
+- Rechecked the M55 source tree and found the default XiaoZhi WebSocket URL still hardcoded to `project_id=fd6a55ed-a63c-44b3-b123-96fb3c154966`.
+- Confirmed the authenticated relay page for the current session belongs to `project_id=e201f41c-25a6-46e1-baf8-be6dcb83284c`.
+- Verified the PC-side smoke test succeeds when pointed at the current `e201...` endpoint.
+
+Validated:
+- `wifi/applications/xiaozhi_voice_relay.h` and `_m55_ref_repo/applications/xiaozhi_voice_relay.h` still carry the old project id.
+- The `e201...` relay endpoint responds with `hello/listen/stt` when the same token is used against the correct URL.
+
+Next step:
+- Update the M55 default XiaoZhi URL to the current `e201...` project path, rebuild, then re-run the board token loader and reconnect path.
