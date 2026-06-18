@@ -599,6 +599,7 @@ type HumanModelSource = {
   label: string;
   source: string;
   url: string;
+  urls?: string[];
   license: string;
   note: string;
 };
@@ -613,12 +614,40 @@ type MotionPredictionRow = {
 
 const DEFAULT_HUMAN_MODEL_SOURCES: HumanModelSource[] = [
   {
+    id: "open3d-upper-arm-muscles",
+    label: "Open3DModel upper-arm muscles",
+    source: "AnatomyTOOL / Open3DModel upper-limb muscle layers",
+    url: "/assets/human/open3d-upper-limb-arm-muscles.glb",
+    urls: [
+      "/assets/human/open3d-upper-limb-arm-muscles.glb",
+      "/assets/human/open3d-forearm-anterior-muscles.glb",
+    ],
+    license: "CC BY-SA",
+    note: "默认合成上臂与前臂肌肉层，适合承载肌电用力与疲劳状态。",
+  },
+  {
+    id: "open3d-forearm-anterior-muscles",
+    label: "Open3DModel forearm anterior muscles",
+    source: "AnatomyTOOL / Open3DModel forearm anterior compartment muscles",
+    url: "/assets/human/open3d-forearm-anterior-muscles.glb",
+    license: "CC BY-SA",
+    note: "前臂前群肌肉备选模型，可用于腕部/前臂肌电细分显示。",
+  },
+  {
+    id: "local-upper-limb-glb",
+    label: "Local full upper-limb GLB",
+    source: "apps/web/public/assets/human/upper-limb.glb",
+    url: "/assets/human/upper-limb.glb",
+    license: "Project asset mirror / source-dependent",
+    note: "完整上肢本地镜像，作为默认肌肉模型失效时的回退。",
+  },
+  {
     id: "anatom-models-upper-limb",
     label: "Open upper-limb GLB",
     source: "juncrose/anatom-models",
     url: "https://raw.githubusercontent.com/juncrose/anatom-models/main/upper-limb.glb",
     license: "Project page / public GitHub file",
-    note: "默认 3D 承载位，优先加载这份开源上肢模型。",
+    note: "远程备选入口，用于本地资产失效时回退。",
   },
   {
     id: "anatomytool-upper-limb",
@@ -661,6 +690,17 @@ function humanModelUrlFromSensor(sensorPayload: AnyRecord) {
       ?? sensorPayload.humanModelUrl,
     DEFAULT_HUMAN_MODEL_SOURCES[0].url,
   );
+}
+
+function humanModelUrlsFromSensor(sensorPayload: AnyRecord) {
+  const model = record(sensorPayload.human_model ?? sensorPayload.humanModel ?? sensorPayload.model_outputs?.human_model ?? sensorPayload.modelOutputs?.human_model);
+  const urls = asArray<string>(model.urls ?? model.model_urls ?? sensorPayload.human_model_urls ?? sensorPayload.humanModelUrls)
+    .map((url) => text(url, ""))
+    .filter(Boolean);
+  if (urls.length) return urls;
+  const singleUrl = humanModelUrlFromSensor(sensorPayload);
+  if (singleUrl !== DEFAULT_HUMAN_MODEL_SOURCES[0].url) return [singleUrl];
+  return DEFAULT_HUMAN_MODEL_SOURCES[0].urls ?? [DEFAULT_HUMAN_MODEL_SOURCES[0].url];
 }
 
 function humanModelSourceFromSensor(sensorPayload: AnyRecord) {
@@ -2013,7 +2053,7 @@ function HumanMuscleOverview({ sensorPayload }: { sensorPayload: AnyRecord }) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const rows = useMemo(() => muscleRowsFromSensor(sensorPayload), [sensorPayload]);
   const motionRows = useMemo(() => motionPredictionRowsFromSensor(sensorPayload), [sensorPayload]);
-  const modelUrl = useMemo(() => humanModelUrlFromSensor(sensorPayload), [sensorPayload]);
+  const modelUrls = useMemo(() => humanModelUrlsFromSensor(sensorPayload), [sensorPayload]);
   const modelSource = useMemo(() => humanModelSourceFromSensor(sensorPayload), [sensorPayload]);
   const activeRows = rows.filter((row) => row.status === "active").length;
   const strongestRow = rows
@@ -2035,6 +2075,7 @@ function HumanMuscleOverview({ sensorPayload }: { sensorPayload: AnyRecord }) {
       const THREE = await import("three");
       const { OrbitControls } = await import("three/examples/jsm/controls/OrbitControls.js");
       const { GLTFLoader } = await import("three/examples/jsm/loaders/GLTFLoader.js");
+      const { DRACOLoader } = await import("three/examples/jsm/loaders/DRACOLoader.js");
       if (disposed || !mountRef.current) return;
       const target = mountRef.current;
       const width = Math.max(280, target.clientWidth || 420);
@@ -2043,9 +2084,9 @@ function HumanMuscleOverview({ sensorPayload }: { sensorPayload: AnyRecord }) {
 
       const scene = new THREE.Scene();
       scene.background = new THREE.Color(0xf8fafc);
-      const camera = new THREE.PerspectiveCamera(35, width / height, 0.01, 100);
-      camera.position.set(0.78, -1.65, 0.98);
-      camera.lookAt(0, 0, 0.36);
+      const camera = new THREE.PerspectiveCamera(28, width / height, 0.01, 100);
+      camera.position.set(0.22, -1.62, 0.34);
+      camera.lookAt(0, 0, 0.08);
 
       const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -2057,9 +2098,9 @@ function HumanMuscleOverview({ sensorPayload }: { sensorPayload: AnyRecord }) {
       controls.enableDamping = true;
       controls.dampingFactor = 0.08;
       controls.enablePan = true;
-      controls.minDistance = 0.45;
-      controls.maxDistance = 3.2;
-      controls.target.set(0, 0, 0.36);
+      controls.minDistance = 0.28;
+      controls.maxDistance = 2.4;
+      controls.target.set(0, 0, 0.08);
       controls.update();
 
       scene.add(new THREE.HemisphereLight(0xffffff, 0xdde5ec, 2.2));
@@ -2070,8 +2111,8 @@ function HumanMuscleOverview({ sensorPayload }: { sensorPayload: AnyRecord }) {
       rim.position.set(-1.4, 1.1, 1.1);
       scene.add(rim);
 
-      const grid = new THREE.GridHelper(1.18, 8, 0xd6dde8, 0xe7ebf2);
-      grid.position.z = -0.05;
+      const grid = new THREE.GridHelper(1.05, 8, 0xd6dde8, 0xe7ebf2);
+      grid.position.z = -0.2;
       scene.add(grid);
 
       const modelGroup = new THREE.Group();
@@ -2083,8 +2124,9 @@ function HumanMuscleOverview({ sensorPayload }: { sensorPayload: AnyRecord }) {
         const center = box.getCenter(new THREE.Vector3());
         const maxDim = Math.max(size.x, size.y, size.z, 0.001);
         object.position.sub(center);
-        object.scale.multiplyScalar(1.18 / maxDim);
-        object.position.z += 0.32;
+        object.scale.multiplyScalar(1.68 / maxDim);
+        object.position.z += 0.06;
+        object.rotation.z = -0.1;
       }
 
       function applyOpenModelMaterial(object: any) {
@@ -2104,23 +2146,27 @@ function HumanMuscleOverview({ sensorPayload }: { sensorPayload: AnyRecord }) {
       }
 
       const loader = new GLTFLoader();
-      loader.load(
-        modelUrl,
-        (gltf) => {
-          if (disposed) return;
+      const dracoLoader = new DRACOLoader();
+      dracoLoader.setDecoderPath("/assets/draco/gltf/");
+      loader.setDRACOLoader(dracoLoader);
+      Promise.all(modelUrls.map((url) => new Promise<any>((resolve, reject) => {
+        loader.load(url, resolve, undefined, reject);
+      }))).then((gltfs) => {
+        if (disposed) return;
+        const composite = new THREE.Group();
+        gltfs.forEach((gltf) => {
           const model = gltf.scene;
           applyOpenModelMaterial(model);
-          normalizeModel(model);
-          modelGroup.add(model);
-        },
-        undefined,
-        () => {
-          const fallback = document.createElement("div");
-          fallback.className = styles.humanModelFallback;
-          fallback.innerHTML = `<strong>等待上肢肌肉 GLB 资产</strong><span>已预留开源模型承载位；把合法 GLB 写入 human_model_url 后，这里会直接渲染。</span>`;
-          target.appendChild(fallback);
-        },
-      );
+          composite.add(model);
+        });
+        normalizeModel(composite);
+        modelGroup.add(composite);
+      }).catch(() => {
+        const fallback = document.createElement("div");
+        fallback.className = styles.humanModelFallback;
+        fallback.innerHTML = `<strong>等待上肢肌肉 GLB 资产</strong><span>已预留开源模型承载位；把合法 GLB 写入 human_model_url 后，这里会直接渲染。</span>`;
+        target.appendChild(fallback);
+      });
 
       let frame = 0;
       const animate = () => {
@@ -2145,6 +2191,7 @@ function HumanMuscleOverview({ sensorPayload }: { sensorPayload: AnyRecord }) {
         window.removeEventListener("resize", resize);
         window.cancelAnimationFrame(frame);
         controls.dispose();
+        dracoLoader.dispose();
         renderer.dispose();
         scene.clear();
         if (target.contains(renderer.domElement)) target.removeChild(renderer.domElement);
@@ -2156,7 +2203,7 @@ function HumanMuscleOverview({ sensorPayload }: { sensorPayload: AnyRecord }) {
       disposed = true;
       cleanup();
     };
-  }, [modelUrl]);
+  }, [modelUrls]);
 
   return (
     <section className={styles.humanPanel} aria-label="人体肌电模型">

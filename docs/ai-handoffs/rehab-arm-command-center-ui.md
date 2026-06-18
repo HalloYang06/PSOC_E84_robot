@@ -139,3 +139,31 @@ Screenshots:
 - The cloud/demo project with real device data should be re-QA'd after deploy because local `proj_rehab_arm` has no NanoPi device rows.
 - A final licensed upper-limb muscle GLB should be selected or uploaded by the user for the public demo.
 - If the GLB exposes named meshes, add a mesh-name-to-muscle mapping table so the model itself can be tinted per muscle instead of using overlay cards only.
+
+## Upper-Limb Model Replacement - 2026-06-18
+
+The user rejected the previous human model visual. Replaced the default human section asset with open-source upper-limb muscle layers from AnatomyTOOL / Open3DModel:
+
+- `apps/web/public/assets/human/open3d-upper-limb-arm-muscles.glb`
+- `apps/web/public/assets/human/open3d-forearm-anterior-muscles.glb`
+- License noted in UI: CC BY-SA.
+
+The human model loader now supports a default multi-GLB composite via `HumanModelSource.urls`, while retaining external replacement through `sensor_state.human_model_url`, `sensor_state.human_model_urls`, `human_model.model_url`, or `human_model.model_urls`.
+
+UI QA changes:
+
+- Enlarged the human Three.js stage.
+- Moved EMG cards below the canvas so they no longer cover the model.
+- Tuned camera/model normalization so the upper-limb muscle composite is visible as the main element.
+
+Verification:
+
+```powershell
+npx --workspace apps/web tsc --noEmit
+```
+
+Screenshot:
+
+- `docs/screenshots/rehab-arm-redesign-qa/open3d-composite-upper-limb-1600.png`
+
+UX verdict: the model is now visibly an upper-limb muscle model rather than a blank slot or a tiny partial object. It is still a demonstration default; for a final commercial demo, review the CC BY-SA attribution obligations or provide a project-owned GLB through the existing data interface.
