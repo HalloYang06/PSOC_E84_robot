@@ -28,6 +28,8 @@ typedef struct
     rt_uint32_t saved;
     rt_uint32_t auto_connect;
     rt_int32_t storage_result;
+    rt_int32_t connect_result;
+    rt_uint32_t connect_ready;
     rt_err_t last_result;
     rt_int32_t scan_count;
     rt_uint32_t scan_running;

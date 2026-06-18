@@ -1160,6 +1160,8 @@ static void voice_service_start_xiaozhi_manual_listening(void)
 
 rt_err_t voice_service_start_xiaozhi_talk(void)
 {
+    rt_err_t ret;
+
     if (!g_service.initialized || !g_service.running)
     {
         return -RT_ERROR;
@@ -1167,11 +1169,15 @@ rt_err_t voice_service_start_xiaozhi_talk(void)
 
     if (!websocket_client_is_connected())
     {
-        rt_kprintf("[voice_service] Xiaozhi talk deferred: websocket disconnected stage=%d errno=%d\n",
+        rt_kprintf("[voice_service] Xiaozhi talk reconnect: websocket disconnected stage=%d errno=%d\n",
                    websocket_client_last_stage(),
                    websocket_client_last_errno());
-        xiaozhi_ui_state_set(XIAOZHI_UI_CONNECTING, "小智连接中", websocket_client_last_errno());
-        return -ENOTCONN;
+        ret = voice_service_reconnect_xiaozhi();
+        if (ret != RT_EOK)
+        {
+            xiaozhi_ui_state_set(XIAOZHI_UI_CONNECTING, "小智连接中", ret);
+            return ret;
+        }
     }
 
     voice_service_start_xiaozhi_manual_listening();
