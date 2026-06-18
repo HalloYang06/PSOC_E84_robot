@@ -6098,36 +6098,42 @@ ros2 topic list -t | grep /rehab_arm/model_state
 
 - 2026-06-18 已提交并推送 M55 分支，且同步到 `D:\RT-ThreadStudio\workspace\wifi` 烧录工作区。尚未完成本机全编/烧录/实机听感 QA。
 
-### M55 WiFi 保存先避开 FAL，保存卡死时先走 DFS 文件落盘
+### M55 WiFi 保存要等 M55 ACK，当前走 append-only FAL 记录
 
 现象：
 
 - 在 `m55qa_wifi_ssid` / `m55qa_wifi_password` 能正常回 ACK 的情况下，执行 `m55qa_wifi_save` 仍可能把 shell 卡住，后续串口状态不再稳定。
 - 这类卡死会让人误以为是 WiFi 扫描、连接或密码本身有问题。
+- `m55qa_wifi_save ret=0` 容易被误读成“已经保存成功”，但它只表示 M33 把 IPC 消息排队成功。
 
 环境：
 
 - M55 烧录/QA 工作区：`D:\RT-ThreadStudio\workspace\wifi`
 - 代码来源：`D:\RT-ThreadStudio\workspace\_m55_ref_repo`
+- 当前串口 QA：`COM4 KitProg3 USB-UART @115200`
 
 根因：
 
-- `wifi_config_service.c` 同时保留了 FAL 持久化和 DFS 文件持久化两条路。
-- 当前板上 FAL 保存链路存在风险，容易把 `m55qa_wifi_save` 挂死在擦写/保存阶段。
+- `wifi_config_service.c` 历史上曾在 FAL 和 DFS 文件持久化之间切换，但 DFS `/flash/rehab_wifi.cfg` 依赖 `filesystem` 分区和 littlefs 挂载；当前镜像没有证明 `/flash` 是可靠可写路径。
+- 旧的 FAL 擦写式保存如果每次 save 都擦分区，容易把 WiFi 保存问题放大成卡死/重启后的不确定状态。
+- M33 侧 `m55qa_* ret=0` 是 IPC 发送成功，不是 M55 持久化成功；真正结果要看后续 `[m55_model_bridge] voice_ack ... cmd=1012/1014 result=...`。
 
 解决：
 
-- 临时把保存优先级收窄到 DFS 文件 fallback，先保住 `m55qa_wifi_save` 可返回、可复位、可再连。
-- WiFi 扫描和连接先只验证“能连上、能保存、能自动连”，不要急着把 FAL 当成唯一真相。
+- 当前稳定策略改为使用现有 `wifi_cfg` FAL 分区里的 append-only 记录日志：正常保存只追加带校验的小记录，不在每次保存时擦整分区。
+- 保存验证必须等 M55 侧 ACK，例如 `cmd=1012 result=0`；只看到 `m55qa_wifi_save ret=0` 不能算通过。
+- 复位后再看 `m55qa_status`，合格条件是无需重新输入 SSID/密码即可看到 `saved=1 auto=1 wlan=1 ready=1 ip!=0.0.0.0`。
 
 技巧：
 
 - 看到“保存会死”时，先把持久化和连接问题拆开，不要继续扩大到 LVGL 或 XiaoZhi。
 - 先让 `m55qa_status` 能稳定读回，再谈后续语音和 UI。
+- 如果状态里 `saved=1 auto=1 storage=0`、`wlan=1 ready=1` 且有 IP，说明当前 WiFi 基线已经足够支撑后续 XiaoZhi 语音链路排查；不要又回头重复怀疑 WiFi 扫描。
 
 状态：
 
-- 2026-06-18 已作为当前临时解法使用；后续若要恢复 FAL 持久化，必须单独做擦写链路验证。
+- 2026-06-18 已改为 append-only FAL 记录并完成构建/烧录；最新状态显示 `saved=1 auto=1 storage=0`、`wlan=1 ready=1`、SSID `B131`、IP `192.168.3.32`。
+- 仍需补一轮明确的 reset/autoconnect QA：复位后不手动输入 WiFi，确认自动加载 FAL 记录并联网。
 
 ### M55 本机 SCons 构建要用 RT-Thread Studio 自带 GCC `bin` 路径
 

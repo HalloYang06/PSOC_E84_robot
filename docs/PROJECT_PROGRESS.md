@@ -3119,3 +3119,13 @@
 - Burn note: `program_with_resources.bat` programmed both `rtthread.hex` and `whd_resources_all.bin` successfully, then OpenOCD reported a post-flash acquisition failure while tearing down the debug session. The flash images were already written before that final debug-domain error.
 - Boundary: this only stabilizes WiFi persistence and restores the local QA loop. It does not yet prove the full XiaoZhi voice loop or LVGL UI are finished.
 - Next step: use the now-stable WiFi save/autoconnect baseline to keep pushing the XiaoZhi speaker QA, then fold the verified state back into the formal M55 repo and its docs.
+
+### 2026-06-18 - M55 WiFi persistence switched to append-only FAL log
+
+- Reason: the earlier interpretation of `m55qa_wifi_save ret=0` was incomplete. That line only means M33 queued the config IPC message; the real M55 result is the later `voice_ack cmd=1012/1014 result=...`.
+- Finding: DFS `/flash/rehab_wifi.cfg` is not a reliable persistence target in the current build because `/flash` depends on FAL `filesystem` plus littlefs mounting; the current board image did not provide a proven writable file path for WiFi credentials.
+- Completed: `applications/wifi_config_service.c` in both `D:\RT-ThreadStudio\workspace\wifi` and `D:\RT-ThreadStudio\workspace\_m55_ref_repo` now stores WiFi credentials as an append-only raw FAL record log in the existing `wifi_cfg` partition. Normal save appends a small checked record and does not erase the partition on every save.
+- Validation: `python -m SCons -j4` passed from `D:\RT-ThreadStudio\workspace\wifi` using `RTT_EXEC_PATH=D:\RT-ThreadStudio\platform\env_released\env\tools\gnu_gcc\arm_gcc\mingw\bin`; `program_with_resources.bat` wrote both the M55 image and WHD resources.
+- Board QA: latest `m55qa_status` showed `saved=1 auto=1 storage=0`, `wlan=1 ready=1`, RSSI about `-56`, and IP `192.168.3.32` on SSID `B131`; `m55qa_wifi_ssid B131`, `m55qa_wifi_password tudao888`, and `m55qa_wifi_auto 1` returned successful M55 ACKs.
+- Still unverified: a deliberate reset-after-save QA pass still needs to confirm that the board reconnects from the persisted FAL record without manual WiFi commands.
+- Next step: run reset/autoconnect QA, then move immediately to official local voice mic/speaker self-test before the XiaoZhi wake/listen/TTS loop.
