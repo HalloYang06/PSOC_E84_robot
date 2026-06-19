@@ -4,6 +4,16 @@
 
 [**中文**](#) | [**English**](./README_en.md)
 
+## 长期维护入口
+
+如果你是第一次接手这个仓库，或需要判断当前系统主线，请先读：
+
+- [文档导航](docs/文档导航.md)
+- [长期项目简报](docs/PROJECT_LONG_TERM_BRIEFING.md)
+- [协议与安全边界](docs/PROTOCOL_AND_SAFETY_BOUNDARIES.md)
+
+本仓库用多个长期分支承载不同子系统；当前 checkout 主要是 M33 固件，不代表完整项目。真实运动主线以 `JointTrajectory -> NanoPi -> M33 -> 电机` 为准，M55、APP、VLA、MuJoCo 默认只能作为建议、状态、dry-run、shadow 或 bench-debug 通道。
+
 ## 项目简介
 
 本项目是医疗康复机械臂系统的M33核心固件，负责实时控制、传感器数据采集、蓝牙通信和CAN总线管理。M33核心作为主控制核心，协调整个系统的运行。

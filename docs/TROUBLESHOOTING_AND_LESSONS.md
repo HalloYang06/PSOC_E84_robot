@@ -1,5 +1,29 @@
 # Troubleshooting And Lessons
 
+## 2026-06-19 - Rehab Bench Motion Needs Current Mode And Bounded Adaptive PID
+
+Symptoms:
+- `cmd_motor_speed` or speed-hold commands returned success, but joint 5 barely moved or did not move under the real elbow load.
+- Raising the speed command's `limit_cur` did not behave like commanding motor current.
+- Fixed assist/resist gains felt too flat when load and velocity changed.
+
+Root cause:
+- `limit_cur` is a speed/position limit, not a forced current output.
+- For the current joint 5 RS00 bench setup, the useful low-level actuator proof is current mode: set `run_mode=current` and write `iq_ref(0x7006)`, with an explicit current cap.
+- Plain fixed gain cannot distinguish sustained load from faster motion, so it needs either manual gain scheduling or a bounded adaptive outer loop.
+
+Fix:
+- Added `control_motor_current_control()` and `cmd_motor_current_hold` for local MSH bench validation.
+- Changed rehab active, assist, and resist strategies to output `REHAB_STRATEGY_OUTPUT_CURRENT`.
+- Added runtime rehab service parameters for follow direction, active/assist current gain, resist damping gain, and current caps.
+- Added optional load/speed scheduled adaptive PID for assist/resist. It is default-off, resets integral state on mode/parameter changes, and limits PID trim current separately from the hard mode current cap.
+
+Reusable trick:
+- When motor feedback is fresh and command return is `0` but loaded motion is absent, separate "command accepted" from "actuator produced useful torque/current".
+- For RS00 current-mode tests, prove motion first with `cmd_motor_current_hold 5 0.5 500 20`, then move up to rehab modes.
+- If assist/resist feels weak, check `sat`, `pid_trim_x1000`, `pid_load_x1000`, and `pid_speed_x1000` before raising gains.
+- Keep MSH bench bypass separate from NanoPi heartbeat bypass: bench may bypass heartbeat, but it must not bypass fresh feedback, current limits, stop, or memory playback calibration.
+
 ## 2026-06-17 - CM55 XiaoZhi Assert Was Status/IPC Pressure, Not Wi-Fi
 
 Symptom:
