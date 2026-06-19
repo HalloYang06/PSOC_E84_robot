@@ -7,6 +7,8 @@
 #include "drv_can.h"
 #include "control_layer.h"
 #include "control_layer_cfg.h"
+#include "rehab_mode_manager.h"
+#include "rehab_service.h"
 #include "sensor.h"
 
 /*
@@ -80,6 +82,7 @@
  * - limit_cur(0x7018): 电流/力矩上限，不等于电流命令。
  */
 #define MOTOR_PARAM_INDEX_RUN_MODE         0x7005U
+#define MOTOR_PARAM_INDEX_IQ_REF           0x7006U
 #define MOTOR_PARAM_INDEX_SPD_REF          0x700AU
 #define MOTOR_PARAM_INDEX_LOC_REF          0x7016U
 #define MOTOR_PARAM_INDEX_LIMIT_SPD        0x7017U
@@ -238,6 +241,18 @@ typedef struct
 static rt_thread_t s_speed_hold_thread = RT_NULL;
 /* 当前唯一一个速度保持任务的参数。这个功能是调试工具，不支持多任务并发。 */
 static control_speed_hold_ctx_t s_speed_hold_ctx;
+
+typedef struct
+{
+    rt_uint8_t joint_id;
+    float current_a;
+    rt_uint32_t duration_ms;
+    rt_uint32_t period_ms;
+    volatile rt_bool_t stop_requested;
+} control_current_hold_ctx_t;
+
+static rt_thread_t s_current_hold_thread = RT_NULL;
+static control_current_hold_ctx_t s_current_hold_ctx;
 
 /* 关节到电机的配置表：从 control_layer_cfg.h 展开，避免运行时到处直接读宏。 */
 static const rt_uint8_t s_joint_motor_map[7] =
@@ -2871,6 +2886,46 @@ int control_layer_init(const char *can_name)
     rt_kprintf("[control] init step10c sensor module ok\n");
 
     s_is_inited = RT_TRUE;
+    result = rehab_service_init();
+    if (result != RT_EOK)
+    {
+        s_is_inited = RT_FALSE;
+        rt_thread_delete(s_motor_status_thread);
+        s_motor_status_thread = RT_NULL;
+        rt_thread_delete(s_ros_cmd_thread);
+        s_ros_cmd_thread = RT_NULL;
+        rt_thread_delete(s_can_rx_thread);
+        s_can_rx_thread = RT_NULL;
+        rt_device_close(s_can_dev);
+        rt_mq_detach(&s_ros_cmd_mq);
+        rt_mutex_detach(&s_data_lock);
+        rt_sem_detach(&s_can_rx_sem);
+        s_can_dev = RT_NULL;
+        return result;
+    }
+
+    rt_kprintf("[control] init step10d rehab service ok\n");
+
+    result = rehab_mode_manager_init();
+    if (result != RT_EOK)
+    {
+        s_is_inited = RT_FALSE;
+        rt_thread_delete(s_motor_status_thread);
+        s_motor_status_thread = RT_NULL;
+        rt_thread_delete(s_ros_cmd_thread);
+        s_ros_cmd_thread = RT_NULL;
+        rt_thread_delete(s_can_rx_thread);
+        s_can_rx_thread = RT_NULL;
+        rt_device_close(s_can_dev);
+        rt_mq_detach(&s_ros_cmd_mq);
+        rt_mutex_detach(&s_data_lock);
+        rt_sem_detach(&s_can_rx_sem);
+        s_can_dev = RT_NULL;
+        return result;
+    }
+
+    rt_kprintf("[control] init step10e rehab mode manager ok\n");
+
     rt_thread_startup(s_can_rx_thread);
     rt_thread_startup(s_ros_cmd_thread);
     rt_thread_startup(s_motor_status_thread);
@@ -3198,6 +3253,12 @@ rt_err_t control_get_motor_feedback(rt_uint8_t joint_id, control_motor_feedback_
     return RT_EOK;
 }
 
+/* Read-only wrapper for the absolute-position calibration gate. */
+rt_bool_t control_motor_is_joint_calibrated(rt_uint8_t joint_id)
+{
+    return ctrl_motor_joint_is_calibrated(joint_id);
+}
+
 /* 对底层 motor_id 发送私有协议 Get_ID。
  * 这个函数不需要 joint_id，用于扫描/确认电机实际 ID。
  */
@@ -3338,6 +3399,44 @@ rt_err_t control_get_last_motor_param(control_motor_param_report_t *out)
 /* CANSimple 位置目标接口。
  * joint_id 会映射到 CANSimple node_id；pos_rad 从关节侧转换到电机侧后再转成 rev。
  */
+/* Private-protocol current command: set current mode, enable, then write iq_ref(0x7006). */
+rt_err_t control_motor_current_control(rt_uint8_t joint_id, float current_a)
+{
+    rt_err_t ret;
+
+    if (!s_is_inited)
+    {
+        return -RT_ERROR;
+    }
+
+    if ((current_a > CONTROL_MOTOR_CURRENT_CONTROL_MAX_A) ||
+        (current_a < -CONTROL_MOTOR_CURRENT_CONTROL_MAX_A))
+    {
+        return -RT_EINVAL;
+    }
+
+    if (ctrl_motor_protocol_by_joint(joint_id) == CONTROL_MOTOR_PROTOCOL_CANSIMPLE)
+    {
+        return -RT_ENOSYS;
+    }
+
+    ret = control_motor_set_run_mode(joint_id, CONTROL_MOTOR_RUN_MODE_CURRENT);
+    if (ret != RT_EOK)
+    {
+        return ret;
+    }
+
+    rt_thread_mdelay(2);
+    ret = control_motor_enable(joint_id);
+    if (ret != RT_EOK)
+    {
+        return ret;
+    }
+
+    rt_thread_mdelay(2);
+    return control_motor_write_parameter(joint_id, MOTOR_PARAM_INDEX_IQ_REF, current_a, RT_FALSE);
+}
+
 rt_err_t control_motor_cansimple_set_input_pos(rt_uint8_t joint_id,
                                                float pos_rad,
                                                float vel_ff_rad_s,
@@ -3677,6 +3776,50 @@ done:
 }
 
 /* 读取最近一次 ROS 桥命令缓存。 */
+static void ctrl_current_hold_entry(void *parameter)
+{
+    control_current_hold_ctx_t *ctx = (control_current_hold_ctx_t *)parameter;
+    rt_uint32_t elapsed_ms = 0U;
+    rt_err_t ret;
+
+    ret = control_motor_current_control(ctx->joint_id, ctx->current_a);
+    if (ret != RT_EOK)
+    {
+        rt_kprintf("[control] current_hold init failed ret=%d\n", ret);
+        goto done;
+    }
+
+    while (!ctx->stop_requested && (elapsed_ms < ctx->duration_ms))
+    {
+        rt_thread_mdelay(ctx->period_ms);
+        elapsed_ms += ctx->period_ms;
+
+        if (ctx->stop_requested)
+        {
+            break;
+        }
+
+        ret = control_motor_write_parameter(ctx->joint_id,
+                                            MOTOR_PARAM_INDEX_IQ_REF,
+                                            ctx->current_a,
+                                            RT_FALSE);
+        if (ret != RT_EOK)
+        {
+            rt_kprintf("[control] current_hold refresh failed ret=%d elapsed=%u\n",
+                       ret,
+                       (unsigned int)elapsed_ms);
+            break;
+        }
+    }
+
+done:
+    (void)control_motor_stop(ctx->joint_id, RT_FALSE);
+    rt_kprintf("[control] current_hold done joint=%u elapsed=%u\n",
+               (unsigned int)ctx->joint_id,
+               (unsigned int)elapsed_ms);
+    s_current_hold_thread = RT_NULL;
+}
+
 rt_err_t control_get_last_ros_command(control_ros_command_t *out)
 {
     if ((out == RT_NULL) || (!s_is_inited))
@@ -3945,9 +4088,9 @@ static int cmd_motor_speed_hold(int argc, char **argv)
         return -1;
     }
 
-    if (s_speed_hold_thread != RT_NULL)
+    if ((s_speed_hold_thread != RT_NULL) || (s_current_hold_thread != RT_NULL))
     {
-        rt_kprintf("motor_speed_hold already running, use motor_hold_stop first\n");
+        rt_kprintf("motor hold already running, use motor_hold_stop first\n");
         return -1;
     }
 
@@ -4006,6 +4149,104 @@ static int cmd_motor_speed_hold(int argc, char **argv)
     return 0;
 }
 MSH_CMD_EXPORT(cmd_motor_speed_hold, periodically refresh speed command and auto stop);
+
+static int cmd_motor_current_hold(int argc, char **argv)
+{
+    rt_uint32_t duration_ms = 500U;
+    rt_uint32_t period_ms = 20U;
+
+    if (argc < 3)
+    {
+        rt_kprintf("usage: motor_current_hold <joint> <current_a> [duration_ms] [period_ms]\n");
+        return -1;
+    }
+
+    if ((s_speed_hold_thread != RT_NULL) || (s_current_hold_thread != RT_NULL))
+    {
+        rt_kprintf("motor hold already running, use motor_hold_stop first\n");
+        return -1;
+    }
+
+    if (argc >= 4)
+    {
+        duration_ms = (rt_uint32_t)strtoul(argv[3], RT_NULL, 0);
+    }
+    if (argc >= 5)
+    {
+        period_ms = (rt_uint32_t)strtoul(argv[4], RT_NULL, 0);
+    }
+
+    if (duration_ms == 0U)
+    {
+        duration_ms = 500U;
+    }
+    if (duration_ms > 3000U)
+    {
+        duration_ms = 3000U;
+    }
+    if (period_ms < 5U)
+    {
+        period_ms = 5U;
+    }
+    if (period_ms > 200U)
+    {
+        period_ms = 200U;
+    }
+
+    s_current_hold_ctx.joint_id = (rt_uint8_t)atoi(argv[1]);
+    s_current_hold_ctx.current_a = (float)atof(argv[2]);
+    if ((s_current_hold_ctx.current_a > CONTROL_MOTOR_CURRENT_CONTROL_MAX_A) ||
+        (s_current_hold_ctx.current_a < -CONTROL_MOTOR_CURRENT_CONTROL_MAX_A))
+    {
+        rt_kprintf("motor_current_hold reject current_x1000=%d max_x1000=%d\n",
+                   (int)ctrl_float_to_scaled_i32(s_current_hold_ctx.current_a, 1000.0f),
+                   (int)ctrl_float_to_scaled_i32(CONTROL_MOTOR_CURRENT_CONTROL_MAX_A, 1000.0f));
+        return -1;
+    }
+
+    s_current_hold_ctx.duration_ms = duration_ms;
+    s_current_hold_ctx.period_ms = period_ms;
+    s_current_hold_ctx.stop_requested = RT_FALSE;
+
+    s_current_hold_thread = rt_thread_create("m_cur_hold",
+                                             ctrl_current_hold_entry,
+                                             &s_current_hold_ctx,
+                                             2048,
+                                             CONTROL_ROS_THREAD_PRIORITY,
+                                             CONTROL_ROS_THREAD_TICK);
+    if (s_current_hold_thread == RT_NULL)
+    {
+        rt_kprintf("motor_current_hold create failed\n");
+        return -1;
+    }
+
+    rt_thread_startup(s_current_hold_thread);
+    rt_kprintf("motor_current_hold start joint=%u current_x1000=%d duration=%u period=%u\n",
+               (unsigned int)s_current_hold_ctx.joint_id,
+               (int)ctrl_float_to_scaled_i32(s_current_hold_ctx.current_a, 1000.0f),
+               (unsigned int)s_current_hold_ctx.duration_ms,
+               (unsigned int)s_current_hold_ctx.period_ms);
+    return 0;
+}
+MSH_CMD_EXPORT(cmd_motor_current_hold, periodically refresh current command and auto stop);
+
+static int cmd_motor_report(int argc, char **argv)
+{
+    rt_uint8_t enable;
+
+    if (argc < 3)
+    {
+        rt_kprintf("usage: motor_report <joint> <0|1>\n");
+        return -1;
+    }
+
+    enable = (rt_uint8_t)atoi(argv[2]);
+    rt_kprintf("motor_report ret=%d\n",
+               control_motor_set_active_report((rt_uint8_t)atoi(argv[1]),
+                                               enable ? RT_TRUE : RT_FALSE));
+    return 0;
+}
+MSH_CMD_EXPORT(cmd_motor_report, enable private motor active report);
 
 static int cmd_cansimple_scan(int argc, char **argv)
 {
@@ -4531,15 +4772,30 @@ MSH_CMD_EXPORT(cmd_motor3_torque, set CANSimple motor node 3 torque);
 static int cmd_motor_hold_stop(int argc, char **argv)
 {
     rt_uint8_t clear = 1U;
+    rt_uint8_t joint_id = 0U;
+    rt_err_t ret = RT_EOK;
 
     if (argc >= 2)
     {
         clear = (rt_uint8_t)atoi(argv[1]);
     }
 
-    s_speed_hold_ctx.stop_requested = RT_TRUE;
-    rt_kprintf("motor_hold_stop ret=%d\n",
-               control_motor_stop(s_speed_hold_ctx.joint_id, clear ? RT_TRUE : RT_FALSE));
+    if (s_speed_hold_thread != RT_NULL)
+    {
+        s_speed_hold_ctx.stop_requested = RT_TRUE;
+        joint_id = s_speed_hold_ctx.joint_id;
+    }
+    if (s_current_hold_thread != RT_NULL)
+    {
+        s_current_hold_ctx.stop_requested = RT_TRUE;
+        joint_id = s_current_hold_ctx.joint_id;
+    }
+
+    if (joint_id != 0U)
+    {
+        ret = control_motor_stop(joint_id, clear ? RT_TRUE : RT_FALSE);
+    }
+    rt_kprintf("motor_hold_stop ret=%d joint=%u\n", ret, (unsigned int)joint_id);
     return 0;
 }
 MSH_CMD_EXPORT(cmd_motor_hold_stop, stop active speed hold command);

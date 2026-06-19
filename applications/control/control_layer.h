@@ -55,6 +55,8 @@ typedef struct
  */
 typedef struct
 {
+    /* 0x7C2 raw view: four little-endian uint16 ADC samples in one classic CAN frame. */
+    rt_uint16_t adc_raw[4];
     /* 0x7C2: EMG 原始 ADC/采样值。 */
     rt_uint16_t emg_raw;
     /* 0x7C2: EMG 滤波值，有符号。 */
@@ -228,6 +230,8 @@ rt_err_t control_motor_private_control(rt_uint8_t joint_id,
 rt_err_t control_motor_set_active_report(rt_uint8_t joint_id, rt_bool_t enable);
 /* 读取指定关节最近一次电机反馈缓存。 */
 rt_err_t control_get_motor_feedback(rt_uint8_t joint_id, control_motor_feedback_t *out);
+/* Read the static joint calibration gate used by absolute position commands. */
+rt_bool_t control_motor_is_joint_calibrated(rt_uint8_t joint_id);
 /* 直接按底层 motor_id 发送私有协议 Get_ID 探测。 */
 rt_err_t control_motor_probe_id(rt_uint8_t motor_id);
 /* 读取最近一次私有协议 Get_ID 探测结果。 */
@@ -239,6 +243,8 @@ rt_err_t control_motor_write_parameter(rt_uint8_t joint_id, rt_uint16_t index, f
 /* 读取最近一次电机参数回复缓存。 */
 rt_err_t control_get_last_motor_param(control_motor_param_report_t *out);
 /* 私有协议速度模式控制：设置速度和电流限制。 */
+/* Private protocol current-mode command, writes iq_ref after enabling the joint. */
+rt_err_t control_motor_current_control(rt_uint8_t joint_id, float current_a);
 rt_err_t control_motor_speed_control(rt_uint8_t joint_id, float speed_rad_s, float limit_cur);
 /* 私有协议位置控制：csp_mode 为真时使用 CSP 参数流，否则走普通位置参数流。 */
 rt_err_t control_motor_position_control(rt_uint8_t joint_id, float pos_rad, float limit_spd, rt_bool_t csp_mode);
