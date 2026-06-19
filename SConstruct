@@ -148,9 +148,7 @@ hex_file = env.Command(DEBUG_DIR + '/rtthread.hex', TARGET, OBJCOPY + ' -O ihex 
 
 # Secure image packaging using edgeprotecttools (Windows only)
 if platform.system() == 'Windows':
-    # SDK_ROOT is the project directory, go up 2 levels to reach sdk-bsp root
-    SDK_BSP_ROOT = os.path.dirname(os.path.dirname(SDK_ROOT))
-    EDGEPROTECTTOOLS = os.path.join(SDK_BSP_ROOT, 'tools', 'edgeprotecttools', 'bin', 'edgeprotecttools.exe')
+    EDGEPROTECTTOOLS = os.path.join(SDK_ROOT, 'tools', 'edgeprotecttools', 'bin', 'edgeprotecttools.exe')
     BOOT_CONFIG = os.path.join(SDK_ROOT, 'config', 'boot_with_extended_boot_scons.json')
 
     if os.path.exists(EDGEPROTECTTOOLS) and os.path.exists(BOOT_CONFIG):
