@@ -12,11 +12,12 @@
 #define M33_M55_QUEUE_M55_TO_M33         (1UL)
 #define M33_M55_IPC_TIMEOUT_MS           (5000UL)
 
-#define M33_M55_IPC_IRQ_SEMA             (MTB_IPC_IRQ_USER + 2)
-#define M33_M55_IPC_IRQ_QUEUE            (MTB_IPC_IRQ_USER + 3)
+#define M33_M55_IPC_IRQ_SEMA             (MTB_IPC_IRQ_USER + 4)
+#define M33_M55_IPC_IRQ_QUEUE            (MTB_IPC_IRQ_USER + 5)
 
 typedef struct
 {
+    rt_bool_t runtime_ready;
     rt_bool_t initialized;
     rt_bool_t attaching;
     rt_bool_t deferred_attach;
@@ -91,9 +92,27 @@ static rt_err_t m33_m55_result_to_rt(cy_rslt_t result)
     return -RT_ERROR;
 }
 
+static void m33_m55_runtime_prepare(void)
+{
+    if (g_comm_runtime.runtime_ready)
+    {
+        return;
+    }
+
+    rt_memset(&g_comm_runtime, 0, sizeof(g_comm_runtime));
+    rt_memset(&g_ipc_handle, 0, sizeof(g_ipc_handle));
+    rt_memset(&g_tx_queue_handle, 0, sizeof(g_tx_queue_handle));
+    rt_memset(&g_rx_queue_handle, 0, sizeof(g_rx_queue_handle));
+    rt_mutex_init(&g_comm_runtime.lock, "m33m55", RT_IPC_FLAG_PRIO);
+    m33_m55_ipc_enable_irqs();
+    g_comm_runtime.runtime_ready = RT_TRUE;
+}
+
 static rt_err_t m33_m55_try_attach(void)
 {
     cy_rslt_t result;
+
+    m33_m55_runtime_prepare();
 
     if (g_comm_runtime.initialized || g_comm_runtime.attaching)
     {
@@ -154,12 +173,7 @@ rt_err_t m33_m55_comm_init(void)
         return RT_EOK;
     }
 
-    rt_memset(&g_comm_runtime, 0, sizeof(g_comm_runtime));
-    rt_memset(&g_ipc_handle, 0, sizeof(g_ipc_handle));
-    rt_memset(&g_tx_queue_handle, 0, sizeof(g_tx_queue_handle));
-    rt_memset(&g_rx_queue_handle, 0, sizeof(g_rx_queue_handle));
-    rt_mutex_init(&g_comm_runtime.lock, "m33m55", RT_IPC_FLAG_PRIO);
-    m33_m55_ipc_enable_irqs();
+    m33_m55_runtime_prepare();
 
     result = mtb_ipc_get_handle(&g_ipc_handle, &g_ipc_config, M33_M55_IPC_TIMEOUT_MS);
     if (result == CY_RSLT_SUCCESS)
@@ -182,15 +196,18 @@ rt_err_t m33_m55_comm_init(void)
 
     rt_kprintf("[m33_m55_comm] initial attach pending on CM55: 0x%08lx\n", (unsigned long)result);
     g_comm_runtime.deferred_attach = RT_TRUE;
-    g_comm_runtime.retry_thread = rt_thread_create("ipc_att",
-                                                   m33_m55_attach_retry_entry,
-                                                   RT_NULL,
-                                                   2048,
-                                                   20,
-                                                   20);
-    if (g_comm_runtime.retry_thread)
+    if (g_comm_runtime.retry_thread == RT_NULL)
     {
-        rt_thread_startup(g_comm_runtime.retry_thread);
+        g_comm_runtime.retry_thread = rt_thread_create("ipc_att",
+                                                       m33_m55_attach_retry_entry,
+                                                       RT_NULL,
+                                                       2048,
+                                                       20,
+                                                       20);
+        if (g_comm_runtime.retry_thread)
+        {
+            rt_thread_startup(g_comm_runtime.retry_thread);
+        }
     }
     return RT_EOK;
 }
@@ -204,6 +221,8 @@ rt_err_t m33_m55_comm_publish(const m33_m55_message_t *msg)
     {
         return -RT_ERROR;
     }
+
+    m33_m55_runtime_prepare();
 
     if (!g_comm_runtime.initialized)
     {
@@ -219,7 +238,7 @@ rt_err_t m33_m55_comm_publish(const m33_m55_message_t *msg)
     local.seq = ++g_comm_runtime.seq;
     rt_mutex_release(&g_comm_runtime.lock);
 
-    result = mtb_ipc_queue_put(&g_tx_queue_handle, &local, 5000);
+    result = mtb_ipc_queue_put(&g_tx_queue_handle, &local, 0);
     return m33_m55_result_to_rt(result);
 }
 
@@ -231,6 +250,8 @@ rt_err_t m33_m55_comm_consume(m33_m55_message_t *msg)
     {
         return -RT_ERROR;
     }
+
+    m33_m55_runtime_prepare();
 
     if (!g_comm_runtime.initialized)
     {

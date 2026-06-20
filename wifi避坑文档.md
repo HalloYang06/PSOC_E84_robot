@@ -219,6 +219,28 @@ eth device init ok
 2. `FINSH_THREAD_PRIORITY=20` 时，CM55 shell 会在无有效控制台输入时长期占用调度，导致 WHD FreeRTOS 包装线程得不到运行；将 shell 优先级降到 `30` 后，WHD 线程可以运行。
 3. 不能用 `rt_wlan_is_ready()` 判断是否可以扫描；它更偏向连接 ready 状态。开机扫描前应等 WHD 初始化阶段到 ready，并确认 `wlan0` 已注册。
 
+## 8.2 2026-06-19 烧录 probe 选择坑
+
+这轮 `program_with_resources.bat` 的真正阻塞点不是固件，而是 probe 选择。
+
+现象：
+
+1. 默认 `openocd.exe ... interface/kitprog3.cfg ...` 会先尝试板载 `KitProg3 CMSIS-DAP`，但在 `Acquisition in Test Mode` 阶段失败。
+2. 直接改成通用 `interface/cmsis-dap.cfg` 时，OpenOCD 会落到外接 `Horco CMSIS-DAP v2`，随后报 `CMSIS-DAP command CMD_INFO failed`。
+3. 最终确认板载下载器本体是 `USB\\VID_04B4&PID_F155`，父序列号是 `17040F11022F2400`，需要显式锁定它，不能让 OpenOCD 自选。
+
+当前处理：
+
+- `program_with_resources.bat` 已改成在 `kitprog3.cfg` 下显式加 `adapter serial 17040F11022F2400`。
+- 这样可以稳定把 `rtthread.hex` 和 `whd_resources_all.bin` 写进去。
+- 末尾仍可能看到 `kitprog3: failed to acquire the device`，但这发生在写入完成之后，属于收尾握手告警，不是写入失败。
+
+可复用技巧：
+
+- 同机同时插着板载 `KitProg3` 和外接 `Horco CMSIS-DAP` 时，不要靠自动探测。
+- 先用 `Get-PnpDeviceProperty` 查 `DEVPKEY_Device_Parent`，再把板载 probe 的父序列号写进烧录脚本。
+- 如果 `cmsis-dap` 走到 `CMD_INFO failed`，优先怀疑 probe 模式/驱动，而不是 hex 或资源文件。
+
 ## 8.2 2026-06-15 XiaoZhi WebSocket QA 结论
 
 本轮确认 WiFi 已不是主阻塞点：
@@ -839,6 +861,35 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
 - `sound0` 已注册并可被 `audio_playback` 找到，但真实平台 TTS 语音是否已经从扬声器完整播出，还需要现场说话触发一次 `stt -> llm -> tts` 后听感确认。
 - 官方小智长期路线仍建议补 Opus 编解码；当前为 `pcm_s16le` 兼容路线，优先打通完整闭环。
 
+## 28. 2026-06-16 小智板端 ASR 已打通，剩余集中在 TTS 下行/播放
+
+本轮关键结论：
+
+1. WiFi 不再是当前问题：
+   - `m55qa_status` 稳定显示 `saved=1 auto=1`、`wlan=1 ready=1`、`ip=192.168.3.32`。
+   - 小智 WebSocket 稳定显示 `xz_ws=1 xz_stage=70 xz_errno=0`。
+2. M33 内置干净 PCM 探针已经能走到平台 ASR：
+   - `m33qa_xz_probe` 从 M33 共享内存连续发布 4 段 16 kHz mono S16LE PCM。
+   - CM55 状态里 `xz_last` 增长，例如 `193/370560`。
+   - M33 串口能看到平台 ASR 文本，例如 `asr text: 不知道。`。
+3. PC 对照验证平台不是瓶颈：
+   - 同一 URL、同一 scoped token、同一 `Protocol-Version: 3`、同一 `pcm_s16le` raw PCM 方式，PC 测试返回完整 `stt -> llm -> chat -> tts start -> binary PCM frames -> tts stop`。
+   - 这说明平台中转站的 ASR/LLM/TTS 是通的。
+
+本轮修正：
+
+1. CM55 上行 PCM 不再额外加 4 字节本地 v3 wrapper，直接用 WebSocket binary 发送 raw `pcm_s16le`。
+2. M33->M55 IPC 不再被桥接线程吞掉共享 PCM，非控制消息转交 `voice_service_handle_ipc_message()`。
+3. 共享 PCM 在 `xiaozhi_listening_active` 时也会被接收，适配 `m55qa_capture_on + m33qa_xz_probe` 这种无人现场 QA。
+4. 对非 JSON 的 WebSocket text payload 做保护：
+   - 像 PCM 的 payload 走音频路径。
+   - 非 JSON 非 PCM 不再发给 M33 当 `TTS_REQUEST`，避免 LCD/串口出现乱码回复。
+
+下一步只盯一个问题：
+
+- 平台已经能返回 TTS binary，但板端还没稳定证明 `CM55 WebSocket callback -> MSG_TYPE_TTS_AUDIO -> M33 audio_playback_write -> sound0` 全链路。
+- 后续不要再回退查 WiFi 扫描、密码、WHD 资源；除非 `m55qa_status` 里 `wlan/xz_ws` 明确掉线。
+
 ## 26. 2026-06-15 LVGL 字库与小智“思考中”兜底
 
 现场症状：
@@ -910,52 +961,156 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
 2. 继续问一句清晰问题，确认状态顺序为“在线待唤醒 -> 我在听 -> 正在思考 -> 正在回答/在线待唤醒”。
 3. 若平台 TTS 仍无声，优先看是否收到 `tts start/sentence_start/stop` 和 `MSG_TYPE_TTS_AUDIO`，再查 M33 播放链路。
 
-## 28. 2026-06-15 小智 PCM 二进制帧与状态计数
+## 28. 2026-06-16 小智官方 Opus/WebSocket v3 二进制帧修正
 
-现场症状：
+本轮根因：
 
-1. M55 麦克风帧在增长，但小智长时间停在“连接中/正在思考”。
-2. 旧状态只看 `xz_listening/xz_ws`，很难判断到底是没有发音频、发送失败，还是平台没有回包。
-3. 代码曾把 `pcm_s16le` 音频再包一层 4 字节二进制 v3 头，和当前平台 PCM 直传契约不一致。
+1. 小智官方 WebSocket 例程的音频主路径是 Opus，不是裸 PCM。
+2. 协议版本 3 的二进制帧也不是裸 Opus，而是：
+   - `type=0`
+   - `reserved=0`
+   - `payload_size` 使用大端 `uint16_t`
+   - 后面才是 Opus payload
+3. 之前把 `hello.audio_params.format` 改为 `opus` 后，M55 上行仍直接发送 60ms PCM，协议字段和真实 payload 不一致，平台不会把它当有效语音处理。
+4. 随后只补 Opus 解码还不够；若下行服务器返回 v3 binary，M55 也必须先剥掉 4 字节 v3 头，再把 payload 交给 Opus decoder。
 
 本轮修正：
 
-1. M55 `voice_service_feed_xiaozhi_listening()` 改为直接发送裸 PCM 二进制帧：
-   - 采样格式仍为 `16 kHz / mono / signed 16-bit`。
-   - 帧长由 `XIAOZHI_AUDIO_FRAME_DURATION_MS=60` 决定，即 `1920 B`。
-   - 不再额外加 `{type,reserved,payload_size}` 4 字节头。
-2. M55->M33 的 `voice_status_msg_t` 新增可观测字段：
-   - `xiaozhi_listening_bytes/chunks`
-   - `xiaozhi_last_sent_bytes/chunks`
-   - `xiaozhi_send_fail_count`
-   - `xiaozhi_rx_text_count`
-   - `xiaozhi_rx_binary_count`
-   - `xiaozhi_audio_frame_len`
-3. M33 `m55qa_status` 新增显示：
-   - `xz_cur=<chunks>/<bytes>`
-   - `xz_last=<chunks>/<bytes>`
-   - `xz_fail=<count>`
-   - `xz_rx=<text>/<binary>`
-   - `frame_len=<bytes>`
+1. `applications/xiaozhi_opus_decoder.c/.h` 在原有解码器基础上增加本地 Opus encoder：
+   - 16 kHz
+   - mono
+   - 60 ms / 960 samples
+   - `OPUS_APPLICATION_AUDIO`
+   - bitrate 约 24 kbps
+   - complexity 降为 0，优先保证 M55 实时稳定。
+2. `applications/voice_service.c` 上行发送链路改为：
+   - 先攒满 60ms PCM。
+   - 调用 `xiaozhi_opus_encoder_encode()` 编成 Opus。
+   - 发送前补官方 v3 头 `00 00 len_hi len_lo`。
+3. `applications/voice_service.c` 下行接收链路改为：
+   - 收到 binary 后识别 v3 头。
+   - 若头合法，剥掉 4 字节头后再 Opus decode。
+   - 解码后的 PCM 再通过 `MSG_TYPE_TTS_AUDIO` 交给 M33 `sound0` 播放。
+4. `VOICE_DETECT_THREAD_STACK` 从 16 KB 提到 64 KB：
+   - 避免 Opus encode 在 `voice_det` 线程里吃栈导致 M55 voice status 停止刷新。
+   - 不在 `voice_service_init()` 里预热 encoder，改为发送时懒初始化，避免启动路径卡死。
 
-官方依据：
+验证结果：
 
-- 小智 WebSocket 官方参考协议区分 JSON 控制帧与二进制音频帧。
-- v1 二进制协议就是原始音频帧；v2/v3 才额外带二进制结构头。
-- 当前 M55 未集成 Opus 编解码库，且平台已提供 `pcm_s16le` 兼容入口，因此先走 PCM 裸帧闭环，后续如需官方 Opus 再单独集成编解码器。
-
-验证方式：
-
-1. 烧录 M55 和 M33 后，先确认：
-   - `m55qa_status` 中 `xz_ws=1`
+1. M55 构建通过：
+   - `text=1629104 data=81508 bss=4529020`
+2. 使用 `program_with_resources.bat` 烧录通过：
+   - M55 `rtthread.hex` 写入约 `1712128 bytes`
+   - `whd_resources_all.bin` 写入约 `466944 bytes`
+3. 复位后串口 `m55qa_status` 可见稳定态：
+   - `saved=1 auto=1`
+   - `wlan=1 ready=1 ip=192.168.3.32`
+   - `xz_ws=1 xz_stage=70 xz_errno=0`
    - `wake_on=1 wake_ready=1`
-2. 触发小智录音后重复看 `m55qa_status`：
-   - 若 `xz_cur` 或 `xz_last` 增长，说明 M55 已经向平台发送音频。
-   - 若 `xz_fail` 增长，优先查 WebSocket 连接/发送错误。
-   - 若 `xz_rx` 增长但无声音，优先查 M33 `sound0` 播放链路。
-   - 若 `frame_len` 一直增长不到完整帧，优先查麦克风输入帧大小和 EOU 是否过早停止。
+   - `lvgl_flush` 持续增加
+4. `m55qa_capture_on/off` 后，M55 不再卡死，状态继续刷新。
+5. 上行字节数已从 PCM 量级变成 Opus 量级：
+   - 例：`xz_last=153/27387`
+   - 这表示 153 帧实际只发送约 27 KB Opus，而不是 153 * 1920B 的裸 PCM。
 
-注意：
+当前边界：
 
-- 不要把官方小智 Opus 默认路线和当前平台 PCM 兼容路线混在一起判断。当前固件声明并发送的是 `pcm_s16le`，不是 Opus。
-- 若未来切换到官方 Opus，必须同时修改 `hello.audio_params.format`、上行编码、下行解码和平台协商，不能只改一个宏。
+1. 本轮现场/远程环境没有清晰人声，板端仍只看到 `xz_rx=3/0`，即有 hello/listen 控制文本，但未收到平台 TTS binary。
+2. 这不能再判为 WiFi 问题：WiFi、token、websocket、上行 Opus 发送都已经有串口证据。
+3. 下一步 QA 应让现场靠近麦克风说清晰问题，或在 PC 侧准备可用的 `opus.dll/ffmpeg` 后，用官方 v3 Opus 包做云端 smoke test。
+4. 若清晰语音后仍无 `xz_rx` binary，应优先查平台 relay 的 Opus ASR 日志，而不是回退到 WiFi 扫描或资源固件方向。
+
+## 29. 2026-06-20 小智打通到 M33 扬声器后的当前边界
+
+本轮已确认：
+
+1. 这轮主线按官方小智 WebSocket v1/Opus 走：
+   - `Protocol-Version: 1`
+   - `hello.version=1`
+   - `audio_params.format=opus`
+   - 16 kHz / mono / 60 ms
+   - WebSocket binary frame 为 raw Opus payload
+2. WiFi、token、WebSocket 不是当前主 blocker：
+   - `saved=1 auto=1 storage=0`
+   - `wlan=1 ready=1`
+   - `xz_ws=1`
+   - `xz_stage=70`
+   - `xz_errno=0`
+   - token 长度为 `442`
+3. 手动 QA 流程已修正为官方手动模式：
+   - `m55qa_capture_on` 发 `listen/start`，`mode=manual`
+   - `m55qa_capture_off` 发 `listen/stop`，`mode=manual`
+4. `VOICE_CTRL_STOP_CAPTURE` 必须先停止 CM55 `mic0`：
+   - 否则 shell 可能显示 stop 命令已返回，但后台采集/语音处理还在继续，表现为 LVGL 一直“正在思考”或后续命令 pending。
+5. 内置 QA `m33qa_xz_probe` 已经证明平台回包和 M33 播放链路至少通了一次：
+   - M55 上行 Opus 例：`xz_last=180/32220`
+   - M33 下行日志：`tts audio rx total=320`
+   - M33 播放日志：`audio_playback Started`、`tts audio write chunk=...`
+
+当前还没彻底收尾的点：
+
+1. 长 `m33qa_xz_probe` 后再发 `m55qa_capture_off`，仍可能看到 `tx_pending=1`。
+2. 这更像是 M33/M55 IPC 在 TTS 回放/status 发布期间的队列压力，不是 WiFi 资源、SSID、密码、token 或基础 WebSocket 连接问题。
+3. `m55qa_xz_reconnect ret=0` 只表示异步 reconnect worker 已经排队，不表示已经连接成功；必须继续看 `m55qa_status` 里的 `xz_ws/xz_stage/xz_errno`。
+
+下一步建议：
+
+1. 不要再回到 WiFi 扫描/资源固件方向，除非 `wlan=0` 或 `xz_stage` 明确掉线。
+2. 优先把 TTS 回放时的 M55->M33 发布和 M33->M55 stop/control 分流或限流，避免 TTS 下行期间控制消息被 IPC 队列拖住。
+3. 真机用户路径仍以 CM55 本地 mic 为主，`m33qa_xz_probe` 是确定性 QA 工具，会比真实 mic 路径更容易压爆 IPC。
+
+## 30. 2026-06-20 小智当前真实进展：官方 M55 mic 路径能 start/stop，TTS 还需限流收尾
+
+本轮结论：
+
+1. 不要再把 WiFi/token 当主 blocker：
+   - `saved=1 auto=1 storage=0`
+   - `wlan=1 ready=1`
+   - `ip=192.168.3.32`
+   - `xz_ws=1`
+   - `xz_stage=70`
+   - `xz_errno=0`
+   - `token_len=442`
+2. 当前官方主线是 CM55 本地麦克风：
+   - `CM55 mic0 -> Opus -> XiaoZhi WebSocket -> platform -> M33 TTS audio`
+   - 不是 `M33 PCM -> M55 -> XiaoZhi`。
+3. `m33qa_xz_probe` 已经证明平台和扬声器链路有进展：
+   - M33 串口出现过 `tts audio rx total=640`
+   - `audio_playback Started`
+   - `tts audio write chunk=...`
+4. 但 `m33qa_xz_probe` 同时会给 IPC/TTS/status 造成很大压力，不能作为产品路径继续硬推。
+
+本轮修改：
+
+1. M55 `m55qa_status` 里的 `probe_or_bridge` 临时承载桥接线程诊断：
+   - `loops`
+   - `consumed`
+   - `last_ret`
+   - `phase`
+2. `xz_bridge` 栈从 16 KB 提到 32 KB，并增加轻量心跳日志。
+3. `voice_svc` 栈从 16 KB 提到 24 KB，`xz_stop` 线程栈从 4 KB 提到 8 KB。
+4. `m33qa_xz_probe` 默认缩成约 3 秒短样本，原长样本改为 `m33qa_xz_probe full`。
+5. M55 默认忽略 M33 PCM probe 作为 XiaoZhi 上行音频，避免把调试 PCM 流混进官方 mic0 主线。
+6. TTS pending 处理从一次 drain 全部改为单包节流，避免语音服务线程长时间忙于下行音频。
+
+验证结果：
+
+1. M55 构建通过：
+   - `text=1645224 data=68744 bss=4541560`
+2. 烧录通过：
+   - M55 `rtthread.hex` 写入 `1716224 bytes`
+   - `whd_resources_all.bin` 写入 `466944 bytes`
+3. 复位后 `m55qa_status` 健康：
+   - WiFi 自动连接成功
+   - token 不需要重新输入
+   - WebSocket 已连接
+4. 不走 M33 probe 的真实 CM55 mic 控制面通过：
+   - `m55qa_capture_on` 得到新 `voice_ack cmd=1 result=0`
+   - `m55qa_capture_off` 得到新 `voice_ack cmd=2 result=0`
+   - 结束后 `tx_pending=0`
+
+仍未完全解决：
+
+1. 完整自然语音问答和完整扬声器回复还未稳定闭环。
+2. TTS 下行期间仍需要继续做 IPC/播放限流，避免状态刷新或控制消息被挤压。
+3. 下一步优先做 TTS 下行发布和控制消息分流/限流，不要回退到 WiFi 扫描、token 配置或资源固件方向。
