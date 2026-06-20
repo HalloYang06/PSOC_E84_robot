@@ -1,10 +1,15 @@
 param(
-    [string]$Url = "ws://106.55.62.122:8011/api/rehab-arm/v1/projects/fd6a55ed-a63c-44b3-b123-96fb3c154966/devices/nanopi-m5/xiaozhi/ws?robot_id=rehab-arm-alpha",
+    [string]$Url = "ws://106.55.62.122:8011/api/rehab-arm/v1/projects/e201f41c-25a6-46e1-baf8-be6dcb83284c/devices/nanopi-m5/xiaozhi/ws?robot_id=rehab-arm-alpha",
     [Parameter(Mandatory = $true)]
     [string]$TokenFile,
     [string]$SessionId = "pc-smoke-session-001",
+    [string]$DeviceId = "nanopi-m5",
+    [string]$ClientId = "pc-smoke-client",
     [int]$Frames = 30,
     [int]$ToneHz = 440,
+    [ValidateSet("pcm_s16le", "opus")]
+    [string]$AudioFormat = "pcm_s16le",
+    [string]$OpusPacketFile,
     [int]$ReceiveTimeoutMs = 3000
 )
 
@@ -106,12 +111,45 @@ function New-PcmFrame {
     return $bytes
 }
 
-$hello = '{"type":"hello","version":1,"features":{"mcp":true},"transport":"websocket","audio_params":{"format":"opus","sample_rate":16000,"channels":1,"frame_duration":60}}'
+if ($AudioFormat -eq "opus" -and [string]::IsNullOrWhiteSpace($OpusPacketFile)) {
+    throw "AudioFormat=opus requires OpusPacketFile. This script does not encode PCM into Opus on the PC."
+}
+
+$opusPackets = @()
+if ($AudioFormat -eq "opus") {
+    if (-not (Test-Path -LiteralPath $OpusPacketFile)) {
+        throw "Opus packet file not found: $OpusPacketFile"
+    }
+    $raw = [System.IO.File]::ReadAllBytes($OpusPacketFile)
+    if ($raw.Length -lt 2) {
+        throw "Opus packet file is empty or invalid."
+    }
+    $offset = 0
+    while ($offset + 2 -le $raw.Length) {
+        $packetLen = [BitConverter]::ToUInt16($raw, $offset)
+        $offset += 2
+        if ($packetLen -eq 0 -or $offset + $packetLen -gt $raw.Length) {
+            throw "Invalid Opus packet file at offset $offset."
+        }
+        $packet = New-Object byte[] $packetLen
+        [System.Array]::Copy($raw, $offset, $packet, 0, $packetLen)
+        $opusPackets += ,$packet
+        $offset += $packetLen
+    }
+    if ($opusPackets.Count -eq 0) {
+        throw "Opus packet file did not contain any packets."
+    }
+}
+
+$hello = '{"type":"hello","version":1,"features":{"mcp":true},"transport":"websocket","audio_params":{"format":"' + $AudioFormat + '","sample_rate":16000,"channels":1,"frame_duration":60}}'
 $listenStart = '{"session_id":"' + $SessionId + '","type":"listen","state":"start","mode":"auto"}'
 $listenStop = '{"session_id":"' + $SessionId + '","type":"listen","state":"stop"}'
 
 $socket = [System.Net.WebSockets.ClientWebSocket]::new()
 $socket.Options.SetRequestHeader("Authorization", "Bearer $token")
+$socket.Options.SetRequestHeader("Protocol-Version", "1")
+$socket.Options.SetRequestHeader("Device-Id", $DeviceId)
+$socket.Options.SetRequestHeader("Client-Id", $ClientId)
 
 try {
     Write-Host "Connecting $Url"
@@ -124,12 +162,21 @@ try {
     Send-TextFrame -Socket $socket -Text $listenStart
     $null = Receive-ExpectedFrame -Socket $socket -TimeoutMs $ReceiveTimeoutMs -Step "listen start ack"
 
-    for ($i = 0; $i -lt $Frames; $i++) {
-        $frame = New-PcmFrame -FrameIndex $i -ToneHz $ToneHz
-        Send-BinaryFrame -Socket $socket -Bytes $frame
-        Start-Sleep -Milliseconds 60
+    if ($AudioFormat -eq "opus") {
+        for ($i = 0; $i -lt $opusPackets.Count; $i++) {
+            Send-BinaryFrame -Socket $socket -Bytes $opusPackets[$i]
+            Start-Sleep -Milliseconds 60
+        }
+        Write-Host ">> <binary opus_packets=$($opusPackets.Count)>"
     }
-    Write-Host ">> <binary frames=$Frames bytes_per_frame=1920 declared_format=opus>"
+    else {
+        for ($i = 0; $i -lt $Frames; $i++) {
+            $frame = New-PcmFrame -FrameIndex $i -ToneHz $ToneHz
+            Send-BinaryFrame -Socket $socket -Bytes $frame
+            Start-Sleep -Milliseconds 60
+        }
+        Write-Host ">> <binary frames=$Frames bytes_per_frame=1920 declared_format=pcm_s16le>"
+    }
 
     Send-TextFrame -Socket $socket -Text $listenStop
     $null = Receive-ExpectedFrame -Socket $socket -TimeoutMs ($ReceiveTimeoutMs * 2) -Step "listen stop/chat reply"

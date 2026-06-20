@@ -238,6 +238,17 @@ typedef struct
     rt_uint32_t xiaozhi_rx_text_count;
     rt_uint32_t xiaozhi_rx_binary_count;
     rt_uint32_t xiaozhi_audio_frame_len;
+    rt_uint32_t xiaozhi_tts_forward_chunks;
+    rt_uint32_t xiaozhi_tts_forward_bytes;
+    rt_uint32_t xiaozhi_tts_forward_fail_count;
+    rt_uint32_t xiaozhi_tts_pcm_reject_count;
+    rt_uint32_t xiaozhi_server_hello_count;
+    rt_uint32_t xiaozhi_server_stt_count;
+    rt_uint32_t xiaozhi_server_tts_start_count;
+    rt_uint32_t xiaozhi_server_tts_stop_count;
+    rt_uint32_t xiaozhi_server_tts_sentence_count;
+    rt_uint32_t xiaozhi_server_last_type_code;
+    rt_uint32_t xiaozhi_server_last_state_code;
     char netdev_name[RT_NAME_MAX];
 } voice_status_msg_t;
 

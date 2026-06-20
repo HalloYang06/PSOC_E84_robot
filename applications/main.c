@@ -2,6 +2,7 @@
 #include <rtdevice.h>
 #include <board.h>
 #include <reent.h>
+#include <finsh.h>
 
 #include "common/m33_m55_comm.h"
 #include "m33/audio_capture.h"
@@ -20,6 +21,7 @@
 #include "m33/openclaw_integration.h"
 #include "m33/safety_system.h"
 #include "m33/sensor_manager.h"
+#include "m33/xiaozhi_pcm_probe_data.h"
 
 __attribute__((weak)) struct _reent _impure_data;
 
@@ -52,6 +54,7 @@ typedef struct
 static m33_runtime_t g_runtime;
 
 static void m33_publish_audio_capture(void);
+static rt_err_t m33_publish_pcm_shared_buffer(const rt_uint8_t *pcm, rt_uint32_t len);
 
 static void m33_log_cm55_boot_state(const char *tag)
 {
@@ -63,6 +66,19 @@ static void m33_log_cm55_boot_state(const char *tag)
                (unsigned long)MXCM55->CM55_CTL,
                (unsigned long)MXCM55->CM55_CMD);
 }
+
+static void m33_cm55_restart(int argc, char **argv)
+{
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+
+    m33_log_cm55_boot_state("before-restart");
+    Cy_SysResetCM55(MXCM55, 10);
+    Cy_SysEnableCM55(MXCM55, CY_CM55_APP_BOOT_ADDR, 10);
+    rt_thread_mdelay(100);
+    m33_log_cm55_boot_state("after-restart");
+}
+MSH_CMD_EXPORT(m33_cm55_restart, Reset and enable CM55 from M33 shell);
 
 static void m33_pcm_capture_callback(const uint8_t *data, uint32_t len)
 {
@@ -113,8 +129,6 @@ static void m33_pcm_capture_callback(const uint8_t *data, uint32_t len)
 
 static void m33_publish_audio_capture(void)
 {
-    m33_m55_message_t msg;
-    rt_uint32_t seq;
     rt_err_t ret;
 
     if ((g_runtime.pcm_buffer == RT_NULL) || (g_runtime.pcm_length == 0))
@@ -123,25 +137,46 @@ static void m33_publish_audio_capture(void)
         return;
     }
 
-    if (g_runtime.pcm_length > M33_M55_PCM_SHARED_CAPACITY)
+    ret = m33_publish_pcm_shared_buffer(g_runtime.pcm_buffer, g_runtime.pcm_length);
+    if (ret != RT_EOK)
+    {
+        rt_kprintf("[m33] pcm publish failed ret=%d len=%lu\n",
+                   ret,
+                   (unsigned long)g_runtime.pcm_length);
+    }
+}
+
+static rt_err_t m33_publish_pcm_shared_buffer(const rt_uint8_t *pcm, rt_uint32_t len)
+{
+    m33_m55_message_t msg;
+    rt_uint32_t seq;
+    rt_err_t ret;
+
+    if ((pcm == RT_NULL) || (len == 0))
+    {
+        rt_kprintf("[m33] pcm publish skipped len=0\n");
+        return -RT_EINVAL;
+    }
+
+    if (len > M33_M55_PCM_SHARED_CAPACITY)
     {
         rt_kprintf("[m33] pcm publish too large len=%lu cap=%lu\n",
-                   (unsigned long)g_runtime.pcm_length,
+                   (unsigned long)len,
                    (unsigned long)M33_M55_PCM_SHARED_CAPACITY);
-        return;
+        return -RT_EINVAL;
     }
 
     seq = g_m33_m55_pcm_shared.seq + 1U;
     g_m33_m55_pcm_shared.seq = seq;
-    g_m33_m55_pcm_shared.total_len = g_runtime.pcm_length;
+    g_m33_m55_pcm_shared.total_len = len;
     g_m33_m55_pcm_shared.sample_rate = 16000U;
     g_m33_m55_pcm_shared.channels = 1U;
     g_m33_m55_pcm_shared.bits_per_sample = 16U;
     g_m33_m55_pcm_shared.timestamp = rt_tick_get_millisecond();
     g_m33_m55_pcm_shared.reserved = 0U;
     g_m33_m55_pcm_shared.crc32 = 0U;
-    rt_memcpy((void *)g_m33_m55_pcm_shared.data, g_runtime.pcm_buffer, g_runtime.pcm_length);
-    rt_hw_cpu_dcache_ops(RT_HW_CACHE_FLUSH, (void *)g_m33_m55_pcm_shared.data, g_runtime.pcm_length);
+    rt_memcpy((void *)g_m33_m55_pcm_shared.data, pcm, len);
+    rt_hw_cpu_dcache_ops(RT_HW_CACHE_FLUSH, (void *)g_m33_m55_pcm_shared.data, len);
 
     rt_memset(&msg, 0, sizeof(msg));
     msg.type = MSG_TYPE_SENSOR_STREAM;
@@ -149,10 +184,10 @@ static void m33_publish_audio_capture(void)
     msg.payload.sensor_stream.format = MODEL_INPUT_FMT_PCM_S16;
     msg.payload.sensor_stream.channels = 1U;
     msg.payload.sensor_stream.sample_rate = 16000U;
-    msg.payload.sensor_stream.frame_samples = g_runtime.pcm_length / 2U;
-    msg.payload.sensor_stream.total_len = g_runtime.pcm_length;
+    msg.payload.sensor_stream.frame_samples = len / 2U;
+    msg.payload.sensor_stream.total_len = len;
     msg.payload.sensor_stream.chunk_index = seq;
-    msg.payload.sensor_stream.chunk_len = g_runtime.pcm_length;
+    msg.payload.sensor_stream.chunk_len = len;
     msg.payload.sensor_stream.timestamp = g_m33_m55_pcm_shared.timestamp;
 
     ret = m33_m55_comm_publish(&msg);
@@ -161,13 +196,14 @@ static void m33_publish_audio_capture(void)
         rt_kprintf("[m33] pcm notify publish failed ret=%d seq=%lu len=%lu\n",
                    ret,
                    (unsigned long)seq,
-                   (unsigned long)g_runtime.pcm_length);
-        return;
+                   (unsigned long)len);
+        return ret;
     }
 
     rt_kprintf("[m33] pcm shared notify seq=%lu len=%lu\n",
                (unsigned long)seq,
-               (unsigned long)g_runtime.pcm_length);
+               (unsigned long)len);
+    return RT_EOK;
 }
 
 static void m33_start_pcm_capture(void)
@@ -296,6 +332,90 @@ static void m33_stop_pcm_listen(void)
     rt_kprintf("[m33] pcm listen disarmed\n");
 }
 
+static void m33qa_pcm_capture_on(int argc, char **argv)
+{
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+
+    g_runtime.pcm_mode = PCM_MODE_MANUAL;
+    m33_start_pcm_capture();
+}
+MSH_CMD_EXPORT(m33qa_pcm_capture_on, Record M33 mic PCM for CM55 Xiaozhi QA);
+
+static void m33qa_pcm_capture_off(int argc, char **argv)
+{
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+
+    m33_stop_pcm_capture();
+}
+MSH_CMD_EXPORT(m33qa_pcm_capture_off, Publish recorded M33 mic PCM to CM55);
+
+static void m33qa_pcm_listen_on(int argc, char **argv)
+{
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+
+    m33_start_pcm_listen();
+}
+MSH_CMD_EXPORT(m33qa_pcm_listen_on, Legacy QA: stream M33 mic PCM to CM55);
+
+static void m33qa_pcm_listen_off(int argc, char **argv)
+{
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+
+    m33_stop_pcm_listen();
+}
+MSH_CMD_EXPORT(m33qa_pcm_listen_off, Stop legacy M33 mic PCM stream);
+
+static void m33qa_xz_probe(int argc, char **argv)
+{
+    const rt_uint32_t frame_len = 1920U;
+    const rt_uint32_t default_probe_len = 16000U * 2U * 3U;
+    rt_uint32_t target_len = g_xiaozhi_pcm_probe_data_len;
+    rt_uint32_t offset = 0U;
+    rt_uint32_t part = 0U;
+
+    if ((argc < 2) || (rt_strcmp(argv[1], "full") != 0))
+    {
+        target_len = (g_xiaozhi_pcm_probe_data_len > default_probe_len) ?
+            default_probe_len :
+            g_xiaozhi_pcm_probe_data_len;
+    }
+
+    rt_kprintf("[m33] xiaozhi probe start len=%lu/%lu mode=%s\n",
+               (unsigned long)target_len,
+               (unsigned long)g_xiaozhi_pcm_probe_data_len,
+               (target_len == g_xiaozhi_pcm_probe_data_len) ? "full" : "short");
+    while (offset < target_len)
+    {
+        rt_uint32_t chunk_len = target_len - offset;
+        rt_err_t ret;
+
+        if (chunk_len > frame_len)
+        {
+            chunk_len = frame_len;
+        }
+
+        ret = m33_publish_pcm_shared_buffer(g_xiaozhi_pcm_probe_data + offset, chunk_len);
+        rt_kprintf("[m33] xiaozhi probe part=%lu off=%lu len=%lu ret=%d\n",
+                   (unsigned long)part,
+                   (unsigned long)offset,
+                   (unsigned long)chunk_len,
+                   ret);
+        if (ret != RT_EOK)
+        {
+            break;
+        }
+
+        offset += chunk_len;
+        part++;
+        rt_thread_mdelay(80);
+    }
+}
+MSH_CMD_EXPORT(m33qa_xz_probe, Publish built-in Xiaozhi PCM probe to CM55; use "full" for long sample);
+
 static void m33_handle_ble_command(void)
 {
     app_ble_command_t cmd;
@@ -335,6 +455,18 @@ static void m33_handle_ipc_command(void)
     {
         if (msg.type == MSG_TYPE_TTS_AUDIO)
         {
+            static rt_uint32_t tts_audio_chunks = 0U;
+            static rt_uint32_t tts_audio_bytes = 0U;
+
+            if ((tts_audio_chunks < 3U) || ((tts_audio_chunks % 20U) == 0U) ||
+                (msg.payload.audio_data.chunk_len == 0U))
+            {
+                rt_kprintf("[m33] tts audio rx total=%lu idx=%lu len=%lu\n",
+                           (unsigned long)msg.payload.audio_data.total_len,
+                           (unsigned long)msg.payload.audio_data.chunk_index,
+                           (unsigned long)msg.payload.audio_data.chunk_len);
+            }
+
             if (audio_playback_init() == RT_EOK)
             {
                 (void)audio_playback_start();
@@ -342,6 +474,12 @@ static void m33_handle_ipc_command(void)
             if (msg.payload.audio_data.chunk_len == 0U)
             {
                 rt_err_t flush_ret = audio_playback_flush();
+                rt_kprintf("[m33] tts audio flush chunks=%lu bytes=%lu ret=%d\n",
+                           (unsigned long)tts_audio_chunks,
+                           (unsigned long)tts_audio_bytes,
+                           flush_ret);
+                tts_audio_chunks = 0U;
+                tts_audio_bytes = 0U;
                 if (flush_ret != RT_EOK)
                 {
                     rt_kprintf("[m33] tts audio playback flush failed ret=%d\n", flush_ret);
@@ -356,6 +494,18 @@ static void m33_handle_ipc_command(void)
                            ret,
                            (unsigned long)msg.payload.audio_data.chunk_len);
             }
+            else
+            {
+                tts_audio_chunks++;
+                tts_audio_bytes += msg.payload.audio_data.chunk_len;
+                if ((tts_audio_chunks <= 3U) || ((tts_audio_chunks % 20U) == 0U))
+                {
+                    rt_kprintf("[m33] tts audio write chunk=%lu len=%lu total=%lu\n",
+                               (unsigned long)tts_audio_chunks,
+                               (unsigned long)msg.payload.audio_data.chunk_len,
+                               (unsigned long)tts_audio_bytes);
+                }
+            }
             continue;
         }
 
@@ -368,21 +518,16 @@ static void m33_handle_ipc_command(void)
         switch ((voice_control_cmd_t)msg.payload.voice_control.cmd)
         {
         case VOICE_CTRL_START_CAPTURE:
-            rt_kprintf("[m33] ipc start capture\n");
-            g_runtime.pcm_mode = PCM_MODE_MANUAL;
-            m33_start_pcm_capture();
+            rt_kprintf("[m33] ipc start capture ignored: Xiaozhi uplink audio is captured on CM55 mic0\n");
             break;
         case VOICE_CTRL_STOP_CAPTURE:
-            rt_kprintf("[m33] ipc stop capture\n");
-            m33_stop_pcm_capture();
+            rt_kprintf("[m33] ipc stop capture ignored: CM55 owns Xiaozhi uplink audio\n");
             break;
         case VOICE_CTRL_START_LISTEN:
-            rt_kprintf("[m33] ipc start listen\n");
-            m33_start_pcm_listen();
+            rt_kprintf("[m33] ipc start listen ignored: CM55 owns wake-word mic0 capture\n");
             break;
         case VOICE_CTRL_STOP_LISTEN:
-            rt_kprintf("[m33] ipc stop listen\n");
-            m33_stop_pcm_listen();
+            rt_kprintf("[m33] ipc stop listen ignored: CM55 owns wake-word mic0 capture\n");
             break;
         case VOICE_CTRL_PUBLISH_TEST_SNAPSHOT:
             rt_kprintf("[m33] ipc publish test snapshot\n");

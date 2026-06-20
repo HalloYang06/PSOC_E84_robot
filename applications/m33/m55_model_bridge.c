@@ -156,6 +156,9 @@ void m55_model_bridge_handle_message(const m33_m55_message_t *msg)
     case MSG_TYPE_ASR_TEXT:
         rt_kprintf("[m55_model_bridge] asr text: %.64s\n", msg->payload.text.text);
         break;
+    case MSG_TYPE_TTS_REQUEST:
+        rt_kprintf("[m55_model_bridge] tts text: %.64s\n", msg->payload.text.text);
+        break;
     case MSG_TYPE_VOICE_CONTROL_ACK:
         m55_model_bridge_handle_voice_ack(msg);
         break;

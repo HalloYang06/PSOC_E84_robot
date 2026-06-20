@@ -24,6 +24,96 @@ Reusable trick:
 - If assist/resist feels weak, check `sat`, `pid_trim_x1000`, `pid_load_x1000`, and `pid_speed_x1000` before raising gains.
 - Keep MSH bench bypass separate from NanoPi heartbeat bypass: bench may bypass heartbeat, but it must not bypass fresh feedback, current limits, stop, or memory playback calibration.
 
+## 2026-06-20 - Do Not Use M33 PCM Probe As The Product XiaoZhi Audio Path
+
+Symptoms:
+- Wi-Fi, token, and WebSocket can all be healthy while `m33qa_xz_probe` later causes `m55qa_capture_off` to queue up with no fresh ACK.
+- Typical healthy baseline before the stress case: `wlan=1 ready=1`, `xz_ws=1`, `xz_stage=70`, `xz_errno=0`, `token_len=442`.
+- After probe/TTS pressure, `m55qa_status` can stop refreshing at a fixed `probe_or_bridge` value while `tx_pending` grows.
+
+Evidence:
+- The real CM55 mic path passed start/stop control after reset: fresh `voice_ack cmd=1`, fresh `voice_ack cmd=2`, and `tx_pending=0`.
+- The probe path can prove cloud and speaker wiring because M33 saw `tts audio rx` and `tts audio write`, but it also pushes many PCM notifications through the same IPC queues used by control/status.
+
+Root cause / current hypothesis:
+- `m33qa_xz_probe` is useful as a deterministic stress/bring-up tool, but it is not the official product audio route. It competes with control/status/TTS traffic on M33/M55 IPC and can expose queue/priority issues that a CM55-local mic flow avoids.
+
+Fix / lesson:
+- Keep product XiaoZhi on CM55 `mic0` capture and official Opus WebSocket uplink.
+- Keep `m33qa_xz_probe` short by default and use `m33qa_xz_probe full` only when deliberately stress-testing IPC/TTS behavior.
+- When diagnosing "waiting platform" after the baseline is healthy, check `voice_ack`, `tx_pending`, `xz_last`, `xz_rx`, `tts_fwd`, and M33 `tts audio rx/write` before going back to Wi-Fi resources.
+
+Status:
+- Product control path improved; full stable TTS playback remains open.
+
+## 2026-06-20 - XiaoZhi Reached Speaker Playback; Remaining Stall Is IPC/TTS Cleanup Pressure
+
+Symptom:
+- Earlier runs stayed at `已发送，等待平台模型` / `正在思考`, and `m55qa_capture_off` sometimes returned from the shell while `tx_pending` stayed nonzero and no fresh `cmd=2` ACK arrived.
+- After a long `m33qa_xz_probe`, the platform could reply and M33 could play TTS, but a later manual `m55qa_capture_off` still left `tx_pending=1`.
+
+Evidence:
+- Wi-Fi/token/WebSocket were healthy during the failing runs: `saved=1 auto=1 storage=0`, `wlan=1 ready=1`, `xz_ws=1`, `xz_stage=70`, `xz_errno=0`, token length `442`.
+- Short capture start/stop passed after stopping `mic0`: fresh `voice_ack cmd=1 result=0`, fresh `voice_ack cmd=2 result=0`, and `tx_pending=0`.
+- Built-in deterministic probe passed upstream and downlink once: `m33qa_xz_probe` completed all PCM parts, CM55 uploaded Opus (`xz_last=180/32220`), and M33 printed `tts audio rx total=320`, `audio_playback Started`, and `tts audio write` chunks.
+- The post-reply stall appears only after TTS/downlink traffic and follow-up control messages, not during Wi-Fi association or token loading.
+
+Root cause / current hypothesis:
+- The old manual stop path did not stop CM55 `mic0`, so capture and voice processing could continue after a UI/QA stop.
+- Auto EOU previously sent `listen.stop` synchronously from the voice detection path, which could block behind WebSocket/lwIP send work.
+- After the new fixes, the remaining long-probe stall is likely M33<->M55 IPC pressure while CM55 publishes TTS audio/status back to M33 and M33 sends a follow-up stop control. It is a queue/priority cleanup issue, not the original Wi-Fi scan/resource/token problem.
+
+Fixes applied:
+- `VOICE_CTRL_STOP_CAPTURE` now calls `m55_mic_stop_internal()` before local XiaoZhi stop/abort.
+- Manual QA capture uses official `listen start` with `mode=manual`; `listen stop` also carries `mode=manual`.
+- Auto EOU now clears local listening state and sends `listen.stop` in an `xz_stop` background thread.
+
+Lessons:
+- Do not judge `m55qa_xz_reconnect ret=0` as a successful WebSocket connection; it only means the async reconnect worker was queued. Confirm with `m55qa_status` fields `xz_ws=1`, `xz_stage=70`, `xz_errno=0`.
+- Once `m33qa_xz_probe` produces M33 `tts audio rx/write`, the cloud model and speaker path are no longer theoretical. Continue from IPC/TTS cleanup, not from Wi-Fi provisioning.
+- For user-facing XiaoZhi, CM55-local mic capture is still the main path. The M33 built-in probe is a deterministic QA tool and can stress the IPC queues more than the real mic path.
+
+## 2026-06-19 - XiaoZhi Stayed In "Waiting Platform Model" While Device Identity Was Still Hardcoded
+
+Symptom:
+- CM55 could connect Wi-Fi, but XiaoZhi still sat at `已发送，等待平台模型` / `正在思考`.
+- The UI looked frozen because the panel had no real server progress to display after the wake/listen transition.
+
+Evidence:
+- The CM55 WebSocket client was still sending fixed `Device-Id: nanopi-m5` and `Client-Id: rehab-arm-alpha` in the handshake headers.
+- Official XiaoZhi docs say `Device-Id` must be the physical MAC and `Client-Id` must be a generated UUID.
+- The official reference implementation also uses the MAC/UUID split in its WebSocket setup.
+
+Root cause:
+- The device-side handshake identity was only partially aligned with the official contract, so the session could get stuck in a state that looked like a model wait rather than a local Wi-Fi failure.
+
+Fix:
+- Generate `Device-Id` from the current netdev MAC.
+- Generate a persistent `Client-Id` once and store it on flash.
+- Keep the official `hello` payload at `version=1`, `transport=websocket`, and `audio_params.format=opus`.
+
+Lesson:
+- When XiaoZhi appears to be "thinking forever", check the handshake contract first: headers, `hello`, and server `hello` sequencing before blaming LVGL.
+
+## 2026-06-19 - LVGL Looked Frozen Because XiaoZhi Start/Stop Ran In The UI Callback
+
+Symptom:
+- On the XiaoZhi Wi-Fi/LVGL screen, tapping `说话` left the page stuck in `正在思考` / `正在启动小智`, and touch input on the whole panel felt dead.
+
+Evidence:
+- `rehab_wifi_panel.c` called `m55_xiaozhi_talk_start_from_ui()` and `m55_xiaozhi_talk_stop_from_ui()` directly from the LVGL click callbacks.
+- `voice_service_start_xiaozhi_talk()` can reconnect Wi-Fi/WebSocket and wait for server `hello`, so it is not a safe thing to do inside the UI thread.
+
+Root cause:
+- The panel was not truly “thinking”; the LVGL event callback was synchronously running the XiaoZhi bring-up path, which can block long enough to starve touch redraw and make the screen feel frozen.
+
+Fix:
+- Move XiaoZhi panel start/stop into a small background worker thread and let the LVGL callback only queue the action.
+- Keep the UI state update immediate, but do not let the click handler itself wait on hello/reconnect.
+
+Lesson:
+- Any button that may reconnect, wait for hello, or start audio capture should be queued to a worker. LVGL callbacks must stay quick.
+
 ## 2026-06-17 - CM55 XiaoZhi Assert Was Status/IPC Pressure, Not Wi-Fi
 
 Symptom:
@@ -1082,3 +1172,27 @@ Reusable trick:
 
 Status:
 - Fixed in source; needs one fresh flash and a real COM4 QA pass to prove the startup flow now advances correctly.
+
+## 2026-06-19 - Probe selection mattered more than the image when flashing the wifi tree
+
+Symptoms:
+- `wifi/program_with_resources.bat` originally used plain `interface/kitprog3.cfg` and then died with `kitprog3: failed to acquire the device`.
+- Switching to `interface/cmsis-dap.cfg` caused OpenOCD to attach to the wrong external probe and fail with `CMSIS-DAP command CMD_INFO failed`.
+
+Environment:
+- Board-mounted probe: `KitProg3 CMSIS-DAP` with parent serial `17040F11022F2400`.
+- External probe also present: `Horco CMSIS-DAP v2` with parent serial `2d2670f3`.
+
+Root cause:
+- Automatic probe selection was ambiguous because two CMSIS-DAP probes were visible at once.
+- The board image itself was fine; the flashing path was stopping in probe acquisition, not in the hex/resource payload.
+
+Fix:
+- Explicitly lock the board-mounted KitProg3 by adding `adapter serial 17040F11022F2400` to the OpenOCD command line while keeping `interface/kitprog3.cfg`.
+- Do not let OpenOCD auto-pick between the board probe and the external Horco probe.
+
+Trick:
+- When multiple probes are attached, query `DEVPKEY_Device_Parent` and pin the board probe serial in the burn script before debugging anything else.
+
+Status:
+- Partially fixed. Flashing and post-flash status checks now work on the board probe, but the session still needs a real cloud reply to complete the XiaoZhi path.
