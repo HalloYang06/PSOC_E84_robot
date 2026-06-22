@@ -1545,3 +1545,24 @@ Fix / trick:
 
 Status:
 - Latest code builds on both M55 and M33, but the requested unattended human-voice QA is pending until the hardware enumerates again.
+
+## 2026-06-22 - Reset QA probe counters before judging each XiaoZhi run
+
+Symptoms:
+- A repeated human-voice QA run can show `probe_lwip=accepted/ignored` values that appear contradictory, such as `87/87`.
+- M33 may print `xiaozhi probe done parts=87 sent=166974/166974`, while the final M55 status appears to include both accepted and ignored packets.
+
+Root cause:
+- `probe_lwip=accepted/ignored` was cumulative across QA sessions.
+- A previous successful run could leave `accepted=87`; a later failed or stale-listening run could add ignored packets, making the final status look like one mixed run.
+
+Fix / trick:
+- M55 now resets `m33_pcm_probe_accepted_count` and `m33_pcm_probe_ignored_count` when `m55qa_probe_pcm_on` enables M33 PCM probe mode.
+- Treat only a clean-count run after `m55qa_probe_pcm_on` as authoritative.
+
+Validated:
+- Clean-count human QA after reflashing showed `probe_lwip=87/0`, `xz_last=143/274560`, `xz_fail=0`, and `tx_pending=0`.
+- The same run still had no platform STT/TTS (`srv_stt=0`, `srv_tts=0/0/0`, `xz_rx=1/0`), so the remaining issue is above board uplink/IPC.
+
+Boundary:
+- If clean-count QA shows `probe_lwip=87/0` and `xz_last` grows, do not investigate WiFi/token/IPC. Inspect XiaoZhi relay/platform behavior after `listen/stop`.
