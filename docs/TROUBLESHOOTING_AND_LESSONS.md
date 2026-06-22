@@ -1351,3 +1351,29 @@ How to read it:
 Validated:
 - After reflashing both sides, real CM55 mic0 control commands no longer stuck behind prior QA/TTS state: `probe_pcm_off`, `capture_on`, and `capture_off` all ACKed with `tx_pending=0`.
 - A post-stop status published after auto reconnect showed `xz_ws=1 xz_stage=70 xz_errno=0` with a fresh status age, confirming the stale `xz_ws=0 stage=80` snapshot no longer persists after recovery.
+
+## 2026-06-22 - `capture_on result=-116` can be stale/repeated hello gating
+
+Symptoms:
+- `m55qa_status` shows `xz_ws=1`, `xz_stage=70`, `xz_errno=0`, and `srv_hello=1`.
+- `m55qa_probe_pcm_on` ACKs, but `m55qa_capture_on` returns ACK `result=-116`.
+- `tx_pending=0`, so M33->M55 IPC is not the blocker.
+
+Fix / trick:
+- M55 now treats prior server-hello evidence in the same runtime as sufficient if a repeated hello wait times out while the WebSocket is still connected.
+- This lets manual/QA listen start proceed on platforms that do not send another hello on demand.
+- The cold-start talk hello wait is now 8 seconds instead of 3 seconds, so immediate post-flash QA has time for WebSocket hello before returning `-116`.
+
+## 2026-06-22 - QA PCM consumed but no XiaoZhi uplink means check accepted vs ignored counts
+
+Symptoms:
+- `m33qa_xz_probe 3000` sends all 50 packets and `tx_pending=0`.
+- `voice_svc drain` increases, but `xz_cur/xz_last` remains `0/0`.
+
+Fix / trick:
+- `m55qa_status` now shows M33 QA PCM counters as `probe_lwip=accepted/ignored`.
+- M55 shared PCM acceptance now feeds XiaoZhi immediately while `xiaozhi_listening_active`, so accepted QA PCM does not depend on later wake/detect processing.
+
+Validated:
+- After the direct-feed fix, a 3000 ms QA run showed `probe_lwip=50/0`, `xz_last=193/34547`, and `xz_fail=0`.
+- If `xz_rx` increments only on text and binary stays `0`, the next layer is platform/protocol event handling, not M33->M55 IPC or Opus uplink.
