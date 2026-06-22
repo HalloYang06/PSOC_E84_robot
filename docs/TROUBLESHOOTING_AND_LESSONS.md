@@ -1512,3 +1512,36 @@ Reusable QA sequence:
 - `m55qa_capture_off`
 - wait 60 seconds
 - `m55qa_status`
+
+## 2026-06-22 - Short TTS replies may need an M33 idle flush
+
+Symptoms:
+- M33 receives a small number of `MSG_TYPE_TTS_AUDIO` chunks and `audio_playback Started` appears.
+- The server/platform may not send a zero-length TTS flush marker after a short reply.
+- In that case the last buffered audio can remain pending in M33 playback even though the XiaoZhi uplink and downlink already worked.
+
+Fix / trick:
+- M33 now tracks TTS audio activity at file scope and calls `audio_playback_flush()` after 500 ms without another TTS chunk.
+- Normal zero-length flush messages still flush immediately and reset the same counters.
+- Expected diagnostic line for this fallback is:
+  - `[m33] tts audio idle flush chunks=... bytes=... ret=...`
+
+Validation:
+- Clean M33 build passed with the idle-flush code included.
+- The clean ELF contains `tts audio idle flush`, confirming the board image source is current.
+- Board-side QA could not be rerun in this pass because the debugger/board stopped enumerating before flash; do not reinterpret that as WiFi/token/platform regression.
+
+## 2026-06-22 - If only com0com ports enumerate, flashing cannot proceed
+
+Symptoms:
+- M55 `program_with_resources.bat` fails before writing any bytes:
+  - `Error: unable to find a matching CMSIS-DAP device`
+- `Get-CimInstance Win32_SerialPort` only shows com0com virtual ports and no board COM/KitProg interface.
+
+Fix / trick:
+- This is a USB/debugger enumeration problem, not a XiaoZhi voice-link problem.
+- Do not debug WiFi, token, WebSocket, Opus, or platform events from this state.
+- Wait for the board/KitProg interface to reappear, then flash M55 and M33 before running QA.
+
+Status:
+- Latest code builds on both M55 and M33, but the requested unattended human-voice QA is pending until the hardware enumerates again.

@@ -28,6 +28,7 @@ __attribute__((weak)) struct _reent _impure_data;
 #define LED_PIN_B GET_PIN(16, 5)
 #define FRAME_PERIOD_MS 100
 #define PCM_CAPTURE_MAX_BYTES (16000U * 2U * 2U)
+#define M33_TTS_IDLE_FLUSH_MS 500U
 
 #ifndef M33_ENABLE_BT_HCI
 #define M33_ENABLE_BT_HCI 0
@@ -52,6 +53,10 @@ typedef struct
 } m33_runtime_t;
 
 static m33_runtime_t g_runtime;
+static rt_bool_t g_tts_audio_active = RT_FALSE;
+static rt_tick_t g_tts_audio_last_tick = 0U;
+static rt_uint32_t g_tts_audio_chunks = 0U;
+static rt_uint32_t g_tts_audio_bytes = 0U;
 
 static void m33_publish_audio_capture(void);
 static rt_err_t m33_publish_pcm_shared_buffer(const rt_uint8_t *pcm, rt_uint32_t len);
@@ -547,10 +552,7 @@ static void m33_handle_ipc_command(void)
     {
         if (msg.type == MSG_TYPE_TTS_AUDIO)
         {
-            static rt_uint32_t tts_audio_chunks = 0U;
-            static rt_uint32_t tts_audio_bytes = 0U;
-
-            if ((tts_audio_chunks < 3U) || ((tts_audio_chunks % 20U) == 0U) ||
+            if ((g_tts_audio_chunks < 3U) || ((g_tts_audio_chunks % 20U) == 0U) ||
                 (msg.payload.audio_data.chunk_len == 0U))
             {
                 rt_kprintf("[m33] tts audio rx total=%lu idx=%lu len=%lu\n",
@@ -567,11 +569,12 @@ static void m33_handle_ipc_command(void)
             {
                 rt_err_t flush_ret = audio_playback_flush();
                 rt_kprintf("[m33] tts audio flush chunks=%lu bytes=%lu ret=%d\n",
-                           (unsigned long)tts_audio_chunks,
-                           (unsigned long)tts_audio_bytes,
+                           (unsigned long)g_tts_audio_chunks,
+                           (unsigned long)g_tts_audio_bytes,
                            flush_ret);
-                tts_audio_chunks = 0U;
-                tts_audio_bytes = 0U;
+                g_tts_audio_active = RT_FALSE;
+                g_tts_audio_chunks = 0U;
+                g_tts_audio_bytes = 0U;
                 if (flush_ret != RT_EOK)
                 {
                     rt_kprintf("[m33] tts audio playback flush failed ret=%d\n", flush_ret);
@@ -588,14 +591,16 @@ static void m33_handle_ipc_command(void)
             }
             else
             {
-                tts_audio_chunks++;
-                tts_audio_bytes += msg.payload.audio_data.chunk_len;
-                if ((tts_audio_chunks <= 3U) || ((tts_audio_chunks % 20U) == 0U))
+                g_tts_audio_active = RT_TRUE;
+                g_tts_audio_last_tick = rt_tick_get();
+                g_tts_audio_chunks++;
+                g_tts_audio_bytes += msg.payload.audio_data.chunk_len;
+                if ((g_tts_audio_chunks <= 3U) || ((g_tts_audio_chunks % 20U) == 0U))
                 {
                     rt_kprintf("[m33] tts audio write chunk=%lu len=%lu total=%lu\n",
-                               (unsigned long)tts_audio_chunks,
+                               (unsigned long)g_tts_audio_chunks,
                                (unsigned long)msg.payload.audio_data.chunk_len,
-                               (unsigned long)tts_audio_bytes);
+                               (unsigned long)g_tts_audio_bytes);
                 }
             }
             continue;
@@ -639,6 +644,32 @@ static void m33_handle_ipc_command(void)
             break;
         }
     }
+}
+
+static void m33_flush_tts_audio_if_idle(void)
+{
+    rt_tick_t idle_ticks;
+    rt_err_t flush_ret;
+
+    if (!g_tts_audio_active)
+    {
+        return;
+    }
+
+    idle_ticks = rt_tick_from_millisecond(M33_TTS_IDLE_FLUSH_MS);
+    if ((rt_int32_t)((g_tts_audio_last_tick + idle_ticks) - rt_tick_get()) > 0)
+    {
+        return;
+    }
+
+    flush_ret = audio_playback_flush();
+    rt_kprintf("[m33] tts audio idle flush chunks=%lu bytes=%lu ret=%d\n",
+               (unsigned long)g_tts_audio_chunks,
+               (unsigned long)g_tts_audio_bytes,
+               flush_ret);
+    g_tts_audio_active = RT_FALSE;
+    g_tts_audio_chunks = 0U;
+    g_tts_audio_bytes = 0U;
 }
 
 static void m33_publish_ble_telemetry(const sensor_data_t *sensor,
@@ -770,6 +801,7 @@ int main(void)
         control_get_status(&control);
         m33_handle_ble_command();
         m33_handle_ipc_command();
+        m33_flush_tts_audio_if_idle();
         m33_publish_ble_telemetry(&sensor, &control, &g_runtime.safety);
 
         g_runtime.loop_count++;
