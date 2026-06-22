@@ -1263,3 +1263,49 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
 1. 如果 QA probe 再出 `ret=-28`，先看是否有新 ACK、`tx_pending` 是否为 0，不要先动 WiFi/token。
 2. 如果 stop 后 `xz_ws=0 stage=80`，先看 M55 是否打印 `websocket auto reconnected` 或 `websocket auto reconnect failed`。
 3. 下一步仍然是 CM55 mic0 真实人声 QA，以及平台 `stt/tts/error` event 和二进制 TTS 下行解析。
+
+## 33. 2026-06-22 COM4 状态已能看 server event payload 形态
+
+本轮修改：
+
+1. M55->M33 `voice_status_msg_t` 增加紧凑 server event 诊断：
+   - `srv_lens=text/content/speak` 长度；
+   - `srv_err=error/reason/code` 四字节码，其中第三槽当前保留为 `0`；
+   - 原 `srv_last=type/state` 保留。
+2. 这些字段只用于观测，不改变 XiaoZhi 协议或音频处理。
+
+验证结果：
+
+1. M55 构建通过并烧录：
+   - `rtthread.hex` 写入 `1720320 bytes`
+   - `whd_resources_all.bin` 写入 `466944 bytes`
+2. M33 构建通过并烧录：
+   - `build/rtthread_relocated.hex` 写入 `618496 bytes`
+3. 1200 ms QA 通过：
+   - `m33qa_xz_probe 1200` 发完 20 包 / `38400` bytes；
+   - `capture_off` 等到 `cmd=2` ACK；
+   - M33 收到并写入 320B binary TTS：`tts audio rx total=320`、`tts audio write chunk=...`；
+   - 最终 `xz_ws=1 xz_stage=70 xz_errno=0`。
+4. 新状态字段可见：
+   - `srv_last=0x7473696c/0x72617473`
+   - `srv_lens=0/0/0`
+   - `srv_err=0x00000000/0x00000000/0x00000000`
+
+踩坑：
+
+1. 不能随便扩大 `voice_status_msg_t`。第一次加 6 个 `uint32_t` 后，M33 链接失败：
+   - `.cy_sharedmem will not fit in region m33_allocatable_shared`
+   - `overflowed by 116 bytes`
+2. 这里的结构体会进入 M33/M55 IPC 队列，字段增长会被队列深度放大。
+3. 后续需要更多观测字段时，优先打包字段或临时复用诊断槽。
+
+后续判断：
+
+1. 如果 `srv_lens` 仍是 `0/0/0` 但 M33 有 `tts audio rx/write`，说明这次回复走 binary audio，不是 text event 里的 `text/content/speak`。
+2. 真实 CM55 mic0 人声 QA 时，同时看：
+   - `srv_last`
+   - `srv_lens`
+   - `srv_err`
+   - `xz_rx text/binary`
+   - `tts_fwd`
+   - M33 `tts audio rx/write`

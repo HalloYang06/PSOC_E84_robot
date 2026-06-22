@@ -133,6 +133,9 @@ typedef struct
     rt_uint32_t xiaozhi_server_tts_sentence_count;
     rt_uint32_t xiaozhi_server_last_type_code;
     rt_uint32_t xiaozhi_server_last_state_code;
+    rt_uint32_t xiaozhi_server_last_text_lens;
+    rt_uint32_t xiaozhi_server_last_error_code;
+    rt_uint32_t xiaozhi_server_last_reason_code;
     rt_tick_t xiaozhi_thinking_since_tick;
     rt_bool_t xiaozhi_server_hello_seen;
     char xiaozhi_listening_session_id[XIAOZHI_SESSION_ID_MAX_LEN];
@@ -430,6 +433,9 @@ static rt_err_t voice_service_publish_status(void)
     msg.payload.voice_status.xiaozhi_server_tts_sentence_count = g_service.xiaozhi_server_tts_sentence_count;
     msg.payload.voice_status.xiaozhi_server_last_type_code = g_service.xiaozhi_server_last_type_code;
     msg.payload.voice_status.xiaozhi_server_last_state_code = g_service.xiaozhi_server_last_state_code;
+    msg.payload.voice_status.xiaozhi_server_last_text_lens = g_service.xiaozhi_server_last_text_lens;
+    msg.payload.voice_status.xiaozhi_server_last_error_code = g_service.xiaozhi_server_last_error_code;
+    msg.payload.voice_status.xiaozhi_server_last_reason_code = g_service.xiaozhi_server_last_reason_code;
     rt_memory_info(&heap_total, &heap_used, &heap_max_used);
     msg.payload.voice_status.heap_total = (rt_uint32_t)heap_total;
     msg.payload.voice_status.heap_used = (rt_uint32_t)heap_used;
@@ -1880,6 +1886,12 @@ static void voice_service_handle_server_text(const char *message)
     rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
     g_service.xiaozhi_server_last_type_code = voice_service_text_code4(type);
     g_service.xiaozhi_server_last_state_code = voice_service_text_code4(state);
+    g_service.xiaozhi_server_last_text_lens =
+        (((rt_uint32_t)rt_strlen(text) & 0x3ffU) |
+         (((rt_uint32_t)rt_strlen(content) & 0x3ffU) << 10U) |
+         (((rt_uint32_t)rt_strlen(speak) & 0x3ffU) << 20U));
+    g_service.xiaozhi_server_last_error_code = voice_service_text_code4(error);
+    g_service.xiaozhi_server_last_reason_code = voice_service_text_code4(reason);
     rt_mutex_release(&g_service.lock);
 
     rt_kprintf("[voice_service] server event type=%s state=%s session=%s text=%u content=%u speak=%u err=%s reason=%s code=%s\n",
