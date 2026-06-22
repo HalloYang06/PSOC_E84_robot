@@ -1,5 +1,31 @@
 # Troubleshooting And Lessons
 
+## 2026-06-22 - Compact Listen Diagnostics And Human QA Prove Downlink
+
+Symptoms:
+- A clean human WAV probe could upload all audio, but earlier status did not prove whether `listen/start` and `listen/stop` text frames were sent successfully.
+- Expanding `voice_status_msg_t` to add more counters previously overflowed `.cy_sharedmem`.
+
+Root cause:
+- `voice_status_msg_t` is part of the fixed M33/M55 shared IPC message footprint. Adding fields there is unsafe on the current memory map.
+- The missing proof was observability, not WiFi/token/IPC. The board baseline already had `xz_ws=1`, `token_len=442`, and accepted every QA frame.
+
+Fix:
+- Keep listen diagnostics internal to M55 and reuse existing status fields only while `srv_stt` and `srv_tts` are still zero:
+  - `srv_lens = listen_start_count/listen_stop_count/start_ret`
+  - low `srv_err = stop_ret`
+- Do not grow shared structs for temporary diagnostics.
+
+Validation:
+- M55 build passed after the compact diagnostic change: `text=1533768 data=68744 bss=4541600`.
+- M33 build passed with no shared-memory overflow: `text=474160 data=15344 bss=311877`.
+- Human WAV QA sent `87` parts / `166974` bytes with `retries=0 tx_pending=0`.
+- M55 accepted every packet and uploaded it: `probe_lwip=87/0`, `xz_last=151/289920`, `xz_fail=0`.
+- M33 received and played the platform downlink: `tts audio rx total=320`, three `tts audio write` chunks, and `tts audio idle flush chunks=3 bytes=320 ret=0`.
+
+Lesson:
+- For this link, M33 `tts audio rx/write` is currently stronger proof than `srv_tts/tts_fwd`, because status counters lag the observed audio-forward path. Fix status accounting later, but do not block product validation on it.
+
 ## 2026-06-22 - Current Platform Accepts PCM Compatibility Better Than Opus
 
 Symptoms:
