@@ -1358,9 +1358,15 @@ static rt_err_t voice_service_start_xiaozhi_manual_listening(void)
 
     if (!websocket_client_is_connected())
     {
-        rt_kprintf("[voice_service] Xiaozhi manual listening deferred: websocket disconnected\n");
-        xiaozhi_ui_state_set(XIAOZHI_UI_CONNECTING, "网络已连，等待小智", websocket_client_last_errno());
-        return -RT_ERROR;
+        rt_kprintf("[voice_service] Xiaozhi manual listening reconnect: websocket disconnected stage=%d errno=%d\n",
+                   websocket_client_last_stage(),
+                   websocket_client_last_errno());
+        ret = voice_service_reconnect_xiaozhi();
+        if (ret != RT_EOK)
+        {
+            xiaozhi_ui_state_set(XIAOZHI_UI_CONNECTING, "网络已连，等待小智", ret);
+            return ret;
+        }
     }
 
     rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
@@ -1451,6 +1457,17 @@ rt_err_t voice_service_start_xiaozhi_talk(void)
 
     rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
     hello_seen = g_service.xiaozhi_server_hello_seen;
+    if (!hello_seen &&
+        (g_service.xiaozhi_server_hello_count > 0U) &&
+        websocket_client_is_connected())
+    {
+        g_service.xiaozhi_server_hello_seen = RT_TRUE;
+        hello_seen = RT_TRUE;
+        rt_kprintf("[voice_service] Xiaozhi talk using existing hello count=%lu stage=%d errno=%d\n",
+                   (unsigned long)g_service.xiaozhi_server_hello_count,
+                   websocket_client_last_stage(),
+                   websocket_client_last_errno());
+    }
     rt_mutex_release(&g_service.lock);
     if (!hello_seen)
     {
@@ -1778,6 +1795,15 @@ static rt_bool_t voice_service_update_xiaozhi_eou(const voice_model_result_t *mo
 
     rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
     active = g_service.xiaozhi_listening_active;
+    if (g_service.m33_pcm_probe_enabled)
+    {
+        if (active && voice_seen)
+        {
+            g_service.xiaozhi_last_voice_tick = now;
+        }
+        rt_mutex_release(&g_service.lock);
+        return RT_FALSE;
+    }
     if (!active)
     {
         rt_mutex_release(&g_service.lock);

@@ -1414,3 +1414,42 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
 
 1. 如果 `capture_on ack=0`、`probe_lwip=50/0`、`xz_last` 增长，但 `srv_stt/srv_tts/tts_fwd` 仍为 0，下一层是小智平台事件/协议差异。
 2. 不要把这个模式回退到 WiFi 扫描、token 配置或资源固件方向。
+
+## 38. 2026-06-22 M33 QA PCM probe 期间不要让 CM55 mic0 EOU 抢先 stop
+
+现象：
+
+1. `m55qa_capture_on` ACK 成功，但后续 M33 QA PCM 只有一部分被 M55 接受，最终 `probe_lwip` 可能表现为 `accepted/ignored` 混合。
+2. 连续跑 QA 时，如果 capture 实际未进入 listening，`m33qa_xz_probe` 仍继续发布 PCM，会把 M33->M55 IPC 队列塞到 `tx_pending=5`，导致 `capture_off ret=-28`。
+3. 当时 WiFi/token/WebSocket 基线仍健康，所以不是凭证或资源固件问题。
+
+根因：
+
+1. QA PCM 是 M33 deterministic PCM，但 M55 同时还在用 CM55 mic0 静音 EOU 监控同一个 XiaoZhi listening session。
+2. CM55 mic0 静音帧可能在 M33 QA PCM 注入前或注入中触发 auto EOU，提前发送 `listen/stop`。
+3. QA 工具之前只看控制命令返回，没有在发 PCM 前确认 M55 当前仍处于 `xz_listening=1`。
+
+本轮修复：
+
+1. M55 `voice_service_update_xiaozhi_eou()` 在 `m33_pcm_probe_enabled` 为 true 时跳过 CM55 mic0 自动 EOU；QA session 只由显式 `m55qa_capture_off` 结束。
+2. M33 `m33qa_xz_probe` 发包前读取最新 M55 `voice_status`，如果没有 `VOICE_STATUS_FLAG_XIAOZHI_LISTENING` 就 abort，不再继续塞 IPC 队列。
+3. M55 manual listen start 在最后发送 `listen/start` 前若发现 WebSocket 瞬时断开，会先尝试 reconnect。
+
+验证：
+
+1. M55 build 通过：`text=1648488 data=68744 bss=4541600`。
+2. M33 build 通过：`text=499256 data=15344 bss=311877`。
+3. M33 烧录成功并 verify：`build/rtthread.hex` 写入 `618496 bytes`，verify `616924 bytes`。
+4. M55 烧录成功：`rtthread.hex` 写入 `1720320 bytes`，`whd_resources_all.bin` 写入 `466944 bytes`。
+5. 最终 3000 ms QA：
+   - `capture_on ack=0`
+   - `m33qa_xz_probe 3000` 发送 50 包 / `96000` bytes，`retries=0 tx_pending=0`
+   - `capture_off ack=0`
+   - `probe_lwip=50/0`
+   - `xz_last=81/14499 xz_fail=0`
+   - `xz_ws=1 xz_stage=70 xz_errno=0`
+
+后续判断：
+
+1. `probe_lwip=50/0` 且 `xz_last` 增长后，如果 `srv_stt/srv_tts/tts_fwd` 仍为 0，下一步只查小智平台/协议，不要回退到 WiFi/token/资源固件。
+2. 连续 QA 前若 `m33qa_xz_probe` 打印 `M55 not listening`，先重新跑 `m55qa_capture_on` 并确认 ACK，不要直接塞 PCM。
