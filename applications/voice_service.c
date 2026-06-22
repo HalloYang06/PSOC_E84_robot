@@ -2732,6 +2732,8 @@ static void voice_service_handle_control(const voice_control_msg_t *control)
     case VOICE_CTRL_M33_PCM_PROBE_ENABLE:
         rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
         g_service.m33_pcm_probe_enabled = RT_TRUE;
+        g_service.m33_pcm_probe_accepted_count = 0U;
+        g_service.m33_pcm_probe_ignored_count = 0U;
         rt_mutex_release(&g_service.lock);
         ret = RT_EOK;
         rt_kprintf("[voice_service] M33 PCM probe enabled for QA\n");
@@ -2901,23 +2903,32 @@ void voice_service_handle_ipc_message(const m33_m55_message_t *msg)
             rt_mutex_release(&g_service.lock);
             if (!accept_probe_pcm)
             {
+                rt_uint32_t ignored_count;
+
+                rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
                 g_service.m33_pcm_probe_ignored_count++;
-                if ((g_service.m33_pcm_probe_ignored_count == 1U) ||
-                    ((g_service.m33_pcm_probe_ignored_count % 25U) == 0U))
+                ignored_count = g_service.m33_pcm_probe_ignored_count;
+                rt_mutex_release(&g_service.lock);
+                if ((ignored_count == 1U) || ((ignored_count % 25U) == 0U))
                 {
                     rt_kprintf("[voice_service] ignore M33 PCM probe count=%lu; official product uplink uses CM55 mic0\n",
-                               (unsigned long)g_service.m33_pcm_probe_ignored_count);
+                               (unsigned long)ignored_count);
                 }
                 break;
             }
+            rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
             g_service.m33_pcm_probe_accepted_count++;
-            if ((g_service.m33_pcm_probe_accepted_count <= 3U) ||
-                ((g_service.m33_pcm_probe_accepted_count % 20U) == 0U))
             {
-                rt_kprintf("[voice_service] accept M33 PCM probe count=%lu len=%lu seq=%lu\n",
-                           (unsigned long)g_service.m33_pcm_probe_accepted_count,
-                           (unsigned long)msg->payload.sensor_stream.chunk_len,
-                           (unsigned long)msg->payload.sensor_stream.chunk_index);
+                rt_uint32_t accepted_count = g_service.m33_pcm_probe_accepted_count;
+
+                rt_mutex_release(&g_service.lock);
+                if ((accepted_count <= 3U) || ((accepted_count % 20U) == 0U))
+                {
+                    rt_kprintf("[voice_service] accept M33 PCM probe count=%lu len=%lu seq=%lu\n",
+                               (unsigned long)accepted_count,
+                               (unsigned long)msg->payload.sensor_stream.chunk_len,
+                               (unsigned long)msg->payload.sensor_stream.chunk_index);
+                }
             }
         }
         voice_service_accept_shared_pcm(&msg->payload.sensor_stream);

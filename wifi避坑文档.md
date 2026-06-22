@@ -1627,3 +1627,51 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
    - `m55qa_capture_off`
    - 等 60 秒
    - `m55qa_status`
+
+## 41. 2026-06-22 `probe_lwip` 计数必须按 QA 轮次清零
+
+现象：
+
+1. 连续跑人声 QA 时，状态可能出现 `probe_lwip=87/87` 这种容易误读的结果。
+2. M33 侧可能已经打印 `xiaozhi probe done parts=87 sent=166974/166974 retries=0 tx_pending=0`。
+3. 但最终状态里的 ignored 可能来自上一轮之后的累计，不一定代表本轮一边接收一边忽略。
+
+根因：
+
+1. `probe_lwip=accepted/ignored` 原本是累计计数。
+2. 新一轮 `m55qa_probe_pcm_on` 没有清零 accepted/ignored，导致历史成功/失败计数混在一起。
+
+修复：
+
+1. M55 在处理 `VOICE_CTRL_M33_PCM_PROBE_ENABLE` 时清零：
+   - `m33_pcm_probe_accepted_count`
+   - `m33_pcm_probe_ignored_count`
+2. M55 对 accepted/ignored 计数更新加锁，避免 status 读取中间状态。
+
+验证：
+
+1. M55 build 通过：`text=1533576 data=68744 bss=4541584`。
+2. M55 烧录成功：
+   - `rtthread.hex` 写入 `1605632 bytes`
+   - `whd_resources_all.bin` 写入 `466944 bytes`
+3. M33 clean image 本轮也已烧录并 verify：
+   - `build/rtthread.hex` 写入 `593920 bytes`
+   - verify `591828 bytes`
+4. 干净计数的人声 QA：
+   - 日志：`D:\RT-ThreadStudio\workspace\yiliao_m33\.codex_tmp\xiaozhi_qa_20260622_clean_counts_after_tail_flush.log`
+   - `m33qa_xz_probe full` 发完 `87` 包 / `166974` bytes，`retries=0 tx_pending=0`
+   - `capture_off ret=0 ack=0 tx_pending=0`
+   - `probe_lwip=87/0`
+   - `xz_last=143/274560`
+   - `xz_fail=0`
+   - `xz_ws=1 xz_stage=70 xz_errno=0 token_len=442 srv_hello=1`
+
+当前剩余问题：
+
+1. 这轮没有收到平台 STT/TTS/binary：
+   - `xz_rx=1/0`
+   - `srv_stt=0`
+   - `srv_tts=0/0/0`
+   - `tts_fwd=0/0`
+2. 这不是 WiFi/token/M33 IPC 问题，因为 clean-count QA 已证明完整人声素材进入 M55 并上传到 XiaoZhi WebSocket。
+3. 下一步只查 XiaoZhi relay/platform 在 `listen/start -> binary PCM -> listen/stop` 后为什么没有回 STT/TTS。
