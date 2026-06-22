@@ -71,7 +71,10 @@ python3 /home/pi/nanopi_can_master.py m33 target --iface can0 --joint 4 --deg 30
 NanoPi 双 USB 摄像头作为 VLA-V 的最小验证命令：
 
 ```bash
-python3 /home/pi/rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/stereo_camera_capture_upload.py \
+cd /home/pi/rehab_arm_ros2_ws
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+ros2 run rehab_arm_psoc_bridge stereo_camera_capture_upload.py \
   --project-id fd6a55ed-a63c-44b3-b123-96fb3c154966 \
   --api-base http://106.55.62.122:8011 \
   --upload \

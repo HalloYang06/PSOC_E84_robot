@@ -15,6 +15,15 @@ from rehab_arm_psoc_bridge.stereo_camera_capture_upload import (  # noqa: E402
 
 
 class StereoCameraCaptureUploadTests(unittest.TestCase):
+    def test_script_has_shebang_for_cmake_ros_executable_install(self) -> None:
+        script_path = (
+            Path(__file__).resolve().parents[1]
+            / 'rehab_arm_psoc_bridge'
+            / 'stereo_camera_capture_upload.py'
+        )
+
+        self.assertEqual(script_path.read_text(encoding='utf-8').splitlines()[0], '#!/usr/bin/env python3')
+
     def test_build_insmod_command_uses_existing_module_path(self) -> None:
         command = build_insmod_command('/lib/modules/6.1.141.can-new/kernel/drivers/media/usb/uvc/uvcvideo.ko')
 

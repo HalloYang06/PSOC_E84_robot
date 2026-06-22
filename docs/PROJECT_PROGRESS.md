@@ -3200,3 +3200,11 @@
 - NanoPi validation: copied the CLI to `/home/pi/rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/stereo_camera_capture_upload.py` and ran it against live cameras. It generated `/home/pi/rehab_arm_stereo_frames/rehab-arm-alpha__nanopi-m5__stereo__20260622T061429Z__0001__left.jpg` and matching right frame, then uploaded to `http://106.55.62.122:8011`; platform returned `ok=true`.
 - Local validation: `python -m unittest rehab_arm_ros2_ws.src.rehab_arm_psoc_bridge.test.test_stereo_camera_capture_upload rehab_arm_ros2_ws.src.rehab_arm_psoc_bridge.test.test_stereo_vision_context rehab_arm_ros2_ws.src.rehab_arm_psoc_bridge.test.test_camera_keyframe_node` passed with 8 tests.
 - Next step: add detector/coarse-depth stage and final mounting/calibration IDs once the camera placement is fixed; before reboot-persistent deployment, decide whether to add a systemd/modprobe hook for the existing UVC module.
+
+### 2026-06-22 - NanoPi stereo capture ROS install entry verified
+
+- Completed: synchronized the new stereo scripts and current `CMakeLists.txt` to NanoPi, then rebuilt `/home/pi/rehab_arm_ros2_ws` with `colcon build --packages-select rehab_arm_psoc_bridge --symlink-install`.
+- Fixed deployment drift: the NanoPi source workspace was missing 10 existing helper scripts already listed in `CMakeLists.txt` (`build_voice_pipeline_plan.py`, `check_vla_plan_candidate.py`, `check_server_action_command.py`, and related dry-run/gate helpers). They were copied from the local repo so the package could build from source again.
+- Validation: `ros2 pkg executables rehab_arm_psoc_bridge` now lists `stereo_camera_capture_upload.py` and `stereo_vision_context.py`.
+- Validation: the installed ROS entry passed a real camera/platform run: `ros2 run rehab_arm_psoc_bridge stereo_camera_capture_upload.py --project-id fd6a55ed-a63c-44b3-b123-96fb3c154966 --api-base http://106.55.62.122:8011 --upload --sequence 3 --pretty` generated a new stereo pair under `/home/pi/rehab_arm_stereo_frames` and platform returned `ok=true`.
+- Boundary: this remains perception-only VLA-V context upload; no ROS motion topic, CAN frame, M33 state change, or motor path was touched.

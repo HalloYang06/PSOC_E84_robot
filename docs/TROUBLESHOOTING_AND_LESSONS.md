@@ -6363,7 +6363,10 @@ ffmpeg -hide_banner -loglevel error -y -f v4l2 -input_format mjpeg -video_size 6
 - 已新增可重复入口：
 
 ```bash
-python3 /home/pi/rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/stereo_camera_capture_upload.py \
+cd /home/pi/rehab_arm_ros2_ws
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+ros2 run rehab_arm_psoc_bridge stereo_camera_capture_upload.py \
   --project-id fd6a55ed-a63c-44b3-b123-96fb3c154966 \
   --api-base http://106.55.62.122:8011 \
   --upload \
@@ -6375,3 +6378,25 @@ python3 /home/pi/rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_brid
 状态：
 
 - 2026-06-22 已临时打通并封装 CLI。该 `insmod` 不持久，重启后需要重新加载或另行做持久化决策。
+
+### NanoPi ROS2 包构建失败时检查源码同步，而不是先怀疑新脚本
+
+现象：
+
+- NanoPi 上执行 `colcon build --packages-select rehab_arm_psoc_bridge --symlink-install` 时失败。
+- 报错类似：`ament_cmake_symlink_install_programs() can't find '/home/pi/rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/build_voice_pipeline_plan.py'`。
+
+根因：
+
+- NanoPi 源码工作区不是完整同步的当前 Git 分支状态；`CMakeLists.txt` 已经列出若干 helper 脚本，但 NanoPi 目录里缺少这些文件。
+- 这不是双摄脚本本身的语法或摄像头链路问题。
+
+解决：
+
+- 从本地当前分支同步缺失的 `rehab_arm_psoc_bridge/*.py` helper 脚本到 NanoPi 源码目录。
+- 重新执行 `colcon build --packages-select rehab_arm_psoc_bridge --symlink-install`。
+- 通过后运行 `ros2 pkg executables rehab_arm_psoc_bridge | grep stereo`，应看到 `stereo_camera_capture_upload.py` 和 `stereo_vision_context.py`。
+
+状态：
+
+- 2026-06-22 已修复 NanoPi 源码同步缺口，并验证 `ros2 run rehab_arm_psoc_bridge stereo_camera_capture_upload.py ... --upload` 可抓真实双摄图并上传平台。
