@@ -1,5 +1,29 @@
 # Troubleshooting And Lessons
 
+## 2026-06-22 - `capture_on ack=-116` Can Be A Repeated-Hello Race
+
+Symptoms:
+- `m55qa_status` showed the baseline was healthy after startup: `xz_ws=1`, `xz_stage=70`, `xz_errno=0`, `srv_hello=1`, `token_len=442`, `wlan=1`.
+- `m55qa_probe_pcm_on` ACKed, but `m55qa_capture_on` returned `ack=-116`.
+- Because capture never entered active listening, the following QA PCM was correctly ignored: `probe_lwip=0/50` or higher ignored counts, and `xz_last=0/0`.
+
+Root cause:
+- Talk start sent or waited for another hello even though the current runtime had already received server hello.
+- The fallback previously required `websocket_client_is_connected()` to be true at the exact timeout check. A transient false during the wait could still return `-RT_ETIMEOUT` even though later status showed `xz_ws=1`.
+
+Fix:
+- `voice_service_start_xiaozhi_talk()` now treats `xiaozhi_server_hello_count > 0` as sufficient prior-hello evidence after repeated hello timeout, restores `hello_seen`, and then lets `voice_service_start_xiaozhi_manual_listening()` perform the live WebSocket check before sending `listen/start`.
+
+Validation:
+- After the fix, 3000 ms QA returned `capture_on ack=0`, `capture_off ack=0`, `tx_pending=0`.
+- M55 accepted all 50 QA PCM packets: `probe_lwip=50/0`.
+- XiaoZhi uplink counters advanced: `xz_last=84/15036`, `xz_fail=0`.
+- Final link health remained `xz_ws=1 xz_stage=70 xz_errno=0`.
+
+Next diagnostic boundary:
+- If `capture_on ack=0` and `probe_lwip=50/0` but `srv_stt/srv_tts/tts_fwd` stay zero, inspect XiaoZhi platform event/protocol behavior.
+- Do not treat this pattern as WiFi/token/resource regression unless `wlan`, `xz_ws`, `token_len`, or reconnect health also degrade.
+
 ## 2026-06-22 - Keep M33/M55 Voice Status Compact
 
 Symptoms:
