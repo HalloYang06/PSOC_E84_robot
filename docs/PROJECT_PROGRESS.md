@@ -3302,3 +3302,11 @@
 - Learning result: previous closer run was about `87-88 px`; farther run is about `80 px`, matching the expected stereo trend that farther objects have smaller pixel disparity.
 - Boundary: this is still qualitative pixel-disparity validation only. No metric depth or motion target was produced.
 - Next step: collect one nearer point and one farther point with approximate tape-measured distance to prepare for later calibration intuition.
+
+### 2026-06-22 - Full stereo calibration workflow started with chessboard observation tool
+
+- Completed: added `stereo_chessboard_calibration.py` plus ROS install entry. The tool captures a left/right pair or inspects existing images, runs OpenCV chessboard corner detection, and reports `pair_ok`, image sizes, expected corner count, and square size.
+- Teaching boundary: this is the required first step for full stereo depth. Metric depth still requires many accepted chessboard poses, intrinsic/extrinsic calibration, rectification, disparity generation, and validation; do not jump straight from object bbox disparity to motor-useful depth.
+- Validation: local tests passed with 32 tests, including chessboard size parsing and blank-image failure behavior.
+- NanoPi validation: `colcon build --packages-select rehab_arm_psoc_bridge --symlink-install` passed. Running `ros2 run rehab_arm_psoc_bridge stereo_chessboard_calibration.py --chessboard-size 9x6 --square-size-m 0.025 --pretty` captured a pair and correctly reported `left.found=false`, `right.found=false`, `pair_ok=false` because no chessboard was visible.
+- Next step: place a real printed or screen-displayed chessboard visible to both cameras and collect at least 15-20 accepted poses before attempting calibration.

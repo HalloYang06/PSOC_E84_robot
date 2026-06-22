@@ -16,6 +16,7 @@ install(PROGRAMS
   rehab_arm_psoc_bridge/camera_keyframe_node.py
   rehab_arm_psoc_bridge/stereo_vision_context.py
   rehab_arm_psoc_bridge/stereo_camera_capture_upload.py
+  rehab_arm_psoc_bridge/stereo_chessboard_calibration.py
   rehab_arm_psoc_bridge/joint_state_motor_state_node.py
   rehab_arm_psoc_bridge/jsonl_replay_node.py
   rehab_arm_psoc_bridge/check_recording.py

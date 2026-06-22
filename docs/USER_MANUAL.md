@@ -114,6 +114,20 @@ SSD 结果会以 `source=opencv_dnn_mobilenet_ssd` 进入 `detections`。`--auto
 
 学习判断规律：在同一组固定摄像头下，目标越近，左右图中心点差异通常越大；目标越远，`horizontal_disparity_px` 通常越小。2026-06-22 实测瓶子从较近位置移动到较远位置后，视差从约 `87-88 px` 降到约 `80 px`，符合这个趋势。
 
+完整双目深度的第一步是采集棋盘格标定样本，不是直接算深度。准备棋盘格时，`--chessboard-size 9x6` 表示内角点数量是 9 列 x 6 行；如果打印板是 10 x 7 个黑白方格，通常内角点就是 9 x 6。`--square-size-m` 是每个小方格边长，必须用尺量真实值，例如 25mm 就填 `0.025`。
+
+```bash
+cd /home/pi/rehab_arm_ros2_ws
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+ros2 run rehab_arm_psoc_bridge stereo_chessboard_calibration.py \
+  --chessboard-size 9x6 \
+  --square-size-m 0.025 \
+  --pretty
+```
+
+输出里 `left.found=true`、`right.found=true`、`pair_ok=true` 才算一张有效样本。采样时让棋盘格同时出现在两路画面里，依次采集正中、左上、右上、左下、右下、近、中、远、轻微倾斜等至少 15-20 个姿态；每次都要保证整张内角点可见、不要反光、不要糊。未固定最终摄像头位置前，这些样本只能用于学习和验证流程，不能作为正式深度标定。
+
 生成语音链路 dry-run 合同：
 
 ```bash
