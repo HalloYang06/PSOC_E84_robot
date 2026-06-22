@@ -1211,3 +1211,55 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
 1. 用真实 CM55 mic0 做人工语音 QA，观察 `server event type=stt/tts/error`、`srv_stt`、`srv_tts`、`xz_rx text/binary`、`tts_fwd` 和 M33 `tts audio rx/write`。
 2. 如果 stop 后 WebSocket 再次掉到 `stage=80`，优先修 session stop/reconnect 逻辑。
 3. 只有当 `wlan=0`、`token_len=0`、或 `xz_ws=0` 持续不能 reconnect 时，才回到 WiFi/token 方向。
+
+## 32. 2026-06-22 M55 自动重连和 M33 QA ACK 等待已补，不要把控制 ACK 时序误判为平台问题
+
+本轮修改：
+
+1. M55 `voice_service` 线程里的自动重连不再只裸调 `websocket_client_connect()`，而是复用完整 `voice_service_reconnect_xiaozhi()`：
+   - 重新配置 XiaoZhi socket/header；
+   - 清旧 hello/session/listening 状态；
+   - connect 成功后重新发送 hello；
+   - 成功/失败都会打印 `websocket auto reconnect... stage/errno`。
+2. M33 QA 命令现在会等新 ACK 再返回：
+   - `m55qa_probe_pcm_on`
+   - `m55qa_capture_on`
+   - `m55qa_capture_off`
+   - `m55qa_probe_pcm_off`
+3. `m33qa_xz_probe` 开始前会等 `tx_pending=0`；如果 M33->M55 控制消息还没被消费，它会等待 drain，而不是继续塞 PCM。
+
+关键复现：
+
+1. M55 重烧后 1200 ms probe 通过：
+   - `m33qa_xz_probe 1200` 发 20 包 / `38400` bytes；
+   - `capture_off` ACK 成功；
+   - M33 收到 320B TTS 下行并写入音频；
+   - 最终 `xz_ws=1 xz_stage=70`。
+2. M33 ACK 等待修复前，3000 ms probe 暴露出真实 QA 时序问题：
+   - `m55qa_capture_on` 没等到新 ACK 就继续发 probe；
+   - 第 5 包附近队列满，`tx_pending=5`；
+   - `m55qa_capture_off ret=-28`。
+3. M33 ACK 等待修复并重烧后，3000 ms probe 通过：
+   - `probe_pcm_on` 等到 `cmd=11` ACK；
+   - `capture_on` 等到 `cmd=1` ACK；
+   - `m33qa_xz_probe 3000` 发完 50 包 / `96000` bytes，`retries=0 tx_pending=0`；
+   - `capture_off` 等到 `cmd=2` ACK；
+   - 最终 `xz_ws=1 xz_stage=70 xz_errno=0`。
+
+烧录踩坑：
+
+1. M33 不能只用泛 `target/infineon/pse84.cfg` 或少了工程 QSPI 配置的 OpenOCD 命令烧外部 flash。
+2. 如果日志出现：
+   - `no flash bank found for address 0x60340400`
+   - `wrote 0 bytes`
+   就是不成功。
+3. 正确命令必须先加载：
+   - `libs/TARGET_APP_KIT_PSE84_EVAL_EPC2/config/GeneratedSource/qspi_config.cfg`
+   - 再加载 `target/infineon/pse84xgxs2.cfg`
+   这样 `flash banks` 里才会出现 `cat1d.cm33.smif1_ns`。
+
+后续判断：
+
+1. 如果 QA probe 再出 `ret=-28`，先看是否有新 ACK、`tx_pending` 是否为 0，不要先动 WiFi/token。
+2. 如果 stop 后 `xz_ws=0 stage=80`，先看 M55 是否打印 `websocket auto reconnected` 或 `websocket auto reconnect failed`。
+3. 下一步仍然是 CM55 mic0 真实人声 QA，以及平台 `stt/tts/error` event 和二进制 TTS 下行解析。
