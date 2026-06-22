@@ -1,5 +1,29 @@
 # Troubleshooting And Lessons
 
+## 2026-06-22 - Do Not Let Initial Silence End Real Mic XiaoZhi Capture
+
+Symptoms:
+- `m55qa_capture_on` ACKed successfully, but if the operator waited a few seconds before speaking, final status showed `xz_last=0/0`.
+- In a lucky timed run, real mic speech did produce ASR text and `xz_last=57/109440`, proving mic0 and platform STT were basically alive.
+- The reliable QA WAV path already returned TTS, so the remaining failure was product capture timing, not WiFi/token/platform reachability.
+
+Root cause:
+- M55 EOU used `xiaozhi_last_voice_tick = start_tick` and allowed silence-based EOU after the minimum record time.
+- That meant initial silence after pressing capture could close the XiaoZhi session before the human started speaking.
+
+Fix:
+- Add an M55 `xiaozhi_voice_seen` session flag.
+- Reset it on every XiaoZhi listen start.
+- Only allow silence-based EOU after at least one voice frame has been observed. The max-record timeout still stops a truly silent session.
+
+Validation:
+- After rebuild/flash, field QA with real CM55 mic0 produced `xz_last=188/360960`, `xz_fail=0`.
+- M33 received and wrote TTS audio: `tts audio rx total=640`, `audio_playback Started`, `tts audio idle flush chunks=5 bytes=640 ret=0`.
+- Final status stayed healthy with `tx_pending=0`, `xz_ws=1`, `xz_stage=70`, `xz_errno=0`.
+
+Lesson:
+- For user-facing voice capture, distinguish "no speech yet" from "speech ended." Initial silence is common in manual tests and must not trigger EOU.
+
 ## 2026-06-22 - Compact Listen Diagnostics And Human QA Prove Downlink
 
 Symptoms:
