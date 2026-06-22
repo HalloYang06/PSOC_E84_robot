@@ -1330,3 +1330,24 @@ Trick:
 
 Status:
 - Partially fixed. Flashing and post-flash status checks now work on the board probe, but the session still needs a real cloud reply to complete the XiaoZhi path.
+
+## 2026-06-22 - Stale `m55qa_status` after TTS means check voice service drain progress
+
+Symptoms:
+- After a successful QA probe/TTS playback run, `m55qa_probe_pcm_off` could ACK but the following real mic0 `m55qa_capture_on/off` timed out.
+- `tx_pending` rose while WiFi/token/WebSocket stayed healthy, so this is not a network/token regression.
+
+Fix / trick:
+- `m55qa_status` now prints `voice_svc=loop/drain/last_consume_ret/phase` using existing diagnostic slots.
+- M55 drains M33->M55 IPC before and after each TTS chunk publish, so stop/control commands are not starved behind synchronous TTS forwarding.
+- M55 publishes a fresh status after auto reconnect success/failure; otherwise COM4 can keep showing the last `xz_ws=0 stage=80` status until another event publishes a new snapshot.
+
+How to read it:
+- `loop` should keep increasing when the M55 voice service thread is alive.
+- `drain` should increase when M33 control/probe messages are consumed.
+- `last_consume_ret=-3` normally means the queue was empty.
+- `phase=40/41/42/43` points inside TTS forwarding; if it sticks there with stale seq, inspect M55->M33 audio queue/playback pressure before touching WiFi or token.
+
+Validated:
+- After reflashing both sides, real CM55 mic0 control commands no longer stuck behind prior QA/TTS state: `probe_pcm_off`, `capture_on`, and `capture_off` all ACKed with `tx_pending=0`.
+- A post-stop status published after auto reconnect showed `xz_ws=1 xz_stage=70 xz_errno=0` with a fresh status age, confirming the stale `xz_ws=0 stage=80` snapshot no longer persists after recovery.

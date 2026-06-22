@@ -177,7 +177,7 @@ static void m55qa_status(int argc, char **argv)
                                                          &voice_status_timestamp);
     if (has_voice_status)
     {
-        rt_kprintf("[m55qa] voice_status seq=%lu flags=0x%lx wake_on=%d wake_ready=%d wake_hit=%d xz_listening=%d xz_ws=%d xz_token=%d token_len=%lu staging_len=%lu frames=%lu windows=%lu detected=%lu pcm_seq=%lu len=%lu peak=%lu avg=%lu active=%lu/%lu wake_stage=%lu err=%ld xz_stage=%ld xz_errno=%ld heap=%lu/%lu max=%lu probe_or_bridge=%ld/%ld/%ld/%ld probe_lwip=%ld/%ld xz_cur=%lu/%lu xz_last=%lu/%lu xz_fail=%lu xz_rx=%lu/%lu frame_len=%lu tts_fwd=%lu/%lu tts_fail=%lu pcm_reject=%lu srv_hello=%lu srv_stt=%lu srv_tts=%lu/%lu/%lu srv_last=0x%08lx/0x%08lx srv_lens=%lu/%lu/%lu srv_err=0x%08lx/0x%08lx/0x%08lx age_ticks=%lu\n",
+        rt_kprintf("[m55qa] voice_status seq=%lu flags=0x%lx wake_on=%d wake_ready=%d wake_hit=%d xz_listening=%d xz_ws=%d xz_token=%d token_len=%lu staging_len=%lu frames=%lu windows=%lu detected=%lu pcm_seq=%lu len=%lu peak=%lu avg=%lu active=%lu/%lu wake_stage=%lu err=%ld xz_stage=%ld xz_errno=%ld heap=%lu/%lu max=%lu voice_svc=%ld/%ld/%ld/%ld probe_lwip=%ld/%ld xz_cur=%lu/%lu xz_last=%lu/%lu xz_fail=%lu xz_rx=%lu/%lu frame_len=%lu tts_fwd=%lu/%lu tts_fail=%lu pcm_reject=%lu srv_hello=%lu srv_stt=%lu srv_tts=%lu/%lu/%lu srv_last=0x%08lx/0x%08lx srv_lens=%lu/%lu/%lu srv_err=0x%08lx/0x%08lx/0x%08lx age_ticks=%lu\n",
                    (unsigned long)voice_status_seq,
                    (unsigned long)voice_status.flags,
                    (voice_status.flags & VOICE_STATUS_FLAG_WAKE_LISTENING) ? 1 : 0,
