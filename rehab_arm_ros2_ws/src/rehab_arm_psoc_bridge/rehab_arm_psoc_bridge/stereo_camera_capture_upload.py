@@ -140,6 +140,41 @@ def analyze_stereo_pair_quality(left_path: Path, right_path: Path) -> dict[str, 
     }
 
 
+def detect_visual_region_proposals(image_path: Path, *, max_regions: int = 5) -> list[dict[str, Any]]:
+    try:
+        import cv2
+    except ModuleNotFoundError as exc:
+        raise RuntimeError('OpenCV cv2 is required for --detect-visual-regions') from exc
+
+    image = cv2.imread(str(image_path))
+    if image is None:
+        raise RuntimeError(f'OpenCV failed to read image: {image_path}')
+    height, width = image.shape[:2]
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    edges = cv2.Canny(blurred, 40, 120)
+    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    min_area = max(64.0, width * height * 0.002)
+    proposals: list[dict[str, Any]] = []
+    for contour in contours:
+        area = float(cv2.contourArea(contour))
+        if area < min_area:
+            continue
+        x, y, box_width, box_height = cv2.boundingRect(contour)
+        if box_width <= 0 or box_height <= 0:
+            continue
+        confidence = min(0.65, max(0.05, area / float(width * height)))
+        proposals.append({
+            'label': 'visual_region',
+            'confidence': round(confidence, 3),
+            'bbox_xywh': [int(x), int(y), int(box_width), int(box_height)],
+            'image_ref': str(image_path),
+            'source': 'opencv_contour_proposal_not_semantic_detection',
+        })
+    proposals.sort(key=lambda item: item['bbox_xywh'][2] * item['bbox_xywh'][3], reverse=True)
+    return proposals[:max_regions]
+
+
 def _run_command(command: list[str], *, timeout_sec: float, allow_already_loaded: bool = False) -> None:
     completed = subprocess.run(command, capture_output=True, text=True, timeout=timeout_sec, check=False)
     if completed.returncode == 0:
@@ -210,6 +245,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument('--vla-context', default='two RGB cameras provide approximate depth only; operator must verify before motion')
     parser.add_argument('--confidence', type=float)
     parser.add_argument('--analyze-image-quality', action='store_true')
+    parser.add_argument('--detect-visual-regions', action='store_true')
+    parser.add_argument('--max-visual-regions', type=int, default=5)
     parser.add_argument('--api-base', default='')
     parser.add_argument('--relay-token', default='')
     parser.add_argument('--upload', action='store_true')
@@ -240,6 +277,8 @@ def run_capture_upload(args: argparse.Namespace) -> tuple[dict[str, Any], dict[s
     )
     detections = load_detections(args.detections_json)
     quality_analysis = analyze_stereo_pair_quality(left_path, right_path) if args.analyze_image_quality else None
+    if args.detect_visual_regions:
+        detections = detections + detect_visual_region_proposals(left_path, max_regions=max(1, args.max_visual_regions))
     target_object = (
         {'label': args.target_label, 'confidence': args.target_confidence}
         if args.target_label
@@ -254,6 +293,8 @@ def run_capture_upload(args: argparse.Namespace) -> tuple[dict[str, Any], dict[s
         vla_context = (
             f"{vla_context}; image_quality={json.dumps(quality_analysis, ensure_ascii=False, separators=(',', ':'))}"
         )
+    if args.detect_visual_regions:
+        vla_context = f'{vla_context}; detections include class-agnostic visual region proposals, not semantic YOLO labels'
     payload = build_stereo_vision_context_payload(
         robot_id=args.robot_id,
         device_id=args.device_id,

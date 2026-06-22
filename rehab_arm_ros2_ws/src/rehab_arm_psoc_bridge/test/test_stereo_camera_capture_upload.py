@@ -14,6 +14,7 @@ from rehab_arm_psoc_bridge.stereo_camera_capture_upload import (  # noqa: E402
     analyze_stereo_pair_quality,
     build_insmod_command,
     build_stereo_capture_commands,
+    detect_visual_region_proposals,
     make_stereo_frame_paths,
 )
 
@@ -101,6 +102,25 @@ class StereoCameraCaptureUploadTests(unittest.TestCase):
 
         self.assertFalse(analysis['usable_for_context'])
         self.assertIn('too dark', analysis['quality_warnings'])
+
+    def test_detect_visual_region_proposals_returns_bounding_boxes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            image_path = Path(tmp_dir) / 'left.jpg'
+            image = Image.new('RGB', (80, 60), color=(20, 20, 20))
+            for y in range(15, 45):
+                for x in range(20, 55):
+                    image.putpixel((x, y), (220, 220, 220))
+            image.save(image_path)
+
+            detections = detect_visual_region_proposals(image_path, max_regions=3)
+
+        self.assertGreaterEqual(len(detections), 1)
+        first = detections[0]
+        self.assertEqual(first['label'], 'visual_region')
+        self.assertEqual(first['source'], 'opencv_contour_proposal_not_semantic_detection')
+        self.assertGreater(first['confidence'], 0.0)
+        self.assertGreater(first['bbox_xywh'][2], 0)
+        self.assertGreater(first['bbox_xywh'][3], 0)
 
 
 if __name__ == '__main__':

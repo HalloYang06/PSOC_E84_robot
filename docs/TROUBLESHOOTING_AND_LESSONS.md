@@ -6371,11 +6371,13 @@ ros2 run rehab_arm_psoc_bridge stereo_camera_capture_upload.py \
   --api-base http://106.55.62.122:8011 \
   --upload \
   --analyze-image-quality \
+  --detect-visual-regions \
   --pretty
 ```
 
 - 如果重启后 `uvcvideo` 又没有绑定，先临时加 `--ensure-uvc-module`。这个选项只加载板上已有的 `/lib/modules/6.1.141.can-new/kernel/drivers/media/usb/uvc/uvcvideo.ko`，不是编译/替换内核。
 - `--analyze-image-quality` 只做图像质量和粗场景摘要，适合临时装机验证左右图是否可用；它不会填 `estimated_depth_m`，不要把它当成已完成双目标定。
+- `--detect-visual-regions` 只做 OpenCV 轮廓候选框，不是 YOLO。输出 label 是 `visual_region`，source 是 `opencv_contour_proposal_not_semantic_detection`；不要把它当成已识别目标或运动目标。
 
 状态：
 

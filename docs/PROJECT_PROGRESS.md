@@ -3217,3 +3217,12 @@
 - NanoPi validation: `ros2 run rehab_arm_psoc_bridge stereo_camera_capture_upload.py --project-id fd6a55ed-a63c-44b3-b123-96fb3c154966 --api-base http://106.55.62.122:8011 --upload --sequence 4 --analyze-image-quality --pretty` produced `scene_summary="stereo RGB pair 640x480 captured; mean_luma L/R=167.21/175.81; pair_difference=42.37; depth remains uncalibrated"` and platform returned `ok=true`.
 - Local validation: `python -m unittest rehab_arm_ros2_ws.src.rehab_arm_psoc_bridge.test.test_stereo_camera_capture_upload rehab_arm_ros2_ws.src.rehab_arm_psoc_bridge.test.test_stereo_vision_context rehab_arm_ros2_ws.src.rehab_arm_psoc_bridge.test.test_camera_keyframe_node` passed with 11 tests.
 - Next step: add real detector integration to fill `detections` and `target_object`; only add `estimated_depth_m` after camera mounting and calibration are fixed.
+
+### 2026-06-22 - Class-agnostic visual region proposals added
+
+- Finding: NanoPi currently has OpenCV/numpy but no YOLO/ONNX/PT model files, no `onnxruntime`, and no `ultralytics`. There is no ready semantic detector to enable without adding model assets.
+- Completed: added optional `--detect-visual-regions` to `stereo_camera_capture_upload.py`. It uses OpenCV Canny/contours on the left image to produce class-agnostic `visual_region` bounding boxes.
+- Safety/accuracy boundary: `visual_region` entries are explicitly marked `source=opencv_contour_proposal_not_semantic_detection`. They are candidate image regions, not semantic YOLO labels and not motion targets.
+- NanoPi validation: `ros2 run rehab_arm_psoc_bridge stereo_camera_capture_upload.py --project-id fd6a55ed-a63c-44b3-b123-96fb3c154966 --api-base http://106.55.62.122:8011 --upload --sequence 5 --analyze-image-quality --detect-visual-regions --max-visual-regions 4 --pretty` produced 2 `visual_region` detections and platform returned `ok=true`, `detection_count=2`.
+- Local validation: related unit tests passed with 12 tests.
+- Next step: add a real detector asset/runtime decision, likely an OpenCV DNN/ONNX model or lightweight detector, then map semantic detections into `target_object` without changing the perception-only control boundary.
