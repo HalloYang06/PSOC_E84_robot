@@ -1,5 +1,56 @@
 # wifi 避坑文档
 
+## 38. 2026-06-22 小智 stop 控制帧必须保留 start 的 mode
+
+本轮只动小智语音协议层，没有回退 WiFi/token/资源方向。
+
+现象：
+
+1. `m55qa_capture_on + m33qa_xz_probe` 已能让 M55 接收全部 QA PCM，并上传 Opus：
+   - `probe_lwip=50/0`
+   - `xz_last` 增长
+   - `xz_fail=0`
+2. 但平台有时只返回 `listen/start` 类控制文本，没有 `stt/tts/binary audio`。
+3. 文档里曾记录过成功链路使用 `listen start mode=manual` 和 `listen stop mode=manual`，而当前代码里的 stop 又退回成只发 `state=stop`。
+
+修复：
+
+1. M55 在 session start 时记录 `xiaozhi_listening_source`。
+2. `listen/stop` 现在会携带：
+   - `mode`
+   - `audio_bytes`
+   - `audio_chunks`
+3. 手动 QA 路径现在是 `start mode=manual` 对应 `stop mode=manual`；本地/实时唤醒不会被误标成 manual。
+
+验证：
+
+1. M55 编译通过：
+   - `text=1648696 data=68744 bss=4541600`
+2. M33 编译通过：
+   - `text=499512 data=15344 bss=311877`
+3. M33 烧录通过：
+   - `build/rtthread.hex` 写入 `618496 bytes`，verify `617180 bytes`
+4. M55 烧录通过：
+   - `rtthread.hex` 写入 `1720320 bytes`
+   - `whd_resources_all.bin` 写入 `466944 bytes`
+5. COM4 最终 QA：
+   - `m55qa_probe_pcm_on` / `m55qa_capture_on` / `m55qa_capture_off` 都 ACK `0`
+   - `m33qa_xz_probe 3000` 发出 `50` 包 / `96000` 字节，`retries=0 tx_pending=0`
+   - `probe_lwip=50/0`
+   - `xz_last=207/37053`
+   - `xz_fail=0`
+   - `xz_ws=1 xz_stage=70 xz_errno=0`
+   - 仍无平台 STT/TTS/binary：`srv_stt=0 srv_tts=0/0/0 xz_rx=2/0 tts_fwd=0/0`
+
+边界：
+
+如果 stop mode 修正后仍没有 STT/TTS，下一个方向是平台 relay 日志或官方小智协议差异，不是 WiFi 扫描、token 重新配置或 WHD resources。
+
+补充：
+
+1. M55 现在在控制 ACK 前先发布一次 status，减少 M33 读到旧 `xz_listening=0` 的窗口。
+2. M33 QA 的 `m55qa_capture_on` 和 `m33qa_xz_probe` 会短等 `VOICE_STATUS_FLAG_XIAOZHI_LISTENING`，避免 ACK/status IPC 顺序造成误判。
+
 ## 31. 2026-06-20 小智链路新结论：平台下行已到 M33，剩余 blocker 是 speaker 播放
 
 本轮确认：

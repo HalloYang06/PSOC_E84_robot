@@ -116,6 +116,7 @@ typedef struct
     rt_uint32_t m33_pcm_probe_accepted_count;
     rt_uint32_t m33_pcm_probe_ignored_count;
     rt_bool_t xiaozhi_listening_active;
+    xiaozhi_wake_source_t xiaozhi_listening_source;
     rt_uint32_t xiaozhi_listening_bytes;
     rt_uint32_t xiaozhi_listening_chunks;
     rt_tick_t xiaozhi_listening_start_tick;
@@ -203,9 +204,11 @@ static void voice_service_stop_xiaozhi_listening(rt_bool_t notify_server);
 static rt_err_t voice_service_stop_xiaozhi_listening_async(void);
 static rt_bool_t voice_service_take_xiaozhi_listening(char *session_id,
                                                       rt_size_t session_id_len,
+                                                      xiaozhi_wake_source_t *wake_source,
                                                       rt_uint32_t *bytes,
                                                       rt_uint32_t *chunks);
 static rt_err_t voice_service_send_xiaozhi_listen_stop(const char *session_id,
+                                                       xiaozhi_wake_source_t wake_source,
                                                        rt_uint32_t bytes,
                                                        rt_uint32_t chunks);
 static rt_err_t voice_service_publish_status(void);
@@ -1244,6 +1247,7 @@ static void voice_service_reset_xiaozhi_session_state(void)
     rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
     g_service.xiaozhi_server_hello_seen = RT_FALSE;
     g_service.xiaozhi_listening_active = RT_FALSE;
+    g_service.xiaozhi_listening_source = XIAOZHI_WAKE_SOURCE_MANUAL;
     g_service.xiaozhi_audio_frame_len = 0;
     rt_memset(g_service.xiaozhi_session_id, 0, sizeof(g_service.xiaozhi_session_id));
     rt_memset(g_service.xiaozhi_listening_session_id, 0, sizeof(g_service.xiaozhi_listening_session_id));
@@ -1333,6 +1337,7 @@ static void voice_service_start_xiaozhi_listening(const char *wake_word)
 
     rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
     g_service.xiaozhi_listening_active = RT_TRUE;
+    g_service.xiaozhi_listening_source = XIAOZHI_WAKE_SOURCE_REALTIME;
     g_service.xiaozhi_listening_bytes = 0;
     g_service.xiaozhi_listening_chunks = 0;
     g_service.xiaozhi_listening_start_tick = rt_tick_get();
@@ -1418,6 +1423,7 @@ static rt_err_t voice_service_start_xiaozhi_manual_listening(void)
     rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
     g_service.wake_listening = RT_FALSE;
     g_service.xiaozhi_listening_active = RT_TRUE;
+    g_service.xiaozhi_listening_source = XIAOZHI_WAKE_SOURCE_MANUAL;
     g_service.xiaozhi_listening_bytes = 0;
     g_service.xiaozhi_listening_chunks = 0;
     g_service.xiaozhi_listening_start_tick = rt_tick_get();
@@ -1528,6 +1534,7 @@ rt_err_t voice_service_stop_xiaozhi_talk(void)
 typedef struct
 {
     char session_id[XIAOZHI_SESSION_ID_MAX_LEN];
+    xiaozhi_wake_source_t wake_source;
     rt_uint32_t bytes;
     rt_uint32_t chunks;
 } voice_stop_notify_ctx_t;
@@ -1538,7 +1545,10 @@ static void voice_service_stop_notify_thread_entry(void *parameter)
 
     if (ctx != RT_NULL)
     {
-        (void)voice_service_send_xiaozhi_listen_stop(ctx->session_id, ctx->bytes, ctx->chunks);
+        (void)voice_service_send_xiaozhi_listen_stop(ctx->session_id,
+                                                     ctx->wake_source,
+                                                     ctx->bytes,
+                                                     ctx->chunks);
         rt_free(ctx);
     }
 }
@@ -1566,6 +1576,7 @@ rt_bool_t voice_service_xiaozhi_is_listening(void)
 static rt_err_t voice_service_stop_xiaozhi_listening_async(void)
 {
     char session_id[XIAOZHI_SESSION_ID_MAX_LEN];
+    xiaozhi_wake_source_t wake_source = XIAOZHI_WAKE_SOURCE_MANUAL;
     rt_uint32_t bytes = 0U;
     rt_uint32_t chunks = 0U;
 
@@ -1575,7 +1586,7 @@ static rt_err_t voice_service_stop_xiaozhi_listening_async(void)
     }
 
     rt_memset(session_id, 0, sizeof(session_id));
-    if (voice_service_take_xiaozhi_listening(session_id, sizeof(session_id), &bytes, &chunks))
+    if (voice_service_take_xiaozhi_listening(session_id, sizeof(session_id), &wake_source, &bytes, &chunks))
     {
         voice_stop_notify_ctx_t *ctx = (voice_stop_notify_ctx_t *)rt_malloc(sizeof(*ctx));
         if (ctx != RT_NULL)
@@ -1584,6 +1595,7 @@ static rt_err_t voice_service_stop_xiaozhi_listening_async(void)
 
             rt_memset(ctx, 0, sizeof(*ctx));
             rt_strncpy(ctx->session_id, session_id, sizeof(ctx->session_id) - 1);
+            ctx->wake_source = wake_source;
             ctx->bytes = bytes;
             ctx->chunks = chunks;
             thread = rt_thread_create("xz_stop",
@@ -1841,18 +1853,19 @@ static rt_bool_t voice_service_update_xiaozhi_eou(const voice_model_result_t *mo
 static void voice_service_stop_xiaozhi_listening(rt_bool_t notify_server)
 {
     char session_id[XIAOZHI_SESSION_ID_MAX_LEN];
+    xiaozhi_wake_source_t wake_source = XIAOZHI_WAKE_SOURCE_MANUAL;
     rt_uint32_t bytes = 0U;
     rt_uint32_t chunks = 0U;
 
     rt_memset(session_id, 0, sizeof(session_id));
-    if (!voice_service_take_xiaozhi_listening(session_id, sizeof(session_id), &bytes, &chunks))
+    if (!voice_service_take_xiaozhi_listening(session_id, sizeof(session_id), &wake_source, &bytes, &chunks))
     {
         return;
     }
 
     if (notify_server)
     {
-        (void)voice_service_send_xiaozhi_listen_stop(session_id, bytes, chunks);
+        (void)voice_service_send_xiaozhi_listen_stop(session_id, wake_source, bytes, chunks);
     }
 
     if (notify_server && websocket_client_is_connected())
@@ -1861,8 +1874,9 @@ static void voice_service_stop_xiaozhi_listening(rt_bool_t notify_server)
         xiaozhi_feedback_beep(60U);
     }
 
-    rt_kprintf("[voice_service] Xiaozhi listening stopped session=%s bytes=%lu chunks=%lu notify=%d\n",
+    rt_kprintf("[voice_service] Xiaozhi listening stopped session=%s source=%d bytes=%lu chunks=%lu notify=%d\n",
                session_id,
+               (int)wake_source,
                (unsigned long)bytes,
                (unsigned long)chunks,
                notify_server ? 1 : 0);
@@ -1870,11 +1884,12 @@ static void voice_service_stop_xiaozhi_listening(rt_bool_t notify_server)
 
 static rt_bool_t voice_service_take_xiaozhi_listening(char *session_id,
                                                       rt_size_t session_id_len,
+                                                      xiaozhi_wake_source_t *wake_source,
                                                       rt_uint32_t *bytes,
                                                       rt_uint32_t *chunks)
 {
     if ((session_id == RT_NULL) || (session_id_len == 0U) ||
-        (bytes == RT_NULL) || (chunks == RT_NULL))
+        (wake_source == RT_NULL) || (bytes == RT_NULL) || (chunks == RT_NULL))
     {
         return RT_FALSE;
     }
@@ -1888,9 +1903,11 @@ static rt_bool_t voice_service_take_xiaozhi_listening(char *session_id,
 
     rt_memset(session_id, 0, session_id_len);
     rt_strncpy(session_id, g_service.xiaozhi_listening_session_id, session_id_len - 1);
+    *wake_source = g_service.xiaozhi_listening_source;
     *bytes = g_service.xiaozhi_listening_bytes;
     *chunks = g_service.xiaozhi_listening_chunks;
     g_service.xiaozhi_listening_active = RT_FALSE;
+    g_service.xiaozhi_listening_source = XIAOZHI_WAKE_SOURCE_MANUAL;
     g_service.xiaozhi_listening_bytes = 0;
     g_service.xiaozhi_listening_chunks = 0;
     rt_memset(g_service.xiaozhi_listening_session_id, 0, sizeof(g_service.xiaozhi_listening_session_id));
@@ -1903,6 +1920,7 @@ static rt_bool_t voice_service_take_xiaozhi_listening(char *session_id,
 }
 
 static rt_err_t voice_service_send_xiaozhi_listen_stop(const char *session_id,
+                                                       xiaozhi_wake_source_t wake_source,
                                                        rt_uint32_t bytes,
                                                        rt_uint32_t chunks)
 {
@@ -1914,7 +1932,12 @@ static rt_err_t voice_service_send_xiaozhi_listen_stop(const char *session_id,
         return -RT_ERROR;
     }
 
-    ret = xiaozhi_voice_relay_build_listen_stop(json, sizeof(json), session_id, bytes, chunks);
+    ret = xiaozhi_voice_relay_build_listen_stop(json,
+                                                sizeof(json),
+                                                session_id,
+                                                wake_source,
+                                                bytes,
+                                                chunks);
     if (ret != RT_EOK)
     {
         return ret;
@@ -1930,8 +1953,9 @@ static rt_err_t voice_service_send_xiaozhi_listen_stop(const char *session_id,
         return ret;
     }
 
-    rt_kprintf("[voice_service] Xiaozhi listen stop sent session=%s bytes=%lu chunks=%lu\n",
+    rt_kprintf("[voice_service] Xiaozhi listen stop sent session=%s source=%d bytes=%lu chunks=%lu\n",
                session_id,
+               (int)wake_source,
                (unsigned long)bytes,
                (unsigned long)chunks);
     return RT_EOK;
@@ -2688,13 +2712,13 @@ static void voice_service_handle_control(const voice_control_msg_t *control)
     {
         m33_m55_message_t ack;
 
+        (void)voice_service_publish_status();
         rt_memset(&ack, 0, sizeof(ack));
         ack.type = MSG_TYPE_VOICE_CONTROL_ACK;
         ack.payload.voice_control.cmd = control->cmd;
         ack.payload.voice_control.arg0 = (rt_uint32_t)ret;
         ack.payload.voice_control.arg1 = (rt_uint32_t)rt_tick_get();
         (void)m33_m55_comm_publish(&ack);
-        (void)voice_service_publish_status();
     }
 }
 
