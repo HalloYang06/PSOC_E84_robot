@@ -3235,3 +3235,12 @@
 - NanoPi finding: no local YOLO/ONNX/PT model files were found under `/home/pi`, `/opt`, or `/usr/local`; `cv2` and `numpy` are available, but `onnxruntime` and `ultralytics` are not installed. This keeps the current semantic detector as an interface, not a completed semantic recognition deployment.
 - Validation: local tests passed with 16 tests. NanoPi package build passed, and the normal no-model stereo path still uploaded successfully with `ok=true`, `detection_count=2`.
 - Next step: choose a model asset and labels file compatible with OpenCV DNN on NanoPi, copy them into a versioned model directory, then validate real semantic labels before filling `target_object`.
+
+### 2026-06-22 - NanoPi stereo VLA-V path rechecked after handoff
+
+- Validation: NanoPi `NanoPi-M5` on kernel `6.1.141` still sees both USB cameras bound to `Driver=uvcvideo`; `/dev/video45`, `/dev/video46`, `/dev/video47`, and `/dev/video48` exist, with real capture still mapped to `/dev/video45` and `/dev/video47`.
+- Validation: installed ROS entries remain present: `stereo_camera_capture_upload.py` and `stereo_vision_context.py`; NanoPi has `cv2 4.6.0` and `numpy 1.26.4`.
+- Validation: live command `ros2 run rehab_arm_psoc_bridge stereo_camera_capture_upload.py --upload --analyze-image-quality --detect-visual-regions --max-visual-regions 4 --pretty` captured a new stereo pair, produced `scene_summary="stereo RGB pair 640x480 captured; mean_luma L/R=137.24/137.08; pair_difference=40.51; depth remains uncalibrated"`, detected 1 class-agnostic `visual_region`, and platform returned `ok=true`, `detection_count=1`, `control_boundary=stereo_vision_context_only_not_motion_permission`.
+- Validation: bad semantic-detector invocation with `--yolo-onnx /tmp/missing.onnx` and no `--yolo-labels` exited with `ValueError: --yolo-labels is required with --yolo-onnx` before capture/upload.
+- Boundary: no kernel files, boot files, CAN path, M33 state, trajectory topics, or motor commands were changed during this recheck.
+- Next step: add an actual lightweight ONNX detector plus labels under a versioned NanoPi model directory and validate real semantic labels; calibrated depth remains blocked until final camera mounting and stereo calibration.

@@ -6405,3 +6405,24 @@ ros2 run rehab_arm_psoc_bridge stereo_camera_capture_upload.py \
 状态：
 
 - 2026-06-22 已修复 NanoPi 源码同步缺口，并验证 `ros2 run rehab_arm_psoc_bridge stereo_camera_capture_upload.py ... --upload` 可抓真实双摄图并上传平台。
+
+### `--yolo-onnx` 没配 labels 时失败是预期保护
+
+现象：
+
+- 运行 `ros2 run rehab_arm_psoc_bridge stereo_camera_capture_upload.py ... --yolo-onnx /tmp/missing.onnx --pretty` 时返回码为 1。
+- stderr 包含 `ValueError: --yolo-labels is required with --yolo-onnx`。
+
+判断：
+
+- 这是语义检测入口的参数保护，不是摄像头链路坏了。
+- 校验发生在 `run_capture_upload()` 开头，早于摄像头抓图和平台上传，目的是避免缺标签文件时上传误导性的 semantic detection payload。
+
+解决：
+
+- 如果只是验证双摄 VLA-V 链路，不要传 `--yolo-onnx`；继续使用 `--analyze-image-quality --detect-visual-regions`。
+- 如果要启用真实语义检测，必须同时提供 OpenCV DNN 兼容的 ONNX 模型和对应 `labels.txt`，例如后续放到 `/home/pi/rehab_arm_models/yolo/` 后再执行 `--yolo-onnx <model.onnx> --yolo-labels <labels.txt>`。
+
+状态：
+
+- 2026-06-22 已在 NanoPi 复核该 guardrail，确认坏参数会提前失败，正常无模型链路仍能抓双摄图并上传平台 `ok=true`。
