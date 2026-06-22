@@ -1,5 +1,42 @@
 # wifi 避坑文档
 
+## 40. 2026-06-22 人声素材板端自测已打通到 M33 speaker 写入
+
+本轮继续只做小智语音链路，没有回到 WiFi/token/resources。
+
+关键结论：
+
+1. 人声 WAV 自测链路已经在板端跑通：
+   - `human WAV -> M33 QA PCM -> M55 XiaoZhi WebSocket -> platform TTS -> M33 audio_playback`
+2. M55/M33 共享结构不能再随便加字段；之前扩 `voice_status_msg_t` 会导致 M33 `.cy_sharedmem` 溢出。
+3. 本轮诊断只在 M55 内部加计数，并临时复用现有 status 字段输出：
+   - `srv_lens = listen_start_count/listen_stop_count/start_ret`
+   - `srv_err` 低 16 位 = `stop_ret`
+
+验证：
+
+1. M55 编译通过：
+   - `text=1533768 data=68744 bss=4541600`
+2. M33 编译通过：
+   - `text=474160 data=15344 bss=311877`
+3. M55 烧录通过：
+   - `rtthread.hex` 写入 `1605632 bytes`
+   - `whd_resources_all.bin` 写入 `466944 bytes`
+4. COM4 人声 QA：
+   - `m55qa_probe_pcm_on` / `m55qa_capture_on` / `m55qa_capture_off` 均 ACK `0`
+   - `m33qa_xz_probe full` 发 `87` 包 / `166974` 字节
+   - `retries=0 tx_pending=0`
+   - `probe_lwip=87/0`
+   - `xz_last=151/289920`
+   - `xz_fail=0`
+   - M33 收到平台 TTS 下行并写播放：`tts audio rx total=320`、`audio_playback Started`、三段 `tts audio write` 共 `320` 字节、`tts audio idle flush chunks=3 bytes=320 ret=0`
+
+边界：
+
+1. 当前不要再把无 STT 文本计数当作 WiFi/token 故障；板端已经收到并写入 TTS audio。
+2. `srv_tts/tts_fwd` 仍没有完整反映 M33 实际收到的 TTS，下次可单独修状态统计。
+3. 下一步才是让用户或现场人员对真实 CM55 mic0 说话验证产品路径。
+
 ## 39. 2026-06-22 当前小智平台先走 PCM 兼容链路，已恢复 TTS 下行到 M33
 
 本轮目标是快点恢复完整小智功能，不再纠缠 WiFi/token/resources。

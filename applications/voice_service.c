@@ -140,6 +140,10 @@ typedef struct
     rt_uint32_t xiaozhi_server_last_text_lens;
     rt_uint32_t xiaozhi_server_last_error_code;
     rt_uint32_t xiaozhi_server_last_reason_code;
+    rt_uint32_t xiaozhi_listen_start_count;
+    rt_uint32_t xiaozhi_listen_stop_count;
+    rt_int32_t xiaozhi_listen_start_result;
+    rt_int32_t xiaozhi_listen_stop_result;
     rt_uint32_t service_loop_count;
     rt_uint32_t service_drain_count;
     rt_int32_t service_last_consume_ret;
@@ -502,6 +506,18 @@ static rt_err_t voice_service_publish_status(void)
     msg.payload.voice_status.xiaozhi_server_last_text_lens = g_service.xiaozhi_server_last_text_lens;
     msg.payload.voice_status.xiaozhi_server_last_error_code = g_service.xiaozhi_server_last_error_code;
     msg.payload.voice_status.xiaozhi_server_last_reason_code = g_service.xiaozhi_server_last_reason_code;
+    if ((g_service.xiaozhi_server_stt_count == 0U) &&
+        (g_service.xiaozhi_server_tts_start_count == 0U) &&
+        (g_service.xiaozhi_server_tts_stop_count == 0U))
+    {
+        msg.payload.voice_status.xiaozhi_server_last_text_lens =
+            ((g_service.xiaozhi_listen_start_count & 0x3ffU) |
+             ((g_service.xiaozhi_listen_stop_count & 0x3ffU) << 10U) |
+             (((rt_uint32_t)g_service.xiaozhi_listen_start_result & 0x3ffU) << 20U));
+        msg.payload.voice_status.xiaozhi_server_last_error_code =
+            (((rt_uint32_t)g_service.xiaozhi_listen_stop_result & 0xffffU) |
+             (msg.payload.voice_status.xiaozhi_server_last_error_code & 0xffff0000U));
+    }
     rt_memory_info(&heap_total, &heap_used, &heap_max_used);
     msg.payload.voice_status.heap_total = (rt_uint32_t)heap_total;
     msg.payload.voice_status.heap_used = (rt_uint32_t)heap_used;
@@ -1327,6 +1343,13 @@ static void voice_service_start_xiaozhi_listening(const char *wake_word)
                                                XIAOZHI_WAKE_SOURCE_REALTIME) == RT_EOK)
     {
         rt_err_t ret = websocket_client_send_text(json);
+        rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
+        g_service.xiaozhi_listen_start_result = ret;
+        if (ret == RT_EOK)
+        {
+            g_service.xiaozhi_listen_start_count++;
+        }
+        rt_mutex_release(&g_service.lock);
         if (ret != RT_EOK)
         {
             g_service.last_error = ret;
@@ -1406,6 +1429,13 @@ static rt_err_t voice_service_start_xiaozhi_manual_listening(void)
     if (ret == RT_EOK)
     {
         ret = websocket_client_send_text(json);
+        rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
+        g_service.xiaozhi_listen_start_result = ret;
+        if (ret == RT_EOK)
+        {
+            g_service.xiaozhi_listen_start_count++;
+        }
+        rt_mutex_release(&g_service.lock);
         if (ret != RT_EOK)
         {
             g_service.last_error = ret;
@@ -1984,6 +2014,13 @@ static rt_err_t voice_service_send_xiaozhi_listen_stop(const char *session_id,
     }
 
     ret = websocket_client_send_text(json);
+    rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
+    g_service.xiaozhi_listen_stop_result = ret;
+    if (ret == RT_EOK)
+    {
+        g_service.xiaozhi_listen_stop_count++;
+    }
+    rt_mutex_release(&g_service.lock);
     if (ret != RT_EOK)
     {
         g_service.last_error = ret;
