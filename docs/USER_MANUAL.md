@@ -101,12 +101,14 @@ ros2 run rehab_arm_psoc_bridge stereo_camera_capture_upload.py \
   --ssd-prototxt /home/pi/rehab_arm_models/ssd/deploy.prototxt \
   --ssd-labels /home/pi/rehab_arm_models/ssd/voc21.txt \
   --ssd-confidence-threshold 0.25 \
+  --detect-right-ssd \
   --auto-target-from-detections \
   --target-label-allowlist bottle,cup,person \
+  --stereo-associate-target \
   --pretty
 ```
 
-SSD 结果会以 `source=opencv_dnn_mobilenet_ssd` 进入 `detections`。`--auto-target-from-detections` 只会从 OpenCV DNN 语义检测里选择最高置信目标，不会把 `visual_region` 轮廓候选当成目标；`--target-label-allowlist` 用于限制可自动选择的类别。自动写入的 `target_object` 仍只是 VLA 视觉上下文，不是运动目标授权。如果当前画面没有 VOC 类目标超过阈值，`detection_count=0` 也是正常结果；可把人、瓶子、椅子等 VOC 类目标放进左摄像头视野后复测。YOLO ONNX 入口仍保留：`--yolo-onnx <model.onnx> --yolo-labels <labels.txt>`，但必须使用 NanoPi OpenCV 4.6 DNN 能加载的静态 shape 兼容导出；已试过的两个 `yolov5n.onnx` 候选模型分别因 `Floor` 和 dynamic `Shape` 节点失败，不能当作已部署 YOLO。
+SSD 结果会以 `source=opencv_dnn_mobilenet_ssd` 进入 `detections`。`--auto-target-from-detections` 只会从 OpenCV DNN 语义检测里选择最高置信目标，不会把 `visual_region` 轮廓候选当成目标；`--target-label-allowlist` 用于限制可自动选择的类别。`--detect-right-ssd --stereo-associate-target` 会尝试把目标和右图同类语义框做像素级关联；成功时写入左右 bbox 和 `horizontal_disparity_px`，失败时写入 `stereo_observation_status=no_right_semantic_match`。自动写入的 `target_object` 仍只是 VLA 视觉上下文，不是运动目标授权，也不是米制深度。如果当前画面没有 VOC 类目标超过阈值，`detection_count=0` 也是正常结果；可把人、瓶子、椅子等 VOC 类目标放进左摄像头视野后复测。YOLO ONNX 入口仍保留：`--yolo-onnx <model.onnx> --yolo-labels <labels.txt>`，但必须使用 NanoPi OpenCV 4.6 DNN 能加载的静态 shape 兼容导出；已试过的两个 `yolov5n.onnx` 候选模型分别因 `Floor` 和 dynamic `Shape` 节点失败，不能当作已部署 YOLO。
 
 生成语音链路 dry-run 合同：
 

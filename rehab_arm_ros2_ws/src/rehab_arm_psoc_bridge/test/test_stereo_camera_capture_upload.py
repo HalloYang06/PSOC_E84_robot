@@ -16,6 +16,7 @@ from rehab_arm_psoc_bridge.stereo_camera_capture_upload import (  # noqa: E402
     analyze_stereo_pair_quality,
     build_insmod_command,
     build_stereo_capture_commands,
+    build_stereo_observation_for_target,
     detect_yolo_dnn,
     detect_visual_region_proposals,
     load_label_file,
@@ -269,6 +270,7 @@ class StereoCameraCaptureUploadTests(unittest.TestCase):
         self.assertEqual(len(detections), 1)
         self.assertEqual(detections[0]['label'], 'person')
         self.assertEqual(detections[0]['bbox_xywh'], [160, 120, 320, 120])
+        self.assertEqual(detections[0]['image_side'], 'left')
         self.assertEqual(detections[0]['source'], 'opencv_dnn_mobilenet_ssd')
 
     def test_validate_ssd_args_requires_complete_asset_triplet(self) -> None:
@@ -299,6 +301,59 @@ class StereoCameraCaptureUploadTests(unittest.TestCase):
         self.assertEqual(target['label'], 'bottle')
         self.assertEqual(target['bbox_xywh'], [5, 6, 7, 8])
         self.assertEqual(target['source'], 'opencv_dnn_mobilenet_ssd')
+
+    def test_build_stereo_observation_for_target_matches_right_detection(self) -> None:
+        target = {
+            'label': 'bottle',
+            'confidence': 0.99,
+            'bbox_xywh': [280, 5, 100, 320],
+            'source': 'opencv_dnn_mobilenet_ssd',
+            'image_side': 'left',
+        }
+        observation = build_stereo_observation_for_target(target, [
+            target,
+            {
+                'label': 'bottle',
+                'confidence': 0.94,
+                'bbox_xywh': [170, 8, 110, 318],
+                'source': 'opencv_dnn_mobilenet_ssd',
+                'image_side': 'right',
+            },
+            {
+                'label': 'diningtable',
+                'confidence': 0.98,
+                'bbox_xywh': [0, 300, 640, 120],
+                'source': 'opencv_dnn_mobilenet_ssd',
+                'image_side': 'right',
+            },
+        ])
+
+        self.assertEqual(observation['label'], 'bottle')
+        self.assertEqual(observation['left_bbox_xywh'], [280, 5, 100, 320])
+        self.assertEqual(observation['right_bbox_xywh'], [170, 8, 110, 318])
+        self.assertEqual(observation['depth_status'], 'uncalibrated_pixel_disparity_only')
+        self.assertGreater(observation['horizontal_disparity_px'], 0)
+
+    def test_build_stereo_observation_rejects_large_vertical_mismatch(self) -> None:
+        target = {
+            'label': 'bottle',
+            'bbox_xywh': [280, 5, 100, 320],
+            'source': 'opencv_dnn_mobilenet_ssd',
+            'image_side': 'left',
+        }
+        observation = build_stereo_observation_for_target(
+            target,
+            [{
+                'label': 'bottle',
+                'confidence': 0.94,
+                'bbox_xywh': [170, 300, 110, 80],
+                'source': 'opencv_dnn_mobilenet_ssd',
+                'image_side': 'right',
+            }],
+            max_vertical_center_delta_px=40.0,
+        )
+
+        self.assertEqual(observation, {})
 
     def test_select_target_object_from_detections_honors_allowlist(self) -> None:
         target = select_target_object_from_detections(

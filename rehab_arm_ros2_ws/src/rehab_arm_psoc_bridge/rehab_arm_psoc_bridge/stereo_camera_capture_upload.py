@@ -169,6 +169,7 @@ def detect_visual_region_proposals(image_path: Path, *, max_regions: int = 5) ->
             'confidence': round(confidence, 3),
             'bbox_xywh': [int(x), int(y), int(box_width), int(box_height)],
             'image_ref': str(image_path),
+            'image_side': 'left',
             'source': 'opencv_contour_proposal_not_semantic_detection',
         })
     proposals.sort(key=lambda item: item['bbox_xywh'][2] * item['bbox_xywh'][3], reverse=True)
@@ -205,6 +206,7 @@ def parse_yolo_dnn_output(
     confidence_threshold: float,
     nms_threshold: float,
     image_ref: str,
+    image_side: str = 'left',
 ) -> list[dict[str, Any]]:
     try:
         import cv2
@@ -261,6 +263,7 @@ def parse_yolo_dnn_output(
             'confidence': round(confidences[index], 3),
             'bbox_xywh': boxes[index],
             'image_ref': image_ref,
+            'image_side': image_side,
             'source': 'opencv_dnn_yolo',
         })
     detections.sort(key=lambda item: item['confidence'], reverse=True)
@@ -275,6 +278,7 @@ def detect_yolo_dnn(
     input_size: int,
     confidence_threshold: float,
     nms_threshold: float,
+    image_side: str = 'left',
 ) -> list[dict[str, Any]]:
     try:
         import cv2
@@ -308,6 +312,7 @@ def detect_yolo_dnn(
         confidence_threshold=confidence_threshold,
         nms_threshold=nms_threshold,
         image_ref=str(image_path),
+        image_side=image_side,
     )
 
 
@@ -319,6 +324,7 @@ def parse_ssd_dnn_output(
     labels: list[str],
     confidence_threshold: float,
     image_ref: str,
+    image_side: str = 'left',
 ) -> list[dict[str, Any]]:
     try:
         import numpy as np
@@ -346,6 +352,7 @@ def parse_ssd_dnn_output(
             'confidence': round(confidence, 3),
             'bbox_xywh': [x, y, w, h],
             'image_ref': image_ref,
+            'image_side': image_side,
             'source': 'opencv_dnn_mobilenet_ssd',
         })
     parsed.sort(key=lambda item: item['confidence'], reverse=True)
@@ -359,6 +366,7 @@ def detect_ssd_dnn(
     model_path: Path,
     labels_path: Path,
     confidence_threshold: float,
+    image_side: str = 'left',
 ) -> list[dict[str, Any]]:
     try:
         import cv2
@@ -389,6 +397,7 @@ def detect_ssd_dnn(
         labels=labels,
         confidence_threshold=confidence_threshold,
         image_ref=str(image_path),
+        image_side=image_side,
     )
 
 
@@ -460,7 +469,70 @@ def select_target_object_from_detections(
         target['bbox_xywh'] = best['bbox_xywh']
     if 'image_ref' in best:
         target['image_ref'] = best['image_ref']
+    if 'image_side' in best:
+        target['image_side'] = best['image_side']
     return target
+
+
+def _bbox_center(bbox: Any) -> tuple[float, float] | None:
+    if not isinstance(bbox, list | tuple) or len(bbox) != 4:
+        return None
+    try:
+        x, y, width, height = [float(value) for value in bbox]
+    except (TypeError, ValueError):
+        return None
+    return x + width / 2.0, y + height / 2.0
+
+
+def build_stereo_observation_for_target(
+    target_object: dict[str, Any],
+    detections: list[dict[str, Any]],
+    *,
+    max_vertical_center_delta_px: float = 80.0,
+) -> dict[str, Any]:
+    if not target_object:
+        return {}
+    label = str(target_object.get('label', ''))
+    left_bbox = target_object.get('bbox_xywh')
+    left_center = _bbox_center(left_bbox)
+    if not label or left_center is None:
+        return {}
+    right_candidates = []
+    for detection in detections:
+        if detection.get('label') != label:
+            continue
+        if detection.get('image_side') != 'right':
+            continue
+        if not str(detection.get('source', '')).startswith('opencv_dnn_'):
+            continue
+        right_center = _bbox_center(detection.get('bbox_xywh'))
+        if right_center is None:
+            continue
+        vertical_delta = abs(left_center[1] - right_center[1])
+        if vertical_delta > max_vertical_center_delta_px:
+            continue
+        try:
+            confidence = float(detection.get('confidence', 0.0))
+        except (TypeError, ValueError):
+            confidence = 0.0
+        horizontal_delta = abs(left_center[0] - right_center[0])
+        score = confidence - vertical_delta * 0.001 - horizontal_delta * 0.0001
+        right_candidates.append((score, confidence, vertical_delta, right_center, detection))
+    if not right_candidates:
+        return {}
+    _, confidence, vertical_delta, right_center, right_detection = max(right_candidates, key=lambda item: item[0])
+    disparity_px = left_center[0] - right_center[0]
+    return {
+        'label': label,
+        'left_bbox_xywh': left_bbox,
+        'right_bbox_xywh': right_detection.get('bbox_xywh'),
+        'left_center_px': [round(left_center[0], 2), round(left_center[1], 2)],
+        'right_center_px': [round(right_center[0], 2), round(right_center[1], 2)],
+        'horizontal_disparity_px': round(disparity_px, 2),
+        'vertical_center_delta_px': round(vertical_delta, 2),
+        'right_confidence': round(confidence, 3),
+        'depth_status': 'uncalibrated_pixel_disparity_only',
+    }
 
 
 def _run_command(command: list[str], *, timeout_sec: float, allow_already_loaded: bool = False) -> None:
@@ -546,6 +618,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument('--ssd-prototxt', default='')
     parser.add_argument('--ssd-labels', default='')
     parser.add_argument('--ssd-confidence-threshold', type=float, default=0.35)
+    parser.add_argument('--detect-right-ssd', action='store_true')
+    parser.add_argument('--stereo-associate-target', action='store_true')
+    parser.add_argument('--max-stereo-vertical-delta-px', type=float, default=80.0)
     parser.add_argument('--api-base', default='')
     parser.add_argument('--relay-token', default='')
     parser.add_argument('--upload', action='store_true')
@@ -588,6 +663,7 @@ def run_capture_upload(args: argparse.Namespace) -> tuple[dict[str, Any], dict[s
             input_size=args.yolo_input_size,
             confidence_threshold=args.yolo_confidence_threshold,
             nms_threshold=args.yolo_nms_threshold,
+            image_side='left',
         )
     if args.ssd_model:
         detections = detections + detect_ssd_dnn(
@@ -596,7 +672,17 @@ def run_capture_upload(args: argparse.Namespace) -> tuple[dict[str, Any], dict[s
             model_path=Path(args.ssd_model).expanduser(),
             labels_path=Path(args.ssd_labels).expanduser(),
             confidence_threshold=args.ssd_confidence_threshold,
+            image_side='left',
         )
+        if args.detect_right_ssd:
+            detections = detections + detect_ssd_dnn(
+                right_path,
+                prototxt_path=Path(args.ssd_prototxt).expanduser(),
+                model_path=Path(args.ssd_model).expanduser(),
+                labels_path=Path(args.ssd_labels).expanduser(),
+                confidence_threshold=args.ssd_confidence_threshold,
+                image_side='right',
+            )
     target_object = (
         {'label': args.target_label, 'confidence': args.target_confidence}
         if args.target_label
@@ -607,6 +693,17 @@ def run_capture_upload(args: argparse.Namespace) -> tuple[dict[str, Any], dict[s
             detections,
             allowed_labels=_parse_allowlist(args.target_label_allowlist),
         )
+    if target_object and args.stereo_associate_target:
+        stereo_observation = build_stereo_observation_for_target(
+            target_object,
+            detections,
+            max_vertical_center_delta_px=args.max_stereo_vertical_delta_px,
+        )
+        target_object = dict(target_object)
+        if stereo_observation:
+            target_object['stereo_observation'] = stereo_observation
+        else:
+            target_object['stereo_observation_status'] = 'no_right_semantic_match'
     scene_summary = args.scene_summary
     confidence = args.confidence
     vla_context = args.vla_context
@@ -624,6 +721,8 @@ def run_capture_upload(args: argparse.Namespace) -> tuple[dict[str, Any], dict[s
         vla_context = f'{vla_context}; semantic detections generated by OpenCV DNN MobileNet-SSD'
     if target_object and args.auto_target_from_detections:
         vla_context = f"{vla_context}; target_object selected from semantic detections only"
+    if target_object.get('stereo_observation'):
+        vla_context = f'{vla_context}; target_object has uncalibrated left/right pixel association, not metric depth'
     payload = build_stereo_vision_context_payload(
         robot_id=args.robot_id,
         device_id=args.device_id,

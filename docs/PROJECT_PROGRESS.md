@@ -3274,3 +3274,13 @@
 - Platform validation: upload returned `ok=true`, `target_label=bottle`, `detection_count=3`, `estimated_depth_m=null`, and `control_boundary=stereo_vision_context_only_not_motion_permission`.
 - Boundary: selected `target_object` is a VLA-V visual context candidate only. It does not imply calibrated 3D target pose, motion permission, CAN output, or M33 command authority.
 - Next step: add calibrated stereo association/depth only after final camera mounting; until then keep `estimated_depth_m=null`.
+
+### 2026-06-22 - Optional right-camera SSD and stereo target association added
+
+- Completed: added `--detect-right-ssd`, `--stereo-associate-target`, and `--max-stereo-vertical-delta-px` to `stereo_camera_capture_upload.py`.
+- Behavior: detections now include `image_side`. When stereo association is enabled, the selected left-side `target_object` is matched against same-label right-side semantic detections; successful matches add `target_object.stereo_observation` with left/right bbox centers and pixel disparity. Failed matches add `stereo_observation_status=no_right_semantic_match`.
+- Validation: local stereo camera tests passed with 28 tests, including positive and vertical-mismatch stereo association cases.
+- NanoPi validation: rebuilt `rehab_arm_psoc_bridge` and uploaded a live payload with right-side SSD and stereo association enabled. Platform returned `ok=true`, `target_label=bottle`, `detection_count=1`, `estimated_depth_m=null`, and `control_boundary=stereo_vision_context_only_not_motion_permission`.
+- Observation: current temporary camera placement/cropping leaves the bottle partially cut off on the right image, so right-side SSD does not produce a semantic match even at low threshold. Payload correctly reports `target_object.stereo_observation_status=no_right_semantic_match` instead of inventing depth.
+- Boundary: pixel association is not calibrated metric depth and must not be used as a motion target. Keep `estimated_depth_m=null` until final mounting, intrinsic/extrinsic calibration, and stereo validation are complete.
+- Next step: reposition cameras/target so the object is fully visible in both frames, then validate a positive `stereo_observation` before starting calibration work.
