@@ -70,6 +70,8 @@ static struct
     rt_device_t dev;
     rt_thread_t thread;
     rt_bool_t running;
+    volatile rt_uint32_t frame_count;
+    volatile rt_tick_t last_frame_tick;
     rt_uint8_t buffer[M55_AUDIO_FRAME_BYTES];
     rt_uint8_t mono_buffer[M55_AUDIO_MONO_FRAME_BYTES];
 } g_m55_mic = {0};
@@ -329,6 +331,8 @@ static void m55_mic_thread_entry(void *parameter)
             }
 
             frame_count++;
+            g_m55_mic.frame_count++;
+            g_m55_mic.last_frame_tick = rt_tick_get();
             if ((frame_count % 10U) == 0U)
             {
                 rt_kprintf("[m55_mic] read ok len=%u peak=%u frames=%u\n",
@@ -370,7 +374,21 @@ static rt_err_t m55_mic_start_internal(void)
 
     if (g_m55_mic.running)
     {
-        return -RT_EBUSY;
+        rt_tick_t last_frame_tick = g_m55_mic.last_frame_tick;
+        rt_tick_t stale_ticks = rt_tick_from_millisecond(2000);
+
+        if ((last_frame_tick == 0U) ||
+            ((rt_int32_t)(rt_tick_get() - last_frame_tick) <= (rt_int32_t)stale_ticks))
+        {
+            return -RT_EBUSY;
+        }
+
+        rt_kprintf("[m55_mic] stale running state, restart frames=%lu age_ticks=%lu\n",
+                   (unsigned long)g_m55_mic.frame_count,
+                   (unsigned long)(rt_tick_get() - last_frame_tick));
+        g_m55_mic.running = RT_FALSE;
+        rt_thread_mdelay(80);
+        g_m55_mic.thread = RT_NULL;
     }
 
     if (g_m55_mic.dev == RT_NULL)
@@ -414,6 +432,7 @@ static rt_err_t m55_mic_start_internal(void)
     }
 
     g_m55_mic.running = RT_TRUE;
+    g_m55_mic.last_frame_tick = 0U;
     g_m55_mic.thread = rt_thread_create("m55_mic",
                                         m55_mic_thread_entry,
                                         RT_NULL,
@@ -1376,6 +1395,18 @@ static rt_err_t xiaozhi_bridge_handle_control(const voice_control_msg_t *control
     case VOICE_CTRL_WHD_DIAG:
         ret = wifi_config_whd_diag();
         break;
+    case VOICE_CTRL_M33_PCM_PROBE_ENABLE:
+    case VOICE_CTRL_M33_PCM_PROBE_DISABLE:
+    {
+        m33_m55_message_t local_msg;
+
+        rt_memset(&local_msg, 0, sizeof(local_msg));
+        local_msg.type = MSG_TYPE_VOICE_CONTROL;
+        local_msg.payload.voice_control = *control;
+        voice_service_handle_ipc_message(&local_msg);
+        ret = RT_EOK;
+        break;
+    }
     default:
         ret = -RT_EINVAL;
         break;

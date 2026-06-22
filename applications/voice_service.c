@@ -24,10 +24,12 @@
 #include <unistd.h>
 
 #define VOICE_PCM_BUFFER_SIZE        (320000U)
-#define VOICE_TTS_PENDING_SLOT_SIZE   (4096U)
+#define VOICE_TTS_PENDING_SLOT_SIZE   (16384U)
 #define VOICE_TTS_PENDING_SLOT_COUNT  (4U)
 #define VOICE_TTS_PENDING_BUFFER_SIZE (VOICE_TTS_PENDING_SLOT_SIZE * VOICE_TTS_PENDING_SLOT_COUNT)
-#define VOICE_TTS_CHUNK_GAP_MS        3U
+#define VOICE_TTS_CHUNK_GAP_MS        12U
+#define VOICE_TTS_PUBLISH_RETRY_COUNT 5U
+#define VOICE_TTS_PUBLISH_RETRY_MS    20U
 #define VOICE_JSON_BUFFER_SIZE       (768U)
 #define VOICE_SERVER_AUDIO_CHUNK     (4096U)
 #define WAKE_SKIP_WINDOWS_AFTER_TRIGGER (3U)
@@ -36,10 +38,12 @@
 #define WAKE_GATE_MIN_ACTIVE_FRAMES  (28U)
 #define VOICE_STATUS_PUBLISH_EVERY_FRAMES 20U
 #define XIAOZHI_EOU_MIN_RECORD_MS    900U
+#define XIAOZHI_EOU_MANUAL_MIN_RECORD_MS 3500U
 #define XIAOZHI_EOU_SILENCE_MS       1400U
 #define XIAOZHI_EOU_MAX_RECORD_MS    12000U
 #define XIAOZHI_EOU_SILENCE_PEAK     700U
 #define XIAOZHI_EOU_SILENCE_AVG      120U
+#define XIAOZHI_EOU_VOICE_FRAMES     3U
 #define XIAOZHI_THINKING_TIMEOUT_MS  20000U
 #define XIAOZHI_TALK_HELLO_WAIT_MS   8000U
 #define VOICE_IPC_DRAIN_MAX_PER_LOOP 8U
@@ -122,6 +126,7 @@ typedef struct
     rt_tick_t xiaozhi_listening_start_tick;
     rt_tick_t xiaozhi_last_voice_tick;
     rt_bool_t xiaozhi_voice_seen;
+    rt_uint32_t xiaozhi_voice_seen_frames;
     rt_uint32_t xiaozhi_last_sent_bytes;
     rt_uint32_t xiaozhi_last_sent_chunks;
     rt_uint32_t xiaozhi_send_fail_count;
@@ -942,6 +947,22 @@ static void voice_service_strip_v3_audio_header(const uint8_t **audio_data, rt_s
     }
 }
 
+static rt_bool_t voice_service_payload_has_v3_audio_header(const uint8_t *payload, rt_size_t len)
+{
+    rt_size_t framed_len;
+
+    if ((payload == RT_NULL) || (len < XIAOZHI_BINARY_V3_HEADER_LEN))
+    {
+        return RT_FALSE;
+    }
+
+    framed_len = ((rt_size_t)payload[2] << 8) | payload[3];
+    return ((payload[0] == 0U) &&
+            (payload[1] == 0U) &&
+            (framed_len > 0U) &&
+            ((framed_len + XIAOZHI_BINARY_V3_HEADER_LEN) <= len)) ? RT_TRUE : RT_FALSE;
+}
+
 static rt_bool_t voice_service_stream_pcm_to_m33(const uint8_t *audio_data,
                                                 uint32_t len,
                                                 rt_bool_t validate_raw_packet)
@@ -1003,12 +1024,26 @@ static rt_bool_t voice_service_stream_pcm_to_m33(const uint8_t *audio_data,
                        chunk_len > 3U ? msg.payload.audio_data.data[3] : 0U);
         }
 
-        if (m33_m55_comm_publish(&msg) != RT_EOK)
+        rt_err_t publish_ret = -RT_ERROR;
+        for (uint32_t retry = 0U; retry <= VOICE_TTS_PUBLISH_RETRY_COUNT; retry++)
+        {
+            publish_ret = m33_m55_comm_publish(&msg);
+            if (publish_ret == RT_EOK)
+            {
+                break;
+            }
+            rt_thread_mdelay(VOICE_TTS_PUBLISH_RETRY_MS);
+            voice_service_drain_ipc_messages();
+        }
+
+        if (publish_ret != RT_EOK)
         {
             rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
             g_service.xiaozhi_tts_forward_fail_count++;
             rt_mutex_release(&g_service.lock);
-            rt_kprintf("[voice_service] publish TTS chunk failed at %lu\n", (unsigned long)msg.payload.audio_data.chunk_index);
+            rt_kprintf("[voice_service] publish TTS chunk failed at %lu ret=%d\n",
+                       (unsigned long)msg.payload.audio_data.chunk_index,
+                       publish_ret);
             g_service.service_diag_phase = 43U;
             voice_service_drain_ipc_messages();
             return RT_FALSE;
@@ -1045,6 +1080,13 @@ static rt_bool_t voice_service_decode_opus_to_m33(const uint8_t *opus_data, uint
                                       &pcm_samples);
     if (ret != RT_EOK)
     {
+        rt_kprintf("[voice_service] opus decode failed ret=%d len=%lu head=%02x %02x %02x %02x\n",
+                   ret,
+                   (unsigned long)len,
+                   len > 0U ? opus_data[0] : 0U,
+                   len > 1U ? opus_data[1] : 0U,
+                   len > 2U ? opus_data[2] : 0U,
+                   len > 3U ? opus_data[3] : 0U);
         return RT_FALSE;
     }
 
@@ -1079,6 +1121,62 @@ static rt_bool_t voice_service_decode_opus_to_m33(const uint8_t *opus_data, uint
     return voice_service_stream_pcm_to_m33((const uint8_t *)pcm16,
                                            (uint32_t)(out_samples * sizeof(pcm16[0])),
                                            RT_FALSE);
+}
+
+static rt_bool_t voice_service_decode_v3_opus_frames_to_m33(const uint8_t *payload, uint32_t len)
+{
+    uint32_t offset = 0U;
+    uint32_t frames = 0U;
+    rt_bool_t streamed_any = RT_FALSE;
+
+    while ((offset + XIAOZHI_BINARY_V3_HEADER_LEN) <= len)
+    {
+        uint32_t frame_len;
+        const uint8_t *frame = payload + offset;
+
+        if (!voice_service_payload_has_v3_audio_header(frame, (rt_size_t)(len - offset)))
+        {
+            break;
+        }
+
+        frame_len = (((uint32_t)frame[2] << 8) | frame[3]);
+        if ((frames < 3U) || ((frames % 20U) == 0U))
+        {
+            rt_kprintf("[voice_service] v3 opus frame=%lu len=%lu head=%02x %02x %02x %02x\n",
+                       (unsigned long)frames,
+                       (unsigned long)frame_len,
+                       frame_len > 0U ? frame[4] : 0U,
+                       frame_len > 1U ? frame[5] : 0U,
+                       frame_len > 2U ? frame[6] : 0U,
+                       frame_len > 3U ? frame[7] : 0U);
+        }
+
+        if (voice_service_decode_opus_to_m33(frame + XIAOZHI_BINARY_V3_HEADER_LEN, frame_len))
+        {
+            streamed_any = RT_TRUE;
+        }
+        else
+        {
+            rt_kprintf("[voice_service] v3 opus frame decode failed frame=%lu len=%lu\n",
+                       (unsigned long)frames,
+                       (unsigned long)frame_len);
+        }
+
+        offset += XIAOZHI_BINARY_V3_HEADER_LEN + frame_len;
+        frames++;
+        voice_service_drain_ipc_messages();
+    }
+
+    if (frames > 0U)
+    {
+        rt_kprintf("[voice_service] v3 opus frames done frames=%lu consumed=%lu/%lu streamed=%d\n",
+                   (unsigned long)frames,
+                   (unsigned long)offset,
+                   (unsigned long)len,
+                   streamed_any ? 1 : 0);
+    }
+
+    return streamed_any;
 }
 
 static void voice_service_flush_audio_to_m33(void)
@@ -1163,7 +1261,15 @@ static rt_bool_t voice_service_process_pending_tts(void)
 
     if (binary)
     {
-        streamed = voice_service_decode_opus_to_m33(payload, len);
+        if (XIAOZHI_PROTOCOL_USES_V3_BINARY &&
+            voice_service_payload_has_v3_audio_header(payload, len))
+        {
+            streamed = voice_service_decode_v3_opus_frames_to_m33(payload, len);
+        }
+        if (!streamed)
+        {
+            streamed = voice_service_decode_opus_to_m33(payload, len);
+        }
         if (!streamed && voice_service_audio_looks_like_pcm16(payload, len))
         {
             streamed = voice_service_stream_pcm_to_m33(payload, len, RT_TRUE);
@@ -1371,6 +1477,7 @@ static void voice_service_start_xiaozhi_listening(const char *wake_word)
     g_service.xiaozhi_listening_start_tick = rt_tick_get();
     g_service.xiaozhi_last_voice_tick = g_service.xiaozhi_listening_start_tick;
     g_service.xiaozhi_voice_seen = RT_FALSE;
+    g_service.xiaozhi_voice_seen_frames = 0U;
     rt_memset(g_service.xiaozhi_listening_session_id, 0, sizeof(g_service.xiaozhi_listening_session_id));
     rt_strncpy(g_service.xiaozhi_listening_session_id,
                session_id,
@@ -1465,6 +1572,7 @@ static rt_err_t voice_service_start_xiaozhi_manual_listening(void)
     g_service.xiaozhi_listening_start_tick = rt_tick_get();
     g_service.xiaozhi_last_voice_tick = g_service.xiaozhi_listening_start_tick;
     g_service.xiaozhi_voice_seen = RT_FALSE;
+    g_service.xiaozhi_voice_seen_frames = 0U;
     rt_memset(g_service.xiaozhi_listening_session_id, 0, sizeof(g_service.xiaozhi_listening_session_id));
     rt_strncpy(g_service.xiaozhi_listening_session_id,
                session_id,
@@ -1866,9 +1974,11 @@ static rt_bool_t voice_service_update_xiaozhi_eou(const voice_model_result_t *mo
     rt_tick_t last_voice;
     rt_uint32_t elapsed_ms;
     rt_uint32_t silence_ms;
+    rt_uint32_t min_record_ms;
     rt_bool_t active;
     rt_bool_t voice_seen;
     rt_bool_t session_voice_seen;
+    xiaozhi_wake_source_t wake_source;
 
     if (model_result == RT_NULL)
     {
@@ -1899,26 +2009,39 @@ static rt_bool_t voice_service_update_xiaozhi_eou(const voice_model_result_t *mo
     if (voice_seen)
     {
         g_service.xiaozhi_last_voice_tick = now;
-        g_service.xiaozhi_voice_seen = RT_TRUE;
+        if (g_service.xiaozhi_voice_seen_frames < XIAOZHI_EOU_VOICE_FRAMES)
+        {
+            g_service.xiaozhi_voice_seen_frames++;
+        }
+        if (g_service.xiaozhi_voice_seen_frames >= XIAOZHI_EOU_VOICE_FRAMES)
+        {
+            g_service.xiaozhi_voice_seen = RT_TRUE;
+        }
     }
     started = g_service.xiaozhi_listening_start_tick;
     last_voice = g_service.xiaozhi_last_voice_tick;
     session_voice_seen = g_service.xiaozhi_voice_seen;
+    wake_source = g_service.xiaozhi_listening_source;
     rt_mutex_release(&g_service.lock);
 
     elapsed_ms = (rt_uint32_t)((now - started) * 1000U / RT_TICK_PER_SECOND);
     silence_ms = (rt_uint32_t)((now - last_voice) * 1000U / RT_TICK_PER_SECOND);
+    min_record_ms = (wake_source == XIAOZHI_WAKE_SOURCE_MANUAL) ?
+        XIAOZHI_EOU_MANUAL_MIN_RECORD_MS :
+        XIAOZHI_EOU_MIN_RECORD_MS;
 
     if ((elapsed_ms >= XIAOZHI_EOU_MAX_RECORD_MS) ||
         (session_voice_seen &&
-         (elapsed_ms >= XIAOZHI_EOU_MIN_RECORD_MS) &&
+         (elapsed_ms >= min_record_ms) &&
          (silence_ms >= XIAOZHI_EOU_SILENCE_MS)))
     {
-        rt_kprintf("[voice_service] Xiaozhi auto EOU elapsed=%lu silence=%lu peak=%lu avg=%lu\n",
+        voice_service_flush_xiaozhi_tail_frame();
+        rt_kprintf("[voice_service] Xiaozhi auto EOU elapsed=%lu silence=%lu peak=%lu avg=%lu source=%d\n",
                    (unsigned long)elapsed_ms,
                    (unsigned long)silence_ms,
                    (unsigned long)model_result->peak,
-                   (unsigned long)model_result->avg_abs);
+                   (unsigned long)model_result->avg_abs,
+                   (int)wake_source);
         (void)voice_service_stop_xiaozhi_listening_async();
         (void)voice_service_publish_status();
         return RT_TRUE;
@@ -2335,18 +2458,11 @@ static void on_websocket_message(websocket_message_type_t type, const uint8_t *p
 
     if (type == WEBSOCKET_MESSAGE_BINARY)
     {
-        const uint8_t *audio_payload = payload;
-        rt_size_t audio_len = payload_len;
-
         g_service.xiaozhi_rx_binary_count++;
-        rt_kprintf("[voice_service] server binary audio %lu bytes\n", (unsigned long)payload_len);
+        voice_service_log_payload_head("[voice_service] server binary audio", payload, payload_len);
         voice_service_clear_xiaozhi_thinking();
         xiaozhi_ui_state_set(XIAOZHI_UI_SPEAKING, "收到语音回复", RT_EOK);
-        if (XIAOZHI_PROTOCOL_USES_V3_BINARY)
-        {
-            voice_service_strip_v3_audio_header(&audio_payload, &audio_len);
-        }
-        voice_service_enqueue_tts_payload(audio_payload, audio_len, RT_TRUE);
+        voice_service_enqueue_tts_payload(payload, payload_len, RT_TRUE);
         return;
     }
 
@@ -3006,26 +3122,12 @@ void voice_service_handle_ipc_message(const m33_m55_message_t *msg)
 
 static void voice_service_drain_ipc_messages(void)
 {
-    m33_m55_message_t msg;
-    rt_uint32_t count = 0U;
-
-    while (count < VOICE_IPC_DRAIN_MAX_PER_LOOP)
-    {
-        rt_err_t ret;
-
-        g_service.service_diag_phase = 10U;
-        ret = m33_m55_comm_consume(&msg);
-        g_service.service_last_consume_ret = ret;
-        if (ret != RT_EOK)
-        {
-            break;
-        }
-        g_service.service_drain_count++;
-        g_service.service_diag_phase = 20U + (rt_uint32_t)msg.type;
-        voice_service_handle_ipc_message(&msg);
-        g_service.service_diag_phase = 30U + (rt_uint32_t)msg.type;
-        count++;
-    }
+    /*
+     * M55 has one owner for the M33->M55 RX queue: xz_bridge_thread_entry()
+     * in main.c. Keeping this helper non-consuming prevents control/status
+     * races where voice_service and the bridge both pull from the same queue.
+     */
+    g_service.service_last_consume_ret = -RT_EBUSY;
 }
 
 static void voice_service_thread_entry(void *parameter)

@@ -32,6 +32,10 @@ static lv_obj_t *g_keyboard_target;
 static lv_timer_t *g_scan_refresh_timer;
 static lv_timer_t *g_auto_qa_timer;
 static lv_timer_t *g_xiaozhi_refresh_timer;
+static rt_thread_t g_xiaozhi_ui_thread;
+static struct rt_semaphore g_xiaozhi_ui_sem;
+static rt_bool_t g_xiaozhi_ui_worker_ready;
+static volatile rt_uint8_t g_xiaozhi_ui_pending_cmd;
 static rt_thread_t g_connect_thread;
 static rt_bool_t g_connect_in_progress;
 static rt_bool_t g_diag_visible;
@@ -44,6 +48,9 @@ static lv_obj_t *panel_button(lv_obj_t *parent, const char *text, lv_event_cb_t 
 static void start_scan_refresh_timer(void);
 static void start_xiaozhi_refresh_timer(void);
 static void rehab_wifi_panel_run_qa_scan(const char *source);
+static void xiaozhi_ui_worker_thread_entry(void *parameter);
+static rt_err_t xiaozhi_ui_queue_action(rt_uint8_t cmd);
+static rt_err_t xiaozhi_ui_start_worker(void);
 
 static const char *wifi_keyboard_lower_map[] =
 {
@@ -240,9 +247,11 @@ static void rehab_wifi_panel_refresh(void)
     char status[128];
     char xiaozhi_status[96];
     char xiaozhi_detail[128];
+    char xiaozhi_reply[128];
     char qa[128];
     const char *phase_text;
     rt_bool_t show_spinner = RT_FALSE;
+    rt_bool_t xiaozhi_online;
 
     if ((g_status_label == RT_NULL) || (g_xiaozhi_label == RT_NULL))
     {
@@ -252,6 +261,8 @@ static void rehab_wifi_panel_refresh(void)
     (void)wifi_config_whd_diag();
     wifi_config_get_snapshot(&snapshot);
     xiaozhi_ui_state_snapshot(&xiaozhi);
+    xiaozhi_online = (xiaozhi_voice_relay_has_token() &&
+                      websocket_client_is_connected()) ? RT_TRUE : RT_FALSE;
     rt_snprintf(status,
                 sizeof(status),
                 "%s  %ld个网络",
@@ -264,6 +275,18 @@ static void rehab_wifi_panel_refresh(void)
         phase_text = "未配置Token";
         rt_snprintf(xiaozhi_detail, sizeof(xiaozhi_detail), "需要本地Token后才能连接平台");
     }
+    else if (xiaozhi_online &&
+             (xiaozhi.phase != XIAOZHI_UI_LISTENING) &&
+             (xiaozhi.phase != XIAOZHI_UI_THINKING) &&
+             (xiaozhi.phase != XIAOZHI_UI_SPEAKING))
+    {
+        phase_text = "在线待唤醒";
+        rt_snprintf(xiaozhi_detail,
+                    sizeof(xiaozhi_detail),
+                    "已连接平台，说话按钮可直接对话  唤醒:%lu 回复:%lu",
+                    (unsigned long)xiaozhi.wake_count,
+                    (unsigned long)xiaozhi.reply_count);
+    }
     else if ((snapshot.wlan_ready == 0U) || (snapshot.netdev_ip == 0U))
     {
         phase_text = "等待网络";
@@ -271,8 +294,7 @@ static void rehab_wifi_panel_refresh(void)
     }
     else if ((xiaozhi.phase == XIAOZHI_UI_LISTENING) ||
              (xiaozhi.phase == XIAOZHI_UI_THINKING) ||
-             (xiaozhi.phase == XIAOZHI_UI_SPEAKING) ||
-             (xiaozhi.phase == XIAOZHI_UI_READY))
+             (xiaozhi.phase == XIAOZHI_UI_SPEAKING))
     {
         phase_text = xiaozhi_ui_phase_text(xiaozhi.phase);
         show_spinner = ((xiaozhi.phase == XIAOZHI_UI_LISTENING) ||
@@ -293,6 +315,18 @@ static void rehab_wifi_panel_refresh(void)
         else if (xiaozhi.phase == XIAOZHI_UI_SPEAKING)
         {
             rt_snprintf(xiaozhi_detail, sizeof(xiaozhi_detail), "正在通过扬声器回答");
+        }
+    }
+    else if ((xiaozhi.phase == XIAOZHI_UI_READY) || xiaozhi_online)
+    {
+        phase_text = "在线待唤醒";
+        if (xiaozhi_online)
+        {
+            rt_snprintf(xiaozhi_detail,
+                        sizeof(xiaozhi_detail),
+                        "已连接平台，说话按钮可直接对话  唤醒:%lu 回复:%lu",
+                        (unsigned long)xiaozhi.wake_count,
+                        (unsigned long)xiaozhi.reply_count);
         }
         else if (xiaozhi.detail[0] != '\0')
         {
@@ -334,7 +368,19 @@ static void rehab_wifi_panel_refresh(void)
     }
     if (g_xiaozhi_reply_label != RT_NULL)
     {
-        lv_label_set_text(g_xiaozhi_reply_label, "说唤醒词后直接语音对话");
+        if (xiaozhi.last_reply[0] != '\0')
+        {
+            rt_snprintf(xiaozhi_reply, sizeof(xiaozhi_reply), "回复：%s", xiaozhi.last_reply);
+        }
+        else if (xiaozhi_online)
+        {
+            rt_snprintf(xiaozhi_reply, sizeof(xiaozhi_reply), "可按“说话”开始，也可说唤醒词");
+        }
+        else
+        {
+            rt_snprintf(xiaozhi_reply, sizeof(xiaozhi_reply), "说唤醒词后直接语音对话");
+        }
+        lv_label_set_text(g_xiaozhi_reply_label, xiaozhi_reply);
     }
     if (g_xiaozhi_spinner != RT_NULL)
     {
@@ -835,10 +881,81 @@ static void disconnect_event_cb(lv_event_t *event)
     rehab_wifi_panel_refresh();
 }
 
+static rt_err_t xiaozhi_ui_start_worker(void)
+{
+    if (g_xiaozhi_ui_worker_ready)
+    {
+        return RT_EOK;
+    }
+
+    rt_sem_init(&g_xiaozhi_ui_sem, "xz_ui", 0, RT_IPC_FLAG_PRIO);
+    g_xiaozhi_ui_thread = rt_thread_create("xz_ui",
+                                           xiaozhi_ui_worker_thread_entry,
+                                           RT_NULL,
+                                           4096,
+                                           20,
+                                           10);
+    if (g_xiaozhi_ui_thread == RT_NULL)
+    {
+        return -RT_ENOMEM;
+    }
+
+    rt_thread_startup(g_xiaozhi_ui_thread);
+    g_xiaozhi_ui_worker_ready = RT_TRUE;
+    return RT_EOK;
+}
+
+static rt_err_t xiaozhi_ui_queue_action(rt_uint8_t cmd)
+{
+    rt_err_t ret;
+
+    ret = xiaozhi_ui_start_worker();
+    if (ret != RT_EOK)
+    {
+        return ret;
+    }
+
+    g_xiaozhi_ui_pending_cmd = cmd;
+    ret = rt_sem_release(&g_xiaozhi_ui_sem);
+    if (ret != RT_EOK)
+    {
+        rt_kprintf("[rehab_wifi_panel] xiaozhi ui queue release ret=%d cmd=%u\n",
+                   ret,
+                   (unsigned)cmd);
+    }
+    return ret;
+}
+
+static void xiaozhi_ui_worker_thread_entry(void *parameter)
+{
+    RT_UNUSED(parameter);
+
+    while (1)
+    {
+        rt_uint8_t cmd;
+
+        rt_sem_take(&g_xiaozhi_ui_sem, RT_WAITING_FOREVER);
+        cmd = g_xiaozhi_ui_pending_cmd;
+        g_xiaozhi_ui_pending_cmd = 0U;
+
+        if (cmd == 1U)
+        {
+            rt_kprintf("[rehab_wifi_panel] async xiaozhi start\n");
+            (void)m55_xiaozhi_talk_start_from_ui();
+        }
+        else if (cmd == 2U)
+        {
+            rt_kprintf("[rehab_wifi_panel] async xiaozhi stop\n");
+            (void)m55_xiaozhi_talk_stop_from_ui();
+        }
+    }
+}
+
 static void xiaozhi_talk_event_cb(lv_event_t *event)
 {
     RT_UNUSED(event);
-    (void)m55_xiaozhi_talk_start_from_ui();
+    xiaozhi_ui_state_set(XIAOZHI_UI_CONNECTING, "正在启动小智", RT_EOK);
+    (void)xiaozhi_ui_queue_action(1U);
     rehab_wifi_panel_refresh();
 }
 
@@ -879,7 +996,7 @@ static void qr_event_cb(lv_event_t *event)
 
     rt_snprintf(payload,
                 sizeof(payload),
-                "rehab-arm://provision?project_id=fd6a55ed-a63c-44b3-b123-96fb3c154966&device_id=nanopi-m5&robot_id=rehab-arm-alpha&transport=ble");
+                "rehab-arm://provision?project_id=e201f41c-25a6-46e1-baf8-be6dcb83284c&device_id=nanopi-m5&robot_id=rehab-arm-alpha&transport=ble");
 
 #if LV_USE_QRCODE
     {
@@ -1107,6 +1224,7 @@ rt_err_t rehab_wifi_panel_create(void)
     lv_obj_add_event_cb(g_keyboard, keyboard_event_cb, LV_EVENT_CANCEL, RT_NULL);
     lv_obj_add_flag(g_keyboard, LV_OBJ_FLAG_HIDDEN);
 
+    (void)xiaozhi_ui_start_worker();
     rehab_wifi_panel_refresh_scan_list();
     rehab_wifi_panel_refresh();
     start_xiaozhi_refresh_timer();

@@ -1,5 +1,98 @@
 # wifi 避坑文档
 
+## 43. 2026-06-23 官方小智协议只作为协议参考，平台仍连接自有平台
+
+本轮用户明确要求：参考官方小智做法，但继续连接自己的平台。不要因为“官方小智”四个字去切 URL、token 或 WiFi 资源。
+
+已确认官方协议方向：
+
+1. WebSocket JSON 负责 `hello/listen/tts/stt/error` 等事件。
+2. 音频 binary 走 Opus。
+3. protocol v3 binary 需要按帧头拆出 Opus payload，不能只剥第一帧头后把整包当单帧处理。
+
+本轮有效修复：
+
+1. LVGL 小智在线态以 `token && websocket_client_is_connected()` 为主，避免 COM4 已经 `xz_ws=1` 但屏幕还显示未连接。
+2. M55 TTS pending slot 从 4KB 增大到 16KB。
+3. M55 binary TTS 保留完整 v3 payload 入 pending，由 TTS worker 循环拆 v3 Opus frame 后转 PCM 给 M33。
+4. M55->M33 TTS IPC 增加节流和 retry，避免真实平台 TTS 下发时把 M33 speaker 队列压满。
+5. 曾尝试把 M55 auto reconnect 改成异步线程，但现场回归为 `xz_stage=20` 且手动 reconnect 排队不恢复；已回退，只保留稳定同步 reconnect。
+
+验证：
+
+1. M55 构建通过：
+   - `text=1534136 data=68744 bss=4541616`
+2. M55 烧录通过：
+   - `rtthread.hex` 写入 `1605632 bytes`
+   - `whd_resources_all.bin` 写入 `466944 bytes`
+3. 最终基线恢复：
+   - `wlan=1 ready=1 ip=192.168.3.32`
+   - `xz_token=1 token_len=442`
+   - `xz_ws=1 xz_stage=70 xz_errno=0`
+4. v3/TTS 测试阶段已经看到真实 mic0 触发自有平台 TTS 并进入 M33 speaker：
+   - `xz_last=114/218880`
+   - `xz_rx=3/3`
+   - M33 `tts audio rx total=1920`
+   - M33 `tts audio write chunk=1/2/3`
+
+注意：
+
+1. 不要把“参考官方小智协议”理解为切换平台。
+2. 如果后续又看到 `xz_stage=20` 卡住，先检查最近是否改过 reconnect 线程/桥接队列，不要先动 token。
+3. M33 CM55 voice-status watchdog 已在 M33 工程构建通过，但本轮未确认 M33 烧录入口，暂未烧入现场板。
+
+## 42. 2026-06-23 WebSocket 正常但真实 mic0 不上传时，先查 M55 mic 线程 stale
+
+本轮继续只处理英飞凌 M55/M33 小智语音链路，不改 WiFi/token/resources。
+
+现场现象：
+
+1. 用户侧 LVGL 看到“小智还没连上”。
+2. 但 COM4 `m55qa_status` 明确显示：
+   - `wlan=1 ready=1 ip=192.168.3.32`
+   - `xz_ws=1 xz_stage=70 xz_errno=0`
+   - `xz_token=1 token_len=442`
+   - `srv_hello` 在 reconnect 后从 1 增到 2
+3. `m55qa_capture_on` ACK 成功，但一轮真实 mic QA 没上传：
+   - `xz_last=0/0`
+   - `tts_fwd=0/0`
+   - `frames/pcm_seq` 基本不动
+
+根因：
+
+1. M33 侧原来有两个线程消费 M55 IPC RX 队列：`main.c` 和 `voice_manager.c`。`voice_manager` 会抢走 `VOICE_STATUS/ACK`，导致 QA/status 偶发看不到最新状态。
+2. 修成 M33 单消费者后，又暴露 M55 mic0 线程 stale：`g_m55_mic.running=1`，但 mic 线程已经不再产出帧。后续 capture start 认为 mic busy，不会重建 reader。
+
+修复：
+
+1. M33 `voice_manager_start()` 不再启动第二个 IPC consumer；由 `applications/main.c` 统一处理 `VOICE_STATUS/ACK/TTS_AUDIO`。
+2. M55 `applications/main.c` 给 mic0 增加：
+   - `frame_count`
+   - `last_frame_tick`
+3. `m55_mic_start_internal()` 如果发现 running 但超过 2 秒无帧，打印 stale 日志并重建 mic 线程。
+
+验证：
+
+1. M55 编译通过：
+   - `text=1533960 data=68744 bss=4541616`
+2. M55 烧录通过：
+   - `rtthread.hex` 写入 `1605632 bytes`
+   - `whd_resources_all.bin` 写入 `466944 bytes`
+   - 末尾 KitProg acquire 失败发生在写完之后，仍按已知非关键处理。
+3. 烧录后基线和 mic0 采样恢复：
+   - `wake_on=1 xz_ws=1 token_len=442 srv_hello=1`
+   - `frames=3380 pcm_seq=3380`
+4. 现场真实 mic0 QA 成功：
+   - `m55qa_capture_on` ACK `0`
+   - M55 上传真实 mic 音频：`xz_last=188/360960`
+   - `xz_fail=0`
+   - M33 收到两段平台 TTS：`tts audio rx total=320` 和 `tts audio rx total=640`
+   - 最终 `tts_fwd=20/2432 tx_pending=0 xz_ws=1 xz_stage=70 xz_errno=0`
+
+结论：
+
+如果 `xz_ws=1/token_len=442/srv_hello>0`，但真实 mic QA 没有 `xz_last` 增长，不要回到 WiFi 扫描、token 或资源固件。优先查 `frames/pcm_seq` 是否增长，以及 M55 mic0 reader 是否 stale。
+
 ## 41. 2026-06-22 真实 CM55 mic0 小智链路已打通，起始静音不能触发 EOU
 
 本轮在现场验证真实麦克风产品路径，不改 WiFi/token/resources。
