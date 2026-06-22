@@ -1309,3 +1309,28 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
    - `xz_rx text/binary`
    - `tts_fwd`
    - M33 `tts audio rx/write`
+
+## 34. 2026-06-22 TTS 转发期间也必须 drain M33 控制消息
+
+现象：
+
+1. QA probe/TTS 已经能打通后，切回真实 CM55 mic0 控制路径时，`probe_pcm_off` 能 ACK。
+2. 随后 `m55qa_capture_on` / `m55qa_capture_off` 可能超时，`tx_pending` 停在 `1/2`。
+3. 同时 `xz_ws=1 xz_stage=70 token_len=442 wlan=1` 仍然健康，所以不是 WiFi/token 问题。
+
+本轮修复：
+
+1. M55 `voice_service` 在每个 TTS audio chunk publish 前后主动调用 `voice_service_drain_ipc_messages()`。
+2. 不扩展 IPC 结构体，复用原状态里的 `probe_or_bridge` 四槽作为：
+   - `voice_svc=loop/drain/last_consume_ret/phase`
+3. M33 `m55qa_status` 打印标签改为 `voice_svc`，方便判断 M55 语音线程是否还活着。
+
+判断方法：
+
+1. `loop` 应持续增长，说明 M55 voice service 主循环还在跑。
+2. `drain` 在 M33 发控制命令后应增长，说明 M55 已消费 M33->M55 队列。
+3. `last_consume_ret=-3` 通常只是队列空。
+4. 如果 `phase` 卡在 `40/41/42/43`，优先查 TTS 下行队列或 M33 speaker 播放压力，不要回退到 WiFi/token/资源固件方向。
+
+- M55 自动重连成功或失败后会立即发布新的 `voice_status`，所以 COM4 `m55qa_status` 不应再长期停留在恢复前的 `xz_ws=0 stage=80` 快照。
+- 验证结果：最终重烧后真实 CM55 mic0 控制 QA 通过，`probe_pcm_off` / `capture_on` / `capture_off` 都 ACK，`tx_pending=0`；停止后等待 12 秒，状态自动恢复到 `xz_ws=1 xz_stage=70 xz_errno=0`。

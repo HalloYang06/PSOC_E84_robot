@@ -136,6 +136,10 @@ typedef struct
     rt_uint32_t xiaozhi_server_last_text_lens;
     rt_uint32_t xiaozhi_server_last_error_code;
     rt_uint32_t xiaozhi_server_last_reason_code;
+    rt_uint32_t service_loop_count;
+    rt_uint32_t service_drain_count;
+    rt_int32_t service_last_consume_ret;
+    rt_uint32_t service_diag_phase;
     rt_tick_t xiaozhi_thinking_since_tick;
     rt_bool_t xiaozhi_server_hello_seen;
     char xiaozhi_listening_session_id[XIAOZHI_SESSION_ID_MAX_LEN];
@@ -202,6 +206,7 @@ static rt_err_t voice_service_send_xiaozhi_listen_stop(const char *session_id,
                                                        rt_uint32_t bytes,
                                                        rt_uint32_t chunks);
 static rt_err_t voice_service_publish_status(void);
+static void voice_service_drain_ipc_messages(void);
 static void xiaozhi_feedback_beep(rt_uint32_t duration_ms);
 static const char *voice_service_public_wake_word(const char *wake_word);
 static rt_err_t voice_service_send_control(voice_control_cmd_t cmd);
@@ -440,10 +445,10 @@ static rt_err_t voice_service_publish_status(void)
     msg.payload.voice_status.heap_total = (rt_uint32_t)heap_total;
     msg.payload.voice_status.heap_used = (rt_uint32_t)heap_used;
     msg.payload.voice_status.heap_max_used = (rt_uint32_t)heap_max_used;
-    msg.payload.voice_status.net_probe_posix_tcp = (rt_int32_t)voice_service_bridge_diag_loops();
-    msg.payload.voice_status.net_probe_posix_errno = (rt_int32_t)voice_service_bridge_diag_consumed();
-    msg.payload.voice_status.net_probe_sal_tcp = voice_service_bridge_diag_last_ret();
-    msg.payload.voice_status.net_probe_sal_errno = voice_service_bridge_diag_phase();
+    msg.payload.voice_status.net_probe_posix_tcp = (rt_int32_t)g_service.service_loop_count;
+    msg.payload.voice_status.net_probe_posix_errno = (rt_int32_t)g_service.service_drain_count;
+    msg.payload.voice_status.net_probe_sal_tcp = g_service.service_last_consume_ret;
+    msg.payload.voice_status.net_probe_sal_errno = (rt_int32_t)g_service.service_diag_phase;
     msg.payload.voice_status.net_probe_lwip_tcp = (rt_int32_t)g_service.xiaozhi_last_sent_chunks;
     msg.payload.voice_status.net_probe_lwip_errno = (rt_int32_t)g_service.xiaozhi_last_sent_bytes;
     msg.payload.voice_status.netdev_flags = g_service.netdev_flags;
@@ -898,6 +903,9 @@ static rt_bool_t voice_service_stream_pcm_to_m33(const uint8_t *audio_data,
         uint32_t remaining = len - payload_offset - sent;
         uint32_t chunk_len = remaining > AUDIO_CHUNK_SIZE ? AUDIO_CHUNK_SIZE : remaining;
 
+        g_service.service_diag_phase = 40U;
+        voice_service_drain_ipc_messages();
+
         rt_memset(&msg, 0, sizeof(msg));
         msg.type = MSG_TYPE_TTS_AUDIO;
         msg.payload.audio_data.total_len = len - payload_offset;
@@ -923,15 +931,20 @@ static rt_bool_t voice_service_stream_pcm_to_m33(const uint8_t *audio_data,
             g_service.xiaozhi_tts_forward_fail_count++;
             rt_mutex_release(&g_service.lock);
             rt_kprintf("[voice_service] publish TTS chunk failed at %lu\n", (unsigned long)msg.payload.audio_data.chunk_index);
+            g_service.service_diag_phase = 43U;
+            voice_service_drain_ipc_messages();
             return RT_FALSE;
         }
 
+        g_service.service_diag_phase = 41U;
         rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
         g_service.xiaozhi_tts_forward_chunks++;
         g_service.xiaozhi_tts_forward_bytes += chunk_len;
         rt_mutex_release(&g_service.lock);
         sent += chunk_len;
         rt_thread_mdelay(VOICE_TTS_CHUNK_GAP_MS);
+        g_service.service_diag_phase = 42U;
+        voice_service_drain_ipc_messages();
     }
 
     return ((payload_offset + sent) >= len) ? RT_TRUE : RT_FALSE;
@@ -2765,11 +2778,19 @@ static void voice_service_drain_ipc_messages(void)
 
     while (count < VOICE_IPC_DRAIN_MAX_PER_LOOP)
     {
-        if (m33_m55_comm_consume(&msg) != RT_EOK)
+        rt_err_t ret;
+
+        g_service.service_diag_phase = 10U;
+        ret = m33_m55_comm_consume(&msg);
+        g_service.service_last_consume_ret = ret;
+        if (ret != RT_EOK)
         {
             break;
         }
+        g_service.service_drain_count++;
+        g_service.service_diag_phase = 20U + (rt_uint32_t)msg.type;
         voice_service_handle_ipc_message(&msg);
+        g_service.service_diag_phase = 30U + (rt_uint32_t)msg.type;
         count++;
     }
 }
@@ -2781,6 +2802,8 @@ static void voice_service_thread_entry(void *parameter)
 
     while (g_service.running)
     {
+        g_service.service_loop_count++;
+        g_service.service_diag_phase = 1U;
         voice_service_drain_ipc_messages();
 
 #if VOICE_SERVICE_AUTO_RECONNECT_IN_THREAD
@@ -2798,6 +2821,7 @@ static void voice_service_thread_entry(void *parameter)
                     rt_kprintf("[voice_service] websocket auto reconnected stage=%d errno=%d\n",
                                websocket_client_last_stage(),
                                websocket_client_last_errno());
+                    (void)voice_service_publish_status();
                 }
                 else
                 {
@@ -2806,6 +2830,7 @@ static void voice_service_thread_entry(void *parameter)
                                websocket_client_last_stage(),
                                websocket_client_last_errno());
                     xiaozhi_ui_state_set(XIAOZHI_UI_CONNECTING, "小智重连中", ret);
+                    (void)voice_service_publish_status();
                 }
             }
         }
