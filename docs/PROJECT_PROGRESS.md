@@ -3284,3 +3284,12 @@
 - Observation: current temporary camera placement/cropping leaves the bottle partially cut off on the right image, so right-side SSD does not produce a semantic match even at low threshold. Payload correctly reports `target_object.stereo_observation_status=no_right_semantic_match` instead of inventing depth.
 - Boundary: pixel association is not calibrated metric depth and must not be used as a motion target. Keep `estimated_depth_m=null` until final mounting, intrinsic/extrinsic calibration, and stereo validation are complete.
 - Next step: reposition cameras/target so the object is fully visible in both frames, then validate a positive `stereo_observation` before starting calibration work.
+
+### 2026-06-22 - Positive stereo association taught and verified
+
+- Completed: after the operator repositioned the bottle, reran the live dual-camera SSD pipeline step by step and explained the algorithm: left/right semantic detection, target selection, same-label right match, then pixel disparity.
+- Validation: probe payload detected `bottle` in both frames: left bbox `[311, 5, 111, 326]`, right bbox `[231, 0, 97, 282]`; `stereo_observation.horizontal_disparity_px=87.0`, `vertical_center_delta_px=27.0`.
+- Validation: uploaded the positive stereo association payload to the platform. Platform returned `ok=true`, `target_label=bottle`, `detection_count=3`, and `control_boundary=stereo_vision_context_only_not_motion_permission`.
+- Teaching note: disparity is currently pixel-only. The future metric formula is `Z = f * B / disparity`, but `f`, `B`, rectification, and distortion are not calibrated yet, so `estimated_depth_m` remains `null`.
+- Boundary: no CAN, M33, trajectory, motor, boot, or kernel files were changed.
+- Next step: repeat with two or three known object positions to show how pixel disparity changes with distance before doing formal calibration.
