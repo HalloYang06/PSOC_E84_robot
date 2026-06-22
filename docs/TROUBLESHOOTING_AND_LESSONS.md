@@ -6462,3 +6462,8 @@ ros2 run rehab_arm_psoc_bridge stereo_camera_capture_upload.py \
 
 - 2026-06-22 已验证 MobileNet-SSD 可加载、可随双摄 payload 上传平台；当前实景没有超过阈值的 VOC 目标，所以返回 `detection_count=0` 是允许结果。
 - 如果重启后再次没有 `/dev/video45`，仍先临时加载板上已有 alternate `uvcvideo.ko`，不要走内核修改路线。
+
+补充验证：
+
+- 2026-06-22 将瓶子放入左/右摄像头视野后，MobileNet-SSD 输出 `bottle`，confidence `0.995`，bbox `[278, 4, 106, 321]`；平台上传返回 `ok=true`、`detection_count=3`。
+- 因此排查 SSD 时先看画面里是否有 VOC21 类目标，并用 `--ssd-confidence-threshold 0.05` 做本地 probe；确认有检测后再用 `0.25` 左右阈值上传。

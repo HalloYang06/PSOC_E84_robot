@@ -3256,3 +3256,11 @@
 - Validation: live command with MobileNet-SSD captured a stereo pair and uploaded successfully; platform returned `ok=true`, `detection_count=0`, `estimated_depth_m=null`, and `control_boundary=stereo_vision_context_only_not_motion_permission`. `detection_count=0` means the current view produced no VOC-class detection above threshold, not that the DNN path failed.
 - Boundary: this is still perception-only VLA-V context. No CAN, M33, trajectory, motor, boot, or kernel files were changed.
 - Next step: place a known VOC object or person in the left camera view and rerun SSD with a lower threshold if needed; for YOLO, re-export a static-shape OpenCV-4.6-compatible ONNX before using `--yolo-onnx`.
+
+### 2026-06-22 - Real object semantic detection uploaded from stereo cameras
+
+- Validation: pulled the latest NanoPi stereo pair into `output/nanopi_stereo_ssd_probe/` and visually confirmed the left and right frames are distinct live views with a bottle visible in both.
+- Validation: MobileNet-SSD on the NanoPi detected `bottle` at confidence `0.995` with bbox `[278, 4, 106, 321]`, plus `diningtable` at confidence `0.67`; one class-agnostic `visual_region` was also present.
+- Validation: uploaded the live stereo + SSD semantic payload to the platform. Platform returned `ok=true`, `detection_count=3`, `estimated_depth_m=null`, and `control_boundary=stereo_vision_context_only_not_motion_permission`.
+- Boundary: this verifies real RGB stereo capture plus real semantic DNN detections for VLA-V context only. No calibrated metric depth was produced and no motion authority was granted.
+- Next step: use this command with deliberate test objects in the workspace, then decide whether to set `target_object` automatically from the highest-confidence allowed class or keep it operator-selected.
