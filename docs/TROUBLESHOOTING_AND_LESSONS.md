@@ -1,5 +1,31 @@
 # Troubleshooting And Lessons
 
+## 2026-06-22 - M33 QA PCM Must Not Let CM55 Mic0 EOU Stop The Session
+
+Symptoms:
+- `m55qa_capture_on` ACKed successfully, but M55 accepted only part of the following QA PCM, or later showed `probe_lwip=accepted/ignored`.
+- In some repeated runs `m33qa_xz_probe` continued after a failed capture and filled M33->M55 IPC (`tx_pending=5`), making `capture_off` fail with `ret=-28`.
+- WiFi/token/WebSocket baseline remained healthy before the failed probe.
+
+Root cause:
+- The QA PCM path uses M33 deterministic PCM, but M55 was still running CM55 mic0 automatic EOU on the same XiaoZhi listening session.
+- Silent CM55 mic0 frames could stop the platform session before or during M33 QA PCM injection.
+- The QA tool also trusted the previous control command too much; if M55 was no longer listening, probe audio could still be published into the IPC queue.
+
+Fix:
+- While `m33_pcm_probe_enabled` is true, M55 skips CM55 mic0 automatic EOU and leaves session termination to explicit `m55qa_capture_off`.
+- `m33qa_xz_probe` now reads M55 `voice_status` before sending PCM and aborts unless `VOICE_STATUS_FLAG_XIAOZHI_LISTENING` is set.
+- M55 manual listen start attempts reconnect if the WebSocket is disconnected at the final send point.
+
+Validation:
+- Final 3000 ms QA had `capture_on ack=0`, `capture_off ack=0`, and `tx_pending=0`.
+- M55 accepted all 50 M33 QA PCM packets: `probe_lwip=50/0`.
+- XiaoZhi uplink advanced: `xz_last=81/14499`, `xz_fail=0`.
+- Final link health stayed `xz_ws=1 xz_stage=70 xz_errno=0`.
+
+Next diagnostic boundary:
+- If `probe_lwip=50/0` and `xz_last` grows but `srv_stt/srv_tts/tts_fwd` stay zero, stop debugging IPC/WiFi/token and inspect XiaoZhi platform protocol after `listen/start`.
+
 ## 2026-06-22 - `capture_on ack=-116` Can Be A Repeated-Hello Race
 
 Symptoms:
