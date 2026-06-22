@@ -87,6 +87,30 @@ static rt_err_t m55qa_send_voice_control_wait(voice_control_cmd_t cmd,
     return RT_EOK;
 }
 
+static rt_bool_t m55qa_wait_xiaozhi_listening(rt_uint32_t timeout_ms)
+{
+    rt_tick_t deadline = rt_tick_get() + rt_tick_from_millisecond((rt_int32_t)timeout_ms);
+
+    while ((rt_int32_t)(deadline - rt_tick_get()) > 0)
+    {
+        voice_status_msg_t voice_status;
+        rt_uint32_t voice_status_seq = 0U;
+        rt_tick_t voice_status_timestamp = 0U;
+
+        rt_memset(&voice_status, 0, sizeof(voice_status));
+        if (m55_model_bridge_get_voice_status(&voice_status,
+                                              &voice_status_seq,
+                                              &voice_status_timestamp) &&
+            ((voice_status.flags & VOICE_STATUS_FLAG_XIAOZHI_LISTENING) != 0U))
+        {
+            return RT_TRUE;
+        }
+        rt_thread_mdelay(50);
+    }
+
+    return RT_FALSE;
+}
+
 static rt_err_t m55qa_send_voice_config(voice_config_key_t key, const char *value)
 {
     m33_m55_message_t msg;
@@ -306,6 +330,10 @@ static void m55qa_capture_on(int argc, char **argv)
     RT_UNUSED(argv);
 
     ret = m55qa_send_voice_control_wait(VOICE_CTRL_START_CAPTURE, 5000U, &ack_result);
+    if ((ret == RT_EOK) && (ack_result == RT_EOK) && !m55qa_wait_xiaozhi_listening(1500U))
+    {
+        rt_kprintf("[m55qa] capture_on warning: ACK ok but latest status is not listening yet\n");
+    }
     rt_kprintf("[m55qa] capture_on ret=%d ack=%ld tx_pending=%lu\n",
                ret,
                (long)ack_result,

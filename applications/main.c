@@ -385,6 +385,7 @@ static void m33qa_xz_probe(int argc, char **argv)
     rt_uint32_t voice_status_seq;
     rt_tick_t voice_status_timestamp;
     rt_tick_t drain_deadline = rt_tick_get() + rt_tick_from_millisecond((rt_int32_t)drain_wait_ms);
+    rt_tick_t status_deadline;
 
     while ((m33_m55_comm_tx_count() > 0U) &&
            ((rt_int32_t)(drain_deadline - rt_tick_get()) > 0))
@@ -403,8 +404,19 @@ static void m33qa_xz_probe(int argc, char **argv)
     }
 
     rt_memset(&voice_status, 0, sizeof(voice_status));
-    if (!m55_model_bridge_get_voice_status(&voice_status, &voice_status_seq, &voice_status_timestamp) ||
-        ((voice_status.flags & VOICE_STATUS_FLAG_XIAOZHI_LISTENING) == 0U))
+    status_deadline = rt_tick_get() + rt_tick_from_millisecond(1500);
+    do
+    {
+        rt_memset(&voice_status, 0, sizeof(voice_status));
+        if (m55_model_bridge_get_voice_status(&voice_status, &voice_status_seq, &voice_status_timestamp) &&
+            ((voice_status.flags & VOICE_STATUS_FLAG_XIAOZHI_LISTENING) != 0U))
+        {
+            break;
+        }
+        rt_thread_mdelay(50);
+    } while ((rt_int32_t)(status_deadline - rt_tick_get()) > 0);
+
+    if ((voice_status.flags & VOICE_STATUS_FLAG_XIAOZHI_LISTENING) == 0U)
     {
         rt_kprintf("[m33] xiaozhi probe abort: M55 not listening seq=%lu flags=0x%lx age_ticks=%lu xz_ws=%d tx_pending=%lu\n",
                    (unsigned long)voice_status_seq,

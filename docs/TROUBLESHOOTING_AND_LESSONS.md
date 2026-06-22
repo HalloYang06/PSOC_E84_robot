@@ -1,5 +1,34 @@
 # Troubleshooting And Lessons
 
+## 2026-06-22 - XiaoZhi Stop Must Match The Start Mode
+
+Symptoms:
+- A healthy QA session could upload Opus (`probe_lwip=50/0`, `xz_last` grew, `xz_fail=0`) but the platform returned only listen/control text and no STT/TTS/binary audio.
+- Prior project notes recorded successful manual QA around `listen start mode=manual` and `listen stop mode=manual`, but the current M55 stop builder had drifted back to a bare `{"type":"listen","state":"stop"}`.
+
+Root cause:
+- The stop message no longer preserved the active listening mode. Manual QA therefore ended with a stop shape that did not match the manual start shape.
+- The stop builder also ignored the existing byte/chunk counters, leaving platform relay logs harder to correlate with board-side uplink evidence.
+
+Fix:
+- M55 now records `xiaozhi_listening_source` when a session starts.
+- `xiaozhi_voice_relay_build_listen_stop()` now receives the source and emits `mode`, `audio_bytes`, and `audio_chunks`.
+- Manual QA stop is `mode=manual`; realtime/local wake stop remains non-manual.
+
+Validation:
+- M55 build passed after the change: `text=1648696 data=68744 bss=4541600`.
+- M33 build passed after QA wait hardening: `text=499512 data=15344 bss=311877`.
+- M33 flash wrote `618496 bytes` and verified `617180 bytes`; M55 flash wrote app `1720320 bytes` plus WHD resources `466944 bytes`.
+- Final QA sent the full 3000 ms deterministic PCM: `50` parts, `96000` bytes, `retries=0`, `tx_pending=0`.
+- M55 accepted all frames and uploaded Opus: `probe_lwip=50/0`, `xz_last=207/37053`, `xz_fail=0`.
+- Final link health stayed `xz_ws=1 xz_stage=70 xz_errno=0`, but there was still no STT/TTS/binary audio: `srv_stt=0`, `srv_tts=0/0/0`, `xz_rx=2/0`, `tts_fwd=0/0`.
+
+Next diagnostic boundary:
+- If the next burned QA still shows no `srv_stt/srv_tts/tts_fwd`, keep investigating XiaoZhi relay/protocol/platform logs. Do not fall back to WiFi scan, token reload, or resource firmware unless the known health indicators regress.
+
+Additional QA lesson:
+- `m55qa_capture_on` previously returned as soon as ACK arrived, but M33 could start `m33qa_xz_probe` before the fresh M55 status with `xz_listening=1` was consumed. Publish M55 status before ACK and make M33 QA wait briefly for `VOICE_STATUS_FLAG_XIAOZHI_LISTENING`; otherwise a valid capture start can be mistaken for `M55 not listening`.
+
 ## 2026-06-22 - M33 QA PCM Must Not Let CM55 Mic0 EOU Stop The Session
 
 Symptoms:
