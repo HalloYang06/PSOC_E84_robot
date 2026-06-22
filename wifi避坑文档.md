@@ -1594,3 +1594,36 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
 1. 无人 QA 标准流程应为 `m55qa_probe_pcm_on -> m55qa_capture_on -> 立即 m33qa_xz_probe full -> m55qa_capture_off -> 等待 TTS -> m55qa_status`。
 2. 如果 `M55 not listening`，先重新 `m55qa_capture_on`，不要直接查 WiFi/token。
 3. 后续产品化仍要验证真实 CM55 mic0 路径；当前人声 QA 已证明平台上行、TTS 下行、M33 speaker write 链路至少打通一次。
+
+## 40. 2026-06-22 小智 stop 前要 flush 未满一帧的尾音频
+
+现象：
+
+1. 人声素材 QA 已证明 M33->M55->小智上行能通，且 M33 能收到 TTS 并写入 speaker。
+2. 但部分 probe 或短语音在 stop 前可能剩下不足 60 ms 的 PCM staging 数据。
+3. 如果直接 stop/listen-stop，这段尾帧不会进入 Opus/PCM WebSocket binary，可能影响平台侧 STT/EOU 稳定性。
+
+本轮修复：
+
+1. M55 新增 `voice_service_flush_xiaozhi_tail_frame()`。
+2. `voice_service_stop_xiaozhi_talk()` 在 `listen/stop` 前先把未满 `XIAOZHI_AUDIO_FRAME_BYTES` 的尾帧补零并发送。
+3. 满帧发送逻辑收敛到 `voice_service_send_xiaozhi_frame_locked_copy()`，避免 PCM/Opus 两套计数和失败统计分叉。
+4. pending TTS binary/raw/ignored 分支处理后立即 publish status，让 `tts_fwd` 等状态更及时。
+
+验证：
+
+1. M55 build 已通过：`text=1533528 data=68744 bss=4541584`。
+2. 本轮未能继续烧录和人声 QA，因为板子/调试器没有被 Windows 枚举：
+   - `program_with_resources.bat` 在写入前失败：`Error: unable to find a matching CMSIS-DAP device`
+   - 串口查询只看到 com0com 虚拟端口，没有板子的 COM/KitProg。
+
+后续判断：
+
+1. 这是 USB/CMSIS-DAP 枚举问题，不是 WiFi/token/WebSocket/小智平台退化。
+2. 等板子重新枚举后，先重新烧 M55，再烧 clean M33，然后跑无人 QA：
+   - `m55qa_probe_pcm_on`
+   - `m55qa_capture_on`
+   - 立即 `m33qa_xz_probe full`
+   - `m55qa_capture_off`
+   - 等 60 秒
+   - `m55qa_status`
