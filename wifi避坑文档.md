@@ -1,5 +1,50 @@
 # wifi 避坑文档
 
+## 41. 2026-06-22 真实 CM55 mic0 小智链路已打通，起始静音不能触发 EOU
+
+本轮在现场验证真实麦克风产品路径，不改 WiFi/token/resources。
+
+现象：
+
+1. `m55qa_capture_on` ACK 成功后，如果现场人员晚几秒才说话，最终可能 `xz_last=0/0`。
+2. 一次刚好卡准窗口的测试出现了 `asr text`，并且 `xz_last=57/109440`，说明真实 mic0 和平台 STT 能通。
+3. QA WAV 已经稳定返回 TTS，所以问题不是 WiFi/token，也不是平台不可达。
+
+根因：
+
+1. M55 EOU 把 `xiaozhi_last_voice_tick` 初始化为 start tick。
+2. 起始静音超过最小录音时间 + 静音阈值后，会在用户还没开口前自动结束会话。
+
+修复：
+
+1. 增加 M55 session 标志 `xiaozhi_voice_seen`。
+2. 每次 XiaoZhi listen start 清零。
+3. 只有检测到真实语音后，才允许 silence-based EOU。
+4. 最大录音超时仍保留，用来兜底纯静音会话。
+
+验证：
+
+1. M55 编译通过：
+   - `text=1533800 data=68744 bss=4541608`
+2. M55 烧录通过：
+   - `rtthread.hex` 写入 `1605632 bytes`
+   - `whd_resources_all.bin` 写入 `466944 bytes`
+3. 烧录后基线：
+   - `wlan=1 ready=1 ip=192.168.3.32`
+   - `xz_ws=1 xz_stage=70 xz_errno=0 token_len=442 srv_hello=1`
+4. 现场真实 mic0 QA：
+   - `m55qa_capture_on` ACK `0`
+   - M55 上传真实 mic 音频：`xz_last=188/360960`
+   - `xz_fail=0`
+   - M33 收到平台 TTS 并写播放：`tts audio rx total=640`、`audio_playback Started`、`tts audio idle flush chunks=5 bytes=640 ret=0`
+   - 最终 `tx_pending=0`，WebSocket 仍健康。
+
+结论：
+
+真实产品链路已闭环：
+
+`CM55 mic0 speech -> M55 XiaoZhi WebSocket -> platform TTS -> M33 audio_playback`
+
 ## 40. 2026-06-22 人声素材板端自测已打通到 M33 speaker 写入
 
 本轮继续只做小智语音链路，没有回到 WiFi/token/resources。

@@ -121,6 +121,7 @@ typedef struct
     rt_uint32_t xiaozhi_listening_chunks;
     rt_tick_t xiaozhi_listening_start_tick;
     rt_tick_t xiaozhi_last_voice_tick;
+    rt_bool_t xiaozhi_voice_seen;
     rt_uint32_t xiaozhi_last_sent_bytes;
     rt_uint32_t xiaozhi_last_sent_chunks;
     rt_uint32_t xiaozhi_send_fail_count;
@@ -1369,6 +1370,7 @@ static void voice_service_start_xiaozhi_listening(const char *wake_word)
     g_service.xiaozhi_listening_chunks = 0;
     g_service.xiaozhi_listening_start_tick = rt_tick_get();
     g_service.xiaozhi_last_voice_tick = g_service.xiaozhi_listening_start_tick;
+    g_service.xiaozhi_voice_seen = RT_FALSE;
     rt_memset(g_service.xiaozhi_listening_session_id, 0, sizeof(g_service.xiaozhi_listening_session_id));
     rt_strncpy(g_service.xiaozhi_listening_session_id,
                session_id,
@@ -1462,6 +1464,7 @@ static rt_err_t voice_service_start_xiaozhi_manual_listening(void)
     g_service.xiaozhi_listening_chunks = 0;
     g_service.xiaozhi_listening_start_tick = rt_tick_get();
     g_service.xiaozhi_last_voice_tick = g_service.xiaozhi_listening_start_tick;
+    g_service.xiaozhi_voice_seen = RT_FALSE;
     rt_memset(g_service.xiaozhi_listening_session_id, 0, sizeof(g_service.xiaozhi_listening_session_id));
     rt_strncpy(g_service.xiaozhi_listening_session_id,
                session_id,
@@ -1865,6 +1868,7 @@ static rt_bool_t voice_service_update_xiaozhi_eou(const voice_model_result_t *mo
     rt_uint32_t silence_ms;
     rt_bool_t active;
     rt_bool_t voice_seen;
+    rt_bool_t session_voice_seen;
 
     if (model_result == RT_NULL)
     {
@@ -1895,16 +1899,19 @@ static rt_bool_t voice_service_update_xiaozhi_eou(const voice_model_result_t *mo
     if (voice_seen)
     {
         g_service.xiaozhi_last_voice_tick = now;
+        g_service.xiaozhi_voice_seen = RT_TRUE;
     }
     started = g_service.xiaozhi_listening_start_tick;
     last_voice = g_service.xiaozhi_last_voice_tick;
+    session_voice_seen = g_service.xiaozhi_voice_seen;
     rt_mutex_release(&g_service.lock);
 
     elapsed_ms = (rt_uint32_t)((now - started) * 1000U / RT_TICK_PER_SECOND);
     silence_ms = (rt_uint32_t)((now - last_voice) * 1000U / RT_TICK_PER_SECOND);
 
     if ((elapsed_ms >= XIAOZHI_EOU_MAX_RECORD_MS) ||
-        ((elapsed_ms >= XIAOZHI_EOU_MIN_RECORD_MS) &&
+        (session_voice_seen &&
+         (elapsed_ms >= XIAOZHI_EOU_MIN_RECORD_MS) &&
          (silence_ms >= XIAOZHI_EOU_SILENCE_MS)))
     {
         rt_kprintf("[voice_service] Xiaozhi auto EOU elapsed=%lu silence=%lu peak=%lu avg=%lu\n",
