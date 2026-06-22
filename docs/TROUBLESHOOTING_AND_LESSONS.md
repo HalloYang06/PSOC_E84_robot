@@ -6426,3 +6426,39 @@ ros2 run rehab_arm_psoc_bridge stereo_camera_capture_upload.py \
 状态：
 
 - 2026-06-22 已在 NanoPi 复核该 guardrail，确认坏参数会提前失败，正常无模型链路仍能抓双摄图并上传平台 `ok=true`。
+
+### NanoPi OpenCV 4.6 不能随便加载任意 YOLO ONNX
+
+现象：
+
+- `/home/pi/rehab_arm_models/yolo/yolov5n.onnx` 通过 `cv2.dnn.readNetFromONNX()` 加载失败，报 `Node [Floor@ai.onnx] ... parse error`。
+- `/home/pi/rehab_arm_models/yolo/yolov5n-v6.0-opencv.onnx` 也加载失败，报 `dynamic 'zero' shapes are not supported` 和 `Node [Shape@ai.onnx] ... parse error`。
+
+判断：
+
+- 这是 ONNX 导出图和 NanoPi 当前 OpenCV `4.6.0` 的 DNN importer 兼容性问题，不是 USB 摄像头、内核、ROS 安装或平台上传问题。
+- `--yolo-onnx` 入口保留，但模型必须是静态 shape 且算子集能被 OpenCV 4.6 DNN 支持；不要把下载到的任意 YOLO ONNX 直接当成已部署模型。
+
+解决：
+
+- 当前可行语义检测路线是 Caffe MobileNet-SSD：`/home/pi/rehab_arm_models/ssd/deploy.prototxt`、`mobilenet_iter_73000.caffemodel`、`voc21.txt` 已经能被 `cv2.dnn.readNetFromCaffe()` 加载。
+- 运行时使用：
+
+```bash
+ros2 run rehab_arm_psoc_bridge stereo_camera_capture_upload.py \
+  --project-id fd6a55ed-a63c-44b3-b123-96fb3c154966 \
+  --api-base http://106.55.62.122:8011 \
+  --upload \
+  --analyze-image-quality \
+  --detect-visual-regions \
+  --ssd-model /home/pi/rehab_arm_models/ssd/mobilenet_iter_73000.caffemodel \
+  --ssd-prototxt /home/pi/rehab_arm_models/ssd/deploy.prototxt \
+  --ssd-labels /home/pi/rehab_arm_models/ssd/voc21.txt \
+  --ssd-confidence-threshold 0.25 \
+  --pretty
+```
+
+状态：
+
+- 2026-06-22 已验证 MobileNet-SSD 可加载、可随双摄 payload 上传平台；当前实景没有超过阈值的 VOC 目标，所以返回 `detection_count=0` 是允许结果。
+- 如果重启后再次没有 `/dev/video45`，仍先临时加载板上已有 alternate `uvcvideo.ko`，不要走内核修改路线。

@@ -187,6 +187,8 @@ def _normalize_dnn_output(output: Any) -> Any:
 
     array = np.asarray(output, dtype=float)
     array = np.squeeze(array)
+    if array.ndim == 1:
+        array = array.reshape(1, -1)
     if array.ndim != 2:
         raise ValueError(f'YOLO output must reduce to a 2D array, got shape {array.shape}')
     return array
@@ -197,6 +199,8 @@ def parse_yolo_dnn_output(
     *,
     image_width: int,
     image_height: int,
+    model_input_width: int | None = None,
+    model_input_height: int | None = None,
     labels: list[str],
     confidence_threshold: float,
     nms_threshold: float,
@@ -214,6 +218,10 @@ def parse_yolo_dnn_output(
     boxes: list[list[int]] = []
     confidences: list[float] = []
     class_ids: list[int] = []
+    input_width = float(model_input_width or image_width)
+    input_height = float(model_input_height or image_height)
+    x_scale = float(image_width) / input_width if input_width > 0 else 1.0
+    y_scale = float(image_height) / input_height if input_height > 0 else 1.0
     for row in rows:
         if len(row) < 6:
             continue
@@ -229,10 +237,10 @@ def parse_yolo_dnn_output(
         confidence = objectness * class_score
         if confidence < confidence_threshold:
             continue
-        x = int(round(cx - box_width / 2.0))
-        y = int(round(cy - box_height / 2.0))
-        w = int(round(box_width))
-        h = int(round(box_height))
+        x = int(round((cx - box_width / 2.0) * x_scale))
+        y = int(round((cy - box_height / 2.0) * y_scale))
+        w = int(round(box_width * x_scale))
+        h = int(round(box_height * y_scale))
         x = max(0, min(x, max(0, image_width - 1)))
         y = max(0, min(y, max(0, image_height - 1)))
         w = max(1, min(w, image_width - x))
@@ -274,11 +282,19 @@ def detect_yolo_dnn(
         raise RuntimeError('OpenCV cv2 is required for --yolo-onnx') from exc
 
     labels = load_label_file(labels_path)
+    if not labels:
+        raise RuntimeError(f'YOLO label file is empty: {labels_path}')
     image = cv2.imread(str(image_path))
     if image is None:
         raise RuntimeError(f'OpenCV failed to read image: {image_path}')
     height, width = image.shape[:2]
-    net = cv2.dnn.readNetFromONNX(str(model_path))
+    try:
+        net = cv2.dnn.readNetFromONNX(str(model_path))
+    except cv2.error as exc:
+        raise RuntimeError(
+            f'OpenCV DNN failed to load YOLO ONNX model {model_path}; '
+            'choose an ONNX export compatible with the NanoPi OpenCV runtime'
+        ) from exc
     blob = cv2.dnn.blobFromImage(image, 1.0 / 255.0, (input_size, input_size), swapRB=True, crop=False)
     net.setInput(blob)
     outputs = net.forward()
@@ -286,6 +302,8 @@ def detect_yolo_dnn(
         outputs,
         image_width=width,
         image_height=height,
+        model_input_width=input_size,
+        model_input_height=input_size,
         labels=labels,
         confidence_threshold=confidence_threshold,
         nms_threshold=nms_threshold,
@@ -293,9 +311,118 @@ def detect_yolo_dnn(
     )
 
 
+def parse_ssd_dnn_output(
+    output: Any,
+    *,
+    image_width: int,
+    image_height: int,
+    labels: list[str],
+    confidence_threshold: float,
+    image_ref: str,
+) -> list[dict[str, Any]]:
+    try:
+        import numpy as np
+    except ModuleNotFoundError as exc:
+        raise RuntimeError('numpy is required for SSD DNN output parsing') from exc
+
+    detections = np.asarray(output, dtype=float).reshape(-1, 7)
+    parsed: list[dict[str, Any]] = []
+    for row in detections:
+        confidence = float(row[2])
+        if confidence < confidence_threshold:
+            continue
+        class_id = int(row[1])
+        label = labels[class_id] if 0 <= class_id < len(labels) else f'class_{class_id}'
+        x1 = int(round(row[3] * image_width))
+        y1 = int(round(row[4] * image_height))
+        x2 = int(round(row[5] * image_width))
+        y2 = int(round(row[6] * image_height))
+        x = max(0, min(x1, max(0, image_width - 1)))
+        y = max(0, min(y1, max(0, image_height - 1)))
+        w = max(1, min(x2, image_width) - x)
+        h = max(1, min(y2, image_height) - y)
+        parsed.append({
+            'label': label,
+            'confidence': round(confidence, 3),
+            'bbox_xywh': [x, y, w, h],
+            'image_ref': image_ref,
+            'source': 'opencv_dnn_mobilenet_ssd',
+        })
+    parsed.sort(key=lambda item: item['confidence'], reverse=True)
+    return parsed
+
+
+def detect_ssd_dnn(
+    image_path: Path,
+    *,
+    prototxt_path: Path,
+    model_path: Path,
+    labels_path: Path,
+    confidence_threshold: float,
+) -> list[dict[str, Any]]:
+    try:
+        import cv2
+    except ModuleNotFoundError as exc:
+        raise RuntimeError('OpenCV cv2 is required for --ssd-model') from exc
+
+    labels = load_label_file(labels_path)
+    if not labels:
+        raise RuntimeError(f'SSD label file is empty: {labels_path}')
+    image = cv2.imread(str(image_path))
+    if image is None:
+        raise RuntimeError(f'OpenCV failed to read image: {image_path}')
+    height, width = image.shape[:2]
+    try:
+        net = cv2.dnn.readNetFromCaffe(str(prototxt_path), str(model_path))
+    except cv2.error as exc:
+        raise RuntimeError(
+            f'OpenCV DNN failed to load SSD model {model_path}; '
+            'choose Caffe MobileNet-SSD assets compatible with the NanoPi OpenCV runtime'
+        ) from exc
+    blob = cv2.dnn.blobFromImage(image, 0.007843, (300, 300), 127.5)
+    net.setInput(blob)
+    outputs = net.forward()
+    return parse_ssd_dnn_output(
+        outputs,
+        image_width=width,
+        image_height=height,
+        labels=labels,
+        confidence_threshold=confidence_threshold,
+        image_ref=str(image_path),
+    )
+
+
 def validate_detector_args(*, yolo_onnx: str, yolo_labels: str) -> None:
     if yolo_onnx and not yolo_labels:
         raise ValueError('--yolo-labels is required with --yolo-onnx')
+    if not yolo_onnx:
+        return
+    model_path = Path(yolo_onnx).expanduser()
+    labels_path = Path(yolo_labels).expanduser()
+    if not model_path.is_file():
+        raise FileNotFoundError(f'YOLO ONNX model not found: {model_path}')
+    if not labels_path.is_file():
+        raise FileNotFoundError(f'YOLO labels file not found: {labels_path}')
+    if not load_label_file(labels_path):
+        raise ValueError(f'YOLO labels file is empty: {labels_path}')
+
+
+def validate_ssd_args(*, ssd_model: str, ssd_prototxt: str, ssd_labels: str) -> None:
+    if not ssd_model and not ssd_prototxt and not ssd_labels:
+        return
+    if not ssd_model or not ssd_prototxt or not ssd_labels:
+        raise ValueError('--ssd-model, --ssd-prototxt, and --ssd-labels must be provided together')
+    model_path = Path(ssd_model).expanduser()
+    prototxt_path = Path(ssd_prototxt).expanduser()
+    labels_path = Path(ssd_labels).expanduser()
+    if not model_path.is_file():
+        raise FileNotFoundError(f'SSD model not found: {model_path}')
+    if not prototxt_path.is_file():
+        raise FileNotFoundError(f'SSD prototxt not found: {prototxt_path}')
+    if not labels_path.is_file():
+        raise FileNotFoundError(f'SSD labels file not found: {labels_path}')
+    if not load_label_file(labels_path):
+        raise ValueError(f'SSD labels file is empty: {labels_path}')
 
 
 def _run_command(command: list[str], *, timeout_sec: float, allow_already_loaded: bool = False) -> None:
@@ -375,6 +502,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument('--yolo-input-size', type=int, default=640)
     parser.add_argument('--yolo-confidence-threshold', type=float, default=0.35)
     parser.add_argument('--yolo-nms-threshold', type=float, default=0.45)
+    parser.add_argument('--ssd-model', default='')
+    parser.add_argument('--ssd-prototxt', default='')
+    parser.add_argument('--ssd-labels', default='')
+    parser.add_argument('--ssd-confidence-threshold', type=float, default=0.35)
     parser.add_argument('--api-base', default='')
     parser.add_argument('--relay-token', default='')
     parser.add_argument('--upload', action='store_true')
@@ -386,6 +517,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 def run_capture_upload(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, Any] | None]:
     validate_detector_args(yolo_onnx=args.yolo_onnx, yolo_labels=args.yolo_labels)
+    validate_ssd_args(ssd_model=args.ssd_model, ssd_prototxt=args.ssd_prototxt, ssd_labels=args.ssd_labels)
     if args.ensure_uvc_module:
         ensure_uvc_module(args.uvc_module_path)
     output_dir = Path(args.output_dir).expanduser()
@@ -417,6 +549,14 @@ def run_capture_upload(args: argparse.Namespace) -> tuple[dict[str, Any], dict[s
             confidence_threshold=args.yolo_confidence_threshold,
             nms_threshold=args.yolo_nms_threshold,
         )
+    if args.ssd_model:
+        detections = detections + detect_ssd_dnn(
+            left_path,
+            prototxt_path=Path(args.ssd_prototxt).expanduser(),
+            model_path=Path(args.ssd_model).expanduser(),
+            labels_path=Path(args.ssd_labels).expanduser(),
+            confidence_threshold=args.ssd_confidence_threshold,
+        )
     target_object = (
         {'label': args.target_label, 'confidence': args.target_confidence}
         if args.target_label
@@ -435,6 +575,8 @@ def run_capture_upload(args: argparse.Namespace) -> tuple[dict[str, Any], dict[s
         vla_context = f'{vla_context}; detections include class-agnostic visual region proposals, not semantic YOLO labels'
     if args.yolo_onnx:
         vla_context = f'{vla_context}; semantic detections generated by OpenCV DNN YOLO ONNX'
+    if args.ssd_model:
+        vla_context = f'{vla_context}; semantic detections generated by OpenCV DNN MobileNet-SSD'
     payload = build_stereo_vision_context_payload(
         robot_id=args.robot_id,
         device_id=args.device_id,

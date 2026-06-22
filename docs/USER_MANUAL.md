@@ -85,7 +85,26 @@ ros2 run rehab_arm_psoc_bridge stereo_camera_capture_upload.py \
 
 默认左/右摄像头节点是 `/dev/video45` 和 `/dev/video47`，输出保存在 `~/rehab_arm_stereo_frames`。`--analyze-image-quality` 会把左右图尺寸、亮度、清晰度 proxy、左右差异和可用性写入 `scene_summary/vla_context`，但不会填充未标定的真实深度。`--detect-visual-regions` 使用 OpenCV 轮廓找 class-agnostic 候选区域，填入 `detections`，这不是 YOLO 语义识别。通过标准是平台返回 `ok=true`，并且 payload 的 `control_boundary` 为 `stereo_vision_context_only_not_motion_permission`。如果重启后 USB 摄像头没有绑定到 `uvcvideo`，可以临时加 `--ensure-uvc-module`，它只加载板上已有的 `/lib/modules/6.1.141.can-new/kernel/drivers/media/usb/uvc/uvcvideo.ko`；不要编译、替换或升级内核。该流程只提供视觉上下文，不发布 ROS 运动、不发 CAN、不改变 M33 状态。
 
-语义检测模型接入预留了 OpenCV DNN/ONNX 参数：`--yolo-onnx <model.onnx> --yolo-labels <labels.txt>`。当前 NanoPi 未发现现成 YOLO/ONNX/PT 模型文件，也没有 `onnxruntime/ultralytics`；在放入模型资产前，不要声称已完成语义识别。缺少 `--yolo-labels` 时命令会提前失败，不会继续抓图或上传。
+语义检测可走已验证的 OpenCV DNN MobileNet-SSD/Caffe 路径：
+
+```bash
+cd /home/pi/rehab_arm_ros2_ws
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+ros2 run rehab_arm_psoc_bridge stereo_camera_capture_upload.py \
+  --project-id fd6a55ed-a63c-44b3-b123-96fb3c154966 \
+  --api-base http://106.55.62.122:8011 \
+  --upload \
+  --analyze-image-quality \
+  --detect-visual-regions \
+  --ssd-model /home/pi/rehab_arm_models/ssd/mobilenet_iter_73000.caffemodel \
+  --ssd-prototxt /home/pi/rehab_arm_models/ssd/deploy.prototxt \
+  --ssd-labels /home/pi/rehab_arm_models/ssd/voc21.txt \
+  --ssd-confidence-threshold 0.25 \
+  --pretty
+```
+
+SSD 结果会以 `source=opencv_dnn_mobilenet_ssd` 进入 `detections`。如果当前画面没有 VOC 类目标超过阈值，`detection_count=0` 也是正常结果；可把人、瓶子、椅子等 VOC 类目标放进左摄像头视野后复测。YOLO ONNX 入口仍保留：`--yolo-onnx <model.onnx> --yolo-labels <labels.txt>`，但必须使用 NanoPi OpenCV 4.6 DNN 能加载的静态 shape 兼容导出；已试过的两个 `yolov5n.onnx` 候选模型分别因 `Floor` 和 dynamic `Shape` 节点失败，不能当作已部署 YOLO。
 
 生成语音链路 dry-run 合同：
 

@@ -3244,3 +3244,15 @@
 - Validation: bad semantic-detector invocation with `--yolo-onnx /tmp/missing.onnx` and no `--yolo-labels` exited with `ValueError: --yolo-labels is required with --yolo-onnx` before capture/upload.
 - Boundary: no kernel files, boot files, CAN path, M33 state, trajectory topics, or motor commands were changed during this recheck.
 - Next step: add an actual lightweight ONNX detector plus labels under a versioned NanoPi model directory and validate real semantic labels; calibrated depth remains blocked until final camera mounting and stereo calibration.
+
+### 2026-06-22 - OpenCV DNN semantic detector path validated with MobileNet-SSD
+
+- Completed: hardened the OpenCV DNN detector path in `stereo_camera_capture_upload.py`: YOLO model/label files are validated before capture, single-row YOLO outputs are accepted, model-output coordinates can be scaled back to image size, and OpenCV ONNX load failures now return a clear runtime message.
+- Completed: added an alternate OpenCV DNN MobileNet-SSD/Caffe detector path with `--ssd-model`, `--ssd-prototxt`, `--ssd-labels`, and `--ssd-confidence-threshold`. SSD detections use `source=opencv_dnn_mobilenet_ssd`.
+- NanoPi model assets: placed MobileNet-SSD assets under `/home/pi/rehab_arm_models/ssd/` (`deploy.prototxt`, `mobilenet_iter_73000.caffemodel`, `voc21.txt`). OpenCV `cv2 4.6.0` successfully loaded the Caffe model with `readNetFromCaffe`.
+- Failed YOLO candidates: `/home/pi/rehab_arm_models/yolo/yolov5n.onnx` failed in OpenCV 4.6.0 on a `Floor` node, and `/home/pi/rehab_arm_models/yolo/yolov5n-v6.0-opencv.onnx` failed on dynamic `Shape`; both remain unsuitable for this NanoPi OpenCV DNN runtime without re-exporting or changing runtime.
+- Validation: local test suite passed with 23 tests. NanoPi package build passed after syncing the updated script.
+- Validation: after the board rebooted or re-enumerated USB and cameras returned to `Driver=[none]`, temporarily reloaded the existing `/lib/modules/6.1.141.can-new/kernel/drivers/media/usb/uvc/uvcvideo.ko`; `/dev/video45` and `/dev/video47` returned.
+- Validation: live command with MobileNet-SSD captured a stereo pair and uploaded successfully; platform returned `ok=true`, `detection_count=0`, `estimated_depth_m=null`, and `control_boundary=stereo_vision_context_only_not_motion_permission`. `detection_count=0` means the current view produced no VOC-class detection above threshold, not that the DNN path failed.
+- Boundary: this is still perception-only VLA-V context. No CAN, M33, trajectory, motor, boot, or kernel files were changed.
+- Next step: place a known VOC object or person in the left camera view and rerun SSD with a lower threshold if needed; for YOLO, re-export a static-shape OpenCV-4.6-compatible ONNX before using `--yolo-onnx`.

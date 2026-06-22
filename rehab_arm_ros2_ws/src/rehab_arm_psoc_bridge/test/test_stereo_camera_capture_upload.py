@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 import numpy as np
@@ -15,11 +16,14 @@ from rehab_arm_psoc_bridge.stereo_camera_capture_upload import (  # noqa: E402
     analyze_stereo_pair_quality,
     build_insmod_command,
     build_stereo_capture_commands,
+    detect_yolo_dnn,
     detect_visual_region_proposals,
     load_label_file,
+    parse_ssd_dnn_output,
     make_stereo_frame_paths,
     parse_yolo_dnn_output,
     validate_detector_args,
+    validate_ssd_args,
 )
 
 
@@ -181,9 +185,108 @@ class StereoCameraCaptureUploadTests(unittest.TestCase):
 
         self.assertEqual([item['label'] for item in detections], ['cup', 'hand'])
 
+    def test_parse_yolo_dnn_output_scales_model_coordinates_to_image_size(self) -> None:
+        output = np.array([
+            [320.0, 240.0, 160.0, 120.0, 0.9, 0.8, 0.1],
+        ], dtype=np.float32)
+
+        detections = parse_yolo_dnn_output(
+            output,
+            image_width=320,
+            image_height=240,
+            model_input_width=640,
+            model_input_height=480,
+            labels=['hand', 'cup'],
+            confidence_threshold=0.5,
+            nms_threshold=0.4,
+            image_ref='/tmp/left.jpg',
+        )
+
+        self.assertEqual(detections[0]['bbox_xywh'], [120, 90, 80, 60])
+
     def test_validate_detector_args_requires_labels_with_yolo_model(self) -> None:
         with self.assertRaisesRegex(ValueError, '--yolo-labels is required'):
             validate_detector_args(yolo_onnx='/tmp/model.onnx', yolo_labels='')
+
+    def test_validate_detector_args_checks_model_and_label_files_before_capture(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            labels_path = Path(tmp_dir) / 'labels.txt'
+            labels_path.write_text('cup\n', encoding='utf-8')
+
+            with self.assertRaisesRegex(FileNotFoundError, 'YOLO ONNX model not found'):
+                validate_detector_args(yolo_onnx=str(Path(tmp_dir) / 'missing.onnx'), yolo_labels=str(labels_path))
+
+    def test_validate_detector_args_rejects_empty_label_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            model_path = Path(tmp_dir) / 'model.onnx'
+            labels_path = Path(tmp_dir) / 'labels.txt'
+            model_path.write_bytes(b'not a real onnx, only path validation')
+            labels_path.write_text('\n', encoding='utf-8')
+
+            with self.assertRaisesRegex(ValueError, 'YOLO labels file is empty'):
+                validate_detector_args(yolo_onnx=str(model_path), yolo_labels=str(labels_path))
+
+    def test_detect_yolo_dnn_wraps_opencv_model_load_errors(self) -> None:
+        import cv2
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            image_path = Path(tmp_dir) / 'left.jpg'
+            model_path = Path(tmp_dir) / 'model.onnx'
+            labels_path = Path(tmp_dir) / 'labels.txt'
+            Image.new('RGB', (8, 8), color=(20, 20, 20)).save(image_path)
+            model_path.write_bytes(b'not a real onnx')
+            labels_path.write_text('cup\n', encoding='utf-8')
+
+            with mock.patch.object(cv2.dnn, 'readNetFromONNX', side_effect=cv2.error('bad onnx')):
+                with self.assertRaisesRegex(RuntimeError, 'OpenCV DNN failed to load YOLO ONNX model'):
+                    detect_yolo_dnn(
+                        image_path,
+                        model_path=model_path,
+                        labels_path=labels_path,
+                        input_size=640,
+                        confidence_threshold=0.25,
+                        nms_threshold=0.45,
+                    )
+
+    def test_parse_ssd_dnn_output_converts_normalized_boxes(self) -> None:
+        output = np.array([[[[
+            [0.0, 15.0, 0.8, 0.25, 0.25, 0.75, 0.5],
+            [0.0, 7.0, 0.2, 0.1, 0.1, 0.2, 0.2],
+        ]]]], dtype=np.float32)
+        labels = [f'class_{index}' for index in range(21)]
+        labels[15] = 'person'
+
+        detections = parse_ssd_dnn_output(
+            output,
+            image_width=640,
+            image_height=480,
+            labels=labels,
+            confidence_threshold=0.35,
+            image_ref='/tmp/left.jpg',
+        )
+
+        self.assertEqual(len(detections), 1)
+        self.assertEqual(detections[0]['label'], 'person')
+        self.assertEqual(detections[0]['bbox_xywh'], [160, 120, 320, 120])
+        self.assertEqual(detections[0]['source'], 'opencv_dnn_mobilenet_ssd')
+
+    def test_validate_ssd_args_requires_complete_asset_triplet(self) -> None:
+        with self.assertRaisesRegex(ValueError, '--ssd-model, --ssd-prototxt, and --ssd-labels'):
+            validate_ssd_args(ssd_model='/tmp/model.caffemodel', ssd_prototxt='', ssd_labels='')
+
+    def test_validate_ssd_args_checks_files_before_capture(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            model_path = Path(tmp_dir) / 'model.caffemodel'
+            labels_path = Path(tmp_dir) / 'labels.txt'
+            model_path.write_bytes(b'not a real caffe model, only path validation')
+            labels_path.write_text('background\nperson\n', encoding='utf-8')
+
+            with self.assertRaisesRegex(FileNotFoundError, 'SSD prototxt not found'):
+                validate_ssd_args(
+                    ssd_model=str(model_path),
+                    ssd_prototxt=str(Path(tmp_dir) / 'missing.prototxt'),
+                    ssd_labels=str(labels_path),
+                )
 
 
 if __name__ == '__main__':
