@@ -3,7 +3,8 @@
 #include <finsh.h>
 #include <stdlib.h>
 
-#define PLAYBACK_BUFFER_SIZE (AUDIO_FRAME_BYTES * 4)
+#define PLAYBACK_MONO_FRAME_BYTES RT_AUDIO_REPLAY_MP_BLOCK_SIZE
+#define PLAYBACK_MONO_FRAME_MS ((PLAYBACK_MONO_FRAME_BYTES * 1000U) / (AUDIO_SAMPLE_RATE * sizeof(int16_t)))
 
 typedef struct {
     rt_bool_t initialized;
@@ -11,11 +12,9 @@ typedef struct {
     rt_mutex_t mutex;
     rt_device_t speaker;
     char speaker_name[RT_NAME_MAX];
-    uint32_t queued_mod;
-    uint8_t buffer[PLAYBACK_BUFFER_SIZE];
-    uint32_t write_pos;
-    uint32_t read_pos;
-    uint32_t data_len;
+    uint8_t pending[PLAYBACK_MONO_FRAME_BYTES];
+    uint32_t pending_len;
+    uint32_t written_frames;
 } audio_playback_t;
 
 static audio_playback_t g_playback = {0};
@@ -206,39 +205,51 @@ rt_err_t audio_playback_stop(void)
 
 rt_err_t audio_playback_write(const uint8_t *data, uint32_t len)
 {
+    uint32_t offset = 0U;
+
     if (!g_playback.initialized || !data || len == 0)
     {
         return -RT_EINVAL;
     }
 
-    if (g_playback.speaker != RT_NULL)
+    while (offset < len)
     {
-        rt_size_t offset = 0;
-        rt_size_t written;
+        uint32_t space;
+        uint32_t copy_len;
 
         rt_mutex_take(g_playback.mutex, RT_WAITING_FOREVER);
-        while (offset < len)
+        space = PLAYBACK_MONO_FRAME_BYTES - g_playback.pending_len;
+        copy_len = len - offset;
+        if (copy_len > space)
         {
-            rt_size_t chunk = len - offset;
-            if (chunk > RT_AUDIO_REPLAY_MP_BLOCK_SIZE)
-            {
-                chunk = RT_AUDIO_REPLAY_MP_BLOCK_SIZE;
-            }
-            written = rt_device_write(g_playback.speaker, 0, data + offset, chunk);
+            copy_len = space;
+        }
+        rt_memcpy(g_playback.pending + g_playback.pending_len, data + offset, copy_len);
+        g_playback.pending_len += copy_len;
+        offset += copy_len;
+
+        if (g_playback.pending_len >= PLAYBACK_MONO_FRAME_BYTES)
+        {
+            rt_size_t written;
+
+            written = rt_device_write(g_playback.speaker, 0, g_playback.pending, PLAYBACK_MONO_FRAME_BYTES);
+            g_playback.pending_len = 0U;
             if (written == 0)
             {
                 rt_mutex_release(g_playback.mutex);
-                rt_kprintf("[audio_playback] %s direct write failed offset=%lu len=%lu\n",
+                rt_kprintf("[audio_playback] %s block write failed frames=%lu\n",
                            g_playback.speaker_name,
-                           (unsigned long)offset,
-                           (unsigned long)len);
+                           (unsigned long)g_playback.written_frames);
                 return -RT_ERROR;
             }
-            offset += written;
-            g_playback.queued_mod =
-                (g_playback.queued_mod + (uint32_t)written) % RT_AUDIO_REPLAY_MP_BLOCK_SIZE;
+            g_playback.written_frames++;
+            rt_mutex_release(g_playback.mutex);
+            rt_thread_mdelay(PLAYBACK_MONO_FRAME_MS);
         }
-        rt_mutex_release(g_playback.mutex);
+        else
+        {
+            rt_mutex_release(g_playback.mutex);
+        }
     }
 
     return RT_EOK;
@@ -246,8 +257,7 @@ rt_err_t audio_playback_write(const uint8_t *data, uint32_t len)
 
 rt_err_t audio_playback_flush(void)
 {
-    static const uint8_t silence[RT_AUDIO_REPLAY_MP_BLOCK_SIZE] = {0};
-    uint32_t pad_len;
+    rt_size_t written = 1U;
 
     if (!g_playback.initialized || (g_playback.speaker == RT_NULL))
     {
@@ -255,26 +265,31 @@ rt_err_t audio_playback_flush(void)
     }
 
     rt_mutex_take(g_playback.mutex, RT_WAITING_FOREVER);
-    pad_len = (g_playback.queued_mod == 0U) ? 0U :
-              (RT_AUDIO_REPLAY_MP_BLOCK_SIZE - g_playback.queued_mod);
+    if (g_playback.pending_len > 0U)
+    {
+        rt_memset(g_playback.pending + g_playback.pending_len, 0,
+                  PLAYBACK_MONO_FRAME_BYTES - g_playback.pending_len);
+        written = rt_device_write(g_playback.speaker, 0,
+                                  g_playback.pending,
+                                  PLAYBACK_MONO_FRAME_BYTES);
+        g_playback.pending_len = 0U;
+        if (written != 0)
+        {
+            g_playback.written_frames++;
+        }
+    }
     rt_mutex_release(g_playback.mutex);
 
-    if (pad_len == 0U)
-    {
-        return RT_EOK;
-    }
-
-    rt_kprintf("[audio_playback] flush tail pad=%lu\n", (unsigned long)pad_len);
-    return audio_playback_write(silence, pad_len);
+    rt_kprintf("[audio_playback] flush written=%lu ret=%lu\n",
+               (unsigned long)g_playback.written_frames,
+               (unsigned long)written);
+    return written == 0 ? -RT_ERROR : RT_EOK;
 }
 
 void audio_playback_clear(void)
 {
     rt_mutex_take(g_playback.mutex, RT_WAITING_FOREVER);
-    g_playback.write_pos = 0;
-    g_playback.read_pos = 0;
-    g_playback.data_len = 0;
-    g_playback.queued_mod = 0;
+    g_playback.pending_len = 0;
     rt_mutex_release(g_playback.mutex);
 }
 
@@ -292,7 +307,7 @@ static void audio_playback_probe_cmd(int argc, char **argv)
                dev,
                g_playback.initialized ? 1 : 0,
                g_playback.playing ? 1 : 0,
-               (unsigned long)g_playback.data_len);
+               (unsigned long)g_playback.pending_len);
 }
 MSH_CMD_EXPORT(audio_playback_probe_cmd, Probe speaker playback device candidates);
 

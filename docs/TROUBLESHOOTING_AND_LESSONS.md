@@ -1481,3 +1481,34 @@ Fix / trick:
 Validated:
 - After the direct-feed fix, a 3000 ms QA run showed `probe_lwip=50/0`, `xz_last=193/34547`, and `xz_fail=0`.
 - If `xz_rx` increments only on text and binary stays `0`, the next layer is platform/protocol event handling, not M33->M55 IPC or Opus uplink.
+
+## 2026-06-22 - Human voice QA must feed immediately after capture_on
+
+Symptoms:
+- `m55qa_capture_on` can ACK `0`, but if the QA script waits too long before `m33qa_xz_probe full`, M55 may already have left XiaoZhi listening.
+- In that case the correct M33 behavior is:
+  - `xiaozhi probe abort: M55 not listening ... xz_ws=1 tx_pending=0`
+- This is not a WiFi/token/WebSocket failure when `xz_ws=1`, `token_len=442`, and `srv_hello=1`.
+
+Fix / trick:
+- For deterministic human-voice QA, send `m33qa_xz_probe full` immediately after `m55qa_capture_on` returns ACK.
+- Keep `m55qa_probe_pcm_on` enabled during this test so CM55 mic0 EOU does not prematurely close the QA session.
+- Treat `M55 not listening` as a safe abort. Re-run `m55qa_capture_on`; do not continue sending PCM and do not debug WiFi.
+
+Validated:
+- Human-like prompt `你好小智，请用一句话介绍一下你自己。` embedded as `166974` bytes of 16 kHz mono S16LE PCM.
+- Fast-feed run sent `87` parts / `166974` bytes, with `retries=0` and `tx_pending=0`.
+- M55 reported `probe_lwip=87/0`, `xz_last=313/600960`, and `xz_fail=0`.
+- M33 received TTS downlink and wrote it to the speaker path:
+  - `tts audio rx total=640`
+  - `audio_playback Started`
+  - `tts audio write chunk=1/2/3`
+
+Reusable QA sequence:
+- `m55qa_status`
+- `m55qa_probe_pcm_on`
+- `m55qa_capture_on`
+- immediately `m33qa_xz_probe full`
+- `m55qa_capture_off`
+- wait 60 seconds
+- `m55qa_status`

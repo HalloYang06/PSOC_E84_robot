@@ -173,7 +173,11 @@ rt_err_t m33_m55_comm_publish(const m33_m55_message_t *msg)
     local.seq = ++g_comm_runtime.seq;
     rt_mutex_release(&g_comm_runtime.lock);
 
-    if ((local.type == MSG_TYPE_AUDIO_DATA) ||
+    if (local.type == MSG_TYPE_VOICE_CONTROL)
+    {
+        timeout_ms = 1000;
+    }
+    else if ((local.type == MSG_TYPE_AUDIO_DATA) ||
         ((local.type == MSG_TYPE_SENSOR_STREAM) &&
          (local.payload.sensor_stream.source == MODEL_INPUT_SRC_AUDIO_PCM)) ||
         (local.type == MSG_TYPE_ASR_TEXT) ||
