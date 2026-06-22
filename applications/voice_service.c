@@ -235,6 +235,60 @@ static rt_uint32_t voice_service_text_code4(const char *text)
     return code;
 }
 
+static rt_uint32_t voice_service_server_hint_code4(const char *message,
+                                                   const char *type,
+                                                   const char *state,
+                                                   const char *error,
+                                                   const char *content,
+                                                   const char *speak)
+{
+    if ((error != RT_NULL) && (error[0] != '\0'))
+    {
+        return voice_service_text_code4("err");
+    }
+    if ((type != RT_NULL) && (type[0] != '\0'))
+    {
+        return voice_service_text_code4(type);
+    }
+    if ((state != RT_NULL) && (state[0] != '\0'))
+    {
+        return voice_service_text_code4(state);
+    }
+    if ((speak != RT_NULL) && (speak[0] != '\0'))
+    {
+        return voice_service_text_code4("spk");
+    }
+    if ((content != RT_NULL) && (content[0] != '\0'))
+    {
+        return voice_service_text_code4("msg");
+    }
+    if (message != RT_NULL)
+    {
+        if (rt_strstr(message, "\"stt\"") != RT_NULL)
+        {
+            return voice_service_text_code4("stt");
+        }
+        if (rt_strstr(message, "\"tts\"") != RT_NULL)
+        {
+            return voice_service_text_code4("tts");
+        }
+        if (rt_strstr(message, "\"listen\"") != RT_NULL)
+        {
+            return voice_service_text_code4("list");
+        }
+        if (rt_strstr(message, "\"goodbye\"") != RT_NULL)
+        {
+            return voice_service_text_code4("bye");
+        }
+        if (rt_strstr(message, "\"abort\"") != RT_NULL)
+        {
+            return voice_service_text_code4("abor");
+        }
+    }
+
+    return 0U;
+}
+
 static const char *voice_service_public_wake_word(const char *wake_word)
 {
     if ((wake_word == RT_NULL) || (wake_word[0] == '\0') ||
@@ -1408,7 +1462,7 @@ rt_err_t voice_service_start_xiaozhi_talk(void)
             rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
             hello_seen = g_service.xiaozhi_server_hello_seen;
             hello_count = g_service.xiaozhi_server_hello_count;
-            if (!hello_seen && websocket_client_is_connected() && (hello_count > 0U))
+            if (!hello_seen && (hello_count > 0U))
             {
                 g_service.xiaozhi_server_hello_seen = RT_TRUE;
                 hello_seen = RT_TRUE;
@@ -1897,6 +1951,9 @@ static void voice_service_handle_server_text(const char *message)
     char code[48];
     char session_id[XIAOZHI_SESSION_ID_MAX_LEN];
     const char *fallback_text = RT_NULL;
+    rt_uint32_t raw_len;
+    rt_uint32_t reason_code;
+    rt_uint32_t hint_code;
 
     type[0] = '\0';
     text[0] = '\0';
@@ -1920,6 +1977,9 @@ static void voice_service_handle_server_text(const char *message)
     json_get_string(message, "broadcast", broadcast, sizeof(broadcast));
     json_get_string(message, "tts", speak, sizeof(speak));
     json_get_string(message, "speak", speak, sizeof(speak));
+    raw_len = (rt_uint32_t)rt_strlen(message);
+    reason_code = voice_service_text_code4(reason);
+    hint_code = voice_service_server_hint_code4(message, type, state, error, content, speak);
 
     rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
     g_service.xiaozhi_server_last_type_code = voice_service_text_code4(type);
@@ -1928,17 +1988,21 @@ static void voice_service_handle_server_text(const char *message)
         (((rt_uint32_t)rt_strlen(text) & 0x3ffU) |
          (((rt_uint32_t)rt_strlen(content) & 0x3ffU) << 10U) |
          (((rt_uint32_t)rt_strlen(speak) & 0x3ffU) << 20U));
-    g_service.xiaozhi_server_last_error_code = voice_service_text_code4(error);
-    g_service.xiaozhi_server_last_reason_code = voice_service_text_code4(reason);
+    g_service.xiaozhi_server_last_error_code =
+        ((voice_service_text_code4(error) & 0xffffU) | ((hint_code & 0xffffU) << 16U));
+    g_service.xiaozhi_server_last_reason_code =
+        ((reason_code & 0xffffU) | ((raw_len & 0xffffU) << 16U));
     rt_mutex_release(&g_service.lock);
 
-    rt_kprintf("[voice_service] server event type=%s state=%s session=%s text=%u content=%u speak=%u err=%s reason=%s code=%s\n",
+    rt_kprintf("[voice_service] server event type=%s state=%s session=%s text=%u content=%u speak=%u raw=%lu hint=0x%08lx err=%s reason=%s code=%s\n",
                type[0] ? type : "(none)",
                state[0] ? state : "(none)",
                session_id[0] ? session_id : "(none)",
                (unsigned)rt_strlen(text),
                (unsigned)rt_strlen(content),
                (unsigned)rt_strlen(speak),
+               (unsigned long)raw_len,
+               (unsigned long)hint_code,
                error[0] ? error : "(none)",
                reason[0] ? reason : "(none)",
                code[0] ? code : "(none)");

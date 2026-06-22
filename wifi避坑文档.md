@@ -1377,3 +1377,40 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
 1. 3000 ms QA probe 后 `probe_lwip=50/0`，说明 50 包 M33 QA PCM 全部被 M55 接受。
 2. `xz_last=193/34547 xz_fail=0`，说明 Opus/WebSocket 上行已恢复。
 3. 当前剩余问题是 `xz_rx=2/0`，只有 text 没有 binary TTS，下层应查平台事件 payload 或协议差异。
+
+## 37. 2026-06-22 `capture_on ack=-116` 也可能是重复 hello 窗口
+
+现象：
+
+1. 冷启动或重烧后，`m55qa_status` 可能先短暂显示 `xz_ws=0 xz_stage=30 srv_hello=0`，随后恢复到 `xz_ws=1 xz_stage=70 srv_hello=1`。
+2. 基线健康后，`m55qa_probe_pcm_on` ACK 成功，但 `m55qa_capture_on` 仍可能返回 `ack=-116`。
+3. 此时后续 `m33qa_xz_probe` 会被 M55 正确忽略，表现为 `probe_lwip=0/50`、`xz_last=0/0`。这不是 QA PCM 上行坏了，而是 capture 没进入 listening。
+
+本轮修复：
+
+1. `voice_service_start_xiaozhi_talk()` 的 repeated-hello fallback 不再要求超时检查那一瞬间 `websocket_client_is_connected()` 必须为真。
+2. 只要本运行已经有 `xiaozhi_server_hello_count > 0`，就恢复 `hello_seen` 并继续；真正发送 `listen/start` 前仍由 manual listen 路径检查 WebSocket 是否连接。
+3. M55 server text 诊断继续保持紧凑，不扩大 `voice_status_msg_t`：
+   - `srv_err=err/reason raw=... hint=...`
+   - `raw` 是最近 text JSON 原始长度；
+   - `hint` 是最近 text 的低 16 位事件提示，例如 `he`、`li`。
+
+验证：
+
+1. M55 build 通过：`text=1648280 data=68744 bss=4541600`。
+2. M33 QA 打印 build 通过：`text=499072 data=15344 bss=311877`。
+3. M55 烧录成功：`rtthread.hex` 写入 `1720320 bytes`，`whd_resources_all.bin` 写入 `466944 bytes`。
+4. M33 烧录成功并 verify：`build/rtthread.hex` 写入 `618496 bytes`，verify `616740 bytes`。
+5. 最终 3000 ms QA：
+   - `capture_on ack=0`
+   - `m33qa_xz_probe 3000` 发送 50 包 / `96000` bytes，`retries=0 tx_pending=0`
+   - `capture_off ack=0`
+   - `probe_lwip=50/0`
+   - `xz_last=84/15036 xz_fail=0`
+   - `xz_ws=1 xz_stage=70 xz_errno=0`
+   - 最近平台 text 为 `srv_last=list/star raw=57 hint=0x696c`
+
+后续判断：
+
+1. 如果 `capture_on ack=0`、`probe_lwip=50/0`、`xz_last` 增长，但 `srv_stt/srv_tts/tts_fwd` 仍为 0，下一层是小智平台事件/协议差异。
+2. 不要把这个模式回退到 WiFi 扫描、token 配置或资源固件方向。
