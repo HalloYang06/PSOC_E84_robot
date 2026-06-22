@@ -112,6 +112,8 @@ SSD 结果会以 `source=opencv_dnn_mobilenet_ssd` 进入 `detections`。`--auto
 
 理解这个算法时按三步看：第一步，左右摄像头各自用 SSD 找 `bottle/person/cup` 等语义框；第二步，从左图语义框里选 `target_object`，再找右图同 label 的框；第三步，比较左右框中心点，得到 `horizontal_disparity_px`。视差只能说明双目几何关系，还不能直接当距离。只有完成最终相机固定、焦距/畸变/基线标定后，才能用 `Z = f * B / disparity` 推米制深度；当前必须保持 `estimated_depth_m=null`。
 
+学习判断规律：在同一组固定摄像头下，目标越近，左右图中心点差异通常越大；目标越远，`horizontal_disparity_px` 通常越小。2026-06-22 实测瓶子从较近位置移动到较远位置后，视差从约 `87-88 px` 降到约 `80 px`，符合这个趋势。
+
 生成语音链路 dry-run 合同：
 
 ```bash

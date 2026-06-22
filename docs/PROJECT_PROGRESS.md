@@ -3293,3 +3293,12 @@
 - Teaching note: disparity is currently pixel-only. The future metric formula is `Z = f * B / disparity`, but `f`, `B`, rectification, and distortion are not calibrated yet, so `estimated_depth_m` remains `null`.
 - Boundary: no CAN, M33, trajectory, motor, boot, or kernel files were changed.
 - Next step: repeat with two or three known object positions to show how pixel disparity changes with distance before doing formal calibration.
+
+### 2026-06-22 - Farther object stereo disparity sanity check
+
+- Completed: operator moved the bottle farther away, then the same dual-camera SSD + stereo association command was rerun as a teaching experiment.
+- Validation: farther probe detected `bottle` in both frames with left center `[363.5, 172.0]`, right center `[283.5, 129.5]`, and `horizontal_disparity_px=80.0`.
+- Validation: farther upload returned `ok=true`, `target_label=bottle`, `detection_count=2`, and `horizontal_disparity_px=80.5`.
+- Learning result: previous closer run was about `87-88 px`; farther run is about `80 px`, matching the expected stereo trend that farther objects have smaller pixel disparity.
+- Boundary: this is still qualitative pixel-disparity validation only. No metric depth or motion target was produced.
+- Next step: collect one nearer point and one farther point with approximate tape-measured distance to prepare for later calibration intuition.
