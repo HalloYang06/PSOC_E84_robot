@@ -1549,3 +1549,48 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
 
 1. `probe_lwip=50/0` 且 `xz_last` 增长后，如果 `srv_stt/srv_tts/tts_fwd` 仍为 0，下一步只查小智平台/协议，不要回退到 WiFi/token/资源固件。
 2. 连续 QA 前若 `m33qa_xz_probe` 打印 `M55 not listening`，先重新跑 `m55qa_capture_on` 并确认 ACK，不要直接塞 PCM。
+
+## 39. 2026-06-22 人声素材无人 QA 已打通到 M33 播放写入
+
+背景：
+
+1. 用户要求先用人声素材自行 QA，不再依赖现场人工说话。
+2. M33 内置 `m33qa_xz_probe full` 已替换为约 5.2 秒、16 kHz mono S16LE 中文人声提示：
+   - `你好小智，请用一句话介绍一下你自己。`
+   - PCM 长度 `166974` bytes。
+3. 本轮没有修改 WiFi/token/资源固件，测试前状态健康：
+   - `wlan=1 ready=1 ip=192.168.3.32`
+   - `xz_ws=1 xz_stage=70 xz_errno=0`
+   - `xz_token=1 token_len=442`
+   - `srv_hello=1`
+
+踩坑：
+
+1. 第一轮 `capture_on` ACK 后等了约 6 秒才发 `m33qa_xz_probe full`，M55 已不在 listening。
+2. M33 正确打印 `xiaozhi probe abort: M55 not listening ... xz_ws=1 tx_pending=0`，没有继续塞 IPC。
+3. 这类 abort 是 QA 时序问题，不是 WiFi/token 问题。
+
+通过证据：
+
+1. 第二轮把 `m33qa_xz_probe full` 紧跟在 `m55qa_capture_on` 后发送：
+   - `capture_on ret=0 ack=0`
+   - `m33qa_xz_probe full` 发完 `87` 包 / `166974` bytes，`retries=0 tx_pending=0`
+   - `capture_off ret=0 ack=0 tx_pending=0`
+2. M55 接收和小智上行：
+   - `probe_lwip=87/0`
+   - `xz_last=313/600960`
+   - `xz_fail=0`
+3. M33 下行和播放写入：
+   - `tts audio rx total=640`
+   - `audio_playback Started`
+   - `tts audio write chunk=1/2/3`
+4. 测后基线仍健康：
+   - `xz_ws=1 xz_stage=70 xz_errno=0`
+   - `wlan=1 ready=1`
+   - `token_len=442`
+
+后续判断：
+
+1. 无人 QA 标准流程应为 `m55qa_probe_pcm_on -> m55qa_capture_on -> 立即 m33qa_xz_probe full -> m55qa_capture_off -> 等待 TTS -> m55qa_status`。
+2. 如果 `M55 not listening`，先重新 `m55qa_capture_on`，不要直接查 WiFi/token。
+3. 后续产品化仍要验证真实 CM55 mic0 路径；当前人声 QA 已证明平台上行、TTS 下行、M33 speaker write 链路至少打通一次。
