@@ -1,5 +1,75 @@
 # Troubleshooting And Lessons
 
+## 2026-06-22 - Throttle `m33qa_xz_probe` Before Blaming XiaoZhi WiFi Or Token
+
+Symptoms:
+- Before this fix, a short deterministic `m33qa_xz_probe` could fail after only a few 1920-byte PCM notifications with `ret=-28`.
+- When that happened, `m55qa_capture_off` could also fail or remain queued, even while `m55qa_status` still showed healthy WiFi/token/WebSocket fields.
+
+Environment:
+- M33 repo: `D:\RT-ThreadStudio\workspace\yiliao_m33`, branch `M33`.
+- Active M55 burn tree remained `D:\RT-ThreadStudio\workspace\wifi`.
+- Bench shell: COM4 KitProg3 USB-UART at 115200.
+- Baseline health in this pass: `wlan=1 ready=1`, `xz_token=1 token_len=442`, `xz_ws=1`, `xz_stage=70`, `xz_errno=0`.
+
+Root cause / current hypothesis:
+- `m33qa_xz_probe` was sending 60 ms / 1920-byte shared-PCM notifications into a shallow M33->M55 IPC queue.
+- The probe is a deterministic stress tool, not the product audio path; when sent too fast it can compete with stop/control/status traffic and make a good XiaoZhi baseline look broken.
+
+Fix:
+- M33 `m33qa_xz_probe` now waits 100 ms between frames.
+- On transient queue full/timeout/no-space returns, it backs off 150 ms and retries up to 4 times before failing.
+- Probe logs now report retry attempts, `tx_pending`, and final sent/retry totals.
+
+Validation:
+- `m33qa_xz_probe 1200` sent 20 parts / `38400` bytes with `retries=0 tx_pending=0`; `m55qa_capture_off` returned fresh `voice_ack cmd=2 result=0`.
+- `m33qa_xz_probe 3000` sent 50 parts / `96000` bytes with `retries=0 tx_pending=0`; `m55qa_capture_off` returned fresh `voice_ack cmd=2 result=0`.
+- The 3000 ms run also produced M33 downlink evidence: `tts audio rx total=1280` and `tts audio write chunk=...`.
+- Final status after the 3000 ms run stayed at `xz_ws=1 xz_stage=70 xz_errno=0`, with `tx_pending=0`.
+
+Reusable trick:
+- If `m33qa_xz_probe` shows `ret=-28`, check probe pacing and `tx_pending` before touching WiFi, token, WHD resources, or platform credentials.
+- If `wlan=1`, `token_len=442`, `xz_ws=1`, and `xz_stage=70` are present, stay on the audio/session/IPC layer.
+- Product validation should still prefer real CM55 mic0; use M33 probe only for deterministic platform/downlink QA.
+
+Status:
+- QA probe starvation is fixed for 1200 ms and 3000 ms probe lengths in this pass.
+- Remaining open issue: one 1200 ms run left `xz_ws=0 xz_stage=80` until explicit `m55qa_xz_reconnect`; the later 3000 ms run stayed connected. Treat this as XiaoZhi session stop/reconnect behavior, not WiFi/token failure.
+
+## 2026-06-20 - XiaoZhi Downlink Reached M33, But Generic Async Speaker Worker Asserted
+
+Symptoms:
+- QA-only XiaoZhi probe produced platform downlink audio on M33: `tts audio rx total=1280`, `audio_playback Started`, and `tts audio write chunk=...`.
+- The experimental async playback worker then hit `(rt_object_get_type(&timer->parent) == RT_Object_Class_Timer) assertion failed at function:rt_timer_stop, line number:546`.
+- After the assertion, the shell stopped responding until reset/reflash.
+
+Root cause / current hypothesis:
+- The platform/model path is not the blocker once M33 logs `tts audio rx total=...`; downlink audio reached M33.
+- The generic async worker changed the timing/threading model around the RT-Thread audio device and likely violated the sound driver timer/thread expectations.
+
+Fix/status:
+- Rolled back the async playback worker and reflashed the stable M33 image.
+- Keep the M55 TTS truncation removal and QA probe controls; do not keep the generic async speaker worker.
+
+Reusable trick:
+- Do not assume `rt_device_write(sound0, ...)` is safe from an arbitrary worker thread on this board.
+- If XiaoZhi sits at "thinking" but M33 shows `tts audio rx total=...`, debug M33 speaker playback before changing WiFi, token, or WebSocket protocol again.
+
+## 2026-06-20 - Use M33 PCM Probe Only Behind An Explicit QA Gate
+
+Symptoms:
+- With no现场人声, CM55 mic0 uploads mostly low-energy frames and the platform may not return STT/TTS.
+- The deterministic `m33qa_xz_probe` is useful for proving cloud/downlink but can confuse the product architecture and pressure IPC queues.
+
+Fix/status:
+- Added `m55qa_probe_pcm_on` / `m55qa_probe_pcm_off`.
+- M55 accepts M33 PCM probe audio only when the QA gate is enabled and a XiaoZhi listening session is active.
+- `m55qa_probe_pcm_on` was validated with `voice_ack cmd=11 result=0`.
+
+Reusable trick:
+- Use `m55qa_probe_pcm_on -> m55qa_capture_on -> m33qa_xz_probe -> m55qa_capture_off` only for deterministic QA.
+- Product path remains CM55 local `mic0 -> Opus -> WebSocket -> platform -> M33 TTS audio`.
+
 ## 2026-06-19 - Rehab Bench Motion Needs Current Mode And Bounded Adaptive PID
 
 Symptoms:

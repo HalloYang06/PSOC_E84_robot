@@ -372,12 +372,27 @@ MSH_CMD_EXPORT(m33qa_pcm_listen_off, Stop legacy M33 mic PCM stream);
 static void m33qa_xz_probe(int argc, char **argv)
 {
     const rt_uint32_t frame_len = 1920U;
-    const rt_uint32_t default_probe_len = 16000U * 2U * 3U;
+    const rt_uint32_t frame_delay_ms = 100U;
+    const rt_uint32_t retry_delay_ms = 150U;
+    const rt_uint32_t max_retries = 4U;
+    const rt_uint32_t default_probe_len = 16000U * 2U * 12U / 10U;
     rt_uint32_t target_len = g_xiaozhi_pcm_probe_data_len;
     rt_uint32_t offset = 0U;
     rt_uint32_t part = 0U;
+    rt_uint32_t retry_total = 0U;
 
-    if ((argc < 2) || (rt_strcmp(argv[1], "full") != 0))
+    if (argc >= 2 && rt_strcmp(argv[1], "full") != 0)
+    {
+        long ms = strtol(argv[1], RT_NULL, 10);
+        if (ms > 0)
+        {
+            rt_uint32_t requested = (rt_uint32_t)ms * 16000U * 2U / 1000U;
+            target_len = (requested < g_xiaozhi_pcm_probe_data_len) ?
+                requested :
+                g_xiaozhi_pcm_probe_data_len;
+        }
+    }
+    else if ((argc < 2) || (rt_strcmp(argv[1], "full") != 0))
     {
         target_len = (g_xiaozhi_pcm_probe_data_len > default_probe_len) ?
             default_probe_len :
@@ -392,13 +407,37 @@ static void m33qa_xz_probe(int argc, char **argv)
     {
         rt_uint32_t chunk_len = target_len - offset;
         rt_err_t ret;
+        rt_uint32_t retry = 0U;
 
         if (chunk_len > frame_len)
         {
             chunk_len = frame_len;
         }
 
-        ret = m33_publish_pcm_shared_buffer(g_xiaozhi_pcm_probe_data + offset, chunk_len);
+        do
+        {
+            ret = m33_publish_pcm_shared_buffer(g_xiaozhi_pcm_probe_data + offset, chunk_len);
+            if (ret == RT_EOK)
+            {
+                break;
+            }
+
+            if ((ret != -RT_EFULL) && (ret != -RT_ETIMEOUT) && (ret != -RT_ENOSPC))
+            {
+                break;
+            }
+
+            retry++;
+            retry_total++;
+            rt_kprintf("[m33] xiaozhi probe backoff part=%lu retry=%lu ret=%d tx_pending=%lu delay=%lums\n",
+                       (unsigned long)part,
+                       (unsigned long)retry,
+                       ret,
+                       (unsigned long)m33_m55_comm_tx_count(),
+                       (unsigned long)retry_delay_ms);
+            rt_thread_mdelay(retry_delay_ms);
+        } while (retry < max_retries);
+
         rt_kprintf("[m33] xiaozhi probe part=%lu off=%lu len=%lu ret=%d\n",
                    (unsigned long)part,
                    (unsigned long)offset,
@@ -411,8 +450,15 @@ static void m33qa_xz_probe(int argc, char **argv)
 
         offset += chunk_len;
         part++;
-        rt_thread_mdelay(80);
+        rt_thread_mdelay(frame_delay_ms);
     }
+
+    rt_kprintf("[m33] xiaozhi probe done parts=%lu sent=%lu/%lu retries=%lu tx_pending=%lu\n",
+               (unsigned long)part,
+               (unsigned long)offset,
+               (unsigned long)target_len,
+               (unsigned long)retry_total,
+               (unsigned long)m33_m55_comm_tx_count());
 }
 MSH_CMD_EXPORT(m33qa_xz_probe, Publish built-in Xiaozhi PCM probe to CM55; use "full" for long sample);
 
