@@ -1,4 +1,58 @@
-﻿# wifi 避坑文档
+# wifi 避坑文档
+
+## 31. 2026-06-20 小智链路新结论：平台下行已到 M33，剩余 blocker 是 speaker 播放
+
+本轮确认：
+
+1. 不要再把 WiFi/token 当主 blocker：
+   - `wlan=1 ready=1`
+   - `ip=192.168.3.32`
+   - `saved=1 auto=1 storage=0`
+   - `xz_ws=1`
+   - `xz_stage=70`
+   - `xz_errno=0`
+   - `token_len=442`
+2. M55 仍按官方产品路线：
+   - `CM55 mic0 -> Opus -> WebSocket -> platform -> M33 TTS audio`
+3. 为无人值守 QA 新增显式开关：
+   - `m55qa_probe_pcm_on`
+   - `m55qa_probe_pcm_off`
+   - 只有打开 QA gate 且小智正在 listening 时，M55 才接收 `m33qa_xz_probe` 的 PCM。
+4. QA gate 已验证：
+   - `m55qa_probe_pcm_on` 返回 `voice_ack cmd=11 result=0`
+   - `m55qa_capture_on` 返回 `voice_ack cmd=1 result=0`
+   - `m33qa_xz_probe` 后，M33 收到平台下行：`tts audio rx total=1280`
+   - M33 也进入播放写入：`tts audio write chunk=...`
+
+本轮修复：
+
+1. M55 不再把每个 TTS 下行包硬截断为最多 8 个 128B IPC chunk。
+2. M55 发送 TTS chunk 到 M33 时增加短等待，避免 M33 队列瞬时满就直接丢。
+3. M33 QA 控制命令增加短重试，避免瞬时 IPC 忙导致 `m55qa_capture_on ret=-255`。
+
+当前剩余问题：
+
+1. 平台/模型/下行不是空想，已经走到 M33。
+2. 实验性的 M33 async speaker worker 会触发 RT-Thread audio 断言：
+   - `(rt_object_get_type(&timer->parent) == RT_Object_Class_Timer) assertion failed at function:rt_timer_stop`
+3. 因此 async speaker worker 已回退，下一步要参考板卡/RT-Thread 音频驱动的官方播放方式，而不是随便开 worker 写 `sound0`。
+4. 真实用户语音仍要回到 CM55 mic0 路线验证；`m33qa_xz_probe` 只用于无人 QA，不是产品路径。
+
+下一步建议：
+
+1. 先修 M33 speaker 播放稳定性。
+2. 再跑：
+   - `m55qa_probe_pcm_on`
+   - `m55qa_capture_on`
+   - `m33qa_xz_probe`
+   - `m55qa_capture_off`
+   - `m55qa_status`
+3. 成功标准是同时满足：
+   - M33 出现 `tts audio rx total=...`
+   - speaker 无断言
+   - shell 仍响应
+   - `tx_pending=0`
+4. 不要回头重配 SSID/token/资源，除非 `m55qa_status` 里的 WiFi 或 WebSocket 指标明确退化。
 
 ## 1. 现象
 
@@ -1114,3 +1168,46 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
 1. 完整自然语音问答和完整扬声器回复还未稳定闭环。
 2. TTS 下行期间仍需要继续做 IPC/播放限流，避免状态刷新或控制消息被挤压。
 3. 下一步优先做 TTS 下行发布和控制消息分流/限流，不要回退到 WiFi 扫描、token 配置或资源固件方向。
+
+## 31. 2026-06-22 M33 QA probe 已节流，后续不要把 probe 队列压力误判为 WiFi/token
+
+本轮结论：
+
+1. 本轮没有改 M55/WiFi 源码；只修了 M33 QA 工具 `m33qa_xz_probe`。
+2. WiFi/token/WebSocket 基线仍然健康：
+   - `saved=1 auto=1 storage=0`
+   - `wlan=1 ready=1`
+   - `ip=192.168.3.32`
+   - `xz_token=1 token_len=442`
+   - `xz_ws=1`
+   - `xz_stage=70`
+   - `xz_errno=0`
+3. `m33qa_xz_probe` 现在默认 100 ms/帧，遇到 M33->M55 IPC 队列满/超时会 150 ms 退避重试，避免 QA 工具把 `m55qa_capture_off` 挤在队列后面。
+4. 这不改变产品路径。产品路径仍然是：
+   - `CM55 mic0 -> Opus -> XiaoZhi WebSocket/platform -> M33 speaker`
+   - `m33qa_xz_probe` 只是确定性 QA 工具。
+
+验证结果：
+
+1. 1200 ms probe：
+   - `m33qa_xz_probe 1200` 发完 20 个 1920B 包，共 `38400` bytes。
+   - M33 日志：`retries=0 tx_pending=0`。
+   - `m55qa_capture_off` 收到新 `voice_ack cmd=2 result=0`。
+2. 3000 ms probe：
+   - `m33qa_xz_probe 3000` 发完 50 个 1920B 包，共 `96000` bytes。
+   - M33 日志：`retries=0 tx_pending=0`。
+   - `m55qa_capture_off` 收到新 `voice_ack cmd=2 result=0`。
+   - M33 收到平台下行音频：`tts audio rx total=1280`，并出现 `tts audio write chunk=...`。
+   - 最终状态：`tx_pending=0`、`xz_ws=1`、`xz_stage=70`、`xz_errno=0`、`xz_last=183/32757`、`xz_rx=5/0`。
+
+仍需注意：
+
+1. 一次 1200 ms 测试后曾出现 `xz_ws=0 xz_stage=80`，手动 `m55qa_xz_reconnect` 后恢复到 `xz_ws=1 xz_stage=70 xz_errno=0`；后续 3000 ms 测试最终保持连接。
+2. 这说明下一层仍要盯 XiaoZhi session stop/reconnect、平台事件和 STT/TTS 解析，不要回头重做 WiFi 扫描、token 或资源固件。
+3. 当前状态快照里 `srv_stt/srv_tts` 没增长，但 M33 已收到二进制下行音频；下一步要查平台 event 日志和板端 server event 解析。
+
+推荐下一步：
+
+1. 用真实 CM55 mic0 做人工语音 QA，观察 `server event type=stt/tts/error`、`srv_stt`、`srv_tts`、`xz_rx text/binary`、`tts_fwd` 和 M33 `tts audio rx/write`。
+2. 如果 stop 后 WebSocket 再次掉到 `stage=80`，优先修 session stop/reconnect 逻辑。
+3. 只有当 `wlan=0`、`token_len=0`、或 `xz_ws=0` 持续不能 reconnect 时，才回到 WiFi/token 方向。
