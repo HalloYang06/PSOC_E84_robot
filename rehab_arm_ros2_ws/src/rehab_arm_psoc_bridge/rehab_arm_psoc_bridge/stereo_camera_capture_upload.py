@@ -24,6 +24,12 @@ from rehab_arm_psoc_bridge.stereo_vision_context import (
 DEFAULT_UVC_MODULE_PATH = '/lib/modules/6.1.141.can-new/kernel/drivers/media/usb/uvc/uvcvideo.ko'
 
 
+def _image_pixels(image: Any) -> list[int]:
+    if hasattr(image, 'get_flattened_data'):
+        return list(image.get_flattened_data())
+    return list(image.getdata())
+
+
 def build_insmod_command(module_path: str) -> list[str]:
     return ['sudo', 'insmod', module_path]
 
@@ -70,6 +76,68 @@ def make_stereo_frame_paths(
     session_prefix = sanitize_identifier(f'{robot_id}__{device_id}')
     base_name = f'{session_prefix}__stereo__{timestamp}__{sequence:04d}'
     return output_dir / f'{base_name}__left.jpg', output_dir / f'{base_name}__right.jpg'
+
+
+def _image_stats(path: Path) -> dict[str, Any]:
+    try:
+        from PIL import Image
+    except ModuleNotFoundError as exc:
+        raise RuntimeError('Pillow is required for --analyze-image-quality') from exc
+
+    with Image.open(path) as image:
+        gray = image.convert('L')
+        width, height = gray.size
+        pixels = _image_pixels(gray.resize((min(width, 64), min(height, 64))))
+    mean_luma = sum(pixels) / len(pixels) if pixels else 0.0
+    adjacent_diffs = [abs(pixels[index] - pixels[index - 1]) for index in range(1, len(pixels))]
+    sharpness_proxy = sum(adjacent_diffs) / len(adjacent_diffs) if adjacent_diffs else 0.0
+    return {
+        'width': width,
+        'height': height,
+        'mean_luma': round(mean_luma, 2),
+        'sharpness_proxy': round(sharpness_proxy, 2),
+    }
+
+
+def _pair_difference(left_path: Path, right_path: Path) -> float:
+    try:
+        from PIL import Image
+    except ModuleNotFoundError as exc:
+        raise RuntimeError('Pillow is required for --analyze-image-quality') from exc
+
+    with Image.open(left_path) as left_image, Image.open(right_path) as right_image:
+        left_gray = left_image.convert('L').resize((64, 64))
+        right_gray = right_image.convert('L').resize((64, 64))
+        left_pixels = _image_pixels(left_gray)
+        right_pixels = _image_pixels(right_gray)
+    return round(sum(abs(a - b) for a, b in zip(left_pixels, right_pixels)) / len(left_pixels), 2)
+
+
+def analyze_stereo_pair_quality(left_path: Path, right_path: Path) -> dict[str, Any]:
+    left = _image_stats(left_path)
+    right = _image_stats(right_path)
+    pair_difference = _pair_difference(left_path, right_path)
+    warnings: list[str] = []
+    if min(left['mean_luma'], right['mean_luma']) < 8.0:
+        warnings.append('too dark')
+    if min(left['sharpness_proxy'], right['sharpness_proxy']) < 1.0:
+        warnings.append('low texture or blurred')
+    if (left['width'], left['height']) != (right['width'], right['height']):
+        warnings.append('left/right resolution mismatch')
+    usable = not warnings
+    summary = (
+        f"stereo RGB pair {left['width']}x{left['height']} captured; "
+        f"mean_luma L/R={left['mean_luma']}/{right['mean_luma']}; "
+        f"pair_difference={pair_difference}; depth remains uncalibrated"
+    )
+    return {
+        'left': left,
+        'right': right,
+        'pair_difference_mean_abs': pair_difference,
+        'usable_for_context': usable,
+        'quality_warnings': warnings,
+        'scene_summary': summary,
+    }
 
 
 def _run_command(command: list[str], *, timeout_sec: float, allow_already_loaded: bool = False) -> None:
@@ -141,6 +209,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument('--scene-summary', default='')
     parser.add_argument('--vla-context', default='two RGB cameras provide approximate depth only; operator must verify before motion')
     parser.add_argument('--confidence', type=float)
+    parser.add_argument('--analyze-image-quality', action='store_true')
     parser.add_argument('--api-base', default='')
     parser.add_argument('--relay-token', default='')
     parser.add_argument('--upload', action='store_true')
@@ -170,11 +239,21 @@ def run_capture_upload(args: argparse.Namespace) -> tuple[dict[str, Any], dict[s
         input_format=args.input_format,
     )
     detections = load_detections(args.detections_json)
+    quality_analysis = analyze_stereo_pair_quality(left_path, right_path) if args.analyze_image_quality else None
     target_object = (
         {'label': args.target_label, 'confidence': args.target_confidence}
         if args.target_label
         else {}
     )
+    scene_summary = args.scene_summary
+    confidence = args.confidence
+    vla_context = args.vla_context
+    if quality_analysis is not None:
+        scene_summary = scene_summary or quality_analysis['scene_summary']
+        confidence = confidence if confidence is not None else (0.55 if quality_analysis['usable_for_context'] else 0.15)
+        vla_context = (
+            f"{vla_context}; image_quality={json.dumps(quality_analysis, ensure_ascii=False, separators=(',', ':'))}"
+        )
     payload = build_stereo_vision_context_payload(
         robot_id=args.robot_id,
         device_id=args.device_id,
@@ -188,9 +267,9 @@ def run_capture_upload(args: argparse.Namespace) -> tuple[dict[str, Any], dict[s
         estimated_depth_m=args.estimated_depth_m,
         baseline_m=args.baseline_m,
         stereo_calibration_id=args.stereo_calibration_id,
-        scene_summary=args.scene_summary,
-        vla_context=args.vla_context,
-        confidence=args.confidence,
+        scene_summary=scene_summary,
+        vla_context=vla_context,
+        confidence=confidence,
     )
     result = None
     if args.upload:

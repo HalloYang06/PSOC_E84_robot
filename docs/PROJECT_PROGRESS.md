@@ -3208,3 +3208,12 @@
 - Validation: `ros2 pkg executables rehab_arm_psoc_bridge` now lists `stereo_camera_capture_upload.py` and `stereo_vision_context.py`.
 - Validation: the installed ROS entry passed a real camera/platform run: `ros2 run rehab_arm_psoc_bridge stereo_camera_capture_upload.py --project-id fd6a55ed-a63c-44b3-b123-96fb3c154966 --api-base http://106.55.62.122:8011 --upload --sequence 3 --pretty` generated a new stereo pair under `/home/pi/rehab_arm_stereo_frames` and platform returned `ok=true`.
 - Boundary: this remains perception-only VLA-V context upload; no ROS motion topic, CAN frame, M33 state change, or motor path was touched.
+
+### 2026-06-22 - Stereo image quality summary added
+
+- Completed: added optional `--analyze-image-quality` to `stereo_camera_capture_upload.py`.
+- Behavior: the CLI now computes a small local quality/context summary from the captured left/right JPEGs: image size, mean luminance, simple sharpness proxy, left/right mean absolute difference, warnings, and `usable_for_context`.
+- Safety/accuracy boundary: the summary explicitly keeps `estimated_depth_m=null` unless provided by a future calibrated stage. It does not claim metric depth from the temporary two-camera setup.
+- NanoPi validation: `ros2 run rehab_arm_psoc_bridge stereo_camera_capture_upload.py --project-id fd6a55ed-a63c-44b3-b123-96fb3c154966 --api-base http://106.55.62.122:8011 --upload --sequence 4 --analyze-image-quality --pretty` produced `scene_summary="stereo RGB pair 640x480 captured; mean_luma L/R=167.21/175.81; pair_difference=42.37; depth remains uncalibrated"` and platform returned `ok=true`.
+- Local validation: `python -m unittest rehab_arm_ros2_ws.src.rehab_arm_psoc_bridge.test.test_stereo_camera_capture_upload rehab_arm_ros2_ws.src.rehab_arm_psoc_bridge.test.test_stereo_vision_context rehab_arm_ros2_ws.src.rehab_arm_psoc_bridge.test.test_camera_keyframe_node` passed with 11 tests.
+- Next step: add real detector integration to fill `detections` and `target_object`; only add `estimated_depth_m` after camera mounting and calibration are fixed.

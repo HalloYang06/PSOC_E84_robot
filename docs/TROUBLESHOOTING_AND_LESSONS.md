@@ -6370,10 +6370,12 @@ ros2 run rehab_arm_psoc_bridge stereo_camera_capture_upload.py \
   --project-id fd6a55ed-a63c-44b3-b123-96fb3c154966 \
   --api-base http://106.55.62.122:8011 \
   --upload \
+  --analyze-image-quality \
   --pretty
 ```
 
 - 如果重启后 `uvcvideo` 又没有绑定，先临时加 `--ensure-uvc-module`。这个选项只加载板上已有的 `/lib/modules/6.1.141.can-new/kernel/drivers/media/usb/uvc/uvcvideo.ko`，不是编译/替换内核。
+- `--analyze-image-quality` 只做图像质量和粗场景摘要，适合临时装机验证左右图是否可用；它不会填 `estimated_depth_m`，不要把它当成已完成双目标定。
 
 状态：
 
