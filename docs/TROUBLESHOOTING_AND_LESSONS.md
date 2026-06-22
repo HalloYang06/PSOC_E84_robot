@@ -1,5 +1,37 @@
 # Troubleshooting And Lessons
 
+## 2026-06-22 - Keep M33/M55 Voice Status Compact
+
+Symptoms:
+- Adding six new `uint32_t` server-event fields to `voice_status_msg_t` made the M33 build fail during link:
+  - `.cy_sharedmem will not fit in region m33_allocatable_shared`
+  - `region m33_allocatable_shared overflowed by 116 bytes`
+
+Environment:
+- M33 repo: `D:\RT-ThreadStudio\workspace\yiliao_m33`, branch `M33`.
+- M55 active burn tree: `D:\RT-ThreadStudio\workspace\wifi`.
+- Shared queue payload uses `m33_m55_message_t`, so every field added to `voice_status_msg_t` affects shared-memory queue footprint.
+
+Root cause:
+- `voice_status_msg_t` is carried inside `m33_m55_message_t`, and the IPC queue stores several messages in shared memory. A small field increase is multiplied by queue depth and can overflow the fixed shared-memory region.
+
+Fix:
+- Compressed the new event diagnostics:
+  - packed `text/content/speak` lengths into one `uint32_t`;
+  - kept compact four-byte `error` and `reason` codes;
+  - left the third printed error-code slot as `0` for now.
+
+Validation:
+- M33 build passed after compaction: `text=495660 data=16076 bss=311144`.
+- M55 build passed and a 1200 ms QA run showed the new `srv_lens` / `srv_err` fields on COM4.
+
+Reusable trick:
+- Before adding fields to M33/M55 IPC structs, estimate queue footprint and build both sides.
+- Prefer packed counters or reusing existing diagnostic fields for temporary QA observability.
+
+Status:
+- Fixed. New event observability is available without overflowing shared memory.
+
 ## 2026-06-22 - Wait For XiaoZhi QA Control ACK Before Sending Probe PCM
 
 Symptoms:

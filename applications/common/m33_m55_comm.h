@@ -58,7 +58,9 @@ typedef enum
     VOICE_CTRL_NET_PROBE,
     VOICE_CTRL_WIFI_DIAG,
     VOICE_CTRL_WIFI_SCAN,
-    VOICE_CTRL_WHD_DIAG
+    VOICE_CTRL_WHD_DIAG,
+    VOICE_CTRL_M33_PCM_PROBE_ENABLE,
+    VOICE_CTRL_M33_PCM_PROBE_DISABLE
 } voice_control_cmd_t;
 
 typedef enum
@@ -249,6 +251,9 @@ typedef struct
     rt_uint32_t xiaozhi_server_tts_sentence_count;
     rt_uint32_t xiaozhi_server_last_type_code;
     rt_uint32_t xiaozhi_server_last_state_code;
+    rt_uint32_t xiaozhi_server_last_text_lens;
+    rt_uint32_t xiaozhi_server_last_error_code;
+    rt_uint32_t xiaozhi_server_last_reason_code;
     char netdev_name[RT_NAME_MAX];
 } voice_status_msg_t;
 
