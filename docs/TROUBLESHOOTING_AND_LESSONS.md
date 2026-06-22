@@ -1,5 +1,55 @@
 # Troubleshooting And Lessons
 
+## 2026-06-23 - Official Protocol Reference Does Not Mean Changing The Custom Platform
+
+Symptoms:
+- The operator asked to reference the official Infineon/XiaoZhi behavior but still connect to the team's own platform.
+- A risky M55 async reconnect experiment made the board stay at `xz_stage=20` after WiFi came back, and `m55qa_xz_reconnect` queued but did not recover the session.
+- Reverting that experiment restored the known custom-platform baseline: `wlan=1`, `ip=192.168.3.32`, `xz_ws=1`, `xz_stage=70`, `token_len=442`.
+
+Root cause:
+- "Follow official XiaoZhi" is a protocol/audio-shape requirement, not a request to switch URLs/tokens.
+- The M55 `voice_service` auto reconnect path is sensitive. Moving reconnect into a quick async thread without a full bridge/queue ownership audit can leave commands pending and prevent session recovery.
+
+Fix:
+- Keep the existing custom platform token/url untouched.
+- Use official XiaoZhi protocol shape only for payload handling: JSON events plus Opus binary frames, including v3 framed binary payloads.
+- Revert the M55 async reconnect experiment and keep the previously proven synchronous reconnect path.
+- Add safer TTS handling instead: larger pending audio slots, v3 Opus frame splitting, slower M55->M33 TTS IPC pacing, and publish retry.
+
+Validation:
+- M55 stable build passed and was flashed. Final COM4 status returned to `xz_ws=1 xz_stage=70 xz_errno=0 token_len=442`.
+- Real mic/v3 testing reached the custom platform and M33 speaker path: `xz_last=114/218880`, `xz_rx=3/3`, `tts audio rx total=1920`, and M33 wrote several speaker chunks.
+
+Lesson:
+- When the user says "official XiaoZhi, but my own platform", keep platform identity stable and only align protocol behavior. Do not change token/url while debugging voice-link robustness.
+- If a reconnect refactor changes `xz_stage` from known-good `70` to stuck `20`, revert first and preserve the field baseline before deeper refactoring.
+
+## 2026-06-23 - WebSocket Can Be Healthy While The M55 Mic Thread Is Stale
+
+Symptoms:
+- The operator reported LVGL still showed XiaoZhi not connected, while COM4 `m55qa_status` showed `xz_ws=1`, `xz_stage=70`, `xz_errno=0`, `token_len=442`, and `srv_hello` increasing after reconnect.
+- After the M33 single-consumer change, one real-mic run ACKed `m55qa_capture_on` but did not upload audio: `xz_last=0/0`, `tts_fwd=0/0`.
+- Status also showed mic counters no longer moving after capture: `frames` and `pcm_seq` stayed fixed, even though WiFi/token/WebSocket were healthy.
+
+Root cause:
+- M33 had two consumers for the M55 IPC RX queue: `main.c` and `voice_manager.c`. The `voice_manager` consumer could steal `VOICE_STATUS/ACK` frames before QA/status code saw them.
+- Disabling the second consumer exposed a separate M55-side issue: `g_m55_mic.running` could remain true even when the mic thread was no longer producing frames. A later capture start then treated mic0 as busy and did not recreate the reader thread.
+
+Fix:
+- Keep M33 `main.c` as the single M55 IPC RX owner; `voice_manager_start()` now starts playback/wake init but does not start a second consumer thread.
+- M55 mic0 now records `frame_count` and `last_frame_tick`.
+- `m55_mic_start_internal()` treats a running mic with no frames for over 2 seconds as stale, clears the stale state, and recreates the mic reader thread.
+
+Validation:
+- M55 build passed and flash wrote `rtthread.hex` `1605632 bytes` plus WHD resources `466944 bytes`.
+- After burn, `m55qa_status` showed `wake_on=1`, `xz_ws=1`, `srv_hello=1`, and moving mic counters: `frames=3380`, `pcm_seq=3380`.
+- Real CM55 mic0 QA produced upload and downlink again: `xz_last=188/360960`, `xz_rx=3/7`, `tts_fwd=20/2432`.
+- M33 printed platform TTS playback writes: `tts audio rx total=320`, `tts audio write`, then another `tts audio rx total=640`; final `tx_pending=0`.
+
+Lesson:
+- Do not diagnose this state as WiFi/token failure when `xz_ws=1`, `token_len=442`, and `srv_hello` are healthy. If capture ACKs but `frames/pcm_seq/xz_last` do not move, inspect the CM55 mic0 reader thread first.
+
 ## 2026-06-22 - Do Not Let Initial Silence End Real Mic XiaoZhi Capture
 
 Symptoms:

@@ -296,20 +296,12 @@ rt_err_t voice_manager_start(void)
     }
 
     g_manager.running = RT_TRUE;
-    rt_kprintf("[voice_manager] start stage=create voice_mgr\n");
-    g_manager.thread = rt_thread_create("voice_mgr",
-                                        voice_manager_thread_entry,
-                                        RT_NULL,
-                                        8192,
-                                        14,
-                                        10);
-    if (!g_manager.thread)
-    {
-        g_manager.running = RT_FALSE;
-        return -RT_ENOMEM;
-    }
-
-    rt_thread_startup(g_manager.thread);
+    /*
+     * M33 has a single owner for the M55 IPC RX queue: main.c
+     * m33_handle_ipc_command(). Do not start a second consumer here, or
+     * VOICE_STATUS/ACK frames can be stolen before m55qa_status sees them.
+     */
+    g_manager.thread = RT_NULL;
 
     if (g_manager.wake_thread == RT_NULL)
     {

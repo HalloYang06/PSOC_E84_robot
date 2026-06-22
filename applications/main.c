@@ -29,6 +29,8 @@ __attribute__((weak)) struct _reent _impure_data;
 #define FRAME_PERIOD_MS 100
 #define PCM_CAPTURE_MAX_BYTES (16000U * 2U * 2U)
 #define M33_TTS_IDLE_FLUSH_MS 500U
+#define M33_CM55_STATUS_STALE_RESTART_MS 20000U
+#define M33_CM55_RESTART_COOLDOWN_MS 60000U
 
 #ifndef M33_ENABLE_BT_HCI
 #define M33_ENABLE_BT_HCI 0
@@ -57,6 +59,7 @@ static rt_bool_t g_tts_audio_active = RT_FALSE;
 static rt_tick_t g_tts_audio_last_tick = 0U;
 static rt_uint32_t g_tts_audio_chunks = 0U;
 static rt_uint32_t g_tts_audio_bytes = 0U;
+static rt_tick_t g_cm55_last_auto_restart_tick = 0U;
 
 static void m33_publish_audio_capture(void);
 static rt_err_t m33_publish_pcm_shared_buffer(const rt_uint8_t *pcm, rt_uint32_t len);
@@ -672,6 +675,51 @@ static void m33_flush_tts_audio_if_idle(void)
     g_tts_audio_bytes = 0U;
 }
 
+static void m33_watchdog_cm55_voice_status(void)
+{
+    voice_status_msg_t voice_status;
+    rt_uint32_t voice_status_seq;
+    rt_tick_t voice_status_timestamp;
+    rt_tick_t now;
+    rt_uint32_t age_ms;
+    rt_uint32_t cooldown_ms;
+
+    if (!m55_model_bridge_get_voice_status(&voice_status,
+                                           &voice_status_seq,
+                                           &voice_status_timestamp))
+    {
+        return;
+    }
+
+    now = rt_tick_get();
+    age_ms = (rt_uint32_t)((now - voice_status_timestamp) * 1000U / RT_TICK_PER_SECOND);
+    cooldown_ms = (g_cm55_last_auto_restart_tick == 0U) ?
+        M33_CM55_RESTART_COOLDOWN_MS :
+        (rt_uint32_t)((now - g_cm55_last_auto_restart_tick) * 1000U / RT_TICK_PER_SECOND);
+
+    if ((age_ms < M33_CM55_STATUS_STALE_RESTART_MS) ||
+        (cooldown_ms < M33_CM55_RESTART_COOLDOWN_MS))
+    {
+        return;
+    }
+
+    if ((m33_m55_comm_tx_count() == 0U) &&
+        ((voice_status.flags & (VOICE_STATUS_FLAG_XIAOZHI_CONNECTED |
+                                VOICE_STATUS_FLAG_XIAOZHI_LISTENING)) == 0U))
+    {
+        return;
+    }
+
+    rt_kprintf("[m33] cm55 voice status stale age=%lu seq=%lu tx_pending=%lu flags=0x%lx; auto restart\n",
+               (unsigned long)age_ms,
+               (unsigned long)voice_status_seq,
+               (unsigned long)m33_m55_comm_tx_count(),
+               (unsigned long)voice_status.flags);
+    Cy_SysResetCM55(MXCM55, 10);
+    Cy_SysEnableCM55(MXCM55, CY_CM55_APP_BOOT_ADDR, 10);
+    g_cm55_last_auto_restart_tick = now;
+}
+
 static void m33_publish_ble_telemetry(const sensor_data_t *sensor,
                                       const control_status_t *control,
                                       const safety_monitor_t *safety)
@@ -802,6 +850,7 @@ int main(void)
         m33_handle_ble_command();
         m33_handle_ipc_command();
         m33_flush_tts_audio_if_idle();
+        m33_watchdog_cm55_voice_status();
         m33_publish_ble_telemetry(&sensor, &control, &g_runtime.safety);
 
         g_runtime.loop_count++;
