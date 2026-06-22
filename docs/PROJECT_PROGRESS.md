@@ -3154,3 +3154,49 @@
 - Failed or unverified: the full M55 build did not finish inside this session timeout, so no fresh flash/boot QA was completed here.
 - Current gap: the official XiaoZhi alignment is still not fully closed on-board because the remaining question is audio-format closure and speaker QA, not WiFi.
 - Next step: finish one hardware QA pass on the flashed M55 board and confirm `wake -> listen -> thinking -> speak` counters advance with real speaker output.
+
+### 2026-06-22 - NanoPi dual USB camera VLA-V entry scouted
+
+- Reason: user wants NanoPi to capture two USB cameras as the V/Vision input for VLA because no depth camera is available.
+- Architecture finding: NanoPi is still the right edge owner for camera capture. Existing ROS2 package `rehab_arm_psoc_bridge` already has `camera_keyframe_node.py`, which captures one V4L2 frame with `ffmpeg`, saves a JPEG, and publishes `/rehab_arm/camera_keyframe` as perception-only data.
+- Platform finding: the external platform repo `D:\ai-collab-product` already documents and implements `POST /api/rehab-arm/v1/devices/{device_id}/vision/stereo-context` with `stereo_rgb_yolo_context_v1`; platform stores `stereo_vision_context` and prefers it when building `vla_vision_context`.
+- Recommended NanoPi implementation boundary: first run two keyframe capture instances with stable camera IDs such as `left_rgb` and `right_rgb`, then add an edge script/node that pairs recent left/right keyframes, optionally runs pretrained YOLO locally, estimates coarse stereo depth, and uploads `stereo_rgb_yolo_context_v1` to the platform. This remains `perception_data_only_not_motor_command`.
+- Remote access attempt: `ssh pi@192.168.2.66` reached port 22 but the remote closed during key exchange (`kex_exchange_identification: Connection closed by remote host`), before authentication. NanoPi camera enumeration was therefore not completed in this pass.
+- Safety: no CAN commands, ROS trajectory commands, or M33/motor control paths were touched.
+- Next step: restore NanoPi SSH/console access, run `lsusb`, `v4l2-ctl --list-devices`, and one-shot `ffmpeg` capture on both USB cameras; then implement the dual-camera NanoPi capture/upload node in `rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/`.
+
+### 2026-06-22 - NanoPi dual-camera VLA-V software path verified, capture node blocked by missing video45/46
+
+- Completed: connected to live NanoPi at `pi@192.168.3.36` over WiFi. The earlier `192.168.2.66` path was not the live route from the Windows host in this session.
+- Completed: `lsusb` sees two `1bcf:2281 Sunplus Innovation Technology Inc. SPCA2281 Web Camera` devices, one on USB `1-1` and one on `3-1`.
+- Completed: added `rehab_arm_psoc_bridge.stereo_vision_context` plus tests. The script builds `stereo_rgb_yolo_context_v1` payloads with `control_boundary=stereo_vision_context_only_not_motion_permission`.
+- Completed: copied `stereo_vision_context.py` to NanoPi source workspace and verified it can generate a VLA-V payload on the board.
+- Validation: local unit tests passed: `python -m unittest rehab_arm_ros2_ws.src.rehab_arm_psoc_bridge.test.test_stereo_vision_context rehab_arm_ros2_ws.src.rehab_arm_psoc_bridge.test.test_camera_keyframe_node`.
+- Validation: NanoPi successfully POSTed a probe `stereo_rgb_yolo_context_v1` payload to `http://106.55.62.122:8011/api/rehab-arm/v1/devices/nanopi-m5/vision/stereo-context`; platform returned `ok=true`.
+- Capture finding: old NanoPi camera docs/scripts expected USB camera `/dev/video45` (and likely `/dev/video46` for a second camera), but current `/dev/video45` and `/dev/video46` do not exist. OpenCV cannot open video45/46 or the Rockchip ISP nodes `/dev/video22`/`/dev/video31`.
+- Replug follow-up: after the user unplugged/replugged both cameras, `lsusb` still shows both `1bcf:2281 SPCA2281 Web Camera` devices on USB `1-1` and `3-1`; `lsusb -t` shows both interfaces as `Class=Video, Driver=[none]`.
+- Replug follow-up: `dmesg` records `uvcvideo: disagrees about version of symbol module_layout` for each camera, so the existing UVC module did not bind and no USB camera `/dev/video45`/`/dev/video46` nodes were created. Existing `/dev/video22` and `/dev/video31` remain Rockchip ISP nodes, not USB cameras.
+- Checked without system changes: running kernel is `6.1.141`; `/lib/modules/6.1.141` and `/lib/modules/6.1.141.can-new` both contain existing `uvcvideo.ko` files with matching `vermagic`, but a non-root user cannot temporarily `insmod` the alternate existing module (`sudo` password required). No kernel/module/boot files were changed.
+- Boundary: no kernel, module, boot, or system configuration was changed. No CAN commands or motion commands were sent.
+- Next step: with operator/root access on NanoPi, try a temporary load of the already-present alternate `uvcvideo.ko` or restore the previously matching module state; once USB video nodes appear, rerun OpenCV/ffmpeg capture on `/dev/video45` and `/dev/video46` and feed saved left/right JPEGs into `stereo_vision_context.py`.
+
+### 2026-06-22 - NanoPi dual USB camera real-frame VLA-V path verified
+
+- Completed: with the user-provided NanoPi sudo password, temporarily loaded the already-present alternate module `/lib/modules/6.1.141.can-new/kernel/drivers/media/usb/uvc/uvcvideo.ko` via `insmod`. This did not compile, replace, or modify kernel/module/boot files.
+- Validation: after temporary load, `lsusb -t` showed both `1bcf:2281` USB cameras bound to `Driver=uvcvideo`.
+- Device mapping: the two real capture nodes are `/dev/video45` and `/dev/video47`; `/dev/video46` and `/dev/video48` are companion nodes for the same cameras and are not usable capture inputs.
+- Validation: `ffmpeg` captured real 640x480 MJPEG frames from `/dev/video45` to `/tmp/left.jpg` and from `/dev/video47` to `/tmp/right.jpg`; local copies were saved under `output/nanopi_dual_camera/left.jpg` and `output/nanopi_dual_camera/right.jpg` for visual QA.
+- Validation: visual QA confirmed both files contain real office scenes with different viewpoints, not black frames or duplicate stale images.
+- Validation: NanoPi uploaded the real-frame `stereo_rgb_yolo_context_v1` payload using `/tmp/left.jpg` and `/tmp/right.jpg`; platform returned `ok=true`, `device_id=nanopi-m5`, and `control_boundary=stereo_vision_context_only_not_motion_permission`.
+- Boundary: this verifies the temporary dual RGB camera capture and VLA-V context upload path only. It does not grant motion permission, does not run final calibration, and does not persist the `uvcvideo` workaround across reboot.
+- Next step: package this into a repeatable NanoPi launch/script that loads the known-good existing UVC module only when needed, captures `/dev/video45` and `/dev/video47`, runs optional detector/depth estimation, and uploads the stereo context; then add a non-reboot persistence decision if the user wants the camera path to survive restart.
+
+### 2026-06-22 - NanoPi stereo capture/upload CLI added
+
+- Completed: added `rehab_arm_psoc_bridge.stereo_camera_capture_upload` and console entry `stereo_camera_capture_upload`.
+- Behavior: default left/right capture devices are the verified USB camera nodes `/dev/video45` and `/dev/video47`; default input format is MJPEG at 640x480. The CLI writes paired files under `~/rehab_arm_stereo_frames` and builds/uploads `stereo_rgb_yolo_context_v1`.
+- Safety: the CLI remains perception-only and preserves `control_boundary=stereo_vision_context_only_not_motion_permission`. It does not touch CAN, ROS trajectory topics, M33 state, or motor control.
+- Module handling: default behavior does not use sudo. `--ensure-uvc-module` is explicit opt-in and only attempts to `sudo insmod` the known-good existing file `/lib/modules/6.1.141.can-new/kernel/drivers/media/usb/uvc/uvcvideo.ko`.
+- NanoPi validation: copied the CLI to `/home/pi/rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/stereo_camera_capture_upload.py` and ran it against live cameras. It generated `/home/pi/rehab_arm_stereo_frames/rehab-arm-alpha__nanopi-m5__stereo__20260622T061429Z__0001__left.jpg` and matching right frame, then uploaded to `http://106.55.62.122:8011`; platform returned `ok=true`.
+- Local validation: `python -m unittest rehab_arm_ros2_ws.src.rehab_arm_psoc_bridge.test.test_stereo_camera_capture_upload rehab_arm_ros2_ws.src.rehab_arm_psoc_bridge.test.test_stereo_vision_context rehab_arm_ros2_ws.src.rehab_arm_psoc_bridge.test.test_camera_keyframe_node` passed with 8 tests.
+- Next step: add detector/coarse-depth stage and final mounting/calibration IDs once the camera placement is fixed; before reboot-persistent deployment, decide whether to add a systemd/modprobe hook for the existing UVC module.

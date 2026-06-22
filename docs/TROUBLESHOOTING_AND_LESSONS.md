@@ -6292,3 +6292,86 @@ python -m SCons -j4
 状态：
 
 - 2026-06-18 已确认：当前主问题是音频闭环和板端 QA，WiFi 已经不是主要障碍。
+
+### NanoPi SSH 在密钥协商前关闭时先不要误判成代码问题
+
+现象：
+
+- 从 Windows 工作站执行 `ssh pi@192.168.2.66` 可以连到 22 端口，但远端在认证前关闭连接。
+- `ssh -vvv -o BatchMode=yes -o PreferredAuthentications=publickey -o ConnectTimeout=8 pi@192.168.2.66 "true"` 输出 `kex_exchange_identification: Connection closed by remote host`。
+
+环境：
+
+- NanoPi 旧记录地址：`pi@192.168.2.66`。
+- 本地 SSH 配置只有 Host/User 映射，没有特殊 ProxyCommand 或密钥覆盖。
+
+判断：
+
+- 这不是 ROS2 摄像头节点、VLA 协议或本地密钥选择阶段的问题；连接在密钥认证前就被远端关闭。
+- 优先查 NanoPi 是否在线但 `sshd` 异常、连接数/防护限制、板端负载过高、网络侧 IP 冲突，或需要串口/本地屏幕重启 `sshd`。
+
+修复方向：
+
+- 能接触板子时先跑 `sudo systemctl status ssh`、`sudo journalctl -u ssh -n 100`、`ip addr`、`who`、`last -n 20`。
+- SSH 恢复后再做双 USB 摄像头枚举：`lsusb`、`v4l2-ctl --list-devices`、`ls -l /dev/video*`。
+
+状态：
+
+- 2026-06-22 远程只读登录未成功，NanoPi 双 USB 摄像头枚举未验证。
+
+### NanoPi 双 USB 摄像头插上但没有 `/dev/video45` 时先恢复旧用户态路径
+
+现象：
+
+- NanoPi `pi@192.168.3.36` 的 `lsusb` 能看到两只 `1bcf:2281 SPCA2281 Web Camera`。
+- 用户拔插两只 USB 摄像头后，`lsusb` 仍能看到两只摄像头；USB 层不是“没插上”。
+- `lsusb -t` 显示两只摄像头的接口都是 `Class=Video, Driver=[none]`。
+- `dmesg` 对每只摄像头都出现 `uvcvideo: disagrees about version of symbol module_layout`。
+- 旧脚本 `/home/pi/nanopi_ros/README_CAMERA.md` 和 `/home/pi/.openclaw/workspace/camera_*.py` 明确把 USB 摄像头写成 `/dev/video45`。
+- 当前系统没有 `/dev/video45` 或 `/dev/video46`；OpenCV 打开 `45/46/0/1/2/22/31` 都失败。
+
+判断：
+
+- 不要先改内核。用户确认此前摄像头能驱动，且旧工程已经以 video45 为可用路径。
+- 当前不是摄像头未插；更准确的说法是：两只 USB 摄像头已枚举，但现有 `uvcvideo` 没有绑定成功，所以没有生成过去的 UVC video 节点。
+- Rockchip 自带 `/dev/video22`、`/dev/video31` 是 ISP mainpath 节点，当前 `ffmpeg` 报 `Not a video capture device`，不应把它们当 USB 摄像头。
+- 运行内核是 `6.1.141`；板上存在 `/lib/modules/6.1.141` 和 `/lib/modules/6.1.141.can-new` 两套已有模块目录，且都有 `uvcvideo.ko`。当前登录用户无 `sudo` 密码，无法临时验证加载 alternate existing module。
+
+已验证：
+
+- `stereo_rgb_yolo_context_v1` 平台上传链路已通，NanoPi 能把 probe payload POST 到平台并得到 `ok=true`。
+- 只差真实左右图像文件来源；拿到左右 JPEG 后就能进入 VLA-V 软件链路。
+
+下一步：
+
+- 需要现场/root 权限时，优先只临时尝试加载板上已有的 alternate `uvcvideo.ko` 或恢复此前匹配的模块状态；不要进入编译/替换内核路线。
+- 每次操作后运行：`lsusb -t`、`dmesg | tail -n 100`、`ls -l /dev/video45 /dev/video46 /dev/video*`、`python3 /home/pi/.openclaw/workspace/camera_fps.py 45`。
+- 一旦 video45/46 恢复，先用 OpenCV/ffmpeg 保存 `/tmp/left.jpg` 和 `/tmp/right.jpg`，再运行 `stereo_vision_context.py` 上传 perception-only VLA-V payload。
+
+补充验证：
+
+- 2026-06-22 用 sudo 临时 `insmod /lib/modules/6.1.141.can-new/kernel/drivers/media/usb/uvc/uvcvideo.ko` 后，两只摄像头都绑定到 `uvcvideo`。
+- 实际可采集节点是 `/dev/video45` 和 `/dev/video47`；`/dev/video46`、`/dev/video48` 会被列为 Video Capture 类型但不是可用图像采集口，OpenCV 会报不是 capture device。
+- 最小抓帧命令：
+
+```bash
+ffmpeg -hide_banner -loglevel error -y -f v4l2 -input_format mjpeg -video_size 640x480 -i /dev/video45 -frames:v 1 -update 1 /tmp/left.jpg
+ffmpeg -hide_banner -loglevel error -y -f v4l2 -input_format mjpeg -video_size 640x480 -i /dev/video47 -frames:v 1 -update 1 /tmp/right.jpg
+```
+
+- 用真实左右图执行 `stereo_vision_context.py --upload` 后，平台返回 `ok=true`。这说明 VLA-V 的真实双 RGB 图像输入路径已验证，剩余是封装、标定、检测/粗深度估计和重启后的模块加载策略。
+- 已新增可重复入口：
+
+```bash
+python3 /home/pi/rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/stereo_camera_capture_upload.py \
+  --project-id fd6a55ed-a63c-44b3-b123-96fb3c154966 \
+  --api-base http://106.55.62.122:8011 \
+  --upload \
+  --pretty
+```
+
+- 如果重启后 `uvcvideo` 又没有绑定，先临时加 `--ensure-uvc-module`。这个选项只加载板上已有的 `/lib/modules/6.1.141.can-new/kernel/drivers/media/usb/uvc/uvcvideo.ko`，不是编译/替换内核。
+
+状态：
+
+- 2026-06-22 已临时打通并封装 CLI。该 `insmod` 不持久，重启后需要重新加载或另行做持久化决策。

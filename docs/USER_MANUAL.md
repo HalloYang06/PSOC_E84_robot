@@ -68,6 +68,18 @@ python3 /home/pi/nanopi_can_master.py m33 target --iface can0 --joint 4 --deg 30
   - 第三层，M55 shell 执行 `req_snap` 请求 M33 发布一帧测试 snapshot，已实测 `M55 -> M33 request -> M33 -> M55 snapshot -> M55 model -> M33 -> 0x323 -> NanoPi -> /rehab_arm/model_state`。
   - 这个验收不允许出现新的运动许可，也不允许自动发送 `0x320`。
 
+NanoPi 双 USB 摄像头作为 VLA-V 的最小验证命令：
+
+```bash
+python3 /home/pi/rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/stereo_camera_capture_upload.py \
+  --project-id fd6a55ed-a63c-44b3-b123-96fb3c154966 \
+  --api-base http://106.55.62.122:8011 \
+  --upload \
+  --pretty
+```
+
+默认左/右摄像头节点是 `/dev/video45` 和 `/dev/video47`，输出保存在 `~/rehab_arm_stereo_frames`。通过标准是平台返回 `ok=true`，并且 payload 的 `control_boundary` 为 `stereo_vision_context_only_not_motion_permission`。如果重启后 USB 摄像头没有绑定到 `uvcvideo`，可以临时加 `--ensure-uvc-module`，它只加载板上已有的 `/lib/modules/6.1.141.can-new/kernel/drivers/media/usb/uvc/uvcvideo.ko`；不要编译、替换或升级内核。该流程只提供视觉上下文，不发布 ROS 运动、不发 CAN、不改变 M33 状态。
+
 生成语音链路 dry-run 合同：
 
 ```bash
