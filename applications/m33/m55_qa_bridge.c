@@ -330,7 +330,7 @@ static void m55qa_capture_on(int argc, char **argv)
     RT_UNUSED(argv);
 
     ret = m55qa_send_voice_control_wait(VOICE_CTRL_START_CAPTURE, 5000U, &ack_result);
-    if ((ret == RT_EOK) && (ack_result == RT_EOK) && !m55qa_wait_xiaozhi_listening(1500U))
+    if ((ret == RT_EOK) && (ack_result == RT_EOK) && !m55qa_wait_xiaozhi_listening(3000U))
     {
         rt_kprintf("[m55qa] capture_on warning: ACK ok but latest status is not listening yet\n");
     }

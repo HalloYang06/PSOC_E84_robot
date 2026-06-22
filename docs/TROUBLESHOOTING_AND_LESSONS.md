@@ -1,5 +1,30 @@
 # Troubleshooting And Lessons
 
+## 2026-06-22 - Current Platform Accepts PCM Compatibility Better Than Opus
+
+Symptoms:
+- With `hello.audio_params.format=opus`, QA PCM was accepted by M55, encoded and uploaded, but the platform returned only listen/control text.
+- PC smoke test logs showed the same e201 relay successfully returned STT when the client declared `pcm_s16le` and sent raw 1920-byte PCM frames.
+
+Root cause:
+- The board was following the official Opus route, but the current project relay/platform path already had a proven PCM compatibility contract.
+- The board-side PCM attempt still differed from the PC smoke shape until the hello/start/stop payloads were matched exactly.
+- M55 auto reconnect could also reset an active listening session during transient WebSocket state changes, causing QA to see `M55 not listening`.
+
+Fix:
+- Defaulted M55 to `pcm_s16le` for the current platform.
+- In PCM mode, hello/start/stop now match the PC smoke test: `features.mcp` only, `listen/start mode=auto`, bare `listen/stop`.
+- Auto reconnect no longer resets the XiaoZhi session while `xiaozhi_listening_active` is true.
+- M33 QA waits longer for listening status after capture ACK.
+
+Validation:
+- Final COM4 QA produced real platform downlink to M33: `tts audio rx total=640`, `audio_playback Started`, and `tts audio write chunk=1/2/3`.
+- Uplink evidence: `probe_lwip=50/0`, `xz_last=197/378240`, `xz_fail=0`, `tx_pending=0`.
+- Link health stayed `xz_ws=1 xz_stage=70 xz_errno=0`.
+
+Next lesson:
+- For this relay, use PCM compatibility to finish product behavior first. Treat Opus as a later official-route upgrade unless platform relay logs prove Opus STT/TTS support is active.
+
 ## 2026-06-22 - XiaoZhi Stop Must Match The Start Mode
 
 Symptoms:
