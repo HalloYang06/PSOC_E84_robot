@@ -20,11 +20,71 @@ static void m55qa_print_ip4(const char *label, rt_uint32_t ip)
 static rt_err_t m55qa_send_voice_control(voice_control_cmd_t cmd)
 {
     m33_m55_message_t msg;
+    rt_err_t ret = -RT_ERROR;
+    rt_uint32_t attempt;
 
     rt_memset(&msg, 0, sizeof(msg));
     msg.type = MSG_TYPE_VOICE_CONTROL;
     msg.payload.voice_control.cmd = (rt_uint32_t)cmd;
-    return m33_m55_comm_publish(&msg);
+    for (attempt = 0U; attempt < 5U; attempt++)
+    {
+        ret = m33_m55_comm_publish(&msg);
+        if (ret == RT_EOK)
+        {
+            return RT_EOK;
+        }
+        rt_thread_mdelay(50);
+    }
+    return ret;
+}
+
+static rt_bool_t m55qa_wait_voice_ack(voice_control_cmd_t cmd,
+                                      rt_tick_t since_tick,
+                                      rt_uint32_t timeout_ms,
+                                      rt_int32_t *ack_result)
+{
+    rt_tick_t deadline = rt_tick_get() + rt_tick_from_millisecond((rt_int32_t)timeout_ms);
+
+    while ((rt_int32_t)(deadline - rt_tick_get()) > 0)
+    {
+        rt_uint32_t ack_cmd = 0U;
+        rt_int32_t result = 0;
+        rt_tick_t timestamp = 0U;
+
+        if (m55_model_bridge_get_voice_ack(RT_NULL, &ack_cmd, &result, RT_NULL, &timestamp) &&
+            (ack_cmd == (rt_uint32_t)cmd) &&
+            ((rt_int32_t)(timestamp - since_tick) >= 0))
+        {
+            if (ack_result != RT_NULL)
+            {
+                *ack_result = result;
+            }
+            return RT_TRUE;
+        }
+        rt_thread_mdelay(50);
+    }
+
+    return RT_FALSE;
+}
+
+static rt_err_t m55qa_send_voice_control_wait(voice_control_cmd_t cmd,
+                                              rt_uint32_t timeout_ms,
+                                              rt_int32_t *ack_result)
+{
+    rt_tick_t since_tick = rt_tick_get();
+    rt_err_t ret = m55qa_send_voice_control(cmd);
+
+    if (ret != RT_EOK)
+    {
+        return ret;
+    }
+
+    if (!m55qa_wait_voice_ack(cmd, since_tick, timeout_ms, ack_result))
+    {
+        return -RT_ETIMEOUT;
+    }
+
+    return RT_EOK;
 }
 
 static rt_err_t m55qa_send_voice_config(voice_config_key_t key, const char *value)
@@ -233,24 +293,32 @@ MSH_CMD_EXPORT(m55qa_wake_off, Stop CM55 wake-word listening);
 static void m55qa_capture_on(int argc, char **argv)
 {
     rt_err_t ret;
+    rt_int32_t ack_result = 0;
 
     RT_UNUSED(argc);
     RT_UNUSED(argv);
 
-    ret = m55qa_send_voice_control(VOICE_CTRL_START_CAPTURE);
-    rt_kprintf("[m55qa] capture_on ret=%d\n", ret);
+    ret = m55qa_send_voice_control_wait(VOICE_CTRL_START_CAPTURE, 5000U, &ack_result);
+    rt_kprintf("[m55qa] capture_on ret=%d ack=%ld tx_pending=%lu\n",
+               ret,
+               (long)ack_result,
+               (unsigned long)m33_m55_comm_tx_count());
 }
 MSH_CMD_EXPORT(m55qa_capture_on, Request voice capture through existing voice path);
 
 static void m55qa_capture_off(int argc, char **argv)
 {
     rt_err_t ret;
+    rt_int32_t ack_result = 0;
 
     RT_UNUSED(argc);
     RT_UNUSED(argv);
 
-    ret = m55qa_send_voice_control(VOICE_CTRL_STOP_CAPTURE);
-    rt_kprintf("[m55qa] capture_off ret=%d\n", ret);
+    ret = m55qa_send_voice_control_wait(VOICE_CTRL_STOP_CAPTURE, 5000U, &ack_result);
+    rt_kprintf("[m55qa] capture_off ret=%d ack=%ld tx_pending=%lu\n",
+               ret,
+               (long)ack_result,
+               (unsigned long)m33_m55_comm_tx_count());
 }
 MSH_CMD_EXPORT(m55qa_capture_off, Stop voice capture through existing voice path);
 
@@ -493,3 +561,35 @@ static void m55qa_whd_diag(int argc, char **argv)
     rt_kprintf("[m55qa] whd_diag ret=%d\n", ret);
 }
 MSH_CMD_EXPORT(m55qa_whd_diag, Refresh CM55 WHD init-stage diagnostic snapshot);
+
+static void m55qa_probe_pcm_on(int argc, char **argv)
+{
+    rt_err_t ret;
+    rt_int32_t ack_result = 0;
+
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+
+    ret = m55qa_send_voice_control_wait(VOICE_CTRL_M33_PCM_PROBE_ENABLE, 5000U, &ack_result);
+    rt_kprintf("[m55qa] probe_pcm_on ret=%d ack=%ld tx_pending=%lu\n",
+               ret,
+               (long)ack_result,
+               (unsigned long)m33_m55_comm_tx_count());
+}
+MSH_CMD_EXPORT(m55qa_probe_pcm_on, Enable M33 built-in PCM probe for Xiaozhi QA only);
+
+static void m55qa_probe_pcm_off(int argc, char **argv)
+{
+    rt_err_t ret;
+    rt_int32_t ack_result = 0;
+
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+
+    ret = m55qa_send_voice_control_wait(VOICE_CTRL_M33_PCM_PROBE_DISABLE, 5000U, &ack_result);
+    rt_kprintf("[m55qa] probe_pcm_off ret=%d ack=%ld tx_pending=%lu\n",
+               ret,
+               (long)ack_result,
+               (unsigned long)m33_m55_comm_tx_count());
+}
+MSH_CMD_EXPORT(m55qa_probe_pcm_off, Disable M33 PCM probe and keep CM55 mic0 product uplink);

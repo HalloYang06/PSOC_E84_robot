@@ -1,5 +1,37 @@
 # Troubleshooting And Lessons
 
+## 2026-06-22 - Wait For XiaoZhi QA Control ACK Before Sending Probe PCM
+
+Symptoms:
+- A 3000 ms `m33qa_xz_probe` run failed at part 4 with repeated `ret=-28` even after probe pacing had been slowed.
+- In that failing run, `m55qa_capture_on` returned before a fresh `cmd=1` ACK appeared, then probe PCM filled the 5-deep M33->M55 queue. `m55qa_capture_off` then returned `ret=-28`.
+- WiFi/token/WebSocket were still healthy: `xz_ws=1`, `xz_stage=70`, `token_len=442`, `wlan=1`.
+
+Environment:
+- M33 repo: `D:\RT-ThreadStudio\workspace\yiliao_m33`, branch `M33`.
+- M55 active burn tree: `D:\RT-ThreadStudio\workspace\wifi`.
+- Bench shell: COM4 KitProg3 USB-UART at 115200.
+
+Root cause:
+- `m55qa_capture_on` and related QA commands only waited for publish success, not for a fresh M55 `voice_ack`.
+- The shell script could start `m33qa_xz_probe` while START_CAPTURE was still queued. Because the queue depth is 5, four PCM packets plus a pending control command were enough to starve STOP_CAPTURE.
+
+Fix:
+- `m55qa_probe_pcm_on`, `m55qa_capture_on`, `m55qa_capture_off`, and `m55qa_probe_pcm_off` now wait for a fresh matching `voice_ack` before returning.
+- `m33qa_xz_probe` now waits for `tx_pending=0` before sending PCM, and aborts after a bounded drain wait instead of filling an already busy queue.
+
+Validation:
+- After the fix, `m55qa_probe_pcm_on` ACKed `cmd=11`, `m55qa_capture_on` ACKed `cmd=1`, and `m55qa_capture_off` ACKed `cmd=2`.
+- `m33qa_xz_probe 3000` sent 50 parts / `96000` bytes with `retries=0 tx_pending=0`.
+- Final status stayed healthy: `xz_ws=1 xz_stage=70 xz_errno=0`, and `tx_pending=0`.
+
+Reusable trick:
+- In this QA flow, publish success is not enough. Wait for fresh `voice_ack` before sending probe PCM.
+- If OpenOCD reports `wrote 0 bytes` and `no flash bank found for address 0x60340400`, the command missed the board `qspi_config.cfg`; source `libs/TARGET_APP_KIT_PSE84_EVAL_EPC2/config/GeneratedSource/qspi_config.cfg` before `target/infineon/pse84xgxs2.cfg` so `cat1d.cm33.smif1_ns` exists.
+
+Status:
+- QA sequencing race is fixed. Remaining product work is real CM55 mic0 human-speech QA and platform event/downlink interpretation, not WiFi/token.
+
 ## 2026-06-22 - Throttle `m33qa_xz_probe` Before Blaming XiaoZhi WiFi Or Token
 
 Symptoms:

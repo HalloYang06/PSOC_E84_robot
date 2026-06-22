@@ -375,11 +375,29 @@ static void m33qa_xz_probe(int argc, char **argv)
     const rt_uint32_t frame_delay_ms = 100U;
     const rt_uint32_t retry_delay_ms = 150U;
     const rt_uint32_t max_retries = 4U;
+    const rt_uint32_t drain_wait_ms = 3000U;
     const rt_uint32_t default_probe_len = 16000U * 2U * 12U / 10U;
     rt_uint32_t target_len = g_xiaozhi_pcm_probe_data_len;
     rt_uint32_t offset = 0U;
     rt_uint32_t part = 0U;
     rt_uint32_t retry_total = 0U;
+    rt_tick_t drain_deadline = rt_tick_get() + rt_tick_from_millisecond((rt_int32_t)drain_wait_ms);
+
+    while ((m33_m55_comm_tx_count() > 0U) &&
+           ((rt_int32_t)(drain_deadline - rt_tick_get()) > 0))
+    {
+        rt_kprintf("[m33] xiaozhi probe wait drain tx_pending=%lu\n",
+                   (unsigned long)m33_m55_comm_tx_count());
+        rt_thread_mdelay(100);
+    }
+
+    if (m33_m55_comm_tx_count() > 0U)
+    {
+        rt_kprintf("[m33] xiaozhi probe abort: tx_pending=%lu after %lums drain wait\n",
+                   (unsigned long)m33_m55_comm_tx_count(),
+                   (unsigned long)drain_wait_ms);
+        return;
+    }
 
     if (argc >= 2 && rt_strcmp(argv[1], "full") != 0)
     {
