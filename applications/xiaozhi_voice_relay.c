@@ -683,6 +683,7 @@ rt_err_t xiaozhi_voice_relay_build_hello(char *out, rt_size_t out_len)
         return -RT_EINVAL;
     }
 
+#if XIAOZHI_USE_OFFICIAL_OPUS_AUDIO
     n = rt_snprintf(out, out_len,
                     "{\"type\":\"hello\",\"version\":%u,"
                     "\"features\":{\"mcp\":true,\"aec\":true},"
@@ -693,6 +694,18 @@ rt_err_t xiaozhi_voice_relay_build_hello(char *out, rt_size_t out_len)
                     (unsigned)XIAOZHI_AUDIO_SAMPLE_RATE,
                     (unsigned)XIAOZHI_AUDIO_CHANNELS,
                     (unsigned)XIAOZHI_AUDIO_FRAME_DURATION_MS);
+#else
+    n = rt_snprintf(out, out_len,
+                    "{\"type\":\"hello\",\"version\":%u,"
+                    "\"features\":{\"mcp\":true},"
+                    "\"transport\":\"websocket\","
+                    "\"audio_params\":{\"format\":\"%s\",\"sample_rate\":%u,\"channels\":%u,\"frame_duration\":%u}}",
+                    (unsigned)XIAOZHI_PROTOCOL_VERSION,
+                    XIAOZHI_AUDIO_FORMAT,
+                    (unsigned)XIAOZHI_AUDIO_SAMPLE_RATE,
+                    (unsigned)XIAOZHI_AUDIO_CHANNELS,
+                    (unsigned)XIAOZHI_AUDIO_FRAME_DURATION_MS);
+#endif
     return ((n < 0) || ((rt_size_t)n >= out_len)) ? -RT_EFULL : RT_EOK;
 }
 
@@ -728,6 +741,9 @@ rt_err_t xiaozhi_voice_relay_build_listen_start(char *out, rt_size_t out_len,
     }
 
     const char *mode = "auto";
+#if XIAOZHI_USE_OFFICIAL_OPUS_AUDIO
+    const char *mode = "auto";
+
     if (wake_source == XIAOZHI_WAKE_SOURCE_MANUAL)
     {
         mode = "manual";
@@ -736,6 +752,9 @@ rt_err_t xiaozhi_voice_relay_build_listen_start(char *out, rt_size_t out_len,
     {
         mode = "realtime";
     }
+#else
+    RT_UNUSED(wake_source);
+#endif
 
     n = rt_snprintf(out, out_len,
                     "{\"session_id\":\"%s\",\"type\":\"listen\",\"state\":\"start\","
@@ -752,13 +771,13 @@ rt_err_t xiaozhi_voice_relay_build_listen_stop(char *out, rt_size_t out_len,
                                                rt_uint32_t chunks)
 {
     int n;
-    const char *mode = "auto";
 
     if ((out == RT_NULL) || (out_len == 0))
     {
         return -RT_EINVAL;
     }
 
+#if XIAOZHI_USE_OFFICIAL_OPUS_AUDIO
     if (wake_source == XIAOZHI_WAKE_SOURCE_MANUAL)
     {
         mode = "manual";
@@ -775,6 +794,14 @@ rt_err_t xiaozhi_voice_relay_build_listen_stop(char *out, rt_size_t out_len,
                     mode,
                     (unsigned long)total_bytes,
                     (unsigned long)chunks);
+#else
+    RT_UNUSED(wake_source);
+    RT_UNUSED(total_bytes);
+    RT_UNUSED(chunks);
+    n = rt_snprintf(out, out_len,
+                    "{\"session_id\":\"%s\",\"type\":\"listen\",\"state\":\"stop\"}",
+                    (session_id && session_id[0]) ? session_id : "");
+#endif
     return ((n < 0) || ((rt_size_t)n >= out_len)) ? -RT_EFULL : RT_EOK;
 }
 

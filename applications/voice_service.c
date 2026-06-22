@@ -2947,7 +2947,18 @@ static void voice_service_thread_entry(void *parameter)
 #if VOICE_SERVICE_AUTO_RECONNECT_IN_THREAD
         if (!websocket_client_is_connected() && xiaozhi_voice_relay_has_token())
         {
+            rt_bool_t listening_active;
             rt_tick_t now = rt_tick_get();
+
+            rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
+            listening_active = g_service.xiaozhi_listening_active;
+            rt_mutex_release(&g_service.lock);
+            if (listening_active)
+            {
+                rt_thread_mdelay(50);
+                continue;
+            }
+
             if ((g_service.reconnect_tick == 0) || (now - g_service.reconnect_tick > RT_TICK_PER_SECOND * 2))
             {
                 rt_err_t ret;

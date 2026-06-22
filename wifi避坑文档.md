@@ -1,5 +1,50 @@
 # wifi 避坑文档
 
+## 39. 2026-06-22 当前小智平台先走 PCM 兼容链路，已恢复 TTS 下行到 M33
+
+本轮目标是快点恢复完整小智功能，不再纠缠 WiFi/token/resources。
+
+关键结论：
+
+1. PC smoke 已证明当前 e201 relay 对 `pcm_s16le` 兼容链路可返回 STT/TTS。
+2. 板端 Opus 上行能发出去，但本轮只回 `listen/start` 控制文本，没有 STT/TTS。
+3. 因此 M55 默认切到 `pcm_s16le` 兼容路径，先打通实际功能；Opus 保留为后续官方路线优化。
+
+本轮修复：
+
+1. M55 默认：
+   - `XIAOZHI_USE_OFFICIAL_OPUS_AUDIO=0`
+   - `hello.audio_params.format=pcm_s16le`
+2. PCM 模式对齐 PC smoke：
+   - hello 只带 `features.mcp`
+   - `listen/start mode=auto`
+   - `listen/stop` 只带 `state=stop`
+3. M55 自动重连线程在 `xiaozhi_listening_active=1` 时不再 reset session，避免 capture 后短暂 WebSocket 状态波动把会话清掉。
+4. M33 QA 的 `capture_on` 等 listening 状态时间加到 3 秒。
+
+验证：
+
+1. M55 编译通过：
+   - `text=1533240 data=68744 bss=4541584`
+2. M55 烧录通过：
+   - `rtthread.hex` 写入 `1605632 bytes`
+   - `whd_resources_all.bin` 写入 `466944 bytes`
+3. COM4 QA：
+   - `m55qa_probe_pcm_on` / `m55qa_capture_on` / `m55qa_capture_off` 均 ACK `0`
+   - `m33qa_xz_probe 3000` 发 `50` 包 / `96000` 字节
+   - `retries=0 tx_pending=0`
+   - `probe_lwip=50/0`
+   - `xz_last=197/378240`
+   - `xz_fail=0`
+   - M33 收到平台 TTS 下行并写播放：`tts audio rx total=640`、`audio_playback Started`、`tts audio write chunk=1/2/3`
+
+边界：
+
+1. 当前可用功能链路是：
+   - `M33 QA PCM / CM55 mic PCM -> M55 raw PCM WebSocket -> XiaoZhi platform -> M33 TTS audio/write`
+2. 后续要用真实 CM55 mic0 人声再验一次产品路径。
+3. `m55qa_status` 的 `xz_rx/tts_fwd/srv_tts` 仍未完整反映这次 M33 TTS 下行，后续观测修复要以 M33 `tts audio rx/write` 为准同步校正。
+
 ## 38. 2026-06-22 小智 stop 控制帧必须保留 start 的 mode
 
 本轮只动小智语音协议层，没有回退 WiFi/token/资源方向。
