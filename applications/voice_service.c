@@ -41,6 +41,7 @@
 #define XIAOZHI_EOU_SILENCE_PEAK     700U
 #define XIAOZHI_EOU_SILENCE_AVG      120U
 #define XIAOZHI_THINKING_TIMEOUT_MS  20000U
+#define XIAOZHI_TALK_HELLO_WAIT_MS   8000U
 #define VOICE_IPC_DRAIN_MAX_PER_LOOP 8U
 #define XIAOZHI_PCM_60MS_BYTES       XIAOZHI_AUDIO_FRAME_BYTES
 #define XIAOZHI_PCM_60MS_SAMPLES     (XIAOZHI_PCM_60MS_BYTES / sizeof(int16_t))
@@ -112,6 +113,8 @@ typedef struct
     rt_uint32_t audio_expected;
     rt_uint32_t audio_received;
     rt_bool_t m33_pcm_probe_enabled;
+    rt_uint32_t m33_pcm_probe_accepted_count;
+    rt_uint32_t m33_pcm_probe_ignored_count;
     rt_bool_t xiaozhi_listening_active;
     rt_uint32_t xiaozhi_listening_bytes;
     rt_uint32_t xiaozhi_listening_chunks;
@@ -449,8 +452,8 @@ static rt_err_t voice_service_publish_status(void)
     msg.payload.voice_status.net_probe_posix_errno = (rt_int32_t)g_service.service_drain_count;
     msg.payload.voice_status.net_probe_sal_tcp = g_service.service_last_consume_ret;
     msg.payload.voice_status.net_probe_sal_errno = (rt_int32_t)g_service.service_diag_phase;
-    msg.payload.voice_status.net_probe_lwip_tcp = (rt_int32_t)g_service.xiaozhi_last_sent_chunks;
-    msg.payload.voice_status.net_probe_lwip_errno = (rt_int32_t)g_service.xiaozhi_last_sent_bytes;
+    msg.payload.voice_status.net_probe_lwip_tcp = (rt_int32_t)g_service.m33_pcm_probe_accepted_count;
+    msg.payload.voice_status.net_probe_lwip_errno = (rt_int32_t)g_service.m33_pcm_probe_ignored_count;
     msg.payload.voice_status.netdev_flags = g_service.netdev_flags;
     msg.payload.voice_status.netdev_ip = g_service.netdev_ip;
     msg.payload.voice_status.netdev_gw = g_service.netdev_gw;
@@ -1398,14 +1401,36 @@ rt_err_t voice_service_start_xiaozhi_talk(void)
     if (!hello_seen)
     {
         voice_service_send_xiaozhi_hello();
-        if (!voice_service_wait_xiaozhi_hello(3000U))
+        if (!voice_service_wait_xiaozhi_hello(XIAOZHI_TALK_HELLO_WAIT_MS))
         {
-            rt_kprintf("[voice_service] Xiaozhi talk deferred: hello timeout stage=%d errno=%d connected=%d\n",
-                       websocket_client_last_stage(),
-                       websocket_client_last_errno(),
-                       websocket_client_is_connected() ? 1 : 0);
-            xiaozhi_ui_state_set(XIAOZHI_UI_CONNECTING, "等待小智会话", -RT_ETIMEOUT);
-            return -RT_ETIMEOUT;
+            rt_uint32_t hello_count;
+
+            rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
+            hello_seen = g_service.xiaozhi_server_hello_seen;
+            hello_count = g_service.xiaozhi_server_hello_count;
+            if (!hello_seen && websocket_client_is_connected() && (hello_count > 0U))
+            {
+                g_service.xiaozhi_server_hello_seen = RT_TRUE;
+                hello_seen = RT_TRUE;
+            }
+            rt_mutex_release(&g_service.lock);
+
+            if (hello_seen)
+            {
+                rt_kprintf("[voice_service] Xiaozhi talk continuing with prior hello evidence count=%lu stage=%d errno=%d\n",
+                           (unsigned long)hello_count,
+                           websocket_client_last_stage(),
+                           websocket_client_last_errno());
+            }
+            else
+            {
+                rt_kprintf("[voice_service] Xiaozhi talk deferred: hello timeout stage=%d errno=%d connected=%d\n",
+                           websocket_client_last_stage(),
+                           websocket_client_last_errno(),
+                           websocket_client_is_connected() ? 1 : 0);
+                xiaozhi_ui_state_set(XIAOZHI_UI_CONNECTING, "等待小智会话", -RT_ETIMEOUT);
+                return -RT_ETIMEOUT;
+            }
         }
     }
     if (!hello_seen)
@@ -2311,6 +2336,7 @@ static void voice_service_accept_shared_pcm(const sensor_stream_msg_t *stream)
     rt_memcpy(g_service.audio_buffer, (const void *)g_m33_m55_pcm_shared.data, len);
     rt_mutex_release(&g_service.lock);
 
+    (void)voice_service_feed_xiaozhi_listening(g_service.audio_buffer, len);
     rt_sem_release(&g_service.detect_sem);
 }
 
@@ -2713,8 +2739,6 @@ void voice_service_handle_ipc_message(const m33_m55_message_t *msg)
     case MSG_TYPE_SENSOR_STREAM:
         if (msg->payload.sensor_stream.source == MODEL_INPUT_SRC_AUDIO_PCM)
         {
-            static rt_uint32_t ignored_m33_pcm_probe_count;
-            static rt_uint32_t accepted_m33_pcm_probe_count;
             rt_bool_t accept_probe_pcm;
 
             rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
@@ -2723,21 +2747,21 @@ void voice_service_handle_ipc_message(const m33_m55_message_t *msg)
             rt_mutex_release(&g_service.lock);
             if (!accept_probe_pcm)
             {
-            ignored_m33_pcm_probe_count++;
-            if ((ignored_m33_pcm_probe_count == 1U) ||
-                ((ignored_m33_pcm_probe_count % 25U) == 0U))
-            {
+                g_service.m33_pcm_probe_ignored_count++;
+                if ((g_service.m33_pcm_probe_ignored_count == 1U) ||
+                    ((g_service.m33_pcm_probe_ignored_count % 25U) == 0U))
+                {
                     rt_kprintf("[voice_service] ignore M33 PCM probe count=%lu; official product uplink uses CM55 mic0\n",
-                               (unsigned long)ignored_m33_pcm_probe_count);
+                               (unsigned long)g_service.m33_pcm_probe_ignored_count);
+                }
+                break;
             }
-            break;
-            }
-            accepted_m33_pcm_probe_count++;
-            if ((accepted_m33_pcm_probe_count <= 3U) ||
-                ((accepted_m33_pcm_probe_count % 20U) == 0U))
+            g_service.m33_pcm_probe_accepted_count++;
+            if ((g_service.m33_pcm_probe_accepted_count <= 3U) ||
+                ((g_service.m33_pcm_probe_accepted_count % 20U) == 0U))
             {
                 rt_kprintf("[voice_service] accept M33 PCM probe count=%lu len=%lu seq=%lu\n",
-                           (unsigned long)accepted_m33_pcm_probe_count,
+                           (unsigned long)g_service.m33_pcm_probe_accepted_count,
                            (unsigned long)msg->payload.sensor_stream.chunk_len,
                            (unsigned long)msg->payload.sensor_stream.chunk_index);
             }

@@ -1334,3 +1334,46 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
 
 - M55 自动重连成功或失败后会立即发布新的 `voice_status`，所以 COM4 `m55qa_status` 不应再长期停留在恢复前的 `xz_ws=0 stage=80` 快照。
 - 验证结果：最终重烧后真实 CM55 mic0 控制 QA 通过，`probe_pcm_off` / `capture_on` / `capture_off` 都 ACK，`tx_pending=0`；停止后等待 12 秒，状态自动恢复到 `xz_ws=1 xz_stage=70 xz_errno=0`。
+
+## 35. 2026-06-22 `capture_on ack=-116` 可能是二次 hello 等待，不是 IPC 队列
+
+现象：
+
+1. `m55qa_status` 显示 `xz_ws=1 xz_stage=70 xz_errno=0 srv_hello=1`。
+2. `m55qa_probe_pcm_on` 成功，但紧接着 `m55qa_capture_on` 返回 ACK `result=-116`。
+3. `tx_pending=0`，说明 M33->M55 控制 IPC 没有卡住。
+
+修复：
+
+1. `voice_service_start_xiaozhi_talk()` 在等待新 hello 超时后，会检查本次运行是否已经有过 server hello 证据。
+2. 如果 WebSocket 仍连接且 `srv_hello` 计数大于 0，则恢复 `hello_seen` 并继续启动 manual listen，避免平台不重复发送 hello 时把 capture 卡死。
+3. 冷启动/刚重连时，talk-start 的 hello 等待窗口从 3 秒放宽到 8 秒，避免 WiFi/WebSocket 刚恢复但 server hello 尚未到达时误返回 `-116`。
+
+后续判断：
+
+1. 如果还有 `capture_on ack=-116`，优先看 `srv_hello`、`xz_ws/stage/errno` 和 M55 日志里的 `prior hello evidence`。
+2. 只有 `srv_hello=0` 且 hello 等待持续超时，才回头查 WebSocket 握手或平台协议。
+
+## 36. 2026-06-22 QA PCM probe 被消费但 `xz_last=0` 时看 `probe_lwip`
+
+现象：
+
+1. `m33qa_xz_probe 3000` 发完 50 包，`tx_pending=0`。
+2. `voice_svc drain` 增长，说明 M55 已消费 M33->M55 IPC。
+3. 但 `xz_cur/xz_last` 仍是 `0/0`，平台没有收到上行音频。
+
+修复：
+
+1. M55 现在把 M33 QA PCM accepted/ignored 计数临时发布到 `probe_lwip=accepted/ignored`。
+2. `voice_service_accept_shared_pcm()` 在更新共享 PCM 后，会在 `xiaozhi_listening_active` 时立即调用 `voice_service_feed_xiaozhi_listening()`，不再只依赖 wake/detect 线程后续处理。
+
+判断：
+
+1. `probe_lwip` accepted 增长但 `xz_last=0`，继续查 websocket binary send/Opus 编码。
+2. `probe_lwip` ignored 增长，说明 capture/listen 状态或 `m55qa_probe_pcm_on` 条件不满足。
+
+验证：
+
+1. 3000 ms QA probe 后 `probe_lwip=50/0`，说明 50 包 M33 QA PCM 全部被 M55 接受。
+2. `xz_last=193/34547 xz_fail=0`，说明 Opus/WebSocket 上行已恢复。
+3. 当前剩余问题是 `xz_rx=2/0`，只有 text 没有 binary TTS，下层应查平台事件 payload 或协议差异。
