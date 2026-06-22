@@ -3264,3 +3264,13 @@
 - Validation: uploaded the live stereo + SSD semantic payload to the platform. Platform returned `ok=true`, `detection_count=3`, `estimated_depth_m=null`, and `control_boundary=stereo_vision_context_only_not_motion_permission`.
 - Boundary: this verifies real RGB stereo capture plus real semantic DNN detections for VLA-V context only. No calibrated metric depth was produced and no motion authority was granted.
 - Next step: use this command with deliberate test objects in the workspace, then decide whether to set `target_object` automatically from the highest-confidence allowed class or keep it operator-selected.
+
+### 2026-06-22 - Auto target object selection from semantic detections added
+
+- Completed: added `--auto-target-from-detections` and `--target-label-allowlist` to `stereo_camera_capture_upload.py`.
+- Behavior: auto target selection only considers semantic `source=opencv_dnn_*` detections, skips class-agnostic `visual_region` proposals, and chooses the highest-confidence allowed label. Manual `--target-label` still takes priority.
+- Validation: local stereo camera tests passed with 26 tests.
+- NanoPi validation: rebuilt `rehab_arm_psoc_bridge` and ran live dual-camera SSD upload with `--auto-target-from-detections --target-label-allowlist bottle`; payload selected `target_object.label=bottle`, confidence `0.992`, bbox `[279, 5, 106, 324]`.
+- Platform validation: upload returned `ok=true`, `target_label=bottle`, `detection_count=3`, `estimated_depth_m=null`, and `control_boundary=stereo_vision_context_only_not_motion_permission`.
+- Boundary: selected `target_object` is a VLA-V visual context candidate only. It does not imply calibrated 3D target pose, motion permission, CAN output, or M33 command authority.
+- Next step: add calibrated stereo association/depth only after final camera mounting; until then keep `estimated_depth_m=null`.

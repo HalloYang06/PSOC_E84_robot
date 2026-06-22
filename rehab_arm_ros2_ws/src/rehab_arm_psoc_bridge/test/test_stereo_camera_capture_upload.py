@@ -22,6 +22,7 @@ from rehab_arm_psoc_bridge.stereo_camera_capture_upload import (  # noqa: E402
     parse_ssd_dnn_output,
     make_stereo_frame_paths,
     parse_yolo_dnn_output,
+    select_target_object_from_detections,
     validate_detector_args,
     validate_ssd_args,
 )
@@ -287,6 +288,36 @@ class StereoCameraCaptureUploadTests(unittest.TestCase):
                     ssd_prototxt=str(Path(tmp_dir) / 'missing.prototxt'),
                     ssd_labels=str(labels_path),
                 )
+
+    def test_select_target_object_from_detections_uses_highest_confidence_semantic_detection(self) -> None:
+        target = select_target_object_from_detections([
+            {'label': 'visual_region', 'confidence': 0.99, 'source': 'opencv_contour_proposal_not_semantic_detection'},
+            {'label': 'diningtable', 'confidence': 0.67, 'bbox_xywh': [1, 2, 3, 4], 'source': 'opencv_dnn_mobilenet_ssd'},
+            {'label': 'bottle', 'confidence': 0.995, 'bbox_xywh': [5, 6, 7, 8], 'source': 'opencv_dnn_mobilenet_ssd'},
+        ])
+
+        self.assertEqual(target['label'], 'bottle')
+        self.assertEqual(target['bbox_xywh'], [5, 6, 7, 8])
+        self.assertEqual(target['source'], 'opencv_dnn_mobilenet_ssd')
+
+    def test_select_target_object_from_detections_honors_allowlist(self) -> None:
+        target = select_target_object_from_detections(
+            [
+                {'label': 'diningtable', 'confidence': 0.99, 'source': 'opencv_dnn_mobilenet_ssd'},
+                {'label': 'bottle', 'confidence': 0.8, 'source': 'opencv_dnn_mobilenet_ssd'},
+            ],
+            allowed_labels={'bottle'},
+        )
+
+        self.assertEqual(target['label'], 'bottle')
+
+    def test_select_target_object_from_detections_returns_empty_without_semantic_match(self) -> None:
+        target = select_target_object_from_detections([
+            {'label': 'visual_region', 'confidence': 0.99, 'source': 'opencv_contour_proposal_not_semantic_detection'},
+            {'label': 'bottle', 'confidence': 0.8, 'source': 'opencv_dnn_mobilenet_ssd'},
+        ], allowed_labels={'cup'})
+
+        self.assertEqual(target, {})
 
 
 if __name__ == '__main__':
