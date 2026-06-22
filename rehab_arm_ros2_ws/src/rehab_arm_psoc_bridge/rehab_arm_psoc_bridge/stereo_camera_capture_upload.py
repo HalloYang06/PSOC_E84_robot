@@ -175,6 +175,129 @@ def detect_visual_region_proposals(image_path: Path, *, max_regions: int = 5) ->
     return proposals[:max_regions]
 
 
+def load_label_file(path: Path) -> list[str]:
+    return [line.strip() for line in path.read_text(encoding='utf-8').splitlines() if line.strip()]
+
+
+def _normalize_dnn_output(output: Any) -> Any:
+    try:
+        import numpy as np
+    except ModuleNotFoundError as exc:
+        raise RuntimeError('numpy is required for YOLO DNN output parsing') from exc
+
+    array = np.asarray(output, dtype=float)
+    array = np.squeeze(array)
+    if array.ndim != 2:
+        raise ValueError(f'YOLO output must reduce to a 2D array, got shape {array.shape}')
+    return array
+
+
+def parse_yolo_dnn_output(
+    output: Any,
+    *,
+    image_width: int,
+    image_height: int,
+    labels: list[str],
+    confidence_threshold: float,
+    nms_threshold: float,
+    image_ref: str,
+) -> list[dict[str, Any]]:
+    try:
+        import cv2
+    except ModuleNotFoundError as exc:
+        raise RuntimeError('OpenCV cv2 is required for YOLO DNN output parsing') from exc
+
+    rows = _normalize_dnn_output(output)
+    expected_attribute_counts = {4 + len(labels), 5 + len(labels)}
+    if rows.shape[1] not in expected_attribute_counts and rows.shape[0] in expected_attribute_counts:
+        rows = rows.T
+    boxes: list[list[int]] = []
+    confidences: list[float] = []
+    class_ids: list[int] = []
+    for row in rows:
+        if len(row) < 6:
+            continue
+        cx, cy, box_width, box_height = [float(value) for value in row[:4]]
+        scores = row[5:]
+        objectness = float(row[4])
+        # YOLOv8 ONNX often omits objectness and stores class scores from index 4.
+        if objectness > 1.0 or (len(labels) and len(row) == 4 + len(labels)):
+            scores = row[4:]
+            objectness = 1.0
+        class_id = int(scores.argmax()) if hasattr(scores, 'argmax') else max(range(len(scores)), key=lambda idx: scores[idx])
+        class_score = float(scores[class_id])
+        confidence = objectness * class_score
+        if confidence < confidence_threshold:
+            continue
+        x = int(round(cx - box_width / 2.0))
+        y = int(round(cy - box_height / 2.0))
+        w = int(round(box_width))
+        h = int(round(box_height))
+        x = max(0, min(x, max(0, image_width - 1)))
+        y = max(0, min(y, max(0, image_height - 1)))
+        w = max(1, min(w, image_width - x))
+        h = max(1, min(h, image_height - y))
+        boxes.append([x, y, w, h])
+        confidences.append(float(confidence))
+        class_ids.append(class_id)
+    keep = cv2.dnn.NMSBoxes(boxes, confidences, confidence_threshold, nms_threshold)
+    if len(keep) == 0:
+        return []
+    keep_indexes = [int(index) for index in getattr(keep, 'flatten', lambda: keep)()]
+    detections = []
+    for index in keep_indexes:
+        class_id = class_ids[index]
+        label = labels[class_id] if 0 <= class_id < len(labels) else f'class_{class_id}'
+        detections.append({
+            'label': label,
+            'confidence': round(confidences[index], 3),
+            'bbox_xywh': boxes[index],
+            'image_ref': image_ref,
+            'source': 'opencv_dnn_yolo',
+        })
+    detections.sort(key=lambda item: item['confidence'], reverse=True)
+    return detections
+
+
+def detect_yolo_dnn(
+    image_path: Path,
+    *,
+    model_path: Path,
+    labels_path: Path,
+    input_size: int,
+    confidence_threshold: float,
+    nms_threshold: float,
+) -> list[dict[str, Any]]:
+    try:
+        import cv2
+    except ModuleNotFoundError as exc:
+        raise RuntimeError('OpenCV cv2 is required for --yolo-onnx') from exc
+
+    labels = load_label_file(labels_path)
+    image = cv2.imread(str(image_path))
+    if image is None:
+        raise RuntimeError(f'OpenCV failed to read image: {image_path}')
+    height, width = image.shape[:2]
+    net = cv2.dnn.readNetFromONNX(str(model_path))
+    blob = cv2.dnn.blobFromImage(image, 1.0 / 255.0, (input_size, input_size), swapRB=True, crop=False)
+    net.setInput(blob)
+    outputs = net.forward()
+    return parse_yolo_dnn_output(
+        outputs,
+        image_width=width,
+        image_height=height,
+        labels=labels,
+        confidence_threshold=confidence_threshold,
+        nms_threshold=nms_threshold,
+        image_ref=str(image_path),
+    )
+
+
+def validate_detector_args(*, yolo_onnx: str, yolo_labels: str) -> None:
+    if yolo_onnx and not yolo_labels:
+        raise ValueError('--yolo-labels is required with --yolo-onnx')
+
+
 def _run_command(command: list[str], *, timeout_sec: float, allow_already_loaded: bool = False) -> None:
     completed = subprocess.run(command, capture_output=True, text=True, timeout=timeout_sec, check=False)
     if completed.returncode == 0:
@@ -247,6 +370,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument('--analyze-image-quality', action='store_true')
     parser.add_argument('--detect-visual-regions', action='store_true')
     parser.add_argument('--max-visual-regions', type=int, default=5)
+    parser.add_argument('--yolo-onnx', default='')
+    parser.add_argument('--yolo-labels', default='')
+    parser.add_argument('--yolo-input-size', type=int, default=640)
+    parser.add_argument('--yolo-confidence-threshold', type=float, default=0.35)
+    parser.add_argument('--yolo-nms-threshold', type=float, default=0.45)
     parser.add_argument('--api-base', default='')
     parser.add_argument('--relay-token', default='')
     parser.add_argument('--upload', action='store_true')
@@ -257,6 +385,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def run_capture_upload(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    validate_detector_args(yolo_onnx=args.yolo_onnx, yolo_labels=args.yolo_labels)
     if args.ensure_uvc_module:
         ensure_uvc_module(args.uvc_module_path)
     output_dir = Path(args.output_dir).expanduser()
@@ -279,6 +408,15 @@ def run_capture_upload(args: argparse.Namespace) -> tuple[dict[str, Any], dict[s
     quality_analysis = analyze_stereo_pair_quality(left_path, right_path) if args.analyze_image_quality else None
     if args.detect_visual_regions:
         detections = detections + detect_visual_region_proposals(left_path, max_regions=max(1, args.max_visual_regions))
+    if args.yolo_onnx:
+        detections = detections + detect_yolo_dnn(
+            left_path,
+            model_path=Path(args.yolo_onnx).expanduser(),
+            labels_path=Path(args.yolo_labels).expanduser(),
+            input_size=args.yolo_input_size,
+            confidence_threshold=args.yolo_confidence_threshold,
+            nms_threshold=args.yolo_nms_threshold,
+        )
     target_object = (
         {'label': args.target_label, 'confidence': args.target_confidence}
         if args.target_label
@@ -295,6 +433,8 @@ def run_capture_upload(args: argparse.Namespace) -> tuple[dict[str, Any], dict[s
         )
     if args.detect_visual_regions:
         vla_context = f'{vla_context}; detections include class-agnostic visual region proposals, not semantic YOLO labels'
+    if args.yolo_onnx:
+        vla_context = f'{vla_context}; semantic detections generated by OpenCV DNN YOLO ONNX'
     payload = build_stereo_vision_context_payload(
         robot_id=args.robot_id,
         device_id=args.device_id,

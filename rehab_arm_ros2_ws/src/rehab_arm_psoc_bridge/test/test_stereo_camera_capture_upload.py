@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import numpy as np
 from PIL import Image
 
 
@@ -15,7 +16,10 @@ from rehab_arm_psoc_bridge.stereo_camera_capture_upload import (  # noqa: E402
     build_insmod_command,
     build_stereo_capture_commands,
     detect_visual_region_proposals,
+    load_label_file,
     make_stereo_frame_paths,
+    parse_yolo_dnn_output,
+    validate_detector_args,
 )
 
 
@@ -121,6 +125,65 @@ class StereoCameraCaptureUploadTests(unittest.TestCase):
         self.assertGreater(first['confidence'], 0.0)
         self.assertGreater(first['bbox_xywh'][2], 0)
         self.assertGreater(first['bbox_xywh'][3], 0)
+
+    def test_load_label_file_ignores_blank_lines(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            labels_path = Path(tmp_dir) / 'labels.txt'
+            labels_path.write_text('person\n\ncup\n', encoding='utf-8')
+
+            labels = load_label_file(labels_path)
+
+        self.assertEqual(labels, ['person', 'cup'])
+
+    def test_parse_yolo_dnn_output_converts_center_boxes_to_detections(self) -> None:
+        # Row layout: cx, cy, width, height, objectness, class0, class1.
+        output = np.array([
+            [320.0, 240.0, 160.0, 120.0, 0.9, 0.1, 0.8],
+            [20.0, 20.0, 10.0, 10.0, 0.3, 0.9, 0.1],
+        ], dtype=np.float32)
+
+        detections = parse_yolo_dnn_output(
+            output,
+            image_width=640,
+            image_height=480,
+            labels=['person', 'cup'],
+            confidence_threshold=0.5,
+            nms_threshold=0.4,
+            image_ref='/tmp/left.jpg',
+        )
+
+        self.assertEqual(len(detections), 1)
+        self.assertEqual(detections[0]['label'], 'cup')
+        self.assertAlmostEqual(detections[0]['confidence'], 0.72, places=2)
+        self.assertEqual(detections[0]['bbox_xywh'], [240, 180, 160, 120])
+        self.assertEqual(detections[0]['source'], 'opencv_dnn_yolo')
+
+    def test_parse_yolo_dnn_output_handles_yolov8_transposed_shape(self) -> None:
+        # Shape is attributes x predictions: 4 box values + 2 class scores.
+        output = np.array([
+            [100.0, 300.0],
+            [80.0, 200.0],
+            [50.0, 80.0],
+            [40.0, 60.0],
+            [0.8, 0.1],
+            [0.2, 0.9],
+        ], dtype=np.float32)
+
+        detections = parse_yolo_dnn_output(
+            output,
+            image_width=640,
+            image_height=480,
+            labels=['hand', 'cup'],
+            confidence_threshold=0.5,
+            nms_threshold=0.4,
+            image_ref='/tmp/left.jpg',
+        )
+
+        self.assertEqual([item['label'] for item in detections], ['cup', 'hand'])
+
+    def test_validate_detector_args_requires_labels_with_yolo_model(self) -> None:
+        with self.assertRaisesRegex(ValueError, '--yolo-labels is required'):
+            validate_detector_args(yolo_onnx='/tmp/model.onnx', yolo_labels='')
 
 
 if __name__ == '__main__':

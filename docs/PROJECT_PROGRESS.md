@@ -3226,3 +3226,12 @@
 - NanoPi validation: `ros2 run rehab_arm_psoc_bridge stereo_camera_capture_upload.py --project-id fd6a55ed-a63c-44b3-b123-96fb3c154966 --api-base http://106.55.62.122:8011 --upload --sequence 5 --analyze-image-quality --detect-visual-regions --max-visual-regions 4 --pretty` produced 2 `visual_region` detections and platform returned `ok=true`, `detection_count=2`.
 - Local validation: related unit tests passed with 12 tests.
 - Next step: add a real detector asset/runtime decision, likely an OpenCV DNN/ONNX model or lightweight detector, then map semantic detections into `target_object` without changing the perception-only control boundary.
+
+### 2026-06-22 - OpenCV DNN YOLO interface prepared
+
+- Completed: added optional `--yolo-onnx`, `--yolo-labels`, `--yolo-input-size`, `--yolo-confidence-threshold`, and `--yolo-nms-threshold` arguments to `stereo_camera_capture_upload.py`.
+- Completed: added YOLO DNN output parsing for common `N x attributes` and YOLOv8-style transposed `attributes x N` output shapes; parsed detections use `source=opencv_dnn_yolo`.
+- Guardrail: `--yolo-onnx` requires `--yolo-labels` and validates before camera capture so a bad semantic-detector invocation does not waste a frame or upload a misleading payload.
+- NanoPi finding: no local YOLO/ONNX/PT model files were found under `/home/pi`, `/opt`, or `/usr/local`; `cv2` and `numpy` are available, but `onnxruntime` and `ultralytics` are not installed. This keeps the current semantic detector as an interface, not a completed semantic recognition deployment.
+- Validation: local tests passed with 16 tests. NanoPi package build passed, and the normal no-model stereo path still uploaded successfully with `ok=true`, `detection_count=2`.
+- Next step: choose a model asset and labels file compatible with OpenCV DNN on NanoPi, copy them into a versioned model directory, then validate real semantic labels before filling `target_object`.
