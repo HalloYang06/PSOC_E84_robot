@@ -1929,3 +1929,50 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
    - `Received TTS audio chunk from M55`
    - `audio_playback flush`
 3. 若这些都出现但仍无声，再查 M33 `audio_playback_tone_cmd`/codec 输出路径/功放音量，而不是继续改平台 token 或 WiFi。
+
+## 44. 2026-06-23 小智连接跳动和 TTS binary 已收到但 tts_fwd=0
+
+现象：
+
+1. 现场 LVGL 看到“小智连接中/在线”一直跳，但 `m55qa_status` 显示 WiFi/token 基线健康：
+   - `wlan=1 ready=1 ip=192.168.3.32`
+   - `xz_token=1 token_len=442`
+   - 自动重连后 `xz_ws=1 xz_stage=70`
+2. QA 1200 ms 人声素材已经能完整上行：
+   - `probe_lwip=20/0`
+   - `xz_last=216/414720`
+   - `xz_fail=0`
+3. 平台已有下行：
+   - `xz_rx=4/3`
+   - `srv_last=tts`
+4. 但 M55 仍显示：
+   - `tts_fwd=0/0`
+   - `tts_fail=3`
+
+根因：
+
+1. 当前 M55 hello 协商的是 `Protocol-Version: 1` + `audio_params.format=pcm_s16le`。
+2. 平台返回的 binary 应按 PCM 下行处理，不应该先按 Opus 或过度依赖 `voice_service_audio_looks_like_pcm16()` 猜测。
+3. websocket 层可能把多个 1920 B binary frame 聚合成大于 4096 B 的回调 payload；原 `voice_service_enqueue_tts_payload()` 单 slot 容量 4096 B，超出就直接丢。
+4. thinking timeout 之前在 WebSocket 短暂断开时会把 UI 改成 `CONNECTING`，导致用户看到连接状态跳动、按钮体验不稳定。
+
+修复：
+
+1. `voice_service_enqueue_tts_payload()` 支持把大 binary payload 切成多个 4096 B pending slot，而不是直接 drop。
+2. `XIAOZHI_AUDIO_FORMAT_IS_PCM` 为真时，pending binary 直接按协商的 PCM 透传到 M33，不再先做 Opus 解码，也不再用 PCM 猜测挡掉下行人声。
+3. thinking timeout 后 UI 统一回到 `READY/平台无回复，请重试`，避免短暂 WebSocket 状态把产品界面锁在“连接中”。
+
+验证计划：
+
+1. 重新 build/flash M55。
+2. 再跑：
+   - `m55qa_probe_pcm_on`
+   - `m55qa_capture_on`
+   - `m33qa_xz_probe 1200`
+   - `m55qa_capture_off`
+   - 等 30 秒 `m55qa_status`
+3. 预期：
+   - `xz_rx` text/binary 继续增长
+   - `tts_fwd` 从 `0/0` 增长
+   - `tts_fail` 不再随 binary 包数增长
+   - LVGL 不应长期卡在“正在思考”或频繁跳“连接中”

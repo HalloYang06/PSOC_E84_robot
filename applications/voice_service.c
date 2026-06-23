@@ -390,14 +390,7 @@ static void voice_service_check_xiaozhi_thinking_timeout(void)
                (unsigned long)g_service.xiaozhi_tts_forward_fail_count);
 
     voice_service_clear_xiaozhi_thinking();
-    if (websocket_client_is_connected())
-    {
-        xiaozhi_ui_state_set(XIAOZHI_UI_READY, "平台无回复，请重试", -RT_ETIMEOUT);
-    }
-    else
-    {
-        xiaozhi_ui_state_set(XIAOZHI_UI_CONNECTING, "小智连接断开", websocket_client_last_errno());
-    }
+    xiaozhi_ui_state_set(XIAOZHI_UI_READY, "平台无回复，请重试", -RT_ETIMEOUT);
     (void)voice_service_publish_status();
 }
 
@@ -1203,42 +1196,44 @@ static void voice_service_enqueue_tts_payload(const uint8_t *payload,
                                               rt_size_t payload_len,
                                               rt_bool_t binary)
 {
-    rt_uint32_t slot;
+    rt_size_t offset = 0U;
 
     if ((payload == RT_NULL) || (payload_len == 0U) || (g_service.tts_pending_buffer == RT_NULL))
     {
         return;
     }
 
-    if (payload_len > VOICE_TTS_PENDING_SLOT_SIZE)
+    while (offset < payload_len)
     {
-        rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
-        g_service.xiaozhi_tts_forward_fail_count++;
-        rt_mutex_release(&g_service.lock);
-        rt_kprintf("[voice_service] TTS pending drop len=%lu slot_cap=%lu\n",
-                   (unsigned long)payload_len,
-                   (unsigned long)VOICE_TTS_PENDING_SLOT_SIZE);
-        return;
-    }
+        rt_uint32_t slot;
+        rt_size_t chunk_len = payload_len - offset;
 
-    if (g_service.tts_pending_count >= VOICE_TTS_PENDING_SLOT_COUNT)
-    {
-        rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
-        g_service.xiaozhi_tts_forward_fail_count++;
-        rt_mutex_release(&g_service.lock);
-        rt_kprintf("[voice_service] TTS pending queue full drop len=%lu\n",
-                   (unsigned long)payload_len);
-        return;
-    }
+        if (chunk_len > VOICE_TTS_PENDING_SLOT_SIZE)
+        {
+            chunk_len = VOICE_TTS_PENDING_SLOT_SIZE;
+        }
 
-    slot = g_service.tts_pending_write_index;
-    rt_memcpy(g_service.tts_pending_buffer + (slot * VOICE_TTS_PENDING_SLOT_SIZE),
-              payload,
-              payload_len);
-    g_service.tts_pending_len[slot] = (rt_uint32_t)payload_len;
-    g_service.tts_pending_is_binary[slot] = binary;
-    g_service.tts_pending_write_index = (slot + 1U) % VOICE_TTS_PENDING_SLOT_COUNT;
-    g_service.tts_pending_count++;
+        if (g_service.tts_pending_count >= VOICE_TTS_PENDING_SLOT_COUNT)
+        {
+            rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
+            g_service.xiaozhi_tts_forward_fail_count++;
+            rt_mutex_release(&g_service.lock);
+            rt_kprintf("[voice_service] TTS pending queue full drop remain=%lu total=%lu\n",
+                       (unsigned long)(payload_len - offset),
+                       (unsigned long)payload_len);
+            return;
+        }
+
+        slot = g_service.tts_pending_write_index;
+        rt_memcpy(g_service.tts_pending_buffer + (slot * VOICE_TTS_PENDING_SLOT_SIZE),
+                  payload + offset,
+                  chunk_len);
+        g_service.tts_pending_len[slot] = (rt_uint32_t)chunk_len;
+        g_service.tts_pending_is_binary[slot] = binary;
+        g_service.tts_pending_write_index = (slot + 1U) % VOICE_TTS_PENDING_SLOT_COUNT;
+        g_service.tts_pending_count++;
+        offset += chunk_len;
+    }
 }
 
 static rt_bool_t voice_service_process_pending_tts(void)
@@ -1261,7 +1256,28 @@ static rt_bool_t voice_service_process_pending_tts(void)
 
     if (binary)
     {
-        if (XIAOZHI_PROTOCOL_USES_V3_BINARY &&
+        if (XIAOZHI_AUDIO_FORMAT_IS_PCM)
+        {
+            const uint8_t *pcm_payload = payload;
+            rt_size_t pcm_len = len;
+
+            if (XIAOZHI_PROTOCOL_USES_V3_BINARY)
+            {
+                voice_service_strip_v3_audio_header(&pcm_payload, &pcm_len);
+            }
+            if ((pcm_len >= 320U) && ((pcm_len & 1U) == 0U))
+            {
+                streamed = voice_service_stream_pcm_to_m33(pcm_payload,
+                                                           (uint32_t)pcm_len,
+                                                           RT_FALSE);
+            }
+            else
+            {
+                rt_kprintf("[voice_service] short PCM binary ignored len=%lu\n",
+                           (unsigned long)pcm_len);
+            }
+        }
+        if (!streamed && XIAOZHI_PROTOCOL_USES_V3_BINARY &&
             voice_service_payload_has_v3_audio_header(payload, len))
         {
             streamed = voice_service_decode_v3_opus_frames_to_m33(payload, len);
@@ -1282,7 +1298,7 @@ static rt_bool_t voice_service_process_pending_tts(void)
                 }
             }
         }
-        if (!streamed)
+        if (!streamed && !XIAOZHI_AUDIO_FORMAT_IS_PCM)
         {
             streamed = voice_service_decode_opus_to_m33(payload, len);
         }
