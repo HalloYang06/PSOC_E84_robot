@@ -1,5 +1,28 @@
 # Troubleshooting And Lessons
 
+## 2026-06-23 - Connection jumping is not automatically WiFi/token failure
+
+Symptoms:
+- LVGL shows XiaoZhi reconnecting or jumps back to “连接中” after a voice turn.
+- M55 status can still show healthy WiFi/token:
+  - `wlan=1 ready=1`
+  - `xz_token=1 token_len=442`
+  - manual `m55qa_xz_reconnect` restores `xz_ws=1 xz_stage=70`
+- A failing turn may show `srv_stt=1` but `srv_tts=0/0/0`, `tts_fwd=0/0`, `tts_fail=1`.
+
+Root cause:
+- This state means the link reached the platform side far enough for STT/event handling, but did not complete a playable TTS downlink.
+- Treating every post-turn disconnect as WiFi/token loss wastes time and can hide the real TTS/platform issue.
+
+Fix / trick:
+- Keep WiFi/token untouched unless the known baseline really regresses.
+- Use the new platform XiaoZhi telemetry fields:
+  - `audio_bytes`
+  - `sent_frames`
+  - `sent_bytes`
+- If `sent_bytes==0`, debug platform ASR/LLM/TTS. If `sent_bytes>0` but M55 `tts_fwd` stays zero, debug WebSocket/M55/M33 downlink.
+- M55 now shows a retryable ready prompt after auto reconnect failure instead of repeatedly locking LVGL in “连接中”.
+
 ## 2026-06-23 - Official Protocol Reference Does Not Mean Changing The Custom Platform
 
 Symptoms:
