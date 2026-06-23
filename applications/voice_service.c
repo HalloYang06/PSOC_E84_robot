@@ -1265,6 +1265,22 @@ static rt_bool_t voice_service_process_pending_tts(void)
             voice_service_payload_has_v3_audio_header(payload, len))
         {
             streamed = voice_service_decode_v3_opus_frames_to_m33(payload, len);
+            if (!streamed)
+            {
+                const uint8_t *pcm_payload = payload;
+                rt_size_t pcm_len = len;
+
+                voice_service_strip_v3_audio_header(&pcm_payload, &pcm_len);
+                if ((pcm_payload != payload) &&
+                    voice_service_audio_looks_like_pcm16(pcm_payload, (uint32_t)pcm_len))
+                {
+                    rt_kprintf("[voice_service] v3 payload fallback to pcm16 len=%lu\n",
+                               (unsigned long)pcm_len);
+                    streamed = voice_service_stream_pcm_to_m33(pcm_payload,
+                                                               (uint32_t)pcm_len,
+                                                               RT_TRUE);
+                }
+            }
         }
         if (!streamed)
         {

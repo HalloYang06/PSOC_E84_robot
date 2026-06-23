@@ -1886,3 +1886,46 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
    - M55 `tts_fwd` 应增长，`tts_fail` 不应持续增长。
    - M33 应打印 `Received TTS audio chunk from M55`、`audio_playback write/flush`。
 3. 如果云端已有 TTS audio 但 M33 仍没播放，继续查 M33 `audio_playback_*` 设备选择/音量/写入返回值，不再回退到 WiFi/token。
+
+## 43. 2026-06-23 小智 v3 binary 下行如果 payload 是 PCM，M55 必须剥 header 后透传
+
+现象：
+
+1. 平台 ASR/TTS 已能生成真实 TTS PCM，M55 pending buffer 也已扩到 256 KB。
+2. 现场仍可能没有人声、只有短杂音，或者一轮结束后 LVGL 回到“连接中”。
+3. 这类现象容易被误判为资源不够或 speaker 设备坏，但更直接的风险在下行协议格式。
+
+根因：
+
+1. 平台当前按 XiaoZhi Protocol-Version 3 binary frame 下发：
+   - `[type=0, reserved=0, payload_size_be16, payload]`
+2. 但 payload 内容是云端 TTS 生成的 16 kHz mono PCM16，不是官方 Opus。
+3. M55 原逻辑看到 v3 header 后优先按 Opus 解码；如果失败，再 fallback 时可能仍把带 4 字节 header 的整包当 PCM 判断/播放。
+4. 每 60 ms PCM 前多出 4 字节非音频头，会造成播放错位、杂音，甚至整段被拒绝。
+
+修复：
+
+1. M55 `voice_service_process_pending_tts()` 在 v3 Opus 解码失败后：
+   - 调用 `voice_service_strip_v3_audio_header()` 剥掉 4 字节 v3 header
+   - 对剥出的 payload 单独做 `voice_service_audio_looks_like_pcm16()`
+   - 符合 PCM16 时只把 payload 透传给 M33 speaker
+2. 保留官方 Opus 优先路径，后续平台真正下发 Opus TTS 时仍走 Opus 解码。
+
+验证：
+
+1. M55 build 通过：`text=1534872 data=68744 bss=4542096`。
+2. M55 烧录成功：
+   - `rtthread.hex` 写入 `1605632 bytes`
+   - `whd_resources_all.bin` 写入 `466944 bytes`
+3. 末尾 `kitprog3: failed to acquire the device` 仍是写完后的已知非关键现象。
+
+下一步现场判断：
+
+1. 一轮小智后看 M55 日志是否出现：
+   - `v3 payload fallback to pcm16 len=...`
+   - `pending binary audio forwarded`
+   - `tts->m33 chunk=...`
+2. M33 侧应出现：
+   - `Received TTS audio chunk from M55`
+   - `audio_playback flush`
+3. 若这些都出现但仍无声，再查 M33 `audio_playback_tone_cmd`/codec 输出路径/功放音量，而不是继续改平台 token 或 WiFi。
