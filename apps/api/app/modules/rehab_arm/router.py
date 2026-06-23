@@ -970,6 +970,7 @@ async def api_project_xiaozhi_websocket(websocket: WebSocket, project_id: str, d
                 tts_audio = bytes(tts_result.get("audio") or b"")
                 tts_sent_frames = 0
                 tts_sent_bytes = 0
+                tts_send_error = ""
                 if tts_audio:
                     frame_bytes = max(
                         2,
@@ -981,20 +982,23 @@ async def api_project_xiaozhi_websocket(websocket: WebSocket, project_id: str, d
                     )
                     for offset in range(0, len(tts_audio), frame_bytes):
                         payload = tts_audio[offset : offset + frame_bytes]
-                        if protocol_version == 3:
-                            await websocket.send_bytes(bytes([0, 0]) + len(payload).to_bytes(2, "big") + payload)
-                        else:
-                            await websocket.send_bytes(payload)
+                        frame_payload = bytes([0, 0]) + len(payload).to_bytes(2, "big") + payload if protocol_version == 3 else payload
+                        try:
+                            await asyncio.wait_for(websocket.send_bytes(frame_payload), timeout=2.0)
+                        except TimeoutError:
+                            tts_send_error = f"tts_send_timeout:frame={tts_sent_frames}"
+                            break
                         tts_sent_frames += 1
                         tts_sent_bytes += len(payload)
+                        await asyncio.sleep(0.02)
                 record_xiaozhi_ws_event(
                     base_payload(
                         "xiaozhi_ws_tts",
                         {
                             "event": "tts",
                             "called": bool(tts_result.get("called")),
-                            "ok": bool(tts_result.get("ok")),
-                            "error": str(tts_result.get("error") or ""),
+                            "ok": bool(tts_result.get("ok")) and not tts_send_error,
+                            "error": tts_send_error or str(tts_result.get("error") or ""),
                             "provider_configured": bool(tts_result.get("provider_configured")),
                             "audio_format": tts_result.get("audio_format") or "",
                             "audio_bytes": len(tts_audio),
