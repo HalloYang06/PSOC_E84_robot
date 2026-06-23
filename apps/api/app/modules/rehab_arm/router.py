@@ -962,6 +962,8 @@ async def api_project_xiaozhi_websocket(websocket: WebSocket, project_id: str, d
                 await websocket.send_text(_event_payload({"session_id": session_id, "type": "tts", "state": "start"}))
                 tts_result = synthesize_xiaozhi_tts(reply, audio_params)
                 tts_audio = bytes(tts_result.get("audio") or b"")
+                tts_sent_frames = 0
+                tts_sent_bytes = 0
                 if tts_audio:
                     frame_bytes = max(
                         2,
@@ -977,6 +979,8 @@ async def api_project_xiaozhi_websocket(websocket: WebSocket, project_id: str, d
                             await websocket.send_bytes(bytes([0, 0]) + len(payload).to_bytes(2, "big") + payload)
                         else:
                             await websocket.send_bytes(payload)
+                        tts_sent_frames += 1
+                        tts_sent_bytes += len(payload)
                 record_xiaozhi_ws_event(
                     base_payload(
                         "xiaozhi_ws_tts",
@@ -988,6 +992,8 @@ async def api_project_xiaozhi_websocket(websocket: WebSocket, project_id: str, d
                             "provider_configured": bool(tts_result.get("provider_configured")),
                             "audio_format": tts_result.get("audio_format") or "",
                             "audio_bytes": len(tts_audio),
+                            "sent_frames": tts_sent_frames,
+                            "sent_bytes": tts_sent_bytes,
                             "control_boundary": "tts_feedback_only_not_motion_permission",
                         },
                     )

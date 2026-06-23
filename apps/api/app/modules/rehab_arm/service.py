@@ -1217,6 +1217,8 @@ def record_xiaozhi_ws_event(payload: dict[str, Any]) -> dict[str, Any]:
                     "ok": tts_ok,
                     "provider_configured": bool(current_payload.get("provider_configured") or session_payload.get("provider_configured") or False),
                     "audio_bytes": int(current_payload.get("audio_bytes") or session_payload.get("audio_bytes") or 0),
+                    "sent_frames": int(current_payload.get("sent_frames") or session_payload.get("sent_frames") or 0),
+                    "sent_bytes": int(current_payload.get("sent_bytes") or session_payload.get("sent_bytes") or 0),
                     "audio_format": current_payload.get("audio_format") or session_payload.get("audio_format") or "",
                     "error": tts_error,
                     "last_error": last_error,

@@ -2040,6 +2040,8 @@ def test_rehab_arm_xiaozhi_websocket_qwen_asr_pcm_then_llm_flow(tmp_path, monkey
     assert latest["ok"] is True
     assert latest["audio_format"] == "pcm_s16le"
     assert latest["audio_bytes"] == len(tts_pcm)
+    assert latest["sent_frames"] == 1
+    assert latest["sent_bytes"] == len(tts_pcm)
     assert latest["ui_state"] == "speaking"
     assert latest["last_error"] == ""
     get_settings.cache_clear()
@@ -2130,6 +2132,8 @@ def test_rehab_arm_xiaozhi_tts_rejects_too_short_pcm(tmp_path, monkeypatch) -> N
     assert latest["event"] == "tts"
     assert latest["ok"] is False
     assert latest["audio_bytes"] == 0
+    assert latest["sent_frames"] == 0
+    assert latest["sent_bytes"] == 0
     assert latest["error"].startswith("tts_audio_too_short:640<")
     assert latest["ui_state"] == "error"
     get_settings.cache_clear()
