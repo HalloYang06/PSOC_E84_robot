@@ -2013,3 +2013,44 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
 1. 平台小智测试通过：`python -m pytest apps/api/tests/test_rehab_arm_sync.py -k "xiaozhi"`，10 passed。
 2. M55 build 通过：`text=1441032 data=68744 bss=4542096`。
 3. 手动 `m55qa_xz_reconnect` 后状态恢复到 `xz_ws=1 xz_stage=70`。
+
+## 46. 2026-06-23 平台收到长 PCM 但 ASR 空文本时先裁剪静音
+
+现象：
+
+1. 部署 `dc1442c5` 后，板端连接稳定，最终仍保持：
+   - `xz_ws=1 xz_stage=70`
+   - `probe_lwip=20/0`
+   - `xz_last=159/305280`
+2. 云端 `xiaozhi_session_latest` 显示实际收到了约 9.54 秒 PCM：
+   - `audio_bytes=305280`
+   - `audio_duration_ms=9540`
+   - `audio_frame_count=159`
+3. 但 ASR 结果为空：
+   - `asr_called=true`
+   - `asr_ok=false`
+   - `asr_error=asr_empty_text`
+
+判断：
+
+1. 此时不是 WiFi/token/WebSocket 问题，也不是 M33 speaker 的第一故障点。
+2. 平台已经收到音频，但传给 ASR 的整段 PCM 可能被前后静音或低幅度段稀释。
+3. 若 ASR 无文本，平台不会进入有效 LLM/TTS，人声自然不会出来。
+
+修复：
+
+1. 平台 `transcribe_xiaozhi_pcm()` 在送 ASR 前增加 PCM16 前处理：
+   - 20 ms 窗口找有效语音段
+   - 保留 200 ms 前后 padding
+   - 对低峰值语音最多做 8 倍保守增益
+2. 平台 session 增加诊断：
+   - `asr_audio_prep`
+   - `prepared_audio_bytes`
+
+验证：
+
+1. 平台小智测试通过：`python -m pytest apps/api/tests/test_rehab_arm_sync.py -k "xiaozhi"`，11 passed。
+2. 下一轮板端 QA 重点看：
+   - `asr_ok` 是否变 true
+   - `prepared_audio_bytes` 是否小于 `audio_bytes`
+   - `srv_stt`、`srv_tts`、`tts_fwd` 是否增长
