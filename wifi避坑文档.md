@@ -1850,3 +1850,39 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
    - `tts_fwd=0/0`
 2. 这不是 WiFi/token/M33 IPC 问题，因为 clean-count QA 已证明完整人声素材进入 M55 并上传到 XiaoZhi WebSocket。
 3. 下一步只查 XiaoZhi relay/platform 在 `listen/start -> binary PCM -> listen/stop` 后为什么没有回 STT/TTS。
+
+## 42. 2026-06-23 小智云端 TTS 下行会压满 M55 pending 队列
+
+现象：
+
+1. 云端 ASR/TTS 已验证能真实工作：`qwen3-asr-flash` 返回文本，`qwen-tts` 返回约 10 万字节 16 kHz mono PCM。
+2. 但现场仍可能听不到人声，或者只听到一点杂音/短音。
+3. M55 原先 TTS pending 只有 `4 * 16384 = 65536` bytes；云端一句 TTS 常见约 106 KB，并按 60 ms/1920 B 连续 WebSocket binary 下发。
+
+根因：
+
+1. WebSocket 回调收包速度远快于 `voice_service_thread_entry()` 向 M33 speaker 转发的速度。
+2. 4 个 pending slot 很容易被前几包占满，后续 TTS binary 被丢弃，最终 M33 收不到完整人声。
+
+修复：
+
+1. M55 `applications/voice_service.c` 调整 TTS pending：
+   - `VOICE_TTS_PENDING_SLOT_SIZE` 从 `16384` 改为 `4096`
+   - `VOICE_TTS_PENDING_SLOT_COUNT` 从 `4` 改为 `64`
+2. 总缓冲从 64 KB 提到 256 KB；单 slot 更贴近云端 1920 B PCM 帧，减少浪费并能缓存完整一句 TTS。
+
+验证：
+
+1. M55 build 通过：`text=1534872 data=68744 bss=4542096`。
+2. M55 烧录成功：
+   - `rtthread.hex` 写入 `1605632 bytes`
+   - `whd_resources_all.bin` 写入 `466944 bytes`
+3. 末尾 `kitprog3: failed to acquire the device` 出现在 app/resources 都写完之后，按既有经验不视为烧录失败。
+
+下一步现场判断：
+
+1. 重新连小智后一轮真实说话，先看云端 `xiaozhi_session_latest.json` 是否出现 `asr_ok=true`、`entered_llm=true`、`event=tts`、`audio_bytes>0`。
+2. 再看 M55/M33 串口状态：
+   - M55 `tts_fwd` 应增长，`tts_fail` 不应持续增长。
+   - M33 应打印 `Received TTS audio chunk from M55`、`audio_playback write/flush`。
+3. 如果云端已有 TTS audio 但 M33 仍没播放，继续查 M33 `audio_playback_*` 设备选择/音量/写入返回值，不再回退到 WiFi/token。
