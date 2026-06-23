@@ -3310,3 +3310,11 @@
 - Validation: local tests passed with 32 tests, including chessboard size parsing and blank-image failure behavior.
 - NanoPi validation: `colcon build --packages-select rehab_arm_psoc_bridge --symlink-install` passed. Running `ros2 run rehab_arm_psoc_bridge stereo_chessboard_calibration.py --chessboard-size 9x6 --square-size-m 0.025 --pretty` captured a pair and correctly reported `left.found=false`, `right.found=false`, `pair_ok=false` because no chessboard was visible.
 - Next step: place a real printed or screen-displayed chessboard visible to both cameras and collect at least 15-20 accepted poses before attempting calibration.
+
+### 2026-06-23 - Stereo calibration theory guide and printable chessboard added
+
+- Completed: added `docs/STEREO_CALIBRATION_LEARNING_GUIDE.md` explaining Zhang planar calibration, OpenCV calibration/rectification/disparity functions, sample pose requirements, and why current bbox disparity is not metric depth.
+- Completed: generated printable A4 calibration assets under `docs/assets/calibration/`: `zhang_chessboard_9x6_inner_20mm_A4.pdf` and `zhang_chessboard_9x6_inner_20mm_A4_300dpi.png`.
+- Calibration asset parameters: 10 x 7 squares, 9 x 6 inner corners, 20 mm square size. Use `--chessboard-size 9x6 --square-size-m 0.020`.
+- Decision: use generated vector/PDF-like print assets from the repo rather than downloading a random raster chessboard, so square size and command parameters stay traceable.
+- Next step: print at 100% actual size, verify one square measures 20 mm, mount flat, then collect accepted stereo samples with `pair_ok=true`.

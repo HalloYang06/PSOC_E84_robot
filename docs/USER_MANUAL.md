@@ -116,13 +116,15 @@ SSD 结果会以 `source=opencv_dnn_mobilenet_ssd` 进入 `detections`。`--auto
 
 完整双目深度的第一步是采集棋盘格标定样本，不是直接算深度。准备棋盘格时，`--chessboard-size 9x6` 表示内角点数量是 9 列 x 6 行；如果打印板是 10 x 7 个黑白方格，通常内角点就是 9 x 6。`--square-size-m` 是每个小方格边长，必须用尺量真实值，例如 25mm 就填 `0.025`。
 
+当前已生成 A4 张正友法棋盘格打印文件：`docs/assets/calibration/zhang_chessboard_9x6_inner_20mm_A4.pdf`，参数是 `9x6` 内角点、20mm 方格，所以命令应使用 `--square-size-m 0.020`。完整学习说明见 [STEREO_CALIBRATION_LEARNING_GUIDE.md](STEREO_CALIBRATION_LEARNING_GUIDE.md)。
+
 ```bash
 cd /home/pi/rehab_arm_ros2_ws
 source /opt/ros/jazzy/setup.bash
 source install/setup.bash
 ros2 run rehab_arm_psoc_bridge stereo_chessboard_calibration.py \
   --chessboard-size 9x6 \
-  --square-size-m 0.025 \
+  --square-size-m 0.020 \
   --pretty
 ```
 
