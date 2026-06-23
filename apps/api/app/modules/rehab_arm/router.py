@@ -1002,16 +1002,6 @@ async def api_project_xiaozhi_websocket(websocket: WebSocket, project_id: str, d
     except WebSocketDisconnect:
         if audio_chunks:
             await finish_xiaozhi_turn({}, disconnected=True)
-        record_xiaozhi_ws_event(
-            base_payload(
-                "xiaozhi_ws_input",
-                {
-                    "event": "disconnect",
-                    "audio_bytes": sum(len(item) for item in audio_chunks),
-                    "audio_params": audio_params,
-                },
-            )
-        )
 
 
 @router.post("/projects/{project_id}/devices/{device_id}/model/relay-token")

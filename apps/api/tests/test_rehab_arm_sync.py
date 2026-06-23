@@ -2133,3 +2133,55 @@ def test_rehab_arm_xiaozhi_tts_rejects_too_short_pcm(tmp_path, monkeypatch) -> N
     assert latest["error"].startswith("tts_audio_too_short:640<")
     assert latest["ui_state"] == "error"
     get_settings.cache_clear()
+
+
+def test_rehab_arm_xiaozhi_disconnect_keeps_latest_tts_session_state(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
+    monkeypatch.delenv("REHAB_ARM_XIAOZHI_TTS_API_KEY", raising=False)
+    monkeypatch.delenv("REHAB_ARM_XIAOZHI_TTS_BASE_URL", raising=False)
+    monkeypatch.delenv("REHAB_ARM_XIAOZHI_TTS_MODEL", raising=False)
+    monkeypatch.delenv("REHAB_ARM_XIAOZHI_TTS_EXTERNAL_ENABLED", raising=False)
+    get_settings.cache_clear()
+
+    owner_token, _owner_user_id = issue_session_token(client)
+    project = create_project(client, owner_token, name_prefix="Rehab XiaoZhi Disconnect")
+    project_id = project["id"]
+    device_id = f"nanopi-xiaozhi-disconnect-{uuid4().hex[:8]}"
+    client.post(
+        "/api/rehab-arm/v1/devices/register",
+        json={"device_id": device_id, "robot_id": "rehab-arm-alpha", "project_id": project_id},
+    )
+    token_response = client.post(
+        f"/api/rehab-arm/v1/projects/{project_id}/devices/{device_id}/model/relay-token",
+        headers=auth_headers(owner_token),
+        json={"ttl_seconds": 600, "label": "xiaozhi disconnect state"},
+    )
+    relay_token = token_response.json()["data"]["token"]
+    path = f"/api/rehab-arm/v1/projects/{project_id}/devices/{device_id}/xiaozhi/ws?robot_id=rehab-arm-alpha"
+
+    with client.websocket_connect(path, headers=auth_headers(relay_token)) as websocket:
+        websocket.send_json(
+            {
+                "type": "hello",
+                "version": 1,
+                "transport": "websocket",
+                "audio_params": {"format": "pcm_s16le", "sample_rate": 16000, "channels": 1, "frame_duration": 60},
+            }
+        )
+        assert websocket.receive_json()["type"] == "hello"
+        websocket.send_json({"session_id": "xz-disconnect", "type": "listen", "state": "start"})
+        assert websocket.receive_json()["state"] == "start"
+        websocket.send_json({"session_id": "xz-disconnect", "type": "listen", "state": "stop", "transcript": "请回一句话"})
+        assert websocket.receive_json()["type"] == "stt"
+        assert websocket.receive_json()["type"] == "llm"
+        assert websocket.receive_json()["type"] == "chat"
+        assert websocket.receive_json() == {"session_id": "xz-disconnect", "type": "tts", "state": "start"}
+        assert websocket.receive_json() == {"session_id": "xz-disconnect", "type": "tts", "state": "stop"}
+        assert websocket.receive_json() == {"session_id": "xz-disconnect", "type": "listen", "state": "stop"}
+
+    dashboard = client.get("/api/rehab-arm/v1/devices/dashboard", params={"project_id": project_id})
+    latest = dashboard.json()["data"]["devices"][0]["xiaozhi_session"]["payload"]
+    assert latest["event"] == "tts"
+    assert latest["ui_state"] == "error"
+    assert latest["error"] == "tts_not_configured"
+    get_settings.cache_clear()

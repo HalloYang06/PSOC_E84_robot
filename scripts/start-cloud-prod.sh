@@ -53,7 +53,10 @@ else
     cd "$ROOT/apps/api"
     # shellcheck disable=SC1091
     source .venv/bin/activate
-    nohup python -m uvicorn app.main:app --host 0.0.0.0 --port "$API_PORT" \
+    # Uvicorn websocket flags are kept configurable because some embedded clients
+    # are sensitive to server-side ping/pong behavior on long audio turns.
+    # shellcheck disable=SC2086
+    nohup python -m uvicorn app.main:app --host 0.0.0.0 --port "$API_PORT" ${UVICORN_WS_ARGS:-} \
       > "$ROOT/logs-api.txt" 2> "$ROOT/logs-api.err.txt" < /dev/null &
   )
   echo "API started on ${API_PORT}"
