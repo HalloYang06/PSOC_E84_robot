@@ -41,6 +41,8 @@ class Settings(BaseSettings):
     rehab_arm_xiaozhi_tts_voice: str = "alloy"
     rehab_arm_xiaozhi_tts_api_key: str = ""
     rehab_arm_xiaozhi_tts_external_enabled: bool = False
+    rehab_arm_xiaozhi_default_protocol_version: int = 1
+    rehab_arm_xiaozhi_default_audio_format: str = "pcm_s16le"
 
     auth_provider: str = "legacy"
 

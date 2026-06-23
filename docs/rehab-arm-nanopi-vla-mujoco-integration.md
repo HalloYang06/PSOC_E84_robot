@@ -182,18 +182,34 @@ M55 XiaoZhi WebSocket and HTTP model relay both classify language through the se
 
 ### XiaoZhi WebSocket Contract
 
-The platform follows the official XiaoZhi WebSocket protocol as the primary path. Do not treat the temporary PCM branch as a long-term protocol.
+The long-term target is the official XiaoZhi WebSocket contract, but the current Infineon M55/M33 onsite image is stable on a v1/raw-PCM path. The platform therefore defaults new connections without a `Protocol-Version` header to `Protocol-Version = 1` and `audio_params.format = pcm_s16le` so the board can complete ASR/LLM/TTS bring-up before the M55 Opus path is re-enabled.
 
-Required WebSocket headers from the device:
+Current M55 onsite headers:
 
 ```text
 Authorization: Bearer rehab-relay.v1...
-Protocol-Version: 3
 Device-Id: nanopi-m5
 Client-Id: <stable client id>
 ```
 
-Official hello:
+Current M55 onsite hello:
+
+```json
+{
+  "type": "hello",
+  "version": 1,
+  "transport": "websocket",
+  "audio_params": {
+    "format": "pcm_s16le",
+    "sample_rate": 16000,
+    "channels": 1,
+    "bits_per_sample": 16,
+    "frame_duration": 60
+  }
+}
+```
+
+Official v3/Opus clients can still opt in explicitly:
 
 ```json
 {
@@ -223,9 +239,11 @@ The board may temporarily send `audio_params.format = "pcm_s16le"` while the M55
 
 Current server behavior:
 
+- no `Protocol-Version` header: default to `version=1`, raw binary audio, 16 kHz mono S16LE PCM, 60 ms frames.
 - `format=opus`: accepted as the official XiaoZhi audio path. If server-side Opus decoding is not configured yet, STT returns `error = opus_decode_not_configured` instead of silently pretending to understand audio.
-- `format=pcm_s16le`: accepted only as a debug compatibility branch. The server wraps 16 kHz mono PCM S16LE into WAV and sends it to the configured ASR provider.
+- `format=pcm_s16le`: accepted as the current onsite M55 compatibility branch. The server wraps 16 kHz mono PCM S16LE into WAV and sends it to the configured ASR provider.
 - `hello.version` must match `Protocol-Version` when the header is present.
+- TTS provider output must decode to audible 16 kHz mono S16LE PCM. Extremely short PCM output, such as the observed 640-byte/20 ms downlink, is recorded as `tts_audio_too_short` and is not forwarded as fake speech.
 - `listen start`, `listen detect`, and `listen stop` are recorded in the command-center input/output stream.
 
 The response contains:
@@ -434,3 +452,11 @@ The platform should expose the model and simulation results as evidence. It shou
 - Validation: targeted backend tests passed for scoped relay-token WebSocket access, official Opus v3 handling, PCM compatibility frame parsing, ASR-not-configured surfacing, and missing TTS configuration surfacing.
 - Boundary: Opus remains the official XiaoZhi audio path. `pcm_s16le` remains a debug compatibility path for current M55 bring-up and is recorded as `debug_pcm_s16le_not_official_xiaozhi_audio`.
 - Safety: this path only produces speech/LLM/VLA-language context and operator-facing replies. It still does not produce CAN frames, motor current/torque, direct motor commands, or M33 safety overrides.
+
+### 2026-06-23 - XiaoZhi M55 v1 PCM Platform Default
+
+- Completed: platform XiaoZhi WebSocket now defaults clients without `Protocol-Version` to `version=1` and `pcm_s16le`, matching the current stable Infineon M55/M33 image instead of forcing v3/Opus during onsite bring-up.
+- Completed: `hello` without `audio_params` preserves the negotiated default instead of silently falling back to Opus.
+- Completed: TTS PCM shorter than the audible threshold is reported as `tts_audio_too_short` and not forwarded to the board, preventing 640-byte noise bursts from being treated as successful human speech.
+- Validation: `python -m pytest apps/api/tests/test_rehab_arm_sync.py -k "xiaozhi"` passed, including v1/raw-PCM default, explicit v3/Opus compatibility, stale ASR clearing, and short-TTS rejection.
+- Boundary: official v3/Opus remains available when a client sends `Protocol-Version: 3` and Opus audio params explicitly; the default is changed only to match the current deployed board path.

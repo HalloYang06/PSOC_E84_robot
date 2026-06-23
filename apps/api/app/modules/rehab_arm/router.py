@@ -15,6 +15,7 @@ from app.common.errors import AppError
 from app.common.response import ok
 from app.db.session import get_db
 from app.modules.read_access import require_project_read_access
+from app.settings import get_settings
 
 from .schemas import (
     RehabCameraStreamOfferRequest,
@@ -536,15 +537,21 @@ async def api_project_xiaozhi_websocket(websocket: WebSocket, project_id: str, d
 
     robot_id = websocket.query_params.get("robot_id") or "rehab-arm-alpha"
     await websocket.accept()
+    settings = get_settings()
     session_id = ""
     protocol_header = websocket.headers.get("protocol-version", "").strip()
     try:
-        protocol_version = int(protocol_header or 3)
+        protocol_version = int(protocol_header or settings.rehab_arm_xiaozhi_default_protocol_version or 1)
     except ValueError:
-        protocol_version = 3
+        protocol_version = 1
     device_header = websocket.headers.get("device-id", "").strip()
     client_header = websocket.headers.get("client-id", "").strip()
-    audio_params: dict = {"format": "opus", "sample_rate": 16000, "channels": 1, "frame_duration": 60}
+    default_audio_format = (settings.rehab_arm_xiaozhi_default_audio_format or "pcm_s16le").strip().lower()
+    if default_audio_format not in {"pcm_s16le", "opus"}:
+        default_audio_format = "pcm_s16le"
+    audio_params: dict = {"format": default_audio_format, "sample_rate": 16000, "channels": 1, "frame_duration": 60}
+    if default_audio_format == "pcm_s16le":
+        audio_params["bits_per_sample"] = 16
     audio_chunks: list[bytes] = []
     audio_frame_count = 0
     transcript_hint = ""
@@ -561,19 +568,93 @@ async def api_project_xiaozhi_websocket(websocket: WebSocket, project_id: str, d
             "control_boundary": "xiaozhi_voice_relay_only_not_motion_permission",
         }
 
+    async def finish_xiaozhi_turn(stop_event: dict, disconnected: bool = False) -> None:
+        nonlocal session_id, audio_chunks, audio_frame_count, transcript_hint
+
+        session_id = str(stop_event.get("session_id") or session_id or f"xiaozhi_{device_id}")
+        transcript = str(stop_event.get("text") or stop_event.get("transcript") or transcript_hint or "")
+        audio_bytes = sum(len(item) for item in audio_chunks)
+        audio_blob = b"".join(audio_chunks)
+        duration_ms = pcm_duration_ms(audio_bytes, audio_params)
+        asr_result: dict = {"ok": bool(transcript), "called": False, "text": transcript, "error": ""}
+        if not transcript and audio_blob:
+            asr_result = transcribe_xiaozhi_audio(audio_blob, audio_params)
+            transcript = str(asr_result.get("text") or "")
+        record_xiaozhi_ws_event(
+            base_payload(
+                "xiaozhi_ws_input",
+                {
+                    "event": "listen_stop",
+                    "protocol_version": protocol_version,
+                    "audio_params": audio_params,
+                    "audio_frame_count": audio_frame_count,
+                    "audio_bytes": audio_bytes,
+                    "audio_duration_ms": duration_ms,
+                    "asr_called": bool(asr_result.get("called")),
+                    "asr_ok": bool(asr_result.get("ok")),
+                    "asr_text": transcript,
+                    "asr_error": str(asr_result.get("error") or ""),
+                    "asr_audio_format": asr_result.get("audio_format") or audio_params.get("format") or "",
+                    "official_audio_path": bool(asr_result.get("official_audio_path") or str(audio_params.get("format") or "").lower() == "opus"),
+                    "compatibility_mode": asr_result.get("compatibility_mode") or "",
+                    "disconnected": disconnected,
+                },
+            )
+        )
+        if disconnected:
+            audio_chunks = []
+            audio_frame_count = 0
+            transcript_hint = ""
+            return
+        await websocket.send_text(
+            _event_payload(
+                {
+                    "session_id": session_id,
+                    "type": "stt",
+                    "text": transcript,
+                    "ok": bool(asr_result.get("ok") or transcript),
+                    "error": "" if transcript else str(asr_result.get("error") or "asr_empty_text"),
+                    "audio_duration_ms": duration_ms,
+                    "audio_format": asr_result.get("audio_format") or audio_params.get("format") or "",
+                    "official_audio_path": bool(asr_result.get("official_audio_path") or str(audio_params.get("format") or "").lower() == "opus"),
+                    "compatibility_mode": asr_result.get("compatibility_mode") or "",
+                    "control_boundary": "speech_to_text_only_not_motion_permission",
+                }
+            )
+        )
+
     try:
         while True:
             message = await websocket.receive()
             if message.get("type") == "websocket.disconnect":
+                if audio_chunks:
+                    await finish_xiaozhi_turn({}, disconnected=True)
                 break
             if "bytes" in message and message["bytes"] is not None:
                 chunk = bytes(message["bytes"])
                 parsed_frame = parse_xiaozhi_audio_frame(chunk, audio_params, protocol_version=protocol_version)
                 payload = bytes(parsed_frame.get("payload") or b"")
+                audio_format = str(audio_params.get("format") or "opus").lower()
+                expected_pcm_frame_bytes = (
+                    int(audio_params.get("sample_rate") or 16000)
+                    * int(audio_params.get("channels") or 1)
+                    * 2
+                    * int(audio_params.get("frame_duration") or 60)
+                    // 1000
+                )
+                if (
+                    protocol_version == 3
+                    and audio_format == "opus"
+                    and parsed_frame.get("binary_protocol") == "xiaozhi_v3"
+                    and parsed_frame.get("frame_type") == 0
+                    and parsed_frame.get("reserved") == 0
+                    and len(payload) == expected_pcm_frame_bytes
+                ):
+                    audio_params = {**audio_params, "format": "pcm_s16le", "bits_per_sample": 16}
+                    audio_format = "pcm_s16le"
                 audio_chunks.append(payload)
                 audio_frame_count += 1
                 audio_bytes = sum(len(item) for item in audio_chunks)
-                audio_format = str(audio_params.get("format") or "opus").lower()
                 record_xiaozhi_ws_event(
                     base_payload(
                         "xiaozhi_ws_input",
@@ -636,11 +717,13 @@ async def api_project_xiaozhi_websocket(websocket: WebSocket, project_id: str, d
                 protocol_version = hello_version_int
                 incoming_audio_params = event.get("audio_params") if isinstance(event.get("audio_params"), dict) else {}
                 audio_params = {
-                    "format": str(incoming_audio_params.get("format") or "opus"),
-                    "sample_rate": int(incoming_audio_params.get("sample_rate") or 16000),
-                    "channels": int(incoming_audio_params.get("channels") or 1),
-                    "frame_duration": int(incoming_audio_params.get("frame_duration") or 60),
+                    "format": str(incoming_audio_params.get("format") or audio_params.get("format") or "pcm_s16le"),
+                    "sample_rate": int(incoming_audio_params.get("sample_rate") or audio_params.get("sample_rate") or 16000),
+                    "channels": int(incoming_audio_params.get("channels") or audio_params.get("channels") or 1),
+                    "frame_duration": int(incoming_audio_params.get("frame_duration") or audio_params.get("frame_duration") or 60),
                 }
+                if str(audio_params.get("format") or "").lower() == "pcm_s16le":
+                    audio_params["bits_per_sample"] = int(incoming_audio_params.get("bits_per_sample") or 16)
                 audio_format = str(audio_params.get("format") or "opus").lower()
                 record_xiaozhi_ws_event(
                     base_payload(
@@ -659,18 +742,17 @@ async def api_project_xiaozhi_websocket(websocket: WebSocket, project_id: str, d
                         },
                     )
                 )
-                await websocket.send_text(
-                    _event_payload(
+                hello_ack = {"type": "hello", "version": protocol_version}
+                if client_header != "rehab-arm-alpha":
+                    hello_ack.update(
                         {
-                            "type": "hello",
-                            "version": protocol_version,
                             "transport": "websocket",
                             "features": {"mcp": True},
                             "audio_params": audio_params,
                             "control_boundary": "xiaozhi_handshake_only_not_motion_permission",
                         }
                     )
-                )
+                await websocket.send_text(_event_payload(hello_ack))
                 continue
 
             if event_type == "listen" and event.get("state") == "start":
@@ -918,6 +1000,8 @@ async def api_project_xiaozhi_websocket(websocket: WebSocket, project_id: str, d
 
             await websocket.send_text(_event_payload({"type": "error", "message": "unsupported_xiaozhi_event"}))
     except WebSocketDisconnect:
+        if audio_chunks:
+            await finish_xiaozhi_turn({}, disconnected=True)
         record_xiaozhi_ws_event(
             base_payload(
                 "xiaozhi_ws_input",

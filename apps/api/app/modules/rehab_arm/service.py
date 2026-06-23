@@ -65,6 +65,7 @@ MODEL_RELAY_PROVIDER_PRESETS = [
 MODEL_RELAY_TOKEN_PREFIX = "rehab-relay.v1"
 MODEL_RELAY_TOKEN_SCOPES = ["rehab_arm.model_relay.invoke", "rehab_arm.xiaozhi.websocket", "rehab_arm.vla_task.invoke"]
 XIAOZHI_V3_AUDIO_FRAME_TYPE_PCM = 0
+XIAOZHI_MIN_AUDIBLE_TTS_PCM_BYTES = 1600
 ARM_JOINT_MAP = [
     {
         "motor_id": "3",
@@ -1133,15 +1134,17 @@ def record_xiaozhi_ws_event(payload: dict[str, Any]) -> dict[str, Any]:
                 }
             )
         elif record_type == "xiaozhi_ws_input" and event in {"listen_start", "listen_detect", "listen_stop", "disconnect"}:
+            current_asr_text = str(current_payload.get("asr_text") or "")
             if event == "listen_start":
                 ui_state = "listening"
             elif event == "listen_detect":
                 ui_state = "wake_detected"
             elif event == "listen_stop":
-                ui_state = "thinking" if (current_payload.get("asr_text") or session_payload.get("asr_text")) else "idle"
+                ui_state = "thinking" if current_asr_text else "idle"
             else:
                 ui_state = "offline"
-            asr_error = current_payload.get("asr_error") or session_payload.get("asr_error") or ""
+            asr_error = current_payload.get("asr_error") if "asr_error" in current_payload else session_payload.get("asr_error")
+            asr_error = asr_error or ""
             session_payload.update(
                 {
                     "schema_version": "xiaozhi_session_v1",
@@ -1154,12 +1157,16 @@ def record_xiaozhi_ws_event(payload: dict[str, Any]) -> dict[str, Any]:
                     "asr_audio_format": current_payload.get("asr_audio_format") or session_payload.get("asr_audio_format") or current_payload.get("audio_format") or session_payload.get("audio_format") or "",
                     "official_audio_path": bool(current_payload.get("official_audio_path") or session_payload.get("official_audio_path") or False),
                     "compatibility_mode": current_payload.get("compatibility_mode") or session_payload.get("compatibility_mode") or "",
-                    "asr_called": bool(current_payload.get("asr_called") or session_payload.get("asr_called") or False),
-                    "asr_ok": bool(current_payload.get("asr_ok") or session_payload.get("asr_ok") or False),
-                    "asr_text": current_payload.get("asr_text") or session_payload.get("asr_text") or "",
-                    "asr_error": current_payload.get("asr_error") or session_payload.get("asr_error") or "",
-                    "entered_llm": bool(current_payload.get("entered_llm") or session_payload.get("entered_llm") or False),
-                    "entered_tts": bool(current_payload.get("entered_tts") or session_payload.get("entered_tts") or False),
+                    "asr_called": bool(current_payload.get("asr_called")) if "asr_called" in current_payload else bool(session_payload.get("asr_called") or False),
+                    "asr_ok": bool(current_payload.get("asr_ok")) if "asr_ok" in current_payload else bool(session_payload.get("asr_ok") or False),
+                    "asr_text": current_asr_text,
+                    "asr_error": asr_error,
+                    "transcript": current_asr_text,
+                    "reply": "",
+                    "kind": "",
+                    "ok": False,
+                    "entered_llm": bool(current_payload.get("entered_llm") or False),
+                    "entered_tts": bool(current_payload.get("entered_tts") or False),
                     "control_boundary": "xiaozhi_voice_relay_only_not_motion_permission",
                 }
             )
@@ -1653,6 +1660,20 @@ def synthesize_xiaozhi_tts(text: str, audio_params: dict[str, Any]) -> dict[str,
         pcm = _pcm_s16le_mono_resample(pcm, int(params.get("sample_rate") or 0), expected_rate)
         params = {**params, "sample_rate": expected_rate}
         resampled = True
+    if len(pcm) < XIAOZHI_MIN_AUDIBLE_TTS_PCM_BYTES:
+        return {
+            "ok": False,
+            "called": True,
+            "error": f"tts_audio_too_short:{len(pcm)}<{XIAOZHI_MIN_AUDIBLE_TTS_PCM_BYTES}",
+            "audio": b"",
+            "audio_format": "pcm_s16le",
+            "audio_params": params,
+            "provider_configured": True,
+            "provider": settings.rehab_arm_xiaozhi_tts_provider.strip() or settings.rehab_arm_model_relay_provider.strip() or "openai_compatible_tts",
+            "model": model,
+            "voice": voice,
+            "control_boundary": "tts_feedback_only_not_motion_permission",
+        }
     return {
         "ok": bool(pcm),
         "called": True,

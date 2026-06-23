@@ -11,6 +11,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.modules.rehab_arm.service import record_xiaozhi_ws_event
 from app.settings import get_settings
 from tests.helpers import auth_headers, create_project, issue_session_token, register_user
 
@@ -1416,6 +1417,58 @@ def test_rehab_arm_xiaozhi_websocket_accepts_scoped_token_and_records_io(tmp_pat
     get_settings.cache_clear()
 
 
+def test_rehab_arm_xiaozhi_websocket_defaults_to_m55_v1_pcm_contract(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
+    monkeypatch.delenv("REHAB_ARM_XIAOZHI_DEFAULT_PROTOCOL_VERSION", raising=False)
+    monkeypatch.delenv("REHAB_ARM_XIAOZHI_DEFAULT_AUDIO_FORMAT", raising=False)
+    monkeypatch.delenv("REHAB_ARM_XIAOZHI_ASR_EXTERNAL_ENABLED", raising=False)
+    get_settings.cache_clear()
+
+    owner_token, _owner_user_id = issue_session_token(client)
+    project = create_project(client, owner_token, name_prefix="Rehab XiaoZhi M55 V1")
+    project_id = project["id"]
+    device_id = f"nanopi-xiaozhi-m55v1-{uuid4().hex[:8]}"
+    client.post(
+        "/api/rehab-arm/v1/devices/register",
+        json={"device_id": device_id, "robot_id": "rehab-arm-alpha", "project_id": project_id},
+    )
+    token_response = client.post(
+        f"/api/rehab-arm/v1/projects/{project_id}/devices/{device_id}/model/relay-token",
+        headers=auth_headers(owner_token),
+        json={"ttl_seconds": 600, "label": "xiaozhi m55 v1 pcm"},
+    )
+    relay_token = token_response.json()["data"]["token"]
+    path = f"/api/rehab-arm/v1/projects/{project_id}/devices/{device_id}/xiaozhi/ws?robot_id=rehab-arm-alpha"
+
+    with client.websocket_connect(path, headers={**auth_headers(relay_token), "Client-Id": "m55-client-test"}) as websocket:
+        websocket.send_json({"type": "hello", "transport": "websocket"})
+        hello_ack = websocket.receive_json()
+        assert hello_ack["type"] == "hello"
+        assert hello_ack["version"] == 1
+        assert hello_ack["audio_params"]["format"] == "pcm_s16le"
+        assert hello_ack["audio_params"]["sample_rate"] == 16000
+        websocket.send_json({"session_id": "xz-m55-v1", "type": "listen", "state": "start"})
+        assert websocket.receive_json() == {"session_id": "xz-m55-v1", "type": "listen", "state": "start"}
+        websocket.send_bytes(b"\x01\x00" * 960)
+        websocket.send_json({"session_id": "xz-m55-v1", "type": "listen", "state": "stop"})
+        stt = websocket.receive_json()
+        assert stt["type"] == "stt"
+        assert stt["audio_duration_ms"] == 60
+        assert stt["audio_format"] == "pcm_s16le"
+        assert stt["error"] == "asr_not_configured"
+
+    dashboard = client.get("/api/rehab-arm/v1/devices/dashboard", params={"project_id": project_id})
+    events = dashboard.json()["data"]["recent_events"]
+    audio_events = [event for event in events if event["record_type"] == "xiaozhi_ws_input" and event["payload"].get("event") == "audio_frame"]
+    assert audio_events
+    payload = audio_events[-1]["payload"]
+    assert payload["protocol_version"] == 1
+    assert payload["binary_protocol"] == "xiaozhi_v1_raw_audio"
+    assert payload["payload_bytes"] == 1920
+    assert payload["audio_duration_ms"] == 60
+    get_settings.cache_clear()
+
+
 def test_rehab_arm_xiaozhi_websocket_accepts_official_opus_v3_contract(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
     monkeypatch.delenv("REHAB_ARM_MODEL_RELAY_API_KEY", raising=False)
@@ -1635,6 +1688,63 @@ def test_rehab_arm_xiaozhi_websocket_parses_v3_pcm_frames_and_surfaces_asr_state
     get_settings.cache_clear()
 
 
+def test_rehab_arm_xiaozhi_listen_stop_clears_stale_asr_text(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
+    get_settings.cache_clear()
+
+    device_id = "nanopi-stale-asr"
+    project_id = "project-stale-asr"
+    record_xiaozhi_ws_event(
+        {
+            "record_type": "xiaozhi_ws_reply",
+            "robot_id": "rehab-arm-alpha",
+            "device_id": device_id,
+            "project_id": project_id,
+            "session_id": "old",
+            "event": "reply",
+            "kind": "daily_chat",
+            "transcript": "old transcript",
+            "reply": "old reply",
+            "asr_text": "old transcript",
+            "asr_ok": True,
+            "entered_llm": True,
+            "entered_tts": True,
+        }
+    )
+    record_xiaozhi_ws_event(
+        {
+            "record_type": "xiaozhi_ws_input",
+            "robot_id": "rehab-arm-alpha",
+            "device_id": device_id,
+            "project_id": project_id,
+            "session_id": "new",
+            "event": "listen_stop",
+            "audio_params": {"format": "pcm_s16le", "sample_rate": 16000, "channels": 1, "frame_duration": 60},
+            "audio_bytes": 1920,
+            "audio_duration_ms": 60,
+            "asr_called": True,
+            "asr_ok": True,
+            "asr_text": "",
+            "asr_error": "asr_empty_text",
+            "asr_audio_format": "pcm_s16le",
+            "compatibility_mode": "debug_pcm_s16le_not_official_xiaozhi_audio",
+        }
+    )
+
+    dashboard = client.get("/api/rehab-arm/v1/devices/dashboard", params={"project_id": project_id})
+    latest = dashboard.json()["data"]["devices"][0]["xiaozhi_session"]["payload"]
+    assert latest["event"] == "listen_stop"
+    assert latest["asr_text"] == ""
+    assert latest["transcript"] == ""
+    assert latest["reply"] == ""
+    assert latest["kind"] == ""
+    assert latest["entered_llm"] is False
+    assert latest["entered_tts"] is False
+    assert latest["last_error"] == "asr_empty_text"
+    assert latest["ui_state"] == "idle"
+    get_settings.cache_clear()
+
+
 def test_rehab_arm_xiaozhi_websocket_qwen_asr_pcm_then_llm_flow(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
     monkeypatch.setenv("REHAB_ARM_MODEL_RELAY_PROVIDER", "qwen")
@@ -1653,6 +1763,7 @@ def test_rehab_arm_xiaozhi_websocket_qwen_asr_pcm_then_llm_flow(tmp_path, monkey
     monkeypatch.setenv("REHAB_ARM_XIAOZHI_TTS_API_KEY", "sk-tts-secret-never-return")
     monkeypatch.setenv("REHAB_ARM_XIAOZHI_TTS_EXTERNAL_ENABLED", "true")
     get_settings.cache_clear()
+
 
     calls: list[dict] = []
 
@@ -1788,4 +1899,94 @@ def test_rehab_arm_xiaozhi_websocket_qwen_asr_pcm_then_llm_flow(tmp_path, monkey
     assert latest["audio_bytes"] == len(tts_pcm)
     assert latest["ui_state"] == "speaking"
     assert latest["last_error"] == ""
+    get_settings.cache_clear()
+
+
+def test_rehab_arm_xiaozhi_tts_rejects_too_short_pcm(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
+    monkeypatch.setenv("REHAB_ARM_MODEL_RELAY_PROVIDER", "qwen")
+    monkeypatch.setenv("REHAB_ARM_MODEL_RELAY_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+    monkeypatch.setenv("REHAB_ARM_MODEL_RELAY_MODEL", "qwen-plus")
+    monkeypatch.setenv("REHAB_ARM_MODEL_RELAY_API_KEY", "sk-test-secret-never-return")
+    monkeypatch.setenv("REHAB_ARM_MODEL_RELAY_EXTERNAL_ENABLED", "true")
+    monkeypatch.setenv("REHAB_ARM_XIAOZHI_TTS_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+    monkeypatch.setenv("REHAB_ARM_XIAOZHI_TTS_MODEL", "qwen-tts")
+    monkeypatch.setenv("REHAB_ARM_XIAOZHI_TTS_VOICE", "Cherry")
+    monkeypatch.setenv("REHAB_ARM_XIAOZHI_TTS_API_KEY", "sk-tts-secret-never-return")
+    monkeypatch.setenv("REHAB_ARM_XIAOZHI_TTS_EXTERNAL_ENABLED", "true")
+    get_settings.cache_clear()
+
+    class FakeResponse:
+        def __init__(self, payload: dict | bytes) -> None:
+            self.payload = payload
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        def read(self) -> bytes:
+            if isinstance(self.payload, bytes):
+                return self.payload
+            return json.dumps(self.payload, ensure_ascii=False).encode("utf-8")
+
+    short_pcm = b"\x02\x00" * 320
+    wav_buffer = io.BytesIO()
+    with wave.open(wav_buffer, "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(16000)
+        wav.writeframes(short_pcm)
+
+    def fake_urlopen(request: urllib.request.Request, timeout: int = 0):
+        if request.full_url == "https://dashscope.test/short.wav":
+            return FakeResponse(wav_buffer.getvalue())
+        return FakeResponse({"output": {"audio": {"url": "https://dashscope.test/short.wav"}}})
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    owner_token, _owner_user_id = issue_session_token(client)
+    project = create_project(client, owner_token, name_prefix="Rehab XiaoZhi Short TTS")
+    project_id = project["id"]
+    device_id = f"nanopi-xiaozhi-short-tts-{uuid4().hex[:8]}"
+    client.post(
+        "/api/rehab-arm/v1/devices/register",
+        json={"device_id": device_id, "robot_id": "rehab-arm-alpha", "project_id": project_id},
+    )
+    token_response = client.post(
+        f"/api/rehab-arm/v1/projects/{project_id}/devices/{device_id}/model/relay-token",
+        headers=auth_headers(owner_token),
+        json={"ttl_seconds": 600, "label": "xiaozhi short tts"},
+    )
+    relay_token = token_response.json()["data"]["token"]
+    path = f"/api/rehab-arm/v1/projects/{project_id}/devices/{device_id}/xiaozhi/ws?robot_id=rehab-arm-alpha"
+
+    with client.websocket_connect(path, headers=auth_headers(relay_token)) as websocket:
+        websocket.send_json(
+            {
+                "type": "hello",
+                "version": 1,
+                "transport": "websocket",
+                "audio_params": {"format": "pcm_s16le", "sample_rate": 16000, "channels": 1, "bits_per_sample": 16, "frame_duration": 60},
+            }
+        )
+        assert websocket.receive_json()["type"] == "hello"
+        websocket.send_json({"session_id": "xz-short-tts", "type": "listen", "state": "start"})
+        assert websocket.receive_json()["state"] == "start"
+        websocket.send_json({"session_id": "xz-short-tts", "type": "listen", "state": "stop", "transcript": "请说一句话"})
+        assert websocket.receive_json()["type"] == "stt"
+        assert websocket.receive_json()["type"] == "llm"
+        assert websocket.receive_json()["type"] == "chat"
+        assert websocket.receive_json() == {"session_id": "xz-short-tts", "type": "tts", "state": "start"}
+        assert websocket.receive_json() == {"session_id": "xz-short-tts", "type": "tts", "state": "stop"}
+        assert websocket.receive_json()["type"] == "listen"
+
+    dashboard = client.get("/api/rehab-arm/v1/devices/dashboard", params={"project_id": project_id})
+    latest = dashboard.json()["data"]["devices"][0]["xiaozhi_session"]["payload"]
+    assert latest["event"] == "tts"
+    assert latest["ok"] is False
+    assert latest["audio_bytes"] == 0
+    assert latest["error"].startswith("tts_audio_too_short:640<")
+    assert latest["ui_state"] == "error"
     get_settings.cache_clear()
