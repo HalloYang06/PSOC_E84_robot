@@ -1515,11 +1515,13 @@ def _post_qwen_asr_flash(settings: Any, api_key: str, base_url: str, model: str,
         return {"ok": False, "called": True, "text": "", "error": "asr_response_not_json"}
     content = (((data.get("choices") or [{}])[0].get("message") or {}).get("content") or "").strip()
     text = _safe_text(content, 600)
+    meaningful = _is_meaningful_asr_text(text)
     return {
-        "ok": bool(text),
+        "ok": meaningful,
         "called": True,
-        "text": text,
-        "error": "" if text else "asr_empty_text",
+        "text": text if meaningful else "",
+        "raw_text": text,
+        "error": "" if meaningful else "asr_empty_or_punctuation",
         "provider": settings.rehab_arm_xiaozhi_asr_provider.strip() or "qwen",
         "model": model,
     }
@@ -1592,11 +1594,13 @@ def transcribe_xiaozhi_pcm(audio_bytes: bytes, audio_params: dict[str, Any]) -> 
     except json.JSONDecodeError:
         return {"ok": False, "called": True, "text": "", "error": "asr_response_not_json"}
     text = _safe_text(data.get("text") or data.get("transcript") or data.get("result") or "", 600)
+    meaningful = _is_meaningful_asr_text(text)
     return {
-        "ok": bool(text),
+        "ok": meaningful,
         "called": True,
-        "text": text,
-        "error": "" if text else "asr_empty_text",
+        "text": text if meaningful else "",
+        "raw_text": text,
+        "error": "" if meaningful else "asr_empty_or_punctuation",
         "provider": settings.rehab_arm_xiaozhi_asr_provider.strip() or settings.rehab_arm_model_relay_provider.strip() or "openai_compatible_asr",
         "model": model,
         "asr_audio_prep": asr_audio_prep,
@@ -1832,6 +1836,13 @@ def _safe_text(value: Any, limit: int = 800) -> str:
     for token in DANGEROUS_VLA_OUTPUTS:
         text = re.sub(re.escape(token), "[blocked_low_level_field]", text, flags=re.IGNORECASE)
     return text[:limit]
+
+
+def _is_meaningful_asr_text(text: str) -> bool:
+    normalized = _safe_text(text, 80)
+    if not normalized:
+        return False
+    return any(ch.isalnum() or "\u4e00" <= ch <= "\u9fff" for ch in normalized)
 
 
 def _relay_classification(payload: dict[str, Any], external_payload: dict[str, Any], external_ok: bool) -> dict[str, Any]:
