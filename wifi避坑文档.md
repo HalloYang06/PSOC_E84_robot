@@ -1976,3 +1976,40 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
    - `tts_fwd` 从 `0/0` 增长
    - `tts_fail` 不再随 binary 包数增长
    - LVGL 不应长期卡在“正在思考”或频繁跳“连接中”
+
+## 45. 2026-06-23 小智连接不稳定时先分清“断线”和“TTS 未下发”
+
+现象：
+
+1. 现场反馈 LVGL 小智连接状态一直跳，一轮后显示连接中。
+2. 实测 `m55qa_status` 曾出现：
+   - `wlan=1 ready=1 ip=192.168.3.32`
+   - `xz_token=1 token_len=442`
+   - `xz_ws=0 xz_stage=80 xz_errno=0`
+   - `srv_stt=1 srv_tts=0/0/0`
+   - `tts_fwd=0/0 tts_fail=1`
+3. 手动 `m55qa_xz_reconnect` 可恢复：
+   - `xz_ws=1 xz_stage=70`
+   - `srv_hello` 增长
+
+判断：
+
+1. 这不是 WiFi/token 丢失；WiFi、IP、token 都健康。
+2. 当前更像一轮语音 stop 后平台未形成可播放 TTS，随后 WebSocket 进入断开/重连。
+3. 产品体验上不应让自动重连失败反复覆盖成“连接中”，否则用户会觉得按键被锁死。
+
+修复：
+
+1. M55 自动重连失败时，LVGL 状态改为 `READY/小智离线，按说话重试`，保留用户操作入口。
+2. 平台 XiaoZhi TTS 记录新增：
+   - `sent_frames`
+   - `sent_bytes`
+3. 下一轮 QA 可直接区分：
+   - 平台 `audio_bytes>0 sent_bytes==audio_bytes` 但 M55 `tts_fwd=0`：查 WebSocket/M55/M33 下行。
+   - 平台 `audio_bytes=0 sent_bytes=0 error=...`：查平台 TTS/ASR/LLM，不再误判为板端喇叭。
+
+验证：
+
+1. 平台小智测试通过：`python -m pytest apps/api/tests/test_rehab_arm_sync.py -k "xiaozhi"`，10 passed。
+2. M55 build 通过：`text=1441032 data=68744 bss=4542096`。
+3. 手动 `m55qa_xz_reconnect` 后状态恢复到 `xz_ws=1 xz_stage=70`。
