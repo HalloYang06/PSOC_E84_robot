@@ -1537,7 +1537,48 @@ def transcribe_xiaozhi_pcm(audio_bytes: bytes, audio_params: dict[str, Any]) -> 
     }
 
 
-def transcribe_xiaozhi_audio(audio_bytes: bytes, audio_params: dict[str, Any]) -> dict[str, Any]:
+def _decode_xiaozhi_opus_packets(audio_packets: list[bytes], audio_params: dict[str, Any]) -> dict[str, Any]:
+    if not audio_packets:
+        return {"ok": False, "pcm": b"", "error": "no_opus_packets", "packet_count": 0}
+    sample_rate = _audio_param_int(audio_params, "sample_rate", 16000)
+    channels = _audio_param_int(audio_params, "channels", 1)
+    frame_duration = _audio_param_int(audio_params, "frame_duration", 60)
+    frame_size = max(1, sample_rate * frame_duration // 1000)
+    try:
+        import opuslib  # type: ignore[import-not-found]
+    except Exception as exc:  # noqa: BLE001 - optional runtime dependency diagnostic.
+        return {
+            "ok": False,
+            "pcm": b"",
+            "error": f"opus_decoder_unavailable:{type(exc).__name__}",
+            "packet_count": len(audio_packets),
+        }
+    try:
+        decoder = opuslib.Decoder(sample_rate, channels)
+        pcm = bytearray()
+        for packet in audio_packets:
+            if not packet:
+                continue
+            pcm.extend(decoder.decode(packet, frame_size, decode_fec=False))
+    except Exception as exc:  # noqa: BLE001 - expose decode failures without crashing the WebSocket.
+        return {
+            "ok": False,
+            "pcm": b"",
+            "error": f"opus_decode_failed:{type(exc).__name__}",
+            "packet_count": len(audio_packets),
+        }
+    return {
+        "ok": bool(pcm),
+        "pcm": bytes(pcm),
+        "error": "" if pcm else "opus_decode_empty_pcm",
+        "packet_count": len(audio_packets),
+        "sample_rate": sample_rate,
+        "channels": channels,
+        "frame_duration": frame_duration,
+    }
+
+
+def transcribe_xiaozhi_audio(audio_bytes: bytes, audio_params: dict[str, Any], audio_packets: list[bytes] | None = None) -> dict[str, Any]:
     audio_format = _env_text(audio_params.get("format")).lower()
     if audio_format == "pcm_s16le":
         result = transcribe_xiaozhi_pcm(audio_bytes, audio_params)
@@ -1545,15 +1586,33 @@ def transcribe_xiaozhi_audio(audio_bytes: bytes, audio_params: dict[str, Any]) -
         result["compatibility_mode"] = "debug_pcm_s16le_not_official_xiaozhi_audio"
         return result
     if audio_format == "opus":
-        return {
-            "ok": False,
-            "called": False,
-            "text": "",
-            "error": "opus_decode_not_configured",
-            "audio_format": "opus",
-            "official_audio_path": True,
-            "detail": "official XiaoZhi audio payload is Opus; install/configure server-side Opus decode or keep ASR upstream streaming Opus",
+        packets = audio_packets if audio_packets is not None else ([audio_bytes] if audio_bytes else [])
+        decode_result = _decode_xiaozhi_opus_packets(packets, audio_params)
+        if not decode_result.get("ok"):
+            return {
+                "ok": False,
+                "called": False,
+                "text": "",
+                "error": str(decode_result.get("error") or "opus_decode_failed"),
+                "audio_format": "opus",
+                "official_audio_path": True,
+                "opus_packet_count": int(decode_result.get("packet_count") or 0),
+                "detail": "official XiaoZhi audio payload is Opus; install python opuslib plus system libopus on the server to decode before ASR",
+            }
+        pcm_params = {
+            "format": "pcm_s16le",
+            "sample_rate": int(decode_result.get("sample_rate") or _audio_param_int(audio_params, "sample_rate", 16000)),
+            "channels": int(decode_result.get("channels") or _audio_param_int(audio_params, "channels", 1)),
+            "bits_per_sample": 16,
+            "frame_duration": int(decode_result.get("frame_duration") or _audio_param_int(audio_params, "frame_duration", 60)),
         }
+        result = transcribe_xiaozhi_pcm(bytes(decode_result.get("pcm") or b""), pcm_params)
+        result["audio_format"] = "opus"
+        result["decoded_audio_format"] = "pcm_s16le"
+        result["official_audio_path"] = True
+        result["opus_packet_count"] = int(decode_result.get("packet_count") or len(packets))
+        result["decoded_pcm_bytes"] = len(bytes(decode_result.get("pcm") or b""))
+        return result
     return {
         "ok": False,
         "called": False,

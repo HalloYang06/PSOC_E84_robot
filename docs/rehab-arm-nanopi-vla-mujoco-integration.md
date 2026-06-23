@@ -240,7 +240,7 @@ The board may temporarily send `audio_params.format = "pcm_s16le"` while the M55
 Current server behavior:
 
 - no `Protocol-Version` header: default to `version=1`, raw binary audio, 16 kHz mono S16LE PCM, 60 ms frames.
-- `format=opus`: accepted as the official XiaoZhi audio path. If server-side Opus decoding is not configured yet, STT returns `error = opus_decode_not_configured` instead of silently pretending to understand audio.
+- `format=opus`: accepted as the official XiaoZhi audio path. The server preserves WebSocket packet boundaries, decodes each Opus frame to 16 kHz mono S16LE PCM with `opuslib`/system `libopus`, then sends the decoded WAV to the configured ASR provider. If the decoder runtime is missing or a packet cannot be decoded, STT returns an explicit `opus_decoder_unavailable:*` or `opus_decode_failed:*` error instead of silently pretending to understand audio.
 - `format=pcm_s16le`: accepted as the current onsite M55 compatibility branch. The server wraps 16 kHz mono PCM S16LE into WAV and sends it to the configured ASR provider.
 - `hello.version` must match `Protocol-Version` when the header is present.
 - TTS provider output must decode to audible 16 kHz mono S16LE PCM. Extremely short PCM output, such as the observed 640-byte/20 ms downlink, is recorded as `tts_audio_too_short` and is not forwarded as fake speech.
@@ -458,5 +458,6 @@ The platform should expose the model and simulation results as evidence. It shou
 - Completed: platform XiaoZhi WebSocket now defaults clients without `Protocol-Version` to `version=1` and `pcm_s16le`, matching the current stable Infineon M55/M33 image instead of forcing v3/Opus during onsite bring-up.
 - Completed: `hello` without `audio_params` preserves the negotiated default instead of silently falling back to Opus.
 - Completed: TTS PCM shorter than the audible threshold is reported as `tts_audio_too_short` and not forwarded to the board, preventing 640-byte noise bursts from being treated as successful human speech.
-- Validation: `python -m pytest apps/api/tests/test_rehab_arm_sync.py -k "xiaozhi"` passed, including v1/raw-PCM default, explicit v3/Opus compatibility, stale ASR clearing, and short-TTS rejection.
-- Boundary: official v3/Opus remains available when a client sends `Protocol-Version: 3` and Opus audio params explicitly; the default is changed only to match the current deployed board path.
+- Completed: official v3/Opus audio now decodes server-side before ASR when Python `opuslib` and system `libopus` are available. The WebSocket router passes the original Opus packet list into ASR so decoder frame boundaries match the XiaoZhi protocol.
+- Validation: `python -m pytest apps/api/tests/test_rehab_arm_sync.py -k "xiaozhi"` passed, including v1/raw-PCM default, explicit v3/Opus compatibility, Opus-to-ASR decode, stale ASR clearing, and short-TTS rejection.
+- Boundary: official v3/Opus remains available when a client sends `Protocol-Version: 3` and Opus audio params explicitly; the default is changed only to match the current deployed board path. Cloud deployment must install both `opuslib==3.0.1` and the OS `libopus` runtime.

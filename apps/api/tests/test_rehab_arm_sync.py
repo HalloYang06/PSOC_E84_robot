@@ -4,6 +4,8 @@ from pathlib import Path
 import hashlib
 import io
 import json
+import sys
+import types
 import urllib.request
 import wave
 from uuid import uuid4
@@ -1526,7 +1528,7 @@ def test_rehab_arm_xiaozhi_websocket_accepts_official_opus_v3_contract(tmp_path,
         assert stt["type"] == "stt"
         assert stt["audio_format"] == "opus"
         assert stt["official_audio_path"] is True
-        assert stt["error"] == "opus_decode_not_configured"
+        assert stt["error"].startswith("opus_")
         llm = websocket.receive_json()
         assert llm["type"] == "llm"
         assert llm["entered_llm"] is False
@@ -1545,6 +1547,147 @@ def test_rehab_arm_xiaozhi_websocket_accepts_official_opus_v3_contract(tmp_path,
     assert latest["official_audio_path"] is True
     assert latest["asr_audio_format"] == "opus"
     assert latest["ui_state"] in {"thinking", "speaking", "idle", "error"}
+    get_settings.cache_clear()
+
+
+def test_rehab_arm_xiaozhi_websocket_decodes_official_opus_to_asr(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
+    monkeypatch.setenv("REHAB_ARM_MODEL_RELAY_PROVIDER", "qwen")
+    monkeypatch.setenv("REHAB_ARM_MODEL_RELAY_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+    monkeypatch.setenv("REHAB_ARM_MODEL_RELAY_MODEL", "qwen-plus")
+    monkeypatch.setenv("REHAB_ARM_MODEL_RELAY_API_KEY", "sk-test-secret-never-return")
+    monkeypatch.setenv("REHAB_ARM_MODEL_RELAY_EXTERNAL_ENABLED", "true")
+    monkeypatch.setenv("REHAB_ARM_XIAOZHI_ASR_PROVIDER", "qwen")
+    monkeypatch.setenv("REHAB_ARM_XIAOZHI_ASR_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+    monkeypatch.setenv("REHAB_ARM_XIAOZHI_ASR_MODEL", "qwen3-asr-flash")
+    monkeypatch.setenv("REHAB_ARM_XIAOZHI_ASR_API_KEY", "sk-asr-secret-never-return")
+    monkeypatch.setenv("REHAB_ARM_XIAOZHI_ASR_EXTERNAL_ENABLED", "true")
+    monkeypatch.delenv("REHAB_ARM_XIAOZHI_TTS_EXTERNAL_ENABLED", raising=False)
+    get_settings.cache_clear()
+
+    decoded_packets: list[bytes] = []
+
+    class FakeOpusDecoder:
+        def __init__(self, sample_rate: int, channels: int) -> None:
+            assert sample_rate == 16000
+            assert channels == 1
+
+        def decode(self, packet: bytes, frame_size: int, decode_fec: bool = False) -> bytes:
+            assert frame_size == 960
+            assert decode_fec is False
+            decoded_packets.append(packet)
+            return b"\x01\x00" * frame_size
+
+    fake_opuslib = types.SimpleNamespace(Decoder=FakeOpusDecoder)
+    monkeypatch.setitem(sys.modules, "opuslib", fake_opuslib)
+
+    calls: list[dict] = []
+
+    class FakeResponse:
+        def __init__(self, payload: dict) -> None:
+            self.payload = payload
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return json.dumps(self.payload, ensure_ascii=False).encode("utf-8")
+
+    def fake_urlopen(request: urllib.request.Request, timeout: int = 0):
+        body = json.loads((request.data or b"{}").decode("utf-8"))
+        calls.append({"url": request.full_url, "body": body})
+        if body["model"] == "qwen3-asr-flash":
+            audio_data = body["messages"][0]["content"][0]["input_audio"]["data"]
+            assert audio_data.startswith("data:audio/wav;base64,")
+            return FakeResponse({"choices": [{"message": {"content": "请帮我开始康复训练"}}]})
+        return FakeResponse(
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    "classification": "daily_chat",
+                                    "operator_facing_reply": "我听到了，准备进入康复训练语音交互。",
+                                    "summary": "语音链路已打通",
+                                },
+                                ensure_ascii=False,
+                            )
+                        }
+                    }
+                ]
+            }
+        )
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    owner_token, _owner_user_id = issue_session_token(client)
+    project = create_project(client, owner_token, name_prefix="Rehab XiaoZhi Opus ASR")
+    project_id = project["id"]
+    device_id = f"nanopi-xiaozhi-opus-asr-{uuid4().hex[:8]}"
+    client.post(
+        "/api/rehab-arm/v1/devices/register",
+        json={"device_id": device_id, "robot_id": "rehab-arm-alpha", "project_id": project_id},
+    )
+    token_response = client.post(
+        f"/api/rehab-arm/v1/projects/{project_id}/devices/{device_id}/model/relay-token",
+        headers=auth_headers(owner_token),
+        json={"ttl_seconds": 600, "label": "xiaozhi opus asr"},
+    )
+    relay_token = token_response.json()["data"]["token"]
+    path = f"/api/rehab-arm/v1/projects/{project_id}/devices/{device_id}/xiaozhi/ws?robot_id=rehab-arm-alpha"
+
+    with client.websocket_connect(
+        path,
+        headers={
+            **auth_headers(relay_token),
+            "Protocol-Version": "3",
+            "Device-Id": device_id,
+            "Client-Id": "m55-client-test",
+        },
+    ) as websocket:
+        websocket.send_json(
+            {
+                "type": "hello",
+                "version": 3,
+                "features": {"mcp": True},
+                "transport": "websocket",
+                "audio_params": {"format": "opus", "sample_rate": 16000, "channels": 1, "frame_duration": 60},
+            }
+        )
+        assert websocket.receive_json()["type"] == "hello"
+        websocket.send_json({"session_id": "xz-opus-asr", "type": "listen", "state": "start", "mode": "auto_stop"})
+        assert websocket.receive_json()["state"] == "start"
+        opus_packet_1 = b"opus-packet-one"
+        opus_packet_2 = b"opus-packet-two"
+        websocket.send_bytes(bytes([0, 0]) + len(opus_packet_1).to_bytes(2, "big") + opus_packet_1)
+        websocket.send_bytes(bytes([0, 0]) + len(opus_packet_2).to_bytes(2, "big") + opus_packet_2)
+        websocket.send_json({"session_id": "xz-opus-asr", "type": "listen", "state": "stop"})
+        stt = websocket.receive_json()
+        assert stt["type"] == "stt"
+        assert stt["ok"] is True
+        assert stt["text"] == "请帮我开始康复训练"
+        assert stt["audio_format"] == "opus"
+        assert stt["official_audio_path"] is True
+        llm = websocket.receive_json()
+        assert llm["type"] == "llm"
+        assert llm["entered_llm"] is True
+        assert websocket.receive_json()["type"] == "chat"
+        assert websocket.receive_json() == {"session_id": "xz-opus-asr", "type": "tts", "state": "start"}
+        assert websocket.receive_json() == {"session_id": "xz-opus-asr", "type": "tts", "state": "stop"}
+        assert websocket.receive_json()["type"] == "listen"
+
+    assert decoded_packets == [opus_packet_1, opus_packet_2]
+    assert [call["body"]["model"] for call in calls] == ["qwen3-asr-flash", "qwen-plus"]
+    dashboard = client.get("/api/rehab-arm/v1/devices/dashboard", params={"project_id": project_id})
+    latest = dashboard.json()["data"]["devices"][0]["xiaozhi_session"]["payload"]
+    assert latest["asr_audio_format"] == "opus"
+    assert latest["official_audio_path"] is True
+    assert latest["asr_ok"] is True
+    assert latest["entered_llm"] is True
     get_settings.cache_clear()
 
 

@@ -578,7 +578,7 @@ async def api_project_xiaozhi_websocket(websocket: WebSocket, project_id: str, d
         duration_ms = pcm_duration_ms(audio_bytes, audio_params)
         asr_result: dict = {"ok": bool(transcript), "called": False, "text": transcript, "error": ""}
         if not transcript and audio_blob:
-            asr_result = transcribe_xiaozhi_audio(audio_blob, audio_params)
+            asr_result = transcribe_xiaozhi_audio(audio_blob, audio_params, audio_chunks)
             transcript = str(asr_result.get("text") or "")
         record_xiaozhi_ws_event(
             base_payload(
@@ -802,7 +802,7 @@ async def api_project_xiaozhi_websocket(websocket: WebSocket, project_id: str, d
                 duration_ms = pcm_duration_ms(audio_bytes, audio_params)
                 asr_result: dict = {"ok": bool(transcript), "called": False, "text": transcript, "error": ""}
                 if not transcript and audio_blob:
-                    asr_result = transcribe_xiaozhi_audio(audio_blob, audio_params)
+                    asr_result = transcribe_xiaozhi_audio(audio_blob, audio_params, audio_chunks)
                     transcript = str(asr_result.get("text") or "")
                 record_xiaozhi_ws_event(
                     base_payload(

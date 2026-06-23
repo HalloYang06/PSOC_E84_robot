@@ -29,13 +29,15 @@ git push origin ai/game-loop-core
 # 2. Ubuntu server: update the deployed checkout.
 ssh -i .codex-cloud-ssh\tencent_lighthouse_ed25519 `
   -o UserKnownHostsFile=.codex-cloud-ssh\known_hosts `
-  ubuntu@106.55.62.122 "cd ~/apps/ai-collab && git pull --ff-only origin ai/game-loop-core && npm install && npm run build:web && RESTART=1 scripts/start-cloud-prod.sh"
+  ubuntu@106.55.62.122 "cd ~/apps/ai-collab && git pull --ff-only origin ai/game-loop-core && sudo apt-get update && sudo apt-get install -y libopus0 && apps/api/.venv/bin/python -m pip install -r apps/api/requirements.txt && npm install && npm run build:web && RESTART=1 scripts/start-cloud-prod.sh"
 
 # 3. Development machine: verify Web/API fingerprint and public proxy.
 python scripts/check_web_api_alignment.py --web-base http://106.55.62.122:3001 --api-base http://106.55.62.122:8011 --project-id fe9bd342-f5ef-4afe-9c73-e7caa2ed17dd
 ```
 
 If `git pull --ff-only` is blocked by cloud-local tracked edits, save them first with a named stash instead of overwriting them. Do not stash databases, SSH keys, runtime archives, or other local secret/runtime files. After deployment, record the stash name in the handoff if it still exists.
+
+XiaoZhi official Opus ASR requires both the Python package in `apps/api/requirements.txt` and the OS Opus runtime. Keep `sudo apt-get install -y libopus0` and `apps/api/.venv/bin/python -m pip install -r apps/api/requirements.txt` in the cloud update command when deploying voice-link changes; otherwise `opuslib` imports but fails with `Could not find Opus library`.
 
 For frontend changes, follow the user-view QA rule after deployment: open the real cloud page, verify the entry point as a user, capture a screenshot when the browser tool is available, and confirm there is no horizontal overflow or hidden dangerous action.
 
