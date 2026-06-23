@@ -13,7 +13,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.modules.rehab_arm.service import record_xiaozhi_ws_event
+from app.modules.rehab_arm.service import record_xiaozhi_ws_event, transcribe_xiaozhi_pcm
 from app.settings import get_settings
 from tests.helpers import auth_headers, create_project, issue_session_token, register_user
 
@@ -2044,6 +2044,56 @@ def test_rehab_arm_xiaozhi_websocket_qwen_asr_pcm_then_llm_flow(tmp_path, monkey
     assert latest["sent_bytes"] == len(tts_pcm)
     assert latest["ui_state"] == "speaking"
     assert latest["last_error"] == ""
+    get_settings.cache_clear()
+
+
+def test_rehab_arm_xiaozhi_asr_trims_and_boosts_quiet_pcm(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
+    monkeypatch.setenv("REHAB_ARM_MODEL_RELAY_PROVIDER", "qwen")
+    monkeypatch.setenv("REHAB_ARM_MODEL_RELAY_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+    monkeypatch.setenv("REHAB_ARM_MODEL_RELAY_MODEL", "qwen-plus")
+    monkeypatch.setenv("REHAB_ARM_MODEL_RELAY_API_KEY", "sk-test-secret-never-return")
+    monkeypatch.setenv("REHAB_ARM_MODEL_RELAY_EXTERNAL_ENABLED", "true")
+    monkeypatch.setenv("REHAB_ARM_XIAOZHI_ASR_PROVIDER", "qwen")
+    monkeypatch.setenv("REHAB_ARM_XIAOZHI_ASR_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+    monkeypatch.setenv("REHAB_ARM_XIAOZHI_ASR_MODEL", "qwen3-asr-flash")
+    monkeypatch.setenv("REHAB_ARM_XIAOZHI_ASR_API_KEY", "sk-asr-secret-never-return")
+    monkeypatch.setenv("REHAB_ARM_XIAOZHI_ASR_EXTERNAL_ENABLED", "true")
+    monkeypatch.delenv("REHAB_ARM_XIAOZHI_TTS_EXTERNAL_ENABLED", raising=False)
+    get_settings.cache_clear()
+
+    calls: list[dict] = []
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return json.dumps({"choices": [{"message": {"content": "你好小智"}}]}, ensure_ascii=False).encode("utf-8")
+
+    def fake_urlopen(request: urllib.request.Request, timeout: int = 0):
+        body = json.loads((request.data or b"{}").decode("utf-8"))
+        calls.append(body)
+        return FakeResponse()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    quiet_voice = b"".join(int(1800).to_bytes(2, "little", signed=True) for _ in range(16000))
+    pcm = (b"\x00\x00" * 16000) + quiet_voice + (b"\x00\x00" * 16000)
+    result = transcribe_xiaozhi_pcm(
+        pcm,
+        {"format": "pcm_s16le", "sample_rate": 16000, "channels": 1, "bits_per_sample": 16, "frame_duration": 60},
+    )
+
+    assert result["ok"] is True
+    assert result["text"] == "你好小智"
+    assert result["prepared_audio_bytes"] < len(pcm)
+    assert result["asr_audio_prep"]["trimmed"] is True
+    assert result["asr_audio_prep"]["gain_applied"] is True
+    assert calls
     get_settings.cache_clear()
 
 

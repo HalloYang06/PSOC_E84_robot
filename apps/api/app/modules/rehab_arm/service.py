@@ -1331,6 +1331,65 @@ def _pcm_s16le_to_wav_bytes(pcm_bytes: bytes, audio_params: dict[str, Any]) -> b
     return buffer.getvalue()
 
 
+def _prepare_pcm_s16le_for_asr(pcm_bytes: bytes, audio_params: dict[str, Any]) -> tuple[bytes, dict[str, int | bool]]:
+    sample_rate = _audio_param_int(audio_params, "sample_rate", 16000)
+    channels = _audio_param_int(audio_params, "channels", 1)
+    frame_samples = max(1, sample_rate * 20 // 1000 * channels)
+    frame_bytes = frame_samples * 2
+    threshold_avg = 90
+    threshold_peak = 600
+    speech_start: int | None = None
+    speech_end = 0
+    peak = 0
+
+    if len(pcm_bytes) < frame_bytes or (len(pcm_bytes) & 1):
+        return pcm_bytes, {"trimmed": False, "gain_applied": False, "peak": 0}
+
+    for offset in range(0, len(pcm_bytes) - 1, frame_bytes):
+        frame = pcm_bytes[offset : min(len(pcm_bytes), offset + frame_bytes)]
+        sample_count = len(frame) // 2
+        if sample_count <= 0:
+            continue
+        frame_peak = 0
+        frame_sum = 0
+        for index in range(sample_count):
+            sample = int.from_bytes(frame[index * 2 : index * 2 + 2], "little", signed=True)
+            mag = abs(sample)
+            frame_sum += mag
+            if mag > frame_peak:
+                frame_peak = mag
+        peak = max(peak, frame_peak)
+        if (frame_sum // sample_count) >= threshold_avg or frame_peak >= threshold_peak:
+            if speech_start is None:
+                speech_start = offset
+            speech_end = offset + len(frame)
+
+    if speech_start is None:
+        return pcm_bytes, {"trimmed": False, "gain_applied": False, "peak": peak}
+
+    pad_bytes = sample_rate * channels * 2 * 200 // 1000
+    start = max(0, speech_start - pad_bytes)
+    end = min(len(pcm_bytes), speech_end + pad_bytes)
+    prepared = pcm_bytes[start:end]
+    trimmed = (start != 0) or (end != len(pcm_bytes))
+
+    if 0 < peak < 5000:
+        gain = min(8.0, 12000.0 / float(peak))
+        output = bytearray()
+        for index in range(len(prepared) // 2):
+            sample = int.from_bytes(prepared[index * 2 : index * 2 + 2], "little", signed=True)
+            scaled = int(sample * gain)
+            if scaled > 32767:
+                scaled = 32767
+            elif scaled < -32768:
+                scaled = -32768
+            output.extend(scaled.to_bytes(2, "little", signed=True))
+        prepared = bytes(output)
+        return prepared, {"trimmed": trimmed, "gain_applied": True, "peak": peak}
+
+    return prepared, {"trimmed": trimmed, "gain_applied": False, "peak": peak}
+
+
 def _asr_url(base_url: str) -> str:
     cleaned = base_url.strip().rstrip("/")
     if not cleaned:
@@ -1491,9 +1550,13 @@ def transcribe_xiaozhi_pcm(audio_bytes: bytes, audio_params: dict[str, Any]) -> 
     url = _asr_url(base_url)
     if not url:
         return {"ok": False, "called": False, "text": "", "error": "asr_base_url_not_configured"}
-    wav_bytes = _pcm_s16le_to_wav_bytes(audio_bytes, audio_params)
+    prepared_audio, asr_audio_prep = _prepare_pcm_s16le_for_asr(audio_bytes, audio_params)
+    wav_bytes = _pcm_s16le_to_wav_bytes(prepared_audio, audio_params)
     if model.lower().startswith("qwen3-asr-flash"):
-        return _post_qwen_asr_flash(settings, api_key, base_url, model, wav_bytes)
+        result = _post_qwen_asr_flash(settings, api_key, base_url, model, wav_bytes)
+        result["asr_audio_prep"] = asr_audio_prep
+        result["prepared_audio_bytes"] = len(prepared_audio)
+        return result
     boundary = f"----rehab-xiaozhi-asr-{int(time.time() * 1000)}"
     parts = [
         (
@@ -1536,6 +1599,8 @@ def transcribe_xiaozhi_pcm(audio_bytes: bytes, audio_params: dict[str, Any]) -> 
         "error": "" if text else "asr_empty_text",
         "provider": settings.rehab_arm_xiaozhi_asr_provider.strip() or settings.rehab_arm_model_relay_provider.strip() or "openai_compatible_asr",
         "model": model,
+        "asr_audio_prep": asr_audio_prep,
+        "prepared_audio_bytes": len(prepared_audio),
     }
 
 
