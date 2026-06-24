@@ -2054,3 +2054,72 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
    - `asr_ok` 是否变 true
    - `prepared_audio_bytes` 是否小于 `audio_bytes`
    - `srv_stt`、`srv_tts`、`tts_fwd` 是否增长
+
+## 47. 2026-06-24 一直“请再说一遍”不等于没进服务器
+
+现象：
+
+1. 现场听到或看到小智反复说“请再说一遍”。
+2. 云端 dashboard 对 `nanopi-m5` 显示仍然有真实链路数据：
+   - `audio_format=opus`
+   - `asr_called=true`
+   - `opus_packet_count=83`
+   - `sent_frames=83`
+   - `sent_bytes=9202`
+3. 旧会话里有一次 ASR 已识别出 `嗯，你是什么模型？`，但平台模型中转返回：
+   - `classification.type=none`
+   - `operator_facing_reply=请再说一遍。`
+   - `provider.configured=false`
+
+判断：
+
+1. 这不是 WiFi/token/WebSocket 没连上。
+2. 根因在云端平台：模型中转缺专用 key 时，把普通语音问题兜底成 `none`。
+3. 不要回到 WiFi 扫描、token 重配、WHD resources，除非同时出现 `wlan=0`、`token_len=0` 或 `xz_ws` 长时间恢复不了。
+
+修复：
+
+1. 平台仓库 `D:\ai合作产品` 已提交并部署：
+   - `1764e91b Fix XiaoZhi voice relay chat fallback`
+   - 云端健康检查：`deployment.build_sha=1764e91b140b`
+2. 模型中转现在可安全复用服务端 XiaoZhi ASR/TTS key，不会暴露给板端。
+3. `vla_language_from_voice` 中有有效文本的普通问句现在兜底为 `daily_chat`。
+4. 云端 smoke `你是什么模型` 已返回：
+   - `classification.type=daily_chat`
+   - `external_call_ok=true`
+   - qwen-plus 自然回复。
+
+下一轮现场验证：
+
+1. 直接用 LVGL 再按一次说话/停止，不需要重配 token。
+2. 若还有“请再说一遍”，先看平台 `asr_ok/asr_error/asr_text`：
+   - `asr_text` 为空：查采集/音量/ASR timeout。
+   - `asr_text` 有内容但回复错：查平台分类/LLM。
+
+## 48. 2026-06-24 Opus TTS 下行要按 frame_duration 节奏发
+
+现象：
+
+1. 平台显示已经合成并发送 TTS：
+   - `audio_format=opus`
+   - `opus_packet_count>0`
+   - `sent_frames>0`
+2. 现场仍可能听不到人声或只有一点杂音。
+3. 旧 dashboard 曾出现 `tts_send_timeout:frame=61`。
+
+判断：
+
+1. 官方 XiaoZhi Opus session 声明 `frame_duration=60`。
+2. 平台原来每包固定 sleep 20 ms，会把 60 ms 音频按 3 倍速压给板端。
+3. 这会让 M55/M33 speaker buffer 更容易超时或播放异常。
+
+修复：
+
+1. 平台 commit `1764e91b` 已把 TTS 下行 pacing 改成 `audio_params.frame_duration`，并限制在 10-120 ms。
+2. 官方 60 ms Opus TTS 现在按 60 ms 间隔发包。
+
+验证：
+
+1. 本地平台 6 个关键小智测试通过。
+2. 云端 3 个关键小智测试通过。
+3. 下一轮现场如果仍无声，优先比较平台 `sent_frames/sent_bytes/error` 与 M55 `tts_fwd/tts_fail`，再看 M33 speaker 日志。
