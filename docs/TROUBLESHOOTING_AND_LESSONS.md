@@ -1788,3 +1788,24 @@ Validation:
 
 Boundary:
 - If LVGL still freezes after this firmware, first check `lvgl_flush` and shell responsiveness. Do not assume platform or WiFi unless `xz_ws/token/wlan` regress.
+
+## 2026-06-24 - Stop can leave wake disabled unless M55 explicitly re-arms it
+
+Symptoms:
+- User reports the wake word no longer works after a manual XiaoZhi speak/stop turn.
+- `m55qa_status` shows `wake_ready=1` but `wake_on=0`.
+
+Root cause:
+- Manual capture start disables wake listening while the board is actively sending the user's utterance.
+- The stop path ended the session but did not re-enable wake listening, so the wake engine stayed ready but unarmed.
+
+Fix / trick:
+- M55 stop now re-arms `wake_listening` when the wake engine is ready.
+- It also resets wake streak state and skips a few immediate windows to avoid residual stop/audio windows causing a false trigger.
+
+Validation:
+- After `m55qa_capture_on` / `m55qa_capture_off`, status showed `wake_on=1 wake_ready=1`.
+- The same run kept WebSocket healthy and continued LVGL/status publishing after TTS.
+
+Boundary:
+- If wake still does not trigger while `wake_on=1`, inspect `frames/windows`, mic peak/avg, and wake engine confidence/gate values next.
