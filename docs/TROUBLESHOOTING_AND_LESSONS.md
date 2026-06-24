@@ -1,5 +1,27 @@
 # Troubleshooting And Lessons
 
+## 2026-06-24 - XiaoZhi Has Text Reply But No Speaker Voice Is A Playback Owner Issue
+
+Symptoms:
+- `m55qa_xz_text` triggers a real platform turn and the console shows:
+  - `asr text: 你好，请说一句你已经准备好了`
+  - `tts text: 我已经准备好了。`
+- The speaker still has no intelligible human voice, or only a little noise.
+- M55 direct `sound0` playback can stop M55 status/LVGL progress after TTS audio starts.
+
+Root cause:
+- This is not a WiFi/token/WebSocket/platform-entry failure.
+- The platform path reaches ASR and TTS text successfully.
+- The current speaker ownership is inconsistent:
+  - M55 `sound0` direct playback can freeze the CM55 voice service path.
+  - M33 `audio_playback_init()` returns `-RT_ENOSYS` because `BSP_USING_AUDIO` is disabled and logs `M55 owns sound0 for Xiaozhi`.
+
+Fix / trick:
+- Do not keep both M55 and M33 playback paths half-enabled.
+- Current M55 stable build mutes binary TTS before Opus decode/playback, preserving UI, WebSocket, ASR text, and TTS text stability.
+- If choosing M33 speaker, first enable/flash M33 `BSP_USING_AUDIO` and validate `audio_playback_probe_cmd`, then enable M55 `VOICE_TTS_PLAYBACK_TO_M33`.
+- If choosing M55 speaker, first fix `sound0` replay/queue/tx-complete behavior with a local PCM/tone test, then enable M55 `VOICE_TTS_PLAYBACK_TO_M55`.
+
 ## 2026-06-23 - Connection jumping is not automatically WiFi/token failure
 
 Symptoms:
