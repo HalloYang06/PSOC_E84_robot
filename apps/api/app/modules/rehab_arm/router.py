@@ -973,6 +973,7 @@ async def api_project_xiaozhi_websocket(websocket: WebSocket, project_id: str, d
                 tts_sent_frames = 0
                 tts_sent_bytes = 0
                 tts_send_error = ""
+                tts_frame_delay_s = max(0.01, min(0.12, float(audio_params.get("frame_duration") or 60) / 1000.0))
                 if tts_audio_packets:
                     for payload in tts_audio_packets:
                         frame_payload = bytes([0, 0]) + len(payload).to_bytes(2, "big") + payload if protocol_version == 3 else payload
@@ -983,7 +984,7 @@ async def api_project_xiaozhi_websocket(websocket: WebSocket, project_id: str, d
                             break
                         tts_sent_frames += 1
                         tts_sent_bytes += len(payload)
-                        await asyncio.sleep(0.02)
+                        await asyncio.sleep(tts_frame_delay_s)
                 elif tts_audio:
                     frame_bytes = max(
                         2,
@@ -1005,7 +1006,7 @@ async def api_project_xiaozhi_websocket(websocket: WebSocket, project_id: str, d
                             break
                         tts_sent_frames += 1
                         tts_sent_bytes += len(payload)
-                        await asyncio.sleep(0.02)
+                        await asyncio.sleep(tts_frame_delay_s)
                 record_xiaozhi_ws_event(
                     base_payload(
                         "xiaozhi_ws_tts",

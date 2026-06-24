@@ -1946,7 +1946,9 @@ def _relay_classification(payload: dict[str, Any], external_payload: dict[str, A
             raw_type = "vla_command"
         elif not prompt or len(prompt) <= 1:
             raw_type = "none"
-        elif re.search(r"你好|天气|聊天|谢谢|介绍", prompt):
+        elif re.search(r"你好|天气|聊天|谢谢|介绍|你是|模型|是谁|什么|怎么|为什么|多少|几点|今天|明天", prompt):
+            raw_type = "daily_chat"
+        elif input_type in {"voice_intent", "vla_language_from_voice"} and _is_meaningful_asr_text(prompt):
             raw_type = "daily_chat"
         else:
             raw_type = "vla_command" if input_type in {"vla_context", "high_level_task"} else "none"
@@ -2003,6 +2005,18 @@ def _vla_language_gate(classification: dict[str, Any], payload: dict[str, Any], 
     }
 
 
+def _fallback_operator_reply(payload: dict[str, Any], classification: dict[str, Any]) -> str:
+    kind = str(classification.get("type") or "none")
+    prompt = _safe_text(payload.get("prompt"), 160)
+    if kind == "daily_chat":
+        if re.search(r"你是|模型|是谁", prompt):
+            return "我是连接在康复机械臂平台上的小智语音助手，现在可以听你说话并通过平台回复。"
+        return f"我听到了：{prompt}" if prompt else "我在，请继续说。"
+    if kind == "vla_command":
+        return "已理解为康复训练相关意图，只会生成高层建议，不会直接下发运动控制。"
+    return "没有识别到有效语音，请再说一遍。"
+
+
 def _latest_camera_payload(device_id: str) -> dict[str, Any]:
     stereo_record = _device_latest(device_id, "stereo_vision_context") or {}
     stereo_payload = stereo_record.get("payload") if isinstance(stereo_record.get("payload"), dict) else {}
@@ -2023,10 +2037,7 @@ def _build_vla_language_context(relay_id: str, payload: dict[str, Any], classifi
         "input_type": payload.get("input_type"),
         "transcript": _safe_text(payload.get("prompt"), 600),
         "intent_label": _safe_text(external_payload.get("label") or classification.get("type"), 120),
-        "operator_facing_reply": _external_operator_reply(
-            external_payload,
-            "请再说一遍。" if classification.get("type") == "none" else "已理解，我会按高层建议处理，不会下发真实运动控制。",
-        ),
+        "operator_facing_reply": _external_operator_reply(external_payload, _fallback_operator_reply(payload, classification)),
         "classification": classification,
         "participates_in_vla_l": classification.get("type") == "vla_command",
         "audio_ref": audio_ref,
@@ -2124,13 +2135,32 @@ def _relay_chat_url(base_url: str) -> str:
     return f"{cleaned}/v1/chat/completions"
 
 
+def _model_relay_base_url(settings: Any) -> str:
+    return (
+        _env_text(settings.rehab_arm_model_relay_base_url)
+        or _env_text(settings.rehab_arm_xiaozhi_asr_base_url)
+        or _env_text(settings.rehab_arm_xiaozhi_tts_base_url)
+    )
+
+
+def _model_relay_api_key(settings: Any) -> str:
+    return (
+        _env_text(settings.rehab_arm_model_relay_api_key)
+        or _env_text(settings.rehab_arm_xiaozhi_asr_api_key)
+        or _env_text(settings.rehab_arm_xiaozhi_tts_api_key)
+    )
+
+
 def _post_openai_compatible_chat(settings: Any, payload: dict[str, Any], render: dict[str, Any]) -> dict[str, Any]:
-    url = _relay_chat_url(settings.rehab_arm_model_relay_base_url)
+    url = _relay_chat_url(_model_relay_base_url(settings))
     if not url:
         return {"ok": False, "error": "base_url_not_configured"}
     model = settings.rehab_arm_model_relay_model.strip()
     if not model:
         return {"ok": False, "error": "model_not_configured"}
+    api_key = _model_relay_api_key(settings)
+    if not api_key:
+        return {"ok": False, "error": "api_key_not_configured"}
     system = (
         "You are a medical rehabilitation arm command-center relay. "
         "Return JSON only. Required keys: classification (daily_chat, vla_command, or none), "
@@ -2168,7 +2198,7 @@ def _post_openai_compatible_chat(settings: Any, payload: dict[str, Any], render:
         url,
         data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
         headers={
-            "authorization": f"Bearer {settings.rehab_arm_model_relay_api_key.strip()}",
+            "authorization": f"Bearer {api_key}",
             "content-type": "application/json",
         },
         method="POST",
@@ -2207,7 +2237,7 @@ def record_model_relay_request(payload: dict[str, Any]) -> dict[str, Any]:
     request_record = telemetry_record("model_relay_request", payload)
     render = build_robot_render_state(request_record["device_id"])
     fresh_joints = [name for name, fresh in zip(render.get("joint_names", []), render.get("fresh", [])) if fresh]
-    provider_configured = bool(settings.rehab_arm_model_relay_api_key.strip())
+    provider_configured = bool(_model_relay_api_key(settings))
     external_enabled = bool(settings.rehab_arm_model_relay_external_enabled and provider_configured)
     provider_label = settings.rehab_arm_model_relay_provider.strip() or "server_model_relay"
     model_label = settings.rehab_arm_model_relay_model.strip() or "not_configured"

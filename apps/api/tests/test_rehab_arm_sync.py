@@ -1100,6 +1100,113 @@ def test_rehab_arm_model_relay_surfaces_real_daily_chat_reply(tmp_path, monkeypa
     get_settings.cache_clear()
 
 
+def test_rehab_arm_model_relay_falls_back_to_daily_chat_for_voice_questions(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
+    monkeypatch.delenv("REHAB_ARM_MODEL_RELAY_API_KEY", raising=False)
+    monkeypatch.setenv("REHAB_ARM_MODEL_RELAY_EXTERNAL_ENABLED", "false")
+    get_settings.cache_clear()
+
+    client.post(
+        "/api/rehab-arm/v1/devices/register",
+        json={"device_id": "nanopi-m5", "robot_id": "rehab-arm-alpha", "project_id": "project-rehab"},
+    )
+    response = client.post(
+        "/api/rehab-arm/v1/devices/nanopi-m5/model/relay",
+        json={
+            "robot_id": "rehab-arm-alpha",
+            "device_id": "nanopi-m5",
+            "project_id": "project-rehab",
+            "input_type": "vla_language_from_voice",
+            "prompt": "嗯，你是什么模型？",
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["provider"]["external_call_enabled"] is False
+    assert data["classification"]["type"] == "daily_chat"
+    assert data["vla_language_gate"]["route"] == "daily_chat_only"
+    assert data["operator_facing_reply"] != "请再说一遍。"
+    assert "小智语音助手" in data["operator_facing_reply"]
+    get_settings.cache_clear()
+
+
+def test_rehab_arm_model_relay_reuses_xiaozhi_server_key_without_exposing_it(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
+    monkeypatch.setenv("REHAB_ARM_MODEL_RELAY_PROVIDER", "qwen")
+    monkeypatch.setenv("REHAB_ARM_MODEL_RELAY_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+    monkeypatch.setenv("REHAB_ARM_MODEL_RELAY_MODEL", "qwen-plus")
+    monkeypatch.delenv("REHAB_ARM_MODEL_RELAY_API_KEY", raising=False)
+    monkeypatch.setenv("REHAB_ARM_MODEL_RELAY_EXTERNAL_ENABLED", "true")
+    monkeypatch.setenv("REHAB_ARM_XIAOZHI_ASR_API_KEY", "sk-shared-xiaozhi-secret-never-return")
+    get_settings.cache_clear()
+
+    from app.modules.rehab_arm import service as rehab_service
+
+    captured: dict[str, str] = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return json.dumps(
+                {
+                    "choices": [
+                        {
+                            "message": {
+                                "content": json.dumps(
+                                    {
+                                        "classification": "daily_chat",
+                                        "operator_facing_reply": "我是云端模型中转。",
+                                        "summary": "普通对话",
+                                        "label": "daily_chat",
+                                        "confidence": 0.91,
+                                    },
+                                    ensure_ascii=False,
+                                )
+                            }
+                        }
+                    ]
+                },
+                ensure_ascii=False,
+            ).encode("utf-8")
+
+    def fake_urlopen(request: urllib.request.Request, timeout: int = 0):
+        captured["authorization"] = dict(request.header_items()).get("Authorization") or dict(request.header_items()).get("authorization") or ""
+        return FakeResponse()
+
+    monkeypatch.setattr(rehab_service.urllib.request, "urlopen", fake_urlopen)
+    client.post(
+        "/api/rehab-arm/v1/devices/register",
+        json={"device_id": "nanopi-m5", "robot_id": "rehab-arm-alpha", "project_id": "project-rehab"},
+    )
+    response = client.post(
+        "/api/rehab-arm/v1/devices/nanopi-m5/model/relay",
+        json={
+            "robot_id": "rehab-arm-alpha",
+            "device_id": "nanopi-m5",
+            "project_id": "project-rehab",
+            "input_type": "vla_language_from_voice",
+            "prompt": "你是什么模型",
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert captured["authorization"] == "Bearer sk-shared-xiaozhi-secret-never-return"
+    assert data["provider"]["configured"] is True
+    assert data["provider"]["external_call_enabled"] is True
+    assert data["provider"]["external_call_ok"] is True
+    assert data["provider"]["api_key_exposed_to_device"] is False
+    assert data["operator_facing_reply"] == "我是云端模型中转。"
+    assert "sk-shared-xiaozhi-secret-never-return" not in response.text
+    get_settings.cache_clear()
+
+
 def test_rehab_arm_model_relay_blocks_external_low_level_output(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
     monkeypatch.setenv("REHAB_ARM_MODEL_RELAY_BASE_URL", "https://llm.example.test/v1")
@@ -2243,6 +2350,75 @@ def test_rehab_arm_xiaozhi_websocket_sends_opus_tts_frames_for_official_session(
     assert latest["opus_packet_count"] == 1
     assert latest["sent_frames"] == 1
     assert latest["sent_bytes"] == len(b"official-opus")
+    get_settings.cache_clear()
+
+
+def test_rehab_arm_xiaozhi_websocket_paces_official_opus_tts_at_frame_duration(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
+    monkeypatch.setenv("REHAB_ARM_MODEL_RELAY_EXTERNAL_ENABLED", "false")
+    get_settings.cache_clear()
+
+    from app.modules.rehab_arm import router as rehab_router
+
+    async def fake_sleep(delay: float) -> None:
+        sleep_delays.append(delay)
+
+    def fake_tts(_text: str, _audio_params: dict) -> dict:
+        return {
+            "ok": True,
+            "called": True,
+            "provider_configured": True,
+            "audio": b"opus-aopus-b",
+            "audio_packets": [b"opus-a", b"opus-b"],
+            "audio_format": "opus",
+            "source_audio_format": "pcm_s16le",
+            "pcm_bytes": 3840,
+            "opus_packet_count": 2,
+        }
+
+    sleep_delays: list[float] = []
+    monkeypatch.setattr(rehab_router.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(rehab_router, "synthesize_xiaozhi_tts", fake_tts)
+
+    owner_token, _owner_user_id = issue_session_token(client)
+    project = create_project(client, owner_token, name_prefix="Rehab XiaoZhi Opus TTS Pace")
+    project_id = project["id"]
+    device_id = f"nanopi-xiaozhi-opus-pace-{uuid4().hex[:8]}"
+    client.post(
+        "/api/rehab-arm/v1/devices/register",
+        json={"device_id": device_id, "robot_id": "rehab-arm-alpha", "project_id": project_id},
+    )
+    token_response = client.post(
+        f"/api/rehab-arm/v1/projects/{project_id}/devices/{device_id}/model/relay-token",
+        headers=auth_headers(owner_token),
+        json={"ttl_seconds": 600, "label": "xiaozhi opus tts pacing"},
+    )
+    relay_token = token_response.json()["data"]["token"]
+    path = f"/api/rehab-arm/v1/projects/{project_id}/devices/{device_id}/xiaozhi/ws?robot_id=rehab-arm-alpha"
+
+    with client.websocket_connect(path, headers={**auth_headers(relay_token), "Protocol-Version": "3"}) as websocket:
+        websocket.send_json(
+            {
+                "type": "hello",
+                "version": 3,
+                "transport": "websocket",
+                "features": {"mcp": True},
+                "audio_params": {"format": "opus", "sample_rate": 16000, "channels": 1, "frame_duration": 60},
+            }
+        )
+        assert websocket.receive_json()["type"] == "hello"
+        websocket.send_json({"session_id": "xz-opus-pace", "type": "listen", "state": "start"})
+        assert websocket.receive_json()["state"] == "start"
+        websocket.send_json({"session_id": "xz-opus-pace", "type": "listen", "state": "stop", "text": "你是什么模型"})
+        assert websocket.receive_json()["type"] == "stt"
+        assert websocket.receive_json()["type"] == "llm"
+        assert websocket.receive_json()["type"] == "chat"
+        assert websocket.receive_json()["type"] == "tts"
+        assert websocket.receive_bytes() == bytes([0, 0]) + len(b"opus-a").to_bytes(2, "big") + b"opus-a"
+        assert websocket.receive_bytes() == bytes([0, 0]) + len(b"opus-b").to_bytes(2, "big") + b"opus-b"
+        assert websocket.receive_json() == {"session_id": "xz-opus-pace", "type": "tts", "state": "stop"}
+
+    assert sleep_delays == [0.06, 0.06]
     get_settings.cache_clear()
 
 
