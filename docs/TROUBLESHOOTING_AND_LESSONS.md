@@ -1743,3 +1743,26 @@ Fix / trick:
 Validation:
 - Added and passed `test_rehab_arm_xiaozhi_websocket_paces_official_opus_tts_at_frame_duration`.
 - Cloud selected XiaoZhi tests passed after deployment.
+
+## 2026-06-24 - LVGL stop freeze can be caused by synchronous M55 WebSocket send
+
+Symptoms:
+- Pressing LVGL stop appears to freeze the XiaoZhi UI.
+- WiFi/token/WebSocket status can still be healthy.
+
+Root cause:
+- The stop action used M55 `voice_service_stop_xiaozhi_talk()`.
+- That path synchronously flushed a tail frame and sent `listen stop`; the WebSocket send path blocks on lwIP `tcpip_callback_with_block`.
+- If tcpip is busy, the UI worker waits and the user sees a frozen stop/thinking state.
+
+Fix / trick:
+- M55 manual/LVGL stop now calls `voice_service_stop_xiaozhi_listening_async()` and returns immediately.
+- `xz_stop` performs the server notification in the background.
+- Automatic EOU can still flush tail audio; manual stop favors UI responsiveness over the last partial frame.
+
+Validation:
+- `m55qa_capture_off` returns ACK with `tx_pending=0`.
+- A later `m55qa_status` showed `xz_listening=0`, `xz_ws=1`, `srv_tts=1/1/0`, `tts_fwd=58/237568`, and `tts_fail=0`.
+
+Boundary:
+- If LVGL still freezes after this firmware, first check `lvgl_flush` and shell responsiveness. Do not assume platform or WiFi unless `xz_ws/token/wlan` regress.
