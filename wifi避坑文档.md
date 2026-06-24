@@ -2166,3 +2166,42 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
 
 1. 直接在 LVGL 再按“说话/停止”验证；预期停止按钮不再卡死。
 2. 若界面仍卡住，先查串口 `m55qa_status` 的 `lvgl_flush` 是否增长、`xz_listening` 是否归零，再看是否是 LVGL 刷新/触摸层问题，而不是 XiaoZhi WebSocket stop。
+
+## 50. 2026-06-24 TTS 下行会卡死时，先关闭 M55/M33 播放路径保稳定
+
+现象：
+
+1. 平台 ASR/TTS 已打通，`m55qa_xz_text 你好，请说一句你已经准备好了` 能返回：
+   - `asr text: 你好，请说一句你已经准备好了`
+   - `tts text: 我已经准备好了。`
+2. 但一旦 M55 侧直接写 `sound0`，M55 状态发布会停止，现场表现为 LVGL/呼吸灯像卡死。
+3. 改为发给 M33 后，M33 打印 `audio_playback unavailable: M55 owns sound0 for Xiaozhi`，说明 M33 播放路径当前配置关闭，继续灌 TTS audio 只会挤占 IPC。
+
+当前稳定修复：
+
+1. M55 保留官方 XiaoZhi Opus/WebSocket/文本链路，但默认关闭 TTS 音频播放：
+   - `VOICE_TTS_PLAYBACK_TO_M33=0`
+   - `VOICE_TTS_PLAYBACK_TO_M55=0`
+2. 播放关闭时，TTS 二进制包在进入 Opus decode 前直接静音丢弃，避免解码/播放路径再次卡住 M55。
+3. 唤醒 UI 立即显示 `我在`，主界面提示使用 `xiaorui`，避开当前自定义中文字库未覆盖的“瑞”等字。
+
+验证：
+
+1. M55 build 通过。
+2. `program_with_resources.bat` 烧录成功：
+   - `rtthread.hex wrote 1683456 bytes`
+   - `whd_resources_all.bin wrote 466944 bytes`
+3. 串口 QA 后状态仍刷新：
+   - `xz_ws=1 xz_stage=70 xz_errno=0`
+   - `srv_hello=1 srv_stt=1 srv_tts=0/1/0`
+   - `xz_rx=7/29`
+   - `voice_svc` 从 `704` 继续增长到 `924`
+   - `lvgl_flush` 从 `342` 继续增长到 `363`
+
+下一步：
+
+1. 扬声器不要再同时半开 M55/M33 两条路径。
+2. 单独修复播放路径：
+   - 若坚持 M55 speaker：先修 `sound0` replay/Opus decode 卡死问题，再打开 `VOICE_TTS_PLAYBACK_TO_M55`。
+   - 若改 M33 speaker：先真正启用/验证 M33 `BSP_USING_AUDIO` 和 `audio_playback_probe_cmd`，再打开 `VOICE_TTS_PLAYBACK_TO_M33`。
+3. 播放路径未独立验证前，不要把“没有人声”误判为 WiFi/token/平台问题。

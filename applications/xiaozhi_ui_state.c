@@ -2,7 +2,7 @@
 
 #include <string.h>
 
-#define XIAOZHI_UI_THINKING_TIMEOUT_MS 20000U
+#define XIAOZHI_UI_THINKING_TIMEOUT_MS 12000U
 #define XIAOZHI_UI_SPEAKING_TIMEOUT_MS 30000U
 
 typedef struct
@@ -129,7 +129,7 @@ void xiaozhi_ui_state_mark_wake(const char *wake_word)
     g_xiaozhi_ui.snapshot.wake_count++;
     copy_text(g_xiaozhi_ui.snapshot.detail,
               sizeof(g_xiaozhi_ui.snapshot.detail),
-              (wake_word && wake_word[0]) ? wake_word : "我在听");
+              "我在");
     rt_mutex_release(&g_xiaozhi_ui.lock);
 }
 
