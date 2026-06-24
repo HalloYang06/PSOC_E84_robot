@@ -2283,3 +2283,72 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
 
 1. 若用户仍觉得人声不清，下一步优先调播放音量/增益/削波，或在平台侧确认 TTS Opus 包本身音质；不要回退到 WiFi/token。
 2. 若“唤醒词没用”，先查 `m55qa_status` 中 `wake_on`、`wake_ready`、`frames/windows` 是否增长。
+
+## 53. 2026-06-25 capture stop 不能停掉 M55 mic0，否则第二轮和唤醒都会假在线
+
+现象：
+
+1. 用户反馈唤醒词不行，且第二次提问时容易卡死。
+2. 串口状态一度显示 `wake_on=1 wake_ready=1`，但 `frames/windows/pcm_seq` 长时间不增长。
+3. 这说明 wake 标志已打开，但 M55 `mic0` 采集线程没有继续给 wake engine 输入 PCM。
+
+根因：
+
+1. M33 bridge 的 `VOICE_CTRL_STOP_CAPTURE` 以及 UI/shell stop 路径会调用 `m55_mic_stop_internal()`。
+2. 之后 `voice_service` 重新把 `wake_listening` 置 1，但 `mic0` 已被停掉，所以唤醒处于“假在线”。
+3. 第二轮 capture 也可能遇到状态不一致：云端会话停了，但本地 mic/wake 流水线被 stop 破坏。
+
+修复：
+
+1. XiaoZhi capture stop 不再停 `mic0`。
+2. stop 后显式 `voice_service_set_wake_listening_direct(RT_TRUE)`，并调用 `m55_mic_start_internal()` 做 mic keepalive/stale restart。
+3. 只有真正的 `wake_off` / `VOICE_CTRL_STOP_LISTEN` 才停 M55 mic。
+
+验证：
+
+1. M55 build 通过，`program_with_resources.bat` 烧录成功：
+   - `rtthread.hex wrote 1720320 bytes`
+   - `whd_resources_all.bin wrote 466944 bytes`
+2. 连续两轮 QA：
+   - 第 1 轮 stop 后：`wake_on=1 wake_ready=1`，`frames 2301 -> 3400`，`lvgl_flush 275 -> 422`。
+   - 第 2 轮 stop 后：`wake_on=1 wake_ready=1`，`frames 5332 -> 6420`，`windows 5191 -> 6236`，`lvgl_flush 679 -> 825`。
+   - `tts_fail=0`，`xz_ws=1 xz_stage=70 xz_errno=0`。
+
+边界：
+
+1. 如果现场仍说唤醒词没反应，但 `frames/windows` 增长，下一步查 wake engine 词表/门限/置信度。
+2. 如果 `frames/windows` 不增长，优先查 `m55_mic` 线程和 `mic0` 设备，不要查 WiFi/token。
+
+## 54. 2026-06-25 本地唤醒反馈和第二轮 capture_on 不能阻塞控制线程
+
+现象：
+
+1. 用户要求唤醒词触发后本地立即回复“我在”，这个反馈不应进服务器。
+2. 一轮说话/停止后，第二次 `m55qa_capture_on` 曾出现 ACK 超时、`tx_pending=1`，严重时 shell 也短时间不回显。
+3. `xz_ws=1 token_len=442 wlan=1` 仍健康，所以不是 WiFi/token 问题。
+
+修复：
+
+1. 新增 `applications/xiaozhi_wake_feedback_audio.c/.h`，内置 16 kHz/16-bit/mono 的“我在”PCM。
+2. wake hit 后优先调用 `official_voice_speaker_play_pcm()` 播本地“我在”，失败时退回短 beep。
+3. `official_voice_speaker_play_pcm()` 增加 speaker 互斥；若 `sound0` 正忙则立即返回，避免提示音抢占 TTS 或拖死控制线程。
+4. M55 bridge 的 `VOICE_CTRL_START_CAPTURE` 改为快速 ACK，然后由后台 `xz_cap_on` 线程执行 `voice_service_start_xiaozhi_talk()` 和 `m55_mic_start_internal()`。
+5. WebSocket 已连接但 hello 晚到时，不再把 start 视为硬失败；使用本地 session 继续发送 listen_start，hello 到达后自然刷新状态。
+6. 回退 1920B/60ms 底层 replay/I2S 几何实验，保持已验证稳定的 `RT_AUDIO_REPLAY_MP_BLOCK_SIZE=4096`、`PLAYBACK_DATA_FRAME_SIZE=2048`、`TX_FIFO_SIZE=4096`。当前要优化卡顿，优先做队列/水位/音量，不要再直接改底层块大小。
+
+验证：
+
+1. M55 build 通过，烧录成功：
+   - `rtthread.hex wrote 1744896 bytes`
+   - `whd_resources_all.bin wrote 466944 bytes`
+2. 串口验证第二次 capture 不再卡死：
+   - `m55qa_capture_on` ACK：`voice_ack cmd=1 result=0`，`tx_pending=0`
+   - capture_on 后状态：`xz_listening=1 xz_ws=1`
+   - `m55qa_capture_off` ACK：`voice_ack cmd=2 result=0`，`tx_pending=0`
+   - stop 后状态：`wake_on=1 wake_ready=1 xz_ws=1`
+   - TTS 继续转发：`tts_fwd=94/385024`，`tts_fail=0`
+
+边界：
+
+1. 若现场仍觉得人声卡，但 `tts_fail=0`、`lvgl_flush` 增长、shell 可回显，下一步调 M55 播放队列水位/音量/削波，不改 WiFi/token。
+2. 若喊唤醒词没有听到“我在”，先看是否有 wake hit；有 wake hit 但无声音再查 `sound0` 忙状态和本地 PCM 播放日志。

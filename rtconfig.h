@@ -78,7 +78,6 @@
 #define FINSH_USING_DESCRIPTION
 #define FINSH_ARG_MAX 10
 #define FINSH_USING_OPTION_COMPLETION
-
 /* DFS: device virtual file system */
 
 #define RT_USING_DFS
@@ -114,7 +113,7 @@
 #define RT_SDIO_STACK_SIZE 2048
 #define RT_SDIO_THREAD_PRIORITY 0
 #define RT_MMCSD_STACK_SIZE 2048
-#define RT_MMCSD_THREAD_PREORITY 22
+#define RT_MMCSD_THREAD_PREORITY 5
 #define RT_MMCSD_MAX_PARTITION 16
 #define RT_USING_AUDIO
 #define RT_AUDIO_REPLAY_MP_BLOCK_SIZE 4096
@@ -169,7 +168,7 @@
 
 #define RT_USING_POSIX_FS
 #define RT_USING_POSIX_DEVIO
-#define RT_USING_POSIX_STDIO
+/* #undef RT_USING_POSIX_STDIO */
 #define RT_USING_POSIX_POLL
 #define RT_USING_POSIX_SELECT
 #define RT_USING_POSIX_SOCKET
@@ -252,6 +251,7 @@
 #define LWIP_SO_LINGER 0
 #define LWIP_NETIF_LOOPBACK 0
 #define RT_LWIP_USING_PING
+#define RT_LWIP_USING_WEBSOCKET
 /* end of Network */
 
 /* Utilities */
@@ -324,7 +324,7 @@
 #define PKG_USING_LVGL
 #define BSP_USING_LVGL
 #define USING_LVGL
-#define PKG_LVGL_THREAD_STACK_SIZE 24576
+#define PKG_LVGL_THREAD_STACK_SIZE 16384
 #define PKG_LVGL_THREAD_PRIO 20
 #define PKG_LVGL_DISP_REFR_PERIOD 33
 /* end of LVGL: powerful and easy-to-use embedded GUI library */
@@ -474,6 +474,9 @@
 #define BSP_USING_AUDIO
 #define BSP_USING_AUDIO_PLAY
 #define BSP_USING_AUDIO_RECORD
+#define BSP_USING_XiaoZhi
+#define BSP_XIAOZHI_SOUND_DEVICE_NAME "sound0"
+#define BSP_XIAOZHI_MIC_DEVICE_NAME "mic0"
 #define ENABLE_STEREO_INPUT_FEED
 #define BSP_USING_FREERTOS
 /* end of Onboard Peripheral Drivers */
@@ -485,6 +488,9 @@
 #define BSP_USING_HW_I2C0
 #define BSP_USING_UART
 #define BSP_USING_UART2
+#define BSP_USING_SOFT_I2C1
+#define BSP_SOFT_I2C1_SCL_PIN 105
+#define BSP_SOFT_I2C1_SDA_PIN 106
 #define BSP_USING_HYPERAM
 #define BSP_USING_HYPERAM_SIZE 0x800000
 #define BSP_USING_SDIO
@@ -546,7 +552,8 @@
 
 #define WHD_PORTING_HAL
 /* end of Porting options */
-#define WHD_LOG_LEVEL_INFO
+#define WHD_PORTING_BSP
+#define WHD_LOG_LEVEL_ERROR
 #define WPRINT_ENABLE_WHD_INFO
 /* end of Board extended module Drivers */
 /* end of Hardware Drivers Config */

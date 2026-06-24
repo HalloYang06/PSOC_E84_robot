@@ -10,6 +10,7 @@
 #include "xiaozhi_opus_decoder.h"
 #include "xiaozhi_ui_state.h"
 #include "xiaozhi_voice_relay.h"
+#include "xiaozhi_wake_feedback_audio.h"
 #include "xiaozhi_wake_engine.h"
 
 #include <rtdevice.h>
@@ -415,6 +416,15 @@ static void voice_service_check_xiaozhi_thinking_timeout(void)
 static void xiaozhi_feedback_beep(rt_uint32_t duration_ms)
 {
     (void)official_voice_speaker_beep(duration_ms);
+}
+
+static void xiaozhi_feedback_wake_local(void)
+{
+    if (official_voice_speaker_play_pcm(g_xiaozhi_wake_feedback_wozai_pcm,
+                                        XIAOZHI_WAKE_FEEDBACK_WOZAI_SAMPLES) != RT_EOK)
+    {
+        xiaozhi_feedback_beep(80U);
+    }
 }
 
 static void voice_service_refresh_netdev_snapshot_locked(void)
@@ -1800,7 +1810,7 @@ static void voice_service_start_xiaozhi_listening(const char *wake_word)
     rt_mutex_release(&g_service.lock);
 
     xiaozhi_ui_state_mark_wake(public_wake_word);
-    xiaozhi_feedback_beep(80U);
+    xiaozhi_feedback_wake_local();
     rt_kprintf("[voice_service] Xiaozhi listening started session=%s word=%s\n",
                session_id,
                public_wake_word);
@@ -1839,9 +1849,8 @@ static rt_err_t voice_service_start_xiaozhi_manual_listening(void)
         rt_mutex_release(&g_service.lock);
         if (!hello_seen)
         {
-            rt_kprintf("[voice_service] Xiaozhi manual listening deferred: no server hello yet\n");
-            xiaozhi_ui_state_set(XIAOZHI_UI_CONNECTING, "等待小智会话", -RT_EEMPTY);
-            return -RT_EEMPTY;
+            rt_kprintf("[voice_service] Xiaozhi manual listening continuing before hello session=%s\n",
+                       XIAOZHI_LOCAL_SESSION_ID);
         }
         rt_strncpy(session_id, XIAOZHI_LOCAL_SESSION_ID, sizeof(session_id) - 1);
     }
@@ -1961,12 +1970,11 @@ rt_err_t voice_service_start_xiaozhi_talk(void)
             }
             else
             {
-                rt_kprintf("[voice_service] Xiaozhi talk deferred: hello timeout stage=%d errno=%d connected=%d\n",
+                rt_kprintf("[voice_service] Xiaozhi talk continuing after hello timeout stage=%d errno=%d connected=%d\n",
                            websocket_client_last_stage(),
                            websocket_client_last_errno(),
                            websocket_client_is_connected() ? 1 : 0);
-                xiaozhi_ui_state_set(XIAOZHI_UI_CONNECTING, "等待小智会话", -RT_ETIMEOUT);
-                return -RT_ETIMEOUT;
+                hello_seen = RT_TRUE;
             }
         }
     }

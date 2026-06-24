@@ -43,6 +43,7 @@ typedef struct
 } official_voice_config_t;
 
 static official_voice_status_t g_official_voice_status;
+static rt_mutex_t g_official_voice_speaker_lock = RT_NULL;
 static official_voice_config_t g_official_voice_config =
 {
     OFFICIAL_VOICE_DEFAULT_PEAK,
@@ -85,6 +86,28 @@ static void configure_audio_output(rt_device_t speaker)
     caps.udata.config.channels = OFFICIAL_VOICE_CHANNELS;
     caps.udata.config.samplebits = OFFICIAL_VOICE_BITS_PER_SAMPLE;
     (void)rt_device_control(speaker, AUDIO_CTL_CONFIGURE, &caps);
+}
+
+static rt_err_t official_voice_take_speaker(rt_int32_t timeout)
+{
+    if (g_official_voice_speaker_lock == RT_NULL)
+    {
+        g_official_voice_speaker_lock = rt_mutex_create("ov_spk", RT_IPC_FLAG_PRIO);
+        if (g_official_voice_speaker_lock == RT_NULL)
+        {
+            return -RT_ENOMEM;
+        }
+    }
+
+    return rt_mutex_take(g_official_voice_speaker_lock, timeout);
+}
+
+static void official_voice_release_speaker(void)
+{
+    if (g_official_voice_speaker_lock != RT_NULL)
+    {
+        rt_mutex_release(g_official_voice_speaker_lock);
+    }
 }
 
 static rt_uint16_t confidence_from_activity(rt_uint32_t peak, rt_uint32_t avg_abs)
@@ -155,6 +178,69 @@ rt_err_t official_voice_speaker_beep(rt_uint32_t duration_ms)
     g_official_voice_status.last_speaker_ret = RT_EOK;
     rt_kprintf("[official_voice] speaker beep ok duration_ms=%lu\n", (unsigned long)duration_ms);
     return RT_EOK;
+}
+
+rt_err_t official_voice_speaker_play_pcm(const rt_int16_t *pcm, rt_uint32_t sample_count)
+{
+    rt_device_t speaker;
+    rt_uint32_t offset = 0U;
+    rt_err_t ret;
+    rt_err_t final_ret = RT_EOK;
+
+    if ((pcm == RT_NULL) || (sample_count == 0U))
+    {
+        return -RT_EINVAL;
+    }
+
+    ret = official_voice_take_speaker(0);
+    if (ret != RT_EOK)
+    {
+        rt_kprintf("[official_voice] pcm feedback skipped speaker busy ret=%d\n", ret);
+        return ret;
+    }
+
+    speaker = rt_device_find("sound0");
+    if (speaker == RT_NULL)
+    {
+        rt_kprintf("[official_voice] sound0 not found for pcm feedback\n");
+        final_ret = -RT_ERROR;
+        goto out;
+    }
+
+    ret = rt_device_open(speaker, RT_DEVICE_OFLAG_WRONLY);
+    if ((ret != RT_EOK) && (ret != -RT_EBUSY))
+    {
+        rt_kprintf("[official_voice] open sound0 failed for pcm feedback ret=%d\n", ret);
+        final_ret = ret;
+        goto out;
+    }
+
+    configure_audio_output(speaker);
+    while (offset < sample_count)
+    {
+        rt_uint32_t samples = sample_count - offset;
+        rt_size_t written;
+
+        if (samples > OFFICIAL_VOICE_FRAME_SAMPLES)
+        {
+            samples = OFFICIAL_VOICE_FRAME_SAMPLES;
+        }
+        written = rt_device_write(speaker, 0, pcm + offset, samples * sizeof(pcm[0]));
+        if (written == 0U)
+        {
+            rt_kprintf("[official_voice] pcm feedback write failed offset=%lu\n",
+                       (unsigned long)offset);
+            final_ret = -RT_ERROR;
+            goto out;
+        }
+        offset += samples;
+        rt_thread_mdelay(10);
+    }
+
+    rt_kprintf("[official_voice] pcm feedback ok samples=%lu\n", (unsigned long)sample_count);
+out:
+    official_voice_release_speaker();
+    return final_ret;
 }
 
 rt_err_t official_voice_pdm_self_test(rt_uint32_t duration_ms, rt_bool_t publish_on_activity)
