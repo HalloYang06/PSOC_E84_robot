@@ -1809,3 +1809,53 @@ Validation:
 
 Boundary:
 - If wake still does not trigger while `wake_on=1`, inspect `frames/windows`, mic peak/avg, and wake engine confidence/gate values next.
+
+## 2026-06-25 - `wake_on=1` is not enough; `frames/windows` must keep increasing
+
+Symptoms:
+- Wake word appears broken after a XiaoZhi turn.
+- Status can show `wake_on=1 wake_ready=1`, but `frames/windows/pcm_seq` stop increasing.
+- Second question may look stuck because no fresh M55 mic PCM reaches the voice service.
+
+Root cause:
+- `VOICE_CTRL_STOP_CAPTURE` stopped the M55 `mic0` thread.
+- The voice service later re-armed wake flags, but the producer of PCM frames was gone.
+
+Fix / trick:
+- Capture stop should stop only the cloud/listening session.
+- Keep `mic0` alive for wake and the next turn; explicitly re-arm wake and call `m55_mic_start_internal()` after stop as a keepalive/stale restart.
+- Only `wake_off` / `VOICE_CTRL_STOP_LISTEN` should stop the mic.
+
+Validation:
+- Two consecutive capture on/off turns kept `wake_on=1`.
+- `frames/windows` continued increasing after both stops.
+
+Boundary:
+- If `frames/windows` increase but wake still fails, the next layer is wake model vocabulary/thresholds.
+
+## 2026-06-25 - Start capture must not block the M55 control bridge
+
+Symptoms:
+- After one successful XiaoZhi turn, the second `m55qa_capture_on` could time out and leave `tx_pending=1`.
+- In the worst case shell output paused, even though WiFi/token/WebSocket had been healthy.
+
+Root cause:
+- `VOICE_CTRL_START_CAPTURE` ran `voice_service_start_xiaozhi_talk()` synchronously inside the M55 bridge control handler.
+- If the previous turn was still finishing TTS/server state, or server hello arrived late after reconnect, the control thread could block long enough to look like a freeze.
+
+Fix / trick:
+- ACK `START_CAPTURE` quickly and do the actual `listen_start` plus `mic0` start in a background `xz_cap_on` worker.
+- Treat delayed hello as recoverable when `xz_ws=1`; continue with the local XiaoZhi session id and let the later hello update state.
+- Keep local wake “我在” playback best-effort with a speaker mutex. If `sound0` is busy, skip/fallback instead of blocking.
+- Do not use the experimental 1920B replay/I2S geometry; keep stable 4096 replay block, 2048 playback frame, 4096 TX FIFO.
+
+Validation:
+- Second manual capture after a prior TTS turn:
+  - `capture_on ret=0 ack=0 tx_pending=0`
+  - `xz_listening=1 xz_ws=1`
+  - `capture_off ret=0 ack=0 tx_pending=0`
+  - `wake_on=1 wake_ready=1`
+  - `tts_fail=0`
+
+Boundary:
+- If second turn freezes again, first check whether shell responds and whether `voice_ack cmd=1/2` updates. If ACK updates but TTS is choppy, debug speaker pipeline; if ACK does not update, debug the bridge worker/control queue.
