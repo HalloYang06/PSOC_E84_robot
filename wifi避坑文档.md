@@ -2123,3 +2123,46 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
 1. 本地平台 6 个关键小智测试通过。
 2. 云端 3 个关键小智测试通过。
 3. 下一轮现场如果仍无声，优先比较平台 `sent_frames/sent_bytes/error` 与 M55 `tts_fwd/tts_fail`，再看 M33 speaker 日志。
+
+## 49. 2026-06-24 LVGL 点停止卡死时，不要在 stop 路径同步发 WebSocket
+
+现象：
+
+1. 现场 LVGL 点“停止”后界面卡住，像是程序死在“正在结束录音/正在思考”。
+2. WiFi/token/WebSocket 基线仍健康，不应回退到 WiFi/token 调试。
+
+根因：
+
+1. 手动停止路径 `voice_service_stop_xiaozhi_talk()` 原来会先同步 `voice_service_flush_xiaozhi_tail_frame()`，再同步发 `listen stop`。
+2. `websocket_client_send_text()` / binary send 内部使用 `tcpip_callback_with_block(..., 1)`，如果 lwIP/tcpip 线程正忙，UI 后台 worker 会被卡住。
+3. 对产品体验来说，停止按钮不能为了补最后不足 60 ms 的尾帧而阻塞 UI。
+
+修复：
+
+1. M55 实际烧录树和 M55 镜像均已改为：
+   - `voice_service_stop_xiaozhi_talk()` 不再同步 flush tail frame。
+   - 手动/LVGL stop 直接走 `voice_service_stop_xiaozhi_listening_async()`。
+   - `xz_stop` 线程负责后台发送 `listen stop`。
+2. 自动 EOU 路径仍保留 tail flush，不影响自动断句时的完整性。
+
+验证：
+
+1. M55 实际树构建生成新 `rtthread.hex`。
+2. `program_with_resources.bat` 烧录成功：
+   - `rtthread.hex wrote 1720320 bytes`
+   - `whd_resources_all.bin wrote 466944 bytes`
+   - 末尾写完后的 `failed to acquire the device` 属已知非关键现象。
+3. 串口 QA：
+   - `m55qa_capture_on` -> `voice_ack cmd=1 result=0`
+   - `m55qa_capture_off` -> `voice_ack cmd=2 result=0`
+   - `tx_pending=0`
+   - shell 没卡死
+   - 5 秒后 `xz_listening=0`
+   - `xz_ws=1 xz_stage=70 xz_errno=0`
+   - `srv_stt=1 srv_tts=1/1/0`
+   - `tts_fwd=58/237568 tts_fail=0`
+
+现场下一步：
+
+1. 直接在 LVGL 再按“说话/停止”验证；预期停止按钮不再卡死。
+2. 若界面仍卡住，先查串口 `m55qa_status` 的 `lvgl_flush` 是否增长、`xz_listening` 是否归零，再看是否是 LVGL 刷新/触摸层问题，而不是 XiaoZhi WebSocket stop。

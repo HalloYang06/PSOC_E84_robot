@@ -1704,9 +1704,12 @@ rt_err_t voice_service_stop_xiaozhi_talk(void)
         return -RT_ERROR;
     }
 
-    voice_service_flush_xiaozhi_tail_frame();
-    voice_service_stop_xiaozhi_listening(RT_TRUE);
-    return RT_EOK;
+    /*
+     * Manual/LVGL stop must not wait on lwIP's blocking send path.  A partial
+     * tail frame is less important than keeping the product UI responsive; the
+     * async stop thread sends listen_stop after the UI/control caller returns.
+     */
+    return voice_service_stop_xiaozhi_listening_async();
 }
 
 typedef struct
