@@ -1689,3 +1689,57 @@ Validated:
 
 Boundary:
 - If clean-count QA shows `probe_lwip=87/0` and `xz_last` grows, do not investigate WiFi/token/IPC. Inspect XiaoZhi relay/platform behavior after `listen/stop`.
+
+## 2026-06-24 - "请再说一遍" can be a platform fallback even when the server received audio
+
+Symptoms:
+- User hears or sees repeated `"请再说一遍"` and suspects the device did not enter the server.
+- Public cloud dashboard for `nanopi-m5` may still show real server entry:
+  - `audio_format=opus`
+  - `asr_called=true`
+  - `sent_frames>0`
+  - `sent_bytes>0`
+- A prior recognized transcript `嗯，你是什么模型？` reached model relay, but model relay returned:
+  - `classification.type=none`
+  - `operator_facing_reply=请再说一遍。`
+  - `provider.configured=false`
+
+Root cause:
+- The board and XiaoZhi WebSocket were not the primary failure.
+- Cloud ASR/TTS keys existed, but the dedicated model relay key was missing. The relay fallback classified normal voice questions as `none`, causing a fixed retry phrase.
+
+Fix / trick:
+- Platform commit `1764e91b` makes model relay safely reuse the server-side XiaoZhi ASR/TTS key when the dedicated model relay key is absent.
+- Voice questions from `voice_intent` / `vla_language_from_voice` now fall back to `daily_chat` if they contain meaningful text and no rehab-command words.
+- Fallback reply for daily chat is no longer `"请再说一遍。"` when ASR produced text.
+
+Validation:
+- Cloud health shows `deployment.build_sha=1764e91b140b`.
+- Cloud smoke for prompt `你是什么模型` returned:
+  - `classification.type=daily_chat`
+  - `provider.configured=true`
+  - `external_call_ok=true`
+  - a natural model reply.
+
+Boundary:
+- Do not debug WiFi/token when `xz_ws=1`, `token_len=442`, `srv_hello=1`, and dashboard shows Opus audio frames or ASR/TTS counters.
+- If the new turn still says `"请再说一遍"`, first check `asr_ok/asr_error/asr_text`; only empty ASR text points back to capture/audio quality.
+- If ASR text exists but reply is wrong, inspect platform model relay classification and key configuration.
+
+## 2026-06-24 - Opus TTS must be paced at audio frame duration, not 20 ms
+
+Symptoms:
+- Platform reports `audio_format=opus`, `opus_packet_count>0`, and `sent_frames>0`, but the user hears no intelligible voice or only noise.
+- A pre-fix dashboard showed `tts_send_timeout:frame=61`.
+
+Root cause:
+- The cloud was sending each TTS Opus packet after a fixed 20 ms sleep even though the XiaoZhi session declares `frame_duration=60`.
+- This can push 60 ms audio packets at roughly 3x real-time speed and overwhelm the M55/M33 speaker path.
+
+Fix / trick:
+- Platform commit `1764e91b` paces TTS downlink at `audio_params.frame_duration`, clamped to 10-120 ms.
+- Official 60 ms Opus sessions now send TTS packets every 60 ms.
+
+Validation:
+- Added and passed `test_rehab_arm_xiaozhi_websocket_paces_official_opus_tts_at_frame_duration`.
+- Cloud selected XiaoZhi tests passed after deployment.
