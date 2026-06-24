@@ -22,6 +22,8 @@
     #define MIN(a, b)         ((a) < (b) ? (a) : (b))
 #endif
 
+#define AUDIO_REPLAY_ALLOC_TIMEOUT_TICKS ((100 * RT_TICK_PER_SECOND) / 1000)
+
 enum
 {
     REPLAY_EVT_NONE  = 0x00,
@@ -392,7 +394,12 @@ static rt_ssize_t _audio_dev_write(struct rt_device *dev, rt_off_t pos, const vo
         /* request buffer from replay memory pool */
         if (audio->replay->write_index % block_size == 0)
         {
-            audio->replay->write_data = rt_mp_alloc(audio->replay->mp, RT_WAITING_FOREVER);
+            audio->replay->write_data = rt_mp_alloc(audio->replay->mp, AUDIO_REPLAY_ALLOC_TIMEOUT_TICKS);
+            if (audio->replay->write_data == RT_NULL)
+            {
+                LOG_W("replay memory pool busy, drop write after %d bytes", index);
+                break;
+            }
             rt_memset(audio->replay->write_data, 0, block_size);
         }
 
@@ -406,10 +413,17 @@ static rt_ssize_t _audio_dev_write(struct rt_device *dev, rt_off_t pos, const vo
 
         if (audio->replay->write_index == 0)
         {
-            rt_data_queue_push(&audio->replay->queue,
-                               audio->replay->write_data,
-                               block_size,
-                               RT_WAITING_FOREVER);
+            if (rt_data_queue_push(&audio->replay->queue,
+                                   audio->replay->write_data,
+                                   block_size,
+                                   AUDIO_REPLAY_ALLOC_TIMEOUT_TICKS) != RT_EOK)
+            {
+                LOG_W("replay queue busy, drop block after %d bytes", index);
+                rt_mp_free(audio->replay->write_data);
+                audio->replay->write_data = RT_NULL;
+                audio->replay->write_index = 0;
+                break;
+            }
         }
     }
     rt_mutex_release(&audio->replay->lock);

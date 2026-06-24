@@ -106,22 +106,27 @@ typedef struct
 
 void i2s_playback_task(void *arg);
 
-void ifx_i2s_init(void)
+rt_err_t ifx_i2s_init(void)
 {
+    cy_en_tdm_status_t volatile return_status;
+
     /* Initialize the I2S interrupt */
     Cy_SysInt_Init(&i2s_isr_txcfg, i2s_tx_interrupt_handler);
     NVIC_EnableIRQ(i2s_isr_txcfg.intrSrc);
 
     /* Initialize the I2S */
-    cy_en_tdm_status_t volatile return_status = Cy_AudioTDM_Init(TDM_STRUCT0, &CYBSP_TDM_CONTROLLER_0_config);
+    return_status = Cy_AudioTDM_Init(TDM_STRUCT0, &CYBSP_TDM_CONTROLLER_0_config);
     if (CY_TDM_SUCCESS != return_status)
     {
-        RT_ASSERT(0);
+        LOG_E("Cy_AudioTDM_Init failed status=%d", return_status);
+        NVIC_DisableIRQ(i2s_isr_txcfg.intrSrc);
+        return -RT_ERROR;
     }
 
     /* Clear TX interrupts */
     Cy_AudioTDM_ClearTxInterrupt(TDM_STRUCT0_TX, CY_TDM_INTR_TX_MASK);
     Cy_AudioTDM_SetTxInterruptMask(TDM_STRUCT0_TX, CY_TDM_INTR_TX_MASK);
+    return RT_EOK;
 }
 void ifx_i2s_deinit()
 {
@@ -182,9 +187,6 @@ void ifx_set_samplerate(struct rt_audio_configure audio_config)
                 break;
         }
     }
-    #if defined(BSP_USING_XiaoZhi)
-        Cy_SysClk_PeriPclkSetFracDivider((en_clk_dst_t)CYBSP_TDM_CONTROLLER_0_CLK_DIV_GRP_NUM, CY_SYSCLK_DIV_16_5_BIT, 0U, 15U, 0U);
-    #endif
     Cy_SysClk_PeriPclkEnableDivider((en_clk_dst_t)CYBSP_TDM_CONTROLLER_0_CLK_DIV_GRP_NUM, CY_SYSCLK_DIV_16_5_BIT, 0U);
 }
 
@@ -399,12 +401,17 @@ static rt_err_t sound_init(struct rt_audio_device *audio)
 
     snd_dev = (struct sound_device *)audio->parent.user_data;
 
-    ifx_i2s_init();
+    result = ifx_i2s_init();
+    if (result != RT_EOK)
+    {
+        LOG_E("I2S init failed, sound0 open aborted.");
+        return result;
+    }
 
     if (es8388_init("i2c0", RT_NULL) != RT_EOK)
     {
         LOG_E("ES8388 init failed.");
-        RT_ASSERT(0);
+        return -RT_ERROR;
     }
 
     es8388_start(ES_MODE_DAC);
@@ -508,10 +515,11 @@ int rt_hw_sound_init(void)
     rt_uint8_t *tx_buff;
 
     tx_buff = (rt_uint8_t *)rt_malloc(TX_FIFO_SIZE);
-
-    rt_memset(tx_buff, 0, TX_FIFO_SIZE);
     if (tx_buff == RT_NULL)
+    {
         return -RT_ENOMEM;
+    }
+    rt_memset(tx_buff, 0, TX_FIFO_SIZE);
     snd_dev.tx_buff = tx_buff;
     /* init default configuration */
     snd_dev.audio_config.samplerate = 16000;
@@ -878,4 +886,3 @@ void i2s_tx_interrupt_handler(void)
 
     rt_interrupt_leave();
 }
-

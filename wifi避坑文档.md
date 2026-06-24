@@ -2205,3 +2205,81 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
    - 若坚持 M55 speaker：先修 `sound0` replay/Opus decode 卡死问题，再打开 `VOICE_TTS_PLAYBACK_TO_M55`。
    - 若改 M33 speaker：先真正启用/验证 M33 `BSP_USING_AUDIO` 和 `audio_playback_probe_cmd`，再打开 `VOICE_TTS_PLAYBACK_TO_M33`。
 3. 播放路径未独立验证前，不要把“没有人声”误判为 WiFi/token/平台问题。
+
+## 51. 2026-06-24 M55 sound0 播放有声但卡顿时，优先看 replay 预缓冲
+
+现象：
+
+1. XiaoZhi 平台链路已通，`srv_hello=1`、`srv_stt` 增长、TTS 文本返回正常。
+2. M55 `sound0` 已能播出人声，但听感卡顿、偶尔听不清。
+3. 本地 `m55qa_speaker_tone 200` 正常，说明 ES8388/I2S 基础硬件不是完全坏。
+
+根因：
+
+1. 之前 TTS 写入策略每写一个 4096B replay 块就等待 replay queue 清空，并额外 `VOICE_TTS_CHUNK_GAP_MS` 延时。
+2. 这会让播放器几乎没有预缓冲；Opus 解码、网络包到达或线程调度稍有抖动，I2S 中断侧就会插零，听起来就是断续/卡。
+3. RT-Thread audio 会把 4096B replay 块拆成两个 2048B 送给 I2S，因此重点不是改协议或云端，而是让 replay queue 保持少量连续数据。
+
+修复：
+
+1. `VOICE_TTS_CHUNK_GAP_MS=0`，去掉人为块间停顿。
+2. `VOICE_TTS_REPLAY_QUEUE_HIGH_WATER=2`，只在 replay queue 已有 2 块及以上时等待，允许保留预缓冲。
+3. `RT_AUDIO_REPLAY_MP_BLOCK_COUNT=4`，给 replay memory pool 留出队列余量。
+4. 保持 `VOICE_TTS_PLAYBACK_TO_M55=1`，M55 继续作为 XiaoZhi speaker owner。
+
+验证：
+
+1. M55 实际烧录树 `python -m SCons -j1` 通过。
+2. `program_with_resources.bat` 烧录成功：
+   - `rtthread.hex wrote 1720320 bytes`
+   - `whd_resources_all.bin wrote 466944 bytes`
+3. 串口 QA：
+   - `m55qa_speaker_tone 200` 成功。
+   - `m55qa_capture_on` / `m55qa_capture_off` 均 ACK，`tx_pending=0`。
+   - 平台返回 `asr text: 嗯。`、`tts text: 嗯，收到。需要我帮您做些什么吗？`
+   - `tts_fwd` 从 `112/458752` 增长到 `141/577536`，`tts_fail=0`。
+   - `xz_ws=1 xz_stage=70 xz_errno=0`，`lvgl_flush` 持续增长到 `1262`。
+
+边界：
+
+1. 若仍“有声但不清楚”，下一步看音量/削波/采样率，而不是 WiFi/token。
+2. 若 `tts_fail` 增长或出现 `M55 sound0 queue busy timeout`，再调 replay high-water 或 block count。
+
+## 52. 2026-06-24 M55 TTS 后不能影响唤醒，sound0 写入不能无限等
+
+现象：
+
+1. 用户反馈人声仍有卡顿，并且一轮说话/停止后唤醒词没用了。
+2. 串口状态显示 TTS 后 `wake_on=0`，所以后续喊唤醒词不会进入本地唤醒检测。
+3. 之前还出现过 TTS 后 `voice_svc`、`frames`、`lvgl_flush` 长时间不增长，说明播放写入可能阻塞语音服务相关线程。
+
+修复：
+
+1. `rt-thread/components/drivers/audio/audio.c`
+   - `_audio_dev_write()` 中 replay memory pool 分配从 `RT_WAITING_FOREVER` 改为 100 ms 有限等待。
+   - replay queue push 同样改为 100 ms 有限等待。
+   - 拿不到 buffer/queue 时丢弃当前写入并返回，避免为了播放音频拖死唤醒/UI/状态发布。
+2. `applications/voice_service.c`
+   - 手动/LVGL stop 后重新布防 wake listening。
+   - `wake_hit_streak` 清零，并设置短暂 `wake_skip_windows`，避免刚 stop 的残留窗口误触发。
+3. `libraries/HAL_Drivers/drv_i2s.c`
+   - 去掉 `BSP_USING_XiaoZhi` 下强制 TDM divider=15 的覆盖。
+   - XiaoZhi 官方 Opus 当前声明为 16 kHz / mono / 60 ms，M55 `sound0` 也按 16 kHz / mono 配置，I2S 应走原 16 kHz divider。
+
+验证：
+
+1. M55 实际树两次 build 均通过，最后一次重编 `drv_i2s.o` 并生成 `rtthread.hex`。
+2. `program_with_resources.bat` 烧录成功：
+   - `rtthread.hex wrote 1720320 bytes`
+   - `whd_resources_all.bin wrote 466944 bytes`
+3. 串口 QA：
+   - 开机状态 `wake_on=1 wake_ready=1 xz_ws=1`。
+   - `m55qa_capture_on` / `m55qa_capture_off` ACK 正常，`tx_pending=0`。
+   - stop 后状态保持 `wake_on=1 wake_ready=1`。
+   - TTS 后 15 秒 `voice_svc` 从 `627` 增长到 `976`，`lvgl_flush` 从 `299` 增长到 `521`。
+   - `tts_fwd` 从 `16/65536` 增长到 `35/143360`，`tts_fail=0`。
+
+边界：
+
+1. 若用户仍觉得人声不清，下一步优先调播放音量/增益/削波，或在平台侧确认 TTS Opus 包本身音质；不要回退到 WiFi/token。
+2. 若“唤醒词没用”，先查 `m55qa_status` 中 `wake_on`、`wake_ready`、`frames/windows` 是否增长。

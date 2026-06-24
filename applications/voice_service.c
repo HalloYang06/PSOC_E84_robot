@@ -29,7 +29,8 @@ extern rt_err_t m55_speaker_tone_internal(rt_uint32_t duration_ms);
 #define VOICE_TTS_PENDING_SLOT_SIZE   (4096U)
 #define VOICE_TTS_PENDING_SLOT_COUNT  (64U)
 #define VOICE_TTS_PENDING_BUFFER_SIZE (VOICE_TTS_PENDING_SLOT_SIZE * VOICE_TTS_PENDING_SLOT_COUNT)
-#define VOICE_TTS_CHUNK_GAP_MS        120U
+#define VOICE_TTS_CHUNK_GAP_MS        0U
+#define VOICE_TTS_REPLAY_QUEUE_HIGH_WATER 2U
 #define VOICE_TTS_DRAIN_MAX_PER_LOOP  16U
 #define VOICE_TTS_PUBLISH_RETRY_COUNT 30U
 #define VOICE_TTS_PUBLISH_RETRY_MS    20U
@@ -66,10 +67,10 @@ extern rt_err_t m55_speaker_tone_internal(rt_uint32_t duration_ms);
 #define VOICE_TTS_PLAYBACK_TO_M33 0
 #endif
 #ifndef VOICE_TTS_PLAYBACK_TO_M55
-#define VOICE_TTS_PLAYBACK_TO_M55 0
+#define VOICE_TTS_PLAYBACK_TO_M55 1
 #endif
 #define VOICE_STOP_NOTIFY_THREAD_STACK 8192
-#define VOICE_TTS_THREAD_STACK         12288
+#define VOICE_TTS_THREAD_STACK         32768
 
 #ifdef BSP_USING_LCD
 extern rt_int32_t drv_lcd_get_init_result(void);
@@ -1108,7 +1109,7 @@ static rt_bool_t voice_service_wait_m55_speaker_ready_to_write(rt_uint32_t timeo
     }
 
     deadline = rt_tick_get() + ((timeout_ms * RT_TICK_PER_SECOND) / 1000U);
-    while (rt_data_queue_len(&audio->replay->queue) > 0U)
+    while (rt_data_queue_len(&audio->replay->queue) >= VOICE_TTS_REPLAY_QUEUE_HIGH_WATER)
     {
         if ((rt_int32_t)(deadline - rt_tick_get()) <= 0)
         {
@@ -1116,7 +1117,7 @@ static rt_bool_t voice_service_wait_m55_speaker_ready_to_write(rt_uint32_t timeo
                        (unsigned)rt_data_queue_len(&audio->replay->queue));
             return RT_FALSE;
         }
-        rt_thread_mdelay(20);
+        rt_thread_mdelay(5);
     }
 
     return RT_TRUE;
@@ -1260,7 +1261,10 @@ static rt_bool_t voice_service_stream_pcm_to_m55_speaker(const uint8_t *audio_da
                            (unsigned long)written,
                            (unsigned long)RT_AUDIO_REPLAY_MP_BLOCK_SIZE);
             }
-            rt_thread_mdelay(VOICE_TTS_CHUNK_GAP_MS);
+            if (VOICE_TTS_CHUNK_GAP_MS > 0U)
+            {
+                rt_thread_mdelay(VOICE_TTS_CHUNK_GAP_MS);
+            }
         }
     }
 
@@ -2248,6 +2252,13 @@ static rt_err_t voice_service_stop_xiaozhi_listening_async(void)
             }
         }
         voice_service_mark_xiaozhi_thinking("正在思考");
+        rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
+        g_service.wake_listening = xiaozhi_wake_engine_is_ready() ? RT_TRUE : RT_FALSE;
+        g_service.wake_hit_streak = 0U;
+        g_service.wake_skip_windows = WAKE_SKIP_WINDOWS_AFTER_TRIGGER;
+        rt_mutex_release(&g_service.lock);
+        rt_kprintf("[voice_service] wake listening re-armed after Xiaozhi stop ready=%d\n",
+                   xiaozhi_wake_engine_is_ready() ? 1 : 0);
     }
     else
     {
@@ -2436,6 +2447,12 @@ static void voice_service_stop_xiaozhi_listening(rt_bool_t notify_server)
         voice_service_mark_xiaozhi_thinking("正在思考");
         xiaozhi_feedback_beep(60U);
     }
+
+    rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
+    g_service.wake_listening = xiaozhi_wake_engine_is_ready() ? RT_TRUE : RT_FALSE;
+    g_service.wake_hit_streak = 0U;
+    g_service.wake_skip_windows = WAKE_SKIP_WINDOWS_AFTER_TRIGGER;
+    rt_mutex_release(&g_service.lock);
 
     rt_kprintf("[voice_service] Xiaozhi listening stopped session=%s source=%d bytes=%lu chunks=%lu notify=%d\n",
                session_id,
