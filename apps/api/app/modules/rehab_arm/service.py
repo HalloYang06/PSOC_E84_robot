@@ -1220,6 +1220,9 @@ def record_xiaozhi_ws_event(payload: dict[str, Any]) -> dict[str, Any]:
                     "sent_frames": int(current_payload.get("sent_frames") or session_payload.get("sent_frames") or 0),
                     "sent_bytes": int(current_payload.get("sent_bytes") or session_payload.get("sent_bytes") or 0),
                     "audio_format": current_payload.get("audio_format") or session_payload.get("audio_format") or "",
+                    "source_audio_format": current_payload.get("source_audio_format") or session_payload.get("source_audio_format") or "",
+                    "pcm_bytes": int(current_payload.get("pcm_bytes") or session_payload.get("pcm_bytes") or 0),
+                    "opus_packet_count": int(current_payload.get("opus_packet_count") or session_payload.get("opus_packet_count") or 0),
                     "error": tts_error,
                     "last_error": last_error,
                     "control_boundary": "xiaozhi_voice_relay_only_not_motion_permission",
@@ -1649,6 +1652,56 @@ def _decode_xiaozhi_opus_packets(audio_packets: list[bytes], audio_params: dict[
     }
 
 
+def _encode_pcm_s16le_to_opus_packets(pcm: bytes, audio_params: dict[str, Any]) -> dict[str, Any]:
+    if not pcm:
+        return {"ok": False, "packets": [], "error": "no_pcm_for_opus_encode", "packet_count": 0}
+    sample_rate = _audio_param_int(audio_params, "sample_rate", 16000)
+    channels = _audio_param_int(audio_params, "channels", 1)
+    frame_duration = _audio_param_int(audio_params, "frame_duration", 60)
+    frame_size = max(1, sample_rate * frame_duration // 1000)
+    frame_bytes = frame_size * channels * 2
+    if sample_rate not in {8000, 12000, 16000, 24000, 48000}:
+        return {"ok": False, "packets": [], "error": f"opus_unsupported_sample_rate:{sample_rate}", "packet_count": 0}
+    if channels not in {1, 2}:
+        return {"ok": False, "packets": [], "error": f"opus_unsupported_channels:{channels}", "packet_count": 0}
+    try:
+        import opuslib  # type: ignore[import-not-found]
+    except Exception as exc:  # noqa: BLE001 - optional runtime dependency diagnostic.
+        return {
+            "ok": False,
+            "packets": [],
+            "error": f"opus_encoder_unavailable:{type(exc).__name__}",
+            "packet_count": 0,
+        }
+    try:
+        application = getattr(opuslib, "APPLICATION_AUDIO", "audio")
+        encoder = opuslib.Encoder(sample_rate, channels, application)
+        packets: list[bytes] = []
+        for offset in range(0, len(pcm), frame_bytes):
+            frame = pcm[offset : offset + frame_bytes]
+            if len(frame) < frame_bytes:
+                frame += b"\x00" * (frame_bytes - len(frame))
+            if not frame:
+                continue
+            packets.append(encoder.encode(frame, frame_size))
+    except Exception as exc:  # noqa: BLE001 - expose encode failures without crashing the WebSocket.
+        return {
+            "ok": False,
+            "packets": [],
+            "error": f"opus_encode_failed:{type(exc).__name__}",
+            "packet_count": 0,
+        }
+    return {
+        "ok": bool(packets),
+        "packets": packets,
+        "error": "" if packets else "opus_encode_empty_packets",
+        "packet_count": len(packets),
+        "sample_rate": sample_rate,
+        "channels": channels,
+        "frame_duration": frame_duration,
+    }
+
+
 def transcribe_xiaozhi_audio(audio_bytes: bytes, audio_params: dict[str, Any], audio_packets: list[bytes] | None = None) -> dict[str, Any]:
     audio_format = _env_text(audio_params.get("format")).lower()
     if audio_format == "pcm_s16le":
@@ -1804,11 +1857,50 @@ def synthesize_xiaozhi_tts(text: str, audio_params: dict[str, Any]) -> dict[str,
             "voice": voice,
             "control_boundary": "tts_feedback_only_not_motion_permission",
         }
+    requested_format = _env_text(audio_params.get("format")).lower()
+    if requested_format == "opus":
+        encode_result = _encode_pcm_s16le_to_opus_packets(pcm, audio_params)
+        if not encode_result.get("ok"):
+            return {
+                "ok": False,
+                "called": True,
+                "error": str(encode_result.get("error") or "opus_encode_failed"),
+                "audio": b"",
+                "audio_packets": [],
+                "audio_format": "opus",
+                "source_audio_format": "pcm_s16le",
+                "pcm_bytes": len(pcm),
+                "resampled": resampled,
+                "provider_configured": True,
+                "provider": settings.rehab_arm_xiaozhi_tts_provider.strip() or settings.rehab_arm_model_relay_provider.strip() or "openai_compatible_tts",
+                "model": model,
+                "voice": voice,
+                "control_boundary": "tts_feedback_only_not_motion_permission",
+            }
+        packets = [bytes(packet) for packet in encode_result.get("packets") or []]
+        return {
+            "ok": bool(packets),
+            "called": True,
+            "error": "" if packets else "opus_encode_empty_packets",
+            "audio": b"".join(packets),
+            "audio_packets": packets,
+            "audio_format": "opus",
+            "source_audio_format": "pcm_s16le",
+            "pcm_bytes": len(pcm),
+            "opus_packet_count": len(packets),
+            "resampled": resampled,
+            "provider_configured": True,
+            "provider": settings.rehab_arm_xiaozhi_tts_provider.strip() or settings.rehab_arm_model_relay_provider.strip() or "openai_compatible_tts",
+            "model": model,
+            "voice": voice,
+            "control_boundary": "tts_feedback_only_not_motion_permission",
+        }
     return {
         "ok": bool(pcm),
         "called": True,
         "error": "" if pcm else "tts_empty_audio",
         "audio": pcm,
+        "audio_packets": [],
         "audio_format": "pcm_s16le",
         "resampled": resampled,
         "provider_configured": True,

@@ -968,13 +968,28 @@ async def api_project_xiaozhi_websocket(websocket: WebSocket, project_id: str, d
                 await websocket.send_text(_event_payload({"session_id": session_id, "type": "tts", "state": "start"}))
                 tts_result = synthesize_xiaozhi_tts(reply, audio_params)
                 tts_audio = bytes(tts_result.get("audio") or b"")
+                tts_audio_packets = [bytes(packet) for packet in (tts_result.get("audio_packets") or [])]
+                tts_audio_format = str(tts_result.get("audio_format") or "").lower()
                 tts_sent_frames = 0
                 tts_sent_bytes = 0
                 tts_send_error = ""
-                if tts_audio:
+                if tts_audio_packets:
+                    for payload in tts_audio_packets:
+                        frame_payload = bytes([0, 0]) + len(payload).to_bytes(2, "big") + payload if protocol_version == 3 else payload
+                        try:
+                            await asyncio.wait_for(websocket.send_bytes(frame_payload), timeout=2.0)
+                        except TimeoutError:
+                            tts_send_error = f"tts_send_timeout:frame={tts_sent_frames}"
+                            break
+                        tts_sent_frames += 1
+                        tts_sent_bytes += len(payload)
+                        await asyncio.sleep(0.02)
+                elif tts_audio:
                     frame_bytes = max(
                         2,
-                        int(audio_params.get("sample_rate") or 16000)
+                        len(tts_audio)
+                        if tts_audio_format == "opus"
+                        else int(audio_params.get("sample_rate") or 16000)
                         * int(audio_params.get("channels") or 1)
                         * 2
                         * int(audio_params.get("frame_duration") or 60)
@@ -1001,6 +1016,9 @@ async def api_project_xiaozhi_websocket(websocket: WebSocket, project_id: str, d
                             "error": tts_send_error or str(tts_result.get("error") or ""),
                             "provider_configured": bool(tts_result.get("provider_configured")),
                             "audio_format": tts_result.get("audio_format") or "",
+                            "source_audio_format": tts_result.get("source_audio_format") or "",
+                            "pcm_bytes": int(tts_result.get("pcm_bytes") or 0),
+                            "opus_packet_count": int(tts_result.get("opus_packet_count") or len(tts_audio_packets)),
                             "audio_bytes": len(tts_audio),
                             "sent_frames": tts_sent_frames,
                             "sent_bytes": tts_sent_bytes,

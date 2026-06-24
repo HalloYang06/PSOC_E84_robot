@@ -13,7 +13,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.modules.rehab_arm.service import record_xiaozhi_ws_event, transcribe_xiaozhi_pcm
+from app.modules.rehab_arm.service import record_xiaozhi_ws_event, synthesize_xiaozhi_tts, transcribe_xiaozhi_pcm
 from app.settings import get_settings
 from tests.helpers import auth_headers, create_project, issue_session_token, register_user
 
@@ -2044,6 +2044,205 @@ def test_rehab_arm_xiaozhi_websocket_qwen_asr_pcm_then_llm_flow(tmp_path, monkey
     assert latest["sent_bytes"] == len(tts_pcm)
     assert latest["ui_state"] == "speaking"
     assert latest["last_error"] == ""
+    get_settings.cache_clear()
+
+
+def test_rehab_arm_xiaozhi_tts_encodes_opus_when_official_audio_requested(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
+    monkeypatch.setenv("REHAB_ARM_XIAOZHI_TTS_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+    monkeypatch.setenv("REHAB_ARM_XIAOZHI_TTS_MODEL", "qwen-tts")
+    monkeypatch.setenv("REHAB_ARM_XIAOZHI_TTS_VOICE", "Cherry")
+    monkeypatch.setenv("REHAB_ARM_XIAOZHI_TTS_API_KEY", "sk-tts-secret-never-return")
+    monkeypatch.setenv("REHAB_ARM_XIAOZHI_TTS_EXTERNAL_ENABLED", "true")
+    get_settings.cache_clear()
+
+    encoded_frames: list[bytes] = []
+
+    class FakeOpusEncoder:
+        def __init__(self, sample_rate: int, channels: int, application: object) -> None:
+            assert sample_rate == 16000
+            assert channels == 1
+            assert application
+
+        def encode(self, frame: bytes, frame_size: int) -> bytes:
+            assert frame_size == 960
+            assert len(frame) == 1920
+            encoded_frames.append(frame)
+            return b"opus-packet-" + len(encoded_frames).to_bytes(1, "big")
+
+    monkeypatch.setitem(sys.modules, "opuslib", types.SimpleNamespace(Encoder=FakeOpusEncoder, APPLICATION_AUDIO="audio"))
+
+    tts_pcm = b"\x02\x00" * 1920
+    wav_buffer = io.BytesIO()
+    with wave.open(wav_buffer, "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(16000)
+        wav.writeframes(tts_pcm)
+
+    class FakeResponse:
+        def __init__(self, payload: dict | bytes) -> None:
+            self.payload = payload
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        def read(self) -> bytes:
+            if isinstance(self.payload, bytes):
+                return self.payload
+            return json.dumps(self.payload, ensure_ascii=False).encode("utf-8")
+
+    def fake_urlopen(request: urllib.request.Request, timeout: int = 0):
+        if request.full_url == "https://dashscope.test/tts.wav":
+            return FakeResponse(wav_buffer.getvalue())
+        return FakeResponse({"output": {"audio": {"url": "https://dashscope.test/tts.wav"}}})
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    result = synthesize_xiaozhi_tts(
+        "请播放一段小智回复。",
+        {"format": "opus", "sample_rate": 16000, "channels": 1, "frame_duration": 60},
+    )
+
+    assert result["ok"] is True
+    assert result["audio_format"] == "opus"
+    assert result["source_audio_format"] == "pcm_s16le"
+    assert result["pcm_bytes"] == len(tts_pcm)
+    assert result["audio_packets"] == [b"opus-packet-\x01", b"opus-packet-\x02"]
+    assert result["audio"] == b"opus-packet-\x01opus-packet-\x02"
+    assert len(encoded_frames) == 2
+    get_settings.cache_clear()
+
+
+def test_rehab_arm_xiaozhi_websocket_sends_opus_tts_frames_for_official_session(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
+    monkeypatch.setenv("REHAB_ARM_MODEL_RELAY_PROVIDER", "qwen")
+    monkeypatch.setenv("REHAB_ARM_MODEL_RELAY_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+    monkeypatch.setenv("REHAB_ARM_MODEL_RELAY_MODEL", "qwen-plus")
+    monkeypatch.setenv("REHAB_ARM_MODEL_RELAY_API_KEY", "sk-test-secret-never-return")
+    monkeypatch.setenv("REHAB_ARM_MODEL_RELAY_EXTERNAL_ENABLED", "true")
+    monkeypatch.setenv("REHAB_ARM_XIAOZHI_TTS_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+    monkeypatch.setenv("REHAB_ARM_XIAOZHI_TTS_MODEL", "qwen-tts")
+    monkeypatch.setenv("REHAB_ARM_XIAOZHI_TTS_VOICE", "Cherry")
+    monkeypatch.setenv("REHAB_ARM_XIAOZHI_TTS_API_KEY", "sk-tts-secret-never-return")
+    monkeypatch.setenv("REHAB_ARM_XIAOZHI_TTS_EXTERNAL_ENABLED", "true")
+    get_settings.cache_clear()
+
+    class FakeOpusEncoder:
+        def __init__(self, sample_rate: int, channels: int, application: object) -> None:
+            assert sample_rate == 16000
+            assert channels == 1
+
+        def encode(self, frame: bytes, frame_size: int) -> bytes:
+            assert frame_size == 960
+            return b"official-opus"
+
+    monkeypatch.setitem(sys.modules, "opuslib", types.SimpleNamespace(Encoder=FakeOpusEncoder, APPLICATION_AUDIO="audio"))
+
+    tts_pcm = b"\x03\x00" * 960
+    wav_buffer = io.BytesIO()
+    with wave.open(wav_buffer, "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(16000)
+        wav.writeframes(tts_pcm)
+
+    class FakeResponse:
+        def __init__(self, payload: dict | bytes) -> None:
+            self.payload = payload
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        def read(self) -> bytes:
+            if isinstance(self.payload, bytes):
+                return self.payload
+            return json.dumps(self.payload, ensure_ascii=False).encode("utf-8")
+
+    def fake_urlopen(request: urllib.request.Request, timeout: int = 0):
+        if request.full_url == "https://dashscope.test/tts.wav":
+            return FakeResponse(wav_buffer.getvalue())
+        body = json.loads((request.data or b"{}").decode("utf-8"))
+        if body["model"] == "qwen-tts":
+            return FakeResponse({"output": {"audio": {"url": "https://dashscope.test/tts.wav"}}})
+        return FakeResponse(
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "content": json.dumps(
+                                {"classification": "daily_chat", "operator_facing_reply": "小智官方 Opus 下行。"},
+                                ensure_ascii=False,
+                            )
+                        }
+                    }
+                ]
+            }
+        )
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    owner_token, _owner_user_id = issue_session_token(client)
+    project = create_project(client, owner_token, name_prefix="Rehab XiaoZhi Opus TTS")
+    project_id = project["id"]
+    device_id = f"nanopi-xiaozhi-opus-tts-{uuid4().hex[:8]}"
+    client.post(
+        "/api/rehab-arm/v1/devices/register",
+        json={"device_id": device_id, "robot_id": "rehab-arm-alpha", "project_id": project_id},
+    )
+    token_response = client.post(
+        f"/api/rehab-arm/v1/projects/{project_id}/devices/{device_id}/model/relay-token",
+        headers=auth_headers(owner_token),
+        json={"ttl_seconds": 600, "label": "xiaozhi opus tts"},
+    )
+    relay_token = token_response.json()["data"]["token"]
+    path = f"/api/rehab-arm/v1/projects/{project_id}/devices/{device_id}/xiaozhi/ws?robot_id=rehab-arm-alpha"
+
+    with client.websocket_connect(
+        path,
+        headers={
+            **auth_headers(relay_token),
+            "Protocol-Version": "3",
+            "Device-Id": device_id,
+            "Client-Id": "m55-client-test",
+        },
+    ) as websocket:
+        websocket.send_json(
+            {
+                "type": "hello",
+                "version": 3,
+                "transport": "websocket",
+                "features": {"mcp": True},
+                "audio_params": {"format": "opus", "sample_rate": 16000, "channels": 1, "frame_duration": 60},
+            }
+        )
+        assert websocket.receive_json()["audio_params"]["format"] == "opus"
+        websocket.send_json({"session_id": "xz-opus-tts", "type": "listen", "state": "start", "mode": "auto_stop"})
+        assert websocket.receive_json()["state"] == "start"
+        websocket.send_json({"session_id": "xz-opus-tts", "type": "listen", "state": "stop", "text": "你好"})
+        assert websocket.receive_json()["type"] == "stt"
+        assert websocket.receive_json()["type"] == "llm"
+        assert websocket.receive_json()["type"] == "chat"
+        assert websocket.receive_json() == {"session_id": "xz-opus-tts", "type": "tts", "state": "start"}
+        audio_reply = websocket.receive_bytes()
+        assert audio_reply == bytes([0, 0]) + len(b"official-opus").to_bytes(2, "big") + b"official-opus"
+        assert websocket.receive_json() == {"session_id": "xz-opus-tts", "type": "tts", "state": "stop"}
+        assert websocket.receive_json()["type"] == "listen"
+
+    dashboard = client.get("/api/rehab-arm/v1/devices/dashboard", params={"project_id": project_id})
+    latest = dashboard.json()["data"]["devices"][0]["xiaozhi_session"]["payload"]
+    assert latest["event"] == "tts"
+    assert latest["audio_format"] == "opus"
+    assert latest["source_audio_format"] == "pcm_s16le"
+    assert latest["opus_packet_count"] == 1
+    assert latest["sent_frames"] == 1
+    assert latest["sent_bytes"] == len(b"official-opus")
     get_settings.cache_clear()
 
 
