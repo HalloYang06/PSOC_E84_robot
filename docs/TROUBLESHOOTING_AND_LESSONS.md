@@ -1938,3 +1938,27 @@ Fix direction:
 1. Keep a single speaker owner.
 2. Pause wake while speaking, then re-arm after a short cooldown.
 3. Prefer official-style timing before widening buffers again.
+
+## 2026-06-26 - LVGL stop is a local control state, not platform thinking
+
+Symptoms:
+- Pressing stop can look like a freeze or white-screen-adjacent UI stall.
+- XiaoZhi may appear stuck in “正在思考” even though the user asked to stop, not to wait for another model reply.
+
+Root cause:
+- The M55 LVGL stop button used `XIAOZHI_UI_THINKING`.
+- That state is reserved for “question sent, waiting for platform model/TTS”.
+- A local stop operation should not inherit the platform-thinking timeout and visual semantics.
+
+Fix / trick:
+- Put stop into `XIAOZHI_UI_CONNECTING` with “正在停止录音” only while the local stop worker runs.
+- Force the UI back to `XIAOZHI_UI_READY` after `m55_xiaozhi_talk_stop_from_ui()` returns, even on failure, so the user can retry.
+- LVGL stack can be raised modestly to 18 KB; 22 KB and 32 KB overflow current M55 internal RAM.
+
+Validation:
+- M55 build and flash passed with the 18 KB LVGL stack.
+- Serial was silent on COM4 after flash, so a white-screen report still needs visual or OpenOCD confirmation before deeper conclusions.
+
+Boundary:
+- If `lvgl_flush` still increases, treat it as a UI state/render issue instead of LCD dead.
+- If `lvgl_flush` stops and shell is silent, inspect thread starvation, stack, display driver, and reset/power before changing XiaoZhi protocol or WiFi/token.
