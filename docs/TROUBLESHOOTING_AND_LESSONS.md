@@ -1,5 +1,45 @@
 # Troubleshooting And Lessons
 
+## 2026-06-26 - CM55 Startup HardFault Looked Like Resource Pressure But Was A Stale IPC Shared Pointer
+
+Symptoms:
+- The user saw CM33/CM55 not starting correctly and the system light staying off.
+- Build/link did not show a direct overflow, so it was tempting to blame resources.
+- OpenOCD showed CM55 in an early HardFault with a bogus bus-fault address like `0x1924bf42`.
+
+Root cause:
+- M55 was entering `mtb_ipc_get_handle()` too early and trusting the IPC shared pointer read from the internal channel.
+- On a bad boot/retry sequence, that pointer could be stale or invalid before the CM33 side had re-established the shared IPC object.
+- Dereferencing it as `mtb_ipc_shared_t*` caused the early fault.
+
+Fix / trick:
+- Add a CM55 preflight that accepts only the known legal shared RAM window before IPC attach.
+- If the pointer is outside `0x261C0000-0x26200000` or the alias range `0x061C0000-0x06200000`, delay and retry instead of dereferencing it.
+- Keep the change on the M55 startup path only; do not jump back to WiFi/token/platform work for this symptom.
+
+Validation:
+- M55 build passed: `text=1677884 data=81404 bss=4533184`.
+- M55 flash passed: `rtthread.hex wrote 1761280 bytes`, `whd_resources_all.bin wrote 466944 bytes`.
+- OpenOCD reset-run no longer left CM55 in HardFault; CM55 reached thread state.
+
+## 2026-06-26 - Field `xiaorui` Wake Needed A Lower Default Threshold And Softer Speech Gate
+
+Symptoms:
+- The user still reported that `xiaorui` was hard to wake.
+- The backend already existed and the model was linked, but现场体验 still felt too strict.
+
+Root cause:
+- The Edge Impulse wake default threshold was still too conservative for this room/noise/mic combination.
+- The pre-wake speech gate could block the model before it had enough audio context.
+
+Fix / trick:
+- Lower the default wake threshold to `550/1000`.
+- Relax the speech gate so the wake backend can actually see a usable window.
+- Preserve the immediate local `我在` feedback on wake trigger.
+
+Validation:
+- M55 build passed with the wake tuning: `text=1677916 data=81404 bss=4533184`.
+
 ## 2026-06-25 - Choppy XiaoZhi Speaker Can Come From 128 ms Audio Replay Blocks
 
 Symptoms:
@@ -1981,3 +2021,22 @@ Fix / trick:
 Boundary:
 - Dark sentinel visible means do not debug power/LCD first; debug panel objects/timers/refresh next.
 - Pure white after this firmware means prioritize firmware actually running, LCD init, display reset/backlight, and CM55 boot path.
+
+## 2026-06-26 - Startup HardFaults should be read as stack/context risk first
+
+Symptoms:
+- White screen, offline state, and missing system LED can still come from CM55 failing during early thread switching.
+- OpenOCD fault data landing near `switch_to_thread` points more at context/stack damage than at XiaoZhi protocol or token issues.
+
+Fix / trick:
+- Add lightweight thread-stack logging for the M55 startup and XiaoZhi worker threads.
+- Watch these thread names first: `voice_bt`, `xz_auto`, `xz_bridge`, `voice_svc`, `voice_det`, `voice_tts`, `xz_ui`, `m55_mic`.
+- Raise the most suspicious startup stacks before touching protocol flow:
+  - `voice_bt`: 4 KB -> 12 KB
+  - `xz_auto`: 6 KB -> 8 KB
+  - `xz_ui`: 4 KB -> 6 KB
+
+Boundary:
+- If `voice_bt` trips first, inspect `voice_service_init()` and bridge startup.
+- If `xz_ui` trips first, inspect LVGL/UI handoff.
+- If `xz_auto` trips first, inspect reconnect/startup ordering and status refresh.
