@@ -2040,3 +2040,23 @@ Boundary:
 - If `voice_bt` trips first, inspect `voice_service_init()` and bridge startup.
 - If `xz_ui` trips first, inspect LVGL/UI handoff.
 - If `xz_auto` trips first, inspect reconnect/startup ordering and status refresh.
+
+## 2026-06-26 - M33 must not auto-reset CM55 during XiaoZhi reconnect windows
+
+Symptoms:
+- XiaoZhi can appear to go offline or lose the second turn after stop/playback/reconnect.
+- The same visible symptom can be caused by the M33 watchdog resetting CM55, not by WiFi/token/platform failure.
+
+Root cause:
+- `m33_watchdog_cm55_voice_status()` treated `tx_pending` plus a stale M55 voice-status timestamp as enough evidence to reset and re-enable CM55.
+- During XiaoZhi stop, TTS playback, or transient WebSocket reconnect, status/ACK traffic can lag briefly while the product path is still recoverable.
+- An automatic CM55 reset in that window makes the user experience worse: LVGL may jump to connecting/offline, wake re-arm is interrupted, and the next turn starts from a cold-ish state.
+
+Fix / trick:
+- Default `M33_CM55_AUTO_RESTART_ENABLE` to `0`.
+- Keep the watchdog as a diagnostic logger with `tx_pending`, `flags`, `stage`, `errno`, and `auto_restart`.
+- Use manual `m33_cm55_restart` only after confirming CM55 is truly stuck through liveness evidence, not merely because XiaoZhi is reconnecting.
+
+Boundary:
+- Do not re-enable automatic CM55 restart until the status cadence, IPC queue health, LVGL liveness, and XiaoZhi reconnect stages are all understood.
+- If the board truly hangs with no LED/LVGL/status movement, use the manual restart and capture the preceding watchdog line.

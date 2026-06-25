@@ -31,6 +31,15 @@ __attribute__((weak)) struct _reent _impure_data;
 #define M33_TTS_IDLE_FLUSH_MS 500U
 #define M33_CM55_STATUS_STALE_RESTART_MS 20000U
 #define M33_CM55_RESTART_COOLDOWN_MS 60000U
+#define M33_CM55_TX_STUCK_RESTART_MS 8000U
+#define M33_CM55_AUTO_RESTART_ENABLE 0
+#define M33_IPC_PUMP_PERIOD_MS 5U
+#define M33_IPC_PUMP_STACK_SIZE 4096U
+#define M33_IPC_INIT_STACK_SIZE 4096U
+#define M33_IPC_INIT_DELAY_MS 1000U
+#define M33_IPC_INIT_RETRY_MS 2000U
+#define M33_ENABLE_LED_HEARTBEAT 1
+#define M33_XIAOZHI_MINIMAL_FRAMEWORK 1
 
 #ifndef M33_ENABLE_BT_HCI
 #define M33_ENABLE_BT_HCI 0
@@ -60,19 +69,25 @@ static rt_tick_t g_tts_audio_last_tick = 0U;
 static rt_uint32_t g_tts_audio_chunks = 0U;
 static rt_uint32_t g_tts_audio_bytes = 0U;
 static rt_tick_t g_cm55_last_auto_restart_tick = 0U;
+static rt_tick_t g_cm55_tx_pending_since_tick = 0U;
+static rt_tick_t g_cm55_last_watchdog_log_tick = 0U;
+static rt_thread_t g_ipc_pump_thread = RT_NULL;
+static rt_thread_t g_ipc_init_thread = RT_NULL;
+static rt_bool_t g_m55_bridge_started = RT_FALSE;
+static sensor_data_t g_main_sensor;
+static control_status_t g_main_control;
 
 static void m33_publish_audio_capture(void);
 static rt_err_t m33_publish_pcm_shared_buffer(const rt_uint8_t *pcm, rt_uint32_t len);
+static void m33_handle_ipc_command(void);
+static void m33_flush_tts_audio_if_idle(void);
+static void m33_watchdog_cm55_voice_status(void);
 
 static void m33_log_cm55_boot_state(const char *tag)
 {
-    rt_kprintf("[m33] cm55 %s boot_addr=0x%08lx status=%lu ns_vtor=0x%08lx ctl=0x%08lx cmd=0x%08lx\n",
+    rt_kprintf("[m33] cm55 %s boot_addr=0x%08lx register-probe=skipped\n",
                tag,
-               (unsigned long)CY_CM55_APP_BOOT_ADDR,
-               (unsigned long)Cy_SysGetCM55Status(MXCM55),
-               (unsigned long)MXCM55->CM55_NS_VECTOR_TABLE_BASE,
-               (unsigned long)MXCM55->CM55_CTL,
-               (unsigned long)MXCM55->CM55_CMD);
+               (unsigned long)CY_CM55_APP_BOOT_ADDR);
 }
 
 static void m33_cm55_restart(int argc, char **argv)
@@ -683,6 +698,7 @@ static void m33_watchdog_cm55_voice_status(void)
     rt_tick_t now;
     rt_uint32_t age_ms;
     rt_uint32_t cooldown_ms;
+    rt_uint32_t tx_pending;
 
     if (!m55_model_bridge_get_voice_status(&voice_status,
                                            &voice_status_seq,
@@ -696,6 +712,40 @@ static void m33_watchdog_cm55_voice_status(void)
     cooldown_ms = (g_cm55_last_auto_restart_tick == 0U) ?
         M33_CM55_RESTART_COOLDOWN_MS :
         (rt_uint32_t)((now - g_cm55_last_auto_restart_tick) * 1000U / RT_TICK_PER_SECOND);
+    tx_pending = m33_m55_comm_tx_count();
+
+    if (tx_pending == 0U)
+    {
+        g_cm55_tx_pending_since_tick = 0U;
+    }
+    else if ((voice_status.flags & VOICE_STATUS_FLAG_XIAOZHI_CONNECTED) == 0U)
+    {
+        rt_uint32_t pending_ms;
+
+        if (g_cm55_tx_pending_since_tick == 0U)
+        {
+            g_cm55_tx_pending_since_tick = now;
+        }
+        pending_ms = (rt_uint32_t)((now - g_cm55_tx_pending_since_tick) * 1000U / RT_TICK_PER_SECOND);
+        if ((pending_ms >= M33_CM55_TX_STUCK_RESTART_MS) &&
+            (cooldown_ms >= M33_CM55_RESTART_COOLDOWN_MS))
+        {
+            rt_kprintf("[m33] cm55 tx stuck pending=%lu ms=%lu flags=0x%lx stage=%ld errno=%ld auto_restart=%u\n",
+                       (unsigned long)tx_pending,
+                       (unsigned long)pending_ms,
+                       (unsigned long)voice_status.flags,
+                       (long)voice_status.xiaozhi_ws_stage,
+                       (long)voice_status.xiaozhi_ws_errno,
+                       (unsigned)M33_CM55_AUTO_RESTART_ENABLE);
+#if M33_CM55_AUTO_RESTART_ENABLE
+            Cy_SysResetCM55(MXCM55, 10);
+            Cy_SysEnableCM55(MXCM55, CY_CM55_APP_BOOT_ADDR, 10);
+            g_cm55_last_auto_restart_tick = now;
+            g_cm55_tx_pending_since_tick = 0U;
+#endif
+            return;
+        }
+    }
 
     if ((age_ms < M33_CM55_STATUS_STALE_RESTART_MS) ||
         (cooldown_ms < M33_CM55_RESTART_COOLDOWN_MS))
@@ -703,21 +753,133 @@ static void m33_watchdog_cm55_voice_status(void)
         return;
     }
 
-    if ((m33_m55_comm_tx_count() == 0U) &&
-        ((voice_status.flags & (VOICE_STATUS_FLAG_XIAOZHI_CONNECTED |
-                                VOICE_STATUS_FLAG_XIAOZHI_LISTENING)) == 0U))
+    if (tx_pending == 0U)
     {
         return;
     }
 
-    rt_kprintf("[m33] cm55 voice status stale age=%lu seq=%lu tx_pending=%lu flags=0x%lx; auto restart\n",
+    if ((g_cm55_last_watchdog_log_tick != 0U) &&
+        ((rt_uint32_t)(now - g_cm55_last_watchdog_log_tick) < (RT_TICK_PER_SECOND * 5U)))
+    {
+        return;
+    }
+    g_cm55_last_watchdog_log_tick = now;
+
+    rt_kprintf("[m33] cm55 voice status stale age=%lu seq=%lu tx_pending=%lu flags=0x%lx stage=%ld errno=%ld auto_restart=%u\n",
                (unsigned long)age_ms,
                (unsigned long)voice_status_seq,
-               (unsigned long)m33_m55_comm_tx_count(),
-               (unsigned long)voice_status.flags);
+               (unsigned long)tx_pending,
+               (unsigned long)voice_status.flags,
+               (long)voice_status.xiaozhi_ws_stage,
+               (long)voice_status.xiaozhi_ws_errno,
+               (unsigned)M33_CM55_AUTO_RESTART_ENABLE);
+#if M33_CM55_AUTO_RESTART_ENABLE
     Cy_SysResetCM55(MXCM55, 10);
     Cy_SysEnableCM55(MXCM55, CY_CM55_APP_BOOT_ADDR, 10);
     g_cm55_last_auto_restart_tick = now;
+#endif
+}
+
+static void m33_ipc_pump_entry(void *parameter)
+{
+    RT_UNUSED(parameter);
+
+    rt_kprintf("[m33] ipc pump thread started period=%ums\n",
+               (unsigned)M33_IPC_PUMP_PERIOD_MS);
+    while (1)
+    {
+        if (m33_m55_comm_is_ready())
+        {
+            m33_handle_ipc_command();
+            m33_flush_tts_audio_if_idle();
+            m33_watchdog_cm55_voice_status();
+        }
+        rt_thread_mdelay(M33_IPC_PUMP_PERIOD_MS);
+    }
+}
+
+static void m33_start_ipc_pump(void)
+{
+    if (g_ipc_pump_thread != RT_NULL)
+    {
+        return;
+    }
+
+    g_ipc_pump_thread = rt_thread_create("m55_ipc",
+                                         m33_ipc_pump_entry,
+                                         RT_NULL,
+                                         M33_IPC_PUMP_STACK_SIZE,
+                                         12,
+                                         10);
+    if (g_ipc_pump_thread == RT_NULL)
+    {
+        rt_kprintf("[m33] WARN: failed to start ipc pump thread\n");
+        return;
+    }
+
+    rt_thread_startup(g_ipc_pump_thread);
+}
+
+static void m33_start_m55_bridges_once(void)
+{
+    if (g_m55_bridge_started)
+    {
+        return;
+    }
+
+    m55_model_bridge_init();
+    m55_qa_bridge_init();
+    m33_start_ipc_pump();
+    g_m55_bridge_started = RT_TRUE;
+}
+
+static void m33_ipc_init_entry(void *parameter)
+{
+    rt_err_t ret;
+
+    RT_UNUSED(parameter);
+
+    rt_thread_mdelay(M33_IPC_INIT_DELAY_MS);
+    rt_kprintf("[m33] async M55 IPC init thread started\n");
+
+    while (!m33_m55_comm_is_ready())
+    {
+        ret = m33_m55_comm_init();
+        if (ret == RT_EOK)
+        {
+            rt_kprintf("[m33] async M55 IPC ready\n");
+            break;
+        }
+
+        rt_kprintf("[m33] async M55 IPC init failed ret=%d; retry in %ums\n",
+                   ret,
+                   (unsigned)M33_IPC_INIT_RETRY_MS);
+        rt_thread_mdelay(M33_IPC_INIT_RETRY_MS);
+    }
+
+    m33_start_m55_bridges_once();
+}
+
+static void m33_start_ipc_init_async(void)
+{
+    if (g_ipc_init_thread != RT_NULL)
+    {
+        return;
+    }
+
+    g_ipc_init_thread = rt_thread_create("m55_init",
+                                         m33_ipc_init_entry,
+                                         RT_NULL,
+                                         M33_IPC_INIT_STACK_SIZE,
+                                         18,
+                                         10);
+    if (g_ipc_init_thread == RT_NULL)
+    {
+        rt_kprintf("[m33] WARN: failed to start M55 IPC init thread\n");
+        return;
+    }
+
+    rt_thread_startup(g_ipc_init_thread);
 }
 
 static void m33_publish_ble_telemetry(const sensor_data_t *sensor,
@@ -764,12 +926,14 @@ static void m33_publish_ble_telemetry(const sensor_data_t *sensor,
 
 static void m33_init_framework(void)
 {
+#if M33_ENABLE_BT_HCI
     rt_err_t bt_err;
+#endif
 
-    rt_kprintf("[m33] init step1 m33_m55_comm\n");
-    m33_m55_comm_init();
-    m55_model_bridge_init();
-    m55_qa_bridge_init();
+    m33_start_ipc_init_async();
+#if M33_XIAOZHI_MINIMAL_FRAMEWORK
+    return;
+#endif
     rt_kprintf("[m33] init step2 bt_board_bridge\n");
     bt_board_bridge_init();
     rt_kprintf("[m33] init step3 app_ble_service_init\n");
@@ -822,19 +986,25 @@ extern "C" {
 #endif
 int main(void)
 {
-    sensor_data_t sensor;
-    control_status_t control;
-
     rt_memset(&g_runtime, 0, sizeof(g_runtime));
 
-    rt_kprintf("Hello RT-Thread\r\n");
-    rt_kprintf("This core is cortex-m33\n");
-    m33_log_cm55_boot_state("after-board-init");
-
+#if M33_ENABLE_LED_HEARTBEAT
     rt_pin_mode(LED_PIN_B, PIN_MODE_OUTPUT);
+    rt_pin_write(LED_PIN_B, PIN_HIGH);
+#endif
     m33_init_framework();
+#if M33_XIAOZHI_MINIMAL_FRAMEWORK
+    while (1)
+    {
+        g_runtime.loop_count++;
+#if M33_ENABLE_LED_HEARTBEAT
+        rt_pin_write(LED_PIN_B, ((g_runtime.loop_count % 10U) == 0U) ? PIN_HIGH : PIN_LOW);
+#endif
+        rt_thread_mdelay(FRAME_PERIOD_MS);
+    }
+#endif
+    rt_kprintf("[m33] framework ok\n");
     rt_thread_mdelay(100);
-    m33_log_cm55_boot_state("after-framework-init");
     control_set_mode(CONTROL_MODE_ACTIVE);
 
     rt_kprintf("[m33] System ready. Waiting for BLE connection...\n");
@@ -842,18 +1012,16 @@ int main(void)
 
     while (1)
     {
-        sensor_fill_demo_data(&sensor, rt_tick_get());
-        sensor_update_latest(&sensor);
-        control_apply_sensor_feedback(&sensor);
-        safety_monitor_update(&g_runtime.safety, &sensor);
-        control_get_status(&control);
+        sensor_fill_demo_data(&g_main_sensor, rt_tick_get());
+        sensor_update_latest(&g_main_sensor);
+        control_apply_sensor_feedback(&g_main_sensor);
+        safety_monitor_update(&g_runtime.safety, &g_main_sensor);
+        control_get_status(&g_main_control);
         m33_handle_ble_command();
-        m33_handle_ipc_command();
-        m33_flush_tts_audio_if_idle();
-        m33_watchdog_cm55_voice_status();
-        m33_publish_ble_telemetry(&sensor, &control, &g_runtime.safety);
+        m33_publish_ble_telemetry(&g_main_sensor, &g_main_control, &g_runtime.safety);
 
         g_runtime.loop_count++;
+#if M33_ENABLE_LED_HEARTBEAT
         if ((g_runtime.loop_count % 10U) == 0U)
         {
             rt_pin_write(LED_PIN_B, PIN_HIGH);
@@ -862,6 +1030,7 @@ int main(void)
         {
             rt_pin_write(LED_PIN_B, PIN_LOW);
         }
+#endif
         rt_thread_mdelay(FRAME_PERIOD_MS);
     }
 
