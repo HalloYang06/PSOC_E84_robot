@@ -3318,3 +3318,12 @@
 - Calibration asset parameters: 10 x 7 squares, 9 x 6 inner corners, 20 mm square size. Use `--chessboard-size 9x6 --square-size-m 0.020`.
 - Decision: use generated vector/PDF-like print assets from the repo rather than downloading a random raster chessboard, so square size and command parameters stay traceable.
 - Next step: print at 100% actual size, verify one square measures 20 mm, mount flat, then collect accepted stereo samples with `pair_ok=true`.
+
+### 2026-06-25 - CAN read-only health checked, camera mainline restored
+
+- CAN validation: NanoPi `can0` exists and is configured at 1 Mbps with `restart-ms=100`, but health is not normal: `state BUS-OFF`, `berr-counter tx 256 rx 0`, `rx packets=0`, and repeated `mcp251xfd spi3.0 can0: bus-off` kernel logs.
+- ROS bridge validation: `rehab-arm-nanopi-readonly.service` is active with `enable_target_tx=false`, but logs repeat `safety limited: no PSoC status`, matching the passive CAN finding that no M33/PSoC status frames are being received.
+- Boundary: no CAN frames were intentionally sent for debug, no motor/M33 command path was touched, and no service configuration was changed. The likely issue is physical/power/termination/polarity/common-ground/bitrate/other-node-presence, not VLA/camera software.
+- Camera recovery: after reboot, both USB cameras enumerated as video class but `Driver=[none]`; temporarily loading the already-present `/lib/modules/6.1.141.can-new/kernel/drivers/media/usb/uvc/uvcvideo.ko` restored `Driver=uvcvideo` and `/dev/video45` + `/dev/video47`.
+- Camera validation: `stereo_chessboard_calibration.py --chessboard-size 9x6 --square-size-m 0.020 --pretty` captured a stereo pair and correctly returned `pair_ok=false` because no chessboard was visible. The camera mainline is ready for the next chessboard sample.
+- Next step: keep CAN troubleshooting separate from the camera track; for CAN, inspect power/CANH/CANL/termination/common ground/M33 state. For camera, place the printed 9x6 inner-corner chessboard in both views and collect `pair_ok=true` samples.

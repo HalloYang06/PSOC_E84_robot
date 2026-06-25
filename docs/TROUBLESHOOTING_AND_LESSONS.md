@@ -6467,3 +6467,28 @@ ros2 run rehab_arm_psoc_bridge stereo_camera_capture_upload.py \
 
 - 2026-06-22 将瓶子放入左/右摄像头视野后，MobileNet-SSD 输出 `bottle`，confidence `0.995`，bbox `[278, 4, 106, 321]`；平台上传返回 `ok=true`、`detection_count=3`。
 - 因此排查 SSD 时先看画面里是否有 VOC21 类目标，并用 `--ssd-confidence-threshold 0.05` 做本地 probe；确认有检测后再用 `0.25` 左右阈值上传。
+
+### CAN bus-off 且 rx_total/rx packets 为 0 时先查物理层和对端节点
+
+现象：
+
+- 2026-06-25 NanoPi `can0` 为 `UP`、1 Mbps、`restart-ms=100`，但状态反复进入 `BUS-OFF`。
+- `ip -details -statistics link show can0` 显示 `berr-counter tx 256 rx 0`、`rx packets=0`、大量 TX errors/dropped。
+- `candump -L can0` 短时间被动监听无帧。
+- `rehab-arm-nanopi-readonly.service` 活跃，但持续打印 `safety limited: no PSoC status`。
+
+判断：
+
+- 这不是摄像头/VLA 问题，也不应先改 CAN 协议解析。
+- 当前更像是总线上没有可 ACK 的对端、M33/PSoC 未上电或未接入、CANH/CANL 接反、缺终端、缺共地、bitrate 不一致、收发器 standby/enable 状态不对，或物理线缆问题。
+- 即使 read-only bridge 设置了 `enable_target_tx=false`，节点仍可能发自己的 heartbeat/状态帧；没有 ACK 时也会导致 TX error 和 bus-off。
+
+安全处理：
+
+- 不要在 bus-off 状态堆叠 `cansend` 或运动命令。
+- 先确认电源、共地、CANH/CANL、两端 120R 终端、PSoC/M33 是否运行、bitrate 是否 1 Mbps。
+- 优先用被动 `candump -L can0` 和 `ip -details -statistics link show can0` 观察 RX/错误计数；只有看到 RX 或错误计数稳定后再进入协议层。
+
+状态：
+
+- 2026-06-25 仅做只读体检，没有发调试 CAN 帧，没有改服务配置，没有触碰运动链路。
