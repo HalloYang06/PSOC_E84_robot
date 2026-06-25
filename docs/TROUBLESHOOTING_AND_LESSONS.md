@@ -1,5 +1,34 @@
 # Troubleshooting And Lessons
 
+## 2026-06-25 - Choppy XiaoZhi Speaker Can Come From 128 ms Audio Replay Blocks
+
+Symptoms:
+- XiaoZhi TTS reaches the device but the speaker voice sounds choppy or unclear.
+- Multi-turn operation degrades after playback.
+
+Root cause:
+- The M55 `sound0` replay block was `4096` bytes, about `128 ms` at 16 kHz mono 16-bit.
+- XiaoZhi audio is framed at `60 ms`; forcing it through larger replay blocks adds buffering, tail latency, and queue pressure.
+
+Fix / trick:
+- Align M55 replay blocks to XiaoZhi frame size: `1920` bytes.
+- Increase replay block/queue count to `8`.
+- Keep the TTS worker from waiting seconds on a busy speaker queue; short waits plus larger queue depth are better for multi-turn UX.
+
+## 2026-06-25 - Wake Robustness Needs Both Threshold And Mic Level
+
+Symptoms:
+- `wake_on=1` and `wake_ready=1`, but saying `小瑞` does not trigger local “我在”.
+
+Root cause:
+- The Edge Impulse wake threshold at `800/1000` is strict for onsite speech when mic peak is low.
+- Previous status snapshots showed mic peaks often only in the hundreds.
+
+Fix / trick:
+- Lower default `xiaorui` threshold to `650/1000` for field UX.
+- Raise M55 PDM gain from `24` to `32`.
+- After COM4 recovers, validate with `m55qa_status`: `wake_xiaorui` should rise when saying `小瑞`.
+
 ## 2026-06-25 - Do Not Expand M33/M55 Shared Voice Status For Wake Diagnostics
 
 Symptoms:
@@ -1889,3 +1918,23 @@ Validation:
 
 Boundary:
 - If second turn freezes again, first check whether shell responds and whether `voice_ack cmd=1/2` updates. If ACK updates but TTS is choppy, debug speaker pipeline; if ACK does not update, debug the bridge worker/control queue.
+
+## 2026-06-25 - Official XiaoZhi timing beats larger buffers
+
+Symptoms:
+
+1. Voice feels choppy even when WiFi/token look healthy.
+2. Wake word starts to degrade after a few turns.
+3. More buffering does not automatically improve the experience.
+
+Root cause:
+
+1. The official Infineon XiaoZhi style keeps mic/speaker ownership simple and pauses wake during conversation.
+2. Playback timing and sample rate matter more than raw queue size.
+3. If wake and TTS overlap on the same speaker path, the UI can look connected while the audio feels broken.
+
+Fix direction:
+
+1. Keep a single speaker owner.
+2. Pause wake while speaking, then re-arm after a short cooldown.
+3. Prefer official-style timing before widening buffers again.
