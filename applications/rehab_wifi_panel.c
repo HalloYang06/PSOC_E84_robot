@@ -191,6 +191,11 @@ static const char *xiaozhi_state_text(const wifi_config_snapshot_t *snapshot)
         return "等待网络";
     }
 
+    if (websocket_client_is_connected())
+    {
+        return "已连接";
+    }
+
     stage = websocket_client_last_stage();
     err = websocket_client_last_errno();
     if (err != 0)
@@ -215,7 +220,7 @@ static const char *xiaozhi_state_text(const wifi_config_snapshot_t *snapshot)
         {
             return "接收线程失败";
         }
-        return "重试中";
+        return "连接中";
     }
 
     if (stage == 0)
