@@ -2447,19 +2447,19 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
 2. UI worker 调用 `m55_xiaozhi_talk_stop_from_ui()` 后，无论成功或失败都回到 `XIAOZHI_UI_READY`：
    - 成功：`已停止，等待唤醒词`
    - 失败：`停止失败，请重试`
-3. LVGL 线程栈从 16 KB 提到 18 KB，给当前中文 UI/状态刷新留一点余量。
+3. 曾尝试把 LVGL 线程栈从 16 KB 提到 18 KB，build/link 可通过；但现场随后反馈白屏，内存布局风险优先级高于栈余量，本轮已回退到 16 KB。
 
 验证：
 
 1. M55 实际树 build 通过：
    - `SCons exit=0`
    - `text 1677260 data 81404 bss 4535232 dec 6293896`
-2. 22 KB / 32 KB LVGL 栈会让 M55 internal RAM 链接溢出；18 KB 是当前可通过链接的保守值。
+2. 22 KB / 32 KB LVGL 栈会让 M55 internal RAM 链接溢出；18 KB 虽能链接，但白屏排查阶段不保留，回到此前稳定的 16 KB。
 3. `program_with_resources.bat` 烧录成功：
    - `rtthread.hex wrote 1761280 bytes`
    - `whd_resources_all.bin wrote 466944 bytes`
 
 边界：
 
-1. 烧录后 COM4 暂时读不到串口输出，不能仅凭串口沉默判断程序死机；需要现场看屏幕和呼吸灯，或用 OpenOCD/调试链路确认核是否在跑。
+1. M55 当前默认 `M55_DETACH_CONSOLE_FOR_M33_QA=1`，会主动 detach console，不能仅凭 COM4 沉默判断 M55 死机；需要现场看屏幕和呼吸灯，或用 OpenOCD/调试链路确认核是否在跑。
 2. 如果白屏仍复现，下一步先查 LVGL 线程活性、flush 计数、LCD reset/backlight 和 UI 状态转换，不要回退到 WiFi/token 或平台协议。
