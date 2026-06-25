@@ -3675,7 +3675,7 @@ static void voice_service_thread_entry(void *parameter)
                                ret,
                                websocket_client_last_stage(),
                                websocket_client_last_errno());
-                    xiaozhi_ui_state_set(XIAOZHI_UI_READY, "小智离线，按说话重试", ret);
+                    xiaozhi_ui_state_set(XIAOZHI_UI_CONNECTING, "小智连接中，自动重试", ret);
                     (void)voice_service_publish_status();
                 }
             }

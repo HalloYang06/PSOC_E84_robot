@@ -23,8 +23,8 @@ static void xiaozhi_ui_state_init_once(void)
 
     rt_memset(&g_xiaozhi_ui, 0, sizeof(g_xiaozhi_ui));
     rt_mutex_init(&g_xiaozhi_ui.lock, "xz_ui", RT_IPC_FLAG_PRIO);
-    g_xiaozhi_ui.snapshot.phase = XIAOZHI_UI_OFFLINE;
-    rt_strncpy(g_xiaozhi_ui.snapshot.detail, "等待网络", sizeof(g_xiaozhi_ui.snapshot.detail) - 1);
+    g_xiaozhi_ui.snapshot.phase = XIAOZHI_UI_CONNECTING;
+    rt_strncpy(g_xiaozhi_ui.snapshot.detail, "等待小智连接", sizeof(g_xiaozhi_ui.snapshot.detail) - 1);
     g_xiaozhi_ui.lock_ready = RT_TRUE;
 }
 

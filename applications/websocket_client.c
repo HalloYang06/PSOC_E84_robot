@@ -517,7 +517,7 @@ rt_err_t websocket_client_send_text(const char *message)
                    g_ws.connected ? 1 : 0,
                    g_ws.last_stage,
                    g_ws.last_errno);
-        return websocket_mark_disconnected(ERR_CONN);
+        return -RT_EBUSY;
     }
 
     rt_memset(&job, 0, sizeof(job));
@@ -536,7 +536,7 @@ rt_err_t websocket_client_send_text(const char *message)
                    g_ws.connected ? 1 : 0,
                    g_ws.last_stage,
                    g_ws.last_errno);
-        return websocket_mark_disconnected((err != ERR_OK) ? err : job.result);
+        return -RT_ERROR;
     }
 
     return RT_EOK;
@@ -558,7 +558,7 @@ rt_err_t websocket_client_send_binary(const uint8_t *data, rt_size_t len)
                    g_ws.connected ? 1 : 0,
                    g_ws.last_stage,
                    g_ws.last_errno);
-        return websocket_mark_disconnected(ERR_CONN);
+        return -RT_EBUSY;
     }
 
     rt_memset(&job, 0, sizeof(job));
@@ -578,7 +578,7 @@ rt_err_t websocket_client_send_binary(const uint8_t *data, rt_size_t len)
                    g_ws.connected ? 1 : 0,
                    g_ws.last_stage,
                    g_ws.last_errno);
-        return websocket_mark_disconnected((err != ERR_OK) ? err : job.result);
+        return -RT_ERROR;
     }
 
     return RT_EOK;
