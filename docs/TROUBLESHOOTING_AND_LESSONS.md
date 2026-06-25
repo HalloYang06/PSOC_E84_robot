@@ -1962,3 +1962,22 @@ Validation:
 Boundary:
 - If `lvgl_flush` still increases, treat it as a UI state/render issue instead of LCD dead.
 - If `lvgl_flush` stops and shell is silent, inspect thread starvation, stack, display driver, and reset/power before changing XiaoZhi protocol or WiFi/token.
+
+## 2026-06-26 - A white LCD can simply be the unpainted hardware framebuffer
+
+Symptoms:
+- Screen remains white even after reverting LVGL stack size.
+- Serial may still be silent because M55 detaches console for M33 QA.
+
+Root cause:
+- The LCD framebuffer fallback was initialized to `0xFF`, which is white in the current RGB565 path.
+- If LVGL does not produce the first full frame, the user sees a plain white LCD and it is easy to misdiagnose this as a XiaoZhi/platform issue.
+
+Fix / trick:
+- Initialize the LCD fallback framebuffer to black.
+- Show a tiny LVGL boot sentinel (`XiaoZhi`, `starting...`) before creating the full panel.
+- Use that sentinel to split the problem: LCD/LVGL alive versus full panel creation failure.
+
+Boundary:
+- Dark sentinel visible means do not debug power/LCD first; debug panel objects/timers/refresh next.
+- Pure white after this firmware means prioritize firmware actually running, LCD init, display reset/backlight, and CM55 boot path.
