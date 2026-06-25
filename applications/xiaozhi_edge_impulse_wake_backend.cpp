@@ -25,7 +25,7 @@
 #define XIAOZHI_EI_FRAME_LEN 320
 #define XIAOZHI_EI_HOP_LEN 320
 #define XIAOZHI_EI_FFT_SIZE 256
-#define XIAOZHI_EI_THRESHOLD 0.80f
+#define XIAOZHI_EI_DEFAULT_THRESHOLD_PERMILLE 800
 #define XIAOZHI_EI_ARENA_SIZE 32768
 
 extern "C" int g_ifx_wwd_ethosu_stub_seen;
@@ -48,6 +48,7 @@ static int g_last_alloc_source;
 static size_t g_last_alloc_size;
 static int g_last_alloc_fail_source;
 static size_t g_last_alloc_fail_size;
+static int g_threshold_permille = XIAOZHI_EI_DEFAULT_THRESHOLD_PERMILLE;
 static uint32_t g_hyperam_alloc_count;
 static uint32_t g_heap_alloc_count;
 static uint32_t g_alloc_fail_count;
@@ -367,10 +368,11 @@ static int run_inference(int *detected, int *confidence_permille)
         g_last_noise_permille = (int)(noise * 1000.0f);
         g_last_confidence_permille = (int)(confidence * 1000.0f);
         g_inference_count++;
-        if ((g_inference_count <= 3U) || ((g_inference_count % 8U) == 0U))
+        if ((g_inference_count <= 8U) || ((g_inference_count % 2U) == 0U))
         {
-            rt_kprintf("[xiaozhi_ei_wake] infer=%lu feature_src=%d feature_ret=%d noise=%d/1000 xiaorui=%d/1000 in_scale=%d in_zero=%d out_scale=%d out_zero=%d\n",
+            rt_kprintf("[xiaozhi_ei_wake] infer=%lu threshold=%d/1000 feature_src=%d feature_ret=%d noise=%d/1000 xiaorui=%d/1000 in_scale=%d in_zero=%d out_scale=%d out_zero=%d\n",
                        (unsigned long)g_inference_count,
+                       g_threshold_permille,
                        g_last_feature_source,
                        g_last_feature_error,
                        g_last_noise_permille,
@@ -384,7 +386,7 @@ static int run_inference(int *detected, int *confidence_permille)
         {
             *confidence_permille = g_last_confidence_permille;
         }
-        if ((confidence >= XIAOZHI_EI_THRESHOLD) && (detected != RT_NULL))
+        if ((g_last_confidence_permille >= g_threshold_permille) && (detected != RT_NULL))
         {
             *detected = 1;
         }
@@ -405,6 +407,7 @@ extern "C" int xiaozhi_edge_impulse_wake_init(void)
     g_last_alloc_size = 0;
     g_last_alloc_fail_source = 0;
     g_last_alloc_fail_size = 0;
+    g_threshold_permille = XIAOZHI_EI_DEFAULT_THRESHOLD_PERMILLE;
     g_hyperam_alloc_count = 0;
     g_heap_alloc_count = 0;
     g_alloc_fail_count = 0;
@@ -574,6 +577,27 @@ extern "C" int xiaozhi_edge_impulse_wake_last_error(void)
 extern "C" int xiaozhi_edge_impulse_wake_last_confidence_permille(void)
 {
     return g_last_confidence_permille;
+}
+
+extern "C" int xiaozhi_edge_impulse_wake_threshold_permille(void)
+{
+    return g_threshold_permille;
+}
+
+extern "C" int xiaozhi_edge_impulse_wake_set_threshold_permille(int threshold_permille)
+{
+    if (threshold_permille < 0)
+    {
+        threshold_permille = 0;
+    }
+    else if (threshold_permille > 1000)
+    {
+        threshold_permille = 1000;
+    }
+
+    g_threshold_permille = threshold_permille;
+    rt_kprintf("[xiaozhi_ei_wake] threshold=%d/1000\n", g_threshold_permille);
+    return g_threshold_permille;
 }
 
 extern "C" int xiaozhi_edge_impulse_wake_last_noise_permille(void)

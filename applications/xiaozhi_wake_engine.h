@@ -28,6 +28,8 @@ const char *xiaozhi_wake_engine_backend_name(void);
 int xiaozhi_wake_engine_last_error(void);
 int xiaozhi_wake_engine_stage(void);
 int xiaozhi_wake_engine_last_confidence_permille(void);
+int xiaozhi_wake_engine_threshold_permille(void);
+int xiaozhi_wake_engine_set_threshold_permille(int threshold_permille);
 int xiaozhi_wake_engine_last_noise_permille(void);
 int xiaozhi_wake_engine_last_feature_source(void);
 int xiaozhi_wake_engine_last_feature_error(void);

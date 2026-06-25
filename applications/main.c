@@ -21,6 +21,7 @@
 #include "voice_service.h"
 #include "websocket_client.h"
 #include "wifi_config_service.h"
+#include "xiaozhi_wake_engine.h"
 #include "xiaozhi_voice_relay.h"
 #include "drv_pdm.h"
 
@@ -630,6 +631,46 @@ static void wake_off(int argc, char **argv)
     rt_kprintf("wake_off ret=%d\n", ret);
 }
 MSH_CMD_EXPORT(wake_off, Stop wake listening from CM55 mic0);
+
+static void wake_diag(int argc, char **argv)
+{
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+
+    rt_kprintf("wake_diag backend=%s ready=%d stage=%d err=%d threshold=%d/1000 noise=%d/1000 xiaorui=%d/1000 feature_src=%d feature_ret=%d alloc_src=%d alloc_size=%d alloc_fail_src=%d alloc_fail_size=%d alloc_diag=%d\n",
+               xiaozhi_wake_engine_backend_name(),
+               xiaozhi_wake_engine_is_ready() ? 1 : 0,
+               xiaozhi_wake_engine_stage(),
+               xiaozhi_wake_engine_last_error(),
+               xiaozhi_wake_engine_threshold_permille(),
+               xiaozhi_wake_engine_last_noise_permille(),
+               xiaozhi_wake_engine_last_confidence_permille(),
+               xiaozhi_wake_engine_last_feature_source(),
+               xiaozhi_wake_engine_last_feature_error(),
+               xiaozhi_wake_engine_last_alloc_source(),
+               xiaozhi_wake_engine_last_alloc_size(),
+               xiaozhi_wake_engine_last_alloc_fail_source(),
+               xiaozhi_wake_engine_last_alloc_fail_size(),
+               xiaozhi_wake_engine_alloc_diag());
+}
+MSH_CMD_EXPORT(wake_diag, Show XiaoZhi local wake model diagnostics);
+
+static void wake_threshold(int argc, char **argv)
+{
+    int threshold;
+
+    if (argc < 2)
+    {
+        rt_kprintf("wake_threshold current=%d/1000\n",
+                   xiaozhi_wake_engine_threshold_permille());
+        return;
+    }
+
+    threshold = atoi(argv[1]);
+    threshold = xiaozhi_wake_engine_set_threshold_permille(threshold);
+    rt_kprintf("wake_threshold now=%d/1000\n", threshold);
+}
+MSH_CMD_EXPORT(wake_threshold, Get or set XiaoZhi wake threshold in permille);
 
 static void wake_dump_pcm(int argc, char **argv)
 {
@@ -1557,6 +1598,14 @@ static rt_err_t xiaozhi_bridge_handle_control(const voice_control_msg_t *control
         break;
     case VOICE_CTRL_WHD_DIAG:
         ret = wifi_config_whd_diag();
+        break;
+    case VOICE_CTRL_WAKE_SET_THRESHOLD:
+        ret = xiaozhi_wake_engine_set_threshold_permille((int)control->arg0);
+        if (ret >= 0)
+        {
+            (void)voice_service_publish_status_now();
+            ret = RT_EOK;
+        }
         break;
     case VOICE_CTRL_M33_PCM_PROBE_ENABLE:
     case VOICE_CTRL_M33_PCM_PROBE_DISABLE:

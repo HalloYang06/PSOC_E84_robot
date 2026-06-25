@@ -1,5 +1,31 @@
 # wifi 避坑文档
 
+## 44. 2026-06-25 小瑞唤醒保持 xiaorui，现场诊断不要扩大共享状态结构
+
+用户确认唤醒词仍然是“小瑞”，代码里应保持 `xiaorui`，不要改成 `OK Infineon`。
+
+本轮改动：
+
+1. M55 Edge Impulse wake 后端保留默认阈值 `800/1000`，但改为运行时阈值变量，便于现场通过 IPC 临时调低验证。
+2. M55 wake 推理日志加密度，输出 `threshold / feature_src / feature_ret / noise / xiaorui`。
+3. 唤醒成功日志增加 `conf / noise / threshold`，便于确认本地“我在”是否由模型触发。
+4. M33 QA 增加 `m55qa_wake_threshold <0..1000>` 控制命令，并在 `m55qa_status` 中从现有 `err` 解码 `wake_feature / wake_noise / wake_xiaorui`。
+
+避坑：
+
+1. 不要给 `voice_status_msg_t` 直接加 wake 诊断字段；M33 `.cy_sharedmem` 会溢出。
+2. 当前 wake 诊断继续使用 M55 `voice_status.last_error` 的既有编码：
+   - `feature_src = err / 1000000`
+   - `noise = (err / 1000) % 1000`
+   - `xiaorui_confidence = err % 1000`
+3. 若 `wake_on=1 wake_ready=1 frames/windows` 增长，但 `wake_xiaorui=0`，优先看 mic 幅度和模型置信度，不要回退到 WiFi/token/平台配置。
+
+验证状态：
+
+1. M55 build 通过：`text=1660960 data=81464 bss=4532828`。
+2. M55 flash 通过：`rtthread.hex` 写入 `1744896 bytes`，`whd_resources_all.bin` 写入 `466944 bytes`。
+3. 本轮最后 COM4 无输出但 OpenOCD 显示 CM33 在 RT-Thread idle；需要物理 Reset 或短断电后继续现场唤醒 QA。
+
 ## 43. 2026-06-23 官方小智协议只作为协议参考，平台仍连接自有平台
 
 本轮用户明确要求：参考官方小智做法，但继续连接自己的平台。不要因为“官方小智”四个字去切 URL、token 或 WiFi 资源。

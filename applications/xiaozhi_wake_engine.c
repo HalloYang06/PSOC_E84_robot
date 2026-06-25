@@ -17,6 +17,8 @@ extern int xiaozhi_edge_impulse_wake_process(const int16_t *pcm,
 extern int xiaozhi_edge_impulse_wake_stage(void);
 extern int xiaozhi_edge_impulse_wake_last_error(void);
 extern int xiaozhi_edge_impulse_wake_last_confidence_permille(void);
+extern int xiaozhi_edge_impulse_wake_threshold_permille(void);
+extern int xiaozhi_edge_impulse_wake_set_threshold_permille(int threshold_permille);
 extern int xiaozhi_edge_impulse_wake_last_noise_permille(void);
 extern int xiaozhi_edge_impulse_wake_last_feature_source(void);
 extern int xiaozhi_edge_impulse_wake_last_feature_error(void);
@@ -125,6 +127,25 @@ int xiaozhi_wake_engine_last_confidence_permille(void)
     return xiaozhi_edge_impulse_wake_last_confidence_permille();
 #else
     return 0;
+#endif
+}
+
+int xiaozhi_wake_engine_threshold_permille(void)
+{
+#ifdef XIAOZHI_WAKE_USE_EDGE_IMPULSE_TFLM
+    return xiaozhi_edge_impulse_wake_threshold_permille();
+#else
+    return 0;
+#endif
+}
+
+int xiaozhi_wake_engine_set_threshold_permille(int threshold_permille)
+{
+#ifdef XIAOZHI_WAKE_USE_EDGE_IMPULSE_TFLM
+    return xiaozhi_edge_impulse_wake_set_threshold_permille(threshold_permille);
+#else
+    RT_UNUSED(threshold_permille);
+    return -RT_ENOSYS;
 #endif
 }
 
