@@ -1953,11 +1953,11 @@ Root cause:
 Fix / trick:
 - Put stop into `XIAOZHI_UI_CONNECTING` with “正在停止录音” only while the local stop worker runs.
 - Force the UI back to `XIAOZHI_UI_READY` after `m55_xiaozhi_talk_stop_from_ui()` returns, even on failure, so the user can retry.
-- LVGL stack can be raised modestly to 18 KB; 22 KB and 32 KB overflow current M55 internal RAM.
+- Do not keep the LVGL stack increase during white-screen triage. 18 KB can link, but the safer rollback is the previous 16 KB layout; 22 KB and 32 KB overflow current M55 internal RAM.
 
 Validation:
-- M55 build and flash passed with the 18 KB LVGL stack.
-- Serial was silent on COM4 after flash, so a white-screen report still needs visual or OpenOCD confirmation before deeper conclusions.
+- M55 build and flash passed after reverting the LVGL stack to 16 KB.
+- Serial was silent on COM4, but M55 detaches console for M33 QA by default, so a white-screen report still needs visual or OpenOCD confirmation before deeper conclusions.
 
 Boundary:
 - If `lvgl_flush` still increases, treat it as a UI state/render issue instead of LCD dead.
