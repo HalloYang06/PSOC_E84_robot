@@ -916,7 +916,7 @@ static rt_err_t xiaozhi_ui_start_worker(void)
     g_xiaozhi_ui_thread = rt_thread_create("xz_ui",
                                            xiaozhi_ui_worker_thread_entry,
                                            RT_NULL,
-                                           4096,
+                                           6144,
                                            20,
                                            10);
     if (g_xiaozhi_ui_thread == RT_NULL)

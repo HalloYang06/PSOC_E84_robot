@@ -34,6 +34,8 @@ extern int lvgl_thread_init(void);
 #define M55_AUDIO_BITS_PER_SAMPLE 16
 #define M55_AUDIO_FRAME_BYTES 2048
 #define M55_MIC_THREAD_STACK 16384
+#define M55_VOICE_BOOT_THREAD_STACK 12288
+#define M55_XIAOZHI_AUTO_THREAD_STACK 8192
 #define M55_VOICE_BOOT_DELAY_MS 5000
 #define M55_BOOT_SELF_TEST_RETRY_COUNT 10
 #define M55_XIAOZHI_CLOUD_IP "106.55.62.122"
@@ -54,7 +56,7 @@ extern int lvgl_thread_init(void);
 #define M55_ENABLE_LOCAL_HTTP_SERVER 0
 #endif
 #ifndef M55_XIAOZHI_PDM_GAIN
-#define M55_XIAOZHI_PDM_GAIN 24
+#define M55_XIAOZHI_PDM_GAIN 32
 #endif
 #define M55_ENABLE_LED_HEARTBEAT 1
 #define M55_DETACH_CONSOLE_FOR_M33_QA 1
@@ -111,6 +113,8 @@ static rt_err_t m55_wake_listen_start_for_xiaozhi(void);
 static rt_err_t m55_wake_listen_stop_for_xiaozhi(void);
 rt_err_t m55_xiaozhi_talk_start_from_ui(void);
 rt_err_t m55_xiaozhi_talk_stop_from_ui(void);
+static void m55_dump_thread_stack(const char *tag, const char *name);
+static void m55_dump_thread_stacks(const char *tag);
 static void xiaozhi_bridge_publish_status(void);
 static void wifi_status_publish_kick(void);
 
@@ -128,6 +132,39 @@ static volatile rt_int32_t g_tcp_probe_result;
 static volatile rt_int32_t g_tcp_probe_so_error;
 static volatile rt_int32_t g_tcp_probe_select_ret;
 static volatile rt_int32_t g_tcp_probe_fcntl_ret;
+
+static void m55_dump_thread_stack(const char *tag, const char *name)
+{
+    rt_thread_t thread = rt_thread_find((char *)name);
+
+    if (thread == RT_NULL)
+    {
+        rt_kprintf("[m55_stack] %s %s missing\n", tag, name);
+        return;
+    }
+
+    rt_kprintf("[m55_stack] %s %s sp=%p stack=%p size=%lu err=%d stat=%u\n",
+               tag,
+               name,
+               thread->sp,
+               thread->stack_addr,
+               (unsigned long)thread->stack_size,
+               (int)thread->error,
+               (unsigned)thread->stat);
+}
+
+static void m55_dump_thread_stacks(const char *tag)
+{
+    m55_dump_thread_stack(tag, "LVGL");
+    m55_dump_thread_stack(tag, "voice_bt");
+    m55_dump_thread_stack(tag, "xz_auto");
+    m55_dump_thread_stack(tag, "xz_bridge");
+    m55_dump_thread_stack(tag, "voice_svc");
+    m55_dump_thread_stack(tag, "voice_det");
+    m55_dump_thread_stack(tag, "voice_tts");
+    m55_dump_thread_stack(tag, "xz_ui");
+    m55_dump_thread_stack(tag, "m55_mic");
+}
 
 static void m55_wifi_scan_qa_capture(void)
 {
@@ -912,6 +949,7 @@ rt_err_t m55_xiaozhi_talk_start_from_ui(void)
                websocket_client_is_connected() ? 1 : 0,
                websocket_client_last_stage(),
                websocket_client_last_errno());
+    m55_dump_thread_stacks("ui_start");
     (void)voice_service_publish_status_now();
     return ret;
 }
@@ -928,6 +966,7 @@ rt_err_t m55_xiaozhi_talk_stop_from_ui(void)
                websocket_client_is_connected() ? 1 : 0,
                websocket_client_last_stage(),
                websocket_client_last_errno());
+    m55_dump_thread_stacks("ui_stop");
     (void)voice_service_publish_status_now();
     return ret;
 }
@@ -982,6 +1021,7 @@ static void xiaozhi_auto_connect_thread_entry(void *parameter)
             {
                 voice_ready = RT_TRUE;
                 rt_kprintf("[m55_xz_auto] voice service started after wifi ready\n");
+                m55_dump_thread_stacks("xz_auto_voice_ready");
             }
             else
             {
@@ -1000,6 +1040,7 @@ static void xiaozhi_auto_connect_thread_entry(void *parameter)
                    websocket_client_is_connected() ? 1 : 0,
                    websocket_client_last_stage(),
                    websocket_client_last_errno());
+        m55_dump_thread_stacks("xz_auto_reconnect");
         xiaozhi_bridge_publish_status();
         if (ret == RT_EOK)
         {
@@ -1909,6 +1950,7 @@ static void voice_boot_thread_entry(void *parameter)
         return;
     }
 
+    m55_dump_thread_stacks("voice_boot_after_init");
     rt_kprintf("[m55] voice service initialized\n");
     xiaozhi_bridge_thread_start();
     ret = voice_service_start();
@@ -2030,7 +2072,7 @@ int main(void)
     g_voice_boot_thread = rt_thread_create("voice_bt",
                                            voice_boot_thread_entry,
                                            RT_NULL,
-                                           4096,
+                                           M55_VOICE_BOOT_THREAD_STACK,
                                            16,
                                            10);
     if (g_voice_boot_thread)
@@ -2048,7 +2090,7 @@ int main(void)
     g_voice_boot_thread = rt_thread_create("voice_bt",
                                            voice_boot_thread_entry,
                                            RT_NULL,
-                                           4096,
+                                           M55_VOICE_BOOT_THREAD_STACK,
                                            16,
                                            10);
     if (g_voice_boot_thread)
@@ -2059,7 +2101,7 @@ int main(void)
     g_xiaozhi_auto_thread = rt_thread_create("xz_auto",
                                              xiaozhi_auto_connect_thread_entry,
                                              RT_NULL,
-                                             6144,
+                                             M55_XIAOZHI_AUTO_THREAD_STACK,
                                              17,
                                              10);
     if (g_xiaozhi_auto_thread)
