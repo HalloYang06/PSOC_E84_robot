@@ -2525,3 +2525,21 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
 
 1. 若现场看到深色 `XiaoZhi starting...`，说明 LCD 和 LVGL 线程已活，后续问题在完整面板创建/刷新。
 2. 若仍纯白，说明新固件未运行到 LCD fallback/首帧，优先查烧录生效、复位、LCD init、backlight/reset 或 CM55 是否启动。
+
+## 58. 2026-06-26 M33 watchdog 不要把小智瞬时重连误杀成 CM55 死机
+
+现象：
+
+1. 小智停止、播放、第二轮说话时可能显示连接中/离线跳变。
+2. 这不一定是 M55 WiFi/token/WebSocket 主链路坏了，也可能是 M33 侧 watchdog 在 `tx_pending` 和旧 `voice_status` 同时出现时自动重启 CM55。
+
+处理：
+
+1. M33 `applications/main.c` 新增 `M33_CM55_AUTO_RESTART_ENABLE=0`，默认只打印诊断，不自动 reset/enable CM55。
+2. watchdog 日志补充 `stage`、`errno`、`flags`、`tx_pending`、`auto_restart`，方便区分真正卡死和小智短暂重连窗口。
+3. 保留手动 `m33_cm55_restart`，只在确认 CM55 真的无 LVGL/LED/voice_status 活性时使用。
+
+边界：
+
+1. 后续如果又看到“小智离线/连接中”，先看 M33 watchdog 日志是否出现 `auto_restart=0` 的 stale/tx stuck 诊断，再决定是否查 M55。
+2. 不要因为短暂 `xz_ws=0` 或 UI 连接中就回退 WiFi 扫描、token、资源固件方向。
