@@ -1,5 +1,35 @@
 # Troubleshooting And Lessons
 
+## 2026-06-25 - Do Not Expand M33/M55 Shared Voice Status For Wake Diagnostics
+
+Symptoms:
+- Adding several wake diagnostic fields to `voice_status_msg_t` makes the M33 build fail with `.cy_sharedmem` overflow.
+- A small-looking struct increase can overflow the fixed shared-memory region.
+
+Root cause:
+- `voice_status_msg_t` is part of the M33/M55 IPC shared layout; increasing it affects the `.cy_sharedmem` footprint.
+
+Fix / trick:
+- Keep wake diagnostics encoded through existing fields when possible.
+- Current M55 status already encodes wake backend details in `last_error` when there is no negative service error:
+  - `feature_src = err / 1000000`
+  - `noise = (err / 1000) % 1000`
+  - `xiaorui_confidence = err % 1000`
+- M33 `m55qa_status` should decode those values for readability instead of growing the shared status struct.
+
+## 2026-06-25 - COM4 Silence After Flash Is Not Automatically A Firmware Crash
+
+Symptoms:
+- COM4 returns zero bytes after M33/M55 flash.
+- OpenOCD can still halt CM33 and shows PC in RT-Thread `idle_thread_entry`.
+
+Root cause:
+- If CM33 is running idle, the application is not necessarily hard-faulted. The board may need a physical Reset or power cycle after repeated OpenOCD acquire/reset failures.
+
+Fix / trick:
+- First verify CM33 PC with OpenOCD before assuming a code crash.
+- If PC is in idle and COM4 is silent, do a physical Reset or short power cycle, then retry `m55qa_status`.
+
 ## 2026-06-24 - XiaoZhi Has Text Reply But No Speaker Voice Is A Playback Owner Issue
 
 Symptoms:

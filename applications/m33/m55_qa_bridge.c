@@ -4,6 +4,7 @@
 #include "m55_model_bridge.h"
 
 #include <finsh.h>
+#include <stdlib.h>
 
 static void m55qa_print_ip4(const char *label, rt_uint32_t ip)
 {
@@ -17,7 +18,9 @@ static void m55qa_print_ip4(const char *label, rt_uint32_t ip)
                bytes[3]);
 }
 
-static rt_err_t m55qa_send_voice_control(voice_control_cmd_t cmd)
+static rt_err_t m55qa_send_voice_control_args(voice_control_cmd_t cmd,
+                                              rt_uint32_t arg0,
+                                              rt_uint32_t arg1)
 {
     m33_m55_message_t msg;
     rt_err_t ret = -RT_ERROR;
@@ -26,6 +29,8 @@ static rt_err_t m55qa_send_voice_control(voice_control_cmd_t cmd)
     rt_memset(&msg, 0, sizeof(msg));
     msg.type = MSG_TYPE_VOICE_CONTROL;
     msg.payload.voice_control.cmd = (rt_uint32_t)cmd;
+    msg.payload.voice_control.arg0 = arg0;
+    msg.payload.voice_control.arg1 = arg1;
     for (attempt = 0U; attempt < 5U; attempt++)
     {
         ret = m33_m55_comm_publish(&msg);
@@ -36,6 +41,11 @@ static rt_err_t m55qa_send_voice_control(voice_control_cmd_t cmd)
         rt_thread_mdelay(50);
     }
     return ret;
+}
+
+static rt_err_t m55qa_send_voice_control(voice_control_cmd_t cmd)
+{
+    return m55qa_send_voice_control_args(cmd, 0U, 0U);
 }
 
 static rt_bool_t m55qa_wait_voice_ack(voice_control_cmd_t cmd,
@@ -201,7 +211,18 @@ static void m55qa_status(int argc, char **argv)
                                                          &voice_status_timestamp);
     if (has_voice_status)
     {
-        rt_kprintf("[m55qa] voice_status seq=%lu flags=0x%lx wake_on=%d wake_ready=%d wake_hit=%d xz_listening=%d xz_ws=%d xz_token=%d token_len=%lu staging_len=%lu frames=%lu windows=%lu detected=%lu pcm_seq=%lu len=%lu peak=%lu avg=%lu active=%lu/%lu wake_stage=%lu err=%ld xz_stage=%ld xz_errno=%ld heap=%lu/%lu max=%lu voice_svc=%ld/%ld/%ld/%ld probe_lwip=%ld/%ld xz_cur=%lu/%lu xz_last=%lu/%lu xz_fail=%lu xz_rx=%lu/%lu frame_len=%lu tts_fwd=%lu/%lu tts_fail=%lu pcm_reject=%lu srv_hello=%lu srv_stt=%lu srv_tts=%lu/%lu/%lu srv_last=0x%08lx/0x%08lx srv_lens=%lu/%lu/%lu srv_err=0x%04lx/0x%04lx raw=%lu hint=0x%04lx age_ticks=%lu\n",
+        rt_int32_t wake_feature_src = 0;
+        rt_int32_t wake_noise = 0;
+        rt_int32_t wake_conf = 0;
+
+        if (voice_status.last_error >= 1000000)
+        {
+            wake_feature_src = voice_status.last_error / 1000000;
+            wake_noise = (voice_status.last_error / 1000) % 1000;
+            wake_conf = voice_status.last_error % 1000;
+        }
+
+        rt_kprintf("[m55qa] voice_status seq=%lu flags=0x%lx wake_on=%d wake_ready=%d wake_hit=%d xz_listening=%d xz_ws=%d xz_token=%d token_len=%lu staging_len=%lu frames=%lu windows=%lu detected=%lu pcm_seq=%lu len=%lu peak=%lu avg=%lu active=%lu/%lu wake_stage=%lu err=%ld wake_feature=%ld wake_noise=%ld/1000 wake_xiaorui=%ld/1000 xz_stage=%ld xz_errno=%ld heap=%lu/%lu max=%lu voice_svc=%ld/%ld/%ld/%ld probe_lwip=%ld/%ld xz_cur=%lu/%lu xz_last=%lu/%lu xz_fail=%lu xz_rx=%lu/%lu frame_len=%lu tts_fwd=%lu/%lu tts_fail=%lu pcm_reject=%lu srv_hello=%lu srv_stt=%lu srv_tts=%lu/%lu/%lu srv_last=0x%08lx/0x%08lx srv_lens=%lu/%lu/%lu srv_err=0x%04lx/0x%04lx raw=%lu hint=0x%04lx age_ticks=%lu\n",
                    (unsigned long)voice_status_seq,
                    (unsigned long)voice_status.flags,
                    (voice_status.flags & VOICE_STATUS_FLAG_WAKE_LISTENING) ? 1 : 0,
@@ -223,6 +244,9 @@ static void m55qa_status(int argc, char **argv)
                    (unsigned long)voice_status.latest_total_frames,
                    (unsigned long)voice_status.wake_stage,
                    (long)voice_status.last_error,
+                   (long)wake_feature_src,
+                   (long)wake_noise,
+                   (long)wake_conf,
                    (long)voice_status.xiaozhi_ws_stage,
                    (long)voice_status.xiaozhi_ws_errno,
                    (unsigned long)voice_status.heap_used,
@@ -320,6 +344,46 @@ static void m55qa_wake_off(int argc, char **argv)
     rt_kprintf("[m55qa] wake_off ret=%d\n", ret);
 }
 MSH_CMD_EXPORT(m55qa_wake_off, Stop CM55 wake-word listening);
+
+static void m55qa_wake_threshold(int argc, char **argv)
+{
+    rt_err_t ret;
+    rt_int32_t ack_result = 0;
+    int threshold;
+
+    if (argc < 2)
+    {
+        rt_kprintf("[m55qa] usage: m55qa_wake_threshold <0..1000>; current value is shown by m55qa_status wake_thr\n");
+        return;
+    }
+
+    threshold = atoi(argv[1]);
+    if (threshold < 0)
+    {
+        threshold = 0;
+    }
+    else if (threshold > 1000)
+    {
+        threshold = 1000;
+    }
+
+    ret = m55qa_send_voice_control_args(VOICE_CTRL_WAKE_SET_THRESHOLD,
+                                        (rt_uint32_t)threshold,
+                                        0U);
+    if (ret == RT_EOK)
+    {
+        (void)m55qa_wait_voice_ack(VOICE_CTRL_WAKE_SET_THRESHOLD,
+                                   rt_tick_get() - rt_tick_from_millisecond(100),
+                                   2000U,
+                                   &ack_result);
+    }
+    rt_kprintf("[m55qa] wake_threshold ret=%d value=%d ack=%ld tx_pending=%lu\n",
+               ret,
+               threshold,
+               (long)ack_result,
+               (unsigned long)m33_m55_comm_tx_count());
+}
+MSH_CMD_EXPORT(m55qa_wake_threshold, Set CM55 XiaoZhi wake threshold in permille);
 
 static void m55qa_capture_on(int argc, char **argv)
 {
@@ -451,6 +515,17 @@ static void m55qa_xz_reconnect(int argc, char **argv)
     rt_kprintf("[m55qa] xz_reconnect ret=%d\n", ret);
 }
 MSH_CMD_EXPORT(m55qa_xz_reconnect, Reconnect CM55 Xiaozhi websocket);
+
+static void m55qa_xz_text(int argc, char **argv)
+{
+    const char *text = (argc >= 2) ? argv[1] : "";
+    rt_err_t ret = m55qa_send_voice_config(VOICE_CONFIG_XIAOZHI_QA_TEXT, text);
+
+    rt_kprintf("[m55qa] xz_text ret=%d len=%lu\n",
+               ret,
+               (unsigned long)rt_strlen(text));
+}
+MSH_CMD_EXPORT(m55qa_xz_text, Ask CM55 to send a XiaoZhi QA text turn through TTS);
 
 static void m55qa_wifi_ssid(int argc, char **argv)
 {
@@ -628,3 +703,19 @@ static void m55qa_probe_pcm_off(int argc, char **argv)
                (unsigned long)m33_m55_comm_tx_count());
 }
 MSH_CMD_EXPORT(m55qa_probe_pcm_off, Disable M33 PCM probe and keep CM55 mic0 product uplink);
+
+static void m55qa_speaker_tone(int argc, char **argv)
+{
+    rt_err_t ret;
+    rt_int32_t ack_result = 0;
+
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+
+    ret = m55qa_send_voice_control_wait(VOICE_CTRL_M55_SPEAKER_TONE, 5000U, &ack_result);
+    rt_kprintf("[m55qa] speaker_tone ret=%d ack=%ld tx_pending=%lu\n",
+               ret,
+               (long)ack_result,
+               (unsigned long)m33_m55_comm_tx_count());
+}
+MSH_CMD_EXPORT(m55qa_speaker_tone, Ask CM55 sound0 to play a local QA tone);
