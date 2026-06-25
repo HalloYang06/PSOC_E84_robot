@@ -57,8 +57,13 @@ struct drv_lcd_device _lcd;
 
 GFXSS_Type *gfxbase = (GFXSS_Type*) GFXSS;
 static cy_stc_gfx_context_t lcd_gfx_context;
+static volatile rt_int32_t g_lcd_init_result = -RT_ERROR;
+static volatile rt_int32_t g_lcd_gfx_status = -1;
+static volatile rt_int32_t g_lcd_mipi_status = -1;
+static volatile rt_uint32_t g_lcd_frame_updates = 0;
+static volatile rt_int32_t g_lcd_last_frame_status = -1;
 
-CY_SECTION(".cy_gpu_buf")uint8_t graphics_buffer[LCD_BUF_SIZE] = {0xFF};
+CY_SECTION(".cy_gpu_buf")uint8_t graphics_buffer[LCD_BUF_SIZE] = {0x00};
 
 struct drv_lcd_device
 {
@@ -93,6 +98,11 @@ static rt_err_t drv_lcd_control(struct rt_device *device, int cmd, void *args)
         /* update */
         /* Set the frame buffer with the image pointer to be displayed on LCD */
         status = Cy_GFXSS_Set_FrameBuffer(gfxbase, (uint32_t*)graphics_buffer, &lcd_gfx_context);
+        g_lcd_last_frame_status = (rt_int32_t)status;
+        if (CY_GFX_SUCCESS == status)
+        {
+            g_lcd_frame_updates++;
+        }
 
         /* Image rendering failed. Stop program execution */
         if (CY_GFX_SUCCESS != status)
@@ -174,6 +184,7 @@ rt_err_t psoc_lcd_init(struct drv_lcd_device *lcd)
 
     /* Graphics subsystem initialization failed. Stop program execution */
     gfx_status = Cy_GFXSS_Init(gfxbase, &GFXSS_config, &lcd_gfx_context);
+    g_lcd_gfx_status = (rt_int32_t)gfx_status;
     if (CY_GFX_SUCCESS != gfx_status)
     {
         LOG_E("[%s: %d] Gfxss initialization failed. Error type: %u\r\n", __func__, __LINE__, status);
@@ -205,6 +216,7 @@ rt_err_t psoc_lcd_init(struct drv_lcd_device *lcd)
     NVIC_EnableIRQ(GFXSS_GPU_IRQ);
 
     mipi_status = mtb_display_tl043wvv02_init(GFXSS_GFXSS_MIPIDSI, &tl043wvv02_pin_cfg);
+    g_lcd_mipi_status = (rt_int32_t)mipi_status;
 
     /* Display initialization failed. Stop program execution */
     if (CY_MIPIDSI_SUCCESS != mipi_status)
@@ -213,6 +225,87 @@ rt_err_t psoc_lcd_init(struct drv_lcd_device *lcd)
         return -RT_ERROR;
     }
     LOG_I("init screen success");
+    g_lcd_init_result = RT_EOK;
+    return RT_EOK;
+}
+
+cy_stc_gfx_context_t *drv_lcd_get_gfx_context(void)
+{
+    return &lcd_gfx_context;
+}
+
+rt_int32_t drv_lcd_get_init_result(void)
+{
+    return g_lcd_init_result;
+}
+
+rt_int32_t drv_lcd_get_gfx_status(void)
+{
+    return g_lcd_gfx_status;
+}
+
+rt_int32_t drv_lcd_get_mipi_status(void)
+{
+    return g_lcd_mipi_status;
+}
+
+rt_uint32_t drv_lcd_get_frame_updates(void)
+{
+    return g_lcd_frame_updates;
+}
+
+rt_int32_t drv_lcd_get_last_frame_status(void)
+{
+    return g_lcd_last_frame_status;
+}
+
+static void drv_lcd_fill_rgb565(struct drv_lcd_device *lcd, rt_uint8_t low, rt_uint8_t high)
+{
+    int i;
+
+    if ((lcd == RT_NULL) || (lcd->lcd_info.framebuffer == RT_NULL))
+    {
+        return;
+    }
+
+    for (i = 0; i < LCD_BUF_SIZE / 2; i++)
+    {
+        lcd->lcd_info.framebuffer[2 * i] = low;
+        lcd->lcd_info.framebuffer[2 * i + 1] = high;
+    }
+    lcd->parent.control(&lcd->parent, RTGRAPHIC_CTRL_RECT_UPDATE, RT_NULL);
+}
+
+int drv_lcd_boot_color_test(void)
+{
+    struct drv_lcd_device *lcd;
+
+    lcd = (struct drv_lcd_device *)rt_device_find("lcd");
+    if (lcd == RT_NULL)
+    {
+        rt_kprintf("[drv_lcd] boot color test skipped: lcd device not found\n");
+        return -RT_ERROR;
+    }
+
+    if (lcd->lcd_info.pixel_format != RTGRAPHIC_PIXEL_FORMAT_RGB565)
+    {
+        rt_kprintf("[drv_lcd] boot color test skipped: unsupported pixel_format=%d\n",
+                   lcd->lcd_info.pixel_format);
+        return -RT_ERROR;
+    }
+
+    rt_kprintf("[drv_lcd] boot color test: red\n");
+    drv_lcd_fill_rgb565(lcd, 0x00, 0xF8);
+    rt_thread_mdelay(700);
+    rt_kprintf("[drv_lcd] boot color test: green\n");
+    drv_lcd_fill_rgb565(lcd, 0xE0, 0x07);
+    rt_thread_mdelay(700);
+    rt_kprintf("[drv_lcd] boot color test: blue\n");
+    drv_lcd_fill_rgb565(lcd, 0x1F, 0x00);
+    rt_thread_mdelay(700);
+    rt_kprintf("[drv_lcd] boot color test: white\n");
+    drv_lcd_fill_rgb565(lcd, 0xFF, 0xFF);
+    rt_thread_mdelay(300);
     return RT_EOK;
 }
 
@@ -263,8 +356,8 @@ int drv_lcd_hw_init(void)
         result = -RT_ENOMEM;
         goto __exit;
     }
-    /* memset buff to 0xFF */
-    memset(_lcd.lcd_info.framebuffer, 0xFF, LCD_BUF_SIZE);
+    /* Use black as the hardware fallback so a failed LVGL first frame is not a white screen. */
+    memset(_lcd.lcd_info.framebuffer, 0x00, LCD_BUF_SIZE);
     device->type    = RT_Device_Class_Graphic;
 #ifdef RT_USING_DEVICE_OPS
     device->ops     = &lcd_ops;
@@ -280,6 +373,7 @@ int drv_lcd_hw_init(void)
     /* init mipi display */
     if (psoc_lcd_init(&_lcd) != RT_EOK)
     {
+        g_lcd_init_result = -RT_ERROR;
         result = -RT_ERROR;
         goto __exit;
     }
@@ -404,5 +498,3 @@ MSH_CMD_EXPORT(lcd_test, lcd_test);
 #endif /* FINSH_USING_MSH */
 #endif /* DRV_DEBUG */
 #endif
-
-

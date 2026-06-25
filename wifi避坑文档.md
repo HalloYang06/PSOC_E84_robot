@@ -2463,3 +2463,32 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
 
 1. M55 当前默认 `M55_DETACH_CONSOLE_FOR_M33_QA=1`，会主动 detach console，不能仅凭 COM4 沉默判断 M55 死机；需要现场看屏幕和呼吸灯，或用 OpenOCD/调试链路确认核是否在跑。
 2. 如果白屏仍复现，下一步先查 LVGL 线程活性、flush 计数、LCD reset/backlight 和 UI 状态转换，不要回退到 WiFi/token 或平台协议。
+
+## 57. 2026-06-26 白屏继续复现时先做显示分层，不要继续猜小智协议
+
+现象：
+
+1. 回退 LVGL 栈到 16 KB 后，现场仍反馈白屏。
+2. `drv_lcd.c` 的硬件 framebuffer 默认值是 `0xFF`，也就是 LCD/LVGL 首帧没有覆盖时，现场看到的就是纯白。
+
+修复：
+
+1. LCD framebuffer 硬件兜底从白底改成黑底：
+   - `graphics_buffer` 初值从 `0xFF` 改为 `0x00`
+   - `drv_lcd_hw_init()` 中 fallback `memset` 从 `0xFF` 改为 `0x00`
+2. `lv_user_gui_init()` 先显示一个极简深色启动屏：
+   - `XiaoZhi`
+   - `starting...`
+3. 800 ms 后再进入原来的完整 WiFi/XiaoZhi 面板。
+
+验证：
+
+1. M55 build 通过，`rtthread.hex` 更新时间为 2026-06-26 04:39:41。
+2. 烧录成功：
+   - `rtthread.hex wrote 1761280 bytes`
+   - `whd_resources_all.bin wrote 466944 bytes`
+
+判定：
+
+1. 若现场看到深色 `XiaoZhi starting...`，说明 LCD 和 LVGL 线程已活，后续问题在完整面板创建/刷新。
+2. 若仍纯白，说明新固件未运行到 LCD fallback/首帧，优先查烧录生效、复位、LCD init、backlight/reset 或 CM55 是否启动。

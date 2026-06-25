@@ -43,6 +43,7 @@ static volatile rt_uint8_t g_xiaozhi_ui_pending_cmd;
 static rt_thread_t g_connect_thread;
 static rt_bool_t g_connect_in_progress;
 static rt_bool_t g_diag_visible;
+static lv_timer_t *g_boot_panel_timer;
 #if REHAB_WIFI_PANEL_AUTO_QA
 static rt_bool_t g_auto_qa_done;
 #endif
@@ -63,6 +64,7 @@ static void rehab_wifi_panel_run_qa_scan(const char *source);
 static void xiaozhi_ui_worker_thread_entry(void *parameter);
 static rt_err_t xiaozhi_ui_queue_action(rt_uint8_t cmd);
 static rt_err_t xiaozhi_ui_start_worker(void);
+static void rehab_wifi_panel_boot_timer_cb(lv_timer_t *timer);
 
 static const char *wifi_keyboard_lower_map[] =
 {
@@ -1311,6 +1313,36 @@ rt_err_t rehab_wifi_panel_create(void)
 
 void lv_user_gui_init(void)
 {
+    lv_obj_t *screen = lv_screen_active();
+    lv_obj_t *title;
+    lv_obj_t *hint;
+
+    lv_obj_clean(screen);
+    lv_obj_set_style_bg_color(screen, lv_color_hex(0x0F172A), 0);
+
+    title = lv_label_create(screen);
+    lv_label_set_text(title, "XiaoZhi");
+    lv_obj_set_style_text_color(title, lv_color_hex(0xE0F2FE), 0);
+    lv_obj_set_style_text_font(title, panel_font(), 0);
+    lv_obj_align(title, LV_ALIGN_CENTER, 0, -24);
+
+    hint = lv_label_create(screen);
+    lv_label_set_text(hint, "starting...");
+    lv_obj_set_style_text_color(hint, lv_color_hex(0x93C5FD), 0);
+    lv_obj_set_style_text_font(hint, panel_font(), 0);
+    lv_obj_align(hint, LV_ALIGN_CENTER, 0, 24);
+
+    g_boot_panel_timer = lv_timer_create(rehab_wifi_panel_boot_timer_cb, 800, RT_NULL);
+    if (g_boot_panel_timer != RT_NULL)
+    {
+        lv_timer_set_repeat_count(g_boot_panel_timer, 1);
+    }
+}
+
+static void rehab_wifi_panel_boot_timer_cb(lv_timer_t *timer)
+{
+    RT_UNUSED(timer);
+    g_boot_panel_timer = RT_NULL;
     (void)rehab_wifi_panel_create();
 }
 
