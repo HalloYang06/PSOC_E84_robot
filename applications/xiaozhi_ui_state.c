@@ -168,6 +168,6 @@ const char *xiaozhi_ui_phase_text(xiaozhi_ui_phase_t phase)
         return "连接异常";
     case XIAOZHI_UI_OFFLINE:
     default:
-        return "离线";
+        return "等待小智连接";
     }
 }
