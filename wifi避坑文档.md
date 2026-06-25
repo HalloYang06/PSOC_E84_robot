@@ -2427,3 +2427,39 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
 1. replay 参数回到 `4096/4`。
 2. TTS 期间暂停 wake，TTS stop 后再 re-arm。
 3. 本地“我在”走 speaker 互斥，避免和 TTS 抢声卡。
+
+## 56. 2026-06-26 LVGL stop 不要进入“正在思考”状态
+
+现象：
+
+1. 现场反馈按 LVGL 停止后容易卡住，严重时看起来像白屏/程序不动。
+2. 这类问题不一定是 LCD 初始化失败；历史状态里 `lvgl_flush` 曾持续增长，说明更像 UI 状态机被卡在错误阶段。
+
+根因：
+
+1. stop 按钮之前把 UI 置为 `XIAOZHI_UI_THINKING` / “正在结束录音”。
+2. `THINKING` 是“已发给平台、等待模型/TTS”的状态，不适合本地 stop。
+3. 如果 stop 的平台通知或会话收尾被延迟，用户会误以为小智一直在思考，按钮体验也像卡死。
+
+修复：
+
+1. stop 按钮改为 `XIAOZHI_UI_CONNECTING` / “正在停止录音”，只表达本地控制动作正在执行。
+2. UI worker 调用 `m55_xiaozhi_talk_stop_from_ui()` 后，无论成功或失败都回到 `XIAOZHI_UI_READY`：
+   - 成功：`已停止，等待唤醒词`
+   - 失败：`停止失败，请重试`
+3. LVGL 线程栈从 16 KB 提到 18 KB，给当前中文 UI/状态刷新留一点余量。
+
+验证：
+
+1. M55 实际树 build 通过：
+   - `SCons exit=0`
+   - `text 1677260 data 81404 bss 4535232 dec 6293896`
+2. 22 KB / 32 KB LVGL 栈会让 M55 internal RAM 链接溢出；18 KB 是当前可通过链接的保守值。
+3. `program_with_resources.bat` 烧录成功：
+   - `rtthread.hex wrote 1761280 bytes`
+   - `whd_resources_all.bin wrote 466944 bytes`
+
+边界：
+
+1. 烧录后 COM4 暂时读不到串口输出，不能仅凭串口沉默判断程序死机；需要现场看屏幕和呼吸灯，或用 OpenOCD/调试链路确认核是否在跑。
+2. 如果白屏仍复现，下一步先查 LVGL 线程活性、flush 计数、LCD reset/backlight 和 UI 状态转换，不要回退到 WiFi/token 或平台协议。

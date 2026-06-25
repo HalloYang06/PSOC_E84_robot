@@ -967,8 +967,18 @@ static void xiaozhi_ui_worker_thread_entry(void *parameter)
         }
         else if (cmd == 2U)
         {
+            rt_err_t ret;
+
             rt_kprintf("[rehab_wifi_panel] async xiaozhi stop\n");
-            (void)m55_xiaozhi_talk_stop_from_ui();
+            ret = m55_xiaozhi_talk_stop_from_ui();
+            if (ret == RT_EOK)
+            {
+                xiaozhi_ui_state_set(XIAOZHI_UI_READY, "已停止，等待唤醒词", RT_EOK);
+            }
+            else
+            {
+                xiaozhi_ui_state_set(XIAOZHI_UI_READY, "停止失败，请重试", ret);
+            }
         }
     }
 }
@@ -984,7 +994,7 @@ static void xiaozhi_talk_event_cb(lv_event_t *event)
 static void xiaozhi_stop_event_cb(lv_event_t *event)
 {
     RT_UNUSED(event);
-    xiaozhi_ui_state_set(XIAOZHI_UI_THINKING, "正在结束录音", RT_EOK);
+    xiaozhi_ui_state_set(XIAOZHI_UI_CONNECTING, "正在停止录音", RT_EOK);
     (void)xiaozhi_ui_queue_action(2U);
     rehab_wifi_panel_refresh();
 }

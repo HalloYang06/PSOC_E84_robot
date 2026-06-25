@@ -324,7 +324,7 @@
 #define PKG_USING_LVGL
 #define BSP_USING_LVGL
 #define USING_LVGL
-#define PKG_LVGL_THREAD_STACK_SIZE 16384
+#define PKG_LVGL_THREAD_STACK_SIZE 18432
 #define PKG_LVGL_THREAD_PRIO 20
 #define PKG_LVGL_DISP_REFR_PERIOD 33
 /* end of LVGL: powerful and easy-to-use embedded GUI library */
