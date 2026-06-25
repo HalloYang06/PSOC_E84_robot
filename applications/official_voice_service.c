@@ -88,7 +88,7 @@ static void configure_audio_output(rt_device_t speaker)
     (void)rt_device_control(speaker, AUDIO_CTL_CONFIGURE, &caps);
 }
 
-static rt_err_t official_voice_take_speaker(rt_int32_t timeout)
+rt_err_t official_voice_speaker_take(rt_int32_t timeout)
 {
     if (g_official_voice_speaker_lock == RT_NULL)
     {
@@ -102,7 +102,7 @@ static rt_err_t official_voice_take_speaker(rt_int32_t timeout)
     return rt_mutex_take(g_official_voice_speaker_lock, timeout);
 }
 
-static void official_voice_release_speaker(void)
+void official_voice_speaker_release(void)
 {
     if (g_official_voice_speaker_lock != RT_NULL)
     {
@@ -192,7 +192,7 @@ rt_err_t official_voice_speaker_play_pcm(const rt_int16_t *pcm, rt_uint32_t samp
         return -RT_EINVAL;
     }
 
-    ret = official_voice_take_speaker(0);
+    ret = official_voice_speaker_take(0);
     if (ret != RT_EOK)
     {
         rt_kprintf("[official_voice] pcm feedback skipped speaker busy ret=%d\n", ret);
@@ -239,7 +239,7 @@ rt_err_t official_voice_speaker_play_pcm(const rt_int16_t *pcm, rt_uint32_t samp
 
     rt_kprintf("[official_voice] pcm feedback ok samples=%lu\n", (unsigned long)sample_count);
 out:
-    official_voice_release_speaker();
+    official_voice_speaker_release();
     return final_ret;
 }
 

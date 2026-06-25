@@ -1,5 +1,34 @@
 # wifi 避坑文档
 
+## 45. 2026-06-25 小智体验差要先看音频块、播放队列、唤醒阈值
+
+现象：
+
+1. 平台能回 TTS，但扬声器人声卡顿、不清晰。
+2. 多问几轮后停止/唤醒/下一轮状态变差。
+3. “小瑞”本地唤醒不稳定。
+
+本轮判断：
+
+1. 不是优先回到 WiFi/token/平台配置。M55 已经能打通平台链路时，体验差更像本地音频和状态机问题。
+2. M55 `sound0` 之前使用 `RT_AUDIO_REPLAY_MP_BLOCK_SIZE=4096`，16k/mono/16bit 下约 128ms；小智音频帧是 60ms，这会造成攒帧、尾包延迟和听感不连续。
+3. `sound0` replay queue 过浅时，TTS worker 会等待队列释放；等待太久会拖累 stop/re-arm 和后续轮次体验。
+4. 唤醒模型默认阈值 `800/1000` 对现场小声/远场偏硬，且之前 mic peak 偏低。
+
+本轮修复：
+
+1. M55 audio replay block 改为 `1920` 字节，正好对应 16k/mono/16bit 的 60ms 小智帧。
+2. M55 audio replay block count 和 replay queue count 改为 `8`，降低播放队列抖动。
+3. M55 TTS replay 高水位从 `2` 提到 `6`，等待上限从 `2000ms` 降到 `300ms`，避免播放堵塞拖死下一轮状态。
+4. 小瑞唤醒 Edge Impulse 默认阈值从 `800/1000` 降到 `650/1000`。
+5. M55 PDM gain 从 `24` 提到 `32`，提升本地唤醒输入幅度。
+
+验证：
+
+1. M55 build 已完成，`rtthread.hex` 更新时间为 `2026-06-25 13:34:49`。
+2. M55 flash 通过：`rtthread.hex` 写入 `1744896 bytes`，`whd_resources_all.bin` 写入 `466944 bytes`。
+3. COM4 仍为 `0 bytes`，OpenOCD 之前确认 CM33 在 RT-Thread idle；需要物理 Reset 或短断电后继续 `m55qa_status` 和真实“小瑞”测试。
+
 ## 44. 2026-06-25 小瑞唤醒保持 xiaorui，现场诊断不要扩大共享状态结构
 
 用户确认唤醒词仍然是“小瑞”，代码里应保持 `xiaorui`，不要改成 `OK Infineon`。
@@ -2378,3 +2407,23 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
 
 1. 若现场仍觉得人声卡，但 `tts_fail=0`、`lvgl_flush` 增长、shell 可回显，下一步调 M55 播放队列水位/音量/削波，不改 WiFi/token。
 2. 若喊唤醒词没有听到“我在”，先看是否有 wake hit；有 wake hit 但无声音再查 `sound0` 忙状态和本地 PCM 播放日志。
+
+## 55. 2026-06-25 对齐官方音频节奏，不要靠更大缓存掩盖问题
+
+现象：
+
+1. 声音卡、唤醒词不稳、多轮后更差。
+2. 串口仍旧很难读到，但 OpenOCD 显示核在跑，不是直接死机。
+3. 之前用过更大的 replay 缓存，但体验没有本质改善。
+
+确认到的官方方向：
+
+1. M55 继续负责 `mic0` / `sound0`。
+2. 上行还是 Opus / 16 kHz / 60 ms。
+3. 播音期间暂停 wake，播完后再冷却重启 wake，更接近官方例程的节奏。
+
+本轮收口：
+
+1. replay 参数回到 `4096/4`。
+2. TTS 期间暂停 wake，TTS stop 后再 re-arm。
+3. 本地“我在”走 speaker 互斥，避免和 TTS 抢声卡。
