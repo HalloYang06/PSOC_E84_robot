@@ -11,9 +11,16 @@
 #define M33_M55_QUEUE_M33_TO_M55         (0UL)
 #define M33_M55_QUEUE_M55_TO_M33         (1UL)
 #define M33_M55_IPC_TIMEOUT_MS           (5000UL)
+#define M33_M55_TTS_PUBLISH_TIMEOUT_MS   (1000UL)
 
 #define M33_M55_IPC_IRQ_SEMA             (MTB_IPC_IRQ_USER + 4)
 #define M33_M55_IPC_IRQ_QUEUE            (MTB_IPC_IRQ_USER + 5)
+
+#define M33_M55_SHARED_START             (0x261C0000UL)
+#define M33_M55_SHARED_END               (0x26200000UL)
+#define M33_M55_SHARED_ALIAS_START       (0x061C0000UL)
+#define M33_M55_SHARED_ALIAS_END         (0x06200000UL)
+#define M33_M55_IPC_PREFLIGHT_TIMEOUT_MS (50UL)
 
 typedef struct
 {
@@ -92,6 +99,55 @@ static rt_err_t m33_m55_result_to_rt(cy_rslt_t result)
     return -RT_ERROR;
 }
 
+static rt_bool_t m33_m55_shared_ptr_is_valid(uint32_t shared_ptr)
+{
+    if ((shared_ptr >= M33_M55_SHARED_START) && (shared_ptr < M33_M55_SHARED_END))
+    {
+        return RT_TRUE;
+    }
+
+    if ((shared_ptr >= M33_M55_SHARED_ALIAS_START) && (shared_ptr < M33_M55_SHARED_ALIAS_END))
+    {
+        return RT_TRUE;
+    }
+
+    return RT_FALSE;
+}
+
+static rt_err_t m33_m55_wait_for_valid_shared_ptr(void)
+{
+    IPC_STRUCT_Type *ipc_base;
+    uint32_t shared_ptr = 0UL;
+    uint32_t timeout = M33_M55_IPC_PREFLIGHT_TIMEOUT_MS;
+
+    ipc_base = Cy_IPC_Drv_GetIpcBaseAddress((uint32_t)M33_M55_IPC_INTERNAL_CHANNEL);
+    while (timeout > 0UL)
+    {
+        if ((cy_en_ipcdrv_status_t)CY_IPC_DRV_SUCCESS == Cy_IPC_Drv_LockAcquire(ipc_base))
+        {
+            shared_ptr = Cy_IPC_Drv_ReadDataValue(ipc_base);
+            (void)Cy_IPC_Drv_LockRelease(ipc_base, CY_IPC_NO_NOTIFICATION);
+
+            if (m33_m55_shared_ptr_is_valid(shared_ptr))
+            {
+                return RT_EOK;
+            }
+
+            if (shared_ptr != 0UL)
+            {
+                rt_kprintf("[m33_m55_comm] ignore stale shared ptr on CM55: 0x%08lx\n",
+                           (unsigned long)shared_ptr);
+                return -RT_ETIMEOUT;
+            }
+        }
+
+        rt_thread_mdelay(1);
+        timeout--;
+    }
+
+    return -RT_ETIMEOUT;
+}
+
 static void m33_m55_runtime_prepare(void)
 {
     if (g_comm_runtime.runtime_ready)
@@ -120,6 +176,12 @@ static rt_err_t m33_m55_try_attach(void)
     }
 
     g_comm_runtime.attaching = RT_TRUE;
+
+    if (m33_m55_wait_for_valid_shared_ptr() != RT_EOK)
+    {
+        g_comm_runtime.attaching = RT_FALSE;
+        return -RT_ETIMEOUT;
+    }
 
     result = mtb_ipc_get_handle(&g_ipc_handle, &g_ipc_config, M33_M55_IPC_TIMEOUT_MS);
     if (result == CY_RSLT_SUCCESS)
@@ -174,6 +236,26 @@ rt_err_t m33_m55_comm_init(void)
     }
 
     m33_m55_runtime_prepare();
+
+    if (m33_m55_wait_for_valid_shared_ptr() != RT_EOK)
+    {
+        rt_kprintf("[m33_m55_comm] initial attach waiting for CM33 shared IPC\n");
+        g_comm_runtime.deferred_attach = RT_TRUE;
+        if (g_comm_runtime.retry_thread == RT_NULL)
+        {
+            g_comm_runtime.retry_thread = rt_thread_create("ipc_att",
+                                                           m33_m55_attach_retry_entry,
+                                                           RT_NULL,
+                                                           2048,
+                                                           20,
+                                                           20);
+            if (g_comm_runtime.retry_thread)
+            {
+                rt_thread_startup(g_comm_runtime.retry_thread);
+            }
+        }
+        return RT_EOK;
+    }
 
     result = mtb_ipc_get_handle(&g_ipc_handle, &g_ipc_config, M33_M55_IPC_TIMEOUT_MS);
     if (result == CY_RSLT_SUCCESS)
@@ -238,7 +320,9 @@ rt_err_t m33_m55_comm_publish(const m33_m55_message_t *msg)
     local.seq = ++g_comm_runtime.seq;
     rt_mutex_release(&g_comm_runtime.lock);
 
-    result = mtb_ipc_queue_put(&g_tx_queue_handle, &local, 0);
+    result = mtb_ipc_queue_put(&g_tx_queue_handle, &local,
+                               (local.type == MSG_TYPE_TTS_AUDIO) ?
+                               M33_M55_TTS_PUBLISH_TIMEOUT_MS : 0);
     return m33_m55_result_to_rt(result);
 }
 

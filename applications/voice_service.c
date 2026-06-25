@@ -39,9 +39,9 @@ extern rt_err_t m55_speaker_tone_internal(rt_uint32_t duration_ms);
 #define VOICE_JSON_BUFFER_SIZE       (768U)
 #define VOICE_SERVER_AUDIO_CHUNK     (4096U)
 #define WAKE_SKIP_WINDOWS_AFTER_TRIGGER (3U)
-#define WAKE_GATE_MIN_PEAK           (5500U)
-#define WAKE_GATE_MIN_AVG_ABS        (750U)
-#define WAKE_GATE_MIN_ACTIVE_FRAMES  (28U)
+#define WAKE_GATE_MIN_PEAK           (4200U)
+#define WAKE_GATE_MIN_AVG_ABS        (560U)
+#define WAKE_GATE_MIN_ACTIVE_FRAMES  (20U)
 #define VOICE_STATUS_PUBLISH_EVERY_FRAMES 20U
 #define XIAOZHI_EOU_MIN_RECORD_MS    900U
 #define XIAOZHI_EOU_MANUAL_MIN_RECORD_MS 3500U
@@ -3057,6 +3057,7 @@ static void voice_service_process_audio_buffer(void)
         g_service.wake_last_trigger_tick = rt_tick_get();
         g_service.detected_count++;
         g_service.last_error = RT_EOK;
+        xiaozhi_feedback_wake_local();
         rt_kprintf("[voice_service] wake triggered word=%s conf=%d/1000 noise=%d/1000 threshold=%d/1000 peak=%lu avg=%lu active=%lu/%lu\n",
                    wake_result.wake_word[0] ? wake_result.wake_word : "unknown",
                    xiaozhi_wake_engine_last_confidence_permille(),
@@ -3924,6 +3925,12 @@ rt_err_t voice_service_start(void)
     rt_thread_startup(g_service.thread);
     rt_thread_startup(g_service.detect_thread);
     rt_thread_startup(g_service.tts_thread);
+    rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
+    g_service.wake_listening = xiaozhi_wake_engine_is_ready() ? RT_TRUE : RT_FALSE;
+    rt_mutex_release(&g_service.lock);
+    rt_kprintf("[voice_service] wake listening default=%d ready=%d\n",
+               g_service.wake_listening ? 1 : 0,
+               xiaozhi_wake_engine_is_ready() ? 1 : 0);
     rt_kprintf("[voice_service] started\n");
     return RT_EOK;
 }

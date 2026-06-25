@@ -742,8 +742,6 @@ rt_err_t xiaozhi_voice_relay_build_listen_start(char *out, rt_size_t out_len,
 
     const char *mode = "auto";
 #if XIAOZHI_USE_OFFICIAL_OPUS_AUDIO
-    const char *mode = "auto";
-
     if (wake_source == XIAOZHI_WAKE_SOURCE_MANUAL)
     {
         mode = "manual";
@@ -771,6 +769,7 @@ rt_err_t xiaozhi_voice_relay_build_listen_stop(char *out, rt_size_t out_len,
                                                rt_uint32_t chunks)
 {
     int n;
+    const char *mode = "auto";
 
     if ((out == RT_NULL) || (out_len == 0))
     {

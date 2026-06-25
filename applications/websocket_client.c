@@ -47,8 +47,11 @@ typedef struct
     int last_errno;
     struct rt_mutex send_lock;
     struct rt_completion connect_done;
+    struct rt_completion disconnect_done;
     websocket_message_callback_t callback;
     wsock_state_t wsock;
+    rt_bool_t ignore_next_local_abort_disconnect;
+    rt_bool_t disconnecting;
 } websocket_client_t;
 
 typedef struct
@@ -57,12 +60,44 @@ typedef struct
     char header_fmt[WS_HEADER_BUFFER_SIZE];
 } websocket_connect_job_t;
 
+typedef struct
+{
+    const char *data;
+    u16_t len;
+    uint8_t opcode;
+    err_t result;
+} websocket_write_job_t;
+
+typedef struct
+{
+    wsock_result_t result_code;
+    err_t err_code;
+    err_t result;
+} websocket_close_job_t;
+
 static websocket_client_t g_ws;
 
 static void websocket_set_diag(int stage, int err)
 {
     g_ws.last_stage = stage;
     g_ws.last_errno = err;
+}
+
+static rt_bool_t websocket_wsock_ready(void)
+{
+    return (g_ws.connected &&
+            (g_ws.wsock.pcb != RT_NULL) &&
+            (g_ws.wsock.state0 == PWS_STATE_INITD) &&
+            (g_ws.wsock.state1 == PWS_STATE_INITD) &&
+            (g_ws.wsock.tcp_state == WS_TCP_CONNECTED)) ? RT_TRUE : RT_FALSE;
+}
+
+static rt_err_t websocket_mark_disconnected(int err)
+{
+    g_ws.connected = RT_FALSE;
+    g_ws.connecting = RT_FALSE;
+    websocket_set_diag(WS_STAGE_DISCONNECTED, err);
+    return -RT_ERROR;
 }
 
 static rt_err_t websocket_parse_url(const char *server_url)
@@ -198,15 +233,30 @@ static err_t websocket_wsock_callback(int code, char *buf, size_t len)
     {
         int err = (int)(uintptr_t)buf;
 
+        if (g_ws.disconnecting)
+        {
+            g_ws.disconnecting = RT_FALSE;
+            rt_completion_done(&g_ws.disconnect_done);
+        }
+
+        if ((err == ERR_ABRT) && g_ws.ignore_next_local_abort_disconnect)
+        {
+            g_ws.ignore_next_local_abort_disconnect = RT_FALSE;
+            rt_kprintf("[websocket] ignored local-abort disconnect during reconnect\n");
+            return ERR_OK;
+        }
+
         g_ws.connecting = RT_FALSE;
         g_ws.connected = RT_FALSE;
         websocket_set_diag(WS_STAGE_DISCONNECTED, err);
+        rt_kprintf("[websocket] disconnected err=%d\n", err);
         rt_completion_done(&g_ws.connect_done);
         return ERR_OK;
     }
 
     if (((code == WS_TEXT) || (code == WS_DATA)) && (g_ws.callback != RT_NULL))
     {
+        rt_kprintf("[websocket] rx code=%d len=%lu\n", code, (unsigned long)len);
         g_ws.callback(code == WS_TEXT ? WEBSOCKET_MESSAGE_TEXT : WEBSOCKET_MESSAGE_BINARY,
                       (const rt_uint8_t *)buf,
                       (rt_size_t)len);
@@ -284,6 +334,34 @@ static void websocket_start_connect_job(void *ctx)
                                 job->header_fmt);
 }
 
+static void websocket_write_job_entry(void *ctx)
+{
+    websocket_write_job_t *job = (websocket_write_job_t *)ctx;
+
+    if (!websocket_wsock_ready())
+    {
+        job->result = ERR_CONN;
+        return;
+    }
+
+    job->result = wsock_write(&g_ws.wsock, job->data, job->len, job->opcode);
+}
+
+static void websocket_close_job_entry(void *ctx)
+{
+    websocket_close_job_t *job = (websocket_close_job_t *)ctx;
+
+    if ((g_ws.wsock.pcb == RT_NULL) ||
+        (g_ws.wsock.state0 != PWS_STATE_INITD) ||
+        (g_ws.wsock.state1 != PWS_STATE_INITD))
+    {
+        job->result = ERR_OK;
+        return;
+    }
+
+    job->result = wsock_close(&g_ws.wsock, job->result_code, job->err_code);
+}
+
 rt_err_t websocket_client_init(const char *server_url)
 {
     rt_err_t ret;
@@ -305,6 +383,7 @@ rt_err_t websocket_client_init(const char *server_url)
     rt_strncpy(g_ws.server_url, server_url, sizeof(g_ws.server_url) - 1);
     rt_mutex_init(&g_ws.send_lock, "wslock", RT_IPC_FLAG_PRIO);
     rt_completion_init(&g_ws.connect_done);
+    rt_completion_init(&g_ws.disconnect_done);
     g_ws.initialized = RT_TRUE;
     websocket_set_diag(WS_STAGE_IDLE, 0);
     rt_kprintf("[websocket] init %s:%d%s\n", g_ws.server_host, g_ws.server_port, g_ws.server_path);
@@ -425,44 +504,90 @@ rt_err_t websocket_client_connect(void)
 
 rt_err_t websocket_client_send_text(const char *message)
 {
+    websocket_write_job_t job;
     err_t err;
 
     if (message == RT_NULL)
     {
         return -RT_EINVAL;
     }
-    if (!g_ws.connected)
+    if (!websocket_wsock_ready())
     {
-        return -RT_ERROR;
+        rt_kprintf("[websocket] send text blocked connected=%d stage=%d errno=%d\n",
+                   g_ws.connected ? 1 : 0,
+                   g_ws.last_stage,
+                   g_ws.last_errno);
+        return websocket_mark_disconnected(ERR_CONN);
     }
 
+    rt_memset(&job, 0, sizeof(job));
+    job.data = message;
+    job.len = (u16_t)rt_strlen(message);
+    job.opcode = OPCODE_TEXT;
+
     rt_mutex_take(&g_ws.send_lock, RT_WAITING_FOREVER);
-    err = wsock_write(&g_ws.wsock, message, (u16_t)rt_strlen(message), OPCODE_TEXT);
+    err = tcpip_callback_with_block(websocket_write_job_entry, &job, 1);
     rt_mutex_release(&g_ws.send_lock);
-    return err == ERR_OK ? RT_EOK : -RT_ERROR;
+    if ((err != ERR_OK) || (job.result != ERR_OK))
+    {
+        rt_kprintf("[websocket] send text failed err=%d job=%d connected=%d stage=%d errno=%d\n",
+                   (int)err,
+                   (int)job.result,
+                   g_ws.connected ? 1 : 0,
+                   g_ws.last_stage,
+                   g_ws.last_errno);
+        return websocket_mark_disconnected((err != ERR_OK) ? err : job.result);
+    }
+
+    return RT_EOK;
 }
 
 rt_err_t websocket_client_send_binary(const uint8_t *data, rt_size_t len)
 {
+    websocket_write_job_t job;
     err_t err;
 
     if (((data == RT_NULL) && (len != 0)) || (len > WSMSG_MAXSIZE))
     {
         return -RT_EINVAL;
     }
-    if (!g_ws.connected)
+    if (!websocket_wsock_ready())
     {
-        return -RT_ERROR;
+        rt_kprintf("[websocket] send binary blocked len=%lu connected=%d stage=%d errno=%d\n",
+                   (unsigned long)len,
+                   g_ws.connected ? 1 : 0,
+                   g_ws.last_stage,
+                   g_ws.last_errno);
+        return websocket_mark_disconnected(ERR_CONN);
     }
 
+    rt_memset(&job, 0, sizeof(job));
+    job.data = (const char *)data;
+    job.len = (u16_t)len;
+    job.opcode = OPCODE_BINARY;
+
     rt_mutex_take(&g_ws.send_lock, RT_WAITING_FOREVER);
-    err = wsock_write(&g_ws.wsock, (const char *)data, (u16_t)len, OPCODE_BINARY);
+    err = tcpip_callback_with_block(websocket_write_job_entry, &job, 1);
     rt_mutex_release(&g_ws.send_lock);
-    return err == ERR_OK ? RT_EOK : -RT_ERROR;
+    if ((err != ERR_OK) || (job.result != ERR_OK))
+    {
+        rt_kprintf("[websocket] send binary failed len=%lu err=%d job=%d connected=%d stage=%d errno=%d\n",
+                   (unsigned long)len,
+                   (int)err,
+                   (int)job.result,
+                   g_ws.connected ? 1 : 0,
+                   g_ws.last_stage,
+                   g_ws.last_errno);
+        return websocket_mark_disconnected((err != ERR_OK) ? err : job.result);
+    }
+
+    return RT_EOK;
 }
 
 rt_err_t websocket_client_disconnect(void)
 {
+    websocket_close_job_t job;
+
     if (!g_ws.initialized)
     {
         return RT_EOK;
@@ -470,8 +595,18 @@ rt_err_t websocket_client_disconnect(void)
 
     if (g_ws.connected || g_ws.connecting)
     {
-        wsock_close(&g_ws.wsock, WSOCK_RESULT_LOCAL_ABORT, ERR_ABRT);
-        rt_thread_mdelay(WS_DISCONNECT_WAIT_MS);
+        rt_memset(&job, 0, sizeof(job));
+        job.result_code = WSOCK_RESULT_LOCAL_ABORT;
+        job.err_code = ERR_ABRT;
+        g_ws.disconnecting = RT_TRUE;
+        rt_completion_init(&g_ws.disconnect_done);
+        g_ws.ignore_next_local_abort_disconnect = RT_TRUE;
+        (void)tcpip_callback_with_block(websocket_close_job_entry, &job, 1);
+        if (rt_completion_wait(&g_ws.disconnect_done,
+                               rt_tick_from_millisecond(WS_DISCONNECT_WAIT_MS)) != RT_EOK)
+        {
+            g_ws.disconnecting = RT_FALSE;
+        }
     }
 
     g_ws.connected = RT_FALSE;

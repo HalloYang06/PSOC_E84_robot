@@ -19,6 +19,7 @@ rt_err_t voice_service_reconnect_xiaozhi(void);
 rt_err_t voice_service_submit_local_pcm(const rt_uint8_t *pcm, rt_uint32_t len);
 rt_err_t voice_service_start_xiaozhi_talk(void);
 rt_err_t voice_service_stop_xiaozhi_talk(void);
+rt_err_t voice_service_qa_xiaozhi_text_turn(const char *text);
 rt_err_t voice_service_abort_xiaozhi_talk_local(void);
 rt_bool_t voice_service_xiaozhi_is_listening(void);
 rt_err_t voice_service_publish_status_now(void);
