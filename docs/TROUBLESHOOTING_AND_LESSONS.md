@@ -1,5 +1,29 @@
 # Troubleshooting And Lessons
 
+## 2026-06-26 - Shallow `m55qa_status` Means CM55 IPC Attach May Be Rejected
+
+Symptoms:
+- The M33 shell answered `m55qa_status`, but output stopped at `ipc_ready=1 tx_pending=0 rx_pending=0 has_model=0`.
+- Full `voice_status` was absent, so fields like `xz_ws`, `token_len`, `srv_hello`, `lvgl_flush`, and WiFi IP were unavailable.
+- OpenOCD still showed M33 and M55 in Thread mode, so this was not a simple dual-core boot failure.
+
+Root cause:
+- The M55-side stale-pointer precheck was too narrow.
+- M33's current image places the IPC shared object in `.cy_sharedmem` around `0x240fe000`.
+- M55 only accepted `0x261c0000-0x26200000` and `0x061c0000-0x06200000`, so it rejected the real M33 IPC pointer and never attached queues.
+- As a result, M33->M55 config messages such as token chunks could fill the queue or never reach CM55, even though M33 reported `ipc_ready=1`.
+
+Fix:
+- Add `0x24000000-0x24100000` as an allowed CM33 SRAM range in M55 `applications/m33_m55_comm.c`.
+- Rebuild and burn M55, then verify that `m55qa_status` prints complete `voice_status` again before loading tokens or running voice QA.
+
+Validation:
+- After the fix, `m55qa_status` printed complete voice status and token loading succeeded with `voice_ack cmd=1006 result=0`.
+- Final status reached `xz_ws=1`, `xz_stage=70`, `xz_errno=0`, `token_len=455`, `srv_hello=1`, `tx_pending=0`.
+
+Lesson:
+- `ipc_ready=1` alone is not enough. Treat shallow `m55qa_status` as an IPC attach/status-publish failure and fix that before diagnosing WiFi, token, WebSocket, ASR, TTS, or LVGL state.
+
 ## 2026-06-26 - CM55 Startup HardFault Looked Like Resource Pressure But Was A Stale IPC Shared Pointer
 
 Symptoms:
