@@ -58,8 +58,13 @@ extern int lvgl_thread_init(void);
 #ifndef M55_XIAOZHI_PDM_GAIN
 #define M55_XIAOZHI_PDM_GAIN 32
 #endif
+#ifndef M55_XIAOZHI_AUTO_RETRY_DELAY_LOOPS
+#define M55_XIAOZHI_AUTO_RETRY_DELAY_LOOPS 5U
+#endif
 #define M55_ENABLE_LED_HEARTBEAT 1
-#define M55_DETACH_CONSOLE_FOR_M33_QA 1
+#ifndef M55_DETACH_CONSOLE_FOR_M33_QA
+#define M55_DETACH_CONSOLE_FOR_M33_QA 0
+#endif
 #ifdef ENABLE_STEREO_INPUT_FEED
 #define M55_AUDIO_CHANNELS 2
 #define M55_AUDIO_MONO_FRAME_BYTES (M55_AUDIO_FRAME_BYTES / 2)
@@ -977,6 +982,7 @@ static void xiaozhi_auto_connect_thread_entry(void *parameter)
     rt_bool_t voice_ready = RT_FALSE;
     rt_uint32_t wifi_ready_streak = 0U;
     rt_uint32_t retry_delay = 0U;
+    rt_uint32_t diag_count = 0U;
 
     RT_UNUSED(parameter);
 
@@ -986,14 +992,21 @@ static void xiaozhi_auto_connect_thread_entry(void *parameter)
                (unsigned long)xiaozhi_voice_relay_token_len(),
                xiaozhi_voice_relay_get_url());
 
-    for (rt_uint32_t i = 0; i < 300U; i++)
+    while (1)
     {
         wifi_config_snapshot_t snapshot;
+        rt_bool_t connected;
 
         rt_thread_mdelay(2000);
 
         if (!xiaozhi_voice_relay_has_token())
         {
+            if ((diag_count++ % 15U) == 0U)
+            {
+                rt_kprintf("[m55_xz_auto] waiting for Xiaozhi token len=%lu\n",
+                           (unsigned long)xiaozhi_voice_relay_token_len());
+                xiaozhi_bridge_publish_status();
+            }
             continue;
         }
 
@@ -1002,6 +1015,16 @@ static void xiaozhi_auto_connect_thread_entry(void *parameter)
         if ((snapshot.wlan_ready == 0U) || (snapshot.netdev_ip == 0U))
         {
             wifi_ready_streak = 0U;
+            if ((diag_count++ % 10U) == 0U)
+            {
+                rt_kprintf("[m55_xz_auto] waiting wifi ready wlan=%lu ready=%lu ip=0x%08lx saved=%lu auto=%lu\n",
+                           (unsigned long)snapshot.wlan_connected,
+                           (unsigned long)snapshot.wlan_ready,
+                           (unsigned long)snapshot.netdev_ip,
+                           (unsigned long)snapshot.saved,
+                           (unsigned long)snapshot.auto_connect);
+                xiaozhi_bridge_publish_status();
+            }
             continue;
         }
         if (++wifi_ready_streak < 3U)
@@ -1026,10 +1049,30 @@ static void xiaozhi_auto_connect_thread_entry(void *parameter)
             else
             {
                 rt_kprintf("[m55_xz_auto] voice service deferred ret=%d\n", ret);
-                retry_delay = 5U;
+                retry_delay = M55_XIAOZHI_AUTO_RETRY_DELAY_LOOPS;
                 xiaozhi_bridge_publish_status();
                 continue;
             }
+        }
+
+        connected = websocket_client_is_connected();
+        if (connected)
+        {
+            if (!g_xiaozhi_voice_started)
+            {
+                ret = m55_wake_listen_start_for_xiaozhi();
+                if (ret == RT_EOK)
+                {
+                    g_xiaozhi_voice_started = RT_TRUE;
+                    rt_kprintf("[m55_xz_auto] wake listening armed while Xiaozhi already connected\n");
+                }
+                else
+                {
+                    rt_kprintf("[m55_xz_auto] wake listen deferred while connected ret=%d\n", ret);
+                }
+                xiaozhi_bridge_publish_status();
+            }
+            continue;
         }
 
         rt_kprintf("[m55_xz_auto] wifi ready ip=0x%08lx, reconnect Xiaozhi\n",
@@ -1054,9 +1097,9 @@ static void xiaozhi_auto_connect_thread_entry(void *parameter)
             {
                 rt_kprintf("[m55_xz_auto] wake listen deferred after connect ret=%d\n", ret);
             }
-            break;
+            continue;
         }
-        retry_delay = 5U;
+        retry_delay = M55_XIAOZHI_AUTO_RETRY_DELAY_LOOPS;
     }
 
     g_xiaozhi_auto_thread = RT_NULL;

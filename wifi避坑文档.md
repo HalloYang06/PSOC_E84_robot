@@ -1,5 +1,47 @@
 # wifi 避坑文档
 
+## 47. 2026-06-26 XiaoZhi 离线根因：M55 IPC 预检拒绝了 M33 实际 shared IPC 指针
+
+现象：
+
+1. 现场 LVGL 显示小智没有连接上，M33 shell 仍能运行 `m55qa_status`。
+2. `m55qa_status` 一度只能打印浅层 `ipc_ready=1 tx_pending=0 rx_pending=0 has_model=0`，没有完整 `voice_status`。
+3. OpenOCD 看到 M33/M55 都在 Thread mode，M55 PC 在 `0x6068....`，说明不是 CM55 app 完全没跑。
+4. 平台 PC 侧 WebSocket smoke 使用新项目 token 后可收到 `{"type":"hello","version":3}`，说明云端公网 WebSocket 已经可接受。
+
+根因：
+
+1. M33 当前镜像里 `g_m33_m55_shared_data` 实际位于 `.cy_sharedmem 0x240fe000`。
+2. M55 上一轮为避免早期脏共享指针 HardFault，只允许 `0x261C0000-0x26200000` 和 `0x061C0000-0x06200000`。
+3. 结果 M55 把 M33 的真实 shared IPC 指针当成非法地址拒绝，`m33_m55_comm_init()` 长期 deferred attach，`xz_bridge` 无法消费 M33->M55 控制消息，也无法回传完整 voice status。
+4. 这会表现成 token 写不进去、队列容易满、LVGL 连接态不更新，但不是 WiFi 扫描或 WHD resources 问题。
+
+修复：
+
+1. M55 `applications/m33_m55_comm.c` 保留脏指针预检，但新增合法范围 `0x24000000-0x24100000`，覆盖 M33 SRAM 内的 `.cy_sharedmem`。
+2. 同步到 `_m55_ref_repo`，避免实际烧录树和 Git 镜像分叉。
+3. 云端确认设备绑定到真实项目 `fd6a55ed-a63c-44b3-b123-96fb3c154966`，PC WebSocket smoke 可收到 hello。
+4. 通过 M33 `tools/load_xiaozhi_token.ps1` 以 40 字符 chunk 慢速写入新 scoped relay token。
+
+验证：
+
+1. M55 build 通过，`text=1682092 data=81404 bss=4533184`。
+2. M55 flash 通过：`rtthread.hex wrote 1765376 bytes`，`whd_resources_all.bin wrote 466944 bytes`。
+3. M33 重新 verify 通过：`verified 543252 bytes`。
+4. 修复后 `m55qa_status` 恢复完整 `voice_status`，并显示：
+   - `wlan=1 ready=1 ip=192.168.3.32`
+   - `xz_token=1 token_len=455`
+   - `xz_ws=1 xz_stage=70 xz_errno=0`
+   - `srv_hello=1`
+   - `tx_pending=0`
+   - `lcd_init=0 lvgl_flush` 持续增长
+
+避坑：
+
+1. `ipc_ready=1` 只说明 M33 侧 IPC 初始化，不代表 M55 已经 attach 并能消费队列。必须看到完整 `voice_status` 才能继续 token/QA。
+2. 如果 `m55qa_status` 只有浅层输出，先查 M55 `m33_m55_comm` attach 和 shared pointer 范围，不要先回 WiFi/token/resource。
+3. 单次 `m55qa_xz_token_part` 成功不代表整条 token 成功；必须看 `voice_ack cmd=1006 result=0` 和最终 `token_len/xz_ws`。
+
 ## 46. 2026-06-26 M55 不是简单资源爆满，而是早期 IPC 句柄读到脏共享指针
 
 现象：

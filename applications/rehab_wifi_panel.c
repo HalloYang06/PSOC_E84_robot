@@ -1036,7 +1036,7 @@ static void qr_event_cb(lv_event_t *event)
 
     rt_snprintf(payload,
                 sizeof(payload),
-                "rehab-arm://provision?project_id=e201f41c-25a6-46e1-baf8-be6dcb83284c&device_id=nanopi-m5&robot_id=rehab-arm-alpha&transport=ble");
+                "rehab-arm://provision?project_id=fd6a55ed-a63c-44b3-b123-96fb3c154966&device_id=nanopi-m5&robot_id=rehab-arm-alpha&transport=ble");
 
 #if LV_USE_QRCODE
     {

@@ -20,6 +20,8 @@
 #define M33_M55_SHARED_END               (0x26200000UL)
 #define M33_M55_SHARED_ALIAS_START       (0x061C0000UL)
 #define M33_M55_SHARED_ALIAS_END         (0x06200000UL)
+#define M33_M55_CM33_SRAM_START          (0x24000000UL)
+#define M33_M55_CM33_SRAM_END            (0x24100000UL)
 #define M33_M55_IPC_PREFLIGHT_TIMEOUT_MS (50UL)
 
 typedef struct
@@ -107,6 +109,11 @@ static rt_bool_t m33_m55_shared_ptr_is_valid(uint32_t shared_ptr)
     }
 
     if ((shared_ptr >= M33_M55_SHARED_ALIAS_START) && (shared_ptr < M33_M55_SHARED_ALIAS_END))
+    {
+        return RT_TRUE;
+    }
+
+    if ((shared_ptr >= M33_M55_CM33_SRAM_START) && (shared_ptr < M33_M55_CM33_SRAM_END))
     {
         return RT_TRUE;
     }
