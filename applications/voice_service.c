@@ -3057,7 +3057,6 @@ static void voice_service_process_audio_buffer(void)
         g_service.wake_last_trigger_tick = rt_tick_get();
         g_service.detected_count++;
         g_service.last_error = RT_EOK;
-        xiaozhi_feedback_wake_local();
         rt_kprintf("[voice_service] wake triggered word=%s conf=%d/1000 noise=%d/1000 threshold=%d/1000 peak=%lu avg=%lu active=%lu/%lu\n",
                    wake_result.wake_word[0] ? wake_result.wake_word : "unknown",
                    xiaozhi_wake_engine_last_confidence_permille(),

@@ -2543,3 +2543,24 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
 
 1. 后续如果又看到“小智离线/连接中”，先看 M33 watchdog 日志是否出现 `auto_restart=0` 的 stale/tx stuck 诊断，再决定是否查 M55。
 2. 不要因为短暂 `xz_ws=0` 或 UI 连接中就回退 WiFi 扫描、token、资源固件方向。
+
+## 59. 2026-06-26 唤醒“我在”反馈只保留一个入口
+
+现象：
+
+1. 用户喊“小瑞/xiaorui”后希望立即得到本地固定“我在”反馈，再继续说问题。
+2. 现场反馈唤醒和播放仍有卡顿感，speaker 被短时间重复占用会放大这个体验问题。
+
+修复：
+
+1. `voice_service_process_audio_buffer()` 检测到 wake 后不再先直接调用 `xiaozhi_feedback_wake_local()`。
+2. 统一由 `voice_service_start_xiaozhi_listening()` 内部执行：
+   - `xiaozhi_ui_state_mark_wake(...)`
+   - `xiaozhi_feedback_wake_local()`
+   - `listen/start`
+3. 这样一次唤醒只播放一次“我在”，避免重复抢 `sound0`。
+
+边界：
+
+1. 这只修本地反馈重复播放，不改变 wake engine 阈值、关键词、Opus/WebSocket 协议。
+2. 如果仍唤醒不了，下一步看 `wake_ready/wake_stage/wake_xiaorui/noise/threshold`，不要先改平台。
