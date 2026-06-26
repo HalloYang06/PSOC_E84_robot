@@ -2084,3 +2084,26 @@ Fix / trick:
 Boundary:
 - Do not re-enable automatic CM55 restart until the status cadence, IPC queue health, LVGL liveness, and XiaoZhi reconnect stages are all understood.
 - If the board truly hangs with no LED/LVGL/status movement, use the manual restart and capture the preceding watchdog line.
+
+## 2026-06-26 - M55 XiaoZhi entering the wrong project is a board config/token issue, not NanoPi ownership
+
+Symptoms:
+- Cloud logs showed M55 XiaoZhi connecting to old project `fd6a55ed-a63c-44b3-b123-96fb3c154966`.
+- The current VLA page and stereo V path use project `e201f41c-25a6-46e1-baf8-be6dcb83284c`.
+- The path still contains `devices/nanopi-m5`, but that is only the platform device route label; XiaoZhi physically runs on M55.
+
+Root cause:
+- M55 `applications/xiaozhi_voice_relay.h` still hard-coded the old `XIAOZHI_PROJECT_ID`.
+- M55 LVGL/BLE provisioning payload also exported the old `project_id`.
+- Existing token files included both old and new tokens, so token metadata must be decoded before pushing a token back to the board.
+
+Fix / trick:
+- Change only M55 XiaoZhi config:
+  - `XIAOZHI_PROJECT_ID=e201f41c-25a6-46e1-baf8-be6dcb83284c`
+  - provisioning payload `project_id=e201f41c-25a6-46e1-baf8-be6dcb83284c`
+- Keep `device_id=nanopi-m5` unchanged unless the platform device identity is intentionally migrated.
+- Decode token metadata locally before sending it to M55; the refreshed `token.txt` is scoped to the new project and was committed to the board through the existing chunked QA commands.
+
+Boundary:
+- Do not fix this by editing NanoPi camera, CAN, M33 motion control, or server core XiaoZhi WebSocket/ASR/LLM relay.
+- After this fix, WiFi and token can be healthy while WebSocket still fails at `xz_stage=30/80`; treat that as M55 WebSocket handshake/authorization/runtime URL override diagnosis, not as a project-id source-code mismatch.
