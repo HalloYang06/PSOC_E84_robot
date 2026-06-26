@@ -2629,3 +2629,38 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
 
 1. 这轮只验证 M55 新固件已构建、刷入、双核能跑；不代表现场声学链路已经人工听感验收。
 2. 如果现场仍反馈唤醒不稳定或 TTS 卡顿，下一步优先看 M55 侧 `wake_ready/wake_stage/wake_xiaorui`、本地反馈播放占用、TTS 播放缓冲和 WebSocket reconnect 事件，不要回退 WiFi/token。
+
+## 61. 2026-06-26 M55 XiaoZhi project_id 已从旧项目切到当前 VLA 项目
+
+现象：
+
+1. 云端看到 M55 XiaoZhi 连接旧 project：`fd6a55ed-a63c-44b3-b123-96fb3c154966`。
+2. 当前 VLA 页面使用新 project：`e201f41c-25a6-46e1-baf8-be6dcb83284c`。
+3. `device_id=nanopi-m5` 只是平台路由标签，小智物理仍运行在 M55，不要因此改 NanoPi agent、摄像头、CAN 或 M33 运动控制。
+
+修复：
+
+1. M55 `applications/xiaozhi_voice_relay.h` 的 `XIAOZHI_PROJECT_ID` 已改为 `e201f41c-25a6-46e1-baf8-be6dcb83284c`。
+2. M55 LVGL/BLE 配网 payload 中的 `project_id` 同步改为新 project。
+3. 实际烧录树 `wifi` 与 Git 镜像 `_m55_ref_repo` 已同步同一改动。
+4. 本地 `token.txt` 解码确认也是新 project token，已通过 `m55qa_xz_token_begin/part/commit` 分 8 段刷新到板端，未打印 token 内容。
+
+验证：
+
+1. M55 `python -m SCons -j8` 构建通过，`rtthread.hex` 重新生成。
+2. `program_with_resources.bat` 已写入：
+   - `rtthread.hex wrote 1769472 bytes`
+   - `whd_resources_all.bin wrote 466944 bytes`
+3. 尾部 `kitprog3: failed to acquire the device` 仍发生在两段写完之后，按已知非关键现象处理。
+4. 烧录后 WiFi 配置曾丢失为 `saved=0/wlan=0`，已用 `m55qa_wifi_ssid/password/auto/save/connect` 恢复到：
+   - `saved=1 auto=1`
+   - `wlan=1 ready=1`
+   - `ip=192.168.3.32`
+   - `cloud_tcp=0/1`
+5. 新 project dashboard 已能看到 `project_id=e201f41c-25a6-46e1-baf8-be6dcb83284c` 下的 `xiaozhi_ws_input` / `model_relay_request` 历史事件，包含官方 Opus 16 kHz 路径。
+
+剩余问题：
+
+1. 当前板端网络和 token 健康，但 `xz_ws=0`、`srv_hello=0`，WebSocket 阶段仍在 `xz_stage=30/80` 间跳，曾见 `xz_errno=-3`。
+2. 这已不是旧 project、WiFi、token 长度或 NanoPi 摄像头链路问题。
+3. 下一步只查 M55 WebSocket 握手/认证失败细节、运行时 URL 是否被配置命令覆盖、服务端是否拒绝新 token；不要回退到旧 project，也不要改服务器核心协议。

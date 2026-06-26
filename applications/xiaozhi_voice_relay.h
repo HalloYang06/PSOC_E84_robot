@@ -4,7 +4,7 @@
 #include <rtthread.h>
 #include <stdint.h>
 
-#define XIAOZHI_PROJECT_ID "fd6a55ed-a63c-44b3-b123-96fb3c154966"
+#define XIAOZHI_PROJECT_ID "e201f41c-25a6-46e1-baf8-be6dcb83284c"
 #define XIAOZHI_DEVICE_ID  "nanopi-m5"
 #define XIAOZHI_ROBOT_ID   "rehab-arm-alpha"
 #define XIAOZHI_PROTOCOL_VERSION 3U
