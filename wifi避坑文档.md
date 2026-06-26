@@ -2564,3 +2564,26 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
 
 1. 这只修本地反馈重复播放，不改变 wake engine 阈值、关键词、Opus/WebSocket 协议。
 2. 如果仍唤醒不了，下一步看 `wake_ready/wake_stage/wake_xiaorui/noise/threshold`，不要先改平台。
+
+## 60. 2026-06-26 M55 “我在”重复播放修复已全量构建并刷入实际树
+
+验证：
+
+1. 因 `.sconsign.dblite` 曾异常，备份为 `.sconsign.dblite.codexbak` 后触发 M55 全量重建。
+2. 全量 SCons 最终生成新产物：
+   - `rt-thread.elf` 更新时间：2026-06-26 15:20:07
+   - `rtthread.hex` 更新时间：2026-06-26 15:20:16
+   - `.sconsign.dblite` 恢复到约 11 MB，说明 SCons 数据库已重建完成。
+3. `program_with_resources.bat` 已刷入实际 M55 树：
+   - `rtthread.hex wrote 1765376 bytes`
+   - `whd_resources_all.bin wrote 466944 bytes`
+4. 刷写完成后末尾仍出现 `kitprog3: failed to acquire the device`，但发生在 app 和 WHD resources 都写完之后，仍按非关键现象处理。
+5. OpenOCD 观察双核均处于 Thread 态：
+   - M33 `pc=0x08391ca8 msp=0x240fcfe0 psp=0x240c4058 xpsr=0x61000000`
+   - CM55 `pc=0x6068d09c msp=0x2003ffe0 psp=0x2003c350 xpsr=0x61000000`
+6. 读寄存器会 halt 核心，验证后已执行 `reset run` 让板子回到运行态。
+
+边界：
+
+1. 这轮只验证 M55 新固件已构建、刷入、双核能跑；不代表现场声学链路已经人工听感验收。
+2. 如果现场仍反馈唤醒不稳定或 TTS 卡顿，下一步优先看 M55 侧 `wake_ready/wake_stage/wake_xiaorui`、本地反馈播放占用、TTS 播放缓冲和 WebSocket reconnect 事件，不要回退 WiFi/token。
