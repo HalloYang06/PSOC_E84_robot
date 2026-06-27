@@ -2127,3 +2127,25 @@ Fix / trick:
 Boundary:
 - Do not fix this by changing M33, CAN, NanoPi camera/V, or server core WebSocket/ASR/LLM relay.
 - Once `srv_hello=1` under the new project, remaining bad user experience is audio/wake/multi-turn UX work on M55, not project routing.
+
+## 2026-06-27 - M55 XiaoZhi TTS can freeze on second turn if v3 Opus frame bounds are not checked
+
+Symptoms:
+- First TTS turn works, but a later turn makes COM4 repeatedly print `cm55 tx stuck`.
+- M33 status may show M55 not consuming pending control/config messages while the last M55 WebSocket state falls from `stage=80 errno=-3` into reconnect stages.
+- This can look like "小智离线" or "第二次卡死", but WiFi/token/project can still be healthy before the failure.
+
+Root cause:
+- The failing path was M55 TTS audio handling, not M33 motion/CAN/NanoPi/server.
+- The M55 v3 Opus decoder loop trusted each frame length before checking that `offset + header + frame_len` stayed inside the current WebSocket payload.
+- Raising the payload ceiling exposed the missing bounds check during larger TTS replies.
+
+Fix / trick:
+- Keep M55 `RT_AUDIO_REPLAY_MP_BLOCK_SIZE=4096`; do not revert to the old 2048 experiment for this symptom.
+- Treat one WebSocket audio payload as one TTS queue item; do not split official v3 Opus payloads at arbitrary 4096-byte boundaries.
+- Add explicit v3 Opus frame bounds validation before decode.
+- Use COM4 `m55qa_xz_text` followed by `m55qa_status` for repeat QA; success criteria are `tx_pending=0`, `xz_ws=1`, growing `tts_fwd`, and `tts_fail=0`.
+
+Boundary:
+- Do not fix this by editing M33 CAN/motion control, NanoPi camera/V, or cloud relay core protocol.
+- If the symptom returns with `tts_fail=0` and `xz_ws=1`, continue on M55 sound0 playback quality/queue timing rather than WiFi/token.
