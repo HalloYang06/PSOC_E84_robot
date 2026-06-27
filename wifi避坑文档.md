@@ -2868,3 +2868,13 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
    - `m55qa_xz_text test2`：`tts_fwd=85/348160 tts_fail=0 xz_ws=1`
    - `m55qa_xz_text zhongwen`：平台返回 `你好！请问有什么我可以帮您的？`，`tts_fwd=106/434176 tts_fail=0 xz_ws=1`
 5. 启动状态曾看到 `wake_xiaorui=957/1000`，说明 xiaorui/小瑞唤醒模型本身仍能命中；后续若现场喊不醒，应优先看环境噪声/阈值/麦克风输入，而不是回退 TTS。
+
+补充修正：
+
+1. 复位后现场又反馈语音卡，COM4 状态显示 heap 曾接近满载：`heap=1411856/1429160`，只剩约 17KB。
+2. 将 TTS pending 总缓冲从 `8192*32` 降到 `8192*16`，保留 8192 单包能力但释放约 128KB heap。
+3. WebSocket 临时接收 buffer 不能只按第一个 frame 的 `paylen` 分配后复用；同一个 TCP pbuf 里可能先来短 text frame，再来更大的 binary frame。修复为按当前最大 payload 自动释放并重新分配，避免短 text buffer 被后续 binary audio 写爆。
+4. 复位后重新 QA：
+   - 初始 `heap=1230920/1429160`
+   - `m55qa_xz_text hi`: `tts_fwd=22/90112 tts_fail=0 xz_ws=1`
+   - `m55qa_xz_text zhongwen`: `tts_fwd=98/401408 tts_fail=0 xz_ws=1 tx_pending=0`

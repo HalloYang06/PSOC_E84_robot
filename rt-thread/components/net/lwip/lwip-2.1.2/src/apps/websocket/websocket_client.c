@@ -881,6 +881,7 @@ wsock_invoke_app(wsock_state_t *pws, struct pbuf *pb)
 {
     u16_t offset = 0;
     char *msgbuf = NULL;
+    size_t msgbuf_cap = 0;
 
     if (wsverbose) FNTRACE();
 
@@ -953,14 +954,24 @@ wsock_invoke_app(wsock_state_t *pws, struct pbuf *pb)
 
         if (paylen > 0)
         {
-            if (msgbuf == NULL)
+            if (paylen > msgbuf_cap)
             {
-                msgbuf = (char *)mem_malloc(WSMSG_MAXSIZE);
-                if (msgbuf == NULL)
+                char *newbuf;
+
+                if (msgbuf != NULL)
+                {
+                    mem_free(msgbuf);
+                    msgbuf = NULL;
+                    msgbuf_cap = 0;
+                }
+                newbuf = (char *)mem_malloc(paylen);
+                if (newbuf == NULL)
                 {
                     printf("failed to allocate websocket message buffer len=%u\n", (unsigned)paylen);
                     break;
                 }
+                msgbuf = newbuf;
+                msgbuf_cap = paylen;
             }
             if (pbuf_copy_partial(pb, msgbuf, (u16_t)paylen, (u16_t)(offset + hdrlen)) != paylen)
             {
