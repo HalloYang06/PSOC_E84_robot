@@ -2739,3 +2739,40 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
 1. 连续唤醒/提问 3 轮以上，确认第二轮以后 TTS 不再明显卡顿。
 2. 喊 `xiaorui` 后确认本地反馈音更接近清晰“我在”。
 3. 若仍卡顿，优先看 `TTS prebuffer ready slots=... elapsed=...`、`tts_fwd`、`tts_fail`、`M55 sound0 queue busy timeout`，不要改 WiFi/token。
+
+## 64. 2026-06-27 M55 sound0 4096B replay block 会导致 mono->stereo 越界
+
+现象：
+
+1. 现场继续反馈：第一轮 TTS 还能接受，后续仍卡；本地“我在”仍听起来不对。
+2. `m55qa_status` 显示 `tts_fwd` 持续增长且 `tts_fail=0`，说明平台下行和 M55 写 speaker 没有失败，问题在本地播放几何/缓冲。
+
+根因：
+
+1. RT audio replay block 原为 `RT_AUDIO_REPLAY_MP_BLOCK_SIZE=4096`。
+2. `sound_transmit()` 把 4096B 当成 `2048` 个 mono int16 sample。
+3. `drv_i2s.c::convert_mono_to_stereo()` 会把 N 个 mono sample 扩成 2N 个 stereo sample。
+4. 但底层 `PLAYBACK_DATA_FRAME_SIZE=2048` 是 stereo buffer 长度；4096B replay block 会尝试写 4096 个 int16 到 2048 个 int16 buffer，存在越界/覆盖，足以造成多轮卡顿、杂音或状态不稳。
+5. 本地“我在”短 PCM 还存在尾包不足一个 replay block 时不会被 RT audio push 的问题，导致末尾可能丢失或听起来不完整。
+
+修复：
+
+1. `rtconfig.h` 将 `RT_AUDIO_REPLAY_MP_BLOCK_SIZE` 从 `4096` 改为 `2048`，即每个 block 是 `1024` 个 mono sample，扩成 stereo 后刚好匹配 `PLAYBACK_DATA_FRAME_SIZE=2048`。
+2. `official_voice_speaker_play_pcm()` 在短句 PCM 播完后补零到 replay block 边界，确保“我在”尾包被送到底层。
+3. 这条结论覆盖旧文档中“保持 4096B”的经验记录；旧记录是在没有检查 mono->stereo 扩展目标 buffer 的情况下得到的。
+
+验证：
+
+1. `python -m SCons -j8` 增量构建通过。
+2. `program_with_resources.bat` 完整写入：
+   - `rtthread.hex wrote 1769472 bytes`
+   - `whd_resources_all.bin wrote 466944 bytes`
+3. 烧录后 `m55qa_status`：
+   - `wlan=1 ready=1 ip=192.168.3.32`
+   - `xz_ws=1 xz_stage=70 srv_hello=1`
+   - `wake_hit=1 wake_xiaorui=976/1000`
+
+现场继续验证：
+
+1. 连续 3-5 轮对话，重点听第二轮以后是否还卡。
+2. 真实喊 `xiaorui` 后听本地“我在”是否完整、准确。

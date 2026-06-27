@@ -184,8 +184,12 @@ rt_err_t official_voice_speaker_play_pcm(const rt_int16_t *pcm, rt_uint32_t samp
 {
     rt_device_t speaker;
     rt_uint32_t offset = 0U;
+    rt_uint32_t total_bytes;
+    rt_uint32_t pad_bytes;
     rt_err_t ret;
     rt_err_t final_ret = RT_EOK;
+    rt_size_t written;
+    static const rt_int16_t silence[OFFICIAL_VOICE_FRAME_SAMPLES] = { 0 };
 
     if ((pcm == RT_NULL) || (sample_count == 0U))
     {
@@ -219,7 +223,6 @@ rt_err_t official_voice_speaker_play_pcm(const rt_int16_t *pcm, rt_uint32_t samp
     while (offset < sample_count)
     {
         rt_uint32_t samples = sample_count - offset;
-        rt_size_t written;
 
         if (samples > OFFICIAL_VOICE_FRAME_SAMPLES)
         {
@@ -234,6 +237,32 @@ rt_err_t official_voice_speaker_play_pcm(const rt_int16_t *pcm, rt_uint32_t samp
             goto out;
         }
         offset += samples;
+        rt_thread_mdelay(10);
+    }
+
+    total_bytes = sample_count * sizeof(pcm[0]);
+    pad_bytes = total_bytes % RT_AUDIO_REPLAY_MP_BLOCK_SIZE;
+    if (pad_bytes != 0U)
+    {
+        pad_bytes = RT_AUDIO_REPLAY_MP_BLOCK_SIZE - pad_bytes;
+    }
+    while (pad_bytes > 0U)
+    {
+        rt_uint32_t silence_bytes = sizeof(silence);
+
+        if (silence_bytes > pad_bytes)
+        {
+            silence_bytes = pad_bytes;
+        }
+        written = rt_device_write(speaker, 0, silence, silence_bytes);
+        if (written == 0U)
+        {
+            rt_kprintf("[official_voice] pcm feedback pad write failed remain=%lu\n",
+                       (unsigned long)pad_bytes);
+            final_ret = -RT_ERROR;
+            goto out;
+        }
+        pad_bytes -= (rt_uint32_t)written;
         rt_thread_mdelay(10);
     }
 
