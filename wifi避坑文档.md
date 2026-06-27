@@ -2664,3 +2664,45 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
 1. 当前板端网络和 token 健康，但 `xz_ws=0`、`srv_hello=0`，WebSocket 阶段仍在 `xz_stage=30/80` 间跳，曾见 `xz_errno=-3`。
 2. 这已不是旧 project、WiFi、token 长度或 NanoPi 摄像头链路问题。
 3. 下一步只查 M55 WebSocket 握手/认证失败细节、运行时 URL 是否被配置命令覆盖、服务端是否拒绝新 token；不要回退到旧 project，也不要改服务器核心协议。
+
+## 62. 2026-06-27 新 project relay token 已写入 M55 并完成 WebSocket hello
+
+现象：
+
+1. M55 源码和 URL 已切到新 project，但板端仍使用旧的 442 字节 token 时，WebSocket/HTTP relay 会被云端拒绝。
+2. PC 侧用旧 token 直连 WebSocket 返回 `403 Forbidden`，HTTP model relay 返回 `401 Unauthorized`。
+3. 这不是 WiFi、NanoPi 摄像头、CAN、M33 运动控制或服务器核心协议问题。
+
+修复：
+
+1. 通过云端设备 relay-token 接口重新签发 `project_id=e201f41c-25a6-46e1-baf8-be6dcb83284c`、`device_id=nanopi-m5` 的新 token。
+2. 新 token 保存到工作区 `D:\RT-ThreadStudio\workspace\token.txt`，字符长度 468。不要在日志或文档中打印 token 内容。
+3. 用 COM4 QA 命令慢速写入 M55：
+   - `m55qa_xz_token_begin`
+   - `m55qa_xz_token_part <chunk>`，56 字符一片，每片间隔约 1 秒
+   - 遇到 `ret=-28` 要等待 1-3 秒重试同一片，不要继续压队列
+   - `m55qa_xz_token_commit`
+4. 如果串口或 IPC 静默，先 OpenOCD `reset run`，再查询 `m55qa_status`。本次 reset 后 token 已持久化，无需重签。
+
+验证：
+
+1. PC 侧 raw WebSocket handshake 使用新 token 返回 `HTTP/1.1 101 Switching Protocols`。
+2. M55 reset 后 `m55qa_status` 已确认：
+   - `xz_token=1 token_len=468`
+   - `wlan=1 ready=1`
+   - `ip=192.168.3.32`
+   - `xz_ws=1`
+   - `xz_stage=70`
+   - `xz_errno=0`
+   - `srv_hello=1`
+3. 新 project dashboard：
+   `http://106.55.62.122:8011/api/rehab-arm/v1/devices/dashboard?project_id=e201f41c-25a6-46e1-baf8-be6dcb83284c`
+   已看到 `device_id=nanopi-m5` 的最新 `xiaozhi_session`，payload 内 `project_id` 为新 project。
+4. VLA 页面：
+   `http://106.55.62.122:3001/projects/e201f41c-25a6-46e1-baf8-be6dcb83284c/rehab-arm-control`
+   HTTP 访问返回 200。
+
+边界：
+
+1. “小智连接到当前 VLA project”这一项已验证通过，后续不要再回到旧 project 或旧 token。
+2. 下一步若用户反馈卡顿、听不清、唤醒不灵，应查 M55 声学路径、TTS 播放缓冲、wake `xiaorui` 置信度和多轮 reconnect，不要改 NanoPi V 链路或服务器核心 relay。
