@@ -2809,3 +2809,26 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
 
 1. 用中文连续 3-5 轮对话，重点听第三句以后是否还出现断续。
 2. 若仍卡，下一步不要再调 WiFi/token/project；优先加播放侧低开销计数：TTS pending 高水位、sound0 replay queue 高水位、Opus decode 耗时。
+
+## 66. 2026-06-27 回退 voice_tts 高优先级并给 speaker 锁加超时
+
+现象：
+
+1. 将 `voice_tts` 优先级从 18 提到 8 后，现场第二轮中文对话直接卡死。
+2. 卡死时 COM4 一度无有效回显，说明不是简单的音质差，而是调度/锁等待层面的系统卡住风险。
+
+修复：
+
+1. `voice_tts` 线程优先级回退到 18，保留 TTS 热路径日志节流。
+2. `voice_service_stream_pcm_to_m55_speaker()` 和 flush 路径中获取 `official_voice_speaker_take()` 的等待从 `RT_WAITING_FOREVER` 改为 `VOICE_TTS_REPLAY_WAIT_MS`，避免 speaker 锁异常时永久阻塞。
+3. 后续不要再用提高 `voice_tts` 优先级当首选方案；中文卡顿应优先做低开销水位/耗时诊断。
+
+验证：
+
+1. `python -m SCons -j8` 构建通过。
+2. `program_with_resources.bat` 完整写入：
+   - `rtthread.hex wrote 1769472 bytes`
+   - `whd_resources_all.bin wrote 466944 bytes`
+3. 烧录后 `m55qa_status` 恢复：
+   - `wlan=1 ready=1 ip=192.168.3.32`
+   - `xz_ws=1 xz_stage=70 srv_hello=1`

@@ -1327,7 +1327,7 @@ static rt_bool_t voice_service_stream_pcm_to_m55_speaker(const uint8_t *audio_da
                 return RT_FALSE;
             }
             g_service.service_diag_phase = 5202U;
-            if (official_voice_speaker_take(RT_WAITING_FOREVER) != RT_EOK)
+            if (official_voice_speaker_take(voice_service_ms_to_ticks(VOICE_TTS_REPLAY_WAIT_MS)) != RT_EOK)
             {
                 g_service.xiaozhi_speaker_last_ret = -RT_EBUSY;
                 g_service.service_diag_phase = 5210U;
@@ -1410,7 +1410,7 @@ static rt_bool_t voice_service_flush_m55_speaker(void)
     rt_memset(g_service.xiaozhi_speaker_pending + g_service.xiaozhi_speaker_pending_len,
               0,
               RT_AUDIO_REPLAY_MP_BLOCK_SIZE - g_service.xiaozhi_speaker_pending_len);
-    if (official_voice_speaker_take(RT_WAITING_FOREVER) != RT_EOK)
+    if (official_voice_speaker_take(voice_service_ms_to_ticks(VOICE_TTS_REPLAY_WAIT_MS)) != RT_EOK)
     {
         g_service.xiaozhi_speaker_last_ret = -RT_EBUSY;
         g_service.service_diag_phase = 5211U;
@@ -3990,7 +3990,7 @@ rt_err_t voice_service_start(void)
                                             voice_service_tts_thread_entry,
                                             RT_NULL,
                                             VOICE_TTS_THREAD_STACK,
-                                            8,
+                                            18,
                                             10);
     if (!g_service.tts_thread)
     {
