@@ -550,6 +550,25 @@ function vlaLiteLoopLabel(value: unknown) {
   }
 }
 
+function dryRunGateLabel(value: unknown) {
+  switch (text(value, "hold_language")) {
+    case "hold_language":
+      return "等待 L 指令";
+    case "hold_vision":
+      return "等待 V 目标";
+    case "hold_stale_vision":
+      return "视觉过期保持";
+    case "observe_more":
+      return "继续观察";
+    case "visual_lock_ready":
+      return "可进入 dry-run";
+    case "candidate_ready":
+      return "候选已生成";
+    default:
+      return "A 保持";
+  }
+}
+
 function inferVoiceRouteFromText(value: unknown) {
   const transcript = text(value, "").trim();
   const normalized = transcript.toLowerCase();
@@ -2973,6 +2992,8 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
               stereo_visual_lock_stable_for_dry_run: stereoVisualLockStable,
               stereo_visual_lock_same_label_frames: stereoVisualLockSameFrames,
               stereo_visual_lock_stereo_match_frames: stereoVisualLockStereoFrames,
+              a_dry_run_gate_state: dryRunGateState,
+              a_dry_run_candidate_allowed: dryRunCandidateAllowed,
               sensor_source: publicSourceLabel(sensorPayload.source, ""),
             },
             requested_outputs: ["high_level_task", "dry_run_joint_trajectory_candidate", "model_state_suggestion"],
@@ -3277,6 +3298,40 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
     hold_uncalibrated_depth: "未完成双目标定，不能把像素视差当机械臂坐标",
     candidate_ready: "已有高层候选，可进入仿真/dry-run 审核",
   }[vlaLiteLoopState];
+  const hasActionCandidate = Object.keys(actionCandidate).length > 0 || relayState === "ok";
+  const hasLanguageTask = Boolean(effectiveLanguageSummary && effectiveLanguageSummary !== "等待 XiaoZhi listen/audio");
+  const hasStereoTargetForGate = Boolean(stereoHasContext && stereoTargetLabel && stereoHasDisparity);
+  const dryRunGateState = !hasLanguageTask
+    ? "hold_language"
+    : !hasStereoTargetForGate
+      ? "hold_vision"
+      : stereoFreshness.state === "stale"
+        ? "hold_stale_vision"
+        : !stereoVisualLockStable
+          ? "observe_more"
+          : hasActionCandidate
+            ? "candidate_ready"
+            : "visual_lock_ready";
+  const dryRunCandidateAllowed = dryRunGateState === "visual_lock_ready" || dryRunGateState === "candidate_ready";
+  const dryRunGateTone = dryRunGateState === "candidate_ready" || dryRunGateState === "visual_lock_ready"
+    ? "ok"
+    : dryRunGateState === "observe_more"
+      ? "idle"
+      : "limited";
+  const dryRunGateReason = {
+    hold_language: "A 等待小智/语言路由给出取物或训练任务，不凭空生成动作。",
+    hold_vision: "A 等待 NanoPi 双目给出同类左右目目标，当前只保持观察。",
+    hold_stale_vision: "视觉帧已经过期，A 不使用旧坐标生成逼近候选。",
+    observe_more: "目标还没有通过多帧视觉锁定，A 继续观察并保持 hold_observe。",
+    visual_lock_ready: "目标通过多帧锁定，A 可以展示 dry-run 像素逼近候选，但不下发运动。",
+    candidate_ready: "已有高层建议或候选，下一步仍是仿真/dry-run 审核，不是真机运动。",
+  }[dryRunGateState];
+  const actionGateTitle = dryRunCandidateAllowed
+    ? dryRunGateLabel(dryRunGateState)
+    : "A hold_observe";
+  const actionGateSummary = dryRunCandidateAllowed
+    ? `${dryRunGateReason} 建议标签：${pixelServo.nextStep}。`
+    : dryRunGateReason;
 
   return (
     <main className={styles.shell}>
@@ -3391,26 +3446,27 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
             </article>
             <article data-stage="a">
               <span>A · 下一步建议</span>
-              <strong>{text(actionCandidate.type, relayState === "ok" ? "高层建议已生成" : "dry-run 候选")}</strong>
-              <p>{actionSummary}</p>
+              <strong>{text(actionCandidate.type, actionGateTitle)}</strong>
+              <p>{hasActionCandidate ? actionSummary : actionGateSummary}</p>
               <small>{text(vlaCandidate.control_boundary ?? relayBoundaryText, "vla_candidate_only_not_motion_permission")}</small>
             </article>
           </section>
 
           <section className={styles.vlaDecisionDeck} aria-label="VLA-lite 决策甲板">
-            <article className={styles.vlaLiteLoopPanel} data-tone={vlaLiteLoopTone}>
+            <article className={styles.vlaLiteLoopPanel} data-tone={dryRunGateTone}>
               <div>
-                <span>闭环状态</span>
-                <strong>{vlaLiteLoopLabel(vlaLiteLoopState)}</strong>
-                <small>{vlaLiteLoopState}</small>
+                <span>A dry-run gate</span>
+                <strong>{dryRunGateLabel(dryRunGateState)}</strong>
+                <small>{dryRunGateState}</small>
               </div>
-              <p>{vlaLiteLoopReason}</p>
+              <p>{dryRunGateReason}</p>
               <ul>
                 <li><span>模式</span><strong>{operationModeLabel(operationMode)}</strong></li>
                 <li><span>执行</span><strong>{executionMode}</strong></li>
                 <li><span>目标白名单</span><strong>{targetAllowlistText}</strong></li>
                 <li><span>视觉锁定</span><strong>{stereoVisibleStabilityText}</strong></li>
                 <li><span>锁定门</span><strong>{stereoHasPayloadVisualLock ? `${stereoVisualLockState || "unknown"} · ${stereoVisualLockStable ? "dry-run ready" : "observe"}` : "等待 visual_lock_stability"}</strong></li>
+                <li><span>闭环状态</span><strong>{vlaLiteLoopLabel(vlaLiteLoopState)}</strong></li>
                 <li><span>V 延迟</span><strong>{stereoHasFrameTiming ? `${compactNumberText(stereoFrameProcessMs, " ms")} · ${stereoLoopProgressText}` : "等待 capture_loop"}</strong></li>
               </ul>
             </article>
