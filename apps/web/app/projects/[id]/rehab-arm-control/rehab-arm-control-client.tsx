@@ -18,6 +18,7 @@ export type DashboardDevice = {
   latest_upload_status: string;
   latest_error: string;
   camera_keyframe?: AnyRecord;
+  stereo_vision_context?: AnyRecord;
   camera_stream_offer?: AnyRecord;
   command_center_snapshot?: AnyRecord;
   robot_render_state?: AnyRecord;
@@ -133,6 +134,14 @@ const DEFAULT_RELAY_PRESETS: RelayProviderPreset[] = [
   { id: "zhipu", label: "智谱 GLM", base_url: "https://open.bigmodel.cn/api/paas/v4", model_hint: "glm-4-flash" },
   { id: "siliconflow", label: "硅基流动", base_url: "https://api.siliconflow.cn/v1", model_hint: "Qwen/Qwen2.5-7B-Instruct" },
   { id: "custom", label: "自定义 OpenAI-compatible", base_url: "", model_hint: "model id" },
+];
+
+const DEMO_LANGUAGE_INPUTS = [
+  "我口渴了，帮我拿水杯",
+  "我要开始今天的训练",
+  "检查一下摄像头和 CAN",
+  "今天训练得怎么样，帮我总结一下",
+  "你好，陪我聊一会儿",
 ];
 
 function normalizeCalibration(value: unknown): JointCalibration | null {
@@ -333,6 +342,16 @@ function timestampUnix(value: unknown): number | null {
   return null;
 }
 
+function timestampUnixFromRows(...values: unknown[]): number | null {
+  for (const value of values) {
+    const direct = Number(value);
+    if (Number.isFinite(direct) && direct > 0) return direct;
+    const parsed = timestampUnix(value);
+    if (parsed) return parsed;
+  }
+  return null;
+}
+
 function freshness(tsUnix: number | null, nowMs: number) {
   if (!tsUnix) return { text: "等待上报", state: "waiting" as const };
   if (nowMs <= 0) return { text: "等待刷新", state: "waiting" as const };
@@ -472,6 +491,151 @@ function vlaGateLabel(value: unknown) {
   return "等待语言门控";
 }
 
+function routeLabel(value: unknown) {
+  switch (text(value, "none")) {
+    case "object_fetch_request":
+      return "取物请求";
+    case "training_start_request":
+      return "开始训练";
+    case "training_summary_request":
+      return "训练总结";
+    case "diagnostic_request":
+      return "只读巡检";
+    case "data_collection_request":
+      return "数据采集";
+    case "daily_chat":
+      return "日常聊天";
+    case "hold_need_clarification":
+      return "需要澄清";
+    default:
+      return "等待分类";
+  }
+}
+
+function operationModeLabel(value: unknown) {
+  switch (text(value, "waiting_for_voice_route")) {
+    case "object_fetch_vla_lite":
+      return "取物 VLA-lite";
+    case "rehab_training_assist":
+      return "康复训练助力";
+    case "training_summary_request":
+      return "训练总结";
+    case "inspection_diagnostics":
+      return "诊断巡检";
+    case "data_collection":
+      return "数据采集";
+    case "daily_chat":
+      return "日常聊天";
+    default:
+      return "等待语音路由";
+  }
+}
+
+function vlaLiteLoopLabel(value: unknown) {
+  switch (text(value, "waiting_language")) {
+    case "waiting_language":
+      return "等待语音任务";
+    case "waiting_vision":
+      return "等待双目视觉";
+    case "tracking_target":
+      return "持续跟踪目标";
+    case "hold_stale_vision":
+      return "视觉过期保持";
+    case "hold_uncalibrated_depth":
+      return "未标定保持";
+    case "candidate_ready":
+      return "候选已就绪";
+    default:
+      return "等待闭环状态";
+  }
+}
+
+function inferVoiceRouteFromText(value: unknown) {
+  const transcript = text(value, "").trim();
+  const normalized = transcript.toLowerCase();
+  const includesAny = (words: string[]) => words.some((word) => normalized.includes(word.toLowerCase()));
+
+  if (!transcript) {
+    return {
+      route_class: "none",
+      ai_operation_mode: "waiting_for_voice_route",
+      route_action: "wait_for_language_input",
+      confidence: 0,
+      evidence: "no_transcript",
+      source: "fallback_preview",
+    };
+  }
+  if (includesAny(["口渴", "喝水", "水杯", "杯子", "瓶子", "拿", "取", "递给我", "拿过来"])) {
+    return {
+      route_class: "object_fetch_request",
+      ai_operation_mode: "object_fetch_vla_lite",
+      route_action: "fuse_language_allowlist_with_stereo_target",
+      confidence: 0.62,
+      target_allowlist: includesAny(["水杯", "杯子"]) ? ["cup", "bottle"] : ["bottle", "cup"],
+      evidence: "keyword_object_fetch",
+      source: "fallback_preview",
+    };
+  }
+  if (includesAny(["开始训练", "今天的训练", "康复训练", "抬手训练", "训练模式", "帮我训练"])) {
+    return {
+      route_class: "training_start_request",
+      ai_operation_mode: "rehab_training_assist",
+      route_action: "select_training_goal_candidate",
+      confidence: 0.66,
+      evidence: "keyword_training_start",
+      source: "fallback_preview",
+    };
+  }
+  if (includesAny(["总结", "训练得怎么样", "报告", "复盘", "今天怎么样"])) {
+    return {
+      route_class: "training_summary_request",
+      ai_operation_mode: "rehab_training_assist",
+      route_action: "request_training_summary",
+      confidence: 0.62,
+      evidence: "keyword_training_summary",
+      source: "fallback_preview",
+    };
+  }
+  if (includesAny(["摄像头正常", "检查", "巡检", "can", "总线", "电机状态", "诊断", "有没有问题"])) {
+    return {
+      route_class: "diagnostic_request",
+      ai_operation_mode: "inspection_diagnostics",
+      route_action: "readonly_system_inspection",
+      confidence: 0.58,
+      evidence: "keyword_diagnostics",
+      source: "fallback_preview",
+    };
+  }
+  if (includesAny(["采集数据", "录数据", "标定", "拍几帧", "数据集", "训练样本"])) {
+    return {
+      route_class: "data_collection_request",
+      ai_operation_mode: "data_collection",
+      route_action: "prepare_readonly_capture_session",
+      confidence: 0.56,
+      evidence: "keyword_data_collection",
+      source: "fallback_preview",
+    };
+  }
+  if (transcript.length < 4) {
+    return {
+      route_class: "hold_need_clarification",
+      ai_operation_mode: "daily_chat",
+      route_action: "ask_user_to_repeat",
+      confidence: 0.35,
+      evidence: "short_transcript",
+      source: "fallback_preview",
+    };
+  }
+  return {
+    route_class: "daily_chat",
+    ai_operation_mode: "daily_chat",
+    route_action: "operator_facing_reply_only",
+    confidence: 0.52,
+    evidence: "no_robotic_keyword",
+    source: "fallback_preview",
+  };
+}
+
 function xiaozhiDirectionLabel(recordType: unknown) {
   return text(recordType, "") === "xiaozhi_ws_reply" ? "平台 → M55" : "M55 → 平台";
 }
@@ -552,6 +716,159 @@ function numberText(value: unknown, unit = "") {
   const number = Number(value);
   if (!Number.isFinite(number)) return "-";
   return `${Number.isInteger(number) ? number : number.toFixed(3)}${unit}`;
+}
+
+function compactNumberText(value: unknown, unit = "") {
+  if (value === null || value === undefined || value === "") return "-";
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "-";
+  return `${Number.isInteger(number) ? number : number.toFixed(1)}${unit}`;
+}
+
+function detectionCount(value: unknown) {
+  const detections = value && !Array.isArray(value) && typeof value === "object"
+    ? (value as AnyRecord).detections
+    : value;
+  if (Array.isArray(detections)) return detections.length;
+  if (detections && typeof detections === "object") {
+    return Object.values(detections as AnyRecord).reduce((total, item) => total + asArray<unknown>(item).length, 0);
+  }
+  return 0;
+}
+
+function numberTuple(value: unknown, length: number) {
+  if (!Array.isArray(value) || value.length < length) return null;
+  const out = value.slice(0, length).map((item) => Number(item));
+  return out.every((item) => Number.isFinite(item)) ? out : null;
+}
+
+function firstNumberTuple(length: number, ...values: unknown[]) {
+  for (const value of values) {
+    const tuple = numberTuple(value, length);
+    if (tuple) return tuple;
+  }
+  return null;
+}
+
+function targetCenterFromObservation(target: AnyRecord, observation: AnyRecord) {
+  const center = firstNumberTuple(
+    2,
+    observation.left_center_px,
+    target.left_center_px,
+    target.center_px,
+    target.center,
+  );
+  if (center) return center;
+  const bbox = firstNumberTuple(4, observation.left_bbox_xywh, target.bbox_xywh, target.bbox);
+  if (!bbox) return null;
+  const [x, y, width, height] = bbox;
+  return [x + width / 2, y + height / 2];
+}
+
+function inferFrameSize(payload: AnyRecord, target: AnyRecord, observation: AnyRecord) {
+  const direct = firstNumberTuple(2, payload.frame_size_px, payload.image_size_px, payload.image_size, target.image_size_px);
+  if (direct) return { width: direct[0], height: direct[1] };
+  const scene = text(payload.scene_summary, "");
+  const match = scene.match(/(\d{2,5})x(\d{2,5})/);
+  if (match) return { width: Number(match[1]), height: Number(match[2]) };
+  const bbox = firstNumberTuple(4, observation.left_bbox_xywh, target.bbox_xywh, target.bbox);
+  if (bbox) return { width: Math.max(640, bbox[0] + bbox[2]), height: Math.max(480, bbox[1] + bbox[3]) };
+  return { width: 640, height: 480 };
+}
+
+function axisBand(value: number, deadband: number) {
+  if (value < -deadband) return "negative";
+  if (value > deadband) return "positive";
+  return "center";
+}
+
+function pixelServoSuggestion({
+  center,
+  frame,
+  disparity,
+  disparitySpread,
+  lockedFrames,
+  sampleCount,
+  fresh,
+}: {
+  center: number[] | null;
+  frame: { width: number; height: number };
+  disparity: number | null;
+  disparitySpread: number | null;
+  lockedFrames: number;
+  sampleCount: number;
+  fresh: boolean;
+}) {
+  if (!center) {
+    return {
+      state: "waiting",
+      title: "等待目标中心",
+      summary: "当前帧缺少目标中心或 bbox，继续观察，不生成逼近方向。",
+      horizontal: "unknown",
+      vertical: "unknown",
+      nextStep: "hold_observe",
+      targetOffsetText: "无像素中心",
+      stabilityText: sampleCount ? `${lockedFrames}/${sampleCount} 帧` : "暂无历史",
+      tone: "limited",
+    };
+  }
+  if (!fresh) {
+    return {
+      state: "hold_stale_vision",
+      title: "视觉过期保持",
+      summary: "当前只显示上一帧像素位置；必须重新观察后才生成 dry-run 修正方向。",
+      horizontal: "unknown",
+      vertical: "unknown",
+      nextStep: "hold_observe",
+      targetOffsetText: "等待新帧",
+      stabilityText: sampleCount ? `${lockedFrames}/${sampleCount} 帧历史` : "暂无新鲜历史",
+      tone: "limited",
+    };
+  }
+  const frameWidth = Math.max(1, frame.width);
+  const frameHeight = Math.max(1, frame.height);
+  const offsetX = (center[0] - frameWidth / 2) / (frameWidth / 2);
+  const offsetY = (center[1] - frameHeight / 2) / (frameHeight / 2);
+  const horizontal = axisBand(offsetX, 0.16);
+  const vertical = axisBand(offsetY, 0.16);
+  const centered = horizontal === "center" && vertical === "center";
+  const stable = sampleCount >= 3
+    ? lockedFrames >= Math.min(3, sampleCount) && (disparitySpread === null || disparitySpread <= 8)
+    : lockedFrames > 0;
+  const depthCue = disparity !== null
+    ? (disparity > 36 ? "too_near" : disparity < 10 ? "far_or_uncertain" : "usable_disparity")
+    : "unknown";
+  const horizontalText = horizontal === "negative" ? "目标偏左" : horizontal === "positive" ? "目标偏右" : "水平居中";
+  const verticalText = vertical === "negative" ? "目标偏上" : vertical === "positive" ? "目标偏下" : "垂直居中";
+  const nextStep = centered && stable
+    ? "hold_centered_then_reobserve"
+    : horizontal === "negative"
+      ? "dry_run_shift_left"
+      : horizontal === "positive"
+        ? "dry_run_shift_right"
+        : vertical === "negative"
+          ? "dry_run_lift_up"
+          : vertical === "positive"
+            ? "dry_run_lift_down"
+            : "hold_observe";
+  const title = centered
+    ? stable ? "像素居中稳定" : "像素居中待稳定"
+    : `${horizontalText} · ${verticalText}`;
+  return {
+    state: centered && stable ? "centered_stable" : stable ? "servo_adjust" : "observe_more",
+    title,
+    summary: `${horizontalText}，${verticalText}；只生成 dry-run 方向，不把像素当真实三维坐标。`,
+    horizontal,
+    vertical,
+    nextStep,
+    targetOffsetText: `x ${Math.round(offsetX * 100)}% · y ${Math.round(offsetY * 100)}%`,
+    stabilityText: [
+      sampleCount ? `${lockedFrames}/${sampleCount} 帧锁定` : "暂无历史",
+      disparitySpread !== null ? `视差波动 ${compactNumberText(disparitySpread, " px")}` : "",
+      depthCue === "usable_disparity" ? "视差可用" : depthCue === "too_near" ? "视差偏大" : depthCue === "far_or_uncertain" ? "视差偏小/较远" : "无视差",
+    ].filter(Boolean).join("；"),
+    tone: centered && stable ? "ok" : stable ? "idle" : "limited",
+  };
 }
 
 function clamp01(value: number) {
@@ -1537,7 +1854,7 @@ function Arm3DOverview({
       try {
         let { modelUrl, fileName, packageName, urdfPath, sha256, mappingJson } = modelInfoFromRecord(deviceModel);
         if (!modelUrl) {
-          const dashboardResponse = await fetch("/api/proxy/rehab-arm/v1/devices/dashboard", { cache: "no-store", signal: controller.signal });
+          const dashboardResponse = await fetch(`/api/proxy/rehab-arm/v1/devices/dashboard?project_id=${encodeURIComponent(projectId)}`, { cache: "no-store", signal: controller.signal });
           if (dashboardResponse.ok) {
             const dashboardPayload = await dashboardResponse.json();
             const device = asArray<AnyRecord>(record(dashboardPayload).data?.devices).find((item) => text(item.device_id, "") === deviceId);
@@ -1567,7 +1884,7 @@ function Arm3DOverview({
     }
     void restoreModelPackage();
     return () => controller.abort();
-  }, [deviceId, deviceModel, urdfText]);
+  }, [deviceId, deviceModel, projectId, urdfText]);
 
   function updateCalibration(jointName: string, patch: Partial<JointCalibration>) {
     setCalibrations((rows) => rows.map((row) => row.jointName === jointName ? { ...row, ...patch } : row));
@@ -2315,6 +2632,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
   const [relayExportExpiresAt, setRelayExportExpiresAt] = useState<number | null>(null);
   const [relayTokenTtlSeconds, setRelayTokenTtlSeconds] = useState(7 * 24 * 60 * 60);
   const [externalApiBaseUrl, setExternalApiBaseUrl] = useState(() => apiBaseUrl.replace(/\/$/, ""));
+  const [demoLanguageInput, setDemoLanguageInput] = useState("");
   const devices = useMemo(
     () => [...liveDashboard.devices].sort((a, b) => Number(b.last_upload_ts_unix ?? 0) - Number(a.last_upload_ts_unix ?? 0)),
     [liveDashboard.devices],
@@ -2347,7 +2665,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
 
     async function refreshDashboard() {
       try {
-        const response = await fetch("/api/proxy/rehab-arm/v1/devices/dashboard", { cache: "no-store" });
+        const response = await fetch(`/api/proxy/rehab-arm/v1/devices/dashboard?project_id=${encodeURIComponent(projectId)}`, { cache: "no-store" });
         if (!response.ok) throw new Error("dashboard fetch failed");
         const payload = await response.json();
         if (disposed) return;
@@ -2406,6 +2724,35 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
   const roleSignals = useMemo(() => roleSignalsFromDevices(devices), [devices]);
   const keyframe = selected?.camera_keyframe ?? {};
   const keyframePayload = payloadOf(keyframe);
+  const stereoVision = selected?.stereo_vision_context ?? {};
+  const stereoPayload = payloadOf(stereoVision);
+  const stereoCaptureLoop = record(stereoPayload.capture_loop);
+  const stereoTarget = record(stereoPayload.target_object);
+  const stereoObservation = record(stereoTarget.stereo_observation);
+  const stereoVisualLock = record(stereoPayload.visual_lock_stability);
+  const stereoDepth = firstFiniteNumber(stereoPayload.estimated_depth_m, record(stereoPayload.target_3d_camera_frame).z_m, record(stereoPayload.target_3d_camera_frame).z);
+  const stereoHasContext = Object.keys(stereoPayload).length > 0;
+  const stereoTargetLabel = text(stereoTarget.label, "");
+  const stereoDetectionCount = detectionCount(stereoPayload.detections);
+  const stereoFrameProcessMs = Number(stereoCaptureLoop.frame_process_ms);
+  const stereoHasFrameTiming = Number.isFinite(stereoFrameProcessMs);
+  const stereoLoopIndex = Number(stereoCaptureLoop.loop_index);
+  const stereoLoopCount = Number(stereoCaptureLoop.loop_count);
+  const stereoLoopSequence = Number(stereoCaptureLoop.sequence);
+  const stereoLoopProgressText = Number.isFinite(stereoLoopIndex) && Number.isFinite(stereoLoopCount) && stereoLoopCount > 0
+    ? `${stereoLoopIndex + 1}/${stereoLoopCount}`
+    : Number.isFinite(stereoLoopSequence)
+      ? `seq ${stereoLoopSequence}`
+      : "未上报";
+  const stereoVisualLockState = text(stereoVisualLock.state, "");
+  const stereoVisualLockStable = stereoVisualLock.stable_for_dry_run === true;
+  const stereoVisualLockSameFrames = Number(stereoVisualLock.same_label_frames);
+  const stereoVisualLockStereoFrames = Number(stereoVisualLock.stereo_match_frames);
+  const stereoVisualLockSamples = Number(stereoVisualLock.samples);
+  const stereoVisualLockJitterPx = Number(stereoVisualLock.center_jitter_px);
+  const stereoVisualLockDisparitySpreadPx = Number(stereoVisualLock.disparity_spread_px);
+  const stereoVisualLockCandidate = text(stereoVisualLock.candidate_label, "");
+  const stereoHasPayloadVisualLock = Object.keys(stereoVisualLock).length > 0;
   const cameraStreamOffer = latestRelayPayload(selected, "camera_stream_offer");
   const robotRenderState = renderStateOfDevice(selected);
   const renderRows = renderJointRowsFromState(robotRenderState);
@@ -2418,8 +2765,12 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
   const sensorPayload = payloadOf(selected?.sensor_state);
   const safetyPayload = payloadOf(selected?.safety);
   const safetyStatus = record(selected?.safety_status);
-  const voiceRelay = latestRelayPayload(selected, "voice_relay");
-  const xiaozhiSession = latestRelayPayload(selected, "xiaozhi_session");
+  const selectedVoiceRelay = latestRelayPayload(selected, "voice_relay");
+  const selectedXiaozhiSession = latestRelayPayload(selected, "xiaozhi_session");
+  const projectVoiceRelayDevice = devices.find((device) => Object.keys(latestRelayPayload(device, "voice_relay")).length > 0);
+  const projectXiaozhiDevice = devices.find((device) => Object.keys(latestRelayPayload(device, "xiaozhi_session")).length > 0);
+  const voiceRelay = Object.keys(selectedVoiceRelay).length ? selectedVoiceRelay : latestRelayPayload(projectVoiceRelayDevice, "voice_relay");
+  const xiaozhiSession = Object.keys(selectedXiaozhiSession).length ? selectedXiaozhiSession : latestRelayPayload(projectXiaozhiDevice, "xiaozhi_session");
   const vlaCandidate = latestRelayPayload(selected, "vla_plan_candidate");
   const modelRelayRecord = record(selected?.model_relay_response);
   const modelRelayPayload = payloadOf(modelRelayRecord);
@@ -2429,10 +2780,19 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
   const estopAck = latestRelayPayload(selected, "estop_ack");
   const dataQuality = selected?.data_quality ?? {};
   const motors = asArray<AnyRecord>(motorPayload.motors);
-  const xiaozhiEvents = liveDashboard.recent_events
+  const projectXiaozhiEvents = liveDashboard.recent_events
+    .filter((event) => ["xiaozhi_ws_input", "xiaozhi_ws_reply", "xiaozhi_ws_tts"].includes(text(event.record_type, "")));
+  const selectedXiaozhiEvents = projectXiaozhiEvents
     .filter((event) => {
       if (selected?.device_id && text(event.device_id, "") !== selected.device_id) return false;
-      return ["xiaozhi_ws_input", "xiaozhi_ws_reply"].includes(text(event.record_type, ""));
+      return true;
+    })
+    .slice(0, 6);
+  const xiaozhiEvents = (selectedXiaozhiEvents.length ? selectedXiaozhiEvents : projectXiaozhiEvents).slice(0, 6);
+  const stereoRecentEvents = liveDashboard.recent_events
+    .filter((event) => {
+      if (selected?.device_id && text(event.device_id, "") !== selected.device_id) return false;
+      return text(event.record_type, "") === "stereo_vision_context";
     })
     .slice(0, 6);
   const modelRelayEvents = liveDashboard.recent_events
@@ -2604,7 +2964,15 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
               wiring_overall: text(wiringHealth.overall, "unknown"),
               stale_joint_count: staleRenderCount,
               fresh_joint_count: Math.max(0, renderRows.length - staleRenderCount),
-              camera_scene_summary: text(keyframePayload.scene_summary, ""),
+              camera_scene_summary: text(stereoPayload.scene_summary ?? keyframePayload.scene_summary, ""),
+              stereo_target_label: stereoTargetLabel,
+              stereo_baseline_m: stereoPayload.baseline_m,
+              stereo_disparity_px: stereoObservation.horizontal_disparity_px,
+              stereo_depth_m: stereoDepth,
+              stereo_visual_lock_state: stereoVisualLockState,
+              stereo_visual_lock_stable_for_dry_run: stereoVisualLockStable,
+              stereo_visual_lock_same_label_frames: stereoVisualLockSameFrames,
+              stereo_visual_lock_stereo_match_frames: stereoVisualLockStereoFrames,
               sensor_source: publicSourceLabel(sensorPayload.source, ""),
             },
             requested_outputs: ["high_level_task", "dry_run_joint_trajectory_candidate", "model_state_suggestion"],
@@ -2692,19 +3060,223 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
     "m33_safety_override",
     "direct_motor_command",
   ];
-  const visionSummary = text(
-    keyframePayload.scene_summary ?? keyframePayload.detection_summary ?? keyframePayload.vla_context,
-    absoluteImageUrl ? "已接收摄像头关键帧，等待视觉摘要" : "等待 camera_keyframe_v1",
-  );
+  const visionSummary = stereoHasContext
+    ? [
+      stereoTargetLabel ? `目标 ${stereoTargetLabel}` : "双目已上报",
+      stereoDetectionCount ? `检测 ${stereoDetectionCount} 个` : "",
+      stereoHasFrameTiming ? `处理 ${compactNumberText(stereoFrameProcessMs, " ms")}` : "",
+      stereoLoopProgressText !== "未上报" ? `循环 ${stereoLoopProgressText}` : "",
+      Number.isFinite(Number(stereoPayload.baseline_m)) ? `基线 ${compactNumberText(stereoPayload.baseline_m, " m")}` : "",
+      Number.isFinite(Number(stereoObservation.horizontal_disparity_px)) ? `视差 ${compactNumberText(stereoObservation.horizontal_disparity_px, " px")}` : "",
+      stereoDepth !== null ? `深度 ${compactNumberText(stereoDepth, " m")}` : "未标定深度",
+    ].filter(Boolean).join("；")
+    : text(
+      keyframePayload.scene_summary ?? keyframePayload.detection_summary ?? keyframePayload.vla_context,
+      absoluteImageUrl ? "已接收摄像头关键帧，等待视觉摘要" : "等待 stereo_rgb_yolo_context_v1 / camera_keyframe_v1",
+    );
   const languageSummary = text(
     xiaozhiSession.transcript ?? xiaozhiReplyPayload.transcript ?? voiceRelay.transcript ?? record(voiceRelay.intent).text,
     xiaozhiSession.event ? xiaozhiEventLabel(xiaozhiSession.event) : "等待 XiaoZhi listen/audio",
   );
+  const hasRealLanguageInput = languageSummary !== "等待 XiaoZhi listen/audio" || xiaozhiEvents.length > 0 || Object.keys(voiceRelay).length > 0;
+  const effectiveLanguageSummary = hasRealLanguageInput ? languageSummary : (demoLanguageInput || languageSummary);
+  const voiceIntentRoute = record(
+    xiaozhiReplyPayload.voice_intent_route
+      ?? xiaozhiReplyPayload.intent_route
+      ?? xiaozhiSession.voice_intent_route
+      ?? xiaozhiSession.intent_route
+      ?? voiceRelay.voice_intent_route
+      ?? voiceRelay.intent_route
+      ?? modelRelayResponse.voice_intent_route
+      ?? record(modelRelayResponse.vla_language_context).voice_intent_route,
+  );
+  const routePreview: AnyRecord = Object.keys(voiceIntentRoute).length
+    ? { ...voiceIntentRoute, source: text(voiceIntentRoute.source, "voice_intent_route_v1") }
+    : inferVoiceRouteFromText(effectiveLanguageSummary);
+  const routeClass = text(routePreview.route_class, "none");
+  const routedOperationMode = text(routePreview.ai_operation_mode, "");
+  const routeAction = text(routePreview.route_action, "wait_for_language_input");
+  const routeConfidence = Number(routePreview.confidence);
+  const routeConfidenceText = Number.isFinite(routeConfidence) && routeConfidence > 0
+    ? `${Math.round(routeConfidence * 100)}%`
+    : "未上报";
+  const routeSourceText = text(routePreview.source, "fallback_preview") === "fallback_preview"
+    ? (!hasRealLanguageInput && demoLanguageInput ? "演示 L 输入" : "前端兜底预览")
+    : "真实语音路由";
   const actionCandidate = record(vlaCandidate.candidate);
   const actionSummary = text(
     modelRelaySuggestion.detail ?? modelRelayResponse.summary ?? actionCandidate.summary ?? actionCandidate.type,
     "等待 dry-run 动作候选",
   );
+  const languageOperationMode = text(languageGate.ai_operation_mode, "") || text(languageGate.operation_mode, "");
+  const operationMode = text(
+    (routedOperationMode
+      || languageOperationMode)
+      ?? modelRelayResponse.ai_operation_mode
+      ?? actionCandidate.ai_operation_mode
+      ?? (stereoTargetLabel ? "object_fetch_vla_lite" : ""),
+    "waiting_for_voice_route",
+  );
+  const executionMode = text(
+    safetyStatus.execution_mode
+      ?? safetyPayload.execution_mode
+      ?? modelRelayResponse.execution_mode
+      ?? actionCandidate.execution_mode,
+    motionAllowed ? "bench_motion_allowed_candidate" : "dry_run_only",
+  );
+  const targetAllowlist = asArray<unknown>(
+    routePreview.target_allowlist
+      ?? languageGate.target_allowlist
+      ?? modelRelayResponse.target_allowlist
+      ?? actionCandidate.target_allowlist,
+  )
+    .map((item) => text(item, ""))
+    .filter(Boolean);
+  const targetAllowlistText = targetAllowlist.length ? targetAllowlist.join(", ") : "cup, bottle";
+  const stereoTsUnix = timestampUnixFromRows(
+    stereoPayload.frame_ts_unix,
+    stereoPayload.ts_unix,
+    stereoPayload.timestamp_unix,
+    stereoVision,
+  );
+  const stereoFreshness = freshness(stereoTsUnix, Date.now());
+  const stereoDisparity = Number(stereoObservation.horizontal_disparity_px);
+  const stereoHasDisparity = Number.isFinite(stereoDisparity);
+  const stereoRecentFrames = stereoRecentEvents
+    .map((event) => {
+      const payload = payloadOf(event);
+      const target = record(payload.target_object);
+      const observation = record(target.stereo_observation);
+      const label = text(target.label, "");
+      const disparity = Number(observation.horizontal_disparity_px);
+      return {
+        label,
+        disparity: Number.isFinite(disparity) ? disparity : null,
+        locked: Boolean(label && Number.isFinite(disparity)),
+      };
+    });
+  const stereoStableLabel = stereoTargetLabel || text(stereoRecentFrames.find((frame) => frame.label)?.label, "");
+  const stereoLockedFrames = stereoRecentFrames.filter((frame) => (
+    frame.locked && (!stereoStableLabel || frame.label === stereoStableLabel)
+  ));
+  const stereoSampleCount = stereoRecentFrames.length;
+  const stereoDisparitySamples = stereoLockedFrames
+    .map((frame) => frame.disparity)
+    .filter((value): value is number => value !== null);
+  const stereoDisparitySpread = stereoDisparitySamples.length >= 2
+    ? Math.max(...stereoDisparitySamples) - Math.min(...stereoDisparitySamples)
+    : null;
+  const stereoTargetCenter = targetCenterFromObservation(stereoTarget, stereoObservation);
+  const stereoFrameSize = inferFrameSize(stereoPayload, stereoTarget, stereoObservation);
+  const computedPixelServo = pixelServoSuggestion({
+    center: stereoTargetCenter,
+    frame: stereoFrameSize,
+    disparity: stereoHasDisparity ? stereoDisparity : null,
+    disparitySpread: stereoDisparitySpread,
+    lockedFrames: stereoLockedFrames.length,
+    sampleCount: stereoSampleCount,
+    fresh: stereoFreshness.state !== "stale",
+  });
+  const payloadPixelServoHint = record(stereoPayload.pixel_servo_hint);
+  const payloadPixelServoOffsetX = Number(payloadPixelServoHint.offset_x_norm);
+  const payloadPixelServoOffsetY = Number(payloadPixelServoHint.offset_y_norm);
+  const payloadPixelServoNextStep = text(payloadPixelServoHint.next_step, "");
+  const payloadPixelServoState = text(payloadPixelServoHint.state, "");
+  const pixelServo = stereoFreshness.state === "stale" || !Object.keys(payloadPixelServoHint).length
+    ? computedPixelServo
+    : {
+      ...computedPixelServo,
+      state: payloadPixelServoState || computedPixelServo.state,
+      title: payloadPixelServoState === "centered_single_frame"
+        ? "像素居中待复核"
+        : payloadPixelServoState === "waiting_stereo_match"
+          ? "等待右图匹配"
+          : payloadPixelServoNextStep.includes("left")
+            ? "目标偏左 · 像素修正"
+            : payloadPixelServoNextStep.includes("right")
+              ? "目标偏右 · 像素修正"
+              : payloadPixelServoNextStep.includes("up")
+                ? "目标偏上 · 像素修正"
+                : payloadPixelServoNextStep.includes("down")
+                  ? "目标偏下 · 像素修正"
+                  : computedPixelServo.title,
+      summary: text(payloadPixelServoHint.control_boundary, "") === "pixel_servo_hint_only_not_motion_permission"
+        ? "NanoPi 已上报单帧像素伺服提示；仍只作为 dry-run 解释，不代表真实三维坐标。"
+        : computedPixelServo.summary,
+      nextStep: payloadPixelServoNextStep || computedPixelServo.nextStep,
+      targetOffsetText: Number.isFinite(payloadPixelServoOffsetX) && Number.isFinite(payloadPixelServoOffsetY)
+        ? `x ${Math.round(payloadPixelServoOffsetX * 100)}% · y ${Math.round(payloadPixelServoOffsetY * 100)}%`
+        : computedPixelServo.targetOffsetText,
+      stabilityText: `payload ${text(payloadPixelServoHint.schema_version, "pixel_servo_hint")}；${computedPixelServo.stabilityText}`,
+    };
+  const stereoStabilityText = stereoSampleCount
+    ? `${stereoLockedFrames.length}/${stereoSampleCount} 帧锁定${stereoStableLabel ? ` ${stereoStableLabel}` : ""}`
+    : "暂无多帧历史";
+  const stereoPayloadStabilityText = stereoHasPayloadVisualLock
+    ? [
+      Number.isFinite(stereoVisualLockSameFrames) && Number.isFinite(stereoVisualLockSamples)
+        ? `${stereoVisualLockSameFrames}/${stereoVisualLockSamples} 帧锁定${stereoVisualLockCandidate ? ` ${stereoVisualLockCandidate}` : ""}`
+        : "",
+      Number.isFinite(stereoVisualLockStereoFrames) ? `双目 ${stereoVisualLockStereoFrames}` : "",
+      Number.isFinite(stereoVisualLockJitterPx) ? `抖动 ${compactNumberText(stereoVisualLockJitterPx, " px")}` : "",
+      Number.isFinite(stereoVisualLockDisparitySpreadPx) ? `视差波动 ${compactNumberText(stereoVisualLockDisparitySpreadPx, " px")}` : "",
+    ].filter(Boolean).join("；")
+    : "";
+  const stereoVisibleStabilityText = stereoPayloadStabilityText || stereoStabilityText;
+  const stereoLoopTone = !stereoHasContext || stereoFreshness.state === "stale"
+    ? "limited"
+    : stereoVisualLockStable || (stereoTargetLabel && stereoHasDisparity && (!stereoSampleCount || stereoLockedFrames.length >= Math.min(3, stereoSampleCount)))
+      ? "ok"
+      : "idle";
+  const stereoLoopState = !stereoHasContext
+    ? "等待 V 输入"
+    : stereoFreshness.state === "stale"
+      ? "视觉过期 hold"
+      : stereoVisualLockStable
+        ? "多帧稳定"
+        : stereoTargetLabel && stereoHasDisparity && (!stereoSampleCount || stereoLockedFrames.length >= Math.min(3, stereoSampleCount))
+          ? "目标锁定"
+          : stereoHasPayloadVisualLock && stereoVisualLockState
+            ? "继续观察"
+        : "继续观察";
+  const stereoLoopDetail = stereoHasContext
+    ? [
+      `更新 ${stereoFreshness.text}`,
+      stereoHasFrameTiming ? `V 耗时 ${compactNumberText(stereoFrameProcessMs, " ms")}` : "",
+      stereoVisibleStabilityText,
+      stereoHasPayloadVisualLock && stereoVisualLockState ? `锁定状态 ${stereoVisualLockState}` : "",
+      stereoHasDisparity ? `视差 ${compactNumberText(stereoDisparity, " px")}` : "无左右匹配",
+      stereoDisparitySpread !== null ? `波动 ${compactNumberText(stereoDisparitySpread, " px")}` : "",
+      stereoDepth !== null ? `深度 ${compactNumberText(stereoDepth, " m")}` : "未标定深度",
+      motionAllowed ? "M33 允许候选" : "保持 dry-run/hold",
+    ].filter(Boolean).join("；")
+    : "等待 NanoPi 双目上传 stereo_vision_context";
+  const vlaLiteLoopState = !effectiveLanguageSummary || effectiveLanguageSummary === "等待 XiaoZhi listen/audio"
+    ? "waiting_language"
+    : !stereoHasContext
+      ? "waiting_vision"
+      : stereoFreshness.state === "stale"
+        ? "hold_stale_vision"
+        : !stereoTargetLabel || !stereoHasDisparity
+          ? "tracking_target"
+          : stereoDepth === null
+            ? "hold_uncalibrated_depth"
+            : Object.keys(actionCandidate).length || relayState === "ok"
+              ? "candidate_ready"
+              : "tracking_target";
+  const vlaLiteLoopTone = vlaLiteLoopState === "candidate_ready"
+    ? "ok"
+    : vlaLiteLoopState.startsWith("hold_")
+      ? "limited"
+      : "idle";
+  const vlaLiteLoopReason = {
+    waiting_language: "等待小智给出任务意图",
+    waiting_vision: "等待 NanoPi 双目 V 输入",
+    tracking_target: "视觉正在持续跟踪目标，A 仍只生成 dry-run 候选",
+    hold_stale_vision: "视觉数据过期，必须重新观察",
+    hold_uncalibrated_depth: "未完成双目标定，不能把像素视差当机械臂坐标",
+    candidate_ready: "已有高层候选，可进入仿真/dry-run 审核",
+  }[vlaLiteLoopState];
 
   return (
     <main className={styles.shell}>
@@ -2802,22 +3374,94 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
 
           <section className={styles.vlaCommandStrip} aria-label="VLA 感知语言动作链路">
             <article data-stage="v">
-              <span>V · camera/image</span>
-              <strong>{text(keyframePayload.camera_id, absoluteImageUrl ? "关键帧已接入" : "等待图像")}</strong>
+              <span>V · 双目视觉</span>
+              <strong>{stereoHasContext ? text(stereoTargetLabel, "双目已接入") : text(keyframePayload.camera_id, absoluteImageUrl ? "关键帧已接入" : "等待图像")}</strong>
               <p>{visionSummary}</p>
-              <small>{text(cameraStreamOffer.control_boundary, "camera_preview_only_not_motion_permission")}</small>
+              <div className={styles.vlaLoopState} data-tone={stereoLoopTone}>
+                <strong>{stereoLoopState}</strong>
+                <span>{stereoLoopDetail}</span>
+              </div>
+              <small>{text(stereoPayload.control_boundary ?? cameraStreamOffer.control_boundary, "camera_preview_only_not_motion_permission")}</small>
             </article>
             <article data-stage="l">
-              <span>L · voice/language</span>
+              <span>L · 小智语音</span>
               <strong>{vlaGateLabel(languageGate)}</strong>
-              <p>{languageSummary}</p>
+              <p>{effectiveLanguageSummary}</p>
               <small>{text(xiaozhiSession.control_boundary ?? xiaozhiReplyPayload.control_boundary ?? voiceRelay.control_boundary, "voice_only_not_motion_permission")}</small>
             </article>
             <article data-stage="a">
-              <span>A · next action</span>
+              <span>A · 下一步建议</span>
               <strong>{text(actionCandidate.type, relayState === "ok" ? "高层建议已生成" : "dry-run 候选")}</strong>
               <p>{actionSummary}</p>
               <small>{text(vlaCandidate.control_boundary ?? relayBoundaryText, "vla_candidate_only_not_motion_permission")}</small>
+            </article>
+          </section>
+
+          <section className={styles.vlaDecisionDeck} aria-label="VLA-lite 决策甲板">
+            <article className={styles.vlaLiteLoopPanel} data-tone={vlaLiteLoopTone}>
+              <div>
+                <span>闭环状态</span>
+                <strong>{vlaLiteLoopLabel(vlaLiteLoopState)}</strong>
+                <small>{vlaLiteLoopState}</small>
+              </div>
+              <p>{vlaLiteLoopReason}</p>
+              <ul>
+                <li><span>模式</span><strong>{operationModeLabel(operationMode)}</strong></li>
+                <li><span>执行</span><strong>{executionMode}</strong></li>
+                <li><span>目标白名单</span><strong>{targetAllowlistText}</strong></li>
+                <li><span>视觉锁定</span><strong>{stereoVisibleStabilityText}</strong></li>
+                <li><span>锁定门</span><strong>{stereoHasPayloadVisualLock ? `${stereoVisualLockState || "unknown"} · ${stereoVisualLockStable ? "dry-run ready" : "observe"}` : "等待 visual_lock_stability"}</strong></li>
+                <li><span>V 延迟</span><strong>{stereoHasFrameTiming ? `${compactNumberText(stereoFrameProcessMs, " ms")} · ${stereoLoopProgressText}` : "等待 capture_loop"}</strong></li>
+              </ul>
+            </article>
+
+            <article className={styles.pixelServoPanel} data-tone={pixelServo.tone}>
+              <div>
+                <span>无标定像素伺服</span>
+                <strong>{pixelServo.title}</strong>
+                <small>{pixelServo.state}</small>
+              </div>
+              <p>{pixelServo.summary}</p>
+              <ul>
+                <li><span>目标中心</span><strong>{stereoTargetCenter ? `${compactNumberText(stereoTargetCenter[0], " px")}, ${compactNumberText(stereoTargetCenter[1], " px")}` : "等待 bbox"}</strong></li>
+                <li><span>画面偏移</span><strong>{pixelServo.targetOffsetText}</strong></li>
+                <li><span>稳定性</span><strong>{pixelServo.stabilityText}</strong></li>
+                <li><span>下一步</span><strong>{pixelServo.nextStep}</strong></li>
+              </ul>
+            </article>
+
+            <article className={styles.voiceRoutePanel} data-route={routeClass}>
+              <div>
+                <span>语音路由</span>
+                <strong>{routeLabel(routeClass)}</strong>
+                <small>{routeSourceText} · confidence {routeConfidenceText}</small>
+              </div>
+              <div className={styles.demoLanguagePicker} aria-label="本地演示 L 输入">
+                <p>{effectiveLanguageSummary}</p>
+                <div>
+                  {DEMO_LANGUAGE_INPUTS.map((sample) => (
+                    <button
+                      key={sample}
+                      type="button"
+                      data-active={demoLanguageInput === sample}
+                      onClick={() => setDemoLanguageInput(sample)}
+                    >
+                      {sample}
+                    </button>
+                  ))}
+                  {demoLanguageInput ? (
+                    <button type="button" data-kind="clear" onClick={() => setDemoLanguageInput("")}>
+                      回到真实 L
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+              <ul>
+                <li><span>route_class</span><strong>{routeClass}</strong></li>
+                <li><span>ai_operation_mode</span><strong>{operationMode}</strong></li>
+                <li><span>route_action</span><strong>{routeAction}</strong></li>
+                <li><span>boundary</span><strong>{text(routePreview.control_boundary, "voice_route_only_not_motion_permission")}</strong></li>
+              </ul>
             </article>
           </section>
 

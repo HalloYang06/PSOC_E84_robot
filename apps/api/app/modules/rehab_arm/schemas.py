@@ -199,6 +199,7 @@ class RehabStereoVisionContextRequest(BaseModel):
     device_id: str = Field(min_length=1)
     project_id: str = ""
     frame_ts_unix: float
+    capture_loop: dict | None = None
     left_camera_id: str = Field(min_length=1)
     right_camera_id: str = Field(min_length=1)
     stereo_calibration_id: str = ""
@@ -206,6 +207,8 @@ class RehabStereoVisionContextRequest(BaseModel):
     image_pair_ref: dict = Field(default_factory=dict)
     detections: dict | list = Field(default_factory=dict)
     target_object: dict | str | None = None
+    pixel_servo_hint: dict | None = None
+    visual_lock_stability: dict | None = None
     estimated_depth_m: float | None = None
     target_3d_camera_frame: dict | list | None = None
     scene_summary: str = ""

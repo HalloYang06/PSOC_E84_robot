@@ -427,6 +427,15 @@ def test_rehab_arm_stereo_vision_context_prefers_yolo_pair(tmp_path, monkeypatch
             "device_id": "nanopi-m5",
             "project_id": "project-rehab",
             "frame_ts_unix": 1780000002.0,
+            "capture_loop": {
+                "loop_index": 1,
+                "loop_count": 3,
+                "interval_ms": 200,
+                "sequence": 42,
+                "frame_process_ms": 123.4,
+                "loop_elapsed_ms": 456.7,
+                "implementation": "opencv_cpp_persistent_loop",
+            },
             "left_camera_id": "left_rgb",
             "right_camera_id": "right_rgb",
             "stereo_calibration_id": "calib-a1",
@@ -437,6 +446,29 @@ def test_rehab_arm_stereo_vision_context_prefers_yolo_pair(tmp_path, monkeypatch
                 {"label": "hand", "confidence": 0.91, "bbox": [210, 100, 260, 170]},
             ],
             "target_object": {"label": "cup", "confidence": 0.88},
+            "pixel_servo_hint": {
+                "schema_version": "uncalibrated_pixel_servo_hint_v1",
+                "state": "servo_adjust",
+                "next_step": "dry_run_shift_left",
+                "target_center_px": [210.0, 160.0],
+                "offset_x_norm": -0.34,
+                "offset_y_norm": -0.12,
+                "metric_depth_available": False,
+                "control_boundary": "pixel_servo_hint_only_not_motion_permission",
+            },
+            "visual_lock_stability": {
+                "schema_version": "visual_lock_stability_v1",
+                "state": "stable_candidate",
+                "reason": "multi_frame_same_label_stereo_lock",
+                "candidate_label": "cup",
+                "same_label_frames": 3,
+                "stereo_match_frames": 3,
+                "center_jitter_px": 1.2,
+                "disparity_spread_px": 4.5,
+                "stable_for_dry_run": True,
+                "metric_depth_available": False,
+                "control_boundary": "visual_lock_stability_only_not_motion_permission",
+            },
             "estimated_depth_m": 0.72,
             "target_3d_camera_frame": {"x": 0.12, "y": -0.04, "z": 0.72},
             "scene_summary": "two RGB cameras see table and cup",
@@ -454,6 +486,12 @@ def test_rehab_arm_stereo_vision_context_prefers_yolo_pair(tmp_path, monkeypatch
     dashboard = client.get("/api/rehab-arm/v1/devices/dashboard")
     device = dashboard.json()["data"]["devices"][0]
     assert device["stereo_vision_context"]["payload"]["target_object"]["label"] == "cup"
+    assert device["stereo_vision_context"]["payload"]["capture_loop"]["implementation"] == "opencv_cpp_persistent_loop"
+    assert device["stereo_vision_context"]["payload"]["capture_loop"]["frame_process_ms"] == 123.4
+    assert device["stereo_vision_context"]["payload"]["pixel_servo_hint"]["next_step"] == "dry_run_shift_left"
+    assert device["stereo_vision_context"]["payload"]["pixel_servo_hint"]["metric_depth_available"] is False
+    assert device["stereo_vision_context"]["payload"]["visual_lock_stability"]["state"] == "stable_candidate"
+    assert device["stereo_vision_context"]["payload"]["visual_lock_stability"]["stable_for_dry_run"] is True
 
     relay = client.post(
         "/api/rehab-arm/v1/devices/nanopi-m5/model/relay",
