@@ -124,6 +124,8 @@ typedef struct
     rt_bool_t asr_ready;
     rt_bool_t tts_ready;
     rt_uint32_t reconnect_tick;
+    rt_bool_t reconnecting;
+    rt_thread_t reconnect_thread;
     rt_thread_t thread;
     rt_thread_t detect_thread;
     rt_thread_t tts_thread;
@@ -563,6 +565,31 @@ static void voice_service_refresh_netdev_snapshot_locked(void)
     g_service.netdev_gw = ip4_addr_get_u32(&netdev->gw);
     g_service.netdev_mask = ip4_addr_get_u32(&netdev->netmask);
     g_service.netdev_dns0 = ip4_addr_get_u32(&netdev->dns_servers[0]);
+}
+
+static rt_bool_t voice_service_network_ready_for_xiaozhi(void)
+{
+    struct netdev *netdev = netdev_default;
+
+    if (!rt_wlan_is_ready())
+    {
+        return RT_FALSE;
+    }
+
+    if (netdev == RT_NULL)
+    {
+        netdev = netdev_get_first_by_flags(NETDEV_FLAG_UP);
+    }
+    if (netdev == RT_NULL)
+    {
+        netdev = netdev_get_first_by_flags(NETDEV_FLAG_LINK_UP);
+    }
+    if (netdev == RT_NULL)
+    {
+        return RT_FALSE;
+    }
+
+    return (ip4_addr_get_u32(&netdev->ip_addr) != 0U) ? RT_TRUE : RT_FALSE;
 }
 
 static rt_err_t voice_service_publish_status(void)
@@ -3898,6 +3925,91 @@ static void voice_service_drain_ipc_messages(void)
     g_service.service_last_consume_ret = -RT_EBUSY;
 }
 
+static void voice_service_async_reconnect_entry(void *parameter)
+{
+    rt_err_t ret;
+
+    RT_UNUSED(parameter);
+
+    if (!voice_service_network_ready_for_xiaozhi())
+    {
+        rt_kprintf("[voice_service] websocket async reconnect skipped; wlan/netdev not ready\n");
+        xiaozhi_ui_state_set(XIAOZHI_UI_CONNECTING, "等待网络就绪", -RT_ERROR);
+        rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
+        g_service.reconnecting = RT_FALSE;
+        g_service.reconnect_thread = RT_NULL;
+        rt_mutex_release(&g_service.lock);
+        (void)voice_service_publish_status();
+        return;
+    }
+
+    ret = voice_service_reconnect_xiaozhi();
+    if (ret == RT_EOK)
+    {
+        rt_kprintf("[voice_service] websocket async reconnected stage=%d errno=%d\n",
+                   websocket_client_last_stage(),
+                   websocket_client_last_errno());
+    }
+    else
+    {
+        rt_kprintf("[voice_service] websocket async reconnect failed ret=%d stage=%d errno=%d\n",
+                   ret,
+                   websocket_client_last_stage(),
+                   websocket_client_last_errno());
+        xiaozhi_ui_state_set(XIAOZHI_UI_CONNECTING, "小智连接中，自动重试", ret);
+    }
+
+    rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
+    g_service.reconnecting = RT_FALSE;
+    g_service.reconnect_thread = RT_NULL;
+    rt_mutex_release(&g_service.lock);
+    (void)voice_service_publish_status();
+}
+
+static void voice_service_start_async_reconnect(void)
+{
+    rt_bool_t already_reconnecting;
+    rt_thread_t thread;
+
+    if (!voice_service_network_ready_for_xiaozhi())
+    {
+        return;
+    }
+
+    rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
+    already_reconnecting = g_service.reconnecting;
+    if (!already_reconnecting)
+    {
+        g_service.reconnecting = RT_TRUE;
+    }
+    rt_mutex_release(&g_service.lock);
+
+    if (already_reconnecting)
+    {
+        return;
+    }
+
+    thread = rt_thread_create("xz_reconn",
+                              voice_service_async_reconnect_entry,
+                              RT_NULL,
+                              8192,
+                              19,
+                              10);
+    if (thread == RT_NULL)
+    {
+        rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
+        g_service.reconnecting = RT_FALSE;
+        rt_mutex_release(&g_service.lock);
+        rt_kprintf("[voice_service] create async reconnect thread failed\n");
+        return;
+    }
+
+    rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
+    g_service.reconnect_thread = thread;
+    rt_mutex_release(&g_service.lock);
+    rt_thread_startup(thread);
+}
+
 static void voice_service_thread_entry(void *parameter)
 {
     rt_tick_t last_idle_status_tick = 0U;
@@ -3928,26 +4040,8 @@ static void voice_service_thread_entry(void *parameter)
 
             if ((g_service.reconnect_tick == 0) || (now - g_service.reconnect_tick > RT_TICK_PER_SECOND * 2))
             {
-                rt_err_t ret;
-
                 g_service.reconnect_tick = now;
-                ret = voice_service_reconnect_xiaozhi();
-                if (ret == RT_EOK)
-                {
-                    rt_kprintf("[voice_service] websocket auto reconnected stage=%d errno=%d\n",
-                               websocket_client_last_stage(),
-                               websocket_client_last_errno());
-                    (void)voice_service_publish_status();
-                }
-                else
-                {
-                    rt_kprintf("[voice_service] websocket auto reconnect failed ret=%d stage=%d errno=%d\n",
-                               ret,
-                               websocket_client_last_stage(),
-                               websocket_client_last_errno());
-                    xiaozhi_ui_state_set(XIAOZHI_UI_CONNECTING, "小智连接中，自动重试", ret);
-                    (void)voice_service_publish_status();
-                }
+                voice_service_start_async_reconnect();
             }
         }
 #endif

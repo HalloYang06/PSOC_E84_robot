@@ -2964,3 +2964,16 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
    - `srv_lens` 三段是否出现 replayq 高水位
    - `srv_err/raw/hint` 是否显示 decode/write/wait/busy 异常
    - `tx_pending` 是否保持 0
+
+补充修正：
+
+1. 复位后曾出现 WiFi/token 正常但小智长期停在：
+   - `xz_ws=0 xz_stage=20 xz_errno=-1/0`
+   - 主状态仍刷新，说明不是系统死机，而是 WebSocket connect 过早进入 `CONNECT_START` 后没有及时退出。
+2. 自动重连改为异步短线程 `xz_reconn`，voice service 主线程不再同步执行 `websocket_client_connect()`，避免连接阶段阻塞状态刷新、唤醒和后续重试。
+3. 新增 `voice_service_network_ready_for_xiaozhi()`：只有 `rt_wlan_is_ready()` 且默认 netdev 已有非零 IP 后才启动 WebSocket connect，避免 DHCP 未 ready 时抢连。
+4. 验证：
+   - 复位初期 `wlan=0/ready=0` 时 `xz_stage=5`，不再抢到 `stage=20`
+   - WiFi 关联但 DHCP 未 ready：`wlan=1 ready=0 ip=0.0.0.0`，仍不抢连
+   - DHCP ready 后自动恢复：`xz_ws=1 xz_stage=70 srv_hello=1`
+   - 空闲 25 秒后仍保持：`xz_ws=1 xz_stage=70 tx_pending=0`
