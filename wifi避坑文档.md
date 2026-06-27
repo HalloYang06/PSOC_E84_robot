@@ -2706,3 +2706,36 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
 
 1. “小智连接到当前 VLA project”这一项已验证通过，后续不要再回到旧 project 或旧 token。
 2. 下一步若用户反馈卡顿、听不清、唤醒不灵，应查 M55 声学路径、TTS 播放缓冲、wake `xiaorui` 置信度和多轮 reconnect，不要改 NanoPi V 链路或服务器核心 relay。
+
+## 63. 2026-06-27 M55 多轮 TTS 卡顿和本地“我在”反馈音修复
+
+现象：
+
+1. 现场反馈第一轮扬声器输出基本不卡，但后续轮次可能重新变卡、发糊或不清晰。
+2. 唤醒后的本地固定反馈音不像准确的“我在”。
+3. 同时 `m55qa_status` 已能恢复到 `wlan=1 ready=1 xz_ws=1 xz_stage=70 srv_hello=1`，所以这轮不要回退 WiFi、token、project_id、NanoPi 摄像头或服务器核心 relay。
+
+原因和修复：
+
+1. M55 下行 TTS 走官方 Opus 路径，Opus decoder 是有状态的；之前每轮 `tts start` 没有显式 reset，可能把上一轮状态带到下一轮，造成多轮后听感变差。
+2. 增加 `xiaozhi_opus_decoder_reset()`，并在 M55 收到 server `tts/start` 时重置解码器，同时清空本地 TTS pending 队列和半包。
+3. TTS 预缓冲线程等待从 1 秒级 sem timeout 改为 20 ms 周期检查，避免少量首包场景把播放节奏拖断。
+4. 唤醒重启条件收紧为 `tts_pending_count == 0` 后再 re-arm，避免 TTS 还在本地播放时唤醒/麦克风提前抢音频链路。
+5. `xiaozhi_wake_feedback_audio.*` 改为用 zh-CN SAPI 对中文文本 `U+6211 U+5728` 生成的 16 kHz/16-bit/mono PCM，替换此前容易读成拼音感的资源。
+
+验证：
+
+1. `python -m SCons -j8` 构建通过，生成 `rtthread.hex`，仅保留既有 warning。
+2. `program_with_resources.bat` 已完整写入：
+   - `rtthread.hex wrote 1769472 bytes`
+   - `whd_resources_all.bin wrote 466944 bytes`
+3. 烧录后约 15 秒查询 COM4，M55 已恢复：
+   - `wlan=1 ready=1 ip=192.168.3.32`
+   - `xz_ws=1 xz_stage=70 xz_errno=0 srv_hello=1`
+   - `wake_on=1 wake_ready=1`
+
+现场验证重点：
+
+1. 连续唤醒/提问 3 轮以上，确认第二轮以后 TTS 不再明显卡顿。
+2. 喊 `xiaorui` 后确认本地反馈音更接近清晰“我在”。
+3. 若仍卡顿，优先看 `TTS prebuffer ready slots=... elapsed=...`、`tts_fwd`、`tts_fail`、`M55 sound0 queue busy timeout`，不要改 WiFi/token。

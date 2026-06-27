@@ -34,6 +34,9 @@ extern rt_err_t m55_speaker_tone_internal(rt_uint32_t duration_ms);
 #define VOICE_TTS_REPLAY_QUEUE_HIGH_WATER 3U
 #define VOICE_TTS_REPLAY_WAIT_MS     300U
 #define VOICE_TTS_DRAIN_MAX_PER_LOOP  16U
+#define VOICE_TTS_PREBUFFER_MIN_SLOTS 4U
+#define VOICE_TTS_PREBUFFER_MAX_MS   260U
+#define VOICE_TTS_THREAD_WAIT_MS      20U
 #define VOICE_TTS_PUBLISH_RETRY_COUNT 30U
 #define VOICE_TTS_PUBLISH_RETRY_MS    20U
 #define VOICE_JSON_BUFFER_SIZE       (768U)
@@ -55,7 +58,7 @@ extern rt_err_t m55_speaker_tone_internal(rt_uint32_t duration_ms);
 #define VOICE_IPC_DRAIN_MAX_PER_LOOP 8U
 #define XIAOZHI_PCM_60MS_BYTES       XIAOZHI_AUDIO_FRAME_BYTES
 #define XIAOZHI_PCM_60MS_SAMPLES     (XIAOZHI_PCM_60MS_BYTES / sizeof(int16_t))
-#define XIAOZHI_TTS_OUTPUT_SAMPLE_RATE 24000U
+#define XIAOZHI_TTS_OUTPUT_SAMPLE_RATE XIAOZHI_AUDIO_SAMPLE_RATE
 #define XIAOZHI_TTS_60MS_SAMPLES \
     ((XIAOZHI_TTS_OUTPUT_SAMPLE_RATE * XIAOZHI_AUDIO_FRAME_DURATION_MS) / 1000U)
 #define XIAOZHI_TTS_REARM_DELAY_MS   500U
@@ -133,6 +136,8 @@ typedef struct
     volatile rt_uint32_t tts_pending_read_index;
     volatile rt_uint32_t tts_pending_write_index;
     volatile rt_uint32_t tts_pending_count;
+    volatile rt_bool_t tts_prebuffering;
+    rt_tick_t tts_prebuffer_start_tick;
     rt_uint32_t audio_expected;
     rt_uint32_t audio_received;
     rt_bool_t m33_pcm_probe_enabled;
@@ -435,7 +440,6 @@ static void voice_service_pause_wake_for_tts(void)
 {
     rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
     g_service.xiaozhi_tts_speaking = RT_TRUE;
-    g_service.xiaozhi_wake_rearm_tick = 0U;
     g_service.wake_listening = RT_FALSE;
     g_service.wake_hit_streak = 0U;
     g_service.wake_skip_windows = WAKE_SKIP_WINDOWS_AFTER_TRIGGER;
@@ -454,6 +458,30 @@ static void voice_service_schedule_wake_rearm_after_tts(void)
     rt_mutex_release(&g_service.lock);
 }
 
+static void voice_service_schedule_wake_rearm_after_audio_idle(void)
+{
+    rt_bool_t should_schedule = RT_FALSE;
+
+    rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
+    if (!g_service.xiaozhi_listening_active &&
+        (g_service.xiaozhi_tts_forward_chunks > 0U))
+    {
+        g_service.xiaozhi_tts_speaking = RT_FALSE;
+        g_service.wake_listening = RT_FALSE;
+        g_service.wake_hit_streak = 0U;
+        g_service.wake_skip_windows = WAKE_SKIP_WINDOWS_AFTER_TRIGGER;
+        g_service.xiaozhi_wake_rearm_tick =
+            rt_tick_get() + voice_service_ms_to_ticks(XIAOZHI_TTS_REARM_DELAY_MS);
+        should_schedule = RT_TRUE;
+    }
+    rt_mutex_release(&g_service.lock);
+
+    if (should_schedule)
+    {
+        rt_kprintf("[voice_service] wake rearm scheduled after TTS audio idle\n");
+    }
+}
+
 static void voice_service_check_wake_rearm_after_tts(void)
 {
     rt_tick_t rearm_tick;
@@ -463,10 +491,11 @@ static void voice_service_check_wake_rearm_after_tts(void)
     rearm_tick = g_service.xiaozhi_wake_rearm_tick;
     if ((rearm_tick != 0U) &&
         ((rt_int32_t)(rt_tick_get() - rearm_tick) >= 0) &&
-        !g_service.xiaozhi_tts_speaking &&
+        (g_service.tts_pending_count == 0U) &&
         !g_service.xiaozhi_listening_active)
     {
         g_service.xiaozhi_wake_rearm_tick = 0U;
+        g_service.xiaozhi_tts_speaking = RT_FALSE;
         g_service.wake_listening = xiaozhi_wake_engine_is_ready() ? RT_TRUE : RT_FALSE;
         do_rearm = g_service.wake_listening;
     }
@@ -1555,6 +1584,12 @@ static void voice_service_enqueue_tts_payload(const uint8_t *payload,
     if ((payload == RT_NULL) || (payload_len == 0U) || (g_service.tts_pending_buffer == RT_NULL))
     {
         return;
+    }
+
+    if (!g_service.tts_prebuffering && (g_service.tts_pending_count == 0U))
+    {
+        g_service.tts_prebuffering = RT_TRUE;
+        g_service.tts_prebuffer_start_tick = rt_tick_get();
     }
 
     while (offset < payload_len)
@@ -2815,7 +2850,14 @@ static void voice_service_handle_server_text(const char *message)
         {
             rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
             g_service.xiaozhi_server_tts_start_count++;
+            g_service.tts_pending_read_index = 0U;
+            g_service.tts_pending_write_index = 0U;
+            g_service.tts_pending_count = 0U;
+            g_service.xiaozhi_speaker_pending_len = 0U;
+            g_service.tts_prebuffering = RT_TRUE;
+            g_service.tts_prebuffer_start_tick = rt_tick_get();
             rt_mutex_release(&g_service.lock);
+            (void)xiaozhi_opus_decoder_reset();
             voice_service_pause_wake_for_tts();
             voice_service_clear_xiaozhi_thinking();
             xiaozhi_ui_state_set(XIAOZHI_UI_SPEAKING, "准备语音回复", RT_EOK);
@@ -3701,15 +3743,38 @@ static void voice_service_tts_thread_entry(void *parameter)
 
     while (g_service.running)
     {
-        if (rt_sem_take(&g_service.tts_sem, RT_TICK_PER_SECOND) != RT_EOK)
+        if (rt_sem_take(&g_service.tts_sem,
+                        voice_service_ms_to_ticks(VOICE_TTS_THREAD_WAIT_MS)) != RT_EOK)
         {
-            continue;
+            if (g_service.tts_pending_count == 0U)
+            {
+                continue;
+            }
+        }
+
+        if (g_service.tts_prebuffering)
+        {
+            rt_tick_t now = rt_tick_get();
+            rt_uint32_t elapsed_ms =
+                (rt_uint32_t)((now - g_service.tts_prebuffer_start_tick) * 1000U / RT_TICK_PER_SECOND);
+
+            if ((g_service.tts_pending_count < VOICE_TTS_PREBUFFER_MIN_SLOTS) &&
+                (elapsed_ms < VOICE_TTS_PREBUFFER_MAX_MS))
+            {
+                continue;
+            }
+
+            g_service.tts_prebuffering = RT_FALSE;
+            rt_kprintf("[voice_service] TTS prebuffer ready slots=%lu elapsed=%lums\n",
+                       (unsigned long)g_service.tts_pending_count,
+                       (unsigned long)elapsed_ms);
         }
 
         while (g_service.running && voice_service_process_pending_tts())
         {
             if (g_service.tts_pending_count == 0U)
             {
+                voice_service_schedule_wake_rearm_after_audio_idle();
                 break;
             }
         }

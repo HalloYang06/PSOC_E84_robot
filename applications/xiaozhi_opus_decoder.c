@@ -106,6 +106,22 @@ rt_err_t xiaozhi_opus_decoder_configure(int sample_rate, int channels)
     return xiaozhi_opus_decoder_init();
 }
 
+rt_err_t xiaozhi_opus_decoder_reset(void)
+{
+    if (!g_opus_decoder.ready)
+    {
+        return xiaozhi_opus_decoder_init();
+    }
+
+    if (opus_decoder_ctl((OpusDecoder *)g_opus_decoder.state, OPUS_RESET_STATE) != OPUS_OK)
+    {
+        rt_kprintf("[xiaozhi_opus] decoder reset failed\n");
+        return -RT_ERROR;
+    }
+
+    return RT_EOK;
+}
+
 int xiaozhi_opus_decoder_sample_rate(void)
 {
     return g_opus_decoder.sample_rate ? g_opus_decoder.sample_rate : XIAOZHI_OPUS_DECODER_SAMPLE_RATE;
@@ -310,6 +326,7 @@ void xiaozhi_opus_encoder_deinit(void)
 #else
 rt_err_t xiaozhi_opus_decoder_init(void) { return -RT_ENOSYS; }
 rt_err_t xiaozhi_opus_decoder_configure(int sample_rate, int channels) { RT_UNUSED(sample_rate); RT_UNUSED(channels); return -RT_ENOSYS; }
+rt_err_t xiaozhi_opus_decoder_reset(void) { return -RT_ENOSYS; }
 int xiaozhi_opus_decoder_sample_rate(void) { return 16000; }
 rt_err_t xiaozhi_opus_decoder_decode(const uint8_t *packet, rt_size_t packet_len, int16_t *pcm_out, rt_size_t pcm_out_cap_samples, rt_size_t *pcm_out_samples) { RT_UNUSED(packet); RT_UNUSED(packet_len); RT_UNUSED(pcm_out); RT_UNUSED(pcm_out_cap_samples); if (pcm_out_samples) *pcm_out_samples = 0; return -RT_ENOSYS; }
 rt_err_t xiaozhi_opus_encoder_init(void) { return -RT_ENOSYS; }
