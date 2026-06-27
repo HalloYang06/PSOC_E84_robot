@@ -2878,3 +2878,39 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
    - 初始 `heap=1230920/1429160`
    - `m55qa_xz_text hi`: `tts_fwd=22/90112 tts_fail=0 xz_ws=1`
    - `m55qa_xz_text zhongwen`: `tts_fwd=98/401408 tts_fail=0 xz_ws=1 tx_pending=0`
+
+## 68. 2026-06-27 “我在”资源替换和 QA text 状态污染修复
+
+现象：
+
+1. 现场确认云端 TTS 已不卡，但本地唤醒反馈“我在”听起来不准确。
+2. 替换资源时又发现 `m55qa_xz_text` 会污染验证状态：如果平台只先回 text，旧 QA 路径会先进入 manual listening，使 `wake_on=0`，后续命令可能排队等待，表现为 status stale。
+
+修复：
+
+1. 将本地 `g_xiaozhi_wake_feedback_wozai_pcm` 替换为新的 16 kHz / 16-bit / mono 短资源：
+   - 来源：Windows zh-CN SAPI `Microsoft Yaoyao`
+   - 文本：`我在`
+   - 裁剪：保留约 40ms 前导和 120ms 尾部，轻微 fade，峰值限制到 20000
+   - 长度：`8623 samples`，约 `539ms`
+2. `voice_service_qa_xiaozhi_text_turn()` 不再先进入真实 manual listening 状态；QA text 只直接发送带文本的 listen stop，避免把 wake/listening 状态拉乱。
+3. 正常 LVGL/唤醒/手动说话路径不改变。
+
+验证：
+
+1. `python -m SCons -j8` 构建通过，`rtthread.hex` app 写入 `1765376 bytes`。
+2. 烧录后 `m55qa_status`：
+   - `xz_ws=1 xz_stage=70 xz_errno=0`
+   - `heap=1248984/1429160`
+   - `wake_on=1`
+3. `m55qa_xz_text hi` 后状态不再 stale：
+   - `tx_pending=0`
+   - `wake_on=1`
+   - `xz_ws=1`
+   - `tts_fwd=23/94208`
+   - `tts_fail=0`
+
+现场验证：
+
+1. 喊 `xiaorui/小瑞` 后听本地“我在”是否比旧 Huihui 版本更像自然中文。
+2. 如果仍不满意，下一步只换音频资源，不再动 TTS/WebSocket/heap 修复。

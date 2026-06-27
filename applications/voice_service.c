@@ -2270,25 +2270,40 @@ rt_err_t voice_service_qa_xiaozhi_text_turn(const char *text)
     char escaped[256];
     char session_id[XIAOZHI_SESSION_ID_MAX_LEN];
     rt_err_t ret;
+    rt_bool_t hello_seen;
 
     if ((text == RT_NULL) || (text[0] == '\0'))
     {
         text = "你好小智，请回复一句语音确认链路已经打通。";
     }
 
-    ret = voice_service_start_xiaozhi_talk();
-    if ((ret != RT_EOK) && (ret != -RT_EBUSY))
+    if (!g_service.initialized || !g_service.running)
     {
-        return ret;
+        return -RT_ERROR;
+    }
+
+    if (!websocket_client_is_connected())
+    {
+        ret = voice_service_reconnect_xiaozhi();
+        if (ret != RT_EOK)
+        {
+            return ret;
+        }
     }
 
     rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
+    hello_seen = g_service.xiaozhi_server_hello_seen ||
+                 ((g_service.xiaozhi_server_hello_count > 0U) && websocket_client_is_connected());
     rt_memset(session_id, 0, sizeof(session_id));
-    rt_strncpy(session_id, g_service.xiaozhi_listening_session_id, sizeof(session_id) - 1);
+    rt_strncpy(session_id,
+               g_service.xiaozhi_session_id[0] ? g_service.xiaozhi_session_id : XIAOZHI_LOCAL_SESSION_ID,
+               sizeof(session_id) - 1);
     rt_mutex_release(&g_service.lock);
-    if (session_id[0] == '\0')
+
+    if (!hello_seen)
     {
-        rt_strncpy(session_id, XIAOZHI_LOCAL_SESSION_ID, sizeof(session_id) - 1);
+        voice_service_send_xiaozhi_hello();
+        (void)voice_service_wait_xiaozhi_hello(1500U);
     }
 
     json_escape_text(text, escaped, sizeof(escaped));
@@ -2304,6 +2319,7 @@ rt_err_t voice_service_qa_xiaozhi_text_turn(const char *text)
         rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
         g_service.xiaozhi_listening_active = RT_FALSE;
         g_service.xiaozhi_audio_frame_len = 0;
+        g_service.wake_listening = xiaozhi_wake_engine_is_ready() ? RT_TRUE : RT_FALSE;
         rt_mutex_release(&g_service.lock);
         voice_service_mark_xiaozhi_thinking("正在思考");
         rt_kprintf("[voice_service] Xiaozhi QA text turn sent session=%s text=%s\n",
