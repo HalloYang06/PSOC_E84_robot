@@ -19,3 +19,5 @@
 - Validated frontend compile with `npm --workspace apps/web run build`.
 - User-view screenshot QA was attempted against local web with cloud API, but local SSR authentication redirected to `/login`; no successful visual screenshot was claimed for this slice.
 - Re-tested cloud login with the corrected account password and confirmed the cloud rehab-arm page opens with real stereo evidence; production web had not yet picked up commit `15b1d729`, so the new visual-lock meter was still unverified on the deployed page.
+- Deployed commit `a4d1c15` to the cloud host using `.codex-cloud-ssh/tencent_lighthouse_ed25519` as `ubuntu`; `npm run build:web` passed with pre-existing hook warnings in `project-playable-shell.tsx`, and `scripts/start-cloud-prod.sh` restarted API/Web successfully.
+- Captured cloud QA screenshot `docs/screenshots/rehab-arm-visual-lock-meter-qa/cloud-desktop-1600-meter-deployed.png`: V evidence, real left/right frames, and the new multi-frame visual lock meter are visible without card overlap.

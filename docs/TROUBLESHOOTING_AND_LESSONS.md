@@ -17,3 +17,4 @@
 - Status: QA limitation recorded; backend contract and frontend build still passed for the visual-lock-meter slice.
 - Correction: the cloud test account password is `1234`, not the previously used `password`. Cloud `/api/auth/session` succeeds with `3245056131@qq.com` / `1234`, and the production rehab-arm page can be opened through the normal login form.
 - Deployment note: cloud HTTP health was OK, but non-interactive SSH push/deploy was blocked by `Permission denied (publickey,password)`. Use an interactive SSH session or restore key-based auth before claiming the latest web build is deployed.
+- Fix: the working cloud SSH path is `ssh -i .codex-cloud-ssh/tencent_lighthouse_ed25519 -o UserKnownHostsFile=.codex-cloud-ssh/known_hosts ubuntu@106.55.62.122`; root login is not the expected deploy path.
