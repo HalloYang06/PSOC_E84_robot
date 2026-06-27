@@ -3237,6 +3237,19 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
   const rightTargetBoxStyle = bboxStyle(rightTargetBbox, stereoFrameSize);
   const leftDetectionPills = detectionPills(stereoPayload.detections, "left");
   const rightDetectionPills = detectionPills(stereoPayload.detections, "right");
+  const visualEvidenceImageSource = leftStereoImageSrc && rightStereoImageSrc
+    ? "左/右真帧"
+    : leftStereoImageSrc || rightStereoImageSrc
+      ? "单侧真帧"
+      : "等图像";
+  const visualEvidenceBoxSource = leftTargetBbox || rightTargetBbox
+    ? text(stereoTarget.source, "").includes("yolox")
+      ? "C++ YOLOX"
+      : text(stereoTarget.source, "C++ payload")
+    : "等 bbox";
+  const visualEvidencePairing = stereoLoopProgressText !== "等待循环"
+    ? stereoLoopProgressText
+    : text(stereoPayload.schema_version, "等待 stereo payload");
   const computedPixelServo = pixelServoSuggestion({
     center: stereoTargetCenter,
     frame: stereoFrameSize,
@@ -3576,6 +3589,12 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
                     ))}
                   </div>
                 </figure>
+              </div>
+              <div className={styles.evidenceProofStrip} aria-label="视觉证据来源">
+                <span>图: {visualEvidenceImageSource}</span>
+                <span>框: {visualEvidenceBoxSource}</span>
+                <span>配对: {visualEvidencePairing}</span>
+                <span>边界: dry-run</span>
               </div>
               <ul>
                 <li><span>目标中心</span><strong>{stereoTargetCenter ? `${compactNumberText(stereoTargetCenter[0], " px")}, ${compactNumberText(stereoTargetCenter[1], " px")}` : "等待 bbox"}</strong></li>
