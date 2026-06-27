@@ -2776,3 +2776,36 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
 
 1. 连续 3-5 轮对话，重点听第二轮以后是否还卡。
 2. 真实喊 `xiaorui` 后听本地“我在”是否完整、准确。
+
+## 65. 2026-06-27 中文 TTS 长回复卡顿还要避开串口日志阻塞
+
+现象：
+
+1. 现场反馈英文版本一直不卡；切到中文后前两句不卡，后面又卡。
+2. 这说明 speaker 硬件和基础连接不是根因，更像中文 TTS 长回复数据量更大后，播放线程被额外工作拖出空洞。
+3. COM4 日志里中文轮次 `tts_fwd` 持续增长、`tts_fail=0`，平台音频确实到了 M55。
+
+修复：
+
+1. `voice_service.c` 的 TTS 热路径日志节流：
+   - `server binary audio`
+   - `v3 opus frame`
+   - `v3 opus frames done`
+   - `pending binary audio forwarded`
+   只打印前 3 个包和每 50 个包，避免中文长音频期间串口 `rt_kprintf` 阻塞播放。
+2. `voice_tts` 线程优先级从 `18` 提到 `8`，让 Opus decode + sound0 enqueue 更接近音频播放线程，不再被普通业务线程轻易抢占。
+
+验证：
+
+1. `python -m SCons -j8` 构建通过。
+2. `program_with_resources.bat` 完整写入：
+   - `rtthread.hex wrote 1769472 bytes`
+   - `whd_resources_all.bin wrote 466944 bytes`
+3. 烧录后 `m55qa_status`：
+   - `wlan=1 ready=1 ip=192.168.3.32`
+   - `xz_ws=1 xz_stage=70 srv_hello=1`
+
+现场继续验证：
+
+1. 用中文连续 3-5 轮对话，重点听第三句以后是否还出现断续。
+2. 若仍卡，下一步不要再调 WiFi/token/project；优先加播放侧低开销计数：TTS pending 高水位、sound0 replay queue 高水位、Opus decode 耗时。

@@ -37,6 +37,7 @@ extern rt_err_t m55_speaker_tone_internal(rt_uint32_t duration_ms);
 #define VOICE_TTS_PREBUFFER_MIN_SLOTS 4U
 #define VOICE_TTS_PREBUFFER_MAX_MS   260U
 #define VOICE_TTS_THREAD_WAIT_MS      20U
+#define VOICE_TTS_LOG_INTERVAL        50U
 #define VOICE_TTS_PUBLISH_RETRY_COUNT 30U
 #define VOICE_TTS_PUBLISH_RETRY_MS    20U
 #define VOICE_JSON_BUFFER_SIZE       (768U)
@@ -1536,7 +1537,8 @@ static rt_bool_t voice_service_decode_v3_opus_frames_to_m55_speaker(const uint8_
         }
 
         frame_len = (((uint32_t)frame[2] << 8) | frame[3]);
-        if ((frames < 3U) || ((frames % 20U) == 0U))
+        if ((g_service.xiaozhi_rx_binary_count <= 3U) ||
+            ((g_service.xiaozhi_rx_binary_count % VOICE_TTS_LOG_INTERVAL) == 0U))
         {
             rt_kprintf("[voice_service] v3 opus frame=%lu len=%lu head=%02x %02x %02x %02x\n",
                        (unsigned long)frames,
@@ -1563,7 +1565,9 @@ static rt_bool_t voice_service_decode_v3_opus_frames_to_m55_speaker(const uint8_
         voice_service_drain_ipc_messages();
     }
 
-    if (frames > 0U)
+    if ((frames > 0U) &&
+        ((g_service.xiaozhi_rx_binary_count <= 3U) ||
+         ((g_service.xiaozhi_rx_binary_count % VOICE_TTS_LOG_INTERVAL) == 0U)))
     {
         rt_kprintf("[voice_service] v3 opus frames done frames=%lu consumed=%lu/%lu streamed=%d\n",
                    (unsigned long)frames,
@@ -1723,8 +1727,12 @@ static rt_bool_t voice_service_process_pending_tts(void)
         }
         else
         {
-            rt_kprintf("[voice_service] pending binary audio forwarded len=%lu\n",
-                       (unsigned long)len);
+            if ((g_service.xiaozhi_rx_binary_count <= 3U) ||
+                ((g_service.xiaozhi_rx_binary_count % VOICE_TTS_LOG_INTERVAL) == 0U))
+            {
+                rt_kprintf("[voice_service] pending binary audio forwarded len=%lu\n",
+                           (unsigned long)len);
+            }
         }
         (void)voice_service_publish_status();
     }
@@ -2976,7 +2984,11 @@ static void on_websocket_message(websocket_message_type_t type, const uint8_t *p
     if (type == WEBSOCKET_MESSAGE_BINARY)
     {
         g_service.xiaozhi_rx_binary_count++;
-        voice_service_log_payload_head("[voice_service] server binary audio", payload, payload_len);
+        if ((g_service.xiaozhi_rx_binary_count <= 3U) ||
+            ((g_service.xiaozhi_rx_binary_count % VOICE_TTS_LOG_INTERVAL) == 0U))
+        {
+            voice_service_log_payload_head("[voice_service] server binary audio", payload, payload_len);
+        }
         voice_service_pause_wake_for_tts();
         voice_service_clear_xiaozhi_thinking();
         xiaozhi_ui_state_set(XIAOZHI_UI_SPEAKING, "收到语音回复", RT_EOK);
@@ -3978,7 +3990,7 @@ rt_err_t voice_service_start(void)
                                             voice_service_tts_thread_entry,
                                             RT_NULL,
                                             VOICE_TTS_THREAD_STACK,
-                                            18,
+                                            8,
                                             10);
     if (!g_service.tts_thread)
     {
