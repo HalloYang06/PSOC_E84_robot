@@ -2914,3 +2914,53 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
 
 1. 喊 `xiaorui/小瑞` 后听本地“我在”是否比旧 Huihui 版本更像自然中文。
 2. 如果仍不满意，下一步只换音频资源，不再动 TTS/WebSocket/heap 修复。
+
+## 69. 2026-06-27 服务器 TTS 卡顿复位后排查和播放线程节流
+
+现象：
+
+1. 现场反馈复位后服务器返回语音仍有卡顿，偶尔第二轮卡死。
+2. 复位后健康检查显示 WiFi/token/project 仍正常，自动重连后可恢复到：
+   - `xz_ws=1 xz_stage=70 xz_errno=0`
+   - `wlan=1 ready=1 ip=192.168.3.32`
+   - `token_len=468 srv_hello=1`
+3. 连发 `m55qa_xz_text` 不再适合作为播放压测证据：本轮观察到平台只回 text、不回 binary audio，`tts_fwd=0`，还可能把 M33->M55 QA 控制队列顶成 `tx_pending>0`。真实体验验证应优先用 LVGL 按说话/停止或 `xiaorui` 唤醒后的产品路径。
+
+修复：
+
+1. TTS prebuffer 保持更稳的播放侧缓冲：
+   - `VOICE_TTS_REPLAY_QUEUE_HIGH_WATER=4`
+   - `VOICE_TTS_PREBUFFER_MIN_SLOTS=8`
+   - `VOICE_TTS_PREBUFFER_MAX_MS=520`
+2. 增加 M55 TTS 本轮诊断计数，不扩展 M33/M55 IPC 结构，避免只烧 M55 时和旧 M33 固件 ABI 错位：
+   - pending 高水位
+   - sound0 replay 队列高水位
+   - Opus decode 最大耗时
+   - sound0 write 最大耗时
+3. 为了让 COM4 旧 `m55qa_status` 能看到诊断，TTS 播放后临时复用已有字段：
+   - `srv_lens=pending/high/replayq`
+   - `srv_err=decode_ms/wait_timeout`
+   - `raw=speaker_busy`
+   - `hint=write_ms`
+4. `voice_tts` 线程优先级从 18 小幅调到 16，略高于 `xz_bridge` 的 17，避免服务器音频到达时播放线程被桥线程挤压；不要回到过激的 8。
+
+验证：
+
+1. `python -m SCons -j8` 构建通过，当前大小：
+   - `text=1681644 data=81404 bss=4528752`
+2. `program_with_resources.bat` 完整写入：
+   - `rtthread.hex wrote 1765376 bytes`
+   - `whd_resources_all.bin wrote 466944 bytes`
+3. 烧录后启动健康检查通过：
+   - 第 1 次状态 WiFi 仍在启动：`wlan=0 xz_ws=0 stage=30`
+   - 第 2 次状态 WiFi ready：`wlan=1 ready=1 ip=192.168.3.32`
+   - 第 3 次状态 WebSocket ready：`xz_ws=1 xz_stage=70 srv_hello=1 tx_pending=0`
+
+后续现场验证：
+
+1. 不要连发 `m55qa_xz_text` 判断卡不卡；用 LVGL 按说话/停止或唤醒词走真实链路。
+2. 如果仍卡，先贴最近一条 `m55qa_status`，重点看：
+   - `tts_fwd` 是否增长、`tts_fail` 是否为 0
+   - `srv_lens` 三段是否出现 replayq 高水位
+   - `srv_err/raw/hint` 是否显示 decode/write/wait/busy 异常
+   - `tx_pending` 是否保持 0
