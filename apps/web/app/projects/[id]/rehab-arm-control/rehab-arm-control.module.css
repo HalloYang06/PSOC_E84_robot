@@ -6256,6 +6256,123 @@
   box-shadow: inset 0 0 0 1px rgba(16, 21, 34, 0.08);
 }
 
+.visualLockMeter {
+  grid-column: 1 / -1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(92px, 0.28fr) minmax(130px, 0.42fr) minmax(150px, 0.3fr);
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: inset 0 0 0 1px rgba(16, 21, 34, 0.08);
+}
+
+.visualLockMeter[data-tone="ok"] {
+  background: rgba(236, 253, 245, 0.88);
+  box-shadow: inset 0 0 0 1px rgba(20, 184, 128, 0.22);
+}
+
+.visualLockMeter[data-tone="idle"] {
+  background: rgba(239, 246, 255, 0.86);
+  box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.18);
+}
+
+.visualLockMeter[data-tone="limited"] {
+  background: rgba(255, 251, 235, 0.88);
+  box-shadow: inset 0 0 0 1px rgba(217, 119, 6, 0.18);
+}
+
+.visualLockMeter > div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.visualLockMeter > div:first-child span,
+.visualLockMeter dt {
+  color: #687386;
+  font-size: 10px;
+  font-weight: 950;
+}
+
+.visualLockMeter > div:first-child strong {
+  color: #101522;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.visualLockMeter > div:first-child small {
+  color: #5f6c7f;
+  font-size: 10.5px;
+  font-weight: 850;
+}
+
+.visualLockBars {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.visualLockBars span {
+  position: relative;
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.2);
+}
+
+.visualLockBars span::before {
+  position: absolute;
+  top: 50%;
+  left: 8px;
+  z-index: 1;
+  color: rgba(15, 23, 42, 0.58);
+  font-size: 8px;
+  font-weight: 950;
+  line-height: 1;
+  transform: translateY(-50%);
+}
+
+.visualLockBars span:first-child::before {
+  content: "same label";
+}
+
+.visualLockBars span:last-child::before {
+  content: "stereo match";
+}
+
+.visualLockBars em {
+  display: block;
+  height: 100%;
+  min-width: 4px;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #2563eb 0%, #14b8a6 100%);
+}
+
+.visualLockMeter dl {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+}
+
+.visualLockMeter dl div {
+  min-width: 0;
+}
+
+.visualLockMeter dd {
+  min-width: 0;
+  margin: 3px 0 0;
+  color: #101522;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
 .primaryGrid {
   min-height: 0;
   align-items: start;
@@ -6557,7 +6674,9 @@
 
   .compactStats,
   .visionEvidenceStage,
-  .evidenceProofStrip {
+  .evidenceProofStrip,
+  .visualLockMeter,
+  .visualLockMeter dl {
     grid-template-columns: 1fr;
   }
 

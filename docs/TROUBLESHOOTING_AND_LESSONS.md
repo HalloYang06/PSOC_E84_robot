@@ -8,3 +8,10 @@
 - Validation note: the stereo context path passed backend tests after adding a new request schema and dashboard wiring.
 - Lesson: the command-center human muscle view must not hand-draw an anatomy model. Keep it as a GLB/GLTF asset slot with documented open-source sources and let EMG/action-prediction data render as overlays/cards.
 - QA note: local visual QA requires both web `:3000` and API `:8011`; without the API the login flow stays on `/login`, and with the wrong project id it correctly shows "项目不存在或无权限".
+
+## 2026-06-27
+
+- Symptom: local rehab-arm screenshot QA against `127.0.0.1:3000` redirected to `/login` even after cloud `/api/auth/session` returned a valid `farm_access_token`.
+- Environment: local Next dev server, cloud API `http://106.55.62.122:8011`, rehab-arm route `/projects/e201f41c-25a6-46e1-baf8-be6dcb83284c/rehab-arm-control`.
+- Lesson: authenticated screenshot helpers that inject cookies after browser startup may not satisfy Next SSR route guards on the first document request. Use the production cloud page after deployment, or run local API/auth with matching environment, before claiming user-view QA.
+- Status: QA limitation recorded; backend contract and frontend build still passed for the visual-lock-meter slice.

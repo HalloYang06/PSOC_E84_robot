@@ -981,6 +981,29 @@ def _detection_count(detections: Any) -> int:
     return 0
 
 
+def _visual_lock_summary(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {
+            "schema_version": "visual_lock_summary_v1",
+            "state": "missing",
+            "stable_for_dry_run": False,
+            "control_boundary": "visual_lock_summary_only_not_motion_permission",
+        }
+    return {
+        "schema_version": "visual_lock_summary_v1",
+        "state": _safe_text(value.get("state") or "unknown", 80),
+        "candidate_label": _safe_text(value.get("candidate_label") or "", 120),
+        "same_label_frames": value.get("same_label_frames"),
+        "stereo_match_frames": value.get("stereo_match_frames"),
+        "samples": value.get("samples"),
+        "center_jitter_px": value.get("center_jitter_px"),
+        "disparity_spread_px": value.get("disparity_spread_px"),
+        "stable_for_dry_run": value.get("stable_for_dry_run") is True,
+        "metric_depth_available": value.get("metric_depth_available") is True,
+        "control_boundary": "visual_lock_summary_only_not_motion_permission",
+    }
+
+
 def record_stereo_vision_context(payload: dict[str, Any]) -> dict[str, Any]:
     if payload.get("control_boundary") != "stereo_vision_context_only_not_motion_permission":
         raise ValueError("stereo vision context must stay perception-only")
@@ -2062,6 +2085,8 @@ def _build_vla_vision_context(relay_id: str, device_id: str, camera_payload: dic
             "detection_count": _detection_count(camera_payload.get("detections")),
             "confidence": camera_payload.get("confidence"),
             "image_pair_ref": camera_payload.get("image_pair_ref") or {},
+            "visual_lock_summary": _visual_lock_summary(camera_payload.get("visual_lock_stability")),
+            "pixel_servo_hint": camera_payload.get("pixel_servo_hint") or {},
             "control_boundary": "vla_vision_context_only_not_motion_permission",
         }
     return {

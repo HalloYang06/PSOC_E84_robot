@@ -552,6 +552,11 @@ def test_rehab_arm_stereo_vision_context_prefers_yolo_pair(tmp_path, monkeypatch
     assert relay_data["vla_vision_context"]["source"] == "stereo_rgb_yolo_context_v1"
     assert relay_data["vla_vision_context"]["target_label"] == "cup"
     assert relay_data["vla_vision_context"]["camera_id"] == "left_rgb+right_rgb"
+    assert relay_data["vla_vision_context"]["visual_lock_summary"]["state"] == "stable_candidate"
+    assert relay_data["vla_vision_context"]["visual_lock_summary"]["same_label_frames"] == 3
+    assert relay_data["vla_vision_context"]["visual_lock_summary"]["stable_for_dry_run"] is True
+    assert relay_data["vla_vision_context"]["visual_lock_summary"]["control_boundary"] == "visual_lock_summary_only_not_motion_permission"
+    assert relay_data["vla_vision_context"]["pixel_servo_hint"]["next_step"] == "dry_run_shift_left"
     get_settings.cache_clear()
 
 

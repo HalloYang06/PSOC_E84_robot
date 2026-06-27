@@ -3305,6 +3305,27 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
     ].filter(Boolean).join("；")
     : "";
   const stereoVisibleStabilityText = stereoPayloadStabilityText || stereoStabilityText;
+  const visualLockRequiredFrames = Number.isFinite(stereoVisualLockSamples) && stereoVisualLockSamples > 0
+    ? Math.max(3, stereoVisualLockSamples)
+    : Math.max(3, stereoSampleCount || 3);
+  const visualLockObservedFrames = Number.isFinite(stereoVisualLockSameFrames)
+    ? Math.max(0, stereoVisualLockSameFrames)
+    : stereoLockedFrames.length;
+  const visualLockStereoFrames = Number.isFinite(stereoVisualLockStereoFrames)
+    ? Math.max(0, stereoVisualLockStereoFrames)
+    : stereoLockedFrames.length;
+  const visualLockProgress = clamp01(visualLockObservedFrames / visualLockRequiredFrames);
+  const visualLockMatchProgress = clamp01(visualLockStereoFrames / visualLockRequiredFrames);
+  const visualLockJitterText = Number.isFinite(stereoVisualLockJitterPx)
+    ? compactNumberText(stereoVisualLockJitterPx, " px")
+    : stereoDisparitySpread !== null
+      ? compactNumberText(stereoDisparitySpread, " px disparity")
+      : "等待多帧";
+  const visualLockConfidenceText = stereoVisualLockStable
+    ? "稳定候选"
+    : visualLockObservedFrames > 0
+      ? "积累中"
+      : "等待目标";
   const stereoLoopTone = !stereoHasContext || stereoFreshness.state === "stale"
     ? "limited"
     : stereoVisualLockStable || (stereoTargetLabel && stereoHasDisparity && (!stereoSampleCount || stereoLockedFrames.length >= Math.min(3, stereoSampleCount)))
@@ -3595,6 +3616,26 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
                 <span>框: {visualEvidenceBoxSource}</span>
                 <span>配对: {visualEvidencePairing}</span>
                 <span>边界: dry-run</span>
+              </div>
+              <div className={styles.visualLockMeter} data-tone={stereoVisualLockStable ? "ok" : visualLockObservedFrames > 0 ? "idle" : "limited"}>
+                <div>
+                  <span>多帧锁定</span>
+                  <strong>{visualLockObservedFrames}/{visualLockRequiredFrames}</strong>
+                  <small>{visualLockConfidenceText}</small>
+                </div>
+                <div className={styles.visualLockBars} aria-label="视觉锁定进度">
+                  <span>
+                    <em style={{ width: `${Math.round(visualLockProgress * 100)}%` }} />
+                  </span>
+                  <span>
+                    <em style={{ width: `${Math.round(visualLockMatchProgress * 100)}%` }} />
+                  </span>
+                </div>
+                <dl>
+                  <div><dt>双目匹配</dt><dd>{visualLockStereoFrames}/{visualLockRequiredFrames}</dd></div>
+                  <div><dt>抖动</dt><dd>{visualLockJitterText}</dd></div>
+                  <div><dt>门控</dt><dd>{stereoVisualLockStable ? "dry-run ready" : "observe"}</dd></div>
+                </dl>
               </div>
               <ul>
                 <li><span>目标中心</span><strong>{stereoTargetCenter ? `${compactNumberText(stereoTargetCenter[0], " px")}, ${compactNumberText(stereoTargetCenter[1], " px")}` : "等待 bbox"}</strong></li>
