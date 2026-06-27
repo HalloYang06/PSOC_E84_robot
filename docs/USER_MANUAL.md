@@ -85,7 +85,69 @@ ros2 run rehab_arm_psoc_bridge stereo_camera_capture_upload.py \
 
 默认左/右摄像头节点是 `/dev/video45` 和 `/dev/video47`，输出保存在 `~/rehab_arm_stereo_frames`。`--analyze-image-quality` 会把左右图尺寸、亮度、清晰度 proxy、左右差异和可用性写入 `scene_summary/vla_context`，但不会填充未标定的真实深度。`--detect-visual-regions` 使用 OpenCV 轮廓找 class-agnostic 候选区域，填入 `detections`，这不是 YOLO 语义识别。通过标准是平台返回 `ok=true`，并且 payload 的 `control_boundary` 为 `stereo_vision_context_only_not_motion_permission`。如果重启后 USB 摄像头没有绑定到 `uvcvideo`，可以临时加 `--ensure-uvc-module`，它只加载板上已有的 `/lib/modules/6.1.141.can-new/kernel/drivers/media/usb/uvc/uvcvideo.ko`；不要编译、替换或升级内核。该流程只提供视觉上下文，不发布 ROS 运动、不发 CAN、不改变 M33 状态。
 
-语义检测可走已验证的 OpenCV DNN MobileNet-SSD/Caffe 路径：
+语义检测主线优先走 C++ 版 OpenCV DNN MobileNet-SSD/Caffe 节点。它和 Python 版上传同一个 `stereo_rgb_yolo_context_v1` payload，但直接用 OpenCV C++ 打开摄像头、加载 SSD、生成目标框和左右像素视差，更适合后续做常驻低延迟视觉闭环：
+
+```bash
+cd /home/pi/rehab_arm_ros2_ws
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+ ros2 run rehab_arm_psoc_bridge stereo_camera_capture_upload_cpp \
+  --project-id e201f41c-25a6-46e1-baf8-be6dcb83284c \
+  --api-base http://106.55.62.122:8011 \
+  --robot-id rehab-arm-alpha \
+  --device-id nanopi-m5 \
+  --left-device /dev/video45 \
+  --right-device /dev/video47 \
+  --baseline-m 0.06 \
+  --rotate-180 \
+  --upload \
+  --sequence 1 \
+  --analyze-image-quality \
+  --yolox-onnx /home/pi/rehab_arm_models/yolo/yolox_nano.onnx \
+  --yolox-labels /home/pi/rehab_arm_models/yolo/coco80.txt \
+  --yolox-input-size 416 \
+  --yolox-confidence-threshold 0.20 \
+  --detect-right-yolox \
+  --ssd-model /home/pi/rehab_arm_models/ssd/mobilenet_iter_73000.caffemodel \
+  --ssd-prototxt /home/pi/rehab_arm_models/ssd/deploy.prototxt \
+  --ssd-labels /home/pi/rehab_arm_models/ssd/voc21.txt \
+  --detect-right-ssd \
+  --auto-target-from-detections \
+  --target-label-allowlist bottle,cup \
+  --stereo-associate-target
+```
+
+要验证 C++ 常驻低延迟路径，可以显式加循环参数；这会在同一个进程内复用两路相机和 SSD 网络，不改变安全边界：
+
+```bash
+ros2 run rehab_arm_psoc_bridge stereo_camera_capture_upload_cpp \
+  --project-id e201f41c-25a6-46e1-baf8-be6dcb83284c \
+  --api-base http://106.55.62.122:8011 \
+  --left-device /dev/video45 \
+  --right-device /dev/video47 \
+  --baseline-m 0.06 \
+  --rotate-180 \
+  --sequence 120 \
+  --loop-count 3 \
+  --interval-ms 200 \
+  --analyze-image-quality \
+  --yolox-onnx /home/pi/rehab_arm_models/yolo/yolox_nano.onnx \
+  --yolox-labels /home/pi/rehab_arm_models/yolo/coco80.txt \
+  --yolox-input-size 416 \
+  --yolox-confidence-threshold 0.20 \
+  --detect-right-yolox \
+  --ssd-model /home/pi/rehab_arm_models/ssd/mobilenet_iter_73000.caffemodel \
+  --ssd-prototxt /home/pi/rehab_arm_models/ssd/deploy.prototxt \
+  --ssd-labels /home/pi/rehab_arm_models/ssd/voc21.txt \
+  --detect-right-ssd \
+  --auto-target-from-detections \
+  --target-label-allowlist bottle,cup \
+  --stereo-associate-target
+```
+
+不传 `--loop-count` 时默认仍然只采一帧，便于保留当前可验证的 one-shot 行为。
+
+Python 版仍然保留，便于对照调试和快速改算法：
 
 ```bash
 cd /home/pi/rehab_arm_ros2_ws
@@ -108,9 +170,31 @@ ros2 run rehab_arm_psoc_bridge stereo_camera_capture_upload.py \
   --pretty
 ```
 
-SSD 结果会以 `source=opencv_dnn_mobilenet_ssd` 进入 `detections`。`--auto-target-from-detections` 只会从 OpenCV DNN 语义检测里选择最高置信目标，不会把 `visual_region` 轮廓候选当成目标；`--target-label-allowlist` 用于限制可自动选择的类别。`--detect-right-ssd --stereo-associate-target` 会尝试把目标和右图同类语义框做像素级关联；成功时写入左右 bbox 和 `horizontal_disparity_px`，失败时写入 `stereo_observation_status=no_right_semantic_match`。自动写入的 `target_object` 仍只是 VLA 视觉上下文，不是运动目标授权，也不是米制深度。如果当前画面没有 VOC 类目标超过阈值，`detection_count=0` 也是正常结果；可把人、瓶子、椅子等 VOC 类目标放进左摄像头视野后复测。YOLO ONNX 入口仍保留：`--yolo-onnx <model.onnx> --yolo-labels <labels.txt>`，但必须使用 NanoPi OpenCV 4.6 DNN 能加载的静态 shape 兼容导出；已试过的两个 `yolov5n.onnx` 候选模型分别因 `Floor` 和 dynamic `Shape` 节点失败，不能当作已部署 YOLO。
+YOLOX 结果会以 `source=opencv_dnn_yolox` 进入 `detections`，SSD 备用结果会以 `source=opencv_dnn_mobilenet_ssd` 进入 `detections`。`--auto-target-from-detections` 只会从 OpenCV DNN 语义检测里选择最高置信目标，不会把 `visual_region` 轮廓候选当成目标；`--target-label-allowlist` 用于限制可自动选择的类别。`--detect-right-yolox/--detect-right-ssd --stereo-associate-target` 会尝试把目标和右图同类语义框做像素级关联；成功时写入左右 bbox 和 `horizontal_disparity_px`，失败时写入 `stereo_observation_status=no_right_semantic_match`。自动写入的 `target_object` 仍只是 VLA 视觉上下文，不是运动目标授权，也不是米制深度。如果当前画面没有 `bottle/cup` 超过阈值，`target_object={}` 也是正常结果；应把杯子/瓶子完整放进两路视野后复测。旧 Python YOLO ONNX 入口仍保留：`--yolo-onnx <model.onnx> --yolo-labels <labels.txt>`，但必须使用 NanoPi OpenCV 4.6 DNN 能加载的静态 shape 兼容导出；已试过的两个 `yolov5n.onnx` 候选模型分别因 `Floor` 和 dynamic `Shape` 节点失败，不能当作已部署 YOLO。C++ 主线当前使用 YOLOX nano，前处理是 letterbox/pad=114/scale=1.0，默认演示阈值 `YOLOX_CONFIDENCE_THRESHOLD=0.20`。
 
-理解这个算法时按三步看：第一步，左右摄像头各自用 SSD 找 `bottle/person/cup` 等语义框；第二步，从左图语义框里选 `target_object`，再找右图同 label 的框；第三步，比较左右框中心点，得到 `horizontal_disparity_px`。视差只能说明双目几何关系，还不能直接当距离。只有完成最终相机固定、焦距/畸变/基线标定后，才能用 `Z = f * B / disparity` 推米制深度；当前必须保持 `estimated_depth_m=null`。
+演示时可以用仓库脚本启动一个有限次数的双目 VLA-V 上传循环。它只上传 `stereo_vision_context`，不发 CAN、不发布运动 topic、不改变 M33/M55 状态：
+
+```bash
+scp scripts/nanopi_stereo_vla_upload_loop.sh pi@192.168.3.36:/home/pi/nanopi_stereo_vla_upload_loop.sh
+ssh pi@192.168.3.36
+chmod +x /home/pi/nanopi_stereo_vla_upload_loop.sh
+COUNT=12 INTERVAL_SECONDS=5 /home/pi/nanopi_stereo_vla_upload_loop.sh
+```
+
+常用参数：
+
+- `COUNT=12`：上传 12 次后自动退出；`COUNT=0` 表示一直运行到 Ctrl+C。
+- `INTERVAL_SECONDS=5`：每 5 秒上传一帧双目上下文。
+- `VISION_IMPL=cpp`：默认 C++ 视觉链路；需要回退时可设为 `VISION_IMPL=python`。
+- `USE_YOLOX=1`：C++ 默认启用 YOLOX nano；设为 `0` 可只跑旧 SSD 备用路径。
+- `YOLOX_CONFIDENCE_THRESHOLD=0.20`：当前瓶子/水杯演示推荐阈值，调高更保守，调低更容易误检。
+- `PROJECT_ID=e201f41c-25a6-46e1-baf8-be6dcb83284c`：当前云端 VLA 页面项目。
+- `TARGET_LABEL_ALLOWLIST=bottle,cup`：语言目标约束的第一版替代入口。
+- `CLEANUP_OLDER_THAN_DAYS=1`：启动前清理一天前的旧 jpg，避免演示多次后图片堆积。
+
+日志默认写到 `/home/pi/rehab_arm_vla_logs/stereo_vla_upload_<UTC>.jsonl`，图片默认写到 `/home/pi/rehab_arm_stereo_frames`。通过标准是每次返回 `ok=true`，`control_boundary=stereo_vision_context_only_not_motion_permission`，且未标定前 `estimated_depth_m=null`。
+
+理解这个算法时按三步看：第一步，左右摄像头各自用 YOLOX 优先、SSD 备用去找 `bottle/cup` 等语义框；第二步，从左图语义框里选 `target_object`，再找右图同 label 的框；第三步，比较左右框中心点，得到 `horizontal_disparity_px` 并生成 `pixel_servo_hint`。视差只能说明双目几何关系，还不能直接当距离。只有完成最终相机固定、焦距/畸变/基线标定后，才能用 `Z = f * B / disparity` 推米制深度；当前必须保持 `estimated_depth_m=null`，真实运动仍保持 dry-run/hold。
 
 学习判断规律：在同一组固定摄像头下，目标越近，左右图中心点差异通常越大；目标越远，`horizontal_disparity_px` 通常越小。2026-06-22 实测瓶子从较近位置移动到较远位置后，视差从约 `87-88 px` 降到约 `80 px`，符合这个趋势。
 

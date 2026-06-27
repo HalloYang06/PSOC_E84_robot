@@ -3,12 +3,29 @@ project(rehab_arm_psoc_bridge)
 
 find_package(ament_cmake REQUIRED)
 find_package(ament_cmake_python REQUIRED)
+find_package(OpenCV REQUIRED)
 find_package(rclpy REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(trajectory_msgs REQUIRED)
 
+add_executable(stereo_camera_capture_upload_cpp
+  src/stereo_camera_capture_upload_cpp.cpp
+)
+target_compile_features(stereo_camera_capture_upload_cpp PRIVATE cxx_std_17)
+target_include_directories(stereo_camera_capture_upload_cpp PRIVATE
+  ${OpenCV_INCLUDE_DIRS}
+)
+target_link_libraries(stereo_camera_capture_upload_cpp
+  ${OpenCV_LIBS}
+)
+
 ament_python_install_package(${PROJECT_NAME})
+
+install(TARGETS
+  stereo_camera_capture_upload_cpp
+  DESTINATION lib/${PROJECT_NAME}
+)
 
 install(PROGRAMS
   rehab_arm_psoc_bridge/psoc_can_bridge_node.py

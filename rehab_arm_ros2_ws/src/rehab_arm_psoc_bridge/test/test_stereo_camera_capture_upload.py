@@ -39,6 +39,76 @@ class StereoCameraCaptureUploadTests(unittest.TestCase):
 
         self.assertEqual(script_path.read_text(encoding='utf-8').splitlines()[0], '#!/usr/bin/env python3')
 
+    def test_cpp_stereo_capture_executable_is_installed_by_cmake(self) -> None:
+        package_root = Path(__file__).resolve().parents[1]
+        source_path = package_root / 'src' / 'stereo_camera_capture_upload_cpp.cpp'
+        cmake_text = (package_root / 'CMakeLists.txt').read_text(encoding='utf-8')
+
+        self.assertTrue(source_path.is_file())
+        self.assertIn('find_package(OpenCV REQUIRED)', cmake_text)
+        self.assertIn('add_executable(stereo_camera_capture_upload_cpp', cmake_text)
+        self.assertIn('install(TARGETS', cmake_text)
+        self.assertIn('stereo_camera_capture_upload_cpp', cmake_text)
+
+    def test_cpp_stereo_capture_keeps_one_shot_default_and_optional_loop_mode(self) -> None:
+        package_root = Path(__file__).resolve().parents[1]
+        source_text = (package_root / 'src' / 'stereo_camera_capture_upload_cpp.cpp').read_text(encoding='utf-8')
+
+        self.assertIn('int loop_count = 1;', source_text)
+        self.assertIn('--loop-count', source_text)
+        self.assertIn('--interval-ms', source_text)
+        self.assertIn('options.sequence + index', source_text)
+        self.assertIn('std::this_thread::sleep_for', source_text)
+
+    def test_cpp_stereo_capture_payload_includes_loop_telemetry(self) -> None:
+        package_root = Path(__file__).resolve().parents[1]
+        source_text = (package_root / 'src' / 'stereo_camera_capture_upload_cpp.cpp').read_text(encoding='utf-8')
+
+        self.assertIn('struct LoopTelemetry', source_text)
+        self.assertIn('capture_loop', source_text)
+        self.assertIn('loop_index', source_text)
+        self.assertIn('frame_process_ms', source_text)
+        self.assertIn('loop_elapsed_ms', source_text)
+
+    def test_cpp_stereo_capture_payload_includes_uncalibrated_pixel_servo_hint(self) -> None:
+        package_root = Path(__file__).resolve().parents[1]
+        source_text = (package_root / 'src' / 'stereo_camera_capture_upload_cpp.cpp').read_text(encoding='utf-8')
+
+        self.assertIn('pixel_servo_hint_json', source_text)
+        self.assertIn('uncalibrated_pixel_servo_hint_v1', source_text)
+        self.assertIn('pixel_servo_hint_only_not_motion_permission', source_text)
+        self.assertIn('dry_run_shift_left', source_text)
+        self.assertIn('metric_depth_available', source_text)
+
+    def test_cpp_stereo_capture_supports_yolox_onnx_detector(self) -> None:
+        package_root = Path(__file__).resolve().parents[1]
+        source_text = (package_root / 'src' / 'stereo_camera_capture_upload_cpp.cpp').read_text(encoding='utf-8')
+
+        self.assertIn('--yolox-onnx', source_text)
+        self.assertIn('detect_yolox', source_text)
+        self.assertIn('readNetFromONNX', source_text)
+        self.assertIn('opencv_dnn_yolox', source_text)
+        self.assertIn('cv::dnn::NMSBoxes', source_text)
+
+    def test_stereo_upload_loop_uses_persistent_cpp_process(self) -> None:
+        repo_root = Path(__file__).resolve().parents[4]
+        script_text = (repo_root / 'scripts' / 'nanopi_stereo_vla_upload_loop.sh').read_text(encoding='utf-8')
+
+        self.assertIn('run_cpp_loop_once()', script_text)
+        self.assertIn('--loop-count "$COUNT"', script_text)
+        self.assertIn('--interval-ms "$INTERVAL_MS"', script_text)
+        self.assertIn('if [ "$VISION_IMPL" = "cpp" ]; then', script_text)
+        self.assertIn('run_cpp_loop_once', script_text)
+
+    def test_stereo_upload_loop_can_enable_yolox_for_cpp_detector(self) -> None:
+        repo_root = Path(__file__).resolve().parents[4]
+        script_text = (repo_root / 'scripts' / 'nanopi_stereo_vla_upload_loop.sh').read_text(encoding='utf-8')
+
+        self.assertIn('USE_YOLOX="${USE_YOLOX:-1}"', script_text)
+        self.assertIn('YOLOX_MODEL="${YOLOX_MODEL:-/home/pi/rehab_arm_models/yolo/yolox_nano.onnx}"', script_text)
+        self.assertIn('--yolox-onnx "$YOLOX_MODEL"', script_text)
+        self.assertIn('--detect-right-yolox', script_text)
+
     def test_build_insmod_command_uses_existing_module_path(self) -> None:
         command = build_insmod_command('/lib/modules/6.1.141.can-new/kernel/drivers/media/usb/uvc/uvcvideo.ko')
 
@@ -62,6 +132,24 @@ class StereoCameraCaptureUploadTests(unittest.TestCase):
         self.assertIn('/tmp/right.jpg', commands[1])
         self.assertIn('-update', commands[0])
         self.assertIn('640x480', commands[1])
+
+    def test_build_stereo_capture_commands_can_rotate_both_images_180_degrees(self) -> None:
+        commands = build_stereo_capture_commands(
+            left_device='/dev/video45',
+            right_device='/dev/video47',
+            left_output='/tmp/left.jpg',
+            right_output='/tmp/right.jpg',
+            width=640,
+            height=480,
+            input_format='mjpeg',
+            rotate_180=True,
+        )
+
+        self.assertIn('-vf', commands[0])
+        self.assertIn('transpose=2,transpose=2', commands[0])
+        self.assertIn('-vf', commands[1])
+        self.assertLess(commands[0].index('-vf'), commands[0].index('/tmp/left.jpg'))
+        self.assertLess(commands[1].index('-vf'), commands[1].index('/tmp/right.jpg'))
 
     def test_make_stereo_frame_paths_names_both_sides_for_same_sequence(self) -> None:
         left_path, right_path = make_stereo_frame_paths(
@@ -301,6 +389,27 @@ class StereoCameraCaptureUploadTests(unittest.TestCase):
         self.assertEqual(target['label'], 'bottle')
         self.assertEqual(target['bbox_xywh'], [5, 6, 7, 8])
         self.assertEqual(target['source'], 'opencv_dnn_mobilenet_ssd')
+
+    def test_select_target_object_from_detections_uses_left_image_semantic_detection_only(self) -> None:
+        target = select_target_object_from_detections([
+            {
+                'label': 'chair',
+                'confidence': 0.9,
+                'bbox_xywh': [10, 10, 30, 40],
+                'image_side': 'right',
+                'source': 'opencv_dnn_mobilenet_ssd',
+            },
+            {
+                'label': 'bottle',
+                'confidence': 0.7,
+                'bbox_xywh': [100, 120, 20, 60],
+                'image_side': 'left',
+                'source': 'opencv_dnn_mobilenet_ssd',
+            },
+        ])
+
+        self.assertEqual(target['label'], 'bottle')
+        self.assertEqual(target['image_side'], 'left')
 
     def test_build_stereo_observation_for_target_matches_right_detection(self) -> None:
         target = {

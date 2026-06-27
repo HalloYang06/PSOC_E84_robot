@@ -6492,3 +6492,327 @@ ros2 run rehab_arm_psoc_bridge stereo_camera_capture_upload.py \
 状态：
 
 - 2026-06-25 仅做只读体检，没有发调试 CAN 帧，没有改服务配置，没有触碰运动链路。
+
+### 固定双摄画面倒置时优先用采集参数旋转，不要急着拆装
+
+现象：
+
+- NanoPi 双 USB 摄像头固定后，`/dev/video45` 和 `/dev/video47` 都能正常抓图，但左右画面同时倒置 180 度。
+- MobileNet-SSD 在倒置/低光画面中容易出现整幅图误检，例如把背景误报为 `aeroplane`、`chair` 或 `diningtable`。
+
+判断：
+
+- 两只摄像头方向一致倒置时，不影响硬件枚举，也不是 UVC 驱动问题。
+- 对后续棋盘格检测和人工观察来说，最好在采集入口统一旋转，保持后续上传、检测、标定样本都使用同一方向。
+
+解决：
+
+- 使用现有双摄工具的 `--rotate-180` 参数。该参数通过 FFmpeg filter 对左右图同时旋转 180 度，不改变相机安装。
+- 固定相机现场测得 baseline 为 6 cm，上传 VLA-V context 时可带 `--baseline-m 0.06`；但没有棋盘格完整标定前仍必须保持 `estimated_depth_m=null`。
+
+状态：
+
+- 2026-06-25 已在 NanoPi 上验证 `--rotate-180 --baseline-m 0.06` 抓到正向左右图，平台上传返回 `ok=true`。
+
+### VLA 页面等待图像时先确认它是否只看 camera_keyframe
+
+现象：
+
+- VLA 服务器页面的 V 卡片显示 `等待图像 / 等待 camera_keyframe_v1`，但 NanoPi 双目脚本已经上传 `stereo_rgb_yolo_context_v1`。
+- 后端 dashboard 中有 `stereo_vision_context`，但旧前端卡片只读取 `camera_keyframe`，导致视觉链路看起来像没接入。
+
+判断：
+
+- 这不是 USB 摄像头没抓到，也不是 UVC 或内核问题。
+- 对当前 VLA 设计，V 输入应优先使用双目上下文：目标标签、检测数、基线、左右像素视差，以及标定后才会出现的 3D/depth。
+
+解决：
+
+- 前端 V 卡片需要优先读取 `selected.stereo_vision_context.payload`，没有双目上下文时再回退到 `camera_keyframe`。
+- 轮询 `/api/proxy/rehab-arm/v1/devices/dashboard` 时带上 `?project_id=<当前页面项目>`，保持首屏和刷新后的项目范围一致。
+
+状态：
+
+- 2026-06-26 已在 `D:\ai-collab-product\apps\web\app\projects\[id]\rehab-arm-control\rehab-arm-control-client.tsx` 完成该前端修正，并通过 `npm --workspace apps/web run build`。
+
+### 双目目标选择要跟语音任务对齐，不能总选最高置信度物体
+
+现象：
+
+- 同一帧中 MobileNet-SSD 同时检测到 `diningtable` 和 `bottle`。
+- 如果只按最高置信度自动选目标，VLA-V 可能选择桌子；但 L 输入是“帮我拿水杯/瓶子”时，V 目标应该是杯子/瓶子。
+
+判断：
+
+- 这是 V/L 对齐问题，不是检测算法失败。
+- 没有语言约束时最高置信度可作为默认候选；有任务语义时应使用 allowlist 或显式 `--target-label`。
+
+解决：
+
+- 对“拿水杯/瓶子”这类任务，运行双目上传时加：
+
+```bash
+--auto-target-from-detections \
+--target-label-allowlist bottle,cup \
+--stereo-associate-target
+```
+
+- 当前 NanoPi 可行 SSD 文件为：
+  - `/home/pi/rehab_arm_models/ssd/mobilenet_iter_73000.caffemodel`
+  - `/home/pi/rehab_arm_models/ssd/deploy.prototxt`
+  - `/home/pi/rehab_arm_models/ssd/voc21.txt`
+
+状态：
+
+- 2026-06-26 已用当前页面项目 `e201f41c-25a6-46e1-baf8-be6dcb83284c` 验证：平台返回 `ok=true`、`target_label=bottle`、`detection_count=6`、`horizontal_disparity_px=31.0`、`estimated_depth_m=null`。
+- 深度仍未标定；该像素视差只能证明双目关联有效，不能作为机械臂运动目标。
+
+### 小智 L 链路并行开发时，前端分类只能做只读预览
+
+现象：
+
+- 一个 AI 在打通 XiaoZhi/L transport，另一个 AI 需要先把 VLA 模式分类边界做清楚。
+- 如果前端直接改 WebSocket、voice relay 或模型中转入站格式，容易和 L 链路开发互相覆盖。
+
+判断：
+
+- 小智是所有模式的统一语音入口，但入口链路和模式分类是两层。链路负责把音频/文本/模型结果送到平台；分类负责把文本或 route payload 映射到 `ai_operation_mode`。
+- 在真实 `voice_intent_route_v1` 未接入前，前端可以做 `source=fallback_preview` 的分类展示，但这只是调试视图，不是协议事实，更不是运动许可。
+
+解决：
+
+- 前端读取优先级应为：真实 `voice_intent_route_v1` > fallback transcript keyword preview。
+- fallback 只显示 `route_class`、`ai_operation_mode`、`route_action`、confidence/source 和只读 `control_boundary`，不能写回小智链路。
+- 禁止 fallback 产生 ROS motion topic、CAN frame、M33 override、raw motor/current/torque/velocity/position。
+
+状态：
+
+- 2026-06-26 已在云端页面本地代码中加入只读分类面板，并通过 `npm --workspace apps/web run build`。
+
+### NanoPi 上电后 USB 摄像头 lsusb 可见但 Driver=(none)
+
+现象：
+
+- 两只 USB 摄像头在 `lsusb` 中显示为 `1bcf:2281 Sunplus Innovation Technology Inc. SPCA2281 Web Camera` / `Product=2M`。
+- `usb-devices` 中两个 video interface 显示 `Driver=(none)`。
+- `/dev/video45` 和 `/dev/video47` 不存在，只剩 Rockchip ISP/MIPI 节点和 `/dev/video-camera0 -> video22`、`/dev/video-camera1 -> video31`。
+- `sudo modprobe uvcvideo` 可能失败：`Exec format error`，dmesg 出现 `uvcvideo: disagrees about version of symbol module_layout`。
+
+判断：
+
+- 这不是“没插摄像头”，也不是需要改内核。
+- 当前默认 `/lib/modules/6.1.141/kernel/.../uvcvideo.ko` 与正在运行的内核符号版本不一致；之前可工作的 UVC 模块在 `/lib/modules/6.1.141.can-new/...`。
+- `/dev/video-camera0/1` 是 Rockchip ISP/MIPI 节点，不是这两只 USB UVC 摄像头，不能替代双目 USB 输入。
+
+解决：
+
+```bash
+printf "pi\n" | sudo -S insmod /lib/modules/6.1.141.can-new/kernel/drivers/media/usb/uvc/uvcvideo.ko
+v4l2-ctl --list-devices
+usb-devices | awk '/1bcf/ || /2281/ || /Driver=/ || /Product=/ {print}'
+```
+
+通过标准：
+
+- `lsmod | grep uvcvideo` 能看到模块。
+- `v4l2-ctl --list-devices` 出现两组 `2M`，分别映射到 `/dev/video45`/`46` 和 `/dev/video47`/`48`。
+- `usb-devices` 中两个 `1bcf:2281` 的 video interface 都显示 `Driver=uvcvideo`。
+
+状态：
+
+- 2026-06-26 上电后按上述方式恢复，随后双目上传脚本使用 `/dev/video45` 和 `/dev/video47` 成功上传 `stereo_vision_context`，平台返回 `ok=true`。
+
+### C++ 视觉链路应先做并行新增，不替换 Python 合同
+
+现象：
+
+- 项目后续要做持续视觉逼近，用户希望一开始就用 C++ OpenCV，避免 Python 原型跑通后再大迁移。
+- 现有 Python `stereo_camera_capture_upload.py` 已经能上传平台认可的 `stereo_rgb_yolo_context_v1`，不能随意破坏。
+
+判断：
+
+- Python `cv2.dnn.forward()` 的核心推理本身也是 C++，但 Python one-shot 会反复启动解释器、加载模型、开相机；最终低延迟收益来自常驻 C++ 进程把相机和网络常驻，而不是只把同一帧算法机械翻译。
+- 第一阶段应新增 C++ executable 并保持同一 payload、同一 endpoint、同一安全边界，平台和 L/A 层才不需要跟着改。
+
+解决：
+
+- 新增 `ros2 run rehab_arm_psoc_bridge stereo_camera_capture_upload_cpp`，用 OpenCV C++ `VideoCapture` 抓 `/dev/video45` 和 `/dev/video47`，`cv::dnn::readNetFromCaffe` 加载 MobileNet-SSD，仍上传 `/api/rehab-arm/v1/devices/{device_id}/vision/stereo-context`。
+- 演示脚本默认 `VISION_IMPL=cpp`，需要回退时设 `VISION_IMPL=python`。
+- C++ 节点仍只上传 `stereo_vision_context`，不发布 ROS motion topic，不发送 CAN，不改变 M33/M55 状态。
+
+状态：
+
+- 2026-06-26 已在 NanoPi 上构建并现场验证，连续 C++ 上传返回平台 `ok=true`，目标 `bottle`，深度仍保持 `estimated_depth_m=null`。
+
+### 平台页面不能让本地 demo L 输入遮住真实 XiaoZhi L
+
+现象：
+
+- 页面加了本地 demo L 输入 chips 后，用户用小智说话时在平台上看不到 L 指令。
+- 后端 XiaoZhi transport 不一定坏；也可能是页面选中了摄像头 NanoPi 设备，而 XiaoZhi 事件来自另一个 `device_id`，或者本地 demo 文本覆盖了真实 L 文本。
+
+判断：
+
+- 小智 L transport 和 L 分类/展示必须分层。前端可以做兜底预览，但真实 `xiaozhi_ws_input/xiaozhi_ws_reply/xiaozhi_session/voice_relay` 必须始终优先。
+- 本地 demo chip 只能在没有真实 L 输入时辅助演示，不能覆盖真实链路，也不能写回后端。
+
+解决：
+
+- Rehab-arm 页面读取 L 的优先级调整为：选中设备真实 L -> 同项目其他设备真实 L -> 无真实 L 时才用本地 demo/fallback preview。
+- 最近 XiaoZhi 事件显示不再只依赖当前选中设备；当前设备无事件时回退到项目级最近小智事件。
+- 后端 API、XiaoZhi WebSocket、voice relay ingestion 和 M55 链路不改。
+
+状态：
+
+- 2026-06-26 已完成前端显示修复并部署云端；本地和云端 Web build 均通过。
+
+### XiaoZhi L 有新语音但 VLA 页面不更新时，先查 project_id 是否一致
+
+现象：
+
+- 用户通过小智说话，云端日志能看到 WebSocket/audio 活动，但当前 rehab-arm VLA 页面没有显示最新 L。
+- V 摄像头上传和页面都使用项目 `e201f41c-25a6-46e1-baf8-be6dcb83284c`，而实时小智事件可能出现在另一个项目下。
+
+判断：
+
+- 这类问题不一定是 L transport 断了，也不一定是前端覆盖真实 L。
+- 如果 WebSocket URL、dashboard 查询和 NanoPi 登录配置里的 `project_id` 不一致，平台会把 L/V 放进不同项目命名空间；页面只看当前项目，就会表现为 L 没同步。
+
+排查：
+
+```powershell
+$active='e201f41c-25a6-46e1-baf8-be6dcb83284c'
+$old='fd6a55ed-a63c-44b3-b123-96fb3c154966'
+Invoke-RestMethod "http://106.55.62.122:8011/api/rehab-arm/v1/devices/dashboard?project_id=$active"
+Invoke-RestMethod "http://106.55.62.122:8011/api/rehab-arm/v1/devices/dashboard?project_id=$old"
+```
+
+结论：
+
+- 2026-06-26 现场确认云端正在接收的 XiaoZhi WebSocket 路径落在 `fd6a55ed-a63c-44b3-b123-96fb3c154966`，而当前 VLA 页面为 `e201f41c-25a6-46e1-baf8-be6dcb83284c`。
+- 用户确认小智物理运行在英飞凌 M55，不在 NanoPi。`device_id=nanopi-m5` 是链路身份/路由字段，不能据此判断 L transport 由 NanoPi 配置决定。
+- NanoPi `/home/pi/.config/agent-platform/login.env` 中也有旧 `PLATFORM_PROJECT_ID`，但这只能说明 NanoPi agent 也存在旧项目配置，不能作为 M55 XiaoZhi 的根因证据。
+- 修复应优先检查 M55 侧的小智 WebSocket URL、relay token 或导出配置是否仍绑定旧项目，而不是重写 XiaoZhi WebSocket、ASR、LLM relay 或前端展示逻辑。
+
+状态：
+
+- 已定位到云端项目不一致，未改 L 链路代码。等待负责 M55/XiaoZhi 的链路把 M55 侧项目配置切到当前 VLA 项目后复测。
+
+### C++ 视觉路径要让循环留在进程内，别在 bash 里每帧重启
+
+现象：
+
+- `stereo_camera_capture_upload_cpp` 已支持 `--loop-count` 和 `--interval-ms`，但外层 `nanopi_stereo_vla_upload_loop.sh` 如果每帧都执行一次 `ros2 run`，仍会反复开相机、加载 MobileNet-SSD、启动 ROS 进程。
+- 这会把 VLA-V 的响应时间浪费在进程启动和模型加载上，不适合作为后续“持续观察、持续逼近”的基础。
+
+判断：
+
+- Python 路径可以保留为 fallback；性能主线应让 C++ 进程常驻，循环内部复用相机句柄和 DNN 网络。
+- 默认仍必须 finite/dry-run/perception-only，不能因为要快就变成无限后台服务。
+
+解决：
+
+- `VISION_IMPL=cpp` 时脚本直接调用一次 `stereo_camera_capture_upload_cpp --loop-count "$COUNT" --interval-ms "$INTERVAL_MS"`。
+- `VISION_IMPL=python` 保持原来的 shell-managed loop。
+- C++ 路径拒绝 `COUNT=0`，防止演示时误启动无限视觉上传。
+
+状态：
+
+- 2026-06-26 已在 NanoPi 验证：`COUNT=2 INTERVAL_SECONDS=1 START_SEQUENCE=210 VISION_IMPL=cpp /home/pi/nanopi_stereo_vla_upload_loop.sh` 单次 C++ 进程连续上传两帧，平台均返回 `ok=true`，目标 `bottle`，视差约 `11 px` 和 `9 px`。
+
+### stereo_context 新字段如果 dashboard 看不到，先查 Pydantic schema 过滤
+
+现象：
+
+- C++ 本地输出的 stereo payload 已经包含 `capture_loop`，但云端 dashboard 查询 `payload.capture_loop` 为 `null`。
+- 上传接口返回 `ok=true`，目标和检测数量正常，说明不是 HTTP 上传失败。
+
+判断：
+
+- 平台 API 的 `RehabStereoVisionContextRequest` 是 Pydantic 模型，未知字段会在 `payload.model_dump(mode="json")` 时被过滤。
+- 这种情况不是 NanoPi/C++ 没发字段，也不是 dashboard 查询错了。
+
+解决：
+
+- 在平台仓库 `apps/api/app/modules/rehab_arm/schemas.py` 的 `RehabStereoVisionContextRequest` 中显式加入 `capture_loop: dict | None = None`。
+- 在 `apps/api/tests/test_rehab_arm_sync.py::test_rehab_arm_stereo_vision_context_prefers_yolo_pair` 中断言 dashboard payload 保留 `capture_loop`。
+- 部署后重启 API，再从 NanoPi 重新上传帧验证。
+
+状态：
+
+- 2026-06-26 已验证：dashboard 对当前项目返回 `capture_loop.loop_index=0`、`loop_count=2`、`interval_ms=1000`、`frame_process_ms≈2058`、`implementation=opencv_cpp_persistent_loop`。
+
+### 云端页面截图 QA 登录失败时，优先走 API token 注入
+
+现象：
+
+- 使用 `scripts/capture-auth-screenshot.mjs` 通过表单登录云端 rehab-arm 页面时，`lead@example.com/password` 和 `lead@example.com/demo-pass` 都卡在登录跳转，无法进入目标页面。
+- 这会让前端 QA 看起来像页面不可用，但根因是截图脚本没有取得当前云端登录态。
+
+判断：
+
+- 当前云端演示账号与旧文档中的本地 demo 账号不完全一致。
+- Python CDP 截图脚本支持先调用 `/api/auth/session` 获取 `farm_access_token`，再注入浏览器 cookie，比表单登录更稳定。
+
+解决：
+
+```powershell
+python -X utf8 scripts\capture-auth-screenshot-cdp.py `
+  --url "http://106.55.62.122:3001/projects/e201f41c-25a6-46e1-baf8-be6dcb83284c/rehab-arm-control" `
+  --output "D:\ai合作产品\docs\screenshots\rehab-arm-v-capture-loop-qa\desktop-1600.png" `
+  --api-base "http://106.55.62.122:8011" `
+  --login-email "3245056131@qq.com" `
+  --login-password "password" `
+  --viewport-width 1600 `
+  --viewport-height 1200 `
+  --markers "V 延迟|循环"
+```
+
+状态：
+
+- 2026-06-27 已用该方法成功捕获 VLA 页面桌面和移动端截图，确认 `V 耗时`、`V 延迟`、循环进度和 `bottle` 目标在页面上可见。
+
+### 无标定像素伺服必须服从视觉 freshness
+
+现象：
+
+- VLA 页面可以从旧的 `stereo_vision_context.target_object.stereo_observation.left_center_px` 推出目标在画面中的左右/上下偏移。
+- 如果只看像素偏移，过期视觉帧也会生成类似 `dry_run_shift_left` 的建议，和闭环状态 `视觉过期 hold` 矛盾。
+
+判断：
+
+- 未标定像素伺服只能作为“新鲜帧下的 dry-run 解释层”，不能用过期帧生成逼近方向。
+- 没有棋盘格和外参时，像素中心/视差只说明画面关系，不是机械臂坐标，也不是运动许可。
+
+解决：
+
+- 页面像素伺服逻辑必须先检查 `stereoFreshness.state`。如果视觉过期，显示 `视觉过期保持`、`等待新帧`、`hold_observe`。
+- 只有 fresh/recent 视觉帧才能显示像素方向建议，如 `dry_run_shift_left/right/up/down`；这些仍然只是 dry-run 候选标签，不发布控制命令。
+
+状态：
+
+- 2026-06-27 已在云端页面验证，桌面和移动端截图均显示过期视觉下的 `hold_observe`。
+
+### NanoPi OpenCV 4.6 跑 YOLO 时优先验证 ONNX 兼容和后处理
+
+现象：
+
+- NanoPi 上现有 `yolov5n-v6.0-opencv.onnx` 加载失败，OpenCV 4.6.0 报 `dynamic 'zero' shapes are not supported`。
+- 另一个 `yolov5n.onnx` 也加载失败，报 `Floor` 节点处理错误。
+- 换成 YOLOX nano 后模型能加载，但如果按普通 YOLOv5/YOLOv8 后处理或 `1/255` 归一化，会出现无目标或大量弱误检。
+
+判断：
+
+- 这不是 USB 摄像头或内核问题，也不是平台上传链路问题。
+- OpenCV DNN 对 ONNX 算子和动态 shape 很挑，必须先在板子上实际 `readNetFromONNX` 和 `forward()`。
+- YOLOX 的输出是网格格式，需要 letterbox 到方形输入、pad=114、`scale=1.0`，再按 stride `8/16/32` 解码 `x/y/w/h` 并 NMS。
+
+解决：
+
+- 使用 `/home/pi/rehab_arm_models/yolo/yolox_nano.onnx` 和 `/home/pi/rehab_arm_models/yolo/coco80.txt`。
+- C++ 主线通过 `--yolox-onnx ... --yolox-labels ... --detect-right-yolox` 启用，脚本默认 `YOLOX_CONFIDENCE_THRESHOLD=0.20`。
+- 保留 MobileNet-SSD 作为备用检测器，但瓶子/水杯目标优先依赖 YOLOX 的 COCO 类别。
+
+状态：
+
+- 2026-06-27 已在 NanoPi 双 USB 摄像头上验证：`COUNT=3 ... YOLOX_CONFIDENCE_THRESHOLD=0.20` 连续上传成功，序列 `373/374` 左右目均检测到 `bottle`，并生成 `pixel_servo_hint.state=servo_adjust`、`next_step=dry_run_lift_down`。

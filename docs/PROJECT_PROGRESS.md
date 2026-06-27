@@ -3327,3 +3327,270 @@
 - Camera recovery: after reboot, both USB cameras enumerated as video class but `Driver=[none]`; temporarily loading the already-present `/lib/modules/6.1.141.can-new/kernel/drivers/media/usb/uvc/uvcvideo.ko` restored `Driver=uvcvideo` and `/dev/video45` + `/dev/video47`.
 - Camera validation: `stereo_chessboard_calibration.py --chessboard-size 9x6 --square-size-m 0.020 --pretty` captured a stereo pair and correctly returned `pair_ok=false` because no chessboard was visible. The camera mainline is ready for the next chessboard sample.
 - Next step: keep CAN troubleshooting separate from the camera track; for CAN, inspect power/CANH/CANL/termination/common ground/M33 state. For camera, place the printed 9x6 inner-corner chessboard in both views and collect `pair_ok=true` samples.
+
+### 2026-06-25 - Fixed stereo camera orientation and baseline recorded
+
+- Completed: added `--rotate-180` to `stereo_camera_capture_upload.py` and `stereo_chessboard_calibration.py` so both fixed USB cameras can be corrected in the capture pipeline without changing the physical mount.
+- Completed: fixed auto target selection to choose semantic detections from the left image only; right-image detections are now used for stereo association rather than accidentally becoming the primary target.
+- Field measurement: the fixed camera baseline is `0.06 m` / 6 cm. Current live VLA-V uploads include `baseline_m=0.06`, but `estimated_depth_m` remains `null` until chessboard calibration is completed.
+- Validation: local stereo tests passed with 29 tests. NanoPi `colcon build --packages-select rehab_arm_psoc_bridge --symlink-install` passed after syncing the updated scripts.
+- Validation: live command with `--rotate-180 --baseline-m 0.06` captured upright left/right frames from `/dev/video45` and `/dev/video47`, uploaded to the platform with `ok=true`, and preserved `control_boundary=stereo_vision_context_only_not_motion_permission`.
+- Next step: print the 9x6 inner-corner / 20 mm chessboard at 100% scale, verify one square measures 20 mm, then collect accepted fixed-camera samples with `--rotate-180 --chessboard-size 9x6 --square-size-m 0.020`.
+
+### 2026-06-26 - VLA page now surfaces stereo V input and current project upload was verified
+
+- Completed: updated the AI collaboration platform VLA command page at `D:\ai-collab-product\apps\web\app\projects\[id]\rehab-arm-control\rehab-arm-control-client.tsx` so the V card prefers `stereo_vision_context` over `camera_keyframe`.
+- UI behavior: the V card now shows stereo target label, detection count, baseline, pixel disparity, and either calibrated depth or `未标定深度`. Model-relay context refs now include stereo scene summary, target label, baseline, disparity, and depth placeholder.
+- Project binding: the active web page project is `e201f41c-25a6-46e1-baf8-be6dcb83284c`. Earlier stereo probes used `fd6a55ed-a63c-44b3-b123-96fb3c154966`; future NanoPi V uploads for this page should pass the active project id directly.
+- NanoPi validation: `ros2 run rehab_arm_psoc_bridge stereo_camera_capture_upload.py --project-id e201f41c-25a6-46e1-baf8-be6dcb83284c --api-base http://106.55.62.122:8011 --left-device /dev/video45 --right-device /dev/video47 --baseline-m 0.06 --rotate-180 --upload --sequence 4 --analyze-image-quality --ssd-model /home/pi/rehab_arm_models/ssd/mobilenet_iter_73000.caffemodel --ssd-prototxt /home/pi/rehab_arm_models/ssd/deploy.prototxt --ssd-labels /home/pi/rehab_arm_models/ssd/voc21.txt --detect-right-ssd --auto-target-from-detections --target-label-allowlist bottle,cup --stereo-associate-target --pretty` returned platform `ok=true`.
+- Live result: `target_label=bottle`, `detection_count=6`, `baseline_m=0.06`, left center `[313.0,250.5]`, right center `[282.0,185.0]`, `horizontal_disparity_px=31.0`, `vertical_center_delta_px=65.5`, and `estimated_depth_m=null`.
+- Platform validation: `npm --workspace apps/web run build` passed after the frontend change.
+- Boundary: the VLA page and model relay still provide read-only/high-level VLA context only. No CAN, M33, trajectory, or motor command path was changed.
+- Next step: after the frontend is deployed, refresh the VLA server page and confirm the V card displays `bottle` with pixel disparity; then connect XiaoZhi L input to the same active project id and keep object allowlists aligned with the voice command.
+
+### 2026-06-26 - VLA-lite closed-loop approach contract reserved
+
+- Completed: documented the intended simplified VLA design as `VLA-lite closed-loop` instead of one-frame static target control.
+- Architecture: XiaoZhi/voice `L` maps goals such as `我要喝水` to task intent and visual target allowlists such as `cup/bottle`; stereo `V` continuously detects the target; `A` only proposes the next small approach step; every step must reobserve and update the target estimate.
+- Transform reservation: the future metric chain is target pixels/disparity -> `camera_left_optical_frame` -> `base_link`; before stereo calibration and camera-to-robot extrinsic validation, `camera_frame_target_3d` and `robot_frame_target_3d` must remain null.
+- Release ladder: added `execution_mode` semantics for `dry_run_only -> bench_motion_allowed -> clinical_motion_allowed`. The current default remains `dry_run_only`, but the contract now reserves the conditions needed to later allow real bench motion without redesigning the VLA interface.
+- Boundary: no code, CAN, M33, NanoPi service, motor, or cloud deployment was changed in this step. This was a protocol/architecture update only.
+- Next step: implement a platform/NanoPi loop-state object that displays `language_goal -> visual target -> camera pose -> robot pose -> next dry-run step`, then keep it in dry-run until calibration and safety gates are proven.
+
+### 2026-06-26 - VLA-lite response-speed rule added
+
+- Completed: updated the VLA-lite contract to split the loop into a local fast path and a server/model slow path.
+- Decision: NanoPi/local ROS2 should own fast camera capture, target tracking, cached target allowlist use, short-step candidate generation, and safety-state reads. Server/model should own slower language understanding, task allowlists, complex replanning, UI summaries, and logs.
+- Latency rule: once `task_intent` and `target_allowlist` are stable, the system must not call the large model for every frame. Re-query only when the user changes intent, the target is lost, safety/risk changes, or the task stage changes.
+- Safety rule: if the server or network times out, the local loop may only hold, stop, or degrade; it must not keep moving blindly on stale cloud output.
+- Boundary: documentation update only; no runtime loop, CAN, motor, M33, NanoPi service, or cloud deployment was changed.
+
+### 2026-06-26 - AI operation modes separated from execution permissions
+
+- Completed: documented that VLA/AI behavior must use two separate axes: `ai_operation_mode` for the task type and `execution_mode` for the allowed execution level.
+- First mode set: `rehab_training_assist`, `object_fetch_vla_lite`, `teach_and_replay`, `teleop_supervised`, `inspection_diagnostics`, `daily_chat`, and `data_collection`.
+- Key boundary: `object_fetch_vla_lite` is for object fetching such as `我要喝水/拿水杯`, while `rehab_training_assist` is for patient profile based training motions such as arm raise or elbow flexion. They must not share implicit motion assumptions.
+- Safety rule: non-motion modes such as `inspection_diagnostics`, `daily_chat`, and `data_collection` are read-only or collection-only by default and cannot automatically upgrade into motion modes.
+- Platform requirement: the command center should display `ai_operation_mode`, `execution_mode`, `entry_reason`, `exit_reason`, `allowed_next_modes`, and `control_boundary` so operators can see what the system is doing and what it is allowed to do.
+- Boundary: documentation update only; no runtime mode switcher, server deployment, NanoPi service, CAN, M33, or motor path was changed.
+
+### 2026-06-26 - XiaoZhi unified router and training/assist contracts reserved
+
+- Completed: documented XiaoZhi as the unified voice entry for all AI modes, not just object fetching.
+- Routing: voice is first classified into `voice_intent_route_v1`, then routed to `object_fetch_vla_lite`, `rehab_training_assist`, `daily_chat`, `inspection_diagnostics`, or `training_summary_request`.
+- Training contract: reserved `training_library_goal_v1` and `training_goal_candidate_v1` so the mobile app and server-side AI can select today’s training goals from a structured training library instead of hardcoding one motion.
+- Assist contract: reserved `assist_intent_state_v1` and ROS assist policy candidate topics for future M55 four-channel EMG assistance. M55 remains suggestion-only; M33 keeps final authority.
+- Boundary: documentation update only; no app code, BLE runtime, ROS runtime, CAN, M33, or motor logic was changed.
+
+### 2026-06-26 - Embedded competition national-first roadmap added
+
+- Completed: added [EMBEDDED_COMPETITION_NATIONAL_FIRST_ROADMAP.md](EMBEDDED_COMPETITION_NATIONAL_FIRST_ROADMAP.md) as a dedicated contest/demo roadmap.
+- Scope: the roadmap organizes the project into four contest-facing highlights: unified XiaoZhi voice entry, VLA-lite stereo object fetch, training-library-driven rehab assistance, and M55 four-channel EMG assist with M33 safety gating.
+- Demo design: added demo flows for voice mode routing, object-fetch VLA, training-library recommendation, EMG assist state, and safety release ladder.
+- Metrics: added suggested measurable indicators such as voice routing latency, visual update rate, M55 EMG freshness, training-goal generation time, and fallback behavior.
+- Integration: linked the roadmap from `README.md`, `docs/CURRENT_PROJECT_BRIEFING.md`, and `docs/CURRENT_MAINLINES.md`.
+- Boundary: documentation/framework update only; no existing camera, CAN, M33/M55, App, ROS runtime, cloud deployment, or motor path was removed or changed.
+
+### 2026-06-26 - Cloud VLA page refreshed and NanoPi stereo upload loop validated
+
+- Completed: verified NanoPi `pi@192.168.3.36` has `/dev/video45` and `/dev/video47`, ROS2 `rehab_arm_psoc_bridge` stereo executables, and the MobileNet-SSD files under `/home/pi/rehab_arm_models/ssd/`.
+- Completed: ran the real stereo upload command against cloud API project `e201f41c-25a6-46e1-baf8-be6dcb83284c` with `--rotate-180`, `--baseline-m 0.06`, `--detect-right-ssd`, `--auto-target-from-detections`, `--target-label-allowlist bottle,cup`, and `--stereo-associate-target`.
+- Validation: one manual upload and a 3-sample short loop all returned platform `ok=true`; the target stayed `bottle`, detection counts were 5/7/5 in the loop, and pixel disparity stayed around `31.0-32.5 px`. `estimated_depth_m` remains `null` as intended before stereo calibration.
+- Cloud validation: rebuilt and restarted the cloud platform in `~/apps/ai-collab` without `git pull`; public Web/API alignment passed for `http://106.55.62.122:3001` and `http://106.55.62.122:8011`, both reporting build `1764e91b140b` with build time `2026-06-25T22:14:00Z`.
+- Dashboard validation: cloud API dashboard for `nanopi-m5` shows latest `stereo_vision_context` with `target=bottle`, `detection_count=5`, `horizontal_disparity_px=32.5`, and `control_boundary=stereo_vision_context_only_not_motion_permission`.
+- Boundary: this step did not touch CAN, M33/M55 firmware, ROS motion topics, trajectory forwarding, motor commands, or kernel/driver changes.
+- Next step: make a temporary operator-controlled stereo upload loop script or user service that can be started/stopped for demos, with log output and disk cleanup, still upload-only and perception-only.
+
+### 2026-06-26 - Operator-controlled stereo VLA upload loop script added
+
+- Completed: added `scripts/nanopi_stereo_vla_upload_loop.sh` as a finite, operator-controlled NanoPi demo loop for stereo VLA-V uploads.
+- Defaults: `PROJECT_ID=e201f41c-25a6-46e1-baf8-be6dcb83284c`, `API_BASE=http://106.55.62.122:8011`, cameras `/dev/video45` and `/dev/video47`, `BASELINE_M=0.06`, `COUNT=12`, `INTERVAL_SECONDS=5`, `TARGET_LABEL_ALLOWLIST=bottle,cup`.
+- Safety boundary: the script only captures and uploads `stereo_vision_context`; it does not publish motion topics, send CAN, or change M33/M55 state. `COUNT=0` is available for manual Ctrl+C demos, but the default is finite.
+- Validation: copied the script to NanoPi as `/home/pi/nanopi_stereo_vla_upload_loop.sh`; `bash -n` passed on NanoPi; `COUNT=2 INTERVAL_SECONDS=2 START_SEQUENCE=21 /home/pi/nanopi_stereo_vla_upload_loop.sh` returned platform `ok=true` twice with `target_label=bottle`, detection counts `8` and `7`, and `estimated_depth_m=null`.
+- Documentation: updated [USER_MANUAL.md](USER_MANUAL.md) with the upload-loop usage, common environment variables, log path, and pass criteria.
+- Next step: decide whether this should stay as a manual demo script or become an explicitly disabled-by-default user service for longer rehearsals.
+
+### 2026-06-26 - VLA page closed-loop vision status added
+
+- Completed: updated the cloud rehab-arm control page V card to show a compact closed-loop status line based on the current `stereo_vision_context`.
+- UI behavior: the V card now reports `目标锁定`, `继续观察`, `视觉过期 hold`, or `等待 V 输入` plus update freshness, target label, pixel disparity, depth/calibration state, and dry-run/hold boundary.
+- Implementation: changed only `D:\ai合作产品\apps\web\app\projects\[id]\rehab-arm-control\rehab-arm-control-client.tsx` and `rehab-arm-control.module.css`; no API schema, NanoPi runtime, CAN, M33/M55 firmware, or motion path changed.
+- Validation: local `npm --workspace apps/web run build` passed; synced the two page files to the cloud server; cloud `npm run build:web && RESTART=1 scripts/start-cloud-prod.sh` passed; public Web/API alignment passed for project `e201f41c-25a6-46e1-baf8-be6dcb83284c`.
+- Current live payload: cloud API still shows `nanopi-m5` with `target=bottle`, `detection_count=7`, `horizontal_disparity_px=28`, `estimated_depth_m=null`, and `control_boundary=stereo_vision_context_only_not_motion_permission`.
+- Next step: if the UI view is acceptable, add a lightweight recent-frame stability summary from server events or a small loop-state payload so the page can show N-of-M locked frames instead of only the latest frame.
+
+### 2026-06-26 - VLA page recent-frame lock stability added
+
+- Completed: upgraded the V card closed-loop status to use recent `stereo_vision_context` events from the dashboard, not just the latest frame.
+- UI behavior: the status line now summarizes N-of-M locked frames for the current target label and reports disparity spread, e.g. `6/6 帧锁定 bottle` and `波动 4.5 px`, while still showing uncalibrated depth and dry-run/hold boundary.
+- Implementation: frontend-only update in `D:\ai合作产品\apps\web\app\projects\[id]\rehab-arm-control\rehab-arm-control-client.tsx`; no API schema, NanoPi script, CAN, M33/M55 firmware, or motion path changed.
+- Validation: local `npm --workspace apps/web run build` passed; synced the page files to the cloud server; cloud `npm run build:web && RESTART=1 scripts/start-cloud-prod.sh` passed; public Web/API alignment passed for project `e201f41c-25a6-46e1-baf8-be6dcb83284c`.
+- Live data check: cloud dashboard currently has 6 recent stereo frames for `nanopi-m5`; all 6 lock `bottle`, with disparity min `28 px`, max `32.5 px`, spread `4.5 px`, and `estimated_depth_m=null`.
+- Next step: define a minimal `vla_lite_loop_state_v1` payload or frontend state panel that combines L allowlist + V multi-frame lock + A dry-run candidate into one explicit loop state.
+
+### 2026-06-26 - VLA-lite loop state panel added
+
+- Completed: added a compact `vla_lite_loop_state_v1` panel below the V/L/A cards on the cloud rehab-arm control page.
+- UI behavior: the panel derives a frontend-only loop state from existing payloads: `waiting_language`, `waiting_vision`, `tracking_target`, `hold_stale_vision`, `hold_uncalibrated_depth`, or `candidate_ready`.
+- Displayed fields: `ai_operation_mode`, `execution_mode`, L target allowlist, and V multi-frame lock summary. Current expected state is `hold_uncalibrated_depth` when bottle is locked but stereo calibration/depth is still missing.
+- Implementation: frontend-only update in `D:\ai合作产品\apps\web\app\projects\[id]\rehab-arm-control\rehab-arm-control-client.tsx` and `rehab-arm-control.module.css`; no server schema, NanoPi script, CAN, M33/M55 firmware, or motion path changed.
+- Validation: local `npm --workspace apps/web run build` passed; synced the two page files to the cloud server; cloud `npm run build:web && RESTART=1 scripts/start-cloud-prod.sh` passed; public Web/API alignment passed for project `e201f41c-25a6-46e1-baf8-be6dcb83284c`.
+- Live data check: recent cloud stereo events for `nanopi-m5` show 6/6 labels as `bottle`; the panel should combine that with `execution_mode=dry_run_only` and uncalibrated depth into an explicit hold state.
+- Next step: connect real XiaoZhi route payloads so `waiting_language` can become `object_fetch_vla_lite` only when L explicitly requests a fetch target, instead of inferring from V alone.
+
+### 2026-06-26 - Voice route classification boundary added without touching L transport
+
+- Completed: added a read-only `voice_intent_route_v1` classification display to the rehab-arm cloud control page. The panel shows `route_class`, `ai_operation_mode`, `route_action`, confidence/source, and `control_boundary`.
+- Boundary: another AI is responsible for the XiaoZhi/L transport. This step does not modify XiaoZhi WebSocket, voice relay, model relay API, M55 firmware, or server ingestion. The page only consumes existing route payloads when present.
+- Fallback behavior: if no real route object is present, the frontend derives a `source=fallback_preview` classification from the visible transcript for operator debugging. It is not written back to the L chain and remains `voice_route_only_not_motion_permission`.
+- Classification set: `object_fetch_request -> object_fetch_vla_lite`, `training_start_request -> rehab_training_assist`, `training_summary_request -> rehab_training_assist`, `diagnostic_request -> inspection_diagnostics`, `data_collection_request -> data_collection`, `daily_chat -> daily_chat`, and `hold_need_clarification`.
+- Documentation: updated [COMMAND_CENTER_APP_PROTOCOL_V1.md](COMMAND_CENTER_APP_PROTOCOL_V1.md) with the fallback-preview priority rule and the current route boundary table.
+- Validation: local platform build `npm --workspace apps/web run build` passed after the page update.
+- Next step: deploy the two page files to the cloud and verify the public page shows the classification panel; when the real L chain starts sending `voice_intent_route_v1`, confirm the panel source changes from fallback preview to real route.
+
+### 2026-06-26 - Rehab-arm VLA command page visual polish and screenshot QA
+
+- Completed: polished the cloud rehab-arm control page top workflow area so V/L/A cards read as a clearer visual pipeline and the derived loop state plus voice route classification appear as a two-card decision deck instead of raw schema-heavy blocks.
+- UI behavior: V/L/A cards now use stronger stage identity, subtler connected-flow styling, Chinese labels for operator-facing state, and compact technical details. The decision deck shows human-readable loop state, route class, operation mode, route action, confidence/source, visual lock, target allowlist, and dry-run boundary without narrow vertical text wrapping.
+- Responsive behavior: mobile layout was adjusted to single-column V/L/A and decision deck cards so text remains readable without horizontal overflow.
+- Validation: local `npm --workspace apps/web run build` passed; cloud `npm run build:web && RESTART=1 scripts/start-cloud-prod.sh` passed; direct API health and web proxy health returned HTTP 200 after deployment.
+- Screenshot QA: captured authenticated desktop and mobile screenshots under `D:\ai合作产品\docs\screenshots\rehab-arm-route-polish-qa\desktop-final-1600.png` and `D:\ai合作产品\docs\screenshots\rehab-arm-route-polish-qa\mobile-final-390.png`. Desktop and mobile images show the route/loop cards without overlapping text; mobile uses readable stacked cards.
+- Note: one run of `scripts/check_web_api_alignment.py` timed out immediately after cloud restart, but subsequent direct `/api/health` and `/api/proxy/health` checks succeeded. Existing React hook warnings in `project-playable-shell.tsx` remain unrelated to this page polish.
+- Boundary: frontend presentation only. No NanoPi, camera runtime, XiaoZhi L transport, model relay server contract, CAN, M33/M55 firmware, or motion path was changed.
+
+### 2026-06-26 - Local demo L input chips added for route classification rehearsal
+
+- Completed: added local-only demo language input chips to the rehab-arm cloud control page voice route panel. Examples include `我口渴了，帮我拿水杯`, `我要开始今天的训练`, `检查一下摄像头和 CAN`, `今天训练得怎么样，帮我总结一下`, and daily chat.
+- Behavior: clicking a chip updates only browser local React state, then reuses the existing frontend fallback classifier to show the expected `route_class`, `ai_operation_mode`, `route_action`, target allowlist, and loop state. A `回到真实 L` chip clears the local demo value.
+- Boundary: the chips do not upload data, do not write server events, do not modify XiaoZhi WebSocket/voice relay/model relay ingestion, and do not publish motion/CAN/M33 commands. Real `voice_intent_route_v1` payloads still take priority when present.
+- Validation: cloud `npm run build:web && RESTART=1 scripts/start-cloud-prod.sh` passed; cloud direct API health and web proxy health returned HTTP 200 after deployment. Local Windows screenshot tooling was slow/timeouts during this step, but the previous visual QA screenshots remain valid for layout and cloud build verified the new code.
+- Next step: when the local browser tooling is responsive, capture one additional screenshot after selecting `我口渴了，帮我拿水杯`; when the other AI finishes the real L chain, verify the panel source changes from demo/fallback to `真实语音路由`.
+
+### 2026-06-26 - NanoPi power-on stereo V chain restored
+
+- Completed: after NanoPi power-on, verified SSH reachability at `pi@192.168.3.36`, two USB cameras present in `lsusb` as `1bcf:2281 SPCA2281/2M`, and the UVC devices restored to `/dev/video45` and `/dev/video47`.
+- Finding: immediately after boot the USB cameras showed `Driver=(none)` and `/dev/video45/47` were absent. Default `sudo modprobe uvcvideo` failed with `Exec format error` / `uvcvideo: disagrees about version of symbol module_layout`.
+- Fix used: loaded the already-present module `/lib/modules/6.1.141.can-new/kernel/drivers/media/usb/uvc/uvcvideo.ko` with `sudo insmod`, which bound both USB cameras without kernel changes.
+- Validation: `v4l2-ctl --list-devices` showed `2M` cameras at `/dev/video45`/`/dev/video46` and `/dev/video47`/`/dev/video48`; `usb-devices` showed both video interfaces using `Driver=uvcvideo`.
+- VLA-V validation: `/home/pi/nanopi_stereo_vla_upload_loop.sh` recovered enough to capture stereo frames. One loop sample timed out on API read at 10 s, but the next sample uploaded `ok=true`. A direct sequence `63` upload also returned `ok=true`, `detection_count=7`, `estimated_depth_m=null`, and `control_boundary=stereo_vision_context_only_not_motion_permission`.
+- Current visual state: the cameras see scene context and detect table/chairs, but no `bottle/cup`, so `target_label` is currently empty. This is a placement/scene issue, not a camera-chain failure.
+- Boundary: no kernel install/change, CAN command, M33/M55 firmware change, ROS motion topic, trajectory, motor command, or XiaoZhi L transport change was made.
+
+### 2026-06-26 - C++ OpenCV stereo VLA-V path added and validated
+
+- Completed: added `stereo_camera_capture_upload_cpp` under `rehab_arm_psoc_bridge` as a C++ OpenCV DNN MobileNet-SSD stereo capture/upload executable. It is installed by CMake and keeps the existing `stereo_rgb_yolo_context_v1` payload and `stereo_vision_context_only_not_motion_permission` boundary.
+- Completed: updated `scripts/nanopi_stereo_vla_upload_loop.sh` so `VISION_IMPL=cpp` is the default, with `VISION_IMPL=python` available as a safe fallback.
+- NanoPi validation: `colcon build --packages-select rehab_arm_psoc_bridge --symlink-install` passed on NanoPi. `ros2 pkg executables rehab_arm_psoc_bridge | grep stereo` shows `stereo_camera_capture_upload_cpp`.
+- Live validation: direct C++ upload returned platform `ok=true`, `target_label=bottle`, `detection_count=5`, `horizontal_disparity_px=8.5`, `estimated_depth_m=null`, and the perception-only boundary. The C++ loop script with `COUNT=2 INTERVAL_SECONDS=1 START_SEQUENCE=110 VISION_IMPL=cpp` returned `ok=true` twice, with target `bottle` and disparities about `8.5/9.5 px`.
+- Performance note: a cold one-shot C++ `ros2 run` measured about 5 seconds including ROS process startup, opening both cameras, loading SSD, inference, JSON generation, and upload/no-upload overhead. This is not the final latency target; the next speed step should be a persistent C++ loop that opens cameras and loads the network once.
+- Boundary: no CAN, M33/M55 firmware, XiaoZhi L transport, ROS motion topic, trajectory, motor command, kernel, or driver change was made.
+- Next step: convert the C++ one-shot into a persistent low-latency loop or ROS2 node with explicit dry-run/hold state, then add calibrated stereo depth and later camera-to-arm transform.
+
+### 2026-06-26 - Platform L display priority fixed without changing XiaoZhi transport
+
+- Completed: fixed the rehab-arm cloud page frontend so real XiaoZhi/L data has display priority over local demo language chips. If the selected NanoPi device has no XiaoZhi records, the page now falls back to recent project-level `xiaozhi_ws_input/xiaozhi_ws_reply/xiaozhi_ws_tts` events or project-level `xiaozhi_session`/`voice_relay` latest payloads.
+- Boundary: this changed only `D:\ai合作产品\apps\web\app\projects\[id]\rehab-arm-control\rehab-arm-control-client.tsx` display logic. It did not modify XiaoZhi WebSocket endpoints, voice relay ingestion, API service/router, M55 firmware, model relay, NanoPi camera runtime, CAN, M33/M55 control, or motion path.
+- Validation: local `npm --workspace apps/web run build` passed. Cloud deploy copied the rehab-arm page files, ran `npm run build:web`, restarted Web/API, and health checks passed on `127.0.0.1:8011/api/health` and `127.0.0.1:3001/api/proxy/health`.
+- Note: existing React hook warnings in `project-playable-shell.tsx` remain unrelated to the rehab-arm page and were not changed.
+- Next step: user can retest XiaoZhi on the cloud page; real L should appear even when the selected device is NanoPi camera-focused.
+
+### 2026-06-26 - Optional persistent C++ stereo loop added
+
+- Completed: extended `stereo_camera_capture_upload_cpp` with optional `--loop-count` and `--interval-ms` parameters. Default remains `--loop-count 1`, so existing one-shot behavior is preserved.
+- Design: the C++ loop opens both cameras and loads MobileNet-SSD once, then captures multiple frames in the same process. This is the performance path for future VLA-lite continuous target tracking.
+- NanoPi validation: rebuilt `rehab_arm_psoc_bridge` successfully. A 3-frame local loop command with `--loop-count 3 --interval-ms 200` produced 3 JSON payloads, all locked `bottle`, with detection counts `5/6/5`, disparities `7.5/9.5/10.0 px`, and `control_boundary=stereo_vision_context_only_not_motion_permission`.
+- Boundary: no default runtime behavior changed; no CAN, M33/M55 firmware, XiaoZhi L transport, ROS motion topic, trajectory, motor command, kernel, or driver change was made.
+- Next step: when ready, make the demo script optionally pass loop parameters to the C++ executable or build a real ROS2 node publishing/uploading loop state, still dry-run/hold by default.
+
+### 2026-06-26 - XiaoZhi L not synced due to project id mismatch
+
+- Finding: current XiaoZhi WebSocket/audio events are reaching the cloud API, but they are being written under project `fd6a55ed-a63c-44b3-b123-96fb3c154966` while the active rehab-arm VLA page and stereo V uploads use project `e201f41c-25a6-46e1-baf8-be6dcb83284c`.
+- Evidence: cloud API logs show accepted WebSocket paths like `/api/rehab-arm/v1/projects/fd6a55ed-a63c-44b3-b123-96fb3c154966/devices/nanopi-m5/xiaozhi/ws`; dashboard queries for `fd6a55ed...` show fresh `xiaozhi_ws_input/reply/tts` records, while `e201f41c...` only has older XiaoZhi records.
+- Correction: XiaoZhi physically runs on the Infineon M55 side, not on NanoPi. The `device_id=nanopi-m5` in the WebSocket path is an identity/route label and should not be treated as proof that NanoPi owns the L transport. A separate NanoPi agent config also contains the old project id, but that is not the XiaoZhi root cause by itself.
+- Current best hypothesis: the M55 XiaoZhi client, its exported relay bundle, or its stored relay token/WebSocket URL was generated with project `fd6a55ed-a63c-44b3-b123-96fb3c154966`.
+- Boundary: no XiaoZhi transport code, WebSocket handler, LLM relay, M55 firmware, camera runtime, CAN, M33, or motion path was changed during this diagnosis.
+- Next step: the owner of the M55/XiaoZhi L chain should regenerate or update the M55-side WebSocket URL/token/config so it targets project `e201f41c-25a6-46e1-baf8-be6dcb83284c`, then retest speech and confirm the active page receives fresh `xiaozhi_ws_*` records.
+
+### 2026-06-26 - Stereo V upload script now uses persistent C++ loop
+
+- Completed: changed `scripts/nanopi_stereo_vla_upload_loop.sh` so `VISION_IMPL=cpp` starts `stereo_camera_capture_upload_cpp` once and passes `--loop-count` plus `--interval-ms`, instead of restarting `ros2 run` for every frame. `VISION_IMPL=python` keeps the existing shell-managed loop as fallback.
+- Behavior: default remains finite and perception-only. `COUNT=0` is rejected for the persistent C++ path so the demo cannot accidentally run forever; use a finite `COUNT` for C++ VLA-V demos.
+- Test coverage: added a unit guard in `test_stereo_camera_capture_upload.py` that checks the script keeps the persistent C++ loop wiring.
+- Validation: Windows unit test `python -m unittest ...test_stereo_camera_capture_upload.py` passed with 28 tests. NanoPi `bash -n /tmp/nanopi_stereo_vla_upload_loop.sh` passed before deployment.
+- NanoPi live validation: copied the script to `/home/pi/nanopi_stereo_vla_upload_loop.sh` and ran `COUNT=2 INTERVAL_SECONDS=1 START_SEQUENCE=210 VISION_IMPL=cpp /home/pi/nanopi_stereo_vla_upload_loop.sh`. The C++ process uploaded two frames to project `e201f41c-25a6-46e1-baf8-be6dcb83284c`; both returned `ok=true`, `target_label=bottle`, detection counts `5/6`, and pixel disparities about `11 px` then `9 px`.
+- Boundary: still uploads only `stereo_vision_context` with `stereo_vision_context_only_not_motion_permission`. No L/XiaoZhi chain, CAN, M33/M55 firmware, ROS motion topic, trajectory, motor command, kernel, or driver change was made.
+- Next step: add a lightweight C++ loop-state summary or FPS/timing telemetry so the platform can display V freshness and stability without parsing raw logs.
+
+### 2026-06-26 - Stereo V capture_loop telemetry added and preserved by cloud API
+
+- Completed: added `capture_loop` telemetry to the C++ stereo payload: `loop_index`, `loop_count`, `interval_ms`, `sequence`, `frame_process_ms`, `loop_elapsed_ms`, and `implementation=opencv_cpp_persistent_loop`.
+- Completed: updated the cloud platform stereo request schema so `capture_loop` is not filtered out before dashboard/latest-event storage.
+- Tests: local rehab-arm unit test `python -m unittest ...test_stereo_camera_capture_upload.py` passed with 29 tests. Local platform API test `python -m pytest apps/api/tests/test_rehab_arm_sync.py -q` passed with 36 tests.
+- Cloud validation: the focused cloud API test `apps/api/tests/test_rehab_arm_sync.py::test_rehab_arm_stereo_vision_context_prefers_yolo_pair` passed, then `RESTART=1 scripts/start-cloud-prod.sh` restarted Web/API with health checks passing. Full cloud file run still has unrelated XiaoZhi ASR/TTS environment failures, so it was not used as the gate for this V-only change.
+- NanoPi validation: rebuilt `rehab_arm_psoc_bridge` on NanoPi, then ran `COUNT=2 INTERVAL_SECONDS=1 START_SEQUENCE=240 VISION_IMPL=cpp /home/pi/nanopi_stereo_vla_upload_loop.sh`. Both uploads returned `ok=true`; dashboard query for project `e201f41c-25a6-46e1-baf8-be6dcb83284c` now returns `payload.capture_loop` with frame timings.
+- Live timing: first warm-up frame reported about `2058 ms`; second frame reported about `294 ms`. This is useful for operator-visible V freshness and future low-latency tuning.
+- Boundary: V telemetry only. No XiaoZhi/L chain, CAN, M33/M55 firmware, ROS motion topic, trajectory, motor command, kernel, or driver change was made.
+- Next step: surface `capture_loop.frame_process_ms`, loop index, and recent-frame lock stability on the platform V card.
+
+### 2026-06-27 - NanoPi CAN bus read-only health check passed
+
+- Completed: remotely checked NanoPi `pi@192.168.3.36` CAN state without sending control frames or changing configuration.
+- Interface status: `can0` is `UP,LOWER_UP,ECHO`, bitrate `1000000`, sample point `0.750`, driver parent `spi3.0`, controller state `ERROR-ACTIVE`, and error counters are `tx 0 rx 0`.
+- Module/device status: `mcp251xfd` is loaded; dmesg shows `mcp251xfd spi3.0 can0 ... successfully initialized`.
+- Traffic validation: `candump -tz can0` captured live standard frames including `0x330` through `0x334`, `0x325`, `0x321`, and `0x322`. A 2 second counter check showed `rx_packets_delta=112`, `tx_packets_delta=2`, `rx_errors_delta=0`, and `tx_errors_delta=0`.
+- Conclusion: NanoPi SocketCAN and the current physical CAN bus are active and healthy at the time of test. This confirms live RX traffic and no current bus error growth.
+- Boundary: no `cansend`, no motor command, no interface bitrate change, no kernel/module change, no M33/M55 firmware change, and no motion path change was made.
+- Next step: if deeper diagnostics are needed, decode the observed `0x321/0x322/0x325/0x330-0x334` payloads against the current M33 status protocol, still read-only first.
+
+### 2026-06-27 - VLA-V capture loop timing surfaced on cloud page
+
+- Completed: surfaced `capture_loop` telemetry on the cloud rehab-arm VLA page V card and decision panel so operators can see C++ vision processing time and loop progress, e.g. `V 耗时 293.7 ms` and `V 延迟 293.7 ms · 2/2`.
+- Platform files: `D:\ai合作产品\apps\web\app\projects\[id]\rehab-arm-control\rehab-arm-control-client.tsx` reads `payload.capture_loop.frame_process_ms`, `loop_index`, `loop_count`, and `sequence`; the cloud API schema already preserves `capture_loop`.
+- Validation: local `npm --workspace apps/web run build` passed; cloud `npm run build:web && RESTART=1 scripts/start-cloud-prod.sh` passed; public page QA captured authenticated desktop/mobile screenshots.
+- Screenshot QA: desktop `D:\ai合作产品\docs\screenshots\rehab-arm-v-capture-loop-qa\desktop-1600.png`; mobile `D:\ai合作产品\docs\screenshots\rehab-arm-v-capture-loop-qa\mobile-390.png`. Both show `bottle`, loop progress, and V latency without obvious overlap.
+- Boundary: V/platform display only. No XiaoZhi/L transport, CAN, M33/M55 firmware, ROS motion topic, trajectory, motor command, kernel, or driver change was made.
+- Next step: add calibrated stereo depth and camera-to-arm transform placeholders into the same VLA-lite loop state, then keep the V loop continuously refreshing candidate target coordinates while A remains dry-run/hold until explicitly released.
+
+### 2026-06-27 - No-calibration pixel visual-servo panel added
+
+- Completed: added an operator-facing `无标定像素伺服` panel to the cloud rehab-arm VLA page. It derives target center, frame offset, lock stability, and a dry-run/hold next-step label from the existing stereo payload without requiring chessboard calibration.
+- Behavior: when the latest stereo frame is fresh, the panel can report pixel-only suggestions such as target left/right/up/down and dry-run correction labels. When vision is stale, it shows `视觉过期保持`, `等待新帧`, and `hold_observe` rather than a correction direction.
+- Safety boundary: the panel explicitly says pixel positions are not metric 3D coordinates. It does not write payloads, call XiaoZhi/L, publish ROS motion topics, send CAN, change M33/M55 firmware, or request motor motion.
+- Platform files: `D:\ai合作产品\apps\web\app\projects\[id]\rehab-arm-control\rehab-arm-control-client.tsx` and `rehab-arm-control.module.css`.
+- Validation: local `npm --workspace apps/web run build` passed; cloud `npm run build:web && RESTART=1 scripts/start-cloud-prod.sh` passed with Web/API health OK. Existing unrelated React hook warnings in `project-playable-shell.tsx` remain.
+- Screenshot QA: desktop `D:\ai合作产品\docs\screenshots\rehab-arm-pixel-servo-qa\desktop-1600.png`; mobile `D:\ai合作产品\docs\screenshots\rehab-arm-pixel-servo-qa\mobile-390.png`. Both show `无标定像素伺服`, stale-vision hold, `等待新帧`, and `hold_observe` without obvious overlap.
+- Next step: with NanoPi powered and a fresh bottle frame uploaded, verify the same panel transitions from stale hold to a fresh pixel dry-run correction such as `dry_run_shift_left/right`, still without calibrated depth or real motion.
+
+### 2026-06-27 - Pixel-servo hint payload contract reserved
+
+- Completed: extended the C++ stereo capture source to include a future `pixel_servo_hint` payload with `schema_version=uncalibrated_pixel_servo_hint_v1`, normalized image offset, target center, dry-run/hold next-step label, `metric_depth_available=false`, and `pixel_servo_hint_only_not_motion_permission`.
+- Completed: updated the cloud API schema to preserve `pixel_servo_hint`, added an API regression assertion, and updated the VLA page so it prefers payload-provided hints while retaining frontend fallback computation.
+- Validation: rehab-arm unit test `python -m unittest rehab_arm_ros2_ws.src.rehab_arm_psoc_bridge.test.test_stereo_camera_capture_upload` passed with 30 tests. Local focused platform API test passed. Local Web build passed.
+- Cloud validation: synced API schema and VLA page files to `~/apps/ai-collab`; cloud `npm run build:web && RESTART=1 scripts/start-cloud-prod.sh` passed; cloud focused API test `test_rehab_arm_stereo_vision_context_prefers_yolo_pair` passed; screenshot `D:\ai合作产品\docs\screenshots\rehab-arm-pixel-servo-qa\payload-contract-desktop-1600.png` confirms the page still renders the pixel-servo hold state.
+- Not deployed to NanoPi yet: `ssh pi@192.168.3.36` timed out during this step, so the updated C++ executable was not rebuilt or installed on the board. Current cloud page still uses frontend fallback until NanoPi is reachable and rebuilt.
+- Boundary: still V/perception-only. No XiaoZhi/L transport, CAN, M33/M55 firmware, ROS motion topic, trajectory, motor command, kernel, or driver change was made.
+- Next step: when NanoPi is reachable, copy/rebuild `stereo_camera_capture_upload_cpp`, run a finite `COUNT=2 VISION_IMPL=cpp` upload, and confirm dashboard payload contains `pixel_servo_hint`.
+
+### 2026-06-27 - Pixel-servo hint deployed and validated on NanoPi
+
+- Completed: NanoPi `pi@192.168.3.36` became reachable again. Synced `stereo_camera_capture_upload_cpp.cpp` to `/home/pi/rehab_arm_ros2_ws/src/rehab_arm_psoc_bridge/src/` and rebuilt `rehab_arm_psoc_bridge`; `colcon build --packages-select rehab_arm_psoc_bridge --symlink-install` passed.
+- Camera recovery: `/dev/video45` and `/dev/video47` were absent after reconnect. Loaded the already-present UVC module `/lib/modules/6.1.141.can-new/kernel/drivers/media/usb/uvc/uvcvideo.ko`; `v4l2-ctl --list-devices` then showed both `2M` USB cameras at `/dev/video45` and `/dev/video47`.
+- Live validation: ran `COUNT=2 INTERVAL_SECONDS=1 START_SEQUENCE=310 VISION_IMPL=cpp PROJECT_ID=e201f41c-25a6-46e1-baf8-be6dcb83284c API_BASE=http://106.55.62.122:8011 /home/pi/nanopi_stereo_vla_upload_loop.sh`. Both uploads returned platform `ok=true`.
+- Payload result: dashboard now preserves `payload.pixel_servo_hint` from the real NanoPi C++ executable. Latest sample `sequence=311` reports `pixel_servo_hint.state=waiting_target`, `next_step=hold_observe`, `control_boundary=pixel_servo_hint_only_not_motion_permission`, and `metric_depth_available=false`.
+- Scene note: current camera view detected chairs but no `bottle/cup`, so the object-fetch allowlist produced no target and correctly held instead of generating a dry-run shift. This is a scene/object placement issue, not a pipeline failure.
+- Screenshot QA: cloud page captured at `D:\ai合作产品\docs\screenshots\rehab-arm-pixel-servo-qa\nanopi-live-payload-desktop-1600.png`.
+- Boundary: no XiaoZhi/L transport, CAN, M33/M55 firmware, ROS motion topic, trajectory, motor command, kernel install, or driver replacement was performed.
+- Next step: place a bottle/cup clearly in both camera views and rerun the same finite C++ upload to validate `pixel_servo_hint.state=servo_adjust` or `centered_single_frame`.
+
+### 2026-06-27 - C++ VLA-V detector upgraded with YOLOX and live stereo bottle match
+
+- Completed: added YOLOX ONNX support to `rehab_arm_psoc_bridge/src/stereo_camera_capture_upload_cpp.cpp` with OpenCV DNN letterbox preprocessing, YOLOX grid decoding, NMS, `source=opencv_dnn_yolox`, and CLI options `--yolox-onnx`, `--yolox-labels`, `--yolox-input-size`, `--yolox-confidence-threshold`, `--yolox-nms-threshold`, and `--detect-right-yolox`.
+- Completed: updated `/home/pi/nanopi_stereo_vla_upload_loop.sh` via `scripts/nanopi_stereo_vla_upload_loop.sh` so the C++ path defaults to YOLOX nano (`/home/pi/rehab_arm_models/yolo/yolox_nano.onnx`) plus the existing SSD fallback. Default YOLOX confidence is `0.20` for the current bottle/cup bench scene.
+- Model note: existing `yolov5n*.onnx` assets on NanoPi failed under OpenCV 4.6.0 due to unsupported ONNX nodes/dynamic shapes. Downloaded YOLOX nano from the upstream YOLOX release and verified it loads with OpenCV DNN.
+- Validation: local `python -m unittest rehab_arm_ros2_ws.src.rehab_arm_psoc_bridge.test.test_stereo_camera_capture_upload` passed with 32 tests. NanoPi `colcon build --packages-select rehab_arm_psoc_bridge --symlink-install` passed after syncing the C++ source.
+- Live validation: ran `COUNT=3 INTERVAL_SECONDS=1 START_SEQUENCE=372 VISION_IMPL=cpp YOLOX_CONFIDENCE_THRESHOLD=0.20 SSD_CONFIDENCE_THRESHOLD=0.10 /home/pi/nanopi_stereo_vla_upload_loop.sh`. Frames uploaded successfully to project `e201f41c-25a6-46e1-baf8-be6dcb83284c`.
+- Payload result: sequence `373` and `374` detected `bottle` in both left and right images. Latest sample reports left bbox `[285,361,49,118]`, right bbox `[285,348,49,132]`, `horizontal_disparity_px=0`, `vertical_center_delta_px=6`, `pixel_servo_hint.state=servo_adjust`, and `next_step=dry_run_lift_down`.
+- Performance: after first-frame warm-up, the persistent C++ loop reported about `606-664 ms` per stereo pair with YOLOX+SSD on both cameras.
+- Artifact: annotated live frame saved at `D:\ai合作产品\docs\screenshots\rehab-arm-pixel-servo-qa\nanopi-live-frames\left-0371-annotated.jpg`.
+- Boundary: V/perception-only. No XiaoZhi/L transport, CAN, M33/M55 firmware, ROS motion topic, trajectory, motor command, kernel, or driver change was made.
+- Next step: add frame-to-frame lock stability/smoothing so A only consumes a target after several fresh consistent V frames, then expose the detector source and stereo match confidence clearly on the platform page.
