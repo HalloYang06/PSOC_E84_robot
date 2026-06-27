@@ -1308,6 +1308,38 @@ function keyframeSrc(imageUrl: string, apiBaseUrl: string) {
   return new URL(imageUrl, apiBaseUrl).toString();
 }
 
+function browserImageSrc(value: unknown, apiBaseUrl: string) {
+  const raw = text(value, "");
+  if (!raw) return "";
+  if (/^\/home\//i.test(raw) || /^[A-Za-z]:[\\/]/.test(raw)) return "";
+  return keyframeSrc(raw, apiBaseUrl);
+}
+
+function bboxStyle(bbox: number[] | null, frame: { width: number; height: number }) {
+  if (!bbox) return undefined;
+  const [x, y, width, height] = bbox;
+  const frameWidth = Math.max(1, frame.width);
+  const frameHeight = Math.max(1, frame.height);
+  return {
+    left: `${clamp01(x / frameWidth) * 100}%`,
+    top: `${clamp01(y / frameHeight) * 100}%`,
+    width: `${clamp01(width / frameWidth) * 100}%`,
+    height: `${clamp01(height / frameHeight) * 100}%`,
+  };
+}
+
+function detectionPills(detections: unknown, imageSide: "left" | "right") {
+  return asArray<AnyRecord>(detections)
+    .filter((item) => text(item.image_side, "left") === imageSide)
+    .slice(0, 4)
+    .map((item, index) => ({
+      key: `${imageSide}-${text(item.label, "object")}-${index}`,
+      label: text(item.label, "object"),
+      confidence: Number(item.confidence),
+      source: text(item.source, "detector"),
+    }));
+}
+
 function publicApiBaseUrl(apiBaseUrl: string) {
   if (typeof window === "undefined") return apiBaseUrl.replace(/\/$/, "");
   try {
@@ -3189,6 +3221,15 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
     : null;
   const stereoTargetCenter = targetCenterFromObservation(stereoTarget, stereoObservation);
   const stereoFrameSize = inferFrameSize(stereoPayload, stereoTarget, stereoObservation);
+  const stereoImagePairRef = record(stereoPayload.image_pair_ref);
+  const leftStereoImageSrc = browserImageSrc(stereoImagePairRef.left_image_url ?? stereoTarget.image_ref, apiBaseUrl) || absoluteImageUrl;
+  const rightStereoImageSrc = browserImageSrc(stereoImagePairRef.right_image_url ?? stereoObservation.right_image_ref, apiBaseUrl);
+  const leftTargetBbox = firstNumberTuple(4, stereoObservation.left_bbox_xywh, stereoTarget.bbox_xywh, stereoTarget.bbox);
+  const rightTargetBbox = firstNumberTuple(4, stereoObservation.right_bbox_xywh);
+  const leftTargetBoxStyle = bboxStyle(leftTargetBbox, stereoFrameSize);
+  const rightTargetBoxStyle = bboxStyle(rightTargetBbox, stereoFrameSize);
+  const leftDetectionPills = detectionPills(stereoPayload.detections, "left");
+  const rightDetectionPills = detectionPills(stereoPayload.detections, "right");
   const computedPixelServo = pixelServoSuggestion({
     center: stereoTargetCenter,
     frame: stereoFrameSize,
@@ -3473,15 +3514,65 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
 
             <article className={styles.pixelServoPanel} data-tone={pixelServo.tone}>
               <div>
-                <span>无标定像素伺服</span>
-                <strong>{pixelServo.title}</strong>
+                <span>V 视觉证据</span>
+                <strong>{stereoTargetLabel ? `${stereoTargetLabel} · ${pixelServo.title}` : pixelServo.title}</strong>
                 <small>{pixelServo.state}</small>
               </div>
-              <p>{pixelServo.summary}</p>
+              <div className={styles.visionEvidenceStage} aria-label="双目识别框视觉证据">
+                <figure>
+                  <figcaption>
+                    <span>Left</span>
+                    <strong>{leftTargetBbox ? "target lock" : "waiting bbox"}</strong>
+                  </figcaption>
+                  <div className={styles.visionFrame}>
+                    {leftStereoImageSrc ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={leftStereoImageSrc} alt="左目摄像头帧" />
+                    ) : (
+                      <div className={styles.syntheticFrame} />
+                    )}
+                    {leftTargetBoxStyle ? (
+                      <span className={styles.targetBox} style={leftTargetBoxStyle}>
+                        <em>{stereoTargetLabel || "target"}</em>
+                      </span>
+                    ) : null}
+                    <span className={styles.reticle} />
+                  </div>
+                  <div className={styles.detectionPills}>
+                    {leftDetectionPills.map((item) => (
+                      <span key={item.key}>{item.label} {Number.isFinite(item.confidence) ? Math.round(item.confidence * 100) : "-"}%</span>
+                    ))}
+                  </div>
+                </figure>
+                <figure>
+                  <figcaption>
+                    <span>Right</span>
+                    <strong>{rightTargetBbox ? "stereo match" : "waiting match"}</strong>
+                  </figcaption>
+                  <div className={styles.visionFrame}>
+                    {rightStereoImageSrc ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={rightStereoImageSrc} alt="右目摄像头帧" />
+                    ) : (
+                      <div className={styles.syntheticFrame} />
+                    )}
+                    {rightTargetBoxStyle ? (
+                      <span className={styles.targetBox} style={rightTargetBoxStyle}>
+                        <em>{stereoTargetLabel || "target"}</em>
+                      </span>
+                    ) : null}
+                    <span className={styles.reticle} />
+                  </div>
+                  <div className={styles.detectionPills}>
+                    {rightDetectionPills.map((item) => (
+                      <span key={item.key}>{item.label} {Number.isFinite(item.confidence) ? Math.round(item.confidence * 100) : "-"}%</span>
+                    ))}
+                  </div>
+                </figure>
+              </div>
               <ul>
                 <li><span>目标中心</span><strong>{stereoTargetCenter ? `${compactNumberText(stereoTargetCenter[0], " px")}, ${compactNumberText(stereoTargetCenter[1], " px")}` : "等待 bbox"}</strong></li>
                 <li><span>画面偏移</span><strong>{pixelServo.targetOffsetText}</strong></li>
-                <li><span>稳定性</span><strong>{pixelServo.stabilityText}</strong></li>
                 <li><span>下一步</span><strong>{pixelServo.nextStep}</strong></li>
               </ul>
             </article>
