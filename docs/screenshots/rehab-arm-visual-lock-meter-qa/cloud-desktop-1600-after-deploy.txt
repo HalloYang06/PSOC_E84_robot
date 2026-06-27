@@ -1,0 +1,288 @@
+← 主页面
+设备数据工作台
+模型练习场
+设备 4
+在线 0
+M33 裁决 开启
+已同步 20:11:44
+刷新状态
+
+选择设备后查看最新状态。这里不提供真实运动控制。
+
+rehab-arm-alpha
+nanopi-m5
+受限
+最近上传：2026/06/27 18:09:43
+rehab-arm-alpha
+nanopi-m55-cloud-vla-check
+正常
+最近上传：2026/06/10 01:05:40
+rehab-arm-alpha
+nanopi-m55-cloud-vla
+正常
+最近上传：2026/06/10 01:05:00
+rehab-arm-alpha
+nanopi-m5-isolation-check
+正常
+最近上传：2026/06/09 23:52:59
+当前设备
+rehab-arm-alpha
+
+nanopi-m5
+
+在线
+离线
+安全
+受限
+M33 允许运动
+不允许
+数据
+待补数据
+只读总览
+
+服务器和网页只展示状态、图像、质量门和高层任务草案；不发 CAN、电流、力矩、速度、角度或 M33 覆盖。
+
+V · 双目视觉
+bottle
+
+目标 bottle；检测 12 个；处理 620.5 ms；循环 2/2；基线 0.1 m；视差 -1.5 px；深度 0 m
+
+视觉过期 hold
+L · 小智语音
+日常聊天，不进 VLA
+
+你是什么模型啊？
+
+A · 下一步建议
+A hold_observe
+
+视觉帧已经过期，A 不使用旧坐标生成逼近候选。
+
+A dry-run gate
+视觉过期保持
+hold_stale_vision
+
+视觉帧已经过期，A 不使用旧坐标生成逼近候选。
+
+模式
+日常聊天
+执行
+dry_run_only
+目标白名单
+cup, bottle
+视觉锁定
+2/2 帧锁定 bottle；双目 2；抖动 0.3 px；视差波动 1.5 px
+锁定门
+warming_up · observe
+闭环状态
+视觉过期保持
+V 延迟
+620.5 ms · 2/2
+V 视觉证据
+bottle · 视觉过期保持
+hold_stale_vision
+Left
+target lock
+bottle
+chair 64%
+tv 40%
+suitcase 33%
+bottle 26%
+Right
+stereo match
+bottle
+chair 69%
+bottle 54%
+chair 24%
+tv 24%
+图: 左/右真帧
+框: C++ YOLOX
+配对: 2/2
+边界: dry-run
+目标中心
+308.5 px, 421 px
+画面偏移
+等待新帧
+下一步
+hold_observe
+语音路由
+日常聊天
+前端兜底预览 · confidence 52%
+
+你是什么模型啊？
+
+我口渴了，帮我拿水杯
+我要开始今天的训练
+检查一下摄像头和 CAN
+今天训练得怎么样，帮我总结一下
+你好，陪我聊一会儿
+route_class
+daily_chat
+ai_operation_mode
+daily_chat
+route_action
+operator_facing_reply_only
+boundary
+voice_route_only_not_motion_permission
+URDF / Three.js 机械臂
+默认可替换模型，可导入真实 URDF
+6 个关节正在匹配角度
+展开 3D
+渲染反馈
+2 个未知
+
+2 个限位夹紧/仿真夹紧。
+
+接线 / 温度
+3 路异常
+
+颜色表达温度，link 透明/灰色表达接线异常。
+
+模型匹配
+可替换模型
+
+真实设备模型和人体 GLTF/VRM 后续由用户上传接入。
+
+关节状态流
+4/6 个关节有历史角度
+6 个只读角度来源
+模型包 / URDF 导入
+关节角度概览
+6 个关节
+上肢肌肉 / 开源 3D 模型等待肌电小模型
+疲劳 unknown
+等待上肢肌肉 GLB 资产
+已预留开源模型承载位；把合法 GLB 写入 human_model_url 后，这里会直接渲染。
+肩部三角肌
+unknown
+
+fatigue unknown
+
+上臂屈肌
+unknown
+
+fatigue unknown
+
+前臂屈伸肌
+unknown
+
+fatigue unknown
+
+肩颈稳定肌
+unknown
+
+fatigue unknown
+
+动作预测模型接口
+等待动作预测模型接入
+动作摘要
+等待动作预测模型接入
+
+输出给平台展示和审阅，不直接变成运动许可。
+
+接口字段
+sensor_payload.motion_prediction / action_prediction / model_outputs
+
+后续可从 NanoPi、M55 或云端模型把 top-k 动作建议塞进这个结构。
+
+输入映射
+EMG + fatigue + IMU
+
+建议字段：channel_id、muscle_name、confidence、top_k、time_window。
+
+开源模型来源和替换
+AnatomyTOOL / Open3DModel upper-limb muscle layers
+安全状态
+受限
+
+motion_allowed 只读：false；模式：logging_only；心跳：90 ms；来源：m33 can 0x322。
+
+XiaoZhi / M55 WebSocket
+正在思考
+正在思考
+
+平台正在整理上下文并请求模型
+
+分类
+等待分类
+VLA-L
+日常聊天，不进 VLA
+音频
+0 bytes
+Endpoint
+ws://106.55.62.122:8011/api/rehab-arm/v1/projects/e201f41c-25a6-46e1-baf8-be6dcb83284c/devices/nanopi-m5/xiaozhi/ws?robot_id=rehab-arm-alpha
+session
+未建立
+error
+无
+语音只进 VLA 语言输入
+
+xiaozhi_voice_relay_only_not_motion_permission
+
+输入输出流
+最近 6 条
+急停请求
+可发送请求
+
+只有 estop_ack_v1 且 m33_ack=true 后，界面才显示“急停已执行”。HTTP 成功只代表请求进入本地安全路径。
+
+发起急停请求
+模型中转
+服务端 provider 已配置
+Provider
+通义千问 / DashScope compatible
+
+qwen-plus
+
+外部调用
+降级
+
+未配置 API key
+
+设备令牌
+未生成
+
+用于 NanoPi/M55 调用
+
+model_relay_only_not_motion_permission
+
+外部模型调用通过安全过滤
+
+调用试验台
+高层建议 / dry-run 候选
+生成高层建议
+用户询问模型身份，属日常交互，无康复动作意图。
+接入地址和示例
+HTTP / XiaoZhi WS
+厂商和密钥
+未配置密钥
+设备调用令牌
+模型中转 / XiaoZhi
+安全过滤和审计
+最近 2 条
+VLA / 训练 / 仿真入口
+先补齐 V/L/A 数据
+
+V=摄像头关键帧，L=语音语言门控，A=高层 dry-run 候选。训练和 MuJoCo 结果都回到平台做证据，不直接变成真机运动。
+
+1
+
+NanoPi 上传 camera_keyframe_v1、sensor_state、robot_render_state。
+
+2
+
+模型中转分类 L：日常聊天不进 VLA，康复指令进入 VLA-L。
+
+3
+
+VLA-A 提交 vla_task_request_v1，只生成 dry-run 候选。
+
+4
+
+MuJoCo 上传 simulation_readiness，人工审核后才可能进入真机链路。
+
+数据/标注
+VLA-L 测试
+摄像头关键帧
+电机状态表 · 0 个电机
+设备档案和事件日志

@@ -15,3 +15,5 @@
 - Environment: local Next dev server, cloud API `http://106.55.62.122:8011`, rehab-arm route `/projects/e201f41c-25a6-46e1-baf8-be6dcb83284c/rehab-arm-control`.
 - Lesson: authenticated screenshot helpers that inject cookies after browser startup may not satisfy Next SSR route guards on the first document request. Use the production cloud page after deployment, or run local API/auth with matching environment, before claiming user-view QA.
 - Status: QA limitation recorded; backend contract and frontend build still passed for the visual-lock-meter slice.
+- Correction: the cloud test account password is `1234`, not the previously used `password`. Cloud `/api/auth/session` succeeds with `3245056131@qq.com` / `1234`, and the production rehab-arm page can be opened through the normal login form.
+- Deployment note: cloud HTTP health was OK, but non-interactive SSH push/deploy was blocked by `Permission denied (publickey,password)`. Use an interactive SSH session or restore key-based auth before claiming the latest web build is deployed.

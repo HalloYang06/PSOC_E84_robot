@@ -18,3 +18,4 @@
 - Validated backend contract with `python -m pytest apps/api/tests/test_rehab_arm_sync.py -k stereo_vision_context_prefers_yolo_pair -q`.
 - Validated frontend compile with `npm --workspace apps/web run build`.
 - User-view screenshot QA was attempted against local web with cloud API, but local SSR authentication redirected to `/login`; no successful visual screenshot was claimed for this slice.
+- Re-tested cloud login with the corrected account password and confirmed the cloud rehab-arm page opens with real stereo evidence; production web had not yet picked up commit `15b1d729`, so the new visual-lock meter was still unverified on the deployed page.
