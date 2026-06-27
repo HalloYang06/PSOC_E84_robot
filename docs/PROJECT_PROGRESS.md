@@ -3615,3 +3615,12 @@
 - Screenshot QA: `D:\ai合作产品\docs\screenshots\rehab-arm-a-dry-run-gate-qa\desktop-1600.png` shows `A hold_observe` and `A dry-run gate / hold_stale_vision`; this confirms old-but-stable V frames do not produce an approach candidate.
 - Boundary: platform display/model-context only. No XiaoZhi/L transport, CAN, M33/M55 firmware, ROS motion topic, trajectory, motor command, kernel, camera runtime, or real motion path change was made.
 - Next step: connect this page-level gate to a real server-side VLA action candidate validator before any motion release work.
+
+### 2026-06-27 - VLA page visual evidence UI added
+
+- Completed: updated the cloud rehab-arm page to make the VLA demo more graphical and less raw-data-heavy. The former pixel-servo card now presents a `V 视觉证据` stage with left/right eye panels, target bounding boxes, reticle overlay, detector confidence pills, and the current dry-run next-step label.
+- Behavior: if stereo frame refs are browser-accessible HTTP/API URLs, the UI displays the real image and overlays boxes. If the current payload only contains NanoPi-local `/home/pi/...jpg` paths, the UI falls back to a dark synthetic vision grid with the same bbox overlay so the demo still shows what V believes it saw.
+- Validation: local platform Web build passed. Cloud deploy via direct page/CSS sync passed with Web/API health OK.
+- Screenshot QA: desktop `D:\ai合作产品\docs\screenshots\rehab-arm-visual-evidence-ui-qa\desktop-1600.png`; mobile `D:\ai合作产品\docs\screenshots\rehab-arm-visual-evidence-ui-qa\mobile-390.png`. Desktop shows V/L/A, A dry-run gate, and left/right target boxes without overlap; mobile stacks the evidence cards without horizontal scrolling.
+- Boundary: frontend display only. No XiaoZhi/L transport, CAN, M33/M55 firmware, ROS motion topic, trajectory, motor command, kernel, camera runtime, or true motion path change was made.
+- Next step: add a real low-rate keyframe/image upload from NanoPi to the existing `/camera/keyframes` endpoint or a stereo-frame file endpoint, so the page can show actual camera frames behind the boxes instead of only the synthetic fallback.
