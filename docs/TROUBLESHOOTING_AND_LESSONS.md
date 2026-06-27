@@ -2149,3 +2149,19 @@ Fix / trick:
 Boundary:
 - Do not fix this by editing M33 CAN/motion control, NanoPi camera/V, or cloud relay core protocol.
 - If the symptom returns with `tts_fail=0` and `xz_ws=1`, continue on M55 sound0 playback quality/queue timing rather than WiFi/token.
+
+## 2026-06-27 - QA text commands must not leave M55 in manual listening
+
+Symptoms:
+- After using `m55qa_xz_text`, COM4 can show stale M55 voice status and a later command stuck in `tx_pending=1`.
+- `xz_ws` may still be `1`, so this is not a WiFi/token/project failure.
+
+Root cause:
+- The QA text helper was entering the same manual listening state as a real speech turn, then sending a text-only stop. If the platform returned text before binary audio, wake/listening state could stay in a QA-specific half-state.
+
+Fix / trick:
+- M55 QA text now directly sends the text-bearing listen stop without entering real manual listening.
+- Success criteria after QA text: `tx_pending=0`, `wake_on=1`, `xz_ws=1`, and status sequence keeps updating.
+
+Boundary:
+- This is M55 XiaoZhi QA behavior only. Do not change M33 motion/CAN or NanoPi paths for this symptom.
