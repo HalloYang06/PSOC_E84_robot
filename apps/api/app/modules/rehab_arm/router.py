@@ -378,6 +378,21 @@ def api_latest_camera_keyframe_file(device_id: str):
     return FileResponse(path, media_type=media_type)
 
 
+@router.get("/devices/{device_id}/camera/keyframes/{camera_id}/latest/file")
+def api_latest_camera_keyframe_file_by_camera(device_id: str, camera_id: str):
+    path = latest_keyframe_path(device_id, camera_id)
+    if path is None:
+        raise HTTPException(status_code=404, detail="latest keyframe not found for camera")
+    suffix = Path(path).suffix.lower().lstrip(".")
+    media_type = {
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "png": "image/png",
+        "webp": "image/webp",
+    }.get(suffix, "application/octet-stream")
+    return FileResponse(path, media_type=media_type)
+
+
 @router.get("/devices/{device_id}/camera/stream-offer")
 def api_get_camera_stream_offer(device_id: str):
     return ok(build_camera_stream_offer(device_id))

@@ -2387,7 +2387,9 @@ def record_camera_keyframe(payload: dict[str, Any], image_bytes: bytes) -> dict[
     )
     record["image_path"] = str(image_path)
     record["image_url"] = f"/api/rehab-arm/v1/devices/{device_id}/camera/keyframes/latest/file"
+    record["camera_image_url"] = f"/api/rehab-arm/v1/devices/{device_id}/camera/keyframes/{camera_id}/latest/file"
     write_device_latest(device_id, "camera_keyframe", record)
+    write_json(device_dir(device_id) / f"camera_keyframe_{camera_id}_latest.json", record)
     return {
         "ok": True,
         "device_id": device_id,
@@ -2396,12 +2398,16 @@ def record_camera_keyframe(payload: dict[str, Any], image_bytes: bytes) -> dict[
         "sha256": digest,
         "size_bytes": len(image_bytes),
         "image_url": record["image_url"],
+        "camera_image_url": record["camera_image_url"],
         "sync_role": record["sync_role"],
     }
 
 
-def latest_keyframe_path(device_id: str) -> Path | None:
-    latest = read_json(device_dir(device_id) / "camera_keyframe_latest.json")
+def latest_keyframe_path(device_id: str, camera_id: str = "") -> Path | None:
+    safe_device_id = safe_part(device_id)
+    safe_camera_id = safe_part(camera_id) if camera_id else ""
+    latest_name = f"camera_keyframe_{safe_camera_id}_latest.json" if safe_camera_id else "camera_keyframe_latest.json"
+    latest = read_json(device_dir(safe_device_id) / latest_name)
     path = Path(str(latest.get("image_path") or "")) if latest else None
     if path and path.is_file():
         return path

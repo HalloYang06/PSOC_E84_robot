@@ -415,6 +415,50 @@ def test_rehab_arm_camera_keyframe_upload_and_latest_file(tmp_path, monkeypatch)
     get_settings.cache_clear()
 
 
+def test_rehab_arm_camera_keyframe_latest_file_can_be_scoped_by_camera(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
+    get_settings.cache_clear()
+
+    left_image = b"\xff\xd8left-stereo-frame\xff\xd9"
+    right_image = b"\xff\xd8right-stereo-frame\xff\xd9"
+
+    for camera_id, image, ts in (
+        ("stereo_left", left_image, "1710000002.0"),
+        ("stereo_right", right_image, "1710000003.0"),
+    ):
+        response = client.post(
+            "/api/rehab-arm/v1/devices/nanopi-m5/camera/keyframes",
+            data={
+                "robot_id": "rehab-arm-alpha",
+                "project_id": "project-rehab",
+                "camera_id": camera_id,
+                "frame_ts_unix": ts,
+                "image_format": "jpg",
+                "width": "640",
+                "height": "480",
+                "sha256": hashlib.sha256(image).hexdigest(),
+                "detection_summary": f"{camera_id} evidence",
+                "scene_summary": "stereo evidence",
+                "vla_context": "keyframe_only_not_motion_permission",
+            },
+            files={"file": (f"{camera_id}.jpg", image, "image/jpeg")},
+        )
+        assert response.status_code == 200
+        assert response.json()["data"]["camera_image_url"].endswith(f"/camera/keyframes/{camera_id}/latest/file")
+
+    left_latest = client.get("/api/rehab-arm/v1/devices/nanopi-m5/camera/keyframes/stereo_left/latest/file")
+    right_latest = client.get("/api/rehab-arm/v1/devices/nanopi-m5/camera/keyframes/stereo_right/latest/file")
+    generic_latest = client.get("/api/rehab-arm/v1/devices/nanopi-m5/camera/keyframes/latest/file")
+
+    assert left_latest.status_code == 200
+    assert left_latest.content == left_image
+    assert right_latest.status_code == 200
+    assert right_latest.content == right_image
+    assert generic_latest.status_code == 200
+    assert generic_latest.content == right_image
+    get_settings.cache_clear()
+
+
 def test_rehab_arm_stereo_vision_context_prefers_yolo_pair(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
     get_settings.cache_clear()

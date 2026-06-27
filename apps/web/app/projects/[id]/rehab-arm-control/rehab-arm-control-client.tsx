@@ -3222,8 +3222,15 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
   const stereoTargetCenter = targetCenterFromObservation(stereoTarget, stereoObservation);
   const stereoFrameSize = inferFrameSize(stereoPayload, stereoTarget, stereoObservation);
   const stereoImagePairRef = record(stereoPayload.image_pair_ref);
-  const leftStereoImageSrc = browserImageSrc(stereoImagePairRef.left_image_url ?? stereoTarget.image_ref, apiBaseUrl) || absoluteImageUrl;
-  const rightStereoImageSrc = browserImageSrc(stereoImagePairRef.right_image_url ?? stereoObservation.right_image_ref, apiBaseUrl);
+  const selectedDeviceIdForUrl = selected?.device_id ? encodeURIComponent(selected.device_id) : "";
+  const stereoLeftKeyframeSrc = selected?.device_id
+    ? keyframeSrc(`/api/rehab-arm/v1/devices/${selectedDeviceIdForUrl}/camera/keyframes/stereo_left/latest/file`, apiBaseUrl)
+    : "";
+  const stereoRightKeyframeSrc = selected?.device_id
+    ? keyframeSrc(`/api/rehab-arm/v1/devices/${selectedDeviceIdForUrl}/camera/keyframes/stereo_right/latest/file`, apiBaseUrl)
+    : "";
+  const leftStereoImageSrc = browserImageSrc(stereoImagePairRef.left_image_url ?? stereoTarget.image_ref, apiBaseUrl) || stereoLeftKeyframeSrc;
+  const rightStereoImageSrc = browserImageSrc(stereoImagePairRef.right_image_url ?? stereoObservation.right_image_ref, apiBaseUrl) || stereoRightKeyframeSrc;
   const leftTargetBbox = firstNumberTuple(4, stereoObservation.left_bbox_xywh, stereoTarget.bbox_xywh, stereoTarget.bbox);
   const rightTargetBbox = firstNumberTuple(4, stereoObservation.right_bbox_xywh);
   const leftTargetBoxStyle = bboxStyle(leftTargetBbox, stereoFrameSize);
@@ -3522,7 +3529,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
                 <figure>
                   <figcaption>
                     <span>Left</span>
-                    <strong>{leftTargetBbox ? "target lock" : "waiting bbox"}</strong>
+                    <strong>{leftStereoImageSrc && leftTargetBbox ? "target lock" : "waiting evidence"}</strong>
                   </figcaption>
                   <div className={styles.visionFrame}>
                     {leftStereoImageSrc ? (
@@ -3531,7 +3538,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
                     ) : (
                       <div className={styles.syntheticFrame} />
                     )}
-                    {leftTargetBoxStyle ? (
+                    {leftStereoImageSrc && leftTargetBoxStyle ? (
                       <span className={styles.targetBox} style={leftTargetBoxStyle}>
                         <em>{stereoTargetLabel || "target"}</em>
                       </span>
@@ -3547,7 +3554,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
                 <figure>
                   <figcaption>
                     <span>Right</span>
-                    <strong>{rightTargetBbox ? "stereo match" : "waiting match"}</strong>
+                    <strong>{rightStereoImageSrc && rightTargetBbox ? "stereo match" : "waiting right image"}</strong>
                   </figcaption>
                   <div className={styles.visionFrame}>
                     {rightStereoImageSrc ? (
@@ -3556,7 +3563,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
                     ) : (
                       <div className={styles.syntheticFrame} />
                     )}
-                    {rightTargetBoxStyle ? (
+                    {rightStereoImageSrc && rightTargetBoxStyle ? (
                       <span className={styles.targetBox} style={rightTargetBoxStyle}>
                         <em>{stereoTargetLabel || "target"}</em>
                       </span>

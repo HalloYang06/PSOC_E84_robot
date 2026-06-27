@@ -6190,3 +6190,92 @@
     min-height: 320px;
   }
 }
+
+/* EOF VLA demo layout guard: keep evidence, route, and safety cards from clipping each other. */
+.workspace {
+  align-content: start;
+}
+
+.vlaDecisionDeck,
+.primaryGrid,
+.sceneColumn,
+.sideStack {
+  min-width: 0;
+}
+
+.vlaDecisionDeck {
+  grid-template-columns: minmax(300px, 1fr) minmax(300px, 0.95fr) minmax(300px, 1fr);
+  align-items: stretch;
+}
+
+.vlaLiteLoopPanel,
+.pixelServoPanel,
+.voiceRoutePanel {
+  min-height: 0;
+  height: auto;
+  overflow: visible;
+}
+
+.voiceRoutePanel,
+.pixelServoPanel {
+  align-content: start;
+}
+
+.visionEvidenceStage {
+  align-items: start;
+}
+
+.visionFrame {
+  min-height: 132px;
+}
+
+.detectionPills {
+  align-content: start;
+}
+
+.primaryGrid {
+  min-height: 0;
+  align-items: start;
+}
+
+.sideStack {
+  align-self: start;
+  height: auto;
+  max-height: none;
+  overflow: visible;
+  padding-bottom: 24px;
+  position: static;
+}
+
+.sideStack section {
+  overflow: visible;
+}
+
+@media (max-width: 1440px) {
+  .vlaDecisionDeck {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .vlaDecisionDeck > article:last-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 1180px) {
+  .vlaDecisionDeck,
+  .primaryGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .vlaLiteLoopPanel ul,
+  .pixelServoPanel ul,
+  .voiceRoutePanel ul {
+    grid-template-columns: 1fr;
+  }
+
+  .visionFrame {
+    min-height: 180px;
+  }
+}
