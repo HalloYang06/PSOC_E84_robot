@@ -80,6 +80,17 @@ class StereoCameraCaptureUploadTests(unittest.TestCase):
         self.assertIn('dry_run_shift_left', source_text)
         self.assertIn('metric_depth_available', source_text)
 
+    def test_cpp_stereo_capture_payload_includes_visual_lock_stability(self) -> None:
+        package_root = Path(__file__).resolve().parents[1]
+        source_text = (package_root / 'src' / 'stereo_camera_capture_upload_cpp.cpp').read_text(encoding='utf-8')
+
+        self.assertIn('visual_lock_stability_json', source_text)
+        self.assertIn('visual_lock_stability_v1', source_text)
+        self.assertIn('same_label_frames', source_text)
+        self.assertIn('stereo_match_frames', source_text)
+        self.assertIn('stable_for_dry_run', source_text)
+        self.assertIn('visual_lock_stability_only_not_motion_permission', source_text)
+
     def test_cpp_stereo_capture_supports_yolox_onnx_detector(self) -> None:
         package_root = Path(__file__).resolve().parents[1]
         source_text = (package_root / 'src' / 'stereo_camera_capture_upload_cpp.cpp').read_text(encoding='utf-8')

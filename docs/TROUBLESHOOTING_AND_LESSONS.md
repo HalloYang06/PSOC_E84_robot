@@ -6816,3 +6816,25 @@ python -X utf8 scripts\capture-auth-screenshot-cdp.py `
 状态：
 
 - 2026-06-27 已在 NanoPi 双 USB 摄像头上验证：`COUNT=3 ... YOLOX_CONFIDENCE_THRESHOLD=0.20` 连续上传成功，序列 `373/374` 左右目均检测到 `bottle`，并生成 `pixel_servo_hint.state=servo_adjust`、`next_step=dry_run_lift_down`。
+
+### stereo_context 新增稳定性字段后 dashboard 为空时先查 API schema
+
+现象：
+
+- C++ stereo payload 本地输出已经包含 `visual_lock_stability`，但云端 dashboard 返回的 `stereo_vision_context.payload.visual_lock_stability` 为空或不存在。
+- 上传接口仍返回 `ok=true`，目标、检测数和旧字段正常。
+
+判断：
+
+- 这通常不是 NanoPi 没发字段，也不是前端没取字段。
+- 平台 API 的 `RehabStereoVisionContextRequest` 是 Pydantic 模型；没有显式声明的新字段会在 `model_dump(mode="json")` 后被过滤。
+
+解决：
+
+- 在 `D:\ai合作产品\apps\api\app\modules\rehab_arm\schemas.py` 的 `RehabStereoVisionContextRequest` 中声明 `visual_lock_stability: dict | None = None`。
+- 在 `D:\ai合作产品\apps\api\tests\test_rehab_arm_sync.py` 中加 dashboard 保留字段的回归断言。
+- 部署/重启云端 API 后，从 NanoPi 重新上传一组新帧，再查询 dashboard。
+
+状态：
+
+- 2026-06-27 已验证：dashboard 保存并返回 `visual_lock_stability_v1`，页面显示 `stable_candidate · dry-run ready`。该字段只表示视觉 dry-run 稳定，不是运动许可。

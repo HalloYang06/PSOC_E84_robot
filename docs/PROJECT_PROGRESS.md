@@ -3594,3 +3594,14 @@
 - Artifact: annotated live frame saved at `D:\ai合作产品\docs\screenshots\rehab-arm-pixel-servo-qa\nanopi-live-frames\left-0371-annotated.jpg`.
 - Boundary: V/perception-only. No XiaoZhi/L transport, CAN, M33/M55 firmware, ROS motion topic, trajectory, motor command, kernel, or driver change was made.
 - Next step: add frame-to-frame lock stability/smoothing so A only consumes a target after several fresh consistent V frames, then expose the detector source and stereo match confidence clearly on the platform page.
+
+### 2026-06-27 - VLA-V visual lock stability added and displayed on cloud page
+
+- Completed: added `visual_lock_stability_v1` to the C++ stereo V payload. The C++ loop now keeps a sliding target history and reports candidate label, window size, same-label frame count, stereo-match frame count, center jitter, disparity spread, `state`, `reason`, and `stable_for_dry_run`.
+- Completed: added CLI tuning knobs: `--stability-window`, `--stability-min-same-label-frames`, `--stability-min-stereo-match-frames`, `--stability-max-center-jitter-px`, and `--stability-max-disparity-spread-px`.
+- Completed: cloud API schema now preserves `visual_lock_stability` instead of dropping it during Pydantic model serialization. The cloud rehab-arm page shows `多帧稳定`, `视觉锁定`, `锁定门`, and forwards visual-lock fields into model-relay context.
+- Validation: local rehab-arm unit tests passed with 33 tests. NanoPi `colcon build --packages-select rehab_arm_psoc_bridge --symlink-install` passed. NanoPi live run `COUNT=5 INTERVAL_SECONDS=1 START_SEQUENCE=390 VISION_IMPL=cpp ... /home/pi/nanopi_stereo_vla_upload_loop.sh` uploaded frames successfully.
+- Live result: latest dashboard sample `sequence=394` reported `target=bottle`, `pixel_servo_hint.state=servo_adjust`, `next_step=dry_run_lift_down`, `visual_lock_stability.state=stable_candidate`, `stable_for_dry_run=true`, `same_label_frames=5`, `stereo_match_frames=4`, `center_jitter_px=1.55`, and `disparity_spread_px=1.5`.
+- Platform validation: local and cloud focused API tests passed; local Web build passed; cloud `npm run build:web && RESTART=1 scripts/start-cloud-prod.sh` passed. Screenshot QA saved at `D:\ai合作产品\docs\screenshots\rehab-arm-visual-lock-stability-qa\desktop-1600.png`.
+- Boundary: still V/perception and dry-run readiness only. `visual_lock_stability_only_not_motion_permission` does not grant motion permission. No XiaoZhi/L transport, CAN, M33/M55 firmware, ROS motion topic, trajectory, motor command, kernel, or driver change was made.
+- Next step: make the A/dry-run candidate gate explicitly require `visual_lock_stability.stable_for_dry_run=true` before displaying an approach candidate, while true motion remains blocked until calibration, camera-to-arm transform, operator review, and M33 safety approval.

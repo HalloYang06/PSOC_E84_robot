@@ -60,6 +60,11 @@ struct Options {
   std::vector<std::string> target_label_allowlist;
   bool stereo_associate_target = false;
   double max_stereo_vertical_delta_px = 80.0;
+  int stability_window = 5;
+  int stability_min_same_label_frames = 3;
+  int stability_min_stereo_match_frames = 2;
+  double stability_max_center_jitter_px = 32.0;
+  double stability_max_disparity_spread_px = 48.0;
   int loop_count = 1;
   int interval_ms = 0;
 };
@@ -92,6 +97,29 @@ struct LoopTelemetry {
   double loop_elapsed_ms = 0.0;
 };
 
+struct TargetObservation {
+  int sequence = 0;
+  bool has_target = false;
+  bool has_right_match = false;
+  std::string label;
+  cv::Point2d left_center;
+  double horizontal_disparity_px = 0.0;
+};
+
+struct VisualLockStability {
+  int window_size = 0;
+  int samples = 0;
+  int target_frames = 0;
+  int same_label_frames = 0;
+  int stereo_match_frames = 0;
+  std::string candidate_label;
+  double center_jitter_px = 0.0;
+  double disparity_spread_px = 0.0;
+  bool stable_for_dry_run = false;
+  std::string state = "waiting_target";
+  std::string reason = "no_target_detection";
+};
+
 std::string usage() {
   return R"(Capture two USB camera frames, run OpenCV DNN MobileNet-SSD, and optionally upload a perception-only stereo VLA-V context.
 
@@ -109,6 +137,7 @@ Common:
   --yolox-onnx /home/pi/rehab_arm_models/yolo/yolox_nano.onnx
   --yolox-labels /home/pi/rehab_arm_models/yolo/coco80.txt --detect-right-yolox
   --stereo-associate-target --analyze-image-quality
+  --stability-window 5 --stability-min-same-label-frames 3
   --loop-count 10 --interval-ms 200
 
 Safety:
@@ -281,6 +310,16 @@ Options parse_args(int argc, char **argv) {
       options.stereo_associate_target = true;
     } else if (arg == "--max-stereo-vertical-delta-px") {
       options.max_stereo_vertical_delta_px = std::stod(require_value(arg));
+    } else if (arg == "--stability-window") {
+      options.stability_window = std::stoi(require_value(arg));
+    } else if (arg == "--stability-min-same-label-frames") {
+      options.stability_min_same_label_frames = std::stoi(require_value(arg));
+    } else if (arg == "--stability-min-stereo-match-frames") {
+      options.stability_min_stereo_match_frames = std::stoi(require_value(arg));
+    } else if (arg == "--stability-max-center-jitter-px") {
+      options.stability_max_center_jitter_px = std::stod(require_value(arg));
+    } else if (arg == "--stability-max-disparity-spread-px") {
+      options.stability_max_disparity_spread_px = std::stod(require_value(arg));
     } else if (arg == "--loop-count") {
       options.loop_count = std::stoi(require_value(arg));
     } else if (arg == "--interval-ms") {
@@ -307,6 +346,12 @@ Options parse_args(int argc, char **argv) {
   }
   if (options.yolox_input_size < 32) {
     throw std::runtime_error("--yolox-input-size must be >= 32");
+  }
+  if (options.stability_window < 1) {
+    throw std::runtime_error("--stability-window must be >= 1");
+  }
+  if (options.stability_min_same_label_frames < 1 || options.stability_min_stereo_match_frames < 0) {
+    throw std::runtime_error("--stability-min-* frame counts are invalid");
   }
   if (options.loop_count < 1) {
     throw std::runtime_error("--loop-count must be >= 1");
@@ -548,6 +593,105 @@ cv::Point2d center(const cv::Rect &rect) {
   return {rect.x + rect.width / 2.0, rect.y + rect.height / 2.0};
 }
 
+TargetObservation make_target_observation(int sequence,
+                                          const std::optional<Detection> &target,
+                                          const std::optional<Detection> &right_match) {
+  TargetObservation observation;
+  observation.sequence = sequence;
+  if (!target) {
+    return observation;
+  }
+  observation.has_target = true;
+  observation.has_right_match = right_match.has_value();
+  observation.label = target->label;
+  observation.left_center = center(target->bbox);
+  if (right_match) {
+    observation.horizontal_disparity_px = observation.left_center.x - center(right_match->bbox).x;
+  }
+  return observation;
+}
+
+VisualLockStability compute_visual_lock_stability(const Options &options,
+                                                  const std::vector<TargetObservation> &history) {
+  VisualLockStability stability;
+  stability.window_size = options.stability_window;
+  stability.samples = static_cast<int>(history.size());
+  if (history.empty()) {
+    return stability;
+  }
+
+  for (const auto &observation : history) {
+    if (observation.has_target) {
+      ++stability.target_frames;
+    }
+  }
+  const auto latest = std::find_if(history.rbegin(), history.rend(), [](const TargetObservation &observation) {
+    return observation.has_target;
+  });
+  if (latest == history.rend()) {
+    stability.state = "waiting_target";
+    stability.reason = "no_target_in_window";
+    return stability;
+  }
+
+  stability.candidate_label = latest->label;
+  std::vector<cv::Point2d> centers;
+  std::vector<double> disparities;
+  for (const auto &observation : history) {
+    if (!observation.has_target || observation.label != stability.candidate_label) {
+      continue;
+    }
+    ++stability.same_label_frames;
+    centers.push_back(observation.left_center);
+    if (observation.has_right_match) {
+      ++stability.stereo_match_frames;
+      disparities.push_back(observation.horizontal_disparity_px);
+    }
+  }
+
+  if (!centers.empty()) {
+    cv::Point2d mean(0.0, 0.0);
+    for (const auto &point : centers) {
+      mean += point;
+    }
+    mean.x /= static_cast<double>(centers.size());
+    mean.y /= static_cast<double>(centers.size());
+    for (const auto &point : centers) {
+      const double dx = point.x - mean.x;
+      const double dy = point.y - mean.y;
+      stability.center_jitter_px = std::max(stability.center_jitter_px, std::sqrt(dx * dx + dy * dy));
+    }
+  }
+  if (!disparities.empty()) {
+    const auto [min_it, max_it] = std::minmax_element(disparities.begin(), disparities.end());
+    stability.disparity_spread_px = *max_it - *min_it;
+  }
+
+  const bool enough_same_label = stability.same_label_frames >= options.stability_min_same_label_frames;
+  const bool enough_stereo = stability.stereo_match_frames >= options.stability_min_stereo_match_frames;
+  const bool center_stable = stability.center_jitter_px <= options.stability_max_center_jitter_px;
+  const bool disparity_stable = stability.stereo_match_frames < 2 ||
+                                stability.disparity_spread_px <= options.stability_max_disparity_spread_px;
+  stability.stable_for_dry_run = enough_same_label && enough_stereo && center_stable && disparity_stable;
+  if (stability.stable_for_dry_run) {
+    stability.state = "stable_candidate";
+    stability.reason = "multi_frame_same_label_stereo_lock";
+  } else if (!enough_same_label) {
+    stability.state = "warming_up";
+    stability.reason = "need_more_same_label_frames";
+  } else if (!enough_stereo) {
+    stability.state = "waiting_stereo_match";
+    stability.reason = "need_more_stereo_match_frames";
+  } else if (!center_stable) {
+    stability.state = "unstable_candidate";
+    stability.reason = "center_jitter_too_large";
+  } else {
+    stability.state = "unstable_candidate";
+    stability.reason = "disparity_spread_too_large";
+  }
+  return stability;
+}
+
 std::optional<Detection> associate_right_detection(const Detection &target,
                                                    const std::vector<Detection> &detections,
                                                    double max_vertical_delta) {
@@ -702,6 +846,27 @@ std::string pixel_servo_hint_json(const Options &options,
   return out.str();
 }
 
+std::string visual_lock_stability_json(const VisualLockStability &stability) {
+  std::ostringstream out;
+  out << "{"
+      << "\"schema_version\":\"visual_lock_stability_v1\","
+      << "\"control_boundary\":\"visual_lock_stability_only_not_motion_permission\","
+      << "\"state\":" << quote(stability.state) << ","
+      << "\"reason\":" << quote(stability.reason) << ","
+      << "\"candidate_label\":" << quote(stability.candidate_label) << ","
+      << "\"window_size\":" << stability.window_size << ","
+      << "\"samples\":" << stability.samples << ","
+      << "\"target_frames\":" << stability.target_frames << ","
+      << "\"same_label_frames\":" << stability.same_label_frames << ","
+      << "\"stereo_match_frames\":" << stability.stereo_match_frames << ","
+      << "\"center_jitter_px\":" << std::fixed << std::setprecision(2) << stability.center_jitter_px << ","
+      << "\"disparity_spread_px\":" << stability.disparity_spread_px << ","
+      << "\"stable_for_dry_run\":" << (stability.stable_for_dry_run ? "true" : "false") << ","
+      << "\"metric_depth_available\":false"
+      << "}";
+  return out.str();
+}
+
 std::string build_scene_summary(const cv::Mat &left, const Quality &quality) {
   std::ostringstream out;
   out << "stereo RGB pair " << left.cols << "x" << left.rows << " captured; "
@@ -754,6 +919,7 @@ std::string build_payload(const Options &options,
                           const std::vector<Detection> &detections,
                           const std::optional<Detection> &target,
                           const std::optional<Detection> &right_match,
+                          const VisualLockStability &stability,
                           const std::optional<Quality> &quality,
                           const LoopTelemetry &loop) {
   const std::string scene_summary = quality ? build_scene_summary(left, *quality) : "";
@@ -788,6 +954,7 @@ std::string build_payload(const Options &options,
       << "\"detections\":" << detections_json(detections) << ","
       << "\"target_object\":" << target_json(target, right_match, options.stereo_associate_target) << ","
       << "\"pixel_servo_hint\":" << pixel_servo_hint_json(options, left, target, right_match) << ","
+      << "\"visual_lock_stability\":" << visual_lock_stability_json(stability) << ","
       << "\"estimated_depth_m\":null,"
       << "\"target_3d_camera_frame\":{},"
       << "\"scene_summary\":" << quote(scene_summary) << ","
@@ -854,6 +1021,7 @@ int main(int argc, char **argv) {
       yolox_labels = load_labels(options.yolox_labels);
       yolox_net = cv::dnn::readNetFromONNX(options.yolox_model);
     }
+    std::vector<TargetObservation> target_history;
 
     for (int index = 0; index < options.loop_count; ++index) {
       const auto frame_start = std::chrono::steady_clock::now();
@@ -895,6 +1063,11 @@ int main(int argc, char **argv) {
       if (target && options.stereo_associate_target) {
         right_match = associate_right_detection(*target, detections, options.max_stereo_vertical_delta_px);
       }
+      target_history.push_back(make_target_observation(sequence, target, right_match));
+      while (static_cast<int>(target_history.size()) > options.stability_window) {
+        target_history.erase(target_history.begin());
+      }
+      const VisualLockStability stability = compute_visual_lock_stability(options, target_history);
       std::optional<Quality> quality;
       if (options.analyze_image_quality) {
         quality = analyze_quality(left, right);
@@ -909,7 +1082,7 @@ int main(int argc, char **argv) {
       loop.frame_process_ms = std::chrono::duration<double, std::milli>(before_payload - frame_start).count();
       loop.loop_elapsed_ms = std::chrono::duration<double, std::milli>(before_payload - loop_start).count();
 
-      const std::string payload = build_payload(options, left_path, right_path, left, detections, target, right_match, quality, loop);
+      const std::string payload = build_payload(options, left_path, right_path, left, detections, target, right_match, stability, quality, loop);
       std::cout << payload << std::endl;
       if (options.upload) {
         const int rc = upload_with_curl(options, payload);
