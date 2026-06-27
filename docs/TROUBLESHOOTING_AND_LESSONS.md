@@ -6838,3 +6838,25 @@ python -X utf8 scripts\capture-auth-screenshot-cdp.py `
 状态：
 
 - 2026-06-27 已验证：dashboard 保存并返回 `visual_lock_stability_v1`，页面显示 `stable_candidate · dry-run ready`。该字段只表示视觉 dry-run 稳定，不是运动许可。
+
+### VLA 视觉证据页不要用假图叠框冒充识别
+
+现象：
+
+- 页面可以从 stereo payload 里拿到 `bbox_xywh`，但 payload 的 `image_pair_ref` 是 NanoPi 本地 `/home/pi/...jpg`，浏览器打不开。
+- 如果前端用合成背景或把左目关键帧兜底给右目，再叠右目 bbox，看起来像“识别框是强行画的”，会误导演示和调试。
+
+判断：
+
+- bbox 本身可以来自真实 NanoPi C++ 检测，但必须叠在对应相机、对应侧的真实图像上才算视觉证据。
+- 单个 `camera_keyframe_latest` 只保存设备最新一张图；如果依次上传 left/right，旧接口会被后一张覆盖，不能表达双目成对证据。
+
+解决：
+
+- 平台增加 camera-id scoped latest file：`/camera/keyframes/stereo_left/latest/file` 和 `/stereo_right/latest/file`。
+- NanoPi 脚本上传 `stereo_left` 与 `stereo_right` 两张真实 JPG。
+- 前端只在该侧真实图像 URL 可用且该侧 bbox 存在时画框；没有真实图像时显示等待证据，不叠框。
+
+状态：
+
+- 2026-06-27 已验证：左右目 keyframe URL 返回不同图片，页面左右两侧均显示真实帧和对应 bbox。仍需后续增加 frame-id pairing，让图像文件和 bbox 的同帧关系更强。

@@ -37,6 +37,10 @@ YOLOX_INPUT_SIZE="${YOLOX_INPUT_SIZE:-416}"
 YOLOX_CONFIDENCE_THRESHOLD="${YOLOX_CONFIDENCE_THRESHOLD:-0.20}"
 YOLOX_NMS_THRESHOLD="${YOLOX_NMS_THRESHOLD:-0.45}"
 CLEANUP_OLDER_THAN_DAYS="${CLEANUP_OLDER_THAN_DAYS:-0}"
+UPLOAD_KEYFRAME="${UPLOAD_KEYFRAME:-1}"
+KEYFRAME_CAMERA_IDS="${KEYFRAME_CAMERA_IDS:-stereo_left,stereo_right}"
+KEYFRAME_WIDTH="${KEYFRAME_WIDTH:-640}"
+KEYFRAME_HEIGHT="${KEYFRAME_HEIGHT:-480}"
 
 need_path() {
     local path="$1"
@@ -79,6 +83,10 @@ if [ "$USE_YOLOX" = "1" ]; then
 fi
 need_cmd date
 need_cmd mkdir
+if [ "$UPLOAD_KEYFRAME" = "1" ]; then
+    need_cmd curl
+    need_cmd sha256sum
+fi
 
 mkdir -p "$OUTPUT_DIR" "$LOG_DIR"
 
@@ -129,6 +137,59 @@ interval_ms_from_seconds() {
     awk -v seconds="$INTERVAL_SECONDS" 'BEGIN { printf "%d", seconds * 1000 }'
 }
 
+latest_frame_for_side() {
+    local side="$1"
+    find "$OUTPUT_DIR" -maxdepth 1 -type f -name "*__${side}.jpg" -printf '%T@ %p\n' 2>/dev/null \
+        | sort -nr \
+        | awk 'NR==1 { $1=""; sub(/^ /, ""); print }'
+}
+
+upload_keyframe_file() {
+    local camera_id="$1"
+    local side="$2"
+    if [ "$UPLOAD_KEYFRAME" != "1" ]; then
+        return 0
+    fi
+
+    local image_path
+    image_path="$(latest_frame_for_side "$side")"
+    if [ -z "$image_path" ] || [ ! -f "$image_path" ]; then
+        echo "WARN: no $side keyframe found in $OUTPUT_DIR" >&2
+        return 0
+    fi
+
+    local sha256
+    sha256="$(sha256sum "$image_path" | awk '{print $1}')"
+    curl -fsS \
+        -X POST "$API_BASE/api/rehab-arm/v1/devices/$DEVICE_ID/camera/keyframes" \
+        -F "robot_id=$ROBOT_ID" \
+        -F "camera_id=$camera_id" \
+        -F "image_format=jpg" \
+        -F "frame_ts_unix=$(date +%s)" \
+        -F "width=$KEYFRAME_WIDTH" \
+        -F "height=$KEYFRAME_HEIGHT" \
+        -F "sha256=$sha256" \
+        -F "detection_summary=stereo VLA keyframe" \
+        -F "scene_summary=low-rate visual evidence frame for VLA page" \
+        -F "vla_context=keyframe_only_not_motion_permission" \
+        -F "project_id=$PROJECT_ID" \
+        -F "file=@$image_path;type=image/jpeg" \
+        >/dev/null
+    echo "Uploaded camera keyframe: $camera_id $image_path"
+}
+
+upload_latest_keyframes() {
+    if [ "$UPLOAD_KEYFRAME" != "1" ]; then
+        return 0
+    fi
+    case ",$KEYFRAME_CAMERA_IDS," in
+        *,stereo_left,*) upload_keyframe_file "stereo_left" "left" ;;
+    esac
+    case ",$KEYFRAME_CAMERA_IDS," in
+        *,stereo_right,*) upload_keyframe_file "stereo_right" "right" ;;
+    esac
+}
+
 run_cpp_loop_once() {
     if [ "$COUNT" -eq 0 ]; then
         echo "FAIL: COUNT=0 is only supported by the shell-managed python loop. Use a finite COUNT for persistent C++ loop." >&2
@@ -174,6 +235,7 @@ run_cpp_loop_once() {
 
 if [ "$VISION_IMPL" = "cpp" ]; then
     run_cpp_loop_once
+    upload_latest_keyframes
     echo "Done: sent $COUNT sample(s)."
     exit 0
 fi
@@ -209,6 +271,7 @@ while true; do
         --target-label-allowlist "$TARGET_LABEL_ALLOWLIST" \
         --stereo-associate-target | tee -a "$log_file"; then
         echo "[$ts] upload ok"
+        upload_latest_keyframes || echo "[$ts] keyframe upload failed" | tee -a "$log_file" >&2
     else
         rc="$?"
         echo "[$ts] upload failed rc=$rc" | tee -a "$log_file" >&2

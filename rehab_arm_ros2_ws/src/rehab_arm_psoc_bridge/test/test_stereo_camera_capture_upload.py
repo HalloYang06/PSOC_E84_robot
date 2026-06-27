@@ -120,6 +120,20 @@ class StereoCameraCaptureUploadTests(unittest.TestCase):
         self.assertIn('--yolox-onnx "$YOLOX_MODEL"', script_text)
         self.assertIn('--detect-right-yolox', script_text)
 
+    def test_stereo_upload_loop_can_send_low_rate_camera_keyframes(self) -> None:
+        repo_root = Path(__file__).resolve().parents[4]
+        script_text = (repo_root / 'scripts' / 'nanopi_stereo_vla_upload_loop.sh').read_text(encoding='utf-8')
+
+        self.assertIn('UPLOAD_KEYFRAME="${UPLOAD_KEYFRAME:-1}"', script_text)
+        self.assertIn('KEYFRAME_CAMERA_IDS="${KEYFRAME_CAMERA_IDS:-stereo_left,stereo_right}"', script_text)
+        self.assertIn('upload_latest_keyframes()', script_text)
+        self.assertIn('/camera/keyframes', script_text)
+        self.assertIn('curl -fsS', script_text)
+        self.assertIn('sha256sum "$image_path"', script_text)
+        self.assertIn('upload_keyframe_file "stereo_left" "left"', script_text)
+        self.assertIn('upload_keyframe_file "stereo_right" "right"', script_text)
+        self.assertIn('keyframe_only_not_motion_permission', script_text)
+
     def test_build_insmod_command_uses_existing_module_path(self) -> None:
         command = build_insmod_command('/lib/modules/6.1.141.can-new/kernel/drivers/media/usb/uvc/uvcvideo.ko')
 

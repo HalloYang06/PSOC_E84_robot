@@ -4627,7 +4627,40 @@ ros2 run rehab_arm_sim_mujoco check_sim_env.py --strict-mujoco --pretty \
 
 Headless 渲染验证使用 `MUJOCO_GL=egl`。如果默认 GLFW 报 `DISPLAY environment variable is missing`，不要改回 `mujoco-py`；继续使用官方 `mujoco` 包和 EGL。
 
-### 7.5 文档和 Git 维护
+### 7.5 双目 VLA 视觉证据上传
+
+NanoPi 双 USB 摄像头固定后，可以用下面的有限循环把 VLA-V 链路打到云端。该命令只上传双目视觉上下文和低频左右目 JPG 关键帧，不发布 ROS 运动 topic，不发送 CAN，不改变 M33/M55 状态。
+
+```bash
+COUNT=2 INTERVAL_SECONDS=1 START_SEQUENCE=450 VISION_IMPL=cpp \
+UPLOAD_KEYFRAME=1 \
+PROJECT_ID=e201f41c-25a6-46e1-baf8-be6dcb83284c \
+API_BASE=http://106.55.62.122:8011 \
+TARGET_LABEL_ALLOWLIST=bottle,cup \
+YOLOX_CONFIDENCE_THRESHOLD=0.20 \
+/home/pi/nanopi_stereo_vla_upload_loop.sh
+```
+
+通过标准：
+
+- 终端看到平台返回 `ok=true` 和 `target_label=bottle` 或 `cup`。
+- 终端最后看到：
+  - `Uploaded camera keyframe: stereo_left ...__left.jpg`
+  - `Uploaded camera keyframe: stereo_right ...__right.jpg`
+- 云端页面 `V 视觉证据` 的 Left/Right 都是真实相机帧，框只叠在有真实图像的一侧。
+- 若左/右任一图像缺失，页面应显示等待证据，而不是用合成图或另一侧图像强行叠框。
+
+浏览器/接口验证：
+
+```powershell
+$left=Invoke-WebRequest 'http://106.55.62.122:8011/api/rehab-arm/v1/devices/nanopi-m5/camera/keyframes/stereo_left/latest/file'
+$right=Invoke-WebRequest 'http://106.55.62.122:8011/api/rehab-arm/v1/devices/nanopi-m5/camera/keyframes/stereo_right/latest/file'
+"left=$($left.RawContentLength) right=$($right.RawContentLength)"
+```
+
+左右图大小不一定相同；如果两者长期完全相同，要检查是否误用了同一侧图像或旧接口兜底。
+
+### 7.6 文档和 Git 维护
 
 每次完成任务后同步更新：
 
