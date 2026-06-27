@@ -3074,3 +3074,56 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
 1. 这版把 TTS pending 高水位从 8 压到 4，链路和连续回合保持稳定。
 2. 该修复会增加 TTS pending heap 预算；当前启动后 heap 仍有约 96KB 余量，后续不要再盲目加大缓存。
 3. 若现场仍听到卡顿，但上述字段仍保持低延迟/无失败，应继续查底层 I2S DMA/功放/供电或实际音频样本质量，不要回退到 WiFi/token/project 方向。
+
+## 72. 2026-06-27 LVGL 跟着 TTS 一起卡：不是继续加缓存，而是释放 heap 和降低 TTS 侵占
+
+现象：
+
+1. 现场反馈服务器 TTS 仍卡，并且 LVGL 也一起卡。
+2. 这说明问题不只是扬声器播放队列，而是 M55 用户体验线程也被拖慢。
+3. 出问题状态：
+   - `xz_ws=0 xz_stage=30` 曾在播放后掉线
+   - `tts_fwd=151/618496`
+   - `tts_fail=0`
+   - `heap=1358464/1429160 max=1381400`
+   - 只剩约 70KB heap 余量
+4. 上一版把 `VOICE_TTS_PENDING_SLOT_COUNT` 从 16 加到 24 后，虽然 pending 高水位下降，但 heap 压力过大，LVGL/WebSocket/Opus/TTS 同时运行时反而卡。
+
+修复：
+
+1. 回收 TTS pending heap：
+   - `VOICE_TTS_PENDING_SLOT_COUNT 24 -> 12`
+2. 降低 TTS 线程对 UI/连接维护的侵占：
+   - `VOICE_TTS_THREAD_PRIORITY 16 -> 21`
+   - 低于 LVGL 的 20
+   - `VOICE_TTS_PROCESS_MAX_PER_BATCH 4 -> 1`
+3. 保留：
+   - `VOICE_TTS_PREBUFFER_MIN_SLOTS=4`
+   - `VOICE_TTS_PREBUFFER_MAX_MS=300`
+   - replay pool/queue count 为 8
+
+验证：
+
+1. `python -m SCons -j8` 构建通过，当前大小：
+   - `text=1682476 data=81404 bss=4528728`
+2. `program_with_resources.bat` 完整写入：
+   - `rtthread.hex wrote 1765376 bytes`
+   - `whd_resources_all.bin wrote 466944 bytes`
+3. 启动后状态：
+   - `xz_ws=1 xz_stage=70 srv_hello=1`
+   - `heap=1232624/1429160 max=1254600`
+   - 空闲余量从约 70KB 恢复到约 196KB
+4. 连续两轮 `m55qa_xz_text`：
+   - `xz_ws=1 xz_stage=70`
+   - `tts_fwd=77/315392`
+   - `tts_fail=0 pcm_reject=0`
+   - `srv_lens=1/4/0`
+   - `tx_pending=0`
+   - `lvgl_flush=932` 持续增长
+5. 现场反馈：语音不卡了。
+
+结论：
+
+1. 本轮根因是 M55 上 TTS pending 缓存过大加上 `voice_tts` 优先级过高，导致 heap 和调度都压住了 LVGL/连接维护。
+2. 不要再用“继续加缓存”修这个问题；M55 当前需要给 LVGL、WebSocket、Opus、wake 和后续小模型留余量。
+3. 如果后续再次卡，先看 heap 余量、`lvgl_flush` 是否增长、`xz_ws` 是否保持 1，再看 `srv_err` 的 decode 峰值；不要直接回退 WiFi/token/project。
