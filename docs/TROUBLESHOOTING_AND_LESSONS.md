@@ -2107,3 +2107,23 @@ Fix / trick:
 Boundary:
 - Do not fix this by editing NanoPi camera, CAN, M33 motion control, or server core XiaoZhi WebSocket/ASR/LLM relay.
 - After this fix, WiFi and token can be healthy while WebSocket still fails at `xz_stage=30/80`; treat that as M55 WebSocket handshake/authorization/runtime URL override diagnosis, not as a project-id source-code mismatch.
+
+## 2026-06-27 - Old relay tokens can look like a WebSocket/platform outage
+
+Symptoms:
+- M55 URL and source-side project-id are correct, WiFi is healthy, but WebSocket does not stay connected.
+- Board status may still show `xz_token=1`, yet the token can be signed for the wrong project/secret.
+- Earlier 442-byte token was rejected by cloud: PC raw WebSocket handshake returned `403 Forbidden`, and HTTP model relay returned `401 Unauthorized`.
+
+Root cause:
+- The local token payload claimed/targeted the new project, but it was not a valid cloud-signed relay token for the active project/device route.
+- A token-length-only check is not enough. `xz_token=1` means "some token exists", not "cloud accepts this token".
+
+Fix / trick:
+- Issue a fresh token through the cloud project/device relay-token API for the current project and route label.
+- Push it to M55 slowly with chunked QA commands. If `m55qa_xz_token_part` returns `ret=-28`, wait and retry the same chunk; otherwise control commands can be starved behind queued IPC traffic.
+- After reset, require `m55qa_status` to show `token_len=468`, `xz_ws=1`, `xz_stage=70`, and `srv_hello=1`.
+
+Boundary:
+- Do not fix this by changing M33, CAN, NanoPi camera/V, or server core WebSocket/ASR/LLM relay.
+- Once `srv_hello=1` under the new project, remaining bad user experience is audio/wake/multi-turn UX work on M55, not project routing.
