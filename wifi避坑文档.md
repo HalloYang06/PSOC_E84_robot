@@ -2977,3 +2977,46 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
    - WiFi 关联但 DHCP 未 ready：`wlan=1 ready=0 ip=0.0.0.0`，仍不抢连
    - DHCP ready 后自动恢复：`xz_ws=1 xz_stage=70 srv_hello=1`
    - 空闲 25 秒后仍保持：`xz_ws=1 xz_stage=70 tx_pending=0`
+
+## 70. 2026-06-27 TTS 播放时仍在 listening 导致云端语音卡顿
+
+现象：
+
+1. 现场反馈服务器回来的中文语音仍然卡，且“之前有段时间不卡”。
+2. 实时 `m55qa_status` 抓到 TTS 播放期间：
+   - `xz_ws=1`
+   - `tts_fwd=56/229376`
+   - `tts_fail=0`
+   - `srv_lens=0/8/4`
+   - `srv_err=0x0003/0x0000 raw=0 hint=0x0001`
+3. 这说明 Opus 解码最大约 3ms、sound0 write 最大约 1ms，没有解码/写声卡阻塞；真正异常是同一条状态里 `xz_listening=1`，也就是云端 TTS 播放时 M55 还在继续上行录音/编码。
+
+修复：
+
+1. `voice_service_pause_wake_for_tts()` 不再只关 wake listening；现在收到服务器 binary audio 或 TTS start 时会同时：
+   - `xiaozhi_tts_speaking = RT_TRUE`
+   - `xiaozhi_listening_active = RT_FALSE`
+   - 清 `xiaozhi_voice_seen`
+   - 清 `xiaozhi_voice_seen_frames`
+2. 这样即使平台没有发标准 TTS start，只发 binary audio，也能立刻停止“边播边听”，避免采集/Opus 上行和 TTS 下行播放抢 M55 音频/CPU。
+
+验证：
+
+1. `python -m SCons -j8` 构建通过，当前大小：
+   - `text=1682460 data=81404 bss=4528760`
+2. `program_with_resources.bat` 完整写入：
+   - `rtthread.hex wrote 1765376 bytes`
+   - `whd_resources_all.bin wrote 466944 bytes`
+3. 现场触发真实链路后，TTS 期间状态变为：
+   - `xz_listening=0`
+   - `xz_ws=1 xz_stage=70`
+   - `tts_fwd=35/143360`
+   - `tts_fail=0`
+   - `srv_lens=0/8/0`
+   - `srv_err=0x0002/0x0000 raw=0 hint=0x0000`
+   - `tx_pending=0`
+
+结论：
+
+1. 这轮卡顿根因更像“播放时仍在上行采集/编码”的资源竞争，不是 WiFi、token、project、Opus decoder 或 sound0 write 阻塞。
+2. 若后续仍主观卡顿，再看 `srv_lens` 的 replayq 高水位和 `srv_err/hint` 的 decode/write 峰值；如果这些仍低，就需要进一步查 sound0 底层 DMA/I2S 时钟或功放侧，而不是继续调 WebSocket。

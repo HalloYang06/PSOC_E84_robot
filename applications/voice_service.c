@@ -451,12 +451,23 @@ static rt_tick_t voice_service_ms_to_ticks(rt_uint32_t ms)
 
 static void voice_service_pause_wake_for_tts(void)
 {
+    rt_bool_t was_listening;
+
     rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
+    was_listening = g_service.xiaozhi_listening_active;
     g_service.xiaozhi_tts_speaking = RT_TRUE;
+    g_service.xiaozhi_listening_active = RT_FALSE;
+    g_service.xiaozhi_voice_seen = RT_FALSE;
+    g_service.xiaozhi_voice_seen_frames = 0U;
     g_service.wake_listening = RT_FALSE;
     g_service.wake_hit_streak = 0U;
     g_service.wake_skip_windows = WAKE_SKIP_WINDOWS_AFTER_TRIGGER;
     rt_mutex_release(&g_service.lock);
+
+    if (was_listening)
+    {
+        rt_kprintf("[voice_service] pause active Xiaozhi listening during TTS playback\n");
+    }
 }
 
 static void voice_service_schedule_wake_rearm_after_tts(void)
