@@ -28,16 +28,18 @@ extern rt_err_t m55_speaker_tone_internal(rt_uint32_t duration_ms);
 
 #define VOICE_PCM_BUFFER_SIZE        (320000U)
 #define VOICE_TTS_PENDING_SLOT_SIZE   (8192U)
-#define VOICE_TTS_PENDING_SLOT_COUNT  (16U)
+#define VOICE_TTS_PENDING_SLOT_COUNT  (24U)
 #define VOICE_TTS_PENDING_BUFFER_SIZE (VOICE_TTS_PENDING_SLOT_SIZE * VOICE_TTS_PENDING_SLOT_COUNT)
 #define VOICE_TTS_CHUNK_GAP_MS        0U
-#define VOICE_TTS_REPLAY_QUEUE_HIGH_WATER 4U
+#define VOICE_TTS_REPLAY_QUEUE_HIGH_WATER 6U
 #define VOICE_TTS_REPLAY_WAIT_MS     300U
 #define VOICE_TTS_DRAIN_MAX_PER_LOOP  16U
-#define VOICE_TTS_PREBUFFER_MIN_SLOTS 8U
-#define VOICE_TTS_PREBUFFER_MAX_MS   520U
+#define VOICE_TTS_PREBUFFER_MIN_SLOTS 4U
+#define VOICE_TTS_PREBUFFER_MAX_MS   300U
 #define VOICE_TTS_THREAD_PRIORITY    16U
 #define VOICE_TTS_THREAD_WAIT_MS      20U
+#define VOICE_TTS_PROCESS_MAX_PER_BATCH 4U
+#define VOICE_TTS_STATUS_EVERY_CHUNKS 8U
 #define VOICE_TTS_LOG_INTERVAL        50U
 #define VOICE_TTS_PUBLISH_RETRY_COUNT 30U
 #define VOICE_TTS_PUBLISH_RETRY_MS    20U
@@ -1966,7 +1968,12 @@ static rt_bool_t voice_service_process_pending_tts(void)
                            (unsigned long)len);
             }
         }
-        (void)voice_service_publish_status();
+        if ((g_service.xiaozhi_tts_forward_chunks == 0U) ||
+            ((g_service.xiaozhi_tts_forward_chunks % VOICE_TTS_STATUS_EVERY_CHUNKS) == 0U) ||
+            (g_service.xiaozhi_tts_forward_fail_count != 0U))
+        {
+            (void)voice_service_publish_status();
+        }
     }
     else if (voice_service_audio_looks_like_pcm16(payload, len))
     {
@@ -1984,7 +1991,12 @@ static rt_bool_t voice_service_process_pending_tts(void)
             rt_kprintf("[voice_service] pending raw pcm audio forwarded len=%lu\n",
                        (unsigned long)len);
         }
-        (void)voice_service_publish_status();
+        if ((g_service.xiaozhi_tts_forward_chunks == 0U) ||
+            ((g_service.xiaozhi_tts_forward_chunks % VOICE_TTS_STATUS_EVERY_CHUNKS) == 0U) ||
+            (g_service.xiaozhi_tts_forward_fail_count != 0U))
+        {
+            (void)voice_service_publish_status();
+        }
     }
     else
     {
@@ -4073,6 +4085,8 @@ static void voice_service_thread_entry(void *parameter)
 
 static void voice_service_tts_thread_entry(void *parameter)
 {
+    rt_uint32_t processed_in_batch;
+
     RT_UNUSED(parameter);
 
     while (g_service.running)
@@ -4104,12 +4118,19 @@ static void voice_service_tts_thread_entry(void *parameter)
                        (unsigned long)elapsed_ms);
         }
 
+        processed_in_batch = 0U;
         while (g_service.running && voice_service_process_pending_tts())
         {
+            processed_in_batch++;
             if (g_service.tts_pending_count == 0U)
             {
                 voice_service_schedule_wake_rearm_after_audio_idle();
                 break;
+            }
+            if (processed_in_batch >= VOICE_TTS_PROCESS_MAX_PER_BATCH)
+            {
+                rt_thread_mdelay(1);
+                processed_in_batch = 0U;
             }
         }
     }

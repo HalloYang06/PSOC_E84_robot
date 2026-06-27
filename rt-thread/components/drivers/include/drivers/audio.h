@@ -77,7 +77,7 @@
 #define AUDIO_VOLUME_MAX                    (100)
 #define AUDIO_VOLUME_MIN                    (0)
 
-#define CFG_AUDIO_REPLAY_QUEUE_COUNT        4
+#define CFG_AUDIO_REPLAY_QUEUE_COUNT        8
 
 enum
 {

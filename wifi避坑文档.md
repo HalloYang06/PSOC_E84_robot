@@ -3020,3 +3020,57 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
 
 1. 这轮卡顿根因更像“播放时仍在上行采集/编码”的资源竞争，不是 WiFi、token、project、Opus decoder 或 sound0 write 阻塞。
 2. 若后续仍主观卡顿，再看 `srv_lens` 的 replayq 高水位和 `srv_err/hint` 的 decode/write 峰值；如果这些仍低，就需要进一步查 sound0 底层 DMA/I2S 时钟或功放侧，而不是继续调 WebSocket。
+
+## 71. 2026-06-27 中文 TTS 复位后仍卡：降低突发预缓冲和热路径状态上报
+
+现象：
+
+1. 现场反馈复位后服务器回来的中文语音仍然卡，且第二轮以后更明显。
+2. 复位后状态仍健康：
+   - `xz_ws=1 xz_stage=70 xz_errno=0`
+   - `srv_hello=1`
+   - `tts_fail=0`
+3. 连续 QA 文本回合可复现本地播放压力：
+   - 调整前连续 3 轮后 `srv_lens=0/8/0`
+   - `tts_fwd=87/356352`
+   - `srv_err=0x0002/0x0000`
+   - 说明解码和 sound0 write 不慢，但 TTS pending 高水位被 8 包预缓冲顶满，播放线程以突发方式追赶，主观容易听成卡顿。
+
+修复：
+
+1. 保留 RT audio replay 底层增强：
+   - `RT_AUDIO_REPLAY_MP_BLOCK_COUNT=8`
+   - `CFG_AUDIO_REPLAY_QUEUE_COUNT=8`
+   - `RT_AUDIO_REPLAY_MP_BLOCK_SIZE=4096` 不改小，避免驱动写入块/flush 语义重新出问题。
+2. M55 `voice_service.c` 调整 TTS 调度：
+   - `VOICE_TTS_PREBUFFER_MIN_SLOTS 8 -> 4`
+   - `VOICE_TTS_PREBUFFER_MAX_MS 520 -> 300`
+   - `VOICE_TTS_PENDING_SLOT_COUNT 16 -> 24`
+   - 每批最多处理 4 个 TTS payload 后 `rt_thread_mdelay(1)` 让出 CPU。
+   - 播放热路径 `voice_service_publish_status()` 改为每 8 个转发 chunk 或失败时上报，避免每包状态上报抢播放时间。
+
+验证：
+
+1. `python -m SCons -j8` 构建通过，当前大小：
+   - `text=1682476 data=81404 bss=4528824`
+2. `program_with_resources.bat` 完整写入：
+   - `rtthread.hex wrote 1765376 bytes`
+   - `whd_resources_all.bin wrote 466944 bytes`
+3. 启动状态：
+   - `xz_ws=1 xz_stage=70 srv_hello=1`
+   - `heap=1330928/1429160 max=1352904`
+4. 连续两轮 `m55qa_xz_text` 后：
+   - `xz_ws=1 xz_stage=70`
+   - `srv_stt=2 srv_tts=0/2/0`
+   - `xz_rx=10/107`
+   - `tts_fwd=51/208896`
+   - `tts_fail=0 pcm_reject=0`
+   - `srv_lens=0/4/0`
+   - `srv_err=0x0002/0x0000 raw=0 hint=0x0001`
+   - `tx_pending=0`
+
+结论：
+
+1. 这版把 TTS pending 高水位从 8 压到 4，链路和连续回合保持稳定。
+2. 该修复会增加 TTS pending heap 预算；当前启动后 heap 仍有约 96KB 余量，后续不要再盲目加大缓存。
+3. 若现场仍听到卡顿，但上述字段仍保持低延迟/无失败，应继续查底层 I2S DMA/功放/供电或实际音频样本质量，不要回退到 WiFi/token/project 方向。
