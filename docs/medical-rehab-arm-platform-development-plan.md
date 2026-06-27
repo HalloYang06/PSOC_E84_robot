@@ -918,3 +918,14 @@ CAN / 串口 / ROS / APP / 图像
 4. 串口日志 mock 和协议解析。
 5. ROS 只读 topic mock 和观察卡片。
 6. 数据工厂训练集样本/标签/AI 预标注 UI。
+
+## 14. 康复机械臂 VLA 视觉证据页面约束
+
+2026-06-27 已完成一个可演示的真实双目证据链：
+
+- NanoPi VLA-V C++ loop 上传 `stereo_vision_context`，其中 `target_object.bbox_xywh` 和 `stereo_observation.left/right_bbox_xywh` 来自板端 OpenCV DNN 检测。
+- 平台 API 支持按 camera_id 获取最新关键帧：`/camera/keyframes/stereo_left/latest/file` 和 `/camera/keyframes/stereo_right/latest/file`。
+- VLA 页面 `V 视觉证据` 只在对应侧真实图像可访问且 bbox 存在时叠框；禁止用左图兜底右图，禁止在合成背景上把 bbox 包装成真实识别证据。
+- 截图证据：`docs/screenshots/rehab-arm-stereo-pair-evidence-qa/desktop-1600.png` 和 `mobile-390.png`。
+
+后续增强优先做 frame-id/time pairing：让图片 URL 和 stereo payload 明确指向同一帧序号，避免“最新图像”和“最新 bbox”在高频更新时错帧。
