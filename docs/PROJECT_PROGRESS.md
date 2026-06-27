@@ -3605,3 +3605,13 @@
 - Platform validation: local and cloud focused API tests passed; local Web build passed; cloud `npm run build:web && RESTART=1 scripts/start-cloud-prod.sh` passed. Screenshot QA saved at `D:\ai合作产品\docs\screenshots\rehab-arm-visual-lock-stability-qa\desktop-1600.png`.
 - Boundary: still V/perception and dry-run readiness only. `visual_lock_stability_only_not_motion_permission` does not grant motion permission. No XiaoZhi/L transport, CAN, M33/M55 firmware, ROS motion topic, trajectory, motor command, kernel, or driver change was made.
 - Next step: make the A/dry-run candidate gate explicitly require `visual_lock_stability.stable_for_dry_run=true` before displaying an approach candidate, while true motion remains blocked until calibration, camera-to-arm transform, operator review, and M33 safety approval.
+
+### 2026-06-27 - A dry-run gate tied to visual lock stability
+
+- Completed: updated the cloud rehab-arm VLA page so A now has an explicit `A dry-run gate` panel. It reports `hold_language`, `hold_vision`, `hold_stale_vision`, `observe_more`, `visual_lock_ready`, or `candidate_ready`.
+- Behavior: A only shows a dry-run-ready state when language/task context exists, stereo target context is fresh, a target has left/right semantic match, and `visual_lock_stability.stable_for_dry_run=true`. Otherwise it displays `A hold_observe` or an observe/hold reason.
+- Completed: model-relay context now includes `a_dry_run_gate_state` and `a_dry_run_candidate_allowed`, so later high-level suggestions can see the same safety/display gate.
+- Validation: local platform Web build passed after the change. Cloud deploy succeeded via direct page-file sync because the cloud checkout had local deployment-state changes that blocked `git pull --ff-only`; cloud `npm run build:web && RESTART=1 scripts/start-cloud-prod.sh` passed with Web/API health OK.
+- Screenshot QA: `D:\ai合作产品\docs\screenshots\rehab-arm-a-dry-run-gate-qa\desktop-1600.png` shows `A hold_observe` and `A dry-run gate / hold_stale_vision`; this confirms old-but-stable V frames do not produce an approach candidate.
+- Boundary: platform display/model-context only. No XiaoZhi/L transport, CAN, M33/M55 firmware, ROS motion topic, trajectory, motor command, kernel, camera runtime, or real motion path change was made.
+- Next step: connect this page-level gate to a real server-side VLA action candidate validator before any motion release work.

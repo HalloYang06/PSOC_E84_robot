@@ -201,6 +201,8 @@ COUNT=12 INTERVAL_SECONDS=5 /home/pi/nanopi_stereo_vla_upload_loop.sh
 
 理解这个算法时按四步看：第一步，左右摄像头各自用 YOLOX 优先、SSD 备用去找 `bottle/cup` 等语义框；第二步，从左图语义框里选 `target_object`，再找右图同 label 的框；第三步，比较左右框中心点，得到 `horizontal_disparity_px` 并生成 `pixel_servo_hint`；第四步，在 C++ 常驻循环里统计最近几帧的同类目标、左右目匹配、中心抖动和视差波动，生成 `visual_lock_stability`。视差只能说明双目几何关系，还不能直接当距离。只有完成最终相机固定、焦距/畸变/基线标定后，才能用 `Z = f * B / disparity` 推米制深度；当前必须保持 `estimated_depth_m=null`，真实运动仍保持 dry-run/hold。
 
+平台上的 A dry-run gate 要这样理解：`hold_language` 表示还没有 L 任务，`hold_vision` 表示还没有可用双目目标，`hold_stale_vision` 表示视觉过期，`observe_more` 表示目标还没有通过多帧锁定，`visual_lock_ready` 表示可以展示 dry-run 像素逼近候选，`candidate_ready` 表示已经有高层建议或候选。无论显示到哪一步，它都不是 M33 运动许可；真实运动仍必须等待标定、相机到机械臂坐标转换、仿真/人工审核和 M33 安全放行。
+
 学习判断规律：在同一组固定摄像头下，目标越近，左右图中心点差异通常越大；目标越远，`horizontal_disparity_px` 通常越小。2026-06-22 实测瓶子从较近位置移动到较远位置后，视差从约 `87-88 px` 降到约 `80 px`，符合这个趋势。
 
 完整双目深度的第一步是采集棋盘格标定样本，不是直接算深度。准备棋盘格时，`--chessboard-size 9x6` 表示内角点数量是 9 列 x 6 行；如果打印板是 10 x 7 个黑白方格，通常内角点就是 9 x 6。`--square-size-m` 是每个小方格边长，必须用尺量真实值，例如 25mm 就填 `0.025`。
