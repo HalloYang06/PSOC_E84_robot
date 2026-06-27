@@ -2832,3 +2832,39 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
 3. 烧录后 `m55qa_status` 恢复：
    - `wlan=1 ready=1 ip=192.168.3.32`
    - `xz_ws=1 xz_stage=70 srv_hello=1`
+
+## 67. 2026-06-27 M55 中文 TTS 第二轮卡死根因是 v3 Opus 大包边界，不是 WiFi/project
+
+现象：
+
+1. 现场反馈“英文那版一直不卡，中文前两句不卡，后面又卡”，本轮 QA 复现到第二轮 `m55qa_xz_text test2` 后 M33 连续报：
+   - `cm55 tx stuck pending=1 flags=0x27 stage=80 errno=-3`
+   - 后续重连阶段可见 `stage=20 errno=-1`
+2. 第一轮同固件可播放，`tts_fwd` 增长且 `tts_fail=0`，说明不是 WiFi、token、project_id 或平台没回音频。
+3. 旧的 `RT_AUDIO_REPLAY_MP_BLOCK_SIZE=2048` 判断不可靠；RT audio 写入使用实际 block size，2048 反而更容易触发重启。当前稳定基线应保持 `4096`。
+
+修复：
+
+1. `rtconfig.h` 保持 `RT_AUDIO_REPLAY_MP_BLOCK_SIZE=4096`，不要再按 2048 方向继续实验。
+2. WebSocket 单消息上限从 `4096` 提到 `8192`，但接收 buffer 改为 `mem_malloc()` 按需分配，避免 8KB 静态 `.bss` 造成 M55 内部 RAM 链接溢出。
+3. TTS pending 总缓冲仍保持约 256KB：`8192 * 32`，不增加总 heap 压力。
+4. TTS 入队不再把一个 WebSocket audio payload 硬切成多个 4096 片，避免破坏官方 v3 Opus 帧边界。
+5. `voice_service_decode_v3_opus_frames_to_m55_speaker()` 增加边界检查：`offset + 4 + frame_len <= len`，异常帧只记录 `phase=5103` 后跳出，不再越界送 Opus decoder。
+6. 增加 M55 侧 `m55qa_tts_diag`/`m55qa_xz_cn`/`m55qa_xz_en` 命令和 TTS 水位计数；注意 COM4 默认是 M33 shell，看不到 M55 直连命令，现场仍主要用 M33 的 `m55qa_status` / `m55qa_xz_text`。
+
+验证：
+
+1. `python -m SCons -j8` 构建通过，最终大小：
+   - `text=1686956 data=81404 bss=4528864`
+2. `program_with_resources.bat` 完整写入：
+   - `rtthread.hex wrote 1769472 bytes`
+   - `whd_resources_all.bin wrote 466944 bytes`
+3. 烧录后健康状态：
+   - `xz_ws=1 xz_stage=70 xz_errno=0`
+   - `wlan=1 ready=1 ip=192.168.3.32`
+   - `token_len=468 srv_hello=1`
+4. 串口 QA 连续 3 轮通过：
+   - `m55qa_xz_text hi`：`tts_fwd=47/192512 tts_fail=0 xz_ws=1`
+   - `m55qa_xz_text test2`：`tts_fwd=85/348160 tts_fail=0 xz_ws=1`
+   - `m55qa_xz_text zhongwen`：平台返回 `你好！请问有什么我可以帮您的？`，`tts_fwd=106/434176 tts_fail=0 xz_ws=1`
+5. 启动状态曾看到 `wake_xiaorui=957/1000`，说明 xiaorui/小瑞唤醒模型本身仍能命中；后续若现场喊不醒，应优先看环境噪声/阈值/麦克风输入，而不是回退 TTS。

@@ -27,8 +27,8 @@
 extern rt_err_t m55_speaker_tone_internal(rt_uint32_t duration_ms);
 
 #define VOICE_PCM_BUFFER_SIZE        (320000U)
-#define VOICE_TTS_PENDING_SLOT_SIZE   (4096U)
-#define VOICE_TTS_PENDING_SLOT_COUNT  (64U)
+#define VOICE_TTS_PENDING_SLOT_SIZE   (8192U)
+#define VOICE_TTS_PENDING_SLOT_COUNT  (32U)
 #define VOICE_TTS_PENDING_BUFFER_SIZE (VOICE_TTS_PENDING_SLOT_SIZE * VOICE_TTS_PENDING_SLOT_COUNT)
 #define VOICE_TTS_CHUNK_GAP_MS        0U
 #define VOICE_TTS_REPLAY_QUEUE_HIGH_WATER 3U
@@ -139,6 +139,12 @@ typedef struct
     volatile rt_uint32_t tts_pending_count;
     volatile rt_bool_t tts_prebuffering;
     rt_tick_t tts_prebuffer_start_tick;
+    rt_uint32_t tts_pending_high_water;
+    rt_uint32_t tts_largest_payload_len;
+    rt_uint32_t tts_oversize_drop_count;
+    rt_uint32_t tts_queue_full_drop_count;
+    rt_uint32_t tts_sound_wait_timeout_count;
+    rt_uint32_t tts_speaker_busy_count;
     rt_uint32_t audio_expected;
     rt_uint32_t audio_received;
     rt_bool_t m33_pcm_probe_enabled;
@@ -690,6 +696,89 @@ static rt_err_t voice_service_publish_status(void)
 rt_err_t voice_service_publish_status_now(void)
 {
     return voice_service_publish_status();
+}
+
+void voice_service_dump_tts_diag(void)
+{
+    rt_uint32_t pending;
+    rt_uint32_t high_water;
+    rt_uint32_t largest;
+    rt_uint32_t oversize;
+    rt_uint32_t full_drop;
+    rt_uint32_t wait_timeout;
+    rt_uint32_t speaker_busy;
+    rt_uint32_t forward_chunks;
+    rt_uint32_t forward_bytes;
+    rt_uint32_t fail_count;
+    rt_uint32_t pcm_reject;
+    rt_uint32_t rx_binary;
+    rt_uint32_t tts_start;
+    rt_uint32_t tts_stop;
+    rt_uint32_t tts_sentence;
+    rt_uint32_t pending_len;
+    rt_int32_t speaker_last_ret;
+    rt_uint32_t diag_phase;
+    rt_int32_t last_consume_ret;
+    rt_size_t heap_total = 0;
+    rt_size_t heap_used = 0;
+    rt_size_t heap_max_used = 0;
+
+    if (!g_service.initialized)
+    {
+        rt_kprintf("tts_diag initialized=0\n");
+        return;
+    }
+
+    rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
+    pending = g_service.tts_pending_count;
+    high_water = g_service.tts_pending_high_water;
+    largest = g_service.tts_largest_payload_len;
+    oversize = g_service.tts_oversize_drop_count;
+    full_drop = g_service.tts_queue_full_drop_count;
+    wait_timeout = g_service.tts_sound_wait_timeout_count;
+    speaker_busy = g_service.tts_speaker_busy_count;
+    forward_chunks = g_service.xiaozhi_tts_forward_chunks;
+    forward_bytes = g_service.xiaozhi_tts_forward_bytes;
+    fail_count = g_service.xiaozhi_tts_forward_fail_count;
+    pcm_reject = g_service.xiaozhi_tts_pcm_reject_count;
+    rx_binary = g_service.xiaozhi_rx_binary_count;
+    tts_start = g_service.xiaozhi_server_tts_start_count;
+    tts_stop = g_service.xiaozhi_server_tts_stop_count;
+    tts_sentence = g_service.xiaozhi_server_tts_sentence_count;
+    pending_len = g_service.xiaozhi_speaker_pending_len;
+    speaker_last_ret = g_service.xiaozhi_speaker_last_ret;
+    diag_phase = g_service.service_diag_phase;
+    last_consume_ret = g_service.service_last_consume_ret;
+    rt_mutex_release(&g_service.lock);
+
+    rt_memory_info(&heap_total, &heap_used, &heap_max_used);
+    rt_kprintf("tts_diag pending=%lu/%lu high=%lu slot=%lu largest=%lu oversize=%lu full=%lu\n",
+               (unsigned long)pending,
+               (unsigned long)VOICE_TTS_PENDING_SLOT_COUNT,
+               (unsigned long)high_water,
+               (unsigned long)VOICE_TTS_PENDING_SLOT_SIZE,
+               (unsigned long)largest,
+               (unsigned long)oversize,
+               (unsigned long)full_drop);
+    rt_kprintf("tts_diag rx_bin=%lu start=%lu stop=%lu sent=%lu fwd=%lu/%lu fail=%lu reject=%lu\n",
+               (unsigned long)rx_binary,
+               (unsigned long)tts_start,
+               (unsigned long)tts_stop,
+               (unsigned long)tts_sentence,
+               (unsigned long)forward_chunks,
+               (unsigned long)forward_bytes,
+               (unsigned long)fail_count,
+               (unsigned long)pcm_reject);
+    rt_kprintf("tts_diag sound wait_timeout=%lu busy=%lu pending_len=%lu last_ret=%d phase=%lu consume=%d heap=%lu/%lu max=%lu\n",
+               (unsigned long)wait_timeout,
+               (unsigned long)speaker_busy,
+               (unsigned long)pending_len,
+               speaker_last_ret,
+               (unsigned long)diag_phase,
+               last_consume_ret,
+               (unsigned long)heap_used,
+               (unsigned long)heap_total,
+               (unsigned long)heap_max_used);
 }
 
 void voice_service_note_error(rt_err_t error)
@@ -1322,6 +1411,7 @@ static rt_bool_t voice_service_stream_pcm_to_m55_speaker(const uint8_t *audio_da
                 g_service.service_diag_phase = 5208U;
                 g_service.service_last_consume_ret = -RT_ETIMEOUT;
                 rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
+                g_service.tts_sound_wait_timeout_count++;
                 g_service.xiaozhi_tts_forward_fail_count++;
                 rt_mutex_release(&g_service.lock);
                 return RT_FALSE;
@@ -1333,6 +1423,7 @@ static rt_bool_t voice_service_stream_pcm_to_m55_speaker(const uint8_t *audio_da
                 g_service.service_diag_phase = 5210U;
                 g_service.service_last_consume_ret = -RT_EBUSY;
                 rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
+                g_service.tts_speaker_busy_count++;
                 g_service.xiaozhi_tts_forward_fail_count++;
                 rt_mutex_release(&g_service.lock);
                 return RT_FALSE;
@@ -1404,6 +1495,9 @@ static rt_bool_t voice_service_flush_m55_speaker(void)
         g_service.xiaozhi_speaker_last_ret = -RT_ETIMEOUT;
         g_service.service_diag_phase = 5209U;
         g_service.service_last_consume_ret = -RT_ETIMEOUT;
+        rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
+        g_service.tts_sound_wait_timeout_count++;
+        rt_mutex_release(&g_service.lock);
         return RT_FALSE;
     }
 
@@ -1415,6 +1509,9 @@ static rt_bool_t voice_service_flush_m55_speaker(void)
         g_service.xiaozhi_speaker_last_ret = -RT_EBUSY;
         g_service.service_diag_phase = 5211U;
         g_service.service_last_consume_ret = -RT_EBUSY;
+        rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
+        g_service.tts_speaker_busy_count++;
+        rt_mutex_release(&g_service.lock);
         return RT_FALSE;
     }
     written = rt_device_write(g_service.xiaozhi_speaker_dev,
@@ -1537,6 +1634,22 @@ static rt_bool_t voice_service_decode_v3_opus_frames_to_m55_speaker(const uint8_
         }
 
         frame_len = (((uint32_t)frame[2] << 8) | frame[3]);
+        if ((frame_len == 0U) ||
+            ((offset + XIAOZHI_BINARY_V3_HEADER_LEN + frame_len) > len))
+        {
+            g_service.service_diag_phase = 5103U;
+            g_service.service_last_consume_ret = -RT_EINVAL;
+            g_service.xiaozhi_audio_frame_len = len;
+            g_service.xiaozhi_server_last_error_code =
+                ((5103U & 0xffffU) << 16U) | (frame_len & 0xffffU);
+            g_service.xiaozhi_server_last_reason_code =
+                (offset & 0xffffU) | ((len & 0xffffU) << 16U);
+            rt_kprintf("[voice_service] v3 opus frame bounds invalid offset=%lu frame=%lu total=%lu\n",
+                       (unsigned long)offset,
+                       (unsigned long)frame_len,
+                       (unsigned long)len);
+            break;
+        }
         if ((g_service.xiaozhi_rx_binary_count <= 3U) ||
             ((g_service.xiaozhi_rx_binary_count % VOICE_TTS_LOG_INTERVAL) == 0U))
         {
@@ -1583,10 +1696,30 @@ static void voice_service_enqueue_tts_payload(const uint8_t *payload,
                                               rt_size_t payload_len,
                                               rt_bool_t binary)
 {
-    rt_size_t offset = 0U;
-
     if ((payload == RT_NULL) || (payload_len == 0U) || (g_service.tts_pending_buffer == RT_NULL))
     {
+        return;
+    }
+
+    rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
+    if (payload_len > g_service.tts_largest_payload_len)
+    {
+        g_service.tts_largest_payload_len = (rt_uint32_t)payload_len;
+    }
+    rt_mutex_release(&g_service.lock);
+
+    if (payload_len > VOICE_TTS_PENDING_SLOT_SIZE)
+    {
+        rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
+        g_service.tts_oversize_drop_count++;
+        g_service.xiaozhi_tts_forward_fail_count++;
+        g_service.xiaozhi_audio_frame_len = (rt_uint32_t)payload_len;
+        g_service.service_diag_phase = 5010U;
+        g_service.service_last_consume_ret = -RT_EFULL;
+        rt_mutex_release(&g_service.lock);
+        rt_kprintf("[voice_service] TTS payload too large drop len=%lu slot=%lu\n",
+                   (unsigned long)payload_len,
+                   (unsigned long)VOICE_TTS_PENDING_SLOT_SIZE);
         return;
     }
 
@@ -1596,38 +1729,34 @@ static void voice_service_enqueue_tts_payload(const uint8_t *payload,
         g_service.tts_prebuffer_start_tick = rt_tick_get();
     }
 
-    while (offset < payload_len)
+    rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
+    if (g_service.tts_pending_count >= VOICE_TTS_PENDING_SLOT_COUNT)
     {
-        rt_uint32_t slot;
-        rt_size_t chunk_len = payload_len - offset;
+        g_service.tts_queue_full_drop_count++;
+        g_service.xiaozhi_tts_forward_fail_count++;
+        rt_mutex_release(&g_service.lock);
+        rt_kprintf("[voice_service] TTS pending queue full drop len=%lu count=%lu\n",
+                   (unsigned long)payload_len,
+                   (unsigned long)VOICE_TTS_PENDING_SLOT_COUNT);
+        return;
+    }
 
-        if (chunk_len > VOICE_TTS_PENDING_SLOT_SIZE)
-        {
-            chunk_len = VOICE_TTS_PENDING_SLOT_SIZE;
-        }
-
-        if (g_service.tts_pending_count >= VOICE_TTS_PENDING_SLOT_COUNT)
-        {
-            rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
-            g_service.xiaozhi_tts_forward_fail_count++;
-            rt_mutex_release(&g_service.lock);
-            rt_kprintf("[voice_service] TTS pending queue full drop remain=%lu total=%lu\n",
-                       (unsigned long)(payload_len - offset),
-                       (unsigned long)payload_len);
-            return;
-        }
-
-        slot = g_service.tts_pending_write_index;
+    {
+        rt_uint32_t slot = g_service.tts_pending_write_index;
         rt_memcpy(g_service.tts_pending_buffer + (slot * VOICE_TTS_PENDING_SLOT_SIZE),
-                  payload + offset,
-                  chunk_len);
-        g_service.tts_pending_len[slot] = (rt_uint32_t)chunk_len;
+                  payload,
+                  payload_len);
+        g_service.tts_pending_len[slot] = (rt_uint32_t)payload_len;
         g_service.tts_pending_is_binary[slot] = binary;
         g_service.tts_pending_write_index = (slot + 1U) % VOICE_TTS_PENDING_SLOT_COUNT;
         g_service.tts_pending_count++;
-        offset += chunk_len;
-        rt_sem_release(&g_service.tts_sem);
+        if (g_service.tts_pending_count > g_service.tts_pending_high_water)
+        {
+            g_service.tts_pending_high_water = g_service.tts_pending_count;
+        }
     }
+    rt_mutex_release(&g_service.lock);
+    rt_sem_release(&g_service.tts_sem);
 }
 
 static rt_bool_t voice_service_process_pending_tts(void)
@@ -1638,15 +1767,22 @@ static rt_bool_t voice_service_process_pending_tts(void)
     rt_bool_t binary;
     rt_bool_t streamed = RT_FALSE;
 
-    if ((g_service.tts_pending_count == 0U) || (g_service.tts_pending_buffer == RT_NULL))
+    if (g_service.tts_pending_buffer == RT_NULL)
     {
         return RT_FALSE;
     }
 
+    rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
+    if (g_service.tts_pending_count == 0U)
+    {
+        rt_mutex_release(&g_service.lock);
+        return RT_FALSE;
+    }
     slot = g_service.tts_pending_read_index;
     len = g_service.tts_pending_len[slot];
     binary = g_service.tts_pending_is_binary[slot];
     payload = g_service.tts_pending_buffer + (slot * VOICE_TTS_PENDING_SLOT_SIZE);
+    rt_mutex_release(&g_service.lock);
 
     if (binary)
     {
@@ -1768,6 +1904,7 @@ static rt_bool_t voice_service_process_pending_tts(void)
         (void)voice_service_publish_status();
     }
 
+    rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
     g_service.tts_pending_len[slot] = 0U;
     g_service.tts_pending_is_binary[slot] = RT_FALSE;
     g_service.tts_pending_read_index = (slot + 1U) % VOICE_TTS_PENDING_SLOT_COUNT;
@@ -1775,6 +1912,7 @@ static rt_bool_t voice_service_process_pending_tts(void)
     {
         g_service.tts_pending_count--;
     }
+    rt_mutex_release(&g_service.lock);
     return RT_TRUE;
 }
 

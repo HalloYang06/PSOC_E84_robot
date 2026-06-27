@@ -1162,6 +1162,41 @@ static void xz_qa_text(int argc, char **argv)
 }
 MSH_CMD_EXPORT(xz_qa_text, Send a XiaoZhi QA text turn through platform TTS);
 
+static void m55qa_tts_diag(int argc, char **argv)
+{
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+
+    voice_service_dump_tts_diag();
+}
+MSH_CMD_EXPORT(m55qa_tts_diag, Dump M55 XiaoZhi TTS playback diagnostics);
+
+static void m55qa_xz_cn(int argc, char **argv)
+{
+    const char *text = (argc >= 2) ? argv[1] : "请用中文简短回答：小智语音链路测试。";
+    rt_err_t ret = voice_service_qa_xiaozhi_text_turn(text);
+
+    rt_kprintf("m55qa_xz_cn ret=%d connected=%d ws_stage=%d ws_errno=%d\n",
+               ret,
+               websocket_client_is_connected() ? 1 : 0,
+               websocket_client_last_stage(),
+               websocket_client_last_errno());
+}
+MSH_CMD_EXPORT(m55qa_xz_cn, Send a short Chinese XiaoZhi QA text turn);
+
+static void m55qa_xz_en(int argc, char **argv)
+{
+    const char *text = (argc >= 2) ? argv[1] : "Please answer briefly: XiaoZhi audio playback test.";
+    rt_err_t ret = voice_service_qa_xiaozhi_text_turn(text);
+
+    rt_kprintf("m55qa_xz_en ret=%d connected=%d ws_stage=%d ws_errno=%d\n",
+               ret,
+               websocket_client_is_connected() ? 1 : 0,
+               websocket_client_last_stage(),
+               websocket_client_last_errno());
+}
+MSH_CMD_EXPORT(m55qa_xz_en, Send a short English XiaoZhi QA text turn);
+
 static void xiaozhi_bridge_publish_ack(rt_uint32_t cmd, rt_err_t ret)
 {
     m33_m55_message_t ack;

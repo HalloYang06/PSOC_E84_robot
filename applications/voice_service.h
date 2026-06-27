@@ -23,6 +23,7 @@ rt_err_t voice_service_qa_xiaozhi_text_turn(const char *text);
 rt_err_t voice_service_abort_xiaozhi_talk_local(void);
 rt_bool_t voice_service_xiaozhi_is_listening(void);
 rt_err_t voice_service_publish_status_now(void);
+void voice_service_dump_tts_diag(void);
 rt_uint32_t voice_service_bridge_diag_loops(void);
 rt_uint32_t voice_service_bridge_diag_consumed(void);
 rt_int32_t voice_service_bridge_diag_last_ret(void);

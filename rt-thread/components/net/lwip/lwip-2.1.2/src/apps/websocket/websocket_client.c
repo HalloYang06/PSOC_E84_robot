@@ -79,7 +79,9 @@
 #include <stdint.h>
 #include "lwip/altcp.h"
 #include "lwip/altcp_tcp.h"
+#if LWIP_ALTCP_TLS
 #include "lwip/altcp_tls.h"
+#endif
 #include "lwip/dns.h"
 #include "lwip/debug.h"
 #include "lwip/mem.h"
@@ -91,10 +93,6 @@
 
 #ifndef LWIP_ALTCP
     #error "NEED LWIP_ALTCP"
-#endif
-
-#ifndef LWIP_ALTCP_TLS
-    #error "NEED LWIP_ALTCP_TLS"
 #endif
 
 #ifndef LWIP_DNS
@@ -145,6 +143,7 @@ wsock_init(wsock_state_t *pws, int ssl_enabled, int ping_enabled, wsapp_fn messa
 
     if (pws->ssl_enabled)
     {
+#if LWIP_ALTCP_TLS
         const u8_t  *cert = NULL;
         size_t      cert_len = 0;
 
@@ -155,6 +154,9 @@ wsock_init(wsock_state_t *pws, int ssl_enabled, int ping_enabled, wsapp_fn messa
 
         // Allocate the TLS protocol control block.
         pws->pcb = altcp_tls_new(pws->pconf, IPADDR_TYPE_ANY);
+#else
+        return ERR_VAL;
+#endif
     }
     else // Allocate a non-SSL TCP protocol control block.
         pws->pcb = altcp_new(NULL);
@@ -550,7 +552,9 @@ err_t wsock_close(wsock_state_t *pws, wsock_result_t result, err_t err)
     }
     if (pws->pconf)
     {
+#if LWIP_ALTCP_TLS
         altcp_tls_free_config(pws->pconf);
+#endif
         pws->pconf = NULL;
     }
 
@@ -875,6 +879,9 @@ wsock_tcp_recv(void *arg, struct altcp_pcb *pcb, struct pbuf *pb, err_t err)
 static void
 wsock_invoke_app(wsock_state_t *pws, struct pbuf *pb)
 {
+    u16_t offset = 0;
+    char *msgbuf = NULL;
+
     if (wsverbose) FNTRACE();
 
     LWIP_ASSERT("pws != NULL", pws != NULL);
@@ -882,56 +889,112 @@ wsock_invoke_app(wsock_state_t *pws, struct pbuf *pb)
     LWIP_ASSERT("pws->state0 == alloc'd", (pws->state0 == PWS_STATE_INITD));
     LWIP_ASSERT("pws->state1 == alloc'd", (pws->state1 == PWS_STATE_INITD));
 
-    char    *pktbuf = (char *)(pb->payload);
-    char    *paybuf = pktbuf + WSHDRLEN_MIN;
-    uint8_t opcode  = pktbuf[0] & WSHDRBITS_OPCODE;
-    uint8_t minlen  = pktbuf[1] & WSHDRBITS_PAYLOAD_LEN;
-    size_t  paylen  = minlen;
-
-    if (opcode != OPCODE_TEXT && opcode != OPCODE_BINARY)
+    while ((pb->tot_len - offset) >= WSHDRLEN_MIN)
     {
-        printf("got invalid opcode: %d\n", opcode);
-        return;
+        uint8_t hdr[WSHDRLEN_MAX];
+        uint8_t opcode;
+        uint8_t minlen;
+        size_t paylen;
+        u16_t hdrlen = WSHDRLEN_MIN;
+
+        if (pbuf_copy_partial(pb, hdr, WSHDRLEN_MIN, offset) != WSHDRLEN_MIN)
+        {
+            printf("failed to read websocket header\n");
+            return;
+        }
+
+        opcode = hdr[0] & WSHDRBITS_OPCODE;
+        minlen = hdr[1] & WSHDRBITS_PAYLOAD_LEN;
+        paylen = minlen;
+
+        if ((opcode != OPCODE_TEXT) && (opcode != OPCODE_BINARY))
+        {
+            if (offset == 0)
+            {
+                printf("got invalid opcode: %d\n", opcode);
+            }
+            else
+            {
+                printf("stop websocket pbuf parse at offset %u opcode=%d\n", offset, opcode);
+            }
+            return;
+        }
+
+        if (minlen == WSHDRBITS_PAYLOAD_LEN_EXT16)
+        {
+            hdrlen += WSHDRLEN_EXT16BITS;
+            if ((pb->tot_len - offset) < hdrlen)
+            {
+                printf("incomplete websocket ext16 header remain=%u\n", (unsigned)(pb->tot_len - offset));
+                return;
+            }
+            if (pbuf_copy_partial(pb, hdr, hdrlen, offset) != hdrlen)
+            {
+                printf("failed to read websocket ext16 header\n");
+                return;
+            }
+            paylen = ((size_t)hdr[2] << 8) | hdr[3];
+        }
+
+        if ((minlen == WSHDRBITS_PAYLOAD_LEN_EXT64) || (paylen > WSMSG_MAXSIZE))
+        {
+            printf("oversize websocket messages not supported\n");
+            break;
+        }
+
+        if ((size_t)(pb->tot_len - offset) < ((size_t)hdrlen + paylen))
+        {
+            printf("incomplete websocket frame remain=%u hdr=%u payload=%u\n",
+                   (unsigned)(pb->tot_len - offset),
+                   (unsigned)hdrlen,
+                   (unsigned)paylen);
+            return;
+        }
+
+        if (paylen > 0)
+        {
+            if (msgbuf == NULL)
+            {
+                msgbuf = (char *)mem_malloc(WSMSG_MAXSIZE);
+                if (msgbuf == NULL)
+                {
+                    printf("failed to allocate websocket message buffer len=%u\n", (unsigned)paylen);
+                    break;
+                }
+            }
+            if (pbuf_copy_partial(pb, msgbuf, (u16_t)paylen, (u16_t)(offset + hdrlen)) != paylen)
+            {
+                printf("failed to copy websocket payload len=%u\n", (unsigned)paylen);
+                break;
+            }
+        }
+
+        if (wsverbose)
+        {
+            printf("rcvd WS msg type: %s len %u offset %u/%u\n",
+                   opcode2str(opcode),
+                   (unsigned)paylen,
+                   (unsigned)offset,
+                   (unsigned)pb->tot_len);
+            wsock_hexdump((unsigned char *)msgbuf, paylen);
+        }
+
+        if (pws->message_handler)
+        {
+            pws->message_handler((opcode == OPCODE_TEXT) ? WS_TEXT : WS_DATA, msgbuf, paylen);
+        }
+
+        offset = (u16_t)(offset + hdrlen + paylen);
     }
 
-    if (minlen == WSHDRBITS_PAYLOAD_LEN_EXT16)
+    if (offset < pb->tot_len)
     {
-        // This is a "large" message, i.e., > 125 bytes.
-        // Get the length from the header extension bytes and move the
-        // payload pointer to point to the data only.
-        paybuf += WSHDRLEN_EXT16BITS;
-        paylen = ntohs(*((uint16_t *) &pktbuf[2]));
+        printf("leftover websocket bytes=%u\n", (unsigned)(pb->tot_len - offset));
     }
 
-    // Don't support fragmentation and large messages yet.
-    if ((minlen == WSHDRBITS_PAYLOAD_LEN_EXT64) || (paylen > WSMSG_MAXSIZE))
+    if (msgbuf != NULL)
     {
-        printf("oversize websocket messages not supported\n");
-        return;
-    }
-
-    // tot_len is length of the received data
-    if (paylen > pb->tot_len)
-    {
-        printf("got invalid size: %d bytes\n", paylen);
-        return;
-    }
-
-    if (!(pb->tot_len > 0))
-    {
-        printf("got invalid pbuf size: %d bytes\n", pb->tot_len);
-        return;
-    }
-
-    if (wsverbose)
-    {
-        printf("rcvd WS msg type: %s len %u\n", opcode2str(opcode), paylen);
-        wsock_hexdump(pb->payload, pb->tot_len);
-    }
-
-    if (pws->message_handler)
-    {
-        pws->message_handler((opcode == OPCODE_TEXT) ? WS_TEXT : WS_DATA, paybuf, paylen);
+        mem_free(msgbuf);
     }
 }
 
@@ -1348,5 +1411,3 @@ const char *err2str(err_t errval)
     }
     return "UNK";
 }
-
-
