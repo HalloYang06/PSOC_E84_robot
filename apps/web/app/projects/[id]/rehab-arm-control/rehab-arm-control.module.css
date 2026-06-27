@@ -6306,3 +6306,268 @@
     min-height: 180px;
   }
 }
+
+/* Final operator-layout reset: use one page flow so panels cannot overlap at laptop widths. */
+.shell {
+  height: 100vh;
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+.body {
+  min-height: 0;
+  grid-template-columns: 294px minmax(0, 1fr);
+}
+
+.workspace {
+  width: 100%;
+  min-width: 0;
+  height: calc(100vh - 60px);
+  min-height: 0;
+  display: flex !important;
+  flex-direction: column;
+  gap: 14px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 20px 20px 72px;
+}
+
+.workbenchHeader,
+.boundaryBar,
+.vlaCommandStrip,
+.vlaDecisionDeck,
+.primaryGrid,
+.summaryGrid,
+.roleGrid,
+.workspace > .drawerPanel {
+  width: 100%;
+  min-width: 0;
+  grid-column: auto !important;
+  grid-row: auto !important;
+}
+
+.vlaCommandStrip {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  align-items: stretch;
+  min-height: auto !important;
+  margin: 0;
+  overflow: visible;
+}
+
+.vlaCommandStrip article {
+  min-width: 0;
+  min-height: 82px !important;
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  padding: 12px 46px 12px 14px !important;
+  border-radius: 18px !important;
+  overflow: hidden;
+}
+
+.vlaCommandStrip article p {
+  display: -webkit-box;
+  min-height: 0;
+  margin: 0 !important;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+
+.vlaCommandStrip article strong {
+  max-width: 100% !important;
+  margin: 0 !important;
+  font-size: 18px !important;
+  line-height: 1.12;
+}
+
+.vlaCommandStrip article span {
+  max-width: calc(100% - 36px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vlaCommandStrip article::before {
+  top: 14px !important;
+  right: 14px !important;
+  width: 34px !important;
+  height: 34px !important;
+  border-radius: 12px !important;
+}
+
+.vlaLoopState {
+  margin-top: 0 !important;
+  padding: 6px 8px !important;
+  border-radius: 12px !important;
+}
+
+.vlaLoopState strong,
+.vlaLoopState span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vlaCommandStrip .vlaLoopState span {
+  display: none;
+}
+
+.vlaDecisionDeck {
+  display: grid !important;
+  grid-template-columns: minmax(290px, 0.95fr) minmax(360px, 1.1fr) minmax(290px, 0.95fr);
+  gap: 14px;
+  align-items: start;
+  clear: both;
+  margin-top: 0;
+  isolation: isolate;
+}
+
+.vlaDecisionDeck > article,
+.vlaLiteLoopPanel,
+.pixelServoPanel,
+.voiceRoutePanel {
+  min-width: 0;
+  position: relative;
+  z-index: 0;
+}
+
+.pixelServoPanel,
+.voiceRoutePanel,
+.vlaLiteLoopPanel {
+  overflow: visible;
+}
+
+.vlaLiteLoopPanel {
+  grid-template-columns: 1fr !important;
+}
+
+.vlaLiteLoopPanel > div,
+.vlaLiteLoopPanel > p {
+  min-width: 0;
+}
+
+.vlaLiteLoopPanel > p {
+  display: block;
+  line-height: 1.45;
+}
+
+.visionEvidenceStage {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.visionFrame {
+  min-height: 128px;
+}
+
+.primaryGrid {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(330px, 390px);
+  gap: 18px;
+  align-items: start;
+  min-height: 0;
+}
+
+.sceneColumn,
+.sideStack {
+  min-width: 0;
+  height: auto;
+  max-height: none;
+  overflow: visible;
+  position: static;
+}
+
+.workspace > .drawerPanel {
+  display: block;
+  position: static;
+  margin: 0;
+}
+
+.sideStack .drawerPanel,
+.sideStack details {
+  min-height: 0;
+}
+
+.sideStack .drawerPanel > summary,
+.sideStack details > summary {
+  min-height: 42px;
+  padding-block: 8px;
+}
+
+@media (max-width: 1280px) {
+  .body {
+    grid-template-columns: 280px minmax(0, 1fr);
+  }
+
+  .workspace {
+    padding: 16px 16px 64px;
+  }
+
+  .vlaCommandStrip,
+  .vlaDecisionDeck,
+  .primaryGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .vlaCommandStrip article {
+    min-height: auto;
+  }
+
+  .visionFrame {
+    min-height: 220px;
+  }
+}
+
+@media (max-width: 1440px) {
+  .vlaDecisionDeck {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .vlaDecisionDeck > article:last-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 900px) {
+  .shell {
+    height: auto;
+    min-height: 100vh;
+    overflow: auto;
+  }
+
+  .body {
+    display: block;
+  }
+
+  .sidebar {
+    display: none;
+  }
+
+  .workspace {
+    height: auto;
+    overflow: visible;
+    padding: 12px 12px 56px;
+  }
+
+  .workbenchHeader {
+    grid-template-columns: 1fr;
+  }
+
+  .compactStats,
+  .visionEvidenceStage,
+  .evidenceProofStrip {
+    grid-template-columns: 1fr;
+  }
+
+  .vlaDecisionDeck,
+  .vlaCommandStrip,
+  .primaryGrid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .vlaDecisionDeck > article {
+    grid-column: auto !important;
+  }
+}
