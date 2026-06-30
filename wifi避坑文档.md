@@ -3344,3 +3344,41 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
 
 1. 如果现场继续反馈“语音卡”，先确认 `xz_ws` 是否持续 1；如果连接还在跳，优先查平台 close reason/心跳，不要继续调 TTS。
 2. 如果 `xz_ws=1` 稳定且 `tts_fwd` 增长但听感仍卡，再查 `sound0`/I2S 播放平滑。
+
+## 78. 2026-06-30 复位后启动稳定性验证：5 秒内恢复小智在线
+
+目标：
+
+1. 现场要求不仅热态不卡，复位后启动也要稳定；断电启动同样应以这个基线为准。
+2. 验证重点不是纯文字 QA，而是启动后 WiFi、token、WebSocket、小智 hello、LVGL 和 voice_svc 是否自动恢复。
+
+验证方法：
+
+1. 通过 COM4 执行 `reboot`，观察 M33/M55 重新启动。
+2. 启动后在 +5s、+10s、+20s、+30s、+45s、+60s 读取 `m55qa_status`。
+
+结果：
+
+1. +5s 已恢复：
+   - `wlan=1 ready=1`
+   - `ip=192.168.3.32`
+   - `xz_ws=1 xz_stage=70 xz_errno=0`
+   - `srv_hello=1`
+   - `voice_svc=310`
+   - `lvgl_flush=42`
+2. +10s 到 +60s 全程保持：
+   - `xz_ws=1 xz_stage=70 xz_errno=0`
+   - `token_len=468`
+   - `tx_pending=0`
+   - `voice_svc` 持续增长到 `1412`
+   - `lvgl_flush` 持续增长到 `304`
+3. +60s 现场有一次 wake/listen 起始迹象：
+   - `wake_hit=1`
+   - `srv_last=listen/start`
+   - 说明唤醒/监听链路仍可工作，系统没有因启动后长时间运行而卡死。
+
+结论：
+
+1. 当前基线满足软件复位后的自动恢复：约 5 秒内小智 WebSocket 到 `stage=70`，随后 60 秒稳定。
+2. 真正断电启动无法由串口远程拔电模拟，但判据相同：上电后 5-10 秒内应看到 `wlan=1 ready=1`、`xz_ws=1 stage=70`、`srv_hello>=1`、`voice_svc/lvgl_flush` 增长。
+3. 如果断电启动偶发不稳，先记录第一次 `m55qa_status` 的 `xz_stage/xz_errno/wlan/ready/ip/srv_hello`，不要先改 TTS 播放节拍。
