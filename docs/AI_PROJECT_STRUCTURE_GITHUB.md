@@ -111,7 +111,7 @@ The repository uses branches as subsystem homes.
 |---|---|---|
 | `feature/rehab-arm-ros2-architecture` | ROS2, NanoPi bridge, MuJoCo, docs, protocols, dry-run, profile, main integration | This document, `CURRENT_MAINLINES.md`, `REHAB_ARM_SYSTEM_ARCHITECTURE.md`, `USER_MANUAL.md` |
 | `M33` | Infineon M33 firmware, CAN master, safety state machine, motor control, M33/M55 IPC, BLE near-field entry | `PSOC_CAN_PROTOCOL_V1.md`, `M33_SAFETY_INPUT_MAPPING.md`, `M33_M55_IPC_BLE_FOUNDATION.md` |
-| `M55` | Infineon M55 WiFi, voice/audio, model runtime, model result bridge | `M55_MODEL_DEPLOYMENT_GUIDE.md`, `M55_MODEL_RESULT_PROTOCOL_V1.md`, `VOICE_WAKE_TTS_PORTABILITY_GUIDE.md` |
+| `M55` | Infineon M55 WiFi, XiaoZhi voice/audio L link, LVGL user experience, wake word, model runtime, model result bridge | `M55_MODEL_DEPLOYMENT_GUIDE.md`, `M55_MODEL_RESULT_PROTOCOL_V1.md`, `VOICE_WAKE_TTS_PORTABILITY_GUIDE.md`, M55 branch root `wifi避坑文档.md` |
 | `C8T6` | STM32F103C8T6 sensor node, CAN transport, EMG/IMU/health sensing | `PSOC_CAN_PROTOCOL_V1.md`, `TROUBLESHOOTING_AND_LESSONS.md` |
 | `APP` | Android App, BLE UI, 3D arm view, local patient/operator interaction | `COMMAND_CENTER_APP_PROTOCOL_V1.md`, `APP_CONNECTION_GUIDE.md` |
 | `nanopi-sdk` | NanoPi low-level CAN/system bring-up reference | `NANOPI_CAN_MASTER_USAGE.md`, `PRODUCT_AUTOSTART_GUIDE.md` |
@@ -159,6 +159,58 @@ For the latest verified local platform checkout path, see `docs/ai-handoffs/plat
 | Formal motion path | `JointTrajectory -> NanoPi -> M33 -> motor` | Real motion path | Only accepted real-motion route |
 | Shadow-sim path | `/sim/medical_arm/joint_trajectory -> /sim/medical_arm/joint_states` | MuJoCo-only shadow motion | No real motor control |
 | Bench-debug path | `nanopi_can_master.py`, `private/cansimple/*` | Direct CAN debug and bring-up | Debug only, not formal motion |
+| XiaoZhi L voice path | `M55 mic0/wake -> Opus WebSocket -> platform relay -> TTS audio -> M55 sound0/LVGL` | User-facing speech input/output and language command context | Voice context only; no direct motor authority |
+
+## 5.1 M55 XiaoZhi L Voice Architecture
+
+The current XiaoZhi L voice link physically runs on the Infineon M55, not on the NanoPi.
+
+Current route:
+
+```text
+CM55 mic0 + xiaorui wake
+  -> M55 XiaoZhi voice service
+  -> official Opus audio frames over XiaoZhi WebSocket
+  -> external platform relay/project
+  -> server STT/LLM/TTS events and binary audio
+  -> M55 Opus/PCM playback queue
+  -> M55 sound0 / ES8388 speaker
+  -> M55 LVGL XiaoZhi user interface
+```
+
+Current platform identity:
+
+| Item | Value |
+|---|---|
+| Project | `e201f41c-25a6-46e1-baf8-be6dcb83284c` |
+| WebSocket | `ws://106.55.62.122:8011/api/rehab-arm/v1/projects/e201f41c-25a6-46e1-baf8-be6dcb83284c/devices/nanopi-m5/xiaozhi/ws?robot_id=rehab-arm-alpha` |
+| Device id note | `nanopi-m5` is the current platform routing/device label only. It does not mean XiaoZhi runs on the NanoPi. |
+| Audio format | Official XiaoZhi Opus, protocol v3, 16 kHz, mono, 60 ms frames. |
+
+Ownership boundaries:
+
+- Do not move XiaoZhi capture/playback to NanoPi while working on the M55 L link.
+- Do not change NanoPi camera/V path, CAN, or M33 motion-control code for XiaoZhi voice playback issues.
+- M33 remains motion/safety authority. XiaoZhi speech output, STT text, LLM replies, and VLA language context are suggestions/context only.
+- Current product audio path should keep M55 mic0 and M55 `sound0` as the main user-facing path. M33 audio capture/playback tools are QA or legacy unless explicitly re-promoted.
+
+M55 resource and UX constraints:
+
+- LVGL responsiveness is part of the voice architecture, not a secondary UI detail.
+- Do not fix TTS stutter by blindly increasing buffers. A 2026-06-27 fix showed that over-large TTS pending buffers can starve heap and make LVGL/WebSocket maintenance stutter.
+- Current stable pacing baseline keeps TTS pending slots modest, lets LVGL outrank the TTS worker, processes one TTS payload per batch, and uses RT audio replay pool/queue depth 8.
+- Preserve room for wake word, WebSocket, Opus codec, LVGL, and future small models on M55.
+
+Relevant M55 branch implementation/docs:
+
+| Path on `M55` branch | Purpose |
+|---|---|
+| `applications/voice_service.c` | XiaoZhi WebSocket lifecycle, Opus uplink/downlink, TTS playback pacing, wake/listen state |
+| `applications/xiaozhi_voice_relay.*` | Project/device/robot URL, token, hello/listen protocol helpers |
+| `applications/xiaozhi_wake_engine.*` and wake backend files | Local `xiaorui` wake path |
+| `applications/main.c` | M55 boot, LVGL startup, XiaoZhi auto-connect bridge, shell QA commands |
+| `rt-thread/components/drivers/include/drivers/audio.h` and `rtconfig.h` | RT audio replay queue/pool sizing |
+| `wifi避坑文档.md` | M55 WiFi/XiaoZhi/TTS debugging lessons and latest validated pacing values |
 
 ## 6. Repository Structure On The Integration Branch
 
