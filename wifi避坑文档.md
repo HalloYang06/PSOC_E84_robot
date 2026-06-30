@@ -3303,3 +3303,44 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
 1. 如果再次卡，先跑 `m55qa_status` 或 `m55qa_tts_diag` 看 `voice_svc`、`tts_fwd`、`tts_fail`、`pcm_reject`、`srv_err`、`lvgl_flush`。
 2. `voice_svc` 不增长优先查线程/锁/回调上下文；`voice_svc` 增长但听感卡，优先查 `sound0`/I2S/RT-Audio 喂数平滑。
 3. 不要因为听感卡直接回到 WiFi 扫描、token、project_id 或 NanoPi 方向。
+
+## 77. 2026-06-30 现场反馈连接更不稳：恢复 31b696d 的快速重连收尾
+
+现象：
+
+1. 现场反馈“小智连接也不太稳定，而且语音贼卡”。
+2. 烧录后状态复现到：WiFi/token 正常，`wlan=1 ready=1 token_len=468`，但 `xz_ws` 会短暂从 1 掉到 0，`xz_stage=30/80`，`xz_errno=-14`。
+3. 这不是 WiFi 扫描、token 或 project_id 问题，而是 WebSocket 断开后的恢复窗口被拉长，导致用户看到连接跳和后续语音轮次不稳。
+
+根因：
+
+1. 第 76 节合并 QA text 完整轮次时，误把 commit `31b696d` 中的快速重连逻辑冲掉：
+   - `XIAOZHI_RECONNECT_INTERVAL_MS=500` 被移除；
+   - 线程自动重连退回约 2s；
+   - TTS stop 后如果 WebSocket 已断开，不再立即触发 `voice_service_start_async_reconnect()`。
+2. 这会让平台在 TTS/会话收尾后关闭连接时，板端可见的“连接中/离线”窗口变长。
+
+修复：
+
+1. 恢复 `XIAOZHI_RECONNECT_INTERVAL_MS=500`。
+2. 恢复自动重连判断按 500ms 间隔触发，而不是固定约 2s。
+3. 恢复 TTS `state=stop` 后的立即异步重连检查：
+   - 如果 stop 后 `websocket_client_is_connected()==false`，立刻 `voice_service_start_async_reconnect()`。
+4. 保留第 75 节 server text queue 和第 76 节播放节拍，不继续改扬声器参数。
+
+验证：
+
+1. `python -m SCons -j8` 构建通过，最终 size：`text=1683564 data=81404 bss=4530324`。
+2. `program_with_resources.bat` 烧录通过：`rtthread.hex wrote 1769472 bytes`，`whd_resources_all.bin wrote 466944 bytes`。
+3. 烧录后最初一次可见短暂 `xz_ws=0 stage=80 errno=-14`，随后 500ms 重连恢复。
+4. 连续 6 次状态采样稳定：
+   - `xz_ws=1 xz_stage=70 xz_errno=0`
+   - `voice_svc` 持续增长
+   - `lvgl_flush` 持续增长
+   - `tx_pending=0`
+   - `tts_fail=0 pcm_reject=0`
+
+后续：
+
+1. 如果现场继续反馈“语音卡”，先确认 `xz_ws` 是否持续 1；如果连接还在跳，优先查平台 close reason/心跳，不要继续调 TTS。
+2. 如果 `xz_ws=1` 稳定且 `tts_fwd` 增长但听感仍卡，再查 `sound0`/I2S 播放平滑。
