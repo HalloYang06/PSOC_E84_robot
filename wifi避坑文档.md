@@ -3127,3 +3127,66 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
 1. 本轮根因是 M55 上 TTS pending 缓存过大加上 `voice_tts` 优先级过高，导致 heap 和调度都压住了 LVGL/连接维护。
 2. 不要再用“继续加缓存”修这个问题；M55 当前需要给 LVGL、WebSocket、Opus、wake 和后续小模型留余量。
 3. 如果后续再次卡，先看 heap 余量、`lvgl_flush` 是否增长、`xz_ws` 是否保持 1，再看 `srv_err` 的 decode 峰值；不要直接回退 WiFi/token/project。
+
+## 73. 2026-06-30 冷上电后 TTS 又卡：TTS 线程优先级 21 热态可用但冷启动余量不足
+
+现象：
+
+1. 现场反馈前一天调到“不卡”后，第二天重新上电服务器 TTS 又变卡。
+2. 冷启动后检查确认配置没有回退：
+   - `VOICE_TTS_PENDING_SLOT_COUNT=12`
+   - `VOICE_TTS_PROCESS_MAX_PER_BATCH=1`
+   - `RT_AUDIO_REPLAY_MP_BLOCK_COUNT=8`
+   - `CFG_AUDIO_REPLAY_QUEUE_COUNT=8`
+   - project 仍为 `e201f41c-25a6-46e1-baf8-be6dcb83284c`
+3. 状态也不是 WiFi/token/project 问题：
+   - `xz_ws=1 xz_stage=70 xz_errno=0`
+   - `tts_fail=0 pcm_reject=0`
+   - `srv_lens=0/4/0`
+4. 真正异常是解码峰值：
+   - 冷启动卡顿时 `srv_err=0x001e/0x0000` 或 `0x0021/0x0000`
+   - 即 Opus 解码峰值约 30-33ms，一帧只有 60ms，留给 LVGL/wake/network/sound0 的余量太小。
+
+排查：
+
+1. 试过在 `voice_service_start()` 里提前初始化 Opus decoder 和 open M55 `sound0`，但首轮 QA 后 `srv_err` 仍可到 `0x0021/0x0000`，说明预热不是关键根因。
+2. 关键变量是 `voice_tts` 优先级：前一版为了避免 LVGL 卡顿把 `VOICE_TTS_THREAD_PRIORITY` 降到 21，低于 LVGL 的 20；热态可用，但冷启动/忙态下 TTS 解码和喂声卡不够及时。
+
+修复：
+
+1. 保留资源安全设置：
+   - `VOICE_TTS_PENDING_SLOT_COUNT=12`
+   - `VOICE_TTS_PROCESS_MAX_PER_BATCH=1`
+   - `VOICE_TTS_PREBUFFER_MIN_SLOTS=4`
+   - `VOICE_TTS_PREBUFFER_MAX_MS=300`
+2. 把 `VOICE_TTS_THREAD_PRIORITY` 从 21 调到 19：
+   - 让 TTS 略高于 LVGL，避免 30ms 解码峰值后不能及时写入 sound0。
+   - 仍保持每批只处理 1 个 payload，避免长时间饿住 LVGL。
+
+验证：
+
+1. `python -m SCons -j8` 构建通过，大小保持：
+   - `text=1682476 data=81404 bss=4528728`
+2. `program_with_resources.bat` 完整写入：
+   - `rtthread.hex wrote 1765376 bytes`
+   - `whd_resources_all.bin wrote 466944 bytes`
+3. 连续两轮 `m55qa_xz_text` 验证过中间版本：
+   - `xz_ws=1 xz_stage=70`
+   - `tts_fwd=61/249856`
+   - `tts_fail=0 pcm_reject=0`
+   - `srv_lens=0/4/0`
+   - `srv_err=0x0002/0x0000`
+   - `lvgl_flush=973`
+4. 撤掉无效预热后最终烧录版再跑一轮：
+   - `xz_ws=1 xz_stage=70`
+   - `tts_fwd=29/118784`
+   - `tts_fail=0 pcm_reject=0`
+   - `srv_lens=0/4/0`
+   - `srv_err=0x0002/0x0000`
+   - `lvgl_flush=547`
+
+结论：
+
+1. 这次“重新上电又卡”不是配置丢失，也不是平台/WiFi/token 退化。
+2. 根因是 M55 冷启动/忙态下 Opus 解码峰值占用过高，而 `voice_tts` 优先级 21 低于 LVGL，导致 TTS 喂声卡调度余量不足。
+3. 当前平衡点是：12 槽、每批 1 帧、`voice_tts` 优先级 19、replay pool/queue 8。
