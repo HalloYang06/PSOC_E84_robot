@@ -3190,3 +3190,57 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
 1. 这次“重新上电又卡”不是配置丢失，也不是平台/WiFi/token 退化。
 2. 根因是 M55 冷启动/忙态下 Opus 解码峰值占用过高，而 `voice_tts` 优先级 21 低于 LVGL，导致 TTS 喂声卡调度余量不足。
 3. 当前平衡点是：12 槽、每批 1 帧、`voice_tts` 优先级 19、replay pool/queue 8。
+
+## 74. 2026-06-30 继续排查 TTS 卡顿：不要把 RT-Audio/I2S block 改成 2048，正确收敛点是 TTS 调度节拍
+
+现象：
+
+1. 现场继续反馈服务器回来的 TTS “还是很卡”，且曾出现越改越卡。
+2. 云端链路本身健康：两轮 `m55qa_xz_text` 都能拿到 STT/TTS 文本，`tts_fail=0`、`pcm_reject=0`。
+3. 曾尝试把 M55 TTS 写块从 4096B 改成 2048B，并尝试 TTS stop 后强制 close `sound0`，但现场反馈更卡。
+
+关键结论：
+
+1. 2048B 不是正确方向。`sound0` 的 `buffer_info.block_size` 虽是 2048B，但 I2S 驱动内部会把 mono PCM 转成 stereo playback buffer；应用层和 RT-Audio mempool 仍应保持 4096B 对齐，避免半帧/尾帧节奏变碎。
+2. 不要在每轮 TTS stop 后粗暴 close/deinit `sound0`。这会引入收尾时序风险，可能让播放队列还没完全排空就被打断。
+3. 本轮保留了只读诊断计数：
+   - RT-Audio replay zero frame / partial underrun / queue push fail / mempool alloc fail
+   - I2S TX underflow / zero fill / ready frame
+   - 通过 `m55qa_status` 的 `srv_lens` / `srv_err` 和 `m55qa_tts_diag` 辅助定位。
+
+最终修复：
+
+1. 回到 4096B 播放写块：
+   - `VOICE_TTS_M55_WRITE_BLOCK_SIZE=4096`
+   - `RT_AUDIO_REPLAY_MP_BLOCK_SIZE=4096`
+2. 不再修改 `sound_stop()` 的实际关停行为，只保留 I2S/RT-Audio 播放层计数器。
+3. 调整 TTS 线程节拍，减少云端 60ms Opus 包到本地 4096B replay 块之间的排队空洞：
+   - `VOICE_TTS_PREBUFFER_MIN_SLOTS=2`
+   - `VOICE_TTS_PREBUFFER_MAX_MS=180`
+   - `VOICE_TTS_THREAD_WAIT_MS=5`
+   - `VOICE_TTS_PROCESS_MAX_PER_BATCH=4`
+   - `VOICE_TTS_THREAD_PRIORITY=19` 保持不变。
+4. 自动重连间隔从约 2s 收到 500ms，并在 TTS stop 后若发现 WebSocket 断开立即触发异步重连，减少 LVGL “连接中/离线”的可见窗口。
+
+验证：
+
+1. `python -m SCons -j8` 构建通过，最终 size：
+   - `text=1682924 data=81404 bss=4528756`
+2. `program_with_resources.bat` 烧录通过：
+   - `rtthread.hex wrote 1765376 bytes`
+   - `whd_resources_all.bin wrote 466944 bytes`
+3. 两轮间隔 50s 的 `m55qa_xz_text`：
+   - 两轮都有 `voice_ack cmd=1015 result=0`
+   - 两轮都有 STT/TTS 文本
+   - `xz_ws=1 xz_stage=70 xz_errno=0`
+   - `tts_fwd=51/208896`
+   - `tts_fail=0 pcm_reject=0`
+   - `srv_lens=0/0/194`
+   - `srv_err=0x0002/0x0000`
+   - `lvgl_flush=948`，说明 UI 仍在刷新。
+
+后续判断顺序：
+
+1. 如果现场再说“卡”，先看 `tts_fail`、`srv_err`、`srv_lens`、`lvgl_flush`、`xz_ws/xz_stage`。
+2. 如果 `tts_fail=0` 且 `srv_err` 低但仍听感卡，下一步不要改 WiFi/token/project，也不要改 2048B；应该做 M55 本地播放 ring buffer / frame packer，把 60ms Opus PCM 更平滑地喂给 4096B replay 块。
+3. 如果 `xz_ws` 在 TTS stop 后短暂掉线但 0.5-2s 内恢复，不应再当作 token/project 问题；若持续不恢复，再查 WebSocket reconnect 和平台 close reason。

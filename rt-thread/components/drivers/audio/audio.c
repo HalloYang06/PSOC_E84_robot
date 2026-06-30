@@ -24,6 +24,11 @@
 
 #define AUDIO_REPLAY_ALLOC_TIMEOUT_TICKS ((100 * RT_TICK_PER_SECOND) / 1000)
 
+static rt_uint32_t g_replay_zero_frame_count;
+static rt_uint32_t g_replay_partial_under_run_count;
+static rt_uint32_t g_replay_queue_push_fail_count;
+static rt_uint32_t g_replay_mp_alloc_fail_count;
+
 enum
 {
     REPLAY_EVT_NONE  = 0x00,
@@ -49,6 +54,8 @@ static rt_err_t _audio_send_replay_frame(struct rt_audio_device *audio)
     /* check replay queue is empty */
     if (rt_data_queue_peek(&audio->replay->queue, (const void **)&data, &src_size) != RT_EOK)
     {
+        g_replay_zero_frame_count++;
+
         /* ack stop event */
         if (audio->replay->event & REPLAY_EVT_STOP)
             rt_completion_done(&audio->replay->cmp);
@@ -69,6 +76,7 @@ static rt_err_t _audio_send_replay_frame(struct rt_audio_device *audio)
             result = rt_data_queue_peek(&audio->replay->queue, (const void **)&data, &src_size);
             if (result != RT_EOK)
             {
+                g_replay_partial_under_run_count++;
                 LOG_D("under run %d, remain %d", audio->replay->pos, remain_bytes);
                 audio->replay->pos -= remain_bytes;
                 audio->replay->pos += dst_size;
@@ -397,6 +405,7 @@ static rt_ssize_t _audio_dev_write(struct rt_device *dev, rt_off_t pos, const vo
             audio->replay->write_data = rt_mp_alloc(audio->replay->mp, AUDIO_REPLAY_ALLOC_TIMEOUT_TICKS);
             if (audio->replay->write_data == RT_NULL)
             {
+                g_replay_mp_alloc_fail_count++;
                 LOG_W("replay memory pool busy, drop write after %d bytes", index);
                 break;
             }
@@ -418,6 +427,7 @@ static rt_ssize_t _audio_dev_write(struct rt_device *dev, rt_off_t pos, const vo
                                    block_size,
                                    AUDIO_REPLAY_ALLOC_TIMEOUT_TICKS) != RT_EOK)
             {
+                g_replay_queue_push_fail_count++;
                 LOG_W("replay queue busy, drop block after %d bytes", index);
                 rt_mp_free(audio->replay->write_data);
                 audio->replay->write_data = RT_NULL;
@@ -623,4 +633,24 @@ void rt_audio_rx_done(struct rt_audio_device *audio, rt_uint8_t *pbuf, rt_size_t
     /* invoke callback */
     if (audio->parent.rx_indicate != RT_NULL)
         audio->parent.rx_indicate(&audio->parent, len);
+}
+
+rt_uint32_t rt_audio_replay_zero_frame_count(void)
+{
+    return g_replay_zero_frame_count;
+}
+
+rt_uint32_t rt_audio_replay_partial_under_run_count(void)
+{
+    return g_replay_partial_under_run_count;
+}
+
+rt_uint32_t rt_audio_replay_queue_push_fail_count(void)
+{
+    return g_replay_queue_push_fail_count;
+}
+
+rt_uint32_t rt_audio_replay_mp_alloc_fail_count(void)
+{
+    return g_replay_mp_alloc_fail_count;
 }

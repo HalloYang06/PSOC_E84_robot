@@ -12,6 +12,7 @@
 #include "xiaozhi_voice_relay.h"
 #include "xiaozhi_wake_feedback_audio.h"
 #include "xiaozhi_wake_engine.h"
+#include "drv_i2s.h"
 
 #include <rtdevice.h>
 #include <netdev_ipaddr.h>
@@ -34,11 +35,11 @@ extern rt_err_t m55_speaker_tone_internal(rt_uint32_t duration_ms);
 #define VOICE_TTS_REPLAY_QUEUE_HIGH_WATER 6U
 #define VOICE_TTS_REPLAY_WAIT_MS     300U
 #define VOICE_TTS_DRAIN_MAX_PER_LOOP  16U
-#define VOICE_TTS_PREBUFFER_MIN_SLOTS 4U
-#define VOICE_TTS_PREBUFFER_MAX_MS   300U
+#define VOICE_TTS_PREBUFFER_MIN_SLOTS 2U
+#define VOICE_TTS_PREBUFFER_MAX_MS   180U
 #define VOICE_TTS_THREAD_PRIORITY    19U
-#define VOICE_TTS_THREAD_WAIT_MS      20U
-#define VOICE_TTS_PROCESS_MAX_PER_BATCH 1U
+#define VOICE_TTS_THREAD_WAIT_MS      5U
+#define VOICE_TTS_PROCESS_MAX_PER_BATCH 4U
 #define VOICE_TTS_STATUS_EVERY_CHUNKS 8U
 #define VOICE_TTS_LOG_INTERVAL        50U
 #define VOICE_TTS_PUBLISH_RETRY_COUNT 30U
@@ -66,7 +67,12 @@ extern rt_err_t m55_speaker_tone_internal(rt_uint32_t duration_ms);
 #define XIAOZHI_TTS_60MS_SAMPLES \
     ((XIAOZHI_TTS_OUTPUT_SAMPLE_RATE * XIAOZHI_AUDIO_FRAME_DURATION_MS) / 1000U)
 #define XIAOZHI_TTS_REARM_DELAY_MS   500U
+#define XIAOZHI_RECONNECT_INTERVAL_MS 500U
 #define XIAOZHI_OPUS_DECODE_MAX_SAMPLES ((48000U * XIAOZHI_AUDIO_FRAME_DURATION_MS) / 1000U)
+#define VOICE_TTS_M55_WRITE_BLOCK_SIZE 4096U
+#if (VOICE_TTS_M55_WRITE_BLOCK_SIZE > RT_AUDIO_REPLAY_MP_BLOCK_SIZE)
+#error "VOICE_TTS_M55_WRITE_BLOCK_SIZE must not exceed RT_AUDIO_REPLAY_MP_BLOCK_SIZE"
+#endif
 #ifndef VOICE_SERVICE_CONNECT_DURING_INIT
 #define VOICE_SERVICE_CONNECT_DURING_INIT 0
 #endif
@@ -274,6 +280,7 @@ static const char *voice_service_public_wake_word(const char *wake_word);
 static rt_err_t voice_service_send_control(voice_control_cmd_t cmd);
 static rt_bool_t voice_service_wait_xiaozhi_hello(rt_uint32_t timeout_ms);
 static void voice_service_flush_xiaozhi_tail_frame(void);
+static void voice_service_start_async_reconnect(void);
 
 static voice_service_t g_service;
 
@@ -677,15 +684,15 @@ static rt_err_t voice_service_publish_status(void)
     if (g_service.xiaozhi_tts_forward_chunks > 0U)
     {
         msg.payload.voice_status.xiaozhi_server_last_text_lens =
-            ((g_service.tts_pending_count & 0x3ffU) |
-             ((g_service.tts_pending_high_water & 0x3ffU) << 10U) |
-             ((g_service.tts_replay_queue_high_water & 0x3ffU) << 20U));
+            ((rt_audio_replay_zero_frame_count() & 0x3ffU) |
+             ((rt_audio_replay_partial_under_run_count() & 0x3ffU) << 10U) |
+             ((ifx_i2s_tx_zero_fill_count() & 0x3ffU) << 20U));
         msg.payload.voice_status.xiaozhi_server_last_error_code =
             ((g_service.tts_decode_max_ms & 0xffffU) |
              ((g_service.tts_write_max_ms & 0xffffU) << 16U));
         msg.payload.voice_status.xiaozhi_server_last_reason_code =
-            ((g_service.tts_sound_wait_timeout_count & 0xffffU) |
-             ((g_service.tts_speaker_busy_count & 0xffffU) << 16U));
+            ((ifx_i2s_tx_underflow_count() & 0xffffU) |
+             ((rt_audio_replay_queue_push_fail_count() & 0xffffU) << 16U));
     }
     if ((g_service.xiaozhi_server_stt_count == 0U) &&
         (g_service.xiaozhi_server_tts_start_count == 0U) &&
@@ -776,6 +783,13 @@ void voice_service_dump_tts_diag(void)
     rt_uint32_t tts_stop;
     rt_uint32_t tts_sentence;
     rt_uint32_t pending_len;
+    rt_uint32_t replay_zero;
+    rt_uint32_t replay_partial;
+    rt_uint32_t replay_push_fail;
+    rt_uint32_t replay_alloc_fail;
+    rt_uint32_t i2s_underflow;
+    rt_uint32_t i2s_zero_fill;
+    rt_uint32_t i2s_ready;
     rt_int32_t speaker_last_ret;
     rt_uint32_t diag_phase;
     rt_int32_t last_consume_ret;
@@ -809,6 +823,13 @@ void voice_service_dump_tts_diag(void)
     tts_stop = g_service.xiaozhi_server_tts_stop_count;
     tts_sentence = g_service.xiaozhi_server_tts_sentence_count;
     pending_len = g_service.xiaozhi_speaker_pending_len;
+    replay_zero = rt_audio_replay_zero_frame_count();
+    replay_partial = rt_audio_replay_partial_under_run_count();
+    replay_push_fail = rt_audio_replay_queue_push_fail_count();
+    replay_alloc_fail = rt_audio_replay_mp_alloc_fail_count();
+    i2s_underflow = ifx_i2s_tx_underflow_count();
+    i2s_zero_fill = ifx_i2s_tx_zero_fill_count();
+    i2s_ready = ifx_i2s_tx_frame_ready_count();
     speaker_last_ret = g_service.xiaozhi_speaker_last_ret;
     diag_phase = g_service.service_diag_phase;
     last_consume_ret = g_service.service_last_consume_ret;
@@ -845,6 +866,14 @@ void voice_service_dump_tts_diag(void)
                (unsigned long)heap_used,
                (unsigned long)heap_total,
                (unsigned long)heap_max_used);
+    rt_kprintf("tts_diag replay zero=%lu partial=%lu push_fail=%lu alloc_fail=%lu i2s_under=%lu i2s_zero=%lu i2s_ready=%lu\n",
+               (unsigned long)replay_zero,
+               (unsigned long)replay_partial,
+               (unsigned long)replay_push_fail,
+               (unsigned long)replay_alloc_fail,
+               (unsigned long)i2s_underflow,
+               (unsigned long)i2s_zero_fill,
+               (unsigned long)i2s_ready);
 }
 
 void voice_service_note_error(rt_err_t error)
@@ -1442,7 +1471,7 @@ static rt_bool_t voice_service_stream_pcm_to_m55_speaker(const uint8_t *audio_da
 
     if (g_service.xiaozhi_speaker_pending == RT_NULL)
     {
-        g_service.xiaozhi_speaker_pending = (rt_uint8_t *)rt_malloc(RT_AUDIO_REPLAY_MP_BLOCK_SIZE);
+        g_service.xiaozhi_speaker_pending = (rt_uint8_t *)rt_malloc(VOICE_TTS_M55_WRITE_BLOCK_SIZE);
         if (g_service.xiaozhi_speaker_pending == RT_NULL)
         {
             g_service.xiaozhi_speaker_last_ret = -RT_ENOMEM;
@@ -1452,7 +1481,7 @@ static rt_bool_t voice_service_stream_pcm_to_m55_speaker(const uint8_t *audio_da
                 ((5207U & 0xffffU) << 16U) | ((rt_uint32_t)RT_ENOMEM & 0xffffU);
             g_service.xiaozhi_server_last_reason_code = len;
             rt_kprintf("[voice_service] alloc M55 sound0 pending failed size=%lu\n",
-                       (unsigned long)RT_AUDIO_REPLAY_MP_BLOCK_SIZE);
+                       (unsigned long)VOICE_TTS_M55_WRITE_BLOCK_SIZE);
             return RT_FALSE;
         }
         g_service.xiaozhi_speaker_pending_len = 0U;
@@ -1460,7 +1489,7 @@ static rt_bool_t voice_service_stream_pcm_to_m55_speaker(const uint8_t *audio_da
 
     while (offset < (len - payload_offset))
     {
-        uint32_t space = RT_AUDIO_REPLAY_MP_BLOCK_SIZE - g_service.xiaozhi_speaker_pending_len;
+        uint32_t space = VOICE_TTS_M55_WRITE_BLOCK_SIZE - g_service.xiaozhi_speaker_pending_len;
         uint32_t copy_len = (len - payload_offset) - offset;
 
         if (copy_len > space)
@@ -1473,7 +1502,7 @@ static rt_bool_t voice_service_stream_pcm_to_m55_speaker(const uint8_t *audio_da
         g_service.xiaozhi_speaker_pending_len += copy_len;
         offset += copy_len;
 
-        if (g_service.xiaozhi_speaker_pending_len >= RT_AUDIO_REPLAY_MP_BLOCK_SIZE)
+        if (g_service.xiaozhi_speaker_pending_len >= VOICE_TTS_M55_WRITE_BLOCK_SIZE)
         {
             if (!voice_service_wait_m55_speaker_ready_to_write(VOICE_TTS_REPLAY_WAIT_MS))
             {
@@ -1506,7 +1535,7 @@ static rt_bool_t voice_service_stream_pcm_to_m55_speaker(const uint8_t *audio_da
                 written = rt_device_write(g_service.xiaozhi_speaker_dev,
                                           0,
                                           g_service.xiaozhi_speaker_pending,
-                                          RT_AUDIO_REPLAY_MP_BLOCK_SIZE);
+                                          VOICE_TTS_M55_WRITE_BLOCK_SIZE);
                 write_ms = (rt_uint32_t)((rt_tick_get() - write_start) * 1000U / RT_TICK_PER_SECOND);
                 if (write_ms > g_service.tts_write_max_ms)
                 {
@@ -1527,7 +1556,7 @@ static rt_bool_t voice_service_stream_pcm_to_m55_speaker(const uint8_t *audio_da
                 g_service.xiaozhi_tts_forward_fail_count++;
                 rt_mutex_release(&g_service.lock);
                 rt_kprintf("[voice_service] M55 sound0 write failed len=%lu\n",
-                           (unsigned long)RT_AUDIO_REPLAY_MP_BLOCK_SIZE);
+                           (unsigned long)VOICE_TTS_M55_WRITE_BLOCK_SIZE);
                 return RT_FALSE;
             }
 
@@ -1543,7 +1572,7 @@ static rt_bool_t voice_service_stream_pcm_to_m55_speaker(const uint8_t *audio_da
                 rt_kprintf("[voice_service] tts->m55 sound0 chunk=%lu written=%lu len=%lu\n",
                            (unsigned long)g_service.xiaozhi_tts_forward_chunks,
                            (unsigned long)written,
-                           (unsigned long)RT_AUDIO_REPLAY_MP_BLOCK_SIZE);
+                           (unsigned long)VOICE_TTS_M55_WRITE_BLOCK_SIZE);
             }
             if (VOICE_TTS_CHUNK_GAP_MS > 0U)
             {
@@ -1584,7 +1613,7 @@ static rt_bool_t voice_service_flush_m55_speaker(void)
 
     rt_memset(g_service.xiaozhi_speaker_pending + g_service.xiaozhi_speaker_pending_len,
               0,
-              RT_AUDIO_REPLAY_MP_BLOCK_SIZE - g_service.xiaozhi_speaker_pending_len);
+              VOICE_TTS_M55_WRITE_BLOCK_SIZE - g_service.xiaozhi_speaker_pending_len);
     if (official_voice_speaker_take(voice_service_ms_to_ticks(VOICE_TTS_REPLAY_WAIT_MS)) != RT_EOK)
     {
         g_service.xiaozhi_speaker_last_ret = -RT_EBUSY;
@@ -1602,7 +1631,7 @@ static rt_bool_t voice_service_flush_m55_speaker(void)
         written = rt_device_write(g_service.xiaozhi_speaker_dev,
                                   0,
                                   g_service.xiaozhi_speaker_pending,
-                                  RT_AUDIO_REPLAY_MP_BLOCK_SIZE);
+                                  VOICE_TTS_M55_WRITE_BLOCK_SIZE);
         write_ms = (rt_uint32_t)((rt_tick_get() - write_start) * 1000U / RT_TICK_PER_SECOND);
         if (write_ms > g_service.tts_write_max_ms)
         {
@@ -3148,6 +3177,10 @@ static void voice_service_handle_server_text(const char *message)
             (void)voice_service_flush_m55_speaker();
 #endif
             voice_service_dump_tts_diag();
+            if (!websocket_client_is_connected())
+            {
+                voice_service_start_async_reconnect();
+            }
             voice_service_schedule_wake_rearm_after_tts();
             voice_service_clear_xiaozhi_thinking();
             xiaozhi_ui_state_set(XIAOZHI_UI_READY, "语音结束，准备唤醒", RT_EOK);
@@ -4061,7 +4094,9 @@ static void voice_service_thread_entry(void *parameter)
                 continue;
             }
 
-            if ((g_service.reconnect_tick == 0) || (now - g_service.reconnect_tick > RT_TICK_PER_SECOND * 2))
+            if ((g_service.reconnect_tick == 0) ||
+                (((rt_uint32_t)(now - g_service.reconnect_tick) * 1000U / RT_TICK_PER_SECOND) >
+                 XIAOZHI_RECONNECT_INTERVAL_MS))
             {
                 g_service.reconnect_tick = now;
                 voice_service_start_async_reconnect();

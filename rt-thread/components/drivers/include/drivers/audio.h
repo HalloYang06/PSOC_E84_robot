@@ -162,6 +162,10 @@ struct rt_audio_device
 rt_err_t    rt_audio_register(struct rt_audio_device *audio, const char *name, rt_uint32_t flag, void *data);
 void        rt_audio_tx_complete(struct rt_audio_device *audio);
 void        rt_audio_rx_done(struct rt_audio_device *audio, rt_uint8_t *pbuf, rt_size_t len);
+rt_uint32_t rt_audio_replay_zero_frame_count(void);
+rt_uint32_t rt_audio_replay_partial_under_run_count(void);
+rt_uint32_t rt_audio_replay_queue_push_fail_count(void);
+rt_uint32_t rt_audio_replay_mp_alloc_fail_count(void);
 
 /* Device Control Commands */
 #define CODEC_CMD_RESET             0

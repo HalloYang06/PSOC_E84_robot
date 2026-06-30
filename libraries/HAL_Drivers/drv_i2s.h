@@ -159,6 +159,9 @@ void i2s_tx_interrupt_handler(void);
 void app_i2s_enable(void);
 void app_i2s_activate(void);
 void app_i2s_deactivate(void);
+uint32_t ifx_i2s_tx_underflow_count(void);
+uint32_t ifx_i2s_tx_zero_fill_count(void);
+uint32_t ifx_i2s_tx_frame_ready_count(void);
 
 
 #ifdef __cplusplus

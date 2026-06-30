@@ -38,6 +38,9 @@ bool i2s_skip_frame = false;
 #define TX_FIFO_SIZE         (4096)
 
 static volatile bool i2s_data_ready_flag = false;
+static volatile uint32_t g_i2s_tx_underflow_count = 0;
+static volatile uint32_t g_i2s_tx_zero_fill_count = 0;
+static volatile uint32_t g_i2s_tx_frame_ready_count = 0;
 
 uint8_t i2s_playback_volume = DEFAULT_VOLUME;
 /* ASRC variables for down-sampling audio to 16000Hz */
@@ -459,18 +462,6 @@ static rt_err_t sound_stop(struct rt_audio_device *audio, int stream)
     RT_ASSERT(audio != RT_NULL);
     if (stream == AUDIO_STREAM_REPLAY)
     {
-//        music_player_active = false;
-//        first_frame=true;
-//        app_i2s_deactivate();
-//        rt_thread_detach(snd_dev->playback_thread);
-//        while(audio->replay->queue.is_empty==0)
-//        rt_data_queue_reset(&audio->replay->queue);
-//        audio->replay->write_index = 0;
-//        audio->replay->read_index = 0;
-//        audio->replay->pos = 0;
-//        i2s_data_ready_flag = false;
-
-//            rt_audio_tx_complete(audio);
         LOG_D("Sound Stop.");
     }
 
@@ -854,6 +845,7 @@ void i2s_tx_interrupt_handler(void)
         {
             if (is_music_player_paused() || i2s_data_ready_flag == false)
             {
+                g_i2s_tx_zero_fill_count++;
                 for (int i = 0; i < HW_FIFO_SIZE; i++)
                 {
                     /* Write same data for L,R channels(dual mono) in FIFO */
@@ -864,6 +856,7 @@ void i2s_tx_interrupt_handler(void)
             }
             else
             {
+                g_i2s_tx_frame_ready_count++;
                 for (int i = 0; i < HW_FIFO_SIZE; i++)
                 {
                     /* Write same data for L,R channels(dual mono) in FIFO */
@@ -878,6 +871,7 @@ void i2s_tx_interrupt_handler(void)
     }
     else if (CY_TDM_INTR_TX_FIFO_UNDERFLOW & intr_status)
     {
+        g_i2s_tx_underflow_count++;
         rt_kprintf("Error: I2S transmit underflowed\r\n");
     }
 
@@ -885,4 +879,19 @@ void i2s_tx_interrupt_handler(void)
     Cy_AudioTDM_ClearTxInterrupt(TDM_STRUCT0_TX, CY_TDM_INTR_TX_MASK);
 
     rt_interrupt_leave();
+}
+
+uint32_t ifx_i2s_tx_underflow_count(void)
+{
+    return g_i2s_tx_underflow_count;
+}
+
+uint32_t ifx_i2s_tx_zero_fill_count(void)
+{
+    return g_i2s_tx_zero_fill_count;
+}
+
+uint32_t ifx_i2s_tx_frame_ready_count(void)
+{
+    return g_i2s_tx_frame_ready_count;
 }
