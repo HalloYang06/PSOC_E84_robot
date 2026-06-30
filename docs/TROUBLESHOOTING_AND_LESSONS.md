@@ -2165,3 +2165,26 @@ Fix / trick:
 
 Boundary:
 - This is M55 XiaoZhi QA behavior only. Do not change M33 motion/CAN or NanoPi paths for this symptom.
+## 2026-06-30 - M55 XiaoZhi second-turn stale can be caused by WebSocket callback doing heavy server-text work
+
+Symptoms:
+- First `m55qa_xz_text` returns ASR/TTS text, then M55 voice status stops advancing.
+- Second `m55qa_xz_text` leaves M33 side with `tx_pending=1` and repeated `cm55 voice status stale`.
+- WiFi/token/project can still be healthy: `xz_ws=1`, `xz_stage=70`, `token_len=468`.
+
+Root cause:
+- M55 processed server JSON text directly inside the WebSocket receive callback.
+- That path parses JSON, updates XiaoZhi UI state, publishes ASR/TTS text to M33, and changes wake/listening state.
+- On this board that could stop `voice_svc` progress after the first reply, making the next turn look like a connection or speaker problem.
+
+Fix / trick:
+- Queue server text in a small M55 ring buffer from the WebSocket callback.
+- Drain and parse server text from `voice_svc`, not from the network callback.
+- Keep QA text send asynchronous.
+- Do not use local Baidu TTS fallback for product XiaoZhi playback; require platform binary Opus/audio for voice.
+
+Status:
+- Fixed and validated on COM4 with two consecutive `m55qa_xz_text` turns: `tx_pending=0`, `voice_svc` continued growing, `tts_fwd` grew, and `xz_ws=1`.
+
+Boundary:
+- Do not debug this symptom by changing M33 CAN/motion, NanoPi camera/V, WiFi token, or project routing unless those counters actually regress.
