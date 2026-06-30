@@ -71,6 +71,7 @@ extern rt_uint32_t ifx_i2s_tx_frame_ready_count(void);
 #define XIAOZHI_TTS_60MS_SAMPLES \
     ((XIAOZHI_TTS_OUTPUT_SAMPLE_RATE * XIAOZHI_AUDIO_FRAME_DURATION_MS) / 1000U)
 #define XIAOZHI_TTS_REARM_DELAY_MS   500U
+#define XIAOZHI_RECONNECT_INTERVAL_MS 500U
 #define XIAOZHI_OPUS_DECODE_MAX_SAMPLES ((48000U * XIAOZHI_AUDIO_FRAME_DURATION_MS) / 1000U)
 #define VOICE_TTS_M55_WRITE_BLOCK_SIZE 4096U
 #if (VOICE_TTS_M55_WRITE_BLOCK_SIZE > RT_AUDIO_REPLAY_MP_BLOCK_SIZE)
@@ -291,6 +292,7 @@ static const char *voice_service_public_wake_word(const char *wake_word);
 static rt_err_t voice_service_send_control(voice_control_cmd_t cmd);
 static rt_bool_t voice_service_wait_xiaozhi_hello(rt_uint32_t timeout_ms);
 static void voice_service_flush_xiaozhi_tail_frame(void);
+static void voice_service_start_async_reconnect(void);
 
 static voice_service_t g_service;
 
@@ -3324,6 +3326,10 @@ static void voice_service_handle_server_text(const char *message)
             (void)voice_service_flush_m55_speaker();
 #endif
             voice_service_dump_tts_diag();
+            if (!websocket_client_is_connected())
+            {
+                voice_service_start_async_reconnect();
+            }
             voice_service_schedule_wake_rearm_after_tts();
             voice_service_clear_xiaozhi_thinking();
             xiaozhi_ui_state_set(XIAOZHI_UI_READY, "语音结束，准备唤醒", RT_EOK);
@@ -4246,7 +4252,9 @@ static void voice_service_thread_entry(void *parameter)
                 continue;
             }
 
-            if ((g_service.reconnect_tick == 0) || (now - g_service.reconnect_tick > RT_TICK_PER_SECOND * 2))
+            if ((g_service.reconnect_tick == 0) ||
+                (((rt_uint32_t)(now - g_service.reconnect_tick) * 1000U / RT_TICK_PER_SECOND) >
+                 XIAOZHI_RECONNECT_INTERVAL_MS))
             {
                 g_service.reconnect_tick = now;
                 voice_service_start_async_reconnect();
