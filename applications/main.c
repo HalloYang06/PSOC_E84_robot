@@ -25,6 +25,61 @@
 #include "xiaozhi_voice_relay.h"
 #include "drv_pdm.h"
 
+#define M55_QA_TEXT_THREAD_STACK 6144
+
+static void xiaozhi_bridge_publish_status(void);
+
+typedef struct
+{
+    char text[256];
+} m55_qa_text_ctx_t;
+
+static void m55_qa_text_thread_entry(void *parameter)
+{
+    m55_qa_text_ctx_t *ctx = (m55_qa_text_ctx_t *)parameter;
+
+    if (ctx != RT_NULL)
+    {
+        rt_err_t ret = voice_service_qa_xiaozhi_text_turn(ctx->text);
+
+        rt_kprintf("[m55_xz_bridge] async qa_text ret=%d len=%lu\n",
+                   ret,
+                   (unsigned long)rt_strlen(ctx->text));
+        xiaozhi_bridge_publish_status();
+        rt_free(ctx);
+    }
+}
+
+static rt_err_t m55_qa_text_async(const char *text)
+{
+    m55_qa_text_ctx_t *ctx;
+    rt_thread_t thread;
+
+    ctx = (m55_qa_text_ctx_t *)rt_calloc(1, sizeof(*ctx));
+    if (ctx == RT_NULL)
+    {
+        return -RT_ENOMEM;
+    }
+    if ((text != RT_NULL) && (text[0] != '\0'))
+    {
+        rt_strncpy(ctx->text, text, sizeof(ctx->text) - 1);
+    }
+
+    thread = rt_thread_create("m55qa_txt",
+                              m55_qa_text_thread_entry,
+                              ctx,
+                              M55_QA_TEXT_THREAD_STACK,
+                              22,
+                              10);
+    if (thread == RT_NULL)
+    {
+        rt_free(ctx);
+        return -RT_ENOMEM;
+    }
+
+    rt_thread_startup(thread);
+    return RT_EOK;
+}
 #ifdef BSP_USING_LVGL
 extern int lvgl_thread_init(void);
 #endif
@@ -1593,7 +1648,7 @@ static rt_err_t xiaozhi_bridge_handle_config(const voice_config_msg_t *config)
         ret = xiaozhi_bridge_start_reconnect_async();
         break;
     case VOICE_CONFIG_XIAOZHI_QA_TEXT:
-        ret = voice_service_qa_xiaozhi_text_turn(config->value);
+        ret = m55_qa_text_async(config->value);
         break;
     case VOICE_CONFIG_WIFI_SSID:
         ret = wifi_config_set_ssid(config->value);

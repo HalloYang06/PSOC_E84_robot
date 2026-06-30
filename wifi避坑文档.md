@@ -3224,11 +3224,8 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
 
 验证：
 
-1. `python -m SCons -j8` 构建通过，最终 size：
-   - `text=1682924 data=81404 bss=4528756`
-2. `program_with_resources.bat` 烧录通过：
-   - `rtthread.hex wrote 1765376 bytes`
-   - `whd_resources_all.bin wrote 466944 bytes`
+1. `python -m SCons -j8` 构建通过，最终 size：`text=1682924 data=81404 bss=4528756`。
+2. `program_with_resources.bat` 烧录通过：`rtthread.hex wrote 1765376 bytes`，`whd_resources_all.bin wrote 466944 bytes`。
 3. 两轮间隔 50s 的 `m55qa_xz_text`：
    - 两轮都有 `voice_ack cmd=1015 result=0`
    - 两轮都有 STT/TTS 文本
@@ -3238,9 +3235,71 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
    - `srv_lens=0/0/194`
    - `srv_err=0x0002/0x0000`
    - `lvgl_flush=948`，说明 UI 仍在刷新。
+## 75. 2026-06-30 M55 多轮卡死根因：不要在 WebSocket 回调里解析/转发服务器文本
+
+现象：
+
+1. 现场继续反馈“第二次直接卡死”“LVGL 跟着卡”“扬声器服务器语音卡”。
+2. 串口两轮 `m55qa_xz_text` 复现到：
+   - 第一轮能看到 `voice_ack cmd=1015 result=0`、ASR/TTS 文本；
+   - 第一轮后 `voice_svc`、`frames/windows` 不再增长；
+   - 第二轮命令表现为 `tx_pending=1`，M33 侧持续报 `cm55 voice status stale`。
+3. WiFi/token/project/WebSocket 并没有退化：`xz_ws=1 xz_stage=70 xz_errno=0`、`token_len=468`、`srv_hello=1`。
+
+根因：
+
+1. 服务器文本消息原先直接在 WebSocket 收包回调里执行 `voice_service_handle_server_text()`。
+2. 该处理会解析 JSON、更新 UI、向 M33 发布 ASR/TTS 文本、收尾 wake/listening 状态；这些重活不应放在网络回调上下文里。
+3. 第一轮服务器文字/事件回来后，M55 `voice_svc` 停止推进，导致后续 M33->M55 控制消息排队，看起来像第二轮小智卡死或扬声器卡。
+
+修复：
+
+1. 增加 M55 服务器文本 ring buffer：`VOICE_SERVER_TEXT_SLOT_SIZE=384`、`VOICE_SERVER_TEXT_SLOT_COUNT=4`。
+2. WebSocket 回调只复制服务器 JSON 文本入队，不再直接解析/转发。
+3. `voice_service_thread_entry()` 每轮最多处理 2 条 pending server text，让 JSON 解析、M33 文本发布、UI 状态更新都回到 `voice_svc` 线程。
+4. QA text 发送保持异步，避免 M33->M55 config/control 线程被 WebSocket send 阻塞。
+5. 停止使用本地 Baidu TTS fallback；产品语音播放只认 XiaoZhi 平台返回的 binary audio/Opus 流，文字只用于 LVGL/M33 可视化。
+
+验证：
+
+1. `python -m SCons -j8` 构建通过，最终 size：`text=1683324 data=81404 bss=4530324`。
+2. `program_with_resources.bat` 烧录通过：`rtthread.hex wrote 1769472 bytes`，`whd_resources_all.bin wrote 466944 bytes`。
+3. 两轮 `m55qa_xz_text` 均通过：
+   - 第一轮：`voice_svc=681`，`xz_rx=7/34`，`tts_fwd=15/61440`；
+   - 延时后状态继续增长：`voice_svc=745`；
+   - 第二轮：`voice_ack cmd=1015 result=0`，`voice_svc=1115`；
+   - `tx_pending=0`，`xz_ws=1 xz_stage=70 xz_errno=0`，`tts_fail=0 pcm_reject=0`，`lvgl_flush` 持续增长。
 
 后续判断顺序：
 
-1. 如果现场再说“卡”，先看 `tts_fail`、`srv_err`、`srv_lens`、`lvgl_flush`、`xz_ws/xz_stage`。
-2. 如果 `tts_fail=0` 且 `srv_err` 低但仍听感卡，下一步不要改 WiFi/token/project，也不要改 2048B；应该做 M55 本地播放 ring buffer / frame packer，把 60ms Opus PCM 更平滑地喂给 4096B replay 块。
-3. 如果 `xz_ws` 在 TTS stop 后短暂掉线但 0.5-2s 内恢复，不应再当作 token/project 问题；若持续不恢复，再查 WebSocket reconnect 和平台 close reason。
+1. 如果再出现“第二轮卡死/连接跳/状态 stale”，先看 `voice_svc` 是否增长；若不增长，优先查回调上下文、锁、IPC publish，不要先改 WiFi/token/project。
+2. 如果 `voice_svc` 增长且 `tts_fwd` 增长但听感仍卡，再回到 M55 sound0/I2S 平滑播放和本地 ring buffer。
+3. 若平台只回文字不回 binary，板端不再伪造本地 TTS；应查平台 XiaoZhi relay 是否按官方 Opus 二进制返回音频。
+
+## 76. 2026-06-30 现场再次卡顿：保留回调解耦时必须同步保留 31b696d 的播放节拍
+
+现象：
+
+1. 修完 WebSocket 回调重活后，现场先反馈“不卡了”，随后又反馈“又卡了”。
+2. 对照 M55 镜像 diff 发现：server text queue 修复保住了，但 TTS 节拍仍是较保守的 `4 slots / 300ms / wait 20ms / batch 1`。
+3. 这会降低 voice_tts 喂 `sound0` 的及时性，和云端 60ms Opus 包到本地 4096B replay 块之间产生空洞；表现为语音卡，但不一定伴随 WiFi/token/project 异常。
+
+修复：
+
+1. 保留第 75 节的 WebSocket 回调解耦，禁止回到回调里直接解析/转发 server text。
+2. 同步恢复 commit `31b696d` 已验证过的播放平滑节拍：
+   - `VOICE_TTS_PREBUFFER_MIN_SLOTS=2`
+   - `VOICE_TTS_PREBUFFER_MAX_MS=180`
+   - `VOICE_TTS_THREAD_WAIT_MS=5`
+   - `VOICE_TTS_PROCESS_MAX_PER_BATCH=4`
+   - `VOICE_TTS_M55_WRITE_BLOCK_SIZE=4096`
+3. `m55qa_xz_text` 必须先发 `listen start(manual)` 再发带 text 的 `listen stop`，不能只发单条 stop；否则第一轮可能成功，后续轮次可能因为平台会话状态不在 listening 而只看到板端 ack、没有 STT/TTS/binary。
+4. 这个组合的目标是同时解决两类问题：
+   - 回调解耦解决第二轮卡死、`voice_svc` 不增长、`tx_pending=1`；
+   - 31b696d 节拍解决播放空洞和服务器 TTS 卡顿。
+
+后续判断：
+
+1. 如果再次卡，先跑 `m55qa_status` 或 `m55qa_tts_diag` 看 `voice_svc`、`tts_fwd`、`tts_fail`、`pcm_reject`、`srv_err`、`lvgl_flush`。
+2. `voice_svc` 不增长优先查线程/锁/回调上下文；`voice_svc` 增长但听感卡，优先查 `sound0`/I2S/RT-Audio 喂数平滑。
+3. 不要因为听感卡直接回到 WiFi 扫描、token、project_id 或 NanoPi 方向。
