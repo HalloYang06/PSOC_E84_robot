@@ -17,6 +17,28 @@ def _issue_rehab_app_token() -> tuple[str, str]:
     return issue_session_token(client, email=email)
 
 
+def _pass_preflight(token: str, plan_id: str, device_id: str, sync_id: str, *, pain_before: float = 1.0) -> dict:
+    response = client.post(
+        "/api/rehab-arm/app/v1/training-preflight",
+        headers=auth_headers(token),
+        json={
+            "plan_id": plan_id,
+            "device_id": device_id,
+            "sync_id": sync_id,
+            "checked_by_role": "patient",
+            "pain_before": pain_before,
+            "checklist": {
+                "device_worn_correctly": True,
+                "pain_within_limit": True,
+                "stop_explained": True,
+                "m33_plan_accepted": True,
+            },
+        },
+    )
+    assert response.status_code == 200
+    return response.json()["data"]
+
+
 def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
 
@@ -214,6 +236,17 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     )
     assert reaccept_response.status_code == 200
 
+    missing_preflight_start = client.post(
+        "/api/rehab-arm/app/v1/training-sessions/start",
+        headers=auth_headers(owner_token),
+        json={"plan_id": plan["id"], "device_id": device["id"]},
+    )
+    assert missing_preflight_start.status_code == 409
+    assert missing_preflight_start.json()["error"]["code"] == "PREFLIGHT_CHECK_REQUIRED"
+
+    preflight = _pass_preflight(owner_token, plan["id"], device["id"], resync["id"])
+    assert preflight["plan_version"] == 2
+
     allowed_start = client.post(
         "/api/rehab-arm/app/v1/training-sessions/start",
         headers=auth_headers(owner_token),
@@ -238,6 +271,8 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
         json={"completion_rate": 1, "user_note": "complete before next session"},
     )
     assert finish_active.status_code == 200
+
+    _pass_preflight(owner_token, plan["id"], device["id"], resync["id"])
 
     next_start_after_finish = client.post(
         "/api/rehab-arm/app/v1/training-sessions/start",
@@ -441,6 +476,8 @@ def test_rehab_arm_app_training_session_pause_resume_cancel_flow(tmp_path, monke
     )
     assert accepted.status_code == 200
 
+    _pass_preflight(owner_token, plan["id"], device["id"], sync["id"])
+
     start = client.post(
         "/api/rehab-arm/app/v1/training-sessions/start",
         headers=auth_headers(owner_token),
@@ -514,6 +551,8 @@ def test_rehab_arm_app_training_session_pause_resume_cancel_flow(tmp_path, monke
     assert report_cancelled.status_code == 409
     assert report_cancelled.json()["error"]["code"] == "TRAINING_SESSION_NOT_FINISHED"
 
+    _pass_preflight(owner_token, plan["id"], device["id"], sync["id"])
+
     restart_after_cancel = client.post(
         "/api/rehab-arm/app/v1/training-sessions/start",
         headers=auth_headers(owner_token),
@@ -554,6 +593,8 @@ def test_rehab_arm_app_session_emg_and_intent_summary_flow(tmp_path, monkeypatch
         json={"sync_id": sync_id, "sync_status": "m33_accepted", "m33_reason": "accepted for record-only session"},
     )
     assert accept_response.status_code == 200
+
+    _pass_preflight(owner_token, plan_id, device_id, sync_id)
 
     start_response = client.post(
         "/api/rehab-arm/app/v1/training-sessions/start",
@@ -950,6 +991,8 @@ def test_rehab_arm_app_offline_diagnostics_sync_and_audit_loop(tmp_path, monkeyp
         json={"sync_id": sync_id, "sync_status": "m33_accepted", "m33_reason": "offline replay plan accepted"},
     )
     assert accept_response.status_code == 200
+
+    _pass_preflight(owner_token, plan_id, device["id"], sync_id)
 
     start_response = client.post(
         "/api/rehab-arm/app/v1/training-sessions/start",

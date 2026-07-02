@@ -174,6 +174,27 @@ class RehabAppTrainingSessionStartRequest(BaseModel):
     device_id: str = Field(min_length=1)
 
 
+class RehabAppPreflightCheckCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    plan_id: str = Field(min_length=1)
+    device_id: str = Field(min_length=1)
+    sync_id: str = Field(min_length=1)
+    checked_by_role: str = Field(default="patient", pattern="^(patient|therapist|family|engineer)$")
+    checklist: dict = Field(default_factory=dict)
+    pain_before: float | None = Field(default=None, ge=0, le=10)
+    notes: str = Field(default="", max_length=2000)
+
+
+class RehabAppPreflightCheckRead(RehabAppPreflightCheckCreate):
+    id: str
+    user_id: str
+    plan_version: int
+    status: str
+    created_at: datetime | None = None
+    control_boundary: str = "preflight_check_evidence_only_not_motion_permission"
+
+
 class RehabAppTrainingSessionFinishRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

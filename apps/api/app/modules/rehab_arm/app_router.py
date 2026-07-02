@@ -21,6 +21,7 @@ from .app_schemas import (
     RehabAppOfflineQueueItemCreate,
     RehabAppOfflineQueueReplayRequest,
     RehabAppPlatformSyncRequest,
+    RehabAppPreflightCheckCreate,
     RehabAppProfileUpdate,
     RehabAppTrainingReportReviewCreate,
     RehabAppTrainingSessionCancelRequest,
@@ -39,6 +40,7 @@ from .app_service import (
     bind_device,
     cancel_training_session,
     create_ble_message,
+    create_preflight_check,
     create_training_report_review,
     create_training_plan,
     draft_next_plan_from_report,
@@ -193,6 +195,11 @@ def api_archive_training_plan(plan_id: str, request: Request, db: Session = Depe
 @router.post("/training-plans/{plan_id}/sync-to-device")
 def api_sync_training_plan(plan_id: str, payload: RehabAppTrainingPlanSyncRequest, request: Request, db: Session = Depends(get_db)):
     return ok(sync_training_plan_to_device(db, _user_id(db, request), plan_id, payload.device_id))
+
+
+@router.post("/training-preflight")
+def api_create_training_preflight(payload: RehabAppPreflightCheckCreate, request: Request, db: Session = Depends(get_db)):
+    return ok(create_preflight_check(db, _user_id(db, request), payload))
 
 
 @router.post("/training-sessions/start")

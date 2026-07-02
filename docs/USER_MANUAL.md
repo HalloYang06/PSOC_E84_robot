@@ -126,6 +126,14 @@ Paused sessions still occupy the device and must be resumed before progress can 
 
 Archived or rejected training plans stay visible in history, but they cannot be synced to M33 and cannot start a training session. Create or reactivate an appropriate plan, sync the current version, and wait for `m33_accepted` before starting.
 
+Before starting a training session, submit a preflight check:
+
+```text
+POST /api/rehab-arm/app/v1/training-preflight
+```
+
+Required checklist keys are `device_worn_correctly`, `pain_within_limit`, `stop_explained`, and `m33_plan_accepted`, all set to `true`. The preflight must reference the current `plan_id`, `device_id`, and accepted `sync_id`; editing the plan or getting a new M33 decision requires a fresh preflight.
+
 ## Android APK Build Environment
 
 This workstation has the Android build prerequisites installed for the rehab-arm mobile wrapper:

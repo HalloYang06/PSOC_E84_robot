@@ -17,6 +17,7 @@ from app.db.models.rehab_arm_app import (
     RehabAppIntentInferenceSummary,
     RehabAppOfflineQueueItem,
     RehabAppPlatformSyncRun,
+    RehabAppPreflightCheck,
     RehabAppTrainingPlan,
     RehabAppTrainingPlanSync,
     RehabAppTrainingReport,
@@ -31,6 +32,7 @@ from .app_schemas import (
     RehabAppDiagnosticUploadRequest,
     RehabAppBleMessageCreate,
     RehabAppOfflineQueueItemCreate,
+    RehabAppPreflightCheckCreate,
     RehabAppProfileUpdate,
     RehabAppTrainingReportReviewCreate,
     RehabAppTrainingPlanCreate,
@@ -143,6 +145,24 @@ def _session_dict(session: RehabAppTrainingSession) -> dict:
         "pain_after": session.pain_after,
         "user_note": session.user_note,
         "control_boundary": "training_session_record_only_not_motion_permission",
+    }
+
+
+def _preflight_dict(check: RehabAppPreflightCheck) -> dict:
+    return {
+        "id": check.id,
+        "user_id": check.user_id,
+        "plan_id": check.plan_id,
+        "device_id": check.device_id,
+        "sync_id": check.sync_id,
+        "plan_version": check.plan_version,
+        "status": check.status,
+        "checked_by_role": check.checked_by_role,
+        "checklist": check.checklist or {},
+        "pain_before": check.pain_before,
+        "notes": check.notes,
+        "created_at": check.created_at,
+        "control_boundary": "preflight_check_evidence_only_not_motion_permission",
     }
 
 
@@ -658,6 +678,89 @@ def update_m33_sync_status(db: Session, user_id: str, device_id: str, sync_id: s
     return _sync_dict(sync)
 
 
+REQUIRED_PREFLIGHT_CHECKS = {
+    "device_worn_correctly",
+    "pain_within_limit",
+    "stop_explained",
+    "m33_plan_accepted",
+}
+
+
+def create_preflight_check(db: Session, user_id: str, payload: RehabAppPreflightCheckCreate) -> dict:
+    plan = db.get(RehabAppTrainingPlan, payload.plan_id)
+    if plan is None or plan.user_id != user_id:
+        raise AppError("TRAINING_PLAN_NOT_FOUND", "training plan not found", status_code=404)
+    _require_training_plan_usable(plan)
+    device = db.get(RehabAppDeviceBinding, payload.device_id)
+    if device is None or device.user_id != user_id:
+        raise AppError("DEVICE_NOT_FOUND", "device binding not found", status_code=404)
+    _require_device_not_revoked(device)
+    sync = db.get(RehabAppTrainingPlanSync, payload.sync_id)
+    if sync is None or sync.plan_id != plan.id or sync.device_id != device.id:
+        raise AppError("TRAINING_PLAN_SYNC_NOT_FOUND", "training plan sync not found for this plan/device", status_code=404)
+    if sync.sync_status != "m33_accepted" or sync.plan_version != plan.version:
+        raise AppError(
+            "M33_ACCEPTANCE_REQUIRED",
+            "preflight requires the latest plan version to be accepted by M33",
+            status_code=409,
+            details={
+                "plan_id": plan.id,
+                "device_id": device.id,
+                "sync_id": sync.id,
+                "sync_status": sync.sync_status,
+                "accepted_plan_version": sync.plan_version,
+                "required_plan_version": plan.version,
+                "control_boundary": "preflight_blocked_not_motion_permission",
+            },
+        )
+    checklist = payload.checklist or {}
+    missing = sorted(item for item in REQUIRED_PREFLIGHT_CHECKS if checklist.get(item) is not True)
+    if missing:
+        raise AppError(
+            "PREFLIGHT_CHECK_INCOMPLETE",
+            "required preflight checklist items are missing or false",
+            status_code=409,
+            details={
+                "missing": missing,
+                "required": sorted(REQUIRED_PREFLIGHT_CHECKS),
+                "control_boundary": "preflight_blocked_not_motion_permission",
+            },
+        )
+    check = RehabAppPreflightCheck(
+        user_id=user_id,
+        plan_id=plan.id,
+        device_id=device.id,
+        sync_id=sync.id,
+        plan_version=plan.version,
+        status="passed",
+        checked_by_role=payload.checked_by_role,
+        checklist=checklist,
+        pain_before=payload.pain_before,
+        notes=payload.notes,
+    )
+    db.add(check)
+    db.flush()
+    create_audit_log(
+        db,
+        project_id=device.platform_project_id or None,
+        actor_type="human",
+        actor_id=user_id,
+        action="rehab_app.preflight_check.passed",
+        resource_type="rehab_app_preflight_check",
+        resource_id=check.id,
+        after={
+            "plan_id": plan.id,
+            "device_id": device.id,
+            "sync_id": sync.id,
+            "plan_version": plan.version,
+            "control_boundary": "preflight_check_evidence_only_not_motion_permission",
+        },
+    )
+    db.commit()
+    db.refresh(check)
+    return _preflight_dict(check)
+
+
 BLE_MESSAGE_TYPES = {
     "app_hello",
     "device_status_request",
@@ -870,6 +973,20 @@ def _latest_plan_device_sync(db: Session, plan_id: str, device_id: str) -> Rehab
     )
 
 
+def _latest_passed_preflight(db: Session, user_id: str, plan_id: str, device_id: str) -> RehabAppPreflightCheck | None:
+    return db.scalar(
+        select(RehabAppPreflightCheck)
+        .where(
+            RehabAppPreflightCheck.user_id == user_id,
+            RehabAppPreflightCheck.plan_id == plan_id,
+            RehabAppPreflightCheck.device_id == device_id,
+            RehabAppPreflightCheck.status == "passed",
+        )
+        .order_by(RehabAppPreflightCheck.created_at.desc(), RehabAppPreflightCheck.id.desc())
+        .limit(1)
+    )
+
+
 def _require_user_session(db: Session, user_id: str, session_id: str) -> RehabAppTrainingSession:
     session = db.get(RehabAppTrainingSession, session_id)
     if session is None or session.user_id != user_id:
@@ -969,6 +1086,23 @@ def start_training_session(db: Session, user_id: str, plan_id: str, device_id: s
                 "required_plan_version": plan.version,
                 "m33_reason": sync.m33_reason if sync else "no plan sync found",
                 "m33_authority": "final_safety_authority",
+                "control_boundary": "training_session_blocked_not_motion_permission",
+            },
+        )
+    preflight = _latest_passed_preflight(db, user_id, plan.id, device.id)
+    if preflight is None or preflight.sync_id != sync.id or preflight.plan_version != plan.version:
+        raise AppError(
+            "PREFLIGHT_CHECK_REQUIRED",
+            "a current passed preflight check is required before starting a training session",
+            status_code=409,
+            details={
+                "plan_id": plan.id,
+                "device_id": device.id,
+                "sync_id": sync.id,
+                "required_plan_version": plan.version,
+                "latest_preflight_id": preflight.id if preflight else None,
+                "latest_preflight_sync_id": preflight.sync_id if preflight else None,
+                "latest_preflight_plan_version": preflight.plan_version if preflight else None,
                 "control_boundary": "training_session_blocked_not_motion_permission",
             },
         )
