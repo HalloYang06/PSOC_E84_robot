@@ -68,6 +68,8 @@ GET /training-sessions/{session_id}/report
 GET /training-reports
 GET /training-reports/{report_id}
 GET /training-reports/{report_id}/reviews
+GET /ai-training-drafts?status=open
+GET /ai-training-drafts?status=accepted
 GET /emg/latest
 GET /emg/history
 GET /platform/sync-status

@@ -342,6 +342,7 @@ def get_app_bootstrap(db: Session, user_id: str) -> dict:
     devices = list_devices(db, user_id)
     plans = list_training_plans(db, user_id)
     sessions = list_training_sessions(db, user_id, limit=1)
+    drafts = list_ai_training_drafts(db, user_id, status="open", limit=1)
     return {
         "profile": get_profile(db, user_id),
         "devices": devices,
@@ -349,6 +350,7 @@ def get_app_bootstrap(db: Session, user_id: str) -> dict:
         "active_session": sessions[0] if sessions and sessions[0]["status"] in {"started", "in_progress"} else None,
         "latest_emg": latest_emg_summary(db, user_id),
         "latest_report": latest_training_report(db, user_id),
+        "latest_open_ai_draft": drafts[0] if drafts else None,
         "platform_sync": get_platform_sync_status(db, user_id),
         "offline_queue": list_offline_queue(db, user_id, status="queued", limit=20),
         "control_boundary": "app_bootstrap_evidence_only_not_motion_permission",
@@ -1313,6 +1315,18 @@ def generate_ai_training_draft(db: Session, user_id: str, input_text: str, conte
     generated_plan = _draft_plan_from_context(input_text, context_snapshot)
     risk_notes = ["AI 只生成草稿，不代表执行许可", "必须同步到 M33 并获得 m33_accepted 后才能开始训练记录"]
     return _persist_ai_training_draft(db, user_id, input_text, context_snapshot, generated_plan, risk_notes)
+
+
+def list_ai_training_drafts(db: Session, user_id: str, status: str = "all", limit: int = 50) -> list[dict]:
+    stmt = select(RehabAppAiTrainingDraft).where(RehabAppAiTrainingDraft.user_id == user_id)
+    if status == "open":
+        stmt = stmt.where(RehabAppAiTrainingDraft.accepted_plan_id == "")
+    elif status == "accepted":
+        stmt = stmt.where(RehabAppAiTrainingDraft.accepted_plan_id != "")
+    elif status != "all":
+        raise AppError("AI_TRAINING_DRAFT_STATUS_INVALID", "AI training draft status must be all, open, or accepted", status_code=422)
+    drafts = list(db.scalars(stmt.order_by(RehabAppAiTrainingDraft.created_at.desc()).limit(limit)))
+    return [_draft_dict(draft) for draft in drafts]
 
 
 def draft_next_plan_from_report(db: Session, user_id: str, report_id: str) -> dict:

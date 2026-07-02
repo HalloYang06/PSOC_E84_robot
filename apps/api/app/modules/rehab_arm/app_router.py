@@ -55,6 +55,7 @@ from .app_service import (
     get_training_report,
     get_training_session,
     latest_emg_summary,
+    list_ai_training_drafts,
     list_devices,
     list_training_reports,
     list_training_report_reviews,
@@ -264,6 +265,11 @@ def api_record_intent_summary(payload: RehabAppIntentSummaryCreate, request: Req
 @router.post("/ai-training-drafts/generate")
 def api_generate_ai_training_draft(payload: RehabAppAiTrainingDraftGenerateRequest, request: Request, db: Session = Depends(get_db)):
     return ok(generate_ai_training_draft(db, _user_id(db, request), payload.input_text, payload.context_snapshot))
+
+
+@router.get("/ai-training-drafts")
+def api_list_ai_training_drafts(request: Request, status: str = "all", db: Session = Depends(get_db)):
+    return ok(list_ai_training_drafts(db, _user_id(db, request), status=status))
 
 
 @router.get("/ai-training-drafts/{draft_id}")

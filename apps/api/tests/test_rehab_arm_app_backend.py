@@ -468,6 +468,14 @@ def test_rehab_arm_app_plan_edit_ai_draft_and_platform_sync(tmp_path, monkeypatc
     assert draft["control_boundary"] == "ai_draft_only_not_execution_permission"
     assert draft["generated_plan"]["control_boundary"] == "ai_draft_only_not_execution_permission"
 
+    open_drafts = client.get("/api/rehab-arm/app/v1/ai-training-drafts?status=open", headers=auth_headers(owner_token))
+    assert open_drafts.status_code == 200
+    assert open_drafts.json()["data"][0]["id"] == draft["id"]
+
+    bootstrap_with_draft = client.get("/api/rehab-arm/app/v1/me", headers=auth_headers(owner_token))
+    assert bootstrap_with_draft.status_code == 200
+    assert bootstrap_with_draft.json()["data"]["latest_open_ai_draft"]["id"] == draft["id"]
+
     accepted_response = client.post(
         f"/api/rehab-arm/app/v1/ai-training-drafts/{draft['id']}/accept",
         headers=auth_headers(owner_token),
@@ -476,6 +484,18 @@ def test_rehab_arm_app_plan_edit_ai_draft_and_platform_sync(tmp_path, monkeypatc
     plan = accepted_response.json()["data"]
     assert plan["source"] == "ai_generated"
     assert plan["control_boundary"] == "training_plan_only_not_motor_command"
+
+    open_drafts_after_accept = client.get("/api/rehab-arm/app/v1/ai-training-drafts?status=open", headers=auth_headers(owner_token))
+    assert open_drafts_after_accept.status_code == 200
+    assert open_drafts_after_accept.json()["data"] == []
+
+    accepted_drafts = client.get("/api/rehab-arm/app/v1/ai-training-drafts?status=accepted", headers=auth_headers(owner_token))
+    assert accepted_drafts.status_code == 200
+    assert accepted_drafts.json()["data"][0]["accepted_plan_id"] == plan["id"]
+
+    bootstrap_after_accept = client.get("/api/rehab-arm/app/v1/me", headers=auth_headers(owner_token))
+    assert bootstrap_after_accept.status_code == 200
+    assert bootstrap_after_accept.json()["data"]["latest_open_ai_draft"] is None
 
     patch_response = client.patch(
         f"/api/rehab-arm/app/v1/training-plans/{plan['id']}",

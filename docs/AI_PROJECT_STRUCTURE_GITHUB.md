@@ -43,11 +43,11 @@ Current validation:
 
 Closed-loop backend contract:
 
-- `GET /api/rehab-arm/app/v1/me` returns the phone bootstrap payload: profile, devices, plans, active session, latest EMG, latest training report, platform sync status, and a control boundary.
+- `GET /api/rehab-arm/app/v1/me` returns the phone bootstrap payload: profile, devices, plans, active session, latest EMG, latest training report, latest open AI draft, platform sync status, and a control boundary.
 - `GET /api/rehab-arm/app/v1/devices/{device_id}/status` returns M33-facing state for the bound device.
 - `POST /api/rehab-arm/app/v1/devices/{device_id}/m33-status` records M33 sync decisions (`sent`, `m33_accepted`, `m33_rejected`, `failed`) and reasons. It records safety authority evidence; it does not expose override controls.
 - Training-plan edits increment `version`. `sync-to-device` captures `plan_version`, and `training-sessions/start` requires an `m33_accepted` sync for the current plan version on the selected device.
-- AI training draft endpoints are draft-only: generate, read, accept-to-plan. Accepted drafts become normal training plans and still require M33 sync and acceptance before a training session record can start.
+- AI training draft endpoints are draft-only: generate, list by `all/open/accepted`, read, accept-to-plan. Accepted drafts become normal training plans and still require M33 sync and acceptance before a training session record can start.
 - Platform sync endpoints are evidence/review only and must not be interpreted as motion permission.
 - Diagnostic upload endpoints store M33/mobile snapshots for review: `POST /devices/{device_id}/diagnostic-upload` and `GET /devices/{device_id}/diagnostics`.
 - Offline queue endpoints (`POST/GET /offline-queue`, `POST /offline-queue/replay`) are evidence-only. The replay whitelist is limited to diagnostic upload, training-session progress, EMG summary, M55 intent summary, and platform sync; motor or CAN-like operations are rejected.

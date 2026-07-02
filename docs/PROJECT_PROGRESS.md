@@ -122,3 +122,4 @@
 - Verified that accepting the generated draft creates a normal plan and that starting it immediately is blocked with `M33_ACCEPTANCE_REQUIRED` until the new plan version is synced and accepted by M33.
 - Validation passed: `python -m pytest tests/test_rehab_arm_app_backend.py -q` from `apps/api` (`4 passed`, deprecation warnings only).
 - Extended platform sync summaries with `ai_training_drafts`, so report-derived next-plan drafts can be counted as cloud/platform evidence without becoming motion permission.
+- Added AI draft recovery for the phone workflow: `GET /ai-training-drafts?status=all|open|accepted` lists persisted drafts, and `/me` now includes `latest_open_ai_draft` so an unfinished AI plan review can resume after app restart.
