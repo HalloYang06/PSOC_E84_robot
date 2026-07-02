@@ -864,6 +864,31 @@ def test_rehab_arm_app_plan_edit_ai_draft_and_platform_sync(tmp_path, monkeypatc
     assert archive_response.status_code == 200
     assert archive_response.json()["data"]["status"] == "archived"
 
+    device_response = client.post(
+        "/api/rehab-arm/app/v1/devices/bind",
+        headers=auth_headers(owner_token),
+        json={"m33_device_id": "m33-archived-plan-alpha", "ble_name": "ArmControl-Archived", "trust_status": "trusted"},
+    )
+    assert device_response.status_code == 200
+    device = device_response.json()["data"]
+
+    archived_sync = client.post(
+        f"/api/rehab-arm/app/v1/training-plans/{plan['id']}/sync-to-device",
+        headers=auth_headers(owner_token),
+        json={"device_id": device["id"]},
+    )
+    assert archived_sync.status_code == 409
+    assert archived_sync.json()["error"]["code"] == "TRAINING_PLAN_NOT_USABLE"
+    assert archived_sync.json()["error"]["details"]["plan_status"] == "archived"
+
+    archived_start = client.post(
+        "/api/rehab-arm/app/v1/training-sessions/start",
+        headers=auth_headers(owner_token),
+        json={"plan_id": plan["id"], "device_id": device["id"]},
+    )
+    assert archived_start.status_code == 409
+    assert archived_start.json()["error"]["code"] == "TRAINING_PLAN_NOT_USABLE"
+
     sync_response = client.post(
         "/api/rehab-arm/app/v1/platform/sync",
         headers=auth_headers(owner_token),

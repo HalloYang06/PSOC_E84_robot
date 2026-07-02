@@ -575,10 +575,25 @@ def archive_training_plan(db: Session, user_id: str, plan_id: str) -> dict:
     return update_training_plan(db, user_id, plan_id, RehabAppTrainingPlanUpdate(status="archived"))
 
 
+def _require_training_plan_usable(plan: RehabAppTrainingPlan) -> None:
+    if plan.status in {"archived", "rejected"}:
+        raise AppError(
+            "TRAINING_PLAN_NOT_USABLE",
+            "archived or rejected training plans cannot be synced or started",
+            status_code=409,
+            details={
+                "plan_id": plan.id,
+                "plan_status": plan.status,
+                "control_boundary": "training_plan_closed_not_motion_permission",
+            },
+        )
+
+
 def sync_training_plan_to_device(db: Session, user_id: str, plan_id: str, device_id: str) -> dict:
     plan = db.get(RehabAppTrainingPlan, plan_id)
     if plan is None or plan.user_id != user_id:
         raise AppError("TRAINING_PLAN_NOT_FOUND", "training plan not found", status_code=404)
+    _require_training_plan_usable(plan)
     device = db.get(RehabAppDeviceBinding, device_id)
     if device is None or device.user_id != user_id:
         raise AppError("DEVICE_NOT_FOUND", "device binding not found", status_code=404)
@@ -913,6 +928,7 @@ def start_training_session(db: Session, user_id: str, plan_id: str, device_id: s
     plan = db.get(RehabAppTrainingPlan, plan_id)
     if plan is None or plan.user_id != user_id:
         raise AppError("TRAINING_PLAN_NOT_FOUND", "training plan not found", status_code=404)
+    _require_training_plan_usable(plan)
     device = db.get(RehabAppDeviceBinding, device_id)
     if device is None or device.user_id != user_id:
         raise AppError("DEVICE_NOT_FOUND", "device binding not found", status_code=404)

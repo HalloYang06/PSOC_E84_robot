@@ -124,6 +124,8 @@ POST /api/rehab-arm/app/v1/training-sessions/{session_id}/cancel
 
 Paused sessions still occupy the device and must be resumed before progress can be recorded. Cancelled sessions are ended and cannot be finished or turned into training reports. These endpoints record App workflow state only; the robot-side M33/firmware path remains responsible for any physical pause or stop behavior.
 
+Archived or rejected training plans stay visible in history, but they cannot be synced to M33 and cannot start a training session. Create or reactivate an appropriate plan, sync the current version, and wait for `m33_accepted` before starting.
+
 ## Android APK Build Environment
 
 This workstation has the Android build prerequisites installed for the rehab-arm mobile wrapper:
