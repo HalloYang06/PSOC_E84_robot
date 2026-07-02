@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import flowStyles from "./rehab-arm-joint-flow.module.css";
 import styles from "./rehab-arm-control.module.css";
 
@@ -26,6 +27,7 @@ export type DashboardDevice = {
   safety_status?: AnyRecord;
   voice_relay?: AnyRecord;
   vla_plan_candidate?: AnyRecord;
+  simulation_readiness?: AnyRecord;
   estop_ack?: AnyRecord;
   motor_state?: AnyRecord;
   sensor_state?: AnyRecord;
@@ -35,6 +37,7 @@ export type DashboardDevice = {
   data_quality?: AnyRecord;
   device_model?: AnyRecord;
   model_relay_response?: AnyRecord;
+  mode_maturity?: AnyRecord;
   xiaozhi_session?: AnyRecord;
 };
 
@@ -139,9 +142,40 @@ const DEFAULT_RELAY_PRESETS: RelayProviderPreset[] = [
 const DEMO_LANGUAGE_INPUTS = [
   "我口渴了，帮我拿水杯",
   "我要开始今天的训练",
+  "我手臂没力了，开启一点助力",
   "检查一下摄像头和 CAN",
   "今天训练得怎么样，帮我总结一下",
   "你好，陪我聊一会儿",
+];
+
+type RehabWorkspaceModule =
+  | "overview"
+  | "vision"
+  | "digital_twin"
+  | "muscle_assist"
+  | "ai_model"
+  | "mode_router"
+  | "training"
+  | "action_planner"
+  | "diagnostics"
+  | "logs";
+
+const REHAB_WORKSPACE_MODULES: Array<{
+  key: RehabWorkspaceModule;
+  short: string;
+  label: string;
+  description: string;
+}> = [
+  { key: "overview", short: "CMD", label: "总控首页", description: "系统状态 / 当前模式 / VLA 总链路" },
+  { key: "vision", short: "V", label: "VLA 视觉", description: "双目图传 / 目标末端 / 视觉锁定" },
+  { key: "digital_twin", short: "3D", label: "URDF 仿真", description: "机械臂模型 / 关节 / MuJoCo shadow" },
+  { key: "muscle_assist", short: "EMG", label: "肌电助力", description: "上肢肌肉 / EMG / 动作意图" },
+  { key: "ai_model", short: "AI", label: "AI模型中转", description: "高层建议 / 模型配置 / 受限调用令牌" },
+  { key: "mode_router", short: "L", label: "模式调度", description: "小智语义分类 / 资源路由" },
+  { key: "training", short: "TRN", label: "模型训练场", description: "数据标注 / 训练计划 / APP / M33 BLE 预留" },
+  { key: "action_planner", short: "A", label: "动作规划", description: "dry-run / 闭环逼近 / 安全门" },
+  { key: "diagnostics", short: "IO", label: "设备诊断", description: "NanoPi / CAN / M33 / 模型中转" },
+  { key: "logs", short: "LOG", label: "日志回放", description: "语音 / 视觉 / 规划 / 审计证据" },
 ];
 
 function normalizeCalibration(value: unknown): JointCalibration | null {
@@ -531,6 +565,107 @@ function operationModeLabel(value: unknown) {
   }
 }
 
+function semanticActionModeLabel(value: unknown) {
+  switch (text(value, "chat")) {
+    case "fetch_object":
+      return "取物";
+    case "training":
+      return "训练";
+    case "assistive_emg":
+      return "肌电助力";
+    case "vision_servo":
+      return "视觉伺服";
+    case "safety_review":
+      return "安全审核";
+    case "diagnostics":
+      return "诊断";
+    case "data_collection":
+      return "采集";
+    case "chat":
+      return "聊天";
+    default:
+      return "等待模式";
+  }
+}
+
+function modeStageText(value: unknown) {
+  switch (text(value, "")) {
+    case "dry_run_visual_gate":
+      return "等待视觉目标";
+    case "dry_run_candidate_ready":
+      return "dry-run 候选就绪";
+    case "reserved_waiting_vision":
+      return "等待 V 证据";
+    case "reserved_app_ble_m33":
+      return "预留 APP/BLE/M33";
+    case "pending_m55_m33_gate":
+      return "等待 M55/M33 门控";
+    case "shared_visual_evidence":
+      return "共享视觉证据";
+    case "default_review_gate":
+      return "默认安全审核";
+    case "read_only_available":
+      return "只读可用";
+    case "reserved_dataset_pipeline":
+      return "预留采集链路";
+    case "chat_only_no_action":
+      return "聊天不触发动作";
+    default:
+      return text(value, "等待模式状态").replaceAll("_", " ");
+  }
+}
+
+function modeBoundaryText(value: unknown) {
+  switch (text(value, "")) {
+    case "dry_run_only_not_motion_permission":
+      return "只生成 dry-run 候选";
+    case "training_plan_only_not_motion_permission":
+      return "只生成训练计划";
+    case "assistive_hint_only_m33_required":
+      return "助力建议，M33 必须裁决";
+    case "visual_servo_hint_only_not_motion_permission":
+      return "只输出视觉伺服提示";
+    case "review_status_only_not_motion_permission":
+      return "只读审核状态";
+    case "read_only_no_motion":
+      return "只读诊断";
+    case "dataset_artifact_only_no_motion":
+      return "只生成数据资产";
+    case "no_robot_action":
+      return "不生成机器人动作";
+    default:
+      return text(value, "状态展示，不是运动许可").replaceAll("_", " ");
+  }
+}
+
+function modeNextText(value: unknown) {
+  switch (text(value, "")) {
+    case "real_target_acceptance_and_calibration":
+      return "等待真实目标验收和标定";
+    case "connect_app_training_library_ble_to_m33":
+      return "接 APP 训练库到 M33";
+    case "connect_m55_emg_intent_and_m33_gate":
+      return "接 M55 肌电意图";
+    case "camera_to_robot_calibration":
+      return "做相机到机械臂标定";
+    case "attach_mujoco_review_evidence":
+      return "补 MuJoCo 审核证据";
+    case "add_topic_log_can_snapshots":
+      return "补 topic/log/CAN 快照";
+    case "connect_capture_session_index_and_labels":
+      return "接采集批次和标签";
+    case "keep_isolated_from_robot_action":
+      return "保持与动作隔离";
+    default:
+      return text(value, "等待下一步").replaceAll("_", " ");
+  }
+}
+
+function modeTone(value: unknown): "ok" | "idle" | "limited" {
+  const raw = text(value, "idle");
+  return raw === "ok" || raw === "idle" || raw === "limited" ? raw : "idle";
+}
+
 function vlaLiteLoopLabel(value: unknown) {
   switch (text(value, "waiting_language")) {
     case "waiting_language":
@@ -541,6 +676,8 @@ function vlaLiteLoopLabel(value: unknown) {
       return "持续跟踪目标";
     case "hold_stale_vision":
       return "视觉过期保持";
+    case "hold_end_effector":
+      return "等待末端入画";
     case "hold_uncalibrated_depth":
       return "未标定保持";
     case "candidate_ready":
@@ -558,6 +695,8 @@ function dryRunGateLabel(value: unknown) {
       return "等待 V 目标";
     case "hold_stale_vision":
       return "视觉过期保持";
+    case "hold_end_effector":
+      return "等待末端";
     case "observe_more":
       return "继续观察";
     case "visual_lock_ready":
@@ -602,6 +741,16 @@ function inferVoiceRouteFromText(value: unknown) {
       route_action: "select_training_goal_candidate",
       confidence: 0.66,
       evidence: "keyword_training_start",
+      source: "fallback_preview",
+    };
+  }
+  if (includesAny(["助力", "没力", "使不上力", "帮我抬", "辅助抬", "肌电", "发力", "手臂酸", "抬不动"])) {
+    return {
+      route_class: "assistive_emg_request",
+      ai_operation_mode: "assistive_emg",
+      route_action: "prepare_emg_intent_assist_hint",
+      confidence: 0.64,
+      evidence: "keyword_assistive_emg",
       source: "fallback_preview",
     };
   }
@@ -784,6 +933,47 @@ function targetCenterFromObservation(target: AnyRecord, observation: AnyRecord) 
   return [x + width / 2, y + height / 2];
 }
 
+type VisualMemorySample = {
+  label: string;
+  tsUnix: number | null;
+  center: number[] | null;
+  bbox: number[] | null;
+  source: string;
+};
+
+function visualSampleFromObject(objectValue: unknown, payloadValue: unknown, kind: "target" | "end_effector"): VisualMemorySample | null {
+  const object = record(objectValue);
+  const payload = record(payloadValue);
+  const observation = record(object.stereo_observation);
+  const label = text(object.label ?? object.class_name ?? object.name, "");
+  const bbox = firstNumberTuple(
+    4,
+    kind === "end_effector" ? observation.left_bbox_xywh : undefined,
+    object.bbox_xywh,
+    object.bbox,
+  );
+  const center = targetCenterFromObservation(object, observation);
+  if (!label && !bbox && !center) return null;
+  return {
+    label: label || (kind === "end_effector" ? "end_effector" : "target"),
+    tsUnix: timestampUnixFromRows(object, observation, payload),
+    center,
+    bbox,
+    source: text(payload.schema_version, "stereo_vision_context"),
+  };
+}
+
+function newestVisualSample(samples: Array<VisualMemorySample | null>) {
+  const valid = samples.filter(Boolean) as VisualMemorySample[];
+  if (!valid.length) return null;
+  return valid.sort((a, b) => Number(b.tsUnix ?? 0) - Number(a.tsUnix ?? 0))[0];
+}
+
+function visualMemoryUsable(sample: VisualMemorySample | null, nowMs: number, ttlMs = 5000) {
+  if (!sample?.tsUnix) return false;
+  return nowMs - sample.tsUnix * 1000 <= ttlMs;
+}
+
 function inferFrameSize(payload: AnyRecord, target: AnyRecord, observation: AnyRecord) {
   const direct = firstNumberTuple(2, payload.frame_size_px, payload.image_size_px, payload.image_size, target.image_size_px);
   if (direct) return { width: direct[0], height: direct[1] };
@@ -930,6 +1120,15 @@ type MuscleSignalRow = {
   status: "active" | "moderate" | "quiet" | "unknown";
 };
 
+type MuscleMapAnchor = {
+  key: string;
+  side: "left" | "right";
+  x: number;
+  y: number;
+  position: [number, number, number];
+  meshKeywords: string[];
+};
+
 type HumanModelSource = {
   id: string;
   label: string;
@@ -946,6 +1145,7 @@ type MotionPredictionRow = {
   value: string;
   detail: string;
   tone: "active" | "moderate" | "quiet" | "unknown";
+  confidence: number | null;
 };
 
 const DEFAULT_HUMAN_MODEL_SOURCES: HumanModelSource[] = [
@@ -1001,6 +1201,13 @@ const DEFAULT_HUMAN_MODEL_SOURCES: HumanModelSource[] = [
     license: "Open source atlas",
     note: "更完整的开源解剖图谱备选入口。",
   },
+];
+
+const MUSCLE_MAP_ANCHORS: MuscleMapAnchor[] = [
+  { key: "biceps", side: "left", x: 35, y: 34, position: [0.02, 0.22, 0.1], meshKeywords: ["long head of biceps brachii", "short head of biceps brachii", "biceps brachii"] },
+  { key: "triceps", side: "right", x: 58, y: 34, position: [0.16, 0.18, -0.05], meshKeywords: ["triceps brachii", "long head of triceps", "lateral head of triceps"] },
+  { key: "forearm_flexor", side: "left", x: 39, y: 68, position: [-0.18, -0.42, 0.08], meshKeywords: ["flexor carpi radialis", "flexor digitorum superficialis", "pronator teres"] },
+  { key: "forearm_extensor", side: "right", x: 63, y: 72, position: [-0.28, -0.5, -0.08], meshKeywords: ["extensor carpi", "extensor digitorum", "brachioradialis"] },
 ];
 
 function normalizedSignalValue(...values: unknown[]) {
@@ -1068,12 +1275,14 @@ function motionPredictionRowsFromSensor(sensorPayload: AnyRecord): MotionPredict
   );
   const rows: MotionPredictionRow[] = [];
   candidates.slice(0, 3).forEach((candidate, index) => {
+    const confidence = normalizedSignalValue(candidate.confidence ?? candidate.score ?? candidate.probability);
     rows.push({
       key: `candidate_${index + 1}`,
       label: text(candidate.label ?? candidate.name ?? candidate.action ?? candidate.id, `候选 ${index + 1}`),
       value: text(candidate.confidence ?? candidate.score ?? candidate.probability, candidate.confidence === 0 ? "0%" : "-"),
       detail: text(candidate.detail ?? candidate.reason ?? candidate.description ?? candidate.note, text(candidate.phase ?? candidate.intent, "等待动作模型")),
-      tone: muscleStatus(normalizedSignalValue(candidate.confidence ?? candidate.score ?? candidate.probability) ?? null),
+      tone: muscleStatus(confidence ?? null),
+      confidence,
     });
   });
   if (rows.length) return rows;
@@ -1103,6 +1312,7 @@ function motionPredictionRowsFromSensor(sensorPayload: AnyRecord): MotionPredict
       value: summary,
       detail: "输出给平台展示和审阅，不直接变成运动许可。",
       tone: "moderate",
+      confidence: null,
     },
     {
       key: "interface",
@@ -1110,6 +1320,7 @@ function motionPredictionRowsFromSensor(sensorPayload: AnyRecord): MotionPredict
       value: interfaceRef,
       detail: "后续可从 NanoPi、M55 或云端模型把 top-k 动作建议塞进这个结构。",
       tone: "quiet",
+      confidence: null,
     },
     {
       key: "inputs",
@@ -1124,6 +1335,7 @@ function motionPredictionRowsFromSensor(sensorPayload: AnyRecord): MotionPredict
       ),
       detail: "建议字段：channel_id、muscle_name、confidence、top_k、time_window。",
       tone: "quiet",
+      confidence: null,
     },
   ];
 }
@@ -1149,10 +1361,10 @@ function muscleRowsFromSensor(sensorPayload: AnyRecord): MuscleSignalRow[] {
   }
 
   const specs = [
-    { key: "deltoid", label: "肩部三角肌", names: ["deltoid", "shoulder", "jian", "ch1"] },
-    { key: "biceps", label: "上臂屈肌", names: ["biceps", "upper_arm", "shangbi", "ch2"] },
-    { key: "forearm", label: "前臂屈伸肌", names: ["forearm", "wrist", "qianbi", "wanbu", "ch3"] },
-    { key: "trapezius", label: "肩颈稳定肌", names: ["trapezius", "neck", "trunk", "jianjing", "ch4"] },
+    { key: "biceps", label: "CH1 肱二头肌", names: ["biceps", "bicep", "肱二", "肱二头肌", "upper_arm_flexor", "ch1"] },
+    { key: "triceps", label: "CH2 肱三头肌", names: ["triceps", "tricep", "肱三", "肱三头肌", "upper_arm_extensor", "ch2"] },
+    { key: "forearm_flexor", label: "CH3 前臂屈肌", names: ["forearm_flexor", "flexor", "前臂屈", "屈肌", "qianbi_qu", "ch3"] },
+    { key: "forearm_extensor", label: "CH4 前臂伸肌", names: ["forearm_extensor", "extensor", "前臂伸", "伸肌", "qianbi_shen", "ch4"] },
   ];
 
   return specs.map((spec, index) => {
@@ -1308,6 +1520,12 @@ function keyframeSrc(imageUrl: string, apiBaseUrl: string) {
   return new URL(imageUrl, apiBaseUrl).toString();
 }
 
+function withImageVersion(src: string, version: unknown) {
+  const rawVersion = text(version, "");
+  if (!src || !rawVersion) return src;
+  return `${src}${src.includes("?") ? "&" : "?"}v=${encodeURIComponent(rawVersion)}`;
+}
+
 function browserImageSrc(value: unknown, apiBaseUrl: string) {
   const raw = text(value, "");
   if (!raw) return "";
@@ -1329,7 +1547,10 @@ function bboxStyle(bbox: number[] | null, frame: { width: number; height: number
 }
 
 function detectionPills(detections: unknown, imageSide: "left" | "right") {
-  return asArray<AnyRecord>(detections)
+  const sideDetections = Array.isArray(detections)
+    ? detections
+    : asArray<AnyRecord>(record(detections)[imageSide]);
+  return asArray<AnyRecord>(sideDetections)
     .filter((item) => text(item.image_side, "left") === imageSide)
     .slice(0, 4)
     .map((item, index) => ({
@@ -1715,6 +1936,7 @@ function Arm3DOverview({
   robotRenderState,
   wiringChecks,
   safetyState,
+  stageMode = false,
 }: {
   deviceId: string;
   robotId: string;
@@ -1724,6 +1946,7 @@ function Arm3DOverview({
   robotRenderState: AnyRecord;
   wiringChecks: AnyRecord[];
   safetyState: string;
+  stageMode?: boolean;
 }) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const cleanupRef = useRef<() => void>(() => {});
@@ -1807,6 +2030,11 @@ function Arm3DOverview({
     const timer = window.setInterval(() => setFreshnessNowMs(Date.now()), 5000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => window.dispatchEvent(new Event("resize")), 80);
+    return () => window.clearTimeout(timer);
+  }, [focusMode]);
 
   useEffect(() => {
     positionsRef.current = positions;
@@ -1962,7 +2190,7 @@ function Arm3DOverview({
       robotRef.current = null;
 
       const scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x020a0d);
+      scene.background = new THREE.Color(stageMode ? 0x18130d : 0x020a0d);
 
       const narrowViewport = width <= 520;
       const cameraTarget = new THREE.Vector3(0.08, 0.0, 0.16);
@@ -1974,9 +2202,13 @@ function Arm3DOverview({
       );
       camera.lookAt(cameraTarget);
 
-      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
       renderer.setSize(width, height);
+      if (stageMode) {
+        renderer.setClearColor(0x18130d, 1);
+        renderer.domElement.style.opacity = "0.86";
+      }
       renderer.domElement.setAttribute("aria-label", "机械臂 Three.js 总览");
       renderer.domElement.setAttribute("title", "拖拽旋转视角，滚轮缩放，右键平移");
       target.replaceChildren(renderer.domElement);
@@ -1994,6 +2226,7 @@ function Arm3DOverview({
       controls.update();
 
       scene.add(new THREE.HemisphereLight(0xecffff, 0x0a272f, 2.2));
+      scene.add(camera);
       const keyLight = new THREE.DirectionalLight(0xffffff, 1.2);
       keyLight.position.set(1.4, -1.8, 2.2);
       scene.add(keyLight);
@@ -2001,8 +2234,120 @@ function Arm3DOverview({
       fillLight.position.set(-1.2, 1.1, 1.4);
       scene.add(fillLight);
 
-      const grid = new THREE.GridHelper(1.5, 12, 0x214a48, 0x10272b);
+      const grid = new THREE.GridHelper(1.5, 12, stageMode ? 0xffb100 : 0x214a48, stageMode ? 0x244243 : 0x10272b);
+      if (stageMode) {
+        grid.material.transparent = true;
+        grid.material.opacity = 0.42;
+      }
       scene.add(grid);
+
+      const hudCanvas = document.createElement("canvas");
+      hudCanvas.width = 560;
+      hudCanvas.height = 720;
+      const hudContext = hudCanvas.getContext("2d");
+      const hudTexture = new THREE.CanvasTexture(hudCanvas);
+      const hudMaterial = new THREE.SpriteMaterial({
+        map: hudTexture,
+        transparent: true,
+        depthTest: false,
+        depthWrite: false,
+      });
+      const hudSprite = new THREE.Sprite(hudMaterial);
+      hudSprite.position.set(1.18, 0.02, -2.2);
+      hudSprite.scale.set(1.06, 1.36, 1);
+      hudSprite.renderOrder = 999;
+      if (!stageMode) camera.add(hudSprite);
+
+      function drawHudPanel(title: string, subtitle: string, rows: Array<[string, string, string]>) {
+        if (!hudContext) return;
+        hudContext.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
+        hudContext.shadowColor = "rgba(0, 0, 0, 0.72)";
+        hudContext.shadowBlur = 12;
+        hudContext.shadowOffsetY = 2;
+        hudContext.fillStyle = "#bae6fd";
+        hudContext.font = "700 20px sans-serif";
+        hudContext.fillText("RENDER HUD", 32, 52);
+        hudContext.fillStyle = "#f8fafc";
+        hudContext.font = "900 34px sans-serif";
+        wrapCanvasText(hudContext, title, 32, 104, 496, 38, 2);
+        hudContext.fillStyle = "rgba(203, 213, 225, 0.92)";
+        hudContext.font = "600 18px sans-serif";
+        wrapCanvasText(hudContext, subtitle, 32, 166, 496, 24, 2);
+        hudContext.shadowBlur = 8;
+        let y = 238;
+        rows.slice(0, 8).forEach(([label, value, detail], index) => {
+          hudContext.strokeStyle = "rgba(125, 211, 252, 0.24)";
+          hudContext.lineWidth = 1;
+          hudContext.beginPath();
+          hudContext.moveTo(32, y + 28);
+          hudContext.lineTo(520, y + 28);
+          hudContext.stroke();
+          hudContext.fillStyle = "#67e8f9";
+          hudContext.font = "800 17px sans-serif";
+          hudContext.fillText(label, 48, y - 5);
+          hudContext.fillStyle = "#ffffff";
+          hudContext.font = "900 21px sans-serif";
+          hudContext.fillText(value, 260, y - 5);
+          hudContext.fillStyle = "rgba(203, 213, 225, 0.82)";
+          hudContext.font = "600 15px sans-serif";
+          hudContext.fillText(detail, 48, y + 20);
+          y += 70;
+        });
+        hudContext.fillStyle = "rgba(148, 163, 184, 0.84)";
+        hudContext.font = "700 16px sans-serif";
+        hudContext.fillText("canvas texture overlay · display only · not motion authority", 32, 688);
+        hudContext.shadowBlur = 0;
+        hudTexture.needsUpdate = true;
+      }
+
+      function roundRect(context: CanvasRenderingContext2D, x: number, y: number, widthValue: number, heightValue: number, radius: number) {
+        context.beginPath();
+        context.moveTo(x + radius, y);
+        context.arcTo(x + widthValue, y, x + widthValue, y + heightValue, radius);
+        context.arcTo(x + widthValue, y + heightValue, x, y + heightValue, radius);
+        context.arcTo(x, y + heightValue, x, y, radius);
+        context.arcTo(x, y, x + widthValue, y, radius);
+        context.closePath();
+      }
+
+      function wrapCanvasText(context: CanvasRenderingContext2D, value: string, x: number, y: number, maxWidth: number, lineHeight: number, maxLines: number) {
+        const words = value.split(/\s+/);
+        let line = "";
+        let lineIndex = 0;
+        words.forEach((word) => {
+          const next = line ? `${line} ${word}` : word;
+          if (context.measureText(next).width > maxWidth && line) {
+            if (lineIndex < maxLines) context.fillText(line, x, y + lineIndex * lineHeight);
+            line = word;
+            lineIndex += 1;
+          } else {
+            line = next;
+          }
+        });
+        if (line && lineIndex < maxLines) context.fillText(line, x, y + lineIndex * lineHeight);
+      }
+
+      function armHudRows(): Array<[string, string, string]> {
+        const currentRows = sceneDataRef.current.motors.slice(0, 5).map((motor, index): [string, string, string] => {
+          const jointName = text(motor.joint_name ?? motor.jointName ?? motor.name, ARM_MODEL_JSON.joints[index] ?? `joint_${index + 1}`);
+          const temp = motorTemperature(motor);
+          const angle = firstFiniteNumber(motor.position, motor.angle, motor.angle_rad, motor.theta, jointValuesRef.current.get(jointName));
+          const source = text(motor.source_label ?? motor.source ?? motor.device_id, "motor telemetry");
+          return [
+            jointName,
+            angle === null ? "angle -" : numberText(angle, " rad"),
+            `${temp === null ? "temp -" : numberText(temp, " ℃")} · ${source}`,
+          ];
+        });
+        const wiringRows = sceneDataRef.current.badWiringChecks.slice(0, 2).map((item): [string, string, string] => [
+          text(item.channel ?? item.joint_name ?? item.motor_id, "wiring"),
+          text(item.status, "stale"),
+          text(item.evidence ?? item.reason, "check harness / source freshness"),
+        ]);
+        return currentRows.length || wiringRows.length
+          ? [...currentRows, ...wiringRows]
+          : [["waiting", "no motor frame", "robot_render_state_v1 / motor_state not fresh"]];
+      }
 
       function statusForLink(jointName: string, index: number) {
         const aliases = [jointName, `motor_${index + 1}`, String(index + 1)].filter(Boolean).map((item) => item.toLowerCase());
@@ -2181,6 +2526,15 @@ function Arm3DOverview({
       const animate = () => {
         if (disposed) return;
         frame = window.requestAnimationFrame(animate);
+        if (frame % 20 === 0) {
+          if (!stageMode) {
+            drawHudPanel(
+              "电机 / URDF 渲染日志",
+              `${sceneDataRef.current.renderJointNames.length || ARM_MODEL_JSON.joints.length} joints · safety ${sceneDataRef.current.safetyState}`,
+              armHudRows(),
+            );
+          }
+        }
         controls.update();
         renderer.render(scene, camera);
       };
@@ -2211,7 +2565,7 @@ function Arm3DOverview({
       disposed = true;
       cleanup();
     };
-  }, [urdfPackage, urdfText]);
+  }, [stageMode, urdfPackage, urdfText]);
 
   useEffect(() => {
     const robot = robotRef.current;
@@ -2233,7 +2587,10 @@ function Arm3DOverview({
           : "默认可替换模型，可导入真实 URDF";
 
   return (
-    <section className={styles.armOverviewPanel} data-focus={focusMode ? "true" : "false"} aria-label="机械臂 3D 总览">
+    <section className={styles.armOverviewPanel} data-focus={focusMode ? "true" : "false"} data-stage-mode={stageMode ? "true" : "false"} aria-label="机械臂 3D 总览">
+      <button type="button" className={styles.focusCloseButton} onClick={() => setFocusMode(false)}>
+        关闭全屏
+      </button>
       <div className={styles.panelHead}>
         <div>
           <span>URDF / Three.js 机械臂</span>
@@ -2417,21 +2774,36 @@ function Arm3DOverview({
   );
 }
 
-function HumanMuscleOverview({ sensorPayload }: { sensorPayload: AnyRecord }) {
+function HumanMuscleOverview({ sensorPayload, stageMode = false }: { sensorPayload: AnyRecord; stageMode?: boolean }) {
   const mountRef = useRef<HTMLDivElement | null>(null);
+  const anchorRefs = useRef<Record<string, HTMLElement | null>>({});
+  const [focusMode, setFocusMode] = useState(false);
   const rows = useMemo(() => muscleRowsFromSensor(sensorPayload), [sensorPayload]);
   const motionRows = useMemo(() => motionPredictionRowsFromSensor(sensorPayload), [sensorPayload]);
+  const rowsRef = useRef(rows);
+  const motionRowsRef = useRef(motionRows);
   const modelUrls = useMemo(() => humanModelUrlsFromSensor(sensorPayload), [sensorPayload]);
   const modelSource = useMemo(() => humanModelSourceFromSensor(sensorPayload), [sensorPayload]);
   const activeRows = rows.filter((row) => row.status === "active").length;
   const strongestRow = rows
     .filter((row) => row.value !== null)
     .sort((a, b) => Number(b.value) - Number(a.value))[0] ?? null;
+  const primaryPrediction = motionRows[0] ?? null;
   const averageFatigue = (() => {
     const values = rows.map((row) => row.fatigue).filter((value): value is number => value !== null);
     if (!values.length) return null;
     return values.reduce((sum, value) => sum + value, 0) / values.length;
   })();
+
+  useEffect(() => {
+    rowsRef.current = rows;
+    motionRowsRef.current = motionRows;
+  }, [motionRows, rows]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => window.dispatchEvent(new Event("resize")), 80);
+    return () => window.clearTimeout(timer);
+  }, [focusMode]);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -2451,14 +2823,21 @@ function HumanMuscleOverview({ sensorPayload }: { sensorPayload: AnyRecord }) {
       target.replaceChildren();
 
       const scene = new THREE.Scene();
-      scene.background = new THREE.Color(0xf8fafc);
-      const camera = new THREE.PerspectiveCamera(28, width / height, 0.01, 100);
-      camera.position.set(0.22, -1.62, 0.34);
-      camera.lookAt(0, 0, 0.08);
+      scene.background = stageMode ? null : new THREE.Color(0xf8fafc);
+      const camera = new THREE.PerspectiveCamera(34, width / height, 0.01, 100);
+      camera.position.set(0.42, -2.05, 0.72);
+      camera.lookAt(0, 0, 0);
+      scene.add(camera);
 
-      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: stageMode });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
       renderer.setSize(width, height);
+      if (stageMode) {
+        renderer.setClearColor(0x000000, 0);
+        renderer.domElement.style.background = "transparent";
+        renderer.domElement.style.backgroundColor = "transparent";
+        renderer.domElement.style.mixBlendMode = "screen";
+      }
       renderer.domElement.setAttribute("aria-label", "开源上肢肌肉模型 Three.js 总览");
       target.appendChild(renderer.domElement);
 
@@ -2466,25 +2845,188 @@ function HumanMuscleOverview({ sensorPayload }: { sensorPayload: AnyRecord }) {
       controls.enableDamping = true;
       controls.dampingFactor = 0.08;
       controls.enablePan = true;
-      controls.minDistance = 0.28;
-      controls.maxDistance = 2.4;
-      controls.target.set(0, 0, 0.08);
+      controls.minDistance = 0.38;
+      controls.maxDistance = 3.2;
+      controls.target.set(0, 0, 0);
       controls.update();
 
-      scene.add(new THREE.HemisphereLight(0xffffff, 0xdde5ec, 2.2));
+      scene.add(new THREE.HemisphereLight(0xffffff, 0x331016, stageMode ? 1.45 : 2.2));
       const key = new THREE.DirectionalLight(0xffffff, 1.2);
       key.position.set(0.7, -1.2, 1.8);
       scene.add(key);
-      const rim = new THREE.DirectionalLight(0x1b6cff, 0.72);
+      const rim = new THREE.DirectionalLight(stageMode ? 0x00dbe7 : 0x1b6cff, stageMode ? 1.05 : 0.72);
       rim.position.set(-1.4, 1.1, 1.1);
       scene.add(rim);
 
       const grid = new THREE.GridHelper(1.05, 8, 0xd6dde8, 0xe7ebf2);
       grid.position.z = -0.2;
-      scene.add(grid);
+      if (!stageMode) scene.add(grid);
 
       const modelGroup = new THREE.Group();
       scene.add(modelGroup);
+      const hudCanvas = document.createElement("canvas");
+      hudCanvas.width = 560;
+      hudCanvas.height = 720;
+      const hudContext = hudCanvas.getContext("2d");
+      const hudTexture = new THREE.CanvasTexture(hudCanvas);
+      const hudMaterial = new THREE.SpriteMaterial({
+        map: hudTexture,
+        transparent: true,
+        depthTest: false,
+        depthWrite: false,
+      });
+      const hudSprite = new THREE.Sprite(hudMaterial);
+      hudSprite.position.set(1.16, 0.0, -2.16);
+      hudSprite.scale.set(1.06, 1.36, 1);
+      hudSprite.renderOrder = 999;
+      if (!stageMode) camera.add(hudSprite);
+      const anchorPoints = MUSCLE_MAP_ANCHORS.map((anchor) => ({
+        key: anchor.key,
+        keywords: anchor.meshKeywords.map((keyword) => keyword.toLowerCase()),
+        world: new THREE.Vector3(...anchor.position),
+        projected: new THREE.Vector3(),
+        matched: false,
+      }));
+
+      function roundRect(context: CanvasRenderingContext2D, x: number, y: number, widthValue: number, heightValue: number, radius: number) {
+        context.beginPath();
+        context.moveTo(x + radius, y);
+        context.arcTo(x + widthValue, y, x + widthValue, y + heightValue, radius);
+        context.arcTo(x + widthValue, y + heightValue, x, y + heightValue, radius);
+        context.arcTo(x, y + heightValue, x, y, radius);
+        context.arcTo(x, y, x + widthValue, y, radius);
+        context.closePath();
+      }
+
+      function wrapCanvasText(context: CanvasRenderingContext2D, value: string, x: number, y: number, maxWidth: number, lineHeight: number, maxLines: number) {
+        const words = value.split(/\s+/);
+        let line = "";
+        let lineIndex = 0;
+        words.forEach((word) => {
+          const next = line ? `${line} ${word}` : word;
+          if (context.measureText(next).width > maxWidth && line) {
+            if (lineIndex < maxLines) context.fillText(line, x, y + lineIndex * lineHeight);
+            line = word;
+            lineIndex += 1;
+          } else {
+            line = next;
+          }
+        });
+        if (line && lineIndex < maxLines) context.fillText(line, x, y + lineIndex * lineHeight);
+      }
+
+      function drawHudPanel(title: string, subtitle: string, rows: Array<[string, string, string]>) {
+        if (!hudContext) return;
+        hudContext.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
+        hudContext.shadowColor = "rgba(0, 0, 0, 0.58)";
+        hudContext.shadowBlur = 12;
+        hudContext.shadowOffsetY = 2;
+        hudContext.fillStyle = "#99f6e4";
+        hudContext.font = "700 20px sans-serif";
+        hudContext.fillText("EMG HUD", 32, 52);
+        hudContext.fillStyle = "#f8fafc";
+        hudContext.font = "900 34px sans-serif";
+        wrapCanvasText(hudContext, title, 32, 104, 496, 38, 2);
+        hudContext.fillStyle = "rgba(203, 213, 225, 0.92)";
+        hudContext.font = "600 18px sans-serif";
+        wrapCanvasText(hudContext, subtitle, 32, 166, 496, 24, 2);
+        hudContext.shadowBlur = 8;
+        let y = 238;
+        rows.slice(0, 8).forEach(([label, value, detail], index) => {
+          hudContext.strokeStyle = "rgba(94, 234, 212, 0.24)";
+          hudContext.lineWidth = 1;
+          hudContext.beginPath();
+          hudContext.moveTo(32, y + 28);
+          hudContext.lineTo(520, y + 28);
+          hudContext.stroke();
+          hudContext.fillStyle = "#5eead4";
+          hudContext.font = "800 17px sans-serif";
+          hudContext.fillText(label, 48, y - 5);
+          hudContext.fillStyle = "#ffffff";
+          hudContext.font = "900 21px sans-serif";
+          hudContext.fillText(value, 260, y - 5);
+          hudContext.fillStyle = "rgba(203, 213, 225, 0.82)";
+          hudContext.font = "600 15px sans-serif";
+          hudContext.fillText(detail, 48, y + 20);
+          y += 70;
+        });
+        hudContext.fillStyle = "rgba(148, 163, 184, 0.84)";
+        hudContext.font = "700 16px sans-serif";
+        hudContext.fillText("canvas texture overlay · display only · M55/M33 authority separate", 32, 688);
+        hudContext.shadowBlur = 0;
+        hudTexture.needsUpdate = true;
+      }
+
+      function muscleHudRows(): Array<[string, string, string]> {
+        const muscleRows = rowsRef.current.slice(0, 4).map((row): [string, string, string] => [
+          row.label,
+          row.value === null ? "unknown" : `${Math.round(row.value * 100)}%`,
+          `fatigue ${row.fatigue === null ? "unknown" : `${Math.round(row.fatigue * 100)}%`} · ${row.status}`,
+        ]);
+        const predictionRows = motionRowsRef.current.slice(0, 3).map((row): [string, string, string] => [
+          row.label,
+          row.value,
+          row.confidence === null ? row.detail : `confidence ${Math.round(row.confidence * 100)}%`,
+        ]);
+        return muscleRows.length || predictionRows.length
+          ? [...muscleRows, ...predictionRows]
+          : [["waiting", "no EMG frame", "sensor_state.emg / motion_prediction not fresh"]];
+      }
+
+      function bindAnchorsToModel(object: any) {
+        const meshCenters = new Map<string, any[]>();
+        object.updateMatrixWorld(true);
+        object.traverse?.((child: any) => {
+          if (!child.isMesh) return;
+          const name = String(child.name ?? "").toLowerCase();
+          if (!name) return;
+          const box = new THREE.Box3().setFromObject(child);
+          if (box.isEmpty()) return;
+          anchorPoints.forEach((anchor) => {
+            if (!anchor.keywords.some((keyword) => name.includes(keyword))) return;
+            const values = meshCenters.get(anchor.key) ?? [];
+            values.push(box.getCenter(new THREE.Vector3()));
+            meshCenters.set(anchor.key, values);
+          });
+        });
+        anchorPoints.forEach((anchor) => {
+          const centers = meshCenters.get(anchor.key);
+          anchor.matched = Boolean(centers?.length);
+          if (!centers?.length) return;
+          anchor.world.set(0, 0, 0);
+          centers.forEach((center) => anchor.world.add(center));
+          anchor.world.divideScalar(centers.length);
+        });
+      }
+
+      function updateProjectedAnchors() {
+        const rect = renderer.domElement.getBoundingClientRect();
+        modelGroup.updateMatrixWorld(true);
+        anchorPoints.forEach((anchor) => {
+          const element = anchorRefs.current[anchor.key];
+          if (!element) return;
+          anchor.projected.copy(anchor.world).applyMatrix4(modelGroup.matrixWorld).project(camera);
+          const visible = anchor.projected.z >= -1 && anchor.projected.z <= 1;
+          const left = (anchor.projected.x * 0.5 + 0.5) * rect.width;
+          const top = (-anchor.projected.y * 0.5 + 0.5) * rect.height;
+          const labelWidth = Math.min(178, Math.max(132, rect.width * 0.3));
+          const labelGap = 48;
+          const labelLeft = anchor.projected.x < 0
+            ? left - labelWidth - labelGap
+            : left + labelGap;
+          const safeLeft = THREE.MathUtils.clamp(labelLeft, 12, Math.max(12, rect.width - labelWidth - 12));
+          const safeTop = THREE.MathUtils.clamp(top - 32, 12, Math.max(12, rect.height - 76));
+          element.style.setProperty("--anchor-x", `${left}px`);
+          element.style.setProperty("--anchor-y", `${top}px`);
+          element.style.setProperty("--pin-x", `${left - safeLeft}px`);
+          element.style.setProperty("--pin-y", `${top - safeTop}px`);
+          element.style.left = `${safeLeft}px`;
+          element.style.top = `${safeTop}px`;
+          element.dataset.side = anchor.projected.x < 0 ? "left" : "right";
+          element.dataset.bound = anchor.matched ? "true" : "false";
+          element.dataset.visible = anchor.matched && visible && left >= -40 && left <= rect.width + 40 && top >= -40 && top <= rect.height + 40 ? "true" : "false";
+        });
+      }
 
       function normalizeModel(object: any) {
         const box = new THREE.Box3().setFromObject(object);
@@ -2492,22 +3034,40 @@ function HumanMuscleOverview({ sensorPayload }: { sensorPayload: AnyRecord }) {
         const center = box.getCenter(new THREE.Vector3());
         const maxDim = Math.max(size.x, size.y, size.z, 0.001);
         object.position.sub(center);
-        object.scale.multiplyScalar(1.68 / maxDim);
-        object.position.z += 0.06;
-        object.rotation.z = -0.1;
+        object.scale.multiplyScalar(1.74 / maxDim);
+        object.rotation.z = -0.18;
+        object.rotation.x = -0.08;
+        object.position.z += 0.04;
+
+        const normalizedBox = new THREE.Box3().setFromObject(object);
+        const normalizedCenter = normalizedBox.getCenter(new THREE.Vector3());
+        const normalizedSize = normalizedBox.getSize(new THREE.Vector3());
+        controls.target.copy(normalizedCenter);
+        camera.position.set(
+          normalizedCenter.x + normalizedSize.x * 0.72 + 0.28,
+          normalizedCenter.y - Math.max(1.65, normalizedSize.y * 1.45),
+          normalizedCenter.z + Math.max(0.62, normalizedSize.z * 2.2),
+        );
+        camera.lookAt(normalizedCenter);
+        controls.update();
+        grid.position.z = normalizedBox.min.z - 0.03;
       }
 
       function applyOpenModelMaterial(object: any) {
         let meshIndex = 0;
         object.traverse?.((child: any) => {
           if (!child.isMesh) return;
-          const baseHue = meshIndex % 3 === 0 ? 0xd95f4e : meshIndex % 3 === 1 ? 0xc0485f : 0x9b3d58;
+          const baseHue = stageMode
+            ? (meshIndex % 3 === 0 ? 0xff6b35 : meshIndex % 3 === 1 ? 0xd94b45 : 0xffb347)
+            : (meshIndex % 3 === 0 ? 0xd95f4e : meshIndex % 3 === 1 ? 0xc0485f : 0x9b3d58);
           child.material = new THREE.MeshStandardMaterial({
             color: baseHue,
-            roughness: 0.64,
+            emissive: stageMode ? 0x3a1008 : 0x000000,
+            emissiveIntensity: stageMode ? 0.28 : 0,
+            roughness: stageMode ? 0.48 : 0.64,
             metalness: 0.02,
             transparent: true,
-            opacity: 0.92,
+            opacity: stageMode ? 0.52 : 0.92,
           });
           meshIndex += 1;
         });
@@ -2517,10 +3077,20 @@ function HumanMuscleOverview({ sensorPayload }: { sensorPayload: AnyRecord }) {
       const dracoLoader = new DRACOLoader();
       dracoLoader.setDecoderPath("/assets/draco/gltf/");
       loader.setDRACOLoader(dracoLoader);
-      Promise.all(modelUrls.map((url) => new Promise<any>((resolve, reject) => {
+      Promise.allSettled(modelUrls.map((url) => new Promise<any>((resolve, reject) => {
         loader.load(url, resolve, undefined, reject);
-      }))).then((gltfs) => {
+      }))).then((results) => {
         if (disposed) return;
+        const gltfs = results
+          .filter((result): result is PromiseFulfilledResult<any> => result.status === "fulfilled")
+          .map((result) => result.value);
+        if (!gltfs.length) {
+          const fallback = document.createElement("div");
+          fallback.className = styles.humanModelFallback;
+          fallback.innerHTML = `<strong>上肢肌肉 GLB 未载入</strong><span>请检查 GLB 文件、Draco 解码器或 human_model_url；肌电锚点和预测接口仍可继续演示。</span>`;
+          target.appendChild(fallback);
+          return;
+        }
         const composite = new THREE.Group();
         gltfs.forEach((gltf) => {
           const model = gltf.scene;
@@ -2529,6 +3099,7 @@ function HumanMuscleOverview({ sensorPayload }: { sensorPayload: AnyRecord }) {
         });
         normalizeModel(composite);
         modelGroup.add(composite);
+        bindAnchorsToModel(composite);
       }).catch(() => {
         const fallback = document.createElement("div");
         fallback.className = styles.humanModelFallback;
@@ -2537,11 +3108,24 @@ function HumanMuscleOverview({ sensorPayload }: { sensorPayload: AnyRecord }) {
       });
 
       let frame = 0;
+      let tick = 0;
       const animate = () => {
         if (disposed) return;
         frame = window.requestAnimationFrame(animate);
-        modelGroup.rotation.y = Math.sin(Date.now() / 3600) * 0.035;
+        tick += 1;
+        modelGroup.rotation.y = Math.sin(Date.now() / 3600) * (stageMode ? 0.018 : 0.035);
         controls.update();
+        updateProjectedAnchors();
+        if (tick % 20 === 1) {
+          if (!stageMode) {
+            const top = motionRowsRef.current[0];
+            drawHudPanel(
+              "肌电 / 动作预测日志",
+              `${rowsRef.current.length} EMG channels · ${top?.value || "prediction waiting"}`,
+              muscleHudRows(),
+            );
+          }
+        }
         renderer.render(scene, camera);
       };
       animate();
@@ -2553,6 +3137,7 @@ function HumanMuscleOverview({ sensorPayload }: { sensorPayload: AnyRecord }) {
         camera.aspect = nextWidth / nextHeight;
         camera.updateProjectionMatrix();
         renderer.setSize(nextWidth, nextHeight);
+        updateProjectedAnchors();
       };
       window.addEventListener("resize", resize);
       cleanup = () => {
@@ -2571,19 +3156,54 @@ function HumanMuscleOverview({ sensorPayload }: { sensorPayload: AnyRecord }) {
       disposed = true;
       cleanup();
     };
-  }, [modelUrls]);
+  }, [modelUrls, stageMode]);
 
   return (
-    <section className={styles.humanPanel} aria-label="人体肌电模型">
+    <section className={styles.humanPanel} data-focus={focusMode ? "true" : "false"} data-stage-mode={stageMode ? "true" : "false"} aria-label="人体肌电模型">
+      <button type="button" className={styles.focusCloseButton} onClick={() => setFocusMode(false)}>
+        关闭全屏
+      </button>
       <div className={styles.humanPanelHead}>
         <div>
           <span>上肢肌肉 / 开源 3D 模型</span>
           <strong>{strongestRow ? `${strongestRow.label} ${Math.round(Number(strongestRow.value) * 100)}%` : "等待肌电小模型"}</strong>
         </div>
-        <small>{averageFatigue === null ? "疲劳 unknown" : `平均疲劳 ${Math.round(averageFatigue * 100)}%`}</small>
+        <div className={styles.panelActions}>
+          <small>{averageFatigue === null ? "疲劳 unknown" : `平均疲劳 ${Math.round(averageFatigue * 100)}%`}</small>
+          <button type="button" onClick={() => setFocusMode((value) => !value)}>
+            {focusMode ? "退出全屏" : "全屏肌电"}
+          </button>
+        </div>
       </div>
       <div className={styles.humanModelStage}>
-        <div ref={mountRef} className={styles.humanCanvas} />
+        <div className={styles.humanModelViewport}>
+          <div ref={mountRef} className={styles.humanCanvas} />
+          <div className={styles.muscleMapOverlay} aria-label="上肢肌肉电信号定位">
+            {MUSCLE_MAP_ANCHORS.map((anchor) => {
+              const row = rows.find((item) => item.key === anchor.key);
+              const valueText = row?.value === null || row?.value === undefined ? "unknown" : `${Math.round(row.value * 100)}%`;
+              return (
+                <article
+                  key={anchor.key}
+                  ref={(element) => {
+                    anchorRefs.current[anchor.key] = element;
+                  }}
+                  className={styles.muscleAnchor}
+                  data-state={row?.status ?? "unknown"}
+                  data-side={anchor.side}
+                  data-bound="false"
+                  data-visible="false"
+                  style={{ left: `${anchor.x}%`, top: `${anchor.y}%` }}
+                >
+                  <span>{row?.label ?? anchor.key}</span>
+                  <strong>{valueText}</strong>
+                  <small>待绑定模型点</small>
+                  <em style={{ width: row?.value === null || row?.value === undefined ? "0%" : `${Math.round(row.value * 100)}%` }} />
+                </article>
+              );
+            })}
+          </div>
+        </div>
         <div className={styles.muscleOverlay} aria-label="肌电热区状态">
           {rows.map((row) => (
             <article key={row.key} data-state={row.status}>
@@ -2597,13 +3217,22 @@ function HumanMuscleOverview({ sensorPayload }: { sensorPayload: AnyRecord }) {
       <section className={styles.predictionPanel} aria-label="动作预测模型输出">
         <div>
           <span>动作预测模型接口</span>
-          <strong>{motionRows[0]?.value || "等待预测"}</strong>
+          <strong>{primaryPrediction?.value || "等待预测"}</strong>
+          <small>{primaryPrediction?.confidence === null || primaryPrediction?.confidence === undefined ? "confidence unknown" : `confidence ${Math.round(primaryPrediction.confidence * 100)}%`}</small>
+        </div>
+        <div className={styles.predictionConfidence} data-tone={primaryPrediction?.tone ?? "unknown"} aria-label="预测可信度">
+          <span>
+            <em style={{ width: primaryPrediction?.confidence === null || primaryPrediction?.confidence === undefined ? "0%" : `${Math.round(primaryPrediction.confidence * 100)}%` }} />
+          </span>
         </div>
         <div className={styles.predictionGrid}>
           {motionRows.map((row) => (
             <article key={row.key} data-tone={row.tone}>
               <span>{row.label}</span>
               <strong>{row.value}</strong>
+              {row.confidence !== null ? (
+                <em className={styles.predictionMiniBar} style={{ width: `${Math.round(row.confidence * 100)}%` }} />
+              ) : null}
               <p>{row.detail}</p>
             </article>
           ))}
@@ -2659,8 +3288,9 @@ function ControlStationOnboarding({ projectId }: { projectId: string }) {
 
 export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projectName }: Props) {
   const [liveDashboard, setLiveDashboard] = useState(() => filterDashboardForProject(dashboard, projectId));
-  const [pollState, setPollState] = useState<"idle" | "ok" | "error">("idle");
+  const [pollState, setPollState] = useState<"idle" | "syncing" | "ok" | "error">("idle");
   const [lastLiveUpdate, setLastLiveUpdate] = useState<number | null>(null);
+  const liveDashboardRequestRef = useRef<AbortController | null>(null);
   const [estopRequestState, setEstopRequestState] = useState<"idle" | "sent" | "accepted" | "pending_m33_ack" | "m33_ack" | "error">("idle");
   const [relayPrompt, setRelayPrompt] = useState("");
   const [relayState, setRelayState] = useState<"idle" | "sending" | "ok" | "error">("idle");
@@ -2684,6 +3314,8 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
   const [relayTokenTtlSeconds, setRelayTokenTtlSeconds] = useState(7 * 24 * 60 * 60);
   const [externalApiBaseUrl, setExternalApiBaseUrl] = useState(() => apiBaseUrl.replace(/\/$/, ""));
   const [demoLanguageInput, setDemoLanguageInput] = useState("");
+  const [activeModule, setActiveModule] = useState<RehabWorkspaceModule>("overview");
+  const [twinRuntimeHost, setTwinRuntimeHost] = useState<HTMLElement | null>(null);
   const devices = useMemo(
     () => [...liveDashboard.devices].sort((a, b) => Number(b.last_upload_ts_unix ?? 0) - Number(a.last_upload_ts_unix ?? 0)),
     [liveDashboard.devices],
@@ -2711,30 +3343,61 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
     setSelectedDeviceId(devices[0]?.device_id ?? "");
   }, [devices, selectedDeviceId]);
 
+  const refreshLiveDashboard = useCallback(async (silent = false) => {
+    if (liveDashboardRequestRef.current) return;
+    const controller = new AbortController();
+    liveDashboardRequestRef.current = controller;
+    if (!silent) setPollState("syncing");
+    try {
+      const response = await fetch(`/api/proxy/rehab-arm/v1/devices/dashboard?project_id=${encodeURIComponent(projectId)}&_=${Date.now()}`, {
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error("dashboard fetch failed");
+      const payload = await response.json();
+      setLiveDashboard(filterDashboardForProject(payload, projectId));
+      setPollState("ok");
+      setLastLiveUpdate(Date.now());
+    } catch {
+      if (!controller.signal.aborted) setPollState("error");
+    } finally {
+      if (liveDashboardRequestRef.current === controller) liveDashboardRequestRef.current = null;
+    }
+  }, [projectId]);
+
   useEffect(() => {
     let disposed = false;
+    let timer: number | null = null;
 
-    async function refreshDashboard() {
-      try {
-        const response = await fetch(`/api/proxy/rehab-arm/v1/devices/dashboard?project_id=${encodeURIComponent(projectId)}`, { cache: "no-store" });
-        if (!response.ok) throw new Error("dashboard fetch failed");
-        const payload = await response.json();
-        if (disposed) return;
-        setLiveDashboard(filterDashboardForProject(payload, projectId));
-        setPollState("ok");
-        setLastLiveUpdate(Date.now());
-      } catch {
-        if (!disposed) setPollState("error");
-      }
+    function schedule() {
+      if (timer) window.clearInterval(timer);
+      const visible = document.visibilityState !== "hidden";
+      timer = window.setInterval(() => {
+        if (document.visibilityState === "hidden") return;
+        if (!disposed) void refreshLiveDashboard(true);
+      }, visible ? 2000 : 15000);
     }
 
-    void refreshDashboard();
-    const timer = window.setInterval(refreshDashboard, 4000);
+    function handleVisibilityChange() {
+      schedule();
+      if (!disposed && document.visibilityState !== "hidden") void refreshLiveDashboard(true);
+    }
+
+    void refreshLiveDashboard(true);
+    schedule();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       disposed = true;
-      window.clearInterval(timer);
+      if (timer) window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [projectId]);
+  }, [refreshLiveDashboard]);
+
+  useEffect(() => {
+    return () => {
+      liveDashboardRequestRef.current?.abort();
+    };
+  }, []);
 
   useEffect(() => {
     let disposed = false;
@@ -2779,11 +3442,14 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
   const stereoPayload = payloadOf(stereoVision);
   const stereoCaptureLoop = record(stereoPayload.capture_loop);
   const stereoTarget = record(stereoPayload.target_object);
+  const stereoEndEffector = record(stereoPayload.end_effector_object);
   const stereoObservation = record(stereoTarget.stereo_observation);
   const stereoVisualLock = record(stereoPayload.visual_lock_stability);
+  const stereoTargetQualityGate = record(stereoPayload.target_quality_gate);
   const stereoDepth = firstFiniteNumber(stereoPayload.estimated_depth_m, record(stereoPayload.target_3d_camera_frame).z_m, record(stereoPayload.target_3d_camera_frame).z);
   const stereoHasContext = Object.keys(stereoPayload).length > 0;
   const stereoTargetLabel = text(stereoTarget.label, "");
+  const stereoEndEffectorLabel = text(stereoEndEffector.label, "");
   const stereoDetectionCount = detectionCount(stereoPayload.detections);
   const stereoFrameProcessMs = Number(stereoCaptureLoop.frame_process_ms);
   const stereoHasFrameTiming = Number.isFinite(stereoFrameProcessMs);
@@ -2804,6 +3470,8 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
   const stereoVisualLockDisparitySpreadPx = Number(stereoVisualLock.disparity_spread_px);
   const stereoVisualLockCandidate = text(stereoVisualLock.candidate_label, "");
   const stereoHasPayloadVisualLock = Object.keys(stereoVisualLock).length > 0;
+  const stereoHasTargetQualityGate = Object.keys(stereoTargetQualityGate).length > 0;
+  const stereoTargetQualityGateState = text(stereoTargetQualityGate.state, "");
   const cameraStreamOffer = latestRelayPayload(selected, "camera_stream_offer");
   const robotRenderState = renderStateOfDevice(selected);
   const renderRows = renderJointRowsFromState(robotRenderState);
@@ -2823,9 +3491,15 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
   const voiceRelay = Object.keys(selectedVoiceRelay).length ? selectedVoiceRelay : latestRelayPayload(projectVoiceRelayDevice, "voice_relay");
   const xiaozhiSession = Object.keys(selectedXiaozhiSession).length ? selectedXiaozhiSession : latestRelayPayload(projectXiaozhiDevice, "xiaozhi_session");
   const vlaCandidate = latestRelayPayload(selected, "vla_plan_candidate");
+  const simulationReadiness = latestRelayPayload(selected, "simulation_readiness");
+  const simulationReport = record(simulationReadiness.report);
   const modelRelayRecord = record(selected?.model_relay_response);
   const modelRelayPayload = payloadOf(modelRelayRecord);
   const modelRelayResponse = lastRelayResponse ?? record(modelRelayPayload.relay_response);
+  const modelRelayA = record(modelRelayResponse.a);
+  const modelRelaySemantic = record(modelRelayA.semantic);
+  const modelRelayVisionContext = record(modelRelayResponse.vla_vision_context);
+  const modelRelayVisualServoContext = record(modelRelayVisionContext.visual_servo_context);
   const modelRelayProvider = record(modelRelayResponse.provider);
   const modelRelaySuggestion = record(asArray<AnyRecord>(record(modelRelayResponse.suggestion).model_results)[0]);
   const estopAck = latestRelayPayload(selected, "estop_ack");
@@ -2860,7 +3534,8 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
     [motorPayload, robotRenderState, selected?.command_center_snapshot, sensorPayload],
   );
   const imageUrl = text(keyframe.image_url, "");
-  const absoluteImageUrl = keyframeSrc(imageUrl, apiBaseUrl);
+  const keyframeImageVersion = keyframePayload.frame_ts_unix ?? keyframe.ts_unix ?? selected?.last_upload_ts_unix;
+  const absoluteImageUrl = withImageVersion(keyframeSrc(imageUrl, apiBaseUrl), keyframeImageVersion);
   const motionAllowed = Boolean(safetyStatus.motion_allowed ?? safetyPayload.motion_allowed ?? selected?.motion_allowed);
   const currentSafetyState = safetyStatus.state ?? safetyPayload.state ?? selected?.safety_state;
   const qualityReady = Boolean(dataQuality.annotation_ready);
@@ -2878,6 +3553,20 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
       setEstopRequestState("pending_m33_ack");
     }
   }, [estopAck.accepted_by_gateway, estopAck.m33_ack]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const scrollToHash = () => {
+      const id = decodeURIComponent(window.location.hash.replace(/^#/, ""));
+      if (!id) return;
+      window.setTimeout(() => {
+        document.getElementById(id)?.scrollIntoView({ block: "start", behavior: "smooth" });
+      }, 120);
+    };
+    scrollToHash();
+    window.addEventListener("hashchange", scrollToHash);
+    return () => window.removeEventListener("hashchange", scrollToHash);
+  }, []);
 
   async function requestEstop() {
     if (!selected?.device_id) return;
@@ -3017,6 +3706,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
               fresh_joint_count: Math.max(0, renderRows.length - staleRenderCount),
               camera_scene_summary: text(stereoPayload.scene_summary ?? keyframePayload.scene_summary, ""),
               stereo_target_label: stereoTargetLabel,
+              stereo_end_effector_label: stereoEndEffectorLabel,
               stereo_baseline_m: stereoPayload.baseline_m,
               stereo_disparity_px: stereoObservation.horizontal_disparity_px,
               stereo_depth_m: stereoDepth,
@@ -3083,11 +3773,21 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
       ?? (xiaozhiEvents.length ? "thinking" : (selected ? "offline" : "idle")),
     "offline",
   );
+  const semanticIntentText = text(modelRelaySemantic.intent_text, "");
   const languageGate = record(
-    xiaozhiReplyPayload.vla_language_gate
-      ?? xiaozhiSession.vla_language_gate
-      ?? modelRelayResponse.vla_language_gate
-      ?? record(modelRelayResponse.vla_language_context).classification,
+    semanticIntentText
+      ? (
+        modelRelayResponse.vla_language_gate
+          ?? record(modelRelayResponse.vla_language_context).classification
+          ?? xiaozhiReplyPayload.vla_language_gate
+          ?? xiaozhiSession.vla_language_gate
+      )
+      : (
+        xiaozhiReplyPayload.vla_language_gate
+          ?? xiaozhiSession.vla_language_gate
+          ?? modelRelayResponse.vla_language_gate
+          ?? record(modelRelayResponse.vla_language_context).classification
+      ),
   );
   const relayBoundaryText = text(modelRelayResponse.control_boundary, "model_relay_only_not_motion_permission");
   const relayProviderText = modelRelayProvider.configured === true ? "服务端 provider 已配置" : "等待服务端 provider";
@@ -3116,6 +3816,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
   const visionSummary = stereoHasContext
     ? [
       stereoTargetLabel ? `目标 ${stereoTargetLabel}` : "双目已上报",
+      stereoEndEffectorLabel ? `末端 ${stereoEndEffectorLabel}` : "末端待识别",
       stereoDetectionCount ? `检测 ${stereoDetectionCount} 个` : "",
       stereoHasFrameTiming ? `处理 ${compactNumberText(stereoFrameProcessMs, " ms")}` : "",
       stereoLoopProgressText !== "未上报" ? `循环 ${stereoLoopProgressText}` : "",
@@ -3132,7 +3833,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
     xiaozhiSession.event ? xiaozhiEventLabel(xiaozhiSession.event) : "等待 XiaoZhi listen/audio",
   );
   const hasRealLanguageInput = languageSummary !== "等待 XiaoZhi listen/audio" || xiaozhiEvents.length > 0 || Object.keys(voiceRelay).length > 0;
-  const effectiveLanguageSummary = hasRealLanguageInput ? languageSummary : (demoLanguageInput || languageSummary);
+  const effectiveLanguageSummary = semanticIntentText || (hasRealLanguageInput ? languageSummary : (demoLanguageInput || languageSummary));
   const voiceIntentRoute = record(
     xiaozhiReplyPayload.voice_intent_route
       ?? xiaozhiReplyPayload.intent_route
@@ -3157,6 +3858,31 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
     ? (!hasRealLanguageInput && demoLanguageInput ? "演示 L 输入" : "前端兜底预览")
     : "真实语音路由";
   const actionCandidate = record(vlaCandidate.candidate);
+  const simulationSteps = asArray<AnyRecord>(simulationReport.steps);
+  const simulationFinalJointState = record(simulationReport.final_joint_state);
+  const simulationStepLast = simulationSteps.length ? simulationSteps[simulationSteps.length - 1] : {};
+  const simulationReady = text(simulationReport.readiness, "") === "vla_shadow_demo_ran" || simulationReport.ok === true;
+  const simulationReportBoundary = text(simulationReport.control_boundary, "simulation_evidence_only_not_motion_permission");
+  const simulationPlanState = text(simulationReport.last_plan_state, text(simulationStepLast.plan_state, "等待 MuJoCo"));
+  const simulationTrajectoryCount = Number(simulationReport.shadow_trajectory_count);
+  const simulationStepCount = Number(simulationReport.step_count);
+  const simulationJointSummary = Object.entries(simulationFinalJointState)
+    .slice(0, 3)
+    .map(([name, value]) => `${name}: ${compactNumberText(value, " rad")}`)
+    .join("；");
+  const semanticTargetLabel = text(record(modelRelaySemantic.target).label, text(modelRelaySemantic.target_label, ""));
+  const semanticModeLabel = text(modelRelaySemantic.mode, text(modelRelayResponse.input_type, "等待 A semantic"));
+  const semanticSourceLabel = text(modelRelaySemantic.source, "platform_language_semantic_router");
+  const modelRelayVisualDistance = firstFiniteNumber(
+    modelRelayVisualServoContext.pixel_distance_px,
+    modelRelayVisualServoContext.distance_px,
+    record(modelRelayVisionContext.pixel_servo_hint).distance_px,
+  );
+  const shadowEvidenceTone = simulationReady
+    ? "ok"
+    : Object.keys(simulationReport).length
+      ? "idle"
+      : "limited";
   const actionSummary = text(
     modelRelaySuggestion.detail ?? modelRelayResponse.summary ?? actionCandidate.summary ?? actionCandidate.type,
     "等待 dry-run 动作候选",
@@ -3208,6 +3934,34 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
         locked: Boolean(label && Number.isFinite(disparity)),
       };
     });
+  const currentTargetMemory = visualSampleFromObject(stereoTarget, stereoPayload, "target");
+  const currentEndEffectorMemory = visualSampleFromObject(stereoEndEffector, stereoPayload, "end_effector");
+  const recentTargetMemory = newestVisualSample([
+    currentTargetMemory,
+    ...stereoRecentEvents.map((event) => {
+      const payload = payloadOf(event);
+      return visualSampleFromObject(payload.target_object, payload, "target");
+    }),
+  ]);
+  const recentEndEffectorMemory = newestVisualSample([
+    currentEndEffectorMemory,
+    ...stereoRecentEvents.map((event) => {
+      const payload = payloadOf(event);
+      return visualSampleFromObject(payload.end_effector_object, payload, "end_effector");
+    }),
+  ]);
+  const targetMemoryFreshness = freshness(recentTargetMemory?.tsUnix ?? null, Date.now());
+  const endEffectorMemoryFreshness = freshness(recentEndEffectorMemory?.tsUnix ?? null, Date.now());
+  const visualMemoryNowMs = Date.now();
+  const targetMemoryUsable = visualMemoryUsable(recentTargetMemory, visualMemoryNowMs);
+  const endEffectorMemoryUsable = visualMemoryUsable(recentEndEffectorMemory, visualMemoryNowMs);
+  const visualMemoryPairState = targetMemoryUsable && endEffectorMemoryUsable
+    ? "memory_pair_ready"
+    : targetMemoryUsable
+      ? "waiting_end_effector_memory"
+      : endEffectorMemoryUsable
+        ? "waiting_target_memory"
+        : "waiting_visual_memory";
   const stereoStableLabel = stereoTargetLabel || text(stereoRecentFrames.find((frame) => frame.label)?.label, "");
   const stereoLockedFrames = stereoRecentFrames.filter((frame) => (
     frame.locked && (!stereoStableLabel || frame.label === stereoStableLabel)
@@ -3220,21 +3974,23 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
     ? Math.max(...stereoDisparitySamples) - Math.min(...stereoDisparitySamples)
     : null;
   const stereoTargetCenter = targetCenterFromObservation(stereoTarget, stereoObservation);
+  const stereoEndEffectorObservation = record(stereoEndEffector.stereo_observation);
+  const stereoEndEffectorCenter = targetCenterFromObservation(stereoEndEffector, stereoEndEffectorObservation);
   const stereoFrameSize = inferFrameSize(stereoPayload, stereoTarget, stereoObservation);
   const stereoImagePairRef = record(stereoPayload.image_pair_ref);
   const selectedDeviceIdForUrl = selected?.device_id ? encodeURIComponent(selected.device_id) : "";
   const stereoLeftKeyframeSrc = selected?.device_id
-    ? keyframeSrc(`/api/rehab-arm/v1/devices/${selectedDeviceIdForUrl}/camera/keyframes/stereo_left/latest/file`, apiBaseUrl)
+    ? withImageVersion(keyframeSrc(`/api/rehab-arm/v1/devices/${selectedDeviceIdForUrl}/camera/keyframes/stereo_left/latest/file`, apiBaseUrl), stereoTsUnix ?? selected?.last_upload_ts_unix)
     : "";
   const stereoRightKeyframeSrc = selected?.device_id
-    ? keyframeSrc(`/api/rehab-arm/v1/devices/${selectedDeviceIdForUrl}/camera/keyframes/stereo_right/latest/file`, apiBaseUrl)
+    ? withImageVersion(keyframeSrc(`/api/rehab-arm/v1/devices/${selectedDeviceIdForUrl}/camera/keyframes/stereo_right/latest/file`, apiBaseUrl), stereoTsUnix ?? selected?.last_upload_ts_unix)
     : "";
-  const leftStereoImageSrc = browserImageSrc(stereoImagePairRef.left_image_url ?? stereoTarget.image_ref, apiBaseUrl) || stereoLeftKeyframeSrc;
-  const rightStereoImageSrc = browserImageSrc(stereoImagePairRef.right_image_url ?? stereoObservation.right_image_ref, apiBaseUrl) || stereoRightKeyframeSrc;
+  const leftStereoImageSrc = withImageVersion(browserImageSrc(stereoImagePairRef.left_image_url ?? stereoTarget.image_ref, apiBaseUrl), stereoTsUnix ?? selected?.last_upload_ts_unix) || stereoLeftKeyframeSrc;
+  const rightStereoImageSrc = withImageVersion(browserImageSrc(stereoImagePairRef.right_image_url ?? stereoObservation.right_image_ref, apiBaseUrl), stereoTsUnix ?? selected?.last_upload_ts_unix) || stereoRightKeyframeSrc;
   const leftTargetBbox = firstNumberTuple(4, stereoObservation.left_bbox_xywh, stereoTarget.bbox_xywh, stereoTarget.bbox);
   const rightTargetBbox = firstNumberTuple(4, stereoObservation.right_bbox_xywh);
-  const leftTargetBoxStyle = bboxStyle(leftTargetBbox, stereoFrameSize);
-  const rightTargetBoxStyle = bboxStyle(rightTargetBbox, stereoFrameSize);
+  const leftEndEffectorBbox = firstNumberTuple(4, stereoEndEffectorObservation.left_bbox_xywh, stereoEndEffector.bbox_xywh, stereoEndEffector.bbox);
+  const rightEndEffectorBbox = firstNumberTuple(4, stereoEndEffectorObservation.right_bbox_xywh);
   const leftDetectionPills = detectionPills(stereoPayload.detections, "left");
   const rightDetectionPills = detectionPills(stereoPayload.detections, "right");
   const visualEvidenceImageSource = leftStereoImageSrc && rightStereoImageSrc
@@ -3242,14 +3998,38 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
     : leftStereoImageSrc || rightStereoImageSrc
       ? "单侧真帧"
       : "等图像";
-  const visualEvidenceBoxSource = leftTargetBbox || rightTargetBbox
-    ? text(stereoTarget.source, "").includes("yolox")
-      ? "C++ YOLOX"
-      : text(stereoTarget.source, "C++ payload")
-    : "等 bbox";
+  const visualEvidenceBoxSource = leftStereoImageSrc
+    ? "NanoPi OpenCV 标注帧"
+    : "等 OpenCV 标注图";
+  const endEffectorEvidenceText = stereoEndEffectorLabel && (leftEndEffectorBbox || rightEndEffectorBbox)
+    ? `${stereoEndEffectorLabel} 已入画`
+    : stereoEndEffectorLabel
+      ? `${stereoEndEffectorLabel} 等 bbox`
+      : "末端待识别";
   const visualEvidencePairing = stereoLoopProgressText !== "等待循环"
     ? stereoLoopProgressText
     : text(stereoPayload.schema_version, "等待 stereo payload");
+  const targetQualityRejectedCount = Number(stereoTargetQualityGate.rejected_count);
+  const targetQualityReasons = Object.entries(record(stereoTargetQualityGate.rejection_reasons))
+    .map(([reason, count]) => `${reason.replaceAll("_", " ")} ${count}`)
+    .slice(0, 3);
+  const targetQualityGateTone = !stereoHasTargetQualityGate
+    ? "idle"
+    : stereoTargetQualityGateState === "candidate_accepted"
+      ? "ok"
+      : "limited";
+  const targetQualityGateTitle = !stereoHasTargetQualityGate
+    ? "等待质量门"
+    : stereoTargetQualityGateState === "candidate_accepted"
+      ? "目标候选通过"
+      : "未接受目标";
+  const targetQualityGateDetail = !stereoHasTargetQualityGate
+    ? "等待 NanoPi 上报 target_quality_gate"
+    : stereoTargetQualityGateState === "candidate_accepted"
+      ? "候选框通过尺寸、边界和轮廓检查"
+      : targetQualityReasons.length
+        ? `拒绝 ${Number.isFinite(targetQualityRejectedCount) ? targetQualityRejectedCount : targetQualityReasons.length} 个：${targetQualityReasons.join("；")}`
+        : "粗检测候选未通过物理合理性检查";
   const computedPixelServo = pixelServoSuggestion({
     center: stereoTargetCenter,
     frame: stereoFrameSize,
@@ -3326,6 +4106,30 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
     : visualLockObservedFrames > 0
       ? "积累中"
       : "等待目标";
+  const endEffectorVisible = Boolean(stereoEndEffectorLabel && (leftEndEffectorBbox || rightEndEffectorBbox || stereoEndEffectorCenter));
+  const rememberedTargetCenter = stereoTargetCenter ?? recentTargetMemory?.center ?? null;
+  const rememberedEndEffectorCenter = stereoEndEffectorCenter ?? recentEndEffectorMemory?.center ?? null;
+  const visualServoDelta = useMemo(
+    () => rememberedTargetCenter && rememberedEndEffectorCenter
+      ? [rememberedTargetCenter[0] - rememberedEndEffectorCenter[0], rememberedTargetCenter[1] - rememberedEndEffectorCenter[1]]
+      : null,
+    [rememberedEndEffectorCenter, rememberedTargetCenter],
+  );
+  const visualServoDistancePx = visualServoDelta
+    ? Math.hypot(visualServoDelta[0], visualServoDelta[1])
+    : null;
+  const visualServoReady = Boolean(targetMemoryUsable && endEffectorMemoryUsable && visualServoDistancePx !== null);
+  const visualServoStateText = visualServoReady
+    ? (endEffectorVisible && stereoTargetLabel ? "当前帧闭环" : "视觉记忆闭环")
+    : targetMemoryUsable
+      ? "等待末端记忆"
+      : endEffectorMemoryUsable
+        ? "等待目标记忆"
+        : "等待视觉记忆";
+  const visualServoDistanceText = visualServoDistancePx !== null
+    ? compactNumberText(visualServoDistancePx, " px")
+    : "等待目标+末端";
+  const cameraToRobotReady = stereoPayload.camera_to_robot_calibrated === true || modelRelayVisionContext.camera_to_robot_calibrated === true;
   const stereoLoopTone = !stereoHasContext || stereoFreshness.state === "stale"
     ? "limited"
     : stereoVisualLockStable || (stereoTargetLabel && stereoHasDisparity && (!stereoSampleCount || stereoLockedFrames.length >= Math.min(3, stereoSampleCount)))
@@ -3348,6 +4152,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
       stereoHasFrameTiming ? `V 耗时 ${compactNumberText(stereoFrameProcessMs, " ms")}` : "",
       stereoVisibleStabilityText,
       stereoHasPayloadVisualLock && stereoVisualLockState ? `锁定状态 ${stereoVisualLockState}` : "",
+      visualServoStateText,
       stereoHasDisparity ? `视差 ${compactNumberText(stereoDisparity, " px")}` : "无左右匹配",
       stereoDisparitySpread !== null ? `波动 ${compactNumberText(stereoDisparitySpread, " px")}` : "",
       stereoDepth !== null ? `深度 ${compactNumberText(stereoDepth, " m")}` : "未标定深度",
@@ -3362,6 +4167,8 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
         ? "hold_stale_vision"
         : !stereoTargetLabel || !stereoHasDisparity
           ? "tracking_target"
+          : !visualServoReady
+            ? "hold_end_effector"
           : stereoDepth === null
             ? "hold_uncalibrated_depth"
             : Object.keys(actionCandidate).length || relayState === "ok"
@@ -3377,6 +4184,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
     waiting_vision: "等待 NanoPi 双目 V 输入",
     tracking_target: "视觉正在持续跟踪目标，A 仍只生成 dry-run 候选",
     hold_stale_vision: "视觉数据过期，必须重新观察",
+    hold_end_effector: "目标已入画，但还没有同时识别机械臂末端",
     hold_uncalibrated_depth: "未完成双目标定，不能把像素视差当机械臂坐标",
     candidate_ready: "已有高层候选，可进入仿真/dry-run 审核",
   }[vlaLiteLoopState];
@@ -3387,9 +4195,11 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
     ? "hold_language"
     : !hasStereoTargetForGate
       ? "hold_vision"
-      : stereoFreshness.state === "stale"
-        ? "hold_stale_vision"
-        : !stereoVisualLockStable
+    : stereoFreshness.state === "stale"
+      ? "hold_stale_vision"
+      : !visualServoReady
+        ? "hold_end_effector"
+      : !stereoVisualLockStable
           ? "observe_more"
           : hasActionCandidate
             ? "candidate_ready"
@@ -3404,6 +4214,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
     hold_language: "A 等待小智/语言路由给出取物或训练任务，不凭空生成动作。",
     hold_vision: "A 等待 NanoPi 双目给出同类左右目目标，当前只保持观察。",
     hold_stale_vision: "视觉帧已经过期，A 不使用旧坐标生成逼近候选。",
+    hold_end_effector: "A 至少需要目标物和机械臂末端的短时视觉记忆，才能形成 dry-run 视觉逼近闭环。",
     observe_more: "目标还没有通过多帧视觉锁定，A 继续观察并保持 hold_observe。",
     visual_lock_ready: "目标通过多帧锁定，A 可以展示 dry-run 像素逼近候选，但不下发运动。",
     candidate_ready: "已有高层建议或候选，下一步仍是仿真/dry-run 审核，不是真机运动。",
@@ -3414,32 +4225,1723 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
   const actionGateSummary = dryRunCandidateAllowed
     ? `${dryRunGateReason} 建议标签：${pixelServo.nextStep}。`
     : dryRunGateReason;
+  const routeModeFallback: Record<string, string> = {
+    object_fetch_request: "fetch_object",
+    training_start_request: "training",
+    training_summary_request: "training",
+    assistive_emg_request: "assistive_emg",
+    diagnostic_request: "diagnostics",
+    data_collection_request: "data_collection",
+    daily_chat: "chat",
+  };
+  const backendModeMaturity = record(selected?.mode_maturity);
+  const backendModeRows = asArray<AnyRecord>(backendModeMaturity.modes);
+  const currentSemanticMode = text(
+    backendModeMaturity.active_mode,
+    text(modelRelaySemantic.mode, routeModeFallback[routeClass] || ""),
+  );
+  const fallbackModeOverviewRows = [
+    {
+      mode: "fetch_object",
+      title: "取物 VLA-lite",
+      stage: currentSemanticMode === "fetch_object" ? dryRunGateLabel(dryRunGateState) : "预留 V 闭环",
+      detail: "L 选目标，V 找目标和末端，A 只生成 dry-run / MuJoCo 候选。",
+      next: stereoHasContext ? "补真实目标验收和后续标定" : "等待 NanoPi V",
+      tone: currentSemanticMode === "fetch_object" ? dryRunGateTone : "idle",
+    },
+    {
+      mode: "training",
+      title: "训练计划",
+      stage: currentSemanticMode === "training" ? "训练语义已命中" : "等待训练意图",
+      detail: "APP 训练库通过 BLE 到 M33；APP 端 AI 后续填充训练计划表。",
+      next: "接 APP/BLE/M33 训练库",
+      tone: currentSemanticMode === "training" ? "ok" : "idle",
+    },
+    {
+      mode: "assistive_emg",
+      title: "肌电助力",
+      stage: currentSemanticMode === "assistive_emg" ? "助力语义已命中" : "等待 EMG 意图",
+      detail: "4 通道肌电由 M55 推测动作意图，M33 仍是最终安全门。",
+      next: "接 M55 意图和肌肉力图",
+      tone: currentSemanticMode === "assistive_emg" ? "ok" : "idle",
+    },
+    {
+      mode: "vision_servo",
+      title: "视觉伺服",
+      stage: currentSemanticMode === "vision_servo" ? "视觉伺服已命中" : "共享 V 证据",
+      detail: "复用目标/末端误差；未来优先使用深度和机械臂坐标系。",
+      next: cameraToRobotReady ? "可展示标定坐标" : "等待手眼/坐标标定",
+      tone: currentSemanticMode === "vision_servo" ? "ok" : stereoHasContext ? "idle" : "limited",
+    },
+    {
+      mode: "safety_review",
+      title: "安全审核",
+      stage: currentSemanticMode === "safety_review" ? "审核语义已命中" : "默认总门控",
+      detail: "汇总 M33、安全状态、MuJoCo、操作员确认；不直接批准运动。",
+      next: motionAllowed ? "仍需人工/M33复核" : "等待 M33 fresh",
+      tone: currentSemanticMode === "safety_review" ? "ok" : "idle",
+    },
+    {
+      mode: "diagnostics",
+      title: "只读诊断",
+      stage: currentSemanticMode === "diagnostics" ? "诊断语义已命中" : "可随时进入",
+      detail: "摄像头、CAN、ROS、M33/M55 和仿真状态只读汇总。",
+      next: "补 topic/log/CAN 快照",
+      tone: currentSemanticMode === "diagnostics" ? "ok" : "idle",
+    },
+    {
+      mode: "data_collection",
+      title: "数据采集",
+      stage: currentSemanticMode === "data_collection" ? "采集语义已命中" : "等待采集任务",
+      detail: "相机、肌电、CAN、ROS 和语言标签统一入数据集索引。",
+      next: "补采集批次和标签表",
+      tone: currentSemanticMode === "data_collection" ? "ok" : "idle",
+    },
+    {
+      mode: "chat",
+      title: "日常聊天",
+      stage: currentSemanticMode === "chat" ? "聊天不进 VLA" : "L 共享入口",
+      detail: "小智可聊天，但 chat 模式不生成机器人动作。",
+      next: "保持与 VLA 指令隔离",
+      tone: currentSemanticMode === "chat" ? "ok" : "idle",
+    },
+  ];
+  const modeOverviewRows = backendModeRows.length
+    ? backendModeRows.map((item) => ({
+        mode: text(item.mode, "chat"),
+        title: text(item.label ?? item.title, semanticActionModeLabel(item.mode)),
+        stage: text(item.stage, "等待模式状态"),
+        detail: text(item.detail, text(item.motion_boundary, "status only")),
+        next: text(item.next_step ?? item.next, "等待下一步"),
+        tone: modeTone(item.tone),
+      }))
+    : fallbackModeOverviewRows;
+  const displayModeOverviewRows = modeOverviewRows.map((item) => ({
+    ...item,
+    stage: modeStageText(item.stage),
+    detail: modeBoundaryText(item.detail),
+    next: modeNextText(item.next),
+  }));
+  const modeOverviewBoundary = text(
+    backendModeMaturity.control_boundary,
+    "mode_maturity_status_only_not_motion_permission",
+  );
+  const modeOverviewBoundaryText = modeOverviewBoundary === "mode_maturity_status_only_not_motion_permission"
+    ? "模式成熟度仅作状态展示，不是运动许可"
+    : modeOverviewBoundary.replaceAll("_", " ");
+  const loopHealthRows = [
+    {
+      key: "fetch",
+      title: "取物闭环",
+      stage: dryRunGateLabel(dryRunGateState),
+      evidence: visualServoReady ? `V 记忆 ${visualServoDistanceText}` : visualServoStateText,
+      next: dryRunCandidateAllowed ? "进 MuJoCo/dry-run 审核" : "继续观察",
+      tone: dryRunGateTone,
+    },
+    {
+      key: "training",
+      title: "训练闭环",
+      stage: currentSemanticMode === "training" ? "L 已路由训练" : "等待训练 L",
+      evidence: "APP 训练库/BLE/M33 预留",
+      next: "接 APP 训练计划表",
+      tone: currentSemanticMode === "training" ? "ok" : "idle",
+    },
+    {
+      key: "assist",
+      title: "肌电助力闭环",
+      stage: currentSemanticMode === "assistive_emg" ? "L 已路由助力" : "等待 EMG 意图",
+      evidence: "M55 四通道肌电意图预留",
+      next: "接 M55 推理日志和肌肉力图",
+      tone: currentSemanticMode === "assistive_emg" ? "ok" : "idle",
+    },
+    {
+      key: "shadow",
+      title: "仿真闭环",
+      stage: simulationReady ? "MuJoCo 已回传" : "等待 shadow",
+      evidence: simulationPlanState,
+      next: simulationReady ? "人工审核证据" : "仿真主机上传 report",
+      tone: simulationReady ? "ok" : "idle",
+    },
+    {
+      key: "safety",
+      title: "安全闭环",
+      stage: motionAllowed ? "M33 候选允许" : "真机锁定",
+      evidence: liveDashboard.safety_boundary.m33_final_authority ? "M33 final authority" : "等待安全声明",
+      next: motionAllowed ? "仍需人审/仿真" : "保持 dry-run",
+      tone: motionAllowed ? "limited" : "ok",
+    },
+  ];
+  const nonVisionProgressRows = [
+    {
+      key: "training-plan",
+      title: "训练计划链路",
+      owner: "APP / M33",
+      status: currentSemanticMode === "training" ? "L 已命中训练" : "可独立推进",
+      detail: "先把训练库、训练目标、患者约束和计划表结构跑通；不依赖杯子识别。",
+      next: "APP 通过 BLE 把训练目标交给 M33",
+      tone: currentSemanticMode === "training" ? "ok" : "idle",
+    },
+    {
+      key: "emg-assist",
+      title: "肌电助力链路",
+      owner: "M55 / M33",
+      status: currentSemanticMode === "assistive_emg" ? "L 已命中助力" : "等待 EMG 流",
+      detail: "四通道肌电先变成动作意图和助力方向，M33 只接收受限建议。",
+      next: "显示肌肉发力和助力方向",
+      tone: currentSemanticMode === "assistive_emg" ? "ok" : "idle",
+    },
+    {
+      key: "shadow-review",
+      title: "仿真审核链路",
+      owner: "MuJoCo Host",
+      status: simulationReady ? "shadow 证据已回传" : "等待仿真回传",
+      detail: simulationReady ? simulationPlanState : "无真实识别时仍可用预设任务/日志验证 A 到仿真的链路。",
+      next: simulationReady ? "把仿真结果进入人审卡" : "仿真主机上传 simulation_readiness",
+      tone: simulationReady ? "ok" : "idle",
+    },
+    {
+      key: "dataset",
+      title: "数据采集链路",
+      owner: "NanoPi / Runner",
+      status: qualityReady ? "数据质量可用" : "可先建采集批次",
+      detail: "当前摄像头、L 指令、EMG、CAN、仿真日志都可以先入统一数据集索引。",
+      next: "补 session、label、QA、训练回流",
+      tone: qualityReady ? "ok" : "idle",
+    },
+  ];
+  const trainingPipelineSteps = [
+    { key: "l", label: "L 训练意图", state: currentSemanticMode === "training" ? "已命中" : "等待", tone: currentSemanticMode === "training" ? "ok" : "idle" },
+    { key: "library", label: "APP 训练库", state: "预留计划表", tone: "idle" },
+    { key: "ble", label: "BLE 到 M33", state: "待接入", tone: "idle" },
+    { key: "review", label: "安全/报告", state: "只读审核", tone: "ok" },
+  ];
+  const assistivePipelineSteps = [
+    { key: "emg", label: "四通道 EMG", state: currentSemanticMode === "assistive_emg" ? "等待数据" : "未触发", tone: currentSemanticMode === "assistive_emg" ? "limited" : "idle" },
+    { key: "m55", label: "M55 意图", state: "模型槽预留", tone: "idle" },
+    { key: "m33", label: "M33 门控", state: liveDashboard.safety_boundary.m33_final_authority ? "最终裁决" : "等待声明", tone: liveDashboard.safety_boundary.m33_final_authority ? "ok" : "limited" },
+    { key: "assist", label: "助力方向", state: "展示优先", tone: "idle" },
+  ];
+  const vlaEvidenceLadder = [
+    {
+      step: "1",
+      title: "目标质量门",
+      state: targetQualityGateTitle,
+      detail: targetQualityGateDetail,
+      tone: targetQualityGateTone,
+    },
+    {
+      step: "2",
+      title: "末端可见",
+      state: endEffectorMemoryUsable ? `记忆 ${endEffectorMemoryFreshness.text}` : "等待末端",
+      detail: endEffectorVisible ? endEffectorEvidenceText : `最近末端：${recentEndEffectorMemory?.label ?? "无"} · ${endEffectorMemoryFreshness.text}`,
+      tone: endEffectorMemoryUsable ? "ok" : targetMemoryUsable ? "limited" : "idle",
+    },
+    {
+      step: "3",
+      title: "多帧视觉锁",
+      state: visualLockConfidenceText,
+      detail: stereoVisibleStabilityText,
+      tone: stereoVisualLockStable ? "ok" : visualLockObservedFrames > 0 ? "idle" : "limited",
+    },
+    {
+      step: "4",
+      title: "A dry-run gate",
+      state: dryRunGateLabel(dryRunGateState),
+      detail: dryRunGateReason,
+      tone: dryRunGateTone,
+    },
+  ];
+  const topologyNodes = [
+    {
+      key: "l",
+      eyebrow: "M55 / XiaoZhi",
+      title: "语言意图",
+      value: currentSemanticMode ? semanticActionModeLabel(currentSemanticMode) : "等待 L",
+      detail: effectiveLanguageSummary,
+      tone: currentSemanticMode && currentSemanticMode !== "chat" ? "ok" : "idle",
+    },
+    {
+      key: "v",
+      eyebrow: "NanoPi Vision",
+      title: "视觉证据",
+      value: visualServoReady ? "目标+末端记忆" : targetMemoryUsable ? `目标 ${recentTargetMemory?.label}` : endEffectorMemoryUsable ? "末端记忆" : "等待画面",
+      detail: `${targetQualityGateTitle} · ${visualMemoryPairState.replaceAll("_", " ")}`,
+      tone: visualServoReady ? "ok" : targetMemoryUsable || endEffectorMemoryUsable ? "limited" : "idle",
+    },
+    {
+      key: "a",
+      eyebrow: "Platform A",
+      title: "动作规划",
+      value: dryRunGateLabel(dryRunGateState),
+      detail: dryRunCandidateAllowed ? "可进入 dry-run 审核" : "证据不足，保持观察",
+      tone: dryRunGateTone,
+    },
+    {
+      key: "sim",
+      eyebrow: "MuJoCo Shadow",
+      title: "仿真证据",
+      value: simulationReady ? "shadow 已跑通" : "等待 shadow",
+      detail: simulationPlanState,
+      tone: simulationReady ? "ok" : "idle",
+    },
+    {
+      key: "safe",
+      eyebrow: "M33 Safety",
+      title: "最终裁决",
+      value: motionAllowed ? "允许运动" : "锁定真机",
+      detail: motionAllowed ? "仍需人工复核" : "只读 / dry-run",
+      tone: motionAllowed ? "ok" : "limited",
+    },
+  ];
+  const stitchFrameRef = useRef<HTMLIFrameElement | null>(null);
+  const stitchSourceByModule: Record<RehabWorkspaceModule, string> = {
+    overview: "/rehab-stitch/overview.html",
+    vision: "/rehab-stitch/vision.html",
+    digital_twin: "/rehab-stitch/twin.html",
+    muscle_assist: "/rehab-stitch/muscle.html",
+    ai_model: "/rehab-stitch/diagnostics.html",
+    mode_router: "/rehab-stitch/router.html",
+    training: "/rehab-stitch/training.html",
+    action_planner: "/rehab-stitch/planner.html",
+    diagnostics: "/rehab-stitch/diagnostics.html",
+    logs: "/rehab-stitch/logs.html",
+  };
+  const updateStitchFrame = useCallback(() => {
+    const doc = stitchFrameRef.current?.contentDocument;
+    if (!doc?.body || !doc.head) {
+      if (twinRuntimeHost) setTwinRuntimeHost(null);
+      return;
+    }
+
+    const setText = (selector: string, value: string) => {
+      const node = doc.querySelector<HTMLElement>(selector);
+      if (node) node.textContent = value;
+    };
+    const setAllText = (selector: string, values: string[]) => {
+      doc.querySelectorAll<HTMLElement>(selector).forEach((node, index) => {
+        const value = values[index];
+        if (value !== undefined) node.textContent = value;
+      });
+    };
+    const setBg = (node: HTMLElement | undefined, imageSrc: string) => {
+      if (!node || !imageSrc) return;
+      node.style.backgroundImage = `url("${imageSrc}")`;
+      node.style.backgroundSize = "cover";
+      node.style.backgroundPosition = "center";
+    };
+    const setNthText = (selector: string, index: number, value: string) => {
+      const node = doc.querySelectorAll<HTMLElement>(selector)[index];
+      if (node) node.textContent = value;
+    };
+    const replaceExactText = (pairs: Array<[string, string]>) => {
+      const map = new Map(pairs);
+      const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+      let node = walker.nextNode();
+      while (node) {
+        const raw = node.nodeValue ?? "";
+        const trimmed = raw.trim();
+        const next = map.get(trimmed);
+        if (next) node.nodeValue = raw.replace(trimmed, next);
+        node = walker.nextNode();
+      }
+    };
+    const setValueNearLabel = (labelPattern: RegExp, value: string) => {
+      const labels = Array.from(doc.querySelectorAll<HTMLElement>("span, p, td, th, div"))
+        .filter((node) => labelPattern.test(text(node.textContent, "")));
+      const host = labels[0]?.parentElement;
+      const target = host?.querySelector<HTMLElement>(".font-telemetry-data, strong, td:last-child, span:last-child");
+      if (target) target.textContent = value;
+    };
+    const ensureStitchPanel = (id: string, html: string, className = "glass-panel") => {
+      let panel = doc.getElementById(id);
+      if (!panel) {
+        panel = doc.createElement("section");
+        panel.id = id;
+        panel.className = `${className} codex-injected-panel`;
+        const main = doc.querySelector("main") ?? doc.body;
+        main.appendChild(panel);
+      }
+      panel.innerHTML = html;
+      return panel as HTMLElement;
+    };
+    const escapeHtml = (value: unknown) => text(value, "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#39;");
+    const poseValueText = (sample: AnyRecord | undefined) => {
+      if (!sample) return "等待";
+      const rawValue = sample.value ?? sample.position_rad ?? sample.position ?? sample.angle_deg;
+      const value = Number(rawValue);
+      return Number.isFinite(value) ? compactNumberText(value, sample.position_rad !== undefined ? "rad" : "°") : "等待";
+    };
+    const isActiveRoute = (route: RehabWorkspaceModule) => route === activeModule;
+    const routeClass = (route: RehabWorkspaceModule) => (
+      isActiveRoute(route)
+        ? "w-full py-2 border-l-2 border-secondary-fixed-dim bg-secondary-container/10 text-secondary-fixed-dim scale-95"
+        : "w-full py-2 border-l-2 border-transparent text-on-surface-variant hover:text-secondary-fixed-dim hover:bg-surface-container-high/40"
+    );
+    const insertUnifiedShell = () => {
+      if (doc.getElementById("codex-unified-stitch-shell")) return;
+      doc.body.querySelectorAll(":scope > header, :scope > aside, :scope > nav").forEach((node) => node.remove());
+      const style = doc.createElement("style");
+      style.id = "codex-unified-stitch-shell";
+      style.textContent = `
+        body > main {
+          margin-left: 72px !important;
+          margin-top: 56px !important;
+          width: calc(100vw - 72px) !important;
+          height: calc(100vh - 56px) !important;
+        }
+        body > div.flex-1 {
+          margin-left: 72px !important;
+          margin-top: 56px !important;
+          width: calc(100vw - 72px) !important;
+          height: calc(100vh - 56px) !important;
+        }
+        body > div.flex-1 > header.top-bar {
+          display: none !important;
+        }
+        body > div.flex-1 > main {
+          height: 100% !important;
+        }
+        body > main.scroll-container {
+          height: calc(100vh - 56px) !important;
+        }
+        .stage-container {
+          height: calc(100vh - 56px) !important;
+        }
+      `;
+      doc.head.appendChild(style);
+      const rail = doc.createElement("nav");
+      rail.className = "fixed left-0 top-0 h-full w-[72px] border-r border-outline-variant bg-surface-dim/70 backdrop-blur-xl flex flex-col items-center py-3 z-50";
+      rail.innerHTML = `
+        <div class="mb-4 grid place-items-center text-primary font-bold">
+          <span class="font-display-lg text-[22px] leading-none">V</span>
+          <span class="font-telemetry-label text-[8px] leading-none mt-1">REHAB</span>
+        </div>
+        <div class="flex flex-col gap-1 items-center flex-1 w-full">
+          <button data-codex-route="overview" class="${routeClass("overview")}" title="总控"><strong class="block font-telemetry-data text-[13px] leading-none">CMD</strong><span class="block font-telemetry-label text-[8px] mt-1">总控</span></button>
+          <button data-codex-route="vision" class="${routeClass("vision")}" title="视觉"><strong class="block font-telemetry-data text-[13px] leading-none">V</strong><span class="block font-telemetry-label text-[8px] mt-1">视觉</span></button>
+          <button data-codex-route="digital_twin" class="${routeClass("digital_twin")}" title="孪生"><strong class="block font-telemetry-data text-[13px] leading-none">3D</strong><span class="block font-telemetry-label text-[8px] mt-1">孪生</span></button>
+          <button data-codex-route="muscle_assist" class="${routeClass("muscle_assist")}" title="肌电"><strong class="block font-telemetry-data text-[13px] leading-none">EMG</strong><span class="block font-telemetry-label text-[8px] mt-1">肌电</span></button>
+          <button data-codex-route="ai_model" class="${routeClass("ai_model")}" title="AI模型"><strong class="block font-telemetry-data text-[13px] leading-none">AI</strong><span class="block font-telemetry-label text-[8px] mt-1">模型</span></button>
+          <button data-codex-route="mode_router" class="${routeClass("mode_router")}" title="模式"><strong class="block font-telemetry-data text-[13px] leading-none">L</strong><span class="block font-telemetry-label text-[8px] mt-1">模式</span></button>
+          <button data-codex-route="training" class="${routeClass("training")}" title="训练"><strong class="block font-telemetry-data text-[13px] leading-none">TRN</strong><span class="block font-telemetry-label text-[8px] mt-1">训练</span></button>
+          <button data-codex-route="action_planner" class="${routeClass("action_planner")}" title="动作"><strong class="block font-telemetry-data text-[13px] leading-none">A</strong><span class="block font-telemetry-label text-[8px] mt-1">动作</span></button>
+          <button data-codex-route="diagnostics" class="${routeClass("diagnostics")}" title="诊断"><strong class="block font-telemetry-data text-[13px] leading-none">IO</strong><span class="block font-telemetry-label text-[8px] mt-1">诊断</span></button>
+          <button data-codex-route="logs" class="${routeClass("logs")}" title="日志"><strong class="block font-telemetry-data text-[13px] leading-none">LOG</strong><span class="block font-telemetry-label text-[8px] mt-1">日志</span></button>
+        </div>
+        <div class="mt-auto flex flex-col gap-2 items-center w-full">
+          <button data-codex-jump="robotics" class="w-full py-2 text-on-surface-variant hover:text-secondary-fixed-dim" title="设备数据"><strong class="block font-telemetry-data text-[11px] leading-none">DATA</strong><span class="block font-telemetry-label text-[8px] mt-1">数据</span></button>
+          <button data-codex-estop="true" class="mx-2 mb-1 bg-error text-on-error font-bold p-1 text-[10px] leading-tight text-center uppercase">STOP</button>
+        </div>
+      `;
+      doc.body.prepend(rail);
+      const header = doc.createElement("header");
+      header.className = "fixed top-0 right-0 left-[72px] h-[56px] flex justify-between items-center px-4 z-40 bg-gradient-to-b from-surface-dim to-transparent backdrop-blur-sm";
+      const deviceButtons = devices.slice(0, 5).map((device, index) => {
+        const active = device.device_id === selectedDeviceId;
+        return `<button data-codex-device="${device.device_id}" class="px-3 py-1 font-telemetry-label text-[11px] ${active ? "bg-secondary-container/20 text-secondary-fixed-dim border-b-2 border-secondary-fixed-dim" : "text-on-surface-variant hover:text-secondary-fixed-dim"}">${publicDeviceCode(device, index)}</button>`;
+      }).join("");
+      header.innerHTML = `
+        <div class="flex items-center gap-4 min-w-0">
+          <h1 class="font-headline-md text-primary tracking-tight whitespace-nowrap">VLA 控制台</h1>
+          <span class="h-4 w-px bg-outline-variant"></span>
+          <div class="flex items-center gap-1 min-w-0 overflow-hidden">${deviceButtons || `<span class="font-telemetry-label text-on-surface-variant">等待设备</span>`}</div>
+        </div>
+        <div class="flex items-center gap-4">
+          <span class="font-telemetry-label text-on-surface-variant">${pollState === "syncing" ? "SYNCING" : "LIVE"}</span>
+          <span class="font-telemetry-label ${motionAllowed ? "text-secondary-fixed-dim" : "text-error"}">${motionAllowed ? "M33 CANDIDATE" : "READ ONLY"}</span>
+          <button data-codex-estop="true" class="bg-error text-on-error px-4 py-1 font-telemetry-label text-[11px] font-bold">急停</button>
+        </div>
+      `;
+      doc.body.prepend(header);
+      doc.querySelectorAll<HTMLElement>("[data-codex-route]").forEach((node) => {
+        node.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const route = node.dataset.codexRoute as RehabWorkspaceModule | undefined;
+          if (route && route !== activeModule) setActiveModule(route);
+        });
+      });
+      doc.querySelectorAll<HTMLElement>("[data-codex-device]").forEach((node) => {
+        node.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const deviceId = node.dataset.codexDevice;
+          if (deviceId) setSelectedDeviceId(deviceId);
+        });
+      });
+      doc.querySelectorAll<HTMLElement>("[data-codex-jump]").forEach((node) => {
+        node.addEventListener("click", (event) => {
+          event.preventDefault();
+          window.location.href = `/projects/${projectId}/robotics`;
+        });
+      });
+      doc.querySelectorAll<HTMLElement>("[data-codex-estop]").forEach((node) => {
+        node.addEventListener("click", (event) => {
+          event.preventDefault();
+          setEstopRequestState("sent");
+        });
+      });
+    };
+    insertUnifiedShell();
+    const routeLabels: Record<RehabWorkspaceModule, { short: string; label: string }> = {
+      overview: { short: "CMD", label: "总控" },
+      vision: { short: "V", label: "视觉" },
+      digital_twin: { short: "3D", label: "孪生" },
+      muscle_assist: { short: "EMG", label: "肌电" },
+      ai_model: { short: "AI", label: "模型" },
+      mode_router: { short: "L", label: "模式" },
+      training: { short: "TRN", label: "训练" },
+      action_planner: { short: "A", label: "动作" },
+      diagnostics: { short: "IO", label: "诊断" },
+      logs: { short: "LOG", label: "日志" },
+    };
+    const syncCodexNav = () => doc.querySelectorAll<HTMLElement>("[data-codex-route]").forEach((node) => {
+      const route = node.dataset.codexRoute as RehabWorkspaceModule | undefined;
+      if (!route || !routeLabels[route]) return;
+      node.className = routeClass(route);
+      node.innerHTML = `<strong class="block font-telemetry-data text-[13px] leading-none">${routeLabels[route].short}</strong><span class="block font-telemetry-label text-[8px] mt-1">${routeLabels[route].label}</span>`;
+    });
+    syncCodexNav();
+    replaceExactText([
+      ["Control Console", "VLA 控制台"],
+      ["CONTROL CONSOLE", "VLA 控制台"],
+      ["Manual Mode", "手动模式"],
+      ["Safety: Secured", "安全栅：锁定"],
+      ["Emergency Stop", "急停"],
+      ["DEVICE DIAGNOSTICS", "设备诊断"],
+      ["DRY RUN MODE", "DRY-RUN 模式"],
+      ["System Status", "系统状态"],
+      ["Safety Manual", "安全手册"],
+      ["Overview", "总控"],
+      ["Vision", "视觉"],
+      ["VLA Vision", "VLA 视觉"],
+      ["Twin", "孪生"],
+      ["Assist", "助力"],
+      ["Router", "路由"],
+      ["Train", "训练"],
+      ["Logs", "日志"],
+      ["DIAGS", "诊断"],
+      ["打开真实肌电组件", "打开肌电数据抽屉"],
+    ]);
+    const routeEntries: Array<[RehabWorkspaceModule, string[]]> = [
+      ["overview", ["overview", "总控", "遥测", "dashboard"]],
+      ["vision", ["vision", "vla 视觉", "视觉", "visibility"]],
+      ["digital_twin", ["digital-twin", "digital twin", "数字孪生", "twin", "view_in_ar"]],
+      ["muscle_assist", ["muscle", "肌肉", "assist", "fitness_center"]],
+      ["ai_model", ["ai model", "ai模型", "模型中转", "模型练习场", "model relay"]],
+      ["mode_router", ["orchestration", "router", "模式", "alt_route"]],
+      ["training", ["training", "train", "训练", "model_training"]],
+      ["action_planner", ["planner", "action", "动作", "settings_remote"]],
+      ["diagnostics", ["diagnostics", "diag", "诊断", "biotech"]],
+      ["logs", ["logs", "日志", "list_alt", "terminal"]],
+    ];
+    const resolveRoute = (raw: string) => {
+      const value = raw.toLowerCase();
+      return routeEntries.find(([, tokens]) => tokens.some((token) => value.includes(token.toLowerCase())))?.[0] ?? null;
+    };
+    doc.querySelectorAll<HTMLElement>("a, button").forEach((node) => {
+      if (node.dataset.codexRouteBound === "true") return;
+      const icon = node.querySelector(".material-symbols-outlined")?.textContent ?? "";
+      const route = resolveRoute(`${node.getAttribute("href") ?? ""} ${node.getAttribute("title") ?? ""} ${node.textContent ?? ""} ${icon}`);
+      if (!route) return;
+      node.dataset.codexRouteBound = "true";
+      node.addEventListener("click", (event) => {
+        if (route === activeModule) return;
+        event.preventDefault();
+        event.stopPropagation();
+        setActiveModule(route);
+      });
+    });
+
+    const leftImage = leftStereoImageSrc || absoluteImageUrl || "";
+    const rightImage = rightStereoImageSrc || "";
+    if (activeModule === "vision") {
+      setText("title", "VLA 视觉 - VLA 控制台");
+      setText("h1", "VLA 控制台");
+      setText(".font-headline-md.text-headline-md.text-primary", "VLA 视觉");
+      const wireImage = (role: string, src: string, waitingText: string) => {
+        const image = doc.querySelector<HTMLImageElement>(`img[data-role="${role}"]`);
+        const frame = image?.closest<HTMLElement>("#vision-left-frame, #vision-right-frame");
+        if (!image || !frame) return;
+        if (src) {
+          image.src = src;
+          image.classList.remove("hidden");
+          image.style.display = "block";
+          image.style.objectFit = "contain";
+          image.style.opacity = "1";
+          frame.querySelector<HTMLElement>("[data-codex-waiting]")?.remove();
+        } else if (!frame.querySelector("[data-codex-waiting]")) {
+          image.removeAttribute("src");
+          image.classList.add("hidden");
+          const waiting = doc.createElement("div");
+          waiting.dataset.codexWaiting = "true";
+          waiting.className = "absolute inset-0 grid place-items-center font-data-tabular text-[12px] text-on-surface-variant";
+          waiting.textContent = waitingText;
+          image.parentElement?.appendChild(waiting);
+        }
+      };
+      wireImage("left-camera-image", leftImage, "等待左摄像头标注帧");
+      wireImage("right-camera-image", rightImage, "等待右摄像头辅助帧");
+      doc.getElementById("codex-vision-live-bridge")?.remove();
+      setValueNearLabel(/目标语义/, effectiveLanguageSummary || "等待小智/L 输入");
+      setValueNearLabel(/目标类别/, recentTargetMemory?.label ?? stereoTargetLabel ?? "等待目标");
+      setValueNearLabel(/末端|末端坐标/, recentEndEffectorMemory?.label ?? stereoEndEffectorLabel ?? "等待末端");
+      setValueNearLabel(/像素距离|左右差/, visualServoDistanceText);
+      setValueNearLabel(/标定状态/, cameraToRobotReady ? "相机到机械臂 ready" : "等待手眼/双目标定");
+      setValueNearLabel(/视觉锁定|锁定帧/, `${visualLockObservedFrames}/${visualLockRequiredFrames}`);
+    }
+
+    if (activeModule === "digital_twin") {
+      setText("title", "数字孪生 - VLA 控制台");
+      setText("h1", "VLA 控制台");
+      setText(".font-headline-md.text-headline-md.text-primary", "VLA 控制台");
+      setAllText("main .glass-panel .grid.grid-cols-2.gap-y-2 .font-telemetry-data", poseSamples.slice(0, 6).map((sample) => poseValueText(record(sample))));
+      setAllText("main .glass-panel .grid.grid-cols-2.gap-y-2 .text-\\[9px\\]", [
+        "J1 基座",
+        "J2 肩部",
+        "J3 肘部",
+        "J4 腕 1",
+        "J5 腕 2",
+        "J6 腕 3",
+      ]);
+      setValueNearLabel(/ROS Bridge|ROS 桥/, simulationReady ? "Shadow 已回传" : "等待仿真");
+      setValueNearLabel(/MuJoCo Latency|MuJoCo/, simulationReady ? simulationPlanState : "等待 shadow report");
+      setValueNearLabel(/Target Pose|目标位姿/, dryRunGateLabel(dryRunGateState));
+      setValueNearLabel(/End-Effector Pose|末端位姿/, recentEndEffectorMemory?.label ?? "等待末端识别");
+      doc.getElementById("codex-twin-real-bridge")?.remove();
+      const stageRoot = doc.getElementById("urdf-runtime-stage");
+      let host = doc.getElementById("codex-twin-runtime-stage") as HTMLElement | null;
+      if (!host && stageRoot) {
+        host = doc.createElement("div");
+        host.id = "codex-twin-runtime-stage";
+        stageRoot.appendChild(host);
+      }
+      if (host) {
+        if (!doc.getElementById("codex-twin-runtime-compat")) {
+          const compatStyle = doc.createElement("style");
+          compatStyle.id = "codex-twin-runtime-compat";
+          compatStyle.textContent = `
+            #codex-twin-runtime-stage {
+              overflow: hidden;
+            }
+            #codex-twin-runtime-stage [class*="stitchTwinStageOverlay"] {
+              position: absolute !important;
+              inset: 0 !important;
+              width: 100% !important;
+              height: 100% !important;
+              pointer-events: none !important;
+            }
+            #codex-twin-runtime-stage [class*="armOverviewPanel"] {
+              position: absolute !important;
+              inset: 0 !important;
+              width: 100% !important;
+              height: 100% !important;
+              padding: 0 !important;
+              border: 0 !important;
+              background: transparent !important;
+              box-shadow: none !important;
+              pointer-events: none !important;
+            }
+            #codex-twin-runtime-stage [class*="panelHead"],
+            #codex-twin-runtime-stage [class*="armTelemetryStrip"],
+            #codex-twin-runtime-stage [class*="jointFlowPanel"],
+            #codex-twin-runtime-stage [class*="poseMappingPanel"],
+            #codex-twin-runtime-stage [class*="armLegendPanel"],
+            #codex-twin-runtime-stage [class*="stitchTwinHudReplica"],
+            #codex-twin-runtime-stage [class*="focusCloseButton"] {
+              display: none !important;
+            }
+            #codex-twin-runtime-stage [class*="armCanvas"] {
+              position: absolute !important;
+              inset: 0 !important;
+              width: 100% !important;
+              height: 100% !important;
+              min-height: 100% !important;
+              border: 0 !important;
+              border-radius: 0 !important;
+              background: transparent !important;
+              box-shadow: none !important;
+              pointer-events: auto !important;
+            }
+            #codex-twin-runtime-stage [class*="armCanvas"] canvas {
+              width: 100% !important;
+              height: 100% !important;
+              display: block !important;
+              background: transparent !important;
+            }
+            #codex-twin-runtime-stage [class*="urdfToolbar"] {
+              position: absolute !important;
+              right: 24px !important;
+              bottom: 24px !important;
+              left: auto !important;
+              top: auto !important;
+              z-index: 20 !important;
+              width: 300px !important;
+              max-height: 170px !important;
+              overflow: auto !important;
+              pointer-events: auto !important;
+              opacity: 0.001 !important;
+            }
+          `;
+          doc.head.appendChild(compatStyle);
+        }
+        host.style.position = "absolute";
+        host.style.inset = "0";
+        host.style.zIndex = "3";
+        host.style.pointerEvents = "auto";
+        host.style.width = "100%";
+        host.style.height = "100%";
+        host.style.minHeight = "420px";
+        window.setTimeout(() => window.dispatchEvent(new Event("resize")), 80);
+        if (twinRuntimeHost !== host) setTwinRuntimeHost(host);
+      }
+    } else if (twinRuntimeHost) {
+      setTwinRuntimeHost(null);
+    }
+
+    if (activeModule === "muscle_assist") {
+      const muscleRows = muscleRowsFromSensor(sensorPayload).slice(0, 4);
+      const predictionRows = motionPredictionRowsFromSensor(sensorPayload);
+      const firstPrediction = predictionRows[0];
+      setText("h1", "VLA 控制台");
+      setText("h2", firstPrediction?.value || "等待动作意图");
+      setNthText(".font-telemetry-data.text-display-lg", 0, firstPrediction?.detail.match(/\d+%/)?.[0]?.replace("%", "") || "0");
+      setAllText(".grid.grid-cols-4 .font-telemetry-label.text-\\[9px\\]", muscleRows.map((row, index) => `CH${index + 1}: ${row.label}`));
+      setAllText(".grid.grid-cols-2 .font-telemetry-data", [
+        currentSemanticMode === "assistive_emg" ? "助力模式" : "监听中",
+        "4-CH EMG",
+        "M33 门控",
+        liveDashboard.safety_boundary.m33_final_authority ? "最终裁决" : "等待声明",
+      ]);
+    }
+
+    if (activeModule === "mode_router") {
+      const modeLabel = currentSemanticMode ? semanticActionModeLabel(currentSemanticMode) : "等待 L 分类";
+      const aMode = currentSemanticMode ? String(currentSemanticMode) : "waiting";
+      const actionPreview = JSON.stringify(
+        {
+          mode: aMode,
+          mode_label: modeLabel,
+          l_summary: effectiveLanguageSummary || "等待小智语义",
+          target: {
+            label: semanticTargetLabel || stereoTargetLabel || text(recentTargetMemory?.label, "等待目标"),
+            visual_state: visualServoReady ? "target_and_end_effector_ready" : stereoHasContext ? "vision_observing" : "waiting_vision",
+          },
+          end_effector: {
+            label: stereoEndEffectorLabel || text(recentEndEffectorMemory?.label, "等待末端"),
+          },
+          resources: {
+            vision: visualServoStateText,
+            mujoco: simulationReady ? "shadow_ready" : "shadow_waiting",
+            emg: currentSemanticMode === "assistive_emg" ? "intent_required" : "standby",
+            app_training_library: currentSemanticMode === "training" ? "plan_required" : "reserved",
+          },
+          gate: {
+            dry_run: dryRunGateLabel(dryRunGateState),
+            m33_final_authority: Boolean(liveDashboard.safety_boundary.m33_final_authority),
+            motion_allowed_candidate: Boolean(motionAllowed),
+            note: "平台只生成候选 A 字段，M33 是最终安全裁决。",
+          },
+        },
+        null,
+        2,
+      );
+      setText('[data-role="language-summary"]', effectiveLanguageSummary || "等待小智语义");
+      setText('[data-role="semantic-mode"] .font-data-tabular', modeLabel);
+      setText('[data-role="active-mode-badge"]', `${modeLabel} · ${modeStageText(String(currentSemanticMode || "waiting"))}`);
+      setText('[data-role="a-field-mode"] .font-data-tabular', `A 字段：${modeLabel}`);
+      setText('[data-role="safety-boundary"] .font-label-caps', motionAllowed ? "M33 候选通过" : "M33 保持锁定");
+      setText('[data-role="action-field-preview"] .whitespace-pre', actionPreview);
+      setText('[data-role="resource-vision"]', visualServoReady ? "已就绪" : stereoHasContext ? "观察中" : "等待");
+      setText('[data-role="resource-sim"]', simulationReady ? "已回传" : "预留");
+      setText('[data-role="resource-emg"]', currentSemanticMode === "assistive_emg" ? "监听中" : "待触发");
+      setText('[data-role="resource-app"]', currentSemanticMode === "training" ? "需计划" : "预留");
+      setText('[data-role="resource-m33"]', motionAllowed ? "候选" : "只读");
+    }
+
+    if (activeModule === "action_planner") {
+      const modeLabel = currentSemanticMode ? semanticActionModeLabel(currentSemanticMode) : "等待 L";
+      const targetLabel = semanticTargetLabel || stereoTargetLabel || text(recentTargetMemory?.label, "等待目标");
+      const endEffectorLabel = stereoEndEffectorLabel || text(recentEndEffectorMemory?.label, "等待末端");
+      const deltaText = visualServoDelta
+        ? `Δu ${compactNumberText(visualServoDelta[0], " px")} / Δv ${compactNumberText(visualServoDelta[1], " px")}`
+        : "等待目标+末端像素误差";
+      const plannerCandidate = {
+        mode: currentSemanticMode || "waiting",
+        mode_label: modeLabel,
+        l_summary: effectiveLanguageSummary || "等待小智/L 输入",
+        visual_evidence: {
+          target: targetLabel,
+          end_effector: endEffectorLabel,
+          loop_state: visualServoStateText,
+          pixel_error: {
+            du_px: visualServoDelta ? Number(visualServoDelta[0].toFixed(2)) : null,
+            dv_px: visualServoDelta ? Number(visualServoDelta[1].toFixed(2)) : null,
+            distance_px: visualServoDistancePx !== null ? Number(visualServoDistancePx.toFixed(2)) : null,
+          },
+          target_quality: targetQualityGateTitle,
+          visual_lock: visualLockConfidenceText,
+          camera_to_robot_calibrated: Boolean(cameraToRobotReady),
+        },
+        planner: {
+          dry_run_gate: dryRunGateLabel(dryRunGateState),
+          dry_run_allowed: Boolean(dryRunCandidateAllowed),
+          reason: dryRunGateReason,
+          next_step: pixelServo.nextStep,
+          loop_policy: "continuous_visual_servo_approach",
+        },
+        simulation: {
+          mujoco_shadow: simulationReady ? "ready" : "waiting",
+          state: simulationPlanState,
+        },
+        safety: {
+          browser_can_control: false,
+          m33_final_authority: Boolean(liveDashboard.safety_boundary.m33_final_authority),
+          motion_allowed_candidate: Boolean(motionAllowed),
+        },
+      };
+      setText('[data-role="planner-mode"] h1', `动作规划 / ${modeLabel}`);
+      setText('[data-role="planner-language"] .text-headline-md', effectiveLanguageSummary ? `“${effectiveLanguageSummary}”` : "等待小智/L 输入");
+      setText('[data-role="planner-target"] .font-label-caps', targetLabel);
+      setAllText('[data-role="planner-end-effector"] span', [
+        `末端：${endEffectorLabel}`,
+        `误差：${visualServoDistanceText}`,
+      ]);
+      setText('[data-role="planner-error"] .font-data-tabular', deltaText);
+      setText('[data-role="planner-dry-run-label"]', dryRunCandidateAllowed ? "dry-run 候选可展示" : dryRunGateLabel(dryRunGateState));
+      setText('[data-role="planner-sim"] [data-role="planner-error"] .font-data-tabular', deltaText);
+      setText('[data-role="planner-action-preview"] code', JSON.stringify(plannerCandidate, null, 2));
+      setText('[data-role="planner-m33"]', `安全边界：${motionAllowed ? "M33 候选通过，仍需硬件裁决" : "M33 保持锁定"}；浏览器只展示候选 A 字段，不发送 CAN/M33 控制。`);
+      const loopLabels = Array.from(doc.querySelectorAll<HTMLElement>('[data-role="planner-loop-state"] .font-label-caps'));
+      const loopValues = [
+        hasLanguageTask ? "L 已输入" : "等待 L 指令",
+        hasStereoTargetForGate ? "V 目标已入场" : "等待 V 目标",
+        visualServoReady ? "目标+末端可配对" : visualServoStateText,
+        dryRunCandidateAllowed ? "Dry-run 候选生成" : dryRunGateLabel(dryRunGateState),
+        simulationReady ? "仿真已回传" : "等待仿真验证",
+        motionAllowed ? "M33 候选" : "M33 锁定",
+      ];
+      loopValues.forEach((value, index) => {
+        if (loopLabels[index]) loopLabels[index].textContent = value;
+      });
+    }
+
+    if (activeModule === "training") {
+      const trainingActive = currentSemanticMode === "training";
+      const trainingSummary = trainingActive
+        ? "L 已路由到训练模式，等待 APP 训练库给出计划表。"
+        : "训练模式预留：APP 训练库、M55 肌电推理、M33 BLE 获取目标与约束。";
+      const trainingPreview = JSON.stringify(
+        {
+          mode: "training",
+          active: trainingActive,
+          l_summary: effectiveLanguageSummary || "等待小智/L 输入",
+          app_training_library: {
+            source: "user_app_form_or_app_ai",
+            status: trainingActive ? "plan_required" : "reserved",
+            note: "训练库由手机 APP 维护，可由用户填写，也可由 APP 端 AI 根据 M55 推理补全。",
+          },
+          m55_emg_inference: {
+            channels: 4,
+            status: currentSemanticMode === "assistive_emg" ? "assistive_mode_requested" : "reserved_for_training_feedback",
+            output: ["动作意图", "疲劳", "发力肌肉", "可信度"],
+          },
+          m33_ble_fetch: {
+            status: "reserved",
+            direction: "M33 通过 BLE 从 APP 拉取训练目标和约束",
+            browser_control: false,
+          },
+          platform_role: ["模式路由", "只读审核", "计划可视化", "日志证据"],
+          safety: {
+            m33_final_authority: Boolean(liveDashboard.safety_boundary.m33_final_authority),
+            motion_allowed_candidate: Boolean(motionAllowed),
+          },
+        },
+        null,
+        2,
+      );
+      setText('[data-role="training-session-id"]', trainingActive ? "训练会话：L 已触发" : "训练会话：预留/待触发");
+      setText('[data-role="training-language"] .font-data-tabular', effectiveLanguageSummary ? `“${effectiveLanguageSummary}”` : "等待训练 L 指令");
+      setText('[data-role="platform-router"] .font-data-tabular', trainingActive ? "模式：训练" : `模式：${currentSemanticMode ? semanticActionModeLabel(currentSemanticMode) : "等待"}`);
+      setText('[data-role="training-app-library"] .font-data-tabular', trainingActive ? "等待 APP 计划表" : "APP 训练库预留");
+      setText('[data-role="training-m55"] .font-data-tabular', currentSemanticMode === "assistive_emg" ? "助力意图监听" : "M55 肌电推理预留");
+      setText('[data-role="training-m33-ble"] .font-data-tabular', "M33 BLE 拉取约束");
+      setText('[data-role="training-ai-summary"] .text-primary.font-bold', trainingActive ? "训练计划待生成" : "训练计划链路预留");
+      setText('[data-role="training-ai-summary"] p', trainingSummary);
+      const planRows = Array.from(doc.querySelectorAll<HTMLElement>('[data-role="training-plan-table"] .grid + div, [data-role="training-plan-table"] .grid div'));
+      if (planRows.length >= 4) {
+        planRows[1].textContent = trainingActive ? "待 APP 回传" : "未建立";
+        planRows[3].textContent = "M33 裁决";
+      }
+      const trainingLogRows = doc.querySelectorAll<HTMLElement>('[data-role="training-action-preview"] .font-mono > div');
+      [
+        `[L] ${effectiveLanguageSummary || "等待训练语音"}`,
+        `[模式] ${trainingActive ? "training 已命中" : `当前 ${currentSemanticMode || "waiting"}`}`,
+        "[APP] 训练库由用户填写或 APP 端 AI 补全",
+        "[M55] 四通道肌电输出动作意图/疲劳/可信度",
+        "[M33] 通过 BLE 获取训练目标和约束，网页只做审核显示",
+        `[安全] ${motionAllowed ? "M33 候选允许" : "M33 保持锁定"}`,
+      ].forEach((line, index) => {
+        if (trainingLogRows[index]) trainingLogRows[index].textContent = line;
+      });
+      const stageLabels = Array.from(doc.querySelectorAll<HTMLElement>('[data-role="training-stage"] .font-data-tabular'));
+      const stageTexts = [
+        trainingActive ? "01. L 训练意图" : "01. 等待 L",
+        trainingActive ? "APP 待计划" : "目标：APP",
+        trainingActive ? "已触发" : "Pending",
+        "02. APP/AI 计划",
+        "目标：训练库",
+        "待开始",
+        "03. M33 BLE 获取",
+        "目标：约束",
+        "待开始",
+      ];
+      stageTexts.forEach((line, index) => {
+        if (stageLabels[index]) stageLabels[index].textContent = line;
+      });
+      setText('[data-role="training-safety"] .text-error.border', motionAllowed ? "M33 候选" : "M33 锁定");
+      setAllText('[data-role="training-safety"] .font-data-tabular.text-\\[13px\\]', [
+        "M33 管控",
+        "训练约束",
+        "异常断开",
+      ]);
+      const previewNode = doc.querySelector<HTMLElement>('[data-role="training-action-preview"]');
+      if (previewNode) previewNode.dataset.preview = trainingPreview;
+    }
+
+    setText("#orchestration .text-\\[18px\\].text-primary-container", effectiveLanguageSummary || "等待 XiaoZhi / L 输入");
+    setAllText("#orchestration .telemetry-strip span:last-child", [
+      currentSemanticMode ? semanticActionModeLabel(currentSemanticMode) : "WAITING",
+      visualServoReady ? "V READY" : "V OBSERVE",
+      dryRunGateLabel(dryRunGateState),
+      motionAllowed ? "M33 CANDIDATE" : "M33 LOCKED",
+    ]);
+    setText("span.font-telemetry-data.italic", effectiveLanguageSummary || "等待 XiaoZhi / L 输入");
+    setAllText("main .glass-panel span.font-telemetry-data", [
+      currentSemanticMode ? semanticActionModeLabel(currentSemanticMode).toUpperCase() : "WAITING",
+      visualServoReady ? "V READY" : "V OBSERVE",
+      dryRunGateLabel(dryRunGateState).toUpperCase(),
+      motionAllowed ? "M33 CANDIDATE" : "M33 LOCKED",
+    ]);
+
+    if (activeModule === "diagnostics") {
+      const rows = Array.from(doc.querySelectorAll<HTMLTableRowElement>("tbody tr"));
+      const diagnosticRows = [
+        { name: "M33 安全门", type: "最终裁决", id: "final authority", status: motionAllowed ? "候选允许" : "真机锁定", age: stateText(currentSafetyState) },
+        { name: "NanoPi 视觉", type: "双 USB 摄像头", id: publicDeviceCode(selected, selectedIndex), status: selected?.online_state === "online" ? "在线" : "离线", age: formatTime(selected?.last_upload_ts_unix) },
+        { name: "VLA-V 双目", type: "视觉记忆", id: stereoHasContext ? "stereo_vision_context" : "等待 V", status: visualServoStateText, age: stereoLoopProgressText },
+        { name: "VLA-A 规划", type: "dry-run", id: operationModeLabel(operationMode), status: dryRunGateLabel(dryRunGateState), age: dryRunGateReason },
+        { name: "VLA-L / 小智", type: "M55 侧语义", id: text(xiaozhiSession.session_id, "等待会话"), status: xiaozhiUiStateLabel(xiaozhiSession.ui_state), age: effectiveLanguageSummary },
+        { name: "CAN / 电机", type: "只读遥测", id: `${motors.length} motors`, status: wiringBadCount ? `${wiringBadCount} 路异常` : "等待/正常", age: wiringHealth.overall || "unknown" },
+      ];
+      diagnosticRows.forEach((item, index) => {
+        const cells = rows[index]?.querySelectorAll<HTMLElement>("td");
+        if (!cells?.length) return;
+        cells[0].textContent = item.name;
+        if (cells[1]) cells[1].textContent = item.type;
+        if (cells[2]) cells[2].textContent = item.status;
+        if (cells[3]) cells[3].textContent = item.age || item.id;
+      });
+      const nodeTexts: Array<[string, string[]]> = [
+        ['[data-role="diagnostics-nanopi"] .flex.justify-between span:last-child', [
+          leftStereoImageSrc || absoluteImageUrl ? "左目有帧" : "左目等待",
+          rightStereoImageSrc ? "右目有帧" : "右目等待",
+          stereoHasContext ? "V 上下文同步" : "等待上传",
+        ]],
+        ['[data-role="diagnostics-l"] .flex.justify-between span:last-child', [
+          effectiveLanguageSummary || "等待语义摘要",
+          currentSemanticMode ? semanticActionModeLabel(currentSemanticMode) : "等待分类",
+        ]],
+        ['[data-role="diagnostics-training"] .flex.justify-between span:last-child', [
+          currentSemanticMode === "training" ? "训练触发" : "训练库预留",
+          "BLE 预留",
+        ]],
+        ['[data-role="diagnostics-vision"] .flex.justify-between span:last-child', [
+          stereoDepth !== null ? compactNumberText(stereoDepth, " m") : "未标定深度",
+          visualLockConfidenceText,
+          visualServoStateText,
+        ]],
+        ['[data-role="diagnostics-planner"] .flex.justify-between span:last-child', [
+          dryRunGateLabel(dryRunGateState),
+          dryRunCandidateAllowed ? "候选可展示" : "保持观察",
+        ]],
+        ['[data-role="diagnostics-mujoco"] span:last-child', [
+          simulationReady ? `已回传：${simulationPlanState}` : "等待仿真验证",
+        ]],
+        ['[data-role="diagnostics-m33"] .flex.justify-between span:last-child', [
+          motionAllowed ? "候选通过" : "真机锁定",
+          liveDashboard.safety_boundary.m33_final_authority ? "最终裁决" : "等待声明",
+          currentSafetyState ? stateText(currentSafetyState) : "等待状态",
+        ]],
+        ['[data-role="diagnostics-can"] .flex.justify-between span:last-child', [
+          wiringBadCount ? `${wiringBadCount} 路异常` : "等待/正常",
+          motors.length ? `${motors.length} 电机` : "等待遥测",
+          wiringHealth.overall || "只读遥测",
+        ]],
+      ];
+      nodeTexts.forEach(([selector, values]) => setAllText(selector, values));
+      setAllText('[data-role="diagnostics-safety"] .font-data-tabular.text-xs span:last-child', [
+        motionAllowed ? "候选允许 / M33 裁决" : "真机锁定 / 只读",
+        wiringBadCount ? `${wiringBadCount} 路异常` : "0 / 只读",
+      ]);
+      const logLines = doc.querySelectorAll<HTMLElement>("section.col-span-12 div.flex-1 p");
+      liveDashboard.recent_events.slice(0, 8).forEach((event, index) => {
+        if (logLines[index]) logLines[index].textContent = `[${formatTime(event.ts_unix)}] ${eventTitle(event)} · ${text(event.record_type, "event")}`;
+      });
+      const eventRows = doc.querySelectorAll<HTMLElement>('[data-role="diagnostics-events"] .font-data-tabular > div');
+      const fallbackEvents = [
+        `[系统] ${selected?.online_state === "online" ? "NanoPi 在线" : "NanoPi 等待在线"}`,
+        `[L] ${effectiveLanguageSummary || "等待小智语义"}`,
+        `[V] ${visualServoStateText} · ${visualServoDistanceText}`,
+        `[A] ${dryRunGateLabel(dryRunGateState)} · ${dryRunGateReason}`,
+        `[MuJoCo] ${simulationReady ? simulationPlanState : "等待 shadow 回传"}`,
+        `[M33] ${motionAllowed ? "候选允许" : "保持锁定"} · 浏览器只读`,
+        `[CAN] ${wiringBadCount ? `${wiringBadCount} 路异常` : "等待/正常"} · 只读观察`,
+      ];
+      fallbackEvents.forEach((line, index) => {
+        const row = eventRows[index];
+        if (!row) return;
+        row.textContent = line;
+      });
+    }
+
+    const logRows = doc.querySelectorAll<HTMLElement>("#logs .flex.gap-4");
+    liveDashboard.recent_events.slice(0, 7).forEach((event, index) => {
+      const row = logRows[index];
+      if (!row) return;
+      const spans = row.querySelectorAll<HTMLElement>("span");
+      if (spans[0]) spans[0].textContent = `[${formatTime(event.ts_unix)}]`;
+      if (spans[1]) spans[1].textContent = `${text(event.record_type, "event")}: ${eventTitle(event)}`;
+    });
+    syncCodexNav();
+  }, [
+    absoluteImageUrl,
+    activeModule,
+    cameraToRobotReady,
+    currentSafetyState,
+    currentSemanticMode,
+    devices,
+    dryRunGateReason,
+    dryRunGateState,
+    dryRunCandidateAllowed,
+    effectiveLanguageSummary,
+    hasLanguageTask,
+    hasStereoTargetForGate,
+    leftStereoImageSrc,
+    liveDashboard.safety_boundary.m33_final_authority,
+    liveDashboard.recent_events,
+    motionAllowed,
+    motors,
+    operationMode,
+    pixelServo.nextStep,
+    pollState,
+    poseSamples,
+    projectId,
+    recentEndEffectorMemory?.label,
+    recentTargetMemory?.label,
+    rightStereoImageSrc,
+    selected,
+    selectedIndex,
+    selectedDeviceId,
+    semanticTargetLabel,
+    sensorPayload,
+    simulationReady,
+    simulationPlanState,
+    stereoEndEffectorLabel,
+    stereoHasContext,
+    stereoLoopProgressText,
+    stereoDepth,
+    stereoTargetLabel,
+    targetQualityGateTitle,
+    twinRuntimeHost,
+    visualLockConfidenceText,
+    visualServoDelta,
+    visualServoDistancePx,
+    visualLockObservedFrames,
+    visualLockRequiredFrames,
+    visualServoStateText,
+    visualServoDistanceText,
+    visualServoReady,
+    wiringBadCount,
+    wiringHealth.overall,
+    xiaozhiSession.session_id,
+    xiaozhiSession.ui_state,
+  ]);
+
+  useEffect(() => {
+    updateStitchFrame();
+  }, [updateStitchFrame]);
 
   return (
-    <main className={styles.shell}>
+    <main className={styles.stitchMcpExactShell}>
+      <iframe
+        ref={stitchFrameRef}
+        title="Stitch VLA 控制台原稿"
+        src={stitchSourceByModule[activeModule]}
+        className={styles.stitchMcpExactFrame}
+        onLoad={() => {
+          updateStitchFrame();
+          window.setTimeout(updateStitchFrame, 200);
+        }}
+      />
+      {activeModule === "digital_twin" && twinRuntimeHost ? createPortal(
+        <div className={styles.stitchTwinStageOverlay} data-embedded="true" aria-label="真实 Three.js URDF 嵌入舞台">
+          <Arm3DOverview
+            deviceId={text(selected?.device_id, "")}
+            robotId={text(selected?.robot_id, "")}
+            projectId={projectId}
+            deviceModel={record(selected?.device_model)}
+            motors={poseSamples}
+            robotRenderState={robotRenderState}
+            wiringChecks={wiringChecks}
+            safetyState={stateLabel(currentSafetyState)}
+            stageMode
+          />
+          <div className={styles.stitchTwinHudReplica} aria-label="数字孪生浮层信息">
+            <section data-slot="joints">
+              <header>
+                <span>Joint Angles</span>
+                <strong>{renderRows.length ? `${Math.max(0, renderRows.length - staleRenderCount)}/${renderRows.length} 新鲜` : "等待关节"}</strong>
+              </header>
+              <div>
+                {poseSamples.slice(0, 6).map((sample, index) => (
+                  <p key={`${text(record(sample).joint_name ?? record(sample).motor_id, `joint_${index + 1}`)}-${index}`}>
+                    <span>{text(record(sample).joint_name ?? record(sample).motor_id, `J${index + 1}`)}</span>
+                    <b>{numberText(firstFiniteNumber(record(sample).value, record(sample).position_rad, record(sample).position, record(sample).angle_deg), record(sample).position_rad !== undefined ? " rad" : " deg")}</b>
+                  </p>
+                ))}
+                {!poseSamples.length ? <p><span>robot_render_state</span><b>waiting</b></p> : null}
+              </div>
+            </section>
+            <section data-slot="bridge">
+              <header>
+                <span>ROS / MuJoCo</span>
+                <strong>{simulationReady ? "Shadow Ready" : "Read Only"}</strong>
+              </header>
+              <p><span>渲染源</span><b>{renderRows.length ? "robot_render_state_v1" : "等待上报"}</b></p>
+              <p><span>安全边界</span><b>{motionAllowed ? "M33 候选开放" : "只读 / dry-run"}</b></p>
+            </section>
+            <section data-slot="pose">
+              <header>
+                <span>End-Effector Pose</span>
+                <strong>{recentEndEffectorMemory?.label ?? "等待末端"}</strong>
+              </header>
+              <p><span>视觉目标</span><b>{recentTargetMemory?.label ?? "等待目标"}</b></p>
+              <p><span>动作门控</span><b>{dryRunGateLabel(dryRunGateState)}</b></p>
+            </section>
+            <section data-slot="target">
+              <header>
+                <span>Target Pose</span>
+                <strong>{cameraToRobotReady ? "坐标可展示" : "等待标定"}</strong>
+              </header>
+              <p><span>VLA-A</span><b>{vlaLiteLoopLabel(vlaLiteLoopState)}</b></p>
+              <p><span>权限</span><b>不授权真实运动</b></p>
+            </section>
+          </div>
+        </div>,
+        twinRuntimeHost,
+      ) : null}
+    </main>
+  );
+  const activeModuleMeta = REHAB_WORKSPACE_MODULES.find((item) => item.key === activeModule) ?? REHAB_WORKSPACE_MODULES[0];
+  const staticPageTitle: Record<RehabWorkspaceModule, { eyebrow: string; title: string; detail: string }> = {
+    overview: { eyebrow: "总控首页", title: "VLA 康复机械臂总控台", detail: "总览系统状态、模式、安全边界和演示主线。" },
+    vision: { eyebrow: "VLA 视觉感知", title: "双目视觉主舞台", detail: "左/右摄像头、目标识别、末端识别和视觉锁定。" },
+    digital_twin: { eyebrow: "数字孪生", title: "URDF / MuJoCo 机械臂舞台", detail: "机械臂模型、关节状态、末端位姿和仿真证据。" },
+    muscle_assist: { eyebrow: "肌电助力", title: "上肢肌肉与 EMG 意图", detail: "四路肌电、动作意图、置信度和助力方向。" },
+    ai_model: { eyebrow: "AI模型中转", title: "模型中转内联控制台", detail: "高层康复建议、供应商配置、受限调用令牌和安全审计。" },
+    mode_router: { eyebrow: "模式编排", title: "小智语义模式路由", detail: "聊天、取物、训练、助力、仿真、诊断和安全停止。" },
+    training: { eyebrow: "模型训练场", title: "数据、标注、训练计划预备区", detail: "数据集、标注、训练、评估、部署和训练计划。" },
+    action_planner: { eyebrow: "动作规划", title: "VLA-A 闭环动作规划", detail: "目标、末端、差值、逼近策略、dry-run 和安全门。" },
+    diagnostics: { eyebrow: "设备诊断", title: "NanoPi / CAN / M33 / M55 诊断", detail: "硬件在线状态、总线、电机、服务和模型中转。" },
+    logs: { eyebrow: "日志回放", title: "证据时间线与回放", detail: "语音、视觉、规划、训练、部署和安全审计日志。" },
+  };
+  const activeStaticPage = staticPageTitle[activeModule];
+  const modelRelayWorkbench = (
+    <section className={`${styles.relayPanel} ${styles.aiModelWorkbench}`} data-state={relayState} aria-label="AI模型中转内联控制台">
+      <div className={styles.panelMiniHeader}>
+        <span>AI模型中转</span>
+        <strong>{relayState === "sending" ? "请求中" : relayProviderText}</strong>
+      </div>
+      <div className={styles.relayStationGrid} aria-label="模型中转站状态">
+        <article>
+          <span>Provider</span>
+          <strong>{relayProviderPreset?.label || relayConfig.provider}</strong>
+          <p>{relayConfig.model || "未选择模型"}</p>
+        </article>
+        <article>
+          <span>外部调用</span>
+          <strong>{relayConfig.external_enabled && relayConfig.api_key_configured ? "启用" : "降级"}</strong>
+          <p>{relayConfig.api_key_configured ? "密钥仅服务端保存" : "未配置 API key"}</p>
+        </article>
+        <article>
+          <span>设备令牌</span>
+          <strong>{relayExportToken ? "已生成" : "未生成"}</strong>
+          <p>{relayExportExpiresAt ? `到期 ${formatTime(relayExportExpiresAt)}` : "用于 NanoPi/M55 调用"}</p>
+        </article>
+        <article>
+          <span>安全边界</span>
+          <strong>L / VLA / M33</strong>
+          <p>只读建议与 dry-run 候选</p>
+        </article>
+      </div>
+      <div className={styles.boundaryNote}>
+        <strong>{relayBoundaryText}</strong>
+        <p>{modelRelayProvider.external_call_ok === true ? "外部模型调用通过安全过滤" : text(modelRelayProvider.external_call_error, "未调用外部模型或安全降级")}</p>
+      </div>
+      <div className={styles.aiModelRelayGrid}>
+        <details className={styles.relayConfigPanel} open>
+          <summary>
+            高层建议 / Dry-run
+            <small>{relayState === "ok" ? "最近调用成功" : "不会下发真机运动"}</small>
+          </summary>
+          <textarea
+            value={relayPrompt}
+            onChange={(event) => setRelayPrompt(event.target.value)}
+            rows={5}
+            placeholder="输入语音/视觉/肌电摘要后的高层问题；服务端只返回建议和 dry-run 候选。"
+            aria-label="模型中转提示"
+          />
+          <button type="button" disabled={!selected || relayState === "sending"} onClick={requestModelRelay}>
+            {relayState === "sending" ? "生成中" : "生成高层建议"}
+          </button>
+          {relayError ? <small className={styles.inlineError}>{relayError}</small> : null}
+          {modelRelaySuggestion.detail || modelRelayResponse.summary ? (
+            <small className={styles.relayResult}>{text(modelRelaySuggestion.detail, text(modelRelayResponse.summary, ""))}</small>
+          ) : null}
+        </details>
+        <details className={styles.relayConfigPanel} open>
+          <summary>
+            厂商和密钥
+            <small>{relayConfig.api_key_configured ? "密钥已在服务器保存" : "未配置密钥"}</small>
+          </summary>
+          <label>
+            <span>厂商</span>
+            <select value={relayConfig.provider} onChange={(event) => updateRelayProvider(event.target.value)}>
+              {relayConfig.presets.map((preset) => (
+                <option key={preset.id} value={preset.id}>{preset.label}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Base URL</span>
+            <input
+              value={relayConfig.base_url}
+              onChange={(event) => setRelayConfig((current) => ({ ...current, base_url: event.target.value }))}
+              placeholder="https://api.example.com/v1"
+            />
+          </label>
+          <label>
+            <span>模型</span>
+            <input
+              value={relayConfig.model}
+              onChange={(event) => setRelayConfig((current) => ({ ...current, model: event.target.value }))}
+              placeholder={relayConfig.presets.find((item) => item.id === relayConfig.provider)?.model_hint || "model id"}
+            />
+          </label>
+          <label>
+            <span>API key</span>
+            <input
+              type="password"
+              value={relayConfigKey}
+              onChange={(event) => setRelayConfigKey(event.target.value)}
+              placeholder={relayConfig.api_key_configured ? "留空则继续使用服务器已保存密钥" : "只保存到服务器，不返回浏览器"}
+              autoComplete="off"
+            />
+          </label>
+          <label className={styles.inlineToggle}>
+            <input
+              type="checkbox"
+              checked={relayConfig.external_enabled}
+              onChange={(event) => setRelayConfig((current) => ({ ...current, external_enabled: event.target.checked }))}
+            />
+            <span>启用外部模型调用</span>
+          </label>
+          <button type="button" disabled={relayConfigState === "saving"} onClick={saveRelayConfig}>
+            {relayConfigState === "saving" ? "保存中" : "保存厂商配置"}
+          </button>
+          {relayConfigState === "saved" ? <small className={styles.relayResult}>已保存到服务器环境配置；API key 不会返回给网页或设备。</small> : null}
+          {relayConfigError ? <small className={styles.inlineError}>{relayConfigError}</small> : null}
+        </details>
+        <details className={styles.relayConfigPanel} open>
+          <summary>
+            接入地址和受限令牌
+            <small>{relayExportToken ? "已生成" : "HTTP / XiaoZhi WS"}</small>
+          </summary>
+          <div className={styles.endpointList}>
+            <label>
+              <span>HTTP model relay</span>
+              <code>{relayInvokeUrl || "选择设备后生成 HTTP endpoint"}</code>
+            </label>
+            <label>
+              <span>XiaoZhi WebSocket</span>
+              <code>{xiaozhiWsUrl || "选择设备后生成 WebSocket endpoint"}</code>
+            </label>
+            <label>
+              <span>XiaoZhi hello</span>
+              <code>{xiaozhiHelloExample}</code>
+            </label>
+          </div>
+          <p className={styles.tokenHint}>给 NanoPi、M55 或另一个 AI 使用的受限令牌；scope 只包含模型中转 invoke 和 XiaoZhi WebSocket，不是网页登录 token。</p>
+          <label>
+            <span>有效期</span>
+            <select value={relayTokenTtlSeconds} onChange={(event) => setRelayTokenTtlSeconds(Number(event.target.value) || 7 * 24 * 60 * 60)}>
+              <option value={3600}>1 小时</option>
+              <option value={24 * 60 * 60}>1 天</option>
+              <option value={7 * 24 * 60 * 60}>7 天</option>
+              <option value={30 * 24 * 60 * 60}>30 天</option>
+            </select>
+          </label>
+          <button type="button" disabled={!selected || relayExportState === "creating"} onClick={createRelayInvokeToken}>
+            {relayExportState === "creating" ? "生成中" : "一键生成调用令牌"}
+          </button>
+          {relayExportToken ? (
+            <div className={styles.tokenBox}>
+              <label>
+                <span>Bearer token</span>
+                <textarea readOnly value={relayExportToken} rows={3} aria-label="模型中转调用令牌" />
+              </label>
+              <button type="button" onClick={copyRelayInvokeToken}>{relayExportState === "copied" ? "已复制" : "复制 token"}</button>
+              <small>过期：{relayExportExpiresAt ? formatTime(relayExportExpiresAt) : "未知"}</small>
+            </div>
+          ) : null}
+          {relayExportError ? <small className={styles.inlineError}>{relayExportError}</small> : null}
+          <pre className={styles.codeExample}>{relayCurlExample}</pre>
+        </details>
+        <details className={styles.relayConfigPanel} open>
+          <summary>
+            安全过滤和审计
+            <small>{modelRelayEvents.length ? `最近 ${modelRelayEvents.length} 条` : "等待调用"}</small>
+          </summary>
+          <div className={styles.forbiddenGrid}>
+            {forbiddenRelayOutputs.map((item) => <span key={item}>{item}</span>)}
+          </div>
+          <div className={styles.ioStream} aria-label="模型中转调用记录">
+            {modelRelayEvents.map((event, index) => {
+              const eventPayload = payloadOf(event);
+              const response = record(eventPayload.relay_response);
+              return (
+                <article key={`${text(event.record_type, "relay")}-${index}`}>
+                  <div>
+                    <span>{text(event.record_type, "") === "model_relay_response" ? "平台 -> 设备" : "设备 -> 平台"}</span>
+                    <strong>{eventTitle(event)}</strong>
+                  </div>
+                  <p>{text(response.summary ?? eventPayload.prompt ?? response.control_boundary, "model relay event")}</p>
+                  <small>{formatTime(event.ts_unix)} · {xiaozhiKindLabel(record(response.classification).type)} · {vlaGateLabel(response.vla_language_gate)} · {text(response.control_boundary ?? eventPayload.control_boundary, "model_relay_only_not_motion_permission")}</small>
+                </article>
+              );
+            })}
+            {!modelRelayEvents.length ? <p className={styles.emptyStream}>这里会显示模型中转请求、响应和安全降级结果；厂商 API key 不写入日志。</p> : null}
+          </div>
+        </details>
+      </div>
+    </section>
+  );
+  return (
+    <main className={styles.stitchStaticShell}>
+      <header className={styles.stitchStaticTopbar}>
+        <strong>VLA 控制台</strong>
+        <nav aria-label="顶部页面切换">
+          {[
+            ["vision", "VLA 视觉"],
+            ["digital_twin", "数字孪生"],
+            ["muscle_assist", "肌电助力"],
+            ["ai_model", "AI模型"],
+            ["mode_router", "模式编排"],
+            ["training", "模型训练场"],
+            ["action_planner", "动作规划"],
+            ["diagnostics", "设备诊断"],
+            ["logs", "日志"],
+          ].map(([key, label]) => (
+            <button key={key} type="button" data-active={activeModule === key ? "true" : "false"} onClick={() => setActiveModule(key as RehabWorkspaceModule)}>
+              {label}
+            </button>
+          ))}
+        </nav>
+        <button type="button">ARM SYSTEM</button>
+      </header>
+
+      <aside className={styles.stitchStaticRail} aria-label="左侧页面切换">
+        {[
+          ["CMD", "总控", "overview"],
+          ["V", "视觉", "vision"],
+          ["3D", "孪生", "digital_twin"],
+          ["EMG", "肌电", "muscle_assist"],
+          ["AI", "模型", "ai_model"],
+          ["L", "模式", "mode_router"],
+          ["TRN", "训练", "training"],
+          ["A", "动作", "action_planner"],
+          ["IO", "诊断", "diagnostics"],
+          ["LOG", "日志", "logs"],
+        ].map(([short, label, key]) => (
+          <button key={key} type="button" data-active={activeModule === key ? "true" : "false"} onClick={() => setActiveModule(key as RehabWorkspaceModule)}>
+            <strong>{short}</strong>
+            <span>{label}</span>
+          </button>
+        ))}
+        <button type="button" data-kind="stop">急停</button>
+      </aside>
+
+      <section className={styles.stitchStaticStage}>
+        <div className={styles.stitchStaticStageHead}>
+          <span>{activeStaticPage.eyebrow}</span>
+          <h1>{activeStaticPage.title}</h1>
+          <p>{activeStaticPage.detail}</p>
+        </div>
+
+        {activeModule === "vision" ? (
+          <div className={styles.stitchStaticVision}>
+            <figure><figcaption>左摄像头视觉</figcaption><div /></figure>
+            <figure><figcaption>右摄像头视觉</figcaption><div /></figure>
+            <aside><span>目标向量</span><strong>[0.12, 0.85, 0.44]</strong><small>距离 1.42m · 置信度 98.2%</small></aside>
+          </div>
+        ) : activeModule === "digital_twin" ? (
+          <div className={styles.stitchStaticTwin}>
+            <div className={styles.stitchStaticRobot}>URDF / MuJoCo 3D 舞台</div>
+            <div className={styles.stitchStaticTelemetry}>{["J1 基座", "J2 肩部", "J3 肘部", "J4 腕部", "末端位姿"].map((item) => <article key={item}><span>{item}</span><strong>待接入</strong></article>)}</div>
+          </div>
+        ) : activeModule === "muscle_assist" ? (
+          <div className={styles.stitchStaticMuscle}>
+            <div className={styles.stitchStaticArm}>上肢肌肉 GLB 舞台</div>
+            <div className={styles.stitchStaticTelemetry}>{["肱二头肌", "三角肌", "前臂屈肌", "斜方肌"].map((item) => <article key={item}><span>{item}</span><strong>0%</strong></article>)}</div>
+          </div>
+        ) : activeModule === "ai_model" ? (
+          <div className={styles.stitchStaticAiModel}>
+            {modelRelayWorkbench}
+          </div>
+        ) : (
+          <div className={styles.stitchStaticTiles}>
+            {["输入", "解析", "证据", "计划", "审核", "输出"].map((item, index) => (
+              <article key={item} data-hot={index === 2 ? "true" : "false"}>
+                <span>{item}</span>
+                <strong>{index === 2 ? "主舞台" : "待接入"}</strong>
+                <p>这是 Stitch 原型风格的静态槽位，确认后再把真实功能搬进来。</p>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <footer className={styles.stitchStaticFooter}>
+        <span>安全门：已锁定</span>
+        <span>只读 / dry-run / M33 final authority</span>
+      </footer>
+    </main>
+  );
+  return (
+    <main className={styles.stitchOnlyShell} data-active-module={activeModule}>
+      <header className={styles.stitchOnlyTopbar}>
+        <div className={styles.stitchOnlyBrand}>
+          <strong>VLA 控制台</strong>
+          <span>{publicDeviceName(selected, selectedIndex)} · {stateText(currentSafetyState)} · {motionAllowed ? "M33 候选开放" : "只读锁定"}</span>
+        </div>
+        <nav aria-label="功能页面切换">
+          {[
+            ["vision", "VLA 视觉"],
+            ["digital_twin", "数字孪生"],
+            ["muscle_assist", "肌电助力"],
+            ["ai_model", "AI模型"],
+            ["mode_router", "模式编排"],
+            ["training", "模型训练场"],
+            ["action_planner", "动作规划"],
+            ["diagnostics", "设备诊断"],
+            ["logs", "日志"],
+          ].map(([key, label]) => (
+            <button key={key} type="button" data-active={activeModule === key ? "true" : "false"} onClick={() => setActiveModule(key as RehabWorkspaceModule)}>
+              {label}
+            </button>
+          ))}
+        </nav>
+        <button type="button" className={styles.stitchOnlyArmState}>ARM SYSTEM</button>
+      </header>
+
+      <div className={styles.stitchOnlyBody}>
+        <aside className={styles.stitchOnlyRail} aria-label="左侧功能栏">
+          {[
+            ["CMD", "总控", "overview"],
+            ["V", "视觉", "vision"],
+            ["3D", "孪生", "digital_twin"],
+            ["EMG", "肌电", "muscle_assist"],
+            ["AI", "模型", "ai_model"],
+            ["L", "模式", "mode_router"],
+            ["TRN", "训练", "training"],
+            ["A", "动作", "action_planner"],
+            ["IO", "诊断", "diagnostics"],
+            ["LOG", "日志", "logs"],
+          ].map(([short, label, key]) => (
+            <button key={key} type="button" data-active={activeModule === key ? "true" : "false"} onClick={() => setActiveModule(key as RehabWorkspaceModule)}>
+              <strong>{short}</strong>
+              <span>{label}</span>
+            </button>
+          ))}
+          <button type="button" className={styles.stitchOnlyStop}>急停</button>
+        </aside>
+
+        <section className={styles.stitchOnlyStage}>
+          {activeModule === "overview" ? (
+            <div className={styles.stitchOnlyOverview}>
+              <div className={styles.stitchOnlyHero}>
+                <span>总控首页</span>
+                <h1>{operationModeLabel(operationMode)} / {dryRunGateLabel(dryRunGateState)}</h1>
+                <p>{effectiveLanguageSummary || dryRunGateReason}</p>
+              </div>
+              <div className={styles.stitchOnlyTiles}>
+                {topologyNodes.map((node) => (
+                  <article key={node.key} data-tone={node.tone}>
+                    <span>{node.eyebrow}</span>
+                    <strong>{node.value}</strong>
+                    <p>{node.title} · {node.detail}</p>
+                  </article>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {activeModule === "vision" ? (
+            <div className={styles.stitchOnlyVision}>
+              <figure>
+                <figcaption>左摄像头 · {leftStereoImageSrc ? "后端标注帧" : absoluteImageUrl ? "关键帧" : "等待画面"}</figcaption>
+                {leftStereoImageSrc || absoluteImageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={leftStereoImageSrc || absoluteImageUrl} alt="左目摄像头图像" />
+                ) : <div>等待左目画面</div>}
+              </figure>
+              <figure>
+                <figcaption>右摄像头 · {rightStereoImageSrc ? "双目辅助帧" : "等待画面"}</figcaption>
+                {rightStereoImageSrc ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={rightStereoImageSrc} alt="右目摄像头图像" />
+                ) : <div>等待右目画面</div>}
+              </figure>
+              <aside>
+                <span>目标向量</span>
+                <strong>{visualServoDistanceText}</strong>
+                <p>目标：{recentTargetMemory?.label ?? "等待目标"}；末端：{recentEndEffectorMemory?.label ?? "等待末端"}；锁定 {visualLockObservedFrames}/{visualLockRequiredFrames}</p>
+              </aside>
+            </div>
+          ) : null}
+
+          {activeModule === "digital_twin" ? (
+            <div className={styles.stitchOnlyEmbeddedStage}>
+              <div className={styles.stitchOnlyHero}>
+                <span>数字孪生</span>
+                <h1>URDF / MuJoCo / 关节遥测</h1>
+                <p>把现有 URDF 导入、姿态映射、关节状态和全屏 HUD 嵌入新页面舞台。</p>
+              </div>
+              <Arm3DOverview
+                deviceId={text(selected?.device_id, "")}
+                robotId={text(selected?.robot_id, "")}
+                projectId={projectId}
+                deviceModel={record(selected?.device_model)}
+                motors={poseSamples}
+                robotRenderState={robotRenderState}
+                wiringChecks={wiringChecks}
+                safetyState={stateLabel(currentSafetyState)}
+              />
+            </div>
+          ) : null}
+
+          {activeModule === "muscle_assist" ? (
+            <div className={styles.stitchOnlyEmbeddedStage}>
+              <div className={styles.stitchOnlyHero}>
+                <span>肌电助力</span>
+                <h1>上肢肌肉 / EMG / 动作意图</h1>
+                <p>把现有上肢 GLB、四路肌电、动作预测和助力方向嵌入新页面舞台。</p>
+              </div>
+              <HumanMuscleOverview sensorPayload={sensorPayload} />
+            </div>
+          ) : null}
+
+          {activeModule === "ai_model" ? (
+            <div className={styles.stitchOnlyEmbeddedStage}>
+              <div className={styles.stitchOnlyHero}>
+                <span>AI模型中转</span>
+                <h1>模型中转内联控制台</h1>
+                <p>按 Stitch 生成的 AI 模型工作台结构，把高层建议、供应商配置、受限令牌和安全审计留在同一页，不跳转实验室。</p>
+              </div>
+              {modelRelayWorkbench}
+            </div>
+          ) : null}
+
+          {activeModule === "mode_router" ? (
+            <div className={styles.stitchOnlyOverview}>
+              <div className={styles.stitchOnlyHero}>
+                <span>模式编排</span>
+                <h1>{currentSemanticMode ? semanticActionModeLabel(currentSemanticMode) : "等待 L 分类"}</h1>
+                <p>小智 L 链路保持原样；平台只消费语义分类并展示资源路由。</p>
+              </div>
+              <div className={styles.stitchOnlyTiles}>
+                {displayModeOverviewRows.map((item) => (
+                  <article key={item.mode} data-tone={currentSemanticMode === item.mode ? "ok" : item.tone}>
+                    <span>{semanticActionModeLabel(item.mode)}</span>
+                    <strong>{item.title}</strong>
+                    <p>{item.detail} · {item.stage} · {item.next}</p>
+                  </article>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {activeModule === "training" ? (
+            <div className={styles.stitchOnlyOverview}>
+              <div className={styles.stitchOnlyHero}>
+                <span>模型训练场</span>
+                <h1>数据、标注、训练计划预备区</h1>
+                <p>视觉数据集、目标/末端标注、动作意图样本、APP 训练库、M55 推理摘要和 AI 训练计划统一进入这里。</p>
+              </div>
+              <div className={styles.stitchOnlyTiles}>
+                <article data-tone={qualityReady ? "ok" : "limited"}>
+                  <span>数据入口</span>
+                  <strong>{qualityReady ? "可进入标注/训练" : "等待数据质量达标"}</strong>
+                  <p>摄像头帧、YOLO 标签、末端/夹爪标签、肌电窗口和动作意图样本。</p>
+                </article>
+                <article data-tone="ok">
+                  <span>现有工具</span>
+                  <strong>AI模型中转 / 数据工作台</strong>
+                  <p><button type="button" onClick={() => setActiveModule("ai_model")}>打开 AI 模型</button> · <Link href={`/projects/${projectId}/robotics?tab=dataset&device=${encodeURIComponent(selected?.device_id ?? "")}`} prefetch={false}>打开数据/标注</Link></p>
+                </article>
+                {trainingPipelineSteps.map((step) => (
+                  <article key={step.key} data-tone={step.tone}>
+                    <span>{step.label}</span>
+                    <strong>{step.state}</strong>
+                    <p>APP / M33 BLE / M55 / AI 训练计划预留链路</p>
+                  </article>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {activeModule === "action_planner" ? (
+            <div className={styles.stitchOnlyOverview}>
+              <div className={styles.stitchOnlyHero}>
+                <span>动作规划</span>
+                <h1>{dryRunGateLabel(dryRunGateState)}</h1>
+                <p>{dryRunGateReason}</p>
+              </div>
+              <div className={styles.stitchOnlyTiles}>
+                {vlaEvidenceLadder.map((item) => (
+                  <article key={item.step} data-tone={item.tone}>
+                    <span>{item.step}</span>
+                    <strong>{item.title}</strong>
+                    <p>{item.state} · {item.detail}</p>
+                  </article>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {activeModule === "diagnostics" ? (
+            <div className={styles.stitchOnlyOverview}>
+              <div className={styles.stitchOnlyHero}>
+                <span>设备诊断</span>
+                <h1>NanoPi / CAN / M33 / 模型中转</h1>
+                <p>诊断页展示真实设备状态、模型中转、令牌、电机表和事件，不提供真实运动写入。</p>
+              </div>
+              <div className={styles.stitchOnlyTiles}>
+                {roleCards.map((role) => (
+                  <article key={role.key} data-tone={role.ready ? "ok" : "limited"}>
+                    <span>{role.title}</span>
+                    <strong>{role.value}</strong>
+                    <p>{role.subtitle} · {role.detail}</p>
+                  </article>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {activeModule === "logs" ? (
+            <div className={styles.stitchOnlyOverview}>
+              <div className={styles.stitchOnlyHero}>
+                <span>日志 / 回放</span>
+                <h1>证据时间线</h1>
+                <p>语音、模式分类、视觉帧、规划、模型中转和设备上传都走同一条证据时间线。</p>
+              </div>
+              <div className={styles.stitchOnlyLogList}>
+                {liveDashboard.recent_events.slice(0, 10).map((event, index) => (
+                  <article key={`${text(event.record_type, "event")}-${index}`}>
+                    <span>{formatTime(event.ts_unix)}</span>
+                    <strong>{eventTitle(event)}</strong>
+                    <p>{publicDeviceCode(devices.find((device) => device.device_id === event.device_id), index)} · {text(event.record_type, "event")}</p>
+                  </article>
+                ))}
+                {!liveDashboard.recent_events.length ? <article><span>等待</span><strong>暂无上传事件</strong><p>NanoPi / M55 / 平台模型中转上报后会显示。</p></article> : null}
+              </div>
+            </div>
+          ) : null}
+        </section>
+      </div>
+    </main>
+  );
+  return (
+    <main className={styles.shell} data-active-module={activeModule}>
       <header className={styles.topbar}>
         <div className={styles.topbarLeft}>
+          <div className={styles.controlRoomBrand} aria-hidden="true">V</div>
           <Link href={`/projects/${projectId}`} className={styles.backLink}>← 主页面</Link>
           <Link href={`/projects/${projectId}/robotics`} className={styles.backLink} prefetch={false}>设备数据工作台</Link>
-          <Link href={`/projects/${projectId}/model-relay-lab`} className={styles.backLink} prefetch={false}>模型练习场</Link>
+          <button type="button" className={styles.backLink} onClick={() => setActiveModule("ai_model")}>AI模型</button>
           <div className={styles.title}>
             <strong>{projectName}</strong>
             <small>康复机械臂专项总控 · 只读状态 / 安全边界 / 数据质量</small>
           </div>
         </div>
         <div className={styles.topbarRight}>
+          <nav className={styles.stageJumpNav} aria-label="VLA 主舞台跳转">
+            <button type="button" data-active={activeModule === "overview"} onClick={() => setActiveModule("overview")}>总控</button>
+            <button type="button" data-active={activeModule === "vision"} onClick={() => setActiveModule("vision")}>视觉</button>
+            <button type="button" data-active={activeModule === "digital_twin"} onClick={() => setActiveModule("digital_twin")}>URDF</button>
+            <button type="button" data-active={activeModule === "muscle_assist"} onClick={() => setActiveModule("muscle_assist")}>肌电</button>
+            <button type="button" data-active={activeModule === "ai_model"} onClick={() => setActiveModule("ai_model")}>AI模型</button>
+          </nav>
           <span className={styles.kpi}>设备 {devices.length}</span>
           <span className={styles.kpi}>在线 {roleSignals.onlineDevices}</span>
           <span className={styles.kpi}>M33 裁决 {liveDashboard.safety_boundary.m33_final_authority ? "开启" : "未声明"}</span>
           <span className={styles.kpi}>
-            {pollState === "error" ? "实时刷新异常" : lastLiveUpdate ? `已同步 ${formatClock(lastLiveUpdate)}` : "准备同步"}
+            {pollState === "error"
+              ? "自动刷新异常"
+              : pollState === "syncing"
+                ? "正在同步"
+                : lastLiveUpdate
+                  ? `自动刷新 ${formatClock(lastLiveUpdate)}`
+                  : "准备同步"}
           </span>
-          <Link href={`/projects/${projectId}/rehab-arm-control`} className={styles.refreshLink}>刷新状态</Link>
+          <button
+            type="button"
+            className={styles.refreshLink}
+            onClick={() => void refreshLiveDashboard(false)}
+            disabled={pollState === "syncing"}
+          >
+            {pollState === "syncing" ? "同步中" : "立即同步"}
+          </button>
         </div>
       </header>
 
       <div className={styles.body}>
         <aside className={styles.sidebar}>
+          <nav className={styles.moduleNav} aria-label="康复机械臂功能模块">
+            <div className={styles.moduleNavHeader}>
+              <span>WORKSPACES</span>
+              <strong>{REHAB_WORKSPACE_MODULES.find((item) => item.key === activeModule)?.label ?? "总控首页"}</strong>
+            </div>
+            {REHAB_WORKSPACE_MODULES.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                className={styles.moduleNavItem}
+                data-active={activeModule === item.key ? "true" : "false"}
+                onClick={() => setActiveModule(item.key)}
+              >
+                <span>{item.short}</span>
+                <strong>{item.label}</strong>
+                <small>{item.description}</small>
+              </button>
+            ))}
+          </nav>
           <div className={styles.sidebarHeader}>
             <input className={styles.search} readOnly value="设备索引" aria-label="设备索引" />
             <p className={styles.searchHint}>选择设备后查看最新状态。这里不提供真实运动控制。</p>
@@ -3509,7 +6011,414 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
             <p>服务器和网页只展示状态、图像、质量门和高层任务草案；不发 CAN、电流、力矩、速度、角度或 M33 覆盖。</p>
           </section>
 
-          <section className={styles.vlaCommandStrip} aria-label="VLA 感知语言动作链路">
+          <section className={styles.stitchConsole} aria-label="Stitch VLA 康复机械臂功能控制台">
+            <header className={styles.stitchHeader}>
+              <div>
+                <strong>VLA 控制台</strong>
+                <span>{publicDeviceName(selected, selectedIndex)} · {stateText(currentSafetyState)} · {motionAllowed ? "motion candidate" : "read-only lock"}</span>
+              </div>
+              <nav aria-label="Stitch 主舞台">
+                <button type="button" data-active={activeModule === "vision"} onClick={() => setActiveModule("vision")}>VLA 视觉感知</button>
+                <button type="button" data-active={activeModule === "digital_twin"} onClick={() => setActiveModule("digital_twin")}>数字孪生</button>
+                <button type="button" data-active={activeModule === "muscle_assist"} onClick={() => setActiveModule("muscle_assist")}>肌电助力</button>
+                <button type="button" data-active={activeModule === "ai_model"} onClick={() => setActiveModule("ai_model")}>AI模型</button>
+                <button type="button" data-active={activeModule === "mode_router"} onClick={() => setActiveModule("mode_router")}>模式编排</button>
+                <button type="button" data-active={activeModule === "logs"} onClick={() => setActiveModule("logs")}>日志</button>
+              </nav>
+            </header>
+
+            <div className={styles.stitchBody}>
+              <aside className={styles.stitchRail} aria-label="Stitch 功能导航">
+                {[
+                  ["总", "总控", "overview"],
+                  ["V", "视觉", "vision"],
+                  ["3D", "孪生", "digital_twin"],
+                  ["EMG", "肌电", "muscle_assist"],
+                  ["AI", "模型", "ai_model"],
+                  ["L", "模式", "mode_router"],
+                  ["TRN", "训练场", "training"],
+                  ["A", "动作", "action_planner"],
+                  ["IO", "诊断", "diagnostics"],
+                  ["LOG", "日志", "logs"],
+                ].map(([short, label, moduleKey]) => (
+                  <button
+                    key={label}
+                    type="button"
+                    data-active={activeModule === moduleKey ? "true" : "false"}
+                    onClick={() => setActiveModule(moduleKey as RehabWorkspaceModule)}
+                  >
+                    <span aria-hidden="true">{short}</span>
+                    <small>{label}</small>
+                  </button>
+                ))}
+                <button type="button" aria-label="只读急停状态展示">急停</button>
+              </aside>
+
+              <div className={styles.stitchStages}>
+                {activeModule === "overview" ? (
+                <section className={styles.stitchOverviewStage}>
+                  <div className={styles.stitchStageTitle}>
+                    <span>总控首页</span>
+                    <strong>{operationModeLabel(operationMode)} / {dryRunGateLabel(dryRunGateState)}</strong>
+                    <p>{effectiveLanguageSummary || dryRunGateReason}</p>
+                  </div>
+                  <div className={styles.stitchRouterMatrix}>
+                    {topologyNodes.map((node) => (
+                      <article key={node.key} data-active={node.tone === "ok" ? "true" : "false"}>
+                        <span>{node.eyebrow}</span>
+                        <strong>{node.value}</strong>
+                        <p>{node.title} · {node.detail}</p>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+                ) : null}
+
+                {activeModule === "vision" ? (
+                <section className={styles.stitchVisionStage}>
+                  <div className={styles.stitchFeed}>
+                    <div className={styles.stitchScanline} />
+                    <div className={styles.stitchHudLabel}>左摄像头 · {leftStereoImageSrc ? "后端标注帧" : absoluteImageUrl ? "关键帧" : "等待画面"}</div>
+                    {leftStereoImageSrc || absoluteImageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={leftStereoImageSrc || absoluteImageUrl} alt="左目或关键帧图像" />
+                    ) : (
+                      <div className={styles.stitchEmptyFeed}>等待左目画面</div>
+                    )}
+                    <div className={styles.stitchFeedTelemetry}>
+                      <span>{visualEvidenceImageSource}</span>
+                      <strong>{recentTargetMemory?.label ?? "target pending"}</strong>
+                    </div>
+                  </div>
+                  <div className={styles.stitchFeed}>
+                    <div className={styles.stitchScanline} />
+                    <div className={styles.stitchHudLabel}>右摄像头 · {rightStereoImageSrc ? "双目辅助帧" : "等待画面"}</div>
+                    {rightStereoImageSrc ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={rightStereoImageSrc} alt="右目摄像头图像" />
+                    ) : (
+                      <div className={styles.stitchEmptyFeed}>等待右目画面</div>
+                    )}
+                    <div className={styles.stitchVectorHud}>
+                      <span>目标向量</span>
+                      <strong>{visualServoDistanceText}</strong>
+                      <small>{recentEndEffectorMemory?.label ?? "末端待识别"} · 锁定 {visualLockObservedFrames}/{visualLockRequiredFrames}</small>
+                    </div>
+                  </div>
+                  <div className={styles.stitchPipelineHud}>
+                    {[
+                      ["psychology", "语义意图", routeLabel(routeClass), effectiveLanguageSummary],
+                      ["alt_route", "模式识别", operationModeLabel(operationMode), routeClass],
+                      ["ads_click", "视觉目标", recentTargetMemory?.label ?? "等待目标", visionSummary],
+                      ["edit_note", "动作计划", dryRunGateLabel(dryRunGateState), dryRunGateReason],
+                      ["terminal", "执行边界", motionAllowed ? "M33 候选" : "只读锁定", "不发 CAN / 不写力矩 / 不写角度"],
+                    ].map(([icon, label, value, detail]) => (
+                      <article key={label}>
+                        <span className="material-symbols-outlined" aria-hidden="true">{icon}</span>
+                        <strong>{label}</strong>
+                        <small>{value}</small>
+                        <p>{detail}</p>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+                ) : null}
+
+                {activeModule === "digital_twin" ? (
+                <section className={styles.stitchTwinStage}>
+                  <div className={styles.stitchStageTitle}>
+                    <span>数字孪生</span>
+                    <strong>URDF / MuJoCo / 关节遥测</strong>
+                    <p>现有 Three.js URDF 功能、导入、姿态映射和全屏 HUD 保留在下方真实组件中。</p>
+                  </div>
+                  <div className={styles.stitchTelemetryStack}>
+                    {poseSamples.slice(0, 6).map((motor, index) => (
+                      <article key={`${text(record(motor).motor_id, "motor")}-${index}`}>
+                        <span>{text(record(motor).joint_name, text(record(motor).motor_id, `joint_${index + 1}`))}</span>
+                        <strong>{numberText(record(motor).position ?? record(motor).position_rad ?? record(motor).angle, " rad")}</strong>
+                        <small>{numberText(motorTemperature(record(motor)), " C")} · {record(motor).fault ? "故障" : "正常"}</small>
+                      </article>
+                    ))}
+                    {!poseSamples.length ? <article><span>关节</span><strong>等待上报</strong><small>robot_render_state / motor_state 未上传</small></article> : null}
+                  </div>
+                  <a className={styles.stitchGhostButton} href="#urdf-stage">打开真实 URDF 组件</a>
+                </section>
+                ) : null}
+
+                {activeModule === "muscle_assist" ? (
+                <section className={styles.stitchMuscleStage}>
+                  <div className={styles.stitchStageTitle}>
+                    <span>肌电助力</span>
+                    <strong>上肢肌电与动作意图</strong>
+                    <p>真实上肢 GLB、四路 EMG、动作预测和全屏肌电组件保留在下方真实组件中。</p>
+                  </div>
+                  <div className={styles.stitchEmgGrid}>
+                    {muscleRowsFromSensor(sensorPayload).slice(0, 4).map((row) => (
+                      <article key={row.key} data-tone={row.status}>
+                        <span>{row.label}</span>
+                        <strong>{row.value === null ? "unknown" : `${Math.round(row.value * 100)}%`}</strong>
+                        <em><i style={{ width: `${Math.round((row.value ?? 0) * 100)}%` }} /></em>
+                        <small>疲劳 {row.fatigue === null ? "unknown" : `${Math.round(row.fatigue * 100)}%`} · {row.status}</small>
+                      </article>
+                    ))}
+                  </div>
+                  <div className={styles.stitchPredictionStrip}>
+                    {motionPredictionRowsFromSensor(sensorPayload).slice(0, 3).map((row) => (
+                      <article key={row.key}>
+                        <span>{row.label}</span>
+                        <strong>{row.value}</strong>
+                        <small>{row.detail}</small>
+                      </article>
+                    ))}
+                  </div>
+                  <a className={styles.stitchGhostButton} href="#muscle-stage">打开真实肌电组件</a>
+                </section>
+                ) : null}
+
+                {activeModule === "ai_model" ? (
+                <section className={styles.stitchEmbeddedStage}>
+                  <div className={styles.stitchStageTitle}>
+                    <span>AI模型中转</span>
+                    <strong>模型中转内联控制台</strong>
+                    <p>按 Stitch AI 模型工作台结构，把高层建议、供应商配置、受限令牌和安全审计留在同一页，不跳转模型实验室。</p>
+                  </div>
+                  {modelRelayWorkbench}
+                </section>
+                ) : null}
+
+                {activeModule === "mode_router" ? (
+                <section className={styles.stitchRouterStage}>
+                  <div className={styles.stitchStageTitle}>
+                    <span>模式编排</span>
+                    <strong>{currentSemanticMode ? semanticActionModeLabel(currentSemanticMode) : "等待 L 分类"}</strong>
+                    <p>小智 L 链路不在这里改，只消费平台已有语义结果并展示资源路由。</p>
+                  </div>
+                  <div className={styles.stitchRouterMatrix}>
+                    {displayModeOverviewRows.map((item) => (
+                      <article key={item.mode} data-active={currentSemanticMode === item.mode ? "true" : "false"}>
+                        <span>{semanticActionModeLabel(item.mode)}</span>
+                        <strong>{item.title}</strong>
+                        <p>{item.detail}</p>
+                        <small>{item.stage} · {item.next}</small>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+                ) : null}
+
+                {activeModule === "training" ? (
+                <section className={styles.stitchRouterStage}>
+                  <div className={styles.stitchStageTitle}>
+                    <span>模型训练场</span>
+                    <strong>{currentSemanticMode === "training" ? "训练链路已被 L 选中" : "数据、标注、训练计划预备区"}</strong>
+                    <p>这里承接视觉数据集、目标/末端标注、动作意图样本、APP 训练库、M55 推理摘要和 AI 训练计划。M33 后续通过 BLE 从 APP 调取训练库。</p>
+                  </div>
+                  <div className={styles.stitchTrainingHero}>
+                    <article>
+                      <span>数据入口</span>
+                      <strong>{qualityReady ? "可进入标注/训练" : "等待数据质量达标"}</strong>
+                      <p>摄像头帧、YOLO 标签、末端/夹爪标签、肌电窗口和动作意图样本最终进入统一训练资产。</p>
+                    </article>
+                    <article>
+                      <span>现有工具</span>
+                      <strong>AI模型中转 / 数据工作台</strong>
+                      <p>模型中转已经内联到当前控制台；数据/标注继续进入数据工作台。</p>
+                      <div className={styles.stitchActionLinks}>
+                        <button type="button" onClick={() => setActiveModule("ai_model")}>打开 AI 模型</button>
+                        <Link href={`/projects/${projectId}/robotics?tab=dataset&device=${encodeURIComponent(selected?.device_id ?? "")}`} prefetch={false}>打开数据/标注</Link>
+                      </div>
+                    </article>
+                    <article>
+                      <span>闭环预留</span>
+                      <strong>APP → M33 BLE → M55 → AI 计划</strong>
+                      <p>M55 推理动作意图，M33 汇总到 APP，APP 端 AI 生成训练计划并写入训练计划表。</p>
+                    </article>
+                  </div>
+                  <div className={styles.stitchRouterMatrix}>
+                    {trainingPipelineSteps.map((step) => (
+                      <article key={step.key} data-active={step.tone === "ok" ? "true" : "false"}>
+                        <span>{step.label}</span>
+                        <strong>{step.state}</strong>
+                        <p>APP / M33 BLE / M55 / AI 训练计划预留链路</p>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+                ) : null}
+
+                {activeModule === "action_planner" ? (
+                <section className={styles.stitchRouterStage}>
+                  <div className={styles.stitchStageTitle}>
+                    <span>动作规划</span>
+                    <strong>{dryRunGateLabel(dryRunGateState)}</strong>
+                    <p>{dryRunGateReason}</p>
+                  </div>
+                  <div className={styles.stitchRouterMatrix}>
+                    {vlaEvidenceLadder.map((item) => (
+                      <article key={item.step} data-active={item.tone === "ok" ? "true" : "false"}>
+                        <span>{item.step}</span>
+                        <strong>{item.title}</strong>
+                        <p>{item.state} · {item.detail}</p>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+                ) : null}
+
+                {activeModule === "diagnostics" ? (
+                <section className={styles.stitchRouterStage}>
+                  <div className={styles.stitchStageTitle}>
+                    <span>设备诊断</span>
+                    <strong>NanoPi / CAN / M33 / 模型中转</strong>
+                    <p>诊断页展示真实设备状态、模型中转、令牌、电机表和事件，不提供真实运动写入。</p>
+                  </div>
+                  <div className={styles.stitchRouterMatrix}>
+                    {roleCards.map((role) => (
+                      <article key={role.key} data-active={role.ready ? "true" : "false"}>
+                        <span>{role.title}</span>
+                        <strong>{role.value}</strong>
+                        <p>{role.subtitle} · {role.detail}</p>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+                ) : null}
+
+                {activeModule === "logs" ? (
+                <section className={styles.stitchLogsStage}>
+                  <div className={styles.stitchStageTitle}>
+                    <span>日志 / 回放</span>
+                    <strong>证据时间线</strong>
+                    <p>语音、模式分类、视觉帧、规划、模型中转和设备上传都走同一条证据时间线。</p>
+                  </div>
+                  <div className={styles.stitchLogStream}>
+                    {liveDashboard.recent_events.slice(0, 8).map((event, index) => (
+                      <article key={`${text(event.record_type, "event")}-${index}`}>
+                        <span>{formatTime(event.ts_unix)}</span>
+                        <strong>{eventTitle(event)}</strong>
+                        <p>{publicDeviceCode(devices.find((device) => device.device_id === event.device_id), index)} · {text(event.record_type, "event")}</p>
+                      </article>
+                    ))}
+                    {!liveDashboard.recent_events.length ? <article><span>等待</span><strong>暂无上传事件</strong><p>NanoPi / M55 / 平台模型中转上报后会显示。</p></article> : null}
+                  </div>
+                </section>
+                ) : null}
+              </div>
+            </div>
+          </section>
+
+          <section className={styles.moduleHero} aria-label="当前工作台模块">
+            <div>
+              <span>{activeModuleMeta.short} Workspace</span>
+              <strong>{activeModuleMeta.label}</strong>
+              <p>{activeModuleMeta.description}。模块切换只改变前端工作台视图，底层设备同步、XiaoZhi/L、VLA 候选、URDF、肌电、模型中转和审计功能仍保留。</p>
+            </div>
+            <small>{selected ? publicDeviceCode(selected, selectedIndex) : "等待 NanoPi 设备"} · {pollState === "syncing" ? "同步中" : "read-only console"}</small>
+          </section>
+
+          <section id="vla-stage" data-module="overview vision action_planner" className={`${styles.controlRoomLiveStage} ${styles.stageAnchor}`} aria-label="VLA 生产控制室新首屏">
+            <div className={styles.controlRoomMission}>
+              <div>
+                <span>Mission</span>
+                <strong>{operationModeLabel(operationMode)} / {dryRunGateLabel(dryRunGateState)}</strong>
+                <p>{effectiveLanguageSummary || dryRunGateReason}</p>
+              </div>
+              <small>只读 / dry-run / M33 final authority</small>
+            </div>
+
+            <div className={styles.controlRoomRail} aria-label="VLA 新流程轨">
+              <article data-tone={stereoHasContext || absoluteImageUrl ? "ok" : "hold"}>
+                <span>V · Stereo Vision</span>
+                <strong>{stereoHasContext ? text(stereoTargetLabel, "双目已接入") : absoluteImageUrl ? "关键帧已接入" : "等待画面"}</strong>
+                <p>{visionSummary}</p>
+              </article>
+              <article data-tone={languageGate.participates_in_vla_l === true ? "ok" : "hold"}>
+                <span>L · XiaoZhi</span>
+                <strong>{vlaGateLabel(languageGate)}</strong>
+                <p>{effectiveLanguageSummary}</p>
+              </article>
+              <article data-tone={hasActionCandidate ? "ok" : "hold"}>
+                <span>A · Planner</span>
+                <strong>{text(actionCandidate.type, actionGateTitle)}</strong>
+                <p>{hasActionCandidate ? actionSummary : actionGateSummary}</p>
+              </article>
+              <article data-tone={shadowEvidenceTone}>
+                <span>Shadow · MuJoCo</span>
+                <strong>{simulationReady ? "shadow 已跑通" : "等待 shadow"}</strong>
+                <p>{simulationPlanState} · {simulationReportBoundary}</p>
+              </article>
+              <article data-tone={motionAllowed ? "ok" : "hold"}>
+                <span>Safety · M33</span>
+                <strong>{motionAllowed ? "允许候选" : "锁定真机"}</strong>
+                <p>{text(safetyStatus.reason ?? safetyPayload.reason, "最终裁决只来自 M33。")}</p>
+              </article>
+            </div>
+
+            <div className={styles.controlRoomStageGrid}>
+              <article className={styles.controlRoomVisionStage} id="vision-stage-new">
+                <div className={styles.controlRoomPanelHead}>
+                  <div>
+                    <span>V · Stereo Evidence</span>
+                    <strong>{stereoTargetLabel ? `${stereoTargetLabel} · ${pixelServo.title}` : pixelServo.title}</strong>
+                  </div>
+                  <small>{visualEvidenceImageSource} / {visualEvidenceBoxSource}</small>
+                </div>
+                <div className={styles.controlRoomFeeds}>
+                  <figure>
+                    <figcaption><span>Left</span><strong>{leftStereoImageSrc ? "edge annotated frame" : "waiting evidence"}</strong></figcaption>
+                    <div className={styles.controlRoomCamera}>
+                      {leftStereoImageSrc ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={leftStereoImageSrc} alt="左目摄像头帧" />
+                      ) : absoluteImageUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={absoluteImageUrl} alt="摄像头关键帧" />
+                      ) : (
+                        <span>WAITING FRAME</span>
+                      )}
+                    </div>
+                  </figure>
+                  <figure>
+                    <figcaption><span>Right</span><strong>{rightStereoImageSrc ? "support frame" : "waiting right image"}</strong></figcaption>
+                    <div className={styles.controlRoomCamera}>
+                      {rightStereoImageSrc ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={rightStereoImageSrc} alt="右目摄像头帧" />
+                      ) : (
+                        <span>WAITING STEREO</span>
+                      )}
+                    </div>
+                  </figure>
+                </div>
+                <div className={styles.controlRoomEvidenceStrip}>
+                  <div><span>目标</span><strong>{recentTargetMemory?.label ?? "等待"}</strong></div>
+                  <div><span>末端</span><strong>{recentEndEffectorMemory?.label ?? "等待"}</strong></div>
+                  <div><span>锁定</span><strong>{visualLockObservedFrames}/{visualLockRequiredFrames}</strong></div>
+                  <div><span>距离</span><strong>{visualServoDistanceText}</strong></div>
+                </div>
+              </article>
+
+              <aside className={styles.controlRoomInspector}>
+                <article data-tone={languageGate.participates_in_vla_l === true ? "ok" : "warn"}>
+                  <span>L · 语义入口</span>
+                  <strong>{routeLabel(routeClass)}</strong>
+                  <p>{vlaGateLabel(languageGate)}；{text(xiaozhiSession.control_boundary ?? voiceRelay.control_boundary, "voice_only_not_motion_permission")}</p>
+                </article>
+                <article data-tone={dryRunGateTone}>
+                  <span>A · dry-run gate</span>
+                  <strong>{dryRunGateLabel(dryRunGateState)}</strong>
+                  <p>{dryRunGateReason}</p>
+                </article>
+                <article data-tone={motionAllowed ? "ok" : "warn"}>
+                  <span>Safety Gate</span>
+                  <strong>{stateText(currentSafetyState)}</strong>
+                  <p>M33 final authority；网页不发 CAN、电流、力矩、速度、角度。</p>
+                </article>
+              </aside>
+            </div>
+          </section>
+
+          <section data-module="overview mode_router action_planner" className={`${styles.vlaCommandStrip} ${styles.legacyVlaStrip}`} aria-label="VLA 感知语言动作链路">
             <article data-stage="v">
               <span>V · 双目视觉</span>
               <strong>{stereoHasContext ? text(stereoTargetLabel, "双目已接入") : text(keyframePayload.camera_id, absoluteImageUrl ? "关键帧已接入" : "等待图像")}</strong>
@@ -3534,6 +6443,122 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
             </article>
           </section>
 
+          <section data-module="overview mode_router" className={`${styles.systemTopology} ${styles.legacyTopology}`} aria-label="VLA 系统拓扑和证据灯带">
+            <div className={styles.systemTopologyHead}>
+              <span>系统拓扑</span>
+              <strong>{currentSemanticMode ? `${semanticActionModeLabel(currentSemanticMode)}闭环` : "等待模式"}</strong>
+              <p>从语音意图到视觉证据、平台规划、仿真影子和 M33 安全裁决；当前全部保持只读或 dry-run。</p>
+            </div>
+            <ol>
+              {topologyNodes.map((node, index) => (
+                <li key={node.key} data-tone={node.tone} data-last={index === topologyNodes.length - 1 ? "true" : "false"}>
+                  <span>{node.eyebrow}</span>
+                  <strong>{node.value}</strong>
+                  <small>{node.title} · {node.detail}</small>
+                </li>
+              ))}
+            </ol>
+          </section>
+
+          <details data-module="overview mode_router training muscle_assist" className={styles.controlRoomDrawer}>
+            <summary>
+              <span>系统审计与模式资源</span>
+              <strong>{currentSemanticMode ? semanticActionModeLabel(currentSemanticMode) : "等待 L 分类"} · {visualServoReady ? "V 可闭环" : "V 观察中"}</strong>
+            </summary>
+            <section className={styles.modeOverviewPanel} aria-label="多模式调度总览">
+              <div className={styles.modeOverviewHead}>
+                <div>
+                  <span>多模式调度</span>
+                  <strong>{currentSemanticMode ? semanticActionModeLabel(currentSemanticMode) : "等待 L 分类"}</strong>
+                </div>
+                <p>同一个小智/L 入口分流到不同模式；平台后端返回成熟度契约，真实运动仍回到 M33。</p>
+              </div>
+              <ol>
+                {displayModeOverviewRows.map((item) => (
+                  <li key={item.mode} data-active={currentSemanticMode === item.mode ? "true" : "false"} data-tone={item.tone}>
+                    <span>{semanticActionModeLabel(item.mode)}</span>
+                    <strong>{item.title}</strong>
+                    <p>{item.detail}</p>
+                    <small>{item.stage} · {item.next}</small>
+                  </li>
+                ))}
+              </ol>
+              <p className={styles.modeOverviewBoundary}>{modeOverviewBoundaryText}</p>
+            </section>
+
+            <section className={styles.loopHealthPanel} aria-label="多闭环健康矩阵">
+              <div className={styles.loopHealthHead}>
+                <span>闭环健康矩阵</span>
+                <strong>{visualServoReady ? "视觉记忆可用于 dry-run" : "V hold，其他闭环继续"}</strong>
+                <p>视觉识别不是总开关；V 不可用时，训练、肌电、仿真、安全和数据闭环继续推进。</p>
+              </div>
+              <ol>
+                {loopHealthRows.map((item) => (
+                  <li key={item.key} data-tone={item.tone}>
+                    <span>{item.title}</span>
+                    <strong>{item.stage}</strong>
+                    <p>{item.evidence}</p>
+                    <small>{item.next}</small>
+                  </li>
+                ))}
+              </ol>
+            </section>
+
+            <section className={styles.nonVisionPanel} aria-label="非视觉闭环推进">
+              <div className={styles.nonVisionHead}>
+                <span>无识别时的主线</span>
+                <strong>不要等杯子，先把系统闭环跑通</strong>
+                <p>取物 V 保持只读观察；平台继续推进不依赖目标识别的链路，保证演示和工程进度不断档。</p>
+              </div>
+              <ol>
+                {nonVisionProgressRows.map((item) => (
+                  <li key={item.key} data-tone={item.tone}>
+                    <span>{item.owner}</span>
+                    <strong>{item.title}</strong>
+                    <p>{item.detail}</p>
+                    <small>{item.status} · {item.next}</small>
+                  </li>
+                ))}
+              </ol>
+              <div className={styles.nonVisionPipelines} aria-label="训练和助力流程轨道">
+                <article>
+                  <div>
+                    <span>训练模式轨道</span>
+                    <strong>{currentSemanticMode === "training" ? "训练链路已被 L 选中" : "等待训练指令"}</strong>
+                  </div>
+                  <ol>
+                    {trainingPipelineSteps.map((step) => (
+                      <li key={step.key} data-tone={step.tone}>
+                        <span>{step.label}</span>
+                        <strong>{step.state}</strong>
+                      </li>
+                    ))}
+                  </ol>
+                </article>
+                <article>
+                  <div>
+                    <span>肌电助力轨道</span>
+                    <strong>{currentSemanticMode === "assistive_emg" ? "助力链路已被 L 选中" : "等待助力/EMG 指令"}</strong>
+                  </div>
+                  <ol>
+                    {assistivePipelineSteps.map((step) => (
+                      <li key={step.key} data-tone={step.tone}>
+                        <span>{step.label}</span>
+                        <strong>{step.state}</strong>
+                      </li>
+                    ))}
+                  </ol>
+                </article>
+              </div>
+            </section>
+          </details>
+
+          <details data-module="vision action_planner mode_router" className={styles.engineeringDetailPanel} open={activeModule === "vision" || activeModule === "action_planner" || activeModule === "mode_router"}>
+            <summary>
+              <span>ENGINEERING DETAIL</span>
+              <strong>所有旧功能保留在这里，不丢</strong>
+              <small>dry-run / 视觉调试 / XiaoZhi / MuJoCo</small>
+            </summary>
           <section className={styles.vlaDecisionDeck} aria-label="VLA-lite 决策甲板">
             <article className={styles.vlaLiteLoopPanel} data-tone={dryRunGateTone}>
               <div>
@@ -3542,6 +6567,18 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
                 <small>{dryRunGateState}</small>
               </div>
               <p>{dryRunGateReason}</p>
+              <ol className={styles.vlaEvidenceLadder} aria-label="VLA-lite 证据阶梯">
+                {vlaEvidenceLadder.map((item) => (
+                  <li key={item.step} data-tone={item.tone}>
+                    <span>{item.step}</span>
+                    <div>
+                      <strong>{item.title}</strong>
+                      <small>{item.state}</small>
+                    </div>
+                    <p>{item.detail}</p>
+                  </li>
+                ))}
+              </ol>
               <ul>
                 <li><span>模式</span><strong>{operationModeLabel(operationMode)}</strong></li>
                 <li><span>执行</span><strong>{executionMode}</strong></li>
@@ -3553,7 +6590,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
               </ul>
             </article>
 
-            <article className={styles.pixelServoPanel} data-tone={pixelServo.tone}>
+            <article id="vision-stage" className={`${styles.pixelServoPanel} ${styles.stageAnchor}`} data-tone={pixelServo.tone}>
               <div>
                 <span>V 视觉证据</span>
                 <strong>{stereoTargetLabel ? `${stereoTargetLabel} · ${pixelServo.title}` : pixelServo.title}</strong>
@@ -3563,7 +6600,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
                 <figure>
                   <figcaption>
                     <span>Left</span>
-                    <strong>{leftStereoImageSrc && leftTargetBbox ? "target lock" : "waiting evidence"}</strong>
+                    <strong>{leftStereoImageSrc ? "edge annotated frame" : "waiting evidence"}</strong>
                   </figcaption>
                   <div className={styles.visionFrame}>
                     {leftStereoImageSrc ? (
@@ -3572,12 +6609,6 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
                     ) : (
                       <div className={styles.syntheticFrame} />
                     )}
-                    {leftStereoImageSrc && leftTargetBoxStyle ? (
-                      <span className={styles.targetBox} style={leftTargetBoxStyle}>
-                        <em>{stereoTargetLabel || "target"}</em>
-                      </span>
-                    ) : null}
-                    <span className={styles.reticle} />
                   </div>
                   <div className={styles.detectionPills}>
                     {leftDetectionPills.map((item) => (
@@ -3588,7 +6619,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
                 <figure>
                   <figcaption>
                     <span>Right</span>
-                    <strong>{rightStereoImageSrc && rightTargetBbox ? "stereo match" : "waiting right image"}</strong>
+                    <strong>{rightStereoImageSrc ? "raw/support frame" : "waiting right image"}</strong>
                   </figcaption>
                   <div className={styles.visionFrame}>
                     {rightStereoImageSrc ? (
@@ -3597,12 +6628,6 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
                     ) : (
                       <div className={styles.syntheticFrame} />
                     )}
-                    {rightStereoImageSrc && rightTargetBoxStyle ? (
-                      <span className={styles.targetBox} style={rightTargetBoxStyle}>
-                        <em>{stereoTargetLabel || "target"}</em>
-                      </span>
-                    ) : null}
-                    <span className={styles.reticle} />
                   </div>
                   <div className={styles.detectionPills}>
                     {rightDetectionPills.map((item) => (
@@ -3616,6 +6641,35 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
                 <span>框: {visualEvidenceBoxSource}</span>
                 <span>配对: {visualEvidencePairing}</span>
                 <span>边界: dry-run</span>
+              </div>
+              <div className={styles.visualMemoryPanel} data-state={visualServoReady ? "ready" : "hold"} aria-label="视觉短时记忆">
+                <div>
+                  <span>视觉短时记忆</span>
+                  <strong>{visualServoReady ? "目标和末端可配对" : visualServoStateText}</strong>
+                  <small>{visualMemoryPairState}</small>
+                </div>
+                <dl>
+                  <div>
+                    <dt>目标</dt>
+                    <dd>{recentTargetMemory?.label ?? "等待"} · {targetMemoryFreshness.text}</dd>
+                  </div>
+                  <div>
+                    <dt>末端</dt>
+                    <dd>{recentEndEffectorMemory?.label ?? "等待"} · {endEffectorMemoryFreshness.text}</dd>
+                  </div>
+                  <div>
+                    <dt>距离</dt>
+                    <dd>{visualServoDistanceText}</dd>
+                  </div>
+                </dl>
+              </div>
+              <div className={styles.targetQualityGate} data-tone={targetQualityGateTone} aria-label="目标候选质量门">
+                <div>
+                  <span>目标质量门</span>
+                  <strong>{targetQualityGateTitle}</strong>
+                </div>
+                <p>{targetQualityGateDetail}</p>
+                <small>{text(stereoTargetQualityGate.control_boundary, "target_quality_gate_only_not_motion_permission")}</small>
               </div>
               <div className={styles.visualLockMeter} data-tone={stereoVisualLockStable ? "ok" : visualLockObservedFrames > 0 ? "idle" : "limited"}>
                 <div>
@@ -3638,9 +6692,28 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
                 </dl>
               </div>
               <ul>
-                <li><span>目标中心</span><strong>{stereoTargetCenter ? `${compactNumberText(stereoTargetCenter[0], " px")}, ${compactNumberText(stereoTargetCenter[1], " px")}` : "等待 bbox"}</strong></li>
+                <li><span>目标中心</span><strong>{stereoTargetCenter ? `${compactNumberText(stereoTargetCenter?.[0], " px")}, ${compactNumberText(stereoTargetCenter?.[1], " px")}` : "等待 bbox"}</strong></li>
                 <li><span>画面偏移</span><strong>{pixelServo.targetOffsetText}</strong></li>
                 <li><span>下一步</span><strong>{pixelServo.nextStep}</strong></li>
+              </ul>
+            </article>
+
+            <article className={styles.shadowEvidencePanel} data-tone={shadowEvidenceTone}>
+              <div>
+                <span>MuJoCo shadow 证据</span>
+                <strong>{simulationReady ? "shadow 已跑通" : text(simulationReport.readiness, "等待 shadow report")}</strong>
+                <small>{simulationReportBoundary}</small>
+              </div>
+              <p>
+                L/A 模式 {semanticModeLabel}；语义目标 {semanticTargetLabel || "等待目标"}；V 看到 {stereoTargetLabel || text(modelRelayVisualServoContext.target_label, "等待 V")} / {stereoEndEffectorLabel || "末端待识别"}。
+              </p>
+              <ul>
+                <li><span>A 来源</span><strong>{semanticSourceLabel}</strong></li>
+                <li><span>计划状态</span><strong>{simulationPlanState}</strong></li>
+                <li><span>Shadow 轨迹</span><strong>{Number.isFinite(simulationTrajectoryCount) ? `${simulationTrajectoryCount} 条` : "等待"}</strong></li>
+                <li><span>采样步数</span><strong>{Number.isFinite(simulationStepCount) ? `${simulationStepCount} 步` : "等待"}</strong></li>
+                <li><span>像素距离</span><strong>{modelRelayVisualDistance !== null && modelRelayVisualDistance !== undefined ? compactNumberText(modelRelayVisualDistance, " px") : visualServoDistanceText}</strong></li>
+                <li><span>最终关节</span><strong>{simulationJointSummary || "等待 joint_state"}</strong></li>
               </ul>
             </article>
 
@@ -3678,23 +6751,28 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
               </ul>
             </article>
           </section>
+          </details>
 
-          <div className={styles.primaryGrid}>
+          <div data-module="digital_twin muscle_assist diagnostics" className={styles.primaryGrid}>
             <div className={styles.sceneColumn}>
-              <Arm3DOverview
-                deviceId={text(selected?.device_id, "")}
-                robotId={text(selected?.robot_id, "")}
-                projectId={projectId}
-                deviceModel={record(selected?.device_model)}
-                motors={poseSamples}
-                robotRenderState={robotRenderState}
-                wiringChecks={wiringChecks}
-                safetyState={stateLabel(currentSafetyState)}
-              />
-              <HumanMuscleOverview sensorPayload={sensorPayload} />
+              <div id="urdf-stage" data-module-panel="digital_twin diagnostics" className={styles.stageAnchor}>
+                <Arm3DOverview
+                  deviceId={text(selected?.device_id, "")}
+                  robotId={text(selected?.robot_id, "")}
+                  projectId={projectId}
+                  deviceModel={record(selected?.device_model)}
+                  motors={poseSamples}
+                  robotRenderState={robotRenderState}
+                  wiringChecks={wiringChecks}
+                  safetyState={stateLabel(currentSafetyState)}
+                />
+              </div>
+              <div id="muscle-stage" data-module-panel="muscle_assist diagnostics" className={styles.stageAnchor}>
+                <HumanMuscleOverview sensorPayload={sensorPayload} />
+              </div>
             </div>
 
-            <aside className={styles.sideStack}>
+            <aside className={styles.sideStack} data-module-panel="diagnostics action_planner mode_router">
               <section className={styles.safetyPanel} data-state={stateLabel(currentSafetyState)}>
                 <span>安全状态</span>
                 <strong>{stateText(currentSafetyState)}</strong>
@@ -3983,15 +7061,15 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
                   >
                     数据/标注
                   </Link>
-                  <Link href={`/projects/${projectId}/model-relay-lab`} prefetch={false}>
-                    VLA-L 测试
-                  </Link>
+                  <button type="button" onClick={() => setActiveModule("ai_model")}>
+                    AI模型中转
+                  </button>
                 </div>
               </section>
             </aside>
           </div>
 
-          <div className={styles.summaryGrid}>
+          <div data-module="overview diagnostics training" className={styles.summaryGrid}>
             <article>
               <span>数据批次</span>
               <strong>{publicBatchLabel(selected?.current_session)}</strong>
@@ -4027,7 +7105,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
             </article>
           </div>
 
-          <section className={styles.roleGrid} aria-label="康复机械臂四角色状态">
+          <section data-module="overview diagnostics" className={styles.roleGrid} aria-label="康复机械臂四角色状态">
             {roleCards.map((role) => (
               <article key={role.key} data-ready={role.ready ? "true" : "false"}>
                 <span>{role.title}</span>
@@ -4040,7 +7118,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
 
           {!selected ? <ControlStationOnboarding projectId={projectId} /> : null}
 
-          <details className={styles.drawerPanel}>
+          <details data-module="vision logs" className={styles.drawerPanel} open={activeModule === "vision"}>
             <summary>摄像头关键帧</summary>
             <section className={styles.cameraPanel}>
               <div className={styles.panelHead}>
@@ -4084,7 +7162,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
             </section>
           </details>
 
-          <details className={styles.drawerPanel}>
+          <details data-module="diagnostics logs" className={styles.drawerPanel} open={activeModule === "diagnostics"}>
             <summary>电机状态表 · {motors.length} 个电机</summary>
             <div className={styles.motorTable}>
               <div className={styles.tableHeader}>
@@ -4107,7 +7185,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
             </div>
           </details>
 
-          <details className={styles.drawerPanel}>
+          <details data-module="logs diagnostics" className={styles.drawerPanel} open={activeModule === "logs"}>
             <summary>设备档案和事件日志</summary>
             <div className={styles.detailGrid}>
               <section className={styles.identityPanel}>

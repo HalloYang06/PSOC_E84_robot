@@ -179,3 +179,9 @@ Local APK output:
 ```text
 apps/mobile/rehab-arm-android/android/app/build/outputs/apk/debug/app-debug.apk
 ```
+
+## Rehab Arm Control Room AI Model Module
+
+On the rehab-arm control-room page, open the `AI模型` workspace from the top navigation or left module rail. The model relay console now stays inside the same control-room page and includes provider configuration, high-level prompt suggestions, restricted device token generation, HTTP/XiaoZhi endpoints, and relay audit events.
+
+Safety rule: AI model output is review/dry-run evidence only. It does not send CAN frames, motor current, motor torque, raw joint position/velocity, M33 overrides, or emergency-stop release commands.
