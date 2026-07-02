@@ -63,6 +63,7 @@ GET /devices/{device_id}/status
 GET /devices/{device_id}/diagnostics
 GET /devices/{device_id}/ble/messages
 GET /training-plans/{plan_id}
+GET /training-preflight
 GET /training-sessions
 GET /training-sessions/{session_id}
 GET /training-sessions/{session_id}/report
@@ -133,6 +134,8 @@ POST /api/rehab-arm/app/v1/training-preflight
 ```
 
 Required checklist keys are `device_worn_correctly`, `pain_within_limit`, `stop_explained`, and `m33_plan_accepted`, all set to `true`. The preflight must reference the current `plan_id`, `device_id`, and accepted `sync_id`; editing the plan or getting a new M33 decision requires a fresh preflight.
+
+Read recent preflight evidence with `GET /api/rehab-arm/app/v1/training-preflight`, optionally filtered by `plan_id` and `device_id`. `GET /api/rehab-arm/app/v1/me` returns `latest_preflight` and also returns a paused training session as `active_session`, so the phone App can recover after restart without creating a second session.
 
 ## Android APK Build Environment
 

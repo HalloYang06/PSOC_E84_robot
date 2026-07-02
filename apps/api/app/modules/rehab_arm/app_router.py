@@ -54,6 +54,7 @@ from .app_service import (
     list_ble_messages,
     list_offline_queue,
     list_platform_sync_runs,
+    list_preflight_checks,
     list_safety_audit_logs,
     get_platform_sync_status,
     get_profile,
@@ -200,6 +201,18 @@ def api_sync_training_plan(plan_id: str, payload: RehabAppTrainingPlanSyncReques
 @router.post("/training-preflight")
 def api_create_training_preflight(payload: RehabAppPreflightCheckCreate, request: Request, db: Session = Depends(get_db)):
     return ok(create_preflight_check(db, _user_id(db, request), payload))
+
+
+@router.get("/training-preflight")
+def api_list_training_preflight(
+    request: Request,
+    plan_id: str | None = None,
+    device_id: str | None = None,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+):
+    safe_limit = max(1, min(limit, 100))
+    return ok(list_preflight_checks(db, _user_id(db, request), plan_id=plan_id, device_id=device_id, limit=safe_limit))
 
 
 @router.post("/training-sessions/start")

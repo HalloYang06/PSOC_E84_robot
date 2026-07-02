@@ -363,11 +363,13 @@ def get_app_bootstrap(db: Session, user_id: str) -> dict:
     plans = list_training_plans(db, user_id)
     sessions = list_training_sessions(db, user_id, limit=1)
     drafts = list_ai_training_drafts(db, user_id, status="open", limit=1)
+    preflights = list_preflight_checks(db, user_id, limit=1)
     return {
         "profile": get_profile(db, user_id),
         "devices": devices,
         "training_plans": plans,
-        "active_session": sessions[0] if sessions and sessions[0]["status"] in {"started", "in_progress"} else None,
+        "active_session": sessions[0] if sessions and sessions[0]["status"] in {"started", "in_progress", "paused"} else None,
+        "latest_preflight": preflights[0] if preflights else None,
         "latest_emg": latest_emg_summary(db, user_id),
         "latest_report": latest_training_report(db, user_id),
         "latest_open_ai_draft": drafts[0] if drafts else None,
@@ -759,6 +761,29 @@ def create_preflight_check(db: Session, user_id: str, payload: RehabAppPreflight
     db.commit()
     db.refresh(check)
     return _preflight_dict(check)
+
+
+def list_preflight_checks(
+    db: Session,
+    user_id: str,
+    plan_id: str | None = None,
+    device_id: str | None = None,
+    limit: int = 50,
+) -> list[dict]:
+    conditions = [RehabAppPreflightCheck.user_id == user_id]
+    if plan_id:
+        conditions.append(RehabAppPreflightCheck.plan_id == plan_id)
+    if device_id:
+        conditions.append(RehabAppPreflightCheck.device_id == device_id)
+    checks = list(
+        db.scalars(
+            select(RehabAppPreflightCheck)
+            .where(*conditions)
+            .order_by(RehabAppPreflightCheck.created_at.desc(), RehabAppPreflightCheck.id.desc())
+            .limit(limit)
+        )
+    )
+    return [_preflight_dict(check) for check in checks]
 
 
 BLE_MESSAGE_TYPES = {

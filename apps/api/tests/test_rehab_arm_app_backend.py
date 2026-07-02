@@ -246,6 +246,16 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
 
     preflight = _pass_preflight(owner_token, plan["id"], device["id"], resync["id"])
     assert preflight["plan_version"] == 2
+    preflight_history = client.get(
+        "/api/rehab-arm/app/v1/training-preflight",
+        headers=auth_headers(owner_token),
+        params={"plan_id": plan["id"], "device_id": device["id"]},
+    )
+    assert preflight_history.status_code == 200
+    assert preflight_history.json()["data"][0]["id"] == preflight["id"]
+    bootstrap_after_preflight = client.get("/api/rehab-arm/app/v1/me", headers=auth_headers(owner_token))
+    assert bootstrap_after_preflight.status_code == 200
+    assert bootstrap_after_preflight.json()["data"]["latest_preflight"]["id"] == preflight["id"]
 
     allowed_start = client.post(
         "/api/rehab-arm/app/v1/training-sessions/start",
@@ -494,6 +504,10 @@ def test_rehab_arm_app_training_session_pause_resume_cancel_flow(tmp_path, monke
     assert pause.status_code == 200
     assert pause.json()["data"]["status"] == "paused"
     assert "patient reported pain" in pause.json()["data"]["user_note"]
+    paused_bootstrap = client.get("/api/rehab-arm/app/v1/me", headers=auth_headers(owner_token))
+    assert paused_bootstrap.status_code == 200
+    assert paused_bootstrap.json()["data"]["active_session"]["id"] == session["id"]
+    assert paused_bootstrap.json()["data"]["active_session"]["status"] == "paused"
 
     paused_progress = client.patch(
         f"/api/rehab-arm/app/v1/training-sessions/{session['id']}/progress",
