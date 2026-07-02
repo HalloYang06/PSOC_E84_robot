@@ -56,12 +56,34 @@ Useful reads:
 ```text
 GET /me
 GET /devices/{device_id}/status
+GET /devices/{device_id}/diagnostics
 GET /training-plans/{plan_id}
 GET /training-sessions
 GET /training-sessions/{session_id}
 GET /emg/latest
 GET /emg/history
 GET /platform/sync-status
+GET /platform/sync-runs
+GET /offline-queue
+GET /safety-audit
+```
+
+Mobile diagnostic and offline replay:
+
+```text
+POST /devices/{device_id}/diagnostic-upload
+POST /offline-queue
+POST /offline-queue/replay
+```
+
+Allowed offline replay operations:
+
+```text
+device_diagnostic_upload
+training_session_progress
+emg_summary
+intent_summary
+platform_sync
 ```
 
 Safety rule: these endpoints do not send CAN frames, motor current, motor torque, raw joint position/velocity, M33 overrides, or emergency-stop release commands. Every training/device response remains plan, evidence, or review data until M33 and the robot-side stack decide otherwise.

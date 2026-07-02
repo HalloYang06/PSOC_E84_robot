@@ -140,3 +140,43 @@ class RehabAppAiTrainingDraft(Base):
     risk_notes: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     accepted_plan_id: Mapped[str] = mapped_column(String(64), nullable=False, default="", index=True)
     created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class RehabAppDiagnosticUpload(Base):
+    __tablename__ = "rehab_app_diagnostic_uploads"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    device_id: Mapped[str] = mapped_column(String(64), ForeignKey("rehab_app_device_bindings.id"), nullable=False, index=True)
+    snapshot_type: Mapped[str] = mapped_column(String(80), nullable=False, default="diagnostic_snapshot", index=True)
+    firmware_version: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    battery_level: Mapped[float | None] = mapped_column(Float, nullable=True)
+    m33_state: Mapped[str] = mapped_column(String(80), nullable=False, default="unknown", index=True)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class RehabAppOfflineQueueItem(Base):
+    __tablename__ = "rehab_app_offline_queue_items"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    client_item_id: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    operation_type: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    resource_type: Mapped[str] = mapped_column(String(80), nullable=False, default="", index=True)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    replay_status: Mapped[str] = mapped_column(String(40), nullable=False, default="queued", index=True)
+    replay_result: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    replayed_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class RehabAppPlatformSyncRun(Base):
+    __tablename__ = "rehab_app_platform_sync_runs"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    resource_types: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="completed", index=True)
+    summary: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now())

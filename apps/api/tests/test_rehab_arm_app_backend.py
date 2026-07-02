@@ -341,3 +341,133 @@ def test_rehab_arm_app_plan_edit_ai_draft_and_platform_sync(tmp_path, monkeypatc
     )
     assert sync_response.status_code == 200
     assert sync_response.json()["data"]["control_boundary"] == "platform_sync_evidence_only_not_motion_permission"
+
+
+def test_rehab_arm_app_offline_diagnostics_sync_and_audit_loop(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
+
+    owner_token, _owner_user_id = issue_session_token(client)
+
+    device_response = client.post(
+        "/api/rehab-arm/app/v1/devices/bind",
+        headers=auth_headers(owner_token),
+        json={"m33_device_id": "m33-offline-alpha", "ble_name": "ArmControl-Offline", "trust_status": "trusted"},
+    )
+    assert device_response.status_code == 200
+    device = device_response.json()["data"]
+
+    diagnostic = client.post(
+        f"/api/rehab-arm/app/v1/devices/{device['id']}/diagnostic-upload",
+        headers=auth_headers(owner_token),
+        json={
+            "snapshot_type": "m33_status",
+            "firmware_version": "m33-0.4.0",
+            "battery_level": 0.76,
+            "m33_state": "waiting_for_plan",
+            "payload": {"heartbeat_age_ms": 120, "active_limits": []},
+        },
+    )
+    assert diagnostic.status_code == 200
+    assert diagnostic.json()["data"]["control_boundary"] == "diagnostic_snapshot_only_not_motion_permission"
+
+    diagnostics = client.get(
+        f"/api/rehab-arm/app/v1/devices/{device['id']}/diagnostics",
+        headers=auth_headers(owner_token),
+    )
+    assert diagnostics.status_code == 200
+    assert diagnostics.json()["data"][0]["m33_state"] == "waiting_for_plan"
+
+    plan_response = client.post(
+        "/api/rehab-arm/app/v1/training-plans",
+        headers=auth_headers(owner_token),
+        json={"title": "Offline replay plan", "movement_type": "elbow_flexion", "sets": 1, "reps": 4},
+    )
+    plan_id = plan_response.json()["data"]["id"]
+    sync_response = client.post(
+        f"/api/rehab-arm/app/v1/training-plans/{plan_id}/sync-to-device",
+        headers=auth_headers(owner_token),
+        json={"device_id": device["id"]},
+    )
+    sync_id = sync_response.json()["data"]["id"]
+    accept_response = client.post(
+        f"/api/rehab-arm/app/v1/devices/{device['id']}/m33-status",
+        headers=auth_headers(owner_token),
+        json={"sync_id": sync_id, "sync_status": "m33_accepted", "m33_reason": "offline replay plan accepted"},
+    )
+    assert accept_response.status_code == 200
+
+    start_response = client.post(
+        "/api/rehab-arm/app/v1/training-sessions/start",
+        headers=auth_headers(owner_token),
+        json={"plan_id": plan_id, "device_id": device["id"]},
+    )
+    assert start_response.status_code == 200
+    session_id = start_response.json()["data"]["id"]
+
+    queued = client.post(
+        "/api/rehab-arm/app/v1/offline-queue",
+        headers=auth_headers(owner_token),
+        json={
+            "client_item_id": "phone-emg-001",
+            "operation_type": "emg_summary",
+            "resource_type": "emg_summary",
+            "payload": {
+                "session_id": session_id,
+                "channel": "ch2",
+                "muscle_name": "triceps",
+                "rms_avg": 0.31,
+                "peak": 0.55,
+                "activation_avg": 0.41,
+                "fatigue_index": 0.12,
+                "contact_quality": "good",
+            },
+        },
+    )
+    assert queued.status_code == 200
+    queue_item = queued.json()["data"]
+    assert queue_item["replay_status"] == "queued"
+
+    forbidden = client.post(
+        "/api/rehab-arm/app/v1/offline-queue",
+        headers=auth_headers(owner_token),
+        json={
+            "client_item_id": "phone-motor-001",
+            "operation_type": "motor_command",
+            "resource_type": "motor",
+            "payload": {"torque": 1.0},
+        },
+    )
+    assert forbidden.status_code == 422
+    assert forbidden.json()["error"]["code"] == "OFFLINE_OPERATION_NOT_ALLOWED"
+
+    replay = client.post(
+        "/api/rehab-arm/app/v1/offline-queue/replay",
+        headers=auth_headers(owner_token),
+        json={"item_ids": [queue_item["id"]]},
+    )
+    assert replay.status_code == 200
+    replay_data = replay.json()["data"]
+    assert replay_data["replayed_count"] == 1
+    assert replay_data["items"][0]["replay_status"] == "replayed"
+
+    latest_emg = client.get("/api/rehab-arm/app/v1/emg/latest", headers=auth_headers(owner_token))
+    assert latest_emg.status_code == 200
+    assert latest_emg.json()["data"]["muscle_name"] == "triceps"
+
+    sync_run = client.post(
+        "/api/rehab-arm/app/v1/platform/sync",
+        headers=auth_headers(owner_token),
+        json={"resource_types": ["training_plans", "training_sessions", "emg_summaries", "m33_decisions"]},
+    )
+    assert sync_run.status_code == 200
+    assert sync_run.json()["data"]["summary"]["emg_summaries"] >= 1
+
+    sync_runs = client.get("/api/rehab-arm/app/v1/platform/sync-runs", headers=auth_headers(owner_token))
+    assert sync_runs.status_code == 200
+    assert sync_runs.json()["data"][0]["control_boundary"] == "platform_sync_evidence_only_not_motion_permission"
+
+    audit = client.get("/api/rehab-arm/app/v1/safety-audit", headers=auth_headers(owner_token))
+    assert audit.status_code == 200
+    actions = {item["action"] for item in audit.json()["data"]}
+    assert "rehab_app.training_plan.m33_accepted" in actions
+    assert "rehab_app.device.diagnostic_uploaded" in actions

@@ -11,9 +11,12 @@ from app.db.session import get_db
 from .app_schemas import (
     RehabAppDeviceBindRequest,
     RehabAppAiTrainingDraftGenerateRequest,
+    RehabAppDiagnosticUploadRequest,
     RehabAppEmgSummaryCreate,
     RehabAppIntentSummaryCreate,
     RehabAppM33StatusUpdate,
+    RehabAppOfflineQueueItemCreate,
+    RehabAppOfflineQueueReplayRequest,
     RehabAppPlatformSyncRequest,
     RehabAppProfileUpdate,
     RehabAppTrainingSessionFinishRequest,
@@ -33,6 +36,10 @@ from .app_service import (
     get_ai_training_draft,
     get_app_bootstrap,
     get_device_status,
+    list_device_diagnostics,
+    list_offline_queue,
+    list_platform_sync_runs,
+    list_safety_audit_logs,
     get_platform_sync_status,
     get_profile,
     get_training_plan,
@@ -44,12 +51,15 @@ from .app_service import (
     finish_training_session,
     record_emg_summary,
     record_intent_summary,
+    replay_offline_queue,
     start_training_session,
     sync_platform_records,
     sync_training_plan_to_device,
     update_m33_sync_status,
     update_training_plan,
     update_training_session_progress,
+    enqueue_offline_item,
+    upload_device_diagnostic,
     upsert_profile,
 )
 
@@ -101,6 +111,16 @@ def api_get_device_status(device_id: str, request: Request, db: Session = Depend
 @router.post("/devices/{device_id}/m33-status")
 def api_update_m33_status(device_id: str, payload: RehabAppM33StatusUpdate, request: Request, db: Session = Depends(get_db)):
     return ok(update_m33_sync_status(db, _user_id(db, request), device_id, payload.sync_id, payload.sync_status, payload.m33_reason, payload.firmware_version))
+
+
+@router.post("/devices/{device_id}/diagnostic-upload")
+def api_upload_device_diagnostic(device_id: str, payload: RehabAppDiagnosticUploadRequest, request: Request, db: Session = Depends(get_db)):
+    return ok(upload_device_diagnostic(db, _user_id(db, request), device_id, payload))
+
+
+@router.get("/devices/{device_id}/diagnostics")
+def api_list_device_diagnostics(device_id: str, request: Request, db: Session = Depends(get_db)):
+    return ok(list_device_diagnostics(db, _user_id(db, request), device_id))
 
 
 @router.post("/training-plans")
@@ -201,3 +221,28 @@ def api_platform_sync(payload: RehabAppPlatformSyncRequest, request: Request, db
 @router.get("/platform/sync-status")
 def api_platform_sync_status(request: Request, db: Session = Depends(get_db)):
     return ok(get_platform_sync_status(db, _user_id(db, request)))
+
+
+@router.get("/platform/sync-runs")
+def api_platform_sync_runs(request: Request, db: Session = Depends(get_db)):
+    return ok(list_platform_sync_runs(db, _user_id(db, request)))
+
+
+@router.post("/offline-queue")
+def api_enqueue_offline_item(payload: RehabAppOfflineQueueItemCreate, request: Request, db: Session = Depends(get_db)):
+    return ok(enqueue_offline_item(db, _user_id(db, request), payload))
+
+
+@router.get("/offline-queue")
+def api_list_offline_queue(request: Request, db: Session = Depends(get_db)):
+    return ok(list_offline_queue(db, _user_id(db, request)))
+
+
+@router.post("/offline-queue/replay")
+def api_replay_offline_queue(payload: RehabAppOfflineQueueReplayRequest, request: Request, db: Session = Depends(get_db)):
+    return ok(replay_offline_queue(db, _user_id(db, request), payload.item_ids))
+
+
+@router.get("/safety-audit")
+def api_safety_audit(request: Request, db: Session = Depends(get_db)):
+    return ok(list_safety_audit_logs(db, _user_id(db, request)))

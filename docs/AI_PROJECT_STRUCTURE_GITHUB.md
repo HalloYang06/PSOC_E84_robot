@@ -49,3 +49,6 @@ Closed-loop backend contract:
 - Training-plan edits increment `version`. `sync-to-device` captures `plan_version`, and `training-sessions/start` requires an `m33_accepted` sync for the current plan version on the selected device.
 - AI training draft endpoints are draft-only: generate, read, accept-to-plan. Accepted drafts become normal training plans and still require M33 sync and acceptance before a training session record can start.
 - Platform sync endpoints are evidence/review only and must not be interpreted as motion permission.
+- Diagnostic upload endpoints store M33/mobile snapshots for review: `POST /devices/{device_id}/diagnostic-upload` and `GET /devices/{device_id}/diagnostics`.
+- Offline queue endpoints (`POST/GET /offline-queue`, `POST /offline-queue/replay`) are evidence-only. The replay whitelist is limited to diagnostic upload, training-session progress, EMG summary, M55 intent summary, and platform sync; motor or CAN-like operations are rejected.
+- `GET /safety-audit` returns rehab-arm App audit events for the user and bound M33 device identities so M33 accept/reject decisions are visible to the phone workflow.

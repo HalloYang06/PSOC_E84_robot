@@ -98,3 +98,11 @@
 - Preserved the App safety boundary: the backend still stores profiles, bindings, plans, M33 decisions, sessions, EMG/M55 summaries, AI drafts, and platform evidence only. It still does not accept CAN frames, raw motor setpoints, torque/current, raw joint position/velocity, M33 overrides, or emergency-stop release commands.
 - Added SQLite self-healing for the AI draft table and `rehab_app_training_plan_syncs.plan_version` so existing local deployments can start after this schema extension.
 - Validation passed: `python -m pytest tests/test_rehab_arm_app_backend.py -q` from `apps/api` (`3 passed`). This slice intentionally did not modify Stitch/mobile frontend files; frontend adjustments should continue through Stitch MCP.
+
+## 2026-07-03
+
+- Continued the rehab-arm mobile backend closed loop without changing Stitch/frontend files. Added durable diagnostic uploads, offline queue items, and platform sync run records to the App backend.
+- Added `/api/rehab-arm/app/v1/devices/{device_id}/diagnostic-upload` and `/diagnostics` so phone/M33 diagnostic snapshots can update device heartbeat evidence and be reviewed later.
+- Added evidence-only offline queue endpoints: `POST /offline-queue`, `GET /offline-queue`, and `POST /offline-queue/replay`. Replay is explicitly whitelisted to diagnostic upload, training session progress, EMG summary, M55 intent summary, and platform sync; motor/CAN-like operations return `OFFLINE_OPERATION_NOT_ALLOWED`.
+- Added platform sync run history and safety audit reads: `/platform/sync-runs` and `/safety-audit`. Safety audit includes human App actions and bound M33 identity decisions so rejected/accepted sync decisions are visible to the phone workflow.
+- Validation passed: `python -m pytest tests/test_rehab_arm_app_backend.py -q` from `apps/api` (`4 passed`). Initial full-test run timed out because a stale pytest process remained after a previous timeout; after stopping stale pytest processes the same test file passed.

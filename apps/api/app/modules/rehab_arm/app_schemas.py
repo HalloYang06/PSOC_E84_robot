@@ -34,6 +34,16 @@ class RehabAppDeviceBindRequest(BaseModel):
     platform_project_id: str = ""
 
 
+class RehabAppDiagnosticUploadRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    snapshot_type: str = Field(default="diagnostic_snapshot", max_length=80)
+    firmware_version: str = ""
+    battery_level: float | None = Field(default=None, ge=0, le=1)
+    m33_state: str = Field(default="unknown", max_length=80)
+    payload: dict = Field(default_factory=dict)
+
+
 class RehabAppTrainingPlanSyncRead(BaseModel):
     id: str
     plan_id: str
@@ -218,3 +228,18 @@ class RehabAppPlatformSyncRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     resource_types: list[str] = Field(default_factory=list)
+
+
+class RehabAppOfflineQueueItemCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    client_item_id: str = Field(min_length=1, max_length=120)
+    operation_type: str = Field(min_length=1, max_length=80)
+    resource_type: str = Field(default="", max_length=80)
+    payload: dict = Field(default_factory=dict)
+
+
+class RehabAppOfflineQueueReplayRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    item_ids: list[str] = Field(default_factory=list)

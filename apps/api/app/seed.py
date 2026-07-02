@@ -19,9 +19,12 @@ from app.db.models.project_invite import ProjectInvite
 from app.db.models.project_member import ProjectMember
 from app.db.models.rehab_arm_app import (
     RehabAppAiTrainingDraft,
+    RehabAppDiagnosticUpload,
     RehabAppDeviceBinding,
     RehabAppEmgSummary,
     RehabAppIntentInferenceSummary,
+    RehabAppOfflineQueueItem,
+    RehabAppPlatformSyncRun,
     RehabAppTrainingPlan,
     RehabAppTrainingPlanSync,
     RehabAppTrainingSession,
@@ -56,6 +59,9 @@ def ensure_schema_extensions() -> None:
             RehabAppEmgSummary,
             RehabAppIntentInferenceSummary,
             RehabAppAiTrainingDraft,
+            RehabAppDiagnosticUpload,
+            RehabAppOfflineQueueItem,
+            RehabAppPlatformSyncRun,
         ):
             if model.__tablename__ not in table_names:
                 model.__table__.create(bind=connection, checkfirst=True)

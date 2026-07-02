@@ -6,11 +6,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.common.errors import AppError
+from app.db.models.audit_log import AuditLog
 from app.db.models.rehab_arm_app import (
     RehabAppAiTrainingDraft,
+    RehabAppDiagnosticUpload,
     RehabAppDeviceBinding,
     RehabAppEmgSummary,
     RehabAppIntentInferenceSummary,
+    RehabAppOfflineQueueItem,
+    RehabAppPlatformSyncRun,
     RehabAppTrainingPlan,
     RehabAppTrainingPlanSync,
     RehabAppTrainingSession,
@@ -18,7 +22,14 @@ from app.db.models.rehab_arm_app import (
 )
 from app.modules.audit.service import create_audit_log
 
-from .app_schemas import RehabAppDeviceBindRequest, RehabAppProfileUpdate, RehabAppTrainingPlanCreate, RehabAppTrainingPlanUpdate
+from .app_schemas import (
+    RehabAppDeviceBindRequest,
+    RehabAppDiagnosticUploadRequest,
+    RehabAppOfflineQueueItemCreate,
+    RehabAppProfileUpdate,
+    RehabAppTrainingPlanCreate,
+    RehabAppTrainingPlanUpdate,
+)
 
 
 def _profile_dict(profile: RehabAppUserProfile) -> dict:
@@ -158,6 +169,66 @@ def _draft_dict(draft: RehabAppAiTrainingDraft) -> dict:
     }
 
 
+def _diagnostic_dict(upload: RehabAppDiagnosticUpload) -> dict:
+    return {
+        "id": upload.id,
+        "user_id": upload.user_id,
+        "device_id": upload.device_id,
+        "snapshot_type": upload.snapshot_type,
+        "firmware_version": upload.firmware_version,
+        "battery_level": upload.battery_level,
+        "m33_state": upload.m33_state,
+        "payload": upload.payload or {},
+        "created_at": upload.created_at,
+        "control_boundary": "diagnostic_snapshot_only_not_motion_permission",
+    }
+
+
+def _offline_item_dict(item: RehabAppOfflineQueueItem) -> dict:
+    return {
+        "id": item.id,
+        "user_id": item.user_id,
+        "client_item_id": item.client_item_id,
+        "operation_type": item.operation_type,
+        "resource_type": item.resource_type,
+        "payload": item.payload or {},
+        "replay_status": item.replay_status,
+        "replay_result": item.replay_result or {},
+        "created_at": item.created_at,
+        "replayed_at": item.replayed_at,
+        "control_boundary": "offline_queue_evidence_only_not_motion_permission",
+    }
+
+
+def _platform_sync_run_dict(run: RehabAppPlatformSyncRun) -> dict:
+    return {
+        "id": run.id,
+        "user_id": run.user_id,
+        "resource_types": run.resource_types or [],
+        "status": run.status,
+        "summary": run.summary or {},
+        "created_at": run.created_at,
+        "control_boundary": "platform_sync_evidence_only_not_motion_permission",
+    }
+
+
+def _audit_dict(log: AuditLog) -> dict:
+    return {
+        "id": log.id,
+        "project_id": log.project_id,
+        "actor_type": log.actor_type,
+        "actor_id": log.actor_id,
+        "action": log.action,
+        "resource_type": log.resource_type,
+        "resource_id": log.resource_id,
+        "success": log.success,
+        "error_message": log.error_message,
+        "created_at": log.created_at,
+        "after": log.after or {},
+        "control_boundary": "audit_log_only_not_motion_permission",
+    }
+
+
 def upsert_profile(db: Session, user_id: str, payload: RehabAppProfileUpdate) -> dict:
     profile = db.scalar(select(RehabAppUserProfile).where(RehabAppUserProfile.user_id == user_id))
     data = payload.model_dump()
@@ -201,6 +272,7 @@ def get_app_bootstrap(db: Session, user_id: str) -> dict:
         "active_session": sessions[0] if sessions and sessions[0]["status"] in {"started", "in_progress"} else None,
         "latest_emg": latest_emg_summary(db, user_id),
         "platform_sync": get_platform_sync_status(db, user_id),
+        "offline_queue": list_offline_queue(db, user_id, status="queued", limit=20),
         "control_boundary": "app_bootstrap_evidence_only_not_motion_permission",
     }
 
@@ -269,6 +341,47 @@ def get_device_status(db: Session, user_id: str, device_id: str) -> dict:
         "m33_authority": "final_safety_authority",
         "control_boundary": "device_status_only_not_motion_permission",
     }
+
+
+def upload_device_diagnostic(db: Session, user_id: str, device_id: str, payload: RehabAppDiagnosticUploadRequest) -> dict:
+    device = db.get(RehabAppDeviceBinding, device_id)
+    if device is None or device.user_id != user_id:
+        raise AppError("DEVICE_NOT_FOUND", "device binding not found", status_code=404)
+    upload = RehabAppDiagnosticUpload(user_id=user_id, device_id=device.id, **payload.model_dump())
+    device.last_seen_at = datetime.now(timezone.utc)
+    if payload.firmware_version:
+        device.firmware_version = payload.firmware_version
+    db.add(upload)
+    db.add(device)
+    db.flush()
+    create_audit_log(
+        db,
+        project_id=device.platform_project_id or None,
+        actor_type="human",
+        actor_id=user_id,
+        action="rehab_app.device.diagnostic_uploaded",
+        resource_type="rehab_app_diagnostic_upload",
+        resource_id=upload.id,
+        after={"m33_state": upload.m33_state, "control_boundary": "diagnostic_snapshot_only_not_motion_permission"},
+    )
+    db.commit()
+    db.refresh(upload)
+    return _diagnostic_dict(upload)
+
+
+def list_device_diagnostics(db: Session, user_id: str, device_id: str, limit: int = 50) -> list[dict]:
+    device = db.get(RehabAppDeviceBinding, device_id)
+    if device is None or device.user_id != user_id:
+        raise AppError("DEVICE_NOT_FOUND", "device binding not found", status_code=404)
+    uploads = list(
+        db.scalars(
+            select(RehabAppDiagnosticUpload)
+            .where(RehabAppDiagnosticUpload.user_id == user_id, RehabAppDiagnosticUpload.device_id == device.id)
+            .order_by(RehabAppDiagnosticUpload.created_at.desc())
+            .limit(limit)
+        )
+    )
+    return [_diagnostic_dict(upload) for upload in uploads]
 
 
 def create_training_plan(db: Session, user_id: str, payload: RehabAppTrainingPlanCreate) -> dict:
@@ -583,6 +696,118 @@ def record_intent_summary(db: Session, user_id: str, payload: dict) -> dict:
     return _intent_dict(summary)
 
 
+ALLOWED_OFFLINE_OPERATIONS = {
+    "device_diagnostic_upload",
+    "training_session_progress",
+    "emg_summary",
+    "intent_summary",
+    "platform_sync",
+}
+
+
+def enqueue_offline_item(db: Session, user_id: str, payload: RehabAppOfflineQueueItemCreate) -> dict:
+    if payload.operation_type not in ALLOWED_OFFLINE_OPERATIONS:
+        raise AppError(
+            "OFFLINE_OPERATION_NOT_ALLOWED",
+            "offline queue only accepts evidence and review operations",
+            status_code=422,
+            details={"allowed_operations": sorted(ALLOWED_OFFLINE_OPERATIONS), "control_boundary": "offline_queue_evidence_only_not_motion_permission"},
+        )
+    existing = db.scalar(
+        select(RehabAppOfflineQueueItem).where(
+            RehabAppOfflineQueueItem.user_id == user_id,
+            RehabAppOfflineQueueItem.client_item_id == payload.client_item_id,
+        )
+    )
+    if existing:
+        return _offline_item_dict(existing)
+    item = RehabAppOfflineQueueItem(user_id=user_id, **payload.model_dump())
+    db.add(item)
+    db.flush()
+    create_audit_log(
+        db,
+        actor_type="human",
+        actor_id=user_id,
+        action="rehab_app.offline_queue.enqueued",
+        resource_type="rehab_app_offline_queue_item",
+        resource_id=item.id,
+        after={"operation_type": item.operation_type, "control_boundary": "offline_queue_evidence_only_not_motion_permission"},
+    )
+    db.commit()
+    db.refresh(item)
+    return _offline_item_dict(item)
+
+
+def list_offline_queue(db: Session, user_id: str, status: str | None = None, limit: int = 50) -> list[dict]:
+    statement = select(RehabAppOfflineQueueItem).where(RehabAppOfflineQueueItem.user_id == user_id)
+    if status:
+        statement = statement.where(RehabAppOfflineQueueItem.replay_status == status)
+    items = list(db.scalars(statement.order_by(RehabAppOfflineQueueItem.created_at.asc()).limit(limit)))
+    return [_offline_item_dict(item) for item in items]
+
+
+def _mark_offline_item(db: Session, item: RehabAppOfflineQueueItem, status: str, result: dict) -> None:
+    item.replay_status = status
+    item.replay_result = {**result, "control_boundary": "offline_queue_evidence_only_not_motion_permission"}
+    item.replayed_at = datetime.now(timezone.utc)
+    db.add(item)
+
+
+def _offline_replay_result(result: dict) -> dict:
+    return {
+        "id": result.get("id") or "",
+        "status": result.get("status") or result.get("sync_status") or "recorded",
+        "resource_control_boundary": result.get("control_boundary") or "",
+    }
+
+
+def replay_offline_queue(db: Session, user_id: str, item_ids: list[str] | None = None) -> dict:
+    statement = select(RehabAppOfflineQueueItem).where(
+        RehabAppOfflineQueueItem.user_id == user_id,
+        RehabAppOfflineQueueItem.replay_status == "queued",
+    )
+    if item_ids:
+        statement = statement.where(RehabAppOfflineQueueItem.id.in_(item_ids))
+    items = list(db.scalars(statement.order_by(RehabAppOfflineQueueItem.created_at.asc()).limit(50)))
+    replayed: list[dict] = []
+    for item in items:
+        try:
+            if item.operation_type == "device_diagnostic_upload":
+                result = upload_device_diagnostic(
+                    db,
+                    user_id,
+                    str((item.payload or {}).get("device_id") or ""),
+                    RehabAppDiagnosticUploadRequest(**{k: v for k, v in (item.payload or {}).items() if k != "device_id"}),
+                )
+            elif item.operation_type == "training_session_progress":
+                result = update_training_session_progress(
+                    db,
+                    user_id,
+                    str((item.payload or {}).get("session_id") or ""),
+                    {k: v for k, v in (item.payload or {}).items() if k != "session_id"},
+                )
+            elif item.operation_type == "emg_summary":
+                result = record_emg_summary(db, user_id, item.payload or {})
+            elif item.operation_type == "intent_summary":
+                result = record_intent_summary(db, user_id, item.payload or {})
+            elif item.operation_type == "platform_sync":
+                result = sync_platform_records(db, user_id, list((item.payload or {}).get("resource_types") or []))
+            else:
+                raise AppError("OFFLINE_OPERATION_NOT_ALLOWED", "offline operation is not allowed", status_code=422)
+            _mark_offline_item(db, item, "replayed", {"result": _offline_replay_result(result)})
+        except Exception as exc:  # Keep the queue item inspectable for phone retry UX.
+            _mark_offline_item(db, item, "failed", {"error": str(exc)})
+        db.commit()
+        db.refresh(item)
+        replayed.append(_offline_item_dict(item))
+    return {
+        "items": replayed,
+        "replayed_count": len([item for item in replayed if item["replay_status"] == "replayed"]),
+        "failed_count": len([item for item in replayed if item["replay_status"] == "failed"]),
+        "control_boundary": "offline_queue_evidence_only_not_motion_permission",
+    }
+
+
 def generate_ai_training_draft(db: Session, user_id: str, input_text: str, context_snapshot: dict) -> dict:
     generated_plan = {
         "title": "AI 建议低强度训练",
@@ -659,24 +884,82 @@ def accept_ai_training_draft(db: Session, user_id: str, draft_id: str) -> dict:
 
 
 def sync_platform_records(db: Session, user_id: str, resource_types: list[str]) -> dict:
+    selected_types = resource_types or ["training_plans", "training_sessions", "emg_summaries", "m33_decisions"]
+    summary = {
+        "training_plans": len(list_training_plans(db, user_id)) if "training_plans" in selected_types else 0,
+        "training_sessions": len(list_training_sessions(db, user_id)) if "training_sessions" in selected_types else 0,
+        "emg_summaries": len(emg_history(db, user_id)) if "emg_summaries" in selected_types else 0,
+        "m33_decisions": len(
+            list(
+                db.scalars(
+                    select(RehabAppTrainingPlanSync)
+                    .join(RehabAppTrainingPlan, RehabAppTrainingPlan.id == RehabAppTrainingPlanSync.plan_id)
+                    .where(RehabAppTrainingPlan.user_id == user_id)
+                )
+            )
+        )
+        if "m33_decisions" in selected_types
+        else 0,
+    }
+    run = RehabAppPlatformSyncRun(user_id=user_id, resource_types=selected_types, status="completed", summary=summary)
+    db.add(run)
+    db.flush()
     create_audit_log(
         db,
         actor_type="human",
         actor_id=user_id,
         action="rehab_app.platform_sync.requested",
         resource_type="rehab_app_platform_sync",
-        resource_id=user_id,
-        after={"resource_types": resource_types, "control_boundary": "platform_sync_evidence_only_not_motion_permission"},
+        resource_id=run.id,
+        after={"resource_types": selected_types, "summary": summary, "control_boundary": "platform_sync_evidence_only_not_motion_permission"},
     )
     db.commit()
-    return get_platform_sync_status(db, user_id)
+    db.refresh(run)
+    return _platform_sync_run_dict(run)
 
 
 def get_platform_sync_status(db: Session, user_id: str) -> dict:
     latest_session = list_training_sessions(db, user_id, limit=1)
+    latest_run = db.scalar(
+        select(RehabAppPlatformSyncRun)
+        .where(RehabAppPlatformSyncRun.user_id == user_id)
+        .order_by(RehabAppPlatformSyncRun.created_at.desc())
+        .limit(1)
+    )
     return {
         "status": "ready",
         "latest_session_id": latest_session[0]["id"] if latest_session else "",
+        "latest_sync_run": _platform_sync_run_dict(latest_run) if latest_run else None,
         "synced_resource_types": ["training_plans", "training_sessions", "emg_summaries", "m33_decisions"],
         "control_boundary": "platform_sync_evidence_only_not_motion_permission",
     }
+
+
+def list_platform_sync_runs(db: Session, user_id: str, limit: int = 20) -> list[dict]:
+    runs = list(
+        db.scalars(
+            select(RehabAppPlatformSyncRun)
+            .where(RehabAppPlatformSyncRun.user_id == user_id)
+            .order_by(RehabAppPlatformSyncRun.created_at.desc())
+            .limit(limit)
+        )
+    )
+    return [_platform_sync_run_dict(run) for run in runs]
+
+
+def list_safety_audit_logs(db: Session, user_id: str, limit: int = 50) -> list[dict]:
+    actor_ids = [user_id]
+    actor_ids.extend(
+        str(device.m33_device_id)
+        for device in db.scalars(select(RehabAppDeviceBinding).where(RehabAppDeviceBinding.user_id == user_id))
+        if device.m33_device_id
+    )
+    logs = list(
+        db.scalars(
+            select(AuditLog)
+            .where(AuditLog.actor_id.in_(actor_ids), AuditLog.action.startswith("rehab_app."))
+            .order_by(AuditLog.created_at.desc())
+            .limit(limit)
+        )
+    )
+    return [_audit_dict(log) for log in logs]
