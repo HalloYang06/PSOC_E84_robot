@@ -876,6 +876,20 @@ def _require_active_training_session(session: RehabAppTrainingSession) -> None:
         )
 
 
+def _require_paused_training_session(session: RehabAppTrainingSession) -> None:
+    if session.status != "paused":
+        raise AppError(
+            "TRAINING_SESSION_NOT_PAUSED",
+            "training session is not paused and cannot be resumed",
+            status_code=409,
+            details={
+                "session_id": session.id,
+                "status": session.status,
+                "control_boundary": "training_session_state_change_only_not_motion_permission",
+            },
+        )
+
+
 def _session_report(db: Session, user_id: str, session_id: str) -> RehabAppTrainingReport | None:
     return db.scalar(select(RehabAppTrainingReport).where(RehabAppTrainingReport.user_id == user_id, RehabAppTrainingReport.session_id == session_id))
 
@@ -908,7 +922,7 @@ def start_training_session(db: Session, user_id: str, plan_id: str, device_id: s
         .where(
             RehabAppTrainingSession.user_id == user_id,
             RehabAppTrainingSession.device_id == device.id,
-            RehabAppTrainingSession.status.in_(["started", "in_progress"]),
+            RehabAppTrainingSession.status.in_(["started", "in_progress", "paused"]),
         )
         .order_by(RehabAppTrainingSession.started_at.desc())
         .limit(1)
@@ -977,6 +991,86 @@ def finish_training_session(db: Session, user_id: str, session_id: str, payload:
         resource_type="rehab_app_training_session",
         resource_id=session.id,
         after={"control_boundary": "training_session_record_only_not_motion_permission"},
+    )
+    db.commit()
+    db.refresh(session)
+    return _session_dict(session)
+
+
+def pause_training_session(db: Session, user_id: str, session_id: str, reason: str = "") -> dict:
+    session = _require_user_session(db, user_id, session_id)
+    _require_active_training_session(session)
+    _require_session_report_open(db, user_id, session)
+    session.status = "paused"
+    if reason:
+        session.user_note = f"{session.user_note}\nPause: {reason}".strip()
+    db.add(session)
+    db.flush()
+    create_audit_log(
+        db,
+        actor_type="human",
+        actor_id=user_id,
+        action="rehab_app.training_session.paused",
+        resource_type="rehab_app_training_session",
+        resource_id=session.id,
+        after={"reason": reason, "control_boundary": "training_session_pause_only_not_motion_permission"},
+    )
+    db.commit()
+    db.refresh(session)
+    return _session_dict(session)
+
+
+def resume_training_session(db: Session, user_id: str, session_id: str, note: str = "") -> dict:
+    session = _require_user_session(db, user_id, session_id)
+    _require_paused_training_session(session)
+    _require_session_report_open(db, user_id, session)
+    session.status = "in_progress"
+    if note:
+        session.user_note = f"{session.user_note}\nResume: {note}".strip()
+    db.add(session)
+    db.flush()
+    create_audit_log(
+        db,
+        actor_type="human",
+        actor_id=user_id,
+        action="rehab_app.training_session.resumed",
+        resource_type="rehab_app_training_session",
+        resource_id=session.id,
+        after={"note": note, "control_boundary": "training_session_resume_only_not_motion_permission"},
+    )
+    db.commit()
+    db.refresh(session)
+    return _session_dict(session)
+
+
+def cancel_training_session(db: Session, user_id: str, session_id: str, reason: str = "") -> dict:
+    session = _require_user_session(db, user_id, session_id)
+    if session.status not in {"started", "in_progress", "paused"}:
+        raise AppError(
+            "TRAINING_SESSION_NOT_ACTIVE",
+            "training session is already closed and cannot be cancelled",
+            status_code=409,
+            details={
+                "session_id": session.id,
+                "status": session.status,
+                "control_boundary": "training_session_locked_not_motion_permission",
+            },
+        )
+    _require_session_report_open(db, user_id, session)
+    session.status = "cancelled"
+    session.ended_at = datetime.now(timezone.utc)
+    if reason:
+        session.user_note = f"{session.user_note}\nCancel: {reason}".strip()
+    db.add(session)
+    db.flush()
+    create_audit_log(
+        db,
+        actor_type="human",
+        actor_id=user_id,
+        action="rehab_app.training_session.cancelled",
+        resource_type="rehab_app_training_session",
+        resource_id=session.id,
+        after={"reason": reason, "control_boundary": "training_session_cancelled_not_motion_permission"},
     )
     db.commit()
     db.refresh(session)

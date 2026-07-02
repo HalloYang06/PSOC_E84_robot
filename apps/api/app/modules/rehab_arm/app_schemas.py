@@ -186,6 +186,24 @@ class RehabAppTrainingSessionFinishRequest(BaseModel):
     user_note: str = ""
 
 
+class RehabAppTrainingSessionPauseRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(default="", max_length=1000)
+
+
+class RehabAppTrainingSessionResumeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    note: str = Field(default="", max_length=1000)
+
+
+class RehabAppTrainingSessionCancelRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(default="", max_length=1000)
+
+
 class RehabAppTrainingSessionProgressRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

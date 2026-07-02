@@ -23,8 +23,11 @@ from .app_schemas import (
     RehabAppPlatformSyncRequest,
     RehabAppProfileUpdate,
     RehabAppTrainingReportReviewCreate,
+    RehabAppTrainingSessionCancelRequest,
     RehabAppTrainingSessionFinishRequest,
+    RehabAppTrainingSessionPauseRequest,
     RehabAppTrainingSessionProgressRequest,
+    RehabAppTrainingSessionResumeRequest,
     RehabAppTrainingSessionStartRequest,
     RehabAppTrainingPlanCreate,
     RehabAppTrainingPlanSyncRequest,
@@ -34,6 +37,7 @@ from .app_service import (
     accept_ai_training_draft,
     archive_training_plan,
     bind_device,
+    cancel_training_session,
     create_ble_message,
     create_training_report_review,
     create_training_plan,
@@ -63,9 +67,11 @@ from .app_service import (
     list_training_sessions,
     list_training_plans,
     finish_training_session,
+    pause_training_session,
     record_emg_summary,
     record_intent_summary,
     replay_offline_queue,
+    resume_training_session,
     start_training_session,
     sync_platform_records,
     sync_training_plan_to_device,
@@ -212,6 +218,21 @@ def api_update_training_session_progress(session_id: str, payload: RehabAppTrain
 @router.post("/training-sessions/{session_id}/finish")
 def api_finish_training_session(session_id: str, payload: RehabAppTrainingSessionFinishRequest, request: Request, db: Session = Depends(get_db)):
     return ok(finish_training_session(db, _user_id(db, request), session_id, payload.model_dump()))
+
+
+@router.post("/training-sessions/{session_id}/pause")
+def api_pause_training_session(session_id: str, payload: RehabAppTrainingSessionPauseRequest, request: Request, db: Session = Depends(get_db)):
+    return ok(pause_training_session(db, _user_id(db, request), session_id, payload.reason))
+
+
+@router.post("/training-sessions/{session_id}/resume")
+def api_resume_training_session(session_id: str, payload: RehabAppTrainingSessionResumeRequest, request: Request, db: Session = Depends(get_db)):
+    return ok(resume_training_session(db, _user_id(db, request), session_id, payload.note))
+
+
+@router.post("/training-sessions/{session_id}/cancel")
+def api_cancel_training_session(session_id: str, payload: RehabAppTrainingSessionCancelRequest, request: Request, db: Session = Depends(get_db)):
+    return ok(cancel_training_session(db, _user_id(db, request), session_id, payload.reason))
 
 
 @router.post("/training-sessions/{session_id}/report")

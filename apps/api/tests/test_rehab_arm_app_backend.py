@@ -405,6 +405,124 @@ def test_rehab_arm_app_device_unbind_freezes_action_paths(tmp_path, monkeypatch)
     assert blocked_start.json()["error"]["code"] == "DEVICE_REVOKED"
 
 
+def test_rehab_arm_app_training_session_pause_resume_cancel_flow(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
+
+    owner_token, _owner_user_id = _issue_rehab_app_token()
+
+    device_response = client.post(
+        "/api/rehab-arm/app/v1/devices/bind",
+        headers=auth_headers(owner_token),
+        json={"m33_device_id": "m33-session-state-alpha", "ble_name": "ArmControl-State", "trust_status": "trusted"},
+    )
+    assert device_response.status_code == 200
+    device = device_response.json()["data"]
+
+    plan_response = client.post(
+        "/api/rehab-arm/app/v1/training-plans",
+        headers=auth_headers(owner_token),
+        json={"title": "Session state plan", "movement_type": "wrist_extension", "sets": 1, "reps": 3},
+    )
+    assert plan_response.status_code == 200
+    plan = plan_response.json()["data"]
+
+    sync_response = client.post(
+        f"/api/rehab-arm/app/v1/training-plans/{plan['id']}/sync-to-device",
+        headers=auth_headers(owner_token),
+        json={"device_id": device["id"]},
+    )
+    assert sync_response.status_code == 200
+    sync = sync_response.json()["data"]
+
+    accepted = client.post(
+        f"/api/rehab-arm/app/v1/devices/{device['id']}/m33-status",
+        headers=auth_headers(owner_token),
+        json={"sync_id": sync["id"], "sync_status": "m33_accepted", "m33_reason": "state test accepted"},
+    )
+    assert accepted.status_code == 200
+
+    start = client.post(
+        "/api/rehab-arm/app/v1/training-sessions/start",
+        headers=auth_headers(owner_token),
+        json={"plan_id": plan["id"], "device_id": device["id"]},
+    )
+    assert start.status_code == 200
+    session = start.json()["data"]
+
+    pause = client.post(
+        f"/api/rehab-arm/app/v1/training-sessions/{session['id']}/pause",
+        headers=auth_headers(owner_token),
+        json={"reason": "patient reported pain"},
+    )
+    assert pause.status_code == 200
+    assert pause.json()["data"]["status"] == "paused"
+    assert "patient reported pain" in pause.json()["data"]["user_note"]
+
+    paused_progress = client.patch(
+        f"/api/rehab-arm/app/v1/training-sessions/{session['id']}/progress",
+        headers=auth_headers(owner_token),
+        json={"completion_rate": 0.5},
+    )
+    assert paused_progress.status_code == 409
+    assert paused_progress.json()["error"]["code"] == "TRAINING_SESSION_NOT_ACTIVE"
+
+    duplicate_while_paused = client.post(
+        "/api/rehab-arm/app/v1/training-sessions/start",
+        headers=auth_headers(owner_token),
+        json={"plan_id": plan["id"], "device_id": device["id"]},
+    )
+    assert duplicate_while_paused.status_code == 409
+    assert duplicate_while_paused.json()["error"]["code"] == "ACTIVE_TRAINING_SESSION_EXISTS"
+
+    resume = client.post(
+        f"/api/rehab-arm/app/v1/training-sessions/{session['id']}/resume",
+        headers=auth_headers(owner_token),
+        json={"note": "therapist checked strap"},
+    )
+    assert resume.status_code == 200
+    assert resume.json()["data"]["status"] == "in_progress"
+
+    progress = client.patch(
+        f"/api/rehab-arm/app/v1/training-sessions/{session['id']}/progress",
+        headers=auth_headers(owner_token),
+        json={"completion_rate": 0.4, "interruption_count": 1},
+    )
+    assert progress.status_code == 200
+    assert progress.json()["data"]["status"] == "in_progress"
+
+    cancel = client.post(
+        f"/api/rehab-arm/app/v1/training-sessions/{session['id']}/cancel",
+        headers=auth_headers(owner_token),
+        json={"reason": "stop for calibration"},
+    )
+    assert cancel.status_code == 200
+    assert cancel.json()["data"]["status"] == "cancelled"
+    assert cancel.json()["data"]["ended_at"]
+
+    finish_cancelled = client.post(
+        f"/api/rehab-arm/app/v1/training-sessions/{session['id']}/finish",
+        headers=auth_headers(owner_token),
+        json={"completion_rate": 1},
+    )
+    assert finish_cancelled.status_code == 409
+    assert finish_cancelled.json()["error"]["code"] == "TRAINING_SESSION_NOT_ACTIVE"
+
+    report_cancelled = client.post(
+        f"/api/rehab-arm/app/v1/training-sessions/{session['id']}/report",
+        headers=auth_headers(owner_token),
+    )
+    assert report_cancelled.status_code == 409
+    assert report_cancelled.json()["error"]["code"] == "TRAINING_SESSION_NOT_FINISHED"
+
+    restart_after_cancel = client.post(
+        "/api/rehab-arm/app/v1/training-sessions/start",
+        headers=auth_headers(owner_token),
+        json={"plan_id": plan["id"], "device_id": device["id"]},
+    )
+    assert restart_after_cancel.status_code == 200
+    assert restart_after_cancel.json()["data"]["status"] == "started"
+
+
 def test_rehab_arm_app_session_emg_and_intent_summary_flow(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
 

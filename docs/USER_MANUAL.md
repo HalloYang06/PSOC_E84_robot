@@ -114,6 +114,16 @@ Safety rule: these endpoints do not send CAN frames, motor current, motor torque
 
 To unbind a paired M33 device, call `POST /api/rehab-arm/app/v1/devices/{device_id}/unbind` with an optional `reason`. The backend keeps history and diagnostics visible, but freezes the device as revoked so it cannot sync plans, send BLE messages, update M33 decisions, or start sessions.
 
+Training sessions support evidence-state transitions:
+
+```text
+POST /api/rehab-arm/app/v1/training-sessions/{session_id}/pause
+POST /api/rehab-arm/app/v1/training-sessions/{session_id}/resume
+POST /api/rehab-arm/app/v1/training-sessions/{session_id}/cancel
+```
+
+Paused sessions still occupy the device and must be resumed before progress can be recorded. Cancelled sessions are ended and cannot be finished or turned into training reports. These endpoints record App workflow state only; the robot-side M33/firmware path remains responsible for any physical pause or stop behavior.
+
 ## Android APK Build Environment
 
 This workstation has the Android build prerequisites installed for the rehab-arm mobile wrapper:
