@@ -423,6 +423,20 @@ def get_device_status(db: Session, user_id: str, device_id: str) -> dict:
     }
 
 
+def _require_device_not_revoked(device: RehabAppDeviceBinding) -> None:
+    if device.trust_status == "revoked":
+        raise AppError(
+            "DEVICE_REVOKED",
+            "device binding is revoked and cannot be used for training, BLE, or M33 decisions",
+            status_code=409,
+            details={
+                "device_id": device.id,
+                "m33_device_id": device.m33_device_id,
+                "control_boundary": "device_revoked_not_motion_permission",
+            },
+        )
+
+
 def upload_device_diagnostic(db: Session, user_id: str, device_id: str, payload: RehabAppDiagnosticUploadRequest) -> dict:
     device = db.get(RehabAppDeviceBinding, device_id)
     if device is None or device.user_id != user_id:
@@ -538,6 +552,7 @@ def sync_training_plan_to_device(db: Session, user_id: str, plan_id: str, device
     device = db.get(RehabAppDeviceBinding, device_id)
     if device is None or device.user_id != user_id:
         raise AppError("DEVICE_NOT_FOUND", "device binding not found", status_code=404)
+    _require_device_not_revoked(device)
     sync = RehabAppTrainingPlanSync(plan_id=plan.id, device_id=device.id, plan_version=plan.version, sync_status="pending")
     db.add(sync)
     db.flush()
@@ -565,6 +580,7 @@ def update_m33_sync_status(db: Session, user_id: str, device_id: str, sync_id: s
     device = db.get(RehabAppDeviceBinding, device_id)
     if device is None or device.user_id != user_id:
         raise AppError("DEVICE_NOT_FOUND", "device binding not found", status_code=404)
+    _require_device_not_revoked(device)
     sync = db.get(RehabAppTrainingPlanSync, sync_id)
     if sync is None or sync.device_id != device.id:
         raise AppError("TRAINING_PLAN_SYNC_NOT_FOUND", "training plan sync not found", status_code=404)
@@ -642,6 +658,7 @@ def _require_user_device(db: Session, user_id: str, device_id: str) -> RehabAppD
     device = db.get(RehabAppDeviceBinding, device_id)
     if device is None or device.user_id != user_id:
         raise AppError("DEVICE_NOT_FOUND", "device binding not found", status_code=404)
+    _require_device_not_revoked(device)
     return device
 
 
@@ -855,6 +872,7 @@ def start_training_session(db: Session, user_id: str, plan_id: str, device_id: s
     device = db.get(RehabAppDeviceBinding, device_id)
     if device is None or device.user_id != user_id:
         raise AppError("DEVICE_NOT_FOUND", "device binding not found", status_code=404)
+    _require_device_not_revoked(device)
     active_session = db.scalar(
         select(RehabAppTrainingSession)
         .where(

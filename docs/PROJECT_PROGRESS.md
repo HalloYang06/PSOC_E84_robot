@@ -126,3 +126,4 @@
 - Tightened the App training-session state machine: `training-sessions/start` now rejects duplicate active sessions on the same device with `ACTIVE_TRAINING_SESSION_EXISTS`, while allowing a new session after the previous one is finished.
 - Locked finished App training sessions against later progress or finish mutation. `PATCH /training-sessions/{id}/progress` and repeated finish calls now return `TRAINING_SESSION_NOT_ACTIVE` after a session is finished.
 - Locked report source evidence after report generation. Repeated report POSTs now return the existing report, while late EMG/intent uploads for the reported session return `TRAINING_REPORT_ALREADY_GENERATED`.
+- Added revoked-device enforcement. `trust_status=revoked` devices can still be viewed and receive diagnostic uploads, but plan sync, BLE messages/ACKs, M33 status updates, and session start now return `DEVICE_REVOKED`.

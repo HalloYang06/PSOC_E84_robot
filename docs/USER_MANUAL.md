@@ -45,6 +45,7 @@ Core closed-loop flow:
 
 1. `PATCH /me/profile` creates or updates the patient profile.
 2. `POST /devices/bind` binds an M33 BLE device identity.
+   - Rebinding a device with `trust_status=revoked` keeps it visible for audit/diagnostics but blocks plan sync, BLE messages, M33 status updates, and training starts with `DEVICE_REVOKED`.
 3. `POST /training-plans` creates a plan, or `POST /ai-training-drafts/generate` creates an AI draft that can be accepted through `/ai-training-drafts/{draft_id}/accept`.
 4. `POST /training-plans/{plan_id}/sync-to-device` submits the current plan version for M33 review.
 5. `POST /devices/{device_id}/m33-status` records the M33 decision. `m33_accepted` is required before a session record can start.

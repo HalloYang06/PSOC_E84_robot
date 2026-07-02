@@ -247,6 +247,66 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert next_start_after_finish.status_code == 200
     assert next_start_after_finish.json()["data"]["status"] == "started"
 
+    revoked_bind = client.post(
+        "/api/rehab-arm/app/v1/devices/bind",
+        headers=auth_headers(owner_token),
+        json={
+            "m33_device_id": "m33-rehab-arm-alpha",
+            "ble_name": "ArmControl-Alpha",
+            "firmware_version": "m33-0.3.3",
+            "platform_project_id": project_id,
+            "trust_status": "revoked",
+        },
+    )
+    assert revoked_bind.status_code == 200
+    assert revoked_bind.json()["data"]["trust_status"] == "revoked"
+
+    revoked_status = client.get(
+        f"/api/rehab-arm/app/v1/devices/{device['id']}/status",
+        headers=auth_headers(owner_token),
+    )
+    assert revoked_status.status_code == 200
+    assert revoked_status.json()["data"]["trust_status"] == "revoked"
+
+    revoked_diagnostic = client.post(
+        f"/api/rehab-arm/app/v1/devices/{device['id']}/diagnostic-upload",
+        headers=auth_headers(owner_token),
+        json={"snapshot_type": "revoked_device_seen", "m33_state": "revoked"},
+    )
+    assert revoked_diagnostic.status_code == 200
+
+    revoked_sync = client.post(
+        f"/api/rehab-arm/app/v1/training-plans/{plan['id']}/sync-to-device",
+        headers=auth_headers(owner_token),
+        json={"device_id": device["id"]},
+    )
+    assert revoked_sync.status_code == 409
+    assert revoked_sync.json()["error"]["code"] == "DEVICE_REVOKED"
+
+    revoked_ble = client.post(
+        f"/api/rehab-arm/app/v1/devices/{device['id']}/ble/messages",
+        headers=auth_headers(owner_token),
+        json={"message_type": "device_status_request"},
+    )
+    assert revoked_ble.status_code == 409
+    assert revoked_ble.json()["error"]["code"] == "DEVICE_REVOKED"
+
+    revoked_m33_status = client.post(
+        f"/api/rehab-arm/app/v1/devices/{device['id']}/m33-status",
+        headers=auth_headers(owner_token),
+        json={"sync_id": resync["id"], "sync_status": "m33_accepted", "m33_reason": "should be blocked"},
+    )
+    assert revoked_m33_status.status_code == 409
+    assert revoked_m33_status.json()["error"]["code"] == "DEVICE_REVOKED"
+
+    revoked_start = client.post(
+        "/api/rehab-arm/app/v1/training-sessions/start",
+        headers=auth_headers(owner_token),
+        json={"plan_id": plan["id"], "device_id": device["id"]},
+    )
+    assert revoked_start.status_code == 409
+    assert revoked_start.json()["error"]["code"] == "DEVICE_REVOKED"
+
     forbidden = client.post(
         "/api/rehab-arm/app/v1/training-plans",
         headers=auth_headers(owner_token),
