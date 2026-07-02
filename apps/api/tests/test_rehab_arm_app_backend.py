@@ -1,18 +1,26 @@
 from __future__ import annotations
 
+from uuid import uuid4
+
 from fastapi.testclient import TestClient
 
 from app.main import app
-from tests.helpers import auth_headers, create_project, issue_session_token
+from tests.helpers import auth_headers, create_project, issue_session_token, register_user
 
 
 client = TestClient(app)
 
 
+def _issue_rehab_app_token() -> tuple[str, str]:
+    email = f"rehab-app-{uuid4().hex}@example.com"
+    register_user(client, email, "Rehab App Test User")
+    return issue_session_token(client, email=email)
+
+
 def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
 
-    owner_token, owner_user_id = issue_session_token(client)
+    owner_token, owner_user_id = _issue_rehab_app_token()
     project = create_project(client, owner_token, name_prefix="Rehab Arm App")
     project_id = project["id"]
 
@@ -212,7 +220,32 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
         json={"plan_id": plan["id"], "device_id": device["id"]},
     )
     assert allowed_start.status_code == 200
-    assert allowed_start.json()["data"]["status"] == "started"
+    active_session = allowed_start.json()["data"]
+    assert active_session["status"] == "started"
+
+    duplicate_start = client.post(
+        "/api/rehab-arm/app/v1/training-sessions/start",
+        headers=auth_headers(owner_token),
+        json={"plan_id": plan["id"], "device_id": device["id"]},
+    )
+    assert duplicate_start.status_code == 409
+    assert duplicate_start.json()["error"]["code"] == "ACTIVE_TRAINING_SESSION_EXISTS"
+    assert duplicate_start.json()["error"]["details"]["active_session_id"] == active_session["id"]
+
+    finish_active = client.post(
+        f"/api/rehab-arm/app/v1/training-sessions/{active_session['id']}/finish",
+        headers=auth_headers(owner_token),
+        json={"completion_rate": 1, "user_note": "complete before next session"},
+    )
+    assert finish_active.status_code == 200
+
+    next_start_after_finish = client.post(
+        "/api/rehab-arm/app/v1/training-sessions/start",
+        headers=auth_headers(owner_token),
+        json={"plan_id": plan["id"], "device_id": device["id"]},
+    )
+    assert next_start_after_finish.status_code == 200
+    assert next_start_after_finish.json()["data"]["status"] == "started"
 
     forbidden = client.post(
         "/api/rehab-arm/app/v1/training-plans",
@@ -232,7 +265,7 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
 def test_rehab_arm_app_session_emg_and_intent_summary_flow(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
 
-    owner_token, _owner_user_id = issue_session_token(client)
+    owner_token, _owner_user_id = _issue_rehab_app_token()
 
     device_response = client.post(
         "/api/rehab-arm/app/v1/devices/bind",
@@ -449,7 +482,7 @@ def test_rehab_arm_app_session_emg_and_intent_summary_flow(tmp_path, monkeypatch
 def test_rehab_arm_app_plan_edit_ai_draft_and_platform_sync(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
 
-    owner_token, _owner_user_id = issue_session_token(client)
+    owner_token, _owner_user_id = _issue_rehab_app_token()
 
     bootstrap = client.get("/api/rehab-arm/app/v1/me", headers=auth_headers(owner_token))
     assert bootstrap.status_code == 200
@@ -526,7 +559,7 @@ def test_rehab_arm_app_plan_edit_ai_draft_and_platform_sync(tmp_path, monkeypatc
 def test_rehab_arm_app_offline_diagnostics_sync_and_audit_loop(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
 
-    owner_token, _owner_user_id = issue_session_token(client)
+    owner_token, _owner_user_id = _issue_rehab_app_token()
 
     device_response = client.post(
         "/api/rehab-arm/app/v1/devices/bind",

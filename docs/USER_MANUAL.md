@@ -48,7 +48,7 @@ Core closed-loop flow:
 3. `POST /training-plans` creates a plan, or `POST /ai-training-drafts/generate` creates an AI draft that can be accepted through `/ai-training-drafts/{draft_id}/accept`.
 4. `POST /training-plans/{plan_id}/sync-to-device` submits the current plan version for M33 review.
 5. `POST /devices/{device_id}/m33-status` records the M33 decision. `m33_accepted` is required before a session record can start.
-6. `POST /training-sessions/start` starts only if the selected plan/device has current-version `m33_accepted`; otherwise it returns `M33_ACCEPTANCE_REQUIRED`.
+6. `POST /training-sessions/start` starts only if the selected plan/device has current-version `m33_accepted` and the selected device has no active session. Otherwise it returns `M33_ACCEPTANCE_REQUIRED` or `ACTIVE_TRAINING_SESSION_EXISTS`.
 7. `PATCH /training-sessions/{session_id}/progress`, `POST /emg/summary`, `POST /intent/summary`, and `POST /training-sessions/{session_id}/finish` store evidence and records only.
 8. `POST /training-sessions/{session_id}/report` generates the post-session training report only after the session is finished.
 9. `POST /training-reports/{report_id}/reviews` records human review and next-step intent without creating motion permission.

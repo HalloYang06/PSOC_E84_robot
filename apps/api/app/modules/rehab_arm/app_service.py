@@ -822,6 +822,28 @@ def start_training_session(db: Session, user_id: str, plan_id: str, device_id: s
     device = db.get(RehabAppDeviceBinding, device_id)
     if device is None or device.user_id != user_id:
         raise AppError("DEVICE_NOT_FOUND", "device binding not found", status_code=404)
+    active_session = db.scalar(
+        select(RehabAppTrainingSession)
+        .where(
+            RehabAppTrainingSession.user_id == user_id,
+            RehabAppTrainingSession.device_id == device.id,
+            RehabAppTrainingSession.status.in_(["started", "in_progress"]),
+        )
+        .order_by(RehabAppTrainingSession.started_at.desc())
+        .limit(1)
+    )
+    if active_session is not None:
+        raise AppError(
+            "ACTIVE_TRAINING_SESSION_EXISTS",
+            "finish or recover the active training session before starting another one on this device",
+            status_code=409,
+            details={
+                "active_session_id": active_session.id,
+                "active_session_status": active_session.status,
+                "device_id": device.id,
+                "control_boundary": "training_session_blocked_not_motion_permission",
+            },
+        )
     sync = _latest_plan_device_sync(db, plan.id, device.id)
     if sync is None or sync.sync_status != "m33_accepted" or sync.plan_version != plan.version:
         raise AppError(
@@ -1294,6 +1316,7 @@ def _persist_ai_training_draft(db: Session, user_id: str, input_text: str, conte
         context_snapshot=_json_safe(context_snapshot),
         generated_plan=_json_safe(generated_plan),
         risk_notes=risk_notes,
+        created_at=datetime.now(timezone.utc),
     )
     db.add(draft)
     db.flush()
@@ -1325,7 +1348,7 @@ def list_ai_training_drafts(db: Session, user_id: str, status: str = "all", limi
         stmt = stmt.where(RehabAppAiTrainingDraft.accepted_plan_id != "")
     elif status != "all":
         raise AppError("AI_TRAINING_DRAFT_STATUS_INVALID", "AI training draft status must be all, open, or accepted", status_code=422)
-    drafts = list(db.scalars(stmt.order_by(RehabAppAiTrainingDraft.created_at.desc()).limit(limit)))
+    drafts = list(db.scalars(stmt.order_by(RehabAppAiTrainingDraft.created_at.desc(), RehabAppAiTrainingDraft.id.desc()).limit(limit)))
     return [_draft_dict(draft) for draft in drafts]
 
 
