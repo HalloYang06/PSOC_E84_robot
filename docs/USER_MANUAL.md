@@ -25,3 +25,4 @@ python -m http.server 4177 --bind 127.0.0.1
 2. Open `http://127.0.0.1:4177/rehab-arm-mobile/index.html` on desktop or phone browser.
 3. Optional backend connection: set `localStorage.rehabArmMobileApiBase` to the API origin that serves `/api/rehab-arm/app/v1`.
 4. Keep the safety boundary visible: App sync submits structured training data for M33 review only. It is not motion permission and must not release emergency stop.
+5. On Android Chrome, use "Add to Home screen" from the browser menu. The PWA includes standalone display metadata and maskable PNG icons for install preview.

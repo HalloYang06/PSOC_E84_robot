@@ -84,3 +84,5 @@
 - Updated the PWA shell and service worker so inner Stitch navigation updates the outer iframe and `mobile-bridge.js` is cached.
 - Updated `docs/USER_MANUAL.md` with the phone PWA preview command, URL, optional API base configuration, and safety note.
 - Validation passed: `python -m pytest tests/test_rehab_arm_app_backend.py -q`; static scan confirmed all eight Stitch pages include `mobile-bridge.js`; Playwright mobile QA at `390x844` confirmed the bridge status strip renders, bottom navigation reaches `training-library.html`, no horizontal overflow appears on home/training pages, and no browser console errors were emitted.
+- Improved the phone PWA install surface by adding PNG app icons (`192x192`, `512x512`, maskable `512x512`, and iOS `apple-touch-icon`), wiring them into `manifest.json`, `index.html`, and the service worker cache.
+- Validation passed: browser manifest check confirmed `display=standalone`, four manifest icons, and cached `icon-maskable-512.png`.
