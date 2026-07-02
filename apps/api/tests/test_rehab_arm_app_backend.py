@@ -361,6 +361,22 @@ def test_rehab_arm_app_session_emg_and_intent_summary_flow(tmp_path, monkeypatch
     assert finished["status"] == "finished"
     assert finished["pain_after"] == 3
 
+    progress_after_finish = client.patch(
+        f"/api/rehab-arm/app/v1/training-sessions/{session['id']}/progress",
+        headers=auth_headers(owner_token),
+        json={"completion_rate": 0.2},
+    )
+    assert progress_after_finish.status_code == 409
+    assert progress_after_finish.json()["error"]["code"] == "TRAINING_SESSION_NOT_ACTIVE"
+
+    finish_again = client.post(
+        f"/api/rehab-arm/app/v1/training-sessions/{session['id']}/finish",
+        headers=auth_headers(owner_token),
+        json={"completion_rate": 1},
+    )
+    assert finish_again.status_code == 409
+    assert finish_again.json()["error"]["code"] == "TRAINING_SESSION_NOT_ACTIVE"
+
     report_response = client.post(
         f"/api/rehab-arm/app/v1/training-sessions/{session['id']}/report",
         headers=auth_headers(owner_token),

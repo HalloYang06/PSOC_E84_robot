@@ -48,6 +48,7 @@ Closed-loop backend contract:
 - `POST /api/rehab-arm/app/v1/devices/{device_id}/m33-status` records M33 sync decisions (`sent`, `m33_accepted`, `m33_rejected`, `failed`) and reasons. It records safety authority evidence; it does not expose override controls.
 - Training-plan edits increment `version`. `sync-to-device` captures `plan_version`, and `training-sessions/start` requires an `m33_accepted` sync for the current plan version on the selected device.
 - A bound device can have only one active App training session (`started` or `in_progress`) at a time. Duplicate starts return `ACTIVE_TRAINING_SESSION_EXISTS` until the active session is finished or recovered.
+- Finished training sessions are locked for progress/finish updates. Later report, review, and next-draft steps read the locked session evidence instead of mutating it.
 - AI training draft endpoints are draft-only: generate, list by `all/open/accepted`, read, accept-to-plan. Accepted drafts become normal training plans and still require M33 sync and acceptance before a training session record can start.
 - Platform sync endpoints are evidence/review only and must not be interpreted as motion permission.
 - Diagnostic upload endpoints store M33/mobile snapshots for review: `POST /devices/{device_id}/diagnostic-upload` and `GET /devices/{device_id}/diagnostics`.

@@ -49,7 +49,7 @@ Core closed-loop flow:
 4. `POST /training-plans/{plan_id}/sync-to-device` submits the current plan version for M33 review.
 5. `POST /devices/{device_id}/m33-status` records the M33 decision. `m33_accepted` is required before a session record can start.
 6. `POST /training-sessions/start` starts only if the selected plan/device has current-version `m33_accepted` and the selected device has no active session. Otherwise it returns `M33_ACCEPTANCE_REQUIRED` or `ACTIVE_TRAINING_SESSION_EXISTS`.
-7. `PATCH /training-sessions/{session_id}/progress`, `POST /emg/summary`, `POST /intent/summary`, and `POST /training-sessions/{session_id}/finish` store evidence and records only.
+7. `PATCH /training-sessions/{session_id}/progress`, `POST /emg/summary`, `POST /intent/summary`, and `POST /training-sessions/{session_id}/finish` store evidence and records only. Once a session is `finished`, progress and finish updates return `TRAINING_SESSION_NOT_ACTIVE`.
 8. `POST /training-sessions/{session_id}/report` generates the post-session training report only after the session is finished.
 9. `POST /training-reports/{report_id}/reviews` records human review and next-step intent without creating motion permission.
 10. `POST /training-reports/{report_id}/draft-next-plan` creates the next AI draft from report/review evidence only. Accepting that draft creates a normal plan, and the plan still needs current-version M33 acceptance before the next session can start.

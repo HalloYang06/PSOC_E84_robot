@@ -815,6 +815,20 @@ def _require_user_session(db: Session, user_id: str, session_id: str) -> RehabAp
     return session
 
 
+def _require_active_training_session(session: RehabAppTrainingSession) -> None:
+    if session.status not in {"started", "in_progress"}:
+        raise AppError(
+            "TRAINING_SESSION_NOT_ACTIVE",
+            "training session is not active and cannot be changed",
+            status_code=409,
+            details={
+                "session_id": session.id,
+                "status": session.status,
+                "control_boundary": "training_session_locked_not_motion_permission",
+            },
+        )
+
+
 def start_training_session(db: Session, user_id: str, plan_id: str, device_id: str) -> dict:
     plan = db.get(RehabAppTrainingPlan, plan_id)
     if plan is None or plan.user_id != user_id:
@@ -881,6 +895,7 @@ def start_training_session(db: Session, user_id: str, plan_id: str, device_id: s
 
 def finish_training_session(db: Session, user_id: str, session_id: str, payload: dict) -> dict:
     session = _require_user_session(db, user_id, session_id)
+    _require_active_training_session(session)
     for key, value in payload.items():
         setattr(session, key, value)
     session.status = "finished"
@@ -903,6 +918,7 @@ def finish_training_session(db: Session, user_id: str, session_id: str, payload:
 
 def update_training_session_progress(db: Session, user_id: str, session_id: str, payload: dict) -> dict:
     session = _require_user_session(db, user_id, session_id)
+    _require_active_training_session(session)
     for key, value in payload.items():
         if value is not None:
             setattr(session, key, value)
