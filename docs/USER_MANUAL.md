@@ -95,6 +95,8 @@ Training reports summarize session completion, EMG overview, M55 intent overview
 
 The report-to-next-plan endpoint turns a finished report and latest review into an AI draft. It is useful after fatigue, pain, or therapist review indicates adjustment, but the output is still `ai_draft_only_not_execution_permission`. After the draft is accepted, run `sync-to-device`, wait for `m33_accepted`, and only then call `training-sessions/start`.
 
+Platform sync accepts evidence resource types including `training_plans`, `training_sessions`, `training_reports`, `training_report_reviews`, `ai_training_drafts`, `emg_summaries`, and `m33_decisions`.
+
 Allowed offline replay operations:
 
 ```text

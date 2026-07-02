@@ -1,6 +1,6 @@
 # Rehab Arm APP Backend Prompt
 
-Updated: 2026-07-02
+Updated: 2026-07-03
 
 This prompt is for the AI or engineer implementing the mobile APP backend for the medical rehabilitation manipulator project. The backend must complement the existing cloud platform, NanoPi, M55, M33, and robot stack. It must not create a parallel robot-control authority.
 
@@ -268,6 +268,7 @@ GET  /api/app/emg/history
 POST /api/app/ai-training-drafts/generate
 GET  /api/app/ai-training-drafts/:id
 POST /api/app/ai-training-drafts/:id/accept
+POST /api/app/training-reports/:id/draft-next-plan
 ```
 
 ### Platform Sync
@@ -364,6 +365,7 @@ The AI output must be a draft only:
 - It must not claim execution permission.
 - It must not produce motor commands.
 - The accepted draft becomes a `TrainingPlan`, then M33 decides whether it can be used.
+- Report-derived next-plan drafts must read post-session report/review evidence and remain draft-only. They may lower intensity after pain, fatigue, or therapist adjustment notes, but accepting them still creates a normal training plan that must be synced to M33 and accepted for the current version before a new session record can start.
 
 Recommended AI input context:
 
@@ -407,17 +409,20 @@ The APP backend should sync concise records to the cloud platform:
 - M33 accept/reject decisions;
 - user notes and pain feedback;
 - AI-generated draft metadata.
+- report review metadata and report-derived next-plan draft metadata.
 
 The platform should display these records as evidence and review data. The platform must not treat synced APP records as direct robot-control permission.
 
 ## Acceptance Checklist
 
-- [ ] APP backend can create, edit, version, and archive training plans.
-- [ ] APP backend can record M33 sync state including rejection reason.
-- [ ] APP backend can store training session summaries.
-- [ ] APP backend can store EMG and M55 inference summaries.
-- [ ] AI training draft endpoint clearly marks output as draft only.
-- [ ] All execution-adjacent APIs write audit logs.
-- [ ] Every control-adjacent response includes `control_boundary`.
-- [ ] No endpoint accepts CAN frames, raw motor commands, direct torque/current, or M33 overrides.
-- [ ] Platform sync is evidence/review only.
+- [x] APP backend can create, edit, version, and archive training plans.
+- [x] APP backend can record M33 sync state including rejection reason.
+- [x] APP backend can store training session summaries.
+- [x] APP backend can store EMG and M55 inference summaries.
+- [x] AI training draft endpoint clearly marks output as draft only.
+- [x] Post-session reports and report reviews are stored as review evidence only.
+- [x] Report-derived next-plan drafts remain AI drafts and still require M33 acceptance after they become plans.
+- [x] All execution-adjacent APIs write audit logs.
+- [x] Every control-adjacent response includes `control_boundary`.
+- [x] No endpoint accepts CAN frames, raw motor commands, direct torque/current, or M33 overrides.
+- [x] Platform sync is evidence/review only, including `ai_training_drafts`.

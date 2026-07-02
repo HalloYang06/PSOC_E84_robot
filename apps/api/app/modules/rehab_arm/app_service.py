@@ -1417,7 +1417,15 @@ def accept_ai_training_draft(db: Session, user_id: str, draft_id: str) -> dict:
 
 
 def sync_platform_records(db: Session, user_id: str, resource_types: list[str]) -> dict:
-    selected_types = resource_types or ["training_plans", "training_sessions", "training_reports", "training_report_reviews", "emg_summaries", "m33_decisions"]
+    selected_types = resource_types or [
+        "training_plans",
+        "training_sessions",
+        "training_reports",
+        "training_report_reviews",
+        "ai_training_drafts",
+        "emg_summaries",
+        "m33_decisions",
+    ]
     summary = {
         "training_plans": len(list_training_plans(db, user_id)) if "training_plans" in selected_types else 0,
         "training_sessions": len(list_training_sessions(db, user_id)) if "training_sessions" in selected_types else 0,
@@ -1426,6 +1434,9 @@ def sync_platform_records(db: Session, user_id: str, resource_types: list[str]) 
             list(db.scalars(select(RehabAppTrainingReportReview).where(RehabAppTrainingReportReview.user_id == user_id)))
         )
         if "training_report_reviews" in selected_types
+        else 0,
+        "ai_training_drafts": len(list(db.scalars(select(RehabAppAiTrainingDraft).where(RehabAppAiTrainingDraft.user_id == user_id))))
+        if "ai_training_drafts" in selected_types
         else 0,
         "emg_summaries": len(emg_history(db, user_id)) if "emg_summaries" in selected_types else 0,
         "m33_decisions": len(
@@ -1469,7 +1480,15 @@ def get_platform_sync_status(db: Session, user_id: str) -> dict:
         "status": "ready",
         "latest_session_id": latest_session[0]["id"] if latest_session else "",
         "latest_sync_run": _platform_sync_run_dict(latest_run) if latest_run else None,
-        "synced_resource_types": ["training_plans", "training_sessions", "training_reports", "training_report_reviews", "emg_summaries", "m33_decisions"],
+        "synced_resource_types": [
+            "training_plans",
+            "training_sessions",
+            "training_reports",
+            "training_report_reviews",
+            "ai_training_drafts",
+            "emg_summaries",
+            "m33_decisions",
+        ],
         "control_boundary": "platform_sync_evidence_only_not_motion_permission",
     }
 

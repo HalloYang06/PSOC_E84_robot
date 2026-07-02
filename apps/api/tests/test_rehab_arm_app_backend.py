@@ -430,11 +430,12 @@ def test_rehab_arm_app_session_emg_and_intent_summary_flow(tmp_path, monkeypatch
     sync_run = client.post(
         "/api/rehab-arm/app/v1/platform/sync",
         headers=auth_headers(owner_token),
-        json={"resource_types": ["training_reports", "training_report_reviews"]},
+        json={"resource_types": ["training_reports", "training_report_reviews", "ai_training_drafts"]},
     )
     assert sync_run.status_code == 200
     assert sync_run.json()["data"]["summary"]["training_reports"] == 1
     assert sync_run.json()["data"]["summary"]["training_report_reviews"] == 1
+    assert sync_run.json()["data"]["summary"]["ai_training_drafts"] == 1
 
     latest_emg = client.get("/api/rehab-arm/app/v1/emg/latest", headers=auth_headers(owner_token))
     assert latest_emg.status_code == 200
