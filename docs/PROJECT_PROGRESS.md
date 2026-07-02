@@ -118,3 +118,6 @@
 - Training report reads, lists, and `/me` bootstrap now include `latest_review`, and platform sync summaries can count `training_report_reviews`.
 - Preserved the report boundary: reviews are not medical diagnosis, treatment authorization, or motion permission, and any requested plan still has to become a training plan, sync to M33, and receive current-version `m33_accepted`.
 - Validation passed: `python -m pytest tests/test_rehab_arm_app_backend.py -q` from `apps/api` (`4 passed`, deprecation warnings only).
+- Added the report-review-to-next-draft bridge: `POST /training-reports/{report_id}/draft-next-plan` creates an AI draft from the finished report, latest review, original plan, EMG overview, and M55 intent overview. It can reduce sets/reps and slightly increase assist when review/pain/fatigue indicates adjustment, but it remains `ai_draft_only_not_execution_permission`.
+- Verified that accepting the generated draft creates a normal plan and that starting it immediately is blocked with `M33_ACCEPTANCE_REQUIRED` until the new plan version is synced and accepted by M33.
+- Validation passed: `python -m pytest tests/test_rehab_arm_app_backend.py -q` from `apps/api` (`4 passed`, deprecation warnings only).

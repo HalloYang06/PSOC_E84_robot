@@ -353,9 +353,9 @@ def test_rehab_arm_app_session_emg_and_intent_summary_flow(tmp_path, monkeypatch
         json={
             "reviewer_role": "therapist",
             "review_status": "reviewed",
-            "reviewer_note": "Continue low intensity and re-check fatigue after next session.",
-            "next_step": "continue_current_plan",
-            "request_new_plan": False,
+            "reviewer_note": "Adjust next plan and re-check fatigue after next session.",
+            "next_step": "adjust_plan",
+            "request_new_plan": True,
             "follow_up_payload": {"review_window_days": 3},
         },
     )
@@ -363,9 +363,42 @@ def test_rehab_arm_app_session_emg_and_intent_summary_flow(tmp_path, monkeypatch
     review = review_response.json()["data"]
     assert review["report_id"] == report["id"]
     assert review["reviewer_role"] == "therapist"
-    assert review["next_step"] == "continue_current_plan"
-    assert review["request_new_plan"] is False
+    assert review["next_step"] == "adjust_plan"
+    assert review["request_new_plan"] is True
     assert review["control_boundary"] == "training_report_review_only_not_medical_diagnosis_or_motion_permission"
+
+    next_draft_response = client.post(
+        f"/api/rehab-arm/app/v1/training-reports/{report['id']}/draft-next-plan",
+        headers=auth_headers(owner_token),
+    )
+    assert next_draft_response.status_code == 200
+    next_draft = next_draft_response.json()["data"]
+    assert next_draft["control_boundary"] == "ai_draft_only_not_execution_permission"
+    assert next_draft["context_snapshot"]["source"] == "training_report_review"
+    assert next_draft["context_snapshot"]["report_id"] == report["id"]
+    assert next_draft["context_snapshot"]["latest_review"]["id"] == review["id"]
+    assert next_draft["generated_plan"]["control_boundary"] == "ai_draft_only_not_execution_permission"
+    assert next_draft["generated_plan"]["sets"] == 1
+    assert next_draft["generated_plan"]["reps"] == 5
+    assert next_draft["generated_plan"]["safety_constraints"]["source_report_id"] == report["id"]
+
+    next_plan_response = client.post(
+        f"/api/rehab-arm/app/v1/ai-training-drafts/{next_draft['id']}/accept",
+        headers=auth_headers(owner_token),
+    )
+    assert next_plan_response.status_code == 200
+    next_plan = next_plan_response.json()["data"]
+    assert next_plan["source"] == "ai_generated"
+    assert next_plan["sets"] == 1
+    assert next_plan["control_boundary"] == "training_plan_only_not_motor_command"
+
+    blocked_next_start = client.post(
+        "/api/rehab-arm/app/v1/training-sessions/start",
+        headers=auth_headers(owner_token),
+        json={"plan_id": next_plan["id"], "device_id": device_id},
+    )
+    assert blocked_next_start.status_code == 409
+    assert blocked_next_start.json()["error"]["code"] == "M33_ACCEPTANCE_REQUIRED"
 
     session_report = client.get(
         f"/api/rehab-arm/app/v1/training-sessions/{session['id']}/report",

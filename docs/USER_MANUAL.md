@@ -52,6 +52,7 @@ Core closed-loop flow:
 7. `PATCH /training-sessions/{session_id}/progress`, `POST /emg/summary`, `POST /intent/summary`, and `POST /training-sessions/{session_id}/finish` store evidence and records only.
 8. `POST /training-sessions/{session_id}/report` generates the post-session training report only after the session is finished.
 9. `POST /training-reports/{report_id}/reviews` records human review and next-step intent without creating motion permission.
+10. `POST /training-reports/{report_id}/draft-next-plan` creates the next AI draft from report/review evidence only. Accepting that draft creates a normal plan, and the plan still needs current-version M33 acceptance before the next session can start.
 
 Useful reads:
 
@@ -83,6 +84,7 @@ POST /devices/{device_id}/ble/messages
 POST /devices/{device_id}/ble/messages/{message_id}/ack
 POST /training-sessions/{session_id}/report
 POST /training-reports/{report_id}/reviews
+POST /training-reports/{report_id}/draft-next-plan
 POST /offline-queue
 POST /offline-queue/replay
 ```
@@ -90,6 +92,8 @@ POST /offline-queue/replay
 BLE messages are structured App-to-M33 contract records. They can prepare App hello, device status request, training plan push, training session start/progress/pause/stop request, and diagnostic snapshot request payloads. They are not CAN or motor commands, and M33 ACKs are evidence only.
 
 Training reports summarize session completion, EMG overview, M55 intent overview, M33 safety evidence, and review recommendations. Report reviews can record patient/therapist notes, next-step intent, and a request-new-plan flag. They are review records only and return `training_report_review_only_not_medical_diagnosis_or_motion_permission`.
+
+The report-to-next-plan endpoint turns a finished report and latest review into an AI draft. It is useful after fatigue, pain, or therapist review indicates adjustment, but the output is still `ai_draft_only_not_execution_permission`. After the draft is accepted, run `sync-to-device`, wait for `m33_accepted`, and only then call `training-sessions/start`.
 
 Allowed offline replay operations:
 

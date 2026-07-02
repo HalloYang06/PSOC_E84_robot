@@ -36,6 +36,7 @@ from .app_service import (
     create_ble_message,
     create_training_report_review,
     create_training_plan,
+    draft_next_plan_from_report,
     emg_history,
     generate_ai_training_draft,
     generate_training_report,
@@ -233,6 +234,11 @@ def api_create_training_report_review(report_id: str, payload: RehabAppTrainingR
 @router.get("/training-reports/{report_id}/reviews")
 def api_list_training_report_reviews(report_id: str, request: Request, db: Session = Depends(get_db)):
     return ok(list_training_report_reviews(db, _user_id(db, request), report_id))
+
+
+@router.post("/training-reports/{report_id}/draft-next-plan")
+def api_draft_next_plan_from_report(report_id: str, request: Request, db: Session = Depends(get_db)):
+    return ok(draft_next_plan_from_report(db, _user_id(db, request), report_id))
 
 
 @router.post("/emg/summary")

@@ -296,6 +296,16 @@ def _audit_dict(log: AuditLog) -> dict:
     }
 
 
+def _json_safe(value):
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(item) for item in value]
+    return value
+
+
 def upsert_profile(db: Session, user_id: str, payload: RehabAppProfileUpdate) -> dict:
     profile = db.scalar(select(RehabAppUserProfile).where(RehabAppUserProfile.user_id == user_id))
     data = payload.model_dump()
@@ -1255,8 +1265,8 @@ def replay_offline_queue(db: Session, user_id: str, item_ids: list[str] | None =
     }
 
 
-def generate_ai_training_draft(db: Session, user_id: str, input_text: str, context_snapshot: dict) -> dict:
-    generated_plan = {
+def _draft_plan_from_context(input_text: str, context_snapshot: dict) -> dict:
+    return {
         "title": "AI 建议低强度训练",
         "source": "ai_generated",
         "goal": input_text[:240],
@@ -1273,12 +1283,14 @@ def generate_ai_training_draft(db: Session, user_id: str, input_text: str, conte
         "status": "draft",
         "control_boundary": "ai_draft_only_not_execution_permission",
     }
-    risk_notes = ["AI 只生成草稿，不代表执行许可", "必须同步到 M33 并获得 m33_accepted 后才能开始训练记录"]
+
+
+def _persist_ai_training_draft(db: Session, user_id: str, input_text: str, context_snapshot: dict, generated_plan: dict, risk_notes: list[str]) -> dict:
     draft = RehabAppAiTrainingDraft(
         user_id=user_id,
         input_text=input_text,
-        context_snapshot=context_snapshot,
-        generated_plan=generated_plan,
+        context_snapshot=_json_safe(context_snapshot),
+        generated_plan=_json_safe(generated_plan),
         risk_notes=risk_notes,
     )
     db.add(draft)
@@ -1295,6 +1307,80 @@ def generate_ai_training_draft(db: Session, user_id: str, input_text: str, conte
     db.commit()
     db.refresh(draft)
     return _draft_dict(draft)
+
+
+def generate_ai_training_draft(db: Session, user_id: str, input_text: str, context_snapshot: dict) -> dict:
+    generated_plan = _draft_plan_from_context(input_text, context_snapshot)
+    risk_notes = ["AI 只生成草稿，不代表执行许可", "必须同步到 M33 并获得 m33_accepted 后才能开始训练记录"]
+    return _persist_ai_training_draft(db, user_id, input_text, context_snapshot, generated_plan, risk_notes)
+
+
+def draft_next_plan_from_report(db: Session, user_id: str, report_id: str) -> dict:
+    report = db.get(RehabAppTrainingReport, report_id)
+    if report is None or report.user_id != user_id:
+        raise AppError("TRAINING_REPORT_NOT_FOUND", "training report not found", status_code=404)
+    latest_review = db.scalar(
+        select(RehabAppTrainingReportReview)
+        .where(RehabAppTrainingReportReview.user_id == user_id, RehabAppTrainingReportReview.report_id == report.id)
+        .order_by(RehabAppTrainingReportReview.created_at.desc())
+        .limit(1)
+    )
+    plan = db.get(RehabAppTrainingPlan, report.plan_id)
+    summary = report.summary or {}
+    emg_overview = report.emg_overview or {}
+    intent_overview = report.intent_overview or {}
+    review_payload = _report_review_dict(latest_review) if latest_review else {}
+    next_step = str(review_payload.get("next_step") or "")
+    request_new_plan = bool(review_payload.get("request_new_plan") or False)
+    base_sets = int(plan.sets if plan else 2)
+    base_reps = int(plan.reps if plan else 6)
+    base_assist = float(plan.assist_level if plan else 0.2)
+    avg_fatigue = float(emg_overview.get("avg_fatigue_index") or 0)
+    pain_after = summary.get("pain_after")
+    should_reduce = next_step in {"adjust_plan", "pause_and_consult", "calibration_check"} or request_new_plan
+    if pain_after is not None and float(pain_after) >= 5:
+        should_reduce = True
+    if avg_fatigue >= 0.5:
+        should_reduce = True
+    generated_plan = {
+        "title": "复核后下一次训练草稿",
+        "source": "ai_generated",
+        "goal": f"Based on report {report.id}: {next_step or 'continue_current_plan'}",
+        "movement_type": summary.get("movement_type") or (plan.movement_type if plan else "elbow_flexion"),
+        "sets": max(1, base_sets - 1) if should_reduce else base_sets,
+        "reps": max(1, base_reps - 1) if should_reduce else base_reps,
+        "duration_sec": int(plan.duration_sec if plan else 480),
+        "target_joints": plan.target_joints if plan else ["elbow"],
+        "assist_level": min(1.0, round(base_assist + 0.05, 3)) if should_reduce else base_assist,
+        "speed_level": "slow",
+        "target_angle_range": plan.target_angle_range if plan else {"min_deg": 15, "max_deg": 60},
+        "emg_policy": plan.emg_policy if plan else {"intent_source": "m55", "assist_when_confidence_above": 0.72},
+        "safety_constraints": {
+            "require_fresh_m33_heartbeat": True,
+            "stop_on_pain_report": True,
+            "requires_report_review": True,
+            "source_report_id": report.id,
+        },
+        "status": "draft",
+        "control_boundary": "ai_draft_only_not_execution_permission",
+    }
+    context_snapshot = {
+        "source": "training_report_review",
+        "report_id": report.id,
+        "session_id": report.session_id,
+        "summary": summary,
+        "emg_overview": emg_overview,
+        "intent_overview": intent_overview,
+        "latest_review": review_payload,
+        "control_boundary": "report_to_ai_draft_only_not_execution_permission",
+    }
+    input_text = f"Draft next plan from training report {report.id} and latest review. This must remain a draft only."
+    risk_notes = [
+        "复核后计划仍然只是草稿，不代表执行许可",
+        "接受草稿后仍需同步到 M33 并获得当前版本 m33_accepted",
+        "如疼痛或疲劳升高，应先由治疗师复核再进入下一次训练",
+    ]
+    return _persist_ai_training_draft(db, user_id, input_text, context_snapshot, generated_plan, risk_notes)
 
 
 def get_ai_training_draft(db: Session, user_id: str, draft_id: str) -> dict:
