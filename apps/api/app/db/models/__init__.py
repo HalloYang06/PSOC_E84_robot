@@ -12,6 +12,7 @@ from .project_knowledge import ProjectKnowledgeDocument, ProjectSkill, SeatSkill
 from .project_invite import ProjectInvite
 from .project_member import ProjectMember
 from .rehab_arm_app import (
+    RehabAppAiTrainingDraft,
     RehabAppDeviceBinding,
     RehabAppEmgSummary,
     RehabAppIntentInferenceSummary,
@@ -42,6 +43,7 @@ __all__ = [
     "User",
     "ProjectMember",
     "RehabAppUserProfile",
+    "RehabAppAiTrainingDraft",
     "RehabAppDeviceBinding",
     "RehabAppTrainingPlan",
     "RehabAppTrainingPlanSync",

@@ -92,6 +92,84 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert devices.status_code == 200
     assert devices.json()["data"][0]["latest_sync"]["sync_status"] == "pending"
 
+    blocked_start = client.post(
+        "/api/rehab-arm/app/v1/training-sessions/start",
+        headers=auth_headers(owner_token),
+        json={"plan_id": plan["id"], "device_id": device["id"]},
+    )
+    assert blocked_start.status_code == 409
+    assert blocked_start.json()["error"]["code"] == "M33_ACCEPTANCE_REQUIRED"
+    assert blocked_start.json()["error"]["details"]["control_boundary"] == "training_session_blocked_not_motion_permission"
+
+    m33_reject = client.post(
+        f"/api/rehab-arm/app/v1/devices/{device['id']}/m33-status",
+        headers=auth_headers(owner_token),
+        json={
+            "sync_id": sync["id"],
+            "sync_status": "m33_rejected",
+            "m33_reason": "joint_limit_or_estop_not_clear",
+            "firmware_version": "m33-0.3.2",
+        },
+    )
+    assert m33_reject.status_code == 200
+    assert m33_reject.json()["data"]["sync_status"] == "m33_rejected"
+
+    device_status = client.get(
+        f"/api/rehab-arm/app/v1/devices/{device['id']}/status",
+        headers=auth_headers(owner_token),
+    )
+    assert device_status.status_code == 200
+    assert device_status.json()["data"]["m33_state"] == "m33_rejected"
+    assert device_status.json()["data"]["control_boundary"] == "device_status_only_not_motion_permission"
+
+    m33_accept = client.post(
+        f"/api/rehab-arm/app/v1/devices/{device['id']}/m33-status",
+        headers=auth_headers(owner_token),
+        json={"sync_id": sync["id"], "sync_status": "m33_accepted", "m33_reason": "plan within configured safety envelope"},
+    )
+    assert m33_accept.status_code == 200
+    assert m33_accept.json()["data"]["sync_status"] == "m33_accepted"
+
+    edited_plan = client.patch(
+        f"/api/rehab-arm/app/v1/training-plans/{plan['id']}",
+        headers=auth_headers(owner_token),
+        json={"reps": 9},
+    )
+    assert edited_plan.status_code == 200
+    assert edited_plan.json()["data"]["version"] == 2
+
+    stale_acceptance_start = client.post(
+        "/api/rehab-arm/app/v1/training-sessions/start",
+        headers=auth_headers(owner_token),
+        json={"plan_id": plan["id"], "device_id": device["id"]},
+    )
+    assert stale_acceptance_start.status_code == 409
+    assert stale_acceptance_start.json()["error"]["details"]["accepted_plan_version"] == 1
+    assert stale_acceptance_start.json()["error"]["details"]["required_plan_version"] == 2
+
+    resync_response = client.post(
+        f"/api/rehab-arm/app/v1/training-plans/{plan['id']}/sync-to-device",
+        headers=auth_headers(owner_token),
+        json={"device_id": device["id"]},
+    )
+    assert resync_response.status_code == 200
+    resync = resync_response.json()["data"]
+    assert resync["plan_version"] == 2
+    reaccept_response = client.post(
+        f"/api/rehab-arm/app/v1/devices/{device['id']}/m33-status",
+        headers=auth_headers(owner_token),
+        json={"sync_id": resync["id"], "sync_status": "m33_accepted", "m33_reason": "updated plan accepted"},
+    )
+    assert reaccept_response.status_code == 200
+
+    allowed_start = client.post(
+        "/api/rehab-arm/app/v1/training-sessions/start",
+        headers=auth_headers(owner_token),
+        json={"plan_id": plan["id"], "device_id": device["id"]},
+    )
+    assert allowed_start.status_code == 200
+    assert allowed_start.json()["data"]["status"] == "started"
+
     forbidden = client.post(
         "/api/rehab-arm/app/v1/training-plans",
         headers=auth_headers(owner_token),
@@ -125,6 +203,19 @@ def test_rehab_arm_app_session_emg_and_intent_summary_flow(tmp_path, monkeypatch
         json={"title": "Wrist warmup", "movement_type": "wrist_flexion", "sets": 2, "reps": 6},
     )
     plan_id = plan_response.json()["data"]["id"]
+
+    sync_response = client.post(
+        f"/api/rehab-arm/app/v1/training-plans/{plan_id}/sync-to-device",
+        headers=auth_headers(owner_token),
+        json={"device_id": device_id},
+    )
+    sync_id = sync_response.json()["data"]["id"]
+    accept_response = client.post(
+        f"/api/rehab-arm/app/v1/devices/{device_id}/m33-status",
+        headers=auth_headers(owner_token),
+        json={"sync_id": sync_id, "sync_status": "m33_accepted", "m33_reason": "accepted for record-only session"},
+    )
+    assert accept_response.status_code == 200
 
     start_response = client.post(
         "/api/rehab-arm/app/v1/training-sessions/start",
@@ -189,3 +280,64 @@ def test_rehab_arm_app_session_emg_and_intent_summary_flow(tmp_path, monkeypatch
     latest_emg = client.get("/api/rehab-arm/app/v1/emg/latest", headers=auth_headers(owner_token))
     assert latest_emg.status_code == 200
     assert latest_emg.json()["data"]["muscle_name"] == "biceps"
+
+    emg_history = client.get("/api/rehab-arm/app/v1/emg/history", headers=auth_headers(owner_token))
+    assert emg_history.status_code == 200
+    assert emg_history.json()["data"][0]["muscle_name"] == "biceps"
+
+
+def test_rehab_arm_app_plan_edit_ai_draft_and_platform_sync(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
+
+    owner_token, _owner_user_id = issue_session_token(client)
+
+    bootstrap = client.get("/api/rehab-arm/app/v1/me", headers=auth_headers(owner_token))
+    assert bootstrap.status_code == 200
+    assert bootstrap.json()["data"]["control_boundary"] == "app_bootstrap_evidence_only_not_motion_permission"
+
+    draft_response = client.post(
+        "/api/rehab-arm/app/v1/ai-training-drafts/generate",
+        headers=auth_headers(owner_token),
+        json={
+            "input_text": "Need low intensity elbow flexion training after mild fatigue.",
+            "context_snapshot": {"movement_type": "elbow_flexion", "sets": 2, "reps": 5},
+        },
+    )
+    assert draft_response.status_code == 200
+    draft = draft_response.json()["data"]
+    assert draft["control_boundary"] == "ai_draft_only_not_execution_permission"
+    assert draft["generated_plan"]["control_boundary"] == "ai_draft_only_not_execution_permission"
+
+    accepted_response = client.post(
+        f"/api/rehab-arm/app/v1/ai-training-drafts/{draft['id']}/accept",
+        headers=auth_headers(owner_token),
+    )
+    assert accepted_response.status_code == 200
+    plan = accepted_response.json()["data"]
+    assert plan["source"] == "ai_generated"
+    assert plan["control_boundary"] == "training_plan_only_not_motor_command"
+
+    patch_response = client.patch(
+        f"/api/rehab-arm/app/v1/training-plans/{plan['id']}",
+        headers=auth_headers(owner_token),
+        json={"reps": 7, "status": "active"},
+    )
+    assert patch_response.status_code == 200
+    patched = patch_response.json()["data"]
+    assert patched["reps"] == 7
+    assert patched["version"] == 2
+
+    archive_response = client.post(
+        f"/api/rehab-arm/app/v1/training-plans/{plan['id']}/archive",
+        headers=auth_headers(owner_token),
+    )
+    assert archive_response.status_code == 200
+    assert archive_response.json()["data"]["status"] == "archived"
+
+    sync_response = client.post(
+        "/api/rehab-arm/app/v1/platform/sync",
+        headers=auth_headers(owner_token),
+        json={"resource_types": ["training_plans", "m33_decisions"]},
+    )
+    assert sync_response.status_code == 200
+    assert sync_response.json()["data"]["control_boundary"] == "platform_sync_evidence_only_not_motion_permission"

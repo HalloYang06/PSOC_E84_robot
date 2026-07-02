@@ -33,6 +33,39 @@ python -m http.server 4177 --bind 127.0.0.1
 4. Keep the safety boundary visible: App sync submits structured training data for M33 review only. It is not motion permission and must not release emergency stop.
 5. On Android Chrome, use "Add to Home screen" from the browser menu. The PWA includes standalone display metadata and maskable PNG icons for install preview.
 
+## Rehab Arm App Backend Closed Loop
+
+Mobile App backend namespace:
+
+```text
+/api/rehab-arm/app/v1
+```
+
+Core closed-loop flow:
+
+1. `PATCH /me/profile` creates or updates the patient profile.
+2. `POST /devices/bind` binds an M33 BLE device identity.
+3. `POST /training-plans` creates a plan, or `POST /ai-training-drafts/generate` creates an AI draft that can be accepted through `/ai-training-drafts/{draft_id}/accept`.
+4. `POST /training-plans/{plan_id}/sync-to-device` submits the current plan version for M33 review.
+5. `POST /devices/{device_id}/m33-status` records the M33 decision. `m33_accepted` is required before a session record can start.
+6. `POST /training-sessions/start` starts only if the selected plan/device has current-version `m33_accepted`; otherwise it returns `M33_ACCEPTANCE_REQUIRED`.
+7. `PATCH /training-sessions/{session_id}/progress`, `POST /emg/summary`, `POST /intent/summary`, and `POST /training-sessions/{session_id}/finish` store evidence and records only.
+
+Useful reads:
+
+```text
+GET /me
+GET /devices/{device_id}/status
+GET /training-plans/{plan_id}
+GET /training-sessions
+GET /training-sessions/{session_id}
+GET /emg/latest
+GET /emg/history
+GET /platform/sync-status
+```
+
+Safety rule: these endpoints do not send CAN frames, motor current, motor torque, raw joint position/velocity, M33 overrides, or emergency-stop release commands. Every training/device response remains plan, evidence, or review data until M33 and the robot-side stack decide otherwise.
+
 ## Android APK Build Environment
 
 This workstation has the Android build prerequisites installed for the rehab-arm mobile wrapper:

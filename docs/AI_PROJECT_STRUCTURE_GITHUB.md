@@ -40,3 +40,12 @@ Current validation:
 
 - `python -m pytest tests/test_rehab_arm_app_backend.py -q` passes from `apps/api`.
 - Mobile PWA preview runs from `apps/web/public` with `python -m http.server 4177 --bind 127.0.0.1`, then open `http://127.0.0.1:4177/rehab-arm-mobile/index.html`.
+
+Closed-loop backend contract:
+
+- `GET /api/rehab-arm/app/v1/me` returns the phone bootstrap payload: profile, devices, plans, active session, latest EMG, platform sync status, and a control boundary.
+- `GET /api/rehab-arm/app/v1/devices/{device_id}/status` returns M33-facing state for the bound device.
+- `POST /api/rehab-arm/app/v1/devices/{device_id}/m33-status` records M33 sync decisions (`sent`, `m33_accepted`, `m33_rejected`, `failed`) and reasons. It records safety authority evidence; it does not expose override controls.
+- Training-plan edits increment `version`. `sync-to-device` captures `plan_version`, and `training-sessions/start` requires an `m33_accepted` sync for the current plan version on the selected device.
+- AI training draft endpoints are draft-only: generate, read, accept-to-plan. Accepted drafts become normal training plans and still require M33 sync and acceptance before a training session record can start.
+- Platform sync endpoints are evidence/review only and must not be interpreted as motion permission.

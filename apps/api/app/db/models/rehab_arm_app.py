@@ -71,6 +71,7 @@ class RehabAppTrainingPlanSync(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
     plan_id: Mapped[str] = mapped_column(String(64), ForeignKey("rehab_app_training_plans.id"), nullable=False, index=True)
     device_id: Mapped[str] = mapped_column(String(64), ForeignKey("rehab_app_device_bindings.id"), nullable=False, index=True)
+    plan_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     sync_status: Mapped[str] = mapped_column(String(40), nullable=False, default="pending", index=True)
     m33_reason: Mapped[str] = mapped_column(Text, nullable=False, default="")
     synced_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -125,4 +126,17 @@ class RehabAppIntentInferenceSummary(Base):
     confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     topk: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     stability_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class RehabAppAiTrainingDraft(Base):
+    __tablename__ = "rehab_app_ai_training_drafts"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    input_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    context_snapshot: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    generated_plan: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    risk_notes: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    accepted_plan_id: Mapped[str] = mapped_column(String(64), nullable=False, default="", index=True)
     created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now())

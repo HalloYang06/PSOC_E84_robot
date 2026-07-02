@@ -10,26 +10,46 @@ from app.db.session import get_db
 
 from .app_schemas import (
     RehabAppDeviceBindRequest,
+    RehabAppAiTrainingDraftGenerateRequest,
     RehabAppEmgSummaryCreate,
     RehabAppIntentSummaryCreate,
+    RehabAppM33StatusUpdate,
+    RehabAppPlatformSyncRequest,
     RehabAppProfileUpdate,
     RehabAppTrainingSessionFinishRequest,
+    RehabAppTrainingSessionProgressRequest,
     RehabAppTrainingSessionStartRequest,
     RehabAppTrainingPlanCreate,
     RehabAppTrainingPlanSyncRequest,
+    RehabAppTrainingPlanUpdate,
 )
 from .app_service import (
+    accept_ai_training_draft,
+    archive_training_plan,
     bind_device,
     create_training_plan,
+    emg_history,
+    generate_ai_training_draft,
+    get_ai_training_draft,
+    get_app_bootstrap,
+    get_device_status,
+    get_platform_sync_status,
     get_profile,
+    get_training_plan,
+    get_training_session,
     latest_emg_summary,
     list_devices,
+    list_training_sessions,
     list_training_plans,
     finish_training_session,
     record_emg_summary,
     record_intent_summary,
     start_training_session,
+    sync_platform_records,
     sync_training_plan_to_device,
+    update_m33_sync_status,
+    update_training_plan,
+    update_training_session_progress,
     upsert_profile,
 )
 
@@ -50,6 +70,11 @@ def api_get_profile(request: Request, db: Session = Depends(get_db)):
     return ok(profile)
 
 
+@router.get("/me")
+def api_get_me(request: Request, db: Session = Depends(get_db)):
+    return ok(get_app_bootstrap(db, _user_id(db, request)))
+
+
 @router.patch("/me/profile")
 def api_update_profile(payload: RehabAppProfileUpdate, request: Request, db: Session = Depends(get_db)):
     return ok(upsert_profile(db, _user_id(db, request), payload))
@@ -68,6 +93,16 @@ def api_list_devices(request: Request, db: Session = Depends(get_db)):
     return ok(list_devices(db, _user_id(db, request)))
 
 
+@router.get("/devices/{device_id}/status")
+def api_get_device_status(device_id: str, request: Request, db: Session = Depends(get_db)):
+    return ok(get_device_status(db, _user_id(db, request), device_id))
+
+
+@router.post("/devices/{device_id}/m33-status")
+def api_update_m33_status(device_id: str, payload: RehabAppM33StatusUpdate, request: Request, db: Session = Depends(get_db)):
+    return ok(update_m33_sync_status(db, _user_id(db, request), device_id, payload.sync_id, payload.sync_status, payload.m33_reason, payload.firmware_version))
+
+
 @router.post("/training-plans")
 def api_create_training_plan(payload: RehabAppTrainingPlanCreate, request: Request, db: Session = Depends(get_db)):
     return ok(create_training_plan(db, _user_id(db, request), payload))
@@ -78,6 +113,21 @@ def api_list_training_plans(request: Request, db: Session = Depends(get_db)):
     return ok(list_training_plans(db, _user_id(db, request)))
 
 
+@router.get("/training-plans/{plan_id}")
+def api_get_training_plan(plan_id: str, request: Request, db: Session = Depends(get_db)):
+    return ok(get_training_plan(db, _user_id(db, request), plan_id))
+
+
+@router.patch("/training-plans/{plan_id}")
+def api_update_training_plan(plan_id: str, payload: RehabAppTrainingPlanUpdate, request: Request, db: Session = Depends(get_db)):
+    return ok(update_training_plan(db, _user_id(db, request), plan_id, payload))
+
+
+@router.post("/training-plans/{plan_id}/archive")
+def api_archive_training_plan(plan_id: str, request: Request, db: Session = Depends(get_db)):
+    return ok(archive_training_plan(db, _user_id(db, request), plan_id))
+
+
 @router.post("/training-plans/{plan_id}/sync-to-device")
 def api_sync_training_plan(plan_id: str, payload: RehabAppTrainingPlanSyncRequest, request: Request, db: Session = Depends(get_db)):
     return ok(sync_training_plan_to_device(db, _user_id(db, request), plan_id, payload.device_id))
@@ -86,6 +136,21 @@ def api_sync_training_plan(plan_id: str, payload: RehabAppTrainingPlanSyncReques
 @router.post("/training-sessions/start")
 def api_start_training_session(payload: RehabAppTrainingSessionStartRequest, request: Request, db: Session = Depends(get_db)):
     return ok(start_training_session(db, _user_id(db, request), payload.plan_id, payload.device_id))
+
+
+@router.get("/training-sessions")
+def api_list_training_sessions(request: Request, db: Session = Depends(get_db)):
+    return ok(list_training_sessions(db, _user_id(db, request)))
+
+
+@router.get("/training-sessions/{session_id}")
+def api_get_training_session(session_id: str, request: Request, db: Session = Depends(get_db)):
+    return ok(get_training_session(db, _user_id(db, request), session_id))
+
+
+@router.patch("/training-sessions/{session_id}/progress")
+def api_update_training_session_progress(session_id: str, payload: RehabAppTrainingSessionProgressRequest, request: Request, db: Session = Depends(get_db)):
+    return ok(update_training_session_progress(db, _user_id(db, request), session_id, payload.model_dump(exclude_unset=True)))
 
 
 @router.post("/training-sessions/{session_id}/finish")
@@ -103,6 +168,36 @@ def api_latest_emg_summary(request: Request, db: Session = Depends(get_db)):
     return ok(latest_emg_summary(db, _user_id(db, request)))
 
 
+@router.get("/emg/history")
+def api_emg_history(request: Request, db: Session = Depends(get_db)):
+    return ok(emg_history(db, _user_id(db, request)))
+
+
 @router.post("/intent/summary")
 def api_record_intent_summary(payload: RehabAppIntentSummaryCreate, request: Request, db: Session = Depends(get_db)):
     return ok(record_intent_summary(db, _user_id(db, request), payload.model_dump()))
+
+
+@router.post("/ai-training-drafts/generate")
+def api_generate_ai_training_draft(payload: RehabAppAiTrainingDraftGenerateRequest, request: Request, db: Session = Depends(get_db)):
+    return ok(generate_ai_training_draft(db, _user_id(db, request), payload.input_text, payload.context_snapshot))
+
+
+@router.get("/ai-training-drafts/{draft_id}")
+def api_get_ai_training_draft(draft_id: str, request: Request, db: Session = Depends(get_db)):
+    return ok(get_ai_training_draft(db, _user_id(db, request), draft_id))
+
+
+@router.post("/ai-training-drafts/{draft_id}/accept")
+def api_accept_ai_training_draft(draft_id: str, request: Request, db: Session = Depends(get_db)):
+    return ok(accept_ai_training_draft(db, _user_id(db, request), draft_id))
+
+
+@router.post("/platform/sync")
+def api_platform_sync(payload: RehabAppPlatformSyncRequest, request: Request, db: Session = Depends(get_db)):
+    return ok(sync_platform_records(db, _user_id(db, request), payload.resource_types))
+
+
+@router.get("/platform/sync-status")
+def api_platform_sync_status(request: Request, db: Session = Depends(get_db)):
+    return ok(get_platform_sync_status(db, _user_id(db, request)))

@@ -78,6 +78,25 @@ class RehabAppTrainingPlanCreate(BaseModel):
     status: str = Field(default="draft", pattern="^(draft|active|archived|rejected)$")
 
 
+class RehabAppTrainingPlanUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    source: str | None = Field(default=None, pattern="^(manual|ai_generated|therapist|imported)$")
+    goal: str | None = None
+    target_joints: list[str] | None = None
+    movement_type: str | None = Field(default=None, min_length=1, max_length=80)
+    sets: int | None = Field(default=None, ge=1, le=20)
+    reps: int | None = Field(default=None, ge=1, le=200)
+    duration_sec: int | None = Field(default=None, ge=0, le=7200)
+    target_angle_range: dict | None = None
+    speed_level: str | None = None
+    assist_level: float | None = Field(default=None, ge=0, le=1)
+    emg_policy: dict | None = None
+    safety_constraints: dict | None = None
+    status: str | None = Field(default=None, pattern="^(draft|active|archived|rejected)$")
+
+
 class RehabAppTrainingPlanRead(RehabAppTrainingPlanCreate):
     id: str
     user_id: str
@@ -91,6 +110,15 @@ class RehabAppTrainingPlanSyncRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     device_id: str = Field(min_length=1)
+
+
+class RehabAppM33StatusUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sync_id: str = Field(min_length=1)
+    sync_status: str = Field(pattern="^(sent|m33_accepted|m33_rejected|failed)$")
+    m33_reason: str = ""
+    firmware_version: str = ""
 
 
 class RehabAppTrainingSessionStartRequest(BaseModel):
@@ -110,6 +138,17 @@ class RehabAppTrainingSessionFinishRequest(BaseModel):
     m33_reject_count: int = Field(default=0, ge=0)
     pain_after: float | None = Field(default=None, ge=0, le=10)
     user_note: str = ""
+
+
+class RehabAppTrainingSessionProgressRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    completion_rate: float | None = Field(default=None, ge=0, le=1)
+    interruption_count: int | None = Field(default=None, ge=0)
+    avg_assist_level: float | None = Field(default=None, ge=0, le=1)
+    max_assist_level: float | None = Field(default=None, ge=0, le=1)
+    m33_reject_count: int | None = Field(default=None, ge=0)
+    user_note: str | None = None
 
 
 class RehabAppTrainingSessionRead(BaseModel):
@@ -166,3 +205,16 @@ class RehabAppIntentSummaryRead(RehabAppIntentSummaryCreate):
     user_id: str
     created_at: datetime | None = None
     control_boundary: str = "intent_summary_only_not_motion_permission"
+
+
+class RehabAppAiTrainingDraftGenerateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    input_text: str = Field(min_length=1, max_length=4000)
+    context_snapshot: dict = Field(default_factory=dict)
+
+
+class RehabAppPlatformSyncRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    resource_types: list[str] = Field(default_factory=list)

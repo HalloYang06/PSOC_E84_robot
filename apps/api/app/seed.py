@@ -18,6 +18,7 @@ from app.db.models.project_collaboration import ProjectAIProvider, ProjectComput
 from app.db.models.project_invite import ProjectInvite
 from app.db.models.project_member import ProjectMember
 from app.db.models.rehab_arm_app import (
+    RehabAppAiTrainingDraft,
     RehabAppDeviceBinding,
     RehabAppEmgSummary,
     RehabAppIntentInferenceSummary,
@@ -54,9 +55,18 @@ def ensure_schema_extensions() -> None:
             RehabAppTrainingSession,
             RehabAppEmgSummary,
             RehabAppIntentInferenceSummary,
+            RehabAppAiTrainingDraft,
         ):
             if model.__tablename__ not in table_names:
                 model.__table__.create(bind=connection, checkfirst=True)
+
+        if "rehab_app_training_plan_syncs" in table_names:
+            sync_columns = {column["name"] for column in inspector.get_columns("rehab_app_training_plan_syncs")}
+            if "plan_version" not in sync_columns:
+                connection.execute(text("ALTER TABLE rehab_app_training_plan_syncs ADD COLUMN plan_version INTEGER NOT NULL DEFAULT 1"))
+                connection.execute(
+                    text("CREATE INDEX IF NOT EXISTS ix_rehab_app_training_plan_syncs_plan_version ON rehab_app_training_plan_syncs (plan_version)")
+                )
 
         if "tasks" in table_names:
             task_columns = {column["name"] for column in inspector.get_columns("tasks")}
