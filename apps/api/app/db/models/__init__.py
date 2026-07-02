@@ -13,6 +13,7 @@ from .project_invite import ProjectInvite
 from .project_member import ProjectMember
 from .rehab_arm_app import (
     RehabAppAiTrainingDraft,
+    RehabAppBleMessage,
     RehabAppDiagnosticUpload,
     RehabAppDeviceBinding,
     RehabAppEmgSummary,
@@ -48,6 +49,7 @@ __all__ = [
     "ProjectMember",
     "RehabAppUserProfile",
     "RehabAppAiTrainingDraft",
+    "RehabAppBleMessage",
     "RehabAppDiagnosticUpload",
     "RehabAppDeviceBinding",
     "RehabAppTrainingPlan",

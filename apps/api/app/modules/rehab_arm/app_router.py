@@ -11,6 +11,8 @@ from app.db.session import get_db
 from .app_schemas import (
     RehabAppDeviceBindRequest,
     RehabAppAiTrainingDraftGenerateRequest,
+    RehabAppBleAckCreate,
+    RehabAppBleMessageCreate,
     RehabAppDiagnosticUploadRequest,
     RehabAppEmgSummaryCreate,
     RehabAppIntentSummaryCreate,
@@ -30,6 +32,7 @@ from .app_service import (
     accept_ai_training_draft,
     archive_training_plan,
     bind_device,
+    create_ble_message,
     create_training_plan,
     emg_history,
     generate_ai_training_draft,
@@ -38,6 +41,7 @@ from .app_service import (
     get_app_bootstrap,
     get_device_status,
     list_device_diagnostics,
+    list_ble_messages,
     list_offline_queue,
     list_platform_sync_runs,
     list_safety_audit_logs,
@@ -59,6 +63,7 @@ from .app_service import (
     start_training_session,
     sync_platform_records,
     sync_training_plan_to_device,
+    update_ble_message_ack,
     update_m33_sync_status,
     update_training_plan,
     update_training_session_progress,
@@ -125,6 +130,21 @@ def api_upload_device_diagnostic(device_id: str, payload: RehabAppDiagnosticUplo
 @router.get("/devices/{device_id}/diagnostics")
 def api_list_device_diagnostics(device_id: str, request: Request, db: Session = Depends(get_db)):
     return ok(list_device_diagnostics(db, _user_id(db, request), device_id))
+
+
+@router.post("/devices/{device_id}/ble/messages")
+def api_create_ble_message(device_id: str, payload: RehabAppBleMessageCreate, request: Request, db: Session = Depends(get_db)):
+    return ok(create_ble_message(db, _user_id(db, request), device_id, payload))
+
+
+@router.get("/devices/{device_id}/ble/messages")
+def api_list_ble_messages(device_id: str, request: Request, db: Session = Depends(get_db)):
+    return ok(list_ble_messages(db, _user_id(db, request), device_id))
+
+
+@router.post("/devices/{device_id}/ble/messages/{message_id}/ack")
+def api_ack_ble_message(device_id: str, message_id: str, payload: RehabAppBleAckCreate, request: Request, db: Session = Depends(get_db)):
+    return ok(update_ble_message_ack(db, _user_id(db, request), device_id, message_id, payload.ack_status, payload.ack_payload))
 
 
 @router.post("/training-plans")

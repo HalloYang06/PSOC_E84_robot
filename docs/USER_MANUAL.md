@@ -58,6 +58,7 @@ Useful reads:
 GET /me
 GET /devices/{device_id}/status
 GET /devices/{device_id}/diagnostics
+GET /devices/{device_id}/ble/messages
 GET /training-plans/{plan_id}
 GET /training-sessions
 GET /training-sessions/{session_id}
@@ -76,10 +77,14 @@ Mobile diagnostic and offline replay:
 
 ```text
 POST /devices/{device_id}/diagnostic-upload
+POST /devices/{device_id}/ble/messages
+POST /devices/{device_id}/ble/messages/{message_id}/ack
 POST /training-sessions/{session_id}/report
 POST /offline-queue
 POST /offline-queue/replay
 ```
+
+BLE messages are structured App-to-M33 contract records. They can prepare App hello, device status request, training plan push, training session start/progress/pause/stop request, and diagnostic snapshot request payloads. They are not CAN or motor commands, and M33 ACKs are evidence only.
 
 Training reports summarize session completion, EMG overview, M55 intent overview, M33 safety evidence, and review recommendations. They are review records only and return `training_report_review_only_not_medical_diagnosis_or_motion_permission`.
 

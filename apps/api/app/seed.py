@@ -19,6 +19,7 @@ from app.db.models.project_invite import ProjectInvite
 from app.db.models.project_member import ProjectMember
 from app.db.models.rehab_arm_app import (
     RehabAppAiTrainingDraft,
+    RehabAppBleMessage,
     RehabAppDiagnosticUpload,
     RehabAppDeviceBinding,
     RehabAppEmgSummary,
@@ -56,6 +57,7 @@ def ensure_schema_extensions() -> None:
             RehabAppDeviceBinding,
             RehabAppTrainingPlan,
             RehabAppTrainingPlanSync,
+            RehabAppBleMessage,
             RehabAppTrainingSession,
             RehabAppTrainingReport,
             RehabAppEmgSummary,

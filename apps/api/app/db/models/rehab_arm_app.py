@@ -80,6 +80,22 @@ class RehabAppTrainingPlanSync(Base):
     device: Mapped[RehabAppDeviceBinding] = relationship(back_populates="syncs")
 
 
+class RehabAppBleMessage(Base):
+    __tablename__ = "rehab_app_ble_messages"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    device_id: Mapped[str] = mapped_column(String(64), ForeignKey("rehab_app_device_bindings.id"), nullable=False, index=True)
+    message_type: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    related_plan_id: Mapped[str] = mapped_column(String(64), nullable=False, default="", index=True)
+    related_session_id: Mapped[str] = mapped_column(String(64), nullable=False, default="", index=True)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    ack_status: Mapped[str] = mapped_column(String(40), nullable=False, default="pending", index=True)
+    ack_payload: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    acked_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class RehabAppTrainingSession(Base):
     __tablename__ = "rehab_app_training_sessions"
 

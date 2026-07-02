@@ -131,6 +131,25 @@ class RehabAppM33StatusUpdate(BaseModel):
     firmware_version: str = ""
 
 
+class RehabAppBleMessageCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    message_type: str = Field(
+        pattern="^(app_hello|device_status_request|training_plan_push|training_session_start_request|training_progress_notify|training_pause_request|training_stop_request|diagnostic_snapshot_request)$"
+    )
+    plan_id: str = ""
+    session_id: str = ""
+    client_message_id: str = ""
+    extra_payload: dict = Field(default_factory=dict)
+
+
+class RehabAppBleAckCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    ack_status: str = Field(pattern="^(acknowledged|rejected|failed)$")
+    ack_payload: dict = Field(default_factory=dict)
+
+
 class RehabAppTrainingSessionStartRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

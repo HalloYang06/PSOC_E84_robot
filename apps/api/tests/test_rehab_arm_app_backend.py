@@ -92,6 +92,50 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert devices.status_code == 200
     assert devices.json()["data"][0]["latest_sync"]["sync_status"] == "pending"
 
+    ble_plan_message = client.post(
+        f"/api/rehab-arm/app/v1/devices/{device['id']}/ble/messages",
+        headers=auth_headers(owner_token),
+        json={
+            "message_type": "training_plan_push",
+            "plan_id": plan["id"],
+            "client_message_id": "phone-plan-msg-001",
+        },
+    )
+    assert ble_plan_message.status_code == 200
+    ble_message = ble_plan_message.json()["data"]
+    assert ble_message["message_type"] == "training_plan_push"
+    assert ble_message["ack_status"] == "pending"
+    assert ble_message["payload"]["schema_version"] == "rehab_app_ble_v1"
+    assert ble_message["payload"]["device_id"] == "m33-rehab-arm-alpha"
+    assert ble_message["payload"]["plan_id"] == plan["id"]
+    assert ble_message["payload"]["plan_version"] == 1
+    assert ble_message["payload"]["movement_type"] == "elbow_flexion"
+    assert ble_message["payload"]["control_boundary"] == "ble_message_contract_only_not_motor_command"
+
+    ble_ack = client.post(
+        f"/api/rehab-arm/app/v1/devices/{device['id']}/ble/messages/{ble_message['id']}/ack",
+        headers=auth_headers(owner_token),
+        json={
+            "ack_status": "acknowledged",
+            "ack_payload": {"related_message_id": "phone-plan-msg-001", "accepted_for_review": True},
+        },
+    )
+    assert ble_ack.status_code == 200
+    assert ble_ack.json()["data"]["ack_status"] == "acknowledged"
+    assert ble_ack.json()["data"]["ack_payload"]["m33_authority"] == "final_safety_authority"
+    assert ble_ack.json()["data"]["ack_payload"]["control_boundary"] == "ble_ack_evidence_only_not_motion_permission"
+
+    unsafe_ble_message = client.post(
+        f"/api/rehab-arm/app/v1/devices/{device['id']}/ble/messages",
+        headers=auth_headers(owner_token),
+        json={
+            "message_type": "device_status_request",
+            "extra_payload": {"motor_torque": 0.4},
+        },
+    )
+    assert unsafe_ble_message.status_code == 422
+    assert unsafe_ble_message.json()["error"]["code"] == "BLE_PAYLOAD_NOT_ALLOWED"
+
     blocked_start = client.post(
         "/api/rehab-arm/app/v1/training-sessions/start",
         headers=auth_headers(owner_token),

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -9,6 +10,7 @@ from app.common.errors import AppError
 from app.db.models.audit_log import AuditLog
 from app.db.models.rehab_arm_app import (
     RehabAppAiTrainingDraft,
+    RehabAppBleMessage,
     RehabAppDiagnosticUpload,
     RehabAppDeviceBinding,
     RehabAppEmgSummary,
@@ -26,6 +28,7 @@ from app.modules.audit.service import create_audit_log
 from .app_schemas import (
     RehabAppDeviceBindRequest,
     RehabAppDiagnosticUploadRequest,
+    RehabAppBleMessageCreate,
     RehabAppOfflineQueueItemCreate,
     RehabAppProfileUpdate,
     RehabAppTrainingPlanCreate,
@@ -60,6 +63,23 @@ def _sync_dict(sync: RehabAppTrainingPlanSync) -> dict:
         "synced_at": sync.synced_at,
         "m33_authority": "required_before_motion",
         "control_boundary": "training_plan_sync_only_not_motion_permission",
+    }
+
+
+def _ble_message_dict(message: RehabAppBleMessage) -> dict:
+    return {
+        "id": message.id,
+        "user_id": message.user_id,
+        "device_id": message.device_id,
+        "message_type": message.message_type,
+        "related_plan_id": message.related_plan_id,
+        "related_session_id": message.related_session_id,
+        "payload": message.payload or {},
+        "ack_status": message.ack_status,
+        "ack_payload": message.ack_payload or {},
+        "created_at": message.created_at,
+        "acked_at": message.acked_at,
+        "control_boundary": "ble_message_contract_only_not_motor_command",
     }
 
 
@@ -537,6 +557,208 @@ def update_m33_sync_status(db: Session, user_id: str, device_id: str, sync_id: s
     return _sync_dict(sync)
 
 
+BLE_MESSAGE_TYPES = {
+    "app_hello",
+    "device_status_request",
+    "training_plan_push",
+    "training_session_start_request",
+    "training_progress_notify",
+    "training_pause_request",
+    "training_stop_request",
+    "diagnostic_snapshot_request",
+}
+
+FORBIDDEN_BLE_KEYS = {
+    "can",
+    "can_frame",
+    "current",
+    "torque",
+    "motor",
+    "motor_command",
+    "raw_position",
+    "raw_velocity",
+    "position_setpoint",
+    "velocity_setpoint",
+    "m33_override",
+    "estop_release",
+    "emergency_stop_release",
+}
+
+
+def _contains_forbidden_ble_key(value: object) -> bool:
+    if isinstance(value, dict):
+        for key, item in value.items():
+            key_text = str(key).lower()
+            if any(term in key_text for term in FORBIDDEN_BLE_KEYS):
+                return True
+            if _contains_forbidden_ble_key(item):
+                return True
+    elif isinstance(value, list):
+        return any(_contains_forbidden_ble_key(item) for item in value)
+    return False
+
+
+def _require_user_device(db: Session, user_id: str, device_id: str) -> RehabAppDeviceBinding:
+    device = db.get(RehabAppDeviceBinding, device_id)
+    if device is None or device.user_id != user_id:
+        raise AppError("DEVICE_NOT_FOUND", "device binding not found", status_code=404)
+    return device
+
+
+def _ble_base_payload(device: RehabAppDeviceBinding, message_type: str, message_id: str) -> dict:
+    return {
+        "schema_version": "rehab_app_ble_v1",
+        "message_type": message_type,
+        "message_id": message_id,
+        "timestamp": int(datetime.now(timezone.utc).timestamp()),
+        "device_id": device.m33_device_id,
+        "control_boundary": "ble_message_contract_only_not_motor_command",
+    }
+
+
+def create_ble_message(db: Session, user_id: str, device_id: str, payload: RehabAppBleMessageCreate) -> dict:
+    if payload.message_type not in BLE_MESSAGE_TYPES:
+        raise AppError("BLE_MESSAGE_TYPE_NOT_ALLOWED", "BLE message type is not allowed", status_code=422)
+    if _contains_forbidden_ble_key(payload.extra_payload):
+        raise AppError(
+            "BLE_PAYLOAD_NOT_ALLOWED",
+            "BLE payload must not contain motor, CAN, raw motion, M33 override, or emergency-stop release fields",
+            status_code=422,
+            details={"control_boundary": "ble_message_contract_only_not_motor_command"},
+        )
+    device = _require_user_device(db, user_id, device_id)
+    message_id = payload.client_message_id or str(uuid.uuid4())
+    ble_payload = _ble_base_payload(device, payload.message_type, message_id)
+    related_plan_id = ""
+    related_session_id = ""
+    if payload.message_type == "training_plan_push":
+        plan = db.get(RehabAppTrainingPlan, payload.plan_id)
+        if plan is None or plan.user_id != user_id:
+            raise AppError("TRAINING_PLAN_NOT_FOUND", "training plan not found", status_code=404)
+        related_plan_id = plan.id
+        ble_payload.update(
+            {
+                "user_id": user_id,
+                "plan_id": plan.id,
+                "plan_version": plan.version,
+                "movement_type": plan.movement_type,
+                "sets": plan.sets,
+                "reps": plan.reps,
+                "duration_sec": plan.duration_sec,
+                "target_angle_range": plan.target_angle_range or {},
+                "speed_level": plan.speed_level,
+                "assist_level": plan.assist_level,
+                "emg_policy": plan.emg_policy or {},
+                "safety_constraints": {
+                    "require_fresh_m33_heartbeat": True,
+                    "stop_on_pain_report": True,
+                    **(plan.safety_constraints or {}),
+                },
+            }
+        )
+    elif payload.message_type in {"training_session_start_request", "training_progress_notify", "training_pause_request", "training_stop_request"}:
+        session = _require_user_session(db, user_id, payload.session_id)
+        if session.device_id != device.id:
+            raise AppError("TRAINING_SESSION_DEVICE_MISMATCH", "training session does not belong to this device", status_code=409)
+        related_session_id = session.id
+        related_plan_id = session.plan_id
+        ble_payload.update(
+            {
+                "session_id": session.id,
+                "plan_id": session.plan_id,
+                "session_status": session.status,
+                "completion_rate": session.completion_rate,
+                "interruption_count": session.interruption_count,
+                "m33_reject_count": session.m33_reject_count,
+            }
+        )
+        if payload.message_type == "training_session_start_request":
+            plan = db.get(RehabAppTrainingPlan, session.plan_id)
+            sync = _latest_plan_device_sync(db, session.plan_id, device.id)
+            if plan is None or sync is None or sync.sync_status != "m33_accepted" or sync.plan_version != plan.version:
+                raise AppError(
+                    "M33_ACCEPTANCE_REQUIRED",
+                    "M33 must accept the latest plan version before a BLE session start request can be prepared",
+                    status_code=409,
+                    details={"control_boundary": "ble_message_contract_only_not_motor_command"},
+                )
+    ble_payload.update(payload.extra_payload)
+    message = RehabAppBleMessage(
+        user_id=user_id,
+        device_id=device.id,
+        message_type=payload.message_type,
+        related_plan_id=related_plan_id,
+        related_session_id=related_session_id,
+        payload=ble_payload,
+    )
+    db.add(message)
+    db.flush()
+    create_audit_log(
+        db,
+        project_id=device.platform_project_id or None,
+        actor_type="human",
+        actor_id=user_id,
+        action="rehab_app.ble_message.created",
+        resource_type="rehab_app_ble_message",
+        resource_id=message.id,
+        after={"message_type": message.message_type, "control_boundary": "ble_message_contract_only_not_motor_command"},
+    )
+    db.commit()
+    db.refresh(message)
+    return _ble_message_dict(message)
+
+
+def update_ble_message_ack(db: Session, user_id: str, device_id: str, message_id: str, ack_status: str, ack_payload: dict) -> dict:
+    if _contains_forbidden_ble_key(ack_payload):
+        raise AppError(
+            "BLE_ACK_PAYLOAD_NOT_ALLOWED",
+            "BLE ACK payload must not contain motor, CAN, raw motion, M33 override, or emergency-stop release fields",
+            status_code=422,
+            details={"control_boundary": "ble_ack_evidence_only_not_motion_permission"},
+        )
+    device = _require_user_device(db, user_id, device_id)
+    message = db.get(RehabAppBleMessage, message_id)
+    if message is None or message.user_id != user_id or message.device_id != device.id:
+        raise AppError("BLE_MESSAGE_NOT_FOUND", "BLE message not found", status_code=404)
+    message.ack_status = ack_status
+    message.ack_payload = {
+        **ack_payload,
+        "m33_authority": "final_safety_authority",
+        "control_boundary": "ble_ack_evidence_only_not_motion_permission",
+    }
+    message.acked_at = datetime.now(timezone.utc)
+    device.last_seen_at = datetime.now(timezone.utc)
+    db.add(message)
+    db.add(device)
+    db.flush()
+    create_audit_log(
+        db,
+        project_id=device.platform_project_id or None,
+        actor_type="m33",
+        actor_id=device.m33_device_id,
+        action=f"rehab_app.ble_message.{ack_status}",
+        resource_type="rehab_app_ble_message",
+        resource_id=message.id,
+        after={"ack_status": ack_status, "control_boundary": "ble_ack_evidence_only_not_motion_permission"},
+    )
+    db.commit()
+    db.refresh(message)
+    return _ble_message_dict(message)
+
+
+def list_ble_messages(db: Session, user_id: str, device_id: str, limit: int = 50) -> list[dict]:
+    device = _require_user_device(db, user_id, device_id)
+    messages = list(
+        db.scalars(
+            select(RehabAppBleMessage)
+            .where(RehabAppBleMessage.user_id == user_id, RehabAppBleMessage.device_id == device.id)
+            .order_by(RehabAppBleMessage.created_at.desc())
+            .limit(limit)
+        )
+    )
+    return [_ble_message_dict(message) for message in messages]
+
+
 def _latest_plan_device_sync(db: Session, plan_id: str, device_id: str) -> RehabAppTrainingPlanSync | None:
     return db.scalar(
         select(RehabAppTrainingPlanSync)
@@ -792,7 +1014,7 @@ def latest_training_report(db: Session, user_id: str) -> dict | None:
 
 def record_emg_summary(db: Session, user_id: str, payload: dict) -> dict:
     _require_user_session(db, user_id, str(payload.get("session_id") or ""))
-    summary = RehabAppEmgSummary(user_id=user_id, **payload)
+    summary = RehabAppEmgSummary(user_id=user_id, created_at=datetime.now(timezone.utc), **payload)
     db.add(summary)
     db.flush()
     create_audit_log(
@@ -833,7 +1055,7 @@ def emg_history(db: Session, user_id: str, limit: int = 50) -> list[dict]:
 
 def record_intent_summary(db: Session, user_id: str, payload: dict) -> dict:
     _require_user_session(db, user_id, str(payload.get("session_id") or ""))
-    summary = RehabAppIntentInferenceSummary(user_id=user_id, **payload)
+    summary = RehabAppIntentInferenceSummary(user_id=user_id, created_at=datetime.now(timezone.utc), **payload)
     db.add(summary)
     db.flush()
     create_audit_log(
