@@ -17,6 +17,7 @@ from app.db.models.rehab_arm_app import (
     RehabAppPlatformSyncRun,
     RehabAppTrainingPlan,
     RehabAppTrainingPlanSync,
+    RehabAppTrainingReport,
     RehabAppTrainingSession,
     RehabAppUserProfile,
 )
@@ -120,6 +121,24 @@ def _session_dict(session: RehabAppTrainingSession) -> dict:
         "pain_after": session.pain_after,
         "user_note": session.user_note,
         "control_boundary": "training_session_record_only_not_motion_permission",
+    }
+
+
+def _report_dict(report: RehabAppTrainingReport) -> dict:
+    return {
+        "id": report.id,
+        "user_id": report.user_id,
+        "session_id": report.session_id,
+        "plan_id": report.plan_id,
+        "device_id": report.device_id,
+        "summary": report.summary or {},
+        "emg_overview": report.emg_overview or {},
+        "intent_overview": report.intent_overview or {},
+        "safety_overview": report.safety_overview or {},
+        "recommendations": report.recommendations or [],
+        "created_at": report.created_at,
+        "updated_at": report.updated_at,
+        "control_boundary": "training_report_review_only_not_medical_diagnosis_or_motion_permission",
     }
 
 
@@ -271,6 +290,7 @@ def get_app_bootstrap(db: Session, user_id: str) -> dict:
         "training_plans": plans,
         "active_session": sessions[0] if sessions and sessions[0]["status"] in {"started", "in_progress"} else None,
         "latest_emg": latest_emg_summary(db, user_id),
+        "latest_report": latest_training_report(db, user_id),
         "platform_sync": get_platform_sync_status(db, user_id),
         "offline_queue": list_offline_queue(db, user_id, status="queued", limit=20),
         "control_boundary": "app_bootstrap_evidence_only_not_motion_permission",
@@ -636,6 +656,140 @@ def get_training_session(db: Session, user_id: str, session_id: str) -> dict:
     return _session_dict(_require_user_session(db, user_id, session_id))
 
 
+def _session_emg_summaries(db: Session, user_id: str, session_id: str) -> list[RehabAppEmgSummary]:
+    return list(
+        db.scalars(
+            select(RehabAppEmgSummary)
+            .where(RehabAppEmgSummary.user_id == user_id, RehabAppEmgSummary.session_id == session_id)
+            .order_by(RehabAppEmgSummary.created_at.asc())
+        )
+    )
+
+
+def _session_intent_summaries(db: Session, user_id: str, session_id: str) -> list[RehabAppIntentInferenceSummary]:
+    return list(
+        db.scalars(
+            select(RehabAppIntentInferenceSummary)
+            .where(RehabAppIntentInferenceSummary.user_id == user_id, RehabAppIntentInferenceSummary.session_id == session_id)
+            .order_by(RehabAppIntentInferenceSummary.created_at.asc())
+        )
+    )
+
+
+def generate_training_report(db: Session, user_id: str, session_id: str) -> dict:
+    session = _require_user_session(db, user_id, session_id)
+    if session.status != "finished":
+        raise AppError(
+            "TRAINING_SESSION_NOT_FINISHED",
+            "training report can only be generated after the session is finished",
+            status_code=409,
+            details={"control_boundary": "training_report_review_only_not_medical_diagnosis_or_motion_permission"},
+        )
+    plan = db.get(RehabAppTrainingPlan, session.plan_id)
+    device = db.get(RehabAppDeviceBinding, session.device_id)
+    emg_items = _session_emg_summaries(db, user_id, session.id)
+    intent_items = _session_intent_summaries(db, user_id, session.id)
+    avg_activation = sum(item.activation_avg for item in emg_items) / len(emg_items) if emg_items else 0.0
+    avg_fatigue = sum(item.fatigue_index for item in emg_items) / len(emg_items) if emg_items else 0.0
+    avg_confidence = sum(item.confidence for item in intent_items) / len(intent_items) if intent_items else 0.0
+    summary = {
+        "plan_title": plan.title if plan else "",
+        "movement_type": plan.movement_type if plan else "",
+        "device_ble_name": device.ble_name if device else "",
+        "completion_rate": session.completion_rate,
+        "pain_after": session.pain_after,
+        "interruption_count": session.interruption_count,
+        "user_note": session.user_note,
+    }
+    emg_overview = {
+        "sample_count": len(emg_items),
+        "avg_activation": round(avg_activation, 4),
+        "avg_fatigue_index": round(avg_fatigue, 4),
+        "muscles": sorted({item.muscle_name for item in emg_items}),
+        "contact_quality": sorted({item.contact_quality for item in emg_items}),
+    }
+    intent_overview = {
+        "sample_count": len(intent_items),
+        "avg_confidence": round(avg_confidence, 4),
+        "predicted_actions": sorted({item.predicted_action for item in intent_items if item.predicted_action}),
+        "avg_stability_score": round(sum(item.stability_score for item in intent_items) / len(intent_items), 4) if intent_items else 0.0,
+    }
+    safety_overview = {
+        "m33_reject_count": session.m33_reject_count,
+        "max_assist_level": session.max_assist_level,
+        "control_boundary": "m33_final_safety_authority",
+    }
+    recommendations = []
+    if session.pain_after is not None and session.pain_after >= 5:
+        recommendations.append("pain_after_high_review_with_therapist_before_next_plan")
+    if avg_fatigue >= 0.5:
+        recommendations.append("fatigue_elevated_reduce_intensity_or_extend_rest")
+    if avg_confidence and avg_confidence < 0.7:
+        recommendations.append("intent_confidence_low_check_emg_contact_and_calibration")
+    if not recommendations:
+        recommendations.append("continue_current_plan_with_m33_review_required")
+    report = db.scalar(select(RehabAppTrainingReport).where(RehabAppTrainingReport.session_id == session.id))
+    if report is None:
+        report = RehabAppTrainingReport(user_id=user_id, session_id=session.id, plan_id=session.plan_id, device_id=session.device_id)
+    report.summary = summary
+    report.emg_overview = emg_overview
+    report.intent_overview = intent_overview
+    report.safety_overview = safety_overview
+    report.recommendations = recommendations
+    db.add(report)
+    db.flush()
+    create_audit_log(
+        db,
+        project_id=device.platform_project_id if device else None,
+        actor_type="human",
+        actor_id=user_id,
+        action="rehab_app.training_report.generated",
+        resource_type="rehab_app_training_report",
+        resource_id=report.id,
+        after={"session_id": session.id, "control_boundary": "training_report_review_only_not_medical_diagnosis_or_motion_permission"},
+    )
+    db.commit()
+    db.refresh(report)
+    return _report_dict(report)
+
+
+def get_training_report(db: Session, user_id: str, report_id: str) -> dict:
+    report = db.get(RehabAppTrainingReport, report_id)
+    if report is None or report.user_id != user_id:
+        raise AppError("TRAINING_REPORT_NOT_FOUND", "training report not found", status_code=404)
+    return _report_dict(report)
+
+
+def get_session_training_report(db: Session, user_id: str, session_id: str) -> dict:
+    _require_user_session(db, user_id, session_id)
+    report = db.scalar(select(RehabAppTrainingReport).where(RehabAppTrainingReport.user_id == user_id, RehabAppTrainingReport.session_id == session_id))
+    if report is None:
+        raise AppError("TRAINING_REPORT_NOT_FOUND", "training report not found", status_code=404)
+    return _report_dict(report)
+
+
+def list_training_reports(db: Session, user_id: str, limit: int = 50) -> list[dict]:
+    reports = list(
+        db.scalars(
+            select(RehabAppTrainingReport)
+            .where(RehabAppTrainingReport.user_id == user_id)
+            .order_by(RehabAppTrainingReport.created_at.desc())
+            .limit(limit)
+        )
+    )
+    return [_report_dict(report) for report in reports]
+
+
+def latest_training_report(db: Session, user_id: str) -> dict | None:
+    report = db.scalar(
+        select(RehabAppTrainingReport)
+        .where(RehabAppTrainingReport.user_id == user_id)
+        .order_by(RehabAppTrainingReport.created_at.desc())
+        .limit(1)
+    )
+    return _report_dict(report) if report else None
+
+
 def record_emg_summary(db: Session, user_id: str, payload: dict) -> dict:
     _require_user_session(db, user_id, str(payload.get("session_id") or ""))
     summary = RehabAppEmgSummary(user_id=user_id, **payload)
@@ -884,10 +1038,11 @@ def accept_ai_training_draft(db: Session, user_id: str, draft_id: str) -> dict:
 
 
 def sync_platform_records(db: Session, user_id: str, resource_types: list[str]) -> dict:
-    selected_types = resource_types or ["training_plans", "training_sessions", "emg_summaries", "m33_decisions"]
+    selected_types = resource_types or ["training_plans", "training_sessions", "training_reports", "emg_summaries", "m33_decisions"]
     summary = {
         "training_plans": len(list_training_plans(db, user_id)) if "training_plans" in selected_types else 0,
         "training_sessions": len(list_training_sessions(db, user_id)) if "training_sessions" in selected_types else 0,
+        "training_reports": len(list_training_reports(db, user_id)) if "training_reports" in selected_types else 0,
         "emg_summaries": len(emg_history(db, user_id)) if "emg_summaries" in selected_types else 0,
         "m33_decisions": len(
             list(
@@ -930,7 +1085,7 @@ def get_platform_sync_status(db: Session, user_id: str) -> dict:
         "status": "ready",
         "latest_session_id": latest_session[0]["id"] if latest_session else "",
         "latest_sync_run": _platform_sync_run_dict(latest_run) if latest_run else None,
-        "synced_resource_types": ["training_plans", "training_sessions", "emg_summaries", "m33_decisions"],
+        "synced_resource_types": ["training_plans", "training_sessions", "training_reports", "emg_summaries", "m33_decisions"],
         "control_boundary": "platform_sync_evidence_only_not_motion_permission",
     }
 

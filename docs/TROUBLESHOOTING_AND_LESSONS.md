@@ -59,3 +59,4 @@
 - Offline queue safety lesson: phone offline replay must be a whitelist, not a generic command bus. Allow evidence/review operations only, and reject anything resembling motor, torque, current, raw pose/velocity, CAN, M33 override, or emergency-stop release.
 - Test lesson: after a pytest timeout on Windows, check for stale `python -m pytest ...` processes before rerunning the full backend file. A stale process can keep a temp SQLite DB active and make the next run look like a product hang.
 - JSON persistence lesson: do not store full response payloads with datetimes inside SQLite JSON fields for queue replay results. Store compact replay status, resource id, and control boundary instead.
+- Product loop lesson: a training report should be generated only after `training_sessions.status == finished`. If the App can generate a report before finish, it becomes another demo artifact instead of a trustworthy post-session review record.

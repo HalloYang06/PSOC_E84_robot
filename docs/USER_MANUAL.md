@@ -50,6 +50,7 @@ Core closed-loop flow:
 5. `POST /devices/{device_id}/m33-status` records the M33 decision. `m33_accepted` is required before a session record can start.
 6. `POST /training-sessions/start` starts only if the selected plan/device has current-version `m33_accepted`; otherwise it returns `M33_ACCEPTANCE_REQUIRED`.
 7. `PATCH /training-sessions/{session_id}/progress`, `POST /emg/summary`, `POST /intent/summary`, and `POST /training-sessions/{session_id}/finish` store evidence and records only.
+8. `POST /training-sessions/{session_id}/report` generates the post-session training report only after the session is finished.
 
 Useful reads:
 
@@ -60,6 +61,9 @@ GET /devices/{device_id}/diagnostics
 GET /training-plans/{plan_id}
 GET /training-sessions
 GET /training-sessions/{session_id}
+GET /training-sessions/{session_id}/report
+GET /training-reports
+GET /training-reports/{report_id}
 GET /emg/latest
 GET /emg/history
 GET /platform/sync-status
@@ -72,9 +76,12 @@ Mobile diagnostic and offline replay:
 
 ```text
 POST /devices/{device_id}/diagnostic-upload
+POST /training-sessions/{session_id}/report
 POST /offline-queue
 POST /offline-queue/replay
 ```
+
+Training reports summarize session completion, EMG overview, M55 intent overview, M33 safety evidence, and review recommendations. They are review records only and return `training_report_review_only_not_medical_diagnosis_or_motion_permission`.
 
 Allowed offline replay operations:
 

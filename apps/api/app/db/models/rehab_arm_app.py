@@ -99,6 +99,23 @@ class RehabAppTrainingSession(Base):
     user_note: Mapped[str] = mapped_column(Text, nullable=False, default="")
 
 
+class RehabAppTrainingReport(Base):
+    __tablename__ = "rehab_app_training_reports"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    session_id: Mapped[str] = mapped_column(String(64), ForeignKey("rehab_app_training_sessions.id"), nullable=False, unique=True, index=True)
+    plan_id: Mapped[str] = mapped_column(String(64), ForeignKey("rehab_app_training_plans.id"), nullable=False, index=True)
+    device_id: Mapped[str] = mapped_column(String(64), ForeignKey("rehab_app_device_bindings.id"), nullable=False, index=True)
+    summary: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    emg_overview: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    intent_overview: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    safety_overview: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    recommendations: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class RehabAppEmgSummary(Base):
     __tablename__ = "rehab_app_emg_summaries"
 

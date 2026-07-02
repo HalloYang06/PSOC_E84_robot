@@ -259,6 +259,13 @@ def test_rehab_arm_app_session_emg_and_intent_summary_flow(tmp_path, monkeypatch
     assert intent_response.status_code == 200
     assert intent_response.json()["data"]["control_boundary"] == "intent_summary_only_not_motion_permission"
 
+    unfinished_report = client.post(
+        f"/api/rehab-arm/app/v1/training-sessions/{session['id']}/report",
+        headers=auth_headers(owner_token),
+    )
+    assert unfinished_report.status_code == 409
+    assert unfinished_report.json()["error"]["code"] == "TRAINING_SESSION_NOT_FINISHED"
+
     finish_response = client.post(
         f"/api/rehab-arm/app/v1/training-sessions/{session['id']}/finish",
         headers=auth_headers(owner_token),
@@ -276,6 +283,51 @@ def test_rehab_arm_app_session_emg_and_intent_summary_flow(tmp_path, monkeypatch
     finished = finish_response.json()["data"]
     assert finished["status"] == "finished"
     assert finished["pain_after"] == 3
+
+    report_response = client.post(
+        f"/api/rehab-arm/app/v1/training-sessions/{session['id']}/report",
+        headers=auth_headers(owner_token),
+    )
+    assert report_response.status_code == 200
+    report = report_response.json()["data"]
+    assert report["session_id"] == session["id"]
+    assert report["control_boundary"] == "training_report_review_only_not_medical_diagnosis_or_motion_permission"
+    assert report["summary"]["movement_type"] == "wrist_flexion"
+    assert report["summary"]["completion_rate"] == 0.9
+    assert report["emg_overview"]["sample_count"] == 1
+    assert report["emg_overview"]["muscles"] == ["biceps"]
+    assert report["intent_overview"]["sample_count"] == 1
+    assert report["intent_overview"]["predicted_actions"] == ["wrist_flexion"]
+    assert report["intent_overview"]["avg_confidence"] == 0.81
+    assert report["safety_overview"]["control_boundary"] == "m33_final_safety_authority"
+    assert report["recommendations"] == ["continue_current_plan_with_m33_review_required"]
+
+    session_report = client.get(
+        f"/api/rehab-arm/app/v1/training-sessions/{session['id']}/report",
+        headers=auth_headers(owner_token),
+    )
+    assert session_report.status_code == 200
+    assert session_report.json()["data"]["id"] == report["id"]
+
+    reports = client.get("/api/rehab-arm/app/v1/training-reports", headers=auth_headers(owner_token))
+    assert reports.status_code == 200
+    assert reports.json()["data"][0]["id"] == report["id"]
+
+    report_by_id = client.get(f"/api/rehab-arm/app/v1/training-reports/{report['id']}", headers=auth_headers(owner_token))
+    assert report_by_id.status_code == 200
+    assert report_by_id.json()["data"]["session_id"] == session["id"]
+
+    bootstrap = client.get("/api/rehab-arm/app/v1/me", headers=auth_headers(owner_token))
+    assert bootstrap.status_code == 200
+    assert bootstrap.json()["data"]["latest_report"]["id"] == report["id"]
+
+    sync_run = client.post(
+        "/api/rehab-arm/app/v1/platform/sync",
+        headers=auth_headers(owner_token),
+        json={"resource_types": ["training_reports"]},
+    )
+    assert sync_run.status_code == 200
+    assert sync_run.json()["data"]["summary"]["training_reports"] == 1
 
     latest_emg = client.get("/api/rehab-arm/app/v1/emg/latest", headers=auth_headers(owner_token))
     assert latest_emg.status_code == 200

@@ -33,6 +33,7 @@ from .app_service import (
     create_training_plan,
     emg_history,
     generate_ai_training_draft,
+    generate_training_report,
     get_ai_training_draft,
     get_app_bootstrap,
     get_device_status,
@@ -42,10 +43,13 @@ from .app_service import (
     list_safety_audit_logs,
     get_platform_sync_status,
     get_profile,
+    get_session_training_report,
     get_training_plan,
+    get_training_report,
     get_training_session,
     latest_emg_summary,
     list_devices,
+    list_training_reports,
     list_training_sessions,
     list_training_plans,
     finish_training_session,
@@ -176,6 +180,26 @@ def api_update_training_session_progress(session_id: str, payload: RehabAppTrain
 @router.post("/training-sessions/{session_id}/finish")
 def api_finish_training_session(session_id: str, payload: RehabAppTrainingSessionFinishRequest, request: Request, db: Session = Depends(get_db)):
     return ok(finish_training_session(db, _user_id(db, request), session_id, payload.model_dump()))
+
+
+@router.post("/training-sessions/{session_id}/report")
+def api_generate_training_report(session_id: str, request: Request, db: Session = Depends(get_db)):
+    return ok(generate_training_report(db, _user_id(db, request), session_id))
+
+
+@router.get("/training-sessions/{session_id}/report")
+def api_get_session_training_report(session_id: str, request: Request, db: Session = Depends(get_db)):
+    return ok(get_session_training_report(db, _user_id(db, request), session_id))
+
+
+@router.get("/training-reports")
+def api_list_training_reports(request: Request, db: Session = Depends(get_db)):
+    return ok(list_training_reports(db, _user_id(db, request)))
+
+
+@router.get("/training-reports/{report_id}")
+def api_get_training_report(report_id: str, request: Request, db: Session = Depends(get_db)):
+    return ok(get_training_report(db, _user_id(db, request), report_id))
 
 
 @router.post("/emg/summary")

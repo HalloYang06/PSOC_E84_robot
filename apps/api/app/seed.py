@@ -27,6 +27,7 @@ from app.db.models.rehab_arm_app import (
     RehabAppPlatformSyncRun,
     RehabAppTrainingPlan,
     RehabAppTrainingPlanSync,
+    RehabAppTrainingReport,
     RehabAppTrainingSession,
     RehabAppUserProfile,
 )
@@ -56,6 +57,7 @@ def ensure_schema_extensions() -> None:
             RehabAppTrainingPlan,
             RehabAppTrainingPlanSync,
             RehabAppTrainingSession,
+            RehabAppTrainingReport,
             RehabAppEmgSummary,
             RehabAppIntentInferenceSummary,
             RehabAppAiTrainingDraft,

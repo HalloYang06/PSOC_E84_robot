@@ -21,6 +21,7 @@ from .rehab_arm_app import (
     RehabAppPlatformSyncRun,
     RehabAppTrainingPlan,
     RehabAppTrainingPlanSync,
+    RehabAppTrainingReport,
     RehabAppTrainingSession,
     RehabAppUserProfile,
 )
@@ -51,6 +52,7 @@ __all__ = [
     "RehabAppDeviceBinding",
     "RehabAppTrainingPlan",
     "RehabAppTrainingPlanSync",
+    "RehabAppTrainingReport",
     "RehabAppTrainingSession",
     "RehabAppEmgSummary",
     "RehabAppIntentInferenceSummary",

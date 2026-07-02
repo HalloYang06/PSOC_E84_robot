@@ -43,7 +43,7 @@ Current validation:
 
 Closed-loop backend contract:
 
-- `GET /api/rehab-arm/app/v1/me` returns the phone bootstrap payload: profile, devices, plans, active session, latest EMG, platform sync status, and a control boundary.
+- `GET /api/rehab-arm/app/v1/me` returns the phone bootstrap payload: profile, devices, plans, active session, latest EMG, latest training report, platform sync status, and a control boundary.
 - `GET /api/rehab-arm/app/v1/devices/{device_id}/status` returns M33-facing state for the bound device.
 - `POST /api/rehab-arm/app/v1/devices/{device_id}/m33-status` records M33 sync decisions (`sent`, `m33_accepted`, `m33_rejected`, `failed`) and reasons. It records safety authority evidence; it does not expose override controls.
 - Training-plan edits increment `version`. `sync-to-device` captures `plan_version`, and `training-sessions/start` requires an `m33_accepted` sync for the current plan version on the selected device.
@@ -51,4 +51,5 @@ Closed-loop backend contract:
 - Platform sync endpoints are evidence/review only and must not be interpreted as motion permission.
 - Diagnostic upload endpoints store M33/mobile snapshots for review: `POST /devices/{device_id}/diagnostic-upload` and `GET /devices/{device_id}/diagnostics`.
 - Offline queue endpoints (`POST/GET /offline-queue`, `POST /offline-queue/replay`) are evidence-only. The replay whitelist is limited to diagnostic upload, training-session progress, EMG summary, M55 intent summary, and platform sync; motor or CAN-like operations are rejected.
+- Training report endpoints close the post-session review loop: `POST /training-sessions/{session_id}/report`, `GET /training-sessions/{session_id}/report`, `GET /training-reports`, and `GET /training-reports/{report_id}`. Reports can only be generated after a session is `finished`, aggregate session/EMG/M55/safety evidence, and carry `training_report_review_only_not_medical_diagnosis_or_motion_permission`.
 - `GET /safety-audit` returns rehab-arm App audit events for the user and bound M33 device identities so M33 accept/reject decisions are visible to the phone workflow.
