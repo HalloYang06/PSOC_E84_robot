@@ -16,6 +16,12 @@
 
 ## Rehab Arm Phone PWA Preview
 
+Cloud phone preview:
+
+```text
+http://106.55.62.122:3001/rehab-arm-mobile/index.html
+```
+
 1. Start the static preview from `apps/web/public`:
 
 ```text
