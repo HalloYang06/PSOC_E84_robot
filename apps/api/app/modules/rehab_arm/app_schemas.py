@@ -150,6 +150,17 @@ class RehabAppBleAckCreate(BaseModel):
     ack_payload: dict = Field(default_factory=dict)
 
 
+class RehabAppTrainingReportReviewCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reviewer_role: str = Field(default="patient", pattern="^(patient|therapist|family|engineer)$")
+    review_status: str = Field(default="reviewed", pattern="^(needs_review|reviewed|needs_therapist_review|accepted|rejected)$")
+    reviewer_note: str = Field(default="", max_length=4000)
+    next_step: str = Field(default="continue_current_plan", pattern="^(continue_current_plan|adjust_plan|pause_and_consult|request_new_plan|calibration_check)$")
+    request_new_plan: bool = False
+    follow_up_payload: dict = Field(default_factory=dict)
+
+
 class RehabAppTrainingSessionStartRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

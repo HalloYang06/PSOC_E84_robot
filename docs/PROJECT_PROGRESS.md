@@ -114,3 +114,7 @@
 - Added `RehabAppBleMessage` persistence, SQLite self-healing, audit logging, and test coverage for structured `training_plan_push`, M33 ACK evidence, and unsafe payload rejection.
 - Fixed latest EMG/M55 ordering stability by writing application-layer UTC timestamps for summary records instead of relying only on SQLite second-precision defaults.
 - Validation passed: `python -m pytest tests/test_rehab_arm_app_backend.py -q` from `apps/api` (`4 passed`, deprecation warnings only).
+- Added the training report review loop: `POST /training-reports/{report_id}/reviews` and `GET /training-reports/{report_id}/reviews`. Reviews record reviewer role, status, note, next-step intent, new-plan request flag, and follow-up payload as evidence only.
+- Training report reads, lists, and `/me` bootstrap now include `latest_review`, and platform sync summaries can count `training_report_reviews`.
+- Preserved the report boundary: reviews are not medical diagnosis, treatment authorization, or motion permission, and any requested plan still has to become a training plan, sync to M33, and receive current-version `m33_accepted`.
+- Validation passed: `python -m pytest tests/test_rehab_arm_app_backend.py -q` from `apps/api` (`4 passed`, deprecation warnings only).

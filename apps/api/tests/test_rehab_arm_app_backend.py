@@ -345,6 +345,27 @@ def test_rehab_arm_app_session_emg_and_intent_summary_flow(tmp_path, monkeypatch
     assert report["intent_overview"]["avg_confidence"] == 0.81
     assert report["safety_overview"]["control_boundary"] == "m33_final_safety_authority"
     assert report["recommendations"] == ["continue_current_plan_with_m33_review_required"]
+    assert report["latest_review"] is None
+
+    review_response = client.post(
+        f"/api/rehab-arm/app/v1/training-reports/{report['id']}/reviews",
+        headers=auth_headers(owner_token),
+        json={
+            "reviewer_role": "therapist",
+            "review_status": "reviewed",
+            "reviewer_note": "Continue low intensity and re-check fatigue after next session.",
+            "next_step": "continue_current_plan",
+            "request_new_plan": False,
+            "follow_up_payload": {"review_window_days": 3},
+        },
+    )
+    assert review_response.status_code == 200
+    review = review_response.json()["data"]
+    assert review["report_id"] == report["id"]
+    assert review["reviewer_role"] == "therapist"
+    assert review["next_step"] == "continue_current_plan"
+    assert review["request_new_plan"] is False
+    assert review["control_boundary"] == "training_report_review_only_not_medical_diagnosis_or_motion_permission"
 
     session_report = client.get(
         f"/api/rehab-arm/app/v1/training-sessions/{session['id']}/report",
@@ -352,26 +373,35 @@ def test_rehab_arm_app_session_emg_and_intent_summary_flow(tmp_path, monkeypatch
     )
     assert session_report.status_code == 200
     assert session_report.json()["data"]["id"] == report["id"]
+    assert session_report.json()["data"]["latest_review"]["id"] == review["id"]
 
     reports = client.get("/api/rehab-arm/app/v1/training-reports", headers=auth_headers(owner_token))
     assert reports.status_code == 200
     assert reports.json()["data"][0]["id"] == report["id"]
+    assert reports.json()["data"][0]["latest_review"]["id"] == review["id"]
 
     report_by_id = client.get(f"/api/rehab-arm/app/v1/training-reports/{report['id']}", headers=auth_headers(owner_token))
     assert report_by_id.status_code == 200
     assert report_by_id.json()["data"]["session_id"] == session["id"]
+    assert report_by_id.json()["data"]["latest_review"]["id"] == review["id"]
+
+    reviews = client.get(f"/api/rehab-arm/app/v1/training-reports/{report['id']}/reviews", headers=auth_headers(owner_token))
+    assert reviews.status_code == 200
+    assert reviews.json()["data"][0]["id"] == review["id"]
 
     bootstrap = client.get("/api/rehab-arm/app/v1/me", headers=auth_headers(owner_token))
     assert bootstrap.status_code == 200
     assert bootstrap.json()["data"]["latest_report"]["id"] == report["id"]
+    assert bootstrap.json()["data"]["latest_report"]["latest_review"]["id"] == review["id"]
 
     sync_run = client.post(
         "/api/rehab-arm/app/v1/platform/sync",
         headers=auth_headers(owner_token),
-        json={"resource_types": ["training_reports"]},
+        json={"resource_types": ["training_reports", "training_report_reviews"]},
     )
     assert sync_run.status_code == 200
     assert sync_run.json()["data"]["summary"]["training_reports"] == 1
+    assert sync_run.json()["data"]["summary"]["training_report_reviews"] == 1
 
     latest_emg = client.get("/api/rehab-arm/app/v1/emg/latest", headers=auth_headers(owner_token))
     assert latest_emg.status_code == 200

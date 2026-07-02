@@ -23,6 +23,7 @@ from .rehab_arm_app import (
     RehabAppTrainingPlan,
     RehabAppTrainingPlanSync,
     RehabAppTrainingReport,
+    RehabAppTrainingReportReview,
     RehabAppTrainingSession,
     RehabAppUserProfile,
 )
@@ -55,6 +56,7 @@ __all__ = [
     "RehabAppTrainingPlan",
     "RehabAppTrainingPlanSync",
     "RehabAppTrainingReport",
+    "RehabAppTrainingReportReview",
     "RehabAppTrainingSession",
     "RehabAppEmgSummary",
     "RehabAppIntentInferenceSummary",

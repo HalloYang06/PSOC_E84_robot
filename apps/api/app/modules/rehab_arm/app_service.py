@@ -20,6 +20,7 @@ from app.db.models.rehab_arm_app import (
     RehabAppTrainingPlan,
     RehabAppTrainingPlanSync,
     RehabAppTrainingReport,
+    RehabAppTrainingReportReview,
     RehabAppTrainingSession,
     RehabAppUserProfile,
 )
@@ -31,6 +32,7 @@ from .app_schemas import (
     RehabAppBleMessageCreate,
     RehabAppOfflineQueueItemCreate,
     RehabAppProfileUpdate,
+    RehabAppTrainingReportReviewCreate,
     RehabAppTrainingPlanCreate,
     RehabAppTrainingPlanUpdate,
 )
@@ -160,6 +162,32 @@ def _report_dict(report: RehabAppTrainingReport) -> dict:
         "updated_at": report.updated_at,
         "control_boundary": "training_report_review_only_not_medical_diagnosis_or_motion_permission",
     }
+
+
+def _report_review_dict(review: RehabAppTrainingReportReview) -> dict:
+    return {
+        "id": review.id,
+        "user_id": review.user_id,
+        "report_id": review.report_id,
+        "reviewer_role": review.reviewer_role,
+        "review_status": review.review_status,
+        "reviewer_note": review.reviewer_note,
+        "next_step": review.next_step,
+        "request_new_plan": review.request_new_plan,
+        "follow_up_payload": review.follow_up_payload or {},
+        "created_at": review.created_at,
+        "control_boundary": "training_report_review_only_not_medical_diagnosis_or_motion_permission",
+    }
+
+
+def _report_with_review_dict(db: Session, report: RehabAppTrainingReport) -> dict:
+    latest_review = db.scalar(
+        select(RehabAppTrainingReportReview)
+        .where(RehabAppTrainingReportReview.report_id == report.id)
+        .order_by(RehabAppTrainingReportReview.created_at.desc())
+        .limit(1)
+    )
+    return {**_report_dict(report), "latest_review": _report_review_dict(latest_review) if latest_review else None}
 
 
 def _emg_dict(summary: RehabAppEmgSummary) -> dict:
@@ -972,14 +1000,14 @@ def generate_training_report(db: Session, user_id: str, session_id: str) -> dict
     )
     db.commit()
     db.refresh(report)
-    return _report_dict(report)
+    return _report_with_review_dict(db, report)
 
 
 def get_training_report(db: Session, user_id: str, report_id: str) -> dict:
     report = db.get(RehabAppTrainingReport, report_id)
     if report is None or report.user_id != user_id:
         raise AppError("TRAINING_REPORT_NOT_FOUND", "training report not found", status_code=404)
-    return _report_dict(report)
+    return _report_with_review_dict(db, report)
 
 
 def get_session_training_report(db: Session, user_id: str, session_id: str) -> dict:
@@ -987,7 +1015,7 @@ def get_session_training_report(db: Session, user_id: str, session_id: str) -> d
     report = db.scalar(select(RehabAppTrainingReport).where(RehabAppTrainingReport.user_id == user_id, RehabAppTrainingReport.session_id == session_id))
     if report is None:
         raise AppError("TRAINING_REPORT_NOT_FOUND", "training report not found", status_code=404)
-    return _report_dict(report)
+    return _report_with_review_dict(db, report)
 
 
 def list_training_reports(db: Session, user_id: str, limit: int = 50) -> list[dict]:
@@ -999,7 +1027,7 @@ def list_training_reports(db: Session, user_id: str, limit: int = 50) -> list[di
             .limit(limit)
         )
     )
-    return [_report_dict(report) for report in reports]
+    return [_report_with_review_dict(db, report) for report in reports]
 
 
 def latest_training_report(db: Session, user_id: str) -> dict | None:
@@ -1009,7 +1037,50 @@ def latest_training_report(db: Session, user_id: str) -> dict | None:
         .order_by(RehabAppTrainingReport.created_at.desc())
         .limit(1)
     )
-    return _report_dict(report) if report else None
+    return _report_with_review_dict(db, report) if report else None
+
+
+def create_training_report_review(db: Session, user_id: str, report_id: str, payload: RehabAppTrainingReportReviewCreate) -> dict:
+    report = db.get(RehabAppTrainingReport, report_id)
+    if report is None or report.user_id != user_id:
+        raise AppError("TRAINING_REPORT_NOT_FOUND", "training report not found", status_code=404)
+    data = payload.model_dump()
+    review = RehabAppTrainingReportReview(user_id=user_id, report_id=report.id, **data)
+    db.add(review)
+    db.flush()
+    create_audit_log(
+        db,
+        actor_type="human",
+        actor_id=user_id,
+        action="rehab_app.training_report.reviewed",
+        resource_type="rehab_app_training_report_review",
+        resource_id=review.id,
+        after={
+            "report_id": report.id,
+            "review_status": review.review_status,
+            "next_step": review.next_step,
+            "request_new_plan": review.request_new_plan,
+            "control_boundary": "training_report_review_only_not_medical_diagnosis_or_motion_permission",
+        },
+    )
+    db.commit()
+    db.refresh(review)
+    return _report_review_dict(review)
+
+
+def list_training_report_reviews(db: Session, user_id: str, report_id: str, limit: int = 50) -> list[dict]:
+    report = db.get(RehabAppTrainingReport, report_id)
+    if report is None or report.user_id != user_id:
+        raise AppError("TRAINING_REPORT_NOT_FOUND", "training report not found", status_code=404)
+    reviews = list(
+        db.scalars(
+            select(RehabAppTrainingReportReview)
+            .where(RehabAppTrainingReportReview.user_id == user_id, RehabAppTrainingReportReview.report_id == report.id)
+            .order_by(RehabAppTrainingReportReview.created_at.desc())
+            .limit(limit)
+        )
+    )
+    return [_report_review_dict(review) for review in reviews]
 
 
 def record_emg_summary(db: Session, user_id: str, payload: dict) -> dict:
@@ -1260,11 +1331,16 @@ def accept_ai_training_draft(db: Session, user_id: str, draft_id: str) -> dict:
 
 
 def sync_platform_records(db: Session, user_id: str, resource_types: list[str]) -> dict:
-    selected_types = resource_types or ["training_plans", "training_sessions", "training_reports", "emg_summaries", "m33_decisions"]
+    selected_types = resource_types or ["training_plans", "training_sessions", "training_reports", "training_report_reviews", "emg_summaries", "m33_decisions"]
     summary = {
         "training_plans": len(list_training_plans(db, user_id)) if "training_plans" in selected_types else 0,
         "training_sessions": len(list_training_sessions(db, user_id)) if "training_sessions" in selected_types else 0,
         "training_reports": len(list_training_reports(db, user_id)) if "training_reports" in selected_types else 0,
+        "training_report_reviews": len(
+            list(db.scalars(select(RehabAppTrainingReportReview).where(RehabAppTrainingReportReview.user_id == user_id)))
+        )
+        if "training_report_reviews" in selected_types
+        else 0,
         "emg_summaries": len(emg_history(db, user_id)) if "emg_summaries" in selected_types else 0,
         "m33_decisions": len(
             list(
@@ -1307,7 +1383,7 @@ def get_platform_sync_status(db: Session, user_id: str) -> dict:
         "status": "ready",
         "latest_session_id": latest_session[0]["id"] if latest_session else "",
         "latest_sync_run": _platform_sync_run_dict(latest_run) if latest_run else None,
-        "synced_resource_types": ["training_plans", "training_sessions", "training_reports", "emg_summaries", "m33_decisions"],
+        "synced_resource_types": ["training_plans", "training_sessions", "training_reports", "training_report_reviews", "emg_summaries", "m33_decisions"],
         "control_boundary": "platform_sync_evidence_only_not_motion_permission",
     }
 

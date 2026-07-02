@@ -29,6 +29,7 @@ from app.db.models.rehab_arm_app import (
     RehabAppTrainingPlan,
     RehabAppTrainingPlanSync,
     RehabAppTrainingReport,
+    RehabAppTrainingReportReview,
     RehabAppTrainingSession,
     RehabAppUserProfile,
 )
@@ -60,6 +61,7 @@ def ensure_schema_extensions() -> None:
             RehabAppBleMessage,
             RehabAppTrainingSession,
             RehabAppTrainingReport,
+            RehabAppTrainingReportReview,
             RehabAppEmgSummary,
             RehabAppIntentInferenceSummary,
             RehabAppAiTrainingDraft,

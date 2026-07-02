@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, JSON, String, Text, func
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, JSON, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..base import Base
@@ -130,6 +130,21 @@ class RehabAppTrainingReport(Base):
     recommendations: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class RehabAppTrainingReportReview(Base):
+    __tablename__ = "rehab_app_training_report_reviews"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    report_id: Mapped[str] = mapped_column(String(64), ForeignKey("rehab_app_training_reports.id"), nullable=False, index=True)
+    reviewer_role: Mapped[str] = mapped_column(String(40), nullable=False, default="patient", index=True)
+    review_status: Mapped[str] = mapped_column(String(40), nullable=False, default="needs_review", index=True)
+    reviewer_note: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    next_step: Mapped[str] = mapped_column(String(80), nullable=False, default="continue_current_plan", index=True)
+    request_new_plan: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    follow_up_payload: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class RehabAppEmgSummary(Base):

@@ -21,6 +21,7 @@ from .app_schemas import (
     RehabAppOfflineQueueReplayRequest,
     RehabAppPlatformSyncRequest,
     RehabAppProfileUpdate,
+    RehabAppTrainingReportReviewCreate,
     RehabAppTrainingSessionFinishRequest,
     RehabAppTrainingSessionProgressRequest,
     RehabAppTrainingSessionStartRequest,
@@ -33,6 +34,7 @@ from .app_service import (
     archive_training_plan,
     bind_device,
     create_ble_message,
+    create_training_report_review,
     create_training_plan,
     emg_history,
     generate_ai_training_draft,
@@ -54,6 +56,7 @@ from .app_service import (
     latest_emg_summary,
     list_devices,
     list_training_reports,
+    list_training_report_reviews,
     list_training_sessions,
     list_training_plans,
     finish_training_session,
@@ -220,6 +223,16 @@ def api_list_training_reports(request: Request, db: Session = Depends(get_db)):
 @router.get("/training-reports/{report_id}")
 def api_get_training_report(report_id: str, request: Request, db: Session = Depends(get_db)):
     return ok(get_training_report(db, _user_id(db, request), report_id))
+
+
+@router.post("/training-reports/{report_id}/reviews")
+def api_create_training_report_review(report_id: str, payload: RehabAppTrainingReportReviewCreate, request: Request, db: Session = Depends(get_db)):
+    return ok(create_training_report_review(db, _user_id(db, request), report_id, payload))
+
+
+@router.get("/training-reports/{report_id}/reviews")
+def api_list_training_report_reviews(report_id: str, request: Request, db: Session = Depends(get_db)):
+    return ok(list_training_report_reviews(db, _user_id(db, request), report_id))
 
 
 @router.post("/emg/summary")
