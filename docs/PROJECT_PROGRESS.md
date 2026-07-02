@@ -125,3 +125,4 @@
 - Added AI draft recovery for the phone workflow: `GET /ai-training-drafts?status=all|open|accepted` lists persisted drafts, and `/me` now includes `latest_open_ai_draft` so an unfinished AI plan review can resume after app restart.
 - Tightened the App training-session state machine: `training-sessions/start` now rejects duplicate active sessions on the same device with `ACTIVE_TRAINING_SESSION_EXISTS`, while allowing a new session after the previous one is finished.
 - Locked finished App training sessions against later progress or finish mutation. `PATCH /training-sessions/{id}/progress` and repeated finish calls now return `TRAINING_SESSION_NOT_ACTIVE` after a session is finished.
+- Locked report source evidence after report generation. Repeated report POSTs now return the existing report, while late EMG/intent uploads for the reported session return `TRAINING_REPORT_ALREADY_GENERATED`.

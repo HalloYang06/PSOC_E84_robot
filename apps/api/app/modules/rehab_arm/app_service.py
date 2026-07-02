@@ -829,6 +829,25 @@ def _require_active_training_session(session: RehabAppTrainingSession) -> None:
         )
 
 
+def _session_report(db: Session, user_id: str, session_id: str) -> RehabAppTrainingReport | None:
+    return db.scalar(select(RehabAppTrainingReport).where(RehabAppTrainingReport.user_id == user_id, RehabAppTrainingReport.session_id == session_id))
+
+
+def _require_session_report_open(db: Session, user_id: str, session: RehabAppTrainingSession) -> None:
+    report = _session_report(db, user_id, session.id)
+    if report is not None:
+        raise AppError(
+            "TRAINING_REPORT_ALREADY_GENERATED",
+            "session evidence is locked after a training report is generated",
+            status_code=409,
+            details={
+                "session_id": session.id,
+                "report_id": report.id,
+                "control_boundary": "training_report_locked_not_motion_permission",
+            },
+        )
+
+
 def start_training_session(db: Session, user_id: str, plan_id: str, device_id: str) -> dict:
     plan = db.get(RehabAppTrainingPlan, plan_id)
     if plan is None or plan.user_id != user_id:
@@ -985,6 +1004,9 @@ def generate_training_report(db: Session, user_id: str, session_id: str) -> dict
             status_code=409,
             details={"control_boundary": "training_report_review_only_not_medical_diagnosis_or_motion_permission"},
         )
+    existing_report = _session_report(db, user_id, session.id)
+    if existing_report is not None:
+        return _report_with_review_dict(db, existing_report)
     plan = db.get(RehabAppTrainingPlan, session.plan_id)
     device = db.get(RehabAppDeviceBinding, session.device_id)
     emg_items = _session_emg_summaries(db, user_id, session.id)
@@ -1028,9 +1050,7 @@ def generate_training_report(db: Session, user_id: str, session_id: str) -> dict
         recommendations.append("intent_confidence_low_check_emg_contact_and_calibration")
     if not recommendations:
         recommendations.append("continue_current_plan_with_m33_review_required")
-    report = db.scalar(select(RehabAppTrainingReport).where(RehabAppTrainingReport.session_id == session.id))
-    if report is None:
-        report = RehabAppTrainingReport(user_id=user_id, session_id=session.id, plan_id=session.plan_id, device_id=session.device_id)
+    report = RehabAppTrainingReport(user_id=user_id, session_id=session.id, plan_id=session.plan_id, device_id=session.device_id)
     report.summary = summary
     report.emg_overview = emg_overview
     report.intent_overview = intent_overview
@@ -1062,7 +1082,7 @@ def get_training_report(db: Session, user_id: str, report_id: str) -> dict:
 
 def get_session_training_report(db: Session, user_id: str, session_id: str) -> dict:
     _require_user_session(db, user_id, session_id)
-    report = db.scalar(select(RehabAppTrainingReport).where(RehabAppTrainingReport.user_id == user_id, RehabAppTrainingReport.session_id == session_id))
+    report = _session_report(db, user_id, session_id)
     if report is None:
         raise AppError("TRAINING_REPORT_NOT_FOUND", "training report not found", status_code=404)
     return _report_with_review_dict(db, report)
@@ -1134,7 +1154,8 @@ def list_training_report_reviews(db: Session, user_id: str, report_id: str, limi
 
 
 def record_emg_summary(db: Session, user_id: str, payload: dict) -> dict:
-    _require_user_session(db, user_id, str(payload.get("session_id") or ""))
+    session = _require_user_session(db, user_id, str(payload.get("session_id") or ""))
+    _require_session_report_open(db, user_id, session)
     summary = RehabAppEmgSummary(user_id=user_id, created_at=datetime.now(timezone.utc), **payload)
     db.add(summary)
     db.flush()
@@ -1175,7 +1196,8 @@ def emg_history(db: Session, user_id: str, limit: int = 50) -> list[dict]:
 
 
 def record_intent_summary(db: Session, user_id: str, payload: dict) -> dict:
-    _require_user_session(db, user_id, str(payload.get("session_id") or ""))
+    session = _require_user_session(db, user_id, str(payload.get("session_id") or ""))
+    _require_session_report_open(db, user_id, session)
     summary = RehabAppIntentInferenceSummary(user_id=user_id, created_at=datetime.now(timezone.utc), **payload)
     db.add(summary)
     db.flush()

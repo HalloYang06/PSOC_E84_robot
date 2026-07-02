@@ -396,6 +396,46 @@ def test_rehab_arm_app_session_emg_and_intent_summary_flow(tmp_path, monkeypatch
     assert report["recommendations"] == ["continue_current_plan_with_m33_review_required"]
     assert report["latest_review"] is None
 
+    repeat_report_response = client.post(
+        f"/api/rehab-arm/app/v1/training-sessions/{session['id']}/report",
+        headers=auth_headers(owner_token),
+    )
+    assert repeat_report_response.status_code == 200
+    assert repeat_report_response.json()["data"]["id"] == report["id"]
+    assert repeat_report_response.json()["data"]["emg_overview"]["sample_count"] == 1
+
+    late_emg = client.post(
+        "/api/rehab-arm/app/v1/emg/summary",
+        headers=auth_headers(owner_token),
+        json={
+            "session_id": session["id"],
+            "channel": "ch9",
+            "muscle_name": "late_sample",
+            "rms_avg": 0.9,
+            "peak": 0.9,
+            "activation_avg": 0.9,
+            "fatigue_index": 0.9,
+            "contact_quality": "late",
+        },
+    )
+    assert late_emg.status_code == 409
+    assert late_emg.json()["error"]["code"] == "TRAINING_REPORT_ALREADY_GENERATED"
+
+    late_intent = client.post(
+        "/api/rehab-arm/app/v1/intent/summary",
+        headers=auth_headers(owner_token),
+        json={
+            "session_id": session["id"],
+            "source": "m55",
+            "predicted_action": "late_action",
+            "confidence": 0.9,
+            "topk": [],
+            "stability_score": 0.9,
+        },
+    )
+    assert late_intent.status_code == 409
+    assert late_intent.json()["error"]["code"] == "TRAINING_REPORT_ALREADY_GENERATED"
+
     review_response = client.post(
         f"/api/rehab-arm/app/v1/training-reports/{report['id']}/reviews",
         headers=auth_headers(owner_token),
