@@ -112,6 +112,8 @@ platform_sync
 
 Safety rule: these endpoints do not send CAN frames, motor current, motor torque, raw joint position/velocity, M33 overrides, or emergency-stop release commands. Every training/device response remains plan, evidence, or review data until M33 and the robot-side stack decide otherwise.
 
+To unbind a paired M33 device, call `POST /api/rehab-arm/app/v1/devices/{device_id}/unbind` with an optional `reason`. The backend keeps history and diagnostics visible, but freezes the device as revoked so it cannot sync plans, send BLE messages, update M33 decisions, or start sessions.
+
 ## Android APK Build Environment
 
 This workstation has the Android build prerequisites installed for the rehab-arm mobile wrapper:

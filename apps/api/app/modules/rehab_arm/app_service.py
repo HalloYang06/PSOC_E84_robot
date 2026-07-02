@@ -388,6 +388,36 @@ def bind_device(db: Session, user_id: str, payload: RehabAppDeviceBindRequest) -
     return _device_dict(device)
 
 
+def unbind_device(db: Session, user_id: str, device_id: str, reason: str = "") -> dict:
+    device = db.get(RehabAppDeviceBinding, device_id)
+    if device is None or device.user_id != user_id:
+        raise AppError("DEVICE_NOT_FOUND", "device binding not found", status_code=404)
+    device.trust_status = "revoked"
+    db.add(device)
+    db.flush()
+    create_audit_log(
+        db,
+        project_id=device.platform_project_id or None,
+        actor_type="human",
+        actor_id=user_id,
+        action="rehab_app.device.unbound",
+        resource_type="rehab_app_device_binding",
+        resource_id=device.id,
+        after={
+            "m33_device_id": device.m33_device_id,
+            "reason": reason,
+            "control_boundary": "device_unbound_history_retained_not_motion_permission",
+        },
+    )
+    db.commit()
+    db.refresh(device)
+    return {
+        **_device_dict(device),
+        "unbind_reason": reason,
+        "control_boundary": "device_unbound_history_retained_not_motion_permission",
+    }
+
+
 def _latest_device_sync(db: Session, device_id: str) -> RehabAppTrainingPlanSync | None:
     return db.scalar(
         select(RehabAppTrainingPlanSync)

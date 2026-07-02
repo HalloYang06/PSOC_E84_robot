@@ -322,6 +322,89 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert forbidden.json()["error"]["code"] == "VALIDATION_ERROR"
 
 
+def test_rehab_arm_app_device_unbind_freezes_action_paths(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
+
+    owner_token, _owner_user_id = _issue_rehab_app_token()
+
+    device_response = client.post(
+        "/api/rehab-arm/app/v1/devices/bind",
+        headers=auth_headers(owner_token),
+        json={"m33_device_id": "m33-unbind-alpha", "ble_name": "ArmControl-Unbind", "trust_status": "trusted"},
+    )
+    assert device_response.status_code == 200
+    device = device_response.json()["data"]
+
+    plan_response = client.post(
+        "/api/rehab-arm/app/v1/training-plans",
+        headers=auth_headers(owner_token),
+        json={"title": "Unbind safety plan", "movement_type": "elbow_flexion", "sets": 1, "reps": 2},
+    )
+    assert plan_response.status_code == 200
+    plan = plan_response.json()["data"]
+
+    sync_response = client.post(
+        f"/api/rehab-arm/app/v1/training-plans/{plan['id']}/sync-to-device",
+        headers=auth_headers(owner_token),
+        json={"device_id": device["id"]},
+    )
+    assert sync_response.status_code == 200
+    sync = sync_response.json()["data"]
+
+    accepted = client.post(
+        f"/api/rehab-arm/app/v1/devices/{device['id']}/m33-status",
+        headers=auth_headers(owner_token),
+        json={"sync_id": sync["id"], "sync_status": "m33_accepted", "m33_reason": "accepted before unbind"},
+    )
+    assert accepted.status_code == 200
+
+    unbind = client.post(
+        f"/api/rehab-arm/app/v1/devices/{device['id']}/unbind",
+        headers=auth_headers(owner_token),
+        json={"reason": "patient changed paired controller"},
+    )
+    assert unbind.status_code == 200
+    unbound_device = unbind.json()["data"]
+    assert unbound_device["trust_status"] == "revoked"
+    assert unbound_device["unbind_reason"] == "patient changed paired controller"
+    assert unbound_device["control_boundary"] == "device_unbound_history_retained_not_motion_permission"
+
+    status = client.get(f"/api/rehab-arm/app/v1/devices/{device['id']}/status", headers=auth_headers(owner_token))
+    assert status.status_code == 200
+    assert status.json()["data"]["trust_status"] == "revoked"
+
+    diagnostic = client.post(
+        f"/api/rehab-arm/app/v1/devices/{device['id']}/diagnostic-upload",
+        headers=auth_headers(owner_token),
+        json={"snapshot_type": "after_unbind_seen", "m33_state": "unbound"},
+    )
+    assert diagnostic.status_code == 200
+
+    blocked_sync = client.post(
+        f"/api/rehab-arm/app/v1/training-plans/{plan['id']}/sync-to-device",
+        headers=auth_headers(owner_token),
+        json={"device_id": device["id"]},
+    )
+    assert blocked_sync.status_code == 409
+    assert blocked_sync.json()["error"]["code"] == "DEVICE_REVOKED"
+
+    blocked_ble = client.post(
+        f"/api/rehab-arm/app/v1/devices/{device['id']}/ble/messages",
+        headers=auth_headers(owner_token),
+        json={"message_type": "device_status_request"},
+    )
+    assert blocked_ble.status_code == 409
+    assert blocked_ble.json()["error"]["code"] == "DEVICE_REVOKED"
+
+    blocked_start = client.post(
+        "/api/rehab-arm/app/v1/training-sessions/start",
+        headers=auth_headers(owner_token),
+        json={"plan_id": plan["id"], "device_id": device["id"]},
+    )
+    assert blocked_start.status_code == 409
+    assert blocked_start.json()["error"]["code"] == "DEVICE_REVOKED"
+
+
 def test_rehab_arm_app_session_emg_and_intent_summary_flow(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
 

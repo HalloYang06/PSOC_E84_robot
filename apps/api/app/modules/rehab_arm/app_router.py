@@ -10,6 +10,7 @@ from app.db.session import get_db
 
 from .app_schemas import (
     RehabAppDeviceBindRequest,
+    RehabAppDeviceUnbindRequest,
     RehabAppAiTrainingDraftGenerateRequest,
     RehabAppBleAckCreate,
     RehabAppBleMessageCreate,
@@ -68,6 +69,7 @@ from .app_service import (
     start_training_session,
     sync_platform_records,
     sync_training_plan_to_device,
+    unbind_device,
     update_ble_message_ack,
     update_m33_sync_status,
     update_training_plan,
@@ -120,6 +122,11 @@ def api_list_devices(request: Request, db: Session = Depends(get_db)):
 @router.get("/devices/{device_id}/status")
 def api_get_device_status(device_id: str, request: Request, db: Session = Depends(get_db)):
     return ok(get_device_status(db, _user_id(db, request), device_id))
+
+
+@router.post("/devices/{device_id}/unbind")
+def api_unbind_device(device_id: str, payload: RehabAppDeviceUnbindRequest, request: Request, db: Session = Depends(get_db)):
+    return ok(unbind_device(db, _user_id(db, request), device_id, payload.reason))
 
 
 @router.post("/devices/{device_id}/m33-status")

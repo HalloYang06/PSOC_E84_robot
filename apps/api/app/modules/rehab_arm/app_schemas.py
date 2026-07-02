@@ -34,6 +34,12 @@ class RehabAppDeviceBindRequest(BaseModel):
     platform_project_id: str = ""
 
 
+class RehabAppDeviceUnbindRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(default="", max_length=300)
+
+
 class RehabAppDiagnosticUploadRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
