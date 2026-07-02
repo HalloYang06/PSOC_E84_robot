@@ -88,3 +88,5 @@
 - Validation passed: browser manifest check confirmed `display=standalone`, four manifest icons, and cached `icon-maskable-512.png`.
 - Deployed the phone PWA static files to the cloud route `http://106.55.62.122:3001/rehab-arm-mobile/index.html` and restarted the cloud web/API services so the new public files are served.
 - Cloud validation passed: `index.html`, `manifest.json`, and `icon-192.png` returned HTTP 200; Playwright mobile QA at `390x844` confirmed the cloud page loads the Stitch iframe, has `display=standalone`, includes four manifest icons, has no horizontal overflow, and emits no browser console errors.
+- Configured the Windows Android build environment for the upcoming APK wrapper: Temurin JDK 21 at `D:\Java\jdk-21`, Android SDK command-line tools at `D:\Android\Sdk`, user-level `JAVA_HOME`, `ANDROID_HOME`, `ANDROID_SDK_ROOT`, and PATH entries for Java, `sdkmanager`, `adb`, emulator, and build-tools.
+- Installed and validated Android SDK packages `platform-tools 37.0.0`, `build-tools 35.0.0`, `platforms;android-35`, and `emulator 36.6.11`; added `scripts/use-android-build-env.ps1` so future shells can load the same environment.

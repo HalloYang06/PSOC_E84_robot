@@ -32,3 +32,37 @@ python -m http.server 4177 --bind 127.0.0.1
 3. Optional backend connection: set `localStorage.rehabArmMobileApiBase` to the API origin that serves `/api/rehab-arm/app/v1`.
 4. Keep the safety boundary visible: App sync submits structured training data for M33 review only. It is not motion permission and must not release emergency stop.
 5. On Android Chrome, use "Add to Home screen" from the browser menu. The PWA includes standalone display metadata and maskable PNG icons for install preview.
+
+## Android APK Build Environment
+
+This workstation has the Android build prerequisites installed for the rehab-arm mobile wrapper:
+
+```text
+JAVA_HOME=D:\Java\jdk-21
+ANDROID_HOME=D:\Android\Sdk
+ANDROID_SDK_ROOT=D:\Android\Sdk
+```
+
+Installed Android SDK packages:
+
+```text
+platform-tools 37.0.0
+build-tools 35.0.0
+platforms;android-35
+emulator 36.6.11
+```
+
+For a fresh PowerShell session, load the environment with:
+
+```text
+.\scripts\use-android-build-env.ps1
+```
+
+Then verify:
+
+```text
+java -version
+javac -version
+adb version
+sdkmanager.bat --list_installed
+```
