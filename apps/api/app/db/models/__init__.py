@@ -11,6 +11,15 @@ from .project_collaboration import ProjectAIProvider, ProjectComputerNode, Proje
 from .project_knowledge import ProjectKnowledgeDocument, ProjectSkill, SeatSkillAssignment
 from .project_invite import ProjectInvite
 from .project_member import ProjectMember
+from .rehab_arm_app import (
+    RehabAppDeviceBinding,
+    RehabAppEmgSummary,
+    RehabAppIntentInferenceSummary,
+    RehabAppTrainingPlan,
+    RehabAppTrainingPlanSync,
+    RehabAppTrainingSession,
+    RehabAppUserProfile,
+)
 from .requirement import Requirement, RequirementMessage
 from .runner import Runner
 from .task import Task
@@ -32,6 +41,13 @@ __all__ = [
     "SeatSkillAssignment",
     "User",
     "ProjectMember",
+    "RehabAppUserProfile",
+    "RehabAppDeviceBinding",
+    "RehabAppTrainingPlan",
+    "RehabAppTrainingPlanSync",
+    "RehabAppTrainingSession",
+    "RehabAppEmgSummary",
+    "RehabAppIntentInferenceSummary",
     "ProjectInvite",
     "Agent",
     "Runner",

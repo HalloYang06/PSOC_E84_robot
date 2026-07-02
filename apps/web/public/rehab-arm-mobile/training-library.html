@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>训练库 - RoboRehab</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "surface-dim": "#dad9df",
+                      "secondary-fixed": "#e2dfff",
+                      "primary-container": "#0070eb",
+                      "error-container": "#ffdad6",
+                      "surface-container-highest": "#e3e2e7",
+                      "on-primary": "#ffffff",
+                      "secondary-container": "#6664e4",
+                      "primary-fixed-dim": "#adc6ff",
+                      "surface-container-lowest": "#ffffff",
+                      "surface-container-low": "#f4f3f8",
+                      "error": "#ba1a1a",
+                      "on-tertiary-fixed": "#351000",
+                      "on-secondary-fixed": "#0c006a",
+                      "on-surface-variant": "#414755",
+                      "outline": "#717786",
+                      "surface-variant": "#e3e2e7",
+                      "on-error-container": "#93000a",
+                      "secondary": "#4c4aca",
+                      "on-primary-container": "#fefcff",
+                      "surface-container": "#eeedf3",
+                      "secondary-fixed-dim": "#c2c1ff",
+                      "surface-container-high": "#e9e7ed",
+                      "inverse-surface": "#2f3034",
+                      "tertiary-fixed-dim": "#ffb595",
+                      "background": "#faf9fe",
+                      "on-primary-fixed": "#001a41",
+                      "on-secondary-fixed-variant": "#3631b4",
+                      "on-secondary": "#ffffff",
+                      "on-secondary-container": "#fffbff",
+                      "inverse-primary": "#adc6ff",
+                      "on-primary-fixed-variant": "#004493",
+                      "on-tertiary": "#ffffff",
+                      "tertiary-fixed": "#ffdbcc",
+                      "on-background": "#1a1b1f",
+                      "primary": "#0058bc",
+                      "outline-variant": "#c1c6d7",
+                      "tertiary-container": "#c64f00",
+                      "surface-bright": "#faf9fe",
+                      "on-surface": "#1a1b1f",
+                      "tertiary": "#9e3d00",
+                      "on-error": "#ffffff",
+                      "inverse-on-surface": "#f1f0f5",
+                      "on-tertiary-container": "#fffbff",
+                      "surface-tint": "#005bc1",
+                      "on-tertiary-fixed-variant": "#7c2e00",
+                      "primary-fixed": "#d8e2ff",
+                      "surface": "#faf9fe"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.125rem",
+                      "lg": "0.25rem",
+                      "xl": "0.5rem",
+                      "full": "0.75rem"
+              },
+              "spacing": {
+                      "container-max": "1280px",
+                      "unit": "8px",
+                      "gutter": "24px",
+                      "margin-desktop": "48px",
+                      "margin-mobile": "16px"
+              },
+              "fontFamily": {
+                      "headline-lg-mobile": ["Inter"],
+                      "label-md": ["JetBrains Mono"],
+                      "headline-md": ["Inter"],
+                      "display-lg": ["Inter"],
+                      "body-lg": ["Inter"],
+                      "body-md": ["Inter"],
+                      "data-viz": ["JetBrains Mono"],
+                      "headline-lg": ["Inter"]
+              },
+              "fontSize": {
+                      "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                      "label-md": ["14px", {"lineHeight": "20px", "letterSpacing": "0.05em", "fontWeight": "500"}],
+                      "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                      "display-lg": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                      "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                      "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                      "data-viz": ["12px", {"lineHeight": "16px", "fontWeight": "600"}],
+                      "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}]
+              }
+            }
+          }
+        }
+    </script>
+<style>
+        body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(193, 198, 215, 0.3); /* outline-variant */
+            box-shadow: 0 4px 24px -4px rgba(0, 88, 188, 0.04); /* primary tinted shadow */
+        }
+        .bg-grid-pattern {
+            background-image: radial-gradient(rgba(113, 119, 134, 0.15) 1px, transparent 1px);
+            background-size: 24px 24px;
+        }
+        /* Hide scrollbar for clean horizontal scrolling */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+</head>
+<body class="bg-surface text-on-surface bg-grid-pattern min-h-screen">
+<!-- TopAppBar -->
+<header class="fixed top-0 left-0 w-full z-50 flex justify-between items-center px-margin-mobile h-16 bg-surface/80 backdrop-blur-xl border-b border-outline-variant shadow-sm text-primary">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-primary" style="font-variation-settings: 'FILL' 1;">clinical_notes</span>
+<h1 class="text-headline-md-mobile md:text-headline-md font-headline-md-mobile md:font-headline-md font-bold text-primary tracking-tight">RoboRehab Controller</h1>
+</div>
+<!-- Desktop Navigation Cluster (Hidden on Mobile) -->
+<nav class="hidden md:flex items-center gap-6">
+<a class="text-on-surface-variant font-label-md text-label-md hover:bg-surface-container-high transition-colors px-3 py-2 rounded-lg flex items-center gap-2" href="#">
+<span class="material-symbols-outlined">home_health</span> 首页
+            </a>
+<a class="text-primary font-bold font-label-md text-label-md hover:bg-surface-container-high transition-colors px-3 py-2 rounded-lg flex items-center gap-2 bg-primary-container/10" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">exercise</span> 训练
+            </a>
+<a class="text-on-surface-variant font-label-md text-label-md hover:bg-surface-container-high transition-colors px-3 py-2 rounded-lg flex items-center gap-2" href="#">
+<span class="material-symbols-outlined">monitoring</span> 肌电
+            </a>
+<a class="text-on-surface-variant font-label-md text-label-md hover:bg-surface-container-high transition-colors px-3 py-2 rounded-lg flex items-center gap-2" href="#">
+<span class="material-symbols-outlined">precision_manufacturing</span> 设备
+            </a>
+<a class="text-on-surface-variant font-label-md text-label-md hover:bg-surface-container-high transition-colors px-3 py-2 rounded-lg flex items-center gap-2" href="#">
+<span class="material-symbols-outlined">person</span> 我的
+            </a>
+</nav>
+<div class="flex items-center hover:bg-surface-container-high transition-colors p-2 rounded-full cursor-pointer">
+<span class="material-symbols-outlined text-primary">smart_toy</span>
+</div>
+</header>
+<!-- Main Canvas -->
+<main class="pt-24 pb-32 px-margin-mobile md:px-margin-desktop max-w-container-max mx-auto space-y-10 relative z-10">
+<!-- Page Header & Actions -->
+<div class="flex flex-col md:flex-row md:items-end justify-between gap-6">
+<div class="space-y-2">
+<h2 class="text-headline-lg-mobile md:text-headline-lg font-headline-lg-mobile md:font-headline-lg text-on-surface">训练库</h2>
+<p class="text-body-md font-body-md text-on-surface-variant">为当前训练选择或生成康复方案。</p>
+</div>
+<div class="flex flex-col sm:flex-row items-center gap-4">
+<button class="w-full sm:w-auto bg-primary text-on-primary hover:bg-primary/90 active:scale-95 transition-all px-6 py-3 rounded-lg flex items-center justify-center gap-2 font-label-md text-label-md shadow-md">
+<span class="material-symbols-outlined">auto_awesome</span>
+                    新建计划 (AI 生成)
+                </button>
+</div>
+</div>
+<!-- Clinical Disclaimer -->
+<div class="glass-panel rounded-lg p-3 flex items-start md:items-center gap-3 border-l-4 border-l-tertiary-container bg-surface-container-lowest">
+<span class="material-symbols-outlined text-tertiary-container mt-0.5 md:mt-0" style="font-variation-settings: 'FILL' 1;">warning</span>
+<p class="text-data-viz font-data-viz text-on-surface-variant tracking-wider uppercase">
+                需 M33 审核：计划必须先同步并经由 M33 审核后方可执行。
+            </p>
+</div>
+<!-- Bento Grid Layout -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
+<!-- Primary Column (Today & Therapist) -->
+<div class="lg:col-span-8 space-y-10">
+<!-- Section: Today's Plan -->
+<section>
+<div class="flex items-center gap-2 mb-4">
+<span class="material-symbols-outlined text-primary">calendar_today</span>
+<h3 class="text-headline-md-mobile md:text-headline-md font-headline-md-mobile md:font-headline-md text-on-surface">今日计划</h3>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+<!-- Card 1: Elbow Extension -->
+<div class="glass-panel rounded-xl p-5 hover:-translate-y-1 transition-transform duration-200 cursor-pointer flex flex-col justify-between h-full group border-l-4 border-l-primary">
+<div>
+<div class="flex justify-between items-start mb-3">
+<h4 class="text-body-lg font-body-lg font-semibold text-on-surface">伸肘训练</h4>
+<span class="px-2 py-1 rounded bg-surface-container-high text-on-surface-variant text-data-viz font-data-viz border border-outline-variant">低风险</span>
+</div>
+<div class="grid grid-cols-2 gap-4 mb-6">
+<div class="space-y-1">
+<p class="text-data-viz font-data-viz text-outline uppercase tracking-wide">目标角度</p>
+<p class="text-body-md font-body-md font-medium text-on-surface">120°</p>
+</div>
+<div class="space-y-1">
+<p class="text-data-viz font-data-viz text-outline uppercase tracking-wide">助力等级</p>
+<p class="text-body-md font-body-md font-medium text-on-surface">20%</p>
+</div>
+<div class="col-span-2 space-y-1">
+<p class="text-data-viz font-data-viz text-outline uppercase tracking-wide">最近完成</p>
+<p class="text-body-md font-body-md text-on-surface-variant">2小时前</p>
+</div>
+</div>
+</div>
+<div class="flex items-center justify-between mt-auto pt-4 border-t border-outline-variant/30">
+<!-- Sync Badge -->
+<div class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary/10 text-primary border border-primary/20">
+<span class="material-symbols-outlined text-[14px]">cloud_done</span>
+<span class="text-data-viz font-data-viz font-bold">M33 已接收</span>
+</div>
+<button class="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-on-primary transition-colors">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">play_arrow</span>
+</button>
+</div>
+</div>
+<!-- Card 2: Shoulder Rotation -->
+<div class="glass-panel rounded-xl p-5 hover:-translate-y-1 transition-transform duration-200 cursor-pointer flex flex-col justify-between h-full group border-l-4 border-l-tertiary-container">
+<div>
+<div class="flex justify-between items-start mb-3">
+<h4 class="text-body-lg font-body-lg font-semibold text-on-surface">肩部旋转</h4>
+<span class="px-2 py-1 rounded bg-tertiary-container/10 text-tertiary-container text-data-viz font-data-viz border border-tertiary-container/20">中风险</span>
+</div>
+<div class="grid grid-cols-2 gap-4 mb-6">
+<div class="space-y-1">
+<p class="text-data-viz font-data-viz text-outline uppercase tracking-wide">目标角度</p>
+<p class="text-body-md font-body-md font-medium text-on-surface">45°</p>
+</div>
+<div class="space-y-1">
+<p class="text-data-viz font-data-viz text-outline uppercase tracking-wide">助力等级</p>
+<p class="text-body-md font-body-md font-medium text-on-surface">50%</p>
+</div>
+<div class="col-span-2 space-y-1">
+<p class="text-data-viz font-data-viz text-outline uppercase tracking-wide">最近完成</p>
+<p class="text-body-md font-body-md text-on-surface-variant">昨天</p>
+</div>
+</div>
+</div>
+<div class="flex items-center justify-between mt-auto pt-4 border-t border-outline-variant/30">
+<!-- Sync Badge Pending -->
+<div class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-container-high text-on-surface-variant border border-outline-variant">
+<span class="material-symbols-outlined text-[14px]">sync</span>
+<span class="text-data-viz font-data-viz">待同步</span>
+</div>
+<button class="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-on-surface-variant group-hover:bg-surface-container-high transition-colors cursor-not-allowed opacity-50">
+<span class="material-symbols-outlined">lock</span>
+</button>
+</div>
+</div>
+</div>
+</section>
+<!-- Section: Therapist's Plan -->
+<section>
+<div class="flex items-center justify-between mb-4">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-secondary">medical_services</span>
+<h3 class="text-headline-md-mobile md:text-headline-md font-headline-md-mobile md:font-headline-md text-on-surface">康复师方案</h3>
+</div>
+<a class="text-primary font-label-md text-label-md hover:underline flex items-center" href="#">查看全部 <span class="material-symbols-outlined text-[16px]">chevron_right</span></a>
+</div>
+<div class="glass-panel rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border border-outline-variant/50">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-full bg-secondary-container/10 flex items-center justify-center text-secondary">
+<span class="material-symbols-outlined">fitness_center</span>
+</div>
+<div>
+<h4 class="text-body-lg font-body-lg font-semibold text-on-surface">腕屈曲协议</h4>
+<p class="text-data-viz font-data-viz text-on-surface-variant mt-1">由陈医生开具 • 3 组 x 15 次</p>
+</div>
+</div>
+<div class="flex items-center gap-3 w-full sm:w-auto">
+<div class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-container-high text-on-surface-variant border border-outline-variant">
+<span class="material-symbols-outlined text-[14px]">sync</span>
+<span class="text-data-viz font-data-viz">待同步</span>
+</div>
+<button class="px-4 py-2 rounded-lg border border-primary text-primary hover:bg-primary/5 transition-colors font-label-md text-label-md flex-1 sm:flex-none text-center">
+                                查看详情
+                            </button>
+</div>
+</div>
+</section>
+</div>
+<!-- Secondary Column (Frequent & AI) -->
+<div class="lg:col-span-4 space-y-10">
+<!-- Section: Frequent -->
+<section>
+<div class="flex items-center gap-2 mb-4">
+<span class="material-symbols-outlined text-outline">history</span>
+<h3 class="text-headline-md-mobile md:text-headline-md font-headline-md-mobile md:font-headline-md text-on-surface">常用方案</h3>
+</div>
+<div class="flex gap-3 overflow-x-auto no-scrollbar pb-2">
+<div class="shrink-0 glass-panel px-4 py-2 rounded-full flex items-center gap-2 hover:bg-surface-container cursor-pointer border border-outline-variant/40">
+<span class="material-symbols-outlined text-[18px] text-primary">settings_accessibility</span>
+<span class="text-label-md font-label-md text-on-surface">基础握力</span>
+</div>
+<div class="shrink-0 glass-panel px-4 py-2 rounded-full flex items-center gap-2 hover:bg-surface-container cursor-pointer border border-outline-variant/40">
+<span class="material-symbols-outlined text-[18px] text-primary">front_hand</span>
+<span class="text-label-md font-label-md text-on-surface">手指伸展</span>
+</div>
+<div class="shrink-0 glass-panel px-4 py-2 rounded-full flex items-center gap-2 hover:bg-surface-container cursor-pointer border border-outline-variant/40">
+<span class="material-symbols-outlined text-[18px] text-primary">pan_tool</span>
+<span class="text-label-md font-label-md text-on-surface">手掌屈曲</span>
+</div>
+</div>
+</section>
+<!-- Section: AI Recommendations -->
+<section>
+<div class="flex items-center gap-2 mb-4">
+<span class="material-symbols-outlined text-secondary">psychology</span>
+<h3 class="text-headline-md-mobile md:text-headline-md font-headline-md-mobile md:font-headline-md text-on-surface">AI 推荐</h3>
+</div>
+<div class="bg-gradient-to-br from-[#f4f3f8] to-[#e2dfff] rounded-xl p-1 shadow-sm border border-secondary/20">
+<div class="bg-surface-container-lowest/90 backdrop-blur-sm rounded-lg p-5">
+<div class="flex justify-between items-start mb-4">
+<div class="flex items-center gap-2 text-secondary">
+<span class="material-symbols-outlined text-[20px]">auto_awesome</span>
+<span class="text-data-viz font-data-viz font-bold uppercase tracking-wider">智能生成</span>
+</div>
+<span class="material-symbols-outlined text-outline">more_horiz</span>
+</div>
+<h4 class="text-body-lg font-body-lg font-semibold text-on-surface mb-2">自适应阻力训练</h4>
+<p class="text-body-md font-body-md text-on-surface-variant mb-6 leading-relaxed">
+                                基于昨天的表现指标，AI 建议增加 5% 的阻力以进一步刺激神经调控。
+                            </p>
+<button class="w-full bg-secondary text-on-secondary hover:bg-secondary/90 transition-colors py-2.5 rounded-lg font-label-md text-label-md shadow-sm">
+                                生成蓝图
+                            </button>
+</div>
+</div>
+</section>
+</div>
+</div>
+</main>
+<!-- Floating AI Assistant Button (FAB) -->
+<button class="fixed bottom-28 md:bottom-10 right-margin-mobile md:right-margin-desktop w-14 h-14 bg-secondary text-on-secondary rounded-full shadow-lg flex items-center justify-center hover:scale-105 active:scale-95 transition-all z-40 group border-2 border-surface-container-lowest">
+<span class="material-symbols-outlined group-hover:rotate-12 transition-transform">neurology</span>
+<!-- Notification dot -->
+<span class="absolute top-0 right-0 w-3.5 h-3.5 bg-error rounded-full border-2 border-surface-container-lowest"></span>
+</button>
+<!-- BottomNavBar (Mobile Only) -->
+<nav class="md:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-2 pb-safe h-20 bg-surface/90 backdrop-blur-2xl border-t border-outline-variant shadow-[0_-4px_12px_rgba(0,88,188,0.05)]">
+<div class="flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:text-primary transition-colors cursor-pointer">
+<span class="material-symbols-outlined">home_health</span>
+<span class="text-label-md font-label-md mt-1 text-[10px]">首页</span>
+</div>
+<!-- Active State: 训练 (Index 1) -->
+<div class="flex flex-col items-center justify-center bg-primary-container text-on-primary-container rounded-full px-4 py-1 scale-90 transition-transform duration-150 cursor-pointer">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">exercise</span>
+<span class="text-label-md font-label-md mt-1 text-[10px]">训练</span>
+</div>
+<div class="flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:text-primary transition-colors cursor-pointer">
+<span class="material-symbols-outlined">monitoring</span>
+<span class="text-label-md font-label-md mt-1 text-[10px]">肌电</span>
+</div>
+<div class="flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:text-primary transition-colors cursor-pointer">
+<span class="material-symbols-outlined">precision_manufacturing</span>
+<span class="text-label-md font-label-md mt-1 text-[10px]">设备</span>
+</div>
+<div class="flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:text-primary transition-colors cursor-pointer">
+<span class="material-symbols-outlined">person</span>
+<span class="text-label-md font-label-md mt-1 text-[10px]">我的</span>
+</div>
+</nav>
+<script src="./mobile-bridge.js"></script>
+</body></html>

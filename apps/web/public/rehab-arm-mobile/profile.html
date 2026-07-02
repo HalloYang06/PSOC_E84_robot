@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>RoboRehab Controller - My Profile</title>
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Tailwind Configuration -->
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "surface-dim": "#dad9df",
+                    "secondary-fixed": "#e2dfff",
+                    "primary-container": "#0070eb",
+                    "error-container": "#ffdad6",
+                    "surface-container-highest": "#e3e2e7",
+                    "on-primary": "#ffffff",
+                    "secondary-container": "#6664e4",
+                    "primary-fixed-dim": "#adc6ff",
+                    "surface-container-lowest": "#ffffff",
+                    "surface-container-low": "#f4f3f8",
+                    "error": "#ba1a1a",
+                    "on-tertiary-fixed": "#351000",
+                    "on-secondary-fixed": "#0c006a",
+                    "on-surface-variant": "#414755",
+                    "outline": "#717786",
+                    "surface-variant": "#e3e2e7",
+                    "on-error-container": "#93000a",
+                    "secondary": "#4c4aca",
+                    "on-primary-container": "#fefcff",
+                    "surface-container": "#eeedf3",
+                    "secondary-fixed-dim": "#c2c1ff",
+                    "surface-container-high": "#e9e7ed",
+                    "inverse-surface": "#2f3034",
+                    "tertiary-fixed-dim": "#ffb595",
+                    "background": "#faf9fe",
+                    "on-primary-fixed": "#001a41",
+                    "on-secondary-fixed-variant": "#3631b4",
+                    "on-secondary": "#ffffff",
+                    "on-secondary-container": "#fffbff",
+                    "inverse-primary": "#adc6ff",
+                    "on-primary-fixed-variant": "#004493",
+                    "on-tertiary": "#ffffff",
+                    "tertiary-fixed": "#ffdbcc",
+                    "on-background": "#1a1b1f",
+                    "primary": "#0058bc",
+                    "outline-variant": "#c1c6d7",
+                    "tertiary-container": "#c64f00",
+                    "surface-bright": "#faf9fe",
+                    "on-surface": "#1a1b1f",
+                    "tertiary": "#9e3d00",
+                    "on-error": "#ffffff",
+                    "inverse-on-surface": "#f1f0f5",
+                    "on-tertiary-container": "#fffbff",
+                    "surface-tint": "#005bc1",
+                    "on-tertiary-fixed-variant": "#7c2e00",
+                    "primary-fixed": "#d8e2ff",
+                    "surface": "#faf9fe"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.125rem",
+                    "lg": "0.25rem",
+                    "xl": "0.5rem",
+                    "full": "0.75rem"
+            },
+            "spacing": {
+                    "container-max": "1280px",
+                    "unit": "8px",
+                    "gutter": "24px",
+                    "margin-desktop": "48px",
+                    "margin-mobile": "16px"
+            },
+            "fontFamily": {
+                    "headline-lg-mobile": [
+                            "Inter"
+                    ],
+                    "label-md": [
+                            "JetBrains Mono"
+                    ],
+                    "headline-md": [
+                            "Inter"
+                    ],
+                    "display-lg": [
+                            "Inter"
+                    ],
+                    "body-lg": [
+                            "Inter"
+                    ],
+                    "body-md": [
+                            "Inter"
+                    ],
+                    "data-viz": [
+                            "JetBrains Mono"
+                    ],
+                    "headline-lg": [
+                            "Inter"
+                    ]
+            },
+            "fontSize": {
+                    "headline-lg-mobile": [
+                            "24px",
+                            {
+                                    "lineHeight": "32px",
+                                    "fontWeight": "600"
+                            }
+                    ],
+                    "label-md": [
+                            "14px",
+                            {
+                                    "lineHeight": "20px",
+                                    "letterSpacing": "0.05em",
+                                    "fontWeight": "500"
+                            }
+                    ],
+                    "headline-md": [
+                            "24px",
+                            {
+                                    "lineHeight": "32px",
+                                    "fontWeight": "600"
+                            }
+                    ],
+                    "display-lg": [
+                            "48px",
+                            {
+                                    "lineHeight": "56px",
+                                    "letterSpacing": "-0.02em",
+                                    "fontWeight": "700"
+                            }
+                    ],
+                    "body-lg": [
+                            "18px",
+                            {
+                                    "lineHeight": "28px",
+                                    "fontWeight": "400"
+                            }
+                    ],
+                    "body-md": [
+                            "16px",
+                            {
+                                    "lineHeight": "24px",
+                                    "fontWeight": "400"
+                            }
+                    ],
+                    "data-viz": [
+                            "12px",
+                            {
+                                    "lineHeight": "16px",
+                                    "fontWeight": "600"
+                            }
+                    ],
+                    "headline-lg": [
+                            "32px",
+                            {
+                                    "lineHeight": "40px",
+                                    "letterSpacing": "-0.01em",
+                                    "fontWeight": "600"
+                            }
+                    ]
+            }
+          }
+        }
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .icon-fill {
+            font-variation-settings: 'FILL' 1;
+        }
+        
+        /* Subtle pulse for active connection */
+        @keyframes subtle-pulse {
+            0% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(1.05); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+        .animate-subtle-pulse {
+            animation: subtle-pulse 3s infinite ease-in-out;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+</head>
+<body class="bg-surface text-on-surface font-body-md min-h-screen antialiased selection:bg-primary-container selection:text-on-primary-container">
+<!-- TopAppBar -->
+<header class="fixed top-0 left-0 w-full z-50 flex justify-between items-center px-margin-mobile h-16 bg-surface/80 backdrop-blur-xl border-b border-outline-variant shadow-sm transition-all hover:bg-surface-container-high">
+<div class="flex items-center gap-3">
+<button aria-label="Menu" class="flex items-center justify-center p-2 rounded-full text-primary hover:bg-surface-container transition-colors">
+<span class="material-symbols-outlined text-2xl icon-fill" data-icon="clinical_notes">clinical_notes</span>
+</button>
+<h1 class="text-headline-md font-headline-md font-bold text-primary">RoboRehab Controller</h1>
+</div>
+<div class="flex items-center gap-3">
+<div class="flex items-center gap-1.5 px-3 py-1 bg-surface-container-low rounded-full border border-outline-variant/30">
+<div class="w-2 h-2 rounded-full bg-primary animate-subtle-pulse"></div>
+<span class="text-data-viz font-data-viz text-on-surface-variant">System OK</span>
+</div>
+<button aria-label="Settings" class="flex items-center justify-center p-2 rounded-full text-on-surface-variant hover:bg-surface-container transition-colors">
+<span class="material-symbols-outlined text-2xl" data-icon="smart_toy">smart_toy</span>
+</button>
+</div>
+</header>
+<!-- Main Content Canvas -->
+<main class="pt-24 pb-28 px-margin-mobile md:px-margin-desktop max-w-container-max mx-auto w-full">
+<div class="grid grid-cols-1 md:grid-cols-12 gap-unit sm:gap-4 md:gap-gutter auto-rows-min">
+<!-- Bento Item: Profile Identity (Spans full on mobile, 8 cols on desktop) -->
+<section class="col-span-1 md:col-span-8 bg-surface-container-lowest rounded-xl shadow-sm border border-outline-variant/20 p-6 relative overflow-hidden flex flex-col sm:flex-row items-center sm:items-start gap-6 group hover:shadow-md transition-shadow">
+<!-- Decorative background accent -->
+<div class="absolute -right-16 -top-16 w-64 h-64 bg-primary-fixed/30 rounded-full blur-3xl group-hover:bg-primary-fixed/40 transition-colors pointer-events-none"></div>
+<div class="w-24 h-24 sm:w-32 sm:h-32 shrink-0 rounded-full border-4 border-surface overflow-hidden shadow-sm relative z-10">
+<img alt="Patient Avatar" class="w-full h-full object-cover" data-alt="A highly detailed, professional headshot of a patient wearing a futuristic medical tracking headset in a bright, sterile robotic rehabilitation center. Soft, high-key lighting creates a modern light-mode aesthetic, with pristine white and subtle robotic blue accents in the background." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDmQ3Qnx1yUXodLzbtL6DAlwrI7LUX5Z0XcH4G4Oe5OApWXp3otwdUByLSgNWV6vJ3Rmjw73JiK_mdIeTCPW4h2_9LJYW0A5ft09nPVrBlKqKA_ixRkzxwE37bz97BgTiz8LPYLCKNBs3bD5msomXF1uQxtQmm3cip8DPl7h5zxW9pQA1JqytBiQBG9sRnMesyE64LOyti6sSUwoblmCZzjLpKn_I3rsc2ffmSxxn0oJuGsU20NtVjLsvLY7dgXD4_NH7nu_scpxE0"/>
+</div>
+<div class="flex flex-col items-center sm:items-start text-center sm:text-left w-full z-10 space-y-2 mt-2 sm:mt-0">
+<div class="flex flex-wrap items-center justify-center sm:justify-start gap-3 w-full">
+<h2 class="text-headline-lg-mobile font-headline-lg-mobile md:text-headline-lg md:font-headline-lg text-on-surface">患者 A</h2>
+<span class="px-3 py-1 bg-secondary-container/10 text-secondary border border-secondary-container/20 rounded-full text-label-md font-label-md tracking-wider">
+                            ID: 8829
+                        </span>
+</div>
+<div class="flex items-center gap-2 mt-1">
+<span class="material-symbols-outlined text-primary text-xl" data-icon="rehab">relax</span>
+<p class="text-body-lg font-body-lg text-on-surface-variant font-medium">第二阶段康复中</p>
+</div>
+<div class="w-full h-px bg-outline-variant/30 my-3"></div>
+<!-- Clinical Constraint Highlight -->
+<div class="w-full bg-error-container/40 border border-error-container p-3 rounded-lg flex items-start gap-3 backdrop-blur-sm">
+<span class="material-symbols-outlined text-error mt-0.5 icon-fill" data-icon="warning">warning</span>
+<div>
+<p class="text-label-md font-label-md text-on-error-container font-bold mb-0.5">医疗约束</p>
+<p class="text-body-md font-body-md text-on-error-container">避免过度伸展 &gt; 120°</p>
+</div>
+</div>
+</div>
+</section>
+<!-- Bento Item: Hardware Bindings (Spans full on mobile, 4 cols on desktop) -->
+<section class="col-span-1 md:col-span-4 bg-surface-container-lowest rounded-xl shadow-sm border border-outline-variant/20 p-6 flex flex-col gap-4">
+<div class="flex items-center justify-between mb-2">
+<h3 class="text-headline-md font-headline-md text-on-surface text-lg">已连接设备</h3>
+<span class="material-symbols-outlined text-outline" data-icon="settings_input_component">settings_input_component</span>
+</div>
+<!-- Device 1 -->
+<div class="flex items-center justify-between p-3 bg-surface-container-low rounded-lg border border-outline-variant/20 hover:border-primary/30 transition-colors cursor-default group">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-primary-fixed flex items-center justify-center text-primary group-hover:scale-105 transition-transform">
+<span class="material-symbols-outlined icon-fill" data-icon="precision_manufacturing">precision_manufacturing</span>
+</div>
+<div>
+<p class="text-body-md font-body-md font-medium text-on-surface">M33 康复机械臂</p>
+<p class="text-data-viz font-data-viz text-on-surface-variant uppercase tracking-widest mt-0.5">EXO-L-01</p>
+</div>
+</div>
+<div class="flex items-center gap-1.5 px-2.5 py-1 bg-[#10b981]/10 rounded text-[#10b981]">
+<div class="w-1.5 h-1.5 rounded-full bg-[#10b981] animate-subtle-pulse"></div>
+<span class="text-data-viz font-data-viz font-bold">激活</span>
+</div>
+</div>
+<!-- Device 2 -->
+<div class="flex items-center justify-between p-3 bg-surface-container-low rounded-lg border border-outline-variant/20 hover:border-primary/30 transition-colors cursor-default group">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-secondary-fixed flex items-center justify-center text-secondary group-hover:scale-105 transition-transform">
+<span class="material-symbols-outlined icon-fill" data-icon="sensors">sensors</span>
+</div>
+<div>
+<p class="text-body-md font-body-md font-medium text-on-surface">M55 肌电传感器</p>
+<p class="text-data-viz font-data-viz text-on-surface-variant uppercase tracking-widest mt-0.5">EMG-PATCH</p>
+</div>
+</div>
+<div class="flex items-center gap-1.5 px-2.5 py-1 bg-[#10b981]/10 rounded text-[#10b981]">
+<div class="w-1.5 h-1.5 rounded-full bg-[#10b981] animate-subtle-pulse"></div>
+<span class="text-data-viz font-data-viz font-bold">激活</span>
+</div>
+</div>
+<button class="mt-auto w-full py-2.5 border border-dashed border-outline-variant text-on-surface-variant rounded-lg text-label-md font-label-md hover:bg-surface-container hover:text-primary transition-colors flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-sm" data-icon="add">add</span> 配对新设备
+                </button>
+</section>
+<!-- Bento Item: Training History Calendar (Spans 6 cols on desktop) -->
+<section class="col-span-1 md:col-span-6 bg-surface-container-lowest rounded-xl shadow-sm border border-outline-variant/20 p-6">
+<div class="flex items-center justify-between mb-6">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary" data-icon="calendar_month">calendar_month</span>
+<h3 class="text-headline-md font-headline-md text-on-surface text-lg">训练活动</h3>
+</div>
+<select class="bg-transparent border-none text-label-md font-label-md text-on-surface-variant cursor-pointer focus:ring-0">
+<option>Oct 2023</option>
+<option>Sep 2023</option>
+</select>
+</div>
+<!-- Abstract Calendar Heatmap -->
+<div class="grid grid-cols-7 gap-1 sm:gap-2 w-full">
+<!-- Days header -->
+<div class="text-center text-data-viz font-data-viz text-outline mb-2">M</div>
+<div class="text-center text-data-viz font-data-viz text-outline mb-2">T</div>
+<div class="text-center text-data-viz font-data-viz text-outline mb-2">W</div>
+<div class="text-center text-data-viz font-data-viz text-outline mb-2">T</div>
+<div class="text-center text-data-viz font-data-viz text-outline mb-2">F</div>
+<div class="text-center text-data-viz font-data-viz text-outline mb-2">S</div>
+<div class="text-center text-data-viz font-data-viz text-outline mb-2">S</div>
+<!-- Week 1 -->
+<div class="aspect-square bg-surface-container-low rounded-md"></div>
+<div class="aspect-square bg-primary-fixed/40 rounded-md border border-primary-fixed"></div>
+<div class="aspect-square bg-primary-container text-on-primary-container rounded-md flex items-center justify-center shadow-sm relative group cursor-pointer">
+<span class="text-data-viz font-data-viz opacity-0 group-hover:opacity-100 transition-opacity absolute">1h</span>
+</div>
+<div class="aspect-square bg-surface-container-low rounded-md"></div>
+<div class="aspect-square bg-primary-fixed/70 rounded-md border border-primary-fixed"></div>
+<div class="aspect-square bg-surface-container-low rounded-md"></div>
+<div class="aspect-square bg-surface-container-low rounded-md"></div>
+<!-- Week 2 (Current) -->
+<div class="aspect-square bg-primary-fixed/40 rounded-md border border-primary-fixed"></div>
+<div class="aspect-square bg-primary-container text-on-primary-container rounded-md flex items-center justify-center shadow-sm relative group cursor-pointer">
+<span class="text-data-viz font-data-viz opacity-0 group-hover:opacity-100 transition-opacity absolute">2h</span>
+</div>
+<div class="aspect-square bg-surface-container-low rounded-md border-2 border-primary border-dashed relative">
+<div class="absolute -top-1 -right-1 w-3 h-3 bg-error rounded-full border-2 border-surface"></div>
+</div>
+<div class="aspect-square bg-surface-container-low rounded-md opacity-50"></div>
+<div class="aspect-square bg-surface-container-low rounded-md opacity-50"></div>
+<div class="aspect-square bg-surface-container-low rounded-md opacity-50"></div>
+<div class="aspect-square bg-surface-container-low rounded-md opacity-50"></div>
+</div>
+<div class="mt-4 pt-4 border-t border-outline-variant/20 flex justify-between items-center">
+<p class="text-body-md font-body-md text-on-surface-variant">4 本周训练次数</p>
+<button class="text-label-md font-label-md text-primary hover:underline">查看日志</button>
+</div>
+</section>
+<!-- Bento Item: Settings & Preferences Grid (Spans 6 cols on desktop) -->
+<section class="col-span-1 md:col-span-6 grid grid-cols-2 gap-unit sm:gap-4">
+<!-- Cloud Account -->
+<button class="bg-surface-container-lowest rounded-xl shadow-sm border border-outline-variant/20 p-4 sm:p-5 flex flex-col items-start gap-4 hover:border-primary/50 hover:bg-surface-container-lowest transition-all group text-left">
+<div class="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center group-hover:bg-primary-fixed transition-colors">
+<span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary transition-colors" data-icon="cloud_sync">cloud_sync</span>
+</div>
+<div>
+<h4 class="text-body-md font-body-md font-medium text-on-surface">云端平台</h4>
+<p class="text-label-md font-label-md text-on-surface-variant mt-1">同步中</p>
+</div>
+</button>
+<!-- Voice Control -->
+<button class="bg-surface-container-lowest rounded-xl shadow-sm border border-outline-variant/20 p-4 sm:p-5 flex flex-col items-start gap-4 hover:border-primary/50 hover:bg-surface-container-lowest transition-all group text-left">
+<div class="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center group-hover:bg-primary-fixed transition-colors relative">
+<div class="absolute inset-0 rounded-full bg-primary/20 scale-150 opacity-0 group-hover:opacity-100 transition-opacity blur-md"></div>
+<span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary transition-colors z-10" data-icon="record_voice_over">record_voice_over</span>
+</div>
+<div>
+<h4 class="text-body-md font-body-md font-medium text-on-surface">小智语音</h4>
+<p class="text-label-md font-label-md text-on-surface-variant mt-1">已开启</p>
+</div>
+</button>
+<!-- Role Management -->
+<button class="bg-surface-container-lowest rounded-xl shadow-sm border border-outline-variant/20 p-4 sm:p-5 flex flex-col items-start gap-4 hover:border-primary/50 hover:bg-surface-container-lowest transition-all group text-left">
+<div class="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center group-hover:bg-primary-fixed transition-colors">
+<span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary transition-colors" data-icon="supervisor_account">supervisor_account</span>
+</div>
+<div>
+<h4 class="text-body-md font-body-md font-medium text-on-surface">权限管理</h4>
+<p class="text-label-md font-label-md text-on-surface-variant mt-1">康复师/家属</p>
+</div>
+</button>
+<!-- Privacy & Notifications -->
+<button class="bg-surface-container-lowest rounded-xl shadow-sm border border-outline-variant/20 p-4 sm:p-5 flex flex-col items-start gap-4 hover:border-primary/50 hover:bg-surface-container-lowest transition-all group text-left">
+<div class="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center group-hover:bg-primary-fixed transition-colors">
+<span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary transition-colors" data-icon="shield_lock">shield_lock</span>
+</div>
+<div>
+<h4 class="text-body-md font-body-md font-medium text-on-surface">数据隐私与通知</h4>
+</div>
+</button>
+</section>
+</div>
+</main>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-2 pb-safe h-20 bg-surface/90 backdrop-blur-2xl border-t border-outline-variant shadow-[0_-4px_12px_rgba(0,88,188,0.05)] rounded-t-xl md:hidden">
+<!-- 首页 -->
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:text-primary transition-colors group" href="#">
+<span class="material-symbols-outlined text-2xl mb-1 group-hover:scale-110 transition-transform" data-icon="home_health">home_health</span>
+<span class="text-label-md font-label-md text-[10px]">首页</span>
+</a>
+<!-- 训练 -->
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:text-primary transition-colors group" href="#">
+<span class="material-symbols-outlined text-2xl mb-1 group-hover:scale-110 transition-transform" data-icon="exercise">exercise</span>
+<span class="text-label-md font-label-md text-[10px]">训练</span>
+</a>
+<!-- 肌电 -->
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:text-primary transition-colors group" href="#">
+<span class="material-symbols-outlined text-2xl mb-1 group-hover:scale-110 transition-transform" data-icon="monitoring">monitoring</span>
+<span class="text-label-md font-label-md text-[10px]">肌电</span>
+</a>
+<!-- 设备 -->
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:text-primary transition-colors group" href="#">
+<span class="material-symbols-outlined text-2xl mb-1 group-hover:scale-110 transition-transform" data-icon="precision_manufacturing">precision_manufacturing</span>
+<span class="text-label-md font-label-md text-[10px]">设备</span>
+</a>
+<!-- 我的 (Active) -->
+<a class="flex flex-col items-center justify-center bg-primary-container text-on-primary-container rounded-full px-4 py-1 scale-90 transition-transform duration-150" href="#">
+<span class="material-symbols-outlined text-2xl mb-0.5 icon-fill" data-icon="person">person</span>
+<span class="text-label-md font-label-md text-[10px] font-bold">我的</span>
+</a>
+</nav>
+<script src="./mobile-bridge.js"></script>
+</body></html>

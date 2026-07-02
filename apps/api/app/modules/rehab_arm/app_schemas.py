@@ -1,0 +1,168 @@
+from __future__ import annotations
+
+from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class RehabAppProfileUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=200)
+    role: str = Field(default="patient", pattern="^(patient|therapist|family|engineer)$")
+    affected_side: str = ""
+    rehab_stage: str = ""
+    medical_constraints: list[str] = Field(default_factory=list)
+    pain_baseline: float | None = Field(default=None, ge=0, le=10)
+
+
+class RehabAppProfileRead(RehabAppProfileUpdate):
+    id: str
+    user_id: str
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    control_boundary: str = "profile_data_only_not_medical_diagnosis"
+
+
+class RehabAppDeviceBindRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    m33_device_id: str = Field(min_length=1, max_length=120)
+    ble_name: str = ""
+    firmware_version: str = ""
+    trust_status: str = Field(default="unverified", pattern="^(unverified|trusted|revoked)$")
+    platform_project_id: str = ""
+
+
+class RehabAppTrainingPlanSyncRead(BaseModel):
+    id: str
+    plan_id: str
+    device_id: str
+    sync_status: str
+    m33_reason: str = ""
+    synced_at: datetime | None = None
+    m33_authority: str = "required_before_motion"
+    control_boundary: str = "training_plan_sync_only_not_motion_permission"
+
+
+class RehabAppDeviceRead(BaseModel):
+    id: str
+    user_id: str
+    m33_device_id: str
+    ble_name: str
+    firmware_version: str
+    trust_status: str
+    platform_project_id: str
+    bound_at: datetime | None = None
+    last_seen_at: datetime | None = None
+    latest_sync: RehabAppTrainingPlanSyncRead | None = None
+    control_boundary: str = "device_binding_only_not_motion_permission"
+
+
+class RehabAppTrainingPlanCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(min_length=1, max_length=200)
+    source: str = Field(default="manual", pattern="^(manual|ai_generated|therapist|imported)$")
+    goal: str = ""
+    target_joints: list[str] = Field(default_factory=list)
+    movement_type: str = Field(min_length=1, max_length=80)
+    sets: int = Field(default=1, ge=1, le=20)
+    reps: int = Field(default=1, ge=1, le=200)
+    duration_sec: int = Field(default=0, ge=0, le=7200)
+    target_angle_range: dict = Field(default_factory=dict)
+    speed_level: str = "slow"
+    assist_level: float = Field(default=0.0, ge=0, le=1)
+    emg_policy: dict = Field(default_factory=dict)
+    safety_constraints: dict = Field(default_factory=dict)
+    status: str = Field(default="draft", pattern="^(draft|active|archived|rejected)$")
+
+
+class RehabAppTrainingPlanRead(RehabAppTrainingPlanCreate):
+    id: str
+    user_id: str
+    version: int
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    control_boundary: str = "training_plan_only_not_motor_command"
+
+
+class RehabAppTrainingPlanSyncRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    device_id: str = Field(min_length=1)
+
+
+class RehabAppTrainingSessionStartRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    plan_id: str = Field(min_length=1)
+    device_id: str = Field(min_length=1)
+
+
+class RehabAppTrainingSessionFinishRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    completion_rate: float = Field(default=0.0, ge=0, le=1)
+    interruption_count: int = Field(default=0, ge=0)
+    avg_assist_level: float = Field(default=0.0, ge=0, le=1)
+    max_assist_level: float = Field(default=0.0, ge=0, le=1)
+    m33_reject_count: int = Field(default=0, ge=0)
+    pain_after: float | None = Field(default=None, ge=0, le=10)
+    user_note: str = ""
+
+
+class RehabAppTrainingSessionRead(BaseModel):
+    id: str
+    user_id: str
+    plan_id: str
+    device_id: str
+    started_at: datetime | None = None
+    ended_at: datetime | None = None
+    status: str
+    completion_rate: float
+    interruption_count: int
+    avg_assist_level: float
+    max_assist_level: float
+    m33_reject_count: int
+    pain_after: float | None = None
+    user_note: str = ""
+    control_boundary: str = "training_session_record_only_not_motion_permission"
+
+
+class RehabAppEmgSummaryCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: str = Field(min_length=1)
+    channel: str = Field(min_length=1, max_length=40)
+    muscle_name: str = Field(min_length=1, max_length=120)
+    rms_avg: float = 0.0
+    peak: float = 0.0
+    activation_avg: float = 0.0
+    fatigue_index: float = 0.0
+    contact_quality: str = "unknown"
+
+
+class RehabAppEmgSummaryRead(RehabAppEmgSummaryCreate):
+    id: str
+    user_id: str
+    created_at: datetime | None = None
+    control_boundary: str = "emg_summary_only_not_motion_permission"
+
+
+class RehabAppIntentSummaryCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: str = Field(min_length=1)
+    source: str = "m55"
+    predicted_action: str = ""
+    confidence: float = Field(default=0.0, ge=0, le=1)
+    topk: list[dict] = Field(default_factory=list)
+    stability_score: float = Field(default=0.0, ge=0, le=1)
+
+
+class RehabAppIntentSummaryRead(RehabAppIntentSummaryCreate):
+    id: str
+    user_id: str
+    created_at: datetime | None = None
+    control_boundary: str = "intent_summary_only_not_motion_permission"

@@ -17,6 +17,15 @@ from app.db.models.project import Project
 from app.db.models.project_collaboration import ProjectAIProvider, ProjectComputerNode, ProjectThreadWorkstation
 from app.db.models.project_invite import ProjectInvite
 from app.db.models.project_member import ProjectMember
+from app.db.models.rehab_arm_app import (
+    RehabAppDeviceBinding,
+    RehabAppEmgSummary,
+    RehabAppIntentInferenceSummary,
+    RehabAppTrainingPlan,
+    RehabAppTrainingPlanSync,
+    RehabAppTrainingSession,
+    RehabAppUserProfile,
+)
 from app.db.models.requirement import Requirement, RequirementMessage
 from app.db.models.runner import Runner
 from app.db.models.task import Task
@@ -37,6 +46,17 @@ def ensure_schema_extensions() -> None:
         table_names = set(inspector.get_table_names())
         if "task_dispatches" not in table_names:
             TaskDispatch.__table__.create(bind=connection, checkfirst=True)
+        for model in (
+            RehabAppUserProfile,
+            RehabAppDeviceBinding,
+            RehabAppTrainingPlan,
+            RehabAppTrainingPlanSync,
+            RehabAppTrainingSession,
+            RehabAppEmgSummary,
+            RehabAppIntentInferenceSummary,
+        ):
+            if model.__tablename__ not in table_names:
+                model.__table__.create(bind=connection, checkfirst=True)
 
         if "tasks" in table_names:
             task_columns = {column["name"] for column in inspector.get_columns("tasks")}

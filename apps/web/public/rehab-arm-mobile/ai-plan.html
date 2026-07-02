@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
+<title>AI Training Planner - RoboRehab</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "surface-dim": "#dad9df",
+                      "secondary-fixed": "#e2dfff",
+                      "primary-container": "#0070eb",
+                      "error-container": "#ffdad6",
+                      "surface-container-highest": "#e3e2e7",
+                      "on-primary": "#ffffff",
+                      "secondary-container": "#6664e4",
+                      "primary-fixed-dim": "#adc6ff",
+                      "surface-container-lowest": "#ffffff",
+                      "surface-container-low": "#f4f3f8",
+                      "error": "#ba1a1a",
+                      "on-tertiary-fixed": "#351000",
+                      "on-secondary-fixed": "#0c006a",
+                      "on-surface-variant": "#414755",
+                      "outline": "#717786",
+                      "surface-variant": "#e3e2e7",
+                      "on-error-container": "#93000a",
+                      "secondary": "#4c4aca",
+                      "on-primary-container": "#fefcff",
+                      "surface-container": "#eeedf3",
+                      "secondary-fixed-dim": "#c2c1ff",
+                      "surface-container-high": "#e9e7ed",
+                      "inverse-surface": "#2f3034",
+                      "tertiary-fixed-dim": "#ffb595",
+                      "background": "#faf9fe",
+                      "on-primary-fixed": "#001a41",
+                      "on-secondary-fixed-variant": "#3631b4",
+                      "on-secondary": "#ffffff",
+                      "on-secondary-container": "#fffbff",
+                      "inverse-primary": "#adc6ff",
+                      "on-primary-fixed-variant": "#004493",
+                      "on-tertiary": "#ffffff",
+                      "tertiary-fixed": "#ffdbcc",
+                      "on-background": "#1a1b1f",
+                      "primary": "#0058bc",
+                      "outline-variant": "#c1c6d7",
+                      "tertiary-container": "#c64f00",
+                      "surface-bright": "#faf9fe",
+                      "on-surface": "#1a1b1f",
+                      "tertiary": "#9e3d00",
+                      "on-error": "#ffffff",
+                      "inverse-on-surface": "#f1f0f5",
+                      "on-tertiary-container": "#fffbff",
+                      "surface-tint": "#005bc1",
+                      "on-tertiary-fixed-variant": "#7c2e00",
+                      "primary-fixed": "#d8e2ff",
+                      "surface": "#faf9fe"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.125rem",
+                      "lg": "0.25rem",
+                      "xl": "0.5rem",
+                      "full": "0.75rem"
+              },
+              "spacing": {
+                      "container-max": "1280px",
+                      "unit": "8px",
+                      "gutter": "24px",
+                      "margin-desktop": "48px",
+                      "margin-mobile": "16px"
+              },
+              "fontFamily": {
+                      "headline-lg-mobile": [
+                              "Inter"
+                      ],
+                      "label-md": [
+                              "JetBrains Mono"
+                      ],
+                      "headline-md": [
+                              "Inter"
+                      ],
+                      "display-lg": [
+                              "Inter"
+                      ],
+                      "body-lg": [
+                              "Inter"
+                      ],
+                      "body-md": [
+                              "Inter"
+                      ],
+                      "data-viz": [
+                              "JetBrains Mono"
+                      ],
+                      "headline-lg": [
+                              "Inter"
+                      ]
+              },
+              "fontSize": {
+                      "headline-lg-mobile": [
+                              "24px",
+                              {
+                                      "lineHeight": "32px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "label-md": [
+                              "14px",
+                              {
+                                      "lineHeight": "20px",
+                                      "letterSpacing": "0.05em",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "headline-md": [
+                              "24px",
+                              {
+                                      "lineHeight": "32px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "display-lg": [
+                              "48px",
+                              {
+                                      "lineHeight": "56px",
+                                      "letterSpacing": "-0.02em",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "body-lg": [
+                              "18px",
+                              {
+                                      "lineHeight": "28px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "body-md": [
+                              "16px",
+                              {
+                                      "lineHeight": "24px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "data-viz": [
+                              "12px",
+                              {
+                                      "lineHeight": "16px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "headline-lg": [
+                              "32px",
+                              {
+                                      "lineHeight": "40px",
+                                      "letterSpacing": "-0.01em",
+                                      "fontWeight": "600"
+                              }
+                      ]
+              }
+            },
+          }
+        }
+    </script>
+<style>
+        body {
+            -webkit-tap-highlight-color: transparent;
+        }
+        .glass-panel {
+            background: rgba(250, 249, 254, 0.7);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(193, 198, 215, 0.5);
+        }
+        .card-shadow {
+            box-shadow: 0 4px 12px rgba(0, 88, 188, 0.05);
+        }
+        /* Hide scrollbar for clean UI */
+        ::-webkit-scrollbar {
+            display: none;
+        }
+        .ai-pulse {
+            animation: pulse-border 2s infinite;
+        }
+        @keyframes pulse-border {
+            0% { box-shadow: 0 0 0 0 rgba(0, 112, 235, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(0, 112, 235, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(0, 112, 235, 0); }
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+</head>
+<body class="bg-background text-on-background antialiased min-h-screen flex flex-col pt-16 pb-20 md:pb-0">
+<!-- TopAppBar -->
+<header class="fixed top-0 left-0 w-full z-50 flex justify-between items-center px-margin-mobile h-16 bg-surface/80 backdrop-blur-xl border-b border-outline-variant shadow-sm docked full-width top-0">
+<button aria-label="Back" class="p-2 -ml-2 text-primary hover:bg-surface-container-high transition-colors rounded-full">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">arrow_back</span>
+</button>
+<h1 class="text-headline-md font-headline-md font-bold text-primary tracking-tight">AI 训练规划</h1>
+<div class="flex items-center gap-2">
+<span class="bg-surface-container-high text-primary text-data-viz font-data-viz px-2 py-1 rounded-full flex items-center gap-1">
+<span class="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
+                Exoskeleton: Connected
+            </span>
+<button aria-label="Settings" class="p-2 -mr-2 text-primary hover:bg-surface-container-high transition-colors rounded-full">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">smart_toy</span>
+</button>
+</div>
+</header>
+<!-- Main Content Canvas -->
+<main class="flex-1 w-full max-w-container-max mx-auto px-margin-mobile md:px-margin-desktop py-6 overflow-y-auto">
+<!-- Input & Constraints Section -->
+<section class="mb-8">
+<div class="bg-surface-container-lowest rounded-xl p-6 card-shadow border border-outline-variant/30 mb-4">
+<h2 class="text-headline-lg-mobile font-headline-lg-mobile mb-4 text-on-surface">描述需求</h2>
+<div class="mb-6 relative">
+<textarea class="w-full bg-surface-container-low border border-outline-variant rounded-lg p-4 text-body-lg font-body-lg text-on-surface focus:ring-2 focus:ring-primary focus:border-transparent transition-all resize-none h-28" placeholder="输入康复需求 (如：手臂有点酸，想练轻一点)"></textarea>
+<button class="absolute bottom-3 right-3 bg-primary-container text-on-primary-container p-2 rounded-full ai-pulse hover:opacity-90 transition-opacity">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">magic_button</span>
+</button>
+</div>
+<h3 class="text-label-md font-label-md text-on-surface-variant uppercase tracking-wider mb-3">约束条件</h3>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+<!-- Pain Level -->
+<div class="bg-surface-container rounded-lg p-4">
+<label class="flex items-center justify-between text-body-md font-body-md text-on-surface mb-2">
+<span class="flex items-center gap-2"><span class="material-symbols-outlined text-outline">sentiment_dissatisfied</span> 疼痛等级</span>
+<span class="text-primary font-data-viz font-bold" id="pain-val">2</span>
+</label>
+<input class="w-full h-2 bg-outline-variant rounded-lg appearance-none cursor-pointer accent-primary" max="10" min="1" oninput="document.getElementById('pain-val').innerText = this.value" type="range" value="2"/>
+<div class="flex justify-between text-data-viz font-data-viz text-outline mt-1">
+<span>1 (无痛)</span>
+<span>10 (剧烈)</span>
+</div>
+</div>
+<!-- Fatigue -->
+<div class="bg-surface-container rounded-lg p-4">
+<label class="flex items-center justify-between text-body-md font-body-md text-on-surface mb-2">
+<span class="flex items-center gap-2"><span class="material-symbols-outlined text-outline">battery_2_bar</span> 疲劳程度</span>
+<span class="text-tertiary font-data-viz font-bold">中度</span>
+</label>
+<select class="w-full bg-surface-container-low border border-outline-variant rounded p-2 text-body-md text-on-surface focus:ring-primary focus:border-primary">
+<option>低度</option>
+<option selected="">中度</option>
+<option>高度</option>
+</select>
+</div>
+<!-- Time -->
+<div class="bg-surface-container rounded-lg p-4">
+<label class="flex items-center justify-between text-body-md font-body-md text-on-surface mb-2">
+<span class="flex items-center gap-2"><span class="material-symbols-outlined text-outline">schedule</span> 可用时间</span>
+<span class="text-primary font-data-viz font-bold">15 min</span>
+</label>
+<div class="flex gap-2">
+<button class="flex-1 bg-surface-container-low border border-outline-variant text-on-surface py-1 rounded text-data-viz font-data-viz hover:bg-surface-variant">10m</button>
+<button class="flex-1 bg-primary text-on-primary border border-primary py-1 rounded text-data-viz font-data-viz">15m</button>
+<button class="flex-1 bg-surface-container-low border border-outline-variant text-on-surface py-1 rounded text-data-viz font-data-viz hover:bg-surface-variant">30m</button>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- AI Proposed Plan -->
+<section class="mb-8 relative">
+<div class="absolute -inset-1 bg-gradient-to-r from-primary/20 via-secondary/20 to-primary/20 rounded-xl blur opacity-50"></div>
+<div class="relative glass-panel rounded-xl p-6">
+<div class="flex items-start justify-between mb-6 border-b border-outline-variant/30 pb-4">
+<div>
+<div class="flex items-center gap-2 mb-1">
+<span class="material-symbols-outlined text-primary" style="font-variation-settings: 'FILL' 1;">psychology</span>
+<span class="text-label-md font-label-md text-primary tracking-widest uppercase">AI 生成方案</span>
+</div>
+<h2 class="text-headline-lg font-headline-lg text-on-surface">舒缓屈曲</h2>
+</div>
+<div class="bg-surface-container-high rounded-full p-2">
+<span class="material-symbols-outlined text-on-surface-variant">thumb_up</span>
+</div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+<div class="bg-surface-container-lowest rounded-lg p-4 card-shadow flex items-center justify-between">
+<div>
+<p class="text-label-md font-label-md text-on-surface-variant mb-1">动作内容</p>
+<p class="text-headline-md font-headline-md text-on-surface">3 组，每组 10</p>
+</div>
+<div class="w-12 h-12 rounded-full border-4 border-surface-variant flex items-center justify-center relative">
+<svg class="absolute inset-0 w-full h-full transform -rotate-90" viewbox="0 0 36 36">
+<path class="text-primary" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" stroke-dasharray="100, 100" stroke-width="4"></path>
+</svg>
+<span class="material-symbols-outlined text-primary">fitness_center</span>
+</div>
+</div>
+<div class="bg-surface-container-lowest rounded-lg p-4 card-shadow flex items-center justify-between">
+<div>
+<p class="text-label-md font-label-md text-on-surface-variant mb-1">强度等级</p>
+<p class="text-headline-md font-headline-md text-on-surface">2/10</p>
+</div>
+<div class="h-12 flex items-end gap-1 pb-1">
+<div class="w-2 h-4 bg-primary rounded-t"></div>
+<div class="w-2 h-6 bg-primary rounded-t"></div>
+<div class="w-2 h-3 bg-surface-variant rounded-t"></div>
+<div class="w-2 h-3 bg-surface-variant rounded-t"></div>
+<div class="w-2 h-3 bg-surface-variant rounded-t"></div>
+</div>
+</div>
+</div>
+<div class="bg-[#F0F7FF] border border-primary/20 rounded-lg p-4 mb-6">
+<div class="flex items-start gap-3">
+<span class="material-symbols-outlined text-primary mt-0.5">info</span>
+<div>
+<p class="text-body-md font-body-md text-on-surface">
+                                基于最近的 M55 疲劳数据和您减轻训练的需求，该方案相比您的基准值降低了 40% 的扭矩，专注于温和的关节活动范围维持。
+                            </p>
+</div>
+</div>
+</div>
+<div class="flex flex-col sm:flex-row gap-4 pt-4 border-t border-outline-variant/30">
+<button class="flex-1 bg-surface-container-high text-on-surface font-label-md text-label-md py-4 rounded-lg flex items-center justify-center gap-2 hover:bg-surface-variant transition-colors border border-outline-variant">
+<span class="material-symbols-outlined text-outline">bookmark_add</span>
+                        保存至库
+                    </button>
+<button class="flex-1 bg-primary text-on-primary font-label-md text-label-md py-4 rounded-lg flex items-center justify-center gap-2 hover:bg-primary/90 transition-colors shadow-md">
+<span class="material-symbols-outlined text-on-primary">sync</span>
+                        同步到 M33 (待审核)
+                    </button>
+</div>
+<div class="mt-4 text-center">
+<p class="text-data-viz font-data-viz text-outline flex items-center justify-center gap-1">
+<span class="material-symbols-outlined text-[14px]">warning</span>
+                        AI 建议仅供草案参考。最终执行需经过 M33 和康复师的安全检查。
+                    </p>
+</div>
+</div>
+</section>
+</main>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-2 pb-safe h-20 bg-surface/90 backdrop-blur-2xl border-t border-outline-variant shadow-[0_-4px_12px_rgba(0,88,188,0.05)] docked full-width bottom-0 rounded-t-xl md:hidden">
+<button class="flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:text-primary">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">home_health</span>
+<span class="text-label-md font-label-md mt-1">首页</span>
+</button>
+<button class="flex flex-col items-center justify-center bg-primary-container text-on-primary-container rounded-full px-4 py-1 scale-90 transition-transform duration-150">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">exercise</span>
+<span class="text-label-md font-label-md mt-1">训练</span>
+</button>
+<button class="flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:text-primary">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">monitoring</span>
+<span class="text-label-md font-label-md mt-1">肌电</span>
+</button>
+<button class="flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:text-primary">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">precision_manufacturing</span>
+<span class="text-label-md font-label-md mt-1">设备</span>
+</button>
+<button class="flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:text-primary">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">person</span>
+<span class="text-label-md font-label-md mt-1">我的</span>
+</button>
+</nav>
+<!-- Floating AI Assistant Button (Positioned above nav on mobile) -->
+<button class="fixed bottom-24 md:bottom-8 right-6 bg-secondary text-on-secondary p-4 rounded-full shadow-lg hover:scale-105 transition-transform z-40 flex items-center justify-center">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">smart_toy</span>
+</button>
+<script src="./mobile-bridge.js"></script>
+</body></html>
