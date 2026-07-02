@@ -66,3 +66,37 @@ javac -version
 adb version
 sdkmanager.bat --list_installed
 ```
+
+## Rehab Arm Android APK
+
+Current debug APK download:
+
+```text
+http://106.55.62.122:3001/downloads/rehab-arm/lingdong-rehab-arm-debug.apk
+```
+
+APK details:
+
+```text
+package: com.lingdong.rehabarm
+label: 灵动康复 ArmControl
+version: 1.0
+sha256: C80F78CE4CCF315368ADC13C178E40CA620B2CD3A7CF48EC751CF42F72CB84ED
+```
+
+Android may warn that this debug build is from an unknown source. This is expected for the current unsigned-store debug APK. Use it only for internal testing.
+
+Rebuild locally:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\use-android-build-env.ps1
+cd apps\mobile\rehab-arm-android
+npm install
+npm run build:debug
+```
+
+Local APK output:
+
+```text
+apps/mobile/rehab-arm-android/android/app/build/outputs/apk/debug/app-debug.apk
+```

@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+
+<html class="light" lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
+<title>RoboRehab Controller</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&amp;family=JetBrains+Mono:wght@500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "surface-dim": "#dad9df",
+                    "secondary-fixed": "#e2dfff",
+                    "primary-container": "#0070eb",
+                    "error-container": "#ffdad6",
+                    "surface-container-highest": "#e3e2e7",
+                    "on-primary": "#ffffff",
+                    "secondary-container": "#6664e4",
+                    "primary-fixed-dim": "#adc6ff",
+                    "surface-container-lowest": "#ffffff",
+                    "surface-container-low": "#f4f3f8",
+                    "error": "#ba1a1a",
+                    "on-tertiary-fixed": "#351000",
+                    "on-secondary-fixed": "#0c006a",
+                    "on-surface-variant": "#414755",
+                    "outline": "#717786",
+                    "surface-variant": "#e3e2e7",
+                    "on-error-container": "#93000a",
+                    "secondary": "#4c4aca",
+                    "on-primary-container": "#fefcff",
+                    "surface-container": "#eeedf3",
+                    "secondary-fixed-dim": "#c2c1ff",
+                    "surface-container-high": "#e9e7ed",
+                    "inverse-surface": "#2f3034",
+                    "tertiary-fixed-dim": "#ffb595",
+                    "background": "#faf9fe",
+                    "on-primary-fixed": "#001a41",
+                    "on-secondary-fixed-variant": "#3631b4",
+                    "on-secondary": "#ffffff",
+                    "on-secondary-container": "#fffbff",
+                    "inverse-primary": "#adc6ff",
+                    "on-primary-fixed-variant": "#004493",
+                    "on-tertiary": "#ffffff",
+                    "tertiary-fixed": "#ffdbcc",
+                    "on-background": "#1a1b1f",
+                    "primary": "#0058bc",
+                    "outline-variant": "#c1c6d7",
+                    "tertiary-container": "#c64f00",
+                    "surface-bright": "#faf9fe",
+                    "on-surface": "#1a1b1f",
+                    "tertiary": "#9e3d00",
+                    "on-error": "#ffffff",
+                    "inverse-on-surface": "#f1f0f5",
+                    "on-tertiary-container": "#fffbff",
+                    "surface-tint": "#005bc1",
+                    "on-tertiary-fixed-variant": "#7c2e00",
+                    "primary-fixed": "#d8e2ff",
+                    "surface": "#faf9fe"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.125rem",
+                    "lg": "0.25rem",
+                    "xl": "0.5rem",
+                    "full": "0.75rem"
+            },
+            "spacing": {
+                    "container-max": "1280px",
+                    "unit": "8px",
+                    "gutter": "24px",
+                    "margin-desktop": "48px",
+                    "margin-mobile": "16px",
+                    "safe": "env(safe-area-inset-bottom)"
+            },
+            "fontFamily": {
+                    "headline-lg-mobile": ["Inter"],
+                    "label-md": ["JetBrains Mono"],
+                    "headline-md": ["Inter"],
+                    "display-lg": ["Inter"],
+                    "body-lg": ["Inter"],
+                    "body-md": ["Inter"],
+                    "data-viz": ["JetBrains Mono"],
+                    "headline-lg": ["Inter"]
+            },
+            "fontSize": {
+                    "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "label-md": ["14px", {"lineHeight": "20px", "letterSpacing": "0.05em", "fontWeight": "500"}],
+                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "display-lg": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                    "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "data-viz": ["12px", {"lineHeight": "16px", "fontWeight": "600"}],
+                    "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}]
+            }
+          }
+        }
+      }
+    </script>
+<style>
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            box-shadow: 0 8px 32px 0 rgba(0, 88, 188, 0.05);
+        }
+        .pulse-green {
+            animation: pulse-green-anim 2s infinite;
+        }
+        @keyframes pulse-green-anim {
+            0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
+            70% { box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+</head>
+<body class="bg-background text-on-background font-body-md min-h-screen pb-24 md:pb-8 pt-16">
+<!-- TopAppBar -->
+<header class="fixed top-0 left-0 w-full z-50 flex justify-between items-center px-margin-mobile h-16 bg-surface/80 backdrop-blur-xl border-b border-outline-variant shadow-sm transition-all">
+<div class="flex items-center gap-4">
+<button class="text-primary hover:bg-surface-container-high transition-colors p-2 rounded-full flex items-center justify-center opacity-80 scale-95 transition-all">
+<span class="material-symbols-outlined" data-icon="clinical_notes" style="font-variation-settings: 'FILL' 0;">clinical_notes</span>
+</button>
+<h1 class="text-headline-md font-headline-md font-bold text-primary tracking-tight">RoboRehab Controller</h1>
+</div>
+<button class="text-on-surface-variant hover:bg-surface-container-high transition-colors p-2 rounded-full flex items-center justify-center">
+<span class="material-symbols-outlined" data-icon="smart_toy" style="font-variation-settings: 'FILL' 0;">smart_toy</span>
+</button>
+</header>
+<main class="max-w-container-max mx-auto px-margin-mobile md:px-margin-desktop py-6 space-y-6">
+<!-- Greeting & Context -->
+<section class="mb-8">
+<h2 class="text-headline-lg-mobile md:text-headline-lg font-headline-lg-mobile md:font-headline-lg text-on-surface mb-2">晚上好，今天适合做轻量屈肘训练</h2>
+<div class="flex flex-wrap gap-3 mt-4">
+<div class="glass-panel px-4 py-2 rounded-lg flex items-center gap-2">
+<span class="material-symbols-outlined text-outline text-sm" data-icon="medical_information">medical_information</span>
+<span class="font-data-viz text-data-viz text-on-surface-variant">康复阶段：亚急性期</span>
+</div>
+<div class="glass-panel px-4 py-2 rounded-lg flex items-center gap-2">
+<span class="material-symbols-outlined text-outline text-sm" data-icon="front_hand">front_hand</span>
+<span class="font-data-viz text-data-viz text-on-surface-variant">患侧：左侧</span>
+</div>
+<div class="glass-panel px-4 py-2 rounded-lg flex items-center gap-2 bg-surface-tint/5 border-primary/20">
+<span class="material-symbols-outlined text-primary text-sm" data-icon="timer">timer</span>
+<span class="font-data-viz text-data-viz text-primary">今日目标：30 分钟</span>
+</div>
+</div>
+</section>
+<!-- Main Dashboard Grid -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+<!-- Main Action Area (Span 8) -->
+<div class="lg:col-span-8 glass-panel rounded-xl p-6 relative overflow-hidden flex flex-col justify-between min-h-[320px]">
+<div class="absolute top-0 right-0 p-4">
+<span class="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-primary-fixed text-on-primary-fixed text-xs font-bold font-data-viz">
+<span class="w-2 h-2 rounded-full bg-primary pulse-green"></span>
+                        M33 ACTIVE
+                    </span>
+</div>
+<div>
+<h3 class="text-on-surface-variant text-sm font-label-md uppercase tracking-wider mb-1">今日目标动作</h3>
+<div class="text-display-lg font-display-lg text-on-surface mb-6">屈肘训练</div>
+<div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
+<div>
+<div class="text-outline text-xs font-label-md mb-1">时长</div>
+<div class="text-body-lg font-body-lg font-medium">20 mins</div>
+</div>
+<div>
+<div class="text-outline text-xs font-label-md mb-1">强度</div>
+<div class="text-body-lg font-body-lg font-medium">低</div>
+</div>
+<div>
+<div class="text-outline text-xs font-label-md mb-1">进度</div>
+<div class="text-body-lg font-body-lg font-medium text-primary">45%</div>
+</div>
+</div>
+</div>
+<div class="mt-auto pt-4 border-t border-outline-variant/30">
+<button class="w-full bg-primary text-on-primary py-4 rounded-lg font-headline-md text-body-lg shadow-sm hover:bg-surface-tint transition-colors flex items-center justify-center gap-2">
+<span class="material-symbols-outlined" data-icon="play_arrow">play_arrow</span>
+                        开始训练
+                    </button>
+<p class="text-center font-data-viz text-data-viz text-outline mt-2 opacity-80">(需 M33 授权)</p>
+</div>
+</div>
+<!-- Side Panel (Span 4) -->
+<div class="lg:col-span-4 flex flex-col gap-6">
+<!-- Safety Banner -->
+<div class="bg-surface-container rounded-xl p-4 border-l-4 border-emerald-500 shadow-sm">
+<div class="flex items-start justify-between mb-2">
+<div class="flex items-center gap-2 text-emerald-700">
+<span class="material-symbols-outlined" data-icon="verified_user">verified_user</span>
+<span class="font-label-md text-label-md font-bold">状态：M33 已允许执行</span>
+</div>
+</div>
+<div class="flex items-center gap-2 mt-3">
+<button class="flex-1 bg-error/10 text-error border border-error/30 py-2 rounded-md font-label-md text-label-md hover:bg-error/20 transition-colors flex items-center justify-center gap-1">
+<span class="material-symbols-outlined text-sm" data-icon="emergency">emergency</span>
+                            急停已就绪
+                        </button>
+</div>
+</div>
+<!-- Device Status -->
+<div class="glass-panel rounded-xl p-5 flex-1">
+<h3 class="font-label-md text-label-md text-on-surface-variant mb-4 border-b border-outline-variant/30 pb-2">设备状态</h3>
+<ul class="space-y-4">
+<li class="flex items-center justify-between">
+<span class="font-data-viz text-data-viz text-on-surface flex items-center gap-2">
+<span class="material-symbols-outlined text-outline text-sm" data-icon="bluetooth">bluetooth</span>
+                                M33 BLE
+                            </span>
+<span class="font-data-viz text-data-viz text-emerald-600 flex items-center gap-1">已连接 <div class="w-1.5 h-1.5 rounded-full bg-emerald-500"></div></span>
+</li>
+<li class="flex items-center justify-between">
+<span class="font-data-viz text-data-viz text-on-surface flex items-center gap-2">
+<span class="material-symbols-outlined text-outline text-sm" data-icon="sensors">sensors</span>
+                                M55 EMG
+                            </span>
+<span class="font-data-viz text-data-viz text-emerald-600 flex items-center gap-1">激活 <div class="w-1.5 h-1.5 rounded-full bg-emerald-500 pulse-green"></div></span>
+</li>
+<li class="flex items-center justify-between">
+<span class="font-data-viz text-data-viz text-on-surface flex items-center gap-2">
+<span class="material-symbols-outlined text-outline text-sm" data-icon="precision_manufacturing">precision_manufacturing</span>
+                                Arm
+                            </span>
+<span class="font-data-viz text-data-viz text-emerald-600 flex items-center gap-1">安全 <div class="w-1.5 h-1.5 rounded-full bg-emerald-500"></div></span>
+</li>
+<li class="flex items-center justify-between pt-2 border-t border-outline-variant/30">
+<span class="font-data-viz text-data-viz text-on-surface flex items-center gap-2">
+<span class="material-symbols-outlined text-outline text-sm" data-icon="cloud_sync">cloud_sync</span>
+                                Cloud
+                            </span>
+<span class="font-data-viz text-data-viz text-primary">已同步</span>
+</li>
+</ul>
+</div>
+</div>
+</div>
+<!-- Recent Result -->
+<section class="bg-surface-container-low rounded-xl p-6 border border-outline-variant/20">
+<h3 class="font-label-md text-label-md text-on-surface-variant mb-4">最近训练结果快照</h3>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+<div class="p-4 bg-surface rounded-lg shadow-sm border border-outline-variant/10">
+<div class="text-outline font-data-viz text-data-viz mb-1">完成度</div>
+<div class="text-headline-md font-headline-md text-on-surface">95%</div>
+</div>
+<div class="p-4 bg-surface rounded-lg shadow-sm border border-outline-variant/10">
+<div class="text-outline font-data-viz text-data-viz mb-1">肌肉疲劳</div>
+<div class="text-headline-md font-headline-md text-emerald-600">低</div>
+</div>
+<div class="p-4 bg-primary-fixed/30 rounded-lg shadow-sm border border-primary/20 md:col-span-1">
+<div class="text-primary font-data-viz text-data-viz mb-1 flex items-center gap-1">
+<span class="material-symbols-outlined text-sm" data-icon="psychiatry">psychiatry</span>
+                        AI 建议
+                    </div>
+<div class="text-body-md font-body-md text-on-surface">"动作稳定性极佳，建议维持当前强度"</div>
+</div>
+</div>
+</section>
+</main>
+<!-- Floating AI Assistant Button (XiaoZhi) -->
+<button class="fixed bottom-24 right-6 md:bottom-8 md:right-8 w-14 h-14 bg-secondary text-on-secondary rounded-full shadow-lg flex items-center justify-center hover:bg-secondary-container transition-transform hover:scale-105 z-40">
+<span class="material-symbols-outlined" data-icon="robot_2" data-weight="fill" style="font-variation-settings: 'FILL' 1;">robot_2</span>
+</button>
+<!-- BottomNavBar (Mobile Only) -->
+<nav class="md:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-2 pb-safe h-20 bg-surface/90 backdrop-blur-2xl border-t border-outline-variant shadow-[0_-4px_12px_rgba(0,88,188,0.05)] rounded-t-xl">
+<a class="flex flex-col items-center justify-center bg-primary-container text-on-primary-container rounded-full px-4 py-1 scale-90 transition-transform duration-150" href="#">
+<span class="material-symbols-outlined mb-1" data-icon="home_health" data-weight="fill" style="font-variation-settings: 'FILL' 1;">home_health</span>
+<span class="font-label-md text-label-md">首页</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:text-primary transition-colors" href="#">
+<span class="material-symbols-outlined mb-1" data-icon="exercise">exercise</span>
+<span class="font-label-md text-label-md">训练</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:text-primary transition-colors" href="#">
+<span class="material-symbols-outlined mb-1" data-icon="monitoring">monitoring</span>
+<span class="font-label-md text-label-md">肌电</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:text-primary transition-colors" href="#">
+<span class="material-symbols-outlined mb-1" data-icon="precision_manufacturing">precision_manufacturing</span>
+<span class="font-label-md text-label-md">设备</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:text-primary transition-colors" href="#">
+<span class="material-symbols-outlined mb-1" data-icon="person">person</span>
+<span class="font-label-md text-label-md">我的</span>
+</a>
+</nav>
+<script src="./mobile-bridge.js"></script>
+</body></html>
