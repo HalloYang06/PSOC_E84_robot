@@ -1330,6 +1330,60 @@ def test_rehab_arm_app_plan_edit_ai_draft_and_platform_sync(tmp_path, monkeypatc
     assert accepted_followup_bootstrap.json()["data"]["accepted_plan_guide"]["status"] == "preflight_required"
 
 
+def test_rehab_arm_app_daily_action_prioritizes_offline_sync_without_active_session(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
+
+    owner_token, _owner_user_id = _issue_rehab_app_token()
+    queued_platform_sync = client.post(
+        "/api/rehab-arm/app/v1/offline-queue",
+        headers=auth_headers(owner_token),
+        json={
+            "client_item_id": "phone-platform-sync-001",
+            "operation_type": "platform_sync",
+            "resource_type": "platform_sync",
+            "payload": {"resource_types": ["training_plans"]},
+        },
+    )
+    assert queued_platform_sync.status_code == 200
+    queued_item = queued_platform_sync.json()["data"]
+    bootstrap_with_queued = client.get("/api/rehab-arm/app/v1/me", headers=auth_headers(owner_token))
+    assert bootstrap_with_queued.status_code == 200
+    queued_daily_action = bootstrap_with_queued.json()["data"]["daily_action_guide"]["next_action"]
+    assert queued_daily_action["code"] == "REPLAY_OFFLINE_EVIDENCE"
+    assert queued_daily_action["endpoint"] == "/api/rehab-arm/app/v1/offline-queue/replay"
+    assert queued_daily_action["payload_hint"] == {"item_ids": [queued_item["id"]]}
+
+    queued_bad_diagnostic = client.post(
+        "/api/rehab-arm/app/v1/offline-queue",
+        headers=auth_headers(owner_token),
+        json={
+            "client_item_id": "phone-diagnostic-missing-device-002",
+            "operation_type": "device_diagnostic_upload",
+            "resource_type": "device_diagnostic_upload",
+            "payload": {
+                "device_id": "missing-device-id",
+                "snapshot_type": "m33_status",
+                "m33_state": "offline",
+            },
+        },
+    )
+    assert queued_bad_diagnostic.status_code == 200
+    failed_source = queued_bad_diagnostic.json()["data"]
+    failed_replay = client.post(
+        "/api/rehab-arm/app/v1/offline-queue/replay",
+        headers=auth_headers(owner_token),
+        json={"item_ids": [failed_source["id"]]},
+    )
+    assert failed_replay.status_code == 200
+    assert failed_replay.json()["data"]["items"][0]["replay_status"] == "failed"
+    bootstrap_with_failed = client.get("/api/rehab-arm/app/v1/me", headers=auth_headers(owner_token))
+    assert bootstrap_with_failed.status_code == 200
+    failed_daily_action = bootstrap_with_failed.json()["data"]["daily_action_guide"]["next_action"]
+    assert failed_daily_action["code"] == "VIEW_OFFLINE_QUEUE"
+    assert failed_daily_action["endpoint"] == "/api/rehab-arm/app/v1/offline-queue?status=failed"
+    assert failed_daily_action["source"] == {"guide": "offline_sync_guide", "offline_status": "review_failed_items"}
+
+
 def test_rehab_arm_app_offline_diagnostics_sync_and_audit_loop(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
 

@@ -476,6 +476,7 @@ def _app_daily_action_guide(
     primary_start_guide: dict | None,
     latest_report: dict | None,
     latest_open_ai_draft: dict | None,
+    offline_sync_guide: dict | None = None,
     safety_review_guide: dict | None = None,
     accepted_plan_guide: dict | None = None,
 ) -> dict:
@@ -527,6 +528,24 @@ def _app_daily_action_guide(
                 next_action.get("method") or "POST",
                 next_action.get("payload_hint") or {},
                 source={"session_id": session.get("id", ""), "guide": "finished_session_report_guide"},
+            ),
+            "control_boundary": "app_daily_action_guide_evidence_only_not_motion_permission",
+        }
+    if offline_sync_guide and offline_sync_guide.get("status") in {"review_failed_items", "ready_to_replay"}:
+        actions = offline_sync_guide.get("actions") or []
+        next_action = actions[0] if actions else {}
+        is_failed = offline_sync_guide.get("status") == "review_failed_items"
+        return {
+            "status": "action_required",
+            "next_action": _daily_action(
+                next_action.get("code") or ("VIEW_OFFLINE_QUEUE" if is_failed else "REPLAY_OFFLINE_EVIDENCE"),
+                19,
+                next_action.get("label") or ("查看离线失败证据" if is_failed else "同步离线证据"),
+                "手机端存在未处理的离线证据。请先重放 queued 证据或查看 failed 失败项，再继续后续训练闭环。",
+                next_action.get("endpoint") or "/api/rehab-arm/app/v1/offline-queue",
+                next_action.get("method") or "GET",
+                next_action.get("payload_hint") or {},
+                source={"guide": "offline_sync_guide", "offline_status": offline_sync_guide.get("status", "")},
             ),
             "control_boundary": "app_daily_action_guide_evidence_only_not_motion_permission",
         }
@@ -1326,6 +1345,7 @@ def get_app_bootstrap(db: Session, user_id: str) -> dict:
     safety_review_guide = _app_safety_review_guide(db, user_id, sessions)
     accepted_plan_guide = _app_accepted_plan_guide(db, user_id, all_drafts, devices)
     finished_session_report_guide = _app_finished_session_report_guide(db, user_id, sessions)
+    offline_sync_guide = _app_offline_sync_guide(offline_queue)
     return {
         "profile": profile,
         "devices": devices,
@@ -1340,12 +1360,13 @@ def get_app_bootstrap(db: Session, user_id: str) -> dict:
             primary_start_guide,
             latest_report,
             latest_open_ai_draft,
+            offline_sync_guide,
             safety_review_guide,
             accepted_plan_guide,
         ),
         "care_summary": _app_care_summary(onboarding_guide, primary_start_guide, sessions, reports, all_drafts, offline_queue),
         "care_timeline": _app_care_timeline(sessions, reports, all_drafts, offline_queue),
-        "offline_sync_guide": _app_offline_sync_guide(offline_queue),
+        "offline_sync_guide": offline_sync_guide,
         "session_recovery_guide": _app_session_recovery_guide(db, user_id, active_session),
         "finished_session_report_guide": finished_session_report_guide,
         "report_followup_guide": _app_report_followup_guide(latest_report, all_drafts),

@@ -197,3 +197,6 @@
 - Updated rehab arm app `offline_sync_guide` failed-item action so `VIEW_OFFLINE_QUEUE` points directly to `/api/rehab-arm/app/v1/offline-queue?status=failed`, matching the newly tested queue filter endpoint.
 - Validation passed: `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`6 passed`, deprecation warnings only).
 - Next step: continue removing phone-side endpoint inference from remaining guide actions.
+- Added offline evidence handling to rehab arm app `daily_action_guide`; when no active/safety/report-generation action is higher priority, queued evidence surfaces `REPLAY_OFFLINE_EVIDENCE` and failed evidence surfaces `VIEW_OFFLINE_QUEUE` before AI draft review or training start guidance.
+- Validation passed: `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`7 passed`, deprecation warnings only).
+- Next step: continue checking `/me` guide priority order against real phone workflows so users are never left to infer the next endpoint.

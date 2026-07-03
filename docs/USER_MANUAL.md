@@ -88,7 +88,7 @@ GET /safety-audit
 
 Use `onboarding_guide` for first-run setup. It gives ordered steps for profile, trusted M33 device binding, and training plan creation/acceptance, with endpoint, method, and payload hints. Use `primary_start_guide` for the home screen's main training CTA when setup basics exist; it is the same evidence-only guide returned by `start-guide`.
 
-Use `daily_action_guide` for the home screen's top action. It prioritizes unfinished training recovery, blocking safety review, finished-session report generation, AI draft review, latest report review, report-to-next-plan drafting, normal training start guidance, and onboarding fallback. It is evidence-only and should not be treated as motion permission.
+Use `daily_action_guide` for the home screen's top action. It prioritizes unfinished training recovery, blocking safety review, finished-session report generation, queued/failed offline evidence handling, AI draft review, latest report review, report-to-next-plan drafting, normal training start guidance, and onboarding fallback. It is evidence-only and should not be treated as motion permission.
 
 Use `care_summary` for home overview counters and status chips. It reports start readiness, active/finished/cancelled sessions, report review count, open AI drafts, queued offline evidence, and blockers. It is a backend-composed summary of persisted records.
 
