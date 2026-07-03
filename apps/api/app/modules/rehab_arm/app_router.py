@@ -57,6 +57,7 @@ from .app_service import (
     generate_training_report,
     get_ai_training_draft,
     get_app_bootstrap,
+    get_app_workflow,
     get_device_status,
     list_device_diagnostics,
     list_ble_messages,
@@ -161,6 +162,7 @@ def api_public_config(request: Request):
             },
             "rehab_app": {
                 "bootstrap_endpoint": "/api/rehab-arm/app/v1/me",
+                "workflow_endpoint": "/api/rehab-arm/app/v1/me/workflow",
                 "profile_endpoint": "/api/rehab-arm/app/v1/me/profile",
                 "catalog_endpoint": "/api/rehab-arm/app/v1/catalog",
                 "public_config_endpoint": "/api/rehab-arm/app/v1/public-config",
@@ -176,6 +178,7 @@ def api_public_config(request: Request):
                 {"step": "login", "endpoint": "/api/auth/session", "auth_required": False, "token_response_path": "data.access_token"},
                 {"step": "fetch_workspace_user", "endpoint": "/api/auth/me", "auth_required": True},
                 {"step": "fetch_rehab_bootstrap", "endpoint": "/api/rehab-arm/app/v1/me", "auth_required": True},
+                {"step": "fetch_rehab_workflow", "endpoint": "/api/rehab-arm/app/v1/me/workflow", "auth_required": True},
             ],
             "release_gate": {
                 "status": "blocked",
@@ -228,6 +231,11 @@ def api_get_profile(request: Request, db: Session = Depends(get_db)):
 @router.get("/me")
 def api_get_me(request: Request, db: Session = Depends(get_db)):
     return ok(get_app_bootstrap(db, _user_id(db, request)))
+
+
+@router.get("/me/workflow")
+def api_get_me_workflow(request: Request, db: Session = Depends(get_db)):
+    return ok(get_app_workflow(db, _user_id(db, request)))
 
 
 @router.patch("/me/profile")

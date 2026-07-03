@@ -2,6 +2,7 @@
 
 ## 2026-07-03
 
+- Workflow contract lesson: phone screens should consume `/api/rehab-arm/app/v1/me/workflow` for `phase`, `next_action`, `action_queue`, and `blockers` instead of inferring state from scattered records or static copy. Keep the endpoint evidence-only and preserve `forbidden_actions` so frontend work cannot accidentally imply App-granted motion permission.
 - Mobile PWA QA lesson: `/rehab-arm-mobile/index.html` is the static landing entry, while the backend bridge/login QA surface is `/rehab-arm-mobile/home.html`. Use `home.html` when validating token login, `/me` bootstrap, evidence panel insertion, and static-copy suppression.
 - QA lesson: a phone App can be technically connected to `/me` while still feeling like a demo if old static success labels remain visible. Treat optimistic copy such as `M33 ACTIVE`, `已允许执行`, fixed completion percentages, or confident AI recommendations as QA failures unless they are backed by persisted backend evidence.
 - APK delivery lesson: backend readiness fields are invisible to a phone user until the packaged WebView actually has an API base, Bearer-token login, and `/me` bootstrap wiring. For the current HTTP cloud API, the debug wrapper also needs `android:usesCleartextTraffic="true"`; otherwise Android WebView can block the request even when CORS passes.

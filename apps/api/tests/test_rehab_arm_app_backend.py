@@ -158,12 +158,14 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert config_data["auth"]["token_response_path"] == "data.access_token"
     assert config_data["auth"]["required_headers"] == {"Authorization": "Bearer {access_token}"}
     assert config_data["rehab_app"]["bootstrap_endpoint"] == "/api/rehab-arm/app/v1/me"
+    assert config_data["rehab_app"]["workflow_endpoint"] == "/api/rehab-arm/app/v1/me/workflow"
     assert config_data["rehab_app"]["catalog_endpoint"] == "/api/rehab-arm/app/v1/catalog"
     assert [item["step"] for item in config_data["mobile_boot_flow"]] == [
         "load_public_config",
         "login",
         "fetch_workspace_user",
         "fetch_rehab_bootstrap",
+        "fetch_rehab_workflow",
     ]
     assert config_data["release_gate"]["status"] == "blocked"
     assert any("Authorization: Bearer" in item for item in config_data["release_gate"]["required_frontend_work"])
@@ -2063,3 +2065,99 @@ def test_rehab_arm_app_offline_diagnostics_sync_and_audit_loop(tmp_path, monkeyp
     actions = {item["action"] for item in audit.json()["data"]}
     assert "rehab_app.training_plan.m33_accepted" in actions
     assert "rehab_app.device.diagnostic_uploaded" in actions
+
+
+def test_rehab_arm_app_workflow_contract_tracks_user_loop(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
+
+    owner_token, _owner_user_id = _issue_rehab_app_token()
+    headers = auth_headers(owner_token)
+
+    initial_workflow = client.get("/api/rehab-arm/app/v1/me/workflow", headers=headers)
+    assert initial_workflow.status_code == 200
+    initial_data = initial_workflow.json()["data"]
+    assert initial_data["schema_version"] == "rehab_app_workflow_v1"
+    assert initial_data["phase"]["status"] == "setup_required"
+    assert initial_data["next_action"]["code"] == "PROFILE_REQUIRED"
+    assert initial_data["frontend_contract"]["workflow_endpoint"] == "/api/rehab-arm/app/v1/me/workflow"
+    assert initial_data["frontend_contract"]["required_header"] == "Authorization: Bearer {access_token}"
+    assert "motion_permission_granted_by_app" in initial_data["forbidden_actions"]
+    assert initial_data["control_boundary"] == "app_workflow_evidence_only_not_motion_permission"
+
+    profile = client.patch(
+        "/api/rehab-arm/app/v1/me/profile",
+        headers=headers,
+        json={
+            "name": "Workflow Patient",
+            "role": "patient",
+            "affected_side": "left",
+            "rehab_stage": "early_active",
+            "pain_baseline": 2,
+        },
+    )
+    assert profile.status_code == 200
+    device = client.post(
+        "/api/rehab-arm/app/v1/devices/bind",
+        headers=headers,
+        json={"m33_device_id": "m33-workflow-alpha", "ble_name": "ArmControl-Workflow", "trust_status": "trusted"},
+    ).json()["data"]
+    plan = client.post(
+        "/api/rehab-arm/app/v1/training-plans",
+        headers=headers,
+        json={"title": "Workflow elbow", "movement_type": "elbow_flexion", "sets": 1, "reps": 4, "status": "active"},
+    ).json()["data"]
+
+    blocked_workflow = client.get("/api/rehab-arm/app/v1/me/workflow", headers=headers).json()["data"]
+    assert blocked_workflow["phase"]["status"] == "start_blocked"
+    assert blocked_workflow["next_action"]["code"] == "M33_ACCEPTANCE_REQUIRED"
+    assert blocked_workflow["primary_entities"]["plan_id"] == plan["id"]
+    assert blocked_workflow["primary_entities"]["device_id"] == device["id"]
+    assert any(action["code"] == "M33_ACCEPTANCE_REQUIRED" for action in blocked_workflow["action_queue"])
+
+    sync = client.post(
+        f"/api/rehab-arm/app/v1/training-plans/{plan['id']}/sync-to-device",
+        headers=headers,
+        json={"device_id": device["id"]},
+    ).json()["data"]
+    accept = client.post(
+        f"/api/rehab-arm/app/v1/devices/{device['id']}/m33-status",
+        headers=headers,
+        json={"sync_id": sync["id"], "sync_status": "m33_accepted", "m33_reason": "accepted for workflow contract test"},
+    )
+    assert accept.status_code == 200
+    _pass_preflight(owner_token, plan["id"], device["id"], sync["id"])
+
+    ready_workflow = client.get("/api/rehab-arm/app/v1/me/workflow", headers=headers).json()["data"]
+    assert ready_workflow["phase"]["status"] == "ready_to_start"
+    assert ready_workflow["next_action"]["code"] == "READY_TO_START"
+    assert ready_workflow["next_action"]["endpoint"] == "/api/rehab-arm/app/v1/training-sessions/start"
+    assert ready_workflow["next_action"]["payload_hint"] == {"plan_id": plan["id"], "device_id": device["id"]}
+
+    session = client.post(
+        "/api/rehab-arm/app/v1/training-sessions/start",
+        headers=headers,
+        json={"plan_id": plan["id"], "device_id": device["id"]},
+    ).json()["data"]
+    active_workflow = client.get("/api/rehab-arm/app/v1/me/workflow", headers=headers).json()["data"]
+    assert active_workflow["phase"]["status"] == "active_session"
+    assert active_workflow["primary_entities"]["active_session_id"] == session["id"]
+    assert active_workflow["next_action"]["code"] == "RECOVER_ACTIVE_SESSION"
+    assert any(action["code"] == "FINISH_SESSION" for action in active_workflow["action_queue"])
+
+    finished = client.post(
+        f"/api/rehab-arm/app/v1/training-sessions/{session['id']}/finish",
+        headers=headers,
+        json={"completion_rate": 0.8, "pain_after": 2, "user_note": "workflow loop finished"},
+    )
+    assert finished.status_code == 200
+    report_workflow = client.get("/api/rehab-arm/app/v1/me/workflow", headers=headers).json()["data"]
+    assert report_workflow["phase"]["status"] == "report_required"
+    assert report_workflow["next_action"]["code"] == "GENERATE_TRAINING_REPORT"
+    assert report_workflow["next_action"]["endpoint"] == f"/api/rehab-arm/app/v1/training-sessions/{session['id']}/report"
+
+    report = client.post(f"/api/rehab-arm/app/v1/training-sessions/{session['id']}/report", headers=headers).json()["data"]
+    review_workflow = client.get("/api/rehab-arm/app/v1/me/workflow", headers=headers).json()["data"]
+    assert review_workflow["phase"]["status"] == "report_review_required"
+    assert review_workflow["primary_entities"]["latest_report_id"] == report["id"]
+    assert review_workflow["next_action"]["code"] == "REVIEW_LATEST_REPORT"
+    assert any(action["code"] == "RECORD_REPORT_REVIEW" for action in review_workflow["action_queue"])

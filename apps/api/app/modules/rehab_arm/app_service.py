@@ -2241,6 +2241,190 @@ def get_app_bootstrap(db: Session, user_id: str) -> dict:
     }
 
 
+def _workflow_action_from_daily(action: dict | None) -> dict | None:
+    if not action:
+        return None
+    return {
+        "code": action.get("code", ""),
+        "label": action.get("title") or action.get("label") or action.get("code", ""),
+        "description": action.get("description", ""),
+        "endpoint": action.get("endpoint", ""),
+        "method": action.get("method", ""),
+        "payload_hint": action.get("payload_hint") or {},
+        "priority": action.get("priority"),
+        "source": action.get("source") or {},
+    }
+
+
+def _workflow_action_from_guide(action: dict | None, guide_name: str) -> dict | None:
+    if not action:
+        return None
+    return {
+        "code": action.get("code", ""),
+        "label": action.get("label") or action.get("title") or action.get("code", ""),
+        "description": action.get("description", ""),
+        "endpoint": action.get("endpoint", ""),
+        "method": action.get("method", ""),
+        "payload_hint": action.get("payload_hint") or {},
+        "source": {"guide": guide_name},
+    }
+
+
+def _dedupe_workflow_actions(actions: list[dict | None]) -> list[dict]:
+    result: list[dict] = []
+    seen: set[tuple[str, str, str]] = set()
+    for action in actions:
+        if not action or not action.get("code"):
+            continue
+        key = (str(action.get("code", "")), str(action.get("endpoint", "")), str(action.get("method", "")))
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(action)
+    return result
+
+
+def _app_workflow_phase(bootstrap: dict) -> dict:
+    daily = bootstrap.get("daily_action_guide") or {}
+    next_action = daily.get("next_action") or {}
+    source = next_action.get("source") or daily.get("source") or {}
+    guide = source.get("guide", "")
+    if (bootstrap.get("onboarding_guide") or {}).get("status") != "complete":
+        return {
+            "status": "setup_required",
+            "title": "完成首次设置",
+            "description": "先补齐康复档案、可信设备和训练计划，手机端才进入训练闭环。",
+        }
+    if guide == "session_recovery_guide":
+        return {
+            "status": "active_session",
+            "title": "处理当前训练记录",
+            "description": "设备已有未关闭训练记录，请继续记录进度、恢复、完成或取消。",
+        }
+    if guide == "safety_review_guide":
+        return {
+            "status": "safety_review_required",
+            "title": "安全事件待复核",
+            "description": "存在未复核 critical 安全事件，下一次训练记录必须先完成复核。",
+        }
+    if guide == "finished_session_report_guide":
+        return {
+            "status": "report_required",
+            "title": "生成训练报告",
+            "description": "最近训练已结束但尚未生成报告，先生成证据报告再复盘。",
+        }
+    if guide == "offline_sync_guide":
+        return {
+            "status": "offline_attention_required",
+            "title": "处理离线证据",
+            "description": "手机端有 queued 或 failed 离线证据，需要重放或人工复核。",
+        }
+    if guide == "ai_draft_review_guide":
+        return {
+            "status": "ai_draft_review_required",
+            "title": "审核 AI 训练草稿",
+            "description": "AI 草稿只能变成普通训练计划，不能直接授予硬件运动权限。",
+        }
+    if guide == "accepted_plan_guide":
+        return {
+            "status": "accepted_plan_completion_required",
+            "title": "完成已接受计划闭环",
+            "description": "已接受的计划仍需绑定设备、同步 M33、等待 M33 接受和 preflight。",
+        }
+    if guide == "report_followup_guide":
+        if next_action.get("code") == "DRAFT_NEXT_PLAN_FROM_REPORT":
+            return {
+                "status": "next_plan_draft_required",
+                "title": "生成下一计划草稿",
+                "description": "训练报告复盘要求调整计划，先生成草稿再由用户或治疗师接受。",
+            }
+        return {
+            "status": "report_review_required",
+            "title": "复盘训练报告",
+            "description": "最近训练报告需要患者或治疗师复核后才能形成下一步。",
+        }
+    primary_start_guide = bootstrap.get("primary_start_guide")
+    if primary_start_guide:
+        if primary_start_guide.get("can_start") is True:
+            return {
+                "status": "ready_to_start",
+                "title": "可以开始训练记录",
+                "description": "后端证据门禁已满足；实际运动许可仍由 M33 裁决。",
+            }
+        return {
+            "status": "start_blocked",
+            "title": "开始门禁未通过",
+            "description": "需完成 M33 接受、preflight、安全复核或其它开始条件。",
+        }
+    return {
+        "status": "waiting_for_user_action",
+        "title": "等待下一步",
+        "description": "后端暂未找到可执行主动作，请刷新 bootstrap 或检查资料完整性。",
+    }
+
+
+def get_app_workflow(db: Session, user_id: str) -> dict:
+    bootstrap = get_app_bootstrap(db, user_id)
+    guide_names = [
+        "session_recovery_guide",
+        "finished_session_report_guide",
+        "safety_review_guide",
+        "offline_sync_guide",
+        "ai_draft_review_guide",
+        "report_followup_guide",
+        "accepted_plan_guide",
+    ]
+    guide_actions: list[dict | None] = []
+    for guide_name in guide_names:
+        guide = bootstrap.get(guide_name) or {}
+        guide_actions.extend(_workflow_action_from_guide(action, guide_name) for action in guide.get("actions") or [])
+    next_action = _workflow_action_from_daily((bootstrap.get("daily_action_guide") or {}).get("next_action"))
+    primary_plan = next((plan for plan in bootstrap.get("training_plans") or [] if plan.get("status") not in {"archived", "rejected"}), None)
+    primary_device = next((device for device in bootstrap.get("devices") or [] if device.get("trust_status") != "revoked"), None)
+    return {
+        "schema_version": "rehab_app_workflow_v1",
+        "phase": _app_workflow_phase(bootstrap),
+        "next_action": next_action,
+        "action_queue": _dedupe_workflow_actions([next_action, *guide_actions]),
+        "blockers": (bootstrap.get("care_summary") or {}).get("blocker_details", []),
+        "counts": (bootstrap.get("care_summary") or {}).get("counts", {}),
+        "primary_entities": {
+            "profile_id": (bootstrap.get("profile") or {}).get("id", ""),
+            "plan_id": (primary_plan or {}).get("id", ""),
+            "device_id": (primary_device or {}).get("id", ""),
+            "active_session_id": (bootstrap.get("active_session") or {}).get("id", ""),
+            "latest_report_id": (bootstrap.get("latest_report") or {}).get("id", ""),
+            "latest_open_ai_draft_id": (bootstrap.get("latest_open_ai_draft") or {}).get("id", ""),
+        },
+        "guides": {
+            "home_status_guide": bootstrap.get("home_status_guide"),
+            "daily_action_guide": bootstrap.get("daily_action_guide"),
+            "primary_start_guide": bootstrap.get("primary_start_guide"),
+            "session_recovery_guide": bootstrap.get("session_recovery_guide"),
+            "finished_session_report_guide": bootstrap.get("finished_session_report_guide"),
+            "safety_review_guide": bootstrap.get("safety_review_guide"),
+            "offline_sync_guide": bootstrap.get("offline_sync_guide"),
+            "report_followup_guide": bootstrap.get("report_followup_guide"),
+            "ai_draft_review_guide": bootstrap.get("ai_draft_review_guide"),
+        },
+        "frontend_contract": {
+            "bootstrap_endpoint": "/api/rehab-arm/app/v1/me",
+            "workflow_endpoint": "/api/rehab-arm/app/v1/me/workflow",
+            "catalog_endpoint": "/api/rehab-arm/app/v1/catalog",
+            "required_header": "Authorization: Bearer {access_token}",
+            "render_rule": "render next_action/action_queue/blockers from backend; do not hard-code success states",
+        },
+        "forbidden_actions": [
+            "direct_motor_command",
+            "can_frame_send",
+            "m33_safety_override",
+            "motion_permission_granted_by_app",
+            "fake_completion_percent_without_report",
+        ],
+        "control_boundary": "app_workflow_evidence_only_not_motion_permission",
+    }
+
+
 def bind_device(db: Session, user_id: str, payload: RehabAppDeviceBindRequest) -> dict:
     device = db.scalar(
         select(RehabAppDeviceBinding).where(

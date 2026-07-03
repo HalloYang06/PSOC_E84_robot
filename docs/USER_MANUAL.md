@@ -286,9 +286,10 @@ Backend readiness endpoints:
 ```text
 GET /api/rehab-arm/app/v1/public-config
 GET /api/rehab-arm/app/v1/me
+GET /api/rehab-arm/app/v1/me/workflow
 ```
 
-`public-config.release_gate.checks` reports the install-package release blockers. Authenticated `/me.mobile_readiness_guide` reports account onboarding, device, plan, M33/preflight, offline evidence, safety review, APK wiring, and hardware-protocol blockers. These responses are workflow/evidence guidance only and do not grant BLE, CAN, motor, or M33 override authority.
+`public-config.release_gate.checks` reports the install-package release blockers. Authenticated `/me.mobile_readiness_guide` reports account onboarding, device, plan, M33/preflight, offline evidence, safety review, APK wiring, and hardware-protocol blockers. Authenticated `/me/workflow` is the phone workflow contract for `phase`, `next_action`, `action_queue`, `blockers`, primary entity ids, and `forbidden_actions`. These responses are workflow/evidence guidance only and do not grant BLE, CAN, motor, or M33 override authority.
 
 Rebuild locally:
 
