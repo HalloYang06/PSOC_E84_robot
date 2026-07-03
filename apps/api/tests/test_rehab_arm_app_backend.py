@@ -1218,6 +1218,12 @@ def test_rehab_arm_app_plan_edit_ai_draft_and_platform_sync(tmp_path, monkeypatc
     bootstrap_after_accept = client.get("/api/rehab-arm/app/v1/me", headers=auth_headers(owner_token))
     assert bootstrap_after_accept.status_code == 200
     assert bootstrap_after_accept.json()["data"]["latest_open_ai_draft"] is None
+    accepted_plan_guide = bootstrap_after_accept.json()["data"]["accepted_plan_guide"]
+    assert accepted_plan_guide["status"] == "device_required"
+    assert accepted_plan_guide["plan"]["id"] == plan["id"]
+    assert accepted_plan_guide["draft"]["id"] == draft["id"]
+    assert accepted_plan_guide["control_boundary"] == "accepted_plan_guide_evidence_only_not_motion_permission"
+    assert bootstrap_after_accept.json()["data"]["daily_action_guide"]["next_action"]["code"] == "BIND_TRUSTED_DEVICE"
 
     patch_response = client.patch(
         f"/api/rehab-arm/app/v1/training-plans/{plan['id']}",
@@ -1243,6 +1249,10 @@ def test_rehab_arm_app_plan_edit_ai_draft_and_platform_sync(tmp_path, monkeypatc
     )
     assert device_response.status_code == 200
     device = device_response.json()["data"]
+    bootstrap_after_device = client.get("/api/rehab-arm/app/v1/me", headers=auth_headers(owner_token))
+    assert bootstrap_after_device.status_code == 200
+    accepted_plan_with_device = bootstrap_after_device.json()["data"]["accepted_plan_guide"]
+    assert accepted_plan_with_device["status"] == "plan_closed"
 
     archived_sync = client.post(
         f"/api/rehab-arm/app/v1/training-plans/{plan['id']}/sync-to-device",
@@ -1268,6 +1278,45 @@ def test_rehab_arm_app_plan_edit_ai_draft_and_platform_sync(tmp_path, monkeypatc
     )
     assert sync_response.status_code == 200
     assert sync_response.json()["data"]["control_boundary"] == "platform_sync_evidence_only_not_motion_permission"
+
+    followup_draft = client.post(
+        "/api/rehab-arm/app/v1/ai-training-drafts/generate",
+        headers=auth_headers(owner_token),
+        json={"input_text": "Need gentle wrist follow-up.", "context_snapshot": {"movement_type": "wrist_extension", "sets": 1, "reps": 4}},
+    )
+    assert followup_draft.status_code == 200
+    followup_plan_response = client.post(
+        f"/api/rehab-arm/app/v1/ai-training-drafts/{followup_draft.json()['data']['id']}/accept",
+        headers=auth_headers(owner_token),
+    )
+    assert followup_plan_response.status_code == 200
+    followup_plan = followup_plan_response.json()["data"]
+    bootstrap_followup_plan = client.get("/api/rehab-arm/app/v1/me", headers=auth_headers(owner_token))
+    assert bootstrap_followup_plan.status_code == 200
+    followup_guide = bootstrap_followup_plan.json()["data"]["accepted_plan_guide"]
+    assert followup_guide["status"] == "sync_required"
+    assert followup_guide["plan"]["id"] == followup_plan["id"]
+    assert followup_guide["device"]["id"] == device["id"]
+    assert followup_guide["next_action"]["code"] == "SYNC_ACCEPTED_PLAN_TO_M33"
+    assert bootstrap_followup_plan.json()["data"]["daily_action_guide"]["next_action"]["code"] == "SYNC_ACCEPTED_PLAN_TO_M33"
+    followup_sync = client.post(
+        f"/api/rehab-arm/app/v1/training-plans/{followup_plan['id']}/sync-to-device",
+        headers=auth_headers(owner_token),
+        json={"device_id": device["id"]},
+    )
+    assert followup_sync.status_code == 200
+    pending_followup_bootstrap = client.get("/api/rehab-arm/app/v1/me", headers=auth_headers(owner_token))
+    assert pending_followup_bootstrap.status_code == 200
+    assert pending_followup_bootstrap.json()["data"]["accepted_plan_guide"]["status"] == "m33_decision_pending"
+    accept_followup = client.post(
+        f"/api/rehab-arm/app/v1/devices/{device['id']}/m33-status",
+        headers=auth_headers(owner_token),
+        json={"sync_id": followup_sync.json()["data"]["id"], "sync_status": "m33_accepted", "m33_reason": "accepted AI follow-up"},
+    )
+    assert accept_followup.status_code == 200
+    accepted_followup_bootstrap = client.get("/api/rehab-arm/app/v1/me", headers=auth_headers(owner_token))
+    assert accepted_followup_bootstrap.status_code == 200
+    assert accepted_followup_bootstrap.json()["data"]["accepted_plan_guide"]["status"] == "preflight_required"
 
 
 def test_rehab_arm_app_offline_diagnostics_sync_and_audit_loop(tmp_path, monkeypatch) -> None:

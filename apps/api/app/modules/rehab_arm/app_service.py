@@ -476,6 +476,7 @@ def _app_daily_action_guide(
     latest_report: dict | None,
     latest_open_ai_draft: dict | None,
     safety_review_guide: dict | None = None,
+    accepted_plan_guide: dict | None = None,
 ) -> dict:
     if active_session:
         return {
@@ -522,6 +523,23 @@ def _app_daily_action_guide(
                 f"/api/rehab-arm/app/v1/ai-training-drafts/{latest_open_ai_draft['id']}",
                 "GET",
                 source={"draft_id": latest_open_ai_draft["id"]},
+            ),
+            "control_boundary": "app_daily_action_guide_evidence_only_not_motion_permission",
+        }
+    if accepted_plan_guide and accepted_plan_guide.get("status") in {"device_required", "sync_required", "m33_decision_pending", "m33_rejected_review_required", "preflight_required"}:
+        plan = accepted_plan_guide.get("plan") or {}
+        next_action = accepted_plan_guide.get("next_action") or {}
+        return {
+            "status": "action_required",
+            "next_action": _daily_action(
+                next_action.get("code") or "COMPLETE_ACCEPTED_AI_PLAN",
+                25,
+                next_action.get("label") or "完成已接受 AI 计划闭环",
+                "AI 草稿已接受为训练计划，但仍需完成设备绑定、M33 同步/接受、preflight 或开始条件检查。",
+                next_action.get("endpoint") or f"/api/rehab-arm/app/v1/training-plans/{plan.get('id', '{plan_id}')}",
+                next_action.get("method") or "GET",
+                next_action.get("payload_hint") or {},
+                source={"plan_id": plan.get("id", ""), "guide": "accepted_plan_guide"},
             ),
             "control_boundary": "app_daily_action_guide_evidence_only_not_motion_permission",
         }
@@ -1084,6 +1102,121 @@ def _app_safety_review_guide(db: Session, user_id: str, sessions: list[dict]) ->
     }
 
 
+def _accepted_plan_action(code: str, label: str, endpoint: str, method: str, payload_hint: dict | None = None) -> dict:
+    return {
+        "code": code,
+        "label": label,
+        "endpoint": endpoint,
+        "method": method,
+        "payload_hint": payload_hint or {},
+    }
+
+
+def _app_accepted_plan_guide(db: Session, user_id: str, drafts: list[dict], devices: list[dict]) -> dict | None:
+    accepted_draft = next((draft for draft in drafts if draft.get("accepted_plan_id")), None)
+    if accepted_draft is None:
+        return None
+    plan_id = accepted_draft["accepted_plan_id"]
+    plan = db.get(RehabAppTrainingPlan, plan_id)
+    if plan is None or plan.user_id != user_id:
+        return None
+    plan_data = _plan_dict(plan)
+    trusted_device = next((device for device in devices if device["trust_status"] != "revoked"), None)
+    actions = [
+        _accepted_plan_action("VIEW_ACCEPTED_PLAN", "查看已接受计划", f"/api/rehab-arm/app/v1/training-plans/{plan.id}", "GET"),
+    ]
+    latest_sync = None
+    if plan.status in {"archived", "rejected"}:
+        status = "plan_closed"
+        next_action = actions[0]
+    elif trusted_device is None:
+        status = "device_required"
+        actions.append(
+            _accepted_plan_action(
+                "BIND_TRUSTED_DEVICE",
+                "绑定可信 M33 设备",
+                "/api/rehab-arm/app/v1/devices/bind",
+                "POST",
+                {"m33_device_id": "required", "ble_name": "optional", "trust_status": "trusted"},
+            )
+        )
+        next_action = actions[-1]
+    else:
+        latest_sync_model = _latest_plan_device_sync(db, plan.id, trusted_device["id"])
+        latest_sync = _sync_dict(latest_sync_model) if latest_sync_model else None
+        if latest_sync_model is None or latest_sync_model.plan_version != plan.version:
+            status = "sync_required"
+            actions.append(
+                _accepted_plan_action(
+                    "SYNC_ACCEPTED_PLAN_TO_M33",
+                    "同步已接受计划到 M33",
+                    f"/api/rehab-arm/app/v1/training-plans/{plan.id}/sync-to-device",
+                    "POST",
+                    {"device_id": trusted_device["id"]},
+                )
+            )
+            next_action = actions[-1]
+        elif latest_sync_model.sync_status in {"pending", "sent"}:
+            status = "m33_decision_pending"
+            actions.append(
+                _accepted_plan_action(
+                    "RECORD_M33_DECISION",
+                    "记录 M33 决策",
+                    f"/api/rehab-arm/app/v1/devices/{trusted_device['id']}/m33-status",
+                    "POST",
+                    {"sync_id": latest_sync_model.id, "sync_status": "m33_accepted_or_m33_rejected"},
+                )
+            )
+            next_action = actions[-1]
+        elif latest_sync_model.sync_status == "m33_rejected":
+            status = "m33_rejected_review_required"
+            actions.append(
+                _accepted_plan_action(
+                    "RESYNC_ACCEPTED_PLAN_AFTER_REVIEW",
+                    "复核后重新同步计划",
+                    f"/api/rehab-arm/app/v1/training-plans/{plan.id}/sync-to-device",
+                    "POST",
+                    {"device_id": trusted_device["id"]},
+                )
+            )
+            next_action = actions[-1]
+        else:
+            readiness = get_training_readiness(db, user_id, plan.id, trusted_device["id"])
+            if readiness["can_start"]:
+                status = "ready_to_start"
+                actions.append(
+                    _accepted_plan_action(
+                        "START_TRAINING_RECORD",
+                        "开始训练记录",
+                        "/api/rehab-arm/app/v1/training-sessions/start",
+                        "POST",
+                        {"plan_id": plan.id, "device_id": trusted_device["id"]},
+                    )
+                )
+            else:
+                status = "preflight_required"
+                actions.append(
+                    _accepted_plan_action(
+                        "CHECK_START_READINESS",
+                        "检查训练开始条件",
+                        f"/api/rehab-arm/app/v1/training-plans/{plan.id}/readiness",
+                        "GET",
+                        {"device_id": trusted_device["id"]},
+                    )
+                )
+            next_action = actions[-1]
+    return {
+        "status": status,
+        "draft": accepted_draft,
+        "plan": plan_data,
+        "device": trusted_device,
+        "latest_sync": latest_sync,
+        "next_action": next_action,
+        "actions": actions,
+        "control_boundary": "accepted_plan_guide_evidence_only_not_motion_permission",
+    }
+
+
 def get_app_bootstrap(db: Session, user_id: str) -> dict:
     devices = list_devices(db, user_id)
     plans = list_training_plans(db, user_id)
@@ -1104,6 +1237,7 @@ def get_app_bootstrap(db: Session, user_id: str) -> dict:
     if primary_plan and primary_device:
         primary_start_guide = get_training_start_guide(db, user_id, primary_plan["id"], primary_device["id"])
     safety_review_guide = _app_safety_review_guide(db, user_id, sessions)
+    accepted_plan_guide = _app_accepted_plan_guide(db, user_id, all_drafts, devices)
     return {
         "profile": profile,
         "devices": devices,
@@ -1118,6 +1252,7 @@ def get_app_bootstrap(db: Session, user_id: str) -> dict:
             latest_report,
             latest_open_ai_draft,
             safety_review_guide,
+            accepted_plan_guide,
         ),
         "care_summary": _app_care_summary(onboarding_guide, primary_start_guide, sessions, reports, all_drafts, offline_queue),
         "care_timeline": _app_care_timeline(sessions, reports, all_drafts, offline_queue),
@@ -1126,6 +1261,7 @@ def get_app_bootstrap(db: Session, user_id: str) -> dict:
         "report_followup_guide": _app_report_followup_guide(latest_report, all_drafts),
         "device_operational_guide": _app_device_operational_guide(db, user_id, devices, primary_plan),
         "safety_review_guide": safety_review_guide,
+        "accepted_plan_guide": accepted_plan_guide,
         "latest_preflight": preflights[0] if preflights else None,
         "latest_emg": latest_emg_summary(db, user_id),
         "latest_report": latest_report,
