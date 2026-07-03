@@ -188,3 +188,6 @@
 - Ran local authenticated QA for rehab arm control page with web on `localhost:3000` and API on `127.0.0.1:8011`; captured mobile/login, mobile/authenticated, and desktop/authenticated screenshots under `docs/screenshots/rehab-arm-backend-qa-20260703/`.
 - QA result: page compiles, login redirect works, authenticated project access works with `farm_access_token`, model relay and dashboard proxy calls return 200, and no runtime error was captured. Frontend follow-up remains for Stitch: mobile first workflow and semantic DOM/accessibility.
 - Next step: keep backend App `/me` workflows explicit while asking Stitch/front-end to adapt the control-room shell into a phone-usable surface that renders backend guide actions.
+- Fixed rehab arm app `/me.offline_sync_guide` to include both queued and failed offline evidence items, so failed replay results surface as `review_failed_items` with `VIEW_OFFLINE_QUEUE` instead of disappearing after replay.
+- Validation passed: `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`6 passed`, deprecation warnings only).
+- Next step: continue backend-authored phone guides for remaining stuck states, and hand frontend semantic/mobile rendering follow-up to Stitch.

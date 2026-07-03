@@ -94,7 +94,7 @@ Use `care_summary` for home overview counters and status chips. It reports start
 
 Use `care_timeline` for the recent history surface. It aggregates persisted training sessions, training reports, AI training drafts, and queued offline evidence items into timeline entries with source ids, status, timestamp, and compact details. It is read-only continuity evidence.
 
-Use `offline_sync_guide` to show queued/replayed/failed offline evidence counts and safe queue actions. When queued evidence exists it returns `REPLAY_OFFLINE_EVIDENCE` for `POST /api/rehab-arm/app/v1/offline-queue/replay`; when failed evidence exists it also returns `VIEW_OFFLINE_QUEUE` for inspection. Item ids are included only for whitelisted evidence operations.
+Use `offline_sync_guide` to show queued/failed offline evidence counts and safe queue actions. When queued evidence exists it returns `REPLAY_OFFLINE_EVIDENCE` for `POST /api/rehab-arm/app/v1/offline-queue/replay`; when failed evidence exists it returns `review_failed_items` plus `VIEW_OFFLINE_QUEUE` for inspection, even if no queued items remain. Item ids are included only for whitelisted evidence operations.
 
 Use `session_recovery_guide` when `active_session` is present. It lists allowed evidence-state actions such as view, progress, finish, cancel, resume, or record safety review. A paused session with an unreviewed critical safety event returns `safety_review_required` instead of a direct resume action.
 

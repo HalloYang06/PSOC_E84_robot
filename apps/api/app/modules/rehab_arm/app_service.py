@@ -781,6 +781,21 @@ def _app_offline_sync_guide(offline_items: list[dict]) -> dict:
     }
 
 
+def _app_offline_queue_items(db: Session, user_id: str, limit: int = 20) -> list[dict]:
+    items = list(
+        db.scalars(
+            select(RehabAppOfflineQueueItem)
+            .where(
+                RehabAppOfflineQueueItem.user_id == user_id,
+                RehabAppOfflineQueueItem.replay_status.in_(["queued", "failed"]),
+            )
+            .order_by(RehabAppOfflineQueueItem.created_at.asc())
+            .limit(limit)
+        )
+    )
+    return [_offline_item_dict(item) for item in items]
+
+
 def _session_recovery_action(code: str, label: str, endpoint: str, method: str, payload_hint: dict | None = None) -> dict:
     return {
         "code": code,
@@ -1297,7 +1312,7 @@ def get_app_bootstrap(db: Session, user_id: str) -> dict:
     drafts = list_ai_training_drafts(db, user_id, status="open", limit=1)
     all_drafts = list_ai_training_drafts(db, user_id, status="all", limit=5)
     preflights = list_preflight_checks(db, user_id, limit=1)
-    offline_queue = list_offline_queue(db, user_id, status="queued", limit=20)
+    offline_queue = _app_offline_queue_items(db, user_id, limit=20)
     profile = get_profile(db, user_id)
     active_session = sessions[0] if sessions and sessions[0]["status"] in {"started", "in_progress", "paused"} else None
     latest_report = latest_training_report(db, user_id)
