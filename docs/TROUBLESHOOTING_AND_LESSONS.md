@@ -81,3 +81,4 @@
 - SQLite ordering fix: safety event timelines are user-visible, so write application-layer UTC `created_at` when inserting events instead of relying on SQLite server-default second precision.
 - Pytest recovery note: if `tests/test_rehab_arm_app_backend.py` appears to hang on Windows, rerun with `-o faulthandler_timeout=60` after checking for stale pytest processes. In this slice the faulthandler run passed, indicating no product deadlock.
 - Offline sync lesson: every new App evidence loop needs both platform sync counts and offline replay coverage, otherwise the phone can look closed-loop online while losing therapist/safety evidence after offline use.
+- Safety-review gate lesson: critical safety events should block resume and the next start until a later approved/conditional `safety_review` exists. Reviews must remain evidence-only and still do not grant M33 motion authority.

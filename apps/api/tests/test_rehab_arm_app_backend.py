@@ -795,6 +795,25 @@ def test_rehab_arm_app_session_emg_and_intent_summary_flow(tmp_path, monkeypatch
     )
     assert paused_event_progress.status_code == 409
     assert paused_event_progress.json()["error"]["code"] == "TRAINING_SESSION_NOT_ACTIVE"
+    blocked_resume_after_event = client.post(
+        f"/api/rehab-arm/app/v1/training-sessions/{session['id']}/resume",
+        headers=auth_headers(owner_token),
+        json={"note": "try resume without review"},
+    )
+    assert blocked_resume_after_event.status_code == 409
+    assert blocked_resume_after_event.json()["error"]["code"] == "SAFETY_REVIEW_REQUIRED"
+    safety_review = client.post(
+        f"/api/rehab-arm/app/v1/training-sessions/{session['id']}/safety-events",
+        headers=auth_headers(owner_token),
+        json={
+            "event_type": "safety_review",
+            "severity": "info",
+            "source": "therapist",
+            "payload": {"review_status": "approved"},
+            "note": "therapist reviewed pain and strap fit",
+        },
+    )
+    assert safety_review.status_code == 200
     resume_after_event = client.post(
         f"/api/rehab-arm/app/v1/training-sessions/{session['id']}/resume",
         headers=auth_headers(owner_token),
@@ -859,7 +878,7 @@ def test_rehab_arm_app_session_emg_and_intent_summary_flow(tmp_path, monkeypatch
     assert report["intent_overview"]["predicted_actions"] == ["wrist_flexion"]
     assert report["intent_overview"]["avg_confidence"] == 0.81
     assert report["safety_overview"]["control_boundary"] == "m33_final_safety_authority"
-    assert report["safety_overview"]["event_count"] == 2
+    assert report["safety_overview"]["event_count"] == 3
     assert report["safety_overview"]["critical_event_count"] == 1
     assert report["safety_overview"]["max_pain_score"] == 8
     assert "critical_safety_event_review_required_before_next_session" in report["recommendations"]
@@ -995,7 +1014,7 @@ def test_rehab_arm_app_session_emg_and_intent_summary_flow(tmp_path, monkeypatch
     assert sync_run.json()["data"]["summary"]["training_reports"] == 1
     assert sync_run.json()["data"]["summary"]["training_report_reviews"] == 1
     assert sync_run.json()["data"]["summary"]["ai_training_drafts"] == 1
-    assert sync_run.json()["data"]["summary"]["session_safety_events"] == 2
+    assert sync_run.json()["data"]["summary"]["session_safety_events"] == 3
 
     latest_emg = client.get("/api/rehab-arm/app/v1/emg/latest", headers=auth_headers(owner_token))
     assert latest_emg.status_code == 200
@@ -1255,6 +1274,40 @@ def test_rehab_arm_app_offline_diagnostics_sync_and_audit_loop(tmp_path, monkeyp
     assert paused_after_offline_event.status_code == 200
     assert paused_after_offline_event.json()["data"]["status"] == "paused"
 
+    cancel_after_offline_event = client.post(
+        f"/api/rehab-arm/app/v1/training-sessions/{session_id}/cancel",
+        headers=auth_headers(owner_token),
+        json={"reason": "offline critical pain event"},
+    )
+    assert cancel_after_offline_event.status_code == 200
+    _pass_preflight(owner_token, plan_id, device["id"], sync_id)
+    blocked_restart_without_review = client.post(
+        "/api/rehab-arm/app/v1/training-sessions/start",
+        headers=auth_headers(owner_token),
+        json={"plan_id": plan_id, "device_id": device["id"]},
+    )
+    assert blocked_restart_without_review.status_code == 409
+    assert blocked_restart_without_review.json()["error"]["code"] == "SAFETY_REVIEW_REQUIRED"
+    offline_safety_review = client.post(
+        f"/api/rehab-arm/app/v1/training-sessions/{session_id}/safety-events",
+        headers=auth_headers(owner_token),
+        json={
+            "event_type": "safety_review",
+            "severity": "info",
+            "source": "therapist",
+            "payload": {"review_status": "approved"},
+            "note": "reviewed offline pain report before next start",
+        },
+    )
+    assert offline_safety_review.status_code == 200
+    _pass_preflight(owner_token, plan_id, device["id"], sync_id)
+    restart_after_review = client.post(
+        "/api/rehab-arm/app/v1/training-sessions/start",
+        headers=auth_headers(owner_token),
+        json={"plan_id": plan_id, "device_id": device["id"]},
+    )
+    assert restart_after_review.status_code == 200
+
     sync_run = client.post(
         "/api/rehab-arm/app/v1/platform/sync",
         headers=auth_headers(owner_token),
@@ -1262,7 +1315,7 @@ def test_rehab_arm_app_offline_diagnostics_sync_and_audit_loop(tmp_path, monkeyp
     )
     assert sync_run.status_code == 200
     assert sync_run.json()["data"]["summary"]["emg_summaries"] >= 1
-    assert sync_run.json()["data"]["summary"]["session_safety_events"] == 1
+    assert sync_run.json()["data"]["summary"]["session_safety_events"] == 2
 
     sync_runs = client.get("/api/rehab-arm/app/v1/platform/sync-runs", headers=auth_headers(owner_token))
     assert sync_runs.status_code == 200

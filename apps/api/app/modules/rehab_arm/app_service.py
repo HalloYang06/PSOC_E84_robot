@@ -1246,6 +1246,76 @@ def _require_session_report_open(db: Session, user_id: str, session: RehabAppTra
         )
 
 
+def _latest_safety_review_after(db: Session, user_id: str, session_id: str, created_at: object) -> RehabAppSessionSafetyEvent | None:
+    return db.scalar(
+        select(RehabAppSessionSafetyEvent)
+        .where(
+            RehabAppSessionSafetyEvent.user_id == user_id,
+            RehabAppSessionSafetyEvent.session_id == session_id,
+            RehabAppSessionSafetyEvent.event_type == "safety_review",
+            RehabAppSessionSafetyEvent.severity.in_(["info", "warning"]),
+            RehabAppSessionSafetyEvent.created_at >= created_at,
+        )
+        .order_by(RehabAppSessionSafetyEvent.created_at.desc(), RehabAppSessionSafetyEvent.id.desc())
+        .limit(1)
+    )
+
+
+def _latest_unreviewed_critical_safety_event(db: Session, user_id: str, session_id: str) -> RehabAppSessionSafetyEvent | None:
+    critical_events = list(
+        db.scalars(
+            select(RehabAppSessionSafetyEvent)
+            .where(
+                RehabAppSessionSafetyEvent.user_id == user_id,
+                RehabAppSessionSafetyEvent.session_id == session_id,
+                RehabAppSessionSafetyEvent.severity == "critical",
+                RehabAppSessionSafetyEvent.event_type != "safety_review",
+            )
+            .order_by(RehabAppSessionSafetyEvent.created_at.desc(), RehabAppSessionSafetyEvent.id.desc())
+        )
+    )
+    for event in critical_events:
+        review = _latest_safety_review_after(db, user_id, session_id, event.created_at)
+        if review is None:
+            return event
+    return None
+
+
+def _require_no_unreviewed_session_safety_event(db: Session, user_id: str, session: RehabAppTrainingSession, action: str) -> None:
+    event = _latest_unreviewed_critical_safety_event(db, user_id, session.id)
+    if event is not None:
+        raise AppError(
+            "SAFETY_REVIEW_REQUIRED",
+            "a critical safety event requires therapist or engineer review before this workflow can continue",
+            status_code=409,
+            details={
+                "session_id": session.id,
+                "event_id": event.id,
+                "event_type": event.event_type,
+                "action": action,
+                "required_event_type": "safety_review",
+                "control_boundary": "session_safety_event_review_required_not_motion_permission",
+            },
+        )
+
+
+def _require_no_unreviewed_device_safety_event(db: Session, user_id: str, device_id: str) -> None:
+    recent_sessions = list(
+        db.scalars(
+            select(RehabAppTrainingSession)
+            .where(
+                RehabAppTrainingSession.user_id == user_id,
+                RehabAppTrainingSession.device_id == device_id,
+                RehabAppTrainingSession.status.in_(["finished", "cancelled"]),
+            )
+            .order_by(RehabAppTrainingSession.started_at.desc(), RehabAppTrainingSession.id.desc())
+            .limit(5)
+        )
+    )
+    for session in recent_sessions:
+        _require_no_unreviewed_session_safety_event(db, user_id, session, "start_training_session")
+
+
 def start_training_session(db: Session, user_id: str, plan_id: str, device_id: str) -> dict:
     plan = db.get(RehabAppTrainingPlan, plan_id)
     if plan is None or plan.user_id != user_id:
@@ -1256,6 +1326,7 @@ def start_training_session(db: Session, user_id: str, plan_id: str, device_id: s
     if device is None or device.user_id != user_id:
         raise AppError("DEVICE_NOT_FOUND", "device binding not found", status_code=404)
     _require_device_not_revoked(device)
+    _require_no_unreviewed_device_safety_event(db, user_id, device.id)
     active_session = db.scalar(
         select(RehabAppTrainingSession)
         .where(
@@ -1380,6 +1451,7 @@ def resume_training_session(db: Session, user_id: str, session_id: str, note: st
     session = _require_user_session(db, user_id, session_id)
     _require_paused_training_session(session)
     _require_session_report_open(db, user_id, session)
+    _require_no_unreviewed_session_safety_event(db, user_id, session, "resume_training_session")
     session.status = "in_progress"
     if note:
         session.user_note = f"{session.user_note}\nResume: {note}".strip()
@@ -1475,13 +1547,30 @@ def get_training_session(db: Session, user_id: str, session_id: str) -> dict:
 
 def record_session_safety_event(db: Session, user_id: str, session_id: str, payload: RehabAppSessionSafetyEventCreate) -> dict:
     session = _require_user_session(db, user_id, session_id)
-    if session.status not in {"started", "in_progress", "paused"}:
+    allowed_statuses = {"started", "in_progress", "paused"}
+    if payload.event_type == "safety_review":
+        allowed_statuses = allowed_statuses | {"finished", "cancelled"}
+    if session.status not in allowed_statuses:
         raise AppError(
             "TRAINING_SESSION_NOT_ACTIVE",
             "safety events can only be recorded while the session is active or paused",
             status_code=409,
             details={"session_id": session.id, "status": session.status, "control_boundary": "session_safety_event_evidence_only_not_motion_permission"},
         )
+    if payload.event_type == "safety_review":
+        review_status = str((payload.payload or {}).get("review_status") or "")
+        if payload.source not in {"therapist", "app"} or review_status not in {"approved", "conditional"}:
+            raise AppError(
+                "SAFETY_REVIEW_INVALID",
+                "safety review events require therapist/app source and approved or conditional review_status",
+                status_code=409,
+                details={
+                    "session_id": session.id,
+                    "allowed_sources": ["therapist", "app"],
+                    "allowed_review_status": ["approved", "conditional"],
+                    "control_boundary": "session_safety_event_review_required_not_motion_permission",
+                },
+            )
     event = RehabAppSessionSafetyEvent(
         user_id=user_id,
         session_id=session.id,

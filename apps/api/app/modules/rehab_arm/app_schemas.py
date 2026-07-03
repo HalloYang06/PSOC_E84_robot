@@ -257,7 +257,7 @@ class RehabAppTrainingSessionProgressRequest(BaseModel):
 class RehabAppSessionSafetyEventCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    event_type: str = Field(pattern="^(pain_report|device_fit_issue|m33_reject|fatigue_report|manual_stop_request|other)$")
+    event_type: str = Field(pattern="^(pain_report|device_fit_issue|m33_reject|fatigue_report|manual_stop_request|safety_review|other)$")
     severity: str = Field(default="info", pattern="^(info|warning|critical)$")
     source: str = Field(default="patient", pattern="^(patient|therapist|m33|m55|app)$")
     pain_score: float | None = Field(default=None, ge=0, le=10)

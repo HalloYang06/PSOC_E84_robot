@@ -136,7 +136,7 @@ POST /api/rehab-arm/app/v1/training-sessions/{session_id}/safety-events
 GET /api/rehab-arm/app/v1/training-sessions/{session_id}/safety-events
 ```
 
-Allowed event types are `pain_report`, `device_fit_issue`, `m33_reject`, `fatigue_report`, `manual_stop_request`, and `other`. A `critical` event, or a `pain_report` with `pain_score >= 7`, automatically pauses the App session state and blocks further progress writes until `resume` is called. This is workflow evidence only; robot-side stop authority still belongs to M33/firmware.
+Allowed event types are `pain_report`, `device_fit_issue`, `m33_reject`, `fatigue_report`, `manual_stop_request`, `safety_review`, and `other`. A `critical` event, or a `pain_report` with `pain_score >= 7`, automatically pauses the App session state and blocks further progress writes until `resume` is called. Resume and the next start on the same device return `SAFETY_REVIEW_REQUIRED` until a later `safety_review` event is recorded with `payload.review_status` set to `approved` or `conditional`. This is workflow evidence only; robot-side stop authority still belongs to M33/firmware.
 
 Archived or rejected training plans stay visible in history, but they cannot be synced to M33 and cannot start a training session. Create or reactivate an appropriate plan, sync the current version, and wait for `m33_accepted` before starting.
 
