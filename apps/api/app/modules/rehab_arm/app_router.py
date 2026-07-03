@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from urllib.parse import urlsplit, urlunsplit
 
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
@@ -123,6 +124,11 @@ def _download_url(base_url: str) -> str:
     web_base = _public_url_from_env("REHAB_ARM_APP_WEB_BASE", "PUBLIC_WEB_BASE", "NEXT_PUBLIC_APP_BASE")
     if web_base:
         return f"{web_base}/downloads/rehab-arm/lingdong-rehab-arm-debug.apk"
+    parsed = urlsplit(base_url)
+    if parsed.port == 8011:
+        host = parsed.hostname or ""
+        netloc = f"{host}:3001"
+        return f"{urlunsplit((parsed.scheme, netloc, '', '', ''))}/downloads/rehab-arm/lingdong-rehab-arm-debug.apk"
     return ""
 
 
