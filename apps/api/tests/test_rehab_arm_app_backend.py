@@ -67,6 +67,8 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert empty_bootstrap.json()["data"]["onboarding_guide"]["status"] == "incomplete"
     assert empty_bootstrap.json()["data"]["onboarding_guide"]["next_step"]["code"] == "PROFILE_REQUIRED"
     assert empty_bootstrap.json()["data"]["primary_start_guide"] is None
+    assert empty_bootstrap.json()["data"]["device_operational_guide"]["status"] == "device_required"
+    assert "BIND_TRUSTED_DEVICE" in {item["code"] for item in empty_bootstrap.json()["data"]["device_operational_guide"]["actions"]}
 
     profile_response = client.patch(
         "/api/rehab-arm/app/v1/me/profile",
@@ -134,6 +136,8 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert onboarding["next_step"] is None
     assert bootstrap_after_basics.json()["data"]["primary_start_guide"]["next_action"]["code"] == "M33_ACCEPTANCE_REQUIRED"
     assert bootstrap_after_basics.json()["data"]["daily_action_guide"]["next_action"]["code"] == "M33_ACCEPTANCE_REQUIRED"
+    assert bootstrap_after_basics.json()["data"]["device_operational_guide"]["status"] == "plan_sync_required"
+    assert "SYNC_PLAN_TO_M33" in {item["code"] for item in bootstrap_after_basics.json()["data"]["device_operational_guide"]["actions"]}
     care_summary_after_basics = bootstrap_after_basics.json()["data"]["care_summary"]
     assert care_summary_after_basics["status"] == "setup_required"
     assert care_summary_after_basics["can_start"] is False
@@ -226,6 +230,11 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     devices = client.get("/api/rehab-arm/app/v1/devices", headers=auth_headers(owner_token))
     assert devices.status_code == 200
     assert devices.json()["data"][0]["latest_sync"]["sync_status"] == "pending"
+    bootstrap_pending_m33 = client.get("/api/rehab-arm/app/v1/me", headers=auth_headers(owner_token))
+    assert bootstrap_pending_m33.status_code == 200
+    pending_device_guide = bootstrap_pending_m33.json()["data"]["device_operational_guide"]
+    assert pending_device_guide["status"] == "m33_decision_pending"
+    assert {"REQUEST_DEVICE_STATUS", "RECORD_M33_DECISION"}.issubset({item["code"] for item in pending_device_guide["actions"]})
 
     ble_plan_message = client.post(
         f"/api/rehab-arm/app/v1/devices/{device['id']}/ble/messages",
@@ -300,6 +309,11 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert device_status.status_code == 200
     assert device_status.json()["data"]["m33_state"] == "m33_rejected"
     assert device_status.json()["data"]["control_boundary"] == "device_status_only_not_motion_permission"
+    bootstrap_rejected_m33 = client.get("/api/rehab-arm/app/v1/me", headers=auth_headers(owner_token))
+    assert bootstrap_rejected_m33.status_code == 200
+    rejected_device_guide = bootstrap_rejected_m33.json()["data"]["device_operational_guide"]
+    assert rejected_device_guide["status"] == "m33_rejected_review_required"
+    assert "RESYNC_PLAN_AFTER_REVIEW" in {item["code"] for item in rejected_device_guide["actions"]}
 
     m33_accept = client.post(
         f"/api/rehab-arm/app/v1/devices/{device['id']}/m33-status",
@@ -308,6 +322,12 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     )
     assert m33_accept.status_code == 200
     assert m33_accept.json()["data"]["sync_status"] == "m33_accepted"
+    bootstrap_accepted_m33 = client.get("/api/rehab-arm/app/v1/me", headers=auth_headers(owner_token))
+    assert bootstrap_accepted_m33.status_code == 200
+    accepted_device_guide = bootstrap_accepted_m33.json()["data"]["device_operational_guide"]
+    assert accepted_device_guide["status"] == "m33_acceptance_ready"
+    assert accepted_device_guide["heartbeat_status"] == "seen"
+    assert "CHECK_START_READINESS" in {item["code"] for item in accepted_device_guide["actions"]}
 
     edited_plan = client.patch(
         f"/api/rehab-arm/app/v1/training-plans/{plan['id']}",
@@ -1283,6 +1303,12 @@ def test_rehab_arm_app_offline_diagnostics_sync_and_audit_loop(tmp_path, monkeyp
     )
     assert diagnostics.status_code == 200
     assert diagnostics.json()["data"][0]["m33_state"] == "waiting_for_plan"
+    bootstrap_after_diagnostic = client.get("/api/rehab-arm/app/v1/me", headers=auth_headers(owner_token))
+    assert bootstrap_after_diagnostic.status_code == 200
+    diagnostic_device_guide = bootstrap_after_diagnostic.json()["data"]["device_operational_guide"]
+    assert diagnostic_device_guide["latest_diagnostic"]["m33_state"] == "waiting_for_plan"
+    assert diagnostic_device_guide["latest_diagnostic"]["battery_level"] == 0.76
+    assert diagnostic_device_guide["control_boundary"] == "device_operational_guide_evidence_only_not_motion_permission"
 
     plan_response = client.post(
         "/api/rehab-arm/app/v1/training-plans",

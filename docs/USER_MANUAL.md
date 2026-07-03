@@ -84,7 +84,7 @@ GET /offline-queue
 GET /safety-audit
 ```
 
-`GET /me` is the phone bootstrap endpoint. In addition to profile, devices, plans, active session, latest preflight, latest report, latest open AI draft, platform sync, and queued offline items, it returns `onboarding_guide`, `primary_start_guide`, `daily_action_guide`, `care_summary`, `care_timeline`, `offline_sync_guide`, `session_recovery_guide`, and `report_followup_guide`.
+`GET /me` is the phone bootstrap endpoint. In addition to profile, devices, plans, active session, latest preflight, latest report, latest open AI draft, platform sync, and queued offline items, it returns `onboarding_guide`, `primary_start_guide`, `daily_action_guide`, `care_summary`, `care_timeline`, `offline_sync_guide`, `session_recovery_guide`, `report_followup_guide`, and `device_operational_guide`.
 
 Use `onboarding_guide` for first-run setup. It gives ordered steps for profile, trusted M33 device binding, and training plan creation/acceptance, with endpoint, method, and payload hints. Use `primary_start_guide` for the home screen's main training CTA when setup basics exist; it is the same evidence-only guide returned by `start-guide`.
 
@@ -99,6 +99,8 @@ Use `offline_sync_guide` to show queued/replayed/failed offline evidence counts 
 Use `session_recovery_guide` when `active_session` is present. It lists allowed evidence-state actions such as view, progress, finish, cancel, resume, or record safety review. A paused session with an unreviewed critical safety event returns `safety_review_required` instead of a direct resume action.
 
 Use `report_followup_guide` when `latest_report` is present. It keeps the post-training loop backend-authored: record report review, generate a next-plan AI draft when requested, review/accept the open draft, then sync the accepted plan to M33. It is evidence and workflow guidance only, not motion permission.
+
+Use `device_operational_guide` for the phone device card. It reports whether a trusted device is required, plan sync is required, M33 decision is pending, M33 rejected the latest sync, or M33 acceptance is ready. It includes latest diagnostic evidence and safe next actions such as bind device, upload diagnostic, request status, record M33 decision, resync after review, or check start readiness.
 
 Mobile diagnostic and offline replay:
 

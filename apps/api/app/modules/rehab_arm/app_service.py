@@ -877,6 +877,137 @@ def _app_report_followup_guide(latest_report: dict | None, drafts: list[dict]) -
     }
 
 
+def _device_operational_action(code: str, label: str, endpoint: str, method: str, payload_hint: dict | None = None) -> dict:
+    return {
+        "code": code,
+        "label": label,
+        "endpoint": endpoint,
+        "method": method,
+        "payload_hint": payload_hint or {},
+    }
+
+
+def _latest_device_diagnostic(db: Session, user_id: str, device_id: str) -> dict | None:
+    upload = db.scalar(
+        select(RehabAppDiagnosticUpload)
+        .where(RehabAppDiagnosticUpload.user_id == user_id, RehabAppDiagnosticUpload.device_id == device_id)
+        .order_by(RehabAppDiagnosticUpload.created_at.desc(), RehabAppDiagnosticUpload.id.desc())
+        .limit(1)
+    )
+    return _diagnostic_dict(upload) if upload else None
+
+
+def _app_device_operational_guide(db: Session, user_id: str, devices: list[dict], primary_plan: dict | None) -> dict:
+    if not devices:
+        return {
+            "status": "device_required",
+            "device": None,
+            "latest_diagnostic": None,
+            "actions": [
+                _device_operational_action(
+                    "BIND_TRUSTED_DEVICE",
+                    "绑定可信 M33 设备",
+                    "/api/rehab-arm/app/v1/devices/bind",
+                    "POST",
+                    {"m33_device_id": "required", "ble_name": "optional", "trust_status": "trusted"},
+                )
+            ],
+            "control_boundary": "device_operational_guide_evidence_only_not_motion_permission",
+        }
+    device = next((item for item in devices if item["trust_status"] != "revoked"), devices[0])
+    latest_sync = device.get("latest_sync")
+    latest_diagnostic = _latest_device_diagnostic(db, user_id, device["id"])
+    actions = [
+        _device_operational_action("VIEW_DEVICE_STATUS", "查看设备状态", f"/api/rehab-arm/app/v1/devices/{device['id']}/status", "GET"),
+        _device_operational_action("VIEW_DIAGNOSTICS", "查看诊断记录", f"/api/rehab-arm/app/v1/devices/{device['id']}/diagnostics", "GET"),
+    ]
+    if device["trust_status"] == "revoked":
+        status = "device_revoked"
+        actions.append(
+            _device_operational_action(
+                "BIND_REPLACEMENT_DEVICE",
+                "绑定替换设备",
+                "/api/rehab-arm/app/v1/devices/bind",
+                "POST",
+                {"m33_device_id": "required", "ble_name": "optional", "trust_status": "trusted"},
+            )
+        )
+    elif latest_sync is None:
+        status = "plan_sync_required" if primary_plan else "diagnostic_or_plan_required"
+        actions.append(
+            _device_operational_action(
+                "UPLOAD_DIAGNOSTIC",
+                "上传设备诊断",
+                f"/api/rehab-arm/app/v1/devices/{device['id']}/diagnostic-upload",
+                "POST",
+                {"snapshot_type": "m33_status", "m33_state": "required"},
+            )
+        )
+        if primary_plan:
+            actions.append(
+                _device_operational_action(
+                    "SYNC_PLAN_TO_M33",
+                    "同步计划到 M33",
+                    f"/api/rehab-arm/app/v1/training-plans/{primary_plan['id']}/sync-to-device",
+                    "POST",
+                    {"device_id": device["id"]},
+                )
+            )
+    elif latest_sync["sync_status"] in {"pending", "sent"}:
+        status = "m33_decision_pending"
+        actions.extend(
+            [
+                _device_operational_action(
+                    "REQUEST_DEVICE_STATUS",
+                    "请求设备状态",
+                    f"/api/rehab-arm/app/v1/devices/{device['id']}/ble/messages",
+                    "POST",
+                    {"message_type": "device_status_request"},
+                ),
+                _device_operational_action(
+                    "RECORD_M33_DECISION",
+                    "记录 M33 决策",
+                    f"/api/rehab-arm/app/v1/devices/{device['id']}/m33-status",
+                    "POST",
+                    {"sync_id": latest_sync["id"], "sync_status": "m33_accepted_or_m33_rejected"},
+                ),
+            ]
+        )
+    elif latest_sync["sync_status"] == "m33_rejected":
+        status = "m33_rejected_review_required"
+        actions.append(
+            _device_operational_action(
+                "RESYNC_PLAN_AFTER_REVIEW",
+                "复核后重新同步计划",
+                f"/api/rehab-arm/app/v1/training-plans/{latest_sync['plan_id']}/sync-to-device",
+                "POST",
+                {"device_id": device["id"]},
+            )
+        )
+    elif latest_sync["sync_status"] == "m33_accepted":
+        status = "m33_acceptance_ready"
+        actions.append(
+            _device_operational_action(
+                "CHECK_START_READINESS",
+                "检查训练开始条件",
+                f"/api/rehab-arm/app/v1/training-plans/{latest_sync['plan_id']}/readiness",
+                "GET",
+                {"device_id": device["id"]},
+            )
+        )
+    else:
+        status = "device_attention_required"
+    return {
+        "status": status,
+        "device": device,
+        "latest_sync": latest_sync,
+        "latest_diagnostic": latest_diagnostic,
+        "heartbeat_status": "unknown" if device.get("last_seen_at") is None else "seen",
+        "actions": actions,
+        "control_boundary": "device_operational_guide_evidence_only_not_motion_permission",
+    }
+
+
 def get_app_bootstrap(db: Session, user_id: str) -> dict:
     devices = list_devices(db, user_id)
     plans = list_training_plans(db, user_id)
@@ -909,6 +1040,7 @@ def get_app_bootstrap(db: Session, user_id: str) -> dict:
         "offline_sync_guide": _app_offline_sync_guide(offline_queue),
         "session_recovery_guide": _app_session_recovery_guide(db, user_id, active_session),
         "report_followup_guide": _app_report_followup_guide(latest_report, all_drafts),
+        "device_operational_guide": _app_device_operational_guide(db, user_id, devices, primary_plan),
         "latest_preflight": preflights[0] if preflights else None,
         "latest_emg": latest_emg_summary(db, user_id),
         "latest_report": latest_report,
