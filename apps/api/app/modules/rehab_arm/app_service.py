@@ -910,6 +910,35 @@ def _app_home_status_guide(daily_action_guide: dict, care_summary: dict, related
                     "actions": matching_actions,
                 }
             )
+    counts = care_summary.get("counts") or {}
+    blockers = care_summary.get("blockers") or []
+    primary_blocker_code = str((care_summary.get("primary_blocker") or {}).get("code") or "")
+    onboarding_complete = "onboarding_incomplete" not in blockers
+    no_open_work = not blockers and not secondary_actions
+    ready_to_start = bool(care_summary.get("can_start"))
+    progress_items = [
+        {"code": "onboarding", "done": onboarding_complete},
+        {"code": "active_session_clear", "done": not counts.get("active_sessions")},
+        {"code": "safety_review_clear", "done": not counts.get("safety_reviews_pending")},
+        {"code": "finished_report_clear", "done": not counts.get("finished_sessions_pending_report")},
+        {"code": "report_review_clear", "done": not counts.get("reports_pending_review")},
+        {"code": "ai_drafts_clear", "done": not counts.get("ai_drafts_open")},
+        {"code": "offline_clear", "done": not counts.get("offline_items_queued") and not counts.get("offline_items_failed")},
+        {"code": "start_ready", "done": ready_to_start},
+    ]
+    done_count = sum(1 for item in progress_items if item["done"])
+    if ready_to_start:
+        stage = "ready_to_start"
+    elif primary_blocker_code and primary_blocker_code != "onboarding_incomplete":
+        stage = "resolve_blockers"
+    elif not onboarding_complete:
+        stage = "setup"
+    elif blockers:
+        stage = "resolve_blockers"
+    elif no_open_work:
+        stage = "waiting_for_training_plan_readiness"
+    else:
+        stage = "continue_workflow"
     return {
         "status": daily_action_guide.get("status") or care_summary.get("status"),
         "tone": tone,
@@ -925,7 +954,14 @@ def _app_home_status_guide(daily_action_guide: dict, care_summary: dict, related
         "blockers": care_summary.get("blockers") or [],
         "blocker_details": care_summary.get("blocker_details") or [],
         "primary_blocker": care_summary.get("primary_blocker"),
-        "counts": care_summary.get("counts") or {},
+        "counts": counts,
+        "progress": {
+            "stage": stage,
+            "done": done_count,
+            "total": len(progress_items),
+            "remaining": len(progress_items) - done_count,
+            "items": progress_items,
+        },
         "safety_note": "本卡片只提供手机端证据和流程引导，不授予硬件运动权限；真实运动仍由 M33 最终裁决。",
         "control_boundary": "app_home_status_guide_evidence_only_not_motion_permission",
     }
