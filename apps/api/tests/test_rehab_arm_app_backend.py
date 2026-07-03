@@ -79,6 +79,8 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert "疼痛基线" in empty_home_status["body"]
     assert "onboarding_incomplete" in empty_home_status["blockers"]
     assert empty_home_status["blocker_details"][0]["code"] == "onboarding_incomplete"
+    assert empty_bootstrap.json()["data"]["care_summary"]["primary_blocker"]["code"] == "onboarding_incomplete"
+    assert empty_home_status["primary_blocker"]["code"] == "onboarding_incomplete"
     assert empty_home_status["blocker_details"][0]["severity"] == "warning"
     assert empty_home_status["blocker_details"][0]["title"] == "完成首次设置"
     assert "PROFILE_REQUIRED" in empty_home_status["blocker_details"][0]["related_action_codes"]
@@ -167,9 +169,11 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert care_summary_after_basics["counts"]["reports_pending_review"] == 0
     start_blocker = care_summary_after_basics["blocker_details"][0]
     assert start_blocker["code"] == "start_readiness_blocked"
+    assert care_summary_after_basics["primary_blocker"]["code"] == "start_readiness_blocked"
     assert start_blocker["severity"] == "warning"
     assert "M33_ACCEPTANCE_REQUIRED" in start_blocker["related_action_codes"]
     start_home_status = bootstrap_after_basics.json()["data"]["home_status_guide"]
+    assert start_home_status["primary_blocker"]["code"] == "start_readiness_blocked"
     start_group = next(item for item in start_home_status["action_groups"]["blocker_related"] if item["blocker_code"] == "start_readiness_blocked")
     assert {"VIEW_START_GUIDE", "CHECK_START_READINESS", "M33_ACCEPTANCE_REQUIRED"}.issubset({item["code"] for item in start_group["actions"]})
 
@@ -1446,6 +1450,8 @@ def test_rehab_arm_app_daily_action_prioritizes_offline_sync_without_active_sess
     assert failed_home_status["secondary_actions"][0]["endpoint"] == f"/api/rehab-arm/app/v1/offline-queue/{failed_source['id']}/review"
     assert failed_home_status["counts"]["offline_items_failed"] == 1
     assert "offline_queue_failed" in failed_home_status["blockers"]
+    assert bootstrap_with_failed.json()["data"]["care_summary"]["primary_blocker"]["code"] == "offline_queue_failed"
+    assert failed_home_status["primary_blocker"]["code"] == "offline_queue_failed"
     failed_blocker = next(item for item in failed_home_status["blocker_details"] if item["code"] == "offline_queue_failed")
     assert failed_blocker["severity"] == "critical"
     assert failed_blocker["title"] == "处理离线失败证据"

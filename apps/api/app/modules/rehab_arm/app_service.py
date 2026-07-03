@@ -793,6 +793,20 @@ def _app_care_summary(
         }
         for code in blockers
     ]
+    primary_blocker_priority = {
+        "active_session": 10,
+        "offline_queue_failed": 19,
+        "offline_queue_pending": 19,
+        "ai_draft_open": 20,
+        "report_review_required": 30,
+        "start_readiness_blocked": 50,
+        "onboarding_incomplete": 90,
+    }
+    primary_blocker = min(
+        blocker_details,
+        key=lambda item: primary_blocker_priority.get(str(item.get("code") or ""), 100),
+        default=None,
+    )
     status = "attention_required" if blockers else ("ready" if can_start else "setup_required")
     return {
         "status": status,
@@ -809,6 +823,7 @@ def _app_care_summary(
         },
         "blockers": blockers,
         "blocker_details": blocker_details,
+        "primary_blocker": primary_blocker,
         "control_boundary": "app_care_summary_evidence_only_not_motion_permission",
     }
 
@@ -875,6 +890,7 @@ def _app_home_status_guide(daily_action_guide: dict, care_summary: dict, related
         },
         "blockers": care_summary.get("blockers") or [],
         "blocker_details": care_summary.get("blocker_details") or [],
+        "primary_blocker": care_summary.get("primary_blocker"),
         "counts": care_summary.get("counts") or {},
         "safety_note": "本卡片只提供手机端证据和流程引导，不授予硬件运动权限；真实运动仍由 M33 最终裁决。",
         "control_boundary": "app_home_status_guide_evidence_only_not_motion_permission",
