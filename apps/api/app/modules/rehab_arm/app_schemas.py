@@ -8,11 +8,11 @@ from pydantic import BaseModel, ConfigDict, Field
 class RehabAppProfileUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    name: str = Field(min_length=1, max_length=200)
-    role: str = Field(default="patient", pattern="^(patient|therapist|family|engineer)$")
-    affected_side: str = ""
-    rehab_stage: str = ""
-    medical_constraints: list[str] = Field(default_factory=list)
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    role: str | None = Field(default=None, pattern="^(patient|therapist|family|engineer)$")
+    affected_side: str | None = None
+    rehab_stage: str | None = None
+    medical_constraints: list[str] | None = None
     pain_baseline: float | None = Field(default=None, ge=0, le=10)
 
 

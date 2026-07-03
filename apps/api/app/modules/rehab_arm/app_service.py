@@ -364,8 +364,13 @@ def _json_safe(value):
 
 def upsert_profile(db: Session, user_id: str, payload: RehabAppProfileUpdate) -> dict:
     profile = db.scalar(select(RehabAppUserProfile).where(RehabAppUserProfile.user_id == user_id))
-    data = payload.model_dump()
+    data = payload.model_dump(exclude_unset=True)
     if profile is None:
+        data.setdefault("name", "Rehab App User")
+        data.setdefault("role", "patient")
+        data.setdefault("affected_side", "")
+        data.setdefault("rehab_stage", "")
+        data.setdefault("medical_constraints", [])
         profile = RehabAppUserProfile(user_id=user_id, **data)
         db.add(profile)
         action = "rehab_app.profile.created"

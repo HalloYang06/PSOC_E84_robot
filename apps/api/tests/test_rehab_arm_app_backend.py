@@ -139,22 +139,42 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert empty_bootstrap.json()["data"]["device_operational_guide"]["status"] == "device_required"
     assert "BIND_TRUSTED_DEVICE" in {item["code"] for item in empty_bootstrap.json()["data"]["device_operational_guide"]["actions"]}
 
+    hinted_profile_response = client.patch(
+        "/api/rehab-arm/app/v1/me/profile",
+        headers=auth_headers(owner_token),
+        json=empty_bootstrap.json()["data"]["onboarding_guide"]["next_step"]["payload_hint"]
+        | {
+            "affected_side": "left",
+            "rehab_stage": "early_active",
+            "pain_baseline": 2,
+            "medical_constraints": ["no overhead motion"],
+        },
+    )
+    assert hinted_profile_response.status_code == 200
+    hinted_profile = hinted_profile_response.json()["data"]
+    assert hinted_profile["name"] == "Rehab App User"
+    assert hinted_profile["affected_side"] == "left"
+    assert hinted_profile["rehab_stage"] == "early_active"
+    assert hinted_profile["medical_constraints"] == ["no overhead motion"]
+    assert hinted_profile["pain_baseline"] == 2
+
     profile_response = client.patch(
         "/api/rehab-arm/app/v1/me/profile",
         headers=auth_headers(owner_token),
         json={
             "name": "Patient Alpha",
             "role": "patient",
-            "affected_side": "left",
-            "rehab_stage": "early_active",
-            "medical_constraints": ["no overhead motion"],
-            "pain_baseline": 2,
         },
     )
     assert profile_response.status_code == 200
     profile = profile_response.json()["data"]
     assert profile["user_id"] == owner_user_id
+    assert profile["name"] == "Patient Alpha"
     assert profile["role"] == "patient"
+    assert profile["affected_side"] == "left"
+    assert profile["rehab_stage"] == "early_active"
+    assert profile["medical_constraints"] == ["no overhead motion"]
+    assert profile["pain_baseline"] == 2
     assert profile["control_boundary"] == "profile_data_only_not_medical_diagnosis"
 
     bind_response = client.post(
