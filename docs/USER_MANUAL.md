@@ -314,3 +314,7 @@ Example payload:
 ```
 
 If `name` is omitted on first creation, the backend stores a default profile name. Later partial PATCH calls preserve existing fields unless a field is explicitly sent.
+
+APK status note: the current debug APK download is still the 2026-07-02 build. Backend cloud fixes are live for clients that call `http://106.55.62.122:8011`, but the packaged Capacitor pages still need frontend/Stitch login and API-base wiring before publishing a new user-ready APK.
+
+Profile setup is complete only when `affected_side`, `rehab_stage`, and `pain_baseline` are present. `/api/rehab-arm/app/v1/me.onboarding_guide.next_step.missing_fields` lists any remaining profile fields.
