@@ -168,6 +168,7 @@ def api_public_config(request: Request):
                 "workflow_action_endpoint": "/api/rehab-arm/app/v1/me/workflow/actions",
                 "profile_endpoint": "/api/rehab-arm/app/v1/me/profile",
                 "catalog_endpoint": "/api/rehab-arm/app/v1/catalog",
+                "daily_care_plan_path": "data.daily_care_plan",
                 "public_config_endpoint": "/api/rehab-arm/app/v1/public-config",
             },
             "downloads": {
@@ -201,7 +202,7 @@ def api_public_config(request: Request):
                     {
                         "code": "APK_FRONTEND_API_WIRING",
                         "status": "pass",
-                        "description": "Debug APK 1.0.5 loads public-config/catalog/workflow, uses Bearer token login, overlays backend workflow/readiness, renders backend care timeline, and can execute safe workflow actions through /me/workflow/actions.",
+                        "description": "Debug APK 1.0.5 loads public-config/catalog/workflow, uses Bearer token login, overlays backend workflow/readiness, renders backend care timeline/daily care plan, and can execute safe workflow actions through /me/workflow/actions.",
                     },
                     {
                         "code": "HARDWARE_PROTOCOL_PACKET_MAP",
@@ -211,7 +212,7 @@ def api_public_config(request: Request):
                 ],
                 "required_frontend_work": [
                     "replace the temporary bridge login panel with Stitch-designed screens",
-                    "render catalog/profile/device/plan/readiness fields inside Stitch pages",
+                    "render catalog/profile/device/plan/readiness/daily_care_plan fields inside Stitch pages",
                     "preserve Authorization: Bearer {access_token} on rehab app API calls",
                 ],
             },

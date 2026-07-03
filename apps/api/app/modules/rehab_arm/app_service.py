@@ -1491,6 +1491,71 @@ def _app_home_related_actions(daily_action_guide: dict, guides_by_name: dict[str
     return guide.get("actions") or []
 
 
+def _care_plan_task(progress_item: dict, next_item_context: dict | None) -> dict:
+    action_codes = set(progress_item.get("related_action_codes") or [])
+    blocker_codes = set(progress_item.get("related_blocker_codes") or [])
+    context = next_item_context or {}
+    primary_action = {}
+    secondary_actions: list[dict] = []
+    blockers: list[dict] = []
+    if (context.get("item") or {}).get("code") == progress_item.get("code"):
+        primary_action = context.get("primary_action") or {}
+        secondary_actions = context.get("secondary_actions") or []
+        blockers = context.get("blockers") or []
+    return {
+        "code": progress_item.get("code", ""),
+        "title": progress_item.get("title", ""),
+        "description": progress_item.get("description", ""),
+        "position": progress_item.get("position"),
+        "position_label": progress_item.get("position_label", ""),
+        "done": bool(progress_item.get("done")),
+        "status": progress_item.get("status", ""),
+        "status_label": progress_item.get("status_label", ""),
+        "tone": progress_item.get("tone", ""),
+        "related_action_codes": sorted(action_codes),
+        "related_blocker_codes": sorted(blocker_codes),
+        "primary_action": primary_action,
+        "secondary_actions": secondary_actions,
+        "blockers": blockers,
+        "control_boundary": "app_daily_care_plan_task_evidence_only_not_motion_permission",
+    }
+
+
+def _app_daily_care_plan(daily_action_guide: dict, home_status_guide: dict, care_summary: dict, care_timeline: dict) -> dict:
+    progress = home_status_guide.get("progress") or {}
+    next_item = progress.get("next_item")
+    next_item_context = progress.get("next_item_context")
+    tasks = [_care_plan_task(item, next_item_context) for item in progress.get("items") or []]
+    primary_task = next((task for task in tasks if task.get("code") == (next_item or {}).get("code")), None) if next_item else None
+    return {
+        "schema_version": "rehab_app_daily_care_plan_v1",
+        "status": care_summary.get("status") or daily_action_guide.get("status") or "unknown",
+        "stage": progress.get("stage", ""),
+        "stage_title": progress.get("stage_title", ""),
+        "stage_description": progress.get("stage_description", ""),
+        "stage_tone": progress.get("stage_tone", ""),
+        "headline": home_status_guide.get("headline", ""),
+        "body": home_status_guide.get("body", ""),
+        "next_action": daily_action_guide.get("next_action") or {},
+        "primary_task": primary_task,
+        "tasks": tasks,
+        "tasks_done": progress.get("done", 0),
+        "tasks_total": progress.get("total", len(tasks)),
+        "tasks_remaining": progress.get("remaining", 0),
+        "completion_percent": progress.get("completion_percent", 0),
+        "completion_label": progress.get("completion_label", ""),
+        "remaining_label": progress.get("remaining_label", ""),
+        "blockers": care_summary.get("blocker_details") or [],
+        "counts": care_summary.get("counts") or {},
+        "timeline_preview": {
+            "items": (care_timeline.get("items") or [])[:3],
+            "control_boundary": "app_care_timeline_evidence_only_not_motion_permission",
+        },
+        "safety_note": "日计划只整理后端证据和下一步服务动作，不授予硬件运动权限；真实运动仍由 M33 最终裁决。",
+        "control_boundary": "app_daily_care_plan_evidence_only_not_motion_permission",
+    }
+
+
 def _app_offline_sync_guide(offline_items: list[dict]) -> dict:
     queued = [item for item in offline_items if item["replay_status"] == "queued"]
     replayed = [item for item in offline_items if item["replay_status"] == "replayed"]
@@ -2317,6 +2382,8 @@ def get_app_bootstrap(db: Session, user_id: str) -> dict:
             "accepted_plan_guide": accepted_plan_guide,
         },
     )
+    home_status_guide = _app_home_status_guide(daily_action_guide, care_summary, home_related_actions)
+    care_timeline = _app_care_timeline(sessions, reports, all_drafts, offline_queue)
     return {
         "profile": profile,
         "devices": devices,
@@ -2325,9 +2392,10 @@ def get_app_bootstrap(db: Session, user_id: str) -> dict:
         "active_session": active_session,
         "primary_start_guide": primary_start_guide,
         "daily_action_guide": daily_action_guide,
-        "home_status_guide": _app_home_status_guide(daily_action_guide, care_summary, home_related_actions),
+        "home_status_guide": home_status_guide,
+        "daily_care_plan": _app_daily_care_plan(daily_action_guide, home_status_guide, care_summary, care_timeline),
         "care_summary": care_summary,
-        "care_timeline": _app_care_timeline(sessions, reports, all_drafts, offline_queue),
+        "care_timeline": care_timeline,
         "offline_sync_guide": offline_sync_guide,
         "session_recovery_guide": session_recovery_guide,
         "finished_session_report_guide": finished_session_report_guide,
@@ -2511,6 +2579,7 @@ def get_app_workflow(db: Session, user_id: str) -> dict:
         },
         "guides": {
             "home_status_guide": bootstrap.get("home_status_guide"),
+            "daily_care_plan": bootstrap.get("daily_care_plan"),
             "daily_action_guide": bootstrap.get("daily_action_guide"),
             "primary_start_guide": bootstrap.get("primary_start_guide"),
             "session_recovery_guide": bootstrap.get("session_recovery_guide"),

@@ -337,6 +337,20 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert "M33_ACCEPTANCE_REQUIRED" in start_blocker["related_action_codes"]
     start_home_status = bootstrap_after_basics.json()["data"]["home_status_guide"]
     assert start_home_status["primary_blocker"]["code"] == "start_readiness_blocked"
+    start_daily_care_plan = bootstrap_after_basics.json()["data"]["daily_care_plan"]
+    assert start_daily_care_plan["schema_version"] == "rehab_app_daily_care_plan_v1"
+    assert start_daily_care_plan["status"] == "attention_required"
+    assert start_daily_care_plan["primary_task"]["code"] == "start_ready"
+    assert start_daily_care_plan["primary_task"]["primary_action"]["code"] == "M33_ACCEPTANCE_REQUIRED"
+    assert start_daily_care_plan["tasks_total"] == 8
+    assert start_daily_care_plan["tasks_done"] == 7
+    assert start_daily_care_plan["tasks_remaining"] == 1
+    assert start_daily_care_plan["tasks"][0]["code"] == "onboarding"
+    assert start_daily_care_plan["tasks"][-1]["code"] == "start_ready"
+    assert start_daily_care_plan["tasks"][-1]["status"] == "current"
+    assert start_daily_care_plan["blockers"][0]["code"] == "start_readiness_blocked"
+    assert start_daily_care_plan["timeline_preview"]["items"] == []
+    assert start_daily_care_plan["control_boundary"] == "app_daily_care_plan_evidence_only_not_motion_permission"
     assert start_home_status["progress"]["stage"] == "resolve_blockers"
     assert start_home_status["progress"]["stage_title"] == "先处理阻塞事项"
     assert start_home_status["progress"]["stage_tone"] == "warning"
@@ -686,6 +700,13 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert primary_guide["readiness"]["plan_id"] == plan["id"]
     assert primary_guide["readiness"]["device_id"] == device["id"]
     ready_home_status = bootstrap_after_preflight.json()["data"]["home_status_guide"]
+    ready_daily_care_plan = bootstrap_after_preflight.json()["data"]["daily_care_plan"]
+    assert ready_daily_care_plan["status"] == "ready"
+    assert ready_daily_care_plan["primary_task"] is None
+    assert ready_daily_care_plan["tasks_done"] == 8
+    assert ready_daily_care_plan["tasks_remaining"] == 0
+    assert ready_daily_care_plan["next_action"]["code"] == "READY_TO_START"
+    assert ready_daily_care_plan["next_action"]["payload_hint"] == {"plan_id": plan["id"], "device_id": device["id"]}
     assert ready_home_status["progress"]["stage"] == "ready_to_start"
     assert ready_home_status["progress"]["stage_title"] == "可以记录训练开始"
     assert ready_home_status["progress"]["stage_tone"] == "success"

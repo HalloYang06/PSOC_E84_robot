@@ -306,6 +306,8 @@ GET /api/rehab-arm/app/v1/me/workflow
 
 `public-config.release_gate.checks` reports the install-package release blockers. Authenticated `/me.mobile_readiness_guide` reports account onboarding, device, plan, M33/preflight, offline evidence, safety review, APK wiring, and hardware-protocol blockers. Authenticated `/me/workflow` is the phone workflow contract for `phase`, `next_action`, `action_queue`, `blockers`, primary entity ids, and `forbidden_actions`. These responses are workflow/evidence guidance only and do not grant BLE, CAN, motor, or M33 override authority.
 
+Authenticated `/me.daily_care_plan` is the phone home source for the user's current daily checklist. It includes the primary task, next action, blocker details, progress totals, counts, and a short care-timeline preview. Frontend shells should render this field instead of using demo progress cards or recomputing the task order.
+
 Rebuild locally:
 
 ```powershell
