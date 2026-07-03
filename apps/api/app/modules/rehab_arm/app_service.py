@@ -877,6 +877,140 @@ def get_training_readiness(db: Session, user_id: str, plan_id: str, device_id: s
     }
 
 
+def get_training_start_guide(db: Session, user_id: str, plan_id: str, device_id: str) -> dict:
+    readiness = get_training_readiness(db, user_id, plan_id, device_id)
+    check_by_name = {check["name"]: check for check in readiness["checks"]}
+
+    def action(
+        code: str,
+        actor: str,
+        title: str,
+        description: str,
+        endpoint: str = "",
+        method: str = "",
+        payload_hint: dict | None = None,
+    ) -> dict:
+        return {
+            "code": code,
+            "actor": actor,
+            "title": title,
+            "description": description,
+            "endpoint": endpoint,
+            "method": method,
+            "payload_hint": payload_hint or {},
+        }
+
+    action_map = {
+        "TRAINING_PLAN_NOT_USABLE": action(
+            "TRAINING_PLAN_NOT_USABLE",
+            "patient_or_therapist",
+            "选择可用训练计划",
+            "当前计划已归档或被拒绝，不能继续训练。请回到训练计划列表选择 active/draft 计划，或从复盘记录生成新计划。",
+            "/api/rehab-arm/app/v1/training-plans",
+            "GET",
+        ),
+        "DEVICE_REVOKED": action(
+            "DEVICE_REVOKED",
+            "patient_or_therapist",
+            "重新绑定可信设备",
+            "当前设备已解绑冻结，只能查看历史和诊断。请绑定可信 M33 设备后再同步训练计划。",
+            "/api/rehab-arm/app/v1/devices/bind",
+            "POST",
+            {"m33_device_id": "required", "ble_name": "optional", "trust_status": "trusted"},
+        ),
+        "TRAINING_PLAN_CONTRAINDICATED": action(
+            "TRAINING_PLAN_CONTRAINDICATED",
+            "therapist",
+            "完成禁忌项复核",
+            "计划与康复档案约束冲突，需要治疗师记录当前版本的复核证据，再重新同步给 M33。",
+            f"/api/rehab-arm/app/v1/training-plans/{plan_id}/constraint-reviews",
+            "POST",
+            {"reviewer_role": "therapist", "review_status": "approved_or_conditional", "review_note": "required"},
+        ),
+        "ACTIVE_TRAINING_SESSION_EXISTS": action(
+            "ACTIVE_TRAINING_SESSION_EXISTS",
+            "patient_or_therapist",
+            "恢复或结束当前训练",
+            "该设备已有 started/in_progress/paused 训练会话。请先恢复、完成或取消当前会话，再开始新的训练。",
+            "/api/rehab-arm/app/v1/me",
+            "GET",
+        ),
+        "M33_ACCEPTANCE_REQUIRED": action(
+            "M33_ACCEPTANCE_REQUIRED",
+            "m33_or_patient",
+            "同步计划并等待 M33 接受",
+            "当前计划版本还没有 M33 accepted 证据。请同步当前版本，等待 M33 固件侧审核并回传接受状态。",
+            f"/api/rehab-arm/app/v1/training-plans/{plan_id}/sync-to-device",
+            "POST",
+            {"device_id": device_id},
+        ),
+        "PREFLIGHT_CHECK_REQUIRED": action(
+            "PREFLIGHT_CHECK_REQUIRED",
+            "patient_or_therapist",
+            "完成训练前检查",
+            "M33 已接受当前计划后，还需要提交与当前 sync_id/plan_version 匹配的 preflight 检查。",
+            "/api/rehab-arm/app/v1/training-preflight",
+            "POST",
+            {
+                "plan_id": plan_id,
+                "device_id": device_id,
+                "sync_id": check_by_name.get("preflight", {}).get("detail", {}).get("sync_id", "required"),
+                "checklist": {
+                    "device_worn_correctly": True,
+                    "pain_within_limit": True,
+                    "stop_explained": True,
+                    "m33_plan_accepted": True,
+                },
+            },
+        ),
+        "SAFETY_REVIEW_REQUIRED": action(
+            "SAFETY_REVIEW_REQUIRED",
+            "therapist",
+            "复核上一轮安全事件",
+            "同一设备最近训练存在未复核 critical 安全事件，需要记录 approved/conditional safety_review 后才能继续。",
+            "/api/rehab-arm/app/v1/training-sessions/{session_id}/safety-events",
+            "POST",
+            {"event_type": "safety_review", "severity": "info", "payload": {"review_status": "approved_or_conditional"}},
+        ),
+    }
+
+    ordered_steps: list[dict] = []
+    for check in readiness["checks"]:
+        code = check.get("code") or ""
+        if check["status"] == "passed":
+            ordered_steps.append({"check": check["name"], "status": "done", "code": code, "action": {}})
+        elif check["status"] == "waiting":
+            ordered_steps.append({"check": check["name"], "status": "waiting", "code": code, "action": action_map.get(code, {})})
+        else:
+            ordered_steps.append({"check": check["name"], "status": "todo", "code": code, "action": action_map.get(code, {})})
+
+    next_action = {}
+    for step in ordered_steps:
+        if step["status"] == "todo":
+            next_action = step["action"]
+            break
+    if not next_action and readiness["can_start"]:
+        next_action = action(
+            "READY_TO_START",
+            "patient_or_therapist",
+            "可以创建训练会话",
+            "后端启动前置条件已满足。点击开始只会创建 App 训练记录，真实运动仍由 M33/机器人侧决定。",
+            "/api/rehab-arm/app/v1/training-sessions/start",
+            "POST",
+            {"plan_id": plan_id, "device_id": device_id},
+        )
+
+    return {
+        "plan_id": plan_id,
+        "device_id": device_id,
+        "can_start": readiness["can_start"],
+        "readiness": readiness,
+        "next_action": next_action,
+        "steps": ordered_steps,
+        "control_boundary": "training_start_guide_evidence_only_not_motion_permission",
+    }
+
+
 def sync_training_plan_to_device(db: Session, user_id: str, plan_id: str, device_id: str) -> dict:
     plan = db.get(RehabAppTrainingPlan, plan_id)
     if plan is None or plan.user_id != user_id:

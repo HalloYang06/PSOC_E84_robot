@@ -64,6 +64,7 @@ GET /devices/{device_id}/diagnostics
 GET /devices/{device_id}/ble/messages
 GET /training-plans/{plan_id}
 GET /training-plans/{plan_id}/readiness?device_id=...
+GET /training-plans/{plan_id}/start-guide?device_id=...
 GET /training-plans/{plan_id}/constraint-reviews
 GET /training-preflight
 GET /training-sessions
@@ -162,6 +163,14 @@ GET /api/rehab-arm/app/v1/training-plans/{plan_id}/readiness?device_id={device_i
 ```
 
 The response returns `can_start` plus named checks for plan usability, revoked device state, profile constraints, active session conflicts, M33 acceptance, preflight, and required safety review. Use the check `code` values for user-facing guidance. The readiness response is `training_readiness_evidence_only_not_motion_permission`; it is not a robot-side motion permit.
+
+For a user-facing guide, read:
+
+```text
+GET /api/rehab-arm/app/v1/training-plans/{plan_id}/start-guide?device_id={device_id}
+```
+
+The guide embeds readiness and returns `next_action` plus ordered `steps`. `next_action` can point the App to plan selection, device binding, constraint review, active-session recovery, M33 plan sync, preflight, safety review, or `training-sessions/start` when ready. Treat it as phone workflow guidance only; it does not create a session and does not command hardware.
 
 ## Android APK Build Environment
 

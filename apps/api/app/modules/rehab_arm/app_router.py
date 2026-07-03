@@ -68,6 +68,7 @@ from .app_service import (
     get_training_readiness,
     get_training_report,
     get_training_session,
+    get_training_start_guide,
     latest_emg_summary,
     list_ai_training_drafts,
     list_devices,
@@ -193,6 +194,11 @@ def api_get_training_plan(plan_id: str, request: Request, db: Session = Depends(
 @router.get("/training-plans/{plan_id}/readiness")
 def api_get_training_readiness(plan_id: str, device_id: str, request: Request, db: Session = Depends(get_db)):
     return ok(get_training_readiness(db, _user_id(db, request), plan_id, device_id))
+
+
+@router.get("/training-plans/{plan_id}/start-guide")
+def api_get_training_start_guide(plan_id: str, device_id: str, request: Request, db: Session = Depends(get_db)):
+    return ok(get_training_start_guide(db, _user_id(db, request), plan_id, device_id))
 
 
 @router.patch("/training-plans/{plan_id}")

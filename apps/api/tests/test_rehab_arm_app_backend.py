@@ -341,6 +341,18 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert readiness_missing_preflight.json()["data"]["can_start"] is False
     assert readiness_checks["m33_acceptance"]["status"] == "passed"
     assert readiness_checks["preflight"]["code"] == "PREFLIGHT_CHECK_REQUIRED"
+    start_guide_missing_preflight = client.get(
+        f"/api/rehab-arm/app/v1/training-plans/{plan['id']}/start-guide",
+        headers=auth_headers(owner_token),
+        params={"device_id": device["id"]},
+    )
+    assert start_guide_missing_preflight.status_code == 200
+    guide_data = start_guide_missing_preflight.json()["data"]
+    assert guide_data["can_start"] is False
+    assert guide_data["next_action"]["code"] == "PREFLIGHT_CHECK_REQUIRED"
+    assert guide_data["next_action"]["method"] == "POST"
+    assert guide_data["next_action"]["endpoint"] == "/api/rehab-arm/app/v1/training-preflight"
+    assert guide_data["control_boundary"] == "training_start_guide_evidence_only_not_motion_permission"
 
     high_pain_preflight = client.post(
         "/api/rehab-arm/app/v1/training-preflight",
@@ -368,6 +380,15 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     )
     assert readiness_ready.status_code == 200
     assert readiness_ready.json()["data"]["can_start"] is True
+    start_guide_ready = client.get(
+        f"/api/rehab-arm/app/v1/training-plans/{plan['id']}/start-guide",
+        headers=auth_headers(owner_token),
+        params={"device_id": device["id"]},
+    )
+    assert start_guide_ready.status_code == 200
+    assert start_guide_ready.json()["data"]["can_start"] is True
+    assert start_guide_ready.json()["data"]["next_action"]["code"] == "READY_TO_START"
+    assert start_guide_ready.json()["data"]["next_action"]["payload_hint"] == {"plan_id": plan["id"], "device_id": device["id"]}
     preflight_history = client.get(
         "/api/rehab-arm/app/v1/training-preflight",
         headers=auth_headers(owner_token),
