@@ -99,6 +99,8 @@ Thumbs.db
 *.tmp
 *.temp
 *.log
+artifacts/
+data/sensor_capture/*.csv
 
 # SCons
 .sconsign.dblite
