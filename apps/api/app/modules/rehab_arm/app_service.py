@@ -912,6 +912,7 @@ def _app_home_status_guide(daily_action_guide: dict, care_summary: dict, related
             )
     counts = care_summary.get("counts") or {}
     blockers = care_summary.get("blockers") or []
+    blocker_details = care_summary.get("blocker_details") or []
     primary_blocker_code = str((care_summary.get("primary_blocker") or {}).get("code") or "")
     onboarding_complete = "onboarding_incomplete" not in blockers
     no_open_work = not blockers and not secondary_actions
@@ -919,7 +920,7 @@ def _app_home_status_guide(daily_action_guide: dict, care_summary: dict, related
     start_readiness_blocker = next(
         (
             item
-            for item in care_summary.get("blocker_details") or []
+            for item in blocker_details
             if item.get("code") == "start_readiness_blocked"
         ),
         {},
@@ -1009,6 +1010,10 @@ def _app_home_status_guide(daily_action_guide: dict, care_summary: dict, related
         next_progress_item = next((item for item in progress_items if not item["done"]), None)
     next_progress_action_codes = set((next_progress_item or {}).get("related_action_codes") or [])
     next_progress_actions = [action for action in all_actions if action.get("code") in next_progress_action_codes]
+    next_progress_blocker_codes = set((next_progress_item or {}).get("related_blocker_codes") or [])
+    next_progress_blockers = [
+        blocker for blocker in blocker_details if blocker.get("code") in next_progress_blocker_codes
+    ]
     if ready_to_start:
         stage = "ready_to_start"
     elif primary_blocker_code and primary_blocker_code != "onboarding_incomplete":
@@ -1062,7 +1067,7 @@ def _app_home_status_guide(daily_action_guide: dict, care_summary: dict, related
             "blocker_related": blocker_action_groups,
         },
         "blockers": care_summary.get("blockers") or [],
-        "blocker_details": care_summary.get("blocker_details") or [],
+        "blocker_details": blocker_details,
         "primary_blocker": care_summary.get("primary_blocker"),
         "counts": counts,
         "progress": {
@@ -1075,6 +1080,7 @@ def _app_home_status_guide(daily_action_guide: dict, care_summary: dict, related
             "remaining": len(progress_items) - done_count,
             "next_item": next_progress_item,
             "next_item_actions": next_progress_actions,
+            "next_item_blockers": next_progress_blockers,
             "items": progress_items,
         },
         "safety_note": "本卡片只提供手机端证据和流程引导，不授予硬件运动权限；真实运动仍由 M33 最终裁决。",

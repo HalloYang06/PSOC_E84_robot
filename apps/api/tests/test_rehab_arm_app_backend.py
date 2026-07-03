@@ -88,6 +88,9 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
         "TRUSTED_DEVICE_REQUIRED",
         "TRAINING_PLAN_REQUIRED",
     }
+    assert [item["code"] for item in empty_home_status["progress"]["next_item_blockers"]] == [
+        "onboarding_incomplete"
+    ]
     onboarding_progress = next(item for item in empty_home_status["progress"]["items"] if item["code"] == "onboarding")
     assert onboarding_progress["done"] is False
     assert onboarding_progress["title"] == "首次设置"
@@ -198,6 +201,9 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert {"VIEW_START_GUIDE", "CHECK_START_READINESS", "M33_ACCEPTANCE_REQUIRED"}.issubset(
         {item["code"] for item in start_home_status["progress"]["next_item_actions"]}
     )
+    assert [item["code"] for item in start_home_status["progress"]["next_item_blockers"]] == [
+        "start_readiness_blocked"
+    ]
     assert next(item for item in start_home_status["progress"]["items"] if item["code"] == "onboarding")["done"] is True
     start_ready_progress = next(item for item in start_home_status["progress"]["items"] if item["code"] == "start_ready")
     assert start_ready_progress["done"] is False
@@ -518,6 +524,7 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert ready_home_status["progress"]["remaining"] == 0
     assert ready_home_status["progress"]["next_item"] is None
     assert ready_home_status["progress"]["next_item_actions"] == []
+    assert ready_home_status["progress"]["next_item_blockers"] == []
     ready_progress_item = next(item for item in ready_home_status["progress"]["items"] if item["code"] == "start_ready")
     assert ready_progress_item["done"] is True
     assert ready_progress_item["title"] == "开始条件"
@@ -1506,6 +1513,10 @@ def test_rehab_arm_app_daily_action_prioritizes_offline_sync_without_active_sess
     assert {"VIEW_OFFLINE_QUEUE", "REVIEW_FAILED_OFFLINE_ITEM", "REPLAY_OFFLINE_EVIDENCE"}.issubset(
         {item["code"] for item in failed_home_status["progress"]["next_item_actions"]}
     )
+    assert [item["code"] for item in failed_home_status["progress"]["next_item_blockers"]] == [
+        "offline_queue_failed",
+        "offline_queue_pending",
+    ]
     offline_progress = next(item for item in failed_home_status["progress"]["items"] if item["code"] == "offline_clear")
     assert offline_progress["done"] is False
     assert "offline_queue_failed" in offline_progress["related_blocker_codes"]
