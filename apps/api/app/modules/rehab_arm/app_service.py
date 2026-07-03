@@ -688,6 +688,27 @@ REQUIRED_PREFLIGHT_CHECKS = {
 }
 
 
+def _require_pain_preflight_safe(db: Session, user_id: str, payload: RehabAppPreflightCheckCreate) -> None:
+    if payload.pain_before is None or payload.checked_by_role == "therapist":
+        return
+    profile = db.scalar(select(RehabAppUserProfile).where(RehabAppUserProfile.user_id == user_id))
+    baseline = profile.pain_baseline if profile and profile.pain_baseline is not None else None
+    review_threshold = min(7.0, baseline + 2.0) if baseline is not None else 7.0
+    if payload.pain_before >= review_threshold:
+        raise AppError(
+            "PREFLIGHT_PAIN_REVIEW_REQUIRED",
+            "preflight pain score requires therapist review before a training session can start",
+            status_code=409,
+            details={
+                "pain_before": payload.pain_before,
+                "pain_baseline": baseline,
+                "review_threshold": review_threshold,
+                "allowed_override_role": "therapist",
+                "control_boundary": "preflight_blocked_not_medical_diagnosis_or_motion_permission",
+            },
+        )
+
+
 def create_preflight_check(db: Session, user_id: str, payload: RehabAppPreflightCheckCreate) -> dict:
     plan = db.get(RehabAppTrainingPlan, payload.plan_id)
     if plan is None or plan.user_id != user_id:
@@ -728,6 +749,7 @@ def create_preflight_check(db: Session, user_id: str, payload: RehabAppPreflight
                 "control_boundary": "preflight_blocked_not_motion_permission",
             },
         )
+    _require_pain_preflight_safe(db, user_id, payload)
     check = RehabAppPreflightCheck(
         user_id=user_id,
         plan_id=plan.id,

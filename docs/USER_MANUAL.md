@@ -137,6 +137,8 @@ Required checklist keys are `device_worn_correctly`, `pain_within_limit`, `stop_
 
 Read recent preflight evidence with `GET /api/rehab-arm/app/v1/training-preflight`, optionally filtered by `plan_id` and `device_id`. `GET /api/rehab-arm/app/v1/me` returns `latest_preflight` and also returns a paused training session as `active_session`, so the phone App can recover after restart without creating a second session.
 
+If patient-submitted `pain_before` is at least 2 points above `pain_baseline`, or is 7 or higher, the backend returns `PREFLIGHT_PAIN_REVIEW_REQUIRED`. The App should stop the start flow and ask for therapist review. A therapist preflight can be submitted with `checked_by_role=therapist`; it is still evidence only and does not bypass M33 authority.
+
 ## Android APK Build Environment
 
 This workstation has the Android build prerequisites installed for the rehab-arm mobile wrapper:

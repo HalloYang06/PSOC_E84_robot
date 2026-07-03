@@ -39,6 +39,22 @@ def _pass_preflight(token: str, plan_id: str, device_id: str, sync_id: str, *, p
     return response.json()["data"]
 
 
+def _preflight_payload(plan_id: str, device_id: str, sync_id: str, *, pain_before: float = 1.0, checked_by_role: str = "patient") -> dict:
+    return {
+        "plan_id": plan_id,
+        "device_id": device_id,
+        "sync_id": sync_id,
+        "checked_by_role": checked_by_role,
+        "pain_before": pain_before,
+        "checklist": {
+            "device_worn_correctly": True,
+            "pain_within_limit": True,
+            "stop_explained": True,
+            "m33_plan_accepted": True,
+        },
+    }
+
+
 def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
 
@@ -243,6 +259,23 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     )
     assert missing_preflight_start.status_code == 409
     assert missing_preflight_start.json()["error"]["code"] == "PREFLIGHT_CHECK_REQUIRED"
+
+    high_pain_preflight = client.post(
+        "/api/rehab-arm/app/v1/training-preflight",
+        headers=auth_headers(owner_token),
+        json=_preflight_payload(plan["id"], device["id"], resync["id"], pain_before=4.0),
+    )
+    assert high_pain_preflight.status_code == 409
+    assert high_pain_preflight.json()["error"]["code"] == "PREFLIGHT_PAIN_REVIEW_REQUIRED"
+    assert high_pain_preflight.json()["error"]["details"]["pain_baseline"] == 2
+
+    therapist_preflight = client.post(
+        "/api/rehab-arm/app/v1/training-preflight",
+        headers=auth_headers(owner_token),
+        json=_preflight_payload(plan["id"], device["id"], resync["id"], pain_before=4.0, checked_by_role="therapist"),
+    )
+    assert therapist_preflight.status_code == 200
+    assert therapist_preflight.json()["data"]["checked_by_role"] == "therapist"
 
     preflight = _pass_preflight(owner_token, plan["id"], device["id"], resync["id"])
     assert preflight["plan_version"] == 2
