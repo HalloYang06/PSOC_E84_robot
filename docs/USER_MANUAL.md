@@ -330,3 +330,5 @@ GET /api/rehab-arm/app/v1/public-config
 The response includes `api_base`, login/session endpoints, `/api/rehab-arm/app/v1/me`, profile setup requirements, current debug APK metadata, and `rehab_app_public_config_only_not_auth_token_or_motion_permission`. It does not return credentials or grant hardware authority.
 
 The mobile public config also returns `mobile_boot_flow` and `release_gate`. Frontend shells should read `data.access_token` from `/api/auth/session`, send `Authorization: Bearer {access_token}`, then call `/api/auth/me` and `/api/rehab-arm/app/v1/me`. A `release_gate.status` of `blocked` means the downloadable APK is still a preview shell, not a user-ready build.
+
+Mobile API CORS defaults include `capacitor://localhost`, `https://localhost`, and `http://localhost`. Override or extend them with `REHAB_ARM_APP_CORS_ORIGINS` when the Android wrapper uses a different WebView origin. A valid preflight should return `access-control-allow-origin` for the mobile origin before the APK is considered ready to call the cloud API.
