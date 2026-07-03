@@ -172,9 +172,9 @@ def api_public_config(request: Request):
             },
             "downloads": {
                 "debug_apk_url": _download_url(api_base),
-                "debug_apk_version": "1.0.4",
-                "debug_apk_sha256": "DFCBD3EADEE230947A0E6FC5AFCADAD46095CCC5963A9FE9ACDF7EBC355031B2",
-                "debug_apk_status": "backend_connected_workflow_action_debug_build_hardware_protocol_pending",
+                "debug_apk_version": "1.0.5",
+                "debug_apk_sha256": "D29649F38FA7684ED87EE9F42139DFED3C93FC38C6D8933ABC62650285DBF45C",
+                "debug_apk_status": "backend_connected_workflow_action_timeline_debug_build_hardware_protocol_pending",
             },
             "mobile_boot_flow": [
                 {"step": "load_public_config", "endpoint": "/api/rehab-arm/app/v1/public-config", "auth_required": False},
@@ -201,7 +201,7 @@ def api_public_config(request: Request):
                     {
                         "code": "APK_FRONTEND_API_WIRING",
                         "status": "pass",
-                        "description": "Debug APK 1.0.4 loads public-config/catalog/workflow, uses Bearer token login, overlays backend workflow/readiness, and can execute safe workflow actions through /me/workflow/actions.",
+                        "description": "Debug APK 1.0.5 loads public-config/catalog/workflow, uses Bearer token login, overlays backend workflow/readiness, renders backend care timeline, and can execute safe workflow actions through /me/workflow/actions.",
                     },
                     {
                         "code": "HARDWARE_PROTOCOL_PACKET_MAP",

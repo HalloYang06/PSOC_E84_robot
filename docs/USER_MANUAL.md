@@ -254,15 +254,15 @@ APK details:
 ```text
 package: com.lingdong.rehabarm
 label: 灵动康复 ArmControl
-version: 1.0.4 debug
-versionCode: 5
-size: 4,173,198 bytes
-sha256: DFCBD3EADEE230947A0E6FC5AFCADAD46095CCC5963A9FE9ACDF7EBC355031B2
+version: 1.0.5 debug
+versionCode: 6
+size: 4,173,798 bytes
+sha256: D29649F38FA7684ED87EE9F42139DFED3C93FC38C6D8933ABC62650285DBF45C
 ```
 
 Android may warn that this debug build is from an unknown source. This is expected for the current unsigned-store debug APK. Use it only for internal testing.
 
-APK 1.0.4 behavior:
+APK 1.0.5 behavior:
 
 ```text
 - Starts with cloud API base http://106.55.62.122:8011
@@ -273,6 +273,7 @@ APK 1.0.4 behavior:
 - Shows a real backend evidence panel and suppresses static success claims when gates are blocked
 - Calls /api/rehab-arm/app/v1/me/workflow and shows backend phase, next action, action queue, blockers, and forbidden actions
 - Calls /api/rehab-arm/app/v1/me/workflow/actions for backend-allowed safe workflow actions
+- Renders a real care timeline from the `/api/rehab-arm/app/v1/me` response `care_timeline` for sessions, reports, AI drafts, and offline evidence
 ```
 
 Use the existing cloud test account `3245056131@qq.com` / `1234` for internal verification only. This debug build is still not a medical device release: it displays backend workflow/readiness evidence and does not grant BLE, CAN, motor, or M33 override authority.
@@ -291,7 +292,7 @@ Current user-release gate:
 
 ```text
 status: blocked_for_hardware_protocol
-reason: APK 1.0.4 connects to cloud public-config/catalog/login/me/workflow, executes backend-allowed safe workflow actions, and displays backend workflow evidence, but BLE/M33/M55 packet maps are still required before motion-adjacent UX can be certified.
+reason: APK 1.0.5 connects to cloud public-config/catalog/login/me/workflow, executes backend-allowed safe workflow actions, renders backend care timeline evidence, and displays backend workflow evidence, but BLE/M33/M55 packet maps are still required before motion-adjacent UX can be certified.
 hardware_protocol: awaiting BLE/M33/M55 packet maps
 ```
 

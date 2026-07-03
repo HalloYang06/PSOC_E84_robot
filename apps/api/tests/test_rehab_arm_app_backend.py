@@ -177,9 +177,9 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert release_checks["APK_FRONTEND_API_WIRING"]["status"] == "pass"
     assert release_checks["HARDWARE_PROTOCOL_PACKET_MAP"]["status"] == "awaiting_protocol"
     assert config_data["required_profile_fields"] == ["affected_side", "rehab_stage", "pain_baseline"]
-    assert config_data["downloads"]["debug_apk_version"] == "1.0.4"
-    assert config_data["downloads"]["debug_apk_sha256"] == "DFCBD3EADEE230947A0E6FC5AFCADAD46095CCC5963A9FE9ACDF7EBC355031B2"
-    assert config_data["downloads"]["debug_apk_status"] == "backend_connected_workflow_action_debug_build_hardware_protocol_pending"
+    assert config_data["downloads"]["debug_apk_version"] == "1.0.5"
+    assert config_data["downloads"]["debug_apk_sha256"] == "D29649F38FA7684ED87EE9F42139DFED3C93FC38C6D8933ABC62650285DBF45C"
+    assert config_data["downloads"]["debug_apk_status"] == "backend_connected_workflow_action_timeline_debug_build_hardware_protocol_pending"
     assert config_data["control_boundary"] == "rehab_app_public_config_only_not_auth_token_or_motion_permission"
     catalog_response = client.get("/api/rehab-arm/app/v1/catalog")
     assert catalog_response.status_code == 200
@@ -1436,6 +1436,18 @@ def test_rehab_arm_app_session_emg_and_intent_summary_flow(tmp_path, monkeypatch
     report_timeline = next(item for item in care_timeline["items"] if item["kind"] == "training_report")
     assert report_timeline["source_id"] == report["id"]
     assert report_timeline["status"] == "reviewed"
+    assert report_timeline["display"]["title"] == "训练报告已复盘"
+    assert report_timeline["display"]["tone"] == "success"
+    assert report_timeline["primary_action"]["code"] == "VIEW_REPORT"
+    assert report_timeline["primary_action"]["endpoint"] == f"/api/rehab-arm/app/v1/training-reports/{report['id']}"
+    assert report_timeline["related_entities"]["session_id"] == session["id"]
+    assert report_timeline["control_boundary"] == "app_care_timeline_item_evidence_only_not_motion_permission"
+    session_timeline = next(item for item in care_timeline["items"] if item["kind"] == "training_session")
+    assert session_timeline["display"]["title"] == "训练记录已完成"
+    assert session_timeline["primary_action"]["code"] == "VIEW_SESSION"
+    draft_timeline = next(item for item in care_timeline["items"] if item["kind"] == "ai_training_draft")
+    assert draft_timeline["display"]["title"] == "AI 草稿已接受"
+    assert draft_timeline["primary_action"]["code"] == "VIEW_ACCEPTED_PLAN"
 
     sync_run = client.post(
         "/api/rehab-arm/app/v1/platform/sync",

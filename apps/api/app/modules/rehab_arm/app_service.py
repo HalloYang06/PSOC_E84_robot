@@ -823,14 +823,125 @@ def _app_daily_action_guide(
     }
 
 
+def _timeline_status_tone(kind: str, status: str) -> str:
+    if status in {"reviewed", "accepted", "finished", "replayed", "synced"}:
+        return "success"
+    if status in {"review_required", "open", "queued", "failed", "paused"}:
+        return "warning"
+    if status in {"cancelled", "rejected"}:
+        return "danger"
+    if kind == "training_session" and status in {"started", "in_progress"}:
+        return "info"
+    return "neutral"
+
+
+def _timeline_display(kind: str, status: str, title: str, detail: dict) -> dict:
+    tone = _timeline_status_tone(kind, status)
+    if kind == "training_session":
+        copy = {
+            "finished": ("训练记录已完成", "已结束训练记录，等待报告或复盘证据。"),
+            "cancelled": ("训练记录已取消", "该训练记录已关闭，不会生成完成报告。"),
+            "paused": ("训练记录已暂停", "需要恢复、取消或完成安全复核。"),
+            "started": ("训练记录已开始", "正在记录训练证据。"),
+            "in_progress": ("训练记录进行中", "正在记录训练进度、肌电和安全事件。"),
+        }.get(status, (title, "训练记录证据。"))
+    elif kind == "training_report":
+        copy = ("训练报告已复盘", "报告已有复盘记录，可用于下一计划草稿。") if status == "reviewed" else ("训练报告待复盘", "请先记录患者或治疗师复盘。")
+    elif kind == "ai_training_draft":
+        copy = ("AI 草稿已接受", "草稿已转为普通训练计划；仍需 M33 同步、接受和 preflight。") if status == "accepted" else ("AI 草稿待审核", "AI 草稿不能直接授予运动权限。")
+    elif kind == "offline_queue_item":
+        copy = {
+            "queued": ("离线证据待重放", "手机离线记录需要上传到后端。"),
+            "failed": ("离线证据重放失败", "需要查看失败原因并人工复核。"),
+            "reviewed": ("离线证据已复核", "失败离线证据已由用户或治疗师处理。"),
+            "replayed": ("离线证据已同步", "离线证据已重放为后端记录。"),
+        }.get(status, (title, "离线证据状态。"))
+    else:
+        copy = (title, "康复流程证据。")
+    return {
+        "title": copy[0],
+        "subtitle": copy[1],
+        "tone": tone,
+        "status_label": status,
+        "summary": detail.get("summary") or "",
+    }
+
+
+def _timeline_primary_action(kind: str, status: str, source_id: str, detail: dict) -> dict:
+    if kind == "training_session":
+        return {
+            "code": "VIEW_SESSION",
+            "label": "查看训练记录",
+            "endpoint": f"/api/rehab-arm/app/v1/training-sessions/{source_id}",
+            "method": "GET",
+            "payload_hint": {"session_id": source_id},
+        }
+    if kind == "training_report":
+        return {
+            "code": "VIEW_REPORT",
+            "label": "查看训练报告",
+            "endpoint": f"/api/rehab-arm/app/v1/training-reports/{source_id}",
+            "method": "GET",
+            "payload_hint": {"report_id": source_id},
+        }
+    if kind == "ai_training_draft":
+        accepted_plan_id = str(detail.get("accepted_plan_id") or "")
+        if accepted_plan_id:
+            return {
+                "code": "VIEW_ACCEPTED_PLAN",
+                "label": "查看已接受计划",
+                "endpoint": f"/api/rehab-arm/app/v1/training-plans/{accepted_plan_id}",
+                "method": "GET",
+                "payload_hint": {"plan_id": accepted_plan_id},
+            }
+        return {
+            "code": "VIEW_AI_DRAFT",
+            "label": "查看 AI 草稿",
+            "endpoint": f"/api/rehab-arm/app/v1/ai-training-drafts/{source_id}",
+            "method": "GET",
+            "payload_hint": {"draft_id": source_id},
+        }
+    if kind == "offline_queue_item":
+        if status == "failed":
+            return {
+                "code": "REVIEW_FAILED_OFFLINE_ITEM",
+                "label": "复核失败证据",
+                "endpoint": f"/api/rehab-arm/app/v1/offline-queue/{source_id}/review",
+                "method": "POST",
+                "payload_hint": {"item_id": source_id, "note": "required"},
+            }
+        return {
+            "code": "VIEW_OFFLINE_QUEUE",
+            "label": "查看离线队列",
+            "endpoint": f"/api/rehab-arm/app/v1/offline-queue?status={status}",
+            "method": "GET",
+            "payload_hint": {"status": status},
+        }
+    return {"code": "VIEW_EVIDENCE", "label": "查看证据", "endpoint": "", "method": "GET", "payload_hint": {}}
+
+
+def _timeline_related_entities(kind: str, source_id: str, detail: dict) -> dict:
+    entities = {"source_id": source_id}
+    for key in ["session_id", "plan_id", "device_id", "report_id", "accepted_plan_id"]:
+        value = detail.get(key)
+        if value:
+            entities[key] = value
+    return entities
+
+
 def _timeline_item(kind: str, event_at: object, title: str, status: str, source_id: str, detail: dict | None = None) -> dict:
+    detail_data = detail or {}
     return {
         "kind": kind,
         "event_at": event_at,
         "title": title,
         "status": status,
         "source_id": source_id,
-        "detail": detail or {},
+        "display": _timeline_display(kind, status, title, detail_data),
+        "primary_action": _timeline_primary_action(kind, status, source_id, detail_data),
+        "related_entities": _timeline_related_entities(kind, source_id, detail_data),
+        "detail": detail_data,
+        "control_boundary": "app_care_timeline_item_evidence_only_not_motion_permission",
     }
 
 

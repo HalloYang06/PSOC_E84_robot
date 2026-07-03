@@ -232,6 +232,19 @@
     document.querySelector("[data-arm-workflow]")?.remove();
   }
 
+  function removeTimelinePanel() {
+    document.querySelector("[data-arm-timeline]")?.remove();
+  }
+
+  function escapeHtml(value) {
+    return String(value == null ? "" : value)
+      .split("&").join("&amp;")
+      .split("<").join("&lt;")
+      .split(">").join("&gt;")
+      .split('"').join("&quot;")
+      .split("'").join("&#39;");
+  }
+
   function actionLabel(action) {
     if (!action) return "等待后端下一步";
     return action.label || action.title || action.code || "等待后端下一步";
@@ -322,6 +335,49 @@
     }
   }
 
+  function insertTimelinePanel(state) {
+    removeTimelinePanel();
+    const bootstrap = state.bootstrap || {};
+    const items = ((bootstrap.care_timeline || {}).items || []).slice(0, 4);
+    const panel = document.createElement("section");
+    panel.setAttribute("data-arm-timeline", "true");
+    panel.style.cssText = [
+      "margin:10px 16px 12px",
+      "padding:14px",
+      "border:1px solid #bbf7d0",
+      "border-radius:8px",
+      "background:#f0fdf4",
+      "color:#052e16",
+      "font:600 12px/1.5 Inter,system-ui,sans-serif"
+    ].join(";");
+    const rows = items.map((item) => {
+      const display = item.display || {};
+      const action = item.primary_action || {};
+      const tone = display.tone || "neutral";
+      const title = display.title || item.title || item.kind || "康复记录";
+      const subtitle = display.subtitle || item.status || "";
+      const actionText = action.label || action.code || "查看证据";
+      return [
+        `<div style="padding:10px 0;border-top:1px solid #bbf7d0" data-arm-timeline-item="${escapeHtml(item.kind || "")}">`,
+        `<div style="display:flex;justify-content:space-between;gap:8px"><span style="font-weight:900;color:#166534">${escapeHtml(title)}</span><span style="font:800 10px/1.2 JetBrains Mono,monospace;color:#166534">${escapeHtml(tone)}</span></div>`,
+        `<div style="margin-top:3px;color:#166534">${escapeHtml(subtitle)}</div>`,
+        `<div style="margin-top:5px;color:#475569">动作：${escapeHtml(actionText)}</div>`,
+        "</div>"
+      ].join("");
+    });
+    panel.innerHTML = [
+      '<div style="font-size:13px;font-weight:900;color:#166534;margin-bottom:6px">真实康复历史</div>',
+      items.length ? rows.join("") : '<div style="color:#166534">暂无后端训练/报告/草稿/离线证据记录。</div>',
+      '<div style="margin-top:8px;color:#166534">历史只来自后端持久化证据，不使用本地 demo 进度。</div>'
+    ].join("");
+    const anchor = document.querySelector("[data-arm-workflow]") || document.querySelector("[data-arm-evidence]") || document.querySelector("[data-arm-status]");
+    if (anchor && anchor.nextSibling) {
+      anchor.parentNode.insertBefore(panel, anchor.nextSibling);
+    } else {
+      document.body.prepend(panel);
+    }
+  }
+
   function insertBackendEvidencePanel(state) {
     removeBackendEvidencePanel();
     const bootstrap = state.bootstrap || {};
@@ -368,9 +424,11 @@
     if (state.authenticated) {
       insertBackendEvidencePanel(state);
       insertWorkflowPanel(state);
+      insertTimelinePanel(state);
     } else {
       removeBackendEvidencePanel();
       removeWorkflowPanel();
+      removeTimelinePanel();
     }
     const workflow = state.workflow || {};
     const phase = workflow.phase || {};

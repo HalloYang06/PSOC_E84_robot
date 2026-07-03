@@ -1,4 +1,4 @@
-const CACHE_NAME = "rehab-arm-mobile-v6";
+const CACHE_NAME = "rehab-arm-mobile-v7";
 const ASSETS = [
   "./index.html",
   "./mobile-bridge.js",
