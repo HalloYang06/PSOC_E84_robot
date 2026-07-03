@@ -36,6 +36,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--safety-topic", default="/rehab_arm/safety_state")
     parser.add_argument("--sensor-topic", default="/rehab_arm/sensor_state")
     parser.add_argument("--keyframe-file", default="")
+    parser.add_argument("--left-keyframe-file", default="")
+    parser.add_argument("--right-keyframe-file", default="")
+    parser.add_argument("--capture-stereo-keyframes", action="store_true", help="Capture one frame from each USB camera with OpenCV before upload.")
+    parser.add_argument("--left-camera-index", type=int, default=None)
+    parser.add_argument("--right-camera-index", type=int, default=None)
+    parser.add_argument("--left-flip", choices=["none", "h", "v", "hv", "unknown"], default="unknown")
+    parser.add_argument("--right-flip", choices=["none", "h", "v", "hv", "unknown"], default="unknown")
+    parser.add_argument("--flip-applied-before-detection", action="store_true")
+    parser.add_argument("--end-effector-onnx", default="", help="Optional YOLOv8 ONNX model for end_effector/gripper_tip evidence.")
+    parser.add_argument("--end-effector-conf", type=float, default=0.15, help="Confidence threshold for the optional end-effector ONNX detector.")
+    parser.add_argument("--end-effector-nms", type=float, default=0.45, help="NMS threshold for the optional end-effector ONNX detector.")
+    parser.add_argument("--end-effector-imgsz", type=int, default=416, help="Input size used by the optional end-effector ONNX detector.")
+    parser.add_argument("--camera-width", type=int, default=640)
+    parser.add_argument("--camera-height", type=int, default=480)
+    parser.add_argument("--stereo-baseline-m", type=float, default=0.06)
+    parser.add_argument("--stereo-calibration-id", default="bench_uncalibrated_rgb_pair")
     parser.add_argument("--timeout", type=float, default=4.0)
     parser.add_argument("--dry-run", action="store_true", help="Collect and build payloads but do not POST to the platform.")
     parser.add_argument("--skip-scan", action="store_true")
@@ -151,6 +167,79 @@ def collect_ros_topic(output_dir: Path, topic: str, filename: str, timeout: floa
     return path
 
 
+def apply_frame_flip(frame: Any, flip: str) -> Any:
+    if flip == "h":
+        import cv2  # type: ignore
+
+        return cv2.flip(frame, 1)
+    if flip == "v":
+        import cv2  # type: ignore
+
+        return cv2.flip(frame, 0)
+    if flip == "hv":
+        import cv2  # type: ignore
+
+        return cv2.flip(frame, -1)
+    return frame
+
+
+def capture_usb_frame(index: int, output_path: Path, width: int, height: int, flip: str) -> dict[str, Any]:
+    try:
+        import cv2  # type: ignore
+    except Exception as exc:
+        return {"ok": False, "camera_index": index, "path": str(output_path), "error": f"opencv_not_available:{exc}"}
+    cap = cv2.VideoCapture(index)
+    if not cap.isOpened():
+        cap.release()
+        return {"ok": False, "camera_index": index, "path": str(output_path), "error": "camera_open_failed"}
+    if width > 0:
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+    if height > 0:
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+    ok = False
+    frame = None
+    for _ in range(8):
+        ok, frame = cap.read()
+        if ok and frame is not None:
+            break
+        time.sleep(0.05)
+    cap.release()
+    if not ok or frame is None:
+        return {"ok": False, "camera_index": index, "path": str(output_path), "error": "frame_read_failed"}
+    frame = apply_frame_flip(frame, flip)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    saved = bool(cv2.imwrite(str(output_path), frame))
+    return {
+        "ok": saved,
+        "camera_index": index,
+        "path": str(output_path),
+        "width": int(frame.shape[1]),
+        "height": int(frame.shape[0]),
+        "flip": flip,
+        "flip_applied_before_detection": flip not in {"none", "unknown"},
+        "error": "" if saved else "frame_save_failed",
+    }
+
+
+def collect_stereo_keyframes(args: argparse.Namespace, output_dir: Path) -> tuple[str, str, list[dict[str, Any]]]:
+    left = args.left_keyframe_file
+    right = args.right_keyframe_file
+    reports: list[dict[str, Any]] = []
+    if args.capture_stereo_keyframes:
+        left_index = args.left_camera_index if args.left_camera_index is not None else 0
+        right_index = args.right_camera_index if args.right_camera_index is not None else 1
+        left_path = output_dir / "stereo_left.jpg"
+        right_path = output_dir / "stereo_right.jpg"
+        left_report = capture_usb_frame(left_index, left_path, args.camera_width, args.camera_height, args.left_flip)
+        right_report = capture_usb_frame(right_index, right_path, args.camera_width, args.camera_height, args.right_flip)
+        reports.extend([left_report, right_report])
+        if left_report.get("ok"):
+            left = str(left_path)
+        if right_report.get("ok"):
+            right = str(right_path)
+    return left, right, reports
+
+
 def build_agent_command(args: argparse.Namespace, files: dict[str, Path]) -> list[str]:
     command = [
         sys.executable,
@@ -178,6 +267,17 @@ def build_agent_command(args: argparse.Namespace, files: dict[str, Path]) -> lis
         command.extend(["--sensor-state-json", str(files["sensor"])])
     if args.keyframe_file:
         command.extend(["--keyframe-file", args.keyframe_file])
+    if args.end_effector_onnx:
+        command.extend([
+            "--end-effector-onnx",
+            args.end_effector_onnx,
+            "--end-effector-conf",
+            str(args.end_effector_conf),
+            "--end-effector-nms",
+            str(args.end_effector_nms),
+            "--end-effector-imgsz",
+            str(args.end_effector_imgsz),
+        ])
     if args.dry_run:
         command.append("--dry-run")
     return command
@@ -194,12 +294,41 @@ def main() -> int:
         files["joint"] = collect_ros_topic(output_dir, args.joint_topic, "joint-state.json", args.timeout)
         files["safety"] = collect_ros_topic(output_dir, args.safety_topic, "safety-state.json", args.timeout)
         files["sensor"] = collect_ros_topic(output_dir, args.sensor_topic, "sensor-state.json", args.timeout)
+    left_keyframe, right_keyframe, stereo_capture = collect_stereo_keyframes(args, output_dir)
     command = build_agent_command(args, files)
+    if left_keyframe and right_keyframe:
+        command.extend([
+            "--left-keyframe-file",
+            left_keyframe,
+            "--right-keyframe-file",
+            right_keyframe,
+            "--stereo-baseline-m",
+            str(args.stereo_baseline_m),
+            "--stereo-calibration-id",
+            args.stereo_calibration_id,
+            "--stereo-width",
+            str(args.camera_width),
+            "--stereo-height",
+            str(args.camera_height),
+        ])
+        if args.left_camera_index is not None:
+            command.extend(["--left-camera-index", str(args.left_camera_index)])
+        elif args.capture_stereo_keyframes:
+            command.extend(["--left-camera-index", "0"])
+        if args.right_camera_index is not None:
+            command.extend(["--right-camera-index", str(args.right_camera_index)])
+        elif args.capture_stereo_keyframes:
+            command.extend(["--right-camera-index", "1"])
+        command.extend(["--left-flip", args.left_flip, "--right-flip", args.right_flip])
+        if args.flip_applied_before_detection or args.left_flip not in {"none", "unknown"} or args.right_flip not in {"none", "unknown"}:
+            command.append("--flip-applied-before-detection")
     code, stdout, stderr = run_command(command, timeout=max(args.timeout, 30.0))
     report = {
         "ok": code == 0,
         "output_dir": str(output_dir),
         "collected": {key: str(value) for key, value in files.items()},
+        "stereo_capture": stereo_capture,
+        "stereo_keyframes": {"left": left_keyframe, "right": right_keyframe},
         "agent_result": json.loads(stdout) if stdout.strip().startswith("{") else {"raw": stdout},
         "agent_error": stderr,
         "safety_boundary": "read_only_collection_only_no_can_ros_serial_writes",

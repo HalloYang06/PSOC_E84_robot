@@ -39,6 +39,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--safety-state-json", default="", help="Safety state JSON, optional.")
     parser.add_argument("--sensor-state-json", default="", help="EMG/IMU/heart/model summary JSON, optional.")
     parser.add_argument("--keyframe-file", default="", help="Optional png/jpg/webp low-rate camera keyframe.")
+    parser.add_argument("--left-keyframe-file", default="", help="Optional left RGB camera keyframe for stereo V evidence.")
+    parser.add_argument("--right-keyframe-file", default="", help="Optional right RGB camera keyframe for stereo V evidence.")
+    parser.add_argument("--left-camera-index", type=int, default=None, help="OpenCV camera index used for the logical stereo_left frame, if known.")
+    parser.add_argument("--right-camera-index", type=int, default=None, help="OpenCV camera index used for the logical stereo_right frame, if known.")
+    parser.add_argument("--left-flip", choices=["none", "h", "v", "hv", "unknown"], default="unknown", help="Frame flip applied to logical stereo_left before upload/detection.")
+    parser.add_argument("--right-flip", choices=["none", "h", "v", "hv", "unknown"], default="unknown", help="Frame flip applied to logical stereo_right before upload/detection.")
+    parser.add_argument("--flip-applied-before-detection", action="store_true", help="Record that any configured stereo flip was applied before detector/depth processing.")
+    parser.add_argument("--end-effector-onnx", default="", help="Optional YOLOv8 ONNX model for end_effector/gripper_tip evidence.")
+    parser.add_argument("--end-effector-conf", type=float, default=0.15, help="Confidence threshold for the optional end-effector ONNX detector.")
+    parser.add_argument("--end-effector-nms", type=float, default=0.45, help="NMS threshold for the optional end-effector ONNX detector.")
+    parser.add_argument("--end-effector-imgsz", type=int, default=416, help="Input size used by the optional end-effector ONNX detector.")
+    parser.add_argument("--stereo-baseline-m", type=float, default=0.06, help="Distance between left/right RGB cameras in meters.")
+    parser.add_argument("--stereo-calibration-id", default="bench_uncalibrated_rgb_pair", help="Calibration id attached to stereo context evidence.")
+    parser.add_argument("--stereo-width", type=int, default=640)
+    parser.add_argument("--stereo-height", type=int, default=480)
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
 
@@ -213,6 +228,17 @@ def build_board_manifest(args: argparse.Namespace, scan: dict[str, Any]) -> dict
         for item in interfaces
         if item.get("kind") in {"camera"} or "camera" in text(item.get("name")).lower()
     ]
+    camera_device_details = [
+        {
+            "name": text(item.get("name") or item.get("id")),
+            "kind": text(item.get("kind"), "camera"),
+            "status": text(item.get("status"), "unknown"),
+            "transport": text(item.get("transport")),
+            "details": as_record(item.get("details")),
+        }
+        for item in interfaces
+        if item.get("kind") in {"camera"} or "camera" in text(item.get("name")).lower()
+    ]
     usb_devices = [
         {"kind": text(item.get("kind"), "usb"), "description": text(item.get("name") or item.get("id"))}
         for item in interfaces
@@ -243,6 +269,7 @@ def build_board_manifest(args: argparse.Namespace, scan: dict[str, Any]) -> dict
             ],
             "serial_devices": serial_devices,
             "camera_devices": camera_devices,
+            "camera_device_details": camera_device_details,
             "usb_devices": usb_devices,
             "ros2": {"available": bool(ros_items), "topics": topics[:80]},
         },
@@ -354,6 +381,7 @@ def build_payloads(args: argparse.Namespace) -> dict[str, Any]:
             "scene_summary": "现场关键帧仅作观察证据，不参与实时控制。",
             "vla_context": "observation_only",
         },
+        "stereo_context": build_stereo_context(args, common, now),
     }
 
 
@@ -369,6 +397,204 @@ def keyframe_bytes(path_text: str) -> tuple[str, bytes, str]:
     image_format = keyframe_format(path_text)
     content_type = {"jpg": "image/jpeg", "png": "image/png", "webp": "image/webp"}[image_format]
     return path.name, path.read_bytes(), content_type
+
+
+def stereo_image_pair_ref(device_id: str) -> dict[str, str]:
+    return {
+        "left_image_url": f"/api/rehab-arm/v1/devices/{device_id}/camera/keyframes/stereo_left/latest/file",
+        "right_image_url": f"/api/rehab-arm/v1/devices/{device_id}/camera/keyframes/stereo_right/latest/file",
+    }
+
+
+def stereo_camera_mapping(args: argparse.Namespace) -> dict[str, Any]:
+    return {
+        "logical_left": {
+            "camera_id": "stereo_left",
+            "opencv_index": args.left_camera_index,
+            "flip": args.left_flip,
+            "flip_applied_before_detection": bool(args.flip_applied_before_detection),
+        },
+        "logical_right": {
+            "camera_id": "stereo_right",
+            "opencv_index": args.right_camera_index,
+            "flip": args.right_flip,
+            "flip_applied_before_detection": bool(args.flip_applied_before_detection),
+        },
+        "mapping_state": "provided_by_capture_args" if args.left_camera_index is not None and args.right_camera_index is not None else "waiting_physical_index_confirmation",
+    }
+
+
+def _load_cv2() -> Any | None:
+    try:
+        import cv2  # type: ignore
+
+        return cv2
+    except Exception:
+        return None
+
+
+def _letterbox(frame: Any, image_size: int, cv2: Any) -> tuple[Any, float, int, int]:
+    height, width = frame.shape[:2]
+    ratio = min(image_size / max(1, height), image_size / max(1, width))
+    resized_width = max(1, int(round(width * ratio)))
+    resized_height = max(1, int(round(height * ratio)))
+    resized = cv2.resize(frame, (resized_width, resized_height))
+    pad_x = (image_size - resized_width) // 2
+    pad_y = (image_size - resized_height) // 2
+    canvas = __import__("numpy").full((image_size, image_size, 3), 114, dtype=__import__("numpy").uint8)
+    canvas[pad_y:pad_y + resized_height, pad_x:pad_x + resized_width] = resized
+    return canvas, ratio, pad_x, pad_y
+
+
+def _nms_detections(detections: list[dict[str, Any]], threshold: float) -> list[dict[str, Any]]:
+    def area(item: dict[str, Any]) -> float:
+        x, y, w, h = item["bbox_xywh"]
+        return max(0.0, float(w)) * max(0.0, float(h))
+
+    def iou(left: dict[str, Any], right: dict[str, Any]) -> float:
+        lx, ly, lw, lh = left["bbox_xywh"]
+        rx, ry, rw, rh = right["bbox_xywh"]
+        lx2, ly2 = lx + lw, ly + lh
+        rx2, ry2 = rx + rw, ry + rh
+        ix1, iy1 = max(lx, rx), max(ly, ry)
+        ix2, iy2 = min(lx2, rx2), min(ly2, ry2)
+        inter = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
+        return inter / max(1e-6, area(left) + area(right) - inter)
+
+    kept: list[dict[str, Any]] = []
+    for candidate in sorted(detections, key=lambda item: float(item["confidence"]), reverse=True):
+        if all(candidate["label"] != item["label"] or iou(candidate, item) < threshold for item in kept):
+            kept.append(candidate)
+    return kept
+
+
+def run_end_effector_onnx(args: argparse.Namespace, image_path_text: str, camera_id: str) -> list[dict[str, Any]]:
+    if not args.end_effector_onnx or not image_path_text:
+        return []
+    cv2 = _load_cv2()
+    if cv2 is None:
+        return []
+    model_path = Path(args.end_effector_onnx).expanduser()
+    image_path = Path(image_path_text).expanduser()
+    if not model_path.exists() or not image_path.exists():
+        return []
+    frame = cv2.imread(str(image_path))
+    if frame is None:
+        return []
+    image_size = max(32, int(args.end_effector_imgsz))
+    blob_frame, ratio, pad_x, pad_y = _letterbox(frame, image_size, cv2)
+    net = cv2.dnn.readNetFromONNX(str(model_path))
+    blob = cv2.dnn.blobFromImage(blob_frame, 1 / 255.0, (image_size, image_size), swapRB=True, crop=False)
+    net.setInput(blob)
+    output = __import__("numpy").squeeze(net.forward())
+    if len(output.shape) == 2 and output.shape[0] < output.shape[1]:
+        output = output.T
+    names = ["end_effector", "gripper_tip"]
+    height, width = frame.shape[:2]
+    detections: list[dict[str, Any]] = []
+    for row in output:
+        if len(row) < 6:
+            continue
+        scores = row[4:6]
+        class_id = int(__import__("numpy").argmax(scores))
+        confidence = float(scores[class_id])
+        if confidence < args.end_effector_conf:
+            continue
+        center_x, center_y, box_w, box_h = [float(value) for value in row[:4]]
+        x1 = (center_x - box_w / 2 - pad_x) / ratio
+        y1 = (center_y - box_h / 2 - pad_y) / ratio
+        x2 = (center_x + box_w / 2 - pad_x) / ratio
+        y2 = (center_y + box_h / 2 - pad_y) / ratio
+        x1 = max(0.0, min(float(width - 1), x1))
+        y1 = max(0.0, min(float(height - 1), y1))
+        x2 = max(0.0, min(float(width - 1), x2))
+        y2 = max(0.0, min(float(height - 1), y2))
+        if x2 <= x1 or y2 <= y1:
+            continue
+        detections.append({
+            "label": names[class_id],
+            "confidence": round(confidence, 4),
+            "bbox_xywh": [round(x1, 2), round(y1, 2), round(x2 - x1, 2), round(y2 - y1, 2)],
+            "center_xy": [round((x1 + x2) / 2, 2), round((y1 + y2) / 2, 2)],
+            "camera_id": camera_id,
+            "detector": "end_effector_yolov8_onnx",
+            "control_boundary": "detector_output_only_not_motion_permission",
+        })
+    return _nms_detections(detections, float(args.end_effector_nms))
+
+
+def select_best_detection(detections: list[dict[str, Any]], label: str) -> dict[str, Any]:
+    candidates = [item for item in detections if item.get("label") == label]
+    if not candidates:
+        return {"label": "waiting", "confidence": 0.0}
+    return dict(sorted(candidates, key=lambda item: float(item.get("confidence", 0.0)), reverse=True)[0])
+
+
+def build_stereo_context(args: argparse.Namespace, common: dict[str, Any], now: float) -> dict[str, Any] | None:
+    if not args.left_keyframe_file or not args.right_keyframe_file:
+        return None
+    left_detections = run_end_effector_onnx(args, args.left_keyframe_file, "stereo_left")
+    right_detections = run_end_effector_onnx(args, args.right_keyframe_file, "stereo_right")
+    detections = {"left": left_detections, "right": right_detections}
+    end_effector = select_best_detection(left_detections + right_detections, "end_effector")
+    gripper_tip = select_best_detection(left_detections + right_detections, "gripper_tip")
+    detector_state = "end_effector_detector_ready" if args.end_effector_onnx else "waiting_detector"
+    if args.end_effector_onnx and not (left_detections or right_detections):
+        detector_state = "end_effector_not_detected"
+    return {
+        "schema_version": "stereo_rgb_yolo_context_v1",
+        **common,
+        "frame_ts_unix": now,
+        "capture_loop": {
+            "implementation": "nanopi_python_stereo_keyframe_upload",
+            "mode": "two_usb_rgb_keyframes",
+            "camera_mapping": stereo_camera_mapping(args),
+            "control_boundary": "capture_loop_readonly_not_motion_permission",
+        },
+        "left_camera_id": "stereo_left",
+        "right_camera_id": "stereo_right",
+        "stereo_calibration_id": text(args.stereo_calibration_id, "bench_uncalibrated_rgb_pair"),
+        "baseline_m": args.stereo_baseline_m if args.stereo_baseline_m > 0 else None,
+        "image_pair_ref": stereo_image_pair_ref(str(common["device_id"])),
+        "detections": detections,
+        "target_object": {"label": "waiting", "confidence": 0.0},
+        "end_effector_object": end_effector,
+        "gripper_tip_object": gripper_tip,
+        "pixel_servo_hint": {
+            "next_step": "observe_only_wait_for_target" if end_effector.get("confidence", 0.0) else "observe_only_wait_for_detector",
+            "metric_depth_available": False,
+            "control_boundary": "pixel_servo_hint_only_not_motion_permission",
+        },
+        "visual_lock_stability": {
+            "state": "single_frame_end_effector_evidence" if end_effector.get("confidence", 0.0) else detector_state,
+            "stable_for_dry_run": False,
+            "control_boundary": "visual_lock_only_not_motion_permission",
+        },
+        "target_quality_gate": {
+            "state": "waiting_target_detector",
+            "control_boundary": "target_quality_gate_only_not_motion_permission",
+        },
+        "estimated_depth_m": None,
+        "target_3d_camera_frame": None,
+        "scene_summary": "stereo RGB keyframes uploaded; optional end-effector detector evidence attached",
+        "vla_context": "two USB RGB cameras provide V evidence only; end-effector detection is not motion permission",
+        "confidence": max(float(end_effector.get("confidence", 0.0)), float(gripper_tip.get("confidence", 0.0))),
+        "control_boundary": "stereo_vision_context_only_not_motion_permission",
+    }
+
+
+def stereo_camera_fields(args: argparse.Namespace, common: dict[str, Any], camera_id: str, now: float) -> dict[str, str]:
+    return {
+        **{key: str(value) for key, value in common.items()},
+        "camera_id": camera_id,
+        "frame_ts_unix": str(now),
+        "image_format": keyframe_format(args.left_keyframe_file if camera_id == "stereo_left" else args.right_keyframe_file),
+        "width": str(max(1, int(args.stereo_width))),
+        "height": str(max(1, int(args.stereo_height))),
+        "detection_summary": f"{camera_id} raw keyframe; detector pending",
+        "scene_summary": "Stereo RGB raw keyframe uploaded from NanoPi read-only path.",
+        "vla_context": "stereo RGB frame evidence only; not motion permission",
+    }
 
 
 def upload_payloads(args: argparse.Namespace, payloads: dict[str, Any]) -> dict[str, Any]:
@@ -387,6 +613,27 @@ def upload_payloads(args: argparse.Namespace, payloads: dict[str, Any]) -> dict[
         "simulation": request_json(api_base, "POST", f"/api/rehab-arm/v1/devices/{device_id}/simulation-readiness", payloads["simulation"]),
         "camera": request_multipart(api_base, f"/api/rehab-arm/v1/devices/{device_id}/camera/keyframes", payloads["camera_fields"], file_name, image_bytes, content_type),
     }
+    if payloads.get("stereo_context"):
+        now = float(payloads["stereo_context"]["frame_ts_unix"])
+        left_name, left_bytes, left_type = keyframe_bytes(args.left_keyframe_file)
+        right_name, right_bytes, right_type = keyframe_bytes(args.right_keyframe_file)
+        results["stereo_left_camera"] = request_multipart(
+            api_base,
+            f"/api/rehab-arm/v1/devices/{device_id}/camera/keyframes",
+            stereo_camera_fields(args, {"project_id": args.project_id, "robot_id": args.robot_id, "device_id": device_id}, "stereo_left", now),
+            left_name,
+            left_bytes,
+            left_type,
+        )
+        results["stereo_right_camera"] = request_multipart(
+            api_base,
+            f"/api/rehab-arm/v1/devices/{device_id}/camera/keyframes",
+            stereo_camera_fields(args, {"project_id": args.project_id, "robot_id": args.robot_id, "device_id": device_id}, "stereo_right", now),
+            right_name,
+            right_bytes,
+            right_type,
+        )
+        results["stereo_context"] = request_json(api_base, "POST", f"/api/rehab-arm/v1/devices/{device_id}/vision/stereo-context", payloads["stereo_context"])
     dashboard = request_json(api_base, "GET", "/api/rehab-arm/v1/devices/dashboard", {})
     visible = [
         device

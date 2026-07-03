@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 
@@ -113,3 +114,147 @@ def test_collect_and_upload_handles_missing_ros_without_upload(tmp_path: Path) -
     assert report["ok"] is True
     assert session["quality_report"]["ok"] is False
     assert "需要关节状态" in session["quality_report"]["errors"][0]
+
+
+def test_collect_and_upload_passes_existing_stereo_keyframes_to_agent(tmp_path: Path) -> None:
+    left = tmp_path / "left.jpg"
+    right = tmp_path / "right.jpg"
+    left.write_bytes(b"fake-left")
+    right.write_bytes(b"fake-right")
+    result = subprocess.run(
+        [
+            "python",
+            str(SCRIPT),
+            "--project-id",
+            "project-a",
+            "--device-id",
+            "nanopi-stereo",
+            "--output-dir",
+            str(tmp_path / "out"),
+            "--skip-scan",
+            "--skip-ros",
+            "--left-keyframe-file",
+            str(left),
+            "--right-keyframe-file",
+            str(right),
+            "--left-camera-index",
+            "0",
+            "--right-camera-index",
+            "1",
+            "--left-flip",
+            "hv",
+            "--right-flip",
+            "hv",
+            "--flip-applied-before-detection",
+            "--dry-run",
+        ],
+        cwd=ROOT,
+        env={**os.environ, "PATH": str(tmp_path)},
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    report = json.loads(result.stdout)
+    stereo = report["agent_result"]["payloads"]["stereo_context"]
+    mapping = stereo["capture_loop"]["camera_mapping"]
+
+    assert report["ok"] is True
+    assert report["stereo_keyframes"] == {"left": str(left), "right": str(right)}
+    assert stereo["left_camera_id"] == "stereo_left"
+    assert stereo["right_camera_id"] == "stereo_right"
+    assert mapping["logical_left"]["opencv_index"] == 0
+    assert mapping["logical_right"]["opencv_index"] == 1
+    assert mapping["logical_left"]["flip"] == "hv"
+    assert mapping["logical_right"]["flip"] == "hv"
+    assert mapping["logical_right"]["flip_applied_before_detection"] is True
+    assert stereo["control_boundary"] == "stereo_vision_context_only_not_motion_permission"
+
+
+def test_collect_and_upload_does_not_invent_camera_indices_for_forwarded_files(tmp_path: Path) -> None:
+    left = tmp_path / "left.jpg"
+    right = tmp_path / "right.jpg"
+    left.write_bytes(b"fake-left")
+    right.write_bytes(b"fake-right")
+    result = subprocess.run(
+        [
+            "python",
+            str(SCRIPT),
+            "--project-id",
+            "project-a",
+            "--device-id",
+            "nanopi-stereo",
+            "--output-dir",
+            str(tmp_path / "out"),
+            "--skip-scan",
+            "--skip-ros",
+            "--left-keyframe-file",
+            str(left),
+            "--right-keyframe-file",
+            str(right),
+            "--dry-run",
+        ],
+        cwd=ROOT,
+        env={**os.environ, "PATH": str(tmp_path)},
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    mapping = json.loads(result.stdout)["agent_result"]["payloads"]["stereo_context"]["capture_loop"]["camera_mapping"]
+
+    assert mapping["logical_left"]["opencv_index"] is None
+    assert mapping["logical_right"]["opencv_index"] is None
+    assert mapping["mapping_state"] == "waiting_physical_index_confirmation"
+
+
+def test_collect_and_upload_forwards_end_effector_detector_args(tmp_path: Path) -> None:
+    scripts_dir = tmp_path / "scripts"
+    scripts_dir.mkdir()
+    script_copy = scripts_dir / "nanopi-rehab-arm-collect-and-upload.py"
+    script_copy.write_text(SCRIPT.read_text(encoding="utf-8"), encoding="utf-8")
+    fake_agent = scripts_dir / "nanopi-rehab-arm-readonly-agent.py"
+    fake_agent.write_text(
+        "import json, sys\n"
+        "print(json.dumps({'argv': sys.argv[1:]}))\n",
+        encoding="utf-8",
+    )
+    fake_model = tmp_path / "best.onnx"
+    fake_model.write_bytes(b"onnx")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(script_copy),
+            "--project-id",
+            "project-a",
+            "--device-id",
+            "nanopi-stereo",
+            "--output-dir",
+            str(tmp_path / "out"),
+            "--skip-scan",
+            "--skip-ros",
+            "--end-effector-onnx",
+            str(fake_model),
+            "--end-effector-conf",
+            "0.21",
+            "--end-effector-nms",
+            "0.37",
+            "--end-effector-imgsz",
+            "416",
+            "--dry-run",
+        ],
+        cwd=tmp_path,
+        env={**os.environ, "PATH": str(tmp_path)},
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    argv = json.loads(result.stdout)["agent_result"]["argv"]
+
+    assert "--end-effector-onnx" in argv
+    assert argv[argv.index("--end-effector-onnx") + 1] == str(fake_model)
+    assert argv[argv.index("--end-effector-conf") + 1] == "0.21"
+    assert argv[argv.index("--end-effector-nms") + 1] == "0.37"
+    assert argv[argv.index("--end-effector-imgsz") + 1] == "416"
