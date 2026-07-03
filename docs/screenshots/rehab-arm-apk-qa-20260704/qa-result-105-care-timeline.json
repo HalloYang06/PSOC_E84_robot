@@ -1,0 +1,27 @@
+{
+  "email": "rehab-timeline-1783102019250@example.com",
+  "apkVersion": "1.0.5",
+  "timelinePanel": true,
+  "timelineItemsFromBackend": [
+    {
+      "kind": "ai_training_draft",
+      "title": "AI 草稿已接受",
+      "action": "VIEW_ACCEPTED_PLAN"
+    },
+    {
+      "kind": "training_session",
+      "title": "训练记录已完成",
+      "action": "VIEW_SESSION"
+    },
+    {
+      "kind": "training_report",
+      "title": "训练报告已复盘",
+      "action": "VIEW_REPORT"
+    }
+  ],
+  "panelHasReport": true,
+  "panelHasDraft": true,
+  "panelHasNoDemoHistoryClaim": true,
+  "consoleErrors": [],
+  "failedRequests": []
+}
