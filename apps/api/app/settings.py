@@ -55,6 +55,7 @@ class Settings(BaseSettings):
     supertokens_website_base_path: str = "/auth"
     supertokens_email_verification_mode: str = "REQUIRED"
     cors_allowed_origins: str = ""
+    rehab_arm_app_cors_origins: str = "capacitor://localhost,https://localhost,http://localhost"
     supertokens_cookie_secure: str = ""
 
     supertokens_smtp_host: str = ""
@@ -80,11 +81,16 @@ class Settings(BaseSettings):
     @property
     def cors_allowed_origins_list(self) -> list[str]:
         raw = self.cors_allowed_origins.strip()
+        origins: list[str] = []
         if not raw:
             website_domain = self.supertokens_website_domain.strip()
-            return [website_domain] if website_domain else []
-        origins: list[str] = []
+            if website_domain:
+                origins.append(website_domain)
         for item in raw.replace(",", "\n").splitlines():
+            candidate = item.strip()
+            if candidate and candidate not in origins:
+                origins.append(candidate)
+        for item in self.rehab_arm_app_cors_origins.replace(",", "\n").splitlines():
             candidate = item.strip()
             if candidate and candidate not in origins:
                 origins.append(candidate)
