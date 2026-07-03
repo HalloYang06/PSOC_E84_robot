@@ -214,4 +214,6 @@
 - Validation passed: `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`7 passed`, deprecation warnings only).
 - Improved rehab arm app `home_status_guide.body` selection so the phone home card uses action `description`, `detail`, or `message` before falling back to generic copy; onboarding profile setup now surfaces the specific pain-baseline/constraint rationale.
 - Validation passed: `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`7 passed`, deprecation warnings only).
+- Added `/me.home_status_guide.secondary_actions` so the first phone card can expose follow-up actions from the same backend source guide after deduping the primary action. Failed offline evidence now shows `VIEW_OFFLINE_QUEUE` as the primary action and `REVIEW_FAILED_OFFLINE_ITEM` as a secondary action with the exact review endpoint.
+- Validation passed with `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`7 passed`, deprecation warnings only). The home card remains `app_home_status_guide_evidence_only_not_motion_permission`.
 - Next step: continue checking user-facing guide copy and actions from a patient/operator first-run perspective.

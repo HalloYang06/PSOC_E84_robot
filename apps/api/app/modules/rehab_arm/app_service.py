@@ -754,7 +754,7 @@ def _app_care_summary(
     }
 
 
-def _app_home_status_guide(daily_action_guide: dict, care_summary: dict) -> dict:
+def _app_home_status_guide(daily_action_guide: dict, care_summary: dict, related_actions: list[dict] | None = None) -> dict:
     next_action = daily_action_guide.get("next_action") or {}
     action_code = str(next_action.get("code") or "")
     body = next_action.get("description") or next_action.get("detail") or next_action.get("message") or ""
@@ -772,12 +772,21 @@ def _app_home_status_guide(daily_action_guide: dict, care_summary: dict) -> dict
     else:
         tone = "info"
         headline = next_action.get("title") or next_action.get("label") or "继续完成设置"
+    secondary_actions: list[dict] = []
+    seen_action_codes = {action_code} if action_code else set()
+    for action in related_actions or []:
+        code = str(action.get("code") or "")
+        if not code or code in seen_action_codes:
+            continue
+        seen_action_codes.add(code)
+        secondary_actions.append(action)
     return {
         "status": daily_action_guide.get("status") or care_summary.get("status"),
         "tone": tone,
         "headline": headline,
         "body": body or "按照下一步操作完成当前康复记录闭环。",
         "primary_action": next_action,
+        "secondary_actions": secondary_actions,
         "blockers": care_summary.get("blockers") or [],
         "counts": care_summary.get("counts") or {},
         "safety_note": "本卡片只提供手机端证据和流程引导，不授予硬件运动权限；真实运动仍由 M33 最终裁决。",
@@ -1404,6 +1413,9 @@ def get_app_bootstrap(db: Session, user_id: str) -> dict:
         accepted_plan_guide,
     )
     care_summary = _app_care_summary(onboarding_guide, primary_start_guide, sessions, reports, all_drafts, offline_queue)
+    home_related_actions = None
+    if (daily_action_guide.get("next_action") or {}).get("source", {}).get("guide") == "offline_sync_guide":
+        home_related_actions = offline_sync_guide.get("actions") or []
     return {
         "profile": profile,
         "devices": devices,
@@ -1412,7 +1424,7 @@ def get_app_bootstrap(db: Session, user_id: str) -> dict:
         "active_session": active_session,
         "primary_start_guide": primary_start_guide,
         "daily_action_guide": daily_action_guide,
-        "home_status_guide": _app_home_status_guide(daily_action_guide, care_summary),
+        "home_status_guide": _app_home_status_guide(daily_action_guide, care_summary, home_related_actions),
         "care_summary": care_summary,
         "care_timeline": _app_care_timeline(sessions, reports, all_drafts, offline_queue),
         "offline_sync_guide": offline_sync_guide,

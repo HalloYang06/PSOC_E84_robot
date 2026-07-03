@@ -1391,6 +1391,8 @@ def test_rehab_arm_app_daily_action_prioritizes_offline_sync_without_active_sess
     failed_home_status = bootstrap_with_failed.json()["data"]["home_status_guide"]
     assert failed_home_status["tone"] == "critical"
     assert failed_home_status["primary_action"]["code"] == "VIEW_OFFLINE_QUEUE"
+    assert failed_home_status["secondary_actions"][0]["code"] == "REVIEW_FAILED_OFFLINE_ITEM"
+    assert failed_home_status["secondary_actions"][0]["endpoint"] == f"/api/rehab-arm/app/v1/offline-queue/{failed_source['id']}/review"
     assert failed_home_status["counts"]["offline_items_failed"] == 1
     assert "offline_queue_failed" in failed_home_status["blockers"]
 
