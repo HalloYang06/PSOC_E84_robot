@@ -1575,6 +1575,13 @@ def test_rehab_arm_app_offline_diagnostics_sync_and_audit_loop(tmp_path, monkeyp
     )
     assert queued_queue.status_code == 200
     assert {item["id"] for item in queued_queue.json()["data"]} == {queue_item["id"], safety_queue_item["id"]}
+    empty_review_note = client.post(
+        f"/api/rehab-arm/app/v1/offline-queue/{bad_queue_item['id']}/review",
+        headers=auth_headers(owner_token),
+        json={"reviewer_role": "therapist", "review_status": "reviewed", "note": ""},
+    )
+    assert empty_review_note.status_code == 422
+    assert empty_review_note.json()["error"]["code"] == "VALIDATION_ERROR"
     reviewed_failed = client.post(
         f"/api/rehab-arm/app/v1/offline-queue/{bad_queue_item['id']}/review",
         headers=auth_headers(owner_token),

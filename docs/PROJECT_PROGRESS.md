@@ -203,3 +203,6 @@
 - Added evidence-only review closure for failed rehab arm offline queue items: `POST /api/rehab-arm/app/v1/offline-queue/{item_id}/review` marks failed items `reviewed`, preserves review evidence, audits the action, and removes the failed item from `/me.offline_sync_guide` blockers.
 - Validation passed: `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`7 passed`, deprecation warnings only).
 - Next step: continue adding explicit review/close paths for any remaining App states that can otherwise persist forever on the home screen.
+- Tightened failed offline item review evidence: `POST /offline-queue/{item_id}/review` now requires a non-empty note and limits `review_status` to `reviewed`, `ignored`, `duplicate`, or `replaced`.
+- Validation passed: `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`7 passed`, deprecation warnings only).
+- Next step: continue hardening evidence-close actions so no user-facing App state can be cleared without durable review context.
