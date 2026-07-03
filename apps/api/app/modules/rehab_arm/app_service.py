@@ -1030,7 +1030,10 @@ def _app_home_status_guide(daily_action_guide: dict, care_summary: dict, related
         str(blocker.get("code") or ""): str(blocker.get("severity") or "warning")
         for blocker in blocker_details
     }
-    for item in progress_items:
+    for index, item in enumerate(progress_items):
+        item_position = index + 1
+        item["position"] = item_position
+        item["position_label"] = f"第 {item_position}/{total_count} 项"
         related_blocker_codes = item.get("related_blocker_codes") or []
         item_blocker_tones = [
             blocker_severity_by_code[code]

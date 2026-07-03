@@ -131,3 +131,4 @@
 - Home-progress percentage lesson: clarify whether a percent is onboarding-only or full workflow completion. For `/me.home_status_guide.progress`, derive percent from the whole checklist so "no active session/no reports pending" can already count as done on first launch.
 - Home-progress position lesson: if the backend chooses the highlighted progress row, it should also return the row position and label. Otherwise every phone shell has to rescan the checklist order and can disagree with `next_item`.
 - Home-progress row-state lesson: checklist rows should carry backend-authored `done/current/pending` status and tone. Otherwise one shell may highlight the right `next_item` while another styles the same row as merely pending.
+- Home-progress row-position lesson: progress rows should carry their own 1-based position labels. Frontend array indexes are easy to lose after filtering or grouping and can drift from backend-selected `next_item_position`.

@@ -112,6 +112,8 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
         == "app_home_progress_context_evidence_only_not_motion_permission"
     )
     onboarding_progress = next(item for item in empty_home_status["progress"]["items"] if item["code"] == "onboarding")
+    assert onboarding_progress["position"] == 1
+    assert onboarding_progress["position_label"] == "第 1/8 项"
     assert onboarding_progress["done"] is False
     assert onboarding_progress["status"] == "current"
     assert onboarding_progress["status_label"] == "当前处理"
@@ -246,6 +248,8 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     )
     assert next(item for item in start_home_status["progress"]["items"] if item["code"] == "onboarding")["done"] is True
     start_ready_progress = next(item for item in start_home_status["progress"]["items"] if item["code"] == "start_ready")
+    assert start_ready_progress["position"] == 8
+    assert start_ready_progress["position_label"] == "第 8/8 项"
     assert start_ready_progress["done"] is False
     assert start_ready_progress["status"] == "current"
     assert start_ready_progress["tone"] == "warning"

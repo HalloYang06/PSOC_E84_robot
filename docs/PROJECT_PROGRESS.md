@@ -268,3 +268,5 @@
 - Validation passed with `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`7 passed`, deprecation warnings only). Position is 1-based and becomes null when the home workflow is complete.
 - Added backend-authored `status`, `status_label`, and `tone` to each `/me.home_status_guide.progress.items` row so phone checklist rendering can distinguish done/current/pending rows without local inference.
 - Validation passed with `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`7 passed`, deprecation warnings only). Item tone inherits blocker severity for the current row and uses success for completed rows.
+- Added per-row `position` and `position_label` to `/me.home_status_guide.progress.items` so phone checklist rows can render their own step number without reading array indexes.
+- Validation passed with `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`7 passed`, deprecation warnings only). Row positions mirror the backend checklist order used by `next_item_position`.
